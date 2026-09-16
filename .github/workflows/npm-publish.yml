@@ -11,6 +11,11 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # secrets 不能直接出现在 if 里（GitHub 限制，写了会让整个 workflow 无法创建），
+    # 所以先转发到 env，再用 env 判断。
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,13 +58,13 @@ jobs:
           fi
 
       # 未配置密钥时跳过，而不是把 CI 跑成红的 ——
-      # 缺密钥是"还没配"，不是"代码坏了"，两者不该长得一样。
+      # 缺密钥是「还没配」，不是「代码坏了」，两者不该长得一样。
       - name: 未配置 NPM_TOKEN 时跳过发布
-        if: ${{ secrets.NPM_TOKEN == '' }}
+        if: env.HAS_NPM_TOKEN != 'true'
         run: echo "::notice::未配置 NPM_TOKEN，跳过标签与发布。配置后 push 即自动发版。"
 
       - name: Create and push tag
-        if: ${{ steps.check_tag.outputs.exists == 'false' && secrets.NPM_TOKEN != '' }}
+        if: steps.check_tag.outputs.exists == 'false' && env.HAS_NPM_TOKEN == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -78,7 +83,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
-        if: ${{ steps.npm_check.outputs.published == 'false' && secrets.NPM_TOKEN != '' }}
+        if: steps.npm_check.outputs.published == 'false' && env.HAS_NPM_TOKEN == 'true'
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

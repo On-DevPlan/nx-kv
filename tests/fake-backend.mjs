@@ -17,9 +17,10 @@ export function startFakeBackend({ token = 'fake-token-123', userId = 8 } = {}) 
   };
 
   const groups = [
-    { id: 24, name: '个人空间', description: '个人默认工作空间', myRole: 'owner', memberCount: 1 },
-    { id: 190, name: 'shared', description: '共享', myRole: 'owner', memberCount: 3 },
+    { id: 24, name: '个人空间', description: '个人默认工作空间', myRole: 'owner', memberCount: 1, ownerId: 8, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 190, name: 'shared', description: '共享', myRole: 'owner', memberCount: 3, ownerId: 8, createdAt: '2026-01-02T00:00:00Z' },
   ];
+  let nextGid = 500;
 
   const ok = (res, data) => {
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -56,6 +57,38 @@ export function startFakeBackend({ token = 'fake-token-123', userId = 8 } = {}) 
 
     if (p === '/api/v1/groups' && req.method === 'GET') {
       return ok(res, { groups: gid === 190 ? [groups[1]] : groups });
+    }
+
+    if (p === '/api/v1/groups' && req.method === 'POST') {
+      const b = await readBody(req);
+      if (!b.name) return fail(res, 51, 'name 必填');
+      const g = { id: ++nextGid, name: b.name, description: b.description || '', myRole: 'owner', memberCount: 1, ownerId: userId, createdAt: '2026-09-16T00:00:00Z' };
+      groups.push(g);
+      return ok(res, { group: g });
+    }
+
+    const gidMatch = /^\/api\/v1\/groups\/(\d+)$/.exec(p);
+    if (gidMatch) {
+      const id = Number(gidMatch[1]);
+      const i = groups.findIndex((g) => g.id === id);
+      if (i < 0) return fail(res, 50, '不是该组成员');
+      if (req.method === 'PATCH') {
+        const b = await readBody(req);
+        if (b.name !== undefined) groups[i].name = b.name;
+        if (b.description !== undefined) groups[i].description = b.description;
+        return ok(res, { group: groups[i] });
+      }
+      if (req.method === 'DELETE') {
+        // 复刻后端的前置条件：组内还有 KV 就拒绝
+        if (storeFor(id).size > 0) return fail(res, 50, '组内存在 KV，请先删除或转移后再解散组');
+        groups.splice(i, 1);
+        return ok(res, {});
+      }
+    }
+
+    const memMatch = /^\/api\/v1\/groups\/(\d+)\/members$/.exec(p);
+    if (memMatch && req.method === 'GET') {
+      return ok(res, { members: [{ userId, email: 'user@test', nickname: 'tester', role: 'owner' }] });
     }
 
     if (p === '/api/v1/kv' && req.method === 'GET') {

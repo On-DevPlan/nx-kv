@@ -57,6 +57,10 @@ nx-kv todo archive          # 完成记录归档到冷 key（默认 30 天前）
 nx-kv topic list
 nx-kv group list
 nx-kv group use shared      # 切换工作空间（只改本机配置）
+nx-kv group add 新空间 --description "..."   # 建
+nx-kv group update 507 --name 改个名          # 改
+nx-kv group remove 507                        # 解散（组内须无 KV）
+nx-kv group members 24                        # 成员
 ```
 
 完整命令表由 action 声明自动生成：`nx-kv help`。

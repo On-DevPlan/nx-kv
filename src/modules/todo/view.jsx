@@ -14,6 +14,9 @@ const BUCKETS = [
 
 const shortTime = (s) => (s ? String(s).slice(0, 16).replace('T', ' ') : '');
 
+// 单个桶超过这个条数就折叠。已完成常年上百条，全铺出来会把待办挤到看不见。
+const COLLAPSE_AT = 15;
+
 // 一个任务在哪些桶里可能重名 —— id 不是唯一键，UI 必须能显示出来
 const taskKey = (bucket, t) => `${bucket}:${t.id}`;
 
@@ -59,6 +62,8 @@ export default function TodoView() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ topic: '', text: '' });
   const [modal, setModal] = useState(null);
+  // 已完成常常上百条，默认只展示前 N 条，避免整页全是历史噪音
+  const [expanded, setExpanded] = useState({});
 
   const group = boot?.groupId ?? 0;
   const groupName = (boot?.groups || []).find((g) => g.id === group)?.name || (group ? `#${group}` : '默认组');
@@ -180,6 +185,21 @@ export default function TodoView() {
     await refreshBoot();
   });
 
+  // 归档：把已完成里较旧的条目移到冷 key（todo:done:cold:<日期>）。
+  // 后端没有「批量删」接口，所以这是清理已完成列表的唯一手段。
+  const archive = () => guard(async () => {
+    const before = await dialog({
+      title: '归档已完成的旧记录',
+      message: '把「完成时间早于该日期」的记录移到冷 key（默认 30 天前）。留空用默认值。',
+      input: true,
+      placeholder: 'YYYY-MM-DD，留空 = 30 天前',
+    });
+    if (before === null) return;
+    const r = await api('/api/todo/archive', { method: 'POST', body: { before: before.trim() || undefined, group } });
+    toast(r.moved ? `已归档 ${r.moved} 条 → ${r.coldKey}` : '没有需要归档的记录');
+    await reload();
+  });
+
   const add = () => guard(async () => {
     const topic = form.topic.trim();
     const text = form.text.trim();
@@ -190,6 +210,8 @@ export default function TodoView() {
     toast(`已加入待办 #${r.id}${r.topicAdded ? `（新主题 ${topic}）` : ''}`);
     await reload();
   });
+
+  const visible = (key, items) => (expanded[key] ? items : items.slice(0, COLLAPSE_AT));
 
   const topics = data?.topics || [];
   const counts = filtered
@@ -227,14 +249,24 @@ export default function TodoView() {
             <div className="colhead">
               <h3>{label}</h3>
               <span className="muted">{(filtered?.[key] || []).length}</span>
+              {key === 'done' && (filtered?.done || []).length ? (
+                <button className="btn small ghost" style={{ marginLeft: 'auto' }} onClick={archive}
+                  title="把较旧的完成记录移到冷 key">归档旧记录</button>
+              ) : null}
             </div>
             <div className="card list">
               {(filtered?.[key] || []).length
-                ? filtered[key].map((t) => (
+                ? visible(key, filtered[key]).map((t) => (
                     <TaskRow key={taskKey(key, t)} bucket={key} task={t}
                       dupCount={dupCounts.get(t.id) || 1} onAct={onAct} />
                   ))
                 : <div className="row muted">（空）</div>}
+              {(filtered?.[key] || []).length > COLLAPSE_AT ? (
+                <div className="row muted" style={{ cursor: 'pointer', justifyContent: 'center' }}
+                  onClick={() => setExpanded((e) => ({ ...e, [key]: !e[key] }))}>
+                  {expanded[key] ? '收起' : `还有 ${filtered[key].length - COLLAPSE_AT} 条，点击展开`}
+                </div>
+              ) : null}
             </div>
           </div>
         ))}

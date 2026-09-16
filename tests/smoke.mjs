@@ -111,6 +111,29 @@ try {
   await cli(['group', 'use', 'default']);
   check('group use default 回默认组', (await cliJson(['group', 'current'])).id === 0);
 
+  // ─── 4b. 工作空间的 CRUD（group 是集合资源，五操作齐备）───
+  const newG = await cliJson(['group', 'add', '__smoke__', '--description', '自测']);
+  check('group add 新建', newG.id > 500 && newG.name === '__smoke__', JSON.stringify(newG));
+  check('group get 单条', (await cliJson(['group', 'get', String(newG.id)])).name === '__smoke__');
+  check('group update 改名', (await cliJson(['group', 'update', String(newG.id), '--name', '__smoke2__'])).name === '__smoke2__');
+  check('group update 后 get 能读到', (await cliJson(['group', 'get', String(newG.id)])).name === '__smoke2__');
+  check('group get 不存在报错', (await cli(['group', 'get', '99999'])).status === 1);
+  check('group members', (await cliJson(['group', 'members', '24'])).members.length > 0);
+  check('group update 无字段报错', (await cli(['group', 'update', String(newG.id)])).status === 1);
+
+  // 解散：切到该组时应被拦住（否则后续读写会打到一个不存在的组）
+  await cli(['group', 'use', String(newG.id)]);
+  check('不能解散当前使用中的工作空间', (await cli(['group', 'remove', String(newG.id)])).status === 1);
+  await cli(['group', 'use', 'default']);
+  check('切走后可解散', (await cli(['group', 'remove', String(newG.id)])).status === 0);
+  check('解散后查不到', (await cli(['group', 'get', String(newG.id)])).status === 1);
+
+  // 组内还有 KV 时拒绝解散（后端的前置条件）
+  const withKv = await cliJson(['group', 'add', '__smoke_kv__']);
+  await cli(['todo', 'add', '--topic', 'x', '占位', '--group', String(withKv.id)]);
+  const refuse = await cli(['group', 'remove', String(withKv.id)]);
+  check('组内有 KV 时拒绝解散', refuse.status === 1, (refuse.stdout + refuse.stderr).slice(0, 80));
+
   // ─── 5. 四把 key 与 id 分配 ──────────────────────────────────
   backend.seed('todo:freeze', JSON.stringify([T(2, 'py'), T(10, 'go'), T(28, 'fr', '', { frozenAt: 'x' })]));
   backend.seed('todo:done', JSON.stringify([T(1, 'go')]));
@@ -191,6 +214,18 @@ try {
   check('只删掉了 1 条，其余 2 条保留', remain.length === 2, `剩 ${remain.length} 条`);
   check('删掉的是选中的那条', !remain.some((t) => t.text === '旧记录B'));
 
+  // ─── 8b. 归档：completed 里较旧的移到冷 key ──────────────────
+  backend.seed('todo:done', JSON.stringify([
+    T(1, 'go', '很久以前完成的', { doneAt: '2020-01-01T00:00:00+08:00' }),
+    T(2, 'go', '最近完成的', { doneAt: new Date().toISOString() }),
+  ]));
+  const arch = await cliJson(['todo', 'archive', '--before', '2021-01-01']);
+  check('归档移走旧记录', arch.moved === 1 && arch.remaining === 1, JSON.stringify(arch));
+  check('冷 key 按日期分片', /^todo:done:cold:\d{4}-\d{2}-\d{2}$/.test(arch.coldKey), arch.coldKey);
+  check('冷 key 里确实有那条', (backend.get(arch.coldKey) || '').includes('很久以前完成的'));
+  check('未到期的仍在 done 里', (await cliJson(['todo', 'list', '--status', 'done'])).done.length === 1);
+  check('没有可归档时不报错', (await cliJson(['todo', 'archive', '--before', '2021-01-01'])).moved === 0);
+
   // ─── 9. topic 与 prompt ──────────────────────────────────────
   check('topic.list 带计数', await (async () => {
     const l = await cliJson(['topic', 'list']);
@@ -244,7 +279,11 @@ try {
   check('api todo 列表', todoRes.ok && Array.isArray(todoRes.data.open));
 
   const groupsRes = await (await fetch(base + '/api/groups')).json();
-  check('api groups', groupsRes.ok && groupsRes.data.groups.length === 2);
+  // 不assert精确数量：前面的用例会新建/解散组，数量是流动的
+  check(
+    'api groups',
+    groupsRes.ok && groupsRes.data.groups.some((g) => g.name === '个人空间') && groupsRes.data.groups.some((g) => g.name === 'shared')
+  );
 
   const notFound = await (await fetch(base + '/api/nothing')).json();
   check('api 404', !notFound.ok);

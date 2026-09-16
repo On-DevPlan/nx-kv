@@ -14,8 +14,11 @@
 - **主题**：`topic list / add / remove`（带各状态任务数）。
 - **主题提示词**：`prompt set / get / remove` —— 存 `todo:prompt:<topic>`，
   让 agent「拿任务即拿上下文」。
-- **工作空间**：`group list / current / use`（id 或名称，`default` 回默认组）。
-  切换只改本机配置，作用于后续所有读写。
+- **工作空间完整 CRUD**：`group list / get / add / update / remove`（声明为集合资源，
+  五操作齐备且两端可达）+ `group current / use / members`。
+  切换只改本机配置；解散有前置条件（组内须无 KV），且**不能解散当前使用中的空间**。
+- **面板**：「已完成」列可一键**归档旧记录**（移到 `todo:done:cold:<日期>`）；
+  任一列超过 15 条自动折叠，避免历史记录把待办挤出视野。
 - **认证**：`auth login / logout / status / me`。token 存 `~/.nx-kv/config.json`，
   密码交互式隐藏输入、**不落盘**。
 - **Web 面板**：`nx-kv serve`，三页（清单 / 工作空间 / 登录），无 emoji、单色、

@@ -87,14 +87,64 @@ export async function userInfo() {
 
 // ---- 工作空间 ----
 
-export async function listGroups() {
-  const data = await call({ method: 'GET', path: '/api/v1/groups' });
-  return (data?.groups ?? []).map((g) => ({
+function normalizeGroup(g) {
+  return {
     id: Number(g.id) || 0,
     name: g.name ?? '',
     description: g.description ?? '',
     myRole: g.myRole ?? '',
     memberCount: Number(g.memberCount) || 0,
+    ownerId: Number(g.ownerId) || 0,
+    createdAt: g.createdAt ?? '',
+  };
+}
+
+export async function listGroups() {
+  const data = await call({ method: 'GET', path: '/api/v1/groups' });
+  return (data?.groups ?? []).map(normalizeGroup);
+}
+
+// 建组。返回后端给的完整对象——建完立刻能拿到 id，不必再列一次。
+export async function createGroup({ name, description } = {}) {
+  const n = String(name || '').trim();
+  if (!n) throw badInput('工作空间名称不能为空');
+  const data = await call({
+    method: 'POST',
+    path: '/api/v1/groups',
+    body: { name: n, description: String(description ?? '') },
+  });
+  return normalizeGroup(data?.group ?? {});
+}
+
+// 改名 / 改描述。只发传入的字段（PATCH 语义）。
+export async function updateGroup(id, { name, description } = {}) {
+  const body = {};
+  if (name !== undefined) {
+    const n = String(name).trim();
+    if (!n) throw badInput('工作空间名称不能为空');
+    body.name = n;
+  }
+  if (description !== undefined) body.description = String(description);
+  if (!Object.keys(body).length) throw badInput('至少要给出 --name 或 --description');
+  const data = await call({ method: 'PATCH', path: `/api/v1/groups/${Number(id)}`, body });
+  return normalizeGroup(data?.group ?? {});
+}
+
+// 解散工作空间。后端有前置条件：组内不能还有 KV，
+// 报错文案会把原因带回来（例如「组内存在 KV，请先删除或转移后再解散组」），
+// 这里原样透出——调用方需要知道到底卡在哪一步。
+export async function deleteGroup(id) {
+  await call({ method: 'DELETE', path: `/api/v1/groups/${Number(id)}` });
+  return { id: Number(id), deleted: true };
+}
+
+export async function listGroupMembers(id) {
+  const data = await call({ method: 'GET', path: `/api/v1/groups/${Number(id)}/members` });
+  return (data?.members ?? []).map((m) => ({
+    userId: Number(m.userId) || 0,
+    email: m.email ?? '',
+    nickname: m.nickname ?? '',
+    role: m.role ?? m.myRole ?? '',
   }));
 }
 

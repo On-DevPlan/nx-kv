@@ -40,6 +40,10 @@
     "skills",
     "npx"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/On-DevPlan/nx-kv.git"
+  },
   "license": "MIT",
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",

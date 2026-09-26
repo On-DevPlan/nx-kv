@@ -41,7 +41,7 @@ export default function App() {
   return (
     <>
       <header>
-        <div className="brand"><img src="/logo-rounded.png" alt="" />nx-kv<span className="sub">nx-kv</span></div>
+        <div className="brand"><img src="/logo-rounded.png" alt="nx-kv" />nx-kv<span className="sub">nx-kv</span></div>
         <nav>
           {VIEWS.map((v) => (
             <button

@@ -285,6 +285,10 @@ try {
   const html = await (await fetch(base + '/')).text();
   check('web 首页', html.includes('nx-kv') && !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(html));
 
+  // 图标走 vite publicDir（src/web/frontend/public/）拷进产物；
+  // ico 兜底若 404，浏览器页签就是一片空白——这里钉住它。
+  check('web 图标可达', (await fetch(base + '/favicon.ico')).status === 200);
+
   const todoRes = await (await fetch(base + '/api/todo')).json();
   check('api todo 列表', todoRes.ok && Array.isArray(todoRes.data.open));
 

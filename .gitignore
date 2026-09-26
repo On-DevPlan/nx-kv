@@ -1,10 +1,10 @@
 # 依赖与产物
 node_modules/
+# vite 的 outDir：构建产物，emptyOutDir 会清空，不入库。
+# 静态源资产（favicon/logo）的家是 src/web/frontend/public/（vite publicDir，
+# 构建时自动整目录拷进 outDir），那里**入库**。
 src/web/public/
 *.log
 
 # 工具隔离目录（scratch 工具不入库）
 .tool/
-
-# vite dev 产物（root 下的 public/）——outDir 是 src/web/public，这里不该有东西
-src/web/frontend/public/

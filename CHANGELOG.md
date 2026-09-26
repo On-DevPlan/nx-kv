@@ -2,6 +2,23 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.2.1] - 2026-09-27
+
+### Added
+
+- **Web 面板图标入库**：favicon（ico + 16/32/48 png）、logo、圆角 logo 现在随包分发，
+  `nx-kv serve` 起的面板页签、桌面快捷方式、添加到主屏（apple-touch-icon）都有图标了，
+  并新增 `theme-color`（移动端地址栏与图标同色）。
+  图标源在 `src/web/frontend/public/`（Vite publicDir，构建时自动拷进产物），
+  与 nx-as / nx-rp / nx-sk / nx-nx 同构；不放 `assets/` 是因为那是 skill 安装目录，
+  会被 `skill install` 一起装到用户机器。
+- **smoke 新增断言**：`/favicon.ico` 必须 200，防止图标再次从产物里丢失。
+
+### Fixed
+
+- `.gitignore` 误把 `src/web/frontend/public/` 当 dev 产物忽略（vite 从不在那里产生东西，
+  它是静态源资产的标准位置），导致此前图标从未入库、clone 后构建出无图标面板。
+
 ## [0.2.0] - 2026-09-26
 
 ### Changed

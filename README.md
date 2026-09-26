@@ -12,13 +12,13 @@ KV 清单（todo）管理中枢。一个 `npx` 命令起一个 Web 面板，同�
 pnpm install
 
 # 开发模式（需要两个终端）
-pnpm run dev:serve    # 终端 1：后端 :7820
-pnpm run dev          # 终端 2：Vite :5181，/api 代理到 7820
+pnpm run dev:serve    # 终端 1：后端 :7877
+pnpm run dev          # 终端 2：Vite :5181，/api 代理到 7877
 
 # 生产模式
 pnpm start            # 构建 + 起面板
 
-# 校验：lint + 构建 + 87 项端到端冒烟 + 31 项单元/一致性测试
+# 校验：lint + 构建 + 94 项端到端冒烟 + 33 项单元/一致性测试
 pnpm test
 ```
 
@@ -41,16 +41,16 @@ token 存 `~/.nx-kv/config.json`，**密码不落盘**。配置文件路径可�
 nx-kv todo list --status open --topic go --json
 nx-kv prompt get go --json                    # 顺带拿该主题的上下文提示词
 
-# 增删改查
+# 增删改查 —— 单条操作一律按**内容**定位（--ref），不用 id
 nx-kv todo add --topic go "把 watchkv 的告警接进来"
-nx-kv todo get 29 --topic go
-nx-kv todo update 29 --text "改过的内容"
-nx-kv todo remove 29 --topic go
+nx-kv todo get --ref "把 watchkv 的告警接进来"
+nx-kv todo update --ref "旧内容" --text "改过的内容"
+nx-kv todo remove --ref "要删的那条"
 
 # 状态流转
-nx-kv todo done 29 --result "已接入，commit abc123"
-nx-kv todo freeze 29        # 次级需求停放，id 保留
-nx-kv todo unfreeze 29      # 解冻回待办（id 撞车时自动换新 id）
+nx-kv todo done --ref "那条任务" --result "已接入，commit abc123"
+nx-kv todo freeze --ref "那条任务"        # 次级需求停放，id 保留
+nx-kv todo unfreeze --ref "那条任务"      # 解冻回待办（id 撞车时自动换新 id）
 nx-kv todo archive          # 完成记录归档到冷 key（默认 30 天前）
 
 # 主题 / 工作空间
@@ -66,23 +66,39 @@ nx-kv group members 24                        # 成员
 完整命令表由 action 声明自动生成：`nx-kv help`。
 命令与 HTTP 端点互相可查：`nx-kv routes`，反查用 `nx-kv routes --http "POST /api/todo"`。
 
-## ⚠️ id 不是唯一键
+## ⚠️ 定位一律按内容，不按 id
 
-id 分配只扫「待办 + 冻结」，所以任务完成、待办清空后 **id 会被复用**——
-`todo:done` 里因此会积累同 id 的多条（实测 68 条里有 7 条 id=29）。
+待办的 id **非常容易重复**，两条独立的原因：
 
-按 id 变更时工具**拒绝猜**，而是列出候选项让你选：
+1. 分配只扫「待办 + 冻结」，任务完成、待办清空后 **id 会被复用**——
+   `todo:done` 里因此会积累同 id 的多条（实测 68 条里有 7 条 id=29）。
+2. 同一个主题下，内容重复本来就是常态——「修复登录页」这类任务会被反复投递。
+
+所以 `id` 在本项目里**只是给人和外部系统看的元数据**：继续分配、继续出现在输出里，
+但**不再是任何命令的入参**。定位一律用任务内容：
+
+```bash
+nx-kv todo done --ref "把 watchkv 的告警接进来" --result "已接入"
+```
+
+内容命中多条时工具**拒绝猜**，而是列出候选项让你选：
 
 ```
-$ nx-kv todo get 29
-错误: id=29 命中 7 条，无法确定是哪一条。用 --pick <n> 选择：
-  [0] done   qus   2026-08-15T15:09:00.097123  k8s的slb是什么
-  [1] done   qus   2026-08-22T10:40:12.469526  专业远控软件...
-  ...
-
-$ nx-kv todo get 29 --pick 2      # 按编号选
-$ nx-kv todo get 29 --topic fr    # 或按主题收窄
+$ nx-kv todo get --ref "旧记录"
+错误: task「旧记录」命中 3 条，无法确定是哪一条。用 --pick <n> 选择：
+  [0] done   qus   2026-08-15T15:09:00.097123
+  [1] done   qus   2026-08-22T10:40:12.469526
+  [2] done   fr    2026-08-30T10:36:25.731238
 ```
+
+```bash
+nx-kv todo get --ref "旧记录" --pick 1     # 按编号选
+nx-kv todo get --ref "旧记录" --topic fr   # 或按主题收窄
+```
+
+同一规则适用于 `get` / `update` / `remove` / `done` / `freeze` / `unfreeze`。
+`update` 用 `--match-topic` 消歧（`--topic` 在那里表示「改成这个主题」）。
+内容含空格时给 `--ref` 加引号。
 
 ## 架构：action 三端同源
 

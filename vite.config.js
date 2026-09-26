@@ -29,7 +29,7 @@ export default defineConfig({
     port: 5181,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:7820',
+        target: 'http://127.0.0.1:7877',
         bypass: (req) => shouldServeLocally(req.url),
       },
     },

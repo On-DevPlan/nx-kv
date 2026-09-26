@@ -47,37 +47,39 @@ nx-kv todo list --status open --topic <topic> --json
 # 3. 顺带读走该主题的上下文提示词（这是理解任务的背景，不是可选项）
 nx-kv prompt get <topic> --json
 
-# 4. 完成后回填结果（写进该任务的 note，供人和后续 agent 追溯）
-nx-kv todo done <id> --result "改了什么 / 关键决策 / 遗留问题"
+# 4. 完成后回填结果（--ref 是任务**内容**；结果写进该任务的 note，供人和后续 agent 追溯）
+nx-kv todo done --ref "<任务内容>" --result "改了什么 / 关键决策 / 遗留问题"
 ```
 
 **两条的区别**：`--topic` 不带 `--status` 是「全都要」（含历史），
 `--status open --topic` 是「只要待办」。收单用后者（省上下文），
 做统计/核对/回顾用前者。
 
-## ⚠️ id 不是唯一键（最容易删错数据的地方）
+## ⚠️ 定位一律按内容，不按 id（最容易改错数据的地方）
 
-id 分配只扫「待办 + 冻结」，所以任务完成、待办清空后 **id 会被复用**——
-`todo:done` 里因此会积累同 id 的多条（实测某账号 68 条里有 7 条 id=29）。
+待办的 id **非常容易重复**，两条独立的原因：
 
-因此按 id 变更时工具**拒绝猜**，而是列出候选项让你选：
+1. 分配只扫「待办 + 冻结」，所以任务完成、待办清空后 **id 会被复用**——
+   `todo:done` 里因此会积累同 id 的多条（实测某账号 68 条里有 7 条 id=29）。
+2. 同一个主题下，内容重复本来就是常态——「修复登录页」这类任务会被反复投递。
+
+所以 `id` 只是**给人看的元数据**（继续分配、继续出现在输出里），
+**不是任何命令的入参**。单条操作一律用 `--ref <内容>`：
 
 ```
-$ nx-kv todo get 29
-错误: id=29 命中 7 条，无法确定是哪一条。用 --pick <n> 选择：
-  [0] done   qus   2026-08-15T15:09:00.097123  k8s的slb是什么
-  [1] done   qus   2026-08-22T10:40:12.469526  专业远控软件...
-  ...
+$ nx-kv todo get --ref "旧记录"
+错误: task「旧记录」命中 3 条，无法确定是哪一条。用 --pick <n> 选择：
+  [0] done   qus   2026-08-15T15:09:00.097123
+  [1] done   qus   2026-08-22T10:40:12.469526
+  [2] done   fr    2026-08-30T10:36:25.731238
 
-$ nx-kv todo get 29 --pick 2      # 按编号选
-$ nx-kv todo get 29 --topic fr    # 或按主题收窄
+$ nx-kv todo get --ref "旧记录" --pick 2      # 按编号选
+$ nx-kv todo get --ref "旧记录" --topic fr    # 或按主题收窄
 ```
 
 同一规则适用于 `get` / `update` / `remove` / `done` / `freeze` / `unfreeze`。
 `update` 用 `--match-topic` 消歧（`--topic` 在那里表示「改成这个主题」）。
-
-**只在 `todo:open` 和 `todo:freeze` 里 id 才是唯一的**，那里的操作一般不需要消歧。
-`todo:done` 是历史，按 id 操作它**必须**消歧。
+**内容含空格时要加引号**（`--ref "修复登录页 500"`）——`--ref` 是普通 flag，值不会自动吃掉后面的 token。
 
 ## 与 kvcli 的关系
 
@@ -86,7 +88,8 @@ $ nx-kv todo get 29 --topic fr    # 或按主题收窄
 
 - nx-kv 覆盖全部四把 key（`todo:freeze` / `todo:topics`），kvcli 只管 open / done
 - nx-kv 有 Web 面板：`nx-kv serve`
-- nx-kv 对「同 id 多条」有显式防护；kvcli 的 `done` 只在 open 里按 id 匹配
+- nx-kv 单条操作按**内容**定位（`--ref`），kvcli 的 `done` 只在 open 里按 **id** 匹配
+  —— 而 id 会被复用，所以 kvcli 那套在 done 上定位不安全
 - **本 skill 的命令一律写 nx-kv**。若环境里只有 kvcli，见 [[todo-commands]] 末尾的对应关系表
 
 ## Ref 加载引导

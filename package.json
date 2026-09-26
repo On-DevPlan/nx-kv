@@ -1,6 +1,6 @@
 {
   "name": "nx-kv",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "nx-kv — KV 清单管理中枢：serve 驱动 CLI 与 Web 面板，同源同构，附带可安装 skill 供 agent 领取主题任务",
   "type": "module",
   "bin": {

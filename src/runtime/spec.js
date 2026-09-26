@@ -35,6 +35,17 @@ export function booleanFlagNames(action) {
   return new Set(flagSpecsOf(action).filter((f) => (f.type || 'string') === 'boolean').map((f) => f.name));
 }
 
+// ⚠️ rest flag 在**当前实现里刻意没有启用**。它能让 `--ref 修复登录页 500`
+// 不加引号传整句，但代价是：它必须排在最后，于是没法与 `--pick` 组合——
+// 而「同内容多条 → 用 --pick 消歧」正是最需要 ref 的场景。消歧能力比少打
+// 一对引号重要，所以 ref 走普通 flag（值带空格时加引号）。
+//
+// 保留这个判定函数与装载期自检（runtime/registry.js），是为了让将来真要启用时
+// 那条「必须置尾」的约束已经就位，而不是重新踩一遍。
+export function restFlagNames(action) {
+  return new Set(flagSpecsOf(action).filter((f) => f.rest).map((f) => f.name));
+}
+
 function coerceOne(name, spec, raw) {
   const type = spec.type || 'string';
   if (!TYPES.has(type)) throw new Error(`action 声明有误：flag "${name}" 的 type 非法 (${type})`);
@@ -131,17 +142,32 @@ export function usageOf(action) {
     parts.push(a.required ? `<${label}>` : `[${label}]`);
   }
 
+  // 出现在 rest flag 之后的 flag，都渲染进同一个括号里 —— 它们在命令行上
+  // 也是「同一片尾部」，必须整体后置（见 spec.js 顶部 restFlagNames 的说明）。
+  let trailing = [];
   for (const f of flagSpecsOf(action)) {
-    let token;
     if (f.type === 'boolean') {
-      token = `--${f.name}`;
-    } else {
-      // 值的占位符优先用 enum 展开（--side <ours|theirs>），其次显式 hint，
-      // 最后才退回 flag 名——`--http <http>` 这种读起来没有信息量。
-      const hint = f.enum ? f.enum.join('|') : f.hint || f.name;
-      token = `--${f.name} <${hint}>`;
+      const token = `--${f.name}`;
+      const rendered = f.required ? token : `[${token}]`;
+      if (trailing.length) trailing.push(rendered);
+      else parts.push(rendered);
+      continue;
     }
-    parts.push(f.required ? token : `[${token}]`);
+
+    // 值的占位符优先用 enum 展开（--side <ours|theirs>），其次显式 hint，
+    // 最后才退回 flag 名——`--http <http>` 这种读起来没有信息量。
+    const hint = f.enum ? f.enum.join('|') : f.hint || f.name;
+    const token = `--${f.name} <${hint}>`;
+    const rendered = f.required ? token : `[${token}]`;
+
+    if (f.rest) {
+      parts.push(token + (trailing.length ? ' ' + trailing.join(' ') : ''));
+      trailing = [];
+      continue;
+    }
+    if (trailing.length) trailing.push(rendered);
+    else parts.push(rendered);
   }
+  parts.push(...trailing);
   return parts.join(' ');
 }

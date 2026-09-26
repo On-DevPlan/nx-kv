@@ -17,8 +17,8 @@ const shortTime = (s) => (s ? String(s).slice(0, 16).replace('T', ' ') : '');
 // 单个桶超过这个条数就折叠。已完成常年上百条，全铺出来会把待办挤到看不见。
 const COLLAPSE_AT = 15;
 
-// 一个任务在哪些桶里可能重名 —— id 不是唯一键，UI 必须能显示出来
-const taskKey = (bucket, t) => `${bucket}:${t.id}`;
+// 一个任务在哪些桶里可能重名 —— 定位按内容，UI 必须能显示出内容重复
+const taskKey = (bucket, t) => `${bucket}:${t.id}:${t.text}`;
 
 function TaskRow({ bucket, task, dupCount, onAct }) {
   const isDone = bucket === 'done';
@@ -31,7 +31,7 @@ function TaskRow({ bucket, task, dupCount, onAct }) {
       <Copyable className="topic" text={task.topic} title="点击复制主题">{task.topic}</Copyable>
       <span className="text" title={task.text}>{task.text}</span>
       {dupCount > 1 ? (
-        <span className="tag" title={`同 id 有 ${dupCount} 条，操作时需要消歧`}>id×{dupCount}</span>
+        <span className="tag" title={`同内容有 ${dupCount} 条，操作时需要消歧`}>同内容×{dupCount}</span>
       ) : null}
       <span className="muted time">{shortTime(dt)}</span>
       <span className="acts">
@@ -91,12 +91,13 @@ export default function TodoView() {
     }
   }, [load]);
 
-  // 同 id 出现几次 —— 让用户在点「删除」前就看见歧义风险
+  // 同内容出现几次 —— 让用户在点「删除」前就看见歧义风险。
+  // 按内容而不是 id 统计：id 会被复用（分配只扫 open + freeze），拿它计数毫无意义。
   const dupCounts = useMemo(() => {
     const m = new Map();
     if (!data) return m;
     for (const [key] of BUCKETS) {
-      for (const t of data[key] || []) m.set(t.id, (m.get(t.id) || 0) + 1);
+      for (const t of data[key] || []) m.set(t.text, (m.get(t.text) || 0) + 1);
     }
     return m;
   }, [data]);
@@ -117,24 +118,27 @@ export default function TodoView() {
     );
   }
 
-  // 消歧：同 id 多条时让用户选一条（与 CLI 的 --pick 对应）。
+  // 消歧：同内容多条时让用户选一条（与 CLI 的 --pick 对应）。
+  //
+  // 定位按**内容**而不是 id —— id 会被复用（分配只扫 open + freeze），
+  // 拿它定位迟早改错数据。
   //
   // 返回的 `pick` 是**在候选列表里的下标**，必须原样回传给后端 ——
-  // 否则后端会再次面对「同 id 多条」而拒绝执行（这是刻意的：
+  // 否则后端会再次面对「同内容多条」而拒绝执行（这是刻意的：
   // 不替调用方猜）。候选顺序与服务端 locateAll 一致：
   // 按 open → done → freeze、桶内按数组顺序。
   const pickOne = async (task, bucket) => {
     const candidates = [];
     for (const [key] of BUCKETS) {
-      for (const t of data[key] || []) if (t.id === task.id) candidates.push({ bucket: key, task: t });
+      for (const t of data[key] || []) if (t.text === task.text) candidates.push({ bucket: key, task: t });
     }
     if (candidates.length <= 1) return { bucket, task, pick: undefined };
 
-    const self = candidates.findIndex((c) => c.bucket === bucket && c.task.text === task.text);
+    const self = candidates.findIndex((c) => c.bucket === bucket && c.task.createdAt === task.createdAt);
     const answer = await dialog({
-      title: `id #${task.id} 有 ${candidates.length} 条，选哪一条？`,
+      title: `「${task.text.slice(0, 30)}」有 ${candidates.length} 条，选哪一条？`,
       message: candidates
-        .map((c, i) => `[${i}] ${c.bucket}  ${shortTime(c.task.createdAt)}  ${c.task.text.slice(0, 40)}`)
+        .map((c, i) => `[${i}] ${c.bucket}  ${shortTime(c.task.createdAt)}  #${c.task.id}`)
         .join('\n'),
       input: true,
       placeholder: `输入 0..${candidates.length - 1}`,
@@ -150,32 +154,33 @@ export default function TodoView() {
   };
 
   const onAct = (act, task, bucket) => guard(async () => {
-    // 会改动「某一条」的动作都要先消歧；状态流转只作用于待办/冻结，那里 id 唯一
+    // 会改动「某一条」的动作都要先消歧；状态流转只作用于待办/冻结，那里的内容一般唯一
     const needsPick = act === 'remove' || act === 'edit';
     const target = needsPick ? await pickOne(task, bucket) : { bucket, task, pick: undefined };
     if (!target) return;
-    const body = { group, pick: target.pick };
+    // 定位键：当前内容。edit 时即便内容被改成新的，也是用改前的内容定位。
+    const body = { group, ref: target.task.text, pick: target.pick };
 
     if (act === 'done') {
       const result = await dialog({ title: '完成结果', message: `完成「${task.text.slice(0, 40)}」`, input: true, placeholder: '可选：写一句完成结果' });
       if (result === null) return;
-      await api(`/api/todo/${task.id}/done`, { method: 'POST', body: { ...body, result: result || undefined } });
+      await api('/api/todo/done', { method: 'POST', body: { ...body, result: result || undefined } });
       toast('已完成');
     } else if (act === 'freeze') {
-      await api(`/api/todo/${task.id}/freeze`, { method: 'POST', body });
+      await api('/api/todo/freeze', { method: 'POST', body });
       toast('已冻结');
     } else if (act === 'unfreeze') {
-      await api(`/api/todo/${task.id}/unfreeze`, { method: 'POST', body });
+      await api('/api/todo/unfreeze', { method: 'POST', body });
       toast('已解冻');
     } else if (act === 'remove') {
-      const ok = await dialog({ message: `删除 #${task.id}「${task.text.slice(0, 40)}」？`, danger: true });
+      const ok = await dialog({ message: `删除「${task.text.slice(0, 40)}」？`, danger: true });
       if (!ok) return;
-      await api(`/api/todo/${target.task.id}`, { method: 'DELETE', body });
+      await api('/api/todo/item', { method: 'DELETE', body });
       toast('已删除');
     } else if (act === 'edit') {
       const text = await dialog({ title: '编辑内容', input: true, value: target.task.text });
       if (text === null || !text) return;
-      await api(`/api/todo/${target.task.id}`, {
+      await api('/api/todo/item', {
         method: 'PATCH',
         body: { ...body, text, matchTopic: target.task.topic },
       });
@@ -207,7 +212,7 @@ export default function TodoView() {
     if (!text) { toast('请填内容'); return; }
     const r = await api('/api/todo', { method: 'POST', body: { topic, text, group } });
     setForm({ topic, text: '' });
-    toast(`已加入待办 #${r.id}${r.topicAdded ? `（新主题 ${topic}）` : ''}`);
+    toast(`已加入待办${r.topicAdded ? `（新主题 ${topic}）` : ''}`);
     await reload();
   });
 
@@ -258,7 +263,7 @@ export default function TodoView() {
               {(filtered?.[key] || []).length
                 ? visible(key, filtered[key]).map((t) => (
                     <TaskRow key={taskKey(key, t)} bucket={key} task={t}
-                      dupCount={dupCounts.get(t.id) || 1} onAct={onAct} />
+                      dupCount={dupCounts.get(t.text) || 1} onAct={onAct} />
                   ))
                 : <div className="row muted">（空）</div>}
               {(filtered?.[key] || []).length > COLLAPSE_AT ? (

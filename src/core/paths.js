@@ -6,7 +6,7 @@ import { badInput } from './errors.js';
 export const APP_NAME = 'nx-kv';
 export const APP_DIR = join(homedir(), '.nx-kv');
 export const STORE_PATH = join(APP_DIR, 'store.json');
-export const DEFAULT_PORT = 7820;
+export const DEFAULT_PORT = 7877;
 
 // 允许测试与多实例覆盖存储位置：NX_KV_STORE 环境变量优先
 export function storePathFromEnv() {

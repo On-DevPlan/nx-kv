@@ -222,12 +222,24 @@ test('CRUD 路由的形状对得上语义', () => {
   const segs = (p) => p.split('/').filter(Boolean);
   const hasParam = (p) => segs(p).some((s) => s.startsWith(':'));
 
+  // 定位单条的路径参数**允许**用 :param，也允许走固定尾段（todo 就是后者：
+  // 它按内容定位，而中文文本塞进路径段在编码与可读性上都不划算，
+  // 所以 ref 放在 body/query 里，路径用 /api/todo/item）。
+  const LOCATOR = /^item$/;
+
   for (const m of MODULES.filter((m) => m.resource)) {
     const httpOf = (op) => ACTIONS.find((a) => a.id === `${m.resource}.${CRUD_VERB[op]}`).http;
 
     assert.equal(hasParam(httpOf('list')[1]), false, `${m.id}: list 路由不应含 :param`);
     for (const op of ['get', 'update', 'remove']) {
-      assert.ok(hasParam(httpOf(op)[1]), `${m.id}: ${op} 路由必须含 :param（要能定位单条）`);
+      const path = httpOf(op)[1];
+      const last = segs(path).at(-1);
+      assert.ok(
+        hasParam(path) || LOCATOR.test(last),
+        `${m.id}: ${op} 路由必须含 :param 或固定的定位尾段（要能定位单条），实际是 ${path}`
+      );
+      // 带定位尾段的，不能同时又落在 list 的路径上——那会让两条路由撞车
+      assert.notEqual(path, httpOf('list')[1], `${m.id}: ${op} 不能与 list 共用路径`);
     }
   }
 });

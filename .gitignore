@@ -5,3 +5,6 @@ src/web/public/
 
 # 工具隔离目录（scratch 工具不入库）
 .tool/
+
+# vite dev 产物（root 下的 public/）——outDir 是 src/web/public，这里不该有东西
+src/web/frontend/public/

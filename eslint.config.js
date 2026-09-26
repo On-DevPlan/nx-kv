@@ -14,6 +14,26 @@ const BASE_RULES = {
   'no-console': 'off', // CLI 工具，输出就是产品
 };
 
+// 清单定位的硬约束，写成 lint 规则让它在编辑器和 CI 里立刻拦下。
+//
+// 背景：待办的 id **非常容易重复**（分配只扫「待办 + 冻结」，会被复用），
+// 拿它当定位键迟早改错数据。定位一律用任务**内容**（--ref）。
+//
+// ⚠️ 只保留这一条，是因为其余几种「按 id 定位」的写法在语法上与**正确**的写法
+// 无法区分：`{ id: nextTaskId(...) }`（分配新 id）、`{ task, id: task.id }`（回传）、
+// `#{t.id}`（展示）都是合法的。加规则抓它们会先对着正确代码报错——
+// 一条会误伤的规则比没有这条规则更糟：它会逼人写 eslint-disable，然后彻底失效。
+//
+// 所以这里只钉住一种**语法上就说得清**的形式：拿任务的 id 去拼定位路径。
+// 剩下的靠 service.js 的契约注释、registry 的装载期自检，以及 code review。
+const TODO_NO_ID_LOOKUP = [
+  {
+    // 模板拼 URL：`/api/todo/${t.id}` —— 定位路径只能是不含变量的字面量
+    selector: "TemplateLiteral[quasis.0.value.raw=/api\\/todo\\//]:not([expressions.length=0])",
+    message: '别用任务 id 拼定位路径：id 会重复。走 /api/todo/item + body.ref（任务内容）。',
+  },
+];
+
 export default defineConfig([
   {
     ignores: ['src/web/public/**', 'node_modules/**', '.tool/**', '.claude/**'],
@@ -26,6 +46,12 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
     rules: BASE_RULES,
+  },
+
+  // ---- todo 模块：禁止按 id 定位 ----
+  {
+    files: ['src/modules/todo/**/*.{js,jsx}'],
+    rules: { 'no-restricted-syntax': ['error', ...TODO_NO_ID_LOOKUP] },
   },
 
   // ---- 分层约束 ----

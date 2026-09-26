@@ -53,4 +53,15 @@ for (const a of ACTIONS) {
   }
 
   if (!a.run) throw new Error(`action 缺少 run: ${a.id}`);
+
+  // rest flag（吃掉其后全部 token，见 spec.js）必须在声明里排最后：
+  // CLI 是「谁的路径最长谁赢」，flag 的先后由声明顺序决定；一旦后面还跟着别的 flag，
+  // 它就会被当成值的一部分静默吞掉——命令照跑，参数却没了。
+  const flagNames = Object.keys(a.flags || {});
+  const restAt = flagNames.findIndex((n) => a.flags[n].rest);
+  if (restAt >= 0 && restAt !== flagNames.length - 1) {
+    throw new Error(
+      `rest flag 必须声明在 flags 的最后（其后还有: ${flagNames.slice(restAt + 1).join(', ')}）: ${a.id}`
+    );
+  }
 }

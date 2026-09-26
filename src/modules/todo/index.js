@@ -3,6 +3,12 @@
 // 声明了 `resource: 'todo'`，因此必须齐备 CRUD 五操作且两端可调用 ——
 // tests/unit/registry.test.mjs 会据此断言。非 CRUD 的动作（完成/冻结/归档/topic/prompt）
 // 用动作动词命名，不受五动词约束，但同样两端可达。
+//
+// ⚠️ 定位一律用**内容**（`--ref`），不要用 id。
+//
+// id 只是给人看的元数据：分配只扫「待办 + 冻结」，所以它会被复用；
+// 同一主题里也本来就有内容重复的任务。按 id 定位迟早改错数据。
+// 详见 service.js 的「定位」一节。
 import * as service from './service.js';
 
 // 所有动作都接受 --group 覆盖当前工作空间；默认取本机配置里的当前值
@@ -31,6 +37,8 @@ function renderTaskList(d) {
     const w = Math.max(...items.map((t) => String(t.id).length));
     for (const t of items) {
       const mark = key === 'done' ? `✓ ${shortTime(t.doneAt)}` : key === 'freeze' ? `❄ ${shortTime(t.frozenAt)}` : '';
+      // id 只作展示位（对齐列的宽度由它决定），**操作时不要用它定位** ——
+      // 定位一律用 --ref <内容>，见文件头的说明。
       lines.push(`  ${String(t.id).padStart(w)}  [${t.topic}] ${t.text}${mark ? '  ' + mark : ''}`);
       if (t.note) lines.push(`  ${' '.repeat(w)}    note: ${t.note.slice(0, 100)}`);
     }
@@ -40,7 +48,7 @@ function renderTaskList(d) {
 
 const renderTask = (t) =>
   [
-    `#${t.id}  [${t.topic}]  ${t.text}`,
+    `[${t.topic}]  ${t.text}`,
     `  状态:   ${t.doneAt ? '已完成' : t.frozenAt ? '冻结' : '待办'}${t.bucket ? `（在 ${t.bucket}）` : ''}`,
     `  创建:   ${t.createdAt}`,
     t.doneAt ? `  完成:   ${t.doneAt}` : '',
@@ -77,15 +85,15 @@ export default {
     {
       id: 'todo.get',
       cli: ['todo', 'get'],
-      http: ['GET', '/api/todo/:id'],
-      summary: '查看单个任务（自动在待办/已完成/冻结里找）',
-      args: ['id'],
+      http: ['GET', '/api/todo/item'],
+      summary: '查看单个任务（按内容定位；自动在待办/已完成/冻结里找）',
       flags: {
-        topic: { type: 'string', hint: '消歧：同 id 有多条时用主题定位' },
-        pick: { type: 'number', hint: '消歧：同 id 多条时按编号选（配合报错里的列表）' },
+        ref: { type: 'string', required: true, hint: '任务内容（整串）' },
+        topic: { type: 'string', hint: '消歧：同内容有多条时用主题收窄' },
+        pick: { type: 'number', hint: '消歧：同内容多条时按编号选（配合报错里的列表）' },
         group: GROUP,
       },
-      run: (ctx) => service.getTodo(Number(ctx.id), { topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
+      run: (ctx) => service.getTodo(ctx.ref, { topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
       render: renderTask,
     },
     {
@@ -97,25 +105,25 @@ export default {
       flags: { topic: { type: 'string', required: true, hint: '主题，路由维度' }, group: GROUP },
       run: (ctx) => service.addTodo({ topic: ctx.topic, text: ctx.text, groupId: ctx.group }),
       render: (d) =>
-        `已加入待办: #${d.id} [${d.task.topic}] ${d.task.text}` +
+        `已加入待办: [${d.task.topic}] ${d.task.text}` +
         (d.topicAdded ? `\n（已把 ${d.task.topic} 加入快捷 topic）` : ''),
     },
     {
       id: 'todo.update',
       cli: ['todo', 'update'],
-      http: ['PATCH', '/api/todo/:id'],
-      summary: '编辑任务（只改传入的字段）',
-      args: ['id'],
+      http: ['PATCH', '/api/todo/item'],
+      summary: '编辑任务（按内容定位，只改传入的字段）',
       flags: {
+        ref: { type: 'string', required: true, hint: '要改的那条的内容（整串）' },
         topic: { type: 'string', hint: '改成这个主题' },
-        text: { type: 'string' },
+        text: { type: 'string', hint: '改成这个内容' },
         note: { type: 'string' },
-        matchTopic: { type: 'string', hint: '消歧：同 id 有多条时用主题定位' },
-        pick: { type: 'number', hint: '消歧：同 id 多条时按编号选（配合报错里的列表）' },
+        matchTopic: { type: 'string', hint: '消歧：同内容有多条时用主题收窄' },
+        pick: { type: 'number', hint: '消歧：同内容多条时按编号选（配合报错里的列表）' },
         group: GROUP,
       },
       run: (ctx) =>
-        service.updateTodo(Number(ctx.id), {
+        service.updateTodo(ctx.ref, {
           topic: ctx.topic,
           text: ctx.text,
           note: ctx.note,
@@ -123,68 +131,68 @@ export default {
           pick: ctx.pick,
           groupId: ctx.group,
         }),
-      render: (d) => `已更新 #${d.task.id}（在 ${d.bucket}）`,
+      render: (d) => `已更新（在 ${d.bucket}）: [${d.task.topic}] ${d.task.text}`,
     },
     {
       id: 'todo.remove',
       cli: ['todo', 'remove'],
-      http: ['DELETE', '/api/todo/:id'],
-      summary: '删除任务（只删命中的那一条）',
-      args: ['id'],
+      http: ['DELETE', '/api/todo/item'],
+      summary: '删除任务（按内容定位，只删命中的那一条）',
       flags: {
-        topic: { type: 'string', hint: '消歧：同 id 有多条时用主题定位' },
-        pick: { type: 'number', hint: '消歧：同 id 多条时按编号选（配合报错里的列表）' },
+        ref: { type: 'string', required: true, hint: '要删的那条的内容（整串）' },
+        topic: { type: 'string', hint: '消歧：同内容有多条时用主题收窄' },
+        pick: { type: 'number', hint: '消歧：同内容多条时按编号选（配合报错里的列表）' },
         group: GROUP,
       },
-      run: (ctx) => service.removeTodo(Number(ctx.id), { topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
-      render: (d) => `已删除 #${d.removed.id} [${d.removed.topic}] ${d.removed.text}`,
+      run: (ctx) => service.removeTodo(ctx.ref, { topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
+      render: (d) => `已删除 [${d.removed.topic}] ${d.removed.text}`,
     },
 
     // ─── 状态流转 ──────────────────────────────────────────────
     {
       id: 'todo.done',
       cli: ['todo', 'done'],
-      http: ['POST', '/api/todo/:id/done'],
-      summary: '标记完成（--result 写进 note 作为完成结果）',
-      args: ['id'],
+      http: ['POST', '/api/todo/done'],
+      summary: '标记完成（--ref 定位；--result 写进 note 作为完成结果）',
       flags: {
+        ref: { type: 'string', required: true, hint: '要完成的那条的内容（整串）' },
         result: { type: 'string', hint: '完成结果摘要' },
-        topic: { type: 'string', hint: '消歧：同 id 有多条时用主题定位' },
-        pick: { type: 'number', hint: '消歧：同 id 多条时按编号选（配合报错里的列表）' },
+        topic: { type: 'string', hint: '消歧：同内容有多条时用主题收窄' },
+        pick: { type: 'number', hint: '消歧：同内容多条时按编号选（配合报错里的列表）' },
         group: GROUP,
       },
       run: (ctx) =>
-        service.doneTodo(Number(ctx.id), { result: ctx.result, topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
-      render: (d) => `已完成 #${d.task.id} [${d.task.topic}] ${d.task.text}\n  ${d.task.doneAt}`,
+        service.doneTodo(ctx.ref, { result: ctx.result, topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
+      render: (d) => `已完成 [${d.task.topic}] ${d.task.text}\n  ${d.task.doneAt}`,
     },
     {
       id: 'todo.freeze',
       cli: ['todo', 'freeze'],
-      http: ['POST', '/api/todo/:id/freeze'],
-      summary: '冻结任务（id 保留，解冻时校验冲突）',
-      args: ['id'],
+      http: ['POST', '/api/todo/freeze'],
+      summary: '冻结任务（按内容定位；id 保留，解冻时校验冲突）',
       flags: {
-        topic: { type: 'string', hint: '消歧：同 id 有多条时用主题定位' },
-        pick: { type: 'number', hint: '消歧：同 id 多条时按编号选（配合报错里的列表）' },
+        ref: { type: 'string', required: true, hint: '要冻结的那条的内容（整串）' },
+        topic: { type: 'string', hint: '消歧：同内容有多条时用主题收窄' },
+        pick: { type: 'number', hint: '消歧：同内容多条时按编号选（配合报错里的列表）' },
         group: GROUP,
       },
-      run: (ctx) => service.freezeTodo(Number(ctx.id), { topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
-      render: (d) => `已冻结 #${d.task.id} [${d.task.topic}] ${d.task.text}`,
+      run: (ctx) => service.freezeTodo(ctx.ref, { topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
+      render: (d) => `已冻结 [${d.task.topic}] ${d.task.text}`,
     },
     {
       id: 'todo.unfreeze',
       cli: ['todo', 'unfreeze'],
-      http: ['POST', '/api/todo/:id/unfreeze'],
-      summary: '解冻回待办（id 撞车时自动换新 id）',
-      args: ['id'],
+      http: ['POST', '/api/todo/unfreeze'],
+      summary: '解冻回待办（按内容定位；id 撞车时自动换新 id）',
       flags: {
-        topic: { type: 'string', hint: '消歧：同 id 有多条时用主题定位' },
-        pick: { type: 'number', hint: '消歧：同 id 多条时按编号选（配合报错里的列表）' },
+        ref: { type: 'string', required: true, hint: '要解冻的那条的内容（整串）' },
+        topic: { type: 'string', hint: '消歧：同内容有多条时用主题收窄' },
+        pick: { type: 'number', hint: '消歧：同内容多条时按编号选（配合报错里的列表）' },
         group: GROUP,
       },
-      run: (ctx) => service.unfreezeTodo(Number(ctx.id), { topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
+      run: (ctx) => service.unfreezeTodo(ctx.ref, { topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
       render: (d) =>
-        `已解冻 #${d.task.id} [${d.task.topic}] ${d.task.text}` +
+        `已解冻 [${d.task.topic}] ${d.task.text}` +
         (d.reIded ? '\n（原 id 与现有待办冲突，已分配新 id）' : ''),
     },
     {

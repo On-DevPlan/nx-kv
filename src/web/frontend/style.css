@@ -35,7 +35,8 @@ header {
   top: 0;
   z-index: 5;
 }
-.brand { font-weight: 800; letter-spacing: 0.4px; }
+.brand { font-weight: 800; letter-spacing: 0.4px; display: inline-flex; align-items: center; gap: 7px; }
+.brand img { width: 20px; height: 20px; border-radius: 5px; display: block; }
 .brand .sub { margin-left: 8px; font-weight: 400; color: var(--mid); font-size: 12px; }
 
 /* 分段控件：整块浅底 + 圆角滑块，取代带边框的直角 tab */

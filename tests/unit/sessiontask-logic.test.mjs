@@ -4,7 +4,7 @@
 // 存储一律指向临时文件（NX_KV_SESSIONTASK_STORE），绝不写脏用户目录。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import * as svc from '../../src/modules/sessiontask/service.js';
@@ -222,4 +222,67 @@ test('弹窗：agent 领取（delivered）后不再显示倒计时', async () =>
   assert.ok(html.includes("el('statusbar').style.display = 'none'"));
   // 计时器在 delivered 后不再更新
   assert.ok(/function tickClock\(\) \{\s*if \(delivered\) return;/.test(html));
+});
+
+test('队列任务被领取时记录本轮完成总结（queued 路径）', async () => {
+  await reset();
+  await svc.addTask({ cwd: dirA, text: '提前排的' });
+  const r = await svc.waitForTask({ cwd: dirA, summary: '本轮完成总结Q', open: false });
+  assert.equal(r.queued, true);
+  assert.equal(r.task.roundSummary, '本轮完成总结Q');
+});
+
+test('实时回填记录本轮完成总结（delivered 路径）', async () => {
+  await reset();
+  const summary = '本轮完成总结D';
+  const r = await svc.waitForTask({
+    cwd: dirA,
+    summary,
+    timeoutSec: 5,
+    open: false,
+    onReady: async () => {
+      await svc.addTask({ cwd: dirA, text: '回填' });
+    },
+  });
+  assert.equal(r.status, 'ok');
+  assert.equal(r.delivered, true);
+  assert.equal(r.task.roundSummary, summary);
+});
+
+test('prune 清理旧模型无目录主题与空主题，保留有数据主题', async () => {
+  await reset();
+  // 正常、有待领任务的主题（保留）
+  await svc.addTask({ cwd: dirA, text: '保留我' });
+  // 空主题：dirB 上 wait 超时后留下
+  await svc.waitForTask({ cwd: dirB, summary: 'x', timeoutSec: 1, open: false });
+  // 注入一个旧模型迁移来的「无目录」主题
+  const file = process.env.NX_KV_SESSIONTASK_STORE;
+  const raw = JSON.parse(readFileSync(file, 'utf8'));
+  raw.topics.legacytopic = {
+    key: 'legacytopic', cwd: '', name: '旧数据', summary: '旧',
+    createdAt: '2026-01-01 00:00:00', updatedAt: '2026-01-01 00:00:00',
+    waiting: false, waitingUntil: '',
+    tasks: [{ id: 1, text: '旧', status: 'consumed' }],
+  };
+  writeFileSync(file, JSON.stringify(raw));
+
+  // dryRun 只报告：空主题 + 无目录主题 = 2
+  let r = await svc.pruneTopics({ dryRun: true });
+  assert.equal(r.count, 2);
+  assert.ok((await svc.listTasks()).topics.length === 3, 'dryRun 不改动');
+
+  r = await svc.pruneTopics();
+  assert.equal(r.count, 2);
+  const ov = await svc.listTasks();
+  assert.equal(ov.topics.length, 1);
+  assert.equal(ov.topics[0].cwd, resolve(dirA));
+});
+
+test('prune 默认不清理已全部领取的主题，--all-finished 才清', async () => {
+  await reset();
+  await svc.addTask({ cwd: dirA, text: 't' });
+  await svc.waitForTask({ cwd: dirA, summary: 's', open: false }); // 取走 → 0 pending
+  assert.equal((await svc.pruneTopics()).count, 0);
+  const r = await svc.pruneTopics({ allFinished: true });
+  assert.equal(r.count, 1);
 });

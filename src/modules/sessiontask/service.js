@@ -214,6 +214,7 @@ function normalizeTask(t) {
     id: Number(t.id) || 0,
     text: String(t.text ?? ''),
     status: t.status === 'consumed' ? 'consumed' : 'pending',
+    roundSummary: String(t.roundSummary ?? ''),
     createdAt: String(t.createdAt ?? ''),
     consumedAt: String(t.consumedAt ?? ''),
   };
@@ -240,20 +241,23 @@ function topicView(t) {
 
 const waiters = new Map();
 
-function markConsumed(task) {
+function markConsumed(task, roundSummary) {
   task.status = 'consumed';
   task.consumedAt = stampNow();
+  // 记录该任务所回应的「agent 上一轮完成总结」（本轮等待时的现状）
+  if (roundSummary) task.roundSummary = roundSummary;
   return task;
 }
 
-// 取走该主题第一条 pending；没有则返回 null
-export async function consumeFirstPending(key) {
+// 取走该主题第一条 pending；没有则返回 null。roundSummary 显式指定本轮完成总结，
+// 缺省回落到主题当前 summary（等待中即本轮现状）。
+export async function consumeFirstPending(key, roundSummary) {
   const store = await loadStore();
   const t = store.topics[key];
   if (!t) return null;
   const task = t.tasks.find((x) => x.status !== 'consumed');
   if (!task) return null;
-  markConsumed(task);
+  markConsumed(task, roundSummary || t.summary || '');
   t.updatedAt = stampNow();
   await saveStore(store);
   return normalizeTask(task);
@@ -292,6 +296,33 @@ export async function listTasks() {
 export async function getSettings() {
   const store = await loadStore();
   return settingsView(store.settings);
+}
+
+// 清理旧脏数据：只动「非等待中」的主题——
+//   1) 旧模型迁移来的无 cwd 主题（“旧数据，无目录”）；
+//   2) 空主题（没有任何任务）；
+//   3) allFinished 时，连同「已全部领取、无待领」的主题一起清。
+// 等待中的主题一律保留；dryRun 只报告不改动。
+export async function pruneTopics({ allFinished = false, dryRun = false } = {}) {
+  const store = await loadStore();
+  const removed = [];
+  for (const [key, t] of Object.entries(store.topics)) {
+    if (t.waiting) continue;
+    const tasks = Array.isArray(t.tasks) ? t.tasks : [];
+    const hasPending = tasks.some((x) => x.status !== 'consumed');
+    const isLegacy = !t.cwd;
+    const isEmpty = tasks.length === 0;
+    const isFinished = allFinished && tasks.length > 0 && !hasPending;
+    if (isLegacy || isEmpty || isFinished) {
+      const reason = isLegacy ? '旧模型无目录' : isEmpty ? '空主题' : '已完成无待领';
+      removed.push({ key, name: t.name || key, cwd: t.cwd || '', reason });
+    }
+  }
+  if (!dryRun) {
+    for (const r of removed) delete store.topics[r.key];
+    if (removed.length) await saveStore(store);
+  }
+  return { status: 'ok', dryRun: !!dryRun, count: removed.length, removed };
 }
 
 // 配置等待超时（页面可调；推荐 180=3 分钟，最大 600=10 分钟，超上限自动截断）
@@ -339,7 +370,7 @@ export async function addTask({ cwd: rawCwd, summary: rawSummary, text } = {}) {
   const waiter = waiters.get(key);
   const delivered = !!waiter;
   if (waiter) {
-    markConsumed(task);
+    markConsumed(task, t.summary);
     waiters.delete(key);
     t.waiting = false;
     t.waitingUntil = '';
@@ -428,8 +459,8 @@ export async function waitForTask({
   else sec = (await loadStore()).settings.timeoutSec;
   const tmo = clampTimeoutSec(sec) * 1000;
 
-  // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞
-  const queued = await consumeFirstPending(key);
+  // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
+  const queued = await consumeFirstPending(key, summary);
   if (queued) return { status: 'ok', key, cwd, name, summary, task: queued, queued: true };
 
   // 2. 没有 pending → 起内嵌弹窗服务器

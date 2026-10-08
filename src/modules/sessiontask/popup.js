@@ -96,6 +96,7 @@ export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
   tbody tr:hover { background: var(--soft); }
   tbody tr + tr td { box-shadow: inset 0 1px 0 var(--soft); }
   .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; }
+  .round-sum { margin-top: 5px; padding-top: 5px; border-top: 1px dashed var(--soft-2); color: var(--mid); font-size: 11px; white-space: pre-wrap; }
   td.text { min-width: 200px; }
   td.time { white-space: nowrap; color: var(--mid); }
   td.ops { white-space: nowrap; }
@@ -203,6 +204,10 @@ export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
         ? '<span class="tag strong">已领取</span>'
         : '<span class="tag">待领取</span>';
       var body = esc(t.text).replace(/\\n/g, '<br>');
+      if (t.roundSummary) {
+        body += '<div class="round-sum" title="该任务所回应的 agent 上一轮完成总结">上一轮完成：' +
+          esc(t.roundSummary).replace(/\\n/g, '<br>') + '<\/div>';
+      }
       rows += '<tr><td class="mono">#' + t.id + '</td><td class="text">' + body + '<\/td><td>' + status +
         '</td><td class="mono time">' + esc(t.consumedAt || t.createdAt || '') +
         '</td><td class="ops"><button class="btn small ghost" data-id="' + t.id + '">删除</button></td></tr>';

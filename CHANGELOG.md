@@ -2,6 +2,18 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.4.0] - 2026-10-08
+
+### Added
+
+- **清理旧脏数据 `sessiontask prune`**：清理「旧模型迁移来的无目录主题」与
+  「空主题」；等待中的主题一律保留，`--all-finished` 可连同已全部领取、无待领
+  的主题一起清，`--dry-run` 只报告不改动。CLI 与 HTTP（`POST /api/sessiontasks/prune`）
+  同源，「实时任务」页主题总览右上角新增「清理旧数据」按钮。
+- **任务队列记录 agent 每一轮的完成总结**：任务被领取（queued 取走或 delivered
+  实时回填）时，把它所回应的「agent 上一轮完成总结」记入该任务（`roundSummary`），
+  常驻面板与弹窗的队列在任务文本下以「上一轮完成：…」展示，跨轮现状不再被覆盖丢失。
+
 ## [0.3.2] - 2026-10-08
 
 ### Fixed

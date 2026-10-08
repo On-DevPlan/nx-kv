@@ -31,6 +31,7 @@ export default function SessionTaskView() {
   const [saving, setSaving] = useState(false);
   const [timeoutSec, setTimeoutSec] = useState(180);
   const [cfgSaving, setCfgSaving] = useState(false);
+  const [pruning, setPruning] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -70,6 +71,19 @@ export default function SessionTaskView() {
         toast(`等待超时已配置为 ${s.timeoutSec} 秒`);
       } finally {
         setCfgSaving(false);
+      }
+    });
+
+  // 清理旧脏数据（旧模型无目录主题、空主题；等待中保留）
+  const prune = () =>
+    guard(async () => {
+      setPruning(true);
+      try {
+        const r = await api('/api/sessiontasks/prune', { method: 'POST', body: {} });
+        toast(r.count ? `已清理 ${r.count} 个旧主题` : '没有需要清理的旧数据');
+        await load();
+      } finally {
+        setPruning(false);
       }
     });
 
@@ -158,6 +172,15 @@ export default function SessionTaskView() {
       <div className="colhead">
         <h3>主题总览（按工作目录）</h3>
         <span className="muted">{overview ? `${topics.length} 个 · 等待中 ${overview.waiting}` : ''}</span>
+        <button
+          className="btn small ghost"
+          onClick={prune}
+          disabled={pruning}
+          style={{ marginLeft: 'auto' }}
+          title="清理旧模型无目录主题与空主题（等待中一律保留）"
+        >
+          {pruning ? '清理中…' : '清理旧数据'}
+        </button>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -261,7 +284,18 @@ export default function SessionTaskView() {
                   tasks.map((t) => (
                     <tr key={t.id}>
                       <td className="mono">#{t.id}</td>
-                      <td style={{ whiteSpace: 'pre-wrap' }}>{t.text}</td>
+                      <td style={{ whiteSpace: 'pre-wrap' }}>
+                        {t.text}
+                        {t.roundSummary && (
+                          <div
+                            className="muted"
+                            style={{ fontSize: 11, marginTop: 4, paddingTop: 4, borderTop: '1px dashed var(--line,#e6e8eb)', whiteSpace: 'pre-wrap' }}
+                            title="该任务所回应的 agent 上一轮完成总结"
+                          >
+                            上一轮完成：{t.roundSummary}
+                          </div>
+                        )}
+                      </td>
                       <td>
                         {t.status === 'consumed' ? (
                           <span className="tag strong">已领取</span>

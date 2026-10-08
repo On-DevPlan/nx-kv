@@ -131,6 +131,23 @@ export default {
       render: (s) => `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）`,
     },
 
+    {
+      id: 'sessiontask.prune',
+      cli: ['sessiontask', 'prune'],
+      http: ['POST', '/api/sessiontasks/prune'],
+      summary: '清理旧脏数据（旧模型无目录主题、空主题；等待中一律保留）',
+      flags: {
+        'all-finished': { type: 'boolean', hint: '连同已全部领取、无待领的主题一起清' },
+        'dry-run': { type: 'boolean', hint: '只报告将清理哪些，不实际删除' },
+      },
+      run: (ctx) => service.pruneTopics({ allFinished: ctx['all-finished'], dryRun: ctx['dry-run'] }),
+      render: (d) => {
+        const head = d.dryRun ? '（预演）将清理' : '已清理';
+        if (!d.count) return `${head} 0 个主题（无旧脏数据）。`;
+        return `${head} ${d.count} 个主题：\n` + d.removed.map((r) => `  - [${r.reason}] ${r.name}${r.cwd ? `  ${r.cwd}` : ''}`).join('\n');
+      },
+    },
+
     // ─── 阻塞等待（纯 CLI，agent 本轮最后一步）────────────────
     {
       id: 'sessiontask.wait',

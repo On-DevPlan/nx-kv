@@ -286,3 +286,32 @@ test('prune 默认不清理已全部领取的主题，--all-finished 才清', as
   const r = await svc.pruneTopics({ allFinished: true });
   assert.equal(r.count, 1);
 });
+
+test('reorder：拖拽调整待领取优先级，已领取历史不动', async () => {
+  await reset();
+  const ids = [];
+  for (const text of ['A', 'B', 'C']) ids.push((await svc.addTask({ cwd: dirA, text })).task.id);
+  const [a, b, c] = ids;
+  const pendingIds = (topic) => topic.tasks.filter((t) => t.status !== 'consumed').map((t) => t.id);
+
+  // A 移到 C 之后 → B,C,A
+  let r = await svc.reorderTasks({ cwd: dirA, id: a, afterId: c });
+  assert.deepEqual(pendingIds(r.topic), [b, c, a]);
+
+  // C 移到 B 之前 → C,B,A
+  r = await svc.reorderTasks({ cwd: dirA, id: c, beforeId: b });
+  assert.deepEqual(pendingIds(r.topic), [c, b, a]);
+
+  // 领取第一条（C）→ 已领取固定；再把 B 移到 A 之后，C 仍是数组首项
+  const consumed = await svc.consumeFirstPending(r.topic.key, '本轮');
+  assert.equal(consumed.id, c);
+  r = await svc.reorderTasks({ cwd: dirA, id: b, afterId: a });
+  assert.deepEqual(r.topic.tasks.map((t) => t.id), [c, a, b], '已领取 C 固定在首项');
+  assert.deepEqual(pendingIds(r.topic), [a, b]);
+
+  // 非法：同时 before+after / 都不给 / 移到自己 / 移动已领取
+  await assert.rejects(() => svc.reorderTasks({ cwd: dirA, id: a, beforeId: b, afterId: c }), /--before/);
+  await assert.rejects(() => svc.reorderTasks({ cwd: dirA, id: a }), /--before/);
+  await assert.rejects(() => svc.reorderTasks({ cwd: dirA, id: a, beforeId: a }), /自己/);
+  await assert.rejects(() => svc.reorderTasks({ cwd: dirA, id: c, beforeId: a }), /待领取/);
+});

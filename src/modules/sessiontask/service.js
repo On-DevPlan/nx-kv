@@ -430,6 +430,55 @@ export async function removeTask({ cwd: rawCwd, id } = {}) {
   return { status: 'ok', key, cwd, name: t.name, removed: normalizeTask(removed) };
 }
 
+// 调整**待领取**任务的优先级：把 #id 移动到 #beforeId 之前或 #afterId 之后。
+// 领取顺序 = tasks 数组里 pending 子序列的先后（consumeFirstPending 取第一条 pending），
+// 故只在 pending 之间换位；已领取（历史）任务固定、不可移动。
+export async function reorderTasks({ cwd: rawCwd, id, beforeId, afterId } = {}) {
+  const { key, cwd } = normalizeCwd(rawCwd);
+  const dragId = Number(id);
+  const hasBefore = beforeId !== undefined && beforeId !== null;
+  const hasAfter = afterId !== undefined && afterId !== null;
+
+  if (!Number.isFinite(dragId) || dragId <= 0) {
+    throw badInput('reorder 缺少 --id <要移动的任务编号>');
+  }
+  if (hasBefore === hasAfter) {
+    throw badInput('reorder 需且仅需 --before <编号> 或 --after <编号> 之一');
+  }
+  const targetId = Number(hasBefore ? beforeId : afterId);
+  if (!Number.isFinite(targetId) || targetId <= 0) {
+    throw badInput('reorder 的目标任务编号非法');
+  }
+  if (targetId === dragId) throw badInput('不能把任务移动到它自己旁边');
+
+  const store = await loadStore();
+  const t = store.topics[key];
+  if (!t) {
+    const { notFound } = await import('../../core/errors.js');
+    throw notFound(`主题「${cwd}」不存在`);
+  }
+  const drag = t.tasks.find((x) => Number(x.id) === dragId);
+  const target = t.tasks.find((x) => Number(x.id) === targetId);
+  if (!drag || !target) {
+    const { notFound } = await import('../../core/errors.js');
+    throw notFound(
+      `主题「${t.name}」里找不到任务 #${drag ? targetId : dragId}`
+    );
+  }
+  if (drag.status === 'consumed' || target.status === 'consumed') {
+    throw badInput('只有「待领取」任务可以调整优先级（已领取任务是固定历史）');
+  }
+
+  const from = t.tasks.indexOf(drag);
+  t.tasks.splice(from, 1);
+  const ti = t.tasks.indexOf(target); // 删除 drag 后目标下标自动修正
+  t.tasks.splice(hasBefore ? ti : ti + 1, 0, drag);
+  t.updatedAt = stampNow();
+
+  await saveStore(store);
+  return { status: 'ok', key, cwd, name: t.name, topic: topicView(t) };
+}
+
 // ─── 阻塞等待：核心入口 ─────────────────────────────────────────────
 
 /**

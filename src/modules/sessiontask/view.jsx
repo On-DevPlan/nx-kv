@@ -36,6 +36,11 @@ export default function SessionTaskView() {
   const [editText, setEditText] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
+  // 拖拽重排（仅待领取任务）
+  const [dragId, setDragId] = useState(null);
+  const [over, setOver] = useState(null); // { id, pos:'top'|'bottom' }
+  const [reordering, setReordering] = useState(false);
+
   const load = useCallback(async () => {
     try {
       setOverview(await api('/api/sessiontasks'));
@@ -169,6 +174,55 @@ export default function SessionTaskView() {
 
   const tasks = active ? active.tasks.slice().reverse() : [];
 
+  // 待领取任务按「领取优先级」（数组真实顺序，未反转）排列；上移/置后据此定位相邻项
+  const pendingOrder = active ? active.tasks.filter((t) => t.status !== 'consumed') : [];
+
+  // 把 dragId 移到 beforeId 之前 / afterId 之后（数组顺序）
+  const applyReorder = (id, { beforeId, afterId }) =>
+    guard(async () => {
+      setReordering(true);
+      try {
+        await api('/api/sessiontasks/reorder', {
+          method: 'PATCH',
+          body: { cwd: active.cwd, id, beforeId, afterId },
+        });
+        toast('已调整领取优先级');
+        await load();
+      } finally {
+        setReordering(false);
+        setDragId(null);
+        setOver(null);
+      }
+    });
+
+  // 提前/置后一步（在 pending 子序列里移动），作为拖拽之外的兜底（窄屏/触屏友好）
+  const stepPriority = (t, dir) => {
+    const i = pendingOrder.findIndex((x) => x.id === t.id);
+    if (dir === 'up' && i > 0) applyReorder(t.id, { beforeId: pendingOrder[i - 1].id });
+    if (dir === 'down' && i < pendingOrder.length - 1) applyReorder(t.id, { afterId: pendingOrder[i + 1].id });
+  };
+
+  // 表格反转显示：视觉上「上方」= 数组里更靠后。落点在目标行上半 → 拖到它数组之后；
+  // 下半 → 拖到它数组之前。
+  const onRowDragOver = (e, t) => {
+    if (dragId === null || t.status === 'consumed' || dragId === t.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = e.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
+    setOver((o) => (o && o.id === t.id && o.pos === pos ? o : { id: t.id, pos }));
+  };
+  const onRowDrop = (e, t) => {
+    if (dragId === null || t.status === 'consumed' || dragId === t.id) return;
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const top = e.clientY < rect.top + rect.height / 2;
+    const moved = dragId;
+    setDragId(null);
+    setOver(null);
+    applyReorder(moved, top ? { afterId: t.id } : { beforeId: t.id });
+  };
+
   return (
     <>
       <div className="card" style={{ padding: '10px 14px' }}>
@@ -298,23 +352,55 @@ export default function SessionTaskView() {
           <div className="colhead">
             <h3>该主题的任务队列</h3>
             <span className="muted">待领取 {active.pending} · 共 {active.total} 条</span>
+            <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>
+              拖拽待领取行（或用「提前/置后」）调整领取优先级
+            </span>
           </div>
 
           <div className="card" style={{ padding: 4 }}>
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: 34 }}></th>
                   <th style={{ width: 56 }}>#</th>
                   <th>任务</th>
                   <th style={{ width: 80 }}>状态</th>
                   <th style={{ width: 160 }}>时间</th>
-                  <th style={{ width: 76 }}>操作</th>
+                  <th style={{ width: 150 }}>操作</th>
                 </tr>
               </thead>
               <tbody>
                 {tasks.length ? (
-                  tasks.map((t) => (
-                    <tr key={t.id}>
+                  tasks.map((t) => {
+                    const isPending = t.status !== 'consumed';
+                    const isDrag = dragId === t.id;
+                    const isOver = over && over.id === t.id;
+                    return (
+                    <tr
+                      key={t.id}
+                      draggable={isPending && editingId !== t.id}
+                      onDragStart={(e) => {
+                        setDragId(t.id);
+                        e.dataTransfer.effectAllowed = 'move';
+                        try { e.dataTransfer.setData('text/plain', String(t.id)); } catch { /* 某些浏览器需 setData 才能拖拽 */ }
+                      }}
+                      onDragOver={(e) => onRowDragOver(e, t)}
+                      onDrop={(e) => onRowDrop(e, t)}
+                      onDragEnd={() => { setDragId(null); setOver(null); }}
+                      style={{
+                        cursor: isPending && editingId !== t.id ? 'grab' : 'default',
+                        opacity: isDrag ? 0.4 : 1,
+                        boxShadow: isOver
+                          ? over.pos === 'top'
+                            ? 'inset 0 2px 0 var(--ink,#14161a)'
+                            : 'inset 0 -2px 0 var(--ink,#14161a)'
+                          : 'none',
+                        background: isOver ? 'rgba(20,22,26,.04)' : undefined,
+                      }}
+                    >
+                      <td className="mono muted" title="按住拖拽调整优先级" style={{ textAlign: 'center', userSelect: 'none' }}>
+                        {isPending ? '⠿' : ''}
+                      </td>
                       <td className="mono">#{t.id}</td>
                       <td style={{ whiteSpace: 'pre-wrap' }}>
                         {editingId === t.id ? (
@@ -369,16 +455,38 @@ export default function SessionTaskView() {
                       </td>
                       <td className="mono">{t.consumedAt || t.createdAt}</td>
                       <td className="ops">
-                        {t.status !== 'consumed' && editingId !== t.id && (
-                          <button className="btn small ghost" onClick={() => startEdit(t)}>编辑</button>
-                        )}
+                        {isPending && editingId !== t.id && (() => {
+                          const pi = pendingOrder.findIndex((x) => x.id === t.id);
+                          return (
+                            <>
+                              <button className="btn small ghost" onClick={() => startEdit(t)}>编辑</button>
+                              <button
+                                className="btn small ghost"
+                                title="提高优先级（更早被领取）"
+                                disabled={reordering || pi <= 0}
+                                onClick={() => stepPriority(t, 'up')}
+                              >
+                                提前
+                              </button>
+                              <button
+                                className="btn small ghost"
+                                title="降低优先级（更晚被领取）"
+                                disabled={reordering || pi >= pendingOrder.length - 1}
+                                onClick={() => stepPriority(t, 'down')}
+                              >
+                                置后
+                              </button>
+                            </>
+                          );
+                        })()}
                         <button className="btn small ghost" onClick={() => remove(t.id)}>删除</button>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 ) : (
                   <tr>
-                    <td colSpan="5" className="muted" style={{ textAlign: 'center', padding: '22px 0' }}>
+                    <td colSpan="6" className="muted" style={{ textAlign: 'center', padding: '22px 0' }}>
                       （暂无任务，在上方回填第一条）
                     </td>
                   </tr>

@@ -148,6 +148,25 @@ export default {
       },
     },
 
+    {
+      id: 'sessiontask.reorder',
+      cli: ['sessiontask', 'reorder'],
+      http: ['PATCH', '/api/sessiontasks/reorder'],
+      summary: '调整待领取任务优先级（--id <编号> 移到 --before-id <编号> 前或 --after-id <编号> 后）',
+      flags: {
+        id: { type: 'number', required: true, hint: '要移动的任务编号' },
+        beforeId: { type: 'number', hint: '插到该编号之前（与 afterId 二选一）' },
+        afterId: { type: 'number', hint: '插到该编号之后（与 beforeId 二选一）' },
+        cwd: CWD,
+      },
+      run: (ctx) =>
+        service.reorderTasks({ id: ctx.id, beforeId: ctx.beforeId, afterId: ctx.afterId, cwd: ctx.cwd }),
+      render: (d) => {
+        const order = d.topic.tasks.filter((x) => x.status !== 'consumed').map((x) => `#${x.id}`);
+        return `主题「${d.name}」待领取顺序：${order.join(' -> ') || '（无待领取）'}`;
+      },
+    },
+
     // ─── 阻塞等待（纯 CLI，agent 本轮最后一步）────────────────
     {
       id: 'sessiontask.wait',

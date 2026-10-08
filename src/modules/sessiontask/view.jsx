@@ -32,6 +32,9 @@ export default function SessionTaskView() {
   const [timeoutSec, setTimeoutSec] = useState(180);
   const [cfgSaving, setCfgSaving] = useState(false);
   const [pruning, setPruning] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -133,6 +136,35 @@ export default function SessionTaskView() {
       });
       toast('已删除');
       await load();
+    });
+
+  const startEdit = (t) => {
+    setEditingId(t.id);
+    setEditText(t.text);
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+  const saveEdit = () =>
+    guard(async () => {
+      const body = editText.trim();
+      if (!body) {
+        toast('任务内容不能为空');
+        return;
+      }
+      setEditSaving(true);
+      try {
+        await api('/api/sessiontasks/item', {
+          method: 'PATCH',
+          body: { cwd: active.cwd, id: editingId, text: body },
+        });
+        toast('已保存修改');
+        setEditingId(null);
+        await load();
+      } finally {
+        setEditSaving(false);
+      }
     });
 
   const tasks = active ? active.tasks.slice().reverse() : [];
@@ -285,15 +317,47 @@ export default function SessionTaskView() {
                     <tr key={t.id}>
                       <td className="mono">#{t.id}</td>
                       <td style={{ whiteSpace: 'pre-wrap' }}>
-                        {t.text}
-                        {t.roundSummary && (
-                          <div
-                            className="muted"
-                            style={{ fontSize: 11, marginTop: 4, paddingTop: 4, borderTop: '1px dashed var(--line,#e6e8eb)', whiteSpace: 'pre-wrap' }}
-                            title="该任务所回应的 agent 上一轮完成总结"
-                          >
-                            上一轮完成：{t.roundSummary}
-                          </div>
+                        {editingId === t.id ? (
+                          <>
+                            <textarea
+                              value={editText}
+                              onChange={(e) => setEditText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                  e.preventDefault();
+                                  saveEdit();
+                                }
+                                if (e.key === 'Escape') cancelEdit();
+                              }}
+                              spellCheck="false"
+                              autoFocus
+                              style={{ width: '100%', minHeight: 60, resize: 'vertical' }}
+                            />
+                            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                              <button className="btn small" onClick={saveEdit} disabled={editSaving}>
+                                {editSaving ? '保存中…' : '保存'}
+                              </button>
+                              <button className="btn small ghost" onClick={cancelEdit} disabled={editSaving}>
+                                取消
+                              </button>
+                              <span className="muted" style={{ fontSize: 11, alignSelf: 'center' }}>
+                                Ctrl+Enter 保存 · Esc 取消
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {t.text}
+                            {t.roundSummary && (
+                              <div
+                                className="muted"
+                                style={{ fontSize: 11, marginTop: 4, paddingTop: 4, borderTop: '1px dashed var(--line,#e6e8eb)', whiteSpace: 'pre-wrap' }}
+                                title="该任务所回应的 agent 上一轮完成总结"
+                              >
+                                上一轮完成：{t.roundSummary}
+                              </div>
+                            )}
+                          </>
                         )}
                       </td>
                       <td>
@@ -305,6 +369,9 @@ export default function SessionTaskView() {
                       </td>
                       <td className="mono">{t.consumedAt || t.createdAt}</td>
                       <td className="ops">
+                        {t.status !== 'consumed' && editingId !== t.id && (
+                          <button className="btn small ghost" onClick={() => startEdit(t)}>编辑</button>
+                        )}
                         <button className="btn small ghost" onClick={() => remove(t.id)}>删除</button>
                       </td>
                     </tr>

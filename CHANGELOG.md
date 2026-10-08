@@ -2,6 +2,15 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.4.1] - 2026-10-08
+
+### Added
+
+- **待领取任务可在队列里直接编辑**：「实时任务」页的任务队列中，状态为「待领取」
+  的任务新增「编辑」按钮，行内内联修改（Ctrl+Enter 保存、Esc 取消），复用既有
+  `PATCH /api/sessiontasks/item`（`sessiontask update`）；已领取的任务作为历史不提供
+  编辑，仅可删除。
+
 ## [0.4.0] - 2026-10-08
 
 ### Added

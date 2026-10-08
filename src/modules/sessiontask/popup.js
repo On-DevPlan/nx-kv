@@ -123,7 +123,7 @@ export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
     <div class="state-text" id="summary"></div>
   </div>
 
-  <div class="statusbar">
+  <div class="statusbar" id="statusbar">
     <span class="dot"></span>
     <span>agent 正在等待你针对上述现状回填 · 剩余</span>
     <span id="clock">--:--</span>
@@ -176,6 +176,7 @@ export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
   el('summary').textContent = SUMMARY;
   var deadline = Date.now() + TIMEOUT_MS;
   function tickClock() {
+    if (delivered) return;
     var left = deadline - Date.now();
     el('clock').textContent = fmtClock(left);
     if (left <= 0 && !delivered) showBanner('等待已结束（超时未回填），本窗口可关闭。', true);
@@ -242,6 +243,8 @@ export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
           delivered = true;
           showBanner('已回填给 agent，正在返回，本窗口可关闭。', false);
           el('composer').style.opacity = '0.5';
+          // agent 已领取：不再显示倒计时（倒计时只在「等待回填」时有意义）
+          el('statusbar').style.display = 'none';
           refresh();
         } else {
           showBanner('已排入主题队列，agent 下一次 wait 会取走。', false);

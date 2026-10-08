@@ -211,3 +211,15 @@ test('缺 summary / 空内容 / 缺 id 报错，不建空记录', async () => {
   await assert.rejects(() => svc.addTask({ cwd: dirA, text: '  ' }), /不能为空/);
   await assert.rejects(() => svc.getTask({ cwd: dirA }), /--id/);
 });
+
+test('弹窗：agent 领取（delivered）后不再显示倒计时', async () => {
+  const { renderPopupPage } = await import('../../src/modules/sessiontask/popup.js');
+  const html = renderPopupPage({ key: 'k1', cwd: dirA, summary: '现状', timeoutMs: 180000 });
+  // 等待态有倒计时状态条
+  assert.ok(html.includes('id="statusbar"'));
+  assert.ok(html.includes('id="clock"'));
+  // delivered 分支隐藏整个倒计时状态条
+  assert.ok(html.includes("el('statusbar').style.display = 'none'"));
+  // 计时器在 delivered 后不再更新
+  assert.ok(/function tickClock\(\) \{\s*if \(delivered\) return;/.test(html));
+});

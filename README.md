@@ -166,7 +166,10 @@ assets/kv-sessiontask/   内置 skill：对话内实时任务接力
 ```bash
 nx-kv skill install      # 装到 ~/.claude/skills/nx-kv（KV 清单操作手册）
 nx-kv skill install kv-sessiontask   # 实时任务接力：最后一步阻塞等用户喂任务
-nx-kv skill list         # 列出 nx-kv / kv-sessiontask
+nx-kv skill list         # 列出可装 skill、默认安装项与可装 group
+nx-kv skill groups       # 列出 group → 包含哪些 skill
+nx-kv skill install --group=<key>    # 一键装整组（与 <name> 二选一）
+nx-kv skill get [name] [ref]         # 输出 skill 全文，外部 agent 一键拿上下文
 ```
 
 装好后 agent 就能按 skill 里的 SOP 领任务、读主题上下文、完成后回填结果；

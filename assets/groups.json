@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "$comment": "group 名 → skill 名列表的别名表。当前 group 名 ≡ skill 名（一对一）；skills 是数组，为「一个 group 含多个 skill」预留。路径恒由 assets/<skills[i]>/ 推导——本文件只做聚合，不是第二条事实源。",
+  "groups": {
+    "nx-kv": {
+      "skills": ["nx-kv"],
+      "summary": "KV 清单管理中枢主 skill（默认 install 装的就是这个）：todo / group / 工作空间"
+    },
+    "kv-sessiontask": {
+      "skills": ["kv-sessiontask"],
+      "summary": "本机实时人机接力（sessiontask）——agent 阻塞 wait，用户在网页回填"
+    }
+  }
+}

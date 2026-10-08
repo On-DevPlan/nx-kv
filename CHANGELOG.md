@@ -2,6 +2,24 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.5.0] - 2026-10-08
+
+### Added
+
+- **skill 命令补齐为完整多 skill 形态（严格按脚手架 B04）**：
+  - `nx-kv skill list`：列出包内可装 skill（nx-kv / kv-sessiontask）、默认安装项与可装 group；
+  - `nx-kv skill groups`：列出 groups.json 的 group → 其包含的 skill；
+  - `nx-kv skill install [name] [--to <dir>] [--force]`：显式装某个 skill；
+  - `nx-kv skill install --group=<key> [--to <dir>] [--force]`：一键装整组（`<name>` 与
+    `--group` 互斥，同时给报 INVALID_INPUT）；
+  - `nx-kv skill get [name] [ref] [--to <dir>]` / `--group=<key>`：输出 skill 全文（prefix +
+    sentinel + 正文 + install 状态），供外部 agent 一键拿全上下文。
+  - 新增 `assets/groups.json`（默认 group key = nx-kv）；缺失/损坏时降级为目录扫描，
+    schema 错显式报错，不静默。
+  - HTTP 新增 `GET /api/bundled/groups`、`GET /api/bundled/content`。
+- 新增单测 `bundled-multiskill.test.mjs`（20 项断言：三种 install、默认标记、降级、
+  schema 错、幂等、部分冲突聚合、get 整组）；全套 50 项全绿。
+
 ## [0.4.1] - 2026-10-08
 
 ### Added

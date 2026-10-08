@@ -12,10 +12,11 @@ import { cliPathsOf } from './spec.js';
 import system from '../modules/system/index.js';
 import auth from '../modules/auth/index.js';
 import group from '../modules/group/index.js';
+import sessiontask from '../modules/sessiontask/index.js';
 import todo from '../modules/todo/index.js';
 import bundled from '../modules/bundled/index.js';
 
-export const MODULES = [system, auth, group, todo, bundled].sort(
+export const MODULES = [system, auth, group, sessiontask, todo, bundled].sort(
   (a, b) => (a.order ?? 100) - (b.order ?? 100)
 );
 

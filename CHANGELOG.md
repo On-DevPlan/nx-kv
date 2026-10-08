@@ -2,6 +2,30 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.3.0] - 2026-10-06
+
+### Added
+
+- **新功能域「实时任务输入」（sessiontask）**：在一个对话里通过工具调用实时向
+  agent 回填任务，替代在原始输入框打字。agent 完成当前任务、提交结果后，把
+  `nx-kv sessiontask wait --summary "<当前现状总结>" --json` 作为本轮**最后一个
+  动作**调用——命令阻塞，自动在本机临时起 http 服务器并打开浏览器弹窗；用户针对
+  该现状回填后解除阻塞，把新任务作为工具结果返回给 agent 继续，循环往复。
+  - **现状总结即等待点 key**：相同现状（逐字一致，忽略首尾/连续空白）复用同一
+    等待点，不同现状分散为不同等待点；用户在面板「等待点总览」看清各现状、点选
+    **分别回填（分散答复）**。
+  - **阻塞超时默认 120 秒（2 分钟）**：未回填则返回 `{status:"timeout"}`、
+    exit 0，agent 据此安静收尾结束本轮；超时是业务结果不是错误。
+  - **排队语义**：任务可提前投递；等待点非空时 wait 立即取走、不开窗。
+  - **纯本机协调**：数据存本地文件（`~/.nx-kv/sessiontasks.json`），
+    不依赖 KV 后端、不需登录；路径可用环境变量 `NX_KV_SESSIONTASK_STORE` 覆盖。
+  - CRUD 五操作 `sessiontask list / get / add / update / remove` 两端可达（均按
+    `--summary` 定位），面板新增「实时任务」页（等待点总览、点选回填、任务表、删除）。
+- **新内置 skill `kv-sessiontask`**：教 agent 四条硬规则——wait 必须在最后一步、
+  工具调用超时设 120000ms、wait 必传现状总结作为 key（同现状同句、新现状新句）、
+  timeout 即收尾。含完整时序、分散答复与避坑（`references/sessiontask-workflow.md`）。
+  安装：`nx-kv skill install kv-sessiontask`；`skill list` 现列出两个 skill。
+
 ## [0.2.1] - 2026-09-27
 
 ### Added

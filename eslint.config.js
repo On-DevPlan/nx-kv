@@ -83,7 +83,8 @@ export default defineConfig([
         {
           patterns: [
             {
-              group: ['../repos/*', '../skills/*', '../github/*', '../bundled/*', '../system/*'],
+              // 枚举式互依禁列：新增模块必须在此补 '../<新模块>/*'，漏补是静默的
+              group: ['../repos/*', '../skills/*', '../github/*', '../bundled/*', '../system/*', '../todo/*', '../sessiontask/*'],
               message: '模块之间不得互相依赖；共享逻辑请下沉到 core/。唯一例外是 ../settings/service.js。',
             },
           ],

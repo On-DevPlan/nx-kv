@@ -66,6 +66,30 @@ nx-kv group members 24                        # 成员
 完整命令表由 action 声明自动生成：`nx-kv help`。
 命令与 HTTP 端点互相可查：`nx-kv routes`，反查用 `nx-kv routes --http "POST /api/todo"`。
 
+## 实时任务输入（对话内连续提交）
+
+在一个对话里，agent 完成当前任务、提交结果、需要下一条输入时，可调用**阻塞式**
+命令等用户在浏览器回填，替代在原始输入框打字：
+
+```bash
+# 本轮【最后一步】：阻塞并自动打开浏览器弹窗（工具调用超时需设为 120000ms）
+nx-kv sessiontask wait --summary "<当前现状总结>" --json
+# 成功 → {status:"ok", task:{text,...}}；120 秒未回填 → {status:"timeout"}（exit 0）
+```
+
+**现状总结即等待点 key**：同现状用同一句总结复用同一等待点，新现状换新句分散为
+新等待点。弹窗/面板顶部直接显示现状，用户不读对话也能快速了解、点选等待点
+**分别回填（分散答复）**，也可提前排队；等待点非空时 wait 立即取走、不开窗。
+纯本机协调、存本地文件，**不需登录后端**。其余命令：
+`sessiontask list / add / get / update / remove`（均按 `--summary` 定位），
+面板上对应「实时任务」页。
+
+配套 skill：
+
+```bash
+nx-kv skill install kv-sessiontask     # 教 agent 在最后一步阻塞等用户喂任务
+```
+
 ## ⚠️ 定位一律按内容，不按 id
 
 待办的 id **非常容易重复**，两条独立的原因：
@@ -127,10 +151,11 @@ nx-kv todo get --ref "旧记录" --topic fr   # 或按主题收窄
 
 ```
 src/core/          零业务语义：kvapi(后端客户端) / config(本机配置) / errors / fstree
-src/modules/       功能域：system / auth / group / todo / bundled
+src/modules/       功能域：system / auth / group / sessiontask / todo / bundled
 src/runtime/       装配层：registry / spec / cli / api / server
 src/web/frontend/  React 壳
-assets/nx-kv/      内置 skill（agent 操作手册）
+assets/nx-kv/            内置 skill：KV 清单操作手册
+assets/kv-sessiontask/   内置 skill：对话内实时任务接力
 ```
 
 分层由 `eslint.config.js` 的 `no-restricted-imports` 强制；
@@ -139,10 +164,13 @@ assets/nx-kv/      内置 skill（agent 操作手册）
 ## 给 agent 用
 
 ```bash
-nx-kv skill install      # 装到 ~/.claude/skills/nx-kv
+nx-kv skill install      # 装到 ~/.claude/skills/nx-kv（KV 清单操作手册）
+nx-kv skill install kv-sessiontask   # 实时任务接力：最后一步阻塞等用户喂任务
+nx-kv skill list         # 列出 nx-kv / kv-sessiontask
 ```
 
-装好后 agent 就能按 skill 里的 SOP 领任务、读主题上下文、完成后回填结果。
+装好后 agent 就能按 skill 里的 SOP 领任务、读主题上下文、完成后回填结果；
+或在一个对话里靠 `sessiontask wait` 阻塞弹窗、连续接收用户任务。
 
 ## License
 

@@ -273,6 +273,51 @@ try {
   check('routes --module todo', (await cliJson(['routes', '--module', 'todo'])).length > 5);
   check('routes --http 反查', (await cli(['routes', '--http', 'POST /api/todo'])).stdout.includes('todo add'));
 
+  // ─── 11b. 实时任务输入 sessiontask（现状为 key，本机不依赖后端）─
+  process.env.NX_KV_SESSIONTASK_STORE = join(tmp, 'sessiontasks.json');
+
+  const emptyOv = await cliJson(['sessiontask', 'list']);
+  check(
+    'sessiontask 初始总览为空',
+    emptyOv.waiting === 0 && Array.isArray(emptyOv.slots) && emptyOv.slots.length === 0,
+    JSON.stringify(emptyOv)
+  );
+
+  const sumA = '已完成登录，等待选择工作空间';
+  const addedA = await cliJson(['sessiontask', 'add', '选择工作空间 A', '--summary', sumA]);
+  check('sessiontask add 排队（含 key）', addedA.queued === true && addedA.task.id === 1 && !!addedA.key, JSON.stringify(addedA));
+  check('总览 1 个等待点、待领取 1', (await cliJson(['sessiontask', 'list'])).slots[0].pending === 1);
+
+  const waitA = await cliJson(['sessiontask', 'wait', '--summary', sumA]);
+  check(
+    'sessiontask wait 立即取走排队任务',
+    waitA.status === 'ok' && waitA.queued === true && waitA.task.text === '选择工作空间 A' && waitA.summary === sumA,
+    JSON.stringify(waitA)
+  );
+
+  const sumB = '已选好工作空间，等待下一步指令';
+  const waitTimeout = await cliJson(['sessiontask', 'wait', '--summary', sumB, '--timeout', '1', '--no-open']);
+  check(
+    '不同现状另起等待点、空队列超时 → timeout',
+    waitTimeout.status === 'timeout' && waitTimeout.summary === sumB,
+    JSON.stringify(waitTimeout)
+  );
+
+  const ov = await cliJson(['sessiontask', 'list']);
+  check('总览 2 个等待点（现状分散）、无等待中', ov.slots.length === 2 && ov.waiting === 0, JSON.stringify(ov.slots.map((s) => s.summary)));
+
+  // 同现状复用同一等待点：再回填，id 接续为 2，wait 取走
+  const addedA2 = await cliJson(['sessiontask', 'add', '再给 A 的任务', '--summary', sumA]);
+  check('同现状复用：新任务 id=2', addedA2.task.id === 2, JSON.stringify(addedA2));
+  const waitA2 = await cliJson(['sessiontask', 'wait', '--summary', sumA]);
+  check('wait 取走同现状新回填', waitA2.task.text === '再给 A 的任务', JSON.stringify(waitA2));
+
+  check('sessiontask get 缺 id 报错', (await cli(['sessiontask', 'get', '--summary', sumA])).status === 1);
+  check(
+    'sessiontask remove 按现状+id 删除',
+    (await cli(['sessiontask', 'remove', '--id', String(addedA2.task.id), '--summary', sumA])).status === 0
+  );
+
   // ─── 12. Web API 与静态页 ────────────────────────────────────
   const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'runtime', 'server.js')).href);
   const server = await startServer({ port: 0 });

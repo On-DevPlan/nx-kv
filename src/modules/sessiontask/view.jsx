@@ -1,5 +1,5 @@
-// 实时任务页：等待点（按现状总结分散）总览 + 选中某个现状回填 + 该现状任务表。
-// 本质是「agent 提交结果 → 阻塞 → 用户在 web 针对现状回填 → agent 接收」。
+// 实时任务页：主题（按工作目录划分）总览 + 选中某个主题回填 + 该主题的任务队列。
+// 本质是「agent 提交结果 → 阻塞 → 用户在 web 针对主题回填 → agent 接收」。
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
 import { useToast, useGuard } from '../../web/frontend/components/ui.jsx';
@@ -29,6 +29,8 @@ export default function SessionTaskView() {
   const [activeKey, setActiveKey] = useState(null);
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [timeoutSec, setTimeoutSec] = useState(180);
+  const [cfgSaving, setCfgSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -42,26 +44,47 @@ export default function SessionTaskView() {
     load();
   }, [load]);
 
-  // 实时刷新：等待点状态/倒计时、任务是否被取走，每 1.5s 轮询
+  // 实时刷新：主题状态/倒计时、任务是否被取走，每 1.5s 轮询
   useEffect(() => {
     const t = setInterval(load, 1500);
     return () => clearInterval(t);
   }, [load]);
 
-  const slots = overview ? overview.slots : [];
+  const topics = overview ? overview.topics : [];
+
+  // 同步页面上的超时配置（来源：后端 settings）
+  useEffect(() => {
+    if (overview && overview.settings) setTimeoutSec(overview.settings.timeoutSec);
+  }, [overview]);
+
+  const saveTimeout = (sec) =>
+    guard(async () => {
+      setTimeoutSec(Number(sec));
+      setCfgSaving(true);
+      try {
+        const s = await api('/api/sessiontasks/setting', {
+          method: 'PATCH',
+          body: { timeout: Number(sec) },
+        });
+        setTimeoutSec(s.timeoutSec);
+        toast(`等待超时已配置为 ${s.timeoutSec} 秒`);
+      } finally {
+        setCfgSaving(false);
+      }
+    });
 
   // 默认选中：优先等待中的，否则第一个；用户已选且仍存在则保留
   useEffect(() => {
-    if (!slots.length) {
+    if (!topics.length) {
       setActiveKey(null);
       return;
     }
-    if (activeKey && slots.some((s) => s.key === activeKey)) return;
-    const w = slots.find((s) => s.waiting) || slots[0];
+    if (activeKey && topics.some((t) => t.key === activeKey)) return;
+    const w = topics.find((t) => t.waiting) || topics[0];
     setActiveKey(w.key);
-  }, [slots, activeKey]);
+  }, [topics, activeKey]);
 
-  const active = slots.find((s) => s.key === activeKey) || null;
+  const active = topics.find((t) => t.key === activeKey) || null;
 
   const submit = () =>
     guard(async () => {
@@ -71,17 +94,17 @@ export default function SessionTaskView() {
         return;
       }
       if (!active) {
-        toast('请先选择一个等待点（现状）');
+        toast('请先选择一个主题（工作目录）');
         return;
       }
       setSaving(true);
       try {
         const r = await api('/api/sessiontasks', {
           method: 'POST',
-          body: { summary: active.summary, text: body },
+          body: { cwd: active.cwd, text: body },
         });
         setText('');
-        toast(r.delivered ? '已返回给等待中的 agent' : '已排队，等待 agent 下一次 wait');
+        toast(r.delivered ? '已返回给等待中的 agent' : '已排入该主题队列，等待 agent 下一次 wait');
         await load();
       } finally {
         setSaving(false);
@@ -92,7 +115,7 @@ export default function SessionTaskView() {
     guard(async () => {
       await api('/api/sessiontasks/item', {
         method: 'DELETE',
-        body: { summary: active.summary, id },
+        body: { cwd: active.cwd, id },
       });
       toast('已删除');
       await load();
@@ -105,30 +128,50 @@ export default function SessionTaskView() {
       <div className="card" style={{ padding: '10px 14px' }}>
         <div className="muted" style={{ fontSize: 12 }}>
           agent 用法：完成当前任务后，把
-          <code> nx-kv sessiontask wait --summary "&lt;当前现状总结&gt;" --json </code>
-          作为本轮<strong>最后一个动作</strong>调用——现状总结即等待点 key，命令阻塞并
-          自动打开浏览器弹窗；用户针对该现状回填后解除阻塞、返回新任务；120 秒未回填
-          则返回 <code>status:"timeout"</code>，agent 收尾结束本轮。
+          <code> nx-kv sessiontask wait --cwd "&lt;工作目录&gt;" --summary "&lt;当前现状&gt;" --json </code>
+          作为本轮<strong>最后一个动作</strong>调用——工作目录即<strong>主题</strong>、主题拥有任务队列，
+          同目录共用队列、不同目录互不串，任务可在队列里堆积；命令阻塞并自动打开浏览器弹窗，
+          用户回填后解除阻塞、返回新任务；超时未回填则返回 <code>status:"timeout"</code>，agent 收尾结束本轮。
         </div>
       </div>
 
+      <div className="card" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 700 }}>等待超时</span>
+        <select
+          value={timeoutSec}
+          disabled={cfgSaving}
+          onChange={(e) => saveTimeout(e.target.value)}
+          style={{ font: 'inherit', padding: '5px 8px' }}
+        >
+          <option value={60}>1 分钟</option>
+          <option value={120}>2 分钟</option>
+          <option value={180}>3 分钟（推荐）</option>
+          <option value={240}>4 分钟</option>
+          <option value={300}>5 分钟</option>
+          <option value={600}>10 分钟（最大）</option>
+        </select>
+        <span className="muted" style={{ fontSize: 12 }}>
+          agent wait 未带 --timeout 时使用此值；推荐 3 分钟、最大 10 分钟。
+        </span>
+      </div>
+
       <div className="colhead">
-        <h3>等待点总览</h3>
-        <span className="muted">{overview ? `${slots.length} 个 · 等待中 ${overview.waiting}` : ''}</span>
+        <h3>主题总览（按工作目录）</h3>
+        <span className="muted">{overview ? `${topics.length} 个 · 等待中 ${overview.waiting}` : ''}</span>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-        {slots.length ? (
-          slots.map((s) => {
-            const isActive = s.key === activeKey;
+        {topics.length ? (
+          topics.map((t) => {
+            const isActive = t.key === activeKey;
             return (
               <button
-                key={s.key}
-                onClick={() => setActiveKey(s.key)}
+                key={t.key}
+                onClick={() => setActiveKey(t.key)}
                 className="card"
                 style={{
                   textAlign: 'left',
-                  width: 250,
+                  width: 270,
                   padding: '10px 12px',
                   cursor: 'pointer',
                   font: 'inherit',
@@ -139,15 +182,27 @@ export default function SessionTaskView() {
                     : '0 1px 2px rgba(20,22,26,.06), 0 6px 16px rgba(20,22,26,.05)',
                 }}
               >
-                <div style={{ fontWeight: 700, whiteSpace: 'pre-wrap', marginBottom: 6 }}>{s.summary}</div>
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>{t.name || '（未命名）'}</div>
+                <div
+                  className="mono muted"
+                  title={t.cwd}
+                  style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 6, minHeight: 15 }}
+                >
+                  {t.cwd || '（旧数据，无目录）'}
+                </div>
+                {t.summary && (
+                  <div className="muted" style={{ fontSize: 11, whiteSpace: 'pre-wrap', marginBottom: 6 }}>
+                    现状：{t.summary}
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  {s.waiting ? (
-                    <span className="tag strong">{countdown(s.waitingUntil)}</span>
+                  {t.waiting ? (
+                    <span className="tag strong">{countdown(t.waitingUntil)}</span>
                   ) : (
                     <span className="tag">已结束</span>
                   )}
                   <span className="muted" style={{ fontSize: 11 }}>
-                    待领取 {s.pending}/{s.total}
+                    待领取 {t.pending}/{t.total}
                   </span>
                 </div>
               </button>
@@ -155,7 +210,7 @@ export default function SessionTaskView() {
           })
         ) : (
           <div className="card muted" style={{ padding: '20px 16px', width: '100%', textAlign: 'center' }}>
-            （暂无等待点；agent 调用 sessiontask wait 后会出现在这里）
+            （暂无主题；agent 调用 sessiontask wait 后会出现在这里）
           </div>
         )}
       </div>
@@ -163,8 +218,8 @@ export default function SessionTaskView() {
       {active && (
         <>
           <div className="toolbar">
-            <span style={{ fontWeight: 700, maxWidth: 380, whiteSpace: 'pre-wrap' }} title={active.summary}>
-              {active.summary}
+            <span style={{ fontWeight: 700, maxWidth: 240 }} title={active.cwd}>
+              {active.name}
             </span>
             <span className="sep"></span>
             <textarea
@@ -178,7 +233,7 @@ export default function SessionTaskView() {
                   submit();
                 }
               }}
-              placeholder="针对该现状回填下一条任务（Enter 提交，Shift+Enter 换行）"
+              placeholder={`向主题「${active.name}」的队列回填下一条任务（Enter 提交，Shift+Enter 换行）`}
             />
             <button className="btn" onClick={submit} disabled={saving}>
               {saving ? '提交中…' : '回填新任务'}
@@ -186,7 +241,7 @@ export default function SessionTaskView() {
           </div>
 
           <div className="colhead">
-            <h3>该现状的任务表</h3>
+            <h3>该主题的任务队列</h3>
             <span className="muted">待领取 {active.pending} · 共 {active.total} 条</span>
           </div>
 

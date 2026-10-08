@@ -3,7 +3,10 @@
 // 注意：本文件返回的是一整段 HTML 字符串，内联 <script> 刻意只用单/双引号与
 // 字符串拼接（不用模板字符串、不用 ${}），以免与外层模板串冲突；内联脚本里
 // 出现的反斜杠在此外层模板中需双写（如换行正则写成 /\\n/g）。
-export function renderPopupPage({ key, summary, timeoutMs }) {
+import { basename } from 'node:path';
+
+export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
+  const name = (cwd && basename(cwd)) || '';
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -35,6 +38,14 @@ export function renderPopupPage({ key, summary, timeoutMs }) {
   .brand .sub { font-weight: 400; color: var(--mid); margin-left: 8px; }
   .meta { margin-left: auto; color: var(--mid); font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
   .meta .pill { background: var(--soft-2); border-radius: 5px; padding: 1px 7px; color: var(--ink); }
+
+  .topic {
+    background: var(--paper); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 10px 14px; margin-bottom: 10px;
+  }
+  .topic .topic-label { font-size: 11px; color: var(--mid); letter-spacing: 1px; margin-bottom: 3px; }
+  .topic .topic-name { font-size: 14px; font-weight: 800; }
+  .topic .topic-cwd { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; color: var(--mid); word-break: break-all; margin-top: 2px; }
 
   .state {
     background: var(--paper); border-radius: var(--radius); box-shadow: var(--shadow);
@@ -101,6 +112,12 @@ export function renderPopupPage({ key, summary, timeoutMs }) {
     <div class="meta"><span class="pill">回填后立即返回 agent</span></div>
   </div>
 
+  <div class="topic">
+    <div class="topic-label">主题（工作目录）</div>
+    <div class="topic-name" id="topicName"></div>
+    <div class="topic-cwd" id="topicCwd"></div>
+  </div>
+
   <div class="state">
     <div class="state-label">当前现状</div>
     <div class="state-text" id="summary"></div>
@@ -125,7 +142,7 @@ export function renderPopupPage({ key, summary, timeoutMs }) {
   <div class="banner" id="banner"></div>
 
   <div class="card">
-    <div class="colhead"><h3>本现状的任务表</h3><span class="muted" id="count"></span></div>
+    <div class="colhead"><h3>本主题的任务队列</h3><span class="muted" id="count"></span></div>
     <table>
       <thead><tr><th style="width:54px">#</th><th>任务</th><th style="width:78px">状态</th><th style="width:150px">时间</th><th style="width:70px">操作</th></tr></thead>
       <tbody id="list"></tbody>
@@ -135,6 +152,8 @@ export function renderPopupPage({ key, summary, timeoutMs }) {
 
 <script>
   var KEY = ${JSON.stringify(key)};
+  var CWD = ${JSON.stringify(cwd || '')};
+  var TOPIC_NAME = ${JSON.stringify(name || '')};
   var SUMMARY = ${JSON.stringify(summary)};
   var TIMEOUT_MS = ${JSON.stringify(timeoutMs)};
   var delivered = false;
@@ -152,6 +171,8 @@ export function renderPopupPage({ key, summary, timeoutMs }) {
     return (m < 10 ? '0' + m : m) + ':' + (s < 10 ? '0' + s : s);
   }
 
+  el('topicName').textContent = TOPIC_NAME || '（未命名）';
+  el('topicCwd').textContent = CWD || '（旧数据，无目录）';
   el('summary').textContent = SUMMARY;
   var deadline = Date.now() + TIMEOUT_MS;
   function tickClock() {
@@ -168,9 +189,9 @@ export function renderPopupPage({ key, summary, timeoutMs }) {
     b.className = 'banner show ' + (bad ? 'bad' : 'good');
   }
 
-  function render(slot) {
-    el('count').textContent = '待领取 ' + slot.pending + ' · 共 ' + slot.tasks.length;
-    var tasks = slot.tasks.slice().reverse();
+  function render(topic) {
+    el('count').textContent = '待领取 ' + topic.pending + ' · 共 ' + topic.tasks.length;
+    var tasks = topic.tasks.slice().reverse();
     var rows = '';
     if (!tasks.length) {
       rows = '<tr><td colspan="5" class="muted empty">（暂无任务，在上方回填第一条）</td></tr>';
@@ -181,7 +202,7 @@ export function renderPopupPage({ key, summary, timeoutMs }) {
         ? '<span class="tag strong">已领取</span>'
         : '<span class="tag">待领取</span>';
       var body = esc(t.text).replace(/\\n/g, '<br>');
-      rows += '<tr><td class="mono">#' + t.id + '</td><td class="text">' + body + '</td><td>' + status +
+      rows += '<tr><td class="mono">#' + t.id + '</td><td class="text">' + body + '<\/td><td>' + status +
         '</td><td class="mono time">' + esc(t.consumedAt || t.createdAt || '') +
         '</td><td class="ops"><button class="btn small ghost" data-id="' + t.id + '">删除</button></td></tr>';
     }
@@ -194,11 +215,11 @@ export function renderPopupPage({ key, summary, timeoutMs }) {
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j.ok) return;
-        var slot = null;
-        for (var i = 0; i < j.data.slots.length; i++) {
-          if (j.data.slots[i].key === KEY) { slot = j.data.slots[i]; break; }
+        var topic = null;
+        for (var i = 0; i < j.data.topics.length; i++) {
+          if (j.data.topics[i].key === KEY) { topic = j.data.topics[i]; break; }
         }
-        if (slot) render(slot);
+        if (topic) render(topic);
       })
       .catch(function () { /* 交付后服务器关闭，静默 */ });
   }
@@ -223,7 +244,7 @@ export function renderPopupPage({ key, summary, timeoutMs }) {
           el('composer').style.opacity = '0.5';
           refresh();
         } else {
-          showBanner('已排队，agent 下一次 wait 会取走。', false);
+          showBanner('已排入主题队列，agent 下一次 wait 会取走。', false);
           refresh();
         }
       })

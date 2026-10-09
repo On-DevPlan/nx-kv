@@ -315,3 +315,69 @@ test('reorder：拖拽调整待领取优先级，已领取历史不动', async (
   await assert.rejects(() => svc.reorderTasks({ cwd: dirA, id: a, beforeId: a }), /自己/);
   await assert.rejects(() => svc.reorderTasks({ cwd: dirA, id: c, beforeId: a }), /待领取/);
 });
+
+test('删除主题：按 cwd/key 删除整个主题，等待中受保护、force 强删', async () => {
+  await reset();
+  const a = await svc.addTask({ cwd: dirA, text: 'A1' });
+  await svc.addTask({ cwd: dirB, text: 'B1' });
+
+  // 缺定位 / 不存在
+  await assert.rejects(() => svc.removeTopic({}), /--cwd/);
+  await assert.rejects(() => svc.removeTopic({ key: 'nope' }), /不存在/);
+
+  // 按 cwd 删除 A（连同任务）
+  const r = await svc.removeTopic({ cwd: dirA });
+  assert.equal(r.status, 'removed');
+  assert.equal(r.topic.total, 1);
+  const ov = await svc.listTasks();
+  assert.equal(ov.topics.length, 1);
+  assert.notEqual(ov.topics[0].key, a.key); // 剩 B
+
+  // 等待中默认拒绝：先取走 dirB 的排队任务（队列排空），再 wait 才会阻塞
+  const drain = await svc.waitForTask({ cwd: dirB, summary: 'drain', open: false });
+  assert.equal(drain.queued, true);
+  let info;
+  const p = svc.waitForTask({
+    cwd: dirB, summary: 'w', timeoutSec: 5, open: false,
+    onReady: (h) => { info = h; },
+  });
+  await new Promise((x) => setTimeout(x, 60));
+  await assert.rejects(() => svc.removeTopic({ cwd: dirB }), /等待中/);
+  // force 强删
+  const rf = await svc.removeTopic({ key: info.key, force: true });
+  assert.equal(rf.status, 'removed');
+  await p; // wait 随后超时收尾
+  assert.equal((await svc.listTasks()).topics.length, 0);
+});
+
+test('批量删除：keys/cwds/all，等待中跳过，force 连等待中删', async () => {
+  await reset();
+  const a = await svc.addTask({ cwd: dirA, text: 'A' });
+  const b = await svc.addTask({ cwd: dirB, text: 'B' });
+
+  // 缺条件
+  await assert.rejects(() => svc.removeTopics({}), /--keys/);
+
+  // keys 批量删两个
+  let r = await svc.removeTopics({ keys: [a.key, b.key] });
+  assert.equal(r.count, 2);
+  assert.equal((await svc.listTasks()).topics.length, 0);
+
+  // cwds：A 可删，B 等待中 → 跳过
+  await svc.addTask({ cwd: dirA, text: 'A2' });
+  const p = svc.waitForTask({
+    cwd: dirB, summary: 'w', timeoutSec: 5, open: false,
+    onReady: () => {},
+  });
+  await new Promise((x) => setTimeout(x, 60));
+  r = await svc.removeTopics({ cwds: [dirA, dirB] });
+  assert.equal(r.count, 1);
+  assert.equal(r.skipped.length, 1);
+  assert.equal(r.skipped[0].reason, 'waiting');
+
+  // all + force：删掉等待中的 B
+  r = await svc.removeTopics({ all: true, force: true });
+  assert.equal(r.count, 1);
+  await p;
+  assert.equal((await svc.listTasks()).topics.length, 0);
+});

@@ -2,6 +2,22 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.7.0] - 2026-10-09
+
+### Added
+
+- **支持删除整个主题与批量删除**：
+  - 「实时任务」页主题卡片右下角新增「删除主题」，一次删除该主题及其全部任务；
+  - 卡片左上角可勾选（总览标题处支持「全选」），顶部「批量删除 (N)」一键删除多个主题。
+  - 新增 CLI/HTTP：
+    - `nx-kv sessiontask topic remove --cwd "<目录>"`（或 `--key`）/ `DELETE /api/sessiontasks/topic`；
+    - `nx-kv sessiontask topic remove-many --keys "<k,k>"`（也可 `--cwds` 或 `--all`）
+      / `POST /api/sessiontasks/topics/remove`。
+  - 安全保护：等待中的主题默认不删（避免阻塞的 agent 干等到超时），界面二次确认、
+    命令加 `--force` 才连等待中一起删；批量返回 `{count,removed,skipped}`，skipped
+    列出被跳过的「等待中 / 不存在」主题。
+- 新增删除/批量删除单测与冒烟断言。
+
 ## [0.6.0] - 2026-10-08
 
 ### Added

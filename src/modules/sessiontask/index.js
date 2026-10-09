@@ -60,6 +60,21 @@ function renderWait(r) {
   );
 }
 
+// 批量删除的人读输出：删除清单 + 跳过清单（等待中/不存在）
+function renderRemoveMany(d) {
+  const lines = [d.all ? `清空：删除 ${d.count} 个主题` : `已删除 ${d.count} 个主题`];
+  for (const r of d.removed) lines.push(`  - ${r.name}${r.cwd ? `  ${r.cwd}` : ''}`);
+  if (d.skipped.length) {
+    lines.push(`跳过 ${d.skipped.length} 个：`);
+    for (const s of d.skipped) {
+      const why = s.reason === 'waiting' ? '等待中' : '不存在';
+      lines.push(`  - [${why}] ${s.name || s.key}`);
+    }
+  }
+  if (!d.removed.length && !d.skipped.length) lines.push('（没有匹配的主题）');
+  return lines.join('\n');
+}
+
 export default {
   id: 'sessiontask',
   title: '实时任务（= Web「实时任务」页）',
@@ -119,6 +134,37 @@ export default {
       flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD },
       run: (ctx) => service.removeTask({ id: ctx.id, cwd: ctx.cwd }),
       render: (d) => `已删除主题「${d.name}」#${d.removed.id}: ${d.removed.text}`,
+    },
+
+    // ─── 主题删除（单个 / 批量）──────────────────────────────
+    {
+      id: 'sessiontask.topic.remove',
+      cli: ['sessiontask', 'topic', 'remove'],
+      http: ['DELETE', '/api/sessiontasks/topic'],
+      summary: '删除整个主题（含全部任务；按 --cwd 或 --key，等待中需 --force）',
+      flags: {
+        cwd: { type: 'string', hint: '工作目录（与 --key 二选一）' },
+        key: { type: 'string', hint: '主题 key（与 --cwd 二选一）' },
+        force: { type: 'boolean', hint: '连等待中的主题也删（agent 将超时收尾）' },
+      },
+      run: (ctx) => service.removeTopic({ cwd: ctx.cwd, key: ctx.key, force: ctx.force }),
+      render: (d) =>
+        `已删除主题「${d.name}」（待领取/共 ${d.topic.pending}/${d.topic.total} 条任务一并删除）`,
+    },
+    {
+      id: 'sessiontask.topic.removeMany',
+      cli: ['sessiontask', 'topic', 'remove-many'],
+      http: ['POST', '/api/sessiontasks/topics/remove'],
+      summary: '批量删除主题（--keys/--cwds 逗号分隔，或 --all；等待中默认跳过，--force 连等待中删）',
+      flags: {
+        keys: { type: 'array', hint: '主题 key，逗号分隔' },
+        cwds: { type: 'array', hint: '工作目录，逗号分隔' },
+        all: { type: 'boolean', hint: '清空全部主题（等待中仍跳过，除非 --force）' },
+        force: { type: 'boolean', hint: '连等待中的主题一起删' },
+      },
+      run: (ctx) =>
+        service.removeTopics({ keys: ctx.keys, cwds: ctx.cwds, all: ctx.all, force: ctx.force }),
+      render: renderRemoveMany,
     },
 
     {

@@ -274,6 +274,18 @@ async function setWaiting(key, cwd, summary, waiting, deadline) {
   await saveStore(store);
 }
 
+// wait 结束复位：**仅当主题仍存在**时清等待态，绝不重建——主题可能已被 force 删除，
+// 重建会让「删除主题」失效（曾在超时清理路径上把删掉的主题又建回来）。
+async function clearWaiting(key) {
+  const store = await loadStore();
+  const t = store.topics[key];
+  if (!t) return;
+  t.waiting = false;
+  t.waitingUntil = '';
+  t.updatedAt = stampNow();
+  await saveStore(store);
+}
+
 // ─── CRUD ───────────────────────────────────────────────────────────
 
 function settingsView(s) {
@@ -430,6 +442,76 @@ export async function removeTask({ cwd: rawCwd, id } = {}) {
   return { status: 'ok', key, cwd, name: t.name, removed: normalizeTask(removed) };
 }
 
+// ─── 主题删除（单个 / 批量） ───────────────────────────────────────
+
+// 定位主题 key：显式 --key 优先，否则按工作目录（目录名）推导
+function resolveTopicKey({ key: rawKey, cwd: rawCwd }) {
+  if (rawKey && String(rawKey).trim()) return String(rawKey).trim();
+  return normalizeCwd(rawCwd).key;
+}
+
+// 删除整个主题（连同其全部任务）。默认拒绝删除「等待中」主题——那会让正阻塞的
+// agent 只能等到超时；force=true 才强删（agent 随后超时收尾）。
+export async function removeTopic({ cwd: rawCwd, key: rawKey, force = false } = {}) {
+  if (!rawKey && !rawCwd) {
+    throw badInput('需要 --cwd "<工作目录>" 或 --key "<主题key>"');
+  }
+  const key = resolveTopicKey({ key: rawKey, cwd: rawCwd });
+  const store = await loadStore();
+  const t = store.topics[key];
+  if (!t) {
+    const { notFound } = await import('../../core/errors.js');
+    throw notFound(`主题不存在（key ${key}）`);
+  }
+  if (t.waiting && !force) {
+    throw badInput('主题正在等待中，不能删除（确认要删请加 --force，agent 将超时收尾）');
+  }
+  const view = topicView(t);
+  delete store.topics[key];
+  await saveStore(store);
+  return { status: 'removed', key, name: t.name, cwd: t.cwd, topic: view };
+}
+
+// 批量删除主题：keys / cwds（数组，可并用），或 all=true 清空全部。
+// 默认把「等待中」「不存在」计入 skipped 而不删；force=true 连等待中一起删。
+export async function removeTopics({ keys, cwds, all = false, force = false } = {}) {
+  const hasList = (a) => Array.isArray(a) && a.some((x) => String(x).trim());
+  if (!all && !hasList(keys) && !hasList(cwds)) {
+    throw badInput('需要 --keys "<key,key>" 或 --cwds "<目录,目录>"，或 --all');
+  }
+
+  const store = await loadStore();
+  let targets;
+  if (all) {
+    targets = Object.keys(store.topics);
+  } else {
+    const list = [];
+    if (Array.isArray(keys)) list.push(...keys.map((x) => String(x).trim()).filter(Boolean));
+    if (Array.isArray(cwds)) {
+      for (const c of cwds) if (String(c).trim()) list.push(normalizeCwd(c).key);
+    }
+    targets = [...new Set(list)];
+  }
+
+  const removed = [];
+  const skipped = [];
+  for (const key of targets) {
+    const t = store.topics[key];
+    if (!t) {
+      skipped.push({ key, reason: 'not_found' });
+      continue;
+    }
+    if (t.waiting && !force) {
+      skipped.push({ key, name: t.name, cwd: t.cwd, reason: 'waiting' });
+      continue;
+    }
+    removed.push({ key, name: t.name, cwd: t.cwd });
+    delete store.topics[key];
+  }
+  if (removed.length) await saveStore(store);
+  return { status: 'ok', all: !!all, count: removed.length, removed, skipped };
+}
+
 // 调整**待领取**任务的优先级：把 #id 移动到 #beforeId 之前或 #afterId 之后。
 // 领取顺序 = tasks 数组里 pending 子序列的先后（consumeFirstPending 取第一条 pending），
 // 故只在 pending 之间换位；已领取（历史）任务固定、不可移动。
@@ -562,7 +644,7 @@ export async function waitForTask({
     clearInterval(poll);
     clearTimeout(timer);
     waiters.delete(key);
-    await setWaiting(key, cwd, '', false);
+    await clearWaiting(key);
     await stopServer(server);
   }
   return result;

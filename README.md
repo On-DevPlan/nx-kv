@@ -81,8 +81,9 @@ nx-kv sessiontask wait --summary "<当前现状总结>" --json
 新等待点。弹窗/面板顶部直接显示现状，用户不读对话也能快速了解、点选等待点
 **分别回填（分散答复）**，也可提前排队；等待点非空时 wait 立即取走、不开窗。
 纯本机协调、存本地文件，**不需登录后端**。其余命令：
-`sessiontask list / add / get / update / remove`（均按 `--summary` 定位），
-面板上对应「实时任务」页。
+`sessiontask list / add / get / update / remove`，以及主题级
+`sessiontask topic remove`（删整个主题）与 `sessiontask topic remove-many`
+（批量删除，`--keys/--cwds/--all`；等待中需 `--force`），面板上对应「实时任务」页。
 
 配套 skill：
 

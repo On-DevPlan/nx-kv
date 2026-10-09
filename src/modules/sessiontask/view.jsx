@@ -41,6 +41,10 @@ export default function SessionTaskView() {
   const [over, setOver] = useState(null); // { id, pos:'top'|'bottom' }
   const [reordering, setReordering] = useState(false);
 
+  // 主题勾选（批量删除）
+  const [selected, setSelected] = useState(() => new Set());
+  const [deleting, setDeleting] = useState(false);
+
   const load = useCallback(async () => {
     try {
       setOverview(await api('/api/sessiontasks'));
@@ -106,7 +110,26 @@ export default function SessionTaskView() {
     setActiveKey(w.key);
   }, [topics, activeKey]);
 
+  // 主题被删除后，从勾选集合里剔除失效 key
+  useEffect(() => {
+    setSelected((s) => {
+      const valid = new Set([...s].filter((k) => topics.some((t) => t.key === k)));
+      return valid.size === s.size ? s : valid;
+    });
+  }, [topics]);
+
   const active = topics.find((t) => t.key === activeKey) || null;
+
+  const toggleSelect = (key) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+  const allSelected = topics.length > 0 && selected.size === topics.length;
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(topics.map((t) => t.key)));
 
   const submit = () =>
     guard(async () => {
@@ -141,6 +164,56 @@ export default function SessionTaskView() {
       });
       toast('已删除');
       await load();
+    });
+
+  // 删除整个主题（卡片上的「删除主题」）；等待中需二次确认并 force
+  const deleteTopic = (t) =>
+    guard(async () => {
+      const msg = t.waiting
+        ? `主题「${t.name}」正在等待中，删除后其 agent 将超时收尾，确认删除？`
+        : `删除主题「${t.name}」及其全部 ${t.total} 条任务？`;
+      if (!window.confirm(msg)) return;
+      setDeleting(true);
+      try {
+        await api('/api/sessiontasks/topic', {
+          method: 'DELETE',
+          body: t.waiting ? { key: t.key, force: true } : { key: t.key },
+        });
+        setSelected((s) => {
+          const n = new Set(s);
+          n.delete(t.key);
+          return n;
+        });
+        toast('已删除主题');
+        await load();
+      } finally {
+        setDeleting(false);
+      }
+    });
+
+  // 批量删除勾选主题；含等待中时 force 并提示
+  const batchDelete = () =>
+    guard(async () => {
+      if (!selected.size) return;
+      const sel = topics.filter((t) => selected.has(t.key));
+      const waitingCount = sel.filter((t) => t.waiting).length;
+      let msg = `确认删除选中的 ${sel.length} 个主题？`;
+      if (waitingCount) msg += `（其中 ${waitingCount} 个等待中，删除后其 agent 将超时收尾）`;
+      if (!window.confirm(msg)) return;
+      setDeleting(true);
+      try {
+        const r = await api('/api/sessiontasks/topics/remove', {
+          method: 'POST',
+          body: { keys: [...selected], force: waitingCount > 0 },
+        });
+        toast(
+          `已删除 ${r.count} 个主题` + (r.skipped.length ? `，跳过 ${r.skipped.length} 个` : '')
+        );
+        setSelected(new Set());
+        await load();
+      } finally {
+        setDeleting(false);
+      }
     });
 
   const startEdit = (t) => {
@@ -256,17 +329,34 @@ export default function SessionTaskView() {
       </div>
 
       <div className="colhead">
+        <input
+          type="checkbox"
+          checked={allSelected}
+          onChange={toggleAll}
+          disabled={!topics.length}
+          title="全选 / 取消全选"
+          style={{ margin: 0 }}
+        />
         <h3>主题总览（按工作目录）</h3>
         <span className="muted">{overview ? `${topics.length} 个 · 等待中 ${overview.waiting}` : ''}</span>
-        <button
-          className="btn small ghost"
-          onClick={prune}
-          disabled={pruning}
-          style={{ marginLeft: 'auto' }}
-          title="清理旧模型无目录主题与空主题（等待中一律保留）"
-        >
-          {pruning ? '清理中…' : '清理旧数据'}
-        </button>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button
+            className="btn small ghost"
+            onClick={batchDelete}
+            disabled={!selected.size || deleting}
+            title="删除勾选的主题（含其全部任务）"
+          >
+            {deleting ? '删除中…' : `批量删除${selected.size ? ` (${selected.size})` : ''}`}
+          </button>
+          <button
+            className="btn small ghost"
+            onClick={prune}
+            disabled={pruning}
+            title="清理旧模型无目录主题与空主题（等待中一律保留）"
+          >
+            {pruning ? '清理中…' : '清理旧数据'}
+          </button>
+        </span>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -274,7 +364,7 @@ export default function SessionTaskView() {
           topics.map((t) => {
             const isActive = t.key === activeKey;
             return (
-              <button
+              <div
                 key={t.key}
                 onClick={() => setActiveKey(t.key)}
                 className="card"
@@ -283,21 +373,31 @@ export default function SessionTaskView() {
                   width: 270,
                   padding: '10px 12px',
                   cursor: 'pointer',
-                  font: 'inherit',
-                  color: 'inherit',
                   border: isActive ? '1px solid var(--ink,#14161a)' : '1px solid transparent',
                   boxShadow: isActive
                     ? '0 0 0 2px rgba(20,22,26,.12)'
                     : '0 1px 2px rgba(20,22,26,.06), 0 6px 16px rgba(20,22,26,.05)',
                 }}
               >
-                <div style={{ fontWeight: 700, marginBottom: 2 }}>{t.name || '（未命名）'}</div>
-                <div
-                  className="mono muted"
-                  title={t.cwd}
-                  style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 6, minHeight: 15 }}
-                >
-                  {t.cwd || '（旧数据，无目录）'}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(t.key)}
+                    onChange={() => toggleSelect(t.key)}
+                    onClick={(e) => e.stopPropagation()}
+                    title="选择以批量删除"
+                    style={{ margin: '3px 0 0' }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 2 }}>{t.name || '（未命名）'}</div>
+                    <div
+                      className="mono muted"
+                      title={t.cwd}
+                      style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 6, minHeight: 15 }}
+                    >
+                      {t.cwd || '（旧数据，无目录）'}
+                    </div>
+                  </div>
                 </div>
                 {t.summary && (
                   <div className="muted" style={{ fontSize: 11, whiteSpace: 'pre-wrap', marginBottom: 6 }}>
@@ -314,7 +414,20 @@ export default function SessionTaskView() {
                     待领取 {t.pending}/{t.total}
                   </span>
                 </div>
-              </button>
+                <div
+                  style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    className="btn small ghost"
+                    onClick={() => deleteTopic(t)}
+                    disabled={deleting}
+                    title="删除整个主题（含全部任务）"
+                  >
+                    删除主题
+                  </button>
+                </div>
+              </div>
             );
           })
         ) : (

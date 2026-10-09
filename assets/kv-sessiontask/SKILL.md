@@ -77,8 +77,14 @@ nx-kv sessiontask list                                   # 等待点总览
 nx-kv sessiontask add  "<回填内容>" --summary "<现状>"    # 针对现状排队/投递
 nx-kv sessiontask get   --id <n> --summary "<现状>"       # 查看单条
 nx-kv sessiontask update --id <n> --text "<新内容>" --summary "<现状>"
-nx-kv sessiontask remove --id <n> --summary "<现状>"      # 删除
+nx-kv sessiontask remove --id <n> --summary "<现状>"      # 删除单条任务
+nx-kv sessiontask topic remove --cwd "<工作目录>"          # 删除整个主题（等待中需 --force）
+nx-kv sessiontask topic remove-many --keys "<key,key>"     # 批量删除主题（或 --cwds "<dir,dir>"，或 --all）
 ```
+
+> 删除主题：面板「主题总览」每张卡有「删除主题」，顶部勾选后可「批量删除」。
+> 等待中的主题默认不删（避免让阻塞的 agent 干等），确认要删会二次提示并以
+> `--force` 强删、agent 随后超时收尾。
 
 常驻面板（`nx-kv serve`）的「实时任务」页就是等待点总览，可直接点选回填；
 wait 同样能取走（跨进程由轮询兜底）。

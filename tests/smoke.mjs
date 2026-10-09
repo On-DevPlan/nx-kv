@@ -326,6 +326,17 @@ try {
   const stCfg = await cliJson(['sessiontask', 'config', '--timeout', '300']);
   check('sessiontask config 设置超时（推荐 180、最大 600）', stCfg.timeoutSec === 300 && stCfg.maxSec === 600, JSON.stringify(stCfg));
 
+  // 删除主题 / 批量删除
+  const delA = await cliJson(['sessiontask', 'add', '待删 A', '--cwd', topicA]);
+  const delB = await cliJson(['sessiontask', 'add', '待删 B', '--cwd', topicB]);
+  check('单删主题 topic remove（按 key）', (await cli(['sessiontask', 'topic', 'remove', '--key', delA.key])).status === 0);
+  check('单删缺定位报错', (await cli(['sessiontask', 'topic', 'remove'])).status === 1);
+  check('总览剩 1 个（B）', (await cliJson(['sessiontask', 'list'])).topics.length === 1);
+  const batch = await cliJson(['sessiontask', 'topic', 'remove-many', '--keys', delB.key]);
+  check('批量删除主题 remove-many', batch.count === 1, JSON.stringify(batch));
+  check('remove-many 缺条件报错', (await cli(['sessiontask', 'topic', 'remove-many'])).status === 1);
+  check('总览清空', (await cliJson(['sessiontask', 'list'])).topics.length === 0);
+
   // ─── 12. Web API 与静态页 ────────────────────────────────────
   const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'runtime', 'server.js')).href);
   const server = await startServer({ port: 0 });

@@ -66,29 +66,34 @@ nx-kv group members 24                        # 成员
 完整命令表由 action 声明自动生成：`nx-kv help`。
 命令与 HTTP 端点互相可查：`nx-kv routes`，反查用 `nx-kv routes --http "POST /api/todo"`。
 
-## 实时任务输入（对话内连续提交）
+## 本地任务（localtask，不需登录）
 
-在一个对话里，agent 完成当前任务、提交结果、需要下一条输入时，可调用**阻塞式**
-命令等用户在浏览器回填，替代在原始输入框打字：
+本机任务队列，按**工作目录**划分（目录名即主题）：提交（`add`）、领取（`wait`）、
+队列管理（`list / get / update / remove / reorder`）与主题管理（`topic remove /
+remove-many`）。阻塞等待弹窗只是 `wait` 当前的一个子功能。三个 skill 角色共用
+同一条队列、一套存储：
 
 ```bash
-# 本轮【最后一步】：阻塞并自动打开浏览器弹窗（工具调用超时需设为 120000ms）
-nx-kv sessiontask wait --summary "<当前现状总结>" --json
-# 成功 → {status:"ok", task:{text,...}}；120 秒未回填 → {status:"timeout"}（exit 0）
+# 等待侧：agent 本轮【最后一步】阻塞等浏览器回填（工具调用超时设 300000ms）
+nx-kv localtask wait --summary "<当前现状总结>" --json
+# 队列非空 → 立即取走（queued:true）；空 → 开窗阻塞，默认 180 秒未回填 → {status:"timeout"}（exit 0）
+
+# 提交侧：把提炼好的任务投进目标目录的队列，委托在那边工作的 agent
+nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --json
 ```
 
-**现状总结即等待点 key**：同现状用同一句总结复用同一等待点，新现状换新句分散为
-新等待点。弹窗/面板顶部直接显示现状，用户不读对话也能快速了解、点选等待点
-**分别回填（分散答复）**，也可提前排队；等待点非空时 wait 立即取走、不开窗。
-纯本机协调、存本地文件，**不需登录后端**。其余命令：
-`sessiontask list / add / get / update / remove`，以及主题级
-`sessiontask topic remove`（删整个主题）与 `sessiontask topic remove-many`
-（批量删除，`--keys/--cwds/--all`；等待中需 `--force`），面板上对应「实时任务」页。
+现状总结只作展示（弹窗/面板顶部），不参与队列分桶；任务按各目录队列的先后
+领取。其余命令：`localtask list / get / update / remove / reorder`，以及主题级
+`localtask topic remove`（删整个主题）与 `localtask topic remove-many`
+（批量删除，`--keys/--cwds/--all`；等待中需 `--force`），面板上对应「本地任务」页。
+纯本机协调、存本地文件（`~/.nx-kv/localtasks.json`），**不需登录后端**。
 
-配套 skill：
+配套 skill（三件套各管一角；远程清单仍归 nx-kv 主 skill）：
 
 ```bash
-nx-kv skill install kv-sessiontask     # 教 agent 在最后一步阻塞等用户喂任务
+nx-kv skill install kv-waittask   # 等待侧：agent 最后一步阻塞等用户喂任务
+nx-kv skill install kv-submit     # 提交侧：总结上下文、提炼需求，委托别的 agent
+nx-kv skill install kv-localget   # 领取侧：主动领取排给本目录的任务
 ```
 
 ## ⚠️ 定位一律按内容，不按 id
@@ -152,11 +157,13 @@ nx-kv todo get --ref "旧记录" --topic fr   # 或按主题收窄
 
 ```
 src/core/          零业务语义：kvapi(后端客户端) / config(本机配置) / errors / fstree
-src/modules/       功能域：system / auth / group / sessiontask / todo / bundled
+src/modules/       功能域：system / auth / group / localtask / todo / bundled
 src/runtime/       装配层：registry / spec / cli / api / server
 src/web/frontend/  React 壳
-assets/nx-kv/            内置 skill：KV 清单操作手册
-assets/kv-sessiontask/   内置 skill：对话内实时任务接力
+assets/nx-kv/            内置 skill：KV 清单操作手册（远程）
+assets/kv-waittask/         内置 skill：对话内本地任务接力（等待侧）
+assets/kv-submit/        内置 skill：需求提炼与委托提交（提交侧）
+assets/kv-localget/         内置 skill：领取本目录本地任务（领取侧）
 ```
 
 分层由 `eslint.config.js` 的 `no-restricted-imports` 强制；
@@ -165,8 +172,10 @@ assets/kv-sessiontask/   内置 skill：对话内实时任务接力
 ## 给 agent 用
 
 ```bash
-nx-kv skill install      # 装到 ~/.claude/skills/nx-kv（KV 清单操作手册）
-nx-kv skill install kv-sessiontask   # 实时任务接力：最后一步阻塞等用户喂任务
+nx-kv skill install      # 装到 ~/.claude/skills/nx-kv（KV 清单操作手册，远程）
+nx-kv skill install kv-waittask      # 本地任务接力：最后一步阻塞等用户喂任务
+nx-kv skill install kv-submit     # 提交侧：总结上下文、提炼需求，委托别的 agent
+nx-kv skill install kv-localget      # 领取侧：主动领取排给本目录的任务
 nx-kv skill list         # 列出可装 skill、默认安装项与可装 group
 nx-kv skill groups       # 列出 group → 包含哪些 skill
 nx-kv skill install --group=<key>    # 一键装整组（与 <name> 二选一）
@@ -174,7 +183,8 @@ nx-kv skill get [name] [ref]         # 输出 skill 全文，外部 agent 一键
 ```
 
 装好后 agent 就能按 skill 里的 SOP 领任务、读主题上下文、完成后回填结果；
-或在一个对话里靠 `sessiontask wait` 阻塞弹窗、连续接收用户任务。
+或在一个对话里靠 `localtask wait` 阻塞弹窗、连续接收用户任务，
+把需求提炼成任务 `add` 到别的目录委托其它 agent，或主动领取排给本目录的任务。
 
 ## License
 

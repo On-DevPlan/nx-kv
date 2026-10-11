@@ -1,8 +1,8 @@
-// 实时任务输入 service —— 按「工作目录（cwd）」划分的主题（topic）+ 主题任务队列 +
-// 阻塞等待 + 内嵌弹窗。
+// 本地任务（localtask）service —— 按「工作目录（cwd）」划分的主题（topic）+ 主题任务队列 +
+// 领取（含阻塞等待子功能）+ 内嵌弹窗。
 //
 // 解决的问题：agent 在一个对话里需要用户继续给任务时，不必结束本轮、等用户去
-// 原始输入框打字，而是把 `nx-kv sessiontask wait --cwd "<工作目录>" --summary "<当前现状>"`
+// 原始输入框打字，而是把 `nx-kv localtask wait --cwd "<工作目录>" --summary "<当前现状>"`
 // 当作 **本轮最后一个动作**调用——命令阻塞、自动打开浏览器弹窗；用户在弹窗/面板回填，
 // 命令解除阻塞、把新任务作为结果返回给 agent，agent 接着干。
 //
@@ -16,7 +16,7 @@
 //      http 服务器直出，未登录也能用。
 //   4. **排队语义。** 用户可提前回填：主题已有 pending 时 wait 立即取走、不开窗；
 //      没有 pending 才开窗阻塞。
-//   5. **超时是业务结果不是错误。** 默认阻塞 2 分钟；超时返回 {status:'timeout'}、
+//   5. **超时是业务结果不是错误。** 默认阻塞 3 分钟（页面可调，上限 10 分钟）；超时返回 {status:'timeout'}、
 //      exit 0，agent 据此安静收尾结束本轮，绝不抛异常。
 //
 // 跨进程：弹窗与 wait 同进程时靠内存 waiter 即时唤醒；任务由别的进程写入（如常驻
@@ -37,10 +37,21 @@ export const MAX_TIMEOUT_SEC = 600; // 阻塞时长上限（10 分钟）
 export const MAX_SUMMARY = 2000; // 现状（状态）长度上限（原 200，已放宽）
 export const MAX_TEXT = 20_000; // 单条任务内容长度上限
 
-// ─── 存储位置：可环境变量覆盖（测试隔离） ───────────────────────────
+// ─── 存储位置：可环境变量覆盖（测试隔离）；旧名/旧文件自动兼容 ──────────
 
 export function storePath() {
-  return process.env.NX_KV_SESSIONTASK_STORE || join(APP_DIR, 'sessiontasks.json');
+  return (
+    process.env.NX_KV_LOCALTASK_STORE ||
+    process.env.NX_KV_SESSIONTASK_STORE || // 改名前的环境变量，兼容既有脚本
+    join(APP_DIR, 'localtasks.json')
+  );
+}
+
+// 改名前的存储文件。显式覆盖（任一环境变量）时不迁移；新文件缺失时读它，
+// 首次保存即落到新文件（旧文件保留不删，数据零丢失）。
+function legacyStorePath() {
+  if (process.env.NX_KV_LOCALTASK_STORE || process.env.NX_KV_SESSIONTASK_STORE) return null;
+  return join(APP_DIR, 'sessiontasks.json');
 }
 
 // ─── 工作目录 → 主题 ───────────────────────────────────────────────
@@ -141,7 +152,15 @@ async function loadStore() {
   let topics = null;
   let settings = null;
   try {
-    const raw = await fsp.readFile(storePath(), 'utf8');
+    let raw;
+    try {
+      raw = await fsp.readFile(storePath(), 'utf8');
+    } catch (err) {
+      // 新文件不存在 → 尝试改名前的旧文件（一次性迁移读取；再缺失才落到空 store）
+      const legacy = err && err.code === 'ENOENT' ? legacyStorePath() : null;
+      if (!legacy) throw err;
+      raw = await fsp.readFile(legacy, 'utf8');
+    }
     const data = JSON.parse(raw);
     if (data && typeof data === 'object') {
       if (data.topics && typeof data.topics === 'object') {
@@ -703,12 +722,12 @@ async function handlePopup(req, res, key, cwd, summary, timeoutMs) {
       return;
     }
 
-    if (url.pathname === '/api/sessiontasks' && method === 'GET') {
+    if (url.pathname === '/api/localtasks' && method === 'GET') {
       sendJson(res, 200, { ok: true, data: await listTasks() });
       return;
     }
 
-    if (url.pathname === '/api/sessiontasks' && method === 'POST') {
+    if (url.pathname === '/api/localtasks' && method === 'POST') {
       if (!originAllowed(req)) {
         sendJson(res, 403, { ok: false, error: '跨站请求被拒绝（弹窗仅接受本机来源）', code: 'BLOCKED' });
         return;
@@ -718,7 +737,7 @@ async function handlePopup(req, res, key, cwd, summary, timeoutMs) {
       return;
     }
 
-    if (url.pathname === '/api/sessiontasks/item' && method === 'DELETE') {
+    if (url.pathname === '/api/localtasks/item' && method === 'DELETE') {
       if (!originAllowed(req)) {
         sendJson(res, 403, { ok: false, error: '跨站请求被拒绝（弹窗仅接受本机来源）', code: 'BLOCKED' });
       } else {

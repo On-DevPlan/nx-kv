@@ -273,69 +273,69 @@ try {
   check('routes --module todo', (await cliJson(['routes', '--module', 'todo'])).length > 5);
   check('routes --http 反查', (await cli(['routes', '--http', 'POST /api/todo'])).stdout.includes('todo add'));
 
-  // ─── 11b. 实时任务输入 sessiontask（工作目录为主题、主题拥有队列，本机不依赖后端）─
-  process.env.NX_KV_SESSIONTASK_STORE = join(tmp, 'sessiontasks.json');
+  // ─── 11b. 实时任务输入 localtask（工作目录为主题、主题拥有队列，本机不依赖后端）─
+  process.env.NX_KV_LOCALTASK_STORE = join(tmp, 'localtasks.json');
   const topicA = join(tmp, 'projA');
   const topicB = join(tmp, 'projB');
   mkdirSync(topicA, { recursive: true });
   mkdirSync(topicB, { recursive: true });
 
-  const emptyOv = await cliJson(['sessiontask', 'list']);
+  const emptyOv = await cliJson(['localtask', 'list']);
   check(
-    'sessiontask 初始总览为空',
+    'localtask 初始总览为空',
     emptyOv.waiting === 0 && Array.isArray(emptyOv.topics) && emptyOv.topics.length === 0,
     JSON.stringify(emptyOv)
   );
 
   const sumA = '已完成登录，等待选择工作空间';
-  const addedA = await cliJson(['sessiontask', 'add', '选择工作空间 A', '--cwd', topicA, '--summary', sumA]);
-  check('sessiontask add 排队（含 key）', addedA.queued === true && addedA.task.id === 1 && !!addedA.key, JSON.stringify(addedA));
-  check('总览 1 个主题、待领取 1', (await cliJson(['sessiontask', 'list'])).topics[0].pending === 1);
+  const addedA = await cliJson(['localtask', 'add', '选择工作空间 A', '--cwd', topicA, '--summary', sumA]);
+  check('localtask add 排队（含 key）', addedA.queued === true && addedA.task.id === 1 && !!addedA.key, JSON.stringify(addedA));
+  check('总览 1 个主题、待领取 1', (await cliJson(['localtask', 'list'])).topics[0].pending === 1);
 
-  const waitA = await cliJson(['sessiontask', 'wait', '--cwd', topicA, '--summary', sumA]);
+  const waitA = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', sumA]);
   check(
-    'sessiontask wait 立即取走排队任务',
+    'localtask wait 立即取走排队任务',
     waitA.status === 'ok' && waitA.queued === true && waitA.task.text === '选择工作空间 A' && waitA.summary === sumA,
     JSON.stringify(waitA)
   );
 
   // 不同目录 → 不同主题、空队列超时
   const sumB = '已选好工作空间，等待下一步指令';
-  const waitTimeout = await cliJson(['sessiontask', 'wait', '--cwd', topicB, '--summary', sumB, '--timeout', '1', '--no-open']);
+  const waitTimeout = await cliJson(['localtask', 'wait', '--cwd', topicB, '--summary', sumB, '--timeout', '1', '--no-open']);
   check(
     '不同主题另起队列、空队列超时 → timeout',
     waitTimeout.status === 'timeout' && waitTimeout.summary === sumB,
     JSON.stringify(waitTimeout)
   );
 
-  const ov = await cliJson(['sessiontask', 'list']);
+  const ov = await cliJson(['localtask', 'list']);
   check('总览 2 个主题（目录分散）、无等待中', ov.topics.length === 2 && ov.waiting === 0, JSON.stringify(ov.topics.map((t) => t.name)));
 
   // 同主题不同现状复用队列：再回填，id 接续为 2，wait（换现状措辞）取走
-  const addedA2 = await cliJson(['sessiontask', 'add', '再给 A 的任务', '--cwd', topicA]);
+  const addedA2 = await cliJson(['localtask', 'add', '再给 A 的任务', '--cwd', topicA]);
   check('同主题复用：新任务 id=2', addedA2.task.id === 2, JSON.stringify(addedA2));
-  const waitA2 = await cliJson(['sessiontask', 'wait', '--cwd', topicA, '--summary', '新的现状措辞']);
+  const waitA2 = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', '新的现状措辞']);
   check('wait 取走同主题新回填（跨现状）', waitA2.task.text === '再给 A 的任务' && waitA2.summary === '新的现状措辞', JSON.stringify(waitA2));
 
-  check('sessiontask get 缺 id 报错', (await cli(['sessiontask', 'get', '--cwd', topicA])).status === 1);
+  check('localtask get 缺 id 报错', (await cli(['localtask', 'get', '--cwd', topicA])).status === 1);
   check(
-    'sessiontask remove 按主题+id 删除',
-    (await cli(['sessiontask', 'remove', '--id', String(addedA2.task.id), '--cwd', topicA])).status === 0
+    'localtask remove 按主题+id 删除',
+    (await cli(['localtask', 'remove', '--id', String(addedA2.task.id), '--cwd', topicA])).status === 0
   );
 
-  const stCfg = await cliJson(['sessiontask', 'config', '--timeout', '300']);
-  check('sessiontask config 设置超时（推荐 180、最大 600）', stCfg.timeoutSec === 300 && stCfg.maxSec === 600, JSON.stringify(stCfg));
+  const stCfg = await cliJson(['localtask', 'config', '--timeout', '300']);
+  check('localtask config 设置超时（推荐 180、最大 600）', stCfg.timeoutSec === 300 && stCfg.maxSec === 600, JSON.stringify(stCfg));
 
   // 删除主题 / 批量删除
-  const delA = await cliJson(['sessiontask', 'add', '待删 A', '--cwd', topicA]);
-  const delB = await cliJson(['sessiontask', 'add', '待删 B', '--cwd', topicB]);
-  check('单删主题 topic remove（按 key）', (await cli(['sessiontask', 'topic', 'remove', '--key', delA.key])).status === 0);
-  check('单删缺定位报错', (await cli(['sessiontask', 'topic', 'remove'])).status === 1);
-  check('总览剩 1 个（B）', (await cliJson(['sessiontask', 'list'])).topics.length === 1);
-  const batch = await cliJson(['sessiontask', 'topic', 'remove-many', '--keys', delB.key]);
+  const delA = await cliJson(['localtask', 'add', '待删 A', '--cwd', topicA]);
+  const delB = await cliJson(['localtask', 'add', '待删 B', '--cwd', topicB]);
+  check('单删主题 topic remove（按 key）', (await cli(['localtask', 'topic', 'remove', '--key', delA.key])).status === 0);
+  check('单删缺定位报错', (await cli(['localtask', 'topic', 'remove'])).status === 1);
+  check('总览剩 1 个（B）', (await cliJson(['localtask', 'list'])).topics.length === 1);
+  const batch = await cliJson(['localtask', 'topic', 'remove-many', '--keys', delB.key]);
   check('批量删除主题 remove-many', batch.count === 1, JSON.stringify(batch));
-  check('remove-many 缺条件报错', (await cli(['sessiontask', 'topic', 'remove-many'])).status === 1);
-  check('总览清空', (await cliJson(['sessiontask', 'list'])).topics.length === 0);
+  check('remove-many 缺条件报错', (await cli(['localtask', 'topic', 'remove-many'])).status === 1);
+  check('总览清空', (await cliJson(['localtask', 'list'])).topics.length === 0);
 
   // ─── 12. Web API 与静态页 ────────────────────────────────────
   const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'runtime', 'server.js')).href);

@@ -4,7 +4,7 @@ export * as config from './core/config.js';
 export * as kvapi from './core/kvapi.js';
 export * as errors from './core/errors.js';
 export * as todo from './modules/todo/service.js';
-export * as sessiontask from './modules/sessiontask/service.js';
+export * as localtask from './modules/localtask/service.js';
 
 export { ACTIONS, MODULES } from './runtime/registry.js';
 export { startServer } from './runtime/server.js';

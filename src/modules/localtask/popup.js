@@ -12,7 +12,7 @@ export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>nx-kv · 实时任务</title>
+<title>nx-kv · 本地任务</title>
 <style>
   :root {
     --ink: #14161a;
@@ -109,7 +109,7 @@ export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="brand">nx-kv<span class="sub">实时任务输入</span></div>
+    <div class="brand">nx-kv<span class="sub">本地任务</span></div>
     <div class="meta"><span class="pill">回填后立即返回 agent</span></div>
   </div>
 
@@ -217,7 +217,7 @@ export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
 
   function refresh() {
     if (delivered) return;
-    fetch('/api/sessiontasks', { cache: 'no-store' })
+    fetch('/api/localtasks', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j.ok) return;
@@ -234,7 +234,7 @@ export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
     var input = el('input');
     var text = input.value.trim();
     if (!text) { input.focus(); return; }
-    fetch('/api/sessiontasks', {
+    fetch('/api/localtasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text: text })
@@ -266,7 +266,7 @@ export function renderPopupPage({ key, cwd, summary, timeoutMs }) {
   el('list').addEventListener('click', function (e) {
     var b = e.target;
     if (b && b.dataset && b.dataset.id) {
-      fetch('/api/sessiontasks/item', {
+      fetch('/api/localtasks/item', {
         method: 'DELETE',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ id: Number(b.dataset.id) })

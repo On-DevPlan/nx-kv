@@ -1,14 +1,16 @@
-// 实时任务输入模块：在一个对话里通过工具调用向 agent 实时回填任务，替代原始输入框。
+// 本地任务（localtask）模块：本机按「工作目录（cwd）」划分的任务队列——提交（add）、
+// 领取（wait）、查看/编辑/删除/调序（list/get/update/remove/reorder）与主题管理。
+// 阻塞等待只是当前的一个子功能：agent 在一个对话里需要用户继续给任务时，不必结束
+// 本轮、等用户去原始输入框打字，而是把
+// `localtask wait --cwd "<工作目录>" --summary "<当前现状>"` 作为本轮**最后一步**调用：
+// 命令阻塞、自动打开浏览器弹窗，用户回填后解除阻塞、把新任务作为结果返回，agent 接着干。
 //
-// 声明了 `resource: 'sessiontask'`，故 CRUD 五操作齐备且两端可调用
-// （tests/unit/registry.test.mjs 据此断言）。核心动作是纯 CLI 的
-// `sessiontask wait --cwd "<工作目录>" --summary "<当前现状>"`——agent 把它放在本轮
-// **最后一步**调用：阻塞、自动打开浏览器弹窗，用户回填后解除阻塞，把新任务返回给
-// agent。工作目录即主题、主题拥有任务队列：同目录共用队列、不同目录互不串，任务可
-// 在主题队列里堆积。
+// 声明了 `resource: 'localtask'`，故 CRUD 五操作齐备且两端可调用
+// （tests/unit/registry.test.mjs 据此断言）。工作目录即主题、主题拥有任务队列：
+// 同目录共用队列、不同目录互不串，任务可在主题队列里堆积。
 //
-// 与 todo 的区别：todo 管 KV 后端上的清单（需登录）；sessiontask 是**本机**
-// 实时人机接力，数据存本地文件，不依赖后端登录态。
+// 与 todo 的区别：todo 管 KV 后端上的清单（需登录）；localtask 是**本机**
+// 任务队列，数据存本地文件，不依赖后端登录态。
 import * as service from './service.js';
 
 const CWD = { type: 'string', hint: '工作目录（作为主题；默认当前目录）' };
@@ -76,37 +78,37 @@ function renderRemoveMany(d) {
 }
 
 export default {
-  id: 'sessiontask',
-  title: '实时任务（= Web「实时任务」页）',
+  id: 'localtask',
+  title: '本地任务（= Web「本地任务」页）',
   order: 20,
   view: () => import('./view.jsx'),
 
   // CRUD 资源声明：主题任务的增删查改齐备，CLI 与面板都能调用
-  resource: 'sessiontask',
+  resource: 'localtask',
 
   actions: [
     // ─── CRUD 五操作 ───────────────────────────────────────────
     {
-      id: 'sessiontask.list',
-      cli: ['sessiontask', 'list'],
-      http: ['GET', '/api/sessiontasks'],
+      id: 'localtask.list',
+      cli: ['localtask', 'list'],
+      http: ['GET', '/api/localtasks'],
       summary: '总览全部主题（工作目录、现状、是否等待中、待领取数）',
       run: () => service.listTasks(),
       render: renderOverview,
     },
     {
-      id: 'sessiontask.get',
-      cli: ['sessiontask', 'get'],
-      http: ['GET', '/api/sessiontasks/item'],
+      id: 'localtask.get',
+      cli: ['localtask', 'get'],
+      http: ['GET', '/api/localtasks/item'],
       summary: '查看单条任务（按 --id，定位到 --cwd 主题）',
       flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD },
       run: (ctx) => service.getTask({ id: ctx.id, cwd: ctx.cwd }),
       render: renderTask,
     },
     {
-      id: 'sessiontask.add',
-      cli: ['sessiontask', 'add'],
-      http: ['POST', '/api/sessiontasks'],
+      id: 'localtask.add',
+      cli: ['localtask', 'add'],
+      http: ['POST', '/api/localtasks'],
       summary: '向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）',
       args: ['text'],
       flags: { cwd: CWD, summary: { type: 'string', hint: '顺带刷新该主题的当前现状（可选）' } },
@@ -114,9 +116,9 @@ export default {
       render: renderAdd,
     },
     {
-      id: 'sessiontask.update',
-      cli: ['sessiontask', 'update'],
-      http: ['PATCH', '/api/sessiontasks/item'],
+      id: 'localtask.update',
+      cli: ['localtask', 'update'],
+      http: ['PATCH', '/api/localtasks/item'],
       summary: '编辑任务内容（按 --id，定位到 --cwd 主题）',
       flags: {
         id: { type: 'number', required: true, hint: '任务编号' },
@@ -127,9 +129,9 @@ export default {
       render: (d) => `已更新主题「${d.name}」#${d.task.id}: ${d.task.text}`,
     },
     {
-      id: 'sessiontask.remove',
-      cli: ['sessiontask', 'remove'],
-      http: ['DELETE', '/api/sessiontasks/item'],
+      id: 'localtask.remove',
+      cli: ['localtask', 'remove'],
+      http: ['DELETE', '/api/localtasks/item'],
       summary: '删除一条任务（按 --id，定位到 --cwd 主题）',
       flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD },
       run: (ctx) => service.removeTask({ id: ctx.id, cwd: ctx.cwd }),
@@ -138,9 +140,9 @@ export default {
 
     // ─── 主题删除（单个 / 批量）──────────────────────────────
     {
-      id: 'sessiontask.topic.remove',
-      cli: ['sessiontask', 'topic', 'remove'],
-      http: ['DELETE', '/api/sessiontasks/topic'],
+      id: 'localtask.topic.remove',
+      cli: ['localtask', 'topic', 'remove'],
+      http: ['DELETE', '/api/localtasks/topic'],
       summary: '删除整个主题（含全部任务；按 --cwd 或 --key，等待中需 --force）',
       flags: {
         cwd: { type: 'string', hint: '工作目录（与 --key 二选一）' },
@@ -152,9 +154,9 @@ export default {
         `已删除主题「${d.name}」（待领取/共 ${d.topic.pending}/${d.topic.total} 条任务一并删除）`,
     },
     {
-      id: 'sessiontask.topic.removeMany',
-      cli: ['sessiontask', 'topic', 'remove-many'],
-      http: ['POST', '/api/sessiontasks/topics/remove'],
+      id: 'localtask.topic.removeMany',
+      cli: ['localtask', 'topic', 'remove-many'],
+      http: ['POST', '/api/localtasks/topics/remove'],
       summary: '批量删除主题（--keys/--cwds 逗号分隔，或 --all；等待中默认跳过，--force 连等待中删）',
       flags: {
         keys: { type: 'array', hint: '主题 key，逗号分隔' },
@@ -168,9 +170,9 @@ export default {
     },
 
     {
-      id: 'sessiontask.config',
-      cli: ['sessiontask', 'config'],
-      http: ['PATCH', '/api/sessiontasks/setting'],
+      id: 'localtask.config',
+      cli: ['localtask', 'config'],
+      http: ['PATCH', '/api/localtasks/setting'],
       summary: '配置等待超时（秒；推荐 180=3 分钟，最大 600=10 分钟，超上限自动截断）',
       flags: { timeout: { type: 'number', required: true, hint: '超时秒数（1-600）' } },
       run: (ctx) => service.updateSettings({ timeoutSec: ctx.timeout }),
@@ -178,9 +180,9 @@ export default {
     },
 
     {
-      id: 'sessiontask.prune',
-      cli: ['sessiontask', 'prune'],
-      http: ['POST', '/api/sessiontasks/prune'],
+      id: 'localtask.prune',
+      cli: ['localtask', 'prune'],
+      http: ['POST', '/api/localtasks/prune'],
       summary: '清理旧脏数据（旧模型无目录主题、空主题；等待中一律保留）',
       flags: {
         'all-finished': { type: 'boolean', hint: '连同已全部领取、无待领的主题一起清' },
@@ -195,9 +197,9 @@ export default {
     },
 
     {
-      id: 'sessiontask.reorder',
-      cli: ['sessiontask', 'reorder'],
-      http: ['PATCH', '/api/sessiontasks/reorder'],
+      id: 'localtask.reorder',
+      cli: ['localtask', 'reorder'],
+      http: ['PATCH', '/api/localtasks/reorder'],
       summary: '调整待领取任务优先级（--id <编号> 移到 --before-id <编号> 前或 --after-id <编号> 后）',
       flags: {
         id: { type: 'number', required: true, hint: '要移动的任务编号' },
@@ -215,8 +217,8 @@ export default {
 
     // ─── 阻塞等待（纯 CLI，agent 本轮最后一步）────────────────
     {
-      id: 'sessiontask.wait',
-      cli: ['sessiontask', 'wait'],
+      id: 'localtask.wait',
+      cli: ['localtask', 'wait'],
       http: null,
       summary: '针对某主题（按 cwd 目录名识别）阻塞等待用户回填（默认 3 分钟，最大 10 分钟）',
       flags: {

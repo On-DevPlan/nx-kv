@@ -4,11 +4,19 @@
   "groups": {
     "nx-kv": {
       "skills": ["nx-kv"],
-      "summary": "KV 清单管理中枢主 skill（默认 install 装的就是这个）：todo / group / 工作空间"
+      "summary": "KV 清单管理中枢主 skill（默认 install 装的就是这个）：todo / group / 工作空间（远程，需登录）"
     },
-    "kv-sessiontask": {
-      "skills": ["kv-sessiontask"],
-      "summary": "本机实时人机接力（sessiontask）——agent 阻塞 wait，用户在网页回填"
+    "kv-waittask": {
+      "skills": ["kv-waittask"],
+      "summary": "对话内实时人机接力（等待侧）——agent 阻塞 wait，用户在网页回填"
+    },
+    "kv-submit": {
+      "skills": ["kv-submit"],
+      "summary": "总结上下文、提炼用户需求，提交到别的目录队列委托其它 agent（提交侧）"
+    },
+    "kv-localget": {
+      "skills": ["kv-localget"],
+      "summary": "领取排给本目录的本地任务 + 队列管理（领取侧）"
     }
   }
 }

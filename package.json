@@ -1,7 +1,7 @@
 {
   "name": "nx-kv",
-  "version": "0.7.0",
-  "description": "nx-kv — KV 清单管理中枢 + 对话内实时任务接力：serve 驱动 CLI 与 Web 面板，同源同构，附带可安装 skill 供 agent 领取任务与阻塞接收用户输入",
+  "version": "0.8.0",
+  "description": "nx-kv — KV 清单管理中枢（远程）+ 本机本地任务队列（localtask）：serve 驱动 CLI 与 Web 面板，同源同构，附带可安装 skill 供 agent 提交 / 领取 / 阻塞接收任务",
   "type": "module",
   "bin": {
     "nx-kv": "bin/cli.mjs"

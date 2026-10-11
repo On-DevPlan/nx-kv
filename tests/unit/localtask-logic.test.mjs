@@ -1,20 +1,20 @@
-// 实时任务输入（sessiontask）核心逻辑测试：工作目录作为主题、主题拥有任务队列、
+// 实时任务输入（localtask）核心逻辑测试：工作目录作为主题、主题拥有任务队列、
 // 排队/消费、不同目录分散、同目录不同现状共用队列、超时、内嵌弹窗实时回填与跨进程轮询兜底。
 //
-// 存储一律指向临时文件（NX_KV_SESSIONTASK_STORE），绝不写脏用户目录。
+// 存储一律指向临时文件（NX_KV_LOCALTASK_STORE），绝不写脏用户目录。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import * as svc from '../../src/modules/sessiontask/service.js';
+import * as svc from '../../src/modules/localtask/service.js';
 
-const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-sessiontask-'));
-const storeFile = join(tmp, 'sessiontasks.json');
+const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-localtask-'));
+const storeFile = join(tmp, 'localtasks.json');
 const dirA = mkdirSync(join(tmp, 'projA'), { recursive: true }) || join(tmp, 'projA');
 const dirB = join(tmp, 'projB');
 mkdirSync(dirB, { recursive: true });
-process.env.NX_KV_SESSIONTASK_STORE = storeFile;
+process.env.NX_KV_LOCALTASK_STORE = storeFile;
 
 async function reset() {
   try {
@@ -54,7 +54,7 @@ test('wait 阻塞 → 弹窗 HTML 含主题与现状 → POST 实时回填唤醒
   assert.ok(html.includes(basename(dirA)));
   assert.ok(html.includes(summary));
 
-  const res = await fetch(info.addr + 'api/sessiontasks', {
+  const res = await fetch(info.addr + 'api/localtasks', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ text: '选择工作空间 A' }),
@@ -213,7 +213,7 @@ test('缺 summary / 空内容 / 缺 id 报错，不建空记录', async () => {
 });
 
 test('弹窗：agent 领取（delivered）后不再显示倒计时', async () => {
-  const { renderPopupPage } = await import('../../src/modules/sessiontask/popup.js');
+  const { renderPopupPage } = await import('../../src/modules/localtask/popup.js');
   const html = renderPopupPage({ key: 'k1', cwd: dirA, summary: '现状', timeoutMs: 180000 });
   // 等待态有倒计时状态条
   assert.ok(html.includes('id="statusbar"'));
@@ -256,7 +256,7 @@ test('prune 清理旧模型无目录主题与空主题，保留有数据主题',
   // 空主题：dirB 上 wait 超时后留下
   await svc.waitForTask({ cwd: dirB, summary: 'x', timeoutSec: 1, open: false });
   // 注入一个旧模型迁移来的「无目录」主题
-  const file = process.env.NX_KV_SESSIONTASK_STORE;
+  const file = process.env.NX_KV_LOCALTASK_STORE;
   const raw = JSON.parse(readFileSync(file, 'utf8'));
   raw.topics.legacytopic = {
     key: 'legacytopic', cwd: '', name: '旧数据', summary: '旧',

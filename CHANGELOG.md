@@ -2,6 +2,40 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.0] - 2026-10-11
+
+### Added
+
+- **新增内置 skill `kv-submit`（提交侧）**：把当前对话总结上下文、提炼出用户需求，
+  打包成自包含任务文本，通过 `nx-kv localtask add --cwd "<目标目录>"` 委托给在
+  别的目录工作的 agent；含任务文本模板、拆分/排序/跟踪与避坑清单
+  （`references/submit-workflow.md`）。
+- **新增内置 skill `kv-localget`（领取侧）**：agent 在自己目录里主动领取排给本目录
+  的任务（`localtask list` 查看待领取、`wait` 队列非空时立即取走），附单条
+  查看/编辑/删除/调序等队列管理。
+
+### Changed
+
+- **⚠️ 破坏性：功能域「实时任务输入」更名为「本地任务」（localtask），阻塞等待（wait）
+  只是其中的一个子功能。**
+  - CLI 子命令 `nx-kv sessiontask *` → `nx-kv localtask *`（add / list / get / update /
+    remove / reorder / config / prune / wait / topic remove / topic remove-many）；
+  - HTTP 路由 `/api/sessiontasks*` → `/api/localtasks*`；面板页「实时任务」→「本地任务」，
+    弹窗标题与面板内命令示例同步更新；
+  - 存储文件 `~/.nx-kv/sessiontasks.json` → `localtasks.json`：新文件缺失时自动读取
+    旧文件、首次保存落到新文件（旧文件保留不删），队列数据零丢失；存储路径环境变量
+    改名 `NX_KV_LOCALTASK_STORE`，旧名 `NX_KV_SESSIONTASK_STORE` 仍然兼容。
+- **内置 skill `kv-sessiontask` 重命名为 `kv-waittask`（等待侧）**：安装名、group 名
+  同步改为 `kv-waittask`（`nx-kv skill install kv-waittask`）；CLI 命令名随上一条改。
+  已装旧版的用户重新 `skill install kv-waittask` 即可，旧
+  `~/.claude/skills/kv-sessiontask/` 目录可手动删除。
+- **内置 skill `kv-local` 定名前改名为 `kv-localget`（领取侧）**：随本版首次发布，
+  无迁移成本。
+- **kv-waittask 文档对齐 v4 队列模型**：现状总结只是状态展示（并记录为被取走任务的
+  「本轮完成总结」），不再作为等待点 key；队列按工作目录划分、同目录多次 wait
+  共用同一队列，任务按先后领取。工具调用超时建议从 120000ms 修正为 300000ms
+  （CLI 默认阻塞 180 秒）。README 同步修正该节。
+
 ## [0.7.0] - 2026-10-09
 
 ### Added

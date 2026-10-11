@@ -1,4 +1,4 @@
-// 实时任务页：主题（按工作目录划分）总览 + 选中某个主题回填 + 该主题的任务队列。
+// 本地任务（localtask）页：主题（按工作目录划分）总览 + 选中某个主题回填 + 该主题的任务队列。
 // 本质是「agent 提交结果 → 阻塞 → 用户在 web 针对主题回填 → agent 接收」。
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
@@ -47,7 +47,7 @@ export default function SessionTaskView() {
 
   const load = useCallback(async () => {
     try {
-      setOverview(await api('/api/sessiontasks'));
+      setOverview(await api('/api/localtasks'));
     } catch (e) {
       toast(e.message);
     }
@@ -75,7 +75,7 @@ export default function SessionTaskView() {
       setTimeoutSec(Number(sec));
       setCfgSaving(true);
       try {
-        const s = await api('/api/sessiontasks/setting', {
+        const s = await api('/api/localtasks/setting', {
           method: 'PATCH',
           body: { timeout: Number(sec) },
         });
@@ -91,7 +91,7 @@ export default function SessionTaskView() {
     guard(async () => {
       setPruning(true);
       try {
-        const r = await api('/api/sessiontasks/prune', { method: 'POST', body: {} });
+        const r = await api('/api/localtasks/prune', { method: 'POST', body: {} });
         toast(r.count ? `已清理 ${r.count} 个旧主题` : '没有需要清理的旧数据');
         await load();
       } finally {
@@ -144,7 +144,7 @@ export default function SessionTaskView() {
       }
       setSaving(true);
       try {
-        const r = await api('/api/sessiontasks', {
+        const r = await api('/api/localtasks', {
           method: 'POST',
           body: { cwd: active.cwd, text: body },
         });
@@ -158,7 +158,7 @@ export default function SessionTaskView() {
 
   const remove = (id) =>
     guard(async () => {
-      await api('/api/sessiontasks/item', {
+      await api('/api/localtasks/item', {
         method: 'DELETE',
         body: { cwd: active.cwd, id },
       });
@@ -175,7 +175,7 @@ export default function SessionTaskView() {
       if (!window.confirm(msg)) return;
       setDeleting(true);
       try {
-        await api('/api/sessiontasks/topic', {
+        await api('/api/localtasks/topic', {
           method: 'DELETE',
           body: t.waiting ? { key: t.key, force: true } : { key: t.key },
         });
@@ -202,7 +202,7 @@ export default function SessionTaskView() {
       if (!window.confirm(msg)) return;
       setDeleting(true);
       try {
-        const r = await api('/api/sessiontasks/topics/remove', {
+        const r = await api('/api/localtasks/topics/remove', {
           method: 'POST',
           body: { keys: [...selected], force: waitingCount > 0 },
         });
@@ -233,7 +233,7 @@ export default function SessionTaskView() {
       }
       setEditSaving(true);
       try {
-        await api('/api/sessiontasks/item', {
+        await api('/api/localtasks/item', {
           method: 'PATCH',
           body: { cwd: active.cwd, id: editingId, text: body },
         });
@@ -255,7 +255,7 @@ export default function SessionTaskView() {
     guard(async () => {
       setReordering(true);
       try {
-        await api('/api/sessiontasks/reorder', {
+        await api('/api/localtasks/reorder', {
           method: 'PATCH',
           body: { cwd: active.cwd, id, beforeId, afterId },
         });
@@ -301,7 +301,7 @@ export default function SessionTaskView() {
       <div className="card" style={{ padding: '10px 14px' }}>
         <div className="muted" style={{ fontSize: 12 }}>
           agent 用法：完成当前任务后，把
-          <code> nx-kv sessiontask wait --cwd "&lt;工作目录&gt;" --summary "&lt;当前现状&gt;" --json </code>
+          <code> nx-kv localtask wait --cwd "&lt;工作目录&gt;" --summary "&lt;当前现状&gt;" --json </code>
           作为本轮<strong>最后一个动作</strong>调用——工作目录即<strong>主题</strong>、主题拥有任务队列，
           同目录共用队列、不同目录互不串，任务可在队列里堆积；命令阻塞并自动打开浏览器弹窗，
           用户回填后解除阻塞、返回新任务；超时未回填则返回 <code>status:"timeout"</code>，agent 收尾结束本轮。
@@ -432,7 +432,7 @@ export default function SessionTaskView() {
           })
         ) : (
           <div className="card muted" style={{ padding: '20px 16px', width: '100%', textAlign: 'center' }}>
-            （暂无主题；agent 调用 sessiontask wait 后会出现在这里）
+            （暂无主题；agent 调用 localtask wait 后会出现在这里）
           </div>
         )}
       </div>
@@ -610,7 +610,7 @@ export default function SessionTaskView() {
         </>
       )}
 
-      <CliHints module="sessiontask" />
+      <CliHints module="localtask" />
     </>
   );
 }

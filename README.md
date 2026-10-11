@@ -74,7 +74,7 @@ remove-many`）。阻塞等待弹窗只是 `wait` 当前的一个子功能。三
 同一条队列、一套存储：
 
 ```bash
-# 等待侧：agent 本轮【最后一步】阻塞等浏览器回填（工具调用超时设 300000ms）
+# 等待侧：每完成一步、提交结果后【必须】调 wait 领新任务（循环只有 timeout 才终止）
 nx-kv localtask wait --summary "<当前现状总结>" --json
 # 队列非空 → 立即取走（queued:true）；空 → 开窗阻塞，默认 180 秒未回填 → {status:"timeout"}（exit 0）
 

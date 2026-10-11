@@ -48,7 +48,7 @@
 
 - **动手前必须调用** `superpowers:writing-plans`
 - 时机：**Step 7 确认主题意图之后、Step 8 开始解决之前**
-- 把已确认的意图作为 spec 交给它，产出实现计划（存 `docs/superpowers/plans/YYYY-MM-DD-<feature>-indent.md`），**按计划**再解决
+- 把已确认的意图作为 spec 交给它，产出实现计划（计划存放到哪、怎么命名，由它自己的规范决定），**按计划**再解决
 - 任务拆分、写法、执行交接都以 `superpowers:writing-plans` 为准，本文件不重复
 
 ## 核心流程（8 步）
@@ -114,8 +114,8 @@ nx-kv todo list --status open --topic <topic> --json
 
 ### Step 6 — 生成意图文档
 
-把聚类结果写成结构化文档（如 `.claude/repo/_self/<主题>-意图.md` 或
-`docs/superpowers/specs/` 下的设计文档）：
+把聚类结果写成结构化文档，落到**当前项目**的文档目录（如 `docs/<主题>-意图.md`；
+项目已有设计文档 / spec 目录就放那里）：
 
 - 每个主题：任务列表、目标、上下文/提示词摘要、边界、验收标准
 - 文档既是 Step 7 确认的载体，也是后续执行的依据

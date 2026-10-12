@@ -56,6 +56,9 @@ export default function SessionTaskView() {
   const [suffixSaving, setSuffixSaving] = useState(false);
   // 探活状态：'connecting' | 'ok' | 'reconnecting'（数据轮询 + 后续 SSE 接入）
   const [liveStatus, setLiveStatus] = useState('connecting');
+  // 「只读弹窗」：点击现状/上一轮总结/任务文本时显示聚焦阅读的模态框
+  // modal = { title, body } | null
+  const [modal, setModal] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
   const [editSaving, setEditSaving] = useState(false);
@@ -89,6 +92,16 @@ export default function SessionTaskView() {
     const t = setInterval(load, 1500);
     return () => clearInterval(t);
   }, [load]);
+
+  // 只读弹窗：按 Esc 关闭
+  useEffect(() => {
+    if (!modal) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [modal]);
 
   const topics = overview ? overview.topics : [];
 
@@ -590,7 +603,12 @@ export default function SessionTaskView() {
                   </div>
                 </div>
                 {t.summary && (
-                  <div className="muted" style={{ fontSize: 11, whiteSpace: 'pre-wrap', marginBottom: 6 }}>
+                  <div
+                    className="muted"
+                    style={{ fontSize: 11, whiteSpace: 'pre-wrap', marginBottom: 6, cursor: 'zoom-in' }}
+                    title="点击查看完整现状"
+                    onClick={(e) => { e.stopPropagation(); setModal({ title: `主题「${t.name}」现状`, body: t.summary }); }}
+                  >
                     现状：{t.summary}
                   </div>
                 )}
@@ -745,12 +763,22 @@ export default function SessionTaskView() {
                           </>
                         ) : (
                           <>
-                            {t.text}
+                            <span
+                              style={{ cursor: t.text.length > 50 ? 'zoom-in' : 'default' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (t.text.length > 50) setModal({ title: `任务 #${t.id} 全文`, body: t.text });
+                              }}
+                              title={t.text.length > 50 ? '点击查看完整任务文本' : undefined}
+                            >
+                              {t.text}
+                            </span>
                             {t.roundSummary && (
                               <div
                                 className="muted"
-                                style={{ fontSize: 11, marginTop: 4, paddingTop: 4, borderTop: '1px dashed var(--line,#e6e8eb)', whiteSpace: 'pre-wrap' }}
-                                title="该任务所回应的 agent 上一轮完成总结"
+                                style={{ fontSize: 11, marginTop: 4, paddingTop: 4, borderTop: '1px dashed var(--line,#e6e8eb)', whiteSpace: 'pre-wrap', cursor: 'zoom-in' }}
+                                title="点击查看完整上一轮总结"
+                                onClick={(e) => { e.stopPropagation(); setModal({ title: '上一轮完成总结', body: t.roundSummary }); }}
                               >
                                 上一轮完成：{t.roundSummary}
                               </div>
@@ -810,6 +838,38 @@ export default function SessionTaskView() {
       )}
 
       <CliHints module="localtask" />
+
+      {modal && (
+        <div
+          onClick={() => setModal(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 8, padding: 20, maxWidth: 'min(720px, 90vw)',
+              maxHeight: '80vh', overflow: 'auto', boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+              <strong style={{ fontSize: 14 }}>{modal.title}</strong>
+              <button
+                className="btn small ghost"
+                onClick={() => setModal(null)}
+                style={{ marginLeft: 'auto' }}
+              >
+                关闭
+              </button>
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {modal.body}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

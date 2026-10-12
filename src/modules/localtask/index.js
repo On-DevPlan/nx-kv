@@ -181,10 +181,24 @@ export default {
       id: 'localtask.config',
       cli: ['localtask', 'config'],
       http: ['PATCH', '/api/localtasks/setting'],
-      summary: '配置等待超时（秒；推荐 180=3 分钟，最大 600=10 分钟，超上限自动截断）',
-      flags: { timeout: { type: 'number', required: true, hint: '超时秒数（1-600）' } },
-      run: (ctx) => service.updateSettings({ timeoutSec: ctx.timeout }),
-      render: (s) => `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）`,
+      summary: '配置等待超时（秒）/ 收尾追加语（task.text 末尾自动追加的固定指令；置空关闭）',
+      flags: {
+        timeout: { type: 'number', hint: '超时秒数（1-600）' },
+        suffix: { type: 'string', hint: '收尾追加语文本（与 --reset-suffix/--no-suffix 互斥）' },
+        'reset-suffix': { type: 'boolean', hint: '恢复默认收尾追加语' },
+        'no-suffix': { type: 'boolean', hint: '清空并关闭收尾追加语' },
+      },
+      run: (ctx) => {
+        const patch = { timeoutSec: ctx.timeout };
+        if (ctx['no-suffix']) patch.taskSuffix = '';
+        else if (ctx['reset-suffix']) patch.taskSuffix = service.DEFAULT_TASK_SUFFIX;
+        else if (ctx.suffix !== undefined) patch.taskSuffix = ctx.suffix;
+        return service.updateSettings(patch);
+      },
+      render: (s) => {
+        const x = s.suffixEnabled ? '收尾追加语已开启' : '收尾追加语已关闭';
+        return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· ${x}`;
+      },
     },
 
     {

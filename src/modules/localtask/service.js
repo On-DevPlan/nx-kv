@@ -37,6 +37,25 @@ export const MAX_TIMEOUT_SEC = 600; // 阻塞时长上限（10 分钟）
 export const MAX_SUMMARY = 2000; // 现状（状态）长度上限（原 200，已放宽）
 export const MAX_TEXT = 20_000; // 单条任务内容长度上限
 
+// wait 取任务返回时，在 task.text 末尾追加的「收尾指令」（可在面板/CLI 修改；置空关闭）。
+// 作用：从每一条任务层面反复强调「计划最后再 wait 一次」，避免 agent 在长对话里漂移、漏调。
+// 注意：命令名是 localtask 不是 sessiontask（v0.8.0 重命名后），但默认文案直接复用同一段文字。
+export const DEFAULT_TASK_SUFFIX =
+  '规划计划，然后完成这个任务；计划的最后一个动作，是再次调用 ' +
+  'nx-kv localtask wait（带上 --cwd 当前工作目录、--summary 当前现状、--json）收尾本轮，' +
+  '在拿到下一条任务或超时之前不要提前结束。';
+const MAX_SUFFIX_LEN = 500; // 收尾追加语长度上限
+
+// 归一化收尾追加语：缺省（旧 store 无此字段）→ 默认；显式传 ''（清空）→ '' 表示关闭。
+// 注意：与 timeoutSec 不同——timeoutSec 缺省→推荐值（仍开启），taskSuffix 缺省→默认文本。
+// 因此从老 store 读 settings.taskSuffix 时，clampTaskSuffix 会自动补默认；想"关闭"必须显式 ''。
+export function clampTaskSuffix(v) {
+  if (v === undefined || v === null) return DEFAULT_TASK_SUFFIX;
+  let s = String(v).trim();
+  if (s.length > MAX_SUFFIX_LEN) s = s.slice(0, MAX_SUFFIX_LEN);
+  return s;
+}
+
 // ─── 存储位置：可环境变量覆盖（测试隔离）；旧名/旧文件自动兼容 ──────────
 
 export function storePath() {
@@ -119,7 +138,11 @@ export function stampNow(d = new Date()) {
 // ─── 存储读写（原子写 + 损坏容忍 + v1/v2 迁移） ───────────────────
 
 function emptyStore() {
-  return { version: 4, settings: { timeoutSec: DEFAULT_TIMEOUT_SEC }, topics: {} };
+  return {
+    version: 4,
+    settings: { timeoutSec: DEFAULT_TIMEOUT_SEC, taskSuffix: DEFAULT_TASK_SUFFIX },
+    topics: {},
+  };
 }
 
 // 归一化超时秒数：非法/缺省 → 推荐值；超上限截断为 10 分钟
@@ -358,6 +381,10 @@ function settingsView(s) {
     timeoutSec: clampTimeoutSec(s && s.timeoutSec),
     recommendedSec: DEFAULT_TIMEOUT_SEC,
     maxSec: MAX_TIMEOUT_SEC,
+    // wait 交付任务时追加到 task.text 末尾的收尾提醒；''=关闭；defaultTaskSuffix 供 UI 恢复默认
+    taskSuffix: clampTaskSuffix(s && s.taskSuffix),
+    defaultTaskSuffix: DEFAULT_TASK_SUFFIX,
+    suffixEnabled: !!clampTaskSuffix(s && s.taskSuffix),
   };
 }
 
@@ -402,14 +429,27 @@ export async function pruneTopics({ allFinished = false, dryRun = false } = {}) 
   return { status: 'ok', dryRun: !!dryRun, count: removed.length, removed };
 }
 
-// 配置等待超时（页面可调；推荐 180=3 分钟，最大 600=10 分钟，超上限自动截断）
-export async function updateSettings({ timeoutSec } = {}) {
-  const n = Number(timeoutSec);
-  if (!Number.isFinite(n) || n <= 0) {
-    throw badInput(`超时时间需为 1-${MAX_TIMEOUT_SEC} 秒（推荐 ${DEFAULT_TIMEOUT_SEC}）`);
+// 配置等待超时 / 任务收尾追加语（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟；
+// taskSuffix 为 wait 返回任务时追加到 task.text 末尾的固定指令，传 '' 关闭、不传保持不变。
+export async function updateSettings({ timeoutSec, taskSuffix } = {}) {
+  const hasTimeout = timeoutSec !== undefined && timeoutSec !== null;
+  const hasSuffix = taskSuffix !== undefined;
+  if (!hasTimeout && !hasSuffix) {
+    throw badInput(
+      '请至少指定一项：--timeout <秒>，或 --suffix "<收尾追加语>"（--no-suffix 关闭追加、--reset-suffix 恢复默认）'
+    );
   }
   const store = await loadStore();
-  store.settings = { timeoutSec: clampTimeoutSec(n) };
+  const next = { ...store.settings };
+  if (hasTimeout) {
+    const n = Number(timeoutSec);
+    if (!Number.isFinite(n) || n <= 0) {
+      throw badInput(`超时时间需为 1-${MAX_TIMEOUT_SEC} 秒（推荐 ${DEFAULT_TIMEOUT_SEC}）`);
+    }
+    next.timeoutSec = clampTimeoutSec(n);
+  }
+  if (hasSuffix) next.taskSuffix = clampTaskSuffix(taskSuffix);
+  store.settings = next;
   await saveStore(store);
   return settingsView(store.settings);
 }
@@ -628,6 +668,16 @@ export async function reorderTasks({ cwd: rawCwd, id, beforeId, afterId } = {}) 
 
 // ─── 阻塞等待：核心入口 ─────────────────────────────────────────────
 
+// 把收尾追加语拼到返回给 agent 的 task.text 末尾（只改返回载荷，绝不回写库存原文）。
+// suffix 为空 → 原样返回；已包含同样追加语（幂等）→ 不重复追加。
+function withTaskSuffix(task, suffix) {
+  const s = clampTaskSuffix(suffix);
+  if (!task || !s) return task;
+  const base = String(task.text || '');
+  if (base.includes(s)) return task;
+  return { ...task, text: `${base.replace(/\s+$/, '')}\n\n${s}` };
+}
+
 /**
  * 针对某主题（工作目录）等待用户回填下一条任务。
  * @param {string}  [cwd]     工作目录（主题按目录名识别）；缺省 → 进程当前 cwd
@@ -649,15 +699,19 @@ export async function waitForTask({
   const summary = normalizeSummary(rawSummary); // 现状必填
 
   // 超时：显式 --timeout（秒/毫秒）优先；否则用页面配置；统一夹到 1-600
+  const startStore = await loadStore();
   let sec;
   if (timeoutSec !== undefined && timeoutSec !== null) sec = timeoutSec;
   else if (timeoutMs !== undefined && timeoutMs !== null) sec = Number(timeoutMs) / 1000;
-  else sec = (await loadStore()).settings.timeoutSec;
+  else sec = startStore.settings.timeoutSec;
   const tmo = clampTimeoutSec(sec) * 1000;
+  const suffix = startStore.settings.taskSuffix; // 返回任务时追加的收尾指令（本轮固定）
 
   // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
   const queued = await consumeFirstPending(key, summary);
-  if (queued) return { status: 'ok', key, cwd, name, summary, task: queued, queued: true };
+  if (queued) {
+    return { status: 'ok', key, cwd, name, summary, task: withTaskSuffix(queued, suffix), queued: true };
+  }
 
   // 2. 没有 pending → 起内嵌弹窗服务器
   const server = await startPopupServer(key, cwd, summary, tmo);
@@ -722,7 +776,7 @@ export async function waitForTask({
         ? { status: 'timeout', key, cwd, summary, timeoutMs: tmo }
         : r.kind === 'cancelled'
         ? { status: 'timeout', key, cwd, summary, timeoutMs: tmo, cancelled: true }
-        : { status: 'ok', key, cwd, name, summary, task: r.task, delivered: r.delivered, queued: false };
+        : { status: 'ok', key, cwd, name, summary, task: withTaskSuffix(r.task, suffix), delivered: r.delivered, queued: false };
   } finally {
     clearInterval(poll);
     clearInterval(cancelPoll);

@@ -47,6 +47,13 @@ export default function SessionTaskView() {
   const [timeoutSec, setTimeoutSec] = useState(180);
   const [cfgSaving, setCfgSaving] = useState(false);
   const [pruning, setPruning] = useState(false);
+  // 收尾追加语：task.text 末尾自动追加的固定指令（强制 agent 计划最后再 wait 一次）
+  const [taskSuffix, setTaskSuffix] = useState('');
+  const [defaultTaskSuffix, setDefaultTaskSuffix] = useState('');
+  const [suffixEnabled, setSuffixEnabled] = useState(false);
+  const [suffixEditing, setSuffixEditing] = useState(false);
+  const [suffixDraft, setSuffixDraft] = useState('');
+  const [suffixSaving, setSuffixSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
   const [editSaving, setEditSaving] = useState(false);
@@ -82,7 +89,12 @@ export default function SessionTaskView() {
 
   // 同步页面上的超时配置（来源：后端 settings）
   useEffect(() => {
-    if (overview && overview.settings) setTimeoutSec(overview.settings.timeoutSec);
+    if (overview && overview.settings) {
+      setTimeoutSec(overview.settings.timeoutSec);
+      setTaskSuffix(overview.settings.taskSuffix || '');
+      setDefaultTaskSuffix(overview.settings.defaultTaskSuffix || '');
+      setSuffixEnabled(!!overview.settings.suffixEnabled);
+    }
   }, [overview]);
 
   const saveTimeout = (sec) =>
@@ -100,6 +112,30 @@ export default function SessionTaskView() {
         setCfgSaving(false);
       }
     });
+
+  // 收尾追加语：保存（draft 是 '' 等价于关闭；非空则启用）
+  const saveSuffix = (text) =>
+    guard(async () => {
+      setSuffixSaving(true);
+      try {
+        const s = await api('/api/localtasks/setting', {
+          method: 'PATCH',
+          body: { suffix: text },
+        });
+        setTaskSuffix(s.taskSuffix);
+        setSuffixEnabled(!!s.suffixEnabled);
+        setSuffixEditing(false);
+        setSuffixDraft('');
+        toast(s.suffixEnabled ? '收尾追加语已更新' : '收尾追加语已关闭');
+        await load();
+      } finally {
+        setSuffixSaving(false);
+      }
+    });
+
+  // 显式关闭（不进入编辑，直接 PATCH suffix=''）
+  const disableSuffix = () =>
+    saveSuffix('');
 
   // 清理旧脏数据（旧模型无目录主题、空主题；等待中保留）
   const prune = () =>
@@ -357,6 +393,96 @@ export default function SessionTaskView() {
         <span className="muted" style={{ fontSize: 12 }}>
           agent wait 未带 --timeout 时使用此值；推荐 3 分钟、最大 10 分钟。
         </span>
+      </div>
+
+      <div className="card" style={{ padding: '10px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: suffixEditing ? 10 : 0 }}>
+          <span style={{ fontWeight: 700 }}>收尾追加语</span>
+          <span className="muted" style={{ fontSize: 12 }}>
+            每次 wait 返回任务时，自动拼到 task.text 末尾。强制 agent 计划最后再 wait 一次，避免长对话漂移漏调。
+          </span>
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span className={'tag' + (suffixEnabled ? '' : ' muted')} style={{ fontSize: 11 }}>
+              {suffixEnabled ? '已开启' : '已关闭'}
+            </span>
+            {!suffixEditing && (
+              <>
+                {suffixEnabled && (
+                  <button className="btn small ghost" onClick={() => { setSuffixDraft(taskSuffix); setSuffixEditing(true); }}>
+                    编辑
+                  </button>
+                )}
+                {suffixEnabled ? (
+                  <button
+                    className="btn small ghost"
+                    onClick={() => disableSuffix()}
+                    disabled={suffixSaving}
+                    title="关闭后，wait 返回的任务不再追加提示词"
+                  >
+                    关闭
+                  </button>
+                ) : (
+                  <button
+                    className="btn small"
+                    onClick={() => { setSuffixDraft(defaultTaskSuffix); setSuffixEditing(true); }}
+                    title="恢复默认收尾追加语并开启"
+                  >
+                    开启
+                  </button>
+                )}
+              </>
+            )}
+          </span>
+        </div>
+        {!suffixEditing && taskSuffix && (
+          <div
+            className="muted"
+            style={{ fontSize: 12, whiteSpace: 'pre-wrap', borderLeft: '2px solid #eee', padding: '4px 0 4px 10px' }}
+          >
+            {taskSuffix}
+          </div>
+        )}
+        {suffixEditing && (
+          <div>
+            <textarea
+              value={suffixDraft}
+              onChange={(e) => setSuffixDraft(e.target.value)}
+              rows={5}
+              style={{ width: '100%', font: 'inherit', padding: 8, boxSizing: 'border-box' }}
+              placeholder="（留空 = 关闭；非空 = 启用并以这段文本作为追加语）"
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                className="btn small"
+                onClick={() => saveSuffix(suffixDraft)}
+                disabled={suffixSaving}
+              >
+                保存
+              </button>
+              <button
+                className="btn small ghost"
+                onClick={() => {
+                  setSuffixEditing(false);
+                  setSuffixDraft('');
+                }}
+                disabled={suffixSaving}
+              >
+                取消
+              </button>
+              <button
+                className="btn small ghost"
+                onClick={() => saveSuffix(defaultTaskSuffix)}
+                disabled={suffixSaving}
+                title="覆盖为默认文案并开启"
+              >
+                恢复默认
+              </button>
+              <span className="muted" style={{ fontSize: 11, marginLeft: 'auto' }}>
+                留空保存 = 关闭
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="colhead">

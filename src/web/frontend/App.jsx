@@ -4,6 +4,7 @@ import { Suspense, useEffect } from 'react';
 import { useStore } from './store.jsx';
 import { ErrorBoundary } from './components/ui.jsx';
 import { VIEWS } from './registry.js';
+import { api } from './api/client.js';
 
 function viewFromHash() {
   const h = (location.hash || '').replace(/^#\/?/, '');
@@ -30,6 +31,24 @@ export default function App() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, [patchUi]);
+
+  // 心跳：每 15s 打一次 /api/ping。
+  // 目的不是健康检查，而是给 serve --auto-exit 上报「面板还开着」。
+  // 单视图挂载（current.component）切到任意页面都算「开着」，
+  // 不用 SSE 数连接来判——切页会断 SSE，但页面明明还开着。
+  useEffect(() => {
+    let stopped = false;
+    const beat = () => {
+      if (stopped) return;
+      api('/api/ping').catch(() => {});
+    };
+    beat();
+    const t = setInterval(beat, 15_000);
+    return () => {
+      stopped = true;
+      clearInterval(t);
+    };
+  }, []);
 
   const current = VIEWS.find((v) => v.id === ui.view) || VIEWS[0];
 

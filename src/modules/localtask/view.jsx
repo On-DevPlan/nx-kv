@@ -21,6 +21,21 @@ function countdown(s) {
   return `等待中 ${mm}:${String(ss).padStart(2, '0')}`;
 }
 
+// 「已等 m:ss · 剩 m:ss」：waitingSince（起点）反推已等，waitingUntil（截止）反推剩余。
+// waitingSince 缺字段时（老数据）退化为只显示剩余。
+function waitingBadge(t) {
+  if (!t || !t.waiting) return null;
+  const remain = countdown(t.waitingUntil);
+  if (!t.waitingSince) return remain; // 老数据兜底
+  const since = parseStamp(t.waitingSince);
+  if (!since) return remain;
+  const elapsedMs = Date.now() - since.getTime();
+  if (elapsedMs < 0) return remain;
+  const mm = Math.floor(elapsedMs / 60000);
+  const ss = Math.floor((elapsedMs % 60000) / 1000);
+  return `等待中 已等 ${mm}:${String(ss).padStart(2, '0')} · 剩 ${remain.replace(/^等待中\s*/, '')}`;
+}
+
 export default function SessionTaskView() {
   const toast = useToast();
   const guard = useGuard();
@@ -189,6 +204,22 @@ export default function SessionTaskView() {
       } finally {
         setDeleting(false);
       }
+    });
+
+  // 关闭某主题的等待：只翻 store 里的 cancelRequested 标记，阻塞中的 wait 立即收尾。
+  // 不删主题、不删任务、不动队列——历史照留，只是当前这一轮不等了。
+  const cancelTopic = (t) =>
+    guard(async () => {
+      if (!t || !t.waiting) return;
+      const msg = `关闭主题「${t.name}」的等待？\n\n阻塞中的 wait 立即收尾（走与超时同一条出口，agent 照常结束本轮），主题与任务都保留。`;
+      if (!window.confirm(msg)) return;
+      const r = await api('/api/localtasks/cancel', {
+        method: 'POST',
+        body: { key: t.key },
+      });
+      if (r && r.cancelled) toast('已关闭等待');
+      else toast('该主题不在等待中');
+      await load();
     });
 
   // 批量删除勾选主题；含等待中时 force 并提示
@@ -404,9 +435,9 @@ export default function SessionTaskView() {
                     现状：{t.summary}
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                   {t.waiting ? (
-                    <span className="tag strong">{countdown(t.waitingUntil)}</span>
+                    <span className="tag strong">{waitingBadge(t) || countdown(t.waitingUntil)}</span>
                   ) : (
                     <span className="tag">已结束</span>
                   )}
@@ -415,9 +446,18 @@ export default function SessionTaskView() {
                   </span>
                 </div>
                 <div
-                  style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}
+                  style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}
                   onClick={(e) => e.stopPropagation()}
                 >
+                  {t.waiting && (
+                    <button
+                      className="btn small ghost"
+                      onClick={() => cancelTopic(t)}
+                      title="关闭本次等待（阻塞中的 wait 立即收尾，主题与任务保留）"
+                    >
+                      关闭
+                    </button>
+                  )}
                   <button
                     className="btn small ghost"
                     onClick={() => deleteTopic(t)}

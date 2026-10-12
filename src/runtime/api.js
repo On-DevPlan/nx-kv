@@ -92,6 +92,11 @@ export async function handleApi(req, res, url) {
       } else {
         Object.assign(raw, await readBody(req).catch(() => ({})));
       }
+      // stream 模式：把 req/res/url 透传给 run，让 action 自己接管响应（SSE 等）
+      if (action.stream) {
+        await action.run({ ...applySpec(action, raw), __raw: { req, res, url } }, { transport: 'http' });
+        return;
+      }
       const data = await action.run(applySpec(action, raw), { transport: 'http' });
       sendJson(res, 200, { ok: true, data });
     } catch (err) {

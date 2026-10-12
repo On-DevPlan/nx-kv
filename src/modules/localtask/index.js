@@ -282,5 +282,20 @@ export default {
       summary: '探测主面板上当前打开的「实时任务」标签数（活动 SSE 连接数；用于 wait 不重复开页）',
       run: () => service.panelPresence(),
     },
+
+    {
+      // 等待生命周期事件流：SSE 端点（带 cwd/key 过滤），由 watchEvents 派生 waiting/reminder/resolved。
+      // action 标 stream:true → api.js 透传 req/res，run 自己接管响应不走 sendJson。
+      id: 'localtask.events',
+      cli: ['localtask', 'events'],
+      http: ['GET', '/api/localtasks/events'],
+      summary: '等待事件流：waiting 开始 / reminder 30s·10s / resolved delivered|timeout（SSE 长连接）',
+      flags: {
+        cwd: { type: 'string', hint: '工作目录过滤（与 --key 二选一）' },
+        key: { type: 'string', hint: '主题 key 过滤（与 --cwd 二选一）' },
+      },
+      stream: true,
+      run: (ctx) => service.streamEventsSSE(ctx.__raw.req, ctx.__raw.res, { cwd: ctx.cwd, key: ctx.key }),
+    },
   ],
 };

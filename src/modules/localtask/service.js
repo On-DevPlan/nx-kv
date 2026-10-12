@@ -991,3 +991,159 @@ async function ensureMainPanel() {
   }
   return { running: false, started: true, url };
 }
+
+// ─── 等待生命周期事件流（主面板及时通知，避免用户漏过超时）────────────
+//
+// wait 与常驻主面板通常是两个进程，内存 EventEmitter 跨不过进程，所以事件流
+// 不依赖进程内回调，而是轮询 store，从 waiting/waitingUntil 与「已领取数」的变化里
+// 派生事件：waiting / reminder（剩余 30s、10s）/ resolved（delivered 或 timeout）。
+// HTTP(SSE) 与 CLI(NDJSON) 共用本生成器。
+
+const EVENT_POLL_MS = 500;
+const REMINDER_SEC = [30, 10]; // 剩余 ≤30s、≤10s 各提醒一次
+
+// 纯函数：给定剩余秒数与已提醒过的阈值，返回本次应触发的阈值（秒）。便于单测。
+export function remindersDue(remainSec, firedSet) {
+  const out = [];
+  for (const sec of REMINDER_SEC) {
+    if (remainSec <= sec && remainSec > 0 && !firedSet.has(sec)) out.push(sec);
+  }
+  return out;
+}
+
+function consumedCount(t) {
+  return (Array.isArray(t.tasks) ? t.tasks : []).filter((x) => x.status === 'consumed').length;
+}
+
+/**
+ * 订阅等待生命周期事件（异步生成器）。
+ * @param {{cwd?:string,key?:string,pollMs?:number,signal?:AbortSignal}} opts
+ *   不传 cwd/key 则订阅全部主题（主面板总览需要）。
+ */
+export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_POLL_MS, signal } = {}) {
+  let onlyKey = null;
+  if (rawKey && String(rawKey).trim()) onlyKey = String(rawKey).trim();
+  else if (rawCwd && String(rawCwd).trim()) onlyKey = normalizeCwd(rawCwd).key;
+
+  const sleep = (ms) =>
+    new Promise((res) => {
+      const to = setTimeout(res, ms);
+      if (signal) {
+        signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(to);
+            res();
+          },
+          { once: true }
+        );
+      }
+    });
+
+  const state = new Map();
+  let first = true;
+  while (!(signal && signal.aborted)) {
+    let topics = [];
+    try {
+      const store = await loadStore();
+      topics = Object.values(store.topics).filter(
+        (t) => Array.isArray(t.tasks) && (!onlyKey || t.key === onlyKey)
+      );
+    } catch {
+      topics = [];
+    }
+
+    const now = Date.now();
+    for (const t of topics) {
+      const deadline = parseStampMs(t.waitingUntil);
+      const isWaiting = !!t.waiting && Number.isFinite(deadline) && deadline > now;
+      let st = state.get(t.key);
+
+      if (isWaiting) {
+        if (!st || st.phase !== 'waiting' || st.waitingUntil !== t.waitingUntil) {
+          st = {
+            phase: 'waiting',
+            waitingUntil: t.waitingUntil,
+            deadline,
+            consumed0: consumedCount(t),
+            reminders: new Set(),
+          };
+          state.set(t.key, st);
+          yield {
+            type: 'waiting',
+            key: t.key,
+            cwd: t.cwd || '',
+            name: t.name || '',
+            summary: t.summary || '',
+            waitingUntil: t.waitingUntil,
+            remainMs: Math.max(0, deadline - now),
+            replay: first,
+          };
+        }
+        const remainSec = Math.floor((st.deadline - now) / 1000);
+        for (const sec of remindersDue(remainSec, st.reminders)) {
+          st.reminders.add(sec);
+          yield {
+            type: 'reminder',
+            key: t.key,
+            cwd: t.cwd || '',
+            name: t.name || '',
+            summary: t.summary || '',
+            waitingUntil: t.waitingUntil,
+            remainSec: sec,
+            remainMs: Math.max(0, st.deadline - now),
+            label: `${sec}s`,
+          };
+        }
+      } else if (st && st.phase === 'waiting') {
+        const outcome = consumedCount(t) > st.consumed0 ? 'delivered' : 'timeout';
+        state.set(t.key, { phase: 'ended' });
+        yield { type: 'resolved', key: t.key, cwd: t.cwd || '', name: t.name || '', outcome };
+      } else if (!st) {
+        state.set(t.key, { phase: 'idle' });
+      }
+
+      // 兜底：waiting 标志还在但截止已过（wait 进程异常退出），也派生一次 timeout
+      if (t.waiting && (!Number.isFinite(deadline) || deadline <= now)) {
+        const cur = state.get(t.key);
+        if (!cur || cur.phase === 'waiting') {
+          state.set(t.key, { phase: 'ended' });
+          yield {
+            type: 'resolved',
+            key: t.key,
+            cwd: t.cwd || '',
+            name: t.name || '',
+            outcome: 'timeout',
+            stale: true,
+          };
+        }
+      }
+    }
+
+    first = false;
+    await sleep(pollMs);
+  }
+}
+
+// HTTP 传输：SSE。注册到 sseConns 让 panelPresence 计入（wait 据此判活标签）。
+// 客户端断开即中止生成器。SSE 心跳由 addEventStreamConn 统一管。
+export async function streamEventsSSE(req, res, { cwd, key } = {}) {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+  });
+  res.write(': connected\n\n');
+  // addEventStreamConn 内部已把 conn 加入 sseConns（panelPresence 据此统计活标签），
+  // 我们不再直接引用——心跳 / 失败剔除 / 断开清理都由它托管。
+  addEventStreamConn(req, res);
+  const ac = new AbortController();
+  req.on('close', () => ac.abort());
+  try {
+    for await (const ev of watchEvents({ cwd, key, signal: ac.signal })) {
+      res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`);
+    }
+  } catch {
+    /* 客户端断开 / 瞬时读盘错误，静默结束 */
+  }
+}

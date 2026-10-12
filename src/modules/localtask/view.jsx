@@ -77,7 +77,7 @@ export default function SessionTaskView() {
       const data = await api('/api/localtasks');
       setOverview(data);
       setLiveStatus('ok');
-    } catch (e) {
+    } catch {
       // 轮询失败 → 进入「重连中」态；指示灯变红，避免每 1.5s 弹错误 toast
       setLiveStatus('reconnecting');
     }

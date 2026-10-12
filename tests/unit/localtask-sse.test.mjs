@@ -45,7 +45,6 @@ test('remindersDue：剩余 30s/10s 各触发一次，过后不重复', () => {
 test('watchEvents：等待开始 → 立即 deliver（delivered）', async () => {
   await reset();
   const dirA = join(tmp, 'projA');
-  const k = svc.topicKeyFor(dirA.split(/[\\/]/).pop());
   const ac = new AbortController();
   const evs = [];
   const p = (async () => {
@@ -112,8 +111,7 @@ test('streamEventsSSE：连接即推 waiting 快照帧，断开干净结束', as
   const dirC = join(tmp, 'projC');
   // 写一个 waiting 状态（不实际开 wait）—— 直接调 setWaiting
   // 由于 setWaiting 是 file-local，我们用 addTask+wait 启动一条等待
-  // 这里换一种方式：开一个 wait，把 setWaiting 写入
-  const { setWaiting } = await import(svcUrl);
+  // 这里换一种方式：开一个 wait，把 store 写入
   // 构造一个 waiting 主题
   await svc.addTask({ cwd: dirC, text: 'T' });
   await svc.consumeFirstPending(svc.topicKeyFor(dirC.split(/[\\/]/).pop()), ''); // 队列清空

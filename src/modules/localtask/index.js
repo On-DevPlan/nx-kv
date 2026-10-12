@@ -53,13 +53,21 @@ function renderAdd(d) {
 // wait 的人读输出：成功给任务，超时明确提示「本轮结束」
 function renderWait(r) {
   if (r.status === 'timeout') {
-    return `等待超时（${Math.round(r.timeoutMs / 1000)} 秒未回填）：主题「${r.cwd}」现状「${r.summary}」结束本轮。`;
+    const tail = r.cancelled ? '（用户在面板点了「关闭」）' : '';
+    return `等待超时（${Math.round(r.timeoutMs / 1000)} 秒未回填）${tail}：主题「${r.cwd}」现状「${r.summary}」结束本轮。`;
   }
   const origin = r.queued ? '排队任务' : '实时回填';
   return (
     `已取得下一条任务（${origin} · 主题「${r.cwd}」现状「${r.summary}」）: #${r.task.id}\n` +
     `  ${r.task.text.replace(/\n/g, '\n  ')}`
   );
+}
+
+// cancel 的人读输出：等待中→已关闭（主题与任务保留）；非等待中→无操作
+function renderCancel(d) {
+  if (d.cancelled) return `已关闭主题「${d.name}」的等待：阻塞中的 wait 立即收尾，主题与任务保留。`;
+  if (d.reason === 'not_waiting') return `主题「${d.name || d.key}」不在等待中，无需关闭。`;
+  return '已关闭。';
 }
 
 // 批量删除的人读输出：删除清单 + 跳过清单（等待中/不存在）
@@ -235,6 +243,19 @@ export default {
           open: !ctx['no-open'],
         }),
       render: renderWait,
+    },
+
+    {
+      id: 'localtask.cancel',
+      cli: ['localtask', 'cancel'],
+      http: ['POST', '/api/localtasks/cancel'],
+      summary: '关闭某主题的等待：阻塞中的 wait 立即收尾（与超时同一出口，带 cancelled 标记；不删主题与任务）',
+      flags: {
+        cwd: { type: 'string', hint: '工作目录（与 --key 二选一）' },
+        key: { type: 'string', hint: '主题 key（与 --cwd 二选一）' },
+      },
+      run: (ctx) => service.cancelWait({ cwd: ctx.cwd, key: ctx.key }),
+      render: renderCancel,
     },
   ],
 };

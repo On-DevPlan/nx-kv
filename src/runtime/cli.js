@@ -21,7 +21,16 @@ const BUILTINS = [
     id: 'serve',
     cli: ['serve'],
     summary: '启动 Web 面板',
-    flags: { port: { type: 'number', default: DEFAULT_PORT }, 'no-open': { type: 'boolean' } },
+    flags: {
+      port: { type: 'number', default: DEFAULT_PORT },
+      'no-open': { type: 'boolean' },
+      // --auto-exit：面板（web）全关且无等待中的主题时，serve 自动退出。
+      // 用户手动 `nx-kv serve` 默认不带该标志，面板不会自己跑掉；
+      // wait 临时拉起 serve 时会加 --no-open --auto-exit，用完即让位。
+      'auto-exit': { type: 'boolean', hint: '面板关闭后空闲自释放（wait 临时拉起实例专用）' },
+      // 宽限期：连续多久无面板活动后才允许释放（与 --auto-exit 配合使用）
+      idle: { type: 'number', hint: '空闲宽限期（秒；与 --auto-exit 配合，默认 120）' },
+    },
     run: (ctx) => cmdServe(ctx),
   },
   {
@@ -245,15 +254,22 @@ function printCommandHelp(cmd) {
 
 async function cmdServe(ctx) {
   const { startServer } = await import('./server.js');
+  const { startPanelIdleGuard } = await import('../modules/localtask/panel-guard.js');
   const { openBrowser } = await import('../core/open.js');
   const port = ctx.port || DEFAULT_PORT;
-  const server = await startServer({ port, host: '127.0.0.1' });
+  const autoExit = !!ctx['auto-exit'];
+
+  // 活动观测钩子：每个进来的请求（静态或 /api）都回调一次，供空闲自释放判活。
+  // 不参与响应，异常必须吞掉。
+  const onRequest = () => {};
+  const server = await startServer({ port, host: '127.0.0.1', onRequest });
   const addr = `http://127.0.0.1:${server.address().port}`;
 
   console.log('nx-kv · nx-kv v' + VERSION);
   console.log(`面板:   ${addr}`);
   console.log(`配置:   ${configPathFromEnv()}`);
   console.log('CLI:    nx-kv help（每个按钮都有对应命令，agent 可加 --json）');
+  if (autoExit) console.log('模式:   空闲自释放（面板关闭且无等待中的主题后自动退出）');
   console.log('按 Ctrl+C 停止');
 
   if (!ctx['no-open']) openBrowser(addr);
@@ -264,6 +280,11 @@ async function cmdServe(ctx) {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+
+  // 启动空闲看门狗（仅 --auto-exit 模式）；空回调避免依赖具体参数
+  if (autoExit) {
+    startPanelIdleGuard({ server, idleSec: ctx.idle });
+  }
 }
 
 // ---- 主入口 ----

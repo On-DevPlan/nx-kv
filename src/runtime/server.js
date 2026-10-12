@@ -50,10 +50,26 @@ async function serveStatic(pathname, res) {
   }
 }
 
-export function startServer({ port = DEFAULT_PORT, host = '127.0.0.1' } = {}) {
+// /api/ping：纯本机快返回，供面板心跳与「面板还开着吗」观测。
+// 不触网、不读盘、不查登录态——只为测「端口上还活着」。这与 /api/health 不同：
+// /api/health 走的是更重的鉴权/状态检查，不适合每 15s 一次的高频探活。
+async function handlePing(_req, res) {
+  sendJson(res, 200, { ok: true, data: { pong: true, ts: Date.now() } });
+}
+
+export function startServer({ port = DEFAULT_PORT, host = '127.0.0.1', onRequest } = {}) {
   const server = http.createServer(async (req, res) => {
+    // 活动观测：每个请求（包括 /api/ping 与静态文件）都回调一次；
+    // 回调只上报，不参与响应；异常必须吞掉以免影响主流程。
+    if (typeof onRequest === 'function') {
+      try { onRequest(req); } catch { /* ignore */ }
+    }
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      if (url.pathname === '/api/ping') {
+        await handlePing(req, res);
+        return;
+      }
       if (url.pathname.startsWith('/api/')) {
         await handleApi(req, res, url);
         return;

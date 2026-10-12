@@ -326,6 +326,11 @@ try {
   const stCfg = await cliJson(['localtask', 'config', '--timeout', '300']);
   check('localtask config 设置超时（推荐 180、最大 600）', stCfg.timeoutSec === 300 && stCfg.maxSec === 600, JSON.stringify(stCfg));
 
+  // cancel：非等待中的主题为无操作（cancelled:false + reason:not_waiting）
+  const cancelIdle = await cliJson(['localtask', 'cancel', '--cwd', topicA]);
+  check('localtask cancel 非等待主题为无操作（cancelled:false）', cancelIdle.cancelled === false && cancelIdle.reason === 'not_waiting', JSON.stringify(cancelIdle));
+  check('localtask cancel 缺定位报错', (await cli(['localtask', 'cancel'])).status === 1);
+
   // 删除主题 / 批量删除
   const delA = await cliJson(['localtask', 'add', '待删 A', '--cwd', topicA]);
   const delB = await cliJson(['localtask', 'add', '待删 B', '--cwd', topicB]);
@@ -373,6 +378,24 @@ try {
     body: JSON.stringify({ topic: 'x', text: 'y' }),
   });
   check('跨站写请求被拒（403）', blocked.status === 403);
+
+  // /api/ping：纯本机心跳，serve --auto-exit 据此判面板是否还开着
+  const pingRes = await (await fetch(base + '/api/ping')).json();
+  check('api ping 可达且不触网', pingRes.ok === true && pingRes.data && pingRes.data.pong === true);
+
+  // /api/localtasks/cancel：HTTP 路径上对未知主题也是无操作（reason:not_waiting）
+  const cancelHttp = await (
+    await fetch(base + '/api/localtasks/cancel', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ key: 'no-such-topic' }),
+    })
+  ).json();
+  check(
+    'api sessiontasks/cancel 可达且对未知主题无操作',
+    cancelHttp.ok === true && cancelHttp.data && cancelHttp.data.cancelled === false && cancelHttp.data.reason === 'not_waiting',
+    JSON.stringify(cancelHttp)
+  );
 
   await new Promise((r) => server.close(r));
 } finally {

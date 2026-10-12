@@ -54,6 +54,8 @@ export default function SessionTaskView() {
   const [suffixEditing, setSuffixEditing] = useState(false);
   const [suffixDraft, setSuffixDraft] = useState('');
   const [suffixSaving, setSuffixSaving] = useState(false);
+  // 探活状态：'connecting' | 'ok' | 'reconnecting'（数据轮询 + 后续 SSE 接入）
+  const [liveStatus, setLiveStatus] = useState('connecting');
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
   const [editSaving, setEditSaving] = useState(false);
@@ -69,11 +71,14 @@ export default function SessionTaskView() {
 
   const load = useCallback(async () => {
     try {
-      setOverview(await api('/api/localtasks'));
+      const data = await api('/api/localtasks');
+      setOverview(data);
+      setLiveStatus('ok');
     } catch (e) {
-      toast(e.message);
+      // 轮询失败 → 进入「重连中」态；指示灯变红，避免每 1.5s 弹错误 toast
+      setLiveStatus('reconnecting');
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -495,7 +500,35 @@ export default function SessionTaskView() {
           style={{ margin: 0 }}
         />
         <h3>主题总览（按工作目录）</h3>
-        <span className="muted">{overview ? `${topics.length} 个 · 等待中 ${overview.waiting}` : ''}</span>
+        <span
+          className="muted"
+          style={{
+            fontSize: 11,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            color: liveStatus === 'ok' ? '#2a9d5c' : liveStatus === 'reconnecting' ? '#c0392b' : '#888',
+          }}
+          title={
+            liveStatus === 'ok'
+              ? '实时连接正常（数据轮询可达后端）'
+              : liveStatus === 'reconnecting'
+              ? '连接断开，正在重连…'
+              : '正在连接…'
+          }
+        >
+          <span
+            style={{
+              display: 'inline-block',
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: liveStatus === 'ok' ? '#2a9d5c' : liveStatus === 'reconnecting' ? '#c0392b' : '#aaa',
+            }}
+          />
+          {liveStatus === 'ok' ? '实时连接正常' : liveStatus === 'reconnecting' ? '连接断开，正在重连…' : '正在连接…'}
+        </span>
+        <span className="muted">{overview ? ` · ${topics.length} 个 · 等待中 ${overview.waiting}` : ''}</span>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <button
             className="btn small ghost"

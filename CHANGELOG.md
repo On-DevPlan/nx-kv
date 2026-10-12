@@ -2,6 +2,41 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### Added
+
+- **常驻面板空闲自释放（serve --auto-exit）**：面板（web）全关且无等待中的主题时，
+  serve 进程优雅退出，释放端口——避免后台留一个永远没人看的常驻进程。
+  - `nx-kv serve` 新增 `--auto-exit`（配 `--idle <秒>` 调宽限期，默认 120s）。开启后，
+    **面板页全部关闭、且没有任何等待中的主题**并持续超过宽限期时，进程优雅退出、释放端口；
+    下一次 `localtask wait` 需要时会自动重新拉起（冷启动 <1s）。**用户手动 `nx-kv serve`
+    默认不带该标志，面板不会自己跑掉**。
+  - 判定「面板是否还开着」用的是任意面板请求的最近时间（SSE 连接数会随切页归 0，
+    不能用），为此新增 `GET /api/ping`（纯本机快返回）并在面板壳层每 15s 打一次心跳，
+    任意页面停留都算「面板开着」。
+  - 两条硬性否决：**有等待中的主题**（agent 正阻塞等人，面板是唯一提醒源）与
+    **有活动 SSE 标签**时不释放；`waiting` 标志若已过 `waitingUntil` 截止时刻（wait
+    进程被强杀后的残留）不计入，避免残留标志让进程永不释放。
+  - 从未有面板客户端连过（无 GUI / 开页失败）时用更长的兜底上限（默认 600s），
+    避免与 wait 的「无标签就重开页」互相拉扯出 spawn 抖动。
+  - 新增 `src/modules/localtask/panel-guard.js`（纯判定 `shouldAutoExit` + 可注入
+    时钟/定时器的看门狗 `startPanelIdleGuard`）与 `countWaitingTopics()`。
+
+- **主题卡「等待中」勋章显示等了多久，并可一键「关闭」这个等待**：
+  - 勋章文案由「等待中 m:ss（剩余）」升级为 **`等待中 已等 m:ss · 剩 m:ss`**：
+    新增 `waitingSince`（等待起点）落盘——只靠 `waitingUntil`（截止时刻）反推不出起点，
+    因为超时上限本身可被改写；旧记录缺该字段时自动退化为只显示剩余。
+  - 勋章内新增 **「关闭」按钮**：点确认后**只关等待**——阻塞中的 `wait` 立即收尾并返回
+    `{status:"timeout", cancelled:true}`（走与超时同一条出口，agent 侧不必认识新状态，
+    照常结束本轮），**不删主题、不删任务、不动队列**。
+  - 新增 action `localtask cancel`（CLI `nx-kv localtask cancel --cwd/--key`，
+    HTTP `POST /api/localtasks/cancel`）；对「不在等待中」的主题是无操作
+    （`{cancelled:false, reason:"not_waiting"}`），不报错。
+  - 关闭标记（`cancelRequested`）**只生效一次**：`setWaiting` 在每次等待开始时清掉残留，
+    避免「用户点关闭」与「上一轮 wait 收尾」撞车后误杀下一轮等待；wait 端每 0.5s 轮询取走，
+    另在等待登记完成后立即复查一次，不让用户白等半秒。
+
 ## [0.8.0] - 2026-10-11
 
 ### Added

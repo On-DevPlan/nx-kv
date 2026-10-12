@@ -248,6 +248,8 @@ function topicView(t) {
     summary: t.summary || '',
     waiting: !!t.waiting,
     waitingUntil: t.waitingUntil || '',
+    waitingSince: t.waitingSince || '',
+    cancelRequested: !!t.cancelRequested,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
     pending: tasks.filter((x) => x.status !== 'consumed').length,
@@ -282,12 +284,17 @@ export async function consumeFirstPending(key, roundSummary) {
   return normalizeTask(task);
 }
 
-// 在 store 里把某主题置为等待/结束，并刷新现状
+// 在 store 里把某主题置为等待/结束，并刷新现状。
+// waitingSince 是「等待起点」，面板据此显示「已等多久」——waitingUntil（截止时刻）
+// 只能反推剩余，反推不出起点（超时值可被改写），所以两者都存。
 async function setWaiting(key, cwd, summary, waiting, deadline) {
   const store = await loadStore();
   const t = topicOf(store, key, cwd);
-  t.waiting = waiting;
+  t.waiting = !!waiting;
   t.waitingUntil = waiting && deadline ? stampNow(deadline) : '';
+  t.waitingSince = waiting ? stampNow() : '';
+  // 新一轮等待不继承上一轮残留的「关闭」请求，否则刚进来就被立刻收尾
+  t.cancelRequested = false;
   if (summary) t.summary = summary;
   t.updatedAt = stampNow();
   await saveStore(store);
@@ -301,8 +308,47 @@ async function clearWaiting(key) {
   if (!t) return;
   t.waiting = false;
   t.waitingUntil = '';
+  t.waitingSince = '';
+  t.cancelRequested = false;
   t.updatedAt = stampNow();
   await saveStore(store);
+}
+
+/**
+ * 用户在面板点「关闭」：关掉某主题的等待，让**阻塞中的 wait 立即收尾**。
+ *
+ * 只翻 store 里的 cancelRequested 标记——wait 端每 0.5s 轮询到就结束本轮（返回
+ * status:"timeout" + cancelled:true，与超时同一条出口，agent 照常收尾）。
+ * **不删主题、不删任务、不动队列**：等待可以取消，历史照留。
+ *
+ * @returns {{cancelled:boolean,key:string,name:string,cwd:string,reason?:string}}
+ */
+export async function cancelWait({ cwd: rawCwd, key: rawKey } = {}) {
+  if (!rawKey && !rawCwd) {
+    const { badInput } = await import('../../core/errors.js');
+    throw badInput('需要 --cwd "<工作目录>" 或 --key "<主题key>"');
+  }
+  const key = resolveTopicKey({ key: rawKey, cwd: rawCwd });
+  const store = await loadStore();
+  const t = store.topics[key];
+  if (!t || !t.waiting) {
+    return { cancelled: false, key, name: (t && t.name) || '', cwd: (t && t.cwd) || '', reason: 'not_waiting' };
+  }
+  t.cancelRequested = true;
+  t.updatedAt = stampNow();
+  await saveStore(store);
+  return { cancelled: true, key, name: t.name, cwd: t.cwd };
+}
+
+// wait 端轮询：该主题是否被请求关闭；取到即清标记（只生效一次）。
+async function consumeCancelRequest(key) {
+  const store = await loadStore();
+  const t = store.topics[key];
+  if (!t || !t.cancelRequested) return false;
+  t.cancelRequested = false;
+  t.updatedAt = stampNow();
+  await saveStore(store);
+  return true;
 }
 
 // ─── CRUD ───────────────────────────────────────────────────────────
@@ -638,8 +684,24 @@ export async function waitForTask({
 
   const timer = setTimeout(() => resolveOutcome({ kind: 'timeout' }), tmo);
 
+  // 关闭轮询：用户在面板点了「关闭」→ 立即收尾本轮（走与超时同一条出口，只多带 cancelled 标记，
+  // agent 不必认识新状态，照常结束本轮）。
+  const cancelPoll = setInterval(() => {
+    consumeCancelRequest(key)
+      .then((yes) => {
+        if (yes) resolveOutcome({ kind: 'cancelled' });
+      })
+      .catch(() => {});
+  }, POLL_MS);
+
   // 登记「等待中」（含截止时刻与现状），面板/弹窗据此显示倒计时
   await setWaiting(key, cwd, summary, true, new Date(Date.now() + tmo));
+
+  // 登记之后再查一次关闭标记：setWaiting 刚清掉上一轮残留的标记，因此这里若有值
+  // 一定是新一次关闭请求——立刻收尾，不让用户白等。
+  if (await consumeCancelRequest(key).catch(() => false)) {
+    resolveOutcome({ kind: 'cancelled' });
+  }
 
   // waiter/轮询就位后再回调，保证 onReady 里立刻回填也能被接住
   if (typeof onReady === 'function') {
@@ -658,9 +720,12 @@ export async function waitForTask({
     result =
       r.kind === 'timeout'
         ? { status: 'timeout', key, cwd, summary, timeoutMs: tmo }
+        : r.kind === 'cancelled'
+        ? { status: 'timeout', key, cwd, summary, timeoutMs: tmo, cancelled: true }
         : { status: 'ok', key, cwd, name, summary, task: r.task, delivered: r.delivered, queued: false };
   } finally {
     clearInterval(poll);
+    clearInterval(cancelPoll);
     clearTimeout(timer);
     waiters.delete(key);
     await clearWaiting(key);
@@ -776,4 +841,75 @@ function stopServer(server) {
       resolve_();
     });
   });
+}
+
+// ─── 面板空闲自释放所需的观测接口（panel-guard.js 调用）────────────
+
+// 当前有多少主题「真的在等待」——常驻面板的空闲自释放据此否决退出：
+// 有 agent 正阻塞等人时，面板是唯一提醒来源，绝不能在此时释放。
+//
+// waiting 标志由 wait 进程写入、结束复位，跨进程可见；但 wait 被强杀（SIGKILL）时
+// 标志会残留。所以再过一道「截止时刻」：waitingUntil 已过期视为不在等待——那一刻
+// wait 本来也要收尾了，不会误伤正常等待。
+export async function countWaitingTopics() {
+  const store = await loadStore();
+  const now = Date.now();
+  let n = 0;
+  for (const t of Object.values(store.topics)) {
+    if (!t || !t.waiting) continue;
+    const until = parseStampMs(t.waitingUntil);
+    if (Number.isFinite(until) && until <= now) continue; // 残留标志：截止时刻已过
+    n += 1;
+  }
+  return n;
+}
+
+// "YYYY-MM-DD HH:mm:ss"（本地）→ epoch ms；无法解析返回 NaN
+function parseStampMs(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(String(s || ''));
+  if (!m) return NaN;
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+}
+
+// 活动 SSE 面板连接（只在常驻 serve 进程内有意义）。每条记录最近一次成功写入的时间，
+// wait 据此判断是否真有「活着的」面板标签：心跳写失败（标签已关、TCP 残留）会立刻剔除，
+// 超过新鲜窗口没成功写过的连接不计入——避免页面关了却误判在线、整轮零提醒也不开页。
+//
+// 本期只交付「存在性」接口：panel-guard 只要 clients 数字。SSE 事件流是更上层能力，
+// 留到下个 release 再叠加；这里只保留最小数据结构，streamEventsSSE 接入时直接复用。
+const SSE_HEARTBEAT_MS = 15000;
+const SSE_LIVE_WINDOW_MS = 30000;
+const sseConns = new Set();
+export function panelPresence() {
+  const now = Date.now();
+  let clients = 0;
+  for (const conn of sseConns) {
+    if (now - conn.lastOkWrite <= SSE_LIVE_WINDOW_MS) clients += 1;
+  }
+  return { clients, total: sseConns.size };
+}
+
+// 给 runtime/api.js 用的最小 SSE 注册表：每次「/api/localtasks/events」连接时
+// 调一下 addEventStreamConn(req, res)，把连接纳入 panelPresence 统计。
+export function addEventStreamConn(req, res) {
+  const conn = { lastOkWrite: Date.now() };
+  sseConns.add(conn);
+  const beat = setInterval(() => {
+    try {
+      res.write(`: ping ${Date.now()}\n\n`);
+      conn.lastOkWrite = Date.now();
+    } catch {
+      clearInterval(beat);
+      sseConns.delete(conn);
+    }
+  }, SSE_HEARTBEAT_MS);
+  beat.unref?.();
+  const cleanup = () => {
+    clearInterval(beat);
+    sseConns.delete(conn);
+  };
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+  res.on('close', cleanup);
+  return conn;
 }

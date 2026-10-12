@@ -415,7 +415,7 @@ test('wait 取任务时把收尾追加语拼到返回末尾，但不改库存原
 
   // 关闭后再来一条，确认不再追加
   await svc.updateSettings({ taskSuffix: '' });
-  const added2 = await svc.addTask({ cwd: dirA, text: 'BODY2' });
+  await svc.addTask({ cwd: dirA, text: 'BODY2' });
   const r2 = await svc.waitForTask({ cwd: dirA, summary: 's2', open: false });
   assert.equal(r2.task.text, 'BODY2', '关闭后 task.text 保持原样');
 });

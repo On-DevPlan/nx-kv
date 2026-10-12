@@ -205,7 +205,14 @@ async function loadStore() {
   if (!topics) return emptyStore();
   return {
     version: 4,
-    settings: { timeoutSec: clampTimeoutSec(settings && settings.timeoutSec) },
+    settings: {
+      timeoutSec: clampTimeoutSec(settings && settings.timeoutSec),
+      // 旧 store 可能没存过 taskSuffix（v0.8.0 之前）；clampTaskSuffix 缺省→默认文本。
+      // 显式 ''（关闭）会保留——判断条件是「字段存在且非 undefined」，不能只看 falsy。
+      taskSuffix: settings && Object.prototype.hasOwnProperty.call(settings, 'taskSuffix')
+        ? clampTaskSuffix(settings.taskSuffix)
+        : DEFAULT_TASK_SUFFIX,
+    },
     topics,
   };
 }

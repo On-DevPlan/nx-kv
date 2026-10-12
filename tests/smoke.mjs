@@ -275,6 +275,8 @@ try {
 
   // ─── 11b. 实时任务输入 localtask（工作目录为主题、主题拥有队列，本机不依赖后端）─
   process.env.NX_KV_LOCALTASK_STORE = join(tmp, 'localtasks.json');
+  // 这一段用例校验 wait 行为：先把收尾追加语关掉，避免自动追加污染 task.text 严格相等断言
+  await cliJson(['localtask', 'config', '--no-suffix']);
   const topicA = join(tmp, 'projA');
   const topicB = join(tmp, 'projB');
   mkdirSync(topicA, { recursive: true });
@@ -325,6 +327,31 @@ try {
 
   const stCfg = await cliJson(['localtask', 'config', '--timeout', '300']);
   check('localtask config 设置超时（推荐 180、最大 600）', stCfg.timeoutSec === 300 && stCfg.maxSec === 600, JSON.stringify(stCfg));
+
+  // 收尾追加语：默认 / 自定义 / 关闭 / 恢复
+  const stSuffixOn = await cliJson(['localtask', 'config', '--suffix', 'SMOKE_TAIL 计划最后再次 nx-kv localtask wait']);
+  check('config 自定义收尾追加语已开启', stSuffixOn.suffixEnabled === true && /SMOKE_TAIL/.test(stSuffixOn.taskSuffix), JSON.stringify(stSuffixOn));
+
+  // 加一条任务 → wait 拿到的 task.text 末尾应包含自定义追加语
+  await cliJson(['localtask', 'add', '任务本体', '--cwd', topicA]);
+  const waitWithSuffix = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', '追加语冒烟']);
+  check(
+    'wait 返回末尾追加收尾语',
+    waitWithSuffix.status === 'ok' && /任务本体[\s\S]*SMOKE_TAIL/.test(waitWithSuffix.task.text),
+    JSON.stringify(waitWithSuffix)
+  );
+
+  // 库存原文不应被改写
+  const listAfter = await cliJson(['localtask', 'list']);
+  const consumed = listAfter.topics.find((t) => t.key === waitWithSuffix.key).tasks.find((x) => x.id === waitWithSuffix.task.id);
+  check('库存原文不含追加语', consumed && consumed.text === '任务本体', JSON.stringify(consumed));
+
+  // 关闭追加：PATCH suffix=''
+  const stSuffixOff = await cliJson(['localtask', 'config', '--no-suffix']);
+  check('--suffix "" 关闭追加', stSuffixOff.suffixEnabled === false && stSuffixOff.taskSuffix === '', JSON.stringify(stSuffixOff));
+
+  // 收尾追加语冒烟主题用完即清（避免影响后续用例）
+  await cliJson(['localtask', 'topic', 'remove', '--key', waitWithSuffix.key, '--force']);
 
   // cancel：非等待中的主题为无操作（cancelled:false + reason:not_waiting）
   const cancelIdle = await cliJson(['localtask', 'cancel', '--cwd', topicA]);

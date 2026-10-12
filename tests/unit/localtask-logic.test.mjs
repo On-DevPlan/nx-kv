@@ -22,6 +22,8 @@ async function reset() {
   } catch {
     /* 不存在即可 */
   }
+  // 关掉收尾追加语，保持 task.text 的精确相等断言
+  await svc.updateSettings({ taskSuffix: '' });
 }
 
 test('空总览', async () => {
@@ -380,4 +382,87 @@ test('批量删除：keys/cwds/all，等待中跳过，force 连等待中删', a
   assert.equal(r.count, 1);
   await p;
   assert.equal((await svc.listTasks()).topics.length, 0);
+});
+
+// ─── 收尾追加语（taskSuffix）单测 ─────────────────────────────────────
+
+test('收尾追加语：缺省→默认；空串→关闭；trim；超长截断', async () => {
+  assert.equal(svc.clampTaskSuffix(undefined), svc.DEFAULT_TASK_SUFFIX);
+  assert.equal(svc.clampTaskSuffix(null), svc.DEFAULT_TASK_SUFFIX);
+  assert.equal(svc.clampTaskSuffix(''), '', '空串 = 关闭');
+  assert.equal(svc.clampTaskSuffix('  abc  '), 'abc', 'trim');
+  assert.equal(svc.clampTaskSuffix('x'.repeat(1000)).length, 500, '超长截断到 500');
+});
+
+test('收尾追加语设置：超时与追加语都不传时报错（避免空更新静默成功）', async () => {
+  await reset();
+  await assert.rejects(() => svc.updateSettings({}), /--timeout/);
+});
+
+test('wait 取任务时把收尾追加语拼到返回末尾，但不改库存原文；关闭后不追加', async () => {
+  await reset();
+  await svc.updateSettings({ taskSuffix: 'TAIL_A' });
+  const added = await svc.addTask({ cwd: dirA, text: 'BODY' });
+  // 排队直达路径
+  const r1 = await svc.waitForTask({ cwd: dirA, summary: 's', open: false });
+  assert.equal(r1.status, 'ok');
+  assert.equal(r1.queued, true);
+  assert.ok(r1.task.text.endsWith('TAIL_A'), '排队路径也拼追加语');
+  // 库存原文未被改写
+  const list = await svc.listTasks();
+  const t1 = list.topics[0].tasks.find((x) => x.id === added.task.id);
+  assert.equal(t1.text, 'BODY');
+
+  // 关闭后再来一条，确认不再追加
+  await svc.updateSettings({ taskSuffix: '' });
+  const added2 = await svc.addTask({ cwd: dirA, text: 'BODY2' });
+  const r2 = await svc.waitForTask({ cwd: dirA, summary: 's2', open: false });
+  assert.equal(r2.task.text, 'BODY2', '关闭后 task.text 保持原样');
+});
+
+test('收尾追加语设置：默认值/自定义/清空关闭/恢复默认/改超时不覆盖追加语', async () => {
+  await reset();
+  // reset 后 settings.taskSuffix = ''（关闭）；getSettings 暴露的 defaultTaskSuffix 永远在
+  const s0 = await svc.getSettings();
+  assert.equal(s0.taskSuffix, '');
+  assert.equal(s0.suffixEnabled, false);
+  assert.ok(s0.defaultTaskSuffix && s0.defaultTaskSuffix.length > 0, '默认文案必须非空');
+
+  // 改超时不动追加语
+  const s1 = await svc.updateSettings({ timeoutSec: 300 });
+  assert.equal(s1.timeoutSec, 300);
+  assert.equal(s1.taskSuffix, '', '改超时不覆盖关闭状态');
+
+  // 设为自定义
+  const s2 = await svc.updateSettings({ taskSuffix: 'MY_TAIL' });
+  assert.equal(s2.taskSuffix, 'MY_TAIL');
+  assert.equal(s2.suffixEnabled, true);
+
+  // 改超时仍不动
+  const s3 = await svc.updateSettings({ timeoutSec: 60 });
+  assert.equal(s3.timeoutSec, 60);
+  assert.equal(s3.taskSuffix, 'MY_TAIL');
+
+  // 恢复默认（调用方应传 DEFAULT_TASK_SUFFIX）
+  const s4 = await svc.updateSettings({ taskSuffix: svc.DEFAULT_TASK_SUFFIX });
+  assert.equal(s4.taskSuffix, svc.DEFAULT_TASK_SUFFIX);
+  assert.equal(s4.suffixEnabled, true);
+
+  // 清空关闭
+  const s5 = await svc.updateSettings({ taskSuffix: '' });
+  assert.equal(s5.taskSuffix, '');
+  assert.equal(s5.suffixEnabled, false);
+});
+
+test('收尾追加语幂等：任务原文已包含同样追加语时不重复追加', async () => {
+  await reset();
+  const tail = 'IDEMPOTENT_TAIL';
+  await svc.updateSettings({ taskSuffix: tail });
+  // 先构造一条「任务原文里已含 tail」的 pending：addTask → 改文本（绕过 UI 限制）
+  const added = await svc.addTask({ cwd: dirA, text: 'INNER' });
+  await svc.updateTask({ cwd: dirA, id: added.task.id, text: 'INNER\n\n' + tail });
+  const r = await svc.waitForTask({ cwd: dirA, summary: 's', open: false });
+  // 原文已含 tail，不应重复拼
+  assert.ok(r.task && r.task.text.includes(tail), JSON.stringify(r));
+  assert.ok(!r.task.text.includes(tail + '\n\n' + tail) && !r.task.text.includes(tail + tail), '不应该出现重复追加');
 });

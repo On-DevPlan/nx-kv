@@ -2,6 +2,27 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.4] - 2026-10-12
+
+### Added
+
+- **主题总览加「实时连接」探活指示灯**：1.5s 数据轮询 + EventSource 双心跳，
+  主题总览标题旁显示「实时连接正常 / 连接断开，正在重连… / 正在连接…」三态
+  （断线用红色语义提示）；轮询失败不再每 1.5s 弹错误 toast，统一由指示灯提示。
+- **主题现状 / 上一轮完成总结 / 长任务文本支持点击弹窗阅读**：在原位完整展示基础上，
+  叠加点击在居中模态框中专注阅读（长任务文本长度 >50 时才显示可点击指针）；
+  支持点遮罩、按 Esc 或「关闭」按钮退出。纯前端交互、无新接口。
+- **wait 生命周期事件流（后端 SSE）**：
+  - HTTP 为 **SSE** `GET /api/localtasks/events`（可带 `cwd`/`key` 过滤，缺省订阅全部主题，
+    首帧 `: connected`、每 15s 心跳、断线自动重连）；CLI 等价为
+    `localtask events [--cwd|--key]`，逐行 NDJSON。
+  - 事件三类：`waiting`（开始等待，连接时已在等待补发 `replay` 快照）、
+    `reminder`（剩余 **30s / 10s** 各提醒一次）、`resolved`（`delivered` 被回填 /
+    `timeout` 超时；对等待标志残留的僵死状态补发 `stale:true` 的 timeout）。
+  - 后端生成器 `watchEvents` 与传输 `streamEventsSSE` 解耦，单测可独立驱动生成器。
+  - `api.js` 增 `action.stream === true` 机制：透传 req/res 给 action.run，
+    由 action 自己接管响应（SSE 等长连接用得到）。
+
 ## [0.8.3] - 2026-10-12
 
 ### Changed

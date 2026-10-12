@@ -24,11 +24,12 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { basename, dirname, join, resolve } from 'node:path';
-import { APP_DIR } from '../../core/paths.js';
+import { fileURLToPath } from 'node:url';
+import { APP_DIR, DEFAULT_PORT } from '../../core/paths.js';
 import { badInput } from '../../core/errors.js';
 import { openBrowser } from '../../core/open.js';
-import { renderPopupPage } from './popup.js';
 
 export const DEFAULT_TIMEOUT_MS = 180_000; // 阻塞默认 3 分钟（推荐值）
 const POLL_MS = 500; // 跨进程兜底轮询间隔
@@ -720,9 +721,16 @@ export async function waitForTask({
     return { status: 'ok', key, cwd, name, summary, task: withTaskSuffix(queued, suffix), queued: true };
   }
 
-  // 2. 没有 pending → 起内嵌弹窗服务器
-  const server = await startPopupServer(key, cwd, summary, tmo);
-  const addr = `http://127.0.0.1:${server.address().port}/`;
+  // 2. 没有 pending → 复用常驻主面板（不再起随机端口临时弹窗）：
+  //    a) 确保主面板在跑（不存在就 detached 拉起 serve --no-open --auto-exit）；
+  //    b) 探测活动 SSE 连接：有活标签就不开新页（避免 Edge 重复开标签）；
+  //                没活标签就 openBrowser 深链到当前主题。
+  //    失败只降级为纯阻塞——绝不抛错中断 wait。
+  //    --no-open 模式（冒烟/CI）不发起任何面板相关动作：不开浏览器、不拉起 serve、不开 SSE。
+  //    这样可避免在测试里 spawn 出一堆孤儿进程占着 7877 端口。
+  const panelInfo = open ? await ensureMainPanel() : { running: false, started: false, url: '' };
+  const presence = panelInfo.running ? await probePresence() : 0;
+  const deepLink = deepLinkUrl(key, cwd);
 
   // 3. 结果承诺：两个生产者（同进程 waiter / 跨进程轮询）+ 超时
   let resolveOutcome;
@@ -755,7 +763,7 @@ export async function waitForTask({
       .catch(() => {});
   }, POLL_MS);
 
-  // 登记「等待中」（含截止时刻与现状），面板/弹窗据此显示倒计时
+  // 登记「等待中」（含截止时刻与现状），面板据此显示倒计时
   await setWaiting(key, cwd, summary, true, new Date(Date.now() + tmo));
 
   // 登记之后再查一次关闭标记：setWaiting 刚清掉上一轮残留的标记，因此这里若有值
@@ -767,13 +775,32 @@ export async function waitForTask({
   // waiter/轮询就位后再回调，保证 onReady 里立刻回填也能被接住
   if (typeof onReady === 'function') {
     try {
-      await onReady({ addr, key, cwd, name, summary });
+      await onReady({ addr: deepLink, key, cwd, name, summary });
     } catch {
       /* 钩子异常不得影响 wait */
     }
   }
 
-  if (open) openBrowser(addr);
+  // 没活标签且主面板在跑 → 开浏览器深链（让用户能在面板里选中主题并响应等待事件）。
+  // 已有活标签 / --no-open / 主面板未启动 → 都不开（避免重复标签 + 冒烟/CI 兼容）。
+  const openPage = open && presence === 0 && panelInfo.running;
+  if (openPage) openBrowser(deepLink);
+
+  // 周期复查：等待期间每 5s 查一次活动标签；万一开始时判错（页面被关），20s 冷却内重开。
+  // 不到点不开新页（节流，避免「标签被关 → 立刻开 → 立刻关」抖动）。
+  const REVIEW_MS = 5_000;
+  const REOPEN_COOLDOWN_MS = 20_000;
+  let lastReopenAt = 0;
+  const review = setInterval(async () => {
+    if (!panelInfo.running || !open) return;
+    const n = await probePresence().catch(() => 0);
+    if (n > 0) return; // 有活标签，不动
+    const now = Date.now();
+    if (now - lastReopenAt < REOPEN_COOLDOWN_MS) return; // 冷却中
+    lastReopenAt = now;
+    openBrowser(deepLink);
+  }, REVIEW_MS);
+  review.unref?.();
 
   let result;
   try {
@@ -787,121 +814,12 @@ export async function waitForTask({
   } finally {
     clearInterval(poll);
     clearInterval(cancelPoll);
+    clearInterval(review);
     clearTimeout(timer);
     waiters.delete(key);
     await clearWaiting(key);
-    await stopServer(server);
   }
   return result;
-}
-
-// ─── 内嵌弹窗服务器 ─────────────────────────────────────────────────
-
-function sendJson(res, status, obj) {
-  res.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
-  });
-  res.end(JSON.stringify(obj));
-}
-
-function sendHtml(res, html) {
-  res.writeHead(200, {
-    'content-type': 'text/html; charset=utf-8',
-    'cache-control': 'no-store',
-  });
-  res.end(html);
-}
-
-async function readBody(req) {
-  const chunks = [];
-  let size = 0;
-  for await (const c of req) {
-    size += c.length;
-    if (size > 1024 * 1024) throw new Error('请求体过大');
-    chunks.push(c);
-  }
-  if (!chunks.length) return {};
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-}
-
-// 与主 api.js 同一套跨站防护：弹窗服务器虽只绑 127.0.0.1，浏览器里任意页面都能
-// 向它发请求，非本机来源一律挡。
-function originAllowed(req) {
-  const origin = req.headers.origin;
-  if (!origin) return true;
-  try {
-    const h = new URL(origin).hostname;
-    return h === '127.0.0.1' || h === 'localhost' || h === '::1';
-  } catch {
-    return false;
-  }
-}
-
-async function handlePopup(req, res, key, cwd, summary, timeoutMs) {
-  const url = new URL(req.url, 'http://127.0.0.1/');
-  const method = (req.method || 'GET').toUpperCase();
-
-  try {
-    if ((method === 'GET' || method === 'HEAD') && (url.pathname === '/' || url.pathname === '/index.html')) {
-      sendHtml(res, renderPopupPage({ key, cwd, summary, timeoutMs }));
-      return;
-    }
-
-    if (url.pathname === '/api/localtasks' && method === 'GET') {
-      sendJson(res, 200, { ok: true, data: await listTasks() });
-      return;
-    }
-
-    if (url.pathname === '/api/localtasks' && method === 'POST') {
-      if (!originAllowed(req)) {
-        sendJson(res, 403, { ok: false, error: '跨站请求被拒绝（弹窗仅接受本机来源）', code: 'BLOCKED' });
-        return;
-      }
-      const body = await readBody(req);
-      sendJson(res, 200, { ok: true, data: await addTask({ cwd, text: body.text }) });
-      return;
-    }
-
-    if (url.pathname === '/api/localtasks/item' && method === 'DELETE') {
-      if (!originAllowed(req)) {
-        sendJson(res, 403, { ok: false, error: '跨站请求被拒绝（弹窗仅接受本机来源）', code: 'BLOCKED' });
-      } else {
-        const body = await readBody(req);
-        sendJson(res, 200, { ok: true, data: await removeTask({ cwd, id: body.id }) });
-      }
-      return;
-    }
-
-    sendJson(res, 404, { ok: false, error: '不存在: ' + method + ' ' + url.pathname });
-  } catch (err) {
-    const code = err && err.code === 'INVALID_INPUT' ? 400 : err && err.code === 'NOT_FOUND' ? 404 : 500;
-    sendJson(res, code, { ok: false, error: String((err && err.message) || err), code: err.code || 'INTERNAL' });
-  }
-}
-
-function startPopupServer(key, cwd, summary, timeoutMs) {
-  const server = http.createServer((req, res) => handlePopup(req, res, key, cwd, summary, timeoutMs));
-  return new Promise((resolve_, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve_(server));
-  });
-}
-
-function stopServer(server) {
-  return new Promise((resolve_) => {
-    const force = setTimeout(() => {
-      try {
-        server.closeAllConnections();
-      } catch {
-        /* Node 版本不支持则忽略，close 仍会兜底 */
-      }
-    }, 800);
-    server.close(() => {
-      clearTimeout(force);
-      resolve_();
-    });
-  });
 }
 
 // ─── 面板空闲自释放所需的观测接口（panel-guard.js 调用）────────────
@@ -973,4 +891,103 @@ export function addEventStreamConn(req, res) {
   req.on('error', cleanup);
   res.on('close', cleanup);
   return conn;
+}
+
+// ─── 常驻主面板（固定端口）统一入口 ───────────────────────────────────
+
+// 「主面板就绪」=端口上有可响应的服务。
+// 这与 /api/ping 不同：ping 是面板壳层每 15s 主动上报「有页面开着」，
+// 这里只问「端口上有没有人接 HTTP」——用于决定是否要拉起 serve。
+async function probePanelReady(timeoutMs = 900) {
+  const url = `${panelBaseUrl()}/api/ping`;
+  return new Promise((resolve_) => {
+    const req = http.get(url, { timeout: timeoutMs }, (res) => {
+      res.resume();
+      resolve_(true);
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve_(false);
+    });
+    req.on('error', () => resolve_(false));
+  });
+}
+
+// 「活动 SSE 连接数」= 主面板上当前正打开的「实时任务」标签数。
+// 用于 wait 决策：已有活标签就不重开页面，让那个标签响铃/打角标/弹通知；
+// 没有活标签时再 openBrowser 新开深链标签。
+//
+// 任何失败/旧版无此端点都按 0 处理（保守地开一次页），绝不因探测失败而阻塞 wait。
+async function probePresence(timeoutMs = 900) {
+  const url = `${panelBaseUrl()}/api/localtasks/presence`;
+  return new Promise((resolve_) => {
+    const req = http.get(url, { timeout: timeoutMs }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => {
+        body += c;
+      });
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(body);
+          const d = j && typeof j === 'object' && j.data ? j.data : j;
+          resolve_(Math.max(0, Number(d && d.clients) || 0));
+        } catch {
+          resolve_(0);
+        }
+      });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve_(0);
+    });
+    req.on('error', () => resolve_(0));
+  });
+}
+
+function panelBaseUrl() {
+  return `http://127.0.0.1:${DEFAULT_PORT}`;
+}
+
+// 深链到主面板「实时任务」页并选中当前主题（key 优先，cwd 兜底）。
+function deepLinkUrl(key, cwd) {
+  return `${panelBaseUrl()}/#/localtask?key=${encodeURIComponent(key)}&cwd=${encodeURIComponent(cwd)}`;
+}
+
+// 本仓库/已安装包的 CLI 入口（src/modules/localtask/ 上三级到包根）。
+function binCliPath() {
+  return fileURLToPath(new URL('../../../bin/cli.mjs', import.meta.url));
+}
+
+// 确保常驻主面板可用：已在运行直接复用；否则后台 detached 拉起一个独立
+// `nx-kv serve --no-open --auto-exit`（unref，不随 wait 退出而关闭），再轮询健康端点。
+// 失败只返回 running:false，绝不抛错——wait 仍可阻塞等待 CLI/轮询回填。
+//
+// --auto-exit：这个实例是**为等用户回填而临时拉起**的，用完就该让位——面板页全部关闭、
+// 又没有等待中的主题时自行退出（宽限期见 panel-guard.js）。下一次 wait 需要时会再拉起
+// （冷启动 <1s）。用户手动 `nx-kv serve` 的实例不带此标志，不会自己跑掉。
+async function ensureMainPanel() {
+  const url = panelBaseUrl() + '/';
+  if (await probePanelReady()) return { running: true, started: false, url };
+
+  try {
+    const child = spawn(process.execPath, [binCliPath(), 'serve', '--no-open', '--auto-exit'], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    child.on('error', () => {
+      /* 见轮询兜底 */
+    });
+    child.unref();
+  } catch {
+    return { running: false, started: false, url };
+  }
+
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 200));
+    if (await probePanelReady(700)) return { running: true, started: true, url };
+  }
+  return { running: false, started: true, url };
 }

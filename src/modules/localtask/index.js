@@ -271,5 +271,16 @@ export default {
       run: (ctx) => service.cancelWait({ cwd: ctx.cwd, key: ctx.key }),
       render: renderCancel,
     },
+
+    {
+      // 探测常驻面板上当前正打开的「实时任务」标签数（活动 SSE 连接数）。
+      // wait 开页前先经此端点：有活标签就复用、不再 openBrowser 新开页（避免 Edge 重复开标签）；
+      // 没有活标签时才开页深链。探测失败 / 旧版无此端点时 service 保守返回 0，不阻塞 wait。
+      id: 'localtask.presence',
+      cli: ['localtask', 'presence'],
+      http: ['GET', '/api/localtasks/presence'],
+      summary: '探测主面板上当前打开的「实时任务」标签数（活动 SSE 连接数；用于 wait 不重复开页）',
+      run: () => service.panelPresence(),
+    },
   ],
 };

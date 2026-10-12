@@ -33,50 +33,6 @@ test('空总览', async () => {
   assert.deepEqual(d.topics, []);
 });
 
-test('wait 阻塞 → 弹窗 HTML 含主题与现状 → POST 实时回填唤醒', async () => {
-  await reset();
-  let info;
-  const summary = '已完成登录，等待选择工作空间';
-  const p = svc.waitForTask({
-    cwd: dirA,
-    summary,
-    timeoutMs: 3000,
-    open: false,
-    onReady: (h) => {
-      info = h;
-    },
-  });
-  await new Promise((r) => setTimeout(r, 60));
-
-  assert.equal(info.cwd, resolve(dirA));
-  assert.ok(info.key);
-  const html = await (await fetch(info.addr)).text();
-  assert.ok(html.includes('nx-kv'));
-  assert.ok(html.includes('主题（工作目录）'));
-  assert.ok(html.includes(basename(dirA)));
-  assert.ok(html.includes(summary));
-
-  const res = await fetch(info.addr + 'api/localtasks', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text: '选择工作空间 A' }),
-  });
-  const j = await res.json();
-  assert.ok(j.ok);
-  assert.equal(j.data.delivered, true);
-
-  const r = await p;
-  assert.equal(r.status, 'ok');
-  assert.equal(r.delivered, true);
-  assert.equal(r.cwd, resolve(dirA));
-  assert.equal(r.summary, summary);
-  assert.equal(r.task.text, '选择工作空间 A');
-
-  const d = await svc.listTasks();
-  assert.equal(d.waiting, 0);
-  assert.equal(d.topics[0].waiting, false);
-});
-
 test('add 排队 → wait 立即取走（queued，不开窗）', async () => {
   await reset();
   await svc.addTask({ cwd: dirA, text: '提前排的' });
@@ -212,18 +168,6 @@ test('缺 summary / 空内容 / 缺 id 报错，不建空记录', async () => {
   await assert.rejects(() => svc.waitForTask({ cwd: dirA }), /--summary/);
   await assert.rejects(() => svc.addTask({ cwd: dirA, text: '  ' }), /不能为空/);
   await assert.rejects(() => svc.getTask({ cwd: dirA }), /--id/);
-});
-
-test('弹窗：agent 领取（delivered）后不再显示倒计时', async () => {
-  const { renderPopupPage } = await import('../../src/modules/localtask/popup.js');
-  const html = renderPopupPage({ key: 'k1', cwd: dirA, summary: '现状', timeoutMs: 180000 });
-  // 等待态有倒计时状态条
-  assert.ok(html.includes('id="statusbar"'));
-  assert.ok(html.includes('id="clock"'));
-  // delivered 分支隐藏整个倒计时状态条
-  assert.ok(html.includes("el('statusbar').style.display = 'none'"));
-  // 计时器在 delivered 后不再更新
-  assert.ok(/function tickClock\(\) \{\s*if \(delivered\) return;/.test(html));
 });
 
 test('队列任务被领取时记录本轮完成总结（queued 路径）', async () => {

@@ -2,6 +2,26 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.2] - 2026-10-12
+
+### Added
+
+- **实时任务 wait 返回任务时自动追加「收尾提醒」（可配置，默认开启）**，防止 agent 在长对话里
+  漂移、偶尔忘记最后再 wait 一次：
+  - wait 交付任务时在 `task.text` 末尾拼接一段固定提醒（默认大意：规划计划、完成本任务，
+    计划的最后一个动作是再次调用 `nx-kv localtask wait` 收尾本轮，拿到下一条或超时前不要提前结束）。
+  - 只作用于**返回给 agent 的载荷**，面板/库存里的任务原文保持干净、不被改写；原文已包含同样
+    追加语时幂等不重复追加。
+  - 可在「本地任务」页配置（编辑、保存、恢复默认、一键关闭），CLI/HTTP：
+    `localtask config --suffix "<文案>"`、`--no-suffix` 关闭、`--reset-suffix` 恢复默认
+    （HTTP `PATCH` 传 `"suffix": ""` 关闭）；
+    `PATCH /api/localtasks/setting` 增 `suffix` 字段，设置视图增 `taskSuffix`/`defaultTaskSuffix`/`suffixEnabled`。
+
+### Fixed
+
+- `loadStore` 重建 settings 时只保留 `timeoutSec`、把 `taskSuffix` 字段丢掉，导致
+  第一次 PATCH 关闭后第二次 PATCH 改超时，taskSuffix 会被默认值覆盖（仅 0.8.1 受影响）。
+
 ## [0.8.1] - 2026-10-12
 
 ### Added

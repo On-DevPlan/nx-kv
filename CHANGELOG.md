@@ -2,6 +2,36 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.5] - 2026-10-13
+
+### Added
+
+- **本地任务新增「全局任务池」（跨目录共享队列 + 工作窃取）**，参考 Go 调度器的
+  local runq + global runq 两层模型：
+  - `wait` 的领取顺序变为：本目录队列 → **全局任务池** → 阻塞。本地取不到时自动
+    去全局领，全局也没有才阻塞；**显式传 `--cwd` 不会关闭全局兜底**（防止调用方
+    习惯性传 cwd 导致池子无人领取）。返回新增 `source: "local" | "global"` 标明
+    任务来源，旧字段全部保留。
+  - 发布进池子：`localtask add --global "<任务文本>"`（CLI/HTTP 同名 flag；
+    `--global` 时 `--cwd` 被忽略）。不限定接收方、谁闲谁领的任务走这里。
+  - 多个 agent 同时阻塞时，全局任务按阻塞先后（FIFO）实时投递给最早等待的；
+    跨进程由既有 0.5s 轮询兜底，同样本地优先、全局其次。
+  - 全局主题在 `localtask list` 与面板「本地任务」页永远置顶（名称「全局任务」，
+    key 固定 `__GLOBAL__`，卡片带「全局」徽章）；面板回填表单新增「全局」勾选，
+    选中全局主题卡片时只能推全局。
+  - 全局主题默认受保护：`topic remove --key __GLOBAL__` 需 `--force`、
+    `topic remove-many` 将其计入 `skipped`（reason `protected`）、`prune` 永不清理；
+    它不是等待源——`cancel` 返回 `global_not_waitable`、永不计入等待数。
+  - 任务级 `get/update/remove/reorder` 新增 `--key` 寻址（与 `--cwd` 二选一），
+    全局主题没有 cwd、只能按 key 管理。
+
+### Fixed
+
+- **落盘并发安全**：`saveStore` 进程内串行化（链式队列）——此前同进程两个写操作
+  重叠时共用同一个 `.tmp` 中转文件，先完成的 rename 会把 tmp 消耗掉、后一个
+  rename 直接 ENOENT 崩溃（全局唤醒与等待复位并发时必现）；rename 另加 Windows
+  EPERM/EACCES 小退避重试（目标文件被并发读者/杀软短暂锁住的瞬态失败）。
+
 ## [0.8.4] - 2026-10-12
 
 ### Added

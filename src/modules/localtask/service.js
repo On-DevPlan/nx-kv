@@ -10,13 +10,17 @@
 //   1. **工作目录即主题，主题拥有队列。** wait 传入工作目录（默认进程 cwd），归一化后
 //      作为主题 key；同一目录的多次 wait（即便现状措辞不同）共用同一个任务队列，
 //      不同目录 → 不同主题 → 队列互不串。任务可在一个主题队列里逐条堆积，agent 按序领取。
-//   2. **现状总结只作状态展示。** --summary 是 agent 当前状态（人读），每次 wait 刷新，
+//   2. **全局主题兜底（工作窃取）。** 除按目录划分的本地队列外，还有一个跨目录共享的
+//      「全局主题」（key '__GLOBAL__'）：本地队列取不到 pending 时，任何 wait 都自动去
+//      全局领（显式传 --cwd 也不例外）；全局也没有才阻塞。任务用 addTask({global:true})
+//      （CLI --global）发布进池子，谁闲谁领——类似 Go 调度器的 local runq + global runq。
+//   3. **现状总结只作状态展示。** --summary 是 agent 当前状态（人读），每次 wait 刷新，
 //      不再参与队列分桶；用户据此一眼看清 agent 做到哪、卡在哪。
-//   3. **纯本地协调，不依赖 KV 后端登录态。** 数据落本机文件，弹窗由本进程临时起的
+//   4. **纯本地协调，不依赖 KV 后端登录态。** 数据落本机文件，弹窗由本进程临时起的
 //      http 服务器直出，未登录也能用。
-//   4. **排队语义。** 用户可提前回填：主题已有 pending 时 wait 立即取走、不开窗；
+//   5. **排队语义。** 用户可提前回填：主题已有 pending 时 wait 立即取走、不开窗；
 //      没有 pending 才开窗阻塞。
-//   5. **超时是业务结果不是错误。** 默认阻塞 3 分钟（页面可调，上限 10 分钟）；超时返回 {status:'timeout'}、
+//   6. **超时是业务结果不是错误。** 默认阻塞 3 分钟（页面可调，上限 10 分钟）；超时返回 {status:'timeout'}、
 //      exit 0，agent 据此安静收尾结束本轮，绝不抛异常。
 //
 // 跨进程：弹窗与 wait 同进程时靠内存 waiter 即时唤醒；任务由别的进程写入（如常驻
@@ -55,6 +59,25 @@ export function clampTaskSuffix(v) {
   let s = String(v).trim();
   if (s.length > MAX_SUFFIX_LEN) s = s.slice(0, MAX_SUFFIX_LEN);
   return s;
+}
+
+// ─── 全局主题：跨目录共享队列（工作窃取）───────────────────────────
+//
+// 参考 Go runtime scheduler 的两层队列：每个 P 有 local runq，空了去 global runq
+// 取，还没有才 park。这里的对应物：每个工作目录一个本地主题队列，wait 在本地
+// 取不到 pending 时自动去「全局主题」领；全局也没有才阻塞。
+// 任务侧用 addTask({global:true})（CLI --global）把不限定接收方的任务发布进池子。
+//
+// 全局主题是真实存在的主题对象（复用 topics 存储），但有特殊行为：
+//   - key 固定 '__GLOBAL__'，与目录名哈希出的 16 位 hex key 永不冲突；cwd 恒为空
+//   - 永不进入 waiting 状态（它是任务源，不是等待源）——countWaitingTopics 自然不计
+//   - prune/remove 默认跳过（受保护），--force 才能删；等待语义（setWaiting/cancel）不适用
+export const GLOBAL_KEY = '__GLOBAL__';
+export const GLOBAL_NAME = '全局任务';
+export const GLOBAL_CWD = ''; // 全局主题永不指向真实目录
+
+export function isGlobalKey(key) {
+  return key === GLOBAL_KEY;
 }
 
 // ─── 存储位置：可环境变量覆盖（测试隔离）；旧名/旧文件自动兼容 ──────────
@@ -218,12 +241,33 @@ async function loadStore() {
   };
 }
 
-async function saveStore(data) {
-  const p = storePath();
-  await fsp.mkdir(dirname(p), { recursive: true });
-  const tmp = p + '.tmp';
-  await fsp.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
-  await fsp.rename(tmp, p);
+// 落盘串行化：同进程内多个写操作可能重叠（如 poll 消费落盘与 finally 复位等待态、
+// 全局 FIFO 唤醒与另一路 clearWaiting）——它们共用同一个 .tmp 中转文件，不排队的话
+// A 的 rename 会把 tmp 消耗掉，B 再 rename 就 ENOENT。链式队列保证同进程顺序写。
+// （跨进程仍靠 rename 原子性 last-writer-wins，与本模块既有语义一致。）
+let saveQueue = Promise.resolve();
+function saveStore(data) {
+  const run = saveQueue.then(async () => {
+    const p = storePath();
+    await fsp.mkdir(dirname(p), { recursive: true });
+    const tmp = p + '.tmp';
+    await fsp.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
+    // Windows 上目标文件可能被并发读者（loadStore 的 readFile）或杀软短暂锁住，
+    // rename 偶发 EPERM/EACCES——小退避重试几次即可。跨进程并发写也靠原子 rename 兜底。
+    for (let i = 0; ; i++) {
+      try {
+        await fsp.rename(tmp, p);
+        return;
+      } catch (err) {
+        if (i >= 4 || (err.code !== 'EPERM' && err.code !== 'EACCES')) throw err;
+        await new Promise((r) => setTimeout(r, 25 * (i + 1)));
+      }
+    }
+  });
+  saveQueue = run.catch(() => {
+    /* 失败不阻断后续排队者；本次调用的 rejection 仍返回给调用方 */
+  });
+  return run;
 }
 
 // 取（必要时新建）某个主题
@@ -281,6 +325,7 @@ function topicView(t) {
     waitingUntil: t.waitingUntil || '',
     waitingSince: t.waitingSince || '',
     cancelRequested: !!t.cancelRequested,
+    isGlobal: isGlobalKey(t.key),
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
     pending: tasks.filter((x) => x.status !== 'consumed').length,
@@ -292,6 +337,38 @@ function topicView(t) {
 // ─── 进程内 waiter：key -> { resolve(task) } ───────────────────────
 
 const waiters = new Map();
+
+// 进程内「愿意从全局领任务」的等待者（FIFO）。任何本地主题的 wait 在本地空、
+// 全局也空而阻塞时，除了挂进 waiters（等本目录回填），还挂到这里——
+// 同进程 addTask({global:true}) 投递时按先来后到投给最早阻塞的 waiter。
+const globalWaiters = [];
+
+// 注册全局兜底 waiter；返回注销函数（wait 在拿到任务/超时/被关闭时都要调用，
+// 否则已结束的 wait 还留在队列里占位）。summary 随注册固化——全局投递领取时
+// 记进 task.roundSummary 的是「领取方 agent 当时的现状」，而非全局池自己的现状。
+function registerGlobalWaiter(onTask, summary) {
+  const entry = { onTask, summary: summary || '', settled: false };
+  globalWaiters.push(entry);
+  return () => {
+    if (entry.settled) return;
+    entry.settled = true;
+    const i = globalWaiters.indexOf(entry);
+    if (i >= 0) globalWaiters.splice(i, 1);
+  };
+}
+
+// 弹出第一个未注销的 waiter（FIFO）；无人等返回 null。
+// 取出即标记 settled，保证一条任务只唤醒一个 waiter。
+function takeGlobalWaiter() {
+  while (globalWaiters.length) {
+    const entry = globalWaiters.shift();
+    if (!entry.settled) {
+      entry.settled = true;
+      return entry;
+    }
+  }
+  return null;
+}
 
 function markConsumed(task, roundSummary) {
   task.status = 'consumed';
@@ -318,7 +395,9 @@ export async function consumeFirstPending(key, roundSummary) {
 // 在 store 里把某主题置为等待/结束，并刷新现状。
 // waitingSince 是「等待起点」，面板据此显示「已等多久」——waitingUntil（截止时刻）
 // 只能反推剩余，反推不出起点（超时值可被改写），所以两者都存。
+// 全局主题是任务源不是等待源，永不置等待态（no-op）。
 async function setWaiting(key, cwd, summary, waiting, deadline) {
+  if (isGlobalKey(key)) return;
   const store = await loadStore();
   const t = topicOf(store, key, cwd);
   t.waiting = !!waiting;
@@ -334,6 +413,7 @@ async function setWaiting(key, cwd, summary, waiting, deadline) {
 // wait 结束复位：**仅当主题仍存在**时清等待态，绝不重建——主题可能已被 force 删除，
 // 重建会让「删除主题」失效（曾在超时清理路径上把删掉的主题又建回来）。
 async function clearWaiting(key) {
+  if (isGlobalKey(key)) return;
   const store = await loadStore();
   const t = store.topics[key];
   if (!t) return;
@@ -360,6 +440,10 @@ export async function cancelWait({ cwd: rawCwd, key: rawKey } = {}) {
     throw badInput('需要 --cwd "<工作目录>" 或 --key "<主题key>"');
   }
   const key = resolveTopicKey({ key: rawKey, cwd: rawCwd });
+  // 全局主题不是等待源（永不 waiting），无从关闭
+  if (isGlobalKey(key)) {
+    return { cancelled: false, key, name: GLOBAL_NAME, cwd: '', reason: 'global_not_waitable' };
+  }
   const store = await loadStore();
   const t = store.topics[key];
   if (!t || !t.waiting) {
@@ -396,12 +480,17 @@ function settingsView(s) {
   };
 }
 
-// 总览：返回全部主题（面板据此分组展示与回填）+ 超时设置，按最近更新排序
+// 总览：返回全部主题（面板据此分组展示与回填）+ 超时设置，按最近更新排序；
+// 全局主题永远置顶（共享池是所有 worker 的候补来源，放最显眼处）。
 export async function listTasks() {
   const store = await loadStore();
   const topics = Object.values(store.topics)
     .map(topicView)
-    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    .sort(
+      (a, b) =>
+        Number(!!b.isGlobal) - Number(!!a.isGlobal) ||
+        String(b.updatedAt).localeCompare(String(a.updatedAt))
+    );
   return { topics, waiting: topics.filter((t) => t.waiting).length, settings: settingsView(store.settings) };
 }
 
@@ -414,12 +503,12 @@ export async function getSettings() {
 //   1) 旧模型迁移来的无 cwd 主题（“旧数据，无目录”）；
 //   2) 空主题（没有任何任务）；
 //   3) allFinished 时，连同「已全部领取、无待领」的主题一起清。
-// 等待中的主题一律保留；dryRun 只报告不改动。
+// 等待中的主题与全局主题一律保留；dryRun 只报告不改动。
 export async function pruneTopics({ allFinished = false, dryRun = false } = {}) {
   const store = await loadStore();
   const removed = [];
   for (const [key, t] of Object.entries(store.topics)) {
-    if (t.waiting) continue;
+    if (t.waiting || isGlobalKey(key)) continue;
     const tasks = Array.isArray(t.tasks) ? t.tasks : [];
     const hasPending = tasks.some((x) => x.status !== 'consumed');
     const isLegacy = !t.cwd;
@@ -462,8 +551,15 @@ export async function updateSettings({ timeoutSec, taskSuffix } = {}) {
   return settingsView(store.settings);
 }
 
-export async function getTask({ cwd: rawCwd, id } = {}) {
-  const { key, cwd } = normalizeCwd(rawCwd);
+// 任务级寻址：显式 key 优先（全局主题只能按 key 定位——它没有 cwd），否则按工作目录
+function resolveTaskKey({ key: rawKey, cwd: rawCwd }) {
+  if (rawKey && String(rawKey).trim()) return String(rawKey).trim();
+  return normalizeCwd(rawCwd).key;
+}
+
+export async function getTask({ cwd: rawCwd, key: rawKey, id } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const { cwd } = normalizeCwd(rawCwd);
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
   const store = await loadStore();
@@ -477,32 +573,69 @@ export async function getTask({ cwd: rawCwd, id } = {}) {
 }
 
 /**
- * 向某主题（工作目录）的队列回填任务。
- * 若本进程正有 wait 在等该主题 → 直接投递并唤醒；否则入队堆积。
+ * 向某主题（工作目录）的队列回填任务；global=true 时投递到全局主题（共享池）。
+ * 若本进程正有 wait 在等该主题/全局池 → 直接投递并唤醒；否则入队堆积。
+ * 全局投递的唤醒链：显式 wait 全局 key 者（罕见）→ globalWaiters FIFO → 入队。
  */
-export async function addTask({ cwd: rawCwd, summary: rawSummary, text } = {}) {
-  const { key, cwd } = normalizeCwd(rawCwd);
-  const summary = normalizeSummary(rawSummary, { optional: true });
+export async function addTask({ cwd: rawCwd, summary: rawSummary, text, global: toGlobal = false } = {}) {
   const body = normalizeText(text);
+  const summary = normalizeSummary(rawSummary, { optional: true });
 
   const store = await loadStore();
-  const t = topicOf(store, key, cwd);
+  let key;
+  let cwd;
+  let t;
+  if (toGlobal) {
+    // 全局主题：cwd 恒空、名字固定；--cwd 显式给出也忽略（--global 优先）
+    key = GLOBAL_KEY;
+    cwd = GLOBAL_CWD;
+    t = topicOf(store, key, cwd, GLOBAL_NAME);
+  } else {
+    ({ key, cwd } = normalizeCwd(rawCwd));
+    t = topicOf(store, key, cwd);
+  }
+
   const task = normalizeTask({ id: nextTaskId(t.tasks), text: body, status: 'pending', createdAt: stampNow() });
   t.tasks.push(task);
   t.updatedAt = stampNow();
   if (summary) t.summary = summary;
 
-  const waiter = waiters.get(key);
-  const delivered = !!waiter;
-  if (waiter) {
-    markConsumed(task, t.summary);
-    waiters.delete(key);
-    t.waiting = false;
-    t.waitingUntil = '';
+  // 唤醒分两步：先在 store 里标记消费，saveStore 之后才 resolve——保证 wait 返回时
+  // 数据必然一致（沿用旧本地路径的顺序）。
+  let delivered = false;
+  let wake = null; // (task) => void
+
+  if (toGlobal) {
+    const direct = waiters.get(GLOBAL_KEY); // 显式等全局 key 的（罕见路径）
+    if (direct) {
+      markConsumed(task, t.summary);
+      waiters.delete(GLOBAL_KEY);
+      t.waiting = false;
+      t.waitingUntil = '';
+      delivered = true;
+      wake = direct.resolve;
+    } else {
+      const gw = takeGlobalWaiter(); // FIFO：最早阻塞的先领
+      if (gw) {
+        markConsumed(task, gw.summary); // roundSummary 记领取方 wait 的现状
+        delivered = true;
+        wake = gw.onTask;
+      }
+    }
+  } else {
+    const waiter = waiters.get(key);
+    if (waiter) {
+      markConsumed(task, t.summary);
+      waiters.delete(key);
+      t.waiting = false;
+      t.waitingUntil = '';
+      delivered = true;
+      wake = waiter.resolve;
+    }
   }
 
   await saveStore(store); // 先落盘再唤醒：wait 返回时数据必然一致
-  if (waiter) waiter.resolve(normalizeTask(task));
+  if (wake) wake(normalizeTask(task));
 
   return {
     status: 'ok',
@@ -510,14 +643,16 @@ export async function addTask({ cwd: rawCwd, summary: rawSummary, text } = {}) {
     cwd,
     name: t.name,
     summary: t.summary,
+    isGlobal: toGlobal,
     task: normalizeTask(task),
     delivered,
     queued: !delivered,
   };
 }
 
-export async function updateTask({ cwd: rawCwd, id, text } = {}) {
-  const { key, cwd } = normalizeCwd(rawCwd);
+export async function updateTask({ cwd: rawCwd, key: rawKey, id, text } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const { cwd } = normalizeCwd(rawCwd);
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
   const body = String(text ?? '').trim();
@@ -534,11 +669,12 @@ export async function updateTask({ cwd: rawCwd, id, text } = {}) {
   task.text = body;
   t.updatedAt = stampNow();
   await saveStore(store);
-  return { status: 'ok', key, cwd, name: t.name, task: normalizeTask(task) };
+  return { status: 'ok', key, cwd: t.cwd || cwd, name: t.name, task: normalizeTask(task) };
 }
 
-export async function removeTask({ cwd: rawCwd, id } = {}) {
-  const { key, cwd } = normalizeCwd(rawCwd);
+export async function removeTask({ cwd: rawCwd, key: rawKey, id } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const { cwd } = normalizeCwd(rawCwd);
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
 
@@ -552,7 +688,7 @@ export async function removeTask({ cwd: rawCwd, id } = {}) {
   const [removed] = t.tasks.splice(index, 1);
   t.updatedAt = stampNow();
   await saveStore(store);
-  return { status: 'ok', key, cwd, name: t.name, removed: normalizeTask(removed) };
+  return { status: 'ok', key, cwd: t.cwd || cwd, name: t.name, removed: normalizeTask(removed) };
 }
 
 // ─── 主题删除（单个 / 批量） ───────────────────────────────────────
@@ -565,6 +701,8 @@ function resolveTopicKey({ key: rawKey, cwd: rawCwd }) {
 
 // 删除整个主题（连同其全部任务）。默认拒绝删除「等待中」主题——那会让正阻塞的
 // agent 只能等到超时；force=true 才强删（agent 随后超时收尾）。
+// 全局主题同样默认拒绝（共享池，删掉会让所有 worker 的候补来源消失）；
+// force=true 清空全局任务池。
 export async function removeTopic({ cwd: rawCwd, key: rawKey, force = false } = {}) {
   if (!rawKey && !rawCwd) {
     throw badInput('需要 --cwd "<工作目录>" 或 --key "<主题key>"');
@@ -575,6 +713,9 @@ export async function removeTopic({ cwd: rawCwd, key: rawKey, force = false } = 
   if (!t) {
     const { notFound } = await import('../../core/errors.js');
     throw notFound(`主题不存在（key ${key}）`);
+  }
+  if (isGlobalKey(key) && !force) {
+    throw badInput('全局主题是共享任务池，默认不能删除（确认要清空请加 --force）');
   }
   if (t.waiting && !force) {
     throw badInput('主题正在等待中，不能删除（确认要删请加 --force，agent 将超时收尾）');
@@ -614,6 +755,10 @@ export async function removeTopics({ keys, cwds, all = false, force = false } = 
       skipped.push({ key, reason: 'not_found' });
       continue;
     }
+    if (isGlobalKey(key) && !force) {
+      skipped.push({ key, name: t.name, cwd: t.cwd, reason: 'protected' });
+      continue;
+    }
     if (t.waiting && !force) {
       skipped.push({ key, name: t.name, cwd: t.cwd, reason: 'waiting' });
       continue;
@@ -628,8 +773,8 @@ export async function removeTopics({ keys, cwds, all = false, force = false } = 
 // 调整**待领取**任务的优先级：把 #id 移动到 #beforeId 之前或 #afterId 之后。
 // 领取顺序 = tasks 数组里 pending 子序列的先后（consumeFirstPending 取第一条 pending），
 // 故只在 pending 之间换位；已领取（历史）任务固定、不可移动。
-export async function reorderTasks({ cwd: rawCwd, id, beforeId, afterId } = {}) {
-  const { key, cwd } = normalizeCwd(rawCwd);
+export async function reorderTasks({ cwd: rawCwd, key: rawKey, id, beforeId, afterId } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const dragId = Number(id);
   const hasBefore = beforeId !== undefined && beforeId !== null;
   const hasAfter = afterId !== undefined && afterId !== null;
@@ -650,7 +795,7 @@ export async function reorderTasks({ cwd: rawCwd, id, beforeId, afterId } = {}) 
   const t = store.topics[key];
   if (!t) {
     const { notFound } = await import('../../core/errors.js');
-    throw notFound(`主题「${cwd}」不存在`);
+    throw notFound(`主题（key ${key}）不存在`);
   }
   const drag = t.tasks.find((x) => Number(x.id) === dragId);
   const target = t.tasks.find((x) => Number(x.id) === targetId);
@@ -671,7 +816,7 @@ export async function reorderTasks({ cwd: rawCwd, id, beforeId, afterId } = {}) 
   t.updatedAt = stampNow();
 
   await saveStore(store);
-  return { status: 'ok', key, cwd, name: t.name, topic: topicView(t) };
+  return { status: 'ok', key, cwd: t.cwd || '', name: t.name, topic: topicView(t) };
 }
 
 // ─── 阻塞等待：核心入口 ─────────────────────────────────────────────
@@ -688,7 +833,10 @@ function withTaskSuffix(task, suffix) {
 
 /**
  * 针对某主题（工作目录）等待用户回填下一条任务。
- * @param {string}  [cwd]     工作目录（主题按目录名识别）；缺省 → 进程当前 cwd
+ * 领取顺序：本目录队列 → 全局主题（共享池）→ 阻塞（两个来源任一到达即唤醒）。
+ * 返回带 source: 'local' | 'global' 标明任务来自哪个队列。
+ * @param {string}  [cwd]     工作目录（主题按目录名识别）；缺省 → 进程当前 cwd。
+ *                            注意：显式传 cwd **不会**关闭全局兜底——本地空了一定去全局领。
  * @param {string}  summary   当前现状（必填，状态展示）
  * @param {number}  [timeoutSec] 阻塞上限（秒）；缺省 → 页面配置（推荐 180，最大 600）
  * @param {number}  [timeoutMs] 兼容旧参数（毫秒）
@@ -718,7 +866,24 @@ export async function waitForTask({
   // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
   const queued = await consumeFirstPending(key, summary);
   if (queued) {
-    return { status: 'ok', key, cwd, name, summary, task: withTaskSuffix(queued, suffix), queued: true };
+    return { status: 'ok', key, cwd, name, summary, task: withTaskSuffix(queued, suffix), queued: true, source: 'local' };
+  }
+
+  // 1b. 本地空 → 去全局主题（共享池）领。这是所有 wait 的**无条件默认兜底**：
+  //     与是否显式传 --cwd 无关——本地取不到就一定来全局扫一眼，全局也没有才阻塞。
+  //     （防止调用方习惯性传 cwd 导致共享池永远无人领取。）
+  const fromGlobal = await consumeFirstPending(GLOBAL_KEY, summary);
+  if (fromGlobal) {
+    return {
+      status: 'ok',
+      key,
+      cwd,
+      name,
+      summary,
+      task: withTaskSuffix(fromGlobal, suffix),
+      queued: true,
+      source: 'global',
+    };
   }
 
   // 2. 没有 pending → 复用常驻主面板（不再起随机端口临时弹窗）：
@@ -732,7 +897,7 @@ export async function waitForTask({
   const presence = panelInfo.running ? await probePresence() : 0;
   const deepLink = deepLinkUrl(key, cwd);
 
-  // 3. 结果承诺：两个生产者（同进程 waiter / 跨进程轮询）+ 超时
+  // 3. 结果承诺：三个生产者（同进程本地 waiter / 同进程全局 FIFO / 跨进程轮询）+ 超时
   let resolveOutcome;
   const outcome = new Promise((r) => {
     resolveOutcome = r;
@@ -740,11 +905,24 @@ export async function waitForTask({
   waiters.set(key, {
     resolve: (task) => resolveOutcome({ kind: 'task', task, delivered: true }),
   });
+  // 全局兜底：同进程有人 addTask({global:true}) 时按 FIFO 唤醒本 wait
+  const unregisterGlobal = registerGlobalWaiter(
+    (task) => resolveOutcome({ kind: 'task', task, delivered: true, source: 'global' }),
+    summary
+  );
 
   const poll = setInterval(() => {
+    // 跨进程兜底轮询：先查本地，再查全局（本地优先；同轮至多 resolve 一次）
     consumeFirstPending(key)
       .then((task) => {
-        if (task) resolveOutcome({ kind: 'task', task, delivered: false });
+        if (task) {
+          resolveOutcome({ kind: 'task', task, delivered: false, source: 'local' });
+          return null;
+        }
+        return consumeFirstPending(GLOBAL_KEY);
+      })
+      .then((task) => {
+        if (task) resolveOutcome({ kind: 'task', task, delivered: false, source: 'global' });
       })
       .catch(() => {
         /* 瞬时读写错误，下一轮再试 */
@@ -810,13 +988,24 @@ export async function waitForTask({
         ? { status: 'timeout', key, cwd, summary, timeoutMs: tmo }
         : r.kind === 'cancelled'
         ? { status: 'timeout', key, cwd, summary, timeoutMs: tmo, cancelled: true }
-        : { status: 'ok', key, cwd, name, summary, task: withTaskSuffix(r.task, suffix), delivered: r.delivered, queued: false };
+        : {
+            status: 'ok',
+            key,
+            cwd,
+            name,
+            summary,
+            task: withTaskSuffix(r.task, suffix),
+            delivered: r.delivered,
+            queued: false,
+            source: r.source || 'local',
+          };
   } finally {
     clearInterval(poll);
     clearInterval(cancelPoll);
     clearInterval(review);
     clearTimeout(timer);
     waiters.delete(key);
+    unregisterGlobal();
     await clearWaiting(key);
   }
   return result;
@@ -1075,6 +1264,7 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
             cwd: t.cwd || '',
             name: t.name || '',
             summary: t.summary || '',
+            isGlobal: isGlobalKey(t.key),
             waitingUntil: t.waitingUntil,
             remainMs: Math.max(0, deadline - now),
             replay: first,
@@ -1089,6 +1279,7 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
             cwd: t.cwd || '',
             name: t.name || '',
             summary: t.summary || '',
+            isGlobal: isGlobalKey(t.key),
             waitingUntil: t.waitingUntil,
             remainSec: sec,
             remainMs: Math.max(0, st.deadline - now),
@@ -1098,7 +1289,7 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
       } else if (st && st.phase === 'waiting') {
         const outcome = consumedCount(t) > st.consumed0 ? 'delivered' : 'timeout';
         state.set(t.key, { phase: 'ended' });
-        yield { type: 'resolved', key: t.key, cwd: t.cwd || '', name: t.name || '', outcome };
+        yield { type: 'resolved', key: t.key, cwd: t.cwd || '', name: t.name || '', isGlobal: isGlobalKey(t.key), outcome };
       } else if (!st) {
         state.set(t.key, { phase: 'idle' });
       }
@@ -1113,6 +1304,7 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
             key: t.key,
             cwd: t.cwd || '',
             name: t.name || '',
+            isGlobal: isGlobalKey(t.key),
             outcome: 'timeout',
             stale: true,
           };

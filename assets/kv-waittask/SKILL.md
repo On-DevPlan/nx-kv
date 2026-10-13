@@ -43,6 +43,27 @@ agent 接着干；做完再 wait——如此循环。别人通过 kv-submit / �
 待领取任务**。队列里有任务时 wait 立即返回（不开窗、不阻塞）；队列为空才开窗
 阻塞。不同目录 → 不同主题 → 互不串。
 
+**本地空了一定去全局池领（内建兜底，没有开关）。** 即便显式传了 `--cwd`，本地
+队列取不到任务时，wait 也会自动去「全局任务池」（跨目录共享队列）领一条；全局
+也没有才阻塞。不要假设「传了 cwd 就只看本地」——习惯性传 cwd 不影响全局任务被
+领取；同样，别往全局池放"只能某人做"的任务，池子对一切空闲 agent 开放。
+
+## 全局任务池（工作窃取）
+
+除按目录划分的本地队列外，还有一个**跨目录共享**的全局主题：任何目录的 agent
+在本地队列空时自动领取池里的任务——类似 Go 调度器的 global runq：本地空就去
+全局拿，全局也空才 park 阻塞。
+
+- **发布**：`nx-kv localtask add --global "<任务文本>" --json`——不限定接收方、
+  谁闲谁领的任务走这里（`--global` 时 `--cwd` 被忽略）。
+- **领取**：无需任何 flag，wait 内建兜底；返回用 `source: "local" | "global"`
+  区分任务来自本目录队列还是全局池。agent 不必区分，照常执行 `task.text`。
+- **顺序**：本地优先、全局兜底——本目录有排队任务时不会去抢全局的。
+- **公平**：多个 agent 同时阻塞时，全局任务按阻塞先后（先到先得）投递。
+- **查看/管理**：`nx-kv localtask list` 中全局主题永远置顶（名称「全局任务」，
+  key 固定 `__GLOBAL__`）；默认受保护，`topic remove --key __GLOBAL__` 需 `--force`
+  才能清空。
+
 ## 核心命令
 
 ```bash
@@ -54,7 +75,8 @@ nx-kv localtask wait --summary "<当前现状总结>" --json
 
 | 返回 | 含义 | agent 怎么做 |
 | --- | --- | --- |
-| `{status:"ok", queued:true, task}` | 队列里已有**排队任务**（含 kv-submit 委托的） | 直接执行 task |
+| `{status:"ok", queued:true, source:"local", task}` | 本目录队列已有**排队任务**（含 kv-submit 委托的） | 直接执行 task |
+| `{status:"ok", queued:true, source:"global", task}` | 本地空，从**全局任务池**领到任务 | 直接执行 task |
 | `{status:"ok", delivered:true, task}` | 用户在弹窗/面板**实时回填** | 执行 task |
 | `{status:"timeout", cwd, summary, timeoutMs}` | 阻塞时限内未收到回填 | 收尾、结束本轮 |
 

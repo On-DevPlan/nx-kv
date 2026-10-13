@@ -44,6 +44,8 @@ export default function SessionTaskView() {
   const [activeKey, setActiveKey] = useState(null);
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
+  // 回填到全局共享池（勾选后 POST 不带 cwd，带 global:true；选中全局主题时强制勾上）
+  const [toGlobal, setToGlobal] = useState(false);
   const [timeoutSec, setTimeoutSec] = useState(180);
   const [cfgSaving, setCfgSaving] = useState(false);
   const [pruning, setPruning] = useState(false);
@@ -103,7 +105,10 @@ export default function SessionTaskView() {
     return () => window.removeEventListener('keydown', onKey);
   }, [modal]);
 
-  const topics = overview ? overview.topics : [];
+  // 全局主题（共享池）置顶；非全局保持后端给定的最近更新顺序（稳定排序不打乱）
+  const topics = overview
+    ? [...overview.topics].sort((a, b) => Number(!!b.isGlobal) - Number(!!a.isGlobal))
+    : [];
 
   // 同步页面上的超时配置（来源：后端 settings）
   useEffect(() => {
@@ -211,34 +216,48 @@ export default function SessionTaskView() {
         toast('请先选择一个主题（工作目录）');
         return;
       }
+      const useGlobal = !!active.isGlobal || toGlobal;
       setSaving(true);
       try {
         const r = await api('/api/localtasks', {
           method: 'POST',
-          body: { cwd: active.cwd, text: body },
+          body: useGlobal ? { text: body, global: true } : { cwd: active.cwd, text: body },
         });
         setText('');
-        toast(r.delivered ? '已返回给等待中的 agent' : '已排入该主题队列，等待 agent 下一次 wait');
+        toast(
+          r.delivered
+            ? useGlobal
+              ? '已实时投递给等待中的 agent（全局共享池）'
+              : '已返回给等待中的 agent'
+            : useGlobal
+            ? '已排入全局任务池：任何目录的 agent 在本地空时自动领取'
+            : '已排入该主题队列，等待 agent 下一次 wait'
+        );
         await load();
       } finally {
         setSaving(false);
       }
     });
 
+  // 任务级寻址：全局主题没有 cwd，只能按 key 定位
+  const taskAddr = () => (active.isGlobal ? { key: active.key } : { cwd: active.cwd });
+
   const remove = (id) =>
     guard(async () => {
       await api('/api/localtasks/item', {
         method: 'DELETE',
-        body: { cwd: active.cwd, id },
+        body: { ...taskAddr(), id },
       });
       toast('已删除');
       await load();
     });
 
-  // 删除整个主题（卡片上的「删除主题」）；等待中需二次确认并 force
+  // 删除整个主题（卡片上的「删除主题」）；等待中/全局共享池需二次确认并 force
   const deleteTopic = (t) =>
     guard(async () => {
-      const msg = t.waiting
+      const msg = t.isGlobal
+        ? `清空全局任务池（${t.total} 条任务）？所有 agent 的候补任务来源将消失，确认删除？`
+        : t.waiting
         ? `主题「${t.name}」正在等待中，删除后其 agent 将超时收尾，确认删除？`
         : `删除主题「${t.name}」及其全部 ${t.total} 条任务？`;
       if (!window.confirm(msg)) return;
@@ -246,7 +265,7 @@ export default function SessionTaskView() {
       try {
         await api('/api/localtasks/topic', {
           method: 'DELETE',
-          body: t.waiting ? { key: t.key, force: true } : { key: t.key },
+          body: t.isGlobal || t.waiting ? { key: t.key, force: true } : { key: t.key },
         });
         setSelected((s) => {
           const n = new Set(s);
@@ -276,20 +295,27 @@ export default function SessionTaskView() {
       await load();
     });
 
-  // 批量删除勾选主题；含等待中时 force 并提示
+  // 批量删除勾选主题；含等待中时 force 并提示；含全局共享池时说明保护语义
   const batchDelete = () =>
     guard(async () => {
       if (!selected.size) return;
       const sel = topics.filter((t) => selected.has(t.key));
       const waitingCount = sel.filter((t) => t.waiting).length;
+      const globalCount = sel.filter((t) => t.isGlobal).length;
+      const force = waitingCount > 0;
       let msg = `确认删除选中的 ${sel.length} 个主题？`;
       if (waitingCount) msg += `（其中 ${waitingCount} 个等待中，删除后其 agent 将超时收尾）`;
+      if (globalCount) {
+        msg += force
+          ? `（含 ${globalCount} 个全局共享池，将一并删除）`
+          : `（含 ${globalCount} 个全局共享池：受保护，将被跳过）`;
+      }
       if (!window.confirm(msg)) return;
       setDeleting(true);
       try {
         const r = await api('/api/localtasks/topics/remove', {
           method: 'POST',
-          body: { keys: [...selected], force: waitingCount > 0 },
+          body: { keys: [...selected], force },
         });
         toast(
           `已删除 ${r.count} 个主题` + (r.skipped.length ? `，跳过 ${r.skipped.length} 个` : '')
@@ -320,7 +346,7 @@ export default function SessionTaskView() {
       try {
         await api('/api/localtasks/item', {
           method: 'PATCH',
-          body: { cwd: active.cwd, id: editingId, text: body },
+          body: { ...taskAddr(), id: editingId, text: body },
         });
         toast('已保存修改');
         setEditingId(null);
@@ -342,7 +368,7 @@ export default function SessionTaskView() {
       try {
         await api('/api/localtasks/reorder', {
           method: 'PATCH',
-          body: { cwd: active.cwd, id, beforeId, afterId },
+          body: { ...taskAddr(), id, beforeId, afterId },
         });
         toast('已调整领取优先级');
         await load();
@@ -388,7 +414,8 @@ export default function SessionTaskView() {
           agent 用法：完成当前任务后，把
           <code> nx-kv localtask wait --cwd "&lt;工作目录&gt;" --summary "&lt;当前现状&gt;" --json </code>
           作为本轮<strong>最后一个动作</strong>调用——工作目录即<strong>主题</strong>、主题拥有任务队列，
-          同目录共用队列、不同目录互不串，任务可在队列里堆积；命令阻塞并自动打开浏览器弹窗，
+          同目录共用队列、不同目录互不串，任务可在队列里堆积；本地队列取不到时自动去
+          <strong>全局任务池</strong>领取（全局也没有才阻塞）；命令阻塞并自动打开浏览器弹窗，
           用户回填后解除阻塞、返回新任务；超时未回填则返回 <code>status:"timeout"</code>，agent 收尾结束本轮。
         </div>
       </div>
@@ -592,13 +619,24 @@ export default function SessionTaskView() {
                     style={{ margin: '3px 0 0' }}
                   />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, marginBottom: 2 }}>{t.name || '（未命名）'}</div>
+                    <div style={{ fontWeight: 700, marginBottom: 2 }}>
+                      {t.name || '（未命名）'}
+                      {t.isGlobal && (
+                        <span
+                          className="tag strong"
+                          style={{ marginLeft: 6 }}
+                          title="全局共享池：任何目录的 agent 在本地队列空时自动领取这里的任务"
+                        >
+                          全局
+                        </span>
+                      )}
+                    </div>
                     <div
                       className="mono muted"
                       title={t.cwd}
                       style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 6, minHeight: 15 }}
                     >
-                      {t.cwd || '（旧数据，无目录）'}
+                      {t.cwd || (t.isGlobal ? '（跨目录共享，不属于任何目录）' : '（旧数据，无目录）')}
                     </div>
                   </div>
                 </div>
@@ -613,7 +651,9 @@ export default function SessionTaskView() {
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  {t.waiting ? (
+                  {t.isGlobal ? (
+                    <span className="tag">共享池</span>
+                  ) : t.waiting ? (
                     <span className="tag strong">{waitingBadge(t) || countdown(t.waitingUntil)}</span>
                   ) : (
                     <span className="tag">已结束</span>
@@ -660,6 +700,18 @@ export default function SessionTaskView() {
             <span style={{ fontWeight: 700, maxWidth: 240 }} title={active.cwd}>
               {active.name}
             </span>
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, whiteSpace: 'nowrap' }}
+              title="推到全局共享池：任何目录的 agent 在本地队列空时自动领取（选中全局主题时只能推全局）"
+            >
+              <input
+                type="checkbox"
+                checked={!!active.isGlobal || toGlobal}
+                disabled={!!active.isGlobal}
+                onChange={(e) => setToGlobal(e.target.checked)}
+              />
+              全局
+            </label>
             <span className="sep"></span>
             <textarea
               style={{ flex: 1, minWidth: 240, minHeight: 40, resize: 'vertical' }}
@@ -672,7 +724,11 @@ export default function SessionTaskView() {
                   submit();
                 }
               }}
-              placeholder={`向主题「${active.name}」的队列回填下一条任务（Enter 提交，Shift+Enter 换行）`}
+              placeholder={
+                active.isGlobal
+                  ? '向全局任务池发布任务（任何目录的 agent 在本地空时自动领取；Enter 提交）'
+                  : `向主题「${active.name}」的队列回填下一条任务（Enter 提交，Shift+Enter 换行）`
+              }
             />
             <button className="btn" onClick={submit} disabled={saving}>
               {saving ? '提交中…' : '回填新任务'}

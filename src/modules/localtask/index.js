@@ -15,6 +15,8 @@ import * as service from './service.js';
 
 const CWD = { type: 'string', hint: '工作目录（作为主题；默认当前目录）' };
 const SUMMARY = { type: 'string', required: true, hint: '当前现状（agent 当前状态，展示给用户）' };
+// 任务级寻址的 key flag：全局主题没有 cwd，只能按 key 定位（__GLOBAL__）
+const KEY = { type: 'string', hint: '主题 key（与 --cwd 二选一；全局任务池固定 __GLOBAL__）' };
 
 const STATUS_TAG = { pending: '待领取', consumed: '已领取' };
 
@@ -26,7 +28,7 @@ function renderOverview(d) {
     return lines.join('\n');
   }
   for (const t of d.topics) {
-    const tag = t.waiting ? '[等待中]' : '[已结束]';
+    const tag = t.isGlobal ? '[全局池]' : t.waiting ? '[等待中]' : '[已结束]';
     const head = t.cwd ? `${t.name}  ${t.cwd}` : t.name;
     lines.push(`  ${tag} ${head}  · 待领取 ${t.pending}/${t.total}`);
     if (t.summary) lines.push(`        现状: ${t.summary}`);
@@ -44,40 +46,43 @@ const renderTask = (t) =>
     .join('\n');
 
 function renderAdd(d) {
+  const where = d.isGlobal ? '全局任务（共享池）' : `主题「${d.name}」`;
   const head = `#${d.task.id} [${d.task.status}] ${d.task.text}`;
   return d.delivered
-    ? `已实时回填给等待中的 agent（主题 ${d.name}）: ${head}`
-    : `已排入主题「${d.name}」队列（agent 下一次 wait 取走）: ${head}`;
+    ? `已实时投递给等待中的 agent（${where}）: ${head}`
+    : `已排入${where}队列（agent 下一次 wait 取走）: ${head}`;
 }
 
-// wait 的人读输出：成功给任务，超时明确提示「本轮结束」
+// wait 的人读输出：成功给任务（注明来自本地队列还是全局共享池），超时明确提示「本轮结束」
 function renderWait(r) {
   if (r.status === 'timeout') {
     const tail = r.cancelled ? '（用户在面板点了「关闭」）' : '';
     return `等待超时（${Math.round(r.timeoutMs / 1000)} 秒未回填）${tail}：主题「${r.cwd}」现状「${r.summary}」结束本轮。`;
   }
-  const origin = r.queued ? '排队任务' : '实时回填';
+  const origin =
+    (r.source === 'global' ? '全局任务池' : '本目录队列') + (r.queued ? '排队任务' : ' · 实时回填');
   return (
     `已取得下一条任务（${origin} · 主题「${r.cwd}」现状「${r.summary}」）: #${r.task.id}\n` +
     `  ${r.task.text.replace(/\n/g, '\n  ')}`
   );
 }
 
-// cancel 的人读输出：等待中→已关闭（主题与任务保留）；非等待中→无操作
+// cancel 的人读输出：等待中→已关闭（主题与任务保留）；非等待中→无操作；全局→不可关闭
 function renderCancel(d) {
   if (d.cancelled) return `已关闭主题「${d.name}」的等待：阻塞中的 wait 立即收尾，主题与任务保留。`;
+  if (d.reason === 'global_not_waitable') return '全局主题是共享任务池（不是等待源），无从关闭。';
   if (d.reason === 'not_waiting') return `主题「${d.name || d.key}」不在等待中，无需关闭。`;
   return '已关闭。';
 }
 
-// 批量删除的人读输出：删除清单 + 跳过清单（等待中/不存在）
+// 批量删除的人读输出：删除清单 + 跳过清单（等待中/受保护/不存在）
 function renderRemoveMany(d) {
   const lines = [d.all ? `清空：删除 ${d.count} 个主题` : `已删除 ${d.count} 个主题`];
   for (const r of d.removed) lines.push(`  - ${r.name}${r.cwd ? `  ${r.cwd}` : ''}`);
   if (d.skipped.length) {
     lines.push(`跳过 ${d.skipped.length} 个：`);
     for (const s of d.skipped) {
-      const why = s.reason === 'waiting' ? '等待中' : '不存在';
+      const why = s.reason === 'waiting' ? '等待中' : s.reason === 'protected' ? '全局共享池' : '不存在';
       lines.push(`  - [${why}] ${s.name || s.key}`);
     }
   }
@@ -108,41 +113,51 @@ export default {
       id: 'localtask.get',
       cli: ['localtask', 'get'],
       http: ['GET', '/api/localtasks/item'],
-      summary: '查看单条任务（按 --id，定位到 --cwd 主题）',
-      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD },
-      run: (ctx) => service.getTask({ id: ctx.id, cwd: ctx.cwd }),
+      summary: '查看单条任务（按 --id，定位到 --cwd 主题或 --key）',
+      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
+      run: (ctx) => service.getTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
       render: renderTask,
     },
     {
       id: 'localtask.add',
       cli: ['localtask', 'add'],
       http: ['POST', '/api/localtasks'],
-      summary: '向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）',
+      summary:
+        '向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池',
       args: ['text'],
-      flags: { cwd: CWD, summary: { type: 'string', hint: '顺带刷新该主题的当前现状（可选）' } },
-      run: (ctx) => service.addTask({ text: ctx.text, cwd: ctx.cwd, summary: ctx.summary }),
+      flags: {
+        cwd: CWD,
+        summary: { type: 'string', hint: '顺带刷新该主题的当前现状（可选）' },
+        global: {
+          type: 'boolean',
+          hint: '推到全局主题（共享池）：任何目录的 wait 在本地空时自动领取；--cwd 被忽略',
+        },
+      },
+      run: (ctx) =>
+        service.addTask({ text: ctx.text, cwd: ctx.cwd, summary: ctx.summary, global: ctx.global }),
       render: renderAdd,
     },
     {
       id: 'localtask.update',
       cli: ['localtask', 'update'],
       http: ['PATCH', '/api/localtasks/item'],
-      summary: '编辑任务内容（按 --id，定位到 --cwd 主题）',
+      summary: '编辑任务内容（按 --id，定位到 --cwd 主题或 --key）',
       flags: {
         id: { type: 'number', required: true, hint: '任务编号' },
         text: { type: 'string', required: true, hint: '改成这个内容' },
         cwd: CWD,
+        key: KEY,
       },
-      run: (ctx) => service.updateTask({ id: ctx.id, text: ctx.text, cwd: ctx.cwd }),
+      run: (ctx) => service.updateTask({ id: ctx.id, text: ctx.text, cwd: ctx.cwd, key: ctx.key }),
       render: (d) => `已更新主题「${d.name}」#${d.task.id}: ${d.task.text}`,
     },
     {
       id: 'localtask.remove',
       cli: ['localtask', 'remove'],
       http: ['DELETE', '/api/localtasks/item'],
-      summary: '删除一条任务（按 --id，定位到 --cwd 主题）',
-      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD },
-      run: (ctx) => service.removeTask({ id: ctx.id, cwd: ctx.cwd }),
+      summary: '删除一条任务（按 --id，定位到 --cwd 主题或 --key）',
+      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
+      run: (ctx) => service.removeTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
       render: (d) => `已删除主题「${d.name}」#${d.removed.id}: ${d.removed.text}`,
     },
 
@@ -228,9 +243,16 @@ export default {
         beforeId: { type: 'number', hint: '插到该编号之前（与 afterId 二选一）' },
         afterId: { type: 'number', hint: '插到该编号之后（与 beforeId 二选一）' },
         cwd: CWD,
+        key: KEY,
       },
       run: (ctx) =>
-        service.reorderTasks({ id: ctx.id, beforeId: ctx.beforeId, afterId: ctx.afterId, cwd: ctx.cwd }),
+        service.reorderTasks({
+          id: ctx.id,
+          beforeId: ctx.beforeId,
+          afterId: ctx.afterId,
+          cwd: ctx.cwd,
+          key: ctx.key,
+        }),
       render: (d) => {
         const order = d.topic.tasks.filter((x) => x.status !== 'consumed').map((x) => `#${x.id}`);
         return `主题「${d.name}」待领取顺序：${order.join(' -> ') || '（无待领取）'}`;
@@ -242,7 +264,8 @@ export default {
       id: 'localtask.wait',
       cli: ['localtask', 'wait'],
       http: null,
-      summary: '针对某主题（按 cwd 目录名识别）阻塞等待用户回填（默认 3 分钟，最大 10 分钟）',
+      summary:
+        '针对某主题（按 cwd 目录名识别）阻塞等待用户回填（默认 3 分钟，最大 10 分钟）；本地空时自动领取全局共享池的任务',
       flags: {
         cwd: CWD,
         summary: SUMMARY,

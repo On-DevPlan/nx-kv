@@ -2,7 +2,7 @@
 // 本质是「agent 提交结果 → 阻塞 → 用户在 web 针对主题回填 → agent 接收」。
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
-import { useToast, useGuard } from '../../web/frontend/components/ui.jsx';
+import { useToast, useGuard, Modal } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 
 // “YYYY-MM-DD HH:mm:ss” → 本地 Date
@@ -61,6 +61,8 @@ export default function SessionTaskView() {
   // 「只读弹窗」：点击现状/上一轮总结/任务文本时显示聚焦阅读的模态框
   // modal = { title, body } | null
   const [modal, setModal] = useState(null);
+  // 「等待设置弹窗」：agent 用法 + 等待超时 + 收尾追加语（少用，平时收进弹窗，不占顶部）
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
   const [editSaving, setEditSaving] = useState(false);
@@ -409,125 +411,15 @@ export default function SessionTaskView() {
 
   return (
     <>
-      <div className="card" style={{ padding: '10px 14px' }}>
-        <div className="muted" style={{ fontSize: 12 }}>
-          agent 用法：完成当前任务后，把
-          <code> nx-kv localtask wait --cwd "&lt;工作目录&gt;" --summary "&lt;当前现状&gt;" --json </code>
-          作为本轮<strong>最后一个动作</strong>调用——工作目录即<strong>主题</strong>、主题拥有任务队列，
-          同目录共用队列、不同目录互不串，任务可在队列里堆积；本地队列取不到时自动去
-          <strong>全局任务池</strong>领取（全局也没有才阻塞）；命令阻塞并自动打开浏览器弹窗，
-          用户回填后解除阻塞、返回新任务；超时未回填则返回 <code>status:"timeout"</code>，agent 收尾结束本轮。
-        </div>
-      </div>
-
-      <div className="card" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 700 }}>等待超时</span>
-        <select
-          value={timeoutSec}
-          disabled={cfgSaving}
-          onChange={(e) => saveTimeout(e.target.value)}
-          style={{ font: 'inherit', padding: '5px 8px' }}
-        >
-          <option value={60}>1 分钟</option>
-          <option value={120}>2 分钟</option>
-          <option value={180}>3 分钟（推荐）</option>
-          <option value={240}>4 分钟</option>
-          <option value={300}>5 分钟</option>
-          <option value={600}>10 分钟（最大）</option>
-        </select>
-        <span className="muted" style={{ fontSize: 12 }}>
-          agent wait 未带 --timeout 时使用此值；推荐 3 分钟、最大 10 分钟。
-        </span>
-      </div>
-
-      <div className="card" style={{ padding: '10px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: suffixEditing ? 10 : 0 }}>
-          <span style={{ fontWeight: 700 }}>收尾追加语</span>
-          <span className="muted" style={{ fontSize: 12 }}>
-            每次 wait 返回任务时，自动拼到 task.text 末尾。强制 agent 计划最后再 wait 一次，避免长对话漂移漏调。
-          </span>
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span className={'tag' + (suffixEnabled ? '' : ' muted')} style={{ fontSize: 11 }}>
-              {suffixEnabled ? '已开启' : '已关闭'}
-            </span>
-            {!suffixEditing && (
-              <>
-                {suffixEnabled && (
-                  <button className="btn small ghost" onClick={() => { setSuffixDraft(taskSuffix); setSuffixEditing(true); }}>
-                    编辑
-                  </button>
-                )}
-                {suffixEnabled ? (
-                  <button
-                    className="btn small ghost"
-                    onClick={() => disableSuffix()}
-                    disabled={suffixSaving}
-                    title="关闭后，wait 返回的任务不再追加提示词"
-                  >
-                    关闭
-                  </button>
-                ) : (
-                  <button
-                    className="btn small"
-                    onClick={() => { setSuffixDraft(defaultTaskSuffix); setSuffixEditing(true); }}
-                    title="恢复默认收尾追加语并开启"
-                  >
-                    开启
-                  </button>
-                )}
-              </>
-            )}
-          </span>
-        </div>
-        {!suffixEditing && taskSuffix && (
-          <div
-            className="muted"
-            style={{ fontSize: 12, whiteSpace: 'pre-wrap', borderLeft: '2px solid #eee', padding: '4px 0 4px 10px' }}
-          >
-            {taskSuffix}
-          </div>
-        )}
-        {suffixEditing && (
-          <div>
-            <textarea
-              value={suffixDraft}
-              onChange={(e) => setSuffixDraft(e.target.value)}
-              rows={5}
-              style={{ width: '100%', font: 'inherit', padding: 8, boxSizing: 'border-box' }}
-              placeholder="（留空 = 关闭；非空 = 启用并以这段文本作为追加语）"
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button
-                className="btn small"
-                onClick={() => saveSuffix(suffixDraft)}
-                disabled={suffixSaving}
-              >
-                保存
-              </button>
-              <button
-                className="btn small ghost"
-                onClick={() => {
-                  setSuffixEditing(false);
-                  setSuffixDraft('');
-                }}
-                disabled={suffixSaving}
-              >
-                取消
-              </button>
-              <button
-                className="btn small ghost"
-                onClick={() => saveSuffix(defaultTaskSuffix)}
-                disabled={suffixSaving}
-                title="覆盖为默认文案并开启"
-              >
-                恢复默认
-              </button>
-              <span className="muted" style={{ fontSize: 11, marginLeft: 'auto' }}>
-                留空保存 = 关闭
-              </span>
-            </div>
-          </div>
-        )}
+      {/* 顶部：只留一行说明 + 一个「等待设置」入口。
+          agent 用法 / 等待超时 / 收尾追加语都是少用项，收进弹窗，不占顶部空间。 */}
+      <div className="toolbar">
+        <strong>本地任务</strong>
+        <span className="muted">agent 做完一步会阻塞等待，你在下方选主题、回填任务；任务按工作目录排队，本地空时自动去全局池。</span>
+        <span className="spacer" />
+        <button className="btn small ghost" onClick={() => setSettingsOpen(true)}>
+          Agent 用法 · 等待设置
+        </button>
       </div>
 
       <div className="colhead">
@@ -894,6 +786,84 @@ export default function SessionTaskView() {
       )}
 
       <CliHints module="localtask" />
+
+      {/* 等待设置弹窗：agent 用法 + 等待超时 + 收尾追加语（少用，平时收进弹窗） */}
+      {settingsOpen && (
+        <Modal title="Agent 用法与等待设置" onClose={() => setSettingsOpen(false)}>
+          <div className="set-section">
+            <div className="set-title">Agent 用法</div>
+            <p className="set-desc">
+              完成当前任务后，把
+              <code> nx-kv localtask wait --cwd "&lt;工作目录&gt;" --summary "&lt;当前现状&gt;" --json </code>
+              作为本轮<strong>最后一个动作</strong>调用。工作目录即<strong>主题</strong>，同目录共用队列、不同目录互不串，任务可在队列里堆积；本地队列取不到时自动去<strong>全局任务池</strong>领取（全局也没有才阻塞）；命令阻塞并自动打开浏览器弹窗，回填后解除阻塞、返回新任务；超时未回填则返回 <code>status:"timeout"</code>，agent 收尾结束本轮。
+            </p>
+          </div>
+
+          <div className="set-section">
+            <div className="set-title">等待超时</div>
+            <div className="set-row">
+              <select
+                value={timeoutSec}
+                disabled={cfgSaving}
+                onChange={(e) => saveTimeout(e.target.value)}
+              >
+                <option value={60}>1 分钟</option>
+                <option value={120}>2 分钟</option>
+                <option value={180}>3 分钟（推荐）</option>
+                <option value={240}>4 分钟</option>
+                <option value={300}>5 分钟</option>
+                <option value={600}>10 分钟（最大）</option>
+              </select>
+              <span className="muted">agent wait 未带 <code>--timeout</code> 时使用此值；推荐 3 分钟、最大 10 分钟。</span>
+            </div>
+          </div>
+
+          <div className="set-section">
+            <div className="set-title">
+              收尾追加语
+              <span className="spacer" />
+              <span className={'tag' + (suffixEnabled ? '' : ' muted')}>
+                {suffixEnabled ? '已开启' : '已关闭'}
+              </span>
+            </div>
+            <p className="set-desc">
+              每次 wait 返回任务时，自动拼到 task.text 末尾，强制 agent 计划最后再 wait 一次，避免长对话漂移漏调。
+            </p>
+            {!suffixEditing && (
+              <div className="set-row">
+                {suffixEnabled ? (
+                  <>
+                    <button className="btn small ghost" onClick={() => { setSuffixDraft(taskSuffix); setSuffixEditing(true); }}>编辑</button>
+                    <button className="btn small ghost" onClick={() => disableSuffix()} disabled={suffixSaving}>关闭</button>
+                  </>
+                ) : (
+                  <button className="btn small" onClick={() => { setSuffixDraft(defaultTaskSuffix); setSuffixEditing(true); }}>开启</button>
+                )}
+              </div>
+            )}
+            {!suffixEditing && taskSuffix && (
+              <div className="set-suffix">{taskSuffix}</div>
+            )}
+            {suffixEditing && (
+              <div>
+                <textarea
+                  value={suffixDraft}
+                  onChange={(e) => setSuffixDraft(e.target.value)}
+                  rows={5}
+                  className="set-textarea"
+                  placeholder="（留空 = 关闭；非空 = 启用并以这段文本作为追加语）"
+                />
+                <div className="set-row">
+                  <button className="btn small" onClick={() => saveSuffix(suffixDraft)} disabled={suffixSaving}>保存</button>
+                  <button className="btn small ghost" onClick={() => { setSuffixEditing(false); setSuffixDraft(''); }} disabled={suffixSaving}>取消</button>
+                  <button className="btn small ghost" onClick={() => saveSuffix(defaultTaskSuffix)} disabled={suffixSaving}>恢复默认</button>
+                  <span className="muted" style={{ marginLeft: 'auto' }}>留空保存 = 关闭</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {modal && (
         <div

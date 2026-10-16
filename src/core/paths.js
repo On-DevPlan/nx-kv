@@ -8,9 +8,18 @@ export const APP_DIR = join(homedir(), '.nx-kv');
 export const STORE_PATH = join(APP_DIR, 'store.json');
 export const DEFAULT_PORT = 7877;
 
+// 附件的本地镜像根目录。**刻意放在 nx-kv 的用户目录下**（~/.nx-kv/attachments/）：
+// agent 读附件只认本地路径，放在项目目录里会随 cwd 漂移，还会被 git 捡走。
+export const ATTACHMENTS_DIR = join(APP_DIR, 'attachments');
+
 // 允许测试与多实例覆盖存储位置：NX_KV_STORE 环境变量优先
 export function storePathFromEnv() {
   return process.env.NX_KV_STORE || STORE_PATH;
+}
+
+// 允许测试与多实例覆盖附件目录：NX_KV_ATTACHMENTS 环境变量优先
+export function attachmentsRootFromEnv() {
+  return process.env.NX_KV_ATTACHMENTS || ATTACHMENTS_DIR;
 }
 
 // 名称安全校验：拒绝路径穿越（保留中文等合法命名，与 fileops.go 语义一致）。

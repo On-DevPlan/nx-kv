@@ -5,6 +5,9 @@ import { api } from '../../web/frontend/api/client.js';
 import { useStore } from '../../web/frontend/store.jsx';
 import { useToast, useGuard, useDialog, Modal, Copyable } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
+import TaskEditor from './editor.jsx';
+import { AttachmentText } from './markdown.jsx';
+import { clipboardFiles, snippetsOf, uploadMany } from './upload.js';
 
 const BUCKETS = [
   ['open', '待办'],
@@ -29,7 +32,9 @@ function TaskRow({ bucket, task, dupCount, onAct }) {
     <div className="row">
       <span className="tid">#{task.id}</span>
       <Copyable className="topic" text={task.topic} title="点击复制主题">{task.topic}</Copyable>
-      <span className="text" title={task.text}>{task.text}</span>
+      <span className="text" title={task.text}>
+        <AttachmentText text={task.text} compact />
+      </span>
       {dupCount > 1 ? (
         <span className="tag" title={`同内容有 ${dupCount} 条，操作时需要消歧`}>同内容×{dupCount}</span>
       ) : null}
@@ -64,6 +69,11 @@ export default function TodoView() {
   const [modal, setModal] = useState(null);
   // 已完成常常上百条，默认只展示前 N 条，避免整页全是历史噪音
   const [expanded, setExpanded] = useState({});
+  // 正在编辑的那一条：{ task, pick }。pick 是消歧下标，必须原样回传后端。
+  const [editing, setEditing] = useState(null);
+  // 本机设置：读任务时是否自动把附件下载到本地（给 agent 读本地文件用）。
+  // 存整份设置（而不只是那个布尔）—— 开关的 tooltip 要显示附件会落到哪个目录。
+  const [setting, setSetting] = useState(null);
 
   const group = boot?.groupId ?? 0;
   const groupName = (boot?.groups || []).find((g) => g.id === group)?.name || (group ? `#${group}` : '默认组');
@@ -81,6 +91,23 @@ export default function TodoView() {
     load();
     // groupId 变化后必须重取 —— 否则界面还显示上一个工作空间的数据
   }, [load, group]);
+
+  // 设置是**本机**行为（存 ~/.nx-kv/config.json），与登录态无关，所以单独取一次。
+  // 失败静默：拿不到设置不该让清单页打不开。
+  useEffect(() => {
+    api('/api/setting')
+      .then(setSetting)
+      .catch(() => {});
+  }, []);
+
+  const autoSync = !!setting?.autoSyncAttachments;
+
+  const toggleAutoSync = () => guard(async () => {
+    const next = !autoSync;
+    const s = await api('/api/setting', { method: 'POST', body: { autoSyncAttachments: next } });
+    setSetting(s);
+    toast(next ? '已开启：读任务时自动下载附件到本地' : '已关闭自动下载附件');
+  });
 
   const reload = useCallback(async () => {
     setBusy(true);
@@ -178,13 +205,10 @@ export default function TodoView() {
       await api('/api/todo/item', { method: 'DELETE', body });
       toast('已删除');
     } else if (act === 'edit') {
-      const text = await dialog({ title: '编辑内容', input: true, value: target.task.text });
-      if (text === null || !text) return;
-      await api('/api/todo/item', {
-        method: 'PATCH',
-        body: { ...body, text, matchTopic: target.task.topic },
-      });
-      toast('已更新');
+      // 编辑现在要能上传图片、插入嵌入，单行 dialog 装不下 —— 交给编辑器弹窗。
+      // 刻意 early-return：保存由弹窗内部完成，成功后才 reload。
+      setEditing({ task: target.task, pick: target.pick });
+      return;
     }
     await reload();
     await refreshBoot();
@@ -204,6 +228,22 @@ export default function TodoView() {
     toast(r.moved ? `已归档 ${r.moved} 条 → ${r.coldKey}` : '没有需要归档的记录');
     await reload();
   });
+
+  // 快速新增栏也能 Ctrl+V 贴图：贴一张截图再回车，任务与附件一次成型。
+  // 没有文件时**不能** preventDefault —— 那是普通文本粘贴，交给浏览器默认行为。
+  const pasteIntoQuickAdd = async (e) => {
+    const files = clipboardFiles(e);
+    if (!files.length) return;
+    e.preventDefault();
+    try {
+      const rs = await uploadMany(files, { group });
+      const md = snippetsOf(rs);
+      setForm((f) => ({ ...f, text: [f.text, md].filter(Boolean).join(' ') }));
+      toast(rs.length === 1 ? `已上传 ${rs[0].name} 并附到内容里` : `已上传 ${rs.length} 个附件并附到内容里`);
+    } catch (err) {
+      toast(String((err && err.message) || err));
+    }
+  };
 
   const add = () => guard(async () => {
     const topic = form.topic.trim();
@@ -239,11 +279,29 @@ export default function TodoView() {
         <span className="sep"></span>
         <input placeholder="主题" size="8" value={form.topic}
           onChange={(e) => setForm({ ...form, topic: e.target.value })} />
-        <input placeholder="要做什么…" size="30" value={form.text}
+        <input
+          placeholder="要做什么…（可 Ctrl+V 粘贴图片）"
+          size="30"
+          value={form.text}
+          title="可以直接 Ctrl+V 粘贴截图：会自动上传为附件并附在内容里"
           onChange={(e) => setForm({ ...form, text: e.target.value })}
-          onKeyDown={(e) => { if (e.key === 'Enter') add(); }} />
+          onPaste={pasteIntoQuickAdd}
+          onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+        />
         <button className="btn" onClick={add}>加入待办</button>
         <button className="btn ghost" onClick={reload} disabled={busy}>{busy ? '刷新中…' : '刷新'}</button>
+        <span className="sep"></span>
+        <label
+          className={'toggle' + (autoSync ? ' on' : '')}
+          title={
+            '开启后，读取任务时会把正文引用的附件下载到本地，并把本地绝对路径一并返回给 agent。\n' +
+            `当前目录：${setting ? setting.resolvedDir : '（读取中…）'}`
+          }
+        >
+          <input type="checkbox" checked={autoSync} onChange={toggleAutoSync} />
+          <span className="dot" />
+          附件自动下载
+        </label>
       </div>
 
       <div className="muted" style={{ margin: '0 0 8px 2px', fontSize: 12 }}>{counts}</div>
@@ -278,6 +336,21 @@ export default function TodoView() {
       </div>
 
       <CliHints module="todo" />
+      {editing ? (
+        <Modal title="编辑任务" onClose={() => setEditing(null)}>
+          <TaskEditor
+            task={editing.task}
+            pick={editing.pick}
+            group={group}
+            onCancel={() => setEditing(null)}
+            onSaved={async () => {
+              setEditing(null);
+              await reload();
+              await refreshBoot();
+            }}
+          />
+        </Modal>
+      ) : null}
       {modal ? <Modal title={modal.title} onClose={() => setModal(null)}>{modal.node}</Modal> : null}
       {dialogNode}
     </>

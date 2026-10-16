@@ -17,6 +17,7 @@ KV 清单（todo）的操作入口。四把 key 上的任务管理，对接 GoFr
 | --- | --- |
 | **领任务 / 收单**：按主题拉待办 → 读上下文 → 与用户对齐意图 → 完成后回填 | [[agent-workflow]] |
 | **查命令**：要敲哪条、退出码、数据结构、避坑 | [[todo-commands]] |
+| **任务带附件**：正文里的图片 / docx 怎么读、怎么落到本地 | 本页「附件」一节 + [[todo-commands]] |
 
 两份都是按需加载，不要一开始就全读进来。
 
@@ -54,6 +55,53 @@ nx-kv todo done --ref "<任务内容>" --result "改了什么 / 关键决策 / �
 **两条的区别**：`--topic` 不带 `--status` 是「全都要」（含历史），
 `--status open --topic` 是「只要待办」。收单用后者（省上下文），
 做统计/核对/回顾用前者。
+
+## 附件：正文里的图片与文档（读本地，不读网）
+
+任务**正文本身**就能带附件——用标准 markdown 写，不发明新语法：
+
+```
+修一下首页 logo  ![设计稿](3f2a1b…9c)       ← 图片，面板里内联预览
+补充材料见 [需求说明.docx](b71e…04.docx)     ← 其他文件，点开即下载/预览
+```
+
+`( )` 里是**后端图床的 fileId**（32 位 hex，原文件名带后缀时结尾会接 `.<ext>`）。
+除此之外的 markdown 链接（`http(s)://`、`./x.md`）一律按普通链接处理，不会被当成附件。
+
+```bash
+nx-kv todo attachments --ref "<任务内容>" --json   # 这条任务引用了哪些附件（含本地路径）
+nx-kv todo attach --ref "<任务内容>" --path <本机文件>       # 上传并追加到正文
+nx-kv todo attach --ref "<任务内容>" --fileId <fileId>       # 追加一个已上传的附件
+```
+
+**给要读附件的 agent：先把附件落到本地，再读本地文件。**
+
+```bash
+nx-kv file sync --json      # 同步当前工作空间的附件 → ~/.nx-kv/attachments/<工作空间>/
+```
+
+**更省事的做法是打开「读任务时自动下载」**（面板「清单」页的开关，或 CLI 一条命令）：
+
+```bash
+nx-kv setting set --autoSyncAttachments        # 开
+nx-kv setting set --autoSyncAttachments=false  # 关（默认）
+```
+
+开启后，`todo list` / `todo get` 的每个任务会多出 `attachments[]`，
+里面直接给出**本地绝对路径**（`localPath`），另有 `attachmentsSync` 汇报这一轮
+下载了什么、跳过什么、失败什么：
+
+```json
+{ "id": "3f2a…9c", "kind": "image", "name": "设计稿.png",
+  "localPath": "C:\\Users\\me\\.nx-kv\\attachments\\24\\设计稿.png", "synced": true }
+```
+
+于是 agent 只要 `Read` 那个路径就行——不必拼出图 URL、不受网络和跨域影响。
+下载失败**不会**让清单读不出来：附件拿不到与任务读不到是两件事，
+失败项如实出现在 `attachmentsSync.failures` 里。
+
+> ⚠️ 追加附件会**改写正文**，而定位是按正文内容（`--ref`）——
+> 同一条任务连续操作时，要用**新的** text 去 `--ref`。
 
 ## ⚠️ 定位一律按内容，不按 id（最容易改错数据的地方）
 

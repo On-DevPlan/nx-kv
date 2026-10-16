@@ -92,6 +92,55 @@ nx-kv group current
 nx-kv group use <id|name|default>     # 别名：group switch
 ```
 
+## 附件（图片 / 文档）
+
+| 操作 | 命令 | 路由 |
+| --- | --- | --- |
+| 传附件 | `nx-kv file upload --path <本机文件>` | `POST /api/file` |
+| 列附件 | `nx-kv file list [--limit N]` | `GET /api/file` |
+| 查单个 | `nx-kv file get <fileId>` | `GET /api/file/item` |
+| 出图/下载 | `nx-kv file content <fileId>` | `GET /api/file/content/:fileId`（HTTP 直出字节） |
+| 删附件 | `nx-kv file remove <fileId>` | `DELETE /api/file/item` |
+| **同步到本地** | `nx-kv file sync [--ids a,b] [--dir D] [--prune] [--dryRun]` | `POST /api/file/sync` |
+| 给任务挂附件 | `nx-kv todo attach --ref <内容> --path <本机文件>` | `POST /api/todo/attach` |
+| 看任务挂了什么 | `nx-kv todo attachments --ref <内容>` | `GET /api/todo/attachments` |
+| 读/改设置 | `nx-kv setting get` / `nx-kv setting set --autoSyncAttachments` | `GET|POST /api/setting` |
+
+**正文里的嵌入语法**（标准 markdown，不发明方言）：
+
+```
+![说明](fileId)      图片：面板里内联预览
+[文件名](fileId)      其他文件（docx/pdf/…）：点开即下载/预览
+```
+
+`fileId` 是后端图床的不透明 id：32 位 hex，原文件名带扩展名时结尾接 `.<ext>`
+（如 `3f2a…9c.docx`）。URL（含 `://`）与相对路径（`./x.md`、`/files/x`）**不算附件**，
+一律按普通 markdown 原样保留。
+
+**本地镜像**：默认落到 `~/.nx-kv/attachments/<groupId|default>/`，同目录的
+`manifest.json` 记「fileId → 本地文件名 + 大小」，所以二次同步会跳过未变更的
+（不会每次重下）。文件名优先用正文里的**说明文字**（`![设计稿.png](id)` → `设计稿.png`），
+没有说明文字时退回 fileId 并补上扩展名。
+
+```bash
+# 读任务时自动下载：开启后 todo list / get 会带回本地绝对路径
+nx-kv setting set --autoSyncAttachments
+nx-kv todo get --ref "<任务内容>" --json
+# → 任务对象多出 attachments[]（id / kind / name / localPath / synced）
+#   + attachmentsSync（dir / downloaded / skipped / failures）
+
+# 手动同步（不依赖开关）
+nx-kv file sync --json            # 全部附件
+nx-kv file sync --ids <id1>,<id2> # 只同步指定附件（读任务时按引用同步走的就是这条）
+nx-kv file sync --prune           # 额外删掉本地已不在后端的文件（仅全量同步时生效）
+```
+
+`file sync --prune` 在带 `--ids` 时**刻意不生效**：过滤出几个 id 再 prune，
+会把没列出来的附件一起删掉。
+
+删除附件的语义：`file remove` 只删后端记录（软删），本地已同步的副本会留着；
+要连本地一起清，用 `file sync --prune`。
+
 ## ⚠️ 定位按内容（--ref），不按 id
 
 ```jsonc
@@ -215,3 +264,6 @@ nx-kv todo list --status open --topic bug    # bug 消费者
 | 未登录就调 todo | exit 1「未登录」 | 先 `auth login` |
 | 以为切换 group 会改服务端 | 只改本机配置 | 数据一直在服务端，切换只是换个 groupId |
 | 领取待办时用了全量 `list` | done 的历史 + 长 note 白占上下文 | 一律 `--status open --topic <t>` |
+| `todo attach` 之后还用**旧的** `--ref` | 报「不存在」——正文已被追加改写 | 用返回的 `task.text`（新正文）继续操作 |
+| 把附件当成「读了就行」的东西 | agent 拿 `<img>` URL 去请求，受网络/跨域影响 | 先 `file sync`（或开 `--autoSyncAttachments`），读 `localPath` |
+| 拿图片地址手拼 / 存进正文 | 换后端地址就全失效 | 正文只写 `fileId`（`![说明](fileId)`），地址由客户端拼 |

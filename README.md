@@ -6,6 +6,10 @@ KV 清单（todo）管理中枢。一个 `npx` 命令起一个 Web 面板，同�
 对接 GoFrame KV 后端（默认 `http://47.110.80.47:8988`），
 数据落在**四把 key** 上：`todo:open` / `todo:done` / `todo:freeze` / `todo:topics`。
 
+任务正文还能直接**嵌图片与文档**（标准 markdown：`![说明](fileId)` / `[文件名](fileId)`）——
+附件存在后端图床的同一用户空间里，既能同步到本地给 agent 直接读（`nx-kv file sync`），
+也能在读任务时自动下载并把本地绝对路径一并交出去。
+
 ## 快速开始
 
 ```bash
@@ -65,6 +69,47 @@ nx-kv group members 24                        # 成员
 
 完整命令表由 action 声明自动生成：`nx-kv help`。
 命令与 HTTP 端点互相可查：`nx-kv routes`，反查用 `nx-kv routes --http "POST /api/todo"`。
+
+## 附件（图片 / 文档）
+
+任务正文直接用**标准 markdown** 引用附件，附件本体存在后端图床的同一用户空间里：
+
+```
+修一下首页 logo  ![设计稿](3f2a1b…9c)      # 图片：面板内联预览
+补充材料见 [需求说明.docx](b71e…04.docx)    # 其他文件：点开即下载/预览
+```
+
+括号里是后端返回的 `fileId`（32 位 hex，原文件名带后缀时会接 `.<ext>`）。
+URL 与相对路径不算附件，按普通 markdown 原样保留（不会误判）。
+
+```bash
+nx-kv file upload --path "D:\设计\首页.png"   # 上传到当前用户空间
+nx-kv todo attach --ref "修一下首页 logo" --path "D:\设计\首页.png"  # 上传并嵌进正文
+nx-kv todo attachments --ref "修一下首页 logo"   # 这条任务引用了哪些附件
+
+nx-kv file sync            # 把附件同步到 ~/.nx-kv/attachments/<工作空间>/
+nx-kv file sync --ids a,b  # 只同步指定附件
+nx-kv file sync --prune    # 顺带清掉本地已不在后端的（仅全量同步时生效）
+```
+
+面板里编辑任务时，**Ctrl+V 直接粘截图**、把文件拖进来、或点「选择文件」——
+都会自动上传并插到光标处，右侧实时预览；列表里图片显示为缩略图、其他文件是可点附件。
+「快速新增」那一栏也支持粘贴图片。
+
+**给 agent 的关键开关**：开启「读任务时自动下载」后，`todo list` / `todo get`
+的每个任务会多出 `attachments[]`，里面是**本地绝对路径**，另有 `attachmentsSync`
+汇报下载/跳过/失败。读本地文件因此不再受网络与跨域影响：
+
+```bash
+nx-kv setting set --autoSyncAttachments        # 开
+nx-kv setting set --autoSyncAttachments=false  # 关（默认）
+```
+
+面板里对应「清单」页工具栏的「附件自动下载」勾选。本地文件名优先取正文里的说明文字
+（`![设计稿.png](id)` → `设计稿.png`），否则退回 fileId 并补上扩展名；
+同目录 `manifest.json` 记「fileId → 文件名 + 大小」，所以二次同步会跳过未变更的。
+
+单独的命令参考见 `nx-kv help file` 与 skill 的 `todo-commands`。
 
 ## 本地任务（localtask，不需登录）
 
@@ -156,8 +201,8 @@ nx-kv todo get --ref "旧记录" --topic fr   # 或按主题收窄
 所以「Web 上能做的，CLI 都能做」是结构保证而非口头约定。
 
 ```
-src/core/          零业务语义：kvapi(后端客户端) / config(本机配置) / errors / fstree
-src/modules/       功能域：system / auth / group / localtask / todo / bundled
+src/core/          零业务语义：kvapi / fileapi（后端客户端） / attachstore（附件本地镜像） / config / errors / fstree
+src/modules/       功能域：system / setting / auth / group / localtask / todo / file / bundled
 src/runtime/       装配层：registry / spec / cli / api / server
 src/web/frontend/  React 壳
 assets/nx-kv/            内置 skill：KV 清单操作手册（远程）

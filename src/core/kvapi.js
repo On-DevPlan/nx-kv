@@ -16,7 +16,9 @@ import { loadConfig, normalizeGroupId } from './config.js';
 
 const TIMEOUT_MS = 20000;
 
-async function call({ method, path, body, token, baseUrl, allowMissing = false }) {
+// 信封感知的通用调用器。**导出**是为了让 fileapi.js 复用同一套
+// 「HTTP 恒 200、成败看 code」的判定——两处各写一遍迟早分叉。
+export async function call({ method, path, body, token, baseUrl, allowMissing = false }) {
   const cfg = baseUrl ? { baseUrl, token } : await loadConfig();
   const url = cfg.baseUrl.replace(/\/$/, '') + path;
 

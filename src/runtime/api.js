@@ -39,12 +39,17 @@ export function sendJson(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// 请求体上限。定得比较宽是因为**附件上传走 base64 JSON**（面板选图 → data URL →
+// 这里），base64 有 ~33% 膨胀，10MB 的图片会变成 ~13MB 的 JSON。
+// 仍然有上限：本机单用户工具，但没有上限就等于「一个请求能吃掉全部内存」。
+const MAX_BODY_BYTES = 24 * 1024 * 1024;
+
 async function readBody(req) {
   const chunks = [];
   let size = 0;
   for await (const c of req) {
     size += c.length;
-    if (size > 4 * 1024 * 1024) throw new Error('请求体过大');
+    if (size > MAX_BODY_BYTES) throw new Error(`请求体过大（上限 ${MAX_BODY_BYTES / 1024 / 1024}MB）`);
     chunks.push(c);
   }
   if (!chunks.length) return {};

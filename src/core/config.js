@@ -23,6 +23,12 @@ const EMPTY = () => ({
   userId: 0,
   // 当前工作空间：0 = 不传 groupId（后端回落默认组）
   groupId: 0,
+  // 读任务时是否自动把附件拉到本机。默认 **关**：开启意味着每次 list/get 都会
+  // 触网下载，对「只想看一眼清单」的场景是纯负担；开关在面板「清单」页或
+  // `nx-kv setting set --autoSyncAttachments`。
+  autoSyncAttachments: false,
+  // 附件本地目录覆盖；空 = 用默认 ~/.nx-kv/attachments/<groupId>/
+  attachmentsDir: '',
 });
 
 let cache = null;
@@ -37,6 +43,8 @@ function normalize(data) {
     email: String(data.email || ''),
     userId: Number(data.userId) || 0,
     groupId: Number(data.groupId) || 0,
+    autoSyncAttachments: data.autoSyncAttachments === true,
+    attachmentsDir: String(data.attachmentsDir || ''),
   };
 }
 
@@ -91,4 +99,18 @@ export async function requireAuth() {
 export function normalizeGroupId(v) {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * 解析「这次操作作用于哪个工作空间」：显式传入的 --group 优先，否则回落到本机配置
+ * 里的当前工作空间。
+ *
+ * 放进 core 是因为**不止一个模块要用同一条规则**：todo 拿它读写 KV，
+ * file 拿它选后端分组与本地附件目录。两处各写一遍的话，一旦有人只改了一处，
+ * 就会出现「从 A 组读任务、往 B 组同步附件」—— 这类错不报错，只是静默地对不上。
+ */
+export async function resolveGroupId(groupId) {
+  if (groupId !== undefined && groupId !== null && groupId !== '') return normalizeGroupId(groupId);
+  const cfg = await loadConfig();
+  return normalizeGroupId(cfg.groupId);
 }

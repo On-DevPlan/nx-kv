@@ -10,13 +10,15 @@
 // tests/unit/registry.test.mjs 会断言两侧对齐，漏登记直接测试失败。
 import { cliPathsOf } from './spec.js';
 import system from '../modules/system/index.js';
+import setting from '../modules/setting/index.js';
 import auth from '../modules/auth/index.js';
 import group from '../modules/group/index.js';
 import localtask from '../modules/localtask/index.js';
 import todo from '../modules/todo/index.js';
+import file from '../modules/file/index.js';
 import bundled from '../modules/bundled/index.js';
 
-export const MODULES = [system, auth, group, localtask, todo, bundled].sort(
+export const MODULES = [system, setting, auth, group, localtask, todo, file, bundled].sort(
   (a, b) => (a.order ?? 100) - (b.order ?? 100)
 );
 

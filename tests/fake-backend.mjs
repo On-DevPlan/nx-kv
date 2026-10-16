@@ -7,6 +7,41 @@
 // 它只实现 nx-kv 实际用到的那几个端点，并如实复刻信封语义：
 // **HTTP 一律 200，成败看 body 里的 `code`**。
 import http from 'node:http';
+import { createHash, randomBytes } from 'node:crypto';
+
+/**
+ * 极简 multipart/form-data 解析：只抓「字段名 + 文件名 + Content-Type + 原始字节」。
+ * 真实后端靠 GoFrame 的 r.GetUploadFile 解析，这里手写一小段只为让
+ * nx-kv 的上传客户端（multipart）能被真正跑到 —— 用 JSON 假装上传
+ * 就测不出「boundary 丢了」「字段名写错」这类问题。
+ */
+function parseMultipart(buf, boundary) {
+  const parts = [];
+  if (!boundary) return parts;
+  const delim = Buffer.from(`--${boundary}`);
+  let start = buf.indexOf(delim);
+  while (start !== -1) {
+    const next = buf.indexOf(delim, start + delim.length);
+    if (next === -1) break;
+    let seg = buf.subarray(start + delim.length, next);
+    if (seg[0] === 13 && seg[1] === 10) seg = seg.subarray(2);
+    if (seg.length >= 2 && seg[seg.length - 2] === 13 && seg[seg.length - 1] === 10) {
+      seg = seg.subarray(0, seg.length - 2);
+    }
+    const headerEnd = seg.indexOf('\r\n\r\n');
+    if (headerEnd !== -1) {
+      const head = seg.subarray(0, headerEnd).toString('utf8');
+      parts.push({
+        name: /name="([^"]*)"/.exec(head)?.[1] || '',
+        filename: /filename="([^"]*)"/.exec(head)?.[1] || '',
+        contentType: /Content-Type:\s*([^\r\n]+)/i.exec(head)?.[1]?.trim() || '',
+        data: seg.subarray(headerEnd + 4),
+      });
+    }
+    start = next;
+  }
+  return parts;
+}
 
 export function startFakeBackend({ token = 'fake-token-123', userId = 8 } = {}) {
   // 每个 groupId 一份独立存储，复刻真实后端的空间隔离
@@ -14,6 +49,13 @@ export function startFakeBackend({ token = 'fake-token-123', userId = 8 } = {}) 
   const storeFor = (gid) => {
     if (!stores.has(gid)) stores.set(gid, new Map());
     return stores.get(gid);
+  };
+
+  // 附件（图床）：groupId → Map<fileId, { id, name, contentType, data, createdAt }>
+  const fileStores = new Map();
+  const filesFor = (gid) => {
+    if (!fileStores.has(gid)) fileStores.set(gid, new Map());
+    return fileStores.get(gid);
   };
 
   const groups = [
@@ -35,12 +77,38 @@ export function startFakeBackend({ token = 'fake-token-123', userId = 8 } = {}) 
     for await (const c of req) chunks.push(c);
     return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
   };
+  const readRaw = async (req) => {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    return Buffer.concat(chunks);
+  };
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     const p = url.pathname;
     const gid = Number(url.searchParams.get('groupId') || 0) || 0;
     const auth = req.headers.authorization || '';
+
+    // 出图路由：真实后端这条**不挂鉴权中间件**（public 资源匿名可读），
+    // 所以必须放在鉴权闸门之前，否则「浏览器 <img> 能预览、CLI 下载 401」的错会被掩盖。
+    if (p.startsWith('/files/') && req.method === 'GET') {
+      const id = decodeURIComponent(p.slice('/files/'.length));
+      let hit = null;
+      for (const m of fileStores.values()) {
+        if (m.has(id)) { hit = m.get(id); break; }
+      }
+      if (!hit) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end('not found');
+        return;
+      }
+      res.writeHead(200, {
+        'content-type': hit.contentType || 'application/octet-stream',
+        'accept-ranges': 'bytes',
+      });
+      res.end(hit.data);
+      return;
+    }
 
     // 登录不需要 token
     if (p === '/api/v1/user/login' && req.method === 'POST') {
@@ -89,6 +157,81 @@ export function startFakeBackend({ token = 'fake-token-123', userId = 8 } = {}) 
     const memMatch = /^\/api\/v1\/groups\/(\d+)\/members$/.exec(p);
     if (memMatch && req.method === 'GET') {
       return ok(res, { members: [{ userId, email: 'user@test', nickname: 'tester', role: 'owner' }] });
+    }
+
+    // ---- 附件（图床）----
+    // 复刻真实后端的两个刻薄细节：
+    //   1. 上传只认 multipart 的 "file" 字段（不是 JSON base64）；
+    //   2. 返回体里**没有 originalName** —— 客户端必须自己解决本地文件名。
+    if (p === '/api/v1/files' && req.method === 'POST') {
+      const raw = await readRaw(req);
+      const ct = req.headers['content-type'] || '';
+      const b = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(ct);
+      const parts = parseMultipart(raw, (b && (b[1] || b[2]) || '').trim());
+      const filePart = parts.find((x) => x.name === 'file' && x.filename);
+      if (!filePart) return fail(res, 51, 'missing file field');
+      const gidField = Number(parts.find((x) => x.name === 'groupId')?.data.toString('utf8') || 0) || gid;
+      const id = randomBytes(16).toString('hex');
+      const meta = {
+        id,
+        name: filePart.filename,
+        contentType: filePart.contentType || 'application/octet-stream',
+        data: filePart.data,
+        createdAt: '2026-09-16T00:00:00Z',
+      };
+      filesFor(gidField).set(id, meta);
+      return ok(res, {
+        fileId: id,
+        url: `/files/${id}`,
+        size: meta.data.length,
+        contentType: meta.contentType,
+        groupId: gidField,
+        accessLevel: 'public',
+        sha256: createHash('sha256').update(meta.data).digest('hex'),
+        tags: [],
+        thumbnails: [],
+      });
+    }
+
+    if (p === '/api/v1/files' && req.method === 'GET') {
+      const items = [...filesFor(gid)].map(([, f]) => ({
+        fileId: f.id,
+        url: `/files/${f.id}`,
+        size: f.data.length,
+        contentType: f.contentType,
+        groupId: gid,
+        accessLevel: 'public',
+        createdAt: f.createdAt,
+        tags: [],
+        thumbnails: [],
+        sha256: '',
+      }));
+      return ok(res, { items, total: items.length, hasMore: false });
+    }
+
+    const fInfoMatch = /^\/api\/v1\/files\/([^/]+)\/info$/.exec(p);
+    if (fInfoMatch && req.method === 'GET') {
+      const id = decodeURIComponent(fInfoMatch[1]);
+      const f = filesFor(gid).get(id);
+      if (!f) return fail(res, 404, 'file not found');
+      return ok(res, {
+        fileId: id,
+        url: `/files/${id}`,
+        size: f.data.length,
+        contentType: f.contentType,
+        groupId: gid,
+        accessLevel: 'public',
+        createdAt: f.createdAt,
+        tags: [],
+        thumbnails: [],
+        sha256: '',
+      });
+    }
+
+    const fDelMatch = /^\/api\/v1\/files\/([^/]+)$/.exec(p);
+    if (fDelMatch && req.method === 'DELETE') {
+      filesFor(gid).delete(decodeURIComponent(fDelMatch[1]));
+      return ok(res, { message: 'deleted' });
     }
 
     if (p === '/api/v1/kv' && req.method === 'GET') {

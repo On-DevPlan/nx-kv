@@ -367,3 +367,136 @@ footer code {
   border-radius: 6px;
   padding: 1px 6px;
 }
+
+/* ---------- 附件嵌入（任务正文里的类 markdown） ---------- */
+.mdtext { white-space: pre-wrap; }
+.mdtext-plain { white-space: pre-wrap; }
+.embed-image {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 2px;
+  line-height: 0;
+}
+.embed-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: var(--radius-sm);
+  background: var(--soft);
+}
+.embed-image.compact img {
+  max-height: 28px;
+  border-radius: 6px;
+  /* 缩略图贴在浅底行里，不给一圈淡边就看不清边界（尤其是白底截图） */
+  box-shadow: 0 0 0 1px var(--soft-2);
+}
+.embed-file {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 1px 8px;
+  border-radius: 7px;
+  background: var(--soft);
+  color: var(--ink);
+  font-size: 12px;
+  text-decoration: none;
+  vertical-align: middle;
+}
+.embed-file:hover { background: var(--soft-2); }
+
+/* ---------- 任务编辑器（选择 / 粘贴 / 拖入 三路共用） ---------- */
+.editor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: min(600px, 80vw);
+  border-radius: var(--radius);
+}
+/* 拖拽悬停：整块给出「松手即上传」的反馈，而不是让用户猜能不能放 */
+.editor.drag { box-shadow: 0 0 0 2px var(--ink); }
+.editor.drag::after {
+  content: '松手即上传';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.86);
+  border-radius: var(--radius);
+  font-weight: 700;
+  pointer-events: none;
+}
+.ed-tip { color: var(--mid); font-size: 11.5px; line-height: 1.8; }
+.ed-link {
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  font: inherit;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ed-link:disabled { color: var(--mid); cursor: default; text-decoration: none; }
+.ed-field { display: flex; flex-direction: column; gap: 4px; }
+.ed-label { color: var(--mid); font-size: 11.5px; font-weight: 600; letter-spacing: 0.3px; }
+.ed-textarea {
+  width: 100%;
+  font: inherit;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--soft);
+  color: var(--ink);
+  resize: vertical;
+}
+.ed-textarea:focus { outline: 2px solid var(--soft-2); }
+.ed-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ed-acts { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ed-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  box-shadow: 0 -1px 0 var(--soft) inset;
+}
+.preview {
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--soft);
+  max-height: 340px;
+  overflow: auto;
+}
+.hint { color: var(--mid); font-size: 11.5px; }
+.hint code, .ed-tip code, kbd {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  background: var(--soft-2);
+  border-radius: 5px;
+  padding: 0 4px;
+}
+
+/* ---------- 附件自动下载：胶囊开关 ---------- */
+.toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--mid);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.toggle:hover { background: var(--soft-2); }
+.toggle:focus-within { outline: 2px solid var(--soft-2); }
+.toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.toggle .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mid); }
+.toggle.on { background: var(--ink); color: var(--paper); }
+.toggle.on .dot { background: var(--paper); }
+

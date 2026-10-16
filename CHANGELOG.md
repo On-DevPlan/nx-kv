@@ -2,6 +2,82 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.9.0] - 2026-10-16
+
+### Added
+
+- **任务附件：正文里用标准 markdown 嵌图片与文档，并可同步到本地给 agent 直接读。**
+
+  - **嵌入语法就是标准 markdown**，不发明新方言（解析实现只有一处：
+    `src/modules/todo/attach.js`，Node 与浏览器共用）：
+    `![说明](fileId)` 图片（面板内联预览）、`[文件名](fileId)` 其他文件（docx/pdf…）。
+    `fileId` 是后端图床的不透明 id（32 位 hex，原文件名带后缀时结尾接 `.<ext>`）。
+    **判定刻意收窄**：URL（含 `://`）、站点路径（`/…`）、相对路径（`./…`）一律按
+    普通 markdown 原样保留 —— 否则任务里写条普通链接就会被当成附件，
+    然后预览 404、同步白跑一趟网络。
+  - **新模块 `file`**：`file upload / list / get / remove / content / sync`。
+    上传走后端 multipart（`POST /api/v1/files`，字段名 `file`）；`file content` 在
+    HTTP 侧把后端出图内容原样透传（面板 `<img src="/api/file/content/<id>">` 用），
+    CLI 侧只打印地址与本地路径。
+  - **`file sync`：把附件同步到本机** —— 存在的唯一理由是让 agent **读本地文件而不是读网**。
+    默认落到 `~/.nx-kv/attachments/<groupId|default>/`（`NX_KV_ATTACHMENTS` 可改根目录），
+    同目录 `manifest.json` 记「fileId → 本地文件名 + 大小」，所以二次同步跳过未变更的。
+    本地文件名优先取正文里的说明文字（`![设计稿.png](id)` → `设计稿.png`），否则退回
+    fileId 并按 Content-Type 补扩展名（没有扩展名，Windows 上双击打不开）。
+    `--ids` 只同步指定附件；`--prune` 清理本地已不在后端的（**仅在全量同步时生效**——
+    带 `--ids` 再 prune 会把没列出来的附件一起删掉）；`--dryRun` 只列不落盘。
+  - **`todo attach` / `todo attachments`**：把附件**追加**到任务正文；列出某条任务
+    引用了哪些附件、本地是否已有。`todo attach` 会拒绝不像 fileId 的值（比如 URL）。
+    ⚠️ 追加会改写正文，而定位按正文内容（`--ref`）—— 连续操作要用**新的** text。
+  - **新模块 `setting` + 面板开关：「读任务时自动下载附件」。**
+    `nx-kv setting get` / `nx-kv setting set --autoSyncAttachments[=false]`
+    （面板在「清单」页工具栏）。开启后 `todo list` / `todo get` 会同步正文引用的附件，
+    给每个任务附加 `attachments[]`（`id / kind / name / localPath / synced`，
+    **localPath 是本地绝对路径**），并用 `attachmentsSync` 汇报这一轮
+    `downloaded / skipped / failures`。**下载失败不阻断读取** —— 附件拿不到与
+    清单读不到是两件事，失败如实进 `failures`，本地已有旧版本时继续用它。
+    默认**关**：开启意味着每次 list/get 都触网，对「只想看一眼清单」是纯负担。
+  - **`attachments` 标注与开关无关**：关掉开关后不再同步，但「这条任务挂了附件」
+    仍会出现在 `attachments[]` 里（`localPath` 反映本地已有则给路径）。
+  - 前端：`todo` 的编辑从单行 dialog 换成完整编辑器弹窗（`editor.jsx`）——
+    **粘贴（Ctrl+V）/ 拖入 / 选择文件** 三条路都能上传，自动插到光标处、实时预览；
+    列表里图片以缩略图内联、其他文件显示为可点附件（`markdown.jsx`）。
+    - **Ctrl+V 直接粘截图**是主路径：截图工具不给文件名，`upload.js` 会替它起
+      `粘贴图片-<时间戳>.png`（这个名字会一路用下去：正文说明文字 + 落盘文件名，
+      退化成 `image.png` 就再也认不出是哪张）。一次粘多张带序号，不重名。
+    - 拖拽挂在 **window** 上而不是编辑区上：往弹窗里丢文件、落点差一点也该接住，
+      而不是让浏览器把文件打开；只在拖**文件**时介入（拖选中的文字不弹提示）。
+    - 批量上传**先收齐再一次性插入** —— 边传边插会跟光标位置打架
+      （插入后 DOM 里光标还没更新，第二个附件会算错落点、变成倒序）。
+    - 纯文本粘贴不拦截，交给浏览器默认行为插到光标处。
+    - 快捷键 <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 保存；字符计数与插入语法提示常驻。
+  - 「快速新增」那一栏也能 Ctrl+V 贴图：贴张截图再回车，任务与附件一次成型。
+  - 「附件自动下载」做成胶囊开关（面板「清单」页），悬停显示附件会落到哪个目录。
+  - `core/fileapi.js`（后端文件客户端，与 kvapi 共用同一套信封判定）、
+    `core/attachstore.js`（本地镜像与台账）、`core/config.resolveGroupId`
+    （模块间共享的 group 回落规则 —— todo 读 KV 与 file 选分组/本地目录必须同一条，
+    否则会出现「任务读 A 组、附件同步 B 组」这种不报错的错位）。
+  - 本机服务的请求体上限 4MB → 24MB：面板上传走 base64 JSON（膨胀 ~33%），
+    10MB 的图会变成 ~13MB 的请求体。
+
+### Changed
+
+- `core/kvapi.js` 的 `call` 改为导出，供 `core/fileapi.js` 复用（两处各写一遍
+  信封判定迟早分叉）。
+- `todo list` / `todo get` 的每个任务可能多出 `attachments[]`；开启自动下载时
+  顶层多出 `attachmentsSync`。未开启时**没有** `attachmentsSync`，其余字段与旧版一致。
+
+### Tests
+
+- `tests/fake-backend.mjs` 增加文件端点，并**手写 multipart 解析** ——
+  用 JSON 假装上传就测不出「boundary 丢了」「字段名写错」。
+  假后端刻意**不返回 originalName**，与真实后端一致：本地文件名只能自己解决。
+- `tests/smoke.mjs` 新增 25 项：上传（图片/docx）、list/get/remove、content 直出字节、
+  嵌入追加、`file sync` 落盘与二次跳过、开关打开后读任务自动下载并回传全路径、
+  关掉后不再同步但标注仍在、非法 fileId 被拒。
+- `tests/unit/attach.test.mjs` 新增 9 项：嵌入解析的边界（普通链接不许被误判、
+  去重保序、说明文字取首次出现、往返一致）。
+
 ## [0.8.5] - 2026-10-13
 
 ### Added

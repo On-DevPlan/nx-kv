@@ -36,6 +36,39 @@ function waitingBadge(t) {
   return `等待中 已等 ${mm}:${String(ss).padStart(2, '0')} · 剩 ${remain.replace(/^等待中\s*/, '')}`;
 }
 
+// ─── timegoal 视图辅助（独立模块：见 src/modules/timegoal/service.js）──
+// UI 这一层消费 /api/timegoals 把"持续运行 N 小时"任务的状态嵌到主题卡里。
+// 注意：timegoal 数据每 1.5s 跟着主轮询一起刷，时间也是基于 now - deadline 本地算，
+// 不需要单独 tick——reached 翻转最坏 1.5s 后才感知，UX 可接受。
+
+function timegoalDeadlineMs(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(s || '');
+  if (!m) return NaN;
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+}
+// 把 7201s 格式化成 "2:00:01" / "5:30"——超过 1 小时显式带 h 段，避免 "60:00" 这种反人类。
+function fmtClock(sec) {
+  if (!Number.isFinite(sec) || sec < 0) sec = 0;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+// 客户端算 reached / remaining（数据每 1.5s 刷一次，不开 tick）
+function timegoalStatus(goal) {
+  const dl = timegoalDeadlineMs(goal && goal.deadline);
+  const st = timegoalDeadlineMs(goal && goal.startedAt);
+  if (!Number.isFinite(dl)) return { reached: true, remainingSec: 0, elapsedSec: 0 };
+  const now = Date.now();
+  const remainingSec = Math.max(0, Math.ceil((dl - now) / 1000));
+  const elapsedSec = Math.max(
+    0,
+    Number.isFinite(st) ? Math.floor((now - st) / 1000) : 0
+  );
+  return { reached: dl <= now, remainingSec, elapsedSec };
+}
+
 export default function SessionTaskView() {
   const toast = useToast();
   const guard = useGuard();
@@ -56,7 +89,7 @@ export default function SessionTaskView() {
   const [suffixEditing, setSuffixEditing] = useState(false);
   const [suffixDraft, setSuffixDraft] = useState('');
   const [suffixSaving, setSuffixSaving] = useState(false);
-  // 探活状态：'connecting' | 'ok' | 'reconnecting'（数据轮询 + 后续 SSE 接入）
+  // 探活状态：'connecting' | 'ok' | 'reconnecting'（数据轮询 + 常驻 SSE）
   const [liveStatus, setLiveStatus] = useState('connecting');
   // 「只读弹窗」：点击现状/上一轮总结/任务文本时显示聚焦阅读的模态框
   // modal = { title, body } | null
@@ -74,6 +107,12 @@ export default function SessionTaskView() {
   const [selected, setSelected] = useState(() => new Set());
   const [deleting, setDeleting] = useState(false);
 
+  // timegoal 嵌入：每主题的 key → goal 对象；初次拉 + 复用 1.5s 主轮询。
+  // 不另起 tick——reached 翻转 1.5s 内可见，UX 可接受。
+  const [goalsByKey, setGoalsByKey] = useState(() => new Map());
+  // 全部 timegoal（可能包含还没出现在看板里的目录——CLI 先设、agent 后 wait）
+  const [goalsList, setGoalsList] = useState([]);
+
   const load = useCallback(async () => {
     try {
       const data = await api('/api/localtasks');
@@ -82,6 +121,15 @@ export default function SessionTaskView() {
     } catch {
       // 轮询失败 → 进入「重连中」态；指示灯变红，避免每 1.5s 弹错误 toast
       setLiveStatus('reconnecting');
+    }
+    // timegoal 拉取失败不影响主数据；map 自然为空，没目标的卡就不显示这一行。
+    try {
+      const t = await api('/api/timegoals/all');
+      const list = (t && t.goals) || [];
+      setGoalsList(list);
+      setGoalsByKey(new Map(list.map((g) => [g.key, g])));
+    } catch {
+      /* 见上；UI 兜底就是空 Map */
     }
   }, []);
 
@@ -93,6 +141,23 @@ export default function SessionTaskView() {
   useEffect(() => {
     const t = setInterval(load, 1500);
     return () => clearInterval(t);
+  }, [load]);
+
+  // 常驻 SSE。**这条连接不只是"更快刷新"，它就是「面板标签还开着」的信号**：
+  // 服务端 panelPresence() 统计的正是 /api/localtasks/events 上的活动连接，
+  // wait 开窗前先问它「有没有活标签」。没有这条连接，presence 恒为 0 ——
+  // wait 每次都以为没人在看，于是每次都开一个新窗口，等待期间还每 20s 再开一个。
+  // （历史事故：面板改成 1.5s 轮询后把 SSE 摘了，presence 静默失效，弹窗叠成一片。）
+  // 事件本身也顺手用起来：waiting/reminder/resolved 都触发一次即时刷新，
+  // 轮询退化成兜底（断线、旧浏览器）。
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return undefined;
+    const es = new EventSource('/api/localtasks/events');
+    const bump = () => { load(); };
+    es.onopen = () => setLiveStatus('ok');
+    es.onerror = () => setLiveStatus('reconnecting');
+    for (const type of ['waiting', 'reminder', 'resolved']) es.addEventListener(type, bump);
+    return () => es.close();
   }, [load]);
 
   // 只读弹窗：按 Esc 关闭
@@ -171,6 +236,50 @@ export default function SessionTaskView() {
       } finally {
         setPruning(false);
       }
+    });
+
+  // timegoal 嵌入层操作（详见 src/modules/timegoal/service.js）：
+  //   - clearTimegoal：删除某目录的时间目标
+  //   - saveTimegoal：新建（POST /api/timegoals）或更新（PATCH /api/timegoals）
+  // 更新走 PATCH：保留起点（已用时间仍算数），改时长时 deadline = 起点 + 新时长。
+  // 只有用户显式勾「重置起点」时才走 POST（set），那会把计时清零。
+  const clearTimegoal = (cwd, name) =>
+    guard(async () => {
+      const msg = `清空「${name}」的时间目标？\n\n计时器与提示词都会删除；之后可以重设。`;
+      if (!window.confirm(msg)) return;
+      await api('/api/timegoals', { method: 'DELETE', body: { cwd } });
+      toast('时间目标已清空');
+      await load();
+    });
+
+  const saveTimegoal = ({ cwd, name, durationSec, prompt, resetStart }) =>
+    guard(async () => {
+      const body = String(prompt || '').trim();
+      if (!body) {
+        toast('提示词不能为空');
+        return;
+      }
+      const dur = Number(durationSec);
+      if (!Number.isFinite(dur) || dur < 60 || dur > 86400) {
+        toast('时长需在 60-86400 秒之间（1 分钟到 24 小时）');
+        return;
+      }
+      if (resetStart) {
+        // 重置起点 = 开一局新的：走 set（POST）
+        await api('/api/timegoals', {
+          method: 'POST',
+          body: { cwd, duration: dur, prompt: body },
+        });
+        toast(`已为「${name}」重设时间目标（${Math.round(dur / 60)} 分钟，计时从头开始）`);
+      } else {
+        await api('/api/timegoals', {
+          method: 'PATCH',
+          body: { cwd, prompt: body, duration: dur },
+        });
+        toast(`已更新「${name}」的时间目标（起点未变）`);
+      }
+      setModal(null);
+      await load();
     });
 
   // 默认选中：优先等待中的，否则第一个；用户已选且仍存在则保留
@@ -530,6 +639,101 @@ export default function SessionTaskView() {
         )}
       </div>
 
+      {/* 时间目标（timegoal）汇总：独立模块的 web 入口。
+          theme 看板上只有「出现过 wait 的目录」，而 timegoal 可以先于 wait 存在——
+          这张卡把两边的视图补齐，任何目录都能在这里新建 / 编辑 / 清空。 */}
+      <div className="card" style={{ padding: '10px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: goalsList.length ? 10 : 0 }}>
+          <span style={{ fontWeight: 700 }}>时间目标</span>
+          <span className="muted" style={{ fontSize: 12 }}>
+            每个目录绑定一个 timegoal：持续 N 秒 + 全局提示词。agent 每轮
+            <code> timegoal check </code> 会原样拿回提示词，到点返回 <code>reached:true</code>。
+          </span>
+          <span style={{ marginLeft: 'auto' }}>
+            <button
+              className="btn small"
+              onClick={() =>
+                setModal({
+                  title: '新建时间目标',
+                  goalEdit: { cwd: '', name: '新目录', goal: null, needCwd: true },
+                })
+              }
+              title="为任意目录新建 timegoal（目录也可以还没在看板里出现过）"
+            >
+              新建
+            </button>
+          </span>
+        </div>
+        {goalsList.length ? (
+          <table>
+            <thead>
+              <tr>
+                <th>目录</th>
+                <th style={{ width: 130 }}>状态</th>
+                <th style={{ width: 150 }}>截止</th>
+                <th style={{ width: 200 }}>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {goalsList.map((g) => {
+                const st = timegoalStatus(g);
+                return (
+                  <tr key={g.key}>
+                    <td title={g.cwd}>
+                      <div style={{ fontWeight: 600 }}>{g.name}</div>
+                      <div className="mono muted" style={{ fontSize: 11, wordBreak: 'break-all' }}>{g.cwd}</div>
+                      <div
+                        className="muted"
+                        style={{ fontSize: 11, cursor: 'zoom-in', whiteSpace: 'pre-wrap', marginTop: 2 }}
+                        title="点击查看完整提示词"
+                        onClick={() => setModal({ title: `「${g.name}」timegoal 提示词`, body: g.prompt })}
+                      >
+                        {g.prompt.length > 60 ? g.prompt.slice(0, 60) + '…' : g.prompt}
+                      </div>
+                    </td>
+                    <td>
+                      <span
+                        className="tag"
+                        style={{ color: st.reached ? '#c0392b' : '#2a9d5c', fontWeight: 600 }}
+                        title={`持续 ${g.durationSec} 秒 · 起点 ${g.startedAt}`}
+                      >
+                        {st.reached ? `已到点 ${fmtClock(st.elapsedSec)}` : `剩 ${fmtClock(st.remainingSec)}`}
+                      </span>
+                    </td>
+                    <td className="mono" style={{ fontSize: 11 }}>{g.deadline}</td>
+                    <td className="ops">
+                      <button
+                        className="btn small ghost"
+                        onClick={() =>
+                          setModal({
+                            title: `编辑「${g.name}」的时间目标`,
+                            goalEdit: { cwd: g.cwd, name: g.name, goal: g },
+                          })
+                        }
+                        title="改时长 / 改提示词（起点默认保留）"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        className="btn small ghost"
+                        onClick={() => clearTimegoal(g.cwd, g.name)}
+                        title="删除该目录的 timegoal"
+                      >
+                        清空
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div className="muted" style={{ fontSize: 12, padding: '4px 0' }}>
+            （还没有任何目录设置时间目标；点「新建」，或在下方主题卡里点「设置」）
+          </div>
+        )}
+      </div>
+
       <div className="colhead">
         <input
           type="checkbox"
@@ -655,6 +859,16 @@ export default function SessionTaskView() {
                     <span className="tag">共享池</span>
                   ) : t.waiting ? (
                     <span className="tag strong">{waitingBadge(t) || countdown(t.waitingUntil)}</span>
+                  ) : t.staleWaiting ? (
+                    // 僵尸等待标志：wait 进程被强杀，waiting:true 残留。
+                    // 后端已把 waiting 抹成 false，这里如实说明"上次等待超时、进程已退出"，
+                    // 而不是让它一直转圈显示"等待中 已等 760:35 · 剩 0:00"。
+                    <span
+                      className="tag"
+                      title={`上次等待于 ${t.waitingUntil} 超时；wait 进程已退出，标志残留`}
+                    >
+                      已结束（上次等待超时，进程已退出）
+                    </span>
                   ) : (
                     <span className="tag">已结束</span>
                   )}
@@ -662,6 +876,74 @@ export default function SessionTaskView() {
                     待领取 {t.pending}/{t.total}
                   </span>
                 </div>
+                {/* timegoal 嵌入：非全局主题恒有一行——没设过也给「设置」入口，
+                    否则用户只能去 CLI 建、web 上永远看不见自己漏了哪个目录 */}
+                {!t.isGlobal && (() => {
+                  const goal = goalsByKey.get(t.key);
+                  const st = goal ? timegoalStatus(goal) : null;
+                  return (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}
+                    >
+                      <span style={{ fontSize: 11 }}>⏱</span>
+                      {goal ? (
+                        <>
+                          <span
+                            style={{ fontSize: 11, color: st.reached ? '#c0392b' : '#2a9d5c', fontWeight: 600 }}
+                            title={st.reached ? `已到点（用时 ${fmtClock(st.elapsedSec)}）` : `截止 ${goal.deadline}`}
+                          >
+                            {st.reached
+                              ? `时间目标已到点（用时 ${fmtClock(st.elapsedSec)}）`
+                              : `时间目标剩余 ${fmtClock(st.remainingSec)}`}
+                          </span>
+                          <button
+                            className="btn small ghost"
+                            onClick={() => setModal({ title: `主题「${t.name}」timegoal 提示词`, body: goal.prompt })}
+                            title="查看完整提示词原文（每轮 check 会原样回显）"
+                          >
+                            查看提示词
+                          </button>
+                          <button
+                            className="btn small ghost"
+                            onClick={() =>
+                              setModal({
+                                title: `编辑主题「${t.name}」的时间目标`,
+                                goalEdit: { cwd: t.cwd, name: t.name, goal },
+                              })
+                            }
+                            title="改时长 / 改提示词（起点默认保留）"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            className="btn small ghost"
+                            onClick={() => clearTimegoal(t.cwd, t.name)}
+                            title="删除本目录的 timegoal（含 prompt 与计时器）"
+                          >
+                            清空
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="muted" style={{ fontSize: 11 }}>未设置时间目标</span>
+                          <button
+                            className="btn small ghost"
+                            onClick={() =>
+                              setModal({
+                                title: `为主题「${t.name}」设置时间目标`,
+                                goalEdit: { cwd: t.cwd, name: t.name, goal: null },
+                              })
+                            }
+                            title="设定持续时长 + 全局提示词（agent 每轮 check 会原样回显）"
+                          >
+                            设置
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div
                   style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}
                   onClick={(e) => e.stopPropagation()}
@@ -920,12 +1202,168 @@ export default function SessionTaskView() {
                 关闭
               </button>
             </div>
-            <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-              {modal.body}
-            </div>
+            {modal.goalEdit ? (
+              // timegoal 编辑器：时长 + 全局提示词（新建/编辑共用）
+              <GoalEditor
+                init={modal.goalEdit}
+                onSave={saveTimegoal}
+                onCancel={() => setModal(null)}
+              />
+            ) : (
+              <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {modal.body}
+              </div>
+            )}
           </div>
         </div>
       )}
     </>
   );
+}
+
+// 常用时长快捷键（秒）：面板上点一下就填进去，省得手打 10800
+const GOAL_DURATION_PRESETS = [
+  { label: '30 分钟', sec: 1800 },
+  { label: '1 小时', sec: 3600 },
+  { label: '2 小时', sec: 7200 },
+  { label: '3 小时', sec: 10800 },
+  { label: '8 小时', sec: 28800 },
+];
+
+// ─── timegoal 编辑器（modal.goalEdit 存在时被嵌入弹窗）───────────────
+// 提到顶层组件是复用 React 的 hook 语义 + 文本状态隔离，避免在主 view 里多塞一组 state。
+//
+// 两种模式（靠 init.goal 是否为 null 区分）：
+//   新建：时长默认 3 小时、提示词空
+//   编辑：带出原时长与原提示词；默认**保留计时起点**（已用时间仍算数），
+//         勾「重置起点」才从头计。
+function GoalEditor({ init, onSave, onCancel }) {
+  const goal = init.goal || null;
+  const [cwdDraft, setCwdDraft] = useState(init.cwd || '');
+  const [durText, setDurText] = useState(String(goal ? goal.durationSec : 10800));
+  const [draft, setDraft] = useState(goal ? goal.prompt : '');
+  const [resetStart, setResetStart] = useState(!goal);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (saving) return;
+    const cwd = String(cwdDraft || '').trim();
+    if (!cwd) {
+      // 由主视图的 guard 统一弹错；这里只拦一次，避免发出空 cwd 的请求
+      window.alert('请填写目录路径（timegoal 绑定到某个工作目录）');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave({
+        cwd,
+        name: init.name,
+        durationSec: Number(durText),
+        prompt: draft,
+        resetStart,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      {init.needCwd && (
+        <div style={{ fontSize: 12, marginBottom: 10 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>工作目录</div>
+          <input
+            type="text"
+            value={cwdDraft}
+            onChange={(e) => setCwdDraft(e.target.value)}
+            placeholder="例如 D:\code\a_js\proj\nx-kv（agent 会以同一目录调 check）"
+            style={{ width: '100%', font: 'inherit', padding: '6px 8px', boxSizing: 'border-box' }}
+          />
+          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+            timegoal 按「目录名」绑定；agent 在哪个目录跑，就用哪个目录。
+          </div>
+        </div>
+      )}
+      <div style={{ fontSize: 12, marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 700 }}>持续时长</span>
+          <input
+            type="number"
+            min={60}
+            max={86400}
+            step={60}
+            value={durText}
+            onChange={(e) => setDurText(e.target.value)}
+            style={{ width: 110, font: 'inherit', padding: '5px 8px' }}
+          />
+          <span className="muted">秒（60 - 86400，即 1 分钟 - 24 小时）</span>
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          {GOAL_DURATION_PRESETS.map((p) => (
+            <button
+              key={p.sec}
+              className="btn small ghost"
+              onClick={() => setDurText(String(p.sec))}
+              title={`设为 ${p.sec} 秒`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {goal && (
+          <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+            当前：起点 {goal.startedAt} · 截止 {goal.deadline}
+            {resetStart ? ' → 保存后会重设，计时从头开始' : ' → 起点保留，已用时间仍算数'}
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>全局提示词</div>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        spellCheck={false}
+        rows={10}
+        style={{ width: '100%', font: 'inherit', padding: 8, boxSizing: 'border-box', resize: 'vertical' }}
+        placeholder="完整全局提示词原文（agent 每轮 timegoal check 会原样回显给它）"
+      />
+      <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+        {draft.length} / 20000 字
+      </div>
+
+      {goal && (
+        <label
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 8, cursor: 'pointer' }}
+          title="勾上则重新开始计时（已用时间作废）；不勾则保留起点"
+        >
+          <input type="checkbox" checked={resetStart} onChange={(e) => setResetStart(e.target.checked)} />
+          重置计时起点（当作新的一局）
+        </label>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
+        <button className="btn small" disabled={saving} onClick={submit}>
+          {saving ? '保存中…' : goal ? '保存' : '创建时间目标'}
+        </button>
+        <button className="btn small ghost" disabled={saving} onClick={onCancel}>取消</button>
+        <span className="muted" style={{ fontSize: 11, alignSelf: 'center' }}>
+          Ctrl+Enter 保存 · Esc 取消
+        </span>
+      </div>
+      <KeyHandler onSave={submit} onCancel={onCancel} />
+    </div>
+  );
+}
+
+// 键盘：Ctrl+Enter 提交、Esc 取消。封成小组件只为 useEffect（不能在组件里 inline useEffect）。
+function KeyHandler({ onSave, onCancel }) {
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onCancel();
+      else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onSave();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onSave, onCancel]);
+  return null;
 }

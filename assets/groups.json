@@ -17,6 +17,10 @@
     "kv-localget": {
       "skills": ["kv-localget"],
       "summary": "领取排给本目录的本地任务 + 队列管理（领取侧）"
+    },
+    "kv-timegoal": {
+      "skills": ["kv-timegoal"],
+      "summary": "把「持续运行 N 小时」任务固化到 nx-kv：每轮回显原文提示词防偏移 + 时间到点自动停手"
     }
   }
 }

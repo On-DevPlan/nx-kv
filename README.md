@@ -141,6 +141,39 @@ nx-kv skill install kv-submit     # 提交侧：总结上下文、提炼需求�
 nx-kv skill install kv-localget   # 领取侧：主动领取排给本目录的任务
 ```
 
+## 时间目标（timegoal，不需登录）
+
+把「AI 持续运行 N 小时」这类长任务**固化到工具里**，而不是散落在外部脚本：
+
+每个**工作目录**绑定一个 timegoal = 「持续秒数 + 一段完整全局提示词」。
+
+```bash
+# 开头设一次：3 小时 + 完整提示词（提示词会被原文固化到 store）
+nx-kv timegoal set --cwd "$PWD" --duration 10800 --prompt "<完整全局提示词>" --json
+
+# 每轮调一次：算出还剩多少时间，并把提示词【原文】回显给你
+nx-kv timegoal check --cwd "$PWD" --json
+#   → { reached:false, remainingSec:10780, prompt:"<完整提示词原文>", deadline, ... }
+
+# 提示词要改（agent 自我迭代 / 用户在面板上改）——只换提示词，保住计时起点
+nx-kv timegoal update --cwd "$PWD" --prompt "<新版>" [--duration <秒>] --json
+
+# 其余：show（仅查）/ clear（清空）/ list（总览所有目录）
+```
+
+**为什么需要它**：长对话里 agent 一定会把自己手里的提示词改写、漂移、漏条件。
+`check` 每次把 store 里的**原文**回显出来，agent 就没有"凭记忆发挥"的空间。
+到点时 `reached:true`，agent 据此停手、收尾。
+
+**完全独立的模块**：独立 store（`~/.nx-kv/timegoals.json`）、独立命令族、
+独立循环——不调用 `localtask wait`、不被它调用，两者可以同时跑。
+面板上嵌在「本地任务」页（顶部「时间目标」汇总卡 + 每个主题卡里一行），
+纯粹是为了查看与编辑方便。
+
+```bash
+nx-kv skill install kv-timegoal   # 持续 N 小时任务的时序与提示词模板
+```
+
 ## ⚠️ 定位一律按内容，不按 id
 
 待办的 id **非常容易重复**，两条独立的原因：
@@ -202,13 +235,14 @@ nx-kv todo get --ref "旧记录" --topic fr   # 或按主题收窄
 
 ```
 src/core/          零业务语义：kvapi / fileapi（后端客户端） / attachstore（附件本地镜像） / config / errors / fstree
-src/modules/       功能域：system / setting / auth / group / localtask / todo / file / bundled
+src/modules/       功能域：system / setting / auth / group / localtask / timegoal / todo / file / bundled
 src/runtime/       装配层：registry / spec / cli / api / server
 src/web/frontend/  React 壳
 assets/nx-kv/            内置 skill：KV 清单操作手册（远程）
 assets/kv-waittask/         内置 skill：对话内本地任务接力（等待侧）
 assets/kv-submit/        内置 skill：需求提炼与委托提交（提交侧）
 assets/kv-localget/         内置 skill：领取本目录本地任务（领取侧）
+assets/kv-timegoal/         内置 skill：持续 N 小时任务的时间目标与提示词回显
 ```
 
 分层由 `eslint.config.js` 的 `no-restricted-imports` 强制；
@@ -221,6 +255,7 @@ nx-kv skill install      # 装到 ~/.claude/skills/nx-kv（KV 清单操作手册
 nx-kv skill install kv-waittask      # 本地任务接力：最后一步阻塞等用户喂任务
 nx-kv skill install kv-submit     # 提交侧：总结上下文、提炼需求，委托别的 agent
 nx-kv skill install kv-localget      # 领取侧：主动领取排给本目录的任务
+nx-kv skill install kv-timegoal      # 持续 N 小时任务：每轮回显提示词原文、到点自动停手
 nx-kv skill list         # 列出可装 skill、默认安装项与可装 group
 nx-kv skill groups       # 列出 group → 包含哪些 skill
 nx-kv skill install --group=<key>    # 一键装整组（与 <name> 二选一）

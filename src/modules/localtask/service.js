@@ -314,14 +314,37 @@ function normalizeTask(t) {
   };
 }
 
+// 主题是否「真的有人在等」——**必须看截止时刻，不能只看 waiting 标志**。
+//
+// waiting 标志由 wait 进程写入、结束时复位；跨进程可见，但 wait 被强杀
+// （SIGKILL / 任务管理器杀 / 终端关掉 / 机器崩了）时 finally 不会执行，标志
+// 就**永久残留**。曾出现过：gs-ac 的 wait 被杀后，标志一直挂着，面板永远显示
+// 「等待中 已等 760:35 · 剩 0:00」，用户点「关闭」也没有进程来消费。
+//
+// 判据：waiting 为真**且**截止时刻还没过。截止时刻已过 = 那个 wait 本来也该
+// 收尾了（超时），此时的 waiting 是残留，不是"有人正等着"。
+//
+// 唯一会误判的窗口：wait 进程还活着、但刚好卡在超时那一瞬（<1s）——那时
+// 它下一拍就会自己收尾，短暂显示"已结束"无伤大雅。
+export function isLiveWaiting(t, nowMs = Date.now()) {
+  if (!t || !t.waiting) return false;
+  const until = parseStampMs(t.waitingUntil);
+  if (!Number.isFinite(until)) return false; // 没有截止时刻 = 脏数据，不算等待中
+  return until > nowMs;
+}
+
 function topicView(t) {
   const tasks = t.tasks.map(normalizeTask);
+  const live = isLiveWaiting(t);
   return {
     key: t.key,
     cwd: t.cwd || '',
     name: t.name || '',
     summary: t.summary || '',
-    waiting: !!t.waiting,
+    // waiting 是**对外的真相**：僵尸标志在这里被抹平，面板才不会一直转圈
+    waiting: live,
+    // 残留标志单独透出，UI 可以说明"上次等待超时、进程已退出"而不是装作从没有过
+    staleWaiting: !!t.waiting && !live,
     waitingUntil: t.waitingUntil || '',
     waitingSince: t.waitingSince || '',
     cancelRequested: !!t.cancelRequested,
@@ -446,7 +469,7 @@ export async function cancelWait({ cwd: rawCwd, key: rawKey } = {}) {
   }
   const store = await loadStore();
   const t = store.topics[key];
-  if (!t || !t.waiting) {
+  if (!t || !isLiveWaiting(t)) {
     return { cancelled: false, key, name: (t && t.name) || '', cwd: (t && t.cwd) || '', reason: 'not_waiting' };
   }
   t.cancelRequested = true;
@@ -504,11 +527,15 @@ export async function getSettings() {
 //   2) 空主题（没有任何任务）；
 //   3) allFinished 时，连同「已全部领取、无待领」的主题一起清。
 // 等待中的主题与全局主题一律保留；dryRun 只报告不改动。
+//
+// **僵尸等待标志不算"等待中"**：wait 被强杀后残留的 waiting:true 会让主题
+// 永远躲过清理（gs-ac 就这么卡住的）。用 isLiveWaiting 判定——截止已过 = 没人
+// 在等 = 可以清。
 export async function pruneTopics({ allFinished = false, dryRun = false } = {}) {
   const store = await loadStore();
   const removed = [];
   for (const [key, t] of Object.entries(store.topics)) {
-    if (t.waiting || isGlobalKey(key)) continue;
+    if (isLiveWaiting(t) || isGlobalKey(key)) continue;
     const tasks = Array.isArray(t.tasks) ? t.tasks : [];
     const hasPending = tasks.some((x) => x.status !== 'consumed');
     const isLegacy = !t.cwd;
@@ -717,7 +744,7 @@ export async function removeTopic({ cwd: rawCwd, key: rawKey, force = false } = 
   if (isGlobalKey(key) && !force) {
     throw badInput('全局主题是共享任务池，默认不能删除（确认要清空请加 --force）');
   }
-  if (t.waiting && !force) {
+  if (isLiveWaiting(t) && !force) {
     throw badInput('主题正在等待中，不能删除（确认要删请加 --force，agent 将超时收尾）');
   }
   const view = topicView(t);
@@ -759,7 +786,7 @@ export async function removeTopics({ keys, cwds, all = false, force = false } = 
       skipped.push({ key, name: t.name, cwd: t.cwd, reason: 'protected' });
       continue;
     }
-    if (t.waiting && !force) {
+    if (isLiveWaiting(t) && !force) {
       skipped.push({ key, name: t.name, cwd: t.cwd, reason: 'waiting' });
       continue;
     }
@@ -962,20 +989,29 @@ export async function waitForTask({
   // 没活标签且主面板在跑 → 开浏览器深链（让用户能在面板里选中主题并响应等待事件）。
   // 已有活标签 / --no-open / 主面板未启动 → 都不开（避免重复标签 + 冒烟/CI 兼容）。
   const openPage = open && presence === 0 && panelInfo.running;
+  // 初次开页也要计入冷却。页面从「进程已拉起」到「SSE 连上」有 1–3s 空窗，
+  // 不记这一笔的话，第一次复查（5s 后）会把「还在加载」判成「没开」→ 立刻再开一个。
+  let lastOpenAt = openPage ? Date.now() : 0;
+  let opens = openPage ? 1 : 0;
   if (openPage) openBrowser(deepLink);
 
   // 周期复查：等待期间每 5s 查一次活动标签；万一开始时判错（页面被关），20s 冷却内重开。
-  // 不到点不开新页（节流，避免「标签被关 → 立刻开 → 立刻关」抖动）。
-  const REVIEW_MS = 5_000;
-  const REOPEN_COOLDOWN_MS = 20_000;
-  let lastReopenAt = 0;
+  // 不到点不开新页（节流，避免「标签被关 → 立刻开 → 立刻关」抖动）；总次数也有上限 ——
+  // 若浏览器拦了脚本 / 用户就是不想看，每 20s 开一个只会变成窗口风暴。
+  //
+  // 单次探测为 0 **不算**「标签被关」：后台标签被浏览器冻结、SSE 自动重连、网络抖动
+  // 都会短暂掉到 0（EventSource 自带重连，几秒后自己回来）。所以要连续两次（≈10s）
+  // 都探不到活连接才重开，否则一次抖动就多一个窗口。
+  let zeroStreak = 0;
   const review = setInterval(async () => {
     if (!panelInfo.running || !open) return;
     const n = await probePresence().catch(() => 0);
-    if (n > 0) return; // 有活标签，不动
+    zeroStreak = n > 0 ? 0 : zeroStreak + 1;
+    if (zeroStreak < 2) return;
     const now = Date.now();
-    if (now - lastReopenAt < REOPEN_COOLDOWN_MS) return; // 冷却中
-    lastReopenAt = now;
+    if (!shouldReopenWindow({ presence: n, now, lastOpenAt, opens })) return;
+    lastOpenAt = now;
+    opens += 1;
     openBrowser(deepLink);
   }, REVIEW_MS);
   review.unref?.();
@@ -1017,17 +1053,13 @@ export async function waitForTask({
 // 有 agent 正阻塞等人时，面板是唯一提醒来源，绝不能在此时释放。
 //
 // waiting 标志由 wait 进程写入、结束复位，跨进程可见；但 wait 被强杀（SIGKILL）时
-// 标志会残留。所以再过一道「截止时刻」：waitingUntil 已过期视为不在等待——那一刻
-// wait 本来也要收尾了，不会误伤正常等待。
+// 标志会残留。判据统一走 isLiveWaiting（含「截止时刻已过 = 不算等待」这道闸）。
 export async function countWaitingTopics() {
   const store = await loadStore();
   const now = Date.now();
   let n = 0;
   for (const t of Object.values(store.topics)) {
-    if (!t || !t.waiting) continue;
-    const until = parseStampMs(t.waitingUntil);
-    if (Number.isFinite(until) && until <= now) continue; // 残留标志：截止时刻已过
-    n += 1;
+    if (isLiveWaiting(t, now)) n += 1;
   }
   return n;
 }
@@ -1134,8 +1166,37 @@ async function probePresence(timeoutMs = 900) {
   });
 }
 
-function panelBaseUrl() {
-  return `http://127.0.0.1:${DEFAULT_PORT}`;
+// 复查节奏与重开上限。抽到模块级是为了能被单测直接引用（不用起服务器）。
+const REVIEW_MS = 5_000;
+const REOPEN_COOLDOWN_MS = 20_000;
+// 一次 wait 最多开 3 个窗口：够救「手滑关掉」，又不至于在浏览器拦截脚本时刷屏。
+const MAX_WINDOW_OPENS = 3;
+
+/**
+ * 复查时要不要重开窗口。四条判据，任一不满足就不开：
+ *   1. 有活标签（presence > 0）→ 用户在看着，别打扰；
+ *   2. 已经开够次数 → 停止（浏览器拦了脚本、或用户就是不想看，开再多也没用）；
+ *   3. 距上一次开页还在冷却期内 → 等一等（页面加载 + 建立 SSE 需要几秒）；
+ *   4. 其余情况才重开（标签被关了 / 第一次没开成）。
+ *
+ * 抽成纯函数的原因：这段逻辑的 bug 不报错、只表现为「窗口越开越多」，
+ * 必须能被单测钉住。
+ */
+export function shouldReopenWindow({
+  presence,
+  now,
+  lastOpenAt,
+  opens,
+  cooldownMs = REOPEN_COOLDOWN_MS,
+  maxOpens = MAX_WINDOW_OPENS,
+} = {}) {
+  if (Number(presence) > 0) return false;
+  if (Number(opens) >= maxOpens) return false;
+  if (Number(lastOpenAt) > 0 && Number(now) - Number(lastOpenAt) < cooldownMs) return false;
+  return true;
+}
+
+function panelBaseUrl() {  return `http://127.0.0.1:${DEFAULT_PORT}`;
 }
 
 // 深链到主面板「实时任务」页并选中当前主题（key 优先，cwd 兜底）。

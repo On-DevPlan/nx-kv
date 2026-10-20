@@ -10,6 +10,9 @@ src/web/public/
 .tool/
 .workbuddy/
 
+# Playwright MCP 的产物目录（页面快照 yml / 截图 png）——调试用，不入库
+.playwright-mcp/
+
 # ============================================================
 # Cloned repositories (nested git repos) — sl-git-standard
 # 父目录必须用 /* 半透明模式，否则否定规则失效

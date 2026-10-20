@@ -23,9 +23,20 @@ function countdown(s) {
 
 // 「已等 m:ss · 剩 m:ss」：waitingSince（起点）反推已等，waitingUntil（截止）反推剩余。
 // waitingSince 缺字段时（老数据）退化为只显示剩余。
+//
+// 剩余时间优先用 waitingUntilMs（毫秒精度的 epoch）：waitingUntil 那串是给人看的、
+// 只有秒级且是**截断**的，短时限下会比真实截止早最多 1 秒——面板会提前显示 0:00。
 function waitingBadge(t) {
   if (!t || !t.waiting) return null;
-  const remain = countdown(t.waitingUntil);
+  let remain;
+  if (t.waitingUntilMs > 0) {
+    const ms = t.waitingUntilMs - Date.now();
+    const mm = Math.floor(Math.max(0, ms) / 60000);
+    const ss = Math.floor((Math.max(0, ms) % 60000) / 1000);
+    remain = `等待中 ${mm}:${String(ss).padStart(2, '0')}`;
+  } else {
+    remain = countdown(t.waitingUntil);
+  }
   if (!t.waitingSince) return remain; // 老数据兜底
   const since = parseStamp(t.waitingSince);
   if (!since) return remain;

@@ -314,6 +314,14 @@ function normalizeTask(t) {
   };
 }
 
+// 主题的截止时刻（epoch ms）。优先用 waitingUntilMs（毫秒精度，新数据都有），
+// 老数据没有这个字段时才回退解析 waitingUntil 字符串（秒级精度）。
+export function deadlineMsOf(t) {
+  if (!t) return NaN;
+  if (Number.isFinite(t.waitingUntilMs) && t.waitingUntilMs > 0) return t.waitingUntilMs;
+  return parseStampMs(t.waitingUntil);
+}
+
 // 主题是否「真的有人在等」——**必须看截止时刻，不能只看 waiting 标志**。
 //
 // waiting 标志由 wait 进程写入、结束时复位；跨进程可见，但 wait 被强杀
@@ -328,7 +336,7 @@ function normalizeTask(t) {
 // 它下一拍就会自己收尾，短暂显示"已结束"无伤大雅。
 export function isLiveWaiting(t, nowMs = Date.now()) {
   if (!t || !t.waiting) return false;
-  const until = parseStampMs(t.waitingUntil);
+  const until = deadlineMsOf(t);
   if (!Number.isFinite(until)) return false; // 没有截止时刻 = 脏数据，不算等待中
   return until > nowMs;
 }
@@ -346,6 +354,7 @@ function topicView(t) {
     // 残留标志单独透出，UI 可以说明"上次等待超时、进程已退出"而不是装作从没有过
     staleWaiting: !!t.waiting && !live,
     waitingUntil: t.waitingUntil || '',
+    waitingUntilMs: Number(t.waitingUntilMs) || 0,
     waitingSince: t.waitingSince || '',
     cancelRequested: !!t.cancelRequested,
     isGlobal: isGlobalKey(t.key),
@@ -425,6 +434,12 @@ async function setWaiting(key, cwd, summary, waiting, deadline) {
   const t = topicOf(store, key, cwd);
   t.waiting = !!waiting;
   t.waitingUntil = waiting && deadline ? stampNow(deadline) : '';
+  // **毫秒精度的截止时刻**（epoch ms）。waitingUntil 那串是给人看的、只有秒级精度，
+  // 而 stampNow 是「截断」不是「四舍五入」——短时限（秒级）时截断误差能吃掉整个窗口：
+  // wait 若恰好在某秒最后 40ms 启动，真实 deadline 是 S+1.97s，存成 "S+1" 解析回来
+  // 就是 S+1.000，比 now 还早 → 被判成「没在等」→ 事件流永远推不出 waiting。
+  // 判据一律走 deadlineMsOf()：优先读这个精确值，老数据才回退解析字符串。
+  t.waitingUntilMs = waiting && deadline ? deadline.getTime() : 0;
   t.waitingSince = waiting ? stampNow() : '';
   // 新一轮等待不继承上一轮残留的「关闭」请求，否则刚进来就被立刻收尾
   t.cancelRequested = false;
@@ -442,6 +457,7 @@ async function clearWaiting(key) {
   if (!t) return;
   t.waiting = false;
   t.waitingUntil = '';
+  t.waitingUntilMs = 0;
   t.waitingSince = '';
   t.cancelRequested = false;
   t.updatedAt = stampNow();
@@ -1305,12 +1321,18 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
 
     const now = Date.now();
     for (const t of topics) {
-      const deadline = parseStampMs(t.waitingUntil);
+      // 截止时刻走 deadlineMsOf()：优先毫秒精度的 waitingUntilMs，老数据才解析字符串。
+      // 之前这里自己解析 waitingUntil（秒级），短时限下截断误差会让「正在等」被判成
+      // 「没在等」→ 事件流永远推不出 waiting（tests/unit/localtask-sse.test.mjs 曾
+      // 因此有 ~4% 的 flake）。
+      const deadline = deadlineMsOf(t);
       const isWaiting = !!t.waiting && Number.isFinite(deadline) && deadline > now;
       let st = state.get(t.key);
 
       if (isWaiting) {
-        if (!st || st.phase !== 'waiting' || st.waitingUntil !== t.waitingUntil) {
+        // 「是不是新一轮等待」用**毫秒精度的 deadline** 判定：waitingUntil 字符串只有
+        // 秒级，同一秒内开始的两次等待字符串相同，靠它判会漏掉新一轮。
+        if (!st || st.phase !== 'waiting' || st.deadline !== deadline) {
           st = {
             phase: 'waiting',
             waitingUntil: t.waitingUntil,

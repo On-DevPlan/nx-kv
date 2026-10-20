@@ -2,6 +2,87 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+## [0.10.0] - 2026-10-20
+
+### Added
+
+- **新增 `timegoal` 模块：把"持续运行 N 小时"任务固化到 nx-kv。** 完全独立的命令族
+  / 独立 store / 独立循环链路——**与 localtask wait 没有任何关系**（不调用、不被调用、
+  store 也不共享），可以同时跑也可以分开跑。UI 上嵌在「本地任务」主题卡里只是为了查
+  看便利（数据/逻辑完全独立——拔掉 localtask 本模块照样跑）。
+
+  - 命令族 `nx-kv timegoal <...>`：
+    - **`set`** 新建/替换本目录 timegoal（`--duration 60-86400`、`--prompt "<...>"`），
+      重置起点；
+    - **`update`** 改提示词，可选**同时改时长**（`--duration`）——**保留起点**
+      （`deadline = startedAt + 新时长`，已用时间仍算数）；agent 自我迭代提示词、
+      用户 Web 端编辑都用这条，避免一次小改动把整套 3 小时清零；
+    - **`show`** 仅查询；**`check`** 时间运算 + **原文回显 prompt**
+      （让 agent 永远以 store 为准，避免长对话里漂移），到点返回 `reached:true`；
+    - **`clear`** 清空（无则 `no_goal`，面板按钮可无脑调用）；
+    - **`list`** 总览所有有 timegoal 的目录。
+  - **典型流程**：开头 `set` 一次 → 每轮 `check` 拿 `prompt` 当本轮根指令干活 →
+    调研发现 prompt 漏条件就 `update` 替换 → 到 `reached:true` 那轮立刻停手。
+  - 独立 store `~/.nx-kv/timegoals.json`（`NX_KV_TIMEGOAL_STORE` 可覆盖），
+    与 localtask 的 `localtasks.json` 完全分离——两套循环并行不冲突。
+  - **UI 完整编辑入口**（`localtask/view.jsx`，任务看板）：
+    - 页面顶部新增「时间目标」汇总卡：列出**所有目录**的 timegoal（含还没在
+      看板里出现过的目录——CLI 先设、agent 后 wait），支持**新建**（填目录 +
+      时长 + 提示词）、**编辑**（改时长/提示词；默认保留起点，勾「重置起点」
+      才从头计）、**清空**；状态列显示 `剩 mm:ss` / `已到点`，每 1.5s 刷新。
+    - 主题卡里 timegoal 行**恒显示**：已设置 → 倒计时 + 查看/编辑/清空；
+      未设置 → 「未设置时间目标 + 设置」（直接为该目录新建）。
+    - 时长输入带快捷按钮（30 分钟 / 1 / 2 / 3 / 8 小时），不用手打秒数。
+    - 编辑一律走 `PATCH /api/timegoals`（保留起点）；只有勾「重置起点」才走
+      `POST`（= `set`，计时清零）。
+  - 模块边界：timegoal service 不读 localtask service；`topicKeyFor / stampNow
+    / parseStampMs` 是 4-6 行的纯工具，本地复制避免跨模块耦合；纯函数
+    `evalTimegoal(goal, nowMs)` 不读时钟、便于单测钉边界。
+  - 单测 `tests/unit/timegoal.test.mjs`：duration / prompt 边界、`evalTimegoal`
+    四时段、set → show → check 链路、update 保留起点、不同 cwd 隔离、模拟到点、
+    store 损坏容忍、环境变量覆盖、prompt 含换行/Unicode 原样回显。
+  - 配套 skill `kv-timegoal`：`nx-kv skill install kv-timegoal`。`SKILL.md` 与
+    `references/workflow.md` 强调 timegoal 与 localtask wait 等其它命令族完全独立
+    ——skill 文字里不出现"`localtask wait` + `timegoal check`"的搭配示例。
+
+### Fixed
+
+- **「等待中」永远不结束：僵尸 `waiting` 标志残留。** 面板上某个主题永远显示
+  「等待中 已等 760:35 · 剩 0:00」，点「关闭」也没反应。
+  - **根因**：`waiting` 标志由 wait 进程写入、结束时在 `finally` 里复位；但 wait
+    被**强杀**（SIGKILL / 任务管理器杀 / 终端关掉 / 机器崩了）时 `finally` 不会执行，
+    标志就永久留在 store 里。曾实测：gs-ac 的 wait 在 22:29 开始、应在 22:32 超时
+    收尾，但进程没了 —— 于是标志卡住，用户 23:14 点「关闭」也**没有活进程**来消费
+    `cancelRequested`。
+  - **修复**：判定「是否真的在等」统一走新函数 `isLiveWaiting(t)` ——
+    `waiting` 为真**且**截止时刻还没过。截止已过 = 那个 wait 本来也该收尾了 =
+    没人真在等。此前 `countWaitingTopics()` 与 `watchEvents()` 各有一份内联判断，
+    `topicView()` 却只看裸标志，于是面板看到的是假状态。
+  - 改动点：`topicView()` 对外把 `waiting` 抹成假值、另给 `staleWaiting` 标记；
+    `pruneTopics()` / `removeTopic()` / `removeTopics()` / `cancelWait()` /
+    `countWaitingTopics()` 全部改用 `isLiveWaiting`。
+  - **连带修好的三处卡死**：僵尸等待的主题过去永远躲过 `prune`（空主题也清不掉）、
+    被「等待中不能删」挡住、也阻塞面板空闲自释放。
+  - 面板显示改为「**已结束（上次等待超时，进程已退出）**」，如实说明发生了什么，
+    而不是让倒计时一直转。
+  - 单测 `tests/unit/localtask-stale.test.mjs`（7 例）：`isLiveWaiting` 四个分支 +
+    僵尸等待在 list / count / prune / remove / cancel 各路径的表现 + 正常等待不受影响。
+
+- **`localtask wait` 会重复打开多个浏览器窗口**。根因是「有没有活标签」这条判据失效：
+  服务端 `panelPresence()` 统计的是 `/api/localtasks/events` 上的活动 SSE 连接，
+  但面板页改成 1.5s 轮询后**再也没有建立过 SSE**，presence 恒为 0 ——
+  于是每次 wait 都以为没人在看、都开一个新窗口，等待期间还每 20s 再开一个。
+  - **面板补上常驻 SSE**（`localtask/view.jsx`）：既是 presence 的信号，也顺手把
+    waiting / reminder / resolved 变成即时刷新，轮询退化为兜底。
+  - **wait 开窗加三道闸**：初次开页即计入冷却（页面加载到 SSE 连上之间有空窗，
+    否则 5s 后第一次复查就会再开一个）；单次探测为 0 不算标签被关，要**连续两次**
+    （≈10s）探不到才重开 —— 后台标签被冻结、SSE 自动重连、网络抖动都会短暂掉 0；
+    一次 wait 最多开 3 个窗口，避免浏览器拦脚本时刷成窗口风暴。
+  - 单测 `tests/unit/localtask-window.test.mjs`：`shouldReopenWindow` 四个分支 +
+    `panelPresence` 的连接计数与断开归零。
+
 ## [0.9.0] - 2026-10-16
 
 ### Added

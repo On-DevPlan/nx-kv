@@ -4,7 +4,7 @@
 // renderXxx 四处重复登记。现在命令表、help 文本、参数校验全部由 action 声明派生，
 // 新增命令只需在所属模块的 actions 里加一条。
 import { readFileSync } from 'node:fs';
-import { DEFAULT_PORT } from '../core/paths.js';
+import { APP_NAME, DEFAULT_PORT } from '../core/paths.js';
 import { configPathFromEnv } from '../core/config.js';
 import { toErrorPayload, exitCodeOf, badInput } from '../core/errors.js';
 import { ACTIONS, MODULES } from './registry.js';
@@ -20,7 +20,7 @@ const BUILTINS = [
   {
     id: 'serve',
     cli: ['serve'],
-    summary: '启动 Web 面板',
+    summary: '启动 Web 面板（默认 :7877；--port N 改端口；--no-open 不开浏览器；端口上已有本面板则直接打开它；NX_SERVE_NO_OPEN=1 全局不开浏览器）',
     flags: {
       port: { type: 'number', default: DEFAULT_PORT },
       'no-open': { type: 'boolean' },
@@ -256,13 +256,42 @@ async function cmdServe(ctx) {
   const { startServer } = await import('./server.js');
   const { startPanelIdleGuard } = await import('../modules/localtask/panel-guard.js');
   const { openBrowser } = await import('../core/open.js');
+  const { autoOpenEnabled, resolvePortConflict, describeOccupant } = await import('../core/serve-port.js');
+  const host = '127.0.0.1';
   const port = ctx.port || DEFAULT_PORT;
   const autoExit = !!ctx['auto-exit'];
+  // --no-open 与 NX_SERVE_NO_OPEN 都看这里：任一为真即完全不开浏览器。
+  const canOpen = autoOpenEnabled(ctx['no-open']);
 
   // 活动观测钩子：每个进来的请求（静态或 /api）都回调一次，供空闲自释放判活。
   // 不参与响应，异常必须吞掉。
   const onRequest = () => {};
-  const server = await startServer({ port, host: '127.0.0.1', onRequest });
+
+  let server;
+  try {
+    server = await startServer({ port, host, onRequest });
+  } catch (err) {
+    if (!err || err.code !== 'EADDRINUSE') throw err;
+
+    // 端口被占：先问一句「上面跑的是不是我」。
+    const decision = await resolvePortConflict(port, APP_NAME, host);
+
+    if (decision.action === 'reuse') {
+      // 自己的面板已经在跑：不重复启动，直接把浏览器指过去。
+      const addr = `http://${host}:${port}`;
+      console.log(APP_NAME + ' 已在运行：' + addr);
+      console.log('直接打开浏览器（不重复启动）；如需重启请先停掉旧实例');
+      if (canOpen) openBrowser(addr);
+      return;
+    }
+
+    // 别人占的：顺延到下一个空闲端口，再起自己的面板。
+    console.log(
+      `端口 ${port} 已被占用（占用者: ${describeOccupant(decision.occupant)}），改用 ${decision.port}`
+    );
+    server = await startServer({ port: decision.port, host, onRequest });
+  }
+
   const addr = `http://127.0.0.1:${server.address().port}`;
 
   console.log('nx-kv · nx-kv v' + VERSION);
@@ -272,7 +301,7 @@ async function cmdServe(ctx) {
   if (autoExit) console.log('模式:   空闲自释放（面板关闭且无等待中的主题后自动退出）');
   console.log('按 Ctrl+C 停止');
 
-  if (!ctx['no-open']) openBrowser(addr);
+  if (canOpen) openBrowser(addr);
 
   const shutdown = () => {
     console.log('\n正在停止...');

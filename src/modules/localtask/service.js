@@ -358,6 +358,8 @@ function topicView(t) {
     waitingSince: t.waitingSince || '',
     cancelRequested: !!t.cancelRequested,
     isGlobal: isGlobalKey(t.key),
+    // 手动登记的目录（面板「添加目录」）：空主题也不被 prune 清掉
+    manual: !!t.manual,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
     pending: tasks.filter((x) => x.status !== 'consumed').length,
@@ -519,6 +521,25 @@ function settingsView(s) {
   };
 }
 
+// ─── 目录登记（面板「添加目录」）────────────────────────────────────
+//
+// wait/add 也会建主题，但那是**被动**创建：空主题会被 prune 当脏数据清掉。
+// 手动登记的目录要能常驻（用户想先占个位、之后再绑 timegoal / 排任务），
+// 所以打 `manual:true` 标记，prune 一律跳过。重复登记幂等（已存在则只刷新标记）。
+export async function addTopic({ cwd: rawCwd } = {}) {
+  if (rawCwd === undefined || rawCwd === null || !String(rawCwd).trim()) {
+    throw badInput('需要 --cwd "<工作目录>"');
+  }
+  const { key, cwd, name } = normalizeCwd(rawCwd);
+  const store = await loadStore();
+  const existed = !!store.topics[key];
+  const t = topicOf(store, key, cwd, name);
+  t.manual = true;
+  t.updatedAt = stampNow();
+  await saveStore(store);
+  return { status: 'ok', existed, key, name, cwd, topic: topicView(t) };
+}
+
 // 总览：返回全部主题（面板据此分组展示与回填）+ 超时设置，按最近更新排序；
 // 全局主题永远置顶（共享池是所有 worker 的候补来源，放最显眼处）。
 export async function listTasks() {
@@ -551,7 +572,7 @@ export async function pruneTopics({ allFinished = false, dryRun = false } = {}) 
   const store = await loadStore();
   const removed = [];
   for (const [key, t] of Object.entries(store.topics)) {
-    if (isLiveWaiting(t) || isGlobalKey(key)) continue;
+    if (isLiveWaiting(t) || isGlobalKey(key) || t.manual) continue;
     const tasks = Array.isArray(t.tasks) ? t.tasks : [];
     const hasPending = tasks.some((x) => x.status !== 'consumed');
     const isLegacy = !t.cwd;

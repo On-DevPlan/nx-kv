@@ -2,7 +2,6 @@
 name: kv-timegoal
 description: 把"AI 持续运行 N 小时（如 3 小时）"任务固化到 nx-kv 里——用 CLI 设置时间目标 + 完整全局提示词，每轮自动回显提示词原文避免长对话里 agent 漂移（防偏移），到点返回 reached:true，agent 据此停手收尾。timegoal 是独立模块（独立 store、独立循环、独立命令族），与 localtask wait 等任何其它机制都没有关系；UI 上嵌入在「本地任务」主题卡里只是为了方便查看，逻辑上完全不依赖。agent 可通过 `timegoal update` 自己迭代提示词、用户也可在 web 端动态编辑（都不重置计时器）。典型用法：设置 3 小时"调研开源 Redis 差距并逼近生产级数据库"任务；每轮调 subagent 找差距、写 CHANGELOG、调 update 改 prompt，调 check 看是否到点。触发词：timegoal、time goal、时间目标、3 小时、两小时、持续运行、定时任务、跑一晚上、强制 N 小时、N 小时任务、self-improve prompt、自我迭代提示词、agent 改自己的 prompt、到点自动结束、到点停手、循环任务、跑完为止、UX prompt 防漂移、防偏移。
 ---
-
 # kv-timegoal — 把"持续 N 小时任务"固化到 nx-kv
 
 一个带"到期硬出口"的循环：开头一次性 `set`，**完整全局提示词固化进 store**；
@@ -111,12 +110,12 @@ nx-kv timegoal list                                                   # 所有�
 
 `update` 与 `set` 的区别：
 
-| | `set` | `update` |
-| --- | --- | --- |
+|                    | `set`                      | `update`                       |
+| ------------------ | ---------------------------- | -------------------------------- |
 | 起点 `startedAt` | **重置**（计时从头算） | **保留**（已用时间仍算数） |
-| 时长 | 必填 | 可选（省略=不变） |
-| prompt | 必填 | 必填 |
-| 用途 | 开一局新的 | 迭代提示词 / 调整时长 |
+| 时长               | 必填                         | 可选（省略=不变）                |
+| prompt             | 必填                         | 必填                             |
+| 用途               | 开一局新的                   | 迭代提示词 / 调整时长            |
 
 `update` 改时长时：`deadline = startedAt + 新时长`。
 

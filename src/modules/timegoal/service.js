@@ -207,18 +207,23 @@ export async function showTimegoal({ cwd: rawCwd } = {}) {
 }
 
 /**
- * 时间运算 + 回显原 prompt。这是 skill 的事实源。
- * - 无 goal：`{hasGoal:false, reached:false, prompt:""}`
- * - 有 goal：返回完整对象（reached / elapsedSec / remainingSec / deadline / prompt）
+ * 时间运算 + 回显原 prompt，并追加一条状态日志。
+ * - 每次有效 check 都要求调用方提供 `summary`（当前现状）与 `progress`
+ *   （完成度/下一步），空值、缺值、超长都拒绝，保证日志有用且可比较。
+ * - 有 goal：日志先成功落盘，再返回 reached/time/prompt 和本次日志记录。
+ * - 无 goal：仍需要提交 summary/progress，但不写日志（没有目标就不该有 goal 日志）。
  * `prompt` 永远从 store 原文回显 —— 不让 agent 在长对话里漂移。
  */
-export async function checkTimegoal({ cwd: rawCwd } = {}) {
+export async function checkTimegoal({ cwd: rawCwd, summary: rawSummary, progress: rawProgress } = {}) {
   if (rawCwd === undefined || rawCwd === null || !String(rawCwd).trim()) {
     throw badInput('需要 --cwd "<工作目录>"');
   }
+  const summary = normalizeLogField(rawSummary, 'summary', 2000);
+  const progress = normalizeLogField(rawProgress, 'progress', 2000);
   const { key, name, cwd } = normalizeCwd(rawCwd);
   const store = await loadStore();
   const g = store.goals[key];
+  const nowMs = Date.now();
   if (!g) {
     return {
       hasGoal: false,
@@ -226,24 +231,53 @@ export async function checkTimegoal({ cwd: rawCwd } = {}) {
       elapsedSec: 0,
       remainingSec: 0,
       prompt: '',
+      summary,
+      progress,
       key,
       name,
       cwd,
-      now: stampNow(),
+      now: stampNow(new Date(nowMs)),
     };
   }
-  const result = evalTimegoal(g, Date.now());
+
+  const result = evalTimegoal(g, nowMs);
+  const entry = {
+    checkedAt: stampNow(new Date(nowMs)),
+    elapsedSec: result.elapsedSec,
+    remainingSec: result.remainingSec,
+    reached: result.reached,
+    summary,
+    progress,
+  };
+  if (!Array.isArray(g.log)) g.log = [];
+  g.log.push(entry);
+  await saveStore(store);
+
   return {
     ...result,
     prompt: g.prompt, // 永远原文回显，绝不拼接/裁剪
+    summary,
+    progress,
+    checkedAt: entry.checkedAt,
     startedAt: g.startedAt,
     deadline: g.deadline,
-    now: stampNow(),
+    now: stampNow(new Date(nowMs)),
     key,
     name,
     cwd,
+    logCount: g.log.length,
   };
 }
+
+function normalizeLogField(raw, flag, maxLength) {
+  const value = String(raw ?? '').trim();
+  if (!value) throw badInput(`--${flag} 不能为空（每次 check 都会写入 timegoal 日志）`);
+  if (value.length > maxLength) {
+    throw badInput(`--${flag} 过长（≤${maxLength} 字，当前 ${value.length} 字）`);
+  }
+  return value;
+}
+
 
 /**
  * 更新本目录 timegoal 的 prompt（可选同时改时长），**不动 startedAt**。
@@ -311,3 +345,27 @@ export async function listTimegoals() {
   );
   return { count: list.length, goals: list.map(goalView) };
 }
+
+/**
+ * 回收已到点的时间目标：deadline 已过的 goal 从 store 删除。
+ *
+ * 用途：面板「回收已到点」按钮 / 定时清理。**只删到点的**——还在跑的绝不动。
+ * 语义上到点的 goal 已经完成使命（agent 拿到 reached:true 就该收尾），
+ * 继续留着只会让目录列表越堆越长。
+ *
+ * @returns {{count:number, removed:Array}} removed 是删除前的快照（供 UI 汇报）
+ */
+export async function pruneExpired() {
+  const store = await loadStore();
+  const now = Date.now();
+  const removed = [];
+  for (const [k, g] of Object.entries(store.goals)) {
+    if (evalTimegoal(g, now).reached) {
+      removed.push(goalView(g));
+      delete store.goals[k];
+    }
+  }
+  if (removed.length) await saveStore(store);
+  return { count: removed.length, removed };
+}
+

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
 import { useToast, useGuard } from '../../web/frontend/components/ui.jsx';
-import { CliHints } from '../../web/frontend/components/CliHints.jsx';
+import { mergeDirectoryRows } from './board.js';
 
 // “YYYY-MM-DD HH:mm:ss” → 本地 Date
 function parseStamp(s) {
@@ -92,7 +92,6 @@ export default function SessionTaskView() {
   const [toGlobal, setToGlobal] = useState(false);
   const [timeoutSec, setTimeoutSec] = useState(180);
   const [cfgSaving, setCfgSaving] = useState(false);
-  const [pruning, setPruning] = useState(false);
   // 收尾追加语：task.text 末尾自动追加的固定指令（强制 agent 计划最后再 wait 一次）
   const [taskSuffix, setTaskSuffix] = useState('');
   const [defaultTaskSuffix, setDefaultTaskSuffix] = useState('');
@@ -118,11 +117,13 @@ export default function SessionTaskView() {
   const [selected, setSelected] = useState(() => new Set());
   const [deleting, setDeleting] = useState(false);
 
-  // timegoal 嵌入：每主题的 key → goal 对象；初次拉 + 复用 1.5s 主轮询。
-  // 不另起 tick——reached 翻转 1.5s 内可见，UX 可接受。
-  const [goalsByKey, setGoalsByKey] = useState(() => new Map());
-  // 全部 timegoal（可能包含还没出现在看板里的目录——CLI 先设、agent 后 wait）
+  // 全部 timegoal（timegoal 与 localtask store 独立；这里只为目录看板合并显示）
   const [goalsList, setGoalsList] = useState([]);
+  // 设置 / 添加目录 都收进按钮 + 弹窗（原来常驻卡片占掉大半屏）
+  const [addDirCwd, setAddDirCwd] = useState('');
+  const [addDirBusy, setAddDirBusy] = useState(false);
+  const [recycling, setRecycling] = useState(false);
+  const [showQueue, setShowQueue] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -138,10 +139,20 @@ export default function SessionTaskView() {
       const t = await api('/api/timegoals/all');
       const list = (t && t.goals) || [];
       setGoalsList(list);
-      setGoalsByKey(new Map(list.map((g) => [g.key, g])));
     } catch {
       /* 见上；UI 兜底就是空 Map */
     }
+  }, []);
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        setModal(null);
+        setAddDirCwd('');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   useEffect(() => {
@@ -185,6 +196,8 @@ export default function SessionTaskView() {
   const topics = overview
     ? [...overview.topics].sort((a, b) => Number(!!b.isGlobal) - Number(!!a.isGlobal))
     : [];
+  // 一目录一行：timegoal 是独立 store，但与 localtask 使用同一目录 key 组装看板视图。
+  const directoryRows = mergeDirectoryRows(topics, goalsList);
 
   // 同步页面上的超时配置（来源：后端 settings）
   useEffect(() => {
@@ -236,33 +249,7 @@ export default function SessionTaskView() {
   const disableSuffix = () =>
     saveSuffix('');
 
-  // 清理旧脏数据（旧模型无目录主题、空主题；等待中保留）
-  const prune = () =>
-    guard(async () => {
-      setPruning(true);
-      try {
-        const r = await api('/api/localtasks/prune', { method: 'POST', body: {} });
-        toast(r.count ? `已清理 ${r.count} 个旧主题` : '没有需要清理的旧数据');
-        await load();
-      } finally {
-        setPruning(false);
-      }
-    });
-
-  // timegoal 嵌入层操作（详见 src/modules/timegoal/service.js）：
-  //   - clearTimegoal：删除某目录的时间目标
-  //   - saveTimegoal：新建（POST /api/timegoals）或更新（PATCH /api/timegoals）
-  // 更新走 PATCH：保留起点（已用时间仍算数），改时长时 deadline = 起点 + 新时长。
-  // 只有用户显式勾「重置起点」时才走 POST（set），那会把计时清零。
-  const clearTimegoal = (cwd, name) =>
-    guard(async () => {
-      const msg = `清空「${name}」的时间目标？\n\n计时器与提示词都会删除；之后可以重设。`;
-      if (!window.confirm(msg)) return;
-      await api('/api/timegoals', { method: 'DELETE', body: { cwd } });
-      toast('时间目标已清空');
-      await load();
-    });
-
+  // timegoal 编辑器（set/update）直接写独立模块的 API，不改写 localtask topic。
   const saveTimegoal = ({ cwd, name, durationSec, prompt, resetStart }) =>
     guard(async () => {
       const body = String(prompt || '').trim();
@@ -293,6 +280,49 @@ export default function SessionTaskView() {
       await load();
     });
 
+  const addDirectory = () =>
+    guard(async () => {
+      const cwd = String(addDirCwd || '').trim();
+      if (!cwd) {
+        toast('请填写工作目录路径');
+        return;
+      }
+      setAddDirBusy(true);
+      try {
+        const result = await api('/api/localtasks/topic', { method: 'POST', body: { cwd } });
+        toast(result.existed ? `目录「${result.name}」已在看板中` : `已添加目录「${result.name}」`);
+        setModal(null);
+        setAddDirCwd('');
+        await load();
+      } finally {
+        setAddDirBusy(false);
+      }
+    });
+
+  const recycleTimegoals = () =>
+    guard(async () => {
+      if (!goalsList.some((goal) => timegoalStatus(goal).reached)) {
+        toast('没有到点的 timegoal');
+        return;
+      }
+      const expiredCount = goalsList.filter((goal) => timegoalStatus(goal).reached).length;
+      if (!window.confirm(`回收 ${expiredCount} 个已到点的 timegoal？\n\n只删除到期目标，不会影响仍在运行的目标或本地任务队列。`)) return;
+      setRecycling(true);
+      try {
+        const result = await api('/api/timegoals/prune', { method: 'POST', body: {} });
+        toast(result.count ? `已回收 ${result.count} 个到点的 timegoal` : '没有需要回收的 timegoal');
+        await load();
+      } finally {
+        setRecycling(false);
+      }
+    });
+
+  const openSettings = () => {
+    setSuffixDraft(taskSuffix);
+    setSuffixEditing(false);
+    setModal({ title: '任务看板设置', settings: true });
+  };
+
   // 默认选中：优先等待中的，否则第一个；用户已选且仍存在则保留
   useEffect(() => {
     if (!topics.length) {
@@ -321,9 +351,6 @@ export default function SessionTaskView() {
       else n.add(key);
       return n;
     });
-  const allSelected = topics.length > 0 && selected.size === topics.length;
-  const toggleAll = () =>
-    setSelected(allSelected ? new Set() : new Set(topics.map((t) => t.key)));
 
   const submit = () =>
     guard(async () => {
@@ -529,465 +556,170 @@ export default function SessionTaskView() {
 
   return (
     <>
-      <div className="card" style={{ padding: '10px 14px' }}>
-        <div className="muted" style={{ fontSize: 12 }}>
-          agent 用法：完成当前任务后，把
-          <code> nx-kv localtask wait --cwd "&lt;工作目录&gt;" --summary "&lt;当前现状&gt;" --json </code>
-          作为本轮<strong>最后一个动作</strong>调用——工作目录即<strong>主题</strong>、主题拥有任务队列，
-          同目录共用队列、不同目录互不串，任务可在队列里堆积；本地队列取不到时自动去
-          <strong>全局任务池</strong>领取（全局也没有才阻塞）；命令阻塞并自动打开浏览器弹窗，
-          用户回填后解除阻塞、返回新任务；超时未回填则返回 <code>status:"timeout"</code>，agent 收尾结束本轮。
-        </div>
-      </div>
-
-      <div className="card" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 700 }}>等待超时</span>
-        <select
-          value={timeoutSec}
-          disabled={cfgSaving}
-          onChange={(e) => saveTimeout(e.target.value)}
-          style={{ font: 'inherit', padding: '5px 8px' }}
-        >
-          <option value={60}>1 分钟</option>
-          <option value={120}>2 分钟</option>
-          <option value={180}>3 分钟（推荐）</option>
-          <option value={240}>4 分钟</option>
-          <option value={300}>5 分钟</option>
-          <option value={600}>10 分钟（最大）</option>
-        </select>
-        <span className="muted" style={{ fontSize: 12 }}>
-          agent wait 未带 --timeout 时使用此值；推荐 3 分钟、最大 10 分钟。
-        </span>
-      </div>
-
-      <div className="card" style={{ padding: '10px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: suffixEditing ? 10 : 0 }}>
-          <span style={{ fontWeight: 700 }}>收尾追加语</span>
-          <span className="muted" style={{ fontSize: 12 }}>
-            每次 wait 返回任务时，自动拼到 task.text 末尾。强制 agent 计划最后再 wait 一次，避免长对话漂移漏调。
-          </span>
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span className={'tag' + (suffixEnabled ? '' : ' muted')} style={{ fontSize: 11 }}>
-              {suffixEnabled ? '已开启' : '已关闭'}
-            </span>
-            {!suffixEditing && (
-              <>
-                {suffixEnabled && (
-                  <button className="btn small ghost" onClick={() => { setSuffixDraft(taskSuffix); setSuffixEditing(true); }}>
-                    编辑
-                  </button>
-                )}
-                {suffixEnabled ? (
-                  <button
-                    className="btn small ghost"
-                    onClick={() => disableSuffix()}
-                    disabled={suffixSaving}
-                    title="关闭后，wait 返回的任务不再追加提示词"
-                  >
-                    关闭
-                  </button>
-                ) : (
-                  <button
-                    className="btn small"
-                    onClick={() => { setSuffixDraft(defaultTaskSuffix); setSuffixEditing(true); }}
-                    title="恢复默认收尾追加语并开启"
-                  >
-                    开启
-                  </button>
-                )}
-              </>
-            )}
+      <div className="board-toolbar card">
+        <div className="board-heading">
+          <strong>目录看板</strong>
+          <span className="muted">{directoryRows.length} 个目录 · 等待中 {overview?.waiting || 0}</span>
+          <span className="board-live">
+            <span className={'board-live-dot ' + liveStatus} />
+            {liveStatus === 'ok' ? '实时' : liveStatus === 'reconnecting' ? '重连中' : '连接中'}
           </span>
         </div>
-        {!suffixEditing && taskSuffix && (
-          <div
-            className="muted"
-            style={{ fontSize: 12, whiteSpace: 'pre-wrap', borderLeft: '2px solid #eee', padding: '4px 0 4px 10px' }}
-          >
-            {taskSuffix}
-          </div>
-        )}
-        {suffixEditing && (
-          <div>
-            <textarea
-              value={suffixDraft}
-              onChange={(e) => setSuffixDraft(e.target.value)}
-              rows={5}
-              style={{ width: '100%', font: 'inherit', padding: 8, boxSizing: 'border-box' }}
-              placeholder="（留空 = 关闭；非空 = 启用并以这段文本作为追加语）"
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button
-                className="btn small"
-                onClick={() => saveSuffix(suffixDraft)}
-                disabled={suffixSaving}
-              >
-                保存
-              </button>
-              <button
-                className="btn small ghost"
-                onClick={() => {
-                  setSuffixEditing(false);
-                  setSuffixDraft('');
-                }}
-                disabled={suffixSaving}
-              >
-                取消
-              </button>
-              <button
-                className="btn small ghost"
-                onClick={() => saveSuffix(defaultTaskSuffix)}
-                disabled={suffixSaving}
-                title="覆盖为默认文案并开启"
-              >
-                恢复默认
-              </button>
-              <span className="muted" style={{ fontSize: 11, marginLeft: 'auto' }}>
-                留空保存 = 关闭
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 时间目标（timegoal）汇总：独立模块的 web 入口。
-          theme 看板上只有「出现过 wait 的目录」，而 timegoal 可以先于 wait 存在——
-          这张卡把两边的视图补齐，任何目录都能在这里新建 / 编辑 / 清空。 */}
-      <div className="card" style={{ padding: '10px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: goalsList.length ? 10 : 0 }}>
-          <span style={{ fontWeight: 700 }}>时间目标</span>
-          <span className="muted" style={{ fontSize: 12 }}>
-            每个目录绑定一个 timegoal：持续 N 秒 + 全局提示词。agent 每轮
-            <code> timegoal check </code> 会原样拿回提示词，到点返回 <code>reached:true</code>。
-          </span>
-          <span style={{ marginLeft: 'auto' }}>
-            <button
-              className="btn small"
-              onClick={() =>
-                setModal({
-                  title: '新建时间目标',
-                  goalEdit: { cwd: '', name: '新目录', goal: null, needCwd: true },
-                })
-              }
-              title="为任意目录新建 timegoal（目录也可以还没在看板里出现过）"
-            >
-              新建
-            </button>
-          </span>
-        </div>
-        {goalsList.length ? (
-          <table>
-            <thead>
-              <tr>
-                <th>目录</th>
-                <th style={{ width: 130 }}>状态</th>
-                <th style={{ width: 150 }}>截止</th>
-                <th style={{ width: 200 }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {goalsList.map((g) => {
-                const st = timegoalStatus(g);
-                return (
-                  <tr key={g.key}>
-                    <td title={g.cwd}>
-                      <div style={{ fontWeight: 600 }}>{g.name}</div>
-                      <div className="mono muted" style={{ fontSize: 11, wordBreak: 'break-all' }}>{g.cwd}</div>
-                      <div
-                        className="muted"
-                        style={{ fontSize: 11, cursor: 'zoom-in', whiteSpace: 'pre-wrap', marginTop: 2 }}
-                        title="点击查看完整提示词"
-                        onClick={() => setModal({ title: `「${g.name}」timegoal 提示词`, body: g.prompt })}
-                      >
-                        {g.prompt.length > 60 ? g.prompt.slice(0, 60) + '…' : g.prompt}
-                      </div>
-                    </td>
-                    <td>
-                      <span
-                        className="tag"
-                        style={{ color: st.reached ? '#c0392b' : '#2a9d5c', fontWeight: 600 }}
-                        title={`持续 ${g.durationSec} 秒 · 起点 ${g.startedAt}`}
-                      >
-                        {st.reached ? `已到点 ${fmtClock(st.elapsedSec)}` : `剩 ${fmtClock(st.remainingSec)}`}
-                      </span>
-                    </td>
-                    <td className="mono" style={{ fontSize: 11 }}>{g.deadline}</td>
-                    <td className="ops">
-                      <button
-                        className="btn small ghost"
-                        onClick={() =>
-                          setModal({
-                            title: `编辑「${g.name}」的时间目标`,
-                            goalEdit: { cwd: g.cwd, name: g.name, goal: g },
-                          })
-                        }
-                        title="改时长 / 改提示词（起点默认保留）"
-                      >
-                        编辑
-                      </button>
-                      <button
-                        className="btn small ghost"
-                        onClick={() => clearTimegoal(g.cwd, g.name)}
-                        title="删除该目录的 timegoal"
-                      >
-                        清空
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : (
-          <div className="muted" style={{ fontSize: 12, padding: '4px 0' }}>
-            （还没有任何目录设置时间目标；点「新建」，或在下方主题卡里点「设置」）
-          </div>
-        )}
-      </div>
-
-      <div className="colhead">
-        <input
-          type="checkbox"
-          checked={allSelected}
-          onChange={toggleAll}
-          disabled={!topics.length}
-          title="全选 / 取消全选"
-          style={{ margin: 0 }}
-        />
-        <h3>主题总览（按工作目录）</h3>
-        <span
-          className="muted"
-          style={{
-            fontSize: 11,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            color: liveStatus === 'ok' ? '#2a9d5c' : liveStatus === 'reconnecting' ? '#c0392b' : '#888',
-          }}
-          title={
-            liveStatus === 'ok'
-              ? '实时连接正常（数据轮询可达后端）'
-              : liveStatus === 'reconnecting'
-              ? '连接断开，正在重连…'
-              : '正在连接…'
-          }
-        >
-          <span
-            style={{
-              display: 'inline-block',
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: liveStatus === 'ok' ? '#2a9d5c' : liveStatus === 'reconnecting' ? '#c0392b' : '#aaa',
-            }}
-          />
-          {liveStatus === 'ok' ? '实时连接正常' : liveStatus === 'reconnecting' ? '连接断开，正在重连…' : '正在连接…'}
-        </span>
-        <span className="muted">{overview ? ` · ${topics.length} 个 · 等待中 ${overview.waiting}` : ''}</span>
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="board-actions">
+          <button className="btn small ghost" onClick={() => { setAddDirCwd(''); setModal({ title: '添加工作目录', addDirectory: true }); }}>添加目录</button>
           <button
             className="btn small ghost"
             onClick={batchDelete}
             disabled={!selected.size || deleting}
-            title="删除勾选的主题（含其全部任务）"
+            title="删除勾选目录的主题与本地任务"
           >
-            {deleting ? '删除中…' : `批量删除${selected.size ? ` (${selected.size})` : ''}`}
+            {deleting ? '删除中…' : `删除${selected.size ? ` (${selected.size})` : ''}`}
           </button>
-          <button
-            className="btn small ghost"
-            onClick={prune}
-            disabled={pruning}
-            title="清理旧模型无目录主题与空主题（等待中一律保留）"
-          >
-            {pruning ? '清理中…' : '清理旧数据'}
-          </button>
-        </span>
+          <button className="btn small" onClick={openSettings} aria-haspopup="dialog">设置</button>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-        {topics.length ? (
-          topics.map((t) => {
-            const isActive = t.key === activeKey;
-            return (
-              <div
-                key={t.key}
-                onClick={() => setActiveKey(t.key)}
-                className="card"
-                style={{
-                  textAlign: 'left',
-                  width: 270,
-                  padding: '10px 12px',
-                  cursor: 'pointer',
-                  border: isActive ? '1px solid var(--ink,#14161a)' : '1px solid transparent',
-                  boxShadow: isActive
-                    ? '0 0 0 2px rgba(20,22,26,.12)'
-                    : '0 1px 2px rgba(20,22,26,.06), 0 6px 16px rgba(20,22,26,.05)',
-                }}
-              >
-                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <input
-                    type="checkbox"
-                    checked={selected.has(t.key)}
-                    onChange={() => toggleSelect(t.key)}
-                    onClick={(e) => e.stopPropagation()}
-                    title="选择以批量删除"
-                    style={{ margin: '3px 0 0' }}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, marginBottom: 2 }}>
-                      {t.name || '（未命名）'}
-                      {t.isGlobal && (
-                        <span
-                          className="tag strong"
-                          style={{ marginLeft: 6 }}
-                          title="全局共享池：任何目录的 agent 在本地队列空时自动领取这里的任务"
-                        >
-                          全局
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      className="mono muted"
-                      title={t.cwd}
-                      style={{ fontSize: 11, wordBreak: 'break-all', marginBottom: 6, minHeight: 15 }}
-                    >
-                      {t.cwd || (t.isGlobal ? '（跨目录共享，不属于任何目录）' : '（旧数据，无目录）')}
-                    </div>
-                  </div>
-                </div>
-                {t.summary && (
-                  <div
-                    className="muted"
-                    style={{ fontSize: 11, whiteSpace: 'pre-wrap', marginBottom: 6, cursor: 'zoom-in' }}
-                    title="点击查看完整现状"
-                    onClick={(e) => { e.stopPropagation(); setModal({ title: `主题「${t.name}」现状`, body: t.summary }); }}
-                  >
-                    现状：{t.summary}
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  {t.isGlobal ? (
-                    <span className="tag">共享池</span>
-                  ) : t.waiting ? (
-                    <span className="tag strong">{waitingBadge(t) || countdown(t.waitingUntil)}</span>
-                  ) : t.staleWaiting ? (
-                    // 僵尸等待标志：wait 进程被强杀，waiting:true 残留。
-                    // 后端已把 waiting 抹成 false，这里如实说明"上次等待超时、进程已退出"，
-                    // 而不是让它一直转圈显示"等待中 已等 760:35 · 剩 0:00"。
-                    <span
-                      className="tag"
-                      title={`上次等待于 ${t.waitingUntil} 超时；wait 进程已退出，标志残留`}
-                    >
-                      已结束（上次等待超时，进程已退出）
-                    </span>
-                  ) : (
-                    <span className="tag">已结束</span>
-                  )}
-                  <span className="muted" style={{ fontSize: 11 }}>
-                    待领取 {t.pending}/{t.total}
-                  </span>
-                </div>
-                {/* timegoal 嵌入：非全局主题恒有一行——没设过也给「设置」入口，
-                    否则用户只能去 CLI 建、web 上永远看不见自己漏了哪个目录 */}
-                {!t.isGlobal && (() => {
-                  const goal = goalsByKey.get(t.key);
-                  const st = goal ? timegoalStatus(goal) : null;
-                  return (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}
-                    >
-                      <span style={{ fontSize: 11 }}>⏱</span>
-                      {goal ? (
-                        <>
-                          <span
-                            style={{ fontSize: 11, color: st.reached ? '#c0392b' : '#2a9d5c', fontWeight: 600 }}
-                            title={st.reached ? `已到点（用时 ${fmtClock(st.elapsedSec)}）` : `截止 ${goal.deadline}`}
-                          >
-                            {st.reached
-                              ? `时间目标已到点（用时 ${fmtClock(st.elapsedSec)}）`
-                              : `时间目标剩余 ${fmtClock(st.remainingSec)}`}
-                          </span>
-                          <button
-                            className="btn small ghost"
-                            onClick={() => setModal({ title: `主题「${t.name}」timegoal 提示词`, body: goal.prompt })}
-                            title="查看完整提示词原文（每轮 check 会原样回显）"
-                          >
-                            查看提示词
-                          </button>
-                          <button
-                            className="btn small ghost"
-                            onClick={() =>
-                              setModal({
-                                title: `编辑主题「${t.name}」的时间目标`,
-                                goalEdit: { cwd: t.cwd, name: t.name, goal },
-                              })
-                            }
-                            title="改时长 / 改提示词（起点默认保留）"
-                          >
-                            编辑
-                          </button>
-                          <button
-                            className="btn small ghost"
-                            onClick={() => clearTimegoal(t.cwd, t.name)}
-                            title="删除本目录的 timegoal（含 prompt 与计时器）"
-                          >
-                            清空
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="muted" style={{ fontSize: 11 }}>未设置时间目标</span>
-                          <button
-                            className="btn small ghost"
-                            onClick={() =>
-                              setModal({
-                                title: `为主题「${t.name}」设置时间目标`,
-                                goalEdit: { cwd: t.cwd, name: t.name, goal: null },
-                              })
-                            }
-                            title="设定持续时长 + 全局提示词（agent 每轮 check 会原样回显）"
-                          >
-                            设置
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  );
-                })()}
-                <div
-                  style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}
-                  onClick={(e) => e.stopPropagation()}
+      <div className="board-table-wrap">
+        <table className="directory-board">
+          <thead>
+            <tr>
+              <th className="board-check"></th>
+              <th>目录 / 当前现状</th>
+              <th>本地任务</th>
+              <th>时间目标</th>
+              <th className="board-ops">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {directoryRows.map((row) => {
+              const t = row.topic;
+              const goal = row.goal;
+              const goalState = goal ? timegoalStatus(goal) : null;
+              return (
+                <tr
+                  key={row.key}
+                  className={activeKey === row.key ? 'is-active' : ''}
                 >
-                  {t.waiting && (
-                    <button
-                      className="btn small ghost"
-                      onClick={() => cancelTopic(t)}
-                      title="关闭本次等待（阻塞中的 wait 立即收尾，主题与任务保留）"
-                    >
-                      关闭
-                    </button>
-                  )}
-                  <button
-                    className="btn small ghost"
-                    onClick={() => deleteTopic(t)}
-                    disabled={deleting}
-                    title="删除整个主题（含全部任务）"
-                  >
-                    删除主题
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <div className="card muted" style={{ padding: '20px 16px', width: '100%', textAlign: 'center' }}>
-            （暂无主题；agent 调用 localtask wait 后会出现在这里）
-          </div>
-        )}
+                  <td className="board-check">
+                    {t && !t.isGlobal && (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(t.key)}
+                        onChange={() => toggleSelect(t.key)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`选择目录 ${row.name}`}
+                      />
+                    )}
+                  </td>
+                  <td className="board-directory">
+                    <div className="board-name-line">
+                      <strong>{row.name}</strong>
+                      {row.isGlobal && <span className="tag strong">全局池</span>}
+                      {t?.manual && <span className="tag">已登记</span>}
+                    </div>
+                    <div className="mono muted board-cwd" title={row.cwd}>{row.cwd || '跨目录共享'}</div>
+                    {t?.summary ? (
+                      <button
+                        className="board-summary"
+                        onClick={() => setModal({ title: `目录「${row.name}」当前现状`, body: t.summary })}
+                        title="查看完整现状"
+                      >
+                        {t.summary}
+                      </button>
+                    ) : <span className="board-summary muted">（暂无现状）</span>}
+                  </td>
+                  <td className="board-task-state">
+                    {t ? (
+                      <>
+                        <span className={'tag' + (t.waiting ? ' strong' : '')}>
+                          {t.isGlobal ? '共享任务池' : t.waiting ? (waitingBadge(t) || '等待中') : t.staleWaiting ? '等待已结束' : '空闲'}
+                        </span>
+                        <span className="board-count">{t.pending}/{t.total} 待领</span>
+                        {t.waiting && (
+                          <button className="btn small ghost" onClick={() => cancelTopic(t)} title="关闭当前等待">关闭等待</button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="tag">未登记</span>
+                        <button
+                          className="btn small ghost"
+                          onClick={() => {
+                            setAddDirCwd(row.cwd);
+                            setModal({ title: '添加工作目录', addDirectory: true });
+                          }}
+                          title="登记此目录，启用 localtask 队列"
+                        >
+                          登记队列
+                        </button>
+                      </>
+                    )}
+                  </td>
+                  <td className="board-goal-state">
+                    {goal ? (
+                      <>
+                        <button
+                          className={'board-goal-label' + (goalState.reached ? ' reached' : '')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setModal({ title: `目录「${row.name}」的全局提示词`, body: goal.prompt });
+                          }}
+                          title="点击查看完整提示词原文"
+                        >
+                          {goalState.reached ? `已到点 · ${fmtClock(goalState.elapsedSec)}` : `剩余 ${fmtClock(goalState.remainingSec)}`}
+                        </button>
+                        <span className="muted board-deadline">截止 {goal.deadline}</span>
+                      </>
+                    ) : <span className="muted">未设置</span>}
+                  </td>
+                  <td className="board-ops">
+                    {t && !t.isGlobal && (
+                      <button
+                        className="btn small ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveKey(t.key);
+                          setShowQueue(true);
+                        }}
+                        title={showQueue && activeKey === t.key ? '收起该目录的任务队列' : '查看/回填该目录的任务队列'}
+                      >
+                        {showQueue && activeKey === t.key ? '收起任务' : '任务'}
+                      </button>
+                    )}
+                    {goal ? (
+                      <button
+                        className="btn small ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setModal({ title: `编辑「${row.name}」的时间目标`, goalEdit: { cwd: row.cwd, name: row.name, goal } });
+                        }}
+                        title="编辑 timegoal 的时长和提示词"
+                      >编辑目标</button>
+                    ) : !row.isGlobal && (
+                      <button
+                        className="btn small ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setModal({ title: `设置「${row.name}」的时间目标`, goalEdit: { cwd: row.cwd, name: row.name, goal: null } });
+                        }}
+                        title="给该目录设置 timegoal"
+                      >设置目标</button>
+                    )}
+                    {t && !t.isGlobal && (
+                      <button className="btn small ghost" onClick={() => deleteTopic(t)} disabled={deleting} title="删除该目录的 localtask 队列">删除队列</button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {!directoryRows.length && (
+              <tr><td colSpan="5" className="muted board-empty">（没有目录；点击「添加目录」，或运行 localtask wait 后自动出现）</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {active && (
+      {active && showQueue && (
         <>
           <div className="toolbar">
             <span style={{ fontWeight: 700, maxWidth: 240 }} title={active.cwd}>
@@ -1186,7 +918,12 @@ export default function SessionTaskView() {
         </>
       )}
 
-      <CliHints module="localtask" />
+      <div className="localtask-cli-reference">
+        <details>
+          <summary>CLI 命令参考</summary>
+          <CliHints module="localtask" />
+        </details>
+      </div>
 
       {modal && (
         <div
@@ -1213,7 +950,93 @@ export default function SessionTaskView() {
                 关闭
               </button>
             </div>
-            {modal.goalEdit ? (
+            {modal.settings ? (
+              <div className="board-settings-dialog">
+                <section className="board-setting-section">
+                  <div className="board-setting-title">等待超时</div>
+                  <div className="board-setting-control">
+                    <select
+                      value={timeoutSec}
+                      disabled={cfgSaving}
+                      onChange={(e) => saveTimeout(e.target.value)}
+                      aria-label="本地任务 wait 等待超时"
+                    >
+                      <option value={60}>1 分钟</option>
+                      <option value={120}>2 分钟</option>
+                      <option value={180}>3 分钟（推荐）</option>
+                      <option value={240}>4 分钟</option>
+                      <option value={300}>5 分钟</option>
+                      <option value={600}>10 分钟（最大）</option>
+                    </select>
+                    <span className="muted">agent wait 未带 --timeout 时使用；范围 1–10 分钟。</span>
+                  </div>
+                </section>
+
+                <section className="board-setting-section">
+                  <div className="board-setting-title">
+                    收尾追加语
+                    <span className={'tag' + (suffixEnabled ? ' strong' : '')}>{suffixEnabled ? '已开启' : '已关闭'}</span>
+                  </div>
+                  <div className="muted board-setting-help">
+                    每次 wait 返回任务时拼到 task.text 末尾；用于提醒 agent 继续按当前工作方式收尾。
+                  </div>
+                  <textarea
+                    value={suffixEditing ? suffixDraft : taskSuffix}
+                    onChange={(e) => {
+                      if (!suffixEditing) setSuffixEditing(true);
+                      setSuffixDraft(e.target.value);
+                    }}
+                    rows={5}
+                    aria-label="localtask 收尾追加语"
+                    placeholder="留空关闭；填写后每次 wait 返回都会追加到任务文本"
+                  />
+                  <div className="board-setting-actions">
+                    <button
+                      className="btn small"
+                      onClick={() => saveSuffix(suffixDraft)}
+                      disabled={suffixSaving || (!suffixEditing && suffixDraft === taskSuffix)}
+                    >{suffixSaving ? '保存中…' : '保存追加语'}</button>
+                    <button className="btn small ghost" onClick={() => saveSuffix(defaultTaskSuffix)} disabled={suffixSaving}>
+                      恢复默认
+                    </button>
+                    <button className="btn small ghost" onClick={disableSuffix} disabled={suffixSaving || !suffixEnabled}>
+                      关闭追加语
+                    </button>
+                  </div>
+                </section>
+
+                <section className="board-setting-section board-timegoal-tools">
+                  <div className="board-setting-title">时间目标回收</div>
+                  <div className="muted board-setting-help">
+                    已到点的 timegoal 不再运行，可从目录看板回收；未到点的目标、localtask 队列和任务历史不会被删除。
+                  </div>
+                  <button
+                    className="btn small ghost"
+                    onClick={recycleTimegoals}
+                    disabled={recycling || !goalsList.some((goal) => timegoalStatus(goal).reached)}
+                  >{recycling ? '回收中…' : `回收已到点 (${goalsList.filter((goal) => timegoalStatus(goal).reached).length})`}</button>
+                </section>
+              </div>
+            ) : modal.addDirectory ? (
+              <div className="board-add-directory">
+                <label htmlFor="board-directory-path">工作目录路径</label>
+                <input
+                  id="board-directory-path"
+                  value={addDirCwd}
+                  onChange={(e) => setAddDirCwd(e.target.value)}
+                  placeholder="例如 D:\\code\\my-project"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter') addDirectory(); }}
+                />
+                <p className="muted">添加后会在目录看板常驻；同名目录与现有主题合并为一行。</p>
+                <div className="board-setting-actions">
+                  <button className="btn small" onClick={addDirectory} disabled={addDirBusy}>
+                    {addDirBusy ? '添加中…' : '添加目录'}
+                  </button>
+                  <button className="btn small ghost" onClick={() => { setModal(null); setAddDirCwd(''); }} disabled={addDirBusy}>取消</button>
+                </div>
+              </div>
+            ) : modal.goalEdit ? (
               // timegoal 编辑器：时长 + 全局提示词（新建/编辑共用）
               <GoalEditor
                 init={modal.goalEdit}

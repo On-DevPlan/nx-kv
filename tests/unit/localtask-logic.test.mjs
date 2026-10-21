@@ -26,12 +26,29 @@ async function reset() {
   await svc.updateSettings({ taskSuffix: '' });
 }
 
-test('空总览', async () => {
+test('目录手动登记：创建常驻空主题、重复登记幂等且 prune 保留', async () => {
   await reset();
-  const d = await svc.listTasks();
-  assert.equal(d.waiting, 0);
-  assert.deepEqual(d.topics, []);
+  const added = await svc.addTopic({ cwd: dirA });
+  assert.equal(added.status, 'ok');
+  assert.equal(added.existed, false);
+  assert.equal(added.topic.manual, true);
+  assert.equal(added.topic.cwd, resolve(dirA));
+
+  const again = await svc.addTopic({ cwd: dirA });
+  assert.equal(again.existed, true);
+  assert.equal(again.key, added.key);
+
+  assert.equal((await svc.pruneTopics()).count, 0, '手动登记的空目录不能被自动 prune');
+  assert.equal((await svc.listTasks()).topics.length, 1);
 });
+
+test('目录手动登记：缺 cwd 拒绝，不写空主题', async () => {
+  await reset();
+  await assert.rejects(() => svc.addTopic({}), /--cwd/);
+  await assert.rejects(() => svc.addTopic({ cwd: '  ' }), /--cwd/);
+  assert.deepEqual((await svc.listTasks()).topics, []);
+});
+
 
 test('add 排队 → wait 立即取走（queued，不开窗）', async () => {
   await reset();

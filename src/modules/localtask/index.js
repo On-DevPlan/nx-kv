@@ -163,6 +163,17 @@ export default {
 
     // ─── 主题删除（单个 / 批量）──────────────────────────────
     {
+      id: 'localtask.topic.add',
+      cli: ['localtask', 'topic', 'add'],
+      http: ['POST', '/api/localtasks/topic'],
+      summary: '登记一个工作目录：空目录也常驻（prune 不清），供面板「添加目录」用',
+      flags: { cwd: { type: 'string', required: true, hint: '工作目录（绝对路径或可解析的相对路径）' } },
+      run: (ctx) => service.addTopic({ cwd: ctx.cwd }),
+      render: (d) =>
+        `${d.existed ? '已更新' : '已登记'}目录「${d.name}」${d.cwd}` +
+        (d.existed ? '（原先已存在）' : ''),
+    },
+    {
       id: 'localtask.topic.remove',
       cli: ['localtask', 'topic', 'remove'],
       http: ['DELETE', '/api/localtasks/topic'],

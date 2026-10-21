@@ -51,7 +51,10 @@ function renderCheck(d) {
     `[timegoal] 主题「${d.name}」`,
     `  状态：${status}`,
     `  截止：${d.deadline}（now=${d.now}）`,
-    `  本轮要遵循的提示词（原文）：`,
+    `  现状：${d.summary}`,
+    `  完成度 / 下一步：${d.progress}`,
+    `  日志：本目录已记录 ${d.logCount} 次检查（${d.checkedAt}）`,
+    `  本轮提示词（store 原文）：`,
     prompt,
   ].join('\n');
 }
@@ -131,9 +134,14 @@ export default {
       id: 'timegoal.check',
       cli: ['timegoal', 'check'],
       http: ['GET', '/api/timegoals/check'],
-      summary: '时间运算 + 原文回显 prompt：返回 reached / elapsedSec / remainingSec / prompt',
-      flags: { cwd: CWD },
-      run: (ctx) => service.checkTimegoal({ cwd: ctx.cwd }),
+      summary:
+        '时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary 与完成度/下一步 --progress',
+      flags: {
+        cwd: CWD,
+        summary: { type: 'string', required: true, hint: '当前现状（每次 check 记录到日志，≤2000 字）' },
+        progress: { type: 'string', required: true, hint: '完成度/本轮成果/下一步（写入日志，≤2000 字）' },
+      },
+      run: (ctx) => service.checkTimegoal({ cwd: ctx.cwd, summary: ctx.summary, progress: ctx.progress }),
       render: renderCheck,
     },
     {
@@ -152,6 +160,18 @@ export default {
       summary: '列出所有有 timegoal 的目录（按截止升序）',
       run: () => service.listTimegoals(),
       render: renderList,
+    },
+    {
+      id: 'timegoal.prune',
+      cli: ['timegoal', 'prune'],
+      http: ['POST', '/api/timegoals/prune'],
+      summary: '回收已到点的时间目标（只删 deadline 已过的；还在跑的不动）',
+      run: () => service.pruneExpired(),
+      render: (d) =>
+        d.count
+          ? `已回收 ${d.count} 个到点的时间目标：\n` +
+            d.removed.map((g) => `  - ${g.name}  ${g.cwd}  截止 ${g.deadline}`).join('\n')
+          : '没有已到点的时间目标（还在跑的不动手）。',
     },
   ],
 };

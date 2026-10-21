@@ -124,14 +124,14 @@ nx-kv timegoal clear --cwd "$PWD" --json
 
 ## 常见问题
 
-| 现象 | 原因 / 做法 |
-| --- | --- |
-| `reached` 没翻 | 检查客户端时区或 set 时是否给了 `--duration` 过短（默认下限 60s） |
-| update 失败"主题「X」尚未设置 timegoal" | 先 `set` 再 `update`；`update` 不创建 |
-| clear 返回"无需清空" | 本来就没设过；这是 info 不是 error |
-| 想换目录 | clear 旧的 → set 新的；目录（cwd）是绑定的 |
-| 想中途换 task queue | **与 timegoal 无关**——本模块不参与队列，那是其它事 |
-| 想同时用 localtask 等用户 | **可以同时跑**——两套独立循环、各管各的；timegoal 只关心自身 deadline |
+| 现象                                    | 原因 / 做法                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------- |
+| `reached` 没翻                        | 检查客户端时区或 set 时是否给了 `--duration` 过短（默认下限 60s）          |
+| update 失败"主题「X」尚未设置 timegoal" | 先 `set` 再 `update`；`update` 不创建                                  |
+| clear 返回"无需清空"                    | 本来就没设过；这是 info 不是 error                                           |
+| 想换目录                                | clear 旧的 → set 新的；目录（cwd）是绑定的                                  |
+| 想中途换 task queue                     | **与 timegoal 无关**——本模块不参与队列，那是其它事                   |
+| 想同时用 localtask 等用户               | **可以同时跑**——两套独立循环、各管各的；timegoal 只关心自身 deadline |
 
 ## timegoal 的运行边界
 

@@ -1035,7 +1035,25 @@ export default function SessionTaskView() {
                         }}
                         title="把远程（KV 后端）上还没人领的任务勾几条搬进全局任务池"
                       >
-                        从远程导入
+                        导入
+                      </button>
+                    )}
+                    {/* 每个项目目录**单独**也能从远程导入（#73：「全局任务栏里面，队列栏
+                        里面也可以从中提取」）——不用先点开它的队列，直接在看板这一行
+                        把远程任务搬进这个目录的队列。 */}
+                    {!row.isGlobal && (
+                      <button
+                        className="btn small ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setModal({
+                            title: `从远程清单导入到「${row.name}」的队列`,
+                            importRemote: { global: false, cwd: row.cwd, name: row.name },
+                          });
+                        }}
+                        title={`把远程（KV 后端）上还没人领的任务勾几条搬进「${row.name}」的队列`}
+                      >
+                        导入
                       </button>
                     )}
                     {goal ? (

@@ -147,7 +147,10 @@ export default {
       },
       run: (ctx) =>
         service.importRemoteTasks({
-          refs: ctx.ref,
+          // ref（CLI 的 --ref，可给多次）与 refs（面板发的列表）**都传过去**：
+          // HTTP body 里未声明的键会原样透传，两边各叫各的更顺手。
+          ref: ctx.ref,
+          refs: ctx.refs,
           cwd: ctx.cwd,
           global: ctx.global,
           topic: ctx.topic,

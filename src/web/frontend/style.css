@@ -806,10 +806,12 @@ table.directory-board { min-width: 780px; table-layout: fixed; border-collapse: 
    既填上了空位，也让批量删除多一个入口。 */
 .directory-board thead .board-check input { vertical-align: middle; cursor: pointer; }
 .directory-board thead .board-check input:disabled { cursor: default; opacity: 0.35; }
-.directory-board .board-directory { width: 40%; min-width: 240px; }
-.directory-board .board-task-state { width: 18%; }
-.directory-board .board-goal-state { width: 19%; }
-.directory-board .board-ops { width: 196px; }
+/* 列宽：操作列塞了 4 个按钮（任务 / 目标 / 删除队列 / 导入），要给够宽度，
+   不然最后一个按钮会被挤出格子。目录列相应收窄。 */
+.directory-board .board-directory { width: 36%; min-width: 240px; }
+.directory-board .board-task-state { width: 17%; }
+.directory-board .board-goal-state { width: 17%; }
+.directory-board .board-ops { width: 290px; }
 /* 行内操作：默认低调，hover/选中时全亮（把"操作"从视觉噪音里挪出去）。
    常态 0.5 太像 disabled（disabled 才是 0.4），两态分不清 → 抬到 0.7。 */
 .directory-board .board-ops .btn { opacity: 0.7; transition: opacity 0.12s, background 0.12s; }

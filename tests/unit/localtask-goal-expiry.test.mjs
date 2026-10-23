@@ -159,3 +159,15 @@ test('probeGoalExpiry：只读、不改状态（探针不写盘、不归档）',
   assert.equal(dead.reached, true, '过了 deadline 就算到点');
   assert.equal(await tgsvc.probeGoalExpiry('no-such-key'), null, '没有目标 → null');
 });
+
+test('导入的 ref / refs 两个键都认——只认一个会让面板那次静默导 0 条', () => {
+  // 回归：action 曾经只读 ctx.ref（CLI 的 flag 名），而面板 body 发的是 refs，
+  // 于是面板点「导入」什么也没发生（后端报"要导入的远程任务不能为空"）。
+  assert.deepEqual(svc.mergeImportRefs(['面板那条'], undefined), ['面板那条']);
+  assert.deepEqual(svc.mergeImportRefs(undefined, ['CLI 那条']), ['CLI 那条']);
+  assert.deepEqual(svc.mergeImportRefs(['a'], ['b']), ['a', 'b'], '两个键都在时合并');
+  assert.deepEqual(svc.mergeImportRefs(['  a  ', '', null], undefined), ['a'], '去空白与空值');
+  assert.deepEqual(svc.mergeImportRefs(undefined, undefined), []);
+  // 传进来是字符串（不是数组）时也不能炸
+  assert.deepEqual(svc.mergeImportRefs('不是数组', undefined), []);
+});

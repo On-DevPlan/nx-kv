@@ -1144,13 +1144,30 @@ async function todoService() {
 }
 
 /**
+ * 合并两个来源的"要导入的远程任务内容"：**ref**（CLI 的 `--ref`，可给多次）与
+ * **refs**（面板发的列表）。
+ *
+ * 为什么两个键：CLI 的 flag 叫 `--ref`（沿用 todo 模块"按内容定位"的约定），
+ * 面板一次要导多条，发的是 `refs`；HTTP body 里未声明的键会原样透传，所以两个
+ * 都可能到 action 的 ctx 里。**只认一个就会整批丢掉**——曾经只读 `ctx.ref`，
+ * 面板那次导入静默地导了 0 条。
+ *
+ * 单独抽成纯函数是为了能单测（真跑导入要连远程后端，单测里连不上）。
+ */
+export function mergeImportRefs(refs, ref) {
+  const a = Array.isArray(refs) ? refs : [];
+  const b = Array.isArray(ref) ? ref : [];
+  return [...a, ...b].map((r) => String(r ?? '').trim()).filter(Boolean);
+}
+
+/**
  * 从远程清单导入任务到本地队列。
  *
  * @param {object}  opts
  * @param {string}  [opts.cwd]     目标本地目录（不给则用当前目录）
  * @param {boolean} [opts.global]  true = 导入到全局共享池
- * @param {Array}   opts.refs      要导入的远程任务**内容整串**（按内容定位，不按 id ——
- *                                  远程 id 会被复用，详见 todo 模块的「定位一律按内容」）
+ * @param {Array}   [opts.refs]    要导入的远程任务**内容整串**（面板发这个）
+ * @param {Array}   [opts.ref]     同上，CLI 的 `--ref` 走这个键
  * @param {string}  [opts.topic]   远程主题（消歧用）
  * @param {number}  [opts.pick]    同内容多条时的编号（消歧用）
  * @param {number|string} [opts.groupId] 远程工作空间（缺省 = 当前）
@@ -1158,12 +1175,13 @@ async function todoService() {
 export async function importRemoteTasks({
   cwd: rawCwd,
   global: toGlobal = false,
-  refs = [],
+  refs,
+  ref,
   topic,
   pick,
   groupId,
 } = {}) {
-  const list = Array.isArray(refs) ? refs.map((r) => String(r ?? '').trim()).filter(Boolean) : [];
+  const list = mergeImportRefs(refs, ref);
   if (!list.length) throw badInput('要导入的远程任务不能为空（按内容指定 --ref）');
 
   const todo = await todoService();

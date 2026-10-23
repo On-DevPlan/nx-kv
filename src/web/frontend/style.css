@@ -463,6 +463,164 @@ select {
 .compose-context .repo-desc { color: var(--ink-2); }
 .compose-context .repo-boards-list { color: var(--mid); margin-left: auto; }
 
+/* 仓库页的页头与表单（类名沿用 nx-rh，样式按 nx-kv 的变量重写）——
+   迁移时漏了这几行，仓库页在 nx-kv 里是"裸"的：标题、说明与按钮各占一行。 */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 4px 0 14px;
+}
+.page-head .title-block { min-width: 0; }
+.page-head h2 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: 0.2px; }
+.page-head .page-desc { color: var(--mid); font-size: 12px; margin-top: 3px; max-width: 760px; }
+.page-head .page-desc strong { color: var(--ink-2); }
+.page-head .acts { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+
+.form-grid { display: flex; flex-direction: column; gap: 13px; }
+.form-field { display: flex; flex-direction: column; gap: 5px; }
+.form-field > label { font-size: 11px; color: var(--mid); font-weight: 600; }
+.form-field input, .form-field select { width: 100%; }
+.form-field textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+.form-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; flex-wrap: wrap; }
+
+/* ---------- 仓库中心清单：扁平列表 + 看板筛选 ----------
+ * 一张中心清单（行 = 一个仓库），看板只作筛选器与行内标签。
+ * 加入看板 = 复制一份归属，仓库本体不动 —— 界面要说清这件事，
+ * 免得又读成"移动"（之前那套拖拽卡片墙就是这个误导）。 */
+.rp-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+.rp-chip {
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.rp-chip b { font-family: var(--mono); font-weight: 650; color: var(--ink); }
+.rp-chip:hover { border-color: var(--mid); }
+.rp-chip.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.rp-chip.on b { color: var(--paper); }
+.rp-chip-manage { margin-left: auto; color: var(--mid); }
+
+.rp-table-wrap {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow-x: auto;
+}
+.rp-table { width: 100%; border-collapse: collapse; }
+.rp-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.rp-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  font-size: 12.5px;
+}
+.rp-table tbody tr:last-child td { border-bottom: 0; }
+.rp-table tbody tr:hover td { background: #faf9f6; }
+.rp-name strong { font-size: 13px; font-weight: 650; color: var(--ink); }
+.rp-desc {
+  font-size: 11px;
+  margin-top: 2px;
+  max-width: 42ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-path {
+  font-size: 11px;
+  color: var(--mid);
+  word-break: break-all;
+  max-width: 34ch;
+}
+.rp-tags { white-space: nowrap; }
+.rp-tags .tag { margin-right: 4px; }
+.rp-boards { white-space: nowrap; }
+.rp-board {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 4px;
+  padding-right: 3px;
+}
+.rp-x {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: var(--mid);
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.rp-x:hover { color: var(--danger); background: rgba(179, 38, 30, 0.08); }
+.rp-add {
+  font: inherit;
+  font-size: 11px;
+  padding: 1px 4px;
+  border: 1px dashed var(--soft-2);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--mid);
+  cursor: pointer;
+}
+.rp-add:hover { border-color: var(--mid); color: var(--ink-2); }
+.rp-acts { white-space: nowrap; }
+.rp-acts .btn { margin: 0 3px 0 0; }
+.rp-empty { text-align: center; padding: 22px 12px; }
+
+.rp-boards-manage { margin-bottom: 10px; }
+.rp-board-list { display: flex; flex-direction: column; gap: 4px; }
+.rp-board-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12.5px;
+  padding: 4px 0;
+}
+.rp-board-name { font-weight: 650; color: var(--ink); }
+.rp-board-desc { font-size: 11.5px; }
+.rp-board-item .acts { margin-left: auto; white-space: nowrap; }
+
 /* ---------- 仓库上下文工作台：主题容器纵向堆叠 + 手机式仓库方格卡片 ----------
  * 一个看板 = 一个主题容器（card 头 + 卡片网格）；卡片可拖拽入板 / 插到某卡前 /
  * 拖回未分组。落点高亮用 1px 描边（与看板的行选中标记同一套视觉语言）。

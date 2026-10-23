@@ -1,13 +1,19 @@
-// 仓库上下文页：登记 / 扫描 / 编辑 / 打开 / 删除 + 看板（主题容器）编排。
+// 仓库上下文页：**一张扁平的中心清单** + 看板（只当筛选器与标签用）。
 //
 // **来历**：原本长在 nx-rh，2026-10-23 整体迁到 nx-kv（远程清单 topic=goal 的 #72）——
 // 仓库登记是本机事实，它的价值是给「本地任务管理」当上下文，所以它跟着任务走。
 // 每个按钮 = 一条 HTTP 路由 = 一条 CLI 命令（三者同源于模块的 action 声明）。
 //
-// 版面（plan/02）：看板纵向堆叠，仓库以「手机 app 式」方格卡片呈现——
-// 顶部主题容器（看板头 + 卡片网格），未分组固定最后；卡片可拖拽入板 /
-// 插到某卡前 / 拖回未分组。录入与扫描收在弹窗，主页面只留编排。
-import { useCallback, useEffect, useState } from 'react';
+// 版面：**中心清单 + 看板只是标签**。
+//   - 仓库登记是唯一真相，一直在这张清单里；
+//   - 看板只存引用 → **加入看板是复制**，不是移动：同一个仓库可以同时在多个
+//     看板里（fr 同时在「fr常用」与「远程打字」）；
+//   - 取消某份副本只摘那个看板的引用，仓库本体纹丝不动。
+//
+// 之前这一页是「按看板分组的卡片墙 + 拖拽」：同一套数据，但读起来就是「移动」，
+// 而且同一个仓库会在多个分组里重复出现、看不到全貌。现在主视图是扁平的中心清单，
+// 看板退成上方的筛选器与行内的标签。
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
 import { useStore } from '../../web/frontend/store.jsx';
 import { useGuard, useDialog, useToast, Modal } from '../../web/frontend/components/ui.jsx';
@@ -15,108 +21,58 @@ import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 
 const EMPTY_FORM = { path: '', name: '', desc: '', tags: '', notes: '' };
 
-// 手机 app 式方格卡片：首字圆角块 + 名称 + 两行描述；hover 浮出操作。
-// 拖拽语义：拖到看板空白 = 追加末尾；拖到某张卡上 = 插到它前面。
-function RepoCard({ r, boardId, dragId, dropHint, setDropHint, onDropCard, acts }) {
-  const dragging = dragId === r.id;
-  const drop = dropHint === 'card:' + r.id;
+// 仓库行：名称+描述 / 路径 / 标签 / 所属看板（可加可摘）/ 操作
+function RepoRow({ r, boards, acts }) {
+  const mine = r.boards || [];
+  const notIn = boards.filter((b) => !mine.some((x) => x.id === b.id));
   return (
-    <div
-      className={'bd-card' + (drop ? ' drop' : '') + (dragging ? ' dragging' : '')}
-      draggable
-      title={r.path}
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', r.id);
-        setDropHint('');
-        acts.dragStart(r.id);
-      }}
-      onDragEnd={() => acts.dragEnd()}
-      onDragOver={(e) => {
-        if (!dragId || dragId === r.id) return;
-        e.preventDefault();
-        e.stopPropagation();
-        setDropHint('card:' + r.id);
-      }}
-      onDrop={(e) => {
-        e.stopPropagation();
-        onDropCard(r.id);
-      }}
-    >
-      <span className="glyph">{(r.name[0] || '·').toUpperCase()}</span>
-      <span className="nm">{r.name}</span>
-      <span className="ds">{r.desc || '\u00a0'}</span>
-      <span className="acts" onClick={(e) => e.stopPropagation()}>
-        {boardId ? (
-          <button
-            className="btn small ghost"
-            title="从本看板移出（登记与其他看板不受影响）"
-            onClick={() => acts.out(r, boardId)}
+    <tr>
+      <td className="rp-name">
+        <strong>{r.name}</strong>
+        {r.desc ? <div className="muted rp-desc" title={r.desc}>{r.desc}</div> : null}
+      </td>
+      <td className="mono rp-path" title={r.path}>{r.path}</td>
+      <td className="rp-tags">
+        {(r.tags || []).map((t) => (
+          <span className="tag" key={t}>{t}</span>
+        ))}
+      </td>
+      <td className="rp-boards">
+        {mine.map((b) => (
+          <span className="tag badge rp-board" key={b.id} title={`「${b.name}」里的一份副本 —— 点 × 只摘这份，仓库仍在清单里`}>
+            {b.name}
+            <button
+              className="rp-x"
+              aria-label={`从 ${b.name} 移出`}
+              title="只从这一个看板移出（仓库仍在中心清单里）"
+              onClick={() => acts.out(r, b.id)}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {notIn.length ? (
+          <select
+            className="rp-add"
+            value=""
+            title="加入看板 = 复制一份归属，仓库本体不动"
+            onChange={(e) => {
+              if (e.target.value) acts.add(r, e.target.value);
+            }}
           >
-            移出
-          </button>
+            <option value="">+ 看板</option>
+            {notIn.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
         ) : null}
+      </td>
+      <td className="rp-acts">
         <button className="btn small ghost" title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</button>
         <button className="btn small ghost" onClick={() => acts.edit(r)}>编辑</button>
         <button className="btn small ghost" onClick={() => acts.del(r)}>删除</button>
-      </span>
-    </div>
-  );
-}
-
-// 主题容器：看板头（名称 / 描述 / 计数 / 操作）+ 卡片网格；空板提示拖入
-function BoardSection({ id, name, desc, cards, renamable, dragId, dropHint, setDropHint, onDropSection, acts, onRename, onRemove }) {
-  const key = id || 'unassigned';
-  const drop = dropHint === key;
-  return (
-    <div
-      className={'bd-board card' + (drop ? ' drop' : '')}
-      onDragOver={(e) => {
-        if (!dragId) return;
-        e.preventDefault();
-        setDropHint(key);
-      }}
-      onDragLeave={(e) => {
-        if (e.currentTarget.contains(e.relatedTarget)) return;
-        setDropHint((k) => (k === key ? '' : k));
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDropSection(id);
-      }}
-      data-testid={'bd-board-' + key}
-    >
-      <div className="colhead bd-head">
-        <h3>{name}</h3>
-        {desc ? <span className="muted">{desc}</span> : null}
-        <span className="muted bd-count">{cards.length} 个仓库</span>
-        {renamable ? (
-          <span className="acts">
-            <button className="btn small ghost" onClick={() => onRename()}>重命名</button>
-            <button className="btn small ghost" onClick={onRemove}>删除看板</button>
-          </span>
-        ) : null}
-      </div>
-      <div className="bd-grid">
-        {cards.map((r) => (
-          <RepoCard
-            key={r.id}
-            r={r}
-            boardId={id}
-            dragId={dragId}
-            dropHint={dropHint}
-            setDropHint={setDropHint}
-            onDropCard={(beforeId) => acts.drop(id, beforeId)}
-            acts={acts}
-          />
-        ))}
-        {!cards.length ? (
-          <div className="bd-empty muted">
-            {id ? '空看板——把仓库卡片拖进来（聚合可跨看板，仓库可同时在多个主题）' : '（所有仓库都已聚合进主题）'}
-          </div>
-        ) : null}
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 }
 
@@ -132,16 +88,16 @@ export default function ReposView() {
   const [scan, setScan] = useState({ root: '', depth: '3' });
   const [scanResult, setScanResult] = useState(null);
 
-  // 看板编排
-  const [boards, setBoards] = useState(null); // { boards, unassigned }
-  const [dragId, setDragId] = useState('');
-  const [dropHint, setDropHint] = useState('');
+  // 看板（只作筛选与标签）
+  const [boards, setBoards] = useState(null); // { boards: [...], unassigned: [...] }
+  const [filter, setFilter] = useState(''); // '' = 全部（中心清单）
   const [boardForm, setBoardForm] = useState(null); // null | { id?, name, desc }
   const [impOpen, setImpOpen] = useState(false);
   const [impText, setImpText] = useState('');
   const [expText, setExpText] = useState(null);
+  const [boardsOpen, setBoardsOpen] = useState(false);
 
-  // 仓库清单自己取（nx-kv 的 bootstrap 里没有 repos 字段——它不是全局配置，是本机登记）
+  // 仓库中心清单（扁平；每条带 boards）
   const [repos, setRepos] = useState([]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -154,6 +110,16 @@ export default function ReposView() {
     setBoards(await api('/api/boards').catch(() => null));
   }, []);
   useEffect(() => { loadRepos(); loadBoards(); }, [loadRepos, loadBoards]);
+
+  // 看板清单（用来做「+ 看板」下拉与筛选器）
+  const boardList = useMemo(() => (boards && boards.boards) || [], [boards]);
+
+  // 筛选后的中心清单：选某个看板时**只显示该看板的仓库**，
+  // 且去重（一个仓库在多个看板里也只出现一次 —— 它在中心清单里只有一条）。
+  const shown = useMemo(() => {
+    if (!filter) return repos;
+    return repos.filter((r) => (r.boards || []).some((b) => b.id === filter));
+  }, [repos, filter]);
 
   const openAdd = () => {
     if (editing) { setForm(EMPTY_FORM); setEditing(null); }
@@ -211,7 +177,7 @@ export default function ReposView() {
       setFormOpen(true);
     } else if (act === 'del') {
       const ok = await dialog({
-        message: `删除仓库登记「${r.name}」？（仅移除登记，磁盘文件不受影响；看板里同步摘除）`,
+        message: `删除仓库登记「${r.name}」？（仅移除登记，磁盘文件不受影响；各看板里的归属同步摘除）`,
         danger: true,
       });
       if (!ok) return;
@@ -220,7 +186,18 @@ export default function ReposView() {
     }
   });
 
-  // ---- 看板编排 ----
+  // ---- 看板归属：**复制**，不是移动 ----
+  // 加一个看板 = 多一份归属，仓库本体不动、别的看板也不动；
+  // 移出某个看板 = 只摘那一份，仓库本体不动。
+  const assign = (r, boardId, remove) => guard(async () => {
+    await api('/api/boards/assign', {
+      method: 'POST',
+      body: remove ? { id: r.id, board: boardId, remove: true } : { id: r.id, board: boardId },
+    });
+    await Promise.all([loadRepos(), loadBoards()]);
+  });
+
+  // ---- 看板管理 ----
   const saveBoard = () => guard(async () => {
     const body = { name: boardForm.name.trim(), desc: boardForm.desc.trim() };
     if (!body.name) return;
@@ -232,26 +209,12 @@ export default function ReposView() {
 
   const removeBoard = (b) => guard(async () => {
     const ok = await dialog({
-      message: `删看板「${b.name}」？里面的 ${b.repos.length} 个仓库回到未分组（登记不动）。`,
+      message: `删看板「${b.name}」？它里面的 ${b.repos.length} 个仓库**仍留在中心清单里**（只是少了一份归属）。`,
       danger: true,
     });
     if (!ok) return;
     await api(`/api/boards/${encodeURIComponent(b.id)}`, { method: 'DELETE', body: {} });
-    await loadBoards();
-  });
-
-  // 卡片拖放（聚合语义）：拖进看板 = 聚合进来（不动它在其他看板的成员关系）；
-  // 拖到未分组区 = 从所有看板移出；beforeId = 插到该卡片之前。登记本身永不改动。
-  const dropCard = (boardId, beforeId) => guard(async () => {
-    const id = dragId;
-    setDragId('');
-    setDropHint('');
-    if (!id || id === beforeId) return;
-    const body = boardId
-      ? { id, board: boardId, before: beforeId || undefined }
-      : { id, remove: true };
-    await api('/api/boards/assign', { method: 'POST', body });
-    await loadBoards();
+    await Promise.all([loadRepos(), loadBoards()]);
   });
 
   const doImport = () => guard(async () => {
@@ -261,7 +224,7 @@ export default function ReposView() {
     setImpText('');
     toast(`已导入：新建 ${r.created} 个看板、合并 ${r.merged} 个、匹配仓库 ${r.matched} 个`
       + (r.unmatched.length ? `；未匹配 ${r.unmatched.length} 条（见 CLI board import 输出）` : ''));
-    await loadBoards();
+    await Promise.all([loadRepos(), loadBoards()]);
   });
 
   const doExport = () => guard(async () => {
@@ -284,18 +247,12 @@ export default function ReposView() {
     );
   }
 
-  // 卡片与拖放的公共行为包（RepoCard / BoardSection 共用）
-  const cardActs = {
+  const rowActs = {
     open: (r) => rowAct('open', r),
     edit: (r) => rowAct('edit', r),
     del: (r) => rowAct('del', r),
-    out: (r, boardId) => guard(async () => {
-      await api('/api/boards/assign', { method: 'POST', body: { id: r.id, board: boardId, remove: true } });
-      await loadBoards();
-    }),
-    dragStart: (id) => setDragId(id),
-    dragEnd: () => { setDragId(''); setDropHint(''); },
-    drop: (boardId, beforeId) => dropCard(boardId, beforeId),
+    add: (r, boardId) => assign(r, boardId, false),
+    out: (r, boardId) => assign(r, boardId, true),
   };
 
   return (
@@ -304,15 +261,13 @@ export default function ReposView() {
         <div className="title-block">
           <h2>仓库</h2>
           <div className="page-desc">
-            登记本机的 git 仓库；看板 = 主题聚合视图：一个仓库可同时聚合进多个主题，
-            拖卡片即可归组（登记与磁盘不受影响）。
+            本机 git 仓库的<strong>一张中心清单</strong>。看板只是标签：加入看板是
+            <strong>复制</strong>一份归属（同一个仓库可同时在多个看板里），
+            仓库本体永远在清单里，不会被"移动"走。
           </div>
         </div>
         <div className="acts">
           <button className="btn ghost" onClick={() => setScanOpen(true)}>扫描</button>
-          <button className="btn ghost" onClick={() => setBoardForm({ id: null, name: '', desc: '' })}>新建看板</button>
-          <button className="btn ghost" title="粘贴/选择看板 JSON，一个看板 = 一个主题" onClick={() => setImpOpen(true)}>导入看板</button>
-          <button className="btn ghost" onClick={doExport}>导出</button>
           <button className="btn" onClick={openAdd}>{editing ? '继续编辑' : '添加仓库'}</button>
         </div>
       </div>
@@ -334,38 +289,88 @@ export default function ReposView() {
         </div>
       ) : null}
 
-      {/* 看板工作台：主题容器纵向堆叠，未分组固定最后 */}
-      <div className="bd-workbench" data-testid="bd-workbench">
-        {(boards.boards || []).map((b) => (
-          <BoardSection
+      {/* 看板筛选器：看板只是筛选维度，中心清单永远是那一张 */}
+      <div className="rp-filters" data-testid="rp-filters">
+        <button
+          className={'rp-chip' + (filter ? '' : ' on')}
+          onClick={() => setFilter('')}
+          title="显示全部仓库（中心清单）"
+        >
+          全部 <b>{repos.length}</b>
+        </button>
+        {boardList.map((b) => (
+          <button
             key={b.id}
-            id={b.id}
-            name={b.name}
-            desc={b.desc}
-            cards={b.repos}
-            renamable
-            dragId={dragId}
-            dropHint={dropHint}
-            setDropHint={setDropHint}
-            onDropSection={(bid) => dropCard(bid, null)}
-            acts={cardActs}
-            onRename={() => setBoardForm({ id: b.id, name: b.name, desc: b.desc })}
-            onRemove={() => removeBoard(b)}
-          />
+            className={'rp-chip' + (filter === b.id ? ' on' : '')}
+            onClick={() => setFilter(filter === b.id ? '' : b.id)}
+            title={`只看「${b.name}」里的仓库（${b.repos.length} 个）`}
+          >
+            {b.name} <b>{b.repos.length}</b>
+          </button>
         ))}
-        <BoardSection
-          id=""
-          name="未分组"
-          desc="不在任何看板里的仓库"
-          cards={boards.unassigned || []}
-          renamable={false}
-          dragId={dragId}
-          dropHint={dropHint}
-          setDropHint={setDropHint}
-          onDropSection={(bid) => dropCard(bid, null)}
-          acts={cardActs}
-        />
+        <button className="rp-chip rp-chip-manage" onClick={() => setBoardsOpen(!boardsOpen)}>
+          看板管理{boardsOpen ? ' ▾' : ' ▸'}
+        </button>
       </div>
+
+      {/* 看板管理（次要）：建 / 改 / 删 / 导入 / 导出 */}
+      {boardsOpen ? (
+        <div className="card rp-boards-manage">
+          <div className="colhead">
+            <h3>看板</h3>
+            <span className="muted">看板是仓库的<strong>标签</strong>：删一个看板，仓库全都在清单里，只是少了一份归属。</span>
+            <span className="acts" style={{ marginLeft: 'auto' }}>
+              <button className="btn small ghost" onClick={() => setBoardForm({ id: null, name: '', desc: '' })}>新建看板</button>
+              <button className="btn small ghost" title="粘贴/选择看板 JSON，一个看板 = 一个主题" onClick={() => setImpOpen(true)}>导入看板</button>
+              <button className="btn small ghost" onClick={doExport}>导出</button>
+            </span>
+          </div>
+          <div className="rp-board-list">
+            {boardList.map((b) => (
+              <div className="rp-board-item" key={b.id}>
+                <span className="rp-board-name">{b.name}</span>
+                {b.desc ? <span className="muted rp-board-desc">{b.desc}</span> : null}
+                <span className="muted">{b.repos.length} 个仓库</span>
+                <span className="acts">
+                  <button className="btn small ghost" onClick={() => setBoardForm({ id: b.id, name: b.name, desc: b.desc || '' })}>重命名</button>
+                  <button className="btn small ghost" onClick={() => removeBoard(b)}>删除看板</button>
+                </span>
+              </div>
+            ))}
+            {!boardList.length ? <div className="muted">还没有看板 —— 建一个当标签用。</div> : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* 中心清单：扁平的仓库表，一行一个仓库，不分组 */}
+      <div className="rp-table-wrap">
+        <table className="rp-table">
+          <thead>
+            <tr>
+              <th style={{ width: '26%' }}>仓库</th>
+              <th style={{ width: '30%' }}>路径</th>
+              <th style={{ width: '12%' }}>标签</th>
+              <th style={{ width: '22%' }}>所属看板</th>
+              <th style={{ width: '10%' }}>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r) => (
+              <RepoRow key={r.id} r={r} boards={boardList} acts={rowActs} />
+            ))}
+            {!shown.length ? (
+              <tr>
+                <td colSpan="5" className="muted rp-empty">
+                  {repos.length
+                    ? '这个看板下还没有仓库 —— 在「全部」里挑一个加进来（加入 = 复制一份归属）。'
+                    : '还没有登记仓库 —— 点「扫描」自动发现，或「添加仓库」手工登记。'}
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+
       <CliHints module="repos" />
 
       {/* 添加 / 编辑仓库弹窗 */}
@@ -486,22 +491,10 @@ export default function ReposView() {
         </Modal>
       ) : null}
 
-      {/* 导出结果弹窗 */}
-      {expText !== null ? (
-        <Modal title="看板导出（JSON，可回灌给导入）" onClose={() => setExpText(null)}>
+      {/* 导出结果 */}
+      {expText ? (
+        <Modal title="看板 JSON（可回灌给导入）" onClose={() => setExpText(null)}>
           <textarea className="bd-exp" rows={14} readOnly value={expText} spellCheck="false" />
-          <div className="form-acts">
-            <button className="btn ghost" onClick={() => setExpText(null)}>关闭</button>
-            <button
-              className="btn"
-              onClick={() => guard(async () => {
-                try { await navigator.clipboard.writeText(expText); toast('已复制到剪贴板'); }
-                catch { toast('复制失败，请手动选择文本'); }
-              })}
-            >
-              复制 JSON
-            </button>
-          </div>
         </Modal>
       ) : null}
 

@@ -100,8 +100,31 @@ function normalizeRepoInput({ path, name, tags, notes, desc }) {
   };
 }
 
+/**
+ * **中心清单**：一份扁平的仓库列表（按名称排序），每条带它所属的看板。
+ *
+ * 为什么是「中心清单 + 看板只是标签」：
+ *   - 仓库登记是**唯一真相**（name/path/tags/desc/notes），它一直在这张清单里；
+ *   - 看板只存 `repoIds`（引用），所以**加入看板是复制**，不是移动——
+ *     同一个仓库可以同时在多个看板里（fr 同时在「fr常用」与「远程打字」）；
+ *   - 取消某份「副本」只摘那个看板的引用，仓库本体纹丝不动。
+ *
+ * 之前页面是「按看板分组的卡片墙 + 拖拽」，那套交互读起来就是「移动」，
+ * 而且同一个仓库会在多个分组里重复出现、看不到全貌。现在主视图是这张扁平的
+ * 中心清单，看板退成筛选器与标签。
+ */
 export async function listRepos() {
-  return (await loadStore()).repos;
+  const s = await loadStore();
+  const boardsOf = new Map();
+  for (const b of s.boards) {
+    for (const rid of b.repoIds || []) {
+      if (!boardsOf.has(rid)) boardsOf.set(rid, []);
+      boardsOf.get(rid).push({ id: b.id, name: b.name, desc: b.desc || '' });
+    }
+  }
+  return s.repos
+    .map((r) => ({ ...r, boards: boardsOf.get(r.id) || [] }))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
 export async function addRepo(input) {
@@ -156,7 +179,11 @@ export async function getRepo(idOrPath) {
     r = s.repos.find((x) => x.path.toLowerCase() === p.toLowerCase());
   }
   if (!r) throw notFound('repo 不存在: ' + idOrPath);
-  return r;
+  // 带上它所属的看板（中心清单的同一份数据，单条查询也别缺这一维）
+  const boards = s.boards
+    .filter((b) => (b.repoIds || []).includes(r.id))
+    .map((b) => ({ id: b.id, name: b.name, desc: b.desc || '' }));
+  return { ...r, boards };
 }
 
 const SKIP_DIRS = new Set([

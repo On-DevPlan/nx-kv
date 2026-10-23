@@ -159,6 +159,29 @@ test('导出可回灌：导出 → 清空看板 → 导入还原成员', async (
   assert.ok(c); // gamma 保持未分组
 });
 
+test('中心清单：listRepos 返回扁平列表（按名排序），每条带所属看板', async () => {
+  const { a, b, c } = await seed(); // alpha / beta / gamma
+  const b1 = await boards.createBoard({ name: '常用' });
+  const b2 = await boards.createBoard({ name: '远程打字' });
+  await boards.assignRepo({ id: a, board: b1.id });
+  await boards.assignRepo({ id: b, board: b1.id });
+  // alpha 再聚合进「远程打字」：一个仓库可以同时在多个看板里（**复制**不是移动）
+  await boards.assignRepo({ id: a, board: b2.id });
+
+  const list = await repos.listRepos();
+  // 扁平：一份中心清单，按名字排序，每条只出现一次
+  assert.deepEqual(list.map((r) => r.name), ['alpha', 'beta', 'gamma']);
+
+  const alpha = list.find((r) => r.name === 'alpha');
+  assert.deepEqual(alpha.boards.map((x) => x.name).sort(), ['常用', '远程打字'],
+    '一个仓库可以同时属于多个看板（加入 = 复制一份归属）');
+
+  const gamma = list.find((r) => r.name === 'gamma');
+  assert.deepEqual(gamma.boards, [], '没归组也照样在中心清单里');
+  assert.ok(gamma.path, '中心清单里每条都带路径');
+  assert.ok(c, 'gamma 存在');
+});
+
 test('仓库上下文：按路径查到仓库与它所在的看板（本地任务的上下文来源）', async () => {
   const { a, b } = await seed();
   const board = await boards.createBoard({ name: '常用', desc: '常用参考' });

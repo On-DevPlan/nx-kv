@@ -361,15 +361,26 @@ try {
   check('localtask cancel 缺定位报错', (await cli(['localtask', 'cancel'])).status === 1);
 
   // 删除主题 / 批量删除
+  // 队列里还有**未领取**任务的主题默认删不掉（保护还没人领的活），要 --force 才强删。
   const delA = await cliJson(['localtask', 'add', '待删 A', '--cwd', topicA]);
   const delB = await cliJson(['localtask', 'add', '待删 B', '--cwd', topicB]);
-  check('单删主题 topic remove（按 key）', (await cli(['localtask', 'topic', 'remove', '--key', delA.key])).status === 0);
+  check('有未领取任务的主题默认拒绝删除', (await cli(['localtask', 'topic', 'remove', '--key', delA.key])).status === 1);
   check('单删缺定位报错', (await cli(['localtask', 'topic', 'remove'])).status === 1);
+  check('单删主题 topic remove（按 key，--force）', (await cli(['localtask', 'topic', 'remove', '--key', delA.key, '--force'])).status === 0);
   check('总览剩 1 个（B）', (await cliJson(['localtask', 'list'])).topics.length === 1);
   const batch = await cliJson(['localtask', 'topic', 'remove-many', '--keys', delB.key]);
-  check('批量删除主题 remove-many', batch.count === 1, JSON.stringify(batch));
+  check('批量删除：有未领取任务时跳过（reason:has_pending）', batch.count === 0 && batch.skipped[0] && batch.skipped[0].reason === 'has_pending', JSON.stringify(batch));
   check('remove-many 缺条件报错', (await cli(['localtask', 'topic', 'remove-many'])).status === 1);
+  check('批量删除 --force 连未领取任务一起删', (await cliJson(['localtask', 'topic', 'remove-many', '--keys', delB.key, '--force'])).count === 1);
   check('总览清空', (await cliJson(['localtask', 'list'])).topics.length === 0);
+
+  // 任务级删除是**可恢复**的软删除
+  const softA = await cliJson(['localtask', 'add', '待软删', '--cwd', topicA]);
+  const softRm = await cliJson(['localtask', 'remove', '--id', String(softA.task.id), '--cwd', topicA]);
+  check('任务软删除：带 deletedAt 标记', !!(softRm.removed && softRm.removed.deletedAt), JSON.stringify(softRm.removed));
+  const softBack = await cliJson(['localtask', 'task', 'restore', '--id', String(softA.task.id), '--cwd', topicA]);
+  check('任务可恢复（撤销删除）', softBack.restored === true, JSON.stringify(softBack));
+  await cliJson(['localtask', 'topic', 'remove', '--key', softA.key, '--force']);
 
   // ─── 11c. 附件：上传 / 嵌入任务 / 同步到本地 / 自动下载 ──────
   //

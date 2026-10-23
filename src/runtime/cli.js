@@ -255,6 +255,9 @@ function printCommandHelp(cmd) {
 async function cmdServe(ctx) {
   const { startServer } = await import('./server.js');
   const { startPanelIdleGuard } = await import('../modules/localtask/panel-guard.js');
+  const { registerPanel, unregisterPanel, notePanelRequest } = await import(
+    '../modules/localtask/service.js'
+  );
   const { openBrowser } = await import('../core/open.js');
   const { autoOpenEnabled, resolvePortConflict, describeOccupant } = await import('../core/serve-port.js');
   const host = '127.0.0.1';
@@ -265,7 +268,26 @@ async function cmdServe(ctx) {
 
   // 活动观测钩子：每个进来的请求（静态或 /api）都回调一次，供空闲自释放判活。
   // 不参与响应，异常必须吞掉。
-  const onRequest = () => {};
+  //
+  // ⚠️ 这里以前是空函数 —— 于是看门狗的 noteActivity() 从来没被调用过：
+  // 空闲时长是从**进程启动**算起的，用户正用着面板也会在 10 分钟后被自动释放。
+  // 看门狗要等 server 起好才创建，所以这里用一个可变的 holder，让 onRequest
+  // 始终指向当前的 noteActivity。
+  let noteActivity = () => {};
+  const onRequest = () => {
+    try {
+      noteActivity();
+    } catch {
+      /* 观测失败不影响响应 */
+    }
+    // 记录「面板最近有请求」：SSE 只挂在本地任务页，用户切到别的页时
+    // presence 会误判面板已关闭（结构审计发现的真缺口）。
+    try {
+      notePanelRequest();
+    } catch {
+      /* ignore */
+    }
+  };
 
   let server;
   try {
@@ -294,6 +316,23 @@ async function cmdServe(ctx) {
 
   const addr = `http://127.0.0.1:${server.address().port}`;
 
+  // 登记自己：presence 要能问**所有**跑着面板的端口（只问 7877 会看不见
+  // `serve --port` 或端口被占自动顺延出来的面板 → wait 会多开窗口）。
+  const boundPort = server.address().port;
+  try {
+    registerPanel(boundPort);
+  } catch {
+    /* 登记失败不影响面板本身 */
+  }
+  const unregister = () => {
+    try {
+      unregisterPanel(boundPort);
+    } catch {
+      /* ignore */
+    }
+  };
+  process.on('exit', unregister);
+
   console.log('nx-kv · nx-kv v' + VERSION);
   console.log(`面板:   ${addr}`);
   console.log(`配置:   ${configPathFromEnv()}`);
@@ -310,9 +349,12 @@ async function cmdServe(ctx) {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  // 启动空闲看门狗（仅 --auto-exit 模式）；空回调避免依赖具体参数
+  // 启动空闲看门狗（仅 --auto-exit 模式）
   if (autoExit) {
-    startPanelIdleGuard({ server, idleSec: ctx.idle });
+    const guard = startPanelIdleGuard({ server, idleSec: ctx.idle });
+    // 接上活动钩子：此后每个面板请求都会刷新「最后一次活动时间」，
+    // 空闲时长终于反映**真实使用**而不是进程启动时间。
+    noteActivity = guard.noteActivity;
   }
 }
 

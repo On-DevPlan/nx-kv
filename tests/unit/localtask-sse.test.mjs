@@ -142,11 +142,11 @@ test('streamEventsSSE：连接即推 waiting 快照帧，断开干净结束', as
       (res) => {
         res.setEncoding('utf8');
         res.on('data', (chunk) => {
-          // SSE 帧以 \n\n 分隔
+          // SSE 帧以 \n\n 分隔；事件帧前面可能带 id:（重连续传用）
           for (const frame of chunk.split('\n\n')) {
             if (!frame.trim()) continue;
-            const m = /^event: (\w+)\ndata: (.+)$/.exec(frame);
-            if (m) events.push({ event: m[1], data: JSON.parse(m[2]) });
+            const m = /^(?:id: (\d+)\n)?event: (\w+)\ndata: (.+)$/.exec(frame);
+            if (m) events.push({ id: m[1], event: m[2], data: JSON.parse(m[3]) });
           }
           if (events.some((e) => e.event === 'waiting')) {
             req.destroy();
@@ -166,4 +166,5 @@ test('streamEventsSSE：连接即推 waiting 快照帧，断开干净结束', as
   assert.ok(waiting, '应收到 waiting 事件');
   assert.equal(waiting.data.key, k);
   assert.equal(waiting.data.replay, true, '首次连接已在等待 → replay:true');
+  assert.ok(waiting.id, '事件帧应带单调 id（浏览器重连可据此续传）');
 });

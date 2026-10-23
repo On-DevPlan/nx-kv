@@ -16,10 +16,11 @@ import group from '../modules/group/index.js';
 import localtask from '../modules/localtask/index.js';
 import timegoal from '../modules/timegoal/index.js';
 import todo from '../modules/todo/index.js';
+import repos from '../modules/repos/index.js';
 import file from '../modules/file/index.js';
 import bundled from '../modules/bundled/index.js';
 
-export const MODULES = [system, setting, auth, group, localtask, timegoal, todo, file, bundled].sort(
+export const MODULES = [system, setting, auth, group, localtask, timegoal, todo, repos, file, bundled].sort(
   (a, b) => (a.order ?? 100) - (b.order ?? 100)
 );
 

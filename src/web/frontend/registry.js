@@ -9,5 +9,6 @@ export const VIEWS = [
   { id: 'localtask', title: '本地任务', component: lazy(() => import('../../modules/localtask/view.jsx')) },
   { id: 'todo', title: '清单', component: lazy(() => import('../../modules/todo/view.jsx')) },
   { id: 'group', title: '工作空间', component: lazy(() => import('../../modules/group/view.jsx')) },
+  { id: 'repos', title: '仓库', component: lazy(() => import('../../modules/repos/view.jsx')) },
   { id: 'auth', title: '登录', component: lazy(() => import('../../modules/auth/view.jsx')) },
 ];

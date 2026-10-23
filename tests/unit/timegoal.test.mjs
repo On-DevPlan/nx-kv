@@ -23,17 +23,64 @@ async function reset() {
   try { rmSync(storeFile); } catch { /* 不存在即可 */ }
 }
 
+// 把 store 里某个 goal 的 deadline 挪到过去（模拟"已经到点"）
+function expireGoal(key, agoSec = 3600) {
+  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
+  const past = new Date(Date.now() - agoSec * 1000);
+  raw.goals[key].startedAt = svc.stampNow(past);
+  raw.goals[key].deadline = svc.stampNow(new Date(past.getTime() - 60 * 1000));
+  writeFileSync(storeFile, JSON.stringify(raw, null, 2));
+}
+
 const PROMPT_OK = '用 subagent 调研 redis 差距并写 CHANGELOG';
 
-test('duration 边界：59 拒绝 / 60 通过 / 86400 通过 / 86401 拒绝', async () => {
+test('duration 边界：59 拒绝 / 60 通过 / 24 小时不再是上限 / 超过 365 天拒绝', async () => {
   await reset();
   await assert.rejects(() => svc.setTimegoal({ cwd: dirA, durationSec: 59, prompt: PROMPT_OK }), /至少 60/);
   const ok = await svc.setTimegoal({ cwd: dirA, durationSec: 60, prompt: PROMPT_OK });
   assert.equal(ok.goal.durationSec, 60);
   rmSync(storeFile);
-  await assert.rejects(() => svc.setTimegoal({ cwd: dirA, durationSec: 86401, prompt: PROMPT_OK }), /超过上限/);
-  const ok2 = await svc.setTimegoal({ cwd: dirA, durationSec: 86400, prompt: PROMPT_OK });
-  assert.equal(ok2.goal.durationSec, 86400);
+  // 24 小时不再是天花板："跑一晚上""连续优化几天"是真实需求
+  const ok2 = await svc.setTimegoal({ cwd: dirA, durationSec: 86400 * 30, prompt: PROMPT_OK });
+  assert.equal(ok2.goal.durationSec, 86400 * 30);
+  // 365 天是上限（一年足够跑任何长任务，但挡得住手滑的 999999999）
+  await assert.rejects(
+    () => svc.setTimegoal({ cwd: dirA, durationSec: 86400 * 400, prompt: PROMPT_OK }),
+    /超过上限/
+  );
+});
+
+test('parseDuration：人类单位（5h / 90m / 2d / 5小时 / 1.5h）与纯秒数都认', () => {
+  assert.equal(svc.parseDuration(10800), 10800);
+  assert.equal(svc.parseDuration('10800'), 10800);
+  assert.equal(svc.parseDuration('5h'), 18000); // 5 小时 = 5×3600
+  assert.equal(svc.parseDuration('5H'), 18000);
+  assert.equal(svc.parseDuration('90m'), 5400);
+  assert.equal(svc.parseDuration('2d'), 172800);
+  assert.equal(svc.parseDuration('5小时'), 18000);
+  assert.equal(svc.parseDuration('90分钟'), 5400);
+  assert.equal(svc.parseDuration('1.5h'), 5400);
+  assert.equal(svc.parseDuration('  5 h '), 18000);
+  // 不认识的单位不猜，直接报错
+  assert.throws(() => svc.parseDuration('5星期'), /无法识别/);
+  assert.throws(() => svc.parseDuration('abc'), /无法解析/);
+  assert.throws(() => svc.parseDuration(''), /需要 --duration/);
+  assert.throws(() => svc.parseDuration('30s'), /至少 60/);
+});
+
+test('set 接受人类单位时长：--duration 5h 等价 18000 秒', async () => {
+  await reset();
+  const r = await svc.setTimegoal({ cwd: dirA, durationSec: '5h', prompt: PROMPT_OK });
+  assert.equal(r.goal.durationSec, 18000);
+  const startMs = (() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(r.goal.startedAt);
+    return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+  })();
+  const deadlineMs = (() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(r.goal.deadline);
+    return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+  })();
+  assert.equal((deadlineMs - startMs) / 1000, 18000, '截止 - 起点 应等于 5 小时');
 });
 
 test('prompt 边界：空、纯空格、>20000 拒绝；20000 整通过', async () => {
@@ -160,7 +207,8 @@ test('clear 后 show / check 都返回 hasGoal:false', async () => {
   assert.equal(cleared.cleared, true);
   const show = await svc.showTimegoal({ cwd: dirA });
   assert.equal(show.hasGoal, false);
-  const chk = await svc.checkTimegoal({ cwd: dirA });
+  // check 现在要求带现状与完成度（每轮都要写日志），所以这里也得给
+  const chk = await svc.checkTimegoal({ cwd: dirA, summary: '现状', progress: '下一步' });
   assert.equal(chk.hasGoal, false);
   assert.equal(chk.prompt, ''); // 无 goal 时 prompt 必空
   // 再 clear：no_goal
@@ -248,9 +296,9 @@ test('list 返回所有有 timegoal 的目录', async () => {
   assert.equal(r.count, 2);
   // 按 deadline 升序 → B（30 分钟）应在前
   assert.ok(r.goals[0].durationSec <= r.goals[1].durationSec);
-  // 两个 goal 都保留 prompt
-  assert.equal(r.goals.filter((g) => g.prompt === 'A').length, 1);
-  assert.equal(r.goals.filter((g) => g.prompt === 'B').length, 1);
+  // 两个 goal 都保留提示词预览（完整原文用 show 取）
+  assert.equal(r.goals.filter((g) => g.promptPreview === 'A').length, 1);
+  assert.equal(r.goals.filter((g) => g.promptPreview === 'B').length, 1);
 });
 
 test('list 空时返回 count:0', async () => {
@@ -320,7 +368,8 @@ test('set 已有 goal：replaced:true，新 deadline 重算', async () => {
   // 全局只剩一个 goal
   const all = await svc.listTimegoals();
   assert.equal(all.count, 1);
-  assert.equal(all.goals[0].prompt, 'V2');
+  assert.equal(all.goals[0].promptPreview, 'V2');
+  assert.equal((await svc.showTimegoal({ cwd: dirA })).goal.prompt, 'V2');
 });
 
 test('每次 check 都追加现状与完成度日志，并可单独读取历史', async () => {
@@ -384,9 +433,175 @@ test('pruneExpired：只回收已到点目标，未到点的保留；重复调�
   assert.equal(result.removed[0].prompt, 'expired');
   const remaining = await svc.listTimegoals();
   assert.equal(remaining.count, 1);
-  assert.equal(remaining.goals[0].prompt, 'keep');
+  assert.equal(remaining.goals[0].promptPreview, 'keep');
 
   const again = await svc.pruneExpired();
   assert.equal(again.count, 0, '再次回收无变化');
+});
+
+// ─── 自动回收：到点自动归档 / 超期自动清除 / 日志封顶 ──────────────────
+
+test('到点自动归档：活动列表不再出现，但仍可 show/check 拿到 reached:true + prompt 原文', async () => {
+  await reset();
+  await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: '归档前的根指令' });
+  const key = svc.topicKeyFor(basename(dirA));
+  expireGoal(key);
+
+  // list：活动区空了，归档区有它
+  const list = await svc.listTimegoals();
+  assert.equal(list.count, 0, '到点的目标自动离开活动列表');
+  assert.equal(list.archivedCount, 1);
+  assert.equal(list.archived[0].promptPreview, '归档前的根指令');
+  assert.equal(list.archived[0].archived, true);
+  assert.ok(list.archived[0].archivedAt);
+
+  // 关键契约：agent 最后一轮 check 仍要拿到 reached:true + prompt 原文
+  const chk = await svc.checkTimegoal({ cwd: dirA, summary: '到点了', progress: '收尾' });
+  assert.equal(chk.hasGoal, true);
+  assert.equal(chk.reached, true);
+  assert.equal(chk.prompt, '归档前的根指令');
+  assert.ok(chk.overtimeSec > 0, '到点后要报出超了多久');
+
+  // show 也仍然查得到
+  const show = await svc.showTimegoal({ cwd: dirA });
+  assert.equal(show.hasGoal, true);
+  assert.equal(show.goal.archived, true);
+  assert.equal(show.reached, true);
+});
+
+test('归档超过保留期：整条自动失效（连提示词一起删掉），不需要人工清理', async () => {
+  await reset();
+  await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: '保留期后也要读得到' });
+  const key = svc.topicKeyFor(basename(dirA));
+  expireGoal(key);
+  await svc.listTimegoals(); // 触发归档
+
+  // 把 deadline 往前挪 9 天（超过 7 天保留期）→ 下一次读就该自动失效
+  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
+  const longAgo = new Date(Date.now() - 9 * 24 * 3600 * 1000);
+  raw.goals[key].startedAt = svc.stampNow(longAgo);
+  raw.goals[key].deadline = svc.stampNow(new Date(longAgo.getTime() + 3600 * 1000));
+  raw.goals[key].archivedAt = svc.stampNow(longAgo);
+  writeFileSync(storeFile, JSON.stringify(raw, null, 2));
+
+  const list = await svc.listTimegoals();
+  assert.equal(list.count, 0);
+  assert.equal(list.archivedCount, 0, '超过保留期 → 自动失效，不再留在归档区');
+  // 整条被删掉：提示词原文一起没了（"自动失效"就是不再保留）
+  const show = await svc.showTimegoal({ cwd: dirA });
+  assert.equal(show.hasGoal, false, '失效 = 彻底没了，show 查不到');
+  const chk = await svc.checkTimegoal({ cwd: dirA, summary: '收尾', progress: '写总结' });
+  assert.equal(chk.hasGoal, false);
+  assert.equal(chk.reached, false, '目标已不存在，不再有"已到点"信号');
+  // store 里也真的没了
+  const after = JSON.parse(readFileSync(storeFile, 'utf8'));
+  assert.equal(after.goals[key], undefined, '失效的目标从 store 里删掉了');
+});
+
+test('失效的目标不可复活：update 报错，要继续请用 set 开新一局', async () => {
+  await reset();
+  await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'V1' });
+  const key = svc.topicKeyFor(basename(dirA));
+  expireGoal(key);
+  await svc.listTimegoals(); // 触发归档（到点即失效）
+
+  await assert.rejects(
+    () => svc.updateTimegoal({ cwd: dirA, prompt: 'V2', durationSec: '5h' }),
+    /已经到点失效/,
+    '已到点的目标不能被 update 救活'
+  );
+
+  // set 仍然可以开新一局（起点从现在重算）
+  const fresh = await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'V3' });
+  assert.equal(fresh.goal.archived, false);
+  const list = await svc.listTimegoals();
+  assert.equal(list.count, 1, 'set 之后重新出现在活动列表');
+  assert.equal(list.archivedCount, 0);
+});
+
+test('日志条数封顶 200：长跑任务的 store 不无限膨胀', async () => {
+  await reset();
+  await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'P' });
+  const key = svc.topicKeyFor(basename(dirA));
+
+  // 直接往 store 里塞 250 条历史日志（比真跑 250 轮快得多）
+  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
+  raw.goals[key].log = Array.from({ length: 250 }, (_, i) => ({
+    checkedAt: svc.stampNow(new Date(Date.now() - (250 - i) * 1000)),
+    elapsedSec: i,
+    remainingSec: 3600 - i,
+    overtimeSec: 0,
+    reached: false,
+    summary: `第 ${i} 轮`,
+    progress: '继续',
+  }));
+  writeFileSync(storeFile, JSON.stringify(raw, null, 2));
+
+  const chk = await svc.checkTimegoal({ cwd: dirA, summary: '新的一轮', progress: '继续' });
+  assert.equal(chk.logCount, 200, '日志只保留最近 200 条');
+  const log = await svc.getTimegoalLog({ cwd: dirA });
+  assert.equal(log.count, 200);
+  assert.equal(log.entries[log.count - 1].summary, '新的一轮', '最新一条是新写的');
+});
+
+test('prune 会连归档区一起彻底清除', async () => {
+  await reset();
+  await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: '待清除' });
+  const key = svc.topicKeyFor(basename(dirA));
+  expireGoal(key);
+  await svc.listTimegoals(); // 触发归档
+
+  const r = await svc.pruneExpired();
+  assert.equal(r.count, 1);
+  assert.equal(r.removed[0].prompt, '待清除');
+  const list = await svc.listTimegoals();
+  assert.equal(list.count, 0);
+  assert.equal(list.archivedCount, 0);
+});
+
+test('读路径不写盘：list/show 不会改动 store 文件（避免与并发 check 互相覆盖）', async () => {
+  await reset();
+  await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'P' });
+  const before = readFileSync(storeFile, 'utf8');
+  await svc.listTimegoals();
+  await svc.showTimegoal({ cwd: dirA });
+  const after = readFileSync(storeFile, 'utf8');
+  assert.equal(after, before, '读操作不应写盘——写盘只发生在 set/update/check/clear 这些真写的路径上');
+});
+
+test('list 不返回完整 prompt（只给预览）；完整原文用 show 取', async () => {
+  await reset();
+  const prompt = '很长'.repeat(200);
+  await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt });
+  const list = await svc.listTimegoals();
+  assert.equal(list.goals[0].prompt, undefined, '列表不带完整 prompt（归档区 N 个就是 N×20KB）');
+  assert.ok(list.goals[0].promptPreview, '列表给一小段预览');
+  assert.ok(list.goals[0].promptPreview.length <= 121);
+  const show = await svc.showTimegoal({ cwd: dirA });
+  assert.equal(show.goal.prompt, prompt, 'show 仍是完整原文');
+});
+
+test('日志截断可见：totalChecks 记总轮次，logTruncated 标记历史已丢', async () => {
+  await reset();
+  await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'P' });
+  const key = svc.topicKeyFor(basename(dirA));
+
+  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
+  raw.goals[key].log = Array.from({ length: 250 }, (_, i) => ({
+    checkedAt: svc.stampNow(new Date(Date.now() - (250 - i) * 1000)),
+    elapsedSec: i, remainingSec: 3600 - i, overtimeSec: 0, reached: false,
+    summary: `第 ${i} 轮`, progress: '继续',
+  }));
+  raw.goals[key].totalChecks = 250;
+  writeFileSync(storeFile, JSON.stringify(raw, null, 2));
+
+  const chk = await svc.checkTimegoal({ cwd: dirA, summary: '新的一轮', progress: '继续' });
+  assert.equal(chk.logCount, 200);
+  assert.equal(chk.totalChecks, 251, '总轮次不被截断丢掉');
+  assert.equal(chk.logTruncated, true, '截断是可见的，不是静默丢历史');
+  const log = await svc.getTimegoalLog({ cwd: dirA });
+  assert.equal(log.count, 200);
+  assert.equal(log.totalEntries, 251);
+  assert.equal(log.truncated, true);
 });
 

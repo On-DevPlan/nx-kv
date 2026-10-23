@@ -7,7 +7,10 @@ import { VIEWS } from './registry.js';
 import { api } from './api/client.js';
 
 function viewFromHash() {
-  const h = (location.hash || '').replace(/^#\/?/, '');
+  // hash 形如 `#/localtask?key=xxx&cwd=yyy`——**查询参数必须先剥掉**再比对视图 id。
+  // 以前整条 hash 拿去比：带 query 必然对不上任何一个 view id → wait 打开的深链
+  // 根本不会切到「本地任务」页，用户等半天看到一个不相干的页面。
+  const h = (location.hash || '').replace(/^#\/?/, '').split('?')[0];
   return VIEWS.some((v) => v.id === h) ? h : '';
 }
 
@@ -60,7 +63,13 @@ export default function App() {
   return (
     <>
       <header>
-        <div className="brand"><img src="/logo-rounded.png" alt="nx-kv" />nx-kv<span className="sub">nx-kv</span></div>
+        <div className="brand">
+          <img src="/logo-rounded.png" alt="nx-kv" />
+          nx-kv
+          {/* 原来这里又写死了一个 "nx-kv"，顶栏永远显示「nx-kv nx-kv」——
+              纯重复。改成版本号：它本来就是 app 版本，现在放在了该在的位置。 */}
+          <span className="sub">v{boot?.version || ''}</span>
+        </div>
         <nav>
           {VIEWS.map((v) => (
             <button
@@ -72,7 +81,12 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="meta">{boot?.storePath || ''}</div>
+        {/* 之前这里读的是 boot.storePath —— 但 bootstrap 响应里**根本没有这个字段**
+            （只有 configPath），所以这一格永远是空的。换成真正存在的 configPath：
+            用户能看到「我现在连的是哪个本地配置」。 */}
+        <div className="meta" title={boot?.configPath || ''}>
+          {boot?.configPath ? '本地配置 ' + boot.configPath : ''}
+        </div>
       </header>
 
       <main>

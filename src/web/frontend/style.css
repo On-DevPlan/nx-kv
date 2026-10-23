@@ -1,26 +1,51 @@
-/* nx-kv 面板样式：黑白单色、无 emoji。
-   视觉取向：圆角 + 浅底 + 少线条——用背景层次和留白做区分，不用硬边框和网格线。 */
+/* nx-kv 面板样式：暖中性纸面 + 细线 + 一个近黑主色，**无 emoji**。
+   视觉取向：工业仪表盘（instrument panel）——信息密度高但有秩序，机器数据（路径/编号/
+   计数）一律用等宽字体，人读文字用无衬线，标签用 Bahnschrift（Windows 自带的 DIN 风
+   格窄体）做"仪表刻度"的质感。面板必须完全离线，所以只用系统字体，不引任何网络字体。 */
 :root {
-  --ink: #14161a;
-  --paper: #fff;
-  --soft: #f5f6f7;
-  --soft-2: #ebedf0;
-  --mid: #8b9096;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 1px 2px rgba(20, 22, 26, 0.06), 0 6px 16px rgba(20, 22, 26, 0.04);
+  --ink: #16181c;            /* 主文字 / 主色：近黑，不用彩色渐变 */
+  --ink-2: #4b515a;          /* 次级文字 */
+  --mid: #838a93;            /* 弱化文字（说明、路径、计数） */
+  --paper: #ffffff;          /* 卡片面 */
+  --canvas: #f7f6f3;         /* 页面底：微暖的灰（纯白底 + 浅灰是最"模板"的那种） */
+  --soft: #f2f1ed;           /* 次级面：表头、折叠区、hover */
+  --soft-2: #e5e3de;         /* 细线 */
+  --line: #e7e5e0;           /* 分隔细线（比 soft-2 更浅更暖） */
+  --live: #1f7a4d;           /* 有 agent 正在等 */
+  --warn: #99690f;           /* 到点 / 超时 */
+  --danger: #b3261e;         /* 破坏性动作 */
+  --radius: 10px;
+  --radius-sm: 7px;
+  --shadow-sm: 0 1px 2px rgba(22, 24, 28, 0.05);
+  --shadow: 0 1px 2px rgba(22, 24, 28, 0.05), 0 10px 28px -16px rgba(22, 24, 28, 0.18);
+  /* 仪表标签：Bahnschrift 是 Windows 自带的 DIN 风格窄体，有技术感又不落俗套；
+     非 Windows 上退回 system-ui，不影响可用。 */
+  --label: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  /* 机器数据一律等宽：路径、key、编号、计数 */
+  --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", "Courier New", monospace;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
-  font-size: 13.5px;
-  line-height: 1.55;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--ink);
-  background: #fbfbfc;
+  background: var(--canvas);
   -webkit-font-smoothing: antialiased;
+  /* 数字用等宽字形，计数跳动时不抖 */
+  font-variant-numeric: tabular-nums;
+}
+
+/* 焦点环：键盘可达性 + 一眼看得见的落点 */
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  border-radius: 4px;
 }
 
 /* ---------- 顶栏 ---------- */
@@ -39,24 +64,39 @@ header {
 .brand img { width: 20px; height: 20px; border-radius: 5px; display: block; }
 .brand .sub { margin-left: 8px; font-weight: 400; color: var(--mid); font-size: 12px; }
 
-/* 分段控件：整块浅底 + 圆角滑块，取代带边框的直角 tab */
-nav { display: inline-flex; gap: 2px; padding: 3px; background: var(--soft); border-radius: 999px; }
+/* 顶栏 tab：下划线式（工具感），不用消费级 App 的分段胶囊 */
+nav { display: inline-flex; gap: 2px; }
 .tab {
   font: inherit;
+  font-size: 12.5px;
   border: 0;
   background: transparent;
   color: var(--mid);
-  padding: 5px 16px;
-  border-radius: 999px;
+  padding: 7px 12px 8px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  position: relative;
+  border-radius: 7px 7px 0 0;
+  transition: color 0.15s, background 0.15s;
 }
-.tab:hover { color: var(--ink); }
-.tab.active { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: var(--shadow); }
+.tab:hover { color: var(--ink); background: var(--soft); }
+.tab.active { color: var(--ink); font-weight: 600; }
+.tab.active::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 2px;
+  background: var(--ink);
+  border-radius: 2px 2px 0 0;
+}
 
 .meta { margin-left: auto; color: var(--mid); font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
 
-main { padding: 18px 20px 28px; max-width: 1240px; margin: 0 auto; }
+/* 根容器撑满视口：页面内容少时页脚贴着底，页面长时自然下沉。
+   以前 main 是普通块级元素，内容一少下半屏就是一大片空白。 */
+#root { min-height: 100vh; display: flex; flex-direction: column; }
+main { padding: 18px 20px 28px; max-width: 1240px; width: 100%; margin: 0 auto; flex: 1 0 auto; }
 .panel { display: none; }
 .panel.active { display: block; }
 
@@ -66,21 +106,129 @@ main { padding: 18px 20px 28px; max-width: 1240px; margin: 0 auto; }
 .sep { width: 1px; height: 20px; background: var(--soft-2); margin: 0 4px; }
 .grow { max-width: 340px; }
 
-input, select {
+/* ---------- 投递条：一个整体的输入组（不是三个孤零零的控件） ----------
+   以前是「下拉 + 一段说明 + 输入框 + 按钮」四件套，同一句话说了三遍，
+   占位符还长得像被禁用的输入框。现在合成一个指挥条：
+   [投递到 ▾ | 任务标题………… | 提交] */
+.compose-toolbar { align-items: center; }
+.compose-label {
+  color: var(--mid);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.compose-bar {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.compose-bar:focus-within {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(22, 24, 28, 0.06);
+}
+.compose-bar select,
+.compose-bar textarea {
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+  padding: 8px 10px;
+}
+.compose-bar select:hover,
+.compose-bar textarea:hover { border-color: transparent; }
+.compose-bar select {
+  flex: 0 0 232px;
+  border-right: 1px solid var(--line);
+  background-color: var(--soft);
+  font-size: 12.5px;
+}
+.compose-bar textarea {
+  flex: 1 1 auto;
+  min-width: 180px;
+  min-height: 38px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.compose-bar .btn {
+  flex: 0 0 auto;
+  align-self: center;
+  margin: 3px;
+  border-radius: var(--radius-sm);
+}
+/* 输入框里的占位符别写成长句：长占位符会被误读成「禁用态说明」 */
+.compose-bar textarea::placeholder { color: #b3b8bd; font-size: 12.5px; }
+
+/* 窄屏（侧边栏 / 内嵌浏览器）：投递条拆成两行 —— 目标一行、输入+按钮一行。
+   硬挤在一行时输入框只剩 180px，正文根本没法看。 */
+@media (max-width: 820px) {
+  .compose-toolbar { flex-direction: column; align-items: stretch; gap: 6px; }
+  .compose-bar { flex-wrap: wrap; }
+  .compose-bar select {
+    flex: 1 1 100%;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .compose-bar textarea { flex: 1 1 160px; }
+  .compose-bar .btn { margin: 3px 3px 3px 0; }
+  /* 看板表在窄屏里放不下 780px 的最小宽：收窄操作列、给目标列让位，
+     免得「剩余 4:17:09」被折成三行。 */
+  table.directory-board { min-width: 620px; }
+  .directory-board .board-ops { width: 150px; }
+  .directory-board .board-directory { width: 34%; min-width: 200px; }
+  .directory-board .board-task-state { width: 19%; }
+  .directory-board .board-goal-state { width: 25%; }
+  .board-goal-label, .board-deadline { white-space: nowrap; }
+}
+
+input, select, textarea {
   font: inherit;
   color: var(--ink);
   background: var(--paper);
-  border: 1px solid var(--soft-2);
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 6px 10px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-input::placeholder { color: #b3b8bd; }
-input:focus, select:focus {
+input::placeholder, textarea::placeholder { color: #b3b8bd; }
+input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--ink);
-  box-shadow: 0 0 0 3px rgba(20, 22, 26, 0.07);
+  box-shadow: 0 0 0 3px rgba(22, 24, 28, 0.07);
 }
+/* 下拉：原生箭头在 Windows 上很粗，换成细窄的自绘箭头 */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 26px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--mid) 50%),
+    linear-gradient(135deg, var(--mid) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 52%, calc(100% - 9px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+/* ---------- 目标编辑器表单 ----------
+   以前这些控件写的是内联 style（padding: '5px 8px'），会把上面统一的表单样式盖掉，
+   结果同一个弹窗里两种内边距并存。全部改成 class，统一由样式表说了算。 */
+.goal-form { display: flex; flex-direction: column; gap: 12px; }
+.goal-form-section { font-size: 12px; }
+.goal-form-title { font-weight: 700; margin-bottom: 4px; }
+.goal-cwd-input { width: 100%; }
+.goal-dur-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.goal-dur-input { width: 96px; }
+.goal-dur-unit { width: 92px; }
+.goal-prompt { width: 100%; resize: vertical; line-height: 1.55; }
+.goal-hint { font-size: 11px; color: var(--mid); }
+.goal-reset { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.goal-presets { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.goal-actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
 
 /* ---------- 按钮：圆角、浅底、无硬边框 ---------- */
 .btn {
@@ -96,6 +244,13 @@ input:focus, select:focus {
 .btn:hover { opacity: 0.86; }
 .btn.ghost { background: var(--soft); color: var(--ink); }
 .btn.ghost:hover { background: var(--soft-2); opacity: 1; }
+/* 破坏性操作用**描边红**而不是实心红块：一排实心红按钮会让整张表都在喊"危险" */
+.btn.ghost.danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid rgba(179, 38, 30, 0.3);
+}
+.btn.ghost.danger:hover { background: rgba(179, 38, 30, 0.07); opacity: 1; }
 .btn.small { padding: 3px 9px; font-size: 12px; border-radius: 7px; }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .btn.danger { background: #b3261e; color: #fff; }
@@ -158,14 +313,245 @@ input:focus, select:focus {
   background: var(--paper);
   border-radius: var(--radius);
   padding: 10px 12px;
-  box-shadow: var(--shadow);
+  /* 看板是"仪表"不是"卡片堆"：任何一块都不许浮起来。
+     以前这里挂的是 0 10px 28px -16px 的大模糊影（Trello/WeKan 的卡片汤就是这么来的），
+     改成 1px 发丝环（照抄 Trello --ds-shadow-raised）。 */
+  box-shadow: 0 0 0 1px rgba(22, 24, 28, 0.07);
   margin-bottom: 12px;
 }
 .card.hidden { display: none; }
+/* 折叠区（已领取历史 / 已删除 / CLI 参考）：
+   以前每条都是一个带边框的白盒子，三个盒子摞在一起像"卡片汤"。
+   层级判断是对的（折叠在下面），但**样式该改**：一条 1px 分隔线就够了。 */
+.fold-row {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 2px;
+}
+.fold-row > summary {
+  padding: 7px 2px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.fold-row > summary::-webkit-details-marker { display: none; }
+.fold-row > summary::before {
+  content: '▸';
+  color: var(--mid);
+  font-size: 10px;
+}
+.fold-row[open] > summary::before { content: '▾'; }
+.fold-row > summary:hover { color: var(--ink); }
+.fold-row table { margin-top: 4px; }
+.localtask-cli-reference { margin-top: 10px; }
+.localtask-cli-reference > details > summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  padding: 7px 2px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.localtask-cli-reference > details > summary::-webkit-details-marker { display: none; }
+.localtask-cli-reference > details > summary::before {
+  content: '▸';
+  color: var(--mid);
+  font-size: 10px;
+}
+.localtask-cli-reference > details[open] > summary::before { content: '▾'; }
+.localtask-cli-reference > details > summary:hover { color: var(--ink); }
+
+/* 从远程清单导入（子弹窗）：主题筛选 + 单条勾选 + 导入条数 */
+.import-remote-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: -2px 0 8px;
+  font-size: 11.5px;
+}
+.import-remote-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.import-remote-bar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--mid);
+}
+.import-remote-err {
+  padding: 8px 10px;
+  border: 1px solid rgba(179, 38, 30, 0.3);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.import-remote-list {
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+}
+.import-remote-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.import-remote-item:last-child { border-bottom: 0; }
+.import-remote-item:hover { background: var(--soft); }
+.import-remote-item input { flex: 0 0 auto; align-self: center; }
+.import-remote-topic {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--mid);
+  background: var(--soft);
+  border-radius: 4px;
+  padding: 1px 6px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-remote-text { flex: 1 1 auto; min-width: 0; color: var(--ink); }
+.import-remote-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 11.5px;
+}
+
+/* 仓库上下文：目录行里的「所属看板」chip + 投递条上方的上下文提示 */
+.repo-boards {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.compose-context {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 6px;
+  padding: 5px 10px;
+  background: var(--soft);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.compose-context .repo-name { font-weight: 700; color: var(--ink); }
+.compose-context .repo-desc { color: var(--ink-2); }
+.compose-context .repo-boards-list { color: var(--mid); margin-left: auto; }
+
+/* ---------- 仓库上下文工作台：主题容器纵向堆叠 + 手机式仓库方格卡片 ----------
+ * 一个看板 = 一个主题容器（card 头 + 卡片网格）；卡片可拖拽入板 / 插到某卡前 /
+ * 拖回未分组。落点高亮用 1px 描边（与看板的行选中标记同一套视觉语言）。
+ * 从 nx-rh 移植过来时把变量名换成了 nx-kv 的（--border→--line、
+ * --accent→--ink、--shadow-pop→--shadow）：nx-kv 没有蓝色主色，强调色是近黑的墨色。 */
+.bd-workbench { display: flex; flex-direction: column; gap: 12px; }
+.bd-board { padding: 0 0 10px; }
+.bd-board.drop { outline: 1px dashed var(--ink); outline-offset: -1px; }
+.bd-board .colhead { padding: 8px 12px; margin: 0; border-bottom: 1px solid var(--line); }
+.bd-head h3 { margin: 0; font-size: 13px; }
+.bd-head .bd-count { margin-left: auto; font-size: 11px; }
+.bd-grid {
+  display: grid;
+  /* 固定列宽（不随行内卡片数拉伸）：手机 app 网格的方正感来自等宽等高的格子 */
+  grid-template-columns: repeat(auto-fill, 118px);
+  justify-content: start;
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+.bd-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  cursor: grab;
+  text-align: center;
+}
+.bd-card:hover { border-color: var(--mid); box-shadow: var(--shadow-sm); }
+.bd-card.dragging { opacity: 0.45; }
+.bd-card.drop { outline: 1px dashed var(--ink); outline-offset: -1px; }
+.bd-card .glyph {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+}
+.bd-card .nm {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.bd-card .ds {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-height: 28px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--mid);
+}
+.bd-card .acts {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+  gap: 2px;
+}
+.bd-card:hover .acts { display: inline-flex; }
+.bd-card .acts .btn { padding: 1px 4px; font-size: 10px; }
+.bd-empty { grid-column: 1 / -1; padding: 14px 0; text-align: center; font-size: 11px; }
+.bd-exp { width: 100%; font-family: var(--mono); font-size: 11px; }
+
+/* 「已到点自动归档」区的样式随该区一起删掉了（到点即失效，面板上不再显示已结束的目标）。
+   归档区没了，列标题/列表的间距直接接回 .colhead。 */
 .colhead { display: flex; align-items: baseline; gap: 8px; margin: 2px 2px 8px; }
 h3 { font-size: 13px; margin: 0; font-weight: 700; }
 .cols { display: flex; gap: 14px; align-items: flex-start; }
 .col { flex: 1; min-width: 0; }
+/* 窄面板（侧边栏、内嵌浏览器）放不下三个并排的桶 → 竖着排。
+   硬挤的结果是每条备注被压成一根竖线，读都不能读。 */
+@media (max-width: 900px) {
+  .cols { flex-direction: column; }
+  .col { width: 100%; }
+}
 .list { padding: 4px; }
 
 /* 行：靠 hover 底色区分，不用分隔线；内容多时允许换行 */
@@ -213,6 +599,12 @@ h3 { font-size: 13px; margin: 0; font-weight: 700; }
   font-size: 11.5px;
   padding-left: 40px;
   word-break: break-word;
+  /* 备注最多两行：整段展开会把一条记录撑成半屏，扫不动 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
 }
 
 /* 登录页：行内表单 */
@@ -245,83 +637,344 @@ h3 { font-size: 13px; margin: 0; font-weight: 700; }
   padding: 4px 6.5px;
 }
 
-/* 徽标 */
+/* 徽标：「已登记」这类**身份**标记不是状态，别用 999px 药丸 ——
+   一排药丸是 GitHub Issues 那种"组件库 demo"味。改成 4px 半径的描边 chip。 */
 .tag {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--soft);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--soft-2);
   color: var(--mid);
   white-space: nowrap;
+  letter-spacing: 0;
 }
 .tag.strong { background: var(--ink); color: var(--paper); }
+/* 「全局池」这类身份标记：描边徽章（不抢主色的分量） */
+.tag.badge {
+  background: transparent;
+  color: var(--ink-2);
+  border: 1px solid var(--soft-2);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 
-/* ---------- 表格：去掉网格线，只用极浅的行分隔 ---------- */
+/* ---------- 表格：细线分隔，不画网格 ---------- */
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 9px 10px; vertical-align: top; }
-th { color: var(--mid); font-weight: 600; font-size: 11.5px; }
+th {
+  color: var(--mid);
+  font-family: var(--label);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 tbody tr:hover { background: var(--soft); }
 tbody tr + tr td { box-shadow: inset 0 1px 0 var(--soft); }
-.mono, td.path { font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; }
+.mono, td.path { font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
 td.ops { white-space: nowrap; }
 td.ops .btn { margin: 0 3px 3px 0; }
 .muted { color: var(--mid); }
 .bad { font-weight: 700; }
 
-/* ---------- localtask/timegoal 合并目录看板（dense dashboard） ---------- */
+/* 队列任务表：列宽写死，**别让正文挤成一条**。
+   没有列宽时浏览器按内容自动分配，操作列（四五个按钮）会把「任务」列压到
+   十几像素，正文竖着排成一根——这是这个表最难看的地方。 */
+.queue-table { table-layout: fixed; }
+/* 操作列必须装得下四个按钮（编辑/提前/置后/删除 ≈ 177px + 内边距）。
+   以前给 156px，按钮就溢出单元格、被外层裁掉——最右边的「删除」点不到。 */
+.queue-table .c-drag { width: 30px; }
+.queue-table .c-id { width: 46px; }
+.queue-table .c-status { width: 104px; }
+.queue-table .c-time { width: 150px; }
+.queue-table .c-ops { width: 196px; }
+/* 兜底：真装不下时让表横向滚动，而不是把按钮裁在外面 */
+.queue-wrap { overflow-x: auto; }
+.queue-table td.task-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+  font-size: 12.5px;
+}
+.queue-table .c-time { font-family: var(--mono); font-size: 11px; color: var(--mid); }
+/* 同一页两张表必须是**同一种表格语言**。
+   以前看板表头是浅灰底 + 1px 底线，队列表头却是透明底 + 无线 —— 像两个产品。
+   这里把队列表头对齐看板的表头样式。 */
+.queue-table thead th {
+  padding: 7px 10px;
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+  color: var(--mid);
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.queue-table tbody td { padding: 8px 10px; vertical-align: middle; }
+/* 队列里的状态：同样用色点 + 文字，和看板行保持一套语言 */
+.queue-table .board-status { font-size: 11.5px; color: var(--ink-2); }
+.queue-table .board-status.done::before { background: var(--soft-2); box-shadow: inset 0 0 0 1.5px var(--soft-2); }
+.queue-table .board-status.pend::before { background: var(--live); box-shadow: 0 0 0 3px rgba(31, 122, 77, 0.12); }
+
+/* ---------- localtask/timegoal 合并目录看板（仪表盘质感） ----------
+   三条主线：
+   1) **信息分层靠字重与字号**，不靠一堆边框和底色 —— 标题最重、路径与计数最轻。
+   2) **状态用色点 + 文字**，不用一排填充色块（那是最"廉价后台"的做法）。
+   3) **机器数据用等宽字体**：路径、编号、计数一眼就知道是机器给的。 */
 .board-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px 16px;
   flex-wrap: wrap;
-  padding: 8px 10px;
-  margin-bottom: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
 }
-.board-heading, .board-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.board-heading strong { font-size: 13px; }
-.board-live { display: inline-flex; align-items: center; gap: 5px; color: var(--mid); font-size: 11px; }
-.board-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mid); }
-.board-live-dot.ok { background: #228b53; }
-.board-live-dot.reconnecting { background: #bd3d38; }
-.board-live-dot.connecting { background: #9aa0a6; }
-.board-table-wrap { width: 100%; overflow-x: auto; border-radius: var(--radius-sm); background: var(--paper); box-shadow: var(--shadow); }
-table.directory-board { min-width: 760px; table-layout: fixed; }
-.directory-board th, .directory-board td { padding: 6px 8px; }
-.directory-board th { border-bottom: 1px solid var(--soft-2); }
-.directory-board tbody tr { cursor: pointer; }
-.directory-board tbody tr.is-active { background: #f7f8fa; box-shadow: inset 3px 0 var(--ink); }
-.directory-board tbody tr:hover { background: var(--soft); }
-.directory-board .board-check { width: 30px; text-align: center; }
-.directory-board .board-directory { width: 43%; min-width: 230px; }
-.directory-board .board-task-state { width: 19%; }
-.directory-board .board-goal-state { width: 18%; }
-.directory-board .board-ops { width: 230px; }
-.board-name-line { display: flex; align-items: center; gap: 5px; min-width: 0; }
-.board-name-line strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.board-cwd { font-size: 10px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-heading, .board-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 面板标题：仪表刻度的质感（Bahnschrift + 字号分层；汉字不加字距） */
+.board-heading strong {
+  font-family: var(--label);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.board-heading .muted { font-size: 11.5px; }
+.board-live { display: inline-flex; align-items: center; gap: 6px; color: var(--mid); font-size: 11px; }
+.board-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mid); flex: none; }
+.board-live-dot.ok { background: var(--live); animation: board-pulse 2.4s ease-in-out infinite; }
+.board-live-dot.reconnecting { background: var(--danger); }
+.board-live-dot.connecting { background: var(--mid); }
+@keyframes board-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(31, 122, 77, 0.35); }
+  50% { box-shadow: 0 0 0 3px rgba(31, 122, 77, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-live-dot.ok { animation: none; }
+}
+
+.board-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  /* 看板卡片与它下面的东西（归档区 / 投递条）之间留一条呼吸缝。
+     空 store 时投递条直接贴在卡片下沿上，差 2px，像没画完。 */
+  margin-bottom: 12px;
+}
+table.directory-board { min-width: 780px; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+/* 列标题 = 仪表刻度：小字 + 全大写（拉丁字）。
+   ⚠️ **汉字不能加字距** —— letter-spacing 会把每个汉字都撑开，看着像排版事故。
+   所以字距只留给拉丁文，列标题里的中文靠字号与颜色分层。 */
+.directory-board thead th {
+  padding: 7px 12px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  text-align: left;
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.directory-board td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.directory-board tbody tr:last-child td { border-bottom: 0; }
+.directory-board tbody tr { cursor: pointer; transition: background 0.12s; --rail: var(--soft-2); }
+.directory-board tbody tr:hover { background: #faf9f6; }
+/* 每行左侧一条 2px 状态导轨（Wekan 的 minicard 就是用色条画标签的）。
+   一列对齐的色条是看板最省力也最"贵"的信号：不用看字就知道哪行在等人、哪行已归档。 */
+.directory-board tbody tr td:first-child { box-shadow: inset 2px 0 0 var(--rail); }
+.directory-board tbody tr[data-state="live"] { --rail: var(--live); }
+.directory-board tbody tr[data-state="stale"] { --rail: var(--warn); }
+.directory-board tbody tr[data-state="pool"] { --rail: var(--ink-2); }
+/* 选中的行：导轨换成墨色 + 极浅的底色（比整行高亮克制得多） */
+.directory-board tbody tr.is-active { background: var(--soft); --rail: var(--ink); }
+.directory-board .board-check { width: 34px; text-align: center; }
+/* 表头那格原来是个没内容的空格子，看着像忘了画。给它一个真正的「全选」，
+   既填上了空位，也让批量删除多一个入口。 */
+.directory-board thead .board-check input { vertical-align: middle; cursor: pointer; }
+.directory-board thead .board-check input:disabled { cursor: default; opacity: 0.35; }
+.directory-board .board-directory { width: 40%; min-width: 240px; }
+.directory-board .board-task-state { width: 18%; }
+.directory-board .board-goal-state { width: 19%; }
+.directory-board .board-ops { width: 196px; }
+/* 行内操作：默认低调，hover/选中时全亮（把"操作"从视觉噪音里挪出去）。
+   常态 0.5 太像 disabled（disabled 才是 0.4），两态分不清 → 抬到 0.7。 */
+.directory-board .board-ops .btn { opacity: 0.7; transition: opacity 0.12s, background 0.12s; }
+.directory-board tbody tr:hover .board-ops .btn,
+.directory-board tbody tr.is-active .board-ops .btn,
+.directory-board tbody tr:focus-within .board-ops .btn { opacity: 1; }
+
+.board-name-line { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.board-name-line strong {
+  font-size: 13.5px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+/* 路径 = 机器数据：等宽、更弱。祖先目录变暗，末段略重 —— 路径变成可扫的标签，
+   而不是一坨挤在一起的灰色长串。 */
+.board-cwd {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.board-cwd .anc { color: var(--mid); }
+/* 第 2 行：现状 + 提交说明并排，各占一半，1 行截断 */
+.board-summary-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 1px;
+}
 .board-summary {
   display: block;
-  width: 100%;
-  padding: 2px 0 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
   border: 0;
   background: transparent;
-  color: var(--mid);
+  color: var(--ink-2);
   font: inherit;
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 11.5px;
+  line-height: 1.4;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: zoom-in;
+  /* 以前是 zoom-in —— 点开的是弹窗不是缩放，这是骗人的光标 */
+  cursor: pointer;
 }
-.board-count, .board-deadline { display: block; margin-top: 3px; font-size: 10px; }
-.board-goal-label { padding: 0; border: 0; background: transparent; color: #228b53; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
-.board-goal-label.reached { color: #a43c32; }
+.board-summary:hover { text-decoration: underline dotted; }
+.board-summary.muted { color: var(--mid); }
+.board-submit {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 46%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--mid);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.board-submit:hover { color: var(--ink-2); text-decoration: underline dotted; }
+/* 计数：等宽 + 数字加重，等宽字形保证刷新时不抖 */
+.board-count, .board-deadline {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--mid);
+  letter-spacing: -0.01em;
+}
+.board-count b { color: var(--ink); font-weight: 650; }
+.board-count .sep-dot { color: var(--soft-2); margin: 0 2px; }
+.board-deadline { font-size: 10px; }
+/* 时间目标：剩余用绿、到点用琥珀（不是红——到点是预期内的事，不是错误） */
+.board-goal-label {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--live);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  /* 同上：长文案不许溢到隔壁列 */
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 已失效的时间目标：这一格**留空**。
+   到点即失效——面板上不再显示已经结束的目标，也不再有「已到点 · 超时 2:46:07」
+   这种还在走的超时钟。留一个空位，比写一句"已到点"更诚实：它已经不在了。 */
+.board-goal-gone { display: block; }
+.board-goal-label:hover { text-decoration: underline; text-underline-offset: 2px; }
 .board-ops { white-space: nowrap; }
 .board-ops .btn { margin: 0 3px 2px 0; }
-.board-empty { padding: 14px 10px; text-align: center; }
+
+/* 状态与「关闭等待」同一行：让等待中的行和其他行一样高 */
+.board-status-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.board-status-row .board-status { flex: 0 1 auto; min-width: 0; }
+.board-wait-stop { flex: 0 0 auto; }
+/* 领取耗时（发布 → 被领取）：机器数据，等宽小字 */
+.board-pickup {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--mid);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+/* 状态点 + 文字：比一排填充色块安静，信息还在 */
+.board-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  /* 「等待中 已等 25:16 · 剩 23:58」这类长状态会撑出列宽，
+     溢出后直接压到右边「时间目标」列的字上（窄屏必现）。夹住它。 */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+.board-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--soft-2);
+  flex: none;
+}
+.board-status.live::before { background: var(--live); box-shadow: 0 0 0 3px rgba(31, 122, 77, 0.12); }
+.board-status.busy::before { background: var(--warn); box-shadow: 0 0 0 3px rgba(153, 105, 15, 0.13); }
+.board-status.pool::before { background: var(--ink); }
+.board-status.stale::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--soft-2); }
+
+/* 空状态：要看起来是**设计过的**，不是"表没了" */
+.board-empty { padding: 30px 16px; text-align: center; }
+.board-empty-mark {
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--soft-2);
+}
+.board-empty-title { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+.board-empty-sub { margin-top: 3px; font-size: 11.5px; color: var(--mid); }
 .localtask-topic-cards-legacy { display: none; }
 .board-settings-dialog { display: grid; gap: 14px; }
 .board-setting-section { padding-bottom: 12px; border-bottom: 1px solid var(--soft-2); }

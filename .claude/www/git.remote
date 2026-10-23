@@ -1,1 +1,4 @@
 git@github.com:anomalyco/opencode.git
+https://github.com/kanboard/kanboard.git
+https://github.com/mattermost-community/focalboard.git
+git@github.com:hibiken/asynq.git

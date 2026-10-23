@@ -140,6 +140,19 @@ nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --json
 （批量删除，`--keys/--cwds/--all`；等待中需 `--force`），面板上对应「本地任务」页。
 纯本机协调、存本地文件（`~/.nx-kv/localtasks.json`），**不需登录后端**。
 
+**全局共享池（工作窃取）**：除按目录划分的本地队列外，还有一个跨目录共享的
+「全局任务池」。本地队列取不到任务时，任何目录的 `wait` 都自动去全局领
+（显式传 `--cwd` 也不例外）——谁闲谁领。投递用 `--global`：
+
+```bash
+nx-kv localtask add "<任务文本>" --global --json   # 投进全局池，不限目录
+```
+
+面板上「本地任务」页的目录看板**恒有一行「全局任务」**（哪怕池子是空的），
+用工具栏的**「投递到」**下拉直接切到全局池或某个目录，任务就投到那儿——
+只有一个投递目标，不再有"勾了全局但选中的是目录"这种会静默投错池子的中间态。
+全局池的队列也能直接打开，已领取的历史照常列在表里。
+
 配套 skill（三件套各管一角；远程清单仍归 nx-kv 主 skill）：
 
 ```bash
@@ -152,25 +165,38 @@ nx-kv skill install kv-localget   # 领取侧：主动领取排给本目录的�
 
 把「AI 持续运行 N 小时」这类长任务**固化到工具里**，而不是散落在外部脚本：
 
-每个**工作目录**绑定一个 timegoal = 「持续秒数 + 一段完整全局提示词」。
+每个**工作目录**绑定一个 timegoal = 「持续时长 + 一段完整全局提示词」。
 
 ```bash
 # 开头设一次：3 小时 + 完整提示词（提示词会被原文固化到 store）
 nx-kv timegoal set --cwd "$PWD" --duration 10800 --prompt "<完整全局提示词>" --json
 
+# 时长按人话说：5h / 90m / 2d / 5小时 都认，纯秒数（10800）照样能用
+nx-kv timegoal set --cwd "$PWD" --duration 5h --prompt "<完整全局提示词>" --json
+
 # 每轮调一次：算出还剩多少时间，并把提示词【原文】回显给你
-nx-kv timegoal check --cwd "$PWD" --json
+nx-kv timegoal check --cwd "$PWD" --summary "<当前现状>" --progress "<完成度/下一步>" --json
 #   → { reached:false, remainingSec:10780, prompt:"<完整提示词原文>", deadline, ... }
 
 # 提示词要改（agent 自我迭代 / 用户在面板上改）——只换提示词，保住计时起点
-nx-kv timegoal update --cwd "$PWD" --prompt "<新版>" [--duration <秒>] --json
+nx-kv timegoal update --cwd "$PWD" --prompt "<新版>" [--duration 5h] --json
 
-# 其余：show（仅查）/ clear（清空）/ list（总览所有目录）
+# 其余：show（仅查）/ clear（清空）/ list（总览所有目录）/ log（回看每轮检查记录）
 ```
 
 **为什么需要它**：长对话里 agent 一定会把自己手里的提示词改写、漂移、漏条件。
 `check` 每次把 store 里的**原文**回显出来，agent 就没有"凭记忆发挥"的空间。
 到点时 `reached:true`，agent 据此停手、收尾。
+
+**时长上限 365 天**：`--duration` 最低 1 分钟、最高 365 天。24 小时的老上限挡掉了
+"跑一晚上""连续优化几天"这类真实需求，现在不必再切天。
+
+**到点自动回收**：目标过了截止时刻就**自动归档**——从看板/列表里消失，不再堆着；
+但 `show` / `check` 仍查得到（agent 最后一轮照样拿到 `reached:true` + 提示词原文，
+好写最终总结），归档满 7 天后自动丢弃**检查日志**、**提示词原文始终保留**。
+`check` 还会报出 `overtimeSec`（已经超时多久），面板上显示「已到点 · 超时 2:13:45」，
+不再是一句静止的"已到点"。每轮的检查日志只保留最近 200 条（总轮次与是否截断都
+看得到，不静默丢历史），长跑任务不会把 store 撑爆。
 
 **完全独立的模块**：独立 store（`~/.nx-kv/timegoals.json`）、独立命令族、
 独立循环——不调用 `localtask wait`、不被它调用，两者可以同时跑。

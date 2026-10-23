@@ -120,4 +120,50 @@ export default defineConfig([
       ],
     },
   },
+
+  // ---- 前端：打开 no-undef ----
+  //
+  // 为什么单独开：全局 `no-undef` 是关掉的（浏览器/Node 全局混用），
+  // 但**前端**的全局面其实很小、也很确定，而"写错一个名字 = 整页崩"这件事
+  // 代价太高——真实踩过三次：
+  //   1. `localtask/view.jsx` 用了 `<CliHints>` 却没 import →「本地任务」页整页报错
+  //   2. 同文件用了 `useMemo` 却没 import → 同样整页崩
+  //   3. 同文件用了 `dialog(...)` 却没定义 → 点「彻底清除」直接抛异常
+  // 三次都只有浏览器能看见，lint 与单测都放行了。
+  //
+  // 下面这份全局表就是浏览器 + ES2024 的交集，不多不少；
+  // 装了 globals 包也省不掉这份"白名单"——前端自己知道该用哪些全局。
+  {
+    files: ['src/web/frontend/**/*.{js,jsx}', 'src/modules/*/view.jsx', 'src/modules/*/*.jsx'],
+    languageOptions: {
+      globals: {
+        // 浏览器
+        window: 'readonly', document: 'readonly', location: 'readonly', navigator: 'readonly',
+        history: 'readonly', localStorage: 'readonly', sessionStorage: 'readonly',
+        fetch: 'readonly', console: 'readonly', alert: 'readonly', confirm: 'readonly',
+        prompt: 'readonly', requestAnimationFrame: 'readonly', cancelAnimationFrame: 'readonly',
+        setTimeout: 'readonly', clearTimeout: 'readonly', setInterval: 'readonly',
+        clearInterval: 'readonly', queueMicrotask: 'readonly', structuredClone: 'readonly',
+        EventSource: 'readonly', AbortController: 'readonly', AbortSignal: 'readonly',
+        URL: 'readonly', URLSearchParams: 'readonly', TextEncoder: 'readonly',
+        TextDecoder: 'readonly', Response: 'readonly', Request: 'readonly', Headers: 'readonly',
+        // ES
+        globalThis: 'readonly', undefined: 'readonly', NaN: 'readonly', Infinity: 'readonly',
+        Object: 'readonly', Array: 'readonly', String: 'readonly', Number: 'readonly',
+        Boolean: 'readonly', Symbol: 'readonly', BigInt: 'readonly', Math: 'readonly',
+        JSON: 'readonly', Date: 'readonly', RegExp: 'readonly', Error: 'readonly',
+        TypeError: 'readonly', RangeError: 'readonly', SyntaxError: 'readonly',
+        ReferenceError: 'readonly', EvalError: 'readonly', URIError: 'readonly',
+        Promise: 'readonly', Map: 'readonly', Set: 'readonly', WeakMap: 'readonly',
+        WeakSet: 'readonly', Proxy: 'readonly', Reflect: 'readonly', Intl: 'readonly',
+        ArrayBuffer: 'readonly', Uint8Array: 'readonly', Int8Array: 'readonly',
+        Uint16Array: 'readonly', Uint32Array: 'readonly', Float32Array: 'readonly',
+        Float64Array: 'readonly', DataView: 'readonly', parseInt: 'readonly',
+        parseFloat: 'readonly', isNaN: 'readonly', isFinite: 'readonly',
+        encodeURIComponent: 'readonly', decodeURIComponent: 'readonly',
+        encodeURI: 'readonly', decodeURI: 'readonly',
+      },
+    },
+    rules: { 'no-undef': 'error' },
+  },
 ]);

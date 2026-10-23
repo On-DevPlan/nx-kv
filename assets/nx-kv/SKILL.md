@@ -146,5 +146,6 @@ $ nx-kv todo get --ref "旧记录" --topic fr    # 或按主题收窄
 | --- | --- | --- |
 | [[agent-workflow]] | 要**领任务/收单**时——按主题拉待办、读上下文、与用户对齐意图、回填结果的完整 SOP | references/agent-workflow.md |
 | [[todo-commands]] | 要**敲具体命令**、查退出码/数据结构/避坑时 | references/todo-commands.md |
+| [[repo-registry]] | 要**登记本机仓库 / 看仓库看板编排**时——`nx-kv repo ...` / `nx-kv board ...`（仓库上下文也用作本地任务的上下文） | references/repo-registry.md |
 
 **不要预先全读**：收单才读前者，查命令才读后者；平时它们不进上下文。

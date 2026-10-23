@@ -252,10 +252,13 @@ test('任务级 CRUD 按 key 寻址全局主题（get/update/remove）', async (
 
   const rm = await svc.removeTask({ key: svc.GLOBAL_KEY, id: 2 });
   assert.equal(rm.removed.text, '第二条');
+  assert.ok(rm.removed.deletedAt, '删除是软删除：行还在，可恢复');
 
   const ov = await svc.listTasks();
   const g = ov.topics.find((t) => t.isGlobal);
-  assert.equal(g.total, 1);
+  assert.equal(g.total, 2, '软删除：行不摘出去');
+  assert.equal(g.pending, 1);
+  assert.equal(g.deleted, 1);
 });
 
 test('本地 wait 期间投全局、随后本地也被投 → 本地 waiter 优先收本地任务', async () => {
@@ -270,4 +273,22 @@ test('本地 wait 期间投全局、随后本地也被投 → 本地 waiter 优�
   const r = await p;
   assert.equal(r.source, 'local');
   assert.equal(r.task.text, '本地直投');
+});
+
+test('领取审计：任务记下「从哪个池领、被谁领」', async () => {
+  await reset();
+  // dirA 的 agent 从全局池领走一条 → claimedFrom=global, claimedBy=dirA
+  await svc.addTask({ global: true, text: '池子里的活' });
+  const r = await svc.waitForTask({ cwd: dirA, summary: '本地空等全局', open: false });
+  assert.equal(r.source, 'global');
+  assert.equal(r.task.claimedFrom, 'global');
+  assert.equal(r.task.claimedBy, svc.normalizeCwd(dirA).key);
+  assert.equal(r.task.claimedByName, svc.normalizeCwd(dirA).name);
+
+  // 本地队列领走 → claimedFrom=local
+  await svc.addTask({ cwd: dirB, text: '本地活' });
+  const r2 = await svc.waitForTask({ cwd: dirB, summary: '本地领', open: false });
+  assert.equal(r2.source, 'local');
+  assert.equal(r2.task.claimedFrom, 'local');
+  assert.equal(r2.task.claimedBy, svc.normalizeCwd(dirB).key);
 });

@@ -36,7 +36,8 @@
        │  每一轮：
        ▼
   ┌───────────────────────────────────────────────────────┐
-  │  1. nx-kv timegoal check --cwd "$PWD" --json          │
+  │  1. nx-kv timegoal check --cwd "$PWD" \                 │
+  │        --summary "<本轮现状>" --progress "<完成度/下一步>" │
   │        ↓  拿到 {remainingSec, prompt}                 │
   │  2. 把 prompt 字段当本轮根指令                        │
   │  3. 干活（按 prompt 指令）：                           │
@@ -81,8 +82,8 @@
 硬性约束：
 - 严禁超过本轮剩余时间预算（remainingSec < 30 时立刻停手、写总结、不开新轮）
 - 严禁自己改 deadline；想缩短就 `timegoal clear` 再 `timegoal set`
-- 每轮开始时先 `nx-kv timegoal check --cwd "$PWD" --json`，把返回里的
-  `prompt` 字段当作本轮根指令；**不要从对话历史里重新拼**——以 store 为准
+- 每轮开始时先 `nx-kv timegoal check --cwd "$PWD" --summary "<本轮现状>" --progress "<完成度/下一步>" --json`，
+  把返回里的 `prompt` 字段当作本轮根指令；**不要从对话历史里重新拼**——以 store 为准
 - 写代码必须随附测试；测试失败的修补不计入本轮成果
 ```
 
@@ -94,29 +95,33 @@
 WORKDIR=/path/to/your-project
 cd "$WORKDIR"
 
-# 1. set
+# 1. set（时长可写 10800，也可写 5h）
 nx-kv timegoal set --cwd "$PWD" --duration 10800 \
   --prompt "..." --json
 
 # 2. 立刻 check：reached:false
-nx-kv timegoal check --cwd "$PWD" --json
+nx-kv timegoal check --cwd "$PWD" --summary "刚起步" --progress "刚 set 完" --json
 
 # 3. sleep 6s
 sleep 6
 
 # 4. 再 check：注意 elapsedSec 增加
-nx-kv timegoal check --cwd "$PWD" --json
+nx-kv timegoal check --cwd "$PWD" --summary "跑了一轮" --progress "继续" --json
 
 # 5. update：只换 prompt，deadline 不动
 nx-kv timegoal update --cwd "$PWD" --prompt "V2 改得更简洁" --json
 
 # 6. check：prompt 已是 V2，deadline 仍是 1 小时后
-nx-kv timegoal check --cwd "$PWD" --json
+nx-kv timegoal check --cwd "$PWD" --summary "改完 prompt" --progress "继续" --json
 
 # 7. 等到点（或手动改 store）后：reached:true
 #   （实操：把 ~/.nx-kv/timegoals.json 里 startedAt 改成 4 小时前）
+#   到点后目标立即失效（面板上不再显示），但保留期内 show/check 仍查得到 —— 最后一轮照样能读到 prompt
 
-# 8. clear
+# 8. 回看每轮日志（现状 / 完成度 / 剩余）
+nx-kv timegoal log --cwd "$PWD" --json
+
+# 9. clear
 nx-kv timegoal clear --cwd "$PWD" --json
 
 # 全程不曾、也不需调过 localtask / todo / 等任何其它命令族
@@ -127,6 +132,9 @@ nx-kv timegoal clear --cwd "$PWD" --json
 | 现象                                    | 原因 / 做法                                                                  |
 | --------------------------------------- | ---------------------------------------------------------------------------- |
 | `reached` 没翻                        | 检查客户端时区或 set 时是否给了 `--duration` 过短（默认下限 60s）          |
+| check 报"缺少参数 --summary"          | 每次 check 都要写一条日志，必须带 `--summary` 与 `--progress`             |
+| `reached` 翻 true 但 list 里看不到目标  | 到点即失效（活动列表只留未到点的）；保留期内 `show`/`check` 仍查得到，`list --json` 看 `archived` |
+| update 报"已经到点失效"                | 目标已失效不可复活；要继续请用 `set` 开新一局（起点从现在重算）    |
 | update 失败"主题「X」尚未设置 timegoal" | 先 `set` 再 `update`；`update` 不创建                                  |
 | clear 返回"无需清空"                    | 本来就没设过；这是 info 不是 error                                           |
 | 想换目录                                | clear 旧的 → set 新的；目录（cwd）是绑定的                                  |

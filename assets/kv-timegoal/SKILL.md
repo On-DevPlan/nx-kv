@@ -14,11 +14,15 @@ description: 把"AI 持续运行 N 小时（如 3 小时）"任务固化到 nx-k
 
 ```bash
 nx-kv timegoal set --cwd "$PWD" \
-  --duration 10800 \
+  --duration 5h \
   --prompt "<完整全局提示词>" --json
 ```
 
-- `--duration` 持续秒数，**60-86400**（1 分钟到 24 小时）。例：3 小时 = `10800`
+- `--duration` 持续时长，**1 分钟 - 365 天**。两种写法都认：
+  - **带单位**（推荐，跟人说话一致）：`5h` / `90m` / `2d` / `5小时` / `1.5h`
+  - **纯秒数**：`10800`（= 3 小时，向后兼容）
+  - 上限从 24 小时放宽到 365 天：「跑一晚上」「连续优化几天」是真实需求，
+    不该被 24 小时卡住。
 - `--prompt` 完整全局提示词，≤20000 字
 - `--cwd` 绑定的目录（缺省用当前目录）；**一个目录一个 timegoal**
 
@@ -41,7 +45,7 @@ nx-kv timegoal set --cwd "$PWD" \
 
 ```
 每轮开始：
-  nx-kv timegoal check --cwd "$PWD" --json
+  nx-kv timegoal check --cwd "$PWD" --summary "<当前现状>" --progress "<完成度/下一步>" --json
     → { remainingSec, prompt, ... }
     → 把 prompt 字段当作本轮根指令（不要从对话历史里重新拼）
 
@@ -67,6 +71,7 @@ nx-kv timegoal set --cwd "$PWD" \
   "reached":      false,                       // true 即停手信号
   "elapsedSec":   120,                         // 已用秒
   "remainingSec": 10680,                       // 还剩秒
+  "overtimeSec":  0,                           // 已超时多少秒（到点后才 > 0）
   "startedAt":    "2026-10-19 20:31:12",
   "deadline":     "2026-10-19 23:31:12",
   "now":          "2026-10-19 20:33:12",
@@ -81,6 +86,8 @@ nx-kv timegoal set --cwd "$PWD" \
 
 - 没设过 timegoal → `{hasGoal:false, reached:false, prompt:""}`（需先 `set`）
 - 到点后 `reached:true`，goal 对象仍在；可继续 `check` 看 prompt，直到 `clear`
+- 到点后目标**立即失效**：从活动列表与面板消失（`show`/`check` 在保留期内照样查得到）；
+  保留期（默认 7 天）到后整条自动删掉（详见下面的「到点之后会发生什么」）
 
 ## 四条硬规则
 
@@ -98,13 +105,35 @@ nx-kv timegoal set --cwd "$PWD" \
 ## 完整命令清单
 
 ```bash
-nx-kv timegoal set    --cwd <dir> --duration <秒> --prompt "<...>"  # 设/换（新起点）
-nx-kv timegoal update --cwd <dir> --prompt "<新版>" [--duration <秒>] # 改提示词/时长（保起点）
+nx-kv timegoal set    --cwd <dir> --duration <5h|10800> --prompt "<...>"  # 设/换（新起点）
+nx-kv timegoal update --cwd <dir> --prompt "<新版>" [--duration <5h|秒>] # 改提示词/时长（保起点）
 nx-kv timegoal show   --cwd <dir>                                   # 仅查（不算时间）
-nx-kv timegoal check  --cwd <dir>                                   # 算时间 + 回显 prompt
+nx-kv timegoal check  --cwd <dir> --summary "<现状>" --progress "<完成度/下一步>"  # 算时间 + 回显 prompt + 写一条日志
 nx-kv timegoal clear  --cwd <dir>                                   # 清空
-nx-kv timegoal list                                                   # 所有有 timegoal 的目录
+nx-kv timegoal list                                                   # 所有有 timegoal 的目录（到点的单列在归档区）
+nx-kv timegoal log    --cwd <dir>                                    # 回看每轮 check 的记录（现状/完成度/剩余）
 ```
+
+> `check` **必须**带 `--summary` 与 `--progress`：每次检查都会往该目录的 timegoal
+> 日志里追加一条（现状 + 完成度 + 剩余时间）。缺参数会直接报
+> `缺少参数 --summary`——这是刻意设计的：没有现状的日志等于没记。
+> 日志只保留**最近 200 条**，长跑任务不会把 store 撑爆。
+
+### 到点之后会发生什么（自动失效）
+
+- 目标过了截止时刻 → **立即失效**：从 `list` 的活动列表与面板上消失，
+  不再越堆越多（以前要手动点一次「回收已到点」）。
+- 但**保留期内** `show` / `check` **仍然查得到**：agent 最后一轮照样拿到 `reached:true` +
+  提示词原文，能写完最终总结再停手。这就是"最后一轮还能读到"的保证。
+- 保留期（默认 **7 天**）到后**整条自动删掉**（连提示词原文一起）——**不需要任何人
+  手动清理**。保留期可用 `NX_KV_TIMEGOAL_RETENTION_SEC` 覆盖（想留更久就调大）。
+  实际落盘点是下一轮 `check`（或 set/update/clear）。
+- 失效的目标**不可复活**：`update` 会报错。**要继续这个目录的工作，请用 `set` 开新一局**
+  （起点从现在重算）。
+- `check` 会额外返回 `overtimeSec`（已经超时多久）——**面板不显示它**（超时长是内部量，
+  摆一个已经停掉的钟在眼前只会让人盯着它）。
+- 日志只保留最近 200 条；`totalChecks` 记总轮次、`logTruncated` 标记历史被截断，
+  截断是**可见的**，不会静默丢历史。
 
 全部命令都支持 `--json`（推荐 agent 用）。
 
@@ -129,7 +158,7 @@ nx-kv timegoal list                                                   # 所有�
 - **新建**：填目录 + 时长 + 提示词 → 创建
 - **编辑**：改时长 / 提示词；默认**保留计时起点**，勾「重置起点」才从头计
 - **清空**：删除该目录的 timegoal
-- 状态列显示 `剩 mm:ss` 或 `已到点`，每 1.5s 自动刷新
+- 状态列显示 `剩 mm:ss`，每 1.5s 自动刷新；到点后这一格**留空**（目标已失效）
 
 **2. 主题卡里的 timegoal 行**：
 

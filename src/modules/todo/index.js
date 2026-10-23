@@ -10,6 +10,7 @@
 // 同一主题里也本来就有内容重复的任务。按 id 定位迟早改错数据。
 // 详见 service.js 的「定位」一节。
 import * as service from './service.js';
+import { groupActions } from './group.js';
 
 // 所有动作都接受 --group 覆盖当前工作空间；默认取本机配置里的当前值
 const GROUP = { type: 'number', hint: '工作空间 id（默认取当前）' };
@@ -91,14 +92,19 @@ function renderTaskAttachments(d) {
 
 export default {
   id: 'todo',
-  title: '清单（= Web「清单」页）',
+  title: '清单（= Web「清单」页；含工作空间设置）',
   order: 30,
   view: () => import('./view.jsx'),
 
   // CRUD 资源声明：任务的增删查改必须齐备，且 CLI 与面板都能调用
   resource: 'todo',
+  // 工作空间（group）已于 2026-10-23 从独立模块并进来：它是**清单的设置**，
+  // 不该单独占一个模块/一个 tab。命令与路由一字未改，只是住进了清单模块。
+  // 两个资源都要过 registry 的 CRUD 完备性断言。
+  resources: ['todo', 'group'],
 
   actions: [
+    ...groupActions,
     // ─── CRUD 五操作 ───────────────────────────────────────────
     {
       id: 'todo.list',

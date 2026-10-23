@@ -6,6 +6,7 @@ import { useStore } from '../../web/frontend/store.jsx';
 import { useToast, useGuard, useDialog, Modal, Copyable } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 import TaskEditor from './editor.jsx';
+import GroupPopup from './group-popup.jsx';
 import { AttachmentText } from './markdown.jsx';
 import { clipboardFiles, snippetsOf, uploadMany } from './upload.js';
 
@@ -67,6 +68,8 @@ export default function TodoView() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ topic: '', text: '' });
   const [modal, setModal] = useState(null);
+  // 工作空间弹窗（清单的设置，不再是独立 tab）
+  const [showGroup, setShowGroup] = useState(false);
   // 已完成常常上百条，默认只展示前 N 条，避免整页全是历史噪音
   const [expanded, setExpanded] = useState({});
   // 正在编辑的那一条：{ task, pick }。pick 是消歧下标，必须原样回传后端。
@@ -267,7 +270,15 @@ export default function TodoView() {
     <>
       <div className="toolbar">
         <label>工作空间</label>
-        <span className="pill on">{groupName}</span>
+        {/* 工作空间是**清单的设置**，不是独立功能域：点这颗药丸弹出子弹窗，
+            里面切换 / 看成员 / 改名 / 解散 / 新建都在那儿。 */}
+        <button
+          className="pill on rp-ws-trigger"
+          title="切换工作空间 / 管理（清单按工作空间隔离）"
+          onClick={() => setShowGroup(true)}
+        >
+          {groupName} <span className="rp-caret">▾</span>
+        </button>
         <span className="sep"></span>
         <label>主题</label>
         <select value={ui.topic} onChange={(e) => patchUi({ topic: e.target.value })}>
@@ -336,6 +347,8 @@ export default function TodoView() {
       </div>
 
       <CliHints module="todo" />
+      {/* 工作空间弹窗：清单的设置入口（切换 / 成员 / 改名 / 解散 / 新建） */}
+      {showGroup ? <GroupPopup onClose={() => setShowGroup(false)} /> : null}
       {editing ? (
         <Modal title="编辑任务" onClose={() => setEditing(null)}>
           <TaskEditor

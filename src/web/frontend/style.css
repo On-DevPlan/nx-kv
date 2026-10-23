@@ -787,6 +787,8 @@ h3 { font-size: 13px; margin: 0; font-weight: 700; }
 }
 .pill:hover { background: var(--soft-2); color: var(--ink); }
 .pill.on { background: var(--ink); color: var(--paper); font-weight: 600; }
+/* 清单页的「工作空间」触发器：点开是子弹窗（工作空间是清单的设置，不是独立 tab） */
+.rp-ws-trigger .rp-caret { font-size: 9px; opacity: 0.75; margin-left: 3px; }
 /* 形态区分：实体 = 实心（默认 on 样式）；软链接 = 虚线描边 */
 .pill.on.lnk {
   background: var(--paper);

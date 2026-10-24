@@ -3,7 +3,7 @@
 KV 清单（todo）管理中枢。一个 `npx` 命令起一个 Web 面板，同时提供同构 CLI——
 **面板上的每个按钮，底层都是同一条 CLI 命令**，输出 `--json` 即可被任何 agent 直接消费。
 
-对接 GoFrame KV 后端（默认 `http://47.110.80.47:8988`），
+对接 GoFrame KV 后端（默认 `http://192.0.2.47:8988`），
 数据落在**四把 key** 上：`todo:open` / `todo:done` / `todo:freeze` / `todo:topics`。
 
 任务正文还能直接**嵌图片与文档**（标准 markdown：`![说明](fileId)` / `[文件名](fileId)`）——

@@ -159,6 +159,62 @@ test('导出可回灌：导出 → 清空看板 → 导入还原成员', async (
   assert.ok(c); // gamma 保持未分组
 });
 
+test('组内描述：挂在成员关系上，非成员报错，摘出成员时描述一起消失', async () => {
+  const { a, b } = await seed();
+  const board = await boards.createBoard({ name: '常用' });
+  const other = await boards.createBoard({ name: '远程打字' });
+  await boards.assignRepo({ id: a, board: board.id });
+  await boards.assignRepo({ id: a, board: other.id });
+
+  // 写入：同一仓库在不同看板里的组内描述互不相干
+  await boards.setBoardRepoNote({ id: a, board: board.id, note: '主力开发仓库' });
+  await boards.setBoardRepoNote({ id: a, board: other.id, note: '只是参考实现' });
+  let d = await boards.listBoards();
+  const reposOf = (name) => d.boards.find((x) => x.name === name).repos;
+  assert.equal(reposOf('常用').find((r) => r.name === 'alpha').note, '主力开发仓库');
+  assert.equal(reposOf('远程打字').find((r) => r.name === 'alpha').note, '只是参考实现');
+
+  // 仓库支持按绝对路径定位（与 repo get 同款）
+  const byPath = await boards.setBoardRepoNote({ id: join(dir, 'alpha'), board: board.id, note: '按路径写入' });
+  assert.equal(byPath.id, a);
+
+  // 非成员显式报错（不静默挂到没人读的地方）
+  await assert.rejects(
+    () => boards.setBoardRepoNote({ id: b, board: board.id, note: 'x' }),
+    /不在看板/
+  );
+
+  // 清除：note 留空 = 删键
+  await boards.setBoardRepoNote({ id: a, board: other.id, note: '' });
+  d = await boards.listBoards();
+  assert.equal(d.boards.find((x) => x.name === '远程打字').repos.find((r) => r.name === 'alpha').note, '');
+
+  // 摘出成员：组内描述一起消失，不留孤儿
+  await boards.setBoardRepoNote({ id: a, board: board.id, note: '临时' });
+  await boards.assignRepo({ id: a, board: board.id, remove: true });
+  d = await boards.listBoards();
+  assert.ok(!d.boards.find((x) => x.name === '常用').repos.some((r) => r.name === 'alpha'));
+  const raw = JSON.parse(await (await import('node:fs/promises')).readFile(process.env.NX_KV_REPOS_STORE, 'utf8'));
+  const stored = raw.boards.find((x) => x.name === '常用');
+  assert.ok(!stored.repoNotes || !stored.repoNotes[a], 'repoNotes 里不留已摘成员的键');
+});
+
+test('导入导出：组内描述随 repos[].note 往返', async () => {
+  const { a } = await seed();
+  const board = await boards.createBoard({ name: '回灌板' });
+  await boards.assignRepo({ id: a, board: board.id });
+  await boards.setBoardRepoNote({ id: a, board: board.id, note: '角色说明' });
+  const exported = await boards.exportBoards();
+  assert.equal(exported.boards[0].repos[0].note, '角色说明');
+
+  // 清空后用导出 JSON 回灌，note 一并还原
+  await boards.removeBoard(board.id);
+  const back = await boards.importBoards({ json: JSON.stringify(exported) });
+  assert.equal(back.created, 1);
+  const d = await boards.listBoards();
+  assert.equal(d.boards[0].repos.find((r) => r.name === 'alpha').note, '角色说明');
+});
+
 test('中心清单：listRepos 返回扁平列表（按名排序），每条带所属看板', async () => {
   const { a, b, c } = await seed(); // alpha / beta / gamma
   const b1 = await boards.createBoard({ name: '常用' });

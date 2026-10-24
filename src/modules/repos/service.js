@@ -80,19 +80,14 @@ export function newId(prefix) {
   return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-function parseTags(tags) {
-  if (Array.isArray(tags)) return tags.map((t) => String(t).trim()).filter(Boolean);
-  if (typeof tags === 'string') return tags.split(',').map((t) => t.trim()).filter(Boolean);
-  return [];
-}
-
-function normalizeRepoInput({ path, name, tags, notes, desc }) {
+// 标签已废除（2026-10-24）：分组只走看板一条路，两套平行的分组机制只会互相打架。
+// 旧数据里残留的 tags 字段留在盘上不动，但不再写入、不再外发。
+function normalizeRepoInput({ path, name, notes, desc }) {
   const abs = resolve(String(path || ''));
   return {
     id: newId('r'),
     name: (name || basename(abs) || 'repo').trim(),
     path: abs,
-    tags: parseTags(tags),
     desc: (desc || '').trim(),
     notes: (notes || '').trim(),
     addedAt: new Date().toISOString(),
@@ -119,11 +114,11 @@ export async function listRepos() {
   for (const b of s.boards) {
     for (const rid of b.repoIds || []) {
       if (!boardsOf.has(rid)) boardsOf.set(rid, []);
-      boardsOf.get(rid).push({ id: b.id, name: b.name, desc: b.desc || '' });
+      boardsOf.get(rid).push({ id: b.id, name: b.name, desc: b.desc || '', note: (b.repoNotes || {})[rid] || '' });
     }
   }
   return s.repos
-    .map((r) => ({ ...r, boards: boardsOf.get(r.id) || [] }))
+    .map(({ tags: _dropped, ...r }) => ({ ...r, boards: boardsOf.get(r.id) || [] }))
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
@@ -144,7 +139,6 @@ export async function updateRepo(id, patch) {
     const r = s.repos.find((x) => x.id === id);
     if (!r) throw notFound('repo 不存在: ' + id);
     if (patch.name !== undefined) r.name = String(patch.name).trim();
-    if (patch.tags !== undefined) r.tags = parseTags(patch.tags);
     if (patch.desc !== undefined) r.desc = String(patch.desc).trim();
     if (patch.notes !== undefined) r.notes = String(patch.notes);
     if (patch.path !== undefined) {
@@ -183,7 +177,8 @@ export async function getRepo(idOrPath) {
   const boards = s.boards
     .filter((b) => (b.repoIds || []).includes(r.id))
     .map((b) => ({ id: b.id, name: b.name, desc: b.desc || '' }));
-  return { ...r, boards };
+  const { tags: _dropped, ...base } = r;
+  return { ...base, boards };
 }
 
 const SKIP_DIRS = new Set([
@@ -320,7 +315,7 @@ export async function contextMap() {
   for (const b of s.boards) {
     for (const rid of b.repoIds || []) {
       if (!boardsOf.has(rid)) boardsOf.set(rid, []);
-      boardsOf.get(rid).push({ id: b.id, name: b.name, desc: b.desc || '' });
+      boardsOf.get(rid).push({ id: b.id, name: b.name, desc: b.desc || '', note: (b.repoNotes || {})[rid] || '' });
     }
   }
   const map = new Map();
@@ -329,7 +324,6 @@ export async function contextMap() {
       id: r.id,
       name: r.name,
       path: r.path,
-      tags: r.tags || [],
       desc: r.desc || '',
       notes: r.notes || '',
       boards: boardsOf.get(r.id) || [],

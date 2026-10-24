@@ -6,8 +6,9 @@
 
 - 用户问「这台机器上有哪些仓库 / 某个仓库在哪」
 - 需要把某个目录登记为受管仓库，或扫描某目录批量发现仓库
-- 需要维护仓库的元信息：名称、描述、标签、备注，或改登记路径
+- 需要维护仓库的元信息：名称、描述、备注，或改登记路径
 - **需要 git 状态、差异、拉取、推送时不要进这里**——本工具不提供 git 操作（见下）
+- **只查分组与关系（不改动）时用 [[kv-repo]]**——那是仓库组的查询/报告侧
 
 ## 边界：本工具不管 git
 
@@ -35,7 +36,6 @@ git -C <path> pull --no-edit
   "id": "r_xxx",
   "name": "ext",
   "path": "D:\\a_js\\js_proj\\br_controller\\ext",
-  "tags": ["eco-import"],
   "desc": "对外扩展模块",
   "notes": "",
   "addedAt": "…",
@@ -44,8 +44,10 @@ git -C <path> pull --no-edit
 ```
 
 - **id 或绝对路径**都能定位仓库（agent 直接给路径更省事）
-- tags 是自由标签数组，用于分组
 - 路径不必是 git 仓库：登记不校验目录内容，也不要求目录存在
+- **没有标签**：分组只走看板一条路（2026-10-24 废除仓库 tags，两套平行分组只会打架）
+- **看板的 desc 是领域描述**：写该组仓库的侧重、配合关系（谁是中心/终端）、
+  关键路径与搜索关键词——它是给人和 agent 读的上下文，写法约定见 [[kv-repo]]
 
 ## SOP
 
@@ -59,7 +61,7 @@ nx-kv repo list --json          # 程序消费
 ### 2. 登记
 
 ```bash
-nx-kv repo add <path> [--name N] [--desc D] [--tags a,b] [--notes T]
+nx-kv repo add <path> [--name N] [--desc D] [--notes T]
 ```
 
 - `name` 缺省取目录名
@@ -80,7 +82,7 @@ nx-kv repo scan [root] [--depth 3] [--dry-run]   # 不带 --dry-run 会真的全
 
 ```bash
 nx-kv repo get <id|path> [--json]
-nx-kv repo update <id> [--name N] [--desc D] [--tags a,b] [--notes T] [--path P]
+nx-kv repo update <id> [--name N] [--desc D] [--notes T] [--path P]
 ```
 
 - `update --path` 用来纠正登记错位的目录；改到**已被别的记录占用**的路径会显式报错

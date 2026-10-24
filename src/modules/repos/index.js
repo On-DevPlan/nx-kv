@@ -42,7 +42,7 @@ function renderRepoList(list) {
   if (!list.length) return '（暂无仓库，用 repo add <path> 登记）';
   const lines = [`共 ${list.length} 个仓库`];
   for (const r of list) {
-    lines.push(`${r.name.padEnd(18)} ${r.path}  ${r.tags.length ? '[' + r.tags.join(',') + ']' : ''}`);
+    lines.push(`${r.name.padEnd(18)} ${r.path}`);
   }
   return lines.join('\n');
 }
@@ -52,10 +52,12 @@ function renderRepo(r) {
     `${r.name}${r.desc ? '  ' + r.desc : ''}`,
     `  id:    ${r.id}`,
     `  路径:  ${r.path}`,
-    `  标签:  ${r.tags.length ? r.tags.join(', ') : '-'}`,
     `  登记:  ${(r.addedAt || '').slice(0, 10)}`,
     `  更新:  ${(r.updatedAt || '').slice(0, 10)}`,
   ];
+  if (r.boards?.length) {
+    lines.push(`  看板:  ${r.boards.map((b) => b.name).join('、')}`);
+  }
   if (r.notes) lines.push('  备注:  ' + r.notes);
   return lines.join('\n');
 }
@@ -100,7 +102,6 @@ export default {
       flags: {
         name: { type: 'string' },
         desc: { type: 'string' },
-        tags: { type: 'array' },
         notes: { type: 'string' },
       },
       run: (ctx) => service.addRepo(ctx),
@@ -110,13 +111,12 @@ export default {
       id: 'repo.update',
       cli: ['repo', 'update'],
       http: ['PATCH', '/api/repos/:id'],
-      summary: '修改仓库路径 / 名称 / 描述 / 标签 / 备注',
+      summary: '修改仓库路径 / 名称 / 描述 / 备注',
       args: ['id'],
       flags: {
         path: { type: 'string' },
         name: { type: 'string' },
         desc: { type: 'string' },
-        tags: { type: 'array' },
         notes: { type: 'string' },
       },
       run: (ctx) => service.updateRepo(ctx.id, ctx),
@@ -234,6 +234,23 @@ export default {
       render: (d) => (d.removed
         ? `已移出: ${d.name}（${d.count} 个看板）`
         : `${d.added ? '已聚合' : '已在（位次已调）'}: ${d.name} → ${d.board}`),
+    },
+    {
+      // 组内描述：同一个仓库在不同看板里的角色各不相同，描述挂在成员关系上而非登记上。
+      // 登记的 desc = 「这个仓库是干什么的」；组内描述 = 「它在这个组里占什么位置、怎么配合」。
+      id: 'board.note',
+      cli: ['board', 'note'],
+      http: ['POST', '/api/boards/note'],
+      summary: '写/清组内描述：仓库在看板里的角色与配合关系（--note 留空 = 清除；仓库给 id 或绝对路径）',
+      args: ['id'],
+      flags: {
+        board: { type: 'string', required: true, hint: '看板 id' },
+        note: { type: 'string', hint: '组内描述（多行可含关键路径/关键词；留空 = 清除）' },
+      },
+      run: (ctx) => boards.setBoardRepoNote({ id: ctx.id, board: ctx.board, note: ctx.note }),
+      render: (d) => (d.note
+        ? `已写组内描述: ${d.name} @ 「${d.boardName}」`
+        : `已清除组内描述: ${d.name} @ 「${d.boardName}」`),
     },
     {
       id: 'board.import',

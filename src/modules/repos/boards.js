@@ -3,21 +3,31 @@
 // 与 repo 登记的关系：看板只存 id 引用，登记数据（name/desc/path…）的唯一真相在 s.repos——
 // 删看板不动登记，删登记要同步摘引用（见 service.js 的 removeRepo）。
 // 本文件不含传输层概念（不认识 argv 与 HTTP）。
+import { resolve } from 'node:path';
 import { loadStore, mutateStore, newId } from './service.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
 
 // 卡片投影：面板方格与 CLI 速览共用的最小字段
-const card = (r) => ({ id: r.id, name: r.name, desc: r.desc, path: r.path, tags: r.tags || [] });
+const card = (r) => ({ id: r.id, name: r.name, desc: r.desc, path: r.path });
 
 const cleanText = (v) => String(v || '').trim();
+
+// 组内描述：同一个仓库在不同看板里的角色可以各不相同（「fr 组里它是 API 契约方」，
+// 「nx 组里它只是同族工具」），所以描述挂在**看板的成员关系**上（repoNotes），
+// 而不是仓库登记上。登记里的 desc 回答「这个仓库是干什么的」，
+// 组内描述回答「它在这个组里占什么位置、怎么配合」。
+const noteOf = (b, rid) => (b.repoNotes || {})[rid] || '';
 
 export async function listBoards() {
   const s = await loadStore();
   const inBoard = new Set(s.boards.flatMap((b) => b.repoIds || []));
-  const reposOf = (ids) =>
-    ids.map((id) => s.repos.find((r) => r.id === id)).filter(Boolean).map(card);
+  const reposOf = (b) =>
+    (b.repoIds || [])
+      .map((id) => s.repos.find((r) => r.id === id))
+      .filter(Boolean)
+      .map((r) => ({ ...card(r), note: noteOf(b, r.id) }));
   return {
-    boards: s.boards.map((b) => ({ id: b.id, name: b.name, desc: b.desc, repos: reposOf(b.repoIds || []) })),
+    boards: s.boards.map((b) => ({ id: b.id, name: b.name, desc: b.desc, repos: reposOf(b) })),
     unassigned: s.repos.filter((r) => !inBoard.has(r.id)).map(card),
   };
 }
@@ -26,7 +36,10 @@ export async function getBoard(id) {
   const s = await loadStore();
   const b = s.boards.find((x) => x.id === id);
   if (!b) throw notFound('看板不存在: ' + id);
-  const repos = (b.repoIds || []).map((rid) => s.repos.find((r) => r.id === rid)).filter(Boolean).map(card);
+  const repos = (b.repoIds || [])
+    .map((rid) => s.repos.find((r) => r.id === rid))
+    .filter(Boolean)
+    .map((r) => ({ ...card(r), note: noteOf(b, r.id) }));
   return { id: b.id, name: b.name, desc: b.desc, repos };
 }
 
@@ -87,12 +100,15 @@ export async function assignRepo({ id, board, before, remove } = {}) {
           target.repoIds.splice(at, 1);
           n = 1;
         }
+        // 摘出成员时组内描述一起带走（它只对这个成员关系有意义）
+        if (target.repoNotes && n) delete target.repoNotes[id];
       } else {
         for (const b of s.boards) {
           const at = (b.repoIds || []).indexOf(id);
           if (at >= 0) {
             b.repoIds.splice(at, 1);
             n += 1;
+            if (b.repoNotes) delete b.repoNotes[id];
           }
         }
       }
@@ -112,6 +128,32 @@ export async function assignRepo({ id, board, before, remove } = {}) {
       else target.repoIds.push(id);
     }
     return { id, board: target ? target.id : '', added, name: repo.name };
+  });
+}
+
+// 设置组内描述：id = 仓库（id 或绝对路径均可），board = 看板 id。
+// 只对**已在板内**的成员有意义——不是成员就显式报错，别静默挂到没人读的地方。
+// note 为空 = 清除。
+export async function setBoardRepoNote({ id, board, note } = {}) {
+  if (!id) throw badInput('缺少仓库 id 或路径');
+  if (!board) throw badInput('缺少看板 id（--board）');
+  return mutateStore((s) => {
+    let repo = s.repos.find((r) => r.id === id);
+    if (!repo) {
+      const p = resolve(String(id));
+      repo = s.repos.find((r) => r.path.toLowerCase() === p.toLowerCase());
+    }
+    if (!repo) throw notFound('repo 不存在: ' + id);
+    const b = s.boards.find((x) => x.id === board);
+    if (!b) throw notFound('看板不存在: ' + board);
+    if (!(b.repoIds || []).includes(repo.id)) {
+      throw conflict(`仓库「${repo.name}」不在看板「${b.name}」里——组内描述只对成员有意义`);
+    }
+    const text = String(note || '').trim();
+    if (!b.repoNotes) b.repoNotes = {};
+    if (text) b.repoNotes[repo.id] = text;
+    else delete b.repoNotes[repo.id];
+    return { id: repo.id, name: repo.name, board: b.id, boardName: b.name, note: text };
   });
 }
 
@@ -162,13 +204,18 @@ export async function importBoards({ json } = {}) {
           b.repoIds.push(id);
           matched += 1;
         }
+        const note = cleanText(e.note);
+        if (note) {
+          if (!b.repoNotes) b.repoNotes = {};
+          b.repoNotes[id] = note;
+        }
       }
     }
     return { created, merged, matched, unmatched };
   });
 }
 
-// 导出：看板 + 仓库的 path/name/desc（可回灌给 import 的同一结构）
+// 导出：看板 + 仓库的 path/name/desc + 组内描述 note（可回灌给 import 的同一结构）
 export async function exportBoards() {
   const s = await loadStore();
   return {
@@ -177,9 +224,13 @@ export async function exportBoards() {
       name: b.name,
       desc: b.desc,
       repos: (b.repoIds || [])
-        .map((id) => s.repos.find((r) => r.id === id))
-        .filter(Boolean)
-        .map((r) => ({ path: r.path, name: r.name, desc: r.desc })),
+        .map((id) => {
+          const r = s.repos.find((x) => x.id === id);
+          if (!r) return null;
+          const note = noteOf(b, id);
+          return note ? { path: r.path, name: r.name, desc: r.desc, note } : { path: r.path, name: r.name, desc: r.desc };
+        })
+        .filter(Boolean),
     })),
   };
 }

@@ -14,7 +14,7 @@ export function configPathFromEnv() {
   return process.env.NX_KV_CONFIG || CONFIG_PATH;
 }
 
-export const DEFAULT_BASE_URL = 'http://47.110.80.47:8988';
+export const DEFAULT_BASE_URL = 'http://192.0.2.47:8988';
 
 const EMPTY = () => ({
   baseUrl: process.env.NX_KV_BASE_URL || DEFAULT_BASE_URL,

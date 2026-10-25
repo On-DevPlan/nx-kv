@@ -850,21 +850,14 @@ export default function SessionTaskView() {
                       <strong>{row.name}</strong>
                       {row.isGlobal && <span className="tag badge">全局池</span>}
                       {t?.manual && <span className="tag">已登记</span>}
-                      {/* 仓库上下文（= 周围联系）：这个目录属于哪个已登记仓库、
-                          它又关联着哪些看板。一枚 chip，不占额外一行。 */}
+                      {/* 仓库上下文：这个目录属于哪个已登记仓库。一枚 chip 一行不占。
+                          看板归属不在本地任务页显示（太吵）——要看去「仓库」页。 */}
                       {t?.repo && (
                         <span
                           className="tag repo-boards"
-                          title={
-                            `仓库「${t.repo.name}」${t.repo.desc ? '：' + t.repo.desc : ''}` +
-                            (t.repo.boards?.length
-                              ? `\n所属看板：${t.repo.boards.map((b) => b.name).join('、')}`
-                              : '\n（未归入任何看板）')
-                          }
+                          title={`仓库「${t.repo.name}」${t.repo.desc ? '：' + t.repo.desc : ''}`}
                         >
-                          {t.repo.boards?.length
-                            ? t.repo.boards.map((b) => b.name).join(' · ')
-                            : t.repo.name}
+                          {t.repo.name}
                         </span>
                       )}
                       {row.cwd && cwdTail.length > 0 && (
@@ -1098,17 +1091,12 @@ export default function SessionTaskView() {
 
       {active && showQueue && (
         <>
-          {/* 仓库上下文提示：投递到这个目录时，先告诉用户「这是哪个仓库、
-              周围关联哪些看板」——写任务时不用再切到「仓库」页去查。 */}
+          {/* 仓库上下文提示：投递到这个目录时，先告诉用户「这是哪个仓库、干什么用」——
+              写任务时不用再切到「仓库」页去查。看板归属不在这里显示。 */}
           {active.repo && (
             <div className="compose-context">
               <span className="repo-name">仓库 {active.repo.name}</span>
               {active.repo.desc ? <span className="repo-desc">{active.repo.desc}</span> : null}
-              {active.repo.boards?.length ? (
-                <span className="repo-boards-list">
-                  看板：{active.repo.boards.map((b) => b.name).join('、')}
-                </span>
-              ) : null}
             </div>
           )}
           <div className="toolbar compose-toolbar">

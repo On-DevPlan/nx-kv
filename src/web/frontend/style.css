@@ -461,7 +461,6 @@ select {
 }
 .compose-context .repo-name { font-weight: 700; color: var(--ink); }
 .compose-context .repo-desc { color: var(--ink-2); }
-.compose-context .repo-boards-list { color: var(--mid); margin-left: auto; }
 
 /* 仓库页的页头与表单（类名沿用 nx-rh，样式按 nx-kv 的变量重写）——
    迁移时漏了这几行，仓库页在 nx-kv 里是"裸"的：标题、说明与按钮各占一行。 */

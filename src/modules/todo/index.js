@@ -10,6 +10,7 @@
 // 同一主题里也本来就有内容重复的任务。按 id 定位迟早改错数据。
 // 详见 service.js 的「定位」一节。
 import * as service from './service.js';
+import { groupActions } from './group.js';
 
 // 所有动作都接受 --group 覆盖当前工作空间；默认取本机配置里的当前值
 const GROUP = { type: 'number', hint: '工作空间 id（默认取当前）' };
@@ -26,6 +27,15 @@ function renderTaskList(d) {
 
   const lines = [];
   if (d.topic) lines.push(`topic=${d.topic}`);
+  // 只在真同步过时才出现（见 service.listTodos）；失败数单独提出来，
+  // 因为「清单读到了、附件没下下来」是使用者必须看见的一件事。
+  if (d.attachmentsSync) {
+    const s = d.attachmentsSync;
+    lines.push(
+      `附件同步: 目录 ${s.dir || '—'} · 下载 ${s.downloaded || 0} · 跳过 ${s.skipped || 0}` +
+        (s.failures && s.failures.length ? ` · 失败 ${s.failures.length}` : '')
+    );
+  }
   for (const [key, label] of groups) {
     const items = d[key];
     if (!items) continue;
@@ -41,6 +51,11 @@ function renderTaskList(d) {
       // 定位一律用 --ref <内容>，见文件头的说明。
       lines.push(`  ${String(t.id).padStart(w)}  [${t.topic}] ${t.text}${mark ? '  ' + mark : ''}`);
       if (t.note) lines.push(`  ${' '.repeat(w)}    note: ${t.note.slice(0, 100)}`);
+      for (const a of t.attachments || []) {
+        lines.push(
+          `  ${' '.repeat(w)}    ${a.kind === 'image' ? '图片' : '附件'}: ${a.localPath || a.name}${a.localPath ? '' : '（未同步）'}`
+        );
+      }
     }
   }
   return lines.join('\n');
@@ -54,20 +69,42 @@ const renderTask = (t) =>
     t.doneAt ? `  完成:   ${t.doneAt}` : '',
     t.frozenAt ? `  冻结:   ${t.frozenAt}` : '',
     t.note ? `  备注:   ${t.note}` : '',
+    ...(t.attachments || []).map(
+      (a) => `  附件:   ${a.localPath || a.name}${a.localPath ? '' : `（未同步；nx-kv file sync --ids ${a.id}）`}`
+    ),
   ]
     .filter(Boolean)
     .join('\n');
 
+function renderTaskAttachments(d) {
+  const lines = [`[${d.task.topic}] ${d.task.text}`];
+  if (!d.count) {
+    lines.push('  （这条任务没有引用附件）');
+    return lines.join('\n');
+  }
+  lines.push(`  本地目录: ${d.localDir}（自动下载 ${d.autoSync ? '开' : '关'}）`);
+  for (const a of d.attachments) {
+    lines.push(`  ${a.kind === 'image' ? '图片' : '附件'}  ${a.name}  [${a.id}]`);
+    lines.push(`      ${a.localPath || '（未同步；nx-kv file sync --ids ' + a.id + '）'}`);
+  }
+  return lines.join('\n');
+}
+
 export default {
   id: 'todo',
-  title: '清单（= Web「清单」页）',
+  title: '清单（= Web「清单」页；含工作空间设置）',
   order: 30,
   view: () => import('./view.jsx'),
 
   // CRUD 资源声明：任务的增删查改必须齐备，且 CLI 与面板都能调用
   resource: 'todo',
+  // 工作空间（group）已于 2026-10-23 从独立模块并进来：它是**清单的设置**，
+  // 不该单独占一个模块/一个 tab。命令与路由一字未改，只是住进了清单模块。
+  // 两个资源都要过 registry 的 CRUD 完备性断言。
+  resources: ['todo', 'group'],
 
   actions: [
+    ...groupActions,
     // ─── CRUD 五操作 ───────────────────────────────────────────
     {
       id: 'todo.list',
@@ -146,6 +183,47 @@ export default {
       },
       run: (ctx) => service.removeTodo(ctx.ref, { topic: ctx.topic, pick: ctx.pick, groupId: ctx.group }),
       render: (d) => `已删除 [${d.removed.topic}] ${d.removed.text}`,
+    },
+
+    // ─── 附件（正文里的类 markdown 嵌入）───────────────────────
+    //
+    // 附件的**内容**归 file 模块（上传 / 列表 / 同步到本地）；这里只管
+    // 「任务正文怎么引用一个附件」——引用形式就是一个标准 markdown 嵌入：
+    //   ![说明](fileId)  图片（面板里内联预览）
+    //   [文件名](fileId) 其他文件（docx 等，点开即下载/预览）
+    // 解析实现只有一处：./attach.js（Node 与浏览器共用）。
+    {
+      id: 'todo.attach',
+      cli: ['todo', 'attach'],
+      http: ['POST', '/api/todo/attach'],
+      summary: '给任务追加附件：--path 上传本机文件，或 --fileId 追加已上传附件，以 markdown 嵌入正文末尾',
+      flags: {
+        ref: { type: 'string', required: true, hint: '要挂附件的那条任务的内容（整串）' },
+        path: { type: 'string', hint: '本机文件路径（先上传再嵌入）' },
+        fileId: { type: 'string', hint: '已上传附件的 id（32 位 hex，可带扩展名）' },
+        name: { type: 'string', hint: '嵌入文字与本地文件名（默认取原文件名）' },
+        kind: { type: 'string', enum: ['image', 'file'], hint: '用图片语法还是链接语法（默认按扩展名判断）' },
+        accessLevel: { type: 'string', enum: ['public', 'private', 'protected'], default: 'public' },
+        topic: { type: 'string', hint: '消歧：同内容有多条时用主题收窄' },
+        pick: { type: 'number', hint: '消歧：同内容多条时按编号选（配合报错里的列表）' },
+        group: GROUP,
+      },
+      run: (ctx) => service.attachToTask(ctx.ref, ctx),
+      render: (d) => `已给 [${d.task.topic}] 追加附件（${d.kind === 'image' ? '图片' : '附件'}）\n  ${d.markdown}\n  正文: ${d.task.text}`,
+    },
+    {
+      id: 'todo.attachments',
+      cli: ['todo', 'attachments'],
+      http: ['GET', '/api/todo/attachments'],
+      summary: '列出某条任务引用的附件，以及本地是否已有（给 agent 直接读本地文件）',
+      flags: {
+        ref: { type: 'string', required: true, hint: '任务内容（整串）' },
+        topic: { type: 'string', hint: '消歧：同内容有多条时用主题收窄' },
+        pick: { type: 'number', hint: '消歧：同内容多条时按编号选（配合报错里的列表）' },
+        group: GROUP,
+      },
+      run: (ctx) => service.listTaskAttachments(ctx.ref, ctx),
+      render: renderTaskAttachments,
     },
 
     // ─── 状态流转 ──────────────────────────────────────────────

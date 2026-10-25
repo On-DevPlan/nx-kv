@@ -5,7 +5,7 @@
 // 运行：pnpm test（或 node tests/smoke.mjs）
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -18,6 +18,8 @@ const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-smoke-'));
 const cfgPath = join(tmp, 'config.json');
 // 进程内的 server.js 也要读这份配置 —— 只给子进程设 env 是不够的
 process.env.NX_KV_CONFIG = cfgPath;
+// 附件本地镜像目录也指向临时目录：绝不在测试里往真实的 ~/.nx-kv/attachments/ 写东西
+process.env.NX_KV_ATTACHMENTS = join(tmp, 'attachments');
 
 const results = [];
 function check(name, cond, extra = '') {
@@ -359,15 +361,154 @@ try {
   check('localtask cancel 缺定位报错', (await cli(['localtask', 'cancel'])).status === 1);
 
   // 删除主题 / 批量删除
+  // 队列里还有**未领取**任务的主题默认删不掉（保护还没人领的活），要 --force 才强删。
   const delA = await cliJson(['localtask', 'add', '待删 A', '--cwd', topicA]);
   const delB = await cliJson(['localtask', 'add', '待删 B', '--cwd', topicB]);
-  check('单删主题 topic remove（按 key）', (await cli(['localtask', 'topic', 'remove', '--key', delA.key])).status === 0);
+  check('有未领取任务的主题默认拒绝删除', (await cli(['localtask', 'topic', 'remove', '--key', delA.key])).status === 1);
   check('单删缺定位报错', (await cli(['localtask', 'topic', 'remove'])).status === 1);
+  check('单删主题 topic remove（按 key，--force）', (await cli(['localtask', 'topic', 'remove', '--key', delA.key, '--force'])).status === 0);
   check('总览剩 1 个（B）', (await cliJson(['localtask', 'list'])).topics.length === 1);
   const batch = await cliJson(['localtask', 'topic', 'remove-many', '--keys', delB.key]);
-  check('批量删除主题 remove-many', batch.count === 1, JSON.stringify(batch));
+  check('批量删除：有未领取任务时跳过（reason:has_pending）', batch.count === 0 && batch.skipped[0] && batch.skipped[0].reason === 'has_pending', JSON.stringify(batch));
   check('remove-many 缺条件报错', (await cli(['localtask', 'topic', 'remove-many'])).status === 1);
+  check('批量删除 --force 连未领取任务一起删', (await cliJson(['localtask', 'topic', 'remove-many', '--keys', delB.key, '--force'])).count === 1);
   check('总览清空', (await cliJson(['localtask', 'list'])).topics.length === 0);
+
+  // 任务级删除是**可恢复**的软删除
+  const softA = await cliJson(['localtask', 'add', '待软删', '--cwd', topicA]);
+  const softRm = await cliJson(['localtask', 'remove', '--id', String(softA.task.id), '--cwd', topicA]);
+  check('任务软删除：带 deletedAt 标记', !!(softRm.removed && softRm.removed.deletedAt), JSON.stringify(softRm.removed));
+  const softBack = await cliJson(['localtask', 'task', 'restore', '--id', String(softA.task.id), '--cwd', topicA]);
+  check('任务可恢复（撤销删除）', softBack.restored === true, JSON.stringify(softBack));
+  await cliJson(['localtask', 'topic', 'remove', '--key', softA.key, '--force']);
+
+  // ─── 11c. 附件：上传 / 嵌入任务 / 同步到本地 / 自动下载 ──────
+  //
+  // 这一段的要害是「附件能不能变成 agent 手上的一个本地文件」——
+  // 上传只认 multipart、后端不回原名、本地名字只能自己定，这些都在这里钉死。
+  const attHome = process.env.NX_KV_ATTACHMENTS;
+  const pngPath = join(tmp, 'logo.png');
+  const pngBytes = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+  writeFileSync(pngPath, pngBytes);
+
+  const up = await cliJson(['file', 'upload', '--path', pngPath]);
+  check('file upload 返回 32 位 hex fileId', /^[0-9a-f]{32}$/.test(up.fileId || ''), JSON.stringify(up).slice(0, 160));
+  check(
+    'file upload 认出图片并给出 markdown 片段',
+    up.isImage === true && up.markdown.image === `![logo.png](${up.fileId})`,
+    JSON.stringify(up.markdown)
+  );
+
+  const docxPath = join(tmp, '报告.docx');
+  writeFileSync(docxPath, Buffer.from('PK\u0003\u0004 fake docx body'));
+  const upDoc = await cliJson(['file', 'upload', '--path', docxPath]);
+  check(
+    'file upload 支持 docx（按链接语法）',
+    upDoc.isImage === false && upDoc.markdown.file === `[报告.docx](${upDoc.fileId})`,
+    JSON.stringify(upDoc.markdown)
+  );
+
+  check('file list 看到两个附件', (await cliJson(['file', 'list'])).total === 2);
+  check('未同步时 localPath 为空', (await cliJson(['file', 'list'])).files.every((f) => f.localPath === ''));
+  check(
+    'file get 读到元数据',
+    await (async () => {
+      const fi = await cliJson(['file', 'get', up.fileId]);
+      return fi.fileId === up.fileId && fi.size === pngBytes.length;
+    })()
+  );
+  check('file get 不存在的 id 报错', (await cli(['file', 'get', 'f'.repeat(32)])).status === 1);
+
+  await cli(['todo', 'add', '--topic', 'att', '待办带附件']);
+  const attached = await cliJson(['todo', 'attach', '--ref', '待办带附件', '--fileId', up.fileId, '--name', 'logo.png', '--kind', 'image']);
+  check(
+    'todo attach 把嵌入追加进正文末尾',
+    attached.task.text === `待办带附件 ![logo.png](${up.fileId})`,
+    attached.task.text
+  );
+  const attached2 = await cliJson(['todo', 'attach', '--ref', attached.task.text, '--fileId', upDoc.fileId, '--kind', 'file']);
+  check('再追加一个 docx 附件', attached2.task.text.includes(`[${upDoc.fileId}](${upDoc.fileId})`), attached2.task.text);
+  check(
+    'todo attach 拒绝不像附件 id 的值',
+    (await cli(['todo', 'attach', '--ref', attached2.task.text, '--fileId', 'http://evil/x.png'])).status === 1
+  );
+
+  const attList = await cliJson(['todo', 'attachments', '--ref', attached2.task.text]);
+  check('todo attachments 列出 2 个附件且类型正确', attList.count === 2 && attList.attachments[0].kind === 'image', JSON.stringify(attList.attachments));
+
+  const sync1 = await cliJson(['file', 'sync']);
+  check('file sync 下载两个附件', sync1.downloaded === 2, JSON.stringify(sync1).slice(0, 200));
+  check('落盘目录在 nx-kv 用户目录下（测试用 NX_KV_ATTACHMENTS 覆盖）', sync1.usedDir.startsWith(attHome), sync1.usedDir);
+  check('返回的是**本地绝对路径**且文件真的在', sync1.files.every((f) => existsSync(f.path)), JSON.stringify(sync1.files.map((f) => f.path)));
+  check('非图片附件保留扩展名（否则双击打不开）', sync1.files.some((f) => f.path.endsWith('.docx')), JSON.stringify(sync1.files.map((f) => f.name)));
+
+  const sync2 = await cliJson(['file', 'sync']);
+  check('二次同步跳过未变更（不重复下载）', sync2.downloaded === 0 && sync2.skipped === 2, JSON.stringify(sync2).slice(0, 160));
+
+  check('setting 默认不开自动下载', (await cliJson(['setting', 'get'])).autoSyncAttachments === false);
+  check('setting set 打开自动下载', (await cliJson(['setting', 'set', '--autoSyncAttachments'])).autoSyncAttachments === true);
+  check('setting.set 无参数报错', (await cli(['setting', 'set'])).status === 1);
+
+  // 换一个目录，验证「读任务时自动下载」这条链路真的会落盘并回传全路径
+  const attHome2 = join(tmp, 'attachments-2');
+  process.env.NX_KV_ATTACHMENTS = attHome2;
+  const read = await cliJson(['todo', 'get', '--ref', attached2.task.text]);
+  check('todo get 回传 attachments', Array.isArray(read.attachments) && read.attachments.length === 2, JSON.stringify(read).slice(0, 240));
+  check('每个附件都带存在的本地全路径', read.attachments.every((a) => existsSync(a.localPath)), JSON.stringify(read.attachments.map((a) => a.localPath)));
+  check('图片按 markdown 里的说明取名落盘', read.attachments[0].localPath.endsWith('logo.png'), read.attachments[0].localPath);
+  check('读取时自动下载有如实报告', !!read.attachmentsSync && read.attachmentsSync.downloaded === 2, JSON.stringify(read.attachmentsSync));
+  check(
+    'todo list 也带本地路径',
+    await (async () => {
+      const l = await cliJson(['todo', 'list', '--topic', 'att']);
+      const t = l.open.find((x) => x.text === attached2.task.text);
+      return !!t && t.attachments.length === 2 && existsSync(t.attachments[0].localPath);
+    })()
+  );
+  // 关掉开关后：不再触网同步（无 attachmentsSync），但**附件标注仍在**
+  // ——「这条任务挂了附件」本身是清单事实，与「要不要下载」是两回事。
+  check('关掉自动下载后不再同步，但附件标注仍保留', await (async () => {
+    await cli(['setting', 'set', '--autoSyncAttachments=false']);
+    const l = await cliJson(['todo', 'list', '--status', 'open']);
+    const t = l.open.find((x) => x.text === attached2.task.text);
+    return l.attachmentsSync === undefined && !!t && t.attachments.length === 2 && t.attachments[0].synced === true;
+  })());
+  process.env.NX_KV_ATTACHMENTS = attHome;
+
+  check(
+    'file content（CLI）给出地址与本地路径',
+    await (async () => {
+      const c = await cliJson(['file', 'content', up.fileId]);
+      return /^https?:\/\//.test(c.url) && c.localPath.endsWith('.png');
+    })()
+  );
+
+  const removed = await cliJson(['file', 'remove', upDoc.fileId]);
+  check('file remove 软删成功', removed.status === 'ok' && removed.deleted === true, JSON.stringify(removed));
+  check('remove 后只剩一个附件', (await cliJson(['file', 'list'])).total === 1);
+
+  // 附件必须与任务落在**同一个**工作空间。这里刻意用 `group use shared`（改本机配置）
+  // 而不是 `--group` —— 「配置里是 190、这条命令没传 --group」正是最容易静默错位的路径。
+  await cli(['group', 'use', 'shared']);
+  const sharedUp = await cliJson(['file', 'upload', '--path', pngPath, '--name', 'shared.png']);
+  check('切组后上传落进该空间', /^[0-9a-f]{32}$/.test(sharedUp.fileId || ''));
+  check('该空间 list 能看到它', (await cliJson(['file', 'list'])).files.some((f) => f.fileId === sharedUp.fileId));
+  check(
+    '切回默认组后就看不到它（空间隔离生效）',
+    await (async () => {
+      await cli(['group', 'use', 'default']);
+      return (await cliJson(['file', 'list'])).files.every((f) => f.fileId !== sharedUp.fileId);
+    })()
+  );
+  check(
+    'sync 落到该工作空间的目录（不是 default）',
+    await (async () => {
+      await cli(['group', 'use', 'shared']);
+      const s = await cliJson(['file', 'sync']);
+      await cli(['group', 'use', 'default']);
+      return /[\\/]190$/.test(s.usedDir) && s.files.length === 1 && existsSync(s.files[0].path);
+    })()
+  );
 
   // ─── 12. Web API 与静态页 ────────────────────────────────────
   const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'runtime', 'server.js')).href);
@@ -387,6 +528,27 @@ try {
 
   const todoRes = await (await fetch(base + '/api/todo')).json();
   check('api todo 列表', todoRes.ok && Array.isArray(todoRes.data.open));
+
+  // ---- 附件（面板链路：base64 上传 → 服务端转 multipart；<img> 走 content 代理）----
+  const apiFiles0 = await (await fetch(base + '/api/file')).json();
+  check('api file 列表可达', apiFiles0.ok && Array.isArray(apiFiles0.data.files) && apiFiles0.data.files.length === 1);
+
+  const upHttp = await (
+    await fetch(base + '/api/file', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'panel.png', content: pngBytes.toString('base64'), contentType: 'image/png', group: 0 }),
+    })
+  ).json();
+  check('api file 上传（面板 base64 路径）', upHttp.ok && /^[0-9a-f]{32}$/.test(upHttp.data.fileId || ''), JSON.stringify(upHttp).slice(0, 200));
+  check('上传后列表变成 2', (await (await fetch(base + '/api/file')).json()).data.total === 2);
+
+  const imgRes = await fetch(base + '/api/file/content/' + up.fileId);
+  const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+  check('api file content 直出字节（面板图片预览走这条）', imgRes.status === 200 && imgBuf.length === pngBytes.length, `${imgRes.status}/${imgBuf.length}`);
+
+  const apiSetting = await (await fetch(base + '/api/setting')).json();
+  check('api setting 可读', apiSetting.ok && apiSetting.data.autoSyncAttachments === false, JSON.stringify(apiSetting).slice(0, 200));
 
   const groupsRes = await (await fetch(base + '/api/groups')).json();
   // 不assert精确数量：前面的用例会新建/解散组，数量是流动的

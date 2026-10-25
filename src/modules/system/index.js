@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { configPathFromEnv, loadConfig } from '../../core/config.js';
 import { badInput, notFound } from '../../core/errors.js';
 import { listGroups } from '../../core/kvapi.js';
-import { DEFAULT_PORT } from '../../core/paths.js';
+import { APP_NAME, DEFAULT_PORT } from '../../core/paths.js';
 
 const VERSION = JSON.parse(
   readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')
@@ -33,6 +33,9 @@ async function bootstrap() {
     }
   }
   return {
+    // app 段是跨项目的认领签名：serve 端口被占时靠 app.name 判断
+    // 「上面跑的是不是本项目的面板」——相等则复用，不等则顺延端口。
+    app: { name: APP_NAME, version: VERSION },
     version: VERSION,
     configPath: configPathFromEnv(),
     baseUrl: cfg.baseUrl,

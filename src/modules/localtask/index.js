@@ -48,19 +48,31 @@ const renderTask = (t) =>
 function renderAdd(d) {
   const where = d.isGlobal ? '全局任务（共享池）' : `主题「${d.name}」`;
   const head = `#${d.task.id} [${d.task.status}] ${d.task.text}`;
-  return d.delivered
+  const ignored = d.ignoredCwd
+    ? `\n注意：--global 优先，你给的 --cwd「${d.ignoredCwd}」未生效（任务进了全局池）。`
+    : '';
+  const body = d.delivered
     ? `已实时投递给等待中的 agent（${where}）: ${head}`
     : `已排入${where}队列（agent 下一次 wait 取走）: ${head}`;
+  return body + ignored;
 }
 
 // wait 的人读输出：成功给任务（注明来自本地队列还是全局共享池），超时明确提示「本轮结束」
 function renderWait(r) {
   if (r.status === 'timeout') {
+    // 两种"取消"要分清楚：时间目标到点（预算用完，agent 该收尾写总结了）
+    // vs 用户在面板点了「关闭等待」。
+    if (r.reason === 'goal_expired') {
+      return `时间目标已到点，本局预算用完（没有下一条任务）：主题「${r.cwd}」现状「${r.summary}」结束本轮。`;
+    }
     const tail = r.cancelled ? '（用户在面板点了「关闭」）' : '';
     return `等待超时（${Math.round(r.timeoutMs / 1000)} 秒未回填）${tail}：主题「${r.cwd}」现状「${r.summary}」结束本轮。`;
   }
-  const origin =
-    (r.source === 'global' ? '全局任务池' : '本目录队列') + (r.queued ? '排队任务' : ' · 实时回填');
+  // 「实时回填 / 排队任务」按 **delivered** 判，不要按 queued 反推：
+  // 跨进程轮询捡走的那条是 queued:false + delivered:false —— 它其实来自队列，
+  // 只是被 500ms 的轮询取到了；按 queued 反推会把它说成「实时回填」，是假的。
+  const how = r.delivered ? '实时回填' : '排队任务';
+  const origin = (r.source === 'global' ? '全局任务池' : '本目录队列') + ` · ${how}`;
   return (
     `已取得下一条任务（${origin} · 主题「${r.cwd}」现状「${r.summary}」）: #${r.task.id}\n` +
     `  ${r.task.text.replace(/\n/g, '\n  ')}`
@@ -82,7 +94,7 @@ function renderRemoveMany(d) {
   if (d.skipped.length) {
     lines.push(`跳过 ${d.skipped.length} 个：`);
     for (const s of d.skipped) {
-      const why = s.reason === 'waiting' ? '等待中' : s.reason === 'protected' ? '全局共享池' : '不存在';
+      const why = s.reason === 'waiting' ? '等待中' : s.reason === 'protected' ? '全局共享池' : s.reason === 'has_pending' ? `有 ${s.pending || 0} 条未领取任务` : '不存在';
       lines.push(`  - [${why}] ${s.name || s.key}`);
     }
   }
@@ -117,6 +129,41 @@ export default {
       flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
       run: (ctx) => service.getTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
       render: renderTask,
+    },
+    {
+      id: 'localtask.importRemote',
+      cli: ['localtask', 'import-remote'],
+      http: ['POST', '/api/localtasks/import-remote'],
+      summary:
+        '从远程清单（KV 后端）导入任务到本地队列：按内容定位远程那条 → 落进本地队列 → 远程那条标记为已完成（note 写明被哪个队列领走）',
+      // 按**内容**定位远程任务，不按 id —— 远程 id 会被复用（todo 模块的硬约定）。
+      // --ref 可给多次（面板一次勾选多条时走 HTTP 的 refs 数组）。
+      flags: {
+        ref: { type: 'array', hint: '远程任务内容（整串，可给多次）' },
+        cwd: CWD,
+        global: { type: 'boolean', hint: '导入到全局共享池（--cwd 被忽略）' },
+        topic: { type: 'string', hint: '远程主题（消歧用）' },
+        pick: { type: 'number', hint: '同内容多条时的编号（消歧用）' },
+      },
+      run: (ctx) =>
+        service.importRemoteTasks({
+          // ref（CLI 的 --ref，可给多次）与 refs（面板发的列表）**都传过去**：
+          // HTTP body 里未声明的键会原样透传，两边各叫各的更顺手。
+          ref: ctx.ref,
+          refs: ctx.refs,
+          cwd: ctx.cwd,
+          global: ctx.global,
+          topic: ctx.topic,
+          pick: ctx.pick,
+        }),
+      render: (d) => {
+        const lines = [d.message];
+        for (const r of d.results || []) {
+          if (r.error) lines.push(`  ✗ ${r.ref} —— ${r.error}`);
+          else lines.push(`  ✓ ${r.ref} → 本地「${r.localTopic}」#${r.localId}${r.remoteDone ? '（远程已标记完成）' : '（远程未标记完成）'}`);
+        }
+        return lines.join('\n');
+      },
     },
     {
       id: 'localtask.add',
@@ -155,13 +202,44 @@ export default {
       id: 'localtask.remove',
       cli: ['localtask', 'remove'],
       http: ['DELETE', '/api/localtasks/item'],
-      summary: '删除一条任务（按 --id，定位到 --cwd 主题或 --key）',
+      summary: '删除一条任务（按 --id，定位到 --cwd 主题或 --key）；删除是**可恢复**的（软删除），加 --purge 彻底清除',
+      flags: {
+        id: { type: 'number', required: true, hint: '任务编号' },
+        cwd: CWD,
+        key: KEY,
+        purge: { type: 'boolean', hint: '彻底删除（不可恢复）；不加就是软删除，可 restore 回来' },
+      },
+      run: (ctx) => service.removeTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, purge: ctx.purge }),
+      render: (d) =>
+        d.purged
+          ? `已彻底删除主题「${d.name}」#${d.removed.id}: ${d.removed.text}（不可恢复）`
+          : `已删除主题「${d.name}」#${d.removed.id}: ${d.removed.text}（可用 localtask task restore 恢复）`,
+    },
+    {
+      id: 'localtask.task.restore',
+      cli: ['localtask', 'task', 'restore'],
+      http: ['POST', '/api/localtasks/tasks/restore'],
+      summary: '恢复一条被删除（软删除）的任务（撤销删除）',
       flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
-      run: (ctx) => service.removeTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
-      render: (d) => `已删除主题「${d.name}」#${d.removed.id}: ${d.removed.text}`,
+      run: (ctx) => service.restoreTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
+      render: (d) =>
+        d.restored
+          ? `已恢复主题「${d.name}」#${d.task.id}: ${d.task.text}`
+          : `主题「${d.name}」#${d.task.id} 本来就没被删除，无需恢复。`,
     },
 
     // ─── 主题删除（单个 / 批量）──────────────────────────────
+    {
+      id: 'localtask.topic.add',
+      cli: ['localtask', 'topic', 'add'],
+      http: ['POST', '/api/localtasks/topic'],
+      summary: '登记一个工作目录：空目录也常驻（prune 不清），供面板「添加目录」用',
+      flags: { cwd: { type: 'string', required: true, hint: '工作目录（绝对路径或可解析的相对路径）' } },
+      run: (ctx) => service.addTopic({ cwd: ctx.cwd }),
+      render: (d) =>
+        `${d.existed ? '已更新' : '已登记'}目录「${d.name}」${d.cwd}` +
+        (d.existed ? '（原先已存在）' : ''),
+    },
     {
       id: 'localtask.topic.remove',
       cli: ['localtask', 'topic', 'remove'],
@@ -242,14 +320,18 @@ export default {
         id: { type: 'number', required: true, hint: '要移动的任务编号' },
         beforeId: { type: 'number', hint: '插到该编号之前（与 afterId 二选一）' },
         afterId: { type: 'number', hint: '插到该编号之后（与 beforeId 二选一）' },
+        // 连字符写法也认：help 文案一直写的是 --before-id / --after-id，
+        // 但真去敲会报「未知参数」——文档与实现对不上，用户第一次用就踩。
+        'before-id': { type: 'number', hint: '同 --beforeId（连字符写法）' },
+        'after-id': { type: 'number', hint: '同 --afterId（连字符写法）' },
         cwd: CWD,
         key: KEY,
       },
       run: (ctx) =>
         service.reorderTasks({
           id: ctx.id,
-          beforeId: ctx.beforeId,
-          afterId: ctx.afterId,
+          beforeId: ctx.beforeId !== undefined ? ctx.beforeId : ctx['before-id'],
+          afterId: ctx.afterId !== undefined ? ctx.afterId : ctx['after-id'],
           cwd: ctx.cwd,
           key: ctx.key,
         }),
@@ -303,7 +385,15 @@ export default {
       cli: ['localtask', 'presence'],
       http: ['GET', '/api/localtasks/presence'],
       summary: '探测主面板上当前打开的「实时任务」标签数（活动 SSE 连接数；用于 wait 不重复开页）',
-      run: () => service.panelPresence(),
+      // HTTP 形态读**本进程**的计数（只有 serve 进程里才有 SSE 连接）；
+      // CLI 形态去问常驻主面板 —— 否则 CLI 永远报 0（这条命令形同虚设）。
+      run: (ctx, opts) =>
+        opts && opts.transport === 'http'
+          ? service.panelPresence()
+          : service.queryPanelPresence(),
+      render: (d) =>
+        `主面板当前有 ${d.clients} 个活动标签` +
+        (d.source === 'self' ? '（主面板没在跑或探测失败，这里是本进程内计数）' : ''),
     },
 
     {
@@ -316,9 +406,22 @@ export default {
       flags: {
         cwd: { type: 'string', hint: '工作目录过滤（与 --key 二选一）' },
         key: { type: 'string', hint: '主题 key 过滤（与 --cwd 二选一）' },
+        timeout: { type: 'number', hint: '最多监听多少秒后自动结束（默认不限）' },
+        limit: { type: 'number', hint: '最多输出多少条事件后自动结束（默认不限）' },
       },
       stream: true,
-      run: (ctx) => service.streamEventsSSE(ctx.__raw.req, ctx.__raw.res, { cwd: ctx.cwd, key: ctx.key }),
+      // 按传输方式分流：
+      //   HTTP → SSE（req/res 透传，api.js 只在 HTTP 下注入 ctx.__raw）
+      //   CLI  → 逐行 NDJSON（以前 CLI 跑这条命令必崩：ctx.__raw 是 undefined）
+      run: (ctx, opts) =>
+        opts && opts.transport === 'http'
+          ? service.streamEventsSSE(ctx.__raw.req, ctx.__raw.res, { cwd: ctx.cwd, key: ctx.key })
+          : service.streamEventsNDJSON({
+              cwd: ctx.cwd,
+              key: ctx.key,
+              timeoutSec: ctx.timeout,
+              limit: ctx.limit,
+            }),
     },
   ],
 };

@@ -17,6 +17,14 @@
     "kv-localget": {
       "skills": ["kv-localget"],
       "summary": "领取排给本目录的本地任务 + 队列管理（领取侧）"
+    },
+    "kv-timegoal": {
+      "skills": ["kv-timegoal"],
+      "summary": "把「持续运行 N 小时」任务固化到 nx-kv：每轮回显原文提示词防偏移 + 时间到点自动停手"
+    },
+    "kv-repo": {
+      "skills": ["kv-repo"],
+      "summary": "仓库组识别与关系报告——/kv-repo <组名> 一步加载看板相关项目；board/repo 查询、读并维护领域描述（中心/终端、关键路径、搜索关键词）"
     }
   }
 }

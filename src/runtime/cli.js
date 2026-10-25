@@ -4,7 +4,7 @@
 // renderXxx 四处重复登记。现在命令表、help 文本、参数校验全部由 action 声明派生，
 // 新增命令只需在所属模块的 actions 里加一条。
 import { readFileSync } from 'node:fs';
-import { DEFAULT_PORT } from '../core/paths.js';
+import { APP_NAME, DEFAULT_PORT } from '../core/paths.js';
 import { configPathFromEnv } from '../core/config.js';
 import { toErrorPayload, exitCodeOf, badInput } from '../core/errors.js';
 import { ACTIONS, MODULES } from './registry.js';
@@ -20,7 +20,7 @@ const BUILTINS = [
   {
     id: 'serve',
     cli: ['serve'],
-    summary: '启动 Web 面板',
+    summary: '启动 Web 面板（默认 :7877；--port N 改端口；--no-open 不开浏览器；端口上已有本面板则直接打开它；NX_SERVE_NO_OPEN=1 全局不开浏览器）',
     flags: {
       port: { type: 'number', default: DEFAULT_PORT },
       'no-open': { type: 'boolean' },
@@ -255,15 +255,83 @@ function printCommandHelp(cmd) {
 async function cmdServe(ctx) {
   const { startServer } = await import('./server.js');
   const { startPanelIdleGuard } = await import('../modules/localtask/panel-guard.js');
+  const { registerPanel, unregisterPanel, notePanelRequest } = await import(
+    '../modules/localtask/service.js'
+  );
   const { openBrowser } = await import('../core/open.js');
+  const { autoOpenEnabled, resolvePortConflict, describeOccupant } = await import('../core/serve-port.js');
+  const host = '127.0.0.1';
   const port = ctx.port || DEFAULT_PORT;
   const autoExit = !!ctx['auto-exit'];
+  // --no-open 与 NX_SERVE_NO_OPEN 都看这里：任一为真即完全不开浏览器。
+  const canOpen = autoOpenEnabled(ctx['no-open']);
 
   // 活动观测钩子：每个进来的请求（静态或 /api）都回调一次，供空闲自释放判活。
   // 不参与响应，异常必须吞掉。
-  const onRequest = () => {};
-  const server = await startServer({ port, host: '127.0.0.1', onRequest });
+  //
+  // ⚠️ 这里以前是空函数 —— 于是看门狗的 noteActivity() 从来没被调用过：
+  // 空闲时长是从**进程启动**算起的，用户正用着面板也会在 10 分钟后被自动释放。
+  // 看门狗要等 server 起好才创建，所以这里用一个可变的 holder，让 onRequest
+  // 始终指向当前的 noteActivity。
+  let noteActivity = () => {};
+  const onRequest = () => {
+    try {
+      noteActivity();
+    } catch {
+      /* 观测失败不影响响应 */
+    }
+    // 记录「面板最近有请求」：SSE 只挂在本地任务页，用户切到别的页时
+    // presence 会误判面板已关闭（结构审计发现的真缺口）。
+    try {
+      notePanelRequest();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  let server;
+  try {
+    server = await startServer({ port, host, onRequest });
+  } catch (err) {
+    if (!err || err.code !== 'EADDRINUSE') throw err;
+
+    // 端口被占：先问一句「上面跑的是不是我」。
+    const decision = await resolvePortConflict(port, APP_NAME, host);
+
+    if (decision.action === 'reuse') {
+      // 自己的面板已经在跑：不重复启动，直接把浏览器指过去。
+      const addr = `http://${host}:${port}`;
+      console.log(APP_NAME + ' 已在运行：' + addr);
+      console.log('直接打开浏览器（不重复启动）；如需重启请先停掉旧实例');
+      if (canOpen) openBrowser(addr);
+      return;
+    }
+
+    // 别人占的：顺延到下一个空闲端口，再起自己的面板。
+    console.log(
+      `端口 ${port} 已被占用（占用者: ${describeOccupant(decision.occupant)}），改用 ${decision.port}`
+    );
+    server = await startServer({ port: decision.port, host, onRequest });
+  }
+
   const addr = `http://127.0.0.1:${server.address().port}`;
+
+  // 登记自己：presence 要能问**所有**跑着面板的端口（只问 7877 会看不见
+  // `serve --port` 或端口被占自动顺延出来的面板 → wait 会多开窗口）。
+  const boundPort = server.address().port;
+  try {
+    registerPanel(boundPort);
+  } catch {
+    /* 登记失败不影响面板本身 */
+  }
+  const unregister = () => {
+    try {
+      unregisterPanel(boundPort);
+    } catch {
+      /* ignore */
+    }
+  };
+  process.on('exit', unregister);
 
   console.log('nx-kv · nx-kv v' + VERSION);
   console.log(`面板:   ${addr}`);
@@ -272,7 +340,7 @@ async function cmdServe(ctx) {
   if (autoExit) console.log('模式:   空闲自释放（面板关闭且无等待中的主题后自动退出）');
   console.log('按 Ctrl+C 停止');
 
-  if (!ctx['no-open']) openBrowser(addr);
+  if (canOpen) openBrowser(addr);
 
   const shutdown = () => {
     console.log('\n正在停止...');
@@ -281,9 +349,12 @@ async function cmdServe(ctx) {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  // 启动空闲看门狗（仅 --auto-exit 模式）；空回调避免依赖具体参数
+  // 启动空闲看门狗（仅 --auto-exit 模式）
   if (autoExit) {
-    startPanelIdleGuard({ server, idleSec: ctx.idle });
+    const guard = startPanelIdleGuard({ server, idleSec: ctx.idle });
+    // 接上活动钩子：此后每个面板请求都会刷新「最后一次活动时间」，
+    // 空闲时长终于反映**真实使用**而不是进程启动时间。
+    noteActivity = guard.noteActivity;
   }
 }
 

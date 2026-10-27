@@ -4,6 +4,53 @@
 
 ## [Unreleased]
 
+### Added
+
+- **参考仓库绑定模型升级：多对多 + 绑定描述 + 命名空间分层**（承接参考仓库功能的首轮反馈）：
+  - 面板双名单分离：主表只放开发仓库（行内新增「绑定的参考仓库」列 + 选项式「绑定」按钮）；
+    参考仓库有自己的**大面板表格**（状态徽标 / 远程地址 / 绑定 chips / 操作），不再与开发仓库混排；
+  - 绑定全部改**选项式勾选**（克隆弹窗、参考侧「绑定…」、dev 侧「绑定」三处都是 checkbox），不再手填 id 字符串；
+  - **绑定描述**（`repo ref note`）：「这个参考在该仓库/看板里参考什么」挂在绑定关系上，
+    同一条绑定在不同组里的意义可以不同；摘绑即清；导出导入随关系走；
+  - **分层查询**（`repo ref of [id|路径]`，缺省当前目录）：第一层 = 直接绑定的参考，
+    第二层 = 所在看板（命名空间）上的参考按组列出——agent 问「做这个仓库有什么参考」一条命令；
+  - 筛选到看板时显示该组（项目组）的**命名空间参考区**：组级绑定（可写命名空间描述）+ 成员仓库级参考（标明经由谁）。
+
+### Changed
+
+- 仓库页主表语义收窄为「开发仓库清单」（参考仓库移入自己的面板）；「全部」chip 改名「开发仓库」。
+- **绑定关系改为双向记录**：ref 侧记 `{repo|board, id, note?}`，dev 侧记反向的 `{ref, id, note?}`。
+  之前只有 ref 侧记，dev 仓库自己「不知道自己挂了哪些参考」——查上下文、列清单都得反向扫
+  ref 全表。现在 dev 仓库直接带着自己的参考列表（描述两侧各存一份同一内容），
+  删仓库/删看板双向清理，不留死链。存量数据已迁移（18 条反向引用）。
+
+- **仓库模块吸纳 mmx-research-gitclone：参考仓库（type=ref）成为登记的一等公民**。
+  远程 clone 下来学习/参考的仓库与开发仓库同住中心清单，`type` 区分双态
+  （dev = 本机开发，缺省；ref = 远程参考）；所有存储以**远程 git 地址为 key**
+  （`normalizeRemoteKey` 归一——SSH/HTTPS 写法不同也算同源，天然查重）：
+  - 新命令族 `repo ref`：`repo ref clone <url>`（clone + 登记 + 绑定一条龙，SSH 优先
+    失败自动回退 HTTPS；落到 `gitRepoRoot`——**未设置则显式拒绝**，
+    `nx-kv setting set --gitRepoRoot <非C盘目录>`）、`repo ref add`（登记已有 checkout）、
+    `repo ref sync [--all]`（`git pull --ff-only`，冲突不自动 merge）、
+    `repo ref check`（目录/.git/origin 一致性 + 绑定死链，零副作用）；
+  - **绑定关系**：`repo bind <ref> --repo <开发仓库> --board <看板id>`——参考仓库的
+    `linked` 记录「这个参考是给谁看的」，一个 ref 可绑多个目标、一个目标可被多个 ref 绑；
+    删开发仓库/删看板同步摘绑定。在开发仓库目录里跑 `repo ref clone` 默认自动绑定当前仓库；
+  - **布局导入导出 v2**：`repo export` / `repo import`——导出**远程地址 + 分组 +
+    参考关系**（不含任何本地路径，dev 无 remote 如实进 warnings）；导入两段式，
+    `--plan` 零副作用先出计划（登记什么/克隆什么/建什么组/连什么关系），确认后按
+    `--clone all|dev|ref|none` 与 `--only <remote…>` 选择性执行；
+  - `repo remote <id|path> [--url]`：登记远程地址存档（无 --url 从目录 origin 读）——
+    开发仓库也建议记，导出时导它；
+  - 新设置：`gitRepoRoot`（参考仓库存储根）、`gitDevRoot`（导入时开发仓库克隆根），
+    CLI `setting set` 与面板「仓库 → 参考仓库 → 存储根」同源读写；
+  - 面板「仓库」页新增**参考仓库子面板**：克隆/同步/检查/布局导入导出/存储根设置，
+    参考仓库行带检查状态徽标；筛选到看板时挂载「绑定在该看板或其成员上的参考仓库」小节；
+    中心清单 ref 行带「参考」标，筛选器加「参考」快捷档；
+  - 新 skill `kv-repo-mmx-gitrepo`（`nx-kv skill install kv-repo-mmx-gitrepo`）：
+    mmx 深搜 → `repo ref clone` 落地，替代裸 git clone + `.claude/www/git.remote`
+    文本清单的散装流程（旧 skill 不受影响，存量 `.claude/repo/` 可用 `repo ref add` 收编）。
+
 ### Fixed
 
 - **`localtask wait` 不再重复创建浏览器标签页**。旧活性判据有两处盲区：
@@ -14,6 +61,12 @@
   - 现在活性 = 活动 SSE 标签 **或** 面板最近 30s 内有请求（App 壳每 15s 打 `/api/ping`），
     面板发现扫描 `panels.json` 全部登记端口并复用；App 壳在「本地任务」tab 上
     增加等待中主题角标，用户停在任意页也能收到提醒。
+- bootstrap 补回 `projectRoot` 字段（serve 进程 cwd）——仓库页扫描弹窗的
+  「留空＝当前项目目录」之前读的是不存在的字段，缺省根恒为空。
+- 仓库页白屏（`Cannot access 'Z' before initialization`）——`shown` 的 useMemo 引用了
+  声明在它之后的 `devRepos`（生产构建压成单字母变量，报错信息因此看不出是哪个变量）。
+  已修，并新增 `scripts/check-tdz.mjs` 静态自查（接进 `npm run lint`）：
+  组件体内的「先引用后声明」和 useMemo 依赖晚于自身，都会在构建期被拦下。
 
 ## [0.11.4] - 2026-10-25
 

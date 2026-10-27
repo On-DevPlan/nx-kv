@@ -19,7 +19,7 @@ import { useStore } from '../../web/frontend/store.jsx';
 import { useGuard, useDialog, useToast, Modal, Copyable } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 
-const EMPTY_FORM = { path: '', name: '', desc: '', notes: '' };
+const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
 
 // 路径照搬目录看板的「可扫标签」画法：祖先目录变暗、末段略重，点击复制全文。
 // 纯灰一长串（旧画法）里，人眼要逐字符对比才能找到目录名。
@@ -39,7 +39,9 @@ function RepoPath({ path }) {
 // 中心清单里**不再显示所属看板**——行内的 chip + × + 下拉三件套又挤又乱，
 // 归属的增删统一走「成员管理」弹窗（筛选到看板 → 导入仓库 / 摘除）。
 // 看板视图下描述行显示**组内描述**（该仓库在这个组里的角色），没写则回退仓库描述。
-function RepoRow({ r, filterBoard, acts }) {
+// 主表只放开发仓库（type=dev）——参考仓库有自己的大面板，两份名单不混。
+// 「参考」列显示**绑定到这个开发仓库**的参考仓库（多对多：一个 dev 可挂多个 ref）。
+function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
   const note = filterBoard
     ? ((r.boards || []).find((b) => b.id === filterBoard.id)?.note || '')
     : null;
@@ -47,6 +49,7 @@ function RepoRow({ r, filterBoard, acts }) {
   const descTitle = note !== null
     ? (note ? `组内描述：${note}` : `（组内描述未写，暂显示仓库描述）${r.desc || ''}`)
     : (r.desc || '');
+  const refs = refsOfRepo.get(r.id) || [];
   return (
     <tr>
       <td className="rp-name">
@@ -54,6 +57,16 @@ function RepoRow({ r, filterBoard, acts }) {
         {desc ? <div className="muted rp-desc" title={descTitle}>{desc}</div> : null}
       </td>
       <td className="mono rp-path"><RepoPath path={r.path} /></td>
+      <td className="rp-refs">
+        {refs.length ? refs.map((ref) => (
+          <button key={ref.id} className="rp-ref-chip" title={`直接绑定：${ref.remote || ''}${ref.note ? '\n' + ref.note : ''}\n点击改绑定描述`}
+            onClick={() => acts.refNote(ref, r)}>
+            {ref.note ? <span className="rp-ref-chip-dot" /> : null}
+            {ref.name}
+          </button>
+        )) : <span className="muted rp-refs-none">—</span>}
+        <button className="btn small ghost rp-ref-bind" title="管理这个仓库绑定的参考仓库" onClick={() => acts.bind(r)}>绑定</button>
+      </td>
       <td className="rp-acts">
         <button className="btn small ghost" title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</button>
         <button className="btn small ghost" onClick={() => acts.edit(r)}>编辑</button>
@@ -97,6 +110,33 @@ export default function ReposView() {
   const [repos, setRepos] = useState([]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // ---- 参考仓库（type=ref）大面板状态 ----
+  const [refOpen, setRefOpen] = useState(false);
+  const [settingInfo, setSettingInfo] = useState(null); // gitRepoRoot / gitDevRoot 当前值
+  const [rootsOpen, setRootsOpen] = useState(false);
+  const [rootsForm, setRootsForm] = useState({ gitRepoRoot: '', gitDevRoot: '' });
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [cloneForm, setCloneForm] = useState({ url: '', name: '', desc: '', depth: '1' });
+  // 选项式绑定：克隆时勾选目标（{repoId:true, boardId:true}）；绑定管理弹窗复用同一形状
+  const [cloneTargets, setCloneTargets] = useState({});
+  const [refCheck, setRefCheck] = useState(null); // repo.ref.check 的结果（状态徽标的数据面）
+  // 绑定管理弹窗：目标 ref（checkbox 列表 = 全部 dev 仓库 + 全部看板）
+  const [bindFor, setBindFor] = useState(null); // ref 对象 | null
+  const [bindSel, setBindSel] = useState({}); // { 'repo:<id>': bool, 'board:<id>': bool }
+  // dev 侧绑定弹窗：某个开发仓库 → 勾选绑到它身上的参考
+  const [bindRepoFor, setBindRepoFor] = useState(null); // dev 仓库对象 | null
+  const [bindRepoSel, setBindRepoSel] = useState({}); // { refId: bool }
+  // 绑定描述编辑：{ ref, kind:'repo'|'board', targetId, targetName, note } | null
+  const [linkNoteFor, setLinkNoteFor] = useState(null);
+  const [linkNoteText, setLinkNoteText] = useState('');
+  // 布局导入导出
+  const [impLayoutOpen, setImpLayoutOpen] = useState(false);
+  const [impLayoutText, setImpLayoutText] = useState('');
+  const [impLayoutPlan, setImpLayoutPlan] = useState(null); // plan:true 的预览
+  const [impLayoutClone, setImpLayoutClone] = useState('none');
+  const [impLayoutOnly, setImpLayoutOnly] = useState({}); // remoteKey -> bool（选择性克隆）
+  const [expLayoutText, setExpLayoutText] = useState(null);
+
   const resetForm = () => { setForm(EMPTY_FORM); setEditing(null); setFormOpen(false); };
 
   const loadRepos = useCallback(async () => {
@@ -106,6 +146,171 @@ export default function ReposView() {
     setBoards(await api('/api/boards').catch(() => null));
   }, []);
   useEffect(() => { loadRepos(); loadBoards(); }, [loadRepos, loadBoards]);
+
+  // ---- 参考仓库：设置 / 检查 / 克隆 / 同步 / 布局导入导出 ----
+  const loadSetting = useCallback(async () => {
+    setSettingInfo(await api('/api/setting').catch(() => null));
+  }, []);
+  const loadRefCheck = useCallback(async () => {
+    setRefCheck(await api('/api/repos/ref/check').catch(() => null));
+  }, []);
+  useEffect(() => { loadSetting(); loadRefCheck(); }, [loadSetting, loadRefCheck]);
+
+  const saveRoots = () => guard(async () => {
+    const body = {};
+    if (rootsForm.gitRepoRoot.trim()) body.gitRepoRoot = rootsForm.gitRepoRoot.trim();
+    if (rootsForm.gitDevRoot.trim()) body.gitDevRoot = rootsForm.gitDevRoot.trim();
+    if (!Object.keys(body).length) return;
+    setSettingInfo(await api('/api/setting', { method: 'POST', body }));
+    setRootsOpen(false);
+    toast('已保存存储根目录');
+  });
+
+  const doClone = () => guard(async () => {
+    const url = cloneForm.url.trim();
+    if (!url) return;
+    const body = {
+      url,
+      name: cloneForm.name.trim() || undefined,
+      desc: cloneForm.desc.trim() || undefined,
+      depth: parseInt(cloneForm.depth, 10) || 1,
+      'no-bind': true, // 面板没有 cwd 语义，自动绑定只在 CLI（在开发仓库目录里跑）有意义
+    };
+    // 选项式绑定：勾选了哪些 dev 仓库 / 看板，就绑哪些（不填字符串）
+    const repoBinds = devRepos.filter((d) => cloneTargets['repo:' + d.id]).map((d) => d.id);
+    const boardBinds = boardList.filter((b) => cloneTargets['board:' + b.id]).map((b) => b.id);
+    if (repoBinds.length) body.bind = repoBinds;
+    if (boardBinds.length) body.board = boardBinds;
+    const r = await api('/api/repos/ref/clone', { method: 'POST', body });
+    setCloneOpen(false);
+    setCloneForm({ url: '', name: '', desc: '', depth: '1' });
+    setCloneTargets({});
+    toast(`已克隆: ${r.name} → ${r.dest || r.path}`);
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
+  });
+
+  const syncOne = (r) => guard(async () => {
+    const d = await api('/api/repos/ref/sync', { method: 'POST', body: { id: r.id } });
+    toast(d.status === 'updated' ? `已更新: ${d.name}` : d.status === 'upToDate' ? `${d.name} 已是最新` : `${d.name}: ${d.status} ${d.output || ''}`);
+  });
+
+  const syncAll = () => guard(async () => {
+    const d = await api('/api/repos/ref/sync', { method: 'POST', body: { all: true } });
+    const bad = d.results.filter((x) => x.status !== 'updated' && x.status !== 'upToDate');
+    toast(`同步 ${d.synced} 个${bad.length ? `，${bad.length} 个有问题（见检查结果）` : '，全部完成'}`);
+    await loadRefCheck();
+  });
+
+  // 绑定管理弹窗：打开时按该 ref 现有绑定勾选；保存 = 对比差异，加/摘各一批
+  const openBind = (r) => {
+    const sel = {};
+    for (const l of r.linked || []) sel[l.kind + ':' + l.id] = true;
+    setBindSel(sel);
+    setBindFor(r);
+  };
+  const saveBind = () => guard(async () => {
+    if (!bindFor) return;
+    const oldKeys = new Set((bindFor.linked || []).map((l) => l.kind + ':' + l.id));
+    const newKeys = new Set(Object.keys(bindSel).filter((k) => bindSel[k]));
+    // 先加后摘（摘全部绑定也不会误删刚加的）
+    for (const k of newKeys) {
+      if (oldKeys.has(k)) continue;
+      const [kind, id] = k.split(':');
+      await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.id, [kind]: [id] } });
+    }
+    for (const k of oldKeys) {
+      if (newKeys.has(k)) continue;
+      const [kind, id] = k.split(':');
+      await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.id, [kind]: [id], remove: true } });
+    }
+    setBindFor(null);
+    await Promise.all([loadRepos(), loadRefCheck()]);
+  });
+
+  // dev 侧绑定保存：对比该仓库当前挂的参考，加/摘各一批
+  const saveBindRepo = () => guard(async () => {
+    if (!bindRepoFor) return;
+    // 当前绑定：dev 侧反向引用优先，老数据回退扫 ref 侧
+    const current = new Set();
+    for (const l of bindRepoFor.linked || []) {
+      if (l.kind === 'ref') current.add(l.id);
+    }
+    for (const x of refRepos) {
+      if ((x.linked || []).some((l) => l.kind === 'repo' && l.id === bindRepoFor.id)) current.add(x.id);
+    }
+    const want = new Set(Object.keys(bindRepoSel).filter((k) => bindRepoSel[k]));
+    for (const rid of want) {
+      if (current.has(rid)) continue;
+      await api('/api/repos/bind', { method: 'POST', body: { id: rid, repo: [bindRepoFor.id] } });
+    }
+    for (const rid of current) {
+      if (want.has(rid)) continue;
+      await api('/api/repos/bind', { method: 'POST', body: { id: rid, repo: [bindRepoFor.id], remove: true } });
+    }
+    setBindRepoFor(null);
+    await Promise.all([loadRepos(), loadRefCheck()]);
+  });
+  // 绑定描述：从 dev 行的参考 chip 或绑定管理弹窗进入
+  const openLinkNote = (ref, kind, targetId, targetName) => {
+    const link = (ref.linked || []).find((l) => l.kind === kind && l.id === targetId);
+    setLinkNoteFor({ ref, kind, targetId, targetName });
+    setLinkNoteText(link?.note || '');
+  };
+  const saveLinkNote = () => guard(async () => {
+    const { ref, kind, targetId } = linkNoteFor;
+    await api('/api/repos/ref/note', {
+      method: 'POST',
+      body: { id: ref.id, [kind]: targetId, note: linkNoteText },
+    });
+    setLinkNoteFor(null);
+    await Promise.all([loadRepos(), loadRefCheck()]);
+    toast('已保存绑定描述');
+  });
+
+  // 从某条绑定弹窗摘除单个目标（chip 上的 ×）
+  const unbindOne = (ref, kind, targetId) => guard(async () => {
+    await api('/api/repos/bind', { method: 'POST', body: { id: ref.id, [kind]: [targetId], remove: true } });
+    await Promise.all([loadRepos(), loadRefCheck()]);
+  });
+
+  // 布局导入：先 plan 预览（零副作用），确认后带 only 执行
+  const planLayout = () => guard(async () => {
+    if (!impLayoutText.trim()) return;
+    const d = await api('/api/repos/import', {
+      method: 'POST',
+      body: { json: impLayoutText, plan: true, clone: impLayoutClone },
+    });
+    setImpLayoutPlan(d);
+    const preset = {};
+    (d.repos || []).forEach((r) => { if (r.rkey) preset[r.rkey] = r.cloneWanted; });
+    setImpLayoutOnly(preset);
+  });
+
+  const runLayout = () => guard(async () => {
+    const only = Object.keys(impLayoutOnly).filter((k) => impLayoutOnly[k]);
+    const d = await api('/api/repos/import', {
+      method: 'POST',
+      body: { json: impLayoutText, clone: impLayoutClone, only },
+    });
+    setImpLayoutOpen(false);
+    setImpLayoutPlan(null);
+    setImpLayoutText('');
+    toast(`已导入：登记 ${d.created}、合并看板 ${d.merged}、克隆 ${(d.cloned || []).length}、关系 ${d.links}`
+      + (d.unmatched.length ? `；未匹配 ${d.unmatched.length} 条` : ''));
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
+  });
+
+  const expLayout = () => guard(async () => {
+    const d = await api('/api/repos/export');
+    setExpLayoutText(JSON.stringify(d, null, 2));
+  });
+
+  const readImpLayoutFile = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setImpLayoutText(await f.text());
+    setImpLayoutPlan(null);
+  };
 
   // 组内描述保存：note 为空 = 清除
   const saveNote = () => guard(async () => {
@@ -121,16 +326,76 @@ export default function ReposView() {
   // 看板清单（用来做「+ 看板」下拉与筛选器）
   const boardList = useMemo(() => (boards && boards.boards) || [], [boards]);
 
-  // 筛选后的中心清单：选某个看板时**只显示该看板的仓库**，
-  // 且去重（一个仓库在多个看板里也只出现一次 —— 它在中心清单里只有一条）。
+  // 参考仓库（type=ref）与开发仓库（type=dev）：两份名单分开，多对多绑定靠 linked 连接。
+  // 必须先于 shown 声明（shown 的 useMemo 里用到）——生产构建里会压成单字母变量，
+  // 用在声明前就是 "Cannot access 'Z' before initialization" 这类白屏错误。
+  const devRepos = useMemo(() => repos.filter((r) => (r.type || 'dev') !== 'ref'), [repos]);
+  const refRepos = useMemo(() => repos.filter((r) => r.type === 'ref'), [repos]);
+
+  // 筛选后的开发仓库清单：选某个看板时只显示该看板的成员（去重）。
+  // 参考仓库不在主表 —— 它们有大面板（筛选器行的「参考仓库」入口）。
   const shown = useMemo(() => {
-    if (!filter) return repos;
-    return repos.filter((r) => (r.boards || []).some((b) => b.id === filter));
-  }, [repos, filter]);
+    if (!filter) return devRepos;
+    return devRepos.filter((r) => (r.boards || []).some((b) => b.id === filter));
+  }, [devRepos, filter]);
 
   // 当前筛选到的看板（用来显示领域描述上下文条）与成员管理弹窗的目标看板
   const filterBoard = useMemo(() => boardList.find((b) => b.id === filter) || null, [boardList, filter]);
   const impBoard = useMemo(() => boardList.find((b) => b.id === impBoardId) || null, [boardList, impBoardId]);
+
+  const checkOf = useMemo(() => {
+    const m = new Map();
+    (refCheck?.refs || []).forEach((x) => m.set(x.id, x));
+    return m;
+  }, [refCheck]);
+
+  // 直接绑定到各开发仓库的参考（dev 行内「参考」列的数据面）。
+  // 绑定是双向记录的：dev 侧自带 {kind:'ref'} 反向引用，直接读它即可；
+  // 老数据（只有 ref 侧）再回退扫一遍 ref 全表。
+  const refsOfRepo = useMemo(() => {
+    const m = new Map();
+    const add = (devId, r, note) => {
+      if (!m.has(devId)) m.set(devId, []);
+      m.get(devId).push({ id: r.id, name: r.name, remote: r.remote || '', note: note || '' });
+    };
+    const byId = new Map(refRepos.map((r) => [r.id, r]));
+    const seen = new Set();
+    for (const d of devRepos) {
+      for (const l of d.linked || []) {
+        if (l.kind !== 'ref') continue;
+        const r = byId.get(l.id);
+        if (!r) continue;
+        seen.add(d.id + ':' + r.id);
+        add(d.id, r, l.note);
+      }
+    }
+    for (const r of refRepos) {
+      for (const l of r.linked || []) {
+        if (l.kind !== 'repo') continue;
+        if (seen.has(l.id + ':' + r.id)) continue;
+        add(l.id, r, l.note);
+      }
+    }
+    return m;
+  }, [devRepos, refRepos]);
+
+  // 筛选到看板时：绑定在该看板（命名空间本体）或其成员开发仓库上的参考仓库
+  const boardRefs = useMemo(() => {
+    if (!filterBoard) return [];
+    const memberIds = new Set((filterBoard.repos || []).map((r) => r.id));
+    return refRepos
+      .map((r) => {
+        const boardLink = (r.linked || []).find((l) => l.kind === 'board' && l.id === filterBoard.id);
+        const repoLinks = (r.linked || []).filter((l) => l.kind === 'repo' && memberIds.has(l.id));
+        if (!boardLink && !repoLinks.length) return null;
+        return {
+          ...r,
+          boardNote: boardLink?.note || '',
+          viaRepos: repoLinks.map((l) => (filterBoard.repos || []).find((x) => x.id === l.id)?.name || l.id),
+        };
+      })
+      .filter(Boolean);
+  }, [refRepos, filterBoard]);
 
   const openAdd = () => {
     setForm(EMPTY_FORM);
@@ -145,11 +410,13 @@ export default function ReposView() {
       name: form.name.trim() || undefined,
       desc: form.desc.trim() || undefined,
       notes: form.notes,
+      type: form.type === 'ref' ? 'ref' : 'dev',
+      remote: form.remote.trim() || undefined,
     };
     if (editing) await api(`/api/repos/${encodeURIComponent(editing)}`, { method: 'PATCH', body });
     else await api('/api/repos', { method: 'POST', body });
     resetForm();
-    await Promise.all([loadRepos(), loadBoards()]);
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
 
   // 扫描两种意图：只发现（零副作用）/ 扫描登记（真登记）。
@@ -182,7 +449,8 @@ export default function ReposView() {
         path: r.path,
         name: r.name || '',
         desc: r.desc || '',
-        tags: (r.tags || []).join(','),
+        type: r.type || 'dev',
+        remote: r.remote || '',
         notes: r.notes || '',
       });
       setFormOpen(true);
@@ -193,7 +461,7 @@ export default function ReposView() {
       });
       if (!ok) return;
       await api(`/api/repos/${encodeURIComponent(r.id)}`, { method: 'DELETE' });
-      await Promise.all([loadRepos(), loadBoards()]);
+      await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
     }
   });
 
@@ -264,6 +532,25 @@ export default function ReposView() {
     open: (r) => rowAct('open', r),
     edit: (r) => rowAct('edit', r),
     del: (r) => rowAct('del', r),
+    // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它身上（多对多的 dev 侧视角）
+    bind: (r) => {
+      const sel = {};
+      // 优先读 dev 侧的反向引用（绑定双向记录）；老数据回退扫 ref 侧
+      for (const l of r.linked || []) {
+        if (l.kind !== 'ref') continue;
+        sel[l.id] = true;
+      }
+      for (const x of refRepos) {
+        if (sel[x.id]) continue;
+        if ((x.linked || []).some((l) => l.kind === 'repo' && l.id === r.id)) sel[x.id] = true;
+      }
+      setBindRepoSel(sel);
+      setBindRepoFor(r);
+    },
+    refNote: (ref, devRepo) => {
+      const full = refRepos.find((x) => x.id === ref.id);
+      if (full) openLinkNote(full, 'repo', devRepo.id, devRepo.name);
+    },
     note: (r) => {
       const mine = (r.boards || []).find((b) => b.id === filter);
       setNoteFor({
@@ -283,10 +570,10 @@ export default function ReposView() {
         <div className="title-block">
           <h2>仓库</h2>
           <div className="page-desc">
-            本机 git 仓库的<strong>中心清单</strong>。看板 = <strong>领域分组</strong>
-            （同一个仓库可同时归入多个）：看板的领域描述写这组仓库的侧重与配合关系，
-            成员仓库还能写<strong>组内描述</strong>——它在组里的角色、关键路径与搜索关键词
-            （筛选到看板后点行内「描述」）。加入是复制一份归属，仓库本体永远在清单里。
+            本机 git 仓库的双名单：<strong>开发仓库</strong>（本表）与<strong>参考仓库</strong>
+            （远程 clone 下来学习的，右上「参考仓库」面板）。看板 = <strong>领域分组</strong>，
+            领域描述 + 组内描述写给人和 agent 读；参考仓库与开发仓库/看板<strong>多对多绑定</strong>，
+            绑定描述写在关系上（同一份参考在不同组里的意义可以不同）。
           </div>
         </div>
         <div className="acts">
@@ -306,14 +593,14 @@ export default function ReposView() {
         </div>
       ) : null}
 
-      {/* 看板筛选器：看板只是筛选维度，中心清单永远是那一张 */}
+      {/* 看板筛选器：主表 = 开发仓库；参考仓库走右侧大面板入口 */}
       <div className="rp-filters" data-testid="rp-filters">
         <button
           className={'rp-chip' + (filter ? '' : ' on')}
           onClick={() => setFilter('')}
-          title="显示全部仓库（中心清单）"
+          title="显示全部开发仓库"
         >
-          全部 <b>{repos.length}</b>
+          开发仓库 <b>{devRepos.length}</b>
         </button>
         {boardList.map((b) => (
           <button
@@ -325,6 +612,10 @@ export default function ReposView() {
             {b.name} <b>{b.repos.length}</b>
           </button>
         ))}
+        <button className={'rp-chip rp-chip-manage' + (refOpen ? ' on' : '')} onClick={() => setRefOpen(!refOpen)}
+          title="参考仓库大面板：克隆 / 绑定 / 同步 / 检查 / 布局导入导出">
+          参考仓库 <b>{refRepos.length}</b>{refOpen ? ' ▾' : ' ▸'}
+        </button>
         <button className="rp-chip rp-chip-manage" onClick={() => setBoardsOpen(!boardsOpen)}>
           看板管理{boardsOpen ? ' ▾' : ' ▸'}
         </button>
@@ -345,6 +636,144 @@ export default function ReposView() {
           <span className="acts">
             <button className="btn small" onClick={() => setImpBoardId(filterBoard.id)}>导入仓库</button>
           </span>
+        </div>
+      ) : null}
+
+      {/* 看板（项目组）绑定的参考仓库 —— 命名空间展示区。
+          绑到看板本体的是「组级参考」（note 是它的命名空间描述）；
+          绑到成员开发仓库的是仓库级参考（随成员带进来）。 */}
+      {filterBoard ? (
+        <div className="rp-ref-mounted" data-testid="rp-board-refs">
+          <div className="rp-ref-mounted-head">
+            <span className="rp-ref-mounted-label">「{filterBoard.name}」的参考仓库 <b>{boardRefs.length}</b></span>
+            <span className="muted">组级参考 + 成员仓库各自的参考（多对多：一个参考可同时服务多个组/仓库）</span>
+          </div>
+          {boardRefs.length ? boardRefs.map((r) => {
+            const c = checkOf.get(r.id);
+            const boardLink = (r.linked || []).find((l) => l.kind === 'board' && l.id === filterBoard.id);
+            return (
+              <div className="rp-ref-mounted-item" key={r.id}>
+                <span className={'rp-ref-dot' + (c ? (c.ok ? ' ok' : ' bad') : '')}
+                  title={c ? (c.ok ? '检查通过' : c.issues.join('\n')) : '尚未检查'} />
+                <Copyable text={r.remote || r.name} title="点击复制远程地址" className="rp-ref-mounted-name">{r.name}</Copyable>
+                {r.desc ? <span className="muted rp-ref-mounted-desc" title={r.desc}>{r.desc}</span> : null}
+                {r.boardNote ? (
+                  <button className="rp-ref-note-chip" title={`${r.boardNote}\n点击编辑这条命名空间描述`}
+                    onClick={() => openLinkNote(r, 'board', filterBoard.id, filterBoard.name)}>
+                    {r.boardNote.split('\n')[0]}
+                  </button>
+                ) : (
+                  <button className="btn small ghost" title={`写「${r.name}」在这个组里参考什么（命名空间描述）`}
+                    onClick={() => openLinkNote(r, 'board', filterBoard.id, filterBoard.name)}>写描述</button>
+                )}
+                {r.viaRepos.length ? <span className="muted" title={'经由成员仓库: ' + r.viaRepos.join('、')}>经由 {r.viaRepos.join('、')}</span> : null}
+                <span className="acts">
+                  <button className="btn small ghost" onClick={() => syncOne(r)}>同步</button>
+                  <button className="btn small ghost" onClick={() => rowAct('open', r)}>打开</button>
+                  {boardLink ? (
+                    <button className="btn small ghost rp-del" title="只从本组摘除（不影响其它绑定）"
+                      onClick={() => unbindOne(r, 'board', filterBoard.id)}>移出本组</button>
+                  ) : null}
+                </span>
+              </div>
+            );
+          }) : (
+            <div className="muted rp-refs-none">这个组还没有绑定的参考仓库 —— 在下方参考仓库面板里点「绑定」勾选本组，或在成员仓库行上绑定。</div>
+          )}
+        </div>
+      ) : null}
+
+      {/* 参考仓库大面板：自己的表格（不与开发仓库混排）。
+          每行：状态徽标 / 名称+描述 / 远程地址 / 绑定 chips（组级 + 仓库级，可点改描述、× 摘除）/ 操作。
+          绑定一律选项式（「绑定」弹窗里勾选），不手填字符串。 */}
+      {refOpen ? (
+        <div className="card rp-ref-panel">
+          <div className="colhead">
+            <h3>参考仓库</h3>
+            <span className="muted">
+              远程 clone 下来学习/参考的仓库（type=ref），统一存放在 gitRepoRoot。
+              与开发仓库<strong>多对多绑定</strong>：一个参考服务多个仓库/组，一个仓库/组挂多个参考；
+              绑定描述写在关系上（同一条绑定在不同组里意义不同）。
+            </span>
+            <span className="acts" style={{ marginLeft: 'auto' }}>
+              <button className="btn small" onClick={() => { setCloneTargets({}); setCloneOpen(true); }}>克隆参考仓库</button>
+              <button className="btn small ghost" onClick={syncAll}>同步全部</button>
+              <button className="btn small ghost" onClick={loadRefCheck}>检查</button>
+              <button className="btn small ghost" onClick={() => { setImpLayoutOpen(true); setImpLayoutPlan(null); }}>导入布局</button>
+              <button className="btn small ghost" onClick={expLayout}>导出布局</button>
+              <button className="btn small ghost" onClick={() => {
+                setRootsForm({ gitRepoRoot: settingInfo?.gitRepoRoot || '', gitDevRoot: settingInfo?.gitDevRoot || '' });
+                setRootsOpen(true);
+              }}>存储根</button>
+            </span>
+          </div>
+          {!settingInfo?.gitRepoRoot ? (
+            <div className="rp-ref-warn">
+              存储根未设置 —— 克隆会被拒绝。点「存储根」设一个非 C 盘目录（参考仓库体积不小，别放系统盘）。
+            </div>
+          ) : null}
+          <div className="rp-ref-table-wrap">
+            <table className="rp-ref-table">
+              <thead>
+                <tr>
+                  <th scope="col" style={{ width: '30px' }}></th>
+                  <th scope="col" style={{ width: '18%' }}>参考仓库</th>
+                  <th scope="col" style={{ width: '26%' }}>远程地址</th>
+                  <th scope="col">绑定（组 / 仓库 · 点击写描述 · × 摘除）</th>
+                  <th scope="col" style={{ width: '15%' }}>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {refRepos.map((r) => {
+                  const c = checkOf.get(r.id);
+                  const links = r.linked || [];
+                  return (
+                    <tr key={r.id}>
+                      <td><span className={'rp-ref-dot' + (c ? (c.ok ? ' ok' : ' bad') : '')}
+                        title={c ? (c.ok ? '检查通过' : c.issues.join('\n')) : '尚未检查'} /></td>
+                      <td className="rp-ref-cell-name">
+                        <strong>{r.name}</strong>
+                        {r.desc ? <div className="muted rp-desc" title={r.desc}>{r.desc}</div> : null}
+                      </td>
+                      <td className="mono rp-ref-cell-remote">
+                        <Copyable text={r.remote || ''} title="点击复制远程地址">{r.remote || '（无）'}</Copyable>
+                      </td>
+                      <td className="rp-ref-cell-links">
+                        {links.length ? links.map((l) => {
+                          const label = l.kind === 'board'
+                            ? (boardList.find((b) => b.id === l.id)?.name || l.id)
+                            : (devRepos.find((d) => d.id === l.id)?.name || l.id);
+                          return (
+                            <span className="rp-link-chip" key={l.kind + ':' + l.id}>
+                              <button className="rp-link-chip-main" title={l.note ? `${l.note}\n点击编辑这条绑定描述` : `点击写「${r.name}」绑定到这里的描述`}
+                                onClick={() => openLinkNote(r, l.kind, l.id, label)}>
+                                <b>{l.kind === 'board' ? '组' : '仓'}</b> {label}
+                                {l.note ? <i className="rp-link-chip-note" title={l.note}>{l.note.split('\n')[0]}</i> : null}
+                              </button>
+                              <button className="rp-link-chip-x" title={`摘除这条绑定（不影响其它）`}
+                                onClick={() => unbindOne(r, l.kind, l.id)}>×</button>
+                            </span>
+                          );
+                        }) : <span className="muted rp-refs-none">未绑定</span>}
+                        <button className="btn small ghost rp-ref-bind" onClick={() => openBind(r)}>绑定…</button>
+                      </td>
+                      <td className="rp-acts">
+                        <button className="btn small ghost" onClick={() => syncOne(r)}>同步</button>
+                        <button className="btn small ghost" onClick={() => rowAct('open', r)}>打开</button>
+                        <button className="btn small ghost" onClick={() => rowAct('edit', r)}>编辑</button>
+                        <button className="btn small ghost rp-del" onClick={() => rowAct('del', r)}>删除</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!refRepos.length ? (
+                  <tr><td colSpan="5" className="muted rp-empty">
+                    还没有参考仓库 —— 点「克隆参考仓库」抓一个远程仓库下来（或用 CLI: nx-kv repo ref clone &lt;url&gt;）。
+                  </td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
 
@@ -383,26 +812,27 @@ export default function ReposView() {
         </div>
       ) : null}
 
-      {/* 中心清单：扁平的仓库表，一行一个仓库，不分组 */}
+      {/* 开发仓库主表：一行一个开发仓库；「参考」列 = 绑到它身上的参考仓库（多对多） */}
       <div className="rp-table-wrap">
         <table className="rp-table">
           <thead>
             <tr>
-              <th scope="col" style={{ width: '32%' }}>仓库</th>
-              <th scope="col" style={{ width: '42%' }}>路径</th>
-              <th scope="col" style={{ width: '26%' }}>操作</th>
+              <th scope="col" style={{ width: '26%' }}>仓库</th>
+              <th scope="col" style={{ width: '30%' }}>路径</th>
+              <th scope="col">绑定的参考仓库</th>
+              <th scope="col" style={{ width: '18%' }}>操作</th>
             </tr>
           </thead>
           <tbody>
             {shown.map((r) => (
-              <RepoRow key={r.id} r={r} filterBoard={filterBoard} acts={rowActs} />
+              <RepoRow key={r.id} r={r} filterBoard={filterBoard} refsOfRepo={refsOfRepo} acts={rowActs} />
             ))}
             {!shown.length ? (
               <tr>
-                <td colSpan="3" className="muted rp-empty">
-                  {repos.length
-                    ? '这个看板还没有成员 —— 点上方「导入仓库」，从中心清单里点选加入。'
-                    : '还没有登记仓库 —— 点「扫描」自动发现，或「添加仓库」手工登记。'}
+                <td colSpan="4" className="muted rp-empty">
+                  {devRepos.length
+                    ? '这个看板还没有成员 —— 点上方「导入仓库」，从开发仓库里点选加入。'
+                    : '还没有登记开发仓库 —— 点「扫描」自动发现，或「添加仓库」手工登记。参考仓库在「参考仓库」面板管理。'}
                 </td>
               </tr>
             ) : null}
@@ -427,6 +857,18 @@ export default function ReposView() {
             <div className="form-field">
               <label htmlFor="repo-desc">一句话描述</label>
               <input id="repo-desc" spellCheck="false" placeholder="这个仓库是干什么的" value={form.desc} onChange={set('desc')} />
+            </div>
+            <div className="form-field">
+              <label htmlFor="repo-type">类型</label>
+              <select id="repo-type" value={form.type} onChange={set('type')}>
+                <option value="dev">开发仓库（本机开发的）</option>
+                <option value="ref">参考仓库（远程 clone 下来的）</option>
+              </select>
+            </div>
+            <div className="form-field">
+              <label htmlFor="repo-remote">远程 git 地址</label>
+              <input id="repo-remote" spellCheck="false" placeholder="https://github.com/me/x.git（导出时导它，不含本地路径）"
+                value={form.remote} onChange={set('remote')} />
             </div>
             <div className="form-field">
               <label htmlFor="repo-notes">备注</label>
@@ -588,6 +1030,259 @@ export default function ReposView() {
             })}
             {!repos.length ? <div className="muted rp-empty">还没有登记仓库 —— 先「扫描」或「添加仓库」。</div> : null}
           </div>
+        </Modal>
+      ) : null}
+
+      {/* 克隆参考仓库弹窗：绑定走选项式勾选（不手填 id 字符串） */}
+      {cloneOpen ? (
+        <Modal title="克隆参考仓库" onClose={() => { setCloneOpen(false); setCloneTargets({}); }}>
+          <div className="form-grid">
+            <div className="form-field">
+              <label htmlFor="ref-url">远程 git 地址 *</label>
+              <input id="ref-url" spellCheck="false" placeholder="git@github.com:lib/x.git 或 https://github.com/lib/x"
+                value={cloneForm.url} onChange={(e) => setCloneForm((f) => ({ ...f, url: e.target.value }))} />
+            </div>
+            <div className="form-field">
+              <label htmlFor="ref-name">名称</label>
+              <input id="ref-name" placeholder="留空则用 URL 末段" value={cloneForm.name}
+                onChange={(e) => setCloneForm((f) => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div className="form-field">
+              <label htmlFor="ref-desc">它参考什么</label>
+              <input id="ref-desc" spellCheck="false" placeholder="如：liquid glass 的官方实现参考"
+                value={cloneForm.desc} onChange={(e) => setCloneForm((f) => ({ ...f, desc: e.target.value }))} />
+            </div>
+            <div className="form-field">
+              <label>克隆后绑定到（可多选）</label>
+              <div className="rp-pick-list">
+                <div className="rp-pick-group">
+                  <span className="rp-pick-group-label">开发仓库</span>
+                  {devRepos.map((d) => (
+                    <label className="rp-pick-item" key={d.id}>
+                      <input type="checkbox" checked={!!cloneTargets['repo:' + d.id]}
+                        onChange={(e) => setCloneTargets((m) => ({ ...m, ['repo:' + d.id]: e.target.checked }))} />
+                      <span title={d.path}>{d.name}</span>
+                    </label>
+                  ))}
+                  {!devRepos.length ? <span className="muted">（还没有开发仓库）</span> : null}
+                </div>
+                <div className="rp-pick-group">
+                  <span className="rp-pick-group-label">看板（项目组）</span>
+                  {boardList.map((b) => (
+                    <label className="rp-pick-item" key={b.id}>
+                      <input type="checkbox" checked={!!cloneTargets['board:' + b.id]}
+                        onChange={(e) => setCloneTargets((m) => ({ ...m, ['board:' + b.id]: e.target.checked }))} />
+                      <span title={b.desc || ''}>{b.name}</span>
+                    </label>
+                  ))}
+                  {!boardList.length ? <span className="muted">（还没有看板）</span> : null}
+                </div>
+              </div>
+              <div className="form-hint">一个参考可同时服务多个仓库/组；之后随时在「绑定…」里增删。</div>
+            </div>
+            <div className="form-acts">
+              <button className="btn ghost" onClick={() => { setCloneOpen(false); setCloneTargets({}); }}>取消</button>
+              <button className="btn" disabled={!cloneForm.url.trim() || !settingInfo?.gitRepoRoot}
+                title={settingInfo?.gitRepoRoot ? `克隆到 ${settingInfo.gitRepoRoot}` : '先在「存储根」设置 gitRepoRoot'}
+                onClick={doClone}>克隆</button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* 绑定管理弹窗（参考侧）：这个参考绑到哪些开发仓库 / 看板 —— 全部选项式勾选 */}
+      {bindFor ? (
+        <Modal title={`绑定 · ${bindFor.name}`} onClose={() => setBindFor(null)}>
+          <div className="form-grid">
+            <div className="form-field">
+              <div className="form-hint">
+                勾选 = 绑定，取消 = 摘除（保存时对比差异）。一个参考可同时绑多个仓库/组。
+              </div>
+              <div className="rp-pick-list">
+                <div className="rp-pick-group">
+                  <span className="rp-pick-group-label">开发仓库</span>
+                  {devRepos.map((d) => (
+                    <label className="rp-pick-item" key={d.id}>
+                      <input type="checkbox" checked={!!bindSel['repo:' + d.id]}
+                        onChange={(e) => setBindSel((m) => ({ ...m, ['repo:' + d.id]: e.target.checked }))} />
+                      <span title={d.path}>{d.name}</span>
+                    </label>
+                  ))}
+                  {!devRepos.length ? <span className="muted">（还没有开发仓库）</span> : null}
+                </div>
+                <div className="rp-pick-group">
+                  <span className="rp-pick-group-label">看板（项目组）</span>
+                  {boardList.map((b) => (
+                    <label className="rp-pick-item" key={b.id}>
+                      <input type="checkbox" checked={!!bindSel['board:' + b.id]}
+                        onChange={(e) => setBindSel((m) => ({ ...m, ['board:' + b.id]: e.target.checked }))} />
+                      <span title={b.desc || ''}>{b.name}</span>
+                    </label>
+                  ))}
+                  {!boardList.length ? <span className="muted">（还没有看板）</span> : null}
+                </div>
+              </div>
+            </div>
+            <div className="form-acts">
+              <button className="btn ghost" onClick={() => setBindFor(null)}>取消</button>
+              <button className="btn" onClick={saveBind}>保存绑定</button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* dev 侧绑定弹窗：这个开发仓库挂哪些参考 */}
+      {bindRepoFor ? (
+        <Modal title={`「${bindRepoFor.name}」的参考仓库`} onClose={() => setBindRepoFor(null)}>
+          <div className="form-grid">
+            <div className="form-field">
+              <div className="form-hint">
+                勾选 = 绑到「{bindRepoFor.name}」，取消 = 摘除。组级参考（绑在看板上）自动对该组所有成员生效，不在这里重复勾。
+              </div>
+              <div className="rp-pick-list">
+                <div className="rp-pick-group">
+                  <span className="rp-pick-group-label">参考仓库</span>
+                  {refRepos.map((r) => (
+                    <label className="rp-pick-item" key={r.id}>
+                      <input type="checkbox" checked={!!bindRepoSel[r.id]}
+                        onChange={(e) => setBindRepoSel((m) => ({ ...m, [r.id]: e.target.checked }))} />
+                      <span title={r.remote || ''}>{r.name}</span>
+                      {r.desc ? <span className="muted rp-pick-desc">{r.desc}</span> : null}
+                    </label>
+                  ))}
+                  {!refRepos.length ? <span className="muted">（还没有参考仓库 —— 先在参考面板里克隆）</span> : null}
+                </div>
+              </div>
+            </div>
+            <div className="form-acts">
+              <button className="btn ghost" onClick={() => setBindRepoFor(null)}>取消</button>
+              <button className="btn" onClick={saveBindRepo}>保存绑定</button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* 绑定描述弹窗：这条绑定关系上「参考什么」（挂在关系上，摘绑即清） */}
+      {linkNoteFor ? (
+        <Modal
+          title={`绑定描述 · ${linkNoteFor.ref.name} @ ${linkNoteFor.kind === 'board' ? '「' + linkNoteFor.targetName + '」' : linkNoteFor.targetName}`}
+          onClose={() => setLinkNoteFor(null)}
+        >
+          <div className="form-grid">
+            <div className="form-field">
+              <label htmlFor="link-note">
+                「{linkNoteFor.ref.name}」{linkNoteFor.kind === 'board' ? '在这个组里' : '在这个仓库里'}参考什么
+              </label>
+              <div className="form-hint">
+                写这条参考在此处的角色与用法（可多行、可含关键路径/搜索词）。留空保存 = 清除。
+              </div>
+              <textarea id="link-note" rows={5} spellCheck="false"
+                placeholder={'如：project-graph 画布交互的实现参考；\n看 src/extensions/ 的注册方式，搜 registerExtension。'}
+                value={linkNoteText} onChange={(e) => setLinkNoteText(e.target.value)} />
+            </div>
+            <div className="form-acts">
+              <button className="btn ghost" onClick={() => setLinkNoteFor(null)}>取消</button>
+              <button className="btn" onClick={saveLinkNote}>保存</button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* 存储根设置弹窗 */}
+      {rootsOpen ? (
+        <Modal title="参考仓库存储根" onClose={() => setRootsOpen(false)}>
+          <div className="form-grid">
+            <div className="form-field">
+              <label htmlFor="roots-ref">参考仓库存储根（gitRepoRoot）</label>
+              <input id="roots-ref" spellCheck="false" placeholder="如 D:/gitrepo-ref（非 C 盘）"
+                value={rootsForm.gitRepoRoot} onChange={(e) => setRootsForm((f) => ({ ...f, gitRepoRoot: e.target.value }))} />
+              <div className="form-hint">repo ref clone 的落盘位置。不设 = 克隆被拒绝。</div>
+            </div>
+            <div className="form-field">
+              <label htmlFor="roots-dev">开发仓库克隆根（gitDevRoot，可选）</label>
+              <input id="roots-dev" spellCheck="false" placeholder="导入布局时开发仓库克隆到哪里"
+                value={rootsForm.gitDevRoot} onChange={(e) => setRootsForm((f) => ({ ...f, gitDevRoot: e.target.value }))} />
+            </div>
+            <div className="form-acts">
+              <button className="btn ghost" onClick={() => setRootsOpen(false)}>取消</button>
+              <button className="btn" onClick={saveRoots}>保存</button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* 布局导入弹窗：先 plan 预览（分组/关系/每行克隆选择），确认后执行 */}
+      {impLayoutOpen ? (
+        <Modal title="导入仓库布局" onClose={() => { setImpLayoutOpen(false); setImpLayoutPlan(null); setImpLayoutText(''); }}>
+          <div className="form-grid">
+            <div className="form-field">
+              <label htmlFor="layout-imp">布局 JSON（repo export 的输出）</label>
+              <div className="form-hint">
+                含仓库（远程地址）、看板分组、参考关系。先「预览计划」确认整个布局，再选择性克隆执行。
+              </div>
+              <input id="layout-imp-file" type="file" accept=".json,application/json" onChange={readImpLayoutFile} />
+              <textarea id="layout-imp" rows={8} spellCheck="false"
+                placeholder='{"version":2,"repos":[{"remote":"…","name":"x","type":"dev"}],"boards":[…],"links":[…]}'
+                value={impLayoutText} onChange={(e) => { setImpLayoutText(e.target.value); setImpLayoutPlan(null); }} />
+            </div>
+            <div className="form-field">
+              <label htmlFor="layout-clone">克隆模式</label>
+              <select id="layout-clone" value={impLayoutClone} onChange={(e) => { setImpLayoutClone(e.target.value); setImpLayoutPlan(null); }}>
+                <option value="none">只登记，不克隆</option>
+                <option value="ref">克隆参考仓库</option>
+                <option value="dev">克隆开发仓库</option>
+                <option value="all">全部克隆</option>
+              </select>
+            </div>
+            {impLayoutPlan ? (
+              <div className="form-field rp-layout-plan">
+                <label>导入计划预览（未执行）</label>
+                <div className="rp-layout-repos">
+                  {impLayoutPlan.repos.map((r) => (
+                    <label className="rp-layout-row" key={r.rkey || r.name}>
+                      <input
+                        type="checkbox"
+                        disabled={!r.cloneWanted}
+                        checked={!!r.cloneWanted && (r.rkey ? impLayoutOnly[r.rkey] !== false : false)}
+                        onChange={(e) => r.rkey && setImpLayoutOnly((m) => ({ ...m, [r.rkey]: e.target.checked }))}
+                      />
+                      <span className="rp-layout-name">
+                        {r.name || r.remote}{r.type === 'ref' ? ' [参考]' : ''}
+                      </span>
+                      <span className="muted rp-layout-state">
+                        {r.action}{r.cloneWanted ? ' → 克隆' : r.blocked ? `（${r.blocked}）` : ''}
+                      </span>
+                    </label>
+                  ))}
+                  {impLayoutPlan.boards.map((b) => (
+                    <div className="rp-layout-board" key={b.name}>
+                      看板{b.action}：{b.name}（{b.members.length} 个成员）
+                    </div>
+                  ))}
+                  {impLayoutPlan.links.map((l) => (
+                    <div className="rp-layout-link" key={l.rkey}>
+                      参考 {l.ref} → {l.to.map((t) => t.repo || `看板「${t.board}」`).join('、')}
+                    </div>
+                  ))}
+                  {(impLayoutPlan.warnings || []).map((w) => (
+                    <div className="rp-layout-warn" key={w}>⚠ {w}</div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <div className="form-acts">
+              <button className="btn ghost" onClick={() => { setImpLayoutOpen(false); setImpLayoutPlan(null); setImpLayoutText(''); }}>取消</button>
+              <button className="btn ghost" disabled={!impLayoutText.trim()} onClick={planLayout}>预览计划</button>
+              <button className="btn" disabled={!impLayoutPlan} onClick={runLayout}>执行导入</button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* 布局导出结果 */}
+      {expLayoutText ? (
+        <Modal title="仓库布局 JSON（远程地址 + 分组 + 参考关系；不含本地路径）" onClose={() => setExpLayoutText(null)}>
+          <textarea className="bd-exp" rows={16} readOnly value={expLayoutText} spellCheck="false" />
         </Modal>
       ) : null}
 

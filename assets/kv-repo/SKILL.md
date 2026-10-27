@@ -39,11 +39,15 @@ nx-kv board list --json
 
 ## 模型（30 秒版）
 
-- **仓库登记** = 本机事实（name / path / desc / notes），一张中心清单。
+- **仓库登记** = 本机事实（name / path / desc / notes / type / remote），一张中心清单。
+  `type` 区分开发仓库（dev，默认）与参考仓库（ref，远程 clone 下来的、统一放 gitRepoRoot）。
 - **看板** = 领域分组；一个仓库可同时归入多个组，分组只此一条路（没有标签）。
 - **看板的领域描述（desc）+ 成员的组内描述（note）是写给你（agent）读的上下文**：
   desc 讲这个领域的侧重与配合方式；note 讲单个仓库在组里的角色（谁是中心 / 终端、
   API 关联在哪、关键路径、搜什么关键词）。**接到任务先读它们，比翻代码快。**
+- **参考仓库的 linked 是第三维上下文**：绑定是多对多（一个参考服务多个仓库/组，一个仓库
+  挂多个参考），`note` 写在**关系上**——同一条参考在不同组里的意义可以不同。接到任务时
+  `repo ref of <本仓库>` 一条命令拿全两层：自己的参考 + 所在组的命名空间参考。
 
 ## 完整命令（速查）
 
@@ -51,10 +55,12 @@ nx-kv board list --json
 nx-kv board list --json          # 首选：全部组 + 成员（含组内描述 note）+ 各组领域描述
 # → { boards:[{ id, name, desc, repos:[{ id, name, desc, path, note }] }], unassigned:[…] }
 nx-kv repo list --json           # 扁平清单，每条带 boards[]（查单个仓库的归属）
+nx-kv repo ref of <id|路径> --json    # 这个仓库的参考：第一层直接绑定，第二层按看板命名空间
 nx-kv repo get <id|绝对路径> --json   # 单仓库详情 + 所在组
 nx-kv board get <id> --json          # 单组详情（成员 + 组内描述）
 nx-kv board note <id|绝对路径> --board <看板id> --note "角色/配合关系/关键路径/关键词"
                                      # 写或清（--note 留空 = 清除）组内描述
+nx-kv repo ref check                 # 参考仓库完整性：目录/origin 一致性 + 绑定死链
 ```
 
 定位顺序：拿到任务/目录 → `repo list` 按**路径或目录名**找到仓库

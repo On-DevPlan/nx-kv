@@ -29,6 +29,11 @@ const EMPTY = () => ({
   autoSyncAttachments: false,
   // 附件本地目录覆盖；空 = 用默认 ~/.nx-kv/attachments/<groupId>/
   attachmentsDir: '',
+  // 参考仓库（type=ref）的存储根目录。**空 = clone 拒绝执行**：用户必须显式指一个
+  // 非 C 盘的目录（参考仓库动辄几十 MB～GB 级，不能默默堆进 homedir）。
+  gitRepoRoot: '',
+  // 导入布局时开发仓库（type=dev）的默认克隆根；空 = 导入时 dev 只登记不克隆。
+  gitDevRoot: '',
 });
 
 let cache = null;
@@ -45,6 +50,8 @@ function normalize(data) {
     groupId: Number(data.groupId) || 0,
     autoSyncAttachments: data.autoSyncAttachments === true,
     attachmentsDir: String(data.attachmentsDir || ''),
+    gitRepoRoot: String(data.gitRepoRoot || ''),
+    gitDevRoot: String(data.gitDevRoot || ''),
   };
 }
 

@@ -22,6 +22,9 @@ export async function getSettings() {
     resolvedDir: localDirFor(cfg.groupId, cfg.attachmentsDir),
     groupId: cfg.groupId,
     baseUrl: cfg.baseUrl,
+    // 参考仓库（type=ref）的存储根；空 = clone 会被拒绝，直到用户显式设置
+    gitRepoRoot: cfg.gitRepoRoot,
+    gitDevRoot: cfg.gitDevRoot,
   };
 }
 
@@ -29,8 +32,13 @@ export async function setSettings(patch = {}) {
   const body = {};
   if (patch.autoSyncAttachments !== undefined) body.autoSyncAttachments = toBool(patch.autoSyncAttachments);
   if (patch.attachmentsDir !== undefined) body.attachmentsDir = String(patch.attachmentsDir || '').trim();
+  if (patch.gitRepoRoot !== undefined) body.gitRepoRoot = String(patch.gitRepoRoot || '').trim();
+  if (patch.gitDevRoot !== undefined) body.gitDevRoot = String(patch.gitDevRoot || '').trim();
   if (!Object.keys(body).length) {
-    throw badInput('没有要改的设置：--autoSyncAttachments <true|false> / --attachmentsDir <目录>');
+    throw badInput(
+      '没有要改的设置：--autoSyncAttachments <true|false> / --attachmentsDir <目录>'
+      + ' / --gitRepoRoot <参考仓库根目录> / --gitDevRoot <开发仓库克隆根>'
+    );
   }
   await saveConfig({ ...(await loadConfig()), ...body });
   return getSettings();
@@ -41,6 +49,8 @@ export function renderSettings(d) {
     `附件读取时自动下载: ${d.autoSyncAttachments ? '开' : '关'}`,
     `附件默认目录:       ${d.resolvedDir}`,
     d.attachmentsDir ? `（由设置覆盖；默认根目录 ${d.attachmentsRoot}）` : '',
+    `参考仓库存储根:     ${d.gitRepoRoot || '（未设置 —— clone 参考仓库前先 nx-kv setting set --gitRepoRoot <非C盘目录>）'}`,
+    `开发仓库克隆根:     ${d.gitDevRoot || '（未设置 —— 导入布局时开发仓库只登记不克隆）'}`,
     `当前工作空间:       ${d.groupId || '默认组'}`,
   ]
     .filter(Boolean)

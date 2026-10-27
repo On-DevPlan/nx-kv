@@ -5,11 +5,16 @@
 // （远程清单 topic=goal 的 #72）。迁过来的理由：仓库登记是本机事实，而它的价值在于
 // 给「本地任务管理」当上下文——所以它该跟着任务走。
 //
-// 本模块只管**登记**：路径、名称、描述、标签、备注。
-// git 状态 / diff / pull / push / resolve 一律不做——git 客户端是无底洞，
-// 面板里做不出比 IDE 更好的体验，真要看状态直接用 git 自己。
+// 本模块只管**登记**：路径、名称、描述、备注。
+// git 边界（2026-10-27 随参考仓库一并声明）：开发仓库（type=dev）的 git 状态 / diff /
+// pull / push 一律不做——git 客户端是无底洞，面板里做不出比 IDE 更好的体验。
+// 参考仓库（type=ref）例外，只做 clone / sync / check 三件事（见 ref.* 命令族）——
+// 它的价值就是「把远程仓库抓到本机参考并保持新鲜」，不做这个它就没存在意义。
 import * as service from './service.js';
 import * as boards from './boards.js';
+import * as ref from './ref.js';
+import * as transfer from './transfer.js';
+import { gitOrigin } from './git.js';
 import { badInput } from '../../core/errors.js';
 
 // ---- 看板的 CLI 人读渲染 ----
@@ -42,24 +47,86 @@ function renderRepoList(list) {
   if (!list.length) return '（暂无仓库，用 repo add <path> 登记）';
   const lines = [`共 ${list.length} 个仓库`];
   for (const r of list) {
-    lines.push(`${r.name.padEnd(18)} ${r.path}`);
+    const tag = r.type === 'ref' ? ' [参考]' : '';
+    lines.push(`${r.name.padEnd(18)} ${r.path}${tag}`);
   }
   return lines.join('\n');
 }
 
 function renderRepo(r) {
   const lines = [
-    `${r.name}${r.desc ? '  ' + r.desc : ''}`,
+    `${r.name}${r.type === 'ref' ? '  [参考]' : ''}${r.desc ? '  ' + r.desc : ''}`,
     `  id:    ${r.id}`,
     `  路径:  ${r.path}`,
-    `  登记:  ${(r.addedAt || '').slice(0, 10)}`,
-    `  更新:  ${(r.updatedAt || '').slice(0, 10)}`,
   ];
+  if (r.remote) lines.push(`  远程:  ${r.remote}`);
+  lines.push(
+    `  登记:  ${(r.addedAt || '').slice(0, 10)}`,
+    `  更新:  ${(r.updatedAt || '').slice(0, 10)}`
+  );
   if (r.boards?.length) {
     lines.push(`  看板:  ${r.boards.map((b) => b.name).join('、')}`);
   }
   if (r.notes) lines.push('  备注:  ' + r.notes);
   return lines.join('\n');
+}
+
+// ---- 参考仓库的人读渲染 ----
+
+function renderClone(r) {
+  const lines = [`已克隆并登记参考仓库: ${r.name}`, `  目录: ${r.dest || r.path}`, `  远程: ${r.url || r.remote}`];
+  if (r.linked?.length) {
+    lines.push(`  绑定: ${r.linked.map((l) => (l.kind === 'board' ? `看板 ${l.id}` : `仓库 ${l.id}`)).join('、')}`);
+  }
+  return lines.join('\n');
+}
+
+function renderRefSync(d) {
+  const word = { updated: '已更新', upToDate: '已是最新', conflict: '冲突（需人工处理，不自动 merge）', missing: '目录缺失', error: '失败' };
+  const lines = [`同步 ${d.synced} 个参考仓库:`];
+  for (const r of d.results) {
+    lines.push(`  ${word[r.status] || r.status}  ${r.name}${r.output && r.status !== 'upToDate' ? '  — ' + r.output.split('\n')[0] : ''}`);
+  }
+  if (!d.synced) lines.push('（还没有参考仓库，用 repo ref clone <url>）');
+  return lines.join('\n');
+}
+
+function renderRefCheck(d) {
+  if (!d.total) return '（还没有参考仓库 —— clone 一个: repo ref clone <url>）';
+  const lines = [`检查 ${d.total} 个参考仓库${d.problems ? `，${d.problems} 个有问题` : '，全部正常'}:`];
+  for (const r of d.refs) {
+    lines.push(`  ${r.ok ? '✓' : '✗'}  ${r.name}  ${r.remote || '(无远程地址)'}`);
+    for (const i of r.issues) lines.push(`      ${i}`);
+  }
+  return lines.join('\n');
+}
+
+function renderBind(d) {
+  return d.removed
+    ? `已摘除绑定: ${d.name}（${d.count} 条；剩 ${d.linked.length} 条）`
+    : `已绑定 ${d.name} → ${d.added.length ? d.added.join('、') : '（已存在）'}（共 ${d.linked.length} 条绑定）`;
+}
+
+// 分层查询的人读渲染：第一层自己的参考，第二层按看板命名空间分组。
+function renderRefsOf(d) {
+  const line = (r) => `  ${r.name}${r.note ? `  （${r.note.split('\n')[0]}）` : ''}  ${r.remote || ''}`;
+  const out = [`【${d.repo.name}】${d.repo.path}`];
+  if (d.direct.length) {
+    out.push('  本仓库直接绑定:');
+    for (const r of d.direct) out.push(line(r));
+  } else {
+    out.push('  本仓库直接绑定:（无）');
+  }
+  if (d.boards.length) {
+    for (const b of d.boards) {
+      out.push(`  ◇ 看板「${b.name}」${b.desc ? ` —— ${b.desc.split('\n')[0]}` : ''}`);
+      if (b.refs.length) for (const r of b.refs) out.push(line(r));
+      else out.push('    （该组暂无绑定的参考仓库）');
+    }
+  } else {
+    out.push('  （该仓库不属于任何看板 —— 没有组级参考可继承）');
+  }
+  return out.join('\n');
 }
 
 export default {
@@ -81,7 +148,10 @@ export default {
       cli: ['repo', 'list'],
       http: ['GET', '/api/repos'],
       summary: '仓库清单（本地任务的主题会按路径匹配到这里，取它的上下文）',
-      run: () => service.listRepos(),
+      flags: {
+        type: { type: 'string', enum: ['dev', 'ref'], hint: '只看某类：dev=开发仓库，ref=参考仓库' },
+      },
+      run: (ctx) => service.listRepos().then((list) => (ctx.type ? list.filter((r) => (r.type || 'dev') === ctx.type) : list)),
       render: renderRepoList,
     },
     {
@@ -103,6 +173,8 @@ export default {
         name: { type: 'string' },
         desc: { type: 'string' },
         notes: { type: 'string' },
+        type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库（默认），ref=参考仓库' },
+        remote: { type: 'string', hint: '远程 git 地址（ref 的唯一 key；dev 也建议记，导出时导它）' },
       },
       run: (ctx) => service.addRepo(ctx),
       render: (r) => `已登记: ${r.name} -> ${r.path}`,
@@ -111,13 +183,15 @@ export default {
       id: 'repo.update',
       cli: ['repo', 'update'],
       http: ['PATCH', '/api/repos/:id'],
-      summary: '修改仓库路径 / 名称 / 描述 / 备注',
+      summary: '修改仓库路径 / 名称 / 描述 / 备注 / 类型 / 远程地址',
       args: ['id'],
       flags: {
         path: { type: 'string' },
         name: { type: 'string' },
         desc: { type: 'string' },
         notes: { type: 'string' },
+        type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库，ref=参考仓库' },
+        remote: { type: 'string', hint: '远程 git 地址' },
       },
       run: (ctx) => service.updateRepo(ctx.id, ctx),
       render: (r) => `已更新: ${r.name}`,
@@ -167,6 +241,175 @@ export default {
       args: ['id'],
       run: (ctx) => service.repoOpen(ctx.id),
       render: (d) => `已打开: ${d.opened}`,
+    },
+
+    // ---- 参考仓库（type=ref）：clone / 同步 / 检查 / 绑定 ----
+    // git 边界的例外区：只有参考仓库允许 clone/pull/读 origin（git.js 是唯一出口）。
+    // 克隆目标 = config.gitRepoRoot（未设置会显式报错，绝不默默落进用户目录）。
+    {
+      // 登记的远程地址存档：dev 导出时导远程地址而非本地路径（换机导入才 clone 得回来）。
+      // 不给 url 时从目录 origin 读（一次性存档，不算状态探测）。
+      id: 'repo.remote',
+      cli: ['repo', 'remote'],
+      http: ['POST', '/api/repos/remote'],
+      summary: '登记/更新仓库的远程 git 地址（无 --url = 从目录 origin 读取存档）',
+      args: ['id'],
+      flags: { url: { type: 'string', hint: '远程地址；缺省时 git remote get-url origin' } },
+      run: async (ctx) => {
+        let url = String(ctx.url || '').trim();
+        if (!url) {
+          const r = await service.getRepo(ctx.id);
+          url = await gitOrigin(r.path);
+          if (!url) throw badInput(`「${r.name}」目录没有 origin，也未给 --url —— 请手工给一个`);
+        }
+        return service.updateRepo(ctx.id, { remote: url });
+      },
+      render: (r) => `已登记远程地址: ${r.name} -> ${r.remote}`,
+    },
+    {
+      id: 'repo.ref.clone',
+      cli: ['repo', 'ref', 'clone'],
+      http: ['POST', '/api/repos/ref/clone'],
+      summary: '克隆远程仓库为参考仓库（落到 gitRepoRoot，登记 + 可选绑定当前目录的开发仓库）',
+      args: ['url'],
+      flags: {
+        name: { type: 'string', hint: '名称（缺省取 URL 末段）' },
+        desc: { type: 'string', hint: '一句话描述（它参考什么）' },
+        notes: { type: 'string' },
+        board: { type: 'array', hint: '顺手挂到看板（id 可多个，逗号分隔）' },
+        bind: { type: 'array', hint: '绑定的开发仓库（id/路径/名称，可多个，逗号分隔）' },
+        depth: { type: 'number', default: 1, hint: '浅克隆深度（默认 1）' },
+        'no-bind': { type: 'boolean', hint: '关闭自动绑定（默认绑当前目录命中的开发仓库）' },
+      },
+      run: (ctx) =>
+        ref.cloneRef({
+          url: ctx.url,
+          name: ctx.name,
+          desc: ctx.desc,
+          notes: ctx.notes,
+          board: ctx.board,
+          bind: ctx.bind,
+          depth: ctx.depth,
+          noBind: ctx['no-bind'] === true,
+        }),
+      render: renderClone,
+    },
+    {
+      id: 'repo.ref.add',
+      cli: ['repo', 'ref', 'add'],
+      http: ['POST', '/api/repos/ref/add'],
+      summary: '把一个已存在的 checkout 登记为参考仓库（不 clone；remote 缺省读 origin）',
+      args: ['path'],
+      flags: {
+        remote: { type: 'string', hint: '远程地址（目录没有 origin 时必给）' },
+        name: { type: 'string' },
+        desc: { type: 'string' },
+        notes: { type: 'string' },
+      },
+      run: (ctx) => ref.registerRef(ctx),
+      render: (r) => `已登记参考仓库: ${r.name} -> ${r.path}`,
+    },
+    {
+      id: 'repo.ref.sync',
+      cli: ['repo', 'ref', 'sync'],
+      http: ['POST', '/api/repos/ref/sync'],
+      summary: '同步参考仓库（git pull --ff-only；--all 同步全部）',
+      args: [{ name: 'id', required: false }],
+      flags: {
+        all: { type: 'boolean', hint: '同步全部参考仓库' },
+      },
+      run: (ctx) => (ctx.all ? ref.syncAllRefs() : ref.syncRef(ctx.id)),
+      render: (d) => (d.results ? renderRefSync(d) : `已同步: ${d.name}（${d.status}${d.output ? ' — ' + d.output.split('\n')[0] : ''}）`),
+    },
+    {
+      id: 'repo.ref.check',
+      cli: ['repo', 'ref', 'check'],
+      http: ['GET', '/api/repos/ref/check'],
+      summary: '检查参考仓库完整性：目录/.git/origin 一致性 + 绑定死链（零副作用）',
+      run: () => ref.checkRefs(),
+      render: renderRefCheck,
+    },
+    {
+      id: 'repo.bind',
+      cli: ['repo', 'bind'],
+      http: ['POST', '/api/repos/bind'],
+      summary: '绑定参考仓库到开发仓库/看板（多对多；--remove 摘除；目标可多个，逗号分隔）',
+      args: ['id'],
+      flags: {
+        repo: { type: 'array', hint: '绑定的开发仓库（id/路径/名称，逗号分隔）' },
+        board: { type: 'array', hint: '绑定的看板 id（逗号分隔）' },
+        remove: { type: 'boolean', hint: '摘除：带 --repo/--board 摘指定目标，都不带 = 清空全部绑定' },
+      },
+      run: (ctx) => ref.bindTarget(ctx),
+      render: renderBind,
+    },
+    {
+      // 绑定描述：同一条绑定在「本仓库参考什么」与「这个组参考什么」两个语境里
+      // 意义可以不同，描述挂在**绑定关系**上（与看板组内描述 board.note 同一哲学）。
+      id: 'repo.ref.note',
+      cli: ['repo', 'ref', 'note'],
+      http: ['POST', '/api/repos/ref/note'],
+      summary: '写/清绑定描述：这个参考在该仓库/看板里参考什么（--note 留空 = 清除）',
+      args: ['id'],
+      flags: {
+        repo: { type: 'string', hint: '开发仓库（id/路径/名称；与 --board 二选一）' },
+        board: { type: 'string', hint: '看板 id（与 --repo 二选一）' },
+        note: { type: 'string', hint: '绑定描述（多行可含关键路径/关键词；留空 = 清除）' },
+      },
+      run: (ctx) => ref.setLinkNote(ctx),
+      render: (d) => (d.note
+        ? `已写绑定描述: ${d.name} @ ${d.kind === 'board' ? '看板 ' : '仓库 '}${d.target}`
+        : `已清除绑定描述: ${d.name} @ ${d.kind === 'board' ? '看板 ' : '仓库 '}${d.target}`),
+    },
+    {
+      // 分层查询：问「这个目录/仓库有什么参考」时，第一层是它直接绑定的，
+      // 第二层是它所在的看板（命名空间）上的——组级参考沿看板继承下来。
+      id: 'repo.ref.of',
+      cli: ['repo', 'ref', 'of'],
+      http: ['GET', '/api/repos/ref/of'],
+      summary: '查某仓库（缺省当前目录）的参考仓库：第一层直接绑定，第二层按看板分组（命名空间）',
+      args: [{ name: 'id', required: false }],
+      run: (ctx) => ref.refsForRepo(ctx.id || process.cwd()),
+      render: renderRefsOf,
+    },
+
+    // ---- 布局导入导出（v2）：remote 为 key，不带本地路径 ----
+    {
+      id: 'repo.export',
+      cli: ['repo', 'export'],
+      http: ['GET', '/api/repos/export'],
+      summary: '导出仓库布局 JSON（远程地址 + 分组 + 参考关系；不含本地路径，可回灌 repo import）',
+      run: () => transfer.repoExport(),
+      render: (d) => JSON.stringify(d, null, 2),
+    },
+    {
+      id: 'repo.import',
+      cli: ['repo', 'import'],
+      http: ['POST', '/api/repos/import'],
+      summary: '导入仓库布局 JSON（--plan 只算计划不执行；--clone all|dev|ref|none；--only 按 remote 挑）',
+      // 与 board.import 同款双入口：CLI 给文件路径（- = stdin），面板直接 POST {json}。
+      args: [{ name: 'file', required: false }],
+      flags: {
+        json: { type: 'string', hint: '（面板）直接给布局 JSON' },
+        plan: { type: 'boolean', hint: '只计算导入计划，不执行' },
+        clone: { type: 'string', enum: ['all', 'dev', 'ref', 'none'], hint: '导入时要克隆哪些（默认 none = 只登记）' },
+        only: { type: 'array', hint: '只处理这些远程地址（归一化后匹配，逗号分隔）' },
+      },
+      run: async (ctx) => {
+        let json = typeof ctx.json === 'string' ? ctx.json : '';
+        if (!json && ctx.file) {
+          const { readFileSync } = await import('node:fs');
+          json = readFileSync(ctx.file === '-' ? 0 : ctx.file, 'utf8');
+        }
+        if (!json) throw badInput('请给布局 JSON 文件路径（- 读 stdin），或在面板里粘贴 JSON');
+        return transfer.repoImport({
+          json,
+          plan: ctx.plan === true,
+          clone: ctx.clone || 'none',
+          only: ctx.only,
+        });
+      },
+      render: (d) => (d.plan ? transfer.renderPlan(d) : transfer.renderResult(d)),
     },
 
     // ---- 看板（主题容器）：多项目编排层，面板与 CLI 同源 ----

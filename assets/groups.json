@@ -25,6 +25,10 @@
     "kv-repo": {
       "skills": ["kv-repo"],
       "summary": "仓库组识别与关系报告——/kv-repo <组名> 一步加载看板相关项目；board/repo 查询、读并维护领域描述（中心/终端、关键路径、搜索关键词）"
+    },
+    "kv-repo-mmx-gitrepo": {
+      "skills": ["kv-repo-mmx-gitrepo"],
+      "summary": "mmx 深度搜索并克隆参考仓库——repo ref clone 统一落 gitRepoRoot、remote 为 key 登记绑定，替代散装的 git clone + git.remote 清单流程"
     }
   }
 }

@@ -13,7 +13,7 @@ export default {
       id: 'setting.get',
       cli: ['setting', 'get'],
       http: ['GET', '/api/setting'],
-      summary: '读本机设置（附件是否读取时自动下载、附件目录）',
+      summary: '读本机设置（附件自动下载、附件目录、参考仓库存储根）',
       run: () => service.getSettings(),
       render: (d) => service.renderSettings(d),
     },
@@ -25,6 +25,8 @@ export default {
       flags: {
         autoSyncAttachments: { type: 'boolean', hint: '读任务时自动把附件下载到本地' },
         attachmentsDir: { type: 'string', hint: '附件本地目录（空 = ~/.nx-kv/attachments/<工作空间>/）' },
+        gitRepoRoot: { type: 'string', hint: '参考仓库存储根目录（非 C 盘；空 = clone 参考仓库被拒绝）' },
+        gitDevRoot: { type: 'string', hint: '导入布局时开发仓库的默认克隆根（空 = 只登记不克隆）' },
       },
       run: (ctx) => service.setSettings(ctx),
       render: (d) => service.renderSettings(d),

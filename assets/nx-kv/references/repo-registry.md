@@ -7,13 +7,14 @@
 - 用户问「这台机器上有哪些仓库 / 某个仓库在哪」
 - 需要把某个目录登记为受管仓库，或扫描某目录批量发现仓库
 - 需要维护仓库的元信息：名称、描述、备注，或改登记路径
-- **需要 git 状态、差异、拉取、推送时不要进这里**——本工具不提供 git 操作（见下）
+- **需要 git 状态、差异、拉取、推送时不要进这里**——开发仓库不做 git 操作（见下）
+- **要搜索并克隆参考项目时用 [[kv-repo-mmx-gitrepo]]**——那是参考仓库的克隆 SOP
 - **只查分组与关系（不改动）时用 [[kv-repo]]**——那是仓库组的查询/报告侧
 
-## 边界：本工具不管 git
+## 边界：git 操作只给参考仓库
 
-仓库模块只维护一份**目录清单**。状态、diff、pull、push、冲突落地全部不做，
-原因见 README「为什么不管 git」：git 客户端是无底洞，面板做不出比 IDE 更好的体验，
+仓库模块只维护一份**目录清单**。开发仓库（type=dev）的 git 状态、diff、pull、push、
+冲突落地全部不做：git 客户端是无底洞，面板做不出比 IDE 更好的体验，
 而半吊子的状态显示比没有更危险（用户会拿它当决策依据）。
 
 要用 git 时直接用它自己：
@@ -24,12 +25,15 @@ git -C <path> diff
 git -C <path> pull --no-edit
 ```
 
+唯一的例外是**参考仓库**（type=ref，见下节）：clone / sync / check 三件事由本工具做——
+它的价值就是「把远程仓库抓到本机参考并保持新鲜」，不做这个它就没存在意义。
+
 本工具的价值在另一方面：把这些路径**记住并描述清楚**（叫什么、干什么用、归在哪类），
 让 agent 下次不必重新问一遍「这个是哪个项目」。
 
 ## 数据模型
 
-`~/.nx-rh/store.json` 的 `repos[]`，一条记录形如：
+`~/.nx-kv/repos.json` 的 `repos[]`，一条记录形如：
 
 ```json
 {
@@ -38,6 +42,9 @@ git -C <path> pull --no-edit
   "path": "D:\\a_js\\js_proj\\br_controller\\ext",
   "desc": "对外扩展模块",
   "notes": "",
+  "type": "dev",
+  "remote": "git@github.com:me/ext.git",
+  "linked": [],
   "addedAt": "…",
   "updatedAt": "…"
 }
@@ -46,8 +53,48 @@ git -C <path> pull --no-edit
 - **id 或绝对路径**都能定位仓库（agent 直接给路径更省事）
 - 路径不必是 git 仓库：登记不校验目录内容，也不要求目录存在
 - **没有标签**：分组只走看板一条路（2026-10-24 废除仓库 tags，两套平行分组只会打架）
+- **type 双态**：`dev` = 开发仓库（默认），`ref` = 参考仓库（见下节）
+- **remote 是稳定 key**：参考仓库必有；开发仓库也建议记（`repo remote <id|path>` 一条命令
+  从目录 origin 读来存档）——导出布局时导远程地址而非本地路径，换机导入才 clone 得回来
 - **看板的 desc 是领域描述**：写该组仓库的侧重、配合关系（谁是中心/终端）、
   关键路径与搜索关键词——它是给人和 agent 读的上下文，写法约定见 [[kv-repo]]
+
+## 参考仓库（type=ref）：搜索并克隆外部项目
+
+mmx-research-gitclone 的整体吸纳（2026-10-27）：远程 clone 下来学习/参考的仓库与
+开发仓库同住中心清单，但统一存放在 `gitRepoRoot`（`nx-kv setting set --gitRepoRoot <非C盘目录>`，
+**不设置则 clone 显式拒绝**——绝不默默堆进用户目录）。完整搜索→克隆 SOP 见
+[[kv-repo-mmx-gitrepo]]；这里登记命令面的速查：
+
+```bash
+nx-kv repo ref clone <url> [--name N] [--desc D] [--board <看板id>] [--bind <开发仓库>] [--depth 1] [--no-bind]
+#   clone + 登记 + 绑定一条龙；在开发仓库目录里跑默认自动绑定当前仓库（--no-bind 关掉）
+nx-kv repo ref add <path> [--remote <url>]    # 登记一个已存在的 checkout（不 clone；remote 缺省读 origin）
+nx-kv repo ref sync [--all] [id|名称|url]     # 同步更新（git pull --ff-only；冲突不自动 merge）
+nx-kv repo ref check                          # 完整性检查：目录/.git/origin 一致性 + 绑定死链（零副作用）
+nx-kv repo bind <ref> --repo <开发仓库> --board <看板id>    # 绑定（多对多；目标可多个，逗号分隔）
+nx-kv repo bind <ref> --remove [--repo x | --board y]       # 摘绑定（都不带 = 清空）
+nx-kv repo ref note <ref> --repo <开发仓库> --note "在这参考什么"   # 写/清绑定描述（board 同理；留空=清）
+nx-kv repo ref of [id|路径]                                 # 分层查询：第一层直接绑定，第二层按看板命名空间
+nx-kv repo remote <id|path> [--url <地址>]    # 登记远程地址（无 --url = 从目录 origin 读）
+```
+
+- **remote 是参考仓库的唯一 key**：同一远程地址（SSH/HTTPS 写法不同也算同源）只允许一条登记
+- **linked 挂绑定关系（多对多）**：`[{kind:'repo'|'board', id, note?}]`——一个 ref 可服务
+  多个仓库/组，一个仓库/组可挂多个 ref；`note` 是**绑定描述**（这个参考在该仓库/看板里
+  参考什么，挂在关系上、摘绑即清，与看板组内描述 board.note 同一哲学）；
+  删开发仓库/删看板会同步摘指向它们的绑定，`ref check` 也能查出死链
+- **分层查询**：`repo ref of [id|路径]`（缺省当前目录）——第一层 = 直接绑定到该仓库的 ref，
+  第二层 = 它所在看板（命名空间）上的 ref 按组列出；agent 问「做这个仓库的事有什么参考」
+  用这一条命令就够
+- **布局导入导出**（换机/分享整套环境）：
+
+```bash
+nx-kv repo export                # 远程地址 + 分组 + 参考关系（不含本地路径）
+nx-kv repo import <file> --plan  # 先看计划（登记什么/克隆什么/建什么组/连什么关系）
+nx-kv repo import <file> --clone ref --only <remote1,remote2>   # 选择性执行
+```
+
 
 ## SOP
 

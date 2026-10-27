@@ -69,12 +69,17 @@ export async function updateBoard(id, { name, desc } = {}) {
   });
 }
 
-// 删看板 = 摘容器：repoIds 随之消失，里面的仓库自动回未分组（登记不动）
+// 删看板 = 摘容器：repoIds 随之消失，里面的仓库自动回未分组（登记不动）。
+// 参考仓库对它的绑定（linked 里 kind:'board'）同步摘除——看板没了，绑定就是死链。
 export async function removeBoard(id) {
   return mutateStore((s) => {
     const at = s.boards.findIndex((x) => x.id === id);
     if (at < 0) throw notFound('看板不存在: ' + id);
     const [b] = s.boards.splice(at, 1);
+    for (const r of s.repos) {
+      if (!Array.isArray(r.linked)) continue;
+      r.linked = r.linked.filter((l) => !(l.kind === 'board' && l.id === id));
+    }
     return { removed: b.name, released: (b.repoIds || []).length };
   });
 }

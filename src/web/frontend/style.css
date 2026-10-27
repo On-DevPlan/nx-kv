@@ -700,6 +700,242 @@ select {
 .rp-boards-unassigned b { font-family: var(--mono); color: var(--ink-2); font-weight: 650; }
 .rp-board-item .acts { margin-left: auto; white-space: nowrap; }
 
+/* ---- 参考仓库（type=ref）大面板与绑定 chips ----
+ * 参考仓库与开发仓库分表：主表只放 dev（行内「参考」列显示绑到它的 ref）；
+ * 参考面板有自己的表格（状态徽标 / 名称 / 远程 / 绑定 chips / 操作）。
+ * 绑定一律选项式勾选（rp-pick-*），不手填 id 字符串。
+ * 状态徽标 8px 圆点：灰=未检查，绿=通过，红=有问题（title 带明细）。 */
+.rp-ref-panel { margin-bottom: 10px; }
+.rp-ref-warn {
+  padding: 7px 12px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(179, 38, 30, 0.25);
+  border-radius: var(--radius);
+  background: rgba(179, 38, 30, 0.05);
+  font-size: 11.5px;
+  color: var(--danger, #b3261e);
+}
+.rp-ref-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mid);
+  opacity: 0.5;
+}
+.rp-ref-dot.ok { background: #1b7f4d; opacity: 1; }
+.rp-ref-dot.bad { background: #b3261e; opacity: 1; }
+
+/* 参考面板的表格 */
+.rp-ref-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+.rp-ref-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 860px; }
+.rp-ref-table th {
+  text-align: left;
+  padding: 7px 10px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.rp-ref-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  font-size: 12px;
+}
+.rp-ref-table tbody tr:last-child td { border-bottom: 0; }
+.rp-ref-table tbody tr:hover td { background: #faf9f6; }
+.rp-ref-cell-name strong { font-size: 12.5px; font-weight: 650; color: var(--ink); }
+.rp-ref-cell-remote { font-size: 11px; color: var(--ink-2); word-break: break-all; }
+.rp-ref-cell-links { line-height: 1.9; }
+.rp-refs-none { font-size: 11px; }
+
+/* dev 行内 / 组区的参考 chip（只读展示，点击写描述） */
+.rp-refs { white-space: normal; }
+.rp-refs .rp-ref-chip {
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 8px;
+  margin: 0 4px 3px 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rp-refs .rp-ref-chip:hover { border-color: var(--mid); color: var(--ink); }
+.rp-ref-chip-dot { width: 5px; height: 5px; border-radius: 50%; background: #1b7f4d; }
+.rp-ref-bind { margin: 0 0 3px; }
+
+/* 参考面板里的绑定 chips：[组|仓 标签 名字 描述摘要] + × */
+.rp-link-chip {
+  display: inline-flex;
+  align-items: stretch;
+  margin: 0 5px 4px 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--paper);
+  max-width: 100%;
+}
+.rp-link-chip-main {
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 1px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.rp-link-chip-main:hover { color: var(--ink); }
+.rp-link-chip-main b {
+  font-weight: 650;
+  font-size: 10px;
+  color: var(--mid);
+  flex: 0 0 auto;
+}
+.rp-link-chip-note {
+  font-style: normal;
+  color: var(--mid);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-left: 1px solid var(--line);
+  padding-left: 5px;
+}
+.rp-link-chip-x {
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--mid);
+  padding: 0 7px;
+}
+.rp-link-chip-x:hover { background: rgba(179, 38, 30, 0.07); color: var(--danger); }
+
+/* 选项式绑定弹窗：两组 checkbox（开发仓库 / 看板） */
+.rp-pick-list {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.rp-pick-group { display: flex; flex-direction: column; gap: 3px; min-width: 180px; flex: 1; }
+.rp-pick-group-label {
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  margin-bottom: 2px;
+}
+.rp-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 0;
+}
+.rp-pick-item input[type='checkbox'] { flex: 0 0 auto; }
+.rp-pick-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-pick-desc { font-size: 11px; max-width: 200px; }
+
+/* 看板（项目组）的参考仓库命名空间区 */
+.rp-ref-mounted {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.rp-ref-mounted-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rp-ref-mounted-label { font-weight: 650; color: var(--ink); }
+.rp-ref-mounted-label b { font-family: var(--mono); color: var(--ink-2); }
+.rp-ref-mounted-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 0;
+  border-top: 1px dashed var(--line);
+  flex-wrap: wrap;
+}
+.rp-ref-mounted-name { font-weight: 650; color: var(--ink); }
+.rp-ref-mounted-desc {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.rp-ref-note-chip {
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 8px;
+  border: 1px dashed var(--mid);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-ref-note-chip:hover { color: var(--ink); border-color: var(--ink); }
+.rp-ref-mounted-item .acts { margin-left: auto; display: flex; gap: 4px; flex: 0 0 auto; }
+
+/* 布局导入的计划预览：每行一个仓库（复选框 = 是否随导入克隆）+ 看板/关系摘要 */
+.rp-layout-plan { margin: 0; }
+.rp-layout-repos {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rp-layout-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rp-layout-row input[type='checkbox'] { flex: 0 0 auto; }
+.rp-layout-name { font-weight: 650; color: var(--ink); flex: 0 0 auto; }
+.rp-layout-state { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-layout-board { color: var(--ink-2); border-top: 1px dashed var(--line); padding-top: 4px; }
+.rp-layout-link { color: var(--ink-2); }
+.rp-layout-warn { color: #b3261e; font-size: 11.5px; }
+
 /* ---------- 仓库上下文工作台：主题容器纵向堆叠 + 手机式仓库方格卡片 ----------
  * 一个看板 = 一个主题容器（card 头 + 卡片网格）；卡片可拖拽入板 / 插到某卡前 /
  * 拖回未分组。落点高亮用 1px 描边（与看板的行选中标记同一套视觉语言）。

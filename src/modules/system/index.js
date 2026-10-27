@@ -46,6 +46,8 @@ async function bootstrap() {
     groups,
     groupsError,
     defaultPort: DEFAULT_PORT,
+    // serve 进程的工作目录：仓库页「扫描」的缺省根目录用它（面板进程 cwd 即宿主项目）
+    projectRoot: process.cwd(),
     commands: await commandTable(),
   };
 }

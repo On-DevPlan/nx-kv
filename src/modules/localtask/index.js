@@ -389,7 +389,7 @@ export default {
       // CLI 形态去问常驻主面板 —— 否则 CLI 永远报 0（这条命令形同虚设）。
       run: (ctx, opts) =>
         opts && opts.transport === 'http'
-          ? service.panelPresence()
+          ? service.httpPanelPresence()
           : service.queryPanelPresence(),
       render: (d) =>
         `主面板当前有 ${d.clients} 个活动标签` +

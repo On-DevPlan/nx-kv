@@ -2,7 +2,7 @@
 // 本质是「agent 提交结果 → 阻塞 → 用户在 web 针对主题回填 → agent 接收」。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
-import { useToast, useGuard, Modal } from '../../web/frontend/components/ui.jsx';
+import { useToast, useGuard } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 import {
   mergeDirectoryRows,
@@ -157,8 +157,6 @@ export default function SessionTaskView() {
   // 「只读弹窗」：点击现状/上一轮总结/任务文本时显示聚焦阅读的模态框
   // modal = { title, body } | null
   const [modal, setModal] = useState(null);
-  // 「等待设置弹窗」：agent 用法 + 等待超时 + 收尾追加语（少用，平时收进弹窗，不占顶部）
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
   const [editSaving, setEditSaving] = useState(false);

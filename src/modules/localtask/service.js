@@ -1339,9 +1339,13 @@ export async function waitForTask({
   //    失败只降级为纯阻塞——绝不抛错中断 wait。
   //    --no-open 模式（冒烟/CI）不发起任何面板相关动作：不开浏览器、不拉起 serve、不开 SSE。
   //    这样可避免在测试里 spawn 出一堆孤儿进程占着 7877 端口。
-  const panelInfo = open ? await ensureMainPanel() : { running: false, started: false, url: '' };
-  const presence = panelInfo.running ? await probePresence() : 0;
-  const deepLink = deepLinkUrl(key, cwd);
+  const panelInfo = open
+    ? await ensureMainPanel()
+    : { running: false, started: false, port: 0, url: '' };
+  // 活性判据：「本地任务」页的活动 SSE 标签，或面板停在任意页（App 壳 ping 兜底）。
+  // 只认 SSE 的旧口径在用户切到别的页时会误判「没开」，于是每次 wait 都重开一个标签。
+  const presence = panelInfo.running ? await probeEffectivePresence() : 0;
+  const deepLink = deepLinkUrl(key, cwd, panelInfo.port || DEFAULT_PORT);
 
   // 3. 结果承诺：三个生产者（同进程本地 waiter / 同进程全局 FIFO / 跨进程轮询）+ 超时
   let resolveOutcome;
@@ -1435,7 +1439,8 @@ export async function waitForTask({
   let zeroStreak = 0;
   const review = setInterval(async () => {
     if (!panelInfo.running || !open) return;
-    const n = await probePresence().catch(() => 0);
+    // 同样用宽口径活性（SSE 或 ping）：用户只是切到别的页，不算「标签被关」。
+    const n = await probeEffectivePresence().catch(() => 0);
     zeroStreak = n > 0 ? 0 : zeroStreak + 1;
     if (zeroStreak < 2) return;
     const now = Date.now();
@@ -1547,6 +1552,16 @@ export function panelPresence() {
   };
 }
 
+/**
+ * HTTP 面板用的 presence：在进程内计数（SSE + panelActive）之外，再补
+ * 「等待中主题数」——App 壳据此在「本地任务」tab 上打角标，用户停在别的页
+ * 也知道有 agent 在等回填（wait 因此不必再重开标签）。
+ */
+export async function httpPanelPresence() {
+  const waiting = await countWaitingTopics().catch(() => 0);
+  return { ...panelPresence(), waiting };
+}
+
 // 给 runtime/api.js 用的最小 SSE 注册表：每次「/api/localtasks/events」连接时
 // 调一下 addEventStreamConn(req, res)，把连接纳入 panelPresence 统计。
 export function addEventStreamConn(req, res) {
@@ -1574,13 +1589,12 @@ export function addEventStreamConn(req, res) {
 
 // ─── 常驻主面板（固定端口）统一入口 ───────────────────────────────────
 
-// 「主面板就绪」=端口上有可响应的服务。
-// 这与 /api/ping 不同：ping 是面板壳层每 15s 主动上报「有页面开着」，
-// 这里只问「端口上有没有人接 HTTP」——用于决定是否要拉起 serve。
-async function probePanelReady(timeoutMs = 900) {
-  const url = `${panelBaseUrl()}/api/ping`;
+// 「某端口上有没有可响应的面板」：GET /api/ping。
+// 这与 panelActive 不同：ping 在这里只问「端口上有没有人接 HTTP」，
+// 用于决定是否复用现成面板 / 拉起 serve。
+function pingPort(port, timeoutMs = 700) {
   return new Promise((resolve_) => {
-    const req = http.get(url, { timeout: timeoutMs }, (res) => {
+    const req = http.get(`http://127.0.0.1:${port}/api/ping`, { timeout: timeoutMs }, (res) => {
       res.resume();
       resolve_(true);
     });
@@ -1590,6 +1604,35 @@ async function probePanelReady(timeoutMs = 900) {
     });
     req.on('error', () => resolve_(false));
   });
+}
+
+// 候选端口：默认端口优先，再叠加 panels.json 里登记的端口
+// （`serve --port` 或默认端口被占自动顺延出来的面板）。
+function candidatePanelPorts() {
+  return [...new Set([DEFAULT_PORT, ...readAllPanels().map((p) => Number(p.port))])].filter(
+    (p) => Number(p) > 0
+  );
+}
+
+/**
+ * 在给定端口列表里找一个正在响应的面板，返回第一个（按列表顺序）；都没有 → null。
+ * 纯候选集版本，便于单测注入端口（默认端口上可能正跑着真实面板）。
+ */
+export async function findRunningAmongPorts(ports, timeoutMs = 700) {
+  const list = [...new Set((Array.isArray(ports) ? ports : []).map(Number))].filter((p) => p > 0);
+  const probed = await Promise.all(
+    list.map(async (port) => ({ port, up: await pingPort(port, timeoutMs) }))
+  );
+  const hit = probed.find((r) => r.up);
+  return hit ? hit.port : null;
+}
+
+/**
+ * 在所有候选端口上找一个正在响应的面板，返回其端口（默认端口优先）；都没有 → null。
+ * 多端口发现是「wait 不再重复开页面」的关键一环。
+ */
+export async function findRunningPanelPort(timeoutMs = 700) {
+  return findRunningAmongPorts(candidatePanelPorts(), timeoutMs);
 }
 
 // 探主面板的 presence 端点。返回 {clients,total}；面板没在跑 / 探测失败 → null。
@@ -1627,14 +1670,29 @@ async function fetchPanelPresence(timeoutMs = 900, port = DEFAULT_PORT) {
   });
 }
 
-// 「活动 SSE 连接数」= 主面板上当前正打开的「实时任务」标签数。
-// 用于 wait 决策：已有活标签就不重开页面，让那个标签响铃/打角标/弹通知；
-// 没有活标签时再 openBrowser 新开深链标签。
-//
-// 任何失败/旧版无此端点都按 0 处理（保守地开一次页），绝不因探测失败而阻塞 wait。
-async function probePresence(timeoutMs = 900) {
-  const r = await fetchPanelPresence(timeoutMs);
-  return r ? r.clients : 0;
+/**
+ * wait 用的活性探测，返回 0 / 1。
+ *
+ * SSE 活标签（用户停在「本地任务」页）**或** 面板最近有请求（用户停在任意页，
+ * App 壳每 15s 打 /api/ping 兜底）都算「面板开着」→ 1；都没有 → 0。
+ * 旧口径只数 SSE：用户一切到别的页（SSE 单视图挂载，切页即断）wait 就误判
+ * 「没开」，于是重复开标签——这正是本次修复的根因。
+ *
+ * 任何探测失败都按 0 处理（保守地开一次页），绝不因探测失败而阻塞 wait。
+ */
+/**
+ * 纯判据：一次 presence 快照 → 0 / 1。
+ * SSE 活标签或面板最近有请求（停在任意页）都算「面板开着」。
+ */
+export function effectivePresenceFrom(q) {
+  if (!q) return 0;
+  const clients = Math.max(0, Number(q.clients) || 0);
+  return clients > 0 || q.panelActive ? 1 : 0;
+}
+
+export async function probeEffectivePresence(timeoutMs = 900) {
+  const q = await queryPanelPresence(timeoutMs).catch(() => null);
+  return effectivePresenceFrom(q);
 }
 
 /**
@@ -1755,12 +1813,14 @@ export function shouldReopenWindow({
   return true;
 }
 
-function panelBaseUrl() {  return `http://127.0.0.1:${DEFAULT_PORT}`;
+function panelOrigin(port) {
+  return `http://127.0.0.1:${port || DEFAULT_PORT}`;
 }
 
-// 深链到主面板「实时任务」页并选中当前主题（key 优先，cwd 兜底）。
-function deepLinkUrl(key, cwd) {
-  return `${panelBaseUrl()}/#/localtask?key=${encodeURIComponent(key)}&cwd=${encodeURIComponent(cwd)}`;
+// 深链到面板「本地任务」页并选中当前主题（key 优先，cwd 兜底）。
+// 端口取实际发现的面板（可能不是默认端口）。
+function deepLinkUrl(key, cwd, port) {
+  return `${panelOrigin(port)}/#/localtask?key=${encodeURIComponent(key)}&cwd=${encodeURIComponent(cwd)}`;
 }
 
 // 本仓库/已安装包的 CLI 入口（src/modules/localtask/ 上三级到包根）。
@@ -1776,8 +1836,13 @@ function binCliPath() {
 // 又没有等待中的主题时自行退出（宽限期见 panel-guard.js）。下一次 wait 需要时会再拉起
 // （冷启动 <1s）。用户手动 `nx-kv serve` 的实例不带此标志，不会自己跑掉。
 async function ensureMainPanel() {
-  const url = panelBaseUrl() + '/';
-  if (await probePanelReady()) return { running: true, started: false, url };
+  // 先在所有候选端口（含 panels.json 登记的非默认端口）上找现成面板——
+  // 只探默认端口会看不见 `serve --port` / 顺延出来的面板，于是另起第二个实例、
+  // 再开一个标签。
+  const existing = await findRunningPanelPort();
+  if (existing) {
+    return { running: true, started: false, port: existing, url: panelOrigin(existing) + '/' };
+  }
 
   try {
     const child = spawn(process.execPath, [binCliPath(), 'serve', '--no-open', '--auto-exit'], {
@@ -1790,15 +1855,17 @@ async function ensureMainPanel() {
     });
     child.unref();
   } catch {
-    return { running: false, started: false, url };
+    return { running: false, started: false, port: 0, url: '' };
   }
 
+  // 新 serve 可能因默认端口被占而顺延到别的端口 → 扫描所有候选端口，不只盯默认端口。
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 200));
-    if (await probePanelReady(700)) return { running: true, started: true, url };
+    const port = await findRunningPanelPort(700);
+    if (port) return { running: true, started: true, port, url: panelOrigin(port) + '/' };
   }
-  return { running: false, started: true, url };
+  return { running: false, started: true, port: 0, url: '' };
 }
 
 // ─── 等待生命周期事件流（主面板及时通知，避免用户漏过超时）────────────

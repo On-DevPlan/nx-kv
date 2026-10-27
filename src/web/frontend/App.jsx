@@ -1,8 +1,8 @@
 // 应用壳：顶栏 + tab 导航（注册表驱动）+ hash 路由。
 // 路由即持久化：当前视图写进 location.hash 与 store，刷新/分享链接都停在原页面。
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useStore } from './store.jsx';
-import { ErrorBoundary } from './components/ui.jsx';
+import { ErrorBoundary, useToast } from './components/ui.jsx';
 import { VIEWS } from './registry.js';
 import { api } from './api/client.js';
 
@@ -16,6 +16,33 @@ function viewFromHash() {
 
 export default function App() {
   const { boot, ui, patchUi } = useStore();
+  const toast = useToast();
+  // 等待中的主题数：用于在「本地任务」tab 上打角标。
+  // wait 的活性判据已把「面板停在任意页」算开着、不再重开标签，所以提醒责任
+  // 落在壳上——用户停在别的页也要知道有 agent 在等回填。
+  const [waitingCount, setWaitingCount] = useState(0);
+  useEffect(() => {
+    let stopped = false;
+    const check = async () => {
+      try {
+        const d = await api('/api/localtasks/presence');
+        const n = Math.max(0, Number(d && d.waiting) || 0);
+        if (stopped) return;
+        setWaitingCount((prev) => {
+          if (prev === 0 && n > 0) toast('有 agent 正在等待回填，请查看「本地任务」');
+          return n;
+        });
+      } catch {
+        /* 瞬时失败：下一轮再查（15s） */
+      }
+    };
+    check();
+    const t = setInterval(check, 15_000);
+    return () => {
+      stopped = true;
+      clearInterval(t);
+    };
+  }, [toast]);
 
   // 初始进入：hash 优先，否则用持久化的上次视图
   useEffect(() => {
@@ -78,6 +105,11 @@ export default function App() {
               onClick={() => switchTo(v.id)}
             >
               {v.title}
+              {v.id === 'localtask' && waitingCount > 0 && (
+                <span className="nav-badge" title={`${waitingCount} 个主题等待回填`}>
+                  {waitingCount}
+                </span>
+              )}
             </button>
           ))}
         </nav>

@@ -90,6 +90,20 @@ nav { display: inline-flex; gap: 2px; }
   background: var(--ink);
   border-radius: 2px 2px 0 0;
 }
+/* 等待中主题角标：有 agent 阻塞等回填时挂在「本地任务」tab 上 */
+.nav-badge {
+  display: inline-block;
+  min-width: 16px;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
 
 .meta { margin-left: auto; color: var(--mid); font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
 

@@ -832,7 +832,9 @@ select {
 }
 .rp-link-chip-x:hover { background: rgba(179, 38, 30, 0.07); color: var(--danger); }
 
-/* 选项式绑定弹窗：两组 checkbox（开发仓库 / 看板） */
+/* 选项式绑定弹窗：两组 checkbox（开发仓库 / 看板）。
+   高度跟着弹窗走（弹窗自己有 max-height:84vh + body 滚动），这里再套一层固定
+   220px 只会让 18 个选项挤进一条小缝——滚动条套滚动条，很难点。 */
 .rp-pick-list {
   display: flex;
   gap: 14px;
@@ -840,7 +842,7 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 8px 10px;
-  max-height: 220px;
+  max-height: 46vh;
   overflow-y: auto;
 }
 .rp-pick-group { display: flex; flex-direction: column; gap: 3px; min-width: 180px; flex: 1; }
@@ -861,9 +863,19 @@ select {
   cursor: pointer;
   min-width: 0;
 }
-.rp-pick-item input[type='checkbox'] { flex: 0 0 auto; }
+/* 复选框在 .form-field 里会吃到全局 `.form-field input { width: 100% }`——
+   它撑满整行后，名字与描述被挤成 0 宽，面板上看起来就是「一片空白」。
+   这一行是选项不是字段，宽度交还给 flex 自己算。 */
+.rp-pick-item input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  padding: 0;
+}
 .rp-pick-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rp-pick-desc { font-size: 11px; max-width: 200px; }
+.rp-pick-item > span:first-of-type { flex: 0 1 auto; min-width: 0; }
+.rp-pick-desc { font-size: 11px; max-width: 200px; flex: 0 1 auto; min-width: 0; }
 
 /* 看板（项目组）的参考仓库命名空间区 */
 .rp-ref-mounted {

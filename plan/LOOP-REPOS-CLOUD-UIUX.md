@@ -139,3 +139,17 @@
   +56 行），本轮放弃 JSX 编辑、全部用 CSS 达成，并手工还原了已做的 hint 编辑
   （git diff --stat 核对 56 行复原）。JSX 级 hint-tooltip 留待对方落地后再做
 - 截图：temp/shots/repos-r6-ref.png、repos-r6-boards.png
+
+## 第 7 轮纪要 ✅（全站级修复）
+
+- **弹窗结构修复**：v2 的弹窗命名（.modal=盒子，配 .modal-back 遮罩）与
+  v1 ui.jsx `<Modal>`（.modal=遮罩，.modal-box=盒子）**类名撞车**——v2 后加载，
+  把全站弹窗遮罩改成 540px 纸片：弹窗挤在左上角、无暗化遮罩（与 R1 的 .col
+  泄漏同款病）。v2 盒子规则全部收进 `.modal-back` 作用域，迁移确认弹窗
+  （唯一 v2 命名使用方）不受影响
+- Playwright 弹窗巡检（添加仓库/扫描/克隆参考/存储根/工作空间，零数据写入）：
+  修复前 modal-repo-add.png（左上角+无遮罩）→ 修复后居中+磨砂遮罩 ✅
+- Esc 关闭在 Modal 里本就有线（keydown），巡检脚本时序误判，非缺陷
+- 遗留 → R9：工作空间弹窗行内元素竖排堆叠（v1 遗留，需 DOM 级排查 Copyable/tag
+  的块级化原因）
+- 截图：temp/shots/modal-*.png（修复后 5 张）

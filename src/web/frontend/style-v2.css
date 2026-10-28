@@ -299,13 +299,15 @@
   position: fixed; inset: 0; background: rgba(22, 24, 28, 0.34); z-index: 140;
   display: flex; align-items: center; justify-content: center; padding: 20px; animation: pop 0.12s ease;
 }
-.modal {
+/* ⚠ 盒子规则必须挂在 .modal-back 下：v1 ui.jsx 的 <Modal> 里 .modal 是**遮罩**，
+   v2 这里是**盒子**——裸 .modal 会把遮罩改成 540px 纸片，全站弹窗挤在左上角 */
+.modal-back .modal {
   width: min(540px, 100%); background: var(--paper); border: 1px solid var(--soft-2);
   border-radius: 10px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.26); overflow: hidden;
 }
-.modal-h { padding: 12px 16px; font-weight: 700; font-size: 14px; border-bottom: 1px solid var(--line); }
-.modal-b { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
-.modal-f {
+.modal-back .modal-h { padding: 12px 16px; font-weight: 700; font-size: 14px; border-bottom: 1px solid var(--line); }
+.modal-back .modal-b { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.modal-back .modal-f {
   padding: 10px 16px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--soft);
 }
 .mx { display: flex; gap: 10px; align-items: stretch; }

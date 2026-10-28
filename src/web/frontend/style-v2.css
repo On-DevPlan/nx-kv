@@ -81,10 +81,27 @@
 }
 .trow:hover .more { opacity: 1; }
 .trow .more:hover { background: var(--soft-2); color: var(--ink); }
-.trow.active { background: var(--ink); color: var(--on-ink); }
-.trow.active .cnt { background: rgba(127, 127, 127, 0.28); color: var(--on-ink); }
-.trow.active .gico, .trow.active .tw, .trow.active .more { color: var(--on-ink); opacity: 0.75; }
+.trow.active {
+  background: color-mix(in srgb, #2F6F5E 10%, var(--paper));
+  color: var(--ink);
+  box-shadow: inset 2px 0 0 #2F6F5E;
+}
+.trow.active .cnt { background: color-mix(in srgb, #2F6F5E 16%, transparent); color: #2F6F5E; }
+.trow.active .gico, .trow.active .tw, .trow.active .more { color: #2F6F5E; opacity: 0.85; }
 .trow.child { padding-left: 26px; }
+.trow.child.task-child {
+  padding-left: 40px;
+  height: 26px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.trow.child.task-child:hover { background: color-mix(in srgb, #2F6F5E 7%, transparent); }
+.trow.child.task-child .gico { color: #2F6F5E; opacity: 0.75; }
+.trow.child.task-child .cnt {
+  background: color-mix(in srgb, #2F6F5E 12%, transparent);
+  color: #2F6F5E;
+  font-size: 10px;
+}
 .trow.kb-focus { outline: 2px solid var(--ink); outline-offset: -2px; }
 .trow.dragging { opacity: 0.4; }
 /* 三段式落点：上缘=before 线 / 下缘=after 线 / 中段=into 描边 */
@@ -110,7 +127,10 @@
   font: inherit; font-size: 15px;
 }
 .railbtn:hover { background: var(--soft-2); color: var(--ink); }
-.railbtn.active { background: var(--ink); color: var(--on-ink); }
+.railbtn.active {
+  background: color-mix(in srgb, #2F6F5E 12%, var(--paper));
+  color: #2F6F5E;
+}
 .railbtn .b {
   position: absolute; top: 2px; right: 2px; min-width: 14px; height: 14px; border-radius: 7px;
   background: var(--danger); color: #fff; font-size: 9px; line-height: 14px; padding: 0 3px; font-weight: 600;

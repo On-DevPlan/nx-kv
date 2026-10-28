@@ -9,9 +9,11 @@
 import { lazy } from 'react';
 
 export const VIEWS = [
-  { id: 'dir', module: 'localtask', component: lazy(() => import('../../modules/localtask/view-dir.jsx')) },
-  { id: 'global', module: 'localtask', component: lazy(() => import('../../modules/localtask/view-dir.jsx')) },
+  // 目录 / 全局池：MD 式工作台（落地 plan/agent-md-workspace.html）；经典看板仍走 #/localtask
+  { id: 'dir', module: 'md-workspace', component: lazy(() => import('../../modules/md-workspace/view.jsx')) },
+  { id: 'global', module: 'md-workspace', component: lazy(() => import('../../modules/md-workspace/view.jsx')) },
   { id: 'overview', module: 'localtask', component: lazy(() => import('../../modules/localtask/view-overview.jsx')) },
+  { id: 'dir-board', module: 'localtask', component: lazy(() => import('../../modules/localtask/view-dir.jsx')) },
   { id: 'cloud', module: 'todo', component: lazy(() => import('../../modules/todo/view.jsx')) },
   { id: 'repos', module: 'repos', component: lazy(() => import('../../modules/repos/view.jsx')) },
   { id: 'auth', module: 'auth', component: lazy(() => import('../../modules/auth/view.jsx')) },

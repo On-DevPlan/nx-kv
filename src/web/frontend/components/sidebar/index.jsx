@@ -8,6 +8,7 @@ import { useDialog, useToast } from '../ui.jsx';
 import { buildTree } from './model.js';
 import { canDrop, zoneOf, applyDrop } from './drag.js';
 import { rowMenuItems, addMenuItems, cfgMenuItems } from './row-menu.jsx';
+import TaskChildren from './task-children.jsx';
 
 export default function Sidebar({
   topics,          // mergeDirectoryRows+withGlobalRow 产物（含 isGlobal 行）
@@ -228,39 +229,41 @@ export default function Sidebar({
               </span>
             </button>
           ) : (
-            <button
-              key={row.type + ':' + row.key}
-              className={
-                'trow' + (row.type === 'dir' ? ' child' : '') +
-                (isActive(row) ? ' active' : '') +
-                (row.pending > 0 ? ' pinned' : '') +
-                (kbIndex === i ? ' kb-focus' : '')
-              }
-              onClick={() => openRow(row)}
-              onContextMenu={(e) => openRowMenu(e, row)}
-              title={row.cwd ? `${row.cwd}\n${row.summary || ''}` : row.name}
-              draggable
-              onDragStart={(e) => onDragStart(e, row)}
-              onDragEnd={onDragEnd}
-              onDragOver={(e) => onDragOver(e, row)}
-              onDragLeave={onDragLeave}
-              onDrop={(e) => onDrop(e, row)}
-              data-drop={dropHint?.id === row.key ? dropHint.zone : undefined}
-            >
-              <span className="gico"><Icon name={row.type === 'global' ? 'globe' : 'folder'} /></span>
-              <span className="nm">
-                {row.name}
-                {row.type === 'global' && row.waiting ? <span className="wdot" title="有等待中的主题" /> : null}
-              </span>
-              {row.pending > 0 && <span className="cnt">{row.pending}</span>}
-              {row.type === 'dir' && row.waiting && <span className="wdot" title="agent 等待回填中" />}
-              <span
-                className="more" role="button" tabIndex={-1} aria-label="行菜单"
-                onClick={(e) => openRowMenu(e, row)}
+            <div key={row.type + ':' + row.key} className="tblock">
+              <button
+                className={
+                  'trow' + (row.type === 'dir' && row.groupId ? ' child' : '') +
+                  (isActive(row) ? ' active' : '') +
+                  (row.pending > 0 ? ' pinned' : '') +
+                  (kbIndex === i ? ' kb-focus' : '')
+                }
+                onClick={() => openRow(row)}
+                onContextMenu={(e) => openRowMenu(e, row)}
+                title={row.cwd ? `${row.cwd}\n${row.summary || ''}` : row.name}
+                draggable
+                onDragStart={(e) => onDragStart(e, row)}
+                onDragEnd={onDragEnd}
+                onDragOver={(e) => onDragOver(e, row)}
+                onDragLeave={onDragLeave}
+                onDrop={(e) => onDrop(e, row)}
+                data-drop={dropHint?.id === row.key ? dropHint.zone : undefined}
               >
-                <Icon name="dots" size={13} />
-              </span>
-            </button>
+                <span className="gico"><Icon name={row.type === 'global' ? 'globe' : 'folder'} /></span>
+                <span className="nm">
+                  {row.name}
+                  {row.type === 'global' && row.waiting ? <span className="wdot" title="有等待中的主题" /> : null}
+                </span>
+                {row.pending > 0 && <span className="cnt">{row.pending}</span>}
+                {row.type === 'dir' && row.waiting && <span className="wdot" title="agent 等待回填中" />}
+                <span
+                  className="more" role="button" tabIndex={-1} aria-label="行菜单"
+                  onClick={(e) => openRowMenu(e, row)}
+                >
+                  <Icon name="dots" size={13} />
+                </span>
+              </button>
+              {isActive(row) && <TaskChildren row={row} onNavigate={onNavigate} />}
+            </div>
           )
         ))}
         {!rows.length && <div className="tree-empty">{kw ? '没有匹配的目录' : '暂无目录：点右上 ＋ 添加'}</div>}

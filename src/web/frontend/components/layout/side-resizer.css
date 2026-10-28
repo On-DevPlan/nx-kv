@@ -1,0 +1,14 @@
+/* 侧栏宽度分隔条 —— 命中区 7px，hover/拖拽显 2px 墨线 */
+.shell-resizer{
+  flex:none;position:relative;width:0;align-self:stretch;cursor:col-resize;z-index:2;
+}
+.shell-resizer::before{content:'';position:absolute;top:0;bottom:0;left:-3px;width:7px}
+.shell-resizer::after{
+  content:'';position:absolute;top:0;bottom:0;left:-1px;width:2px;
+  background:var(--ink,#16181C);opacity:0;transition:opacity .12s;
+}
+.shell-resizer:hover::after,
+.shell-resizer:focus-visible::after,
+body.sp-dragging .shell-resizer::after{opacity:1}
+#app-shell{--side-w:232px}
+#side{width:var(--side-w)!important}

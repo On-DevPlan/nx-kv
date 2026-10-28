@@ -45,6 +45,7 @@ export function buildTree(topics, prefs, kw = '') {
       topic: globalRow,
       pending: globalRow.pending || 0,
       waiting: !!globalRow.waiting,
+      tasks: (globalRow.tasks || []).filter((t) => !t.deletedAt),
     });
   }
 
@@ -81,7 +82,18 @@ function dirRowOf(d) {
     waiting: !!d.waiting,
     manual: !!d.manual,
     topic: d,
+    // MD 工作台：侧栏子行（未删除任务）；topic 行上直接挂 tasks
+    tasks: (d.tasks || []).filter((t) => !t.deletedAt),
   };
+}
+
+/** 任务正文抽一行标题（给侧栏子行用） */
+export function taskLabel(t) {
+  const text = String(t?.text || '');
+  const m = text.match(/^#\s+(.+)$/m);
+  if (m) return m[1].trim().slice(0, 40);
+  const line = text.split('\n').find((l) => l.trim());
+  return (line || `#${t?.id}`).trim().slice(0, 40);
 }
 
 /** 深链 #/dir/<key> 进入时沿途分组自动展开（chainByKey 思路）。 */

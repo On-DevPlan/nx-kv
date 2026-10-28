@@ -11,6 +11,7 @@ import { api } from './api/client.js';
 import { Icon } from './components/icons.jsx';
 import Sidebar from './components/sidebar/index.jsx';
 import { loadPrefs, updatePrefs } from './prefs.js';
+import { SideResizer, useSideWidth } from './components/layout/side-resizer.jsx';
 
 // hash → 路由对象。带 query 的 #/localtask?cwd=… 是 wait 深链，原样交给经典看板。
 function routeFromHash() {
@@ -32,6 +33,9 @@ export default function App() {
   const [waitingCount, setWaitingCount] = useState(0);
   const [localData, setLocalData] = useState(null); // /api/localtasks 结果
   const [localErr, setLocalErr] = useState('');
+  const { sideW, beginDrag, onKeyDown: onSideKey, reset: resetSideW } = useSideWidth({
+    disabled: prefs.folded,
+  });
 
   const patchPrefs = useCallback((patch) => setPrefs(updatePrefs(patch)), []);
 
@@ -52,10 +56,15 @@ export default function App() {
   }, []);
 
   const onNavigate = useCallback((hash) => {
+    const prevPath = (location.hash || '').split('?')[0];
+    const nextPath = hash.split('?')[0];
     if (location.hash === hash) setRoute(routeFromHash());
     else location.hash = hash;
-    // 进入目录详情 = 侧边栏自动收起（原型 §2）；返回动作自己展开
-    if (hash.startsWith('#/dir/') || hash === '#/global') {
+    // 进入目录/全局详情时收起侧栏；同详情换任务（?task=）保持展开，便于点侧栏子行
+    const isDetail = nextPath.startsWith('#/dir/') || nextPath === '#/global';
+    const sameDetail = isDetail && prevPath === nextPath;
+    const isTaskDeep = /[?&]task=/.test(hash);
+    if (isDetail && !sameDetail && !isTaskDeep) {
       setPrefs((p) => (p.folded ? p : updatePrefs({ folded: true })));
     }
   }, []);
@@ -125,7 +134,7 @@ export default function App() {
   const ViewComponent = entry?.component;
 
   return (
-    <div id="app-shell" data-route={route.view}>
+    <div id="app-shell" data-route={route.view} style={{ '--side-w': `${sideW}px` }}>
       {prefs.folded ? (
         <Rail
           route={route} onNavigate={onNavigate} prefs={prefs} patchPrefs={patchPrefs}
@@ -138,6 +147,13 @@ export default function App() {
           prefs={prefs} patchPrefs={patchPrefs} refreshLocal={refreshLocal}
         />
       )}
+      <SideResizer
+        sideW={sideW}
+        beginDrag={beginDrag}
+        onKeyDown={onSideKey}
+        reset={resetSideW}
+        hidden={prefs.folded}
+      />
 
       <main id="main">
         {localErr && !localData && (
@@ -168,10 +184,10 @@ export default function App() {
   );
 }
 
-// 全局任务池与目录详情共用 view-dir 组件（global 模式：单栏 + 投递入口）
+// 全局任务池与目录详情共用 MD 工作台（dirKey 空 = 全局池）
 function GlobalEntry({ rows, refreshLocal, boot, onNavigate }) {
-  const DirDetail = VIEWS.find((v) => v.id === 'dir').component;
-  return <DirDetail dirKey="" rows={rows} refreshLocal={refreshLocal} boot={boot} onNavigate={onNavigate} />;
+  const View = VIEWS.find((v) => v.id === 'global').component;
+  return <View dirKey="" rows={rows} refreshLocal={refreshLocal} boot={boot} onNavigate={onNavigate} />;
 }
 
 // 收起态 rail：52px 图标条，悬停气泡显示名称，徽标仍在（原型 §2/§3）

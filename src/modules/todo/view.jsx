@@ -71,6 +71,7 @@ export default function TodoView() {
   const { dialog, node: dialogNode } = useDialog();
 
   const [data, setData] = useState(null);
+  const [loadErr, setLoadErr] = useState(''); // 首载/刷新失败要停在页面上，不能只有一闪而过的 toast
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ topic: '', text: '' });
   const [modal, setModal] = useState(null);
@@ -91,10 +92,11 @@ export default function TodoView() {
     if (!boot?.loggedIn) return;
     try {
       setData(await api('/api/todo'));
+      setLoadErr('');
     } catch (e) {
-      toast(e.message);
+      setLoadErr(String(e.message || e));
     }
-  }, [boot?.loggedIn, toast]);
+  }, [boot?.loggedIn]);
 
   useEffect(() => {
     load();
@@ -330,6 +332,16 @@ export default function TodoView() {
         <button className="btn" onClick={add}>加入待办</button>
       </div>
 
+      {/* 读取失败停在页面上（带重试）；首载中不给空态引导（那会误导） */}
+      {loadErr ? (
+        <div className="cloud-error">
+          <span>清单读取失败：{loadErr}</span>
+          <button className="btn small ghost" onClick={reload}>重试</button>
+        </div>
+      ) : null}
+      {!data && !loadErr ? <div className="cloud-loading muted">读取中…</div> : null}
+
+      {data ? (
       <div className="cols">
         {BUCKETS.map(([key, label]) => (
           <div className={'col col-' + key} key={key}>
@@ -367,6 +379,7 @@ export default function TodoView() {
           </div>
         ))}
       </div>
+      ) : null}
 
       <CliHints module="todo" />
       {/* 工作空间弹窗：清单的设置入口（切换 / 成员 / 改名 / 解散 / 新建） */}

@@ -456,6 +456,15 @@
   font: inherit; font-size: 11px; background: var(--soft); border-radius: 4px; padding: 1px 5px;
 }
 
+/* 读取失败横条（琥珀，带重试）与首载占位 */
+.cloud-error {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border: 1px solid var(--wait-line); border-radius: var(--r8);
+  background: var(--wait-bg); color: var(--wait); font-size: 12.5px;
+}
+.cloud-error .btn { margin-left: auto; }
+.cloud-loading { flex: none; text-align: center; padding: 28px 0; font-size: 12.5px; }
+
 /* ---- 仓库页（repos 视图）---- */
 /* 行操作 hover 浮现：26 行 × 3 钮常驻是纯噪音；占位不变，tr:focus-within 保键盘 */
 .rp-page .rp-acts { opacity: 0; transition: opacity 0.12s; }

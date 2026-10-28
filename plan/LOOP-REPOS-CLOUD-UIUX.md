@@ -153,3 +153,15 @@
 - 遗留 → R9：工作空间弹窗行内元素竖排堆叠（v1 遗留，需 DOM 级排查 Copyable/tag
   的块级化原因）
 - 截图：temp/shots/modal-*.png（修复后 5 张）
+
+## 第 8 轮纪要 ✅
+
+- cloud 读取失败改为**页面内横条 + 重试**（琥珀 .cloud-error），替代一闪而过
+  的 toast；首载中显示「读取中…」占位，不再误显示空态引导（空态是「没有数据」，
+  不是「还没读到数据」）
+- cols 渲染 gate 在 data 上；load 的 catch 不再依赖 toast（deps 去掉 toast）
+- **刻意跳过**：cloud 加页头（repos 有 page-head）—— v2 语言里工具栏即页头
+  （md-workspace 同款），加标题反而费垂直空间
+- 并行会话仍在途（repos/view.jsx / md-workspace/*未落地），repos 的错误态
+  改造继续让路，留 R10 评估
+- App.jsx 被并行会话追加了 Esc 返回总览（本轮 scrim 无冲突，共存 ✅）

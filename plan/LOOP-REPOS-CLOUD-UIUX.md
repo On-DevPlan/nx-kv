@@ -120,3 +120,12 @@
 - **刻意跳过**：主题筛选可搜索化（select）—— 常见主题数 < 20，原生 select 够用；
   若将来主题膨胀再升级，避免本轮造轮子
 - 截图：temp/shots/cloud-r4-720.png（问题）→ cloud-r4-scrim.png（修复后）
+
+## 第 5 轮纪要 ✅
+
+- repos 行操作 hover 浮现（`.rp-acts` opacity，tr:focus-within 保键盘，
+  hover:none 常显）—— 开发仓库表与参考仓库表同类
+- 删除按钮无需改：v1 `.rp-del` 已是「平时同貌、悬停变红」，与本轮方向一致
+- **Playwright hover 实测**（系统 Chrome channel）：cloud/repos 行操作
+  悬停 opacity=1 ✅（temp/verify-hover.py，可复跑）
+- 截图：temp/shots/repos-r5.png、verify-cloud-hover.png、verify-repos-hover.png

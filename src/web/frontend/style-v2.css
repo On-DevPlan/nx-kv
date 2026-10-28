@@ -454,6 +454,12 @@
   font: inherit; font-size: 11px; background: var(--soft); border-radius: 4px; padding: 1px 5px;
 }
 
+/* ---- 仓库页（repos 视图）---- */
+/* 行操作 hover 浮现：26 行 × 3 钮常驻是纯噪音；占位不变，tr:focus-within 保键盘 */
+.rp-page .rp-acts { opacity: 0; transition: opacity 0.12s; }
+.rp-page tr:hover .rp-acts, .rp-page tr:focus-within .rp-acts { opacity: 1; }
+@media (hover: none) { .rp-page .rp-acts { opacity: 1; } }
+
 /* ---- 动效克制与降级（原型 §6）---- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

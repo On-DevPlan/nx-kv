@@ -110,3 +110,13 @@
 - 截图：temp/shots/cloud-r3b.png
 - 教训入库：**本仓库有并行会话，禁用 `git add -A`**（R2 曾卷入 md-workspace
   WIP，已拆分修复）—— 循环协议补上这条
+
+## 第 4 轮纪要 ✅
+
+- 壳层窄屏（G3 抽查发现）：≤900px 侧栏浮层化后没有遮罩、点外收不起 ——
+  App 加 `.side-scrim`（z-39，点击收起；≥901px display:none），实测 720px 遮罩生效
+- container query 阈值 560 → 480：456px 桶宽下时间显示良好，原阈值过于激进
+- 空态实测通过（shared 工作区恰好清空）：三桶分桶引导文案正确
+- **刻意跳过**：主题筛选可搜索化（select）—— 常见主题数 < 20，原生 select 够用；
+  若将来主题膨胀再升级，避免本轮造轮子
+- 截图：temp/shots/cloud-r4-720.png（问题）→ cloud-r4-scrim.png（修复后）

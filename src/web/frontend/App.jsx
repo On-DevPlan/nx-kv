@@ -141,11 +141,15 @@ export default function App() {
           rows={rows} waitingCount={waitingCount} boot={boot}
         />
       ) : (
-        <Sidebar
-          topics={rows} route={route} onNavigate={onNavigate}
-          boot={boot} waitingCount={waitingCount}
-          prefs={prefs} patchPrefs={patchPrefs} refreshLocal={refreshLocal}
-        />
+        <>
+          {/* 窄屏（≤900px）侧栏浮层化后的点外收起遮罩；宽屏 display:none 不参与 */}
+          <div className="side-scrim" onClick={() => patchPrefs({ folded: true })} aria-hidden="true" />
+          <Sidebar
+            topics={rows} route={route} onNavigate={onNavigate}
+            boot={boot} waitingCount={waitingCount}
+            prefs={prefs} patchPrefs={patchPrefs} refreshLocal={refreshLocal}
+          />
+        </>
       )}
       <SideResizer
         sideW={sideW}

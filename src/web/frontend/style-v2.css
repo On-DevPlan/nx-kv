@@ -421,7 +421,7 @@
 .cloud-page .row:hover .acts, .cloud-page .row:focus-within .acts { opacity: 1; }
 @media (hover: none) { .cloud-page .row .acts { opacity: 1; } }
 .cloud-page .col { container-type: inline-size; }
-@container (max-width: 560px) {
+@container (max-width: 480px) {
   .cloud-page .row .time { display: none; }
   .cloud-page .row .note { padding-left: 0; }
 }
@@ -468,4 +468,9 @@
   .topbar .sum { display: none; }
   #app-shell { position: relative; }
   #side { position: absolute; left: 0; top: 0; bottom: 0; z-index: 40; box-shadow: 0 0 26px rgba(0, 0, 0, 0.18); }
+  /* 侧栏浮层的点外收起遮罩：浮层打开时盖住主区，点一下即收起 */
+  .side-scrim { display: block; position: absolute; inset: 0; z-index: 39; background: rgba(22, 24, 28, 0.22); }
+}
+@media (min-width: 901px) {
+  .side-scrim { display: none; }
 }

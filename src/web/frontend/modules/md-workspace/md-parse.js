@@ -79,7 +79,12 @@ export function renderMarkdownHtml(src, attachments = []) {
         inUl = true;
       }
       const done = m[1] && /x/i.test(m[1]);
-      html += `<li class="${done ? 'done' : ''}">${inline(m[2])}</li>`;
+      if (m[1]) {
+        const mark = done ? '☑' : '☐';
+        html += `<li class="${done ? 'done' : 'todo'}"><span class="mdw-cb" aria-hidden="true">${mark}</span>${inline(m[2])}</li>`;
+      } else {
+        html += `<li>${inline(m[2])}</li>`;
+      }
       continue;
     }
     flush();
@@ -111,6 +116,32 @@ export const NEW_TEMPLATE = `## 背景
 
 ## 附件
 `;
+
+/** 把 MD 切成块（空行 / 标题起新块），供一体化实时预览就地编辑 */
+export function splitMdBlocks(src) {
+  const lines = String(src ?? '').split('\n');
+  const blocks = [];
+  let cur = [];
+  const flush = () => {
+    while (cur.length && cur[cur.length - 1] === '') cur.pop();
+    if (cur.length) blocks.push(cur.join('\n'));
+    cur = [];
+  };
+  for (const line of lines) {
+    if (!line.trim() && cur.length) {
+      flush();
+      continue;
+    }
+    if (/^#{1,3}\s/.test(line) && cur.length) flush();
+    cur.push(line);
+  }
+  flush();
+  return blocks.length ? blocks : [''];
+}
+
+export function joinMdBlocks(blocks) {
+  return (blocks || []).map((b) => String(b ?? '').replace(/\s+$/g, '')).join('\n\n');
+}
 
 export const STAGE_LABELS = ['接收', '解析', '执行', '验证', '回填'];
 

@@ -35,16 +35,20 @@ export default function ToolBar({
       </div>
 
       <div className="mdw-actions" role="group" aria-label="任务操作">
-        <button type="button" className="btn ghost sm" onClick={onImport} title="导入 Markdown">
-          导入
-        </button>
+        {mode !== 'split' && (
+          <button type="button" className="btn ghost sm" onClick={onImport} title="导入 Markdown">
+            导入
+          </button>
+        )}
         <button type="button" className="btn ghost sm" onClick={onNew} title="新建草稿">
           新任务
         </button>
-        {showMark && (
+        {showMark && mode !== 'split' && (
           <button type="button" className="btn ghost sm" onClick={onMark}>标注</button>
         )}
-        <button type="button" className="btn ghost sm" onClick={onDraft}>存草稿</button>
+        {mode !== 'split' && (
+          <button type="button" className="btn ghost sm" onClick={onDraft}>存草稿</button>
+        )}
         <button type="button" className="btn sm primary" onClick={onSubmit}>{submitLabel}</button>
         <span className="sep" aria-hidden />
         <button type="button" className="btn ghost sm" onClick={onProg}>进程</button>

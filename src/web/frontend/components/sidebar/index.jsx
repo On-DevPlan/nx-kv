@@ -174,7 +174,7 @@ export default function Sidebar({
             aria-label="收起侧边栏"
             onClick={() => patchPrefs({ folded: true })}
           >
-            ⟨
+            <Icon name="back" size={15} />
           </button>
         </div>
         <div className="searchrow">

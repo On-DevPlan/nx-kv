@@ -26,7 +26,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
     return rows.find((r) => r.key === dirKey) || null;
   }, [rows, dirKey, isGlobal]);
 
-  const [mode, setMode] = useState('edit');
+  const [mode, setMode] = useState('split'); // 默认实时预览
   const [focusTaskId, setFocusTaskId] = useState(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState(NEW_TEMPLATE);
@@ -49,7 +49,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
       setTitle('');
       setBody(NEW_TEMPLATE);
       setAttachments([]);
-      setMode('edit');
+      setMode('split');
       return;
     }
     setFocusTaskId(task.id);
@@ -57,7 +57,8 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
     setTitle(titleFromMd(text));
     setBody(text);
     setAttachments(loadAttForTask(task.id));
-    setMode(task.status === 'consumed' ? 'preview' : 'split');
+    // 已完成也可进实时预览再改；仅预览可手动切
+    setMode('split');
   }, []);
 
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
     setTitle('');
     setBody(NEW_TEMPLATE);
     setAttachments([]);
-    setMode('edit');
+    setMode('split');
     setSelMenu(null);
   }, [dirKey]);
 
@@ -179,9 +180,27 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
     setTitle(t);
     setBody(b);
     setAttachments([]);
-    setMode('edit');
+    setMode('split');
     setSelMenu(null);
     toast('已打开新 MD 草稿（并发追加）');
+  };
+
+  /** 标题与正文首行 # 双向同步 */
+  const onTitle = (next) => {
+    setTitle(next);
+    // 源码/阅读：同步已有一级标题行；实时预览标题栏独立，不改正文
+    if (mode === 'split') return;
+    setBody((b) => {
+      if (/^# (?!#)/m.test(b)) return b.replace(/^# (?!#).+$/m, `# ${next || '未命名任务'}`);
+      return b;
+    });
+  };
+
+  const onBody = (next) => {
+    setBody(next);
+    // 实时预览：标题栏独立，改块时不要用正文抢标题
+    if (mode === 'split') return;
+    setTitle(titleFromMd(next));
   };
 
   const onPreviewMouseUp = (e) => {
@@ -237,7 +256,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
   }
 
   return (
-    <div className="mdw" onMouseUp={onPreviewMouseUp}>
+    <div className="mdw" data-mode={mode} onMouseUp={onPreviewMouseUp}>
       <div className="mdw-main">
         <div className="mdw-top">
           <div className="mdw-head">
@@ -279,8 +298,10 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
           title={title}
           body={body}
           previewHtml={previewHtml}
-          onTitle={setTitle}
-          onBody={setBody}
+          onTitle={onTitle}
+          onBody={onBody}
+          attachments={attachments}
+          docKey={focusTaskId == null ? 'draft' : String(focusTaskId)}
         />
 
         <AttachBar

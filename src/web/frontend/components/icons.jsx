@@ -29,6 +29,13 @@ const ICONS = {
   plus: P('M12 5v14M5 12h14'),
   back: P('M14.5 5.5 8 12l6.5 6.5'),
   chevron: P('m9 6 6 6-6 6'),
+  /** 侧栏展开 / 布局示意：左轨 + 面板 */
+  sidebar: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M9.5 4.5v15" />
+    </>
+  ),
   refresh: (
     <>
       <path d="M20 12a8 8 0 1 1-2.34-5.66" />

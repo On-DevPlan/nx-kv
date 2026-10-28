@@ -1,5 +1,6 @@
 // 右侧内嵌「并发任务进程」——与主编辑区并排，不再 fixed 遮挡。
 import { useEffect, useMemo, useState } from 'react';
+import { Icon } from '../../components/icons.jsx';
 import { STAGE_LABELS, taskToProgress } from './md-parse.js';
 
 function fmtElapsed(ms) {
@@ -88,7 +89,7 @@ export default function ProgressPanel({
       <div className="mdw-prog-h">
         <span className="t">{dirName || '任务进程'}</span>
         <button type="button" className="iconbtn" title="收起" aria-label="收起" onClick={() => onToggle(false)}>
-          ⟩
+          <Icon name="chevron" size={14} />
         </button>
       </div>
       <div className="mdw-prog-sum">

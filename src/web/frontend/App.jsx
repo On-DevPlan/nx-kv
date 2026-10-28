@@ -214,7 +214,7 @@ function Rail({ route, onNavigate, patchPrefs, rows, waitingCount, boot }) {
   return (
     <nav id="rail" aria-label="侧边栏（收起态）">
       <button className="railbtn" data-tip="展开侧边栏" aria-label="展开侧边栏" onClick={() => patchPrefs({ folded: false })}>
-        ⟩
+        <Icon name="sidebar" size={16} />
       </button>
       <div className="rail-sep" />
       {globalRow && btn(route.view === 'global', '全局任务池', () => onNavigate('#/global'), 'globe', globalRow.pending, globalRow.waiting)}

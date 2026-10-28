@@ -485,10 +485,10 @@ export default function ReposView() {
 
   if (boards === null) {
     return (
-      <>
+      <div className="rp-page">
         <div className="muted" style={{ padding: 20 }}>读取中…</div>
         {dialogNode}
-      </>
+      </div>
     );
   }
 
@@ -529,7 +529,7 @@ export default function ReposView() {
   };
 
   return (
-    <>
+    <div className="rp-page">
       <div className="page-head">
         <div className="title-block">
           <h2>仓库</h2>
@@ -557,32 +557,36 @@ export default function ReposView() {
         </div>
       ) : null}
 
-      {/* 看板筛选器：主表 = 开发仓库；参考仓库走右侧大面板入口 */}
+      {/* 看板筛选器：主表 = 开发仓库；参考仓库 / 看板管理靠右 */}
       <div className="rp-filters" data-testid="rp-filters">
-        <button
-          className={'rp-chip' + (filter ? '' : ' on')}
-          onClick={() => setFilter('')}
-          title="显示全部开发仓库"
-        >
-          开发仓库 <b>{devRepos.length}</b>
-        </button>
-        {boardList.map((b) => (
+        <div className="rp-filters-main">
           <button
-            key={b.id}
-            className={'rp-chip' + (filter === b.id ? ' on' : '')}
-            onClick={() => setFilter(filter === b.id ? '' : b.id)}
-            title={`只看「${b.name}」里的仓库（${b.repos.length} 个）`}
+            className={'rp-chip' + (filter ? '' : ' on')}
+            onClick={() => setFilter('')}
+            title="显示全部开发仓库"
           >
-            {b.name} <b>{b.repos.length}</b>
+            开发仓库 <b>{devRepos.length}</b>
           </button>
-        ))}
-        <button className={'rp-chip rp-chip-manage' + (refOpen ? ' on' : '')} onClick={() => setRefOpen(!refOpen)}
-          title="参考仓库大面板：克隆 / 绑定 / 同步 / 检查 / 布局导入导出">
-          参考仓库 <b>{refRepos.length}</b>{refOpen ? ' ▾' : ' ▸'}
-        </button>
-        <button className="rp-chip rp-chip-manage" onClick={() => setBoardsOpen(!boardsOpen)}>
-          看板管理{boardsOpen ? ' ▾' : ' ▸'}
-        </button>
+          {boardList.map((b) => (
+            <button
+              key={b.id}
+              className={'rp-chip' + (filter === b.id ? ' on' : '')}
+              onClick={() => setFilter(filter === b.id ? '' : b.id)}
+              title={`只看「${b.name}」里的仓库（${b.repos.length} 个）`}
+            >
+              {b.name} <b>{b.repos.length}</b>
+            </button>
+          ))}
+        </div>
+        <div className="rp-filters-side">
+          <button className={'rp-chip' + (refOpen ? ' on' : '')} onClick={() => setRefOpen(!refOpen)}
+            title="参考仓库大面板：克隆 / 绑定 / 同步 / 检查 / 布局导入导出">
+            参考仓库 <b>{refRepos.length}</b>{refOpen ? ' ▾' : ' ▸'}
+          </button>
+          <button className={'rp-chip' + (boardsOpen ? ' on' : '')} onClick={() => setBoardsOpen(!boardsOpen)}>
+            看板管理{boardsOpen ? ' ▾' : ' ▸'}
+          </button>
+        </div>
       </div>
 
       {/* 看板上下文条：筛选到某个看板时，把它的领域描述亮出来 —— desc 写的是
@@ -1185,6 +1189,6 @@ export default function ReposView() {
       ) : null}
 
       {dialogNode}
-    </>
+    </div>
   );
 }

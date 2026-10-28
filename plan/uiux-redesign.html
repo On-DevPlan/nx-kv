@@ -1,0 +1,1970 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>nx-kv 面板 v2 · UI/UX 设计稿</title>
+<style>
+/* ============================================================
+   nx-kv 面板 v2 设计稿 — 单文件自包含
+   结构：① 交互原型（顶部整屏，可直接操作） ② 设计说明（下方滚动）
+   视觉：延续 nx-kv 面板的黑白灰纸感，新增两个语义色（等待=琥珀、云端=青蓝）
+   ============================================================ */
+:root{
+  --canvas:#f6f5f2;        /* 页面底 */
+  --paper:#ffffff;         /* 面板/卡片 */
+  --ink:#1c1c1c;           /* 主文字 */
+  --mid:#6f6c66;           /* 次文字 */
+  --faint:#76736c;         /* 弱文字（对 --paper ≈4.7:1，达 WCAG AA） */
+  --soft:#efede8;          /* 浅底 */
+  --soft-2:#e4e1da;        /* 更浅一档 / hover */
+  --line:#dedbd4;          /* 描边 */
+  --danger:#c0392b;        /* 破坏性 */
+  --wait:#a86a12;          /* 语义：等待回填（琥珀） */
+  --wait-bg:#fbf3e4;
+  --wait-line:#e8d5ab;    /* 等待回填描边（琥珀浅调；R10 修复自引用） */
+  --cloud:#2b6a8f;         /* 语义：云端（青蓝） */
+  --cloud-bg:#eef5f8;
+  --ok:#3d7a44;
+  --on-ink:#ffffff;         /* ink 底上的文字色（浅色主题） */
+  --radius:8px;
+  --radius-s:5px;
+  --side-w:264px;
+  --rail-w:52px;
+  --topbar-h:50px;
+  --mono:ui-monospace,'Cascadia Code',Consolas,monospace;
+  --sans:system-ui,-apple-system,'Segoe UI','Microsoft YaHei',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font:14px/1.55 var(--sans);color:var(--ink);background:var(--canvas)}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input{font:inherit}
+.mono{font-family:var(--mono)}
+.muted{color:var(--mid)}
+.faint{color:var(--faint)}
+/* 图标体系：内联 SVG（ft-svg 规范——24 网格 / 线宽 1.8 / round / currentColor），零原生 emoji */
+.ic{display:inline-block;width:14px;height:14px;vertical-align:-2px;fill:none;stroke:currentColor;
+  stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.gico .ic{width:13px;height:13px;vertical-align:-2.5px}
+.pane-h .ico{display:inline-flex;align-items:center;color:var(--mid)}
+.pane-h .ico .ic{vertical-align:0}
+.railbtn .ic{width:16px;height:16px;vertical-align:0}
+.mini .ic{width:12px;height:12px;vertical-align:-1.5px}
+.ops .ic{width:11px;height:11px;vertical-align:-1px}
+[hidden]{display:none!important}
+
+/* ============ 原型外框 ============ */
+.proto-label{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 16px;font-size:12px;color:var(--mid);
+  border-bottom:1px solid var(--line);background:var(--paper);
+  position:sticky;top:0;z-index:60;
+}
+.proto-label b{color:var(--ink)}
+.proto-label .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
+
+/* ============ 应用框架 ============ */
+#app{display:flex;height:calc(100vh - 35px);min-height:560px;overflow:hidden;background:var(--canvas)}
+
+/* ---- 侧边栏（展开态） ---- */
+#side{
+  width:var(--side-w);flex:none;display:flex;flex-direction:column;
+  background:var(--paper);border-right:1px solid var(--line);
+  transition:margin-left .22s ease;
+}
+#side.folded{margin-left:calc(var(--side-w) * -1)}
+.shead{padding:10px 10px 8px;border-bottom:1px solid var(--line)}
+.shead .brandrow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.shead .logo{width:22px;height:22px;border-radius:6px;background:var(--ink);color:var(--on-ink);
+  display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex:none}
+.shead .brandrow .t{font-weight:700;font-size:13px}
+.shead .brandrow .v{font-size:11px;color:var(--faint)}
+.shead .brandrow .grow{flex:1}
+.iconbtn{width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--mid)}
+.iconbtn:hover{background:var(--soft-2);color:var(--ink)}
+.searchrow{display:flex;gap:6px;align-items:center}
+.searchrow .sbox{flex:1;display:flex;align-items:center;gap:6px;background:var(--soft);
+  border-radius:6px;padding:4px 8px;border:1px solid transparent}
+.searchrow .sbox:focus-within{background:var(--paper);border-color:var(--line)}
+.searchrow input{flex:1;border:none;outline:none;background:transparent;font-size:12.5px;min-width:0}
+.searchrow .add{flex:none}
+.searchrow .kwcount{flex:none;font-size:11px;color:var(--faint);white-space:nowrap}
+
+/* ---- 侧边栏树 ---- */
+#tree{flex:1;overflow-y:auto;padding:6px 6px 10px}
+.trow{
+  display:flex;align-items:center;gap:7px;width:100%;
+  padding:5px 8px;border-radius:var(--radius-s);
+  font-size:13px;text-align:left;position:relative;
+  border:1px dashed transparent;
+}
+.trow:hover{background:var(--soft)}
+.trow .tw{width:14px;flex:none;display:inline-flex;justify-content:center;color:var(--faint);font-size:10px;transition:transform .15s}
+.trow.group.open .tw{transform:rotate(90deg)}
+.trow .gico{flex:none;font-size:12px;color:var(--mid);width:16px;text-align:center}
+.trow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow .cnt{flex:none;font-size:10.5px;color:var(--mid);background:var(--soft-2);border-radius:8px;padding:0 6px;line-height:16px}
+.trow .wdot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--wait);box-shadow:0 0 0 3px var(--wait-bg)}
+.trow .more{flex:none;opacity:0;width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;color:var(--faint)}
+.trow:hover .more{opacity:1}
+.trow .more:hover{background:var(--soft-2);color:var(--ink)}
+.trow.active{background:var(--ink);color:var(--on-ink)}
+.trow.active .cnt{background:rgba(127,127,127,.28);color:var(--on-ink)}
+.trow.active .gico,.trow.active .tw,.trow.active .more{color:var(--on-ink);opacity:.75}
+.trow.child{padding-left:26px}
+.trow.pinned{font-weight:600}
+.trow .sub{display:block;font-size:10.5px;color:var(--faint);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow.dragging{opacity:.4}
+/* 键盘焦点行：↑↓ 走的是可见序（= 渲染序），焦点必须看得见 */
+.trow.kb-focus{outline:2px solid var(--ink);outline-offset:-2px}
+/* 拖拽三段式落点指示：上缘=before 线 / 下缘=after 线 / 中段=into 描边 */
+.trow.d-before::before{content:'';position:absolute;left:6px;right:6px;top:-1px;height:2px;background:var(--ink);border-radius:2px}
+.trow.d-after::after{content:'';position:absolute;left:6px;right:6px;bottom:-1px;height:2px;background:var(--ink);border-radius:2px}
+.trow.d-into{border-color:var(--ink);background:var(--soft-2)}
+#tree .droptail{height:22px;border-radius:var(--radius-s);margin:2px 2px 0}
+#tree .droptail.d-into{border:1px dashed var(--ink)}
+.tree-empty{padding:14px 10px;font-size:12px;color:var(--faint);text-align:center}
+
+/* ---- 侧边栏底部 ---- */
+.sfoot{border-top:1px solid var(--line);padding:6px}
+
+/* ---- 侧边栏（收起 rail 态） ---- */
+#rail{
+  width:var(--rail-w);flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;
+  background:var(--paper);border-right:1px solid var(--line);padding:10px 0;
+}
+.railbtn{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-size:15px;color:var(--mid);position:relative}
+.railbtn:hover{background:var(--soft-2);color:var(--ink)}
+.railbtn.active{background:var(--ink);color:var(--on-ink)}
+.railbtn .b{position:absolute;top:2px;right:2px;min-width:14px;height:14px;border-radius:7px;background:var(--danger);
+  color:#fff;font-size:9px;line-height:14px;padding:0 3px;font-weight:600}
+.railbtn .wdot{position:absolute;top:3px;right:3px;width:7px;height:7px;border-radius:50%;background:var(--wait);border:1.5px solid var(--paper)}
+.railbtn::after{content:attr(data-tip);position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);
+  background:var(--ink);color:#fff;font-size:11.5px;padding:3px 8px;border-radius:5px;white-space:nowrap;
+  opacity:0;pointer-events:none;transition:opacity .12s;z-index:70}
+.railbtn:hover::after{opacity:1}
+.rail-sep{width:24px;height:1px;background:var(--line);margin:4px 0}
+.rail-grow{flex:1}
+
+/* ============ 主区：目录详情 ============ */
+#main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+
+/* 详情顶栏 */
+.topbar{height:var(--topbar-h);flex:none;display:flex;align-items:center;gap:10px;
+  padding:0 14px;background:var(--paper);border-bottom:1px solid var(--line)}
+.topbar .back{width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--mid)}
+.topbar .back:hover{background:var(--soft-2);color:var(--ink)}
+.topbar .tt{min-width:0}
+.topbar .tt .n{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
+.topbar .tt .p{font-size:11px;color:var(--faint);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar .sum{font-size:12px;color:var(--mid);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  border-left:1px solid var(--line);padding-left:12px}
+.topbar .sum.editable{cursor:pointer;border-radius:4px}
+.topbar .sum.editable:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.badge-wait{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--wait);
+  background:var(--wait-bg);border:1px solid var(--wait-line);border-radius:20px;padding:1px 8px;font-weight:600;flex:none}
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--ink);color:var(--on-ink);border-radius:7px;
+  padding:5px 12px;font-size:12.5px;font-weight:600;flex:none}
+.btn:hover{opacity:.88}
+.btn.ghost{background:var(--soft);color:var(--ink)}
+.btn.ghost:hover{background:var(--soft-2)}
+
+/* 任务源切换（并列视图核心） */
+.srcbar{flex:none;display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line)}
+.seg{display:inline-flex;background:var(--soft);border-radius:8px;padding:2px}
+.seg button{padding:4px 14px;border-radius:6px;font-size:12.5px;color:var(--mid);font-weight:600}
+.seg button.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.09)}
+.srcbar .hint{font-size:11.5px;color:var(--faint)}
+.srcbar .grow{flex:1}
+
+/* 双栏并列 */
+#panes{flex:1;display:flex;gap:12px;padding:12px 14px;overflow:hidden;min-height:0}
+.pane{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--paper);
+  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.pane.cloud{background:linear-gradient(180deg,var(--cloud-bg),var(--paper) 120px)}
+.pane-h{flex:none;display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.pane-h .ico{font-size:13px}
+.pane-h .t{font-weight:700;font-size:13px}
+.pane-h .where{font-size:10.5px;color:var(--faint);border:1px solid var(--line);padding:0 6px;border-radius:8px}
+.pane-h .grow{flex:1}
+.pane-h .mini{font-size:11px;color:var(--mid);padding:2px 8px;border-radius:5px}
+.pane-h .mini:hover{background:var(--soft-2);color:var(--ink)}
+.pane-b{flex:1;display:flex;gap:10px;padding:10px;overflow-x:auto;min-height:0;
+  /* 右缘渐隐：提示看板可横向滚动（并列双栏时列放不下是常态） */
+  -webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 18px),transparent 100%);
+          mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 18px),transparent 100%)}
+
+/* 看板列 */
+.col{width:216px;flex:none;display:flex;flex-direction:column;background:var(--canvas);
+  border:1px solid var(--line);border-radius:var(--radius);min-height:0}
+.col.cloud-col{background:#f4f8fa}
+.col-h{flex:none;display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:12px;font-weight:700}
+.col-h .k{color:var(--faint);font-weight:400;font-size:11px}
+.col-h .grow{flex:1}
+.col-h .mini{font-size:11px;color:var(--faint);padding:1px 6px;border-radius:4px}
+.col-h .mini:hover{background:var(--soft-2);color:var(--ink)}
+.col-b{flex:1;overflow-y:auto;padding:4px 8px 8px;display:flex;flex-direction:column;gap:7px;min-height:60px}
+.pane.solo .col{flex:1;min-width:200px;width:auto}
+.col.drop-ok{outline:2px dashed var(--cloud);outline-offset:-3px;background:var(--cloud-bg)}
+.col.drop-ok.local-target{outline-color:var(--ink)}
+.col-empty{font-size:11.5px;color:var(--faint);text-align:center;padding:16px 6px;border:1px dashed var(--line);border-radius:6px;margin:4px 2px}
+
+/* 卡片 */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:8px 9px;cursor:grab;position:relative}
+.card:active{cursor:grabbing}
+.card:hover{border-color:#c9c5bc;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.card.dragging{opacity:.35}
+.card .tx{font-size:12.5px;line-height:1.45;word-break:break-word;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+/* 长文本：点「展开全文」放开截断 */
+.card.expanded .tx{-webkit-line-clamp:unset;overflow:visible}
+.card .more-tx{margin-top:5px;font-size:11px;color:var(--mid);padding:1px 6px;border-radius:4px}
+.card .more-tx:hover{background:var(--soft-2);color:var(--ink)}
+/* 同列拖拽排序：上/下插入线（领取优先级） */
+.card.d-before::before{content:'';position:absolute;left:-4px;right:-4px;top:-2px;height:2px;background:var(--ink);border-radius:2px}
+.card.d-after::after{content:'';position:absolute;left:-4px;right:-4px;bottom:-2px;height:2px;background:var(--ink);border-radius:2px}
+.card .meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:7px;font-size:10.5px;color:var(--faint)}
+.card .meta .tag{border:1px solid var(--line);border-radius:8px;padding:0 6px;line-height:15px}
+.card .meta .tag.src{color:var(--cloud);border-color:#bcd6e2;background:#f2f8fb}
+.card .meta .tag.tomb{color:var(--cloud);border-color:#bcd6e2;background:#f2f8fb}
+.card .meta .tag.waitt{color:var(--wait);border-color:var(--wait-line);background:var(--wait-bg)}
+.card .meta .grow{flex:1}
+.card .ops{position:absolute;top:5px;right:5px;display:flex;gap:2px;opacity:0;transition:opacity .12s}
+.card:hover .ops{opacity:1}
+.card .ops button{width:20px;height:20px;border-radius:5px;font-size:11px;color:var(--faint);background:var(--paper);border:1px solid var(--line)}
+.card .ops button:hover{color:var(--ink);background:var(--soft)}
+/* 跳到目标：让被指向的卡片闪一下 */
+.card.flash{animation:cardflash 1.6s ease}
+@keyframes cardflash{0%,55%{box-shadow:0 0 0 3px var(--cloud)}100%{box-shadow:0 0 0 0 rgba(0,0,0,0)}}
+/* 迁移失败：卡片红闪一下（源端保持原样，不产生迁出记录） */
+.card.fail{animation:cardfail 1.8s ease}
+@keyframes cardfail{0%,60%{box-shadow:0 0 0 3px var(--danger);border-color:var(--danger)}100%{box-shadow:0 0 0 0 rgba(0,0,0,0)}}
+.card.tomb{background:transparent;border-style:dashed;color:var(--faint)}
+.card.tomb .tx{text-decoration:none;color:var(--mid)}
+.card .rsum{margin-top:7px;font-size:11px;color:var(--mid);background:var(--soft);border-radius:5px;padding:5px 7px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card .rsum b{color:var(--ink)}
+.waitcard{border-color:var(--wait-line);background:var(--wait-bg)}
+.waitcard .wt{font-size:12px;font-weight:700;color:var(--wait);display:flex;align-items:center;gap:6px}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--wait);animation:pu 1.4s infinite}
+@keyframes pu{0%,100%{opacity:1}50%{opacity:.25}}
+.login-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:30px;text-align:center}
+.login-empty .big{font-size:30px}
+.login-empty .tx{font-size:12.5px;color:var(--mid);max-width:220px}
+/* 全部目录总览 */
+.ov-wrap{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.ov-chips{display:flex;flex-wrap:wrap;gap:8px}
+.ov-chip{display:inline-flex;align-items:center;gap:7px;background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:4px 12px;font-size:12.5px}
+.ov-chip:hover{border-color:var(--ink)}
+.ov-chip .c{background:var(--soft-2);border-radius:9px;padding:0 6px;font-size:10.5px;color:var(--mid)}
+.ov-chip.wait{border-color:var(--wait-line);background:var(--wait-bg)}
+.ov-sec{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.ov-sec-h{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:600}
+.ov-sec-h .c{color:var(--mid);font-weight:400;font-size:11px}
+.ov-sec-h .grow{flex:1}
+.ov-task{display:flex;gap:10px;align-items:baseline;padding:7px 12px;border-bottom:1px solid var(--line);font-size:12.5px}
+.ov-task:last-child{border-bottom:none}
+.ov-task .tx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-task .m{flex:none;font-size:10.5px;color:var(--faint)}
+.pane-error{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:30px;text-align:center}
+.pane-error .big{font-size:28px}
+.pane-error .tx{font-size:12.5px;color:var(--mid);max-width:280px}
+.toast.err{background:var(--danger)}
+/* 键盘可达性：所有可聚焦元素给出可见焦点环 */
+button:focus-visible,.trow:focus-visible,input:focus-visible,textarea:focus-visible,.railbtn:focus-visible{
+  outline:2px solid var(--ink);outline-offset:1px;border-radius:4px}
+
+/* 新任务输入条 */
+.newtask{flex:none;display:flex;gap:8px;padding:0 12px 10px}
+.newtask input{flex:1;border:1px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12.5px;outline:none;background:var(--paper)}
+.newtask input:focus{border-color:var(--ink)}
+
+/* ============ 浮层：行菜单 / 设置气泡 / toast ============ */
+.gmenu{position:fixed;z-index:100;min-width:168px;background:var(--paper);border:1px solid var(--line);
+  border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.14);padding:4px;animation:pop .1s ease}
+@keyframes pop{from{opacity:0;transform:translateY(-3px)}to{opacity:1}}
+.gmenu button{display:flex;align-items:center;gap:8px;width:100%;padding:6px 9px;border-radius:5px;font-size:12.5px;text-align:left}
+.gmenu button:hover{background:var(--soft)}
+.gmenu button.danger{color:var(--danger)}
+.gmenu .sep{height:1px;background:var(--line);margin:4px 6px}
+.gcfg-pop{position:fixed;z-index:100;background:var(--paper);border:1px solid var(--line);border-radius:8px;
+  box-shadow:0 8px 28px rgba(0,0,0,.14);padding:10px 12px;min-width:190px}
+.gcfg-row{display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:12.5px;cursor:pointer;user-select:none}
+.gcfg-cb{width:13px;height:13px;border:1.5px solid var(--mid);border-radius:3.5px;flex:none;position:relative}
+.gcfg-cb.on{background:var(--ink);border-color:var(--ink)}
+.gcfg-cb.on::after{content:'';position:absolute;left:3.5px;top:.5px;width:4px;height:8px;border:solid var(--on-ink);border-width:0 2px 2px 0;transform:rotate(42deg)}
+/* 模态框：迁移确认（映射说明 + 同内容消歧）/ 回填输入 */
+.modal-back{position:fixed;inset:0;background:rgba(28,28,28,.34);z-index:140;display:flex;align-items:center;justify-content:center;padding:20px;animation:pop .12s ease}
+.modal{width:min(540px,100%);background:var(--paper);border:1px solid var(--line);border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.26);overflow:hidden}
+.modal-h{padding:12px 16px;font-weight:700;font-size:14px;border-bottom:1px solid var(--line)}
+.modal-b{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.modal-f{padding:10px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;background:var(--soft)}
+.mx{display:flex;gap:10px;align-items:stretch}
+.mx-box{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--canvas)}
+.mx-box .k{font-size:10.5px;color:var(--faint);margin-bottom:4px}
+.mx-box .v{font-size:12.5px;word-break:break-word;max-height:88px;overflow:auto}
+.mx-arrow{flex:none;align-self:center;color:var(--faint)}
+.mx-dup{font-size:12px;color:var(--mid);border:1px dashed var(--line);border-radius:8px;padding:8px 10px;background:var(--canvas)}
+.mx-dup ul{margin:6px 0 0;padding-left:18px}
+.mx-dup label{display:flex;gap:6px;align-items:flex-start;margin-top:8px;cursor:pointer}
+.modal textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font:inherit;font-size:13px;resize:vertical;outline:none}
+.modal textarea:focus{border-color:var(--ink)}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:120;display:flex;flex-direction:column;gap:8px;align-items:center}
+/* 跨栏拖拽时的跟随提示：告诉用户松手后会迁到哪 */
+#draghint{position:fixed;z-index:130;background:var(--ink);color:#fff;font-size:11.5px;padding:3px 9px;border-radius:6px;pointer-events:none;opacity:0;transition:opacity .12s;white-space:nowrap}
+#draghint.on{opacity:.95}
+.toast{display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--on-ink);border-radius:8px;padding:9px 14px;
+  font-size:12.5px;box-shadow:0 8px 24px rgba(0,0,0,.25);animation:pop .15s ease}
+.toast button{color:#ffd9a8;font-weight:700;font-size:12px}
+.toast button:hover{text-decoration:underline}
+
+/* ============ 设计说明区 ============ */
+#spec{max-width:980px;margin:0 auto;padding:40px 20px 90px}
+#spec h1{font-size:22px;margin-bottom:6px}
+#spec .lede{color:var(--mid);margin-bottom:28px}
+#spec h2{font-size:17px;margin:38px 0 12px;padding-top:18px;border-top:1px solid var(--line)}
+#spec h3{font-size:14px;margin:20px 0 8px}
+#spec p,#spec li{font-size:13.5px;color:#3c3a36}
+#spec ul,#spec ol{padding-left:22px;display:flex;flex-direction:column;gap:4px}
+#spec table{border-collapse:collapse;width:100%;font-size:12.5px;margin:10px 0}
+#spec th,#spec td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+#spec th{background:var(--soft);font-weight:700}
+#spec code{font-family:var(--mono);font-size:12px;background:var(--soft);border-radius:4px;padding:1px 5px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 6px}
+.toc a{font-size:12px;color:var(--mid);border:1px solid var(--line);border-radius:20px;padding:3px 12px;text-decoration:none;background:var(--paper)}
+.toc a:hover{color:var(--ink);border-color:var(--ink)}
+.tokens{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}
+.tok{width:118px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--paper)}
+.tok .sw{height:44px}
+.tok .lb{padding:6px 8px;font-size:11px}
+.tok .lb b{display:block;font-size:11.5px}
+.flow{display:flex;flex-wrap:wrap;gap:0;align-items:stretch;margin:12px 0}
+.fstep{flex:1;min-width:170px;border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:10px 12px;font-size:12px;position:relative;margin-right:26px;margin-bottom:8px}
+.fstep:last-child{margin-right:0}
+.fstep::after{content:'→';position:absolute;right:-22px;top:50%;transform:translateY(-50%);color:var(--faint);font-size:15px}
+.fstep:last-child::after{content:''}
+.fstep b{display:block;font-size:12.5px;margin-bottom:4px}
+.fstep .no{display:inline-flex;width:17px;height:17px;border-radius:50%;background:var(--ink);color:#fff;font-size:10px;align-items:center;justify-content:center;margin-right:5px}
+.ianote{background:var(--soft);border-radius:8px;padding:12px 14px;font-size:12.5px;margin:10px 0}
+.kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--paper)}
+.log-item{border-left:3px solid var(--line);padding:2px 0 2px 12px;margin:10px 0}
+.log-item .lv{font-weight:700;font-size:12.5px}
+.log-item .lt{font-size:11px;color:var(--faint);font-family:var(--mono);margin-left:8px}
+.log-item ul{margin-top:4px}
+@media (max-width:900px){
+  #panes{flex-direction:column;overflow-y:auto}
+  .pane{min-height:340px}
+  .topbar .sum{display:none}
+  /* 窄屏：侧边栏改为浮层，避免把看板挤没 */
+  #app{position:relative}
+  #side{position:absolute;left:0;top:0;bottom:0;z-index:40;box-shadow:0 0 26px rgba(0,0,0,.18)}
+}
+/* 动效克制：位移不超过 220ms，且尊重系统的「减少动态效果」 */
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ ① 交互原型（可直接操作） ══════════════ -->
+<div class="proto-label">
+  <span class="dot"></span>
+  <b>交互原型</b> — 可直接操作：拖侧边栏行重新编排（上/下缘=排序，中段=移入分组）· 点目录进入全屏详情（侧边栏自动收起）· 拖任务卡片跨栏迁移 本机⇄云端 · 待领取列内拖拽=调领取优先级 · ⋯ 打开菜单
+  <span style="flex:1"></span>
+  <span>v1.1 · R10（图标体系化）</span>
+</div>
+
+<div id="app">
+  <!-- 展开态侧边栏 -->
+  <aside id="side">
+    <div class="shead">
+      <div class="brandrow">
+        <span class="logo">nx</span><span class="t">nx-kv</span><span class="v">面板 v2</span>
+        <span class="grow"></span>
+        <button class="iconbtn" id="btnCfg" title="侧边栏设置"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8M18.6 18.6l-1.8-1.8M7.2 7.2 5.4 5.4"/></svg></button>
+        <button class="iconbtn" id="btnFold" title="收起侧边栏">⟨</button>
+      </div>
+      <div class="searchrow">
+        <label class="sbox"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20.2 20.2-4.5-4.5"/></svg><input id="kw" placeholder="搜索目录（命中自动展开）"></label>
+        <span class="kwcount" id="kwcount"></span>
+        <button class="iconbtn add" id="btnAdd" title="添加目录到侧边栏">＋</button>
+      </div>
+    </div>
+    <div id="tree"></div>
+    <div class="sfoot" id="sfoot"></div>
+  </aside>
+
+  <!-- 收起态 rail -->
+  <div id="rail" hidden></div>
+
+  <!-- 主区 -->
+  <main id="main"></main>
+</div>
+
+<!-- ══════════════ ② 设计说明 ══════════════ -->
+<section id="spec">
+  <h1>nx-kv 面板 v2 — UI/UX 设计稿</h1>
+  <p class="lede">目标：用「侧边栏 + 目录全屏工作台 + 本地/云端任务并列」替换现有「顶栏 + 平铺 tab」。
+  本页上半部分是可操作原型，下半部分是设计说明。单文件自包含，无外部资源。</p>
+
+  <div class="toc">
+    <a href="#s1">1 信息架构</a><a href="#s2">2 导航逻辑</a><a href="#s3">3 侧边栏规范</a>
+    <a href="#s4">4 目录详情与看板</a><a href="#s5">5 本地⇄云端迁移</a><a href="#s6">6 视觉 tokens</a>
+    <a href="#s7">7 落地映射</a><a href="#s8">8 版本说明</a>
+  </div>
+
+  <h2 id="s1">1 · 信息架构（v1 → v2）</h2>
+  <p>现有壳是「顶栏 + 4 个平铺 tab（本地任务/清单/仓库/登录）+ hash 路由」；目录（topic）只是本地任务看板里的一行。
+  v2 把<b>目录提升为一级导航</b>：侧边栏即项目目录清单，详情页即该目录的全部任务工作台。</p>
+  <table>
+    <tr><th>v1（现状）</th><th>v2（本稿）</th><th>说明</th></tr>
+    <tr><td>本地任务 tab：所有目录一张看板</td><td><b>侧边栏目录</b> → 点开 = <b>目录详情全屏看板</b>（<code>#/dir/&lt;key&gt;</code>）；全局池 = 独立全屏视图；跨目录视角 = <b>全部目录总览</b></td><td>目录维度聚合本机队列 + 云端清单；全局池（<code>__GLOBAL__</code>）恒顶在侧边栏首行，点开是共享池看板，卡片菜单可「投放到目录…」固定归属；旧 tab 的跨目录用途由「全部目录总览」接管</td></tr>
+    <tr><td>清单 tab：远程 KV todo（按 groupId）</td><td>并入目录详情的<b>「云端清单」栏</b>；侧边栏底部保留「云端总览」入口</td><td>云端任务按 <code>topic</code> 字段映射到目录；总览页看跨目录全量</td></tr>
+    <tr><td>仓库 tab</td><td>侧边栏底部「仓库管理」入口（低频，不占一级）</td><td>仓库/看板绑定/克隆同步是配置型操作</td></tr>
+    <tr><td>登录 tab</td><td>侧边栏底部状态行；云端栏未登录时给<b>就地登录 CTA</b></td><td>登录态只影响云端栏</td></tr>
+  </table>
+  <div class="ianote">IA 树：侧边栏 = 全局任务(恒顶) + 分组→目录（可拖拽编排）｜底部 = 云端总览 · 仓库管理 · 设置/登录｜主区 = 目录详情（默认）或全局页。</div>
+
+  <h2 id="s2">2 · 导航逻辑</h2>
+  <ul>
+    <li><b>进入目录详情 = 默认全屏 + 侧边栏收起</b>（收起为 <code>52px</code> 图标 rail，徽标仍在）。rail 悬停气泡显示名称；点 rail 图标 = 展开并定位该目录。</li>
+    <li>返回：详情左上 <code>←</code>，或 <span class="kbd">Esc</span> —— 展开侧边栏并停在前一个位置。全局任务池同样是全屏工作台（点开即收起侧边栏）。</li>
+    <li>两条「默认收起」设置（沿用 nx-ft 侧边栏设置模式，跨视图共享一份偏好）：<b>侧边栏默认收起</b>（进入面板初值）、<b>分组默认收起</b>（分组的初始展开态）。展开/选中记忆按各自存储 key 持久化。</li>
+    <li>路由沿用 hash：<code>#/dir/&lt;key&gt;</code> 为目录详情、<code>#/global</code> 全局任务池、<code>#/overview</code> 全部目录总览、<code>#/cloud</code> 云端总览、<code>#/repos</code> 仓库管理——深链直达时按 <code>chainByKey</code> 思路自动展开沿途分组。</li>
+  </ul>
+
+  <h2 id="s3">3 · 侧边栏规范</h2>
+  <ul>
+    <li><b>结构</b>：头部（品牌 + 搜索 + ＋添加 + 设置 + 收起把手）／树（全局任务恒顶 → 分组 → 目录行）／底部（云端总览、仓库管理、设置·登录）。</li>
+    <li><b>行内容</b>：目录行 = 名称 + 待领取数徽标 + 等待回填琥珀点 + 悬停 <code>⋯</code>；分组行 = 折叠箭头 + 名称 + 计数。</li>
+    <li><b>拖拽编排（吸收 nx-ft 三段式落点）</b>：
+      行<b>上缘 30%</b> = 排到它前面（<code>before</code> 线）、<b>下缘 30%</b> = 排到它后面（<code>after</code> 线）、<b>中段</b> = 移入该分组（<code>into</code> 描边，仅分组行接受）；目录行中段不作落点（没有「目录套目录」），不给假提示。
+      <code>canDropInto</code> 守卫：不能放进自己的子树；树空白处 = 拖到末尾（<code>tail</code>）。顺序持久化到偏好存储。</li>
+    <li><b>搜索</b>：按名称/路径/现状摘要过滤；任一后代命中则分组<b>强制展开</b>（不污染用户自己的展开记忆）；搜索框旁给出「N 个匹配」计数——搜不到时用户能立刻分辨「没有匹配」和「搜索坏了」。</li>
+    <li><b>行菜单</b>（<code>⋯</code> 或右键）：打开详情 / 置顶 / 重命名 / 移动到分组… / 从侧边栏移除（不删数据）。菜单由侧边栏统一渲染一份（行上不各自挂浮层），点外/⟲Esc 关。</li>
+    <li><b>键盘</b>：<span class="kbd">↑</span><span class="kbd">↓</span> 在可见行间移动焦点（可见序 = 渲染序，同一份扁平序）、<span class="kbd">Enter</span> 打开、<span class="kbd">Esc</span> 关菜单/返回。</li>
+  </ul>
+
+  <h2 id="s4">4 · 目录详情与看板</h2>
+  <ul>
+    <li>顶栏：<code>←</code> + 目录名 + 路径（mono）+ 现状摘要（<code>summary</code>）+ 等待徽标 + 动作（＋新任务等）。</li>
+    <li><b>本机队列列</b>（字段即真实模型）：<b>待领取</b>（<code>status:pending</code> 且无 <code>deletedAt</code>，正序 = 领取优先级，<b>列内可拖拽排序</b>——对应 <code>nx-kv localtask reorder</code>）｜<b>进行中</b>（<code>topic.waiting=true</code> 时出现：回填等待卡 + <code>waitingUntil</code> 实时倒计时）｜<b>已领取</b>（<code>consumed</code>，倒序，卡片带 <code>roundSummary</code>）｜<b>归档</b>（软删 <code>deletedAt</code>，默认折叠，可恢复/彻底删）。迁出记录内联回它原来所在的那一列。</li>
+    <li><b>云端清单列</b>：<b>待办</b>（open）｜<b>已完成</b>（done，带完成结果）｜<b>冻结</b>（freeze）。按 <code>topic === 目录名</code> 过滤，可切「全部」。</li>
+    <li>卡片解剖：任务文本（默认 4 行截断，超长时给「展开全文 / 收起」，悬停 title 始终保留全文）+ meta 行（<code>#id</code>、创建时间、来源徽标、迁移徽标）+ <code>roundSummary</code> 块；右上角只留一个 <code>⋯</code>，其余操作进菜单（与侧边栏行菜单同构）。</li>
+    <li>空态：本机空 =「队列为空，投一条任务或从云端迁入」；云端未登录 =「云端清单需登录」＋ 就地登录按钮；云端已登录但该目录无任务 =「云端暂无此目录的任务」。</li>
+    <li><b>等待回填闭环</b>：「进行中」列的回填卡点「去回填」→ 输入回执 → 写入该任务 <code>roundSummary</code> 并解除 <code>waiting</code>（agent 可继续）。这是本机队列的人机接力口，必须闭环，不能只给提示。</li>
+    <li><b>现状摘要可编辑</b>：顶栏那一句 <code>summary</code> 点击即改（真实实现走 <code>localtask add --summary</code>），它是「这个目录现在什么状况」的唯一出处。</li>
+  </ul>
+
+  <h2 id="s5">5 · 本地 ⇄ 云端迁移（并列关系）</h2>
+  <p>心智模型：<b>本机队列 = 本机（这台机器的 agent 队列）；云端清单 = 云主机（跨机器共享的工作空间，按 groupId）</b>。
+  两者是同一目录的并列任务来源，任务可以在之间迁移，就像把工作从本地机器挪到云主机。</p>
+  <div class="flow">
+    <div class="fstep"><b><span class="no">1</span>发起</b>三个入口：拖卡片跨栏 / 卡片 <code>⋯→迁移到云端(本机)</code> / 列头 <code>⋯→批量迁移</code>。</div>
+    <div class="fstep"><b><span class="no">2</span>确认</b>对话框写清映射：源 → 目标（<code>text</code> 原样带过去，云端 <code>topic</code>=目录名 / <code>bucket</code>=open；本机则新增到待领取首位）。目标端已有同内容 ×N 时列出并可选「合并到已有条目」。<b>拖拽落点即确认</b>，不弹此框。</div>
+    <div class="fstep"><b><span class="no">3</span>执行</b>本机：<code>localtask</code> 原条目标记迁出（tombstone）；云端：<code>todo add</code> 新条目（徽标「来自本机」）。反向对称。</div>
+    <div class="fstep"><b><span class="no">4</span>回执</b>toast 告知 + <b>撤销</b>；tombstone 卡保留跳转/删除入口，让「任务去哪了」永远可追溯。</div>
+  </div>
+  <ul>
+    <li><b>Tombstone 规则</b>：迁移不物理删除——原位置留虚线灰卡「已迁移 → 云端清单 · 时间」，内联在它迁移前所在的那一列，可 <code>⇥</code> 跳到目标或 <code>✕</code> 移除；云端侧卡片带来源徽标。保证两侧历史都对得上。</li>
+    <li><b>同内容规则</b>：清单页允许同内容并存（<code>同内容×N</code>），所以迁移到目标端若已有同内容，确认框会把它们列出来；本机→云端可选择「合并（不新增）」，云端→本机默认追加一条并带来源标记，避免悄悄吞掉一条。</li>
+    <li><b>未登录态</b>：云端栏显示登录 CTA；迁移入口置灰并说明原因。</li>
+    <li><b>失败与原子性</b>：迁移遵循「<b>先写目标端、成功才改源端</b>」——目标端不可达时源端保持原样（<b>不产生迁出记录</b>），任务留在原地可重试；同时云端栏整体进入错误态并说明「本机队列不受影响」，避免用户误以为任务丢了。</li>
+    <li><b>落地注意</b>：现阶段迁移 = 面板侧组合既有命令（localtask 删除/标记 + todo add），非原子；后续可加 <code>nx-kv task move</code> 同构 CLI 命令（面板每个按钮都有同构 CLI 是本仓库约定）。</li>
+  </ul>
+
+  <h2 id="s6">6 · 视觉 tokens</h2>
+  <p>延续面板黑白灰纸感（--canvas/--paper/--ink/--soft/--danger），新增两个语义色并把差异做进底色而不是加彩色装饰：</p>
+  <div class="tokens">
+    <div class="tok"><div class="sw" style="background:#f6f5f2"></div><div class="lb"><b>--canvas</b>页面底</div></div>
+    <div class="tok"><div class="sw" style="background:#ffffff;border-bottom:1px solid var(--line)"></div><div class="lb"><b>--paper</b>面板/卡片</div></div>
+    <div class="tok"><div class="sw" style="background:#1c1c1c"></div><div class="lb"><b>--ink</b>主文字/主按钮</div></div>
+    <div class="tok"><div class="sw" style="background:#efede8"></div><div class="lb"><b>--soft / soft-2</b>浅底/hover</div></div>
+    <div class="tok"><div class="sw" style="background:#a86a12"></div><div class="lb"><b>--wait</b>等待回填（琥珀）</div></div>
+    <div class="tok"><div class="sw" style="background:#2b6a8f"></div><div class="lb"><b>--cloud</b>云端语义（青蓝）</div></div>
+    <div class="tok"><div class="sw" style="background:#c0392b"></div><div class="lb"><b>--danger</b>破坏性</div></div>
+  </div>
+  <ul>
+    <li>侧边栏展开 <code>264px</code> / rail <code>52px</code>；列宽 <code>216px</code>；圆角 8/5；字号 13 基准、11 meta。</li>
+    <li>本机栏用纸底、云端栏顶部一层 <code>--cloud-bg</code> 渐变区分；语义色只出现在徽标/描边/空态，不做大面积色块。</li>
+    <li><b>可访问性底线</b>：正文与次级文字对底色对比度 ≥ 4.5:1（弱文字 <code>#76736c</code> ≈4.7:1）；所有可聚焦元素有 <code>:focus-visible</code> 焦点环；纯图标按钮必须带 <code>aria-label</code>；浮层（菜单 / 模态）Esc 可关、点外可关；<b>打开浮层时焦点进入浮层</b>（菜单进第一项、模态进输入框，菜单内 <code>↑↓</code> 可走），<b>关闭时归还触发元素</b>。</li>
+  </ul>
+
+  <h2 id="s7">7 · 落地契约（实现照这一节做）</h2>
+
+  <h3>7.1 组件与文件划分（已按实现回填）</h3>
+  <table>
+    <tr><th>设计元素</th><th>落点</th><th>说明</th></tr>
+    <tr><td>应用壳（侧边栏 + 主区）</td><td><code>src/web/frontend/App.jsx</code> 改造</td><td>从「顶栏 + 平铺 tab」改为「侧边栏 + hash 路由」；顶栏降级为详情页内的目录头</td></tr>
+    <tr><td>侧边栏</td><td><code>components/sidebar/{index.jsx, model.js, drag.js, row-menu.jsx}</code></td><td><code>model</code> 只管可见序/过滤，<code>drag</code> 只管三段式落点判定，<code>row-menu</code> 只管「菜单里有什么」，<code>index</code> 装配；均在 300 行闸门内</td></tr>
+    <tr><td>目录详情页</td><td><code>src/modules/localtask/view-dir.jsx</code></td><td>hash <code>#/dir/&lt;key&gt;</code>；在 <code>registry.js</code> 登记 <code>{id:'dir'}</code>。状态与编排留在这里，展示拆出去</td></tr>
+    <tr><td>详情页展示层</td><td><code>src/modules/localtask/dir-cards.jsx</code></td><td>本机卡片、云端卡片、云端三列——纯 JSX，不含状态</td></tr>
+    <tr><td>云端数据与操作</td><td><code>src/modules/localtask/use-cloud-dir.js</code></td><td>云端是独立生命周期（拉取 / 未登录 / 不可达），单独成 hook</td></tr>
+    <tr><td>本机看板列</td><td>复用 <code>src/modules/localtask/board.js</code> 的 <code>splitQueueTasks()</code></td><td>它已经切好 pending / consumed / deleted 三段，直接映射成三列</td></tr>
+    <tr><td>迁移交互层</td><td><code>components/migrate/{dialog.jsx, undo.jsx, use-move.js}</code></td><td>确认框（含同内容消歧）、撤销回执、迁移发起/执行三件事</td></tr>
+    <tr><td>迁移后端</td><td><code>src/modules/localtask/move.js</code> + <code>POST /api/task/move</code></td><td>一次请求内「先写目标端、成功才改源端」；<code>--undo</code> 按 targetId 精确回退</td></tr>
+    <tr><td>视图偏好</td><td><code>src/web/frontend/prefs.js</code>（localStorage）</td><td>侧边栏顺序 / 分组 / 折叠态 / 两条默认收起——视图偏好不进 <code>localtasks.json</code></td></tr>
+  </table>
+
+  <h3>7.2 数据字段：哪些复用、哪些要新增</h3>
+  <table>
+    <tr><th>对象</th><th>字段</th><th>状态</th></tr>
+    <tr><td>本机任务</td><td><code>id, text, status(pending|consumed), deletedAt?, roundSummary?, createdAt, consumedAt?</code></td><td>复用现有模型，不动</td></tr>
+    <tr><td>本机任务（迁出标记）</td><td><code>migratedTo: { side:'cloud'|'dir', topic|id, at }</code></td><td><b>需新增</b>。原型里的 <code>tomb/uid/to/fromCol</code> 只是演示用字段名，落地时统一成这一组</td></tr>
+    <tr><td>主题（目录）</td><td><code>key, cwd, name, summary, waiting, waitingUntil, isGlobal</code></td><td>复用现有模型</td></tr>
+    <tr><td>云端任务</td><td><code>topic, text, bucket(open|done|freeze), groupId, createdAt, doneAt?, frozenAt?</code></td><td>复用 todo 模块</td></tr>
+    <tr><td>云端任务（来源标记）</td><td><code>from:'local'</code>（或 <code>meta.source</code>）</td><td><b>需新增</b>，用于渲染「来自本机」徽标</td></tr>
+    <tr><td>侧边栏编排</td><td><code>groups[]</code> + <code>dirOrder[]</code></td><td><b>需新增</b>（视图偏好）</td></tr>
+  </table>
+
+  <h3>7.3 API 与 CLI 契约</h3>
+  <table>
+    <tr><th>动作</th><th>面板 API</th><th>同构 CLI（面板每个按钮都有同构命令是本仓库约定）</th></tr>
+    <tr><td>读本机队列</td><td><code>GET /api/localtasks</code>（已有）</td><td><code>nx-kv localtask list</code>（已有）</td></tr>
+    <tr><td>读/写云端清单</td><td><code>/api/todo/*</code>（已有）</td><td><code>nx-kv todo *</code>（已有）</td></tr>
+    <tr><td><b>迁移</b></td><td><code>POST /api/task/move</code>（新增）body：<code>{from:'local'|'cloud', dirKey?, id?, topic?, text, to:'local'|'cloud', merge?}</code> → 返回 <code>{ok, targetId, tombstoneId}</code></td><td><code>nx-kv task move --to cloud --cwd &lt;dir&gt; --id &lt;n&gt;</code> / <code>nx-kv task move --to local --topic &lt;dir&gt; --text &lt;text&gt;</code></td></tr>
+    <tr><td>撤销迁移</td><td><code>POST /api/task/move --undo</code>（同一端点的反向参数）</td><td><code>nx-kv task move --undo --id &lt;n&gt;</code></td></tr>
+    <tr><td>回填</td><td>复用现有 wait 通道</td><td><code>nx-kv localtask wait</code>（已有）</td></tr>
+    <tr><td>调整领取优先级</td><td>拖拽排序落到既有 reorder 接口</td><td><code>nx-kv localtask reorder --id &lt;n&gt; --beforeId/--afterId</code>（已有）</td></tr>
+  </table>
+  <p><b>原子性做法</b>：<code>/api/task/move</code> 在一次请求里完成「<b>先写目标端、成功才改源端</b>」——目标端写失败就直接返回错误，源端不动、不留迁出记录；成功后再把源端标成 <code>migratedTo</code>。撤销 = 带 <code>--undo</code> 的反向 move（目标端那条按返回的 <code>targetId</code> 精确删，不按文本匹配——同内容 ×N 时按文本删会误伤）。</p>
+
+  <h3>7.4 分期落地与兼容</h3>
+  <table>
+    <tr><th>期</th><th>做什么</th><th>可独立上线</th></tr>
+    <tr><td>P1</td><td>侧边栏五件套 + 编排偏好持久化（不动现有 tab，只是把目录提出来）</td><td>是——新壳可与旧 tab 并存一个版本</td></tr>
+    <tr><td>P2</td><td>目录详情页 <code>#/dir/:key</code> + 四列看板 + 归档列 + 回填闭环 + 摘要编辑</td><td>是</td></tr>
+    <tr><td>P3</td><td>并列双栏 + 确认框 + 同内容消歧 + <code>/api/task/move</code> 与 <code>nx-kv task move</code> + 失败态</td><td>是（依赖 P2）</td></tr>
+  </table>
+  <p><b>兼容策略</b>：v1 的「本地任务」tab 保留一个版本周期，重定向为「全部目录总览」；<code>#/localtask?cwd=X</code> 旧深链重定向到 <code>#/dir/X</code>；<code>registry.js</code> 是前后端模块表一一对应的（<code>tests/unit/registry.test.mjs</code> 会断言两侧对齐），新增视图必须同时登记，否则测试直接红。</p>
+
+  <h3>7.5 验收自查表（本稿逐条对照）</h3>
+  <p>这张表也能<b>自动跑</b>：<code>plan/uiux-audit.js</code> 把它变成可执行断言（六视图渲染 / 死按钮 / 图标按钮标签 / 浮层焦点进出 / 验收项 DOM 在位 / 侧边栏拖拽三态样式 / 无原生 emoji）。打开本页 → F12 Console 整段粘贴即可；命令行跑法见该文件头注释。</p>
+  <table>
+    <tr><th>验收项</th><th>原型里在哪看</th><th>✓</th></tr>
+    <tr><td>① 侧边栏：分组编排 + 三段式拖拽落点</td><td>拖目录行到分组行中段（描边=入组）、到行上下缘（指示线=排序）</td><td>✓</td></tr>
+    <tr><td>① 搜索自动展开 / 行菜单 / 徽标 / rail 收起</td><td>搜索框输入；行尾 ⋯；待领取数与琥珀点；顶栏 ⟨ 收起后左侧 52px 图标条</td><td>✓</td></tr>
+    <tr><td>② 目录详情默认全屏 + 看板栏目</td><td>点目录 → 侧边栏自动收起；本机三列（进行中/待领取/已领取）+ 云端三列（待办/已完成/冻结）</td><td>✓</td></tr>
+    <tr><td>③ 本地⇄云端三态切换</td><td>顶栏「并列 / 仅本机 / 仅云端」</td><td>✓</td></tr>
+    <tr><td>③ 迁移三入口</td><td>拖卡片跨栏（带跟随提示）／卡片 ⋯ 菜单／列头 ⋯ 批量</td><td>✓</td></tr>
+    <tr><td>③ 迁出记录 tombstone</td><td>迁移后原列出现虚线灰卡「已迁移 → 云端清单」，可 ⇥ 跳到目标、✕ 移除</td><td>✓</td></tr>
+    <tr><td>③ 撤销</td><td>迁移后的 toast 右下「撤销」</td><td>✓</td></tr>
+    <tr><td>③ 未登录 / 云端故障</td><td>设置气泡齿轮按钮 → 「模拟：已登录云端」「模拟：云端故障」</td><td>✓</td></tr>
+    <tr><td>④ 字段与真实模型一致</td><td>见 7.2 字段表</td><td>✓</td></tr>
+    <tr><td>⑤ 无原生 emoji（图标体系化）</td><td>侧边栏 / rail / 列头 / 空态 / 菜单全部为内联 SVG（24 网格 · 1.8 线宽 · currentColor），审计含 no-native-emoji 断言</td><td>✓</td></tr>
+  </table>
+
+  <h2 id="s8">8 · 版本说明（每轮迭代更新）</h2>
+  <div id="changelog">
+    <div class="log-item">
+      <span class="lv">R11 · 契约回填</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>§7.1 按实现回填</b>：设计稿写的「五件套 / 三件套」是纸面划分，落地时按真实依赖收口成 <code>sidebar/{index,model,drag,row-menu}</code>、<code>migrate/{dialog,undo,use-move}</code>，另加 <code>dir-cards.jsx</code>（展示层）与 <code>use-cloud-dir.js</code>（云端生命周期）——契约必须描述真实代码，不能停在纸面。</li>
+        <li><b>行数闸门守住</b>：<code>view-dir.jsx</code> 658 → 436 行，<code>sidebar/index.jsx</code> 349 → 291 行（≤300），全部组件都在闸门内。</li>
+        <li>真实面板实测通过（全部目录总览 / 目录详情并列双栏 / 侧边栏树 / 无 console 错误），<code>pnpm test</code> exit=0。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">R10 · 图标体系化</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>清除全部原生 emoji，换内联 SVG 图标集</b>：侧边栏行 / rail / 列头 / 空态 / 菜单 / 卡片操作里的目录、云端、仓库、设置、垃圾桶、锁、警告、显示器等象形字符全部替换为统一内联 SVG（24 网格 / 线宽 1.8 / round 端点 / currentColor——随主题与激活态自动换色），对齐 ft-svg 规范与 A08「无 emoji」不变量；键盘符号（↑↓←⇥⇄）与排版字符（⋯⟨）保留文本形态。</li>
+        <li><b>审计加第 7 项</b>：<code>no-native-emoji</code> 断言——#side / #rail / #main 的渲染结果中出现原生 emoji 即失败。</li>
+        <li><b>修掉 --wait-line 自引用</b>：token 写成了 <code>var(--wait-line)</code> 等于从未生效；现在给出真实琥珀浅调值。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">R9 · 终版 v1.0</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>页头版本对齐</b>：此前还挂着「v0.1 · R0 布防版」——改为 v1.0 · R9 终版，并把「待领取列内拖拽 = 调领取优先级」补进操作提示。</li>
+        <li><b>全局池补上投递入口</b>：共享池顶部加输入框，Enter 投递到 <code>__GLOBAL__</code>（对应 <code>localtask add --global</code>）——此前全局池只能看、不能加。</li>
+        <li><b>路由清单补全</b>：§2 补 <code>#/overview</code>。</li>
+        <li><b>九轮回顾</b>：R0 初版 → R1 统一 ⋯ 菜单 / 迁出记录内联 / 归档列 / 键盘导航 / 倒计时 → R2 全局池视图 / ＋双入口 / 跨栏落点提示 → R3 迁移确认与同内容消歧 / 回填闭环 / 摘要可编辑 → R4 失败态与原子性 / 对比度 AA / 长文本展开 → R5 落地契约（组件·字段·API·CLI·分期） → R6 领取优先级可拖拽 → R7 全部目录总览 / 动效与降级 → R8 可执行审计 + 焦点管理 → R9 收口。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">R8</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>验收清单变成可执行审计</b>：新增 <code>plan/uiux-audit.js</code>——六个视图渲染、死按钮、纯图标按钮标签、浮层焦点进出、验收项 DOM 在位、侧边栏拖拽三态样式，全部落成断言；浏览器 Console 整段粘贴即跑，命令行跑法见文件头。</li>
+        <li><b>补上焦点管理</b>（审计只抓到这两处缺口）：菜单打开后焦点进第一项、<code>↑↓</code> 在菜单项间走；模态打开焦点进输入框、关闭后<b>归还触发元素</b>——键盘用户不会掉回页面顶部。</li>
+        <li>审计脚本踩坑记录并写进文件头：内联进页面时不能含字面的 script 开闭标签（HTML 解析器会提前截断脚本、静默失败），也不能带 shebang（浏览器里是语法错误）。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">R7</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>补上「全部目录总览」视图</b>：§1/§7.4 都承诺 v1「本地任务」tab 重定向到它，原型里却没有这个页面——设计稿与自身契约不自洽。现在有了：目录概览条（每个目录一枚 chip：名称 + 待领取数 + 等待标记，点开进详情）+ 按目录分组的待领取列表（v1 看板的形态），侧边栏底部与 rail 都有入口。</li>
+        <li><b>动效规范进 tokens</b>：位移不超过 220ms，并新增 <code>prefers-reduced-motion</code> 降级（系统开了「减少动态效果」就只保留状态变化）。</li>
+        <li>颜色全部 token 化收尾：<code>--wait-line</code> 替换掉散落的硬编码描边色，ink 底文字统一走 <code>--on-ink</code>——将来加暗色主题不用回头翻硬编码。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">R6</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>领取优先级可以拖了</b>：待领取列内拖卡片排序（落在卡片上半=插前、下半=插后，落点有插入线 + 跟随提示「插到这条之前 · 领取优先级」）。此前设计只写了「正序=领取优先级」，<b>看得见改不了</b>——而真实 CLI 早就有 <code>localtask reorder</code>。</li>
+        <li><b>已领取列也给了 ⋯ 菜单</b>：复制本列全部文本 / 复制本列回执；三个本机列的列操作口径一致。</li>
+        <li><b>搜索给匹配计数</b>：输入后搜索框旁显示「N 个匹配」，避免搜不到时以为搜索坏了。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">R5</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>§7 从「实现建议」升级成「落地契约」</b>：组件与文件划分（侧边栏五件套 / <code>view-dir.jsx</code> / migrate 三件套）、字段表（逐条标出<b>复用</b>还是<b>需新增</b>）、API 与 CLI 契约（新增 <code>POST /api/task/move</code> 与 <code>nx-kv task move</code>，含撤销的同构命令）、原子性做法、分期路线与兼容策略。</li>
+        <li><b>原子性写进了契约</b>：服务端一次请求内「先写目标端、成功才改源端」；撤销按返回的 <code>targetId</code> 精确删，<b>不按文本匹配</b>——同内容 ×N 时按文本删会误伤。</li>
+        <li><b>新增 7.5 验收自查表</b>：把本稿覆盖的每一条验收项，映射到原型里「在哪看、怎么验」，评审者可以照着点一遍。</li>
+        <li>顺手统一了路由写法（<code>#/d/&lt;key&gt;</code> → <code>#/dir/&lt;key&gt;</code>，并补 <code>#/global</code>），与 7.1 对齐。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">R4</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>迁移失败态与原子性</b>：设置气泡可切「模拟云端故障」——云端栏整体进入错误态（KV 后端不可达 + 重试按钮），迁移遵循<b>先写目标端、成功才改源端</b>：失败则本地任务原地不动、<b>不产生迁出记录</b>，卡片红闪 + 错误 toast 带「重试」。</li>
+        <li><b>可读性修正</b>：meta 弱文字色 <code>#9b988f → #76736c</code>（对白底 ≈4.7:1，达 WCAG AA）；新增全局 <code>:focus-visible</code> 焦点环；rail 纯图标按钮补 <code>aria-label</code>；ink 底上的文字统一走 <code>--on-ink</code> token（为将来加暗色主题留口）。</li>
+        <li><b>长文本可展开</b>：卡片正文超过 4 行时出现「展开全文 / 收起」，不用再靠悬停 title 读全文。</li>
+        <li>单栏模式（仅本机 / 仅云端）下看板列自适应撑满宽度，不再右侧留大片空白；目录行悬停显示路径 + 现状摘要。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">R3</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>迁移补上「确认」这一步</b>（§5 第 2 步终于兑现）：菜单/批量迁移弹确认对话框——左源右目标，写清映射（云端：<code>topic=目录名 · bucket=open</code>；本机：新增到待领取首位并带「来自云端」标记）；<b>拖拽路径不弹</b>——落点列描边 + 跟随提示即确认。</li>
+        <li><b>同内容消歧</b>：目标端已有 N 条同内容时，对话框把它们列出来；本机→云端可勾选「合并到已有条目（不新增一条）」，云端→本机则明示会追加一条（与清单页「同内容×N」并存规则一致）。</li>
+        <li><b>「去回填」成了真闭环</b>：点开是回执输入框 → 写入 <code>roundSummary</code> → 解除 <code>waiting</code>（agent 可继续），对应真实的 <code>localtask wait</code> 回填通道。</li>
+        <li><b>现状摘要可编辑</b>：顶栏 summary 点击即改（真实实现走 <code>localtask add --summary</code>）。</li>
+        <li>本机卡片补「来自云端」来源徽标（与云端侧「来自本机」对称）；窄屏下侧边栏改为浮层，不再把看板挤没。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">R2</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>全局任务池成了真视图</b>：侧边栏恒顶的「全局任务池」不再只弹提示，点开是独立全屏工作台（待领取 / 已领取两列）；卡片菜单「投放到目录…」把共享任务固定到某个目录的队列，原位置留「已迁移 → 目录 · nx-kv」记录并可 <code>⇥</code> 跳过去。</li>
+        <li><b>「＋」变成双入口菜单</b>：添加目录 / 新建分组——此前只有加目录、没有建分组的入口，「可编排」缺了一半。</li>
+        <li><b>顶栏「＋ 新任务」不再是死按钮</b>：点击聚焦本机队列的投递输入框（仅云端模式下明确提示切回）。</li>
+        <li><b>跨栏拖拽加落点提示</b>：拖动时跟随光标显示「迁入 云端待办 / 迁入 本机待领取」，落点列描边，无效落点不显示假提示。</li>
+        <li>修掉两个真 bug：云端总览在「当前目录已被移出侧边栏」时会崩（<code>curDir()</code> 为空）；刷新按钮原本只弹提示，现在真的重渲染并回报时间戳。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">R1</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li><b>统一 ⋯ 菜单体系</b>：卡片菜单（本机：迁移到云端 / 复制 / 软删；云端：迁到本机 / 复制 / 标记完成 · 解冻 · 重新打开 / 删除）与列头菜单（批量迁移 / 复制本列 / 清空本列）都走与侧边栏行菜单同构的弹出菜单；原先散在卡片右上角的行内小按钮收进菜单，卡片只留一个 ⋯。</li>
+        <li><b>迁出记录真正内联回原列</b>：虚线灰卡带「已迁移 → 云端清单 · 时间」，带 <code>⇥</code> 跳到目标（对面栏那张卡闪一下）与 <code>✕</code> 移除记录；不再只是一个计数。</li>
+        <li><b>新增「归档」折叠列</b>：软删任务集中在这里，可「恢复到待领取」或「彻底删除」；列头「已删除 N」开关它（默认折叠）。</li>
+        <li><b>侧边栏键盘导航落地</b>：<code>↑</code><code>↓</code>/<code>Home</code>/<code>End</code> 在可见行间移动焦点（焦点环可见，序 = 渲染序），<code>Enter</code> 打开目录或折叠分组，<code>Esc</code> 逐层退出；输入框里不劫持按键。</li>
+        <li><b>等待回填改真实倒计时</b>：由 <code>waitingUntil</code> 时间戳驱动、每 30s 刷新，归零显示「回填超时」，不再写死分钟数。</li>
+      </ul>
+    </div>
+    <div class="log-item">
+      <span class="lv">v0.1（R0 布防版）</span><span class="lt">2026-10-28</span>
+      <ul>
+        <li>初版完整设计稿：交互原型（侧边栏拖拽编排/搜索/行菜单/收起 rail、目录详情全屏、本机⇄云端并列双栏与迁移流）+ 设计说明八节。</li>
+        <li>数据字段对齐真实模型：本地任务 <code>{id,text,status,deletedAt,roundSummary,createdAt,consumedAt}</code>、主题 <code>{key,cwd,name,summary,waiting,waitingUntil,isGlobal}</code>、云端 <code>{topic,text,bucket:open|done|freeze}</code>。</li>
+        <li>已布防 Ralph 循环（Stop hook 拦截 + 重新注入 prompt，仅轮次模式，上限 9 轮）——本机 nx-rp 0.4.1 未发布 <code>loop</code> 命令，改用项目内自建机制（.claude/uiux-loop/），后续每轮在本节顶部追加迭代记录。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 浮层挂载点 -->
+<div id="toast"></div>
+<div id="draghint"></div>
+
+<script>
+'use strict';
+/* ============================================================
+   演示数据 — 字段与真实模型一致（见设计说明 §4/§5）
+   ============================================================ */
+const state = {
+  view: 'detail',            // detail | cloudAll | repos | settings
+  current: 'd1',             // 当前目录 id
+  folded: false,             // 侧边栏收起
+  kw: '',
+  sourceMode: 'both',        // both | local | cloud
+  cloudAll: false,           // 云端栏是否显示全部 topic
+  showArchive: false,        // 归档列（软删任务）展开态
+  cloudFault: false,         // 模拟云端不可达（失败态演示）
+  kbIndex: -1,               // 侧边栏键盘焦点行（-1 = 无）
+  login: true,               // 模拟登录态
+  groups: [
+    { id:'g1', name:'常用', open:true },
+    { id:'g2', name:'实验', open:true },
+  ],
+  order: ['g1','g2'],
+  dirs: [
+    { id:'d1', g:'g1', name:'nx-kv', path:'D:/DevProjects/my/github/nx-kv',
+      summary:'v0.11.4 已发布；面板 v2 重设计中（本设计稿即任务 #1 的产物）', waiting:true, waitMin:12, waitUntil:Date.now() + 12 * 60000 },
+    { id:'d2', g:'g1', name:'nx-ft', path:'D:/DevProjects/my/test/nx-ft',
+      summary:'v0.5.1；工具栏 P0 完成，侧边栏 P1（分组/拖拽编排）进行中', waiting:false },
+    { id:'d3', g:'g1', name:'sedoc-fe-8.60', path:'D:/DevProjects/my/todo/work/sedoc-fe-8.60',
+      summary:'8.60.17 工作台设计稿已就位，待按稿修改 src/views/home/dashboard', waiting:false },
+    { id:'d4', g:'g2', name:'eduweb', path:'C:/HBuilderx/demo/eduweb',
+      summary:'', waiting:false },
+  ],
+  /* 本机任务：{id,text,status:'pending'|'consumed',deletedAt?,roundSummary?,createdAt,consumedAt?,tomb?} */
+  tasks: {
+    d1: [
+      { id:4, text:'[P2] 本地/远程任务并列与迁移：后端增加 nx-kv task move 同构 CLI，迁移原子化', status:'pending', createdAt:'10-28 10:32' },
+      { id:3, text:'[P1] 目录详情全屏态 + 看板栏目呈现：#/d/:key 路由、进入默认收起侧边栏、四列看板', status:'pending', createdAt:'10-28 10:31' },
+      { id:2, text:'[P1] 侧边栏实现：目录分组 + 拖拽三段式落点（参考 nx-ft sidebar 五件套），落地到 src/web/frontend/components/sidebar/', status:'pending', createdAt:'10-28 10:30' },
+      { id:1, text:'目标：为 nx-kv 的 Web 面板做一次完整 UI/UX 重设计，产出单文件自包含交互原型 plan/uiux-redesign.html，覆盖 ①侧边栏编排 ②目录全屏看板 ③本地⇄云端并列迁移', status:'consumed', createdAt:'10-28 10:08', consumedAt:'10-28 10:21',
+        roundSummary:'v0.1 已产出：设计稿落 plan/uiux-redesign.html，三大块原型与设计说明齐备，已布防 9 轮迭代循环' },
+      { id:9, text:'[已废弃] 旧版顶栏 tab 分组需求（已由侧边栏方案取代）', status:'pending', createdAt:'10-28 09:40', deletedAt:'10-28 10:05' },
+    ],
+    d2: [
+      { id:3, text:'[P1][侧边栏2.2] 分组折叠记忆与搜索强制展开联调（settings.js 双开关跨域共享）', status:'pending', createdAt:'10-27 15:40' },
+      { id:2, text:'[P1][侧边栏2.1] 拖拽换层级状态机 drag.jsx：before/after/into 三落点 + canDropInto 防自嵌套', status:'consumed', createdAt:'10-27 14:02', consumedAt:'10-27 15:12',
+        roundSummary:'拖拽状态机完成：dropKey 三态指示（before 线/after 线/into 描边），资源行中段不给假提示；unit 12 例全绿' },
+      { id:7, tomb:true, uid:301, to:'cloud', fromCol:'pending', text:'[P0] 侧边栏 P1 联调清单（已迁到云端）', at:'10-27 16:20' },
+    ],
+    d3: [
+      { id:1, text:'按 8.60.17 设计稿修改工作台 dashboard 视觉与布局，动手前先与用户对齐修改清单', status:'pending', createdAt:'10-19 11:03' },
+    ],
+    d4: [],
+    __GLOBAL__: [
+      { id:11, text:'[通用] 排查 v0.11.x 面板「本地任务」tab 角标不消失的问题', status:'pending', createdAt:'10-28 09:12' },
+      { id:10, text:'[通用] 评估把云端 groupId 与本机目录对齐（跨机器共享的目录视图）', status:'consumed', createdAt:'10-27 20:40', consumedAt:'10-27 21:30',
+        roundSummary:'已给结论：groupId 是云端工作空间，与本机目录无一一对应关系；迁移靠 todo 的 topic 字段做桥接' },
+    ],
+  },
+  /* 云端清单（KV todo，按 topic 映射目录；bucket: open|done|freeze） */
+  cloud: {
+    open: [
+      { topic:'nx-kv', text:'整理 v0.12.0 changelog，发布面板 v2 预告', createdAt:'10-27 18:02' },
+      { topic:'nx-ft', text:'侧边栏 P1 验收：三域联调 + 截图对比', createdAt:'10-26 09:14' },
+      { topic:'nx-kv', text:'调研任务迁移的原子性方案（对比 DVC/jiri 的做法）', createdAt:'10-27 18:05' },
+    ],
+    done: [
+      { topic:'nx-kv', text:'修复 localtask 仓库上下文只显示仓库名', result:'已修复并随 v0.11.4 发布', doneAt:'10-27 20:11' },
+    ],
+    freeze: [
+      { topic:'sedoc-fe-8.60', text:'8.60.18 导出模块改造（等设计稿到位后解冻）', frozenAt:'10-25 11:00' },
+    ],
+  },
+  seq: 100,
+};
+
+const $ = (s, el) => (el || document).querySelector(s);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* ---- 内联 SVG 图标集（ft-svg 规范：24 网格 / 线宽 1.8 / round 端点 / currentColor；A08 无原生 emoji） ---- */
+const IC = {
+  globe:'<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.3 2.4 3.5 5.3 3.5 8.5s-1.2 6.1-3.5 8.5M12 3.5C9.7 5.9 8.5 8.8 8.5 12s1.2 6.1 3.5 8.5"/>',
+  folder:'<path d="M3.5 7.2c0-1 .8-1.8 1.8-1.8h4.4l2.1 2.3h6.9c1 0 1.8.8 1.8 1.8v8.3c0 1-.8 1.8-1.8 1.8H5.3c-1 0-1.8-.8-1.8-1.8z"/>',
+  overview:'<path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9.5"/>',
+  cloud:'<path d="M17.8 18.5H9a6.5 6.5 0 1 1 6.2-8.3h2.6a4.15 4.15 0 1 1 0 8.3z"/>',
+  package:'<path d="M12 3 4 7.25v9.5L12 21l8-4.25v-9.5z"/><path d="M4.2 7.4 12 11.6l7.8-4.2M12 11.6V21"/>',
+  gear:'<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8M18.6 18.6l-1.8-1.8M7.2 7.2 5.4 5.4"/>',
+  search:'<circle cx="11" cy="11" r="6.5"/><path d="m20.2 20.2-4.5-4.5"/>',
+  monitor:'<rect x="3" y="4.5" width="18" height="12.5" rx="2"/><path d="M9 20.5h6M12 17v3.5"/>',
+  trash:'<path d="M4.5 6.5h15M9.5 6.3V4.5h5v1.8M6.5 6.5l.9 13h9.2l.9-13M10 10.5v5.5M14 10.5v5.5"/>',
+  lock:'<rect x="5.5" y="10.8" width="13" height="9" rx="2"/><path d="M8.5 10.8V8.2a3.5 3.5 0 0 1 7 0v2.6"/>',
+  warn:'<path d="M12 4 21.3 19.8H2.7zM12 10.2v4.3M12 17.3v.3"/>',
+  back:'<path d="M19 12H5M11 5.5 4.5 12l6.5 6.5"/>',
+  x:'<path d="m6 6 12 12M18 6 6 18"/>',
+  restore:'<path d="M1.5 4.5v6h6"/><path d="M4 15.2a9 9 0 1 0 2.13-9.36L1.5 10.5"/>',
+  jump:'<path d="M4.5 5v14M9.5 12H20M14.5 6.5 20 12l-5.5 5.5"/>',
+  upright:'<path d="M7 17 17 7M9 7h8v8"/>',
+  pencil:'<path d="M4.5 19.5l1-3.9L16.8 4.3a2 2 0 0 1 2.9 2.9L8.4 18.5z"/>',
+  pin:'<path d="M17.5 17.5l-11-11M6.5 12V6.5H12"/>',
+  up:'<path d="M12 19V5.5M6.5 11 12 5.5 17.5 11"/>',
+  down:'<path d="M12 5v13.5M6.5 13 12 18.5 17.5 13"/>',
+  copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5.5 14.5v-8a2 2 0 0 1 2-2h8"/>',
+  check:'<path d="m4.5 12.5 5.5 5.5L19.5 7"/>',
+  play:'<path d="M8.5 5.8v12.4L18.5 12z"/>',
+  refresh:'<path d="M21.5 4.5V10h-5.5"/><path d="M20.3 14.7a8.6 8.6 0 1 1-2-9L21.5 9.6"/>',
+  eject:'<path d="M6 13.5 12 7l6 6.5z"/><path d="M7 17.5h10"/>',
+  goto:'<path d="M4.5 12h14M13.5 6.5 19 12l-5.5 5.5"/>',
+};
+const ic = (n, s) => '<svg class="ic"' + (s ? ' width="' + s + '" height="' + s + '"' : '') + ' viewBox="0 0 24 24" aria-hidden="true">' + (IC[n] || '') + '</svg>';
+const dirById = (id) => state.dirs.find((d) => d.id === id);
+const curDir = () => dirById(state.current);
+const pendingOf = (d) => (state.tasks[d.id] || []).filter((t) => t.status === 'pending' && !t.deletedAt && !t.tomb).length;
+const consumedOf = (d) => (state.tasks[d.id] || []).filter((t) => t.status === 'consumed' && !t.deletedAt && !t.tomb);
+
+/* ---------------- 侧边栏渲染 ---------------- */
+function renderSide() {
+  const tree = $('#tree');
+  const kw = state.kw.trim().toLowerCase();
+  const hit = (d) => !kw || (d.name + ' ' + d.path + ' ' + (d.summary || '')).toLowerCase().includes(kw);
+  const cntEl = $('#kwcount');
+  if (cntEl) cntEl.textContent = kw ? state.dirs.filter(hit).length + ' 个匹配' : '';
+  let html = '';
+
+  // 全局任务池：恒顶（沿用 __GLOBAL__ 置顶约定）
+  html += row({ cls:'pinned', ico:ic('globe'), nm:'全局任务', sub:'__GLOBAL__ · 任何目录空闲可领', cnt:0, id:'__global__', draggable:false });
+
+  for (const gid of state.order) {
+    const g = state.groups.find((x) => x.id === gid);
+    if (!g) continue;
+    const dirs = state.dirs.filter((d) => d.g === g.id);
+    const vis = dirs.filter(hit);
+    const forceOpen = kw && vis.length > 0;
+    const open = g.open || forceOpen || !!kw;
+    html += '<div data-gwrap="' + g.id + '">';
+    html += row({ cls:'group' + (open ? ' open' : ''), ico:'', tw:'▶', nm:esc(g.name), cnt:dirs.length, id:'grp:' + g.id, draggable:true, gid:g.id });
+    if (open) {
+      if (vis.length === 0) html += '<div class="tree-empty">' + (kw ? '无匹配' : '空分组 · 拖目录进来') + '</div>';
+      for (const d of vis) html += dirRow(d);
+    }
+    html += '</div>';
+  }
+  html += '<div class="droptail" data-tail="1"></div>';
+  tree.innerHTML = html;
+  renderFoot();
+  renderRail();
+  applyKbFocus();
+}
+function dirRow(d, extraCls) {
+  const active = state.current === d.id && state.view === 'detail';
+  const pen = pendingOf(d);
+  return row({
+    cls:'child' + (active ? ' active' : '') + (extraCls || ''),
+    ico:ic('folder'), nm:esc(d.name), id:'dir:' + d.id, draggable:true, did:d.id,
+    cnt:pen || '', wdot:d.waiting,
+    title: d.path + (d.summary ? '\n' + d.summary : ''),
+  });
+}
+function row(o) {
+  return '<button class="trow ' + (o.cls || '') + '" data-id="' + o.id + '"' +
+    (o.title ? ' title="' + esc(o.title) + '"' : '') +
+    (o.did ? ' data-did="' + o.did + '"' : '') + (o.gid ? ' data-gid="' + o.gid + '"' : '') +
+    (o.draggable ? ' draggable="true"' : '') + '>' +
+    (o.tw ? '<span class="tw">' + o.tw + '</span>' : '<span class="tw"></span>') +
+    (o.ico ? '<span class="gico">' + o.ico + '</span>' : '') +
+    '<span class="nm">' + o.nm + (o.sub ? '<span class="sub">' + o.sub + '</span>' : '') + '</span>' +
+    (o.wdot ? '<span class="wdot" title="有 agent 等待回填"></span>' : '') +
+    (o.cnt ? '<span class="cnt">' + o.cnt + '</span>' : '') +
+    (o.draggable ? '<span class="more" data-more="' + o.id + '" title="行菜单">⋯</span>' : '') +
+    '</button>';
+}
+function renderFoot() {
+  $('#sfoot').innerHTML =
+    row({ ico:ic('overview'), nm:'全部目录总览', id:'nav:overview', draggable:false }) +
+    row({ ico:ic('cloud'), nm:'云端总览', id:'nav:cloudAll', draggable:false }) +
+    row({ ico:ic('package'), nm:'仓库管理', id:'nav:repos', draggable:false }) +
+    row({ ico:ic('gear'), nm:'设置 · 登录', id:'nav:settings', draggable:false, cnt:state.login ? '已登录' : '未登录' });
+}
+/* rail（收起态）*/
+function renderRail() {
+  const rail = $('#rail');
+  if (!state.folded) { rail.hidden = true; return; }
+  rail.hidden = false;
+  let h = '<button class="railbtn" aria-label="展开侧边栏" data-rail="expand" data-tip="展开侧边栏">' + ic('eject',15) + '</button><div class="rail-sep"></div>';
+  h += '<button class="railbtn" aria-label="全局任务池" data-rail="__global__" data-tip="全局任务">' + ic('globe') + '</button>';
+  for (const gid of state.order) {
+    const g = state.groups.find((x) => x.id === gid);
+    state.dirs.filter((d) => d.g === gid).forEach((d) => {
+      const pen = pendingOf(d);
+      h += '<button class="railbtn' + (state.current === d.id && state.view === 'detail' ? ' active' : '') + '" data-rail="' + d.id + '" aria-label="' + esc(g.name + ' / ' + d.name) + '" data-tip="' + esc(g.name + ' / ' + d.name) + '">' +
+        ic('folder') + (d.waiting ? '<span class="wdot"></span>' : pen ? '<span class="b">' + pen + '</span>' : '') + '</button>';
+    });
+  }
+  h += '<div class="rail-grow"></div><div class="rail-sep"></div>';
+  h += '<button class="railbtn" aria-label="全部目录总览" data-rail="overview" data-tip="全部目录总览">' + ic('overview') + '</button>';
+  h += '<button class="railbtn" aria-label="云端总览" data-rail="cloudAll" data-tip="云端总览">' + ic('cloud') + '</button>';
+  h += '<button class="railbtn" aria-label="仓库管理" data-rail="repos" data-tip="仓库管理">' + ic('package') + '</button>';
+  h += '<button class="railbtn" aria-label="设置与登录" data-rail="settings" data-tip="设置 · 登录">' + ic('gear') + '</button>';
+  rail.innerHTML = h;
+}
+
+/* ---------------- 主区渲染（目录详情 / 全局页） ---------------- */
+function renderMain() {
+  const m = $('#main');
+  if (state.view === 'detail') { m.innerHTML = detailHTML(curDir()); bindDetail(m); updateWait(); return; }
+  if (state.view === 'overview') { m.innerHTML = overviewHTML(); bindDetail(m); updateWait(); return; }
+  if (state.view === 'global') { m.innerHTML = globalHTML(); bindDetail(m); updateWait(); return; }
+  if (state.view === 'cloudAll') { m.innerHTML = cloudAllHTML(); bindDetail(m); updateWait(); return; }
+  m.innerHTML = '<div class="login-empty" style="height:100%"><div class="big">' +
+    (state.view === 'repos' ? ic('package',30) : ic('gear',30)) + '</div><div class="tx">设计稿演示：<b>' +
+    (state.view === 'repos' ? '仓库管理' : '设置 · 登录') +
+    '</b> 沿用 v1 面板能力，此处不展开。见设计说明 §1 映射表。</div></div>';
+}
+
+/* 任务归属哪一列：迁出记录（tombstone）按迁移前所在列内联回原位，其余按 status */
+function inCol(t, col) {
+  if (t.tomb) return t.fromCol === col;
+  return t.status === col && !t.deletedAt;
+}
+function waitMin(d) {
+  return d.waitUntil ? Math.max(0, Math.ceil((d.waitUntil - Date.now()) / 60000)) : (d.waitMin || 0);
+}
+function paneLocal(d, solo) {
+  const tasks = state.tasks[d.id] || [];
+  const pending = tasks.filter((t) => inCol(t, 'pending'));
+  const consumed = tasks.filter((t) => inCol(t, 'consumed')).slice().reverse();
+  const deleted = tasks.filter((t) => t.deletedAt);
+  const tombs = tasks.filter((t) => t.tomb);
+  const lastReal = consumed.filter((t) => !t.tomb)[0];
+  let h = '<section class="pane' + (solo ? ' solo' : '') + '" data-pane="local">' +
+    '<div class="pane-h"><span class="ico">' + ic('monitor') + '</span><span class="t">本机队列</span>' +
+    '<span class="where">localtasks.json</span><span class="grow"></span>' +
+    (tombs.length ? '<span class="mini" title="迁出记录内联在原列">' + ic('upright') + ' 已迁出 ' + tombs.length + '</span>' : '') +
+    (deleted.length ? '<button class="mini" data-act="archive">' + ic('trash') + ' 已删除 ' + deleted.length + '</button>' : '') +
+    '</div><div class="newtask"><input placeholder="投一条任务到该目录队列…（Enter 提交）" data-newtask="' + d.id + '"></div>' +
+    '<div class="pane-b">';
+  // 列：进行中（waiting）
+  h += '<div class="col local-target" data-col="doing"><div class="col-h">进行中 <span class="k">waiting</span><span class="grow"></span></div><div class="col-b">';
+  h += d.waiting
+    ? '<div class="card waitcard"><div class="wt"><span class="pulse"></span>agent 等待回填 · <span data-wait="' + d.waitUntil + '" data-waitmode="text">剩 ' + waitMin(d) + ' 分</span></div>' +
+      '<div class="meta"><span class="tag">最近领取 #' + (lastReal ? lastReal.id : '—') + '</span><span class="grow"></span><button class="mini" data-act="fill">去回填 →</button></div></div>'
+    : '<div class="col-empty">空闲 · 无 agent 等待</div>';
+  h += '</div></div>';
+  // 列：待领取（正序 = 领取优先级；迁出记录内联保留原位）
+  h += '<div class="col local-target" data-col="pending"><div class="col-h">待领取 <span class="k">' + pending.filter((t) => !t.tomb).length + ' · 正序=优先级</span><span class="grow"></span>' +
+    '<button class="mini" data-act="colmenu" data-pane="local" data-col="pending" title="列操作">⋯</button></div><div class="col-b">';
+  h += pending.length ? pending.map(cardHTML).join('') : '<div class="col-empty">队列为空<br>投一条，或从云端迁入 ↓</div>';
+  h += '</div></div>';
+  // 列：已领取（倒序）
+  h += '<div class="col local-target" data-col="consumed"><div class="col-h">已领取 <span class="k">' + consumed.filter((t) => !t.tomb).length + ' · 倒序</span><span class="grow"></span>' +
+    '<button class="mini" data-act="colmenu" data-pane="local" data-col="consumed" title="列操作">⋯</button></div><div class="col-b">';
+  h += consumed.length ? consumed.map(cardHTML).join('') : '<div class="col-empty">还没有已完成的任务</div>';
+  h += '</div></div>';
+  // 归档列（软删任务：可恢复 / 彻底删；默认折叠）
+  if (state.showArchive && deleted.length) {
+    h += '<div class="col" data-col="archive"><div class="col-h">归档 <span class="k">软删除 · 可恢复</span><span class="grow"></span>' +
+      '<button class="mini" data-act="archive" title="收起">' + ic('x') + '</button></div><div class="col-b">' + deleted.map(deletedHTML).join('') + '</div></div>';
+  }
+  h += '</div></section>';
+  return h;
+}
+function deletedHTML(t) {
+  return '<div class="card tomb" data-del="' + t.id + '"><div class="tx" title="' + esc(t.text) + '">' + esc(t.text.slice(0, 60)) + (t.text.length > 60 ? '…' : '') + '</div>' +
+    '<div class="meta"><span class="tag">已删除 ' + esc(t.deletedAt) + '</span><span class="grow"></span>' +
+    '<span class="ops"><button data-act="restore" title="恢复到待领取">' + ic('restore') + '</button><button data-act="purge" title="彻底删除">' + ic('x') + '</button></span></div></div>';
+}
+function cardHTML(t, kind) {
+  if (t.tomb) {
+    return '<div class="card tomb" data-tomb="' + t.uid + '"><div class="tx" title="' + esc(t.text) + '">' + ic('upright') + ' ' + esc(t.text.slice(0, 60)) + (t.text.length > 60 ? '…' : '') + '</div>' +
+      '<div class="meta"><span class="tag tomb">已迁移 → ' + tombTarget(t) + '</span><span>' + esc(t.at) + '</span><span class="grow"></span>' +
+      '<span class="ops"><button data-act="jump" title="跳到目标">' + ic('jump') + '</button><button data-act="delTomb" title="移除记录">' + ic('x') + '</button></span></div></div>';
+  }
+  const isDone = t.status === 'consumed';
+  return '<div class="card" draggable="true" data-task="' + t.id + '">' +
+    '<div class="tx" title="' + esc(t.text) + '">' + esc(t.text) + '</div>' +
+    (t.text.length > 110 ? '<button class="mini more-tx" data-act="expand">展开全文</button>' : '') +
+    (t.roundSummary ? '<div class="rsum"><b>回执</b> ' + esc(t.roundSummary) + '</div>' : '') +
+    '<div class="meta"><span class="tag">#' + t.id + '</span><span>' + esc(t.createdAt) + '</span>' +
+    (isDone ? '<span class="tag">' + ic('check') + ' ' + esc(t.consumedAt || '') + '</span>' : '') +
+    (t.from === 'cloud' ? '<span class="tag src">来自云端</span>' : '') +
+    '<span class="grow"></span></div>' +
+    '<span class="ops"><button data-act="cardmenu" data-kind="' + (kind || 'local') + '" data-id="' + t.id + '" title="更多操作">⋯</button></span>' +
+    '</div>';
+}
+/* 迁出记录的去向标签：云端清单 / 某个目录 / 本机队列 */
+function tombTarget(t) {
+  if (t.to === 'cloud') return '云端清单';
+  if (t.to === 'dir') return '目录 · ' + (t.toName || '?');
+  return '本机队列';
+}
+function cloudCards(bucket, topicFilter) {
+  const list = state.cloud[bucket] || [];
+  const f = topicFilter ? list.filter((x) => x.topic === topicFilter) : list;
+  return f.length ? f.map((c) => {
+    const i = list.indexOf(c);   // 索引取整桶里的位置（菜单里的增删要按它来）
+    return '<div class="card" draggable="true" data-cloud="' + bucket + ':' + i + '">' +
+      '<div class="tx" title="' + esc(c.text) + '">' + esc(c.text) + '</div>' +
+      (c.text.length > 110 ? '<button class="mini more-tx" data-act="expand">展开全文</button>' : '') +
+      '<div class="meta"><span class="tag src">' + esc(c.topic) + '</span>' +
+      (c.from === 'local' ? '<span class="tag tomb">来自本机</span>' : '') +
+      (c.result ? '<span class="tag">' + ic('check') + ' ' + esc(c.result) + '</span>' : '') +
+      '<span>' + esc(c.createdAt || c.doneAt || c.frozenAt || '') + '</span><span class="grow"></span></div>' +
+      '<span class="ops"><button data-act="cardmenu" data-kind="cloud" data-bucket="' + bucket + '" data-idx="' + i + '" title="更多操作">⋯</button></span></div>';
+  }).join('') : '<div class="col-empty">' + (topicFilter ? '云端暂无此目录的任务' : '暂无') + '</div>';
+}
+function paneCloud(d, solo, showAll) {
+  const tf = showAll ? null : d.name;
+  const cols = '<div class="pane-b">' +
+    '<div class="col cloud-col" data-col="open"><div class="col-h">待办 <span class="k">' + (state.cloud.open.filter((x) => !tf || x.topic === tf).length) + '</span><span class="grow"></span>' +
+    '<button class="mini" data-act="colmenu" data-pane="cloud" data-col="open" title="列操作">⋯</button></div><div class="col-b">' + cloudCards('open', tf) + '</div></div>' +
+    '<div class="col cloud-col" data-col="done"><div class="col-h">已完成</div><div class="col-b">' + cloudCards('done', tf) + '</div></div>' +
+    '<div class="col cloud-col" data-col="freeze"><div class="col-h">冻结</div><div class="col-b">' + cloudCards('freeze', tf) + '</div></div>' +
+    '</div>';
+  // 三态：未登录（CTA）/ 后端不可达（错误态 + 重试）/ 正常
+  const body = !state.login
+    ? '<div class="login-empty"><div class="big">' + ic('lock',34) + '</div><div class="tx">云端清单需登录（KV 后端 · 按 groupId 工作空间隔离）。<br>迁移功能在未登录时不可用。</div><button class="btn" data-act="login">去登录</button></div>'
+    : state.cloudFault
+      ? '<div class="pane-error"><div class="big">' + ic('warn',30) + '</div><div class="tx">云端清单加载失败：KV 后端不可达（网络中断 / 登录态失效 / 服务异常）。<br><b>本机队列不受影响</b>，可以继续工作；迁移会失败且源端保持原样。</div><button class="btn" data-act="retryCloud">重试</button></div>'
+      : cols;
+  return '<section class="pane cloud' + (solo ? ' solo' : '') + '" data-pane="cloud">' +
+    '<div class="pane-h"><span class="ico">' + ic('cloud') + '</span><span class="t">云端清单</span>' +
+    '<span class="where">' + (showAll ? '全部 topic' : 'topic: ' + esc(d.name)) + '</span><span class="grow"></span>' +
+    '<button class="mini" data-act="toggleAll">' + (showAll ? '只看本目录' : '显示全部') + '</button></div>' +
+    body +
+    '</section>';
+}
+function detailHTML(d) {
+  const seg =
+    '<div class="seg">' +
+    '<button data-src="both" class="' + (state.sourceMode === 'both' ? 'on' : '') + '">并列</button>' +
+    '<button data-src="local" class="' + (state.sourceMode === 'local' ? 'on' : '') + '">仅本机</button>' +
+    '<button data-src="cloud" class="' + (state.sourceMode === 'cloud' ? 'on' : '') + '">仅云端</button></div>';
+  let panes = '';
+  if (state.sourceMode === 'both') panes = paneLocal(d) + paneCloud(d, false, state.cloudAll);
+  else if (state.sourceMode === 'local') panes = paneLocal(d, true);
+  else panes = paneCloud(d, true, state.cloudAll);
+  return '<div class="topbar">' +
+    '<button class="back" id="btnBack" title="返回（展开侧边栏）">' + ic('back') + '</button>' +
+    '<div class="tt"><div class="n">' + ic('folder') + ' ' + esc(d.name) + (d.waiting ? '<span class="badge-wait"><span class="pulse"></span><span data-wait="' + d.waitUntil + '" data-waitmode="badge">等待回填 ' + waitMin(d) + 'min</span></span>' : '') + '</div>' +
+    '<div class="p">' + esc(d.path) + '</div></div>' +
+    '<div class="sum editable" data-act="editSummary" title="点击编辑现状摘要">' + esc(d.summary || '（无现状摘要 — 点击编辑）') + '</div>' +
+    '<button class="btn ghost" data-act="refresh" title="刷新" aria-label="刷新">' + ic('refresh') + '</button><button class="btn" data-act="newtask">＋ 新任务</button></div>' +
+    '<div class="srcbar">' + seg + '<span class="hint">本机与云端是同一目录的并列任务来源，可互相迁移</span><span class="grow"></span></div>' +
+    '<div id="panes">' + panes + '</div>';
+}
+/* 全部目录总览：目录成为一级导航后，跨目录视角退到这里（v1「本地任务」tab 的替代） */
+function overviewHTML() {
+  const dirs = state.dirs;
+  let h = '<div class="topbar"><button class="back" id="btnBack" title="返回（展开侧边栏）">' + ic('back') + '</button>' +
+    '<div class="tt"><div class="n">' + ic('overview') + ' 全部目录总览</div><div class="p">跨目录汇总 · v1「本地任务」tab 的替代</div></div>' +
+    '<div class="sum">目录成了一级导航，跨目录视角退到这里：一眼看清谁还有活、谁在等人回填</div>' +
+    '<button class="btn ghost" data-act="refresh" title="刷新" aria-label="刷新">' + ic('refresh') + '</button></div><div class="ov-wrap">';
+  h += '<div class="ov-chips">';
+  for (const d of dirs) {
+    h += '<button class="ov-chip' + (d.waiting ? ' wait' : '') + '" data-act="openDir" data-did="' + d.id + '" title="' + esc(d.path) + '">' +
+      '<span>' + esc(d.name) + '</span>' +
+      (d.waiting ? '<span class="wdot"></span>' : '') +
+      '<span class="c">' + pendingOf(d) + '</span></button>';
+  }
+  h += '</div>';
+  const busy = dirs.filter((d) => pendingOf(d) > 0);
+  if (!busy.length) {
+    h += '<div class="col-empty" style="padding:26px">所有目录的队列都空着<br>投一条任务，或从云端清单迁入</div>';
+  }
+  for (const d of busy) {
+    // 总览是摘要视图：只列真正待领取的任务，迁出记录不混进来（否则计数与行数对不上）
+    const pend = (state.tasks[d.id] || []).filter((t) => inCol(t, 'pending') && !t.tomb);
+    h += '<section class="ov-sec"><div class="ov-sec-h"><span>' + ic('folder') + ' ' + esc(d.name) + '</span>' +
+      '<span class="c">' + pend.length + ' 条待领取</span><span class="grow"></span>' +
+      '<button class="mini" data-act="openDir" data-did="' + d.id + '">进入 →</button></div>';
+    for (const t of pend) {
+      h += '<div class="ov-task"><span class="tx" title="' + esc(t.text) + '">' + esc(t.text) + '</span>' +
+        '<span class="m">' + (t.from === 'cloud' ? '来自云端 · ' : '') + '#' + t.id + ' · ' + esc(t.createdAt) + '</span></div>';
+    }
+    h += '</section>';
+  }
+  h += '</div>';
+  return h;
+}
+/* 全局任务池视图：__GLOBAL__ 不绑定目录，谁空闲谁领；需要固定归属就「投放到目录…」 */
+function globalHTML() {
+  const tasks = state.tasks.__GLOBAL__ || [];
+  const pending = tasks.filter((t) => inCol(t, 'pending'));
+  const consumed = tasks.filter((t) => inCol(t, 'consumed')).slice().reverse();
+  let h = '<div class="topbar"><button class="back" id="btnBack" title="返回（展开侧边栏）">' + ic('back') + '</button>' +
+    '<div class="tt"><div class="n">' + ic('globe') + ' 全局任务池</div><div class="p">__GLOBAL__ · 任何目录空闲的 agent 自动领取</div></div>' +
+    '<div class="sum">全局池不绑定目录：谁空闲谁领。需要固定归属时，用卡片菜单「投放到目录…」</div>' +
+    '<button class="btn ghost" data-act="refresh" title="刷新" aria-label="刷新">' + ic('refresh') + '</button></div>' +
+    '<div id="panes"><section class="pane" data-pane="global">' +
+    '<div class="pane-h"><span class="ico">' + ic('globe') + '</span><span class="t">共享池</span>' +
+    '<span class="where">localtasks.json · __GLOBAL__</span><span class="grow"></span>' +
+    '<span class="mini" title="全局池不分目录，领取顺序即优先级">跨目录共享</span></div>' +
+    '<div class="newtask"><input placeholder="投一条任务到全局共享池…（Enter 提交；对应 localtask add --global）" data-newglobal="1"></div><div class="pane-b">';
+  h += '<div class="col" data-col="pending"><div class="col-h">待领取 <span class="k">' + pending.filter((t) => !t.tomb).length + ' · 正序=优先级</span><span class="grow"></span></div><div class="col-b">' +
+    (pending.length ? pending.map((t) => cardHTML(t, 'global')).join('') : '<div class="col-empty">全局池为空<br>用 nx-kv localtask add --global 投递</div>') + '</div></div>';
+  h += '<div class="col" data-col="consumed"><div class="col-h">已领取 <span class="k">' + consumed.filter((t) => !t.tomb).length + ' · 倒序</span><span class="grow"></span></div><div class="col-b">' +
+    (consumed.length ? consumed.map((t) => cardHTML(t, 'global')).join('') : '<div class="col-empty">还没有被领取的全局任务</div>') + '</div></div>';
+  h += '</div></section></div>';
+  return h;
+}
+function cloudAllHTML() {
+  return '<div class="topbar"><button class="back" id="btnBack" title="返回">' + ic('back') + '</button>' +
+    '<div class="tt"><div class="n">' + ic('cloud') + ' 云端总览</div><div class="p">KV todo · groupId 工作空间 · 跨目录全量</div></div>' +
+    '<div class="sum">与各目录详情里的「云端清单」同源，这里不按 topic 过滤</div></div>' +
+    '<div id="panes">' + paneCloud(curDir() || { name:'' }, true, true) + '</div>';
+}
+
+/* ---------------- 交互：导航 ---------------- */
+function openDir(id, opts) {
+  state.current = id;
+  state.view = 'detail';
+  // 设计规则：进入目录详情 = 默认全屏 + 侧边栏收起
+  if (!opts || !opts.keepSide) setFold(true);
+  renderAll();
+}
+function goView(v) { state.view = v; renderAll(); }
+/* 全局任务池也是全屏工作台（侧边栏收起，← 返回） */
+function openGlobal() { state.view = 'global'; setFold(true); renderAll(); }
+function setFold(f) { state.folded = f; $('#side').classList.toggle('folded', f); renderRail(); }
+function renderAll() { renderSide(); renderMain(); }
+
+/* ---------------- 交互：行菜单 / 气泡 / toast ---------------- */
+let menuEl = null;
+let lastFocus = null;      // 浮层打开前的焦点，关闭时归还（键盘用户不回退到页面顶部）
+function restoreFocus() {
+  const el = lastFocus;
+  lastFocus = null;
+  if (el && el.isConnected && typeof el.focus === 'function') { try { el.focus(); } catch (e) {} }
+}
+function closeMenu() {
+  if (!menuEl) return;
+  menuEl.remove();
+  menuEl = null;
+  restoreFocus();
+}
+function showMenu(items, x, y) {
+  closeMenu();
+  lastFocus = document.activeElement;
+  menuEl = document.createElement('div');
+  menuEl.className = 'gmenu';
+  menuEl.setAttribute('role', 'menu');
+  menuEl.innerHTML = items.map((it) => it.sep ? '<div class="sep"></div>' :
+    '<button data-mi="' + items.indexOf(it) + '" class="' + (it.danger ? 'danger' : '') + '">' + (it.icon || '') + ' ' + it.label + '</button>').join('');
+  document.body.appendChild(menuEl);
+  const r = menuEl.getBoundingClientRect();
+  menuEl.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + 'px';
+  menuEl.style.top = Math.max(8, (y + r.height > innerHeight - 8 ? y - r.height - 4 : y)) + 'px';
+  menuEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mi]');
+    if (!b) return;
+    const it = items[Number(b.dataset.mi)];
+    closeMenu();
+    it.run();
+  });
+  // 键盘可用：焦点进菜单，↑↓ 在菜单项间走，Esc 关
+  menuEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const list = Array.from(menuEl.querySelectorAll('button'));
+    if (!list.length) return;
+    const i = list.indexOf(document.activeElement);
+    const next = e.key === 'ArrowDown' ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
+    list[next].focus();
+  });
+  const first = menuEl.querySelector('button');
+  if (first) first.focus();
+}
+document.addEventListener('mousedown', (e) => { if (menuEl && !menuEl.contains(e.target)) closeMenu(); });
+/* 键盘：Esc 逐层退出 + 侧边栏 ↑↓ 走可见行（可见序 = 渲染序） */
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (modalEl) return closeModal();
+    if (menuEl) return closeMenu();
+    if (cfgEl) return closeCfg();
+    if (state.view === 'detail') setFold(false);
+    return;
+  }
+  if (e.target.closest('input, textarea, select')) return;
+  if (e.target.closest('#main')) return;      // 主区不抢侧边栏焦点
+  if (state.folded) return;                   // rail 态不参与行导航
+  const rows = visibleRows();
+  if (!rows.length) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+    e.preventDefault();
+    if (state.kbIndex < 0) state.kbIndex = (e.key === 'ArrowUp' || e.key === 'End') ? rows.length - 1 : 0;
+    else if (e.key === 'ArrowDown') state.kbIndex = (state.kbIndex + 1) % rows.length;
+    else if (e.key === 'ArrowUp') state.kbIndex = (state.kbIndex - 1 + rows.length) % rows.length;
+    else if (e.key === 'Home') state.kbIndex = 0;
+    else state.kbIndex = rows.length - 1;
+    applyKbFocus();
+    return;
+  }
+  if (e.key === 'Enter' && state.kbIndex >= 0) {
+    const el = rows[state.kbIndex];
+    if (el) { e.preventDefault(); el.click(); }
+  }
+});
+/* 侧边栏行焦点：渲染后重新贴上（树结构变了，焦点行要跟到新的可见序） */
+function visibleRows() { return Array.from(TREE.querySelectorAll('.trow')); }
+function applyKbFocus() {
+  const rows = visibleRows();
+  rows.forEach((r) => r.classList.remove('kb-focus'));
+  if (state.kbIndex < 0) return;
+  if (state.kbIndex >= rows.length) state.kbIndex = rows.length - 1;
+  if (state.kbIndex < 0) return;
+  const el = rows[state.kbIndex];
+  el.classList.add('kb-focus');
+  el.scrollIntoView({ block:'nearest' });
+}
+/* 等待回填倒计时：waitingUntil 时间戳驱动，不写死分钟数 */
+function updateWait() {
+  document.querySelectorAll('[data-wait]').forEach((el) => {
+    const until = Number(el.dataset.wait);
+    if (!until) return;
+    const mins = Math.max(0, Math.ceil((until - Date.now()) / 60000));
+    const badge = el.dataset.waitmode === 'badge';
+    el.textContent = mins > 0
+      ? (badge ? '等待回填 ' + mins + 'min' : '剩 ' + mins + ' 分')
+      : (badge ? '回填超时' : '已超时');
+  });
+}
+setInterval(updateWait, 30000);
+
+function toast(msg, action, kind) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (kind === 'err' ? ' err' : '');
+  t.innerHTML = '<span>' + msg + '</span>' + (action ? '<button>' + action.label + '</button>' : '');
+  if (action) t.querySelector('button').addEventListener('click', () => { action.run(); t.remove(); });
+  $('#toast').appendChild(t);
+  setTimeout(() => t.remove(), 4200);
+}
+
+/* 设置气泡（双默认收起开关，localStorage 持久化演示） */
+let cfgEl = null;
+function closeCfg() { if (cfgEl) { cfgEl.remove(); cfgEl = null; } }
+function toggleCfg(anchor) {
+  if (cfgEl) return closeCfg();
+  const read = (k) => { try { return localStorage.getItem(k) === '1'; } catch (e) { return false; } };
+  const s1 = read('nxkv-side-default-fold'), s2 = read('nxkv-group-default-fold');
+  cfgEl = document.createElement('div');
+  cfgEl.className = 'gcfg-pop';
+  cfgEl.innerHTML =
+    '<div class="gcfg-row" data-k="nxkv-side-default-fold"><span class="gcfg-cb' + (s1 ? ' on' : '') + '"></span>侧边栏默认收起</div>' +
+    '<div class="gcfg-row" data-k="nxkv-group-default-fold"><span class="gcfg-cb' + (s2 ? ' on' : '') + '"></span>分组默认收起</div>' +
+    '<div class="gcfg-row" data-k="nxkv-login-sim"><span class="gcfg-cb' + (state.login ? ' on' : '') + '"></span>模拟：已登录云端</div>' +
+    '<div class="gcfg-row" data-k="nxkv-cloud-fault"><span class="gcfg-cb' + (state.cloudFault ? ' on' : '') + '"></span>模拟：云端故障（失败态）</div>';
+  document.body.appendChild(cfgEl);
+  const r = anchor.getBoundingClientRect();
+  cfgEl.style.left = Math.min(r.left, innerWidth - 210) + 'px';
+  cfgEl.style.top = (r.bottom + 6) + 'px';
+  cfgEl.addEventListener('click', (e) => {
+    const rowEl = e.target.closest('[data-k]');
+    if (!rowEl) return;
+    const k = rowEl.dataset.k;
+    if (k === 'nxkv-login-sim') { state.login = !state.login; rowEl.querySelector('.gcfg-cb').classList.toggle('on', state.login); renderMain(); return; }
+    if (k === 'nxkv-cloud-fault') { state.cloudFault = !state.cloudFault; rowEl.querySelector('.gcfg-cb').classList.toggle('on', state.cloudFault); renderMain(); return; }
+    const on = !rowEl.querySelector('.gcfg-cb').classList.contains('on');
+    rowEl.querySelector('.gcfg-cb').classList.toggle('on', on);
+    try { localStorage.setItem(k, on ? '1' : '0'); } catch (e2) {}
+    if (k === 'nxkv-side-default-fold' && on) setFold(true);
+  });
+}
+document.addEventListener('mousedown', (e) => { if (cfgEl && !cfgEl.contains(e.target) && !e.target.closest('#btnCfg')) closeCfg(); });
+
+/* ---------------- 侧边栏事件（点击 / 拖拽三段式 / 菜单） ---------------- */
+let drag = null;          // {type:'dir'|'group', id, g}
+let dropKey = null;       // 'id|mode'
+const TREE = $('#tree');
+
+function clearDropMarks() { TREE.querySelectorAll('.d-before,.d-after,.d-into').forEach((el) => el.classList.remove('d-before', 'd-into', 'd-after')); }
+
+TREE.addEventListener('dragstart', (e) => {
+  const r = e.target.closest('.trow[draggable]');
+  if (!r) return;
+  const did = r.dataset.did, gid = r.dataset.gid;
+  drag = did ? { type:'dir', id:did, g:dirById(did).g } : { type:'group', id:gid };
+  r.classList.add('dragging');
+  if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', drag.id); }
+});
+TREE.addEventListener('dragend', () => { drag = null; dropKey = null; clearDropMarks(); TREE.querySelectorAll('.dragging').forEach((el) => el.classList.remove('dragging')); });
+
+function dropMark(el, mode) {
+  const key = el.dataset.id + '|' + mode;
+  if (dropKey === key) return;
+  dropKey = key;
+  clearDropMarks();
+  el.classList.add('d-' + mode);
+}
+/* 落点判定：上缘 30% = before / 下缘 30% = after / 中段 = into（仅分组行）；canDropInto 守卫 */
+function resolveDrop(rowEl, e) {
+  if (!drag) return null;
+  const mode0 = (() => {
+    const rect = rowEl.getBoundingClientRect();
+    const ratio = rect.height ? (e.clientY - rect.top) / rect.height : 0.5;
+    if (ratio < 0.3) return 'before';
+    if (ratio > 0.7) return 'after';
+    return 'into';
+  })();
+  const gid = rowEl.dataset.gid, did = rowEl.dataset.did;
+  if (gid) {                                   // 分组行
+    if (drag.type === 'group') return mode0 === 'into' ? null : { mode:mode0, gid };
+    return mode0 === 'into' ? { mode:'into', gid } : null;   // 目录拖到分组行：中段=入组，边缘不给假提示
+  }
+  if (did) {                                   // 目录行
+    if (drag.type === 'group') return null;    // 分组不能放进目录
+    if (drag.id === did) return null;
+    if (mode0 === 'into') return null;         // 目录行中段不作落点
+    return { mode:mode0, gid:dirById(did).g, beforeDid:did };
+  }
+  return null;
+}
+TREE.addEventListener('dragover', (e) => {
+  if (!drag) return;
+  const rowEl = e.target.closest('.trow');
+  if (rowEl) {
+    const hit = resolveDrop(rowEl, e);
+    if (!hit) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropMark(rowEl, hit.mode);
+    return;
+  }
+  const tail = e.target.closest('.droptail');
+  if (tail && drag.type === 'dir') { e.preventDefault(); dropMark(tail, 'into'); }
+});
+TREE.addEventListener('drop', (e) => {
+  if (!drag) return;
+  e.preventDefault();
+  const rowEl = e.target.closest('.trow');
+  let hit = rowEl ? resolveDrop(rowEl, e) : null;
+  if (!hit && e.target.closest('.droptail') && drag.type === 'dir') hit = { mode:'tail' };
+  if (!hit) return;
+  applyMove(hit);
+  drag = null; dropKey = null; clearDropMarks();
+});
+function applyMove(hit) {
+  if (drag.type === 'group') {
+    const from = state.order.indexOf(drag.id);
+    state.order.splice(from, 1);
+    let to = hit.mode === 'before' ? state.order.indexOf(hit.gid) : state.order.indexOf(hit.gid) + 1;
+    if (hit.mode === 'after' && from < to) to -= 1;
+    state.order.splice(Math.max(0, to), 0, drag.id);
+    toast('分组顺序已更新（真实实现持久化到偏好存储）');
+  } else {
+    const d = dirById(drag.id);
+    if (hit.mode === 'into' || hit.mode === 'tail') {
+      d.g = hit.mode === 'into' ? hit.gid : state.order[state.order.length - 1];
+      state.dirs.splice(state.dirs.indexOf(d), 1);
+      let lastIdx = -1;
+      state.dirs.forEach((x, i) => { if (x.g === d.g) lastIdx = i; });
+      state.dirs.splice(lastIdx + 1, 0, d);
+      const gname = (state.groups.find((g) => g.id === d.g) || {}).name || '未分组';
+      toast('「' + d.name + '」已移入「' + gname + '」末位');
+    } else {
+      const anchor = dirById(hit.beforeDid);
+      state.dirs.splice(state.dirs.indexOf(d), 1);
+      const ai = state.dirs.indexOf(anchor);
+      state.dirs.splice(hit.mode === 'before' ? ai : ai + 1, 0, d);
+      d.g = anchor.g;
+      toast('「' + d.name + '」已排到「' + anchor.name + '」' + (hit.mode === 'before' ? '前面' : '后面'));
+    }
+  }
+  renderSide(); renderMain();
+}
+
+TREE.addEventListener('click', (e) => {
+  const more = e.target.closest('[data-more]');
+  if (more) { e.stopPropagation(); rowMenu(more.dataset.more, more); return; }
+  const r = e.target.closest('.trow');
+  if (!r) return;
+  const id = r.dataset.id;
+  if (id === '__global__') return openGlobal();
+  if (id.startsWith('grp:')) {
+    const g = state.groups.find((x) => x.id === id.slice(4));
+    g.open = !g.open; renderSide(); return;
+  }
+  if (id.startsWith('dir:')) return openDir(id.slice(4));
+  if (id.startsWith('nav:')) {
+    const v = id.slice(4);
+    if (v === 'cloudAll') goView('cloudAll');
+    else goView(v);
+  }
+});
+function rowMenu(id, anchor) {
+  const rect = anchor.getBoundingClientRect();
+  if (id.startsWith('grp:')) {
+    const g = state.groups.find((x) => x.id === id.slice(4));
+    showMenu([
+      { icon:'▾', label:'重命名分组', run:() => { const n = prompt('分组名', g.name); if (n) { g.name = n; renderSide(); } } },
+      { icon:'▾', label:g.open ? '收起分组' : '展开分组', run:() => { g.open = !g.open; renderSide(); } },
+      { sep:true },
+      { icon:ic('x'), label:'删除分组（目录回到未分组）', danger:true, run:() => {
+          state.dirs.forEach((d) => { if (d.g === g.id) d.g = state.order[0]; });
+          state.order = state.order.filter((x) => x !== g.id);
+          state.groups = state.groups.filter((x) => x.id !== g.id);
+          renderSide(); toast('分组已删除，目录保留');
+        } },
+    ], rect.left, rect.bottom + 4);
+    return;
+  }
+  const d = dirById(id.slice(4));
+  showMenu([
+    { icon:ic('upright'), label:'打开详情', run:() => openDir(d.id) },
+    { icon:ic('pencil'), label:'重命名', run:() => { const n = prompt('目录显示名', d.name); if (n) { d.name = n; renderAll(); } } },
+    { sep:true },
+    { icon:ic('pin'), label:'置顶到侧边栏首位', run:() => {
+        state.dirs.splice(state.dirs.indexOf(d), 1);
+        let insertAt = 0;
+        for (let i = 0; i < state.dirs.length; i++) { if (state.dirs[i].g === d.g) { insertAt = i; break; } }
+        state.dirs.splice(insertAt, 0, d);
+        renderSide(); toast('已置顶（组内首位）');
+      } },
+    { icon:'⋯', label:'移动到分组…', run:() => {
+        const others = state.groups.filter((g) => g.id !== d.g);
+        if (!others.length) return toast('只有一个人分组，先新建分组');
+        showMenu(others.map((g) => ({ icon:'▸', label:'移入「' + g.name + '」', run:() => { d.g = g.id; g.open = true; renderSide(); } })), rect.left + 140, rect.bottom);
+      } },
+    { sep:true },
+    { icon:ic('x'), label:'从侧边栏移除（不删数据）', danger:true, run:() => {
+        state.dirs = state.dirs.filter((x) => x.id !== d.id);
+        if (state.current === d.id) { state.current = state.dirs[0] ? state.dirs[0].id : ''; }
+        renderAll(); toast('已从侧边栏移除「' + d.name + '」（队列数据仍在）');
+      } },
+  ], rect.left, rect.bottom + 4);
+}
+
+/* rail 点击 */
+$('#rail').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-rail]');
+  if (!b) return;
+  const id = b.dataset.rail;
+  if (id === 'expand') return setFold(false);
+  if (id === 'cloudAll' || id === 'repos' || id === 'settings' || id === 'overview') return goView(id);
+  if (id === '__global__') return openGlobal();
+  setFold(false);
+  openDir(id, { keepSide:true });
+});
+
+/* 头部按钮 */
+$('#btnFold').addEventListener('click', () => setFold(true));
+$('#btnCfg').addEventListener('click', (e) => toggleCfg(e.currentTarget));
+$('#btnAdd').addEventListener('click', (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  showMenu([
+    { icon:ic('folder'), label:'添加目录到侧边栏', run:() => {
+        const name = prompt('目录显示名（真实实现从仓库列表选择）：', 'new-project');
+        if (!name) return;
+        const g = state.groups[0] || { id:'g1', name:'默认' };
+        state.dirs.push({ id:'d' + Date.now(), g:g.id, name, path:'D:/…/' + name, summary:'', waiting:false });
+        renderSide(); toast('已添加到「' + g.name + '」（真实实现走 /api/repos）');
+      } },
+    { icon:ic('overview'), label:'新建分组', run:() => {
+        const name = prompt('分组名（如「常用」「实验」）', '新分组');
+        if (!name) return;
+        const g = { id:'g' + Date.now(), name, open:true };
+        state.groups.push(g);
+        state.order.push(g.id);
+        renderSide(); toast('已新建分组「' + name + '」，把目录拖进去即可');
+      } },
+  ], r.left, r.bottom + 4);
+});
+$('#kw').addEventListener('input', (e) => { state.kw = e.target.value; renderSide(); });
+
+/* ---------------- 详情区事件（源切换 / 迁移 / 卡片操作）
+   监听只挂一次（#main 只换 innerHTML 不换元素）；渲染函数保持纯渲染 ---------------- */
+function bindDetail(m) {
+  if (m.dataset.bound) return;
+  m.dataset.bound = '1';
+  m.addEventListener('click', detailClick);
+  m.addEventListener('dragstart', detailDragStart);
+  m.addEventListener('dragover', detailDragOver);
+  m.addEventListener('dragleave', detailDragLeave);
+  m.addEventListener('drop', detailDrop);
+  m.addEventListener('keydown', (e) => {
+    const inp = e.target.closest('[data-newtask]');
+    if (inp && e.key === 'Enter' && inp.value.trim()) {
+      const d = dirById(inp.dataset.newtask);
+      state.tasks[d.id] = state.tasks[d.id] || [];
+      state.tasks[d.id].unshift({ id:++state.seq, text:inp.value.trim(), status:'pending', createdAt:fmtNow() });
+      inp.value = '';
+      renderMain(); toast('已投入「' + d.name + '」队列（正序首位 = 最先被领取）');
+      return;
+    }
+    const ginp = e.target.closest('[data-newglobal]');
+    if (ginp && e.key === 'Enter' && ginp.value.trim()) {
+      state.tasks.__GLOBAL__ = state.tasks.__GLOBAL__ || [];
+      state.tasks.__GLOBAL__.unshift({ id:++state.seq, text:ginp.value.trim(), status:'pending', createdAt:fmtNow() });
+      ginp.value = '';
+      renderMain(); toast('已投递到全局共享池（任何目录空闲的 agent 可领）');
+    }
+  });
+}
+const fmtNow = () => {
+  const t = new Date();
+  const p = (n) => (n < 10 ? '0' + n : n);
+  return p(t.getMonth() + 1) + '-' + p(t.getDate()) + ' ' + p(t.getHours()) + ':' + p(t.getMinutes());
+};
+function detailClick(e) {
+  const seg = e.target.closest('[data-src]');
+  if (seg) { state.sourceMode = seg.dataset.src; renderMain(); return; }
+  if (e.target.closest('#btnBack')) { setFold(false); return; }
+  const act = e.target.closest('[data-act]');
+  if (!act) return;
+  const card = act.closest('.card');
+  const a = act.dataset.act;
+  if (a === 'toggleAll') { state.cloudAll = !state.cloudAll; renderMain(); return; }
+  if (a === 'login') { state.login = true; renderMain(); toast('已登录（演示）；真实实现走 auth 模块'); return; }
+  if (a === 'retryCloud') {
+    state.cloudFault = false;
+    renderMain();
+    toast('已重试拉取云端清单 · ' + fmtNow());
+    return;
+  }
+  if (a === 'fill') {
+    // 回填闭环：人写一句回执 → 写进 roundSummary → 解除等待（agent 可继续）
+    const d = curDir();
+    const last = consumedOf(d).filter((t) => !t.tomb)[0];
+    openModal({
+      title: '回填：给等待中的 agent 一条回执',
+      body: '<div class="mx-dup">等待中的任务 #' + (last ? last.id : '—') + '：' + esc(last ? last.text : '') +
+        '<br>真实实现里这一步对应 <code>nx-kv localtask wait</code> 的回填通道。</div>' +
+        '<textarea data-m="input" placeholder="写一句回执 / 补充信息…"></textarea>',
+      confirmLabel: '回填并继续',
+      onConfirm: (merge, text) => {
+        if (last) last.roundSummary = (last.roundSummary ? last.roundSummary + ' ' : '') + '（用户回填）' + (text || '（无正文）');
+        d.waiting = false;
+        d.waitUntil = 0;
+        renderMain();
+        toast('已回填，等待解除');
+      },
+    });
+    return;
+  }
+  if (a === 'refresh') { renderMain(); toast('已刷新 · ' + fmtNow()); return; }
+  if (a === 'editSummary') {
+    const d = curDir();
+    const v = prompt('现状摘要（看板顶部的一句话；真实实现用 localtask add --summary 维护）', d.summary || '');
+    if (v == null) return;
+    d.summary = v;
+    renderMain();
+    toast('现状摘要已更新');
+    return;
+  }
+  if (a === 'newtask') {
+    const inp = document.querySelector('[data-newtask]');
+    if (!inp) return toast('当前视图没有投递入口（切回「并列」或「仅本机」再投递）');
+    inp.focus();
+    inp.scrollIntoView({ block:'center' });
+    toast('在下方输入框写完回车即投递到本机队列');
+    return;
+  }
+  if (a === 'cardmenu') return cardMenu(act);
+  if (a === 'openDir') { const did = act.dataset.did; if (did) openDir(did); return; }
+  if (a === 'colmenu') return colMenu(act);
+  if (a === 'archive') { state.showArchive = !state.showArchive; renderMain(); return; }
+  if (!card) return;
+  if (a === 'expand') {
+    const open = card.classList.toggle('expanded');
+    act.textContent = open ? '收起' : '展开全文';
+    return;
+  }
+  if (a === 'copy') { return copyText(card.querySelector('.tx').title || ''); }
+  if (a === 'jump') {
+    const t = findTomb(card);
+    if (!t) return jumpToTarget(card);
+    if (t.to === 'dir') {
+      const d = state.dirs.find((x) => x.name === t.toName);
+      if (!d) return toast('目标目录已不在侧边栏');
+      openDir(d.id);
+      toast('已跳到目录「' + d.name + '」');
+      return;
+    }
+    return jumpToTarget(card);
+  }
+  if (a === 'restore') {
+    const t = (state.tasks[curDir().id] || []).find((x) => x.id === Number(card.dataset.del));
+    if (t) { t.deletedAt = ''; renderMain(); toast('已恢复到待领取'); }
+    return;
+  }
+  if (a === 'purge') {
+    const list = state.tasks[curDir().id] || [];
+    const i = list.findIndex((x) => x.id === Number(card.dataset.del));
+    if (i >= 0) { list.splice(i, 1); renderMain(); toast('已彻底删除'); }
+    return;
+  }
+  if (a === 'delTomb') {
+    const uid = Number(card.dataset.tomb);
+    for (const k of Object.keys(state.tasks)) {
+      const list = state.tasks[k];
+      const i = list.findIndex((t) => t.tomb && t.uid === uid);
+      if (i >= 0) { list.splice(i, 1); renderMain(); break; }
+    }
+    return;
+  }
+  // 卡片上的操作一律走 ⋯ 菜单（cardMenu），这里不再保留行内按钮分支
+}
+
+/* 迁移：单条（含确认、撤销）
+   opts.skipConfirm —— 拖拽落点即确认，不弹对话框（落点本身已说明去向） */
+function migrateOne(t, d, cloudIdx, cloudBucket, opts) {
+  opts = opts || {};
+  const fromCloud = cloudIdx != null;
+  const dirName = d.name;
+  const text = t.text;
+  // 目标端同内容统计（真实模型里同内容会并存多条，迁移前必须让人看清）
+  const dupList = fromCloud
+    ? (state.tasks[d.id] || []).filter((x) => !x.deletedAt && !x.tomb && x.text === text)
+    : state.cloud.open.filter((x) => x.text === text);
+
+  const run = (merge) => {
+    if (!fromCloud) {
+      // 原子性：目标端写失败 → 源端保持原样（不产生迁出记录），任务留在原地可重试
+      if (state.cloudFault) {
+        toast('迁移失败：云端不可达，本地任务保持原样（未产生迁出记录）', { label:'重试', run:() => migrateOne(t, d, undefined, undefined, opts) }, 'err');
+        const el = document.querySelector('.pane.local [data-task="' + t.id + '"]');
+        if (el) { el.classList.add('fail'); setTimeout(() => el.classList.remove('fail'), 1900); }
+        return;
+      }
+      // 本机 → 云端
+      const list = state.tasks[d.id];
+      const i = list.indexOf(t);
+      list.splice(i, 1);
+      const tomb = { tomb:true, uid:++state.seq, to:'cloud', fromCol: t.status === 'consumed' ? 'consumed' : 'pending', text:t.text, at:fmtNow() };
+      list.splice(i, 0, tomb);
+      let added = null;
+      if (!merge) {
+        added = { topic:dirName, text:t.text, createdAt:fmtNow(), from:'local' };
+        state.cloud.open.unshift(added);
+      }
+      renderMain();
+      toast('已迁移「' + t.text.slice(0, 18) + '…」→ 云端清单' + (merge ? '（合并到已有同内容条目）' : '（原位留迁出记录）'), { label:'撤销', run:() => {
+        if (added) { const ai = state.cloud.open.indexOf(added); if (ai >= 0) state.cloud.open.splice(ai, 1); }
+        list.splice(list.indexOf(tomb), 1);
+        list.splice(i, 0, t);
+        renderMain();
+      } });
+    } else {
+      // 云端 → 本机
+      const c = state.cloud[cloudBucket][cloudIdx];
+      state.cloud[cloudBucket].splice(cloudIdx, 1);
+      state.tasks[d.id] = state.tasks[d.id] || [];
+      const nt = { id:++state.seq, text:'[来自云端] ' + c.text, status:'pending', createdAt:fmtNow(), from:'cloud' };
+      state.tasks[d.id].unshift(nt);
+      renderMain();
+      toast('已迁移「' + c.text.slice(0, 18) + '…」→ 本机「' + dirName + '」队列（待领取首位）', { label:'撤销', run:() => {
+        state.cloud[cloudBucket].splice(cloudIdx, 0, c);
+        state.tasks[d.id] = state.tasks[d.id].filter((x) => x !== nt);
+        renderMain();
+      } });
+    }
+  };
+
+  if (opts.skipConfirm) { run(false); return; }
+
+  // 确认对话框：源 → 目标的映射说明；目标端已有同内容时给「合并 / 追加」选择
+  const srcBox = '<div class="mx-box"><div class="k">源 · ' + (fromCloud ? '云端清单' : '本机队列') + '</div><div class="v">' + esc(text) + '</div></div>';
+  const dstBox = '<div class="mx-box"><div class="k">目标 · ' + (fromCloud ? '本机队列 ' + esc(dirName) : '云端待办') + '</div><div class="v">' +
+    (fromCloud ? '新增到待领取首位，带「来自云端」标记' : 'topic=' + esc(dirName) + ' · bucket=open') + '</div></div>';
+  const dup = dupList.length
+    ? '<div class="mx-dup">目标端已有 <b>' + dupList.length + '</b> 条同内容任务：<ul>' +
+      dupList.map((x) => '<li>#' + x.id + ' · ' + esc(x.createdAt || '') + '</li>').join('') + '</ul>' +
+      (fromCloud
+        ? '<div style="margin-top:6px">迁移将<b>追加一条</b>待领取（原条目并存，与清单页「同内容×N」规则一致）。</div>'
+        : '<label><input type="checkbox" data-m="merge"> 合并到已有条目（不新增一条云端任务）</label>') +
+      '</div>'
+    : '';
+  openModal({
+    title: fromCloud ? '迁移到本机队列' : '迁移到云端清单',
+    body: '<div class="mx">' + srcBox + '<div class="mx-arrow">→</div>' + dstBox + '</div>' + dup,
+    confirmLabel: '迁移',
+    onConfirm: (merge) => run(merge),
+  });
+}
+/* 批量迁移（列头菜单） */
+function migrateMany(dir, opts) {
+  opts = opts || {};
+  const d = curDir();
+  const up = (state.tasks[d.id] || []).filter((t) => t.status === 'pending' && !t.deletedAt && !t.tomb);
+  const down = state.cloud.open.filter((x) => x.topic === d.name);
+  const list = dir === 'up' ? up : down;
+  if (!list.length) return toast(dir === 'up' ? '待领取列为空' : '云端该目录无待办');
+  const run = () => {
+    if (dir === 'up') {
+      up.forEach((t) => {
+        const l = state.tasks[d.id];
+        const i = l.indexOf(t);
+        l.splice(i, 1);
+        l.splice(i, 0, { tomb:true, uid:++state.seq, to:'cloud', fromCol:'pending', text:t.text, at:fmtNow() });
+        state.cloud.open.unshift({ topic:d.name, text:t.text, createdAt:fmtNow(), from:'local' });
+      });
+      renderMain(); toast('已批量迁移 ' + up.length + ' 条 → 云端清单（各原位留迁出记录）');
+    } else {
+      down.forEach((c) => {
+        state.cloud.open.splice(state.cloud.open.indexOf(c), 1);
+        state.tasks[d.id] = state.tasks[d.id] || [];
+        state.tasks[d.id].unshift({ id:++state.seq, text:'[来自云端] ' + c.text, status:'pending', createdAt:fmtNow(), from:'cloud' });
+      });
+      renderMain(); toast('已批量迁移 ' + down.length + ' 条 → 本机「' + d.name + '」队列');
+    }
+  };
+  if (opts.skipConfirm) { run(); return; }
+  openModal({
+    title: dir === 'up' ? '批量迁移到云端清单' : '批量迁移到本机队列',
+    body: '<div class="mx-dup">' + (dir === 'up'
+      ? '将把本机队列的 <b>' + up.length + '</b> 条待领取任务迁到云端待办（topic=' + esc(d.name) + '），原位置各留一条迁出记录。'
+      : '将把云端待办里 topic=<b>' + esc(d.name) + '</b> 的 <b>' + down.length + '</b> 条迁到本机队列（待领取首位）。') + '</div>',
+    confirmLabel: '批量迁移',
+    onConfirm: () => run(),
+  });
+}
+
+/* ---------------- 模态框（迁移确认 / 回填输入） ---------------- */
+let modalEl = null;
+function closeModal() {
+  if (!modalEl) return;
+  modalEl.remove();
+  modalEl = null;
+  restoreFocus();
+}
+function openModal(opts) {
+  closeModal();
+  lastFocus = document.activeElement;
+  modalEl = document.createElement('div');
+  modalEl.className = 'modal-back';
+  modalEl.innerHTML =
+    '<div class="modal" role="dialog" aria-modal="true">' +
+      '<div class="modal-h">' + opts.title + '</div>' +
+      '<div class="modal-b">' + opts.body + '</div>' +
+      '<div class="modal-f">' +
+        '<button class="btn ghost" data-m="cancel">取消</button>' +
+        '<button class="btn" data-m="ok">' + (opts.confirmLabel || '确认') + '</button>' +
+      '</div></div>';
+  document.body.appendChild(modalEl);
+  modalEl.addEventListener('mousedown', (e) => { if (e.target === modalEl) closeModal(); });
+  modalEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-m]');
+    if (!b) return;
+    if (b.dataset.m === 'cancel') return closeModal();
+    if (b.dataset.m !== 'ok') return;          // 复选框等控件不触发确认
+    const mergeEl = modalEl.querySelector('[data-m="merge"]');
+    const merge = mergeEl ? mergeEl.checked : false;
+    const ta = modalEl.querySelector('[data-m="input"]');
+    const text = ta ? ta.value : '';
+    closeModal();
+    opts.onConfirm(merge, text);
+  });
+  const ta = modalEl.querySelector('[data-m="input"]');
+  if (ta) ta.focus();
+  else { const ok = modalEl.querySelector('[data-m="ok"]'); if (ok) ok.focus(); }
+  return modalEl;
+}
+
+/* ---------------- 卡片 / 列 菜单（与侧边栏行菜单同构的 ⋯ 体系） ---------------- */
+function copyText(s) {
+  try { if (navigator.clipboard) navigator.clipboard.writeText(s); } catch (e) {}
+  toast('已复制到剪贴板');
+}
+function cardMenu(act) {
+  const rect = act.getBoundingClientRect();
+  const kind = act.dataset.kind;
+  if (kind === 'global') return globalCardMenu(act);
+  if (kind === 'local') {
+    const d = curDir();
+    const t = (state.tasks[d.id] || []).find((x) => x.id === Number(act.dataset.id));
+    if (!t) return;
+    showMenu([
+      { icon:ic('up'), label:'迁移到云端清单' + (state.login ? '' : '（需先登录云端）'),
+        run:() => state.login ? migrateOne(t, d) : toast('未登录：云端清单不可用，先在设置里登录') },
+      { icon:ic('copy'), label:'复制文本', run:() => copyText(t.text) },
+      { sep:true },
+      { icon:ic('x'), label:'删除（软删，可恢复）', danger:true,
+        run:() => { t.deletedAt = fmtNow(); renderMain(); toast('已软删除，可在「归档」列恢复'); } },
+    ], rect.left, rect.bottom + 4);
+    return;
+  }
+  const bucket = act.dataset.bucket, idx = Number(act.dataset.idx);
+  const c = state.cloud[bucket] && state.cloud[bucket][idx];
+  if (!c) return;
+  const items = [
+    { icon:ic('down'), label:'迁移到本机队列（' + curDir().name + '）', run:() => migrateOne(c, curDir(), idx, bucket) },
+    { icon:ic('copy'), label:'复制文本', run:() => copyText(c.text) },
+  ];
+  if (bucket === 'open') items.push({ icon:ic('check'), label:'标记完成（移入已完成）', run:() => {
+    const r = prompt('完成结果（可选）', '') || '已完成';
+    state.cloud.done.push({ topic:c.topic, text:c.text, result:r, doneAt:fmtNow() });
+    state.cloud.open.splice(idx, 1);
+    renderMain(); toast('已标记完成');
+  } });
+  if (bucket === 'freeze') items.push({ icon:ic('play'), label:'解冻（移回待办）', run:() => {
+    state.cloud.open.push({ topic:c.topic, text:c.text, createdAt:fmtNow() });
+    state.cloud.freeze.splice(idx, 1);
+    renderMain(); toast('已解冻，移回待办');
+  } });
+  if (bucket === 'done') items.push({ icon:ic('restore'), label:'重新打开（移回待办）', run:() => {
+    state.cloud.open.push({ topic:c.topic, text:c.text, createdAt:fmtNow() });
+    state.cloud.done.splice(idx, 1);
+    renderMain(); toast('已重新打开');
+  } });
+  items.push({ sep:true });
+  items.push({ icon:ic('x'), label:'删除', danger:true, run:() => { state.cloud[bucket].splice(idx, 1); renderMain(); toast('已删除'); } });
+  showMenu(items, rect.left, rect.bottom + 4);
+}
+/* 全局池卡片菜单：核心是「投放到目录…」——把共享任务固定到某个目录的队列 */
+function globalCardMenu(act) {
+  const rect = act.getBoundingClientRect();
+  const t = (state.tasks.__GLOBAL__ || []).find((x) => x.id === Number(act.dataset.id));
+  if (!t) return;
+  const names = state.dirs.map((d) => d.name);
+  showMenu([
+    { icon:ic('goto'), label:'投放到目录…' + (names.length ? '' : '（侧边栏还没有目录）'), run:() => {
+        if (!names.length) return toast('先在侧边栏添加目录');
+        const name = prompt('投放到哪个目录的队列？\n可选：' + names.join(' / '), names[0]);
+        if (!name) return;
+        const d = state.dirs.find((x) => x.name === name) || state.dirs[0];
+        const list = state.tasks[d.id] = state.tasks[d.id] || [];
+        list.unshift({ id:++state.seq, text:t.text, status:'pending', createdAt:fmtNow() });
+        const gp = state.tasks.__GLOBAL__;
+        const i = gp.indexOf(t);
+        gp.splice(i, 1);
+        gp.splice(i, 0, { tomb:true, uid:++state.seq, to:'dir', toName:d.name, fromCol:'pending', text:t.text, at:fmtNow() });
+        renderMain();
+        toast('已投放到「' + d.name + '」队列（待领取首位）');
+      } },
+    { icon:ic('copy'), label:'复制文本', run:() => copyText(t.text) },
+    { sep:true },
+    { icon:ic('x'), label:'删除（软删）', danger:true, run:() => { t.deletedAt = fmtNow(); renderMain(); toast('已软删除'); } },
+  ], rect.left, rect.bottom + 4);
+}
+/* 找出卡片对应的迁出记录（可能在任意目录的队列里） */
+function findTomb(card) {
+  const uid = Number(card.dataset.tomb);
+  for (const k of Object.keys(state.tasks)) {
+    const t = (state.tasks[k] || []).find((x) => x.tomb && x.uid === uid);
+    if (t) return t;
+  }
+  return null;
+}
+function colMenu(act) {
+  const rect = act.getBoundingClientRect();
+  const side = act.dataset.pane, col = act.dataset.col;
+  if (side === 'local' && col === 'pending') {
+    const list = (state.tasks[curDir().id] || []).filter((t) => inCol(t, 'pending') && !t.tomb);
+    showMenu([
+      { icon:ic('up'), label:'批量迁移本列到云端清单（' + list.length + '）', run:() => migrateMany('up') },
+      { icon:ic('copy'), label:'复制本列全部文本', run:() => copyText(list.map((t) => t.text).join('\n')) },
+      { sep:true },
+      { icon:ic('x'), label:'清空本列（软删）', danger:true, run:() => {
+        list.forEach((t) => { t.deletedAt = fmtNow(); });
+        renderMain(); toast('已软删 ' + list.length + ' 条，可在归档列恢复');
+      } },
+    ], rect.left, rect.bottom + 4);
+    return;
+  }
+  if (side === 'local' && col === 'consumed') {
+    const list = (state.tasks[curDir().id] || []).filter((t) => inCol(t, 'consumed') && !t.tomb);
+    showMenu([
+      { icon:ic('copy'), label:'复制本列全部文本', run:() => copyText(list.map((t) => t.text).join('\n')) },
+      { icon:ic('copy'), label:'复制本列回执', run:() => copyText(list.map((t) => t.roundSummary || '').filter(Boolean).join('\n\n')) },
+    ], rect.left, rect.bottom + 4);
+    return;
+  }
+  if (side === 'cloud' && col === 'open') {
+    const d = curDir();
+    const list = state.cloud.open.filter((x) => x.topic === d.name);
+    showMenu([
+      { icon:ic('down'), label:'批量迁到本机队列（' + d.name + ' · ' + list.length + '）', run:() => migrateMany('down') },
+      { icon:ic('copy'), label:'复制本列全部文本', run:() => copyText(list.map((x) => x.text).join('\n')) },
+    ], rect.left, rect.bottom + 4);
+  }
+}
+/* 迁出记录的「跳到目标」：在对面栏里闪一下那张卡 */
+function jumpToTarget(card) {
+  const txEl = card.querySelector('.tx');
+  const full = (txEl.getAttribute('title') || txEl.textContent).replace(/^(<svg[\s\S]*?<\/svg>|↗)\s*/, '').trim();
+  const target = Array.from(document.querySelectorAll('.pane.cloud .card')).find((el) => {
+    const t = el.querySelector('.tx');
+    return t && (t.getAttribute('title') === full || t.textContent.indexOf(full.slice(0, 18)) >= 0);
+  });
+  if (!target) return toast('目标不在当前视图（已删除或已迁回）');
+  target.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
+  target.classList.add('flash');
+  setTimeout(() => target.classList.remove('flash'), 1700);
+}
+
+/* 跨栏拖拽迁移：本机卡片 ⇄ 云端列；同列拖拽 = 调整领取优先级 */
+let cardDrag = null;
+let reorderTarget = null;      // {id, after} —— 同列排序落点
+function detailDragStart(e) {
+  const card = e.target.closest('.card[draggable]');
+  if (!card) return;
+  if (card.dataset.task) {
+    const colEl = card.closest('[data-col]');
+    cardDrag = { side:'local', id:Number(card.dataset.task), reorder: !!(colEl && colEl.dataset.col === 'pending') };
+  } else if (card.dataset.cloud) cardDrag = { side:'cloud', ref:card.dataset.cloud };
+  else return;
+  card.classList.add('dragging');
+  if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'task'); }
+}
+function detailDragEnd() {
+  cardDrag = null;
+  reorderTarget = null;
+  hideDragHint();
+  document.querySelectorAll('.dragging').forEach((el) => el.classList.remove('dragging'));
+  document.querySelectorAll('.col.drop-ok').forEach((el) => el.classList.remove('drop-ok'));
+  document.querySelectorAll('.card.d-before,.card.d-after').forEach((el) => el.classList.remove('d-before', 'd-after'));
+}
+function detailDragOver(e) {
+  if (!cardDrag) return;
+  const col = e.target.closest('.col');
+  if (!col) { hideDragHint(); return; }
+  const pane = col.closest('.pane');
+  if (!pane) { hideDragHint(); return; }
+  const paneSide = pane.dataset.pane;
+  const colKey = col.dataset.col;
+
+  // 同列拖拽 = 调整领取优先级（对应 nx-kv localtask reorder）
+  if (cardDrag.side === 'local' && cardDrag.reorder && paneSide === 'local' && colKey === 'pending') {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const over = e.target.closest('.card');
+    document.querySelectorAll('.card.d-before,.card.d-after').forEach((el) => el.classList.remove('d-before', 'd-after'));
+    if (!over || over.dataset.task === String(cardDrag.id)) { reorderTarget = null; hideDragHint(); return; }
+    const rect = over.getBoundingClientRect();
+    const after = (e.clientY - rect.top) > rect.height / 2;
+    reorderTarget = { id:Number(over.dataset.task), after };
+    over.classList.add(after ? 'd-after' : 'd-before');
+    const hint = $('#draghint');
+    hint.textContent = (after ? '插到这条之后' : '插到这条之前') + ' · 领取优先级';
+    hint.style.left = (e.clientX + 14) + 'px';
+    hint.style.top = (e.clientY + 18) + 'px';
+    hint.classList.add('on');
+    return;
+  }
+
+  let ok = false;
+  if (cardDrag.side === 'local' && paneSide === 'cloud' && state.login && (colKey === 'open')) ok = true;   // 本机→云端待办
+  if (cardDrag.side === 'cloud' && paneSide === 'local' && (colKey === 'pending')) ok = true;                // 云端→本机待领取
+  if (!ok) { hideDragHint(); return; }
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.col.drop-ok').forEach((el) => { if (el !== col) el.classList.remove('drop-ok'); });
+  col.classList.add('drop-ok');
+  // 跟随光标的落点说明：跨栏拖拽最怕「松手后不知道去哪」
+  const hint = $('#draghint');
+  hint.textContent = cardDrag.side === 'local' ? '迁入 云端待办' : '迁入 本机待领取';
+  hint.style.left = (e.clientX + 14) + 'px';
+  hint.style.top = (e.clientY + 18) + 'px';
+  hint.classList.add('on');
+}
+function hideDragHint() { const h = $('#draghint'); if (h) h.classList.remove('on'); }
+/* 同列拖拽排序 = 调整领取优先级（正序 = 谁先被领取；对应 nx-kv localtask reorder） */
+function reorderLocal(id, targetId, after) {
+  const d = curDir();
+  const list = state.tasks[d.id] || [];
+  const from = list.findIndex((t) => t.id === id);
+  if (from < 0) return false;
+  const [item] = list.splice(from, 1);
+  const ti = list.findIndex((t) => t.id === targetId);
+  if (ti < 0) { list.splice(from, 0, item); return false; }
+  list.splice(after ? ti + 1 : ti, 0, item);
+  renderMain();
+  toast('已调整领取优先级（正序 = 谁先被领取）');
+  return true;
+}
+function detailDragLeave(e) {
+  const col = e.target.closest('.col');
+  if (col && !col.contains(e.relatedTarget)) col.classList.remove('drop-ok');
+  const card = e.target.closest('.card');
+  if (card && !card.contains(e.relatedTarget)) card.classList.remove('d-before', 'd-after');
+}
+function detailDrop(e) {
+  if (!cardDrag) return;
+  // 同列排序落点：调整领取优先级（正序 = 领取顺序）
+  if (reorderTarget) {
+    e.preventDefault();
+    reorderLocal(cardDrag.id, reorderTarget.id, reorderTarget.after);
+    reorderTarget = null;
+    cardDrag = null;
+    return;
+  }
+  const col = e.target.closest('.col.drop-ok');
+  if (!col) return;
+  e.preventDefault();
+  col.classList.remove('drop-ok');
+  const d = curDir();
+  if (cardDrag.side === 'local') {
+    const t = (state.tasks[d.id] || []).find((x) => x.id === cardDrag.id);
+    if (t) migrateOne(t, d, undefined, undefined, { skipConfirm:true });   // 落点即确认
+  } else {
+    const parts = cardDrag.ref.split(':');
+    const c = state.cloud[parts[0]][Number(parts[1])];
+    if (c) migrateOne(c, d, Number(parts[1]), parts[0], { skipConfirm:true });
+  }
+  cardDrag = null;
+}
+document.addEventListener('dragend', detailDragEnd);
+
+/* ---------------- 启动 ---------------- */
+renderAll();
+</script>
+</body>
+</html>

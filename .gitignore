@@ -10,6 +10,9 @@ src/web/public/
 .tool/
 .workbuddy/
 
+# 临时目录（截图、一次性脚本等 scratch 产物，工作约定里就是可弃中间物）
+temp/
+
 # Playwright MCP 的产物目录（页面快照 yml / 截图 png）——调试用，不入库
 .playwright-mcp/
 

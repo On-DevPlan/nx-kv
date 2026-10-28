@@ -162,6 +162,8 @@ export default defineConfig([
         parseFloat: 'readonly', isNaN: 'readonly', isFinite: 'readonly',
         encodeURIComponent: 'readonly', decodeURIComponent: 'readonly',
         encodeURI: 'readonly', decodeURI: 'readonly',
+        // 下载导出物（Blob + createObjectURL）
+        Blob: 'readonly',
       },
     },
     rules: { 'no-undef': 'error' },

@@ -936,6 +936,170 @@ select {
 .rp-layout-link { color: var(--ink-2); }
 .rp-layout-warn { color: #b3261e; font-size: 11.5px; }
 
+/* ---- 导入导出全屏面板 ----
+ * 版面：左右两栏（左=来源/范围/策略，右=差异/结果）。窄屏纵向堆叠。
+ * 差异表按状态着色（新增=蓝、有差异=黄、一致=绿、本地未拥有=灰）。 */
+.rp-full {
+  position: fixed;
+  inset: 0;
+  background: rgba(251, 251, 252, 0.92);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 24px;
+}
+.rp-full-box {
+  background: var(--paper);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgba(20, 22, 26, 0.18);
+  width: min(1280px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rp-full-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  box-shadow: 0 1px 0 var(--soft);
+}
+.rp-full-title { font-weight: 700; font-size: 14px; display: flex; align-items: baseline; gap: 10px; }
+.rp-full-title .muted { font-weight: 400; font-size: 11.5px; }
+.rp-full-tabs { margin-left: auto; display: flex; gap: 4px; }
+.rp-tab {
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 14px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink-2);
+  border-radius: 999px;
+}
+.rp-tab.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.rp-full-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+  padding: 14px 16px 16px;
+  overflow: hidden;
+}
+.rp-full-col {
+  flex: 0 0 34%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+.rp-full-col-wide { flex: 1 1 auto; }
+.rp-full-colhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  margin: 2px 0;
+}
+.rp-full-colhead .acts { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+.rp-full-sel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rp-full-key { font-family: var(--mono); font-size: 10.5px; margin-left: auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-full-tag-ref::before { content: '参考 '; font-size: 9.5px; color: var(--mid); }
+.rp-full-input { min-height: 130px; }
+.rp-full-out {
+  flex: 1;
+  min-height: 280px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  resize: vertical;
+}
+.rp-full-empty { padding: 40px 20px; text-align: center; }
+
+/* 冲突方案单选 */
+.rp-strategy { display: flex; gap: 14px; flex-wrap: wrap; }
+
+/* 差异表 */
+.rp-diff-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.rp-diff-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 720px; }
+.rp-diff-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 7px 10px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+}
+.rp-diff-table td { padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 12px; vertical-align: top; }
+.rp-diff-row.changed td { background: rgba(190, 140, 20, 0.045); }
+.rp-diff-row.new td { background: rgba(30, 90, 180, 0.04); }
+.rp-diff-row.missing td { background: var(--soft); }
+.rp-diff-key { font-size: 11.5px; word-break: break-all; }
+.rp-diff-fields { font-size: 11.5px; color: var(--ink-2); }
+.rp-status {
+  display: inline-block;
+  font-size: 10.5px;
+  padding: 0 7px;
+  line-height: 16px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.rp-status.new { background: rgba(30, 90, 180, 0.12); color: #1e5ab4; }
+.rp-status.changed { background: rgba(190, 140, 20, 0.14); color: #8a6410; }
+.rp-status.same { background: rgba(27, 127, 77, 0.12); color: #1b7f4d; }
+.rp-status.missing { background: var(--soft); color: var(--mid); }
+.rp-can-clone {
+  margin-left: 6px;
+  font-size: 9.5px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--mid);
+}
+.rp-was { color: var(--mid); text-decoration: line-through; }
+.rp-now { color: #8a6410; }
+.rp-diff-boards { margin-top: 8px; }
+.rp-import-result {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 /* ---------- 仓库上下文工作台：主题容器纵向堆叠 + 手机式仓库方格卡片 ----------
  * 一个看板 = 一个主题容器（card 头 + 卡片网格）；卡片可拖拽入板 / 插到某卡前 /
  * 拖回未分组。落点高亮用 1px 描边（与看板的行选中标记同一套视觉语言）。

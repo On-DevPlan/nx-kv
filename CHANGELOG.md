@@ -6,6 +6,31 @@
 
 ### Added
 
+- **仓库获得全局唯一 key，导入导出改以 key 为身份（v3）+ 全屏导入导出面板**：
+  - **key**：归一化远程地址派生（`git@c:o/r.git`、`https://c/o/r`、
+    `ssh://git@ssh.github.com:443/o/r.git`、带端口、带 `.git` 都是同一个
+    `c/o/r`），无 remote 用 `local/<名称>` 兜底，也可 `repo key set` 自定义
+    （自定义不跟随 remote）。**跨 dev/ref 全局唯一**，`id / key / 路径` 都能定位。
+    顺带修掉 `ssh://host:port` 归一化错误（旧实现会得出 `git@ssh.github.com:443/...`）。
+  - **刷新**：`repo key refresh [id] | --all [--apply]` 扫 `git remote -v`
+    （**SSH 优先**，其次 https），提示可更新的 key/远程地址；`--apply` 才落盘。
+    存量 28 个仓库已迁移（10 个开发仓库从 `local/*` 纠正为真实 GitHub key）。
+  - **导入导出 v3**：导出物以 key 引用仓库与看板（`board/<名称>`），
+    **绝不含本地路径**；`repo export --zip` 打包 `layout.json` + `README.txt`
+    （自带最小 ZIP 写入器，无新依赖）；`--repos/--boards` 可选范围。
+  - **差异检查**：`repo import --diff <file>` 零副作用，逐条给出
+    新增 / 有差异（字段级）/ 一致 / 本地未拥有。
+  - **冲突方案**：`--strategy ours`（保留本地，默认）/ `overwrite`（覆盖字段，key 不变）/
+    `duplicate`（另存 `key-import-1/2/3`，两条并存）；`--select` 逐条挑、`--clone` 选克隆范围。
+  - **全屏面板**：仓库页「参考仓库」→「导入导出」→ 左右两栏覆盖层：
+    导出侧可选仓库/看板（全选/反选）+ JSON 预览与下载；导入侧粘贴/选文件 → 差异表
+    （状态徽标、字段级 diff、按状态筛选、全选/反选、逐条勾选）+ 冲突方案 + 克隆选项。
+  - 兼容 v2 导出文件（无 key 时用 remote/name 派生）。
+
+## [Unreleased]（前一批）
+
+### Added
+
 - **参考仓库绑定模型升级：多对多 + 绑定描述 + 命名空间分层**（承接参考仓库功能的首轮反馈）：
   - 面板双名单分离：主表只放开发仓库（行内新增「绑定的参考仓库」列 + 选项式「绑定」按钮）；
     参考仓库有自己的**大面板表格**（状态徽标 / 远程地址 / 绑定 chips / 操作），不再与开发仓库混排；

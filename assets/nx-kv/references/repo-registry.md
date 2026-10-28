@@ -50,8 +50,13 @@ git -C <path> pull --no-edit
 }
 ```
 
-- **id 或绝对路径**都能定位仓库（agent 直接给路径更省事）
+- **id / key / 绝对路径**都能定位仓库（agent 直接给路径或 key 更省事）
 - 路径不必是 git 仓库：登记不校验目录内容，也不要求目录存在
+- **key 是身份，全局唯一**（2026-10-28）：来自归一化远程地址（`git@c:o/r.git`、
+  `https://c/o/r`、`ssh://git@ssh.github.com:443/o/r.git` 归一到同一个
+  `c/o/r`），或无 remote 时 `local/<名称>` 兜底，也可 `repo key set` 自定义。
+  自定义 key 不跟随 remote 变化；`repo key refresh --all` 扫描 `git remote -v`
+  （**SSH 优先**）提示可更新的 key/远程地址，`--apply` 才落盘
 - **没有标签**：分组只走看板一条路（2026-10-24 废除仓库 tags，两套平行分组只会打架）
 - **type 双态**：`dev` = 开发仓库（默认），`ref` = 参考仓库（见下节）
 - **remote 是稳定 key**：参考仓库必有；开发仓库也建议记（`repo remote <id|path>` 一条命令
@@ -87,13 +92,23 @@ nx-kv repo remote <id|path> [--url <地址>]    # 登记远程地址（无 --url
 - **分层查询**：`repo ref of [id|路径]`（缺省当前目录）——第一层 = 直接绑定到该仓库的 ref，
   第二层 = 它所在看板（命名空间）上的 ref 按组列出；agent 问「做这个仓库的事有什么参考」
   用这一条命令就够
-- **布局导入导出**（换机/分享整套环境）：
+- **布局导入导出 v3**（换机/分享整套环境）：
 
 ```bash
-nx-kv repo export                # 远程地址 + 分组 + 参考关系（不含本地路径）
-nx-kv repo import <file> --plan  # 先看计划（登记什么/克隆什么/建什么组/连什么关系）
-nx-kv repo import <file> --clone ref --only <remote1,remote2>   # 选择性执行
+nx-kv repo export                                   # 全局 key + 分组 + 参考关系（不含本地路径）
+nx-kv repo export --zip /path/layout.zip            # 打包成 zip（layout.json + README）
+nx-kv repo export --repos <key1,key2> --boards <board/k1>   # 只导出一部分
+
+nx-kv repo import --diff <file>                     # 差异检查（零副作用）：新增/有差异/一致/本地未拥有
+nx-kv repo import <file> --strategy ours            # 保留本地（默认）
+nx-kv repo import <file> --strategy overwrite       # 用导入文件覆盖（key 不变）
+nx-kv repo import <file> --strategy duplicate       # 另存 key-import-1/2/3，两条并存
+nx-kv repo import <file> --select <key1,key2> --clone ref   # 只处理选中的，并克隆参考仓库
 ```
+
+面板：仓库页 →「参考仓库」面板 →「导入导出」→ 全屏面板（左右两栏，逐条勾选 +
+冲突方案 + 克隆选项）。「本地未拥有」的条目会显示 key，有远程地址的可在导入时克隆，
+纯自定义 key 的需自行在仓库里创建后重跑 diff。
 
 
 ## SOP

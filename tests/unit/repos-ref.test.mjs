@@ -272,7 +272,7 @@ if (hasGit) {
 
 // ─── 布局导入导出 ───────────────────────────────────────────────────────
 
-test('repoExport：不含本地路径；dev 无 remote 进 warnings；boards/links 按 remote 引用', async () => {
+test('repoExport：以 key 为身份、不含本地路径；dev 无 remote 进 warnings；boards/links 用 key 引用', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'dev'), name: 'dev-app', desc: '主应用', remote: 'git@github.com:me/dev-app.git' });
   const plainDev = await repos.addRepo({ path: join(dir, 'plain'), name: 'plain', desc: '无远程' });
   const ref1 = await repos.addRepo({ path: join(dir, 'ref1'), name: 'ref1', type: 'ref', remote: 'https://github.com/lib/ref1.git', desc: '参考一' });
@@ -284,26 +284,30 @@ test('repoExport：不含本地路径；dev 无 remote 进 warnings；boards/lin
   const d = await transfer.repoExport();
   const text = JSON.stringify(d);
   assert.ok(!text.includes(join(dir, 'dev')), '导出不得含本地路径');
-  assert.equal(d.version, 2);
+  assert.ok(!text.includes('"path"'), '导出不得出现 path 字段');
+  assert.equal(d.version, 3);
 
   const devOut = d.repos.find((x) => x.name === 'dev-app');
+  assert.equal(devOut.key, 'github.com/me/dev-app');
   assert.equal(devOut.remote, 'git@github.com:me/dev-app.git');
   assert.equal(devOut.type, 'dev');
+  // 无 remote 的 dev：key 走 local/ 兜底，且进 warnings
   const plainOut = d.repos.find((x) => x.name === 'plain');
+  assert.equal(plainOut.key, 'local/plain');
   assert.ok(!plainOut.remote);
   assert.ok(d.warnings.some((w) => /plain/.test(w)));
 
   const bOut = d.boards.find((x) => x.name === 'fr');
-  assert.equal(bOut.repos[0].remote, 'git@github.com:me/dev-app.git');
-  assert.equal(bOut.repos[0].note, '契约方');
+  assert.equal(bOut.key, 'board/fr');
+  assert.deepEqual(bOut.repos[0], { key: 'github.com/me/dev-app', note: '契约方' });
 
-  const link = d.links.find((x) => x.ref === 'https://github.com/lib/ref1.git');
+  const link = d.links.find((x) => x.ref === 'github.com/lib/ref1');
   assert.ok(link);
-  assert.deepEqual(link.to.map((t) => t.repo || t.board).sort(), ['git@github.com:me/dev-app.git', 'fr'].sort());
+  assert.deepEqual(link.to.map((t) => t.repo || t.board).sort(), ['board/fr', 'github.com/me/dev-app'].sort());
   assert.ok(ref1.id && plainDev.id);
 });
 
-test('repoImport：plan 零副作用；执行后登记/克隆/看板/关系按 remoteKey 重建', async () => {
+test('repoImport：diff 零副作用；执行后登记/克隆/看板/关系按 key 重建', async () => {
   if (!hasGit) return;
   // 源仓库
   const src = join(dir, 'imp-origin');
@@ -314,48 +318,47 @@ test('repoImport：plan 零副作用；执行后登记/克隆/看板/关系按 r
   git(['commit', '-qm', 'init'], src);
   const srcUrl = 'file://' + src.replace(/\\/g, '/');
 
-  // 已存在一个开发仓库 + 看板（导入时应识别为「已在册/合并」）
+  // 已存在一个开发仓库 + 看板（导入时应识别为「一致/合并」）
   const dev = await repos.addRepo({ path: join(dir, 'my-dev'), name: 'my-dev', remote: 'git@github.com:me/my-dev.git' });
-  const existingBoard = await boards.createBoard({ name: 'grp', desc: '旧描述' });
+  const existingBoard = await boards.createBoard({ name: 'grp', desc: '新领域描述' });
 
   const layout = {
-    version: 2,
+    version: 3,
     repos: [
-      { remote: 'git@github.com:me/my-dev.git', name: 'my-dev', type: 'dev' },
-      { remote: srcUrl, name: 'imp-ref', desc: '导入的参考', type: 'ref' },
-      { name: 'orphan-dev', desc: '无远程地址的', type: 'dev' },
+      { key: 'github.com/me/my-dev', name: 'my-dev', type: 'dev', remote: 'git@github.com:me/my-dev.git' },
+      { key: 'local/imp-ref', name: 'imp-ref', desc: '导入的参考', type: 'ref', remote: srcUrl },
+      { key: 'local/orphan-dev', name: 'orphan-dev', desc: '无远程地址的', type: 'dev' },
     ],
-    boards: [{ name: 'grp', desc: '新领域描述', repos: [{ remote: 'git@github.com:me/my-dev.git', note: '中心' }, { remote: srcUrl }] }],
-    links: [{ ref: srcUrl, to: [{ repo: 'git@github.com:me/my-dev.git' }, { board: 'grp' }] }],
+    boards: [{
+      key: 'board/grp',
+      name: 'grp',
+      desc: '新领域描述',
+      repos: [{ key: 'github.com/me/my-dev', note: '中心' }, { key: 'local/imp-ref' }],
+    }],
+    links: [{ ref: 'local/imp-ref', to: [{ repo: 'github.com/me/my-dev' }, { board: 'board/grp' }] }],
   };
   const json = JSON.stringify(layout);
 
-  // gitRepoRoot 先设好（plan 要用它判断克隆项有没有落点）
+  // gitRepoRoot 先设好（克隆要落点）
   const root = join(dir, 'imp-root');
   const { saveConfig } = await import('../../src/core/config.js');
   await saveConfig({ gitRepoRoot: root });
 
-  // plan：零副作用
-  const plan = await transfer.repoImport({ json, plan: true, clone: 'ref' });
-  assert.equal(plan.plan, true);
-  const pDev = plan.repos.find((x) => x.name === 'my-dev');
-  assert.equal(pDev.action, '已登记');
-  const pRef = plan.repos.find((x) => x.name === 'imp-ref');
-  assert.equal(pRef.action, '需登记');
-  assert.equal(pRef.cloneWanted, true);
-  const pOrphan = plan.repos.find((x) => x.name === 'orphan-dev');
-  assert.ok(pOrphan.blocked);
-  const pBoard = plan.boards.find((x) => x.name === 'grp');
-  assert.equal(pBoard.action, '合并');
+  // diff：零副作用
+  const d = await transfer.diffImport(json);
+  assert.equal(d.repos.find((x) => x.key === 'github.com/me/my-dev').status, 'same');
+  const pRef = d.repos.find((x) => x.key === 'local/imp-ref');
+  assert.equal(pRef.status, 'new');
+  assert.equal(pRef.canClone, true);
+  assert.equal(d.repos.find((x) => x.key === 'local/orphan-dev').status, 'new');
+  assert.equal(d.boards.find((b) => b.key === 'board/grp').status, 'same');
   // store 未动
-  const before = await repos.listRepos();
-  assert.equal(before.length, 1);
+  assert.equal((await repos.listRepos()).length, 1);
 
   // 执行：clone ref（gitRepoRoot 已设），dev 不克隆（clone=ref），orphan 只登记
   const result = await transfer.repoImport({ json, clone: 'ref' });
-  assert.equal(result.plan, false);
-  assert.equal(result.created, 2); // imp-ref + orphan-dev
-  assert.equal(result.merged, 1); // grp 合并
+  assert.equal(result.created.length, 2); // imp-ref + orphan-dev
+  assert.equal(result.boardsMerged, 1);   // grp 合并
   assert.equal(result.cloned.length, 1);
   assert.equal(result.links, 2);
 
@@ -377,12 +380,12 @@ test('repoImport：plan 零副作用；执行后登记/克隆/看板/关系按 r
   assert.ok(g.repos.find((x) => x.id === importedRef.id));
 });
 
-test('repoImport：--only 白名单只处理指定条目', async () => {
+test('repoImport：--select 白名单只处理指定 key', async () => {
   const layout = {
-    version: 2,
+    version: 3,
     repos: [
-      { remote: 'https://github.com/a/one.git', name: 'one', type: 'ref' },
-      { remote: 'https://github.com/a/two.git', name: 'two', type: 'ref' },
+      { key: 'github.com/a/one', name: 'one', type: 'ref', remote: 'https://github.com/a/one.git' },
+      { key: 'github.com/a/two', name: 'two', type: 'ref', remote: 'https://github.com/a/two.git' },
     ],
     boards: [],
     links: [],
@@ -390,10 +393,11 @@ test('repoImport：--only 白名单只处理指定条目', async () => {
   const root = join(dir, 'only-root');
   const { saveConfig } = await import('../../src/core/config.js');
   await saveConfig({ gitRepoRoot: root });
-  // 两个都无远端可克隆（假 URL）——用 plan 验证 only 的过滤面
-  const plan = await transfer.repoImport({ json: JSON.stringify(layout), plan: true, clone: 'none', only: ['https://github.com/a/two.git'] });
-  assert.equal(plan.repos.length, 1);
-  assert.equal(plan.repos[0].name, 'two');
+  const result = await transfer.repoImport({ json: JSON.stringify(layout), selection: ['github.com/a/two'], clone: 'none' });
+  assert.equal(result.created.length, 1);
+  assert.equal(result.created[0].key, 'github.com/a/two');
+  const all = await repos.listRepos();
+  assert.ok(!all.some((r) => r.key === 'github.com/a/one'));
 });
 
 test('绑定是双向记录的：ref 侧写 {repo}，dev 侧写反向 {ref}；描述两侧一致；摘绑两侧同步清', async () => {

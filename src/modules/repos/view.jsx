@@ -18,6 +18,7 @@ import { api } from '../../web/frontend/api/client.js';
 import { useStore } from '../../web/frontend/store.jsx';
 import { useGuard, useDialog, useToast, Modal, Copyable } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
+import TransferPanel from './transfer-panel.jsx';
 
 const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
 
@@ -129,13 +130,8 @@ export default function ReposView() {
   // 绑定描述编辑：{ ref, kind:'repo'|'board', targetId, targetName, note } | null
   const [linkNoteFor, setLinkNoteFor] = useState(null);
   const [linkNoteText, setLinkNoteText] = useState('');
-  // 布局导入导出
-  const [impLayoutOpen, setImpLayoutOpen] = useState(false);
-  const [impLayoutText, setImpLayoutText] = useState('');
-  const [impLayoutPlan, setImpLayoutPlan] = useState(null); // plan:true 的预览
-  const [impLayoutClone, setImpLayoutClone] = useState('none');
-  const [impLayoutOnly, setImpLayoutOnly] = useState({}); // remoteKey -> bool（选择性克隆）
-  const [expLayoutText, setExpLayoutText] = useState(null);
+  // 布局导入导出：全屏面板（自己的 Tab 内维护全部临时状态）
+  const [transferOpen, setTransferOpen] = useState(false);
 
   const resetForm = () => { setForm(EMPTY_FORM); setEditing(null); setFormOpen(false); };
 
@@ -273,44 +269,12 @@ export default function ReposView() {
     await Promise.all([loadRepos(), loadRefCheck()]);
   });
 
-  // 布局导入：先 plan 预览（零副作用），确认后带 only 执行
-  const planLayout = () => guard(async () => {
-    if (!impLayoutText.trim()) return;
-    const d = await api('/api/repos/import', {
-      method: 'POST',
-      body: { json: impLayoutText, plan: true, clone: impLayoutClone },
-    });
-    setImpLayoutPlan(d);
-    const preset = {};
-    (d.repos || []).forEach((r) => { if (r.rkey) preset[r.rkey] = r.cloneWanted; });
-    setImpLayoutOnly(preset);
-  });
-
-  const runLayout = () => guard(async () => {
-    const only = Object.keys(impLayoutOnly).filter((k) => impLayoutOnly[k]);
-    const d = await api('/api/repos/import', {
-      method: 'POST',
-      body: { json: impLayoutText, clone: impLayoutClone, only },
-    });
-    setImpLayoutOpen(false);
-    setImpLayoutPlan(null);
-    setImpLayoutText('');
-    toast(`已导入：登记 ${d.created}、合并看板 ${d.merged}、克隆 ${(d.cloned || []).length}、关系 ${d.links}`
-      + (d.unmatched.length ? `；未匹配 ${d.unmatched.length} 条` : ''));
+  // 布局导入导出：整块交给全屏面板（transfer-panel.jsx）。
+  // 面板自己调 /api/repos/export 与 /api/repos/import*，执行完通过 onChanged 让本页刷新。
+  const onTransferDone = useCallback(async () => {
     await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
-  });
+  }, [loadRepos, loadBoards, loadRefCheck]);
 
-  const expLayout = () => guard(async () => {
-    const d = await api('/api/repos/export');
-    setExpLayoutText(JSON.stringify(d, null, 2));
-  });
-
-  const readImpLayoutFile = async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setImpLayoutText(await f.text());
-    setImpLayoutPlan(null);
-  };
 
   // 组内描述保存：note 为空 = 清除
   const saveNote = () => guard(async () => {
@@ -699,8 +663,7 @@ export default function ReposView() {
               <button className="btn small" onClick={() => { setCloneTargets({}); setCloneOpen(true); }}>克隆参考仓库</button>
               <button className="btn small ghost" onClick={syncAll}>同步全部</button>
               <button className="btn small ghost" onClick={loadRefCheck}>检查</button>
-              <button className="btn small ghost" onClick={() => { setImpLayoutOpen(true); setImpLayoutPlan(null); }}>导入布局</button>
-              <button className="btn small ghost" onClick={expLayout}>导出布局</button>
+              <button className="btn small ghost" onClick={() => setTransferOpen(true)}>导入导出</button>
               <button className="btn small ghost" onClick={() => {
                 setRootsForm({ gitRepoRoot: settingInfo?.gitRepoRoot || '', gitDevRoot: settingInfo?.gitDevRoot || '' });
                 setRootsOpen(true);
@@ -1211,79 +1174,14 @@ export default function ReposView() {
         </Modal>
       ) : null}
 
-      {/* 布局导入弹窗：先 plan 预览（分组/关系/每行克隆选择），确认后执行 */}
-      {impLayoutOpen ? (
-        <Modal title="导入仓库布局" onClose={() => { setImpLayoutOpen(false); setImpLayoutPlan(null); setImpLayoutText(''); }}>
-          <div className="form-grid">
-            <div className="form-field">
-              <label htmlFor="layout-imp">布局 JSON（repo export 的输出）</label>
-              <div className="form-hint">
-                含仓库（远程地址）、看板分组、参考关系。先「预览计划」确认整个布局，再选择性克隆执行。
-              </div>
-              <input id="layout-imp-file" type="file" accept=".json,application/json" onChange={readImpLayoutFile} />
-              <textarea id="layout-imp" rows={8} spellCheck="false"
-                placeholder='{"version":2,"repos":[{"remote":"…","name":"x","type":"dev"}],"boards":[…],"links":[…]}'
-                value={impLayoutText} onChange={(e) => { setImpLayoutText(e.target.value); setImpLayoutPlan(null); }} />
-            </div>
-            <div className="form-field">
-              <label htmlFor="layout-clone">克隆模式</label>
-              <select id="layout-clone" value={impLayoutClone} onChange={(e) => { setImpLayoutClone(e.target.value); setImpLayoutPlan(null); }}>
-                <option value="none">只登记，不克隆</option>
-                <option value="ref">克隆参考仓库</option>
-                <option value="dev">克隆开发仓库</option>
-                <option value="all">全部克隆</option>
-              </select>
-            </div>
-            {impLayoutPlan ? (
-              <div className="form-field rp-layout-plan">
-                <label>导入计划预览（未执行）</label>
-                <div className="rp-layout-repos">
-                  {impLayoutPlan.repos.map((r) => (
-                    <label className="rp-layout-row" key={r.rkey || r.name}>
-                      <input
-                        type="checkbox"
-                        disabled={!r.cloneWanted}
-                        checked={!!r.cloneWanted && (r.rkey ? impLayoutOnly[r.rkey] !== false : false)}
-                        onChange={(e) => r.rkey && setImpLayoutOnly((m) => ({ ...m, [r.rkey]: e.target.checked }))}
-                      />
-                      <span className="rp-layout-name">
-                        {r.name || r.remote}{r.type === 'ref' ? ' [参考]' : ''}
-                      </span>
-                      <span className="muted rp-layout-state">
-                        {r.action}{r.cloneWanted ? ' → 克隆' : r.blocked ? `（${r.blocked}）` : ''}
-                      </span>
-                    </label>
-                  ))}
-                  {impLayoutPlan.boards.map((b) => (
-                    <div className="rp-layout-board" key={b.name}>
-                      看板{b.action}：{b.name}（{b.members.length} 个成员）
-                    </div>
-                  ))}
-                  {impLayoutPlan.links.map((l) => (
-                    <div className="rp-layout-link" key={l.rkey}>
-                      参考 {l.ref} → {l.to.map((t) => t.repo || `看板「${t.board}」`).join('、')}
-                    </div>
-                  ))}
-                  {(impLayoutPlan.warnings || []).map((w) => (
-                    <div className="rp-layout-warn" key={w}>⚠ {w}</div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <div className="form-acts">
-              <button className="btn ghost" onClick={() => { setImpLayoutOpen(false); setImpLayoutPlan(null); setImpLayoutText(''); }}>取消</button>
-              <button className="btn ghost" disabled={!impLayoutText.trim()} onClick={planLayout}>预览计划</button>
-              <button className="btn" disabled={!impLayoutPlan} onClick={runLayout}>执行导入</button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-
-      {/* 布局导出结果 */}
-      {expLayoutText ? (
-        <Modal title="仓库布局 JSON（远程地址 + 分组 + 参考关系；不含本地路径）" onClose={() => setExpLayoutText(null)}>
-          <textarea className="bd-exp" rows={16} readOnly value={expLayoutText} spellCheck="false" />
-        </Modal>
+      {/* 导入导出：全屏覆盖层面板（逐条选择 / 冲突方案 / 差异检查） */}
+      {transferOpen ? (
+        <TransferPanel
+          onClose={() => setTransferOpen(false)}
+          onChanged={onTransferDone}
+          repos={repos}
+          boards={boardList}
+        />
       ) : null}
 
       {dialogNode}

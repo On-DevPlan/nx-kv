@@ -89,17 +89,33 @@ export function newId(prefix) {
 //   ref 的唯一 key 是 remote（归一化后的远程地址），dev 也鼓励记 remote（导出时
 //   导远程地址而非本地路径——换机导入才 clone 得回来）。
 // linked 仅 ref 有：绑定目标 [{kind:'repo'|'board', id}]——「这个参考是给谁看的」。
-function normalizeRepoInput({ path, name, notes, desc, type, remote, linked }) {
+function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key, keyCustom, remotes }) {
   const abs = resolve(String(path || ''));
   const t = type === 'ref' ? 'ref' : 'dev';
+  const nm = (name || basename(abs) || 'repo').trim();
+  const rk = (keyCustom && key ? normalizeKey(key) : '');
+  const input = {
+    name: nm,
+    remote: (remote || '').trim(),
+    key,
+    keyCustom: !!keyCustom,
+    remotes,
+  };
+  // key 为显式给的自定义值，或按 remote/名字派生（与 deriveKey 同一规则，保证 a→b→a 稳定）
+  const finalKey = rk || deriveKey({ ...input, name: nm });
+  if (!finalKey) throw badInput('key 不能为空');
   return {
     id: newId('r'),
-    name: (name || basename(abs) || 'repo').trim(),
+    name: nm,
     path: abs,
     desc: (desc || '').trim(),
     notes: (notes || '').trim(),
     type: t,
-    remote: (remote || '').trim(),
+    key: finalKey,
+    keyCustom: !!rk,
+    remote: input.remote,
+    remotes: Array.isArray(remotes) ? remotes.map((x) => String(x).trim()).filter(Boolean) : [],
+    keyUpdatedAt: new Date().toISOString(),
     // ref 侧的 linked 指向 repo/board；dev 侧的 linked 是反向的 {kind:'ref'} 引用
     linked: sanitizeLinks(linked),
     addedAt: new Date().toISOString(),
@@ -134,32 +150,92 @@ function sanitizeLinks(raw) {
   return out;
 }
 
-// ─── 远程地址归一：参考仓库的 key ─────────────────────────────────────
+// ─── 全局唯一 key：仓库的身份 ──────────────────────────────────────────
 //
-// 同一个仓库可以有 N 种写法（git@github.com:me/x.git、https://github.com/me/x、
-// 大小写不同、带不带尾斜杠）——存储以归一后的 key 查重，登记才不会重复。
-export function normalizeRemoteKey(url) {
+// 本地路径是机器事实，换机必失效；远程地址是最好的身份来源，但同一个仓库有 N 种
+// 写法（git@github.com:me/x.git、https://github.com/me/x、ssh://git@ssh.github.com:443/me/x.git、
+// 大小写不同、带不带尾斜杠）——全部归一成同一个 key，导入导出才能精确映射。
+//
+// 归一化步骤：
+//   1. git@host:path            → host/path
+//   2. ssh://[user@]host[:port]/path → host/path（丢 user 与端口）
+//   3. https?://[user@]host/path     → host/path（丢 user 与端口）
+//   4. 去尾 /、去 .git、小写
+//   5. host 别名：ssh.github.com / www.github.com → github.com
+//      （GitHub 的 SSH-over-443 端点，指向同一个仓库）
+export function keyFromRemote(url) {
   let s = String(url || '').trim();
   if (!s) return '';
   s = s.replace(/\/+$/, '');
-  // git@host:path → host/path
+  // git@host:path（scp 语法）
   const scp = /^git@([^:/]+):(.+)$/i.exec(s);
   if (scp) s = scp[1] + '/' + scp[2];
-  else {
-    // https://host/path、http://、ssh://、file:// → 剥协议头
+  else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) {
+    // 有协议的：剥协议 → [user@]host[:port]/path
     s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
-    // ssh://git@host/path → host/path
-    s = s.replace(/^git@([^:/]+)\//i, '$1/');
+    s = s.replace(/^[^/]*@/, '');        // 丢 user@
+    s = s.replace(/^([^/]+?):\d+(\/|$)/, '$1$2'); // 丢 :port（只认紧跟 host 的那个冒号）
   }
   s = s.replace(/\.git$/i, '');
+  s = s.replace(/\/{2,}/g, '/');
+  const hostAlias = { 'ssh.github.com': 'github.com', 'www.github.com': 'github.com' };
+  const slash = s.indexOf('/');
+  if (slash > 0) {
+    const host = s.slice(0, slash).toLowerCase();
+    s = (hostAlias[host] || host) + s.slice(slash);
+  }
   return s.toLowerCase();
+}
+
+// 兼容旧调用点（ref.js / transfer.js 都在用这个名字）
+export const normalizeRemoteKey = keyFromRemote;
+
+// 自定义 key 归一：允许中文与 `/`（像命名空间），其余空白/非法字符压成 -。
+// 空 key 不合法——key 是身份，不能空。
+export function normalizeKey(k) {
+  const s = String(k || '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[<>:"\\|?*\x00-\x1f]/g, '-')
+    .replace(/\.git$/i, '')
+    .replace(/\/{2,}/g, '/')
+    .replace(/^\/+|\/+$/g, '')
+    .slice(0, 160);
+  return s.toLowerCase();
+}
+
+// 无 remote 时的兜底 key：local/<slug>。slug 保留可读性（中文也行）。
+export function localKeyOf(name) {
+  const slug = String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[<>:"\\|?*\x00-\x1f/]/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return 'local/' + (slug || 'repo');
+}
+
+/** 一个仓库的 key：自定义优先，其次 remote 派生，最后 local/<name> 兜底。 */
+export function deriveKey(repo) {
+  if (!repo) return '';
+  if (repo.keyCustom && repo.key) return normalizeKey(repo.key);
+  const fromRemote = keyFromRemote(repo.remote || '');
+  if (fromRemote) return fromRemote;
+  if (repo.key) return normalizeKey(repo.key);
+  return localKeyOf(repo.name);
 }
 
 // 从 URL 推导目录名：取末段、剥 .git。非法字符替换成 -（Windows 目录名约束）。
 export function dirnameFromRemote(url) {
-  const key = normalizeRemoteKey(url);
+  const key = keyFromRemote(url);
   const base = key.split('/').filter(Boolean).pop() || 'repo';
   return base.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 80) || 'repo';
+}
+
+// 看板的 key：board/<slug(name)>。看板改名时 key 跟随（看板没有自定义 key 的概念）。
+export function boardKeyOf(name) {
+  return 'board/' + localKeyOf(name).slice('local/'.length);
 }
 
 /**
@@ -188,6 +264,9 @@ export async function listRepos() {
     .map(({ tags: _dropped, ...r }) => ({
       ...r,
       type: r.type || 'dev', // 旧数据无 type 字段 = dev
+      key: deriveKey(r),      // 老数据没有 key 字段 → 现算（Projection 不落盘，导出照样可用）
+      keyCustom: !!r.keyCustom,
+      remotes: Array.isArray(r.remotes) ? r.remotes : [],
       linked: Array.isArray(r.linked) ? r.linked : [],
       boards: boardsOf.get(r.id) || [],
     }))
@@ -197,18 +276,14 @@ export async function listRepos() {
 export async function addRepo(input) {
   if (!input || !input.path) throw badInput('path 不能为空');
   const repo = normalizeRepoInput(input);
-  const rkey = normalizeRemoteKey(repo.remote);
-  if (repo.remote && !rkey) throw badInput('远程地址无法解析: ' + repo.remote);
   await mutateStore((s) => {
     if (s.repos.some((r) => r.path.toLowerCase() === repo.path.toLowerCase())) {
       throw conflict('该路径已登记: ' + repo.path);
     }
-    // remote key 查重：ref 的唯一 key 是远程地址——同源仓库（无论 SSH/HTTPS 写法）
-    // 只允许一条记录，否则导入/绑定关系在两份登记间无法分辨。
-    if (rkey) {
-      const dup = s.repos.find((r) => normalizeRemoteKey(r.remote) === rkey);
-      if (dup) throw conflict(`该远程地址已登记为「${dup.name}」(${dup.id}): ` + repo.remote);
-    }
+    // **key 全局唯一**（跨 dev/ref）：它是身份，也是导入导出的映射依据。
+    // 老数据可能还没有 key 字段，用 deriveKey 现算，避免迁移空窗期出现重复。
+    const dup = s.repos.find((r) => deriveKey(r) === repo.key);
+    if (dup) throw conflict(`该 key 已登记为「${dup.name}」（${dup.id}）: ${repo.key}`);
     s.repos.push(repo);
   });
   return repo;
@@ -231,14 +306,22 @@ export async function updateRepo(id, patch) {
       if (t === 'dev') r.linked = r.linked.filter((l) => l.kind === 'ref');
     }
     if (patch.remote !== undefined) {
-      const remote = String(patch.remote || '').trim();
-      const rkey = normalizeRemoteKey(remote);
-      if (remote && !rkey) throw badInput('远程地址无法解析: ' + remote);
-      if (rkey) {
-        const dup = s.repos.find((x) => x.id !== id && normalizeRemoteKey(x.remote) === rkey);
-        if (dup) throw conflict(`该远程地址已登记为「${dup.name}」(${dup.id}): ` + remote);
-      }
-      r.remote = remote;
+      // 改 remote：非自定义 key 跟随 remote 重算；自定义 key 保持不变（用户显式选择）。
+      r.remote = String(patch.remote || '').trim();
+      if (!r.keyCustom) r.key = deriveKey(r);
+      r.keyUpdatedAt = new Date().toISOString();
+    }
+    if (patch.remotes !== undefined) {
+      r.remotes = Array.isArray(patch.remotes) ? patch.remotes.map((x) => String(x).trim()).filter(Boolean) : [];
+    }
+    if (patch.keyCustom !== undefined) r.keyCustom = patch.keyCustom === true;
+    if (patch.key !== undefined) {
+      const k = patch.key === '' ? '' : normalizeKey(patch.key);
+      if (patch.key !== '' && !k) throw badInput('key 不合法: ' + patch.key);
+      // 显式给 key = 视为自定义（keyCustom 未同时显式指定时）
+      if (patch.keyCustom === undefined && k) r.keyCustom = true;
+      r.key = k || deriveKey(r);
+      r.keyUpdatedAt = new Date().toISOString();
     }
     if (patch.linked !== undefined) r.linked = sanitizeLinks(patch.linked);
     if (patch.path !== undefined) {
@@ -250,6 +333,13 @@ export async function updateRepo(id, patch) {
       r.path = abs;
     }
     r.updatedAt = new Date().toISOString();
+    // key 全局唯一：改 key / remote / keyCustom 后统一在这里兜底校验一次。
+    // （放在最后、且对所有更新都跑——便宜，且不会漏掉某个分支。）
+    const finalKey = deriveKey(r);
+    if (!finalKey) throw badInput('key 不能为空');
+    const dup = s.repos.find((x) => x.id !== id && deriveKey(x) === finalKey);
+    if (dup) throw conflict(`该 key 已登记为「${dup.name}」（${dup.id}）: ${finalKey}`);
+    r.key = finalKey;
     return r;
   });
 }
@@ -276,15 +366,20 @@ export async function removeRepo(id) {
   });
 }
 
-// id 或绝对路径均可定位（agent 场景常直接给路径）
-export async function getRepo(idOrPath) {
+// id / key / 绝对路径 均可定位（agent 场景常直接给路径或 key）
+export async function getRepo(idOrPathOrKey) {
   const s = await loadStore();
-  let r = s.repos.find((x) => x.id === idOrPath);
+  const raw = String(idOrPathOrKey || '').trim();
+  let r = s.repos.find((x) => x.id === raw);
+  if (!r && raw) {
+    const k = normalizeKey(raw);
+    if (k) r = s.repos.find((x) => deriveKey(x) === k);
+  }
   if (!r) {
-    const p = resolve(idOrPath);
+    const p = resolve(raw);
     r = s.repos.find((x) => x.path.toLowerCase() === p.toLowerCase());
   }
-  if (!r) throw notFound('repo 不存在: ' + idOrPath);
+  if (!r) throw notFound('repo 不存在: ' + raw);
   // 带上它所属的看板（中心清单的同一份数据，单条查询也别缺这一维）
   const boards = s.boards
     .filter((b) => (b.repoIds || []).includes(r.id))
@@ -293,6 +388,9 @@ export async function getRepo(idOrPath) {
   return {
     ...base,
     type: base.type || 'dev',
+    key: deriveKey(base),
+    keyCustom: !!base.keyCustom,
+    remotes: Array.isArray(base.remotes) ? base.remotes : [],
     linked: Array.isArray(base.linked) ? base.linked : [],
     boards,
   };
@@ -444,6 +542,7 @@ export async function contextMap() {
       desc: r.desc || '',
       notes: r.notes || '',
       type: r.type || 'dev',
+      key: deriveKey(r),
       remote: r.remote || '',
       boards: boardsOf.get(r.id) || [],
     });

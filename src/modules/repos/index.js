@@ -13,6 +13,7 @@
 import * as service from './service.js';
 import * as boards from './boards.js';
 import * as ref from './ref.js';
+import * as keys from './keys.js';
 import * as transfer from './transfer.js';
 import { gitOrigin } from './git.js';
 import { badInput } from '../../core/errors.js';
@@ -41,6 +42,18 @@ function renderBoard(b) {
 
 const lastSeg = (p) => String(p || '').replace(/\\/g, '/').split('/').filter(Boolean).slice(-1)[0] || '';
 
+// import / import --diff 两个 action 共用的取 JSON 逻辑：
+// CLI 给文件路径（- = stdin），面板直接 POST {json}。两条入口同一个 action 声明。
+async function readLayoutJson(ctx) {
+  let json = typeof ctx.json === 'string' ? ctx.json : '';
+  if (!json && ctx.file) {
+    const { readFileSync } = await import('node:fs');
+    json = readFileSync(ctx.file === '-' ? 0 : ctx.file, 'utf8');
+  }
+  if (!json) throw badInput('请给布局 JSON 文件路径（- 读 stdin），或在面板里粘贴 JSON');
+  return json;
+}
+
 // ---- CLI 人读渲染（Web 端拿 JSON，用不到这些） ----
 
 function renderRepoList(list) {
@@ -48,7 +61,8 @@ function renderRepoList(list) {
   const lines = [`共 ${list.length} 个仓库`];
   for (const r of list) {
     const tag = r.type === 'ref' ? ' [参考]' : '';
-    lines.push(`${r.name.padEnd(18)} ${r.path}${tag}`);
+    lines.push(`${r.name.padEnd(18)} ${r.key}${tag}`);
+    lines.push(`  ${' '.repeat(16)} ${r.path}`);
   }
   return lines.join('\n');
 }
@@ -57,9 +71,11 @@ function renderRepo(r) {
   const lines = [
     `${r.name}${r.type === 'ref' ? '  [参考]' : ''}${r.desc ? '  ' + r.desc : ''}`,
     `  id:    ${r.id}`,
+    `  key:   ${r.key}${r.keyCustom ? '（自定义）' : ''}`,
     `  路径:  ${r.path}`,
   ];
   if (r.remote) lines.push(`  远程:  ${r.remote}`);
+  if (r.remotes?.length > 1) lines.push(`  全部远程: ${r.remotes.join(' , ')}`);
   lines.push(
     `  登记:  ${(r.addedAt || '').slice(0, 10)}`,
     `  更新:  ${(r.updatedAt || '').slice(0, 10)}`
@@ -174,16 +190,22 @@ export default {
         desc: { type: 'string' },
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库（默认），ref=参考仓库' },
-        remote: { type: 'string', hint: '远程 git 地址（ref 的唯一 key；dev 也建议记，导出时导它）' },
+        remote: { type: 'string', hint: '远程 git 地址（key 的来源；导出时导它）' },
+        key: { type: 'string', hint: '自定义全局唯一 key（缺省按 remote/名字派生）' },
+        'key-custom': { type: 'boolean', hint: '把 key 标记为自定义（不跟随 remote 变化）' },
       },
-      run: (ctx) => service.addRepo(ctx),
-      render: (r) => `已登记: ${r.name} -> ${r.path}`,
+      run: (ctx) => service.addRepo({
+        ...ctx,
+        // 给了 --key 就视为自定义；否则用显式的 --key-custom（缺省 false = 跟随 remote）
+        keyCustom: ctx.key ? true : ctx['key-custom'] === true,
+      }),
+      render: (r) => `已登记: ${r.name} -> ${r.path}（key: ${r.key}）`,
     },
     {
       id: 'repo.update',
       cli: ['repo', 'update'],
       http: ['PATCH', '/api/repos/:id'],
-      summary: '修改仓库路径 / 名称 / 描述 / 备注 / 类型 / 远程地址',
+      summary: '修改仓库路径 / 名称 / 描述 / 备注 / 类型 / 远程地址 / key',
       args: ['id'],
       flags: {
         path: { type: 'string' },
@@ -192,9 +214,11 @@ export default {
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库，ref=参考仓库' },
         remote: { type: 'string', hint: '远程 git 地址' },
+        key: { type: 'string', hint: '自定义 key（给了就视为 keyCustom）' },
+        'key-custom': { type: 'boolean', hint: 'key 是否自定义（true=不跟随 remote）' },
       },
-      run: (ctx) => service.updateRepo(ctx.id, ctx),
-      render: (r) => `已更新: ${r.name}`,
+      run: (ctx) => service.updateRepo(ctx.id, { ...ctx, keyCustom: ctx['key-custom'] === undefined ? undefined : ctx['key-custom'] === true }),
+      render: (r) => `已更新: ${r.name}（key: ${r.key}）`,
     },
     {
       id: 'repo.remove',
@@ -247,15 +271,18 @@ export default {
     // git 边界的例外区：只有参考仓库允许 clone/pull/读 origin（git.js 是唯一出口）。
     // 克隆目标 = config.gitRepoRoot（未设置会显式报错，绝不默默落进用户目录）。
     {
-      // 登记的远程地址存档：dev 导出时导远程地址而非本地路径（换机导入才 clone 得回来）。
-      // 不给 url 时从目录 origin 读（一次性存档，不算状态探测）。
+      // 登记的远程地址存档 + 刷新 key：无 --url = 从目录 origin 读（顺便重算 key）。
       id: 'repo.remote',
       cli: ['repo', 'remote'],
       http: ['POST', '/api/repos/remote'],
-      summary: '登记/更新仓库的远程 git 地址（无 --url = 从目录 origin 读取存档）',
+      summary: '登记/更新仓库的远程 git 地址（无 --url = 从目录 origin 读取存档并重算 key）',
       args: ['id'],
-      flags: { url: { type: 'string', hint: '远程地址；缺省时 git remote get-url origin' } },
+      flags: {
+        url: { type: 'string', hint: '远程地址；缺省时 git remote get-url origin' },
+        refresh: { type: 'boolean', hint: '同时扫描全部 remote 并提示可更新的 key（同 repo key refresh）' },
+      },
       run: async (ctx) => {
+        if (ctx.refresh) return keys.refreshKeys({ id: ctx.id, apply: false });
         let url = String(ctx.url || '').trim();
         if (!url) {
           const r = await service.getRepo(ctx.id);
@@ -264,7 +291,42 @@ export default {
         }
         return service.updateRepo(ctx.id, { remote: url });
       },
-      render: (r) => `已登记远程地址: ${r.name} -> ${r.remote}`,
+      render: (r) => (r.items ? keys.renderRefresh(r) : `已登记远程地址: ${r.name} -> ${r.remote}（key: ${r.key}）`),
+    },
+    {
+      // key 刷新：扫本地 git remote，给出建议（--all 全部；--apply 才落盘）
+      id: 'repo.key.refresh',
+      cli: ['repo', 'key', 'refresh'],
+      http: ['POST', '/api/repos/key/refresh'],
+      summary: '刷新仓库 key：扫描 git remote（SSH 优先），提示可更新的 key/远程地址；--apply 落盘',
+      args: [{ name: 'id', required: false }],
+      flags: {
+        all: { type: 'boolean', hint: '刷新全部仓库' },
+        apply: { type: 'boolean', hint: '把建议写回（自定义 key 只更新 remote，不覆盖 key）' },
+      },
+      run: (ctx) => keys.refreshKeys({ id: ctx.id, all: ctx.all === true, apply: ctx.apply === true }),
+      render: (d) => keys.renderRefresh(d),
+    },
+    {
+      // 手工设 key：自定义身份（不跟随 remote）
+      id: 'repo.key.set',
+      cli: ['repo', 'key', 'set'],
+      http: ['POST', '/api/repos/key'],
+      summary: '设置自定义 key（全局唯一，不跟随远程地址自动变）；--follow 恢复为跟随 remote',
+      args: ['id', { name: 'key', required: false }],
+      flags: {
+        follow: { type: 'boolean', hint: '取消自定义：key 重新跟随远程地址派生' },
+      },
+      run: async (ctx) => {
+        if (ctx.follow) {
+          await service.updateRepo(ctx.id, { keyCustom: false, key: '' });
+        } else {
+          if (!ctx.key) throw badInput('请给自定义 key，或 --follow 恢复跟随远程地址');
+          await service.updateRepo(ctx.id, { key: ctx.key, keyCustom: true });
+        }
+        return service.getRepo(ctx.id);
+      },
+      render: (r) => `已设 key: ${r.name} -> ${r.key}${r.keyCustom ? '（自定义）' : '（跟随远程地址）'}`,
     },
     {
       id: 'repo.ref.clone',
@@ -378,38 +440,65 @@ export default {
       id: 'repo.export',
       cli: ['repo', 'export'],
       http: ['GET', '/api/repos/export'],
-      summary: '导出仓库布局 JSON（远程地址 + 分组 + 参考关系；不含本地路径，可回灌 repo import）',
-      run: () => transfer.repoExport(),
-      render: (d) => JSON.stringify(d, null, 2),
+      summary: '导出仓库布局 JSON（全局 key + 分组 + 参考关系；不含本地路径）；--zip 打包成 zip',
+      flags: {
+        zip: { type: 'string', hint: '打包成 zip 写到这个路径（含 layout.json + README）' },
+        repos: { type: 'array', hint: '只导出这些仓库 key（逗号分隔；空 = 全部）' },
+        boards: { type: 'array', hint: '只导出这些看板 key（逗号分隔；空 = 全部）' },
+        'no-unassigned': { type: 'boolean', hint: '不带未分组的仓库' },
+      },
+      run: async (ctx) => {
+        const opts = {
+          repoKeys: ctx.repos,
+          boardKeys: ctx.boards,
+          includeUnassigned: ctx['no-unassigned'] !== true,
+        };
+        if (ctx.zip) return transfer.writeExportZip(ctx.zip, opts);
+        return transfer.repoExport(opts);
+      },
+      render: (d) => (d && d.file
+        ? `已导出 zip: ${d.file}（${d.bytes} 字节）\n包含 layout.json + README.txt，可回灌 repo import`
+        : JSON.stringify(d, null, 2)),
+    },
+    {
+      // --diff：只算差异不执行（面板先展示的就是这份数据）
+      id: 'repo.import.diff',
+      cli: ['repo', 'import', '--diff'],
+      http: ['POST', '/api/repos/import/diff'],
+      summary: '导入前的差异检查：逐条给出 新增/有差异/一致/本地未拥有（零副作用）',
+      // 与 repo import 同款双入口：CLI 给文件路径，面板直接 POST {json}。
+      // CLI 上 --diff 是路径 token 的一部分（最长匹配），不是 flag。
+      args: [{ name: 'file', required: false }],
+      flags: { json: { type: 'string', hint: '（面板）直接给布局 JSON' } },
+      run: async (ctx) => transfer.diffImport(await readLayoutJson(ctx)),
+      render: (d) => transfer.renderDiff(d),
     },
     {
       id: 'repo.import',
       cli: ['repo', 'import'],
       http: ['POST', '/api/repos/import'],
-      summary: '导入仓库布局 JSON（--plan 只算计划不执行；--clone all|dev|ref|none；--only 按 remote 挑）',
-      // 与 board.import 同款双入口：CLI 给文件路径（- = stdin），面板直接 POST {json}。
+      summary: '导入仓库布局（--strategy ours|overwrite|duplicate；--select 按 key 挑；--clone 选克隆范围）',
       args: [{ name: 'file', required: false }],
       flags: {
         json: { type: 'string', hint: '（面板）直接给布局 JSON' },
-        plan: { type: 'boolean', hint: '只计算导入计划，不执行' },
-        clone: { type: 'string', enum: ['all', 'dev', 'ref', 'none'], hint: '导入时要克隆哪些（默认 none = 只登记）' },
-        only: { type: 'array', hint: '只处理这些远程地址（归一化后匹配，逗号分隔）' },
+        strategy: {
+          type: 'string',
+          enum: ['ours', 'overwrite', 'duplicate'],
+          default: 'ours',
+          hint: '冲突方案：保留本地 / 覆盖 / 另存 key-import-N',
+        },
+        select: { type: 'array', hint: '只处理这些仓库 key（逗号分隔；空 = 全部）' },
+        boards: { type: 'array', hint: '只处理这些看板 key（逗号分隔；空 = 全部）' },
+        clone: { type: 'string', enum: ['all', 'dev', 'ref', 'none'], hint: '要克隆哪些（默认 none = 只登记）' },
       },
-      run: async (ctx) => {
-        let json = typeof ctx.json === 'string' ? ctx.json : '';
-        if (!json && ctx.file) {
-          const { readFileSync } = await import('node:fs');
-          json = readFileSync(ctx.file === '-' ? 0 : ctx.file, 'utf8');
-        }
-        if (!json) throw badInput('请给布局 JSON 文件路径（- 读 stdin），或在面板里粘贴 JSON');
-        return transfer.repoImport({
-          json,
-          plan: ctx.plan === true,
-          clone: ctx.clone || 'none',
-          only: ctx.only,
-        });
-      },
-      render: (d) => (d.plan ? transfer.renderPlan(d) : transfer.renderResult(d)),
+      run: async (ctx) => transfer.repoImport({
+        json: await readLayoutJson(ctx),
+        selection: ctx.select,
+        boardSelection: ctx.boards,
+        strategy: ctx.strategy || 'ours',
+        clone: ctx.clone || 'none',
+      }),
+      render: (d) => transfer.renderResult(d),
     },
 
     // ---- 看板（主题容器）：多项目编排层，面板与 CLI 同源 ----

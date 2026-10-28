@@ -22,5 +22,8 @@ src/web/public/
 !.claude/repo/_self/
 !.claude/repo/_self/**
 
+# agent 的临时工作树（EnterWorktree / 并行 subagent 用），属于本机状态，不入库
+.claude/worktrees/
+
 # .claude/www/git.remote 清单是仓库内容，随宿主提交（sl-git-standard）——
 # 故意不写忽略规则：清单随仓库走，换机器/同事 clone 后 sync 才有输入

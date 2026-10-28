@@ -81,6 +81,9 @@ export function normalizeTask(t) {
     doneAt: String(t.doneAt ?? ''),
     note: String(t.note ?? ''),
     frozenAt: String(t.frozenAt ?? ''),
+    // 来源标记：本机队列迁入的任务带 'local'（面板据此渲染「来自本机」徽标）。
+    // 老数据没有该字段 → 空串，不渲染徽标。
+    from: String(t.from ?? ''),
   };
 }
 
@@ -380,7 +383,7 @@ export async function listTaskAttachments(ref, { topic, pick, groupId } = {}) {
 // ─── 变更操作 ──────────────────────────────────────────────────────
 
 /** 新增任务到待办；topic 不在快捷列表时一并补上（契约 2） */
-export async function addTodo({ topic, text, groupId }) {
+export async function addTodo({ topic, text, groupId, from = '' }) {
   const t = String(topic || '').trim();
   const body = String(text || '').trim();
   if (!t) throw badInput('--topic 必填');
@@ -395,6 +398,7 @@ export async function addTodo({ topic, text, groupId }) {
     doneAt: '',
     note: '',
     frozenAt: '',
+    ...(from ? { from: String(from) } : {}),
   };
 
   const open = [...all.open, task];
@@ -462,6 +466,24 @@ export async function removeTodo(ref, { topic, pick, groupId } = {}) {
   bucket.splice(hit.index, 1);
   await writeTasks(KEY[hit.bucket], bucket, groupId);
   return { removed: hit.task, bucket: hit.bucket };
+}
+
+/** 按 id 精确删除**待办**里的一条（撤销迁移专用：同内容 ×N 时按文本删会误伤）。
+ *  与 removeTodo 的差别就在定位方式：这个按 id，只允许命中待办桶。 */
+export async function removeOpenById(id, { groupId } = {}) {
+  const want = Number(id);
+  if (!Number.isFinite(want) || want <= 0) throw badInput('缺少任务编号 id');
+  const all = await loadAll(groupId);
+  const index = all.open.findIndex((x) => Number(x.id) === want);
+  if (index < 0) {
+    const { notFound } = await import('../../core/errors.js');
+    throw notFound(`待办里没有 #${want}（可能已被删除或完成）`);
+  }
+  const removed = all.open[index];
+  const open = [...all.open];
+  open.splice(index, 1);
+  await writeTasks(KEY.open, open, groupId);
+  return { removed };
 }
 
 /** 标记完成：待办 → 已完成，补 doneAt 与 note */

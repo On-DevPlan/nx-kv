@@ -36,7 +36,7 @@ const TODO_NO_ID_LOOKUP = [
 
 export default defineConfig([
   {
-    ignores: ['src/web/public/**', 'node_modules/**', '.tool/**', '.claude/**'],
+    ignores: ['src/web/public/**', 'node_modules/**', '.tool/**', '.claude/**', '.workbuddy/**', 'plan/**', 'dist/**'],
   },
   {
     files: ['**/*.{js,mjs,jsx}'],

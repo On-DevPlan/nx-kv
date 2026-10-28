@@ -120,7 +120,7 @@ test('splitQueueTasks：待领取按领取优先级（数组原序，不反转�
 });
 
 test('splitQueueTasks：空输入与脏输入都不炸', () => {
-  assert.deepEqual(splitQueueTasks([]), { pending: [], consumed: [], deleted: [] });
-  assert.deepEqual(splitQueueTasks(null), { pending: [], consumed: [], deleted: [] });
-  assert.deepEqual(splitQueueTasks(undefined), { pending: [], consumed: [], deleted: [] });
+  assert.deepEqual(splitQueueTasks([]), { pending: [], consumed: [], deleted: [], migrated: [] });
+  assert.deepEqual(splitQueueTasks(null), { pending: [], consumed: [], deleted: [], migrated: [] });
+  assert.deepEqual(splitQueueTasks(undefined), { pending: [], consumed: [], deleted: [], migrated: [] });
 });

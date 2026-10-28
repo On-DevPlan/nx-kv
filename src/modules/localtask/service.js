@@ -341,7 +341,19 @@ function normalizeTask(t) {
     // 软删除标记：删除不再不可逆（可 restore 回来）。词汇与同仓 timegoal 对齐
     // （那边叫 archivedAt + 保留期 + purge）。
     deletedAt: String(t.deletedAt ?? ''),
+    // 来源标记：云端清单迁入的任务带 'cloud'（面板据此渲染「来自云端」徽标）
+    from: String(t.from ?? ''),
+    // 迁出标记：本机 → 云端迁移后原条目保留在此，作为 tombstone（可撤销/移除）。
+    // 带 migratedTo 的任务**不再算待领取**（不会被派发给 agent，也不再进看板的
+    // 待领取列）——它只是一条「去哪了」的记录。结构 {side:'cloud', topic, targetId, at}。
+    migratedTo: t.migratedTo && typeof t.migratedTo === 'object' ? t.migratedTo : null,
   };
+}
+
+// pending 的统一判据：未领取、未删除、未迁出。
+// 迁出（tombstone）不算活——它不会被派发，也不该阻塞主题删除或挡住 prune。
+function isPending(t) {
+  return t.status !== 'consumed' && !t.deletedAt && !t.migratedTo;
 }
 
 // 主题的截止时刻（epoch ms）。优先用 waitingUntilMs（毫秒精度，新数据都有），
@@ -423,7 +435,7 @@ function topicView(t, repoCtx = null) {
     manual: !!t.manual,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
-    pending: tasks.filter((x) => x.status !== 'consumed' && !x.deletedAt).length,
+    pending: tasks.filter(isPending).length,
     // 开/关两个计数分开给（Kanboard 的 nb_open_tasks / nb_closed_tasks）：
     // 面板上「N 待领 · M 已领」比一个总数有用得多——一眼看出还剩多少活、已经干完多少。
     consumed: tasks.filter((x) => x.status === 'consumed' && !x.deletedAt).length,
@@ -491,7 +503,7 @@ export async function consumeFirstPending(key, roundSummary, by) {
   const store = await loadStore();
   const t = store.topics[key];
   if (!t) return null;
-  const task = t.tasks.find((x) => x.status !== 'consumed' && !x.deletedAt);
+  const task = t.tasks.find(isPending);
   if (!task) return null;
   markConsumed(task, roundSummary || t.summary || '', {
     from: isGlobalKey(key) ? 'global' : 'local',
@@ -635,15 +647,19 @@ function settingsView(s) {
 // wait/add 也会建主题，但那是**被动**创建：空主题会被 prune 当脏数据清掉。
 // 手动登记的目录要能常驻（用户想先占个位、之后再绑 timegoal / 排任务），
 // 所以打 `manual:true` 标记，prune 一律跳过。重复登记幂等（已存在则只刷新标记）。
-export async function addTopic({ cwd: rawCwd } = {}) {
+export async function addTopic({ cwd: rawCwd, summary: rawSummary } = {}) {
   if (rawCwd === undefined || rawCwd === null || !String(rawCwd).trim()) {
     throw badInput('需要 --cwd "<工作目录>"');
   }
   const { key, cwd, name } = normalizeCwd(rawCwd);
+  const summary = normalizeSummary(rawSummary, { optional: true });
   const store = await loadStore();
   const existed = !!store.topics[key];
   const t = topicOf(store, key, cwd, name);
   t.manual = true;
+  // --summary：登记时顺带写「现状摘要」（面板顶栏那一句的编辑入口也走这里）。
+  // 写进 submitSummary（提交方字段），不碰 agent 的 t.summary——与 add --summary 同一约定。
+  if (summary) t.submitSummary = summary;
   t.updatedAt = stampNow();
   await saveStore(store);
   return { status: 'ok', existed, key, name, cwd, topic: topicView(t) };
@@ -691,7 +707,7 @@ export async function pruneTopics({ allFinished = false, dryRun = false } = {}) 
     // （prune 是"清旧脏数据"，不因未领取任务而跳过——它本来就只清空主题/旧模型主题。）
     if (!deleteGuard(t, { force: false, key, scope: 'prune' }).ok) continue;
     const tasks = Array.isArray(t.tasks) ? t.tasks : [];
-    const hasPending = tasks.some((x) => x.status !== 'consumed');
+    const hasPending = tasks.some(isPending);
     const isLegacy = !t.cwd;
     const isEmpty = tasks.length === 0;
     const isFinished = allFinished && tasks.length > 0 && !hasPending;
@@ -942,6 +958,96 @@ export async function restoreTask({ cwd: rawCwd, key: rawKey, id } = {}) {
   return { status: 'ok', restored: true, key, cwd: t.cwd || cwd, name: t.name, task: normalizeTask(task) };
 }
 
+// ─── 迁移原语（task move 用；store 封装不外泄）─────────────────────
+//
+// 迁移的原子性在外层 move.js 编排（先写目标端、成功才改源端），
+// 这里只提供对 store 的最小读写原语，保证清单/历史/原子写都走同一条管线。
+
+/** 只读定位一条本机任务（不落写）。返回 {task, name, key, cwd} 或抛 notFound。 */
+export async function getTopicTask({ cwd: rawCwd, key: rawKey, id } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const want = Number(id);
+  if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
+  const store = await loadStore();
+  const t = store.topics[key];
+  const raw = t && t.tasks.find((x) => Number(x.id) === want);
+  if (!raw) {
+    const { notFound } = await import('../../core/errors.js');
+    throw notFound(`主题「${t ? t.name : key}」里没有 #${want} 任务`);
+  }
+  return { task: normalizeTask(raw), key, cwd: t.cwd || '', name: t.name || key };
+}
+
+/** 给本机任务打迁出标记（tombstone）。只在目标端已写成功后调用。 */
+export async function markTaskMigrated({ cwd: rawCwd, key: rawKey, id, migratedTo } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const want = Number(id);
+  if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
+  if (!migratedTo || migratedTo.side !== 'cloud') throw badInput('migratedTo 必须是 {side:"cloud", topic, targetId, at}');
+  const store = await loadStore();
+  const t = store.topics[key];
+  const raw = t && t.tasks.find((x) => Number(x.id) === want);
+  if (!raw) {
+    const { notFound } = await import('../../core/errors.js');
+    throw notFound(`主题「${t ? t.name : key}」里没有 #${want} 任务`);
+  }
+  if (raw.status === 'consumed') {
+    const { conflict } = await import('../../core/errors.js');
+    throw conflict(`主题「${t.name}」#${want} 已被领取，不能再迁移`);
+  }
+  raw.migratedTo = { side: 'cloud', topic: String(migratedTo.topic || ''), targetId: Number(migratedTo.targetId) || 0, at: String(migratedTo.at || stampNow()) };
+  t.updatedAt = stampNow();
+  await saveStore(store);
+  return { status: 'ok', key, cwd: t.cwd || '', name: t.name, task: normalizeTask(raw) };
+}
+
+/** 撤销迁出：清掉 migratedTo 标记，任务回到待领取首位。 */
+export async function clearTaskMigrated({ cwd: rawCwd, key: rawKey, id, toTop = true } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const want = Number(id);
+  if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
+  const store = await loadStore();
+  const t = store.topics[key];
+  const raw = t && t.tasks.find((x) => Number(x.id) === want);
+  if (!raw) {
+    const { notFound } = await import('../../core/errors.js');
+    throw notFound(`主题「${t ? t.name : key}」里没有 #${want} 任务`);
+  }
+  if (!raw.migratedTo) {
+    return { status: 'ok', restored: false, reason: 'not_migrated', key, name: t.name, task: normalizeTask(raw) };
+  }
+  delete raw.migratedTo;
+  // 回到待领取首位：迁出时它占着优先级位置，撤销应原样归还
+  if (toTop) {
+    const idx = t.tasks.indexOf(raw);
+    if (idx >= 0) t.tasks.splice(idx, 1);
+    t.tasks.unshift(raw);
+  }
+  t.updatedAt = stampNow();
+  await saveStore(store);
+  return { status: 'ok', restored: true, key, cwd: t.cwd || '', name: t.name, task: normalizeTask(raw) };
+}
+
+/**
+ * 云端 → 本机：把一条任务插到本机主题队列的**待领取首位**（不打扰 waiter——
+ * 迁移是「排进队列」，不是「回填给正在等的 agent」，语义必须分开）。
+ * 返回 {task, name, key, cwd}。
+ */
+export async function insertTaskAtTop({ cwd: rawCwd, key: rawKey, text, from = 'cloud' } = {}) {
+  const body = normalizeText(text);
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const { cwd } = normalizeCwd(rawCwd);
+  const store = await loadStore();
+  const t = topicOf(store, key, cwd);
+  const task = normalizeTask({ id: nextTaskId(t.tasks), text: body, status: 'pending', createdAt: stampNow(), from });
+  const firstPending = t.tasks.findIndex(isPending);
+  if (firstPending >= 0) t.tasks.splice(firstPending, 0, task);
+  else t.tasks.unshift(task);
+  t.updatedAt = stampNow();
+  await saveStore(store);
+  return { status: 'ok', key, cwd: t.cwd || cwd, name: t.name, task };
+}
+
 // ─── 主题删除（单个 / 批量） ───────────────────────────────────────
 
 // 定位主题 key：显式 --key 优先，否则按工作目录（目录名）推导
@@ -1005,7 +1111,7 @@ export function deleteGuard(topic, { force = false, key = '', scope = 'topic' } 
 // 删除保护用它：队列里还堆着活就不该被一声不吭地清空。
 function countPending(t) {
   if (!t || !Array.isArray(t.tasks)) return 0;
-  return t.tasks.filter((x) => x.status !== 'consumed' && !x.deletedAt).length;
+  return t.tasks.filter(isPending).length;
 }
 
 // 删除整个主题（连同其全部任务）。默认拒绝删除「等待中」主题——那会让正阻塞的

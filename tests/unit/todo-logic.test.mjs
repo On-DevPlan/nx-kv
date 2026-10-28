@@ -158,5 +158,6 @@ test('normalizeTask 把缺字段补成空串而不是 undefined', () => {
     doneAt: '',
     note: '',
     frozenAt: '',
+    from: '', // 来源标记（本机迁入带 'local'；老数据/普通任务为空）
   });
 });

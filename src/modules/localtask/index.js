@@ -12,6 +12,7 @@
 // 与 todo 的区别：todo 管 KV 后端上的清单（需登录）；localtask 是**本机**
 // 任务队列，数据存本地文件，不依赖后端登录态。
 import * as service from './service.js';
+import * as move from './move.js';
 
 const CWD = { type: 'string', hint: '工作目录（作为主题；默认当前目录）' };
 const SUMMARY = { type: 'string', required: true, hint: '当前现状（agent 当前状态，展示给用户）' };
@@ -233,9 +234,9 @@ export default {
       id: 'localtask.topic.add',
       cli: ['localtask', 'topic', 'add'],
       http: ['POST', '/api/localtasks/topic'],
-      summary: '登记一个工作目录：空目录也常驻（prune 不清），供面板「添加目录」用',
-      flags: { cwd: { type: 'string', required: true, hint: '工作目录（绝对路径或可解析的相对路径）' } },
-      run: (ctx) => service.addTopic({ cwd: ctx.cwd }),
+      summary: '登记一个工作目录：空目录也常驻（prune 不清）；--summary 顺带写「现状摘要」（面板顶栏摘要的编辑入口）',
+      flags: { cwd: { type: 'string', required: true, hint: '工作目录（绝对路径或可解析的相对路径）' }, summary: { type: 'string', hint: '现状摘要（可选；已登记目录即更新）' } },
+      run: (ctx) => service.addTopic({ cwd: ctx.cwd, summary: ctx.summary }),
       render: (d) =>
         `${d.existed ? '已更新' : '已登记'}目录「${d.name}」${d.cwd}` +
         (d.existed ? '（原先已存在）' : ''),
@@ -338,6 +339,60 @@ export default {
       render: (d) => {
         const order = d.topic.tasks.filter((x) => x.status !== 'consumed').map((x) => `#${x.id}`);
         return `主题「${d.name}」待领取顺序：${order.join(' -> ') || '（无待领取）'}`;
+      },
+    },
+
+    // ─── 本机 ⇄ 云端 迁移（面板与 CLI 同构，原型设计稿 §5/§7.3）───
+    {
+      id: 'task.move',
+      cli: ['task', 'move'],
+      http: ['POST', '/api/task/move'],
+      summary:
+        '在本机队列与云端清单之间迁移任务（先写目标端、成功才改源端；--undo 按返回的 target-id 精确撤销）',
+      flags: {
+        from: { type: 'string', enum: ['local', 'cloud'], hint: '迁移源' },
+        to: { type: 'string', enum: ['local', 'cloud'], hint: '迁移目标' },
+        // 源/目标定位：local 侧用 --id + (--cwd|--key)；cloud 侧用 --topic + --text
+        id: { type: 'number', hint: '本机任务编号（from=local 时必填）' },
+        cwd: CWD,
+        key: KEY,
+        topic: { type: 'string', hint: '云端主题（= 目录名；from=cloud 必填，to=cloud 缺省用目录名）' },
+        text: { type: 'string', hint: '云端任务内容（from=cloud 时按内容定位）' },
+        pick: { type: 'number', hint: '云端同内容多条时的编号（消歧）' },
+        merge: { type: 'boolean', hint: '目标端已有同内容时合并到已有条目（不新增）' },
+        group: { type: 'number', hint: '云端工作空间 id（默认取当前）' },
+        undo: { type: 'boolean', hint: '撤销一次迁移（配合 --target-id 与原 move 参数）' },
+        'target-id': { type: 'number', hint: '撤销用：迁移时返回的 targetId' },
+        'tombstone-id': { type: 'number', hint: '撤销 local→cloud 时可显式指定本机迁出条目编号（缺省用 --id）' },
+      },
+      run: (ctx) =>
+        move.moveTask({
+          from: ctx.from,
+          to: ctx.to,
+          id: ctx.id,
+          cwd: ctx.cwd,
+          key: ctx.key,
+          topic: ctx.topic,
+          text: ctx.text,
+          pick: ctx.pick,
+          merge: ctx.merge,
+          group: ctx.group,
+          undo: ctx.undo,
+          'target-id': ctx['target-id'],
+          'tombstone-id': ctx['tombstone-id'],
+        }),
+      render: (d) => {
+        if (d.undone) {
+          return d.from === 'local'
+            ? `已撤销: 云端「${d.topic}」的条目已删除，本机「${d.dirName}」#${d.tombstoneId} 回到待领取`
+            : `已撤销: 本机「${d.dirName}」#${d.targetId} 已移除，云端「${d.topic}」已恢复`;
+        }
+        const head =
+          d.from === 'local'
+            ? `本机「${d.dirName}」#${d.tombstoneId} → 云端「${d.topic}」（${d.merged ? `合并到已有条目 #${d.targetId}` : `新待办 #${d.targetId}`}）`
+            : `云端「${d.topic}」 → 本机「${d.dirName}」（待领取首位 #${d.targetId}）`;
+        const tail = d.from === 'local' ? `\n原位置留有迁出记录（可在面板跳转/移除；task move --undo 撤销）` : '';
+        return head + (d.dupCount ? `\n（目标端原有 ${d.dupCount} 条同内容）` : '') + tail;
       },
     },
 

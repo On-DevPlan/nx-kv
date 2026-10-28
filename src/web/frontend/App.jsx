@@ -1,26 +1,96 @@
-// 应用壳：顶栏 + tab 导航（注册表驱动）+ hash 路由。
-// 路由即持久化：当前视图写进 location.hash 与 store，刷新/分享链接都停在原页面。
-import { Suspense, useEffect, useState } from 'react';
+// 应用壳 v2（原型 plan/uiux-redesign.html §1/§2）：侧边栏 + 主区，替换「顶栏 + 平铺 tab」。
+// 目录（topic）提升为一级导航；hash 路由：
+//   #/dir/<key>  目录详情    #/global  全局任务池   #/overview  全部目录总览
+//   #/cloud      云端总览    #/repos   仓库管理     #/auth      登录/设置
+//   #/localtask  经典看板（v1，保留一个版本周期；wait 深链继续落到这里）
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from './store.jsx';
 import { ErrorBoundary, useToast } from './components/ui.jsx';
 import { VIEWS } from './registry.js';
 import { api } from './api/client.js';
+import { Icon } from './components/icons.jsx';
+import Sidebar from './components/sidebar/index.jsx';
+import { loadPrefs, updatePrefs } from './prefs.js';
 
-function viewFromHash() {
-  // hash 形如 `#/localtask?key=xxx&cwd=yyy`——**查询参数必须先剥掉**再比对视图 id。
-  // 以前整条 hash 拿去比：带 query 必然对不上任何一个 view id → wait 打开的深链
-  // 根本不会切到「本地任务」页，用户等半天看到一个不相干的页面。
-  const h = (location.hash || '').replace(/^#\/?/, '').split('?')[0];
-  return VIEWS.some((v) => v.id === h) ? h : '';
+// hash → 路由对象。带 query 的 #/localtask?cwd=… 是 wait 深链，原样交给经典看板。
+function routeFromHash() {
+  const h = (location.hash || '').replace(/^#\/?/, '');
+  const path = h.split('?')[0];
+  if (path.startsWith('dir/')) {
+    return { view: 'dir', key: decodeURIComponent(path.slice(4)) };
+  }
+  const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos', 'auth', 'localtask'];
+  if (KNOWN.includes(path)) return { view: path === 'todo' ? 'cloud' : path };
+  return { view: 'overview' };
 }
 
 export default function App() {
-  const { boot, ui, patchUi } = useStore();
+  const { boot } = useStore();
   const toast = useToast();
-  // 等待中的主题数：用于在「本地任务」tab 上打角标。
-  // wait 的活性判据已把「面板停在任意页」算开着、不再重开标签，所以提醒责任
-  // 落在壳上——用户停在别的页也要知道有 agent 在等回填。
+  const [route, setRoute] = useState(routeFromHash);
+  const [prefs, setPrefs] = useState(loadPrefs);
   const [waitingCount, setWaitingCount] = useState(0);
+  const [localData, setLocalData] = useState(null); // /api/localtasks 结果
+  const [localErr, setLocalErr] = useState('');
+
+  const patchPrefs = useCallback((patch) => setPrefs(updatePrefs(patch)), []);
+
+  // 首次访问且用户开了「默认收起」：进场即收起（此后 folded 自持久化接管）
+  useEffect(() => {
+    if (prefs.defaultFolded && !localStorage.getItem('nx-kv-sidebar-v1')) patchPrefs({ folded: true });
+  }, []);
+
+  // ─── 路由：hashchange 单向同步（navigate 就是写 hash）───
+  useEffect(() => {
+    const onHash = () => setRoute(routeFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  // 初始 hash 为空时落一个默认路由，保证刷新/分享链接行为一致
+  useEffect(() => {
+    if (!location.hash) location.hash = '#/overview';
+  }, []);
+
+  const onNavigate = useCallback((hash) => {
+    if (location.hash === hash) setRoute(routeFromHash());
+    else location.hash = hash;
+    // 进入目录详情 = 侧边栏自动收起（原型 §2）；返回动作自己展开
+    if (hash.startsWith('#/dir/') || hash === '#/global') {
+      setPrefs((p) => (p.folded ? p : updatePrefs({ folded: true })));
+    }
+  }, []);
+
+  // Esc：详情页返回总览（菜单/输入框打开时不劫持——菜单层已用捕获+stopPropagation）
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (route.view === 'dir' || route.view === 'global') {
+        location.hash = '#/overview';
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [route.view]);
+
+  // ─── 本机队列数据：侧边栏与各视图共用一份（15s 轮询 + 操作后手动刷新）───
+  const refreshLocal = useCallback(async () => {
+    try {
+      const d = await api('/api/localtasks');
+      setLocalData(d);
+      setLocalErr('');
+    } catch (e) {
+      setLocalErr(String(e.message || e));
+    }
+  }, []);
+  useEffect(() => {
+    refreshLocal();
+    const t = setInterval(refreshLocal, 15_000);
+    return () => clearInterval(t);
+  }, [refreshLocal]);
+
+  // ─── 等待回填提醒（沿用 v1：presence 轮询，用户停在任意页都要知道）───
   useEffect(() => {
     let stopped = false;
     const check = async () => {
@@ -29,111 +99,114 @@ export default function App() {
         const n = Math.max(0, Number(d && d.waiting) || 0);
         if (stopped) return;
         setWaitingCount((prev) => {
-          if (prev === 0 && n > 0) toast('有 agent 正在等待回填，请查看「本地任务」');
+          if (prev === 0 && n > 0) toast('有 agent 正在等待回填，请查看对应目录');
           return n;
         });
-      } catch {
-        /* 瞬时失败：下一轮再查（15s） */
-      }
+      } catch { /* 瞬时失败：下一轮再查 */ }
     };
     check();
     const t = setInterval(check, 15_000);
-    return () => {
-      stopped = true;
-      clearInterval(t);
-    };
+    return () => { stopped = true; clearInterval(t); };
   }, [toast]);
 
-  // 初始进入：hash 优先，否则用持久化的上次视图
-  useEffect(() => {
-    const fromHash = viewFromHash();
-    if (fromHash && fromHash !== ui.view) patchUi({ view: fromHash });
-    else if (!location.hash) location.hash = '#/' + ui.view;
-    // 只在挂载时对齐一次：后续 hash 变化由下面的 hashchange 监听接管
-  }, []);
-
-  // hash 变化（浏览器前进后退）→ 同步 store
-  useEffect(() => {
-    const onHash = () => {
-      const v = viewFromHash();
-      if (v) patchUi({ view: v });
-    };
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, [patchUi]);
-
-  // 心跳：每 15s 打一次 /api/ping。
-  // 目的不是健康检查，而是给 serve --auto-exit 上报「面板还开着」。
-  // 单视图挂载（current.component）切到任意页面都算「开着」，
-  // 不用 SSE 数连接来判——切页会断 SSE，但页面明明还开着。
+  // ─── 心跳：给 serve --auto-exit 上报「面板还开着」───
   useEffect(() => {
     let stopped = false;
-    const beat = () => {
-      if (stopped) return;
-      api('/api/ping').catch(() => {});
-    };
+    const beat = () => { if (!stopped) api('/api/ping').catch(() => {}); };
     beat();
     const t = setInterval(beat, 15_000);
-    return () => {
-      stopped = true;
-      clearInterval(t);
-    };
+    return () => { stopped = true; clearInterval(t); };
   }, []);
 
-  const current = VIEWS.find((v) => v.id === ui.view) || VIEWS[0];
+  const rows = useMemo(() => localData?.topics || [], [localData]);
 
-  const switchTo = (id) => {
-    patchUi({ view: id });
-    location.hash = '#/' + id;
-  };
+  // 视图懒加载：路由 → 注册表条目
+  const entry = VIEWS.find((v) => v.id === (route.view === 'global' ? 'global' : route.view));
+  const ViewComponent = entry?.component;
 
   return (
-    <>
-      <header>
-        <div className="brand">
-          <img src="/logo-rounded.png" alt="nx-kv" />
-          nx-kv
-          {/* 原来这里又写死了一个 "nx-kv"，顶栏永远显示「nx-kv nx-kv」——
-              纯重复。改成版本号：它本来就是 app 版本，现在放在了该在的位置。 */}
-          <span className="sub">v{boot?.version || ''}</span>
-        </div>
-        <nav>
-          {VIEWS.map((v) => (
-            <button
-              key={v.id}
-              className={'tab' + (v.id === current.id ? ' active' : '')}
-              onClick={() => switchTo(v.id)}
-            >
-              {v.title}
-              {v.id === 'localtask' && waitingCount > 0 && (
-                <span className="nav-badge" title={`${waitingCount} 个主题等待回填`}>
-                  {waitingCount}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-        {/* 之前这里读的是 boot.storePath —— 但 bootstrap 响应里**根本没有这个字段**
-            （只有 configPath），所以这一格永远是空的。换成真正存在的 configPath：
-            用户能看到「我现在连的是哪个本地配置」。 */}
-        <div className="meta" title={boot?.configPath || ''}>
-          {boot?.configPath ? '本地配置 ' + boot.configPath : ''}
-        </div>
-      </header>
+    <div id="app-shell" data-route={route.view}>
+      {prefs.folded ? (
+        <Rail
+          route={route} onNavigate={onNavigate} prefs={prefs} patchPrefs={patchPrefs}
+          rows={rows} waitingCount={waitingCount} boot={boot}
+        />
+      ) : (
+        <Sidebar
+          topics={rows} route={route} onNavigate={onNavigate}
+          boot={boot} waitingCount={waitingCount}
+          prefs={prefs} patchPrefs={patchPrefs} refreshLocal={refreshLocal}
+        />
+      )}
 
-      <main>
-        {/* 边界放在 Suspense 外层：懒加载 chunk 拉取失败也由它接管，
-            否则一个视图崩掉就是整页白屏 */}
-        <ErrorBoundary key={current.id}>
+      <main id="main">
+        {localErr && !localData && (
+          <div className="pane-error" style={{ height: '60%' }}>
+            <span className="big"><Icon name="warn" size={28} /></span>
+            <div className="tx">本机队列读取失败：{localErr}</div>
+            <button className="btn ghost" onClick={refreshLocal}>重试</button>
+          </div>
+        )}
+        <ErrorBoundary key={route.view + (route.key || '')}>
           <Suspense fallback={<div className="muted" style={{ padding: 24 }}>加载中…</div>}>
-            <section className="panel active"><current.component /></section>
+            {ViewComponent && route.view !== 'global' && (
+              <ViewComponent
+                dirKey={route.key}
+                rows={rows}
+                refreshLocal={refreshLocal}
+                boot={boot}
+                onNavigate={onNavigate}
+              />
+            )}
+            {ViewComponent && route.view === 'global' && (
+              <GlobalEntry rows={rows} refreshLocal={refreshLocal} boot={boot} onNavigate={onNavigate} />
+            )}
           </Suspense>
         </ErrorBoundary>
       </main>
+    </div>
+  );
+}
 
-      <footer>
-        面板上每个按钮都有同构 CLI 命令（见各页底部提示）· <code>nx-kv help</code> · agent 可加 <code>--json</code> 获取机器可读输出
-      </footer>
-    </>
+// 全局任务池与目录详情共用 view-dir 组件（global 模式：单栏 + 投递入口）
+function GlobalEntry({ rows, refreshLocal, boot, onNavigate }) {
+  const DirDetail = VIEWS.find((v) => v.id === 'dir').component;
+  return <DirDetail dirKey="" rows={rows} refreshLocal={refreshLocal} boot={boot} onNavigate={onNavigate} />;
+}
+
+// 收起态 rail：52px 图标条，悬停气泡显示名称，徽标仍在（原型 §2/§3）
+function Rail({ route, onNavigate, patchPrefs, rows, waitingCount, boot }) {
+  const dirs = rows.filter((r) => !r.isGlobal).slice(0, 9);
+  const globalRow = rows.find((r) => r.isGlobal);
+  const btn = (active, tip, onClick, icon, badge, dot, key) => (
+    <button
+      key={key || tip}
+      className={'railbtn' + (active ? ' active' : '')}
+      data-tip={tip}
+      aria-label={tip}
+      onClick={onClick}
+    >
+      <Icon name={icon} size={16} />
+      {badge > 0 && <span className="b">{badge}</span>}
+      {dot && <span className="wdot" />}
+    </button>
+  );
+  return (
+    <nav id="rail" aria-label="侧边栏（收起态）">
+      <button className="railbtn" data-tip="展开侧边栏" aria-label="展开侧边栏" onClick={() => patchPrefs({ folded: false })}>
+        ⟩
+      </button>
+      <div className="rail-sep" />
+      {globalRow && btn(route.view === 'global', '全局任务池', () => onNavigate('#/global'), 'globe', globalRow.pending, globalRow.waiting)}
+      {dirs.map((d) =>
+        btn(route.view === 'dir' && route.key === d.key, d.name, () => onNavigate('#/dir/' + encodeURIComponent(d.key)), 'folder', d.pending, d.waiting, d.key)
+      )}
+      <div className="rail-grow" />
+      <div className="rail-sep" />
+      {btn(route.view === 'overview', '全部目录总览', () => onNavigate('#/overview'), 'overview', waitingCount)}
+      {btn(route.view === 'cloud', '云端总览', () => onNavigate('#/cloud'), 'cloud')}
+      {btn(route.view === 'repos', '仓库管理', () => onNavigate('#/repos'), 'repo')}
+      {btn(route.view === 'auth', boot?.loggedIn ? '已登录' : '未登录 · 设置', () => onNavigate('#/auth'), boot?.loggedIn ? 'check' : 'lock')}
+    </nav>
   );
 }

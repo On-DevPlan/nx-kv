@@ -37,6 +37,9 @@ const moduleDirs = readdirSync(MODULES_DIR, { withFileTypes: true })
 
 const frontendRegistrySrc = readFileSync(join(ROOT, 'src', 'web', 'frontend', 'registry.js'), 'utf8');
 const frontendViewIds = [...frontendRegistrySrc.matchAll(/\{\s*id:\s*'([^']+)'/g)].map((m) => m[1]);
+// v2 契约：每条视图声明归属模块（module: 'x'）与组件文件（lazy(() => import('path'))）
+const frontendViewModules = [...frontendRegistrySrc.matchAll(/module:\s*'([^']+)'/g)].map((m) => m[1]);
+const frontendComponentPaths = [...frontendRegistrySrc.matchAll(/import\('([^']+)'\)/g)].map((m) => m[1]);
 
 test('每个模块目录都在后端注册表登记了', () => {
   const registered = new Set(MODULES.map((m) => m.id));
@@ -91,21 +94,26 @@ test('每条 HTTP 路由都能由某条 CLI 命令触达（核心保证）', () 
   }
 });
 
-test('带 view 的模块都在前端视图注册表登记，且反向无孤儿', () => {
-  const withView = MODULES.filter((m) => m.view).map((m) => m.id).sort();
-  const registered = [...frontendViewIds].sort();
+test('带 view 的模块都被前端视图注册表引用，且反向无孤儿', () => {
+  const withView = new Set(MODULES.filter((m) => m.view).map((m) => m.id));
+  const referenced = new Set(frontendViewModules);
+  // v2：一个模块可以贡献多个视图（dir/global/overview 都归 localtask），
+  // 对齐的口径从「视图 id 一一对应」放宽为「模块集合对齐」。
   assert.deepEqual(
-    registered,
-    withView,
-    `前端视图注册表 (${registered}) 与带 view 的模块 (${withView}) 不一致`
+    [...referenced].sort(),
+    [...withView].sort(),
+    `前端视图注册表引用的模块 (${[...referenced].sort()}) 与带 view 的模块 (${[...withView].sort()}) 不一致`
   );
+  assert.equal(frontendViewModules.length, frontendViewIds.length, '每条视图都要声明 module 字段');
 });
 
 test('前端注册表里的视图文件真实存在', () => {
-  for (const id of frontendViewIds) {
-    const p = join(MODULES_DIR, id, 'view.jsx');
+  for (const rel of frontendComponentPaths) {
+    // registry 里的 import 路径相对 src/web/frontend/registry.js
+    const p = join(ROOT, 'src', 'web', 'frontend', ...rel.split('/'));
     assert.doesNotThrow(() => readFileSync(p), `视图注册表引用了不存在的文件: ${p}`);
   }
+  assert.ok(frontendComponentPaths.length > 0, '视图注册表为空');
 });
 
 // ---- 视图里调用的每个 /api 路径都必须真实存在于路由表 ----
@@ -126,22 +134,46 @@ function pathMatchesRoute(pathSegs, routeSegs) {
 
 test('视图调用的每个 /api 路径都有对应路由', () => {
   const routes = ACTIONS.filter((a) => a.http).map((a) => a.http);
+  // 平台端点：不进 action 表、由 server 直接处理（心跳 / SSE 事件流）
+  const PLATFORM = new Set(['/api/ping', '/api/localtasks/events']);
   const problems = [];
 
-  for (const id of frontendViewIds) {
-    const src = readFileSync(join(MODULES_DIR, id, 'view.jsx'), 'utf8');
+  // v2：面板代码分散在 frontend 组件与模块的 view*.jsx 里，全量扫描——
+  // 只扫 view.jsx 会漏掉 sidebar/migrate 等组件里的调用（那才是新漏网之鱼的高发地）。
+  const seen = new Set();
+  const files = [];
+  const walk = (dir, onlyViews) => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) walk(p, onlyViews);
+      else if (/\.(jsx|js)$/.test(e.name) && !seen.has(p)) {
+        // 模块目录里只扫视图文件（view*.jsx）——service/index 里的路径是**路由声明本身**，
+        // 不是调用方；扫进去只会制造误报。
+        if (onlyViews && !/^view.*\.jsx$/.test(e.name)) continue;
+        seen.add(p);
+        files.push(p);
+      }
+    }
+  };
+  walk(join(ROOT, 'src', 'web', 'frontend'), false);
+  for (const id of frontendViewModules) walk(join(MODULES_DIR, id), true);
+
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8');
     // 抓 '/api/...' 与 `/api/...` 两种字面量；模板变量 ${x} 归一为 :param
     for (const m of src.matchAll(/['"`](\/api\/[^'"`\s]*)['"`]/g)) {
       const raw = m[1];
       const clean = raw.split('?')[0].replace(/\$\{[^}]+\}/g, ':param');
-      if (!clean.startsWith('/api/')) continue;
+      if (!clean.startsWith('/api/') || PLATFORM.has(clean)) continue;
       const segs = clean.split('/').filter(Boolean);
       const hit = routes.some((r) => pathMatchesRoute(segs, routeSegments(r)));
-      if (!hit) problems.push(`${id}/view.jsx → ${raw}`);
+      if (!hit) problems.push(`${file.replace(ROOT, '')} → ${raw}`);
     }
   }
 
-  assert.deepEqual(problems, [], `这些接口调用没有对应路由:\n${problems.join('\n')}`);
+  assert.deepEqual(problems, [], `这些接口调用没有对应路由:\n${problems.join('\n')}\n（注意：模块 index.js 里声明的 http 路由本身会命中自己，误报请先核对扫描范围）`);
 });
 
 test('每条 action 的 CLI 路径都能被运行器解析回它自己', async () => {

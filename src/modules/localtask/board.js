@@ -67,9 +67,12 @@ export function withGlobalRow(rows) {
 export function splitQueueTasks(tasks = []) {
   const list = Array.isArray(tasks) ? tasks : [];
   return {
-    pending: list.filter((t) => t.status !== 'consumed' && !t.deletedAt),
+    pending: list.filter((t) => t.status !== 'consumed' && !t.deletedAt && !t.migratedTo),
     consumed: list.filter((t) => t.status === 'consumed' && !t.deletedAt).slice().reverse(),
     deleted: list.filter((t) => !!t.deletedAt).slice().reverse(),
+    // 迁出记录（tombstone）：原条目留在队列里但已不算待领取，看板渲染成
+    // 虚线灰卡「已迁移 → …」，可跳转/移除/撤销。保持队列原序（正序）。
+    migrated: list.filter((t) => !!t.migratedTo && !t.deletedAt && t.status !== 'consumed'),
   };
 }
 

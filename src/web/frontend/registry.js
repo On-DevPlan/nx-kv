@@ -1,7 +1,8 @@
 // 视图注册表：新增面板 = 在模块里写 view*.jsx + 在这里登记一行。
 // `module` 指明该视图归属的后端功能域（tests/unit/registry.test.mjs 据此断言：
 // 被引用的模块集合 == 带 view 的模块集合；引用的组件文件必须真实存在）。
-// App 的路由、懒加载由这张表驱动，改面板不用动壳。
+// 纯前端的多文件视图（不声明后端 action）放 frontend/modules/<name>/，
+// module 仍归它消费数据的功能域。App 的路由、懒加载由这张表驱动，改面板不用动壳。
 //
 // v2（原型 plan/uiux-redesign.html §7.1）：
 //   dir/global/overview 归 localtask 域；cloud 即 todo 域（云端总览）；
@@ -9,9 +10,11 @@
 import { lazy } from 'react';
 
 export const VIEWS = [
-  // 目录 / 全局池：MD 式工作台（落地 plan/agent-md-workspace.html）；经典看板仍走 #/localtask
-  { id: 'dir', module: 'md-workspace', component: lazy(() => import('../../modules/md-workspace/view.jsx')) },
-  { id: 'global', module: 'md-workspace', component: lazy(() => import('../../modules/md-workspace/view.jsx')) },
+  // 目录 / 全局池：MD 式工作台（落地 plan/agent-md-workspace.html）。
+  // 组件来自 frontend/modules/（纯前端视图模块，非后端功能域），
+  // 数据仍是 localtask 队列，故 module 归 localtask；经典看板保留 dir-board。
+  { id: 'dir', module: 'localtask', component: lazy(() => import('./modules/md-workspace/view.jsx')) },
+  { id: 'global', module: 'localtask', component: lazy(() => import('./modules/md-workspace/view.jsx')) },
   { id: 'overview', module: 'localtask', component: lazy(() => import('../../modules/localtask/view-overview.jsx')) },
   { id: 'dir-board', module: 'localtask', component: lazy(() => import('../../modules/localtask/view-dir.jsx')) },
   { id: 'cloud', module: 'todo', component: lazy(() => import('../../modules/todo/view.jsx')) },

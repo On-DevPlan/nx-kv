@@ -164,6 +164,8 @@ export default defineConfig([
         encodeURI: 'readonly', decodeURI: 'readonly',
         // 下载导出物（Blob + createObjectURL）
         Blob: 'readonly',
+        // 附件导入（文件 → dataURL）
+        FileReader: 'readonly',
       },
     },
     rules: { 'no-undef': 'error' },

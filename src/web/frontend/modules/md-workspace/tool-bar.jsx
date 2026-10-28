@@ -1,5 +1,5 @@
 // MD 工作台工具区：左模式/编辑工具，右动作按钮贴齐最右
-import { Icon } from '../../web/frontend/components/icons.jsx';
+import { Icon } from '../../components/icons.jsx';
 import { ModeSeg } from './md-panes.jsx';
 
 export default function ToolBar({

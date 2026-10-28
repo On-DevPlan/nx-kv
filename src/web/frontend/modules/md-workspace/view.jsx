@@ -1,9 +1,9 @@
 // MD 式目录工作台 —— 落地自 plan/agent-md-workspace.html
 // 点目录 = 写新 MD 草稿并提交；点任务 = 编辑/预览已有 MD；右侧并发进程。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '../../web/frontend/api/client.js';
-import { useToast } from '../../web/frontend/components/ui.jsx';
-import { GLOBAL_KEY } from '../localtask/board.js';
+import { api } from '../../api/client.js';
+import { useToast } from '../../components/ui.jsx';
+import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
 import ProgressPanel from './progress-panel.jsx';
 import AttachBar from './attach-bar.jsx';
 import ToolBar from './tool-bar.jsx';

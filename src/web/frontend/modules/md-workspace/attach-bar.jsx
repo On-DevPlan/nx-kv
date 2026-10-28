@@ -1,4 +1,4 @@
-import { Icon } from '../../web/frontend/components/icons.jsx';
+import { Icon } from '../../components/icons.jsx';
 
 /** 附件列表（添加入口在工具区，此处只展示/移除） */
 export default function AttachBar({ attachments, onRemove }) {

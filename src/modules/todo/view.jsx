@@ -7,6 +7,7 @@ import { useToast, useGuard, useDialog, Modal, Copyable } from '../../web/fronte
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 import TaskEditor from './editor.jsx';
 import GroupPopup from './group-popup.jsx';
+import RowMenu from './row-menu.jsx';
 import { AttachmentText } from './markdown.jsx';
 import { clipboardFiles, snippetsOf, uploadMany } from './upload.js';
 
@@ -30,29 +31,34 @@ function TaskRow({ bucket, task, dupCount, onAct }) {
   const dt = isDone ? task.doneAt : isFrozen ? task.frozenAt : task.createdAt;
 
   return (
-    <div className="row">
-      <span className="tid">#{task.id}</span>
-      <Copyable className="topic" text={task.topic} title="点击复制主题">{task.topic}</Copyable>
-      <span className="text" title={task.text}>
-        <AttachmentText text={task.text} compact />
-      </span>
-      {dupCount > 1 ? (
-        <span className="tag" title={`同内容有 ${dupCount} 条，操作时需要消歧`}>同内容×{dupCount}</span>
-      ) : null}
-      <span className="muted time">{shortTime(dt)}</span>
-      <span className="acts">
-        {bucket === 'open' ? (
-          <>
+    <div className="row cloud-row">
+      <div className="row-main">
+        <span className="tid">#{task.id}</span>
+        <Copyable className="topic" text={task.topic} title="点击复制主题">{task.topic}</Copyable>
+        <span className="text" title={task.text}>
+          <AttachmentText text={task.text} compact />
+        </span>
+        {dupCount > 1 ? (
+          <span className="tag" title={`同内容有 ${dupCount} 条，操作时需要消歧`}>同内容×{dupCount}</span>
+        ) : null}
+        <span className="muted time">{shortTime(dt)}</span>
+        <span className="acts">
+          {bucket === 'open' ? (
             <button className="btn small ghost" onClick={() => onAct('done', task)}>完成</button>
-            <button className="btn small ghost" onClick={() => onAct('freeze', task)}>冻结</button>
-          </>
-        ) : null}
-        {isFrozen ? (
-          <button className="btn small ghost" onClick={() => onAct('unfreeze', task)}>解冻</button>
-        ) : null}
-        <button className="btn small ghost" onClick={() => onAct('edit', task, bucket)}>编辑</button>
-        <button className="btn small ghost danger" onClick={() => onAct('remove', task, bucket)}>删除</button>
-      </span>
+          ) : null}
+          {isFrozen ? (
+            <button className="btn small ghost" onClick={() => onAct('unfreeze', task)}>解冻</button>
+          ) : null}
+          {/* 低频操作收进 ⋯ 菜单：四个钮常驻会把窄桶正文挤成一字竖条 */}
+          <RowMenu
+            items={[
+              bucket === 'open' && { label: '冻结', onPick: () => onAct('freeze', task) },
+              { label: '编辑', onPick: () => onAct('edit', task, bucket) },
+              { label: '删除', danger: true, onPick: () => onAct('remove', task, bucket) },
+            ]}
+          />
+        </span>
+      </div>
       {task.note ? <div className="note">{task.note}</div> : null}
     </div>
   );
@@ -326,13 +332,16 @@ export default function TodoView() {
 
       <div className="cols">
         {BUCKETS.map(([key, label]) => (
-          <div className="col" key={key}>
+          <div className={'col col-' + key} key={key}>
             <div className="colhead">
               <h3>{label}</h3>
-              <span className="muted">{(filtered?.[key] || []).length}</span>
+              <span className="cnt">{(filtered?.[key] || []).length}</span>
               {key === 'done' && (filtered?.done || []).length ? (
-                <button className="btn small ghost" style={{ marginLeft: 'auto' }} onClick={archive}
-                  title="把较旧的完成记录移到冷 key">归档旧记录</button>
+                <>
+                  <span className="grow"></span>
+                  <button className="btn small ghost" onClick={archive}
+                    title="把较旧的完成记录移到冷 key">归档旧记录</button>
+                </>
               ) : null}
             </div>
             <div className="card list">
@@ -341,7 +350,13 @@ export default function TodoView() {
                     <TaskRow key={taskKey(key, t)} bucket={key} task={t}
                       dupCount={dupCounts.get(t.text) || 1} onAct={onAct} />
                   ))
-                : <div className="row muted">（空）</div>}
+                : (
+                  <div className="cloud-empty">
+                    {key === 'open'
+                      ? <>还没有待办<br />在上方投递条输入，<kbd>Enter</kbd> 直达</>
+                      : key === 'done' ? '还没有完成记录' : '没有冻结的任务'}
+                  </div>
+                )}
               {(filtered?.[key] || []).length > COLLAPSE_AT ? (
                 <div className="row muted" style={{ cursor: 'pointer', justifyContent: 'center' }}
                   onClick={() => setExpanded((e) => ({ ...e, [key]: !e[key] }))}>

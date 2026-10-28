@@ -18,7 +18,9 @@
 1. 读本文件 + `git log --oneline -5` 接上轮进度
 2. 按路线图选本轮改动；实现
 3. 门槛：`pnpm test` 全绿（lint + build + smoke + unit）；视觉改动起本地 serve 截图对照
-4. 纪要落本文件；`git commit`（conventional commits，中文，本地不 push）
+4. 纪要落本文件；`git commit`（conventional commits，中文，本地不 push）。
+   **只 add 本轮明确改过的文件，禁用 `git add -A`** —— 本仓库有并行会话
+   在同一工作树干活（R2 曾卷入 md-workspace WIP，靠 soft reset 拆分补救）
 5. 修不动则 revert 本轮 commit 并记录原因，轮次照常 +1
 
 ## 硬约束
@@ -92,3 +94,19 @@
   `.cloud-page .cols/.col/.card.list` 迁入 v2
 - 截图对照：temp/shots/cloud-fixed.png（修宽后）→ cloud-r2.png（本轮后）
 - 遗留 → R3：行操作换行占两行、长文本竖条（.row 布局重构 + hover-reveal）
+
+## 第 3 轮纪要 ✅
+
+- 行结构重构：`.row` 改纵向容器，单行 `row-main`（tid/主题/正文/时间/操作）
+  + 备注独立成层 —— 操作钮不再换行把行高撑成两倍，正文不再被挤成一字竖条
+- 操作 hover 浮现（`opacity`，占位不变；`focus-within` 保键盘可达；
+  `hover: none` 触屏常显）
+- 操作收敛：主操作直出（待办=完成 / 冻结=解冻），低频操作（冻结/编辑/删除）
+  收进行尾 ⋯ 菜单（新 `todo/row-menu.jsx`，点外/Esc 关闭，danger 红字）——
+  4 钮 ~240px → 主钮+⋯ ~70px，窄桶正文恢复可读
+- 桶语义色点（待办=青绿 / 已完成=灰 / 冻结=琥珀 --wait）+ 计数徽章化（C7）
+- 空态卡片化（C4）：待办「在上方投递条输入，Enter 直达」等分桶引导
+- 归档按钮 inline style → `.colhead .grow`；窄桶（<560px，container query）先藏时间
+- 截图：temp/shots/cloud-r3b.png
+- 教训入库：**本仓库有并行会话，禁用 `git add -A`**（R2 曾卷入 md-workspace
+  WIP，已拆分修复）—— 循环协议补上这条

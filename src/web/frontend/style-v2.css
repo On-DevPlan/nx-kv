@@ -398,6 +398,62 @@
   .cloud-compose .btn { margin: 0; flex: 1 1 auto; }
 }
 
+/* 桶头：语义色点（待办=青绿 / 已完成=灰 / 冻结=琥珀）+ 计数徽章 */
+.colhead { align-items: center; }
+.colhead h3 { display: inline-flex; align-items: center; gap: 6px; }
+.colhead h3::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--soft-2); flex: none; }
+.col-open .colhead h3::before { background: #2F6F5E; }
+.col-done .colhead h3::before { background: #a8a5a0; }
+.col-freeze .colhead h3::before { background: var(--wait); }
+.cloud-page .colhead .cnt {
+  min-width: 20px; text-align: center; padding: 0 6px; border-radius: 9px;
+  background: var(--soft-2); color: var(--ink-2); font-size: 10.5px; font-weight: 600; line-height: 16px;
+}
+.colhead .grow { flex: 1; }
+
+/* 行：单行主行（tid 主题 正文 时间 操作）+ 备注独立成层。
+   操作钮常占布局位但 hover 才浮现 —— 行高不再被换行的按钮撑成两行，
+   长正文也就不会再被挤成一字竖条。窄桶（<560px）先藏时间保操作。 */
+.cloud-page .row { flex-wrap: nowrap; flex-direction: column; align-items: stretch; gap: 3px; padding: 6px 10px; }
+.cloud-page .row .row-main { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; }
+.cloud-page .row .note { flex-basis: auto; }
+.cloud-page .row .acts { display: inline-flex; gap: 4px; opacity: 0; transition: opacity 0.12s; flex: none; }
+.cloud-page .row:hover .acts, .cloud-page .row:focus-within .acts { opacity: 1; }
+@media (hover: none) { .cloud-page .row .acts { opacity: 1; } }
+.cloud-page .col { container-type: inline-size; }
+@container (max-width: 560px) {
+  .cloud-page .row .time { display: none; }
+  .cloud-page .row .note { padding-left: 0; }
+}
+
+/* 行尾 ⋯ 菜单：低频操作收纳（冻结/编辑/删除），弹层浮在行上 */
+.rowmenu { position: relative; flex: none; display: inline-flex; }
+.rowmenu-btn {
+  width: 24px; height: 22px; border-radius: 6px; border: 0; background: none;
+  color: var(--ink-2); cursor: pointer; font: inherit;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.rowmenu-btn:hover, .rowmenu-btn[aria-expanded="true"] { background: var(--soft-2); color: var(--ink); }
+.rowmenu-pop {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; min-width: 96px;
+  background: var(--paper); border: 1px solid var(--soft-2); border-radius: 8px;
+  box-shadow: 0 8px 24px -12px rgba(22, 24, 28, 0.3); padding: 4px;
+  display: flex; flex-direction: column;
+}
+.rowmenu-item {
+  border: 0; background: none; font: inherit; font-size: 12px; text-align: left;
+  padding: 6px 10px; border-radius: 6px; cursor: pointer; color: var(--ink); white-space: nowrap;
+}
+.rowmenu-item:hover { background: var(--soft); }
+.rowmenu-item.danger { color: #b3261e; }
+.rowmenu-item.danger:hover { background: rgba(179, 38, 30, 0.07); }
+
+/* 空态：一句话 + 下一步，替代「（空）」 */
+.cloud-empty { padding: 22px 12px; text-align: center; color: var(--faint); font-size: 12px; line-height: 1.8; }
+.cloud-empty kbd {
+  font: inherit; font-size: 11px; background: var(--soft); border-radius: 4px; padding: 1px 5px;
+}
+
 /* ---- 动效克制与降级（原型 §6）---- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

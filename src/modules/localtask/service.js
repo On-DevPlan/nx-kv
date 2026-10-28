@@ -28,7 +28,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1759,7 +1759,12 @@ function readAllPanels() {
 
 function writePanels(list) {
   try {
-    writeFileSync(PANEL_REGISTRY_FILE(), JSON.stringify({ panels: list }, null, 2), 'utf8');
+    const f = PANEL_REGISTRY_FILE();
+    // 目录可能还不存在（全新机器 / CI runner：第一次跑就是干净的用户目录）。
+    // 旧实现只 writeFileSync，ENOENT 被下面的 catch 静默吞掉——registerPanel
+    // 表面上成功、实际一条没落盘，queryPanelPresence 因此永远发现不了非默认端口面板。
+    mkdirSync(dirname(f), { recursive: true });
+    writeFileSync(f, JSON.stringify({ panels: list }, null, 2), 'utf8');
   } catch {
     /* 登记失败不影响面板本身 */
   }

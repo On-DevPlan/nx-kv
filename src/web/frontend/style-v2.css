@@ -204,13 +204,15 @@
   -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 18px), transparent 100%);
           mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 18px), transparent 100%);
 }
-.col {
+/* ⚠ 看板列必须带 .pane 作用域：裸 .col 会泄漏进云端清单页（todo 视图同样用
+   .col 做三个桶），后加载的 v2 把它的 flex:1 覆盖成 width:216px，三列就不占满了 */
+.pane .col {
   width: 216px; flex: none; display: flex; flex-direction: column; background: var(--canvas);
   border: 1px solid var(--soft-2); border-radius: var(--r8); min-height: 0;
 }
-.col.cloud-col { background: #f4f8fa; }
-.col.drop-ok { outline: 2px dashed var(--cloud); outline-offset: -3px; background: var(--cloud-bg); }
-.col.drop-ok.local-target { outline-color: var(--ink); background: var(--soft); }
+.pane .col.cloud-col { background: #f4f8fa; }
+.pane .col.drop-ok { outline: 2px dashed var(--cloud); outline-offset: -3px; background: var(--cloud-bg); }
+.pane .col.drop-ok.local-target { outline-color: var(--ink); background: var(--soft); }
 .col-h { flex: none; display: flex; align-items: center; gap: 6px; padding: 7px 10px; font-size: 12px; font-weight: 700; }
 .col-h .k { color: var(--faint); font-weight: 400; font-size: 11px; }
 .col-h .grow { flex: 1; }

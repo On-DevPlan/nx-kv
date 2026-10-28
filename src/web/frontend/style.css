@@ -120,6 +120,23 @@ main { padding: 18px 20px 28px; max-width: 1240px; width: 100%; margin: 0 auto; 
 .sep { width: 1px; height: 20px; background: var(--soft-2); margin: 0 4px; }
 .grow { max-width: 340px; }
 
+/* 云端总览：单根滚动容器（适配 #main > * { flex:1 }，避免 Fragment 子节点被撑乱） */
+.cloud-page {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 14px 16px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* 云端页的工具栏/投递条样式在 style-v2.css（v2 分区语言） */
+@media (max-width: 900px) {
+  .cloud-page .cols { flex-direction: column; }
+}
+
 /* ---------- 投递条：一个整体的输入组（不是三个孤零零的控件） ----------
    以前是「下拉 + 一段说明 + 输入框 + 按钮」四件套，同一句话说了三遍，
    占位符还长得像被禁用的输入框。现在合成一个指挥条：
@@ -476,19 +493,32 @@ select {
 .compose-context .repo-name { font-weight: 700; color: var(--ink); }
 .compose-context .repo-desc { color: var(--ink-2); }
 
-/* 仓库页的页头与表单（类名沿用 nx-rh，样式按 nx-kv 的变量重写）——
-   迁移时漏了这几行，仓库页在 nx-kv 里是"裸"的：标题、说明与按钮各占一行。 */
+/* 仓库页：单根滚动容器（适配 #main > * { flex:1 } 壳层，避免 Fragment 子节点被撑乱） */
+.rp-page {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 14px 16px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 仓库页的页头与表单（类名沿用 nx-rh，样式按 nx-kv 的变量重写） */
 .page-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
-  margin: 4px 0 14px;
+  flex: none;
+  margin: 0;
 }
-.page-head .title-block { min-width: 0; }
+.page-head .title-block { min-width: 0; flex: 1 1 280px; }
 .page-head h2 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: 0.2px; }
-.page-head .page-desc { color: var(--mid); font-size: 12px; margin-top: 3px; max-width: 760px; }
+.page-head .page-desc { color: var(--mid); font-size: 12px; margin-top: 3px; max-width: 760px; line-height: 1.55; }
 .page-head .page-desc strong { color: var(--ink-2); }
 .page-head .acts { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
 
@@ -519,15 +549,25 @@ select {
 .rp-filters {
   display: flex;
   align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: none;
+  margin: 0;
+}
+.rp-filters-main,
+.rp-filters-side {
+  display: flex;
+  align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  margin: 0 0 10px;
 }
+.rp-filters-main { flex: 1 1 auto; min-width: 0; }
+.rp-filters-side { flex: 0 0 auto; margin-left: auto; }
 .rp-chip {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
-  padding: 3px 10px;
+  padding: 4px 11px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--paper);
@@ -537,17 +577,27 @@ select {
   gap: 5px;
 }
 .rp-chip b { font-family: var(--mono); font-weight: 650; color: var(--ink); }
-.rp-chip:hover { border-color: var(--mid); }
-.rp-chip.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
-.rp-chip.on b { color: var(--paper); }
-.rp-chip-manage { margin-left: auto; color: var(--mid); }
+.rp-chip:hover { border-color: #2F6F5E; color: #2F6F5E; }
+.rp-chip.on {
+  background: color-mix(in srgb, #2F6F5E 12%, var(--paper));
+  border-color: #B7D4C8;
+  color: #2F6F5E;
+}
+.rp-chip.on b { color: #2F6F5E; }
 
 .rp-table-wrap {
+  flex: none;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   overflow-x: auto;
+  max-width: 100%;
+}
+.rp-page > .card,
+.rp-page > .rp-context,
+.rp-page > .rp-ref-mounted {
+  flex: none;
 }
 /* 固定列宽：内容不再抢地盘。窄屏放不下时横向滚动，不压扁列。 */
 .rp-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 780px; }

@@ -43,12 +43,12 @@ function TaskRow({ bucket, task, dupCount, onAct }) {
       <span className="acts">
         {bucket === 'open' ? (
           <>
-            <button className="btn small" onClick={() => onAct('done', task)}>完成</button>
+            <button className="btn small ghost" onClick={() => onAct('done', task)}>完成</button>
             <button className="btn small ghost" onClick={() => onAct('freeze', task)}>冻结</button>
           </>
         ) : null}
         {isFrozen ? (
-          <button className="btn small" onClick={() => onAct('unfreeze', task)}>解冻</button>
+          <button className="btn small ghost" onClick={() => onAct('unfreeze', task)}>解冻</button>
         ) : null}
         <button className="btn small ghost" onClick={() => onAct('edit', task, bucket)}>编辑</button>
         <button className="btn small ghost danger" onClick={() => onAct('remove', task, bucket)}>删除</button>
@@ -141,9 +141,11 @@ export default function TodoView() {
 
   if (!boot?.loggedIn) {
     return (
-      <div className="card" style={{ padding: 16 }}>
-        <div className="colhead"><h3>请先登录</h3></div>
-        <div className="muted">在「登录」页填写邮箱与密码，或执行 <code>nx-kv auth login &lt;email&gt;</code>。</div>
+      <div className="cloud-page">
+        <div className="card" style={{ padding: 16 }}>
+          <div className="colhead"><h3>请先登录</h3></div>
+          <div className="muted">在「登录」页填写邮箱与密码，或执行 <code>nx-kv auth login &lt;email&gt;</code>。</div>
+        </div>
       </div>
     );
   }
@@ -262,14 +264,11 @@ export default function TodoView() {
   const visible = (key, items) => (expanded[key] ? items : items.slice(0, COLLAPSE_AT));
 
   const topics = data?.topics || [];
-  const counts = filtered
-    ? BUCKETS.map(([k, label]) => `${label} ${(filtered[k] || []).length}`).join(' · ')
-    : '';
 
   return (
-    <>
-      <div className="toolbar">
-        <label>工作空间</label>
+    <div className="cloud-page">
+      {/* 筛选行：工作空间 / 主题在左，本机设置与刷新在右 —— 不与投递混排 */}
+      <div className="cloud-toolbar">
         {/* 工作空间是**清单的设置**，不是独立功能域：点这颗药丸弹出子弹窗，
             里面切换 / 看成员 / 改名 / 解散 / 新建都在那儿。 */}
         <button
@@ -287,21 +286,7 @@ export default function TodoView() {
             <option key={t} value={t}>{t}</option>
           ))}
         </select>
-        <span className="sep"></span>
-        <input placeholder="主题" size="8" value={form.topic}
-          onChange={(e) => setForm({ ...form, topic: e.target.value })} />
-        <input
-          placeholder="要做什么…（可 Ctrl+V 粘贴图片）"
-          size="30"
-          value={form.text}
-          title="可以直接 Ctrl+V 粘贴截图：会自动上传为附件并附在内容里"
-          onChange={(e) => setForm({ ...form, text: e.target.value })}
-          onPaste={pasteIntoQuickAdd}
-          onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
-        />
-        <button className="btn" onClick={add}>加入待办</button>
-        <button className="btn ghost" onClick={reload} disabled={busy}>{busy ? '刷新中…' : '刷新'}</button>
-        <span className="sep"></span>
+        <span className="grow"></span>
         <label
           className={'toggle' + (autoSync ? ' on' : '')}
           title={
@@ -313,9 +298,31 @@ export default function TodoView() {
           <span className="dot" />
           附件自动下载
         </label>
+        <button className="btn small ghost" onClick={reload} disabled={busy}>{busy ? '刷新中…' : '刷新'}</button>
       </div>
 
-      <div className="muted" style={{ margin: '0 0 8px 2px', fontSize: 12 }}>{counts}</div>
+      {/* 投递条：一个整体的输入组（主题 | 内容 | 提交），两侧 Enter 都能提交 */}
+      <div className="cloud-compose">
+        <input
+          className="cloud-compose-topic"
+          placeholder="主题"
+          aria-label="新任务主题"
+          value={form.topic}
+          onChange={(e) => setForm({ ...form, topic: e.target.value })}
+          onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+        />
+        <input
+          className="cloud-compose-text"
+          placeholder="要做什么…（可 Ctrl+V 粘贴图片）"
+          aria-label="新任务内容"
+          value={form.text}
+          title="可以直接 Ctrl+V 粘贴截图：会自动上传为附件并附在内容里"
+          onChange={(e) => setForm({ ...form, text: e.target.value })}
+          onPaste={pasteIntoQuickAdd}
+          onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+        />
+        <button className="btn" onClick={add}>加入待办</button>
+      </div>
 
       <div className="cols">
         {BUCKETS.map(([key, label]) => (
@@ -366,6 +373,6 @@ export default function TodoView() {
       ) : null}
       {modal ? <Modal title={modal.title} onClose={() => setModal(null)}>{modal.node}</Modal> : null}
       {dialogNode}
-    </>
+    </div>
   );
 }

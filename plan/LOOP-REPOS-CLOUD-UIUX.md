@@ -76,3 +76,19 @@
 ---
 
 ## 纪要
+
+## 第 2 轮纪要 ✅（含轮次外插队：用户实测反馈的 .col 泄漏修复）
+
+- **fix(9b6be6e)**：style-v2.css 看板 `.col { width:216px; flex:none }` 泄漏进云端页
+  （todo 同名类被覆盖），三列被钉死 216px、主区右侧空一块 —— 收进 `.pane .col` 作用域。
+  用户报「宽度没有占满」，截图实证后修复。
+- 按钮语言 v2（锚点 G1）：`.btn` 主按钮墨黑 → 青绿 #2F6F5E，ghost hover 青绿
+  （`:not(.danger)` 收窄防染红）；行内 完成/解冻 转 ghost，黑块清零
+- cloud 工具栏分区（C1 C2）：筛选行（工作空间药丸 + 主题 select 左 / 附件自动下载 +
+  刷新右）与投递条分离；投递条合成一个输入组 [主题 | 内容 | 加入待办]，
+  焦点环做在容器上（借 v1 `.compose-bar` 先例）
+- 删除重复计数行 cloud-counts（C5）：信息在三个 colhead 里都有
+- 死规则清理：`.cloud-page .toolbar/.cloud-counts/.cloud-quick-text`（v1）；
+  `.cloud-page .cols/.col/.card.list` 迁入 v2
+- 截图对照：temp/shots/cloud-fixed.png（修宽后）→ cloud-r2.png（本轮后）
+- 遗留 → R3：行操作换行占两行、长文本竖条（.row 布局重构 + hover-reveal）

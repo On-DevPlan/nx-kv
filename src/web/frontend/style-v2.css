@@ -353,6 +353,51 @@
 .ov-task .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ov-task .m { flex: none; font-size: 10.5px; color: var(--faint); }
 
+/* ---- 按钮语言 v2：主按钮青绿（消灭墨黑块），ghost hover 青绿描边 ----
+   与侧栏/工作台同一强调色（#2F6F5E）。写在 v1 .btn 之后靠层叠取胜；
+   danger 用 :not(.danger) 收窄，避免把红色危险态的 hover 染绿。 */
+.btn { background: #2F6F5E; color: #fff; }
+.btn:hover { opacity: 0.92; }
+.btn.ghost { color: var(--ink); }
+.btn.ghost:hover:not(.danger) {
+  background: color-mix(in srgb, #2F6F5E 8%, var(--paper));
+  color: #2F6F5E;
+}
+
+/* ---- 云端清单（todo 视图）---- */
+.cloud-page .cols { flex: none; align-items: stretch; min-width: 0; }
+.cloud-page .col { display: flex; flex-direction: column; min-width: 0; }
+.cloud-page .card.list { flex: 1; min-height: 0; }
+
+/* 筛选行：工作空间 / 主题在左，设置与刷新在右 */
+.cloud-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: none; }
+.cloud-toolbar .grow { flex: 1; }
+
+/* 投递条：一个整体的输入组（主题 | 内容 | 提交），不是三个孤零零的控件。
+   焦点环做在容器上，内部输入框不再各自发光。 */
+.cloud-compose {
+  display: flex; align-items: stretch; flex: none; min-width: 0;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r8);
+  overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cloud-compose:focus-within {
+  border-color: #2F6F5E;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #2F6F5E 10%, transparent);
+}
+.cloud-compose input {
+  border: 0; border-radius: 0; box-shadow: none; background: transparent;
+  padding: 8px 10px; font-size: 12.5px; min-height: 0;
+}
+.cloud-compose input:focus { box-shadow: none; }
+.cloud-compose-topic { flex: 0 0 150px; border-right: 1px solid var(--line); }
+.cloud-compose-text { flex: 1 1 auto; min-width: 120px; }
+.cloud-compose .btn { flex: none; align-self: center; margin: 4px; border-radius: var(--r5); }
+@media (max-width: 680px) {
+  .cloud-compose { flex-wrap: wrap; padding: 6px; gap: 6px; }
+  .cloud-compose-topic { flex: 1 1 100%; border-right: 0; border-bottom: 1px solid var(--line); }
+  .cloud-compose .btn { margin: 0; flex: 1 1 auto; }
+}
+
 /* ---- 动效克制与降级（原型 §6）---- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

@@ -165,3 +165,15 @@
 - 并行会话仍在途（repos/view.jsx / md-workspace/*未落地），repos 的错误态
   改造继续让路，留 R10 评估
 - App.jsx 被并行会话追加了 Esc 返回总览（本轮 scrim 无冲突，共存 ✅）
+
+## 第 9 轮纪要 ✅
+
+- **修复自己 R3 的泄漏**：`.cloud-page .row` 匹配了从 cloud 页打开的所有弹窗里的行
+  （Modal 不是 portal，DOM 在页面树内）—— 工作空间弹窗行被改成列向堆叠、
+  操作钮被 hover-reveal 藏掉。正参收口为 `.cloud-page .cols .row`（8 处 +
+  1 处 sed 漏网的 :focus-within 变体手工补）
+- 修复后工作空间弹窗恢复单行（名称+徽章+描述 | id 人数 | 切到这里/成员/改名/解散），
+  cloud 桶行交互不变；Playwright 巡检对照 ✅
+- 教训：**给页面级选择器加行为时，先确认该页是否承载弹窗 DOM**（本项目 Modal
+  无 portal，类名作用域必须按容器正参，不能用「页面内所有 .row」这种宽匹配）
+- 截图：temp/shots/modal-group-popup.png（修复后）、cloud-r9.png（回归）

@@ -460,6 +460,21 @@
 .rp-page tr:hover .rp-acts, .rp-page tr:focus-within .rp-acts { opacity: 1; }
 @media (hover: none) { .rp-page .rp-acts { opacity: 1; } }
 
+/* 面板 colhead 的长说明单行截断（全文语义让位版面）：说明段曾把 h3 挤到折行、
+   把右侧按钮组顶成两行。CSS 单边收口，不动 JSX（该文件有并行会话在改）。 */
+.rp-page .colhead > h3 { white-space: nowrap; }
+.rp-page .colhead > .muted {
+  flex: 0 1 auto; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.rp-page .colhead > .acts { flex: none; }
+/* 存储根未设置是「待配置」不是「出错」：红 → 琥珀（--wait 语义） */
+.rp-page .rp-ref-warn {
+  border-color: var(--wait-line);
+  background: var(--wait-bg);
+  color: var(--wait);
+}
+
 /* ---- 动效克制与降级（原型 §6）---- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

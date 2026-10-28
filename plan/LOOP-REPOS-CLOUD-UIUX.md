@@ -129,3 +129,13 @@
 - **Playwright hover 实测**（系统 Chrome channel）：cloud/repos 行操作
   悬停 opacity=1 ✅（temp/verify-hover.py，可复跑）
 - 截图：temp/shots/repos-r5.png、verify-cloud-hover.png、verify-repos-hover.png
+
+## 第 6 轮纪要 ✅
+
+- 参考仓库/看板管理面板的 colhead 长说明单行截断（CSS-only：ellipsis + nowrap）——
+  说明段曾把 h3 挤折行、把右侧 5 按钮组顶成两行；现在 h3 不折行、按钮一行排开
+- 存储根未设置警告红 → 琥珀（--wait 语义：待配置 ≠ 出错）
+- **并行会话协调**：repos/view.jsx 上有另一会话的在途改动（wrapper/filters 分组，
+  +56 行），本轮放弃 JSX 编辑、全部用 CSS 达成，并手工还原了已做的 hint 编辑
+  （git diff --stat 核对 56 行复原）。JSX 级 hint-tooltip 留待对方落地后再做
+- 截图：temp/shots/repos-r6-ref.png、repos-r6-boards.png

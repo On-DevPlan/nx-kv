@@ -1,17 +1,27 @@
-// 当前目录下展开的 MD 页面子行（对齐原型：目录挂 md）。
-// 目录点击 = 展开/收起这组子行；点具体子行才进工作台全屏编辑。
-// 末尾恒置「＋ 新建页」：空目录展开也有落点，新页以新页签打开。
+// 当前仓库下展开的 MD 页面子行（对齐原型：仓库挂 md）。
+// 仓库点击 = 展开/收起这组子行；点具体子行才进工作台全屏编辑。
+// 末尾恒置「＋ 新建页」：空仓库展开也有落点，新页以新页签打开。
+//
+// 任务来自**任务队列**（topic）：一个仓库路径下可能有多个队列主题，
+// 它们的未删除任务汇总成一组子行。
 import { Icon } from '../icons.jsx';
 import { taskLabel } from './model.js';
 
 export default function TaskChildren({ row, onNavigate, limit = 12 }) {
-  const tasks = (row.tasks || []).slice(0, limit);
-  const base = row.type === 'global' ? '#/global' : `#/dir/${encodeURIComponent(row.key)}`;
+  // 全局池：topic 直接带 tasks；仓库行：多个 topic 的 tasks 汇总
+  const tasks = row.type === 'global'
+    ? (row.tasks || [])
+    : (row.topics || []).flatMap((t) => (t.tasks || []).filter((x) => !x.deletedAt));
+  const shown = tasks.slice(0, limit);
+  // 导航基址用 **topicKey**（工作台按它找队列），不是仓库 key
+  const base = row.type === 'global'
+    ? '#/global'
+    : `#/dir/${encodeURIComponent(row.topicKey || row.key)}`;
   return (
     <>
-      {tasks.map((t) => (
+      {shown.map((t) => (
         <button
-          key={`${row.key}:t:${t.id}`}
+          key={`${row.topicKey || row.key}:t:${t.id}`}
           type="button"
           className="trow child task-child"
           title={String(t.text || '').slice(0, 200)}

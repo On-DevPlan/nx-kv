@@ -170,6 +170,23 @@ export default function TransferPanel({ onClose, onChanged, repos, boards }) {
     return diff.repos.filter((r) => r.status === filter);
   }, [diff, filter]);
 
+  // 克隆补齐：按 remote 克隆并用**占位的 key** 登记 → 组里的位置自动转正
+  const cloneNow = (key, remote) => guard(async () => {
+    if (!remote) return;
+    setBusy(true);
+    try {
+      await api('/api/repos/clone', {
+        method: 'POST',
+        body: { remote, key, type: 'ref', depth: 1 },
+      });
+      toast(`已克隆: ${key}`);
+      await doDiffQuiet();
+      if (onChanged) await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  });
+
   const toggleAllDiff = (on) => {
     const next = { ...sel };
     for (const r of visibleRepos) next[r.key] = on;
@@ -349,6 +366,13 @@ export default function TransferPanel({ onClose, onChanged, repos, boards }) {
                             <td className="mono rp-diff-key">
                               {r.key}
                               {r.status === 'new' && r.canClone ? <span className="rp-can-clone" title="导入时可克隆">可克隆</span> : null}
+                              {r.status === 'new' && r.canClone ? (
+                                <button className="btn small ghost rp-clone-btn" title="现在就克隆到本地（用这个 key 登记 → 组里的占位自动补齐）"
+                                  disabled={busy}
+                                  onClick={() => cloneNow(r.key, r.incoming?.remote || '')}>
+                                  克隆到本地
+                                </button>
+                              ) : null}
                             </td>
                             <td className="rp-diff-fields">
                               {r.fields.length ? r.fields.map((f) => (
@@ -384,6 +408,21 @@ export default function TransferPanel({ onClose, onChanged, repos, boards }) {
                           <span className="muted">（{b.incoming.repos.length} 个成员
                             {b.missingMembers.length ? `，本地未拥有 ${b.missingMembers.length}` : ''}）</span>
                         </label>
+                      ))}
+                      {/* 本地未拥有的成员逐个列出：组布局已照抄，缺的位置留着，可一键 clone 补齐 */}
+                      {diff.boards.flatMap((b) => b.missingMembers || []).map((m) => (
+                        <div className="rp-missing-item" key={m.key}>
+                          <span className="rp-status missing">本地未拥有</span>
+                          <span className="mono rp-missing-key">{m.key}</span>
+                          {m.remote ? <span className="muted rp-missing-remote" title={m.remote}>{m.remote}</span> : null}
+                          {m.clonable ? (
+                            <button className="btn small" disabled={busy} onClick={() => cloneNow(m.key, m.remote)}>
+                              克隆到本地
+                            </button>
+                          ) : (
+                            <span className="muted" title="没有远程地址 —— 自行创建后用 repo key set 指定同一个 key">需手工创建</span>
+                          )}
+                        </div>
                       ))}
                     </div>
                   ) : null}

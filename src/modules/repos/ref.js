@@ -53,12 +53,16 @@ async function exists(p) {
   }
 }
 
-// 定位 ref：id / 名称 / remoteKey 都能认（agent 场景常直接给 URL 或名字）。
+// 定位 ref：id / key / 名称 / remoteKey 都能认（agent 场景常直接给 URL 或名字）。
 async function findRef(idOrNameOrUrl) {
   const raw = String(idOrNameOrUrl || '').trim();
-  if (!raw) throw badInput('缺少参考仓库标识（id / 名称 / 远程地址）');
+  if (!raw) throw badInput('缺少参考仓库标识（id / key / 名称 / 远程地址）');
   const s = await service.loadStore();
   let r = s.repos.find((x) => x.id === raw);
+  if (!r) {
+    const k = service.normalizeKey(raw);
+    if (k) r = s.repos.find((x) => service.deriveKey(x) === k);
+  }
   if (!r) r = s.repos.find((x) => (x.remote && service.normalizeRemoteKey(x.remote)) === service.normalizeRemoteKey(raw));
   if (!r) r = await service.findRepoByName(raw);
   if (!r) throw notFound('参考仓库不存在: ' + raw);
@@ -106,6 +110,7 @@ export async function cloneRef({ url, name, desc, notes, board, bind, depth = 1,
   });
 
   // 绑定：显式 --board / --bind，加上 autoBind（当前目录命中的开发仓库）
+  // 目标一律按 **key** 传给 bindTarget（它内部会再解析一次，id/路径/名称都认）
   const targets = [];
   const boardIds = Array.isArray(board) ? board : board ? [board] : [];
   for (const b of boardIds) targets.push({ kind: 'board', id: String(b).trim() });
@@ -113,7 +118,7 @@ export async function cloneRef({ url, name, desc, notes, board, bind, depth = 1,
   for (const b of bindIds) targets.push({ kind: 'repo', id: String(b).trim() });
   if (!noBind) {
     const ctx = await service.contextForPath(process.cwd());
-    if (ctx && ctx.id !== repo.id) targets.push({ kind: 'repo', id: ctx.id });
+    if (ctx && ctx.key !== service.deriveKey(repo)) targets.push({ kind: 'repo', id: ctx.key });
   }
   const linked = [];
   for (const t of targets) {
@@ -133,17 +138,34 @@ export async function registerRef({ path, remote, name, desc, notes } = {}) {
   return service.addRepo({ path: abs, name, desc, notes, type: 'ref', remote: url });
 }
 
-// mutateStore 的 fn 是同步的——所以绑定里的目标解析用同步变体（store 已在手）
-function repoIdInside(s, idOrPathOrName) {
-  const raw = String(idOrPathOrName || '').trim();
+// mutateStore 的 fn 是同步的——所以绑定里的目标解析用同步变体（store 已在手）。
+// 目标一律解析成 **key**（身份），不再用随机 id。
+function repoKeyInside(s, idOrKey) {
+  const raw = String(idOrKey || '').trim();
   if (!raw) return null;
   let r = s.repos.find((x) => x.id === raw);
+  if (!r) {
+    const k = service.normalizeKey(raw);
+    if (k) r = s.repos.find((x) => service.deriveKey(x) === k);
+  }
   if (!r) {
     const p = resolve(raw);
     r = s.repos.find((x) => x.path.toLowerCase() === p.toLowerCase());
   }
   if (!r) r = s.repos.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
-  return r ? r.id : null;
+  return r ? service.deriveKey(r) : null;
+}
+
+function boardKeyInside(s, idOrKey) {
+  const raw = String(idOrKey || '').trim();
+  if (!raw) return null;
+  let b = s.boards.find((x) => x.id === raw);
+  if (!b) {
+    const k = service.normalizeKey(raw);
+    if (k) b = s.boards.find((x) => service.boardKeyOf(x.name) === k);
+  }
+  if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
+  return b ? service.boardKeyOf(b.name) : null;
 }
 
 /**
@@ -153,8 +175,8 @@ function repoIdInside(s, idOrPathOrName) {
  * note（绑定描述）跟某一条绑定走：repo/board 传对象 {id, note} 可在绑定时一并写描述。
  * 摘除用 remove + 想摘的维度（--remove --repo x 只摘 x；都不带 = 清空全部绑定）。
  */
-export async function bindTarget({ id, repo, board, remove } = {}) {
-  const ref = await loadRef(id);
+export async function bindTarget({ id, key, repo, board, remove } = {}) {
+  const ref = await loadRef(id || key);
   // 归一输入：字符串数组 → [{id}]；{id, note} 对象数组原样收
   const normTargets = (v) =>
     (Array.isArray(v) ? v : v ? [v] : [])
@@ -165,115 +187,116 @@ export async function bindTarget({ id, repo, board, remove } = {}) {
     if (!Array.isArray(r.linked)) r.linked = [];
     const repos = normTargets(repo);
     const boards = normTargets(board);
+    const refKey = service.deriveKey(r);
 
-    // 反向引用维护：dev 侧 {kind:'ref', id:refId, note}
-    const mirror = (devId, note, on) => {
-      const d = s.repos.find((x) => x.id === devId);
+    // 反向引用维护：dev 侧 {kind:'ref', id:refKey, note}
+    const mirror = (devKey, note, on) => {
+      const d = s.repos.find((x) => service.deriveKey(x) === devKey);
       if (!d) return;
       if (!Array.isArray(d.linked)) d.linked = [];
-      const hit = d.linked.find((l) => l.kind === 'ref' && l.id === r.id);
+      const hit = d.linked.find((l) => l.kind === 'ref' && l.id === refKey);
       if (on) {
-        if (!hit) d.linked.push(note ? { kind: 'ref', id: r.id, note } : { kind: 'ref', id: r.id });
+        if (!hit) d.linked.push(note ? { kind: 'ref', id: refKey, note } : { kind: 'ref', id: refKey });
         else if (note) hit.note = note;
       } else if (hit) {
-        d.linked = d.linked.filter((l) => !(l.kind === 'ref' && l.id === r.id));
+        d.linked = d.linked.filter((l) => !(l.kind === 'ref' && l.id === refKey));
       }
     };
-    // 反查 ref 侧某条绑定对应的 dev id（摘除时要用）
-    const devIdOfLink = (l) => (l.kind === 'repo' ? l.id : null);
 
     if (remove) {
       let n = 0;
       if (repos.length) {
         for (const one of repos) {
-          const rid = repoIdInside(s, one.id);
+          const rkey = repoKeyInside(s, one.id);
           const before = r.linked.length;
-          const targets = r.linked.filter((l) => l.kind === 'repo' && (rid ? l.id === rid : true));
-          targets.forEach((l) => mirror(devIdOfLink(l), l.note, false));
-          r.linked = r.linked.filter((l) => !(l.kind === 'repo' && (rid ? l.id === rid : true)));
+          r.linked = r.linked.filter((l) => !(l.kind === 'repo' && (rkey ? l.id === rkey : true)));
+          if (rkey) mirror(rkey, '', false);
           n += before - r.linked.length;
         }
       } else if (boards.length) {
         for (const one of boards) {
+          const bkey = boardKeyInside(s, one.id);
           const before = r.linked.length;
-          r.linked = r.linked.filter((l) => !(l.kind === 'board' && l.id === one.id));
+          r.linked = r.linked.filter((l) => !(l.kind === 'board' && l.id === bkey));
           n += before - r.linked.length;
         }
       } else {
         // 清空全部：连带把 dev 侧的反向引用也摘掉
         for (const l of r.linked.slice()) {
-          if (l.kind === 'repo') mirror(devIdOfLink(l), l.note, false);
+          if (l.kind === 'repo') mirror(l.id, '', false);
         }
         n = r.linked.length;
         r.linked = [];
       }
-      return { id: r.id, name: r.name, removed: true, count: n, linked: r.linked.slice() };
+      return { key: refKey, name: r.name, removed: true, count: n, linked: r.linked.slice() };
     }
 
     const added = [];
     for (const one of repos) {
-      const rid = repoIdInside(s, one.id);
-      if (!rid) throw notFound('绑定的开发仓库不存在: ' + one.id);
-      const hit = r.linked.find((l) => l.kind === 'repo' && l.id === rid);
+      const rkey = repoKeyInside(s, one.id);
+      if (!rkey) throw notFound('绑定的开发仓库不存在: ' + one.id);
+      const hit = r.linked.find((l) => l.kind === 'repo' && l.id === rkey);
       if (!hit) {
-        r.linked.push(one.note ? { kind: 'repo', id: rid, note: one.note } : { kind: 'repo', id: rid });
-        added.push(rid);
+        r.linked.push(one.note ? { kind: 'repo', id: rkey, note: one.note } : { kind: 'repo', id: rkey });
+        added.push(rkey);
       } else if (one.note) {
         hit.note = one.note; // 已绑定：补写描述
       }
-      mirror(rid, hit ? hit.note : one.note, true);
+      mirror(rkey, hit ? hit.note : one.note, true);
     }
     for (const one of boards) {
-      if (!s.boards.some((b) => b.id === one.id)) throw notFound('看板不存在: ' + one.id);
-      const hit = r.linked.find((l) => l.kind === 'board' && l.id === one.id);
+      const bkey = boardKeyInside(s, one.id);
+      if (!bkey) throw notFound('看板不存在: ' + one.id);
+      const hit = r.linked.find((l) => l.kind === 'board' && l.id === bkey);
       if (!hit) {
-        r.linked.push(one.note ? { kind: 'board', id: one.id, note: one.note } : { kind: 'board', id: one.id });
-        added.push(one.id);
+        r.linked.push(one.note ? { kind: 'board', id: bkey, note: one.note } : { kind: 'board', id: bkey });
+        added.push(bkey);
       } else if (one.note) {
         hit.note = one.note;
       }
     }
     if (!repos.length && !boards.length) throw badInput('请给 --repo <开发仓库> 或 --board <看板id>（或 --remove 摘除）');
-    return { id: r.id, name: r.name, removed: false, added, linked: r.linked.slice() };
+    return { key: refKey, name: r.name, removed: false, added, linked: r.linked.slice() };
   });
 }
 
 /**
  * 绑定描述：单条绑定的「它在这个仓库/看板里参考什么」。
- * note 留空 = 清除。repo 用 id/路径/名称，board 用看板 id。
+ * note 留空 = 清除。repo 用 id/key/路径/名称，board 用看板 id/key/名称。
  */
-export async function setLinkNote({ id, repo, board, note } = {}) {
-  const ref = await loadRef(id);
+export async function setLinkNote({ id, key, repo, board, note } = {}) {
+  const ref = await loadRef(id || key);
   if (!repo && !board) throw badInput('请给 --repo <开发仓库> 或 --board <看板id>');
   if (repo && board) throw badInput('--repo 与 --board 只能选一个（一条绑定一条描述）');
   const text = String(note || '').trim();
   return service.mutateStore((s) => {
     const r = s.repos.find((x) => x.id === ref.id);
     if (!Array.isArray(r.linked)) r.linked = [];
+    const refKey = service.deriveKey(r);
     let link;
     if (repo) {
-      const rid = repoIdInside(s, repo);
-      if (!rid) throw notFound('绑定的开发仓库不存在: ' + repo);
-      link = r.linked.find((l) => l.kind === 'repo' && l.id === rid);
+      const rkey = repoKeyInside(s, repo);
+      if (!rkey) throw notFound('绑定的开发仓库不存在: ' + repo);
+      link = r.linked.find((l) => l.kind === 'repo' && l.id === rkey);
       if (!link) throw conflict(`「${ref.name}」未绑定到该仓库 —— 先 repo bind ${ref.id} --repo ${repo}`);
       // dev 侧的反向引用同步改（两侧各存一份同一描述）
-      const d = s.repos.find((x) => x.id === rid);
+      const d = s.repos.find((x) => service.deriveKey(x) === rkey);
       if (d && Array.isArray(d.linked)) {
-        const back = d.linked.find((l) => l.kind === 'ref' && l.id === r.id);
+        const back = d.linked.find((l) => l.kind === 'ref' && l.id === refKey);
         if (back) {
           if (text) back.note = text;
           else delete back.note;
         }
       }
     } else {
-      const bid = String(board).trim();
-      if (!s.boards.some((b) => b.id === bid)) throw notFound('看板不存在: ' + board);
-      link = r.linked.find((l) => l.kind === 'board' && l.id === bid);
-      if (!link) throw conflict(`「${ref.name}」未绑定到该看板 —— 先 repo bind ${ref.id} --board ${bid}`);
+      const bkey = boardKeyInside(s, board);
+      if (!bkey) throw notFound('看板不存在: ' + board);
+      link = r.linked.find((l) => l.kind === 'board' && l.id === bkey);
+      if (!link) throw conflict(`「${ref.name}」未绑定到该看板 —— 先 repo bind ${ref.id} --board ${bkey}`);
     }
     if (text) link.note = text;
     else delete link.note;
-    return { id: r.id, name: r.name, kind: link.kind, target: link.id, note: text };
+    return { key: refKey, name: r.name, kind: link.kind, target: link.id, note: text };
   });
 }
 
@@ -287,8 +310,12 @@ export async function setLinkNote({ id, repo, board, note } = {}) {
 export async function refsForRepo(idOrPathOrName) {
   const s = await service.loadStore();
   const raw = String(idOrPathOrName || '').trim();
-  if (!raw) throw badInput('缺少仓库标识（id / 绝对路径 / 名称）');
+  if (!raw) throw badInput('缺少仓库标识（id / key / 绝对路径 / 名称）');
   let repo = s.repos.find((x) => x.id === raw);
+  if (!repo) {
+    const k = service.normalizeKey(raw);
+    if (k) repo = s.repos.find((x) => service.deriveKey(x) === k);
+  }
   if (!repo) {
     const p = resolve(raw);
     repo = s.repos.find((x) => x.path.toLowerCase() === p.toLowerCase());
@@ -296,9 +323,13 @@ export async function refsForRepo(idOrPathOrName) {
   if (!repo) repo = s.repos.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!repo) throw notFound('repo 不存在: ' + raw);
 
-  const refById = new Map(s.repos.filter((r) => (r.type || 'dev') === 'ref').map((r) => [r.id, r]));
+  const repoKey = service.deriveKey(repo);
+  const refByKey = new Map(
+    s.repos.filter((r) => (r.type || 'dev') === 'ref').map((r) => [service.deriveKey(r), r])
+  );
   const project = (r) => ({
     id: r.id,
+    key: service.deriveKey(r),
     name: r.name,
     desc: r.desc || '',
     remote: r.remote || '',
@@ -310,33 +341,39 @@ export async function refsForRepo(idOrPathOrName) {
   // 数据面优先读 **dev 侧的反向引用**（{kind:'ref'}）——绑定是双向记录的，dev 自己
   // 就带着它的参考列表；老数据（只有 ref 侧）再回退扫一遍 ref 全表。
   const directRefs = [];
-  const seenIds = new Set();
+  const seen = new Set();
   for (const l of repo.linked || []) {
     if (l.kind !== 'ref') continue;
-    const r = refById.get(l.id);
+    const r = refByKey.get(l.id);
     if (!r) continue;
-    seenIds.add(r.id);
+    seen.add(l.id);
     directRefs.push({ ...project(r), note: l.note || '' });
   }
-  for (const r of refById.values()) {
-    if (seenIds.has(r.id)) continue;
-    const l = (r.linked || []).find((x) => x.kind === 'repo' && x.id === repo.id);
+  for (const r of refByKey.values()) {
+    const rk = service.deriveKey(r);
+    if (seen.has(rk)) continue;
+    const l = (r.linked || []).find((x) => x.kind === 'repo' && x.id === repoKey);
     if (l) directRefs.push({ ...project(r), note: l.note || '' });
   }
 
   // 第二层：按看板命名空间分组
   const boardsOut = [];
   for (const b of s.boards) {
-    if (!(b.repoIds || []).includes(repo.id)) continue;
+    if (!service.boardRepoKeys(b, s).includes(repoKey)) continue;
+    const bkey = service.boardKeyOf(b.name);
     const refs = [];
-    for (const r of refById.values()) {
-      const l = (r.linked || []).find((x) => x.kind === 'board' && x.id === b.id);
+    for (const r of refByKey.values()) {
+      const l = (r.linked || []).find((x) => x.kind === 'board' && x.id === bkey);
       if (l) refs.push({ ...project(r), note: l.note || '' });
     }
-    boardsOut.push({ id: b.id, name: b.name, desc: b.desc || '', refs });
+    boardsOut.push({ id: b.id, key: bkey, name: b.name, desc: b.desc || '', refs });
   }
 
-  return { repo: { id: repo.id, name: repo.name, path: repo.path, desc: repo.desc || '' }, direct: directRefs, boards: boardsOut };
+  return {
+    repo: { id: repo.id, key: repoKey, name: repo.name, path: repo.path, desc: repo.desc || '' },
+    direct: directRefs,
+    boards: boardsOut,
+  };
 }
 
 /** 同步单个 ref（git pull --ff-only）；不存在的目录如实报告，不静默。 */
@@ -366,8 +403,9 @@ export async function syncAllRefs() {
  */
 export async function checkRefs() {
   const s = await service.loadStore();
-  const repoById = new Map(s.repos.map((r) => [r.id, r]));
-  const boardById = new Map(s.boards.map((b) => [b.id, b]));
+  // 死链判定按 **key**（关系引用一律用 key）
+  const repoKeys = new Set(s.repos.map((r) => service.deriveKey(r)));
+  const boardKeys = new Set(s.boards.map((b) => service.boardKeyOf(b.name)));
   const refs = s.repos.filter((r) => (r.type || 'dev') === 'ref');
   const out = [];
   for (const r of refs) {
@@ -384,8 +422,9 @@ export async function checkRefs() {
     }
     // 死链：ref 侧的 {repo|board} 目标没了，或 dev 侧的 {ref} 反向引用目标没了
     const dead = (r.linked || []).filter((l) => {
-      if (l.kind === 'repo') return !repoById.has(l.id);
-      if (l.kind === 'board') return !boardById.has(l.id);
+      if (l.kind === 'repo') return !repoKeys.has(l.id);
+      if (l.kind === 'board') return !boardKeys.has(l.id);
+      if (l.kind === 'ref') return !repoKeys.has(l.id);
       return false;
     });
     if (dead.length) issues.push(`绑定目标已不存在 ×${dead.length}（摘除: repo bind ${r.id} --remove）`);
@@ -393,7 +432,7 @@ export async function checkRefs() {
   }
   // dev 侧的反向引用死链（ref 没了但 dev 还挂着它）
   for (const d of s.repos.filter((r) => (r.type || 'dev') !== 'ref')) {
-    const dead = (d.linked || []).filter((l) => l.kind === 'ref' && !repoById.has(l.id));
+    const dead = (d.linked || []).filter((l) => l.kind === 'ref' && !repoKeys.has(l.id));
     if (dead.length) {
       const hit = out.find((x) => x.id === d.id);
       if (hit) hit.issues.push(`反向引用已失效 ×${dead.length}（开发仓库侧）`);
@@ -403,29 +442,31 @@ export async function checkRefs() {
 }
 
 /** 看板 → 绑定在该看板（或其成员开发仓库）上的参考仓库清单。面板「挂载给项目组」用。 */
-export async function refsForBoard(boardId) {
+export async function refsForBoard(boardIdOrKey) {
   const s = await service.loadStore();
-  const b = s.boards.find((x) => x.id === boardId);
-  if (!b) throw notFound('看板不存在: ' + boardId);
-  const memberIds = new Set(b.repoIds || []);
-  const hit = (l) => (l.kind === 'board' && l.id === b.id) || (l.kind === 'repo' && memberIds.has(l.id));
+  const raw = String(boardIdOrKey || '').trim();
+  let b = s.boards.find((x) => x.id === raw);
+  if (!b) b = s.boards.find((x) => service.boardKeyOf(x.name) === service.normalizeKey(raw));
+  if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
+  if (!b) throw notFound('看板不存在: ' + raw);
+  const bkey = service.boardKeyOf(b.name);
+  const memberKeys = new Set(service.boardRepoKeys(b, s));
+  const hit = (l) => (l.kind === 'board' && l.id === bkey) || (l.kind === 'repo' && memberKeys.has(l.id));
   const refs = s.repos.filter((r) => (r.type || 'dev') === 'ref' && (r.linked || []).some(hit));
   const nameOf = (l) => {
-    if (l.kind === 'board') {
-      const nm = boardByIdName(s, l.id);
-      return nm ? '看板「' + nm + '」' : '';
-    }
-    const r = repoByIdName(s, l.id);
-    return r ? '仓库「' + r + '」' : '';
+    if (l.kind === 'board') return '看板「' + b.name + '」';
+    const r = s.repos.find((x) => service.deriveKey(x) === l.id);
+    return r ? '仓库「' + r.name + '」' : l.id;
   };
   return {
-    board: { id: b.id, name: b.name },
+    board: { id: b.id, key: bkey, name: b.name },
     refs: refs.map((r) => {
       const mine = (r.linked || []).filter(hit);
       // 绑定到看板本体的那条描述优先（它是命名空间索引的正文）
       const boardLink = mine.find((l) => l.kind === 'board');
       return {
         id: r.id,
+        key: service.deriveKey(r),
         name: r.name,
         desc: r.desc || '',
         remote: r.remote || '',
@@ -435,13 +476,4 @@ export async function refsForBoard(boardId) {
       };
     }),
   };
-}
-
-function boardByIdName(s, id) {
-  const b = s.boards.find((x) => x.id === id);
-  return b ? b.name : '';
-}
-function repoByIdName(s, id) {
-  const r = s.repos.find((x) => x.id === id);
-  return r ? r.name : '';
 }

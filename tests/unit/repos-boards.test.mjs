@@ -176,7 +176,7 @@ test('组内描述：挂在成员关系上，非成员报错，摘出成员时�
 
   // 仓库支持按绝对路径定位（与 repo get 同款）
   const byPath = await boards.setBoardRepoNote({ id: join(dir, 'alpha'), board: board.id, note: '按路径写入' });
-  assert.equal(byPath.id, a);
+  assert.equal(byPath.key, repos.deriveKey(await repos.getRepo(a)));
 
   // 非成员显式报错（不静默挂到没人读的地方）
   await assert.rejects(

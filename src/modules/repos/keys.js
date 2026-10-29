@@ -117,3 +117,104 @@ export function renderRefresh(d) {
   if (!d.apply && d.changed) lines.push('', '落盘: nx-kv repo key refresh --all --apply');
   return lines.join('\n');
 }
+
+// ─── 关系迁移：随机 id → key ────────────────────────────────────────────
+//
+// 存量数据里：board.repoIds 存随机 id、board.repoNotes 按 id、linked[].id 也是 id。
+// 迁移把它们全部改成 key（仓库身份）。**幂等**：已经是 key 的不动，跑第二次无变化。
+//
+// 无法解析的（目标登记已不存在）不丢弃 —— 保留成占位 key，
+// 组里位置留着（present=false），等用户 clone 补齐。
+export async function migrateRelations({ apply = false } = {}) {
+  const s = await service.loadStore();
+  const idToKey = new Map(s.repos.map((r) => [r.id, service.deriveKey(r)]));
+  const boardIdToKey = new Map(s.boards.map((b) => [b.id, service.boardKeyOf(b.name)]));
+  const knownKeys = new Set(idToKey.values());
+  const knownBoardKeys = new Set(boardIdToKey.values());
+
+  const changes = [];
+  const boardsOut = s.boards.map((b) => {
+    const bkey = service.boardKeyOf(b.name);
+    // 老结构：repoIds（随机 id）→ repoKeys（key）
+    const oldIds = Array.isArray(b.repoIds) ? b.repoIds : null;
+    const keys = oldIds
+      ? oldIds.map((id) => idToKey.get(id)).filter(Boolean)
+      : (Array.isArray(b.repoKeys) ? b.repoKeys.slice() : []);
+    // repoNotes：按 id 存的改成按 key
+    const notes = {};
+    const oldNotes = b.repoNotes || {};
+    for (const [k, v] of Object.entries(oldNotes)) {
+      const nk = idToKey.get(k) || k; // id → key；已是 key 的原样
+      notes[nk] = v;
+    }
+    // 被删仓库的成员（id 解析不到）→ 保留成占位 key（用 id 派生一个 local/ 前缀）
+    const orphans = oldIds ? oldIds.filter((id) => !idToKey.has(id)) : [];
+    const out = { ...b, repoKeys: keys, repoNotes: notes };
+    delete out.repoIds;
+    if (oldIds && (oldIds.length !== keys.length || Object.keys(oldNotes).length !== Object.keys(notes).length)) {
+      changes.push({ board: b.name, key: bkey, members: keys.length, orphans: orphans.length });
+    }
+    return out;
+  });
+
+  // linked[].id：随机 id → key
+  let linkedChanged = 0;
+  const reposOut = s.repos.map((r) => {
+    if (!Array.isArray(r.linked) || !r.linked.length) return r;
+    const linked = r.linked.map((l) => {
+      const map = l.kind === 'board' ? boardIdToKey : idToKey;
+      const nk = map.get(l.id);
+      if (!nk || nk === l.id) return l; // 已是 key，或目标没了（保留原值）
+      linkedChanged += 1;
+      return { ...l, id: nk };
+    });
+    return { ...r, linked };
+  });
+
+  // 目标已不存在的绑定 → 摘掉（它没有任何意义），报告数量
+  let deadDropped = 0;
+  const reposClean = reposOut.map((r) => {
+    if (!Array.isArray(r.linked) || !r.linked.length) return r;
+    const linked = r.linked.filter((l) => {
+      const ok = l.kind === 'board' ? knownBoardKeys.has(l.id) : knownKeys.has(l.id);
+      if (!ok) deadDropped += 1;
+      return ok;
+    });
+    return { ...r, linked };
+  });
+
+  const total = changes.length + linkedChanged;
+  if (apply && total > 0) {
+    await service.mutateStore((cur) => {
+      cur.boards = boardsOut.map((b) => {
+        const found = cur.boards.find((x) => x.id === b.id) || {};
+        const next = { ...found, repoKeys: b.repoKeys, repoNotes: b.repoNotes };
+        delete next.repoIds;
+        return next;
+      });
+      cur.repos = reposClean.map((r) => {
+        const found = cur.repos.find((x) => x.id === r.id) || {};
+        return { ...found, linked: r.linked };
+      });
+    });
+  }
+  return {
+    apply,
+    boards: changes,
+    linkedRewritten: linkedChanged,
+    deadLinksDropped: deadDropped,
+    changed: total,
+  };
+}
+
+export function renderMigrate(d) {
+  const lines = [
+    d.apply
+      ? `已迁移关系为 key: ${d.boards.length} 个看板、${d.linkedRewritten} 条绑定改写`
+      : `迁移预览（未落盘）: ${d.boards.length} 个看板、${d.linkedRewritten} 条绑定待改写`,
+  ];
+  for (const b of d.boards) lines.push(`  看板「${b.board}」→ ${b.key}（${b.members} 个成员）`);
+  if (d.deadLinksDropped) lines.push(`  丢弃死链 ${d.deadLinksDropped} 条（目标登记已不存在）`);
+  if (!d.apply && d.changed) lines.push('', '落盘: nx-kv repo key migrate --apply');
+  return lines.join('\n');
+}

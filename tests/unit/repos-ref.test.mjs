@@ -120,7 +120,8 @@ test('bind：ref 可同时绑开发仓库与看板；一个目标可被多个 re
   const got = await repos.getRepo(r1.id);
   assert.deepEqual(
     got.linked.map((l) => l.kind + ':' + l.id).sort(),
-    [`repo:${d1.id}`, `repo:${d2.id}`, `board:${b1.id}`].sort()
+    // 关系引用一律是 **key**（不是随机 id）
+    [`repo:${d1.key}`, `repo:${d2.key}`, 'board:' + repos.boardKeyOf(b1.name)].sort()
   );
   const got2 = await repos.getRepo(r2.id);
   assert.equal(got2.linked.length, 1);
@@ -137,7 +138,7 @@ test('摘绑定：--remove --repo 只摘指定；都不带 = 清空；目标不�
 
   await ref.bindTarget({ id: r1.id, remove: true, repo: d1.id });
   let got = await repos.getRepo(r1.id);
-  assert.deepEqual(got.linked, [{ kind: 'repo', id: d2.id }]);
+  assert.deepEqual(got.linked, [{ kind: 'repo', id: d2.key }]);
 
   await ref.bindTarget({ id: r1.id, remove: true });
   got = await repos.getRepo(r1.id);
@@ -154,7 +155,7 @@ test('联动清理：删开发仓库 / 删看板 → ref 的 linked 同步摘除
 
   await boards.removeBoard(b1.id);
   let got = await repos.getRepo(r1.id);
-  assert.deepEqual(got.linked, [{ kind: 'repo', id: d1.id }]);
+  assert.deepEqual(got.linked, [{ kind: 'repo', id: d1.key }]);
 
   await repos.removeRepo(d1.id);
   got = await repos.getRepo(r1.id);
@@ -179,7 +180,7 @@ test('checkRefs：目录缺失 / 绑定死链 显式报 issue；正常 ref 全 o
   // 绑定死链：正常的删除路径有联动清理（另有测试），这里直接把目标从登记里改 id 制造死链
   await repos.mutateStore((s) => {
     const g = s.repos.find((x) => x.id === gone.id);
-    g.linked = [{ kind: 'repo', id: 'r_dead_target' }];
+    g.linked = [{ kind: 'repo', id: 'github.com/dead/target' }];
   });
   c = await ref.checkRefs();
   const goneRef = c.refs.find((x) => x.name === 'ref-gone');
@@ -221,7 +222,7 @@ if (hasGit) {
     // 登记在册 + 绑定到 dev-host
     const got = await repos.getRepo(r.id);
     assert.equal(got.type, 'ref');
-    assert.deepEqual(got.linked, [{ kind: 'repo', id: dev.id }]);
+    assert.deepEqual(got.linked, [{ kind: 'repo', id: dev.key }]);
 
     // 同源重复 clone → conflict 提示已登记
     await assert.rejects(
@@ -370,7 +371,7 @@ test('repoImport：diff 零副作用；执行后登记/克隆/看板/关系按 k
   assert.ok(existsSync(join(importedRef.path, '.git')));
   assert.deepEqual(
     importedRef.linked.map((l) => l.kind + ':' + l.id).sort(),
-    [`repo:${dev.id}`, 'board:' + existingBoard.id].sort()
+    [`repo:${dev.key}`, 'board:' + repos.boardKeyOf('grp')].sort()
   );
   // 看板成员与组内描述重建
   const g = await boards.getBoard(existingBoard.id);
@@ -407,10 +408,10 @@ test('绑定是双向记录的：ref 侧写 {repo}，dev 侧写反向 {ref}；�
   await ref.bindTarget({ id: r.id, repo: [{ id: dev.name, note: '双向描述' }] });
   // ref 侧
   let refSide = await repos.getRepo(r.id);
-  assert.deepEqual(refSide.linked, [{ kind: 'repo', id: dev.id, note: '双向描述' }]);
+  assert.deepEqual(refSide.linked, [{ kind: 'repo', id: dev.key, note: '双向描述' }]);
   // dev 侧的反向引用
   let devSide = await repos.getRepo(dev.id);
-  assert.deepEqual(devSide.linked, [{ kind: 'ref', id: r.id, note: '双向描述' }]);
+  assert.deepEqual(devSide.linked, [{ kind: 'ref', id: r.key, note: '双向描述' }]);
 
   // 改描述 → 两侧同步
   await ref.setLinkNote({ id: r.id, repo: dev.id, note: '改过的描述' });

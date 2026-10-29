@@ -6,6 +6,22 @@
 
 ### Added
 
+- **内部关系全面改用 key（不再是随机 id）+ 导入分组的「本地未拥有」占位**：
+  - **关系一律用 key**：看板成员存 `repoKeys`（不是 `repoIds`）、组内描述按 key、
+    绑定关系（linked，ref 侧与 dev 侧双向记录）也按 key。`repo.id` / `board.id`
+    保留为本机行主键，但**不再参与任何关系引用**——id 换机即失效，key 才能精确映射。
+    一次性迁移：`nx-kv repo key migrate [--apply]`（幂等，死链自动清理）。
+  - **导入时保留占位**：对方分组里有、本地没有的仓库，**位置照抄进组里**
+    （组布局完整复制），组内描述按 key 一并保留；投影里 `present:false` 标出来。
+  - **clone 补齐**：`nx-kv repo clone <remote> --key <占位key>` 按 remote 克隆并用
+    **占位的 key** 登记 → 占位自动转正、位置不动。面板上「本地未拥有」的行有
+    「克隆到本地」按钮；仓库页的「成员管理」弹窗也能看到占位成员并补齐。
+  - **对齐 remote**（remote 才是协作的标准单位，key 只是本地身份）：
+    `repo remote list`（列 `git remote -v` 的全部候选、标出当前采纳的）、
+    `repo remote pick --url`（人工换一条，key 随之重算，自定义 key 不动）、
+    `repo remote check`（`git ls-remote` 检查远端是否存在，**存在 / 不存在 /
+    不可达**三种结论分清）。面板上每行有「remote」按钮，弹窗里下拉切换 + 存在性徽标。
+
 - **仓库获得全局唯一 key，导入导出改以 key 为身份（v3）+ 全屏导入导出面板**：
   - **key**：归一化远程地址派生（`git@c:o/r.git`、`https://c/o/r`、
     `ssh://git@ssh.github.com:443/o/r.git`、带端口、带 `.git` 都是同一个

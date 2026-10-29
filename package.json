@@ -17,10 +17,11 @@
     "start": "pnpm run build && node bin/cli.mjs serve",
     "link:local": "node scripts/link-local.mjs",
     "unlink:local": "node scripts/link-local.mjs --unlink",
-    "lint": "eslint . && node scripts/check-tdz.mjs src/modules/repos/view.jsx && node scripts/check-tdz.mjs src/modules/todo/view.jsx && node scripts/check-tdz.mjs src/modules/auth/view.jsx",
+    "lint": "eslint . && node scripts/check-tdz.mjs src/modules/repos/view.jsx && node scripts/check-tdz.mjs src/modules/localtask/view.jsx && node scripts/check-tdz.mjs src/modules/todo/view.jsx && node scripts/check-tdz.mjs src/modules/auth/view.jsx",
     "test": "pnpm run lint && pnpm run build && pnpm run test:smoke && pnpm run test:unit",
     "test:smoke": "node tests/smoke.mjs",
-    "test:unit": "node --test tests/unit/*.test.mjs"
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "commit:repos": "node scripts/commit-and-push.mjs"
   },
   "packageManager": "pnpm@10.33.0",
   "engines": {
@@ -39,8 +40,7 @@
     "kv",
     "todo",
     "agent-tools",
-    "skills",
-    "npx"
+    "skills"
   ],
   "repository": {
     "type": "git",

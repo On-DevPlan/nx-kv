@@ -1,12 +1,15 @@
 // MD 式目录工作台 —— 落地自 plan/agent-md-workspace.html
-// 点目录 = 写新 MD 草稿并提交；点任务 = 编辑/预览已有 MD；右侧并发进程。
+// 目录点击 = 侧栏展开子行（不进编辑）；点具体页面（任务/草稿）= 工作台全屏编辑 + 页签。
+// 未打开页面时主区是目录落地页（页面列表 + 新建页），右侧并发进程面板常驻。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/ui.jsx';
 import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
+import TabBar from '../../components/layout/tabs.jsx';
 import ProgressPanel from './progress-panel.jsx';
 import AttachBar from './attach-bar.jsx';
 import ToolBar from './tool-bar.jsx';
+import Landing from './landing.jsx';
 import { MdPanes } from './md-panes.jsx';
 import SelMenu from './sel-menu.jsx';
 import { filesToAttachments, loadAttForTask, persistAtt } from './attachments.js';
@@ -16,21 +19,32 @@ import {
   slugName,
   titleFromMd,
 } from './md-parse.js';
+import {
+  closeTab,
+  docOf,
+  isDraftTask,
+  openDraft,
+  openPage,
+  promoteDraft,
+  routeOfTab,
+  saveDoc,
+  scopeOf,
+  setActive,
+  tabById,
+  useTabs,
+} from './tabs-store.js';
 import './style.css';
 
 export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) {
   const toast = useToast();
   const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
+  const scope = scopeOf(dirKey);
   const topic = useMemo(() => {
     if (isGlobal) return rows.find((r) => r.isGlobal) || null;
     return rows.find((r) => r.key === dirKey) || null;
   }, [rows, dirKey, isGlobal]);
 
-  const [mode, setMode] = useState('split'); // 默认实时预览
-  const [focusTaskId, setFocusTaskId] = useState(null);
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState(NEW_TEMPLATE);
-  const [attachments, setAttachments] = useState([]);
+  const { tabs, activeId } = useTabs();
   const [progOpen, setProgOpen] = useState(true);
   const [selMenu, setSelMenu] = useState(null);
   const fileMdRef = useRef(null);
@@ -43,45 +57,52 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
     [topic]
   );
 
-  const loadTask = useCallback((task) => {
-    if (!task) {
-      setFocusTaskId(null);
-      setTitle('');
-      setBody(NEW_TEMPLATE);
-      setAttachments([]);
-      setMode('split');
-      return;
-    }
-    setFocusTaskId(task.id);
-    const text = task.text || '';
-    setTitle(titleFromMd(text));
-    setBody(text);
-    setAttachments(loadAttForTask(task.id));
-    // 已完成也可进实时预览再改；仅预览可手动切
-    setMode('split');
-  }, []);
+  // 激活页签（必须属于当前目录作用域；其余情况一律落目录落地页）
+  const activeTab = useMemo(
+    () => tabs.find((t) => t.id === activeId && t.scope === scope) || null,
+    [tabs, activeId, scope]
+  );
+  const doc = activeTab ? docOf(activeTab.id) : null;
 
-  useEffect(() => {
-    setFocusTaskId(null);
-    setTitle('');
-    setBody(NEW_TEMPLATE);
-    setAttachments([]);
-    setMode('split');
-    setSelMenu(null);
-  }, [dirKey]);
-
+  // ─── 路由 ?task= → 页签（唯一入口；store 有幂等护栏，轮询重放无副作用）───
   const applyTaskFromHash = useCallback(() => {
+    if (!topic) { setActive(null); return; }
     const q = new URLSearchParams((location.hash.split('?')[1] || ''));
     const tid = q.get('task');
-    if (!tid || !topic) return;
-    const t = (topic.tasks || []).find((x) => String(x.id) === String(tid) && !x.deletedAt);
-    if (t) loadTask(t);
-  }, [topic, loadTask]);
+    if (!tid) { setActive(null); return; }
+    if (tid === 'draft') {
+      // 「新建一页」瞬时标记：开新草稿页签，URL 落定成可复现的 draft-N
+      const id = openDraft({ scope, title: '', body: NEW_TEMPLATE });
+      history.replaceState(null, '', routeOfTab(tabById(id)));
+      return;
+    }
+    const t = tasks.find((x) => String(x.id) === String(tid));
+    if (t) {
+      openPage({
+        scope,
+        task: tid,
+        title: titleFromMd(t.text),
+        body: t.text,
+        attachments: loadAttForTask(t.id),
+      });
+      return;
+    }
+    if (isDraftTask(tid)) {
+      // 刷新后按 URL 复现草稿页签（内容是会话态，刷新即空稿）
+      openDraft({ scope, task: tid, title: '', body: NEW_TEMPLATE });
+      return;
+    }
+    setActive(null); // 未知 task：落目录落地页
+  }, [topic, tasks, scope]);
   useEffect(() => {
     applyTaskFromHash();
     window.addEventListener('hashchange', applyTaskFromHash);
     return () => window.removeEventListener('hashchange', applyTaskFromHash);
   }, [applyTaskFromHash]);
+
+  useEffect(() => {
+    setSelMenu(null);
+  }, [dirKey]);
 
   useEffect(() => {
     const close = () => setSelMenu(null);
@@ -90,49 +111,71 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
   }, []);
 
   const previewHtml = useMemo(
-    () => renderMarkdownHtml(body, attachments),
-    [body, attachments]
+    () => (doc ? renderMarkdownHtml(doc.body, doc.attachments) : ''),
+    [doc]
   );
 
   const missing = !topic && !isGlobal;
 
   const guard = (fn) => fn().catch((e) => toast(String(e.message || e)));
 
-  const composeBody = () => {
-    const t = title.trim() || '未命名任务';
-    let b = body;
-    if (!/^#\s+/m.test(b)) b = `# ${t}\n\n${b}`;
-    else b = b.replace(/^#\s+.+$/m, `# ${t}`);
-    return { title: t, text: b };
+  // ─── 页签操作：切换 / 关闭 / 新建（切换一律走路由，activeId 与 URL 保持同源）───
+  const gotoTab = (id) => {
+    const t = tabById(id);
+    if (!t) return;
+    const hash = routeOfTab(t);
+    if (location.hash === hash) setActive(id);
+    else location.hash = hash;
+  };
+
+  const closeTabAndNav = (id) => {
+    const next = closeTab(id);
+    if (next) gotoTab(next.id);
+    else location.hash = isGlobal ? '#/global' : `#/dir/${encodeURIComponent(dirKey)}`;
+  };
+
+  const newDraft = () => {
+    const id = openDraft({ scope, title: '', body: NEW_TEMPLATE });
+    gotoTab(id);
+  };
+
+  const openTask = (id) => {
+    const base = isGlobal ? '#/global' : `#/dir/${encodeURIComponent(dirKey)}`;
+    onNavigate(`${base}?task=${encodeURIComponent(id)}`);
   };
 
   const submit = () => guard(async () => {
-    const { title: t, text } = composeBody();
-    if (focusTaskId != null) {
+    if (!activeTab || !doc) return;
+    const t = (doc.title || '').trim() || '未命名任务';
+    let b = doc.body;
+    if (!/^#\s+/m.test(b)) b = `# ${t}\n\n${b}`;
+    else b = b.replace(/^#\s+.+$/m, `# ${t}`);
+    if (!isDraftTask(activeTab.task)) {
       await api('/api/localtasks/item', {
         method: 'PATCH',
         body: {
           cwd: isGlobal ? undefined : topic.cwd,
           key: isGlobal ? GLOBAL_KEY : undefined,
-          id: focusTaskId,
-          text,
+          id: activeTab.task,
+          text: b,
         },
       });
-      persistAtt(focusTaskId, attachments);
+      persistAtt(activeTab.task, doc.attachments);
+      saveDoc(activeTab.id, { title: t, body: b });
       toast('已同步 MD');
       refreshLocal();
       return;
     }
     const res = await api('/api/localtasks', {
       method: 'POST',
-      body: isGlobal ? { global: true, text } : { cwd: topic.cwd, text },
+      body: isGlobal ? { global: true, text: b } : { cwd: topic.cwd, text: b },
     });
     const newId = res?.task?.id ?? res?.id;
     if (newId != null) {
-      persistAtt(newId, attachments);
-      setFocusTaskId(newId);
-      setTitle(t);
-      setBody(text);
+      persistAtt(newId, doc.attachments);
+      promoteDraft(activeTab.id, { task: String(newId), title: t });
+      saveDoc(`${scope}::${newId}`, { title: t, body: b });
+      history.replaceState(null, '', routeOfTab({ scope, task: String(newId) }));
     }
     toast(`已提交：${slugName(t)}`);
     refreshLocal();
@@ -155,16 +198,14 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
   };
 
   const addFiles = async (fileList) => {
+    if (!activeTab || !doc) return;
     const { items, imageInserts } = await filesToAttachments(fileList);
-    if (imageInserts.length) setBody((b) => b + imageInserts.join(''));
-    const next = [...attachments, ...items];
-    setAttachments(next);
-    if (focusTaskId != null) persistAtt(focusTaskId, next);
-  };
-
-  const openTask = (id) => {
-    const t = tasks.find((x) => x.id === id);
-    if (t) loadTask(t);
+    const patch = {};
+    if (imageInserts.length) patch.body = (doc.body || '') + imageInserts.join('');
+    const next = [...(doc.attachments || []), ...items];
+    patch.attachments = next;
+    saveDoc(activeTab.id, patch);
+    if (!isDraftTask(activeTab.task)) persistAtt(activeTab.task, next);
   };
 
   const spawnFollow = (isIssue) => {
@@ -173,38 +214,34 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
       toast('先在预览中划选一段');
       return;
     }
-    const parent = title || topic?.name || '';
+    const parent = doc?.title || topic?.name || '';
     const t = `${isIssue ? '问题' : '追加'}：${quote.slice(0, 24)}`;
     const b = `# ${t}\n\n> 锚定自「${parent}」：\n> ${quote.replace(/\n/g, '\n> ')}\n\n## 要做什么\n- [ ] …\n\n## 验收\n- [ ] …\n`;
-    setFocusTaskId(null);
-    setTitle(t);
-    setBody(b);
-    setAttachments([]);
-    setMode('split');
+    const id = openDraft({ scope, title: t, body: b });
+    gotoTab(id);
     setSelMenu(null);
-    toast('已打开新 MD 草稿（并发追加）');
+    toast('已在新页签打开 MD 草稿（并发追加）');
   };
 
-  /** 标题与正文首行 # 双向同步 */
+  /** 标题与正文首行 # 双向同步（实时预览标题栏独立，不改正文） */
   const onTitle = (next) => {
-    setTitle(next);
-    // 源码/阅读：同步已有一级标题行；实时预览标题栏独立，不改正文
-    if (mode === 'split') return;
-    setBody((b) => {
-      if (/^# (?!#)/m.test(b)) return b.replace(/^# (?!#).+$/m, `# ${next || '未命名任务'}`);
-      return b;
-    });
+    if (!activeTab || !doc) return;
+    const patch = { title: next };
+    if (doc.mode !== 'split' && /^# (?!#)/m.test(doc.body)) {
+      patch.body = doc.body.replace(/^# (?!#).+$/m, `# ${next || '未命名任务'}`);
+    }
+    saveDoc(activeTab.id, patch);
   };
 
   const onBody = (next) => {
-    setBody(next);
-    // 实时预览：标题栏独立，改块时不要用正文抢标题
-    if (mode === 'split') return;
-    setTitle(titleFromMd(next));
+    if (!activeTab || !doc) return;
+    const patch = { body: next };
+    if (doc.mode !== 'split') patch.title = titleFromMd(next);
+    saveDoc(activeTab.id, patch);
   };
 
   const onPreviewMouseUp = (e) => {
-    if (mode === 'edit') return;
+    if (!activeTab || doc?.mode === 'edit') return;
     if (e.target.closest?.('#mdw-sel-menu')) return;
     const sel = window.getSelection();
     const text = (sel && String(sel)).trim();
@@ -239,85 +276,128 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
   if (missing) {
     return (
       <div className="mdw">
-        <div className="mdw-top">
-          <div className="mdw-head">
-            <div className="mdw-title">目录不存在</div>
-            <div className="mdw-path">—</div>
+        <div className="mdw-main">
+          <div className="mdw-top">
+            <div className="mdw-head">
+              <div className="mdw-title">目录不存在</div>
+              <div className="mdw-path">—</div>
+            </div>
           </div>
-        </div>
-        <div className="mdw-toolbar">
-          <div className="mdw-toolbar-left" />
-          <div className="mdw-actions">
-            <button type="button" className="btn ghost sm" onClick={() => onNavigate('#/overview')}>总览</button>
+          <div className="mdw-toolbar">
+            <div className="mdw-toolbar-left" />
+            <div className="mdw-actions">
+              <button type="button" className="btn ghost sm" onClick={() => onNavigate('#/overview')}>总览</button>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
+  const isDraft = activeTab ? isDraftTask(activeTab.task) : false;
+
   return (
-    <div className="mdw" data-mode={mode} onMouseUp={onPreviewMouseUp}>
+    <div className="mdw" data-mode={doc?.mode || 'split'} onMouseUp={onPreviewMouseUp}>
       <div className="mdw-main">
-        <div className="mdw-top">
-          <div className="mdw-head">
-            <div className="mdw-title">
-              {focusTaskId == null ? '新 MD 任务' : (title || '任务')}
+        {tabs.length > 0 && (
+          <TabBar
+            tabs={tabs}
+            activeId={activeTab?.id ?? null}
+            onSelect={gotoTab}
+            onClose={closeTabAndNav}
+            onNew={newDraft}
+            newLabel="新建页"
+          />
+        )}
+
+        {activeTab && doc ? (
+          <>
+            <div className="mdw-top">
+              <div className="mdw-head">
+                <div className="mdw-title">
+                  {isDraft ? (doc.title || '新 MD 任务') : (doc.title || '任务')}
+                </div>
+                <div className="mdw-path">
+                  {isGlobal ? '全局任务池' : (topic?.cwd || topic?.name || '—')}
+                  {isDraft ? ` / (${activeTab.task})` : ` / #${activeTab.task}`}
+                </div>
+              </div>
+              {status && (
+                <span className={`mdw-pill${status === 'wait' ? ' wait' : ''}`}>
+                  <span className="d" />
+                  {status === 'wait' ? '等待中' : '进行中'}
+                </span>
+              )}
             </div>
-            <div className="mdw-path">
-              {isGlobal ? '全局任务池' : (topic?.cwd || topic?.name || '—')}
-              {focusTaskId != null ? ` / #${focusTaskId}` : ' / (draft)'}
+
+            <ToolBar
+              mode={doc.mode}
+              onMode={(m) => saveDoc(activeTab.id, { mode: m })}
+              showMark={doc.mode !== 'edit'}
+              submitLabel={isDraft ? '提交为任务' : '保存并同步'}
+              onImg={() => pickAtt('image/*')}
+              onAtt={() => pickAtt('image/*,.pdf,.zip,.txt,.json,.csv')}
+              onImport={() => fileMdRef.current?.click()}
+              onNew={newDraft}
+              onMark={() => spawnFollow(true)}
+              onDraft={() => toast('草稿随页签保留（刷新后需从侧栏或页签重新打开）')}
+              onSubmit={submit}
+              onProg={() => setProgOpen((v) => !v)}
+              onOverview={() => onNavigate('#/overview')}
+            />
+
+            <MdPanes
+              ref={articleRef}
+              mode={doc.mode}
+              title={doc.title}
+              body={doc.body}
+              previewHtml={previewHtml}
+              onTitle={onTitle}
+              onBody={onBody}
+              attachments={doc.attachments}
+              docKey={activeTab.id}
+            />
+
+            <AttachBar
+              attachments={doc.attachments}
+              onRemove={(id) => {
+                const next = doc.attachments.filter((x) => x.id !== id);
+                saveDoc(activeTab.id, { attachments: next });
+                if (!isDraft) persistAtt(activeTab.task, next);
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <div className="mdw-top">
+              <div className="mdw-head">
+                <div className="mdw-title">{isGlobal ? '全局任务池' : (topic?.name || '—')}</div>
+                <div className="mdw-path">
+                  {isGlobal ? '全局任务池' : (topic?.cwd || '—')}
+                  {' / 页面列表'}
+                </div>
+              </div>
+              {status && (
+                <span className={`mdw-pill${status === 'wait' ? ' wait' : ''}`}>
+                  <span className="d" />
+                  {status === 'wait' ? '等待中' : '进行中'}
+                </span>
+              )}
             </div>
-          </div>
-          {status && (
-            <span className={`mdw-pill${status === 'wait' ? ' wait' : ''}`}>
-              <span className="d" />
-              {status === 'wait' ? '等待中' : '进行中'}
-            </span>
-          )}
-        </div>
-
-        <ToolBar
-          mode={mode}
-          onMode={setMode}
-          showMark={mode !== 'edit'}
-          submitLabel={focusTaskId == null ? '提交为任务' : '保存并同步'}
-          onImg={() => pickAtt('image/*')}
-          onAtt={() => pickAtt('image/*,.pdf,.zip,.txt,.json,.csv')}
-          onImport={() => fileMdRef.current?.click()}
-          onNew={() => loadTask(null)}
-          onMark={() => spawnFollow(true)}
-          onDraft={() => toast('草稿仅在当前编辑器（刷新前有效）')}
-          onSubmit={submit}
-          onProg={() => setProgOpen((v) => !v)}
-          onOverview={() => onNavigate('#/overview')}
-        />
-
-        <MdPanes
-          ref={articleRef}
-          mode={mode}
-          title={title}
-          body={body}
-          previewHtml={previewHtml}
-          onTitle={onTitle}
-          onBody={onBody}
-          attachments={attachments}
-          docKey={focusTaskId == null ? 'draft' : String(focusTaskId)}
-        />
-
-        <AttachBar
-          attachments={attachments}
-          onRemove={(id) => {
-            const next = attachments.filter((x) => x.id !== id);
-            setAttachments(next);
-            if (focusTaskId != null) persistAtt(focusTaskId, next);
-          }}
-        />
+            <Landing
+              isGlobal={isGlobal}
+              tasks={tasks}
+              onNew={newDraft}
+              onOpenTask={openTask}
+            />
+          </>
+        )}
       </div>
 
       <ProgressPanel
         dirName={topic?.name || (isGlobal ? '全局任务' : '')}
         tasks={tasks}
-        focusId={focusTaskId}
+        focusId={activeTab && !isDraft ? Number(activeTab.task) : null}
         open={progOpen}
         onToggle={setProgOpen}
         onOpenTask={openTask}

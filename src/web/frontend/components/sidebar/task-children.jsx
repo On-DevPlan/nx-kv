@@ -1,10 +1,12 @@
-// 当前目录下展开的 MD 任务子行（对齐原型：目录挂 md）
+// 当前目录下展开的 MD 页面子行（对齐原型：目录挂 md）。
+// 目录点击 = 展开/收起这组子行；点具体子行才进工作台全屏编辑。
+// 末尾恒置「＋ 新建页」：空目录展开也有落点，新页以新页签打开。
 import { Icon } from '../icons.jsx';
 import { taskLabel } from './model.js';
 
 export default function TaskChildren({ row, onNavigate, limit = 12 }) {
   const tasks = (row.tasks || []).slice(0, limit);
-  if (!tasks.length) return null;
+  const base = row.type === 'global' ? '#/global' : `#/dir/${encodeURIComponent(row.key)}`;
   return (
     <>
       {tasks.map((t) => (
@@ -15,7 +17,6 @@ export default function TaskChildren({ row, onNavigate, limit = 12 }) {
           title={String(t.text || '').slice(0, 200)}
           onClick={(e) => {
             e.stopPropagation();
-            const base = row.type === 'global' ? '#/global' : `#/dir/${encodeURIComponent(row.key)}`;
             onNavigate(`${base}?task=${encodeURIComponent(t.id)}`);
           }}
         >
@@ -26,6 +27,18 @@ export default function TaskChildren({ row, onNavigate, limit = 12 }) {
           </span>
         </button>
       ))}
+      <button
+        type="button"
+        className="trow child task-new"
+        title="新建一页 MD（新页签打开）"
+        onClick={(e) => {
+          e.stopPropagation();
+          onNavigate(`${base}?task=draft`);
+        }}
+      >
+        <span className="gico"><Icon name="plus" size={12} /></span>
+        <span className="nm">新建页</span>
+      </button>
     </>
   );
 }

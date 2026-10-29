@@ -1,7 +1,7 @@
 // 侧边栏（应用壳的左栏）：品牌区 + 搜索 + 树（全局池恒顶 → 分组 → 目录）+ 底部入口。
 // 收起态渲染为 52px 图标 rail（悬停气泡、徽标仍在）。
 // 拖拽编排 = 三段式落点（drag.js）；可见序 = 渲染序，键盘导航走同一份扁平序。
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../icons.jsx';
 import { PopMenu } from '../overlay.jsx';
 import { useDialog, useToast } from '../ui.jsx';
@@ -25,6 +25,7 @@ export default function Sidebar({
   const [kw, setKw] = useState('');
   const [menu, setMenu] = useState(null);      // {x,y,items}
   const [kbIndex, setKbIndex] = useState(-1);  // 键盘焦点行
+  const [expanded, setExpanded] = useState(() => new Set()); // 展开子行的目录 key
   const dragRef = useRef(null);                // {type,key|id,name}
   const [dropHint, setDropHint] = useState(null); // {key|id, zone}
   const treeRef = useRef(null);
@@ -40,6 +41,27 @@ export default function Sidebar({
     return false;
   };
 
+  // 当前路由所在目录自动展开子行（深链 / 总览跳转进来也能看到层级）
+  useEffect(() => {
+    if (route.view !== 'dir' || !route.key) return;
+    setExpanded((prev) => {
+      if (prev.has(route.key)) return prev;
+      const next = new Set(prev);
+      next.add(route.key);
+      return next;
+    });
+  }, [route.view, route.key]);
+
+  const toggleExpanded = useCallback((key) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  // 点击目录 = 展开/收起子行（不再跳工作台）；打开页面走子行，工作台全屏编辑只在具体页面上
   const openRow = useCallback(
     (row) => {
       if (row.type === 'group') {
@@ -47,10 +69,10 @@ export default function Sidebar({
       } else if (row.type === 'global') {
         onNavigate('#/global');
       } else {
-        onNavigate('#/dir/' + encodeURIComponent(row.key));
+        toggleExpanded(row.key);
       }
     },
-    [onNavigate, patchPrefs]
+    [onNavigate, patchPrefs, toggleExpanded]
   );
 
   // ─── 键盘导航：↑↓ 在可见行间移动（序 = 渲染序），Enter 打开，Esc 退出 ───
@@ -233,6 +255,7 @@ export default function Sidebar({
               <button
                 className={
                   'trow' + (row.type === 'dir' && row.groupId ? ' child' : '') +
+                  (row.type === 'dir' && expanded.has(row.key) ? ' open' : '') +
                   (isActive(row) ? ' active' : '') +
                   (row.pending > 0 ? ' pinned' : '') +
                   (kbIndex === i ? ' kb-focus' : '')
@@ -248,6 +271,7 @@ export default function Sidebar({
                 onDrop={(e) => onDrop(e, row)}
                 data-drop={dropHint?.id === row.key ? dropHint.zone : undefined}
               >
+                <span className="tw"><Icon name="chevron" size={10} /></span>
                 <span className="gico"><Icon name={row.type === 'global' ? 'globe' : 'folder'} /></span>
                 <span className="nm">
                   {row.name}
@@ -262,7 +286,9 @@ export default function Sidebar({
                   <Icon name="dots" size={13} />
                 </span>
               </button>
-              {isActive(row) && <TaskChildren row={row} onNavigate={onNavigate} />}
+              {(row.type === 'global' ? isActive(row) : expanded.has(row.key)) && (
+                <TaskChildren row={row} onNavigate={onNavigate} />
+              )}
             </div>
           )
         ))}
@@ -274,7 +300,6 @@ export default function Sidebar({
         {footEntry('#/overview', 'overview', '全部目录总览')}
         {footEntry('#/cloud', 'cloud', '云端总览')}
         {footEntry('#/repos', 'repo', '仓库管理')}
-        {footEntry('#/localtask', 'list', '经典看板（v1）')}
         <button className={'trow' + (route.view === 'auth' ? ' active' : '')} onClick={() => onNavigate('#/auth')} title={boot?.configPath || ''}>
           <span className="gico"><Icon name={boot?.loggedIn ? 'check' : 'lock'} /></span>
           <span className="nm">{boot?.loggedIn ? '已登录' : '未登录 · 设置'}</span>

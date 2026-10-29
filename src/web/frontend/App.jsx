@@ -2,7 +2,7 @@
 // 目录（topic）提升为一级导航；hash 路由：
 //   #/dir/<key>  目录详情    #/global  全局任务池   #/overview  全部目录总览
 //   #/cloud      云端总览    #/repos   仓库管理     #/auth      登录/设置
-//   #/localtask  经典看板（v1，保留一个版本周期；wait 深链继续落到这里）
+//   （经典看板 #/localtask 已下线；wait 深链改落 #/dir/<key>）
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from './store.jsx';
 import { ErrorBoundary, useToast } from './components/ui.jsx';
@@ -13,15 +13,16 @@ import Sidebar from './components/sidebar/index.jsx';
 import { loadPrefs, updatePrefs } from './prefs.js';
 import { SideResizer, useSideWidth } from './components/layout/side-resizer.jsx';
 
-// hash → 路由对象。带 query 的 #/localtask?cwd=… 是 wait 深链，原样交给经典看板。
+// hash → 路由对象。带 query 的 #/dir/<key>?task=… 是页面深链，交给 MD 工作台。
 function routeFromHash() {
   const h = (location.hash || '').replace(/^#\/?/, '');
   const path = h.split('?')[0];
   if (path.startsWith('dir/')) {
     return { view: 'dir', key: decodeURIComponent(path.slice(4)) };
   }
-  const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos', 'auth', 'localtask'];
+  const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos', 'auth'];
   if (KNOWN.includes(path)) return { view: path === 'todo' ? 'cloud' : path };
+  // 旧深链（#/localtask?…）与未知路径统一落总览
   return { view: 'overview' };
 }
 

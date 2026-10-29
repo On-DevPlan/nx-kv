@@ -1451,7 +1451,7 @@ export async function waitForTask({
   // 活性判据：「本地任务」页的活动 SSE 标签，或面板停在任意页（App 壳 ping 兜底）。
   // 只认 SSE 的旧口径在用户切到别的页时会误判「没开」，于是每次 wait 都重开一个标签。
   const presence = panelInfo.running ? await probeEffectivePresence() : 0;
-  const deepLink = deepLinkUrl(key, cwd, panelInfo.port || DEFAULT_PORT);
+  const deepLink = deepLinkUrl(key, panelInfo.port || DEFAULT_PORT);
 
   // 3. 结果承诺：三个生产者（同进程本地 waiter / 同进程全局 FIFO / 跨进程轮询）+ 超时
   let resolveOutcome;
@@ -1928,10 +1928,11 @@ function panelOrigin(port) {
   return `http://127.0.0.1:${port || DEFAULT_PORT}`;
 }
 
-// 深链到面板「本地任务」页并选中当前主题（key 优先，cwd 兜底）。
-// 端口取实际发现的面板（可能不是默认端口）。
-function deepLinkUrl(key, cwd, port) {
-  return `${panelOrigin(port)}/#/localtask?key=${encodeURIComponent(key)}&cwd=${encodeURIComponent(cwd)}`;
+// 深链到面板目录工作台并定位当前主题（key 必有；key 缺失时落总览兜底）。
+// 端口取实际发现的面板（可能不是默认端口）。经典看板 #/localtask 已下线。
+function deepLinkUrl(key, port) {
+  const page = key ? `#/dir/${encodeURIComponent(key)}` : '#/overview';
+  return `${panelOrigin(port)}/${page}`;
 }
 
 // 本仓库/已安装包的 CLI 入口（src/modules/localtask/ 上三级到包根）。

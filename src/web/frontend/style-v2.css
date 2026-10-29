@@ -64,7 +64,7 @@
 }
 .trow:hover { background: var(--soft); }
 .trow .tw { width: 14px; flex: none; display: inline-flex; justify-content: center; color: var(--faint); transition: transform 0.15s; }
-.trow.group.open .tw { transform: rotate(90deg); }
+.trow.open .tw { transform: rotate(90deg); }
 .trow .gico { flex: none; color: var(--ink-2); width: 16px; display: inline-flex; justify-content: center; }
 .trow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trow .cnt {
@@ -102,6 +102,11 @@
   color: #2F6F5E;
   font-size: 10px;
 }
+/* 展开子行尾部的「＋ 新建页」 */
+.trow.child.task-new { height: 26px; font-size: 12px; color: var(--faint); }
+.trow.child.task-new:hover { background: color-mix(in srgb, #2F6F5E 7%, transparent); color: #2F6F5E; }
+.trow.child.task-new .gico { color: var(--faint); }
+.trow.child.task-new:hover .gico { color: #2F6F5E; opacity: 1; }
 .trow.kb-focus { outline: 2px solid var(--ink); outline-offset: -2px; }
 .trow.dragging { opacity: 0.4; }
 /* 三段式落点：上缘=before 线 / 下缘=after 线 / 中段=into 描边 */
@@ -115,6 +120,39 @@
 .tree-empty { padding: 14px 10px; font-size: 12px; color: var(--faint); text-align: center; }
 .sfoot { border-top: 1px solid var(--line); padding: 6px; }
 .sfoot .trow { padding: 4px 8px; font-size: 12.5px; }
+
+/* ---- 页签栏（封装组件 components/layout/tabs.jsx，主面板顶部） ---- */
+.tabbar {
+  flex: none; display: flex; align-items: stretch;
+  background: var(--paper); border-bottom: 1px solid var(--line);
+  padding: 5px 8px; overflow-x: auto; scrollbar-width: thin;
+}
+.tabbar-strip { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.tab {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 180px; min-width: 0;
+  padding: 4px 8px; border-radius: 7px; cursor: pointer; user-select: none;
+  font: inherit; font-size: 12px; color: var(--ink-2); position: relative;
+  border: 1px solid transparent; background: none;
+}
+.tab:hover { background: var(--soft); color: var(--ink); }
+.tab.on {
+  background: color-mix(in srgb, #2F6F5E 10%, var(--paper));
+  border-color: color-mix(in srgb, #2F6F5E 24%, transparent);
+  color: #2F6F5E; font-weight: 650;
+}
+.tab .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tab .tx {
+  flex: none; opacity: 0; width: 16px; height: 16px; border-radius: 4px;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--faint);
+}
+.tab:hover .tx, .tab.on .tx { opacity: 1; }
+.tab .tx:hover { background: rgba(0, 0, 0, 0.08); color: var(--ink); }
+.tab-new {
+  flex: none; width: 24px; height: 24px; margin: 0 2px; border-radius: 6px;
+  border: 0; background: none; color: var(--faint); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.tab-new:hover { background: var(--soft-2); color: #2F6F5E; }
 
 /* ---- 侧边栏（收起 rail 态） ---- */
 #rail {

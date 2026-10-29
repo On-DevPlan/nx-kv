@@ -57,11 +57,17 @@ export async function loadStore() {
     const raw = await fsp.readFile(storePath(), 'utf8');
     const data = JSON.parse(raw);
     if (!data || typeof data !== 'object') return emptyStore();
-    return {
+    const store = {
       version: 1,
       repos: Array.isArray(data.repos) ? data.repos : [],
       boards: Array.isArray(data.boards) ? data.boards : [],
     };
+    // 老结构（看板成员存随机 id）→ 新结构（存 key）：读时改写并落盘。
+    // 放这里 = 唯一入口，任何读路径都自动看到迁移后的数据。
+    if (migrateStoreKeys(store)) {
+      await saveStore(store).catch(() => {});
+    }
+    return store;
   } catch {
     /* 缺失或损坏 → 空 store */
     return emptyStore();
@@ -93,7 +99,11 @@ function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key
   const abs = resolve(String(path || ''));
   const t = type === 'ref' ? 'ref' : 'dev';
   const nm = (name || basename(abs) || 'repo').trim();
-  const rk = (keyCustom && key ? normalizeKey(key) : '');
+  const rk0 = key ? normalizeKey(key) : '';
+  if (key && !rk0) throw badInput('key 不合法: ' + key);
+  // 显式给了 key = 视为自定义（与 updateRepo 同一语义：key 是用户声明的身份，
+  // 不跟随 remote 漂移）——导入布局时布局里的 key 就是这样固化下来的。
+  const rk = rk0 && (keyCustom || rk0 !== deriveKey({ name: nm, remote: (remote || '').trim() }));
   const input = {
     name: nm,
     remote: (remote || '').trim(),
@@ -101,8 +111,7 @@ function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key
     keyCustom: !!keyCustom,
     remotes,
   };
-  // key 为显式给的自定义值，或按 remote/名字派生（与 deriveKey 同一规则，保证 a→b→a 稳定）
-  const finalKey = rk || deriveKey({ ...input, name: nm });
+  const finalKey = rk0 || deriveKey({ ...input, name: nm });
   if (!finalKey) throw badInput('key 不能为空');
   return {
     id: newId('r'),
@@ -175,6 +184,9 @@ export function keyFromRemote(url) {
     s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
     s = s.replace(/^[^/]*@/, '');        // 丢 user@
     s = s.replace(/^([^/]+?):\d+(\/|$)/, '$1$2'); // 丢 :port（只认紧跟 host 的那个冒号）
+    // file:///D:/path 这类本地 URL：盘符冒号也要丢（key 里不允许 `:`——
+    // normalizeKey 会把它压成 -，两边不一致就会「登记的是 A、成员表里是 B」）
+    s = s.replace(/^([a-z]):/i, '$1');
   }
   s = s.replace(/\.git$/i, '');
   s = s.replace(/\/{2,}/g, '/');
@@ -233,9 +245,52 @@ export function dirnameFromRemote(url) {
   return base.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 80) || 'repo';
 }
 
-// 看板的 key：board/<slug(name)>。看板改名时 key 跟随（看板没有自定义 key 的概念）。
+// 看板的 key（board/<slug(name)>）。看板改名时 key 跟随（看板没有自定义 key 的概念）。
 export function boardKeyOf(name) {
   return 'board/' + localKeyOf(name).slice('local/'.length);
+}
+
+/**
+ * 看板的成员 key 列表（有序）。
+ *
+ * 新结构存 board.repoKeys；**迁移前**的存量数据存 board.repoIds（随机 id）。
+ * 这里做兼容读取：没有 repoKeys 时按 id 现算 key ——这样**迁移前后都能正常用**
+ * （迁移只是把 id 换成 key 的固化，不必先跑迁移才能看清单）。
+ */
+export function boardRepoKeys(board, store) {
+  if (!board) return [];
+  if (Array.isArray(board.repoKeys)) return board.repoKeys;
+  // 老结构：repoIds（随机 id）→ 现算 key
+  const ids = Array.isArray(board.repoIds) ? board.repoIds : [];
+  if (!ids.length || !store) return [];
+  const byId = new Map(store.repos.map((r) => [r.id, r]));
+  const out = [];
+  for (const id of ids) {
+    const r = byId.get(id);
+    if (r) out.push(deriveKey(r));
+    else out.push(id); // 目标已不存在 → 保留原值当占位（迁移时会被清掉）
+  }
+  return out;
+}
+
+/**
+ * 老结构（board.repoIds）→ 新结构（board.repoKeys）的一次性**落盘**迁移。
+ *
+ * boardRepoKeys 的兼容读解决「迁移前也能看清单」，但盘上还是老结构：
+ * 每次读都现算，而且仓库登记一变（改名/换 remote），key 就跟着变，
+ * 与别处按 key 存的关系对不上。所以读的时候顺手把新结构写回去（幂等）。
+ */
+export function migrateStoreKeys(store) {
+  if (!store || !Array.isArray(store.boards)) return false;
+  let changed = false;
+  for (const b of store.boards) {
+    if (Array.isArray(b.repoKeys)) continue; // 已是新结构
+    const ids = Array.isArray(b.repoIds) ? b.repoIds : [];
+    b.repoKeys = ids.length ? boardRepoKeys(b, store) : [];
+    delete b.repoIds;
+    changed = true;
+  }
+  return changed;
 }
 
 /**
@@ -253,23 +308,32 @@ export function boardKeyOf(name) {
  */
 export async function listRepos() {
   const s = await loadStore();
-  const boardsOf = new Map();
+  const boardsOf = new Map(); // repoKey -> [看板投影]
   for (const b of s.boards) {
-    for (const rid of b.repoIds || []) {
-      if (!boardsOf.has(rid)) boardsOf.set(rid, []);
-      boardsOf.get(rid).push({ id: b.id, name: b.name, desc: b.desc || '', note: (b.repoNotes || {})[rid] || '' });
+    for (const rk of boardRepoKeys(b, s)) {
+      if (!boardsOf.has(rk)) boardsOf.set(rk, []);
+      boardsOf.get(rk).push({
+        id: b.id,
+        name: b.name,
+        desc: b.desc || '',
+        key: boardKeyOf(b.name),
+        note: (b.repoNotes || {})[rk] || '',
+      });
     }
   }
   return s.repos
-    .map(({ tags: _dropped, ...r }) => ({
-      ...r,
-      type: r.type || 'dev', // 旧数据无 type 字段 = dev
-      key: deriveKey(r),      // 老数据没有 key 字段 → 现算（Projection 不落盘，导出照样可用）
-      keyCustom: !!r.keyCustom,
-      remotes: Array.isArray(r.remotes) ? r.remotes : [],
-      linked: Array.isArray(r.linked) ? r.linked : [],
-      boards: boardsOf.get(r.id) || [],
-    }))
+    .map(({ tags: _dropped, ...r }) => {
+      const rk = deriveKey(r);
+      return {
+        ...r,
+        type: r.type || 'dev', // 旧数据无 type 字段 = dev
+        key: rk,                // 老数据没有 key 字段 → 现算（Projection 不落盘，导出照样可用）
+        keyCustom: !!r.keyCustom,
+        remotes: Array.isArray(r.remotes) ? r.remotes : [],
+        linked: Array.isArray(r.linked) ? r.linked : [],
+        boards: boardsOf.get(rk) || [],
+      };
+    })
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
@@ -348,25 +412,24 @@ export async function removeRepo(id) {
   return mutateStore((s) => {
     const idx = s.repos.findIndex((x) => x.id === id);
     if (idx < 0) throw notFound('repo 不存在: ' + id);
-    // 看板里同步摘引用（看板只存 id，登记没了就是死引用）
-    for (const b of s.boards) b.repoIds = b.repoIds.filter((x) => x !== id);
-    // 绑定是双向记录：两边都要清——
-    //   ref 侧的 {kind:'repo', id:被删的} 与 {kind:'board', id:被删的}
-    //   dev 侧的 {kind:'ref', id:被删的}
+    const deadKey = deriveKey(s.repos[idx]);
+    // 看板里同步摘引用（看板成员存 key，登记没了就是死引用）
+    for (const b of s.boards) {
+      if (Array.isArray(b.repoKeys)) b.repoKeys = b.repoKeys.filter((k) => k !== deadKey);
+      if (b.repoNotes && b.repoNotes[deadKey]) delete b.repoNotes[deadKey];
+    }
+    // 绑定是双向记录：两边都要清（全部按 key 比对）
+    //   ref 侧的 {kind:'repo', id:被删仓库的 key} 与 {kind:'board', id:被删看板的 key}
+    //   dev 侧的 {kind:'ref', id:被删参考仓库的 key}
     for (const r of s.repos) {
       if (!Array.isArray(r.linked)) continue;
-      r.linked = r.linked.filter((l) => {
-        if (l.kind === 'ref') return l.id !== id;               // dev 侧：反向引用指向被删的 ref
-        if (l.kind === 'repo') return l.id !== id;              // ref 侧：指向被删的 dev
-        if (l.kind === 'board') return l.id !== id;             // ref 侧：指向被删的看板（board id 与 repo id 命名空间不同，但保险）
-        return true;
-      });
+      r.linked = r.linked.filter((l) => l.id !== deadKey);
     }
     return s.repos.splice(idx, 1)[0];
   });
 }
 
-// id / key / 绝对路径 均可定位（agent 场景常直接给路径或 key）
+// id / key / 绝对路径 / 名称 均可定位（agent 场景常直接给路径或 key）
 export async function getRepo(idOrPathOrKey) {
   const s = await loadStore();
   const raw = String(idOrPathOrKey || '').trim();
@@ -379,21 +442,67 @@ export async function getRepo(idOrPathOrKey) {
     const p = resolve(raw);
     r = s.repos.find((x) => x.path.toLowerCase() === p.toLowerCase());
   }
+  if (!r) r = s.repos.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!r) throw notFound('repo 不存在: ' + raw);
   // 带上它所属的看板（中心清单的同一份数据，单条查询也别缺这一维）
+  const rk = deriveKey(r);
   const boards = s.boards
-    .filter((b) => (b.repoIds || []).includes(r.id))
-    .map((b) => ({ id: b.id, name: b.name, desc: b.desc || '' }));
+    .filter((b) => boardRepoKeys(b, s).includes(rk))
+    .map((b) => ({ id: b.id, name: b.name, desc: b.desc || '', key: boardKeyOf(b.name) }));
   const { tags: _dropped, ...base } = r;
   return {
     ...base,
     type: base.type || 'dev',
-    key: deriveKey(base),
+    key: rk,
     keyCustom: !!base.keyCustom,
     remotes: Array.isArray(base.remotes) ? base.remotes : [],
     linked: Array.isArray(base.linked) ? base.linked : [],
     boards,
   };
+}
+
+/**
+ * 仓库的 key（自定义 > remote 派生 > local/<名称> 兜底）。
+ * 与 deriveKey 同义，独立导出是为了让「关系一律用 key」这件事在代码里自明。
+ */
+export const repoKeyOf = deriveKey;
+
+/**
+ * 定位一个仓库的 **key**：入参可以是 id / key / 绝对路径 / 名称。
+ * 关系引用一律用它——id 是本机行主键，跨机即失效；key 才是身份。
+ * 找不到抛 notFound（调用方决定要不要软失败）。
+ */
+export async function resolveRepoKey(locator) {
+  const raw = String(locator || '').trim();
+  if (!raw) throw badInput('缺少仓库标识（id / key / 路径 / 名称）');
+  const s = await loadStore();
+  let r = s.repos.find((x) => x.id === raw);
+  if (!r) {
+    const k = normalizeKey(raw);
+    if (k) r = s.repos.find((x) => deriveKey(x) === k);
+  }
+  if (!r) {
+    const p = resolve(raw);
+    r = s.repos.find((x) => x.path.toLowerCase() === p.toLowerCase());
+  }
+  if (!r) r = s.repos.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
+  if (!r) throw notFound('repo 不存在: ' + raw);
+  return deriveKey(r);
+}
+
+/** 定位看板的 key：入参可以是 id / key / 名称。 */
+export async function resolveBoardKey(locator) {
+  const raw = String(locator || '').trim();
+  if (!raw) throw badInput('缺少看板标识（id / key / 名称）');
+  const s = await loadStore();
+  let b = s.boards.find((x) => x.id === raw);
+  if (!b) {
+    const k = normalizeKey(raw);
+    if (k) b = s.boards.find((x) => boardKeyOf(x.name) === k);
+  }
+  if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
+  if (!b) throw notFound('看板不存在: ' + raw);
+  return boardKeyOf(b.name);
 }
 
 const SKIP_DIRS = new Set([
@@ -526,15 +635,22 @@ export async function contextForPath(dirPath) {
  */
 export async function contextMap() {
   const s = await loadStore();
-  const boardsOf = new Map();
+  const boardsOf = new Map(); // repoKey -> [看板投影]
   for (const b of s.boards) {
-    for (const rid of b.repoIds || []) {
-      if (!boardsOf.has(rid)) boardsOf.set(rid, []);
-      boardsOf.get(rid).push({ id: b.id, name: b.name, desc: b.desc || '', note: (b.repoNotes || {})[rid] || '' });
+    for (const rk of boardRepoKeys(b, s)) {
+      if (!boardsOf.has(rk)) boardsOf.set(rk, []);
+      boardsOf.get(rk).push({
+        id: b.id,
+        name: b.name,
+        desc: b.desc || '',
+        key: boardKeyOf(b.name),
+        note: (b.repoNotes || {})[rk] || '',
+      });
     }
   }
   const map = new Map();
   for (const r of s.repos) {
+    const rk = deriveKey(r);
     map.set(normalizePathKey(r.path), {
       id: r.id,
       name: r.name,
@@ -542,9 +658,9 @@ export async function contextMap() {
       desc: r.desc || '',
       notes: r.notes || '',
       type: r.type || 'dev',
-      key: deriveKey(r),
+      key: rk,
       remote: r.remote || '',
-      boards: boardsOf.get(r.id) || [],
+      boards: boardsOf.get(rk) || [],
     });
   }
   return map;

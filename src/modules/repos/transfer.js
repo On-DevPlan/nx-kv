@@ -17,6 +17,8 @@ import { gitClone, hasGit } from './git.js';
 
 const clean = (v) => String(v || '').trim();
 const boardKey = (name) => service.boardKeyOf(name);
+// 仓库的 key（自定义 > remote 派生 > local 兜底）
+const deriveKeyOf = (r) => service.deriveKey(r);
 
 // ─── 导出 ─────────────────────────────────────────────────────────────
 
@@ -35,7 +37,9 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
   const wantRepo = (k) => !repoKeys?.length || repoKeys.includes(k);
   const wantBoard = (k) => !boardKeys?.length || boardKeys.includes(k);
 
-  const inAnyBoard = new Set(s.boards.flatMap((b) => b.repoIds || []));
+  // 成员按 key 存（board.repoKeys）——与仓库登记同一套身份
+  const memberKeysOf = (b) => service.boardRepoKeys(b, s);
+  const inAnyBoard = new Set(s.boards.flatMap(memberKeysOf));
   const selectedBoards = s.boards.filter((b) => wantBoard(boardKeyOf.get(b.id)));
   // 选中的仓库 = 直接指定的 + 选中看板的成员 + （可选）未分组仓库
   const selectedIds = new Set();
@@ -43,15 +47,14 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
     if (!wantRepo(keyOf.get(r.id))) continue;
     if (repoKeys?.length) selectedIds.add(r.id);
   }
-  for (const b of selectedBoards) for (const id of b.repoIds || []) selectedIds.add(id);
-  if (includeUnassigned && !repoKeys?.length && !boardKeys?.length) {
-    for (const r of s.repos) if (!inAnyBoard.has(r.id)) selectedIds.add(r.id);
-  }
-  // 关系里被引用的 ref 也要带上（否则导入端拿不到它的 key 定义）
-  if (repoKeys?.length || boardKeys?.length) {
-    for (const b of selectedBoards) {
-      for (const id of b.repoIds || []) selectedIds.add(id);
+  for (const b of selectedBoards) {
+    for (const k of memberKeysOf(b)) {
+      const hit = s.repos.find((r) => deriveKeyOf(r) === k);
+      if (hit) selectedIds.add(hit.id);
     }
+  }
+  if (includeUnassigned && !repoKeys?.length && !boardKeys?.length) {
+    for (const r of s.repos) if (!inAnyBoard.has(deriveKeyOf(r))) selectedIds.add(r.id);
   }
 
   const repos = [];
@@ -82,16 +85,12 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
     key: boardKeyOf.get(b.id),
     name: b.name,
     desc: b.desc || '',
-    repos: (b.repoIds || [])
-      .map((id) => {
-        const r = s.repos.find((x) => x.id === id);
-        if (!r) return null;
-        const k = keyOf.get(id);
-        if (!k) return null;
-        const note = (b.repoNotes || {})[id] || '';
+    // 成员按 key 引用（占位成员也在——本地没有的仓库照样导出，导入端会标「本地未拥有」）
+    repos: service.boardRepoKeys(b, s)
+      .map((k) => {
+        const note = (b.repoNotes || {})[k] || '';
         return note ? { key: k, note } : { key: k };
-      })
-      .filter(Boolean),
+      }),
   }));
 
   // 参考关系：ref → 目标（repo key / board key），note 随关系走
@@ -103,12 +102,11 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
     if (!k || !selectedKeySet.has(k)) continue;
     const to = [];
     for (const l of r.linked) {
+      // 关系引用已经是 key（迁移后），直接用
       if (l.kind === 'repo') {
-        const tk = keyOf.get(l.id);
-        if (tk && selectedKeySet.has(tk)) to.push(l.note ? { repo: tk, note: l.note } : { repo: tk });
+        if (selectedKeySet.has(l.id)) to.push(l.note ? { repo: l.id, note: l.note } : { repo: l.id });
       } else if (l.kind === 'board') {
-        const bk = boardKeyOf.get(l.id);
-        if (bk && wantBoard(bk)) to.push(l.note ? { board: bk, note: l.note } : { board: bk });
+        if (wantBoard(l.id)) to.push(l.note ? { board: l.id, note: l.note } : { board: l.id });
       }
     }
     if (to.length) links.push({ ref: k, to });
@@ -302,7 +300,19 @@ export async function diffImport(json) {
       if (clean(local.name) !== inc.name) fields.push({ field: 'name', local: local.name, incoming: inc.name });
       if (clean(local.desc) !== inc.desc) fields.push({ field: 'desc', local: local.desc || '', incoming: inc.desc });
     }
-    const missingMembers = inc.repos.filter((m) => !knownKeys.has(m.key)).map((m) => m.key);
+    // 本地未拥有的成员：带上 remote（面板的「克隆到本地」按钮要用它）
+    const missingMembers = inc.repos
+      .filter((m) => !knownKeys.has(m.key))
+      .map((m) => {
+        const src = layout.repos.find((x) => x.key === m.key);
+        return {
+          key: m.key,
+          name: (src && src.name) || m.key,
+          remote: (src && src.remote) || '',
+          type: (src && src.type) || 'dev',
+          clonable: !!(src && src.remote),
+        };
+      });
     return {
       key: inc.key,
       status: !local ? 'new' : fields.length ? 'changed' : 'same',
@@ -380,8 +390,9 @@ export async function repoImport({
   const keyMap = new Map(); // 导入 key -> 本地 repo id
 
   // 先登记本地已有的（哪怕这次不动，也要能解析关系）
+  // keyMap: repoKey -> repoKey（关系的身份；本地有没有这条登记用 keyMap.has 判断）
   const s0 = await service.loadStore();
-  for (const r of s0.repos) keyMap.set(service.deriveKey(r), r.id);
+  for (const r of s0.repos) keyMap.set(service.deriveKey(r), service.deriveKey(r));
 
   for (const item of diff.repos) {
     if (!want(item.key)) continue;
@@ -422,7 +433,7 @@ export async function repoImport({
           remotes: inc.remotes || [],
         });
         duplicated.push({ key: item.key, newKey, id: r.id });
-        keyMap.set(item.key + '#dup', r.id);
+        keyMap.set(newKey, newKey);
         continue;
       }
 
@@ -450,7 +461,7 @@ export async function repoImport({
           type, remote: used, key: inc.key, keyCustom: inc.keyCustom, remotes: inc.remotes || [],
         });
         created.push({ key: item.key, id: r.id, cloned: true });
-        keyMap.set(item.key, r.id);
+        keyMap.set(item.key, item.key);
         continue;
       }
 
@@ -466,7 +477,7 @@ export async function repoImport({
         remotes: inc.remotes || [],
       });
       created.push({ key: item.key, id: r.id, cloned: !!dest });
-      keyMap.set(item.key, r.id);
+      keyMap.set(item.key, item.key);
     } catch (err) {
       const msg = String((err && err.message) || err);
       if (/已.*登记|已存在/.test(msg)) skipped.push({ key: item.key, why: msg });
@@ -494,15 +505,25 @@ export async function repoImport({
         }
       }
       if (!b) continue;
+      // **完整复制导出方的组布局**：按导入文件的顺序重建成员列表。
+      // 本地没有的成员（占位）也保留位置 —— 组结构照抄，缺的那几个标出来等 clone。
       for (const m of inc.repos) {
-        const rid = keyMap.get(m.key);
-        if (!rid) {
-          // 本地未拥有：跳过并如实报告（面板会提供「克隆到本地」快捷按钮）
-          unmatched.push({ board: inc.name, entry: m.key, reason: '本地未拥有' });
-          continue;
+        const known = keyMap.has(m.key);
+        await boards.assignRepo({ key: m.key, board: b.id }).catch(() => {});
+        if (m.note) {
+          // 组内描述挂在 key 上：占位成员也保留描述，等仓库补齐后自动生效
+          await boards.setBoardRepoNote({ key: m.key, board: b.id, note: m.note }).catch(() => {});
         }
-        await boards.assignRepo({ id: rid, board: b.id }).catch(() => {});
-        if (m.note) await boards.setBoardRepoNote({ id: rid, board: b.id, note: m.note }).catch(() => {});
+        if (!known) {
+          unmatched.push({
+            board: inc.name,
+            entry: m.key,
+            reason: '本地未拥有',
+            remote: m.remote || '',
+            clonable: !!m.remote,
+            name: m.name || '',
+          });
+        }
       }
     } catch (err) {
       warnings.push(`看板「${inc.name}」导入失败: ${String((err && err.message) || err)}`);
@@ -512,21 +533,23 @@ export async function repoImport({
   // 参考关系
   let linksDone = 0;
   for (const l of diff.links) {
-    const rid = keyMap.get(l.ref);
-    if (!rid) {
-      unmatched.push({ board: '(参考关系)', entry: l.ref, reason: '参考仓库本地未拥有' });
+    const rkey = l.ref;
+    if (!keyMap.has(rkey)) {
+      unmatched.push({ board: '(参考关系)', entry: rkey, reason: '参考仓库本地未拥有' });
       continue;
     }
     for (const t of l.to) {
       try {
         if (t.repo) {
-          const tid = keyMap.get(t.repo);
-          if (!tid) { unmatched.push({ board: `(参考关系 ${l.ref})`, entry: t.repo, reason: '本地未拥有' }); continue; }
-          await refBind(rid, tid, null, t.note);
+          if (!keyMap.has(t.repo)) {
+            unmatched.push({ board: `(参考关系 ${l.ref})`, entry: t.repo, reason: '本地未拥有' });
+            continue;
+          }
+          await refBind(rkey, t.repo, null, t.note);
         } else if (t.board) {
           const bs = (await service.loadStore()).boards.find((x) => boardKey(x.name) === t.board);
           if (!bs) { unmatched.push({ board: `(参考关系 ${l.ref})`, entry: '看板 ' + t.board, reason: '看板未建立' }); continue; }
-          await refBind(rid, null, bs.id, t.note);
+          await refBind(rkey, null, boardKey(bs.name), t.note);
         }
         linksDone += 1;
       } catch (err) {
@@ -571,29 +594,30 @@ function placeholderPath(inc, gitRepoRoot, gitDevRoot, keyOverride) {
   return join(base, dir);
 }
 
-// 关系重建的绑定直写（双向：ref 侧写 {repo|board}，dev 侧写反向 {ref}）
-async function refBind(refId, repoId, boardId, note) {
+// 关系重建的绑定直写（双向：ref 侧写 {repo|board}，dev 侧写反向 {ref}）。
+// 入参一律是 **key**（关系的身份），不再用随机 id。
+async function refBind(refKey, repoKey, boardKey_, note) {
   return service.mutateStore((s) => {
-    const r = s.repos.find((x) => x.id === refId);
-    if (!r) throw badInput('参考仓库不存在: ' + refId);
+    const r = s.repos.find((x) => deriveKeyOf(x) === refKey);
+    if (!r) throw badInput('参考仓库不存在: ' + refKey);
     if (!Array.isArray(r.linked)) r.linked = [];
-    const key = boardId ? 'board:' + boardId : 'repo:' + repoId;
+    const key = boardKey_ ? 'board:' + boardKey_ : 'repo:' + repoKey;
     const hit = r.linked.find((l) => l.kind + ':' + l.id === key);
     if (!hit) {
       r.linked.push(
         note
-          ? boardId ? { kind: 'board', id: boardId, note } : { kind: 'repo', id: repoId, note }
-          : boardId ? { kind: 'board', id: boardId } : { kind: 'repo', id: repoId }
+          ? boardKey_ ? { kind: 'board', id: boardKey_, note } : { kind: 'repo', id: repoKey, note }
+          : boardKey_ ? { kind: 'board', id: boardKey_ } : { kind: 'repo', id: repoKey }
       );
     } else if (note) {
       hit.note = note;
     }
-    if (repoId) {
-      const d = s.repos.find((x) => x.id === repoId);
+    if (repoKey) {
+      const d = s.repos.find((x) => deriveKeyOf(x) === repoKey);
       if (d) {
         if (!Array.isArray(d.linked)) d.linked = [];
-        const back = d.linked.find((l) => l.kind === 'ref' && l.id === refId);
-        if (!back) d.linked.push(note ? { kind: 'ref', id: refId, note } : { kind: 'ref', id: refId });
+        const back = d.linked.find((l) => l.kind === 'ref' && l.id === refKey);
+        if (!back) d.linked.push(note ? { kind: 'ref', id: refKey, note } : { kind: 'ref', id: refKey });
         else if (note) back.note = note;
       }
     }
@@ -629,7 +653,9 @@ export function renderDiff(d) {
   for (const b of d.boards) {
     const label = STATUS_LABEL[b.status] || b.status;
     lines.push(`  [看板${label}] ${b.key}（${b.incoming.repos.length} 个成员）`);
-    if (b.missingMembers.length) lines.push(`      本地未拥有成员: ${b.missingMembers.join('、')}`);
+    if (b.missingMembers.length) {
+      lines.push(`      本地未拥有成员: ${b.missingMembers.map((m) => m.key).join('、')}`);
+    }
   }
   for (const l of d.links) {
     lines.push(`  关系 ${l.ref} → ${l.to.map((t) => t.repo || t.board).join('、')}`);

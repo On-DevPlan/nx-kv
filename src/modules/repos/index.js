@@ -14,6 +14,7 @@ import * as service from './service.js';
 import * as boards from './boards.js';
 import * as ref from './ref.js';
 import * as keys from './keys.js';
+import * as remote from './remote.js';
 import * as transfer from './transfer.js';
 import { gitOrigin } from './git.js';
 import { badInput } from '../../core/errors.js';
@@ -24,7 +25,10 @@ function renderBoardList(d) {
   const lines = [];
   for (const b of d.boards) {
     lines.push(`【${b.name}】${b.repos.length} 个仓库${b.desc ? ` —— ${b.desc}` : ''}`);
-    for (const r of b.repos) lines.push(`  ${r.name.padEnd(18)} ${r.desc || '-'}`);
+    for (const r of b.repos) {
+      const miss = r.present === false ? '  [本地未拥有]' : '';
+      lines.push(`  ${r.name.padEnd(18)} ${r.desc || '-'}${miss}`);
+    }
   }
   if (d.unassigned.length) {
     lines.push('【未分组】');
@@ -36,7 +40,10 @@ function renderBoardList(d) {
 
 function renderBoard(b) {
   const lines = [`【${b.name}】${b.desc || ''} —— ${b.repos.length} 个仓库`];
-  for (const r of b.repos) lines.push(`  ${r.name.padEnd(18)} ${r.desc || '-'}`);
+  for (const r of b.repos) {
+    const miss = r.present === false ? '  [本地未拥有]' : '';
+    lines.push(`  ${r.name.padEnd(18)} ${r.desc || '-'}${miss}`);
+  }
   return lines.join('\n');
 }
 
@@ -329,6 +336,76 @@ export default {
       render: (r) => `已设 key: ${r.name} -> ${r.key}${r.keyCustom ? '（自定义）' : '（跟随远程地址）'}`,
     },
     {
+      // 关系迁移：随机 id → key（一次性、幂等）
+      id: 'repo.key.migrate',
+      cli: ['repo', 'key', 'migrate'],
+      http: ['POST', '/api/repos/key/migrate'],
+      summary: '把内部关系（看板成员/绑定）从随机 id 改写成 key（幂等；--apply 落盘）',
+      flags: { apply: { type: 'boolean', hint: '写回磁盘（缺省只预览）' } },
+      run: (ctx) => keys.migrateRelations({ apply: ctx.apply === true }),
+      render: (d) => keys.renderMigrate(d),
+    },
+
+    // ---- remote 对齐：remote 才是协作的标准单位 ----
+    // key 是本地身份，remote 是别人 clone 用的地址。自动的「SSH 优先」只是默认值，
+    // 对齐的方向由人定 —— 所以给「列出候选 / 人工挑选 / 存在性检查」三件套。
+    {
+      id: 'repo.remote.list',
+      cli: ['repo', 'remote', 'list'],
+      http: ['GET', '/api/repos/remote/list'],
+      summary: '列出仓库的全部 remote 候选（git remote -v），标出当前采纳的那条',
+      args: ['id'],
+      run: (ctx) => remote.listRemotes(ctx.id),
+      render: (d) => {
+        const lines = [`「${d.name}」的 remote（当前采纳: ${d.current || '（无）'}）`];
+        for (const r of d.remotes) {
+          lines.push(`  ${r.current ? '●' : '○'} ${r.name.padEnd(10)} ${r.url}  [${r.kind}] → key ${r.derivedKey}`);
+        }
+        if (!d.remotes.length) lines.push('  （没有 remote —— 先 git remote add）');
+        return lines.join('\n');
+      },
+    },
+    {
+      id: 'repo.remote.pick',
+      cli: ['repo', 'remote', 'pick'],
+      http: ['POST', '/api/repos/remote/pick'],
+      summary: '人工指定采纳哪条 remote（key 随之重算；自定义 key 不动）',
+      args: ['id', 'url'],
+      run: (ctx) => remote.pickRemote(ctx.id, ctx.url),
+      render: (d) => `已对齐 remote: ${d.key} → ${d.remote}${d.keyCustom ? '（自定义 key 不变）' : ''}`,
+    },
+    {
+      id: 'repo.remote.check',
+      cli: ['repo', 'remote', 'check'],
+      http: ['GET', '/api/repos/remote/check'],
+      summary: '检查 remote 是否存在（git ls-remote：存在 / 不存在 / 不可达，三种结论分清）',
+      args: ['id'],
+      flags: { url: { type: 'string', hint: '要检查的地址；缺省 = 当前采纳的 remote' } },
+      run: (ctx) => remote.checkRemote(ctx.id, ctx.url),
+      render: (d) => {
+        const mark = { exists: '✓ 存在', missing: '✗ 不存在', unreachable: '? 不可达' }[d.status] || d.status;
+        return `${mark}  ${d.url} —— ${d.detail}`;
+      },
+    },
+    {
+      // clone 补齐：导入留下的「本地未拥有」占位，按 remote 克隆并用**占位的 key**登记，
+      // 组里的位置自动转正。
+      id: 'repo.clone',
+      cli: ['repo', 'clone'],
+      http: ['POST', '/api/repos/clone'],
+      summary: '按 remote 克隆并登记（--key 指定占位 key → 组里位置自动补齐）',
+      args: ['remote'],
+      flags: {
+        key: { type: 'string', hint: '登记时用的 key（补占位时填它）' },
+        name: { type: 'string' },
+        desc: { type: 'string' },
+        type: { type: 'string', enum: ['dev', 'ref'], default: 'dev', hint: 'dev 落 gitDevRoot，ref 落 gitRepoRoot' },
+        depth: { type: 'number', default: 1, hint: '浅克隆深度' },
+      },
+      run: (ctx) => remote.cloneRepo(ctx),
+      render: (d) => `已克隆并登记: ${d.name}（key ${d.key}）→ ${d.path}`,
+    },
+    {
       id: 'repo.ref.clone',
       cli: ['repo', 'ref', 'clone'],
       http: ['POST', '/api/repos/ref/clone'],
@@ -555,17 +632,17 @@ export default {
       id: 'board.assign',
       cli: ['board', 'assign'],
       http: ['POST', '/api/boards/assign'],
-      summary: '把仓库聚合进看板（可同时在多个看板；--remove 移出；--before 插位）',
+      summary: '把仓库聚合进看板（可同时在多个看板；--remove 移出；--before 插位；仓库给 id / key / 路径）',
       args: ['id'],
       flags: {
-        board: { type: 'string', hint: '目标看板 id' },
-        before: { type: 'string', hint: '插到这张卡片之前' },
+        board: { type: 'string', hint: '目标看板 id / key / 名称' },
+        before: { type: 'string', hint: '插到这张卡片之前（按 key）' },
         remove: { type: 'boolean', hint: '移出：带 --board 从该板移出，不带则从所有看板移出' },
       },
       run: (ctx) => boards.assignRepo(ctx),
       render: (d) => (d.removed
-        ? `已移出: ${d.name}（${d.count} 个看板）`
-        : `${d.added ? '已聚合' : '已在（位次已调）'}: ${d.name} → ${d.board}`),
+        ? `已移出: ${d.key}（${d.count} 个看板）`
+        : `${d.added ? '已聚合' : '已在（位次已调）'}: ${d.key} → ${d.board}`),
     },
     {
       // 组内描述：同一个仓库在不同看板里的角色各不相同，描述挂在成员关系上而非登记上。
@@ -573,10 +650,10 @@ export default {
       id: 'board.note',
       cli: ['board', 'note'],
       http: ['POST', '/api/boards/note'],
-      summary: '写/清组内描述：仓库在看板里的角色与配合关系（--note 留空 = 清除；仓库给 id 或绝对路径）',
+      summary: '写/清组内描述：仓库在看板里的角色与配合关系（--note 留空 = 清除；仓库给 id / key / 绝对路径）',
       args: ['id'],
       flags: {
-        board: { type: 'string', required: true, hint: '看板 id' },
+        board: { type: 'string', required: true, hint: '看板 id / key / 名称' },
         note: { type: 'string', hint: '组内描述（多行可含关键路径/关键词；留空 = 清除）' },
       },
       run: (ctx) => boards.setBoardRepoNote({ id: ctx.id, board: ctx.board, note: ctx.note }),

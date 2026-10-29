@@ -12,7 +12,7 @@ import fsp from 'node:fs/promises';
 import { loadConfig } from '../../core/config.js';
 import { badInput, conflict } from '../../core/errors.js';
 import * as service from './service.js';
-import { gitRemotes, gitLsRemote, gitClone } from './git.js';
+import { gitRemotes, gitLsRemote, gitClone, hasGit } from './git.js';
 
 const clean = (v) => String(v || '').trim();
 
@@ -87,12 +87,26 @@ export async function cloneRepo({ remote, key, name, desc, notes, type = 'dev', 
         : 'gitDevRoot 未设置 —— 先 nx-kv setting set --gitDevRoot <目录>'
     );
   }
-  // 已有登记（同 remote key）→ 不重复 clone
+  // 已有登记的处理分两种：
+  //   - 目录已存在 → 真的重复，报 conflict（别覆盖用户数据）
+  //   - 目录不存在 → 导入时按占位登记的（路径是占位），clone 到预期位置**补齐它**
+  //     （key 不变 → 组里的占位自动转正、位置与组内描述无缝生效）
   const s = await service.loadStore();
-  const rkey = service.keyFromRemote(url);
-  const known = s.repos.find((r) => service.deriveKey(r) === rkey || (key && service.deriveKey(r) === service.normalizeKey(key)));
+  const rkey = key ? service.normalizeKey(key) : service.keyFromRemote(url);
+  const known = s.repos.find((r) => service.deriveKey(r) === rkey);
   if (known) {
-    throw conflict(`该远程地址已登记为「${known.name}」（${known.key}）—— 无需重复 clone，可用 repo ref sync 更新`);
+    if (await hasGit(known.path)) {
+      throw conflict(`该远程地址已登记为「${known.name}」（${known.key}）且目录在 —— 无需重复 clone，可用 repo ref sync 更新`);
+    }
+    // 占位登记：clone 到登记的路径（保持 key 与看板占位一致）
+    await fsp.mkdir(join(known.path, '..'), { recursive: true });
+    const used = await gitClone(url, known.path, { depth });
+    const updated = await service.updateRepo(known.id, {
+      remote: used,
+      remotes: [used],
+      ...(desc !== undefined ? { desc } : {}),
+    });
+    return { key: updated.key, name: updated.name, path: updated.path, remote: used, cloned: true, filled: true };
   }
 
   await fsp.mkdir(root, { recursive: true });

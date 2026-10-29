@@ -525,7 +525,11 @@ select {
 .form-grid { display: flex; flex-direction: column; gap: 13px; }
 .form-field { display: flex; flex-direction: column; gap: 5px; }
 .form-field > label { font-size: 11px; color: var(--mid); font-weight: 600; }
-.form-field input, .form-field select { width: 100%; }
+/* 只拉满文本类控件。原来的 .form-field input 连 checkbox 一起 width:100%，
+ * 勾选框被撑成满行宽，行里的名字/描述被挤成 0 宽 ——「绑定…」「克隆参考仓库」
+ * 弹窗里整个选项列表是空的（DOM 里有、什么都看不见）。 */
+.form-field input:not([type='checkbox']):not([type='radio']),
+.form-field select { width: 100%; }
 .form-field textarea {
   width: 100%;
   min-height: 96px;
@@ -918,10 +922,11 @@ select {
    这一行是选项不是字段，宽度交还给 flex 自己算。 */
 .rp-pick-item input[type='checkbox'] {
   flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
   margin: 0;
   padding: 0;
+  accent-color: var(--ink);
 }
 .rp-pick-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-pick-item > span:first-of-type { flex: 0 1 auto; min-width: 0; }

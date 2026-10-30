@@ -525,7 +525,11 @@ select {
 .form-grid { display: flex; flex-direction: column; gap: 13px; }
 .form-field { display: flex; flex-direction: column; gap: 5px; }
 .form-field > label { font-size: 11px; color: var(--mid); font-weight: 600; }
-.form-field input, .form-field select { width: 100%; }
+/* 只拉满文本类控件。原来的 .form-field input 连 checkbox 一起 width:100%，
+ * 勾选框被撑成满行宽，行里的名字/描述被挤成 0 宽 ——「绑定…」「克隆参考仓库」
+ * 弹窗里整个选项列表是空的（DOM 里有、什么都看不见）。 */
+.form-field input:not([type='checkbox']):not([type='radio']),
+.form-field select { width: 100%; }
 .form-field textarea {
   width: 100%;
   min-height: 96px;
@@ -918,10 +922,11 @@ select {
    这一行是选项不是字段，宽度交还给 flex 自己算。 */
 .rp-pick-item input[type='checkbox'] {
   flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
   margin: 0;
   padding: 0;
+  accent-color: var(--ink);
 }
 .rp-pick-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-pick-item > span:first-of-type { flex: 0 1 auto; min-width: 0; }
@@ -997,6 +1002,84 @@ select {
 .rp-layout-board { color: var(--ink-2); border-top: 1px dashed var(--line); padding-top: 4px; }
 .rp-layout-link { color: var(--ink-2); }
 .rp-layout-warn { color: #b3261e; font-size: 11.5px; }
+
+/* ---- 对齐 remote（key 是本地身份，remote 是协作的标准单位）---- */
+.rp-remote-list {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.rp-remote-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--line);
+  min-width: 0;
+}
+.rp-remote-item:last-child { border-bottom: 0; }
+.rp-remote-name { font-weight: 650; color: var(--ink); flex: 0 0 auto; }
+.rp-remote-url { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-remote-kind {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--mid);
+}
+.rp-remote-on {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+}
+.rp-remote-item .acts { flex: 0 0 auto; margin-left: auto; display: flex; gap: 4px; }
+.rp-remote-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+/* 差异表里的「克隆到本地」快捷按钮 */
+.rp-clone-btn { margin-left: 8px; }
+
+/* 导入面板里逐个列出的「本地未拥有」成员（组里已占位，待补齐） */
+.rp-missing-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 0;
+  border-top: 1px dashed var(--line);
+  min-width: 0;
+}
+.rp-missing-key { font-size: 11.5px; color: var(--ink-2); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-missing-remote { font-size: 11px; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-missing-item .btn { flex: 0 0 auto; margin-left: auto; }
+
+/* 本地未拥有的占位成员（导入留下的位置，尚未 clone） */
+.rp-member-missing { opacity: 0.72; }
+.rp-member-missing .rp-name strong::after {
+  content: '本地未拥有';
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--mid);
+  border: 1px dashed var(--mid);
+  border-radius: 999px;
+  padding: 0 6px;
+}
 
 /* ---- 导入导出全屏面板 ----
  * 版面：左右两栏（左=来源/范围/策略，右=差异/结果）。窄屏纵向堆叠。
@@ -1139,6 +1222,7 @@ select {
 .rp-status.changed { background: rgba(190, 140, 20, 0.14); color: #8a6410; }
 .rp-status.same { background: rgba(27, 127, 77, 0.12); color: #1b7f4d; }
 .rp-status.missing { background: var(--soft); color: var(--mid); }
+.rp-status.checking { background: rgba(30, 90, 180, 0.12); color: #1e5ab4; }
 .rp-can-clone {
   margin-left: 6px;
   font-size: 9.5px;

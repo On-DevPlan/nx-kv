@@ -27,7 +27,9 @@ async function seed() {
   const a = await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', desc: '第一个' });
   const b = await repos.addRepo({ path: join(dir, 'beta'), name: 'beta', desc: '第二个' });
   const c = await repos.addRepo({ path: join(dir, 'gamma'), name: 'gamma', desc: '第三个' });
-  return { a: a.id, b: b.id, c: c.id };
+  // 看板成员按 **key** 存（key = 仓库身份，跨机稳定），id 只是本机行主键。
+  // 断言与插位一律用 key。
+  return { a: a.id, b: b.id, c: c.id, ak: a.key, bk: b.key, ck: c.key };
 }
 
 test('建板与清单：成员按 repoIds 有序，不在板的仓库 = 未分组', async () => {
@@ -59,13 +61,13 @@ test('聚合：加入看板不动其他板——一个仓库可同时在多个�
 });
 
 test('插位：同板重复 assign 按 before 调位次且不产生重复', async () => {
-  const { a, b, c } = await seed();
+  const { a, b, c, ck } = await seed();
   const board = await boards.createBoard({ name: '板' });
   await boards.assignRepo({ id: a, board: board.id });
   await boards.assignRepo({ id: b, board: board.id });
   await boards.assignRepo({ id: c, board: board.id });
-  // a 已在板内：插到 c 前面 → b, a, c，且不重复
-  const r = await boards.assignRepo({ id: a, board: board.id, before: c });
+  // a 已在板内：插到 c 前面 → b, a, c，且不重复（before 按 **key** 定位）
+  const r = await boards.assignRepo({ id: a, board: board.id, before: ck });
   assert.equal(r.added, false);
   const d = await boards.getBoard(board.id);
   assert.deepEqual(d.repos.map((x) => x.name), ['beta', 'alpha', 'gamma']);
@@ -119,22 +121,27 @@ test('删除仓库登记：看板（可能多个）里的引用同步摘除', as
   assert.deepEqual(d.boards[0].repos.map((r) => r.name), ['beta']);
 });
 
-test('导入：path 大小写不敏感 + 按名匹配；同名板合并；未匹配如实报告', async () => {
-  await seed(); // alpha @ <dir>/alpha（导入按路径大小写不敏感匹配它）
+test('导入：按 key 匹配；同名板合并；本地未拥有的 key 保留占位', async () => {
+  const { ak, bk } = await seed(); // alpha / beta（key = 仓库身份）
   const json = JSON.stringify({
     boards: [
-      { name: '导入板', repos: [{ path: join(dir).replace(/\\/g, '/') + '/ALPHA' }, { name: '不存在的东西' }] },
-      { name: '导入板', repos: [{ name: 'beta' }] }, // 同名 → 合并
+      { name: '导入板', repos: [{ key: ak }, { key: 'github.com/nobody/nope' }] },
+      { name: '导入板', repos: [{ key: bk }] }, // 同名 → 合并
     ],
   });
   const r = await boards.importBoards({ json });
   assert.equal(r.created, 1);
   assert.equal(r.merged, 1);
-  assert.equal(r.matched, 2);
-  assert.equal(r.unmatched.length, 1);
+  // matched = 3：alpha + beta + 那条「本地未拥有」的占位 key
+  // （完整复制导出方的组布局 —— 本地没有的也占位置，等 clone 补齐后转正）
+  assert.equal(r.matched, 3);
+  assert.equal(r.unmatched.length, 0);
   const d = await boards.listBoards();
   assert.equal(d.boards.length, 1);
-  assert.deepEqual(d.boards[0].repos.map((x) => x.name), ['alpha', 'beta']);
+  assert.deepEqual(d.boards[0].repos.map((x) => x.name), ['alpha', 'github.com/nobody/nope', 'beta']);
+  // 占位成员：本地没有登记，present=false 标出来
+  const ghost = d.boards[0].repos.find((x) => x.key === 'github.com/nobody/nope');
+  assert.equal(ghost.present, false);
 });
 
 test('导入：坏 JSON / 空 boards 报入参错误', async () => {
@@ -160,7 +167,7 @@ test('导出可回灌：导出 → 清空看板 → 导入还原成员', async (
 });
 
 test('组内描述：挂在成员关系上，非成员报错，摘出成员时描述一起消失', async () => {
-  const { a, b } = await seed();
+  const { a, b, ak } = await seed();
   const board = await boards.createBoard({ name: '常用' });
   const other = await boards.createBoard({ name: '远程打字' });
   await boards.assignRepo({ id: a, board: board.id });
@@ -174,9 +181,9 @@ test('组内描述：挂在成员关系上，非成员报错，摘出成员时�
   assert.equal(reposOf('常用').find((r) => r.name === 'alpha').note, '主力开发仓库');
   assert.equal(reposOf('远程打字').find((r) => r.name === 'alpha').note, '只是参考实现');
 
-  // 仓库支持按绝对路径定位（与 repo get 同款）
+  // 仓库支持按绝对路径定位（与 repo get 同款）；返回的是 key（仓库身份）
   const byPath = await boards.setBoardRepoNote({ id: join(dir, 'alpha'), board: board.id, note: '按路径写入' });
-  assert.equal(byPath.id, a);
+  assert.equal(byPath.key, ak);
 
   // 非成员显式报错（不静默挂到没人读的地方）
   await assert.rejects(

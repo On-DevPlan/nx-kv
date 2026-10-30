@@ -325,6 +325,55 @@ test('兼容 v2 导出：没有 key 时用 remote/name 派生，照样能导入'
 
 // ─── zip ────────────────────────────────────────────────────────────────
 
+test('keyFromRemote：file:// 的 POSIX 形态（Linux）剥协议后带前导斜杠，必须规范化掉', () => {
+  // Linux 上 file:///tmp/x 剥协议后是 "/tmp/x"（带前导斜杠）；
+  // Windows 上 file://D:/x 剥协议后是 "D:/x"（盘符）。两条路的 key 必须一致 ——
+  // 否则同一份数据在「派生」与「归一」上算出两个 key，导入时关系连不上。
+  const linux = repos.keyFromRemote('file:///tmp/nx-kv-ref/imp-origin');
+  assert.equal(linux, 'tmp/nx-kv-ref/imp-origin');
+  assert.equal(linux, repos.normalizeKey(repos.keyFromRemote('file:///tmp/nx-kv-ref/imp-origin')));
+  // 派生与归一必须一致（这才是「唯一身份」的前提）
+  assert.equal(
+    repos.deriveKey({ name: 'x', remote: 'file:///tmp/a/b' }),
+    repos.normalizeKey(repos.keyFromRemote('file:///tmp/a/b'))
+  );
+  // 末段仍取对（clone 的目录名靠它）
+  assert.equal(repos.dirnameFromRemote('file:///tmp/nx-kv-ref/imp-origin'), 'imp-origin');
+});
+
+test('keyFromRemote：file:// 的 Windows 形态（盘符）也一致', () => {
+  assert.equal(repos.keyFromRemote('file://D:/Temp/x/y'), 'd/temp/x/y');
+  assert.equal(repos.dirnameFromRemote('file://D:/Temp/x/y'), 'y');
+});
+
+test('repoImport：布局里的 key 与 file:// 远程地址并存时，关系仍按布局的 key 连上', async () => {
+  // 回归：CI 上「参考关系 /tmp/... → ... 失败: 参考仓库不存在」
+  // 根因是 keyFromRemote 没规范化，链接不上。Linux 专属，这里用 POSIX 形态复现。
+  const src = join(dir, 'imp-origin');
+  mkdirSync(src);
+  git(['init', '-q', '--initial-branch=main'], src);
+  writeFileSync(join(src, 'a.md'), 'a');
+  git(['add', '.'], src);
+  git(['commit', '-qm', 'init'], src);
+  const srcUrl = 'file://' + src.replace(/\\/g, '/').replace(/^([A-Za-z]):/, '/$1');
+
+  const { saveConfig } = await import('../../src/core/config.js');
+  await saveConfig({ gitRepoRoot: join(dir, 'root'), gitDevRoot: join(dir, 'root') });
+
+  const layout = {
+    version: 3,
+    repos: [
+      { key: 'github.com/me/my-dev', name: 'my-dev', type: 'dev', remote: 'git@github.com:me/my-dev.git' },
+      { key: 'local/imp-ref', name: 'imp-ref', type: 'ref', remote: srcUrl },
+    ],
+    boards: [{ key: 'board/grp', name: 'grp', desc: '', repos: [{ key: 'github.com/me/my-dev' }, { key: 'local/imp-ref' }] }],
+    links: [{ ref: 'local/imp-ref', to: [{ repo: 'github.com/me/my-dev' }, { board: 'board/grp' }] }],
+  };
+  const result = await transfer.repoImport({ json: JSON.stringify(layout), clone: 'none' });
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.links, 2, '两条参考关系都要连上');
+});
+
 test('makeZip：能被标准 zip 解析（本地文件头 + 中央目录 + EOCD）', () => {
   const buf = makeZip([
     { name: 'layout.json', data: '{"version":3}' },

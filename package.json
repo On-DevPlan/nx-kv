@@ -1,6 +1,6 @@
 {
   "name": "nx-kv",
-  "version": "0.11.4",
+  "version": "0.12.1",
   "description": "nx-kv — KV 清单管理中枢（远程）+ 本机本地任务队列（localtask）：serve 驱动 CLI 与 Web 面板，同源同构，附带可安装 skill 供 agent 提交 / 领取 / 阻塞接收任务",
   "type": "module",
   "bin": {
@@ -17,7 +17,7 @@
     "start": "pnpm run build && node bin/cli.mjs serve",
     "link:local": "node scripts/link-local.mjs",
     "unlink:local": "node scripts/link-local.mjs --unlink",
-    "lint": "eslint . && node scripts/check-tdz.mjs src/modules/repos/view.jsx && node scripts/check-tdz.mjs src/modules/todo/view.jsx",
+    "lint": "eslint . && node scripts/check-tdz.mjs --all",
     "test": "pnpm run lint && pnpm run build && pnpm run test:smoke && pnpm run test:unit",
     "test:smoke": "node tests/smoke.mjs",
     "test:unit": "node --test tests/unit/*.test.mjs"
@@ -39,8 +39,7 @@
     "kv",
     "todo",
     "agent-tools",
-    "skills",
-    "npx"
+    "skills"
   ],
   "repository": {
     "type": "git",

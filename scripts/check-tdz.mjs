@@ -12,56 +12,76 @@
 //   - 跳过注释、跳过别的顶层 const 声明行、跳过形参/解构行。
 //
 // 误报不了的代价很大（挡住构建），所以规则宁可窄。
-import { readFileSync } from 'node:fs';
+//
+// 用法：
+//   node scripts/check-tdz.mjs <file>   查一个文件
+//   node scripts/check-tdz.mjs --all    扫 src/modules 下所有视图（自动发现，不写死路径）
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
-const file = process.argv[2] || 'src/modules/repos/view.jsx';
-const lines = readFileSync(file, 'utf8').split('\n');
-
-// 找组件函数起点：`export default function XxxView() {`
-let compStart = -1;
-let compName = '';
-lines.forEach((l, i) => {
-  if (compStart < 0 && /export default function \w+/.test(l)) {
-    compStart = i;
-    compName = /export default function (\w+)/.exec(l)[1];
+function collectViewFiles(dir, out = []) {
+  let entries = [];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
   }
-});
-if (compStart < 0) {
-  console.log(`SKIP: ${file} 没找到 default export 组件`);
-  process.exit(0);
+  for (const e of entries) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) collectViewFiles(p, out);
+    else if (e.name.endsWith('.jsx')) out.push(p);
+  }
+  return out;
 }
 
-// 组件体内的顶层 const（2 空格缩进）
-const decl = new Map();
-lines.forEach((l, i) => {
-  if (i <= compStart) return;
-  const m = /^ {2}const ([A-Za-z_$][\w$]*)\s*=/.exec(l);
-  if (m && !decl.has(m[1])) decl.set(m[1], i + 1);
-});
+// 逐文件检查，返回问题列表
+function checkFile(file) {
+  const lines = readFileSync(file, 'utf8').split('\n');
 
-const problems = [];
-for (const [name, declLine] of decl) {
-  const re = new RegExp('(^|[^\\w.$])' + name + '([^\\w$]|$)');
-  for (let i = compStart + 1; i < declLine - 1; i++) {
+  // 找组件函数起点：`export default function XxxView() {`
+  let compStart = -1;
+  let compName = '';
+  lines.forEach((l, i) => {
+    if (compStart < 0 && /export default function \w+/.test(l)) {
+      compStart = i;
+      compName = /export default function (\w+)/.exec(l)[1];
+    }
+  });
+  if (compStart < 0) {
+    return { file, skipped: true };
+  }
+
+  // 组件体内的顶层 const（2 空格缩进）
+  const decl = new Map();
+  lines.forEach((l, i) => {
+    if (i <= compStart) return;
+    const m = /^ {2}const ([A-Za-z_$][\w$]*)\s*=/.exec(l);
+    if (m && !decl.has(m[1])) decl.set(m[1], i + 1);
+  });
+
+  const problems = [];
+  for (const [name, declLine] of decl) {
+    const re = new RegExp('(^|[^\\w.$])' + name + '([^\\w$]|$)');
+    for (let i = compStart + 1; i < declLine - 1; i++) {
+      const l = lines[i];
+      // 只看顶层语句行：恰好 2 空格缩进（更深 = 函数体/JSX 表达式，延迟求值）
+      if (!/^ {2}\S/.test(l)) continue;
+      if (/^ {2}const /.test(l)) continue;                  // 别的顶层声明
+      if (/^\s*\/\//.test(l) || /^\s*\*/.test(l)) continue; // 注释
+      if (/^ {2}function\b/.test(l) || /^ {2}\w+\s*=\s*\(/.test(l)) continue; // 顶层函数声明（形参不是引用）
+      if (!re.test(l)) continue;
+      problems.push(`${name}（声明在行 ${declLine}）被行 ${i + 1} 提前引用: ${l.trim().slice(0, 90)}`);
+      break;
+    }
+  }
+
+  // useMemo 的依赖数组是**渲染期立即求值**的：依赖里的名字必须在 useMemo 之前声明。
+  // 这一条单独查——它上面的规则会漏掉（依赖数组那行缩进更深）。
+  // 依赖数组常常写在闭括号那一行（`}, [a, b]);`），所以按「含 useMemo 的行往后 6 行内
+  // 找形如 [ ... ]); 的依赖列表」来找。
+  for (let i = compStart; i < lines.length; i++) {
     const l = lines[i];
-    // 只看顶层语句行：恰好 2 空格缩进（更深 = 函数体/JSX 表达式，延迟求值）
-    if (!/^ {2}\S/.test(l)) continue;
-    if (/^ {2}const /.test(l)) continue;                  // 别的顶层声明
-    if (/^\s*\/\//.test(l) || /^\s*\*/.test(l)) continue; // 注释
-    if (/^ {2}function\b/.test(l) || /^ {2}\w+\s*=\s*\(/.test(l)) continue; // 顶层函数声明（形参不是引用）
-    if (!re.test(l)) continue;
-    problems.push(`${name}（声明在行 ${declLine}）被行 ${i + 1} 提前引用: ${l.trim().slice(0, 90)}`);
-    break;
-  }
-}
-
-// useMemo 的依赖数组是**渲染期立即求值**的：依赖里的名字必须在 useMemo 之前声明。
-// 这一条单独查——它上面的规则会漏掉（依赖数组那行缩进更深）。
-// 依赖数组常常写在闭括号那一行（`}, [a, b]);`），所以按「含 useMemo 的行往后 6 行内
-// 找形如 [ ... ]); 的依赖列表」来找。
-for (let i = compStart; i < lines.length; i++) {
-  const l = lines[i];
-  if (!/useMemo\(/.test(l)) continue;
+    if (!/useMemo\(/.test(l)) continue;
   let deps = null;
   for (let k = i; k < Math.min(i + 7, lines.length); k++) {
     const m = /\[\s*([^\][]*?)\s*\]\s*\)\s*;?\s*$/.exec(lines[k]);
@@ -76,11 +96,37 @@ for (let i = compStart; i < lines.length; i++) {
       problems.push(`useMemo 的依赖 ${d}（声明在行 ${declLine}）晚于 useMemo 自身（行 ${i + 1}）`);
     }
   }
+  }
+
+  return { file, compName, problems, skipped: false };
 }
 
+// ---- 分发 ----
+const arg = process.argv[2];
+if (arg === '--all') {
+  const files = collectViewFiles('src/modules');
+  const all = [];
+  for (const f of files) {
+    const r = checkFile(f);
+    if (r.skipped) continue;
+    if (r.problems.length) all.push(...r.problems.map((p) => `[${f}] ${p}`));
+  }
+  if (all.length) {
+    console.log(all.join('\n'));
+    process.exit(1);
+  }
+  console.log(`OK: ${files.length} 个视图文件里无「先引用后声明」`);
+  process.exit(0);
+}
+
+const r = checkFile(arg || 'src/modules/repos/view.jsx');
+if (r.skipped) {
+  console.log(`SKIP: ${r.file} 没找到 default export 组件`);
+  process.exit(0);
+}
 console.log(
-  problems.length
-    ? problems.join('\n')
-    : `OK: ${file} 的 ${compName} 组件体内无「先引用后声明」`
+  r.problems.length
+    ? r.problems.join('\n')
+    : `OK: ${r.file} 的 ${r.compName} 组件体内无「先引用后声明」`
 );
-process.exit(problems.length ? 1 : 0);
+process.exit(r.problems.length ? 1 : 0);

@@ -57,6 +57,13 @@ git -C <path> pull --no-edit
   `c/o/r`），或无 remote 时 `local/<名称>` 兜底，也可 `repo key set` 自定义。
   自定义 key 不跟随 remote 变化；`repo key refresh --all` 扫描 `git remote -v`
   （**SSH 优先**）提示可更新的 key/远程地址，`--apply` 才落盘
+- **所有内部关系用 key，不用随机 id**（2026-10-28）：看板成员存 `repoKeys`、
+  组内描述按 key、绑定关系（linked）按 key。id 只是本机行主键，不再参与任何关系引用
+  ——id 换机即失效，key 才能精确映射
+- **remote 是协作的标准单位**：key 是本地身份，remote 是别人 clone 用的地址。
+  两者要对齐但方向由人定（SSH 优先只是默认值）：
+  `repo remote list`（列候选）、`repo remote pick --url`（人工换一条）、
+  `repo remote check`（存在 / 不存在 / 不可达，三种结论分清）
 - **没有标签**：分组只走看板一条路（2026-10-24 废除仓库 tags，两套平行分组只会打架）
 - **type 双态**：`dev` = 开发仓库（默认），`ref` = 参考仓库（见下节）
 - **remote 是稳定 key**：参考仓库必有；开发仓库也建议记（`repo remote <id|path>` 一条命令
@@ -106,9 +113,17 @@ nx-kv repo import <file> --strategy duplicate       # 另存 key-import-1/2/3，
 nx-kv repo import <file> --select <key1,key2> --clone ref   # 只处理选中的，并克隆参考仓库
 ```
 
+**「本地未拥有」保留占位**：导入时对方分组里有、本地没有的仓库，**位置照抄进组里**
+（组布局完整复制），组内描述也按 key 保留。补齐有两条路：
+
+```bash
+nx-kv repo clone <remote> --key <占位的key>    # 按 remote 克隆并用占位的 key 登记 → 占位自动转正
+nx-kv repo key set <id> <key>                   # 纯自定义 key 的占位：自己建仓库后再指定同一个 key
+```
+
 面板：仓库页 →「参考仓库」面板 →「导入导出」→ 全屏面板（左右两栏，逐条勾选 +
-冲突方案 + 克隆选项）。「本地未拥有」的条目会显示 key，有远程地址的可在导入时克隆，
-纯自定义 key 的需自行在仓库里创建后重跑 diff。
+冲突方案 + 克隆选项）。「本地未拥有」的条目会显示 key 与 remote，有远程地址的可一键
+「克隆到本地」；仓库页的「成员管理」弹窗里也能看到占位成员并补齐。
 
 
 ## SOP

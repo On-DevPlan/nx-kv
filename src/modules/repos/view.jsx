@@ -50,7 +50,7 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
   const descTitle = note !== null
     ? (note ? `组内描述：${note}` : `（组内描述未写，暂显示仓库描述）${r.desc || ''}`)
     : (r.desc || '');
-  const refs = refsOfRepo.get(r.id) || [];
+  const refs = refsOfRepo.get(r.key) || [];
   return (
     <tr>
       <td className="rp-name">
@@ -60,7 +60,7 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
       <td className="mono rp-path"><RepoPath path={r.path} /></td>
       <td className="rp-refs">
         {refs.length ? refs.map((ref) => (
-          <button key={ref.id} className="rp-ref-chip" title={`直接绑定：${ref.remote || ''}${ref.note ? '\n' + ref.note : ''}\n点击改绑定描述`}
+          <button key={ref.key} className="rp-ref-chip" title={`直接绑定：${ref.remote || ''}${ref.note ? '\n' + ref.note : ''}\n点击改绑定描述`}
             onClick={() => acts.refNote(ref, r)}>
             {ref.note ? <span className="rp-ref-chip-dot" /> : null}
             {ref.name}
@@ -70,6 +70,8 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
       </td>
       <td className="rp-acts">
         <button className="btn small ghost" title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</button>
+        <button className="btn small ghost" title="对齐 remote：列出 git remote -v 的候选并检查远端是否存在"
+          onClick={() => acts.remote(r)}>remote</button>
         <button className="btn small ghost" onClick={() => acts.edit(r)}>编辑</button>
         {filterBoard ? (
           <button className="btn small ghost" title={`写「${r.name}」在看板「${filterBoard.name}」里的组内描述`}
@@ -132,6 +134,11 @@ export default function ReposView() {
   const [linkNoteText, setLinkNoteText] = useState('');
   // 布局导入导出：全屏面板（自己的 Tab 内维护全部临时状态）
   const [transferOpen, setTransferOpen] = useState(false);
+  // 「对齐 remote」：key 是本地身份，remote 是协作的标准单位——两者要对齐，
+  // 但对齐方向由人定（自动的 SSH 优先只是默认值）。数据面来自 git remote -v。
+  const [remoteInfo, setRemoteInfo] = useState(null); // { key, name, current, remotes:[…] }
+  const [remoteCheck, setRemoteCheck] = useState(null); // { url, status, detail }
+  const [remoteOpen, setRemoteOpen] = useState(false); // 对齐 remote 的弹窗
 
   const resetForm = () => { setForm(EMPTY_FORM); setEditing(null); setFormOpen(false); };
 
@@ -212,12 +219,12 @@ export default function ReposView() {
     for (const k of newKeys) {
       if (oldKeys.has(k)) continue;
       const [kind, id] = k.split(':');
-      await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.id, [kind]: [id] } });
+      await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, [kind]: [id] } });
     }
     for (const k of oldKeys) {
       if (newKeys.has(k)) continue;
       const [kind, id] = k.split(':');
-      await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.id, [kind]: [id], remove: true } });
+      await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, [kind]: [id], remove: true } });
     }
     setBindFor(null);
     await Promise.all([loadRepos(), loadRefCheck()]);
@@ -226,22 +233,22 @@ export default function ReposView() {
   // dev 侧绑定保存：对比该仓库当前挂的参考，加/摘各一批
   const saveBindRepo = () => guard(async () => {
     if (!bindRepoFor) return;
-    // 当前绑定：dev 侧反向引用优先，老数据回退扫 ref 侧
+    // 当前绑定：dev 侧反向引用优先，老数据回退扫 ref 侧（全部按 key）
     const current = new Set();
     for (const l of bindRepoFor.linked || []) {
       if (l.kind === 'ref') current.add(l.id);
     }
     for (const x of refRepos) {
-      if ((x.linked || []).some((l) => l.kind === 'repo' && l.id === bindRepoFor.id)) current.add(x.id);
+      if ((x.linked || []).some((l) => l.kind === 'repo' && l.id === bindRepoFor.key)) current.add(x.key);
     }
     const want = new Set(Object.keys(bindRepoSel).filter((k) => bindRepoSel[k]));
     for (const rid of want) {
       if (current.has(rid)) continue;
-      await api('/api/repos/bind', { method: 'POST', body: { id: rid, repo: [bindRepoFor.id] } });
+      await api('/api/repos/bind', { method: 'POST', body: { id: rid, repo: [bindRepoFor.key] } });
     }
     for (const rid of current) {
       if (want.has(rid)) continue;
-      await api('/api/repos/bind', { method: 'POST', body: { id: rid, repo: [bindRepoFor.id], remove: true } });
+      await api('/api/repos/bind', { method: 'POST', body: { id: rid, repo: [bindRepoFor.key], remove: true } });
     }
     setBindRepoFor(null);
     await Promise.all([loadRepos(), loadRefCheck()]);
@@ -256,7 +263,7 @@ export default function ReposView() {
     const { ref, kind, targetId } = linkNoteFor;
     await api('/api/repos/ref/note', {
       method: 'POST',
-      body: { id: ref.id, [kind]: targetId, note: linkNoteText },
+      body: { id: ref.key, [kind]: targetId, note: linkNoteText },
     });
     setLinkNoteFor(null);
     await Promise.all([loadRepos(), loadRefCheck()]);
@@ -265,7 +272,7 @@ export default function ReposView() {
 
   // 从某条绑定弹窗摘除单个目标（chip 上的 ×）
   const unbindOne = (ref, kind, targetId) => guard(async () => {
-    await api('/api/repos/bind', { method: 'POST', body: { id: ref.id, [kind]: [targetId], remove: true } });
+    await api('/api/repos/bind', { method: 'POST', body: { id: ref.key, [kind]: [targetId], remove: true } });
     await Promise.all([loadRepos(), loadRefCheck()]);
   });
 
@@ -274,6 +281,56 @@ export default function ReposView() {
   const onTransferDone = useCallback(async () => {
     await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   }, [loadRepos, loadBoards, loadRefCheck]);
+
+  // ---- 对齐 remote ----
+  // key 是本地身份，remote 是协作的标准单位——两者要对齐，但方向由人定
+  // （自动的 SSH 优先只是默认值）。这里给出「列候选 / 人工换一条 / 查存在性」。
+  const openRemote = async (r) => {
+    const key = r && r.key ? r.key : '';
+    if (!key) {
+      toast('这个仓库还没有 key —— 先 nx-kv repo key set <id> <key>');
+      return;
+    }
+    try {
+      const d = await api('/api/repos/remote/list?id=' + encodeURIComponent(key));
+      if (!d || !Array.isArray(d.remotes)) throw new Error('远程地址读取失败');
+      setRemoteInfo(d);
+      setRemoteCheck(null);
+      setRemoteOpen(true);
+    } catch (e) {
+      toast(String((e && e.message) || e));
+    }
+  };
+  const pickRemote = (url) => guard(async () => {
+    await api('/api/repos/remote/pick', {
+      method: 'POST',
+      body: { id: remoteInfo.key, url },
+    });
+    setRemoteOpen(false);
+    toast('已对齐 remote');
+    await Promise.all([loadRepos(), loadRefCheck()]);
+  });
+  // 存在性检查：git ls-remote 要几秒，期间不给任何反馈会像「点了没反应」。
+  // 错误直接写进弹窗（remoteCheck.detail），不靠 toast —— toast 会一闪而过。
+  const checkRemote = async (url) => {
+    const key = remoteInfo ? remoteInfo.key : '';
+    if (!key) {
+      setRemoteCheck({ url: '', status: 'unreachable', detail: '没有仓库标识' });
+      return;
+    }
+    setRemoteCheck({ url: url || remoteInfo.current || '', status: 'checking', detail: '检查中…' });
+    try {
+      const d = await api('/api/repos/remote/check?id=' + encodeURIComponent(key)
+        + (url ? '&url=' + encodeURIComponent(url) : ''));
+      setRemoteCheck(d);
+    } catch (e) {
+      setRemoteCheck({
+        url: url || remoteInfo.current || '',
+        status: 'unreachable',
+        detail: String((e && e.message) || e),
+      });
+    }
+  };
 
 
   // 组内描述保存：note 为空 = 清除
@@ -318,25 +375,26 @@ export default function ReposView() {
   // 老数据（只有 ref 侧）再回退扫一遍 ref 全表。
   const refsOfRepo = useMemo(() => {
     const m = new Map();
-    const add = (devId, r, note) => {
-      if (!m.has(devId)) m.set(devId, []);
-      m.get(devId).push({ id: r.id, name: r.name, remote: r.remote || '', note: note || '' });
+    // 索引按 **key**（关系的身份）：dev 仓库的 key → 挂在它身上的参考仓库列表
+    const add = (devKey, r, note) => {
+      if (!m.has(devKey)) m.set(devKey, []);
+      m.get(devKey).push({ key: r.key, id: r.id, name: r.name, remote: r.remote || '', note: note || '' });
     };
-    const byId = new Map(refRepos.map((r) => [r.id, r]));
+    const byKey = new Map(refRepos.map((r) => [r.key, r]));
     const seen = new Set();
     for (const d of devRepos) {
       for (const l of d.linked || []) {
         if (l.kind !== 'ref') continue;
-        const r = byId.get(l.id);
+        const r = byKey.get(l.id);
         if (!r) continue;
-        seen.add(d.id + ':' + r.id);
-        add(d.id, r, l.note);
+        seen.add(d.key + ':' + r.key);
+        add(d.key, r, l.note);
       }
     }
     for (const r of refRepos) {
       for (const l of r.linked || []) {
         if (l.kind !== 'repo') continue;
-        if (seen.has(l.id + ':' + r.id)) continue;
+        if (seen.has(l.id + ':' + r.key)) continue;
         add(l.id, r, l.note);
       }
     }
@@ -344,18 +402,20 @@ export default function ReposView() {
   }, [devRepos, refRepos]);
 
   // 筛选到看板时：绑定在该看板（命名空间本体）或其成员开发仓库上的参考仓库
+  // 关系引用一律按 key（看板 key = board/<名称>，仓库 key = 归一化远程地址）
   const boardRefs = useMemo(() => {
     if (!filterBoard) return [];
-    const memberIds = new Set((filterBoard.repos || []).map((r) => r.id));
+    const memberKeys = new Set((filterBoard.repos || []).map((r) => r.key));
+    const bkey = filterBoard.key || `board/${filterBoard.name}`;
     return refRepos
       .map((r) => {
-        const boardLink = (r.linked || []).find((l) => l.kind === 'board' && l.id === filterBoard.id);
-        const repoLinks = (r.linked || []).filter((l) => l.kind === 'repo' && memberIds.has(l.id));
+        const boardLink = (r.linked || []).find((l) => l.kind === 'board' && l.id === bkey);
+        const repoLinks = (r.linked || []).filter((l) => l.kind === 'repo' && memberKeys.has(l.id));
         if (!boardLink && !repoLinks.length) return null;
         return {
           ...r,
           boardNote: boardLink?.note || '',
-          viaRepos: repoLinks.map((l) => (filterBoard.repos || []).find((x) => x.id === l.id)?.name || l.id),
+          viaRepos: repoLinks.map((l) => (filterBoard.repos || []).find((x) => x.key === l.id)?.name || l.id),
         };
       })
       .filter(Boolean);
@@ -436,10 +496,21 @@ export default function ReposView() {
   const toggleMember = (r, add) => guard(async () => {
     await api('/api/boards/assign', {
       method: 'POST',
-      body: add ? { id: r.id, board: impBoardId } : { id: r.id, board: impBoardId, remove: true },
+      body: add ? { id: r.key, board: impBoardId } : { id: r.key, board: impBoardId, remove: true },
     });
     setRepos((await api('/api/repos')) || []);
     await loadBoards();
+  });
+
+  // 补齐占位成员：按 remote 克隆并用**占位的 key** 登记 → 组里的位置自动转正
+  const cloneMissing = (m) => guard(async () => {
+    if (!m.remote) return;
+    await api('/api/repos/clone', {
+      method: 'POST',
+      body: { remote: m.remote, key: m.key, type: m.type || 'dev', depth: 1 },
+    });
+    toast(`已克隆: ${m.name}`);
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
 
   // ---- 看板管理 ----
@@ -496,31 +567,33 @@ export default function ReposView() {
     open: (r) => rowAct('open', r),
     edit: (r) => rowAct('edit', r),
     del: (r) => rowAct('del', r),
+    remote: (r) => openRemote(r),
     // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它身上（多对多的 dev 侧视角）
     bind: (r) => {
       const sel = {};
-      // 优先读 dev 侧的反向引用（绑定双向记录）；老数据回退扫 ref 侧
+      // 优先读 dev 侧的反向引用（绑定双向记录）；老数据回退扫 ref 侧（全部按 key）
       for (const l of r.linked || []) {
         if (l.kind !== 'ref') continue;
         sel[l.id] = true;
       }
       for (const x of refRepos) {
-        if (sel[x.id]) continue;
-        if ((x.linked || []).some((l) => l.kind === 'repo' && l.id === r.id)) sel[x.id] = true;
+        if (sel[x.key]) continue;
+        if ((x.linked || []).some((l) => l.kind === 'repo' && l.id === r.key)) sel[x.key] = true;
       }
       setBindRepoSel(sel);
       setBindRepoFor(r);
     },
     refNote: (ref, devRepo) => {
-      const full = refRepos.find((x) => x.id === ref.id);
-      if (full) openLinkNote(full, 'repo', devRepo.id, devRepo.name);
+      const full = refRepos.find((x) => x.key === ref.key);
+      if (full) openLinkNote(full, 'repo', devRepo.key, devRepo.name);
     },
     note: (r) => {
-      const mine = (r.boards || []).find((b) => b.id === filter);
+      // 组内描述挂在 **key** 上（成员关系用 key）
+      const mine = (r.boards || []).find((b) => b.key === (filterBoard?.key || `board/${filterBoard?.name || ''}`));
       setNoteFor({
-        id: r.id,
+        id: r.key,
         repo: r.name,
-        boardId: filter,
+        boardId: filterBoard?.key || filter,
         boardName: filterBoard?.name || '',
         note: mine?.note || '',
       });
@@ -618,7 +691,7 @@ export default function ReposView() {
           </div>
           {boardRefs.length ? boardRefs.map((r) => {
             const c = checkOf.get(r.id);
-            const boardLink = (r.linked || []).find((l) => l.kind === 'board' && l.id === filterBoard.id);
+            const boardLink = (r.linked || []).find((l) => l.kind === 'board' && l.id === (filterBoard.key || `board/${filterBoard.name}`));
             return (
               <div className="rp-ref-mounted-item" key={r.id}>
                 <span className={'rp-ref-dot' + (c ? (c.ok ? ' ok' : ' bad') : '')}
@@ -707,9 +780,10 @@ export default function ReposView() {
                       </td>
                       <td className="rp-ref-cell-links">
                         {links.length ? links.map((l) => {
+                          // 绑定目标按 key 找（关系引用一律是 key）
                           const label = l.kind === 'board'
-                            ? (boardList.find((b) => b.id === l.id)?.name || l.id)
-                            : (devRepos.find((d) => d.id === l.id)?.name || l.id);
+                            ? (boardList.find((b) => (b.key || `board/${b.name}`) === l.id)?.name || l.id)
+                            : (devRepos.find((d) => d.key === l.id)?.name || l.id);
                           return (
                             <span className="rp-link-chip" key={l.kind + ':' + l.id}>
                               <button className="rp-link-chip-main" title={l.note ? `${l.note}\n点击编辑这条绑定描述` : `点击写「${r.name}」绑定到这里的描述`}
@@ -981,10 +1055,22 @@ export default function ReposView() {
         <Modal title={`「${impBoard.name}」· 成员仓库`} onClose={() => setImpBoardId(null)}>
           {impBoard.desc ? <div className="rp-imp-desc">{impBoard.desc}</div> : null}
           <div className="rp-imp-list">
+            {/* 组里已有、本地还没有的成员（导入留下的占位）：位置留着，可一键 clone 补齐 */}
+            {(impBoard.repos || []).filter((m) => m.present === false).map((m) => (
+              <div className="rp-imp-item rp-member-missing" key={'miss-' + m.key}>
+                <span className="rp-imp-name">{m.name}</span>
+                <span className="rp-imp-path mono" title={m.remote || m.key}>{m.remote || m.key}</span>
+                {m.clonable ? (
+                  <button className="btn small" onClick={() => cloneMissing(m)}>克隆到本地</button>
+                ) : (
+                  <span className="muted" title="没有远程地址 —— 请自己在仓库里创建并指定同一个 key">需手工创建</span>
+                )}
+              </div>
+            ))}
             {repos.map((r) => {
-              const inBoard = (r.boards || []).some((b) => b.id === impBoard.id);
+              const inBoard = (r.boards || []).some((b) => b.key === (impBoard.key || `board/${impBoard.name}`));
               return (
-                <div className="rp-imp-item" key={r.id}>
+                <div className="rp-imp-item" key={r.key}>
                   <span className="rp-imp-name">{r.name}</span>
                   <span className="rp-imp-path" title={r.path}>{r.path}</span>
                   {inBoard ? (
@@ -1110,9 +1196,9 @@ export default function ReposView() {
                 <div className="rp-pick-group">
                   <span className="rp-pick-group-label">参考仓库</span>
                   {refRepos.map((r) => (
-                    <label className="rp-pick-item" key={r.id}>
-                      <input type="checkbox" checked={!!bindRepoSel[r.id]}
-                        onChange={(e) => setBindRepoSel((m) => ({ ...m, [r.id]: e.target.checked }))} />
+                    <label className="rp-pick-item" key={r.key}>
+                      <input type="checkbox" checked={!!bindRepoSel[r.key]}
+                        onChange={(e) => setBindRepoSel((m) => ({ ...m, [r.key]: e.target.checked }))} />
                       <span title={r.remote || ''}>{r.name}</span>
                       {r.desc ? <span className="muted rp-pick-desc">{r.desc}</span> : null}
                     </label>
@@ -1186,6 +1272,58 @@ export default function ReposView() {
           repos={repos}
           boards={boardList}
         />
+      ) : null}
+
+      {/* 对齐 remote：key 是本地身份，remote 是协作的标准单位。
+          候选来自 git remote -v，当前采纳的打勾；点另一条即对齐过去。 */}
+      {remoteOpen && remoteInfo ? (
+        <Modal title={`对齐 remote · ${remoteInfo.name}`} onClose={() => setRemoteOpen(false)}>
+          <div className="form-grid" data-testid="rp-remote-modal">
+            <div className="form-field">
+              <div className="form-hint">
+                当前采纳：<b>{remoteInfo.current || '（无）'}</b>。换一条即对齐（key 随之重算；自定义 key 不动）。
+              </div>
+              <div className="rp-remote-list">
+                {remoteInfo.remotes.map((rm) => (
+                  <div className="rp-remote-item" key={rm.name + '|' + rm.url}>
+                    <span className="rp-remote-name">{rm.name}</span>
+                    <span className="mono rp-remote-url">{rm.url}</span>
+                    <span className="rp-remote-kind">{rm.kind}</span>
+                    {rm.current ? <span className="rp-remote-on">当前</span> : null}
+                    <span className="acts">
+                      {!rm.current ? (
+                        <button className="btn small" onClick={() => pickRemote(rm.url)}>对齐这条</button>
+                      ) : null}
+                      <button className="btn small ghost" onClick={() => checkRemote(rm.url)}>检查</button>
+                    </span>
+                  </div>
+                ))}
+                {!remoteInfo.remotes.length ? (
+                  <div className="muted">这个仓库没有配置 remote —— 先在 git 里 git remote add</div>
+                ) : null}
+              </div>
+            </div>
+            {remoteCheck ? (
+              <div className="form-field">
+                <label>存在性检查</label>
+                <div className="rp-remote-check">
+                  <span className={'rp-status ' + (remoteCheck.status === 'exists' ? 'same' : remoteCheck.status === 'missing' ? 'new' : remoteCheck.status === 'checking' ? 'checking' : 'missing')}>
+                    {remoteCheck.status === 'exists' ? '存在'
+                      : remoteCheck.status === 'missing' ? '不存在'
+                      : remoteCheck.status === 'checking' ? '检查中'
+                      : '不可达'}
+                  </span>
+                  <span className="mono rp-remote-url">{remoteCheck.url}</span>
+                  <span className="muted">{remoteCheck.detail}</span>
+                </div>
+              </div>
+            ) : null}
+            <div className="form-acts">
+              <button className="btn ghost" onClick={() => setRemoteOpen(false)}>关闭</button>
+              <button className="btn" onClick={() => checkRemote('')}>检查当前 remote</button>
+            </div>
+          </div>
+        </Modal>
       ) : null}
 
       {dialogNode}

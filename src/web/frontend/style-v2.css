@@ -147,6 +147,11 @@
 }
 .tab:hover .tx, .tab.on .tx { opacity: 1; }
 .tab .tx:hover { background: rgba(0, 0, 0, 0.08); color: var(--ink); }
+/* 未保存标记：页签标题后一颗强调色点（t.dirty 由调用方注入） */
+.tab .tdot {
+  flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: #2F6F5E; opacity: 0.8;
+}
 .tab-new {
   flex: none; width: 24px; height: 24px; margin: 0 2px; border-radius: 6px;
   border: 0; background: none; color: var(--faint); cursor: pointer;

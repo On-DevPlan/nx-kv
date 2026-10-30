@@ -120,6 +120,21 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
 
   const guard = (fn) => fn().catch((e) => toast(String(e.message || e)));
 
+  // 未保存标记：标题/正文/附件改动即挂点，保存/提交成功后摘除（页签上一颗点）
+  const [dirtyIds, setDirtyIds] = useState(() => new Set());
+  const markDirty = (id) => setDirtyIds((s) => {
+    if (s.has(id)) return s;
+    const n = new Set(s);
+    n.add(id);
+    return n;
+  });
+  const clearDirty = (id) => setDirtyIds((s) => {
+    if (!s.has(id)) return s;
+    const n = new Set(s);
+    n.delete(id);
+    return n;
+  });
+
   // ─── 页签操作：切换 / 关闭 / 新建（切换一律走路由，activeId 与 URL 保持同源）───
   const gotoTab = (id) => {
     const t = tabById(id);
@@ -163,6 +178,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
       });
       persistAtt(activeTab.task, doc.attachments);
       saveDoc(activeTab.id, { title: t, body: b });
+      clearDirty(activeTab.id);
       toast('已同步 MD');
       refreshLocal();
       return;
@@ -176,6 +192,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
       persistAtt(newId, doc.attachments);
       promoteDraft(activeTab.id, { task: String(newId), title: t });
       saveDoc(`${scope}::${newId}`, { title: t, body: b });
+      clearDirty(activeTab.id);
       history.replaceState(null, '', routeOfTab({ scope, task: String(newId) }));
     }
     toast(`已提交：${slugName(t)}`);
@@ -247,6 +264,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
   /** 标题与正文首行 # 双向同步（实时预览标题栏独立，不改正文） */
   const onTitle = (next) => {
     if (!activeTab || !doc) return;
+    markDirty(activeTab.id);
     const patch = { title: next };
     if (doc.mode !== 'split' && /^# (?!#)/m.test(doc.body)) {
       patch.body = doc.body.replace(/^# (?!#).+$/m, `# ${next || '未命名任务'}`);
@@ -256,6 +274,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
 
   const onBody = (next) => {
     if (!activeTab || !doc) return;
+    markDirty(activeTab.id);
     const patch = { body: next };
     if (doc.mode !== 'split') patch.title = titleFromMd(next);
     saveDoc(activeTab.id, patch);
@@ -339,7 +358,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
       <div className="mdw-main">
         {tabs.length > 0 && (
           <TabBar
-            tabs={tabs}
+            tabs={tabs.map((t) => (dirtyIds.has(t.id) ? { ...t, dirty: true } : t))}
             activeId={activeTab?.id ?? null}
             onSelect={gotoTab}
             onClose={closeTabAndNav}
@@ -399,12 +418,14 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
               editorApiRef={editorApiRef}
               onFiles={addFiles}
               onTextSel={onEditorTextSel}
+              onSave={submit}
             />
 
             <AttachBar
               attachments={doc.attachments}
               onRemove={(id) => {
                 const next = doc.attachments.filter((x) => x.id !== id);
+                markDirty(activeTab.id);
                 saveDoc(activeTab.id, { attachments: next });
                 if (!isDraft) persistAtt(activeTab.task, next);
               }}

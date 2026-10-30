@@ -31,6 +31,8 @@ export default function TabBar({ tabs, activeId, onSelect, onClose, onNew, newLa
             }}
           >
             <span className="tt">{t.title || '未命名'}</span>
+            {/* 未保存标记：调用方以 t.dirty 注入（工作台标题/正文/附件改动即挂点） */}
+            {t.dirty && <span className="tdot" title="未保存" aria-label="有未保存修改" />}
             {onClose && (
               <span
                 className="tx" role="button" tabIndex={-1}

@@ -277,7 +277,7 @@ function SlashMenu({ items, active, onPick, onHover, style }) {
 
 // 标题输入：自动增高 textarea —— input 不能软换行，长标题会横向溢出（UIUX E1）。
 // 标题在语义上仍是单条逻辑行：Enter 不产生换行，把焦点交给正文。
-function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter }) {
+function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter, onSave }) {
   const ref = useRef(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -302,6 +302,12 @@ function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter })
       onChange={(e) => onTitle(e.target.value)}
       onFocus={onFocus}
       onKeyDown={(e) => {
+        const mod = e.metaKey || e.ctrlKey;
+        if (mod && !e.altKey && e.key.toLowerCase() === 's') {
+          e.preventDefault();
+          onSave?.();
+          return;
+        }
         if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
           e.preventDefault();
           onEnter?.();
@@ -312,7 +318,7 @@ function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter })
 }
 
 function LivePreview({
-  title, body, onTitle, onBody, articleRef, attachments, docKey, onFiles, editorApiRef, onTextSel,
+  title, body, onTitle, onBody, articleRef, attachments, docKey, onFiles, editorApiRef, onTextSel, onSave,
 }) {
   const [focus, setFocus] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -486,6 +492,11 @@ function LivePreview({
       return;
     }
     const mod = e.metaKey || e.ctrlKey;
+    if (mod && !e.altKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      onSave?.();
+      return;
+    }
     if (mod && !e.altKey) {
       const k = e.key.toLowerCase();
       const map = { b: 'bold', i: 'italic', e: 'code', k: 'link' };
@@ -587,6 +598,7 @@ function LivePreview({
           onTitle={onTitle}
           onFocus={() => { setFocus(null); setSlashBoth(null); }}
           onEnter={() => { if (blocks.length) setFocus(0); }}
+          onSave={onSave}
         />
         <div className={`mdw-lp-blocks${emptyDoc ? ' is-empty-doc' : ''}`}>
           {blocks.map((b, i) => (
@@ -699,7 +711,7 @@ function EditorFindBar({ query, setQuery, index, total, onNext, onPrev, onClose,
 }
 
 /** 源码编辑器：soft-wrap、行号、查找、格式 API、粘贴/拖图、行首 / */
-function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onTextSel }) {
+function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onTextSel, onSave }) {
   const taRef = useRef(null);
   const gutterRef = useRef(null);
   const findInputRef = useRef(null);
@@ -870,6 +882,11 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
       close: () => setSlashBoth(null),
     })) return;
     const mod = e.metaKey || e.ctrlKey;
+    if (mod && !e.altKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      onSave?.();
+      return;
+    }
     if (mod && !e.altKey && e.key.toLowerCase() === 'f') {
       e.preventDefault();
       openFind();
@@ -957,6 +974,7 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
           ta.focus();
           ta.setSelectionRange(0, 0);
         }}
+        onSave={onSave}
       />
       {findOpen && (
         <EditorFindBar
@@ -1094,6 +1112,7 @@ export const MdPanes = forwardRef(function MdPanes(
     editorApiRef = null,
     onFiles = null,
     onTextSel = null,
+    onSave = null,
   },
   articleRef
 ) {
@@ -1111,6 +1130,7 @@ export const MdPanes = forwardRef(function MdPanes(
           onFiles={onFiles}
           editorApiRef={editorApiRef}
           onTextSel={onTextSel}
+          onSave={onSave}
         />
       </div>
     );
@@ -1127,6 +1147,7 @@ export const MdPanes = forwardRef(function MdPanes(
           editorApiRef={editorApiRef}
           onFiles={onFiles}
           onTextSel={onTextSel}
+          onSave={onSave}
         />
       )}
       {mode === 'preview' && (

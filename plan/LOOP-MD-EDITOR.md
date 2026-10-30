@@ -126,7 +126,8 @@ R8 无障碍扫尾 → R9 对照表勾缺 → R10 构建+纪要收口。
 - [x] E3 复核后关闭：状态栏切换钮（行号/参考线/查找/换行）on 态语言本已一致，不动
 - [x] E4 空态：live 空文档渲染幽灵引导「输入正文，或键入 / 唤起命令…」，点击聚焦首块；占位文案此前已齐（live 块/源码/标题）
 - [ ] 窄屏 ≤960 编辑器复核：标题 24px 已有；工具栏溢出菜单与标题共存、状态栏收纳
-- [ ] 长词/URL 溢出：live 块 anywhere 已有；阅读模式与源码 gutter 对齐待查
+- [x] E5 长词/URL 溢出复核：live 块/阅读态/标题均无横向溢出（实测 323 字符长链：live view 与 pane scrollWidth 均未超）
+- [x] E5 保存与反馈：Ctrl/⌘S 提交（标题/live 块/源码三处可达）、页签未保存圆点
 - [x] E4 无障碍：aria-label 补齐（正文块/正文源码/查找↑↓×/插入图片/添加附件，标题 E1 已带）；状态栏与切换钮 10.5px 小字 mid(4.0:1)→ink-2(过 WCAG AA 4.5:1)
 
 ## E1 轮纪要 ✅
@@ -159,3 +160,10 @@ R8 无障碍扫尾 → R9 对照表勾缺 → R10 构建+纪要收口。
 - **无障碍**：live 正文块/源码 textarea/查找导航↑↓×/插入图片/添加附件补 aria-label（此前仅 title 提示）；状态栏与切换钮小字对比度 mid→ink-2 过 WCAG AA
 - **新发现（记入议题池待拍板）**：serve 对 index.html 未发 `Cache-Control: no-cache`，升级构建后浏览器可能继续跑旧 bundle——本轮实测踩中（`navigate url` 命中强缓存，新逻辑"不生效"，强刷才恢复）。属 server 行为（src/runtime/server.js），超出编辑器循环范围，留用户决策
 - 验证：lint/build 双绿；浏览器实测（强刷后）——空文档引导渲染、点击聚焦首块、占位符接续、草稿丢弃无残留
+
+## E5 轮纪要 ✅
+
+- **Ctrl/⌘S 保存**：专业编辑器标配，此前只有工具栏按钮可达。标题（TitleArea）、live 块、源码 textarea 三处键位统一 `mod+S` → preventDefault + 提交；`onSave` 由 view.jsx 的 `submit` 经 MdPanes 下发
+- **未保存标记**：view.jsx 维护 `dirtyIds`（标题/正文/附件改动挂点，保存/提交成功后摘除；切换模式不算改动），TabBar 以可选 `t.dirty` 渲染一颗强调色圆点（`aria-label="有未保存修改"`）——共享组件保持纯展示、向后兼容
+- **溢出复核**：草稿正文塞 323 字符无空格长链 → live 视图与面板均无横向溢出（`overflow-wrap:anywhere` 生效）
+- 验证：lint/build 双绿；浏览器实测（强刷后）——标题改动即挂圆点、Ctrl+S 触发 `POST /api/localtasks`（用 fetch 拦截验证，**未真实提交**，toast 落拦截错误即为证）、草稿关闭后无残留

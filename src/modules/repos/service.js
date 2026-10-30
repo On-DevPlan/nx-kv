@@ -196,6 +196,10 @@ export function keyFromRemote(url) {
     const host = s.slice(0, slash).toLowerCase();
     s = (hostAlias[host] || host) + s.slice(slash);
   }
+  // 去首尾斜杠：file:///tmp/x 剥协议后是 "/tmp/x"，带前导斜杠的话同一份数据在
+  // 「派生」与「归一」两条路上会算出不同的 key（/tmp/x vs tmp/x）——
+  // 表现为「登记的是 A、成员表里是 B」，关系连不上。
+  s = s.replace(/^\/+|\/+$/g, '');
   return s.toLowerCase();
 }
 

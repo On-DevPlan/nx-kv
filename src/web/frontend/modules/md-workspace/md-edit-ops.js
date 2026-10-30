@@ -328,3 +328,13 @@ export function imageFilesFromDataTransfer(dt) {
   }
   return out;
 }
+
+/** 两段文本的公共前缀长度——撤销/重做后把光标放回改动处用 */
+export function diffIndex(a, b) {
+  const s = String(a ?? '');
+  const t = String(b ?? '');
+  const n = Math.min(s.length, t.length);
+  let i = 0;
+  while (i < n && s[i] === t[i]) i += 1;
+  return i;
+}

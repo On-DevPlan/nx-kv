@@ -129,6 +129,10 @@ R8 无障碍扫尾 → R9 对照表勾缺 → R10 构建+纪要收口。
 - [x] E5 长词/URL 溢出复核：live 块/阅读态/标题均无横向溢出（实测 323 字符长链：live view 与 pane scrollWidth 均未超）
 - [x] E5 保存与反馈：Ctrl/⌘S 提交（标题/live 块/源码三处可达）、页签未保存圆点
 - [x] E6 撤销/重做：**格式操作不可撤是真缺陷**（程序化改写冲掉原生 undo 栈）——新增文档级历史栈，Ctrl/⌘Z / Ctrl/⌘⇧Z / Ctrl+Y 可撤销格式操作与输入段
+- [x] E7 快捷键速查面板：Ctrl/⌘ / 或工具栏问号唤起，15 条键位分三组
+- [x] E7 撤销/重做后光标回到改动处（源码模式精确）
+- [ ] live 模式撤销后光标定位：块内偏移换算未做（当前留在原处）
+- [ ] serve 的 index.html 缺 no-cache 头（E4 记，待用户拍板）
 - [x] E4 无障碍：aria-label 补齐（正文块/正文源码/查找↑↓×/插入图片/添加附件，标题 E1 已带）；状态栏与切换钮 10.5px 小字 mid(4.0:1)→ink-2(过 WCAG AA 4.5:1)
 
 ## E1 轮纪要 ✅
@@ -177,3 +181,11 @@ R8 无障碍扫尾 → R9 对照表勾缺 → R10 构建+纪要收口。
 - **快捷键收口**：Ctrl/⌘S、Ctrl/⌘Z、Ctrl/⌘⇧Z、Ctrl/⌘Y 从各控件的局部键位，改为 `MdPanes` 上 **window 捕获阶段**统一接管（仅编辑区文本框：.mdw-editor/.mdw-lp-src/.mdw-lp-title/.mdw-title-input；查找框等保留原生撤销）。原因：局部键位依赖焦点，且原生 undo 与我们的历史栈会互相打架（实测真实按键序列曾出现一次撤销失效）
 - 验证：lint/build 双绿；浏览器真实按键全链路——输入 `ab` → Ctrl+B 加粗（58）→ Ctrl+Z 撤格式（54）→ Ctrl+Z 撤输入（53）→ Ctrl+⇧Z 重做（54）→ Ctrl+⇧Z 重做格式（58）；Ctrl+S 经 fetch 拦截验证仍触发提交（未真实提交）
 - 备注：`node --test tests/unit/*.test.mjs` 存在**既有 flaky**（时序探针，两次跑分别 fail 1 / fail 0），与本轮改动无关
+
+## E7 轮纪要 ✅
+
+- **快捷键速查面板**（新增 `shortcut-sheet.jsx`）：15 条键位分「格式 / 编辑 / 导航与文件」三组，白纸浮层 + kbd 键帽；Ctrl/⌘ / 唤起（Notion 习惯，仅工作台范围内生效，侧栏输入框不受影响），工具栏新增问号按钮可直接打开；Esc / 点遮罩关闭；`role="dialog" aria-modal="true"`；第三组横跨整行排两列避免留白
+- **图标集**：新增 `help` 图标（24 网格 / 1.8 线宽 / currentColor，遵 ft-svg 规范）
+- **撤销/重做后光标回到改动处**：`md-edit-ops.js` 新增 `diffIndex`（公共前缀长度 = 改动起点），源码编辑器 API 增 `caretFromDiff(prev, next)`；view.jsx 撤销/重做回写后于 rAF 调用。实测：行首插入 `z`（len 53, caret 1）→ Ctrl+Z → len 52 且 **caret 回到 0**、焦点保持
+- 已知限制：live 模式（块级）撤销后光标留在原处——块内偏移换算未做，已记入议题池
+- 验证：lint/build 双绿；浏览器实测——速查面板按钮唤起/Ctrl+/ 开关/Esc 关闭/三组 15 条/两列布局、光标恢复、草稿页签清理干净（无残留脏点）

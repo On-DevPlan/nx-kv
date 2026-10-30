@@ -19,6 +19,7 @@ import {
   caretLineCol,
   continueListOnEnter,
   countStats,
+  diffIndex,
   filterSlashCmds,
   findMatches,
   imageFilesFromDataTransfer,
@@ -851,6 +852,14 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
     getCursor() {
       const ta = taRef.current;
       return ta ? ta.selectionStart : null;
+    },
+    /** 撤销/重做后把光标放回改动处（公共前缀即改动起点） */
+    caretFromDiff(prev, next) {
+      const ta = taRef.current;
+      if (!ta) return;
+      const p = Math.min(diffIndex(prev, next), ta.value.length);
+      ta.focus();
+      ta.setSelectionRange(p, p);
     },
     toggleWrap() {
       setWrap((v) => !v);

@@ -84,6 +84,7 @@ export default function ToolBar({
   submitLabel,
   onImg,
   onAtt,
+  onShortcuts,
   onImport,
   onNew,
   onMark,
@@ -196,6 +197,15 @@ export default function ToolBar({
             </button>
             <button type="button" className="iconbtn" title="添加附件" aria-label="添加附件" onClick={onAtt}>
               <Icon name="list" size={14} />
+            </button>
+            <button
+              type="button"
+              className="iconbtn"
+              title="快捷键"
+              aria-label="快捷键速查"
+              onClick={onShortcuts}
+            >
+              <Icon name="help" size={14} />
             </button>
           </div>
         )}

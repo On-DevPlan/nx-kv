@@ -11,6 +11,7 @@ import AttachBar from './attach-bar.jsx';
 import ToolBar from './tool-bar.jsx';
 import Landing from './landing.jsx';
 import { MdPanes } from './md-panes.jsx';
+import ShortcutSheet from './shortcut-sheet.jsx';
 import SelMenu from './sel-menu.jsx';
 import { filesToAttachments, loadAttForTask, persistAtt } from './attachments.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from './md-history.js';
@@ -126,6 +127,21 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
   // 文档级撤销栈：受控 textarea 的程序化改写会冲掉原生 undo（格式操作不可撤），
   // 这里自己记快照，Ctrl/⌘Z 与 Ctrl/⌘⇧Z 走它
   const histRef = useRef(new Map());
+  // 快捷键速查面板
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Ctrl/⌘ / 唤起速查（Notion 习惯）：只在工作台范围内生效，侧栏输入框不受影响
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key !== '/') return;
+      const t = e.target;
+      if (t && typeof t.closest === 'function' && !t.closest('.mdw')) return;
+      e.preventDefault();
+      setShowShortcuts((v) => !v);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
   const markDirty = (id) => setDirtyIds((s) => {
     if (s.has(id)) return s;
     const n = new Set(s);
@@ -295,6 +311,8 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
     if (!snap) return;
     saveDoc(activeTab.id, { title: snap.title, body: snap.body });
     markDirty(activeTab.id);
+    // 光标回到改动处（源码模式精确；live 模式暂留原处）
+    requestAnimationFrame(() => editorApiRef.current?.caretFromDiff?.(doc.body, snap.body));
   };
 
   const redo = () => {
@@ -303,6 +321,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
     if (!snap) return;
     saveDoc(activeTab.id, { title: snap.title, body: snap.body });
     markDirty(activeTab.id);
+    requestAnimationFrame(() => editorApiRef.current?.caretFromDiff?.(doc.body, snap.body));
   };
 
   const placeSelMenu = (kind, text, x, y) => {
@@ -419,6 +438,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
               submitLabel={isDraft ? '提交为任务' : '保存并同步'}
               onImg={() => pickAtt('image/*')}
               onAtt={() => pickAtt('image/*,.pdf,.zip,.txt,.json,.csv')}
+              onShortcuts={() => setShowShortcuts(true)}
               onImport={() => fileMdRef.current?.click()}
               onNew={newDraft}
               onMark={() => spawnFollow(true)}
@@ -530,6 +550,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
           e.target.value = '';
         }}
       />
+      {showShortcuts && <ShortcutSheet onClose={() => setShowShortcuts(false)} />}
     </div>
   );
 }

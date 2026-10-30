@@ -277,7 +277,7 @@ function SlashMenu({ items, active, onPick, onHover, style }) {
 
 // 标题输入：自动增高 textarea —— input 不能软换行，长标题会横向溢出（UIUX E1）。
 // 标题在语义上仍是单条逻辑行：Enter 不产生换行，把焦点交给正文。
-function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter, onSave }) {
+function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter }) {
   const ref = useRef(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -299,15 +299,9 @@ function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter, o
       rows={1}
       spellCheck={false}
       aria-label="标题"
-      onChange={(e) => onTitle(e.target.value)}
+      onChange={(e) => onTitle(e.target.value, 'typing')}
       onFocus={onFocus}
       onKeyDown={(e) => {
-        const mod = e.metaKey || e.ctrlKey;
-        if (mod && !e.altKey && e.key.toLowerCase() === 's') {
-          e.preventDefault();
-          onSave?.();
-          return;
-        }
         if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
           e.preventDefault();
           onEnter?.();
@@ -318,7 +312,7 @@ function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter, o
 }
 
 function LivePreview({
-  title, body, onTitle, onBody, articleRef, attachments, docKey, onFiles, editorApiRef, onTextSel, onSave,
+  title, body, onTitle, onBody, articleRef, attachments, docKey, onFiles, editorApiRef, onTextSel,
 }) {
   const [focus, setFocus] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -341,12 +335,13 @@ function LivePreview({
   useEffect(() => { slashRef.current = slash; }, [slash]);
 
   // 实时预览不把标题写回正文；composeBody 提交时再拼 `# title`
-  const commit = (nextBlocks) => onBody(joinMdBlocks(nextBlocks));
+  // kind：'typing' 连续输入（历史合并成一条）· 'op' 格式/结构操作（各自成条）
+  const commit = (nextBlocks, kind = 'op') => onBody(joinMdBlocks(nextBlocks), kind);
 
-  const updateAt = (i, v) => {
+  const updateAt = (i, v, kind = 'op') => {
     const next = blocks.slice();
     next[i] = v;
-    commit(next);
+    commit(next, kind);
   };
 
   const applyBlockOp = (i, opResult) => {
@@ -492,11 +487,6 @@ function LivePreview({
       return;
     }
     const mod = e.metaKey || e.ctrlKey;
-    if (mod && !e.altKey && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      onSave?.();
-      return;
-    }
     if (mod && !e.altKey) {
       const k = e.key.toLowerCase();
       const map = { b: 'bold', i: 'italic', e: 'code', k: 'link' };
@@ -598,7 +588,6 @@ function LivePreview({
           onTitle={onTitle}
           onFocus={() => { setFocus(null); setSlashBoth(null); }}
           onEnter={() => { if (blocks.length) setFocus(0); }}
-          onSave={onSave}
         />
         <div className={`mdw-lp-blocks${emptyDoc ? ' is-empty-doc' : ''}`}>
           {blocks.map((b, i) => (
@@ -615,7 +604,7 @@ function LivePreview({
               }}
               onTaReady={(el) => { liveTaRef.current = el; }}
               onChange={(v) => {
-                updateAt(i, v);
+                updateAt(i, v, 'typing');
                 cancelAnimationFrame(slashRafRef.current);
                 slashRafRef.current = requestAnimationFrame(() => {
                   const ta = liveTaRef.current;
@@ -711,7 +700,7 @@ function EditorFindBar({ query, setQuery, index, total, onNext, onPrev, onClose,
 }
 
 /** 源码编辑器：soft-wrap、行号、查找、格式 API、粘贴/拖图、行首 / */
-function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onTextSel, onSave }) {
+function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onTextSel }) {
   const taRef = useRef(null);
   const gutterRef = useRef(null);
   const findInputRef = useRef(null);
@@ -882,11 +871,6 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
       close: () => setSlashBoth(null),
     })) return;
     const mod = e.metaKey || e.ctrlKey;
-    if (mod && !e.altKey && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      onSave?.();
-      return;
-    }
     if (mod && !e.altKey && e.key.toLowerCase() === 'f') {
       e.preventDefault();
       openFind();
@@ -968,13 +952,12 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
         value={title}
         placeholder="任务标题"
         onTitle={onTitle}
-        onEnter={() => {
+          onEnter={() => {
           const ta = taRef.current;
           if (!ta) return;
           ta.focus();
           ta.setSelectionRange(0, 0);
         }}
-        onSave={onSave}
       />
       {findOpen && (
         <EditorFindBar
@@ -1010,7 +993,7 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
             aria-label="正文源码"
             placeholder="用 Markdown 写任务——行首 / 出命令 · Ctrl/⌘F 查找 · Ctrl/⌘B 粗体"
             onChange={(e) => {
-              onBody(e.target.value);
+              onBody(e.target.value, 'typing');
               syncCaret();
               cancelAnimationFrame(slashRafRef.current);
               slashRafRef.current = requestAnimationFrame(() => {
@@ -1113,9 +1096,42 @@ export const MdPanes = forwardRef(function MdPanes(
     onFiles = null,
     onTextSel = null,
     onSave = null,
+    onUndo = null,
+    onRedo = null,
   },
   articleRef
 ) {
+  // 文档级快捷键集中接管（window 捕获阶段）：
+  // 受控 textarea 的原生 undo 栈会被程序化改写冲掉，且原生撤销与我们的
+  // 历史栈会互相打架——统一在这里拦截，编辑器区的按键行为才稳定可预期。
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const t = e.target;
+      if (!t || typeof t.closest !== 'function') return;
+      // 只接管编辑区文本框：查找框等普通输入框保留原生撤销
+      if (!t.closest('.mdw-editor,.mdw-lp-src,.mdw-lp-title,.mdw-title-input')) return;
+      const k = e.key.toLowerCase();
+      if (k === 's') {
+        e.preventDefault();
+        onSave?.();
+        return;
+      }
+      if (k === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) onRedo?.();
+        else onUndo?.();
+        return;
+      }
+      if (k === 'y') {
+        e.preventDefault();
+        onRedo?.();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onSave, onUndo, onRedo]);
+
   if (mode === 'split') {
     return (
       <div className="mdw-split mode-split live">
@@ -1130,7 +1146,6 @@ export const MdPanes = forwardRef(function MdPanes(
           onFiles={onFiles}
           editorApiRef={editorApiRef}
           onTextSel={onTextSel}
-          onSave={onSave}
         />
       </div>
     );
@@ -1147,7 +1162,6 @@ export const MdPanes = forwardRef(function MdPanes(
           editorApiRef={editorApiRef}
           onFiles={onFiles}
           onTextSel={onTextSel}
-          onSave={onSave}
         />
       )}
       {mode === 'preview' && (

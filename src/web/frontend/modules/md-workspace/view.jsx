@@ -13,6 +13,7 @@ import Landing from './landing.jsx';
 import { MdPanes } from './md-panes.jsx';
 import SelMenu from './sel-menu.jsx';
 import { filesToAttachments, loadAttForTask, persistAtt } from './attachments.js';
+import { clearHistory, pushHistory, redoHistory, undoHistory } from './md-history.js';
 import {
   NEW_TEMPLATE,
   renderMarkdownHtml,
@@ -122,6 +123,9 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
 
   // 未保存标记：标题/正文/附件改动即挂点，保存/提交成功后摘除（页签上一颗点）
   const [dirtyIds, setDirtyIds] = useState(() => new Set());
+  // 文档级撤销栈：受控 textarea 的程序化改写会冲掉原生 undo（格式操作不可撤），
+  // 这里自己记快照，Ctrl/⌘Z 与 Ctrl/⌘⇧Z 走它
+  const histRef = useRef(new Map());
   const markDirty = (id) => setDirtyIds((s) => {
     if (s.has(id)) return s;
     const n = new Set(s);
@@ -179,6 +183,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
       persistAtt(activeTab.task, doc.attachments);
       saveDoc(activeTab.id, { title: t, body: b });
       clearDirty(activeTab.id);
+      clearHistory(histRef.current, activeTab.id);
       toast('已同步 MD');
       refreshLocal();
       return;
@@ -193,6 +198,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
       promoteDraft(activeTab.id, { task: String(newId), title: t });
       saveDoc(`${scope}::${newId}`, { title: t, body: b });
       clearDirty(activeTab.id);
+      clearHistory(histRef.current, activeTab.id);
       history.replaceState(null, '', routeOfTab({ scope, task: String(newId) }));
     }
     toast(`已提交：${slugName(t)}`);
@@ -262,8 +268,9 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
   };
 
   /** 标题与正文首行 # 双向同步（实时预览标题栏独立，不改正文） */
-  const onTitle = (next) => {
+  const onTitle = (next, kind = 'typing') => {
     if (!activeTab || !doc) return;
+    pushHistory(histRef.current, activeTab.id, { title: doc.title, body: doc.body }, kind);
     markDirty(activeTab.id);
     const patch = { title: next };
     if (doc.mode !== 'split' && /^# (?!#)/m.test(doc.body)) {
@@ -272,12 +279,30 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
     saveDoc(activeTab.id, patch);
   };
 
-  const onBody = (next) => {
+  const onBody = (next, kind = 'op') => {
     if (!activeTab || !doc) return;
+    pushHistory(histRef.current, activeTab.id, { title: doc.title, body: doc.body }, kind);
     markDirty(activeTab.id);
     const patch = { body: next };
     if (doc.mode !== 'split') patch.title = titleFromMd(next);
     saveDoc(activeTab.id, patch);
+  };
+
+  /** 撤销 / 重做：只移动历史指针并回写文档，不产生新的历史条目 */
+  const undo = () => {
+    if (!activeTab || !doc) return;
+    const snap = undoHistory(histRef.current, activeTab.id, { title: doc.title, body: doc.body });
+    if (!snap) return;
+    saveDoc(activeTab.id, { title: snap.title, body: snap.body });
+    markDirty(activeTab.id);
+  };
+
+  const redo = () => {
+    if (!activeTab || !doc) return;
+    const snap = redoHistory(histRef.current, activeTab.id, { title: doc.title, body: doc.body });
+    if (!snap) return;
+    saveDoc(activeTab.id, { title: snap.title, body: snap.body });
+    markDirty(activeTab.id);
   };
 
   const placeSelMenu = (kind, text, x, y) => {
@@ -419,6 +444,8 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
               onFiles={addFiles}
               onTextSel={onEditorTextSel}
               onSave={submit}
+              onUndo={undo}
+              onRedo={redo}
             />
 
             <AttachBar

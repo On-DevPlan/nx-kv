@@ -50,6 +50,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
   const fileMdRef = useRef(null);
   const fileAttRef = useRef(null);
   const articleRef = useRef(null);
+  const editorApiRef = useRef(null);
   const lastSel = useRef('');
 
   const tasks = useMemo(
@@ -197,11 +198,31 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
     });
   };
 
-  const addFiles = async (fileList) => {
+  const addFiles = async (fileList, opts = {}) => {
     if (!activeTab || !doc) return;
     const { items, imageInserts } = await filesToAttachments(fileList);
     const patch = {};
-    if (imageInserts.length) patch.body = (doc.body || '') + imageInserts.join('');
+    if (imageInserts.length) {
+      const ins = imageInserts.join('');
+      const b = doc.body || '';
+      if (opts.insertAt != null && opts.insertAt >= 0) {
+        const at = Math.min(opts.insertAt, b.length);
+        patch.body = b.slice(0, at) + ins + b.slice(at);
+        // 源码模式：插入后把光标移到图片标记末尾
+        if (opts.mode === 'edit') {
+          requestAnimationFrame(() => {
+            editorApiRef.current?.focus?.();
+            const ta = document.querySelector('.mdw-editor');
+            if (ta) {
+              const caret = at + ins.length;
+              try { ta.setSelectionRange(caret, caret); } catch { /* ignore */ }
+            }
+          });
+        }
+      } else {
+        patch.body = b + ins;
+      }
+    }
     const next = [...(doc.attachments || []), ...items];
     patch.attachments = next;
     saveDoc(activeTab.id, patch);
@@ -240,26 +261,43 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
     saveDoc(activeTab.id, patch);
   };
 
+  const placeSelMenu = (kind, text, x, y) => {
+    lastSel.current = text;
+    setSelMenu({
+      kind,
+      text,
+      x: Math.min(window.innerWidth - 220, Math.max(8, x)),
+      y: Math.min(window.innerHeight - 160, Math.max(8, y)),
+    });
+  };
+
+  /** 源码 / live 编辑态 textarea 划选 → 格式浮条 */
+  const onEditorTextSel = (info) => {
+    if (!info?.text || info.text.length < 1) {
+      setSelMenu((cur) => (cur?.kind === 'format' ? null : cur));
+      return;
+    }
+    placeSelMenu('format', info.text, info.x, info.y);
+  };
+
+  /** 阅读 / live 渲染态 DOM 划选 → 任务浮层（可带格式入口若可编辑） */
   const onPreviewMouseUp = (e) => {
     if (!activeTab || doc?.mode === 'edit') return;
     if (e.target.closest?.('#mdw-sel-menu')) return;
+    if (e.target.closest?.('textarea')) return; // 交给 onEditorTextSel
     const sel = window.getSelection();
     const text = (sel && String(sel)).trim();
     if (!text || text.length < 2) {
-      setSelMenu(null);
+      setSelMenu((cur) => (cur?.kind === 'task' || cur?.kind === 'both' ? null : cur));
       return;
     }
     if (!articleRef.current?.contains(sel.anchorNode)) {
-      setSelMenu(null);
+      setSelMenu((cur) => (cur?.kind === 'task' || cur?.kind === 'both' ? null : cur));
       return;
     }
-    lastSel.current = text;
     const r = sel.getRangeAt(0).getBoundingClientRect();
-    setSelMenu({
-      x: Math.min(window.innerWidth - 220, Math.max(8, r.left + r.width / 2 - 100)),
-      y: Math.min(window.innerHeight - 140, r.bottom + 8),
-      text,
-    });
+    // DOM 划选（阅读 / live 渲染态）：任务操作；编辑态划选走 onEditorTextSel 格式条
+    placeSelMenu('task', text, r.left + r.width / 2 - 100, r.bottom + 8);
   };
 
   const status = topic?.waiting
@@ -344,6 +382,8 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
               onSubmit={submit}
               onProg={() => setProgOpen((v) => !v)}
               onOverview={() => onNavigate('#/overview')}
+              onFormat={(op) => editorApiRef.current?.format?.(op)}
+              onTurn={(id) => editorApiRef.current?.turn?.(id)}
             />
 
             <MdPanes
@@ -356,6 +396,9 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
               onBody={onBody}
               attachments={doc.attachments}
               docKey={activeTab.id}
+              editorApiRef={editorApiRef}
+              onFiles={addFiles}
+              onTextSel={onEditorTextSel}
             />
 
             <AttachBar
@@ -405,10 +448,14 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
 
       <SelMenu
         at={selMenu}
+        onFormat={(op) => {
+          editorApiRef.current?.format?.(op);
+          setSelMenu(null);
+        }}
         onIssue={() => spawnFollow(true)}
         onAppend={() => spawnFollow(false)}
         onCopy={() => {
-          navigator.clipboard?.writeText(lastSel.current);
+          navigator.clipboard?.writeText(lastSel.current || selMenu?.text || '');
           toast('已复制');
           setSelMenu(null);
         }}

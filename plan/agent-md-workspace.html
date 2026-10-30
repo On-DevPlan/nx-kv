@@ -182,6 +182,44 @@ body.sp-dragging .shell-resizer::after{opacity:1}
 .md-tools{display:flex;gap:2px}
 .md-tools .iconbtn{width:28px;height:28px}
 
+/* 行首 / 命令菜单 */
+.md-slash{
+  position:fixed;z-index:9999;display:none;flex-direction:column;min-width:200px;max-height:280px;overflow:auto;
+  padding:4px;border-radius:10px;border:1px solid var(--soft-2);
+  background:#fff;box-shadow:0 10px 32px rgba(20,22,26,.22);
+}
+.md-slash.open{display:flex}
+.md-slash-cap{font-size:10.5px;color:var(--text-4);padding:4px 10px 2px}
+.md-slash-item{
+  display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border:0;border-radius:6px;
+  background:none;cursor:pointer;text-align:left;font:650 12px var(--ui);color:var(--ink);
+}
+.md-slash-item .hint{margin-left:auto;font:400 11px var(--mono);color:var(--text-4)}
+.md-slash-item:hover{background:var(--soft)}
+.md-slash-item.on{background:rgba(21,88,188,.12);color:var(--ink);box-shadow:inset 2px 0 0 #1558bc}
+.md-fmtbar-btn{
+  display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;
+  border:0;border-radius:6px;background:transparent;cursor:pointer;
+  font:650 11.5px var(--mono);color:var(--text-2);white-space:nowrap;
+}
+.md-fmtbar-btn.b{font-weight:800}
+.md-fmtbar-btn.i{font-style:italic;font-family:var(--ui);font-weight:600}
+.md-fmtbar-btn.turn{font-family:var(--ui);font-weight:600;font-size:11px;padding:0 6px}
+.md-fmtbar-btn.turn kbd{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:14px;height:14px;padding:0 3px;border-radius:3px;
+  background:var(--soft);font:650 10px var(--mono);color:var(--mid);
+}
+.md-fmtbar-btn:hover{background:var(--soft);color:var(--ink)}
+.md-fmtbar{
+  flex:none;display:flex;align-items:center;gap:2px;flex-wrap:wrap;
+  padding:4px 10px;border-bottom:var(--border);background:var(--soft);
+}
+.md-fmtbar[hidden]{display:none!important}
+.md-fmtbar-sep{width:1px;height:16px;background:var(--soft-2);margin:0 4px}
+#md-editor{caret-color:var(--ink)}
+.md-editor-hint{flex:none;font-size:10.5px;color:var(--text-4);padding:4px 18px 8px}
+
 .md-split{flex:1;display:flex;min-height:0;overflow:hidden}
 .md-pane{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 .md-pane + .md-pane{border-left:var(--border)}
@@ -364,16 +402,31 @@ body.sp-dragging .shell-resizer::after{opacity:1}
         <div class="md-tools" id="edit-tools">
           <button class="iconbtn" id="btn-img" title="插入图片"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 16l-5-5-4 4-2-2-5 5"/></svg></button>
           <button class="iconbtn" id="btn-file" title="添加附件"><svg class="ic" viewBox="0 0 24 24"><path d="M21 12.5V8a5 5 0 0 0-10 0v9a3 3 0 0 0 6 0V9"/></svg></button>
+          <button class="btn ghost sm" id="btn-slash" title="在行首插入 /">/</button>
         </div>
         <span class="grow"></span>
-        <span class="hint" id="md-hint">拖拽侧栏可排序 / 移入目录</span>
+        <span class="hint" id="md-hint">新行首位输入 / 出命令 · 或点「/」</span>
         <button class="btn ghost sm" id="btn-mark-issue" hidden>标注选区</button>
+      </div>
+      <div class="md-fmtbar" id="md-fmtbar" role="toolbar" aria-label="格式与转变">
+        <button type="button" class="md-fmtbar-btn b" data-fmt="bold" title="粗体">B</button>
+        <button type="button" class="md-fmtbar-btn i" data-fmt="italic" title="斜体">I</button>
+        <button type="button" class="md-fmtbar-btn" data-fmt="code" title="代码">&lt;/&gt;</button>
+        <button type="button" class="md-fmtbar-btn" data-fmt="link" title="链接">链</button>
+        <span class="md-fmtbar-sep" aria-hidden="true"></span>
+        <button type="button" class="md-fmtbar-btn turn" data-turn="1" title="正文"><kbd>1</kbd>正文</button>
+        <button type="button" class="md-fmtbar-btn turn" data-turn="2" title="标题"><kbd>2</kbd>标题</button>
+        <button type="button" class="md-fmtbar-btn turn" data-turn="3" title="小标题"><kbd>3</kbd>小标题</button>
+        <button type="button" class="md-fmtbar-btn turn" data-turn="4" title="列表"><kbd>4</kbd>列表</button>
+        <button type="button" class="md-fmtbar-btn turn" data-turn="5" title="待办"><kbd>5</kbd>待办</button>
+        <button type="button" class="md-fmtbar-btn turn" data-turn="6" title="引用"><kbd>6</kbd>引用</button>
       </div>
       <div class="md-split">
         <div class="md-pane" id="pane-edit">
           <div class="md-editor-wrap">
             <input class="md-title" id="md-title" placeholder="任务标题">
-            <textarea id="md-editor" spellcheck="false" placeholder="用 Markdown 写任务——背景、验收、约束。可插图片与附件。"></textarea>
+            <textarea id="md-editor" spellcheck="false" placeholder="用 Markdown 写任务——新行首位输入 / 出命令（标题、列表、待办…）"></textarea>
+            <div class="md-editor-hint">Enter 新行 · 行首 / 命令菜单 · ↑↓ 选择 · Enter/Tab 确认</div>
           </div>
         </div>
         <div class="md-pane" id="pane-preview" hidden>
@@ -415,6 +468,7 @@ body.sp-dragging .shell-resizer::after{opacity:1}
   <div class="sep"></div>
   <button data-act="copy">复制选区</button>
 </div>
+<div class="md-slash" id="md-slash" role="listbox" aria-label="斜杠命令"></div>
 <div class="gmenu" id="row-menu" role="menu"></div>
 <div class="toast" id="toast"></div>
 <input type="file" id="file-md" accept=".md,text/markdown,text/plain" hidden>
@@ -991,6 +1045,8 @@ function setMode(m){
   document.getElementById('pane-preview').hidden = m === 'edit';
   document.getElementById('edit-tools').hidden = m === 'preview';
   document.getElementById('btn-mark-issue').hidden = m === 'edit';
+  const fmtbar = document.getElementById('md-fmtbar');
+  if (fmtbar) fmtbar.hidden = m === 'preview';
   if (m !== 'edit') renderPreview();
 }
 document.querySelectorAll('#mode-seg button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
@@ -1109,8 +1165,260 @@ document.getElementById('btn-img').addEventListener('click', () => { document.ge
 document.getElementById('btn-file').addEventListener('click', () => { document.getElementById('file-att').accept='.pdf,.zip,.txt,.json,.csv,image/*'; document.getElementById('file-att').click(); });
 document.getElementById('btn-add-att').addEventListener('click', () => { document.getElementById('file-att').accept='image/*,.pdf,.zip,.txt,.json,.csv'; document.getElementById('file-att').click(); });
 document.getElementById('file-att').addEventListener('change', e => { if (e.target.files?.length) addFiles(e.target.files); e.target.value=''; });
-document.getElementById('md-editor').addEventListener('input', () => { dirty=true; if (mode!=='edit') renderPreview(); });
 document.getElementById('md-title').addEventListener('input', () => { dirty=true; });
+
+/* ===== 行首 / 命令（替代双击浮层） ===== */
+const mdSlash = document.getElementById('md-slash');
+const mdEditor = document.getElementById('md-editor');
+const PREFIX_RE = /^(#{1,3}\s|>\s|-\s+(?:\[[ xX]\]\s+)?)/;
+const SLASH_CMDS = [
+  { id:'text', ops:['text','正文','p'], label:'正文', hint:'纯文本', turn:'1' },
+  { id:'h2', ops:['h2','标题','heading','h'], label:'标题', hint:'##', turn:'2' },
+  { id:'h3', ops:['h3','小标题'], label:'小标题', hint:'###', turn:'3' },
+  { id:'ul', ops:['ul','list','列表'], label:'列表', hint:'- ', turn:'4' },
+  { id:'todo', ops:['todo','task','待办'], label:'待办', hint:'- [ ]', turn:'5' },
+  { id:'quote', ops:['quote','引用'], label:'引用', hint:'> ', turn:'6' },
+  { id:'bold', ops:['bold','b','粗体'], label:'粗体', hint:'**', fmt:'bold' },
+  { id:'code', ops:['code','代码'], label:'行内代码', hint:'`', fmt:'code' },
+  { id:'link', ops:['link','链接'], label:'链接', hint:'[]()', fmt:'link' },
+];
+let slashActive = 0;
+let slashItems = [];
+let slashQuery = '';
+
+function wrapSel(before, after, placeholder){
+  const s = mdEditor.selectionStart, e = mdEditor.selectionEnd;
+  const selected = mdEditor.value.slice(s, e) || placeholder || '';
+  const next = mdEditor.value.slice(0, s) + before + selected + after + mdEditor.value.slice(e);
+  mdEditor.value = next;
+  const ns = s + before.length;
+  mdEditor.setSelectionRange(ns, ns + selected.length);
+  mdEditor.focus();
+  dirty = true;
+  if (mode !== 'edit') renderPreview();
+}
+
+function lineRange(){
+  const s = mdEditor.selectionStart, e = mdEditor.selectionEnd;
+  const v = mdEditor.value;
+  const start = v.lastIndexOf('\n', s - 1) + 1;
+  let end = v.indexOf('\n', e);
+  if (end < 0) end = v.length;
+  return { start, end, block: v.slice(start, end) };
+}
+
+function setLinePrefix(prefix){
+  const { start, end, block } = lineRange();
+  const lines = block.split('\n').map(l => {
+    if (!l.trim() && block.includes('\n')) return l;
+    return prefix + l.replace(PREFIX_RE, '');
+  });
+  const nextBlock = lines.join('\n');
+  mdEditor.value = mdEditor.value.slice(0, start) + nextBlock + mdEditor.value.slice(end);
+  mdEditor.setSelectionRange(start, start + nextBlock.length);
+  mdEditor.focus();
+  dirty = true;
+  if (mode !== 'edit') renderPreview();
+}
+
+function stripLinePrefix(){
+  const { start, end, block } = lineRange();
+  const nextBlock = block.split('\n').map(l => l.replace(PREFIX_RE, '')).join('\n');
+  mdEditor.value = mdEditor.value.slice(0, start) + nextBlock + mdEditor.value.slice(end);
+  mdEditor.setSelectionRange(start, start + nextBlock.length);
+  mdEditor.focus();
+  dirty = true;
+  if (mode !== 'edit') renderPreview();
+}
+
+function applyFmt(op){
+  if (op === 'bold') wrapSel('**', '**', '粗体');
+  else if (op === 'italic') wrapSel('*', '*', '斜体');
+  else if (op === 'code') wrapSel('`', '`', 'code');
+  else if (op === 'link') {
+    const s = mdEditor.selectionStart, e = mdEditor.selectionEnd;
+    const selected = mdEditor.value.slice(s, e) || '链接文字';
+    mdEditor.value = mdEditor.value.slice(0, s) + `[${selected}](url)` + mdEditor.value.slice(e);
+    const u = s + selected.length + 3;
+    mdEditor.setSelectionRange(u, u + 3);
+    mdEditor.focus();
+    dirty = true;
+    if (mode !== 'edit') renderPreview();
+  }
+}
+
+function applyTurn(key){
+  if (key === '1') stripLinePrefix();
+  else if (key === '2') setLinePrefix('## ');
+  else if (key === '3') setLinePrefix('### ');
+  else if (key === '4') setLinePrefix('- ');
+  else if (key === '5') setLinePrefix('- [ ] ');
+  else if (key === '6') setLinePrefix('> ');
+}
+
+/** 行首 `/query` 才算命令 */
+function slashQueryAt(){
+  const s = mdEditor.selectionStart, e = mdEditor.selectionEnd;
+  if (s !== e) return null;
+  const before = mdEditor.value.slice(0, s);
+  const lineStart = before.lastIndexOf('\n') + 1;
+  const lineBefore = before.slice(lineStart);
+  const m = lineBefore.match(/^\/([^\s\n]*)$/);
+  if (!m) return null;
+  return { start: lineStart, end: s, query: m[1] || '' };
+}
+
+function hideSlash(){
+  mdSlash.classList.remove('open');
+  slashItems = [];
+  slashActive = 0;
+  slashQuery = '';
+}
+
+function placeSlashMenu(){
+  const r = mdEditor.getBoundingClientRect();
+  const before = mdEditor.value.slice(0, mdEditor.selectionStart);
+  const line = before.split('\n').length;
+  const lineH = 20;
+  const x = Math.min(innerWidth - 220, Math.max(8, r.left + 18));
+  const y = Math.min(innerHeight - 240, Math.max(40, r.top + line * lineH - mdEditor.scrollTop + 8));
+  mdSlash.style.left = x + 'px';
+  mdSlash.style.top = y + 'px';
+}
+
+function renderSlashMenu(){
+  if (!slashItems.length) { hideSlash(); return; }
+  placeSlashMenu();
+  mdSlash.innerHTML = '<div class="md-slash-cap">插入 · ↑↓ 选择 · Enter 确认</div>' + slashItems.map((c, i) =>
+    `<button type="button" class="md-slash-item${i===slashActive?' on':''}" data-i="${i}" role="option" tabindex="-1">` +
+    `<span>${c.label}</span><span class="hint">${c.hint}</span></button>`
+  ).join('');
+  mdSlash.classList.add('open');
+  const on = mdSlash.querySelector('.md-slash-item.on');
+  try { on?.scrollIntoView?.({ block: 'nearest' }); } catch (_) { /* ignore */ }
+}
+
+function refreshSlash(){
+  const hit = slashQueryAt();
+  if (!hit) { hideSlash(); return; }
+  const q = hit.query.toLowerCase();
+  const next = q
+    ? SLASH_CMDS.filter(c => c.ops.some(k => k.startsWith(q) || k.includes(q)))
+    : SLASH_CMDS.slice();
+  if (!next.length) { hideSlash(); return; }
+  const keep = q === slashQuery && next.length;
+  slashItems = next;
+  slashQuery = q;
+  if (!keep) slashActive = 0;
+  else slashActive = Math.min(slashActive, slashItems.length - 1);
+  renderSlashMenu();
+}
+
+function moveSlash(delta){
+  if (!slashItems.length) return;
+  slashActive = (slashActive + delta + slashItems.length) % slashItems.length;
+  renderSlashMenu();
+}
+
+function eatSlashQuery(){
+  const hit = slashQueryAt();
+  if (!hit) return false;
+  mdEditor.value = mdEditor.value.slice(0, hit.start) + mdEditor.value.slice(hit.end);
+  mdEditor.setSelectionRange(hit.start, hit.start);
+  return true;
+}
+
+function pickSlash(cmd){
+  if (!cmd) return;
+  hideSlash();
+  eatSlashQuery();
+  if (cmd.turn) applyTurn(cmd.turn);
+  else if (cmd.fmt) applyFmt(cmd.fmt);
+  dirty = true;
+  if (mode !== 'edit') renderPreview();
+}
+
+function insertSlashAtLineStart(){
+  if (mode === 'preview') setMode('edit');
+  mdEditor.focus();
+  const s = mdEditor.selectionStart;
+  const lineStart = mdEditor.value.lastIndexOf('\n', s - 1) + 1;
+  mdEditor.value = mdEditor.value.slice(0, lineStart) + '/' + mdEditor.value.slice(lineStart);
+  mdEditor.setSelectionRange(lineStart + 1, lineStart + 1);
+  dirty = true;
+  refreshSlash();
+}
+
+mdEditor.addEventListener('input', () => {
+  dirty = true;
+  if (mode !== 'edit') renderPreview();
+  refreshSlash();
+});
+function isSlashArrowKey(e){
+  return e.key === 'ArrowDown' || e.key === 'ArrowUp'
+    || e.code === 'ArrowDown' || e.code === 'ArrowUp';
+}
+// 捕获阶段：避免 textarea 默认光标移动抢走 ↑↓
+document.addEventListener('keydown', e => {
+  if (!mdSlash.classList.contains('open') || !slashItems.length) return;
+  if (isSlashArrowKey(e)) {
+    e.preventDefault();
+    e.stopPropagation();
+    moveSlash(e.key === 'ArrowUp' || e.code === 'ArrowUp' ? -1 : 1);
+    return;
+  }
+  if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault();
+    e.stopPropagation();
+    pickSlash(slashItems[slashActive]);
+    return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    hideSlash();
+  }
+}, true);
+mdEditor.addEventListener('keydown', e => {
+  if (!mdSlash.classList.contains('open')) return;
+  if (isSlashArrowKey(e) || e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape') {
+    e.preventDefault();
+  }
+});
+mdSlash.addEventListener('mousedown', e => e.preventDefault());
+mdSlash.addEventListener('click', e => {
+  const btn = e.target.closest('[data-i]');
+  if (!btn) return;
+  pickSlash(slashItems[Number(btn.dataset.i)]);
+});
+document.addEventListener('mousedown', e => {
+  if (!mdSlash.classList.contains('open')) return;
+  if (mdSlash.contains(e.target) || e.target === mdEditor) return;
+  hideSlash();
+});
+
+document.getElementById('btn-slash').addEventListener('click', e => {
+  e.preventDefault();
+  insertSlashAtLineStart();
+});
+
+function ensureLineSel(){
+  if (mdEditor.selectionStart === mdEditor.selectionEnd) {
+    const { start, end } = lineRange();
+    try { mdEditor.setSelectionRange(start, end); } catch (_) { /* ignore */ }
+  }
+}
+function onFmtBarClick(e){
+  e.preventDefault();
+  ensureLineSel();
+  const fmt = e.target.closest('[data-fmt]');
+  const turn = e.target.closest('[data-turn]');
+  if (fmt) { applyFmt(fmt.dataset.fmt); toast('已应用格式'); return; }
+  if (turn) { applyTurn(turn.dataset.turn); toast('已转变 · ' + turn.dataset.turn); }
+}
+document.getElementById('md-fmtbar').addEventListener('mousedown', e => e.preventDefault());
+document.getElementById('md-fmtbar').addEventListener('click', onFmtBarClick);
+
 
 function slugName(title){
   const base = (title||'untitled').trim().replace(/[\\/:*?"<>|]+/g,'-').slice(0,48);

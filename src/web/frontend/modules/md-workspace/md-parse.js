@@ -117,30 +117,60 @@ export const NEW_TEMPLATE = `## 背景
 ## 附件
 `;
 
+/** 空块占位（ZWSP）：join/split 可往返，渲染与编辑按空串处理 */
+export const EMPTY_BLOCK = '\u200b';
+
+export function isEmptyBlock(b) {
+  const s = String(b ?? '').replace(/\u200b/g, '').trim();
+  return !s;
+}
+
+export function normalizeBlockText(b) {
+  const s = String(b ?? '');
+  if (isEmptyBlock(s)) return '';
+  return s.replace(/\u200b/g, '');
+}
+
 /** 把 MD 切成块（空行 / 标题起新块），供一体化实时预览就地编辑 */
 export function splitMdBlocks(src) {
-  const lines = String(src ?? '').split('\n');
+  const raw = String(src ?? '');
+  if (!raw) return [''];
+  const lines = raw.split('\n');
   const blocks = [];
   let cur = [];
-  const flush = () => {
+  const flushCur = () => {
     while (cur.length && cur[cur.length - 1] === '') cur.pop();
-    if (cur.length) blocks.push(cur.join('\n'));
+    if (!cur.length) return;
+    const text = cur.join('\n');
+    blocks.push(isEmptyBlock(text) ? '' : normalizeBlockText(text));
     cur = [];
   };
   for (const line of lines) {
-    if (!line.trim() && cur.length) {
-      flush();
+    // ZWSP 独占一行 = 显式空块（回车换行往返）
+    if (line === EMPTY_BLOCK) {
+      if (cur.length) flushCur();
+      blocks.push('');
       continue;
     }
-    if (/^#{1,3}\s/.test(line) && cur.length) flush();
+    // 普通空行只分隔块，不制造空块
+    if (!line.trim()) {
+      if (cur.length) flushCur();
+      continue;
+    }
+    if (/^#{1,3}\s/.test(line) && cur.length) flushCur();
     cur.push(line);
   }
-  flush();
+  if (cur.length) flushCur();
   return blocks.length ? blocks : [''];
 }
 
 export function joinMdBlocks(blocks) {
-  return (blocks || []).map((b) => String(b ?? '').replace(/\s+$/g, '')).join('\n\n');
+  return (blocks || [])
+    .map((b) => {
+      const s = normalizeBlockText(b).replace(/\s+$/g, '');
+      return s === '' ? EMPTY_BLOCK : s;
+    })
+    .join('\n\n');
 }
 
 export const STAGE_LABELS = ['接收', '解析', '执行', '验证', '回填'];

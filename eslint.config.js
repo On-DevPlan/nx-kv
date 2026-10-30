@@ -143,7 +143,7 @@ export default defineConfig([
         fetch: 'readonly', console: 'readonly', alert: 'readonly', confirm: 'readonly',
         prompt: 'readonly', requestAnimationFrame: 'readonly', cancelAnimationFrame: 'readonly',
         setTimeout: 'readonly', clearTimeout: 'readonly', setInterval: 'readonly',
-        clearInterval: 'readonly', queueMicrotask: 'readonly', structuredClone: 'readonly',
+        clearInterval: 'readonly', queueMicrotask: 'readonly', structuredClone: 'readonly', getComputedStyle: 'readonly',
         EventSource: 'readonly', AbortController: 'readonly', AbortSignal: 'readonly',
         URL: 'readonly', URLSearchParams: 'readonly', TextEncoder: 'readonly',
         TextDecoder: 'readonly', Response: 'readonly', Request: 'readonly', Headers: 'readonly',

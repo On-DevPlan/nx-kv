@@ -68,9 +68,13 @@ git -C <path> pull --no-edit
   + 登记采纳值 + key 派生），所以有一条批量命令，别一个仓库一个仓库点：
 
   ```bash
-  nx-kv repo remote scan [--type dev|ref]   # 一次扫完：ok / 可替换 / 空 / 登记悬空 / 目录不可用 + 建议
+  nx-kv repo remote scan                 # 缺省只扫开发仓库：ok / 可替换 / 空 / 登记悬空 / 目录不可用 + 建议
+  nx-kv repo remote scan --type ref|all  # 要看参考仓库才显式指定
   # 面板上就是「仓库」页右上那个「对齐 remote」按钮（不是每行一个 remote 按钮）
   ```
+
+  **范围默认是开发仓库**：参考仓库的 remote 就是它 clone 的来源兼 key，没有「换一条」
+  的余地，列进来只是几十行噪音；它们的健康度看 `repo ref check`。
 
   `scan` **只读本地 git 配置、不发网络请求**，所以够快；远端存在性（`git ls-remote`）
   是按需的 `remote check`。整批落盘用 `repo.remote.align`（HTTP：`POST

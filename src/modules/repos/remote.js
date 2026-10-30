@@ -130,11 +130,17 @@ export async function cloneRepo({ remote, key, name, desc, notes, type = 'dev', 
 }
 
 /**
- * 批量扫描：一次给齐所有仓库的 remote 现状与「可替换」建议。
+ * 批量扫描：一次给齐**开发仓库**的 remote 现状与「可替换」建议。
  *
  * **为什么要有它**：以前每个仓库行各挂一个 remote 按钮，要对齐 40 个仓库就得点
  * 40 次弹窗、每次自己判断该换哪条。判断规则其实全在数据里（git remote -v +
  * 登记里采纳的那条 + key 派生），所以一次扫完、一次看完。
+ *
+ * **默认只扫开发仓库（type=dev）**：remote 对齐要解决的是「我自己这个 checkout 该以
+ * 哪个地址作为协作身份」。参考仓库（type=ref）的 remote 是它 clone 的来源、也是它的
+ * key，压根没有「换一条」的余地——把它们列进来只是几十行噪音，而它们的健康度另有
+ * `repo ref check`（目录/.git/origin/绑定死链）。要看参考仓库得显式 `--type ref`，
+ * 两类一起看是 `--type all`。
  *
  * 只读本地 git 配置（`git remote -v`），**不发网络请求**——所以快，可以每次开面板都跑。
  * 远端存在性（`git ls-remote`，每个要几秒）按需单独检查（checkRemote）。
@@ -146,9 +152,10 @@ export async function cloneRepo({ remote, key, name, desc, notes, type = 'dev', 
  *   replaceable 有别的候选可采纳（默认建议 SSH 优先/origin 优先）
  *   ok          只有一条、就是当前这条
  */
-export async function scanRemotes({ type } = {}) {
-  const want = String(type || '').trim();
-  const repos = (await service.listRepos()).filter((r) => !want || (r.type || 'dev') === want);
+export async function scanRemotes({ type = 'dev' } = {}) {
+  const want = String(type || 'dev').trim();
+  const repos = (await service.listRepos())
+    .filter((r) => want === 'all' || (r.type || 'dev') === want);
   const rows = [];
   for (const r of repos) {
     const current = r.remote || '';
@@ -213,7 +220,8 @@ export async function scanRemotes({ type } = {}) {
   // 汇总：一眼知道「有几个要动」，面板按钮上直接显示
   const counts = { total: rows.length, ok: 0, replaceable: 0, empty: 0, ghost: 0, offline: 0 };
   for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
-  return { repos: rows, counts, total: rows.length };
+  // type 回传：CLI 的渲染与面板的标题都要说清「这是哪一类仓库的清单」
+  return { repos: rows, counts, total: rows.length, type: want };
 }
 
 /** 批量对齐：把给定的 [{key|id, url}] 逐条落盘（复用 pickRemote 的语义）。 */

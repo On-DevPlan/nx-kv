@@ -393,18 +393,21 @@ export default {
       id: 'repo.remote.scan',
       cli: ['repo', 'remote', 'scan'],
       http: ['GET', '/api/repos/remote/scan'],
-      summary: '批量扫描全部仓库的 remote：标出可替换 / 空 / 悬空 / 目录不可用，并给出建议',
-      flags: { type: { type: 'string', enum: ['dev', 'ref'], hint: '只看开发仓库或参考仓库' } },
+      summary: '批量扫描**开发仓库**的 remote：标出可替换 / 空 / 悬空 / 目录不可用，并给出建议（--type ref|all 才看参考仓库）',
+      flags: { type: { type: 'string', enum: ['dev', 'ref', 'all'], default: 'dev', hint: 'dev（缺省）= 只扫开发仓库；ref = 只看参考仓库；all = 两类都看' } },
       run: (ctx) => remote.scanRemotes({ type: ctx.type }),
       render: (d) => {
         const mark = {
           ok: '✓ 已对齐', replaceable: '↻ 可替换',
           empty: '· 无 remote', ghost: '✗ 登记悬空', offline: '✗ 目录不可用',
         };
+        const label = d.type === 'ref' ? '参考仓库' : d.type === 'all' ? '仓库' : '开发仓库';
+        // 「已对齐」不挤进汇总行——它在末尾单独一句，否则同一件事说两遍
+        const todo = Object.entries(d.counts)
+          .filter(([k]) => k !== 'total' && k !== 'ok' && d.counts[k]);
         const lines = [
-          `扫描 ${d.total} 个仓库：` + Object.entries(d.counts)
-            .filter(([k]) => k !== 'total' && d.counts[k])
-            .map(([k, v]) => `${mark[k] || k} ${v}`).join('　'),
+          `扫描 ${d.total} 个${label}`
+            + (todo.length ? '：' + todo.map(([k, v]) => `${mark[k] || k} ${v}`).join('　') : ''),
         ];
         for (const r of d.repos) {
           if (r.status === 'ok') continue;

@@ -1,4 +1,4 @@
-// 对齐 remote（批量面板）：一次扫描全部仓库，把「可替换 / key 不一致 / 空 / 悬空」摊开。
+// 对齐 remote（批量面板）：一次扫描**全部开发仓库**，把「可替换 / 空 / 悬空」摊开。
 //
 // **为什么不做成每行一个 remote 按钮**：判断该换哪条 remote 的全部依据都在数据里
 // （git remote -v + 登记里采纳的那条 + key 派生），可 40 个仓库就要点 40 次弹窗、
@@ -7,6 +7,8 @@
 //
 // 边界：扫描只读本地 git 配置（git remote -v），不发网络请求——所以够快，开面板即跑。
 // 远端存在性（git ls-remote，每条要几秒）是**按需**的：点某一行才查那一条。
+// 范围：只列开发仓库（type=dev）。参考仓库的 remote 就是它 clone 的来源兼 key，
+// 没有「换一条」的余地，列进来只是噪音——它们的健康度在「参考仓库」面板的检查里。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
 import { useGuard, useToast, Modal } from '../../web/frontend/components/ui.jsx';
@@ -105,13 +107,13 @@ export default function RemotePanel({ onClose, onChanged }) {
   );
 
   return (
-    <Modal title="对齐 remote · 全部仓库" onClose={onClose}>
+    <Modal title="对齐 remote · 开发仓库" onClose={onClose}>
       <div className="rp-rm" data-testid="rp-remote-panel">
         <div className="rp-rm-head">
           <div className="rp-rm-sum">
             {data ? (
               <>
-                {chip('全部', counts.total)}
+                {chip('开发仓库', counts.total)}
                 {chip('可替换', counts.replaceable, 'warn')}
                 {chip('无 remote', counts.empty, 'warn')}
                 {chip('登记悬空', counts.ghost, 'bad')}
@@ -134,6 +136,7 @@ export default function RemotePanel({ onClose, onChanged }) {
         <div className="rp-rm-hint muted">
           key 是本地身份，remote 是别人 clone 用的地址。建议按「origin 优先、同名里 SSH 优先」给，
           采纳哪条由你定——换一条即对齐（key 随之重算；自定义 key 只改 remote）。
+          本清单只看<strong>开发仓库</strong>；参考仓库的远端在「参考仓库」面板的完整性检查里。
         </div>
 
         {err ? <div className="rp-rm-err">{err}<button className="btn small ghost" onClick={load}>重试</button></div> : null}
@@ -149,7 +152,6 @@ export default function RemotePanel({ onClose, onChanged }) {
                   <span className={'rp-rm-state ' + st.cls}>{st.text}</span>
                   <span className="rp-rm-name" title={r.path}>
                     {r.name}
-                    {r.type === 'ref' ? <em className="rp-rm-tag">参考</em> : null}
                     {r.keyCustom ? <em className="rp-rm-tag">自定义 key</em> : null}
                   </span>
                   <span className="mono rp-rm-url" title={r.current || ''}>{r.current || '（未采纳）'}</span>
@@ -202,7 +204,7 @@ export default function RemotePanel({ onClose, onChanged }) {
           })}
           {!rows.length && !err ? (
             <div className="rp-rm-empty muted">
-              {data ? (onlyTodo ? '全部仓库的 remote 都已对齐' : '还没有登记仓库') : '扫描中…'}
+              {data ? (onlyTodo ? '开发仓库的 remote 都已对齐' : '还没有登记开发仓库') : '扫描中…'}
             </div>
           ) : null}
         </div>

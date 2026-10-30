@@ -95,16 +95,23 @@ test('scanRemotes：目录不再是 git 仓库 → offline', { skip: !gitOk }, a
   assert.equal(row.status, 'offline');
 });
 
-test('scanRemotes：type 过滤只看一类', { skip: !gitOk }, async () => {
+test('scanRemotes：缺省只扫开发仓库，参考仓库要显式 --type ref / all', { skip: !gitOk }, async () => {
   const d = makeRepo('dev-one', [['origin', 'https://github.com/a/d1.git']]);
   const r = makeRepo('ref-one', [['origin', 'https://github.com/a/r1.git']]);
   await service.addRepo({ path: d, name: 'dev-one', remote: 'https://github.com/a/d1.git', type: 'dev' });
   await service.addRepo({ path: r, name: 'ref-one', remote: 'https://github.com/a/r1.git', type: 'ref' });
 
-  const all = await remote.scanRemotes();
-  assert.equal(all.total, 2);
+  // 缺省 = dev：参考仓库的 remote 是它 clone 的来源兼 key，没有「换一条」的余地
+  const byDefault = await remote.scanRemotes();
+  assert.deepEqual(byDefault.repos.map((x) => x.name), ['dev-one']);
+  assert.equal(byDefault.type, 'dev');
+
   const onlyRef = await remote.scanRemotes({ type: 'ref' });
   assert.deepEqual(onlyRef.repos.map((x) => x.name), ['ref-one']);
+  assert.equal(onlyRef.type, 'ref');
+
+  const all = await remote.scanRemotes({ type: 'all' });
+  assert.equal(all.total, 2);
 });
 
 test('alignRemotes：批量落盘，key 跟着新地址重算', { skip: !gitOk }, async () => {

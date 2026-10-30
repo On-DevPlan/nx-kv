@@ -1,8 +1,13 @@
-/* MD 工作台 —— 主区 + 内嵌进程栏 */
-.mdw{
+/* 强调色变量放在 :root —— 斜杠菜单 / 格式菜单 / 速查面板等浮层是 portal 到 body 的，
+   若只在 .mdw 上定义，脱离作用域后 var() 解析失败、整条声明被丢弃
+   （曾导致斜杠菜单选中项没有高亮底色、格式菜单 hover 无效） */
+:root{
   --mdw-accent:#2F6F5E;
   --mdw-accent-soft:#E8F2EE;
   --mdw-accent-line:#B7D4C8;
+}
+/* MD 工作台 —— 主区 + 内嵌进程栏 */
+.mdw{
   --mdw-prog-w:276px;
   flex:1;min-height:0;min-width:0;display:flex;flex-direction:row;
   background:var(--canvas,#F5F4F1);overflow:hidden;position:relative;

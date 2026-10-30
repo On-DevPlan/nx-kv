@@ -9,7 +9,7 @@
 // git 边界（2026-10-27 收紧为两条）：开发仓库（type=dev）不碰 git——状态/diff/pull/push
 // 一律不做（git 客户端是无底洞）；参考仓库（type=ref）只做 clone/pull/读 origin 三件事
 // （见 git.js / ref.js）——它的价值就是「把远程仓库抓到本机参考并保持新鲜」。
-import { basename, join, resolve } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import fsp from 'node:fs/promises';
 import { APP_DIR } from '../../core/paths.js';
 import { openPath } from '../../core/open.js';
@@ -95,7 +95,7 @@ export function newId(prefix) {
 //   ref 的唯一 key 是 remote（归一化后的远程地址），dev 也鼓励记 remote（导出时
 //   导远程地址而非本地路径——换机导入才 clone 得回来）。
 // linked 仅 ref 有：绑定目标 [{kind:'repo'|'board', id}]——「这个参考是给谁看的」。
-function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key, keyCustom, remotes }) {
+function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key, keyCustom, remotes, docs }) {
   const abs = resolve(String(path || ''));
   const t = type === 'ref' ? 'ref' : 'dev';
   const nm = (name || basename(abs) || 'repo').trim();
@@ -121,6 +121,8 @@ function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key
     notes: (notes || '').trim(),
     type: t,
     key: finalKey,
+    // 描述文档（仓库内 md 的相对路径列表）；desc 是它的一句话摘要
+    docs: sanitizeDocs(docs),
     keyCustom: !!rk,
     remote: input.remote,
     remotes: Array.isArray(remotes) ? remotes.map((x) => String(x).trim()).filter(Boolean) : [],
@@ -219,6 +221,56 @@ export function normalizeKey(k) {
     .replace(/^\/+|\/+$/g, '')
     .slice(0, 160);
   return s.toLowerCase();
+}
+
+// ─── 仓库的描述文档（md 列表）────────────────────────────────────────
+//
+// 用户的原话：项目评论和 desc 不该是一句话，而是 **md 列表**——[]md 完全是 string desc
+// 的上位替代，链接成本地的 md 文件。所以：
+//   desc   = 一句话摘要（列表行、搜索、导出都要它，不能没有）
+//   docs   = 仓库内的 md 文件列表（详细说明 / 设计 / 约定，谁写谁维护）
+//
+// 只认**仓库内的相对路径**：绝对路径与 `..` 一律拒掉——md 是仓库的一部分，
+// 不是「随便指向磁盘任何地方」的钩子。导出也不带文件内容（本机文件不入布局）。
+
+const MD_EXT = /\.(md|markdown)$/i;
+
+/** 清洗 md 列表：只留仓库内相对路径、去重、限量。空/非法条目静默丢弃。 */
+export function sanitizeDocs(list) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(list) ? list : []) {
+    const p = String(raw || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
+    if (!p || !MD_EXT.test(p)) continue;
+    if (p.startsWith('/') || /^[a-z]:/i.test(p)) continue;   // 不认绝对路径
+    if (p.split('/').some((seg) => seg === '..')) continue;   // 不认越界
+    const k = p.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(p);
+  }
+  return out.slice(0, 24);
+}
+
+/**
+ * 读一份仓库内的 md（面板/CLI 用）。越界、不存在、过大都显式报错——
+ * 「链接到本地 md 文件」的前提是它真的能读到。
+ */
+export async function readRepoDoc(locator, relPath) {
+  const r = await getRepo(locator);
+  const rel = sanitizeDocs([relPath])[0];
+  if (!rel) throw badInput('md 路径不合法（要仓库内的相对路径、以 .md 结尾）: ' + (relPath || '(空)'));
+  const root = resolve(r.path);
+  const abs = resolve(root, rel);
+  // sanitize 已挡掉 `..`，这里按 resolve 后的前缀再核一次（防符号链接/大小写等边角）
+  if (abs.toLowerCase() !== root.toLowerCase() && !abs.toLowerCase().startsWith(root.toLowerCase() + sep)) {
+    throw badInput('md 路径越出仓库目录: ' + rel);
+  }
+  const st = await fsp.stat(abs).catch(() => null);
+  if (!st || !st.isFile()) throw notFound('md 文件不存在: ' + rel);
+  if (st.size > 512 * 1024) throw badInput(`md 太大（${Math.round(st.size / 1024)}KB，上限 512KB）: ${rel}`);
+  const text = await fsp.readFile(abs, 'utf8');
+  return { key: r.key, repo: r.name, path: rel, abs, size: st.size, text };
 }
 
 // 无 remote 时的**内部锚点** key：local/<slug>。
@@ -369,6 +421,7 @@ export async function listRepos() {
         frozen: !hasIdentity(r),
         remotes: Array.isArray(r.remotes) ? r.remotes : [],
         linked: Array.isArray(r.linked) ? r.linked : [],
+        docs: sanitizeDocs(r.docs),
         boards: boardsOf.get(rk) || [],
       };
     })
@@ -441,6 +494,7 @@ export async function updateRepo(id, patch) {
       if (!r.keyCustom) r.key = deriveKey(r);
       r.keyUpdatedAt = new Date().toISOString();
     }
+    if (patch.docs !== undefined) r.docs = sanitizeDocs(patch.docs);
     if (patch.remotes !== undefined) {
       r.remotes = Array.isArray(patch.remotes) ? patch.remotes.map((x) => String(x).trim()).filter(Boolean) : [];
     }
@@ -536,6 +590,8 @@ export async function getRepo(idOrPathOrKey) {
     keyCustom: !!base.keyCustom,
     remotes: Array.isArray(base.remotes) ? base.remotes : [],
     linked: Array.isArray(base.linked) ? base.linked : [],
+    docs: sanitizeDocs(base.docs),
+    frozen: !hasIdentity(base),
     boards,
   };
 }

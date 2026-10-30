@@ -1,7 +1,7 @@
 // 应用壳 v2（原型 plan/uiux-redesign.html §1/§2）：侧边栏 + 主区，替换「顶栏 + 平铺 tab」。
 // 目录（topic）提升为一级导航；hash 路由：
-//   #/dir/<key>  目录详情    #/global  全局任务池   #/overview  全部目录总览
-//   #/cloud      云端总览    #/repos   仓库管理
+//   #/dir/<key>  目录详情    #/repo/<key> 仓库详情   #/global  全局任务池
+//   #/overview   全部目录总览 #/cloud  云端总览      #/repos   仓库管理
 //   （经典看板 #/localtask 已下线；wait 深链改落 #/dir/<key>；
 //     登录已合并进云端页，独立 #/auth 页已下线）
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
@@ -20,6 +20,10 @@ function routeFromHash() {
   const path = h.split('?')[0];
   if (path.startsWith('dir/')) {
     return { view: 'dir', key: decodeURIComponent(path.slice(4)) };
+  }
+  // 仓库详情：信息 + md 描述列表 + 相关任务（侧边栏点项目就落这儿）
+  if (path.startsWith('repo/')) {
+    return { view: 'repo', key: decodeURIComponent(path.slice(5)) };
   }
   const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos'];
   if (KNOWN.includes(path)) return { view: path === 'todo' ? 'cloud' : path };

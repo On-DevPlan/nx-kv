@@ -43,7 +43,11 @@ export default function Sidebar({
 
   const isActive = (row) => {
     if (row.type === 'global') return route.view === 'global';
-    if (row.type === 'repo') return route.view === 'dir' && route.key === row.topicKey;
+    if (row.type === 'repo') {
+      // 详情页（#/repo/<key>）或它自己的工作台（#/dir/<topicKey>）都算选中
+      if (route.view === 'repo' && route.key === (row.key || row.id)) return true;
+      return route.view === 'dir' && !!row.topicKey && route.key === row.topicKey;
+    }
     if (row.type === 'board') {
       // 项目组没有独立页面：点它 = 去仓库页筛选到这一组（成员 + 组级参考都在那儿）
       const m = /[?&]board=([^&]+)/.exec(typeof location !== 'undefined' ? location.hash || '' : '');
@@ -72,8 +76,12 @@ export default function Sidebar({
     });
   }, []);
 
-  // 点击：收纳盒 = 展开/收起；项目组 = 去仓库页筛到它；项目 = 展开/收起任务子行；
-  // 全局 = 进全局池。仓库没有任务队列时（topicKey 空）点击不导航。
+  // 点击：收纳盒 = 展开/收起；项目组 = 去仓库页筛到它；**项目 = 进详情页**；
+  // 全局 = 进全局池。
+  //
+  // 项目行以前是「展开任务子行」，于是没有队列的仓库（topicKey 空）**点了没反应**。
+  // 现在行点击一律有去处：详情页拿得到仓库信息（desc / md 列表 / key / 远程 / 项目组）
+  // 和它的相关任务；要看任务子行点左边那个箭头（openChildren）。
   const openRow = useCallback(
     (row) => {
       if (row.type === 'group') {
@@ -83,10 +91,19 @@ export default function Sidebar({
       } else if (row.type === 'global') {
         onNavigate('#/global');
       } else {
-        toggleExpanded(row.topicKey || row.key);
+        onNavigate('#/repo/' + encodeURIComponent(row.key || row.id));
       }
     },
-    [onNavigate, patchPrefs, toggleExpanded]
+    [onNavigate, patchPrefs]
+  );
+
+  // 箭头 = 只展开/收起任务子行（没有队列的仓库没有子行，箭头也不画）
+  const openChildren = useCallback(
+    (e, row) => {
+      e.stopPropagation();
+      if (row.topicKey) toggleExpanded(row.topicKey);
+    },
+    [toggleExpanded]
   );
 
   // ─── 键盘导航：↑↓ 在可见行间移动（序 = 渲染序），Enter 打开，Esc 退出 ───
@@ -274,11 +291,13 @@ export default function Sidebar({
                 className={cls}
                 onClick={() => openRow(row)}
                 onContextMenu={(e) => openRowMenu(e, row)}
-                title={
-                  row.type === 'repo' && row.cwd
-                    ? `${row.name}\n${row.cwd}\n${row.desc || row.summary || ''}`
-                    : (row.desc ? `${row.name}\n${row.desc}` : row.name)
-                }
+                title={(() => {
+                  const docs = (row.docs || []).length ? `\nmd：${row.docs.join('、')}` : '';
+                  if (row.type === 'repo' && row.cwd) {
+                    return `${row.name}\n${row.cwd}\n${row.desc || row.summary || ''}${docs}`;
+                  }
+                  return row.desc ? `${row.name}\n${row.desc}${docs}` : row.name + docs;
+                })()}
                 draggable
                 onDragStart={(e) => onDragStart(e, row)}
                 onDragEnd={onDragEnd}
@@ -287,7 +306,13 @@ export default function Sidebar({
                 onDrop={(e) => onDrop(e, row)}
                 data-drop={dropHint?.id === id ? dropHint.zone : undefined}
               >
-                <span className="tw">
+                <span
+                  className={'tw' + (expandable ? ' clickable' : '')}
+                  role={expandable ? 'button' : undefined}
+                  tabIndex={-1}
+                  aria-label={expandable ? '展开任务' : undefined}
+                  onClick={expandable ? (e) => openChildren(e, row) : undefined}
+                >
                   {(expandable || row.type === 'group') ? <Icon name="chevron" size={10} /> : null}
                 </span>
                 <span className="gico"><Icon name={rowIcon(row)} /></span>

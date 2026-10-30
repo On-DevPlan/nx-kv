@@ -65,6 +65,16 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
           </span>
         ) : null}
         {desc ? <div className="muted rp-desc" title={descTitle}>{desc}</div> : null}
+        {/* 描述文档：desc 只是摘要，详细说明在仓库自己的 md 里（点一下进详情页那一份） */}
+        {(r.docs || []).length ? (
+          <div className="rp-docs">
+            <span className="rp-docs-label" title="这个仓库挂上的 md 描述（仓库内相对路径）">md</span>
+            {r.docs.map((p) => (
+              <button key={p} className="rp-doc-chip" title={`打开 ${p}`}
+                onClick={() => acts.openDoc(r, p)}>{p}</button>
+            ))}
+          </div>
+        ) : null}
       </td>
       <td className="mono rp-path"><RepoPath path={r.path} /></td>
       <td className="rp-refs">
@@ -90,7 +100,7 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
   );
 }
 
-export default function ReposView() {
+export default function ReposView({ onNavigate }) {
   const guard = useGuard();
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
@@ -520,6 +530,10 @@ export default function ReposView() {
 
   const rowActs = {
     open: (r) => rowAct('open', r),
+    // 点 md：进仓库详情页并直接翻到那一份（#/repo/<key>?doc=<路径>）
+    openDoc: (r, doc) => onNavigate && onNavigate(
+      '#/repo/' + encodeURIComponent(r.key) + '?doc=' + encodeURIComponent(doc)
+    ),
     edit: (r) => rowAct('edit', r),
     del: (r) => rowAct('del', r),
     // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它身上（多对多的 dev 侧视角）

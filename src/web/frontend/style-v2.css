@@ -636,3 +636,96 @@
   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px; background: var(--soft); padding: 0 3px; border-radius: 3px;
 }
+
+/* ════════════════════════════════════════════════════════════════
+   侧边栏：箭头可点（展开任务子行），行点击 = 进仓库详情
+   ════════════════════════════════════════════════════════════════ */
+#tree .trow .tw.clickable { cursor: pointer; border-radius: 3px; }
+#tree .trow .tw.clickable:hover { background: var(--soft-2); color: var(--ink); }
+
+/* 列表行的 md 列表（desc 只是摘要，详细说明在这些 md 里） */
+.rp-docs { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-top: 3px; }
+.rp-docs-label {
+  font-size: 10px; color: var(--faint); border: 1px solid var(--line);
+  border-radius: 3px; padding: 0 3px; line-height: 14px;
+}
+.rp-doc-chip {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10.5px; color: var(--ink-2); background: var(--soft);
+  border: 1px solid var(--line); border-radius: 3px; padding: 0 5px;
+  cursor: pointer; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rp-doc-chip:hover { border-color: #2f6f5e; color: #2f6f5e; }
+
+/* ════════════════════════════════════════════════════════════════
+   仓库详情页（#/repo/<key>）：信息 + md 描述列表 + 相关任务
+   ════════════════════════════════════════════════════════════════ */
+.rpd { padding: 14px 18px; height: 100%; overflow: auto; }
+.rpd-head { border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px; }
+.rpd-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rpd-title h2 { margin: 0; font-size: 16px; font-weight: 500; }
+.rpd-badge {
+  font-size: 10.5px; border: 1px solid var(--line); border-radius: 999px;
+  padding: 1px 7px; color: var(--ink-2); line-height: 16px;
+}
+.rpd-badge.warn { border-color: var(--wait-line); background: var(--wait-bg); color: var(--wait); }
+.rpd-badge.key { border-color: #bcd8cb; background: #edf6f1; color: #2f6f5e; }
+.rpd-desc { margin-top: 6px; font-size: 12.5px; color: var(--ink-2); }
+.rpd-acts { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+.rpd-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+@media (max-width: 1000px) { .rpd-cols { grid-template-columns: 1fr; } }
+.rpd-docs, .rpd-card { border: 1px solid var(--line); border-radius: var(--r8); background: var(--paper); }
+.rpd-colhead { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.rpd-colhead h3 { margin: 0; font-size: 13px; font-weight: 500; }
+.rpd-colhead .muted { font-size: 11px; margin-left: auto; }
+.rpd-tabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.rpd-tab { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.rpd-tab.on { border-color: #2f6f5e; background: #edf6f1; }
+.rpd-tab-name {
+  border: 0; background: transparent; font-size: 11.5px; padding: 2px 8px; cursor: pointer;
+  color: var(--ink-2); font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rpd-tab.on .rpd-tab-name { color: #2f6f5e; }
+.rpd-tab-x { border: 0; background: transparent; cursor: pointer; padding: 2px 5px; color: var(--faint); display: inline-flex; }
+.rpd-tab-x:hover { color: #a32d2d; }
+.rpd-add { display: inline-flex; gap: 4px; align-items: center; margin-left: auto; }
+.rpd-add input { font-size: 11.5px; padding: 2px 6px; border: 1px solid var(--line); border-radius: var(--r5); width: 180px; }
+.rpd-md { padding: 12px 16px; font-size: 13px; line-height: 1.7; }
+.rpd-md h1 { font-size: 16px; font-weight: 500; }
+.rpd-md h2 { font-size: 14px; font-weight: 500; }
+.rpd-md h3 { font-size: 13px; font-weight: 500; }
+.rpd-md code { background: var(--soft); padding: 0 3px; border-radius: 3px; font-size: 12px; }
+.rpd-md pre { background: var(--soft); padding: 8px; border-radius: var(--r5); overflow: auto; }
+.rpd-md blockquote { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--line); color: var(--ink-2); }
+.rpd-empty { padding: 14px; font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
+.rpd-empty.small { padding: 8px 10px; font-size: 12px; }
+.rpd-empty code {
+  display: block; margin-top: 6px; background: var(--soft); padding: 4px 6px;
+  border-radius: 4px; font-size: 11px; overflow: auto;
+}
+.rpd-side { display: flex; flex-direction: column; gap: 12px; }
+.rpd-fields { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 4px 8px; margin: 0; padding: 10px; font-size: 12px; }
+.rpd-fields dt { color: var(--faint); }
+.rpd-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rpd-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; }
+.rpd-chip { font-size: 11.5px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; background: var(--paper); cursor: pointer; }
+.rpd-chip:hover { border-color: #2f6f5e; color: #2f6f5e; }
+.rpd-none { padding: 10px; font-size: 12px; }
+.rpd-tasks { list-style: none; margin: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; max-height: 30vh; overflow: auto; }
+.rpd-tasks li { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.rpd-tasks .rpd-dot { width: 5px; height: 5px; border-radius: 50%; background: #2f6f5e; flex: none; }
+.rpd-tasks li.done { color: var(--faint); }
+.rpd-tasks li.done .rpd-dot { background: var(--faint); }
+.rpd-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rpd-task-go { border: 0; background: transparent; cursor: pointer; color: var(--faint); display: inline-flex; }
+.rpd-task-go:hover { color: #2f6f5e; }
+.rpd-open-dir { margin: 0 10px 10px; }
+.rpd-err {
+  margin: 16px; padding: 10px; border: 1px solid var(--wait-line); background: var(--wait-bg);
+  color: var(--wait); border-radius: var(--r5); display: flex; gap: 8px; align-items: center;
+}
+.rpd-docerr {
+  margin: 10px; padding: 8px; border: 1px solid var(--wait-line); background: var(--wait-bg);
+  color: var(--wait); border-radius: var(--r5); font-size: 12px; display: flex; gap: 8px;
+}

@@ -80,6 +80,8 @@ export function buildTree(repos, boards, topics, prefs, kw = '') {
         name: r.name,
         cwd: r.path || '',
         desc: r.desc || '',
+        // 描述文档（仓库内 md 的相对路径）：tooltip 里列出来，点「编辑」进详情页
+        docs: r.docs || [],
         boards: r.boards || [],
         summary: ts.map((t) => t.summary).filter(Boolean).join(' / '),
         pending: ts.reduce((n, t) => n + (t.pending || 0), 0),

@@ -200,6 +200,7 @@ export default {
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库（默认），ref=参考仓库' },
         remote: { type: 'string', hint: '远程 git 地址（key 的来源；导出时导它）' },
+        docs: { type: 'array', hint: '描述文档：仓库内 md 的相对路径（可多个，逗号分隔）' },
         key: { type: 'string', hint: '自定义全局唯一 key（缺省按 remote/名字派生）' },
         'key-custom': { type: 'boolean', hint: '把 key 标记为自定义（不跟随 remote 变化）' },
       },
@@ -209,6 +210,17 @@ export default {
         keyCustom: ctx.key ? true : ctx['key-custom'] === true,
       }),
       render: (r) => `已登记: ${r.name} -> ${r.path}（key: ${r.frozen ? '无 · 冻结（补 remote 或 repo key set 才有身份）' : r.key}）`,
+    },
+    {
+      // 读一份仓库内的 md（面板的仓库详情页 + agent 查文档都走它）
+      id: 'repo.doc',
+      cli: ['repo', 'doc'],
+      http: ['GET', '/api/repos/doc'],
+      summary: '读仓库内的 md 文档（desc 是它的摘要；docs 里列的是仓库内相对路径）',
+      args: ['id'],
+      flags: { path: { type: 'string', hint: '仓库内 md 的相对路径，如 README.md / docs/arch.md' } },
+      run: (ctx) => service.readRepoDoc(ctx.id, ctx.path),
+      render: (d) => `# ${d.repo} · ${d.path}（${d.size < 1024 ? d.size + ' B' : Math.round(d.size / 1024) + ' KB'}）\n\n${d.text}`,
     },
     {
       id: 'repo.update',
@@ -223,6 +235,7 @@ export default {
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库，ref=参考仓库' },
         remote: { type: 'string', hint: '远程 git 地址' },
+        docs: { type: 'array', hint: '描述文档：仓库内 md 的相对路径（传空数组 = 清空；可多个）' },
         key: { type: 'string', hint: '自定义 key（给了就视为 keyCustom）' },
         'key-custom': { type: 'boolean', hint: 'key 是否自定义（true=不跟随 remote）' },
       },

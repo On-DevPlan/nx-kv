@@ -87,6 +87,7 @@ function LiveBlock({
     const pending = pendingSelRef?.current;
     if (pending && pending.index === index) {
       pendingSelRef.current = null;
+      el.focus();
       try { el.setSelectionRange(pending.start, pending.end); } catch { /* ignore */ }
       return;
     }
@@ -451,6 +452,32 @@ function LivePreview({
     },
     focus() {
       liveTaRef.current?.focus();
+    },
+    /** 撤销/重做后把光标放回改动处：把正文偏移换算到具体块与块内偏移 */
+    caretFromDiff(prev, next) {
+      const prevJ = joinMdBlocks(bodyBlocksOnly(prev));
+      const nextJ = joinMdBlocks(bodyBlocksOnly(next));
+      const idx = diffIndex(prevJ, nextJ);
+      let start = 0;
+      for (let i = 0; i < blocks.length; i += 1) {
+        // 用真实 joiner 累加，块边界与正文偏移严格对齐（连接符 '\n\n'）
+        const end = joinMdBlocks(blocks.slice(0, i + 1)).length;
+        if (idx <= end) {
+          const off = Math.max(0, Math.min(idx - start, normalizeBlockText(blocks[i] ?? '').length));
+          if (focus === i) {
+            const ta = liveTaRef.current;
+            if (ta) {
+              ta.focus();
+              ta.setSelectionRange(off, off);
+            }
+          } else {
+            pendingSelRef.current = { index: i, start: off, end: off };
+            setFocus(i);
+          }
+          return;
+        }
+        start = end + 2;
+      }
     },
   }), [focus, onBody, blocks]);
 

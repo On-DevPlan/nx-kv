@@ -122,7 +122,8 @@ R8 无障碍扫尾 → R9 对照表勾缺 → R10 构建+纪要收口。
 - [x] E2 源码标题聚焦态：去光晕，底边线转强调色（与 live 零 chrome 语言统一）
 - [x] E2 工具栏层级：格式组去灰底容器（hover 显底）+ 簇间 hairline + 次级动作去描边；主次归位
 - [x] E2 功能修复：工具栏自适应改容器查询（进程 rail 开/侧栏宽不再静默裁按钮）+ 溢出菜单 portal 到 body（此前被 overflow:hidden 整条裁掉）
-- [ ] 阅读模式排版专项：标题层级、行宽上限、代码块、列表缩进、引用样式
+- [x] E3 阅读模式：补题头（此前阅读态无标题，与 live/源码断裂）；排版核查——h1-h3/列表/待办/代码/引用/图片样式本已齐备，行宽 720px 上限健康（窄列下实测正文 574px）
+- [x] E3 复核后关闭：状态栏切换钮（行号/参考线/查找/换行）on 态语言本已一致，不动
 - [ ] 空态打磨：无标题 placeholder、空正文占位引导（「输入 / 唤起命令」之类）
 - [ ] 窄屏 ≤960 编辑器复核：标题 24px 已有；工具栏溢出菜单与标题共存、状态栏收纳
 - [ ] 长词/URL 溢出：live 块 anywhere 已有；阅读模式与源码 gutter 对齐待查
@@ -144,3 +145,10 @@ R8 无障碍扫尾 → R9 对照表勾缺 → R10 构建+纪要收口。
 - **溢出菜单 portal**：`useMenu` 升级（menuRef + 锚点 pos），新增 `MenuPortal`（createPortal 到 body、fixed 定位）/`openMenuAt`（left/right 两种锚定，右缘按钮锚 right 防顶出屏）——修 `···` 菜单被工具栏裁掉看不到的缺陷；外点关闭逻辑兼容 portal（btnRef/menuRef 双判）
 - 已知限制：菜单开着时改窗口大小不重算锚点（外点即关，影响可忽略）
 - 验证：lint/build 双绿；Chrome DevTools 实测——rail 开启态工具栏正确折叠、`···` 与 `更多` 菜单完整渲染且贴锚、源码标题聚焦 `box-shadow:none` + 底边线 `rgb(47,111,94)`
+
+## E3 轮纪要 ✅
+
+- **阅读模式补题头**：preview 分支加 `.mdw-reader` 包裹层（原 720px 上限/居中/内边距从 article 上移），标题渲染为 `.mdw-reader-title`（28px/700/字距 -0.025em，与 live `.mdw-lp-title` 同语言，overflow-wrap:anywhere 防长词溢出）；空标题不渲染 h1
+- 容器查询同步：`.mdw-reader` 并入 960/640 两档内边距与 640 档标题 24px
+- 排查记录：`renderMarkdownHtml` 仅产 code/b（无链接/hr），阅读样式无缺口；`.mdw-preview article` 原 720px 约束实测有效（截图目测 890px 系缩放误差，DOM 实测正文 574px）
+- 验证：lint/build 双绿；浏览器实测阅读态——题头 28px 两行渲染、article 为题头兄弟节点、正文接排

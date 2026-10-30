@@ -1115,7 +1115,11 @@ export const MdPanes = forwardRef(function MdPanes(
       )}
       {mode === 'preview' && (
         <div className="mdw-pane mdw-preview">
-          <article ref={articleRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+          <div className="mdw-reader">
+            {/* 阅读态此前不渲染标题，与 live/源码两态断裂；题头与正文同轴同宽 */}
+            {title ? <h1 className="mdw-reader-title">{title}</h1> : null}
+            <article ref={articleRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+          </div>
         </div>
       )}
     </div>

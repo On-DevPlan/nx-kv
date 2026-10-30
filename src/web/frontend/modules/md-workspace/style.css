@@ -266,7 +266,14 @@
 .mdw-lp-grip:hover{background:var(--soft,#F1F0EC);color:var(--mdw-accent)}
 
 .mdw-preview{overflow:auto;padding:0;background:var(--canvas,#F5F4F1)}
-.mdw-preview article{max-width:720px;margin:0 auto;user-select:text;padding:28px 32px 48px}
+.mdw-preview article{user-select:text}
+/* 阅读态题头：与 live 标题同一套字号/字距语言，正文同轴同宽 */
+.mdw-reader{max-width:720px;margin:0 auto;padding:28px 32px 48px;user-select:text}
+.mdw-reader-title{
+  margin:0 0 18px;padding:0;border:0;
+  font-family:inherit;font-weight:700;font-size:28px;line-height:1.25;
+  letter-spacing:-0.025em;color:var(--ink,#16181C);overflow-wrap:anywhere;
+}
 
 /* 单栏实时预览（Obsidian/Notion）：纸面阅读 + 就地源码，无描边高亮块 */
 .mdw-split.live{
@@ -538,9 +545,9 @@
   .mdw-fmt-more{display:inline-flex}
   .mdw-actions-wide{display:none}
   .mdw-actions-more{display:inline-flex}
-  .mdw-lp-sheet{padding:20px 22px 56px}
+  .mdw-lp-sheet,.mdw-reader{padding:20px 22px 56px}
 }
 @container mdwmain (max-width: 640px){
-  .mdw-lp-sheet{padding:16px 16px 48px}
-  .mdw-lp input.mdw-lp-title,.mdw-lp textarea.mdw-lp-title{font-size:24px}
+  .mdw-lp-sheet,.mdw-reader{padding:16px 16px 48px}
+  .mdw-lp input.mdw-lp-title,.mdw-lp textarea.mdw-lp-title,.mdw-reader-title{font-size:24px}
 }

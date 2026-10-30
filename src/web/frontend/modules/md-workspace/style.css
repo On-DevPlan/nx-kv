@@ -146,8 +146,10 @@
 .mdw-land-empty{padding:28px 12px;font-size:12px;color:var(--faint,#A9AEB4);text-align:center;line-height:1.6}
 .mdw-pane{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--paper,#fff)}
 .mdw-title-input{
-  flex:none;border:0;border-bottom:1px solid var(--line,#E4E2DC);outline:0;
+  flex:none;display:block;width:100%;box-sizing:border-box;border-radius:0;
+  border:0;border-bottom:1px solid var(--line,#E4E2DC);outline:0;
   padding:12px 16px 8px;font:650 16px/1.35 inherit;background:transparent;color:inherit;
+  resize:none;overflow:hidden;overflow-wrap:anywhere;
 }
 .mdw-title-input::placeholder{color:var(--faint,#A9AEB4);font-weight:500}
 .mdw-editor-row{
@@ -265,6 +267,10 @@
 .mdw-lp input.mdw-lp-title:hover,
 .mdw-lp input.mdw-lp-title:focus,
 .mdw-lp input.mdw-lp-title:focus-visible,
+.mdw-lp textarea.mdw-lp-title,
+.mdw-lp textarea.mdw-lp-title:hover,
+.mdw-lp textarea.mdw-lp-title:focus,
+.mdw-lp textarea.mdw-lp-title:focus-visible,
 .mdw-lp textarea.mdw-lp-src,
 .mdw-lp textarea.mdw-lp-src:hover,
 .mdw-lp textarea.mdw-lp-src:focus,
@@ -274,10 +280,12 @@
   box-shadow:none!important;border-radius:0!important;
   background:transparent!important;border-color:transparent!important;
 }
-.mdw-lp input.mdw-lp-title{
+.mdw-lp input.mdw-lp-title,
+.mdw-lp textarea.mdw-lp-title{
   display:block;width:100%;box-sizing:border-box;margin:0 0 18px;padding:0!important;
   font-family:inherit;font-weight:700;font-size:28px;line-height:1.25;
   letter-spacing:-0.025em;color:var(--ink,#16181C);caret-color:var(--mdw-accent);
+  resize:none;overflow:hidden;overflow-wrap:anywhere;
 }
 .mdw-lp-title::placeholder{color:var(--faint,#A9AEB4);font-weight:600}
 .mdw-lp-blocks{display:flex;flex-direction:column;gap:0}
@@ -510,5 +518,5 @@
   #mdw-prog{position:absolute;right:0;top:0;bottom:0;z-index:30;box-shadow:-8px 0 24px rgba(20,22,26,.08)}
   .mdw-prog-rail{position:absolute;right:0;top:0;bottom:0;z-index:30}
   .mdw-lp-sheet{padding:16px 16px 48px}
-  .mdw-lp input.mdw-lp-title{font-size:24px}
+  .mdw-lp input.mdw-lp-title,.mdw-lp textarea.mdw-lp-title{font-size:24px}
 }

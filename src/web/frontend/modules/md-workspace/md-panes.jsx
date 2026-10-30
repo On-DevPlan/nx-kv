@@ -274,6 +274,42 @@ function SlashMenu({ items, active, onPick, onHover, style }) {
   );
 }
 
+// 标题输入：自动增高 textarea —— input 不能软换行，长标题会横向溢出（UIUX E1）。
+// 标题在语义上仍是单条逻辑行：Enter 不产生换行，把焦点交给正文。
+function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const fit = () => {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      className={className}
+      value={value}
+      placeholder={placeholder}
+      rows={1}
+      spellCheck={false}
+      aria-label="标题"
+      onChange={(e) => onTitle(e.target.value)}
+      onFocus={onFocus}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          onEnter?.();
+        }
+      }}
+    />
+  );
+}
+
 function LivePreview({
   title, body, onTitle, onBody, articleRef, attachments, docKey, onFiles, editorApiRef, onTextSel,
 }) {
@@ -540,12 +576,13 @@ function LivePreview({
       }}
     >
       <div className="mdw-lp-sheet" ref={articleRef}>
-        <input
+        <TitleArea
           className="mdw-lp-title"
           value={title}
           placeholder="无标题"
-          onChange={(e) => onTitle(e.target.value)}
+          onTitle={onTitle}
           onFocus={() => { setFocus(null); setSlashBoth(null); }}
+          onEnter={() => { if (blocks.length) setFocus(0); }}
         />
         <div className="mdw-lp-blocks">
           {blocks.map((b, i) => (
@@ -894,11 +931,17 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
         ingestImages(files);
       }}
     >
-      <input
+      <TitleArea
         className="mdw-title-input"
         value={title}
         placeholder="任务标题"
-        onChange={(e) => onTitle(e.target.value)}
+        onTitle={onTitle}
+        onEnter={() => {
+          const ta = taRef.current;
+          if (!ta) return;
+          ta.focus();
+          ta.setSelectionRange(0, 0);
+        }}
       />
       {findOpen && (
         <EditorFindBar

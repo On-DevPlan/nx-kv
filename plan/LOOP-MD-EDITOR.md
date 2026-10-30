@@ -111,3 +111,26 @@ R8 无障碍扫尾 → R9 对照表勾缺 → R10 构建+纪要收口。
 - 用户最新反馈：编辑器整体仍不够专业，明确点名「标题不会自动换行」
 - 重开循环：仅轮次 ×10、无完成承诺；纪要启用 **E 系列**（E1 起），R 系列封存
 - E 系列议题池起点：标题自动换行（live `mdw-lp-title` + 源码 `mdw-title-input` 均为单行 input）→ 其余每轮现场盘点（对照 Obsidian / Typora / VS Code / Notion）
+
+---
+
+# E 系列（2026-10-30 起 · 本会话 loop-2 · 仅轮次 ×10）
+
+## 议题池（滚动维护，每轮勾掉已完成、补入新发现）
+
+- [x] **E1 标题自动换行**（用户点名）：live `.mdw-lp-title` + 源码 `.mdw-title-input` 均为单行 input，长标题横向溢出 → 改自动增高 textarea
+- [ ] 源码模式标题聚焦态仍吃全局 `input/textarea:focus` 光晕（box-shadow 环），与 live 标题「零 chrome」语言不一致
+- [ ] 工具栏层级：格式钮（B/I/</>/链/1-6）与文档动作（新任务/总览/保存并同步/进程）混排一行，主次不分；对照 Notion 顶部工具条收敛
+- [ ] 阅读模式排版专项：标题层级、行宽上限、代码块、列表缩进、引用样式
+- [ ] 空态打磨：无标题 placeholder、空正文占位引导（「输入 / 唤起命令」之类）
+- [ ] 窄屏 ≤960 编辑器复核：标题 24px 已有；工具栏溢出菜单与标题共存、状态栏收纳
+- [ ] 长词/URL 溢出：live 块 anywhere 已有；阅读模式与源码 gutter 对齐待查
+- [ ] 无障碍扫尾：aria-label 补齐、焦点环策略统一、对比度过一遍
+
+## E1 轮纪要 ✅
+
+- 新增 `TitleArea` 组件（md-panes.jsx）：`rows=1` textarea + `useLayoutEffect` 自动增高（`height:auto→scrollHeight`），监听 window resize 重算；`aria-label="标题"`
+- Enter（非输入法组合态）不产生换行 → 焦点交给正文：live 走 `setFocus(0)` 进首块，源码走 `taRef.focus()+setSelectionRange(0,0)`
+- 替换两处调用点：LivePreview（`.mdw-lp-title`，onFocus 清块焦点与斜杠菜单）与 SourceEditor（`.mdw-title-input`）
+- style.css：`.mdw-title-input` 补 `display:block/width:100%/box-sizing/resize:none/overflow:hidden/overflow-wrap:anywhere/border-radius:0`（压全局 textarea 边框圆角）；`.mdw-lp` 零 chrome 重置块与 28px 样式块、24px 窄屏块均扩到 `textarea.mdw-lp-title`
+- 验证：`pnpm run lint` ✅ `pnpm run build` ✅；serve 7877 + Chrome DevTools 实测——live 标题 2 行 `clipped:false`、源码标题 `resize:none`+`anywhere`、标题按 Enter 后 `activeElement` 为正文 textarea 且光标在 0、标题值无 `\n`

@@ -310,11 +310,27 @@ export default function ReposView() {
     toast('已对齐 remote');
     await Promise.all([loadRepos(), loadRefCheck()]);
   });
-  const checkRemote = (url) => guard(async () => {
-    const d = await api('/api/repos/remote/check?id=' + encodeURIComponent(remoteInfo.key)
-      + (url ? '&url=' + encodeURIComponent(url) : ''));
-    setRemoteCheck(d);
-  });
+  // 存在性检查：git ls-remote 要几秒，期间不给任何反馈会像「点了没反应」。
+  // 错误直接写进弹窗（remoteCheck.detail），不靠 toast —— toast 会一闪而过。
+  const checkRemote = async (url) => {
+    const key = remoteInfo ? remoteInfo.key : '';
+    if (!key) {
+      setRemoteCheck({ url: '', status: 'unreachable', detail: '没有仓库标识' });
+      return;
+    }
+    setRemoteCheck({ url: url || remoteInfo.current || '', status: 'checking', detail: '检查中…' });
+    try {
+      const d = await api('/api/repos/remote/check?id=' + encodeURIComponent(key)
+        + (url ? '&url=' + encodeURIComponent(url) : ''));
+      setRemoteCheck(d);
+    } catch (e) {
+      setRemoteCheck({
+        url: url || remoteInfo.current || '',
+        status: 'unreachable',
+        detail: String((e && e.message) || e),
+      });
+    }
+  };
 
 
   // 组内描述保存：note 为空 = 清除
@@ -1291,8 +1307,11 @@ export default function ReposView() {
               <div className="form-field">
                 <label>存在性检查</label>
                 <div className="rp-remote-check">
-                  <span className={'rp-status ' + (remoteCheck.status === 'exists' ? 'same' : remoteCheck.status === 'missing' ? 'new' : 'missing')}>
-                    {remoteCheck.status === 'exists' ? '存在' : remoteCheck.status === 'missing' ? '不存在' : '不可达'}
+                  <span className={'rp-status ' + (remoteCheck.status === 'exists' ? 'same' : remoteCheck.status === 'missing' ? 'new' : remoteCheck.status === 'checking' ? 'checking' : 'missing')}>
+                    {remoteCheck.status === 'exists' ? '存在'
+                      : remoteCheck.status === 'missing' ? '不存在'
+                      : remoteCheck.status === 'checking' ? '检查中'
+                      : '不可达'}
                   </span>
                   <span className="mono rp-remote-url">{remoteCheck.url}</span>
                   <span className="muted">{remoteCheck.detail}</span>

@@ -14,7 +14,6 @@ export default function Sidebar({
   topics,          // mergeDirectoryRows+withGlobalRow 产物（含 isGlobal 行）
   route,           // {view, key}
   onNavigate,      // (hash) => void
-  boot,
   waitingCount,
   prefs,
   patchPrefs,      // (patch) => void（已持久化）
@@ -300,10 +299,6 @@ export default function Sidebar({
         {footEntry('#/overview', 'overview', '全部目录总览')}
         {footEntry('#/cloud', 'cloud', '云端总览')}
         {footEntry('#/repos', 'repo', '仓库管理')}
-        <button className={'trow' + (route.view === 'auth' ? ' active' : '')} onClick={() => onNavigate('#/auth')} title={boot?.configPath || ''}>
-          <span className="gico"><Icon name={boot?.loggedIn ? 'check' : 'lock'} /></span>
-          <span className="nm">{boot?.loggedIn ? '已登录' : '未登录 · 设置'}</span>
-        </button>
         {waitingCount > 0 && (
           <button className="trow" onClick={() => onNavigate('#/overview')} title="有 agent 正在等待回填">
             <span className="gico"><Icon name="warn" /></span>

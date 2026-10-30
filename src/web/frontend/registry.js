@@ -18,5 +18,4 @@ export const VIEWS = [
   { id: 'overview', module: 'localtask', component: lazy(() => import('../../modules/localtask/view-overview.jsx')) },
   { id: 'cloud', module: 'todo', component: lazy(() => import('../../modules/todo/view.jsx')) },
   { id: 'repos', module: 'repos', component: lazy(() => import('../../modules/repos/view.jsx')) },
-  { id: 'auth', module: 'auth', component: lazy(() => import('../../modules/auth/view.jsx')) },
 ];

@@ -70,6 +70,6 @@ export function cfgMenuItems({ prefs, patchPrefs, onNavigate }) {
     ...(prefs.hidden || []).length
       ? [{ label: `恢复 ${prefs.hidden.length} 个隐藏目录`, icon: 'refresh', onClick: () => patchPrefs({ hidden: [] }) }]
       : [],
-    { label: '登录 / 设置…', icon: 'gear', onClick: () => onNavigate('#/auth') },
+    { label: '云端 / 登录…', icon: 'gear', onClick: () => onNavigate('#/cloud') },
   ].filter(Boolean);
 }

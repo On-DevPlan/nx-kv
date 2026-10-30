@@ -32,7 +32,8 @@ export default {
   id: 'auth',
   title: '认证（登录态）',
   order: 10,
-  view: () => import('./view.jsx'),
+  // 登录 UI 已合并进云端页（frontend todo view），此处只保留 CLI/HTTP action；
+  // 独立面板视图已下线（2026-10-30）。
 
   actions: [
     {

@@ -1,8 +1,9 @@
 // 应用壳 v2（原型 plan/uiux-redesign.html §1/§2）：侧边栏 + 主区，替换「顶栏 + 平铺 tab」。
 // 目录（topic）提升为一级导航；hash 路由：
 //   #/dir/<key>  目录详情    #/global  全局任务池   #/overview  全部目录总览
-//   #/cloud      云端总览    #/repos   仓库管理     #/auth      登录/设置
-//   （经典看板 #/localtask 已下线；wait 深链改落 #/dir/<key>）
+//   #/cloud      云端总览    #/repos   仓库管理
+//   （经典看板 #/localtask 已下线；wait 深链改落 #/dir/<key>；
+//     登录已合并进云端页，独立 #/auth 页已下线）
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from './store.jsx';
 import { ErrorBoundary, useToast } from './components/ui.jsx';
@@ -20,7 +21,7 @@ function routeFromHash() {
   if (path.startsWith('dir/')) {
     return { view: 'dir', key: decodeURIComponent(path.slice(4)) };
   }
-  const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos', 'auth'];
+  const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos'];
   if (KNOWN.includes(path)) return { view: path === 'todo' ? 'cloud' : path };
   // 旧深链（#/localtask?…）与未知路径统一落总览
   return { view: 'overview' };
@@ -139,7 +140,7 @@ export default function App() {
       {prefs.folded ? (
         <Rail
           route={route} onNavigate={onNavigate} prefs={prefs} patchPrefs={patchPrefs}
-          rows={rows} waitingCount={waitingCount} boot={boot}
+          rows={rows} waitingCount={waitingCount}
         />
       ) : (
         <>
@@ -147,7 +148,7 @@ export default function App() {
           <div className="side-scrim" onClick={() => patchPrefs({ folded: true })} aria-hidden="true" />
           <Sidebar
             topics={rows} route={route} onNavigate={onNavigate}
-            boot={boot} waitingCount={waitingCount}
+            waitingCount={waitingCount}
             prefs={prefs} patchPrefs={patchPrefs} refreshLocal={refreshLocal}
           />
         </>
@@ -196,7 +197,7 @@ function GlobalEntry({ rows, refreshLocal, boot, onNavigate }) {
 }
 
 // 收起态 rail：52px 图标条，悬停气泡显示名称，徽标仍在（原型 §2/§3）
-function Rail({ route, onNavigate, patchPrefs, rows, waitingCount, boot }) {
+function Rail({ route, onNavigate, patchPrefs, rows, waitingCount }) {
   const dirs = rows.filter((r) => !r.isGlobal).slice(0, 9);
   const globalRow = rows.find((r) => r.isGlobal);
   const btn = (active, tip, onClick, icon, badge, dot, key) => (
@@ -227,7 +228,6 @@ function Rail({ route, onNavigate, patchPrefs, rows, waitingCount, boot }) {
       {btn(route.view === 'overview', '全部目录总览', () => onNavigate('#/overview'), 'overview', waitingCount)}
       {btn(route.view === 'cloud', '云端总览', () => onNavigate('#/cloud'), 'cloud')}
       {btn(route.view === 'repos', '仓库管理', () => onNavigate('#/repos'), 'repo')}
-      {btn(route.view === 'auth', boot?.loggedIn ? '已登录' : '未登录 · 设置', () => onNavigate('#/auth'), boot?.loggedIn ? 'check' : 'lock')}
     </nav>
   );
 }

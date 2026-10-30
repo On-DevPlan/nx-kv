@@ -88,6 +88,31 @@ export default function TodoView() {
   const group = boot?.groupId ?? 0;
   const groupName = (boot?.groups || []).find((g) => g.id === group)?.name || (group ? `#${group}` : '默认组');
 
+  // —— 登录（原独立 auth 页合并进云端）：未登录时整页就是登录卡，
+  // 已登录时工具栏右侧挂账号芯片，展开可见登录态详情 / 切换账号 / 登出。
+  // 密码只在提交时用一次，不进 localStorage、不写日志。
+  const [acct, setAcct] = useState({ email: boot?.email || '', password: '', busy: false, open: false });
+
+  const login = () => guard(async () => {
+    if (!acct.email.trim()) { toast('请填邮箱'); return; }
+    if (!acct.password) { toast('请填密码'); return; }
+    setAcct((s) => ({ ...s, busy: true }));
+    try {
+      const r = await api('/api/auth/login', { method: 'POST', body: { email: acct.email.trim(), password: acct.password } });
+      setAcct((s) => ({ ...s, password: '' })); // 用完即清，不留在组件状态里
+      toast(`已登录: ${r.email}`);
+      await refreshBoot();
+    } finally {
+      setAcct((s) => ({ ...s, busy: false }));
+    }
+  });
+
+  const logout = () => guard(async () => {
+    await api('/api/auth/logout', { method: 'POST' });
+    toast('已登出');
+    await refreshBoot();
+  });
+
   const load = useCallback(async () => {
     if (!boot?.loggedIn) return;
     try {
@@ -150,9 +175,20 @@ export default function TodoView() {
   if (!boot?.loggedIn) {
     return (
       <div className="cloud-page">
-        <div className="card" style={{ padding: 16 }}>
-          <div className="colhead"><h3>请先登录</h3></div>
-          <div className="muted">在「登录」页填写邮箱与密码，或执行 <code>nx-kv auth login &lt;email&gt;</code>。</div>
+        <div className="card" style={{ padding: 16, maxWidth: 640 }}>
+          <div className="colhead"><h3>登录云端</h3><span className="tag bad">未登录</span></div>
+          <div className="row-inline" style={{ padding: 12 }}>
+            <input placeholder="邮箱" size="24" spellCheck="false" value={acct.email}
+              onChange={(e) => setAcct((s) => ({ ...s, email: e.target.value }))} />
+            <input placeholder="密码" type="password" size="18" value={acct.password}
+              onChange={(e) => setAcct((s) => ({ ...s, password: e.target.value }))}
+              onKeyDown={(e) => { if (e.key === 'Enter') login(); }} />
+            <button className="btn" onClick={login} disabled={acct.busy}>{acct.busy ? '登录中…' : '登录'}</button>
+          </div>
+          <div className="muted" style={{ padding: '0 12px 12px', fontSize: 12 }}>
+            密码只用于本次请求，不写入本机配置；配置里只保存 token。
+            也可以用 CLI：<code>nx-kv auth login &lt;email&gt;</code>。
+          </div>
         </div>
       </div>
     );
@@ -307,7 +343,39 @@ export default function TodoView() {
           附件自动下载
         </label>
         <button className="btn small ghost" onClick={reload} disabled={busy}>{busy ? '刷新中…' : '刷新'}</button>
+        {/* 账号芯片（登录已合并进云端页）：点开展开登录态详情 / 切换账号 / 登出 */}
+        <button
+          className={'pill' + (acct.open ? ' on' : '')}
+          title={`账号 ${boot.email || ''}（点击展开登录态 / 登出）`}
+          onClick={() => setAcct((s) => ({ ...s, open: !s.open }))}
+        >
+          {boot.email || '已登录'}
+        </button>
       </div>
+
+      {/* 账号卡：登录态详情 + 切换账号 + 登出（原独立 auth 页的内容） */}
+      {acct.open ? (
+        <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+          <div className="colhead">
+            <h3>登录态</h3>
+            <button className="btn small ghost danger" onClick={logout}>登出</button>
+          </div>
+          <div className="settings">
+            <dt>账号</dt><dd>{boot?.email}</dd>
+            <dt>userId</dt><dd>{boot?.userId || '-'}</dd>
+            <dt>后端</dt><dd className="mono"><Copyable text={boot?.baseUrl}>{boot?.baseUrl}</Copyable></dd>
+            <dt>本机配置</dt><dd className="mono"><Copyable text={boot?.configPath}>{boot?.configPath}</Copyable></dd>
+          </div>
+          <div className="row-inline" style={{ padding: '10px 0 0' }}>
+            <input placeholder="切换账号：邮箱" size="24" spellCheck="false" value={acct.email}
+              onChange={(e) => setAcct((s) => ({ ...s, email: e.target.value }))} />
+            <input placeholder="密码" type="password" size="18" value={acct.password}
+              onChange={(e) => setAcct((s) => ({ ...s, password: e.target.value }))}
+              onKeyDown={(e) => { if (e.key === 'Enter') login(); }} />
+            <button className="btn" onClick={login} disabled={acct.busy}>{acct.busy ? '登录中…' : '登录'}</button>
+          </div>
+        </div>
+      ) : null}
 
       {/* 投递条：一个整体的输入组（主题 | 内容 | 提交），两侧 Enter 都能提交 */}
       <div className="cloud-compose">

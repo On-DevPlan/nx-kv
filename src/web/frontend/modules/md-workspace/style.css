@@ -595,3 +595,13 @@
 .mdw-sheet-cols section.wide dl{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0 22px;
 }
+
+/* live 查找命中块：柔和强调带标出当前匹配所在块 */
+.mdw-lp-block.is-hit{
+  background:var(--mdw-accent-soft,#E8F2EE);
+  box-shadow:-8px 0 0 var(--mdw-accent,#2F6F5E);
+}
+.mdw-lp .mdw-find{
+  margin:0 0 16px;border:1px solid var(--line,#E4E2DC);border-radius:8px;
+  background:var(--soft,#F1F0EC);
+}

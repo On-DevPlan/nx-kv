@@ -3,6 +3,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -63,6 +64,7 @@ function LiveBlock({
   index,
   text,
   focused,
+  hit,
   onFocus,
   onChange,
   onBlur,
@@ -152,7 +154,7 @@ function LiveBlock({
 
   return (
     <div
-      className={`mdw-lp-block is-view kind-${kind}${isEmptyBlock(text) ? ' is-empty' : ''}`}
+      className={`mdw-lp-block is-view kind-${kind}${isEmptyBlock(text) ? ' is-empty' : ''}${hit ? ' is-hit' : ''}`}
       data-i={index}
       role="button"
       tabIndex={0}
@@ -324,6 +326,35 @@ function LivePreview({
   const slashRef = useRef(null);
   const slashRafRef = useRef(0);
   const blocks = bodyBlocksOnly(body);
+  // 实时预览查找：块级匹配 + 命中块高亮 + 滚动定位（阅读态此前无查找能力）
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState('');
+  const [findIdx, setFindIdx] = useState(0);
+  const findInputRef = useRef(null);
+  const liveMatches = useMemo(() => {
+    const q = findQuery.trim().toLowerCase();
+    if (!q) return [];
+    const out = [];
+    blocks.forEach((b, i) => {
+      const t = String(b ?? '').toLowerCase();
+      let pos = t.indexOf(q);
+      while (pos !== -1) {
+        out.push({ block: i, start: pos });
+        pos = t.indexOf(q, pos + q.length);
+      }
+    });
+    return out;
+  }, [blocks, findQuery]);
+  const jumpLive = (i) => {
+    const total = liveMatches.length;
+    if (!total) return;
+    const n = ((i % total) + total) % total;
+    setFindIdx(n);
+    const m = liveMatches[n];
+    const el = articleRef.current?.querySelector(`.mdw-lp-block[data-i="${m.block}"]`);
+    el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  };
+  const hitBlock = liveMatches[findIdx]?.block ?? -1;
   // 空文档：splitMdBlocks('') 会给 ['']，视觉上是一片没有把手的空白——
   // 用幽灵引导条接住第一次点击（聚焦首块），聚焦后让位给 textarea 占位符
   const emptyDoc = blocks.length === 0 || blocks.every((b) => !String(b).trim());
@@ -452,6 +483,10 @@ function LivePreview({
     },
     focus() {
       liveTaRef.current?.focus();
+    },
+    openFind() {
+      setFindOpen(true);
+      requestAnimationFrame(() => findInputRef.current?.focus());
     },
     /** 撤销/重做后把光标放回改动处：把正文偏移换算到具体块与块内偏移 */
     caretFromDiff(prev, next) {
@@ -609,6 +644,21 @@ function LivePreview({
       }}
     >
       <div className="mdw-lp-sheet" ref={articleRef}>
+        {findOpen && (
+          <EditorFindBar
+            query={findQuery}
+            setQuery={(q) => {
+              setFindQuery(q);
+              setFindIdx(0);
+            }}
+            index={findIdx}
+            total={liveMatches.length}
+            onNext={() => jumpLive(findIdx + 1)}
+            onPrev={() => jumpLive(findIdx - 1)}
+            onClose={() => setFindOpen(false)}
+            inputRef={findInputRef}
+          />
+        )}
         <TitleArea
           className="mdw-lp-title"
           value={title}
@@ -624,6 +674,7 @@ function LivePreview({
               index={i}
               text={b}
               focused={focus === i}
+              hit={hitBlock === i}
               attachments={attachments}
               pendingSelRef={pendingSelRef}
               onFocus={(idx) => {
@@ -1145,9 +1196,16 @@ export const MdPanes = forwardRef(function MdPanes(
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
       const t = e.target;
       if (!t || typeof t.closest !== 'function') return;
-      // 只接管编辑区文本框：查找框等普通输入框保留原生撤销
-      if (!t.closest('.mdw-editor,.mdw-lp-src,.mdw-lp-title,.mdw-title-input')) return;
       const k = e.key.toLowerCase();
+      if (k === 'f' && mode !== 'edit') {
+        // 实时预览/阅读态的查找（源码态由编辑器自己接管）；只要焦点在工作台内即可
+        if (!t.closest('.mdw')) return;
+        e.preventDefault();
+        editorApiRef.current?.openFind?.();
+        return;
+      }
+      // 其余快捷键只接管编辑区文本框：查找框等普通输入框保留原生撤销
+      if (!t.closest('.mdw-editor,.mdw-lp-src,.mdw-lp-title,.mdw-title-input')) return;
       if (k === 's') {
         e.preventDefault();
         onSave?.();
@@ -1166,7 +1224,7 @@ export const MdPanes = forwardRef(function MdPanes(
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onSave, onUndo, onRedo]);
+  }, [onSave, onUndo, onRedo, mode, editorApiRef]);
 
   if (mode === 'split') {
     return (

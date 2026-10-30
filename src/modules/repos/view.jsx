@@ -15,7 +15,6 @@
 // 看板退成上方的筛选器与行内的标签。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
-import { useStore } from '../../web/frontend/store.jsx';
 import { useGuard, useDialog, useToast, Modal, Copyable } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 import TransferPanel from './transfer-panel.jsx';
@@ -92,16 +91,12 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
 }
 
 export default function ReposView() {
-  const { boot } = useStore();
   const guard = useGuard();
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
   const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [scanOpen, setScanOpen] = useState(false);
-  const [scan, setScan] = useState({ root: '', depth: '3' });
-  const [scanResult, setScanResult] = useState(null);
   // 成员管理弹窗：打开时 = 正在往这个看板里点选导入 / 摘除仓库
   const [impBoardId, setImpBoardId] = useState(null);
   // 组内描述编辑：{ id, repo, boardId, boardName, note } | null
@@ -421,27 +416,6 @@ export default function ReposView() {
     await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
 
-  // 扫描两种意图：只发现（零副作用）/ 扫描登记（真登记）。
-  const doScan = (dryRun) => guard(async () => {
-    const root = scan.root.trim() || boot?.projectRoot || '';
-    if (!root) return;
-    const r = await api('/api/repos/scan', {
-      method: 'POST',
-      body: { root, depth: parseInt(scan.depth, 10) || 3, 'dry-run': dryRun },
-    });
-    const lines = (r.found || []).map((x) => `  ${x.known ? '已登记' : '未登记'}  ${x.path}`);
-    if (dryRun) {
-      setScanResult(`发现 ${r.root} 下 ${r.scanned} 个 git 仓库（未登记，磁盘与登记表都没动）`
-        + (lines.length ? '\n\n' + lines.join('\n') : '\n')
-        + (r.scanned ? '\n\n要收进来：点「扫描登记」，或逐个 nx-kv repo add <path> --desc "一句话描述"' : ''));
-    } else {
-      setScanResult(`扫描 ${r.root}: 发现 ${r.scanned} 个仓库，新登记 ${r.added.length} 个`
-        + (r.added.length ? '\n\n' + r.added.map((x) => `  + ${x.name}  ${x.path}`).join('\n') : ''));
-    }
-    setScanOpen(false);
-    await Promise.all([loadRepos(), loadBoards()]);
-  });
-
   const rowAct = (act, r) => guard(async () => {
     if (act === 'open') {
       await api('/api/repos/open', { method: 'POST', body: { id: r.id } });
@@ -594,23 +568,11 @@ export default function ReposView() {
           </div>
         </div>
         <div className="acts">
-          <button className="btn ghost" onClick={() => setScanOpen(true)}>扫描</button>
-          <button className="btn ghost" title="一次扫描全部仓库的 remote：可替换 / key 不一致 / 空 / 悬空，并给出建议"
+          <button className="btn ghost" title="一次扫描全部仓库的 remote：可替换 / 空 / 悬空 / 目录不可用，并给出建议"
             onClick={() => setRemoteOpen(true)}>对齐 remote</button>
           <button className="btn" onClick={openAdd}>添加仓库</button>
         </div>
       </div>
-
-      {scanResult ? (
-        <div className="card">
-          <div className="colhead"><h3>扫描结果</h3>
-            <span className="muted" style={{ marginLeft: 'auto' }}>
-              <button className="btn small ghost" onClick={() => setScanResult(null)}>关闭</button>
-            </span>
-          </div>
-          <pre style={{ padding: 12 }}>{scanResult}</pre>
-        </div>
-      ) : null}
 
       {/* 看板筛选器：主表 = 开发仓库；参考仓库 / 看板管理靠右 */}
       <div className="rp-filters" data-testid="rp-filters">
@@ -915,29 +877,6 @@ export default function ReposView() {
               <button className="btn" disabled={!form.path.trim()} onClick={submit}>
                 {editing ? '保存修改' : '添加仓库'}
               </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-
-      {/* 扫描弹窗 */}
-      {scanOpen ? (
-        <Modal title="扫描目录下的 git 仓库" onClose={() => setScanOpen(false)}>
-          <div className="form-grid">
-            <div className="form-field">
-              <label htmlFor="scan-root">扫描根目录</label>
-              <input id="scan-root" placeholder="留空＝当前项目目录" spellCheck="false" value={scan.root}
-                onChange={(e) => setScan({ ...scan, root: e.target.value })} />
-            </div>
-            <div className="form-field">
-              <label htmlFor="scan-depth">深度</label>
-              <input id="scan-depth" type="number" min="1" max="10" value={scan.depth}
-                onChange={(e) => setScan({ ...scan, depth: e.target.value })} />
-            </div>
-            <div className="form-acts">
-              <button className="btn ghost" onClick={() => setScanOpen(false)}>取消</button>
-              <button className="btn ghost" title="只列出发现的 git 仓库，不登记" onClick={() => doScan(true)}>只发现</button>
-              <button className="btn" onClick={() => doScan(false)}>扫描登记</button>
             </div>
           </div>
         </Modal>

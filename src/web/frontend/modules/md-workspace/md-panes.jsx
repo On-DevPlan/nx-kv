@@ -33,6 +33,9 @@ import {
   turnLine,
 } from './md-edit-ops.js';
 
+// 格式快捷键 → 编辑操作（预览态划选后直接套用）
+const FMT_KEYS = { b: 'bold', i: 'italic', e: 'code', k: 'link' };
+
 function autoSize(el) {
   if (!el) return;
   el.style.height = '0px';
@@ -75,6 +78,7 @@ function LiveBlock({
   onInsertSlash,
   attachments,
   pendingSelRef,
+  pendingFormatRef,
 }) {
   const taRef = useRef(null);
   const display = normalizeBlockText(text);
@@ -91,6 +95,13 @@ function LiveBlock({
       pendingSelRef.current = null;
       el.focus();
       try { el.setSelectionRange(pending.start, pending.end); } catch { /* ignore */ }
+      // 预览态划选后按格式键：选区已就位，直接套用格式（Notion/Typora 行为）
+      const op = pendingFormatRef?.current;
+      if (op) {
+        pendingFormatRef.current = null;
+        const res = runFormat(el, op);
+        if (res) onChange(res.value);
+      }
       return;
     }
     if (document.activeElement !== el) {
@@ -98,7 +109,7 @@ function LiveBlock({
       const n = el.value.length;
       try { el.setSelectionRange(n, n); } catch { /* ignore */ }
     }
-  }, [focused, text, index, pendingSelRef, onTaReady]);
+  }, [focused, text, index, pendingSelRef, pendingFormatRef, onTaReady, onChange]);
 
   if (focused) {
     return (
@@ -317,11 +328,14 @@ function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter })
 
 function LivePreview({
   title, body, onTitle, onBody, articleRef, attachments, docKey, onFiles, editorApiRef, onTextSel,
+  onCloseSelMenu,
 }) {
   const [focus, setFocus] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [slash, setSlash] = useState(null); // { index, query, items, active, x, y }
   const pendingSelRef = useRef(null);
+  // 预览态划选后按格式键：先记下待套用的操作，块进入编辑态并恢复选区后再执行
+  const pendingFormatRef = useRef(null);
   const liveTaRef = useRef(null); // 当前聚焦块的 textarea
   const slashRef = useRef(null);
   const slashRafRef = useRef(0);
@@ -487,6 +501,27 @@ function LivePreview({
     openFind() {
       setFindOpen(true);
       requestAnimationFrame(() => findInputRef.current?.focus());
+    },
+    /** 预览态划选后按 Ctrl/⌘B/I/E/K：把该块切到编辑态并保留选区，再套用格式 */
+    formatSelection(op) {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return false;
+      const text = String(sel.toString() || '');
+      if (!text.trim()) return false;
+      const node = sel.anchorNode;
+      const el = node?.nodeType === 3 ? node.parentElement : node;
+      const blockEl = el?.closest?.('.mdw-lp-block');
+      if (!blockEl || !articleRef.current?.contains(blockEl)) return false;
+      const i = Number(blockEl.getAttribute('data-i'));
+      if (!Number.isInteger(i) || i < 0 || i >= blocks.length) return false;
+      const raw = normalizeBlockText(blocks[i] ?? '');
+      const pos = raw.indexOf(text);
+      if (pos === -1) return false; // 选区跨 markdown 标记时保守放弃，不做错位改写
+      pendingSelRef.current = { index: i, start: pos, end: pos + text.length };
+      pendingFormatRef.current = op;
+      onCloseSelMenu?.();
+      setFocus(i);
+      return true;
     },
     /** 撤销/重做后把光标放回改动处：把正文偏移换算到具体块与块内偏移 */
     caretFromDiff(prev, next) {
@@ -677,6 +712,7 @@ function LivePreview({
               hit={hitBlock === i}
               attachments={attachments}
               pendingSelRef={pendingSelRef}
+              pendingFormatRef={pendingFormatRef}
               onFocus={(idx) => {
                 setFocus(idx);
                 setSlashBoth(null);
@@ -1185,6 +1221,7 @@ export const MdPanes = forwardRef(function MdPanes(
     onSave = null,
     onUndo = null,
     onRedo = null,
+    onCloseSelMenu = null,
   },
   articleRef
 ) {
@@ -1197,6 +1234,7 @@ export const MdPanes = forwardRef(function MdPanes(
       const t = e.target;
       if (!t || typeof t.closest !== 'function') return;
       const k = e.key.toLowerCase();
+      const inEditorText = t.closest('.mdw-editor,.mdw-lp-src,.mdw-lp-title,.mdw-title-input');
       if (k === 'f' && mode !== 'edit') {
         // 实时预览/阅读态的查找（源码态由编辑器自己接管）；只要焦点在工作台内即可
         if (!t.closest('.mdw')) return;
@@ -1204,8 +1242,13 @@ export const MdPanes = forwardRef(function MdPanes(
         editorApiRef.current?.openFind?.();
         return;
       }
-      // 其余快捷键只接管编辑区文本框：查找框等普通输入框保留原生撤销
-      if (!t.closest('.mdw-editor,.mdw-lp-src,.mdw-lp-title,.mdw-title-input')) return;
+      if (!inEditorText) {
+        // 预览态划选后按格式键：切编辑态并套格式（Notion/Typora 行为）
+        if (mode === 'split' && FMT_KEYS[k]) {
+          if (editorApiRef.current?.formatSelection?.(FMT_KEYS[k])) e.preventDefault();
+        }
+        return;
+      }
       if (k === 's') {
         e.preventDefault();
         onSave?.();
@@ -1240,6 +1283,7 @@ export const MdPanes = forwardRef(function MdPanes(
           onFiles={onFiles}
           editorApiRef={editorApiRef}
           onTextSel={onTextSel}
+          onCloseSelMenu={onCloseSelMenu}
         />
       </div>
     );

@@ -466,6 +466,7 @@ export default function MdWorkspace({ dirKey, rows, refreshLocal, onNavigate }) 
               onSave={submit}
               onUndo={undo}
               onRedo={redo}
+              onCloseSelMenu={() => setSelMenu(null)}
             />
 
             <AttachBar

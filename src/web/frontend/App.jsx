@@ -100,6 +100,27 @@ export default function App() {
     return () => clearInterval(t);
   }, [refreshLocal]);
 
+  // ─── 仓库与看板：侧边栏的**唯一数据源** ───
+  // 侧边栏的「目录」= 仓库登记，「分组」= 看板。以前侧边栏自己维护一套
+  // localStorage 分组，与仓库页的看板互不相干——那才是两套数据。
+  const [repoData, setRepoData] = useState({ repos: [], boards: [] });
+  const refreshRepos = useCallback(async () => {
+    try {
+      const [repos, boards] = await Promise.all([api('/api/repos'), api('/api/boards')]);
+      setRepoData({
+        repos: (repos || []).filter((r) => (r.type || 'dev') !== 'ref'), // 参考仓库不进侧边栏
+        boards: (boards && boards.boards) || [],
+      });
+    } catch {
+      /* 读失败：保留旧数据，侧边栏仍可用 */
+    }
+  }, []);
+  useEffect(() => {
+    refreshRepos();
+    const t = setInterval(refreshRepos, 30_000);
+    return () => clearInterval(t);
+  }, [refreshRepos]);
+
   // ─── 等待回填提醒（沿用 v1：presence 轮询，用户停在任意页都要知道）───
   useEffect(() => {
     let stopped = false;
@@ -139,16 +160,18 @@ export default function App() {
       {prefs.folded ? (
         <Rail
           route={route} onNavigate={onNavigate} prefs={prefs} patchPrefs={patchPrefs}
-          rows={rows} waitingCount={waitingCount} boot={boot}
+          repos={repoData.repos} rows={rows} waitingCount={waitingCount} boot={boot}
         />
       ) : (
         <>
           {/* 窄屏（≤900px）侧栏浮层化后的点外收起遮罩；宽屏 display:none 不参与 */}
           <div className="side-scrim" onClick={() => patchPrefs({ folded: true })} aria-hidden="true" />
           <Sidebar
-            topics={rows} route={route} onNavigate={onNavigate}
+            repos={repoData.repos} boards={repoData.boards} topics={rows}
+            route={route} onNavigate={onNavigate}
             boot={boot} waitingCount={waitingCount}
-            prefs={prefs} patchPrefs={patchPrefs} refreshLocal={refreshLocal}
+            prefs={prefs} patchPrefs={patchPrefs}
+            refreshRepos={refreshRepos}
           />
         </>
       )}
@@ -196,8 +219,21 @@ function GlobalEntry({ rows, refreshLocal, boot, onNavigate }) {
 }
 
 // 收起态 rail：52px 图标条，悬停气泡显示名称，徽标仍在（原型 §2/§3）
-function Rail({ route, onNavigate, patchPrefs, rows, waitingCount, boot }) {
-  const dirs = rows.filter((r) => !r.isGlobal).slice(0, 9);
+function Rail({ route, onNavigate, patchPrefs, repos, rows, waitingCount, boot }) {
+  // 目录 = 仓库登记（与展开态同一份数据）；待领取数从队列按仓库汇总
+  const pendingOf = new Map();
+  const topicKeyOf = new Map();
+  for (const t of rows) {
+    if (t.isGlobal || !t.repo) continue;
+    pendingOf.set(t.repo.id, (pendingOf.get(t.repo.id) || 0) + (t.pending || 0));
+    if (!topicKeyOf.has(t.repo.id)) topicKeyOf.set(t.repo.id, t.key);
+  }
+  const dirs = (repos || []).slice(0, 9).map((r) => ({
+    key: topicKeyOf.get(r.id) || r.key || r.id,
+    name: r.name,
+    pending: pendingOf.get(r.id) || 0,
+    waiting: (rows || []).some((t) => t.repo && t.repo.id === r.id && t.waiting),
+  }));
   const globalRow = rows.find((r) => r.isGlobal);
   const btn = (active, tip, onClick, icon, badge, dot, key) => (
     <button

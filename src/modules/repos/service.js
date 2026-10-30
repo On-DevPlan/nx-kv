@@ -57,11 +57,17 @@ export async function loadStore() {
     const raw = await fsp.readFile(storePath(), 'utf8');
     const data = JSON.parse(raw);
     if (!data || typeof data !== 'object') return emptyStore();
-    return {
+    const store = {
       version: 1,
       repos: Array.isArray(data.repos) ? data.repos : [],
       boards: Array.isArray(data.boards) ? data.boards : [],
     };
+    // 老结构（看板成员存随机 id）→ 新结构（存 key）：读时改写并落盘。
+    // 放这里 = 唯一入口，任何读路径都自动看到迁移后的数据。
+    if (migrateStoreKeys(store)) {
+      await saveStore(store).catch(() => {});
+    }
+    return store;
   } catch {
     /* 缺失或损坏 → 空 store */
     return emptyStore();
@@ -178,6 +184,9 @@ export function keyFromRemote(url) {
     s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
     s = s.replace(/^[^/]*@/, '');        // 丢 user@
     s = s.replace(/^([^/]+?):\d+(\/|$)/, '$1$2'); // 丢 :port（只认紧跟 host 的那个冒号）
+    // file:///D:/path 这类本地 URL：盘符冒号也要丢（key 里不允许 `:`——
+    // normalizeKey 会把它压成 -，两边不一致就会「登记的是 A、成员表里是 B」）
+    s = s.replace(/^([a-z]):/i, '$1');
   }
   s = s.replace(/\.git$/i, '');
   s = s.replace(/\/{2,}/g, '/');
@@ -262,6 +271,26 @@ export function boardRepoKeys(board, store) {
     else out.push(id); // 目标已不存在 → 保留原值当占位（迁移时会被清掉）
   }
   return out;
+}
+
+/**
+ * 老结构（board.repoIds）→ 新结构（board.repoKeys）的一次性**落盘**迁移。
+ *
+ * boardRepoKeys 的兼容读解决「迁移前也能看清单」，但盘上还是老结构：
+ * 每次读都现算，而且仓库登记一变（改名/换 remote），key 就跟着变，
+ * 与别处按 key 存的关系对不上。所以读的时候顺手把新结构写回去（幂等）。
+ */
+export function migrateStoreKeys(store) {
+  if (!store || !Array.isArray(store.boards)) return false;
+  let changed = false;
+  for (const b of store.boards) {
+    if (Array.isArray(b.repoKeys)) continue; // 已是新结构
+    const ids = Array.isArray(b.repoIds) ? b.repoIds : [];
+    b.repoKeys = ids.length ? boardRepoKeys(b, store) : [];
+    delete b.repoIds;
+    changed = true;
+  }
+  return changed;
 }
 
 /**

@@ -1,6 +1,9 @@
-// 侧边栏（应用壳的左栏）：品牌区 + 搜索 + 树（全局池恒顶 → 分组 → 目录）+ 底部入口。
+// 侧边栏（应用壳的左栏）：品牌区 + 搜索 + 树（全局池恒顶 → 看板 → 仓库）+ 底部入口。
 // 收起态渲染为 52px 图标 rail（悬停气泡、徽标仍在）。
 // 拖拽编排 = 三段式落点（drag.js）；可见序 = 渲染序，键盘导航走同一份扁平序。
+//
+// **数据源**：仓库登记 + 看板（真实数据，见 model.js）。侧边栏不持有自己的分组体系，
+// 也不持有自己的目录清单——「目录」就是仓库登记里的开发仓库。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../icons.jsx';
 import { PopMenu } from '../overlay.jsx';
@@ -11,37 +14,39 @@ import { rowMenuItems, addMenuItems, cfgMenuItems } from './row-menu.jsx';
 import TaskChildren from './task-children.jsx';
 
 export default function Sidebar({
-  topics,          // mergeDirectoryRows+withGlobalRow 产物（含 isGlobal 行）
+  repos,           // 开发仓库（type != ref）
+  boards,          // 看板
+  topics,          // 本机任务队列（按 cwd 匹配仓库）
   route,           // {view, key}
   onNavigate,      // (hash) => void
   boot,
   waitingCount,
   prefs,
   patchPrefs,      // (patch) => void（已持久化）
-  refreshLocal,    // 添加目录后刷新数据
+  refreshRepos,    // 仓库/看板刷新（登记、归属变更后）
 }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
   const [kw, setKw] = useState('');
   const [menu, setMenu] = useState(null);      // {x,y,items}
   const [kbIndex, setKbIndex] = useState(-1);  // 键盘焦点行
-  const [expanded, setExpanded] = useState(() => new Set()); // 展开子行的目录 key
+  const [expanded, setExpanded] = useState(() => new Set()); // 展开子行的仓库 key
   const dragRef = useRef(null);                // {type,key|id,name}
   const [dropHint, setDropHint] = useState(null); // {key|id, zone}
   const treeRef = useRef(null);
 
   const { rows, matchCount } = useMemo(
-    () => buildTree(topics, prefs, kw),
-    [topics, prefs, kw]
+    () => buildTree(repos, boards, topics, prefs, kw),
+    [repos, boards, topics, prefs, kw]
   );
 
   const isActive = (row) => {
     if (row.type === 'global') return route.view === 'global';
-    if (row.type === 'dir') return route.view === 'dir' && route.key === row.key;
+    if (row.type === 'repo') return route.view === 'dir' && route.key === row.topicKey;
     return false;
   };
 
-  // 当前路由所在目录自动展开子行（深链 / 总览跳转进来也能看到层级）
+  // 当前路由所在仓库自动展开子行（深链 / 总览跳转进来也能看到层级）
   useEffect(() => {
     if (route.view !== 'dir' || !route.key) return;
     setExpanded((prev) => {
@@ -61,15 +66,16 @@ export default function Sidebar({
     });
   }, []);
 
-  // 点击目录 = 展开/收起子行（不再跳工作台）；打开页面走子行，工作台全屏编辑只在具体页面上
+  // 点击：看板 = 展开/收起成员；仓库 = 展开/收起子行（任务）；全局 = 进全局池。
+  // 仓库行没有任务队列时（topicKey 为空）点击不导航——没有可打开的工作台。
   const openRow = useCallback(
     (row) => {
-      if (row.type === 'group') {
+      if (row.type === 'board') {
         patchPrefs((p) => ({ groupOpen: { ...(p.groupOpen || {}), [row.id]: !row.open } }));
       } else if (row.type === 'global') {
         onNavigate('#/global');
       } else {
-        toggleExpanded(row.key);
+        toggleExpanded(row.topicKey || row.key);
       }
     },
     [onNavigate, patchPrefs, toggleExpanded]
@@ -135,10 +141,11 @@ export default function Sidebar({
     const drag = dragRef.current;
     dragRef.current = null;
     setDropHint(null);
-    if (!drag || drag.type !== 'dir') return;
+    if (!drag || drag.type !== 'repo') return;
     e.preventDefault();
-    const order = (prefs.order || []).filter((k) => k !== drag.key);
-    order.push(drag.key);
+    const key = drag.key;
+    const order = (prefs.order || []).filter((k) => k !== key);
+    order.push(key);
     patchPrefs({ order });
   };
 
@@ -146,22 +153,16 @@ export default function Sidebar({
   const openRowMenu = (e, row) => {
     e.preventDefault();
     e.stopPropagation();
-    setMenu({ x: e.clientX, y: e.clientY, items: rowMenuItems({ row, prefs, patchPrefs, onNavigate, dialog, newGroup }) });
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDataChanged: refreshRepos }),
+    });
   };
 
-  // ─── 添加目录 / 新建分组 ───
+  // ─── 登记仓库 / 新建看板 ───
   const addMenu = (e) => {
-    setMenu({ x: e.clientX, y: e.clientY, items: addMenuItems({ dialog, toast, refreshLocal, newGroup }) });
-  };
-  const newGroup = async (moveKey) => {
-    const name = await dialog({ title: '新建分组', input: true, placeholder: '分组名' });
-    if (!name) return;
-    const id = 'g' + Date.now().toString(36);
-    patchPrefs((p) => {
-      const patch = { groups: [...(p.groups || []), { id, name }] };
-      if (moveKey) patch.dirGroups = { ...(p.dirGroups || {}), [moveKey]: id };
-      return patch;
-    });
+    setMenu({ x: e.clientX, y: e.clientY, items: addMenuItems({ dialog, toast, onDataChanged: refreshRepos }) });
   };
 
   // ─── 设置气泡 ───
@@ -204,7 +205,7 @@ export default function Sidebar({
             <Icon name="search" />
             <input
               value={kw}
-              placeholder="搜索目录（命中自动展开）"
+              placeholder="搜索仓库（命中自动展开）"
               onChange={(e) => setKw(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Escape') setKw(''); }}
             />
@@ -221,13 +222,13 @@ export default function Sidebar({
         ref={treeRef}
         tabIndex={0}
         onKeyDown={onTreeKey}
-        onDragOver={(e) => { if (dragRef.current?.type === 'dir') e.preventDefault(); }}
+        onDragOver={(e) => { if (dragRef.current?.type === 'repo') e.preventDefault(); }}
         onDrop={onTreeDropTail}
       >
         {rows.map((row, i) => (
-          row.type === 'group' ? (
+          row.type === 'board' ? (
             <button
-              key={'g:' + row.id}
+              key={'b:' + row.id}
               className={'trow group' + (row.open ? ' open' : '') + (kbIndex === i ? ' kb-focus' : '')}
               onClick={() => openRow(row)}
               onContextMenu={(e) => openRowMenu(e, row)}
@@ -238,13 +239,14 @@ export default function Sidebar({
               onDragLeave={onDragLeave}
               onDrop={(e) => onDrop(e, row)}
               data-drop={dropHint?.id === row.id ? dropHint.zone : undefined}
+              title={row.desc || row.name}
             >
               <span className="tw"><Icon name="chevron" size={10} /></span>
               <span className="gico"><Icon name="folder" /></span>
               <span className="nm">{row.name}</span>
               <span className="cnt">{row.count}</span>
               <span
-                className="more" role="button" tabIndex={-1} aria-label="分组菜单"
+                className="more" role="button" tabIndex={-1} aria-label="看板菜单"
                 onClick={(e) => openRowMenu(e, { ...row, open: row.open })}
               >
                 <Icon name="dots" size={13} />
@@ -254,15 +256,15 @@ export default function Sidebar({
             <div key={row.type + ':' + row.key} className="tblock">
               <button
                 className={
-                  'trow' + (row.type === 'dir' && row.groupId ? ' child' : '') +
-                  (row.type === 'dir' && expanded.has(row.key) ? ' open' : '') +
+                  'trow' + (row.type === 'repo' && row.groupId ? ' child' : '') +
+                  (row.type === 'repo' && expanded.has(row.topicKey) ? ' open' : '') +
                   (isActive(row) ? ' active' : '') +
                   (row.pending > 0 ? ' pinned' : '') +
                   (kbIndex === i ? ' kb-focus' : '')
                 }
                 onClick={() => openRow(row)}
                 onContextMenu={(e) => openRowMenu(e, row)}
-                title={row.cwd ? `${row.cwd}\n${row.summary || ''}` : row.name}
+                title={row.cwd ? `${row.name}\n${row.cwd}\n${row.desc || row.summary || ''}` : row.name}
                 draggable
                 onDragStart={(e) => onDragStart(e, row)}
                 onDragEnd={onDragEnd}
@@ -278,7 +280,7 @@ export default function Sidebar({
                   {row.type === 'global' && row.waiting ? <span className="wdot" title="有等待中的主题" /> : null}
                 </span>
                 {row.pending > 0 && <span className="cnt">{row.pending}</span>}
-                {row.type === 'dir' && row.waiting && <span className="wdot" title="agent 等待回填中" />}
+                {row.type === 'repo' && row.waiting && <span className="wdot" title="agent 等待回填中" />}
                 <span
                   className="more" role="button" tabIndex={-1} aria-label="行菜单"
                   onClick={(e) => openRowMenu(e, row)}
@@ -286,13 +288,13 @@ export default function Sidebar({
                   <Icon name="dots" size={13} />
                 </span>
               </button>
-              {(row.type === 'global' ? isActive(row) : expanded.has(row.key)) && (
+              {(row.type === 'global' ? isActive(row) : expanded.has(row.topicKey)) && (
                 <TaskChildren row={row} onNavigate={onNavigate} />
               )}
             </div>
           )
         ))}
-        {!rows.length && <div className="tree-empty">{kw ? '没有匹配的目录' : '暂无目录：点右上 ＋ 添加'}</div>}
+        {!rows.length && <div className="tree-empty">{kw ? '没有匹配的仓库' : '还没有登记仓库：点右上 ＋ 登记，或去「仓库管理」'}</div>}
         <div className="droptail" aria-hidden="true" />
       </div>
 

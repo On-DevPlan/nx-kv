@@ -119,8 +119,9 @@ R8 无障碍扫尾 → R9 对照表勾缺 → R10 构建+纪要收口。
 ## 议题池（滚动维护，每轮勾掉已完成、补入新发现）
 
 - [x] **E1 标题自动换行**（用户点名）：live `.mdw-lp-title` + 源码 `.mdw-title-input` 均为单行 input，长标题横向溢出 → 改自动增高 textarea
-- [ ] 源码模式标题聚焦态仍吃全局 `input/textarea:focus` 光晕（box-shadow 环），与 live 标题「零 chrome」语言不一致
-- [ ] 工具栏层级：格式钮（B/I/</>/链/1-6）与文档动作（新任务/总览/保存并同步/进程）混排一行，主次不分；对照 Notion 顶部工具条收敛
+- [x] E2 源码标题聚焦态：去光晕，底边线转强调色（与 live 零 chrome 语言统一）
+- [x] E2 工具栏层级：格式组去灰底容器（hover 显底）+ 簇间 hairline + 次级动作去描边；主次归位
+- [x] E2 功能修复：工具栏自适应改容器查询（进程 rail 开/侧栏宽不再静默裁按钮）+ 溢出菜单 portal 到 body（此前被 overflow:hidden 整条裁掉）
 - [ ] 阅读模式排版专项：标题层级、行宽上限、代码块、列表缩进、引用样式
 - [ ] 空态打磨：无标题 placeholder、空正文占位引导（「输入 / 唤起命令」之类）
 - [ ] 窄屏 ≤960 编辑器复核：标题 24px 已有；工具栏溢出菜单与标题共存、状态栏收纳
@@ -134,3 +135,12 @@ R8 无障碍扫尾 → R9 对照表勾缺 → R10 构建+纪要收口。
 - 替换两处调用点：LivePreview（`.mdw-lp-title`，onFocus 清块焦点与斜杠菜单）与 SourceEditor（`.mdw-title-input`）
 - style.css：`.mdw-title-input` 补 `display:block/width:100%/box-sizing/resize:none/overflow:hidden/overflow-wrap:anywhere/border-radius:0`（压全局 textarea 边框圆角）；`.mdw-lp` 零 chrome 重置块与 28px 样式块、24px 窄屏块均扩到 `textarea.mdw-lp-title`
 - 验证：`pnpm run lint` ✅ `pnpm run build` ✅；serve 7877 + Chrome DevTools 实测——live 标题 2 行 `clipped:false`、源码标题 `resize:none`+`anywhere`、标题按 Enter 后 `activeElement` 为正文 textarea 且光标在 0、标题值无 `\n`
+
+## E2 轮纪要 ✅
+
+- **容器查询**：`.mdw-main` 声明 `container:mdwmain / inline-size`；工具栏/纸面自适应从视口媒体查询迁到容器查询三级折叠——`≤1280` 收转变组（1-6）、`≤960` 格式与动作收进 `···`/`更多`、`≤640` 纸面紧凑 + 标题 24px。修掉「进程 rail 一开，左簇被 overflow:hidden 静默裁按钮」的真缺陷；进程 rail 自身规则仍留视口媒体查询
+- **工具栏分层**：格式组 `.mdw-fmt` 去灰底容器（hover 才显底）；`.mdw-toolbar-left > * + *` 簇间 hairline（模式 | 格式 | 插入）；`.mdw-actions` 次级动作去描边转文本态（hover 显底、主按钮保住视觉重量）
+- **标题聚焦统一**：`.mdw-title-input:focus` 去 box-shadow 光晕、底边线转 `--mdw-accent`（0.15s 过渡），与 live 标题零 chrome 语言对齐
+- **溢出菜单 portal**：`useMenu` 升级（menuRef + 锚点 pos），新增 `MenuPortal`（createPortal 到 body、fixed 定位）/`openMenuAt`（left/right 两种锚定，右缘按钮锚 right 防顶出屏）——修 `···` 菜单被工具栏裁掉看不到的缺陷；外点关闭逻辑兼容 portal（btnRef/menuRef 双判）
+- 已知限制：菜单开着时改窗口大小不重算锚点（外点即关，影响可忽略）
+- 验证：lint/build 双绿；Chrome DevTools 实测——rail 开启态工具栏正确折叠、`···` 与 `更多` 菜单完整渲染且贴锚、源码标题聚焦 `box-shadow:none` + 底边线 `rgb(47,111,94)`

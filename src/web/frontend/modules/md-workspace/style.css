@@ -9,6 +9,9 @@
 }
 .mdw-main{
   flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;
+  /* 工具栏/纸面的自适应以「编辑列」实际宽度为准（容器查询），
+     右侧进程 rail 开合、侧栏宽窄都天然正确，不再被视口媒体查询误判 */
+  container:mdwmain / inline-size;
 }
 
 .mdw-top{
@@ -37,6 +40,8 @@
 .mdw-toolbar-left{
   flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:8px;overflow:hidden;
 }
+/* 簇间 hairline：模式 | 格式 | 插入 —— 分区语言对齐 VS Code 工具栏 */
+.mdw-toolbar-left > * + *{border-left:1px solid var(--line,#E4E2DC);padding-left:9px}
 .mdw-toolbar .seg{display:inline-flex;flex:none;background:var(--soft,#F1F0EC);border-radius:7px;padding:2px}
 .mdw-toolbar .seg button{
   padding:4px 10px;border-radius:5px;font-size:11.5px;color:var(--mid,#838A93);
@@ -53,10 +58,11 @@
 }
 .mdw-tools .iconbtn:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
 
-/* 源码格式条：字标按钮，密度对齐专业 MD 编辑器 */
+/* 源码格式条：字标按钮，密度对齐专业 MD 编辑器。
+   容器透明化（去灰底药丸感），hover 才显底——工具行更安静，分组靠 hairline */
 .mdw-fmt{
   display:inline-flex;align-items:center;gap:1px;flex:none;flex-wrap:wrap;
-  padding:1px;border-radius:6px;background:var(--soft,#F1F0EC);
+  padding:0;border-radius:6px;background:none;
 }
 .mdw-fmt-btn{
   display:inline-flex;align-items:center;justify-content:center;gap:3px;
@@ -73,11 +79,11 @@
   background:var(--paper,#fff);font:650 9.5px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4);
 }
 .mdw-fmt-turn-lab{font-size:11px}
-.mdw-fmt-btn:hover{background:var(--paper,#fff);color:var(--mdw-accent)}
+.mdw-fmt-btn:hover{background:var(--soft,#F1F0EC);color:var(--mdw-accent)}
 .mdw-fmt-btn:hover kbd{color:var(--mdw-accent)}
 .mdw-fmt-btn:focus-visible{outline:2px solid var(--mdw-accent-line);outline-offset:1px}
 .mdw-fmt-btn.more{letter-spacing:0.05em;font-weight:800}
-.mdw-fmt-btn.more.on{background:var(--paper,#fff);color:var(--mdw-accent)}
+.mdw-fmt-btn.more.on{background:var(--soft,#F1F0EC);color:var(--mdw-accent)}
 .mdw-fmt-sep{width:1px;height:14px;background:var(--line,#E4E2DC);margin:0 3px}
 .mdw-fmt-turn{display:inline-flex;align-items:center;gap:1px}
 .mdw-fmt-wide{display:inline-flex;align-items:center;gap:1px}
@@ -103,6 +109,10 @@
 .mdw-actions .sep{width:1px;height:16px;background:var(--line,#E4E2DC);margin:0 2px;flex:none}
 .mdw-actions-wide{display:inline-flex;align-items:center;gap:4px}
 .mdw-actions-more{display:none;position:relative}
+/* 次级动作去描边：文本态 + hover 显底，把视觉重量留给主按钮 */
+.mdw-actions .btn.ghost{border-color:transparent;background:none;color:var(--ink-2,#4B515A)}
+.mdw-actions .btn.ghost:hover{background:var(--soft,#F1F0EC);border-color:transparent;color:var(--mdw-accent)}
+.mdw-actions .btn.ghost.on{background:var(--soft,#F1F0EC);color:var(--mdw-accent)}
 .mdw-act-menu{right:0;left:auto}
 
 .mdw .btn{
@@ -152,6 +162,10 @@
   resize:none;overflow:hidden;overflow-wrap:anywhere;
 }
 .mdw-title-input::placeholder{color:var(--faint,#A9AEB4);font-weight:500}
+/* 聚焦态与 live 标题统一「零 chrome」语言：无光晕，底边线转强调色 */
+.mdw-title-input:focus{
+  outline:0;box-shadow:none;border-bottom-color:var(--mdw-accent,#2F6F5E);
+}
 .mdw-editor-row{
   flex:1;min-height:0;display:flex;align-items:stretch;overflow:hidden;
   background:transparent;
@@ -508,15 +522,25 @@
 
 @media (max-width: 960px){
   #mdw-prog{width:240px}
-  .mdw-lp-sheet{padding:20px 22px 56px}
-  .mdw-fmt-wide,.mdw-fmt-turn,.mdw-fmt-sep{display:none}
-  .mdw-fmt-more{display:inline-flex}
-  .mdw-actions-wide{display:none}
-  .mdw-actions-more{display:inline-flex}
 }
 @media (max-width: 720px){
   #mdw-prog{position:absolute;right:0;top:0;bottom:0;z-index:30;box-shadow:-8px 0 24px rgba(20,22,26,.08)}
   .mdw-prog-rail{position:absolute;right:0;top:0;bottom:0;z-index:30}
+}
+/* 工具栏/纸面自适应走容器查询：随编辑列实际宽度分级折叠——
+   1180 收转变组、960 收格式与动作进溢出菜单、640 纸面紧凑。
+   此前用视口媒体查询，进程 rail 一开窄列就静默裁掉按钮（ overflow:hidden 兜底） */
+@container mdwmain (max-width: 1280px){
+  .mdw-fmt-turn,.mdw-fmt-sep{display:none}
+}
+@container mdwmain (max-width: 960px){
+  .mdw-fmt-wide{display:none}
+  .mdw-fmt-more{display:inline-flex}
+  .mdw-actions-wide{display:none}
+  .mdw-actions-more{display:inline-flex}
+  .mdw-lp-sheet{padding:20px 22px 56px}
+}
+@container mdwmain (max-width: 640px){
   .mdw-lp-sheet{padding:16px 16px 48px}
   .mdw-lp input.mdw-lp-title,.mdw-lp textarea.mdw-lp-title{font-size:24px}
 }

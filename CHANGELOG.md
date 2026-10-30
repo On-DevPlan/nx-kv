@@ -2,6 +2,25 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.12.1] - 2026-10-30 key 归一化修复 + remote 对齐反馈
+
+### Fixed
+
+- **keyFromRemote 在 Linux 上多一个前导斜杠**：同一地址在「派生」（keyFromRemote）与
+  「归一」（normalizeKey）两条路上算出的 key 必须一致。Linux 的 `file:///tmp/x` 剥协议后
+  带前导斜杠，于是「派生」得 `/tmp/x`、「归一」得 `tmp/x` —— 同一份数据算出两个 key，
+  导入时参考关系直接连不上（「参考仓库不存在」）。Windows 上是盘符所以走不到这个分支，
+  只有 CI 红。keyFromRemote 的结果现在就规范化（它是「key 的来源」，不该产出非规范形态）。
+- **remote 对齐弹窗的「检查」点了像没反应**：git ls-remote 要几秒，期间界面毫无变化；
+  出错又被 toast 吞掉（一闪而过）。改成点击即显示「检查中…」，错误原因直接写进弹窗
+  （错误信息不该只活 3 秒）。
+
+### Changed
+
+- 并入三个工作树的成果：md-desc（关系改 key + 导入占位 + remote 对齐）、
+  sidebar-repo-boards（侧边栏改用仓库登记 + 看板）、fix-checkbox-width
+  （勾选框被 width:100% 撑满 → 选项列表看着一片空白）。
+
 ## [0.12.0] - 2026-10-30 仓库身份改用全局唯一 key + 导入导出重做
 
 ### Changed

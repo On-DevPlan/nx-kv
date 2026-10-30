@@ -68,7 +68,9 @@ function renderRepoList(list) {
   const lines = [`共 ${list.length} 个仓库`];
   for (const r of list) {
     const tag = r.type === 'ref' ? ' [参考]' : '';
-    lines.push(`${r.name.padEnd(18)} ${r.key}${tag}`);
+    // 冻结 = 没有身份（无远程地址、也没自定义 key）：不伪装成有 key，也不参与导出导入
+    const keyText = r.frozen ? '（无 key · 冻结）' : r.key + (r.keyCustom ? '（自定义）' : '');
+    lines.push(`${r.name.padEnd(18)} ${keyText}${tag}`);
     lines.push(`  ${' '.repeat(16)} ${r.path}`);
   }
   return lines.join('\n');
@@ -78,7 +80,7 @@ function renderRepo(r) {
   const lines = [
     `${r.name}${r.type === 'ref' ? '  [参考]' : ''}${r.desc ? '  ' + r.desc : ''}`,
     `  id:    ${r.id}`,
-    `  key:   ${r.key}${r.keyCustom ? '（自定义）' : ''}`,
+    `  key:   ${r.frozen ? '（无 key · 冻结）' : r.key + (r.keyCustom ? '（自定义）' : '')}`,
     `  路径:  ${r.path}`,
   ];
   if (r.remote) lines.push(`  远程:  ${r.remote}`);
@@ -206,7 +208,7 @@ export default {
         // 给了 --key 就视为自定义；否则用显式的 --key-custom（缺省 false = 跟随 remote）
         keyCustom: ctx.key ? true : ctx['key-custom'] === true,
       }),
-      render: (r) => `已登记: ${r.name} -> ${r.path}（key: ${r.key}）`,
+      render: (r) => `已登记: ${r.name} -> ${r.path}（key: ${r.frozen ? '无 · 冻结（补 remote 或 repo key set 才有身份）' : r.key}）`,
     },
     {
       id: 'repo.update',
@@ -225,7 +227,7 @@ export default {
         'key-custom': { type: 'boolean', hint: 'key 是否自定义（true=不跟随 remote）' },
       },
       run: (ctx) => service.updateRepo(ctx.id, { ...ctx, keyCustom: ctx['key-custom'] === undefined ? undefined : ctx['key-custom'] === true }),
-      render: (r) => `已更新: ${r.name}（key: ${r.key}）`,
+      render: (r) => `已更新: ${r.name}（key: ${r.frozen ? '无 · 冻结' : r.key}${r.keyCustom ? '，自定义' : ''}）`,
     },
     {
       id: 'repo.remove',

@@ -16,7 +16,7 @@
 //
 // 本文件不含传输层概念（不认识 argv 与 HTTP）。
 import { resolve } from 'node:path';
-import { loadStore, mutateStore, newId, boardKeyOf, boardRepoKeys, deriveKey, normalizeKey } from './service.js';
+import { loadStore, mutateStore, newId, boardKeyOf, boardRepoKeys, deriveKey, normalizeKey, isFrozen } from './service.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
 
 const cleanText = (v) => String(v || '').trim();
@@ -198,6 +198,8 @@ export async function assignRepo({ id, key, board, before, remove } = {}) {
     }
 
     if (!target) throw badInput('请给 --board <看板id>');
+    // 冻结（无身份）的仓库**允许**进项目组：本机的编排不该被「有没有远程地址」卡住。
+    // 代价由导出承担——它的 local/<名称> 不是身份，导出时会被剔除并告警（transfer.js）。
     if (!Array.isArray(target.repoKeys)) target.repoKeys = [];
     const at = target.repoKeys.indexOf(rkey);
     // 已在板内：摘出后按 before 回插（纯调位次）；不在：追加。
@@ -257,9 +259,12 @@ export async function importBoards({ json } = {}) {
   const incoming = Array.isArray(data?.boards) ? data.boards : null;
   if (!incoming || !incoming.length) throw badInput('JSON 里没有 boards 数组');
   return mutateStore((s) => {
-    const byName = new Map(s.repos.map((r) => [String(r.name).trim(), deriveKey(r)]));
+    // 冻结仓库不参与匹配：它的 key 是 local/<名称>，别人导出的文件里不会有这个 key，
+    // 拿它去对齐只会把成员错配到本机凑巧同名的目录上。
+    const ident = s.repos.filter((r) => !isFrozen(r));
+    const byName = new Map(ident.map((r) => [String(r.name).trim(), deriveKey(r)]));
     // path 匹配（大小写不敏感、分隔符归一）——老格式的导入文件按 path 引用
-    const byPath = new Map(s.repos.map((r) => [String(r.path).toLowerCase().replace(/\\/g, '/'), deriveKey(r)]));
+    const byPath = new Map(ident.map((r) => [String(r.path).toLowerCase().replace(/\\/g, '/'), deriveKey(r)]));
     let created = 0;
     let merged = 0;
     let matched = 0;

@@ -273,7 +273,7 @@ if (hasGit) {
 
 // ─── 布局导入导出 ───────────────────────────────────────────────────────
 
-test('repoExport：以 key 为身份、不含本地路径；dev 无 remote 进 warnings；boards/links 用 key 引用', async () => {
+test('repoExport：以 key 为身份、不含本地路径；dev 无 remote 被跳过（冻结）；boards/links 用 key 引用', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'dev'), name: 'dev-app', desc: '主应用', remote: 'git@github.com:me/dev-app.git' });
   const plainDev = await repos.addRepo({ path: join(dir, 'plain'), name: 'plain', desc: '无远程' });
   const ref1 = await repos.addRepo({ path: join(dir, 'ref1'), name: 'ref1', type: 'ref', remote: 'https://github.com/lib/ref1.git', desc: '参考一' });
@@ -292,11 +292,11 @@ test('repoExport：以 key 为身份、不含本地路径；dev 无 remote 进 w
   assert.equal(devOut.key, 'github.com/me/dev-app');
   assert.equal(devOut.remote, 'git@github.com:me/dev-app.git');
   assert.equal(devOut.type, 'dev');
-  // 无 remote 的 dev：key 走 local/ 兜底，且进 warnings
+  // 无 remote 且未自定义 key 的 dev = 冻结：**不导出**（local/<名称> 不是身份，
+  // 导出去对方也映射不到），但要如实告诉用户为什么少了它
   const plainOut = d.repos.find((x) => x.name === 'plain');
-  assert.equal(plainOut.key, 'local/plain');
-  assert.ok(!plainOut.remote);
-  assert.ok(d.warnings.some((w) => /plain/.test(w)));
+  assert.equal(plainOut, undefined);
+  assert.ok(d.warnings.some((w) => /plain/.test(w) && /没有 key/.test(w)));
 
   const bOut = d.boards.find((x) => x.name === 'fr');
   assert.equal(bOut.key, 'board/fr');

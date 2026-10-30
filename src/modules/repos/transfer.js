@@ -60,6 +60,12 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
   const repos = [];
   for (const r of s.repos) {
     if (!selectedIds.has(r.id)) continue;
+    // **冻结的仓库不导出**：没有身份（无远程地址、也没自定义 key），它的 key 只是
+    // 本机的 local/<名称> 锚点——导出去对方也映射不到同一个仓库，纯噪音。
+    if (service.isFrozen(r)) {
+      warnings.push(`仓库「${r.name}」没有 key（无远程地址、也未自定义）—— 已跳过：导出导入要靠 key 映射，它没有身份（补 remote 或 repo key set 后即可导出）`);
+      continue;
+    }
     const k = keyOf.get(r.id);
     if (!k) {
       warnings.push(`仓库「${r.name}」没有可用的 key —— 已跳过（先 repo key refresh 或 repo key set）`);
@@ -81,17 +87,24 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
     repos.push(entry);
   }
 
-  const boardsOut = selectedBoards.map((b) => ({
-    key: boardKeyOf.get(b.id),
-    name: b.name,
-    desc: b.desc || '',
-    // 成员按 key 引用（占位成员也在——本地没有的仓库照样导出，导入端会标「本地未拥有」）
-    repos: service.boardRepoKeys(b, s)
-      .map((k) => {
-        const note = (b.repoNotes || {})[k] || '';
-        return note ? { key: k, note } : { key: k };
-      }),
-  }));
+  // 冻结成员（local/<名称>）不是身份：别人那边映射不到任何东西，留在成员表里
+  // 只会让导入端多出一条「本地未拥有」的幽灵。剔除并如实告警。
+  const frozenKeys = new Set(
+    s.repos.filter((r) => service.isFrozen(r)).map((r) => service.deriveKey(r))
+  );
+  const boardsOut = selectedBoards.map((b) => {
+    const members = [];
+    for (const k of service.boardRepoKeys(b, s)) {
+      if (frozenKeys.has(k)) {
+        const nm = s.repos.find((r) => service.deriveKey(r) === k)?.name || k;
+        warnings.push(`项目组「${b.name}」的成员「${nm}」没有 key（冻结）—— 已从导出里剔除（补 remote 或自定义 key 后才会带上）`);
+        continue;
+      }
+      const note = (b.repoNotes || {})[k] || '';
+      members.push(note ? { key: k, note } : { key: k });
+    }
+    return { key: boardKeyOf.get(b.id), name: b.name, desc: b.desc || '', repos: members };
+  });
 
   // 参考关系：ref → 目标（repo key / board key），note 随关系走
   const selectedKeySet = new Set(repos.map((r) => r.key));
@@ -392,7 +405,11 @@ export async function repoImport({
   // 先登记本地已有的（哪怕这次不动，也要能解析关系）
   // keyMap: repoKey -> repoKey（关系的身份；本地有没有这条登记用 keyMap.has 判断）
   const s0 = await service.loadStore();
-  for (const r of s0.repos) keyMap.set(service.deriveKey(r), service.deriveKey(r));
+  for (const r of s0.repos) {
+    // 冻结仓库不进 keyMap：它的 local/<名称> 不是身份，不该被导入文件"命中"
+    if (service.isFrozen(r)) continue;
+    keyMap.set(service.deriveKey(r), service.deriveKey(r));
+  }
 
   for (const item of diff.repos) {
     if (!want(item.key)) continue;

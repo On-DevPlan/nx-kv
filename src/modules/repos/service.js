@@ -113,7 +113,7 @@ function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key
   };
   const finalKey = rk0 || deriveKey({ ...input, name: nm });
   if (!finalKey) throw badInput('key 不能为空');
-  return {
+  const out = {
     id: newId('r'),
     name: nm,
     path: abs,
@@ -130,6 +130,7 @@ function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key
     addedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  return out;
 }
 
 // 绑定目标的形状收敛：只认 {kind, id, note?}，其余丢弃、去重。
@@ -220,7 +221,11 @@ export function normalizeKey(k) {
   return s.toLowerCase();
 }
 
-// 无 remote 时的兜底 key：local/<slug>。slug 保留可读性（中文也行）。
+// 无 remote 时的**内部锚点** key：local/<slug>。
+//
+// ⚠️ 它不是「身份」，只是本机关系（看板成员、绑定）能落到唯一一行的占位。
+// 判断有没有跨机身份用 hasIdentity()——没有身份的仓库是**冻结**的：
+// 本机能看能用，但导出导入不包含它（见 hasIdentity 的注释）。
 export function localKeyOf(name) {
   const slug = String(name || '')
     .trim()
@@ -232,7 +237,7 @@ export function localKeyOf(name) {
   return 'local/' + (slug || 'repo');
 }
 
-/** 一个仓库的 key：自定义优先，其次 remote 派生，最后 local/<name> 兜底。 */
+/** 一个仓库的 key：自定义优先，其次 remote 派生，最后 local/<name> 内部锚点。 */
 export function deriveKey(repo) {
   if (!repo) return '';
   if (repo.keyCustom && repo.key) return normalizeKey(repo.key);
@@ -240,6 +245,32 @@ export function deriveKey(repo) {
   if (fromRemote) return fromRemote;
   if (repo.key) return normalizeKey(repo.key);
   return localKeyOf(repo.name);
+}
+
+/**
+ * **身份**：一个仓库对「换一台机器」有意义的前提。只有两个来源——
+ *   1. 远程 git 地址（归一化后派生 key）；
+ *   2. 人显式自定义的 key。
+ *
+ * 两者都没有 = 没有身份（**冻结**）。冻结不是「不能在本机用」：
+ * 它照常出现在侧边栏、能挂本地任务、能被绑定；只是
+ *   - 导出布局**跳过**它（导出的用途是「在另一台机器上还原同一个仓库」，
+ *     而 local/<名称> 在别人那里映射不到任何东西，导出去只是噪音）；
+ *   - 不能加进项目组（项目组是跨机资产，成员按 key 存）——本机想分组用「收纳组」。
+ *
+ * 这条规则的来历：以前无 remote 的仓库会被 key 兜底成 `local/<名称>`，看起来
+ * 「有 key」，于是被当成正常条目导出，导进去之后对面根本没有这个仓库。
+ * 与其造一个假身份，不如承认它没有身份。
+ */
+export function hasIdentity(repo) {
+  if (!repo) return false;
+  if (repo.keyCustom && normalizeKey(repo.key || '')) return true;
+  return !!keyFromRemote(repo.remote || '');
+}
+
+/** 冻结 = 没有身份（无远程地址、也没有自定义 key） */
+export function isFrozen(repo) {
+  return !hasIdentity(repo);
 }
 
 // 从 URL 推导目录名：取末段、剥 .git。非法字符替换成 -（Windows 目录名约束）。
@@ -333,6 +364,9 @@ export async function listRepos() {
         type: r.type || 'dev', // 旧数据无 type 字段 = dev
         key: rk,                // 老数据没有 key 字段 → 现算（Projection 不落盘，导出照样可用）
         keyCustom: !!r.keyCustom,
+        // 没有身份（无远程地址、也没有自定义 key）= 冻结：面板要标出来，
+        // 导出导入不包含它。key 仍是 local/<名称>，但那只用于本机关系。
+        frozen: !hasIdentity(r),
         remotes: Array.isArray(r.remotes) ? r.remotes : [],
         linked: Array.isArray(r.linked) ? r.linked : [],
         boards: boardsOf.get(rk) || [],
@@ -349,18 +383,46 @@ export async function addRepo(input) {
       throw conflict('该路径已登记: ' + repo.path);
     }
     // **key 全局唯一**（跨 dev/ref）：它是身份，也是导入导出的映射依据。
-    // 老数据可能还没有 key 字段，用 deriveKey 现算，避免迁移空窗期出现重复。
-    const dup = s.repos.find((r) => deriveKey(r) === repo.key);
-    if (dup) throw conflict(`该 key 已登记为「${dup.name}」（${dup.id}）: ${repo.key}`);
+    // 只对有身份的仓库检查——没有身份（冻结）的仓库 key 只是 local/<名称> 锚点，
+    // 两个同名目录（两份 nx-kv 副本）本该能各自登记。
+    if (hasIdentity(repo)) {
+      const dup = s.repos.find((r) => hasIdentity(r) && deriveKey(r) === repo.key);
+      if (dup) throw conflict(`该 key 已登记为「${dup.name}」（${dup.id}）: ${repo.key}`);
+    }
     s.repos.push(repo);
   });
-  return repo;
+  // frozen 是**派生值，不落盘**：写进 store 就会在改过 key 之后过期。
+  return { ...repo, frozen: !hasIdentity(repo) };
+}
+
+/**
+ * key 变了 → 把**所有按 key 存的关系**搬过去（项目组成员、组内描述、绑定）。
+ *
+ * 为什么必须有：key 是身份，关系全按它存。改 key（自定义 / 换 remote 派生）而不搬，
+ * 项目组里就留下一个指向旧身份的幽灵成员，导出时该成员「不在导出范围内」，
+ * 导入端显示「本地未拥有」——用户看到的是「我的仓库莫名从组里掉了」。
+ * 搬过去才是人的预期：换个名字，关系还在。
+ */
+function remapKeyRelations(store, from, to) {
+  if (!from || !to || from === to) return;
+  for (const b of store.boards || []) {
+    if (Array.isArray(b.repoKeys)) b.repoKeys = b.repoKeys.map((k) => (k === from ? to : k));
+    if (b.repoNotes && Object.prototype.hasOwnProperty.call(b.repoNotes, from)) {
+      b.repoNotes[to] = b.repoNotes[from];
+      delete b.repoNotes[from];
+    }
+  }
+  for (const r of store.repos || []) {
+    if (!Array.isArray(r.linked)) continue;
+    for (const l of r.linked) if (l && l.id === from) l.id = to;
+  }
 }
 
 export async function updateRepo(id, patch) {
   return mutateStore((s) => {
     const r = s.repos.find((x) => x.id === id);
     if (!r) throw notFound('repo 不存在: ' + id);
+    const oldKey = deriveKey(r); // 改之前记下身份，收尾时据此搬关系
     if (patch.name !== undefined) r.name = String(patch.name).trim();
     if (patch.desc !== undefined) r.desc = String(patch.desc).trim();
     if (patch.notes !== undefined) r.notes = String(patch.notes);
@@ -384,11 +446,19 @@ export async function updateRepo(id, patch) {
     }
     if (patch.keyCustom !== undefined) r.keyCustom = patch.keyCustom === true;
     if (patch.key !== undefined) {
-      const k = patch.key === '' ? '' : normalizeKey(patch.key);
-      if (patch.key !== '' && !k) throw badInput('key 不合法: ' + patch.key);
-      // 显式给 key = 视为自定义（keyCustom 未同时显式指定时）
-      if (patch.keyCustom === undefined && k) r.keyCustom = true;
-      r.key = k || deriveKey(r);
+      if (patch.key === '') {
+        // **留空 = 回到「跟随远程地址」**（清掉自定义身份）。
+        // 若此时也没有远程地址 → 这个仓库就没有身份了（冻结），key 回落成
+        // local/<名称> 的内部锚点，不再假装是一个可导出的身份。
+        r.key = '';
+        if (patch.keyCustom === undefined) r.keyCustom = false;
+      } else {
+        const k = normalizeKey(patch.key);
+        if (!k) throw badInput('key 不合法: ' + patch.key);
+        // 显式给 key = 视为自定义（keyCustom 未同时显式指定时）
+        if (patch.keyCustom === undefined) r.keyCustom = true;
+        r.key = k;
+      }
       r.keyUpdatedAt = new Date().toISOString();
     }
     if (patch.linked !== undefined) r.linked = sanitizeLinks(patch.linked);
@@ -403,12 +473,17 @@ export async function updateRepo(id, patch) {
     r.updatedAt = new Date().toISOString();
     // key 全局唯一：改 key / remote / keyCustom 后统一在这里兜底校验一次。
     // （放在最后、且对所有更新都跑——便宜，且不会漏掉某个分支。）
+    // **冻结的仓库不参与唯一性检查**：它的 local/<名称> 只是内部锚点，
+    // 两个同名目录（例如两份 nx-kv 副本）本该能各自登记。
     const finalKey = deriveKey(r);
-    if (!finalKey) throw badInput('key 不能为空');
-    const dup = s.repos.find((x) => x.id !== id && deriveKey(x) === finalKey);
-    if (dup) throw conflict(`该 key 已登记为「${dup.name}」（${dup.id}）: ${finalKey}`);
+    if (hasIdentity(r)) {
+      const dup = s.repos.find((x) => x.id !== id && hasIdentity(x) && deriveKey(x) === finalKey);
+      if (dup) throw conflict(`该 key 已登记为「${dup.name}」（${dup.id}）: ${finalKey}`);
+    }
     r.key = finalKey;
-    return r;
+    // 身份变了 → 项目组成员 / 组内描述 / 绑定一起搬（否则关系断在旧 key 上）
+    remapKeyRelations(s, oldKey, finalKey);
+    return { ...r, frozen: !hasIdentity(r) };
   });
 }
 

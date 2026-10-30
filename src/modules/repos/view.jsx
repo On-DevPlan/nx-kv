@@ -21,7 +21,9 @@ import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 import TransferPanel from './transfer-panel.jsx';
 import RemotePanel from './remote-panel.jsx';
 
-const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
+// key 留空 = 跟随远程地址；填了 = 自定义身份（keyCustom）。
+// 两者都没有（无 remote 且 key 空）→ 该仓库冻结：导出导入不含它。
+const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '', key: '' };
 
 // 路径照搬目录看板的「可扫标签」画法：祖先目录变暗、末段略重，点击复制全文。
 // 纯灰一长串（旧画法）里，人眼要逐字符对比才能找到目录名。
@@ -53,9 +55,16 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
     : (r.desc || '');
   const refs = refsOfRepo.get(r.key) || [];
   return (
-    <tr>
+    <tr className={r.frozen ? 'rp-frozen-row' : ''}>
       <td className="rp-name">
         <strong>{r.name}</strong>
+        {/* 冻结 = 没有身份（无远程地址、也没自定义 key）。不藏起来：
+            它本机照常能用，只是导出导入不含它、也进不了项目组。 */}
+        {r.frozen ? (
+          <span className="rp-frozen-badge" title="没有 key：既没有远程 git 地址，也没有自定义 key。本机照常可用，但导出导入不包含它，也不能加进项目组（本机归类请用侧边栏的收纳组）">
+            无 key · 冻结
+          </span>
+        ) : null}
         {desc ? <div className="muted rp-desc" title={descTitle}>{desc}</div> : null}
       </td>
       <td className="mono rp-path"><RepoPath path={r.path} /></td>
@@ -403,6 +412,9 @@ export default function ReposView() {
       type: form.type === 'ref' ? 'ref' : 'dev',
       remote: form.remote.trim() || undefined,
     };
+    // key 的语义：空串 = 回到"跟随远程地址"（清掉自定义）；非空 = 自定义身份。
+    // 编辑时总是传（清空是一次有效操作）；新增时只在填了才传。
+    if (editing || form.key.trim()) body.key = form.key.trim();
     if (editing) await api(`/api/repos/${encodeURIComponent(editing)}`, { method: 'PATCH', body });
     else await api('/api/repos', { method: 'POST', body });
     resetForm();
@@ -442,6 +454,9 @@ export default function ReposView() {
         type: r.type || 'dev',
         remote: r.remote || '',
         notes: r.notes || '',
+        // 只回填**自定义** key。派生 key（github.com/x/y）不能回填——否则一保存
+        // 就被当成"人显式指定"，身份从"跟随 remote"变成"钉死在这个地址上"。
+        key: r.keyCustom ? (r.key || '') : '',
       });
       setFormOpen(true);
     } else if (act === 'del') {
@@ -877,6 +892,19 @@ export default function ReposView() {
               <label htmlFor="repo-remote">远程 git 地址</label>
               <input id="repo-remote" spellCheck="false" placeholder="https://github.com/me/x.git（导出时导它，不含本地路径）"
                 value={form.remote} onChange={set('remote')} />
+            </div>
+            <div className="form-field">
+              <label htmlFor="repo-key">key（身份，可自定义）</label>
+              <input id="repo-key" spellCheck="false"
+                placeholder="留空 = 跟随远程地址；如 github.com/me/x 或 自定义/名字"
+                value={form.key} onChange={set('key')} />
+              <div className={'form-hint' + ((!form.remote.trim() && !form.key.trim()) ? ' rp-hint-warn' : '')}>
+                {form.key.trim()
+                  ? <>自定义 key：导出导入按它映射。改 key 等于换身份——项目组成员、组内描述、绑定会跟着搬过去。</>
+                  : form.remote.trim()
+                    ? <>留空 = 跟随远程地址（<code>{form.remote.trim()}</code> 派生）。</>
+                    : <>既没远程地址也没自定义 key → 这个仓库<b>没有身份（冻结）</b>：本机照常可用，但导出导入不包含它（项目组里的成员也会被剔除）。</>}
+              </div>
             </div>
             <div className="form-field">
               <label htmlFor="repo-notes">备注</label>

@@ -101,9 +101,9 @@ export default function App() {
     return () => clearInterval(t);
   }, [refreshLocal]);
 
-  // ─── 仓库与看板：侧边栏的**唯一数据源** ───
-  // 侧边栏的「目录」= 仓库登记，「分组」= 看板。以前侧边栏自己维护一套
-  // localStorage 分组，与仓库页的看板互不相干——那才是两套数据。
+  // ─── 仓库与项目组：侧边栏的数据源（收纳组是纯显示层，存在 prefs 里）───
+  // 侧边栏里的「资产」只有两种：项目（仓库登记）与项目组（看板）——并列，谁也不装谁。
+  // 「收纳组」不在这里：它只是把资产摆在一起的格子，属于 prefs。
   const [repoData, setRepoData] = useState({ repos: [], boards: [] });
   const refreshRepos = useCallback(async () => {
     try {

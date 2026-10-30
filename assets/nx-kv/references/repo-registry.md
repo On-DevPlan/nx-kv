@@ -64,6 +64,17 @@ git -C <path> pull --no-edit
   两者要对齐但方向由人定（SSH 优先只是默认值）：
   `repo remote list`（列候选）、`repo remote pick --url`（人工换一条）、
   `repo remote check`（存在 / 不存在 / 不可达，三种结论分清）
+- **批量对齐走 scan**：判断「该换哪条 remote」的依据全在数据里（`git remote -v`
+  + 登记采纳值 + key 派生），所以有一条批量命令，别一个仓库一个仓库点：
+
+  ```bash
+  nx-kv repo remote scan [--type dev|ref]   # 一次扫完：ok / 可替换 / 空 / 登记悬空 / 目录不可用 + 建议
+  # 面板上就是「仓库」页右上那个「对齐 remote」按钮（不是每行一个 remote 按钮）
+  ```
+
+  `scan` **只读本地 git 配置、不发网络请求**，所以够快；远端存在性（`git ls-remote`）
+  是按需的 `remote check`。整批落盘用 `repo.remote.align`（HTTP：`POST
+  /api/repos/remote/align`，body `items = [{ id|key, url }]`）。
 - **没有标签**：分组只走看板一条路（2026-10-24 废除仓库 tags，两套平行分组只会打架）
 - **type 双态**：`dev` = 开发仓库（默认），`ref` = 参考仓库（见下节）
 - **remote 是稳定 key**：参考仓库必有；开发仓库也建议记（`repo remote <id|path>` 一条命令

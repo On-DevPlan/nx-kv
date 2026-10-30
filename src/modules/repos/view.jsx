@@ -19,6 +19,7 @@ import { useStore } from '../../web/frontend/store.jsx';
 import { useGuard, useDialog, useToast, Modal, Copyable } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 import TransferPanel from './transfer-panel.jsx';
+import RemotePanel from './remote-panel.jsx';
 
 const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
 
@@ -70,8 +71,6 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
       </td>
       <td className="rp-acts">
         <button className="btn small ghost" title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</button>
-        <button className="btn small ghost" title="对齐 remote：列出 git remote -v 的候选并检查远端是否存在"
-          onClick={() => acts.remote(r)}>remote</button>
         <button className="btn small ghost" onClick={() => acts.edit(r)}>编辑</button>
         {filterBoard ? (
           <button className="btn small ghost" title={`写「${r.name}」在看板「${filterBoard.name}」里的组内描述`}
@@ -134,11 +133,9 @@ export default function ReposView() {
   const [linkNoteText, setLinkNoteText] = useState('');
   // 布局导入导出：全屏面板（自己的 Tab 内维护全部临时状态）
   const [transferOpen, setTransferOpen] = useState(false);
-  // 「对齐 remote」：key 是本地身份，remote 是协作的标准单位——两者要对齐，
-  // 但对齐方向由人定（自动的 SSH 优先只是默认值）。数据面来自 git remote -v。
-  const [remoteInfo, setRemoteInfo] = useState(null); // { key, name, current, remotes:[…] }
-  const [remoteCheck, setRemoteCheck] = useState(null); // { url, status, detail }
-  const [remoteOpen, setRemoteOpen] = useState(false); // 对齐 remote 的弹窗
+  // 对齐 remote：**一个按钮扫全部**（remote-panel.jsx）——不再每行一个 remote 按钮。
+  // key 是本地身份、remote 是协作的标准单位，该换哪条由人定，但判断依据都在数据里。
+  const [remoteOpen, setRemoteOpen] = useState(false);
 
   const resetForm = () => { setForm(EMPTY_FORM); setEditing(null); setFormOpen(false); };
 
@@ -149,6 +146,20 @@ export default function ReposView() {
     setBoards(await api('/api/boards').catch(() => null));
   }, []);
   useEffect(() => { loadRepos(); loadBoards(); }, [loadRepos, loadBoards]);
+
+  // 深链 #/repos?board=<id>：侧边栏点「项目组」就落到这里（筛选到那一组）。
+  // 项目组没有独立页面——它的成员、组级参考仓库、组内描述都长在这一页上。
+  useEffect(() => {
+    const read = () => {
+      const h = typeof location !== 'undefined' ? location.hash || '' : '';
+      if (!h.startsWith('#/repos')) return;
+      const m = /[?&]board=([^&]+)/.exec(h);
+      setFilter(m ? decodeURIComponent(m[1]) : '');
+    };
+    read();
+    window.addEventListener('hashchange', read);
+    return () => window.removeEventListener('hashchange', read);
+  }, []);
 
   // ---- 参考仓库：设置 / 检查 / 克隆 / 同步 / 布局导入导出 ----
   const loadSetting = useCallback(async () => {
@@ -283,54 +294,9 @@ export default function ReposView() {
   }, [loadRepos, loadBoards, loadRefCheck]);
 
   // ---- 对齐 remote ----
-  // key 是本地身份，remote 是协作的标准单位——两者要对齐，但方向由人定
-  // （自动的 SSH 优先只是默认值）。这里给出「列候选 / 人工换一条 / 查存在性」。
-  const openRemote = async (r) => {
-    const key = r && r.key ? r.key : '';
-    if (!key) {
-      toast('这个仓库还没有 key —— 先 nx-kv repo key set <id> <key>');
-      return;
-    }
-    try {
-      const d = await api('/api/repos/remote/list?id=' + encodeURIComponent(key));
-      if (!d || !Array.isArray(d.remotes)) throw new Error('远程地址读取失败');
-      setRemoteInfo(d);
-      setRemoteCheck(null);
-      setRemoteOpen(true);
-    } catch (e) {
-      toast(String((e && e.message) || e));
-    }
-  };
-  const pickRemote = (url) => guard(async () => {
-    await api('/api/repos/remote/pick', {
-      method: 'POST',
-      body: { id: remoteInfo.key, url },
-    });
-    setRemoteOpen(false);
-    toast('已对齐 remote');
-    await Promise.all([loadRepos(), loadRefCheck()]);
-  });
-  // 存在性检查：git ls-remote 要几秒，期间不给任何反馈会像「点了没反应」。
-  // 错误直接写进弹窗（remoteCheck.detail），不靠 toast —— toast 会一闪而过。
-  const checkRemote = async (url) => {
-    const key = remoteInfo ? remoteInfo.key : '';
-    if (!key) {
-      setRemoteCheck({ url: '', status: 'unreachable', detail: '没有仓库标识' });
-      return;
-    }
-    setRemoteCheck({ url: url || remoteInfo.current || '', status: 'checking', detail: '检查中…' });
-    try {
-      const d = await api('/api/repos/remote/check?id=' + encodeURIComponent(key)
-        + (url ? '&url=' + encodeURIComponent(url) : ''));
-      setRemoteCheck(d);
-    } catch (e) {
-      setRemoteCheck({
-        url: url || remoteInfo.current || '',
-        status: 'unreachable',
-        detail: String((e && e.message) || e),
-      });
-    }
-  };
+  // 面板一次扫描全部仓库（remote-panel.jsx）；这里只保留入口与刷新。
+  // 打开逻辑在页面头部按钮上：setRemoteOpen(true)。
+
 
 
   // 组内描述保存：note 为空 = 清除
@@ -567,7 +533,6 @@ export default function ReposView() {
     open: (r) => rowAct('open', r),
     edit: (r) => rowAct('edit', r),
     del: (r) => rowAct('del', r),
-    remote: (r) => openRemote(r),
     // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它身上（多对多的 dev 侧视角）
     bind: (r) => {
       const sel = {};
@@ -615,6 +580,8 @@ export default function ReposView() {
         </div>
         <div className="acts">
           <button className="btn ghost" onClick={() => setScanOpen(true)}>扫描</button>
+          <button className="btn ghost" title="一次扫描全部仓库的 remote：可替换 / key 不一致 / 空 / 悬空，并给出建议"
+            onClick={() => setRemoteOpen(true)}>对齐 remote</button>
           <button className="btn" onClick={openAdd}>添加仓库</button>
         </div>
       </div>
@@ -1274,56 +1241,13 @@ export default function ReposView() {
         />
       ) : null}
 
-      {/* 对齐 remote：key 是本地身份，remote 是协作的标准单位。
+      {/* 对齐 remote：一个按钮扫全部（原来每行一个 remote 按钮，40 个仓库就要点 40 次）。
           候选来自 git remote -v，当前采纳的打勾；点另一条即对齐过去。 */}
-      {remoteOpen && remoteInfo ? (
-        <Modal title={`对齐 remote · ${remoteInfo.name}`} onClose={() => setRemoteOpen(false)}>
-          <div className="form-grid" data-testid="rp-remote-modal">
-            <div className="form-field">
-              <div className="form-hint">
-                当前采纳：<b>{remoteInfo.current || '（无）'}</b>。换一条即对齐（key 随之重算；自定义 key 不动）。
-              </div>
-              <div className="rp-remote-list">
-                {remoteInfo.remotes.map((rm) => (
-                  <div className="rp-remote-item" key={rm.name + '|' + rm.url}>
-                    <span className="rp-remote-name">{rm.name}</span>
-                    <span className="mono rp-remote-url">{rm.url}</span>
-                    <span className="rp-remote-kind">{rm.kind}</span>
-                    {rm.current ? <span className="rp-remote-on">当前</span> : null}
-                    <span className="acts">
-                      {!rm.current ? (
-                        <button className="btn small" onClick={() => pickRemote(rm.url)}>对齐这条</button>
-                      ) : null}
-                      <button className="btn small ghost" onClick={() => checkRemote(rm.url)}>检查</button>
-                    </span>
-                  </div>
-                ))}
-                {!remoteInfo.remotes.length ? (
-                  <div className="muted">这个仓库没有配置 remote —— 先在 git 里 git remote add</div>
-                ) : null}
-              </div>
-            </div>
-            {remoteCheck ? (
-              <div className="form-field">
-                <label>存在性检查</label>
-                <div className="rp-remote-check">
-                  <span className={'rp-status ' + (remoteCheck.status === 'exists' ? 'same' : remoteCheck.status === 'missing' ? 'new' : remoteCheck.status === 'checking' ? 'checking' : 'missing')}>
-                    {remoteCheck.status === 'exists' ? '存在'
-                      : remoteCheck.status === 'missing' ? '不存在'
-                      : remoteCheck.status === 'checking' ? '检查中'
-                      : '不可达'}
-                  </span>
-                  <span className="mono rp-remote-url">{remoteCheck.url}</span>
-                  <span className="muted">{remoteCheck.detail}</span>
-                </div>
-              </div>
-            ) : null}
-            <div className="form-acts">
-              <button className="btn ghost" onClick={() => setRemoteOpen(false)}>关闭</button>
-              <button className="btn" onClick={() => checkRemote('')}>检查当前 remote</button>
-            </div>
-          </div>
-        </Modal>
+      {remoteOpen ? (
+        <RemotePanel
+          onClose={() => setRemoteOpen(false)}
+          onChanged={async () => { await Promise.all([loadRepos(), loadRefCheck()]); }}
+        />
       ) : null}
 
       {dialogNode}

@@ -549,3 +549,72 @@
 @media (min-width: 901px) {
   .side-scrim { display: none; }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   侧边栏：资产（项目 / 项目组）与收纳组（纯显示层）
+   ════════════════════════════════════════════════════════════════ */
+/* 收纳组 = 盒子：比资产行稍弱一档，一眼看出它是「摆东西的格子」而不是一条数据 */
+.trow.group-box { color: var(--ink-2); }
+.trow.group-box .gico { color: var(--faint); }
+.trow.group-box .nm { font-weight: 600; }
+/* 项目组 = 资产：图标略重，与项目（folder）区分开 */
+.trow.asset.board .gico { color: var(--ink); }
+/* 成员数徽标后面的「本地还没有」小注（组里有占位成员时才有） */
+.trow .cnt-miss {
+  font-style: normal; margin-left: 3px; opacity: 0.6;
+  font-size: 10px;
+}
+.trow .cnt-miss::before { content: '/'; margin-right: 2px; }
+
+/* ════════════════════════════════════════════════════════════════
+   对齐 remote · 批量面板（repos/remote-panel.jsx）
+   一屏看完所有仓库的 remote 现状；需处理的排在前面。
+   ════════════════════════════════════════════════════════════════ */
+.rp-rm { display: flex; flex-direction: column; gap: 10px; }
+.rp-rm-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rp-rm-sum { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
+.rp-rm-chip {
+  font-size: 11.5px; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--ink-2); background: var(--paper);
+}
+.rp-rm-chip b { color: var(--ink); margin-left: 2px; }
+.rp-rm-chip.warn { border-color: var(--wait-line); background: var(--wait-bg); color: var(--wait); }
+.rp-rm-chip.bad { border-color: #e3b6b0; background: #fbeeec; color: #a3342a; }
+.rp-rm-chip.good { border-color: #bcd8cb; background: #edf6f1; color: #2f6f5e; }
+.rp-rm-head .acts { flex: none; display: flex; gap: 6px; }
+.rp-rm-head .acts .on { border-color: #2f6f5e; color: #2f6f5e; }
+.rp-rm-hint { font-size: 11.5px; line-height: 1.55; }
+.rp-rm-err {
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  border: 1px solid var(--wait-line); background: var(--wait-bg); color: var(--wait);
+  padding: 7px 9px; border-radius: var(--r5);
+}
+.rp-rm-list { max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--r5); }
+.rp-rm-row + .rp-rm-row { border-top: 1px solid var(--line); }
+.rp-rm-main {
+  display: flex; align-items: center; gap: 8px; padding: 6px 9px; cursor: pointer;
+}
+.rp-rm-main:hover { background: var(--soft); }
+.rp-rm-state {
+  flex: 0 0 74px; font-size: 11px; text-align: center; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--faint);
+}
+.rp-rm-state.good { border-color: #bcd8cb; background: #edf6f1; color: #2f6f5e; }
+.rp-rm-state.warn { border-color: var(--wait-line); background: var(--wait-bg); color: var(--wait); }
+.rp-rm-state.bad { border-color: #e3b6b0; background: #fbeeec; color: #a3342a; }
+.rp-rm-name {
+  flex: 0 1 auto; min-width: 90px; font-weight: 600; font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rp-rm-tag {
+  font-style: normal; font-size: 10px; margin-left: 5px; padding: 0 4px;
+  border-radius: 3px; border: 1px solid var(--line); color: var(--faint);
+}
+.rp-rm-url {
+  flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rp-rm-acts { flex: none; display: flex; gap: 4px; }
+.rp-rm-detail { padding: 0 9px 9px; }
+.rp-rm-reason { font-size: 11.5px; margin-bottom: 6px; }
+.rp-rm-empty { padding: 18px; text-align: center; font-size: 12px; }

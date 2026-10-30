@@ -12,7 +12,9 @@ import fsp from 'node:fs/promises';
 import { loadConfig } from '../../core/config.js';
 import { badInput, conflict } from '../../core/errors.js';
 import * as service from './service.js';
-import { gitRemotes, gitLsRemote, gitClone, hasGit } from './git.js';
+// git.js 的 pickRemote 是「候选里挑一条」（origin 优先、同名里 SSH 优先），
+// 与本文件的 pickRemote（写入采纳值）重名，这里起别名。
+import { gitRemotes, gitLsRemote, gitClone, hasGit, pickRemote as pickCandidate } from './git.js';
 
 const clean = (v) => String(v || '').trim();
 
@@ -127,20 +129,111 @@ export async function cloneRepo({ remote, key, name, desc, notes, type = 'dev', 
   return { key: repo.key, name: repo.name, path: repo.path, remote: used, cloned: true };
 }
 
-/** 面板用：批量列出所有仓库的 remote 候选 + 当前采纳值（对齐 remote 的数据面）。 */
-export async function remoteOverview() {
-  const repos = await service.listRepos();
-  const out = [];
+/**
+ * 批量扫描：一次给齐所有仓库的 remote 现状与「可替换」建议。
+ *
+ * **为什么要有它**：以前每个仓库行各挂一个 remote 按钮，要对齐 40 个仓库就得点
+ * 40 次弹窗、每次自己判断该换哪条。判断规则其实全在数据里（git remote -v +
+ * 登记里采纳的那条 + key 派生），所以一次扫完、一次看完。
+ *
+ * 只读本地 git 配置（`git remote -v`），**不发网络请求**——所以快，可以每次开面板都跑。
+ * 远端存在性（`git ls-remote`，每个要几秒）按需单独检查（checkRemote）。
+ *
+ * status（按「该不该动手」的优先级给一个结论）：
+ *   offline     目录不是 git 仓库（或路径已不存在）——先修目录
+ *   empty       有 git 但没有 remote —— 无可对齐
+ *   ghost       登记的地址不在 git remote 里了 —— 登记悬空
+ *   replaceable 有别的候选可采纳（默认建议 SSH 优先/origin 优先）
+ *   ok          只有一条、就是当前这条
+ */
+export async function scanRemotes({ type } = {}) {
+  const want = String(type || '').trim();
+  const repos = (await service.listRepos()).filter((r) => !want || (r.type || 'dev') === want);
+  const rows = [];
   for (const r of repos) {
+    const current = r.remote || '';
     const remotes = await gitRemotes(r.path);
-    out.push({
+    const isGit = await hasGit(r.path);
+    const candidates = remotes.map((x) => ({
+      name: x.name,
+      url: x.url,
+      kind: x.kind,
+      current: x.url === current,
+      derivedKey: service.keyFromRemote(x.url),
+    }));
+    // 建议采纳的那条：git.js 的 pickCandidate（origin 优先、同名里 SSH 优先）
+    const pick = pickCandidate(remotes);
+    const others = candidates.filter((c) => !c.current);
+    const byKind = (x, y) => (x.kind === 'ssh' ? 0 : 1) - (y.kind === 'ssh' ? 0 : 1);
+    const preferred = pick && pick.url !== current ? pick : (others.slice().sort(byKind)[0] || null);
+
+    let status;
+    let suggest = null;
+    let reason = '';
+    // 登记的地址还在不在 git 里 —— 这是「悬空」的判断依据
+    const currentInGit = candidates.some((c) => c.current);
+    if (!isGit) {
+      status = 'offline';
+      reason = '目录不是 git 仓库（或已不存在）';
+    } else if (!remotes.length) {
+      status = current ? 'ghost' : 'empty';
+      reason = current ? '登记的地址已不在 git remote 里' : '没有配置任何 remote';
+    } else if (current && !currentInGit) {
+      status = 'ghost';
+      reason = '登记的地址已不在 git remote 里（登记悬空）';
+      suggest = preferred;
+    } else if (!current) {
+      status = 'empty';
+      reason = '还没采纳任何 remote';
+      suggest = preferred;
+    } else if (preferred) {
+      status = 'replaceable';
+      reason = `另有 ${others.length} 条候选可换（${preferred.kind}）`;
+      suggest = preferred;
+    } else {
+      status = 'ok';
+      reason = '只有当前这一条，已对齐';
+    }
+
+    rows.push({
+      id: r.id,
       key: r.key,
+      keyCustom: !!r.keyCustom,
       name: r.name,
-      type: r.type,
+      type: r.type || 'dev',
       path: r.path,
-      current: r.remote || '',
-      candidates: remotes.map((x) => ({ name: x.name, url: x.url, kind: x.kind, current: x.url === (r.remote || '') })),
+      current,
+      candidates,
+      suggest: suggest ? { name: suggest.name, url: suggest.url, kind: suggest.kind } : null,
+      status,
+      reason,
     });
   }
-  return { repos: out, total: out.length };
+
+  // 汇总：一眼知道「有几个要动」，面板按钮上直接显示
+  const counts = { total: rows.length, ok: 0, replaceable: 0, empty: 0, ghost: 0, offline: 0 };
+  for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
+  return { repos: rows, counts, total: rows.length };
 }
+
+/** 批量对齐：把给定的 [{key|id, url}] 逐条落盘（复用 pickRemote 的语义）。 */
+export async function alignRemotes({ items } = {}) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) throw badInput('没有要对齐的条目');
+  const done = [];
+  const failed = [];
+  for (const it of list) {
+    const locator = String((it && (it.id || it.key)) || '').trim();
+    const url = clean(it && it.url);
+    if (!locator || !url) { failed.push({ locator, url, error: '缺少仓库标识或地址' }); continue; }
+    try {
+      done.push(await pickRemote(locator, url));
+    } catch (err) {
+      failed.push({ locator, url, error: String(err.message || err) });
+    }
+  }
+  return { aligned: done.length, failed, total: list.length };
+}
+
+/** 面板用：批量列出所有仓库的 remote 候选 + 当前采纳值（= scanRemotes 的旧名） */
+export const remoteOverview = scanRemotes;

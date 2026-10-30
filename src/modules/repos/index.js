@@ -389,6 +389,45 @@ export default {
       },
     },
     {
+      // 批量扫描：一次看全所有仓库的 remote 现状（面板上的「对齐 remote」按钮就是它）
+      id: 'repo.remote.scan',
+      cli: ['repo', 'remote', 'scan'],
+      http: ['GET', '/api/repos/remote/scan'],
+      summary: '批量扫描全部仓库的 remote：标出可替换 / 空 / 悬空 / 目录不可用，并给出建议',
+      flags: { type: { type: 'string', enum: ['dev', 'ref'], hint: '只看开发仓库或参考仓库' } },
+      run: (ctx) => remote.scanRemotes({ type: ctx.type }),
+      render: (d) => {
+        const mark = {
+          ok: '✓ 已对齐', replaceable: '↻ 可替换',
+          empty: '· 无 remote', ghost: '✗ 登记悬空', offline: '✗ 目录不可用',
+        };
+        const lines = [
+          `扫描 ${d.total} 个仓库：` + Object.entries(d.counts)
+            .filter(([k]) => k !== 'total' && d.counts[k])
+            .map(([k, v]) => `${mark[k] || k} ${v}`).join('　'),
+        ];
+        for (const r of d.repos) {
+          if (r.status === 'ok') continue;
+          const sug = r.suggest ? `　建议 → ${r.suggest.url}` : '';
+          lines.push(`  ${(mark[r.status] || r.status).padEnd(12)} ${r.name}　${r.reason}${sug}`);
+        }
+        const ok = d.counts.ok || 0;
+        if (ok) lines.push(`  （另有 ${ok} 个已对齐，未列出）`);
+        return lines.join('\n');
+      },
+    },
+    {
+      // 批量对齐：面板「全部按建议对齐」用它，一次落盘多条
+      id: 'repo.remote.align',
+      cli: ['repo', 'remote', 'align'],
+      http: ['POST', '/api/repos/remote/align'],
+      summary: '批量对齐 remote（body.items = [{ id|key, url }]；自定义 key 只改 remote）',
+      run: (ctx) => remote.alignRemotes({ items: ctx.items }),
+      render: (d) => `已对齐 ${d.aligned}/${d.total} 条`
+        + (d.failed.length ? `；失败 ${d.failed.length} 条：` + d.failed.map((f) => `${f.locator}（${f.error}）`).join('、') : ''),
+    },
+
+    {
       // clone 补齐：导入留下的「本地未拥有」占位，按 remote 克隆并用**占位的 key**登记，
       // 组里的位置自动转正。
       id: 'repo.clone',

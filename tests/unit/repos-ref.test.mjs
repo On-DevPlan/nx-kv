@@ -358,7 +358,10 @@ test('repoImport：diff 零副作用；执行后登记/克隆/看板/关系按 k
 
   // 执行：clone ref（gitRepoRoot 已设），dev 不克隆（clone=ref），orphan 只登记
   const result = await transfer.repoImport({ json, clone: 'ref' });
-  assert.equal(result.created.length, 2); // imp-ref + orphan-dev
+  // 失败时把 warnings/skipped 一起带出来 —— 导入的失败都落在这两个数组里，
+  // 光看「created=0」看不出是哪一步炸的。
+  assert.deepEqual(result.warnings, [], '导入不该有告警');
+  assert.equal(result.created.length, 2, `imp-ref + orphan-dev（skipped=${JSON.stringify(result.skipped)}）`);
   assert.equal(result.boardsMerged, 1);   // grp 合并
   assert.equal(result.cloned.length, 1);
   assert.equal(result.links, 2);

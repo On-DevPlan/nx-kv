@@ -118,6 +118,7 @@ function LiveBlock({
           value={display}
           rows={1}
           spellCheck={false}
+          aria-label="正文"
           placeholder="输入… Enter 新块 · 行首 / 命令"
           onChange={(e) => {
             onChange(e.target.value);
@@ -321,6 +322,9 @@ function LivePreview({
   const slashRef = useRef(null);
   const slashRafRef = useRef(0);
   const blocks = bodyBlocksOnly(body);
+  // 空文档：splitMdBlocks('') 会给 ['']，视觉上是一片没有把手的空白——
+  // 用幽灵引导条接住第一次点击（聚焦首块），聚焦后让位给 textarea 占位符
+  const emptyDoc = blocks.length === 0 || blocks.every((b) => !String(b).trim());
   const setSlashBoth = (next) => {
     const v = typeof next === 'function' ? next(slashRef.current) : next;
     slashRef.current = v;
@@ -584,7 +588,7 @@ function LivePreview({
           onFocus={() => { setFocus(null); setSlashBoth(null); }}
           onEnter={() => { if (blocks.length) setFocus(0); }}
         />
-        <div className="mdw-lp-blocks">
+        <div className={`mdw-lp-blocks${emptyDoc ? ' is-empty-doc' : ''}`}>
           {blocks.map((b, i) => (
             <LiveBlock
               key={`${docKey}-${i}`}
@@ -621,15 +625,26 @@ function LivePreview({
             />
           ))}
         </div>
-        <button
-          type="button"
-          className="mdw-lp-add"
-          aria-label="继续输入"
-          onClick={() => {
-            commit([...blocks, '']);
-            setFocus(blocks.length);
-          }}
-        />
+        {emptyDoc && focus === null ? (
+          <button
+            type="button"
+            className="mdw-lp-add is-empty-hint"
+            aria-label="开始输入"
+            onClick={() => setFocus(0)}
+          >
+            <span className="mdw-lp-add-hint">输入正文，或键入 / 唤起命令…</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="mdw-lp-add"
+            aria-label="继续输入"
+            onClick={() => {
+              commit([...blocks, '']);
+              setFocus(blocks.length);
+            }}
+          />
+        )}
       </div>
       {slash && createPortal(
         <SlashMenu
@@ -676,9 +691,9 @@ function EditorFindBar({ query, setQuery, index, total, onNext, onPrev, onClose,
       <span className="mdw-find-count">
         {total ? `${index + 1}/${total}` : '无结果'}
       </span>
-      <button type="button" className="mdw-find-nav" title="上一个" onClick={onPrev}>↑</button>
-      <button type="button" className="mdw-find-nav" title="下一个" onClick={onNext}>↓</button>
-      <button type="button" className="mdw-find-nav" title="关闭" onClick={onClose}>×</button>
+      <button type="button" className="mdw-find-nav" title="上一个" aria-label="上一个匹配" onClick={onPrev}>↑</button>
+      <button type="button" className="mdw-find-nav" title="下一个" aria-label="下一个匹配" onClick={onNext}>↓</button>
+      <button type="button" className="mdw-find-nav" title="关闭" aria-label="关闭查找" onClick={onClose}>×</button>
     </div>
   );
 }
@@ -974,6 +989,7 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
             value={body}
             spellCheck={false}
             wrap={wrap ? 'soft' : 'off'}
+            aria-label="正文源码"
             placeholder="用 Markdown 写任务——行首 / 出命令 · Ctrl/⌘F 查找 · Ctrl/⌘B 粗体"
             onChange={(e) => {
               onBody(e.target.value);

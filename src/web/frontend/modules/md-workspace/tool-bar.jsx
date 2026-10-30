@@ -191,10 +191,10 @@ export default function ToolBar({
         )}
         {liveOrEdit && (
           <div className="mdw-tools" role="group" aria-label="编辑工具">
-            <button type="button" className="iconbtn" title="插入图片" onClick={onImg}>
+            <button type="button" className="iconbtn" title="插入图片" aria-label="插入图片" onClick={onImg}>
               <Icon name="pin" size={14} />
             </button>
-            <button type="button" className="iconbtn" title="添加附件" onClick={onAtt}>
+            <button type="button" className="iconbtn" title="添加附件" aria-label="添加附件" onClick={onAtt}>
               <Icon name="list" size={14} />
             </button>
           </div>

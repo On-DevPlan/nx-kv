@@ -217,14 +217,15 @@
 .mdw-editor-status{
   flex:none;display:flex;align-items:center;gap:10px;
   padding:4px 12px;border-top:1px solid var(--line,#E4E2DC);
-  font:400 10.5px ui-monospace,Consolas,monospace;color:var(--mid,#838A93);
+  /* 10.5px 小字至少过 WCAG AA（4.5:1）——mid 只有 4.0，提一档到 ink-2 */
+  font:400 10.5px ui-monospace,Consolas,monospace;color:var(--ink-2,#4B515A);
   background:var(--paper,#fff);user-select:none;
 }
 .mdw-editor-status .mdw-wrap-toggle:first-of-type{margin-left:auto}
 .mdw-wrap-toggle{
   height:22px;padding:0 8px;border-radius:5px;
   border:1px solid var(--line,#E4E2DC);background:transparent;
-  font:650 10.5px inherit;color:var(--mid,#838A93);cursor:pointer;
+  font:650 10.5px inherit;color:var(--ink-2,#4B515A);cursor:pointer;
 }
 .mdw-wrap-toggle:hover{color:var(--mdw-accent);border-color:var(--mdw-accent-line);background:var(--mdw-accent-soft)}
 .mdw-wrap-toggle.on{color:var(--mdw-accent);border-color:var(--mdw-accent-line);background:var(--mdw-accent-soft)}
@@ -345,6 +346,11 @@
   display:block;width:100%;height:32px;margin:4px 0 0;padding:0;border:0;
   background:transparent;cursor:text;
 }
+/* 空文档引导：Notion 式幽灵文案（13.5px 正文行高，faint 色） */
+.mdw-lp-add.is-empty-hint{height:auto;padding:6px 0 10px;text-align:left}
+.mdw-lp-add-hint{font-size:13.5px;line-height:1.75;color:var(--faint,#A9AEB4)}
+/* 空文档隐藏隐形空块；进入编辑态（is-edit）立即让位显示 */
+.mdw-lp-blocks.is-empty-doc .mdw-lp-block:not(.is-edit){display:none}
 
 /* 排版：阅读 / 单栏 live 共用 */
 .mdw-lp-view h1,.mdw-preview h1{

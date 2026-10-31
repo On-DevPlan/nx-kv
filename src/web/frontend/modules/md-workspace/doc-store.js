@@ -11,7 +11,15 @@ let s = { docs: {} };
 const listeners = new Set();
 const emit = () => { for (const l of listeners) l(); };
 const subscribe = (l) => { listeners.add(l); return () => listeners.delete(l); };
-const snapshot = () => s;
+/**
+ * 对外快照 = **扁平的 docId → doc 映射**。
+ *
+ * 千万不要把内部的包装对象 `{ docs: {...} }` 透出去：调用方（page-panel）按
+ * `docs[docId]` 取，包装一露出去就永远 undefined —— 表现为任务详细页永久停在
+ * 「载入中…」，且没有任何报错（历史 bug，护栏见 tests/unit/doc-store.test.mjs）。
+ */
+export const docsSnapshot = () => s.docs;
+const snapshot = docsSnapshot;
 
 /** 目录作用域：全局池用 GLOBAL_KEY */
 export const scopeOf = (dirKey) => (dirKey || GLOBAL_KEY);

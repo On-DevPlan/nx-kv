@@ -11,7 +11,7 @@ import { PopMenu } from '../../components/overlay.jsx';
 import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
 import { useApp } from '../../app-context.jsx';
 import Landing from './landing.jsx';
-import { findOpenPanel } from '../../workspace.js';
+import { findOpenPanel, openPanel } from '../../workspace.js';
 import { nextDraftId } from './doc-store.js';
 
 export default function DirPanel({ dirKey }) {
@@ -45,13 +45,35 @@ export default function DirPanel({ dirKey }) {
     if (app.openPage) app.openPage({ dirKey, task, name: '新任务', body });
   };
 
-  const tplMenuItems = (tpl && tpl.templates && tpl.templates.length)
-    ? tpl.templates.map((t) => ({
-        label: (t.id === tpl.defaultId ? '✓ ' : '') + t.name,
-        icon: 'list',
-        onClick: () => newDraft(t.body),
-      }))
-    : [{ label: '按默认模板新建一页', icon: 'list', onClick: () => newDraft(tpl ? tpl.defaultBody() : '') }];
+  // 「模板 ▾」末尾的管理入口：开一块**面板**（不是弹窗）——模板是长期配置，
+  // 值得占一块可拖动、可并排的位置，也能被深链 #/templates 直接打开。
+  const openTplPanel = () => {
+    if (model) openPanel(model, { component: 'templates', name: '任务模板' });
+  };
+
+  // 目录级的「进程」面板入口：面板化之后进程不在内嵌右侧栏里，
+  // 从落地页也要开得出来（config 带 dirKey，否则会落到全局池）。
+  const openProgress = () => {
+    if (!model) return;
+    openPanel(model, {
+      component: 'progress',
+      name: '进程',
+      config: { dirKey: dirKey || GLOBAL_KEY },
+      location: 'right',
+    });
+  };
+
+  const tplMenuItems = [
+    ...((tpl && tpl.templates && tpl.templates.length)
+      ? tpl.templates.map((t) => ({
+          label: (t.id === tpl.defaultId ? '✓ ' : '') + t.name,
+          icon: 'list',
+          onClick: () => newDraft(t.body),
+        }))
+      : [{ label: '按默认模板新建一页', icon: 'list', onClick: () => newDraft(tpl ? tpl.defaultBody() : '') }]),
+    'sep',
+    { label: '管理模板…', icon: 'gear', onClick: openTplPanel },
+  ];
 
   // ─── 删除任务（软删除；顺手关掉已打开的页签）───
   const delTask = (t) => {
@@ -115,6 +137,7 @@ export default function DirPanel({ dirKey }) {
           onDeleteTask={delTask}
           onTplMenu={(e) => setTplMenu({ x: e.clientX, y: e.clientY })}
           onImport={() => fileMdRef.current?.click()}
+          onProg={openProgress}
         />
       </div>
 

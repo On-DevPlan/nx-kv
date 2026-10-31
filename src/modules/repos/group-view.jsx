@@ -6,10 +6,17 @@
 //
 // 数据都来自已有的三份：看板成员（/api/boards）、仓库登记（/api/repos）、
 // 本机队列（/api/localtasks）——按 **仓库 key** 归位，不新建映射关系。
+//
+// 注意「目录 ≠ 队列」：看板成员只是**仓库登记**，未必已有任务队列（topic）。
+// 工作台按 topic.key 寻址，所以没有队列的目录要先建队列再跳——走侧栏同一个
+// ensureQueueAndGo，绝不能退化成「跳去仓库管理」那种错误落点。
 import { useMemo } from 'react';
 import { Icon } from '../../web/frontend/components/icons.jsx';
+import { useToast } from '../../web/frontend/components/ui.jsx';
+import { ensureQueueAndGo } from '../../web/frontend/components/sidebar/queue-nav.js';
 
-export default function GroupView({ dirKey, rows, repoData, onNavigate }) {
+export default function GroupView({ dirKey, rows, repoData, onNavigate, refreshLocal }) {
+  const toast = useToast();
   const boards = (repoData && repoData.boards) || [];
   const repos = (repoData && repoData.repos) || [];
   const topics = rows || [];
@@ -53,9 +60,15 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate }) {
     );
   }
 
+  // 点行 = 打开这个目录的工作台。没有任务队列的目录先登记队列（幂等）再跳，
+  // 与侧栏仓库行同一套行为；只有连路径都没有（本机没登记过）才留在原地提示。
   const openRepo = (it) => {
-    if (it.topicKey) onNavigate('#/dir/' + encodeURIComponent(it.topicKey));
-    else onNavigate('#/repos'); // 还没建队列的仓库 → 去仓库管理登记/建队列
+    ensureQueueAndGo({
+      row: { type: 'repo', topicKey: it.topicKey, cwd: it.path, name: it.name },
+      onNavigate,
+      refreshLocal,
+      toast,
+    });
   };
 
   const totalPending = items.reduce((n, it) => n + it.pending, 0);

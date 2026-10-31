@@ -157,6 +157,22 @@
 .flexlayout__tab_move:hover, .flexlayout__tab_flex_button:hover { color: var(--ink); }
 .flexlayout__tab_button:hover { background: var(--soft); }
 .flexlayout__float_window { border-radius: 10px; overflow: hidden; box-shadow: 0 18px 48px rgba(20, 22, 26, .2); }
+/* 浮窗头部的「迁回」：库原生的迁回手柄只有拖到隐形窄带才生效（几乎拖不对），
+   这里换成一个**看得见、点得动**的图标按钮（icons.dragToDock 注入，见 App.jsx）。
+   位置对齐页签上「浮窗」按钮那一片按钮区：用 order 把手柄从最左挪到 title 之后，
+   与「弹出到窗口」并列；手柄的可拖能力不变（图标本身就是抓手）。 */
+.flexlayout__float_window_header { gap: 2px; }
+.flexlayout__float_window_drag_handle { order: 3; padding: 0; opacity: 1; }
+.flx-dockback {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 22px; height: 22px; padding: 0;
+  border: none; border-radius: 5px; background: none;
+  color: var(--mid, #838A93); cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.flx-dockback:hover { background: var(--soft, #F1F0EC); color: var(--accent, #2F6F5E); }
+.flx-dockback:active { transform: scale(.96); }
+.flx-dockback .ic { display: block; }
 
 /* ---- 侧边栏（展开态） ---- */
 /* 侧栏现在是**工作区里的一块面板**（.nx-side-host 承担布局）：

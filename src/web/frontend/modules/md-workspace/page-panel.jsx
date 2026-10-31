@@ -17,6 +17,7 @@ import AttachBar from './attach-bar.jsx';
 import SelMenu from './sel-menu.jsx';
 import ShortcutSheet from './shortcut-sheet.jsx';
 import { useApp } from '../../app-context.jsx';
+import { openPanel } from '../../workspace.js';
 import { filesToAttachments, persistAtt } from './attachments.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from './md-history.js';
 import { renderMarkdownHtml, slugName, titleFromMd } from './md-parse.js';
@@ -90,6 +91,20 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   }, []);
 
   const guard = (fn) => fn().catch((e) => toast(String(e.message || e)));
+
+  // 工具栏「进程」：面板化之后进程不再是内嵌右侧栏，而是工作区里独立的一块
+  // （可拖动 / 可浮出 / 可单独关掉）。已开着同一目录的进程面板就聚焦它，不重复开。
+  // 注意 config 要带上 dirKey：进程面板是按**目录**取任务的，缺了会落到全局池。
+  const openProgress = () => {
+    const m = model || app.model;
+    if (!m) return;
+    openPanel(m, {
+      component: 'progress',
+      name: '进程',
+      config: { dirKey: dirKey || GLOBAL_KEY },
+      location: 'right',
+    });
+  };
 
   const markDirty = useCallback(() => setDirty(true), []);
 
@@ -296,8 +311,28 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     fileAttRef.current?.click();
   };
 
+  // 读不到文档分两种：**还在读**（队列首轮没回来）与**确实没有这一条**（被删 / 深链写错）。
+  // 后者不该永远转圈——给一句实话 + 一个出口（回目录）。
   if (!doc) {
-    return <div className="mdw"><div className="pad muted">载入中…</div></div>;
+    if (app.localReady === false || isDraft) {
+      return <div className="mdw"><div className="pad muted">载入中…</div></div>;
+    }
+    return (
+      <div className="mdw">
+        <div className="pad stack">
+          <div><strong>找不到任务 #{task}</strong></div>
+          <div className="hint">它可能已被删除（软删除可用 nx-kv localtask task restore 恢复），或这个深链写错了。</div>
+          <div>
+            <button
+              className="btn ghost sm"
+              onClick={() => app.onNavigate && app.onNavigate(isGlobal ? '#/global' : '#/dir/' + encodeURIComponent(dirKey || ''))}
+            >
+              回到目录
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -328,6 +363,7 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
           onDraft={() => toast('草稿随页签保留（刷新后需从侧栏或页签重新打开）')}
           onSubmit={submit}
           onDelete={isDraft ? null : delTask}
+          onProg={openProgress}
           onOverview={() => app.onNavigate && app.onNavigate('#/overview')}
           onFormat={(op) => editorApiRef.current?.format?.(op)}
           onTurn={(id2) => editorApiRef.current?.turn?.(id2)}

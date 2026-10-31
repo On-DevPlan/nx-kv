@@ -16,6 +16,7 @@ const GroupView = lazy(() => import('../../modules/repos/group-view.jsx'));
 const ReposView = lazy(() => import('../../modules/repos/view.jsx'));
 const TodoView = lazy(() => import('../../modules/todo/view.jsx'));
 const OverviewView = lazy(() => import('../../modules/localtask/view-overview.jsx'));
+const TemplatePanel = lazy(() => import('./modules/md-workspace/template-panel.jsx'));
 
 /** 给懒加载的视图套上 Suspense（传的是**元素**，不是组件） */
 const wrap = (el) => (
@@ -62,7 +63,13 @@ function ProgressPanelView({ dirKey }) {
 function GroupPanel({ boardId }) {
   const app = useApp() || {};
   return wrap(
-    <GroupView dirKey={boardId} rows={app.rows} repoData={app.repoData} onNavigate={app.onNavigate} />
+    <GroupView
+      dirKey={boardId}
+      rows={app.rows}
+      repoData={app.repoData}
+      onNavigate={app.onNavigate}
+      refreshLocal={app.refreshLocal}
+    />
   );
 }
 
@@ -83,10 +90,12 @@ export const PANELS = {
   repos: { title: '仓库管理', render: () => wrap(<ReposView />) },
   cloud: { title: '云端总览', render: () => wrap(<TodoView />) },
   overview: { title: '全部目录总览', render: () => <OverviewPanel /> },
+  // 任务模板：单例面板（config 恒空，openPanel 会复用已有页签）
+  templates: { title: '任务模板', render: () => wrap(<TemplatePanel />) },
 };
 
 /** 抽屉里的顺序：先业务后工具 */
-export const PANEL_ORDER = ['overview', 'group', 'repos', 'cloud'];
+export const PANEL_ORDER = ['overview', 'group', 'repos', 'cloud', 'templates'];
 
 /**
  * FlexLayout 的 factory：只认 component 字符串，参数从 config 取。
@@ -127,6 +136,8 @@ export function routeOfPanel(node) {
       return '#/cloud';
     case 'overview':
       return '#/overview';
+    case 'templates':
+      return '#/templates';
     default:
       return null; // 侧栏 / 开始页 / 进程面板不是路由目标
   }
@@ -162,6 +173,8 @@ export function panelSpecOfRoute(route, ctx = {}) {
       return { component: 'cloud', name: '云端总览', config: {} };
     case 'overview':
       return { component: 'overview', name: '全部目录总览', config: {} };
+    case 'templates':
+      return { component: 'templates', name: '任务模板', config: {} };
     default:
       return null;
   }

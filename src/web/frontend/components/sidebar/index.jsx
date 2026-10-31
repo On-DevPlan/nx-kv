@@ -13,7 +13,6 @@ import { canDrop, zoneOf, applyDrop } from './drag.js';
 import { rowMenuItems, addMenuItems } from './row-menu.jsx';
 import TaskChildren from './task-children.jsx';
 import { ensureQueueAndGo } from './queue-nav.js';
-import TemplateManager from '../../modules/md-workspace/template-manager.jsx';
 
 export default function Sidebar({
   repos,           // 开发仓库（type != ref）
@@ -26,7 +25,6 @@ export default function Sidebar({
   prefs,
   patchPrefs,      // (patch) => void（已持久化）
   refreshRepos,    // 仓库/看板刷新（登记、归属变更后）
-  tpl,             // 任务模板（App 层持有；设置→「任务模板…」用同一份数据）
   onCollapse,      // 收起成窄轨（工作区面板：改 tabset weight）
 }) {
   const toast = useToast();
@@ -35,7 +33,6 @@ export default function Sidebar({
   const [menu, setMenu] = useState(null);      // {x,y,items}
   const [kbIndex, setKbIndex] = useState(-1);  // 键盘焦点行
   const [expanded, setExpanded] = useState(() => new Set()); // 展开子行的仓库 key
-  const [tplMgrOpen, setTplMgrOpen] = useState(false); // 设置 → 任务模板管理弹窗
   const dragRef = useRef(null);                // {type,key|id,name}
   const [dropHint, setDropHint] = useState(null); // {key|id, zone}
   const treeRef = useRef(null);
@@ -332,7 +329,6 @@ export default function Sidebar({
       </div>
 
       {menu && <PopMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
-      {tplMgrOpen && <TemplateManager tpl={tpl} onClose={() => setTplMgrOpen(false)} toast={toast} />}
       {dialogNode}
     </aside>
   );

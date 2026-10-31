@@ -15,7 +15,7 @@ function shortTime(v) {
   return m ? `${m[1].slice(5)} ${m[2]}` : s.slice(0, 16);
 }
 
-export default function Landing({ isGlobal, tasks = [], onNew, onOpenTask, onDeleteTask, onTplMenu, onImport }) {
+export default function Landing({ isGlobal, tasks = [], onNew, onOpenTask, onDeleteTask, onTplMenu, onImport, onProg }) {
   return (
     <div className="mdw-land">
       <div className="mdw-land-acts">
@@ -23,7 +23,7 @@ export default function Landing({ isGlobal, tasks = [], onNew, onOpenTask, onDel
         <button
           type="button"
           className="btn ghost sm"
-          title="按模板新建一页（管理模板在侧边栏设置里）"
+          title="按模板新建一页（末尾「管理模板…」打开任务模板面板）"
           aria-haspopup="menu"
           onClick={(e) => onTplMenu?.(e)}
         >
@@ -32,6 +32,16 @@ export default function Landing({ isGlobal, tasks = [], onNew, onOpenTask, onDel
         {onImport && (
           <button type="button" className="btn ghost sm" title="把一个 .md 文件导入成任务" onClick={onImport}>
             导入
+          </button>
+        )}
+        {onProg && (
+          <button
+            type="button"
+            className="btn ghost sm"
+            title="打开这个目录的进程面板（可拖到任意一边、可浮出）"
+            onClick={onProg}
+          >
+            进程
           </button>
         )}
         <span className="mdw-land-count">{tasks.length} 个任务</span>

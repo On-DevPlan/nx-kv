@@ -80,7 +80,6 @@ export default function SidebarPanel() {
         refreshRepos={app.refreshRepos}
         prefs={app.prefs}
         patchPrefs={app.patchPrefs}
-        tpl={app.tpl}
         onCollapse={collapse}
       />
     </div>

@@ -54,25 +54,9 @@ git -C <path> pull --no-edit
 - 路径不必是 git 仓库：登记不校验目录内容，也不要求目录存在
 - **key 是身份，全局唯一**（2026-10-28）：来自归一化远程地址（`git@c:o/r.git`、
   `https://c/o/r`、`ssh://git@ssh.github.com:443/o/r.git` 归一到同一个
-  `c/o/r`）。自定义 key 不跟随 remote 变化；`repo key refresh --all` 扫描
-  `git remote -v`（**SSH 优先**）提示可更新的 key/远程地址，`--apply` 才落盘
-- **身份只有两个来源：远程地址，或人显式自定义**（2026-10-31）。两者都没有的仓库
-  **冻结**：它照常能在本机用（侧边栏、本地任务、绑定、进项目组），但
-  - **不导出**（导出靠 key 映射到「另一台机器上的同一个仓库」，`local/<名称>` 在
-    别人那里映射不到任何东西），项目组里的冻结成员也会被从导出的成员表里剔除；
-  - 不参与导入匹配（不会被别人的布局「命中」）。
-
-  这里**不再有 `local/<名称>` 兜底身份**——那个兜底只是本机关系的内部锚点，
-  绝不外发。要给一个没有远程地址的仓库身份，就显式指定 key：
-
-  ```bash
-  nx-kv repo key set <id|路径> 团队/nx-rh     # 自定义身份（也可 repo update <id> --key …）
-  nx-kv repo update <id> --key ""            # 清空 = 回到跟随远程地址；没有远程地址就回到冻结
-  ```
-
-  面板上就是「编辑仓库」弹窗里那个 **key** 字段：留空 = 跟随远程地址，填了 = 自定义。
-  **改 key 等于换身份**，服务层会把项目组成员、组内描述、绑定一起搬过去
-  （不搬的话关系会断在旧 key 上，表现为「仓库莫名从组里掉了」）。
+  `c/o/r`），或无 remote 时 `local/<名称>` 兜底，也可 `repo key set` 自定义。
+  自定义 key 不跟随 remote 变化；`repo key refresh --all` 扫描 `git remote -v`
+  （**SSH 优先**）提示可更新的 key/远程地址，`--apply` 才落盘
 - **所有内部关系用 key，不用随机 id**（2026-10-28）：看板成员存 `repoKeys`、
   组内描述按 key、绑定关系（linked）按 key。id 只是本机行主键，不再参与任何关系引用
   ——id 换机即失效，key 才能精确映射
@@ -80,49 +64,12 @@ git -C <path> pull --no-edit
   两者要对齐但方向由人定（SSH 优先只是默认值）：
   `repo remote list`（列候选）、`repo remote pick --url`（人工换一条）、
   `repo remote check`（存在 / 不存在 / 不可达，三种结论分清）
-- **批量对齐走 scan**：判断「该换哪条 remote」的依据全在数据里（`git remote -v`
-  + 登记采纳值 + key 派生），所以有一条批量命令，别一个仓库一个仓库点：
-
-  ```bash
-  nx-kv repo remote scan                 # 缺省只扫开发仓库：ok / 可替换 / 空 / 登记悬空 / 目录不可用 + 建议
-  nx-kv repo remote scan --type ref|all  # 要看参考仓库才显式指定
-  # 面板上就是「仓库」页右上那个「对齐 remote」按钮（不是每行一个 remote 按钮）
-  ```
-
-  **范围默认是开发仓库**：参考仓库的 remote 就是它 clone 的来源兼 key，没有「换一条」
-  的余地，列进来只是几十行噪音；它们的健康度看 `repo ref check`。
-
-  `scan` **只读本地 git 配置、不发网络请求**，所以够快；远端存在性（`git ls-remote`）
-  是按需的 `remote check`。整批落盘用 `repo.remote.align`（HTTP：`POST
-  /api/repos/remote/align`，body `items = [{ id|key, url }]`）。
 - **没有标签**：分组只走看板一条路（2026-10-24 废除仓库 tags，两套平行分组只会打架）
 - **type 双态**：`dev` = 开发仓库（默认），`ref` = 参考仓库（见下节）
 - **remote 是稳定 key**：参考仓库必有；开发仓库也建议记（`repo remote <id|path>` 一条命令
   从目录 origin 读来存档）——导出布局时导远程地址而非本地路径，换机导入才 clone 得回来
 - **看板的 desc 是领域描述**：写该组仓库的侧重、配合关系（谁是中心/终端）、
   关键路径与搜索关键词——它是给人和 agent 读的上下文，写法约定见 [[kv-repo]]
-
-## 仓库的描述：desc 是摘要，docs 才是正文
-
-`desc` 一句话不够用（用户的原话：desc 不该是一句话，而是 **md 列表**）。所以一个仓库带：
-
-- `desc` —— 一句话摘要。列表行、搜索、导出都读它，必须短。
-- `docs` —— **仓库内 md 的相对路径数组**（最多 24 条）。详细说明、设计、约定写在这些
-  md 里，谁写谁维护；面板的仓库详情页把它们渲染出来。
-
-```bash
-nx-kv repo add <path> --docs README.md,docs/arch.md     # 登记时一起挂
-nx-kv repo update <id> --docs README.md,docs/arch.md    # 改（传空数组 = 清空）
-nx-kv repo doc <id> --path docs/arch.md                 # 读正文（面板也走这条）
-```
-
-只认**仓库内**的相对路径：绝对路径、`..` 越界、非 `.md` 一律拒收（`sanitizeDocs`）。
-读正文时不存在 / 越界 / 超过 512KB 都是显式错误，不静默返回空。导出布局**不带 md 正文**
-（本机文件不入布局，只带登记）。
-
-面板：`#/repo/<key>` 是仓库详情页（信息 + md 描述 + 项目组 + 相关任务）；侧边栏点项目
-就落这儿——**空任务的仓库也点得开**（以前它只能去工作台，没队列就没去处）。
-列表行里 desc 下面那排 `md` chip 就是 docs，点一下直达详情页对应的那一份。
 
 ## 参考仓库（type=ref）：搜索并克隆外部项目
 

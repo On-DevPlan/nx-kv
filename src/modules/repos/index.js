@@ -68,9 +68,7 @@ function renderRepoList(list) {
   const lines = [`共 ${list.length} 个仓库`];
   for (const r of list) {
     const tag = r.type === 'ref' ? ' [参考]' : '';
-    // 冻结 = 没有身份（无远程地址、也没自定义 key）：不伪装成有 key，也不参与导出导入
-    const keyText = r.frozen ? '（无 key · 冻结）' : r.key + (r.keyCustom ? '（自定义）' : '');
-    lines.push(`${r.name.padEnd(18)} ${keyText}${tag}`);
+    lines.push(`${r.name.padEnd(18)} ${r.key}${tag}`);
     lines.push(`  ${' '.repeat(16)} ${r.path}`);
   }
   return lines.join('\n');
@@ -80,7 +78,7 @@ function renderRepo(r) {
   const lines = [
     `${r.name}${r.type === 'ref' ? '  [参考]' : ''}${r.desc ? '  ' + r.desc : ''}`,
     `  id:    ${r.id}`,
-    `  key:   ${r.frozen ? '（无 key · 冻结）' : r.key + (r.keyCustom ? '（自定义）' : '')}`,
+    `  key:   ${r.key}${r.keyCustom ? '（自定义）' : ''}`,
     `  路径:  ${r.path}`,
   ];
   if (r.remote) lines.push(`  远程:  ${r.remote}`);
@@ -200,7 +198,6 @@ export default {
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库（默认），ref=参考仓库' },
         remote: { type: 'string', hint: '远程 git 地址（key 的来源；导出时导它）' },
-        docs: { type: 'array', hint: '描述文档：仓库内 md 的相对路径（可多个，逗号分隔）' },
         key: { type: 'string', hint: '自定义全局唯一 key（缺省按 remote/名字派生）' },
         'key-custom': { type: 'boolean', hint: '把 key 标记为自定义（不跟随 remote 变化）' },
       },
@@ -209,18 +206,7 @@ export default {
         // 给了 --key 就视为自定义；否则用显式的 --key-custom（缺省 false = 跟随 remote）
         keyCustom: ctx.key ? true : ctx['key-custom'] === true,
       }),
-      render: (r) => `已登记: ${r.name} -> ${r.path}（key: ${r.frozen ? '无 · 冻结（补 remote 或 repo key set 才有身份）' : r.key}）`,
-    },
-    {
-      // 读一份仓库内的 md（面板的仓库详情页 + agent 查文档都走它）
-      id: 'repo.doc',
-      cli: ['repo', 'doc'],
-      http: ['GET', '/api/repos/doc'],
-      summary: '读仓库内的 md 文档（desc 是它的摘要；docs 里列的是仓库内相对路径）',
-      args: ['id'],
-      flags: { path: { type: 'string', hint: '仓库内 md 的相对路径，如 README.md / docs/arch.md' } },
-      run: (ctx) => service.readRepoDoc(ctx.id, ctx.path),
-      render: (d) => `# ${d.repo} · ${d.path}（${d.size < 1024 ? d.size + ' B' : Math.round(d.size / 1024) + ' KB'}）\n\n${d.text}`,
+      render: (r) => `已登记: ${r.name} -> ${r.path}（key: ${r.key}）`,
     },
     {
       id: 'repo.update',
@@ -235,12 +221,11 @@ export default {
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库，ref=参考仓库' },
         remote: { type: 'string', hint: '远程 git 地址' },
-        docs: { type: 'array', hint: '描述文档：仓库内 md 的相对路径（传空数组 = 清空；可多个）' },
         key: { type: 'string', hint: '自定义 key（给了就视为 keyCustom）' },
         'key-custom': { type: 'boolean', hint: 'key 是否自定义（true=不跟随 remote）' },
       },
       run: (ctx) => service.updateRepo(ctx.id, { ...ctx, keyCustom: ctx['key-custom'] === undefined ? undefined : ctx['key-custom'] === true }),
-      render: (r) => `已更新: ${r.name}（key: ${r.frozen ? '无 · 冻结' : r.key}${r.keyCustom ? '，自定义' : ''}）`,
+      render: (r) => `已更新: ${r.name}（key: ${r.key}）`,
     },
     {
       id: 'repo.remove',
@@ -403,48 +388,6 @@ export default {
         return `${mark}  ${d.url} —— ${d.detail}`;
       },
     },
-    {
-      // 批量扫描：一次看全所有仓库的 remote 现状（面板上的「对齐 remote」按钮就是它）
-      id: 'repo.remote.scan',
-      cli: ['repo', 'remote', 'scan'],
-      http: ['GET', '/api/repos/remote/scan'],
-      summary: '批量扫描**开发仓库**的 remote：标出可替换 / 空 / 悬空 / 目录不可用，并给出建议（--type ref|all 才看参考仓库）',
-      flags: { type: { type: 'string', enum: ['dev', 'ref', 'all'], default: 'dev', hint: 'dev（缺省）= 只扫开发仓库；ref = 只看参考仓库；all = 两类都看' } },
-      run: (ctx) => remote.scanRemotes({ type: ctx.type }),
-      render: (d) => {
-        const mark = {
-          ok: '✓ 已对齐', replaceable: '↻ 可替换',
-          empty: '· 无 remote', ghost: '✗ 登记悬空', offline: '✗ 目录不可用',
-        };
-        const label = d.type === 'ref' ? '参考仓库' : d.type === 'all' ? '仓库' : '开发仓库';
-        // 「已对齐」不挤进汇总行——它在末尾单独一句，否则同一件事说两遍
-        const todo = Object.entries(d.counts)
-          .filter(([k]) => k !== 'total' && k !== 'ok' && d.counts[k]);
-        const lines = [
-          `扫描 ${d.total} 个${label}`
-            + (todo.length ? '：' + todo.map(([k, v]) => `${mark[k] || k} ${v}`).join('　') : ''),
-        ];
-        for (const r of d.repos) {
-          if (r.status === 'ok') continue;
-          const sug = r.suggest ? `　建议 → ${r.suggest.url}` : '';
-          lines.push(`  ${(mark[r.status] || r.status).padEnd(12)} ${r.name}　${r.reason}${sug}`);
-        }
-        const ok = d.counts.ok || 0;
-        if (ok) lines.push(`  （另有 ${ok} 个已对齐，未列出）`);
-        return lines.join('\n');
-      },
-    },
-    {
-      // 批量对齐：面板「全部按建议对齐」用它，一次落盘多条
-      id: 'repo.remote.align',
-      cli: ['repo', 'remote', 'align'],
-      http: ['POST', '/api/repos/remote/align'],
-      summary: '批量对齐 remote（body.items = [{ id|key, url }]；自定义 key 只改 remote）',
-      run: (ctx) => remote.alignRemotes({ items: ctx.items }),
-      render: (d) => `已对齐 ${d.aligned}/${d.total} 条`
-        + (d.failed.length ? `；失败 ${d.failed.length} 条：` + d.failed.map((f) => `${f.locator}（${f.error}）`).join('、') : ''),
-    },
-
     {
       // clone 补齐：导入留下的「本地未拥有」占位，按 remote 克隆并用**占位的 key**登记，
       // 组里的位置自动转正。
@@ -752,6 +695,46 @@ export default {
       summary: '导出看板 JSON（可回灌给 board import）',
       run: () => boards.exportBoards(),
       render: (d) => JSON.stringify(d, null, 2),
+    },
+
+    // ---- 前缀分组规则：仓库名以某前缀开头 → 自动归入某看板 ----
+    // 规则只改「成员关系」，看板仍是唯一分组载体 —— 侧边栏分组、仓库页筛选、
+    // 成员管理都跟着生效，不用各改一遍。
+    {
+      id: 'board.prefix.list',
+      cli: ['board', 'prefix', 'list'],
+      http: ['GET', '/api/boards/prefix-groups'],
+      summary: '列出前缀分组规则（仓库名以某前缀开头 → 自动归入某看板）',
+      run: () => boards.listPrefixRules(),
+      render: (d) => {
+        if (!d.groups.length) return '（还没有前缀分组规则）';
+        return d.groups
+          .map(
+            (g) =>
+              `  ${g.prefix}* → ${g.boardName || '(看板已不存在)'}${g.alive ? `  · 命中 ${g.matched} 个仓库` : ''}`
+          )
+          .join('\n');
+      },
+    },
+    {
+      id: 'board.prefix.add',
+      cli: ['board', 'prefix', 'add'],
+      http: ['POST', '/api/boards/prefix-groups'],
+      summary: '新增前缀分组规则（--board 给目标看板；不给就按前缀名自动建同名看板）',
+      args: ['prefix'],
+      flags: { board: { type: 'string', hint: '目标看板（id / key / 名称；缺省 = 与前缀同名，自动新建）' } },
+      run: (ctx) => boards.addPrefixRule(ctx),
+      render: (d) =>
+        `规则「${d.prefix}*」→ 看板「${d.boardName}」${d.boardCreated ? '（已自动新建该看板）' : ''}，命中 ${d.matched} 个仓库`,
+    },
+    {
+      id: 'board.prefix.remove',
+      cli: ['board', 'prefix', 'remove'],
+      http: ['DELETE', '/api/boards/prefix-groups/:prefix'],
+      summary: '删除前缀分组规则（看板本身不动，手动成员仍在）',
+      args: ['prefix'],
+      run: (ctx) => boards.removePrefixRule(ctx),
+      render: (d) => `已删除前缀规则「${d.prefix}」${d.boardRemoved ? `（空看板「${d.boardRemoved}」一并清掉）` : ''}`,
     },
   ],
 };

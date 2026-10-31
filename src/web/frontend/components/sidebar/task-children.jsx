@@ -4,10 +4,14 @@
 //
 // 任务来自**任务队列**（topic）：一个仓库路径下可能有多个队列主题，
 // 它们的未删除任务汇总成一组子行。
+// 仓库还没有队列时只剩「＋ 新建页」一个子行——点它先建队列再进工作台（queue-nav.js）。
 import { Icon } from '../icons.jsx';
+import { useToast } from '../ui.jsx';
 import { taskLabel } from './model.js';
+import { ensureQueueAndGo } from './queue-nav.js';
 
-export default function TaskChildren({ row, onNavigate, limit = 12 }) {
+export default function TaskChildren({ row, onNavigate, refreshLocal, limit = 12 }) {
+  const toast = useToast();
   // 全局池：topic 直接带 tasks；仓库行：多个 topic 的 tasks 汇总
   const tasks = row.type === 'global'
     ? (row.tasks || [])
@@ -40,10 +44,10 @@ export default function TaskChildren({ row, onNavigate, limit = 12 }) {
       <button
         type="button"
         className="trow child task-new"
-        title="新建一页 MD（新页签打开）"
+        title="新建一页 MD（新页签打开；仓库还没有任务队列时先创建队列）"
         onClick={(e) => {
           e.stopPropagation();
-          onNavigate(`${base}?task=draft`);
+          ensureQueueAndGo({ row, onNavigate, refreshLocal, toast, draft: true });
         }}
       >
         <span className="gico"><Icon name="plus" size={12} /></span>

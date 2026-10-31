@@ -56,11 +56,9 @@ export async function refreshKeys({ id, all = false, apply = false } = {}) {
     const remotes = await gitRemotes(r.path);
     const picked = pickRemote(remotes);
     const suggestedRemote = picked ? picked.url : '';
-    // 没有远程地址时**不造 key**：local/<名称> 只是本机锚点，不是身份。
-    // suggestedKey 留空 + note 说明怎么补（自定义 key 或补 remote），别再拿兜底值冒充身份。
     const suggestedKey = r.keyCustom
       ? currentKey // 自定义 key 不跟随
-      : (service.keyFromRemote(suggestedRemote) || '');
+      : (service.keyFromRemote(suggestedRemote) || service.localKeyOf(r.name));
     const changed = suggestedRemote
       ? (suggestedRemote !== cur.remote || suggestedKey !== cur.key)
       : false;
@@ -74,9 +72,6 @@ export async function refreshKeys({ id, all = false, apply = false } = {}) {
       changed,
       applied: false,
     };
-    if (!suggestedRemote && !r.keyCustom) {
-      item.note = '没有远程地址 —— 无法派生 key：用 repo key set 自定义，或补 remote；否则该仓库冻结（不参与导出导入）';
-    }
 
     if (apply && (changed || remotes.length)) {
       // 自定义 key：只更新 remote/remotes，key 保持（updateRepo 在 keyCustom 时不会跟随 remote）

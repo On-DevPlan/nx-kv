@@ -16,21 +16,155 @@
   --rail-w: 52px;
 }
 
-/* ---- 应用壳 ---- */
-#app-shell { display: flex; height: 100vh; overflow: hidden; background: var(--canvas); }
-#app-shell main#main {
-  flex: 1; min-width: 0; display: flex; flex-direction: column;
-  overflow: hidden; max-width: none; padding: 0; margin: 0;
+/* ---- 应用壳：顶栏 + FlexLayout 工作区 + 状态条 ----
+ * 侧栏不再是外壳的一部分，而是工作区里的一块**面板**（可拖拽/可拆分/可浮出）。
+ * 旧的 #app-shell / #side 布局规则作废，侧栏样式改由 .nx-side-host 承担。 */
+.nx-shell {
+  display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden; background: var(--canvas);
 }
-#app-shell main#main > * { flex: 1; min-height: 0; }
+.nx-top {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; background: var(--paper); border-bottom: 1px solid var(--line);
+}
+.nx-logo {
+  width: 22px; height: 22px; border-radius: 6px; background: var(--ink); color: var(--on-ink);
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; flex: none;
+}
+.nx-title { font-weight: 800; font-size: 13px; }
+.nx-ver { font-size: 11px; color: var(--faint); }
+.nx-grow { flex: 1 1 auto; min-width: 0; }
+.nx-top .btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+.nx-top .btn.ghost:hover:not(:disabled) { background: var(--soft-2); color: var(--ink); border-color: transparent; }
+.nx-top .btn.ghost:disabled { opacity: .45; cursor: default; }
+
+.nx-workarea { flex: 1; min-height: 0; position: relative; }
+.nx-workarea .flexlayout__layout { height: 100%; }
+
+.nx-status {
+  flex: none; display: flex; align-items: center; gap: 12px;
+  padding: 4px 10px; font-size: 11px; color: var(--mid);
+  background: var(--paper); border-top: 1px solid var(--line);
+}
+.nx-status .mono { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.nx-status .nx-wait { color: var(--wait); font-weight: 600; }
+.nx-status .nx-err { color: var(--danger); }
+
+/* 面板抽屉：选类型 + 选停靠位 */
+.nx-drawer {
+  position: absolute; top: 40px; right: 10px; z-index: 60;
+  min-width: 180px; padding: 8px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--paper); box-shadow: 0 10px 28px rgba(20, 22, 26, .14);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.nx-drawer .hd { font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--mid); }
+.nx-drawer .sep { height: 1px; background: var(--line); margin: 4px 0; }
+.nx-drawer .rowgap { display: flex; gap: 4px; flex-wrap: wrap; }
+.nx-drawer .it {
+  padding: 6px 10px; border: 0; border-radius: 6px; background: none; cursor: pointer;
+  font: inherit; font-size: 12.5px; color: var(--ink); text-align: left;
+}
+.nx-drawer .it:hover { background: var(--soft); }
+.nx-chip {
+  padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper);
+  cursor: pointer; font: inherit; font-size: 11.5px; color: var(--ink-2);
+}
+.nx-chip.on { border-color: var(--mdw-accent-line, #B7D4C8); background: var(--mdw-accent-soft, #E8F2EE); color: var(--mdw-accent, #2F6F5E); }
+
+/* ---- 侧栏作为工作区面板 ---- */
+.nx-side-host { width: 100%; height: 100%; overflow: hidden; background: var(--paper); }
+.nx-side-host #side {
+  width: 100%; height: 100%; display: flex; flex-direction: column;
+  background: var(--paper); border-right: none; transition: none;
+}
+.nx-side-host .shead { padding: 8px 8px 6px; border-bottom: 1px solid var(--line); }
+.nx-side-host .searchrow { gap: 4px; }
+.nx-side-host .iconbtn.collapse { flex: none; }
+
+/* 窄轨：面板被拖窄后自动变 rail，点一下展开 */
+.nx-rail-host { width: 100%; height: 100%; background: var(--paper); }
+.nx-rail {
+  width: 100%; height: 100%; border: 0; background: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0;
+  color: var(--ink-2); font: inherit;
+}
+.nx-rail:hover { background: var(--soft); }
+.nx-rail-btn { font-size: 15px; line-height: 1; }
+.nx-rail-label { writing-mode: vertical-rl; font-size: 11px; color: var(--mid); }
+
+/* 面板内的通用留白（与仓库管理页的 .pad/.stack 同义） */
+.pad { padding: 18px 20px; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
+.welcome { color: var(--ink-2); font-size: 12.5px; line-height: 1.7; }
+.welcome strong { color: var(--ink); }
+
+/* ---- FlexLayout 配色：只借它的结构 CSS，配色由我们的变量接管 ----
+ * 变量写在 :root → 浮窗（float）、子布局、弹出窗用的是同一批值，
+ * 不会出现「主区变了、浮窗还是老样子」。 */
+:root {
+  --flexlayout-color-text: var(--ink);
+  --flexlayout-color-background: var(--paper);
+  --flexlayout-color-base: var(--paper);
+  --flexlayout-color-1: var(--soft);
+  --flexlayout-color-2: var(--soft-2);
+  --flexlayout-color-3: #e3e6e9;
+  --flexlayout-color-4: #dcdfe3;
+  --flexlayout-color-5: #d5d9dd;
+  --flexlayout-color-6: #ced2d7;
+  --flexlayout-font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --flexlayout-font-size: 12px;
+  --flexlayout-font-weight: 400;
+  --flexlayout-color-tab-content: var(--paper);
+  --flexlayout-color-tab-selected: var(--ink);
+  --flexlayout-color-tab-selected-background: var(--paper);
+  --flexlayout-color-tab-unselected: var(--mid);
+  --flexlayout-color-tab-unselected-background: transparent;
+  --flexlayout-color-tab-textbox: var(--ink);
+  --flexlayout-color-tab-textbox-background: var(--paper);
+  --flexlayout-color-tabset-background: var(--paper);
+  --flexlayout-color-tabset-background-selected: var(--paper);
+  --flexlayout-color-tabset-background-maximized: var(--paper);
+  --flexlayout-color-tabset-divider-line: var(--soft-2);
+  --flexlayout-color-border: var(--soft-2);
+  --flexlayout-color-border-background: var(--paper);
+  --flexlayout-color-border-divider-line: var(--soft-2);
+  --flexlayout-color-border-tab-content: var(--paper);
+  --flexlayout-color-border-tab-selected: var(--ink);
+  --flexlayout-color-border-tab-selected-background: var(--paper);
+  --flexlayout-color-border-tab-unselected: var(--mid);
+  --flexlayout-color-border-tab-unselected-background: var(--soft);
+  --flexlayout-color-icon: var(--mid);
+  --flexlayout-color-focus: #2F6F5E;
+  --flexlayout-color-drag1: #2F6F5E;
+  --flexlayout-color-drag1-background: #E8F2EE;
+  --flexlayout-color-drag2: #2F6F5E;
+  --flexlayout-color-drag2-background: #E8F2EE;
+  --flexlayout-color-drag-rect: #2F6F5E;
+  --flexlayout-color-drag-rect-background: #E8F2EE;
+  --flexlayout-color-drag-rect-border: #2F6F5E;
+  --flexlayout-color-edge-icon: #2F6F5E;
+  --flexlayout-color-edge-marker: #2F6F5E;
+  --flexlayout-color-float-window-header-background: var(--paper);
+  --flexlayout-color-mini-scroll-indicator: var(--soft-2);
+  --flexlayout-color-mini-scroll-indicator-hovered: var(--mid);
+  --flexlayout-color-shadow: rgba(20, 22, 26, .16);
+}
+/* 页签条：让选中页签跟面板内容有一条清晰的分界 */
+.flexlayout__tab { font-weight: 600; }
+.flexlayout__tab_set .flexlayout__tab_title { letter-spacing: .01em; }
+.flexlayout__tab_move, .flexlayout__tab_flex_button { color: var(--faint); }
+.flexlayout__tab_move:hover, .flexlayout__tab_flex_button:hover { color: var(--ink); }
+.flexlayout__tab_button:hover { background: var(--soft); }
+.flexlayout__float_window { border-radius: 10px; overflow: hidden; box-shadow: 0 18px 48px rgba(20, 22, 26, .2); }
 
 /* ---- 侧边栏（展开态） ---- */
+/* 侧栏现在是**工作区里的一块面板**（.nx-side-host 承担布局）：
+   宽度由 FlexLayout 的 tabset 决定，折叠 = 改 tabset weight（见 workspace.js）。 */
 #side {
-  width: var(--side-w); flex: none; display: flex; flex-direction: column;
-  background: var(--paper); border-right: 1px solid var(--soft-2);
-  transition: margin-left 0.22s ease;
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--paper);
 }
-#side.folded { margin-left: calc(var(--side-w) * -1); }
 .shead { padding: 10px 10px 8px; border-bottom: 1px solid var(--line); }
 .brandrow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .brandrow .logo {
@@ -64,6 +198,9 @@
 }
 .trow:hover { background: var(--soft); }
 .trow .tw { width: 14px; flex: none; display: inline-flex; justify-content: center; color: var(--faint); transition: transform 0.15s; }
+/* chevron 现在是「展开/收起」按钮（点行是去看内容）——给它指针与反馈 */
+.trow .tw[role="button"] { cursor: pointer; }
+.trow .tw[role="button"]:hover { color: var(--ink-2); }
 .trow.open .tw { transform: rotate(90deg); }
 .trow .gico { flex: none; color: var(--ink-2); width: 16px; display: inline-flex; justify-content: center; }
 .trow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -380,23 +517,84 @@
 .ov-wrap { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
 .ov-head { display: flex; align-items: baseline; gap: 12px; }
 .ov-head h2 { font-size: 16px; margin: 0; }
-.ov-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ov-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ov-filter-label {
+  font-family: var(--label); font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--mid); margin-right: 2px;
+}
 .ov-chip {
   display: inline-flex; align-items: center; gap: 7px; background: var(--paper);
   border: 1px solid var(--soft-2); border-radius: 20px; padding: 4px 12px;
   font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink);
 }
-.ov-chip:hover { border-color: var(--ink); }
+.ov-chip:hover { border-color: color-mix(in srgb, #2F6F5E 40%, var(--soft-2)); }
+/* chip 只做筛选：选中态复用侧栏选中行/主按钮的那套强调绿（#2F6F5E）浅底——
+   浅色底 + 同色系描边 + 同色字，不出现任何深色块（黑药丸/黑徽章都显重）。
+   计数徽章用 14% 透明绿，跟底色同族、只比底色深一档 → 有层次但不抢眼。 */
+.ov-chip.on {
+  background: color-mix(in srgb, #2F6F5E 10%, var(--paper));
+  border-color: color-mix(in srgb, #2F6F5E 26%, transparent);
+  color: #2F6F5E;
+}
+.ov-chip.on:hover { border-color: color-mix(in srgb, #2F6F5E 46%, transparent); }
+.ov-chip.on .c { background: color-mix(in srgb, #2F6F5E 15%, transparent); color: #2F6F5E; }
 .ov-chip .c { background: var(--soft-2); border-radius: 9px; padding: 0 6px; font-size: 10.5px; color: var(--ink-2); }
 .ov-chip.wait { border-color: var(--wait-line); background: var(--wait-bg); }
+/* 等待回填的目录：选中态保留琥珀语义（浅底 + 琥珀描边/字），同样不填色块 */
+.ov-chip.wait.on {
+  background: var(--wait-bg);
+  border-color: color-mix(in srgb, var(--wait) 45%, transparent);
+  color: var(--wait);
+}
+.ov-chip.wait.on .c { background: color-mix(in srgb, var(--wait) 16%, transparent); color: var(--wait); }
 .ov-sec { background: var(--paper); border: 1px solid var(--soft-2); border-radius: var(--r8); overflow: hidden; }
 .ov-sec-h { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; font-weight: 600; flex-wrap: wrap; }
 .ov-sec-h .c { color: var(--ink-2); font-weight: 400; font-size: 11px; }
-.ov-sec-h .grow { flex: 1; }
-.ov-task { display: flex; gap: 10px; align-items: baseline; padding: 7px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+/* ⚠ 全局 v1 有一条 `.grow { max-width: 340px }`（style.css:121），会把这里的
+   间隔元素封顶在 340px → 分区头的「全选」、底部条的「删除」都停不到右边界。
+   这两处必须显式解除上限；尾部控件再加 margin-left:auto 兜底（换行时也靠右）。 */
+.ov-sec-h .grow, .ov-bar .grow { flex: 1; max-width: none; }
+.ov-sec-h .ov-all { margin-left: auto; }
+.ov-bar .mini, .ov-bar .btn { flex: none; }
+.ov-bar .btn { margin-left: auto; }
+.ov-task { display: flex; gap: 10px; align-items: center; padding: 7px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
 .ov-task:last-child { border-bottom: none; }
 .ov-task .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ov-task .m { flex: none; font-size: 10.5px; color: var(--faint); }
+/* 行尾状态 tag：复用全局 .tag 描边 chip 的词汇，这里只补语义配色 */
+.ov-task .tag { flex: none; }
+.tag.t-pend { color: var(--ink-2); background: var(--soft); border-color: var(--soft-2); }
+.tag.t-done { color: var(--live); background: rgba(31, 122, 77, 0.08); border-color: rgba(31, 122, 77, 0.28); }
+.tag.t-gone { color: var(--faint); border-style: dashed; }
+.tag.t-cloud { color: var(--cloud); background: var(--cloud-bg); border-color: transparent; }
+/* 已领取历史折叠行：贴底的浅色展开条 */
+.ov-done-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 12px;
+  border: 0; border-top: 1px solid var(--line); background: var(--soft);
+  font: inherit; font-size: 11px; color: var(--ink-2); cursor: pointer; text-align: left;
+}
+.ov-done-toggle:hover { color: var(--ink); background: var(--soft-2); }
+.ov-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
+.ov-done-toggle .tri.open { transform: rotate(90deg); }
+/* 任务行可点（进任务详情）：hover 底色 + 键盘聚焦环，勾选区自己 stopPropagation */
+.ov-task.link { cursor: pointer; }
+.ov-task.link:hover { background: var(--soft-2); }
+.ov-task.link:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.ov-ck { display: inline-flex; align-items: center; cursor: pointer; }
+.ov-ck input, .ov-all input { width: 13px; height: 13px; margin: 0; cursor: pointer; accent-color: var(--ink); }
+.ov-all { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 400; color: var(--ink-2); cursor: pointer; user-select: none; }
+/* 分组标题即目录链接（原来那个「打开」按钮是重复入口，已删） */
+.ov-sec-t { font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer; }
+.ov-sec-t:hover { text-decoration: underline; }
+/* 底部批量操作条：勾选任意行后出现，sticky 吸底；删除动作只住在这里，分区头不再放红色按钮 */
+.ov-bar {
+  position: sticky; bottom: 0; z-index: 4;
+  display: flex; align-items: center; gap: 10px;
+  background: var(--paper); border: 1px solid var(--soft-2); border-radius: var(--r8);
+  padding: 8px 12px; box-shadow: var(--shadow);
+}
+.ov-bar-n { font-size: 12.5px; color: var(--ink-2); }
+.ov-bar-n b { color: var(--ink); }
 
 /* ---- 按钮语言 v2：主按钮青绿（消灭墨黑块），ghost hover 青绿描边 ----
    与侧栏/工作台同一强调色（#2F6F5E）。写在 v1 .btn 之后靠层叠取胜；
@@ -548,184 +746,4 @@
 }
 @media (min-width: 901px) {
   .side-scrim { display: none; }
-}
-
-/* ════════════════════════════════════════════════════════════════
-   侧边栏：资产（项目 / 项目组）与收纳组（纯显示层）
-   ════════════════════════════════════════════════════════════════ */
-/* 收纳组 = 盒子：比资产行稍弱一档，一眼看出它是「摆东西的格子」而不是一条数据 */
-.trow.group-box { color: var(--ink-2); }
-.trow.group-box .gico { color: var(--faint); }
-.trow.group-box .nm { font-weight: 600; }
-/* 项目组 = 资产：图标略重，与项目（folder）区分开 */
-.trow.asset.board .gico { color: var(--ink); }
-/* 成员数徽标后面的「本地还没有」小注（组里有占位成员时才有） */
-.trow .cnt-miss {
-  font-style: normal; margin-left: 3px; opacity: 0.6;
-  font-size: 10px;
-}
-.trow .cnt-miss::before { content: '/'; margin-right: 2px; }
-
-/* ════════════════════════════════════════════════════════════════
-   对齐 remote · 批量面板（repos/remote-panel.jsx）
-   一屏看完所有仓库的 remote 现状；需处理的排在前面。
-   ════════════════════════════════════════════════════════════════ */
-.rp-rm { display: flex; flex-direction: column; gap: 10px; }
-.rp-rm-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.rp-rm-sum { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
-.rp-rm-chip {
-  font-size: 11.5px; padding: 2px 7px; border-radius: 999px;
-  border: 1px solid var(--line); color: var(--ink-2); background: var(--paper);
-}
-.rp-rm-chip b { color: var(--ink); margin-left: 2px; }
-.rp-rm-chip.warn { border-color: var(--wait-line); background: var(--wait-bg); color: var(--wait); }
-.rp-rm-chip.bad { border-color: #e3b6b0; background: #fbeeec; color: #a3342a; }
-.rp-rm-chip.good { border-color: #bcd8cb; background: #edf6f1; color: #2f6f5e; }
-.rp-rm-head .acts { flex: none; display: flex; gap: 6px; }
-.rp-rm-head .acts .on { border-color: #2f6f5e; color: #2f6f5e; }
-.rp-rm-hint { font-size: 11.5px; line-height: 1.55; }
-.rp-rm-err {
-  display: flex; align-items: center; gap: 8px; font-size: 12px;
-  border: 1px solid var(--wait-line); background: var(--wait-bg); color: var(--wait);
-  padding: 7px 9px; border-radius: var(--r5);
-}
-.rp-rm-list { max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--r5); }
-.rp-rm-row + .rp-rm-row { border-top: 1px solid var(--line); }
-.rp-rm-main {
-  display: flex; align-items: center; gap: 8px; padding: 6px 9px; cursor: pointer;
-}
-.rp-rm-main:hover { background: var(--soft); }
-.rp-rm-state {
-  flex: 0 0 74px; font-size: 11px; text-align: center; padding: 1px 6px; border-radius: 999px;
-  border: 1px solid var(--line); color: var(--faint);
-}
-.rp-rm-state.good { border-color: #bcd8cb; background: #edf6f1; color: #2f6f5e; }
-.rp-rm-state.warn { border-color: var(--wait-line); background: var(--wait-bg); color: var(--wait); }
-.rp-rm-state.bad { border-color: #e3b6b0; background: #fbeeec; color: #a3342a; }
-.rp-rm-name {
-  flex: 0 1 auto; min-width: 90px; font-weight: 600; font-size: 12.5px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.rp-rm-tag {
-  font-style: normal; font-size: 10px; margin-left: 5px; padding: 0 4px;
-  border-radius: 3px; border: 1px solid var(--line); color: var(--faint);
-}
-.rp-rm-url {
-  flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--ink-2);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.rp-rm-acts { flex: none; display: flex; gap: 4px; }
-.rp-rm-detail { padding: 0 9px 9px; }
-.rp-rm-reason { font-size: 11.5px; margin-bottom: 6px; }
-.rp-rm-empty { padding: 18px; text-align: center; font-size: 12px; }
-
-/* ════════════════════════════════════════════════════════════════
-   冻结 = 没有身份（无远程地址、也没自定义 key）
-   不是错误：本机照常能用，只是不参与导出导入、也进不了项目组。所以用琥珀不用红。
-   ════════════════════════════════════════════════════════════════ */
-.rp-frozen-badge {
-  display: inline-block; margin-left: 6px; padding: 0 5px;
-  font-size: 10.5px; line-height: 16px; border-radius: 3px;
-  border: 1px solid var(--wait-line); background: var(--wait-bg); color: var(--wait);
-  vertical-align: 1px; cursor: help;
-}
-.rp-page tr.rp-frozen-row .rp-name strong { color: var(--ink-2); }
-/* 表单里「既无 remote 也没自定义 key」的提示：同样琥珀 */
-.form-hint.rp-hint-warn { color: var(--wait); }
-.form-hint code {
-  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px; background: var(--soft); padding: 0 3px; border-radius: 3px;
-}
-
-/* ════════════════════════════════════════════════════════════════
-   侧边栏：箭头可点（展开任务子行），行点击 = 进仓库详情
-   ════════════════════════════════════════════════════════════════ */
-#tree .trow .tw.clickable { cursor: pointer; border-radius: 3px; }
-#tree .trow .tw.clickable:hover { background: var(--soft-2); color: var(--ink); }
-
-/* 列表行的 md 列表（desc 只是摘要，详细说明在这些 md 里） */
-.rp-docs { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-top: 3px; }
-.rp-docs-label {
-  font-size: 10px; color: var(--faint); border: 1px solid var(--line);
-  border-radius: 3px; padding: 0 3px; line-height: 14px;
-}
-.rp-doc-chip {
-  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 10.5px; color: var(--ink-2); background: var(--soft);
-  border: 1px solid var(--line); border-radius: 3px; padding: 0 5px;
-  cursor: pointer; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.rp-doc-chip:hover { border-color: #2f6f5e; color: #2f6f5e; }
-
-/* ════════════════════════════════════════════════════════════════
-   仓库详情页（#/repo/<key>）：信息 + md 描述列表 + 相关任务
-   ════════════════════════════════════════════════════════════════ */
-.rpd { padding: 14px 18px; height: 100%; overflow: auto; }
-.rpd-head { border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px; }
-.rpd-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.rpd-title h2 { margin: 0; font-size: 16px; font-weight: 500; }
-.rpd-badge {
-  font-size: 10.5px; border: 1px solid var(--line); border-radius: 999px;
-  padding: 1px 7px; color: var(--ink-2); line-height: 16px;
-}
-.rpd-badge.warn { border-color: var(--wait-line); background: var(--wait-bg); color: var(--wait); }
-.rpd-badge.key { border-color: #bcd8cb; background: #edf6f1; color: #2f6f5e; }
-.rpd-desc { margin-top: 6px; font-size: 12.5px; color: var(--ink-2); }
-.rpd-acts { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
-.rpd-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
-@media (max-width: 1000px) { .rpd-cols { grid-template-columns: 1fr; } }
-.rpd-docs, .rpd-card { border: 1px solid var(--line); border-radius: var(--r8); background: var(--paper); }
-.rpd-colhead { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-.rpd-colhead h3 { margin: 0; font-size: 13px; font-weight: 500; }
-.rpd-colhead .muted { font-size: 11px; margin-left: auto; }
-.rpd-tabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-.rpd-tab { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
-.rpd-tab.on { border-color: #2f6f5e; background: #edf6f1; }
-.rpd-tab-name {
-  border: 0; background: transparent; font-size: 11.5px; padding: 2px 8px; cursor: pointer;
-  color: var(--ink-2); font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.rpd-tab.on .rpd-tab-name { color: #2f6f5e; }
-.rpd-tab-x { border: 0; background: transparent; cursor: pointer; padding: 2px 5px; color: var(--faint); display: inline-flex; }
-.rpd-tab-x:hover { color: #a32d2d; }
-.rpd-add { display: inline-flex; gap: 4px; align-items: center; margin-left: auto; }
-.rpd-add input { font-size: 11.5px; padding: 2px 6px; border: 1px solid var(--line); border-radius: var(--r5); width: 180px; }
-.rpd-md { padding: 12px 16px; font-size: 13px; line-height: 1.7; }
-.rpd-md h1 { font-size: 16px; font-weight: 500; }
-.rpd-md h2 { font-size: 14px; font-weight: 500; }
-.rpd-md h3 { font-size: 13px; font-weight: 500; }
-.rpd-md code { background: var(--soft); padding: 0 3px; border-radius: 3px; font-size: 12px; }
-.rpd-md pre { background: var(--soft); padding: 8px; border-radius: var(--r5); overflow: auto; }
-.rpd-md blockquote { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--line); color: var(--ink-2); }
-.rpd-empty { padding: 14px; font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
-.rpd-empty.small { padding: 8px 10px; font-size: 12px; }
-.rpd-empty code {
-  display: block; margin-top: 6px; background: var(--soft); padding: 4px 6px;
-  border-radius: 4px; font-size: 11px; overflow: auto;
-}
-.rpd-side { display: flex; flex-direction: column; gap: 12px; }
-.rpd-fields { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 4px 8px; margin: 0; padding: 10px; font-size: 12px; }
-.rpd-fields dt { color: var(--faint); }
-.rpd-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.rpd-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; }
-.rpd-chip { font-size: 11.5px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; background: var(--paper); cursor: pointer; }
-.rpd-chip:hover { border-color: #2f6f5e; color: #2f6f5e; }
-.rpd-none { padding: 10px; font-size: 12px; }
-.rpd-tasks { list-style: none; margin: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; max-height: 30vh; overflow: auto; }
-.rpd-tasks li { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.rpd-tasks .rpd-dot { width: 5px; height: 5px; border-radius: 50%; background: #2f6f5e; flex: none; }
-.rpd-tasks li.done { color: var(--faint); }
-.rpd-tasks li.done .rpd-dot { background: var(--faint); }
-.rpd-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rpd-task-go { border: 0; background: transparent; cursor: pointer; color: var(--faint); display: inline-flex; }
-.rpd-task-go:hover { color: #2f6f5e; }
-.rpd-open-dir { margin: 0 10px 10px; }
-.rpd-err {
-  margin: 16px; padding: 10px; border: 1px solid var(--wait-line); background: var(--wait-bg);
-  color: var(--wait); border-radius: var(--r5); display: flex; gap: 8px; align-items: center;
-}
-.rpd-docerr {
-  margin: 10px; padding: 8px; border: 1px solid var(--wait-line); background: var(--wait-bg);
-  color: var(--wait); border-radius: var(--r5); font-size: 12px; display: flex; gap: 8px;
 }

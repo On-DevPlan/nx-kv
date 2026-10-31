@@ -90,6 +90,7 @@ export default function ToolBar({
   onMark,
   onDraft,
   onSubmit,
+  onDelete,
   onProg,
   onOverview,
   onFormat,
@@ -110,6 +111,7 @@ export default function ToolBar({
     { id: 'new', label: '新任务', run: onNew },
     showMark && mode !== 'split' && { id: 'mark', label: '标注', run: onMark },
     mode !== 'split' && { id: 'draft', label: '存草稿', run: onDraft },
+    onDelete && { id: 'delete', label: '删除', run: onDelete, danger: true },
     { id: 'overview', label: '总览', run: onOverview },
   ].filter(Boolean);
 
@@ -214,7 +216,7 @@ export default function ToolBar({
       <div className="mdw-actions" role="group" aria-label="任务操作">
         <div className="mdw-actions-wide">
           {secondary.map((a) => (
-            <button key={a.id} type="button" className="btn ghost sm" onClick={a.run}>
+            <button key={a.id} type="button" className={'btn ghost sm' + (a.danger ? ' danger' : '')} onClick={a.run}>
               {a.label}
             </button>
           ))}
@@ -236,7 +238,7 @@ export default function ToolBar({
                 key={a.id}
                 type="button"
                 role="menuitem"
-                className="mdw-fmt-menu-item"
+                className={'mdw-fmt-menu-item' + (a.danger ? ' danger' : '')}
                 onClick={() => {
                   a.run?.();
                   actMore.setOpen(false);

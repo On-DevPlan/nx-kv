@@ -15,14 +15,12 @@
 // 看板退成上方的筛选器与行内的标签。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
+import { useStore } from '../../web/frontend/store.jsx';
 import { useGuard, useDialog, useToast, Modal, Copyable } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 import TransferPanel from './transfer-panel.jsx';
-import RemotePanel from './remote-panel.jsx';
 
-// key 留空 = 跟随远程地址；填了 = 自定义身份（keyCustom）。
-// 两者都没有（无 remote 且 key 空）→ 该仓库冻结：导出导入不含它。
-const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '', key: '' };
+const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
 
 // 路径照搬目录看板的「可扫标签」画法：祖先目录变暗、末段略重，点击复制全文。
 // 纯灰一长串（旧画法）里，人眼要逐字符对比才能找到目录名。
@@ -54,27 +52,10 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
     : (r.desc || '');
   const refs = refsOfRepo.get(r.key) || [];
   return (
-    <tr className={r.frozen ? 'rp-frozen-row' : ''}>
+    <tr>
       <td className="rp-name">
         <strong>{r.name}</strong>
-        {/* 冻结 = 没有身份（无远程地址、也没自定义 key）。不藏起来：
-            它本机照常能用，只是导出导入不含它、也进不了项目组。 */}
-        {r.frozen ? (
-          <span className="rp-frozen-badge" title="没有 key：既没有远程 git 地址，也没有自定义 key。本机照常可用，但导出导入不包含它，也不能加进项目组（本机归类请用侧边栏的收纳组）">
-            无 key · 冻结
-          </span>
-        ) : null}
         {desc ? <div className="muted rp-desc" title={descTitle}>{desc}</div> : null}
-        {/* 描述文档：desc 只是摘要，详细说明在仓库自己的 md 里（点一下进详情页那一份） */}
-        {(r.docs || []).length ? (
-          <div className="rp-docs">
-            <span className="rp-docs-label" title="这个仓库挂上的 md 描述（仓库内相对路径）">md</span>
-            {r.docs.map((p) => (
-              <button key={p} className="rp-doc-chip" title={`打开 ${p}`}
-                onClick={() => acts.openDoc(r, p)}>{p}</button>
-            ))}
-          </div>
-        ) : null}
       </td>
       <td className="mono rp-path"><RepoPath path={r.path} /></td>
       <td className="rp-refs">
@@ -89,6 +70,8 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
       </td>
       <td className="rp-acts">
         <button className="btn small ghost" title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</button>
+        <button className="btn small ghost" title="对齐 remote：列出 git remote -v 的候选并检查远端是否存在"
+          onClick={() => acts.remote(r)}>remote</button>
         <button className="btn small ghost" onClick={() => acts.edit(r)}>编辑</button>
         {filterBoard ? (
           <button className="btn small ghost" title={`写「${r.name}」在看板「${filterBoard.name}」里的组内描述`}
@@ -100,13 +83,17 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
   );
 }
 
-export default function ReposView({ onNavigate }) {
+export default function ReposView() {
+  const { boot } = useStore();
   const guard = useGuard();
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
   const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scan, setScan] = useState({ root: '', depth: '3' });
+  const [scanResult, setScanResult] = useState(null);
   // 成员管理弹窗：打开时 = 正在往这个看板里点选导入 / 摘除仓库
   const [impBoardId, setImpBoardId] = useState(null);
   // 组内描述编辑：{ id, repo, boardId, boardName, note } | null
@@ -147,9 +134,11 @@ export default function ReposView({ onNavigate }) {
   const [linkNoteText, setLinkNoteText] = useState('');
   // 布局导入导出：全屏面板（自己的 Tab 内维护全部临时状态）
   const [transferOpen, setTransferOpen] = useState(false);
-  // 对齐 remote：**一个按钮扫全部**（remote-panel.jsx）——不再每行一个 remote 按钮。
-  // key 是本地身份、remote 是协作的标准单位，该换哪条由人定，但判断依据都在数据里。
-  const [remoteOpen, setRemoteOpen] = useState(false);
+  // 「对齐 remote」：key 是本地身份，remote 是协作的标准单位——两者要对齐，
+  // 但对齐方向由人定（自动的 SSH 优先只是默认值）。数据面来自 git remote -v。
+  const [remoteInfo, setRemoteInfo] = useState(null); // { key, name, current, remotes:[…] }
+  const [remoteCheck, setRemoteCheck] = useState(null); // { url, status, detail }
+  const [remoteOpen, setRemoteOpen] = useState(false); // 对齐 remote 的弹窗
 
   const resetForm = () => { setForm(EMPTY_FORM); setEditing(null); setFormOpen(false); };
 
@@ -161,19 +150,40 @@ export default function ReposView({ onNavigate }) {
   }, []);
   useEffect(() => { loadRepos(); loadBoards(); }, [loadRepos, loadBoards]);
 
-  // 深链 #/repos?board=<id>：侧边栏点「项目组」就落到这里（筛选到那一组）。
-  // 项目组没有独立页面——它的成员、组级参考仓库、组内描述都长在这一页上。
-  useEffect(() => {
-    const read = () => {
-      const h = typeof location !== 'undefined' ? location.hash || '' : '';
-      if (!h.startsWith('#/repos')) return;
-      const m = /[?&]board=([^&]+)/.exec(h);
-      setFilter(m ? decodeURIComponent(m[1]) : '');
-    };
-    read();
-    window.addEventListener('hashchange', read);
-    return () => window.removeEventListener('hashchange', read);
+  // ---- 前缀分组规则：仓库名以某前缀开头 → 自动归入某看板 ----
+  // 规则只改「成员关系」，看板仍是唯一分组载体：侧边栏分组、看板筛选、成员管理
+  // 都跟着生效，不用各改一遍。
+  const [prefixRules, setPrefixRules] = useState(null); // null = 未加载
+  const [pfx, setPfx] = useState({ prefix: '', board: '' });
+  const loadPrefixRules = useCallback(async () => {
+    const d = await api('/api/boards/prefix-groups').catch(() => null);
+    setPrefixRules(d && d.groups ? d.groups : []);
   }, []);
+  useEffect(() => { if (boardsOpen) loadPrefixRules(); }, [boardsOpen, loadPrefixRules]);
+
+  const addPrefixRule = () => guard(async () => {
+    const prefix = pfx.prefix.trim();
+    if (!prefix) {
+      toast('先填前缀（如 nx：把 nx 开头的仓库归一类）');
+      return;
+    }
+    const r = await api('/api/boards/prefix-groups', {
+      method: 'POST',
+      body: { prefix, board: pfx.board.trim() || undefined },
+    });
+    setPfx({ prefix: '', board: '' });
+    toast(
+      `规则「${r.prefix}*」→ 看板「${r.boardName}」` +
+      `${r.boardCreated ? '（已自动新建看板）' : ''}，命中 ${r.matched} 个仓库`
+    );
+    await Promise.all([loadPrefixRules(), loadBoards(), loadRepos()]);
+  });
+
+  const removePrefixRule = (g) => guard(async () => {
+    await api(`/api/boards/prefix-groups/${encodeURIComponent(g.prefix)}`, { method: 'DELETE', body: {} });
+    toast(`已删除前缀规则「${g.prefix}」`);
+    await Promise.all([loadPrefixRules(), loadBoards(), loadRepos()]);
+  });
 
   // ---- 参考仓库：设置 / 检查 / 克隆 / 同步 / 布局导入导出 ----
   const loadSetting = useCallback(async () => {
@@ -308,9 +318,54 @@ export default function ReposView({ onNavigate }) {
   }, [loadRepos, loadBoards, loadRefCheck]);
 
   // ---- 对齐 remote ----
-  // 面板一次扫描全部仓库（remote-panel.jsx）；这里只保留入口与刷新。
-  // 打开逻辑在页面头部按钮上：setRemoteOpen(true)。
-
+  // key 是本地身份，remote 是协作的标准单位——两者要对齐，但方向由人定
+  // （自动的 SSH 优先只是默认值）。这里给出「列候选 / 人工换一条 / 查存在性」。
+  const openRemote = async (r) => {
+    const key = r && r.key ? r.key : '';
+    if (!key) {
+      toast('这个仓库还没有 key —— 先 nx-kv repo key set <id> <key>');
+      return;
+    }
+    try {
+      const d = await api('/api/repos/remote/list?id=' + encodeURIComponent(key));
+      if (!d || !Array.isArray(d.remotes)) throw new Error('远程地址读取失败');
+      setRemoteInfo(d);
+      setRemoteCheck(null);
+      setRemoteOpen(true);
+    } catch (e) {
+      toast(String((e && e.message) || e));
+    }
+  };
+  const pickRemote = (url) => guard(async () => {
+    await api('/api/repos/remote/pick', {
+      method: 'POST',
+      body: { id: remoteInfo.key, url },
+    });
+    setRemoteOpen(false);
+    toast('已对齐 remote');
+    await Promise.all([loadRepos(), loadRefCheck()]);
+  });
+  // 存在性检查：git ls-remote 要几秒，期间不给任何反馈会像「点了没反应」。
+  // 错误直接写进弹窗（remoteCheck.detail），不靠 toast —— toast 会一闪而过。
+  const checkRemote = async (url) => {
+    const key = remoteInfo ? remoteInfo.key : '';
+    if (!key) {
+      setRemoteCheck({ url: '', status: 'unreachable', detail: '没有仓库标识' });
+      return;
+    }
+    setRemoteCheck({ url: url || remoteInfo.current || '', status: 'checking', detail: '检查中…' });
+    try {
+      const d = await api('/api/repos/remote/check?id=' + encodeURIComponent(key)
+        + (url ? '&url=' + encodeURIComponent(url) : ''));
+      setRemoteCheck(d);
+    } catch (e) {
+      setRemoteCheck({
+        url: url || remoteInfo.current || '',
+        status: 'unreachable',
+        detail: String((e && e.message) || e),
+      });
+    }
+  };
 
 
   // 组内描述保存：note 为空 = 清除
@@ -417,13 +472,31 @@ export default function ReposView({ onNavigate }) {
       type: form.type === 'ref' ? 'ref' : 'dev',
       remote: form.remote.trim() || undefined,
     };
-    // key 的语义：空串 = 回到"跟随远程地址"（清掉自定义）；非空 = 自定义身份。
-    // 编辑时总是传（清空是一次有效操作）；新增时只在填了才传。
-    if (editing || form.key.trim()) body.key = form.key.trim();
     if (editing) await api(`/api/repos/${encodeURIComponent(editing)}`, { method: 'PATCH', body });
     else await api('/api/repos', { method: 'POST', body });
     resetForm();
     await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
+  });
+
+  // 扫描两种意图：只发现（零副作用）/ 扫描登记（真登记）。
+  const doScan = (dryRun) => guard(async () => {
+    const root = scan.root.trim() || boot?.projectRoot || '';
+    if (!root) return;
+    const r = await api('/api/repos/scan', {
+      method: 'POST',
+      body: { root, depth: parseInt(scan.depth, 10) || 3, 'dry-run': dryRun },
+    });
+    const lines = (r.found || []).map((x) => `  ${x.known ? '已登记' : '未登记'}  ${x.path}`);
+    if (dryRun) {
+      setScanResult(`发现 ${r.root} 下 ${r.scanned} 个 git 仓库（未登记，磁盘与登记表都没动）`
+        + (lines.length ? '\n\n' + lines.join('\n') : '\n')
+        + (r.scanned ? '\n\n要收进来：点「扫描登记」，或逐个 nx-kv repo add <path> --desc "一句话描述"' : ''));
+    } else {
+      setScanResult(`扫描 ${r.root}: 发现 ${r.scanned} 个仓库，新登记 ${r.added.length} 个`
+        + (r.added.length ? '\n\n' + r.added.map((x) => `  + ${x.name}  ${x.path}`).join('\n') : ''));
+    }
+    setScanOpen(false);
+    await Promise.all([loadRepos(), loadBoards()]);
   });
 
   const rowAct = (act, r) => guard(async () => {
@@ -438,9 +511,6 @@ export default function ReposView({ onNavigate }) {
         type: r.type || 'dev',
         remote: r.remote || '',
         notes: r.notes || '',
-        // 只回填**自定义** key。派生 key（github.com/x/y）不能回填——否则一保存
-        // 就被当成"人显式指定"，身份从"跟随 remote"变成"钉死在这个地址上"。
-        key: r.keyCustom ? (r.key || '') : '',
       });
       setFormOpen(true);
     } else if (act === 'del') {
@@ -530,12 +600,9 @@ export default function ReposView({ onNavigate }) {
 
   const rowActs = {
     open: (r) => rowAct('open', r),
-    // 点 md：进仓库详情页并直接翻到那一份（#/repo/<key>?doc=<路径>）
-    openDoc: (r, doc) => onNavigate && onNavigate(
-      '#/repo/' + encodeURIComponent(r.key) + '?doc=' + encodeURIComponent(doc)
-    ),
     edit: (r) => rowAct('edit', r),
     del: (r) => rowAct('del', r),
+    remote: (r) => openRemote(r),
     // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它身上（多对多的 dev 侧视角）
     bind: (r) => {
       const sel = {};
@@ -582,11 +649,21 @@ export default function ReposView({ onNavigate }) {
           </div>
         </div>
         <div className="acts">
-          <button className="btn ghost" title="一次扫描全部仓库的 remote：可替换 / 空 / 悬空 / 目录不可用，并给出建议"
-            onClick={() => setRemoteOpen(true)}>对齐 remote</button>
+          <button className="btn ghost" onClick={() => setScanOpen(true)}>扫描</button>
           <button className="btn" onClick={openAdd}>添加仓库</button>
         </div>
       </div>
+
+      {scanResult ? (
+        <div className="card">
+          <div className="colhead"><h3>扫描结果</h3>
+            <span className="muted" style={{ marginLeft: 'auto' }}>
+              <button className="btn small ghost" onClick={() => setScanResult(null)}>关闭</button>
+            </span>
+          </div>
+          <pre style={{ padding: 12 }}>{scanResult}</pre>
+        </div>
+      ) : null}
 
       {/* 看板筛选器：主表 = 开发仓库；参考仓库 / 看板管理靠右 */}
       <div className="rp-filters" data-testid="rp-filters">
@@ -807,6 +884,47 @@ export default function ReposView({ onNavigate }) {
                 未分组 <b>{boards.unassigned.length}</b> 个 —— 不属于任何看板，只在「全部」里可见。
               </div>
             ) : null}
+
+            {/* 前缀分组：仓库名以某前缀开头 → 自动归入某看板（成员关系层面的规则） */}
+            <div className="rp-prefix-group">
+              <div className="colhead">
+                <h4>按前缀分组</h4>
+                <span className="muted">
+                  规则只改「谁在这个看板里」：仓库名以该前缀开头就自动算成员，
+                  不用一个个挂。目标看板留空 = 建一个同名看板。
+                </span>
+              </div>
+              <div className="rp-prefix-list">
+                {(prefixRules || []).map((g) => (
+                  <span key={g.prefix} className={'rp-prefix-chip' + (g.alive ? '' : ' dead')}>
+                    <b>{g.prefix}*</b>
+                    <span className="muted">→ {g.boardName || '(看板已不存在)'}</span>
+                    <span className="muted">{g.alive ? `${g.matched} 个` : ''}</span>
+                    <button className="rp-x" title="删除这条规则" onClick={() => removePrefixRule(g)}>×</button>
+                  </span>
+                ))}
+                {prefixRules && !prefixRules.length ? (
+                  <span className="muted">还没有规则 —— 例如填「nx」，把 nx 开头的仓库归成一类。</span>
+                ) : null}
+              </div>
+              <div className="rp-prefix-add">
+                <input
+                  className="rp-input"
+                  placeholder="前缀，如 nx"
+                  value={pfx.prefix}
+                  onChange={(e) => setPfx((p) => ({ ...p, prefix: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') addPrefixRule(); }}
+                />
+                <input
+                  className="rp-input"
+                  placeholder="目标看板（可空 = 同名自动建）"
+                  value={pfx.board}
+                  onChange={(e) => setPfx((p) => ({ ...p, board: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') addPrefixRule(); }}
+                />
+                <button className="btn small" onClick={addPrefixRule}>添加规则</button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
@@ -870,19 +988,6 @@ export default function ReposView({ onNavigate }) {
                 value={form.remote} onChange={set('remote')} />
             </div>
             <div className="form-field">
-              <label htmlFor="repo-key">key（身份，可自定义）</label>
-              <input id="repo-key" spellCheck="false"
-                placeholder="留空 = 跟随远程地址；如 github.com/me/x 或 自定义/名字"
-                value={form.key} onChange={set('key')} />
-              <div className={'form-hint' + ((!form.remote.trim() && !form.key.trim()) ? ' rp-hint-warn' : '')}>
-                {form.key.trim()
-                  ? <>自定义 key：导出导入按它映射。改 key 等于换身份——项目组成员、组内描述、绑定会跟着搬过去。</>
-                  : form.remote.trim()
-                    ? <>留空 = 跟随远程地址（<code>{form.remote.trim()}</code> 派生）。</>
-                    : <>既没远程地址也没自定义 key → 这个仓库<b>没有身份（冻结）</b>：本机照常可用，但导出导入不包含它（项目组里的成员也会被剔除）。</>}
-              </div>
-            </div>
-            <div className="form-field">
               <label htmlFor="repo-notes">备注</label>
               <textarea id="repo-notes" placeholder="补充信息（可选）" value={form.notes} onChange={set('notes')} />
             </div>
@@ -891,6 +996,29 @@ export default function ReposView({ onNavigate }) {
               <button className="btn" disabled={!form.path.trim()} onClick={submit}>
                 {editing ? '保存修改' : '添加仓库'}
               </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* 扫描弹窗 */}
+      {scanOpen ? (
+        <Modal title="扫描目录下的 git 仓库" onClose={() => setScanOpen(false)}>
+          <div className="form-grid">
+            <div className="form-field">
+              <label htmlFor="scan-root">扫描根目录</label>
+              <input id="scan-root" placeholder="留空＝当前项目目录" spellCheck="false" value={scan.root}
+                onChange={(e) => setScan({ ...scan, root: e.target.value })} />
+            </div>
+            <div className="form-field">
+              <label htmlFor="scan-depth">深度</label>
+              <input id="scan-depth" type="number" min="1" max="10" value={scan.depth}
+                onChange={(e) => setScan({ ...scan, depth: e.target.value })} />
+            </div>
+            <div className="form-acts">
+              <button className="btn ghost" onClick={() => setScanOpen(false)}>取消</button>
+              <button className="btn ghost" title="只列出发现的 git 仓库，不登记" onClick={() => doScan(true)}>只发现</button>
+              <button className="btn" onClick={() => doScan(false)}>扫描登记</button>
             </div>
           </div>
         </Modal>
@@ -1222,13 +1350,56 @@ export default function ReposView({ onNavigate }) {
         />
       ) : null}
 
-      {/* 对齐 remote：一个按钮扫全部（原来每行一个 remote 按钮，40 个仓库就要点 40 次）。
+      {/* 对齐 remote：key 是本地身份，remote 是协作的标准单位。
           候选来自 git remote -v，当前采纳的打勾；点另一条即对齐过去。 */}
-      {remoteOpen ? (
-        <RemotePanel
-          onClose={() => setRemoteOpen(false)}
-          onChanged={async () => { await Promise.all([loadRepos(), loadRefCheck()]); }}
-        />
+      {remoteOpen && remoteInfo ? (
+        <Modal title={`对齐 remote · ${remoteInfo.name}`} onClose={() => setRemoteOpen(false)}>
+          <div className="form-grid" data-testid="rp-remote-modal">
+            <div className="form-field">
+              <div className="form-hint">
+                当前采纳：<b>{remoteInfo.current || '（无）'}</b>。换一条即对齐（key 随之重算；自定义 key 不动）。
+              </div>
+              <div className="rp-remote-list">
+                {remoteInfo.remotes.map((rm) => (
+                  <div className="rp-remote-item" key={rm.name + '|' + rm.url}>
+                    <span className="rp-remote-name">{rm.name}</span>
+                    <span className="mono rp-remote-url">{rm.url}</span>
+                    <span className="rp-remote-kind">{rm.kind}</span>
+                    {rm.current ? <span className="rp-remote-on">当前</span> : null}
+                    <span className="acts">
+                      {!rm.current ? (
+                        <button className="btn small" onClick={() => pickRemote(rm.url)}>对齐这条</button>
+                      ) : null}
+                      <button className="btn small ghost" onClick={() => checkRemote(rm.url)}>检查</button>
+                    </span>
+                  </div>
+                ))}
+                {!remoteInfo.remotes.length ? (
+                  <div className="muted">这个仓库没有配置 remote —— 先在 git 里 git remote add</div>
+                ) : null}
+              </div>
+            </div>
+            {remoteCheck ? (
+              <div className="form-field">
+                <label>存在性检查</label>
+                <div className="rp-remote-check">
+                  <span className={'rp-status ' + (remoteCheck.status === 'exists' ? 'same' : remoteCheck.status === 'missing' ? 'new' : remoteCheck.status === 'checking' ? 'checking' : 'missing')}>
+                    {remoteCheck.status === 'exists' ? '存在'
+                      : remoteCheck.status === 'missing' ? '不存在'
+                      : remoteCheck.status === 'checking' ? '检查中'
+                      : '不可达'}
+                  </span>
+                  <span className="mono rp-remote-url">{remoteCheck.url}</span>
+                  <span className="muted">{remoteCheck.detail}</span>
+                </div>
+              </div>
+            ) : null}
+            <div className="form-acts">
+              <button className="btn ghost" onClick={() => setRemoteOpen(false)}>关闭</button>
+              <button className="btn" onClick={() => checkRemote('')}>检查当前 remote</button>
+            </div>
+          </div>
+        </Modal>
       ) : null}
 
       {dialogNode}

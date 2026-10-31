@@ -1,52 +1,28 @@
 // 侧边栏视图偏好（localStorage）——**只是显示态，不是数据**。
 //
-// 这里装的是「怎么摆」，不是「是什么」：
-//   order        资产的全局序列（'board:<id>' / 'repo:<key>' / 'group:<id>'）
-//   hidden       不显示的资产（登记与数据都不动）
-//   groups       收纳盒（左侧的「组」）——纯显示层的格子，可以把「项目」和「项目组」
-//                摆在一起；它**不是**项目组（board），两者互不相干：
-//                  · 项目组 = 数据资产，成员表在 store 里，可导出、可跨机
-//                  · 收纳盒 = 浏览器本地的一次性编排，换浏览器就没了，不参与导出
-//   groupOpen    收纳盒的展开态
-//   folded / defaultFolded / defaultGroupFolded  收起态
+// 以前这里还存着 groups / dirGroups（侧边栏自己的「分组」），那套东西与仓库页的
+// 看板（board）是两套互不相干的存储：换浏览器分组就没了，改看板侧边栏也不知道。
+// 2026-10-29 起分组统一走看板，prefs 只剩 UI 层的几件事：
+//   order / hidden / groupOpen / folded —— 排序、隐藏、展开态、收起态。
 //
-// 历史：2026-10-29 曾把「分组」整块废弃（当时它与看板是两套重复数据）；
-// 2026-10-30 用户确认「项目组和项目都是资产，左侧的组是 UI 概念」，
-// 于是收纳盒以**纯显示层**的身份回到 prefs —— 这次它不与任何数据重复。
+// 键位与既有 nx-kv-ui 分开：这里只存侧边栏编排/折叠态/默认收起三件事。
 const KEY = 'nx-kv-sidebar-v1';
 
 const DEFAULTS = {
-  order: [],        // 顶层条目序：['group:<id>' | 'board:<id>' | 'repo:<key>']
-  hidden: [],       // 隐藏的资产（itemId；兼容老数据的裸仓库 key）
-  groups: [],       // 收纳盒：[{ id, name, members: ['board:<id>'|'repo:<key>'] }]
-  groupOpen: {},    // 收纳盒 id -> bool（展开态）；缺省看 defaultGroupFolded
+  order: [],        // 顶层条目序：['board:<id>' | '<仓库key>']（未列出的按自然序追加）
+  hidden: [],       // 隐藏的仓库 key（只是不显示，登记与数据不动）
+  groupOpen: {},    // 看板 id -> bool（展开态）
   folded: false,    // 侧边栏当前收起态
   defaultFolded: false,  // 进入面板时默认收起侧边栏
-  defaultGroupFolded: false, // 收纳盒初始展开态（缺省展开）
+  defaultGroupFolded: false, // 看板初始展开态
 };
 
-// 旧结构里的 groups / dirGroups 是**独立的假数据**（当时与看板重复），不迁移。
-// 注意：新结构也叫 groups，但成员是 itemId（'repo:…' / 'board:…'）且语义是显示层——
-// 用「有没有 id」区分：老数据的分组条目没有 id 字段。
-function normalizeGroups(list) {
-  const out = [];
-  for (const g of Array.isArray(list) ? list : []) {
-    if (!g || typeof g !== 'object') continue;
-    const id = typeof g.id === 'string' && g.id ? g.id : '';
-    if (!id) continue; // 老版本的分组（无 id）丢弃
-    out.push({
-      id,
-      name: String(g.name || '收纳组'),
-      members: (Array.isArray(g.members) ? g.members : []).filter((m) => typeof m === 'string' && m),
-    });
-  }
-  return out;
-}
-
+// 旧结构里的 groups / dirGroups —— 它们是**独立的假数据**，不迁移、直接丢弃。
+// 迁移它们等于把浏览器本地的一次性编排升格成正式数据，与看板重复且永远对不上。
 function stripLegacy(raw) {
   if (!raw || typeof raw !== 'object') return raw;
-  // eslint-disable-next-line no-unused-vars -- 解构出来就是为了丢弃这个旧字段
-  const { dirGroups, ...rest } = raw;
+  // eslint-disable-next-line no-unused-vars -- 解构出来就是为了丢弃这两个旧字段
+  const { groups, dirGroups, ...rest } = raw;
   return rest;
 }
 
@@ -56,7 +32,10 @@ export function loadPrefs() {
     if (!raw) return { ...DEFAULTS };
     const parsed = stripLegacy(JSON.parse(raw));
     const next = { ...DEFAULTS, ...parsed };
-    next.groups = normalizeGroups(parsed.groups);
+    // 读的时候顺手把旧字段从盘上抹掉（下次保存就是干净结构）
+    if (parsed && typeof parsed === 'object' && ('groups' in parsed || 'dirGroups' in parsed)) {
+      try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* 隐私模式等静默降级 */ }
+    }
     return next;
   } catch {
     return { ...DEFAULTS };
@@ -91,47 +70,4 @@ export function applyOrder(order, items, idOf) {
   }
   out.push(...byId.values());
   return out;
-}
-
-// ─── 收纳盒（纯显示层）的纯函数操作 ────────────────────────────────────
-// 全部返回**新的 groups 数组**（不改入参）：调用方直接 patchPrefs({ groups })。
-// 不在这层做 id 生成以外的判断——「这条资产是什么」由模型层（model.js）决定。
-
-/** 新建一个空收纳盒，返回 { groups, id } */
-export function addGroup(groups, name) {
-  const id = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  const nm = String(name || '').trim() || '收纳组';
-  return { groups: [...(groups || []), { id, name: nm, members: [] }], id };
-}
-
-/** 重命名（空名忽略） */
-export function renameGroup(groups, id, name) {
-  const nm = String(name || '').trim();
-  if (!nm) return groups || [];
-  return (groups || []).map((g) => (g.id === id ? { ...g, name: nm } : g));
-}
-
-/** 删盒子 = 只拆格子：里面的资产回到顶层平铺，资产本身不动 */
-export function removeGroup(groups, id) {
-  return (groups || []).filter((g) => g.id !== id);
-}
-
-/**
- * 把资产放进盒子（groupId 空 = 取出到顶层）。
- * 一条资产最多在一个盒子里——放进去之前先从别的盒子摘掉（不存在多盒副本）。
- */
-export function moveToGroup(groups, itemId, groupId) {
-  const id = String(itemId || '');
-  const list = (groups || []).map((g) => ({
-    ...g,
-    members: (g.members || []).filter((m) => m !== id),
-  }));
-  if (!groupId) return list;
-  return list.map((g) => (g.id === groupId ? { ...g, members: [...g.members, id] } : g));
-}
-
-/** 这条资产现在在哪个盒子里（'' = 顶层） */
-export function groupOf(groups, itemId) {
-  for (const g of groups || []) if ((g.members || []).includes(itemId)) return g.id;
-  return '';
 }

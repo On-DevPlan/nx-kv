@@ -217,6 +217,29 @@ export default {
           : `已删除主题「${d.name}」#${d.removed.id}: ${d.removed.text}（可用 localtask task restore 恢复）`,
     },
     {
+      id: 'localtask.removeMany',
+      cli: ['localtask', 'remove-many'],
+      http: ['DELETE', '/api/localtasks/items'],
+      summary:
+        '批量删除任务（按 --ids，定位到 --cwd 主题或 --key）：一次落盘，逐条软删除（可 restore 恢复）；缺失的编号不阻断其余删除',
+      flags: {
+        ids: { type: 'array', required: true, hint: '任务编号，逗号分隔或给多次' },
+        cwd: CWD,
+        key: KEY,
+        purge: { type: 'boolean', hint: '彻底删除（不可恢复）；不加就是软删除' },
+      },
+      run: (ctx) => service.removeTasks({ ids: ctx.ids, cwd: ctx.cwd, key: ctx.key, purge: ctx.purge }),
+      render: (d) => {
+        const done = d.removed.map((x) => `#${x.id}`).join(' ');
+        const head = d.count
+          ? `${d.purged ? '已彻底删除' : '已删除'}主题「${d.name}」${d.count} 条（${done}）`
+          : `主题「${d.name}」没有可删的任务`;
+        const tail = d.missing.length ? `；未找到 #${d.missing.join(' #')}` : '';
+        const how = d.count && !d.purged ? '；可用 localtask task restore 恢复' : '';
+        return head + tail + how;
+      },
+    },
+    {
       id: 'localtask.task.restore',
       cli: ['localtask', 'task', 'restore'],
       http: ['POST', '/api/localtasks/tasks/restore'],

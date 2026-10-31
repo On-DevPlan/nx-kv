@@ -639,6 +639,31 @@ select {
    点击复制全文。纯灰一长串是旧画法，人眼得逐字符对比。 */
 .rp-path { font-size: 11px; color: var(--ink-2); word-break: break-all; }
 .rp-path .anc { color: var(--mid); }
+
+/* ---- 项目组详情（#/group/<id>）：组里的子目录表 ---- */
+.rp-group-head { margin-bottom: 10px; }
+.rp-group-head h2 {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 4px; font-size: 15px; font-weight: 650; color: var(--ink);
+}
+.rp-group-head p { margin: 0; font-size: 12px; }
+.rp-chip-count {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 999px; background: var(--soft-2, #F1F0EC);
+  font-size: 11px; font-weight: 600; color: var(--ink-2);
+}
+.rp-click-row { cursor: pointer; }
+.rp-badge-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; padding: 1px 7px; border-radius: 999px;
+  background: var(--soft-2, #F1F0EC); color: var(--ink-2);
+  font-size: 11px; font-weight: 650;
+}
+.rp-src {
+  display: inline-flex; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line); font-size: 11px; color: var(--mid);
+}
+.rp-src.auto { border-color: #B7D4C8; background: #E8F2EE; color: #2F6F5E; }
 .rp-acts { white-space: nowrap; }
 .rp-acts .btn { margin: 0 3px 0 0; }
 /* 删除按钮平时与同伴同貌（一排红描边是整张表在喊危险），悬停才表态 */
@@ -753,6 +778,40 @@ select {
 }
 .rp-boards-unassigned b { font-family: var(--mono); color: var(--ink-2); font-weight: 650; }
 .rp-board-item .acts { margin-left: auto; white-space: nowrap; }
+
+/* ---- 前缀分组规则（仓库名以某前缀开头 → 自动归入某看板）---- */
+.rp-prefix-group {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.rp-prefix-group .colhead { align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.rp-prefix-group .colhead h4 { font-size: 12.5px; font-weight: 650; color: var(--ink); margin: 0; }
+.rp-prefix-group .colhead .muted { font-size: 11.5px; }
+.rp-prefix-list {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin: 8px 0;
+}
+.rp-prefix-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 4px 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--paper, #fff);
+  font-size: 11.5px; color: var(--ink-2);
+}
+.rp-prefix-chip b { font-family: var(--mono); font-weight: 650; color: var(--ink); }
+.rp-prefix-chip.dead { border-style: dashed; opacity: .72; }
+.rp-prefix-chip .rp-x {
+  width: 17px; height: 17px; border: 0; border-radius: 50%;
+  background: none; cursor: pointer; color: var(--mid); font-size: 13px; line-height: 1;
+}
+.rp-prefix-chip .rp-x:hover { background: rgba(179, 38, 30, .08); color: var(--danger); }
+.rp-prefix-add { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rp-prefix-add .rp-input {
+  flex: 0 1 200px; min-width: 140px;
+  padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--paper, #fff); color: var(--ink); font: inherit; font-size: 12px; outline: 0;
+}
+.rp-prefix-add .rp-input:focus { border-color: #2F6F5E; }
 
 /* ---- 参考仓库（type=ref）大面板与绑定 chips ----
  * 参考仓库与开发仓库分表：主表只放 dev（行内「参考」列显示绑到它的 ref）；

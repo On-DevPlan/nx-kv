@@ -932,6 +932,61 @@ export async function removeTask({ cwd: rawCwd, key: rawKey, id, purge = false }
 }
 
 /**
+ * 批量删除（面板「删除选中 n」用）：一次 loadStore / saveStore 处理多条。
+ *
+ * 单条语义与 removeTask 完全一致（软删除打 deletedAt，purge 彻底摘除），
+ * 但**不因个别 id 不存在而整体失败**：缺失的 id 收进 missing 让面板照实提示。
+ * 为什么不做成「循环调 removeTask」：那会变成 N 次读盘 + N 次整份写盘，
+ * 中间任何一次失败都会留下「删了一半、不知道删到哪」的状态。
+ *
+ * 重复删除同一条是幂等的（deletedAt 已有值就不再改写时间戳）。
+ */
+export async function removeTasks({ cwd: rawCwd, key: rawKey, ids, purge = false } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const { cwd } = normalizeCwd(rawCwd);
+  const wants = (Array.isArray(ids) ? ids : [ids])
+    .map((x) => Number(String(x ?? '').trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!wants.length) throw badInput('缺少参数 --ids <任务编号，逗号分隔或给多次>');
+
+  const store = await loadStore();
+  const t = store.topics[key];
+  const removed = [];
+  const missing = [];
+  for (const want of wants) {
+    const index = t ? t.tasks.findIndex((x) => Number(x.id) === want) : -1;
+    if (index < 0) {
+      missing.push(want);
+      continue;
+    }
+    const task = t.tasks[index];
+    if (purge) {
+      // 彻底清除：行真的摘出去（不可恢复）。与 removeTask 同一套词汇。
+      t.tasks.splice(index, 1);
+      removed.push({ ...normalizeTask(task), purged: true });
+      continue;
+    }
+    if (!task.deletedAt) task.deletedAt = stampNow();
+    task.trashIndex = index; // 恢复时放回原位（与 removeTask 一致）
+    removed.push({ ...normalizeTask(task), purged: false });
+  }
+  if (removed.length) {
+    t.updatedAt = stampNow();
+    await saveStore(store);
+  }
+  return {
+    status: 'ok',
+    key,
+    cwd: t ? t.cwd || cwd : cwd,
+    name: t ? t.name : key,
+    purged: !!purge,
+    removed,
+    missing,
+    count: removed.length,
+  };
+}
+
+/**
  * 恢复一条被软删除的任务（撤销删除）。
  * 与 removeTask 互为逆操作：任务仍在队列里，只是带着 deletedAt 标记。
  */

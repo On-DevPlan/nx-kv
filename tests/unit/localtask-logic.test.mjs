@@ -200,6 +200,47 @@ test('update / get / remove 链路（删除是软删除：可恢复）', async (
   assert.equal(noop.reason, 'not_deleted');
 });
 
+test('批量删除：一次删多条、缺号不阻断、幂等且可 purge', async () => {
+  await reset();
+  const a = await svc.addTask({ cwd: dirA, text: 'A' });
+  const b = await svc.addTask({ cwd: dirA, text: 'B' });
+  const c = await svc.addTask({ cwd: dirA, text: 'C' });
+
+  // 缺号（9999）不该让整批失败：删掉 A、C，报告缺失
+  const r = await svc.removeTasks({ cwd: dirA, ids: [a.task.id, c.task.id, 9999] });
+  assert.equal(r.count, 2);
+  assert.deepEqual(r.missing, [9999]);
+  assert.deepEqual(r.removed.map((x) => x.id).sort(), [a.task.id, c.task.id].sort());
+  assert.ok(r.removed.every((x) => x.deletedAt), '批量删除同样是软删除');
+
+  const t = (await svc.listTasks()).topics[0];
+  assert.equal(t.pending, 1, '只剩 B 待领取');
+  assert.equal(t.deleted, 2, '两条进了软删除区');
+  assert.equal(t.total, 3, '行留在队列里（可恢复）');
+
+  // 幂等：再删一次不报错，也不改写 deletedAt 时间戳
+  const stamp = t.tasks.find((x) => Number(x.id) === Number(a.task.id)).deletedAt;
+  const again = await svc.removeTasks({ cwd: dirA, ids: [a.task.id] });
+  assert.equal(again.count, 1);
+  const stamp2 = (await svc.listTasks()).topics[0].tasks.find((x) => Number(x.id) === Number(a.task.id)).deletedAt;
+  assert.equal(stamp2, stamp);
+
+  // 恢复其中一条 → 回到待领取
+  await svc.restoreTask({ cwd: dirA, id: c.task.id });
+  assert.equal((await svc.listTasks()).topics[0].pending, 2);
+
+  // purge：行真的摘出去
+  const p = await svc.removeTasks({ cwd: dirA, ids: [b.task.id], purge: true });
+  assert.equal(p.purged, true);
+  const t3 = (await svc.listTasks()).topics[0];
+  assert.equal(t3.total, 2, 'purge 后行不再保留');
+  assert.ok(!t3.tasks.some((x) => Number(x.id) === Number(b.task.id)));
+
+  // 空 ids / 非法 ids → 参数错误，不落盘
+  await assert.rejects(() => svc.removeTasks({ cwd: dirA, ids: [] }), /--ids/);
+  await assert.rejects(() => svc.removeTasks({ cwd: dirA, ids: ['x', 0, -1] }), /--ids/);
+});
+
 test('软删除的任务不会被 wait 领走', async () => {
   await reset();
   const a = await svc.addTask({ cwd: dirA, text: '要删的' });

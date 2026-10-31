@@ -16,7 +16,19 @@
 //
 // 本文件不含传输层概念（不认识 argv 与 HTTP）。
 import { resolve } from 'node:path';
-import { loadStore, mutateStore, newId, boardKeyOf, boardRepoKeys, deriveKey, normalizeKey, isFrozen } from './service.js';
+import {
+  loadStore,
+  mutateStore,
+  newId,
+  boardKeyOf,
+  boardRepoKeys,
+  boardMemberKeys,
+  autoKeysByPrefix,
+  prefixRulesOf,
+  deriveKey,
+  normalizeKey,
+  findBoard,
+} from './service.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
 
 const cleanText = (v) => String(v || '').trim();
@@ -32,8 +44,9 @@ const noteOf = (b, rkey) => (b.repoNotes || {})[rkey] || '';
  * 本地未拥有的成员没有登记，只有 key + （导入文件里的）名字。
  *   present   = 本地有没有这条登记
  *   clonable  = 有远程地址 → 可以一键 clone 补齐
+ *   auto      = 由前缀规则自动归入（不是手动挂的成员）
  */
-function memberView(s, b, rkey, fallback) {
+function memberView(s, b, rkey, fallback, auto = false) {
   const note = noteOf(b, rkey);
   const local = s.repos.find((r) => deriveKey(r) === rkey);
   const base = {
@@ -47,17 +60,30 @@ function memberView(s, b, rkey, fallback) {
     present: !!local,
     clonable: !!(local ? local.remote : fallback && fallback.remote),
     id: local ? local.id : '',
+    auto,
   };
   return base;
 }
 
+/** 看板成员 = 显式成员 + 前缀规则命中（去重，规则的排后面） */
+function membersOf(s, b, autoMap) {
+  const explicit = boardRepoKeys(b, s);
+  const auto = (autoMap || autoKeysByPrefix(s)).get(b.id) || [];
+  const seen = new Set(explicit);
+  const out = explicit.map((k) => memberView(s, b, k, null, false));
+  for (const k of auto) {
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(memberView(s, b, k, null, true));
+  }
+  return out;
+}
+
 export async function listBoards() {
   const s = await loadStore();
-  const inBoard = new Set(s.boards.flatMap((b) => boardRepoKeys(b, s)));
-  const reposOf = (b) =>
-    boardRepoKeys(b, s)
-      .map((rkey) => memberView(s, b, rkey))
-      .filter(Boolean);
+  const autoMap = autoKeysByPrefix(s);
+  const inBoard = new Set(s.boards.flatMap((b) => boardMemberKeys(b, s, autoMap)));
+  const reposOf = (b) => membersOf(s, b, autoMap);
   return {
     boards: s.boards.map((b) => ({
       id: b.id,
@@ -84,8 +110,7 @@ export async function getBoard(idOrKey) {
   if (!b) b = s.boards.find((x) => boardKeyOf(x.name) === normalizeKey(raw));
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!b) throw notFound('看板不存在: ' + raw);
-  const repos = boardRepoKeys(b, s).map((rkey) => memberView(s, b, rkey)).filter(Boolean);
-  return { id: b.id, name: b.name, desc: b.desc, key: boardKeyOf(b.name), repos };
+  return { id: b.id, name: b.name, desc: b.desc, key: boardKeyOf(b.name), repos: membersOf(s, b) };
 }
 
 export async function createBoard({ name, desc } = {}) {
@@ -198,8 +223,6 @@ export async function assignRepo({ id, key, board, before, remove } = {}) {
     }
 
     if (!target) throw badInput('请给 --board <看板id>');
-    // 冻结（无身份）的仓库**允许**进项目组：本机的编排不该被「有没有远程地址」卡住。
-    // 代价由导出承担——它的 local/<名称> 不是身份，导出时会被剔除并告警（transfer.js）。
     if (!Array.isArray(target.repoKeys)) target.repoKeys = [];
     const at = target.repoKeys.indexOf(rkey);
     // 已在板内：摘出后按 before 回插（纯调位次）；不在：追加。
@@ -259,12 +282,9 @@ export async function importBoards({ json } = {}) {
   const incoming = Array.isArray(data?.boards) ? data.boards : null;
   if (!incoming || !incoming.length) throw badInput('JSON 里没有 boards 数组');
   return mutateStore((s) => {
-    // 冻结仓库不参与匹配：它的 key 是 local/<名称>，别人导出的文件里不会有这个 key，
-    // 拿它去对齐只会把成员错配到本机凑巧同名的目录上。
-    const ident = s.repos.filter((r) => !isFrozen(r));
-    const byName = new Map(ident.map((r) => [String(r.name).trim(), deriveKey(r)]));
+    const byName = new Map(s.repos.map((r) => [String(r.name).trim(), deriveKey(r)]));
     // path 匹配（大小写不敏感、分隔符归一）——老格式的导入文件按 path 引用
-    const byPath = new Map(ident.map((r) => [String(r.path).toLowerCase().replace(/\\/g, '/'), deriveKey(r)]));
+    const byPath = new Map(s.repos.map((r) => [String(r.path).toLowerCase().replace(/\\/g, '/'), deriveKey(r)]));
     let created = 0;
     let merged = 0;
     let matched = 0;
@@ -325,4 +345,93 @@ export async function exportBoards() {
         .filter(Boolean),
     })),
   };
+}
+
+// ─── 前缀分组规则 ────────────────────────────────────────────────
+//
+// 规则 = 「仓库名以 prefix 开头 → 归入看板 X」。看板不存在时按名字自动建一个
+// （「nx 开头的仓库归一类」= 建一个叫 nx 的看板，规则指向它）。
+// 规则只影响**成员关系**，看板本身仍是唯一的分组载体。
+
+/** 规则列表（带目标看板名与当前命中数） */
+export async function listPrefixRules() {
+  const s = await loadStore();
+  const autoMap = autoKeysByPrefix(s);
+  return {
+    groups: prefixRulesOf(s).map((g) => {
+      const b = findBoard(s, g.boardId || g.boardKey);
+      return {
+        prefix: String(g.prefix || ''),
+        boardId: b ? b.id : g.boardId || '',
+        boardKey: b ? boardKeyOf(b.name) : g.boardKey || '',
+        boardName: b ? b.name : '',
+        matched: b ? (autoMap.get(b.id) || []).length : 0,
+        alive: !!b,
+      };
+    }),
+  };
+}
+
+/** 新增/覆盖一条规则（同 prefix 覆盖）。board 省略 = 用 prefix 当看板名（不存在则建） */
+export async function addPrefixRule({ prefix: rawPrefix, board: rawBoard } = {}) {
+  const prefix = String(rawPrefix || '').trim();
+  if (!prefix) throw badInput('需要前缀 <prefix>（如 nx：nx-* 的仓库归一类）');
+  return mutateStore((s) => {
+    const want = String(rawBoard || '').trim() || prefix;
+    let b = findBoard(s, want);
+    let created = false;
+    if (!b) {
+      b = {
+        id: newId('b'),
+        name: want,
+        desc: `按前缀「${prefix}」自动归组`,
+        createdAt: new Date().toISOString(),
+        repoKeys: [],
+        autoPrefix: prefix, // 由规则建的看板：规则删掉时若无手动成员，一并清掉
+      };
+      s.boards.push(b);
+      created = true;
+    }
+    s.prefixGroups = (s.prefixGroups || []).filter(
+      (g) => String(g.prefix || '').toLowerCase() !== prefix.toLowerCase()
+    );
+    s.prefixGroups.push({ prefix, boardId: b.id, boardKey: boardKeyOf(b.name) });
+    const matched = (autoKeysByPrefix(s).get(b.id) || []).length;
+    return { prefix, boardId: b.id, boardName: b.name, boardCreated: created, matched };
+  });
+}
+
+/**
+ * 删规则（不动看板本身——手动成员还在）。
+ * 但**规则建的空看板**会一起清掉：规则没了，组也就没了，留个空壳只是噪音。
+ * 判据：看板由该规则创建（autoPrefix 相同）+ 没有手动成员 + 没有别的规则指向它。
+ */
+export async function removePrefixRule({ prefix: rawPrefix } = {}) {
+  const prefix = String(rawPrefix || '').trim();
+  if (!prefix) throw badInput('需要前缀 <prefix>');
+  return mutateStore((s) => {
+    const before = (s.prefixGroups || []).length;
+    const rule = (s.prefixGroups || []).find(
+      (g) => String(g.prefix || '').toLowerCase() === prefix.toLowerCase()
+    );
+    s.prefixGroups = (s.prefixGroups || []).filter(
+      (g) => String(g.prefix || '').toLowerCase() !== prefix.toLowerCase()
+    );
+    const removed = before - s.prefixGroups.length;
+    if (!removed) throw notFound(`没有前缀为「${prefix}」的规则`);
+
+    let boardRemoved = '';
+    if (rule) {
+      const b = findBoard(s, rule.boardId || rule.boardKey);
+      const explicit = b ? boardRepoKeys(b, s).length : 0;
+      const stillUsed = (s.prefixGroups || []).some(
+        (g) => g.boardId === (b && b.id) || (b && g.boardKey === boardKeyOf(b.name))
+      );
+      if (b && b.autoPrefix && String(b.autoPrefix) === prefix && !explicit && !stillUsed) {
+        s.boards = s.boards.filter((x) => x.id !== b.id);
+        boardRemoved = b.name;
+      }
+    }
+    return { prefix, removed, boardRemoved };
+  });
 }

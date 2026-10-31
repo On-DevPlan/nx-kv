@@ -136,7 +136,9 @@ test('findRunningAmongPorts：非默认端口上的面板能被发现', async ()
   const fake = await startFakePanel({});
   try {
     // 显式候选集：只含一个不响应该端口与假面板端口 → 必须找到假端口
-    const dark = fake.port + 1000;
+    // ⚠ dark 不能越界：临时端口高段（64536+）再 +1000 会超出 65535，
+    // `http://127.0.0.1:65xxx` 直接 Invalid URL——不是「端口黑着」，是测试自己炸（随机翻车）。
+    const dark = fake.port + 1000 <= 65535 ? fake.port + 1000 : fake.port - 1000;
     const found = await svc.findRunningAmongPorts([dark, fake.port], 300);
     assert.equal(found, fake.port, '顺延/--port 出来的面板应被发现');
     // 全部黑着 → null（wait 才会去拉起新实例）

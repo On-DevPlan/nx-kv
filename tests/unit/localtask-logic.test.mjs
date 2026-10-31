@@ -11,10 +11,13 @@ import * as svc from '../../src/modules/localtask/service.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-localtask-'));
 const storeFile = join(tmp, 'localtasks.json');
+const goalFile = join(tmp, 'timegoals.json');
 const dirA = mkdirSync(join(tmp, 'projA'), { recursive: true }) || join(tmp, 'projA');
 const dirB = join(tmp, 'projB');
 mkdirSync(dirB, { recursive: true });
 process.env.NX_KV_LOCALTASK_STORE = storeFile;
+// 渲染 instruction 时 readGoalCtx 会读 timegoal store——隔离掉，绝不碰真实的 ~/.nx-kv
+process.env.NX_KV_TIMEGOAL_STORE = goalFile;
 
 async function reset() {
   try {
@@ -464,14 +467,15 @@ test('批量删除：keys/cwds/all，等待中跳过，force 连等待中删', a
   assert.equal((await svc.listTasks()).topics.length, 0);
 });
 
-// ─── 收尾追加语（taskSuffix）单测 ─────────────────────────────────────
+// ─── 收尾指令（taskSuffix：纯文本追加 / 模板渲染）单测 ────────────────
 
-test('收尾追加语：缺省→默认；空串→关闭；trim；超长截断', async () => {
+test('收尾追加语：缺省→默认；空串→关闭；trim；超长截断到 2000', async () => {
   assert.equal(svc.clampTaskSuffix(undefined), svc.DEFAULT_TASK_SUFFIX);
   assert.equal(svc.clampTaskSuffix(null), svc.DEFAULT_TASK_SUFFIX);
   assert.equal(svc.clampTaskSuffix(''), '', '空串 = 关闭');
   assert.equal(svc.clampTaskSuffix('  abc  '), 'abc', 'trim');
-  assert.equal(svc.clampTaskSuffix('x'.repeat(1000)).length, 500, '超长截断到 500');
+  assert.equal(svc.clampTaskSuffix('x'.repeat(3000)).length, 2000, '超长截断到 2000');
+  assert.ok(svc.DEFAULT_TASK_SUFFIX.includes('{{'), '默认值已升级为模板（含占位符）');
 });
 
 test('收尾追加语设置：超时与追加语都不传时报错（避免空更新静默成功）', async () => {
@@ -488,6 +492,7 @@ test('wait 取任务时把收尾追加语拼到返回末尾，但不改库存原
   assert.equal(r1.status, 'ok');
   assert.equal(r1.queued, true);
   assert.ok(r1.task.text.endsWith('TAIL_A'), '排队路径也拼追加语');
+  assert.equal(r1.instruction, undefined, '纯文本后缀走旧追加路径，不产生新字段');
   // 库存原文未被改写
   const list = await svc.listTasks();
   const t1 = list.topics[0].tasks.find((x) => x.id === added.task.id);
@@ -498,6 +503,35 @@ test('wait 取任务时把收尾追加语拼到返回末尾，但不改库存原
   await svc.addTask({ cwd: dirA, text: 'BODY2' });
   const r2 = await svc.waitForTask({ cwd: dirA, summary: 's2', open: false });
   assert.equal(r2.task.text, 'BODY2', '关闭后 task.text 保持原样');
+  assert.equal(r2.instruction, undefined, '关闭 = 不渲染 instruction');
+});
+
+test('模板后缀：渲染进 instruction，task.text 保持库存原文', async () => {
+  await reset();
+  await svc.updateSettings({ taskSuffix: '{{task.text}}||{{task.id}}||{{source}}||{{#goal}}G{{/goal}}' });
+  const added = await svc.addTask({ cwd: dirA, text: 'BODY' });
+  const r = await svc.waitForTask({ cwd: dirA, summary: 's', open: false });
+  assert.equal(r.status, 'ok');
+  assert.equal(r.task.text, 'BODY', '模板模式不碰 task.text');
+  assert.equal(r.instruction, `BODY||${added.task.id}||local||`, '占位符逐个展开；无 goal 时 goal 段消失');
+  // 库存原文未被改写
+  const list = await svc.listTasks();
+  const t1 = list.topics.find((t) => !t.isGlobal).tasks.find((x) => x.id === added.task.id);
+  assert.equal(t1.text, 'BODY');
+
+  // 占位符值里的 {{...}} 不得二次展开
+  await svc.updateSettings({ taskSuffix: '{{task.text}}' });
+  await svc.addTask({ cwd: dirA, text: '带标记 {{goal.name}} 与 {{#task}}' });
+  const r2 = await svc.waitForTask({ cwd: dirA, summary: 's2', open: false });
+  assert.equal(r2.instruction, '带标记 {{goal.name}} 与 {{#task}}', '插入值单遍渲染，逐字原样');
+  assert.equal(r2.coversBody, true, '模板含 {{task.text}} → coversBody 标志为真');
+
+  // 全部段落被丢弃 → 渲染为空 → instruction 字段整个省略（而不是空串）
+  await svc.updateSettings({ taskSuffix: '{{#goal}}G{{/goal}}' });
+  await svc.addTask({ cwd: dirA, text: 'BODY3' });
+  const r3 = await svc.waitForTask({ cwd: dirA, summary: 's3', open: false });
+  assert.equal(r3.task.text, 'BODY3');
+  assert.equal(r3.instruction, undefined, '空渲染省略字段（目录无 goal 时 goal 段整段消失）');
 });
 
 test('收尾追加语设置：默认值/自定义/清空关闭/恢复默认/改超时不覆盖追加语', async () => {

@@ -83,6 +83,15 @@ nx-kv localtask wait --summary "<当前现状总结>" --json
 成功结果里带 `cwd` 与 `summary`；`task` 形如
 `{id, text, status, createdAt, consumedAt, roundSummary}`，**任务内容在 `task.text`**。
 
+**`instruction` 字段（有则必读）**：配置了收尾指令**模板**（默认即是）时，wait 返回
+额外带 `instruction` —— 服务端渲染的**本轮根指令**：默认含时间目标状态
+（`〔时间目标「目录名」剩余 X〕`，该目录挂了 timegoal 才出现）+ 收尾要求
+（计划最后再 wait 一次）。规则：
+
+- `task.text` 永远是任务本体原文；`instruction` 是**包裹它的执行指令**，两者一起读。
+- 自定义模板可含 `{{task.text}}`（此时 instruction 自包含，正文以它为准）。
+- 该目录的 timegoal 到点后，instruction 会显示「已到点」——预算用完，本轮该收尾了。
+
 ## 一次循环长什么样
 
 ```

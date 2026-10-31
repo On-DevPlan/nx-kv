@@ -2,6 +2,30 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### Changed
+
+- **wait 收尾指令模板化（task / waittask / timegoal 融合）**：`localtask config --suffix`
+  从「固定追加语」升级为**占位符模板**。含 `{{` 的值在 wait 返回时由服务端渲染成融合
+  指令，放进返回载荷的新字段 `instruction`；默认模板 = 该目录 timegoal 状态
+  （`〔时间目标「目录名」剩余 X〕`，到点显示「已到点（已超时 X）」）+ 原收尾要求。
+  **模板模式下 `task.text` 保持库存原文、不再追加指令**（正文与指令分区打印）。
+  - 兼容：纯文本（无 `{{`）维持 v0.x 的 task.text 追加行为（旧 skill 副本不失效）；
+    `''` 仍 = 关闭；显式存过旧默认文本的 store 需 `localtask config --reset-suffix`
+    才拿到新默认模板。
+  - 占位符：`{{goal.name}} {{goal.remainingHuman}} {{goal.deadline}} {{goal.prompt}}
+    {{task.id}} {{task.text}} {{source}} {{summary}} {{cwd}} {{name}}`；段落
+    `{{#goal}}…{{/goal}}`、`{{#task}}…{{/task}}` 上下文缺失时整段消失。渲染是服务端
+    **单遍确定性替换**——goal.prompt / task.text 里的 `{{...}}` 逐字保留、绝不二次
+    展开（防漂移契约延伸到字符串层）。
+  - 新核心模块 `src/core/instruction-template.js`（纯函数、零依赖）；模板长度上限
+    500 → 2000（渲染产物不设限）。渲染走 `showTimegoal` 只读路径，不写盘、不影响
+    `timegoal check` 契约与到点自动收尾（goal_expired）行为。
+  - ⚠️ 降级注意：旧版 nx-kv 打开存了新默认模板的 store 会把原始 `{{...}}` 当纯文本
+    追加进 task.text（自定义模板超过旧版 500 上限的还会被截断）——请整版升级，
+    不要混跑新旧二进制。
+
 ## [0.13.0] - 2026-10-31 任务模板可配置 + 完成任务可删除 + 无队列仓库可从侧边栏新建任务 + 仓库前缀分组
 
 ### Added

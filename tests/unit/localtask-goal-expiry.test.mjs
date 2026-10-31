@@ -115,6 +115,12 @@ test('目标没到点：wait 照常阻塞到超时（不能被误杀）', async 
   assert.equal(r.status, 'timeout');
   assert.notEqual(r.cancelled, true, '没到点不该被取消');
   assert.ok(cost >= 900, `应当正常等到超时，实际 ${cost}ms`);
+  // timeout 返回形状是钉死的契约：字段集合固定，instruction 绝不出现在超时返回里
+  assert.deepEqual(
+    Object.keys(r).sort(),
+    ['cwd', 'key', 'status', 'summary', 'timeoutMs'],
+    'timeout 返回只含这五个字段（新增字段不许混进来）'
+  );
 });
 
 test('这个目录没有时间目标：wait 照常阻塞（探针 fail-open，不能把 wait 卡死）', async () => {
@@ -138,8 +144,72 @@ test('目标到点但队列里还有任务：照常领走（到点不该把已�
   const r = await svc.waitForTask({ cwd: dir, summary: '有活先干', timeoutSec: 1, open: false });
 
   assert.equal(r.status, 'ok', '队列里有活就先领走');
-  // 返回的任务文本会带一段收尾追加语（withTaskSuffix），所以用前缀匹配
-  assert.match(r.task.text, /^队列里排着的任务/, '领到的是那条任务');
+  // 默认后缀已升级为模板：task.text 保持库存原文（精确相等），收尾指令在 instruction 字段
+  assert.equal(r.task.text, '队列里排着的任务', '模板模式下 task.text 不再追加');
+  assert.ok(r.instruction.includes('规划计划'), 'instruction 含默认模板的收尾指令');
+});
+
+test('goal 存活时 wait 的 instruction 携带目标状态（默认模板），且只读不落盘', async () => {
+  await reset();
+  await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
+  await svc.addTask({ cwd: dir, text: 'BODY' });
+
+  const before = readFileSync(goalFile, 'utf8');
+  const r = await svc.waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
+  const after = readFileSync(goalFile, 'utf8');
+
+  assert.equal(r.status, 'ok');
+  assert.equal(r.task.text, 'BODY', 'task.text 保持库存原文');
+  assert.ok(
+    r.instruction.includes(`〔时间目标「projG」剩余`),
+    `instruction 含默认模板 goal 段：${JSON.stringify(r.instruction)}`
+  );
+  assert.ok(r.instruction.includes('规划计划'), '收尾指令在 goal 段之后');
+  assert.ok(!r.instruction.includes(PROMPT), '默认模板不携带 prompt 原文（投递保持轻量；prompt 走 check 回显）');
+  assert.equal(after, before, 'wait 渲染不许写 timegoal store（showTimegoal 只读契约）');
+});
+
+test('自定义模板含 {{goal.prompt}}：prompt 原文逐字嵌入（防漂移契约的字符串学保证）', async () => {
+  await reset();
+  await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: '根指令：含 {{字面}} 与 {{#goal}} 的原文' });
+  await svc.updateSettings({ taskSuffix: '{{#goal}}PROMPT>>{{goal.prompt}}<<{{/goal}}' });
+  await svc.addTask({ cwd: dir, text: 'BODY' });
+
+  const r = await svc.waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
+
+  assert.equal(
+    r.instruction,
+    'PROMPT>>根指令：含 {{字面}} 与 {{#goal}} 的原文<<',
+    '单遍渲染：prompt 里的 {{...}} 与段落标记逐字原样，不再展开'
+  );
+});
+
+test('goal 已到点：instruction 显示已到点（信息性），领取不受影响', async () => {
+  await reset();
+  await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
+  expireGoal(key); // 等待开始前就到点了
+  await svc.addTask({ cwd: dir, text: '到期后的活' });
+
+  const r = await svc.waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
+
+  assert.equal(r.status, 'ok', '早就过期的目标不扣任务');
+  assert.ok(r.instruction.includes('已到点'), `渲染出已到点状态：${JSON.stringify(r.instruction)}`);
+  assert.ok(!r.instruction.includes('剩余'), '到点后不再是「剩余」措辞');
+});
+
+test('全局池投递也渲染等待方目录的 goal（goal 属于等待中的 agent 目录）', async () => {
+  await reset();
+  await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
+  await svc.addTask({ text: '池子里的活', global: true });
+
+  const r = await svc.waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
+
+  assert.equal(r.status, 'ok');
+  assert.equal(r.source, 'global', '从全局池领到');
+  assert.ok(
+    r.instruction.includes('〔时间目标「projG」剩余'),
+    `全局任务也带等待目录的 goal 段：${JSON.stringify(r.instruction)}`
+  );
 });
 
 test('probeGoalExpiry：只读、不改状态（探针不写盘、不归档）', async () => {

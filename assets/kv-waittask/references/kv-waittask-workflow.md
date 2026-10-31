@@ -21,7 +21,8 @@
         自动打开浏览器弹窗，然后阻塞。
 4. 用户在弹窗/面板看清现状，回填新任务 → 提交（Enter 或按钮）。
 5. wait 解除阻塞，stdout(--json) 返回 {status:"ok", task}，进程退出。
-6. agent 从工具结果读 task.text，继续干活、提交结果；做完【必须】回到第 2 步——
+6. agent 从工具结果读 task.text（任务本体）与 instruction（收尾指令模板的渲染结果，
+   有则必读），继续干活、提交结果；做完【必须】回到第 2 步——
    循环，不许自行中断。
 7. 若阻塞时限（默认 180 秒）内没有回填：wait 返回 {status:"timeout"}（exit 0），
    agent 不再等待，收尾并结束本轮——这是整个循环唯一的合法出口。
@@ -78,6 +79,7 @@ wait 必带一句当前现状总结（≤2000 字，连续空白会折叠为单�
   "task": { "id": 3, "text": "选择工作空间 A", "status": "consumed",
             "createdAt": "2026-10-11 10:00:00", "consumedAt": "2026-10-11 10:00:04",
             "roundSummary": "已完成登录，等待选择工作空间" },
+  "instruction": "〔时间目标「demo」剩余 2.5 小时〕规划计划，然后完成这个任务；计划的最后一个动作，是再次调用 nx-kv localtask wait（带上 --cwd 当前工作目录、--summary 当前现状、--json）收尾本轮，在拿到下一条任务或超时之前不要提前结束。",
   "delivered": true,
   "queued": false,
   "source": "local"
@@ -88,6 +90,13 @@ wait 必带一句当前现状总结（≤2000 字，连续空白会折叠为单�
 - `source` = 任务来自哪个队列：`"local"`（本目录队列，含实时回填）或 `"global"`
   （全局任务池）；agent 不必区分，照常执行 `task.text`。
 - **任务内容永远读 `task.text`**，多行换行原样保留。
+- **`instruction` 有则必读**：收尾指令模板的服务端渲染结果——默认含该目录 timegoal
+  的剩余预算（没挂目标则无这段）+「计划最后再 wait 一次」。模板含 `{{task.text}}`
+  时 instruction 自包含（正文以它为准）。字段缺席 = 已关闭或本轮没有可渲染内容，只执行任务。
+- **配置**：`nx-kv localtask config --suffix "<模板>"`（占位符
+  `{{goal.name}} {{goal.remainingHuman}} {{goal.prompt}} {{task.text}} {{source}} {{name}}…`，
+  段落 `{{#goal}}…{{/goal}}` 上下文缺失整段消失；`--no-suffix` 关闭、
+  `--reset-suffix` 恢复默认）。字段缺席 = 已关闭或本轮没有可渲染内容。
 
 超时（exit 0，业务结果而非错误）：
 

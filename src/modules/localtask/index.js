@@ -74,10 +74,16 @@ function renderWait(r) {
   // 只是被 500ms 的轮询取到了；按 queued 反推会把它说成「实时回填」，是假的。
   const how = r.delivered ? '实时回填' : '排队任务';
   const origin = (r.source === 'global' ? '全局任务池' : '本目录队列') + ` · ${how}`;
-  return (
-    `已取得下一条任务（${origin} · 主题「${r.cwd}」现状「${r.summary}」）: #${r.task.id}\n` +
-    `  ${r.task.text.replace(/\n/g, '\n  ')}`
-  );
+  const header = `已取得下一条任务（${origin} · 主题「${r.cwd}」现状「${r.summary}」）: #${r.task.id}`;
+  const indent = (s) => String(s).replace(/\n/g, '\n  ');
+  // instruction（模板渲染的收尾指令）与任务正文分区打印：正文块照旧；
+  // instruction 自包含正文（模板含 {{task.text}}，服务端给出 coversBody 标志）时
+  // 直接替掉正文块——两种排布都不丢内容。无 instruction → 与旧输出逐字节一致。
+  if (r.instruction && r.coversBody) {
+    return `${header}\n  ${indent(r.instruction)}`;
+  }
+  const body = `${header}\n  ${indent(r.task.text)}`;
+  return r.instruction ? `${body}\n  ── 收尾指令 ──\n  ${indent(r.instruction)}` : body;
 }
 
 // cancel 的人读输出：等待中→已关闭（主题与任务保留）；非等待中→无操作；全局→不可关闭
@@ -298,12 +304,16 @@ export default {
       id: 'localtask.config',
       cli: ['localtask', 'config'],
       http: ['PATCH', '/api/localtasks/setting'],
-      summary: '配置等待超时（秒）/ 收尾追加语（task.text 末尾自动追加的固定指令；置空关闭）',
+      summary:
+        '配置等待超时（秒）/ 收尾指令模板（wait 返回时渲染进 instruction 字段；纯文本则维持旧的 task.text 追加；置空关闭）',
       flags: {
         timeout: { type: 'number', hint: '超时秒数（1-600）' },
-        suffix: { type: 'string', hint: '收尾追加语文本（与 --reset-suffix/--no-suffix 互斥）' },
-        'reset-suffix': { type: 'boolean', hint: '恢复默认收尾追加语' },
-        'no-suffix': { type: 'boolean', hint: '清空并关闭收尾追加语' },
+        suffix: {
+          type: 'string',
+          hint: '收尾指令模板 ≤2000 字。占位符：{{goal.name}} {{goal.remainingHuman}} {{goal.deadline}} {{goal.prompt}} {{task.id}} {{task.text}} {{source}} {{summary}} {{cwd}} {{name}}；段落 {{#goal}}…{{/goal}}/{{#task}}…{{/task}}（上下文缺失整段消失）。含 {{ 渲染进 instruction、task.text 保持原文；纯文本（无 {{）维持旧追加行为；置空关闭；不支持字面 {{ 转义（与 --reset-suffix/--no-suffix 互斥）',
+        },
+        'reset-suffix': { type: 'boolean', hint: '恢复默认收尾指令模板' },
+        'no-suffix': { type: 'boolean', hint: '清空并关闭收尾指令' },
       },
       run: (ctx) => {
         const patch = { timeoutSec: ctx.timeout };
@@ -313,7 +323,7 @@ export default {
         return service.updateSettings(patch);
       },
       render: (s) => {
-        const x = s.suffixEnabled ? '收尾追加语已开启' : '收尾追加语已关闭';
+        const x = s.suffixEnabled ? '收尾指令模板已开启' : '收尾指令已关闭';
         return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· ${x}`;
       },
     },

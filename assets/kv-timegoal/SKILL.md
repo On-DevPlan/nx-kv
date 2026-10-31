@@ -175,6 +175,14 @@ nx-kv timegoal log    --cwd <dir>                                    # 回看每
 - 不阻塞任何东西：可以同时跑人机接力、派任务给别的 agent、外部 cron
 - 不需要登录 KV 后端：纯本机
 
+**与 wait 的融合（只读，单向）**：这个目录挂着 timegoal 时，`localtask wait`
+返回的 `instruction` 字段会带上目标状态（默认模板：`〔时间目标「目录名」剩余 X〕`；
+到点后显示「已到点」）——kv-waittask 循环里的 agent 不调 check 也能看到预算。
+融合是**渲染时只读**（`showTimegoal` 只读路径，不写盘、不写 check 日志、不影响
+计时与到点判定），timegoal 自身的命令族与契约完全不变；`check` 的 prompt 原文
+回显仍是防漂移的唯一正式通道。要到 wait 的 instruction 里携带 prompt 原文，
+用 `localtask config --suffix` 自定义模板并写入 `{{goal.prompt}}`。
+
 你可以把它当成一个独立计时器 + 便签本：`set` 把便签写进文件，`check` 读出来
 顺便告诉你还剩多少时间。
 

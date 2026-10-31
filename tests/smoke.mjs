@@ -20,6 +20,9 @@ const cfgPath = join(tmp, 'config.json');
 process.env.NX_KV_CONFIG = cfgPath;
 // 附件本地镜像目录也指向临时目录：绝不在测试里往真实的 ~/.nx-kv/attachments/ 写东西
 process.env.NX_KV_ATTACHMENTS = join(tmp, 'attachments');
+// 收尾指令模板渲染会读 timegoal store（readGoalCtx → showTimegoal 只读）——隔离掉，
+// 绝不在测试里碰真实的 ~/.nx-kv/timegoals.json（env 经 cli() 的 spread 传给子进程）
+process.env.NX_KV_TIMEGOAL_STORE = join(tmp, 'timegoals.json');
 
 const results = [];
 function check(name, cond, extra = '') {
@@ -351,6 +354,34 @@ try {
   // 关闭追加：PATCH suffix=''
   const stSuffixOff = await cliJson(['localtask', 'config', '--no-suffix']);
   check('--suffix "" 关闭追加', stSuffixOff.suffixEnabled === false && stSuffixOff.taskSuffix === '', JSON.stringify(stSuffixOff));
+
+  // 收尾指令**模板**（含 {{ 占位符）：渲染进 instruction 字段，task.text 保持库存原文
+  const stTpl = await cliJson([
+    'localtask', 'config', '--suffix',
+    '{{task.text}} TPL_TAIL {{#goal}}〔{{goal.remainingHuman}}〕{{/goal}}',
+  ]);
+  check(
+    'config 设置模板收尾指令已开启',
+    stTpl.suffixEnabled === true && /\{\{task\.text\}\}/.test(stTpl.taskSuffix),
+    JSON.stringify(stTpl)
+  );
+  await cliJson(['localtask', 'add', '模板任务本体', '--cwd', topicA]);
+  const waitTpl = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', '模板冒烟']);
+  check(
+    'wait 模板渲染：instruction 含正文与 TPL_TAIL，task.text 保持原文',
+    waitTpl.status === 'ok' &&
+      waitTpl.task.text === '模板任务本体' &&
+      /模板任务本体[\s\S]*TPL_TAIL/.test(waitTpl.instruction || ''),
+    JSON.stringify(waitTpl)
+  );
+  // 模板模式同样不回写库存
+  const listAfterTpl = await cliJson(['localtask', 'list']);
+  const consumedTpl = listAfterTpl.topics
+    .find((t) => t.key === waitTpl.key)
+    .tasks.find((x) => x.id === waitTpl.task.id);
+  check('模板模式库存原文不含模板痕迹', consumedTpl && consumedTpl.text === '模板任务本体', JSON.stringify(consumedTpl));
+  // 恢复关闭态，让主题清理不受影响
+  await cliJson(['localtask', 'config', '--no-suffix']);
 
   // 收尾追加语冒烟主题用完即清（避免影响后续用例）
   await cliJson(['localtask', 'topic', 'remove', '--key', waitWithSuffix.key, '--force']);

@@ -35,6 +35,11 @@ import { fileURLToPath } from 'node:url';
 import { APP_DIR, DEFAULT_PORT } from '../../core/paths.js';
 import { badInput } from '../../core/errors.js';
 import { openBrowser } from '../../core/open.js';
+import {
+  hasTemplateMarkers,
+  renderInstruction,
+  formatGoalTiming,
+} from '../../core/instruction-template.js';
 
 export const DEFAULT_TIMEOUT_MS = 180_000; // 阻塞默认 3 分钟（推荐值）
 const POLL_MS = 500; // 跨进程兜底轮询间隔
@@ -43,14 +48,17 @@ export const MAX_TIMEOUT_SEC = 600; // 阻塞时长上限（10 分钟）
 export const MAX_SUMMARY = 2000; // 现状（状态）长度上限（原 200，已放宽）
 export const MAX_TEXT = 20_000; // 单条任务内容长度上限
 
-// wait 取任务返回时，在 task.text 末尾追加的「收尾指令」（可在面板/CLI 修改；置空关闭）。
-// 作用：从每一条任务层面反复强调「计划最后再 wait 一次」，避免 agent 在长对话里漂移、漏调。
-// 注意：命令名是 localtask 不是 sessiontask（v0.8.0 重命名后），但默认文案直接复用同一段文字。
+// wait 交付任务时的「收尾指令」**模板**（CLI/HTTP 可改；置空关闭）。
+// 含 {{ 标记 → 模板：wait 返回时渲染成融合指令（goal 状态 + 收尾要求）放进返回载荷的
+// instruction 字段，task.text 保持库存原文；不含 {{ 的纯文本 → v0.x 行为不变（追加到
+// task.text 末尾）。作用不变：从每条任务层面反复强调「计划最后再 wait 一次」，防漂移。
+// 占位符清单见 core/instruction-template.js；渲染是服务端确定性替换，goal.prompt 原文逐字嵌入。
 export const DEFAULT_TASK_SUFFIX =
+  '{{#goal}}〔时间目标「{{goal.name}}」{{goal.remainingHuman}}〕{{/goal}}' +
   '规划计划，然后完成这个任务；计划的最后一个动作，是再次调用 ' +
   'nx-kv localtask wait（带上 --cwd 当前工作目录、--summary 当前现状、--json）收尾本轮，' +
   '在拿到下一条任务或超时之前不要提前结束。';
-const MAX_SUFFIX_LEN = 500; // 收尾追加语长度上限
+const MAX_SUFFIX_LEN = 2000; // 收尾指令模板长度上限（模板本体；渲染产物不设限）
 
 // 归一化收尾追加语：缺省（旧 store 无此字段）→ 默认；显式传 ''（清空）→ '' 表示关闭。
 // 注意：与 timeoutSec 不同——timeoutSec 缺省→推荐值（仍开启），taskSuffix 缺省→默认文本。
@@ -615,16 +623,50 @@ async function consumeCancelRequest(key) {
 // 那不是"到点自动取消"，那是把目录焊死了。这种情况该由 agent 自己的
 // `timegoal check`（reached:true）去处理。
 let goalProbe = null;
+// memoized 动态加载（探针与渲染上下文共用一个加载点；加载失败下次再试）
+async function getGoalProbe() {
+  if (!goalProbe) goalProbe = await import('../timegoal/service.js');
+  return goalProbe;
+}
 async function readGoalDeadlineMs(key) {
   if (!key || isGlobalKey(key)) return 0;
   try {
-    if (!goalProbe) goalProbe = await import('../timegoal/service.js');
-    const g = await goalProbe.probeGoalExpiry(key);
+    const g = await (await getGoalProbe()).probeGoalExpiry(key);
     if (!g || g.reached) return 0; // 已经到点的：不参与自动取消
     const ms = Number(g.deadlineMs);
     return Number.isFinite(ms) && ms > 0 ? ms : 0;
   } catch {
     return 0;
+  }
+}
+
+// wait **返回时刻**的目标上下文（渲染 instruction 用）。与探针同一个动态 import、同样
+// fail-open：加载失败 / 读不到 / 没目标 / 出错 → null，instruction 照常渲染（goal 段
+// 被整段丢弃）。绝不写盘：showTimegoal 走 loadRecycledStore({persist:false})，与探针
+// 同一条只读契约（timegoals.json 字节数不变，goal-expiry 单测字节比对钉着）。
+// 与探针刻意分开：探针按 key 服务于 500ms 轮询；这里按 cwd 走 showTimegoal——
+// 只有它带 prompt 原文与 remainingSec/overtimeSec。
+// 注意读取时机是**返回时刻**不是阻塞开始：快路径在 readGoalDeadlineMs 之前就返回了，
+// 长阻塞期间 deadline 也可能过线——此时渲染出「已到点」是预期行为（信息性呈现，
+// 不改变 goalPoll 的 goal_expired 出口）。
+async function readGoalCtx(cwd) {
+  if (!cwd || isGlobalKey(cwd)) return null; // cwd 是路径，isGlobalKey 恒 false——纯防御
+  try {
+    const show = await (await getGoalProbe()).showTimegoal({ cwd });
+    if (!show || !show.hasGoal) return null;
+    const g = show.goal || {};
+    return {
+      name: g.name || show.name || '',
+      deadline: g.deadline || '',
+      prompt: g.prompt || '',
+      remainingHuman: formatGoalTiming({
+        reached: show.reached,
+        remainingSec: show.remainingSec,
+        overtimeSec: show.overtimeSec,
+      }),
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -635,7 +677,9 @@ function settingsView(s) {
     timeoutSec: clampTimeoutSec(s && s.timeoutSec),
     recommendedSec: DEFAULT_TIMEOUT_SEC,
     maxSec: MAX_TIMEOUT_SEC,
-    // wait 交付任务时追加到 task.text 末尾的收尾提醒；''=关闭；defaultTaskSuffix 供 UI 恢复默认
+    // wait 交付任务时的收尾指令**模板**：含 {{ 标记 → 渲染进返回载荷的 instruction 字段
+    // （task.text 保持库存原文）；纯文本 → 追加到 task.text 末尾（旧行为）；''=关闭。
+    // defaultTaskSuffix 供 UI/CLI 恢复默认
     taskSuffix: clampTaskSuffix(s && s.taskSuffix),
     defaultTaskSuffix: DEFAULT_TASK_SUFFIX,
     suffixEnabled: !!clampTaskSuffix(s && s.taskSuffix),
@@ -723,14 +767,15 @@ export async function pruneTopics({ allFinished = false, dryRun = false } = {}) 
   return { status: 'ok', dryRun: !!dryRun, count: removed.length, removed };
 }
 
-// 配置等待超时 / 任务收尾追加语（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟；
-// taskSuffix 为 wait 返回任务时追加到 task.text 末尾的固定指令，传 '' 关闭、不传保持不变。
+// 配置等待超时 / 收尾指令模板（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟；
+// taskSuffix 为 wait 交付任务的收尾指令模板（≤2000 字）：含 {{ 占位符 → 渲染进返回的
+// instruction 字段；纯文本 → 追加到 task.text 末尾（v0.x 行为）；传 '' 关闭、不传保持不变。
 export async function updateSettings({ timeoutSec, taskSuffix } = {}) {
   const hasTimeout = timeoutSec !== undefined && timeoutSec !== null;
   const hasSuffix = taskSuffix !== undefined;
   if (!hasTimeout && !hasSuffix) {
     throw badInput(
-      '请至少指定一项：--timeout <秒>，或 --suffix "<收尾追加语>"（--no-suffix 关闭追加、--reset-suffix 恢复默认）'
+      '请至少指定一项：--timeout <秒>，或 --suffix "<收尾指令模板>"（--no-suffix 关闭、--reset-suffix 恢复默认）'
     );
   }
   const store = await loadStore();
@@ -1425,6 +1470,36 @@ function withTaskSuffix(task, suffix) {
   return { ...task, text: `${base.replace(/\s+$/, '')}\n\n${s}` };
 }
 
+// 组装 wait 返回的任务载荷 + 收尾指令。分流（见 DEFAULT_TASK_SUFFIX 注释）：
+//   纯文本（无 {{）→ v0.x 行为：拼到 task.text 末尾（幂等、不回写库存）、无新字段；
+//   模板（含 {{） → 渲染进返回载荷的 instruction 字段，task.text 保持库存原文
+//                   （模板原文若追加进正文会把 {{...}} 漏进任务文本）；
+//   ''（关闭）    → 只回任务。
+// 任何异常都降级为「只回任务」——wait 绝不能因渲染挂掉（与探针同一条 fail-open 纪律）。
+async function buildTaskDelivery(task, suffix, { source, summary, cwd, name }) {
+  const tpl = clampTaskSuffix(suffix);
+  try {
+    if (!hasTemplateMarkers(tpl)) return { task: withTaskSuffix(task, tpl) };
+    const goal = await readGoalCtx(cwd);
+    const instruction = renderInstruction(tpl, {
+      goal,
+      task: task ? { id: task.id, text: String(task.text || '') } : null,
+      source: source || '',
+      summary: summary || '',
+      cwd: cwd || '',
+      name: name || '',
+    });
+    if (!instruction) return { task };
+    // coversBody = 模板是否包含 {{task.text}}（即 instruction 是否自包含任务正文）。
+    // 由服务端判定而不是 CLI 端做子串猜测——短任务文本可能碰巧是指令的子串，
+    // 子串启发会误吞正文块的显示。
+    const coversBody = /\{\{\s*task\.text\s*\}\}/.test(tpl);
+    return { task, instruction, coversBody };
+  } catch {
+    return { task };
+  }
+}
+
 /**
  * 针对某主题（工作目录）等待用户回填下一条任务。
  * 领取顺序：本目录队列 → 全局主题（共享池）→ 阻塞（两个来源任一到达即唤醒）。
@@ -1466,7 +1541,8 @@ export async function waitForTask({
   // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
   const queued = await consumeFirstPending(key, summary, by);
   if (queued) {
-    return { status: 'ok', key, cwd, name, summary, task: withTaskSuffix(queued, suffix), queued: true, source: 'local', repo: repoCtx };
+    const delivery = await buildTaskDelivery(queued, suffix, { source: 'local', summary, cwd, name });
+    return { status: 'ok', key, cwd, name, summary, ...delivery, queued: true, source: 'local', repo: repoCtx };
   }
 
   // 1b. 本地空 → 去全局主题（共享池）领。这是所有 wait 的**无条件默认兜底**：
@@ -1474,13 +1550,16 @@ export async function waitForTask({
   //     （防止调用方习惯性传 cwd 导致共享池永远无人领取。）
   const fromGlobal = await consumeFirstPending(GLOBAL_KEY, summary, by);
   if (fromGlobal) {
+    // 全局池投递渲染的仍是**等待方目录**的 goal——目标绑定在等待中的 agent 目录上，
+    // 与任务来自哪个队列无关。
+    const delivery = await buildTaskDelivery(fromGlobal, suffix, { source: 'global', summary, cwd, name });
     return {
       status: 'ok',
       key,
       cwd,
       name,
       summary,
-      task: withTaskSuffix(fromGlobal, suffix),
+      ...delivery,
       queued: true,
       source: 'global',
       repo: repoCtx,
@@ -1615,6 +1694,12 @@ export async function waitForTask({
   let result;
   try {
     const r = await outcome;
+    // 收尾指令在**返回时刻**组装（此刻的 goal 状态才是真实状态；阻塞期间到点会渲染出已到点）。
+    // 只对拿到任务的结果生效——timeout/goal_expired/cancelled 的返回形状是钉死的契约，不动。
+    const delivery =
+      r.kind === 'task'
+        ? await buildTaskDelivery(r.task, suffix, { source: r.source || 'local', summary, cwd, name })
+        : null;
     result =
       r.kind === 'timeout'
         ? { status: 'timeout', key, cwd, summary, timeoutMs: tmo }
@@ -1636,7 +1721,7 @@ export async function waitForTask({
             cwd,
             name,
             summary,
-            task: withTaskSuffix(r.task, suffix),
+            ...(delivery || { task: r.task }),
             delivered: r.delivered,
             queued: false,
             source: r.source || 'local',

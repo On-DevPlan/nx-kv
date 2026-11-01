@@ -52,6 +52,7 @@ export function buildTree(repos, boards, topics, prefs, kw = '') {
         repoId: r.id,
         topicKey: ts.length ? ts[0].key : '',
         name: r.name,
+        icon: r.icon || '',        // 项目图标（emoji/单字符；空 = 默认文件夹图标）
         cwd: r.path || '',
         desc: r.desc || '',
         boards: r.boards || [],

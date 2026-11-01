@@ -8,6 +8,7 @@
 //   - 绑定优先（DocRef），缺省走约定路径；约定路径缺失时惰性播种（字符串字段非空）
 //   - 外部目录绑定只列文件清单，不进全文（agent 自己读盘——目录全文没有边界）
 //   - 单文件 256KB 截断：知识是给人/模型读的，不是备份通道
+import { join, sep } from 'node:path';
 import * as paths from './paths.js';
 import * as store from './store.js';
 import { ensureSeedForRel } from './seed.js';
@@ -81,7 +82,7 @@ function docOut(docId, body, { warnings, label }) {
   return { docId, title: m ? m[1].trim() : '', body: out };
 }
 
-/** 单元格文档读取：DocRef（自有/外部）→ 出参；缺省 ref 走约定路径 */
+/** 单元格文档读取：DocRef（自有 / 外部 / **ref 仓库内**）→ 出参；缺省 ref 走约定路径 */
 async function readRef(ref, fallbackRel, opts) {
   if (!ref || ref.rel) return readOwn((ref && ref.rel) || fallbackRel, opts);
   return readExternalDoc(ref.path, opts);
@@ -188,4 +189,154 @@ function renderMd(k) {
     for (const r of k.refs) lines.push(`- ${r.name}${r.remote ? `（${r.remote}）` : ''}${r.note ? ` —— ${r.note.split('\n')[0]}` : ''}`);
   }
   return lines.join('\n');
+}
+
+/**
+ * **项目组上下文**（交付层用）：某个工作目录所属仓库所在的项目组材料。
+ *
+ * 与 repoKnowledge 的区别：那是「一份完整的知识报告」（CLI 给人看）；
+ * 这里只取**交付时必须带上的那部分**——组定位、组介绍、本项目在组里的位置、
+ * 兄弟成员的组内描述、组绑定参考文件的**可读路径**。
+ *
+ * 返回 { repo:{name,key}, groups:[{name,key,desc,intro:{body,path},note,peers,docLinks}] }
+ * 不在项目组里 → groups 为空数组（调用方据此不拼上下文段）。
+ */
+export async function groupContextFor(cwd) {
+  const { loadStore, deriveKey, boardKeyOf, boardMemberKeys, autoKeysByPrefix, normalizePathKey } = await reposBridge();
+  const s = await loadStore();
+  const want = normalizePathKey(cwd);
+  if (!want) return null;
+  const repo = s.repos.find((r) => normalizePathKey(r.path) === want);
+  if (!repo) return null; // 没登记的目录：没有项目，也没有组
+  const rk = deriveKey(repo);
+  const autoMap = autoKeysByPrefix(s);
+  const warnings = [];
+  const closure = await store.externalClosure(s);
+  const groups = [];
+
+  for (const b of s.boards) {
+    const members = boardMemberKeys(b, s, autoMap);
+    if (!members.includes(rk)) continue;
+    // 组介绍（绑定优先，缺省约定路径）
+    const introRef = b.doc;
+    const introRel = paths.boardDocRel(b.name);
+    let intro = { body: '', path: '' };
+    if (introRef && introRef.path) {
+      const ext = await readExternalDoc(introRef.path, { warnings, label: `组介绍·${b.name}` });
+      intro = { body: ext.body || '', path: introRef.path };
+    } else {
+      const rel = (introRef && introRef.rel) || introRel;
+      const own = await readOwn(rel, { warnings, label: `组介绍·${b.name}` });
+      intro = { body: own.body || '', path: join(paths.docsRoot(), rel) };
+    }
+    // 本项目在组里的位置
+    const noteRef = (b.repoDocs || {})[rk];
+    const noteOwn = await readRef(noteRef, paths.groupNoteRel(b.name, rk), { warnings, label: `组内描述·${b.name}` });
+    // 兄弟成员（组内各仓库的组内描述）
+    const peers = [];
+    for (const mkey of members) {
+      const mr = s.repos.find((x) => deriveKey(x) === mkey);
+      const mname = mr ? mr.name : mkey;
+      if (mkey === rk) continue; // 本项目单列
+      const peerNote = await readRef(
+        (b.repoDocs || {})[mkey],
+        paths.groupNoteRel(b.name, mkey),
+        { warnings, label: `组内描述·${b.name}/${mkey}` }
+      );
+      peers.push({ name: mname, note: peerNote.body || (b.repoNotes || {})[mkey] || '' });
+    }
+    // 组绑定参考文件（给可读路径——agent 直接读盘）
+    const docLinks = [];
+    for (const l of Array.isArray(b.docLinks) ? b.docLinks : []) {
+      if (l.rel) {
+        docLinks.push({ rel: l.rel, abs: join(paths.docsRoot(), l.rel), note: l.note || '' });
+        continue;
+      }
+      const abs = l.path && store.resolveExternal(l.path, closure);
+      if (!abs) continue;
+      docLinks.push({ path: abs, abs, note: l.note || '' });
+    }
+    groups.push({
+      name: b.name,
+      key: boardKeyOf(b.name),
+      desc: b.desc || '',
+      intro,
+      note: noteOwn.body || (b.repoNotes || {})[rk] || '',
+      peers,
+      docLinks,
+    });
+  }
+  return { repo: { name: repo.name, key: rk }, groups };
+}
+
+/**
+ * **介绍文档集**（多篇）：目录优先，旧的单文件路径回落。
+ *
+ *   dirRel    介绍目录（自有树内）：repo/<key> · board/<组> · group/<组>/<key>
+ *   legacyRel 旧单文件路径（读时回落，保证既有数据继续可用）
+ *   ref       DocRef 覆盖（绑定的文件或目录）；给了就以它为准
+ *
+ * 返回 { main: {body,title,path}|null, extras: [{rel,name,path,isReference}], count }
+ *   main   = 主篇（目录 index.md；没有目录则旧单文件）
+ *   extras = 其余文档（补充说明；reference/ 子目录下的标记 isReference）
+ */
+// WIP：目录介绍文档集读取（暂无调用方，保留待接线；lint 豁免用 _ 前缀）
+async function _readIntroSet({ dirRel, legacyRel, ref, warnings, label }) {
+  // 1) 绑定了文档/目录 → 以绑定为准
+  if (ref) {
+    if (ref.rel) {
+      const one = await readOwn(ref.rel, { warnings, label });
+      if (one.missing) return { main: null, extras: [], count: 0 };
+      return { main: { body: one.body, title: one.title, path: paths.ownDocId(ref.rel) }, extras: [], count: 1 };
+    }
+    if (ref.path) {
+      const st = await import('node:fs/promises').then((m) => m.stat(ref.path).catch(() => null));
+      if (!st) return { main: null, extras: [], count: 0 };
+      if (!st.isDirectory()) {
+        const one = await readExternalDoc(ref.path, { warnings, label });
+        if (one.missing) return { main: null, extras: [], count: 0 };
+        return { main: { body: one.body, title: one.title, path: ref.path }, extras: [], count: 1 };
+      }
+      // 绑的是目录 → 目录内全部 .md（主篇 = index.md，其余为补充说明）
+      const files = await listDirMd(ref.path);
+      const main = files.find((f) => f.toLowerCase().endsWith('/index.md')) || files[0] || '';
+      const others = files.filter((f) => f !== main);
+      const mainDoc = main ? await readExternalDoc(main, { warnings, label }) : null;
+      return {
+        main: mainDoc && !mainDoc.missing ? { body: mainDoc.body, title: mainDoc.title, path: main } : null,
+        extras: others.map((f) => ({
+          rel: '',
+          name: f.slice(f.lastIndexOf(sep) + 1),
+          path: f,
+          isReference: isReferencePath(f),
+        })),
+        count: files.length,
+      };
+    }
+  }
+  // 2) 无绑定：目录主篇优先 → 回落旧单文件
+  const mainRel = dirRel ? paths.docMainRel(dirRel) : '';
+  if (mainRel && (await store.ownDocExists(mainRel))) {
+    const one = await readOwn(mainRel, { warnings, label });
+    const inDir = await store.listOwnDocsIn(dirRel);
+    return {
+      main: { body: one.body, title: one.title, path: paths.ownDocId(mainRel) },
+      extras: inDir
+        .filter((d) => d.rel !== mainRel)
+        .map((d) => ({
+          rel: d.rel,
+          name: d.name,
+          path: paths.ownDocId(d.rel),
+          isReference: d.name.toLowerCase().startsWith(paths.DOC_REFERENCE_DIR + '/'),
+        })),
+      count: inDir.length,
+    };
+  }
+  if (legacyRel) {
+    const one = await readOwn(legacyRel, { warnings, label });
+    if (!one.missing) {
+      return { main: { body: one.body, title: one.title, path: paths.ownDocId(legacyRel) }, extras: [], count: 1 };
+    }
+  }
+  return { main: null, extras: [], count: 0 };
 }

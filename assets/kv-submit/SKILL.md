@@ -1,6 +1,6 @@
 ---
 name: kv-submit
-description: 把当前对话里的需求打包成任务，通过 nx-kv localtask add 提交到另一个工作目录的队列，委托在那里的 agent 完成——先总结上下文（聊了什么、定了什么、涉及哪些文件）、再提炼出用户的真实需求（目标、约束、验收标准），写成不依赖本对话就能执行的自包含任务文本再提交；可给正在等待的 agent 实时补任务，也可给不在等待的目录排队。触发词：提交任务、委托、派任务、丢给另一个 agent、交给那边做、转发需求、整理成任务提交、总结上下文提交、提炼需求、长对话提炼、保存会话、会话交接、localtask add、kv-submit。凡「把这个对话里的东西变成任务交给别的 agent」的场景都走本 skill。反例：你自己在等用户回填用 kv-waittask；主动领取排给本目录的任务用 kv-localget；操作远程 KV 清单（todo）用 nx-kv。
+description: 把当前对话里的需求打包成任务，通过 nx-kv localtask add 提交到另一个工作目录的队列，委托在那里的 agent 完成——先总结上下文（聊了什么、定了什么、涉及哪些文件）、再提炼出用户的真实需求（目标、约束、验收标准），写成不依赖本对话就能执行的自包含任务文本再提交；可给正在等待的 agent 实时补任务，也可给不在等待的目录排队。触发词：提交任务、委托、派任务、丢给另一个 agent、交给那边做、转发需求、整理成任务提交、总结上下文提交、提炼需求、长对话提炼、保存会话、会话交接、localtask add、kv-submit。凡「把这个对话里的东西变成任务交给别的 agent」的场景都走本 skill。反例：你自己在等用户回填、或要领取/完成/重开本目录的任务用 kv-get；操作远程 KV 清单（todo）用 nx-kv。
 ---
 
 # kv-submit — 提炼需求，委托其它 agent（提交侧）
@@ -42,6 +42,18 @@ nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --duration 2h 
   全局任务池，任何目录空闲的 agent 自动领取。
 - 记下 `task.id`，向用户报告「已提交到哪个目录（或全局池）、第几号任务」。
 
+## 用户看完结果要改 → 重开那条任务
+
+任务被领走、干完（`localtask done`）之后，用户提了修改意见——**那条任务要重开**，
+否则 agent 看不到新一轮的诉求（已领取的任务不会再被派发）：
+
+```bash
+nx-kv localtask reopen --id <n> --text "<改后的正文（Markdown）>" --json
+```
+
+重开 = 回到待领取 + 领取时间作废（新一轮重新计时），上一轮的完成总结保留。
+`--text` 不给则只重开、不改正文。重开的细节见 kv-get skill。
+
 ## 任务文本怎么写（一句话版）
 
 接收方没有你的上下文，任务文本按这个顺序组织成一段（单行，用 ①②③ 编号，
@@ -69,8 +81,8 @@ nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --duration 2h 
 
 | 场景 | 用哪个 |
 | --- | --- |
-| 你自己干完活、等用户在浏览器回填下一条 | kv-waittask（wait） |
-| 主动领取排给**本目录**的任务 | kv-localget |
+| 你自己干完活、等用户在浏览器回填下一条 | kv-get（wait / done / reopen） |
+| 主动领取排给**本目录**的任务 | kv-get（get） |
 | 操作远程 KV 后端的 todo 清单（需登录） | nx-kv |
 | 给**正在等待**的 agent 补一条任务 | 本 skill（add 到它的目录） |
 | 不限定接收方、让任何空闲 agent 自取 | 本 skill（`add --global` 推全局任务池） |
@@ -80,13 +92,12 @@ nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --duration 2h 
 三者共享同一份本机任务存储与按目录划分的队列（`~/.nx-kv/localtasks.json`）：
 
 - **kv-submit（本 skill）**：提交侧——总结上下文、提炼需求、投递到别的目录。
-- **kv-waittask**：等待侧——目标目录的 agent 用 wait 阻塞接任务（人机接力）。
-- **kv-localget**：领取侧——目标目录的 agent 主动领队列里的任务。
+- **kv-get**：领取侧——目标目录的 agent 领活（get）、等人接力（wait）、标完成（done）、按反馈重开（reopen）。
 - **nx-kv**：远程 KV 后端的 todo 清单（需登录、按 groupId 隔离），与本机队列无关。
 
 ## 安装
 
 ```bash
 nx-kv skill install kv-submit         # 装到 ~/.claude/skills/kv-submit
-nx-kv skill list                       # 列出 nx-kv / kv-waittask / kv-submit / kv-localget
+nx-kv skill list                       # 列出 nx-kv / kv-get / kv-submit / kv-repo
 ```

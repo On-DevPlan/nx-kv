@@ -6,7 +6,7 @@
 // 面板化之后这里**不再有页签栏**：开哪几页、在哪开、能不能并排，都由工作区布局管。
 import { useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
-import { useToast } from '../../components/ui.jsx';
+import { useDialog, useToast } from '../../components/ui.jsx';
 import { PopMenu } from '../../components/overlay.jsx';
 import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
 import { useApp } from '../../app-context.jsx';
@@ -15,6 +15,7 @@ import { findOpenPanel, openPanel } from '../../workspace.js';
 import { nextDraftId } from '../../modules/md/doc-store.js';
 
 export default function DirPanel({ dirKey }) {
+  const { dialog } = useDialog();
   const app = useApp() || {};
   const toast = useToast();
   const rows = app.rows || [];
@@ -76,6 +77,30 @@ export default function DirPanel({ dirKey }) {
   ];
 
   // ─── 删除任务（软删除；顺手关掉已打开的页签）───
+  // 修改反馈 → 重开：任务回到待领取，agent 可再次领取（执行循环继续）
+  const reopenTask = (t) => {
+    if (!t) return;
+    const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
+    guard(async () => {
+      const body = await dialog({
+        title: `反馈修改 · #${t.id}`,
+        input: true,
+        placeholder: '写下要改的地方（留空 = 只重开，不改正文）',
+      });
+      if (body === null || body === undefined) return; // 取消
+      await api('/api/localtasks/reopen', {
+        method: 'POST',
+        body: {
+          ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic.cwd }),
+          id: t.id,
+          ...(String(body).trim() ? { text: String(body) } : {}),
+        },
+      });
+      toast(`已重开「${title.replace(/^#\s*/, '')}」——agent 可再次领取`);
+      refreshLocal();
+    });
+  };
+
   const delTask = (t) => {
     if (!t) return;
     const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
@@ -135,6 +160,7 @@ export default function DirPanel({ dirKey }) {
           onNew={() => newDraft(tpl ? tpl.defaultBody() : '')}
           onOpenTask={openTask}
           onDeleteTask={delTask}
+          onReopenTask={reopenTask}
           onTplMenu={(e) => setTplMenu({ x: e.clientX, y: e.clientY })}
           onImport={() => fileMdRef.current?.click()}
           onProg={openProgress}

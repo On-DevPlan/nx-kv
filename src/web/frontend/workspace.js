@@ -10,6 +10,7 @@
 // 与 prefs（展开态、隐藏、排序那类 UI 偏好）分开存 —— 两边生命周期不同：
 // prefs 是「这个浏览器的口味」，布局是「这个工作区的骨架」。
 import { Actions, DockLocation, Model, Rect } from 'flexlayout-react';
+import { normalizeSidebarWeight, sideStateAttrs } from './components/sidebar/side-state.js';
 
 /** 布局的落点。与 prefs 的 LS_KEY 分开存：布局大、单独读写不易互相踩。 */
 export const WORKSPACE_KEY = 'nx-kv-ui.workspace';
@@ -53,7 +54,8 @@ export function initialLayoutJson() {
           type: 'tabset',
           id: 'ts_sidebar',
           weight: 16,
-          children: [{ type: 'tab', id: 't_sidebar', name: '目录', component: 'sidebar' }],
+          // 目录页签不可关——关掉后 SidebarPanel 卸载，关闭态把手一起消失，界面卡死。
+          children: [{ type: 'tab', id: 't_sidebar', name: '目录', component: 'sidebar', enableClose: false }],
         },
         {
           type: 'tabset',
@@ -136,6 +138,112 @@ export function pruneBlankChrome(json) {
   return json;
 }
 
+/**
+ * 读盘时愈合侧栏：补回缺失的目录页签、钉死 enableClose、归一病态 weight。
+ *
+ * 关键路径：目录 tab 被拖进主内容 tabset 后，收起/关闭会把整个主面板的
+ * enableTabStrip 关掉、weight 压到 2.5——页签条消失，目录也选不中，界面卡死。
+ * 只要目录和别的组件共处同一 tabset，就拆回「左目录 / 右内容」。
+ *
+ * 返回是否改过 json（调用方决定要不要立刻回写）。
+ */
+export function healSidebarLayout(json) {
+  if (!json || !json.layout) return false;
+  let changed = false;
+  let sidebarTab = null;
+  let sidebarTs = null;
+  const walk = (node, parent) => {
+    if (!node) return;
+    if (node.type === 'tab' && node.component === 'sidebar') {
+      sidebarTab = node;
+      if (parent && parent.type === 'tabset') sidebarTs = parent;
+    }
+    if (Array.isArray(node.children)) {
+      for (const c of node.children) walk(c, node);
+    }
+  };
+  walk(json.layout, null);
+
+  const row = json.layout;
+  const canUnshift = row && row.type === 'row' && Array.isArray(row.children);
+
+  if (!sidebarTab) {
+    // 目录被关掉了：塞回主布局左侧一个专用 tabset
+    if (canUnshift) {
+      row.children.unshift({
+        type: 'tabset',
+        id: 'ts_sidebar',
+        weight: sideStateAttrs('expanded').weight,
+        enableTabStrip: true,
+        children: [{ type: 'tab', id: 't_sidebar', name: '目录', component: 'sidebar', enableClose: false }],
+      });
+      changed = true;
+    }
+    return changed;
+  }
+
+  if (sidebarTab.enableClose !== false) {
+    sidebarTab.enableClose = false;
+    changed = true;
+  }
+
+  // 目录与其它页签混在同一 tabset → 拆开（否则收起侧栏会误伤主编辑区）
+  const mixed = sidebarTs
+    && Array.isArray(sidebarTs.children)
+    && sidebarTs.children.some((c) => c && c.component !== 'sidebar');
+  if (mixed && canUnshift) {
+    const kids = sidebarTs.children;
+    const idx = kids.indexOf(sidebarTab);
+    if (idx >= 0) kids.splice(idx, 1);
+    // 修正 selected：原先指向被拆走之后的页签
+    if (typeof sidebarTs.selected === 'number') {
+      if (idx >= 0 && sidebarTs.selected > idx) sidebarTs.selected -= 1;
+      else if (idx >= 0 && sidebarTs.selected === idx) {
+        sidebarTs.selected = Math.max(0, Math.min(kids.length - 1, idx));
+      }
+      if (kids.length === 0) delete sidebarTs.selected;
+      else if (sidebarTs.selected >= kids.length) sidebarTs.selected = kids.length - 1;
+    }
+    // 主内容区恢复正常页签条与权重（被关掉条 / 压成窄轨的都修回来）
+    sidebarTs.enableTabStrip = true;
+    const mw = Number(sidebarTs.weight);
+    if (!Number.isFinite(mw) || mw < 8) sidebarTs.weight = 84;
+
+    row.children.unshift({
+      type: 'tabset',
+      id: 'ts_sidebar',
+      weight: sideStateAttrs('expanded').weight,
+      enableTabStrip: true,
+      children: [sidebarTab],
+    });
+    changed = true;
+    return changed;
+  }
+
+  if (sidebarTs) {
+    const w = Number(sidebarTs.weight);
+    // 读盘时若处于关闭档（含被拖到近 0）：直接展开。
+    // 关掉后把手看不见时，刷新就能回来——比卡死在无侧栏强。
+    if (!Number.isFinite(w) || w < 2) {
+      const attrs = sideStateAttrs('expanded');
+      if (sidebarTs.weight !== attrs.weight || sidebarTs.enableTabStrip !== attrs.enableTabStrip) {
+        sidebarTs.weight = attrs.weight;
+        sidebarTs.enableTabStrip = attrs.enableTabStrip;
+        changed = true;
+      }
+    } else {
+      const next = normalizeSidebarWeight(w);
+      if (w !== next) {
+        sidebarTs.weight = next;
+        const st = next < 8 ? 'collapsed' : 'expanded';
+        sidebarTs.enableTabStrip = sideStateAttrs(st).enableTabStrip;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 /** 读盘 → 模型；坏数据不吞掉整台应用，退回初始布局 */
 export function loadModel() {
   try {
@@ -146,6 +254,7 @@ export function loadModel() {
     // 剪空壳：老布局里已经存进去的空 tabset / 空 border / 空浮窗在这一步愈合
     if (!pruneEmptyTabsets(json.layout)) return applyGlobalAttrs(Model.fromJson(initialLayoutJson()));
     pruneBlankChrome(json);
+    healSidebarLayout(json);
     return applyGlobalAttrs(Model.fromJson(json));
   } catch {
     return applyGlobalAttrs(Model.fromJson(initialLayoutJson()));
@@ -367,6 +476,29 @@ export function setTabsetAttrs(model, tabsetId, attrs) {
   if (!found) return false;
   model.doAction(Actions.updateNodeAttributes(tabsetId, attrs));
   return true;
+}
+
+/**
+ * 运行时补回被关掉的目录页签（停靠到主布局最左侧）。
+ * 返回新 tabset id；已存在则直接返回现有 tabset id。
+ */
+export function restoreSidebarTab(model) {
+  if (!model) return null;
+  const existing = tabsetOfComponent(model, 'sidebar');
+  if (existing) return existing;
+  const first = model.getFirstTabSet && model.getFirstTabSet();
+  const target = first ? first.getId() : null;
+  if (!target) return null;
+  model.doAction(Actions.addTab(
+    { type: 'tab', id: 't_sidebar', name: '目录', component: 'sidebar', enableClose: false },
+    target,
+    DockLocation.getByName('left'),
+    -1,
+    true
+  ));
+  const tsId = tabsetOfComponent(model, 'sidebar');
+  if (tsId) setTabsetAttrs(model, tsId, sideStateAttrs('expanded'));
+  return tsId;
 }
 
 /** 当前选中的 tab（深链同步用） */

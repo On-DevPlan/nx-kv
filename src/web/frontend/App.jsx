@@ -35,6 +35,7 @@ import {
 } from './workspace.js';
 import { useTemplates } from './modules/md/use-templates.js';
 import { loadPrefs, updatePrefs } from './prefs.js';
+import SidebarRescueFab from './components/sidebar/rescue-fab.jsx';
 
 // 只借 FlexLayout 的**结构 CSS**（盒模型与拖拽几何）——不引它的配色：
 // 配色全部由 style-v2.css 里的 --flexlayout-* 变量覆写接管（跟 nx-sk 同一套做法）。
@@ -399,6 +400,8 @@ export default function App() {
                   ),
                 }}
               />
+              {/* 关闭态把手挂在壳层：侧栏 weight≈0 时 panel 不挂载也能展开 */}
+              <SidebarRescueFab model={model} />
             </ErrorBoundary>
           ) : (
             <div className="pad muted">正在装载工作区…</div>

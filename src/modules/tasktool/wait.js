@@ -33,6 +33,7 @@ import {
   unregisterTopicWaiter,
 } from '../localtask/service.js';
 import { ensureTaskGoal } from './taskgoal.js';
+import { readGroupContext, renderGroupContext } from './groupctx.js';
 import * as timegoal from './timegoal.js';
 
 // 跨进程兜底轮询间隔（只定这里的读取节奏；队列写入节奏与它无关）
@@ -132,34 +133,44 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
       });
     }
     const goal = taskGoalCtx || (await readGoalCtx(cwd));
-    if (!hasTemplateMarkers(tpl)) {
+
+    // 项目组上下文（组概念 + 本项目位置 + 兄弟成员 + 参考文件地址）：
+    // 只进 instruction，**task.text 保持库存原文**——todo 的口径是
+    // 「封装对应的提示词保持在原本的提示此任务下面对上下文环境进行一个封装」。
+    const groupText = renderGroupContext(await readGroupContext(cwd));
+
+    const parts = [];
+    if (groupText) parts.push(groupText);
+    if (hasTemplateMarkers(tpl)) {
+      const instruction = renderInstruction(tpl, {
+        goal,
+        task: task ? { id: task.id, text: String(task.text || '') } : null,
+        source: source || '',
+        summary: summary || '',
+        cwd: cwd || '',
+        name: name || '',
+      });
+      if (instruction) parts.push(instruction);
+    } else if (!groupText) {
+      // 纯文本后缀 + 无组上下文 → 老行为：追加到 task.text 末尾（幂等、不回写库存）
       const base = { task: withTaskSuffix(task, tpl) };
       // 任务级 goal 必须把 check 指令带到 agent 手里——即使交付模板被关/是纯文本，
       // 也要以独立 instruction 交付（这就是「提示词当中写上，让他进行一个 check」）。
       if (taskGoalCtx) base.instruction = taskGoalCtx.prompt;
       return base;
+    } else {
+      parts.push(tpl); // 纯文本后缀 + 有组上下文 → 进 instruction，不污染 task.text
     }
-    const goalCtx = goal;
-    const instruction = renderInstruction(tpl, {
-      goal: goalCtx,
-      task: task ? { id: task.id, text: String(task.text || '') } : null,
-      source: source || '',
-      summary: summary || '',
-      cwd: cwd || '',
-      name: name || '',
-    });
     // 任务级 check 指令必须原样到达 agent（默认 suffix 模板不含 {{goal.prompt}}，
     // 用户自定义模板也可能漏写）——任务级 goal 存在时始终以独立段落追加。
-    const full = taskGoalCtx
-      ? instruction
-        ? `${instruction}\n\n${taskGoalCtx.prompt}`
-        : taskGoalCtx.prompt
-      : instruction;
+    if (taskGoalCtx) parts.push(taskGoalCtx.prompt);
+
+    const full = parts.join('\n\n').trim();
     if (!full) return { task };
     // coversBody = 模板是否包含 {{task.text}}（即 instruction 是否自包含任务正文）。
     // 由服务端判定而不是 CLI 端做子串猜测——短任务文本可能碰巧是指令的子串，
     // 子串启发会误吞正文块的显示。
-    const coversBody = /\{\{\s*task\.text\s*\}\}/.test(tpl);
+    const coversBody = hasTemplateMarkers(tpl) && /\{\{\s*task\.text\s*\}\}/.test(tpl);
     return { task, instruction: full, coversBody };
   } catch {
     return { task };

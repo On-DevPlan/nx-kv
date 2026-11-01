@@ -111,6 +111,7 @@ export async function externalClosure(store) {
     list.push({ path: p, owner });
   };
   for (const r of store.repos || []) addRef(r.doc, 'repo/' + (r.name || r.id));
+  for (const r of store.repos || []) for (const l of Array.isArray(r.docLinks) ? r.docLinks : []) addRef(l, 'repo/' + (r.name || r.id));
   for (const b of store.boards || []) {
     addRef(b.doc, 'board/' + b.name);
     for (const l of Array.isArray(b.docLinks) ? b.docLinks : []) addRef(l, 'board/' + b.name);
@@ -196,3 +197,17 @@ export function externalDocId(abs) {
 }
 
 export { ownDocId };
+
+/**
+ * 某个目录下的文档（介绍目录用）：[{ rel, abs, size }]，rel 相对**自有树根**。
+ * 只取该目录直属与其子目录（reference/ 等）的 .md。
+ */
+export async function listOwnDocsIn(dirRel) {
+  const prefix = String(dirRel || '').split('\\').join('/').replace(/\/+$/, '') + '/';
+  const out = [];
+  for (const d of await listOwnDocs()) {
+    if (!d.rel.startsWith(prefix)) continue;
+    out.push({ rel: d.rel, abs: d.abs, size: d.size, name: d.rel.slice(prefix.length) });
+  }
+  return out;
+}

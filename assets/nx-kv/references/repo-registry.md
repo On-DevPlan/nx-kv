@@ -8,7 +8,7 @@
 - 需要把某个目录登记为受管仓库，或扫描某目录批量发现仓库
 - 需要维护仓库的元信息：名称、描述、备注，或改登记路径
 - **需要 git 状态、差异、拉取、推送时不要进这里**——开发仓库不做 git 操作（见下）
-- **要搜索并克隆参考项目时用 [[kv-repo-mmx-gitrepo]]**——那是参考仓库的克隆 SOP
+- **要搜索并克隆参考项目时用 [[kv-repo]]**——那是参考仓库的克隆与**强制读** SOP
 - **只查分组与关系（不改动）时用 [[kv-repo]]**——那是仓库组的查询/报告侧
 
 ## 边界：git 操作只给参考仓库
@@ -76,7 +76,7 @@ git -C <path> pull --no-edit
 mmx-research-gitclone 的整体吸纳（2026-10-27）：远程 clone 下来学习/参考的仓库与
 开发仓库同住中心清单，但统一存放在 `gitRepoRoot`（`nx-kv setting set --gitRepoRoot <非C盘目录>`，
 **不设置则 clone 显式拒绝**——绝不默默堆进用户目录）。完整搜索→克隆 SOP 见
-[[kv-repo-mmx-gitrepo]]；这里登记命令面的速查：
+[[kv-repo]]；这里登记命令面的速查：
 
 ```bash
 nx-kv repo ref clone <url> [--name N] [--desc D] [--board <看板id>] [--bind <开发仓库>] [--depth 1] [--no-bind]

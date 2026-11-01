@@ -15,7 +15,7 @@ function shortTime(v) {
   return m ? `${m[1].slice(5)} ${m[2]}` : s.slice(0, 16);
 }
 
-export default function Landing({ isGlobal, tasks = [], onNew, onOpenTask, onDeleteTask, onTplMenu, onImport, onProg }) {
+export default function Landing({ isGlobal, tasks = [], onNew, onOpenTask, onDeleteTask, onReopenTask, onTplMenu, onImport, onProg }) {
   return (
     <div className="mdw-land">
       <div className="mdw-land-acts">
@@ -72,6 +72,19 @@ export default function Landing({ isGlobal, tasks = [], onNew, onOpenTask, onDel
                 <td className="mono faint">{shortTime(t.createdAt)}</td>
                 <td className="mono faint">{t.consumedAt ? shortTime(t.consumedAt) : '—'}</td>
                 <td className="act">
+                  {onReopenTask && t.status === 'consumed' && (
+                    <span
+                      className="del" role="button" tabIndex={-1}
+                      title="反馈修改：任务回到待领取，agent 可再次领取"
+                      aria-label={`重开 ${titleFromMd(t.text)}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReopenTask(t);
+                      }}
+                    >
+                      <Icon name="refresh" size={12} />
+                    </span>
+                  )}
                   {onDeleteTask && (
                     <span
                       className="del" role="button" tabIndex={-1}

@@ -61,3 +61,42 @@ export function groupNoteRel(boardName, repoKey) {
 
 // DocRef / docId 校验（docref.js）：这里转发导出，调用方统一从 paths 拿
 export { assertOwnedRel, assertDocRef, sanitizeDocRef, parseDocId, ownDocId, extDocId } from './docref.js';
+
+// ─── 介绍目录（多篇）──────────────────────────────────────────────────
+//
+// 项目的介绍、组的介绍、组内成员的描述，都不再只是**一篇**文件，而是一个
+// **目录**：
+//
+//   repo/<key>/index.md          主介绍
+//   repo/<key>/reference/*.md    reference 补充说明
+//   repo/<key>/*.md              其余补充说明
+//
+// 目录里的文档彼此可以用 [[双链]] 互指（双链索引覆盖自有树全部 .md，
+// 按文件名唯一命中即解析）。旧的单文件路径（repo/<key>.md）仍然可读——
+// 读的时候先找目录主篇，找不到回落旧单文件。
+
+/** 介绍目录内的主篇文件名 */
+export const DOC_MAIN = 'index.md';
+
+/** 介绍目录里的 reference 补充说明子目录 */
+export const DOC_REFERENCE_DIR = 'reference';
+
+/** 项目介绍目录：repo/<key 分段> */
+export function repoDocDirRel(repoKey) {
+  return 'repo/' + String(repoKey || '').split('/').map(docSeg).join('/');
+}
+
+/** 组介绍目录：board/<组 slug> */
+export function boardDocDirRel(boardName) {
+  return 'board/' + boardSeg(boardName);
+}
+
+/** 组内成员描述目录：group/<组 slug>/<key 分段> */
+export function groupNoteDirRel(boardName, repoKey) {
+  return 'group/' + boardSeg(boardName) + '/' + String(repoKey || '').split('/').map(docSeg).join('/');
+}
+
+/** 目录主篇的 rel */
+export function docMainRel(dirRel) {
+  return dirRel + '/' + DOC_MAIN;
+}

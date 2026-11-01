@@ -35,6 +35,7 @@ import { badInput, notFound } from '../../core/errors.js';
 import { formatDuration } from '../../core/instruction-template.js';
 // 任务级 timegoal 的声明校验（taskgoal.js 不依赖本模块——无环，静态引入安全）
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
+import { parseDuration } from '../tasktool/timegoal.js';
 
 export const DEFAULT_TIMEOUT_MS = 180_000; // 阻塞默认 3 分钟（推荐值）
 export const DEFAULT_TIMEOUT_SEC = 180; // 推荐阻塞时长（3 分钟）
@@ -167,7 +168,8 @@ export function stampNow(d = new Date()) {
 function emptyStore() {
   return {
     version: 4,
-    settings: { timeoutSec: DEFAULT_TIMEOUT_SEC, taskSuffix: DEFAULT_TASK_SUFFIX },
+    // defaultDuration：发布任务时 --duration 的缺省值（空 = 不设默认，每次显式给）
+    settings: { timeoutSec: DEFAULT_TIMEOUT_SEC, taskSuffix: DEFAULT_TASK_SUFFIX, defaultDuration: '' },
     topics: {},
   };
 }
@@ -239,6 +241,8 @@ export async function loadStore() {
       taskSuffix: settings && Object.prototype.hasOwnProperty.call(settings, 'taskSuffix')
         ? clampTaskSuffix(settings.taskSuffix)
         : DEFAULT_TASK_SUFFIX,
+      // 任务工具的全局默认时长（发布任务时 --duration 的缺省值；空 = 不设默认）
+      defaultDuration: String((settings && settings.defaultDuration) || '').trim(),
     },
     topics,
   };
@@ -355,6 +359,9 @@ function normalizeTask(t) {
     timegoal: sanitizeTaskGoal(t.timegoal),
     // 完成标记（localtask done 写入）：带时间目标的任务未到点会被拒绝，写不进来。
     completedAt: String(t.completedAt ?? ''),
+    // 重开轨迹（用户修改反馈 → 重新进入执行循环）：reopenCount / lastReopenedAt
+    reopenCount: Number(t.reopenCount) || 0,
+    lastReopenedAt: String(t.lastReopenedAt ?? ''),
   };
 }
 
@@ -521,6 +528,37 @@ function markConsumed(task, roundSummary, meta = {}) {
   if (meta.byKey) task.claimedBy = meta.byKey;
   if (meta.byName) task.claimedByName = meta.byName;
   return task;
+}
+
+// 把一条任务重新开放（用户的**修改反馈** → 重新进入执行循环）。
+//
+// 语义：被领取/已完成的任务再次变回 pending——
+//   - 领取时间作废：新一轮从**再次领取**开始计时（与「领取即计时」的口径一致，
+//     任务级 timegoal 也会随之重新起表）；
+//   - 完成标记清空：上一轮不算数；
+//   - 上一轮的完成总结（roundSummary）**保留**——agent 下一轮接手时能看到自己上轮做了什么。
+// 任务正文就是 Markdown，用户在面板里改完存回来即走这条路。
+export async function reopenTask({ cwd: rawCwd, key: rawKey, id, text } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const want = Number(id);
+  if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
+  const store = await loadStore();
+  const t = store.topics[key];
+  if (!t) throw notFound('主题不存在: ' + key);
+  const task = t.tasks.find((x) => Number(x.id) === want);
+  if (!task || task.deletedAt) throw notFound('任务不存在或已删除: #' + want);
+  const before = { status: task.status, consumedAt: task.consumedAt || '', completedAt: task.completedAt || '' };
+  if (text !== undefined && text !== null && String(text).trim()) {
+    task.text = normalizeText(text);
+  }
+  task.status = 'pending';
+  task.consumedAt = '';
+  task.completedAt = '';
+  task.reopenCount = (Number(task.reopenCount) || 0) + 1;
+  task.lastReopenedAt = stampNow();
+  t.updatedAt = stampNow();
+  await saveStore(store);
+  return { status: 'ok', reopened: true, id: want, key, name: t.name, before, task: normalizeTask(task) };
 }
 
 // 取走该主题第一条 pending；没有则返回 null。roundSummary 显式指定本轮完成总结，
@@ -732,6 +770,8 @@ function settingsView(s) {
     taskSuffix: clampTaskSuffix(s && s.taskSuffix),
     defaultTaskSuffix: DEFAULT_TASK_SUFFIX,
     suffixEnabled: !!clampTaskSuffix(s && s.taskSuffix),
+    // 任务工具的全局默认项：发布任务时 --duration 的缺省时长（空 = 不设默认）
+    defaultDuration: String((s && s.defaultDuration) || '').trim(),
   };
 }
 
@@ -819,12 +859,13 @@ export async function pruneTopics({ allFinished = false, dryRun = false } = {}) 
 // 配置等待超时 / 收尾指令模板（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟；
 // taskSuffix 为 wait 交付任务的收尾指令模板（≤2000 字）：含 {{ 占位符 → 渲染进返回的
 // instruction 字段；纯文本 → 追加到 task.text 末尾（v0.x 行为）；传 '' 关闭、不传保持不变。
-export async function updateSettings({ timeoutSec, taskSuffix } = {}) {
+export async function updateSettings({ timeoutSec, taskSuffix, defaultDuration } = {}) {
   const hasTimeout = timeoutSec !== undefined && timeoutSec !== null;
   const hasSuffix = taskSuffix !== undefined;
-  if (!hasTimeout && !hasSuffix) {
+  const hasDuration = defaultDuration !== undefined;
+  if (!hasTimeout && !hasSuffix && !hasDuration) {
     throw badInput(
-      '请至少指定一项：--timeout <秒>，或 --suffix "<收尾指令模板>"（--no-suffix 关闭、--reset-suffix 恢复默认）'
+      '请至少指定一项：--timeout <秒>，或 --suffix "<收尾指令模板>"（--no-suffix 关闭、--reset-suffix 恢复默认），或 --default-duration <时长>'
     );
   }
   const store = await loadStore();
@@ -837,6 +878,11 @@ export async function updateSettings({ timeoutSec, taskSuffix } = {}) {
     next.timeoutSec = clampTimeoutSec(n);
   }
   if (hasSuffix) next.taskSuffix = clampTaskSuffix(taskSuffix);
+  if (hasDuration) {
+    const d = String(defaultDuration || '').trim();
+    if (d) parseDuration(d); // 写法错误在这里报（发布时才报错太晚）
+    next.defaultDuration = d;
+  }
   store.settings = next;
   await saveStore(store);
   return settingsView(store.settings);
@@ -894,6 +940,10 @@ export async function addTask({ cwd: rawCwd, summary: rawSummary, text, global: 
   }
 
   const store = await loadStore();
+  if (!timegoal && store.settings && store.settings.defaultDuration) {
+    // 发布时没显式给时长 → 用**全局默认时长**（设置面板「任务工具」可改）
+    timegoal = sanitizeTaskGoal({ duration: store.settings.defaultDuration, prompt: '' });
+  }
   let key;
   let cwd;
   let t;

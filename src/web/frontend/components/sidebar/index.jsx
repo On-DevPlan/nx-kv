@@ -27,6 +27,7 @@ export default function Sidebar({
   patchPrefs,      // (patch) => void（已持久化）
   refreshRepos,    // 仓库/看板刷新（登记、归属变更后）
   onCollapse,      // 收起成窄轨（工作区面板：改 tabset weight）
+  onClose,         // 完全关闭（左缘只剩半圆弧把手，点把手展开）
   shell,           // 全局动作：{undo, redo, canUndo, canRedo, resetLayout}
 }) {
   const toast = useToast();
@@ -234,6 +235,14 @@ export default function Sidebar({
           >
             <Icon name="back" size={15} />
           </button>
+          <button
+            className="iconbtn collapse"
+            title="关闭目录（完全隐藏，左缘把手可展开）"
+            aria-label="关闭目录"
+            onClick={onClose}
+          >
+            <Icon name="x" size={14} />
+          </button>
           <label className="sbox">
             <Icon name="search" />
             <input
@@ -317,7 +326,9 @@ export default function Sidebar({
                 >
                   <Icon name="chevron" size={10} />
                 </span>
-                <span className="gico"><Icon name={row.type === 'global' ? 'globe' : 'folder'} /></span>
+                <span className="gico">
+                  {row.icon ? <span className="trow-icon" aria-hidden>{row.icon}</span> : <Icon name={row.type === 'global' ? 'globe' : 'folder'} />}
+                </span>
                 <span className="nm">
                   {row.name}
                   {row.type === 'global' && row.waiting ? <span className="wdot" title="有等待中的主题" /> : null}

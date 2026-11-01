@@ -162,6 +162,22 @@ export default {
       render: renderWait, // 返回形状与 wait 同构（ok/timeout），复用同一份人读渲染
     },
     {
+      // 修改反馈 → 重新进入执行循环：任务回到 pending，agent 可再次领取。
+      id: 'localtask.reopen',
+      cli: ['localtask', 'reopen'],
+      http: ['POST', '/api/localtasks/reopen'],
+      summary:
+        '重开任务（用户的修改反馈）：任务回到待领取，领取时间作废（新一轮重新计时）；--text 可带上修改后的正文（Markdown）',
+      flags: {
+        id: { type: 'number', required: true, hint: '任务编号' },
+        cwd: CWD,
+        key: KEY,
+        text: { type: 'string', hint: '修改后的任务正文（Markdown）；不给则只重开不改内容' },
+      },
+      run: (ctx) => service.reopenTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, text: ctx.text }),
+      render: (d) => `已重开任务 #${d.id} @ ${d.name}（回到待领取，第 ${d.task.reopenCount} 次重开）`,
+    },
+    {
       // 完成门禁：带时间目标的任务未到点拒绝标记完成（提示派 sub agent 重提需求）。
       id: 'localtask.done',
       cli: ['localtask', 'done'],
@@ -379,12 +395,19 @@ export default {
         },
         'reset-suffix': { type: 'boolean', hint: '恢复默认收尾指令模板' },
         'no-suffix': { type: 'boolean', hint: '清空并关闭收尾指令' },
+        'default-duration': {
+          type: 'string',
+          hint: '任务时间目标的默认时长（2h / 90m）——发布任务没给 --duration 时用它；留空 = 不设默认',
+        },
+        'clear-default-duration': { type: 'boolean', hint: '清除默认时长' },
       },
       run: (ctx) => {
         const patch = { timeoutSec: ctx.timeout };
         if (ctx['no-suffix']) patch.taskSuffix = '';
         else if (ctx['reset-suffix']) patch.taskSuffix = service.DEFAULT_TASK_SUFFIX;
         else if (ctx.suffix !== undefined) patch.taskSuffix = ctx.suffix;
+        if (ctx['clear-default-duration']) patch.defaultDuration = '';
+        else if (ctx['default-duration'] !== undefined) patch.defaultDuration = ctx['default-duration'];
         return service.updateSettings(patch);
       },
       render: (s) => {

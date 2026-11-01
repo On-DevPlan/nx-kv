@@ -88,6 +88,17 @@ function normalizeDocRefs(store) {
     const ref = sanitizeDocRef(r.doc);
     if (ref) r.doc = ref;
     else delete r.doc;
+    // 项目介绍文档集（多篇）：doc 是主篇，docLinks 是其余各篇
+    const links = (Array.isArray(r.docLinks) ? r.docLinks : [])
+      .map((l) => {
+        const d = sanitizeDocRef(l);
+        if (!d) return null;
+        const note = l && typeof l.note === 'string' ? l.note.trim() : '';
+        return note ? { ...d, note } : d;
+      })
+      .filter(Boolean);
+    if (links.length) r.docLinks = links;
+    else delete r.docLinks;
   }
   for (const b of store.boards) {
     const ref = sanitizeDocRef(b.doc);
@@ -134,7 +145,13 @@ export function newId(prefix) {
 //   ref 的唯一 key 是 remote（归一化后的远程地址），dev 也鼓励记 remote（导出时
 //   导远程地址而非本地路径——换机导入才 clone 得回来）。
 // linked 仅 ref 有：绑定目标 [{kind:'repo'|'board', id}]——「这个参考是给谁看的」。
-function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key, keyCustom, remotes }) {
+// 项目图标：emoji 或单字符（≤8 字）。留空 = 用默认图标。
+// 位置：侧栏树行名之前、仓库管理页行首、设置面板项目卡标题旁。
+function sanitizeIcon(raw) {
+  return String(raw ?? '').trim().slice(0, 8);
+}
+
+function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key, keyCustom, remotes, icon }) {
   const abs = resolve(String(path || ''));
   const t = type === 'ref' ? 'ref' : 'dev';
   const nm = (name || basename(abs) || 'repo').trim();
@@ -145,6 +162,7 @@ function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key
   const rk = rk0 && (keyCustom || rk0 !== deriveKey({ name: nm, remote: (remote || '').trim() }));
   const input = {
     name: nm,
+    icon: sanitizeIcon(icon),
     remote: (remote || '').trim(),
     key,
     keyCustom: !!keyCustom,
@@ -155,6 +173,7 @@ function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key
   return {
     id: newId('r'),
     name: nm,
+    icon: sanitizeIcon(icon), // 项目图标（emoji/单字符；空 = 默认图标）
     path: abs,
     desc: (desc || '').trim(),
     notes: (notes || '').trim(),
@@ -465,9 +484,17 @@ export async function addRepo(input) {
 
 export async function updateRepo(id, patch) {
   return mutateStore((s) => {
-    const r = s.repos.find((x) => x.id === id);
+    // 定位：id → key → 绝对路径 → 名称（与 getRepo 同一口径——
+    // 「用本机仓库接管待初始化的 key」这类场景给的是路径或 key，不是行主键）
+    const raw = String(id || '').trim();
+    const r =
+      s.repos.find((x) => x.id === raw) ||
+      s.repos.find((x) => deriveKey(x) === normalizeKey(raw)) ||
+      s.repos.find((x) => x.path && x.path.toLowerCase() === resolve(raw).toLowerCase()) ||
+      s.repos.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
     if (!r) throw notFound('repo 不存在: ' + id);
     if (patch.name !== undefined) r.name = String(patch.name).trim();
+    if (patch.icon !== undefined) r.icon = sanitizeIcon(patch.icon);
     if (patch.desc !== undefined) r.desc = String(patch.desc).trim();
     if (patch.notes !== undefined) r.notes = String(patch.notes);
     if (patch.type !== undefined) {
@@ -512,7 +539,7 @@ export async function updateRepo(id, patch) {
     if (patch.path !== undefined) {
       const abs = resolve(String(patch.path));
       // 改路径同样要防重复登记，否则两条记录指向同一目录，扫描时无法判断是否已登记
-      if (s.repos.some((x) => x.id !== id && x.path.toLowerCase() === abs.toLowerCase())) {
+      if (s.repos.some((x) => x.id !== r.id && x.path.toLowerCase() === abs.toLowerCase())) {
         throw conflict('该路径已登记: ' + abs);
       }
       r.path = abs;
@@ -522,7 +549,7 @@ export async function updateRepo(id, patch) {
     // （放在最后、且对所有更新都跑——便宜，且不会漏掉某个分支。）
     const finalKey = deriveKey(r);
     if (!finalKey) throw badInput('key 不能为空');
-    const dup = s.repos.find((x) => x.id !== id && deriveKey(x) === finalKey);
+    const dup = s.repos.find((x) => x.id !== r.id && deriveKey(x) === finalKey);
     if (dup) throw conflict(`该 key 已登记为「${dup.name}」（${dup.id}）: ${finalKey}`);
     r.key = finalKey;
     return r;
@@ -531,7 +558,15 @@ export async function updateRepo(id, patch) {
 
 export async function removeRepo(id) {
   return mutateStore((s) => {
-    const idx = s.repos.findIndex((x) => x.id === id);
+    // 定位：id → key → 绝对路径 → 名称（与 getRepo/updateRepo 同一口径）
+    const raw = String(id || '').trim();
+    const idx = s.repos.findIndex(
+      (x) =>
+        x.id === raw ||
+        deriveKey(x) === normalizeKey(raw) ||
+        (x.path && x.path.toLowerCase() === resolve(raw).toLowerCase()) ||
+        String(x.name).toLowerCase() === raw.toLowerCase()
+    );
     if (idx < 0) throw notFound('repo 不存在: ' + id);
     const deadKey = deriveKey(s.repos[idx]);
     // 看板里同步摘引用（看板成员存 key，登记没了就是死引用）

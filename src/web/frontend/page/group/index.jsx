@@ -126,6 +126,15 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, refreshL
           {totalPending > 0 && <span className="rp-chip-count">待领取 {totalPending}</span>}
         </h2>
         {board.desc ? <p className="muted">{board.desc}</p> : null}
+        <div className="rp-group-acts">
+          <button
+            className="btn small ghost"
+            title="在仓库页打开这个分组的成员管理（勾选本机仓库加入）"
+            onClick={() => onNavigate('#/repos?board=' + encodeURIComponent(board.id) + '&add=1')}
+          >
+            添加成员
+          </button>
+        </div>
       </div>
 
       {introHtml ? (

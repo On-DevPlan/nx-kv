@@ -10,8 +10,8 @@
 //   - 偏好：侧边栏/看板默认收起、隐藏仓库恢复——原在齿轮气泡里
 //   - 工作区：重置布局
 //   - 云端与存储：附件自动下载 / 附件目录 / 仓库存储根——原散在云端页与仓库页弹窗
-//   - 模板与任务工具：模板配置走独立面板；任务工具本机暂无全局开关（时间窗口随任务携带）
-//   - 项目级设置：每个项目的介绍文档（自有 md 或外部只读绑定）——原无入口
+//   - 模板与任务工具：模板入口 + 回调提示词 + 默认时长
+//   - 项目级设置：介绍文档 / 项目 icon（标题旁圆形入口）/ 持续 get
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useApp } from '../../app-context.jsx';
@@ -28,6 +28,172 @@ const SECTIONS = [
   { id: 'template', label: '模板与任务工具', icon: 'list' },
   { id: 'project', label: '项目级设置', icon: 'repo' },
 ];
+
+/**
+ * 任务工具的全局默认项：**发布任务的默认时长**。
+ *
+ * 发布任务时没显式给 --duration，就用这个（设置面板 → 模板与任务工具）。
+ * 留空 = 不设默认（每次发布都要自己写时长）。
+ */
+function DefaultDurationEditor() {
+  const toast = useToast();
+  const [value, setValue] = useState(null); // null = 还在读
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api('/api/localtasks')
+      .then((d) => setValue(d?.settings?.defaultDuration ?? ''))
+      .catch((e) => toast('读取默认时长失败：' + (e.message || e)));
+  }, [toast]);
+
+  const save = async (v) => {
+    setBusy(true);
+    try {
+      const d = await api('/api/localtasks/setting', { method: 'PATCH', body: { defaultDuration: v } });
+      setValue(d?.defaultDuration ?? v);
+      toast(v ? `已保存默认时长 ${v}` : '已清除默认时长');
+    } catch (e) {
+      toast(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="setp-suffix">
+      <div className="setp-row">
+        <span>任务时间目标默认时长</span>
+      </div>
+      <div className="setp-row">
+        <span className="setp-note">发布任务未指定 --duration 时按此计时</span>
+        <span className="setp-input">
+          <input
+            value={value ?? ''}
+            placeholder="（不设默认）如 2h / 90m"
+            onChange={(e) => setValue(e.target.value)}
+            disabled={value === null}
+          />
+          <button className="btn sm" disabled={busy || value === null} onClick={() => save(value)}>保存</button>
+          <button className="btn ghost sm" disabled={busy || value === null} onClick={() => save('')}>清除</button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 单张项目卡：icon 在标题左侧；点开后编辑条走文档流（头下方整宽），
+ * 不被设置面板 overflow 裁切。
+ */
+function ProjectCard({ repo, docStateOf, openDoc, bindExternal, unbind }) {
+  const app = useApp() || {};
+  const toast = useToast();
+  const [iconValue, setIconValue] = useState(repo.icon || '');
+  const [iconOpen, setIconOpen] = useState(false);
+  const [iconBusy, setIconBusy] = useState(false);
+
+  useEffect(() => {
+    setIconValue(repo.icon || '');
+  }, [repo.icon]);
+
+  const saveIcon = async (next) => {
+    const icon = String(next ?? iconValue).trim();
+    if (icon === String(repo.icon || '').trim()) {
+      setIconOpen(false);
+      return;
+    }
+    setIconBusy(true);
+    try {
+      await api('/api/repos/' + encodeURIComponent(repo.id), { method: 'PATCH', body: { icon } });
+      setIconValue(icon);
+      toast(icon ? `已保存「${repo.name}」的图标` : `已清除「${repo.name}」的图标`);
+      app.refreshRepos && app.refreshRepos();
+      setIconOpen(false);
+    } catch (e) {
+      toast(String(e.message || e));
+    } finally {
+      setIconBusy(false);
+    }
+  };
+
+  const st = docStateOf(repo);
+  const loopOn = !!(repo.getLoop && repo.getLoop.enabled);
+
+  return (
+    <div className="setp-proj">
+      <div className="setp-proj-head">
+        <div className={'setp-icon' + (iconOpen ? ' open' : '')}>
+          <button
+            type="button"
+            className="setp-icon-btn"
+            title={iconValue ? `项目图标：${iconValue}（点击修改）` : '设置项目图标（emoji / 单字符）'}
+            aria-label="项目图标"
+            aria-expanded={iconOpen}
+            onClick={() => setIconOpen((o) => !o)}
+          >
+            {iconValue
+              ? <span className="setp-icon-glyph" aria-hidden>{iconValue}</span>
+              : <Icon name="folder" size={14} />}
+          </button>
+        </div>
+        <div className="setp-proj-meta">
+          <div className="setp-proj-t">
+            <b>{repo.name}</b>
+            <span className={'setp-badge ' + st.kind}>
+              {st.kind === 'external' ? '外部' : st.kind === 'own' ? '自有' : '约定'}
+            </span>
+            {loopOn && <span className="setp-badge loop">持续 get</span>}
+          </div>
+          <div className="setp-proj-p mono" title={st.label}>{st.label}</div>
+        </div>
+      </div>
+      {iconOpen && (
+        <div className="setp-icon-edit" role="group" aria-label="编辑项目图标">
+          <input
+            autoFocus
+            value={iconValue}
+            maxLength={8}
+            placeholder="emoji 或单字符"
+            onChange={(e) => setIconValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); saveIcon(iconValue); }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setIconValue(repo.icon || '');
+                setIconOpen(false);
+              }
+            }}
+            disabled={iconBusy}
+          />
+          <button type="button" className="btn sm" disabled={iconBusy} onClick={() => saveIcon(iconValue)}>保存</button>
+          <button
+            type="button"
+            className="btn ghost sm"
+            disabled={iconBusy || !iconValue}
+            title="清空，侧栏回退默认文件夹图标"
+            onClick={() => saveIcon('')}
+          >
+            清除
+          </button>
+          <button
+            type="button"
+            className="btn ghost sm"
+            disabled={iconBusy}
+            onClick={() => { setIconValue(repo.icon || ''); setIconOpen(false); }}
+          >
+            取消
+          </button>
+        </div>
+      )}
+      <div className="setp-proj-a">
+        <button className="btn ghost sm" onClick={() => openDoc(repo)}>打开介绍</button>
+        <button className="btn ghost sm" onClick={() => bindExternal(repo)}>绑定外部…</button>
+        {repo.doc ? <button className="btn ghost sm" onClick={() => unbind(repo)}>解除绑定</button> : null}
+      </div>
+      <GetLoopEditor repo={repo} />
+    </div>
+  );
+}
 
 /**
  * 项目级「持续 get」（waitgoal）编辑器：落在 repo 记录的 getLoop 字段。
@@ -373,34 +539,28 @@ export default function SettingsPanel() {
           完成 → <span className="mono">localtask done --id …</span>（<b>未到时间拒绝标记完成</b>，提示派 sub agent 重提需求）。
         </div>
         <CallbackSuffixEditor />
+        <DefaultDurationEditor />
       </>
     ),
 
     project: (
       <>
         <div className="setp-note">
-          每个项目的介绍文档：默认落在 <span className="mono">~/.nx-kv/docs/repo/&lt;key&gt;.md</span>，
-          也可绑到外部文件（只读，不进导出包）。
+          点左侧圆形图标改项目 icon（侧栏同步显示）；介绍文档默认落在{' '}
+          <span className="mono">~/.nx-kv/docs/repo/&lt;key&gt;.md</span>，也可绑外部文件（只读，不进导出包）。
+          「持续 get」是项目级 waitgoal 开关。
         </div>
         <div className="setp-projs">
-          {repos.map((r) => {
-            const st = docStateOf(r);
-            return (
-              <div key={r.key} className="setp-proj">
-                <div className="setp-proj-t">
-                  <b>{r.name}</b>
-                  <span className={'setp-badge ' + st.kind}>{st.kind === 'external' ? '外部' : st.kind === 'own' ? '自有' : '约定'}</span>
-                </div>
-                <div className="setp-proj-p mono">{st.label}</div>
-                <div className="setp-proj-a">
-                  <button className="btn ghost sm" onClick={() => openDoc(r)}>打开介绍</button>
-                  <button className="btn ghost sm" onClick={() => bindExternal(r)}>绑定外部…</button>
-                  {r.doc ? <button className="btn ghost sm" onClick={() => unbind(r)}>解除绑定</button> : null}
-                </div>
-                <GetLoopEditor repo={r} />
-              </div>
-            );
-          })}
+          {repos.map((r) => (
+            <ProjectCard
+              key={r.key}
+              repo={r}
+              docStateOf={docStateOf}
+              openDoc={openDoc}
+              bindExternal={bindExternal}
+              unbind={unbind}
+            />
+          ))}
           {!repos.length && <div className="setp-note">还没有登记仓库。</div>}
         </div>
       </>

@@ -147,3 +147,61 @@ test('repo getLoop 落库：部分更新与已有字段合并', async () => {
   const after = await repos.getRepo(repo.id);
   assert.equal(after.getLoop, undefined);
 });
+
+test('修改反馈 → 重开：任务回到 pending，领取时间作废，可再次领取', async () => {
+  const localtask = await import('../../src/modules/localtask/service.js');
+  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const cwd = join(dir, 'reopen-proj');
+  await localtask.addTask({ text: '改登录页', cwd });
+
+  const first = await waitForTask({ cwd, summary: '开干', timeoutSec: 1, open: false });
+  assert.equal(first.status, 'ok');
+  const id = first.task.id;
+
+  // 干完（无时间目标 → 直接放行）
+  const done = await localtask.completeTask({ cwd, id, summary: '第一轮完成' });
+  assert.equal(done.status, 'ok');
+  assert.ok(done.task.completedAt);
+
+  // 用户反馈 → 重开：任务回到待领取，正文可带修改说明
+  const re = await localtask.reopenTask({ cwd, id, text: '改登录页（不对，要加暗色模式）' });
+  assert.equal(re.status, 'ok');
+  assert.equal(re.task.status, 'pending');
+  assert.equal(re.task.consumedAt, '', '领取时间作废——新一轮从再次领取开始计时');
+  assert.equal(re.task.completedAt, '');
+  assert.equal(re.task.reopenCount, 1);
+  assert.match(re.task.text, /暗色模式/);
+
+  // 再次领取：执行循环继续
+  const again = await waitForTask({ cwd, summary: '再来一轮', timeoutSec: 1, open: false });
+  assert.equal(again.status, 'ok');
+  assert.match(again.task.text, /暗色模式/);
+});
+
+test('全局默认时长：发布任务没给 --duration 时按设置走', async () => {
+  const localtask = await import('../../src/modules/localtask/service.js');
+  await localtask.updateSettings({ defaultDuration: '45m' });
+  const cwd = join(dir, 'defdur');
+  const added = await localtask.addTask({ text: '按默认时长计时', cwd });
+  assert.equal(added.task.timegoal.duration, '45m');
+  // 显式给的时长优先于全局默认
+  const explicit = await localtask.addTask({ text: '显式时长', cwd, timegoal: { duration: '10m', prompt: '' } });
+  assert.equal(explicit.task.timegoal.duration, '10m');
+  // 清除默认后不再自动带
+  await localtask.updateSettings({ defaultDuration: '' });
+  const plain = await localtask.addTask({ text: '无时长', cwd });
+  assert.equal(plain.task.timegoal, null);
+});
+
+test('项目图标：写入后读回（≤8 字）', async () => {
+  const repos = await import('../../src/modules/repos/service.js');
+  const cwd = join(dir, 'icon-proj');
+  const r = await repos.addRepo({ path: cwd, name: 'icon-proj', remote: 'https://github.com/me/icon' });
+  await repos.updateRepo(r.id, { icon: '🧭' });
+  const detail = await repos.getRepo(r.id);
+  assert.equal(detail.icon, '🧭');
+  await repos.updateRepo(r.id, { icon: 'abcdefghijk' });
+  assert.equal((await repos.getRepo(r.id)).icon.length, 8);
+  await repos.updateRepo(r.id, { icon: '' });
+  assert.equal((await repos.getRepo(r.id)).icon, '');
+});

@@ -17,6 +17,7 @@ import * as keys from './keys.js';
 import * as remote from './remote.js';
 import * as transfer from './transfer.js';
 import { repoKnowledge } from '../docs/knowledge.js';
+import { listRepoDocs, addRepoDoc, removeRepoDoc } from '../docs/refs.js';
 import { gitOrigin } from './git.js';
 import { badInput } from '../../core/errors.js';
 
@@ -211,6 +212,7 @@ export default {
       args: ['path'],
       flags: {
         name: { type: 'string' },
+        icon: { type: 'string', hint: '项目图标（emoji 或单字符，≤8 字；留空 = 用默认图标）' },
         desc: { type: 'string' },
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库（默认），ref=参考仓库' },
@@ -235,6 +237,7 @@ export default {
       flags: {
         path: { type: 'string' },
         name: { type: 'string' },
+        icon: { type: 'string', hint: '项目图标（emoji 或单字符，≤8 字；留空 = 用默认图标）' },
         desc: { type: 'string' },
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库，ref=参考仓库' },
@@ -260,6 +263,48 @@ export default {
         return service.updateRepo(ctx.id, patch);
       },
       render: (r) => `已更新: ${r.name}（key: ${r.key}）`,
+    },
+    {
+      // 项目介绍文档集：主篇 + 多篇其余（自有树 / 外部路径 / 参考仓库内文件）
+      id: 'repo.doc.list',
+      cli: ['repo', 'doc', 'list'],
+      http: ['GET', '/api/repos/docs'],
+      summary: '列出项目的介绍文档集（主篇 + 其余各篇，含来源形态：自有树 / 外部 / ref 仓库）',
+      args: ['id'],
+      run: (ctx) => listRepoDocs(ctx.id),
+      render: (d) => {
+        const one = (x, i) => `  ${i}. ${x.rel ? '自有 ' + x.rel : x.ref ? 'ref  ' + x.ref + '/' + x.rel : '外部 ' + x.path}${x.note ? '  #' + x.note : ''}`;
+        const lines = [`【${d.repo.name}】介绍文档 ${d.count} 篇`];
+        if (d.main) lines.push(one(d.main, 1));
+        d.links.forEach((x, i) => lines.push(one(x, i + 2)));
+        return lines.join('\n');
+      },
+    },
+    {
+      id: 'repo.doc.add',
+      cli: ['repo', 'doc', 'add'],
+      http: ['POST', '/api/repos/docs'],
+      summary: '给项目加一篇介绍文档：--rel 自有树路径 / --path 外部绝对路径 / --ref <参考仓库key> --file <仓库内相对路径>',
+      args: ['id'],
+      flags: {
+        rel: { type: 'string', hint: '自有树内相对路径（如 repo/github.com/me/x.md）' },
+        path: { type: 'string', hint: '外部绝对路径（只读引用）' },
+        ref: { type: 'string', hint: '参考仓库 key（type=ref 的本机仓库）' },
+        file: { type: 'string', hint: '参考仓库内的相对路径（配合 --ref）' },
+        note: { type: 'string', hint: '这篇的说明' },
+      },
+      run: (ctx) => addRepoDoc(ctx.id, { rel: ctx.rel, path: ctx.path, ref: ctx.ref, rel: ctx.file, note: ctx.note }),
+      render: (d) => `已加一篇介绍文档（共 ${d.count} 篇）`,
+    },
+    {
+      id: 'repo.doc.remove',
+      cli: ['repo', 'doc', 'remove'],
+      http: ['DELETE', '/api/repos/docs'],
+      summary: '从项目的介绍文档集里摘掉一篇（--index 从 1 起，1 = 主篇）',
+      args: ['id'],
+      flags: { index: { type: 'number', required: true, hint: '序号（1 = 主篇）' } },
+      run: (ctx) => removeRepoDoc(ctx.id, ctx.index),
+      render: (d) => `已摘掉一篇介绍文档`,
     },
     {
       id: 'repo.remove',

@@ -54,7 +54,10 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
   return (
     <tr>
       <td className="rp-name">
-        <strong>{r.name}</strong>
+        <strong>
+          {r.icon ? <span className="rp-icon" aria-hidden>{r.icon}</span> : null}
+          {r.name}
+        </strong>
         {desc ? <div className="muted rp-desc" title={descTitle}>{desc}</div> : null}
       </td>
       <td className="mono rp-path"><RepoPath path={r.path} /></td>
@@ -149,6 +152,23 @@ export default function ReposView() {
     setBoards(await api('/api/boards').catch(() => null));
   }, []);
   useEffect(() => { loadRepos(); loadBoards(); }, [loadRepos, loadBoards]);
+
+  // 从别处跳进来的定位：#/repos?board=<组id>&add=1
+  // （组详情页的「添加成员」走这条：不在组页内嵌弹窗，直接落到仓库页对应分组的成员管理）
+  useEffect(() => {
+    const applyHash = () => {
+      const q = location.hash.split('?')[1] || '';
+      if (!q) return;
+      const params = new URLSearchParams(q);
+      const bid = params.get('board');
+      if (!bid) return;
+      setFilter(bid);
+      if (params.get('add')) setImpBoardId(bid);
+    };
+    applyHash();
+    window.addEventListener('hashchange', applyHash);
+    return () => window.removeEventListener('hashchange', applyHash);
+  }, []);
 
   // ---- 前缀分组规则：仓库名以某前缀开头 → 自动归入某看板 ----
   // 规则只改「成员关系」，看板仍是唯一分组载体：侧边栏分组、看板筛选、成员管理
@@ -589,6 +609,20 @@ export default function ReposView() {
     setImpText(await f.text());
   };
 
+  // 待初始化：组里引用了、本机却还没有登记的仓库（导入布局带进来的占位）。
+  // 按 **key** 认领（key 是仓库与仓库组链接的唯一方式）：
+  //   克隆到本地（占位带 remote 时）/ 用本机已有仓库接管（把它的 key 改成占位 key）。
+  const pendingInit = useMemo(() => {
+    const out = [];
+    for (const b of (boards && boards.boards) || []) {
+      for (const m of b.repos || []) {
+        if (m.present !== false) continue;
+        out.push({ ...m, board: b.name, boardId: b.id });
+      }
+    }
+    return out;
+  }, [boards]);
+
   if (boards === null) {
     return (
       <div className="rp-page">
@@ -597,6 +631,31 @@ export default function ReposView() {
       </div>
     );
   }
+
+  const clonePending = (m) =>
+    guard(async () => {
+      await api('/api/repos/clone', {
+        method: 'POST',
+        body: { remote: m.remote, key: m.key, name: m.name || undefined, type: 'dev' },
+      });
+      toast(`已克隆并登记：${m.name || m.key}`);
+      loadRepos();
+      loadBoards();
+    });
+
+  const adoptPending = (m) =>
+    guard(async () => {
+      const which = await dialog({
+        title: `用本机仓库接管 ${m.key}`,
+        input: true,
+        placeholder: '本机仓库的 id / key / 绝对路径',
+      });
+      if (!which) return;
+      await api('/api/repos/' + encodeURIComponent(which), { method: 'PATCH', body: { key: m.key } });
+      toast('已接管——这个仓库现在就是组里的那个位置');
+      loadRepos();
+      loadBoards();
+    });
 
   const rowActs = {
     open: (r) => rowAct('open', r),
@@ -696,6 +755,35 @@ export default function ReposView() {
           </button>
         </div>
       </div>
+
+      {/* 待初始化：组里引用、本机未登记的仓库 —— 导入布局带进来的占位。
+          按 key 认领：克隆到本地（有 remote 时）或用本机已有仓库接管。 */}
+      {pendingInit.length > 0 && (
+        <div className="rp-pending" data-testid="rp-pending-init">
+          <div className="rp-pending-head">
+            <span className="rp-pending-label">
+              待初始化 <b>{pendingInit.length}</b>
+            </span>
+            <span className="muted">组里引用、本机未登记的仓库 —— 克隆到本地，或用本机已有仓库接管（key 即身份）</span>
+          </div>
+          {pendingInit.map((m) => (
+            <div className="rp-pending-item" key={m.key + '@' + m.boardId}>
+              <span className="rp-pending-name">{m.name || m.key}</span>
+              <span className="mono rp-pending-key">{m.key}</span>
+              <span className="muted">组「{m.board}」</span>
+              <span className="grow" />
+              {m.remote ? (
+                <button className="btn ghost sm" onClick={() => clonePending(m)}>
+                  克隆到本地
+                </button>
+              ) : null}
+              <button className="btn ghost sm" onClick={() => adoptPending(m)}>
+                用本机仓库接管
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* 看板上下文条：筛选到某个看板时，把它的领域描述亮出来 —— desc 写的是
           这个领域的侧重、谁配合谁（谁是中心/终端）、关键路径与搜索关键词。 */}

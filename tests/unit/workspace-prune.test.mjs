@@ -10,6 +10,7 @@ import {
   pruneEmptyTabsets,
   pruneBlankChrome,
   pruneBlankTabsets,
+  healSidebarLayout,
 } from '../../src/web/frontend/workspace.js';
 import { Model, Actions } from 'flexlayout-react';
 
@@ -103,4 +104,40 @@ test('Actions.deleteTabset：空 tabset 删除后模型里不再有它（库行�
   const ids = [];
   model.visitNodes((n) => { if (n.getType() === 'tabset') ids.push(n.getId()); });
   assert.deepEqual(ids, ['ts_b']);
+});
+
+test('healSidebarLayout：目录与内容混在同一 tabset 时拆回左目录', () => {
+  const json = {
+    global: {},
+    borders: [],
+    layout: {
+      type: 'row',
+      children: [{
+        type: 'tabset',
+        id: 'ts_mixed',
+        weight: 2.5,
+        enableTabStrip: false,
+        selected: 3,
+        children: [
+          { type: 'tab', id: 't_sidebar', name: '目录', component: 'sidebar' },
+          { type: 'tab', id: 't_page', name: '#8', component: 'page' },
+          { type: 'tab', id: 't_ov', name: '总览', component: 'overview' },
+          { type: 'tab', id: 't_page2', name: '#4', component: 'page' },
+        ],
+      }],
+    },
+  };
+  assert.equal(healSidebarLayout(json), true);
+  assert.equal(json.layout.children.length, 2);
+  const [side, main] = json.layout.children;
+  assert.equal(side.id, 'ts_sidebar');
+  assert.equal(side.children.length, 1);
+  assert.equal(side.children[0].component, 'sidebar');
+  assert.equal(side.children[0].enableClose, false);
+  assert.equal(side.enableTabStrip, true);
+  assert.equal(side.weight, 16);
+  assert.equal(main.enableTabStrip, true);
+  assert.equal(main.weight, 84);
+  assert.deepEqual(main.children.map((c) => c.id), ['t_page', 't_ov', 't_page2']);
+  assert.equal(main.selected, 2); // 原 selected=3，拆掉 index0 后变 2
 });

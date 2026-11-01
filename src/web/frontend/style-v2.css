@@ -65,6 +65,67 @@
 }
 .nx-rail-act:hover { background: var(--soft); color: var(--ink); }
 
+/* 关闭态：tabset 占位条透明（几乎看不见）；展开入口是 portal 到工作区的半圆弧把手 */
+.nx-side-closed-host {
+  width: 100%; height: 100%;
+  background: transparent;
+  pointer-events: none;
+}
+body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host),
+body.nx-side-is-closed .flexlayout__tab:has(.nx-side-closed-host),
+body.nx-side-is-closed .flexlayout__tab_content:has(.nx-side-closed-host) {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  min-width: 0 !important;
+}
+/* 关闭后页签条即使库层还留节点，也不要露出来抢视觉 */
+body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout__tabset_tabbar_outer,
+body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout__tabset_tabbar_inner,
+body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout__tab_button,
+body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout__tab_toolbar {
+  display: none !important;
+}
+.nx-side-fab-layer {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 80; /* 盖过 FlexLayout 内容，关闭后一定摸得到 */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none; /* 层本身不挡；子按钮重新打开 */
+}
+/* 壳层救援把手：钉在视口左缘，不吃 workarea / tabset 的 overflow */
+.nx-side-fab-fixed {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10000;
+}
+.nx-side-fab,
+.nx-side-fab-gear { pointer-events: auto; }
+/* 关闭态左缘把手：与设置按钮同尺寸 */
+.nx-side-fab,
+.nx-side-fab-gear {
+  width: 32px; height: 32px; margin: 0; padding: 0;
+  border: 0;
+  border-radius: 0 10px 10px 0;
+  background: var(--paper); color: var(--ink-2);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 2px 0 12px rgba(20, 22, 26, 0.16);
+}
+.nx-side-fab:hover,
+.nx-side-fab:focus-visible,
+.nx-side-fab-gear:hover,
+.nx-side-fab-gear:focus-visible {
+  background: var(--mdw-accent-soft, #E8F2EE); color: var(--ink); outline: none;
+}
+
 /* 品牌区（侧栏头部第一行）：logo + 全局动作（布局撤销重做 / 设置） */
 .brandrow { display: flex; align-items: center; gap: 2px; padding: 0 0 8px; }
 .brandrow .nx-title { margin-right: 2px; }
@@ -741,3 +802,20 @@
 @media (min-width: 901px) {
   .side-scrim { display: none; }
 }
+
+/* 项目图标（emoji/单字符）：侧栏树行名之前、仓库管理页行首 */
+.trow-icon { font-size: 13px; line-height: 1; }
+.rp-icon { font-size: 13px; margin-right: 4px; }
+
+/* 待初始化清单：组里引用、本机未登记的仓库（导入布局带进来的占位） */
+.rp-pending { margin: 10px 0 0; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); overflow: hidden; }
+.rp-pending-head { display: flex; align-items: baseline; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.rp-pending-label { font-weight: 650; font-size: 12.5px; }
+.rp-pending-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--line); }
+.rp-pending-item:last-child { border-bottom: 0; }
+.rp-pending-name { font-weight: 600; }
+.rp-pending-key { font-size: 10.5px; color: var(--mid); }
+
+/* 组详情页头部动作（添加成员 → 跳仓库页对应分组） */
+.rp-group-head { position: relative; }
+.rp-group-acts { position: absolute; top: 10px; right: 16px; display: flex; gap: 6px; }

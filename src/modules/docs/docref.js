@@ -6,7 +6,11 @@
 //
 // DocRef 形状（二选一互斥）：
 //   { rel }  自有树内相对路径 —— 树上真实文件，随 zip 导出
-//   { path } 外部绝对路径（文件或目录，如 Obsidian vault）—— 只读引用，不进 zip
+//   { path } 外部绝对路径（文件或**目录**，如 Obsidian vault）—— 只读引用，不进 zip
+//
+// 目录绑定（{ path } 指目录，或自有树里的一个目录）就是「介绍目录」：
+// 目录里的文档构成该项目的**介绍文档集**（主篇 + 多篇补充说明 + reference/ 子目录），
+// 彼此之间可以用 [[双链]] 互指。
 import { assertSafeRelPath } from '../../core/paths.js';
 import { badInput } from '../../core/errors.js';
 

@@ -136,5 +136,66 @@ export async function setDocLink({ board, doc, note, remove, before } = {}) {
 
 function describeLink(l) {
   if (!l) return '(空)';
-  return l.rel ? 'rel:' + l.rel : 'path:' + l.path;
+  if (l.rel) return 'rel:' + l.rel;
+  return 'path:' + l.path;
+}
+
+// ─── 项目介绍文档集（多篇）────────────────────────────────────────────
+//
+// 主篇 repo.doc + 其余 repo.docLinks。为什么不止一篇：项目介绍往往分几块
+// （README 式总览 + 若干专题）；每一篇可以来自 自有树(rel) / 外部(path) /
+// **参考仓库内的文件**(ref + rel)——后者身份跟着仓库走，仓库没了引用自动失效。
+
+/** 列项目的介绍文档集 */
+export async function listRepoDocs(locator) {
+  const { getRepo, loadStore, deriveKey } = await reposBridge();
+  const repo = await getRepo(locator);
+  const s = await loadStore();
+  const r = s.repos.find((x) => deriveKey(x) === deriveKey(repo));
+  const main = r && r.doc ? r.doc : null;
+  const links = r && Array.isArray(r.docLinks) ? r.docLinks : [];
+  return {
+    repo: { key: deriveKey(repo), name: repo.name },
+    main,
+    links,
+    count: (main ? 1 : 0) + links.length,
+  };
+}
+
+/** 往项目的介绍文档集里加一篇（rel / path / ref+rel 三选一） */
+export async function addRepoDoc(locator, raw) {
+  const { getRepo, deriveKey, mutateStore } = await reposBridge();
+  const repo = await getRepo(locator);
+  const docRef = paths.assertDocRef(raw);
+  return mutateStore((s) => {
+    const r = s.repos.find((x) => deriveKey(x) === deriveKey(repo));
+    if (!r) throw notFound('repo 不存在: ' + locator);
+    if (!Array.isArray(r.docLinks)) r.docLinks = [];
+    r.docLinks.push(docRef);
+    r.updatedAt = new Date().toISOString();
+    return { key: deriveKey(r), name: r.name, added: docRef, count: r.docLinks.length };
+  });
+}
+
+/** 从项目的介绍文档集里摘掉一篇（--index 从 1 起；1 = 主篇） */
+export async function removeRepoDoc(locator, index) {
+  const { getRepo, deriveKey, mutateStore } = await reposBridge();
+  const repo = await getRepo(locator);
+  const n = Number(index);
+  if (!Number.isInteger(n) || n < 1) throw badInput('缺少参数 --index <序号>（1 = 主篇，其后依次）');
+  return mutateStore((s) => {
+    const r = s.repos.find((x) => deriveKey(x) === deriveKey(repo));
+    if (!r) throw notFound('repo 不存在: ' + locator);
+    if (n === 1) {
+      const gone = r.doc || null;
+      delete r.doc;
+      r.updatedAt = new Date().toISOString();
+      return { key: deriveKey(r), name: r.name, removed: gone };
+    }
+    const links = Array.isArray(r.docLinks) ? r.docLinks : [];
+    if (n - 2 >= links.length) throw badInput('序号超出范围（共 ' + (links.length + 1) + ' 篇）');
+    const [gone] = links.splice(n - 2, 1);
+    r.updatedAt = new Date().toISOString();
+    return { key: deriveKey(r), name: r.name, removed: gone };
+  });
 }

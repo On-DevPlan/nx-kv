@@ -83,14 +83,18 @@
 
 .setp-note { font-size: 11px; color: var(--faint); line-height: 1.65; }
 
-/* 项目级设置：一行一个项目 + 文档状态 + 动作 */
+/* 项目级设置：头行 = icon 入口 + 名称/路径；动作行；持续 get 区 */
 .setp-projs { display: flex; flex-direction: column; gap: 8px; }
 .setp-proj {
   border: 1px solid var(--line); border-radius: 8px;
-  padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
   background: var(--paper);
 }
-.setp-proj-t { display: flex; align-items: center; gap: 6px; }
+.setp-proj-head {
+  display: flex; align-items: flex-start; gap: 10px; min-width: 0;
+}
+.setp-proj-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.setp-proj-t { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .setp-proj-t b { font-weight: 650; }
 .setp-badge {
   font-size: 10px; padding: 0 6px; border-radius: 8px;
@@ -98,11 +102,45 @@
 }
 .setp-badge.external { color: #9E4C00; background: #FBF3E4; }
 .setp-badge.own { color: var(--mdw-accent, #2F6F5E); background: var(--mdw-accent-soft, #E8F2EE); }
+.setp-badge.loop { color: var(--mdw-accent, #2F6F5E); background: var(--mdw-accent-soft, #E8F2EE); }
 .setp-proj-p {
   font-size: 10.5px; color: var(--faint);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .setp-proj-a { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* 项目图标：标题旁圆形入口；展开后编辑条走文档流（避免被 .setp-body overflow 裁切） */
+.setp-icon { flex: none; }
+.setp-icon-btn {
+  width: 32px; height: 32px; padding: 0;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--soft); color: var(--mid);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; flex: none;
+}
+.setp-icon-btn:hover { background: var(--soft-2); color: var(--ink); border-color: var(--mid); }
+.setp-icon.open .setp-icon-btn {
+  border-color: var(--mdw-accent, #2F6F5E);
+  box-shadow: 0 0 0 2px var(--mdw-accent-soft, #E8F2EE);
+}
+.setp-icon-glyph {
+  font-size: 16px; line-height: 1;
+  max-width: 1.4em; overflow: hidden; text-overflow: clip; white-space: nowrap;
+}
+/* 编辑条跨过标题区整宽：挂在卡片头下方，由 JSX 放在 head 外 */
+.setp-icon-edit {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--soft);
+}
+.setp-icon-edit input {
+  width: 88px; height: 24px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+  font: 400 12px ui-monospace, Consolas, monospace;
+}
+.setp-icon-edit input:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }
 
 /* 回调提示词（收尾指令模板）编辑器 */
 .setp-suffix { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }

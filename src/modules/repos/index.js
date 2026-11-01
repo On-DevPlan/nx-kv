@@ -293,7 +293,7 @@ export default {
         file: { type: 'string', hint: '参考仓库内的相对路径（配合 --ref）' },
         note: { type: 'string', hint: '这篇的说明' },
       },
-      run: (ctx) => addRepoDoc(ctx.id, { rel: ctx.rel, path: ctx.path, ref: ctx.ref, rel: ctx.file, note: ctx.note }),
+      run: (ctx) => addRepoDoc(ctx.id, { rel: ctx.rel, path: ctx.path, ref: ctx.ref, file: ctx.file, note: ctx.note }),
       render: (d) => `已加一篇介绍文档（共 ${d.count} 篇）`,
     },
     {
@@ -304,7 +304,7 @@ export default {
       args: ['id'],
       flags: { index: { type: 'number', required: true, hint: '序号（1 = 主篇）' } },
       run: (ctx) => removeRepoDoc(ctx.id, ctx.index),
-      render: (d) => `已摘掉一篇介绍文档`,
+      render: () => `已摘掉一篇介绍文档`,
     },
     {
       id: 'repo.remove',

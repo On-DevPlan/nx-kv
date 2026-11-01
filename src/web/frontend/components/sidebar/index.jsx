@@ -1,5 +1,6 @@
 // 侧边栏（应用壳的左栏）：品牌区 + 搜索 + 树（全局池恒顶 → 看板 → 仓库）+ 底部入口。
-// 收起态渲染为 52px 图标 rail（悬停气泡、徽标仍在）。
+// **全局动作集中在品牌区**（顶栏已删）：布局撤销重做 / 设置（齿轮气泡，含重置布局与
+// 偏好开关）。收起成窄轨时保留设置入口（见 panel.jsx）。
 // 拖拽编排 = 三段式落点（drag.js）；可见序 = 渲染序，键盘导航走同一份扁平序。
 //
 // **数据源**：仓库登记 + 看板（真实数据，见 model.js）。侧边栏不持有自己的分组体系，
@@ -26,6 +27,7 @@ export default function Sidebar({
   patchPrefs,      // (patch) => void（已持久化）
   refreshRepos,    // 仓库/看板刷新（登记、归属变更后）
   onCollapse,      // 收起成窄轨（工作区面板：改 tabset weight）
+  shell,           // 全局动作：{undo, redo, canUndo, canRedo, resetLayout}
 }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
@@ -199,6 +201,30 @@ export default function Sidebar({
   return (
     <aside id="side">
       <div className="shead">
+        {/* 品牌区 = 旧顶栏的家当：logo ＋ 全局动作（布局撤销重做 / 设置） */}
+        <div className="brandrow">
+          <span className="nx-logo" aria-hidden>nx</span>
+          <span className="nx-title">nx-kv</span>
+          <span className="grow" />
+          <button
+            className="iconbtn" title="撤销上一次布局操作" aria-label="撤销上一次布局操作"
+            disabled={!shell || !shell.canUndo} onClick={shell && shell.undo}
+          >
+            ↶
+          </button>
+          <button
+            className="iconbtn" title="重做" aria-label="重做"
+            disabled={!shell || !shell.canRedo} onClick={shell && shell.redo}
+          >
+            ↷
+          </button>
+          <button
+            className="iconbtn" title="设置（浮动面板）" aria-label="设置"
+            onClick={() => shell && shell.openSettings()}
+          >
+            <Icon name="gear" size={15} />
+          </button>
+        </div>
         <div className="searchrow">
           <button
             className="iconbtn collapse"

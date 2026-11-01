@@ -130,12 +130,62 @@ export default {
     },
     {
       id: 'localtask.get',
-      cli: ['localtask', 'get'],
+      // CRUD get（查看单条）。CLI 动词让位给「领取」语义：`localtask get` 现在是
+      // 领任务（见 localtask.claim），查看走 `localtask show`。HTTP 路由不变。
+      cli: ['localtask', 'show'],
       http: ['GET', '/api/localtasks/item'],
       summary: '查看单条任务（按 --id，定位到 --cwd 主题或 --key）',
       flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
       run: (ctx) => service.getTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
       render: renderTask,
+    },
+    {
+      // 领取（todo.md 的「get」）：默认直接领——队列有任务立即返回，没有立即空手而回
+      // （不阻塞）；项目开启「持续 get」（repo getLoop）后升级为 waitgoal：
+      // 无任务自动唤起阻塞窗口（打开页面 + 项目配置的分钟数），领到的交付文本
+      // 自带「继续 get 直到超时」的项目模板。
+      id: 'localtask.claim',
+      cli: ['localtask', 'get'],
+      http: null, // 与 wait 同族：阻塞语义只走 CLI（agent 本轮的领取动作）
+      summary:
+        '领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填',
+      flags: {
+        cwd: CWD,
+        summary: { type: 'string', hint: '当前现状（agent 状态，展示给用户）' },
+        timeout: { type: 'number', hint: '阻塞上限（秒）；仅项目开启「持续 get」时有意义' },
+        'no-open': { type: 'boolean', hint: '不自动打开浏览器（测试用）' },
+      },
+      run: async (ctx) => {
+        const { getTask } = await import('../tasktool/get.js');
+        return getTask({ cwd: ctx.cwd, summary: ctx.summary, timeoutSec: ctx.timeout, open: !ctx['no-open'] });
+      },
+      render: renderWait, // 返回形状与 wait 同构（ok/timeout），复用同一份人读渲染
+    },
+    {
+      // 完成门禁：带时间目标的任务未到点拒绝标记完成（提示派 sub agent 重提需求）。
+      id: 'localtask.done',
+      cli: ['localtask', 'done'],
+      http: ['POST', '/api/localtasks/done'],
+      summary:
+        '标记任务完成：--summary 完成总结必填；带时间目标的任务未到点会被拒绝（blocked），到点自动记录最终 check',
+      flags: {
+        id: { type: 'number', required: true, hint: '任务编号' },
+        cwd: CWD,
+        key: KEY,
+        summary: { type: 'string', required: true, hint: '完成总结（记为本轮终态 + timegoal 日志）' },
+        progress: { type: 'string', hint: '完成度/下一步（≤2000 字，一并写入日志）' },
+      },
+      run: (ctx) =>
+        service.completeTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, summary: ctx.summary, progress: ctx.progress }),
+      render: (d) => {
+        if (d.status === 'blocked') {
+          const why = d.reason === 'not_claimed' ? d.hint : `时间未到（剩 ${d.remainingHuman || Math.round((d.remainingSec || 0) / 60) + ' 分钟'}，截止 ${d.deadline}）——${d.hint}`;
+          return `[blocked] 任务 #${d.id} 暂不能标完成：${why}`;
+        }
+        if (d.already) return `任务 #${d.id} 之前已完成（${d.completedAt}），无需重复标记。`;
+        const goal = d.goal && d.goal.recorded ? '（最终 check 已记录）' : '';
+        return `已标记完成: #${d.id} @ ${d.name}（${d.completedAt}）${goal}`;
+      },
     },
     {
       id: 'localtask.importRemote',
@@ -177,7 +227,7 @@ export default {
       cli: ['localtask', 'add'],
       http: ['POST', '/api/localtasks'],
       summary:
-        '向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池',
+        '向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）',
       args: ['text'],
       flags: {
         cwd: CWD,
@@ -186,9 +236,24 @@ export default {
           type: 'boolean',
           hint: '推到全局主题（共享池）：任何目录的 wait 在本地空时自动领取；--cwd 被忽略',
         },
+        duration: {
+          type: 'string',
+          hint: '时间目标时长（2h / 90m / 5小时）：领取即计时，未到点不许标完成',
+        },
+        'goal-prompt': { type: 'string', hint: '时间目标的附加要求（随 check 指令一起固化，可省）' },
+        goalPrompt: { type: 'string', hint: '同 --goal-prompt（驼峰写法）' },
       },
-      run: (ctx) =>
-        service.addTask({ text: ctx.text, cwd: ctx.cwd, summary: ctx.summary, global: ctx.global }),
+      run: (ctx) => {
+        const gp = ctx.goalPrompt ?? ctx['goal-prompt'];
+        const timegoal = ctx.duration || gp ? { duration: ctx.duration, prompt: gp } : undefined;
+        return service.addTask({
+          text: ctx.text,
+          cwd: ctx.cwd,
+          summary: ctx.summary,
+          global: ctx.global,
+          timegoal,
+        });
+      },
       render: renderAdd,
     },
     {
@@ -442,13 +507,16 @@ export default {
         timeout: { type: 'number', hint: '阻塞上限（秒）；缺省用页面配置（推荐 180，最大 600）' },
         'no-open': { type: 'boolean', hint: '不自动打开浏览器（测试用）' },
       },
-      run: (ctx) =>
-        service.waitForTask({
+      run: async (ctx) => {
+        // wait 编排已迁 tasktool/wait.js（任务工具语义归 tasktool；命令名不变）
+        const { waitForTask } = await import('../tasktool/wait.js');
+        return waitForTask({
           cwd: ctx.cwd,
           summary: ctx.summary,
           timeoutSec: ctx.timeout,
           open: !ctx['no-open'],
-        }),
+        });
+      },
       render: renderWait,
     },
 

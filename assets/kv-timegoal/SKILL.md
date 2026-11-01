@@ -171,7 +171,12 @@ nx-kv timegoal log    --cwd <dir>                                    # 回看每
 
 **没有依赖关系。** timegoal 只做两件事：算时间、回显提示词原文。
 
-- 不调用 `localtask wait`：等不到任务是别的事，与是否到点无关
+- 不调用 `localtask wait`：等不到任务是别的事，与是否到点有关
+- **两种 timegoal**：目录级（`--cwd`，与目录一对一）与**任务级**（`--task
+  task:<topicKey>:<taskId>`，发布时 `localtask add --duration 2h` 随任务携带，
+  **领取即计时**）。任务级的 goal key 会随任务交付的 instruction 一起给你，
+  直接照抄执行即可；`timegoal check --task <key> --summary … --progress …` 记日志，
+  未到点 `localtask done` 会拒绝标记完成。
 - 不阻塞任何东西：可以同时跑人机接力、派任务给别的 agent、外部 cron
 - 不需要登录 KV 后端：纯本机
 

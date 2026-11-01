@@ -9,6 +9,7 @@
 //
 // 存储一律指向临时文件（NX_KV_LOCALTASK_STORE），绝不写脏用户目录。
 import { test } from 'node:test';
+import { waitForTask } from '../../src/modules/tasktool/wait.js';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -58,7 +59,7 @@ test('cancelWait：阻塞中的 wait 立即收尾（timeout + cancelled），等
 
   let during = null;
   const t0 = Date.now();
-  const p = svc.waitForTask({
+  const p = waitForTask({
     cwd: dir,
     summary: '等用户关闭',
     timeoutMs: 60_000, // 远大于实际耗时：能证明是「被关闭」而不是「等到超时」
@@ -97,7 +98,7 @@ test('关闭标记只生效一次：正常超时不带 cancelled，且不会瞬�
   await reset();
   const t0 = Date.now();
   // 注意用 timeoutSec:1（秒级）；timeoutMs 会先 ÷1000 再 floor，传 800 会变成 0 秒立即超时
-  const r = await svc.waitForTask({ cwd: dir, summary: '没人点关闭', timeoutSec: 1, open: false });
+  const r = await waitForTask({ cwd: dir, summary: '没人点关闭', timeoutSec: 1, open: false });
   assert.equal(r.status, 'timeout');
   assert.notEqual(r.cancelled, true, '正常超时不应带 cancelled');
   assert.ok(Date.now() - t0 >= 900, '应当是等满 1s 超时，而不是被误收尾');
@@ -114,7 +115,7 @@ test('setWaiting 清掉残留关闭标记：新一轮 wait 不会被上一轮的
   writeFileSync(storeFile, JSON.stringify(raw, null, 2), 'utf8');
 
   const t0 = Date.now();
-  const r = await svc.waitForTask({ cwd: dir, summary: '新一轮等待', timeoutSec: 1, open: false });
+  const r = await waitForTask({ cwd: dir, summary: '新一轮等待', timeoutSec: 1, open: false });
   assert.equal(r.status, 'timeout');
   assert.notEqual(r.cancelled, true, '残留标记不该杀掉新一轮等待');
   assert.ok(Date.now() - t0 >= 900, '应当正常等到超时');

@@ -1,9 +1,11 @@
-// 最小 ZIP 写入器：只用 node:zlib，不引入依赖。
+// 最小 ZIP 读写器：只用 node:zlib，不引入依赖。
 //
-// 用途：`repo export --zip` 把布局 JSON 与说明文件打成一个包（换机/交接时一个文件带走）。
-// 只实现「写」：本地文件头 + 数据 + 中央目录 + EOCD，deflate（method 8）。
-// 不支持压缩级别调优、加密、ZIP64（>4GB 或 >65535 条目才需要，导出物远不到）。
-import { deflateRawSync } from 'node:zlib';
+// 用途：`repo export --zip` 把布局 JSON、说明文件与文档树打成一个包（换机/交接时一个文件带走），
+// `repo import` 直接吃这个包（v4 起 zip 是导出的本体，导入端必须能拆包）。
+// 读写同源：本地文件头 + 数据 + 中央目录 + EOCD，deflate（method 8）。
+// 不支持压缩级别调优、加密、ZIP64（>4GB 或 >65535 条目才需要，导出物远不到；读取时遇到就拒绝）。
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import { badInput } from './errors.js';
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -96,4 +98,66 @@ export function makeZip(entries, { mtime = new Date(0) } = {}) {
   eocd.writeUInt16LE(0, 20);
 
   return Buffer.concat([...locals, centralBuf, eocd]);
+}
+
+// ─── 读取 ─────────────────────────────────────────────────────────────
+
+// 解压总量上限：远大于任何真实导出物，但能在几个数量级之前拦住 zip bomb
+// （几十 MB 的包解出几个 GB，把内存吃满——读取外部文件必须设防）。
+const MAX_TOTAL_UNCOMPRESSED = 64 * 1024 * 1024;
+
+/**
+ * 拆包。返回 [{ name, data: Buffer }]（保持中央目录顺序）。
+ * 只认「本地文件头 + 数据 + 中央目录 + EOCD」布局；拒 ZIP64 与加密位。
+ * 尺寸一律以中央目录为准——本地头在有 data descriptor 时尺寸位是 0，不可信。
+ */
+export function readZip(buf) {
+  const u8 = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+  // EOCD 从尾部往前找签名（容忍 ZIP 注释，注释最长 65535）
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 22 - 65535); i--) {
+    if (u8.readUInt32LE(i) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw badInput('不是 zip 文件（找不到 EOCD）');
+  const total = u8.readUInt16LE(eocd + 10);
+  const cdSize = u8.readUInt32LE(eocd + 12);
+  const cdOff = u8.readUInt32LE(eocd + 16);
+  if (total === 0xffff || cdOff === 0xffffffff || cdSize === 0xffffffff) {
+    throw badInput('不支持 ZIP64 的 zip 包');
+  }
+  const out = [];
+  let p = cdOff;
+  let acc = 0;
+  for (let n = 0; n < total; n++) {
+    if (p + 46 > u8.length || u8.readUInt32LE(p) !== 0x02014b50) throw badInput('zip 中央目录损坏');
+    const flags = u8.readUInt16LE(p + 8);
+    const method = u8.readUInt16LE(p + 10);
+    const compSize = u8.readUInt32LE(p + 20);
+    const nameLen = u8.readUInt16LE(p + 28);
+    const extraLen = u8.readUInt16LE(p + 30);
+    const commentLen = u8.readUInt16LE(p + 32);
+    const localOff = u8.readUInt32LE(p + 42);
+    if (flags & 0x1) throw badInput('不支持加密的 zip 包');
+    if (compSize === 0xffffffff || localOff === 0xffffffff) throw badInput('不支持 ZIP64 的 zip 包');
+    const name = u8.slice(p + 46, p + 46 + nameLen).toString('utf8');
+    p += 46 + nameLen + extraLen + commentLen;
+    // 数据区从本地头自己的名字/extra 长度算起——两条记录的长度可能不同
+    if (localOff + 30 > u8.length || u8.readUInt32LE(localOff) !== 0x04034b50) throw badInput('zip 本地文件头损坏');
+    const lNameLen = u8.readUInt16LE(localOff + 26);
+    const lExtraLen = u8.readUInt16LE(localOff + 28);
+    const start = localOff + 30 + lNameLen + lExtraLen;
+    if (start + compSize > u8.length) throw badInput('zip 数据区越界（包已损坏）');
+    const raw = u8.slice(start, start + compSize);
+    let data;
+    if (method === 0) data = raw;
+    else if (method === 8) data = inflateRawSync(raw);
+    else throw badInput('不支持的 zip 压缩方法: ' + method);
+    acc += data.length;
+    if (acc > MAX_TOTAL_UNCOMPRESSED) throw badInput('zip 解压总量超过 64MB 上限（疑似 zip bomb）');
+    out.push({ name, data });
+  }
+  return out;
 }

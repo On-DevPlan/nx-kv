@@ -10,6 +10,7 @@
 // 修法：判据统一走 isLiveWaiting——waiting 为真**且**截止时刻还没过。
 // 截止已过 = 那个 wait 本来也该收尾了 = 没人真在等。
 import { test } from 'node:test';
+import { waitForTask } from '../../src/modules/tasktool/wait.js';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -160,7 +161,7 @@ test('老数据没有 waitingUntilMs 时回退解析字符串（向后兼容）'
 test('真实 wait 会写入毫秒精度的截止时刻', async () => {
   try { rmSync(storeFile); } catch { /* 不存在即可 */ }
   const dirC = mkdirSync(join(tmp, 'projC'), { recursive: true }) || join(tmp, 'projC');
-  const p = svc.waitForTask({ cwd: dirC, summary: 's', timeoutSec: 3, open: false });
+  const p = waitForTask({ cwd: dirC, summary: 's', timeoutSec: 3, open: false });
   await new Promise((r) => setTimeout(r, 150));
 
   const raw = JSON.parse(readFileSync(storeFile, 'utf8'));

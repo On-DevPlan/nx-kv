@@ -3,6 +3,7 @@
 //
 // 存储一律指向临时文件（NX_KV_LOCALTASK_STORE），绝不写脏用户目录。
 import { test } from 'node:test';
+import { waitForTask } from '../../src/modules/tasktool/wait.js';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -64,7 +65,7 @@ test('addTask global:true 与 --cwd 同给 → global 优先，cwd 被忽略（�
 test('显式传 cwd 的 wait 也自动领全局（cwd 不关闭兜底）：本地空 → source global', async () => {
   await reset();
   await svc.addTask({ global: true, text: '池子里的活' });
-  const r = await svc.waitForTask({ cwd: dirA, summary: '本地空等全局', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: '本地空等全局', open: false });
   assert.equal(r.status, 'ok');
   assert.equal(r.queued, true);
   assert.equal(r.source, 'global');
@@ -77,7 +78,7 @@ test('本地与全局都有 pending → 优先本地（source local）', async (
   await reset();
   await svc.addTask({ global: true, text: '全局的' });
   await svc.addTask({ cwd: dirA, text: '本地的' });
-  const r = await svc.waitForTask({ cwd: dirA, summary: '现状', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: '现状', open: false });
   assert.equal(r.status, 'ok');
   assert.equal(r.source, 'local');
   assert.equal(r.task.text, '本地的');
@@ -93,7 +94,7 @@ test('本地空 + 全局空 → 阻塞；同进程 addTask(global) 按 FIFO 实�
   const ready = new Promise((r) => {
     fire = r;
   });
-  const p = svc.waitForTask({
+  const p = waitForTask({
     cwd: dirA,
     summary: '两边都空',
     timeoutSec: 10,
@@ -124,9 +125,9 @@ test('FIFO：两个 wait 先后阻塞，两条全局任务按阻塞顺序各领�
   const ready2 = new Promise((r) => {
     fire2 = r;
   });
-  const p1 = svc.waitForTask({ cwd: dirA, summary: 'A 等', timeoutSec: 10, open: false, onReady: () => fire1() });
+  const p1 = waitForTask({ cwd: dirA, summary: 'A 等', timeoutSec: 10, open: false, onReady: () => fire1() });
   await ready1; // 先保证 waiter1 已注册，再启动 waiter2 → 注册顺序确定
-  const p2 = svc.waitForTask({ cwd: dirB, summary: 'B 等', timeoutSec: 10, open: false, onReady: () => fire2() });
+  const p2 = waitForTask({ cwd: dirB, summary: 'B 等', timeoutSec: 10, open: false, onReady: () => fire2() });
   await ready2;
 
   const a1 = await svc.addTask({ global: true, text: 'G-给先来的' });
@@ -148,7 +149,7 @@ test('跨进程兜底：wait 阻塞中，另一进程直接写 store 投全局�
   const ready = new Promise((r) => {
     fire = r;
   });
-  const p = svc.waitForTask({ cwd: dirA, summary: '等跨进程', timeoutSec: 10, open: false, onReady: () => fire() });
+  const p = waitForTask({ cwd: dirA, summary: '等跨进程', timeoutSec: 10, open: false, onReady: () => fire() });
   await ready;
 
   // 模拟另一个进程：直接覆写 store 文件，往全局主题塞一条 pending
@@ -179,7 +180,7 @@ test('全局主题受保护：prune 永不清理（即便空、无 cwd）', asyn
   await reset();
   await svc.addTask({ global: true, text: '占位' });
   // 领走 → 全局变成「空 + 无 cwd」，正是 prune 的两类清理对象
-  await svc.waitForTask({ cwd: dirA, summary: '领全局', open: false });
+  await waitForTask({ cwd: dirA, summary: '领全局', open: false });
 
   const dry = await svc.pruneTopics({ allFinished: true, dryRun: true });
   assert.equal(dry.removed.some((x) => x.key === svc.GLOBAL_KEY), false);
@@ -267,7 +268,7 @@ test('本地 wait 期间投全局、随后本地也被投 → 本地 waiter 优�
   const ready = new Promise((r) => {
     fire = r;
   });
-  const p = svc.waitForTask({ cwd: dirA, summary: '等本地', timeoutSec: 10, open: false, onReady: () => fire() });
+  const p = waitForTask({ cwd: dirA, summary: '等本地', timeoutSec: 10, open: false, onReady: () => fire() });
   await ready;
   await svc.addTask({ cwd: dirA, text: '本地直投' });
   const r = await p;
@@ -279,7 +280,7 @@ test('领取审计：任务记下「从哪个池领、被谁领」', async () =>
   await reset();
   // dirA 的 agent 从全局池领走一条 → claimedFrom=global, claimedBy=dirA
   await svc.addTask({ global: true, text: '池子里的活' });
-  const r = await svc.waitForTask({ cwd: dirA, summary: '本地空等全局', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: '本地空等全局', open: false });
   assert.equal(r.source, 'global');
   assert.equal(r.task.claimedFrom, 'global');
   assert.equal(r.task.claimedBy, svc.normalizeCwd(dirA).key);
@@ -287,7 +288,7 @@ test('领取审计：任务记下「从哪个池领、被谁领」', async () =>
 
   // 本地队列领走 → claimedFrom=local
   await svc.addTask({ cwd: dirB, text: '本地活' });
-  const r2 = await svc.waitForTask({ cwd: dirB, summary: '本地领', open: false });
+  const r2 = await waitForTask({ cwd: dirB, summary: '本地领', open: false });
   assert.equal(r2.source, 'local');
   assert.equal(r2.task.claimedFrom, 'local');
   assert.equal(r2.task.claimedBy, svc.normalizeCwd(dirB).key);

@@ -16,11 +16,17 @@ description: 领取排给本工作目录的本地任务——别人通过 kv-sub
 nx-kv localtask list --json
 # → {topics:[{key,cwd,name,summary,waiting,pending,total,tasks:[...]}], waiting, settings}
 
-# 2. 有待领取 → 取走最早的一条（队列非空时 wait 立即返回，不开窗不阻塞）
-nx-kv localtask wait --summary "<本轮现状，如：空闲，领取新任务>" --timeout 30 --json
+# 2. 有待领取 → 取走最早的一条（默认「直接 get」：队列非空立即返回，不开窗不阻塞）
+nx-kv localtask get --summary "<本轮现状，如：空闲，领取新任务>" --json
 # → {status:"ok", queued:true, task:{id,text,...}}
 
+# 2b. 想挂着等活（阻塞等人回填）→ 用 wait（kv-waittask 的循环契约）
+nx-kv localtask wait --summary "<本轮现状>" --timeout 30 --json
+
 # 3. 执行 task.text（内容永远读 task.text，id 只是编号），产出落在本目录
+
+# 4. 干完标记完成（带时间目标的任务：未到点会被拒绝）
+nx-kv localtask done --id <n> --summary "<完成总结>" --json
 ```
 
 - `queued:true` = 从队列取到任务，直接执行。
@@ -29,13 +35,21 @@ nx-kv localtask wait --summary "<本轮现状，如：空闲，领取新任务>"
   根指令；字段缺席 = 已关闭或本轮没有可渲染内容（如模板只有 goal 段而该目录无目标）。
 - `{status:"timeout"}`（exit 0，不是错误）= 时限内没有新任务：想继续等就再
   wait（挂起等待，期间别人提交的会立刻送达），不想等就收工。
+- **get 的两种形态**：默认「直接 get」（没任务立即返回 timeout，不阻塞）；项目在设置
+  面板里开启「持续 get（waitgoal）」后，get 变成**阻塞唤起**——自动打开对应目录页面、
+  等项目配置的分钟数，期间用户回填就直接领到；领到的交付文本自带「继续 get 直到
+  超时」的项目模板（不用自己记循环）。
+- **带时间目标的任务**（发布时 `--duration 2h`）：领取即计时，交付的 instruction 里
+  带 `timegoal check --task …` 指令；**时间未到不许标记完成**——`localtask done`
+  会返回 `{status:"blocked", reason:"goal_not_reached"}`，此时应派出 sub agent
+  重新提出新的需求再继续，而不是硬标完成。
 - `--timeout <秒>`：阻塞上限（缺省用页面配置 180 秒，最大 600）；「查完就走」
   用短超时，「挂着等活」用长超时。
 
 ## 队列管理（需要时）
 
 ```bash
-nx-kv localtask get    --id <n>                        # 查看单条
+nx-kv localtask show   --id <n>                        # 查看单条（get 已改为领取动作）
 nx-kv localtask update --id <n> --text "<新内容>"       # 改写任务内容
 nx-kv localtask remove --id <n>                        # 删除单条
 nx-kv localtask reorder --id <n> --before-id <m>       # 调整领取顺序（或 --after-id）

@@ -286,7 +286,7 @@ test('repoExport：以 key 为身份、不含本地路径；dev 无 remote 进 w
   const text = JSON.stringify(d);
   assert.ok(!text.includes(join(dir, 'dev')), '导出不得含本地路径');
   assert.ok(!text.includes('"path"'), '导出不得出现 path 字段');
-  assert.equal(d.version, 3);
+  assert.equal(d.version, 4); // v4：zip 纳入自有文档树，layout 带 DocRef 绑定
 
   const devOut = d.repos.find((x) => x.name === 'dev-app');
   assert.equal(devOut.key, 'github.com/me/dev-app');

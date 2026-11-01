@@ -16,6 +16,7 @@ import * as ref from './ref.js';
 import * as keys from './keys.js';
 import * as remote from './remote.js';
 import * as transfer from './transfer.js';
+import { repoKnowledge } from '../docs/knowledge.js';
 import { gitOrigin } from './git.js';
 import { badInput } from '../../core/errors.js';
 
@@ -49,16 +50,32 @@ function renderBoard(b) {
 
 const lastSeg = (p) => String(p || '').replace(/\\/g, '/').split('/').filter(Boolean).slice(-1)[0] || '';
 
-// import / import --diff 两个 action 共用的取 JSON 逻辑：
-// CLI 给文件路径（- = stdin），面板直接 POST {json}。两条入口同一个 action 声明。
-async function readLayoutJson(ctx) {
+// import / import --diff 两个 action 共用的取布局逻辑：
+// CLI 给文件路径（- = stdin），面板直接 POST {json}。
+// v4 起文件可以是导出的 zip 本体（PK 魔数）→ 拆包取 layout.json + docs/**，
+// 文档条目随布局一起走完 diff 与导入两条链路。
+async function readLayout(ctx) {
   let json = typeof ctx.json === 'string' ? ctx.json : '';
+  const docsFiles = [];
   if (!json && ctx.file) {
     const { readFileSync } = await import('node:fs');
-    json = readFileSync(ctx.file === '-' ? 0 : ctx.file, 'utf8');
+    const buf = readFileSync(ctx.file === '-' ? 0 : ctx.file);
+    const isZip = buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04;
+    if (isZip) {
+      const { readZip } = await import('../../core/zip.js');
+      for (const e of readZip(buf)) {
+        if (e.name === 'layout.json') json = e.data.toString('utf8');
+        else if (e.name.startsWith('docs/') && /\.md$/i.test(e.name)) {
+          docsFiles.push({ rel: e.name.slice('docs/'.length), data: e.data });
+        }
+      }
+      if (!json) throw badInput('zip 里没有 layout.json —— 认 repo export 的导出包');
+    } else {
+      json = buf.toString('utf8');
+    }
   }
-  if (!json) throw badInput('请给布局 JSON 文件路径（- 读 stdin），或在面板里粘贴 JSON');
-  return json;
+  if (!json) throw badInput('请给布局文件（layout.json 或导出的 zip；- 读 stdin），或在面板里粘贴 JSON');
+  return { json, docsFiles };
 }
 
 // ---- CLI 人读渲染（Web 端拿 JSON，用不到这些） ----
@@ -156,7 +173,7 @@ export default {
   id: 'repos',
   title: '仓库上下文（= Web「仓库」页；本地任务的主题会带上这里的上下文）',
   order: 10,
-  view: () => import('./view.jsx'),
+  view: () => import('../../web/frontend/page/repos/index.jsx'),
 
   // CRUD 完备性声明：本模块管理的是一组「仓库」实体，因此必须齐备五个操作，
   // 且每个都要能从 CLI 与 HTTP 两端调用。
@@ -212,7 +229,8 @@ export default {
       id: 'repo.update',
       cli: ['repo', 'update'],
       http: ['PATCH', '/api/repos/:id'],
-      summary: '修改仓库路径 / 名称 / 描述 / 备注 / 类型 / 远程地址 / key',
+      summary:
+        '修改仓库路径 / 名称 / 描述 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填 + 交付文本带继续 get 模板）',
       args: ['id'],
       flags: {
         path: { type: 'string' },
@@ -223,8 +241,24 @@ export default {
         remote: { type: 'string', hint: '远程 git 地址' },
         key: { type: 'string', hint: '自定义 key（给了就视为 keyCustom）' },
         'key-custom': { type: 'boolean', hint: 'key 是否自定义（true=不跟随 remote）' },
+        'get-loop': { type: 'string', enum: ['on', 'off'], hint: '持续 get 开关' },
+        'get-loop-minutes': { type: 'number', hint: '无任务时的阻塞窗口（分钟，默认 10，上限 600s 夹制）' },
+        'get-loop-template': {
+          type: 'string',
+          hint: '领到任务时追加的「继续 get」模板（占位符 {{task.id}}/{{task.text}} 等）',
+        },
       },
-      run: (ctx) => service.updateRepo(ctx.id, { ...ctx, keyCustom: ctx['key-custom'] === undefined ? undefined : ctx['key-custom'] === true }),
+      run: (ctx) => {
+        const patch = { ...ctx, keyCustom: ctx['key-custom'] === undefined ? undefined : ctx['key-custom'] === true };
+        if (ctx['get-loop'] !== undefined || ctx['get-loop-minutes'] !== undefined || ctx['get-loop-template'] !== undefined) {
+          patch.getLoop = {
+            ...(ctx['get-loop'] !== undefined ? { enabled: ctx['get-loop'] === 'on' } : {}),
+            ...(ctx['get-loop-minutes'] !== undefined ? { waitMinutes: ctx['get-loop-minutes'] } : {}),
+            ...(ctx['get-loop-template'] !== undefined ? { template: ctx['get-loop-template'] } : {}),
+          };
+        }
+        return service.updateRepo(ctx.id, patch);
+      },
       render: (r) => `已更新: ${r.name}（key: ${r.key}）`,
     },
     {
@@ -512,6 +546,39 @@ export default {
       run: (ctx) => ref.refsForRepo(ctx.id || process.cwd()),
       render: renderRefsOf,
     },
+    {
+      // 复合知识查询：get 封装的供料口。agent 领到某个仓库的任务后，
+      // 一条命令拿到 项目介绍 + 所属组介绍 + 组内描述 + 组绑定文档 + 参考仓库，
+      // 文档路径都是磁盘真实路径——拿到的就是可读的，不用再查第二遍。
+      id: 'repo.knowledge',
+      cli: ['repo', 'knowledge'],
+      http: ['GET', '/api/repos/knowledge'],
+      summary: '取仓库完整知识：项目介绍 + 所属组（介绍/组内描述/绑定文档）+ 参考仓库（--md 拼成单篇 markdown；缺省当前目录）',
+      args: [{ name: 'id', required: false }],
+      flags: {
+        md: { type: 'boolean', hint: '输出拼装好的单篇 markdown（字段名 md），get 封装直接可用' },
+      },
+      run: (ctx) => repoKnowledge(ctx.id || process.cwd(), { md: ctx.md === true }),
+      render: (d) => {
+        if (d.md) return d.md;
+        const lines = [`【${d.repo.name}】${d.repo.key}${d.repo.desc ? `  —— ${d.repo.desc}` : ''}`];
+        if (d.intro && !d.intro.missing) lines.push(`  介绍: ${d.intro.docId}${d.intro.title ? `「${d.intro.title}」` : ''}`);
+        else lines.push('  介绍:（还没有文档——desc 会在首次读取时播种为 md）');
+        for (const b of d.boards) {
+          lines.push(`  ◇ 组「${b.name}」`);
+          if (b.intro && !b.intro.missing) lines.push(`    组介绍: ${b.intro.docId}`);
+          if (b.note && !b.note.missing) lines.push(`    组内描述: ${b.note.docId}`);
+          for (const l of b.docLinks) lines.push(`    绑定: ${l.docId}${l.note ? `  · ${l.note}` : ''}${l.missing ? '（缺失）' : ''}`);
+          for (const x of b.externalDirs) lines.push(`    外部目录: ${x.path}（${x.files.length} 个文档，按需读盘）`);
+        }
+        if (d.refs.length) {
+          lines.push('  参考仓库:');
+          for (const r of d.refs) lines.push(`    ${r.name}${r.remote ? `（${r.remote}）` : ''}${r.note ? ` —— ${r.note.split('\n')[0]}` : ''}`);
+        }
+        for (const w of d.warnings) lines.push(`⚠ ${w}`);
+        return lines.join('\n');
+      },
+    },
 
     // ---- 布局导入导出（v2）：remote 为 key，不带本地路径 ----
     {
@@ -535,7 +602,7 @@ export default {
         return transfer.repoExport(opts);
       },
       render: (d) => (d && d.file
-        ? `已导出 zip: ${d.file}（${d.bytes} 字节）\n包含 layout.json + README.txt，可回灌 repo import`
+        ? `已导出 zip: ${d.file}（${d.bytes} 字节）\n包含 layout.json + README.txt + docs/（自有文档树），可回灌 repo import`
         : JSON.stringify(d, null, 2)),
     },
     {
@@ -548,7 +615,10 @@ export default {
       // CLI 上 --diff 是路径 token 的一部分（最长匹配），不是 flag。
       args: [{ name: 'file', required: false }],
       flags: { json: { type: 'string', hint: '（面板）直接给布局 JSON' } },
-      run: async (ctx) => transfer.diffImport(await readLayoutJson(ctx)),
+      run: async (ctx) => {
+        const { json, docsFiles } = await readLayout(ctx);
+        return transfer.diffImport(json, docsFiles);
+      },
       render: (d) => transfer.renderDiff(d),
     },
     {
@@ -569,13 +639,17 @@ export default {
         boards: { type: 'array', hint: '只处理这些看板 key（逗号分隔；空 = 全部）' },
         clone: { type: 'string', enum: ['all', 'dev', 'ref', 'none'], hint: '要克隆哪些（默认 none = 只登记）' },
       },
-      run: async (ctx) => transfer.repoImport({
-        json: await readLayoutJson(ctx),
-        selection: ctx.select,
-        boardSelection: ctx.boards,
-        strategy: ctx.strategy || 'ours',
-        clone: ctx.clone || 'none',
-      }),
+      run: async (ctx) => {
+        const { json, docsFiles } = await readLayout(ctx);
+        return transfer.repoImport({
+          json,
+          docsFiles,
+          selection: ctx.select,
+          boardSelection: ctx.boards,
+          strategy: ctx.strategy || 'ours',
+          clone: ctx.clone || 'none',
+        });
+      },
       render: (d) => transfer.renderResult(d),
     },
 

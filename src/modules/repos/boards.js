@@ -30,6 +30,7 @@ import {
   findBoard,
 } from './service.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
+import { boardDocRel, groupNoteRel } from '../docs/paths.js';
 
 const cleanText = (v) => String(v || '').trim();
 
@@ -57,6 +58,9 @@ function memberView(s, b, rkey, fallback, auto = false) {
     remote: local ? local.remote || '' : (fallback && fallback.remote) || '',
     type: local ? local.type || 'dev' : (fallback && fallback.type) || 'dev',
     note,
+    // 组内描述文档（绑定优先，缺省约定路径）——前端点开 doc 页签用
+    noteDocRel: (b.repoDocs || {})[rkey]?.rel || groupNoteRel(b.name, rkey),
+    noteDocPath: (b.repoDocs || {})[rkey]?.path || '',
     present: !!local,
     clonable: !!(local ? local.remote : fallback && fallback.remote),
     id: local ? local.id : '',
@@ -90,6 +94,10 @@ export async function listBoards() {
       name: b.name,
       desc: b.desc,
       key: boardKeyOf(b.name),
+      // 组介绍文档与组级附加文档列表（绑定优先；前端渲染介绍 md 与 docLinks chips）
+      docRel: b.doc?.rel || boardDocRel(b.name),
+      docPath: b.doc?.path || '',
+      docLinks: Array.isArray(b.docLinks) ? b.docLinks : [],
       repos: reposOf(b),
     })),
     // 未分组 = 有登记但不在任何看板里（占位成员不算——它们在组里）
@@ -110,7 +118,16 @@ export async function getBoard(idOrKey) {
   if (!b) b = s.boards.find((x) => boardKeyOf(x.name) === normalizeKey(raw));
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!b) throw notFound('看板不存在: ' + raw);
-  return { id: b.id, name: b.name, desc: b.desc, key: boardKeyOf(b.name), repos: membersOf(s, b) };
+  return {
+    id: b.id,
+    name: b.name,
+    desc: b.desc,
+    key: boardKeyOf(b.name),
+    docRel: b.doc?.rel || boardDocRel(b.name),
+    docPath: b.doc?.path || '',
+    docLinks: Array.isArray(b.docLinks) ? b.docLinks : [],
+    repos: membersOf(s, b),
+  };
 }
 
 export async function createBoard({ name, desc } = {}) {

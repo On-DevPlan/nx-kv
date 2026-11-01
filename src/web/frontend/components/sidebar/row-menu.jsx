@@ -1,4 +1,5 @@
-// 侧边栏的菜单装配：行菜单（⋯ / 右键）+「＋」菜单 + 设置气泡。
+// 侧边栏的菜单装配：行菜单（⋯ / 右键）+「＋」菜单。
+// （设置已从气泡菜单搬进**浮动设置面板** modules/settings/panel.jsx）
 //
 // 只回答「菜单里有什么」——怎么弹、怎么关、键盘怎么走，在 overlay.jsx 的 PopMenu；
 // 菜单项点了之后改什么，由调用方传进来的回调决定。
@@ -94,18 +95,4 @@ export function addMenuItems({ dialog, toast, onDataChanged }) {
       },
     },
   ];
-}
-
-/** 齿轮按钮（设置气泡）的菜单项 */
-export function cfgMenuItems({ prefs, patchPrefs, onNavigate, onTplManage }) {
-  return [
-    { label: (prefs.defaultFolded ? '✓ ' : '') + '侧边栏默认收起', icon: 'flow', onClick: () => patchPrefs((p) => ({ defaultFolded: !p.defaultFolded })) },
-    { label: (prefs.defaultGroupFolded ? '✓ ' : '') + '看板默认收起', icon: 'folder', onClick: () => patchPrefs((p) => ({ defaultGroupFolded: !p.defaultGroupFolded })) },
-    'sep',
-    { label: '任务模板…', icon: 'list', onClick: () => onTplManage && onTplManage() },
-    ...(prefs.hidden || []).length
-      ? [{ label: `恢复 ${prefs.hidden.length} 个隐藏仓库`, icon: 'refresh', onClick: () => patchPrefs({ hidden: [] }) }]
-      : [],
-    { label: '云端 / 登录…', icon: 'gear', onClick: () => onNavigate('#/cloud') },
-  ].filter(Boolean);
 }

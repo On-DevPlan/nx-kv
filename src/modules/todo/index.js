@@ -94,7 +94,7 @@ export default {
   id: 'todo',
   title: '清单（= Web「清单」页；含工作空间设置）',
   order: 30,
-  view: () => import('./view.jsx'),
+  view: () => import('../../web/frontend/page/cloud/index.jsx'),
 
   // CRUD 资源声明：任务的增删查改必须齐备，且 CLI 与面板都能调用
   resource: 'todo',

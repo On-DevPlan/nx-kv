@@ -9,7 +9,7 @@
 // 布局存 localStorage（独立 key）：面板摆在哪跟数据无关，进 store.json 只会让 diff 变噪音。
 // 与 prefs（展开态、隐藏、排序那类 UI 偏好）分开存 —— 两边生命周期不同：
 // prefs 是「这个浏览器的口味」，布局是「这个工作区的骨架」。
-import { Actions, DockLocation, Model } from 'flexlayout-react';
+import { Actions, DockLocation, Model, Rect } from 'flexlayout-react';
 
 /** 布局的落点。与 prefs 的 LS_KEY 分开存：布局大、单独读写不易互相踩。 */
 export const WORKSPACE_KEY = 'nx-kv-ui.workspace';
@@ -18,7 +18,7 @@ export const WORKSPACE_KEY = 'nx-kv-ui.workspace';
 const GLOBAL_ATTRS = {
   tabEnableClose: true,
   tabEnableDrag: true,
-  tabEnableRename: true,
+  tabEnableRename: false, // 页签只读：双击不出改名输入框
   tabEnablePopout: true,
   tabEnablePopoutIcon: true, // 标题栏出现「弹出」按钮——可见入口
   tabEnableFloat: true,
@@ -280,6 +280,41 @@ export function openPanel(model, spec) {
   return { tabId: created ? created.getId() : null, reused: false };
 }
 
+/**
+ * 开一个**浮动面板**（float）：先按普通面板加进工作区，再 popoutTab 成浮动窗。
+ *
+ * 设置面板用这个形态：设置是「临时开一块、看完就关」的东西，
+ * 长期挤在工作区里占位不合适；浮动窗可拖走、可叠放、关掉不带走布局。
+ * 已开着同一个面板时不重复开，只把它选中（findOpenPanel 遍历所有布局，浮窗也算）。
+ */
+export function openFloatingPanel(model, spec) {
+  const r = openPanel(model, { ...spec, location: spec.location || 'center' });
+  if (!r || !r.tabId || r.reused) return r;
+  const before = new Set([...model.getLayouts().keys()]);
+  model.doAction(Actions.popoutTab(r.tabId, 'float'));
+  // 新浮窗的默认矩形会铺满主区（不像「浮动面板」），这里收成面板尺寸并居中。
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const width = Math.min(760, Math.max(560, vw - 160)); // 设置面板：左侧分区导航 + 右侧内容
+  const height = Math.min(700, Math.max(460, vh - 160));
+  for (const [id, layout] of model.getLayouts()) {
+    if (before.has(id) || layout.getType() !== 'float') continue;
+    // 用库自己的 moveFloat 动作改矩形：直接 setRect 不会被浮窗组件读到
+    // （浮窗样式在渲染时读 layout.getRect()，但只有 moveFloat 会触发重绘）。
+    // 初始矩形 = 页签所在容器的内容区（≈主工作区，不含侧栏）——在它里面居中，
+    // 浮窗就不会盖住侧栏。
+    const host = layout.getRect();
+    const rect = new Rect(
+      Math.round(host.x + (host.width - width) / 2),
+      Math.round(host.y + (host.height - height) / 2),
+      width,
+      height
+    );
+    model.doAction(Actions.moveFloat(layout.getLayoutId(), rect));
+  }
+  return r;
+}
+
 /** 把一个面板挪到指定停靠位（换布局用） */
 export function dockPanel(model, tabId, location) {
   const target = activeTabsetId(model);
@@ -334,18 +369,7 @@ export function setTabsetAttrs(model, tabsetId, attrs) {
   return true;
 }
 
-/** 布局统计（状态条用） */
-export function layoutStats(model) {
-  let tabsets = 0;
-  let tabs = 0;
-  model.visitNodes((node) => {
-    if (node.getType() === 'tabset') tabsets += 1;
-    if (node.getType() === 'tab') tabs += 1;
-  });
-  return { tabsets, tabs };
-}
-
-/** 当前选中的 tab（状态条 / 深链同步用） */
+/** 当前选中的 tab（深链同步用） */
 export function activeTab(model) {
   const ts = model && model.getActiveTabset();
   const tab = ts && ts.getSelectedNode();

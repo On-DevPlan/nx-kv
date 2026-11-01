@@ -198,7 +198,7 @@ async function seed() {
 test('导出：key 为身份、看板有 key、不含 path 字段；选择导出只带选中的', async () => {
   const { dev, ref } = await seed();
   const all = await transfer.repoExport();
-  assert.equal(all.version, 3);
+  assert.equal(all.version, 4); // v4：zip 纳入自有文档树，layout 带 DocRef 绑定
   assert.ok(!JSON.stringify(all).includes('"path"'));
   assert.deepEqual(all.repos.map((r) => r.key).sort(), ['github.com/lib/ref', 'github.com/me/dev'].sort());
   assert.equal(all.boards[0].key, 'board/grp');

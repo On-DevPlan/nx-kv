@@ -14,12 +14,13 @@
 // 存储一律指向临时文件（NX_KV_LOCALTASK_STORE / NX_KV_TIMEGOAL_STORE），
 // 绝不写脏用户目录。
 import { test } from 'node:test';
+import { waitForTask } from '../../src/modules/tasktool/wait.js';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as svc from '../../src/modules/localtask/service.js';
-import * as tgsvc from '../../src/modules/timegoal/service.js';
+import * as tgsvc from '../../src/modules/tasktool/timegoal.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-goalexp-'));
 const storeFile = join(tmp, 'localtasks.json');
@@ -69,7 +70,7 @@ test('目标在等待期间到点：wait 立刻收尾（cancelled + reason=goal_
   setDeadlineIn(key, 2); // 等待开始时还在跑，2 秒后到点
 
   const t0 = Date.now();
-  const r = await svc.waitForTask({
+  const r = await waitForTask({
     cwd: dir,
     summary: '预算用完了',
     timeoutSec: 60, // 远大于实际耗时：能证明是"到点收尾"而不是"等到超时"
@@ -96,7 +97,7 @@ test('目标早就过期（等待开始前就到点）：wait 照常阻塞，不
   expireGoal(key); // 早就到点了
 
   const t0 = Date.now();
-  const r = await svc.waitForTask({ cwd: dir, summary: '老目标', timeoutSec: 1, open: false });
+  const r = await waitForTask({ cwd: dir, summary: '老目标', timeoutSec: 1, open: false });
   const cost = Date.now() - t0;
 
   assert.equal(r.status, 'timeout');
@@ -109,7 +110,7 @@ test('目标没到点：wait 照常阻塞到超时（不能被误杀）', async 
   await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT }); // 1 小时后才到点
 
   const t0 = Date.now();
-  const r = await svc.waitForTask({ cwd: dir, summary: '还在预算内', timeoutSec: 1, open: false });
+  const r = await waitForTask({ cwd: dir, summary: '还在预算内', timeoutSec: 1, open: false });
   const cost = Date.now() - t0;
 
   assert.equal(r.status, 'timeout');
@@ -127,7 +128,7 @@ test('这个目录没有时间目标：wait 照常阻塞（探针 fail-open，�
   await reset();
 
   const t0 = Date.now();
-  const r = await svc.waitForTask({ cwd: dir, summary: '没有目标', timeoutSec: 1, open: false });
+  const r = await waitForTask({ cwd: dir, summary: '没有目标', timeoutSec: 1, open: false });
   const cost = Date.now() - t0;
 
   assert.equal(r.status, 'timeout');
@@ -141,7 +142,7 @@ test('目标到点但队列里还有任务：照常领走（到点不该把已�
   setDeadlineIn(key, 2);
   await svc.addTask({ cwd: dir, text: '队列里排着的任务' });
 
-  const r = await svc.waitForTask({ cwd: dir, summary: '有活先干', timeoutSec: 1, open: false });
+  const r = await waitForTask({ cwd: dir, summary: '有活先干', timeoutSec: 1, open: false });
 
   assert.equal(r.status, 'ok', '队列里有活就先领走');
   // 默认后缀已升级为模板：task.text 保持库存原文（精确相等），收尾指令在 instruction 字段
@@ -155,7 +156,7 @@ test('goal 存活时 wait 的 instruction 携带目标状态（默认模板）�
   await svc.addTask({ cwd: dir, text: 'BODY' });
 
   const before = readFileSync(goalFile, 'utf8');
-  const r = await svc.waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
+  const r = await waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
   const after = readFileSync(goalFile, 'utf8');
 
   assert.equal(r.status, 'ok');
@@ -175,7 +176,7 @@ test('自定义模板含 {{goal.prompt}}：prompt 原文逐字嵌入（防漂移
   await svc.updateSettings({ taskSuffix: '{{#goal}}PROMPT>>{{goal.prompt}}<<{{/goal}}' });
   await svc.addTask({ cwd: dir, text: 'BODY' });
 
-  const r = await svc.waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
+  const r = await waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
 
   assert.equal(
     r.instruction,
@@ -190,7 +191,7 @@ test('goal 已到点：instruction 显示已到点（信息性），领取不受
   expireGoal(key); // 等待开始前就到点了
   await svc.addTask({ cwd: dir, text: '到期后的活' });
 
-  const r = await svc.waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
+  const r = await waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
 
   assert.equal(r.status, 'ok', '早就过期的目标不扣任务');
   assert.ok(r.instruction.includes('已到点'), `渲染出已到点状态：${JSON.stringify(r.instruction)}`);
@@ -202,7 +203,7 @@ test('全局池投递也渲染等待方目录的 goal（goal 属于等待中的 
   await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
   await svc.addTask({ text: '池子里的活', global: true });
 
-  const r = await svc.waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
+  const r = await waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
 
   assert.equal(r.status, 'ok');
   assert.equal(r.source, 'global', '从全局池领到');

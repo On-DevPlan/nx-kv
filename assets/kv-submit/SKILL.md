@@ -30,6 +30,9 @@ nx-kv localtask add "<任务文本>" --cwd "<目标目录>" --summary "<该目�
 # 不限定接收方、谁闲谁领 → 推到全局任务池（--cwd 被忽略）：
 # 任何目录的 agent 在本地队列空时都会自动领取（返回 source:"global"）
 nx-kv localtask add --global "<任务文本>" --json
+
+# 带时间目标（可选）：领取即计时，未到点不许标记完成
+nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --duration 2h --goal-prompt "<附加要求>" --json
 ```
 
 返回 `{status:"ok", task:{id,text,...}, queued|delivered}`：

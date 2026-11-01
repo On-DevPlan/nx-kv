@@ -8,15 +8,18 @@
 import { Suspense, lazy } from 'react';
 import { useApp } from './app-context.jsx';
 import SidebarPanel from './components/sidebar/panel.jsx';
+import { openFloatingPanel } from './workspace.js';
 
-const DirPanel = lazy(() => import('./modules/md-workspace/view.jsx'));
-const PagePanel = lazy(() => import('./modules/md-workspace/page-panel.jsx'));
-const ProgressPanel = lazy(() => import('./modules/md-workspace/progress-panel.jsx'));
-const GroupView = lazy(() => import('../../modules/repos/group-view.jsx'));
-const ReposView = lazy(() => import('../../modules/repos/view.jsx'));
-const TodoView = lazy(() => import('../../modules/todo/view.jsx'));
-const OverviewView = lazy(() => import('../../modules/localtask/view-overview.jsx'));
-const TemplatePanel = lazy(() => import('./modules/md-workspace/template-panel.jsx'));
+const DirPanel = lazy(() => import('./page/dir/index.jsx'));
+const PagePanel = lazy(() => import('./page/dir/task.jsx'));
+const ProgressPanel = lazy(() => import('./page/progress/index.jsx'));
+const GroupView = lazy(() => import('./page/group/index.jsx'));
+const ReposView = lazy(() => import('./page/repos/index.jsx'));
+const TodoView = lazy(() => import('./page/cloud/index.jsx'));
+const OverviewView = lazy(() => import('./page/overview/index.jsx'));
+const TemplatePanel = lazy(() => import('./page/templates/index.jsx'));
+const DocPanel = lazy(() => import('./page/doc/index.jsx'));
+const SettingsPanel = lazy(() => import('./page/settings/index.jsx'));
 
 /** 给懒加载的视图套上 Suspense（传的是**元素**，不是组件） */
 const wrap = (el) => (
@@ -59,8 +62,8 @@ function ProgressPanelView({ dirKey }) {
   );
 }
 
-/** 项目组：组里的子目录表 */
-function GroupPanel({ boardId }) {
+/** 项目组：组里的子目录表（model 要透下去——双链点击要在工作区开文档页签） */
+function GroupPanel({ boardId, model }) {
   const app = useApp() || {};
   return wrap(
     <GroupView
@@ -69,6 +72,7 @@ function GroupPanel({ boardId }) {
       repoData={app.repoData}
       onNavigate={app.onNavigate}
       refreshLocal={app.refreshLocal}
+      model={model || app.model}
     />
   );
 }
@@ -86,15 +90,28 @@ export const PANELS = {
     <PagePanelView dirKey={cfg && cfg.dirKey} task={cfg && cfg.task} tabId={ctx && ctx.tabId} model={ctx && ctx.model} />
   ) },
   progress: { title: '进程', render: (cfg) => <ProgressPanelView dirKey={cfg && cfg.dirKey} /> },
-  group: { title: '项目组', render: (cfg) => <GroupPanel boardId={cfg && cfg.boardId} /> },
+  group: { title: '项目组', render: (cfg, ctx) => <GroupPanel boardId={cfg && cfg.boardId} model={ctx && ctx.model} /> },
   repos: { title: '仓库管理', render: () => wrap(<ReposView />) },
   cloud: { title: '云端总览', render: () => wrap(<TodoView />) },
   overview: { title: '全部目录总览', render: () => <OverviewPanel /> },
   // 任务模板：单例面板（config 恒空，openPanel 会复用已有页签）
   templates: { title: '任务模板', render: () => wrap(<TemplatePanel />) },
+  // 文档：config.docId 寻址（可 JSON 序列化 → openPanel 按 config 去重复用页签）
+  doc: { title: '文档', render: (cfg, ctx) => wrap(<DocPanel docId={cfg && cfg.docId} tabId={ctx && ctx.tabId} model={ctx && ctx.model} />) },
+  // 设置：浮动面板（临时开一块、看完就关）——齿轮按钮走 openFloatingPanel
+  settings: { title: '设置', render: () => wrap(<SettingsPanel />) },
 };
 
-/** 抽屉里的顺序：先业务后工具 */
+/**
+ * 开设置面板（浮动）。单独一个入口：齿轮按钮、窄轨齿轮、未来的快捷键都走它，
+ * 「设置以浮动形态出现」这件事只在这里定义一次。
+ */
+export function openSettingsPanel(model) {
+  if (!model) return null;
+  return openFloatingPanel(model, { component: 'settings', name: '设置', config: {} });
+}
+
+/** 面板类型清单（总览页/文档里的固定顺序；旧「＋面板抽屉」已删，面板打开走侧栏树与路由） */
 export const PANEL_ORDER = ['overview', 'group', 'repos', 'cloud', 'templates'];
 
 /**

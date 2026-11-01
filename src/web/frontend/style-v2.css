@@ -16,61 +16,23 @@
   --rail-w: 52px;
 }
 
-/* ---- 应用壳：顶栏 + FlexLayout 工作区 + 状态条 ----
+/* ---- 应用壳：FlexLayout 工作区 ----
  * 侧栏不再是外壳的一部分，而是工作区里的一块**面板**（可拖拽/可拆分/可浮出）。
  * 旧的 #app-shell / #side 布局规则作废，侧栏样式改由 .nx-side-host 承担。 */
 .nx-shell {
   display: flex; flex-direction: column;
   height: 100vh; overflow: hidden; background: var(--canvas);
 }
-.nx-top {
-  flex: none; display: flex; align-items: center; gap: 8px;
-  padding: 6px 10px; background: var(--paper); border-bottom: 1px solid var(--line);
-}
+/* 顶栏已删：全局动作集中在侧边栏头部（.brandrow，见 sidebar/index.jsx）。
+   logo/标题两个类保留——品牌区还在用。 */
 .nx-logo {
   width: 22px; height: 22px; border-radius: 6px; background: var(--ink); color: var(--on-ink);
   display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; flex: none;
 }
 .nx-title { font-weight: 800; font-size: 13px; }
-.nx-ver { font-size: 11px; color: var(--faint); }
-.nx-grow { flex: 1 1 auto; min-width: 0; }
-.nx-top .btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
-.nx-top .btn.ghost:hover:not(:disabled) { background: var(--soft-2); color: var(--ink); border-color: transparent; }
-.nx-top .btn.ghost:disabled { opacity: .45; cursor: default; }
 
 .nx-workarea { flex: 1; min-height: 0; position: relative; }
 .nx-workarea .flexlayout__layout { height: 100%; }
-
-.nx-status {
-  flex: none; display: flex; align-items: center; gap: 12px;
-  padding: 4px 10px; font-size: 11px; color: var(--mid);
-  background: var(--paper); border-top: 1px solid var(--line);
-}
-.nx-status .mono { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
-.nx-status .nx-wait { color: var(--wait); font-weight: 600; }
-.nx-status .nx-err { color: var(--danger); }
-
-/* 面板抽屉：选类型 + 选停靠位 */
-.nx-drawer {
-  position: absolute; top: 40px; right: 10px; z-index: 60;
-  min-width: 180px; padding: 8px;
-  border: 1px solid var(--line); border-radius: 10px;
-  background: var(--paper); box-shadow: 0 10px 28px rgba(20, 22, 26, .14);
-  display: flex; flex-direction: column; gap: 4px;
-}
-.nx-drawer .hd { font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--mid); }
-.nx-drawer .sep { height: 1px; background: var(--line); margin: 4px 0; }
-.nx-drawer .rowgap { display: flex; gap: 4px; flex-wrap: wrap; }
-.nx-drawer .it {
-  padding: 6px 10px; border: 0; border-radius: 6px; background: none; cursor: pointer;
-  font: inherit; font-size: 12.5px; color: var(--ink); text-align: left;
-}
-.nx-drawer .it:hover { background: var(--soft); }
-.nx-chip {
-  padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper);
-  cursor: pointer; font: inherit; font-size: 11.5px; color: var(--ink-2);
-}
-.nx-chip.on { border-color: var(--mdw-accent-line, #B7D4C8); background: var(--mdw-accent-soft, #E8F2EE); color: var(--mdw-accent, #2F6F5E); }
 
 /* ---- 侧栏作为工作区面板 ---- */
 .nx-side-host { width: 100%; height: 100%; overflow: hidden; background: var(--paper); }
@@ -82,16 +44,33 @@
 .nx-side-host .searchrow { gap: 4px; }
 .nx-side-host .iconbtn.collapse { flex: none; }
 
-/* 窄轨：面板被拖窄后自动变 rail，点一下展开 */
-.nx-rail-host { width: 100%; height: 100%; background: var(--paper); }
+/* 窄轨：面板被拖窄后自动变 rail；底部保留设置入口（收起后唯一的全局动作） */
+.nx-rail-host {
+  width: 100%; height: 100%; background: var(--paper);
+  display: flex; flex-direction: column;
+}
 .nx-rail {
-  width: 100%; height: 100%; border: 0; background: none; cursor: pointer;
+  flex: 1; min-height: 0; width: 100%; border: 0; background: none; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0;
   color: var(--ink-2); font: inherit;
 }
 .nx-rail:hover { background: var(--soft); }
 .nx-rail-btn { font-size: 15px; line-height: 1; }
 .nx-rail-label { writing-mode: vertical-rl; font-size: 11px; color: var(--mid); }
+.nx-rail-acts { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.nx-rail-act {
+  width: 100%; height: 34px; border: 0; background: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-2); font: inherit;
+}
+.nx-rail-act:hover { background: var(--soft); color: var(--ink); }
+
+/* 品牌区（侧栏头部第一行）：logo + 全局动作（布局撤销重做 / 设置） */
+.brandrow { display: flex; align-items: center; gap: 2px; padding: 0 0 8px; }
+.brandrow .nx-title { margin-right: 2px; }
+.brandrow .grow { flex: 1 1 auto; min-width: 0; }
+.brandrow .iconbtn { width: 24px; height: 24px; flex: none; }
+.brandrow .iconbtn:disabled { opacity: .4; cursor: default; background: none; }
 
 /* 面板内的通用留白（与仓库管理页的 .pad/.stack 同义） */
 .pad { padding: 18px 20px; }
@@ -237,7 +216,6 @@
 .trow.active {
   background: color-mix(in srgb, #2F6F5E 10%, var(--paper));
   color: var(--ink);
-  box-shadow: inset 2px 0 0 #2F6F5E;
 }
 .trow.active .cnt { background: color-mix(in srgb, #2F6F5E 16%, transparent); color: #2F6F5E; }
 .trow.active .gico, .trow.active .tw, .trow.active .more { color: #2F6F5E; opacity: 0.85; }

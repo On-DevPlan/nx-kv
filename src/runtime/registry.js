@@ -13,16 +13,17 @@ import system from '../modules/system/index.js';
 import setting from '../modules/setting/index.js';
 import auth from '../modules/auth/index.js';
 import localtask from '../modules/localtask/index.js';
-import timegoal from '../modules/timegoal/index.js';
+import tasktool from '../modules/tasktool/index.js';
 import todo from '../modules/todo/index.js';
 import repos from '../modules/repos/index.js';
+import docs from '../modules/docs/index.js';
 import file from '../modules/file/index.js';
 import templates from '../modules/templates/index.js';
 import bundled from '../modules/bundled/index.js';
 
 // 工作空间（group）已于 2026-10-23 并入 todo 模块：它是**清单的设置**，
 // 不该单独占一个模块/一个 tab。命令与路由一字未改。
-export const MODULES = [system, setting, auth, localtask, timegoal, todo, repos, file, templates, bundled].sort(
+export const MODULES = [system, setting, auth, localtask, tasktool, todo, repos, docs, file, templates, bundled].sort(
   (a, b) => (a.order ?? 100) - (b.order ?? 100)
 );
 

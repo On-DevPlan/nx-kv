@@ -6,6 +6,7 @@
 //
 // 存储一律指向临时文件，绝不写脏用户目录。
 import { test } from 'node:test';
+import { waitForTask } from '../../src/modules/tasktool/wait.js';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -58,7 +59,7 @@ test('watchEvents：等待开始 → 立即 deliver（delivered）', async () =>
   })();
 
   // 进入等待（无 pending → 阻塞）→ 100ms 后另一个进程 addTask 喂任务 → delivered
-  const waitP = svc.waitForTask({ cwd: dirA, summary: 's', timeoutSec: 5, open: false });
+  const waitP = waitForTask({ cwd: dirA, summary: 's', timeoutSec: 5, open: false });
   await new Promise((r) => setTimeout(r, 200));
   await svc.addTask({ cwd: dirA, text: '回填任务' });
 
@@ -92,7 +93,7 @@ test('watchEvents：无人回填到点 → resolved(timeout)', async () => {
     }
   })();
   await new Promise((r) => setTimeout(r, 60));
-  const p2 = svc.waitForTask({ cwd: dirB, summary: '无人', timeoutSec: 1, open: false });
+  const p2 = waitForTask({ cwd: dirB, summary: '无人', timeoutSec: 1, open: false });
 
   await Promise.race([p, new Promise((r) => setTimeout(r, 5000))]);
   ac.abort();

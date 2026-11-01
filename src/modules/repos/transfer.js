@@ -1,8 +1,11 @@
-// 布局导入导出（v3）：仓库 + 分组 + 参考关系，以**全局唯一 key** 为身份映射。
+// 布局导入导出（v4）：仓库 + 分组 + 参考关系 + **自有文档树**，以**全局唯一 key** 为身份映射。
 //
 // **为什么 v3**：v2 用远程地址当身份，但同一个仓库的 SSH/HTTPS 写法不同就会被当成
 // 两个仓库；开发仓库没有远程地址时只能按名字匹配，重名即歧义。v3 给每个仓库一个
 // key（归一化远程地址派生，或用户自定义），导出物里**不出现任何本地路径**。
+// **为什么 v4**：描述内容的权威是 ~/.nx-kv/docs/ 下的真实 .md——导出 zip 把整棵
+// 自有树原样打包（docs/**），layout 带上 DocRef 绑定；外部绑定只记引用**不进包**
+// （模型 C 的铁律）。zip 从此是导出的本体，导入端直接吃 zip（readZip 拆包）。
 //
 // 导入是三步：`diffImport` 算差异（零副作用）→ 用户在面板里逐条勾选/选策略 →
 // `repoImport` 执行。CLI 侧每一步都有同构命令。
@@ -11,6 +14,9 @@ import fsp from 'node:fs/promises';
 import { loadConfig } from '../../core/config.js';
 import { badInput } from '../../core/errors.js';
 import { makeZip } from '../../core/zip.js';
+import { md5Of } from '../../core/fstree.js';
+import { sanitizeDocRef } from '../docs/docref.js';
+import { listOwnDocs, writeOwnDoc, externalClosure } from '../docs/store.js';
 import * as service from './service.js';
 import * as boards from './boards.js';
 import { gitClone, hasGit } from './git.js';
@@ -72,6 +78,9 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
       desc: r.desc || '',
       type: r.type || 'dev',
     };
+    // 文档绑定覆盖（v4）：显式导出（哪怕指向约定路径——导入端 diff 要看得见）
+    const doc = sanitizeDocRef(r.doc);
+    if (doc) entry.doc = doc;
     if (r.remote) entry.remote = r.remote;
     if (Array.isArray(r.remotes) && r.remotes.length) entry.remotes = r.remotes.slice();
     if (r.notes) entry.notes = r.notes;
@@ -81,17 +90,37 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
     repos.push(entry);
   }
 
-  const boardsOut = selectedBoards.map((b) => ({
-    key: boardKeyOf.get(b.id),
-    name: b.name,
-    desc: b.desc || '',
-    // 成员按 key 引用（占位成员也在——本地没有的仓库照样导出，导入端会标「本地未拥有」）
-    repos: service.boardRepoKeys(b, s)
-      .map((k) => {
-        const note = (b.repoNotes || {})[k] || '';
-        return note ? { key: k, note } : { key: k };
-      }),
-  }));
+  const boardsOut = selectedBoards.map((b) => {
+    const entry = {
+      key: boardKeyOf.get(b.id),
+      name: b.name,
+      desc: b.desc || '',
+      // 成员按 key 引用（占位成员也在——本地没有的仓库照样导出，导入端会标「本地未拥有」）
+      repos: service.boardRepoKeys(b, s)
+        .map((k) => {
+          const note = (b.repoNotes || {})[k] || '';
+          return note ? { key: k, note } : { key: k };
+        }),
+    };
+    // 文档绑定（v4）：组介绍覆盖 / 组级附加列表 / 组内描述覆盖
+    const bdoc = sanitizeDocRef(b.doc);
+    if (bdoc) entry.doc = bdoc;
+    const links = (Array.isArray(b.docLinks) ? b.docLinks : [])
+      .map((l) => {
+        const d = sanitizeDocRef(l);
+        if (!d) return null;
+        return l.note ? { ...d, note: String(l.note).trim() } : d;
+      })
+      .filter(Boolean);
+    if (links.length) entry.docLinks = links;
+    const repoDocs = {};
+    for (const [rk, ref] of Object.entries(b.repoDocs || {})) {
+      const d = sanitizeDocRef(ref);
+      if (d) repoDocs[rk] = d;
+    }
+    if (Object.keys(repoDocs).length) entry.repoDocs = repoDocs;
+    return entry;
+  });
 
   // 参考关系：ref → 目标（repo key / board key），note 随关系走
   const selectedKeySet = new Set(repos.map((r) => r.key));
@@ -122,7 +151,7 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
   }
 
   return {
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     repos,
     boards: boardsOut,
@@ -131,30 +160,52 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
   };
 }
 
-/** 导出为 zip：layout.json + README.txt。返回 Buffer。 */
+// zip 内文档条目的体积/数量防御：导出物是「描述」不是备份通道
+const MAX_DOC_ENTRY_BYTES = 2 * 1024 * 1024;
+const MAX_DOC_ENTRIES = 60000;
+
+/** 导出为 zip：layout.json(v4) + README.txt + docs/<自有树>。返回 Buffer。 */
 export async function repoExportZip(options = {}) {
   const layout = await repoExport(options);
+  const docEntries = [];
+  const own = await listOwnDocs();
+  for (const f of own) {
+    if (docEntries.length >= MAX_DOC_ENTRIES) {
+      layout.warnings.push(`文档条目超过 ${MAX_DOC_ENTRIES} 上限，未打包: ${f.rel}`);
+      continue;
+    }
+    if (f.size > MAX_DOC_ENTRY_BYTES) {
+      layout.warnings.push(`文档超过 2MB 未打包: ${f.rel}`);
+      continue;
+    }
+    docEntries.push({ name: 'docs/' + f.rel, data: await fsp.readFile(f.abs) });
+  }
+  // zip 内清单进 layout（diff 展示用；实际内容就是 zip 条目本身）
+  layout.docs = { files: docEntries.map((e) => e.name.slice('docs/'.length)) };
+
   const readme = [
     'nx-kv 仓库布局导出',
     `导出时间: ${layout.exportedAt}`,
     `格式版本: ${layout.version}`,
     '',
     '导入方法:',
-    '  nx-kv repo import layout.json --diff      # 先看差异',
-    '  nx-kv repo import layout.json             # 执行导入',
-    '  面板: 仓库页 →「导入导出」→ 选择 layout.json',
+    '  nx-kv repo import <本文件>.zip --diff     # 先看差异（zip 直接吃）',
+    '  nx-kv repo import <本文件>.zip            # 执行导入',
+    '  面板: 仓库页 →「导入导出」→ 粘贴 layout.json（zip 导入走 CLI）',
     '',
     '说明:',
     '  - 每个仓库以全局唯一 key 标识（来自远程地址或自定义）',
     '  - 不包含任何本地路径，换机导入后需 clone 或手工登记',
     '  - 看板以 board/<名称> 为 key；关系与组内描述都在 layout.json 里',
+    '  - docs/ 是自有文档树（项目/组介绍、组内描述），导入后原样恢复',
+    '  - 外部绑定（如 Obsidian vault）只记引用，不在包里——路径缺失会标「待初始化」',
     '',
-    `仓库 ${layout.repos.length} 个 / 看板 ${layout.boards.length} 个 / 关系 ${layout.links.length} 条`,
+    `仓库 ${layout.repos.length} 个 / 看板 ${layout.boards.length} 个 / 关系 ${layout.links.length} 条 / 文档 ${docEntries.length} 份`,
   ].join('\n');
-  return makeZip([
-    { name: 'layout.json', data: JSON.stringify(layout, null, 2) },
-    { name: 'README.txt', data: readme },
-  ]);
+  return makeZip(
+    [{ name: 'layout.json', data: JSON.stringify(layout, null, 2) }, { name: 'README.txt', data: readme }, ...docEntries],
+    { mtime: new Date() }
+  );
 }
 
 // ─── 解析（兼容 v2）─────────────────────────────────────────────────────
@@ -172,6 +223,14 @@ function parseLayout(json) {
 }
 
 // v2 → v3：没有 key 的条目用 remote/name 现算，让老导出文件也能导入。
+// v3 → v4：文档绑定字段做形状归一（非法形状丢弃；带 note 的保留 note）。
+const refOf = (raw) => {
+  const d = sanitizeDocRef(raw);
+  if (!d) return null;
+  const note = raw && typeof raw.note === 'string' ? raw.note.trim() : '';
+  return note ? { ...d, note } : d;
+};
+
 function normalizeLayout(data) {
   const repos = (data.repos || []).map((r) => {
     const remote = clean(r.remote);
@@ -184,6 +243,8 @@ function normalizeLayout(data) {
       desc: clean(r.desc),
       type: r.type === 'ref' ? 'ref' : 'dev',
     };
+    const doc = refOf(r.doc);
+    if (doc) out.doc = doc;
     if (remote) out.remote = remote;
     if (Array.isArray(r.remotes)) out.remotes = r.remotes.map(clean).filter(Boolean);
     if (r.notes) out.notes = clean(r.notes);
@@ -192,7 +253,7 @@ function normalizeLayout(data) {
 
   const boardsIn = (data.boards || []).map((b) => {
     const name = clean(b?.name);
-    return {
+    const out = {
       key: clean(b?.key) || boardKey(name),
       name,
       desc: clean(b?.desc),
@@ -206,6 +267,17 @@ function normalizeLayout(data) {
         })
         .filter(Boolean),
     };
+    const doc = refOf(b?.doc);
+    if (doc) out.doc = doc;
+    const docLinks = (Array.isArray(b?.docLinks) ? b.docLinks : []).map(refOf).filter(Boolean);
+    if (docLinks.length) out.docLinks = docLinks;
+    const repoDocs = {};
+    for (const [rk, ref] of Object.entries(b?.repoDocs || {})) {
+      const d = refOf(ref);
+      if (d) repoDocs[rk] = d;
+    }
+    if (Object.keys(repoDocs).length) out.repoDocs = repoDocs;
+    return out;
   }).filter((b) => b.name);
 
   // 关系：v2 用 remote 引用，v3 用 key
@@ -248,8 +320,10 @@ const COMPARE_FIELDS = ['name', 'desc', 'notes', 'type', 'remote'];
  *   same           本地有且字段一致
  *   changed        本地有但字段有差异（fields 列出每一项）
  *   missing-local  文件里被看板/关系引用，但文件与本地都没有定义（断链）
+ * docsFiles: zip 拆出的文档条目 [{rel, data}]（面板 JSON 粘贴导入没有这一段——
+ * 差异里 docs 为空数组，summary 计数全 0）。
  */
-export async function diffImport(json) {
+export async function diffImport(json, docsFiles = []) {
   const layout = parseLayout(json);
   const s = await service.loadStore();
   const localByKey = new Map(s.repos.map((r) => [service.deriveKey(r), r]));
@@ -323,6 +397,18 @@ export async function diffImport(json) {
     };
   });
 
+  // 文档树差异：zip 带来的 docs/** 与本地自有树逐文件 md5 比较
+  const docsOut = [];
+  if (docsFiles.length) {
+    const local = new Map((await listOwnDocs()).map((f) => [f.rel, f.md5]));
+    for (const f of docsFiles) {
+      const localMd5 = local.get(f.rel);
+      if (localMd5 === undefined) docsOut.push({ rel: f.rel, status: 'new' });
+      else if (localMd5 !== md5Of(f.data)) docsOut.push({ rel: f.rel, status: 'changed' });
+      else docsOut.push({ rel: f.rel, status: 'same' });
+    }
+  }
+
   const summary = {
     new: repos.filter((r) => r.status === 'new').length,
     changed: repos.filter((r) => r.status === 'changed').length,
@@ -330,13 +416,17 @@ export async function diffImport(json) {
     missing: missing.size,
     boardsNew: boardsOut.filter((b) => b.status === 'new').length,
     boardsChanged: boardsOut.filter((b) => b.status === 'changed').length,
+    docsNew: docsOut.filter((d) => d.status === 'new').length,
+    docsChanged: docsOut.filter((d) => d.status === 'changed').length,
+    docsSame: docsOut.filter((d) => d.status === 'same').length,
   };
 
   return {
-    version: layout.version || 3,
+    version: layout.version || 4,
     repos,
     boards: boardsOut,
     links: layout.links,
+    docs: docsOut,
     missing: [...missing],
     summary,
     warnings: Array.isArray(layout.warnings) ? layout.warnings : [],
@@ -358,9 +448,11 @@ function cloneModeFor(type, clone) {
  *   strategy        ours=保留本地 / overwrite=用导入覆盖 / duplicate=另存 key-import-N
  *   boardSelection  要处理的看板 key（空 = 全部）
  *   clone           all | dev | ref | none
+ *   docsFiles       zip 拆出的文档条目 [{rel, data}]（先还原文档树，再还原绑定）
  */
 export async function repoImport({
   json,
+  docsFiles = [],
   selection,
   strategy = 'ours',
   boardSelection,
@@ -370,7 +462,7 @@ export async function repoImport({
     throw badInput('strategy 只能是 ours | overwrite | duplicate，收到: ' + strategy);
   }
   const layout = parseLayout(json);
-  const diff = await diffImport(JSON.stringify(layout));
+  const diff = await diffImport(JSON.stringify(layout), docsFiles);
 
   const cfg = await loadConfig();
   const gitRepoRoot = clean(cfg.gitRepoRoot);
@@ -388,6 +480,23 @@ export async function repoImport({
   const cloned = [];
   const skipped = [];
   const keyMap = new Map(); // 导入 key -> 本地 repo id
+
+  // ① 文档树还原（先于一切绑定——绑定可能指向即将恢复的文档）。
+  //    ours（缺省）= 本地已有且内容不同 → 跳过保本地；overwrite = 全部覆盖；
+  //    duplicate 对文档不适用（描述没有「另存一份」的意义）→ 按 ours。
+  const docs = { written: [], skipped: [] };
+  if (docsFiles.length) {
+    for (const item of diff.docs) {
+      const f = docsFiles.find((x) => x.rel === item.rel);
+      if (!f) continue;
+      if (strategy !== 'overwrite' && item.status !== 'new') {
+        docs.skipped.push({ rel: item.rel, why: item.status === 'same' ? '一致' : '本地已有不同内容（保留本地）' });
+        continue;
+      }
+      await writeOwnDoc(f.rel, f.data.toString('utf8'));
+      docs.written.push(item.rel);
+    }
+  }
 
   // 先登记本地已有的（哪怕这次不动，也要能解析关系）
   // keyMap: repoKey -> repoKey（关系的身份；本地有没有这条登记用 keyMap.has 判断）
@@ -530,6 +639,50 @@ export async function repoImport({
     }
   }
 
+  // ② 文档绑定还原（与成员重建同一哲学：完整复制导出方的布局）。
+  //    看板：doc 覆盖 / docLinks 整表重建 / repoDocs 整表重建——成员都重建了，
+  //    绑定跟着走才不会出现「成员是新的、描述还挂在老 key 上」的错位。
+  //    仓库：新建的仓库带上 doc 覆盖；overwrite 时同样写入（ours 不动本地绑定）。
+  const bindingBoards = diff.boards.filter(
+    (bd) =>
+      wantBoard(bd.key) &&
+      (bd.incoming.doc || (bd.incoming.docLinks && bd.incoming.docLinks.length) || (bd.incoming.repoDocs && Object.keys(bd.incoming.repoDocs).length))
+  );
+  const bindingRepos = diff.repos.filter(
+    (item) => want(item.key) && item.incoming.doc && (item.status === 'new' || strategy === 'overwrite')
+  );
+  if (bindingBoards.length || bindingRepos.length) {
+    await service.mutateStore((s2) => {
+      for (const bd of bindingBoards) {
+        const b = s2.boards.find((x) => boardKey(x.name) === bd.key);
+        if (!b) continue;
+        const inc = bd.incoming;
+        if (inc.doc) b.doc = { ...inc.doc };
+        else delete b.doc;
+        if (inc.docLinks && inc.docLinks.length) b.docLinks = inc.docLinks.map((x) => ({ ...x }));
+        else delete b.docLinks;
+        if (inc.repoDocs && Object.keys(inc.repoDocs).length) {
+          b.repoDocs = {};
+          for (const [rk, ref] of Object.entries(inc.repoDocs)) b.repoDocs[rk] = { ...ref };
+        } else delete b.repoDocs;
+      }
+      for (const item of bindingRepos) {
+        const r = s2.repos.find((x) => deriveKeyOf(x) === item.key);
+        if (r) r.doc = { ...item.incoming.doc };
+      }
+      return true;
+    });
+  }
+
+  // ③ 外部绑定存在性检查：路径缺失 = 待初始化（不阻塞——文档先恢复，等用户接上 vault）
+  const pendingExternal = [];
+  for (const c of await externalClosure(await service.loadStore())) {
+    if (!c.exists) pendingExternal.push({ owner: c.owner, path: c.path });
+  }
+  for (const p of pendingExternal) {
+    warnings.push(`外部绑定路径缺失（待初始化）: ${p.owner} → ${p.path}`);
+  }
+
   // 参考关系
   let linksDone = 0;
   for (const l of diff.links) {
@@ -570,6 +723,8 @@ export async function repoImport({
     boardsCreated,
     boardsMerged,
     links: linksDone,
+    docs,
+    pendingExternal,
   };
 }
 
@@ -660,8 +815,15 @@ export function renderDiff(d) {
   for (const l of d.links) {
     lines.push(`  关系 ${l.ref} → ${l.to.map((t) => t.repo || t.board).join('、')}`);
   }
+  if (d.docs && d.docs.length) {
+    const docLabel = { new: '新增', changed: '有差异', same: '一致' };
+    lines.push(`  文档树（${d.docs.length} 份）: 新增 ${d.summary.docsNew} · 有差异 ${d.summary.docsChanged} · 一致 ${d.summary.docsSame}`);
+    for (const x of d.docs.filter((x) => x.status !== 'same')) {
+      lines.push(`    [文档${docLabel[x.status] || x.status}] ${x.rel}`);
+    }
+  }
   if (d.missing.length) lines.push(`  本地未拥有: ${d.missing.join('、')}`);
-  const hasChange = d.summary.new || d.summary.changed || d.missing.length;
+  const hasChange = d.summary.new || d.summary.changed || d.summary.docsNew || d.summary.docsChanged || d.missing.length;
   if (hasChange) lines.push('', '执行: nx-kv repo import <file> [--strategy ours|overwrite|duplicate] [--select <keys>]');
   else lines.push('', '本地与导入文件完全一致。');
   return lines.join('\n');
@@ -672,6 +834,15 @@ export function renderResult(d) {
     `导入完成（策略 ${d.strategy}）: 新建 ${d.created.length} · 覆盖 ${d.updated.length} · 另存 ${d.duplicated.length} · 跳过 ${d.skipped.length}`,
     `看板: 新建 ${d.boardsCreated} · 合并 ${d.boardsMerged}｜参考关系 ${d.links} 条`,
   ];
+  if (d.docs && (d.docs.written.length || d.docs.skipped.length)) {
+    lines.push(`文档: 写入 ${d.docs.written.length} · 跳过 ${d.docs.skipped.length}`);
+    for (const w of d.docs.written.slice(0, 10)) lines.push(`  + ${w}`);
+    for (const s of d.docs.skipped.slice(0, 10)) lines.push(`  = ${s.rel}（${s.why}）`);
+  }
+  if (d.pendingExternal && d.pendingExternal.length) {
+    lines.push('待初始化（外部绑定路径缺失，接上后自动生效）:');
+    for (const p of d.pendingExternal) lines.push(`  ${p.owner} → ${p.path}`);
+  }
   if (d.cloned.length) {
     lines.push('克隆:');
     for (const c of d.cloned) lines.push(`  ${c.key}  →  ${c.dest}`);

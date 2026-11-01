@@ -1,4 +1,9 @@
-// 应用壳 v2 —— 顶栏 + FlexLayout 工作区 + 状态条。
+// 应用壳 v2 —— FlexLayout 工作区。
+//
+// **没有顶栏**：全局动作（布局撤销重做 / 设置）全部集中在侧边栏头部——
+// 侧边栏是工作区里的一块面板，可拖拽可浮出，动作跟着它走；收起成窄轨时
+// 仍保留设置入口（见 sidebar/panel.jsx）。面板的打开一律走侧栏树 / 路由 / 页内动作，
+// 不设「凭空开面板」的抽屉入口。
 //
 // **面板是一等公民**：目录、目录工作台、项目组、仓库管理、云端总览……都是工作区里的
 // 一块面板，可拖拽、可拆分、可拖出成浮窗；布局存 localStorage，重开还在。
@@ -18,21 +23,17 @@ import { useStore } from './store.jsx';
 import { ErrorBoundary, useToast } from './components/ui.jsx';
 import { api } from './api/client.js';
 import { Icon } from './components/icons.jsx';
-import { PopMenu } from './components/overlay.jsx';
 import { AppContext } from './app-context.jsx';
-import { PANELS, PANEL_ORDER, factory, routeOfPanel, panelSpecOfRoute } from './panels.jsx';
+import { factory, routeOfPanel, panelSpecOfRoute, openSettingsPanel } from './panels.jsx';
 import {
-  WORKSPACE_KEY,
   activeTab,
   clearStoredModel,
-  layoutStats,
   loadModel,
   openPanel,
   pruneBlankTabsets,
   saveModel,
 } from './workspace.js';
-import { useTemplates } from './modules/md-workspace/use-templates.js';
-import { cfgMenuItems } from './components/sidebar/row-menu.jsx';
+import { useTemplates } from './modules/md/use-templates.js';
 import { loadPrefs, updatePrefs } from './prefs.js';
 
 // 只借 FlexLayout 的**结构 CSS**（盒模型与拖拽几何）——不引它的配色：
@@ -83,28 +84,17 @@ const I18N = {
 };
 const translate = (msg) => I18N[msg] || msg;
 
-const DOCKS = [
-  ['center', '中间'],
-  ['left', '左'],
-  ['right', '右'],
-  ['top', '上'],
-  ['bottom', '下'],
-];
-
 export default function App() {
   const { boot } = useStore();
   const toast = useToast();
   const [route, setRoute] = useState(routeFromHash);
   const [prefs, setPrefs] = useState(loadPrefs);
-  const [waitingCount, setWaitingCount] = useState(0);
+  // 等待回填数：只为捕捉 0→n 跳变弹 toast（值本身不上屏）
+  const [, setWaitingCount] = useState(0);
   const [localData, setLocalData] = useState(null); // /api/localtasks 结果
-  const [localErr, setLocalErr] = useState('');
   // 任务模板：App 层持有一份（「任务模板」面板与 MD 工作台的「模板 ▾」共用，
   // 面板里增删/设默认后工作台的列表与默认正文即时跟随，不会各持一份旧数据）
   const tpl = useTemplates();
-  const [menu, setMenu] = useState(null);       // 设置气泡
-  const [drawer, setDrawer] = useState(null);   // 面板抽屉 {dock}
-  const [stats, setStats] = useState({ tabsets: 0, tabs: 0 });
   const layoutRef = useRef(null);
 
   // 工作区模型（布局的唯一真源）；撤销/重做整段拖拽折叠成一步。
@@ -143,11 +133,9 @@ export default function App() {
   // ─── 本机队列数据：侧栏与各面板共用一份（15s 轮询 + 操作后手动刷新）───
   const refreshLocal = useCallback(async () => {
     try {
-      const d = await api('/api/localtasks');
-      setLocalData(d);
-      setLocalErr('');
-    } catch (e) {
-      setLocalErr(String(e.message || e));
+      setLocalData(await api('/api/localtasks'));
+    } catch {
+      /* 读失败：保留旧数据，侧栏仍可用 */
     }
   }, []);
   useEffect(() => {
@@ -316,7 +304,6 @@ export default function App() {
   const lastActiveRef = useRef(null);
   const onModelChange = useCallback(() => {
     if (!model) return;
-    setStats(layoutStats(model));
     const node = activeTab(model);
     if (!node) return;
     const activeId = node.getId();
@@ -348,63 +335,35 @@ export default function App() {
     setModel(loadModel());
   }, [setModel]);
 
-  const openFromDrawer = useCallback((component) => {
-    if (!model) return;
-    const spec = { component, name: PANELS[component] ? PANELS[component].title : component, config: {}, location: (drawer && drawer.dock) || 'center' };
-    // 组/目录面板需要 config（组 id / 目录 key）——从抽屉开时用默认项
-    if (component === 'group') {
-      const b = (repoData.boards || [])[0];
-      if (b) spec.config = { boardId: b.id };
-    }
-    openPanel(model, spec);
-    setDrawer(null);
-  }, [model, drawer, repoData.boards]);
+  // 全局动作：集中在侧边栏头部（窄轨保留设置入口）
+  const shell = useMemo(
+    () => ({
+      undo,
+      redo,
+      canUndo,
+      canRedo,
+      resetLayout,
+      // 设置 = 浮动面板：临时开一块、看完就关（重复点只聚焦已开的那块）
+      openSettings: () => openSettingsPanel(model),
+    }),
+    [undo, redo, canUndo, canRedo, resetLayout, model]
+  );
 
   const appValue = useMemo(
     () => ({
-      boot, rows, repoData, prefs, patchPrefs, onNavigate, refreshLocal, refreshRepos, tpl, model, localErr, route,
+      boot, rows, repoData, prefs, patchPrefs, onNavigate, refreshLocal, refreshRepos, tpl, model, route,
       // 队列首轮是否已加载完：面板据此区分「还在读」与「确实没有这条任务」
       localReady: localData !== null,
       openPage, closePanel: closePanelById,
+      shell,
     }),
-    [boot, rows, repoData, prefs, patchPrefs, onNavigate, refreshLocal, refreshRepos, tpl, model, localErr, route, openPage, closePanelById]
+    [boot, rows, repoData, prefs, patchPrefs, onNavigate, refreshLocal, refreshRepos, tpl, model, route, openPage, closePanelById, shell]
   );
 
   return (
     <AppContext.Provider value={appValue}>
       <div id="app-shell" className="nx-shell">
-        {/* 顶栏：只放**全局动作**（目录不进顶栏，目录只从侧栏进 —— 两处入口必然分叉） */}
-        <header className="nx-top">
-          <span className="nx-logo">nx</span>
-          <span className="nx-title">nx-kv</span>
-          <span className="nx-ver">面板 v2</span>
-          <span className="grow" />
-          <button
-            className="iconbtn" title="设置" aria-label="设置"
-            onClick={(e) =>
-              setMenu({
-                x: e.clientX, y: e.clientY,
-                items: cfgMenuItems({ prefs, patchPrefs, onNavigate, onTplManage: () => onNavigate('#/templates') }),
-              })
-            }
-          >
-            <Icon name="gear" size={15} />
-          </button>
-          <button className="btn ghost sm" title="开一块新面板" onClick={() => setDrawer({ dock: 'center' })}>
-            ＋ 面板
-          </button>
-          <button className="btn ghost sm" title="撤销上一次布局操作" disabled={!canUndo} onClick={undo}>
-            ↶
-          </button>
-          <button className="btn ghost sm" title="重做" disabled={!canRedo} onClick={redo}>
-            ↷
-          </button>
-          <button className="btn ghost sm" title="丢掉存下来的布局，回到初始的两栏" onClick={resetLayout}>
-            重置布局
-          </button>
-        </header>
-
-        {/* 工作区：面板可拖拽 / 拆分 / 浮出 */}
+        {/* 工作区：面板可拖拽 / 拆分 / 浮出（全局动作在侧边栏头部，见 sidebar/index.jsx） */}
         <div className="nx-workarea">
           {model ? (
             <ErrorBoundary key="workspace">
@@ -445,46 +404,6 @@ export default function App() {
             <div className="pad muted">正在装载工作区…</div>
           )}
         </div>
-
-        {/* 状态条：工作区概况 + 深链 */}
-        <footer className="nx-status">
-          <span>工作区：{stats.tabsets} 个面板组 · {stats.tabs} 个面板</span>
-          {waitingCount > 0 && <span className="nx-wait">{waitingCount} 个 agent 等待回填</span>}
-          {localErr && !localData && <span className="nx-err">本机队列读取失败：{localErr}</span>}
-          <span className="grow" />
-          <span className="mono">深链 {location.hash || '#/overview'}</span>
-          <span className="mono">布局 → localStorage('{WORKSPACE_KEY}')</span>
-        </footer>
-
-        {/* 面板抽屉：选类型 + 选停靠位（FlexLayout 的 DockLocation 认的那五个值） */}
-        {drawer ? (
-          <div className="nx-drawer">
-            <div className="hd">停靠位置</div>
-            <div className="rowgap">
-              {DOCKS.map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  className={'nx-chip' + (drawer.dock === id ? ' on' : '')}
-                  onClick={() => setDrawer((d) => ({ ...d, dock: id }))}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="sep" />
-            <div className="hd">面板</div>
-            {PANEL_ORDER.map((id) => (
-              <button key={id} type="button" className="it" onClick={() => openFromDrawer(id)}>
-                {PANELS[id].title}
-              </button>
-            ))}
-            <div className="sep" />
-            <button type="button" className="it" onClick={() => setDrawer(null)}>关闭</button>
-          </div>
-        ) : null}
-
-        {menu && <PopMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       </div>
     </AppContext.Provider>
   );

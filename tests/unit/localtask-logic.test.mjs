@@ -3,6 +3,7 @@
 //
 // 存储一律指向临时文件（NX_KV_LOCALTASK_STORE），绝不写脏用户目录。
 import { test } from 'node:test';
+import { waitForTask } from '../../src/modules/tasktool/wait.js';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -56,7 +57,7 @@ test('目录手动登记：缺 cwd 拒绝，不写空主题', async () => {
 test('add 排队 → wait 立即取走（queued，不开窗）', async () => {
   await reset();
   await svc.addTask({ cwd: dirA, text: '提前排的' });
-  const r = await svc.waitForTask({ cwd: dirA, summary: '现状A', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: '现状A', open: false });
   assert.equal(r.status, 'ok');
   assert.equal(r.queued, true);
   assert.equal(r.task.text, '提前排的');
@@ -71,9 +72,9 @@ test('不同目录分散为不同主题，各自回填互不串', async () => {
   const ov = await svc.listTasks();
   assert.equal(ov.topics.length, 2);
 
-  const ra = await svc.waitForTask({ cwd: dirA, summary: '现状A', open: false });
+  const ra = await waitForTask({ cwd: dirA, summary: '现状A', open: false });
   assert.equal(ra.task.text, 'A 的答复');
-  const rb = await svc.waitForTask({ cwd: dirB, summary: '现状B', open: false });
+  const rb = await waitForTask({ cwd: dirB, summary: '现状B', open: false });
   assert.equal(rb.task.text, 'B 的答复');
 });
 
@@ -81,7 +82,7 @@ test('同目录不同现状 → 同一主题、共享队列（任务可跨现状
   await reset();
   await svc.addTask({ cwd: dirA, summary: '现状A', text: '任务1' });
   // 用不同现状措辞在同一目录 wait，仍应取到队列里的任务1
-  const r = await svc.waitForTask({ cwd: dirA, summary: '现状B（措辞不同）', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: '现状B（措辞不同）', open: false });
   assert.equal(r.queued, true);
   assert.equal(r.task.text, '任务1');
   assert.equal(r.summary, '现状B（措辞不同）');
@@ -103,7 +104,7 @@ test('主题 key：按目录名、Windows 折叠大小写', async () => {
 test('wait 超时 → status timeout（业务结果，不抛错）', async () => {
   await reset();
   const t0 = Date.now();
-  const r = await svc.waitForTask({ cwd: dirA, summary: '现状T', timeoutSec: 1, open: false });
+  const r = await waitForTask({ cwd: dirA, summary: '现状T', timeoutSec: 1, open: false });
   const elapsed = Date.now() - t0;
   assert.equal(r.status, 'timeout');
   assert.ok(elapsed >= 900 && elapsed < 1500, 'elapsed=' + elapsed);
@@ -124,7 +125,7 @@ test('超时设置：默认 180，更新生效，超上限截断为 600；wait �
   // 页面配置为 1 秒后，wait 不显式给超时 → 约 1 秒超时
   await svc.updateSettings({ timeoutSec: 1 });
   const t0 = Date.now();
-  const r = await svc.waitForTask({ cwd: dirA, summary: 'cfg', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: 'cfg', open: false });
   assert.equal(r.status, 'timeout');
   assert.ok(Date.now() - t0 < 1500);
 });
@@ -133,7 +134,7 @@ test('跨进程兜底：外部写入该主题的 pending，轮询取走', async 
   await reset();
   let info;
   const summary = '现状X';
-  const p = svc.waitForTask({
+  const p = waitForTask({
     cwd: dirA,
     summary,
     timeoutMs: 3000,
@@ -249,7 +250,7 @@ test('软删除的任务不会被 wait 领走', async () => {
   const a = await svc.addTask({ cwd: dirA, text: '要删的' });
   await svc.addTask({ cwd: dirA, text: '留下的' });
   await svc.removeTask({ cwd: dirA, id: a.task.id });
-  const r = await svc.waitForTask({ cwd: dirA, summary: '领', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: '领', open: false });
   assert.equal(r.task.text, '留下的', '已删除的那条不该被领走');
   assert.equal(r.queued, true);
 });
@@ -274,7 +275,7 @@ test('提交方的补充说明写自己的字段，不覆盖 agent 的「当前�
 
   // agent 领走任务 → 它的现状进的是**任务级** roundSummary（不是主题级 summary，
   // 那是「正在阻塞等待」时才写的）。两个字段互不干扰。
-  const r = await svc.waitForTask({ cwd: dirA, summary: 'agent 接手了', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: 'agent 接手了', open: false });
   assert.equal(r.task.roundSummary, 'agent 接手了');
   const after = (await svc.listTasks()).topics[0];
   assert.equal(after.submitSummary, '这是提交方的补充说明', '提交说明不被覆盖');
@@ -282,7 +283,7 @@ test('提交方的补充说明写自己的字段，不覆盖 agent 的「当前�
 });
 
 test('缺 summary / 空内容 / 缺 id 报错，不建空记录', async () => {  await reset();
-  await assert.rejects(() => svc.waitForTask({ cwd: dirA }), /--summary/);
+  await assert.rejects(() => waitForTask({ cwd: dirA }), /--summary/);
   await assert.rejects(() => svc.addTask({ cwd: dirA, text: '  ' }), /不能为空/);
   await assert.rejects(() => svc.getTask({ cwd: dirA }), /--id/);
 });
@@ -290,7 +291,7 @@ test('缺 summary / 空内容 / 缺 id 报错，不建空记录', async () => { 
 test('队列任务被领取时记录本轮完成总结（queued 路径）', async () => {
   await reset();
   await svc.addTask({ cwd: dirA, text: '提前排的' });
-  const r = await svc.waitForTask({ cwd: dirA, summary: '本轮完成总结Q', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: '本轮完成总结Q', open: false });
   assert.equal(r.queued, true);
   assert.equal(r.task.roundSummary, '本轮完成总结Q');
 });
@@ -298,7 +299,7 @@ test('队列任务被领取时记录本轮完成总结（queued 路径）', asyn
 test('实时回填记录本轮完成总结（delivered 路径）', async () => {
   await reset();
   const summary = '本轮完成总结D';
-  const r = await svc.waitForTask({
+  const r = await waitForTask({
     cwd: dirA,
     summary,
     timeoutSec: 5,
@@ -317,7 +318,7 @@ test('prune 清理旧模型无目录主题与空主题，保留有数据主题',
   // 正常、有待领任务的主题（保留）
   await svc.addTask({ cwd: dirA, text: '保留我' });
   // 空主题：dirB 上 wait 超时后留下
-  await svc.waitForTask({ cwd: dirB, summary: 'x', timeoutSec: 1, open: false });
+  await waitForTask({ cwd: dirB, summary: 'x', timeoutSec: 1, open: false });
   // 注入一个旧模型迁移来的「无目录」主题
   const file = process.env.NX_KV_LOCALTASK_STORE;
   const raw = JSON.parse(readFileSync(file, 'utf8'));
@@ -344,7 +345,7 @@ test('prune 清理旧模型无目录主题与空主题，保留有数据主题',
 test('prune 默认不清理已全部领取的主题，--all-finished 才清', async () => {
   await reset();
   await svc.addTask({ cwd: dirA, text: 't' });
-  await svc.waitForTask({ cwd: dirA, summary: 's', open: false }); // 取走 → 0 pending
+  await waitForTask({ cwd: dirA, summary: 's', open: false }); // 取走 → 0 pending
   assert.equal((await svc.pruneTopics()).count, 0);
   const r = await svc.pruneTopics({ allFinished: true });
   assert.equal(r.count, 1);
@@ -399,10 +400,10 @@ test('删除主题：按 cwd/key 删除整个主题，等待中受保护、force
   assert.notEqual(ov.topics[0].key, a.key); // 剩 B
 
   // 等待中默认拒绝：先取走 dirB 的排队任务（队列排空），再 wait 才会阻塞
-  const drain = await svc.waitForTask({ cwd: dirB, summary: 'drain', open: false });
+  const drain = await waitForTask({ cwd: dirB, summary: 'drain', open: false });
   assert.equal(drain.queued, true);
   let info;
-  const p = svc.waitForTask({
+  const p = waitForTask({
     cwd: dirB, summary: 'w', timeoutSec: 5, open: false,
     onReady: (h) => { info = h; },
   });
@@ -450,7 +451,7 @@ test('批量删除：keys/cwds/all，等待中跳过，force 连等待中删', a
 
   // cwds：A 有未领取任务 → 跳过；B 等待中 → 跳过
   await svc.addTask({ cwd: dirA, text: 'A2' });
-  const p = svc.waitForTask({
+  const p = waitForTask({
     cwd: dirB, summary: 'w', timeoutSec: 5, open: false,
     onReady: () => {},
   });
@@ -488,7 +489,7 @@ test('wait 取任务时把收尾追加语拼到返回末尾，但不改库存原
   await svc.updateSettings({ taskSuffix: 'TAIL_A' });
   const added = await svc.addTask({ cwd: dirA, text: 'BODY' });
   // 排队直达路径
-  const r1 = await svc.waitForTask({ cwd: dirA, summary: 's', open: false });
+  const r1 = await waitForTask({ cwd: dirA, summary: 's', open: false });
   assert.equal(r1.status, 'ok');
   assert.equal(r1.queued, true);
   assert.ok(r1.task.text.endsWith('TAIL_A'), '排队路径也拼追加语');
@@ -501,7 +502,7 @@ test('wait 取任务时把收尾追加语拼到返回末尾，但不改库存原
   // 关闭后再来一条，确认不再追加
   await svc.updateSettings({ taskSuffix: '' });
   await svc.addTask({ cwd: dirA, text: 'BODY2' });
-  const r2 = await svc.waitForTask({ cwd: dirA, summary: 's2', open: false });
+  const r2 = await waitForTask({ cwd: dirA, summary: 's2', open: false });
   assert.equal(r2.task.text, 'BODY2', '关闭后 task.text 保持原样');
   assert.equal(r2.instruction, undefined, '关闭 = 不渲染 instruction');
 });
@@ -510,7 +511,7 @@ test('模板后缀：渲染进 instruction，task.text 保持库存原文', asyn
   await reset();
   await svc.updateSettings({ taskSuffix: '{{task.text}}||{{task.id}}||{{source}}||{{#goal}}G{{/goal}}' });
   const added = await svc.addTask({ cwd: dirA, text: 'BODY' });
-  const r = await svc.waitForTask({ cwd: dirA, summary: 's', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: 's', open: false });
   assert.equal(r.status, 'ok');
   assert.equal(r.task.text, 'BODY', '模板模式不碰 task.text');
   assert.equal(r.instruction, `BODY||${added.task.id}||local||`, '占位符逐个展开；无 goal 时 goal 段消失');
@@ -522,14 +523,14 @@ test('模板后缀：渲染进 instruction，task.text 保持库存原文', asyn
   // 占位符值里的 {{...}} 不得二次展开
   await svc.updateSettings({ taskSuffix: '{{task.text}}' });
   await svc.addTask({ cwd: dirA, text: '带标记 {{goal.name}} 与 {{#task}}' });
-  const r2 = await svc.waitForTask({ cwd: dirA, summary: 's2', open: false });
+  const r2 = await waitForTask({ cwd: dirA, summary: 's2', open: false });
   assert.equal(r2.instruction, '带标记 {{goal.name}} 与 {{#task}}', '插入值单遍渲染，逐字原样');
   assert.equal(r2.coversBody, true, '模板含 {{task.text}} → coversBody 标志为真');
 
   // 全部段落被丢弃 → 渲染为空 → instruction 字段整个省略（而不是空串）
   await svc.updateSettings({ taskSuffix: '{{#goal}}G{{/goal}}' });
   await svc.addTask({ cwd: dirA, text: 'BODY3' });
-  const r3 = await svc.waitForTask({ cwd: dirA, summary: 's3', open: false });
+  const r3 = await waitForTask({ cwd: dirA, summary: 's3', open: false });
   assert.equal(r3.task.text, 'BODY3');
   assert.equal(r3.instruction, undefined, '空渲染省略字段（目录无 goal 时 goal 段整段消失）');
 });
@@ -575,7 +576,7 @@ test('收尾追加语幂等：任务原文已包含同样追加语时不重复�
   // 先构造一条「任务原文里已含 tail」的 pending：addTask → 改文本（绕过 UI 限制）
   const added = await svc.addTask({ cwd: dirA, text: 'INNER' });
   await svc.updateTask({ cwd: dirA, id: added.task.id, text: 'INNER\n\n' + tail });
-  const r = await svc.waitForTask({ cwd: dirA, summary: 's', open: false });
+  const r = await waitForTask({ cwd: dirA, summary: 's', open: false });
   // 原文已含 tail，不应重复拼
   assert.ok(r.task && r.task.text.includes(tail), JSON.stringify(r));
   assert.ok(!r.task.text.includes(tail + '\n\n' + tail) && !r.task.text.includes(tail + tail), '不应该出现重复追加');

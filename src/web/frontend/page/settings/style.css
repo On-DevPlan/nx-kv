@@ -1,0 +1,137 @@
+/* 设置面板（浮动窗里的那一块）：左侧分区导航（tab）+ 右侧内容区 */
+.setp {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+/* 左侧：分区导航（tab 竖排） */
+.setp-nav {
+  flex: none;
+  width: 172px;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--soft);
+  border-right: 1px solid var(--line);
+  overflow: auto;
+}
+.setp-navitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.setp-navitem:hover { background: var(--soft-2); color: var(--ink); }
+.setp-navitem.on {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 650;
+  box-shadow: 0 1px 2px rgba(20, 22, 26, .07);
+}
+.setp-navitem .ic { color: var(--mid); }
+.setp-navitem.on .ic { color: var(--ink); }
+
+/* 右侧：内容区（只显示当前分区，可滚） */
+.setp-body {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 12px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setp-h {
+  font: 600 10.5px Bahnschrift, "Segoe UI", sans-serif;
+  letter-spacing: 1px;
+  color: var(--mid);
+  text-transform: uppercase;
+}
+
+.setp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  justify-content: space-between;
+}
+.setp-row > span:first-child { color: var(--ink-2); }
+.setp-row .toggle { flex: none; }
+
+.setp-input { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.setp-input input {
+  flex: 1; min-width: 0; height: 24px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+  font: 400 11.5px ui-monospace, Consolas, monospace;
+}
+.setp-input input:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }
+
+.setp-note { font-size: 11px; color: var(--faint); line-height: 1.65; }
+
+/* 项目级设置：一行一个项目 + 文档状态 + 动作 */
+.setp-projs { display: flex; flex-direction: column; gap: 8px; }
+.setp-proj {
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;
+  background: var(--paper);
+}
+.setp-proj-t { display: flex; align-items: center; gap: 6px; }
+.setp-proj-t b { font-weight: 650; }
+.setp-badge {
+  font-size: 10px; padding: 0 6px; border-radius: 8px;
+  color: var(--mid); background: var(--soft);
+}
+.setp-badge.external { color: #9E4C00; background: #FBF3E4; }
+.setp-badge.own { color: var(--mdw-accent, #2F6F5E); background: var(--mdw-accent-soft, #E8F2EE); }
+.setp-proj-p {
+  font-size: 10.5px; color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.setp-proj-a { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* 回调提示词（收尾指令模板）编辑器 */
+.setp-suffix { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.setp-suffix-ta {
+  width: 100%; min-height: 110px; padding: 8px 10px; resize: vertical;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--paper); color: var(--ink);
+  font: 400 11.5px/1.7 ui-monospace, Consolas, monospace;
+}
+.setp-suffix-ta:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }
+.setp-suffix .mono {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 10.5px; background: var(--soft); border-radius: 4px; padding: 0 4px;
+}
+
+/* 项目级「持续 get」（waitgoal）编辑器 */
+.setp-loop {
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.setp-min {
+  width: 72px; height: 24px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+  font: 400 11.5px ui-monospace, Consolas, monospace;
+  text-align: right;
+}
+.setp-min:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }

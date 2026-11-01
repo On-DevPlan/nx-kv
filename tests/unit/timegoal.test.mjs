@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import * as svc from '../../src/modules/timegoal/service.js';
+import * as svc from '../../src/modules/tasktool/timegoal.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-timegoal-'));
 const storeFile = join(tmp, 'timegoals.json');

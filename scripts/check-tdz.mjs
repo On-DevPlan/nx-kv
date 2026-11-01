@@ -15,7 +15,7 @@
 //
 // 用法：
 //   node scripts/check-tdz.mjs <file>   查一个文件
-//   node scripts/check-tdz.mjs --all    扫 src/modules 下所有视图（自动发现，不写死路径）
+//   node scripts/check-tdz.mjs --all    扫前端所有视图（自动发现，不写死路径）
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -104,7 +104,11 @@ function checkFile(file) {
 // ---- 分发 ----
 const arg = process.argv[2];
 if (arg === '--all') {
-  const files = collectViewFiles('src/modules');
+  // 视图与组件都搬到了前端：路由页在 frontend/page/，可复用件在 frontend/components/
+  const files = [
+    ...collectViewFiles('src/web/frontend/page'),
+    ...collectViewFiles('src/web/frontend/components'),
+  ];
   const all = [];
   for (const f of files) {
     const r = checkFile(f);
@@ -119,7 +123,7 @@ if (arg === '--all') {
   process.exit(0);
 }
 
-const r = checkFile(arg || 'src/modules/repos/view.jsx');
+const r = checkFile(arg || 'src/web/frontend/page/repos/index.jsx');
 if (r.skipped) {
   console.log(`SKIP: ${r.file} 没找到 default export 组件`);
   process.exit(0);

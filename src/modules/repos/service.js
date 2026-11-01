@@ -14,6 +14,8 @@ import fsp from 'node:fs/promises';
 import { APP_DIR } from '../../core/paths.js';
 import { openPath } from '../../core/open.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
+import { sanitizeDocRef } from '../docs/docref.js';
+import { sanitizeGetLoop } from '../tasktool/getloop.js';
 
 // ─── 存储（NX_KV_REPOS_STORE 可覆盖；测试隔离）──────────────────────────
 // 独立文件，不塞进 localtasks.json：仓库登记的写频率低、内容性质不同
@@ -58,12 +60,14 @@ export async function loadStore() {
     const data = JSON.parse(raw);
     if (!data || typeof data !== 'object') return emptyStore();
     const store = {
-      version: 1,
+      // v2 起 store 携带文档绑定字段（doc / docLinks / repoDocs，DocRef 形状）
+      version: 2,
       repos: Array.isArray(data.repos) ? data.repos : [],
       boards: Array.isArray(data.boards) ? data.boards : [],
       // 前缀分组规则（仓库名以 prefix 开头 → 自动算作某看板的成员）
       prefixGroups: Array.isArray(data.prefixGroups) ? data.prefixGroups.filter((g) => g && g.prefix) : [],
     };
+    normalizeDocRefs(store);
     // 老结构（看板成员存随机 id）→ 新结构（存 key）：读时改写并落盘。
     // 放这里 = 唯一入口，任何读路径都自动看到迁移后的数据。
     if (migrateStoreKeys(store)) {
@@ -73,6 +77,39 @@ export async function loadStore() {
   } catch {
     /* 缺失或损坏 → 空 store */
     return emptyStore();
+  }
+}
+
+// v2 文档绑定归一：非法 DocRef 形状直接丢弃（盘上脏数据不炸读取）。
+// 在内存完成即可，不强制落盘——下一次任何写都会把归一结果带下去。
+// sanitizeDocRef 来自 docs/docref.js（叶子模块，刻意不反向依赖本文件之外的东西）。
+function normalizeDocRefs(store) {
+  for (const r of store.repos) {
+    const ref = sanitizeDocRef(r.doc);
+    if (ref) r.doc = ref;
+    else delete r.doc;
+  }
+  for (const b of store.boards) {
+    const ref = sanitizeDocRef(b.doc);
+    if (ref) b.doc = ref;
+    else delete b.doc;
+    const links = (Array.isArray(b.docLinks) ? b.docLinks : [])
+      .map((l) => {
+        const d = sanitizeDocRef(l);
+        if (!d) return null;
+        const note = l && typeof l.note === 'string' ? l.note.trim() : '';
+        return note ? { ...d, note } : d;
+      })
+      .filter(Boolean);
+    if (links.length) b.docLinks = links;
+    else delete b.docLinks;
+    const repoDocs = {};
+    for (const [k, v] of Object.entries(b.repoDocs && typeof b.repoDocs === 'object' ? b.repoDocs : {})) {
+      const d = sanitizeDocRef(v);
+      if (d) repoDocs[k] = d;
+    }
+    if (Object.keys(repoDocs).length) b.repoDocs = repoDocs;
+    else delete b.repoDocs;
   }
 }
 
@@ -208,31 +245,10 @@ export function keyFromRemote(url) {
 // 兼容旧调用点（ref.js / transfer.js 都在用这个名字）
 export const normalizeRemoteKey = keyFromRemote;
 
-// 自定义 key 归一：允许中文与 `/`（像命名空间），其余空白/非法字符压成 -。
-// 空 key 不合法——key 是身份，不能空。
-export function normalizeKey(k) {
-  const s = String(k || '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[<>:"\\|?*\x00-\x1f]/g, '-')
-    .replace(/\.git$/i, '')
-    .replace(/\/{2,}/g, '/')
-    .replace(/^\/+|\/+$/g, '')
-    .slice(0, 160);
-  return s.toLowerCase();
-}
-
-// 无 remote 时的兜底 key：local/<slug>。slug 保留可读性（中文也行）。
-export function localKeyOf(name) {
-  const slug = String(name || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[<>:"\\|?*\x00-\x1f/]/g, '-')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return 'local/' + (slug || 'repo');
-}
+// key 归一化已下沉 core/keys.js（docs 模块的文档路径 slug 也要用同一套口径）；
+// 这里转发导出——本模块内外的既有调用点（keys.js / ref.js / transfer.js …）全部不变。
+import { normalizeKey, localKeyOf } from '../../core/keys.js';
+export { normalizeKey, localKeyOf };
 
 /** 一个仓库的 key：自定义优先，其次 remote 派生，最后 local/<name> 兜底。 */
 export function deriveKey(repo) {
@@ -379,6 +395,8 @@ export function migrateStoreKeys(store) {
  */
 export async function listRepos() {
   const s = await loadStore();
+  // docs/paths 反过来依赖本文件的 normalizeKey（动态引入避免静态环）
+  const { repoDocRel } = await import('../docs/paths.js');
   const boardsOf = new Map(); // repoKey -> [看板投影]
   for (const b of s.boards) {
     for (const rk of boardRepoKeys(b, s)) {
@@ -421,6 +439,8 @@ export async function listRepos() {
         keyCustom: !!r.keyCustom,
         remotes: Array.isArray(r.remotes) ? r.remotes : [],
         linked: Array.isArray(r.linked) ? r.linked : [],
+        // 文档路径（绑定优先，缺省约定路径）——纯字符串拼接，给前端零派生消费
+        docRel: r.doc?.rel || repoDocRel(rk),
         boards: boardsOf.get(rk) || [],
       };
     })
@@ -478,6 +498,17 @@ export async function updateRepo(id, patch) {
       r.keyUpdatedAt = new Date().toISOString();
     }
     if (patch.linked !== undefined) r.linked = sanitizeLinks(patch.linked);
+    if (patch.getLoop !== undefined) {
+      // 项目级「持续 get」（waitgoal）配置：null/ false = 清除；对象 = 与已有字段合并后落库
+      if (patch.getLoop === null) {
+        delete r.getLoop;
+      } else {
+        const v = sanitizeGetLoop(patch.getLoop);
+        const merged = sanitizeGetLoop({ ...(r.getLoop || {}), ...v });
+        if (merged) r.getLoop = merged;
+        else delete r.getLoop;
+      }
+    }
     if (patch.path !== undefined) {
       const abs = resolve(String(patch.path));
       // 改路径同样要防重复登记，否则两条记录指向同一目录，扫描时无法判断是否已登记
@@ -536,6 +567,7 @@ export async function getRepo(idOrPathOrKey) {
   if (!r) throw notFound('repo 不存在: ' + raw);
   // 带上它所属的看板（中心清单的同一份数据，单条查询也别缺这一维）
   const rk = deriveKey(r);
+  const { repoDocRel } = await import('../docs/paths.js');
   const boards = s.boards
     .filter((b) => boardRepoKeys(b, s).includes(rk))
     .map((b) => ({ id: b.id, name: b.name, desc: b.desc || '', key: boardKeyOf(b.name) }));
@@ -547,6 +579,7 @@ export async function getRepo(idOrPathOrKey) {
     keyCustom: !!base.keyCustom,
     remotes: Array.isArray(base.remotes) ? base.remotes : [],
     linked: Array.isArray(base.linked) ? base.linked : [],
+    docRel: base.doc?.rel || repoDocRel(rk),
     boards,
   };
 }

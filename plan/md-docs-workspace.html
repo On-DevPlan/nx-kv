@@ -1,0 +1,613 @@
+<title>nx-kv 文档落盘工作区</title>
+<style>
+/* tokens：与 nx-kv 面板同源（暖纸画布 / 墨色 accent / 发丝分隔 / 28px 行密度），单浅色主题为有意选择 */
+:root{
+  --canvas:#F5F4F1;
+  --paper:#FFFFFF;
+  --soft:#F5F6F7;
+  --soft-2:#EBEDF0;
+  --warm:#FBFAF8;
+  --hairline:#E4E2DC;
+  --hairline-strong:#D5D2C9;
+  --ink:#16181C;
+  --on-ink:#FFFFFF;
+  --text-1:#16181C;
+  --text-2:#4B515A;
+  --text-3:#838A93;
+  --text-4:#A9AEB4;
+  --live:#216E4E;
+  --live-soft:rgba(33,110,78,.12);
+  --info:#1558BC;
+  --info-soft:rgba(21,88,188,.10);
+  --warn:#9E4C00;
+  --warn-soft:#FBF3E4;
+  --bad:#B3261E;
+  --term-bg:#1B1E23;
+  --term-fg:#D7DBE0;
+  --term-dim:#8B9096;
+  --row-h:28px;
+  --ui:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"Cascadia Code",Consolas,monospace;
+  --label:Bahnschrift,"Segoe UI",sans-serif;
+  --border:1px solid var(--soft-2);
+  --hair:1px solid var(--hairline);
+  --relief:-1px -1px 2px rgba(255,255,255,.85),2px 2px 6px rgba(20,22,26,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font:13px/1.5 var(--ui);color:var(--text-1);background:var(--canvas);display:flex;flex-direction:column;overflow:hidden}
+button,input,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+[hidden]{display:none!important}
+.ic{display:inline-block;width:14px;height:14px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.grow{flex:1}
+
+/* ── 顶部原型说明条 ── */
+.proto{flex:none;height:30px;display:flex;align-items:center;gap:10px;padding:0 16px;font-size:11.5px;color:var(--text-3);background:var(--paper);border-bottom:var(--hair)}
+.proto b{color:var(--ink);font:600 12px var(--label);letter-spacing:.2px}
+.proto .dot{width:6px;height:6px;border-radius:50%;background:var(--live);flex:none}
+.proto .legend{display:flex;gap:10px;align-items:center;font-size:11px}
+.lg{display:inline-flex;align-items:center;gap:4px}
+.lg i{width:7px;height:7px;border-radius:50%;flex:none;font-style:normal}
+.lg .own{background:var(--live)}
+.lg .ext{background:var(--warn)}
+.lg .none{box-shadow:inset 0 0 0 1.5px var(--text-4)}
+
+/* ── 舞台与窗框 ── */
+.stage{flex:1;min-height:0;padding:14px 16px;display:flex}
+.frame{flex:1;min-width:1060px;min-height:0;display:flex;flex-direction:column;background:var(--paper);border:var(--hair);border-radius:10px;box-shadow:var(--relief);overflow:hidden}
+
+/* ── 应用顶栏 ── */
+.topbar{flex:none;height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:var(--hair)}
+.logo{width:20px;height:20px;border-radius:5px;background:var(--ink);color:var(--on-ink);display:inline-flex;align-items:center;justify-content:center;font:600 10px var(--label)}
+.topbar .t{font:600 12px var(--label)}
+.topbar .crumb{font-size:11.5px;color:var(--text-3)}
+.iconbtn{width:24px;height:24px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--text-3)}
+.iconbtn:hover{background:var(--soft);color:var(--ink)}
+.pillbtn{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;border-radius:6px;font-size:11.5px;color:var(--text-2);border:var(--hair)}
+.pillbtn:hover{background:var(--soft);color:var(--ink)}
+
+/* ── 壳：侧栏 + 工作区 ── */
+.shell{flex:1;min-height:0;display:flex}
+.side{flex:none;width:230px;display:flex;flex-direction:column;background:var(--paper);border-right:var(--hair)}
+.shead{padding:8px 10px 6px;border-bottom:var(--hair)}
+.search{display:flex;align-items:center;gap:6px;background:var(--soft);border-radius:6px;padding:0 8px;height:var(--row-h)}
+.search input{flex:1;border:0;outline:0;background:transparent;font-size:12px;min-width:0}
+.search input::placeholder{color:var(--text-3)}
+#tree{flex:1;overflow:auto;padding:4px 6px}
+.sect{padding:10px 8px 4px;font:600 10px var(--label);letter-spacing:1.2px;color:var(--text-3);text-transform:uppercase}
+.trow{display:flex;align-items:center;gap:6px;width:100%;height:var(--row-h);padding:0 8px;border-radius:6px;font-size:12px;text-align:left;position:relative;user-select:none}
+.trow:hover{background:var(--soft)}
+.trow.active{background:var(--soft);font-weight:650}
+.trow.active::before{content:'';position:absolute;left:0;top:5px;bottom:5px;width:2px;border-radius:1px;background:var(--ink)}
+.trow .tw{width:12px;color:var(--text-3);font-size:9px;transition:transform .15s;flex:none;text-align:center}
+.trow.open .tw{transform:rotate(90deg)}
+.trow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow .badge{font:400 10px var(--mono);color:var(--text-3);background:var(--soft-2);border-radius:8px;padding:0 5px;line-height:15px;flex:none;font-variant-numeric:tabular-nums}
+.trow.child{padding-left:26px}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.dot.own{background:var(--live);box-shadow:0 0 0 2px var(--live-soft)}
+.dot.ext{background:var(--warn);box-shadow:0 0 0 2px var(--warn-soft)}
+.dot.none{box-shadow:inset 0 0 0 1.5px var(--text-4)}
+.sidefoot{flex:none;border-top:var(--hair);padding:7px 10px;font:400 10.5px var(--mono);color:var(--text-3);display:flex;align-items:center;gap:6px}
+
+/* ── 工作区：双 tabset ── */
+.work{flex:1;min-width:0;display:flex;background:var(--canvas)}
+.tabset{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--canvas)}
+.tabset.docset{flex:0 0 46%}
+.split{flex:none;width:5px;cursor:default;background:var(--canvas);position:relative}
+.split::after{content:'';position:absolute;inset:0 2px;background:var(--hairline)}
+.tabs{flex:none;display:flex;align-items:flex-end;gap:2px;padding:6px 8px 0;overflow-x:auto;scrollbar-width:none}
+.tab{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:var(--hair);border-bottom:0;border-radius:8px 8px 0 0;background:var(--soft);color:var(--text-2);font-size:12px;white-space:nowrap;max-width:220px}
+.tab .lbl{overflow:hidden;text-overflow:ellipsis}
+.tab.active{background:var(--paper);color:var(--ink);font-weight:600;box-shadow:0 -1px 0 var(--paper) inset}
+.tab .dirty{color:var(--warn);font-size:10px}
+.tab .x{width:16px;height:16px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;color:var(--text-3);flex:none}
+.tab .x:hover{background:var(--soft-2);color:var(--ink)}
+.pane{flex:1;min-height:0;background:var(--paper);border-top:var(--hair);overflow:auto}
+.tabset .pane{border-top:0}
+
+/* ── 组详情 ── */
+.gh{padding:14px 18px 10px;display:flex;align-items:center;gap:8px;border-bottom:var(--hair);position:relative}
+.gh h1{font:600 16px var(--ui);text-wrap:balance}
+.chip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9px;font-size:11px;color:var(--text-2);background:var(--soft);border:var(--hair);font-variant-numeric:tabular-nums}
+.chip.warn{color:var(--warn);background:var(--warn-soft);border-color:transparent}
+.kbtn{margin-left:auto}
+
+.gbody{padding:14px 18px 18px;display:flex;flex-direction:column;gap:14px}
+.blk{position:relative;border:var(--hair);border-radius:8px;background:var(--warm)}
+.blk>.bhead{display:flex;align-items:center;gap:6px;padding:6px 12px;border-bottom:var(--hair);font:600 10.5px var(--label);letter-spacing:1px;color:var(--text-3);text-transform:uppercase}
+.blk>.bhead .path{font:400 10.5px var(--mono);letter-spacing:0;text-transform:none;color:var(--text-4)}
+.blk>.bhead .iconbtn{width:20px;height:20px}
+.mdview{padding:10px 14px 12px;font-size:12.5px;line-height:1.65;color:var(--text-1)}
+.mdview h1{font-size:15px;margin:2px 0 6px;text-wrap:balance}
+.mdview h2{font-size:13px;margin:10px 0 4px}
+.mdview p{margin:4px 0}
+.mdview ul{margin:4px 0 4px 18px}
+.mdview li{margin:2px 0}
+.mdview code{font:400 11.5px var(--mono);background:var(--soft-2);border-radius:4px;padding:1px 4px}
+.mdview strong{font-weight:650}
+a.wl{color:var(--info);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--info) 35%,transparent);cursor:pointer;position:relative}
+a.wl:hover{background:var(--info-soft);border-bottom-color:var(--info)}
+a.wl.un{color:var(--bad);border-bottom:1px dashed var(--bad)}
+a.wl.un:hover{background:color-mix(in srgb,var(--bad) 8%,transparent)}
+
+.blist{display:flex;flex-direction:column}
+.brow{display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:var(--hair);font-size:12px}
+.brow:last-child{border-bottom:0}
+.brow .fic{color:var(--text-3)}
+.brow .bn{font-weight:550}
+.brow .bp{font:400 10.5px var(--mono);color:var(--text-4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:9px;font-size:10.5px;flex:none}
+.tag.own{color:var(--live);background:var(--live-soft)}
+.tag.ext{color:var(--warn);background:var(--warn-soft)}
+.tag.none{color:var(--text-3);background:var(--soft);border:var(--hair)}
+.tag.init{color:var(--bad);background:color-mix(in srgb,var(--bad) 9%,transparent)}
+
+.rp-table{width:100%;border-collapse:collapse;font-size:12px}
+.rp-table th{position:sticky;top:0;text-align:left;font:600 10px var(--label);letter-spacing:1px;text-transform:uppercase;color:var(--text-3);background:var(--paper);padding:8px 12px 6px;border-bottom:var(--hair)}
+.rp-table td{padding:7px 12px;border-bottom:1px solid var(--hairline);vertical-align:middle}
+.rp-table tr:last-child td{border-bottom:0}
+.rp-table tbody tr{cursor:pointer}
+.rp-table tbody tr:hover{background:var(--warm)}
+.rp-table .path{font:400 10.5px var(--mono);color:var(--text-3);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-table .sum{color:var(--text-2);max-width:230px}
+.rp-table .sum .more{color:var(--info);font-size:11px;margin-left:4px;white-space:nowrap}
+.doccell{display:flex;gap:4px;flex-wrap:wrap}
+.mono{font-family:var(--mono)}
+
+/* ── 终端卡（knowledge） ── */
+.term{background:var(--term-bg);color:var(--term-fg);border-radius:8px;font:400 11.5px/1.6 var(--mono);padding:12px 14px;overflow-x:auto}
+.term .pr{color:var(--live)}
+.term .cm{color:var(--term-dim)}
+.term .k{color:#7FB3FF}
+
+/* ── docs 存储 tab ── */
+.store{padding:14px 18px 18px;display:grid;grid-template-columns:1.25fr .9fr;gap:14px;align-items:start}
+.tree{border:var(--hair);border-radius:8px;background:var(--warm);padding:8px 6px;font:400 11.5px/1.9 var(--mono)}
+.frow{display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:5px;white-space:nowrap;color:var(--text-2)}
+.frow.dir{color:var(--text-1);font-weight:600}
+.frow.file{cursor:pointer}
+.frow.file:hover{background:var(--soft-2);color:var(--ink)}
+.frow .fi{color:var(--text-3)}
+.frow .cm2{color:var(--text-4);font-family:var(--ui);font-size:10.5px;margin-left:auto;padding-left:14px}
+.frow.l1{padding-left:26px}.frow.l2{padding-left:44px}.frow.l3{padding-left:62px}
+.storecap{margin-top:8px;font-size:11px;color:var(--text-3);line-height:1.6}
+.card{border:var(--hair);border-radius:8px;background:var(--paper)}
+.card>.chead{display:flex;align-items:center;gap:6px;padding:7px 12px;border-bottom:var(--hair);font:600 10.5px var(--label);letter-spacing:1px;color:var(--text-3);text-transform:uppercase}
+.card .cbody{padding:6px 12px 10px;font-size:12px}
+.xrow{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--hairline)}
+.xrow:last-child{border-bottom:0}
+.xrow .xp{font:400 10.5px var(--mono);color:var(--text-2);word-break:break-all;line-height:1.5}
+.xrow .who{flex:none;font-size:11px;color:var(--text-3)}
+.ztree{font:400 11px/1.8 var(--mono);color:var(--text-2)}
+.ztree .hd{color:var(--live)}
+.ztree .cm{color:var(--text-4);font-family:var(--ui)}
+.cardnote{margin-top:6px;font-size:11px;color:var(--text-3)}
+
+/* ── 文档页签（工作区同构编辑器） ── */
+.docpane{display:flex;flex-direction:column;height:100%;min-height:0}
+.dhead{flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:var(--hair)}
+.dpath{font:400 10.5px var(--mono);color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.extban{flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--warn-soft);color:var(--warn);font-size:11.5px;border-bottom:var(--hair)}
+.dtools{flex:none;display:flex;align-items:center;gap:6px;padding:6px 12px;border-bottom:var(--hair)}
+.tbtn{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:6px;border:var(--hair);font-size:11.5px;color:var(--text-2)}
+.tbtn:hover{background:var(--soft);color:var(--ink)}
+.tbtn.primary{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
+.tbtn.primary:hover{background:#2A2E34}
+.dsplit{flex:1;min-height:0;display:flex}
+.dsrc{flex:1;min-width:0;border:0;outline:0;resize:none;background:var(--warm);color:var(--text-1);font:400 12px/1.7 var(--mono);padding:12px 14px}
+.dview{flex:1;min-width:0;border-left:var(--hair);overflow:auto;background:var(--paper)}
+.dview .mdview{padding:12px 16px}
+.srchint{flex:none;padding:5px 12px;border-top:var(--hair);font-size:10.5px;color:var(--text-4);display:flex;gap:10px}
+
+/* ── 注解脚注 ── */
+.notes{flex:none;display:flex;flex-wrap:wrap;gap:6px 18px;padding:9px 16px;background:var(--paper);border-top:var(--hair);font-size:11px;color:var(--text-3)}
+.npt{display:inline-flex;align-items:baseline;gap:6px;max-width:300px;line-height:1.5}
+.npt i{font-style:normal;font:600 10px/16px var(--label);width:16px;height:16px;border-radius:50%;background:var(--ink);color:var(--on-ink);display:inline-flex;align-items:center;justify-content:center;flex:none;transform:translateY(2px)}
+.npt b{color:var(--text-2);font-weight:600}
+
+/* ── 角标与 toast ── */
+.nb{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--ink);color:var(--on-ink);font:600 9.5px var(--label);flex:none;vertical-align:1px}
+.nb.onlight{box-shadow:0 0 0 2px var(--paper)}
+#toast{position:fixed;right:18px;bottom:18px;z-index:50;display:flex;align-items:center;gap:8px;max-width:420px;background:var(--ink);color:var(--on-ink);border-radius:8px;padding:9px 14px;font-size:12px;box-shadow:0 6px 18px rgba(20,22,26,.25);opacity:0;transform:translateY(6px);transition:opacity .18s,transform .18s;pointer-events:none}
+#toast.show{opacity:1;transform:none}
+#toast .ok{color:#7FD8A8}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="proto">
+  <span class="dot"></span>
+  <b>原型 · 第一块：组语义 × md 落盘</b>
+  <span>描述本体 = <span class="mono">~/.nx-kv/docs/</span> 自有树里的真实 .md 文件；外部绑定只读、不进 zip（模型 C）</span>
+  <span class="grow"></span>
+  <span class="legend">
+    <span class="lg"><i class="own"></i>自有文档</span>
+    <span class="lg"><i class="ext"></i>外部绑定 · 只读</span>
+    <span class="lg"><i class="none"></i>未创建</span>
+  </span>
+</div>
+
+<div class="stage">
+  <div class="frame">
+
+    <div class="topbar">
+      <span class="logo">nx</span><span class="t">nx-kv</span>
+      <span class="crumb">面板 v2 · 工作区</span>
+      <span class="grow"></span>
+      <button class="pillbtn"><svg class="ic" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12"/></svg>面板</button>
+      <button class="iconbtn" title="设置"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4"/></svg></button>
+    </div>
+
+    <div class="shell">
+      <aside class="side">
+        <div class="shead">
+          <div class="search"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/></svg><input placeholder="搜索目录 / 仓库" aria-label="搜索"></div>
+        </div>
+        <div id="tree">
+          <button class="trow"><span class="tw"></span><svg class="ic" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 8h5M8 5.5v5"/></svg><span class="nm">全部目录</span></button>
+          <div class="sect">项目组</div>
+          <button class="trow open" data-act="group"><span class="tw">▶</span><svg class="ic" viewBox="0 0 16 16"><path d="M2 4.5h4l1.2 1.8H14V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/></svg><span class="nm">nx系列</span><span class="badge">6</span></button>
+          <div id="members">
+            <button class="trow child" data-doc="note-nx-kv"><span class="dot own"></span><span class="nm">nx-kv</span><span class="badge">2</span></button>
+            <button class="trow child" data-doc="note-nx-rh"><span class="dot ext"></span><span class="nm">nx-rh</span><span class="badge">1</span></button>
+            <button class="trow child" data-doc="skeleton-nx-kn"><span class="dot none"></span><span class="nm">nx-kn</span></button>
+            <button class="trow child" data-doc="note-nx-se"><span class="dot own"></span><span class="nm">nx-se</span></button>
+            <button class="trow child" data-doc="none:nx-rp"><span class="dot none"></span><span class="nm">nx-rp</span></button>
+            <button class="trow child" data-doc="none:nx-sk"><span class="dot none"></span><span class="nm">nx-sk</span></button>
+          </div>
+          <button class="trow"><span class="tw">▶</span><svg class="ic" viewBox="0 0 16 16"><path d="M2 4.5h4l1.2 1.8H14V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/></svg><span class="nm">fr常用</span><span class="badge">4</span></button>
+          <button class="trow"><span class="tw">▶</span><svg class="ic" viewBox="0 0 16 16"><path d="M2 4.5h4l1.2 1.8H14V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/></svg><span class="nm">远程打字</span><span class="badge">2</span></button>
+          <div class="sect">未分组</div>
+          <button class="trow child"><span class="dot none"></span><span class="nm">semigroup-core</span></button>
+          <button class="trow child"><span class="dot own"></span><span class="nm">watchkv</span></button>
+        </div>
+        <div class="sidefoot"><span class="nb onlight">1</span><span class="mono">~/.nx-kv/docs/ · 14 文件</span></div>
+      </aside>
+
+      <div class="work">
+        <section class="tabset" id="ts-main">
+          <div class="tabs">
+            <button class="tab active" data-pane="p-group"><span class="lbl">组详情 · nx系列</span></button>
+            <button class="tab" data-pane="p-store"><span class="lbl">docs 存储</span></button>
+          </div>
+
+          <div class="pane" id="p-group">
+            <div class="gh">
+              <svg class="ic" viewBox="0 0 16 16"><path d="M2 4.5h4l1.2 1.8H14V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/></svg>
+              <h1>nx系列</h1>
+              <span class="chip">6 个目录</span>
+              <span class="chip warn">3 个待领取</span>
+              <button class="pillbtn kbtn" id="kbtn"><span class="nb">5</span> knowledge --json</button>
+            </div>
+            <div class="gbody">
+
+              <div class="blk">
+                <div class="bhead"><span class="nb onlight">2</span>组介绍 · nx系列.md<span class="path mono">docs/board/nx系列.md</span><span class="grow"></span><button class="iconbtn" data-doc="g-nx" title="编辑"><svg class="ic" viewBox="0 0 16 16"><path d="M11 2.5l2.5 2.5L6 12.5l-3 .5.5-3z"/></svg></button></div>
+                <div class="mdview" id="intro-view"></div>
+              </div>
+
+              <div class="blk">
+                <div class="bhead">组绑定 · md 列表<span class="path mono">docs/notes/ + 外部</span></div>
+                <div class="blist">
+                  <div class="brow" data-doc="d-waitgoal" style="cursor:pointer"><svg class="ic fic" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg><span class="bn">waitgoal-设计.md</span><span class="bp">自有 · 阻塞窗口与收尾指令</span><span class="grow"></span><span class="tag own">自有</span></div>
+                  <div class="brow" data-doc="d-time" style="cursor:pointer"><svg class="ic fic" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg><span class="bn">时间窗口总览.md</span><span class="bp">自有 · timegoal / waitgoal 对照</span><span class="grow"></span><span class="tag own">自有</span></div>
+                  <div class="brow"><span class="nb onlight">3</span><svg class="ic fic" viewBox="0 0 16 16"><path d="M6.5 9.5l3-3M4 7l2-2a2.1 2.1 0 0 1 3 0M9 12l2-2a2.1 2.1 0 0 0 0-3"/></svg><span class="bn">命名法.md</span><span class="bp mono">D:\obsidian\way\nx\命名法.md</span><span class="grow"></span><span class="tag ext">外部 · 只读 · 不进 zip</span></div>
+                </div>
+              </div>
+
+              <div class="blk">
+                <div class="bhead">成员 · 6 个目录</div>
+                <table class="rp-table">
+                  <thead><tr><th>目录</th><th>路径</th><th>说明（组内描述）</th><th>文档</th><th>待领取</th><th>归属</th></tr></thead>
+                  <tbody>
+                    <tr data-doc="note-nx-kv">
+                      <td><b>nx-kv</b></td>
+                      <td class="path">D:\DevProjects\my\github\nx-kv</td>
+                      <td class="sum">任务出入口：KV 清单 + 本地队列…<button class="more" data-doc="note-nx-kv">打开 ↗</button></td>
+                      <td><div class="doccell"><button class="tag own" data-doc="note-nx-kv">● 描述</button><button class="tag own" data-doc="intro-nx-kv">● 介绍</button></div></td>
+                      <td><span class="chip warn">2</span></td><td>手动</td>
+                    </tr>
+                    <tr data-doc="note-nx-rh">
+                      <td><b>nx-rh</b></td>
+                      <td class="path">D:\DevProjects\my\github\nx-rh</td>
+                      <td class="sum">仓库登记 / 技能订阅 / worktrees…<button class="more" data-doc="note-nx-rh">打开 ↗</button></td>
+                      <td><div class="doccell"><button class="tag ext" data-doc="note-nx-rh">🔗 只读</button></div></td>
+                      <td><span class="chip warn">1</span></td><td>按前缀</td>
+                    </tr>
+                    <tr data-doc="skeleton-nx-kn">
+                      <td><b>nx-kn</b></td>
+                      <td class="path">D:\DevProjects\my\github\nx-kn</td>
+                      <td class="sum"><span style="color:var(--text-3)">未创建——点按生成骨架</span></td>
+                      <td><div class="doccell"><button class="tag none" data-doc="skeleton-nx-kn">○ 未创建</button></div></td>
+                      <td><span class="chip">0</span></td><td>按前缀</td>
+                    </tr>
+                    <tr data-doc="note-nx-se">
+                      <td><b>nx-se</b></td>
+                      <td class="path">D:\DevProjects\my\github\nx-se</td>
+                      <td class="sum">个人资源：档案与密钥，密文落盘…<button class="more" data-doc="note-nx-se">打开 ↗</button></td>
+                      <td><div class="doccell"><button class="tag own" data-doc="note-nx-se">● 描述</button></div></td>
+                      <td><span class="chip">0</span></td><td>手动</td>
+                    </tr>
+                    <tr data-doc="none:nx-rp">
+                      <td><b>nx-rp</b></td>
+                      <td class="path">D:\DevProjects\my\github\nx-rp</td>
+                      <td class="sum"><span style="color:var(--text-3)">未创建——点按生成骨架</span></td>
+                      <td><div class="doccell"><button class="tag none">○ 未创建</button></div></td>
+                      <td><span class="chip">0</span></td><td>按前缀</td>
+                    </tr>
+                    <tr>
+                      <td><b class="mono" style="font-size:11px">github.com/lx/semigroup-core</b></td>
+                      <td class="path">— 本机没有登记</td>
+                      <td class="sum"><span class="tag init">待初始化</span><span style="color:var(--text-3)"> 导入占位 · 描述已随 zip 到位，等 key 链接</span><span class="nb" style="margin-left:4px">6</span></td>
+                      <td><div class="doccell"><button class="tag own" data-doc="note-semi">● 描述（未链接）</button></div></td>
+                      <td><span class="chip">0</span></td><td>手动</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="term" id="kterm" hidden>
+                <div><span class="pr">$</span> nx-kv repo knowledge nx-kv --json</div>
+                <div class="cm"># 供 get 封装：上下文 = 项目介绍 + 组介绍 + 组内描述 + 关联，路径可直接读盘</div>
+                <div>{</div>
+                <div>&nbsp;&nbsp;<span class="k">"repo"</span>: { <span class="k">"key"</span>: "github.com/on-devplan/nx-kv", <span class="k">"name"</span>: "nx-kv",</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">"desc"</span>: "KV 清单任务管理中枢…",</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">"introDoc"</span>: "~/.nx-kv/docs/repo/github.com/on-devplan/nx-kv.md" },</div>
+                <div>&nbsp;&nbsp;<span class="k">"boards"</span>: [{ <span class="k">"name"</span>: "nx系列",</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">"introDoc"</span>: "~/.nx-kv/docs/board/nx系列.md",</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">"noteDoc"</span>: "~/.nx-kv/docs/group/nx系列/github.com/on-devplan/nx-kv.md",</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">"peers"</span>: ["nx-rh", "nx-kn", "nx-rp", "nx-se", "nx-sk"] }],</div>
+                <div>&nbsp;&nbsp;<span class="k">"links"</span>: [{ <span class="k">"to"</span>: "board/nx系列" }, { <span class="k">"to"</span>: "github.com/on-devplan/nx-rh", <span class="k">"note"</span>: "仓库登记来源" }]</div>
+                <div>}</div>
+              </div>
+
+            </div>
+          </div>
+
+          <div class="pane" id="p-store" hidden>
+            <div class="store">
+              <div>
+                <div class="tree">
+                  <div class="frow dir"><span class="tw">▾</span><svg class="ic" viewBox="0 0 16 16"><path d="M2 4.5h4l1.2 1.8H14V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/></svg>docs/ <span class="cm2">~/.nx-kv/docs/ · 自有本体</span></div>
+                  <div class="frow l1 dir"><span class="tw">▾</span>repo/</div>
+                  <div class="frow l2 dir"><span class="tw">▾</span>github.com/</div>
+                  <div class="frow l3 dir"><span class="tw">▾</span>on-devplan/</div>
+                  <div class="frow file" style="padding-left:80px" data-doc="intro-nx-kv"><svg class="ic fi" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg>nx-kv.md<span class="cm2">项目介绍</span></div>
+                  <div class="frow file" style="padding-left:80px"><svg class="ic fi" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg>nx-rh.md<span class="cm2">项目介绍</span></div>
+                  <div class="frow l1 dir"><span class="tw">▾</span>board/</div>
+                  <div class="frow l2 file" data-doc="g-nx"><svg class="ic fi" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg>nx系列.md<span class="cm2">组介绍</span></div>
+                  <div class="frow l1 dir"><span class="tw">▾</span>group/</div>
+                  <div class="frow l2 dir"><span class="tw">▾</span>nx系列/</div>
+                  <div class="frow l3 file" data-doc="note-nx-kv"><svg class="ic fi" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg>github.com/on-devplan/nx-kv.md<span class="cm2">组内描述</span></div>
+                  <div class="frow l3 file" data-doc="note-nx-se"><svg class="ic fi" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg>github.com/on-devplan/nx-se.md<span class="cm2">组内描述</span></div>
+                  <div class="frow l1 dir"><span class="tw">▾</span>notes/</div>
+                  <div class="frow l2 file" data-doc="d-waitgoal"><svg class="ic fi" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg>waitgoal-设计.md<span class="cm2">组绑定 · 自由文档</span></div>
+                  <div class="frow l2 file" data-doc="d-time"><svg class="ic fi" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg>时间窗口总览.md<span class="cm2">组绑定 · 自由文档</span></div>
+                </div>
+                <div class="storecap">目录树承载语义：key 的 <span class="mono">/</span> 分段即目录层级——<span class="mono">repo/&lt;key&gt;.md · board/&lt;组&gt;.md · group/&lt;组&gt;/&lt;key&gt;.md</span>，key 唯一 ⇒ 路径天然无碰撞；段级 slug 兜底 Windows 保留名与尾点。<b>md 是描述的唯一权威，JSON 只存绑定与短摘要</b>；组内描述由原 repoNotes 字符串惰性迁移为种子。</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <div class="card">
+                  <div class="chead"><span class="nb onlight">3</span>外部绑定 · 只读引用</div>
+                  <div class="cbody">
+                    <div class="xrow"><span class="who">nx-rh · 组内描述</span><span class="grow"></span><span class="tag ext">只读</span></div>
+                    <div class="xrow"><span class="xp mono">D:\obsidian\way\docs\nx-rh.md</span></div>
+                    <div class="xrow" style="border-top:var(--hair)"><span class="who">nx系列 · 命名法</span><span class="grow"></span><span class="tag ext">只读</span></div>
+                    <div class="xrow"><span class="xp mono">D:\obsidian\way\nx\命名法.md</span></div>
+                    <div class="cardnote">绑定路径存 repos.json；打开即渲染，改动请回 vault。</div>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="chead"><span class="nb onlight">6</span>导出 · nx系列-布局.zip</div>
+                  <div class="cbody">
+                    <div class="ztree">
+                      <div>├─ <span class="hd">layout.json</span>&nbsp;&nbsp;<span class="cm">v4 · 含 doc 绑定</span></div>
+                      <div>├─ README.txt</div>
+                      <div>└─ <span class="hd">docs/</span>&nbsp;&nbsp;<span class="cm">自有树原样打包</span></div>
+                      <div>&nbsp;&nbsp;&nbsp;├─ repos/…</div>
+                      <div>&nbsp;&nbsp;&nbsp;└─ boards/nx系列/…</div>
+                    </div>
+                    <div class="cardnote">外部绑定只记引用不进包；对方导入后，无 key 的仓库标<span class="tag init" style="margin:0 2px">待初始化</span>，文档先行恢复。</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="split"></div>
+
+        <section class="tabset docset" id="ts-doc">
+          <div class="tabs" id="doc-tabs"></div>
+          <div class="pane" id="doc-panes" style="padding:0"></div>
+        </section>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer class="notes">
+  <span class="npt"><i>1</i><span><b>文档 = 真实落盘 .md</b>：自有树 <span class="mono">~/.nx-kv/docs/</span>，JSON 只存绑定 + 短摘要</span></span>
+  <span class="npt"><i>2</i><span><b>三类文档</b>：项目介绍 / 组介绍 / 组内仓库描述；组另绑有序 md 列表</span></span>
+  <span class="npt"><i>3</i><span><b>模型 C</b>：外部目录/文件（如 Obsidian vault）= 只读引用，不进 zip</span></span>
+  <span class="npt"><i>4</i><span><b>双链 [[]]</b>：自有树 + 绑定域内解析，点击开工作区页签；未解析可见</span></span>
+  <span class="npt"><i>5</i><span><b>repo knowledge</b>：CLI 快速取项目知识，get 封装的供料口</span></span>
+  <span class="npt"><i>6</i><span><b>导入导出</b>：zip = layout.json + docs 树；无 key 的仓库「待初始化」</span></span>
+</footer>
+
+<div id="toast"><span class="ok">✓</span><span id="toast-msg"></span></div>
+
+<script>
+'use strict';
+/* ── 文档注册表：id → {name, tab, path, body, readOnly, external} ── */
+const DOCS = {
+  'note-nx-kv': { name:'nx-kv', tab:'nx-kv · 组内描述', path:'~/.nx-kv/docs/group/nx系列/github.com/on-devplan/nx-kv.md',
+    body:'# nx-kv · 组内描述\n\n在 nx系列 中，nx-kv 是**任务出入口**：其余成员产生的需求，\n最终都通过它的 KV 清单流转（远程四把 key + 本机 localtask 队列）。\n\n## 解决什么问题\n- 任务闭环：执行 — 等待 — 反馈修改，以 Markdown 为交互载体\n- [[nx-rh]] 登记的仓库在这里变成任务上下文\n\n## 与其他成员的关联\n- 领取任务后按 [[nx-rh]] 的仓库登记拿路径\n- 知识类问题转给 [[nx-kn]]\n- 规范待补：[[组语义规范]]' },
+  'intro-nx-kv': { name:'nx-kv-介绍', tab:'nx-kv · 项目介绍', path:'~/.nx-kv/docs/repo/github.com/on-devplan/nx-kv.md',
+    body:'# nx-kv\n\nKV 清单（todo）管理中枢。一个 npx 命令起一个 Web 面板，同时提供同构 CLI——面板上的每个按钮，底层都是同一条 CLI 命令。\n\n## 定位\n- get / submit 两个 skill 是唯二入口，其余全是配置与提示词封装\n- 任务正文直接嵌图片与文档（标准 markdown）\n\n归属组：[[nx系列]]' },
+  'note-nx-rh': { name:'nx-rh', tab:'nx-rh · 组内描述', path:'D:\\obsidian\\way\\docs\\nx-rh.md', external:true,
+    body:'# nx-rh · 组内描述\n\n> 外部绑定（Obsidian vault）· 只读\n\n本机仓库登记与 skill 订阅中枢：repos / skills / worktrees / env。\n\n- 仓库 key 是与 [[nx-kv]] 之间的唯一关联\n- worktrees 与 skills 不依赖 repos 模块' },
+  'note-nx-se': { name:'nx-se', tab:'nx-se · 组内描述', path:'~/.nx-kv/docs/group/nx系列/github.com/on-devplan/nx-se.md',
+    body:'# nx-se · 组内描述\n\n个人资源管理器：求职档案与大模型 API Key，CLI 与 Web 面板同源，敏感字段密文落盘。\n\n- 只在本机落盘，不上传\n- 与 [[nx-kv]] 无直接依赖' },
+  'note-semi': { name:'semigroup-core', tab:'semigroup-core · 描述（未链接）', path:'zip 内 docs/group/nx系列/github.com/lx/semigroup-core.md', pending:true,
+    body:'# semigroup-core · 组内描述\n\n> 随导入 zip 恢复；本地还没有这个 key 的仓库，链接后转正。\n\n（对方的描述原文……）' },
+  'g-nx': { name:'nx系列', tab:'nx系列 · 组介绍', path:'~/.nx-kv/docs/board/nx系列.md',
+    body:'# nx系列\n\n本机 nx- 前缀工具链的组合：全部围绕「agent 的本地工作环境」——仓库、知识、技能、资料、密钥各占一层。\n\n- [[nx-kv]] 任务中枢：KV 清单 + 本地队列，get/submit 的唯一入口\n- [[nx-rh]] 仓库与技能登记：repos / skills / worktrees / env\n- [[nx-kn]] 本机知识库：Obsidian 检索与索引\n- [[nx-rp]] 项目外部上下文：依赖图、提示词日志、批注\n- [[nx-se]] 个人资源：档案与密钥，密文落盘\n\n发布组任务时 get 会附带本页与各成员描述——见 [[waitgoal-设计]]；命名约定见 [[组语义规范]]。' },
+  'd-waitgoal': { name:'waitgoal-设计', tab:'waitgoal-设计', path:'~/.nx-kv/docs/notes/waitgoal-设计.md',
+    body:'# waitgoal 设计\n\nget 时队列空 → 自动唤起阻塞窗口（类似 blocking queue），用户在窗口期内补任务。\n\n- 最大时长上限 + 收尾指令模板\n- 模板 = 原任务 + 「不要直接结束，反复调用 get 直到超时」\n- 相关：[[时间窗口总览]]' },
+  'd-time': { name:'时间窗口总览', tab:'时间窗口总览', path:'~/.nx-kv/docs/notes/时间窗口总览.md',
+    body:'# 时间窗口总览\n\n时间窗口体系的第一块：从领取时刻开始计时。\n\n- timegoal：任务级时长强制，check 通过才能标完成\n- waitgoal：get 唤起阻塞窗口，用户补任务\n- 详见 [[waitgoal-设计]]' },
+  'skeleton-nx-kn': { name:'nx-kn', tab:'nx-kn · 组内描述', path:'~/.nx-kv/docs/group/nx系列/github.com/on-devplan/nx-kn.md',
+    body:'# nx-kn · 组内描述\n\n## 解决什么问题\n\n（待补）\n\n## 与其他成员的关联\n\n- ' }
+};
+/* 组介绍渲染域内的双链解析表：名字 → 文档 id（未列出 = 未解析） */
+const LINKS = { 'nx-kv':'note-nx-kv', 'nx系列':'g-nx', 'nx-rh':'note-nx-rh', 'nx-kn':'skeleton-nx-kn', 'nx-se':'note-nx-se', 'waitgoal-设计':'d-waitgoal', '时间窗口总览':'d-time' };
+const SKELETONS = { 'nx-rp':'# nx-rp · 组内描述\n\n## 解决什么问题\n\n（待补）\n\n## 与其他成员的关联\n\n- ' };
+
+const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function renderMd(src){
+  const lines = esc(src).split('\n');
+  let html = '', inList = false;
+  const inline = (t) => t
+    .replace(/\[\[([^\]]+)\]\]/g, (m, name) => {
+      const target = LINKS[name] || (DOCS[name] ? name : null);
+      return target && !String(target).startsWith('none:')
+        ? `<a class="wl" data-doc="${target}">${name}</a>`
+        : `<a class="wl un" data-doc="none:${name}" title="未解析">${name}</a>`;
+    })
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>');
+  for (const raw of lines){
+    const line = raw.trimEnd();
+    if (/^- /.test(line)){ if(!inList){ html += '<ul>'; inList = true; } html += '<li>' + inline(line.slice(2)) + '</li>'; continue; }
+    if (inList){ html += '</ul>'; inList = false; }
+    if (/^# /.test(line)) html += '<h1>' + inline(line.slice(2)) + '</h1>';
+    else if (/^## /.test(line)) html += '<h2>' + inline(line.slice(3)) + '</h2>';
+    else if (/^> /.test(line)) html += '<p style="color:var(--text-3);border-left:2px solid var(--hairline-strong);padding-left:8px">' + inline(line.slice(2)) + '</p>';
+    else if (line.trim() === '') html += '';
+    else html += '<p>' + inline(line) + '</p>';
+  }
+  if (inList) html += '</ul>';
+  return html;
+}
+
+/* ── toast ── */
+let toastTimer;
+function toast(msg){ const t = document.getElementById('toast'); document.getElementById('toast-msg').textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600); }
+
+/* ── 左侧 tabset：组详情 / docs 存储 ── */
+document.querySelectorAll('#ts-main .tab').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('#ts-main .tab').forEach(b => b.classList.toggle('active', b === btn));
+  document.getElementById('p-group').hidden = btn.dataset.pane !== 'p-group';
+  document.getElementById('p-store').hidden = btn.dataset.pane !== 'p-store';
+}));
+
+/* ── knowledge 终端 ── */
+document.getElementById('kbtn').addEventListener('click', () => {
+  const t = document.getElementById('kterm'); t.hidden = !t.hidden;
+  if (!t.hidden) t.scrollIntoView({behavior:'smooth', block:'nearest'});
+});
+
+/* ── 文档页签（右 tabset，与任务页签同构） ── */
+const docTabs = document.getElementById('doc-tabs');
+const docPanes = document.getElementById('doc-panes');
+const openIds = [];
+function activate(id){
+  document.querySelectorAll('#doc-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.doc === id));
+  document.querySelectorAll('#doc-panes .docpane').forEach(p => p.hidden = p.dataset.doc !== id);
+}
+function markDirty(id, dirty){
+  const tab = docTabs.querySelector(`.tab[data-doc="${id}"] .dirty`);
+  if (tab) tab.hidden = !dirty;
+}
+function buildEditor(entry, id){
+  const wrap = document.createElement('div');
+  wrap.className = 'docpane'; wrap.dataset.doc = id;
+  wrap.innerHTML = `
+    ${entry.external ? '<div class="extban"><svg class="ic" viewBox="0 0 16 16"><path d="M6.5 9.5l3-3M4 7l2-2a2.1 2.1 0 0 1 3 0M9 12l2-2a2.1 2.1 0 0 0 0-3"/></svg>外部绑定 · 只读 · 改动请回 vault<span class="grow"></span><span class="mono" style="font-size:10.5px">' + esc(entry.path) + '</span></div>' : ''}
+    <div class="dhead"><svg class="ic" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg><span class="dpath">${esc(entry.path)}</span>${entry.pending ? '<span class="tag init">待初始化</span>' : ''}<span class="grow"></span></div>
+    <div class="dsplit">
+      <textarea class="dsrc" spellcheck="false" ${entry.external ? 'readonly' : ''} aria-label="源码"></textarea>
+      <div class="dview"><div class="mdview"></div></div>
+    </div>
+    <div class="srchint"><span>双链 [[]] 点击跳转 · 未解析为红色虚线</span><span class="grow"></span><span>Ctrl+S 保存</span></div>`;
+  const src = wrap.querySelector('.dsrc');
+  const view = wrap.querySelector('.mdview');
+  src.value = entry.body;
+  view.innerHTML = renderMd(entry.body);
+  if (!entry.external){
+    src.addEventListener('input', () => { view.innerHTML = renderMd(src.value); markDirty(id, true); });
+    src.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 's'){ e.preventDefault(); saveDoc(id); } });
+  } else {
+    view.innerHTML = renderMd(entry.body);
+  }
+  return wrap;
+}
+function saveDoc(id){
+  const pane = docPanes.querySelector(`.docpane[data-doc="${id}"]`);
+  const entry = DOCS[id]; if (!pane || !entry) return;
+  entry.body = pane.querySelector('.dsrc').value;
+  markDirty(id, false);
+  toast('已落盘 · ' + entry.path);
+}
+function openDoc(id, opts = {}){
+  let entry = DOCS[id];
+  if (!entry && opts.skeletonBody){ entry = DOCS[id] = { name:id, tab:opts.tab, path:opts.path, body:opts.skeletonBody }; toast('已创建骨架 · ' + entry.path); }
+  if (!entry){
+    if (String(id).startsWith('none:')) toast('未解析：[[' + String(id).slice(5) + ']]');
+    return;
+  }
+  if (opts.activateTab !== false) if (!docTabs.querySelector(`.tab[data-doc="${id}"]`)){
+    const tab = document.createElement('button');
+    tab.className = 'tab'; tab.dataset.doc = id;
+    tab.innerHTML = `<span class="lbl">${esc(entry.tab)}</span><span class="dirty" hidden>◆</span><span class="x" title="关闭">×</span>`;
+    tab.addEventListener('click', (e) => { if (e.target.closest('.x')){ closeDoc(id); } else activate(id); });
+    docTabs.appendChild(tab);
+    docPanes.appendChild(buildEditor(entry, id));
+    openIds.push(id);
+  }
+  activate(id);
+}
+function closeDoc(id){
+  const idx = openIds.indexOf(id); if (idx > -1) openIds.splice(idx, 1);
+  docTabs.querySelector(`.tab[data-doc="${id}"]`)?.remove();
+  docPanes.querySelector(`.docpane[data-doc="${id}"]`)?.remove();
+  if (openIds.length) activate(openIds[Math.max(0, idx - 1)]);
+}
+
+/* 预览区双链点击（事件委托；阻止冒泡避免全局委派重复处理） */
+docPanes.addEventListener('click', (e) => {
+  const a = e.target.closest('a.wl'); if (!a) return;
+  e.stopPropagation();
+  openDoc(a.dataset.doc);
+});
+
+/* 侧栏组行 → 组详情页签 */
+document.querySelector('[data-act="group"]').addEventListener('click', () => {
+  document.querySelector('#ts-main .tab[data-pane="p-group"]').click();
+});
+
+/* 全局 data-doc 委派（侧栏 / 表格 / 树 / 绑定列表；文档区与页签条有自己的处理） */
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#doc-tabs, .docpane')) return;
+  const el = e.target.closest('[data-doc]'); if (!el) return;
+  const id = el.dataset.doc;
+  if (id.startsWith('none:')){
+    const name = id.slice(5);
+    if (SKELETONS[name]) openDoc('doc-' + name, { skeletonBody:SKELETONS[name], tab:name + ' · 组内描述', path:'~/.nx-kv/docs/group/nx系列/github.com/on-devplan/' + name + '.md' });
+    else toast('未创建：' + name + '（点按可生成骨架）');
+    return;
+  }
+  if (DOCS[id] || id === 'doc-nx-rp') openDoc(id);
+  else openDoc(id, { skeletonBody:null });
+});
+
+/* 初始态：组详情 + 右侧已开着一份脏的组内描述（展示 ◆ 与分栏编辑） */
+openDoc('note-nx-kv');
+markDirty('note-nx-kv', true);
+document.getElementById('intro-view').innerHTML = renderMd(DOCS['g-nx'].body);
+</script>

@@ -14,7 +14,7 @@ import {
   promoteDoc,
   saveDoc,
   scopeOf,
-} from '../../src/web/frontend/modules/md-workspace/doc-store.js';
+} from '../../src/web/frontend/modules/md/doc-store.js';
 
 test('docsSnapshot 是扁平的 docId → doc 映射，不带外层 docs 壳', () => {
   const id = docIdOf('k1', '1');

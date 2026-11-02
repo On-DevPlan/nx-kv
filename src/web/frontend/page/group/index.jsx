@@ -4,21 +4,16 @@
 // 路径在哪、有没有待领任务、归属是手动挂的还是前缀规则自动来的。
 // 行点击 → 进该目录（子任务表在目录视图里）。
 //
-// 组介绍是**真实的 .md 文档**（board.docRel 指到的自有树文件）：这里只读渲染，
-// 双链与「编辑」都落到工作区的 doc 页签（DocPanel）——本页不做内嵌编辑器。
-//
-// 数据都来自已有的几份：看板成员（/api/boards）、仓库登记（/api/repos）、
-// 本机队列（/api/localtasks）、文档（/api/docs/item）——按 **仓库 key** 归位。
+// 组介绍与项目介绍共用 Introduction（显示 / 编辑 / 补 ref）。
 //
 // 注意「目录 ≠ 队列」：看板成员只是**仓库登记**，未必已有任务队列（topic）。
 // 工作台按 topic.key 寻址，所以没有队列的目录要先建队列再跳——走侧栏同一个
 // ensureQueueAndGo，绝不能退化成「跳去仓库管理」那种错误落点。
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/ui.jsx';
+import Introduction from '../../components/Introduction/index.jsx';
 import { ensureQueueAndGo } from '../../components/sidebar/queue-nav.js';
-import { api } from '../../api/client.js';
-import { renderMarkdownHtml } from '../../modules/md/md-parse.js';
 import { useWikiNav } from '../doc/index.jsx';
 
 export default function GroupView({ dirKey, rows, repoData, onNavigate, refreshLocal, model }) {
@@ -26,7 +21,7 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, refreshL
   const boards = (repoData && repoData.boards) || [];
   const repos = (repoData && repoData.repos) || [];
   const topics = rows || [];
-  const { onClick: onNavClick, openByDocId } = useWikiNav(model);
+  const { openByDocId } = useWikiNav(model);
 
   const board = useMemo(
     () => boards.find((b) => b.id === dirKey) || boards.find((b) => b.key === dirKey) || null,
@@ -61,38 +56,6 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, refreshL
     });
   }, [board, repos, topics]);
 
-  // 组介绍文档（只读渲染；缺失/外部目录按各自形态展示）
-  const [intro, setIntro] = useState(null);
-  // 双链已解析名集合：组介绍里的 [[..]] 能区分「可点」与「未解析」（虚线红）
-  const [known, setKnown] = useState(null);
-  useEffect(() => {
-    api('/api/docs/index')
-      .then((d) => {
-        const set = new Set();
-        for (const x of d.index || []) {
-          set.add(x.name);
-          if (x.rel) set.add(String(x.rel).toLowerCase());
-          if (x.path) set.add(String(x.path).replace(/\\/g, '/').toLowerCase());
-        }
-        setKnown(set);
-      })
-      .catch(() => {});
-  }, []);
-  const introRef = board ? (board.docPath ? 'path:' + board.docPath : 'rel:' + board.docRel) : '';
-  useEffect(() => {
-    let alive = true;
-    setIntro(null);
-    if (!introRef) return undefined;
-    api('/api/docs/item?ref=' + encodeURIComponent(introRef))
-      .then((d) => {
-        if (alive) setIntro(d);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [introRef]);
-
   if (!board) {
     return (
       <div className="rp-page">
@@ -113,9 +76,6 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, refreshL
   };
 
   const totalPending = items.reduce((n, it) => n + it.pending, 0);
-  const introHtml =
-    intro && !intro.missing && !intro.dir && intro.body ? renderMarkdownHtml(intro.body, [], known) : '';
-  const docLinks = Array.isArray(board.docLinks) ? board.docLinks : [];
 
   return (
     <div className="rp-page">
@@ -137,52 +97,7 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, refreshL
         </div>
       </div>
 
-      {introHtml ? (
-        <div className="rp-intro" onClick={onNavClick}>
-          <div className="rp-intro-head">
-            <span>组介绍 · {intro.rel || intro.path}</span>
-            {intro.rel && <span className="rp-intro-path mono">{intro.rel}</span>}
-            <span className="grow" />
-            <button className="rp-intro-edit" onClick={() => openByDocId(introRef)} title="编辑组介绍">
-              编辑
-            </button>
-          </div>
-          <div className="rp-intro-body mdw" dangerouslySetInnerHTML={{ __html: introHtml }} />
-        </div>
-      ) : intro && (intro.missing || intro.dir) ? (
-        <div className="rp-intro">
-          <div className="rp-intro-head">
-            <span>组介绍 · {intro.rel || intro.path}</span>
-            <span className="grow" />
-            {intro.rel && !intro.dir && (
-              <button className="rp-intro-edit" onClick={() => openByDocId(introRef)}>
-                创建
-              </button>
-            )}
-          </div>
-          <div className="rp-intro-body muted">
-            {intro.dir ? `外部目录绑定：${intro.path}（${(intro.files || []).length} 个文档）` : '还没有组介绍文档——desc 会在首次读取时播种为 md。'}
-          </div>
-        </div>
-      ) : null}
-
-      {docLinks.length > 0 && (
-        <div className="rp-doclinks">
-          <span className="rp-doclinks-label">组绑定</span>
-          {docLinks.map((l, i) => (
-            <button
-              key={i}
-              className={'rp-doclink' + (l.path ? ' ext' : '')}
-              title={l.note || (l.path ? '外部 · 只读 · 不进 zip' : '自有文档')}
-              onClick={() => openByDocId(l.rel ? 'rel:' + l.rel : 'path:' + l.path)}
-            >
-              {l.rel || l.path}
-              {l.note ? <span className="rp-doclink-note">{l.note}</span> : null}
-              {l.path ? <span className="rp-doclink-tag">外部</span> : null}
-            </button>
-          ))}
-        </div>
-      )}
+      <Introduction kind="board" owner={board} model={model} />
 
       <div className="rp-table-wrap">
         <table className="rp-table">

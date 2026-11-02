@@ -21,6 +21,46 @@ export function slugName(title) {
   return base.endsWith('.md') ? base : `${base}.md`;
 }
 
+/** 标题锚点 id：同文多同名自动 -2/-3… */
+export function headingAnchorId(text, used) {
+  const base = String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^\w\u4e00-\u9fff-]+/g, '')
+    .slice(0, 48) || 'h';
+  let id = base;
+  let n = 2;
+  while (used && used.has(id)) {
+    id = `${base}-${n}`;
+    n += 1;
+  }
+  if (used) used.add(id);
+  return id;
+}
+
+/**
+ * 从 markdown 抽 h1–h3（跳过 fenced code），供右侧滚动目录。
+ * @returns {{ level:number, text:string, id:string }[]}
+ */
+export function extractMdHeadings(src) {
+  const out = [];
+  const used = new Set();
+  let inCode = false;
+  for (const line of String(src || '').split('\n')) {
+    if (line.startsWith('```')) {
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) continue;
+    const m = line.match(/^(#{1,3})\s+(.+)$/);
+    if (!m) continue;
+    const text = m[2].trim();
+    out.push({ level: m[1].length, text, id: headingAnchorId(text, used) });
+  }
+  return out;
+}
+
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -60,6 +100,7 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
   let html = '';
   let inUl = false;
   let inCode = false;
+  const usedIds = new Set();
   const flush = () => {
     if (inUl) {
       html += '</ul>';
@@ -98,14 +139,31 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
       html += `<blockquote>${inline(line.slice(2), knownNames)}</blockquote>`;
       continue;
     }
+    if (line.startsWith('### ')) {
+      flush();
+      {
+        const text = line.slice(4);
+        const id = headingAnchorId(text.trim(), usedIds);
+        html += `<h3 id="${esc(id)}">${inline(text, knownNames)}</h3>`;
+      }
+      continue;
+    }
     if (line.startsWith('## ')) {
       flush();
-      html += `<h2>${inline(line.slice(3), knownNames)}</h2>`;
+      {
+        const text = line.slice(3);
+        const id = headingAnchorId(text.trim(), usedIds);
+        html += `<h2 id="${esc(id)}">${inline(text, knownNames)}</h2>`;
+      }
       continue;
     }
     if (line.startsWith('# ')) {
       flush();
-      html += `<h1>${inline(line.slice(2), knownNames)}</h1>`;
+      {
+        const text = line.slice(2);
+        const id = headingAnchorId(text.trim(), usedIds);
+        html += `<h1 id="${esc(id)}">${inline(text, knownNames)}</h1>`;
+      }
       continue;
     }
     const m = line.match(/^-\s+(\[[ xX]\])?\s*(.*)$/);

@@ -1,0 +1,45 @@
+/* 简介卡（项目 / 项目组共用） */
+.nx-intro{
+  position:relative;
+  border:1px solid var(--line,#E4E2DC);
+  border-radius:8px;
+  background:#FBFAF8;
+  margin:0 0 12px;
+  overflow:hidden;
+}
+.nx-intro-head{
+  display:flex;align-items:center;gap:8px;padding:7px 12px;
+  border-bottom:1px solid var(--line,#E4E2DC);font-size:11.5px;color:var(--ink-2,#4B515A);
+}
+.nx-intro-path{font:400 10.5px ui-monospace,Consolas,monospace;letter-spacing:0;color:var(--faint,#A9AEB4)}
+.nx-intro-acts{display:inline-flex;align-items:center;gap:4px;flex:none}
+.nx-intro-btn{
+  border:0;background:transparent;padding:2px 8px;border-radius:6px;
+  font:inherit;font-size:11.5px;color:var(--ink-2,#4B515A);cursor:pointer;
+}
+.nx-intro-btn:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+.nx-intro-body{padding:10px 14px;font-size:12.5px;line-height:1.65;color:var(--ink,#16181C);max-height:360px;overflow:auto}
+.nx-intro-body.muted{color:var(--mid,#838A93)}
+.nx-intro-body h1{font-size:15px;margin:2px 0 6px}
+.nx-intro-body h2{font-size:13px;margin:10px 0 4px}
+.nx-intro-body p{margin:4px 0}
+.nx-intro-body ul{margin:4px 0 4px 18px}
+.nx-intro-body code{font:400 11.5px ui-monospace,Consolas,monospace;background:var(--soft,#F1F0EC);border-radius:4px;padding:1px 4px}
+
+.nx-intro-links{
+  display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+  padding:8px 12px 10px;border-top:1px solid var(--line,#E4E2DC);
+}
+.nx-intro-links-lab{font-size:11px;color:var(--mid,#838A93);margin-right:2px}
+.nx-intro-link{
+  display:inline-flex;align-items:center;gap:4px;max-width:100%;
+  border:1px solid var(--line,#E4E2DC);border-radius:999px;background:var(--paper,#fff);
+  padding:2px 9px;font:inherit;font-size:11.5px;color:var(--ink,#16181C);cursor:pointer;
+}
+.nx-intro-link:hover{background:var(--soft,#F1F0EC)}
+.nx-intro-link.ext{color:var(--mid,#838A93)}
+.nx-intro-link-note{color:var(--faint,#A9AEB4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px}
+.nx-intro-link-tag{font-size:10px;color:#9E4C00;background:#FBF3E4;border-radius:6px;padding:0 5px}
+
+/* 卡内嵌轨：贴右上 */
+.nx-intro .doc-rail{top:8px;right:8px;bottom:auto;max-height:calc(100% - 16px)}

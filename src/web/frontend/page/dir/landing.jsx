@@ -1,13 +1,9 @@
-// 目录落地页 = 当前目录的**子任务表**（表格，不是列表）。
-//
-// 为什么是表格：一个目录下的任务要看的是「编号 / 标题 / 状态 / 什么时候建、什么时候被领走」
-// ——这些是**列**，列表把它们压成一行就丢了。现在点目录行进工作台，落地页就是这张表。
-// 点表行 → 该任务以新页签进入工作台；「＋ 新建页」→ 新草稿页签；
-// 行尾悬停出「✕」：删除该任务（软删除，CLI restore 可恢复）——完成的任务清得掉。
+// 目录落地页 = 简介 + 子任务表。
+// 简介由统一组件 Introduction 负责（与项目组同构：显示 / 编辑 / 补 ref）。
 import { Icon } from '../../components/icons.jsx';
+import Introduction from '../../components/Introduction/index.jsx';
 import { titleFromMd } from '../../modules/md/md-parse.js';
 
-// 时间戳（后端给的是 'YYYY-MM-DD HH:mm:ss'）→ 只留到分钟
 function shortTime(v) {
   const s = String(v || '').trim();
   if (!s) return '—';
@@ -15,9 +11,39 @@ function shortTime(v) {
   return m ? `${m[1].slice(5)} ${m[2]}` : s.slice(0, 16);
 }
 
-export default function Landing({ isGlobal, tasks = [], onNew, onOpenTask, onDeleteTask, onReopenTask, onTplMenu, onImport, onProg }) {
+export default function Landing({
+  isGlobal,
+  topic,
+  repo = null,
+  model = null,
+  tasks = [],
+  onNew,
+  onOpenTask,
+  onDeleteTask,
+  onReopenTask,
+  onTplMenu,
+  onImport,
+  onProg,
+}) {
+  const name = isGlobal ? '全局池' : (topic?.name || '目录');
+  const path = isGlobal ? '共享池（无固定目录）' : (topic?.cwd || '—');
+  const status = String(topic?.summary || '').trim();
+
   return (
     <div className="mdw-land">
+      <div className="mdw-land-head">
+        <div className="mdw-land-name">{name}</div>
+        <div className="mdw-land-path mono" title={path}>{path}</div>
+        {status ? (
+          <div className="mdw-land-status-line" title={status}>
+            <span className="mdw-land-lab">现状</span>
+            <span className="mdw-land-status">{status}</span>
+          </div>
+        ) : null}
+      </div>
+
+      {!isGlobal && repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
+
       <div className="mdw-land-acts">
         <button type="button" className="btn sm primary" onClick={onNew}>＋ 新建页</button>
         <button

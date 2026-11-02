@@ -144,6 +144,8 @@ export default defineConfig([
         prompt: 'readonly', requestAnimationFrame: 'readonly', cancelAnimationFrame: 'readonly',
         setTimeout: 'readonly', clearTimeout: 'readonly', setInterval: 'readonly',
         clearInterval: 'readonly', queueMicrotask: 'readonly', structuredClone: 'readonly', getComputedStyle: 'readonly',
+        MutationObserver: 'readonly', ResizeObserver: 'readonly', IntersectionObserver: 'readonly',
+        CSS: 'readonly',
         EventSource: 'readonly', AbortController: 'readonly', AbortSignal: 'readonly',
         URL: 'readonly', URLSearchParams: 'readonly', TextEncoder: 'readonly',
         TextDecoder: 'readonly', Response: 'readonly', Request: 'readonly', Headers: 'readonly',

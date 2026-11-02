@@ -9,11 +9,12 @@
 // 外部绑定（writable:false）强制预览态——改动请回 vault。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
-import { useToast } from '../../components/ui.jsx';
+import { useDialog, useToast } from '../../components/ui.jsx';
 import { useApp } from '../../app-context.jsx';
 import { openPanel } from '../../workspace.js';
 import { MdPanes, ModeSeg } from '../../components/md/md-panes.jsx';
-import { renderMarkdownHtml, titleFromMd } from '../../modules/md/md-parse.js';
+import { IntroRail, introDirFromRef } from '../../components/Introduction/index.jsx';
+import { extractMdHeadings, renderMarkdownHtml, slugName, titleFromMd } from '../../modules/md/md-parse.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
 import { resolveWikiLink } from '../../../../modules/docs/wikilink.js';
 
@@ -39,13 +40,17 @@ export function useWikiNav(model) {
   }, []);
 
   const openByDocId = useCallback(
-    async (targetDocId, index) => {
+    async (targetDocId, index, extra = {}) => {
       const idx = index || (await ensureIndex());
       const entry = idx.find((x) => x.docId === targetDocId);
       openPanel(m, {
         component: 'doc',
         name: entry ? entry.name : targetDocId,
-        config: { docId: targetDocId },
+        config: {
+          docId: targetDocId,
+          ...(extra.repoKey ? { repoKey: extra.repoKey } : {}),
+          ...(extra.boardKey ? { boardKey: extra.boardKey, boardName: extra.boardName || '' } : {}),
+        },
         location: 'center',
       });
     },
@@ -77,17 +82,30 @@ export function useWikiNav(model) {
   return { nav, onClick, ensureIndex, openByDocId };
 }
 
-export default function DocPanel({ docId, model }) {
+export default function DocPanel({ docId, repoKey, boardKey, boardName, model }) {
   const toast = useToast();
+  const { dialog, node: dialogNode } = useDialog();
   const histRef = useRef(new Map());
   const editorApiRef = useRef(null);
+  const rootRef = useRef(null);
   // 双链委托挂在根节点上（预览里的 <a data-wl> 点击冒泡到这里即导航）
   const { onClick: onNavClick, openByDocId } = useWikiNav(model);
+
+  const ownerKind = repoKey ? 'repo' : boardKey ? 'board' : '';
+  const ownerKey = repoKey || boardKey || '';
+  const openExtra = useMemo(() => {
+    if (repoKey) return { repoKey };
+    if (boardKey) return { boardKey, boardName: boardName || '' };
+    return {};
+  }, [repoKey, boardKey, boardName]);
 
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [mode, setMode] = useState('split');
+  const [introLinks, setIntroLinks] = useState([]);
+  const [scrollRoot, setScrollRoot] = useState(null);
+
   const load = useCallback(async () => {
     setError('');
     try {
@@ -104,6 +122,46 @@ export default function DocPanel({ docId, model }) {
     setDoc(null);
     load();
   }, [load]);
+
+  // 介绍文档集：项目 / 组统一列进右侧轨
+  const loadIntroLinks = useCallback(() => {
+    if (!ownerKey) {
+      setIntroLinks([]);
+      return;
+    }
+    if (ownerKind === 'repo') {
+      api('/api/repos/docs?id=' + encodeURIComponent(ownerKey))
+        .then((d) => {
+          const out = [];
+          const push = (x, main) => {
+            if (!x) return;
+            const id = x.rel ? `rel:${x.rel}` : x.path ? `path:${x.path}` : '';
+            if (id) out.push({ docId: id, label: x.rel || x.path || (main ? '主篇' : '补充'), note: x.note || '', main });
+          };
+          push(d.main, true);
+          for (const l of d.links || []) push(l, false);
+          setIntroLinks(out);
+        })
+        .catch(() => setIntroLinks([]));
+      return;
+    }
+    // board：从仓库页数据里取看板 docLinks（与 Introduction 同源）
+    api('/api/repos')
+      .then((d) => {
+        const boards = d.boards || (Array.isArray(d) ? [] : []);
+        const b = boards.find((x) => x.id === ownerKey || x.key === ownerKey);
+        const out = [];
+        if (docId) out.push({ docId, label: '当前', note: '', main: true });
+        for (const l of (b && b.docLinks) || []) {
+          const id = l.rel ? `rel:${l.rel}` : l.path ? `path:${l.path}` : '';
+          if (!id || out.some((x) => x.docId === id)) continue;
+          out.push({ docId: id, label: l.rel || l.path || '补充', note: l.note || '', main: false });
+        }
+        setIntroLinks(out);
+      })
+      .catch(() => setIntroLinks(docId ? [{ docId, label: '当前', note: '', main: true }] : []));
+  }, [ownerKey, ownerKind, docId]);
+  useEffect(() => { loadIntroLinks(); }, [loadIntroLinks]);
 
   // 双链索引：一次拉取（刷新页签即刷新；不监听文件系统是第一块的取舍）
   const [known, setKnown] = useState(null); // 双链已解析名集合（渲染未解析态用）
@@ -127,8 +185,59 @@ export default function DocPanel({ docId, model }) {
     () => (doc ? renderMarkdownHtml(doc.body, [], writable ? known : null) : ''),
     [doc, known, writable]
   );
+  const headings = useMemo(() => (doc ? extractMdHeadings(doc.body) : []), [doc]);
+
+  // 预览滚动容器：预览态 .mdw-preview / 实时预览 .mdw-lp
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    const pick = () => root.querySelector('.mdw-preview, .mdw-lp') || null;
+    setScrollRoot(pick());
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => setScrollRoot(pick())) : null;
+    if (mo) mo.observe(root, { childList: true, subtree: true });
+    return () => { if (mo) mo.disconnect(); };
+  }, [doc, mode, previewHtml]);
 
   const guard = (fn) => fn().catch((e) => toast(String(e.message || e)));
+
+  const openIntroDoc = useCallback(
+    (id) => openByDocId(id, null, openExtra),
+    [openByDocId, openExtra]
+  );
+
+  // 补充一篇 reference（项目 / 组同口径）
+  const addRefDoc = () => {
+    if (!ownerKey) return;
+    guard(async () => {
+      const name = await dialog({
+        title: '补充介绍文档',
+        input: true,
+        placeholder: '文档名（如 architecture / api-notes）',
+      });
+      if (name === null) return;
+      const slug = slugName(String(name).trim() || 'note').replace(/\.md$/i, '');
+      const base = String(docId || '').startsWith('rel:')
+        ? introDirFromRef(docId)
+        : (ownerKind === 'repo' ? `repo/${ownerKey}` : `board/${boardName || ownerKey}`);
+      const rel = `${base}/reference/${slug}.md`;
+      await api('/api/docs/item', {
+        method: 'POST',
+        body: { rel, body: `# ${String(name).trim() || slug}\n\n（待补）\n` },
+      });
+      try {
+        if (ownerKind === 'repo') {
+          await api('/api/repos/docs', { method: 'POST', body: { id: ownerKey, rel } });
+        } else {
+          await api('/api/docs/link', { method: 'POST', body: { board: ownerKey, doc: rel } });
+        }
+      } catch {
+        /* 已在集里 / 旧数据：文件已创建即可打开 */
+      }
+      toast(`已补充：${rel}`);
+      loadIntroLinks();
+      openByDocId('rel:' + rel, null, openExtra);
+    });
+  };
 
   // ─── 保存（写盘 + 摘要回写 desc / 组内 note）───
   const save = () =>
@@ -248,7 +357,7 @@ export default function DocPanel({ docId, model }) {
   const effMode = writable ? mode : 'preview';
 
   return (
-    <div className="mdw docp" data-mode={effMode} onClick={onNavClick}>
+    <div className="mdw docp" data-mode={effMode} onClick={onNavClick} ref={rootRef}>
       <div className="mdw-main">
         <div className="docp-head">
           <span className="docp-path mono" title={doc.rel || doc.path}>
@@ -281,6 +390,15 @@ export default function DocPanel({ docId, model }) {
         />
         <div className="docp-hint">双链 [[]] 点击跳转 · Ctrl+S 保存 · 文档即磁盘文件（~/.nx-kv/docs/）</div>
       </div>
+      <IntroRail
+        headings={headings}
+        scrollRoot={scrollRoot}
+        links={introLinks}
+        activeDocId={docId}
+        onOpenDoc={ownerKey ? openIntroDoc : null}
+        onAddRef={ownerKey ? addRefDoc : null}
+      />
+      {dialogNode}
     </div>
   );
 }

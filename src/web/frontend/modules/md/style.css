@@ -145,6 +145,27 @@
 
 /* 目录落地页：未打开具体页面时，主区是**子任务表**（表格：编号/任务/状态/创建/领取） */
 .mdw-land{flex:1;min-height:0;overflow:auto;background:var(--canvas,#F5F4F1);padding:18px 22px}
+.mdw-land-head{margin-bottom:12px;min-width:0}
+.mdw-land-name{
+  font-weight:650;font-size:15px;line-height:1.3;color:var(--ink,#16181C);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mdw-land-path{
+  margin-top:2px;font:400 11px ui-monospace,Consolas,monospace;color:var(--mid,#838A93);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mdw-land-status-line{
+  display:flex;align-items:baseline;gap:8px;min-width:0;margin-top:6px;
+}
+.mdw-land-lab{
+  flex:none;width:28px;font-size:11px;font-weight:650;letter-spacing:.04em;
+  color:var(--mid,#838A93);
+}
+.mdw-land-status{
+  flex:1 1 auto;min-width:0;font-size:12.5px;line-height:1.45;color:var(--ink-2,#4B515A);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mdw-land .rp-intro{margin-bottom:14px}
 .mdw-land-acts{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .mdw-land-count{font-size:12px;color:var(--mid,#838A93)}
 .mdw-land-table-wrap{
@@ -790,8 +811,66 @@
 .mdw .md-wl-miss:hover, .rp-page .md-wl-miss:hover{background:color-mix(in srgb, var(--bad,#B3261E) 8%, transparent)}
 
 /* 文档页签（DocPanel）：与任务页同构的头 + 模式切换 */
-.docp{display:flex;flex-direction:column;height:100%}
+.docp{display:flex;flex-direction:column;height:100%;position:relative}
 .docp .mdw-main{display:flex;flex-direction:column;min-height:0;flex:1}
+
+/* 右侧滚动目录轨（简介 / 文档页） */
+.doc-rail{
+  position:absolute;right:8px;top:52px;bottom:36px;z-index:30;
+  display:flex;flex-direction:column;align-items:flex-end;gap:10px;
+  pointer-events:none;
+}
+.doc-rail > *{pointer-events:auto}
+.doc-rail-menu{
+  width:28px;height:28px;padding:0;border:0;border-radius:8px;
+  background:var(--paper,#fff);color:var(--mid,#838A93);
+  box-shadow:0 1px 6px rgba(20,22,26,.1);
+  display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  cursor:pointer;
+}
+.doc-rail-menu span{
+  display:block;width:12px;height:1.5px;border-radius:1px;background:currentColor;
+}
+.doc-rail-menu:hover,.doc-rail.open .doc-rail-menu{color:var(--ink,#16181C);background:var(--soft,#F1F0EC)}
+.doc-rail-ticks{
+  display:flex;flex-direction:column;align-items:flex-end;gap:14px;
+  padding:6px 4px;
+}
+.doc-rail-tick{
+  display:block;width:var(--tw,12px);height:2px;padding:0;border:0;border-radius:1px;
+  background:var(--faint,#A9AEB4);cursor:pointer;
+  transition:background .12s,width .12s;
+}
+.doc-rail-tick:hover{background:var(--mid,#838A93)}
+.doc-rail-tick.on{background:#4A5FB4;width:calc(var(--tw,12px) + 4px)}
+.doc-rail-panel{
+  position:absolute;right:36px;top:0;width:220px;max-height:min(70vh,480px);overflow:auto;
+  background:var(--paper,#fff);border:1px solid var(--line,#E4E2DC);border-radius:10px;
+  box-shadow:0 8px 24px rgba(20,22,26,.12);padding:8px 0;
+}
+.doc-rail-sec{padding:4px 0 8px;border-bottom:1px solid var(--line,#E4E2DC)}
+.doc-rail-sec:last-child{border-bottom:0;padding-bottom:4px}
+.doc-rail-sec-lab{
+  padding:4px 12px 6px;font-size:10.5px;font-weight:650;letter-spacing:.04em;
+  color:var(--mid,#838A93);text-transform:uppercase;
+}
+.doc-rail-row{
+  display:block;width:100%;box-sizing:border-box;border:0;background:transparent;
+  text-align:left;padding:5px 12px;font:inherit;font-size:12px;line-height:1.35;
+  color:var(--ink-2,#4B515A);cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.doc-rail-row[data-lv="2"]{padding-left:20px}
+.doc-rail-row[data-lv="3"]{padding-left:28px;font-size:11.5px;color:var(--mid,#838A93)}
+.doc-rail-row:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+.doc-rail-row.on{color:#4A5FB4;font-weight:650}
+.doc-rail-row:disabled{opacity:.45;cursor:default}
+.doc-rail-add{
+  display:block;width:calc(100% - 16px);margin:6px 8px 2px;padding:6px 8px;border:0;border-radius:6px;
+  background:var(--soft,#F1F0EC);color:var(--ink,#16181C);font:inherit;font-size:12px;
+  text-align:center;cursor:pointer;
+}
+.doc-rail-add:hover{background:var(--mdw-accent-soft,#E8F2EE)}
 .docp-head{
   display:flex;align-items:center;gap:8px;padding:7px 12px;
   border-bottom:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);flex:none;

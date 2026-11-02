@@ -1,9 +1,4 @@
-// 目录面板 —— 一个目录的**子任务表**（工作区里的一块面板）。
-//
-// 点任务行 → 在工作区里开一个 MD 页签（可并排、可浮出，和别的目录同屏）；
-// 「＋ 新建页」→ 开一个草稿页签（起始正文 = 默认模板）；「模板 ▾」→ 挑一个模板开页。
-//
-// 面板化之后这里**不再有页签栏**：开哪几页、在哪开、能不能并排，都由工作区布局管。
+// 目录面板 —— 简介（统一 Introduction）+ 子任务表。
 import { useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useDialog, useToast } from '../../components/ui.jsx';
@@ -15,13 +10,14 @@ import { findOpenPanel, openPanel } from '../../workspace.js';
 import { nextDraftId } from '../../modules/md/doc-store.js';
 
 export default function DirPanel({ dirKey }) {
-  const { dialog } = useDialog();
+  const { dialog, node: dialogNode } = useDialog();
   const app = useApp() || {};
   const toast = useToast();
   const rows = app.rows || [];
   const refreshLocal = app.refreshLocal;
   const tpl = app.tpl;
   const model = app.model;
+  const repos = (app.repoData && app.repoData.repos) || [];
 
   const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
   const [tplMenu, setTplMenu] = useState(null);
@@ -32,11 +28,21 @@ export default function DirPanel({ dirKey }) {
     return rows.find((r) => r.key === dirKey) || null;
   }, [rows, dirKey, isGlobal]);
 
-  const tasks = useMemo(() => (topic?.tasks || []).filter((t) => !t.deletedAt), [topic]);
+  const repo = useMemo(() => {
+    if (!topic || isGlobal) return null;
+    const rk = topic.repo && topic.repo.key;
+    if (rk) {
+      const byKey = repos.find((r) => r.key === rk);
+      if (byKey) return byKey;
+    }
+    const cwd = String(topic.cwd || '').replace(/\\/g, '/').toLowerCase();
+    if (!cwd) return null;
+    return repos.find((r) => String(r.path || '').replace(/\\/g, '/').toLowerCase() === cwd) || null;
+  }, [topic, repos, isGlobal]);
 
+  const tasks = useMemo(() => (topic?.tasks || []).filter((t) => !t.deletedAt), [topic]);
   const guard = (fn) => fn().catch((e) => toast(String(e.message || e)));
 
-  // ─── 开页签 ───
   const openTask = (id) => {
     if (app.openPage) app.openPage({ dirKey, task: String(id), name: `#${id}` });
   };
@@ -46,14 +52,10 @@ export default function DirPanel({ dirKey }) {
     if (app.openPage) app.openPage({ dirKey, task, name: '新任务', body });
   };
 
-  // 「模板 ▾」末尾的管理入口：开一块**面板**（不是弹窗）——模板是长期配置，
-  // 值得占一块可拖动、可并排的位置，也能被深链 #/templates 直接打开。
   const openTplPanel = () => {
     if (model) openPanel(model, { component: 'templates', name: '任务模板' });
   };
 
-  // 目录级的「进程」面板入口：面板化之后进程不在内嵌右侧栏里，
-  // 从落地页也要开得出来（config 带 dirKey，否则会落到全局池）。
   const openProgress = () => {
     if (!model) return;
     openPanel(model, {
@@ -76,8 +78,6 @@ export default function DirPanel({ dirKey }) {
     { label: '管理模板…', icon: 'gear', onClick: openTplPanel },
   ];
 
-  // ─── 删除任务（软删除；顺手关掉已打开的页签）───
-  // 修改反馈 → 重开：任务回到待领取，agent 可再次领取（执行循环继续）
   const reopenTask = (t) => {
     if (!t) return;
     const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
@@ -87,7 +87,7 @@ export default function DirPanel({ dirKey }) {
         input: true,
         placeholder: '写下要改的地方（留空 = 只重开，不改正文）',
       });
-      if (body === null || body === undefined) return; // 取消
+      if (body === null || body === undefined) return;
       await api('/api/localtasks/reopen', {
         method: 'POST',
         body: {
@@ -111,7 +111,6 @@ export default function DirPanel({ dirKey }) {
         body: isGlobal ? { key: GLOBAL_KEY, id: t.id } : { cwd: topic.cwd, id: t.id },
       });
       toast(`已删除「${title.replace(/^#\s*/, '')}」`);
-      // 关掉这一页（如果开着）
       if (model) {
         const page = findOpenPanel(model, 'page', { dirKey, task: String(t.id) });
         if (page) app.closePanel && app.closePanel(page.getId());
@@ -156,6 +155,9 @@ export default function DirPanel({ dirKey }) {
       <div className="mdw-main">
         <Landing
           isGlobal={isGlobal}
+          topic={topic}
+          repo={repo}
+          model={model}
           tasks={tasks}
           onNew={() => newDraft(tpl ? tpl.defaultBody() : '')}
           onOpenTask={openTask}
@@ -182,6 +184,8 @@ export default function DirPanel({ dirKey }) {
           if (f) importMd(f);
         }}
       />
+
+      {dialogNode}
     </div>
   );
 }

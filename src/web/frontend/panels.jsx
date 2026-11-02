@@ -97,7 +97,19 @@ export const PANELS = {
   // 任务模板：单例面板（config 恒空，openPanel 会复用已有页签）
   templates: { title: '任务模板', render: () => wrap(<TemplatePanel />) },
   // 文档：config.docId 寻址（可 JSON 序列化 → openPanel 按 config 去重复用页签）
-  doc: { title: '文档', render: (cfg, ctx) => wrap(<DocPanel docId={cfg && cfg.docId} tabId={ctx && ctx.tabId} model={ctx && ctx.model} />) },
+  doc: {
+    title: '文档',
+    render: (cfg, ctx) => wrap(
+      <DocPanel
+        docId={cfg && cfg.docId}
+        repoKey={cfg && cfg.repoKey}
+        boardKey={cfg && cfg.boardKey}
+        boardName={cfg && cfg.boardName}
+        tabId={ctx && ctx.tabId}
+        model={ctx && ctx.model}
+      />
+    ),
+  },
   // 设置：浮动面板（临时开一块、看完就关）——齿轮按钮走 openFloatingPanel
   settings: { title: '设置', render: () => wrap(<SettingsPanel />) },
 };

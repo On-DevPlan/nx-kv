@@ -10,7 +10,7 @@
 //   - 偏好：侧边栏/看板默认收起、隐藏仓库恢复——原在齿轮气泡里
 //   - 工作区：重置布局
 //   - 云端与存储：附件自动下载 / 附件目录 / 仓库存储根——原散在云端页与仓库页弹窗
-//   - 模板与任务工具：模板入口 + 回调提示词 + 默认时长
+//   - 模板与任务工具：模板入口 + 回调提示词（可多条；时长在发布/编辑任务时显式给——CLI --duration 或编辑页「时间目标」栏，无全局默认）
 //   - 项目级设置：介绍文档 / 项目 icon（标题旁圆形入口）/ 持续 get
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
@@ -28,58 +28,6 @@ const SECTIONS = [
   { id: 'template', label: '模板与任务工具', icon: 'list' },
   { id: 'project', label: '项目级设置', icon: 'repo' },
 ];
-
-/**
- * 任务工具的全局默认项：**发布任务的默认时长**。
- *
- * 发布任务时没显式给 --duration，就用这个（设置面板 → 模板与任务工具）。
- * 留空 = 不设默认（每次发布都要自己写时长）。
- */
-function DefaultDurationEditor() {
-  const toast = useToast();
-  const [value, setValue] = useState(null); // null = 还在读
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api('/api/localtasks')
-      .then((d) => setValue(d?.settings?.defaultDuration ?? ''))
-      .catch((e) => toast('读取默认时长失败：' + (e.message || e)));
-  }, [toast]);
-
-  const save = async (v) => {
-    setBusy(true);
-    try {
-      const d = await api('/api/localtasks/setting', { method: 'PATCH', body: { defaultDuration: v } });
-      setValue(d?.defaultDuration ?? v);
-      toast(v ? `已保存默认时长 ${v}` : '已清除默认时长');
-    } catch (e) {
-      toast(String(e.message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="setp-suffix">
-      <div className="setp-row">
-        <span>任务时间目标默认时长</span>
-      </div>
-      <div className="setp-row">
-        <span className="setp-note">发布任务未指定 --duration 时按此计时</span>
-        <span className="setp-input">
-          <input
-            value={value ?? ''}
-            placeholder="（不设默认）如 2h / 90m"
-            onChange={(e) => setValue(e.target.value)}
-            disabled={value === null}
-          />
-          <button className="btn sm" disabled={busy || value === null} onClick={() => save(value)}>保存</button>
-          <button className="btn ghost sm" disabled={busy || value === null} onClick={() => save('')}>清除</button>
-        </span>
-      </div>
-    </div>
-  );
-}
 
 /**
  * 单张项目卡：icon 在标题左侧；点开后编辑条走文档流（头下方整宽），
@@ -196,9 +144,47 @@ function ProjectCard({ repo, docStateOf, openDoc, bindExternal, unbind }) {
 }
 
 /**
+ * 多条提示词共用的条目编辑器（回调提示词 / 持续 get 模板同款交互）：
+ * 每条一个文本框 + 序号 + 删除；只渲染条目行，「添加一条…」与保存按钮由调用方排布。
+ */
+const MAX_PROMPT_ITEMS = 10; // 与服务端两条列表上限一致（clampTaskSuffixList / clampLoopTemplateList）
+
+function PromptListEditor({ items, onChange, disabled, placeholder, rows = 3 }) {
+  const editItem = (i, v) => onChange(items.map((x, j) => (j === i ? v : x)));
+  const removeItem = (i) => onChange(items.filter((_, j) => j !== i));
+  return (
+    <>
+      {items.map((t, i) => (
+        <div className="setp-suffix-item" key={i}>
+          <span className="setp-suffix-no">{i + 1}</span>
+          <textarea
+            className="setp-suffix-ta mono"
+            rows={rows}
+            value={t}
+            placeholder={placeholder}
+            onChange={(e) => editItem(i, e.target.value)}
+            spellCheck={false}
+          />
+          <button
+            className="btn ghost sm"
+            disabled={disabled}
+            onClick={() => removeItem(i)}
+            title={`删除第 ${i + 1} 条`}
+          >
+            删除
+          </button>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/**
  * 项目级「持续 get」（waitgoal）编辑器：落在 repo 记录的 getLoop 字段。
  * 开启后该项目 `localtask get` 无任务时自动唤起阻塞窗口等人回填，
  * 领到的交付文本追加「继续 get 直到超时」的项目模板（提示词增强，基于项目）。
+ * 模板可配多条（v0.14，getLoop.template 存 string[]）：多条按空行拼接后统一渲染，
+ * 全部留空 = 用内置默认模板。
  */
 function GetLoopEditor({ repo }) {
   const app = useApp() || {};
@@ -206,7 +192,12 @@ function GetLoopEditor({ repo }) {
   const loop = repo.getLoop && typeof repo.getLoop === 'object' ? repo.getLoop : null;
   const [on, setOn] = useState(!!(loop && loop.enabled));
   const [minutes, setMinutes] = useState(String((loop && loop.waitMinutes) || 10));
-  const [tpl, setTpl] = useState(String((loop && loop.template) || ''));
+  // 旧 string 单条归一成一行（按条编辑）；空数组 = 未配置（交付用默认模板）
+  const [tpls, setTpls] = useState(() => {
+    const raw = loop && loop.template;
+    const arr = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+    return arr.map((s) => String(s ?? '').trim()).filter(Boolean);
+  });
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -217,11 +208,15 @@ function GetLoopEditor({ repo }) {
         body: {
           getLoop: {
             enabled: on,
-            ...(on ? { waitMinutes: Number(minutes) || 10, template: tpl } : {}),
+            ...(on ? { waitMinutes: Number(minutes) || 10, template: tpls } : {}),
           },
         },
       });
-      toast(`已保存「${repo.name}」的持续 get 设置`);
+      toast(
+        on
+          ? `已保存「${repo.name}」的持续 get 设置（模板 ${tpls.filter((t) => t.trim()).length} 条）`
+          : `已关闭「${repo.name}」的持续 get`
+      );
       app.refreshRepos && app.refreshRepos();
     } catch (e) {
       toast(String(e.message || e));
@@ -245,48 +240,65 @@ function GetLoopEditor({ repo }) {
             <span>阻塞窗口（分钟）</span>
             <input className="setp-min" value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" />
           </div>
-          <textarea
-            className="setp-suffix-ta mono"
-            rows={3}
-            value={tpl}
-            placeholder="留空 = 默认模板（继续调用 localtask get 直到 timeout）"
-            onChange={(e) => setTpl(e.target.value)}
-            spellCheck={false}
-          />
+          {tpls.length ? (
+            <PromptListEditor
+              items={tpls}
+              onChange={setTpls}
+              disabled={busy}
+              placeholder={'一条「继续 get」指令（支持 {{task.id}} / {{task.text}} 占位符；留空保存 = 删除这条）'}
+            />
+          ) : (
+            <div className="setp-note">未配置模板 —— 用默认「继续调用 localtask get 直到 timeout」。</div>
+          )}
+          <div className="setp-note">
+            多条按空行拼接后统一渲染：任一条含 <span className="mono">{'{{'}</span> 即走模板渲染
+            （任务正文经 <span className="mono">{'{{task.text}}'}</span> 进入指令）；全部纯文本则追加正文末尾；
+            <b>全部留空 = 用默认模板</b>。
+          </div>
+          <div className="setp-proj-a">
+            <button
+              className="btn ghost sm"
+              disabled={busy || tpls.length >= MAX_PROMPT_ITEMS}
+              title={tpls.length >= MAX_PROMPT_ITEMS ? `最多 ${MAX_PROMPT_ITEMS} 条` : '新增一条「继续 get」指令'}
+              onClick={() => setTpls([...tpls, ''])}
+            >
+              添加一条…
+            </button>
+            <button className="btn sm" disabled={busy} onClick={save}>保存持续 get 设置</button>
+          </div>
         </>
       )}
-      <div className="setp-proj-a">
-        <button className="btn sm" disabled={busy} onClick={save}>保存持续 get 设置</button>
-      </div>
     </div>
   );
 }
 
 /**
- * 回调提示词（wait 收尾指令模板，settings.taskSuffix）的编辑器。
+ * 回调提示词（wait 收尾指令，settings.taskSuffix 存 string[] 列表）的编辑器。
  *
  * 这就是「任务界面的回调提示词」：agent 每次领到任务（wait/get 返回）时，
- * 服务端把这条模板渲染成 instruction 一并交付——含 {{ 走模板渲染（task.text
- * 保持库存原文），纯文本则追加到正文末尾，置空表示关闭。
+ * 服务端把各条按空行拼接后统一渲染交付——任一条含 {{ 走模板渲染（task.text
+ * 保持库存原文），纯文本则追加到正文末尾，删光/关闭表示关。
+ * 这里按条编辑：每条一个文本框，可加可删，一次保存整体生效。
  */
 function CallbackSuffixEditor() {
   const toast = useToast();
-  const [suffix, setSuffix] = useState(null);   // null = 还在读
+  const [items, setItems] = useState(null); // null = 还在读；string[] 每条一段
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     api('/api/localtasks')
-      .then((d) => setSuffix(d?.settings?.taskSuffix ?? ''))
+      .then((d) => setItems(d?.settings?.taskSuffixList ?? []))
       .catch((e) => toast('读取回调提示词失败：' + (e.message || e)));
   }, [toast]);
 
-  const save = async (value) => {
-    if (value == null || busy) return;
+  const save = async (list) => {
+    if (list == null || busy) return;
     setBusy(true);
     try {
-      const d = await api('/api/localtasks/setting', { method: 'PATCH', body: { taskSuffix: value } });
-      setSuffix(d?.taskSuffix ?? value);
-      toast(d?.taskSuffix === '' ? '已关闭回调提示词' : '已保存回调提示词');
+      const d = await api('/api/localtasks/setting', { method: 'PATCH', body: { taskSuffix: list } });
+      const saved = d?.taskSuffixList ?? [];
+      setItems(saved);
+      toast(saved.length ? `已保存回调提示词（${saved.length} 条）` : '已关闭回调提示词');
     } catch (e) {
       toast(String(e.message || e));
     } finally {
@@ -296,43 +308,54 @@ function CallbackSuffixEditor() {
 
   const reload = () => {
     api('/api/localtasks')
-      .then((d) => setSuffix(d?.settings?.taskSuffix ?? ''))
+      .then((d) => setItems(d?.settings?.taskSuffixList ?? []))
       .catch(() => {});
   };
 
   return (
     <div className="setp-suffix">
       <div className="setp-row">
-        <span>回调提示词（领到任务时随任务交付的收尾指令）</span>
-        {suffix !== null && !suffix.trim() && <span className="setp-badge">已关闭</span>}
+        <span>回调提示词（领到任务时随任务交付的收尾指令，可配多条）</span>
+        {items !== null && !items.length && <span className="setp-badge">已关闭</span>}
       </div>
-      <textarea
-        className="setp-suffix-ta mono"
-        rows={5}
-        value={suffix ?? ''}
-        placeholder="读取中…"
-        onChange={(e) => setSuffix(e.target.value)}
-        disabled={suffix === null}
-        spellCheck={false}
-      />
+      {items !== null && (
+        <PromptListEditor
+          items={items}
+          onChange={setItems}
+          disabled={busy}
+          placeholder={'一条收尾指令（支持 {{task.text}} / {{goal.*}} 占位符；留空保存 = 删除这条）'}
+        />
+      )}
       <div className="setp-note">
-        占位符：<span className="mono">{'{{task.text}}'}</span> 正文 ·{' '}
+        多条按空行拼接后统一分流：任一条含 <span className="mono">{'{{'}</span> 渲染为独立 instruction
+        字段；纯文本追加到正文末尾。<b>删光或「关闭」= 不交付收尾指令</b>。占位符：
+        <span className="mono">{'{{task.text}}'}</span> 正文 ·{' '}
         <span className="mono">{'{{goal.name}} {{goal.deadline}} {{goal.remainingHuman}} {{goal.prompt}}'}</span>{' '}
         时间目标状态 · 段落 <span className="mono">{'{{#goal}}…{{/goal}}'}</span> 无目标时整段消失。
-        含 <span className="mono">{'{{'}</span> 渲染为独立 instruction 字段；纯文本追加到正文末尾；
-        <b>清空保存 = 关闭</b>。默认模板强调「本轮最后再 wait 一次」。
       </div>
       <div className="setp-proj-a">
-        <button className="btn sm" disabled={busy || suffix === null} onClick={() => save(suffix)}>保存</button>
         <button
           className="btn ghost sm"
-          disabled={busy || suffix === null}
-          onClick={() => save('')}
+          disabled={busy || items === null || items.length >= MAX_PROMPT_ITEMS}
+          title={items && items.length >= MAX_PROMPT_ITEMS ? `最多 ${MAX_PROMPT_ITEMS} 条` : '新增一条收尾指令'}
+          onClick={() => setItems([...items, ''])}
+        >
+          添加一条…
+        </button>
+        <button className="btn sm" disabled={busy || items === null} onClick={() => save(items)}>
+          保存
+        </button>
+        <button
+          className="btn ghost sm"
+          disabled={busy || items === null}
+          onClick={() => save([])}
           title="关闭：wait 返回只带任务本体"
         >
           关闭
         </button>
-        <button className="btn ghost sm" disabled={busy} onClick={reload}>撤销改动</button>
+        <button className="btn ghost sm" disabled={busy} onClick={reload}>
+          撤销改动
+        </button>
       </div>
     </div>
   );
@@ -533,13 +556,12 @@ export default function SettingsPanel() {
         </div>
         <div className="setp-note">
           <b>任务工具（timegoal / waitgoal）：</b>
-          发布带时长 → <span className="mono">localtask add "…" --duration 2h</span>（领取即计时）；
+          发布带时长 → <span className="mono">localtask add "…" --duration 2h</span>，或任务编辑页「时间目标」栏填时长（领取即计时；未领取的任务在编辑页可改/清，已领取计时中的不可改）；
           领取 → <span className="mono">localtask get</span>（默认直接领，没任务立即返回；项目开启「持续 get」后自动唤起阻塞窗口等人回填）；
           推进 → <span className="mono">timegoal check --task …</span>；
           完成 → <span className="mono">localtask done --id …</span>（<b>未到时间拒绝标记完成</b>，提示派 sub agent 重提需求）。
         </div>
         <CallbackSuffixEditor />
-        <DefaultDurationEditor />
       </>
     ),
 

@@ -123,7 +123,7 @@ agent：工具结果拿到 task.text → 干活 → 提交结果
 nx-kv localtask list                                   # 主题总览（各目录、现状、待领取数）
 nx-kv localtask add  "<回填内容>" --cwd "<目录>"        # 给某目录的队列排任务
 nx-kv localtask get   --id <n> [--cwd "<目录>"]         # 查看单条
-nx-kv localtask update --id <n> --text "<新内容>"       # 编辑任务内容
+nx-kv localtask update --id <n> --text "<新内容>"       # 编辑任务内容；--duration/--clear-goal 改时间目标（仅未领取时）
 nx-kv localtask remove --id <n> [--cwd "<目录>"]        # 删除单条任务
 nx-kv localtask reorder --id <n> --before-id <m>        # 调整待领取优先级（或 --after-id）
 nx-kv localtask topic remove --cwd "<工作目录>"          # 删除整个主题（等待中需 --force）

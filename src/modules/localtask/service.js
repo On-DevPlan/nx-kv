@@ -35,7 +35,6 @@ import { badInput, notFound } from '../../core/errors.js';
 import { formatDuration } from '../../core/instruction-template.js';
 // 任务级 timegoal 的声明校验（taskgoal.js 不依赖本模块——无环，静态引入安全）
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
-import { parseDuration } from '../tasktool/timegoal.js';
 
 export const DEFAULT_TIMEOUT_MS = 180_000; // 阻塞默认 3 分钟（推荐值）
 export const DEFAULT_TIMEOUT_SEC = 180; // 推荐阻塞时长（3 分钟）
@@ -53,9 +52,10 @@ export const DEFAULT_TASK_SUFFIX =
   '规划计划，然后完成这个任务；计划的最后一个动作，是再次调用 ' +
   'nx-kv localtask wait（带上 --cwd 当前工作目录、--summary 当前现状、--json）收尾本轮，' +
   '在拿到下一条任务或超时之前不要提前结束。';
-const MAX_SUFFIX_LEN = 2000; // 收尾指令模板长度上限（模板本体；渲染产物不设限）
+const MAX_SUFFIX_LEN = 2000; // 收尾指令模板长度上限（单条本体；渲染产物不设限）
+const MAX_SUFFIX_ENTRIES = 10; // 收尾指令条数上限（多条按空行拼接后统一分流渲染）
 
-// 归一化收尾追加语：缺省（旧 store 无此字段）→ 默认；显式传 ''（清空）→ '' 表示关闭。
+// 归一化收尾追加语（单条）：缺省（旧 store 无此字段）→ 默认；显式传 ''（清空）→ '' 表示关闭。
 // 注意：与 timeoutSec 不同——timeoutSec 缺省→推荐值（仍开启），taskSuffix 缺省→默认文本。
 // 因此从老 store 读 settings.taskSuffix 时，clampTaskSuffix 会自动补默认；想"关闭"必须显式 ''。
 export function clampTaskSuffix(v) {
@@ -63,6 +63,30 @@ export function clampTaskSuffix(v) {
   let s = String(v).trim();
   if (s.length > MAX_SUFFIX_LEN) s = s.slice(0, MAX_SUFFIX_LEN);
   return s;
+}
+
+// 归一化收尾指令**列表**（settings.taskSuffix 的存储形态，v0.14 起多条）。
+// 接受 string（旧模型单条，整体算一条、不拆段）或 string[]（多条）；逐条 trim、
+// 空条丢弃、单条超长截断（同 clampTaskSuffix）、条数超上限截断。
+// 缺省 → [默认模板]；显式 '' / [] → [] 表示关闭。
+export function clampTaskSuffixList(v) {
+  if (v === undefined || v === null) return [DEFAULT_TASK_SUFFIX];
+  const raw = Array.isArray(v) ? v : [v];
+  const list = [];
+  for (const item of raw) {
+    let s = String(item ?? '').trim();
+    if (!s) continue;
+    if (s.length > MAX_SUFFIX_LEN) s = s.slice(0, MAX_SUFFIX_LEN);
+    list.push(s);
+    if (list.length >= MAX_SUFFIX_ENTRIES) break;
+  }
+  return list;
+}
+
+// 交付侧取用：多条按空行拼接成单个模板串，之后的分流逻辑（含 {{ → instruction，
+// 纯文本 → 追加正文）与单条时代完全一致——任一条含 {{ 即整体走模板渲染。
+export function joinTaskSuffix(v) {
+  return clampTaskSuffixList(v).join('\n\n');
 }
 
 // ─── 全局主题：跨目录共享队列（工作窃取）───────────────────────────
@@ -168,8 +192,7 @@ export function stampNow(d = new Date()) {
 function emptyStore() {
   return {
     version: 4,
-    // defaultDuration：发布任务时 --duration 的缺省值（空 = 不设默认，每次显式给）
-    settings: { timeoutSec: DEFAULT_TIMEOUT_SEC, taskSuffix: DEFAULT_TASK_SUFFIX, defaultDuration: '' },
+    settings: { timeoutSec: DEFAULT_TIMEOUT_SEC, taskSuffix: [DEFAULT_TASK_SUFFIX] },
     topics: {},
   };
 }
@@ -236,13 +259,12 @@ export async function loadStore() {
     version: 4,
     settings: {
       timeoutSec: clampTimeoutSec(settings && settings.timeoutSec),
-      // 旧 store 可能没存过 taskSuffix（v0.8.0 之前）；clampTaskSuffix 缺省→默认文本。
-      // 显式 ''（关闭）会保留——判断条件是「字段存在且非 undefined」，不能只看 falsy。
+      // 旧 store 可能没存过 taskSuffix（v0.8.0 之前）；缺省→默认模板（单条）。
+      // 显式 '' / []（关闭）会保留为 []——判断条件是「字段存在且非 undefined」，不能只看 falsy。
+      // v0.14 起存 string[]（多条）；旧 string 单条原样迁入列表，不拆段。
       taskSuffix: settings && Object.prototype.hasOwnProperty.call(settings, 'taskSuffix')
-        ? clampTaskSuffix(settings.taskSuffix)
-        : DEFAULT_TASK_SUFFIX,
-      // 任务工具的全局默认时长（发布任务时 --duration 的缺省值；空 = 不设默认）
-      defaultDuration: String((settings && settings.defaultDuration) || '').trim(),
+        ? clampTaskSuffixList(settings.taskSuffix)
+        : [DEFAULT_TASK_SUFFIX],
     },
     topics,
   };
@@ -760,18 +782,20 @@ export async function consumeCancelRequest(key) {
 // ─── CRUD ───────────────────────────────────────────────────────────
 
 function settingsView(s) {
+  // 收尾指令（v0.14 起多条）：taskSuffixList 是 canonical 列表（UI/CLI 按条编辑）；
+  // taskSuffix 是多条按空行拼接后的**合并串**——只读派生，兼容旧的单条消费者与断言。
+  const suffixList = clampTaskSuffixList(s && s.taskSuffix);
   return {
     timeoutSec: clampTimeoutSec(s && s.timeoutSec),
     recommendedSec: DEFAULT_TIMEOUT_SEC,
     maxSec: MAX_TIMEOUT_SEC,
-    // wait 交付任务时的收尾指令**模板**：含 {{ 标记 → 渲染进返回载荷的 instruction 字段
-    // （task.text 保持库存原文）；纯文本 → 追加到 task.text 末尾（旧行为）；''=关闭。
-    // defaultTaskSuffix 供 UI/CLI 恢复默认
-    taskSuffix: clampTaskSuffix(s && s.taskSuffix),
+    // 合并串分流语义：含 {{ 标记 → 渲染进返回载荷的 instruction 字段（task.text 保持
+    // 库存原文）；纯文本 → 追加到 task.text 末尾（旧行为）；空串/空列表 = 关闭。
+    // defaultTaskSuffix 供 CLI --reset-suffix 恢复默认（单条）
+    taskSuffix: suffixList.join('\n\n'),
+    taskSuffixList: suffixList,
     defaultTaskSuffix: DEFAULT_TASK_SUFFIX,
-    suffixEnabled: !!clampTaskSuffix(s && s.taskSuffix),
-    // 任务工具的全局默认项：发布任务时 --duration 的缺省时长（空 = 不设默认）
-    defaultDuration: String((s && s.defaultDuration) || '').trim(),
+    suffixEnabled: suffixList.length > 0,
   };
 }
 
@@ -856,16 +880,17 @@ export async function pruneTopics({ allFinished = false, dryRun = false } = {}) 
   return { status: 'ok', dryRun: !!dryRun, count: removed.length, removed };
 }
 
-// 配置等待超时 / 收尾指令模板（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟；
-// taskSuffix 为 wait 交付任务的收尾指令模板（≤2000 字）：含 {{ 占位符 → 渲染进返回的
-// instruction 字段；纯文本 → 追加到 task.text 末尾（v0.x 行为）；传 '' 关闭、不传保持不变。
-export async function updateSettings({ timeoutSec, taskSuffix, defaultDuration } = {}) {
+// 配置等待超时 / 收尾指令（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟；
+// taskSuffix 为 wait 交付的收尾指令：v0.14 起接受 string[]（多条，canonical），
+// 也兼容 string（旧单条写法，整体算一条）。条数上限 10、单条 ≤2000 字；
+// 含 {{ 占位符 → 渲染进返回的 instruction 字段；纯文本 → 追加到 task.text 末尾；
+// 传 '' / [] 关闭、不传保持不变。
+export async function updateSettings({ timeoutSec, taskSuffix } = {}) {
   const hasTimeout = timeoutSec !== undefined && timeoutSec !== null;
   const hasSuffix = taskSuffix !== undefined;
-  const hasDuration = defaultDuration !== undefined;
-  if (!hasTimeout && !hasSuffix && !hasDuration) {
+  if (!hasTimeout && !hasSuffix) {
     throw badInput(
-      '请至少指定一项：--timeout <秒>，或 --suffix "<收尾指令模板>"（--no-suffix 关闭、--reset-suffix 恢复默认），或 --default-duration <时长>'
+      '请至少指定一项：--timeout <秒>，或 --suffix "<收尾指令模板>"（--no-suffix 关闭、--reset-suffix 恢复默认、--suffix-add/--suffix-remove 按条增删）'
     );
   }
   const store = await loadStore();
@@ -877,12 +902,7 @@ export async function updateSettings({ timeoutSec, taskSuffix, defaultDuration }
     }
     next.timeoutSec = clampTimeoutSec(n);
   }
-  if (hasSuffix) next.taskSuffix = clampTaskSuffix(taskSuffix);
-  if (hasDuration) {
-    const d = String(defaultDuration || '').trim();
-    if (d) parseDuration(d); // 写法错误在这里报（发布时才报错太晚）
-    next.defaultDuration = d;
-  }
+  if (hasSuffix) next.taskSuffix = clampTaskSuffixList(taskSuffix);
   store.settings = next;
   await saveStore(store);
   return settingsView(store.settings);
@@ -934,16 +954,13 @@ export async function addTask({ cwd: rawCwd, summary: rawSummary, text, global: 
   const summary = normalizeSummary(rawSummary, { optional: true });
   // 任务级 timegoal 声明（--duration/--goal-prompt 落下来的）：校验在 sanitizeTaskGoal
   // （时长写法错误在**发布时报**，不在领取时报）；只带了 --goal-prompt 没带 --duration → 报错。
+  // 时长只在发布时显式给——没有全局默认（曾有的 defaultDuration 已删，旧 store 里残留值忽略）。
   let timegoal = null;
   if (rawGoal !== undefined && rawGoal !== null) {
     timegoal = sanitizeTaskGoal(rawGoal);
   }
 
   const store = await loadStore();
-  if (!timegoal && store.settings && store.settings.defaultDuration) {
-    // 发布时没显式给时长 → 用**全局默认时长**（设置面板「任务工具」可改）
-    timegoal = sanitizeTaskGoal({ duration: store.settings.defaultDuration, prompt: '' });
-  }
   let key;
   let cwd;
   let t;
@@ -1025,14 +1042,25 @@ export async function addTask({ cwd: rawCwd, summary: rawSummary, text, global: 
   };
 }
 
-export async function updateTask({ cwd: rawCwd, key: rawKey, id, text } = {}) {
+// 编辑任务内容 + 时间目标声明。
+//
+// goal 参数（面板编辑页 / CLI --duration/--goal-prompt/--clear-goal 落下来的）：
+//   { duration?: string, prompt?: string, clear?: boolean }
+// 语义与发布端对齐——时长只在**未领取**时可改（领取即计时，起表后声明就是既成事实，
+// 要调先 reopen 重开任务再改）；pending 任务还没起表（ensureTaskGoal 在领取时刻才调），
+// 改声明不碰 timegoals.json，落库即生效。clear 与 duration 互斥，宁报错不猜。
+export async function updateTask({ cwd: rawCwd, key: rawKey, id, text, goal } = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const { cwd } = normalizeCwd(rawCwd);
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
   const body = String(text ?? '').trim();
-  if (!body) throw badInput('--text 不能为空');
-  if (body.length > MAX_TEXT) throw badInput(`任务内容过长（≤${MAX_TEXT} 字）`);
+  const hasGoalInput = goal && (goal.clear || goal.duration != null || goal.prompt != null);
+  if (!body && !hasGoalInput) throw badInput('--text 不能为空（改时间目标时才可省）');
+  if (body && body.length > MAX_TEXT) throw badInput(`任务内容过长（≤${MAX_TEXT} 字）`);
+  if (hasGoalInput && goal.clear && goal.duration != null) {
+    throw badInput('--clear-goal 与 --duration 不能同时给（清除就清除，不猜意图）');
+  }
 
   const store = await loadStore();
   const t = store.topics[key];
@@ -1041,10 +1069,30 @@ export async function updateTask({ cwd: rawCwd, key: rawKey, id, text } = {}) {
     const { notFound } = await import('../../core/errors.js');
     throw notFound(`主题「${t ? t.name : cwd}」里没有 #${want} 任务`);
   }
-  task.text = body;
+  if (body) {
+    task.text = body;
+  }
+  let goalChanged = null; // 'set' | 'cleared' | null（render 与前端提示用）
+  if (hasGoalInput) {
+    if (task.status === 'consumed') {
+      throw badInput(`#${want} 已领取计时中，时间目标声明不可改——要调整先 reopen 重开任务`);
+    }
+    if (task.deletedAt) throw badInput(`#${want} 已删除，时间目标声明不可改`);
+    if (task.migratedTo) throw badInput(`#${want} 已迁出，时间目标声明不可改`);
+    if (goal.clear) {
+      task.timegoal = null;
+      goalChanged = 'cleared';
+    } else {
+      // 只改时长没带 prompt → 保留原附加要求；带了（含空串）→ 以传入为准
+      const prev = sanitizeTaskGoal(task.timegoal);
+      const prompt = goal.prompt != null ? String(goal.prompt).trim() : prev ? prev.prompt : '';
+      task.timegoal = sanitizeTaskGoal({ duration: goal.duration, prompt });
+      goalChanged = 'set';
+    }
+  }
   t.updatedAt = stampNow();
   await saveStore(store);
-  return { status: 'ok', key, cwd: t.cwd || cwd, name: t.name, task: normalizeTask(task) };
+  return { status: 'ok', key, cwd: t.cwd || cwd, name: t.name, goalChanged, task: normalizeTask(task) };
 }
 
 export async function removeTask({ cwd: rawCwd, key: rawKey, id, purge = false } = {}) {

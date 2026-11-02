@@ -13,6 +13,7 @@
 // 任务队列，数据存本地文件，不依赖后端登录态。
 import * as service from './service.js';
 import * as move from './move.js';
+import { badInput } from '../../core/errors.js';
 
 const CWD = { type: 'string', hint: '工作目录（作为主题；默认当前目录）' };
 const SUMMARY = { type: 'string', required: true, hint: '当前现状（agent 当前状态，展示给用户）' };
@@ -276,15 +277,38 @@ export default {
       id: 'localtask.update',
       cli: ['localtask', 'update'],
       http: ['PATCH', '/api/localtasks/item'],
-      summary: '编辑任务内容（按 --id，定位到 --cwd 主题或 --key）',
+      summary:
+        '编辑任务内容（按 --id，定位到 --cwd 主题或 --key）；可同时改时间目标声明（--duration/--goal-prompt/--clear-goal，仅未领取时可改——领取即计时，起表后声明是既成事实）',
       flags: {
         id: { type: 'number', required: true, hint: '任务编号' },
-        text: { type: 'string', required: true, hint: '改成这个内容' },
+        text: { type: 'string', hint: '改成这个内容；只改时间目标时可省' },
         cwd: CWD,
         key: KEY,
+        duration: { type: 'string', hint: '时间目标时长（2h / 90m）：未领取时设/改声明；只带 --goal-prompt 不带时长会报错' },
+        'goal-prompt': { type: 'string', hint: '时间目标附加要求（随 check 指令固化）；只改时长不带它则保留原附加要求' },
+        goalPrompt: { type: 'string', hint: '同 --goal-prompt（驼峰写法，HTTP body 用）' },
+        'clear-goal': { type: 'boolean', hint: '清掉时间目标声明（未领取时）' },
+        clearGoal: { type: 'boolean', hint: '同 --clear-goal（驼峰写法，HTTP body 用）' },
       },
-      run: (ctx) => service.updateTask({ id: ctx.id, text: ctx.text, cwd: ctx.cwd, key: ctx.key }),
-      render: (d) => `已更新主题「${d.name}」#${d.task.id}: ${d.task.text}`,
+      run: (ctx) => {
+        const gp = ctx.goalPrompt ?? ctx['goal-prompt'];
+        const cg = ctx.clearGoal ?? ctx['clear-goal'];
+        const hasGoalInput = ctx.duration != null || gp != null || cg;
+        return service.updateTask({
+          id: ctx.id,
+          text: ctx.text,
+          cwd: ctx.cwd,
+          key: ctx.key,
+          goal: hasGoalInput ? { duration: ctx.duration, prompt: gp, clear: !!cg } : undefined,
+        });
+      },
+      render: (d) =>
+        `已更新主题「${d.name}」#${d.task.id}: ${d.task.text}` +
+        (d.goalChanged === 'set'
+          ? `（时间目标：${d.task.timegoal.duration}${d.task.timegoal.prompt ? ' · 附加要求已固化' : ''}）`
+          : d.goalChanged === 'cleared'
+            ? '（时间目标已清除）'
+            : ''),
     },
     {
       id: 'localtask.remove',
@@ -386,32 +410,53 @@ export default {
       cli: ['localtask', 'config'],
       http: ['PATCH', '/api/localtasks/setting'],
       summary:
-        '配置等待超时（秒）/ 收尾指令模板（wait 返回时渲染进 instruction 字段；纯文本则维持旧的 task.text 追加；置空关闭）',
+        '配置等待超时（秒）/ 收尾指令（wait 返回时渲染进 instruction 字段或追加正文，可配多条）',
       flags: {
         timeout: { type: 'number', hint: '超时秒数（1-600）' },
         suffix: {
           type: 'string',
-          hint: '收尾指令模板 ≤2000 字。占位符：{{goal.name}} {{goal.remainingHuman}} {{goal.deadline}} {{goal.prompt}} {{task.id}} {{task.text}} {{source}} {{summary}} {{cwd}} {{name}}；段落 {{#goal}}…{{/goal}}/{{#task}}…{{/task}}（上下文缺失整段消失）。含 {{ 渲染进 instruction、task.text 保持原文；纯文本（无 {{）维持旧追加行为；置空关闭；不支持字面 {{ 转义（与 --reset-suffix/--no-suffix 互斥）',
+          hint: '收尾指令（整体替换为这一条）。占位符：{{goal.name}} {{goal.remainingHuman}} {{goal.deadline}} {{goal.prompt}} {{task.id}} {{task.text}} {{source}} {{summary}} {{cwd}} {{name}}；段落 {{#goal}}…{{/goal}}/{{#task}}…{{/task}}（上下文缺失整段消失）。含 {{ 渲染进 instruction、task.text 保持原文；纯文本（无 {{）维持旧追加行为；置空关闭；不支持字面 {{ 转义（与 --reset-suffix/--no-suffix 互斥）',
         },
-        'reset-suffix': { type: 'boolean', hint: '恢复默认收尾指令模板' },
+        'reset-suffix': { type: 'boolean', hint: '恢复默认收尾指令（单条）' },
         'no-suffix': { type: 'boolean', hint: '清空并关闭收尾指令' },
-        'default-duration': {
+        'suffix-add': {
           type: 'string',
-          hint: '任务时间目标的默认时长（2h / 90m）——发布任务没给 --duration 时用它；留空 = 不设默认',
+          hint: '追加一条收尾指令（与既有各条并存，按空行拼接交付；≤2000 字）——与 --suffix/--no-suffix/--reset-suffix 互斥',
         },
-        'clear-default-duration': { type: 'boolean', hint: '清除默认时长' },
+        'suffix-remove': {
+          type: 'number',
+          hint: '按序号删除一条收尾指令（--json settings.taskSuffixList 的 1 基序号）——与 --suffix/--no-suffix/--reset-suffix 互斥',
+        },
       },
-      run: (ctx) => {
+      run: async (ctx) => {
         const patch = { timeoutSec: ctx.timeout };
-        if (ctx['no-suffix']) patch.taskSuffix = '';
-        else if (ctx['reset-suffix']) patch.taskSuffix = service.DEFAULT_TASK_SUFFIX;
+        const add = ctx['suffix-add'];
+        const removeN = ctx['suffix-remove'];
+        if (add !== undefined || removeN !== undefined) {
+          // 按条增删要在**现有列表**上操作——与整体替换类 flag 互斥，避免同一次调用
+          // 又替换又增删时序号语义说不清。
+          if (ctx['no-suffix'] || ctx['reset-suffix'] || ctx.suffix !== undefined) {
+            throw badInput('--suffix-add / --suffix-remove 不能与 --suffix / --no-suffix / --reset-suffix 同用');
+          }
+          const cur = (await service.getSettings()).taskSuffixList;
+          if (removeN !== undefined) {
+            const n = Number(removeN);
+            if (!Number.isInteger(n) || n < 1 || n > cur.length) {
+              throw badInput(`--suffix-remove 需为 1-${cur.length} 的序号（当前 ${cur.length} 条）`);
+            }
+            cur.splice(n - 1, 1);
+          }
+          if (add !== undefined && String(add).trim()) cur.push(String(add));
+          patch.taskSuffix = cur;
+        } else if (ctx['no-suffix']) patch.taskSuffix = [];
+        else if (ctx['reset-suffix']) patch.taskSuffix = [service.DEFAULT_TASK_SUFFIX];
         else if (ctx.suffix !== undefined) patch.taskSuffix = ctx.suffix;
-        if (ctx['clear-default-duration']) patch.defaultDuration = '';
-        else if (ctx['default-duration'] !== undefined) patch.defaultDuration = ctx['default-duration'];
         return service.updateSettings(patch);
       },
       render: (s) => {
-        const x = s.suffixEnabled ? '收尾指令模板已开启' : '收尾指令已关闭';
+        const x = s.suffixEnabled
+          ? `收尾指令已开启（${s.taskSuffixList.length} 条）`
+          : '收尾指令已关闭';
         return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· ${x}`;
       },
     },

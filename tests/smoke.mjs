@@ -383,6 +383,31 @@ try {
     .find((t) => t.key === waitTpl.key)
     .tasks.find((x) => x.id === waitTpl.task.id);
   check('模板模式库存原文不含模板痕迹', consumedTpl && consumedTpl.text === '模板任务本体', JSON.stringify(consumedTpl));
+
+  // 多条收尾指令：--suffix-add 逐条追加、--suffix-remove 按序号删、交付按空行拼接
+  await cliJson(['localtask', 'config', '--no-suffix']); // 先回到关闭态（空列表），从零加起
+  const stAdd1 = await cliJson(['localtask', 'config', '--suffix-add', 'MULTI_ONE']);
+  check(
+    'config --suffix-add 追加第一条',
+    stAdd1.suffixEnabled === true &&
+      JSON.stringify(stAdd1.taskSuffixList) === JSON.stringify(['MULTI_ONE']),
+    JSON.stringify(stAdd1)
+  );
+  const stAdd2 = await cliJson(['localtask', 'config', '--suffix-add', 'MULTI_TWO']);
+  check(
+    'config --suffix-add 再加一条（两条并存）',
+    JSON.stringify(stAdd2.taskSuffixList) === JSON.stringify(['MULTI_ONE', 'MULTI_TWO']) &&
+      stAdd2.taskSuffix === 'MULTI_ONE\n\nMULTI_TWO',
+    JSON.stringify(stAdd2)
+  );
+  const stRm = await cliJson(['localtask', 'config', '--suffix-remove', '1']);
+  check(
+    'config --suffix-remove 按序号删',
+    JSON.stringify(stRm.taskSuffixList) === JSON.stringify(['MULTI_TWO']),
+    JSON.stringify(stRm)
+  );
+  const stRmBad = await cli(['localtask', 'config', '--suffix-remove', '5']);
+  check('config --suffix-remove 越界报错', stRmBad.status !== 0, `exit=${stRmBad.status}`);
   // 恢复关闭态，让主题清理不受影响
   await cliJson(['localtask', 'config', '--no-suffix']);
 

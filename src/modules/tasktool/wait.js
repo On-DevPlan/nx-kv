@@ -14,6 +14,7 @@ import { formatGoalTiming, hasTemplateMarkers, renderInstruction } from '../../c
 import {
   clampTaskSuffix,
   clampTimeoutSec,
+  joinTaskSuffix,
   clearWaiting,
   consumeCancelRequest,
   consumeFirstPending,
@@ -112,7 +113,9 @@ function withTaskSuffix(task, suffix) {
 //   ''（关闭）    → 只回任务。
 // 任何异常都降级为「只回任务」——wait 绝不能因渲染挂掉（与探针同一条 fail-open 纪律）。
 async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, topicKey } = {}) {
-  const tpl = clampTaskSuffix(suffix);
+  // 多条收尾指令（settings.taskSuffix 存 string[]）先按空行拼成单串再分流；
+  // 兼容旧单条 string（joinTaskSuffix 对 string 原样算一条）。
+  const tpl = joinTaskSuffix(suffix);
   try {
     // 任务级 timegoal（发布带 --duration）：**领取即计时**——这里起表（幂等），
     // goal 上下文换成任务级（prompt = check 指令，固化进 timegoal 存储，之后每轮原文回显）。
@@ -214,7 +217,7 @@ export async function waitForTask({
   else if (timeoutMs !== undefined && timeoutMs !== null) sec = Number(timeoutMs) / 1000;
   else sec = startStore.settings.timeoutSec;
   const tmo = clampTimeoutSec(sec) * 1000;
-  const suffix = startStore.settings.taskSuffix; // 返回任务时追加的收尾指令（本轮固定）
+  const suffix = startStore.settings.taskSuffix; // 返回任务时追加的收尾指令（本轮固定；多条列表，交付时拼接）
 
   // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
   const queued = await consumeFirstPending(key, summary, by);

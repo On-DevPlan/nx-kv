@@ -50,7 +50,7 @@ nx-kv localtask done --id <n> --summary "<完成总结>" --json
 
 ```bash
 nx-kv localtask show   --id <n>                        # 查看单条（get 已改为领取动作）
-nx-kv localtask update --id <n> --text "<新内容>"       # 改写任务内容
+nx-kv localtask update --id <n> --text "<新内容>"       # 改写任务内容；--duration/--clear-goal 改时间目标（仅未领取时）
 nx-kv localtask remove --id <n>                        # 删除单条
 nx-kv localtask reorder --id <n> --before-id <m>       # 调整领取顺序（或 --after-id）
 nx-kv localtask topic remove --cwd "<目录>"             # 删除整个主题（等待中需 --force）

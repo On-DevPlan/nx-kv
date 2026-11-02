@@ -6,6 +6,38 @@
 
 ### Changed
 
+- **回调提示词可配多条**：`localtask config` 的收尾指令从单条升级为**列表**
+  （`settings.taskSuffix` 存 `string[]`，上限 10 条、单条 ≤2000 字）。设置面板
+  「模板与任务工具」改为按条编辑（每条一个文本框 + 删除，「添加一条…」追加，
+  一次保存整体生效）；CLI 新增 `--suffix-add "<指令>"` 追加一条、
+  `--suffix-remove <序号>` 按序号删一条（与 `--suffix` / `--no-suffix` / `--reset-suffix`
+  互斥）。交付语义不变：多条按空行拼接后统一分流——任一条含 `{{` 整体渲染进
+  `instruction` 字段，纯文本仍追加正文末尾；删光 = 关闭。
+  - 兼容：旧单条 store（string）读入时整体迁为一列、不拆段；`--suffix "<文本>"`
+    仍是「整体替换为这一条」；设置视图同时暴露 `taskSuffix`（多条拼接串，旧消费者
+    无感）与 `taskSuffixList`（canonical 列表，UI/CLI 按条编辑用）。
+  - **项目级「持续 get」模板同步支持多条**（`getLoop.template` 存 `string[]`，同上限
+    规则）：设置面板「项目级设置」的持续 get 区块同款按条编辑；交付时多条按空行
+    拼接后统一渲染，全部留空 = 用默认模板；`getLoopForCwd` 暴露 `template`（拼接串）
+    与 `templateList`（列表）。CLI `--get-loop-template` 仍是「整体替换为这一条」。
+
+- **timegoal 时长删除全局默认，只在发布任务时设置**：任务时间目标的时长只在
+  `localtask add --duration` 显式给出（发布时校验写法），不再有「发布没给时长就按
+  全局默认计时」的兜底。设置面板「模板与任务工具」的「任务时间目标默认时长」输入框
+  与 CLI `localtask config --default-duration / --clear-default-duration` 一并移除。
+  - ⚠️ 升级注意：存量 store 里的 `settings.defaultDuration` 残留值被忽略（下次落盘
+    丢弃）；此前靠默认时长隐式带时间目标的任务，现在发布时需显式 `--duration`。
+
+- **timegoal 面板入口补齐（发布 + 编辑都可设）**：此前带时长的任务只能 CLI 发布——
+  面板任务编辑页没有时间目标入口。现在编辑页标题栏下新增「⏱ 时间目标」行（时长 +
+  可选附加要求）：草稿提交即带声明（POST `/api/localtasks` 的 `duration`/`goalPrompt`
+  字段本来就已支持）；**未领取**的任务在编辑页可改/清声明（`localtask update` 新增
+  `--duration` / `--goal-prompt` / `--clear-goal`，`--text` 在只改时间目标时可省）；
+  已领取计时中的任务声明冻结（要调先 reopen 重开）。目录任务表任务标题旁显示
+  `⏱ <时长>` 徽标（悬停看附加要求）。
+  - 语义约束：`--clear-goal` 与 `--duration` 互斥；只带附加要求不带时长在发布端报错；
+    改时长不带 `--goal-prompt` 则保留原附加要求。
+
 - **按前缀归组改为一次性命令，废除常驻规则**：原「仓库名以某前缀开头 → 自动算成员」
   的前缀分组规则（`board prefix list/add/remove`、仓库页「按前缀分组」区块）整块移除，
   改为一条一次性命令 `nx-kv board prefix <prefix> [--board <看板>]`——跑一次就把名字

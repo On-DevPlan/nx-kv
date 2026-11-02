@@ -204,6 +204,62 @@ test('update / get / remove 链路（删除是软删除：可恢复）', async (
   assert.equal(noop.reason, 'not_deleted');
 });
 
+test('update 改时间目标：pending 可设/改/清，consumed 冻结声明', async () => {
+  await reset();
+  const a = await svc.addTask({ cwd: dirA, text: '带目标的' });
+
+  // pending：设声明（text 可省——只动时间目标）
+  const set = await svc.updateTask({ cwd: dirA, id: a.task.id, goal: { duration: '2h', prompt: '持续推进' } });
+  assert.equal(set.goalChanged, 'set');
+  assert.deepEqual(set.task.timegoal, { duration: '2h', prompt: '持续推进' });
+
+  // 只改时长 → 附加要求保留
+  const redur = await svc.updateTask({ cwd: dirA, id: a.task.id, goal: { duration: '90m' } });
+  assert.deepEqual(redur.task.timegoal, { duration: '90m', prompt: '持续推进' });
+
+  // 改时长同时清空附加要求
+  const both = await svc.updateTask({ cwd: dirA, id: a.task.id, goal: { duration: '30分钟', prompt: '' } });
+  assert.deepEqual(both.task.timegoal, { duration: '30分钟', prompt: '' });
+
+  // text + goal 同发：一条请求同时改正文与声明
+  const txg = await svc.updateTask({ cwd: dirA, id: a.task.id, text: '改了正文', goal: { duration: '45m' } });
+  assert.equal(txg.task.text, '改了正文');
+  assert.equal(txg.task.timegoal.duration, '45m');
+
+  // 只带附加要求没带时长 → 非法声明，发布端报错
+  await assert.rejects(
+    () => svc.updateTask({ cwd: dirA, id: a.task.id, goal: { prompt: 'x' } }),
+    /timegoal\.duration/
+  );
+  // 非法时长写法 → 发布端报错（不落库）
+  await assert.rejects(
+    () => svc.updateTask({ cwd: dirA, id: a.task.id, goal: { duration: 'abc' } }),
+    /无法解析时长/
+  );
+  // clear 与 duration 同给 → 拒绝（不猜意图）
+  await assert.rejects(
+    () => svc.updateTask({ cwd: dirA, id: a.task.id, goal: { clear: true, duration: '2h' } }),
+    /不能同时给/
+  );
+
+  // pending：清除
+  const cleared = await svc.updateTask({ cwd: dirA, id: a.task.id, goal: { clear: true } });
+  assert.equal(cleared.goalChanged, 'cleared');
+  assert.equal(cleared.task.timegoal, null);
+
+  // consumed：领取即计时，声明冻结；正文仍可改
+  await svc.consumeFirstPending(a.key, '现状', {});
+  await assert.rejects(
+    () => svc.updateTask({ cwd: dirA, id: a.task.id, goal: { duration: '1h' } }),
+    /已领取计时中/
+  );
+  const txtOnly = await svc.updateTask({ cwd: dirA, id: a.task.id, text: '计时中也能改正文' });
+  assert.equal(txtOnly.task.text, '计时中也能改正文');
+
+  // text 与 goal 都没动 → 更新无意义，报错
+  await assert.rejects(() => svc.updateTask({ cwd: dirA, id: a.task.id }), /--text 不能为空/);
+});
+
 test('批量删除：一次删多条、缺号不阻断、幂等且可 purge', async () => {
   await reset();
   const a = await svc.addTask({ cwd: dirA, text: 'A' });
@@ -580,6 +636,61 @@ test('收尾追加语幂等：任务原文已包含同样追加语时不重复�
   // 原文已含 tail，不应重复拼
   assert.ok(r.task && r.task.text.includes(tail), JSON.stringify(r));
   assert.ok(!r.task.text.includes(tail + '\n\n' + tail) && !r.task.text.includes(tail + tail), '不应该出现重复追加');
+});
+
+test('收尾指令多条：列表设置（string[] canonical）、空条丢弃、全空关闭、超限截断', async () => {
+  await reset();
+  // 数组整体替换：taskSuffixList 是 canonical，taskSuffix 是拼接串（兼容旧消费者）
+  const s1 = await svc.updateSettings({ taskSuffix: ['ONE', 'TWO'] });
+  assert.deepEqual(s1.taskSuffixList, ['ONE', 'TWO']);
+  assert.equal(s1.taskSuffix, 'ONE\n\nTWO', 'taskSuffix 暴露多条按空行拼接的合并串');
+  assert.equal(s1.suffixEnabled, true);
+
+  // 逐条 trim、空条丢弃
+  const s2 = await svc.updateSettings({ taskSuffix: ['  A  ', '', 'B'] });
+  assert.deepEqual(s2.taskSuffixList, ['A', 'B']);
+
+  // 全空 → 关闭（与旧 '' 关闭语义一致）
+  const s3 = await svc.updateSettings({ taskSuffix: ['', '  '] });
+  assert.deepEqual(s3.taskSuffixList, []);
+  assert.equal(s3.taskSuffix, '');
+  assert.equal(s3.suffixEnabled, false);
+
+  // 条数上限 10：多的截断（与服务端 clampTaskSuffixList 一致）
+  const many = Array.from({ length: 13 }, (_, i) => `N${i + 1}`);
+  const s4 = await svc.updateSettings({ taskSuffix: many });
+  assert.equal(s4.taskSuffixList.length, 10);
+  assert.equal(s4.taskSuffixList[9], 'N10');
+
+  // 旧 string 写法仍可用：整体算一条、不拆段
+  const s5 = await svc.updateSettings({ taskSuffix: 'ONE\n\nTWO' });
+  assert.deepEqual(s5.taskSuffixList, ['ONE\n\nTWO'], 'string 输入整体算一条');
+});
+
+test('收尾指令多条交付：纯文本多条按空行拼接追加；任一条含 {{ 则整体走 instruction', async () => {
+  await reset();
+  // 纯文本两条 → 都追加进 task.text（空行分隔），库存原文不动
+  await svc.updateSettings({ taskSuffix: ['T1_TAIL', 'T2_TAIL'] });
+  const added = await svc.addTask({ cwd: dirA, text: 'BODY' });
+  const r1 = await waitForTask({ cwd: dirA, summary: 's', open: false });
+  assert.ok(r1.task.text.endsWith('T1_TAIL\n\nT2_TAIL'), '多条纯文本按空行拼接追加');
+  const list = await svc.listTasks();
+  const t1 = list.topics[0].tasks.find((x) => x.id === added.task.id);
+  assert.equal(t1.text, 'BODY', '库存原文不回写');
+
+  // 一条纯文本 + 一条模板 → 整体走 instruction（拼接后含 {{）
+  await svc.updateSettings({ taskSuffix: ['PURE_TAIL', '{{task.text}}||TPL'] });
+  await svc.addTask({ cwd: dirA, text: 'BODY2' });
+  const r2 = await waitForTask({ cwd: dirA, summary: 's2', open: false });
+  assert.equal(r2.task.text, 'BODY2', '模板模式不碰 task.text');
+  assert.equal(r2.instruction, `PURE_TAIL\n\nBODY2||TPL`, '拼接后统一渲染');
+
+  // 模板条单独存在时段落丢弃行为不变：goal 段消失、剩余纯文本条仍进 instruction
+  await svc.updateSettings({ taskSuffix: ['{{#goal}}G{{/goal}}', 'PLAIN'] });
+  await svc.addTask({ cwd: dirA, text: 'BODY3' });
+  const r3 = await waitForTask({ cwd: dirA, summary: 's3', open: false });
+  assert.equal(r3.task.text, 'BODY3', '整体含 {{ → 不追加正文');
+  assert.equal(r3.instruction, 'PLAIN', 'goal 段丢弃，剩余纯文本条仍进 instruction');
 });
 
 test('领取耗时：pickupSec = 发布 → 被领取的时间差（还没被领的是 null）', async () => {

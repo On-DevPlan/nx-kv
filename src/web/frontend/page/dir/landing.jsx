@@ -89,7 +89,19 @@ export default function Landing({
             {tasks.map((t) => (
               <tr key={t.id} className="mdw-land-tr" onClick={() => onOpenTask(t.id)}>
                 <td className="mono faint">#{t.id}</td>
-                <td className="tx">{titleFromMd(t.text)}</td>
+                <td className="tx">
+                  <div className="mdw-tg-row">
+                    <span className="mdw-tg-title">{titleFromMd(t.text)}</span>
+                    {t.timegoal?.duration ? (
+                      <span
+                        className="mdw-tg"
+                        title={`时间目标 ${t.timegoal.duration}（领取即计时，未到点不许标完成）${t.timegoal.prompt ? `\n附加要求：${t.timegoal.prompt}` : ''}`}
+                      >
+                        ⏱ {t.timegoal.duration}
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
                 <td>
                   <span className={'st' + (t.status === 'consumed' ? ' done' : t.from ? ' run' : '')}>
                     {t.status === 'consumed' ? '完' : (t.from ? '跑' : '等')}

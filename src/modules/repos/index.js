@@ -248,7 +248,7 @@ export default {
         'get-loop-minutes': { type: 'number', hint: '无任务时的阻塞窗口（分钟，默认 10，上限 600s 夹制）' },
         'get-loop-template': {
           type: 'string',
-          hint: '领到任务时追加的「继续 get」模板（占位符 {{task.id}}/{{task.text}} 等）',
+          hint: '领到任务时追加的「继续 get」模板——整体替换为这一条（多条在设置面板按条增删；占位符 {{task.id}}/{{task.text}} 等；置空 = 用默认模板）',
         },
       },
       run: (ctx) => {

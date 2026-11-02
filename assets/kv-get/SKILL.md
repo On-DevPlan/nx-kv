@@ -91,7 +91,7 @@ nx-kv localtask reopen --id <n> [--text "<改后的正文（Markdown）>"] --jso
 ```bash
 nx-kv localtask list --json                # 全部主题：目录、现状、等待中、待领取数
 nx-kv localtask show   --id <n> --json      # 查看单条（get 已是「领取」动词）
-nx-kv localtask update --id <n> --text "<新内容>" --json
+nx-kv localtask update --id <n> --text "<新内容>" --json   # 改正文；--duration 2h 设时间目标、--clear-goal 清除（仅未领取时可改）
 nx-kv localtask remove --id <n> --json      # 软删除（CLI restore 可恢复）
 nx-kv localtask reorder --id <n> --before-id <m> --json
 nx-kv localtask topic remove --cwd "<目录>" # 删整个主题（等待中需 --force）

@@ -58,6 +58,17 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   const docs = useDocs();
   const doc = docs[id] || null;
 
+  // 时间目标（任务级 timegoal 声明）：草稿与未领取任务可设/改/清；已领取计时中的
+  // 只读展示（领取即计时，声明是既成事实——要调先在目录页重开任务）。
+  // goalDraft 为 null 表示「还没动过」——此时跟随服务端值（taskRow 可能晚于首轮渲染到）。
+  const [goalDraft, setGoalDraft] = useState(null);
+  useEffect(() => {
+    setGoalDraft(null);
+  }, [id]);
+  const declaredGoal = taskRow?.timegoal || null;
+  const goal = goalDraft || { duration: declaredGoal?.duration || '', prompt: declaredGoal?.prompt || '' };
+  const goalEditable = isDraft || (!!taskRow && taskRow.status !== 'consumed');
+
   // 首开这一页时把内容「种」进去：真实任务用服务端正文，草稿用默认模板
   useEffect(() => {
     if (docs[id]) return;
@@ -109,12 +120,34 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   const markDirty = useCallback(() => setDirty(true), []);
 
   // ─── 保存 / 提交 ───
+  // 时间目标的落库口径：草稿 → POST 带 duration/goalPrompt（后端 sanitize 校验写法）；
+  // 已有任务 → 与服务端声明比对，有变化才发（duration 空 = 清除，clearGoal）；
+  // 只写附加要求不写时长是非法声明，发布端就拦下。
+  const goalPatchOf = () => {
+    const duration = (goal.duration || '').trim();
+    const prompt = (goal.prompt || '').trim();
+    if (prompt && !duration) return { error: '时间目标要填时长（如 2h / 90m）；只写附加要求无效' };
+    if (!goalEditable) return {};
+    if (!isDraft) {
+      const prevDur = declaredGoal?.duration || '';
+      const prevPrompt = declaredGoal?.prompt || '';
+      if (duration === prevDur && prompt === prevPrompt) return {};
+      return duration ? { duration, goalPrompt: prompt } : { clearGoal: true };
+    }
+    return duration ? { duration, goalPrompt: prompt } : {};
+  };
+
   const submit = () => guard(async () => {
     if (!doc) return;
     const t = (doc.title || '').trim() || '未命名任务';
     let b = doc.body;
     if (!/^#\s+/m.test(b)) b = `# ${t}\n\n${b}`;
     else b = b.replace(/^#\s+.+$/m, `# ${t}`);
+    const gp = goalPatchOf();
+    if (gp.error) {
+      toast(gp.error);
+      return;
+    }
     if (!isDraft) {
       await api('/api/localtasks/item', {
         method: 'PATCH',
@@ -123,20 +156,24 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
           key: isGlobal ? GLOBAL_KEY : undefined,
           id: Number(task),
           text: b,
+          ...gp,
         },
       });
       persistAtt(task, doc.attachments);
       saveDoc(id, { title: t, body: b });
       setDirty(false);
       clearHistory(histRef.current, id);
-      toast('已同步 MD');
+      toast(gp.clearGoal ? '已同步 MD · 时间目标已清除' : gp.duration ? '已同步 MD · 时间目标已更新' : '已同步 MD');
       refreshLocal();
       return;
     }
     // 草稿 → 提交成任务：换身份（页签的 config 跟着改，内容搬到新任务号下）
     const res = await api('/api/localtasks', {
       method: 'POST',
-      body: isGlobal ? { global: true, text: b } : { cwd: topic.cwd, text: b },
+      body: {
+        ...(isGlobal ? { global: true, text: b } : { cwd: topic.cwd, text: b }),
+        ...gp,
+      },
     });
     const newId = res?.task?.id ?? res?.id;
     if (newId != null) {
@@ -348,6 +385,40 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
             </div>
           </div>
         </div>
+
+        {/* 时间目标行：可编辑（草稿/未领取）或只读回显（已领取计时中）。整行在没有
+            任何目标信息且不可编辑时隐藏，不给已完成页面添噪音。 */}
+        {(goalEditable || declaredGoal) && (
+          <div className="mdw-goal">
+            <span className="mdw-goal-lab" title="任务级 timegoal：领取即计时，未到点不许标完成">⏱ 时间目标</span>
+            {goalEditable ? (
+              <>
+                <input
+                  className="mdw-goal-dur mono"
+                  value={goal.duration}
+                  placeholder="2h / 90m / 30分钟，留空不带"
+                  onChange={(e) => {
+                    setGoalDraft({ ...goal, duration: e.target.value });
+                    markDirty();
+                  }}
+                />
+                <input
+                  className="mdw-goal-prompt"
+                  value={goal.prompt}
+                  placeholder="附加要求（可选，随 check 指令一起固化）"
+                  onChange={(e) => {
+                    setGoalDraft({ ...goal, prompt: e.target.value });
+                    markDirty();
+                  }}
+                />
+              </>
+            ) : (
+              <span className="mdw-goal-ro mono" title={declaredGoal?.prompt || '已领取计时，声明不可改'}>
+                {declaredGoal?.duration || '—'} · 已领取计时
+              </span>
+            )}
+          </div>
+        )}
 
         <ToolBar
           mode={doc.mode}

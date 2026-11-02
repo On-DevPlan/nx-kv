@@ -142,8 +142,15 @@
 }
 .setp-icon-edit input:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }
 
-/* 回调提示词（收尾指令模板）编辑器 */
+/* 回调提示词（收尾指令，可多条）编辑器 */
 .setp-suffix { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.setp-suffix-item { display: flex; align-items: flex-start; gap: 6px; }
+.setp-suffix-item .setp-suffix-no {
+  flex: none; margin-top: 8px; font-size: 10.5px; color: var(--faint);
+  font-family: ui-monospace, Consolas, monospace; min-width: 16px; text-align: right;
+}
+.setp-suffix-item .setp-suffix-ta { min-height: 64px; }
+.setp-suffix-item .btn { flex: none; margin-top: 6px; }
 .setp-suffix-ta {
   width: 100%; min-height: 110px; padding: 8px 10px; resize: vertical;
   border: 1px solid var(--line); border-radius: 8px;

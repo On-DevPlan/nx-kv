@@ -142,10 +142,27 @@ test('repo getLoop 落库：部分更新与已有字段合并', async () => {
   const detail = await repos.getRepo(repo.id);
   assert.equal(detail.getLoop.enabled, true);
   assert.equal(detail.getLoop.waitMinutes, 5);
-  assert.equal(detail.getLoop.template, '继续干');
+  assert.deepEqual(detail.getLoop.template, ['继续干'], '模板落库为列表（v0.14 多条；旧 string 迁入）');
+  // 多条 + 空条丢弃 + 旧 string 整体算一条
+  await repos.updateRepo(repo.id, { getLoop: { template: ['A', '', '  B  '] } });
+  assert.deepEqual((await repos.getRepo(repo.id)).getLoop.template, ['A', 'B']);
   await repos.updateRepo(repo.id, { getLoop: null });
   const after = await repos.getRepo(repo.id);
   assert.equal(after.getLoop, undefined);
+});
+
+test('get：多条持续 get 模板按空行拼接后统一渲染', async () => {
+  const localtask = await import('../../src/modules/localtask/service.js');
+  const repos = await import('../../src/modules/repos/service.js');
+  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const cwd = join(dir, 'loop-multi');
+  const repo = await repos.addRepo({ path: cwd, name: 'loop-multi', remote: 'https://github.com/me/lm' });
+  await repos.updateRepo(repo.id, { getLoop: { enabled: true, waitMinutes: 1, template: ['GO_ON_1', '{{task.text}}||GO_ON_2'] } });
+  await localtask.addTask({ text: '多模板任务', cwd });
+  const r = await getTask({ cwd, summary: '领活' });
+  assert.equal(r.status, 'ok');
+  assert.equal(r.getLoop, true);
+  assert.match(r.instruction, /GO_ON_1\n\n[\s\S]*多模板任务\|\|GO_ON_2/, '多条模板拼接成单段统一渲染');
 });
 
 test('修改反馈 → 重开：任务回到 pending，领取时间作废，可再次领取', async () => {
@@ -176,21 +193,6 @@ test('修改反馈 → 重开：任务回到 pending，领取时间作废，可�
   const again = await waitForTask({ cwd, summary: '再来一轮', timeoutSec: 1, open: false });
   assert.equal(again.status, 'ok');
   assert.match(again.task.text, /暗色模式/);
-});
-
-test('全局默认时长：发布任务没给 --duration 时按设置走', async () => {
-  const localtask = await import('../../src/modules/localtask/service.js');
-  await localtask.updateSettings({ defaultDuration: '45m' });
-  const cwd = join(dir, 'defdur');
-  const added = await localtask.addTask({ text: '按默认时长计时', cwd });
-  assert.equal(added.task.timegoal.duration, '45m');
-  // 显式给的时长优先于全局默认
-  const explicit = await localtask.addTask({ text: '显式时长', cwd, timegoal: { duration: '10m', prompt: '' } });
-  assert.equal(explicit.task.timegoal.duration, '10m');
-  // 清除默认后不再自动带
-  await localtask.updateSettings({ defaultDuration: '' });
-  const plain = await localtask.addTask({ text: '无时长', cwd });
-  assert.equal(plain.task.timegoal, null);
 });
 
 test('项目图标：写入后读回（≤8 字）', async () => {

@@ -277,13 +277,26 @@ export default function App() {
   const modelRef = useRef(model);
   useEffect(() => { modelRef.current = model; }, [model]);
 
+  // 同理不能跟 specCtx 的**身份**走：rows 每 15s 轮询换一次新数组，
+  // specCtx 就重算一次 → effect 重跑 → 按**旧路由**把用户刚开的页签顶掉
+  // （实测：从目录页点开文档页签，十几秒后文档面板自己没了）。
+  // 只在「路由变了」或「面板名变了」时重开 —— 名字没变就别抢焦点。
+  const specCtxRef = useRef(specCtx);
+  useEffect(() => { specCtxRef.current = specCtx; }, [specCtx]);
+  const specCtxKey = `${specCtx.boardName}|${specCtx.dirName}|${specCtx.pageTitle}`;
+  const openedRef = useRef({ route: '', key: '' });
+
   useEffect(() => {
     const m = modelRef.current;
     if (!m) return;
-    const spec = panelSpecOfRoute(route, specCtx);
+    const spec = panelSpecOfRoute(route, specCtxRef.current);
     if (!spec) return;
+    const routeSig = `${route.view}|${route.key}|${route.task}`;
+    const prev = openedRef.current;
+    if (prev.route === routeSig && prev.key === specCtxKey) return;
+    openedRef.current = { route: routeSig, key: specCtxKey };
     openPanel(m, spec);
-  }, [route, specCtx]);
+  }, [route, specCtxKey]);
 
   /** 开一个 MD 页签（工作区页签，不是工作台内部的 tab） */
   const openPage = useCallback((spec) => {

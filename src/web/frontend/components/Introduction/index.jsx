@@ -1,11 +1,9 @@
-// 简介组件（项目 / 项目组统一）：显示 · 编辑/创建 · 补充 ref · 滚动目录。
+// 简介组件（项目 / 项目组统一）：一行**文字超链接**，点开 DocPanel 阅读/编辑。
 //
-// 两边只传 kind + owner + model；数据加载与落盘差异收在 use-intro。
-import { useEffect, useMemo, useRef, useState } from 'react';
+// 页面不内嵌渲染正文——阅读体验（标题滚动目录、双链跳转、编辑保存）
+// 全收敛在文档页签（DocPanel）里，那边带归属上下文与滚动目录轨。
 import { useDialog, useToast } from '../ui.jsx';
-import { extractMdHeadings, renderMarkdownHtml } from '../../modules/md/md-parse.js';
 import { useIntro } from './use-intro.js';
-import IntroRail from './rail.jsx';
 import './style.css';
 
 /**
@@ -17,81 +15,38 @@ import './style.css';
 export default function Introduction({ kind, owner, model }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
-  const {
-    label,
-    docRef,
-    intro,
-    known,
-    links,
-    onNavClick,
-    openEdit,
-    openDoc,
-    addRef,
-    canEdit,
-  } = useIntro({ kind, owner, model });
-
-  const bodyRef = useRef(null);
-  const [scrollRoot, setScrollRoot] = useState(null);
-
-  const html = useMemo(() => {
-    if (!intro || intro.missing || intro.dir || !intro.body) return '';
-    return renderMarkdownHtml(intro.body, [], known);
-  }, [intro, known]);
-
-  const headings = useMemo(
-    () => (intro && !intro.missing && intro.body ? extractMdHeadings(intro.body) : []),
-    [intro]
-  );
-
-  useEffect(() => {
-    setScrollRoot(bodyRef.current);
-  }, [html]);
+  const { label, docRef, links, openMain, openDoc, addRef, canEdit } = useIntro({ kind, owner, model });
 
   if (!owner || !docRef) return null;
 
-  const pathLabel = intro?.rel || intro?.path || '';
+  const pathLabel = docRef.startsWith('rel:') ? docRef.slice(4) : docRef;
   const extras = links.filter((l) => !l.main);
   const onAdd = () => addRef(dialog, toast).catch((e) => toast(String(e.message || e)));
 
   return (
-    <div className="nx-intro" onClick={onNavClick}>
+    <div className="nx-intro">
       <div className="nx-intro-head">
-        <span>{label}{pathLabel ? ` · ${pathLabel}` : ''}</span>
-        {intro?.rel && <span className="nx-intro-path mono">{intro.rel}</span>}
-        <span className="grow" />
-        <span className="nx-intro-acts">
-          {canEdit && (
-            <button
-              type="button"
-              className="nx-intro-btn"
-              title={html ? `编辑${label}` : `创建${label}`}
-              onClick={(e) => { e.stopPropagation(); openEdit(); }}
-            >
-              {html ? '编辑' : (intro && !intro.dir ? '创建' : '编辑')}
-            </button>
-          )}
-          {canEdit && docRef.startsWith('rel:') && (
-            <button
-              type="button"
-              className="nx-intro-btn"
-              title="补充一篇介绍文档（reference）"
-              onClick={(e) => { e.stopPropagation(); onAdd(); }}
-            >
-              ＋ ref
-            </button>
-          )}
-        </span>
+        <button
+          type="button"
+          className="nx-intro-link-main"
+          title={`打开${label}（新页签阅读 / 编辑）`}
+          onClick={openMain}
+        >
+          {label}
+        </button>
+        <span className="nx-intro-path mono">{pathLabel}</span>
+        <span className="nx-intro-spacer" />
+        {canEdit && docRef.startsWith('rel:') && (
+          <button
+            type="button"
+            className="nx-intro-btn"
+            title="补充一篇介绍文档（reference）"
+            onClick={onAdd}
+          >
+            ＋ ref
+          </button>
+        )}
       </div>
-
-      {html ? (
-        <div className="nx-intro-body mdw" ref={bodyRef} dangerouslySetInnerHTML={{ __html: html }} />
-      ) : (
-        <div className="nx-intro-body muted" ref={bodyRef}>
-          {intro?.dir
-            ? `外部目录绑定：${intro.path}（${(intro.files || []).length} 个文档）`
-            : `还没有${label}文档——点「创建」写一篇（约定路径自有 md）。`}
-        </div>
-      )}
 
       {extras.length > 0 && (
         <div className="nx-intro-links">
@@ -101,25 +56,16 @@ export default function Introduction({ kind, owner, model }) {
               key={l.docId}
               type="button"
               className={'nx-intro-link' + (l.docId.startsWith('path:') ? ' ext' : '')}
-              title={l.note || l.label}
-              onClick={(e) => { e.stopPropagation(); openDoc(l.docId); }}
+              title={l.note ? `${l.label} — ${l.note}` : l.label}
+              onClick={() => openDoc(l.docId)}
             >
-              {l.label}
+              <span className="nx-intro-link-label">{l.label}</span>
               {l.note ? <span className="nx-intro-link-note">{l.note}</span> : null}
               {l.docId.startsWith('path:') ? <span className="nx-intro-link-tag">外部</span> : null}
             </button>
           ))}
         </div>
       )}
-
-      <IntroRail
-        headings={headings}
-        scrollRoot={scrollRoot}
-        links={links}
-        activeDocId={docRef}
-        onOpenDoc={openDoc}
-        onAddRef={canEdit && docRef.startsWith('rel:') ? onAdd : null}
-      />
 
       {dialogNode}
     </div>

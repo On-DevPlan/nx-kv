@@ -135,20 +135,26 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model })
           const out = [];
           const push = (x, main) => {
             if (!x) return;
-            const id = x.rel ? `rel:${x.rel}` : x.path ? `path:${x.path}` : '';
+            const id = x.rel ? 'rel:' + x.rel : x.path ? 'path:' + x.path : '';
             if (id) out.push({ docId: id, label: x.rel || x.path || (main ? '主篇' : '补充'), note: x.note || '', main });
           };
-          push(d.main, true);
+          // 主篇：登记表里的 main；没登记则回退**约定路径** repo/<key>.md
+          // （介绍文档的权威路径就是它 —— 登记与否只是「有没有显式挂载」）
+          push(d.main || { rel: `repo/${ownerKey}.md` }, true);
           for (const l of d.links || []) push(l, false);
+          // 当前打开的文档不在集里（读的是某篇补充）→ 补一行「当前」
+          if (docId && !out.some((x) => x.docId === docId)) {
+            out.push({ docId, label: '当前', note: '', main: true });
+          }
           setIntroLinks(out);
         })
-        .catch(() => setIntroLinks([]));
+        .catch(() => setIntroLinks(docId ? [{ docId, label: '当前', note: '', main: true }] : []));
       return;
     }
-    // board：从仓库页数据里取看板 docLinks（与 Introduction 同源）
-    api('/api/repos')
+    // board：从看板数据里取 docLinks（看板在 /api/boards，不在 /api/repos）
+    api('/api/boards')
       .then((d) => {
-        const boards = d.boards || (Array.isArray(d) ? [] : []);
+        const boards = (d && d.boards) || (Array.isArray(d) ? d : []);
         const b = boards.find((x) => x.id === ownerKey || x.key === ownerKey);
         const out = [];
         if (docId) out.push({ docId, label: '当前', note: '', main: true });

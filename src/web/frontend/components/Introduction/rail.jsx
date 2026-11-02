@@ -53,7 +53,12 @@ export default function IntroRail({
       const root = scrollRoot;
       if (!root) return;
       const el = root.querySelector(`#${CSS.escape(id)}`);
-      if (!el) return;
+      if (!el) {
+        // 找不到锚点（如 h1 在实时预览里是标题块、没有 id）→ 回到顶部
+        root.scrollTo({ top: 0, behavior: 'smooth' });
+        setActiveId(id);
+        return;
+      }
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setActiveId(id);
     },

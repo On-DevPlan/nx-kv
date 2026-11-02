@@ -1,5 +1,5 @@
-// 简介（项目 / 项目组）共用数据与动作：
-//   显示主篇、编辑/创建、列出补充文档、追加 reference。
+// 简介数据（项目 / 项目组共用）：页面上只留一行**文字超链接**，
+// 点开 DocPanel 阅读/编辑——正文渲染、标题滚动目录、双链全在文档页签里。
 // kind: 'repo' | 'board' —— API 与落盘路径不同，UI 语义相同。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
@@ -40,43 +40,17 @@ function linkDocId(l) {
  * @param {object} [p.model]    FlexLayout model（开文档页签）
  */
 export function useIntro({ kind, owner, model }) {
-  const { onClick: onNavClick, openByDocId } = useWikiNav(model);
+  const { openByDocId } = useWikiNav(model);
   const label = kind === 'board' ? '组介绍' : '项目介绍';
   const ownerKey = kind === 'board' ? (owner && (owner.id || owner.key)) : (owner && owner.key);
   const ownerName = owner && owner.name;
 
   const docRef = useMemo(() => introRefOf(owner, kind), [owner, kind]);
 
-  const [intro, setIntro] = useState(null);
-  const [known, setKnown] = useState(null);
   const [links, setLinks] = useState([]); // [{ docId, label, note, main }]
   const [tick, setTick] = useState(0);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
-
-  useEffect(() => {
-    api('/api/docs/index')
-      .then((d) => {
-        const set = new Set();
-        for (const x of d.index || []) {
-          set.add(x.name);
-          if (x.rel) set.add(String(x.rel).toLowerCase());
-          if (x.path) set.add(String(x.path).replace(/\\/g, '/').toLowerCase());
-        }
-        setKnown(set);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    setIntro(null);
-    if (!docRef) return undefined;
-    api('/api/docs/item?ref=' + encodeURIComponent(docRef))
-      .then((d) => { if (alive) setIntro(d); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [docRef, tick]);
 
   // 介绍文档集：repo → /api/repos/docs；board → owner.docLinks（主篇另算）
   useEffect(() => {
@@ -119,7 +93,8 @@ export function useIntro({ kind, owner, model }) {
     return {};
   }, [kind, ownerKey, ownerName]);
 
-  const openEdit = useCallback(() => {
+  /** 打开主篇（缺文档时 DocPanel 给「创建骨架」） */
+  const openMain = useCallback(() => {
     if (!docRef) return;
     openByDocId(docRef, null, openExtra);
   }, [docRef, openByDocId, openExtra]);
@@ -168,11 +143,8 @@ export function useIntro({ kind, owner, model }) {
     label,
     ownerKey,
     docRef,
-    intro,
-    known,
     links,
-    onNavClick,
-    openEdit,
+    openMain,
     openDoc,
     addRef,
     reload,

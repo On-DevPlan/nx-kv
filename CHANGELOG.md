@@ -2,7 +2,7 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased]
+## [0.14.0] - 2026-11-03 wait 收尾指令模板化 + 回调提示词/持续 get 可配多条 + timegoal 面板入口 + 前缀归组改一次性命令 + 删全局默认时长
 
 ### Changed
 

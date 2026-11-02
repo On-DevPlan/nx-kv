@@ -170,41 +170,6 @@ export default function ReposView() {
     return () => window.removeEventListener('hashchange', applyHash);
   }, []);
 
-  // ---- 前缀分组规则：仓库名以某前缀开头 → 自动归入某看板 ----
-  // 规则只改「成员关系」，看板仍是唯一分组载体：侧边栏分组、看板筛选、成员管理
-  // 都跟着生效，不用各改一遍。
-  const [prefixRules, setPrefixRules] = useState(null); // null = 未加载
-  const [pfx, setPfx] = useState({ prefix: '', board: '' });
-  const loadPrefixRules = useCallback(async () => {
-    const d = await api('/api/boards/prefix-groups').catch(() => null);
-    setPrefixRules(d && d.groups ? d.groups : []);
-  }, []);
-  useEffect(() => { if (boardsOpen) loadPrefixRules(); }, [boardsOpen, loadPrefixRules]);
-
-  const addPrefixRule = () => guard(async () => {
-    const prefix = pfx.prefix.trim();
-    if (!prefix) {
-      toast('先填前缀（如 nx：把 nx 开头的仓库归一类）');
-      return;
-    }
-    const r = await api('/api/boards/prefix-groups', {
-      method: 'POST',
-      body: { prefix, board: pfx.board.trim() || undefined },
-    });
-    setPfx({ prefix: '', board: '' });
-    toast(
-      `规则「${r.prefix}*」→ 看板「${r.boardName}」` +
-      `${r.boardCreated ? '（已自动新建看板）' : ''}，命中 ${r.matched} 个仓库`
-    );
-    await Promise.all([loadPrefixRules(), loadBoards(), loadRepos()]);
-  });
-
-  const removePrefixRule = (g) => guard(async () => {
-    await api(`/api/boards/prefix-groups/${encodeURIComponent(g.prefix)}`, { method: 'DELETE', body: {} });
-    toast(`已删除前缀规则「${g.prefix}」`);
-    await Promise.all([loadPrefixRules(), loadBoards(), loadRepos()]);
-  });
-
   // ---- 参考仓库：设置 / 检查 / 克隆 / 同步 / 布局导入导出 ----
   const loadSetting = useCallback(async () => {
     setSettingInfo(await api('/api/setting').catch(() => null));
@@ -972,47 +937,6 @@ export default function ReposView() {
                 未分组 <b>{boards.unassigned.length}</b> 个 —— 不属于任何看板，只在「全部」里可见。
               </div>
             ) : null}
-
-            {/* 前缀分组：仓库名以某前缀开头 → 自动归入某看板（成员关系层面的规则） */}
-            <div className="rp-prefix-group">
-              <div className="colhead">
-                <h4>按前缀分组</h4>
-                <span className="muted">
-                  规则只改「谁在这个看板里」：仓库名以该前缀开头就自动算成员，
-                  不用一个个挂。目标看板留空 = 建一个同名看板。
-                </span>
-              </div>
-              <div className="rp-prefix-list">
-                {(prefixRules || []).map((g) => (
-                  <span key={g.prefix} className={'rp-prefix-chip' + (g.alive ? '' : ' dead')}>
-                    <b>{g.prefix}*</b>
-                    <span className="muted">→ {g.boardName || '(看板已不存在)'}</span>
-                    <span className="muted">{g.alive ? `${g.matched} 个` : ''}</span>
-                    <button className="rp-x" title="删除这条规则" onClick={() => removePrefixRule(g)}>×</button>
-                  </span>
-                ))}
-                {prefixRules && !prefixRules.length ? (
-                  <span className="muted">还没有规则 —— 例如填「nx」，把 nx 开头的仓库归成一类。</span>
-                ) : null}
-              </div>
-              <div className="rp-prefix-add">
-                <input
-                  className="rp-input"
-                  placeholder="前缀，如 nx"
-                  value={pfx.prefix}
-                  onChange={(e) => setPfx((p) => ({ ...p, prefix: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') addPrefixRule(); }}
-                />
-                <input
-                  className="rp-input"
-                  placeholder="目标看板（可空 = 同名自动建）"
-                  value={pfx.board}
-                  onChange={(e) => setPfx((p) => ({ ...p, board: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') addPrefixRule(); }}
-                />
-                <button className="btn small" onClick={addPrefixRule}>添加规则</button>
-              </div>
-            </div>
           </div>
         </div>
       ) : null}

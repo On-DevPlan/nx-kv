@@ -439,6 +439,65 @@ export function closePanel(model, tabId) {
   return true;
 }
 
+// ─── 清空当前面板组 ─────────────────────────────────────────────
+//
+// 页签条右端的「清空」按钮：一次关掉**本组**的全部可关页签。
+// 只作用于按钮所在的 tabset——别的组、浮窗、边界栏一概不碰；
+// 目录这类钉死页签（enableClose:false）天然不在「可关」之列，侧栏组
+// 因为没有可关页签，连按钮都不出现。
+
+/** 本组里实际会关掉的页签数（按钮角标/确认框口径，与 clearTabset 一致） */
+export function countClearable(model, tabset) {
+  if (!model || !tabset) return 0;
+  return (tabset.getTabNodes() || []).filter((t) => t.isEnableClose()).length;
+}
+
+/** 节点是否在**主布局**里（浮窗/弹出窗是 subLayout，根不是主布局的根行） */
+function inMainLayout(model, node) {
+  let p = node;
+  while (p && p.getParent()) p = p.getParent();
+  const root = model && model.getRootRow && model.getRootRow();
+  return !!p && p === root;
+}
+
+/**
+ * 清空一个面板组：关掉该组里全部**可关**页签（钉死的目录页签不动）。
+ *
+ * 兜底「开始」页：如果清完**主布局里一个内容页签都不剩**（侧栏不算——
+ * 不能让主区剩「侧栏 + 一片白」，后续开面板还会挤进侧栏组），就先在原组里
+ * 放一块「开始」页再删，清完仍是一个可用落点。
+ * 全部走 Actions（doAction）：可逐步撤销，清空后的空组由 change 监听里的
+ * 剪枝自动收走（连最后一组都清掉时，兜底页让该组始终非空、不会被剪）。
+ *
+ * @returns {number} 关掉的页签数
+ */
+export function clearTabset(model, tabset) {
+  if (!model || !tabset) return 0;
+  const deletable = (tabset.getTabNodes() || []).filter((t) => t.isEnableClose());
+  if (!deletable.length) return 0;
+
+  // 主布局清完还有没有别的**内容**页签（侧栏钉死页签不算数）
+  const deletableIds = new Set(deletable.map((t) => t.getId()));
+  let survivor = false;
+  model.visitNodes((node) => {
+    if (survivor || node.getType() !== 'tab') return;
+    if (deletableIds.has(node.getId())) return;
+    if (node.getComponent() === 'sidebar') return;
+    if (inMainLayout(model, node)) survivor = true;
+  });
+  if (!survivor) {
+    model.doAction(Actions.addTab(
+      { type: 'tab', name: '开始', component: 'welcome' },
+      tabset.getId(),
+      DockLocation.getByName('center'),
+      -1,
+      true
+    ));
+  }
+  for (const t of deletable) model.doAction(Actions.deleteTab(t.getId()));
+  return deletable.length;
+}
+
 /** 找到承载某个 component 页签的 tabset id（侧栏收起/展开要用它改 weight） */
 export function tabsetOfComponent(model, component) {
   if (!model) return null;

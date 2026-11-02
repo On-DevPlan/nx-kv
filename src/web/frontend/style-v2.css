@@ -214,6 +214,20 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .flx-dockback:active { transform: scale(.96); }
 .flx-dockback .ic { display: block; }
 
+/* 页签条右端的「清空」按钮：一键关掉**本组**全部可关页签（侧栏组不显示）。
+   日常融入页签工具栏（同 flx-dockback 的低调灰），悬停才亮红色表态 ——
+   一整排页签都是「关单个」，只有它是「清整组」，颜色要把它区分开。 */
+.flx-clear-tabs {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 22px; height: 22px; padding: 0; margin-left: 2px;
+  border: none; border-radius: 5px; background: none;
+  color: var(--mid, #838A93); cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.flx-clear-tabs:hover { background: rgba(179, 38, 30, .08); color: var(--danger, #B3261E); }
+.flx-clear-tabs:active { transform: scale(.96); }
+.flx-clear-tabs .ic { display: block; }
+
 /* ---- 侧边栏（展开态） ---- */
 /* 侧栏现在是**工作区里的一块面板**（.nx-side-host 承担布局）：
    宽度由 FlexLayout 的 tabset 决定，折叠 = 改 tabset weight（见 workspace.js）。 */

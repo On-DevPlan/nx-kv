@@ -81,7 +81,6 @@ test('导入 round-trip：换一个空环境，文档树与绑定全部还原', 
   await repos.mutateStore((s) => {
     s.repos = [];
     s.boards = [];
-    s.prefixGroups = [];
   });
   for (const rel of (await store.listOwnDocs()).map((x) => x.rel)) await store.removeOwnDoc(rel);
 

@@ -93,7 +93,7 @@ async function readRef(ref, fallbackRel, opts) {
  * md=true 时额外返回 md 文本（get 封装直接可用的单篇形态）。
  */
 export async function repoKnowledge(locator, { md = false } = {}) {
-  const { getRepo, loadStore, deriveKey, boardKeyOf, boardMemberKeys, autoKeysByPrefix } = await reposBridge();
+  const { getRepo, loadStore, deriveKey, boardKeyOf, boardRepoKeys } = await reposBridge();
   let repo;
   try {
     repo = await getRepo(locator || process.cwd());
@@ -112,11 +112,10 @@ export async function repoKnowledge(locator, { md = false } = {}) {
 
   const intro = await readRef(repo.doc, paths.repoDocRel(rk), { warnings, label: '项目介绍' });
 
-  // 所属组：显式成员 + 前缀规则命中（与 listBoards 同一口径）
-  const autoMap = autoKeysByPrefix(s);
+  // 所属组：显式成员（与 listBoards 同一口径）
   const boards = [];
   for (const b of s.boards) {
-    const members = boardMemberKeys(b, s, autoMap);
+    const members = boardRepoKeys(b, s);
     if (!members.includes(rk)) continue;
     const bkey = boardKeyOf(b.name);
     const bIntro = await readRef(b.doc, paths.boardDocRel(b.name), { warnings, label: `组介绍·${b.name}` });
@@ -202,20 +201,19 @@ function renderMd(k) {
  * 不在项目组里 → groups 为空数组（调用方据此不拼上下文段）。
  */
 export async function groupContextFor(cwd) {
-  const { loadStore, deriveKey, boardKeyOf, boardMemberKeys, autoKeysByPrefix, normalizePathKey } = await reposBridge();
+  const { loadStore, deriveKey, boardKeyOf, boardRepoKeys, normalizePathKey } = await reposBridge();
   const s = await loadStore();
   const want = normalizePathKey(cwd);
   if (!want) return null;
   const repo = s.repos.find((r) => normalizePathKey(r.path) === want);
   if (!repo) return null; // 没登记的目录：没有项目，也没有组
   const rk = deriveKey(repo);
-  const autoMap = autoKeysByPrefix(s);
   const warnings = [];
   const closure = await store.externalClosure(s);
   const groups = [];
 
   for (const b of s.boards) {
-    const members = boardMemberKeys(b, s, autoMap);
+    const members = boardRepoKeys(b, s);
     if (!members.includes(rk)) continue;
     // 组介绍（绑定优先，缺省约定路径）
     const introRef = b.doc;

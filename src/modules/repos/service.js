@@ -25,7 +25,7 @@ export function storePath() {
 }
 
 function emptyStore() {
-  return { version: 1, repos: [], boards: [], prefixGroups: [] };
+  return { version: 1, repos: [], boards: [] };
 }
 
 // 原子写 + 进程内串行化（与 localtask / timegoal 同一模式：Windows 上 rename
@@ -64,8 +64,9 @@ export async function loadStore() {
       version: 2,
       repos: Array.isArray(data.repos) ? data.repos : [],
       boards: Array.isArray(data.boards) ? data.boards : [],
-      // 前缀分组规则（仓库名以 prefix 开头 → 自动算作某看板的成员）
-      prefixGroups: Array.isArray(data.prefixGroups) ? data.prefixGroups.filter((g) => g && g.prefix) : [],
+      // prefixGroups（前缀分组规则）已废除（2026-11-02）：规则改一次性命令
+      // （board prefix），命中结果固化成显式成员（repoKeys），盘上残留字段下次
+      // 落盘时随本白名单一起丢弃。
     };
     normalizeDocRefs(store);
     // 老结构（看板成员存随机 id）→ 新结构（存 key）：读时改写并落盘。
@@ -314,59 +315,14 @@ export function boardRepoKeys(board, store) {
   return out;
 }
 
-// ─── 前缀分组规则 ────────────────────────────────────────────────
+// ─── 看板成员（一律显式）──────────────────────────────────────────
 //
-// 「仓库名以 nx 开头 → 归入看板『nx』」这类规则。规则命中的是**成员关系**，
-// 不是另起一套分组：显式成员（看板的 repoKeys）+ 规则命中 = 该看板的全部成员。
-// 所以侧边栏分组、仓库页筛选、成员管理全都自动跟着生效，不用各改一遍。
-//
-// 规则同时记 boardId 与 boardKey：改名时 id 不变（规则不失效），
-// 导入换机时 id 可能变（key 兜底）。两者都失效 → 这条规则暂时不生效（不报错）。
+// 前缀分组规则已废除（2026-11-02）：原「仓库名以 nx 开头 → 自动算成员」的常驻规则
+// 改成一次性命令 `board prefix <prefix> [--board <看板>]`——命令跑一次，命中的仓库
+// 直接固化成看板的显式成员（repoKeys），之后与手工挂的成员完全同权。
+// 好处：成员关系只有一个来源，读路径不用再叠加「规则命中」一层。
 
-export function prefixRulesOf(store) {
-  return store && Array.isArray(store.prefixGroups) ? store.prefixGroups : [];
-}
-
-/** 规则命中的仓库 key：boardId/boardKey → [repoKey] */
-export function autoKeysByPrefix(store) {
-  const out = new Map();
-  const rules = prefixRulesOf(store);
-  if (!rules.length || !store) return out;
-  const byId = new Map((store.boards || []).map((b) => [b.id, b]));
-  const byKey = new Map((store.boards || []).map((b) => [boardKeyOf(b.name), b]));
-  for (const rule of rules) {
-    const board = byId.get(rule.boardId) || byKey.get(rule.boardKey);
-    if (!board) continue;
-    const p = String(rule.prefix || '').trim().toLowerCase();
-    if (!p) continue;
-    const keys = [];
-    for (const r of store.repos || []) {
-      const name = String(r.name || '');
-      if (!name.toLowerCase().startsWith(p)) continue;
-      keys.push(deriveKey(r));
-    }
-    const prev = out.get(board.id) || [];
-    out.set(board.id, [...new Set([...prev, ...keys])]);
-  }
-  return out;
-}
-
-/** 看板的全部成员 key：显式成员在前，规则命中的在后（去重） */
-export function boardMemberKeys(board, store, autoMap) {
-  const explicit = boardRepoKeys(board, store);
-  const auto = (autoMap || autoKeysByPrefix(store)).get(board.id) || [];
-  const seen = new Set(explicit);
-  const out = [...explicit];
-  for (const k of auto) {
-    if (!seen.has(k)) {
-      seen.add(k);
-      out.push(k);
-    }
-  }
-  return out;
-}
-
-/** 规则的目标看板：按 id → key → 名称依次找；都找不到返回 null */
+/** 找看板：按 id → key → 名称依次找；都找不到返回 null */
 export function findBoard(store, ref) {
   const raw = String(ref || '').trim();
   if (!raw) return null;
@@ -426,25 +382,6 @@ export async function listRepos() {
         desc: b.desc || '',
         key: boardKeyOf(b.name),
         note: (b.repoNotes || {})[rk] || '',
-        auto: false,
-      });
-    }
-  }
-  // 前缀规则命中的仓库：同样算在这个看板里（auto: true = 规则来的，不是手动挂的）
-  const autoMap = autoKeysByPrefix(s);
-  for (const b of s.boards) {
-    const autoKeys = autoMap.get(b.id) || [];
-    if (!autoKeys.length) continue;
-    for (const rk of autoKeys) {
-      if ((boardsOf.get(rk) || []).some((x) => x.id === b.id)) continue; // 显式成员已算过
-      if (!boardsOf.has(rk)) boardsOf.set(rk, []);
-      boardsOf.get(rk).push({
-        id: b.id,
-        name: b.name,
-        desc: b.desc || '',
-        key: boardKeyOf(b.name),
-        note: (b.repoNotes || {})[rk] || '',
-        auto: true,
       });
     }
   }

@@ -816,44 +816,19 @@ export default {
       render: (d) => JSON.stringify(d, null, 2),
     },
 
-    // ---- 前缀分组规则：仓库名以某前缀开头 → 自动归入某看板 ----
-    // 规则只改「成员关系」，看板仍是唯一分组载体 —— 侧边栏分组、仓库页筛选、
-    // 成员管理都跟着生效，不用各改一遍。
+    // ---- 按前缀归组：一次性命令，命中的仓库固化成看板的显式成员 ----
+    // 规则不驻留（2026-11-02 起废除常驻规则）：之后新登记的仓库要再跑一次。
     {
-      id: 'board.prefix.list',
-      cli: ['board', 'prefix', 'list'],
-      http: ['GET', '/api/boards/prefix-groups'],
-      summary: '列出前缀分组规则（仓库名以某前缀开头 → 自动归入某看板）',
-      run: () => boards.listPrefixRules(),
-      render: (d) => {
-        if (!d.groups.length) return '（还没有前缀分组规则）';
-        return d.groups
-          .map(
-            (g) =>
-              `  ${g.prefix}* → ${g.boardName || '(看板已不存在)'}${g.alive ? `  · 命中 ${g.matched} 个仓库` : ''}`
-          )
-          .join('\n');
-      },
-    },
-    {
-      id: 'board.prefix.add',
-      cli: ['board', 'prefix', 'add'],
-      http: ['POST', '/api/boards/prefix-groups'],
-      summary: '新增前缀分组规则（--board 给目标看板；不给就按前缀名自动建同名看板）',
+      id: 'board.prefix',
+      cli: ['board', 'prefix'],
+      http: ['POST', '/api/boards/prefix'],
+      summary: '按前缀归组：把名字以 <prefix> 开头的仓库一次性挂进看板（--board 给目标看板；不给就按前缀名自动建同名看板）',
       args: ['prefix'],
       flags: { board: { type: 'string', hint: '目标看板（id / key / 名称；缺省 = 与前缀同名，自动新建）' } },
-      run: (ctx) => boards.addPrefixRule(ctx),
+      run: (ctx) => boards.applyPrefixGroup(ctx),
       render: (d) =>
-        `规则「${d.prefix}*」→ 看板「${d.boardName}」${d.boardCreated ? '（已自动新建该看板）' : ''}，命中 ${d.matched} 个仓库`,
-    },
-    {
-      id: 'board.prefix.remove',
-      cli: ['board', 'prefix', 'remove'],
-      http: ['DELETE', '/api/boards/prefix-groups/:prefix'],
-      summary: '删除前缀分组规则（看板本身不动，手动成员仍在）',
-      args: ['prefix'],
-      run: (ctx) => boards.removePrefixRule(ctx),
-      render: (d) => `已删除前缀规则「${d.prefix}」${d.boardRemoved ? `（空看板「${d.boardRemoved}」一并清掉）` : ''}`,
+        `已把「${d.prefix}*」的 ${d.added} 个仓库挂进看板「${d.boardName}」` +
+        `${d.boardCreated ? '（已自动新建该看板）' : ''}，看板现有 ${d.total} 个成员`,
     },
   ],
 };

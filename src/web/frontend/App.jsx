@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Layout, Actions, DockLocation, defaultKeyMap, useUndo } from 'flexlayout-react';
 import { useStore } from './store.jsx';
-import { ErrorBoundary, useToast } from './components/ui.jsx';
+import { ErrorBoundary, useDialog, useToast } from './components/ui.jsx';
 import { api } from './api/client.js';
 import { Icon } from './components/icons.jsx';
 import { AppContext } from './app-context.jsx';
@@ -28,6 +28,8 @@ import { factory, routeOfPanel, panelSpecOfRoute, openSettingsPanel } from './pa
 import {
   activeTab,
   clearStoredModel,
+  countClearable,
+  clearTabset,
   loadModel,
   openPanel,
   pruneBlankTabsets,
@@ -106,7 +108,7 @@ export default function App() {
   // 调试探针句柄：自动化测试需要模型级观测/驱动（拖拽链路、float 布局等无法从 DOM 反查）。
   // 只读暴露；生产环境多一个 window 属性无副作用。
   useEffect(() => {
-    if (model) window.__nxkv = { model, Actions };
+    if (model) window.__nxkv = { model, Actions, DockLocation };
   }, [model]);
 
   const patchPrefs = useCallback((patch) => setPrefs(updatePrefs(patch)), []);
@@ -336,6 +338,47 @@ export default function App() {
     setModel(loadModel());
   }, [setModel]);
 
+  // ─── 清空当前面板组：页签条右端的「清空」按钮 ───
+  // 每个页签组（tabset）条右端放一枚：一次关掉**本组**的全部可关页签。
+  // 只作用于按钮所在的组（别的组 / 浮窗 / 边界栏不碰）；目录页签钉死不算，
+  // 侧栏组没有可关页签 → 不放按钮，侧栏永远不会被这个按钮清掉。
+  // 确认用应用内弹窗（useDialog，可用键盘 Esc / 点蒙层取消），不用原生 confirm。
+  const { dialog, node: dialogNode } = useDialog();
+  const onRenderTabSet = useCallback((node, renderValues) => {
+    if (!model || node.getType() !== 'tabset') return;
+    const total = countClearable(model, node);
+    if (!total) return; // 没有可关页签（如侧栏组）→ 挂个点了没反应的按钮不如不放
+    renderValues.buttons.push(
+      <button
+        key="clear-tabset"
+        type="button"
+        className="flx-clear-tabs"
+        title={`清空本组全部页签（${total} 个；只影响本组；可逐步撤销）`}
+        aria-label="清空本组全部页签"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={async (e) => {
+          e.stopPropagation();
+          const ok = await dialog({
+            title: '清空本组页签',
+            message: `关闭本组的 ${total} 个页签？（只影响这一组；侧栏不受影响；可逐步撤销）`,
+            danger: true,
+            okText: '清空',
+          });
+          if (!ok) return;
+          if (!clearTabset(model, node)) return;
+          // 释放地址对旧面板的占用：路由镜像（路由 → 开面板）只认 route 状态，
+          // 不解除的话，下一次数据轮询（specCtx 变化）就会把地址指向的那块面板
+          // 再开回来 —— 「全关了怎么又自己开回去」。view='welcome' 不映射任何
+          // 面板（panelSpecOfRoute 对未知 view 返回 null）；地址栏挂起不动，
+          // 下次导航或刷新即恢复镜像语义。
+          setRoute({ view: 'welcome', key: '', task: '' });
+        }}
+      >
+        <Icon name="trash" size={13} />
+      </button>
+    );
+  }, [model, dialog]);
+
   // 全局动作：集中在侧边栏头部（窄轨保留设置入口）
   const shell = useMemo(
     () => ({
@@ -374,6 +417,7 @@ export default function App() {
                 factory={factory}
                 onAction={(action) => action}
                 onModelChange={onModelChange}
+                onRenderTabSet={onRenderTabSet}
                 i18nTranslator={translate}
                 // 默认只有「关闭页签 / 重命名」有键位；焦点在面板组之间移动的三条默认是关的——
                 // 不开它们，键盘用户进得来出不去
@@ -402,6 +446,9 @@ export default function App() {
               />
               {/* 关闭态把手挂在壳层：侧栏 weight≈0 时 panel 不挂载也能展开 */}
               <SidebarRescueFab model={model} />
+              {/* 壳层弹窗（.dlg 是 fixed 全屏蒙层，挂哪一层都盖住整窗）——
+                  目前只有页签条「清空本组」的确认框用 */}
+              {dialogNode}
             </ErrorBoundary>
           ) : (
             <div className="pad muted">正在装载工作区…</div>

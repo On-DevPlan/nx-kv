@@ -22,9 +22,6 @@ import {
   newId,
   boardKeyOf,
   boardRepoKeys,
-  boardMemberKeys,
-  autoKeysByPrefix,
-  prefixRulesOf,
   deriveKey,
   normalizeKey,
   findBoard,
@@ -45,9 +42,8 @@ const noteOf = (b, rkey) => (b.repoNotes || {})[rkey] || '';
  * 本地未拥有的成员没有登记，只有 key + （导入文件里的）名字。
  *   present   = 本地有没有这条登记
  *   clonable  = 有远程地址 → 可以一键 clone 补齐
- *   auto      = 由前缀规则自动归入（不是手动挂的成员）
  */
-function memberView(s, b, rkey, fallback, auto = false) {
+function memberView(s, b, rkey, fallback) {
   const note = noteOf(b, rkey);
   const local = s.repos.find((r) => deriveKey(r) === rkey);
   const base = {
@@ -64,30 +60,19 @@ function memberView(s, b, rkey, fallback, auto = false) {
     present: !!local,
     clonable: !!(local ? local.remote : fallback && fallback.remote),
     id: local ? local.id : '',
-    auto,
   };
   return base;
 }
 
-/** 看板成员 = 显式成员 + 前缀规则命中（去重，规则的排后面） */
-function membersOf(s, b, autoMap) {
-  const explicit = boardRepoKeys(b, s);
-  const auto = (autoMap || autoKeysByPrefix(s)).get(b.id) || [];
-  const seen = new Set(explicit);
-  const out = explicit.map((k) => memberView(s, b, k, null, false));
-  for (const k of auto) {
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(memberView(s, b, k, null, true));
-  }
-  return out;
+/** 看板成员（全是显式成员——前缀归组命令跑一次后也固化成显式成员） */
+function membersOf(s, b) {
+  return boardRepoKeys(b, s).map((k) => memberView(s, b, k, null));
 }
 
 export async function listBoards() {
   const s = await loadStore();
-  const autoMap = autoKeysByPrefix(s);
-  const inBoard = new Set(s.boards.flatMap((b) => boardMemberKeys(b, s, autoMap)));
-  const reposOf = (b) => membersOf(s, b, autoMap);
+  const inBoard = new Set(s.boards.flatMap((b) => boardRepoKeys(b, s)));
+  const reposOf = (b) => membersOf(s, b);
   return {
     boards: s.boards.map((b) => ({
       id: b.id,
@@ -364,35 +349,22 @@ export async function exportBoards() {
   };
 }
 
-// ─── 前缀分组规则 ────────────────────────────────────────────────
+// ─── 按前缀归组（一次性命令）─────────────────────────────────────
 //
-// 规则 = 「仓库名以 prefix 开头 → 归入看板 X」。看板不存在时按名字自动建一个
-// （「nx 开头的仓库归一类」= 建一个叫 nx 的看板，规则指向它）。
-// 规则只影响**成员关系**，看板本身仍是唯一的分组载体。
+// 「把名字以 nx 开头的仓库归成一类」= 跑一次 `board prefix nx`：
+// 命中的仓库直接固化成看板的**显式成员**（repoKeys），与手工挂的完全同权。
+// 目标看板省略 = 用前缀当名字（不存在就建一个）。规则不驻留——之后再登记的
+// 仓库要再跑一次，成员关系的来源始终只有显式成员一种。
 
-/** 规则列表（带目标看板名与当前命中数） */
-export async function listPrefixRules() {
-  const s = await loadStore();
-  const autoMap = autoKeysByPrefix(s);
-  return {
-    groups: prefixRulesOf(s).map((g) => {
-      const b = findBoard(s, g.boardId || g.boardKey);
-      return {
-        prefix: String(g.prefix || ''),
-        boardId: b ? b.id : g.boardId || '',
-        boardKey: b ? boardKeyOf(b.name) : g.boardKey || '',
-        boardName: b ? b.name : '',
-        matched: b ? (autoMap.get(b.id) || []).length : 0,
-        alive: !!b,
-      };
-    }),
-  };
-}
-
-/** 新增/覆盖一条规则（同 prefix 覆盖）。board 省略 = 用 prefix 当看板名（不存在则建） */
-export async function addPrefixRule({ prefix: rawPrefix, board: rawBoard } = {}) {
+/**
+ * 按前缀归组：名字以 prefix 开头（大小写不敏感）的已登记仓库 → 挂进目标看板。
+ * 返回 { prefix, boardName, boardCreated, added, total }：
+ *   added = 这次新挂进去的个数（已在内的不动、不重复、不调位次）；
+ *   total = 命令后看板的成员总数。
+ */
+export async function applyPrefixGroup({ prefix: rawPrefix, board: rawBoard } = {}) {
   const prefix = String(rawPrefix || '').trim();
-  if (!prefix) throw badInput('需要前缀 <prefix>（如 nx：nx-* 的仓库归一类）');
+  if (!prefix) throw badInput('需要前缀 <prefix>（如 nx：把名字以 nx 开头的仓库归一类）');
   return mutateStore((s) => {
     const want = String(rawBoard || '').trim() || prefix;
     let b = findBoard(s, want);
@@ -401,54 +373,23 @@ export async function addPrefixRule({ prefix: rawPrefix, board: rawBoard } = {})
       b = {
         id: newId('b'),
         name: want,
-        desc: `按前缀「${prefix}」自动归组`,
+        desc: `按前缀「${prefix}」归组`,
         createdAt: new Date().toISOString(),
         repoKeys: [],
-        autoPrefix: prefix, // 由规则建的看板：规则删掉时若无手动成员，一并清掉
       };
       s.boards.push(b);
       created = true;
     }
-    s.prefixGroups = (s.prefixGroups || []).filter(
-      (g) => String(g.prefix || '').toLowerCase() !== prefix.toLowerCase()
-    );
-    s.prefixGroups.push({ prefix, boardId: b.id, boardKey: boardKeyOf(b.name) });
-    const matched = (autoKeysByPrefix(s).get(b.id) || []).length;
-    return { prefix, boardId: b.id, boardName: b.name, boardCreated: created, matched };
-  });
-}
-
-/**
- * 删规则（不动看板本身——手动成员还在）。
- * 但**规则建的空看板**会一起清掉：规则没了，组也就没了，留个空壳只是噪音。
- * 判据：看板由该规则创建（autoPrefix 相同）+ 没有手动成员 + 没有别的规则指向它。
- */
-export async function removePrefixRule({ prefix: rawPrefix } = {}) {
-  const prefix = String(rawPrefix || '').trim();
-  if (!prefix) throw badInput('需要前缀 <prefix>');
-  return mutateStore((s) => {
-    const before = (s.prefixGroups || []).length;
-    const rule = (s.prefixGroups || []).find(
-      (g) => String(g.prefix || '').toLowerCase() === prefix.toLowerCase()
-    );
-    s.prefixGroups = (s.prefixGroups || []).filter(
-      (g) => String(g.prefix || '').toLowerCase() !== prefix.toLowerCase()
-    );
-    const removed = before - s.prefixGroups.length;
-    if (!removed) throw notFound(`没有前缀为「${prefix}」的规则`);
-
-    let boardRemoved = '';
-    if (rule) {
-      const b = findBoard(s, rule.boardId || rule.boardKey);
-      const explicit = b ? boardRepoKeys(b, s).length : 0;
-      const stillUsed = (s.prefixGroups || []).some(
-        (g) => g.boardId === (b && b.id) || (b && g.boardKey === boardKeyOf(b.name))
-      );
-      if (b && b.autoPrefix && String(b.autoPrefix) === prefix && !explicit && !stillUsed) {
-        s.boards = s.boards.filter((x) => x.id !== b.id);
-        boardRemoved = b.name;
-      }
+    if (!Array.isArray(b.repoKeys)) b.repoKeys = [];
+    const p = prefix.toLowerCase();
+    let added = 0;
+    for (const r of s.repos) {
+      if (!String(r.name || '').toLowerCase().startsWith(p)) continue;
+      const rk = deriveKey(r);
+      if (b.repoKeys.includes(rk)) continue;
+      b.repoKeys.push(rk);
+      added += 1;
     }
-    return { prefix, removed, boardRemoved };
+    return { prefix, boardId: b.id, boardName: b.name, boardCreated: created, added, total: b.repoKeys.length };
   });
 }

@@ -48,7 +48,6 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, refreshL
         pending: topic ? topic.pending || 0 : 0,
         waiting: !!(topic && topic.waiting),
         topicKey: topic ? topic.key : '',
-        auto: !!m.auto, // 前缀规则自动归入 vs 手动挂的
         present: m.present !== false,
         // 组内描述文档：绑定优先（外部 path 只读），缺省约定路径
         noteDocId: m.noteDocPath ? 'path:' + m.noteDocPath : 'rel:' + m.noteDocRel,
@@ -108,7 +107,6 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, refreshL
               <th scope="col">说明</th>
               <th scope="col" style={{ width: '10%' }}>文档</th>
               <th scope="col" style={{ width: '9%' }}>待领取</th>
-              <th scope="col" style={{ width: '9%' }}>归属</th>
             </tr>
           </thead>
           <tbody>
@@ -146,17 +144,12 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, refreshL
                     <span className="muted">—</span>
                   )}
                 </td>
-                <td>
-                  <span className={'rp-src' + (it.auto ? ' auto' : '')}>
-                    {it.auto ? '按前缀' : '手动'}
-                  </span>
-                </td>
               </tr>
             ))}
             {!items.length && (
               <tr>
-                <td colSpan="6" className="muted rp-empty">
-                  这个组还是空的 —— 加成员，或用「按前缀分组」规则自动归组。
+                <td colSpan="5" className="muted rp-empty">
+                  这个组还是空的 —— 点「添加成员」勾选，或跑 nx-kv board prefix &lt;前缀&gt; 按名字前缀批量挂入。
                 </td>
               </tr>
             )}

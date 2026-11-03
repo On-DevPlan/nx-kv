@@ -113,10 +113,12 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
 
   useEffect(() => {
     setSelMenu(null);
+    lastSel.current = '';
   }, [id]);
 
   useEffect(() => {
-    const close = () => setSelMenu(null);
+    // 滚动收起；正在写评论时不打断
+    const close = () => setSelMenu((cur) => (cur?.comment ? cur : null));
     document.addEventListener('scroll', close, true);
     return () => document.removeEventListener('scroll', close, true);
   }, []);
@@ -173,6 +175,11 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     const projTopic = fm.project
       ? rows.find((r) => !r.isGlobal && r.repo && r.repo.key === fm.project)
       : null;
+    // 组任务走与 CLI 同一条**严格口径**：显式交 board/project，服务端校验成员资格并
+    // 按项目登记路径路由（proj-a 还没有队列主题时也能落对地方——这正是组面板建任务
+    // 的常态）。认不出（成员已变 / 手写 frontmatter）就退回 fail-open 路径，不拦提交。
+    const groupSubmit = !!(boardCtx && fm.project &&
+      boardCtx.members.some((m) => m.key === fm.project));
     const gp = goalPatchOf();
     if (gp.error) {
       toast(gp.error);
@@ -201,22 +208,30 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     const res = await api('/api/localtasks', {
       method: 'POST',
       body: {
-        ...(projTopic
-          ? { cwd: projTopic.cwd, text: b }
-          : isGlobal
-            ? { global: true, text: b }
-            : { cwd: topic?.cwd, text: b }),
+        // 组任务：只给正文 + 归属，落点目录由服务端按项目登记路径推导——
+        // 不带 cwd / global（归属由 project 决定，与 CLI --board/--project 同一条路径）。
+        ...(groupSubmit
+          ? { text: b, board: boardCtx.board.id, project: fm.project }
+          : projTopic
+            ? { cwd: projTopic.cwd, text: b }
+            : isGlobal
+              ? { global: true, text: b }
+              : { cwd: topic?.cwd, text: b }),
         ...gp,
       },
     });
     const newId = res?.task?.id ?? res?.id;
     if (newId != null) {
+      // 落点 = 服务端返回的真实主题 key（组任务按 project 推导，可能是别的项目/目录）。
+      // 页签与文档都跟到真实落点——不然页签开着旧 scope，却指向别的队列里的任务号。
+      const landedKey = res?.key || dirKey;
+      const landedScope = scopeOf(landedKey);
       persistAtt(newId, doc.attachments);
-      const newDocId = docIdOf(scope, String(newId));
+      const newDocId = docIdOf(landedScope, String(newId));
       promoteDoc(id, newDocId, { title: t, body: b });
       // 页签的 config 换成新任务（否则刷新后还认着 draft 号）
       if (model && tabId) {
-        model.doAction(Actions.updateNodeAttributes(tabId, { config: { dirKey, task: String(newId) } }));
+        model.doAction(Actions.updateNodeAttributes(tabId, { config: { dirKey: landedKey, task: String(newId) } }));
       }
       setDirty(false);
       clearHistory(histRef.current, newDocId);
@@ -291,19 +306,54 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     if (!isDraft && patch.attachments) persistAtt(task, patch.attachments);
   };
 
-  const spawnFollow = (isIssue) => {
+  /** 划线评论 → 新任务：锚定选区原文，正文就是提出的问题 */
+  const spawnComment = (question) => {
     const quote = lastSel.current || '';
+    const q = String(question || '').trim();
     if (!quote) {
-      toast('先在预览中划选一段');
+      toast('先划选一段再评论');
+      return;
+    }
+    if (!q) {
+      toast('写一下要提的问题');
       return;
     }
     const parent = doc?.title || topic?.name || '';
-    const t = `${isIssue ? '问题' : '追加'}：${quote.slice(0, 24)}`;
-    const b = `# ${t}\n\n> 锚定自「${parent}」：\n> ${quote.replace(/\n/g, '\n> ')}\n\n## 要做什么\n- [ ] …\n\n## 验收\n- [ ] …\n`;
-    // 并发追加：开一个**新的页签**（工作区里并排开着，不打断当前这页）
+    const t = `问题：${q.slice(0, 28)}`;
+    const b = `# ${t}\n\n> 锚定自「${parent}」：\n> ${quote.replace(/\n/g, '\n> ')}\n\n## 问题\n${q}\n\n## 要做什么\n- [ ] …\n`;
     if (app.openPage) app.openPage({ dirKey, body: b, title: t });
     setSelMenu(null);
-    toast('已开新页签（并发追加）');
+    toast('已开新任务（评论）');
+  };
+
+  const closeSelMenu = () => {
+    setSelMenu(null);
+    lastSel.current = '';
+  };
+
+  /** 工具栏「评论」：只用当前可见选区；浮层已开时沿用其原文（正写评论） */
+  const openCommentFromToolbar = () => {
+    const live = String(window.getSelection() || '').trim();
+    const quote = live || (selMenu?.text ? String(selMenu.text) : '');
+    if (!quote) {
+      toast('先划选一段再评论');
+      return;
+    }
+    lastSel.current = quote;
+    const r = (() => {
+      try {
+        const sel = window.getSelection();
+        if (sel && !sel.isCollapsed) return sel.getRangeAt(0).getBoundingClientRect();
+      } catch { /* ignore */ }
+      return null;
+    })();
+    setSelMenu({
+      kind: selMenu?.kind || 'task',
+      text: quote,
+      comment: true,
+      x: Math.min(window.innerWidth - 300, Math.max(8, r ? r.left + r.width / 2 - 140 : (selMenu?.x ?? 80))),
+      y: Math.min(window.innerHeight - 240, Math.max(8, r ? r.bottom + 8 : (selMenu?.y ?? 120))),
+    });
   };
 
   /** 标题与正文首行 # 双向同步 */
@@ -345,22 +395,33 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     requestAnimationFrame(() => editorApiRef.current?.caretFromDiff?.(doc.body, snap.body));
   };
 
-  const placeSelMenu = (kind, text, x, y) => {
+  const placeSelMenu = (kind, text, x, y, extra = {}) => {
     lastSel.current = text;
     setSelMenu({
       kind,
       text,
-      x: Math.min(window.innerWidth - 220, Math.max(8, x)),
-      y: Math.min(window.innerHeight - 160, Math.max(8, y)),
+      ...extra,
+      x: Math.min(window.innerWidth - 300, Math.max(8, x)),
+      y: Math.min(window.innerHeight - 240, Math.max(8, y)),
     });
   };
 
   const onEditorTextSel = (info) => {
     if (!info?.text || info.text.length < 1) {
-      setSelMenu((cur) => (cur?.kind === 'format' ? null : cur));
+      // 评论撰写中选区会塌缩——浮层必须粘住
+      setSelMenu((cur) => (cur?.comment ? cur : null));
       return;
     }
-    placeSelMenu('format', info.text, info.x, info.y);
+    setSelMenu((cur) => {
+      if (cur?.comment) return cur;
+      lastSel.current = info.text;
+      return {
+        kind: 'format',
+        text: info.text,
+        x: Math.min(window.innerWidth - 300, Math.max(8, info.x)),
+        y: Math.min(window.innerHeight - 240, Math.max(8, info.y)),
+      };
+    });
   };
 
   const onPreviewMouseUp = (e) => {
@@ -369,16 +430,17 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     if (e.target.closest?.('textarea')) return;
     const sel = window.getSelection();
     const text = (sel && String(sel)).trim();
-    if (!text || text.length < 2) {
-      setSelMenu((cur) => (cur?.kind === 'task' ? null : cur));
+    if (!text || text.length < 1) {
+      setSelMenu((cur) => (cur?.comment ? cur : null));
       return;
     }
     if (!articleRef.current?.contains(sel.anchorNode)) {
-      setSelMenu((cur) => (cur?.kind === 'task' ? null : cur));
+      setSelMenu((cur) => (cur?.comment ? cur : null));
       return;
     }
+    if (selMenu?.comment) return; // 正写评论，别被新划选冲掉
     const r = sel.getRangeAt(0).getBoundingClientRect();
-    placeSelMenu('task', text, r.left + r.width / 2 - 100, r.bottom + 8);
+    placeSelMenu('task', text, r.left + r.width / 2 - 140, r.bottom + 8);
   };
 
   const pickAtt = (accept) => {
@@ -501,7 +563,7 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
           onShortcuts={() => setShowShortcuts(true)}
           onImport={() => fileMdRef.current?.click()}
           onNew={() => app.openPage && app.openPage({ dirKey, task: nextDraftId(), name: '新任务' })}
-          onMark={() => spawnFollow(true)}
+          onMark={openCommentFromToolbar}
           onDraft={() => toast('草稿随页签保留（刷新后需从侧栏或页签重新打开）')}
           onSubmit={submit}
           onDelete={isDraft ? null : delTask}
@@ -547,8 +609,7 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
           editorApiRef.current?.format?.(op);
           setSelMenu(null);
         }}
-        onIssue={() => spawnFollow(true)}
-        onAppend={() => spawnFollow(false)}
+        onComment={spawnComment}
         onCopy={() => {
           navigator.clipboard?.writeText(lastSel.current || selMenu?.text || '');
           toast('已复制');

@@ -143,12 +143,20 @@ projectDesc: KV 清单管理中枢：远程清单 + 本机任务队列
 - **改文案不丢 frontmatter**：`localtask update --text` / `localtask reopen --text`
   换正文时保留原 frontmatter（新正文自带的键优先，旧值补缺）——
   归组信息丢了，任务就会从组 / 项目面板里掉出去。
+- **面板里单独显示**：frontmatter 在 MD 工作台（实时预览 / 阅读）渲染成独立的
+  **属性卡**（键值表），自成一块、不与首行内容合并；点击卡片就地编辑这段
+  frontmatter（等宽小字），正文块不受影响。
 
 ### 2.3 正文自带 frontmatter 的提交口径（面板同源）
 
-面板「组面板 → 新增任务」先写草稿（草稿正文带 `board` + `project`），提交时走同一条
-`POST /api/localtasks`。服务端此时**不要求**再给 `--board/--project`，而是**读正文里的
-frontmatter** 补齐介绍引用——两条入口得到同一个结果（fail-open：解析不了就原样提交）。
+面板「组面板 → 新增任务」先写草稿（草稿正文带 `board` + `project`），提交时有两条路，
+殊途同归：
+
+- **组任务（认得出归属）**：面板显式交 `board` / `project`（等价于 CLI 的
+  `--board/--project`），服务端走同一条严格口径——校验成员资格与目录一致，
+  frontmatter 由服务端统一落字段；
+- **认不出归属**（rows 未就绪 / 成员已变 / 手写 frontmatter）：服务端**读正文里的
+  frontmatter** 补齐介绍引用（fail-open：解析不了就原样提交，不拦下任务）。
 
 CLI 也能走这条：正文以 `---` 开头不会被当成 flag（`---` 不是合法 flag 名），
 直接引号包住即可：
@@ -344,7 +352,7 @@ nx-kv localtask list                    # 主题总览
 | **C. 「持续 get」模板无条件投递** | 没开持续 get 的项目，交付里也带「继续调用 localtask get 直到超时」，与 instant 语义自相矛盾 | 只在 `loop.enabled` 时叠加模板 | `src/modules/tasktool/get.js` |
 | **D. 交付里没有「项目介绍」** | agent 知道组是干什么的，却不知道这个项目是干什么的 | 组上下文前补 `〔项目介绍 · X〕` 段；**不在任何组里的项目也带** | `src/modules/docs/knowledge.js`、`src/modules/tasktool/groupctx.js` |
 | **E. 改文案抹掉 frontmatter** | `reopen --text` / `update --text` 整段替换正文 → 归组信息没了 → 任务从组面板掉出去 | 换正文时保留原 frontmatter（新正文自带的键优先，旧值补缺） | `src/modules/localtask/frontmatter.js`、`src/modules/localtask/service.js` |
-| **F. 面板口径与 CLI 不同源** | 面板草稿自带 `board`+`project` 提交，服务端不补介绍引用 → 面板建的任务缺介绍 | 服务端读正文 frontmatter 补介绍引用（fail-open），两条入口同结果 | `src/modules/localtask/index.js` |
+| **F. 面板口径与 CLI 不同源** | ①面板草稿自带 `board`+`project` 提交，服务端不补介绍引用；②组面板建的任务在归属项目**还没有队列**时落进全局池；③提交后页签停在旧 scope，指向别的队列里的任务号 | 组任务显式交 `board`/`project`（与 CLI 同一条严格口径，落点由服务端按项目登记路径推导）；页签与文档跟到服务端返回的真实主题 key；认不出归属再走 fail-open 补引用 | `src/modules/localtask/index.js`、`src/web/frontend/page/dir/task.jsx` |
 | **G. 正文以 `---` 开头被当 flag** | `localtask add "---…"` 报「未知参数 ---」——带 frontmatter 的正文根本提交不上去 | 只把「像 flag」的 token（`--` + 字母/数字）当 flag；`---` 与 `--` 分别是正文与「后面全是位置参数」 | `src/runtime/cli.js` |
 
 > 回归测试：`tests/unit/localtask-group.test.mjs`（frontmatter / 介绍引用 / 保留 / 面板口径）、

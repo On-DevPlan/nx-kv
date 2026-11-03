@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useGuard, useDialog, useToast, Modal, Copyable } from '../../components/ui.jsx';
 import { CliHints } from '../../components/CliHints.jsx';
+import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
 
 const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
@@ -486,26 +487,7 @@ export default function ReposView() {
   // ---- 看板归属：**复制**，不是移动 ----
   // 加一个看板 = 多一份归属，仓库本体不动、别的看板也不动；
   // 移出某个看板 = 只摘那一份，仓库本体不动。
-  // 行内的加/摘入口已收进「成员管理」弹窗（toggleMember），表格式逐行操作太乱。
-  const toggleMember = (r, add) => guard(async () => {
-    await api('/api/boards/assign', {
-      method: 'POST',
-      body: add ? { id: r.key, board: impBoardId } : { id: r.key, board: impBoardId, remove: true },
-    });
-    setRepos((await api('/api/repos')) || []);
-    await loadBoards();
-  });
-
-  // 补齐占位成员：按 remote 克隆并用**占位的 key** 登记 → 组里的位置自动转正
-  const cloneMissing = (m) => guard(async () => {
-    if (!m.remote) return;
-    await api('/api/repos/clone', {
-      method: 'POST',
-      body: { remote: m.remote, key: m.key, type: m.type || 'dev', depth: 1 },
-    });
-    toast(`已克隆: ${m.name}`);
-    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
-  });
+  // 行内的加/摘入口收在「成员管理」弹窗（MemberPicker：项目 + 项目组，可搜索）。
 
   // ---- 看板管理 ----
   const saveBoard = () => guard(async () => {
@@ -725,7 +707,7 @@ export default function ReposView() {
             </span>
           )}
           <span className="acts">
-            <button className="btn small" onClick={() => setImpBoardId(filterBoard.id)}>导入仓库</button>
+            <button className="btn small" onClick={() => setImpBoardId(filterBoard.id)}>添加成员</button>
           </span>
         </div>
       ) : null}
@@ -921,9 +903,16 @@ export default function ReposView() {
             {!shown.length ? (
               <tr>
                 <td colSpan="4" className="muted rp-empty">
-                  {devRepos.length
-                    ? '这个看板还没有成员 —— 点上方「导入仓库」，从开发仓库里点选加入。'
-                    : '还没有登记开发仓库 —— 点「添加仓库」手工登记。参考仓库在「参考仓库」面板管理。'}
+                  {devRepos.length ? (
+                    <>
+                      这个组还没有成员{' '}
+                      {filterBoard ? (
+                        <button className="btn small" onClick={() => setImpBoardId(filterBoard.id)}>添加成员</button>
+                      ) : null}
+                    </>
+                  ) : (
+                    '还没有登记开发仓库'
+                  )}
                 </td>
               </tr>
             ) : null}
@@ -1076,41 +1065,15 @@ export default function ReposView() {
         </Modal>
       ) : null}
 
-      {/* 成员管理弹窗：一个看板的全部候选仓库，点选加入 / 摘除 —— 批量导入
-          不必回「全部」逐行找下拉。加/摘即存，弹窗保持打开，一次导一批。 */}
+      {/* 成员管理：项目 + 项目组，可搜索 —— 与组面板「添加成员」同一个组件 */}
       {impBoard ? (
-        <Modal title={`「${impBoard.name}」· 成员仓库`} onClose={() => setImpBoardId(null)}>
-          {impBoard.desc ? <div className="rp-imp-desc">{impBoard.desc}</div> : null}
-          <div className="rp-imp-list">
-            {/* 组里已有、本地还没有的成员（导入留下的占位）：位置留着，可一键 clone 补齐 */}
-            {(impBoard.repos || []).filter((m) => m.present === false).map((m) => (
-              <div className="rp-imp-item rp-member-missing" key={'miss-' + m.key}>
-                <span className="rp-imp-name">{m.name}</span>
-                <span className="rp-imp-path mono" title={m.remote || m.key}>{m.remote || m.key}</span>
-                {m.clonable ? (
-                  <button className="btn small" onClick={() => cloneMissing(m)}>克隆到本地</button>
-                ) : (
-                  <span className="muted" title="没有远程地址 —— 请自己在仓库里创建并指定同一个 key">需手工创建</span>
-                )}
-              </div>
-            ))}
-            {repos.map((r) => {
-              const inBoard = (r.boards || []).some((b) => b.key === (impBoard.key || `board/${impBoard.name}`));
-              return (
-                <div className="rp-imp-item" key={r.key}>
-                  <span className="rp-imp-name">{r.name}</span>
-                  <span className="rp-imp-path" title={r.path}>{r.path}</span>
-                  {inBoard ? (
-                    <button className="btn small ghost" onClick={() => toggleMember(r, false)}>摘除</button>
-                  ) : (
-                    <button className="btn small" onClick={() => toggleMember(r, true)}>加入</button>
-                  )}
-                </div>
-              );
-            })}
-            {!repos.length ? <div className="muted rp-empty">还没有登记仓库 —— 点「添加仓库」登记。</div> : null}
-          </div>
-        </Modal>
+        <MemberPicker
+          board={impBoard}
+          boards={boardList}
+          repos={repos}
+          onClose={() => setImpBoardId(null)}
+          onChanged={async () => { await Promise.all([loadRepos(), loadBoards()]); }}
+        />
       ) : null}
 
       {/* 克隆参考仓库弹窗：绑定走选项式勾选（不手填 id 字符串） */}

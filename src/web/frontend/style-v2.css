@@ -864,3 +864,50 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .rp-done-toggle { display: flex; align-items: center; gap: 5px; width: 100%; padding: 5px 6px 2px; border: 0; background: none; font-family:inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left; }
 .rp-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
 .rp-done-toggle .tri.open { transform: rotate(90deg); }
+
+/* ---------- 成员选择器（组面板「添加成员」/ 仓库页「成员管理」共用） ----------
+ * 界面自己说明自己：条目自带归属与规模，不写解释性段落。
+ */
+.rp-mp-box { width: min(760px, 96vw); }
+.rp-mp-body { padding: 10px 12px 12px; }
+.rp-mp-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border: 1px solid var(--soft-2); border-radius: var(--r8);
+  background: var(--paper); color: var(--faint);
+}
+.rp-mp-search input {
+  flex: 1 1 auto; min-width: 0; border: 0; background: none; outline: none;
+  font-family: inherit; font-size: 13px; color: var(--ink);
+}
+.rp-mp-count { flex: none; font-size: 11px; color: var(--faint); white-space: nowrap; }
+.rp-mp-empty { padding: 18px 4px; text-align: center; font-size: 12.5px; color: var(--faint); }
+
+.rp-mp-sec { margin-top: 12px; }
+.rp-mp-sec-h {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; color: var(--ink-2);
+  padding: 0 2px 6px; border-bottom: 1px solid var(--soft-2);
+}
+.rp-mp-sec-h b { font-weight: 600; color: var(--faint); }
+
+.rp-mp-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px; border-bottom: 1px solid var(--line);
+  font-size: 12.5px; color: var(--ink-2);
+}
+.rp-mp-row:last-child { border-bottom: 0; }
+.rp-mp-row:hover { background: var(--soft); }
+.rp-mp-row.on { background: var(--soft); }
+.rp-mp-row .btn { flex: 0 0 auto; }
+.rp-mp-name { flex: 0 0 auto; font-weight: 650; color: var(--ink); max-width: 32%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-mp-sub {
+  flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rp-mp-meta { flex: none; font-size: 11px; color: var(--faint); white-space: nowrap; }
+.rp-mp-tags { flex: none; display: flex; gap: 4px; }
+.rp-mp-tag {
+  font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 9px;
+  background: var(--soft); border: 1px solid var(--soft-2); color: var(--ink-2); white-space: nowrap;
+}
+.rp-mp-ghost .rp-mp-name { color: var(--mid); }

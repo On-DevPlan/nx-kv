@@ -10,6 +10,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/ui.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
+import MemberPicker from '../../components/board/member-picker.jsx';
 import { taskLabel } from '../../components/sidebar/model.js';
 import { useApp } from '../../app-context.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
@@ -24,6 +25,8 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
   // 手选的项目 key（空 = 跟随默认）；换组时键不在新成员表里，自动回默认
   // 已领取历史折叠态
   const [showDone, setShowDone] = useState(false);
+  // 「添加成员」就地弹窗（不跳仓库管理页——组面板里就地改归属）
+  const [addOpen, setAddOpen] = useState(false);
 
   const board = useMemo(
     () => boards.find((b) => b.id === dirKey) || boards.find((b) => b.key === dirKey) || null,
@@ -125,8 +128,8 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
           </button>
           <button
             className="btn small ghost"
-            title="在仓库页打开这个分组的成员管理（勾选本机仓库加入）"
-            onClick={() => onNavigate('#/repos?board=' + encodeURIComponent(board.id) + '&add=1')}
+            title="挑项目加进这个组（可搜索项目与项目组）"
+            onClick={() => setAddOpen(true)}
           >
             添加成员
           </button>
@@ -186,6 +189,17 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
       </div>
 
       <Introduction kind="board" owner={board} model={model} />
+
+      {/* 添加成员：就地弹窗（项目 + 项目组，可搜索） */}
+      {addOpen && board ? (
+        <MemberPicker
+          board={board}
+          boards={boards}
+          repos={repos}
+          onClose={() => setAddOpen(false)}
+          onChanged={() => app.refreshRepos && app.refreshRepos()}
+        />
+      ) : null}
 
     </div>
   );

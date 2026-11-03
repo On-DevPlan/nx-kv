@@ -54,6 +54,8 @@ function blockHtml(text, attachments) {
 /** 块类型 → 编辑态字号贴近渲染（避免「输入框感」） */
 function blockKind(text) {
   const t = String(text || '');
+  // frontmatter 块：预览态渲染成属性卡（renderMarkdownHtml），编辑态等宽小字
+  if (/^---\s*$/.test(t.split('\n', 1)[0] || '') && t.includes('\n')) return 'fm';
   if (/^#\s/m.test(t) && !/^##/m.test(t)) return 'h1';
   if (/^##\s/m.test(t) && !/^###/m.test(t)) return 'h2';
   if (/^###\s/m.test(t)) return 'h3';
@@ -75,7 +77,6 @@ function LiveBlock({
   onPasteFiles,
   onTaReady,
   onTextSel,
-  onInsertSlash,
   attachments,
   pendingSelRef,
   pendingFormatRef,
@@ -114,19 +115,6 @@ function LiveBlock({
   if (focused) {
     return (
       <div className={`mdw-lp-block is-edit kind-${kind}`} data-i={index}>
-        <button
-          type="button"
-          className="mdw-lp-grip"
-          title="插入 / 命令"
-          aria-label="插入斜杠命令"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onInsertSlash?.(index, taRef.current);
-          }}
-        >
-          ⋮⋮
-        </button>
         <textarea
           ref={taRef}
           className="mdw-lp-src"
@@ -169,7 +157,12 @@ function LiveBlock({
       data-i={index}
       role="button"
       tabIndex={0}
-      onClick={() => onFocus(index)}
+      onClick={() => {
+        // 划选评论：有选区时不进编辑，把选区留给上层 mouseup 浮层
+        const sel = window.getSelection();
+        if (sel && !sel.isCollapsed && String(sel).trim()) return;
+        onFocus(index);
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -177,19 +170,6 @@ function LiveBlock({
         }
       }}
     >
-      <button
-        type="button"
-        className="mdw-lp-grip"
-        title="编辑并插入 /"
-        aria-label="编辑并插入斜杠命令"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={(e) => {
-          e.stopPropagation();
-          onInsertSlash?.(index, null);
-        }}
-      >
-        ⋮⋮
-      </button>
       {html ? (
         <div className="mdw-lp-view" dangerouslySetInnerHTML={{ __html: html }} />
       ) : (
@@ -437,41 +417,6 @@ function LivePreview({
     const next = applySlashCommand(ta, cmd);
     setSlashBoth(null);
     if (next) applyBlockOp(idx, next);
-  };
-
-  /** ⋮⋮：聚焦块并在行首插入 `/` 打开命令菜单 */
-  const insertSlash = (index, ta) => {
-    setFocus(index);
-    const raw = normalizeBlockText(blocks[index] ?? '');
-    const apply = (el) => {
-      if (!el) return;
-      liveTaRef.current = el;
-      const s = el.selectionStart;
-      const lineStart = el.value.lastIndexOf('\n', s - 1) + 1;
-      const next = `${el.value.slice(0, lineStart)}/${el.value.slice(lineStart)}`;
-      const caret = lineStart + 1;
-      applyBlockOp(index, { value: next, start: caret, end: caret });
-      requestAnimationFrame(() => {
-        const t = liveTaRef.current;
-        if (t) refreshSlash(index, t);
-      });
-    };
-    if (ta) {
-      apply(ta);
-      return;
-    }
-    pendingSelRef.current = { index, start: 0, end: 0 };
-    requestAnimationFrame(() => {
-      const el = liveTaRef.current;
-      if (!el) {
-        applyBlockOp(index, { value: `/${raw}`, start: 1, end: 1 });
-        requestAnimationFrame(() => {
-          if (liveTaRef.current) refreshSlash(index, liveTaRef.current);
-        });
-        return;
-      }
-      apply(el);
-    });
   };
 
   const applyTurn = (index, turnId) => {
@@ -739,7 +684,6 @@ function LivePreview({
               onKeyDown={(e) => onKeyDown(i, e)}
               onPasteFiles={(files, ta) => ingestFiles(files, ta)}
               onTextSel={onTextSel}
-              onInsertSlash={insertSlash}
             />
           ))}
         </div>

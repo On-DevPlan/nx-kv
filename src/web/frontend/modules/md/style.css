@@ -321,18 +321,6 @@
   box-shadow:inset 3px 0 0 var(--mdw-accent);
 }
 
-/* 块把手：悬停/编辑时显示，点开浮层 */
-.mdw-lp-grip{
-  position:absolute;left:0;top:2px;width:18px;height:22px;padding:0;
-  border:0;border-radius:4px;background:transparent;cursor:grab;
-  color:var(--faint,#A9AEB4);font-weight:700;font-size:12px;line-height:22px;font-family:inherit;letter-spacing:-1px;
-  opacity:0;transition:opacity .12s,background .12s,color .12s;
-}
-.mdw-lp-block:hover .mdw-lp-grip,
-.mdw-lp-block.is-edit .mdw-lp-grip,
-.mdw-lp-grip:focus-visible{opacity:1}
-.mdw-lp-grip:hover{background:var(--soft,#F1F0EC);color:var(--mdw-accent)}
-
 .mdw-preview{overflow:auto;padding:0;background:var(--canvas,#F5F4F1)}
 .mdw-preview article{user-select:text}
 /* 阅读态题头：与 live 标题同一套字号/字距语言，正文同轴同宽 */
@@ -377,16 +365,10 @@
   resize:none;overflow:hidden;overflow-wrap:anywhere;
 }
 .mdw-lp-title::placeholder{color:var(--faint,#A9AEB4);font-weight:600}
-/* 标题与正文左对齐：正文块左侧留了 22px 把手位（.mdw-lp-block padding），
-   标题是独立的一行，缩进 22px 才与下面第一行文字齐平 */
-.mdw-lp input.mdw-lp-title,
-.mdw-lp textarea.mdw-lp-title{
-  padding-left:22px!important;
-}
 .mdw-lp-blocks{display:flex;flex-direction:column;gap:0}
-/* 块本身零 chrome —— 禁止底色/描边/圆角/焦点环；左侧留把手位 */
+/* 块本身零 chrome —— 禁止底色/描边/圆角/焦点环（无行首把手） */
 .mdw-lp-block{
-  position:relative;margin:0;padding:1px 0 1px 22px;border:0;background:transparent;
+  position:relative;margin:0;padding:1px 0;border:0;background:transparent;
   border-radius:0;box-shadow:none;outline:none;min-width:0;
 }
 .mdw-lp-block.is-view{cursor:text}
@@ -416,6 +398,29 @@
 .mdw-lp-block.kind-quote textarea.mdw-lp-src{
   padding-left:12px!important;border-left:2px solid var(--line,#E4E2DC)!important;color:var(--ink-2,#4B515A);
 }
+/* frontmatter 块的编辑态：等宽小字，与属性卡同一套度量（视图↔编辑零位移只保高，
+   字体换成 mono——键值本来就是结构化数据，等宽更可读） */
+.mdw-lp-block.kind-fm textarea.mdw-lp-src{
+  font-family:ui-monospace,Consolas,monospace;font-size:11.5px;line-height:1.6;padding:10px 0 6px!important;
+}
+
+/* frontmatter 属性卡：任务头部的结构化字段（board/project/介绍引用）单独成卡，
+   不与首行内容混排。live 预览块与阅读视图同一份渲染（md-parse frontmatterHtml）。 */
+.mdw-fm{
+  display:flex;flex-direction:column;gap:3px;
+  margin:0 0 10px;padding:9px 12px;
+  background:var(--canvas,#F5F4F1);
+  border:1px solid var(--line,#E4E2DC);
+  border-radius:8px;
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:11.5px;line-height:1.6;
+}
+.mdw-fm-row{display:flex;gap:8px;align-items:baseline;min-width:0}
+.mdw-fm-k{flex:none;color:var(--mid,#838A93)}
+.mdw-fm-k::after{content:':'}
+.mdw-fm-v{min-width:0;overflow-wrap:anywhere;color:var(--ink-2,#4B515A)}
+/* 阅读视图与模板预览同款（.mdw-preview 是阅读态容器） */
+.mdw-preview .mdw-fm{margin-top:2px}
 .mdw-lp-view{user-select:text;overflow-wrap:anywhere;word-break:break-word}
 .mdw-lp-view > :first-child{margin-top:0!important}
 .mdw-lp-view > :last-child{margin-bottom:0!important}
@@ -630,10 +635,41 @@
   border:1px solid var(--line,#E4E2DC);border-radius:8px;box-shadow:0 6px 20px rgba(20,22,26,.12);padding:4px;
 }
 .mdw-sel-menu.kind-format{min-width:0;padding:3px}
+.mdw-sel-menu.kind-comment{min-width:280px;max-width:min(360px, calc(100vw - 16px));padding:8px}
 .mdw-sel-menu .cap{font-size:10.5px;color:var(--faint,#A9AEB4);padding:4px 10px 2px}
-.mdw-sel-menu > button{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:6px;background:none;cursor:pointer;font-size:12px;font-family:inherit}
+.mdw-sel-menu > button{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:6px;background:none;cursor:pointer;font-size:12px;font-family:inherit;color:var(--ink,#16181C)}
 .mdw-sel-menu > button:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
 .mdw-sel-menu .sep{height:1px;background:var(--line,#E4E2DC);margin:4px 2px}
+.mdw-sel-comment{display:flex;flex-direction:column;gap:6px}
+.mdw-sel-comment-cap{font-size:10.5px;font-weight:650;color:var(--faint,#A9AEB4);letter-spacing:.02em}
+.mdw-sel-quote{
+  font-size:11.5px;line-height:1.45;color:var(--ink-2,#4B515A);
+  padding:6px 8px;border-radius:6px;background:var(--soft,#F1F0EC);
+  border-left:2px solid var(--mdw-accent,#2F6F5E);
+  overflow-wrap:anywhere;max-height:4.4em;overflow:hidden;
+}
+.mdw-sel-comment-ta{
+  display:block;width:100%;box-sizing:border-box;margin:0;padding:8px 9px;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;resize:vertical;min-height:64px;
+  font:400 12.5px/1.45 inherit;color:var(--ink,#16181C);background:var(--paper,#fff);
+  caret-color:var(--mdw-accent);
+}
+.mdw-sel-comment-ta:focus{
+  outline:none;border-color:var(--mdw-accent-line,#9CB8AE);
+  box-shadow:0 0 0 2px var(--mdw-accent-soft,#E8F2EE);
+}
+.mdw-sel-comment-ta::placeholder{color:var(--faint,#A9AEB4)}
+.mdw-sel-comment-acts{display:flex;justify-content:flex-end;gap:6px}
+.mdw-sel-comment-acts button{
+  border:0;border-radius:6px;padding:5px 10px;font:650 12px inherit;cursor:pointer;
+}
+.mdw-sel-comment-acts button.ghost{background:transparent;color:var(--ink-2,#4B515A)}
+.mdw-sel-comment-acts button.ghost:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+.mdw-sel-comment-acts button.primary{background:var(--mdw-accent,#2F6F5E);color:#fff}
+.mdw-sel-comment-acts button.primary:hover{filter:brightness(1.06)}
+.mdw-sel-comment-acts button.primary:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.mdw-sel-comment-hint{font-size:10.5px;color:var(--faint,#A9AEB4);text-align:right}
+.mdw-sel-fmt-btn.comment{font-family:inherit;font-weight:650;letter-spacing:0}
 /* 图床附件嵌入的渲染：文件=可下载 chip，图片=限宽圆角 */
 .md-att{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;margin:0 2px;border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--soft,#F1F0EC);color:inherit;text-decoration:none;font-size:12px;vertical-align:baseline}
 .md-att:hover{border-color:var(--mdw-accent,#2F6F5E);color:var(--mdw-accent)}

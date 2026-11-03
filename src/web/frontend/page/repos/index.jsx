@@ -16,7 +16,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useGuard, useDialog, useToast, Modal, Copyable } from '../../components/ui.jsx';
-import { CliHints } from '../../components/CliHints.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
 
@@ -919,8 +918,6 @@ export default function ReposView() {
           </tbody>
         </table>
       </div>
-
-      <CliHints module="repos" />
 
       {/* 添加 / 编辑仓库弹窗 */}
       {formOpen ? (

@@ -136,6 +136,10 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
         </div>
       </div>
 
+      {/* 组介绍（board/<组>.md，文字超链接打开 DocPanel）放在本组任务**上方**——
+          先看这个组是干什么的，再看活儿 */}
+      <Introduction kind="board" owner={board} model={model} />
+
       {/* 首屏：本组任务面板——只列 frontmatter.board 指向本组的任务，项目 tag 标归属 */}
       <div className="rp-tasks">
         <div className="rp-tasks-h">
@@ -187,8 +191,6 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
           </>
         )}
       </div>
-
-      <Introduction kind="board" owner={board} model={model} />
 
       {/* 添加成员：就地弹窗（项目 + 项目组，可搜索） */}
       {addOpen && board ? (

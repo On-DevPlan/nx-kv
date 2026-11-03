@@ -11,6 +11,7 @@ import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/ui.jsx';
 import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
+import { buildReopenText } from '../../../../modules/localtask/reopen-text.js';
 import ToolBar from '../../components/md/tool-bar.jsx';
 import { MdPanes } from '../../components/md/md-panes.jsx';
 import AttachBar from '../../components/md/attach-bar.jsx';
@@ -135,14 +136,15 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     const title = doc?.title || `#${task}`;
     guard(async () => {
       // 反馈是**追加**不是替换：reopen 的 text 是整段新正文，直接把反馈当正文发
-      // 会把原任务丢掉。拼成「原正文 + 验收反馈」，反馈逐行加粗（用户口径：
-      // 重开的任务要携带着反馈文字在正文中，最好加粗）。
-      const base = String(doc?.body || '').trim();
-      const bold = fb
-        .split('\n')
-        .map((l) => `**${l}**`)
-        .join('\n');
-      const text = base ? `${base}\n\n## 验收反馈\n\n${bold}\n` : `${bold}\n`;
+      // 会把原任务丢掉。拼成「原正文 + 上一轮 ack 完成总结 + 验收反馈」——
+      // 重做后验收条会消失，上轮总结若不落进正文就没人看得见了（agent 下一轮
+      // 同样看不见：它只拿到正文）。反馈逐行加粗（用户口径：重开的任务要携带着
+      // 反馈文字在正文中，最好加粗）。
+      const text = buildReopenText({
+        base: doc?.body || '',
+        feedback: fb,
+        ackSummary: taskRow?.roundSummary || '',
+      });
       await api('/api/localtasks/reopen', {
         method: 'POST',
         body: {
@@ -151,6 +153,12 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
           text,
         },
       });
+      // 把重开后的正文写回**打开的这份文档**：文档是会话内存里的副本，重开只改了
+      // 服务端队列正文——不写回的话，这一页显示的还是旧正文，用户看不到刚追加的
+      // 「上一轮完成总结 / 验收反馈」两段（agent 领到的新正文却是新的，两边对不上）。
+      // text 是拿 doc.body 拼的，未保存的编辑原样带在里面，不会被抹掉。
+      saveDoc(id, { title: titleFromMd(text), body: text });
+      setDirty(false);
       toast(`已重开「${title}」——agent 可再次领取`);
       refreshLocal();
     });

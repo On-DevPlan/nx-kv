@@ -3,11 +3,20 @@ import { useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useDialog, useToast } from '../../components/ui.jsx';
 import { PopMenu } from '../../components/overlay.jsx';
-import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
+import { GLOBAL_KEY, sortTasksForDisplay } from '../../../../modules/localtask/board.js';
+import {
+  FEEDBACK_HEADING,
+  PLAIN_FEEDBACK_HEADING,
+  buildReopenText,
+} from '../../../../modules/localtask/reopen-text.js';
+import { usePager } from '../../components/pager.jsx';
 import { useApp } from '../../app-context.jsx';
 import Landing from './landing.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
-import { nextDraftId } from '../../modules/md/doc-store.js';
+import { docIdOf, nextDraftId, peekDoc, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
+
+// 目录任务表每页条数（队列一长就翻页，不再一次渲染全部）
+const PAGE_SIZE = 20;
 
 export default function DirPanel({ dirKey }) {
   const { dialog, node: dialogNode } = useDialog();
@@ -40,7 +49,17 @@ export default function DirPanel({ dirKey }) {
     return repos.find((r) => String(r.path || '').replace(/\\/g, '/').toLowerCase() === cwd) || null;
   }, [topic, repos, isGlobal]);
 
-  const tasks = useMemo(() => (topic?.tasks || []).filter((t) => !t.deletedAt), [topic]);
+  // 显示序：未完成（待领取）优先，追加的新任务不会被历史埋在下面；
+  // 软删除的行不进表。分页：队列一长就翻页，不一次渲染全部。
+  const allTasks = useMemo(
+    () => sortTasksForDisplay((topic?.tasks || []).filter((t) => !t.deletedAt)),
+    [topic]
+  );
+  const pager = usePager(allTasks, PAGE_SIZE);
+  const pendingCount = useMemo(
+    () => allTasks.filter((t) => t.status !== 'consumed' && !t.migratedTo).length,
+    [allTasks]
+  );
   const guard = (fn) => fn().catch((e) => toast(String(e.message || e)));
 
   const openTask = (id) => {
@@ -49,7 +68,10 @@ export default function DirPanel({ dirKey }) {
 
   const newDraft = (body) => {
     const task = nextDraftId();
-    if (app.openPage) app.openPage({ dirKey, task, name: '新任务', body });
+    // 正文先写进 doc-store：openPage 只透传 dirKey / task / name，body 会被丢掉
+    // （按模板新建时丢的就是模板正文）。
+    saveDoc(docIdOf(scopeOf(dirKey), task), { title: '', body });
+    if (app.openPage) app.openPage({ dirKey, task, name: '新任务' });
   };
 
   const openTplPanel = () => {
@@ -88,14 +110,45 @@ export default function DirPanel({ dirKey }) {
         placeholder: '写下要改的地方（留空 = 只重开，不改正文）',
       });
       if (body === null || body === undefined) return;
+      // 反馈是**追加**不是替换：reopen 的 text 是整段新正文，直接把反馈当正文发过去
+      // 会把原任务丢掉（agent 下一轮只看得见这句反馈）。拼成「原正文 + 反馈」。
+      //
+      // 已完成的任务走 **ack 语义**：除了用户反馈，还要把上一轮 agent 的完成总结
+      // 追加进正文——重开后验收条消失，总结若不落进正文就没人看得见了。
+      // 未完成的任务只是「反馈修改」，保持旧口径（不追加总结、段名不同）。
+      const fb = String(body).trim();
+      const acked = !!t.completedAt;
+      const ackSummary = acked ? t.roundSummary || '' : '';
+      // 没有新增内容 → 不带 text 字段（服务端只翻状态，正文一个字不动）。
+      const text =
+        fb || ackSummary
+          ? buildReopenText({
+              base: t.text || '',
+              feedback: fb,
+              ackSummary,
+              feedbackHeading: acked ? FEEDBACK_HEADING : PLAIN_FEEDBACK_HEADING,
+              bold: acked,
+            })
+          : '';
       await api('/api/localtasks/reopen', {
         method: 'POST',
         body: {
           ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic.cwd }),
           id: t.id,
-          ...(String(body).trim() ? { text: String(body) } : {}),
+          ...(text ? { text } : {}),
         },
       });
+      // 这条任务若在某个页签里开着，把新正文写回那份文档——否则页面还显示旧正文，
+      // 看不见刚追加的「上一轮完成总结 / 验收反馈」两段。
+      // 只在文档**与服务端一致**（没有未保存编辑）时写：文档里若有人改过，
+      // 那是他的活，别覆盖。
+      if (text) {
+        const docKey = docIdOf(scopeOf(dirKey), t.id);
+        const open = peekDoc(docKey);
+        if (open && String(open.body || '').trim() === String(t.text || '').trim()) {
+          saveDoc(docKey, { body: text });
+        }
+      }
       toast(`已重开「${title.replace(/^#\s*/, '')}」——agent 可再次领取`);
       refreshLocal();
     });
@@ -158,7 +211,12 @@ export default function DirPanel({ dirKey }) {
           topic={topic}
           repo={repo}
           model={model}
-          tasks={tasks}
+          tasks={pager.items}
+          taskCount={pager.total}
+          pendingCount={pendingCount}
+          page={pager.page}
+          pageCount={pager.pageCount}
+          onPage={pager.setPage}
           onNew={() => newDraft(tpl ? tpl.defaultBody() : '')}
           onOpenTask={openTask}
           onDeleteTask={delTask}

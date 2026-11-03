@@ -401,7 +401,15 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     lastSel.current = '';
   };
 
-  /** 划线评论 → 新任务：锚定选区原文，正文就是提出的问题 */
+  /** 划线评论 → **直接提交**成新任务：锚定选区原文，正文就是提出的问题。
+   *
+   * 两条口径（用户验收反馈 2026-11-04）：
+   *   1. 原任务带工作组语义（frontmatter 里的 board / project）→ 评论出的新任务
+   *      **也归该组**。不继承的话，这条问题会从组面板里掉出去——用户是在组里
+   *      提问的，闭环断在半路。正文整块继承原 frontmatter（归属 + 介绍引用）。
+   *   2. 评论**直接提交**，不再先落成草稿、让人再点一次提交。评论是提问不是
+   *      写作，多一道编辑页就多一次流失；提交完再打开新任务页（看得到提交了什么）。
+   */
   const spawnComment = (question) => {
     const quote = lastSel.current || '';
     const q = String(question || '').trim();
@@ -415,15 +423,22 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     }
     const parent = doc?.title || topic?.name || '';
     const t = `问题：${q.slice(0, 28)}`;
-    const b = `# ${t}\n\n> 锚定自「${parent}」：\n> ${quote.replace(/\n/g, '\n> ')}\n\n## 问题\n${q}\n\n## 要做什么\n- [ ] …\n`;
-    // 草稿正文必须**先写进 doc-store**：openPage 只透传 dirKey / task / name，
-    // body 会被丢掉——只 openPage 的话新页签是张空页，评论等于没提交
-    // （组面板「新增任务」用的是同一套写法）。
-    const draftId = nextDraftId();
-    saveDoc(docIdOf(scope, draftId), { title: t, body: b });
-    if (app.openPage) app.openPage({ dirKey, task: draftId, name: t });
-    closeSelMenu();
-    toast('已开新任务（评论）');
+    const raw = `# ${t}\n\n> 锚定自「${parent}」：\n> ${quote.replace(/\n/g, '\n> ')}\n\n## 问题\n${q}\n\n## 要做什么\n- [ ] …\n`;
+    // 工作组语义继承：原任务的 frontmatter（board / project / 介绍引用）整块带过去
+    const b = withFrontmatter(raw, docFm);
+    guard(async () => {
+      // 落点 = 原任务所在队列（显式给 cwd：尊重当前落点，不被归属推导挪走）；
+      // 归属由正文 frontmatter 决定（服务端 fail-open 补介绍引用）。
+      const res = await api('/api/localtasks', {
+        method: 'POST',
+        body: isGlobal ? { global: true, text: b } : { cwd: topic?.cwd, text: b },
+      });
+      closeSelMenu();
+      toast('已提交问题（评论）');
+      refreshLocal();
+      const newId = res?.task?.id ?? res?.id;
+      if (newId != null && app.openPage) app.openPage({ dirKey, task: String(newId), name: t });
+    });
   };
 
   /** 工具栏「评论」：只用当前可见选区；浮层已开时沿用其原文（正写评论） */

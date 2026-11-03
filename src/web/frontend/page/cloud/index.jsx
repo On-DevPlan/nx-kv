@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useStore } from '../../store.jsx';
 import { useToast, useGuard, useDialog, Modal, Copyable } from '../../components/ui.jsx';
-import { CliHints } from '../../components/CliHints.jsx';
 import TaskEditor from '../../components/cloud/editor.jsx';
 import GroupPopup from '../../components/cloud/group-popup.jsx';
 import RowMenu from '../../components/cloud/row-menu.jsx';
@@ -449,7 +448,6 @@ export default function TodoView() {
       </div>
       ) : null}
 
-      <CliHints module="todo" />
       {/* 工作空间弹窗：清单的设置入口（切换 / 成员 / 改名 / 解散 / 新建） */}
       {showGroup ? <GroupPopup onClose={() => setShowGroup(false)} /> : null}
       {editing ? (

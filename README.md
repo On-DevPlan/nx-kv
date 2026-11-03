@@ -281,6 +281,10 @@ assets/kv-timegoal/         内置 skill：持续 N 小时任务的时间目标�
 分层由 `eslint.config.js` 的 `no-restricted-imports` 强制；
 `tests/unit/registry.test.mjs` 断言模块目录 ↔ 后端注册表 ↔ 前端视图注册表三方对齐。
 
+> **改本仓库代码时**：先看项目级 skill `.claude/skills/dev-nxkv/`——它是一份施工单
+> （分层地图、模块骨架、action 字段全表、CRUD 契约、注册三步、常见坑与验收命令）。
+> 在本仓库里开工的 agent 会自动带上它。
+
 ## 给 agent 用
 
 ```bash

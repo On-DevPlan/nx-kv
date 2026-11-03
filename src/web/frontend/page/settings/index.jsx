@@ -452,16 +452,6 @@ export default function SettingsPanel() {
             {prefs.defaultFolded ? '开' : '关'}
           </button>
         </div>
-        <div className="setp-row">
-          <span>看板默认收起</span>
-          <button
-            className={'toggle' + (prefs.defaultGroupFolded ? ' on' : '')}
-            onClick={() => patchPrefs({ defaultGroupFolded: !prefs.defaultGroupFolded })}
-          >
-            <span className="dot" />
-            {prefs.defaultGroupFolded ? '开' : '关'}
-          </button>
-        </div>
         {(prefs.hidden || []).length > 0 && (
           <div className="setp-row">
             <span>隐藏仓库 {prefs.hidden.length} 个</span>

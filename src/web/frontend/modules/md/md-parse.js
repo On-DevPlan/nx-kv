@@ -5,9 +5,14 @@
 // 收在 core 防两端漂移）。knownNames 是双链索引里的名字/路径集合（docs/index），
 // 不在其中 → 未解析态（虚线红）；不传 knownNames → 全部按已解析渲染（模板预览等场景）。
 import { normalizeWikiTarget } from '../../../../modules/docs/wikilink.js';
+import { looksLikeFileId } from '../../../../modules/todo/attach.js';
+// 任务 frontmatter（工作组语义）**共用模块内同一份实现**：CLI（node）与面板（浏览器）
+// 各写一套正则，必然出现「面板认得出、CLI 认不出」这种最难查的分叉。
+import { parseFrontmatter, stripFrontmatter, withFrontmatter } from '../../../../modules/localtask/frontmatter.js';
+export { parseFrontmatter, stripFrontmatter, withFrontmatter };
 
 export function titleFromMd(body, fallback = '未命名任务') {
-  const lines = String(body || '').split('\n');
+  const lines = stripFrontmatter(body).split('\n');
   for (const line of lines) {
     const m = line.match(/^#\s+(.+)$/);
     if (m) return m[1].trim();
@@ -78,7 +83,21 @@ function inline(s, knownNames) {
   const base = esc(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
-  return base.replace(/\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g, (_, target, label) => {
+  // 图床附件嵌入（2026-11-03 任务 #8）：图片 `![说明](fileId)`、文件 `[名字](fileId)`。
+  // fileId 判定与 modules/todo/attach.js 同一套（looksLikeFileId）——普通 URL / 相对路径
+  // 原样保留，不误伤普通 markdown 链接。base 已 esc，捕获组直接用，不再二次转义。
+  const withAtt = base
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, target) => {
+      const t = String(target ?? '').trim();
+      if (!looksLikeFileId(t)) return m;
+      return `<img class="md-att-img" src="/api/file/content/${t}" alt="${alt}">`;
+    })
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, target) => {
+      const t = String(target ?? '').trim();
+      if (!looksLikeFileId(t)) return m;
+      return `<a class="md-att" href="/api/file/content/${t}" download="${text}" title="附件：${text}">${text}</a>`;
+    });
+  return withAtt.replace(/\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g, (_, target, label) => {
     const t = target.trim();
     const text = (label || target).trim();
     const miss = knownNames && !wikiKnown(t, knownNames);
@@ -96,7 +115,7 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
   for (const a of attachments) {
     if (a.type === 'image' && a.url) imgMap[a.name] = a.url;
   }
-  const lines = String(src || '').split('\n');
+  const lines = stripFrontmatter(src).split('\n');
   let html = '';
   let inUl = false;
   let inCode = false;
@@ -127,6 +146,13 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
     const img = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
     if (img) {
       flush();
+      const target = img[2].trim();
+      // 整行图片嵌入走图床时（![说明](fileId)）直接用面板内容端点直出——
+      // 不依赖 attachments 列表（localStorage 时代的 name→dataURL 映射）。
+      if (looksLikeFileId(target)) {
+        html += `<p><img class="md-att-img" src="/api/file/content/${target}" alt="${esc(img[1])}"></p>`;
+        continue;
+      }
       const raw = imgMap[img[2]] || img[2];
       const safe = /^(data:|blob:|https?:|#)/.test(raw) ? raw : '';
       html += safe

@@ -72,9 +72,8 @@ export default function Sidebar({
     });
   }, []);
 
-  // 点击：看板 = 进组视图（组里的子目录表）；仓库 = 进目录（子任务表）；
-  // 全局 = 进全局池。**展开/收起挪到 chevron 上** —— 点行是「去看内容」，
-  // 点 chevron 才是「在树里展开」（两件事分开，别抢同一个点击）。
+  // 点击：看板 = 进组视图（**组是叶子，成员在组面板里下拉选择**，树里不再铺子文件）；
+  // 仓库 = 进目录（子任务表）；全局 = 进全局池。
   // 仓库行没有任务队列时（topicKey 为空）点行 = 先建队列再进（与「新建页」同一套）。
   const openRow = useCallback(
     (row) => {
@@ -91,18 +90,16 @@ export default function Sidebar({
     [onNavigate, refreshLocal, toast]
   );
 
-  // chevron：展开/收起（看板 = 成员；仓库 = 子任务）
+  // chevron：展开/收起（仓库 = 子任务；看板是叶子，没有展开态）
   const toggleRow = useCallback(
     (row) => {
-      if (row.type === 'board') {
-        patchPrefs((p) => ({ groupOpen: { ...(p.groupOpen || {}), [row.id]: !row.open } }));
-      } else if (row.type === 'global') {
+      if (row.type === 'global') {
         onNavigate('#/global');
       } else {
         toggleExpanded(row.topicKey || row.key);
       }
     },
-    [patchPrefs, onNavigate, toggleExpanded]
+    [onNavigate, toggleExpanded]
   );
 
   // ─── 键盘导航：↑↓ 在可见行间移动（序 = 渲染序），Enter 打开，Esc 退出 ───
@@ -271,7 +268,7 @@ export default function Sidebar({
           row.type === 'board' ? (
             <button
               key={'b:' + row.id}
-              className={'trow group' + (row.open ? ' open' : '') + (kbIndex === i ? ' kb-focus' : '')}
+              className={'trow group' + (isActive(row) ? ' active' : '') + (kbIndex === i ? ' kb-focus' : '')}
               onClick={() => openRow(row)}
               onContextMenu={(e) => openRowMenu(e, row)}
               draggable
@@ -281,20 +278,21 @@ export default function Sidebar({
               onDragLeave={onDragLeave}
               onDrop={(e) => onDrop(e, row)}
               data-drop={dropHint?.id === row.id ? dropHint.zone : undefined}
-              title={row.desc || row.name}
+              title={`${row.name} · ${row.count} 个目录\n${row.desc || '项目组：点进去操作组下的项目'}`}
             >
-              <span
-                className="tw" role="button" tabIndex={-1} aria-label={row.open ? '收起分组' : '展开分组'}
-                onClick={(e) => { e.stopPropagation(); toggleRow(row); }}
-              >
-                <Icon name="chevron" size={10} />
-              </span>
+              {/* 组是叶子：占位只为了与其它行对齐，不给可展开的假提示 */}
+              <span className="tw" aria-hidden />
               <span className="gico"><Icon name="folder" /></span>
-              <span className="nm">{row.name}</span>
-              <span className="cnt">{row.count}</span>
+              <span className="nm">
+                {row.name}
+                {row.waiting ? <span className="wdot" title="组内有 agent 等待回填" /> : null}
+              </span>
+              <span className="cnt" title={`待领取 ${row.pending} · 成员 ${row.count} 个`}>
+                {row.pending > 0 ? row.pending : row.count}
+              </span>
               <span
                 className="more" role="button" tabIndex={-1} aria-label="看板菜单"
-                onClick={(e) => openRowMenu(e, { ...row, open: row.open })}
+                onClick={(e) => openRowMenu(e, row)}
               >
                 <Icon name="dots" size={13} />
               </span>

@@ -3,18 +3,18 @@
 // 以前这里还存着 groups / dirGroups（侧边栏自己的「分组」），那套东西与仓库页的
 // 看板（board）是两套互不相干的存储：换浏览器分组就没了，改看板侧边栏也不知道。
 // 2026-10-29 起分组统一走看板，prefs 只剩 UI 层的几件事：
-//   order / hidden / groupOpen / folded —— 排序、隐藏、展开态、收起态。
+//   order / hidden / folded —— 排序、隐藏、收起态。
+//   （groupOpen / defaultGroupFolded 已随「组不再在树里展开」一起退役：组是叶子，
+//   成员在组详情面板里下拉选择，树里没有可折叠的组。）
 //
-// 键位与既有 nx-kv-ui 分开：这里只存侧边栏编排/折叠态/默认收起三件事。
+// 键位与既有 nx-kv-ui 分开：这里只存侧边栏编排/收起态几件事。
 const KEY = 'nx-kv-sidebar-v1';
 
 const DEFAULTS = {
   order: [],        // 顶层条目序：['board:<id>' | '<仓库key>']（未列出的按自然序追加）
   hidden: [],       // 隐藏的仓库 key（只是不显示，登记与数据不动）
-  groupOpen: {},    // 看板 id -> bool（展开态）
   folded: false,    // 侧边栏当前收起态
   defaultFolded: false,  // 进入面板时默认收起侧边栏
-  defaultGroupFolded: false, // 看板初始展开态
 };
 
 // 旧结构里的 groups / dirGroups —— 它们是**独立的假数据**，不迁移、直接丢弃。

@@ -44,6 +44,9 @@
   padding:4px 14px;background:var(--paper,#fff);border-bottom:1px solid var(--line,#E4E2DC);
 }
 .mdw-goal-lab{flex:none;font-size:11px;font-weight:600;color:var(--mid,#838A93)}
+.mdw-proj-pick{flex:none;max-width:240px;height:24px;padding:0 8px;font-size:11.5px;border:1px solid var(--line,#E4E2DC);border-radius:6px;background:transparent;color:inherit}
+.mdw-proj-pick:focus-visible{outline:none;border-color:var(--mdw-accent)}
+.mdw-proj-ro{font-size:11.5px;color:var(--mid,#838A93)}
 .mdw-goal-dur{flex:0 0 200px;height:24px;padding:0 8px;font-size:11.5px;border:1px solid var(--line,#E4E2DC);border-radius:6px;background:transparent;color:inherit}
 .mdw-goal-dur:focus{outline:none;border-color:var(--mdw-accent)}
 .mdw-goal-prompt{flex:1;min-width:0;height:24px;padding:0 8px;font-size:11.5px;border:1px solid var(--line,#E4E2DC);border-radius:6px;background:transparent;color:inherit}
@@ -621,6 +624,10 @@
 .mdw-sel-menu > button{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:6px;background:none;cursor:pointer;font:12px inherit}
 .mdw-sel-menu > button:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
 .mdw-sel-menu .sep{height:1px;background:var(--line,#E4E2DC);margin:4px 2px}
+/* 图床附件嵌入的渲染：文件=可下载 chip，图片=限宽圆角 */
+.md-att{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;margin:0 2px;border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--soft,#F1F0EC);color:inherit;text-decoration:none;font-size:12px;vertical-align:baseline}
+.md-att:hover{border-color:var(--mdw-accent,#2F6F5E);color:var(--mdw-accent)}
+.md-att-img,.mdw-lp-view img,.mdw-preview img,article img{max-width:100%;height:auto;border-radius:6px}
 .mdw-sel-fmt{display:flex;align-items:center;gap:2px;padding:2px}
 .mdw-sel-sep{width:1px;height:16px;background:var(--line,#E4E2DC);margin:0 3px;flex:none}
 .mdw-sel-fmt-btn{

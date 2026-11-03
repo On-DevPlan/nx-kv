@@ -87,21 +87,33 @@ export function resolveCommand(argv) {
   return best ? { ...best, rest: argv.slice(bestLen) } : null;
 }
 
+// 「像 flag」的 token：-- 后跟字母/数字才算。
+// `---` 开头的是**正文**（markdown frontmatter / 分隔线），`--` 是「后面全是位置参数」
+// 的约定——两者都不是 flag。任务正文以 frontmatter 开头时（`localtask add "---
+// board: …"`）正需要这条，否则会被当成未知参数报错。
+function looksLikeFlag(tok) {
+  return /^--[A-Za-z0-9]/.test(String(tok ?? ''));
+}
+
 // 解析剩余 token。布尔 flag 不吞下一个 token —— 否则 `skill install --force demo`
 // 会把 force 解析成字符串 'demo'，而 demo 本该是位置参数。
 // 任务文本带空格时给 `--ref` 加引号（见 spec.js 关于 rest flag 的说明）。
-function parseRest(rest, cmd) {
+export function parseRest(rest, cmd) {
   const bools = booleanFlagNames(cmd);
   const positionals = [];
   const flags = {};
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
-    if (!a.startsWith('--')) { positionals.push(a); continue; }
+    if (a === '--') {
+      positionals.push(...rest.slice(i + 1));
+      break;
+    }
+    if (!looksLikeFlag(a)) { positionals.push(a); continue; }
     const eq = a.indexOf('=');
     if (eq > 2) { flags[a.slice(2, eq)] = a.slice(eq + 1); continue; }
     const key = a.slice(2);
     const next = rest[i + 1];
-    if (!bools.has(key) && next !== undefined && !next.startsWith('--')) {
+    if (!bools.has(key) && next !== undefined && !looksLikeFlag(next)) {
       flags[key] = next;
       i++;
     } else {

@@ -6,6 +6,7 @@
 //    保持在原本的提示此任务下面对上下文环境进行一个封装」
 //
 // 也就是说：agent 领到「组内某个仓库」的任务时，除了任务本身，还要知道
+//   - 这个项目是干什么的（项目介绍）
 //   - 这个组是干什么的（组介绍 md / 组描述）
 //   - 本项目在组里占什么位置（组内描述）
 //   - 组里还有谁、各自什么角色（兄弟仓库的组内描述）
@@ -22,7 +23,14 @@ async function docsService() {
   return docsMod;
 }
 
-const MAX_INTRO_CHARS = 2400; // 组介绍正文上限：太长就截断并指向全文路径
+const MAX_INTRO_CHARS = 2400; // 介绍正文上限：太长就截断并指向全文路径
+
+/** 介绍正文截断（超过上限就截，并给出全文路径） */
+function clipIntro(body, path) {
+  const text = String(body || '');
+  if (text.length <= MAX_INTRO_CHARS) return text.trim();
+  return text.slice(0, MAX_INTRO_CHARS).trim() + (path ? `\n（全文：${path}）` : '…');
+}
 
 /**
  * 读某个工作目录所属的项目组上下文。
@@ -39,22 +47,26 @@ export async function readGroupContext(cwd) {
 
 /**
  * 把组上下文渲染成交付文本里的一段。
- * 结构：组概念 → 本项目位置 → 兄弟成员 → 参考文件地址。
+ * 结构：项目介绍 → 组概念 → 本项目位置 → 兄弟成员 → 参考文件地址。
+ *
+ * 项目介绍**不带组也要给**：项目级任务（不在任何组里的仓库）同样要知道自己是谁。
  */
 export function renderGroupContext(ctx) {
-  if (!ctx || !ctx.groups || !ctx.groups.length) return '';
+  if (!ctx) return '';
   const lines = [];
+  const repo = ctx.repo || {};
+  if (repo.intro && repo.intro.body) {
+    lines.push(`〔项目介绍 · ${repo.name || repo.key || ''}〕${repo.intro.path ? `（${repo.intro.path}）` : ''}：`);
+    lines.push(clipIntro(repo.intro.body, repo.intro.path));
+    lines.push('');
+  }
+  if (!ctx.groups || !ctx.groups.length) return lines.join('\n').trim();
   for (const g of ctx.groups) {
     lines.push(`〔项目组上下文 · ${g.name}〕`);
     if (g.desc) lines.push(`组定位：${g.desc}`);
     if (g.intro && g.intro.body) {
-      const body = String(g.intro.body);
-      const cut = body.length > MAX_INTRO_CHARS ? body.slice(0, MAX_INTRO_CHARS) + '…' : body;
       lines.push(`组介绍（${g.intro.path || 'docs'}）：`);
-      lines.push(cut.trim());
-      if (body.length > MAX_INTRO_CHARS && g.intro.path) {
-        lines.push(`（组介绍全文：${g.intro.path}）`);
-      }
+      lines.push(clipIntro(g.intro.body, g.intro.path));
     }
     if (g.note) lines.push(`本项目在组里的位置：${g.note}`);
     if (g.peers && g.peers.length) {

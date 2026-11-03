@@ -20,7 +20,7 @@ import { useApp } from '../../app-context.jsx';
 import { openPanel } from '../../workspace.js';
 import { filesToAttachments, persistAtt } from '../../components/md/attachments.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
-import { renderMarkdownHtml, slugName, titleFromMd } from '../../modules/md/md-parse.js';
+import { renderMarkdownHtml, slugName, titleFromMd, parseFrontmatter, stripFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
 import {
   docIdOf,
   getDoc,
@@ -68,6 +68,25 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   const declaredGoal = taskRow?.timegoal || null;
   const goal = goalDraft || { duration: declaredGoal?.duration || '', prompt: declaredGoal?.prompt || '' };
   const goalEditable = isDraft || (!!taskRow && taskRow.status !== 'consumed');
+
+  // 工作组语义（frontmatter）：组面板「新增任务」创建的草稿带 board/project——
+  // 工具区给「归属项目」下拉（限本组成员），提交按 project 路由进对应项目的队列。
+  // 非组任务没有 frontmatter，整段不渲染，零噪音。
+  const docFm = useMemo(() => (doc ? parseFrontmatter(doc.body) : {}), [doc && doc.body]);
+  const boardCtx = useMemo(() => {
+    const bid = docFm.board;
+    if (!bid) return null;
+    const allBoards = (app.repoData && app.repoData.boards) || [];
+    const b = allBoards.find((x) => x.id === bid || x.key === bid || x.name === bid);
+    if (!b) return null;
+    const allRepos = (app.repoData && app.repoData.repos) || [];
+    const byKey = new Map(allRepos.map((r) => [r.key, r]));
+    const members = (b.repos || [])
+      .map((m) => byKey.get(m.key))
+      .filter(Boolean)
+      .map((r) => ({ key: r.key, name: r.name }));
+    return { board: b, members };
+  }, [docFm.board, app.repoData]);
 
   // 首开这一页时把内容「种」进去：真实任务用服务端正文，草稿用默认模板
   useEffect(() => {
@@ -140,9 +159,19 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   const submit = () => guard(async () => {
     if (!doc) return;
     const t = (doc.title || '').trim() || '未命名任务';
-    let b = doc.body;
-    if (!/^#\s+/m.test(b)) b = `# ${t}\n\n${b}`;
-    else b = b.replace(/^#\s+.+$/m, `# ${t}`);
+    // frontmatter 在文件头（组任务的工作组/项目语义），标题行要插在它**后面**——
+    // 剥出来处理再原样放回，保持 `---` 块始终在最前。
+    const fm = parseFrontmatter(doc.body);
+    const hasFm = Object.keys(fm).length > 0;
+    let bare = stripFrontmatter(doc.body);
+    if (!/^#\s+/m.test(bare)) bare = `# ${t}\n\n${bare}`;
+    else bare = bare.replace(/^#\s+.+$/m, `# ${t}`);
+    const b = hasFm ? withFrontmatter(bare, fm) : bare;
+    // 归属项目路由：frontmatter.project 指向本组成员 → 提交/同步走那个项目的队列
+    // （草稿可能挂在默认项目的 scope 下，提交落点以归属项目为准）。
+    const projTopic = fm.project
+      ? rows.find((r) => !r.isGlobal && r.repo && r.repo.key === fm.project)
+      : null;
     const gp = goalPatchOf();
     if (gp.error) {
       toast(gp.error);
@@ -152,8 +181,8 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
       await api('/api/localtasks/item', {
         method: 'PATCH',
         body: {
-          cwd: isGlobal ? undefined : topic.cwd,
-          key: isGlobal ? GLOBAL_KEY : undefined,
+          cwd: isGlobal ? (projTopic ? projTopic.cwd : undefined) : topic?.cwd,
+          key: isGlobal && !projTopic ? GLOBAL_KEY : undefined,
           id: Number(task),
           text: b,
           ...gp,
@@ -171,7 +200,11 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     const res = await api('/api/localtasks', {
       method: 'POST',
       body: {
-        ...(isGlobal ? { global: true, text: b } : { cwd: topic.cwd, text: b }),
+        ...(projTopic
+          ? { cwd: projTopic.cwd, text: b }
+          : isGlobal
+            ? { global: true, text: b }
+            : { cwd: topic?.cwd, text: b }),
         ...gp,
       },
     });
@@ -225,32 +258,36 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
 
   const addFiles = async (fileList, opts = {}) => {
     if (!doc) return;
-    const { items, imageInserts } = await filesToAttachments(fileList);
-    const patch = {};
-    if (imageInserts.length) {
-      const ins = imageInserts.join('');
-      const b = doc.body || '';
-      if (opts.insertAt != null && opts.insertAt >= 0) {
-        const at = Math.min(opts.insertAt, b.length);
-        patch.body = b.slice(0, at) + ins + b.slice(at);
-        if (opts.mode === 'edit') {
-          requestAnimationFrame(() => {
-            editorApiRef.current?.focus?.();
-            const ta = document.querySelector('.mdw-editor');
-            if (ta) {
-              const caret = at + ins.length;
-              try { ta.setSelectionRange(caret, caret); } catch { /* ignore */ }
-            }
-          });
-        }
-      } else {
-        patch.body = b + ins;
+    // 图床优先：图片嵌在光标处、文件追加文尾（嵌入即附件，正文随任务走）；
+    // 图床不可达时 items 带 dataURL 走 localStorage 老路（fileInserts 为空）。
+    const { items, imageInserts, fileInserts } = await filesToAttachments(fileList);
+    const b = doc.body || '';
+    const ins = imageInserts.join('');
+    let body = b;
+    if (ins && opts.insertAt != null && opts.insertAt >= 0) {
+      const at = Math.min(opts.insertAt, b.length);
+      body = b.slice(0, at) + ins + b.slice(at);
+      if (opts.mode === 'edit') {
+        requestAnimationFrame(() => {
+          editorApiRef.current?.focus?.();
+          const ta = document.querySelector('.mdw-editor');
+          if (ta) {
+            const caret = at + ins.length;
+            try { ta.setSelectionRange(caret, caret); } catch { /* ignore */ }
+          }
+        });
       }
+    } else if (ins) {
+      body = b + ins;
     }
-    patch.attachments = [...(doc.attachments || []), ...items];
+    if (fileInserts.length) body += fileInserts.join('');
+    const patch = {};
+    if (body !== b) patch.body = body;
+    if (items.length) patch.attachments = [...(doc.attachments || []), ...items];
+    if (!Object.keys(patch).length) return;
     saveDoc(id, patch);
     markDirty();
-    if (!isDraft) persistAtt(task, patch.attachments);
+    if (!isDraft && patch.attachments) persistAtt(task, patch.attachments);
   };
 
   const spawnFollow = (isIssue) => {
@@ -415,6 +452,39 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
             ) : (
               <span className="mdw-goal-ro mono" title={declaredGoal?.prompt || '已领取计时，声明不可改'}>
                 {declaredGoal?.duration || '—'} · 已领取计时
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* 归属项目（组任务）：组面板「新增任务」带 frontmatter 的草稿/任务才显示。
+            草稿与未领取可改（改写 frontmatter），已领取只读；提交按 project 路由队列。 */}
+        {boardCtx && (
+          <div className="mdw-goal">
+            <span
+              className="mdw-goal-lab"
+              title="归属项目（限本组成员）：决定提交进哪个项目的队列；由组面板「新增任务」创建时自动携带本组语义"
+            >
+              归属项目
+            </span>
+            {goalEditable ? (
+              <select
+                className="mdw-proj-pick"
+                value={docFm.project || ''}
+                onChange={(e) => {
+                  saveDoc(id, {
+                    body: withFrontmatter(doc.body, { ...docFm, board: boardCtx.board.id, project: e.target.value }),
+                  });
+                  markDirty();
+                }}
+              >
+                {boardCtx.members.map((m) => (
+                  <option key={m.key} value={m.key}>{m.name}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="mdw-proj-ro" title="归属项目（在本组创建时写入，随任务走）">
+                {(boardCtx.members.find((m) => m.key === docFm.project) || {}).name || docFm.project || '—'}
               </span>
             )}
           </div>

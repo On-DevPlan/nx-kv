@@ -3,9 +3,12 @@
    新增两个语义色：等待回填=琥珀、云端=青蓝；差异做进底色/描边，不做大面积色块。
    ════════════════════════════════════════════════════════════════ */
 :root {
-  --wait: #a86a12;        /* 语义：等待回填（琥珀） */
+  --wait: #a86a12;        /* 语义：警示/冻结/计时（琥珀；v2.1 起等待回填改用 --doing 蓝） */
   --wait-bg: #fbf3e4;
   --wait-line: #e8d5ab;
+  --doing: #2f5fb5;        /* 语义：等待回填（蓝）——「等待=蓝、完成=绿」全局统一（2026-11-03） */
+  --doing-bg: #edf2fc;
+  --doing-line: #c9d6f0;
   --cloud: #2b6a8f;       /* 语义：云端（青蓝） */
   --cloud-bg: #eef5f8;
   --faint: #76736c;       /* 弱文字（对 --paper ≈4.7:1，WCAG AA） */
@@ -280,7 +283,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 }
 .trow .wdot, .ov-chip .wdot, .railbtn .wdot {
   flex: none; width: 7px; height: 7px; border-radius: 50%;
-  background: var(--wait); box-shadow: 0 0 0 3px var(--wait-bg);
+  background: var(--doing); box-shadow: 0 0 0 3px var(--doing-bg);
 }
 .trow .more {
   flex: none; opacity: 0; width: 20px; height: 20px; border-radius: 5px;
@@ -416,10 +419,10 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .topbar .sum.editable { cursor: pointer; border-radius: 4px; }
 .topbar .sum.editable:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .badge-wait {
-  display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--wait);
-  background: var(--wait-bg); border: 1px solid var(--wait-line); border-radius: 20px; padding: 1px 8px; font-weight: 600; flex: none;
+  display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--doing);
+  background: var(--doing-bg); border: 1px solid var(--doing-line); border-radius: 20px; padding: 1px 8px; font-weight: 600; flex: none;
 }
-.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--wait); animation: pu 1.4s infinite; flex: none; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--doing); animation: pu 1.4s infinite; flex: none; }
 @keyframes pu { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 
 /* 任务源切换 */
@@ -491,7 +494,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .card .meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 7px; font-size: 10.5px; color: var(--faint); }
 .card .meta .tag { border: 1px solid var(--soft-2); border-radius: 8px; padding: 0 6px; line-height: 15px; }
 .card .meta .tag.src { color: var(--cloud); border-color: #bcd6e2; background: #f2f8fb; }
-.card .meta .tag.waitt { color: var(--wait); border-color: var(--wait-line); background: var(--wait-bg); }
+.card .meta .tag.waitt { color: var(--doing); border-color: var(--doing-line); background: var(--doing-bg); }
 .card .meta .grow { flex: 1; }
 .card .ops { position: absolute; top: 5px; right: 5px; display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s; }
 .card:hover .ops { opacity: 1; }
@@ -511,8 +514,8 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 @keyframes cardfail { 0%, 60% { box-shadow: 0 0 0 3px var(--danger); border-color: var(--danger); } 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); } }
 .card.tomb { background: transparent; border-style: dashed; color: var(--faint); }
 .card.tomb .tx { color: var(--ink-2); }
-.waitcard { border-color: var(--wait-line); background: var(--wait-bg); }
-.waitcard .wt { font-size: 12px; font-weight: 700; color: var(--wait); display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.waitcard { border-color: var(--doing-line); background: var(--doing-bg); }
+.waitcard .wt { font-size: 12px; font-weight: 700; color: var(--doing); display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
 
 /* 新任务输入条 */
 .newtask { flex: none; display: flex; gap: 8px; padding: 0 12px 10px; }
@@ -608,14 +611,14 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .ov-chip.on:hover { border-color: color-mix(in srgb, #2F6F5E 46%, transparent); }
 .ov-chip.on .c { background: color-mix(in srgb, #2F6F5E 15%, transparent); color: #2F6F5E; }
 .ov-chip .c { background: var(--soft-2); border-radius: 9px; padding: 0 6px; font-size: 10.5px; color: var(--ink-2); }
-.ov-chip.wait { border-color: var(--wait-line); background: var(--wait-bg); }
-/* 等待回填的目录：选中态保留琥珀语义（浅底 + 琥珀描边/字），同样不填色块 */
+.ov-chip.wait { border-color: var(--doing-line); background: var(--doing-bg); }
+/* 等待回填的目录：选中态保留蓝色语义（浅底 + 蓝描边/字），同样不填色块 */
 .ov-chip.wait.on {
-  background: var(--wait-bg);
-  border-color: color-mix(in srgb, var(--wait) 45%, transparent);
-  color: var(--wait);
+  background: var(--doing-bg);
+  border-color: color-mix(in srgb, var(--doing) 45%, transparent);
+  color: var(--doing);
 }
-.ov-chip.wait.on .c { background: color-mix(in srgb, var(--wait) 16%, transparent); color: var(--wait); }
+.ov-chip.wait.on .c { background: color-mix(in srgb, var(--doing) 16%, transparent); color: var(--doing); }
 .ov-sec { background: var(--paper); border: 1px solid var(--soft-2); border-radius: var(--r8); overflow: hidden; }
 .ov-sec-h { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; font-weight: 600; flex-wrap: wrap; }
 .ov-sec-h .c { color: var(--ink-2); font-weight: 400; font-size: 11px; }
@@ -636,11 +639,11 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .tag.t-done { color: var(--live); background: rgba(31, 122, 77, 0.08); border-color: rgba(31, 122, 77, 0.28); }
 .tag.t-gone { color: var(--faint); border-style: dashed; }
 .tag.t-cloud { color: var(--cloud); background: var(--cloud-bg); border-color: transparent; }
-/* 已领取历史折叠行：贴底的浅色展开条 */
+/* 已领取历史折叠行：贴底的浅色展开条（计数用完成绿，与全局「完成=绿」统一） */
 .ov-done-toggle {
   display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 12px;
   border: 0; border-top: 1px solid var(--line); background: var(--soft);
-  font: inherit; font-size: 11px; color: var(--ink-2); cursor: pointer; text-align: left;
+  font: inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left;
 }
 .ov-done-toggle:hover { color: var(--ink); background: var(--soft-2); }
 .ov-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
@@ -710,12 +713,12 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   .cloud-compose .btn { margin: 0; flex: 1 1 auto; }
 }
 
-/* 桶头：语义色点（待办=青绿 / 已完成=灰 / 冻结=琥珀）+ 计数徽章 */
+/* 桶头：语义色点（待办=青绿 / 已完成=绿 --live / 冻结=琥珀）+ 计数徽章 */
 .colhead { align-items: center; }
 .colhead h3 { display: inline-flex; align-items: center; gap: 6px; }
 .colhead h3::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--soft-2); flex: none; }
 .col-open .colhead h3::before { background: #2F6F5E; }
-.col-done .colhead h3::before { background: #a8a5a0; }
+.col-done .colhead h3::before { background: var(--live); }
 .col-freeze .colhead h3::before { background: var(--wait); }
 .cloud-page .colhead .cnt {
   min-width: 20px; text-align: center; padding: 0 6px; border-radius: 9px;
@@ -833,3 +836,31 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 /* 组详情页头部动作（添加成员 → 跳仓库页对应分组） */
 .rp-group-head { position: relative; }
 .rp-group-acts { position: absolute; top: 10px; right: 16px; display: flex; gap: 6px; }
+
+/* 组面板 · 本组任务面板（首屏）：只列 frontmatter 归属本组的任务，项目 tag 标归属 */
+.rp-tasks { margin: 14px 0 4px; border: 1px solid var(--soft-2); border-radius: var(--r8); background: var(--paper); padding: 10px 12px; }
+.rp-tasks-h { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+.rp-ptag { flex: none; font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 9px; background: var(--soft); border: 1px solid var(--soft-2); color: var(--ink-2); font-weight: 600; }
+.rp-tstat { flex: none; font-size: 10.5px; color: var(--mid); }
+.rp-tstat.done { color: var(--live); }
+.rp-proj-task.done { opacity: 0.75; }
+.rp-done-toggle { display: flex; align-items: center; gap: 5px; width: 100%; padding: 5px 6px 2px; border: 0; background: none; font: inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left; }
+.rp-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
+.rp-done-toggle .tri.open { transform: rotate(90deg); }
+/* 任务行（组任务面板与项目工作区摘要共用） */
+.rp-proj-task { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 4px 6px; border-radius: var(--r5); cursor: pointer; font: inherit; color: inherit; background: var(--paper); border: 1px solid var(--soft-2); }
+.rp-proj-task:hover { background: var(--soft); }
+.rp-proj-task-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.rp-proj-goal { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--wait); }
+.rp-proj-none { font-size: 12px; padding: 4px 6px; }
+
+/* 组面板 · 本组任务面板（首屏）：只列 frontmatter 归属本组的任务，项目 tag 标归属 */
+.rp-tasks { margin: 14px 0 4px; border: 1px solid var(--soft-2); border-radius: var(--r8); background: var(--paper); padding: 10px 12px; }
+.rp-tasks-h { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+.rp-ptag { flex: none; font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 9px; background: var(--soft); border: 1px solid var(--soft-2); color: var(--ink-2); font-weight: 600; }
+.rp-tstat { flex: none; font-size: 10.5px; color: var(--mid); }
+.rp-tstat.done { color: var(--live); }
+.rp-proj-task.done { opacity: 0.75; }
+.rp-done-toggle { display: flex; align-items: center; gap: 5px; width: 100%; padding: 5px 6px 2px; border: 0; background: none; font: inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left; }
+.rp-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
+.rp-done-toggle .tri.open { transform: rotate(90deg); }

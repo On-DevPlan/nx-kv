@@ -45,7 +45,6 @@ export function rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDat
 
   if (row.type === 'board') {
     return [
-      { label: row.open ? '折叠看板' : '展开看板', icon: 'chevron', onClick: () => patchPrefs((p) => ({ groupOpen: { ...(p.groupOpen || {}), [row.id]: !row.open } })) },
       { label: '在仓库页打开该看板', icon: 'repo', onClick: () => onNavigate('#/repos') },
       'sep',
       {

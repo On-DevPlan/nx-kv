@@ -9,6 +9,7 @@
 // 侧边栏只保留**纯 UI 偏好**：排序、隐藏、折叠——它们是显示态，不是数据。
 //
 // 「可见序 = 渲染序」是键盘导航的前提：↑↓ 走的就是这份扁平序。
+import { stripFrontmatter } from '../../modules/md/md-parse.js';
 
 export const GLOBAL_KEY = '__GLOBAL__';
 
@@ -17,7 +18,7 @@ export const GLOBAL_KEY = '__GLOBAL__';
  * @param repos   开发仓库（type != ref），每条带 id / name / key / path / boards[]
  * @param boards  看板，每条带 id / name / desc / repos[]
  * @param topics  本机任务队列（按 cwd 匹配仓库），每条可带 repo
- * @param prefs   UI 偏好（order / hidden / groupOpen / folded）
+ * @param prefs   UI 偏好（order / hidden / folded）
  * @param kw      搜索关键词（'' = 不过滤）
  * @returns {{rows: Array, matchCount: number}}
  */
@@ -78,32 +79,28 @@ export function buildTree(repos, boards, topics, prefs, kw = '') {
   const rows = [];
   const boardList = boards || [];
 
-  // 看板行（分组）：成员 = 该看板的仓库（按 key 关联）。展开后看成员。
+  // 看板行（分组）：**组是叶子，不再铺成员子行**（2026-11-03 语义化改版）。
+  // 侧栏操作的对象是「工作组」，不是组下的某个文件——成员清单与项目切换
+  // 收进组详情面板（#/group/<id>，面板内下拉选项目）。组行徽标 = 组内待领取总数。
   for (const b of boardList) {
     // 看板成员按 key 存；本地未拥有的占位成员没有登记，不成行（只占组里的位置）
     const members = (b.repos || [])
       .map((m) => byKey.get(m.key))
       .filter(Boolean);
-    // 搜索时：命中成员也算命中这个组（否则搜到成员却被藏起来）
+    // 搜索时：命中成员也算命中这个组（组行代表它的全部成员）
     const memberHit = members.some(hit);
     if (q && !hit(b) && !memberHit) continue;
-    const open = q ? true : (prefs.groupOpen || {})[b.id] ?? !prefs.defaultGroupFolded;
     rows.push({
       type: 'board',
       id: b.id,
       key: b.key || b.id,
       name: b.name,
       desc: b.desc || '',
-      open,
       count: (b.repos || []).length,
+      pending: members.reduce((n, m) => n + (m.pending || 0), 0),
+      waiting: members.some((m) => m.waiting),
       members: (b.repos || []).map((m) => m.key),
     });
-    if (open) {
-      for (const m of members) {
-        if (q && !hit(m)) continue;
-        rows.push({ ...m, groupId: b.id, nested: true });
-      }
-    }
   }
 
   // 未归入任何看板的仓库
@@ -161,7 +158,9 @@ export function buildTree(repos, boards, topics, prefs, kw = '') {
   }
   out.push(...sorted);
 
-  return { rows: out, matchCount: q ? matched.length : 0 };
+  // 搜索计数按**可见行**算：组行（代表全体成员）+ 未归组仓库行——
+  // 成员子行已不渲染，把它算进「N 个匹配」会数出看不见的行（全局池行也不算）。
+  return { rows: out, matchCount: q ? out.filter((r) => r.type === 'board' || (r.type === 'repo' && !r.groupId)).length : 0 };
 }
 
 // 排序用的稳定标识：仓库行用全局唯一的 key，看板行用看板 id
@@ -169,9 +168,9 @@ export function rKey(row) {
   return row.type === 'board' ? 'board:' + row.id : row.key;
 }
 
-/** 任务正文抽一行标题（给侧栏子行用） */
+/** 任务正文抽一行标题（给侧栏子行用）；带 frontmatter 的任务先剥掉再取 */
 export function taskLabel(t) {
-  const text = String(t?.text || '');
+  const text = stripFrontmatter(String(t?.text || ''));
   const m = text.match(/^#\s+(.+)$/m);
   if (m) return m[1].trim().slice(0, 40);
   const line = text.split('\n').find((l) => l.trim());

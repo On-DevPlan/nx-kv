@@ -207,3 +207,34 @@ test('项目图标：写入后读回（≤8 字）', async () => {
   await repos.updateRepo(r.id, { icon: '' });
   assert.equal((await repos.getRepo(r.id)).icon, '');
 });
+
+test('get：未开启持续 get → 交付**不带**「继续 get」指令（默认就是直接领）', async () => {
+  const localtask = await import('../../src/modules/localtask/service.js');
+  const repos = await import('../../src/modules/repos/service.js');
+  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const cwd = join(dir, 'plain-proj');
+  await repos.addRepo({ path: cwd, name: 'plain-proj', remote: 'https://github.com/me/plain' });
+
+  await localtask.addTask({ text: '普通任务', cwd });
+  const r = await getTask({ cwd, summary: '领活' });
+  assert.equal(r.status, 'ok');
+  assert.equal(r.getLoop, undefined, '没有持续 get 就不该标记');
+  assert.doesNotMatch(String(r.instruction || ''), /继续调用 nx-kv localtask get/, '默认形态不带循环指令');
+});
+
+test('修改反馈 / 编辑任务：换正文不丢 frontmatter（归组信息保住）', async () => {
+  const localtask = await import('../../src/modules/localtask/service.js');
+  const cwd = join(dir, 'fm-proj');
+  const text = '---\nboard: b_1\nproject: local/x\n---\n# 旧标题\n旧正文';
+  await localtask.addTask({ text, cwd });
+
+  const up = await localtask.updateTask({ cwd, id: 1, text: '# 新标题\n新正文' });
+  assert.match(up.task.text, /board: b_1/, 'update 保住 frontmatter');
+  assert.match(up.task.text, /project: local\/x/);
+  assert.match(up.task.text, /新正文/);
+
+  const re = await localtask.reopenTask({ cwd, id: 1, text: '# 再改\n再改的正文' });
+  assert.match(re.task.text, /board: b_1/, 'reopen 保住 frontmatter');
+  assert.match(re.task.text, /project: local\/x/);
+  assert.match(re.task.text, /再改的正文/);
+});

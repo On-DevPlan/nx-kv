@@ -366,7 +366,9 @@ function LivePreview({
     setFindIdx(n);
     const m = liveMatches[n];
     const el = articleRef.current?.querySelector(`.mdw-lp-block[data-i="${m.block}"]`);
-    el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    // 瞬时定位，不走 smooth：平滑滚动与行号槽的即时同步互相打架，命中行会
+    // 上下浮动、落点不稳（2026-11-03 任务 #7 移除）。
+    el?.scrollIntoView?.({ block: 'center' });
   };
   const hitBlock = liveMatches[findIdx]?.block ?? -1;
   // 空文档：splitMdBlocks('') 会给 ['']，视觉上是一片没有把手的空白——

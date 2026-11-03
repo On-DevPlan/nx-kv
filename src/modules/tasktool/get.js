@@ -31,7 +31,11 @@ export async function getTask({ cwd, summary, timeoutSec, open = true } = {}) {
 
   // 项目模板叠加：领到任务时把「继续 get」的循环指令渲染进 instruction
   // （与收尾指令 suffix 并存：先 suffix 渲染，再追加项目模板段）。
-  const tpl = loop.template || DEFAULT_GET_LOOP_TEMPLATE;
+  //
+  // **只在项目开启了「持续 get」时才叠加**：默认形态是「直接 get」——
+  // 队列空就立即空手而回（instant），再附一条「继续 get 直到超时」的指令等于
+  // 让 agent 去追一个永远不会来的任务，也与本文件的语义注释相矛盾。
+  const tpl = loop.enabled ? loop.template || DEFAULT_GET_LOOP_TEMPLATE : '';
   try {
     if (hasTemplateMarkers(tpl)) {
       const seg = renderInstruction(tpl, {

@@ -35,6 +35,7 @@ import { badInput, notFound } from '../../core/errors.js';
 import { formatDuration } from '../../core/instruction-template.js';
 // 任务级 timegoal 的声明校验（taskgoal.js 不依赖本模块——无环，静态引入安全）
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
+import { preserveFrontmatter } from './frontmatter.js';
 
 export const DEFAULT_TIMEOUT_MS = 180_000; // 阻塞默认 3 分钟（推荐值）
 export const DEFAULT_TIMEOUT_SEC = 180; // 推荐阻塞时长（3 分钟）
@@ -571,7 +572,9 @@ export async function reopenTask({ cwd: rawCwd, key: rawKey, id, text } = {}) {
   if (!task || task.deletedAt) throw notFound('任务不存在或已删除: #' + want);
   const before = { status: task.status, consumedAt: task.consumedAt || '', completedAt: task.completedAt || '' };
   if (text !== undefined && text !== null && String(text).trim()) {
-    task.text = normalizeText(text);
+    // 改文案不该把 frontmatter 一起改没——归组信息（board/project/介绍引用）保住，
+    // 新正文自带的 frontmatter 优先。丢了它任务就从组 / 项目面板里掉出去。
+    task.text = preserveFrontmatter(task.text, normalizeText(text));
   }
   task.status = 'pending';
   task.consumedAt = '';
@@ -1070,7 +1073,7 @@ export async function updateTask({ cwd: rawCwd, key: rawKey, id, text, goal } = 
     throw notFound(`主题「${t ? t.name : cwd}」里没有 #${want} 任务`);
   }
   if (body) {
-    task.text = body;
+    task.text = preserveFrontmatter(task.text, body);
   }
   let goalChanged = null; // 'set' | 'cleared' | null（render 与前端提示用）
   if (hasGoalInput) {

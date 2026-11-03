@@ -11,7 +11,7 @@
   --soft: #f2f1ed;           /* 次级面：表头、折叠区、hover */
   --soft-2: #e5e3de;         /* 细线 */
   --line: #e7e5e0;           /* 分隔细线（比 soft-2 更浅更暖） */
-  --live: #1f7a4d;           /* 有 agent 正在等 */
+  --live: #1f7a4d;           /* 完成 / 已领取（绿；「等待=蓝 --doing、完成=绿 --live」全局统一） */
   --warn: #99690f;           /* 到点 / 超时 */
   --danger: #b3261e;         /* 破坏性动作 */
   --radius: 10px;

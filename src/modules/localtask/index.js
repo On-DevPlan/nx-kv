@@ -14,6 +14,8 @@
 import * as service from './service.js';
 import * as move from './move.js';
 import { badInput } from '../../core/errors.js';
+import { resolveGroupTarget } from './board-target.js';
+import { applyGroupFields, parseFrontmatter } from './frontmatter.js';
 
 const CWD = { type: 'string', hint: '工作目录（作为主题；默认当前目录）' };
 const SUMMARY = { type: 'string', required: true, hint: '当前现状（agent 当前状态，展示给用户）' };
@@ -244,14 +246,25 @@ export default {
       cli: ['localtask', 'add'],
       http: ['POST', '/api/localtasks'],
       summary:
-        '向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）',
+        '向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列',
       args: ['text'],
       flags: {
-        cwd: CWD,
+        cwd: {
+          type: 'string',
+          hint: '工作目录（作为主题；默认当前目录）。归属由 --project 决定：给了 --project 就用它推导落点，这里再给且不一致会报错',
+        },
         summary: { type: 'string', hint: '顺带刷新该主题的当前现状（可选）' },
         global: {
           type: 'boolean',
           hint: '推到全局主题（共享池）：任何目录的 wait 在本地空时自动领取；--cwd 被忽略',
+        },
+        board: {
+          type: 'string',
+          hint: '工作组（看板）id / key / 名称：任务正文自动带上 frontmatter（board + 组介绍引用），该任务才会出现在组面板里；必须同时给 --project 指明归属项目',
+        },
+        project: {
+          type: 'string',
+          hint: '归属项目（仓库 key / 名称 / 路径）：任务挂在哪个项目上，落点目录由它推导，frontmatter 带上 project + 项目介绍引用；配 --board 时必须是该组成员',
         },
         duration: {
           type: 'string',
@@ -260,12 +273,61 @@ export default {
         'goal-prompt': { type: 'string', hint: '时间目标的附加要求（随 check 指令一起固化，可省）' },
         goalPrompt: { type: 'string', hint: '同 --goal-prompt（驼峰写法）' },
       },
-      run: (ctx) => {
+      run: async (ctx) => {
         const gp = ctx.goalPrompt ?? ctx['goal-prompt'];
         const timegoal = ctx.duration || gp ? { duration: ctx.duration, prompt: gp } : undefined;
+        let text = ctx.text;
+        let cwd = ctx.cwd;
+        // 工作组语义：--board / --project → 正文 frontmatter + 落点目录。
+        // repos 在模块互依禁列里 → 动态 import（与 localtask→timegoal 探针同一惯例）。
+        const resolveTarget = async (want) => {
+          const reposMod = await import('../repos/service.js');
+          const store = await reposMod.loadStore();
+          // 归一化：raw store 的看板成员是 repoKeys/repoIds、仓库的 key 是派生的——
+          // 归一后喂给纯解析器（repos 在互依禁列里，deriveKey/boardRepoKeys 只能
+          // 由这里动态引入后使用）。
+          const boards = (store.boards || []).map((b) => ({
+            ...b,
+            memberKeys: reposMod.boardRepoKeys(b, store),
+          }));
+          const repos = (store.repos || []).map((r) => ({
+            ...r,
+            key: r.key || reposMod.deriveKey(r),
+          }));
+          return resolveGroupTarget(want, { boards, repos });
+        };
+        if (ctx.board || ctx.project) {
+          if (ctx.global) {
+            throw badInput('--global 不能与 --board/--project 同时给：全局池没有工作组/项目归属');
+          }
+          // --cwd **只在显式给了**时才参与校验（须与 --project 指向同一个项目）。
+          // 没给就留空：不能拿「进程当前目录」去跟项目比对——在别的仓库里执行
+          // `--project alpha` 是完全正常的用法（给了 --project 就不用再给 --cwd）。
+          const explicitCwd = ctx.cwd ? service.normalizeCwd(ctx.cwd).cwd : '';
+          const target = await resolveTarget({
+            board: ctx.board,
+            project: ctx.project,
+            cwd: explicitCwd,
+          });
+          text = applyGroupFields(text, target.fields);
+          if (target.cwd) cwd = target.cwd;
+        } else {
+          // 正文自带 frontmatter（面板「组面板 → 新增任务」走这条路，CLI 也能直接写）→
+          // **补上介绍引用**，与 CLI 的 --board/--project 口径同源。
+          // fail-open：解析不了就原样提交——介绍补不上不该拦下任务。
+          const fm = parseFrontmatter(text);
+          if (fm.board || fm.project) {
+            try {
+              const target = await resolveTarget({ board: fm.board, project: fm.project, cwd: '' });
+              text = applyGroupFields(text, target.fields);
+            } catch {
+              /* 保留原正文 */
+            }
+          }
+        }
         return service.addTask({
-          text: ctx.text,
-          cwd: ctx.cwd,
+          text,
+          cwd,
           summary: ctx.summary,
           global: ctx.global,
           timegoal,

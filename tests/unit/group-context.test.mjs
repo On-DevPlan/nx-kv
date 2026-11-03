@@ -83,3 +83,32 @@ test('不在项目组里的目录：不拼组上下文段', async () => {
   assert.equal(r.status, 'ok');
   assert.doesNotMatch(String(r.instruction || ''), /项目组上下文/);
 });
+
+test('交付带项目介绍：已登记的项目即使不在任何组里也知道自己是谁', async () => {
+  const repos = await import('../../src/modules/repos/service.js');
+  const localtask = await import('../../src/modules/localtask/service.js');
+  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const solo = join(dir, 'solo-proj');
+  mkdirSync(solo, { recursive: true });
+  await repos.addRepo({ path: solo, name: 'solo', desc: '独自负责的那个项目', remote: 'https://github.com/me/solo' });
+
+  await localtask.addTask({ text: '独立项目任务', cwd: solo });
+  const r = await waitForTask({ cwd: solo, summary: '开干', timeoutSec: 1, open: false });
+  const ins = String(r.instruction || '');
+  assert.match(ins, /项目介绍/, '交付带项目介绍段');
+  assert.match(ins, /独自负责的那个项目/, '项目介绍正文');
+  assert.doesNotMatch(ins, /项目组上下文/, '没组就不拼组上下文段');
+});
+
+test('交付带项目介绍 + 组介绍：组内项目的介绍两样都在', async () => {
+  const { cwd } = await buildGroup();
+  const localtask = await import('../../src/modules/localtask/service.js');
+  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+
+  await localtask.addTask({ text: '组内任务', cwd });
+  const r = await waitForTask({ cwd, summary: '开干', timeoutSec: 1, open: false });
+  const ins = String(r.instruction || '');
+  assert.match(ins, /项目介绍 · alpha/, '项目介绍段带项目名');
+  assert.match(ins, /管清单的/, '项目介绍正文');
+  assert.match(ins, /项目组上下文 · nx系列/, '组上下文段照旧');
+});

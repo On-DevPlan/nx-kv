@@ -191,14 +191,28 @@ function renderMd(k) {
 }
 
 /**
+ * **介绍文档**：绑定优先（外部绝对路径 / 自有 rel），缺省走约定路径。
+ * 返回 { body, path }——path 给 agent 直接读盘（自有树给绝对路径）。
+ */
+async function readIntroDoc(ref, fallbackRel, { warnings, label }) {
+  if (ref && ref.path) {
+    const ext = await readExternalDoc(ref.path, { warnings, label });
+    return { body: ext.body || '', path: ref.path };
+  }
+  const rel = (ref && ref.rel) || fallbackRel;
+  const own = await readOwn(rel, { warnings, label });
+  return { body: own.body || '', path: join(paths.docsRoot(), rel) };
+}
+
+/**
  * **项目组上下文**（交付层用）：某个工作目录所属仓库所在的项目组材料。
  *
  * 与 repoKnowledge 的区别：那是「一份完整的知识报告」（CLI 给人看）；
- * 这里只取**交付时必须带上的那部分**——组定位、组介绍、本项目在组里的位置、
- * 兄弟成员的组内描述、组绑定参考文件的**可读路径**。
+ * 这里只取**交付时必须带上的那部分**——项目介绍、组定位、组介绍、
+ * 本项目在组里的位置、兄弟成员的组内描述、组绑定参考文件的**可读路径**。
  *
- * 返回 { repo:{name,key}, groups:[{name,key,desc,intro:{body,path},note,peers,docLinks}] }
- * 不在项目组里 → groups 为空数组（调用方据此不拼上下文段）。
+ * 返回 { repo:{name,key,intro:{body,path}}, groups:[{name,key,desc,intro:{body,path},note,peers,docLinks}] }
+ * 不在项目组里 → groups 为空数组（组上下文段不拼，但项目介绍照给）。
  */
 export async function groupContextFor(cwd) {
   const { loadStore, deriveKey, boardKeyOf, boardRepoKeys, normalizePathKey } = await reposBridge();
@@ -212,21 +226,14 @@ export async function groupContextFor(cwd) {
   const closure = await store.externalClosure(s);
   const groups = [];
 
+  // 项目介绍（项目级任务也要带——它回答「这个项目是干什么的」）
+  const repoIntro = await readIntroDoc(repo.doc, paths.repoDocRel(rk), { warnings, label: '项目介绍' });
+
   for (const b of s.boards) {
     const members = boardRepoKeys(b, s);
     if (!members.includes(rk)) continue;
     // 组介绍（绑定优先，缺省约定路径）
-    const introRef = b.doc;
-    const introRel = paths.boardDocRel(b.name);
-    let intro = { body: '', path: '' };
-    if (introRef && introRef.path) {
-      const ext = await readExternalDoc(introRef.path, { warnings, label: `组介绍·${b.name}` });
-      intro = { body: ext.body || '', path: introRef.path };
-    } else {
-      const rel = (introRef && introRef.rel) || introRel;
-      const own = await readOwn(rel, { warnings, label: `组介绍·${b.name}` });
-      intro = { body: own.body || '', path: join(paths.docsRoot(), rel) };
-    }
+    const intro = await readIntroDoc(b.doc, paths.boardDocRel(b.name), { warnings, label: `组介绍·${b.name}` });
     // 本项目在组里的位置
     const noteRef = (b.repoDocs || {})[rk];
     const noteOwn = await readRef(noteRef, paths.groupNoteRel(b.name, rk), { warnings, label: `组内描述·${b.name}` });
@@ -264,7 +271,7 @@ export async function groupContextFor(cwd) {
       docLinks,
     });
   }
-  return { repo: { name: repo.name, key: rk }, groups };
+  return { repo: { name: repo.name, key: rk, intro: repoIntro }, groups };
 }
 
 /**

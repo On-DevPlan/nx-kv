@@ -352,17 +352,31 @@ export function joinMdBlocks(blocks) {
 
 export const STAGE_LABELS = ['接收', '解析', '执行', '验证', '回填'];
 
-/** 把 localtask 状态映射到并发进程卡 */
+/**
+ * 把 localtask 状态映射到并发进程卡。
+ *
+ * 三种状态（与用户口径一致）：**待领取 / 执行中 / 已完成回填**。
+ *
+ * 两条容易搞错的判据：
+ *   - 「已领取」看 `status === 'consumed'`（或有领取时刻），**不看 `t.from`**——
+ *     `from` 是**来源标记**（云端迁入才有 'cloud'），拿它判领取会让本地已领的
+ *     任务显示成「待领取」、云端迁入还没人领的显示成「执行中」。
+ *   - 时间起点是**领取时刻**（consumedAt）：在队列里排了多久不算「跑了多久」；
+ *     还没被领取的没有起点，不计时；已完成回填的按口径不实现时间计算。
+ */
 export function taskToProgress(t) {
   const text = t.text || '';
   const title = titleFromMd(text, String(t.id));
+  const claimed = t.status === 'consumed' || !!t.consumedAt;
+  const receivedAt = claimed ? String(t.consumedAt || '') : '';
   if (t.deletedAt) {
-    return { id: t.id, title, status: 'done', pct: 100, stageIdx: 4, detail: '已删除', receivedAt: t.createdAt };
+    return { id: t.id, title, status: 'done', pct: 100, stageIdx: 4, detail: '已删除', receivedAt };
   }
   if (t.migratedTo) {
-    return { id: t.id, title, status: 'done', pct: 100, stageIdx: 4, detail: `已迁移 → ${t.migratedTo}`, receivedAt: t.createdAt };
+    return { id: t.id, title, status: 'done', pct: 100, stageIdx: 4, detail: `已迁移 → ${t.migratedTo}`, receivedAt };
   }
-  if (t.status === 'consumed') {
+  if (t.completedAt) {
+    // 已完成的回填：done 总结落在 roundSummary；不再计时（finishedAt 不给）。
     return {
       id: t.id,
       title,
@@ -370,13 +384,11 @@ export function taskToProgress(t) {
       pct: 100,
       stageIdx: 4,
       detail: t.roundSummary ? String(t.roundSummary).slice(0, 48) : '已回填',
-      receivedAt: t.createdAt,
-      finishedAt: t.updatedAt || t.createdAt,
+      receivedAt,
     };
   }
-  // pending / 进行中：有 waiting 语境时偏 wait，否则 run
-  const waiting = !!t.from; // agent 领取后通常带 from；未领取纯 pending
-  if (waiting) {
+  if (claimed) {
+    // 已领取、未回填 = 执行中：计时从领取时刻起。
     return {
       id: t.id,
       title,
@@ -384,9 +396,10 @@ export function taskToProgress(t) {
       pct: 55,
       stageIdx: 2,
       detail: '执行中 / 待回填',
-      receivedAt: t.createdAt,
+      receivedAt,
     };
   }
+  // 待领取：没有起点（不计时）。
   return {
     id: t.id,
     title,
@@ -394,6 +407,6 @@ export function taskToProgress(t) {
     pct: 12,
     stageIdx: 0,
     detail: '待领取',
-    receivedAt: t.createdAt,
+    receivedAt: '',
   };
 }

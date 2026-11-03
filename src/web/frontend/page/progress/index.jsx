@@ -20,12 +20,11 @@ function fmtElapsed(ms) {
 }
 
 function elapsedOf(card, now) {
+  // 只有「执行中」的任务计时，起点 = **领取时刻**（consumedAt）：
+  // 待领取的还没被领，没有起点；已完成回填的按口径不实现时间计算。
+  if (card.status !== 'run') return '—';
   const start = card.receivedAt ? Date.parse(card.receivedAt) : NaN;
   if (!Number.isFinite(start)) return '—';
-  if (card.status === 'done' && card.finishedAt) {
-    const end = Date.parse(card.finishedAt);
-    return fmtElapsed((Number.isFinite(end) ? end : now) - start);
-  }
   return fmtElapsed(now - start);
 }
 
@@ -204,7 +203,12 @@ export default function ProgressPanel({ dirKey, rows = [], refreshLocal, model, 
                     <div className="n">{c.title}<span className="kind">md</span></div>
                     <div className="sub">{c.detail}</div>
                   </div>
-                  <span className={`el ${c.status}`}>{elapsedOf(c, now)}</span>
+                  <span
+                    className={`el ${c.status}`}
+                    title="从领取时刻起计；待领取与已完成回填不计时间"
+                  >
+                    {elapsedOf(c, now)}
+                  </span>
                 </div>
                 <div className="mdw-tcard-bar"><i style={{ width: `${c.pct || 0}%` }} /></div>
                 <div className="mdw-tcard-stages">{stageChips(c)}</div>

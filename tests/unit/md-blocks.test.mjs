@@ -12,6 +12,7 @@ import {
   parseFrontmatter,
   frontmatterHtml,
   renderMarkdownHtml,
+  normalizeBlockText,
 } from '../../src/web/frontend/modules/md/md-parse.js';
 
 const FM = '---\nboard: b_1\nproject: local/x\n---';
@@ -76,4 +77,50 @@ test('renderMarkdownHtml：属性卡置顶，正文跟后；FM-only 正文只剩
   const only = renderMarkdownHtml(FM);
   assert.match(only, /class="mdw-fm"/);
   assert.doesNotMatch(only, /mdw-empty/);
+});
+
+// ── 空格打不出来（任务 #21）────────────────────────────────────────
+//
+// 实时预览里每个空格都是**打在行尾**的。旧实现 joinMdBlocks 对每个块做
+// `/\s+$/` 去尾随空白，于是「块 → 正文 → 块」往返一趟，刚敲下的空格就被吃掉：
+// 空格永远打不出来（行中打字能进去，正因为它不在行尾）。这里钉住修好的行为。
+test('joinMdBlocks：保留块尾空格（行尾敲下的空格不能被吃掉）', () => {
+  assert.equal(joinMdBlocks(['abc ']), 'abc ');
+  assert.equal(joinMdBlocks(['abc ', 'def']), 'abc \n\ndef');
+});
+
+test('splitMdBlocks → joinMdBlocks 往返：尾随空格不丢', () => {
+  const back = joinMdBlocks(splitMdBlocks('abc \n\ndef'));
+  assert.equal(back, 'abc \n\ndef');
+  const blocks = splitMdBlocks(back);
+  assert.equal(blocks[0], 'abc ', '尾随空格还在');
+  assert.equal(blocks[1], 'def');
+});
+
+test('纯空白块：ZWSP 打头落盘，空格不丢（空块里也要能敲空格）', () => {
+  const body = joinMdBlocks([' ']);
+  assert.equal(body, '​ ', '空白块用 ZWSP 打头');
+  const blocks = splitMdBlocks(body);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0], ' ', '还原回一个空格');
+});
+
+test('空块仍是裸 ZWSP，往返还原成空块', () => {
+  const body = joinMdBlocks(['']);
+  assert.equal(body, '​');
+  const blocks = splitMdBlocks(body);
+  assert.deepEqual(blocks, ['']);
+});
+
+test('markdown 语义不变：正文里的纯空白行仍是块分隔符（不是块）', () => {
+  const blocks = splitMdBlocks('a\n   \nb');
+  assert.equal(blocks.length, 2, '空白行分隔块，不制造空白块');
+  assert.deepEqual(blocks, ['a', 'b']);
+});
+
+test('normalizeBlockText：只剥 ZWSP，不动空白（编辑态原文）', () => {
+  assert.equal(normalizeBlockText('abc '), 'abc ');
+  assert.equal(normalizeBlockText(' '), ' ');
+  assert.equal(normalizeBlockText('​'), '');
+  assert.equal(normalizeBlockText('​ '), ' ');
 });

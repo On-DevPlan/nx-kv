@@ -265,10 +265,17 @@ export function isEmptyBlock(b) {
   return !s;
 }
 
+/**
+ * \u5757\u7684**\u7f16\u8f91\u6001\u539f\u6587**\uff1a\u53ea\u5265 ZWSP\uff08\u7a7a\u5757\u6807\u8bb0\uff09\uff0c**\u4e0d\u52a8\u7a7a\u767d**\u3002
+ *
+ * \u4e3a\u4ec0\u4e48\u4e0d\u80fd\u628a\u300c\u7eaf\u7a7a\u767d\u5757\u300d\u6298\u6210\u7a7a\u4e32\uff082026-11-03 \u4efb\u52a1 #21\u300c\u65e0\u6cd5\u8f93\u5165\u7a7a\u683c\u300d\uff09\uff1a
+ * \u7528\u6237\u5728\u7a7a\u5757\u91cc\u6572\u7684\u7a7a\u683c\u4f1a**\u5f53\u573a\u6d88\u5931**\u2014\u2014\u6572\u8fdb\u53bb \u2192 \u6298\u6210 '' \u2192 textarea \u88ab\u91cd\u7f6e\u6210\u7a7a
+ * \u2192 \u7a7a\u683c\u6c38\u8fdc\u6253\u4e0d\u51fa\u6765\u3002\u7a7a\u767d\u662f\u7528\u6237\u8f93\u5165\u7684\u4e00\u90e8\u5206\uff0c\u7f16\u8f91\u6001\u5fc5\u987b\u539f\u6837\u7559\u7740\u3002
+ *
+ * \u300c\u8fd9\u5757\u770b\u8d77\u6765\u662f\u7a7a\u7684\u300d\u662f**\u6e32\u67d3\u5c42**\u7684\u5224\u65ad\uff0c\u4ea4\u7ed9 isEmptyBlock\uff08\u5b83\u6309 trim \u5224\uff09\u3002
+ */
 export function normalizeBlockText(b) {
-  const s = String(b ?? '');
-  if (isEmptyBlock(s)) return '';
-  return s.replace(/\u200b/g, '');
+  return String(b ?? '').replace(/\u200b/g, '');
 }
 
 /**
@@ -299,7 +306,9 @@ export function splitMdBlocks(src) {
     while (cur.length && cur[cur.length - 1] === '') cur.pop();
     if (!cur.length) return;
     const text = cur.join('\n');
-    blocks.push(isEmptyBlock(text) ? '' : normalizeBlockText(text));
+    // 折叠成 '' 的旧做法会把「纯空白块」的内容抹掉（敲进去的空格就没了）——
+    // 编辑态原文一律保留，空白块靠 ZWSP 打头在正文里占位（见 joinMdBlocks）。
+    blocks.push(normalizeBlockText(text));
     cur = [];
   };
   for (let i = 0; i < lines.length; i++) {
@@ -341,11 +350,25 @@ export function splitMdBlocks(src) {
   return blocks.length ? blocks : [''];
 }
 
+/**
+ * 块数组 → 正文（实时预览的落盘形态）。
+ *
+ * **尾随空格必须保留**（2026-11-03 任务 #21「无法输入空格」的根因）：
+ * 实时预览里每个空格都是**打在行尾**的，而旧实现对每个块做 `/\s+$/` 去尾随
+ * 空白——于是「块 → 正文 → 块」往返一趟，刚敲下的那个空格就被吃掉了：
+ * 空格永远打不出来（行中打字能进去，正是因为它不在行尾）。
+ *
+ * 空白块的编码：正文里一个纯空白的行会被 splitMdBlocks 当成**块分隔符**
+ * （markdown 语义：空行 = 段落分隔），所以纯空白块用 `ZWSP + 空白` 打头落盘，
+ * 既保住空白，又不会被当成分隔符。空块仍是裸 ZWSP。
+ */
 export function joinMdBlocks(blocks) {
   return (blocks || [])
     .map((b) => {
-      const s = normalizeBlockText(b).replace(/\s+$/g, '');
-      return s === '' ? EMPTY_BLOCK : s;
+      const s = normalizeBlockText(b).replace(/[\r\n]+$/g, '');
+      if (!s) return EMPTY_BLOCK; // 空块 → ZWSP 占位
+      if (!s.trim()) return EMPTY_BLOCK + s; // 纯空白块 → ZWSP 打头，空白留住
+      return s; // 其余原样（尾随空格也留着）
     })
     .join('\n\n');
 }

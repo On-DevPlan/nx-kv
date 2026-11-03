@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
-import { useToast, useDialog } from '../../components/ui.jsx';
+import { useToast } from '../../components/ui.jsx';
 import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
 import ToolBar from '../../components/md/tool-bar.jsx';
 import { MdPanes } from '../../components/md/md-panes.jsx';
@@ -35,7 +35,6 @@ import {
 export default function PagePanel({ dirKey, task, tabId, model }) {
   const app = useApp() || {};
   const toast = useToast();
-  const { dialog, node: dialogNode } = useDialog();
   const rows = app.rows || [];
   const refreshLocal = app.refreshLocal;
   const tpl = app.tpl;
@@ -99,28 +98,57 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     setReviewAcked(true);
     toast('已验收');
   };
+  /** 重做：走**正常评论模式**（不再弹窗输入框）——评论框开在正文末尾，
+      提交即把这条任务重开，反馈文字（加粗）带进正文。 */
   const redoTask = () => {
-    if (!taskRow) return;
+    // 浮层是 .mdw 内的绝对定位 → 坐标要相对容器（用条带相对容器的偏移）
+    const bar = reviewBarRef.current;
+    const host = bar?.closest?.('.mdw');
+    const b = bar?.getBoundingClientRect();
+    const h = host?.getBoundingClientRect();
+    const x = b && h ? b.left - h.left + 80 : 80;
+    const y = b && h ? b.top - h.top - 190 : 120;
+    setSelMenu({
+      kind: 'task',
+      text: '', // 重做针对整条任务，不锚定选区
+      comment: true,
+      mode: 'redo',
+      x: Math.min(window.innerWidth - 320, Math.max(8, x)),
+      y: Math.min(window.innerHeight - 260, Math.max(8, y)),
+    });
+  };
+  /** 评论框提交：重做模式 → 重开本任务（反馈加粗进正文）；普通划线评论 → 开新任务 */
+  const onCommentSubmit = (q) => {
+    if (selMenu?.mode === 'redo') {
+      submitRedo(q);
+      return;
+    }
+    spawnComment(q);
+  };
+  const submitRedo = (feedback) => {
+    const fb = String(feedback || '').trim();
+    closeSelMenu();
+    if (!fb) {
+      toast('写一下要改的地方');
+      return;
+    }
     const title = doc?.title || `#${task}`;
     guard(async () => {
-      const body = await dialog({
-        title: `重做 · ${title}`,
-        input: true,
-        placeholder: '写下要改的地方（留空 = 只重开，不改正文）',
-      });
-      if (body === null || body === undefined) return;
-      // 反馈是**追加**不是替换：弹窗写的是「要改的地方」，reopen 的 text 却是
-      // 整段新正文——直接发反馈会把原任务丢掉。拼成「原正文 + 验收反馈」再发，
-      // agent 下一轮既看得见原任务，也看得见这次要改什么。
-      const fb = String(body).trim();
+      // 反馈是**追加**不是替换：reopen 的 text 是整段新正文，直接把反馈当正文发
+      // 会把原任务丢掉。拼成「原正文 + 验收反馈」，反馈逐行加粗（用户口径：
+      // 重开的任务要携带着反馈文字在正文中，最好加粗）。
       const base = String(doc?.body || '').trim();
-      const text = fb ? (base ? `${base}\n\n## 验收反馈\n\n${fb}\n` : fb) : '';
+      const bold = fb
+        .split('\n')
+        .map((l) => `**${l}**`)
+        .join('\n');
+      const text = base ? `${base}\n\n## 验收反馈\n\n${bold}\n` : `${bold}\n`;
       await api('/api/localtasks/reopen', {
         method: 'POST',
         body: {
           ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }),
           id: Number(task),
-          ...(text ? { text } : {}),
+          text,
         },
       });
       toast(`已重开「${title}」——agent 可再次领取`);
@@ -159,6 +187,7 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   const fileMdRef = useRef(null);
   const fileAttRef = useRef(null);
   const articleRef = useRef(null);
+  const reviewBarRef = useRef(null);
   const editorApiRef = useRef(null);
   const lastSel = useRef('');
   const histRef = useRef(new Map());
@@ -619,36 +648,6 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
           </div>
         )}
 
-        {/* 验收条：已完成任务的 ack 卡——agent 的完成总结在此等用户回复：
-            划选正文评论 = 提详细问题（生成新任务）；重做 = 带反馈重开；通行 = 验收通过。 */}
-        {!isDraft && taskRow?.completedAt && (
-          <div className="mdw-review">
-            <div className="mdw-review-main">
-              <span className="mdw-review-badge">已完成 · 等待验收</span>
-              <span className="mdw-review-at mono">{taskRow.completedAt}</span>
-              {taskRow.roundSummary ? (
-                <div className="mdw-review-sum" title="agent 的完成总结（ack）">
-                  {taskRow.roundSummary}
-                </div>
-              ) : null}
-            </div>
-            <div className="mdw-review-acts">
-              {reviewAcked ? (
-                <span className="mdw-review-ok">已验收</span>
-              ) : (
-                <>
-                  <button type="button" className="ghost" onClick={redoTask}>
-                    重做（带反馈）
-                  </button>
-                  <button type="button" className="primary" onClick={ackReview}>
-                    通行
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
         <ToolBar
           mode={doc.mode}
           onMode={(m) => saveDoc(id, { mode: m })}
@@ -697,6 +696,37 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
             if (!isDraft) persistAtt(task, next);
           }}
         />
+
+        {/* 验收条：已完成任务的 ack 卡——放在**正文末尾**（用户口径）：读完正文
+            正好看到 agent 的完成总结，等你回复——划选正文评论 = 提详细问题（生成
+            新任务）；重做 = 评论模式下带反馈重开；通行 = 验收通过。 */}
+        {!isDraft && taskRow?.completedAt && (
+          <div className="mdw-review" ref={reviewBarRef}>
+            <div className="mdw-review-main">
+              <span className="mdw-review-badge">已完成 · 等待验收</span>
+              <span className="mdw-review-at mono">{taskRow.completedAt}</span>
+              {taskRow.roundSummary ? (
+                <div className="mdw-review-sum" title="agent 的完成总结（ack）">
+                  {taskRow.roundSummary}
+                </div>
+              ) : null}
+            </div>
+            <div className="mdw-review-acts">
+              {reviewAcked ? (
+                <span className="mdw-review-ok">已验收</span>
+              ) : (
+                <>
+                  <button type="button" className="ghost" onClick={redoTask}>
+                    重做（带反馈）
+                  </button>
+                  <button type="button" className="primary" onClick={ackReview}>
+                    通行
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <SelMenu
@@ -705,7 +735,7 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
           editorApiRef.current?.format?.(op);
           closeSelMenu();
         }}
-        onComment={spawnComment}
+        onComment={onCommentSubmit}
         onCompose={() => setSelMenu((cur) => (cur ? { ...cur, comment: true } : cur))}
         onClose={closeSelMenu}
         onCopy={() => {
@@ -738,7 +768,6 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
         }}
       />
       {showShortcuts && <ShortcutSheet onClose={() => setShowShortcuts(false)} />}
-      {dialogNode}
     </div>
   );
 }

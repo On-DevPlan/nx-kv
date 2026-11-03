@@ -36,6 +36,9 @@ export default function SelMenu({
   const showFmt = kind === 'format' || kind === 'both';
   const quote = String(at.text || '');
   const quoteShort = quote.length > 72 ? `${quote.slice(0, 72)}…` : quote;
+  // 重做模式：针对整条任务（不锚定选区），没有引文可显示
+  const isRedo = at.mode === 'redo';
+  const cap = isRedo ? '重做：写下要改的地方' : '划线评论';
 
   const startCompose = () => {
     setComposing(true);
@@ -68,14 +71,16 @@ export default function SelMenu({
     >
       {composing ? (
         <div className="mdw-sel-comment">
-          <div className="mdw-sel-comment-cap">划线评论</div>
-          <div className="mdw-sel-quote" title={quote}>{quoteShort}</div>
+          <div className="mdw-sel-comment-cap">{cap}</div>
+          {quote ? (
+            <div className="mdw-sel-quote" title={quote}>{quoteShort}</div>
+          ) : null}
           <textarea
             ref={taRef}
             className="mdw-sel-comment-ta"
             rows={3}
             value={draft}
-            placeholder="对此处提出问题…"
+            placeholder={isRedo ? '写下要改的地方…' : '对此处提出问题…'}
             aria-label="评论文本"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -101,7 +106,7 @@ export default function SelMenu({
               disabled={!draft.trim()}
               onClick={submit}
             >
-              提交为任务
+              {isRedo ? '重开此任务' : '提交为任务'}
             </button>
           </div>
           <div className="mdw-sel-comment-hint">Ctrl/⌘+Enter 提交</div>

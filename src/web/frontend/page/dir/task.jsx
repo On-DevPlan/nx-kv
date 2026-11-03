@@ -20,7 +20,7 @@ import { useApp } from '../../app-context.jsx';
 import { openPanel } from '../../workspace.js';
 import { filesToAttachments, persistAtt } from '../../components/md/attachments.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
-import { renderMarkdownHtml, slugName, titleFromMd, parseFrontmatter, stripFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
+import { renderMarkdownHtml, slugName, titleFromMd, parseFrontmatter, stripFrontmatter, stripTitleHeading, withFrontmatter } from '../../modules/md/md-parse.js';
 import {
   docIdOf,
   getDoc,
@@ -105,8 +105,9 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   const histRef = useRef(new Map());
   const [dirty, setDirty] = useState(false);
 
+  // 阅读视图：剥掉首个一级标题行——它就是文档标题（页头已渲染），正文再渲染一遍是重复
   const previewHtml = useMemo(
-    () => (doc ? renderMarkdownHtml(doc.body, doc.attachments) : ''),
+    () => (doc ? renderMarkdownHtml(stripTitleHeading(doc.body), doc.attachments) : ''),
     [doc]
   );
 

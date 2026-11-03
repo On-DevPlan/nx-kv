@@ -252,6 +252,23 @@ export function normalizeBlockText(b) {
   return s.replace(/\u200b/g, '');
 }
 
+/**
+ * 去掉正文里的**首个一级标题行**——那是文档标题，由标题栏单独编辑与渲染，
+ * 正文（实时预览块 / 阅读视图）不再重复渲染它。
+ *
+ * 为什么要专门做：标题既出现在面板头部的标题栏，又出现在正文第一行，
+ * 两侧都渲染等于**标题显示两遍**（阅读视图里尤其明显）。
+ * 只剥**首个** H1：正文里的第二个 H1 是正经内容，仍要作为块渲染。
+ */
+export function stripTitleHeading(src) {
+  const text = String(src ?? '');
+  const m = text.match(/^[ \t]*# (?!#)(.*)$/m);
+  if (!m) return text;
+  const start = m.index;
+  const end = start + m[0].length;
+  return (text.slice(0, start) + text.slice(end)).replace(/^\n+/, '');
+}
+
 /** 把 MD 切成块（空行 / 标题起新块），供一体化实时预览就地编辑 */
 export function splitMdBlocks(src) {
   const raw = String(src ?? '');
@@ -278,8 +295,13 @@ export function splitMdBlocks(src) {
       if (cur.length) flushCur();
       continue;
     }
-    if (/^#{1,3}\s/.test(line) && cur.length) flushCur();
+    // 标题**自成一块**（markdown/Obsidian 语义）：标题行后紧跟的正文、列表都是
+    // 独立块，不并进标题。此前只「遇到标题才开新块」，标题后的行仍留在标题块里——
+    // 于是「# 标题\n正文」渲染成一个标题（标题与正文融合），点正文也整块进编辑态。
+    const isHeading = /^#{1,3}\s/.test(line);
+    if (isHeading && cur.length) flushCur();
     cur.push(line);
+    if (isHeading) flushCur();
   }
   if (cur.length) flushCur();
   return blocks.length ? blocks : [''];

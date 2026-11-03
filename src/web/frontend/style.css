@@ -67,7 +67,7 @@ header {
 /* 顶栏 tab：下划线式（工具感），不用消费级 App 的分段胶囊 */
 nav { display: inline-flex; gap: 2px; }
 .tab {
-  font: inherit;
+  font-family:inherit;
   font-size: 12.5px;
   border: 0;
   background: transparent;
@@ -218,7 +218,7 @@ main { padding: 18px 20px 28px; max-width: 1240px; width: 100%; margin: 0 auto; 
 }
 
 input, select, textarea {
-  font: inherit;
+  font-family:inherit;
   color: var(--ink);
   background: var(--paper);
   border: 1px solid var(--line);
@@ -263,7 +263,7 @@ select {
 
 /* ---------- 按钮：圆角、浅底、无硬边框 ---------- */
 .btn {
-  font: inherit;
+  font-family:inherit;
   cursor: pointer;
   padding: 6px 12px;
   border: 0;
@@ -538,7 +538,7 @@ select {
   border-radius: var(--radius-sm);
   background: var(--paper);
   color: var(--ink);
-  font: inherit;
+  font-family:inherit;
   line-height: 1.5;
   resize: vertical;
 }
@@ -568,7 +568,7 @@ select {
 .rp-filters-main { flex: 1 1 auto; min-width: 0; }
 .rp-filters-side { flex: 0 0 auto; margin-left: auto; }
 .rp-chip {
-  font: inherit;
+  font-family:inherit;
   font-size: 12px;
   cursor: pointer;
   padding: 4px 11px;
@@ -836,7 +836,7 @@ select {
 /* dev 行内 / 组区的参考 chip（只读展示，点击写描述） */
 .rp-refs { white-space: normal; }
 .rp-refs .rp-ref-chip {
-  font: inherit;
+  font-family:inherit;
   font-size: 11px;
   cursor: pointer;
   padding: 1px 8px;
@@ -865,7 +865,7 @@ select {
   max-width: 100%;
 }
 .rp-link-chip-main {
-  font: inherit;
+  font-family:inherit;
   font-size: 11px;
   cursor: pointer;
   border: 0;
@@ -895,7 +895,7 @@ select {
   padding-left: 5px;
 }
 .rp-link-chip-x {
-  font: inherit;
+  font-family:inherit;
   font-size: 11px;
   cursor: pointer;
   border: 0;
@@ -986,7 +986,7 @@ select {
   font-size: 11px;
 }
 .rp-ref-note-chip {
-  font: inherit;
+  font-family:inherit;
   font-size: 11px;
   cursor: pointer;
   padding: 1px 8px;
@@ -1135,7 +1135,7 @@ select {
 .rp-full-title .muted { font-weight: 400; font-size: 11.5px; }
 .rp-full-tabs { margin-left: auto; display: flex; gap: 4px; }
 .rp-tab {
-  font: inherit;
+  font-family:inherit;
   font-size: 12px;
   cursor: pointer;
   padding: 4px 14px;
@@ -1419,7 +1419,7 @@ h3 { font-size: 13px; margin: 0; font-weight: 700; }
 /* 平台小按钮（平行、可勾选） */
 .plats { display: flex; gap: 4px; flex-wrap: wrap; }
 .pill {
-  font: inherit;
+  font-family:inherit;
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
@@ -1663,7 +1663,7 @@ table.directory-board { min-width: 780px; table-layout: fixed; border-collapse: 
   border: 0;
   background: transparent;
   color: var(--ink-2);
-  font: inherit;
+  font-family:inherit;
   font-size: 11.5px;
   line-height: 1.4;
   text-align: left;
@@ -1683,7 +1683,7 @@ table.directory-board { min-width: 780px; table-layout: fixed; border-collapse: 
   background: transparent;
   padding: 0;
   color: var(--mid);
-  font: inherit;
+  font-family:inherit;
   font-size: 11.5px;
   line-height: 1.4;
   text-align: left;
@@ -1790,10 +1790,10 @@ table.directory-board { min-width: 780px; table-layout: fixed; border-collapse: 
 .board-setting-control { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .board-setting-control select { min-width: 170px; padding: 6px 8px; }
 .board-setting-help { margin: 0 0 8px; font-size: 11px; line-height: 1.4; }
-.board-settings-dialog textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 12px; }
+.board-settings-dialog textarea { width: 100%; box-sizing: border-box; resize: vertical; font-family:inherit; font-size: 12px; }
 .board-setting-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .board-add-directory label { display: block; margin-bottom: 5px; font-size: 12px; font-weight: 700; }
-.board-add-directory input { box-sizing: border-box; width: 100%; padding: 8px; font: inherit; }
+.board-add-directory input { box-sizing: border-box; width: 100%; padding: 8px; font-family:inherit; }
 .board-add-directory p { margin: 6px 0 0; font-size: 11px; }
 
 /* ---------- 点击即复制的路径/标识 ---------- */
@@ -1887,7 +1887,7 @@ dd .adapter-dir { display: inline-block; margin-right: 14px; }
 }
 .set-textarea {
   width: 100%;
-  font: inherit;
+  font-family:inherit;
   font-size: 12.5px;
   line-height: 1.6;
   padding: 8px 10px;
@@ -1988,7 +1988,7 @@ footer code {
   border: 0;
   background: none;
   padding: 0 2px;
-  font: inherit;
+  font-family:inherit;
   color: var(--ink);
   font-weight: 600;
   text-decoration: underline;
@@ -2000,7 +2000,7 @@ footer code {
 .ed-label { color: var(--mid); font-size: 11.5px; font-weight: 600; letter-spacing: 0.3px; }
 .ed-textarea {
   width: 100%;
-  font: inherit;
+  font-family:inherit;
   padding: 9px 11px;
   border: 0;
   border-radius: var(--radius-sm);

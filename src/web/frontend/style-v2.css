@@ -55,7 +55,7 @@
 .nx-rail {
   flex: 1; min-height: 0; width: 100%; border: 0; background: none; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0;
-  color: var(--ink-2); font: inherit;
+  color: var(--ink-2); font-family:inherit;
 }
 .nx-rail:hover { background: var(--soft); }
 .nx-rail-btn { font-size: 15px; line-height: 1; }
@@ -64,7 +64,7 @@
 .nx-rail-act {
   width: 100%; height: 34px; border: 0; background: none; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
-  color: var(--ink-2); font: inherit;
+  color: var(--ink-2); font-family:inherit;
 }
 .nx-rail-act:hover { background: var(--soft); color: var(--ink); }
 
@@ -249,7 +249,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .brandrow .grow { flex: 1; }
 .iconbtn {
   width: 26px; height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
-  color: var(--ink-2); border: 0; background: none; cursor: pointer; font: inherit;
+  color: var(--ink-2); border: 0; background: none; cursor: pointer; font-family:inherit;
 }
 .iconbtn:hover { background: var(--soft-2); color: var(--ink); }
 .searchrow { display: flex; gap: 6px; align-items: center; }
@@ -258,7 +258,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   border-radius: 6px; padding: 4px 8px; border: 1px solid transparent; color: var(--ink-2); cursor: text;
 }
 .searchrow .sbox:focus-within { background: var(--paper); border-color: var(--soft-2); }
-.searchrow input { flex: 1; border: 0; outline: 0; background: transparent; font: inherit; font-size: 12.5px; min-width: 0; }
+.searchrow input { flex: 1; border: 0; outline: 0; background: transparent; font-family:inherit; font-size: 12.5px; min-width: 0; }
 .searchrow .kwcount { flex: none; font-size: 11px; color: var(--faint); white-space: nowrap; }
 
 /* ---- 侧边栏树 ---- */
@@ -266,7 +266,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .trow {
   display: flex; align-items: center; gap: 7px; width: 100%;
   padding: 5px 8px; border-radius: var(--r5);
-  font: inherit; font-size: 13px; text-align: left; position: relative;
+  font-family:inherit; font-size: 13px; text-align: left; position: relative;
   border: 1px dashed transparent; cursor: pointer; color: var(--ink); background: none;
 }
 .trow:hover { background: var(--soft); }
@@ -340,7 +340,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .tab {
   display: inline-flex; align-items: center; gap: 5px; max-width: 180px; min-width: 0;
   padding: 4px 8px; border-radius: 7px; cursor: pointer; user-select: none;
-  font: inherit; font-size: 12px; color: var(--ink-2); position: relative;
+  font-family:inherit; font-size: 12px; color: var(--ink-2); position: relative;
   border: 1px solid transparent; background: none;
 }
 .tab:hover { background: var(--soft); color: var(--ink); }
@@ -376,7 +376,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .railbtn {
   width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
   color: var(--ink-2); position: relative; border: 0; background: none; cursor: pointer;
-  font: inherit; font-size: 15px;
+  font-family:inherit; font-size: 15px;
 }
 .railbtn:hover { background: var(--soft-2); color: var(--ink); }
 .railbtn.active {
@@ -414,7 +414,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .topbar .sum {
   font-size: 12px; color: var(--ink-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   border: 0; border-left: 1px solid var(--line); padding-left: 12px; text-align: left;
-  background: none; cursor: default; font: inherit;
+  background: none; cursor: default; font-family:inherit;
 }
 .topbar .sum.editable { cursor: pointer; border-radius: 4px; }
 .topbar .sum.editable:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
@@ -428,7 +428,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 /* 任务源切换 */
 .seg { display: inline-flex; background: var(--soft); border-radius: 8px; padding: 2px; flex: none; }
 .seg button {
-  padding: 4px 14px; border-radius: 6px; font: inherit; font-size: 12.5px; color: var(--ink-2); font-weight: 600;
+  padding: 4px 14px; border-radius: 6px; font-family:inherit; font-size: 12.5px; color: var(--ink-2); font-weight: 600;
   border: 0; background: none; cursor: pointer;
 }
 .seg button.on { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.09); }
@@ -447,7 +447,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .pane-h .where { font-size: 10.5px; color: var(--faint); border: 1px solid var(--soft-2); padding: 0 6px; border-radius: 8px; }
 .pane-h .grow { flex: 1; }
 .mini {
-  font: inherit; font-size: 11px; color: var(--ink-2); padding: 2px 8px; border-radius: 5px;
+  font-family:inherit; font-size: 11px; color: var(--ink-2); padding: 2px 8px; border-radius: 5px;
   border: 0; background: none; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;
 }
 .mini:hover { background: var(--soft-2); color: var(--ink); }
@@ -521,7 +521,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .newtask { flex: none; display: flex; gap: 8px; padding: 0 12px 10px; }
 .newtask input {
   flex: 1; border: 1px solid var(--soft-2); border-radius: 7px; padding: 6px 10px;
-  font: inherit; font-size: 12.5px; outline: none; background: var(--paper); color: var(--ink);
+  font-family:inherit; font-size: 12.5px; outline: none; background: var(--paper); color: var(--ink);
 }
 .newtask input:focus { border-color: var(--ink); }
 
@@ -542,7 +542,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 @keyframes pop { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; } }
 .gmenu button {
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 9px; border-radius: 5px;
-  font: inherit; font-size: 12.5px; text-align: left; border: 0; background: none; cursor: pointer; color: var(--ink);
+  font-family:inherit; font-size: 12.5px; text-align: left; border: 0; background: none; cursor: pointer; color: var(--ink);
 }
 .gmenu button:hover { background: var(--soft); }
 .gmenu button.danger { color: var(--danger); }
@@ -597,7 +597,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .ov-chip {
   display: inline-flex; align-items: center; gap: 7px; background: var(--paper);
   border: 1px solid var(--soft-2); border-radius: 20px; padding: 4px 12px;
-  font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink);
+  font-family:inherit; font-size: 12.5px; cursor: pointer; color: var(--ink);
 }
 .ov-chip:hover { border-color: color-mix(in srgb, #2F6F5E 40%, var(--soft-2)); }
 /* chip 只做筛选：选中态复用侧栏选中行/主按钮的那套强调绿（#2F6F5E）浅底——
@@ -643,7 +643,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .ov-done-toggle {
   display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 12px;
   border: 0; border-top: 1px solid var(--line); background: var(--soft);
-  font: inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left;
+  font-family:inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left;
 }
 .ov-done-toggle:hover { color: var(--ink); background: var(--soft-2); }
 .ov-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
@@ -656,7 +656,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .ov-ck input, .ov-all input { width: 13px; height: 13px; margin: 0; cursor: pointer; accent-color: var(--ink); }
 .ov-all { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 400; color: var(--ink-2); cursor: pointer; user-select: none; }
 /* 分组标题即目录链接（原来那个「打开」按钮是重复入口，已删） */
-.ov-sec-t { font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer; }
+.ov-sec-t { font-family:inherit; font-size: 12.5px; font-weight: 600; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer; }
 .ov-sec-t:hover { text-decoration: underline; }
 /* 底部批量操作条：勾选任意行后出现，sticky 吸底；删除动作只住在这里，分区头不再放红色按钮 */
 .ov-bar {
@@ -745,7 +745,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .rowmenu { position: relative; flex: none; display: inline-flex; }
 .rowmenu-btn {
   width: 24px; height: 22px; border-radius: 6px; border: 0; background: none;
-  color: var(--ink-2); cursor: pointer; font: inherit;
+  color: var(--ink-2); cursor: pointer; font-family:inherit;
   display: inline-flex; align-items: center; justify-content: center;
 }
 .rowmenu-btn:hover, .rowmenu-btn[aria-expanded="true"] { background: var(--soft-2); color: var(--ink); }
@@ -756,7 +756,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   display: flex; flex-direction: column;
 }
 .rowmenu-item {
-  border: 0; background: none; font: inherit; font-size: 12px; text-align: left;
+  border: 0; background: none; font-family:inherit; font-size: 12px; text-align: left;
   padding: 6px 10px; border-radius: 6px; cursor: pointer; color: var(--ink); white-space: nowrap;
 }
 .rowmenu-item:hover { background: var(--soft); }
@@ -766,7 +766,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 /* 空态：一句话 + 下一步，替代「（空）」 */
 .cloud-empty { padding: 22px 12px; text-align: center; color: var(--faint); font-size: 12px; line-height: 1.8; }
 .cloud-empty kbd {
-  font: inherit; font-size: 11px; background: var(--soft); border-radius: 4px; padding: 1px 5px;
+  font-family:inherit; font-size: 11px; background: var(--soft); border-radius: 4px; padding: 1px 5px;
 }
 
 /* 读取失败横条（琥珀，带重试）与首载占位 */
@@ -844,11 +844,11 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .rp-tstat { flex: none; font-size: 10.5px; color: var(--mid); }
 .rp-tstat.done { color: var(--live); }
 .rp-proj-task.done { opacity: 0.75; }
-.rp-done-toggle { display: flex; align-items: center; gap: 5px; width: 100%; padding: 5px 6px 2px; border: 0; background: none; font: inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left; }
+.rp-done-toggle { display: flex; align-items: center; gap: 5px; width: 100%; padding: 5px 6px 2px; border: 0; background: none; font-family:inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left; }
 .rp-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
 .rp-done-toggle .tri.open { transform: rotate(90deg); }
 /* 任务行（组任务面板与项目工作区摘要共用） */
-.rp-proj-task { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 4px 6px; border-radius: var(--r5); cursor: pointer; font: inherit; color: inherit; background: var(--paper); border: 1px solid var(--soft-2); }
+.rp-proj-task { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 4px 6px; border-radius: var(--r5); cursor: pointer; font-family:inherit; color: inherit; background: var(--paper); border: 1px solid var(--soft-2); }
 .rp-proj-task:hover { background: var(--soft); }
 .rp-proj-task-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
 .rp-proj-goal { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--wait); }
@@ -861,6 +861,6 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .rp-tstat { flex: none; font-size: 10.5px; color: var(--mid); }
 .rp-tstat.done { color: var(--live); }
 .rp-proj-task.done { opacity: 0.75; }
-.rp-done-toggle { display: flex; align-items: center; gap: 5px; width: 100%; padding: 5px 6px 2px; border: 0; background: none; font: inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left; }
+.rp-done-toggle { display: flex; align-items: center; gap: 5px; width: 100%; padding: 5px 6px 2px; border: 0; background: none; font-family:inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left; }
 .rp-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
 .rp-done-toggle .tri.open { transform: rotate(90deg); }

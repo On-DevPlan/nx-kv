@@ -203,11 +203,11 @@ function LiveBlock({
  * 单栏实时预览：阅读态渲染 + 点击块就地改源码。
  * 无双栏、无高亮描边块。
  */
-/** 正文块：剥掉一级标题行（由顶部标题栏单独编辑，提交时再写入） */
+/** 正文块：剥掉首个一级标题行（= 文档标题，由顶部标题栏单独编辑，提交时再写入） */
 function bodyBlocksOnly(body) {
-  return splitMdBlocks(body).filter(
-    (b) => !/^# (?!#)/.test(String(b).trim()) || String(b).includes('\n')
-  );
+  const blocks = splitMdBlocks(body);
+  const i = blocks.findIndex((b) => /^# (?!#)/.test(String(b).trim()));
+  return i < 0 ? blocks : blocks.filter((_, k) => k !== i);
 }
 
 function isSlashArrow(e) {

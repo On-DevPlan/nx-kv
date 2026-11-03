@@ -1,7 +1,11 @@
 // 目录落地页 = 简介 + 子任务表。
 // 简介由统一组件 Introduction 负责（与项目组同构：显示 / 编辑 / 补 ref）。
+//
+// 任务表：显示序**未完成优先**、长度**分页**（队列长了翻页，不一次渲染全部）。
+// 分页与计数由容器（page/dir/index.jsx）算好传进来——本页只负责画。
 import { Icon } from '../../components/icons.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
+import Pager from '../../components/pager.jsx';
 import { titleFromMd } from '../../modules/md/md-parse.js';
 
 function shortTime(v) {
@@ -17,6 +21,11 @@ export default function Landing({
   repo = null,
   model = null,
   tasks = [],
+  taskCount = 0,
+  pendingCount = 0,
+  page = 0,
+  pageCount = 1,
+  onPage,
   onNew,
   onOpenTask,
   onDeleteTask,
@@ -70,7 +79,11 @@ export default function Landing({
             进程
           </button>
         )}
-        <span className="mdw-land-count">{tasks.length} 个任务</span>
+        <span className="mdw-land-count">
+          {pendingCount > 0 && <b className="mdw-land-pending">{pendingCount} 待领取</b>}
+          {' '}
+          {taskCount} 个任务
+        </span>
       </div>
 
       <div className="mdw-land-table-wrap">
@@ -82,7 +95,7 @@ export default function Landing({
               <th scope="col" style={{ width: '74px' }}>状态</th>
               <th scope="col" style={{ width: '116px' }}>创建</th>
               <th scope="col" style={{ width: '116px' }}>领取</th>
-              <th scope="col" style={{ width: '40px' }} />
+              <th scope="col" style={{ width: '56px' }} />
             </tr>
           </thead>
           <tbody>
@@ -110,32 +123,34 @@ export default function Landing({
                 <td className="mono faint">{shortTime(t.createdAt)}</td>
                 <td className="mono faint">{t.consumedAt ? shortTime(t.consumedAt) : '—'}</td>
                 <td className="act">
-                  {onReopenTask && t.status === 'consumed' && (
-                    <span
-                      className="del" role="button" tabIndex={-1}
-                      title="反馈修改：任务回到待领取，agent 可再次领取"
-                      aria-label={`重开 ${titleFromMd(t.text)}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReopenTask(t);
-                      }}
-                    >
-                      <Icon name="refresh" size={12} />
-                    </span>
-                  )}
-                  {onDeleteTask && (
-                    <span
-                      className="del" role="button" tabIndex={-1}
-                      title="删除此任务（软删除，CLI 可恢复）"
-                      aria-label={`删除 ${titleFromMd(t.text)}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteTask(t);
-                      }}
-                    >
-                      <Icon name="x" size={12} />
-                    </span>
-                  )}
+                  <span className="act-ops">
+                    {onReopenTask && (t.status === 'consumed' || t.completedAt) && (
+                      <span
+                        className="op" role="button" tabIndex={-1}
+                        title={t.completedAt ? '重做（验收反馈）：任务回到待领取，agent 可再次领取' : '反馈修改：任务回到待领取，agent 可再次领取'}
+                        aria-label={`重开 ${titleFromMd(t.text)}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReopenTask(t);
+                        }}
+                      >
+                        <Icon name="refresh" size={12} />
+                      </span>
+                    )}
+                    {onDeleteTask && (
+                      <span
+                        className="op danger" role="button" tabIndex={-1}
+                        title="删除此任务（软删除，CLI 可恢复）"
+                        aria-label={`删除 ${titleFromMd(t.text)}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteTask(t);
+                        }}
+                      >
+                        <Icon name="x" size={12} />
+                      </span>
+                    )}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -151,6 +166,19 @@ export default function Landing({
           </tbody>
         </table>
       </div>
+
+      {/* 队列长了翻页看（以前一次渲染全部，队列一长就是一堵墙） */}
+      {taskCount > 0 && (
+        <div className="mdw-land-pager">
+          <Pager
+            page={page}
+            pageCount={pageCount}
+            total={taskCount}
+            onPage={onPage}
+            unit="个任务"
+          />
+        </div>
+      )}
     </div>
   );
 }

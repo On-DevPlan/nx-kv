@@ -76,8 +76,37 @@ export function splitQueueTasks(tasks = []) {
   };
 }
 
-export function mergeDirectoryRows(topics = [], goals = []) {
-  const rows = [];
+/**
+ * 任务在**列表视图**里的排序：未完成（待领取）优先，其余按桶依次下沉。
+ *
+ * 为什么要有这一份（2026-11-03 反馈「优先显示没有完成的任务」）：
+ * 队列数组是**追加序**（谁先提交谁在前），于是一条新任务会被几十条历史
+ * 埋在下面——用户加完活儿在列表里找不到它（「追加任务显示」正是这个体感）。
+ * 所以**显示序**与**队列序**分开：显示时把待领取提到最前，其余沉到后面。
+ *
+ * 桶内顺序沿用 splitQueueTasks 的口径：
+ *   - 待领取：队列原序（= 领取优先级，不能乱）
+ *   - 已领取：倒序（新的在上面）
+ *   - 已迁出 / 已删除：迁出保原序、删除倒序（同 splitQueueTasks）
+ *
+ * 纯函数、无副作用（不改传入数组）。
+ */
+export function sortTasksForDisplay(tasks = []) {
+  const list = Array.isArray(tasks) ? tasks : [];
+  const pending = [];
+  const consumed = [];
+  const migrated = [];
+  const deleted = [];
+  for (const t of list) {
+    if (t.deletedAt) deleted.push(t);
+    else if (t.status === 'consumed') consumed.push(t);
+    else if (t.migratedTo) migrated.push(t);
+    else pending.push(t);
+  }
+  return [...pending, ...consumed.reverse(), ...migrated, ...deleted.reverse()];
+}
+
+export function mergeDirectoryRows(topics = [], goals = []) {  const rows = [];
   const byKey = new Map();
 
   for (const topic of topics) {

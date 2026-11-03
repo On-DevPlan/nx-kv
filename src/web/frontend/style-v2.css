@@ -865,6 +865,22 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .rp-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
 .rp-done-toggle .tri.open { transform: rotate(90deg); }
 
+/* ---------- 分页器（侧栏任务子行 / 目录任务表共用） ----------
+ * 队列长度有出口：翻页可达，而不是静默截断。
+ */
+.pager { display: inline-flex; align-items: center; gap: 4px; }
+.pager-n { font-size: 11px; color: var(--faint); white-space: nowrap; }
+.pager-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border-radius: var(--r5);
+  border: 1px solid var(--soft-2); background: var(--paper); color: var(--ink-2);
+  font-size: 13px; line-height: 1; cursor: pointer;
+}
+.pager-btn:hover:not(:disabled) { background: var(--soft); }
+.pager-btn:disabled { opacity: 0.4; cursor: default; }
+/* 侧栏里的翻页行：与其它子行同高，但不吃选中态 */
+.trow.child.task-pager { height: 26px; padding: 0 6px; background: none; border: 0; cursor: default; }
+
 /* ---------- 成员选择器（组面板「添加成员」/ 仓库页「成员管理」共用） ----------
  * 界面自己说明自己：条目自带归属与规模，不写解释性段落。
  */

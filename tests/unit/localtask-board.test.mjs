@@ -5,6 +5,7 @@ import {
   withGlobalRow,
   globalPlaceholderTopic,
   splitQueueTasks,
+  sortTasksForDisplay,
   GLOBAL_KEY,
 } from '../../src/modules/localtask/board.js';
 
@@ -123,4 +124,52 @@ test('splitQueueTasks：空输入与脏输入都不炸', () => {
   assert.deepEqual(splitQueueTasks([]), { pending: [], consumed: [], deleted: [], migrated: [] });
   assert.deepEqual(splitQueueTasks(null), { pending: [], consumed: [], deleted: [], migrated: [] });
   assert.deepEqual(splitQueueTasks(undefined), { pending: [], consumed: [], deleted: [], migrated: [] });
+});
+
+// ─── 显示序：未完成优先（2026-11-03 反馈「优先显示没有完成的任务」）──────
+//
+// 真实场景：队列是**追加序**（谁先提交谁在前），新任务会被几十条历史埋在
+// 下面——用户加完活儿在列表里找不到它。显示序与队列序分开：显示时把待领取
+// 提到最前，其余沉到后面；**领取优先级不变**（待领取桶内仍是队列原序）。
+
+test('sortTasksForDisplay：待领取提到最前，已领取/已迁出/已删除依次下沉', () => {
+  const tasks = [
+    { id: 1, status: 'consumed' },
+    { id: 2, status: 'pending' },
+    { id: 3, status: 'consumed' },
+    { id: 4, status: 'pending' },
+    { id: 5, status: 'pending', migratedTo: { side: 'cloud', topic: 't', targetId: 9 } },
+    { id: 6, status: 'pending', deletedAt: '2026-11-03 10:00:00' },
+  ];
+  const sorted = sortTasksForDisplay(tasks);
+  assert.deepEqual(
+    sorted.map((t) => t.id),
+    [2, 4, 3, 1, 5, 6],
+    '待领取（队列原序）→ 已领取（倒序）→ 已迁出 → 已删除（倒序）'
+  );
+});
+
+test('sortTasksForDisplay：待领取内部保持队列原序（领取优先级不能乱）', () => {
+  const tasks = [
+    { id: 7, status: 'pending' },
+    { id: 8, status: 'consumed' },
+    { id: 9, status: 'pending' },
+    { id: 10, status: 'pending' },
+  ];
+  assert.deepEqual(sortTasksForDisplay(tasks).map((t) => t.id), [7, 9, 10, 8]);
+});
+
+test('sortTasksForDisplay：不改传入数组（纯函数）', () => {
+  const tasks = [
+    { id: 1, status: 'consumed' },
+    { id: 2, status: 'pending' },
+  ];
+  sortTasksForDisplay(tasks);
+  assert.deepEqual(tasks.map((t) => t.id), [1, 2], '原数组顺序不变');
+});
+
+test('sortTasksForDisplay：空输入与脏输入都不炸', () => {
+  assert.deepEqual(sortTasksForDisplay([]), []);
+  assert.deepEqual(sortTasksForDisplay(null), []);
+  assert.deepEqual(sortTasksForDisplay(undefined), []);
 });

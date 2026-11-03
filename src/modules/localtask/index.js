@@ -43,9 +43,29 @@ const renderTask = (t) =>
     `#${t.id}  [${STATUS_TAG[t.status] || t.status}]  ${t.text}`,
     `  创建: ${t.createdAt}`,
     t.consumedAt ? `  领取: ${t.consumedAt}` : '',
+    // 附件清单（正文里的 ![名](fileId) 嵌入；本地已有 → 直接给绝对路径）
+    ...(t.attachments || []).map(
+      (a) => `  附件:   ${a.localPath || a.name}${a.localPath ? '' : `（未同步；nx-kv file sync --ids ${a.id}）`}`
+    ),
   ]
     .filter(Boolean)
     .join('\n');
+
+// `localtask attachments` 的人读输出（与 todo attachments 同构）
+function renderTaskAttachments(d) {
+  const lines = [
+    `#${d.task.id}  附件 ${d.count} 个 · 本地目录: ${d.localDir}（自动下载 ${d.autoSync ? '开' : '关'}）`,
+  ];
+  if (!d.count) {
+    lines.push('  （这条任务没有引用附件）');
+    return lines.join('\n');
+  }
+  for (const a of d.attachments) {
+    lines.push(`  ${a.kind === 'image' ? '图片' : '附件'}  ${a.name}  [${a.id}]`);
+    lines.push(`      ${a.localPath || '（未同步；nx-kv file sync --ids ' + a.id + '）'}`);
+  }
+  return lines.join('\n');
+}
 
 function renderAdd(d) {
   const where = d.isGlobal ? '全局任务（共享池）' : `主题「${d.name}」`;
@@ -135,9 +155,18 @@ export default {
       // 领任务（见 localtask.claim），查看走 `localtask show`。HTTP 路由不变。
       cli: ['localtask', 'show'],
       http: ['GET', '/api/localtasks/item'],
-      summary: '查看单条任务（按 --id，定位到 --cwd 主题或 --key）',
+      summary: '查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置）',
       flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
-      run: (ctx) => service.getTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
+      run: async (ctx) => {
+        const task = await service.getTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
+        // 附件标注（任务 #15）：解析正文嵌入 + 按设置自动下载 + 标本地路径。
+        // fail-open：标注坏了照常返回任务本体。
+        const { annotateTaskDelivery } = await import('../tasktool/attach.js');
+        const att = await annotateTaskDelivery(task).catch(() => null);
+        return att
+          ? { ...task, attachments: att.task.attachments, ...(att.sync ? { attachmentsSync: att.sync } : {}) }
+          : task;
+      },
       render: renderTask,
     },
     {
@@ -325,6 +354,51 @@ export default {
           : d.goalChanged === 'cleared'
             ? '（时间目标已清除）'
             : ''),
+    },
+    {
+      // 附件追加（与云端 todo attach 同构）：上传/复用 fileId → markdown 嵌入正文末尾。
+      // 面板编辑器贴的是同一条语法（components/md/attachments.js），两端渲染一致。
+      id: 'localtask.attach',
+      cli: ['localtask', 'attach'],
+      http: ['POST', '/api/localtasks/attach'],
+      summary: '给任务追加附件：--path 上传本机文件，或 --fileId 追加已上传附件，以 markdown 嵌入正文末尾（不替换正文）',
+      flags: {
+        id: { type: 'number', required: true, hint: '任务编号' },
+        cwd: CWD,
+        key: KEY,
+        path: { type: 'string', hint: '本机文件路径（先上传再嵌入）' },
+        fileId: { type: 'string', hint: '已上传附件的 id（32 位 hex，可带扩展名）' },
+        name: { type: 'string', hint: '嵌入文字与本地文件名（默认取原文件名）' },
+        kind: { type: 'string', hint: 'image | file（不给按文件名/扩展名判）' },
+        accessLevel: { type: 'string', hint: 'public | private | protected（默认 public；仅 --path 上传时生效）' },
+      },
+      run: async (ctx) => {
+        const { attachToTask } = await import('../tasktool/attach.js');
+        return attachToTask({
+          id: ctx.id,
+          cwd: ctx.cwd,
+          key: ctx.key,
+          path: ctx.path,
+          fileId: ctx.fileId,
+          name: ctx.name,
+          kind: ctx.kind,
+          accessLevel: ctx.accessLevel,
+        });
+      },
+      render: (d) =>
+        `已附加 ${d.fileId}（${d.kind === 'image' ? '图片' : '文件'}）到主题「${d.name}」#${d.task.id}\n嵌入: ${d.markdown}`,
+    },
+    {
+      id: 'localtask.attachments',
+      cli: ['localtask', 'attachments'],
+      http: ['GET', '/api/localtasks/attachments'],
+      summary: '列出某条任务引用的附件（正文里的 ![名](fileId) 嵌入），以及本地是否已有（给 agent 直接读本地文件）',
+      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
+      run: async (ctx) => {
+        const { listTaskAttachments } = await import('../tasktool/attach.js');
+        return listTaskAttachments({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
+      },
+      render: renderTaskAttachments,
     },
     {
       id: 'localtask.remove',

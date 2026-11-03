@@ -35,6 +35,7 @@ import {
 } from '../localtask/service.js';
 import { ensureTaskGoal } from './taskgoal.js';
 import { readGroupContext, renderGroupContext } from './groupctx.js';
+import { annotateTaskDelivery, attachmentInstruction } from './attach.js';
 import * as timegoal from './timegoal.js';
 
 // 跨进程兜底轮询间隔（只定这里的读取节奏；队列写入节奏与它无关）
@@ -116,6 +117,21 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
   // 多条收尾指令（settings.taskSuffix 存 string[]）先按空行拼成单串再分流；
   // 兼容旧单条 string（joinTaskSuffix 对 string 原样算一条）。
   const tpl = joinTaskSuffix(suffix);
+  // 附件标注（任务 #15：正文里的 ![名](fileId) 嵌入 → 附件清单 + 本地路径）。
+  // fail-open：标注失败绝不拖垮交付；正文没有引用时 annotateTaskDelivery 返回
+  // null，载荷与改造前**逐字节一致**（与 todo 读任务的同一条纪律）。
+  let attSeg = '';
+  let attSync = null;
+  try {
+    const att = await annotateTaskDelivery(task);
+    if (att) {
+      task = att.task;
+      attSeg = attachmentInstruction(att.task.attachments, att.sync);
+      attSync = att.sync;
+    }
+  } catch {
+    /* 标注失败照常交付（agent 还能从正文里的嵌入自行处理） */
+  }
   try {
     // 任务级 timegoal（发布带 --duration）：**领取即计时**——这里起表（幂等），
     // goal 上下文换成任务级（prompt = check 指令，固化进 timegoal 存储，之后每轮原文回显）。
@@ -160,6 +176,9 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
       // 任务级 goal 必须把 check 指令带到 agent 手里——即使交付模板被关/是纯文本，
       // 也要以独立 instruction 交付（这就是「提示词当中写上，让他进行一个 check」）。
       if (taskGoalCtx) base.instruction = taskGoalCtx.prompt;
+      // 〔附件〕段同样必须到达 agent（它带本地路径/拉取方式），与 goal 段同一待遇
+      if (attSeg) base.instruction = base.instruction ? `${base.instruction}\n\n${attSeg}` : attSeg;
+      if (attSync) base.attachmentsSync = attSync;
       return base;
     } else {
       parts.push(tpl); // 纯文本后缀 + 有组上下文 → 进 instruction，不污染 task.text
@@ -167,14 +186,20 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
     // 任务级 check 指令必须原样到达 agent（默认 suffix 模板不含 {{goal.prompt}}，
     // 用户自定义模板也可能漏写）——任务级 goal 存在时始终以独立段落追加。
     if (taskGoalCtx) parts.push(taskGoalCtx.prompt);
+    if (attSeg) parts.push(attSeg);
 
     const full = parts.join('\n\n').trim();
-    if (!full) return { task };
+    if (!full) return attSync ? { task, attachmentsSync: attSync } : { task };
     // coversBody = 模板是否包含 {{task.text}}（即 instruction 是否自包含任务正文）。
     // 由服务端判定而不是 CLI 端做子串猜测——短任务文本可能碰巧是指令的子串，
     // 子串启发会误吞正文块的显示。
     const coversBody = hasTemplateMarkers(tpl) && /\{\{\s*task\.text\s*\}\}/.test(tpl);
-    return { task, instruction: full, coversBody };
+    return {
+      task,
+      instruction: full,
+      coversBody,
+      ...(attSync ? { attachmentsSync: attSync } : {}),
+    };
   } catch {
     return { task };
   }

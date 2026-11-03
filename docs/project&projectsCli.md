@@ -147,18 +147,25 @@ projectDesc: KV 清单管理中枢：远程清单 + 本机任务队列
   **属性卡**（键值表），自成一块、不与首行内容合并；点击卡片就地编辑这段
   frontmatter（等宽小字），正文块不受影响。
 
-### 2.3 正文自带 frontmatter 的提交口径（面板同源）
+### 2.3 派任务统一口径（CLI / HTTP / 面板同一条链路）
 
-面板「组面板 → 新增任务」先写草稿（草稿正文带 `board` + `project`），提交时有两条路，
-殊途同归：
+派任务的**落点判定只有一份实现**：`src/modules/tasktool/add.js` 的 `submitTask`
+（与领取侧的 `get.js` / `wait.js` 并列——领 / 等 / 派三个动词同构：action 层一行委托，
+编排住在 tasktool，队列本体只有 localtask/service.js 一处）。CLI、HTTP、面板提交、
+远程清单导入全走这一条链路：
 
-- **组任务（认得出归属）**：面板显式交 `board` / `project`（等价于 CLI 的
-  `--board/--project`），服务端走同一条严格口径——校验成员资格与目录一致，
-  frontmatter 由服务端统一落字段；
-- **认不出归属**（rows 未就绪 / 成员已变 / 手写 frontmatter）：服务端**读正文里的
-  frontmatter** 补齐介绍引用（fail-open：解析不了就原样提交，不拦下任务）。
+- **显式 `--board` / `--project`（严格口径）**：校验组成员资格与 `--cwd` 一致性，
+  frontmatter 由服务端统一落字段，落点 = 项目登记路径；
+- **正文自带 frontmatter（fail-open）**：面板草稿、CLI 手写、导入的 md 都认——
+  服务端读正文补齐介绍引用，**落点跟到解析出的项目队列**（调用方显式给过
+  `--cwd` 时不挪窝，只补字段）；解析不了（组没了 / 成员变了 / 项目未登记）
+  就原样提交，不拦下任务。
 
-CLI 也能走这条：正文以 `---` 开头不会被当成 flag（`---` 不是合法 flag 名），
+面板「组面板 → 新增任务」的草稿（正文带 `board` + `project`）提交时：认得出组就
+显式交 `board`/`project`（严格口径）；只认得出 `project` 就交 `project`（项目口径）；
+页签落点一律跟随服务端返回的真实主题 key。
+
+CLI 也能走 fail-open 这条：正文以 `---` 开头不会被当成 flag（`---` 不是合法 flag 名），
 直接引号包住即可：
 
 ```bash
@@ -166,7 +173,9 @@ nx-kv localtask add "---
 board: b_mw0cjlcm2idd6
 project: local/nx-kv
 ---
-# 手写 frontmatter 的任务" --cwd "D:\DevProjects\my\github\nx-kv"
+# 手写 frontmatter 的任务"
+# ↑ 不带 --cwd：落点跟到 frontmatter.project 的项目队列；
+#   显式加 --cwd 则落点以 --cwd 为准（只补介绍引用，不挪窝）。
 ```
 
 ---
@@ -352,10 +361,11 @@ nx-kv localtask list                    # 主题总览
 | **C. 「持续 get」模板无条件投递** | 没开持续 get 的项目，交付里也带「继续调用 localtask get 直到超时」，与 instant 语义自相矛盾 | 只在 `loop.enabled` 时叠加模板 | `src/modules/tasktool/get.js` |
 | **D. 交付里没有「项目介绍」** | agent 知道组是干什么的，却不知道这个项目是干什么的 | 组上下文前补 `〔项目介绍 · X〕` 段；**不在任何组里的项目也带** | `src/modules/docs/knowledge.js`、`src/modules/tasktool/groupctx.js` |
 | **E. 改文案抹掉 frontmatter** | `reopen --text` / `update --text` 整段替换正文 → 归组信息没了 → 任务从组面板掉出去 | 换正文时保留原 frontmatter（新正文自带的键优先，旧值补缺） | `src/modules/localtask/frontmatter.js`、`src/modules/localtask/service.js` |
-| **F. 面板口径与 CLI 不同源** | ①面板草稿自带 `board`+`project` 提交，服务端不补介绍引用；②组面板建的任务在归属项目**还没有队列**时落进全局池；③提交后页签停在旧 scope，指向别的队列里的任务号 | 组任务显式交 `board`/`project`（与 CLI 同一条严格口径，落点由服务端按项目登记路径推导）；页签与文档跟到服务端返回的真实主题 key；认不出归属再走 fail-open 补引用 | `src/modules/localtask/index.js`、`src/web/frontend/page/dir/task.jsx` |
+| **F. 面板口径与 CLI 不同源** | ①面板草稿自带 `board`+`project` 提交，服务端不补介绍引用；②组面板建的任务在归属项目**还没有队列**时落进全局池；③提交后页签停在旧 scope，指向别的队列里的任务号；④落点判定三处实现（CLI action 内联 / 面板四路分支 / 远程导入绕过组语义），必然分叉 | 派任务编排收敛为一条链路：`tasktool/add.js` 的 `submitTask`（与领取侧 get/wait 同构，action 层一行委托）；显式 `board`/`project` 走严格口径，正文自带 frontmatter 走 fail-open——补介绍引用**且落点跟到项目队列**（显式给过 `--cwd` 时不挪窝）；面板只认归属不再自判队列，页签跟到服务端返回的真实主题 key | `src/modules/tasktool/add.js`、`src/modules/localtask/index.js`、`src/modules/localtask/service.js`、`src/web/frontend/page/dir/task.jsx` |
 | **G. 正文以 `---` 开头被当 flag** | `localtask add "---…"` 报「未知参数 ---」——带 frontmatter 的正文根本提交不上去 | 只把「像 flag」的 token（`--` + 字母/数字）当 flag；`---` 与 `--` 分别是正文与「后面全是位置参数」 | `src/runtime/cli.js` |
 
-> 回归测试：`tests/unit/localtask-group.test.mjs`（frontmatter / 介绍引用 / 保留 / 面板口径）、
+> 回归测试：`tests/unit/localtask-submit.test.mjs`（派任务统一链路：fail-open 落点跟到项目队列 / 显式 cwd 不挪窝 / 认不出归属不拦任务 / 严格口径不变 / action 委托）、
+> `tests/unit/localtask-group.test.mjs`（frontmatter / 介绍引用 / 保留 / 面板口径）、
 > `tests/unit/group-context.test.mjs`（交付带项目介绍）、
 > `tests/unit/taskgoal.test.mjs`（未开持续 get 不带循环指令 / 改文案不丢 frontmatter）、
 > `tests/unit/cli-args.test.mjs`（`---` 开头正文 / `--` 位置参数）。

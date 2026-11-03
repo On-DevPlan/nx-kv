@@ -1573,11 +1573,15 @@ export async function importRemoteTasks({
     const remoteTask = hit && (hit.task || hit);
     const text = String((remoteTask && remoteTask.text) || ref);
 
-    // 2) 先落本地
-    const added = await addTask({ cwd: local.cwd, text, global: toGlobal });
+    // 2) 先落本地——走与 add 同一条**派任务链路**（tasktool/add.js 的 submitTask）：
+    //    正文自带 frontmatter 时 fail-open 补齐归属语义；落点仍是用户选定的主题
+    //    （cwd 是这里的显式意图，不会被挪窝）。动态 import：add.js 静态引用本模块，
+    //    反向只走动态（与 taskgoal 探针同一惯例）。
+    const { submitTask } = await import('../tasktool/add.js');
+    const added = await submitTask({ cwd: local.cwd, text, global: toGlobal });
     item.imported = true;
     item.localId = added.task.id;
-    item.localTopic = added.topic && added.topic.name;
+    item.localTopic = added.name; // addTask 返回形状：主题名在 name（没有 topic 字段）
 
     // 3) 再把远程那条标完成，note 写明「本地的哪一个队列领走了它」
     try {

@@ -34,6 +34,7 @@
 - [x] CLI 可快速拿到本项目知识（`board list` / `repo knowledge` / `repo ref of`）
 - [x] 发布任务指定归属（`--project`，配 `--board` 时必须是该组成员；落点目录由项目推导，`--cwd` 只做一致性校验）；领取按落点目录定位
 - [x] 提交携带 frontmatter：`board`/`project` 归属 + `boardIntro`/`projectIntro`（介绍文档**引用式**：路径 + 一行摘要）；改文案（reopen/update `--text`）不丢 frontmatter
+- [x] 取/派两条链路同构：派任务编排迁 `tasktool/add.js`（与领取侧 get/wait 并列，action 层一行委托），落点判定只此一份实现——CLI/HTTP/面板提交/远程导入同走一条 `submitTask`；正文自带 frontmatter（fail-open）落点也跟到项目队列（显式 `--cwd` 时不挪窝）
 - [x] 领到组内仓库任务时，交付 `instruction` 封装：组概念、组介绍、本项目位置、兄弟角色、参考文件可读路径（`task.text` 保持原文）
 
 ### 任务工具

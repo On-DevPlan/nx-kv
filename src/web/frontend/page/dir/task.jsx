@@ -177,7 +177,8 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
       : null;
     // 组任务走与 CLI 同一条**严格口径**：显式交 board/project，服务端校验成员资格并
     // 按项目登记路径路由（proj-a 还没有队列主题时也能落对地方——这正是组面板建任务
-    // 的常态）。认不出（成员已变 / 手写 frontmatter）就退回 fail-open 路径，不拦提交。
+    // 的常态）。认不出组（rows 未就绪 / 成员已变）但认得出 project 时，交 project 走
+    // 项目口径；服务端统一推导落点，面板不再自己判队列。
     const groupSubmit = !!(boardCtx && fm.project &&
       boardCtx.members.some((m) => m.key === fm.project));
     const gp = goalPatchOf();
@@ -208,12 +209,13 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     const res = await api('/api/localtasks', {
       method: 'POST',
       body: {
-        // 组任务：只给正文 + 归属，落点目录由服务端按项目登记路径推导——
-        // 不带 cwd / global（归属由 project 决定，与 CLI --board/--project 同一条路径）。
+        // 落点判定交给服务端统一口径（tasktool/add.js 的 submitTask 一份实现）：
+        // 组 → 严格 board+project；只认出 frontmatter.project → 项目口径（服务端
+        // 校验登记并推导落点）；都没有 → 当前 scope（全局池 / 本目录队列）。
         ...(groupSubmit
           ? { text: b, board: boardCtx.board.id, project: fm.project }
-          : projTopic
-            ? { cwd: projTopic.cwd, text: b }
+          : fm.project
+            ? { text: b, project: fm.project }
             : isGlobal
               ? { global: true, text: b }
               : { cwd: topic?.cwd, text: b }),

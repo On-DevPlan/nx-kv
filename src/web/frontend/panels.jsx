@@ -7,6 +7,7 @@
 // 从 node.getConfig() 取。加一种面板 = 这里加一行。
 import { Suspense, lazy } from 'react';
 import { useApp } from './app-context.jsx';
+import { docIdOf, peekDoc, scopeOf } from './modules/md/doc-store.js';
 import SidebarPanel from './components/sidebar/panel.jsx';
 import { openFloatingPanel } from './workspace.js';
 
@@ -172,6 +173,14 @@ export function routeOfPanel(node) {
   }
 }
 
+/** 草稿页签名：路由只认 draft-N，用 doc-store 里的草稿标题（读一次，不引响应性） */
+function draftTitleOf(route) {
+  const task = String((route && route.task) || '');
+  if (!task.startsWith('draft')) return '';
+  const doc = peekDoc(docIdOf(scopeOf(route.key), task));
+  return String((doc && doc.title) || '').trim();
+}
+
 /** 路由 → 面板规格（路由变了，打开/聚焦对应面板） */
 export function panelSpecOfRoute(route, ctx = {}) {
   if (!route) return null;
@@ -181,7 +190,7 @@ export function panelSpecOfRoute(route, ctx = {}) {
       if (route.task) {
         return {
           component: 'page',
-          name: ctx.pageTitle || `页 ${route.task}`,
+          name: ctx.pageTitle || draftTitleOf(route) || `页 ${route.task}`,
           config: { dirKey: route.key, task: route.task },
         };
       }

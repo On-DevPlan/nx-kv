@@ -47,6 +47,11 @@ export function getDoc(id, seed) {
   return s.docs[id];
 }
 
+/** 只读取文档，**不创建**——路由/页签命名这类只读场合用（getDoc 会顺手建空文档） */
+export function peekDoc(id) {
+  return s.docs[id] || null;
+}
+
 /** 写回文档 */
 export function saveDoc(id, patch) {
   const prev = s.docs[id] || { title: '', body: '', attachments: [], mode: 'split' };

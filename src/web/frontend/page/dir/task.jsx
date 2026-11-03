@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
-import { useToast } from '../../components/ui.jsx';
+import { useToast, useDialog } from '../../components/ui.jsx';
 import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
 import ToolBar from '../../components/md/tool-bar.jsx';
 import { MdPanes } from '../../components/md/md-panes.jsx';
@@ -35,6 +35,7 @@ import {
 export default function PagePanel({ dirKey, task, tabId, model }) {
   const app = useApp() || {};
   const toast = useToast();
+  const { dialog, node: dialogNode } = useDialog();
   const rows = app.rows || [];
   const refreshLocal = app.refreshLocal;
   const tpl = app.tpl;
@@ -68,6 +69,64 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   const declaredGoal = taskRow?.timegoal || null;
   const goal = goalDraft || { duration: declaredGoal?.duration || '', prompt: declaredGoal?.prompt || '' };
   const goalEditable = isDraft || (!!taskRow && taskRow.status !== 'consumed');
+
+  // ─── 验收条（完成任务）：agent 的完成总结（ack）+ 用户回复（通行 / 重做 / 划线评论提详细问题）───
+  // 「通行」只在本机记一笔（localStorage，per-viewer 的轻量状态）：done 本身已是终态，
+  // 验收与否不进队列 schema——「无更新则直接结束」的口径里，通行 = 不需要再做什么。
+  const reviewAckKey = `nx-kv/review/${scope}/${task}`;
+  const [reviewAcked, setReviewAcked] = useState(() => {
+    try {
+      return localStorage.getItem(reviewAckKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    setReviewAcked(() => {
+      try {
+        return localStorage.getItem(reviewAckKey) === '1';
+      } catch {
+        return false;
+      }
+    });
+  }, [reviewAckKey]);
+  const ackReview = () => {
+    try {
+      localStorage.setItem(reviewAckKey, '1');
+    } catch {
+      /* 私隐模式等存不了就只在本次会话里认 */
+    }
+    setReviewAcked(true);
+    toast('已验收');
+  };
+  const redoTask = () => {
+    if (!taskRow) return;
+    const title = doc?.title || `#${task}`;
+    guard(async () => {
+      const body = await dialog({
+        title: `重做 · ${title}`,
+        input: true,
+        placeholder: '写下要改的地方（留空 = 只重开，不改正文）',
+      });
+      if (body === null || body === undefined) return;
+      // 反馈是**追加**不是替换：弹窗写的是「要改的地方」，reopen 的 text 却是
+      // 整段新正文——直接发反馈会把原任务丢掉。拼成「原正文 + 验收反馈」再发，
+      // agent 下一轮既看得见原任务，也看得见这次要改什么。
+      const fb = String(body).trim();
+      const base = String(doc?.body || '').trim();
+      const text = fb ? (base ? `${base}\n\n## 验收反馈\n\n${fb}\n` : fb) : '';
+      await api('/api/localtasks/reopen', {
+        method: 'POST',
+        body: {
+          ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }),
+          id: Number(task),
+          ...(text ? { text } : {}),
+        },
+      });
+      toast(`已重开「${title}」——agent 可再次领取`);
+      refreshLocal();
+    });
+  };
 
   // 工作组语义（frontmatter）：组面板「新增任务」创建的草稿带 board/project——
   // 工具区给「归属项目」下拉（限本组成员），提交按 project 路由进对应项目的队列。
@@ -308,6 +367,11 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     if (!isDraft && patch.attachments) persistAtt(task, patch.attachments);
   };
 
+  const closeSelMenu = () => {
+    setSelMenu(null);
+    lastSel.current = '';
+  };
+
   /** 划线评论 → 新任务：锚定选区原文，正文就是提出的问题 */
   const spawnComment = (question) => {
     const quote = lastSel.current || '';
@@ -323,14 +387,14 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     const parent = doc?.title || topic?.name || '';
     const t = `问题：${q.slice(0, 28)}`;
     const b = `# ${t}\n\n> 锚定自「${parent}」：\n> ${quote.replace(/\n/g, '\n> ')}\n\n## 问题\n${q}\n\n## 要做什么\n- [ ] …\n`;
-    if (app.openPage) app.openPage({ dirKey, body: b, title: t });
-    setSelMenu(null);
+    // 草稿正文必须**先写进 doc-store**：openPage 只透传 dirKey / task / name，
+    // body 会被丢掉——只 openPage 的话新页签是张空页，评论等于没提交
+    // （组面板「新增任务」用的是同一套写法）。
+    const draftId = nextDraftId();
+    saveDoc(docIdOf(scope, draftId), { title: t, body: b });
+    if (app.openPage) app.openPage({ dirKey, task: draftId, name: t });
+    closeSelMenu();
     toast('已开新任务（评论）');
-  };
-
-  const closeSelMenu = () => {
-    setSelMenu(null);
-    lastSel.current = '';
   };
 
   /** 工具栏「评论」：只用当前可见选区；浮层已开时沿用其原文（正写评论） */
@@ -555,6 +619,36 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
           </div>
         )}
 
+        {/* 验收条：已完成任务的 ack 卡——agent 的完成总结在此等用户回复：
+            划选正文评论 = 提详细问题（生成新任务）；重做 = 带反馈重开；通行 = 验收通过。 */}
+        {!isDraft && taskRow?.completedAt && (
+          <div className="mdw-review">
+            <div className="mdw-review-main">
+              <span className="mdw-review-badge">已完成 · 等待验收</span>
+              <span className="mdw-review-at mono">{taskRow.completedAt}</span>
+              {taskRow.roundSummary ? (
+                <div className="mdw-review-sum" title="agent 的完成总结（ack）">
+                  {taskRow.roundSummary}
+                </div>
+              ) : null}
+            </div>
+            <div className="mdw-review-acts">
+              {reviewAcked ? (
+                <span className="mdw-review-ok">已验收</span>
+              ) : (
+                <>
+                  <button type="button" className="ghost" onClick={redoTask}>
+                    重做（带反馈）
+                  </button>
+                  <button type="button" className="primary" onClick={ackReview}>
+                    通行
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <ToolBar
           mode={doc.mode}
           onMode={(m) => saveDoc(id, { mode: m })}
@@ -591,7 +685,7 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
           onSave={submit}
           onUndo={undo}
           onRedo={redo}
-          onCloseSelMenu={() => setSelMenu(null)}
+          onCloseSelMenu={closeSelMenu}
         />
 
         <AttachBar
@@ -609,13 +703,15 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
         at={selMenu}
         onFormat={(op) => {
           editorApiRef.current?.format?.(op);
-          setSelMenu(null);
+          closeSelMenu();
         }}
         onComment={spawnComment}
+        onCompose={() => setSelMenu((cur) => (cur ? { ...cur, comment: true } : cur))}
+        onClose={closeSelMenu}
         onCopy={() => {
           navigator.clipboard?.writeText(lastSel.current || selMenu?.text || '');
           toast('已复制');
-          setSelMenu(null);
+          closeSelMenu();
         }}
       />
 
@@ -642,6 +738,7 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
         }}
       />
       {showShortcuts && <ShortcutSheet onClose={() => setShowShortcuts(false)} />}
+      {dialogNode}
     </div>
   );
 }

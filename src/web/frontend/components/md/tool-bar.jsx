@@ -109,7 +109,7 @@ export default function ToolBar({
   const secondary = [
     mode !== 'split' && { id: 'import', label: '导入', run: onImport },
     { id: 'new', label: '新任务', run: onNew },
-    showMark && mode !== 'split' && { id: 'mark', label: '标注', run: onMark },
+    showMark && { id: 'mark', label: '评论', run: onMark },
     mode !== 'split' && { id: 'draft', label: '存草稿', run: onDraft },
     onDelete && { id: 'delete', label: '删除', run: onDelete, danger: true },
     { id: 'overview', label: '总览', run: onOverview },

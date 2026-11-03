@@ -182,6 +182,9 @@
 }
 .mdw-land-acts{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .mdw-land-count{font-size:12px;color:var(--mid,#838A93)}
+.mdw-land-pending{color:var(--doing,#2f5fb5);font-weight:650}
+/* 翻页条：队列长了翻页看，不再一次渲染全部 */
+.mdw-land-pager{display:flex;justify-content:flex-end;margin-top:10px}
 .mdw-land-table-wrap{
   background:var(--paper,#fff);border:1px solid var(--line,#E4E2DC);border-radius:10px;overflow:hidden;
 }
@@ -213,13 +216,26 @@
 }
 .mdw-land-tr .st.run{background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E)}
 .mdw-land-tr .st.done{background:var(--soft,#F1F0EC);color:var(--mid,#838A93)}
-.mdw-land-tr .act{width:40px;text-align:right}
-.mdw-land-tr .del{
-  display:none;align-items:center;justify-content:center;width:20px;height:20px;
-  border-radius:6px;color:var(--mid,#838A93);cursor:pointer;
+/* 完成态会同时出「重试+删除」两钮：必须横排且预留宽度，
+   用 opacity 显隐（不用 display:none），hover 行高才不会被竖排撑开。 */
+.mdw-land-tr .act{
+  width:56px;padding-left:4px;padding-right:8px;text-align:right;
+  white-space:nowrap;vertical-align:middle;
 }
-.mdw-land-tr:hover .del,.mdw-land-tr:focus-within .del{display:inline-flex}
-.mdw-land-tr .del:hover{background:rgba(179,38,30,.08);color:var(--danger,#b3261e)}
+.mdw-land-tr .act-ops{
+  display:inline-flex;align-items:center;justify-content:flex-end;gap:2px;
+  opacity:0;transition:opacity .12s;
+}
+.mdw-land-tr:hover .act-ops,.mdw-land-tr:focus-within .act-ops{opacity:1}
+.mdw-land-tr .op{
+  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
+  border-radius:6px;color:var(--mid,#838A93);cursor:pointer;flex:none;
+}
+.mdw-land-tr .op:hover{background:var(--soft,#F1F0EC);color:var(--mdw-accent,#2F6F5E)}
+.mdw-land-tr .op.danger:hover{background:rgba(179,38,30,.08);color:var(--danger,#b3261e)}
+@media (hover:none){
+  .mdw-land-tr .act-ops{opacity:1}
+}
 .mdw-land-empty{padding:20px 8px;font-size:12px;color:var(--faint,#A9AEB4);text-align:center;line-height:1.6}
 .mdw-pane{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--paper,#fff)}
 .mdw-title-input{
@@ -365,7 +381,13 @@
   resize:none;overflow:hidden;overflow-wrap:anywhere;
 }
 .mdw-lp-title::placeholder{color:var(--faint,#A9AEB4);font-weight:600}
-.mdw-lp-blocks{display:flex;flex-direction:column;gap:0}
+.mdw-lp-blocks{
+  display:flex;flex-direction:column;gap:0;
+  /* 视图↔编辑共用度量：点进一行只出现绿色光标，色/行高不得跳 */
+  --mdw-lp-body-size:13.5px;
+  --mdw-lp-body-lh:1.75;
+  --mdw-lp-body-color:var(--ink-2,#4B515A);
+}
 /* 块本身零 chrome —— 禁止底色/描边/圆角/焦点环（无行首把手） */
 .mdw-lp-block{
   position:relative;margin:0;padding:1px 0;border:0;background:transparent;
@@ -380,23 +402,37 @@
   display:block;width:100%;box-sizing:border-box;margin:0;padding:0 0 6px!important;
   resize:none;overflow:hidden;
   white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;
-  /* 字体族与视图态一致（继承面板字体）：此前写死 ui-sans-serif/Segoe UI，
-     与视图侧的 Segoe UI Variable Text 不同度量——选中一行时字宽变化、重新折行，
-     同样表现为「抖」。 */
+  /* 与视图态同一套字体度量，避免点选一行时重新折行/行高跳 */
   font-family:inherit;
-  font-size:13.5px;line-height:1.75;font-weight:400;
-  color:var(--ink,#16181C);caret-color:var(--mdw-accent);
+  font-size:var(--mdw-lp-body-size);line-height:var(--mdw-lp-body-lh);font-weight:400;
+  color:var(--mdw-lp-body-color);
+  caret-color:var(--mdw-accent);
+  transition:none!important;
 }
 .mdw-lp-src::placeholder{color:var(--faint,#A9AEB4)}
-/* 编辑态与视图态**逐项同款**（字号/粗细/行高/字体族/盒内边距）：
-   切到编辑态不该有任何视觉变化——内边距对齐视图态的外边距（见下方各 kind），
-   块高不变，选中行就不会带着周围内容上下跳。 */
-.mdw-lp-block.kind-h1 textarea.mdw-lp-src{font-size:22px;font-weight:650;line-height:1.3;letter-spacing:-0.02em;padding:8px 0!important}
-.mdw-lp-block.kind-h2 textarea.mdw-lp-src{font-size:16px;font-weight:650;line-height:1.35;letter-spacing:-0.01em;padding:14px 0 4px!important}
-.mdw-lp-block.kind-h3 textarea.mdw-lp-src{font-size:14px;font-weight:650;line-height:1.4;padding:10px 0 4px!important}
-.mdw-lp-block.kind-li textarea.mdw-lp-src{padding-left:0!important}
+/* 划选：不改文字色、不抬行高；淡绿底仅标范围，光标仍是强调色 */
+.mdw-lp ::selection,
+.mdw-lp textarea.mdw-lp-src::selection{
+  background:color-mix(in srgb, var(--mdw-accent,#2F6F5E) 18%, transparent);
+  color:inherit;
+}
+/* 编辑态与视图态**逐项同款**（字号/粗细/行高/颜色/盒内边距） */
+.mdw-lp-block.kind-h1 textarea.mdw-lp-src{
+  font-size:22px;font-weight:650;line-height:1.3;letter-spacing:-0.02em;
+  color:var(--ink,#16181C);padding:8px 0!important;
+}
+.mdw-lp-block.kind-h2 textarea.mdw-lp-src{
+  font-size:16px;font-weight:650;line-height:1.35;letter-spacing:-0.01em;
+  color:var(--ink,#16181C);padding:14px 0 4px!important;
+}
+.mdw-lp-block.kind-h3 textarea.mdw-lp-src{
+  font-size:14px;font-weight:650;line-height:1.4;
+  color:var(--ink-2,#4B515A);padding:10px 0 4px!important;
+}
+.mdw-lp-block.kind-li textarea.mdw-lp-src{padding-left:0!important;color:var(--mdw-lp-body-color)}
 .mdw-lp-block.kind-quote textarea.mdw-lp-src{
-  padding-left:12px!important;border-left:2px solid var(--line,#E4E2DC)!important;color:var(--ink-2,#4B515A);
+  padding-left:12px!important;border-left:2px solid var(--line,#E4E2DC)!important;
+  color:var(--ink-2,#4B515A);
 }
 /* frontmatter 块的编辑态：等宽小字，与属性卡同一套度量（视图↔编辑零位移只保高，
    字体换成 mono——键值本来就是结构化数据，等宽更可读） */
@@ -452,9 +488,10 @@
 /* 首块在编辑态同样不留上边距（视图 margin-top:0 ↔ 编辑态 padding-top:0） */
 .mdw-lp-blocks > .mdw-lp-block:first-child textarea.mdw-lp-src{padding-top:0!important}
 .mdw-lp-view p,.mdw-lp-view li,.mdw-preview p,.mdw-preview li{
-  font-size:13.5px;line-height:1.75;color:var(--ink-2,#4B515A);
-  /* 显式 400：与编辑态 textarea 的 400 一致——此前视图侧继承宿主（FlexLayout
-     页签）的 600，选中一行就「变细」，也是抖的一部分。 */
+  font-size:var(--mdw-lp-body-size,13.5px);
+  line-height:var(--mdw-lp-body-lh,1.75);
+  color:var(--mdw-lp-body-color,var(--ink-2,#4B515A));
+  /* 显式 400：与编辑态 textarea 一致，避免点选一行「变细」 */
   font-weight:400;
 }
 .mdw-lp-view p,.mdw-preview p{margin:0 0 6px}
@@ -670,6 +707,33 @@
 .mdw-sel-comment-acts button.primary:disabled{opacity:.45;cursor:not-allowed;filter:none}
 .mdw-sel-comment-hint{font-size:10.5px;color:var(--faint,#A9AEB4);text-align:right}
 .mdw-sel-fmt-btn.comment{font-family:inherit;font-weight:650;letter-spacing:0}
+/* 验收条：已完成任务的 ack 卡——完成总结等用户回复（通行 / 重做；划线评论提详细问题） */
+.mdw-review{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+  margin:0 0 10px;padding:10px 12px;
+  border:1px solid var(--mdw-accent-line,#9CB8AE);border-radius:10px;
+  background:var(--mdw-accent-soft,#E8F2EE);
+}
+.mdw-review-main{min-width:0;display:flex;flex-direction:column;gap:4px}
+.mdw-review-badge{
+  font-size:11px;font-weight:700;color:var(--mdw-accent,#2F6F5E);
+  letter-spacing:.02em;white-space:nowrap;
+}
+.mdw-review-at{font-size:10.5px;color:var(--faint,#A9AEB4)}
+.mdw-review-sum{
+  font-size:12px;line-height:1.5;color:var(--ink-2,#4B515A);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+  overflow-wrap:anywhere;white-space:pre-wrap;
+}
+.mdw-review-acts{display:flex;align-items:center;gap:6px;flex:none;padding-top:2px}
+.mdw-review-acts button{
+  border:0;border-radius:6px;padding:5px 10px;font:650 12px inherit;cursor:pointer;white-space:nowrap;
+}
+.mdw-review-acts button.ghost{background:transparent;color:var(--ink-2,#4B515A)}
+.mdw-review-acts button.ghost:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+.mdw-review-acts button.primary{background:var(--mdw-accent,#2F6F5E);color:#fff}
+.mdw-review-acts button.primary:hover{filter:brightness(1.06)}
+.mdw-review-ok{font-size:11px;font-weight:700;color:var(--mdw-accent,#2F6F5E)}
 /* 图床附件嵌入的渲染：文件=可下载 chip，图片=限宽圆角 */
 .md-att{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;margin:0 2px;border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--soft,#F1F0EC);color:inherit;text-decoration:none;font-size:12px;vertical-align:baseline}
 .md-att:hover{border-color:var(--mdw-accent,#2F6F5E);color:var(--mdw-accent)}

@@ -54,3 +54,32 @@ export function parentRouteOf(route, ctx = {}) {
       return '#/overview';
   }
 }
+
+/**
+ * 面包屑上下文（组名 / 目录名 / 页标题）——由路由 + 队列 + 仓库登记算出。
+ * 面包屑条现在挂在**各主面板内部**（#44：不该在窗口顶部），所以这段要能被面板共用。
+ * @param {object} route {view, key, task}
+ * @param {object[]} rows   /api/localtasks 的裸 topic 列表
+ * @param {object} repoData {boards, repos}
+ */
+export function crumbCtxOf(route, rows = [], repoData = {}) {
+  if (!route) return { boardName: '', boardId: '', dirName: '', pageTitle: '' };
+  // group 路由的 key = 看板 id；dir 路由的 key = 主题 key——两组身份别混。
+  const boardById = (repoData.boards || []).find((b) => b.id === route.key);
+  const topic = (rows || []).find((r) => r.key === route.key);
+  const repo =
+    (topic && topic.repo) ||
+    (repoData.repos || []).find((r) => topic && (r.id === topic.repo?.id || r.path === topic.cwd)) ||
+    null;
+  const boardFromRepo = (repo && repo.boards && repo.boards[0]) || null;
+  const taskRow =
+    topic && route.task
+      ? (topic.tasks || []).find((t) => String(t.id) === String(route.task))
+      : null;
+  return {
+    boardName: (boardById && boardById.name) || (boardFromRepo && boardFromRepo.name) || '',
+    boardId: (boardById && boardById.id) || (boardFromRepo && boardFromRepo.id) || '',
+    dirName: topic ? topic.name : '',
+    pageTitle: taskRow ? `#${taskRow.id}` : '',
+  };
+}

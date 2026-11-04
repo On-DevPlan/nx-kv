@@ -13,6 +13,7 @@
 // 之前这一页是「按看板分组的卡片墙 + 拖拽」：同一套数据，但读起来就是「移动」，
 // 而且同一个仓库会在多个分组里重复出现、看不到全貌。现在主视图是扁平的中心清单，
 // 看板退成上方的筛选器与行内的标签。
+import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Copyable } from '../../components/ui.jsx';
@@ -591,6 +592,7 @@ export default function ReposView() {
   if (boards === null) {
     return (
       <div className="rp-page">
+      <RouteBreadcrumb />
         <div className="muted" style={{ padding: 20 }}>读取中…</div>
         {dialogNode}
       </div>

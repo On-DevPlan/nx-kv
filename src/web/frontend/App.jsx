@@ -38,7 +38,7 @@ import {
 import { useTemplates } from './modules/md/use-templates.js';
 import { loadPrefs, updatePrefs } from './prefs.js';
 import SidebarRescueFab from './components/sidebar/rescue-fab.jsx';
-import Breadcrumb, { crumbsOf, parentRouteOf } from './components/layout/breadcrumb.jsx';
+import { pushRoute } from './components/layout/route-history.js';
 
 // 只借 FlexLayout 的**结构 CSS**（盒模型与拖拽几何）——不引它的配色：
 // 配色全部由 style-v2.css 里的 --flexlayout-* 变量覆写接管（跟 nx-sk 同一套做法）。
@@ -280,27 +280,10 @@ export default function App() {
   // 路由 → 面板：地址指向哪块，就打开/聚焦哪块。
   // **只跟路由走**（模型用 ref）：模型一变就重跑，会按**旧路由**把面板抢回去
   // （点任务开页签 → 模型变 → effect 按旧路由重选目录面板 → 页签被顶掉）。
-  // ─── 返回键：回到**来处**（会话内路由历史栈）───
-  // 组页点任务会落到 dir 作用域的任务页（任务本来就住在那个队列里），
-  // 但用户预期「返回」是回组；固定父级做不到，这里记一份路由历史。
-  const routeHistRef = useRef([]);
+  // 路由变化记进历史栈——面板内的面包屑「← 返回」按来处返回（见 route-history.js）
   useEffect(() => {
-    const h = location.hash;
-    const stack = routeHistRef.current;
-    if (!h) return;
-    if (stack[stack.length - 1] !== h) stack.push(h);
-    if (stack.length > 30) stack.shift();
+    pushRoute(location.hash);
   }, [route.view, route.key, route.task]);
-  const goBack = useCallback(() => {
-    const stack = routeHistRef.current;
-    if (stack.length > 1) {
-      stack.pop(); // 丢掉当前
-      const prev = stack[stack.length - 1];
-      if (prev) { onNavigate(prev); return; }
-    }
-    const fallback = parentRouteOf(route, specCtxRef.current);
-    if (fallback) onNavigate(fallback);
-  }, [onNavigate, route]);
 
   const modelRef = useRef(model);
   useEffect(() => { modelRef.current = model; }, [model]);
@@ -313,9 +296,6 @@ export default function App() {
   useEffect(() => { specCtxRef.current = specCtx; }, [specCtx]);
   const specCtxKey = `${specCtx.boardName}|${specCtx.dirName}|${specCtx.pageTitle}`;
   const openedRef = useRef({ route: '', key: '' });
-
-  // 有没有面包屑条（决定工作区要不要给它让位）
-  const hasCrumb = crumbsOf(route, specCtx).length > 0;
 
   useEffect(() => {
     const m = modelRef.current;
@@ -420,8 +400,7 @@ export default function App() {
       <div id="app-shell" className="nx-shell">
         {/* 工作区：顶部面包屑（位置指示——页签已删）+ 面板区
             （全局动作在侧边栏头部，见 sidebar/index.jsx） */}
-        <div className={'nx-workarea' + (hasCrumb ? ' has-crumb' : '')}>
-          <Breadcrumb route={route} ctx={specCtx} onNavigate={onNavigate} onBack={goBack} />
+        <div className="nx-workarea">
           {model ? (
             <ErrorBoundary key="workspace">
               <Layout

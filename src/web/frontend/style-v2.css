@@ -39,13 +39,10 @@
   /* 列布局：顶部面包屑 + 下面面板区（#33 起页签条不再占一行） */
   display:flex;flex-direction:column;
 }
-/* FlexLayout 的根是**绝对定位**（inset:0），不吃 flex 流——直接放 flex 列里
-   它会盖住面包屑条（侧栏面板与顶部路径条重叠，面包屑点不到也看不见）。
-   所以：面包屑条用 padding-top 占位，布局整体下移一条。 */
+/* FlexLayout 的根是**绝对定位**（inset:0），不吃 flex 流——它铺满工作区。
+   面包屑条不再挂在窗口顶部（#44），改挂各主面板内部，所以这里不需要给它让位。 */
 .nx-workarea > .flexlayout__layout, .nx-workarea > .nx-shell-layout { flex:1; min-height:0; }
 .nx-workarea .flexlayout__layout { height: 100%; }
-.nx-workarea.has-crumb > .flexlayout__layout,
-.nx-workarea.has-crumb > .nx-shell-layout { top: 26px; }
 
 /* ---- 侧栏作为工作区面板 ---- */
 /* 侧栏是 FlexLayout 里的块，宽度 = tabset weight（百分比）→ 用容器查询按**实际像素宽**降级；
@@ -1120,3 +1117,11 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   padding: 2px 6px; border-radius: 5px; margin-right: 2px;
 }
 .nx-crumb-back:hover { background: var(--soft, #F1F0EC); color: var(--ink, #16181C); }
+
+/* 面板内的路径条形态（#44）：贴在主面板顶部的一枚小药丸，不是窗口通栏 */
+.nx-crumb-inline {
+  width: fit-content; max-width: 100%; margin-bottom: 10px;
+  padding: 3px 10px; border: 1px solid var(--line, #E4E2DC);
+  border-radius: 8px; background: var(--soft, #F1F0EC);
+}
+.nx-crumb-inline .nx-crumb-t { font-size: 12px; }

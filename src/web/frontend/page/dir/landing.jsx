@@ -5,6 +5,7 @@
 // 分页与计数由容器（page/dir/index.jsx）算好传进来——本页只负责画。
 // 编排（#40）：待领取行可**拖动排序**（落点前/后，走 localtask reorder）、
 // 行尾「⋮」菜单开**编排编辑器**（闸门 / 上下游依赖）；已领取行是固定历史，不可拖。
+import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useRef, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
@@ -93,6 +94,7 @@ export default function Landing({
 
   return (
     <div className="mdw-land">
+      <RouteBreadcrumb />
       <div className="mdw-land-head">
         <div className="mdw-land-name">{name}</div>
         <div className="mdw-land-path mono" title={path}>{path}</div>

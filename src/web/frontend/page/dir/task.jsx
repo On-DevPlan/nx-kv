@@ -6,6 +6,7 @@
 //
 // 文档内容存在会话内存（doc-store.js），页签身份在 FlexLayout 模型里——
 // 两者分工明确：布局归布局，内容归内容。
+import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
@@ -736,6 +737,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
 
   return (
     <div className={`mdw${beside ? ' is-beside' : ''}`} data-mode={doc.mode || 'split'} onMouseUp={onPreviewMouseUp}>
+      <RouteBreadcrumb />
       {dialogNode}
       {beside && (
         <div className="mdw-beside-h">

@@ -8,12 +8,12 @@ import { crumbsOf, parentRouteOf } from './crumbs.js';
 
 export { crumbsOf, parentRouteOf };
 
-export default function Breadcrumb({ route, ctx, onNavigate, onBack }) {
+export default function Breadcrumb({ route, ctx, onNavigate, onBack, inline = false }) {
   const crumbs = useMemo(() => crumbsOf(route, ctx), [route, ctx]);
   const back = useMemo(() => parentRouteOf(route, ctx), [route, ctx]);
   if (!crumbs.length) return null;
   return (
-    <nav className="nx-crumb" aria-label="当前位置">
+    <nav className={'nx-crumb' + (inline ? ' nx-crumb-inline' : '')} aria-label="当前位置">
       {back && onNavigate ? (
         <button
           type="button"

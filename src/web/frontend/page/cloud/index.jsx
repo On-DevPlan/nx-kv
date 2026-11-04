@@ -1,5 +1,6 @@
 // 清单页：三个桶（待办 / 已完成 / 冻结）+ 主题筛选 + 增删改查与状态流转。
 // 每个按钮 = 一条 /api 路由 = 一条 CLI 命令（三者同源于模块的 action 声明）。
+import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useStore } from '../../store.jsx';
@@ -176,6 +177,7 @@ export default function TodoView() {
   if (!boot?.loggedIn) {
     return (
       <div className="cloud-page">
+      <RouteBreadcrumb />
         <div className="card" style={{ padding: 16, maxWidth: 640 }}>
           <div className="colhead"><h3>登录云端</h3><span className="tag bad">未登录</span></div>
           <div className="row-inline" style={{ padding: 12 }}>

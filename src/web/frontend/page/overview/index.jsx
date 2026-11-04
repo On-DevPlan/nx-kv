@@ -11,6 +11,7 @@
 //      仍是软删除（CLI localtask task restore 可恢复）。分区头只留「全选」。
 //   4. 任务行可点：直接进该任务的工作台详情（#/dir/<key>?task=<id>）；
 //      已领取行同样可点（详情页以「已回填」进度卡呈现）。
+import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
@@ -158,6 +159,7 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
 
   return (
     <div className="ov-wrap">
+      <RouteBreadcrumb />
       {dialogNode}
       <div className="ov-head">
         <h2>全部目录总览</h2>

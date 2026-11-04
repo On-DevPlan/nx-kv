@@ -9,6 +9,7 @@
 // 跨队列拖动排序在当前机制下不存在（排序在目录页做）；组页提供**每行**的
 // 闸门开关与编排编辑器（候选 = 该任务所属队列的待领取任务），闸门/锁定徽章上屏。
 // 组介绍与项目介绍共用 Introduction（显示 / 编辑 / 补 ref）。
+import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useMemo, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/toast/index.jsx';
@@ -71,6 +72,7 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
   if (!board) {
     return (
       <div className="rp-page">
+        <RouteBreadcrumb />
         <div className="rp-empty">项目组不存在（看板可能被删了）</div>
       </div>
     );

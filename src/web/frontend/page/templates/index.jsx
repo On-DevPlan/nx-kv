@@ -17,6 +17,7 @@
 //   - 正文用 MD 编辑器（源码 + 实时预览 + 格式工具条），模板本身就该按 Markdown 的样子配置；
 //   - 编辑 = 行内展开表单（不是删了重加）；内置模板只读（无编辑/删除钮）；
 //   - 删除走 confirm（一键误触没后悔药）；名字输入框 Enter 直接提交。
+import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useRef, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/toast/index.jsx';
@@ -45,6 +46,7 @@ export default function TemplatePanel() {
   if (!tpl) {
     return (
       <div className="mdw-tpl-panel">
+      <RouteBreadcrumb />
         <div className="pad muted">模板服务未就绪 —— 面板还在装载。</div>
       </div>
     );

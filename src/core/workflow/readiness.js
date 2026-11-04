@@ -1,8 +1,14 @@
-// 拓扑就绪（自 localtask/dag.js 下沉）。任务行与快照节点两套入口。
+// 拓扑就绪（自 localtask/dag.js 下沉）。任务行与快照节点两套入口，**一个内核**：
+// 任务行先投影成轻量图（taskToNode + edgesFromTasks），本地依赖与闸门判定直接
+// 复用 isNodeReady——两个模型对同一份数据产出同一张图，结论必然一致
+// （一致性由 tests/unit/readiness-consistency.test.mjs 钉死）。
 //
 // blockBy 支持：
-//   - 本地 id（number）——同队列依赖（兼容旧存盘）
-//   - 跨队列引用 `"<topicKey>:<taskId>"`——组编排跨项目边；get 时跨 topic 解析
+//   - 本地 id（number）——同队列依赖（兼容旧存盘）；入图，走内核判定
+//   - 跨队列引用 `"<topicKey>:<taskId>"`——组编排跨项目边；不入引擎图
+//     （edgesFromTasks 跳过），由 resolveForeign 前置直查，fail-open
+
+import { edgesFromTasks, taskToNode } from './types.js';
 
 /** topicKey:id —— key 允许字母数字与 _-（含 __GLOBAL__） */
 const FOREIGN_RE = /^([A-Za-z0-9_-]+):(\d+)$/;
@@ -107,54 +113,69 @@ function isPendingLike(t) {
  *   跨队列依赖解析；缺席或返回空 = fail-open（挡不住）
  */
 
+/** 跨队列依赖是否未满足（true = 挡）。无解析器 / 解析不到 / 已删已迁 → fail-open 不挡。 */
+function foreignBlocked(task, opts) {
+  for (const d of normalizeBlockBy(task.blockBy, task.id)) {
+    const ref = parseDepRef(d);
+    if (!ref || ref.kind !== 'foreign') continue;
+    if (typeof opts?.resolveForeign !== 'function') continue;
+    const found = opts.resolveForeign(ref.key, ref.id);
+    const dep = found && isAlive(found) ? found : null;
+    if (dep && !isCompleted(dep)) return true;
+  }
+  return false;
+}
+
+/**
+ * 任务行 → 轻量图（与 topicToSnapshot 同源：taskToNode 投影节点、edgesFromTasks 产边）。
+ * blockBy 先过 normalizeBlockBy（去自身/去非法，与引擎写入路径同一口径）再产边；
+ * "key:id" 外部边不入图。这是两个模型共用的唯一边源。
+ * @param {object[]} tasks
+ * @returns {{ nodes: import('./types.js').WfNode[], edges: import('./types.js').WfEdge[] }}
+ */
+function rowsGraph(tasks) {
+  const alive = (tasks || []).filter(isAlive).map((t) => ({
+    ...t,
+    blockBy: normalizeBlockBy(t.blockBy, t.id),
+  }));
+  return { nodes: alive.map(taskToNode), edges: edgesFromTasks(alive) };
+}
+
+/** 图上判定：目标节点缺位（不在 all 里）→ true；否则交给 isNodeReady 内核。 */
+function readyInGraph(graph, taskId) {
+  const node = (graph.nodes || []).find((n) => String(n.id) === String(taskId));
+  if (!node) return true;
+  return isNodeReady(graph, node);
+}
+
 /**
  * 某条 pending 现在能不能领（任务行模型）。
+ * 本地依赖 + 闸门走快照同一内核（isNodeReady）；跨队列依赖走 resolveForeign 前置直查。
+ * 前驱判定口径：completedAt ⇔ 节点 success（taskToNode 映射），闸门 = control 屏障。
  * @param {object} task
  * @param {object[]} all
  * @param {ReadyOpts} [opts]
  */
 export function isReadyToClaim(task, all = [], opts = {}) {
   if (!isPendingLike(task)) return false;
-  const byId = new Map((all || []).filter(isAlive).map((t) => [Number(t.id), t]));
-
-  const deps = normalizeBlockBy(task.blockBy, task.id);
-  for (const d of deps) {
-    const ref = parseDepRef(d);
-    if (!ref) continue;
-    let dep = null;
-    if (ref.kind === 'local') {
-      dep = byId.get(ref.id) || null;
-    } else if (typeof opts.resolveForeign === 'function') {
-      const found = opts.resolveForeign(ref.key, ref.id);
-      dep = found && isAlive(found) ? found : null;
-    } else {
-      // 无解析器：跨队列依赖无法验证 → fail-open（与「依赖缺失」同口径）
-      continue;
-    }
-    if (!dep) continue;
-    if (!isCompleted(dep)) return false;
-  }
-
-  const idx = (all || []).indexOf(task);
-  const order = all || [];
-  const myPos = idx >= 0 ? idx : order.findIndex((t) => Number(t.id) === Number(task.id));
-  if (myPos < 0) return true;
-  for (let i = 0; i < myPos; i += 1) {
-    const prev = order[i];
-    if (!isAlive(prev) || !prev.blocksFollowing) continue;
-    if (!isCompleted(prev)) return false;
-  }
-  return true;
+  if (foreignBlocked(task, opts)) return false;
+  return readyInGraph(rowsGraph(all), task.id);
 }
 
 /**
- * 按数组序找第一条可领取的 pending；没有 → null
+ * 按数组序找第一条可领取的 pending；没有 → null。
+ * 图一次构建逐条判定（结论与逐条 isReadyToClaim 相同，省掉每条重建图）。
  * @param {object[]} tasks
  * @param {ReadyOpts} [opts]
  */
 export function findFirstReadyPending(tasks = [], opts = {}) {
-  for (const t of tasks || []) {
-    if (isReadyToClaim(t, tasks, opts)) return t;
+  const list = tasks || [];
+  const graph = rowsGraph(list);
+  for (const t of list) {
+    if (!isPendingLike(t)) continue;
+    if (foreignBlocked(t, opts)) continue;
+    const node = graph.nodes.find((n) => String(n.id) === String(t.id));
+    if (!node || isNodeReady(graph, node)) return t;
   }
   return null;
 }

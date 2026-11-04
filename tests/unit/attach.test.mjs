@@ -1,4 +1,4 @@
-// 类 markdown 附件嵌入的解析/生成（modules/todo/attach.js）。
+// 类 markdown 附件嵌入的解析/生成（shared/attach.js）。
 //
 // 这份实现是 Node 与浏览器**共用**的，任何一侧的改动都会影响另一侧，
 // 所以边界必须钉死：哪些算嵌入、哪些必须原样留在纯文本里。
@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   attachmentIds, attachmentRefs, embedMarkdown, looksLikeFileId, parseEmbeds, stripEmbeds,
-} from '../../src/modules/todo/attach.js';
+} from '../../src/shared/attach.js';
 
 const ID = 'a'.repeat(32);
 const ID_DOCX = `${'b'.repeat(32)}.docx`;

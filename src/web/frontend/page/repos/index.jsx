@@ -533,15 +533,31 @@ export default function ReposView() {
   // 按 **key** 认领（key 是仓库与仓库组链接的唯一方式）：
   //   克隆到本地（占位带 remote 时）/ 用本机已有仓库接管（把它的 key 改成占位 key）。
   const pendingInit = useMemo(() => {
+    // 自动匹配候选：占位往往只剩一个 key（末段就是它唯一的名字），
+    // 本机同名仓库 / 同名目录都可以是它的真身——先给一个「一键绑定」，
+    // 不要让人手工去翻 key。
+    const byName = new Map();
+    for (const r of [...devRepos, ...refRepos]) {
+      const base = String(r.path || '').split(/[\\/]/).filter(Boolean).pop() || '';
+      for (const n of [r.name, base]) {
+        const k = String(n || '').toLowerCase();
+        if (k && !byName.has(k)) byName.set(k, r);
+      }
+    }
     const out = [];
     for (const b of (boards && boards.boards) || []) {
       for (const m of b.repos || []) {
         if (m.present !== false) continue;
-        out.push({ ...m, board: b.name, boardId: b.id });
+        const tail = String(m.key || '').split('/').filter(Boolean).pop() || '';
+        const match =
+          byName.get(String(m.name || '').toLowerCase()) ||
+          byName.get(tail.toLowerCase()) ||
+          null;
+        out.push({ ...m, board: b.name, boardId: b.id, match });
       }
     }
     return out;
-  }, [boards]);
+  }, [boards, devRepos, refRepos]);
 
   if (boards === null) {
     return (
@@ -563,17 +579,55 @@ export default function ReposView() {
       loadBoards();
     });
 
-  const adoptPending = (m) =>
+  // 重绑 = 改**关系**：把组里那个假 key 换成本机仓库的真 key。
+  // 以前的「接管」改的是本机仓库的 key（PATCH /api/repos/:id {key}）——
+  // 那样会把真实身份降级成 local/xxx，再导出就把假 key 传播出去。
+  const bindPending = (m, target) =>
+    guard(async () => {
+      await api('/api/boards/rekey', { method: 'POST', body: { from: m.key, to: target } });
+      toast(`已把「${m.name || m.key}」这个位置接到本机仓库`);
+      loadRepos();
+      loadBoards();
+    });
+
+  const bindPendingPick = (m) =>
     guard(async () => {
       const which = await dialog({
-        title: `用本机仓库接管 ${m.key}`,
+        title: `把「${m.name || m.key}」接到哪个本机仓库？`,
         input: true,
-        placeholder: '本机仓库的 id / key / 绝对路径',
+        placeholder: '本机仓库：id / key / 名称 / 绝对路径',
       });
       if (!which) return;
-      await api('/api/repos/' + encodeURIComponent(which), { method: 'PATCH', body: { key: m.key } });
-      toast('已接管——这个仓库现在就是组里的那个位置');
+      await api('/api/boards/rekey', { method: 'POST', body: { from: m.key, to: which } });
+      toast('已重绑——这个位置现在指向本机仓库');
       loadRepos();
+      loadBoards();
+    });
+
+  const removePending = (m) =>
+    guard(async () => {
+      if (!confirm(`把「${m.name || m.key}」从组「${m.board}」里移除？\n\n只摘这个组里的位置：本机仓库与看板本身都不动。`)) return;
+      await api('/api/boards/assign', {
+        method: 'POST',
+        body: { key: m.key, board: m.boardId, remove: true },
+      });
+      toast(`已从组「${m.board}」移除`);
+      loadBoards();
+    });
+
+  // 批量清理：只清**没有任何线索**的占位（没有远程地址 → 克隆不回来 → 永远转不了正）。
+  // 先预览再落盘，清单给到人看。
+  const prunePending = () =>
+    guard(async () => {
+      const dry = await api('/api/boards/prune', { method: 'POST', body: { apply: false } });
+      if (!dry?.total) {
+        toast('没有可清理的占位（有远程地址的那些留着等 clone）');
+        return;
+      }
+      const names = dry.items.map((i) => `· ${i.name}（组 ${i.board}）`).join('\n');
+      if (!confirm(`清理 ${dry.total} 个无来源占位？\n\n${names}\n\n它们没有远程地址，克隆不回来，只能删。`)) return;
+      await api('/api/boards/prune', { method: 'POST', body: { apply: true } });
+      toast(`已清理 ${dry.total} 个占位`);
       loadBoards();
     });
 
@@ -620,16 +674,24 @@ export default function ReposView() {
       <div className="page-head">
         <div className="title-block">
           <h2>仓库</h2>
-          <div className="page-desc">
-            本机 git 仓库的双名单：<strong>开发仓库</strong>（本表）与<strong>参考仓库</strong>
-            （远程 clone 下来学习的，右上「参考仓库」面板）。看板 = <strong>领域分组</strong>，
-            领域描述 + 组内描述写给人和 agent 读；参考仓库与开发仓库/看板<strong>多对多绑定</strong>，
-            绑定描述写在关系上（同一份参考在不同组里的意义可以不同）。
-          </div>
+          <p
+            className="page-desc"
+            title="仓库登记是本机事实（路径、key、描述）；看板只存 key 引用，删组不动仓库。参考仓库与开发仓库多对多绑定，绑定描述写在关系上——同一份参考在不同组里的意义可以不同。"
+          >
+            一台机器上的仓库都在这张清单里：<strong>开发仓库</strong>是你在写的，
+            <strong>参考仓库</strong>是 clone 下来读的，<strong>看板</strong>只是把它们按领域分组。
+          </p>
         </div>
         <div className="acts">
           <button className="btn" onClick={openAdd}>添加仓库</button>
         </div>
+      </div>
+      {/* 三条图例：这一页有两种仓库 + 一种关系，先说清各自是什么，
+          比塞一段四行的说明文字好读——说明文字写在 title 里，想深究再看。 */}
+      <div className="rp-legend" title="开发仓库 = 本机在写的仓库；参考仓库 = clone 下来读的；看板 = 领域分组（只存引用）">
+        <span className="rp-legend-item rp-legend-dev">开发仓库 · 本机路径，不碰 git</span>
+        <span className="rp-legend-item rp-legend-ref">参考仓库 · clone 到 gitRepoRoot，只同步与检查</span>
+        <span className="rp-legend-item rp-legend-board">看板 · 只存 key 引用，一个仓库可在多个组</span>
       </div>
 
       {/* 看板筛选器：主表 = 开发仓库；参考仓库 / 看板管理靠右 */}
@@ -664,33 +726,60 @@ export default function ReposView() {
         </div>
       </div>
 
-      {/* 待初始化：组里引用、本机未登记的仓库 —— 导入布局带进来的占位。
-          按 key 认领：克隆到本地（有 remote 时）或用本机已有仓库接管。 */}
+      {/* 待初始化：组里引用、本机未登记的仓库（导入布局带进来的占位）。
+          三条出口：接到本机仓库（改关系，不动身份）/ 克隆到本地 / 直接移除。
+          「无远程地址」的占位克隆不回来，只能清 —— 所以给一条批量清理。 */}
       {pendingInit.length > 0 && (
-        <div className="rp-pending" data-testid="rp-pending-init">
-          <div className="rp-pending-head">
-            <span className="rp-pending-label">
-              待初始化 <b>{pendingInit.length}</b>
-            </span>
-            <span className="muted">组里引用、本机未登记的仓库 —— 克隆到本地，或用本机已有仓库接管（key 即身份）</span>
-          </div>
-          {pendingInit.map((m) => (
-            <div className="rp-pending-item" key={m.key + '@' + m.boardId}>
-              <span className="rp-pending-name">{m.name || m.key}</span>
-              <span className="mono rp-pending-key">{m.key}</span>
-              <span className="muted">组「{m.board}」</span>
-              <span className="grow" />
-              {m.remote ? (
-                <button className="btn ghost sm" onClick={() => clonePending(m)}>
-                  克隆到本地
-                </button>
-              ) : null}
-              <button className="btn ghost sm" onClick={() => adoptPending(m)}>
-                用本机仓库接管
-              </button>
+        <section className="rp-pending" data-testid="rp-pending-init">
+          <header className="rp-pending-head">
+            <div className="rp-pending-head-main">
+              <h3>
+                待初始化<span className="rp-pending-count">{pendingInit.length}</span>
+              </h3>
+              <p>组里有位置、本机没有登记。接到本机仓库、克隆下来，或者直接移除。</p>
             </div>
-          ))}
-        </div>
+            <button className="btn small ghost" onClick={prunePending}>
+              清理无来源占位
+            </button>
+          </header>
+          <div className="rp-pending-list">
+            {pendingInit.map((m) => (
+              <article className="rp-pending-card" key={m.key + '@' + m.boardId}>
+                <div className="rp-pending-info">
+                  <div className="rp-pending-title">
+                    <strong>{m.name || m.key}</strong>
+                    <span className="rp-pending-board">组 · {m.board}</span>
+                    {m.remote ? null : <span className="rp-pending-tag">无远程地址</span>}
+                  </div>
+                  <code className="rp-pending-key">{m.key}</code>
+                  {m.desc ? <p className="rp-pending-desc">{m.desc}</p> : null}
+                </div>
+                <div className="rp-pending-acts">
+                  {m.match ? (
+                    <button
+                      className="btn small"
+                      title={`把组里这个位置指向本机仓库「${m.match.name}」（仓库身份不变）`}
+                      onClick={() => bindPending(m, m.match.id)}
+                    >
+                      绑定到「{m.match.name}」
+                    </button>
+                  ) : null}
+                  {m.remote ? (
+                    <button className="btn small ghost" onClick={() => clonePending(m)}>克隆到本地</button>
+                  ) : null}
+                  <button className="btn small ghost" onClick={() => bindPendingPick(m)}>选本机仓库</button>
+                  <button
+                    className="btn small ghost rp-del"
+                    title="只从组里摘掉这个位置，本机仓库与看板都不动"
+                    onClick={() => removePending(m)}
+                  >
+                    移除
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* 看板上下文条：筛选到某个看板时，把它的领域描述亮出来 —— desc 写的是
@@ -889,10 +978,10 @@ export default function ReposView() {
         <table className="rp-table">
           <thead>
             <tr>
-              <th scope="col" style={{ width: '26%' }}>仓库</th>
-              <th scope="col" style={{ width: '30%' }}>路径</th>
+              <th scope="col" style={{ width: '24%' }}>仓库</th>
+              <th scope="col" style={{ width: '28%' }}>路径</th>
               <th scope="col">绑定的参考仓库</th>
-              <th scope="col" style={{ width: '18%' }}>操作</th>
+              <th scope="col" style={{ width: '20%' }}>操作</th>
             </tr>
           </thead>
           <tbody>

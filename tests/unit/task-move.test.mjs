@@ -16,7 +16,7 @@ process.env.NX_KV_LOCALTASK_STORE = join(tmp, 'store.json');
 
 const { addTask, listTasks } = await import('../../src/modules/localtask/service.js');
 const { moveTask } = await import('../../src/modules/localtask/move.js');
-const { splitQueueTasks } = await import('../../src/modules/localtask/board.js');
+const { splitQueueTasks } = await import('../../src/web/frontend/modules/board/board-view.js');
 
 const DIR = 'D:/tmp/nx-kv-move-test';
 

@@ -6,7 +6,6 @@ export default {
   order: 5,
   // 没有独立面板：开关就放在「清单」页里（附件是清单的一部分），
   // 单独一个 tab 反而让「在哪改」变成一次多余的翻找。
-  view: null,
 
   actions: [
     {

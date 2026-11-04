@@ -16,7 +16,7 @@ import { MdPanes, ModeSeg } from '../../components/md/md-panes.jsx';
 import { IntroRail, introDirFromRef } from '../../components/Introduction/index.jsx';
 import { extractMdHeadings, renderMarkdownHtml, slugName, titleFromMd } from '../../modules/md/md-parse.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
-import { resolveWikiLink } from '../../../../modules/docs/wikilink.js';
+import { resolveWikiLink } from '../../../../shared/wikilink.js';
 
 /**
  * 双链导航（DocPanel 与组详情共用）：拉一次索引，解析目标 → 开 doc 页签。

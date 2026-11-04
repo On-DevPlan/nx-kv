@@ -131,6 +131,20 @@ export function compileRoute(action) {
   return compiled;
 }
 
+// 命令表的一行。`routes`、`help`、`bootstrap` 共用它，因此几张表必然同源同长——
+// 面板底部的「CLI 等价」提示用的也是这个形状（经 /api/bootstrap 下发）。
+// 放在 spec.js 是因为它纯粹是「action 声明 → 一行文本」，没有任何运行期状态。
+export function entryOf(c) {
+  return {
+    id: c.id,
+    module: c.module || 'platform',
+    command: 'nx-kv ' + cliPathsOf(c)[0].join(' '),
+    usage: usageOf(c),
+    http: c.http ? { method: c.http[0], path: c.http[1] } : null,
+    summary: c.summary,
+  };
+}
+
 // ---- 用法串生成：从声明反推，help 因此不可能与实际命令脱节 ----
 
 export function usageOf(action) {

@@ -16,7 +16,7 @@
 // 编排住在 tasktool/<动词>.js，队列本体只有 service.js 一处。
 import { badInput } from '../../core/errors.js';
 import { addTask, normalizeCwd } from '../localtask/service.js';
-import { applyGroupFields, parseFrontmatter } from '../localtask/frontmatter.js';
+import { applyGroupFields, parseFrontmatter } from '../../shared/frontmatter.js';
 import { resolveGroupTarget } from '../localtask/board-target.js';
 
 // repos 在模块互依禁列里 → 动态 import（与 getloop.js 的 reposStore 同一惯例）。

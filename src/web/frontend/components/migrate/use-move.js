@@ -5,7 +5,7 @@
 // 这里只管「发起」和「执行」——确认框在 migrate/dialog.jsx，撤销在 migrate/undo.jsx。
 import { useState } from 'react';
 import { api } from '../../api/client.js';
-import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
+import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 
 /**
  * @param {object} p

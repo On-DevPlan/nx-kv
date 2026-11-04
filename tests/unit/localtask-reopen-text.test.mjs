@@ -6,7 +6,7 @@ import {
   PLAIN_FEEDBACK_HEADING,
   boldFeedback,
   buildReopenText,
-} from '../../src/modules/localtask/reopen-text.js';
+} from '../../src/web/frontend/modules/board/reopen-text.js';
 
 test('buildReopenText：原正文 + 上轮 ack 完成总结 + 加粗验收反馈，顺序固定', () => {
   const text = buildReopenText({

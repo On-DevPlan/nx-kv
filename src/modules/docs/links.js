@@ -5,7 +5,7 @@
 import * as paths from './paths.js';
 import * as store from './store.js';
 import { reposBridge } from './repos-bridge.js';
-import { parseWikiLinks, resolveWikiLink, normalizeWikiTarget } from './wikilink.js';
+import { parseWikiLinks, resolveWikiLink, normalizeWikiTarget } from '../../shared/wikilink.js';
 
 const baseNameOf = (p) => String(p || '').replace(/\\/g, '/').split('/').pop().replace(/\.md$/i, '');
 

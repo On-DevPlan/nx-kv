@@ -174,7 +174,6 @@ export default {
   id: 'repos',
   title: '仓库上下文（= Web「仓库」页；本地任务的主题会带上这里的上下文）',
   order: 10,
-  view: () => import('../../web/frontend/page/repos/index.jsx'),
 
   // CRUD 完备性声明：本模块管理的是一组「仓库」实体，因此必须齐备五个操作，
   // 且每个都要能从 CLI 与 HTTP 两端调用。
@@ -763,6 +762,44 @@ export default {
       render: (d) => (d.removed
         ? `已移出: ${d.key}（${d.count} 个看板）`
         : `${d.added ? '已聚合' : '已在（位次已调）'}: ${d.key} → ${d.board}`),
+    },
+    {
+      // 占位成员的自救：把组里的假 key 换成真 key。
+      // 不是「改仓库的 key 去迁就占位」——那样真实身份会被降级成 local/xxx 并传染给导出物。
+      id: 'board.rekey',
+      cli: ['board', 'rekey'],
+      http: ['POST', '/api/boards/rekey'],
+      summary: '把组里的占位 key 重绑到本机仓库（关系改、登记不动；组内描述与文档绑定跟着搬）',
+      args: ['from'],
+      flags: {
+        to: { type: 'string', required: true, hint: '本机仓库：id / key / 路径 / 名称' },
+        board: { type: 'string', hint: '只在这张看板里重绑（省略 = 自动找包含它的看板）' },
+      },
+      run: (ctx) => boards.rekeyMember({ from: ctx.from, to: ctx.to, board: ctx.board }),
+      render: (d) => {
+        const where = d.boards.length > 1 ? `${d.boards.length} 个看板（${d.boards.join('、')}）` : `组「${d.boardName}」`;
+        return `已重绑 ${d.from} → ${d.to}（${where}${d.merged ? '，与已有成员合并' : ''}${d.movedNote ? '，组内描述已跟随' : ''}${d.relinked ? `，${d.relinked} 条绑定已改指` : ''}）`;
+      },
+    },
+    {
+      // 待初始化队列的出口：没有远程地址的占位永远转不了正（clone 不回来），
+      // 只能清掉。默认预览，--apply 才落盘。
+      id: 'board.prune',
+      cli: ['board', 'prune'],
+      http: ['POST', '/api/boards/prune'],
+      summary: '清理占位成员：组里引用、本机没登记且没有远程地址的仓库（默认预览，--apply 落盘；带 remote 的加 --all 才清）',
+      flags: {
+        board: { type: 'string', hint: '只清这张看板（省略 = 全部看板）' },
+        all: { type: 'boolean', hint: '连带远程地址的占位一起清（它们本来可以 clone 回来）' },
+        apply: { type: 'boolean', hint: '真正落盘（省略 = 只预览）' },
+      },
+      run: (ctx) => boards.prunePlaceholders({ board: ctx.board, all: !!ctx.all, apply: !!ctx.apply }),
+      render: (d) => {
+        const lines = [`${d.apply ? '已清理' : '可清理'} ${d.total} 个占位成员${d.apply ? '' : '（未落盘）'}`];
+        for (const it of d.items) lines.push(`  ${it.name}  ${it.key}  —— 组「${it.board}」${it.remote ? '（有 remote，--all 才会清）' : '（无来源）'}`);
+        if (!d.apply && d.total) lines.push('', '落盘: nx-kv board prune --apply');
+        return lines.join('\n');
+      },
     },
     {
       // 组内描述：同一个仓库在不同看板里的角色各不相同，描述挂在成员关系上而非登记上。

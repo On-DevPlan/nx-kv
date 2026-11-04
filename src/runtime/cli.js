@@ -8,7 +8,11 @@ import { APP_NAME, DEFAULT_PORT } from '../core/paths.js';
 import { configPathFromEnv } from '../core/config.js';
 import { toErrorPayload, exitCodeOf, badInput } from '../core/errors.js';
 import { ACTIONS, MODULES } from './registry.js';
-import { cliPathsOf, argSpecsOf, flagSpecsOf, booleanFlagNames, applySpec, usageOf } from './spec.js';
+import { cliPathsOf, argSpecsOf, flagSpecsOf, booleanFlagNames, applySpec, usageOf, entryOf } from './spec.js';
+import { publishCommandTable } from '../core/command-table.js';
+// `routes` 的数据源是本文件的 ALL_COMMANDS，所以在**这里**装配、逻辑留在模块里。
+// 方向是 runtime → modules（允许）；模块反过来 import 本文件会成环。
+import { ROUTES_FLAGS, filterRoutes, renderRoutes } from '../modules/system/routes.js';
 
 const VERSION = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
@@ -43,12 +47,27 @@ const BUILTINS = [
     run: (ctx) => helpEntries(ctx.topic),
     render: (entries, ctx) => renderHelp(entries, ctx.topic),
   },
+  // 命令表对照。归 system 模块（`routes --module system` 能找到它），
+  // 但它描述的是「本文件这张表」，所以由本文件装配、不进 ACTIONS。
+  {
+    id: 'system.routes',
+    module: 'system',
+    cli: ['routes'],
+    summary: '命令 ↔ 路由对照表（--module 过滤；--http 反查命令）',
+    flags: ROUTES_FLAGS,
+    run: async (ctx) => filterRoutes(ALL_COMMANDS.map(entryOf), ctx),
+    render: renderRoutes,
+  },
   // render 让 `nx-kv version` 输出裸版本号（脚本里可 `V=$(nx-kv version)`），
   // 而 `--json` 仍走序列化，保持机器可读
   { id: 'version', cli: ['version'], summary: '显示版本', run: () => VERSION, render: (v) => v },
 ];
 
 export const ALL_COMMANDS = [...BUILTINS, ...ACTIONS];
+
+// 命令表快照：registry 已经发布过「action 版」，这里覆盖成**含平台命令的完整版**。
+// 面板（/api/bootstrap）读的是同一个格子，所以 CLI 跑起来后两边看到的是同一张表。
+publishCommandTable(ALL_COMMANDS.map(entryOf));
 
 // ---- 参数解析 ----
 
@@ -186,24 +205,13 @@ function fail(err, json) {
 
 // ---- help：完全由命令表生成 ----
 
-// 命令表的一行。`routes` 与 `help` 共用它，因此两张表必然同源同长——
-// 面板底部的「CLI 等价」提示用的也是这个形状（经 bootstrap 下发）。
-export function commandEntry(c) {
-  return {
-    id: c.id,
-    module: c.module || 'platform',
-    command: 'nx-kv ' + cliPathsOf(c)[0].join(' '),
-    usage: usageOf(c),
-    http: c.http ? { method: c.http[0], path: c.http[1] } : null,
-    summary: c.summary,
-  };
-}
+// 命令表的一行见 spec.js 的 entryOf —— 纯「声明 → 文本」，runtime/spec 之外没有副本。
 
 // 解析帮助主题。既接受模块 id（repos），也接受命令组（repo）——
 // 用户脑子里想的是「repo 相关的东西」，不会去记内部模块名。
 // 这条路径不能报错退出：`nx-kv help <随便什么>` 失败会让最需要帮助的人卡住。
 function helpEntries(topic) {
-  const all = ALL_COMMANDS.map(commandEntry);
+  const all = ALL_COMMANDS.map(entryOf);
   if (!topic) return all;
 
   const t = String(topic);

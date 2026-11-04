@@ -14,7 +14,7 @@ import { Icon } from '../icons.jsx';
 import { useToast } from '../ui.jsx';
 import { taskLabel } from './model.js';
 import { ensureQueueAndGo } from './queue-nav.js';
-import { sortTasksForDisplay } from '../../../../modules/localtask/board.js';
+import { sortTasksForDisplay } from '../../modules/board/board-view.js';
 import Pager, { usePager } from '../pager.jsx';
 
 const PAGE_SIZE = 12; // 每页条数（与旧 limit 同值，但不再截断——有翻页出口）

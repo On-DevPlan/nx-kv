@@ -1,7 +1,7 @@
 // timegoal 模块 —— 命令族的 CLI/HTTP 声明。
 //
-// 与 localtask 完全独立：不挂顶级 tab（view: () => null）；面板上由
-// localtask/view.jsx 内嵌消费 `/api/timegoals`，按 cwd 映射到主题卡里。
+// 与 localtask 完全独立：不挂顶级 tab；面板上由「本地任务」页内嵌消费
+// `/api/timegoals`，按 cwd 映射到主题卡里。
 //
 // 命令族：
 //   set    POST   /api/timegoals        设/替换本目录 timegoal（含 prompt 原文、重置起点）
@@ -125,7 +125,6 @@ export default {
   id: 'tasktool',
   title: '任务工具（timegoal 时间目标 / waitgoal 等待与领取；UI 嵌入在「本地任务」主题卡里）',
   order: 21,
-  view: null, // UI 由本地任务页内嵌消费，不挂顶级 tab
 
   actions: [
     {

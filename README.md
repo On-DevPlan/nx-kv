@@ -268,9 +268,10 @@ nx-kv todo get --ref "旧记录" --topic fr   # 或按主题收窄
 
 ```
 src/core/          零业务语义：kvapi / fileapi（后端客户端） / attachstore（附件本地镜像） / config / errors / fstree
+src/shared/        同构纯函数：附件语法 / 双链 / frontmatter——Node 与浏览器加载同一份，零依赖
 src/modules/       功能域：system / setting / auth / group / localtask / timegoal / todo / file / bundled
 src/runtime/       装配层：registry / spec / cli / api / server
-src/web/frontend/  React 壳
+src/web/frontend/  React 壳（视图全在这里，后端不知道它们的路径）
 assets/nx-kv/            内置 skill：KV 清单操作手册（远程）
 assets/kv-waittask/         内置 skill：对话内本地任务接力（等待侧）
 assets/kv-submit/        内置 skill：需求提炼与委托提交（提交侧）
@@ -278,8 +279,16 @@ assets/kv-localget/         内置 skill：领取本目录本地任务（领取�
 assets/kv-timegoal/         内置 skill：持续 N 小时任务的时间目标与提示词回显
 ```
 
-分层由 `eslint.config.js` 的 `no-restricted-imports` 强制；
-`tests/unit/registry.test.mjs` 断言模块目录 ↔ 后端注册表 ↔ 前端视图注册表三方对齐。
+分层由 `eslint.config.js` 的 `no-restricted-imports` 与 `tests/unit/layering.test.mjs` 双重强制：
+
+```
+core ← 谁都不依赖        shared ← 零依赖（不许 node: / 第三方包）
+modules ← core + shared   runtime ← 装配全部          web ← 只有 shared
+```
+
+**前端够不着 modules / runtime / core**——它消费后端的唯一方式就是 HTTP `/api`。
+`tests/unit/registry.test.mjs` 断言模块目录 ↔ 后端注册表 ↔ 前端视图注册表三方对齐，
+并检查面板里出现的每个 `/api` 路径都真实存在。
 
 > **改本仓库代码时**：先看项目级 skill `.claude/skills/dev-nxkv/`——它是一份施工单
 > （分层地图、模块骨架、action 字段全表、CRUD 契约、注册三步、常见坑与验收命令）。

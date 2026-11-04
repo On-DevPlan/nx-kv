@@ -3,12 +3,12 @@ import { useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useDialog, useToast } from '../../components/ui.jsx';
 import { PopMenu } from '../../components/overlay.jsx';
-import { GLOBAL_KEY, sortTasksForDisplay } from '../../../../modules/localtask/board.js';
+import { GLOBAL_KEY, sortTasksForDisplay } from '../../modules/board/board-view.js';
 import {
   FEEDBACK_HEADING,
   PLAIN_FEEDBACK_HEADING,
   buildReopenText,
-} from '../../../../modules/localtask/reopen-text.js';
+} from '../../modules/board/reopen-text.js';
 import { usePager } from '../../components/pager.jsx';
 import { useApp } from '../../app-context.jsx';
 import Landing from './landing.jsx';

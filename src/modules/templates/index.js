@@ -20,7 +20,7 @@ export default {
   id: 'templates',
   title: '任务模板（MD 工作台新建页的起始正文）',
   order: 22,
-  view: null, // 无独立面板：管理入口在 MD 工作台（落地页「模板」菜单 / 工具栏「模板管理」）
+  // 无独立面板：管理入口在 MD 工作台（落地页「模板」菜单 / 工具栏「模板管理」）
 
   actions: [
     {

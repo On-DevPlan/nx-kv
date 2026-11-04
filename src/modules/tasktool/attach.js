@@ -27,7 +27,7 @@ import * as service from '../localtask/service.js';
 // todo 在模块互依禁列里 → 动态 import（与 getloop/add 的 reposStore 同一惯例）。
 let todoAttach = null;
 async function todoAttachMod() {
-  if (!todoAttach) todoAttach = await import('../todo/attach.js');
+  if (!todoAttach) todoAttach = await import('../../shared/attach.js');
   return todoAttach;
 }
 

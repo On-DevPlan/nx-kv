@@ -33,14 +33,14 @@ src/
 `src/modules/<name>/index.js`
 
 ```js
-// 模块声明：id 唯一、order 决定 CLI/帮助里的排序、view 标记「面板上有它」
+// 模块声明：id 唯一、order 决定 CLI/帮助里的排序。**没有 view 字段**——
+// 后端不知道前端怎么呈现，面板只通过 /api 消费这里声明的路由。
 import * as service from './service.js';
 
 export default {
   id: 'thing',            // 与目录名一致（registry.test.mjs 靠它对齐）
   title: '某某',
   order: 50,              // 小的靠前
-  view: null,             // 或 () => import('../../web/frontend/page/thing/index.jsx')
   actions: [
     {
       id: 'thing.list',
@@ -90,10 +90,11 @@ export const MODULES = [/* … */, thing].sort((a, b) => (a.order ?? 100) - (b.o
 { id: 'thing', module: 'thing', component: lazy(() => import('./page/thing/index.jsx')) },
 ```
 
-> `module.view` 只表示「这个模块在面板上有视图」并给一个惰性入口；
-> **真正决定 tab 与路由的是前端 `registry.js` 的 `VIEWS` 与 `panels.jsx`**。
-> 视图多已迁到 `src/web/frontend/page/`，此时模块里写
-> `view: () => import('../../web/frontend/page/<x>/index.jsx')`（见 `repos` 模块）。
+> 视图**完全归前端**：组件放 `src/web/frontend/page/thing/`，在上面这张表登记即可，
+> 后端一行都不用改。`module` 只说明「这个视图消费哪个功能域的数据」，
+> 不是对后端模块的引用（后端也读不到它）。
+> `tests/unit/registry.test.mjs` 会断言：后端模块里不许再出现 `view`，
+> 且登记的 `module` 必须是已注册的功能域。
 
 ## 前端：视图骨架
 

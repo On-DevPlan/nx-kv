@@ -63,7 +63,6 @@ export default {
   id: 'bundled',
   title: '内置 skill 包',
   order: 50,
-  view: null,
 
   actions: [
     {

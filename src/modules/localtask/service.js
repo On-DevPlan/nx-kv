@@ -35,7 +35,7 @@ import { badInput, notFound } from '../../core/errors.js';
 import { formatDuration } from '../../core/instruction-template.js';
 // 任务级 timegoal 的声明校验（taskgoal.js 不依赖本模块——无环，静态引入安全）
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
-import { preserveFrontmatter } from './frontmatter.js';
+import { preserveFrontmatter } from '../../shared/frontmatter.js';
 
 export const DEFAULT_TIMEOUT_MS = 180_000; // 阻塞默认 3 分钟（推荐值）
 export const DEFAULT_TIMEOUT_SEC = 180; // 推荐阻塞时长（3 分钟）

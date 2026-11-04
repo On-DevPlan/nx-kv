@@ -7,7 +7,7 @@
 // 图片走 /api/file/content/<id>：本机服务代理后端出图，于是
 //   1. 浏览器不需要直连后端（不受 CORS / 内网地址 / 混合内容影响）；
 //   2. 预览与 CLI 下载走的是同一条后端路由，权限行为必然一致。
-import { parseEmbeds } from '../../../../modules/todo/attach.js';
+import { parseEmbeds } from '../../../../shared/attach.js';
 
 const contentUrl = (id) => `/api/file/content/${encodeURIComponent(id)}`;
 

@@ -16,7 +16,7 @@ import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/ui.jsx';
 import { titleFromMd } from '../../modules/md/md-parse.js';
-import { GLOBAL_KEY, splitQueueTasks } from '../../../../modules/localtask/board.js';
+import { GLOBAL_KEY, splitQueueTasks } from '../../modules/board/board-view.js';
 
 const NO_IDS = new Set();
 

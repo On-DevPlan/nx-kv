@@ -780,7 +780,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 
 /* ---- 仓库页（repos 视图）---- */
 /* 行操作 hover 浮现：26 行 × 3 钮常驻是纯噪音；占位不变，tr:focus-within 保键盘 */
-.rp-page .rp-acts { opacity: 0; transition: opacity 0.12s; }
+.rp-page .rp-acts { opacity: 0.38; transition: opacity 0.12s; }
 .rp-page tr:hover .rp-acts, .rp-page tr:focus-within .rp-acts { opacity: 1; }
 @media (hover: none) { .rp-page .rp-acts { opacity: 1; } }
 
@@ -824,14 +824,60 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .trow-icon { font-size: 13px; line-height: 1; }
 .rp-icon { font-size: 13px; margin-right: 4px; }
 
-/* 待初始化清单：组里引用、本机未登记的仓库（导入布局带进来的占位） */
-.rp-pending { margin: 10px 0 0; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); overflow: hidden; }
-.rp-pending-head { display: flex; align-items: baseline; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
-.rp-pending-label { font-weight: 650; font-size: 12.5px; }
-.rp-pending-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--line); }
-.rp-pending-item:last-child { border-bottom: 0; }
-.rp-pending-name { font-weight: 600; }
-.rp-pending-key { font-size: 10.5px; color: var(--mid); }
+/* 待初始化清单：组里引用、本机未登记的仓库（导入布局带进来的占位）。
+   一条占位 = 一张卡：名字 / 来源组 / key 各占一层，不再把四段信息压进一行小字。 */
+.rp-pending {
+  flex: none;
+  margin: 2px 0 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow-sm);
+}
+.rp-pending-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 12px;
+}
+.rp-pending-head-main { min-width: 0; }
+.rp-pending-head h3 {
+  margin: 0; display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 650; color: var(--ink);
+}
+.rp-pending-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; padding: 1px 8px; border-radius: 999px;
+  background: var(--wait-bg); color: var(--wait); border: 1px solid var(--wait-line);
+  font-family: var(--mono); font-size: 12px; font-weight: 650;
+}
+.rp-pending-head p { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.rp-pending-list { display: flex; flex-direction: column; gap: 8px; }
+.rp-pending-card {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--r8);
+  background: var(--soft);
+}
+.rp-pending-info { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rp-pending-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rp-pending-title strong { font-size: 14px; font-weight: 650; color: var(--ink); }
+.rp-pending-board {
+  padding: 1px 8px; border-radius: 999px;
+  background: var(--paper); border: 1px solid var(--line);
+  font-size: 12px; color: var(--ink-2);
+}
+.rp-pending-tag {
+  padding: 1px 8px; border-radius: 999px;
+  background: var(--wait-bg); border: 1px solid var(--wait-line);
+  font-size: 12px; color: var(--wait);
+}
+.rp-pending-key { font-family: var(--mono); font-size: 12px; color: var(--mid); word-break: break-all; }
+.rp-pending-desc {
+  margin: 0; font-size: 13px; color: var(--ink-2); line-height: 1.5;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.rp-pending-acts { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* 组详情页头部动作（添加成员 → 跳仓库页对应分组） */
 .rp-group-head { position: relative; }

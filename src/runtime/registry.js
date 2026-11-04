@@ -5,10 +5,17 @@
 // 一条 action 同时声明 cli 与 http，二者写在同一处，不可能分叉。
 //
 // 新增功能域：
-//   1. 写 src/modules/<name>/（index.js 声明 actions，service.js 写业务，view.jsx 写面板）
-//   2. 在下面 import 并加进 MODULES；再到 web/frontend/registry.js 登记视图
-// tests/unit/registry.test.mjs 会断言两侧对齐，漏登记直接测试失败。
-import { cliPathsOf } from './spec.js';
+//   1. 写 src/modules/<name>/（index.js 声明 actions，service.js 写业务）
+//   2. 在下面 import 并加进 MODULES
+//   3. 需要面板的话，到 web/frontend/page/<name>/ 写视图，并在
+//      web/frontend/registry.js 登记 —— **这一步不经过后端**
+//
+// 前端怎么呈现，后端不知道也不该知道：本文件里没有任何前端路径。
+// 后端只提供 `/api/*`，前端只消费 `/api/*`，跨端的唯一例外是同构纯函数
+// （src/shared/，见 eslint.config.js 的分层规则）。
+// tests/unit/registry.test.mjs 会断言两侧的模块集合对齐，漏登记直接测试失败。
+import { cliPathsOf, entryOf } from './spec.js';
+import { publishCommandTable } from '../core/command-table.js';
 import system from '../modules/system/index.js';
 import setting from '../modules/setting/index.js';
 import auth from '../modules/auth/index.js';
@@ -73,3 +80,9 @@ for (const a of ACTIONS) {
     );
   }
 }
+
+// 命令表快照：模块（system.bootstrap 要给面板下发「CLI 等价」）只读这份，
+// 不再 import runtime —— registry → modules → cli → registry 正是那条要避开的环。
+// cli.js 在装配出 ALL_COMMANDS 后会再覆盖一次（含 serve / help / version / routes
+// 这类平台命令），所以「从 CLI 跑」拿到的是完整表，纯 HTTP 场景拿到的是 action 表。
+publishCommandTable(ACTIONS.map(entryOf));

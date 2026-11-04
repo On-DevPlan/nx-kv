@@ -90,6 +90,36 @@ export function joinTaskSuffix(v) {
   return clampTaskSuffixList(v).join('\n\n');
 }
 
+// ─── ack 完成总结提示词（settings.ackPrompt）─────────────────────────
+//
+// agent 完成任务时写的**完成总结（ack）**该按什么格式——这本来是各处硬写的
+// 口径，现在收进设置里：与 taskSuffix 同款多条列表、同款占位符语法
+// （core/instruction-template.js），多条按空行拼成一段，随领取交付的
+// instruction 一起给到 agent。
+//
+// 与 taskSuffix 的两点不同：
+//   1. **缺省为空**（taskSuffix 缺省有内置默认）——没配置就不往交付里追加
+//      任何东西，默认交付逐字不变。
+//   2. 它不是「收尾指令」，是「总结格式要求」——所以不拼进 task.text，只进
+//      instruction 字段。
+export function clampAckPromptList(v) {
+  if (v === undefined || v === null) return [];
+  const raw = Array.isArray(v) ? v : [v];
+  const list = [];
+  for (const item of raw) {
+    let s = String(item ?? '').trim();
+    if (!s) continue;
+    if (s.length > MAX_SUFFIX_LEN) s = s.slice(0, MAX_SUFFIX_LEN);
+    list.push(s);
+    if (list.length >= MAX_SUFFIX_ENTRIES) break;
+  }
+  return list;
+}
+
+export function joinAckPrompt(v) {
+  return clampAckPromptList(v).join('\n\n');
+}
+
 // ─── 全局主题：跨目录共享队列（工作窃取）───────────────────────────
 //
 // 参考 Go runtime scheduler 的两层队列：每个 P 有 local runq，空了去 global runq
@@ -266,6 +296,12 @@ export async function loadStore() {
       taskSuffix: settings && Object.prototype.hasOwnProperty.call(settings, 'taskSuffix')
         ? clampTaskSuffixList(settings.taskSuffix)
         : [DEFAULT_TASK_SUFFIX],
+      // ack 完成总结提示词（v0.16 起）：字段存在才认，缺省 = 空（不追加）。
+      // 注意——这里是**白名单式重建**：没列出的字段会在读时被丢掉，
+      // 新增设置项必须在这里补一行，否则「写进去读不回来」。
+      ackPrompt: settings && Object.prototype.hasOwnProperty.call(settings, 'ackPrompt')
+        ? clampAckPromptList(settings.ackPrompt)
+        : [],
     },
     topics,
   };
@@ -799,6 +835,8 @@ function settingsView(s) {
     taskSuffixList: suffixList,
     defaultTaskSuffix: DEFAULT_TASK_SUFFIX,
     suffixEnabled: suffixList.length > 0,
+    // ack 完成总结提示词（多条）：缺省空 = 不追加（默认交付逐字不变）
+    ackPromptList: clampAckPromptList(s && s.ackPrompt),
   };
 }
 
@@ -888,12 +926,13 @@ export async function pruneTopics({ allFinished = false, dryRun = false } = {}) 
 // 也兼容 string（旧单条写法，整体算一条）。条数上限 10、单条 ≤2000 字；
 // 含 {{ 占位符 → 渲染进返回的 instruction 字段；纯文本 → 追加到 task.text 末尾；
 // 传 '' / [] 关闭、不传保持不变。
-export async function updateSettings({ timeoutSec, taskSuffix } = {}) {
+export async function updateSettings({ timeoutSec, taskSuffix, ackPrompt } = {}) {
   const hasTimeout = timeoutSec !== undefined && timeoutSec !== null;
   const hasSuffix = taskSuffix !== undefined;
-  if (!hasTimeout && !hasSuffix) {
+  const hasAck = ackPrompt !== undefined;
+  if (!hasTimeout && !hasSuffix && !hasAck) {
     throw badInput(
-      '请至少指定一项：--timeout <秒>，或 --suffix "<收尾指令模板>"（--no-suffix 关闭、--reset-suffix 恢复默认、--suffix-add/--suffix-remove 按条增删）'
+      '请至少指定一项：--timeout <秒>，或 --suffix "<收尾指令模板>"（--no-suffix 关闭、--reset-suffix 恢复默认、--suffix-add/--suffix-remove 按条增删），或 --ack "<ack 提示词>"'
     );
   }
   const store = await loadStore();
@@ -906,6 +945,7 @@ export async function updateSettings({ timeoutSec, taskSuffix } = {}) {
     next.timeoutSec = clampTimeoutSec(n);
   }
   if (hasSuffix) next.taskSuffix = clampTaskSuffixList(taskSuffix);
+  if (hasAck) next.ackPrompt = clampAckPromptList(ackPrompt);
   store.settings = next;
   await saveStore(store);
   return settingsView(store.settings);

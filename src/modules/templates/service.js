@@ -16,21 +16,39 @@ import { badInput, notFound } from '../../core/errors.js';
 
 export const BUILTIN_ID = 'default';
 
-// 与前端 md-parse.js 的 NEW_TEMPLATE 保持同构（见文件头注释）
+// 与前端 md-parse.js 的 NEW_TEMPLATE 保持同构（见文件头注释）。
+//
+// 正文里的 {{占位符}} 是**模板的槽位**：骨架（章节结构）固定不可改，用户只填
+// 槽位里的文字（设置面板「提示词 / 模板」一栏 / template update --values）。
+// 槽位默认文字放在 BUILTIN_VALUES——渲染时用它填回，于是「不填也能用」。
 const BUILTIN_BODY = `## 背景
 
-（一句话说清要改什么）
+{{背景}}
 
 ## 验收
-- [ ] …
+- [ ] {{验收}}
 
 ## 约束
-- …
+- {{约束}}
 
 ## 附件
 `;
 
-const builtin = () => ({ id: BUILTIN_ID, name: '默认模板', body: BUILTIN_BODY, builtin: true });
+// 内置模板各槽位的默认文字（渲染时的兜底：没填就显示这些）。
+export const BUILTIN_VALUES = {
+  背景: '（一句话说清要改什么）',
+  验收: '…',
+  约束: '…',
+  附件: '',
+};
+
+const builtin = () => ({
+  id: BUILTIN_ID,
+  name: '默认模板',
+  body: BUILTIN_BODY,
+  values: { ...BUILTIN_VALUES },
+  builtin: true,
+});
 
 export function storePath() {
   return process.env.NX_KV_TEMPLATES_STORE || join(APP_DIR, 'templates.json');
@@ -99,6 +117,24 @@ function normalizeBody(raw) {
 }
 
 /**
+ * 归一化模板的槽位值（values）：{ 槽位名: 文字 }。
+ * 只留字符串值、逐条截断（单槽 ≤2000 字）、槽位名限长 40——槽位名要出现在
+ * 正文里当 {{名字}}，名字太长就没法当占位符用了。
+ */
+export function normalizeValues(raw, base = {}) {
+  const out = { ...base };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw)) {
+    const key = String(k || '').trim().slice(0, 40);
+    if (!key) continue;
+    let s = String(v ?? '');
+    if (s.length > 2000) s = s.slice(0, 2000);
+    out[key] = s;
+  }
+  return out;
+}
+
+/**
  * 解析模板正文来源：--body 给字面量；--body-file 给文件路径；`-` 表示读标准输入。
  * 优先级：body > bodyFile（body 给了就不读文件）。
  *
@@ -127,11 +163,17 @@ async function resolveBody({ body, bodyFile } = {}) {
 }
 
 /** 新增模板（--set-default 同时设为默认）。幂等性不做：同名允许存在，靠 id 区分。 */
-export async function addTemplate({ name: rawName, body: rawBody, bodyFile, setDefault = false } = {}) {
+export async function addTemplate({ name: rawName, body: rawBody, bodyFile, values, setDefault = false } = {}) {
   const name = normalizeName(rawName);
   const body = normalizeBody(await resolveBody({ body: rawBody, bodyFile }));
   const store = await loadStore();
-  const t = { id: 't_' + crypto.randomBytes(5).toString('hex'), name, body };
+  const t = {
+    id: 't_' + crypto.randomBytes(5).toString('hex'),
+    name,
+    body,
+    // 槽位值：正文里 {{名字}} 处填的文字；未给的槽位按正文里的原样渲染
+    values: normalizeValues(values),
+  };
   store.templates.push(t);
   if (setDefault) store.defaultId = t.id;
   await saveStore(store);
@@ -154,17 +196,28 @@ export async function removeTemplate({ id } = {}) {
 }
 
 /** 编辑模板（改名 / 改正文；只改传入的字段）。内置模板不可编辑——它是「删光后」的兜底。 */
-export async function updateTemplate({ id, name: rawName, body: rawBody, bodyFile } = {}) {
+export async function updateTemplate({ id, name: rawName, body: rawBody, bodyFile, values } = {}) {
   const want = String(id || '').trim();
   if (!want) throw badInput('需要模板 id');
-  if (want === BUILTIN_ID) throw badInput('内置默认模板不可编辑（可新增自己的模板并设为默认）');
   const store = await loadStore();
   const t = store.templates.find((x) => x.id === want);
   if (!t) throw notFound(`没有 id 为 ${want} 的模板（template list 可查）`);
+  // 内置模板：**骨架不可改**（它是「删光后」的兜底），但槽位值可填——
+  // 用户要改的从来是「背景/验收」里写什么，不是章节结构本身。
+  if (want === BUILTIN_ID) {
+    if (rawName !== undefined || rawBody !== undefined || bodyFile) {
+      throw badInput('内置默认模板的骨架不可改（可改槽位内容：template update default --values）');
+    }
+    if (values === undefined) throw badInput('内置模板只能改槽位内容（--values）');
+    t.values = normalizeValues(values, BUILTIN_VALUES);
+    await saveStore(store);
+    return { status: 'ok', template: t };
+  }
   if (rawName !== undefined) t.name = normalizeName(rawName);
   if (rawBody !== undefined || bodyFile) {
     t.body = normalizeBody(await resolveBody({ body: rawBody, bodyFile }));
   }
+  if (values !== undefined) t.values = normalizeValues(values, t.values);
   await saveStore(store);
   return { status: 'ok', template: t };
 }

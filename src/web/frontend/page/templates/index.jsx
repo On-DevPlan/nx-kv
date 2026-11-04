@@ -23,6 +23,7 @@ import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { useApp } from '../../app-context.jsx';
 import TemplateEditor from '../../components/md/template-editor.jsx';
+import { TemplateSlotsEditor } from '../../modules/prompts/template-slots.jsx';
 // 面板由工作区 factory 直接渲染，样式不随某个视图 chunk 走 —— 自己 import
 //（vite 对同一文件去重，目录视图也引了这份）。
 import '../../modules/md/style.css';
@@ -35,6 +36,8 @@ export default function TemplatePanel() {
   const [name, setName] = useState('');
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
+  // 槽位编辑展开的是哪个模板（null = 全收起）
+  const [slotFor, setSlotFor] = useState(null);
   const [editingId, setEditingId] = useState(null); // 行内编辑中的模板 id
   const [draft, setDraft] = useState({ name: '', body: '' });
   const addNameRef = useRef(null);
@@ -87,6 +90,8 @@ export default function TemplatePanel() {
   }, '已保存模板');
 
   const setDefault = (t) => act(() => tpl.setDefault(t.id), `默认模板已设为「${t.name}」`)();
+  // 槽位值保存：骨架不动，只写 values（内置模板也只改这个）
+  const saveSlots = (t, values) => act(() => tpl.update(t.id, { values }), `已保存「${t.name}」的槽位内容`)();
   const removeTpl = async (t) => {
     const ok = await dialog({
       title: `删除模板「${t.name}」`,
@@ -161,6 +166,15 @@ export default function TemplatePanel() {
                   <div className="mdw-tpl-prev">{String(t.body || '').trim() || '（空）'}</div>
                 </div>
                 <div className="mdw-tpl-acts">
+                  <button
+                    type="button"
+                    className="btn ghost sm"
+                    disabled={busy}
+                    title="填槽位（正文里 {{名字}} 处的内容）"
+                    onClick={() => setSlotFor(slotFor === t.id ? null : t.id)}
+                  >
+                    {slotFor === t.id ? '收起槽位' : '填槽位'}
+                  </button>
                   {t.id !== tpl.defaultId && (
                     <button type="button" className="btn ghost sm" disabled={busy} onClick={() => setDefault(t)}>
                       设为默认
@@ -183,6 +197,19 @@ export default function TemplatePanel() {
                     </button>
                   )}
                 </div>
+                {slotFor === t.id && (
+                  <div className="mdw-tpl-slots">
+                    <TemplateSlotsEditor
+                      body={t.body}
+                      values={t.values}
+                      disabled={busy}
+                      onSave={(values) => saveSlots(t, values)}
+                    />
+                    <div className="mdw-tpl-note">
+                      槽位从正文里扫出来；新建任务时正文按这里的值渲染（内置模板只改槽位，骨架不可改）。
+                    </div>
+                  </div>
+                )}
               </div>
             )
           )}

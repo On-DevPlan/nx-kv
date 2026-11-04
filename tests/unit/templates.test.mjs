@@ -75,8 +75,32 @@ test('编辑模板：只改传入字段；内置不可编辑', async () => {
   assert.equal(u2.template.name, '新名', '未提供的 name 应保持不变');
   assert.ok(u2.template.body.includes('## 步骤'));
 
-  await assert.rejects(() => updateTemplate({ id: BUILTIN_ID, name: '改名' }), /内置默认模板不可编辑/);
+  await assert.rejects(() => updateTemplate({ id: BUILTIN_ID, name: '改名' }), /内置默认模板的骨架不可改/);
   await assert.rejects(() => updateTemplate({ id: a.template.id, name: '   ' }), /模板名/);
+});
+
+// 槽位（values）：内置模板骨架不可改，但槽位内容可填——用户要改的从来是
+// 「背景/验收里写什么」，不是章节结构本身（任务 #32）。
+test('模板槽位：内置模板只改槽位（骨架锁死）；用户模板槽位可改', async () => {
+  const builtin = await listTemplates();
+  const def = builtin.templates.find((t) => t.id === BUILTIN_ID);
+  assert.ok(def, '内置模板在场');
+  assert.ok(def.body.includes('{{背景}}'), '内置正文含槽位标记');
+  assert.equal(def.values['背景'], '（一句话说清要改什么）', '槽位有默认文字');
+
+  const upd = await updateTemplate({ id: BUILTIN_ID, values: { 背景: '本轮要做的事' } });
+  assert.equal(upd.template.values['背景'], '本轮要做的事');
+  assert.equal(upd.template.values['验收'], '…', '没给的槽位保留默认文字');
+  assert.equal(upd.template.body, def.body, '骨架（正文）不动');
+
+  await assert.rejects(() => updateTemplate({ id: BUILTIN_ID, body: '# 改骨架' }), /骨架不可改/);
+  await assert.rejects(() => updateTemplate({ id: BUILTIN_ID }), /只能改槽位内容/);
+
+  // 用户模板：槽位值跟着自己的模板存
+  const t = await addTemplate({ name: '带槽位', body: '# 标题\n\n{{目标}}\n' });
+  const t2 = await updateTemplate({ id: t.template.id, values: { 目标: '把事做完' } });
+  assert.equal(t2.template.values['目标'], '把事做完');
+  assert.equal(t2.template.body, '# 标题\n\n{{目标}}\n', '正文不动');
 });
 
 test('正文可来自文件（--body-file）：多行 Markdown 的实用姿势', async () => {

@@ -75,6 +75,13 @@
 - [x] 功能性：模板配置入口、任务工具（回调提示词）、项目级「持续 get」
 - [x] 项目级设置 UI：icon 入口在标题行左侧圆形预览，点开就地编辑（与侧栏同步显示）
 
+### 提示词 / 模板收敛（2026-11-04 #32）
+
+- [x] **设置面板新增「提示词 / 模板」一栏**：任务模板槽位 + 回调提示词 + ack 完成总结提示词收在一起（此前散在「模板与任务工具」区、模板页、项目级设置三处，编辑器各抄一份）
+- [x] **ack 提示词（新增）**：`settings.ackPrompt`（多条，与 taskSuffix 同款语义）——agent 写完成总结的格式要求，随领取交付的 instruction 给到 agent；默认不配置 = 交付逐字不变。CLI：`localtask config --ack`
+- [x] **模板槽位**：正文里的 `{{槽位}}` 是槽位，**内置模板骨架锁死**只填槽位（`template update --values`）；新建任务正文按槽位值渲染
+- [x] **共享编辑器**（`modules/prompts/`）：文本框 + 占位符插入菜单 + 已用占位符标记——回调 / ack / 持续 get / 模板槽位共用一份
+
 ### 弹层组件收敛（2026-11-04 #30）
 
 - [x] **两个唯一出处**：`components/toast/`（ToastProvider / useToast / useGuard）与 `components/popup/`（Modal / useDialog / PopMenu / RowMenu / useDismiss + `.pp-*` 统一视觉）——ui.jsx 只剩 Copyable / ErrorBoundary / DiffPre

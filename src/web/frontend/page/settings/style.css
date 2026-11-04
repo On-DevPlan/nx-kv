@@ -180,3 +180,12 @@
   text-align: right;
 }
 .setp-min:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }
+
+/* 「提示词 / 模板」一栏：模板槽位列表 */
+.setp-tpl-list{display:flex;flex-direction:column;gap:4px;margin:4px 0 8px}
+.setp-tpl-row{
+  display:flex;align-items:center;gap:8px;
+  padding:4px 0;border-bottom:1px dashed var(--line,#E4E2DC);
+}
+.setp-tpl-name{flex:1;min-width:0;font-size:12px;color:var(--ink,#16181C)}
+.setp-tpl-slots{margin:6px 0 10px;padding:8px 10px;border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--paper,#fff)}

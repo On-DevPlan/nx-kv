@@ -1,0 +1,63 @@
+/* 提示词编辑器（共享件）——文本框 + 占位符菜单 + 已用占位符标记 */
+
+.pp-field{position:relative;display:flex;flex-direction:column;gap:4px;min-width:0}
+.pp-field-ta{
+  width:100%;box-sizing:border-box;resize:vertical;
+  font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6;
+  padding:7px 9px;border:1px solid var(--line,#E4E2DC);border-radius:7px;
+  background:var(--paper,#fff);color:var(--ink,#16181C);
+}
+.pp-field-ta:focus{outline:none;border-color:var(--mdw-accent,#2F6F5E)}
+.pp-field-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pp-field-ph-btn{
+  border:1px solid var(--line,#E4E2DC);background:transparent;border-radius:6px;
+  padding:1px 7px;font:inherit;font-size:11px;color:var(--ink-2,#4B515A);cursor:pointer;
+}
+.pp-field-ph-btn:hover{background:var(--soft,#F1F0EC)}
+.pp-field-ph-btn.on{background:var(--mdw-accent-soft,#E8F2EE);border-color:var(--mdw-accent,#2F6F5E)}
+.pp-field-used{display:inline-flex;gap:4px;flex-wrap:wrap}
+.pp-field-used-chip{
+  font-size:10px;color:var(--mid,#838A93);background:var(--soft,#F1F0EC);
+  border-radius:5px;padding:0 5px;
+}
+.pp-field-menu{
+  position:absolute;left:0;top:100%;z-index:30;margin-top:4px;
+  min-width:230px;max-height:320px;overflow:auto;
+  background:var(--paper,#fff);border:1px solid var(--soft-2,#DDD9D0);
+  border-radius:8px;box-shadow:var(--shadow);padding:4px;
+}
+.pp-field-menu-sec{padding:2px 0}
+.pp-field-menu-lab{
+  font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mid,#838A93);
+  padding:4px 8px 2px;
+}
+.pp-field-menu-item{
+  display:flex;align-items:baseline;gap:8px;width:100%;
+  border:0;background:none;border-radius:5px;padding:4px 8px;cursor:pointer;
+  font:inherit;font-size:11.5px;color:var(--ink,#16181C);text-align:left;
+}
+.pp-field-menu-item:hover{background:var(--soft,#F1F0EC)}
+.pp-field-menu-desc{color:var(--mid,#838A93);font-size:10.5px}
+.pp-field-hint{font-size:11px;color:var(--mid,#838A93);line-height:1.6}
+
+.pp-items-item{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
+.pp-items-no{
+  flex:none;width:18px;height:18px;margin-top:6px;border-radius:50%;
+  background:var(--soft,#F1F0EC);color:var(--mid,#838A93);
+  font-size:10px;display:flex;align-items:center;justify-content:center;
+}
+.pp-items-body{flex:1;min-width:0}
+
+/* 模板槽位编辑（模板正文里的 {{槽位名}} 处填文字） */
+.pp-slots{display:flex;flex-direction:column;gap:6px}
+.pp-slots-row{display:flex;align-items:center;gap:8px}
+.pp-slots-name{
+  flex:none;min-width:96px;font-size:11.5px;color:var(--mdw-accent,#2F6F5E);
+}
+.pp-slots-input{
+  flex:1;min-width:0;font:inherit;font-size:12px;padding:4px 8px;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);
+}
+.pp-slots-input:focus{outline:none;border-color:var(--mdw-accent,#2F6F5E)}
+.pp-slots-empty{font-size:11px;color:var(--mid,#838A93)}
+.pp-slots-acts{display:flex;gap:8px;margin-top:8px}

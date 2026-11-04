@@ -6,6 +6,7 @@
 // 不声明 resource：模板没有「改单条」与「查单条」（改 = 删了重加，或面板里
 // 直接改默认），不凑 CRUD 五件的数，免得为了凑数造出没人用的命令。
 import * as service from './service.js';
+import { badInput } from '../../core/errors.js';
 
 const renderList = (d) => {
   const lines = [`模板 ${d.templates.length} 个（默认: ${d.defaultId}）`];
@@ -15,6 +16,21 @@ const renderList = (d) => {
   }
   return lines.join('\n');
 };
+
+// 槽位值：CLI 传 JSON 字符串，HTTP 传对象——两种都收，解析失败给明确报错。
+function parseValues(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === 'object') return raw;
+  const s = String(raw).trim();
+  if (!s) return undefined;
+  try {
+    const v = JSON.parse(s);
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('不是对象');
+    return v;
+  } catch (e) {
+    throw badInput(`--values 要传 JSON 对象（形如 {"背景":"要做的事"}）：${e.message || e}`);
+  }
+}
 
 export default {
   id: 'templates',
@@ -65,6 +81,10 @@ export default {
         body: { type: 'string', hint: '新正文（Markdown；不传保持不变）' },
         bodyFile: { type: 'string', hint: '从文件读新正文（--body 优先）；`-` = 读标准输入' },
         'body-file': { type: 'string', hint: '同 --bodyFile（连字符写法）' },
+        values: {
+          type: 'string',
+          hint: '槽位值 JSON（形如 {"背景":"要做的事"}）——正文里的 {{槽位名}} 处填这段文字；内置模板只能改这个（骨架不可改）',
+        },
       },
       run: (ctx, opts) =>
         service.updateTemplate({
@@ -72,6 +92,7 @@ export default {
           name: ctx.name,
           body: ctx.body,
           bodyFile: opts && opts.transport === 'http' ? undefined : (ctx.bodyFile ?? ctx['body-file']),
+          values: parseValues(ctx.values),
         }),
       render: (d) => `已更新模板「${d.template.name}」（${d.template.id}）`,
     },

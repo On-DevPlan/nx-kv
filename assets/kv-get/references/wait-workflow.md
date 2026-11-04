@@ -97,6 +97,10 @@ wait 必带一句当前现状总结（≤2000 字，连续空白会折叠为单�
   `{{goal.name}} {{goal.remainingHuman}} {{goal.prompt}} {{task.text}} {{source}} {{name}}…`，
   段落 `{{#goal}}…{{/goal}}` 上下文缺失整段消失；`--no-suffix` 关闭、
   `--reset-suffix` 恢复默认）。字段缺席 = 已关闭或本轮没有可渲染内容。
+- **ack 提示词（完成总结的格式要求）**：`nx-kv localtask config --ack "<提示词>"`
+  （占位符同上，多条）。配置后，它会随 `instruction` 一起交给你——按它要求的格式
+  写 `localtask done --summary "<完成总结>"` 即可；没配置时 `instruction` 里没有
+  这段，格式自便。设置面板「提示词 / 模板」一栏也能配。
 
 超时（exit 0，业务结果而非错误）：
 

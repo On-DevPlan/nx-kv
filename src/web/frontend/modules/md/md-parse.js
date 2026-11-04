@@ -244,15 +244,18 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
   return html || '<p class="mdw-empty">（空文档）</p>';
 }
 
+// 与后端 templates/service.js 的 BUILTIN_BODY 同构（那边的槽位名与默认值见
+// BUILTIN_VALUES）：正文里的 {{槽位名}} 是模板槽位——新建任务时按该模板的
+// 槽位值渲染（前端兜底时没有槽位值，标记原样留着，用户一眼知道该填什么）。
 export const NEW_TEMPLATE = `## 背景
 
-（一句话说清要改什么）
+{{背景}}
 
 ## 验收
-- [ ] …
+- [ ] {{验收}}
 
 ## 约束
-- …
+- {{约束}}
 
 ## 附件
 `;

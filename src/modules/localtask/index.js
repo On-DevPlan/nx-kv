@@ -514,9 +514,14 @@ export default {
           type: 'number',
           hint: '按序号删除一条收尾指令（--json settings.taskSuffixList 的 1 基序号）——与 --suffix/--no-suffix/--reset-suffix 互斥',
         },
+        ack: {
+          type: 'string',
+          hint: 'ack 完成总结提示词（agent 完成任务时写完成总结的格式要求；随领取交付的 instruction 给到 agent）。占位符同 --suffix；传空 = 关闭。设置面板「提示词 / 模板」一栏也能配',
+        },
       },
       run: async (ctx) => {
         const patch = { timeoutSec: ctx.timeout };
+        if (ctx.ack !== undefined) patch.ackPrompt = ctx.ack;
         const add = ctx['suffix-add'];
         const removeN = ctx['suffix-remove'];
         if (add !== undefined || removeN !== undefined) {
@@ -544,7 +549,8 @@ export default {
         const x = s.suffixEnabled
           ? `收尾指令已开启（${s.taskSuffixList.length} 条）`
           : '收尾指令已关闭';
-        return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· ${x}`;
+        const ack = s.ackPromptList && s.ackPromptList.length ? ` · ack 提示词 ${s.ackPromptList.length} 条` : '';
+        return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· ${x}${ack}`;
       },
     },
 

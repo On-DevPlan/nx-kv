@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { NEW_TEMPLATE } from './md-parse.js';
+import { renderTemplateBody } from '../prompts/placeholders.js';
 
 export function useTemplates() {
   // unsupported = 正在跑的 serve 进程比面板资产旧（路由在进程启动时加载、资产从磁盘现读）：
@@ -30,10 +31,12 @@ export function useTemplates() {
     refetch();
   }, [refetch]);
 
-  /** 默认模板正文（未加载/拉取失败 → NEW_TEMPLATE 兜底，见文件头） */
+  /** 默认模板正文（未加载/拉取失败 → NEW_TEMPLATE 兜底，见文件头）。
+   *  正文里的 {{槽位名}} 按该模板的槽位值渲染（用户填的文案进正文）。 */
   const defaultBody = useCallback(() => {
     const t = (state.templates || []).find((x) => x.id === state.defaultId);
-    return (t && t.body) || NEW_TEMPLATE;
+    if (!t) return NEW_TEMPLATE;
+    return renderTemplateBody(t.body, t.values);
   }, [state]);
 
   const add = useCallback(async (name, body, setDefault) => {

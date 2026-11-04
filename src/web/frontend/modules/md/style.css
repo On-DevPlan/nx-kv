@@ -1091,3 +1091,10 @@
 .rp-doclink.ext{color:#9E4C00;background:#FBF3E4;border-color:transparent}
 .rp-doclink-note{color:var(--mid,#838A93)}
 .rp-doclink-tag{font-size:9.5px;padding:0 5px;border-radius:8px;background:rgba(158,76,0,.14)}
+
+/* 模板页：槽位编辑区（正文里的 {{名字}} 处填内容） */
+.mdw-tpl-slots{
+  margin:8px 0 2px;padding:10px 12px;border:1px solid var(--line,#E4E2DC);
+  border-radius:8px;background:var(--paper,#fff);
+}
+.mdw-tpl-note{margin-top:6px;font-size:11px;color:var(--mid,#838A93)}

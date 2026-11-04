@@ -19,8 +19,10 @@ import {
   consumeCancelRequest,
   consumeFirstPending,
   findRunningPanelPort,
+  getSettings,
   GLOBAL_KEY,
   isGlobalKey,
+  joinAckPrompt,
   loadStore,
   normalizeCwd,
   normalizeSummary,
@@ -158,6 +160,27 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
     // 「封装对应的提示词保持在原本的提示此任务下面对上下文环境进行一个封装」。
     const groupText = renderGroupContext(await readGroupContext(cwd));
 
+    // 〔ack 完成总结格式要求〕：settings.ackPrompt（多条，设置面板「提示词 / 模板」
+    // 一栏可配）——agent 领取时就拿到「完成总结该按什么格式写」的提示词。
+    // 缺省为空 → 不追加任何东西（默认交付逐字不变）；渲染失败也不拖垮交付。
+    let ackSeg = '';
+    try {
+      const ackTpl = joinAckPrompt((await getSettings()).ackPromptList);
+      if (ackTpl) {
+        const text = renderInstruction(ackTpl, {
+          goal,
+          task: task ? { id: task.id, text: String(task.text || '') } : null,
+          source: source || '',
+          summary: summary || '',
+          cwd: cwd || '',
+          name: name || '',
+        });
+        if (text) ackSeg = text;
+      }
+    } catch {
+      /* 读不到 / 渲染失败 → 当没配 */
+    }
+
     const parts = [];
     if (groupText) parts.push(groupText);
     if (hasTemplateMarkers(tpl)) {
@@ -178,6 +201,7 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
       if (taskGoalCtx) base.instruction = taskGoalCtx.prompt;
       // 〔附件〕段同样必须到达 agent（它带本地路径/拉取方式），与 goal 段同一待遇
       if (attSeg) base.instruction = base.instruction ? `${base.instruction}\n\n${attSeg}` : attSeg;
+      if (ackSeg) base.instruction = base.instruction ? `${base.instruction}\n\n${ackSeg}` : ackSeg;
       if (attSync) base.attachmentsSync = attSync;
       return base;
     } else {
@@ -187,6 +211,7 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
     // 用户自定义模板也可能漏写）——任务级 goal 存在时始终以独立段落追加。
     if (taskGoalCtx) parts.push(taskGoalCtx.prompt);
     if (attSeg) parts.push(attSeg);
+    if (ackSeg) parts.push(ackSeg);
 
     const full = parts.join('\n\n').trim();
     if (!full) return attSync ? { task, attachmentsSync: attSync } : { task };

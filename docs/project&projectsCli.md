@@ -79,6 +79,20 @@ nx-kv repo doc list <repoId>
 nx-kv docs link nx --doc board/nx/reference/qa.md --note "问答集" --tag qa
 ```
 
+### 提示词 / 模板（设置面板「提示词 / 模板」一栏，CLI 同口径）
+
+```bash
+# 回调提示词（收尾指令）：多条，每条 ≤2000 字，最多 10 条
+nx-kv localtask config --suffix "本轮最后再 wait 一次"
+nx-kv localtask config --suffix-add "先读 docs 再动手"   # 按条增删：--suffix-remove <序号>
+
+# ack 完成总结提示词：agent 写完成总结（ack）时的格式要求，随领取交付给到它
+nx-kv localtask config --ack "完成总结按「改了什么 · 怎么验证 · 遗留什么」三段写"
+
+# 任务模板槽位：正文里的 {{槽位名}} 处填这段文字（内置模板只改槽位，骨架不可改）
+nx-kv template update default --values '{"背景":"把简介文档支持 tag"}'
+```
+
 > 介绍**懒播种**：即使没跑 `docs seed`，读取时也会按 desc/note 现场补种。
 
 ---

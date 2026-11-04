@@ -336,8 +336,23 @@ export async function waitForTask({
     by
   );
 
-  const poll = setInterval(() => {
-    // 跨进程兜底轮询：先查本地，再查全局（本地优先；同轮至多 resolve 一次）
+  const timer = setTimeout(() => resolveOutcome({ kind: 'timeout' }), tmo);
+
+  // 三个 500ms 节拍的轮询合一为一个 ticker（原 poll/cancelPoll/goalPoll 三个 setInterval）：
+  //   ① 跨进程兜底轮询：先查本地，再查全局（本地优先；同轮至多 resolve 一次）
+  //   ② 关闭轮询：用户在面板点了「关闭」→ 立即收尾本轮（走与超时同一条出口，只多带
+  //      cancelled 标记，agent 不必认识新状态，照常结束本轮）
+  //   ③ 时间目标到点 → 立刻收尾本轮（等的是"下一条任务"，预算用完了就没必要等）。
+  //      与②同一条出口：status:"timeout" + cancelled:true。
+  //      只认"等待开始时还在跑"的目标（goalDeadlineMs>0）——已经过期的目标不参与。
+  // 同拍内①②各自异步，谁先 resolve 谁赢（resolveOutcome 幂等）——拆分前多个独立
+  // setInterval 的同拍相对顺序本就不保证，语义等价。unref 收尾：进程存活由 ref 的
+  // timeout timer 兜着，ticker 不必单独撑事件循环（面板窗口复查的 5s 节拍在
+  // panel-escort.js，自带起停，不并入）。
+  const ticker = setInterval(() => {
+    if (goalDeadlineMs && Date.now() >= goalDeadlineMs) {
+      resolveOutcome({ kind: 'cancelled', reason: 'goal_expired' });
+    }
     consumeFirstPending(key, undefined, by)
       .then((task) => {
         if (task) {
@@ -352,29 +367,13 @@ export async function waitForTask({
       .catch(() => {
         /* 瞬时读写错误，下一轮再试 */
       });
-  }, POLL_MS);
-
-  const timer = setTimeout(() => resolveOutcome({ kind: 'timeout' }), tmo);
-
-  // 关闭轮询：用户在面板点了「关闭」→ 立即收尾本轮（走与超时同一条出口，只多带 cancelled 标记，
-  // agent 不必认识新状态，照常结束本轮）。
-  const cancelPoll = setInterval(() => {
     consumeCancelRequest(key)
       .then((yes) => {
         if (yes) resolveOutcome({ kind: 'cancelled' });
       })
       .catch(() => {});
   }, POLL_MS);
-
-  // 时间目标到点 → 立刻收尾本轮（等的是"下一条任务"，预算用完了就没必要等）。
-  // 与用户点「关闭等待」同一条出口：status:"timeout" + cancelled:true。
-  // 只认"等待开始时还在跑"的目标（goalDeadlineMs>0）——已经过期的目标不参与。
-  const goalPoll = setInterval(() => {
-    if (goalDeadlineMs && Date.now() >= goalDeadlineMs) {
-      resolveOutcome({ kind: 'cancelled', reason: 'goal_expired' });
-    }
-  }, POLL_MS);
-  goalPoll.unref?.();
+  ticker.unref?.();
 
   // 登记「等待中」（含截止时刻与现状），面板据此显示倒计时
   await setWaiting(key, cwd, summary, true, new Date(Date.now() + tmo));
@@ -435,9 +434,7 @@ export async function waitForTask({
             repo: repoCtx,
           };
   } finally {
-    clearInterval(poll);
-    clearInterval(cancelPoll);
-    clearInterval(goalPoll);
+    clearInterval(ticker);
     escort.stop();
     clearTimeout(timer);
     unregisterTopicWaiter(key);

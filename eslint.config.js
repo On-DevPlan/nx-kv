@@ -65,8 +65,8 @@ export default defineConfig([
         {
           patterns: [
             {
-              group: ['../modules/**', '../runtime/**', '../web/**'],
-              message: 'core 是最底层，不得依赖 modules / runtime / web。',
+              group: ['../modules/**', '../runtime/**', '../web/**', '../shared/**'],
+              message: 'core 是最底层，不得依赖 modules / runtime / web / shared。',
             },
           ],
         },
@@ -87,15 +87,71 @@ export default defineConfig([
               group: ['../repos/*', '../skills/*', '../github/*', '../bundled/*', '../system/*', '../todo/*', '../sessiontask/*'],
               message: '模块之间不得互相依赖；共享逻辑请下沉到 core/。唯一例外是 ../settings/service.js。',
             },
+            {
+              // 后端模块不得依赖前端：面板只通过 HTTP /api 拿数据。
+              // 两端都要用的纯函数放 src/shared/（见下面那条 shared 规则）。
+              group: ['../web/**', '../../web/**', '**/web/frontend/**'],
+              message: '后端模块不得 import 前端代码：前端只通过 /api 消费后端，跨端纯函数放 src/shared/。',
+            },
+            {
+              // 反向同理：registry → modules → runtime → registry 会成环。
+              // 需要运行期数据（命令表之类）时，由 runtime 传给模块的纯函数，而不是模块去拿。
+              group: ['../../runtime/**', '../runtime/**'],
+              message: '模块不得依赖 runtime（会成环）：运行期数据由 runtime 注入模块的纯函数。',
+            },
+          ],
+          paths: [
+            { name: 'react', message: '后端模块里不许出现 react（视图归 src/web/frontend/）。' },
+            { name: 'react-dom', message: '后端模块里不许出现 react（视图归 src/web/frontend/）。' },
           ],
         },
       ],
     },
   },
   {
-    // system 是刻意的聚合模块（bootstrap 要一次拿齐各模块状态），是上述规则的例外
+    // 同构纯函数层：Node 与浏览器加载**同一份**代码（附件语法、双链、frontmatter…），
+    // 所以它必须零依赖——碰 node: 就进不了浏览器包，碰第三方包就进不了 Node。
+    files: ['src/shared/**/*.js'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../**', 'node:*'],
+              message: 'shared 是同构层：除同目录相对引用外不得依赖任何东西。',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // system 是刻意的聚合模块（bootstrap 要一次拿齐各模块状态）：放开「模块互依」，
+    // 其余边界照旧 —— 它曾经靠 `await import('../../runtime/cli.js')` 拿命令表，
+    // 那正是这条规则要拦的形状（现在改成 runtime 把表传给 routes 的纯函数）。
     files: ['src/modules/system/**/*.js'],
-    rules: { 'no-restricted-imports': 'off' },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../web/**', '../../web/**', '**/web/frontend/**'],
+              message: '后端模块不得 import 前端代码。',
+            },
+            {
+              group: ['../../runtime/**', '../runtime/**'],
+              message: '模块不得依赖 runtime（会成环）。',
+            },
+          ],
+          paths: [
+            { name: 'react', message: '后端模块里不许出现 react。' },
+            { name: 'react-dom', message: '后端模块里不许出现 react。' },
+          ],
+        },
+      ],
+    },
   },
   {
     // 前端：这条规则的价值最高——把 Node 侧代码 import 进视图，
@@ -111,9 +167,12 @@ export default defineConfig([
               message: '前端不能引用 Node 内置模块。',
             },
             {
-              group: ['**/modules/*/index.js', '**/modules/*/service.js', '**/runtime/**', '**/core/**'],
+              // 前端只能碰 src/shared/ 的同构纯函数；后端模块里的任何文件都不许读。
+              // 相对深度是死的（page/components 一律 4 层回到 src/），真正的兜底是
+              // tests/unit/layering.test.mjs —— 它解析真实路径再比对层次。
+              group: ['**/modules/*/index.js', '**/modules/*/service.js', '../../../../modules/**', '../../../modules/**'],
               message:
-                '前端只能 import 模块的 view.jsx。index.js/service.js/runtime/core 是 Node 侧代码，拖进浏览器包会把 node: 内置模块一起带进来。',
+                '前端只通过 /api 拿数据（跨端纯函数在 src/shared/）。拖进后端模块会把 node: 内置模块带进浏览器包。',
             },
           ],
         },
@@ -134,7 +193,7 @@ export default defineConfig([
   // 下面这份全局表就是浏览器 + ES2024 的交集，不多不少；
   // 装了 globals 包也省不掉这份"白名单"——前端自己知道该用哪些全局。
   {
-    files: ['src/web/frontend/**/*.{js,jsx}', 'src/modules/*/view.jsx', 'src/modules/*/*.jsx'],
+    files: ['src/web/frontend/**/*.{js,jsx}'],
     languageOptions: {
       globals: {
         // 浏览器

@@ -94,16 +94,19 @@ test('每条 HTTP 路由都能由某条 CLI 命令触达（核心保证）', () 
   }
 });
 
-test('带 view 的模块都被前端视图注册表引用，且反向无孤儿', () => {
-  const withView = new Set(MODULES.filter((m) => m.view).map((m) => m.id));
-  const referenced = new Set(frontendViewModules);
-  // v2：一个模块可以贡献多个视图（dir/global/overview 都归 localtask），
-  // 对齐的口径从「视图 id 一一对应」放宽为「模块集合对齐」。
-  assert.deepEqual(
-    [...referenced].sort(),
-    [...withView].sort(),
-    `前端视图注册表引用的模块 (${[...referenced].sort()}) 与带 view 的模块 (${[...withView].sort()}) 不一致`
-  );
+test('视图归属全在前端：后端模块不得声明 view', () => {
+  // 历史形态：模块 index.js 里写 `view: () => import('../../web/frontend/page/x.jsx')`。
+  // 这让后端的声明里出现前端文件路径——后端换个目录结构就要改后端代码，
+  // 而且 `localtask` 的 `import('./view.jsx')` 早就指向不存在的文件（没人读过它，
+  // 所以坏了两年也没报错）。视图现在只在前端 registry 登记，这里防止它回来。
+  const ghosts = MODULES.filter((m) => 'view' in m).map((m) => m.id);
+  assert.deepEqual(ghosts, [], `这些模块仍在 index.js 里声明 view（后端不该知道前端）: ${ghosts}`);
+});
+
+test('前端视图注册表的 module 都指向已登记的后端功能域', () => {
+  const known = new Set(MODULES.map((m) => m.id));
+  const unknown = [...new Set(frontendViewModules)].filter((id) => !known.has(id));
+  assert.deepEqual(unknown, [], `视图归属了不存在的后端模块: ${unknown}`);
   assert.equal(frontendViewModules.length, frontendViewIds.length, '每条视图都要声明 module 字段');
 });
 
@@ -138,27 +141,24 @@ test('视图调用的每个 /api 路径都有对应路由', () => {
   const PLATFORM = new Set(['/api/ping', '/api/localtasks/events']);
   const problems = [];
 
-  // v2：面板代码分散在 frontend 组件与模块的 view*.jsx 里，全量扫描——
-  // 只扫 view.jsx 会漏掉 sidebar/migrate 等组件里的调用（那才是新漏网之鱼的高发地）。
+  // 面板代码全在 src/web/frontend/ 下（视图归前端），所以整棵树扫一遍就够——
+  // 只扫「视图入口文件」会漏掉 sidebar/migrate 等组件里的调用，
+  // 而那里恰恰是新漏网之鱼的高发地。
   const seen = new Set();
   const files = [];
-  const walk = (dir, onlyViews) => {
+  const walk = (dir) => {
     let entries;
     try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       const p = join(dir, e.name);
-      if (e.isDirectory()) walk(p, onlyViews);
+      if (e.isDirectory()) walk(p);
       else if (/\.(jsx|js)$/.test(e.name) && !seen.has(p)) {
-        // 模块目录里只扫视图文件（view*.jsx）——service/index 里的路径是**路由声明本身**，
-        // 不是调用方；扫进去只会制造误报。
-        if (onlyViews && !/^view.*\.jsx$/.test(e.name)) continue;
         seen.add(p);
         files.push(p);
       }
     }
   };
-  walk(join(ROOT, 'src', 'web', 'frontend'), false);
-  for (const id of frontendViewModules) walk(join(MODULES_DIR, id), true);
+  walk(join(ROOT, 'src', 'web', 'frontend'));
 
   for (const file of files) {
     const src = readFileSync(file, 'utf8');
@@ -305,7 +305,12 @@ test('CRUD 的 HTTP 方法符合语义', () => {
 // 单向（CLI 命令 → 路由）在结构上已成立；这里保证反向也能查到——
 // agent 常常是先从端点出发的（面板 devtools 里看到一个请求，要问怎么用 CLI 重放）。
 
-const routesAction = ACTIONS.find((a) => a.id === 'system.routes');
+// routes 是**平台命令**，不参与 action 表：它描述的就是 ALL_COMMANDS 本身，
+// 只有 runtime/cli.js 拿得到它（模块反过来 import 会成环）。逻辑仍在 modules/system/routes.js。
+const { ALL_COMMANDS: ALL_CMDS } = await import(
+  pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.js')).href
+);
+const routesAction = ALL_CMDS.find((a) => a.id === 'system.routes');
 
 test('routes 反查：每条 HTTP 路由都能定位回自己的命令', async () => {
   assert.ok(routesAction, 'system.routes 不存在');

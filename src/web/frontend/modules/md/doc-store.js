@@ -4,7 +4,7 @@
 // 这里只管「文档内容」——标题 / 正文 / 附件 / 视图模式。
 // 面板关掉再打开，内容还在（会话内）；刷新即空（草稿本就只在会话有效）。
 import { useSyncExternalStore } from 'react';
-import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
+import { GLOBAL_KEY } from '../board/board-view.js';
 
 let draftSeq = 0; // 会话内自增：draft-1 / draft-2 …（URL 可复现同一草稿页签）
 let s = { docs: {} };

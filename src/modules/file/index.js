@@ -17,7 +17,6 @@ export default {
   order: 40,
   // 没有独立面板：附件在「清单」页里被引用与预览，单独开一个 tab
   // 会得到第二个「附件列表」，反而不知道以哪个为准。
-  view: null,
 
   actions: [
     {

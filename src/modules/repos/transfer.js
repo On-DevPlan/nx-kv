@@ -619,6 +619,13 @@ export async function repoImport({
       for (const m of inc.repos) {
         const known = keyMap.has(m.key);
         await boards.assignRepo({ key: m.key, board: b.id }).catch(() => {});
+        if (!known) {
+          // 占位成员的线索一起带走：只留一个 key 的话，导入端既看不到名字，
+          // 也不知道该 clone 哪个地址——「待初始化」就永远待着，还删不掉。
+          await boards
+            .setMemberHint({ board: b.id, key: m.key, name: m.name, remote: m.remote, desc: m.desc, type: m.type })
+            .catch(() => {});
+        }
         if (m.note) {
           // 组内描述挂在 key 上：占位成员也保留描述，等仓库补齐后自动生效
           await boards.setBoardRepoNote({ key: m.key, board: b.id, note: m.note }).catch(() => {});

@@ -134,7 +134,6 @@ export default {
   id: 'localtask',
   title: '本地任务（= Web「本地任务」页）',
   order: 20,
-  view: () => import('./view.jsx'),
 
   // CRUD 资源声明：主题任务的增删查改齐备，CLI 与面板都能调用
   resource: 'localtask',

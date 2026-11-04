@@ -217,7 +217,7 @@ export default {
   id: 'docs',
   title: '文档（自有 md 树：项目/组介绍、组内描述、双链、外部只读绑定）',
   order: 12,
-  view: null, // 面板入口在组详情页与工作区 doc 页签（DocPanel），不占独立视图
+  // 面板入口在组详情页与工作区 doc 页签（DocPanel），不占独立视图
 
   resource: 'doc',
 

@@ -1,14 +1,14 @@
 // Markdown 极简解析（原型落地）：标题 / 列表 / 引用 / 代码 / 图片 / fenced code / 双链。
 // 不引入 marked 等依赖，面板包体保持轻量。
 //
-// 双链 [[目标|显示文本]] 与 core/wikilink.js 同一套正则与归一（后端解析、这里渲染，
-// 收在 core 防两端漂移）。knownNames 是双链索引里的名字/路径集合（docs/index），
+// 双链 [[目标|显示文本]] 与 shared/wikilink.js 同一套正则与归一（后端解析、这里渲染，
+// 收在同构层防两端漂移）。knownNames 是双链索引里的名字/路径集合（docs/index），
 // 不在其中 → 未解析态（虚线红）；不传 knownNames → 全部按已解析渲染（模板预览等场景）。
-import { normalizeWikiTarget } from '../../../../modules/docs/wikilink.js';
-import { looksLikeFileId } from '../../../../modules/todo/attach.js';
+import { normalizeWikiTarget } from '../../../../shared/wikilink.js';
+import { looksLikeFileId } from '../../../../shared/attach.js';
 // 任务 frontmatter（工作组语义）**共用模块内同一份实现**：CLI（node）与面板（浏览器）
 // 各写一套正则，必然出现「面板认得出、CLI 认不出」这种最难查的分叉。
-import { parseFrontmatter, stripFrontmatter, withFrontmatter } from '../../../../modules/localtask/frontmatter.js';
+import { parseFrontmatter, stripFrontmatter, withFrontmatter } from '../../../../shared/frontmatter.js';
 export { parseFrontmatter, stripFrontmatter, withFrontmatter };
 
 export function titleFromMd(body, fallback = '未命名任务') {

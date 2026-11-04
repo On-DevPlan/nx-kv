@@ -265,3 +265,114 @@ test('仓库上下文：按路径查到仓库与它所在的看板（本地任�
   // 没登记过的目录 → null（不是报错）
   assert.equal(await repos.contextForPath(join(dir, 'never-registered')), null);
 });
+
+// ─── 占位成员（组里引用、本机未登记）────────────────────────────────────
+
+test('占位成员带线索：导入的脚步能显示名字、知道该 clone 哪个地址', async () => {
+  const board = await boards.createBoard({ name: 'nx' });
+  await boards.assignRepo({ key: 'local/ghost', board: board.id });
+  await boards.setMemberHint({
+    board: board.name,
+    key: 'local/ghost',
+    name: 'ghost',
+    remote: 'git@github.com:o/ghost.git',
+  });
+  const d = await boards.getBoard(board.name);
+  const m = d.repos.find((x) => x.key === 'local/ghost');
+  assert.equal(m.name, 'ghost', '有线索就显示名字，不是干瘪的 key');
+  assert.equal(m.present, false);
+  assert.equal(m.clonable, true, '有 remote 才算「克隆得回来」');
+  assert.equal(m.remote, 'git@github.com:o/ghost.git');
+});
+
+test('重绑占位 → 本机 key：原位替换、组内描述跟着走、登记不动', async () => {
+  const { a } = await seed(); // 无 remote → key = local/alpha
+  const board = await boards.createBoard({ name: 'nx' });
+  await boards.assignRepo({ key: 'local/ghost', board: board.id });
+  await boards.assignRepo({ key: 'local/other', board: board.id });
+  await boards.setBoardRepoNote({ key: 'local/ghost', board: board.id, note: '导入方留下的位置描述' });
+  await boards.setMemberHint({ board: board.id, key: 'local/ghost', name: 'ghost' });
+  const before = (await repos.listRepos()).find((r) => r.id === a);
+
+  const r = await boards.rekeyMember({ from: 'local/ghost', to: a, board: board.id });
+  assert.equal(r.merged, false);
+  assert.equal(r.movedNote, true);
+
+  const d = await boards.getBoard(board.id);
+  assert.deepEqual(d.repos.map((m) => m.key), [before.key, 'local/other'], '原位替换，顺序不变');
+  assert.equal(d.repos[0].name, 'alpha');
+  assert.equal(d.repos[0].note, '导入方留下的位置描述', '描述挂在关系上，关系换了要跟着搬');
+
+  const after = (await repos.listRepos()).find((x) => x.id === a);
+  assert.equal(after.key, before.key, '登记（身份）不能被占位 key 改写');
+});
+
+test('重绑到已在组里的仓库：合并，占位被摘掉且不重复', async () => {
+  const { a } = await seed();
+  const board = await boards.createBoard({ name: 'nx' });
+  await boards.assignRepo({ id: a, board: board.id });
+  await boards.assignRepo({ key: 'local/ghost', board: board.id });
+
+  const r = await boards.rekeyMember({ from: 'local/ghost', to: a, board: board.id });
+  assert.equal(r.merged, true);
+  const d = await boards.getBoard(board.id);
+  assert.deepEqual(d.repos.map((m) => m.key), [r.to]);
+});
+
+test('重绑连带改绑定：linked 指向占位 key 的一起改指，绑定描述保留', async () => {
+  const { a } = await seed();
+  const board = await boards.createBoard({ name: 'nx' });
+  await boards.assignRepo({ key: 'local/ghost', board: board.id });
+  const ref = await repos.addRepo({
+    path: join(dir, 'refx'),
+    name: 'refx',
+    type: 'ref',
+    linked: [{ kind: 'repo', id: 'local/ghost', note: '给 ghost 用' }],
+  });
+
+  const r = await boards.rekeyMember({ from: 'local/ghost', to: a, board: board.id });
+  assert.equal(r.relinked, 1);
+  const after = (await repos.listRepos()).find((x) => x.id === ref.id);
+  assert.equal(after.linked[0].id, r.to, '只改成员不改绑定，ref check 会一直报死链');
+  assert.equal(after.linked[0].note, '给 ghost 用');
+});
+
+test('清理占位连带摘死链：指向被清 key 的绑定一起消失', async () => {
+  await seed();
+  const board = await boards.createBoard({ name: 'nx' });
+  await boards.assignRepo({ key: 'local/ghost', board: board.id });
+  const ref = await repos.addRepo({
+    path: join(dir, 'refy'),
+    name: 'refy',
+    type: 'ref',
+    linked: [{ kind: 'repo', id: 'local/ghost' }],
+  });
+
+  await boards.prunePlaceholders({ board: board.id, apply: true });
+  const after = (await repos.listRepos()).find((x) => x.id === ref.id);
+  assert.deepEqual(after.linked, []);
+});
+
+test('清理占位：无远程的可预览可落盘，有远程的要 --all 才清', async () => {
+  const { a } = await seed();
+  const board = await boards.createBoard({ name: 'nx' });
+  await boards.assignRepo({ id: a, board: board.id });
+  await boards.assignRepo({ key: 'local/ghost', board: board.id });
+  await boards.assignRepo({ key: 'github.com/o/remote', board: board.id });
+  await boards.setMemberHint({
+    board: board.id,
+    key: 'github.com/o/remote',
+    name: 'remote',
+    remote: 'git@github.com:o/remote.git',
+  });
+
+  const dry = await boards.prunePlaceholders({ board: board.id });
+  assert.equal(dry.total, 1, '带 remote 的占位默认留着（clone 得回来）');
+  assert.equal(dry.items[0].key, 'local/ghost');
+
+  const all = await boards.prunePlaceholders({ board: board.id, all: true, apply: true });
+  assert.equal(all.total, 2);
+  const d = await boards.getBoard(board.id);
+  assert.equal(d.repos.length, 1, '清理后只剩真实成员');
+  assert.equal(d.repos[0].key, (await repos.listRepos()).find((r) => r.id === a).key);
+});

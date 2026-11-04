@@ -9,7 +9,7 @@ import {
   withFrontmatter,
   applyGroupFields,
   preserveFrontmatter,
-} from '../../src/modules/localtask/frontmatter.js';
+} from '../../src/shared/frontmatter.js';
 import {
   resolveGroupTarget,
   findBoard,

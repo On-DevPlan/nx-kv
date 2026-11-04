@@ -13,6 +13,52 @@
   的附件链路保持不变。`file upload --local` 是本机仓的直入口；`/api/file/content`
   本机仓优先、未命中再透传云端（面板预览离线可用）。
 
+## [0.16.0] - 2026-11-04 占位成员可救可清 + 仓库页可读性 + 前后端分层解耦
+
+### Added
+
+- **`board rekey <from> --to <仓库>`**：把组里的**占位 key** 重绑到本机仓库——
+  改的是**关系**（`repoKeys`），仓库登记与 key 不动；组内描述（`repoNotes`）与
+  组内文档绑定（`repoDocs`）跟着 key 搬。不给 `--board` = 全组一起重绑
+  （假 key 是身份问题，只修一个组会留下另一半残局）。目标已在组里则合并。
+- **`board prune [--board] [--all] [--apply]`**：清理占位成员。默认只清**无来源**的
+  （没有远程地址 → 克隆不回来 → 永远转不了正），带 remote 的加 `--all` 才清；
+  默认预览，`--apply` 落盘。
+- **占位成员带线索**：导入布局时把对方的 `name / remote / desc / type` 记进
+  `board.repoHints`，占位从此能显示名字、能「克隆到本地」；`board export` 也不再
+  丢掉占位（以前导出的看板比屏幕上少人）。
+
+### Changed
+
+- **修掉「用本机仓库接管」的方向错误**：它原先把**本机仓库的 key** 改成占位 key
+  （`local/xxx`），真实身份被降级并随导出传播。现在改为重绑组里的 key，登记不动。
+- **仓库页可读性**：正文字号整体提一档（表格 13.5px、描述两行、路径 12px 等宽），
+  待初始化区改成「一条占位一张卡」：名字 / 来源组 / key 分层，三个出口
+  （绑定到候选仓库 / 克隆 / 移除）+ 批量清理。
+
+### Changed（架构：前后端彻底解耦）
+
+- **模块声明里不再有 `view`**。`src/modules/<x>/index.js` 曾经写着
+  `view: () => import('../../web/frontend/page/x/index.jsx')`——后端声明里出现前端文件
+  路径，前端换个目录就要改后端代码；而 `localtask` 那条 `import('./view.jsx')` 指向的
+  文件**早就不存在**（没人读它，所以坏了也没报错）。视图现在只在前端
+  `web/frontend/registry.js` 登记，后端对自己的面板一无所知。
+- **新增同构层 `src/shared/`**：`attach.js`（附件语法）、`wikilink.js`（双链）、
+  `frontmatter.js`（任务头）以前长在后端模块里，却被前端直接 import（12 处）——
+  等于浏览器包依赖后端的目录结构。现在只有这一层能同时被两端加载，且**零依赖**
+  （不许 `node:`、不许第三方包）。
+- **两个纯前端文件归位**：`localtask/board.js`（显示序 / 队列拆分，7 处前端引用）、
+  `localtask/reopen-text.js`（重开正文拼装）没有任何后端消费方，移到
+  `web/frontend/modules/board/`；顺手删掉同目录里没人引用的 `use-cloud-dir.js`。
+- **`routes` 改成平台命令**：它描述的是 `ALL_COMMANDS` 本身，只有 runtime 拿得到。
+  以前 system 模块为它 `await import('../../runtime/cli.js')`（分层倒置），现在逻辑
+  留在 `modules/system/routes.js`（纯函数，表由调用方传入），命令挂在 `cli.js` 的
+  BUILTINS 上；`bootstrap` 下发的命令表改读 `core/command-table.js` 的快照。
+- **边界写成机器检查**：`eslint.config.js` 新增 modules→web / modules→runtime /
+  shared 零依赖 / 模块内禁 react 四类规则；新增 `tests/unit/layering.test.mjs`，
+  解析真实 import 路径比对层次（`web` 只能看到 `web + shared`），并断言后端目录里
+  没有 `.jsx`、模块不再声明 `view`。
+
 ## [0.15.0] - 2026-11-04 工作组两级口径（任务带归属）+ 划线评论与完成验收闭环 + 任务附件 + 队列显示序与分页
 
 ### Added

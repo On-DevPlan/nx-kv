@@ -1,7 +1,7 @@
 // 双链纯函数（core/wikilink.js）的单元测试：解析、归一、解析顺序（地址 > 唯一文件名 > 多候选）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseWikiLinks, normalizeWikiTarget, resolveWikiLink } from '../../src/modules/docs/wikilink.js';
+import { parseWikiLinks, normalizeWikiTarget, resolveWikiLink } from '../../src/shared/wikilink.js';
 
 test('parseWikiLinks：目标、别名、忽略空目标', () => {
   const links = parseWikiLinks('看 [[nx-kv]] 和 [[group/nx系列/github.com/me/x|这篇]]，不是 [单链](x)。');

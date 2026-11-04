@@ -3,8 +3,10 @@
 // 只为视图准备一行一个目录；存储仍各自独立。保留 localtask 的原有顺序（全局池
 // 永远最前）；只有 timegoal 的目录按 goal 的接口顺序追加，且同一 key 只出现一次。
 //
-// 本文件是**纯前端视图模型**：不 import service.js（那会带 node:crypto/fs 进 bundle），
-// 所以全局主题的固定标识在这里各写一份，靠"同一个字符串"与 service 对齐。
+// 本文件是**纯前端视图模型**，没有任何后端消费方——原先长在 modules/localtask/ 下，
+// 被迫在前端目录之外维护，还得靠注释解释「别 import service.js」。现在归位到前端。
+// 与后端的共同约定只有 `__GLOBAL__` 这一个字符串（见 localtask service 的 GLOBAL_KEY），
+// 由 tests/unit/registry.test.mjs 的边界断言与 shared/ 层共同守住。
 
 // 全局任务池（共享池）的固定标识 —— 与 localtask service 的 GLOBAL_KEY 一致。
 export const GLOBAL_KEY = '__GLOBAL__';

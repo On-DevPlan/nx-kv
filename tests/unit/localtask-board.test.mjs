@@ -7,7 +7,7 @@ import {
   splitQueueTasks,
   sortTasksForDisplay,
   GLOBAL_KEY,
-} from '../../src/modules/localtask/board.js';
+} from '../../src/web/frontend/modules/board/board-view.js';
 
 test('mergeDirectoryRows：同一个目录的 localtask 与 timegoal 合并成一行', () => {
   const topics = [

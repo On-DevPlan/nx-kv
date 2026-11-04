@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
-import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
+import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import { STAGE_LABELS, taskToProgress } from '../../modules/md/md-parse.js';
 import { findOpenPanel } from '../../workspace.js';
 import { useToast } from '../../components/toast/index.jsx';

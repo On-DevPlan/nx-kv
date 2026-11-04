@@ -1,8 +1,12 @@
-// 视图注册表：新增面板 = 在模块里写 view*.jsx + 在这里登记一行。
-// `module` 指明该视图归属的后端功能域（tests/unit/registry.test.mjs 据此断言：
-// 被引用的模块集合 == 带 view 的模块集合；引用的组件文件必须真实存在）。
-// 纯前端的多文件视图（不声明后端 action）放 frontend/modules/<name>/，
-// module 仍归它消费数据的功能域。App 的路由、懒加载由这张表驱动，改面板不用动壳。
+// 视图注册表：新增面板 = 写组件 + 在这里登记一行。
+//
+// 视图**完全归前端管**：组件在 src/web/frontend/，路由与懒加载由这张表驱动，
+// 后端模块对自己的视图一无所知（历史上模块 index.js 里挂过 `view: () => import(...)`，
+// 那是把前端的文件布局写进后端声明，已整体移除）。
+//
+// `module` 字段只表示「这个视图消费哪个后端功能域的数据」，用于
+// tests/unit/registry.test.mjs 断言不出现悬空归属——它不是后端的引用，
+// 后端也读不到它。
 //
 // v2（原型 plan/uiux-redesign.html §7.1）：
 //   dir/global/overview 归 localtask 域；cloud 即 todo 域（云端总览）。

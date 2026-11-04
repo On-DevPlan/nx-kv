@@ -30,7 +30,7 @@ import { loadConfig, requireAuth, normalizeGroupId, resolveGroupId } from '../..
 import { badInput, notFound, conflict } from '../../core/errors.js';
 import { contentTypeOf, fileUpload, isImageName } from '../../core/fileapi.js';
 import { localIndex, syncAttachments } from '../../core/attachstore.js';
-import { attachmentRefs, embedMarkdown, looksLikeFileId } from './attach.js';
+import { attachmentRefs, embedMarkdown, looksLikeFileId } from '../../shared/attach.js';
 
 export const KEY = {
   open: 'todo:open',

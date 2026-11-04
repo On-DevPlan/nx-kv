@@ -40,9 +40,16 @@ nx-kv 的形状一句话说清：**一份 action 声明，同源派生 CLI 命�
 ```
 src/modules/<name>/
 ├── index.js     模块声明 + action 表（cli/http 同处一条）
-├── service.js   业务真相源：不认识 argv、不认识 HTTP
-└── view.jsx     面板视图（可选；多数视图已迁到 src/web/frontend/page/）
+└── service.js   业务真相源：不认识 argv、不认识 HTTP
+
+src/web/frontend/page/<name>/index.jsx   面板视图（可选，写在前端注册）
+src/shared/*.js                          两端共用的纯函数（可选，零依赖）
 ```
+
+**前端不写进后端目录**：模块里没有 `view`、没有 `.jsx`、不 import react。
+面板只通过 `/api` 消费后端；真要两端共用一份实现（正则、解析、拼装），
+放到 `src/shared/`——它同时被 Node 与浏览器加载，所以不许碰 `node:` 和第三方包。
+这几条都由 `eslint.config.js` 与 `tests/unit/layering.test.mjs` 双保险。
 
 ## action 声明
 

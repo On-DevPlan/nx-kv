@@ -206,13 +206,13 @@ export default function Sidebar({
           <span className="nx-title">nx-kv</span>
           <span className="grow" />
           <button
-            className="iconbtn" title="撤销上一次布局操作" aria-label="撤销上一次布局操作"
+            className="iconbtn undo" title="撤销上一次布局操作" aria-label="撤销上一次布局操作"
             disabled={!shell || !shell.canUndo} onClick={shell && shell.undo}
           >
             ↶
           </button>
           <button
-            className="iconbtn" title="重做" aria-label="重做"
+            className="iconbtn redo" title="重做" aria-label="重做"
             disabled={!shell || !shell.canRedo} onClick={shell && shell.redo}
           >
             ↷

@@ -1,0 +1,71 @@
+// （#54 自 service.js 拆出）进程内 waiter 注册表：主题级（同 key 覆盖）+ 全局 FIFO
+// （工作窃取兜底），以及领取标记 markConsumed（领取审计字段在这里写）。
+import { stampNow } from './store-io.js';
+// ─── 进程内 waiter：key -> { resolve(task), summary, by } ───────────────
+//
+// 注册表**留在 localtask**（addTask 的唤醒路径要认领它），但注册/取走以 API 导出——
+// wait/get 的阻塞编排住在 tasktool/wait.js，通过这组 API 挂钩，不碰队列内部。
+const waiters = new Map();
+
+/** wait/get 编排侧：登记「本目录有阻塞中的 waiter」（同 key 旧登记被覆盖）。 */
+export function registerTopicWaiter(key, entry) {
+  waiters.set(key, entry);
+}
+
+/** addTask 唤醒路径：取走该 key 的 waiter（取出即注销，保证一条任务只唤醒一个）。 */
+export function takeTopicWaiter(key) {
+  const w = waiters.get(key);
+  if (w) waiters.delete(key);
+  return w || null;
+}
+
+/** wait 收尾：摘掉自己的登记（超时/取消/完成都走这里）。 */
+export function unregisterTopicWaiter(key) {
+  waiters.delete(key);
+}
+
+// 进程内「愿意从全局领任务」的等待者（FIFO）。任何本地主题的 wait 在本地空、
+// 全局也空而阻塞时，除了挂进 waiters（等本目录回填），还挂到这里——
+// 同进程 addTask({global:true}) 投递时按先来后到投给最早阻塞的 waiter。
+const globalWaiters = [];
+
+// 注册全局兜底 waiter；返回注销函数（wait 在拿到任务/超时/被关闭时都要调用，
+// 否则已结束的 wait 还留在队列里占位）。summary 随注册固化——全局投递领取时
+// 记进 task.roundSummary 的是「领取方 agent 当时的现状」，而非全局池自己的现状。
+// by 随注册固化——领取后记进 task.claimedBy，事后能看出「这条是谁领的」。
+export function registerGlobalWaiter(onTask, summary, by) {
+  const entry = { onTask, summary: summary || '', by: by || null, settled: false };
+  globalWaiters.push(entry);
+  return () => {
+    if (entry.settled) return;
+    entry.settled = true;
+    const i = globalWaiters.indexOf(entry);
+    if (i >= 0) globalWaiters.splice(i, 1);
+  };
+}
+
+// 弹出第一个未注销的 waiter（FIFO）；无人等返回 null。
+// 取出即标记 settled，保证一条任务只唤醒一个 waiter。
+export function takeGlobalWaiter() {
+  while (globalWaiters.length) {
+    const entry = globalWaiters.shift();
+    if (!entry.settled) {
+      entry.settled = true;
+      return entry;
+    }
+  }
+  return null;
+}
+
+export function markConsumed(task, roundSummary, meta = {}) {
+  task.status = 'consumed';
+  task.consumedAt = stampNow();
+  // 记录该任务所回应的「agent 上一轮完成总结」（本轮等待时的现状）
+  if (roundSummary) task.roundSummary = roundSummary;
+  // 领取审计：这条**从哪个池**被领走、**被谁**领走。
+  // 全局池里的任务被别的目录的 agent 领走时，光看"它在全局池里"看不出谁干的。
+  if (meta.from) task.claimedFrom = meta.from;
+  if (meta.byKey) task.claimedBy = meta.byKey;
+  if (meta.byName) task.claimedByName = meta.byName;
+  return task;
+}

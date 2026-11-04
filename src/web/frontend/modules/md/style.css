@@ -375,12 +375,15 @@
 }
 .mdw-lp input.mdw-lp-title,
 .mdw-lp textarea.mdw-lp-title{
-  display:block;width:100%;box-sizing:border-box;margin:0 0 18px;padding:0!important;
+  display:block;width:100%;box-sizing:border-box;margin:2px 0 30px;padding:0!important;
   font-family:inherit;font-weight:700;font-size:28px;line-height:1.25;
   letter-spacing:-0.025em;color:var(--ink,#16181C);caret-color:var(--mdw-accent);
   resize:none;overflow:hidden;overflow-wrap:anywhere;
 }
 .mdw-lp-title::placeholder{color:var(--faint,#A9AEB4);font-weight:600}
+/* 占位提示聚焦即隐（标题与正文一致）：原先要打字才消失，提示文字压在光标底下 */
+.mdw-lp textarea.mdw-lp-title:focus::placeholder{color:transparent!important}
+.mdw-editor:focus::placeholder{color:transparent!important}
 .mdw-lp-blocks{
   display:flex;flex-direction:column;gap:0;
   /* 视图↔编辑共用度量：点进一行只出现绿色光标，色/行高不得跳 */
@@ -388,18 +391,27 @@
   --mdw-lp-body-lh:1.75;
   --mdw-lp-body-color:var(--ink-2,#4B515A);
 }
-/* 块本身零 chrome —— 禁止底色/描边/圆角/焦点环（无行首把手） */
+/* 块间距由**块容器**承担（视图态与编辑态共享）——
+   视图态内部元素的 margin 归零、编辑态 textarea 的垂直 padding 归零，
+   两态的盒高因此严格相等：点进一块只多一个光标，**不跳行高、不动 padding**
+   （2026-11-04 任务 #31：点块后行高变化 → 底部 padding 增大 → 下方内容抖动）。 */
 .mdw-lp-block{
-  position:relative;margin:0;padding:1px 0;border:0;background:transparent;
+  position:relative;margin:0;padding:0 0 6px;border:0;background:transparent;
   border-radius:0;box-shadow:none;outline:none;min-width:0;
 }
+/* 标题的上下留白也归块容器（视图态原先在元素 margin 上，编辑态在 textarea padding 上，
+   两边数值必须相同，否则点一下就跳） */
+.mdw-lp-block.kind-h1{padding-top:8px;padding-bottom:14px}
+.mdw-lp-block.kind-h2{padding-top:14px;padding-bottom:10px}
+.mdw-lp-block.kind-h3{padding-top:10px;padding-bottom:10px}
+.mdw-lp-block.kind-quote{padding-top:8px}
 .mdw-lp-block.is-view{cursor:text}
 .mdw-lp-block.is-view:focus,.mdw-lp-block.is-edit,.mdw-lp-block.is-edit:focus{
   outline:none;border:0;box-shadow:none;background:transparent;
 }
 .mdw-lp-gap{min-height:1.6em}
 .mdw-lp textarea.mdw-lp-src{
-  display:block;width:100%;box-sizing:border-box;margin:0;padding:0 0 6px!important;
+  display:block;width:100%;box-sizing:border-box;margin:0;padding:0!important;
   resize:none;overflow:hidden;
   white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;
   /* 与视图态同一套字体度量，避免点选一行时重新折行/行高跳 */
@@ -409,35 +421,51 @@
   caret-color:var(--mdw-accent);
   transition:none!important;
 }
+/* 占位提示：聚焦即隐（原先要打字才消失，提示文字压在光标底下）。
+   !important：全局 input/textarea 的 placeholder 规则更晚加载，不加赢不了它。
+   指引文案改挂在**视图态的空块**上（见下方 .mdw-lp-gap::after）——
+   聚焦编辑时干净，失焦时仍有提示，不至于把指引整个弄丢。 */
 .mdw-lp-src::placeholder{color:var(--faint,#A9AEB4)}
+.mdw-lp textarea.mdw-lp-src:focus::placeholder{color:transparent!important}
+/* 空块（视图态）的操作指引：点进编辑态就换textarea，不再需要占位文字 */
+.mdw-lp-blocks:not(.is-empty-doc) .mdw-lp-block.is-empty .mdw-lp-gap::after{
+  content:"输入… Enter 新块 · 行首 / 命令";
+  color:var(--faint,#A9AEB4);font-size:var(--mdw-lp-body-size,13.5px);
+}
 /* 划选：不改文字色、不抬行高；淡绿底仅标范围，光标仍是强调色 */
 .mdw-lp ::selection,
 .mdw-lp textarea.mdw-lp-src::selection{
   background:color-mix(in srgb, var(--mdw-accent,#2F6F5E) 18%, transparent);
   color:inherit;
 }
-/* 编辑态与视图态**逐项同款**（字号/粗细/行高/颜色/盒内边距） */
+/* 编辑态与视图态**逐项同款**（字号/粗细/行高/颜色/盒内边距）：
+   垂直内边距一律 0（间距在块容器上），水平内边距按视图态元素对齐 */
 .mdw-lp-block.kind-h1 textarea.mdw-lp-src{
   font-size:22px;font-weight:650;line-height:1.3;letter-spacing:-0.02em;
-  color:var(--ink,#16181C);padding:8px 0!important;
+  color:var(--ink,#16181C);
 }
 .mdw-lp-block.kind-h2 textarea.mdw-lp-src{
   font-size:16px;font-weight:650;line-height:1.35;letter-spacing:-0.01em;
-  color:var(--ink,#16181C);padding:14px 0 4px!important;
+  color:var(--ink,#16181C);
 }
 .mdw-lp-block.kind-h3 textarea.mdw-lp-src{
   font-size:14px;font-weight:650;line-height:1.4;
-  color:var(--ink-2,#4B515A);padding:10px 0 4px!important;
-}
-.mdw-lp-block.kind-li textarea.mdw-lp-src{padding-left:0!important;color:var(--mdw-lp-body-color)}
-.mdw-lp-block.kind-quote textarea.mdw-lp-src{
-  padding-left:12px!important;border-left:2px solid var(--line,#E4E2DC)!important;
   color:var(--ink-2,#4B515A);
 }
-/* frontmatter 块的编辑态：等宽小字，与属性卡同一套度量（视图↔编辑零位移只保高，
-   字体换成 mono——键值本来就是结构化数据，等宽更可读） */
+.mdw-lp-block.kind-li textarea.mdw-lp-src{color:var(--mdw-lp-body-color)}
+.mdw-lp-block.kind-quote textarea.mdw-lp-src{
+  /* 视图态是 blockquote：13px/1.5 + 2px 0 2px 12px 内边距 + 左侧 2px 细线 */
+  font-size:13px;line-height:1.5;padding:2px 0 2px 12px!important;
+  border-left:2px solid var(--line,#E4E2DC)!important;
+  color:var(--ink-2,#4B515A);
+}
+/* frontmatter 块的编辑态：等宽小字，盒型对齐属性卡（视图↔编辑只有内容差，
+   卡片是 3 行键值、源码是 4 行 yaml——这一类天生差一行，其余各类严格等高） */
 .mdw-lp-block.kind-fm textarea.mdw-lp-src{
-  font-family:ui-monospace,Consolas,monospace;font-size:11.5px;line-height:1.6;padding:10px 0 6px!important;
+  font-family:ui-monospace,Consolas,monospace;font-size:11.5px;line-height:1.6;
+  padding:9px 12px!important;
+  border:1px solid var(--line,#E4E2DC)!important;border-radius:8px;
+  background:var(--canvas,#F5F4F1)!important;
 }
 
 /* frontmatter 属性卡：任务头部的结构化字段（board/project/介绍引用）单独成卡，
@@ -458,8 +486,16 @@
 /* 阅读视图与模板预览同款（.mdw-preview 是阅读态容器） */
 .mdw-preview .mdw-fm{margin-top:2px}
 .mdw-lp-view{user-select:text;overflow-wrap:anywhere;word-break:break-word}
-.mdw-lp-view > :first-child{margin-top:0!important}
-.mdw-lp-view > :last-child{margin-bottom:0!important}
+/* live 预览：块内元素的 margin 归零——间距统一由块容器承担（与编辑态 textarea
+   的零垂直 padding 对称），否则视图态（元素 margin）与编辑态（textarea padding）
+   两套模型高度不等，点一下就跳。阅读态 .mdw-preview 不受此规则影响。 */
+.mdw-lp-view > *{margin:0!important}
+/* 块内多元素（多行引用、列表后接正文）默认贴紧：视图态按元素逐个排版，
+   编辑态是同一个 textarea（元素间没有额外盒子），贴紧才等高 */
+.mdw-lp-view > * + *{margin-top:0!important}
+/* 列表项自身的行间距归零（最后一行的下边距也算进块高 → 与编辑态差 4px） */
+.mdw-lp-view li{margin:0!important}
+.mdw-lp-view li + li{margin-top:4px!important}
 .mdw-lp-block.kind-h2 + .mdw-lp-block.kind-p .mdw-lp-view p{margin-top:0}
 .mdw-lp-add{
   display:block;width:100%;height:32px;margin:4px 0 0;padding:0;border:0;
@@ -486,7 +522,7 @@
 .mdw-lp-blocks > .mdw-lp-block:first-child .mdw-lp-view h2,
 .mdw-lp-blocks > .mdw-lp-block:first-child .mdw-lp-view h3{margin-top:0}
 /* 首块在编辑态同样不留上边距（视图 margin-top:0 ↔ 编辑态 padding-top:0） */
-.mdw-lp-blocks > .mdw-lp-block:first-child textarea.mdw-lp-src{padding-top:0!important}
+.mdw-lp-blocks > .mdw-lp-block:first-child{padding-top:0!important}
 .mdw-lp-view p,.mdw-lp-view li,.mdw-preview p,.mdw-preview li{
   font-size:var(--mdw-lp-body-size,13.5px);
   line-height:var(--mdw-lp-body-lh,1.75);

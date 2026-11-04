@@ -39,7 +39,10 @@ const FMT_KEYS = { b: 'bold', i: 'italic', e: 'code', k: 'link' };
 function autoSize(el) {
   if (!el) return;
   el.style.height = '0px';
-  el.style.height = `${Math.max(el.scrollHeight, 28)}px`;
+  // 高度交给内容本身（scrollHeight = 行数 × 行高）——原来写死最小 28px，
+  // 比一行标题（16px × 1.35 ≈ 21.6px）还高：点进标题块就凭空多出 6px，
+  // 下方内容跟着抖（2026-11-04 任务 #31）。
+  el.style.height = `${el.scrollHeight}px`;
 }
 
 function blockHtml(text, attachments) {

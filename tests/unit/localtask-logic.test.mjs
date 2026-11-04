@@ -133,44 +133,59 @@ test('超时设置：默认 180，更新生效，超上限截断为 600；wait �
 test('跨进程兜底：外部写入该主题的 pending，轮询取走', async () => {
   await reset();
   let info;
-  const summary = '现状X';
-  const p = waitForTask({
-    cwd: dirA,
-    summary,
-    timeoutMs: 3000,
-    open: false,
-    onReady: (h) => {
-      info = h;
-    },
-  });
-  await new Promise((r) => setTimeout(r, 60));
-
-  const now = '2026-10-06 10:00:00';
-  writeFileSync(
-    storeFile,
-    JSON.stringify({
-      version: 3,
-      topics: {
-        [info.key]: {
-          key: info.key,
-          cwd: resolve(dirA),
-          name: basename(dirA),
-          summary,
-          createdAt: now,
-          updatedAt: now,
-          waiting: true,
-          waitingUntil: '2026-10-06 10:02:00',
-          tasks: [{ id: 1, text: '别的进程写的', status: 'pending', createdAt: now, consumedAt: '' }],
-        },
+  // p 必须在本测试内等到收尾：中途断言失败而把阻塞中的 wait 留给下一个测试的话，
+  // 它在进程内注册的 waiter 会把后续 addTask 立刻领走（消费态），毒化后续断言。
+  let p;
+  try {
+    const summary = '现状X';
+    p = waitForTask({
+      cwd: dirA,
+      summary,
+      timeoutMs: 3000,
+      open: false,
+      onReady: (h) => {
+        info = h;
       },
-    }),
-    'utf8'
-  );
+    });
 
-  const r = await p;
-  assert.equal(r.status, 'ok');
-  assert.equal(r.delivered, false); // 走轮询而非内存 waiter
-  assert.equal(r.task.text, '别的进程写的');
+    // 轮询等 onReady，不用固定 sleep——CI 机器冷缓存下，wait 进阻塞窗口前的
+    // 一串文件读写可能超过 60ms，固定等待会在这里先炸（且炸出孤儿 wait）。
+    const deadline = Date.now() + 5000;
+    while (!info && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.ok(info, 'onReady 未在 5s 内回调（CI 慢盘）');
+
+    const now = '2026-10-06 10:00:00';
+    writeFileSync(
+      storeFile,
+      JSON.stringify({
+        version: 3,
+        topics: {
+          [info.key]: {
+            key: info.key,
+            cwd: resolve(dirA),
+            name: basename(dirA),
+            summary,
+            createdAt: now,
+            updatedAt: now,
+            waiting: true,
+            waitingUntil: '2026-10-06 10:02:00',
+            tasks: [{ id: 1, text: '别的进程写的', status: 'pending', createdAt: now, consumedAt: '' }],
+          },
+        },
+      }),
+      'utf8'
+    );
+
+    const r = await p;
+    assert.equal(r.status, 'ok');
+    assert.equal(r.delivered, false); // 走轮询而非内存 waiter
+    assert.equal(r.task.text, '别的进程写的');
+  } finally {
+    // 收掉阻塞中的 wait（3s 超时兜底），绝不把进程内 waiter 泄漏给后续测试
+    if (p) await p.catch(() => {});
+  }
 });
 
 test('update / get / remove 链路（删除是软删除：可恢复）', async () => {

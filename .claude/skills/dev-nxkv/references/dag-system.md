@@ -36,9 +36,14 @@ WorkflowSnapshot（core/workflow/types.js） ← 引擎视图，不是第二条�
 | | `mutator/` | **唯一快照写入口** + 校验（自环/环/绑定规则） |
 | | `scheduler/` | 听 `dag:mutated` → driveReadyStates（pending⇄ready） |
 | | `writes.js` | 日常 DAG 写路径（add/update/complete → Mutator → 投影回写） |
-| | `service.js` | 业务真相：领取/交付/updateTask 的依赖判定（带 foreignResolver） |
+| | `service.js` | **纯门面**（#54 拆分后 47 行 `export *` 再导出）——业务真相分散在同目录兄弟文件 |
+| | `task-view.js` | 任务行/主题视图 + 关系原语（normalizeTask/topicView/foreignResolver/relocateInStore） |
+| | `task-lifecycle.js` | 领取/完成门禁/重开（consumeFirstPending/completeTask/reopenTask） |
+| | `task-ops.js` | 单条任务查/增/改（getTask/addTask/updateTask，含 waiter 唤醒链） |
+| | `store-io.js` | loadStore/saveStore（链式写队列 + 损坏隔离）/topicOf/nextTaskId |
 | `modules/tasktool/` | `plugins/` | goal 族唯一落点：blockgoal/waitgoal/timegoal/taskgoal |
 | | `facade/`、`wait.js` | submit/get/wait 门面；wait 轮询调 consumeFirstPending |
+| | `panel-escort.js` | wait 期间的**面板随行**（ensureMainPanel/深链/窗口重开防风暴）——与队列语义分开 |
 | 前端 | `page/dag/index.jsx` | 画布编排面板（目录/组双模式） |
 | | `page/dir/dag-editor.jsx` | 目录页模态编辑器（闸门+上游+下游勾选） |
 | | `page/group/index.jsx` | 组任务行拖排序（限同成员队列） |
@@ -64,17 +69,24 @@ reorder（拖节点只改摆位），顺序关系只有连线。
 - **foreign fail-open**：`opts.resolveForeign` 缺席、解析不到主题/任务、任务已删/已迁
   → 一律不挡（与「依赖缺失」同口径）。没有解析器时跨队列依赖永远放行。
 
-## 就绪判定两条入口
+## 就绪判定：一个内核，两个入口（#52 已合一）
 
 | 入口 | 函数 | 判什么 |
 | --- | --- | --- |
-| 任务行 | `isReadyToClaim(task, all, {resolveForeign})` | blockBy 全部 `completedAt` + 数组序在前的闸门全部完成 |
-| 任务行 | `findFirstReadyPending(tasks, opts)` | 按数组序取第一条可领 pending（consumeFirstPending 用） |
-| 快照节点 | `isNodeReady(snap, node, isBarrierOpen)` | 入边前驱全 success；control/blockgoal 前驱看屏障（`isBarrierOpen`=节点 success） |
+| 任务行 | `isReadyToClaim(task, all, {resolveForeign})` | 任务行先投影成轻量图（`taskToNode` + `edgesFromTasks`，与 `topicToSnapshot` 同源），再交给快照内核判 |
+| 任务行 | `findFirstReadyPending(tasks, opts)` | 按数组序取第一条可领 pending（图一次构建，逐条判定） |
+| 快照节点 | `isNodeReady(snap, node, isBarrierOpen)` | **唯一内核**：入边前驱全 success；control/blockgoal 前驱看屏障（默认 = 节点 success） |
 
-**三处调用点都必须传 `resolveForeign`**（service.js 的 `normalizeTask` ready 徽标 /
-`consumeFirstPending` / `addTask` 的 `canDeliver`）——漏一处，跨队列依赖就在那条路径
-上静默放行。改依赖判定先 `grep -n "isReadyToClaim\|findFirstReadyPending" src`。
+- 闸门语义只编码一次：`edgesFromTasks` 产的闸门隐含边（gate→数组序其后全部 alive）
+  与内核的 control 前驱判定配套；任务行入口与快照入口对同一份数据**必然同结论**
+  （`tests/unit/readiness-consistency.test.mjs` 逐条钉死：FIFO/依赖链/闸门前中后/
+  删除行穿插/组合/fail-open + service 真实 store 端到端）。
+- 跨队列依赖（`"key:id"`）**不入引擎图**（`edgesFromTasks` 跳过），由
+  `resolveForeign` 前置直查：无解析器 / 解析不到 / 已删已迁 → fail-open 不挡。
+- **三处调用点都必须传 `resolveForeign`**（`task-view.js` 的 `normalizeTask` ready
+  徽标 / `task-lifecycle.js` 的 `consumeFirstPending` / `task-ops.js` 的 `addTask`
+  的 `canDeliver`）——漏一处，跨队列依赖就在那条路径上静默放行。
+  改依赖判定先 `grep -rn "isReadyToClaim\|findFirstReadyPending" src`。
 
 ## 投影（`project.js`）—— 最容易破的地方
 

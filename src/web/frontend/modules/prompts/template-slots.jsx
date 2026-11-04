@@ -33,7 +33,7 @@ export function TemplateSlotsEditor({ body, values, onSave, disabled = false }) 
   if (!slots.length) {
     return (
       <div className="pp-slots-empty">
-        这个模板正文里没有 <span className="mono">{'{{槽位}}'}</span> —— 直接编辑正文即可。
+        这个模板正文没有可填槽位——骨架里没有插槽。
       </div>
     );
   }
@@ -47,12 +47,13 @@ export function TemplateSlotsEditor({ body, values, onSave, disabled = false }) 
     <div className="pp-slots">
       {slots.map((name) => (
         <label key={name} className="pp-slots-row">
-          <span className="pp-slots-name mono">{`{{${name}}}`}</span>
+          {/* 给人看的是槽位名，不是 {{标记}}——新建任务里也不会再出现标记 */}
+          <span className="pp-slots-name" title={`骨架插槽「${name}」`}>{name}</span>
           <input
             className="pp-slots-input"
             value={draft[name] ?? ''}
             disabled={disabled}
-            placeholder="这一处填什么（留空 = 留白）"
+            placeholder="这一处写什么（留空 = 空白）"
             onChange={(e) => set(name, e.target.value)}
           />
         </label>

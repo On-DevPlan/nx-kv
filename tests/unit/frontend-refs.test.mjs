@@ -68,10 +68,45 @@ function declaredNames(src) {
 
 const files = walk(join(root, 'src'));
 
+// 剥掉注释（字符串感知，保留换行）。**必须剥**：JSDoc 泛型如 `Readonly<Record<…>>`
+// 会撞上 JSX 组件的 `<Capitalized>` 正则——workflow 契约文件全是类型注释，
+// 不剥的话每个带 JSDoc 的模块都是一排假阳性。注释里的 JSX / hook 调用不是代码，
+// 剥掉只减少误伤，不会漏掉真实引用；扫描两个测试都用剥过的源码，口径一致。
+function stripComments(src) {
+  let out = '';
+  let mode = 'code'; // code | line | block | single | double | template
+  for (let i = 0; i < src.length;) {
+    const c = src[i];
+    const n = src[i + 1];
+    if (mode === 'code') {
+      if (c === '/' && n === '/') { mode = 'line'; out += '  '; i += 2; continue; }
+      if (c === '/' && n === '*') { mode = 'block'; out += '  '; i += 2; continue; }
+      if (c === "'" || c === '"' || c === '`') { mode = c === "'" ? 'single' : c === '"' ? 'double' : 'template'; out += c; i += 1; continue; }
+      out += c; i += 1; continue;
+    }
+    if (mode === 'line') {
+      if (c === '\n') { mode = 'code'; out += c; } else out += ' ';
+      i += 1; continue;
+    }
+    if (mode === 'block') {
+      if (c === '*' && n === '/') { mode = 'code'; out += '  '; i += 2; continue; }
+      out += c === '\n' ? '\n' : ' ';
+      i += 1; continue;
+    }
+    // 字符串内容原样保留（含转义）；引号回到 code。模板串按平铺处理——
+    // 嵌套 `${}` 里的反引号只会让中间片段被多算，字符串感知已挡住绝大多数误伤。
+    if (c === '\\') { out += c + (n ?? ''); i += 2; continue; }
+    if ((mode === 'single' && c === "'") || (mode === 'double' && c === '"') || (mode === 'template' && c === '`')) mode = 'code';
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
 test('前端源码里用到的组件 / hook 都必须有来源（没有来源 = 运行时整页崩）', () => {
   const problems = [];
   for (const file of files) {
-    const src = readFileSync(file, 'utf8');
+    const src = stripComments(readFileSync(file, 'utf8'));
     const known = declaredNames(src);
     const rel = file.replace(root + '\\', '').replace(/\\/g, '/');
 
@@ -98,7 +133,7 @@ test('前端源码里不出现明显写错的 React hook 名（useMemo/useRef �
   ]);
   const problems = [];
   for (const file of files) {
-    const src = readFileSync(file, 'utf8');
+    const src = stripComments(readFileSync(file, 'utf8'));
     const rel = file.replace(root + '\\', '').replace(/\\/g, '/');
     const declared = declaredNames(src);
     for (const m of src.matchAll(/\b(use[A-Z][A-Za-z0-9_$]*)\s*\(/g)) {

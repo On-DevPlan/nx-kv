@@ -14,11 +14,13 @@ import MemberPicker from '../../components/board/member-picker.jsx';
 import { taskLabel } from '../../components/sidebar/model.js';
 import { useApp } from '../../app-context.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { NEW_TEMPLATE, parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
+import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
+import { useTemplates } from '../../modules/md/use-templates.js';
 
 export default function GroupView({ dirKey, rows, repoData, onNavigate, model }) {
   const toast = useToast();
   const app = useApp() || {};
+  const tpl = useTemplates();
   const boards = (repoData && repoData.boards) || [];
   const repos = (repoData && repoData.repos) || [];
   const topics = rows || [];
@@ -105,7 +107,11 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
     if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
     const id = nextDraftId();
     const docId = docIdOf(scopeOf(sel.topicKey || ''), id);
-    saveDoc(docId, { title: '', body: withFrontmatter(NEW_TEMPLATE, { board: board.id, project: sel.key }) });
+    // 与目录任务页同一条 defaultBody：已按槽位值渲染，不出现裸 {{背景}}
+    saveDoc(docId, {
+      title: '',
+      body: withFrontmatter(tpl.defaultBody(), { board: board.id, project: sel.key }),
+    });
     app.openPage?.({ dirKey: sel.topicKey || '', task: id, name: '新任务' });
   };
 

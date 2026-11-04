@@ -17,6 +17,33 @@
 const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const KV_RE = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/;
 
+// 工作组语义键：贴图/光标误插进 FM 时曾把 `board:` 撕成 `oard:` / `d:` 等后缀残留
+//（#15 / #23 案例）。解析时把「规范键的真后缀残留」提升回规范键，组面板才能再认到。
+const GROUP_KEYS = ['board', 'project', 'boardIntro', 'boardDesc', 'projectIntro', 'projectDesc'];
+
+/** 把被撕碎的 frontmatter 键修回规范名（只升真后缀，不发明新键） */
+export function healFrontmatterKeys(fm) {
+  if (!fm || typeof fm !== 'object') return {};
+  const out = { ...fm };
+  for (const canon of GROUP_KEYS) {
+    if (out[canon] != null && String(out[canon]).trim() !== '') continue;
+    let hit = null;
+    for (const k of Object.keys(out)) {
+      if (k === canon) continue;
+      // 真后缀：board→oard/ard/rd/d；project→roject/…；长度至少 1、严格短于规范名
+      if (!canon.endsWith(k) || k.length < 1 || k.length >= canon.length) continue;
+      const v = out[k];
+      if (v == null || String(v).trim() === '') continue;
+      hit = k;
+      break;
+    }
+    if (!hit) continue;
+    out[canon] = out[hit];
+    delete out[hit];
+  }
+  return out;
+}
+
 /** 解析正文头部的 frontmatter；没有或不是 frontmatter → 空对象 */
 export function parseFrontmatter(src) {
   const m = String(src ?? '').match(FM_RE);
@@ -30,7 +57,7 @@ export function parseFrontmatter(src) {
       hits += 1;
     }
   }
-  return hits ? out : {};
+  return hits ? healFrontmatterKeys(out) : {};
 }
 
 /** 去掉正文头部的 frontmatter（不是 frontmatter 时原样返回） */

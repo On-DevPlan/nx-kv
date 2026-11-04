@@ -33,7 +33,7 @@ function WelcomePanel() {
     <div className="pad stack welcome">
       <div><strong>从左边目录选一个项目组或目录</strong>——选中的内容显示在中间主内容区。</div>
       <div className="hint">主内容区一次只放一块面板（顶部面包屑告诉你现在在哪）；设置这类临时面板以浮窗形式出现。</div>
-      <div className="hint">目录在左、并发进程在右，都常驻，不用关。</div>
+      <div className="hint">目录在左、并发进程在右；两边都能收起或关掉，需要时再开。</div>
     </div>
   );
 }
@@ -43,17 +43,18 @@ function DirPanelView({ dirKey }) {
   return wrap(<DirPanel dirKey={dirKey} />);
 }
 
-/** 一个 MD 页（编辑器）：页签在工作区里，内容在会话内存里 */
-function PagePanelView({ dirKey, task, tabId, model }) {
-  return wrap(<PagePanel dirKey={dirKey} task={task} tabId={tabId} model={model} />);
+/** 一个 MD 页（编辑器）：页签在工作区里，内容在会话内存里；beside=旁路原文（可关） */
+function PagePanelView({ dirKey, task, beside, tabId, model }) {
+  return wrap(<PagePanel dirKey={dirKey} task={task} beside={!!beside} tabId={tabId} model={model} />);
 }
 
-/** 并发进程面板：独立成块，可拖到任意一边 */
-function ProgressPanelView({ dirKey }) {
+/** 并发进程面板：独立成块，可拖到任意一边；task = 当前主区任务，用于高亮 */
+function ProgressPanelView({ dirKey, task }) {
   const app = useApp() || {};
   return wrap(
     <ProgressPanel
       dirKey={dirKey}
+      task={task}
       rows={app.rows}
       refreshLocal={app.refreshLocal}
       model={app.model}
@@ -88,9 +89,15 @@ export const PANELS = {
   welcome: { title: '开始', render: () => <WelcomePanel /> },
   dir: { title: '目录', render: (cfg) => <DirPanelView dirKey={cfg && cfg.dirKey} /> },
   page: { title: '页面', render: (cfg, ctx) => (
-    <PagePanelView dirKey={cfg && cfg.dirKey} task={cfg && cfg.task} tabId={ctx && ctx.tabId} model={ctx && ctx.model} />
+    <PagePanelView
+      dirKey={cfg && cfg.dirKey}
+      task={cfg && cfg.task}
+      beside={cfg && cfg.beside}
+      tabId={ctx && ctx.tabId}
+      model={ctx && ctx.model}
+    />
   ) },
-  progress: { title: '进程', render: (cfg) => <ProgressPanelView dirKey={cfg && cfg.dirKey} /> },
+  progress: { title: '进程', render: (cfg) => <ProgressPanelView dirKey={cfg && cfg.dirKey} task={cfg && cfg.task} /> },
   group: { title: '项目组', render: (cfg, ctx) => <GroupPanel boardId={cfg && cfg.boardId} model={ctx && ctx.model} /> },
   repos: { title: '仓库管理', render: () => wrap(<ReposView />) },
   cloud: { title: '云端总览', render: () => wrap(<TodoView />) },
@@ -153,6 +160,8 @@ export function routeOfPanel(node) {
   const cfg = node.getConfig() || {};
   switch (node.getComponent()) {
     case 'page':
+      // 旁路原文（评论任务右侧）不改地址——否则路由 effect 会按原文重开主区，冲掉评论页
+      if (cfg.beside) return null;
       return `#/dir/${encodeURIComponent(cfg.dirKey || '')}?task=${encodeURIComponent(cfg.task || '')}`;
     case 'dir':
       return cfg.dirKey === GLOBAL_KEY

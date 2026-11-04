@@ -9,6 +9,7 @@ import {
   withFrontmatter,
   applyGroupFields,
   preserveFrontmatter,
+  healFrontmatterKeys,
 } from '../../src/shared/frontmatter.js';
 import {
   resolveGroupTarget,
@@ -28,6 +29,39 @@ test('parseFrontmatter：读出 board / project', () => {
 test('parseFrontmatter：不是 frontmatter（开头是分割线）时返回空对象', () => {
   assert.deepEqual(parseFrontmatter('---\n\n正文\n---\n'), {});
   assert.deepEqual(parseFrontmatter('# 标题\n正文'), {});
+});
+
+test('healFrontmatterKeys / parseFrontmatter：撕碎的 board→oard 升回 board（#23）', () => {
+  // 贴图误插进 FM 曾把 board: 撕成 oard:——组面板按 fm.board 过滤，任务从 todo 组消失
+  const raw = '---\noard: b_mvw8rrncgk5mc\nproject: local/sedoc-fe-8.60\n---\n# 表单';
+  const healed = healFrontmatterKeys({ oard: 'b_mvw8rrncgk5mc', project: 'local/sedoc-fe-8.60' });
+  assert.equal(healed.board, 'b_mvw8rrncgk5mc');
+  assert.equal(healed.oard, undefined);
+  assert.equal(healed.project, 'local/sedoc-fe-8.60');
+
+  const fm = parseFrontmatter(raw);
+  assert.equal(fm.board, 'b_mvw8rrncgk5mc', 'parse 内建 heal');
+  assert.equal(fm.oard, undefined);
+
+  // 用户案例：插到 board 中间后残留 d:
+  const dFm = parseFrontmatter('---\nd: b_1\nproject: local/x\n---\n# t');
+  assert.equal(dFm.board, 'b_1');
+  assert.equal(dFm.d, undefined);
+
+  // 已有规范键时不覆盖、不误伤无关后缀键
+  const keep = healFrontmatterKeys({ board: 'b_keep', oard: 'b_wrong', note: '手工' });
+  assert.equal(keep.board, 'b_keep');
+  assert.equal(keep.oard, 'b_wrong'); // 规范键已在，残留留给人看
+  assert.equal(keep.note, '手工');
+});
+
+test('withFrontmatter 经 parse 愈合后可把 oard 写回 board（保存自愈）', () => {
+  const raw = '---\noard: b_1\nproject: local/x\n---\n# 标题\n正文';
+  const fm = parseFrontmatter(raw);
+  const fixed = withFrontmatter(stripFrontmatter(raw), fm);
+  assert.equal(parseFrontmatter(fixed).board, 'b_1');
+  assert.match(fixed, /\nboard: b_1\n/);
+  assert.ok(!/(^|\n)oard:/.test(fixed), '残留键 oard: 应被写回 board:');
 });
 
 test('stripFrontmatter / withFrontmatter：剥与写', () => {

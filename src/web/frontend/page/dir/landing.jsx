@@ -113,6 +113,17 @@ export default function Landing({
                         ⏱ {t.timegoal.duration}
                       </span>
                     ) : null}
+                    {t.blocksFollowing ? (
+                      <span className="mdw-tg" title="闸门：未完成前挡住队列里排在后面的待领取任务">闸门</span>
+                    ) : null}
+                    {t.status !== 'consumed' && t.ready === false ? (
+                      <span
+                        className="mdw-tg"
+                        title={t.blockBy?.length ? `等待依赖完成：#${t.blockBy.join(', #')}` : '被前方闸门挡住'}
+                      >
+                        锁定
+                      </span>
+                    ) : null}
                   </div>
                 </td>
                 <td>

@@ -36,6 +36,7 @@ import { formatDuration } from '../../core/instruction-template.js';
 // 任务级 timegoal 的声明校验（taskgoal.js 不依赖本模块——无环，静态引入安全）
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
 import { preserveFrontmatter } from '../../shared/frontmatter.js';
+import { findFirstReadyPending, isReadyToClaim, normalizeBlockBy } from './dag.js';
 
 export const DEFAULT_TIMEOUT_MS = 180_000; // 阻塞默认 3 分钟（推荐值）
 export const DEFAULT_TIMEOUT_SEC = 180; // 推荐阻塞时长（3 分钟）
@@ -312,7 +313,8 @@ export async function loadStore() {
 // A 的 rename 会把 tmp 消耗掉，B 再 rename 就 ENOENT。链式队列保证同进程顺序写。
 // （跨进程仍靠 rename 原子性 last-writer-wins，与本模块既有语义一致。）
 let saveQueue = Promise.resolve();
-function saveStore(data) {
+/** @public 供 SnapshotStore topic-adapter 原子落盘（与内部写路径同一队列） */
+export function saveStore(data) {
   const run = saveQueue.then(async () => {
     const p = storePath();
     await fsp.mkdir(dirname(p), { recursive: true });
@@ -389,8 +391,10 @@ function pickupSecOf(t) {
   return Math.max(0, Math.round((consumed - created) / 1000));
 }
 
-function normalizeTask(t) {
-  return {
+function normalizeTask(t, siblings) {
+  const blockBy = normalizeBlockBy(t.blockBy, t.id);
+  const blocksFollowing = !!t.blocksFollowing;
+  const base = {
     id: Number(t.id) || 0,
     text: String(t.text ?? ''),
     status: t.status === 'consumed' ? 'consumed' : 'pending',
@@ -421,7 +425,19 @@ function normalizeTask(t) {
     // 重开轨迹（用户修改反馈 → 重新进入执行循环）：reopenCount / lastReopenedAt
     reopenCount: Number(t.reopenCount) || 0,
     lastReopenedAt: String(t.lastReopenedAt ?? ''),
+    // DAG / 闸门（#34）：blockBy=依赖 id；blocksFollowing=挡住数组其后所有 pending
+    blockBy,
+    blocksFollowing,
   };
+  // ready：待领取且未被依赖/闸门挡住（面板徽标用）；给 siblings 才算得准
+  if (Array.isArray(siblings) && base.status === 'pending' && !base.deletedAt && !base.migratedTo) {
+    base.ready = isReadyToClaim(t, siblings);
+  } else if (base.status === 'pending' && !base.deletedAt && !base.migratedTo) {
+    base.ready = blockBy.length === 0 && !blocksFollowing ? true : undefined;
+  } else {
+    base.ready = false;
+  }
+  return base;
 }
 
 // pending 的统一判据：未领取、未删除、未迁出。
@@ -480,7 +496,7 @@ export function repoCtxOf(index, cwd) {
 }
 
 function topicView(t, repoCtx = null) {
-  const tasks = t.tasks.map(normalizeTask);
+  const tasks = t.tasks.map((x) => normalizeTask(x, t.tasks));
   const live = isLiveWaiting(t);
   return {
     key: t.key,
@@ -629,8 +645,9 @@ export async function consumeFirstPending(key, roundSummary, by) {
   const store = await loadStore();
   const t = store.topics[key];
   if (!t) return null;
-  const task = t.tasks.find(isPending);
-  if (!task) return null;
+  // D-first：跳过被 blockBy / 闸门挡住的 pending，按数组序取第一条**可领**的
+  const task = findFirstReadyPending(t.tasks || []);
+  if (!task || !isPending(task)) return null;
   markConsumed(task, roundSummary || t.summary || '', {
     from: isGlobalKey(key) ? 'global' : 'local',
     byKey: by && by.key,
@@ -703,6 +720,18 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
   task.roundSummary = summary;
   t.updatedAt = stampNow();
   await saveStore(store);
+  // 单一写路径：完成 → Mutator 标 success + 调度一轮（fail-open）
+  try {
+    const { markTaskSuccess } = await import('./writes.js');
+    await markTaskSuccess(key, want);
+  } catch {
+    try {
+      const { refreshTopicAfterComplete } = await import('./engine.js');
+      await refreshTopicAfterComplete(key);
+    } catch {
+      /* ignore */
+    }
+  }
   return {
     status: 'ok',
     completed: true,
@@ -992,7 +1021,15 @@ export async function getTask({ cwd: rawCwd, key: rawKey, id } = {}) {
  * 若本进程正有 wait 在等该主题/全局池 → 直接投递并唤醒；否则入队堆积。
  * 全局投递的唤醒链：显式 wait 全局 key 者（罕见）→ globalWaiters FIFO → 入队。
  */
-export async function addTask({ cwd: rawCwd, summary: rawSummary, text, global: toGlobal = false, timegoal: rawGoal } = {}) {
+export async function addTask({
+  cwd: rawCwd,
+  summary: rawSummary,
+  text,
+  global: toGlobal = false,
+  timegoal: rawGoal,
+  blockBy: rawBlockBy,
+  blocksFollowing = false,
+} = {}) {
   const body = normalizeText(text);
   const summary = normalizeSummary(rawSummary, { optional: true });
   // 任务级 timegoal 声明（--duration/--goal-prompt 落下来的）：校验在 sanitizeTaskGoal
@@ -1021,7 +1058,16 @@ export async function addTask({ cwd: rawCwd, summary: rawSummary, text, global: 
     t = topicOf(store, key, cwd);
   }
 
-  const task = normalizeTask({ id: nextTaskId(t.tasks), text: body, status: 'pending', createdAt: stampNow(), timegoal });
+  const id = nextTaskId(t.tasks);
+  const task = normalizeTask({
+    id,
+    text: body,
+    status: 'pending',
+    createdAt: stampNow(),
+    timegoal,
+    blockBy: normalizeBlockBy(rawBlockBy, id),
+    blocksFollowing: !!blocksFollowing,
+  });
   t.tasks.push(task);
   t.updatedAt = stampNow();
   // 提交方的补充说明写**自己的字段**（submitSummary），不再覆盖 t.summary。
@@ -1031,10 +1077,12 @@ export async function addTask({ cwd: rawCwd, summary: rawSummary, text, global: 
 
   // 唤醒分两步：先在 store 里标记消费，saveStore 之后才 resolve——保证 wait 返回时
   // 数据必然一致（沿用旧本地路径的顺序）。
+  // DAG：被挡住的新任务**不能**直接塞给 waiter——否则闸门/依赖形同虚设。
   let delivered = false;
   let wake = null; // (task) => void
+  const canDeliver = isReadyToClaim(task, t.tasks);
 
-  if (toGlobal) {
+  if (canDeliver && toGlobal) {
     const direct = takeTopicWaiter(GLOBAL_KEY); // 显式等全局 key 的（罕见路径）
     if (direct) {
       markConsumed(task, t.summary, { from: 'global', byKey: GLOBAL_KEY, byName: GLOBAL_NAME });
@@ -1055,7 +1103,7 @@ export async function addTask({ cwd: rawCwd, summary: rawSummary, text, global: 
         wake = gw.onTask;
       }
     }
-  } else {
+  } else if (canDeliver) {
     const waiter = takeTopicWaiter(key);
     if (waiter) {
       markConsumed(task, t.summary, { from: 'local', byKey: key, byName: t.name });
@@ -1068,6 +1116,16 @@ export async function addTask({ cwd: rawCwd, summary: rawSummary, text, global: 
 
   await saveStore(store); // 先落盘再唤醒：wait 返回时数据必然一致
   if (wake) wake(normalizeTask(task));
+
+  // DAG 单一写路径：闸门/依赖经 Mutator 投影（fail-open，不挡入队）
+  if (!toGlobal && (task.blocksFollowing || (task.blockBy && task.blockBy.length))) {
+    try {
+      const { syncNewTaskDag } = await import('./writes.js');
+      await syncNewTaskDag(key, task);
+    } catch {
+      /* ignore */
+    }
+  }
 
   return {
     status: 'ok',
@@ -1092,14 +1150,26 @@ export async function addTask({ cwd: rawCwd, summary: rawSummary, text, global: 
 // 语义与发布端对齐——时长只在**未领取**时可改（领取即计时，起表后声明就是既成事实，
 // 要调先 reopen 重开任务再改）；pending 任务还没起表（ensureTaskGoal 在领取时刻才调），
 // 改声明不碰 timegoals.json，落库即生效。clear 与 duration 互斥，宁报错不猜。
-export async function updateTask({ cwd: rawCwd, key: rawKey, id, text, goal } = {}) {
+export async function updateTask({
+  cwd: rawCwd,
+  key: rawKey,
+  id,
+  text,
+  goal,
+  blockBy,
+  clearBlockBy = false,
+  blocksFollowing,
+} = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const { cwd } = normalizeCwd(rawCwd);
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
   const body = String(text ?? '').trim();
   const hasGoalInput = goal && (goal.clear || goal.duration != null || goal.prompt != null);
-  if (!body && !hasGoalInput) throw badInput('--text 不能为空（改时间目标时才可省）');
+  const hasDagInput = clearBlockBy || blockBy !== undefined || blocksFollowing !== undefined;
+  if (!body && !hasGoalInput && !hasDagInput) {
+    throw badInput('--text 不能为空（改时间目标 / blockBy / 闸门时才可省）');
+  }
   if (body && body.length > MAX_TEXT) throw badInput(`任务内容过长（≤${MAX_TEXT} 字）`);
   if (hasGoalInput && goal.clear && goal.duration != null) {
     throw badInput('--clear-goal 与 --duration 不能同时给（清除就清除，不猜意图）');
@@ -1133,8 +1203,23 @@ export async function updateTask({ cwd: rawCwd, key: rawKey, id, text, goal } = 
       goalChanged = 'set';
     }
   }
+  // DAG 边可在 pending 时改；已领取后改依赖不改变「已被领走」的事实，但闸门标记仍影响后面
+  if (hasDagInput) {
+    if (task.deletedAt) throw badInput(`#${want} 已删除，依赖/闸门不可改`);
+    if (clearBlockBy) task.blockBy = [];
+    else if (blockBy !== undefined) task.blockBy = normalizeBlockBy(blockBy, want);
+    if (blocksFollowing !== undefined) task.blocksFollowing = !!blocksFollowing;
+  }
   t.updatedAt = stampNow();
   await saveStore(store);
+  if (hasDagInput) {
+    try {
+      const { syncTaskDagUpdate } = await import('./writes.js');
+      await syncTaskDagUpdate(key, want, { blockBy, clearBlockBy, blocksFollowing });
+    } catch {
+      /* fail-open */
+    }
+  }
   return { status: 'ok', key, cwd: t.cwd || cwd, name: t.name, goalChanged, task: normalizeTask(task) };
 }
 

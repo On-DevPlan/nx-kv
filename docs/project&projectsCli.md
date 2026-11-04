@@ -321,6 +321,9 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
   （`~/.nx-kv/attachments/local/`，`core/localatt.js`——不发网、上传即落盘），
   以 markdown 嵌入追加到正文——正文即载体，附件跟着任务走；`file upload --local`
   是同一存储的直入口。`--fileId` 仍可引用已有附件（本机仓 id / 云端 id 都认）。
+  面板侧（已落库任务）**贴图即同步**：嵌入写进正文后立刻 `PATCH` 服务端，
+  不必再点「保存并同步」；实时预览用块内光标坐标插入（禁止把块内偏移当全文
+  偏移，否则会插进 frontmatter，保存时被剥掉留下孤儿文件）。
 - **读侧**：`get` / `wait` / `show` 交付时解析正文引用，**先查本机附件仓**（命中
   直接给绝对路径，零网络），未命中的 id（云端清单附件引用）才按本机设置
   「读任务时自动下载附件」走云端镜像（与 `file sync` 同一台账）。载荷带
@@ -407,12 +410,14 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
 | **G. 正文以 `---` 开头被当 flag** | `localtask add "---…"` 报「未知参数 ---」——带 frontmatter 的正文根本提交不上去 | 只把「像 flag」的 token（`--` + 字母/数字）当 flag；`---` 与 `--` 分别是正文与「后面全是位置参数」 | `src/runtime/cli.js` |
 | **H. 附件链路与 web 界面不对齐** | 面板编辑器已把附件嵌进正文（任务 #8），但 `get`/`wait` 交付不带附件清单、不自动下载、不标本地路径，CLI 也没法挂附件——agent 拿到 `![x](fileId)` 无从下手 | 口径与云端 todo 同构：新增 `localtask attach` / `localtask attachments`；交付侧 `annotateTaskDelivery` 解析正文引用 → 按设置自动下载 → `task.attachments` + instruction〔附件〕段；零引用时载荷逐字节不变 | `src/modules/tasktool/attach.js`、`src/modules/tasktool/wait.js`、`src/modules/localtask/index.js` |
 | **I. 本地任务贴图被送上了云端（H 的验收反馈，任务 #15 重开）** | 面板编辑器贴图走 `POST /api/file` → **云端图床**；云端不可达/未登录时静默退回 localStorage dataURL——界面看着有图，正文里只有死引用甚至什么都没有，agent 领取时 `attachments count: 0`（用户案例：sedoc 组 #23「图片参考：如附件」实为空） | 口径改定：**本地任务贴图走本地存储，与云端零关联**——新增本机附件仓 `core/localatt.js`（`~/.nx-kv/attachments/local/`，台账同 attachstore 形状）；编辑器贴图改走 `file upload --local`（上传即落盘）；`file content` 路由本机仓优先（离线可预览）；领取标注先查本机仓（命中即绝对路径，全命中零网络），未命中的云端 id 才走镜像同步；`localtask attach --path` 同步改落本机仓 | `src/core/localatt.js`、`src/modules/file/{index,service}.js`、`src/modules/tasktool/attach.js`、`src/web/frontend/components/cloud/upload.js`、`src/web/frontend/components/md/attachments.js` |
+| **J. 面板贴图上传成功但正文未嵌入（I 的验收反馈，任务 #15 再开）** | 实时预览把**块内**光标偏移当成全文 `insertAt` → 嵌入插进 frontmatter；保存时 `stripFrontmatter` 剥掉嵌入，仓里留下孤儿文件；FM 键被撕成残留（如 `d: b_…`）。同时贴图只改会话文档、不自动同步服务端 | `insertAttachmentSnippet`：live 用块坐标、edit 用全文偏移，落点禁止进 FM；已落库任务贴图后立刻 PATCH 同步；`md-blocks` 单测锁住「插进 FM 内 → 改插到 FM 后」 | `src/web/frontend/modules/md/md-parse.js`、`src/web/frontend/components/md/md-panes.jsx`、`src/web/frontend/page/dir/task.jsx`、`tests/unit/md-blocks.test.mjs` |
 
 > 回归测试：`tests/unit/localtask-submit.test.mjs`（派任务统一链路：fail-open 落点跟到项目队列 / 显式 cwd 不挪窝 / 认不出归属不拦任务 / 严格口径不变 / action 委托）、
 > `tests/unit/localtask-group.test.mjs`（frontmatter / 介绍引用 / 保留 / 面板口径）、
 > `tests/unit/group-context.test.mjs`（交付带项目介绍）、
 > `tests/unit/localtask-attach.test.mjs`（附件链路：零引用载荷不变 / 标注与〔附件〕段 / 台账命中给绝对路径 / 本机仓命中零网络标注 / `--path` 落本机附件仓 / attach 参数校验 / claim 交付带附件）、
 > `tests/unit/localatt.test.mjs`（本机附件仓：落盘台账 / id 与云端同构 / 重名去重 / 补扩展名 / `file upload --local` / `file get` 本机仓优先）、
+> `tests/unit/md-blocks.test.mjs`（附件嵌入落点：edit 偏移落 FM 内改插到后 / live 块内 caret 不碰 FM / 焦点在 FM 上改插到下一块）、
 > `tests/unit/taskgoal.test.mjs`（未开持续 get 不带循环指令 / 改文案不丢 frontmatter）、
 > `tests/unit/cli-args.test.mjs`（`---` 开头正文 / `--` 位置参数）。
 

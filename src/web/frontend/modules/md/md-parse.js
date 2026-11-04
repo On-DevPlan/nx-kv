@@ -244,9 +244,9 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
   return html || '<p class="mdw-empty">（空文档）</p>';
 }
 
-// 与后端 templates/service.js 的 BUILTIN_BODY 同构（那边的槽位名与默认值见
-// BUILTIN_VALUES）：正文里的 {{槽位名}} 是模板槽位——新建任务时按该模板的
-// 槽位值渲染（前端兜底时没有槽位值，标记原样留着，用户一眼知道该填什么）。
+// 与后端 templates/service.js 的 BUILTIN_BODY / BUILTIN_VALUES 同构。
+// 正文里的 {{槽位名}} 是模板槽位（骨架锁死）——新建任务必须先按槽位值渲染，
+// **禁止**把 `{{背景}}` 这种标记原样塞进任务正文（验收反馈：用户不知何意）。
 export const NEW_TEMPLATE = `## 背景
 
 {{背景}}
@@ -259,6 +259,14 @@ export const NEW_TEMPLATE = `## 背景
 
 ## 附件
 `;
+
+/** 内置槽位默认值（与 templates/service.js BUILTIN_VALUES 同构） */
+export const NEW_TEMPLATE_VALUES = {
+  背景: '（一句话说清要改什么）',
+  验收: '…',
+  约束: '…',
+  附件: '',
+};
 
 /** 空块占位（ZWSP）：join/split 可往返，渲染与编辑按空串处理 */
 export const EMPTY_BLOCK = '\u200b';
@@ -374,6 +382,114 @@ export function joinMdBlocks(blocks) {
       return s; // 其余原样（尾随空格也留着）
     })
     .join('\n\n');
+}
+
+/** 实时预览用的正文块：剥掉首个 H1（标题栏单独管），frontmatter 仍保留。 */
+export function liveBodyBlocks(body) {
+  const blocks = splitMdBlocks(body);
+  const i = blocks.findIndex((b) => /^# (?!#)/.test(String(b).trim()));
+  return i < 0 ? blocks : blocks.filter((_, k) => k !== i);
+}
+
+/** 块是否是文档头部 frontmatter（`---`…`---` 且含 key: value）。 */
+export function isFrontmatterBlock(text) {
+  return Object.keys(parseFrontmatter(String(text ?? ''))).length > 0;
+}
+
+/**
+ * 正文头部 frontmatter 结束后的字符偏移；没有有效 frontmatter → 0。
+ * 贴图/嵌入禁止落在 FM 内部——插进去会在保存时被 stripFrontmatter 剥掉，
+ * 并可能把 `board:` 撕成残留键（用户案例：`d: b_…`）。
+ */
+export function frontmatterEndOffset(src) {
+  const text = String(src ?? '');
+  if (!Object.keys(parseFrontmatter(text)).length) return 0;
+  const m = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+  return m ? m[0].length : 0;
+}
+
+function recomposeLiveBody(liveBlocks, titleBlock) {
+  if (!titleBlock) return joinMdBlocks(liveBlocks);
+  const out = [];
+  let start = 0;
+  if (liveBlocks[0] && isFrontmatterBlock(liveBlocks[0])) {
+    out.push(liveBlocks[0]);
+    start = 1;
+  }
+  out.push(titleBlock);
+  out.push(...liveBlocks.slice(start));
+  return joinMdBlocks(out);
+}
+
+/**
+ * 把附件 markdown 片段插进正文（图片 `![…](fileId)` / 文件 `[…](fileId)`）。
+ *
+ * 两条坐标：
+ *   - `mode:'edit'` + `insertAt`：源码编辑器的**全文**光标偏移；
+ *   - `mode:'live'` + `focusIndex`/`caretInBlock`：实时预览的**块内**坐标
+ *     （与 liveBodyBlocks 同空间——切勿把块内偏移当全文偏移，那会插进 FM）。
+ *
+ * 落点落在 frontmatter 内时改插到 FM 闭合之后（或下一内容块开头）。
+ *
+ * @returns {{ body: string, insertAt: number }} insertAt = 片段起始偏移（便于重设光标）
+ */
+export function insertAttachmentSnippet(body, snippet, opts = {}) {
+  const snip = String(snippet || '');
+  const src = String(body || '');
+  if (!snip) return { body: src, insertAt: src.length };
+
+  if (opts.mode === 'live') {
+    const all = splitMdBlocks(src);
+    const titleIdx = all.findIndex((b) => /^# (?!#)/.test(String(b).trim()));
+    const title = titleIdx >= 0 ? all[titleIdx] : null;
+    const live = liveBodyBlocks(src);
+    let fi = opts.focusIndex;
+
+    if (fi == null || fi < 0 || !live.length) {
+      const trimmed = snip.replace(/^\n+/, '').replace(/\n+$/, '');
+      live.push(trimmed);
+      const next = recomposeLiveBody(live, title);
+      return { body: next, insertAt: Math.max(0, next.length - trimmed.length) };
+    }
+
+    fi = Math.min(fi, live.length - 1);
+    if (isFrontmatterBlock(live[fi])) {
+      const content = snip.replace(/^\n+/, '').replace(/\n+$/, '');
+      if (fi + 1 < live.length) {
+        live[fi + 1] = content + (live[fi + 1] ? `\n${live[fi + 1]}` : '');
+      } else {
+        live.push(content);
+      }
+      const next = recomposeLiveBody(live, title);
+      return { body: next, insertAt: frontmatterEndOffset(next) };
+    }
+
+    const block = live[fi] || '';
+    const caret = opts.caretInBlock;
+    const at = caret == null ? block.length : Math.min(Math.max(0, caret), block.length);
+    live[fi] = block.slice(0, at) + snip + block.slice(at);
+    const next = recomposeLiveBody(live, title);
+    // 近似：FM(+标题)之后再累加此前块；够用在编辑器重设光标
+    const prefixBlocks = [];
+    if (title && live[0] && isFrontmatterBlock(live[0])) {
+      prefixBlocks.push(live[0], title, ...live.slice(1, fi));
+    } else if (title) {
+      prefixBlocks.push(title, ...live.slice(0, fi));
+    } else {
+      prefixBlocks.push(...live.slice(0, fi));
+    }
+    const prefix = prefixBlocks.length ? `${joinMdBlocks(prefixBlocks)}\n\n` : '';
+    return { body: next, insertAt: prefix.length + at };
+  }
+
+  let at = opts.insertAt;
+  if (at == null || at < 0) {
+    return { body: src + snip, insertAt: src.length };
+  }
+  at = Math.min(Math.max(0, at), src.length);
+  const fmEnd = frontmatterEndOffset(src);
+  if (at < fmEnd) at = fmEnd;
+  return { body: src.slice(0, at) + snip + src.slice(at), insertAt: at };
 }
 
 export const STAGE_LABELS = ['接收', '解析', '执行', '验证', '回填'];

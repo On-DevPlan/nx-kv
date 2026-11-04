@@ -223,11 +223,10 @@ export default function Sidebar({
           >
             <Icon name="gear" size={15} />
           </button>
-        </div>
-        <div className="searchrow">
+          {/* 收起入口放品牌行右侧——验收反馈「左能收起但没有收起 icon」：原先埋在搜索行，不显眼 */}
           <button
             className="iconbtn collapse"
-            title="收起目录（变窄轨；点窄轨展开）"
+            title="收起目录（变窄轨；点窄轨可展开）"
             aria-label="收起目录"
             onClick={onCollapse}
           >
@@ -241,6 +240,8 @@ export default function Sidebar({
           >
             <Icon name="x" size={14} />
           </button>
+        </div>
+        <div className="searchrow">
           <label className="sbox">
             <Icon name="search" />
             <input

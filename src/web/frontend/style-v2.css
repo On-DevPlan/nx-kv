@@ -944,13 +944,15 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 }
 .rp-mp-ghost .rp-mp-name { color: var(--mid); }
 
-/* 面包屑（工作区顶部，2026-11-04 #33：页签删除后的「当前位置」指示） */
+/* 面包屑（工作区顶部，2026-11-04 #33：页签删除后的「当前位置」指示）
+   形态：[ nx/nx-kv/draft ] —— 方括号包住整条路径 */
 .nx-crumb{
   flex:none;display:flex;align-items:center;gap:2px;flex-wrap:wrap;
   height:26px;padding:0 12px;background:var(--paper,#fff);
   border-bottom:1px solid var(--line,#E4E2DC);
   font-size:11.5px;color:var(--ink-2,#4B515A);
 }
+.nx-crumb-br{color:var(--faint,#A9AEB4);flex:none;user-select:none}
 .nx-crumb-i{display:inline-flex;align-items:center;gap:2px;min-width:0}
 .nx-crumb-sep{color:var(--faint,#A9AEB4);padding:0 2px}
 .nx-crumb-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}

@@ -11,9 +11,9 @@ import { createPortal } from 'react-dom';
 import {
   isEmptyBlock,
   joinMdBlocks,
+  liveBodyBlocks,
   normalizeBlockText,
   renderMarkdownHtml,
-  splitMdBlocks,
 } from '../../modules/md/md-parse.js';
 import {
   applySlashCommand,
@@ -198,9 +198,7 @@ function LiveBlock({
  */
 /** 正文块：剥掉首个一级标题行（= 文档标题，由顶部标题栏单独编辑，提交时再写入） */
 function bodyBlocksOnly(body) {
-  const blocks = splitMdBlocks(body);
-  const i = blocks.findIndex((b) => /^# (?!#)/.test(String(b).trim()));
-  return i < 0 ? blocks : blocks.filter((_, k) => k !== i);
+  return liveBodyBlocks(body);
 }
 
 function isSlashArrow(e) {
@@ -610,8 +608,13 @@ function LivePreview({
 
   const ingestFiles = (files, ta) => {
     if (!files?.length || !onFiles) return;
-    const at = ta ? ta.selectionStart : null;
-    onFiles(files, { insertAt: at, mode: 'live', focusIndex: focus });
+    // 实时预览的光标是**块内**偏移，绝不能当全文 insertAt——否则会插进
+    // frontmatter（保存时被剥掉，附件仓留下孤儿文件；任务 #15 验收根因）。
+    onFiles(files, {
+      mode: 'live',
+      focusIndex: focus,
+      caretInBlock: ta ? ta.selectionStart : null,
+    });
   };
 
   return (
@@ -992,6 +995,7 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
   const ingestImages = (files) => {
     if (!files?.length || !onFiles) return;
     const ta = taRef.current;
+    // 源码态 textarea 持有全文，selectionStart 才是合法的全文偏移。
     onFiles(files, { insertAt: ta ? ta.selectionStart : null, mode: 'edit' });
   };
 

@@ -92,6 +92,7 @@ export default function ToolBar({
   onSubmit,
   onDelete,
   onProg,
+  onSource,
   onOverview,
   onFormat,
   onTurn,
@@ -246,6 +247,16 @@ export default function ToolBar({
         </div>
         <button type="button" className="btn sm primary" onClick={onSubmit}>{submitLabel}</button>
         <span className="sep" aria-hidden />
+        {onSource && (
+          <button
+            type="button"
+            className="btn ghost sm"
+            title="在右侧并排打开评论锚定的原文（Ctrl/⌘⇧O）"
+            onClick={onSource}
+          >
+            原文
+          </button>
+        )}
         <button type="button" className="btn ghost sm" onClick={onProg}>进程</button>
       </div>
     </div>

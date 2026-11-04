@@ -6,7 +6,7 @@
 //
 // 文档内容存在会话内存（doc-store.js），页签身份在 FlexLayout 模型里——
 // 两者分工明确：布局归布局，内容归内容。
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
@@ -19,22 +19,32 @@ import AttachBar from '../../components/md/attach-bar.jsx';
 import SelMenu from '../../components/md/sel-menu.jsx';
 import ShortcutSheet from '../../components/md/shortcut-sheet.jsx';
 import { useApp } from '../../app-context.jsx';
-import { openPanel } from '../../workspace.js';
+import { openBesideMain, openPanel } from '../../workspace.js';
 import { filesToAttachments, persistAtt } from '../../components/md/attachments.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
-import { renderMarkdownHtml, slugName, titleFromMd, parseFrontmatter, stripFrontmatter, stripTitleHeading, withFrontmatter } from '../../modules/md/md-parse.js';
+import {
+  insertAttachmentSnippet,
+  renderMarkdownHtml,
+  slugName,
+  titleFromMd,
+  parseFrontmatter,
+  stripFrontmatter,
+  stripTitleHeading,
+  withFrontmatter,
+} from '../../modules/md/md-parse.js';
 import {
   docIdOf,
   getDoc,
   isDraftTask,
   nextDraftId,
+  peekDoc,
   promoteDoc,
   saveDoc,
   scopeOf,
   useDocs,
 } from '../../modules/md/doc-store.js';
 
-export default function PagePanel({ dirKey, task, tabId, model }) {
+export default function PagePanel({ dirKey, task, beside = false, tabId, model }) {
   const app = useApp() || {};
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
@@ -170,6 +180,25 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   // 工具区给「归属项目」下拉（限本组成员），提交按 project 路由进对应项目的队列。
   // 非组任务没有 frontmatter，整段不渲染，零噪音。
   const docFm = useMemo(() => (doc ? parseFrontmatter(doc.body) : {}), [doc && doc.body]);
+  // 评论任务的原文锚点：frontmatter.parent（新建评论写入）；旧数据从「锚定自「标题」」回推
+  const parentRef = useMemo(() => {
+    if (beside) return null; // 旁路原文自己不再开旁路
+    const pid = String(docFm.parent || '').trim();
+    const pdir = String(docFm.parentDir || dirKey || '').trim();
+    if (pid && !/^draft/i.test(pid)) {
+      return { dirKey: pdir || dirKey, task: pid, name: `#${pid}` };
+    }
+    const body = String(doc?.body || '');
+    const m = body.match(/>\s*锚定自「([^」]+)」/);
+    if (!m) return null;
+    const title = m[1].trim();
+    const hit = (topic?.tasks || []).find((t) => {
+      if (String(t.id) === String(task)) return false;
+      return titleFromMd(t.text || '') === title || String(t.text || '').includes(`# ${title}`);
+    });
+    if (!hit) return null;
+    return { dirKey, task: String(hit.id), name: `#${hit.id}` };
+  }, [beside, docFm.parent, docFm.parentDir, doc?.body, dirKey, topic, task]);
   const boardCtx = useMemo(() => {
     const bid = docFm.board;
     if (!bid) return null;
@@ -198,15 +227,50 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   const fileAttRef = useRef(null);
   const articleRef = useRef(null);
   const reviewBarRef = useRef(null);
+  const reviewSumRef = useRef(null);
   const editorApiRef = useRef(null);
   const lastSel = useRef('');
   const histRef = useRef(new Map());
   const [dirty, setDirty] = useState(false);
+  // 验收条 ack：默认夹紧，过长可展开全文（任务 #20：长总结被 line-clamp 截断）
+  const [ackOpen, setAckOpen] = useState(false);
+  const [ackOverflow, setAckOverflow] = useState(false);
+  const ackLong = String(taskRow?.roundSummary || '').length > 140;
+  useEffect(() => {
+    setAckOpen(false);
+    setAckOverflow(false);
+  }, [id, taskRow?.roundSummary]);
+  useLayoutEffect(() => {
+    const el = reviewSumRef.current;
+    if (!el) {
+      setAckOverflow(false);
+      return undefined;
+    }
+    // -webkit-line-clamp 下首帧 scrollHeight 偶发等于 clientHeight——用 ResizeObserver
+    // + rAF 再量一次；长文案另有字符数兜底，避免按钮永远不出现。
+    const measure = () => {
+      if (ackOpen) return;
+      setAckOverflow(el.scrollHeight > el.clientHeight + 1);
+    };
+    measure();
+    const raf = requestAnimationFrame(measure);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+    };
+  }, [ackOpen, taskRow?.roundSummary, taskRow?.completedAt]);
 
   // 阅读视图：剥掉首个一级标题行——它就是文档标题（页头已渲染），正文再渲染一遍是重复
   const previewHtml = useMemo(
     () => (doc ? renderMarkdownHtml(stripTitleHeading(doc.body), doc.attachments) : ''),
     [doc]
+  );
+  // 验收条 ack：agent 完成总结常带 md（加粗/列表/标题）——按正文同一套渲染，不要当纯文本。
+  const ackHtml = useMemo(
+    () => (taskRow?.roundSummary ? renderMarkdownHtml(taskRow.roundSummary) : ''),
+    [taskRow?.roundSummary]
   );
 
   useEffect(() => {
@@ -232,12 +296,44 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     openPanel(m, {
       component: 'progress',
       name: '进程',
-      config: { dirKey: dirKey || GLOBAL_KEY },
+      config: { dirKey: dirKey || GLOBAL_KEY, task: task != null ? String(task) : undefined },
       location: 'right',
     });
   };
 
+  /** 评论任务：在主区右侧并排打开原文（可单独关掉；不改路由） */
+  const openParentBeside = useCallback(() => {
+    if (!parentRef) {
+      toast('这条任务没有可定位的原文');
+      return;
+    }
+    const m = model || app.model;
+    if (!m) return;
+    openBesideMain(m, {
+      component: 'page',
+      name: parentRef.name || `原文 ${parentRef.task}`,
+      config: { dirKey: parentRef.dirKey, task: String(parentRef.task) },
+    });
+  }, [parentRef, model, app.model, toast]);
+
+  const closeBesideSelf = useCallback(() => {
+    const m = model || app.model;
+    if (!m || !tabId) return;
+    m.doAction(Actions.deleteTab(tabId));
+  }, [model, app.model, tabId]);
+
   const markDirty = useCallback(() => setDirty(true), []);
+
+  /** 标题 + frontmatter 拼装（提交/贴图同步共用）——标题行永远在 FM 之后。 */
+  const composeText = (title, bodyText) => {
+    const t = (title || '').trim() || '未命名任务';
+    const fm = parseFrontmatter(bodyText);
+    const hasFm = Object.keys(fm).length > 0;
+    let bare = stripFrontmatter(bodyText);
+    if (!/^#\s+/m.test(bare)) bare = `# ${t}\n\n${bare}`;
+    else bare = bare.replace(/^#\s+.+$/m, `# ${t}`);
+    return hasFm ? withFrontmatter(bare, fm) : bare;
+  };
 
   // ─── 保存 / 提交 ───
   // 时间目标的落库口径：草稿 → POST 带 duration/goalPrompt（后端 sanitize 校验写法）；
@@ -263,11 +359,7 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     // frontmatter 在文件头（组任务的工作组/项目语义），标题行要插在它**后面**——
     // 剥出来处理再原样放回，保持 `---` 块始终在最前。
     const fm = parseFrontmatter(doc.body);
-    const hasFm = Object.keys(fm).length > 0;
-    let bare = stripFrontmatter(doc.body);
-    if (!/^#\s+/m.test(bare)) bare = `# ${t}\n\n${bare}`;
-    else bare = bare.replace(/^#\s+.+$/m, `# ${t}`);
-    const b = hasFm ? withFrontmatter(bare, fm) : bare;
+    const b = composeText(t, doc.body);
     // 归属项目路由：frontmatter.project 指向本组成员 → 提交/同步走那个项目的队列
     // （草稿可能挂在默认项目的 scope 下，提交落点以归属项目为准）。
     const projTopic = fm.project
@@ -381,36 +473,63 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
 
   const addFiles = async (fileList, opts = {}) => {
     if (!doc) return;
-    // 图床优先：图片嵌在光标处、文件追加文尾（嵌入即附件，正文随任务走）；
-    // 图床不可达时 items 带 dataURL 走 localStorage 老路（fileInserts 为空）。
+    // 本机仓优先：图片嵌在光标处、文件追加文尾（嵌入即附件，正文随任务走）；
+    // 本机仓不可达时 items 带 dataURL 走 localStorage 老路（fileInserts 为空）。
     const { items, imageInserts, fileInserts } = await filesToAttachments(fileList);
-    const b = doc.body || '';
-    const ins = imageInserts.join('');
+    // 上传是异步的——await 后读最新会话文档，避免并发贴图/输入用陈旧正文覆盖。
+    const cur = peekDoc(id) || doc;
+    const b = cur.body || '';
+    const imgIns = imageInserts.join('');
     let body = b;
-    if (ins && opts.insertAt != null && opts.insertAt >= 0) {
-      const at = Math.min(opts.insertAt, b.length);
-      body = b.slice(0, at) + ins + b.slice(at);
-      if (opts.mode === 'edit') {
-        requestAnimationFrame(() => {
-          editorApiRef.current?.focus?.();
-          const ta = document.querySelector('.mdw-editor');
-          if (ta) {
-            const caret = at + ins.length;
-            try { ta.setSelectionRange(caret, caret); } catch { /* ignore */ }
-          }
-        });
-      }
-    } else if (ins) {
-      body = b + ins;
+    let caretAt = null;
+    if (imgIns) {
+      const placed = insertAttachmentSnippet(b, imgIns, opts);
+      body = placed.body;
+      caretAt = placed.insertAt + imgIns.length;
     }
-    if (fileInserts.length) body += fileInserts.join('');
+    if (fileInserts.length) {
+      body = insertAttachmentSnippet(body, fileInserts.join(''), {}).body;
+    }
     const patch = {};
     if (body !== b) patch.body = body;
-    if (items.length) patch.attachments = [...(doc.attachments || []), ...items];
+    if (items.length) patch.attachments = [...(cur.attachments || []), ...items];
     if (!Object.keys(patch).length) return;
     saveDoc(id, patch);
+    if (opts.mode === 'edit' && caretAt != null) {
+      requestAnimationFrame(() => {
+        editorApiRef.current?.focus?.();
+        const ta = document.querySelector('.mdw-editor');
+        if (ta) {
+          try { ta.setSelectionRange(caretAt, caretAt); } catch { /* ignore */ }
+        }
+      });
+    }
+    // 已落库任务：贴图即同步——agent 领取只认服务端正文里的 ![…](fileId)，
+    // 不能等用户再点「保存并同步」（否则仓里有图、attachments count 仍是 0）。
+    if (!isDraft) {
+      if (patch.attachments) persistAtt(task, patch.attachments);
+      const synced = composeText(cur.title, patch.body || body);
+      saveDoc(id, { body: synced, title: titleFromMd(synced) });
+      try {
+        await api('/api/localtasks/item', {
+          method: 'PATCH',
+          body: {
+            cwd: isGlobal ? undefined : topic?.cwd,
+            key: isGlobal ? GLOBAL_KEY : undefined,
+            id: Number(task),
+            text: synced,
+          },
+        });
+        setDirty(false);
+        refreshLocal();
+        toast(items.length ? `已添加附件并同步（${items.length}）` : '已同步附件');
+      } catch (e) {
+        markDirty();
+        toast(`附件已插入，同步失败：${e.message || e}`);
+      }
+      return;
+    }
     markDirty();
-    if (!isDraft && patch.attachments) persistAtt(task, patch.attachments);
   };
 
   const closeSelMenu = () => {
@@ -441,8 +560,11 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     const parent = doc?.title || topic?.name || '';
     const t = `问题：${q.slice(0, 28)}`;
     const raw = `# ${t}\n\n> 锚定自「${parent}」：\n> ${quote.replace(/\n/g, '\n> ')}\n\n## 问题\n${q}\n\n## 要做什么\n- [ ] …\n`;
-    // 工作组语义继承：原任务的 frontmatter（board / project / 介绍引用）整块带过去
-    const b = withFrontmatter(raw, docFm);
+    // 工作组语义继承 + 原文锚点（parent/parentDir）：评论页可一键并排打开原文
+    const parentFields = (!isDraft && task != null && !/^draft/i.test(String(task)))
+      ? { parent: String(task), parentDir: dirKey || '' }
+      : {};
+    const b = withFrontmatter(raw, { ...docFm, ...parentFields });
     guard(async () => {
       // 落点 = 原任务所在队列（显式给 cwd：尊重当前落点，不被归属推导挪走）；
       // 归属由正文 frontmatter 决定（服务端 fail-open 补介绍引用）。
@@ -575,6 +697,19 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
     fileAttRef.current?.click();
   };
 
+  // Ctrl/⌘ ⇧ O：评论任务并排打开原文（#37）——编辑态也放行，不与常见编辑快捷键冲突
+  useEffect(() => {
+    if (!parentRef || beside) return undefined;
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
+      if (String(e.key || '').toLowerCase() !== 'o') return;
+      e.preventDefault();
+      openParentBeside();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [parentRef, beside, openParentBeside]);
+
   // 读不到文档分两种：**还在读**（队列首轮没回来）与**确实没有这一条**（被删 / 深链写错）。
   // 后者不该永远转圈——给一句实话 + 一个出口（回目录）。
   if (!doc) {
@@ -600,8 +735,23 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   }
 
   return (
-    <div className="mdw" data-mode={doc.mode || 'split'} onMouseUp={onPreviewMouseUp}>
+    <div className={`mdw${beside ? ' is-beside' : ''}`} data-mode={doc.mode || 'split'} onMouseUp={onPreviewMouseUp}>
       {dialogNode}
+      {beside && (
+        <div className="mdw-beside-h">
+          <span className="mdw-beside-lab">原文（旁路）</span>
+          <span className="grow" />
+          <button
+            type="button"
+            className="iconbtn"
+            title="关闭原文面板"
+            aria-label="关闭原文面板"
+            onClick={closeBesideSelf}
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div className="mdw-main">
         <div className="mdw-top">
           <div className="mdw-head">
@@ -696,6 +846,7 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
           onSubmit={submit}
           onDelete={isDraft ? null : delTask}
           onProg={openProgress}
+          onSource={parentRef ? openParentBeside : null}
           onOverview={() => app.onNavigate && app.onNavigate('#/overview')}
           onFormat={(op) => editorApiRef.current?.format?.(op)}
           onTurn={(id2) => editorApiRef.current?.turn?.(id2)}
@@ -739,9 +890,23 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
               <span className="mdw-review-badge">已完成 · 等待验收</span>
               <span className="mdw-review-at mono">{taskRow.completedAt}</span>
               {taskRow.roundSummary ? (
-                <div className="mdw-review-sum" title="agent 的完成总结（ack）">
-                  {taskRow.roundSummary}
-                </div>
+                <>
+                  <div
+                    ref={reviewSumRef}
+                    className={`mdw-review-sum${ackOpen ? ' is-open' : ''}`}
+                    title={ackOpen || !(ackOverflow || ackLong) ? 'agent 的完成总结（ack）' : '点击下方展开全文'}
+                    dangerouslySetInnerHTML={{ __html: ackHtml }}
+                  />
+                  {(ackOverflow || ackLong || ackOpen) && (
+                    <button
+                      type="button"
+                      className="mdw-review-more"
+                      onClick={() => setAckOpen((o) => !o)}
+                    >
+                      {ackOpen ? '收起' : '展开全文'}
+                    </button>
+                  )}
+                </>
               ) : null}
             </div>
             <div className="mdw-review-acts">

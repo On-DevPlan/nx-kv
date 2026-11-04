@@ -1,0 +1,108 @@
+// 主题队列（localtask topic.tasks）↔ WorkflowSnapshot 双向投影。
+// 存盘形状仍是任务行；快照是引擎视图。正文不进快照（payload.textRef）。
+
+import { BUILTIN_GOALS, edgesFromTasks, taskToNode } from './types.js';
+
+/** @typedef {import('./types.js').WorkflowSnapshot} WorkflowSnapshot */
+/** @typedef {import('./types.js').WfNode} WfNode */
+
+/**
+ * @param {object} topic  localtask 主题桶
+ * @returns {WorkflowSnapshot}
+ */
+export function topicToSnapshot(topic) {
+  const workflowId = String(topic?.key || topic?.workflowId || '');
+  const tasks = Array.isArray(topic?.tasks) ? topic.tasks : [];
+  const nodes = tasks.filter((t) => t && !t.deletedAt && !t.migratedTo).map(taskToNode);
+  const edges = edgesFromTasks(tasks);
+  const revision = Number(topic?.workflowRevision) || 0;
+  /** @type {WorkflowSnapshot} */
+  return {
+    workflowId,
+    state: topic?.workflowState || 'active',
+    nodes,
+    edges,
+    workflowPlugins: Array.isArray(topic?.workflowPlugins) ? topic.workflowPlugins : [],
+    revision,
+    updatedAt: topic?.updatedAt || new Date().toISOString(),
+    meta: {
+      cwd: topic?.cwd || '',
+      name: topic?.name || '',
+    },
+  };
+}
+
+/**
+ * 把快照写回主题任务行（保守：不改 text；按 id 对齐）。
+ * @param {object} topic
+ * @param {WorkflowSnapshot} snap
+ */
+export function applySnapshotToTopic(topic, snap) {
+  if (!topic || !snap) return topic;
+  const tasks = Array.isArray(topic.tasks) ? topic.tasks : (topic.tasks = []);
+  const byId = new Map(tasks.map((t) => [String(t.id), t]));
+
+  for (const node of snap.nodes || []) {
+    let task = byId.get(String(node.id));
+    if (!task) {
+      // 引擎新建的节点 → 补一条占位任务（正文外置占位）
+      task = {
+        id: Number(node.id) || node.id,
+        text: '',
+        status: 'pending',
+        createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        completedAt: '',
+        deletedAt: '',
+        blockBy: [],
+        blocksFollowing: false,
+      };
+      tasks.push(task);
+      byId.set(String(task.id), task);
+    }
+    syncTaskFromNode(task, node);
+  }
+
+  // 边 → blockBy（显式依赖）；闸门边由 blocksFollowing 表达，不写进每条 blockBy
+  const gateIds = new Set(
+    (snap.nodes || [])
+      .filter(
+        (n) =>
+          n.kind === 'control' ||
+          (n.plugins || []).some((p) => p.name === BUILTIN_GOALS.blockgoal),
+      )
+      .map((n) => String(n.id)),
+  );
+
+  for (const task of tasks) {
+    if (task.deletedAt || task.migratedTo) continue;
+    const incoming = (snap.edges || []).filter((e) => String(e.to) === String(task.id));
+    const deps = [];
+    for (const e of incoming) {
+      // 跳过「闸门挡后续」推出来的边：from 是闸门且闸门在数组序上早于本任务时由 blocksFollowing 覆盖
+      if (gateIds.has(String(e.from))) continue;
+      deps.push(e.from);
+    }
+    task.blockBy = deps.map((d) => Number(d)).filter((n) => Number.isFinite(n) && n > 0);
+  }
+
+  topic.workflowRevision = Number(snap.revision) || 0;
+  topic.workflowState = snap.state || 'active';
+  topic.workflowPlugins = Array.isArray(snap.workflowPlugins) ? snap.workflowPlugins : [];
+  if (snap.updatedAt) topic.updatedAt = snap.updatedAt;
+  return topic;
+}
+
+/** @param {object} task @param {WfNode} node */
+function syncTaskFromNode(task, node) {
+  const hasBlock = (node.plugins || []).some((p) => p.name === BUILTIN_GOALS.blockgoal);
+  task.blocksFollowing = node.kind === 'control' || hasBlock;
+
+  if (node.state === 'success') {
+    if (!task.completedAt) {
+      task.completedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    }
+  } else if (node.state === 'running' && task.status !== 'consumed') {
+    task.status = 'consumed';
+  }
+  // pending/ready：不改 status（领取态由 wait/get 管；ready 由 isReadyToClaim 现算）
+}

@@ -11,7 +11,7 @@
 // prefs 是「这个浏览器的口味」，布局是「这个工作区的骨架」。
 import { Actions, DockLocation, Model, Rect } from 'flexlayout-react';
 import { normalizeSidebarWeight, sideStateAttrs } from './components/sidebar/side-state.js';
-import { AREA, areaOf } from './workspace/areas.js';
+import { AREA, areaOf, isSingleton } from './workspace/areas.js';
 
 /** 布局的落点。与 prefs 的 LS_KEY 分开存：布局大、单独读写不易互相踩。 */
 export const WORKSPACE_KEY = 'nx-kv-ui.workspace';
@@ -433,6 +433,50 @@ export function rightTabsetId(model) {
   return hit;
 }
 
+const RIGHT_WEIGHT_OPEN = 16;
+const RIGHT_WEIGHT_CLOSED = 0;
+
+/** 展开 / 收起右侧栏（关掉进程面板后重量归零，再开进程时拉回来） */
+export function setRightSidebarVisible(model, visible) {
+  const id = rightTabsetId(model);
+  if (!id) return false;
+  return setTabsetAttrs(model, id, {
+    weight: visible ? RIGHT_WEIGHT_OPEN : RIGHT_WEIGHT_CLOSED,
+    enableTabStrip: false,
+  });
+}
+
+/**
+ * 关掉右侧栏里的进程面板（并收起右侧栏）。
+ * 验收：右 sidebar 要能关——以前进程常驻、没有关闭入口。
+ */
+export function closeRightSidebar(model) {
+  if (!model) return;
+  const victims = [];
+  model.visitNodes((node) => {
+    if (node.getType() !== 'tab') return;
+    if (node.getComponent() === 'progress') victims.push(node.getId());
+  });
+  for (const id of victims) model.doAction(Actions.deleteTab(id));
+  setRightSidebarVisible(model, false);
+}
+
+/**
+ * 主内容区切到某目录/任务时，若右侧进程面板已开，同步它的 dirKey/task——
+ * 否则会一直显示「上一个任务」所属目录的进程（#33 验收反馈）。
+ */
+export function syncProgressPanel(model, { dirKey, task } = {}) {
+  if (!model) return;
+  const tab = findComponentPanel(model, 'progress');
+  if (!tab) return;
+  const prev = tab.getConfig() || {};
+  const next = { dirKey: dirKey || '' };
+  if (task != null && String(task) !== '') next.task = String(task);
+  if (JSON.stringify(prev) === JSON.stringify(next)) return;
+  model.doAction(Actions.updateNodeAttributes(tab.getId(), { config: next }));
+  if (dirKey) setRightSidebarVisible(model, true);
+}
+
 /**
  * 主内容区只留一个面板：开新面板前把主区里**别的**内容面板关掉。
  *
@@ -440,18 +484,77 @@ export function rightTabsetId(model) {
  * 「点了没反应」。所以主区是**单面板位**：新的进来，旧的出去。
  * 侧栏与右侧栏不动。
  */
+/**
+ * 清掉主内容区里的面板（含并排的「旁路原文」）。
+ * 侧栏 / 右侧进程栏不动；浮窗也不动。
+ */
 export function clearMainPanels(model) {
-  const tsId = mainTabsetId(model);
-  if (!tsId) return 0;
-  const ts = model.getTabsetById ? model.getTabsetById(tsId) : null;
-  const tabs = ts ? (ts.getTabNodes() || []) : [];
-  let n = 0;
-  for (const t of tabs) {
-    if (t.getComponent() === 'sidebar') continue;
-    model.doAction(Actions.deleteTab(t.getId()));
-    n += 1;
+  if (!model) return 0;
+  const rightTs = rightTabsetId(model);
+  const victims = [];
+  model.visitNodes((node) => {
+    if (node.getType() !== 'tab') return;
+    const c = node.getComponent();
+    if (c === 'sidebar' || c === 'progress') return;
+    const parent = node.getParent && node.getParent();
+    if (!parent || parent.getType() !== 'tabset') return;
+    const tsId = parent.getId();
+    if (tsId === 'ts_sidebar' || (rightTs && tsId === rightTs)) return;
+    // 浮窗在 subLayout 里，父 tabset 不在主布局——用 getWindowId / floating 判断
+    if (typeof node.getWindowId === 'function' && node.getWindowId()) return;
+    victims.push(node.getId());
+  });
+  for (const id of victims) model.doAction(Actions.deleteTab(id));
+  return victims.length;
+}
+
+/** 关掉主区里所有「旁路」面板（config.beside） */
+export function closeBesidePanels(model) {
+  if (!model) return 0;
+  const victims = [];
+  model.visitNodes((node) => {
+    if (node.getType() !== 'tab') return;
+    const cfg = node.getConfig() || {};
+    if (cfg.beside) victims.push(node.getId());
+  });
+  for (const id of victims) model.doAction(Actions.deleteTab(id));
+  return victims.length;
+}
+
+/**
+ * 在当前主内容区**右侧并排**开一块面板（不清主区现有内容）。
+ * 评论任务看原文用：左评论、右原文；原文可单独关掉。
+ * config 会带 beside:true——选中时不改路由，避免抢主区焦点。
+ */
+export function openBesideMain(model, spec) {
+  const { component, name, config = {} } = spec || {};
+  if (!model || !component) return { tabId: null, reused: false };
+  const mainTs = mainTabsetId(model);
+  if (!mainTs) return { tabId: null, reused: false };
+  const besideCfg = { ...config, beside: true };
+
+  // 同款旁路面板已开 → 聚焦
+  const existing = findOpenPanel(model, component, besideCfg);
+  if (existing) {
+    model.doAction(Actions.selectTab(existing.getId()));
+    if (name && existing.getName() !== name) {
+      model.doAction(Actions.renameTab(existing.getId(), name));
+    }
+    return { tabId: existing.getId(), reused: true };
   }
-  return n;
+
+  // 同时只留一块旁路原文
+  closeBesidePanels(model);
+
+  model.doAction(Actions.addTab(
+    { type: 'tab', name: name || component, component, config: besideCfg, enableClose: true },
+    mainTs,
+    DockLocation.getByName('right'),
+    -1,
+    true
+  ));
+  const created = findOpenPanel(model, component, besideCfg);
+  return { tabId: created ? created.getId() : null, reused: false };
 }
 
 /**
@@ -477,7 +580,26 @@ export function openPanel(model, spec) {
     if (name && existing.getName() !== name) {
       model.doAction(Actions.renameTab(existing.getId(), name));
     }
+    if (area === AREA.RIGHT) setRightSidebarVisible(model, true);
+    if (area === AREA.MAIN && (component === 'page' || component === 'dir')) {
+      syncProgressPanel(model, { dirKey: config.dirKey, task: config.task });
+    }
     return { tabId: existing.getId(), reused: true };
+  }
+
+  // 右侧单例（进程）：config 变了（换目录）也要复用同一块，并改 config——
+  // 否则会堆多份，或一直钉着上一个目录的进程（#33）。
+  if (area === AREA.RIGHT && isSingleton(component)) {
+    const any = findComponentPanel(model, component);
+    if (any) {
+      model.doAction(Actions.updateNodeAttributes(any.getId(), { config }));
+      model.doAction(Actions.selectTab(any.getId()));
+      if (name && any.getName() !== name) {
+        model.doAction(Actions.renameTab(any.getId(), name));
+      }
+      setRightSidebarVisible(model, true);
+      return { tabId: any.getId(), reused: true };
+    }
   }
 
   // 主内容区：**单面板位**——没有页签了，新的进来旧的出去（#33）。
@@ -493,13 +615,18 @@ export function openPanel(model, spec) {
       true
     ));
     const created = findOpenPanel(model, component, config);
+    // 切主区目录/任务时，已打开的进程面板跟着换目录
+    if (created && (component === 'page' || component === 'dir')) {
+      syncProgressPanel(model, { dirKey: config.dirKey, task: config.task });
+    }
     return { tabId: created ? created.getId() : null, reused: false };
   }
 
-  // 右侧栏：并发进程面板停在那儿（可多个并存，各自一块）
+  // 右侧栏：并发进程面板
   if (area === AREA.RIGHT) {
     const rightTs = rightTabsetId(model);
     if (rightTs) {
+      setRightSidebarVisible(model, true);
       model.doAction(Actions.addTab(
         { type: 'tab', name, component, config },
         rightTs,

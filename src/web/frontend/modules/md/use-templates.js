@@ -5,7 +5,7 @@
 // md-parse 的 NEW_TEMPLATE（与后端内置模板同构），行为与旧版一致。
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
-import { NEW_TEMPLATE } from './md-parse.js';
+import { NEW_TEMPLATE, NEW_TEMPLATE_VALUES } from './md-parse.js';
 import { renderTemplateBody } from '../prompts/placeholders.js';
 
 export function useTemplates() {
@@ -31,12 +31,13 @@ export function useTemplates() {
     refetch();
   }, [refetch]);
 
-  /** 默认模板正文（未加载/拉取失败 → NEW_TEMPLATE 兜底，见文件头）。
-   *  正文里的 {{槽位名}} 按该模板的槽位值渲染（用户填的文案进正文）。 */
+  /** 默认模板正文（未加载/拉取失败 → 内置骨架 + 默认槽位值兜底）。
+   *  永远返回**已渲染**正文——任务里不能出现裸 `{{槽位}}`。 */
   const defaultBody = useCallback(() => {
     const t = (state.templates || []).find((x) => x.id === state.defaultId);
-    if (!t) return NEW_TEMPLATE;
-    return renderTemplateBody(t.body, t.values);
+    if (!t) return renderTemplateBody(NEW_TEMPLATE, NEW_TEMPLATE_VALUES);
+    // 缺的键用内置默认值补；用户显式留空（''）仍是空——不把标记露回正文。
+    return renderTemplateBody(t.body, { ...NEW_TEMPLATE_VALUES, ...(t.values || {}) });
   }, [state]);
 
   const add = useCallback(async (name, body, setDefault) => {

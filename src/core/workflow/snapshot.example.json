@@ -1,0 +1,46 @@
+{
+  "workflowId": "local/nx-kv",
+  "state": "active",
+  "revision": 1,
+  "updatedAt": "2026-11-04T08:00:00.000Z",
+  "workflowPlugins": [
+    {
+      "name": "timegoal",
+      "scope": "workflow",
+      "config": { "duration": "45m", "prompt": "目录级静默超时示例" }
+    }
+  ],
+  "nodes": [
+    {
+      "id": 10,
+      "kind": "task",
+      "state": "success",
+      "plugins": [],
+      "payload": { "textRef": true }
+    },
+    {
+      "id": 11,
+      "kind": "control",
+      "state": "running",
+      "plugins": [{ "name": "blockgoal", "scope": "control", "config": {} }],
+      "payload": { "textRef": true }
+    },
+    {
+      "id": 12,
+      "kind": "task",
+      "state": "pending",
+      "plugins": [
+        {
+          "name": "waitgoal",
+          "scope": "node",
+          "config": { "waitMinutes": 3 }
+        }
+      ],
+      "payload": { "textRef": true }
+    }
+  ],
+  "edges": [
+    { "from": 10, "to": 11 },
+    { "from": 11, "to": 12 }
+  ]
+}

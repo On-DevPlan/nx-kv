@@ -15,6 +15,20 @@
      自己撑满，不然编辑区会塌成 0 高 */
   height:100%;width:100%;
 }
+/* 旁路原文（评论任务右侧并排）：顶栏「原文 + 关闭」叠在编辑列上方 */
+.mdw.is-beside{flex-direction:column}
+.mdw-beside-h{
+  flex:none;display:flex;align-items:center;gap:8px;
+  padding:6px 12px;background:var(--paper,#fff);
+  border-bottom:1px solid var(--line,#E4E2DC);
+}
+.mdw-beside-lab{font-weight:650;font-size:12px;color:var(--mid,#838A93)}
+.mdw-beside-h .grow{flex:1;min-width:0}
+.mdw-beside-h .iconbtn{
+  width:28px;height:28px;border:0;background:none;cursor:pointer;
+  border-radius:6px;color:var(--mid,#838A93);font-size:16px;line-height:1;
+}
+.mdw-beside-h .iconbtn:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
 .mdw-main{
   flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;
   /* 工具栏/纸面的自适应以「编辑列」实际宽度为准（容器查询），
@@ -751,17 +765,45 @@
   border-top:1px solid var(--mdw-accent-line,#B7D4C8);
   background:var(--mdw-accent-soft,#E8F2EE);
 }
-.mdw-review-main{min-width:0;display:flex;flex-direction:column;gap:4px}
+.mdw-review-main{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
 .mdw-review-badge{
   font-size:11px;font-weight:700;color:var(--mdw-accent,#2F6F5E);
   letter-spacing:.02em;white-space:nowrap;
 }
 .mdw-review-at{font-size:10.5px;color:var(--faint,#A9AEB4)}
+/* 默认夹 4 行；过长出「展开全文」。ack 是 Markdown（加粗/列表/标题），按 HTML 渲染 */
 .mdw-review-sum{
-  font-size:12px;line-height:1.5;color:var(--ink-2,#4B515A);
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
-  overflow-wrap:anywhere;white-space:pre-wrap;
+  font-size:12px;line-height:1.55;color:var(--ink-2,#4B515A);
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;
+  overflow-wrap:anywhere;
 }
+.mdw-review-sum.is-open{
+  display:block;-webkit-line-clamp:unset;-webkit-box-orient:unset;
+  max-height:min(40vh, 360px);overflow:auto;
+}
+.mdw-review-sum > :first-child{margin-top:0}
+.mdw-review-sum > :last-child{margin-bottom:0}
+.mdw-review-sum p{margin:0 0 0.45em}
+.mdw-review-sum ul,.mdw-review-sum ol{margin:0.15em 0 0.45em;padding-left:1.25em}
+.mdw-review-sum li{margin:0.1em 0}
+.mdw-review-sum strong,.mdw-review-sum b{font-weight:700;color:var(--ink,#16181C)}
+.mdw-review-sum code{
+  font:400 11px/1.4 ui-monospace,Consolas,monospace;
+  padding:0 4px;border-radius:4px;background:rgba(47,111,94,.08);
+}
+.mdw-review-sum pre{
+  margin:0.35em 0;padding:6px 8px;border-radius:6px;overflow:auto;
+  background:rgba(47,111,94,.08);font:400 11px/1.45 ui-monospace,Consolas,monospace;
+}
+.mdw-review-sum h1,.mdw-review-sum h2,.mdw-review-sum h3{
+  margin:0.5em 0 0.25em;font-size:12.5px;font-weight:700;color:var(--ink,#16181C);
+}
+.mdw-review-sum a{color:var(--mdw-accent,#2F6F5E)}
+.mdw-review-more{
+  align-self:flex-start;border:0;background:transparent;padding:0;
+  font:650 11.5px inherit;color:var(--mdw-accent,#2F6F5E);cursor:pointer;
+}
+.mdw-review-more:hover{text-decoration:underline}
 .mdw-review-acts{display:flex;align-items:center;gap:6px;flex:none;padding-top:2px}
 .mdw-review-acts button{
   border:0;border-radius:6px;padding:5px 10px;font:650 12px inherit;cursor:pointer;white-space:nowrap;

@@ -13,6 +13,10 @@ import {
   frontmatterHtml,
   renderMarkdownHtml,
   normalizeBlockText,
+  insertAttachmentSnippet,
+  frontmatterEndOffset,
+  liveBodyBlocks,
+  isFrontmatterBlock,
 } from '../../src/web/frontend/modules/md/md-parse.js';
 
 const FM = '---\nboard: b_1\nproject: local/x\n---';
@@ -123,4 +127,73 @@ test('normalizeBlockText：只剥 ZWSP，不动空白（编辑态原文）', () 
   assert.equal(normalizeBlockText(' '), ' ');
   assert.equal(normalizeBlockText('​'), '');
   assert.equal(normalizeBlockText('​ '), ' ');
+});
+
+// ── 附件嵌入落点（任务 #15：live 块内偏移被误当全文偏移 → 插进 FM）──────
+
+const FID = 'a'.repeat(32);
+const IMG = `\n![shot.png](${FID})\n`;
+
+test('frontmatterEndOffset / isFrontmatterBlock：识别头部 FM', () => {
+  const src = `${FM}\n# 标题\n正文`;
+  assert.equal(frontmatterEndOffset(src), FM.length + 1); // FM + 换行
+  assert.equal(frontmatterEndOffset('没有 FM'), 0);
+  assert.equal(isFrontmatterBlock(FM), true);
+  assert.equal(isFrontmatterBlock('# 标题'), false);
+});
+
+test('insertAttachmentSnippet edit：偏移落在 FM 内时改插到 FM 之后', () => {
+  const src = `${FM}\n# 标题\n\n## 附件`;
+  // 旧 bug：live 把块内 caret=5 当全文偏移 → 插进 "board" 中间
+  const { body } = insertAttachmentSnippet(src, IMG, { mode: 'edit', insertAt: 5 });
+  const fm = parseFrontmatter(body);
+  assert.equal(fm.board, 'b_1', 'board 键不被撕碎');
+  assert.equal(fm.project, 'local/x');
+  assert.ok(!Object.keys(fm).includes('d'), '不产生残留单字母键');
+  assert.match(body, new RegExp(`!\\[shot\\.png\\]\\(${FID}\\)`));
+  assert.ok(body.indexOf(`![shot.png](${FID})`) >= frontmatterEndOffset(body));
+});
+
+test('insertAttachmentSnippet live：块内 caret 插进内容块，不碰 FM', () => {
+  const src = `${FM}\n# 标题\n\n参考材料：如附件\n\n## 附件`;
+  const live = liveBodyBlocks(src);
+  // live[0]=FM, live[1]=「参考材料…」, …
+  const contentIdx = live.findIndex((b) => /参考材料/.test(b));
+  assert.ok(contentIdx > 0, '内容块在 FM 之后');
+  const caret = live[contentIdx].indexOf('如附件');
+  const { body } = insertAttachmentSnippet(src, IMG, {
+    mode: 'live',
+    focusIndex: contentIdx,
+    caretInBlock: caret,
+  });
+  assert.equal(parseFrontmatter(body).board, 'b_1');
+  assert.match(body, /参考材料：/);
+  assert.match(body, new RegExp(`!\\[shot\\.png\\]\\(${FID}\\)`));
+  assert.match(body, /如附件/);
+  // 嵌入夹在「参考材料」与「如附件」之间，且必须在 FM 之外
+  const bare = body.slice(frontmatterEndOffset(body));
+  assert.match(bare, new RegExp(FID));
+  assert.ok(
+    bare.indexOf('参考材料') < bare.indexOf(FID) && bare.indexOf(FID) < bare.indexOf('如附件'),
+    '嵌入落在光标处（参考材料…如附件）'
+  );
+});
+
+test('insertAttachmentSnippet live：焦点在 FM 块上时改插到下一块', () => {
+  const src = `${FM}\n# 标题\n\n正文段`;
+  const { body } = insertAttachmentSnippet(src, IMG, {
+    mode: 'live',
+    focusIndex: 0, // FM
+    caretInBlock: 3,
+  });
+  assert.equal(parseFrontmatter(body).board, 'b_1', 'FM 完好');
+  assert.match(body, new RegExp(`!\\[shot\\.png\\]\\(${FID}\\)`));
+  assert.ok(!body.slice(0, frontmatterEndOffset(body)).includes(FID), 'fileId 不在 FM 内');
+});
+
+test('insertAttachmentSnippet live：无焦点时追加到文末', () => {
+  const src = `${FM}\n# 标题\n\n正文`;
+  const { body } = insertAttachmentSnippet(src, IMG, { mode: 'live', focusIndex: null });
+  assert.equal(parseFrontmatter(body).board, 'b_1');
+  assert.ok(body.trimEnd().endsWith(`![shot.png](${FID})`) || body.includes(FID));
 });

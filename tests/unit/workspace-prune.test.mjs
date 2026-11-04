@@ -11,8 +11,13 @@ import {
   pruneBlankChrome,
   pruneBlankTabsets,
   healSidebarLayout,
+  openBesideMain,
+  closeBesidePanels,
+  clearMainPanels,
+  findOpenPanel,
+  initialLayoutJson,
 } from '../../src/web/frontend/workspace.js';
-import { Model, Actions } from 'flexlayout-react';
+import { Model, Actions, DockLocation } from 'flexlayout-react';
 
 const layoutWithEmptySet = {
   type: 'row',
@@ -104,6 +109,65 @@ test('Actions.deleteTabset：空 tabset 删除后模型里不再有它（库行�
   const ids = [];
   model.visitNodes((n) => { if (n.getType() === 'tabset') ids.push(n.getId()); });
   assert.deepEqual(ids, ['ts_b']);
+});
+
+test('openBesideMain：主区右侧并排开页，不清掉左侧；beside 不重复堆', () => {
+  const model = Model.fromJson(initialLayoutJson());
+  const dock = DockLocation.getByName('center');
+  // 主区先放评论页（替换 welcome）
+  clearMainPanels(model);
+  model.doAction(Actions.addTab(
+    { type: 'tab', name: '#35', component: 'page', config: { dirKey: 'k', task: '35' } },
+    'ts_main',
+    dock,
+    -1,
+    true
+  ));
+  const r1 = openBesideMain(model, {
+    component: 'page',
+    name: '原文 #23',
+    config: { dirKey: 'k', task: '23' },
+  });
+  assert.ok(r1.tabId);
+  assert.equal(r1.reused, false);
+  const beside = findOpenPanel(model, 'page', { dirKey: 'k', task: '23', beside: true });
+  assert.ok(beside, '旁路面板带 beside:true');
+  // 左侧评论还在
+  assert.ok(findOpenPanel(model, 'page', { dirKey: 'k', task: '35' }));
+  // 再开同款 → 复用
+  const r2 = openBesideMain(model, {
+    component: 'page',
+    name: '原文 #23',
+    config: { dirKey: 'k', task: '23' },
+  });
+  assert.equal(r2.reused, true);
+  assert.equal(r2.tabId, r1.tabId);
+  // 关旁路
+  assert.equal(closeBesidePanels(model), 1);
+  assert.equal(findOpenPanel(model, 'page', { dirKey: 'k', task: '23', beside: true }), null);
+  assert.ok(findOpenPanel(model, 'page', { dirKey: 'k', task: '35' }), '关旁路不伤主区');
+});
+
+test('clearMainPanels：连旁路原文一起清', () => {
+  const model = Model.fromJson(initialLayoutJson());
+  const dock = DockLocation.getByName('center');
+  clearMainPanels(model);
+  model.doAction(Actions.addTab(
+    { type: 'tab', name: '#35', component: 'page', config: { dirKey: 'k', task: '35' } },
+    'ts_main',
+    dock,
+    -1,
+    true
+  ));
+  openBesideMain(model, {
+    component: 'page',
+    name: '原文',
+    config: { dirKey: 'k', task: '23' },
+  });
+  const n = clearMainPanels(model);
+  assert.ok(n >= 2);
+  assert.equal(findOpenPanel(model, 'page', { dirKey: 'k', task: '35' }), null);
+  assert.equal(findOpenPanel(model, 'page', { dirKey: 'k', task: '23', beside: true }), null);
 });
 
 test('healSidebarLayout：目录与内容混在同一 tabset 时拆回左目录', () => {

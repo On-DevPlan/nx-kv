@@ -7,7 +7,7 @@ import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import { STAGE_LABELS, taskToProgress } from '../../modules/md/md-parse.js';
-import { findOpenPanel } from '../../workspace.js';
+import { closeRightSidebar, findOpenPanel } from '../../workspace.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 
@@ -44,7 +44,9 @@ function stageChips(card) {
   });
 }
 
-export default function ProgressPanel({ dirKey, rows = [], refreshLocal, model, onOpenTask, onClosePage }) {
+export default function ProgressPanel({
+  dirKey, task: focusTask, rows = [], refreshLocal, model, onOpenTask, onClosePage,
+}) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
   const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
@@ -146,6 +148,8 @@ export default function ProgressPanel({ dirKey, rows = [], refreshLocal, model, 
     if (onOpenTask) onOpenTask(id);
   };
 
+  const focusId = focusTask != null && String(focusTask) !== '' ? String(focusTask) : '';
+
   return (
     <div className="mdw-prog-host">
       {dialogNode}
@@ -159,6 +163,17 @@ export default function ProgressPanel({ dirKey, rows = [], refreshLocal, model, 
             title={allPicked ? '取消全选' : '全选任务'}
           >
             {allPicked ? '取消全选' : '全选'}
+          </button>
+        )}
+        {model && (
+          <button
+            type="button"
+            className="iconbtn"
+            title="关闭进程面板"
+            aria-label="关闭进程面板"
+            onClick={() => closeRightSidebar(model)}
+          >
+            <Icon name="x" size={14} />
           </button>
         )}
       </div>
@@ -193,6 +208,7 @@ export default function ProgressPanel({ dirKey, rows = [], refreshLocal, model, 
         )}
         {cards.map((c) => {
           const on = picked.has(c.id);
+          const isFocus = focusId !== '' && String(c.id) === focusId;
           return (
             <div className={`mdw-tcard-row${on ? ' on' : ''}`} key={c.id}>
               <input
@@ -205,7 +221,7 @@ export default function ProgressPanel({ dirKey, rows = [], refreshLocal, model, 
               />
               <button
                 type="button"
-                className={`mdw-tcard ${c.status}`}
+                className={`mdw-tcard ${c.status}${isFocus ? ' focus' : ''}`}
                 onClick={() => openTask(c.id)}
               >
                 <div className="mdw-tcard-h">

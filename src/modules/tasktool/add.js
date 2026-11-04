@@ -74,6 +74,8 @@ export async function submitTask({
   project,
   duration,
   goalPrompt,
+  blockBy,
+  blocksFollowing = false,
 } = {}) {
   let text = String(rawText ?? '');
   let cwd = rawCwd;
@@ -109,5 +111,13 @@ export async function submitTask({
     }
   }
 
-  return addTask({ text, cwd, summary, global: toGlobal, timegoal });
+  return addTask({
+    text,
+    cwd,
+    summary,
+    global: toGlobal,
+    timegoal,
+    blockBy,
+    blocksFollowing: !!blocksFollowing,
+  });
 }

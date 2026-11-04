@@ -260,17 +260,25 @@ export default function App() {
 
   // ─── 路由 → 面板：地址指向哪块，就打开/聚焦哪块 ───
   const specCtx = useMemo(() => {
-    const board = (repoData.boards || []).find((b) => b.id === route.key);
+    // group 路由的 key = 看板 id；dir 路由的 key = 主题 key——两组身份别混。
+    const boardById = (repoData.boards || []).find((b) => b.id === route.key);
     const topic = rows.find((r) => r.key === route.key);
+    // 目录页面包屑要带上所属组（[ nx/nx-kv/draft ]）：优先 topic.repo.boards，
+    // 再回落到仓库登记里的 boards[]。
+    const repo =
+      (topic && topic.repo) ||
+      (repoData.repos || []).find((r) => topic && (r.id === topic.repo?.id || r.path === topic.cwd)) ||
+      null;
+    const boardFromRepo = (repo && repo.boards && repo.boards[0]) || null;
     const taskRow = topic && route.task
       ? (topic.tasks || []).find((t) => String(t.id) === String(route.task))
       : null;
     return {
-      boardName: board ? board.name : '',
+      boardName: (boardById && boardById.name) || (boardFromRepo && boardFromRepo.name) || '',
       dirName: topic ? topic.name : '',
       pageTitle: taskRow ? `#${taskRow.id}` : '',
     };
-  }, [repoData.boards, rows, route.key, route.task]);
+  }, [repoData.boards, repoData.repos, rows, route.key, route.task]);
 
   // 路由 → 面板：地址指向哪块，就打开/聚焦哪块。
   // **只跟路由走**（模型用 ref）：模型一变就重跑，会按**旧路由**把面板抢回去

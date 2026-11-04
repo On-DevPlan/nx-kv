@@ -298,12 +298,26 @@ export default {
         },
         'goal-prompt': { type: 'string', hint: '时间目标的附加要求（随 check 指令一起固化，可省）' },
         goalPrompt: { type: 'string', hint: '同 --goal-prompt（驼峰写法）' },
+        'block-by': {
+          type: 'string',
+          hint: 'DAG 依赖：逗号分隔的任务 id（如 12,13）——这些任务全部完成后本条才可领取',
+        },
+        blockBy: { type: 'string', hint: '同 --block-by（驼峰 / HTTP body）' },
+        gate: {
+          type: 'boolean',
+          hint: '闸门任务：自身未完成（无 completedAt）时，队列里排在它后面的 pending 都不可领',
+        },
       },
       run: async (ctx) => {
         // 派任务编排已迁 tasktool/add.js（任务工具语义归 tasktool；命令名不变）。
         // 落点判定（--board/--project 严格口径 / 正文 frontmatter fail-open）只此一份实现，
         // CLI、HTTP、面板提交同走这一条链路。
         const { submitTask } = await import('../tasktool/add.js');
+        const rawBlock = ctx.blockBy ?? ctx['block-by'];
+        const blockBy = String(rawBlock || '')
+          .split(/[,，\s]+/)
+          .map((s) => Number(s))
+          .filter((n) => Number.isFinite(n) && n > 0);
         return submitTask({
           text: ctx.text,
           cwd: ctx.cwd,
@@ -313,6 +327,8 @@ export default {
           project: ctx.project,
           duration: ctx.duration,
           goalPrompt: ctx.goalPrompt ?? ctx['goal-prompt'],
+          blockBy: blockBy.length ? blockBy : undefined,
+          blocksFollowing: !!ctx.gate,
         });
       },
       render: renderAdd,
@@ -333,17 +349,34 @@ export default {
         goalPrompt: { type: 'string', hint: '同 --goal-prompt（驼峰写法，HTTP body 用）' },
         'clear-goal': { type: 'boolean', hint: '清掉时间目标声明（未领取时）' },
         clearGoal: { type: 'boolean', hint: '同 --clear-goal（驼峰写法，HTTP body 用）' },
+        'block-by': { type: 'string', hint: '改 DAG 依赖（逗号分隔 id）；空串等同 --clear-block-by' },
+        blockBy: { type: 'string', hint: '同 --block-by' },
+        'clear-block-by': { type: 'boolean', hint: '清掉 blockBy 依赖' },
+        clearBlockBy: { type: 'boolean', hint: '同 --clear-block-by' },
+        gate: { type: 'boolean', hint: '设/清闸门（true=挡住后续；false=取消闸门）' },
       },
       run: (ctx) => {
         const gp = ctx.goalPrompt ?? ctx['goal-prompt'];
         const cg = ctx.clearGoal ?? ctx['clear-goal'];
         const hasGoalInput = ctx.duration != null || gp != null || cg;
+        const rawBlock = ctx.blockBy ?? ctx['block-by'];
+        const clearBlockBy = !!(ctx.clearBlockBy ?? ctx['clear-block-by']);
+        let blockBy;
+        if (!clearBlockBy && rawBlock !== undefined) {
+          blockBy = String(rawBlock || '')
+            .split(/[,，\s]+/)
+            .map((s) => Number(s))
+            .filter((n) => Number.isFinite(n) && n > 0);
+        }
         return service.updateTask({
           id: ctx.id,
           text: ctx.text,
           cwd: ctx.cwd,
           key: ctx.key,
           goal: hasGoalInput ? { duration: ctx.duration, prompt: gp, clear: !!cg } : undefined,
+          blockBy,
+          clearBlockBy,
+          blocksFollowing: ctx.gate,
         });
       },
       render: (d) =>
@@ -352,7 +385,9 @@ export default {
           ? `（时间目标：${d.task.timegoal.duration}${d.task.timegoal.prompt ? ' · 附加要求已固化' : ''}）`
           : d.goalChanged === 'cleared'
             ? '（时间目标已清除）'
-            : ''),
+            : '') +
+        (d.task.blocksFollowing ? '（闸门）' : '') +
+        (d.task.blockBy && d.task.blockBy.length ? `（依赖 #${d.task.blockBy.join(',#')}）` : ''),
     },
     {
       // 附件追加（与云端 todo attach 同构）：--path 落**本机附件仓**（零云端）→ 嵌入正文末尾；

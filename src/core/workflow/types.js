@@ -109,6 +109,21 @@ export const BUILTIN_GOALS = Object.freeze({
 });
 
 /**
+ * 这个节点是不是「闸门」（控制屏障）——唯一的判定口径，全系统共用
+ * （曾散落 5 处且字段漂移：有的只认 blockgoal 名、有的连 scope==='control' 一起认）。
+ * 并集口径：kind=control，或绑了 blockgoal，或绑了任意 control-scope 插件。
+ * @param {WfNode} node
+ * @returns {boolean}
+ */
+export function isGateNode(node) {
+  if (!node) return false;
+  if (node.kind === 'control') return true;
+  return (node.plugins || []).some(
+    (p) => p.name === BUILTIN_GOALS.blockgoal || p.scope === 'control'
+  );
+}
+
+/**
  * 把现有 localtask 任务行投影成契约节点（只读适配，不改存盘形状）。
  * @param {object} task
  * @returns {WfNode}

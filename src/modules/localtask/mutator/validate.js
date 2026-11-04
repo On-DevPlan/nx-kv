@@ -1,4 +1,6 @@
 import { assertPluginSpec } from '../../../core/workflow/plugin-registry.js';
+import { isGateNode } from '../../../core/workflow/types.js';
+import { wouldCycleAfterLink } from '../../../shared/graph.js';
 
 /** @typedef {import('../../../core/workflow/types.js').WorkflowSnapshot} WorkflowSnapshot */
 /** @typedef {import('../../../core/workflow/types.js').WfNode} WfNode */
@@ -32,7 +34,7 @@ export function assertBind(node, spec, target) {
     return normalized;
   }
   if (!node) throw new Error('node required for node-level bind');
-  if (node.kind === 'control' && normalized.scope !== 'control') {
+  if (isGateNode(node) && normalized.scope !== 'control') {
     throw new Error('control node may only bind control-scope plugins');
   }
   // task + control 插件：允许，由 mutator 升级 kind→control（现网闸门常从普通任务打 --gate）
@@ -40,23 +42,12 @@ export function assertBind(node, spec, target) {
 }
 
 export function wouldCreateCycle(snap, from, to) {
-  // DFS：从 to 能否走到 from
+  // 加边 from→to 成环 ⟺ to ⇝ from（沿快照正向边）——实现下沉 src/shared/graph.js
   const adj = new Map();
   for (const e of snap.edges || []) {
     const a = String(e.from);
     if (!adj.has(a)) adj.set(a, []);
     adj.get(a).push(String(e.to));
   }
-  const start = String(to);
-  const target = String(from);
-  const stack = [start];
-  const seen = new Set();
-  while (stack.length) {
-    const cur = stack.pop();
-    if (cur === target) return true;
-    if (seen.has(cur)) continue;
-    seen.add(cur);
-    for (const n of adj.get(cur) || []) stack.push(n);
-  }
-  return false;
+  return wouldCycleAfterLink((n) => adj.get(n) || [], from, to);
 }

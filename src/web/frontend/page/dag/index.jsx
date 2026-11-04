@@ -14,6 +14,7 @@ import { PopMenu, useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
 import { parseFrontmatter, titleFromMd } from '../../modules/md/md-parse.js';
 import { taskLabel } from '../../components/sidebar/model.js';
+import { reaches } from '../../../../shared/graph.js';
 
 const NODE_W = 280;
 const NODE_GAP_Y = 22;
@@ -312,7 +313,8 @@ export default function DagPanel({ dirKey, groupId }) {
       toastRef.current(`已有该有向边`);
       return false;
     }
-    // 环检测：在可见节点图上沿 blockBy（含跨队列）走
+    // 环检测：在可见节点图上沿 blockBy（含跨队列）走——实现下沉 src/shared/graph.js，
+    // 与 mutator.addEdge（wouldCycleAfterLink）同一份 DFS。
     const depsOf = (nk) => {
       const n = byNodeKeyRef.current.get(nk);
       if (!n) return [];
@@ -323,19 +325,7 @@ export default function DagPanel({ dirKey, groupId }) {
       }
       return out;
     };
-    const reaches = (from, to) => {
-      const stack = [from];
-      const seen = new Set();
-      while (stack.length) {
-        const curK = stack.pop();
-        if (curK === to) return true;
-        if (seen.has(curK)) continue;
-        seen.add(curK);
-        for (const d of depsOf(curK)) stack.push(d);
-      }
-      return false;
-    };
-    if (reaches(srcKey, dstKey)) {
+    if (reaches(depsOf, srcKey, dstKey)) {
       toastRef.current('会形成环，已取消');
       return false;
     }

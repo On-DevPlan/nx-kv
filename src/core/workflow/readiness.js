@@ -8,7 +8,7 @@
 //   - 跨队列引用 `"<topicKey>:<taskId>"`——组编排跨项目边；不入引擎图
 //     （edgesFromTasks 跳过），由 resolveForeign 前置直查，fail-open
 
-import { edgesFromTasks, taskToNode } from './types.js';
+import { edgesFromTasks, taskToNode, isGateNode } from './types.js';
 
 /** topicKey:id —— key 允许字母数字与 _-（含 __GLOBAL__） */
 const FOREIGN_RE = /^([A-Za-z0-9_-]+):(\d+)$/;
@@ -198,10 +198,7 @@ export function isNodeReady(snap, node, isBarrierOpen) {
   for (const e of preds) {
     const pred = byId.get(String(e.from));
     if (!pred) continue;
-    const isControl =
-      pred.kind === 'control' ||
-      (pred.plugins || []).some((p) => p.name === 'blockgoal' || p.scope === 'control');
-    if (isControl) {
+    if (isGateNode(pred)) {
       const open = isBarrierOpen
         ? isBarrierOpen(snap, pred.id)
         : pred.state === 'success';

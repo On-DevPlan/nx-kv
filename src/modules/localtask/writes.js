@@ -3,6 +3,7 @@
 import '../tasktool/plugins/index.js';
 import { createTopicEngine } from './engine.js';
 import { normalizeBlockBy, parseDepRef } from '../../core/workflow/readiness.js';
+import { isGateNode } from '../../core/workflow/types.js';
 
 /** @param {Array<number|string>} deps */
 function localDepIds(deps) {
@@ -105,10 +106,8 @@ export async function syncTaskDagUpdate(
       const incoming = (fresh.edges || []).filter((e) => String(e.to) === String(taskId));
       for (const e of incoming) {
         const fromNode = (fresh.nodes || []).find((n) => String(n.id) === String(e.from));
-        const isGate =
-          fromNode?.kind === 'control' ||
-          (fromNode?.plugins || []).some((p) => p.name === 'blockgoal');
-        if (!isGate) await mutator.removeEdge(topicKey, e.from, taskId);
+        // 闸门的隐含边（gate→后续）由 blocksFollowing 表达——拆边时保留
+        if (!isGateNode(fromNode)) await mutator.removeEdge(topicKey, e.from, taskId);
       }
       if (!clearBlockBy && blockBy !== undefined) {
         for (const from of localDepIds(normalizeBlockBy(blockBy, taskId))) {

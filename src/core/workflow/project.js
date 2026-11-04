@@ -2,7 +2,7 @@
 // 存盘形状仍是任务行；快照是引擎视图。正文不进快照（payload.textRef）。
 // 跨队列 blockBy（"topicKey:id"）不进引擎边，投影回写时必须保留。
 
-import { BUILTIN_GOALS, edgesFromTasks, taskToNode } from './types.js';
+import { edgesFromTasks, isGateNode, taskToNode } from './types.js';
 import { normalizeBlockBy, parseDepRef } from './readiness.js';
 
 /** @typedef {import('./types.js').WorkflowSnapshot} WorkflowSnapshot */
@@ -66,13 +66,7 @@ export function applySnapshotToTopic(topic, snap) {
 
   // 边 → blockBy（显式依赖）；闸门边由 blocksFollowing 表达，不写进每条 blockBy
   const gateIds = new Set(
-    (snap.nodes || [])
-      .filter(
-        (n) =>
-          n.kind === 'control' ||
-          (n.plugins || []).some((p) => p.name === BUILTIN_GOALS.blockgoal),
-      )
-      .map((n) => String(n.id)),
+    (snap.nodes || []).filter((n) => isGateNode(n)).map((n) => String(n.id)),
   );
 
   for (const task of tasks) {
@@ -100,8 +94,7 @@ export function applySnapshotToTopic(topic, snap) {
 
 /** @param {object} task @param {WfNode} node */
 function syncTaskFromNode(task, node) {
-  const hasBlock = (node.plugins || []).some((p) => p.name === BUILTIN_GOALS.blockgoal);
-  task.blocksFollowing = node.kind === 'control' || hasBlock;
+  task.blocksFollowing = isGateNode(node);
 
   if (node.state === 'success') {
     if (!task.completedAt) {

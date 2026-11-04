@@ -11,20 +11,11 @@
 import { useState } from 'react';
 import { Modal } from '../../components/popup/index.jsx';
 import { titleFromMd } from '../../modules/md/md-parse.js';
+import { reaches as reachesVia } from '../../../../shared/graph.js';
 
-/** fromId 是否（沿 blockBy 链）传递依赖到 toId —— deps: Map<id, [依赖 id]> */
-function reaches(fromId, toId, deps) {
-  const stack = [fromId];
-  const seen = new Set();
-  while (stack.length) {
-    const cur = stack.pop();
-    if (cur === toId) return true;
-    if (seen.has(cur)) continue;
-    seen.add(cur);
-    for (const d of deps.get(cur) || []) stack.push(d);
-  }
-  return false;
-}
+// 环判定下沉 src/shared/graph.js（与 mutator.addEdge 同一份实现）；
+// deps: Map<id, [依赖 id]>，方向 = blockBy（依赖）方向，由闭包喂给共享 reaches。
+const reaches = (fromId, toId, deps) => reachesVia((id) => deps.get(id) || [], fromId, toId);
 
 /**
  * @param {object} p

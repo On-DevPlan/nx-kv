@@ -87,6 +87,32 @@ src/shared/*.js                          两端共用的纯函数（可选，零
 - 调后端：一律 `api('/api/...')`（`api/client.js`，失败抛 `Error` 带 `.code`）。
   **路径必须真实存在**——`registry.test.mjs` 会全量扫前端源码里的 `/api/` 字面量并对路由表。
 
+## assets/ —— 内置 skill 包（改命令就要同步改它）
+
+`assets/` 随包发布，是**用户侧 agent 的说明书**：`src/modules/bundled/` 通过
+`skill list / groups / install / get`（CLI + HTTP 同源）把它装进 `~/.claude/skills`，
+或用 `skill get` 直接吐全文给不读 skills 目录的外部 agent。
+
+```
+assets/
+├── groups.json            # group 名 → skill 名数组 + summary（便捷别名表）
+└── <name>/                # 一个内置 skill（nx-kv / kv-get / kv-submit / kv-repo）
+    ├── SKILL.md           # 事实源：有它才算一个 skill
+    └── references/*.md    # 按需加载的细节文档
+```
+
+同步规则：
+
+- **命令口径变了**（加 / 改 / 删 action、flag、输出口径）→ 对应 `assets/<name>/SKILL.md`
+  与 `references/*.md` 里的用法串一起改；`grep -rn "<命令名>" assets/` 找齐所有出现点。
+- **新增 / 删除内置 skill** → 建 / 删目录（必须有 `SKILL.md`）+ 同步 `assets/groups.json`
+  （group 名 kebab-case、skills 非空数组、summary 一句话）。
+- `groups.json` 只是别名表：缺失 / schema 错会**降级**为「每个目录各成一组」；
+  别往里塞 SKILL.md 没有的东西，它不是第二条事实源。
+- assets 的变化是**对外行为** → 进 CHANGELOG。
+- 相关测试 `tests/unit/bundled-multiskill.test.mjs` 用 `NX_KV_ASSETS` 指向伪资产树
+  验降级 / schema 错——测试**绝不真改**仓库里的 `assets/`。
+
 ## 常见坑（都是踩过的）
 
 | 症状 | 原因 | 修法 |
@@ -98,6 +124,7 @@ src/shared/*.js                          两端共用的纯函数（可选，零
 | 面板调了接口却 404 | `/api/...` 路径与路由表不一致 | 测试会扫出来；对照 `nx-kv routes` |
 | 「缺改/缺删」没人发现 | 声明了 `resource` 却不齐五个动词 | 见 [[action-contract]] 的 CRUD 契约 |
 | eslint 报「别用任务 id 拼定位路径」 | 清单任务 id 会重复，定位必须用**内容** | `/api/todo/item` + body 里带内容；这条是 lint 硬规则 |
+| 用户装的 skill 说明书还是旧口径 / `skill get` 吐旧用法 | 改了命令没同步 `assets/` 里的文档 | 按「assets/」一节同步；`grep -rn "<命令>" assets/` 找齐 |
 
 ## 验收
 
@@ -116,7 +143,7 @@ pnpm test            # 以上四步全跑
 - Conventional Commits，中文正文，本地 commit 不 push。
 - 同工作树可能有并行会话：**只 `git add` 自己改过的文件**，绝不 `git add -A`。
 - 同步：`plan/todo.md`（进度）、`CHANGELOG.md`（对外变化）、`docs/project&projectsCli.md`（命令口径）。
-- 行为变了但命令没变 → 只改文档；命令变了 → 文档与 `assets/*/SKILL.md` 里的用法串一起改。
+- 行为变了但命令没变 → 只改文档；命令变了 → 文档与 `assets/` 里的用法串一起改（见「assets/」一节）。
 
 ## 参考
 

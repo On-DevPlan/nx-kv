@@ -96,4 +96,4 @@ nx-kv help --json                 # 与 routes 同源同长（测试断言两者
 2. `index.js` 里加 action：`id` / `cli` / `http` / `summary` / `flags` / `run` / `render`
 3. 需要面板入口 → 前端 `registry.js` 登记 `VIEWS`；已有面板里加按钮即可
 4. `pnpm run lint && pnpm run build && pnpm test`
-5. 文档同步：`docs/project&projectsCli.md`、`CHANGELOG.md`；命令变了还要改 `assets/*/SKILL.md` 里的用法串
+5. 文档同步：`docs/project&projectsCli.md`、`CHANGELOG.md`；命令变了还要改 `assets/` 里的用法串——对应 skill 的 `SKILL.md` 与 `references/*.md`（新增 / 删除内置 skill 还要同步 `assets/groups.json`，见主文档「assets/」一节）

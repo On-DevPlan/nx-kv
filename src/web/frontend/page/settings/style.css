@@ -85,14 +85,30 @@
 
 /* 项目级设置：头行 = icon 入口 + 名称/路径；动作行；持续 get 区 */
 .setp-projs { display: flex; flex-direction: column; gap: 8px; }
+/* 项目条目：紧凑**行**而不是大卡片（#41 反馈「ui 太丑」——
+   27 个项目一屏只看得到 2 个，密度太低）。行间一条细线分隔。 */
 .setp-proj {
-  border: 1px solid var(--line); border-radius: 8px;
-  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
-  background: var(--paper);
+  border: 0; border-bottom: 1px solid var(--line);
+  padding: 8px 2px; background: var(--paper);
+  display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 6px; align-items: center;
 }
+.setp-proj-head { grid-column: 1; }
+.setp-proj > .setp-gl-off { grid-column: 2; justify-self: end; }
+.setp-proj > .setp-loop { grid-column: 1 / -1; }
+.setp-gl-off {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  border: 1px solid var(--line); border-radius: 999px; background: transparent;
+  padding: 2px 9px; font: inherit; font-size: 10.5px; color: var(--mid); cursor: pointer;
+}
+.setp-gl-off:hover { background: var(--soft); color: var(--ink); }
+.setp-gl-off .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--soft-2); }
+.setp-proj:last-child { border-bottom: 0; }
 .setp-proj-head {
-  display: flex; align-items: flex-start; gap: 10px; min-width: 0;
+  display: flex; align-items: center; gap: 10px; min-width: 0;
 }
+.setp-proj-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.setp-proj-actions .btn { background: transparent; border-color: transparent; color: var(--mid); }
+.setp-proj-actions .btn:hover { background: var(--soft); color: var(--ink); }
 .setp-proj-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .setp-proj-t { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .setp-proj-t b { font-weight: 650; }
@@ -107,7 +123,15 @@
   font-size: 10.5px; color: var(--faint);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.setp-proj-a { display: flex; gap: 6px; flex-wrap: wrap; }
+.setp-proj-meta { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; overflow: hidden; }
+.setp-proj-meta .setp-proj-t { flex: none; }
+.setp-proj-meta .setp-proj-p { flex: 1 1 auto; min-width: 0; }
+/* 操作条：左侧主增，右侧存/关/撤——一条线分开，别挤成一排同权重按钮 */
+.setp-proj-a {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line,#E4E2DC);
+}
+.setp-proj-a .spacer { flex: 1 1 auto; }
 
 /* 项目图标：标题旁圆形入口；展开后编辑条走文档流（避免被 .setp-body overflow 裁切） */
 .setp-icon { flex: none; }
@@ -164,7 +188,7 @@
 }
 
 /* 项目级「持续 get」（waitgoal）编辑器 */
-.setp-loop {
+.setp-loop { 
   border-top: 1px dashed var(--line);
   padding-top: 8px;
   margin-top: 2px;
@@ -181,23 +205,27 @@
 }
 .setp-min:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }
 
-/* 「提示词 / 模板」一栏：左 tab + 右编辑（验收：别纵向堆散） */
+/* 「提示词 / 模板」一栏：顶部一排分类 + 下方内容（#41 反馈「ui 太丑」：
+   原来左侧一条 112px 的竖排 tab 侧栏，只放三个短标签，右边留下大片空白——
+   改成横向药丸带，内容限宽，不再通栏。） */
 .setp-prompts{
-  display:flex;gap:0;min-height:280px;margin-top:4px;
+  display:flex;flex-direction:column;gap:0;min-height:0;margin-top:4px;
   border:1px solid var(--line,#E4E2DC);border-radius:10px;overflow:hidden;
   background:var(--paper,#fff);
 }
 .setp-prompts-nav{
-  flex:none;width:112px;display:flex;flex-direction:column;gap:2px;
-  padding:8px 6px;border-right:1px solid var(--line,#E4E2DC);background:var(--soft,#F1F0EC);
+  flex:none;display:flex;gap:4px;align-items:center;
+  padding:8px 10px;border-bottom:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
 }
 .setp-prompts-tab{
-  border:0;border-radius:7px;padding:8px 10px;text-align:left;cursor:pointer;
-  background:transparent;color:var(--ink-2,#4B515A);font:650 12px inherit;
+  border:0;border-radius:999px;padding:4px 12px;cursor:pointer;
+  background:transparent;color:var(--ink-2,#4B515A);font:600 12px inherit;
 }
-.setp-prompts-tab:hover{background:var(--soft-2,#E8E4DC);color:var(--ink,#16181C)}
-.setp-prompts-tab.is-on{background:var(--paper,#fff);color:var(--ink,#16181C);box-shadow:0 0 0 1px var(--line,#E4E2DC)}
-.setp-prompts-pane{flex:1;min-width:0;padding:12px 14px;overflow:auto}
+.setp-prompts-tab:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+.setp-prompts-tab.is-on{background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E)}
+.setp-prompts-pane{flex:1;min-width:0;padding:12px 14px 14px;overflow:auto}
+/* 内容限宽：不再横跨整个浮窗 */
+.setp-prompts-pane > *{max-width:720px}
 
 /* 任务模板：左选模板、右填槽位 */
 .setp-tpl-split{display:flex;gap:12px;align-items:stretch;min-height:200px}

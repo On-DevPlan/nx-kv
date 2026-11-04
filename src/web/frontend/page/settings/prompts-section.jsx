@@ -57,10 +57,7 @@ function GlobalPrompts({ listFlag, listKey, placeholder, offText }) {
 
   return (
     <div className="setp-suffix">
-      <div className="setp-row">
-        <span>{offText === '已关闭回调提示词' ? '回调提示词' : 'ack 完成总结提示词'}</span>
-        {items !== null && !items.length && <span className="setp-badge">已关闭</span>}
-      </div>
+      {items !== null && !items.length && <span className="setp-badge">已关闭</span>}
       {items !== null && (
         <PromptItemsEditor
           items={items}
@@ -85,6 +82,7 @@ function GlobalPrompts({ listFlag, listKey, placeholder, offText }) {
         >
           添加一条…
         </button>
+        <span className="spacer" />
         <button className="btn sm" disabled={busy || items === null} onClick={() => save(items)}>
           保存
         </button>

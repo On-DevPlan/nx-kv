@@ -107,6 +107,11 @@ function ProjectCard({ repo, docStateOf, openDoc, bindExternal, unbind }) {
           </div>
           <div className="setp-proj-p mono" title={st.label}>{st.label}</div>
         </div>
+        <div className="setp-proj-actions">
+          <button className="btn ghost sm" onClick={() => openDoc(repo)}>介绍</button>
+          <button className="btn ghost sm" onClick={() => bindExternal(repo)}>绑定…</button>
+          {repo.doc ? <button className="btn ghost sm" onClick={() => unbind(repo)}>解绑</button> : null}
+        </div>
       </div>
       {iconOpen && (
         <div className="setp-icon-edit" role="group" aria-label="编辑项目图标">
@@ -146,11 +151,6 @@ function ProjectCard({ repo, docStateOf, openDoc, bindExternal, unbind }) {
           </button>
         </div>
       )}
-      <div className="setp-proj-a">
-        <button className="btn ghost sm" onClick={() => openDoc(repo)}>打开介绍</button>
-        <button className="btn ghost sm" onClick={() => bindExternal(repo)}>绑定外部…</button>
-        {repo.doc ? <button className="btn ghost sm" onClick={() => unbind(repo)}>解除绑定</button> : null}
-      </div>
       <GetLoopEditor repo={repo} />
     </div>
   );
@@ -235,11 +235,22 @@ function GetLoopEditor({ repo }) {
 
   const fillFromPreset = (text) => setLine(text);
 
+  // 关着时只给一枚行内小开关（#41 密度）：大多数项目没开持续 get，
+  // 不该每个都占一整行。开着才展开整块配置。
+  if (!on) {
+    return (
+      <button className="setp-gl-off" title="开启持续 get（waitgoal）" onClick={() => setOn(true)}>
+        <span className="dot" />
+        持续 get
+      </button>
+    );
+  }
+
   return (
     <div className="setp-loop">
       <label className="setp-row">
         <span>持续 get（waitgoal）</span>
-        <button className={'toggle' + (on ? ' on' : '')} onClick={() => setOn(!on)}>
+        <button className={'toggle' + (on ? ' on' : '')} onClick={() => setOn(false)}>
           <span className="dot" />
           {on ? '开' : '关'}
         </button>

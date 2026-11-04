@@ -718,12 +718,13 @@ export default function ReposView() {
           ))}
         </div>
         <div className="rp-filters-side">
-          <button className={'rp-chip' + (refOpen ? ' on' : '')} onClick={() => setRefOpen(!refOpen)}
-            title="参考仓库大面板：克隆 / 绑定 / 同步 / 检查 / 布局导入导出">
-            参考仓库 <b>{refRepos.length}</b>{refOpen ? ' ▾' : ' ▸'}
+          <button className="rp-chip" onClick={() => setRefOpen(true)}
+            title="弹窗管理参考仓库：克隆 / 绑定 / 同步 / 检查 / 布局导入导出">
+            参考仓库 <b>{refRepos.length}</b><span className="rp-chip-go">↗</span>
           </button>
-          <button className={'rp-chip' + (boardsOpen ? ' on' : '')} onClick={() => setBoardsOpen(!boardsOpen)}>
-            看板管理{boardsOpen ? ' ▾' : ' ▸'}
+          <button className="rp-chip" onClick={() => setBoardsOpen(true)}
+            title="弹窗管理看板：新建 / 编辑 / 删除 / 导入 / 导出 / 成员管理">
+            看板 <b>{boardList.length}</b><span className="rp-chip-go">↗</span>
           </button>
         </div>
       </div>
@@ -846,19 +847,18 @@ export default function ReposView() {
         </div>
       ) : null}
 
-      {/* 参考仓库大面板：自己的表格（不与开发仓库混排）。
-          每行：状态徽标 / 名称+描述 / 远程地址 / 绑定 chips（组级 + 仓库级，可点改描述、× 摘除）/ 操作。
-          绑定一律选项式（「绑定」弹窗里勾选），不手填字符串。 */}
+      {/* 参考仓库：独立弹窗（宽表）。与开发仓库分表——主表只放 dev，行内「参考」列
+          显示绑到它的 ref。每行：状态徽标 / 名称+描述 / 远程地址 / 绑定 chips / 操作。
+          绑定一律选项式（「绑定」弹窗里勾选），不手填字符串。
+          做成弹窗：它是「隔一阵来维护一次」的东西，平铺会把开发仓库主表顶到两屏之外。 */}
       {refOpen ? (
-        <div className="card rp-ref-panel">
-          <div className="colhead">
-            <h3>参考仓库</h3>
+        <Modal size="wide" title={`参考仓库 · ${refRepos.length}`} onClose={() => setRefOpen(false)}>
+          <div className="rp-modal-bar">
             <span className="muted">
-              远程 clone 下来学习/参考的仓库（type=ref），统一存放在 gitRepoRoot。
-              与开发仓库<strong>多对多绑定</strong>：一个参考服务多个仓库/组，一个仓库/组挂多个参考；
-              绑定描述写在关系上（同一条绑定在不同组里意义不同）。
+              远程 clone 下来读的仓库，统一存放在 gitRepoRoot；与开发仓库 / 看板<strong>多对多绑定</strong>，
+              绑定描述写在关系上（同一条参考在不同组里意义可以不同）。
             </span>
-            <span className="acts" style={{ marginLeft: 'auto' }}>
+            <span className="acts">
               <button className="btn small" onClick={() => { setCloneTargets({}); setCloneOpen(true); }}>克隆参考仓库</button>
               <button className="btn small ghost" onClick={syncAll}>同步全部</button>
               <button className="btn small ghost" onClick={loadRefCheck}>检查</button>
@@ -879,10 +879,10 @@ export default function ReposView() {
               <thead>
                 <tr>
                   <th scope="col" style={{ width: '30px' }}></th>
-                  <th scope="col" style={{ width: '18%' }}>参考仓库</th>
-                  <th scope="col" style={{ width: '26%' }}>远程地址</th>
+                  <th scope="col" style={{ width: '17%' }}>参考仓库</th>
+                  <th scope="col" style={{ width: '22%' }}>远程地址</th>
                   <th scope="col">绑定（组 / 仓库 · 点击写描述 · × 摘除）</th>
-                  <th scope="col" style={{ width: '15%' }}>操作</th>
+                  <th scope="col" style={{ width: '220px' }}>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -937,16 +937,19 @@ export default function ReposView() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Modal>
       ) : null}
 
-      {/* 看板管理（次要）：建 / 改 / 删 / 导入 / 导出 */}
+      {/* 看板管理：独立弹窗（建 / 改 / 删 / 导入 / 导出）。
+          看板和参考仓库同属「偶尔维护一次」的元信息，不该和主表抢纵向空间。 */}
       {boardsOpen ? (
-        <div className="card rp-boards-manage">
-          <div className="colhead">
-            <h3>看板</h3>
-            <span className="muted">看板 = 领域分组，描述写给人和 agent 读：侧重、配合关系、关键路径与关键词。删一个看板，仓库全都在清单里，只是少了一份归属。</span>
-            <span className="acts" style={{ marginLeft: 'auto' }}>
+        <Modal title={`看板 · ${boardList.length}`} onClose={() => setBoardsOpen(false)}>
+          <div className="rp-modal-bar">
+            <span className="muted">
+              看板 = 领域分组，描述写给人和 agent 读：侧重、配合关系、关键路径与关键词。
+              删一个看板，仓库全都在清单里，只是少了一份归属。
+            </span>
+            <span className="acts">
               <button className="btn small ghost" onClick={() => setBoardForm({ id: null, name: '', desc: '' })}>新建看板</button>
               <button className="btn small ghost" title="粘贴/选择看板 JSON，一个看板 = 一个主题" onClick={() => setImpOpen(true)}>导入看板</button>
               <button className="btn small ghost" onClick={doExport}>导出</button>
@@ -972,7 +975,7 @@ export default function ReposView() {
               </div>
             ) : null}
           </div>
-        </div>
+        </Modal>
       ) : null}
 
       {/* 开发仓库主表：一行一个开发仓库；「参考」列 = 绑到它身上的参考仓库（多对多） */}

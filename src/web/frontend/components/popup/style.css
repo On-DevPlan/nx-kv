@@ -18,6 +18,8 @@
 }
 .pp-card.pp-sm { width: min(460px, 94vw); }
 .pp-card.pp-lg { width: min(880px, 96vw); }
+/* 宽表弹窗（参考仓库这类多列表格）：880px 会把「绑定」列挤成一团 */
+.pp-card.pp-wide { width: min(1180px, 96vw); max-height: calc(100vh - 40px); }
 
 .pp-head {
   padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px;

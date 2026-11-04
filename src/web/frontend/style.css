@@ -537,6 +537,11 @@ select {
   color: #2F6F5E;
 }
 .rp-chip.on b { color: #2F6F5E; }
+/* 右侧那两个不是筛选器，是「打开管理弹窗」的入口：虚线框 + 右上箭头，
+ * 免得和左边一排筛选 chip 长得一样（点下去却弹出窗口）。 */
+.rp-filters-side .rp-chip { border-style: dashed; }
+.rp-chip-go { font-size: 11px; color: var(--mid); margin-left: 1px; }
+.rp-chip:hover .rp-chip-go { color: #2F6F5E; }
 
 .rp-table-wrap {
   flex: none;
@@ -754,15 +759,14 @@ select {
 }
 .rp-imp-item .btn { flex: 0 0 auto; }
 
-.rp-boards-manage { margin-bottom: 10px; }
-/* 每行一条发丝线（旧画法 4px 间隙裸排，行与行之间的关系靠猜） */
+/* 看板列表（看板管理弹窗内）：每行一条发丝线（旧画法 4px 间隙裸排，行与行之间的关系靠猜） */
 .rp-board-list { display: flex; flex-direction: column; }
 .rp-board-item {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  font-size: 12.5px;
-  padding: 7px 2px;
+  font-size: 13.5px;
+  padding: 9px 2px;
   border-bottom: 1px solid var(--line);
 }
 .rp-board-item:last-child { border-bottom: 0; }
@@ -770,38 +774,42 @@ select {
 .rp-board-desc {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 11.5px;
+  font-size: 12.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .rp-board-count {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--mid);
   white-space: nowrap;
 }
 .rp-boards-unassigned {
-  padding: 7px 2px;
-  font-size: 11.5px;
+  padding: 9px 2px;
+  font-size: 12.5px;
   color: var(--mid);
 }
 .rp-boards-unassigned b { font-family: var(--mono); color: var(--ink-2); font-weight: 650; }
 .rp-board-item .acts { margin-left: auto; white-space: nowrap; }
 
-/* ---- 参考仓库（type=ref）大面板与绑定 chips ----
+/* ---- 参考仓库（type=ref）弹窗与绑定 chips ----
  * 参考仓库与开发仓库分表：主表只放 dev（行内「参考」列显示绑到它的 ref）；
- * 参考面板有自己的表格（状态徽标 / 名称 / 远程 / 绑定 chips / 操作）。
+ * 参考仓库在自己的弹窗里（状态徽标 / 名称 / 远程 / 绑定 chips / 操作）。
  * 绑定一律选项式勾选（rp-pick-*），不手填 id 字符串。
  * 状态徽标 8px 圆点：灰=未检查，绿=通过，红=有问题（title 带明细）。 */
-.rp-ref-panel { margin-bottom: 10px; }
+/* 弹窗里的工具条：一句说明 + 右侧动作。以前挂在 colhead 里，标题和五个按钮
+ * 抢同一行，窄屏时说明被挤成竖条。 */
+.rp-modal-bar { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.rp-modal-bar .muted { font-size: 12.5px; line-height: 1.7; flex: 1 1 320px; min-width: 0; }
+.rp-modal-bar .acts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
 .rp-ref-warn {
-  padding: 7px 12px;
-  margin-bottom: 6px;
+  padding: 9px 12px;
+  margin-bottom: 10px;
   border: 1px solid rgba(179, 38, 30, 0.25);
   border-radius: var(--radius);
   background: rgba(179, 38, 30, 0.05);
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--danger, #b3261e);
 }
 .rp-ref-dot {
@@ -821,12 +829,19 @@ select {
   border-radius: var(--radius);
   overflow-x: auto;
 }
+/* 弹窗里的参考表：几十个仓库时表头要跟着滚（否则滚到第 20 行就不知道哪列是哪列）。
+ * 表自己当滚动容器——sticky 只认最近的滚动容器，让 .modal-body 滚会失效。 */
+.modal-body .rp-ref-table-wrap {
+  max-height: calc(90vh - 210px);
+  overflow: auto;
+}
+.modal-body .rp-ref-table thead th { position: sticky; top: 0; z-index: 1; }
 .rp-ref-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 860px; }
 .rp-ref-table th {
   text-align: left;
-  padding: 7px 10px;
+  padding: 9px 12px;
   font-family: var(--label);
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -836,15 +851,18 @@ select {
   white-space: nowrap;
 }
 .rp-ref-table td {
-  padding: 7px 10px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
-  font-size: 12px;
+  font-size: 13px;
 }
 .rp-ref-table tbody tr:last-child td { border-bottom: 0; }
 .rp-ref-table tbody tr:hover td { background: #faf9f6; }
-.rp-ref-cell-name strong { font-size: 12.5px; font-weight: 650; color: var(--ink); }
-.rp-ref-cell-remote { font-size: 11px; color: var(--ink-2); word-break: break-all; }
+/* 名字里常是带点的长标识（chrisacroz.wpf.windows.snappingwindow），默认只在空格处断行，
+ * 于是整串冲出单元格、盖住右边的远程地址 —— 允许任意位置折断。 */
+.rp-ref-cell-name { overflow-wrap: anywhere; }
+.rp-ref-cell-name strong { font-size: 13.5px; font-weight: 650; color: var(--ink); }
+.rp-ref-cell-remote { font-size: 12px; color: var(--ink-2); word-break: break-all; }
 .rp-ref-cell-links { line-height: 1.9; }
 .rp-refs-none { font-size: 11px; }
 

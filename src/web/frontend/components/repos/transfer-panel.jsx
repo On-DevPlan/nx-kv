@@ -42,12 +42,6 @@ export default function TransferPanel({ onClose, onChanged, repos, boards }) {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   const devOrRef = useMemo(() => repos || [], [repos]);
 
   // ---------- 导出 ----------
@@ -192,6 +186,19 @@ export default function TransferPanel({ onClose, onChanged, repos, boards }) {
     for (const r of visibleRepos) next[r.key] = on;
     setSel(next);
   };
+
+  // Esc 关面板。走**捕获阶段 + 阻断**：这一层（z-30）盖在仓库页的弹窗之上，
+  // 若让按键继续冒泡，下面那层弹窗（参考仓库 / 看板）的 Esc 监听也会同时收到，
+  // 用户只是退出导入导出，回来发现参考面板也一起没了。
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      onClose();
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
 
   const counts = useMemo(() => {
     if (!diff) return null;

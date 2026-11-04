@@ -11,18 +11,36 @@ import './style.css';
 
 // ---- 模态卡：全站唯一模态外壳（迁移确认 / 成员选择 / 快捷键 / diff 查看……） ----
 
+// 当前在场的模态栈（模块级）：只有栈顶那张响应 Esc。
+const modalStack = [];
+
 /**
  * @param {object} p
  * @param {React.ReactNode} p.title       标题（字符串或节点）
  * @param {Function} [p.onClose]          关闭回调；不给则不渲染 × 且 Esc/点外不关（配合 busy）
  * @param {boolean} [p.busy]              true 时禁关（异步提交中）
- * @param {'sm'|'md'|'lg'} [p.size]       卡宽：460 / 540 / 760
+ * @param {'sm'|'md'|'lg'|'wide'} [p.size]  卡宽：460 / 540 / 880 / 1180（宽表用 wide）
  * @param {React.ReactNode} [p.footer]    底部按钮区；不给则不渲染脚条
  * @param {string} [p.className]          追加到卡片（如 rp-mp-box 的宽覆盖）
  */
 export function Modal({ title, onClose, busy = false, size = 'md', footer = null, className = '', children }) {
   const closable = !!onClose && !busy;
-  useDismiss({ onDismiss: onClose, enabled: closable });
+  // 弹窗栈：弹窗里再开弹窗是常态（参考仓库里点「绑定…」「克隆…」），
+  // Esc 只该关**最上面那层**——否则一次 Esc 把下面整层一起关掉，
+  // 用户以为只是退出了绑定框，回来发现整个参考面板也没了。
+  const idRef = useRef(null);
+  if (!idRef.current) idRef.current = Symbol('modal');
+  const isTop = useCallback(() => modalStack[modalStack.length - 1] === idRef.current, []);
+  useEffect(() => {
+    const id = idRef.current;
+    modalStack.push(id);   // 挂载即入栈；父子同时在场时后挂载的在栈顶
+    return () => {
+      const at = modalStack.indexOf(id);
+      if (at >= 0) modalStack.splice(at, 1);
+    };
+  }, []);
+  const dismiss = useCallback(() => { if (isTop()) onClose?.(); }, [onClose, isTop]);
+  useDismiss({ onDismiss: dismiss, enabled: closable });
   return (
     <div
       className="pp-back"

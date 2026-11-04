@@ -737,7 +737,6 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
 
   return (
     <div className={`mdw${beside ? ' is-beside' : ''}`} data-mode={doc.mode || 'split'} onMouseUp={onPreviewMouseUp}>
-      <RouteBreadcrumb />
       {dialogNode}
       {beside && (
         <div className="mdw-beside-h">
@@ -756,6 +755,8 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
       )}
       <div className="mdw-main">
         <div className="mdw-top">
+          {/* 路径条放进这条工具栏里（#44 反馈「mdw-top 在这个区域里面」） */}
+          <RouteBreadcrumb />
           <div className="mdw-head">
             <div className="mdw-title">{isDraft ? (doc.title || '新 MD 任务') : (doc.title || '任务')}</div>
             <div className="mdw-path">

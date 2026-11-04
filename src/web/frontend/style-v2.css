@@ -1125,3 +1125,6 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   border-radius: 8px; background: var(--soft, #F1F0EC);
 }
 .nx-crumb-inline .nx-crumb-t { font-size: 12px; }
+
+/* 路径条在 MD 工具栏里时不留外边距（它是工具栏的一个元素，不是一条独立条） */
+.mdw-top .nx-crumb-inline { margin-bottom: 0; }

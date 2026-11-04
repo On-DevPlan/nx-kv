@@ -39,8 +39,13 @@
   /* 列布局：顶部面包屑 + 下面面板区（#33 起页签条不再占一行） */
   display:flex;flex-direction:column;
 }
+/* FlexLayout 的根是**绝对定位**（inset:0），不吃 flex 流——直接放 flex 列里
+   它会盖住面包屑条（侧栏面板与顶部路径条重叠，面包屑点不到也看不见）。
+   所以：面包屑条用 padding-top 占位，布局整体下移一条。 */
 .nx-workarea > .flexlayout__layout, .nx-workarea > .nx-shell-layout { flex:1; min-height:0; }
 .nx-workarea .flexlayout__layout { height: 100%; }
+.nx-workarea.has-crumb > .flexlayout__layout,
+.nx-workarea.has-crumb > .nx-shell-layout { top: 26px; }
 
 /* ---- 侧栏作为工作区面板 ---- */
 /* 侧栏是 FlexLayout 里的块，宽度 = tabset weight（百分比）→ 用容器查询按**实际像素宽**降级；
@@ -974,7 +979,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
    形态：[ nx/nx-kv/draft ] —— 方括号包住整条路径 */
 .nx-crumb{
   flex:none;display:flex;align-items:center;gap:2px;flex-wrap:wrap;
-  height:26px;padding:0 12px;background:var(--paper,#fff);
+  height:26px;box-sizing:border-box;padding:0 12px;background:var(--paper,#fff);
   border-bottom:1px solid var(--line,#E4E2DC);
   font-size:11.5px;color:var(--ink-2,#4B515A);
 }
@@ -1107,3 +1112,11 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 }
 .dagp-queue:hover { background: var(--soft, #F1F0EC); }
 .dagp-queue.on { background: var(--mdw-accent-soft, #E8F2EE); border-color: var(--mdw-accent, #2F6F5E); color: var(--mdw-accent, #2F6F5E); }
+
+/* 面包屑条上的返回键（#42：页面缺返回键） */
+.nx-crumb-back {
+  flex: none; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 13px; line-height: 1; color: var(--mid, #838A93);
+  padding: 2px 6px; border-radius: 5px; margin-right: 2px;
+}
+.nx-crumb-back:hover { background: var(--soft, #F1F0EC); color: var(--ink, #16181C); }

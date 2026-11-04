@@ -61,6 +61,9 @@ export function initialLayoutJson() {
           type: 'tabset',
           id: 'ts_sidebar',
           weight: 16,
+          // 不出页签条（#33 无页签化）：侧栏自己的品牌行就是标题；
+          // 页签条会压在工作区顶部的面包屑上，把路径挡住。
+          enableTabStrip: false,
           // 目录页签不可关——关掉后 SidebarPanel 卸载，关闭态把手一起消失，界面卡死。
           children: [{ type: 'tab', id: 't_sidebar', name: '目录', component: 'sidebar', enableClose: false }],
         },
@@ -191,7 +194,7 @@ export function healSidebarLayout(json) {
         type: 'tabset',
         id: 'ts_sidebar',
         weight: sideStateAttrs('expanded').weight,
-        enableTabStrip: true,
+        enableTabStrip: false,
         children: [{ type: 'tab', id: 't_sidebar', name: '目录', component: 'sidebar', enableClose: false }],
       });
       changed = true;

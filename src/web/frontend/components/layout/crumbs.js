@@ -32,3 +32,25 @@ export function crumbsOf(route, ctx = {}) {
       return [];
   }
 }
+
+/**
+ * 上一级路由（面包屑条上的「← 返回」用）。
+ *   任务页 → 该目录的任务表；目录页 → 所属项目组（无组则总览）；组页 → 总览。
+ * 没有上一级时返回 ''（不画返回键）。
+ * @param {object} route {view, key, task}
+ * @param {object} ctx   {boardId}
+ */
+export function parentRouteOf(route, ctx = {}) {
+  if (!route || !route.view) return '';
+  switch (route.view) {
+    case 'dir':
+      if (route.task) return `#/dir/${encodeURIComponent(route.key || '')}`;
+      return ctx.boardId ? `#/group/${encodeURIComponent(ctx.boardId)}` : '#/overview';
+    case 'group':
+      return '#/overview';
+    case 'overview':
+      return '';
+    default:
+      return '#/overview';
+  }
+}

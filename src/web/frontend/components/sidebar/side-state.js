@@ -40,9 +40,10 @@ export function normalizeSidebarWeight(weight) {
 
 /** 状态 → 落模型的 tabset 属性（weight + 是否显示页签条）；未知状态按展开兜底 */
 export function sideStateAttrs(state) {
-  const expanded = state === 'expanded' || (state !== 'collapsed' && state !== 'closed');
+  // enableTabStrip 恒 false：#33「面板无页签化」之后侧栏不该再有页签条——
+  // 它还会**盖住工作区顶部��包屑**（侧栏面板从 y=0 起，页签条压在面包屑条上）。
   return {
     weight: state === 'closed' ? W_CLOSED : state === 'collapsed' ? W_COLLAPSED : W_EXPANDED,
-    enableTabStrip: expanded,
+    enableTabStrip: false,
   };
 }

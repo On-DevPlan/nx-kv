@@ -3,9 +3,13 @@
 //
 // 任务表：显示序**未完成优先**、长度**分页**（队列长了翻页，不一次渲染全部）。
 // 分页与计数由容器（page/dir/index.jsx）算好传进来——本页只负责画。
+// 编排（#40）：待领取行可**拖动排序**（落点前/后，走 localtask reorder）、
+// 行尾「⋮」菜单开**编排编辑器**（闸门 / 上下游依赖）；已领取行是固定历史，不可拖。
+import { useRef, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import Pager from '../../components/pager.jsx';
+import { RowMenu } from '../../components/popup/index.jsx';
 import { titleFromMd } from '../../modules/md/md-parse.js';
 
 function shortTime(v) {
@@ -33,10 +37,58 @@ export default function Landing({
   onTplMenu,
   onImport,
   onProg,
+  onMoveTask,      // (t, targetId, 'before'|'after') 拖动排序落盘
+  onOpenDag,       // (t) 打开编排编辑器
+  onToggleGate,    // (t) 闸门快捷开关
+  downstreamOf,    // { [gateTaskId]: number[] } 闸门挡住的后续任务 id
 }) {
   const name = isGlobal ? '全局池' : (topic?.name || '目录');
   const path = isGlobal ? '共享池（无固定目录）' : (topic?.cwd || '—');
   const status = String(topic?.summary || '').trim();
+
+  // 拖动排序（HTML5 DnD）：只在待领取行之间换位，落点 = 上半行之前 / 下半行之后。
+  // 拖拽态走 **ref**（同步可读）——dragstart/dragover 在真实拖拽里也只隔几毫秒，
+  // state 那一拍渲染延迟会让 onDragOver 读到旧值直接 return（与侧栏 drag.js 同一教训）。
+  const dragRef = useRef(null);               // { id }
+  const [dragId, setDragId] = useState(null); // 仅视觉：正在拖的行
+  const [dropAt, setDropAt] = useState(null); // 仅视觉：{ id, zone }
+  const movable = (t) => t.status !== 'consumed' && !t.migratedTo && !t.deletedAt;
+  const zoneOf = (e, tr) => {
+    const r = tr.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2 ? 'before' : 'after';
+  };
+  const onDragStart = (e, t) => {
+    dragRef.current = { id: Number(t.id) };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', 'task:' + t.id);
+    setDragId(Number(t.id));
+  };
+  const onDragOver = (e, t) => {
+    if (!dragRef.current || !movable(t) || Number(t.id) === dragRef.current.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDropAt({ id: Number(t.id), zone: zoneOf(e, e.currentTarget) });
+  };
+  const onDragLeave = (e) => {
+    // 行内 td 之间移动也会触发 dragleave：只有真正离开整行才清指示
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setDropAt(null);
+  };
+  const onDrop = (e, t) => {
+    e.preventDefault();
+    const zone = zoneOf(e, e.currentTarget);
+    const drag = dragRef.current;
+    dragRef.current = null;
+    setDragId(null);
+    setDropAt(null);
+    if (!drag || !movable(t) || Number(t.id) === drag.id) return;
+    onMoveTask && onMoveTask({ id: drag.id }, t.id, zone);
+  };
+  const onDragEnd = () => {
+    dragRef.current = null;
+    setDragId(null);
+    setDropAt(null);
+  };
 
   return (
     <div className="mdw-land">
@@ -99,72 +151,112 @@ export default function Landing({
             </tr>
           </thead>
           <tbody>
-            {tasks.map((t) => (
-              <tr key={t.id} className="mdw-land-tr" onClick={() => onOpenTask(t.id)}>
-                <td className="mono faint">#{t.id}</td>
-                <td className="tx">
-                  <div className="mdw-tg-row">
-                    <span className="mdw-tg-title">{titleFromMd(t.text)}</span>
-                    {t.timegoal?.duration ? (
-                      <span
-                        className="mdw-tg"
-                        title={`时间目标 ${t.timegoal.duration}（领取即计时，未到点不许标完成）${t.timegoal.prompt ? `\n附加要求：${t.timegoal.prompt}` : ''}`}
-                      >
-                        ⏱ {t.timegoal.duration}
-                      </span>
-                    ) : null}
-                    {t.blocksFollowing ? (
-                      <span className="mdw-tg" title="闸门：未完成前挡住队列里排在后面的待领取任务">闸门</span>
-                    ) : null}
-                    {t.status !== 'consumed' && t.ready === false ? (
-                      <span
-                        className="mdw-tg"
-                        title={t.blockBy?.length ? `等待依赖完成：#${t.blockBy.join(', #')}` : '被前方闸门挡住'}
-                      >
-                        锁定
-                      </span>
-                    ) : null}
-                  </div>
-                </td>
-                <td>
-                  <span className={'st' + (t.status === 'consumed' ? ' done' : t.from ? ' run' : '')}>
-                    {t.status === 'consumed' ? '完' : (t.from ? '跑' : '等')}
-                  </span>
-                </td>
-                <td className="mono faint">{shortTime(t.createdAt)}</td>
-                <td className="mono faint">{t.consumedAt ? shortTime(t.consumedAt) : '—'}</td>
-                <td className="act">
-                  <span className="act-ops">
-                    {onReopenTask && (t.status === 'consumed' || t.completedAt) && (
-                      <span
-                        className="op" role="button" tabIndex={-1}
-                        title={t.completedAt ? '重做（验收反馈）：任务回到待领取，agent 可再次领取' : '反馈修改：任务回到待领取，agent 可再次领取'}
-                        aria-label={`重开 ${titleFromMd(t.text)}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onReopenTask(t);
-                        }}
-                      >
-                        <Icon name="refresh" size={12} />
-                      </span>
-                    )}
-                    {onDeleteTask && (
-                      <span
-                        className="op danger" role="button" tabIndex={-1}
-                        title="删除此任务（软删除，CLI 可恢复）"
-                        aria-label={`删除 ${titleFromMd(t.text)}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteTask(t);
-                        }}
-                      >
-                        <Icon name="x" size={12} />
-                      </span>
-                    )}
-                  </span>
-                </td>
-              </tr>
-            ))}
+            {tasks.map((t) => {
+              const movableRow = movable(t);
+              const downs = (downstreamOf && downstreamOf[t.id]) || [];
+              return (
+                <tr
+                  key={t.id}
+                  className={
+                    'mdw-land-tr'
+                    + (dragId === Number(t.id) ? ' dragging' : '')
+                    + (dropAt && dropAt.id === Number(t.id) ? ' drop-' + dropAt.zone : '')
+                  }
+                  draggable={movableRow}
+                  onDragStart={(e) => movableRow && onDragStart(e, t)}
+                  onDragOver={(e) => onDragOver(e, t)}
+                  onDragLeave={onDragLeave}
+                  onDrop={(e) => onDrop(e, t)}
+                  onDragEnd={onDragEnd}
+                  onClick={() => onOpenTask(t.id)}
+                >
+                  <td className="mono faint" title={movableRow ? '拖动整行可调整队列顺序' : undefined}>#{t.id}</td>
+                  <td className="tx">
+                    <div className="mdw-tg-row">
+                      <span className="mdw-tg-title">{titleFromMd(t.text)}</span>
+                      {t.timegoal?.duration ? (
+                        <span
+                          className="mdw-tg"
+                          title={`时间目标 ${t.timegoal.duration}（领取即计时，未到点不许标完成）${t.timegoal.prompt ? `\n附加要求：${t.timegoal.prompt}` : ''}`}
+                        >
+                          ⏱ {t.timegoal.duration}
+                        </span>
+                      ) : null}
+                      {t.blocksFollowing ? (
+                        <span
+                          className="mdw-tg"
+                          title={
+                            downs.length
+                              ? `闸门：未完成前挡住 ${downs.length} 个后续任务（#${downs.join(', #')}）`
+                              : '闸门：未完成前挡住队列里排在后面的待领取任务'
+                          }
+                        >
+                          闸门{downs.length ? `×${downs.length}` : ''}
+                        </span>
+                      ) : null}
+                      {t.status !== 'consumed' && t.ready === false ? (
+                        <span
+                          className="mdw-tg"
+                          title={t.blockBy?.length ? `等待依赖完成：#${t.blockBy.join(', #')}` : '被前方闸门挡住'}
+                        >
+                          锁定
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td>
+                    <span className={'st' + (t.status === 'consumed' ? ' done' : t.from ? ' run' : '')}>
+                      {t.status === 'consumed' ? '完' : (t.from ? '跑' : '等')}
+                    </span>
+                  </td>
+                  <td className="mono faint">{shortTime(t.createdAt)}</td>
+                  <td className="mono faint">{t.consumedAt ? shortTime(t.consumedAt) : '—'}</td>
+                  <td className="act">
+                    <span className="act-ops">
+                      {movableRow && (onOpenDag || onToggleGate) && (
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <RowMenu
+                            items={[
+                              { label: '编排依赖…', onPick: () => onOpenDag && onOpenDag(t) },
+                              {
+                                label: t.blocksFollowing ? '取消闸门（不再挡后续）' : '设为闸门（挡住后续）',
+                                onPick: () => onToggleGate && onToggleGate(t),
+                              },
+                            ]}
+                          />
+                        </span>
+                      )}
+                      {onReopenTask && (t.status === 'consumed' || t.completedAt) && (
+                        <span
+                          className="op" role="button" tabIndex={-1}
+                          title={t.completedAt ? '重做（验收反馈）：任务回到待领取，agent 可再次领取' : '反馈修改：任务回到待领取，agent 可再次领取'}
+                          aria-label={`重开 ${titleFromMd(t.text)}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReopenTask(t);
+                          }}
+                        >
+                          <Icon name="refresh" size={12} />
+                        </span>
+                      )}
+                      {onDeleteTask && (
+                        <span
+                          className="op danger" role="button" tabIndex={-1}
+                          title="删除此任务（软删除，CLI 可恢复）"
+                          aria-label={`删除 ${titleFromMd(t.text)}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteTask(t);
+                          }}
+                        >
+                          <Icon name="x" size={12} />
+                        </span>
+                      )}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
             {!tasks.length && (
               <tr>
                 <td colSpan="6">

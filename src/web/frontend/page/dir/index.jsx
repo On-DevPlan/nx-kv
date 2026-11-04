@@ -12,6 +12,7 @@ import {
 import { usePager } from '../../components/pager.jsx';
 import { useApp } from '../../app-context.jsx';
 import Landing from './landing.jsx';
+import DagEditor from './dag-editor.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
 import { docIdOf, nextDraftId, peekDoc, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 
@@ -30,6 +31,7 @@ export default function DirPanel({ dirKey }) {
 
   const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
   const [tplMenu, setTplMenu] = useState(null);
+  const [dagTask, setDagTask] = useState(null); // 正在编排依赖的任务（DAG 节点编辑器）
   const fileMdRef = useRef(null);
 
   const topic = useMemo(() => {
@@ -61,6 +63,62 @@ export default function DirPanel({ dirKey }) {
     [allTasks]
   );
   const guard = (fn) => fn().catch((e) => toast(String(e.message || e)));
+
+  // ─── 编排（DAG）：拖动排序 / 闸门 / 上下游依赖 ───
+  // 定位 body：全局池用 key，目录用 cwd（与 reopen / delete 同一套）
+  const scopeBody = () => (isGlobal ? { key: GLOBAL_KEY } : { cwd: topic.cwd });
+
+  // 拖动排序：服务端只许 pending ↔ pending 换位（已领取是固定历史），UI 侧已同口径过滤
+  const moveTask = (t, targetId, zone) => {
+    guard(async () => {
+      await api('/api/localtasks/reorder', {
+        method: 'PATCH',
+        body: { ...scopeBody(), id: t.id, ...(zone === 'before' ? { beforeId: targetId } : { afterId: targetId }) },
+      });
+      refreshLocal();
+    });
+  };
+
+  const toggleGate = (t) => {
+    guard(async () => {
+      await api('/api/localtasks/item', {
+        method: 'PATCH',
+        body: { ...scopeBody(), id: t.id, gate: !t.blocksFollowing },
+      });
+      toast(!t.blocksFollowing ? `#${t.id} 已设为闸门——挡住所有后续待领取任务` : `#${t.id} 闸门已取消`);
+      refreshLocal();
+    });
+  };
+
+  // 编排编辑器保存：patches 是逐条任务级 PATCH（本任务的 gate/blockBy + 下游各方 blockBy）。
+  // 失败时 toast 并**向上抛**——编辑器据此保持打开。
+  const saveDag = async (patches) => {
+    try {
+      for (const p of patches) {
+        await api('/api/localtasks/item', { method: 'PATCH', body: { ...scopeBody(), ...p } });
+      }
+      toast('编排已保存');
+      refreshLocal();
+    } catch (e) {
+      toast(String(e.message || e));
+      throw e;
+    }
+  };
+
+  // 闸门 → 被它挡住的后续任务（队列序：pending 子序即领取序）。
+  // 领取闸判定只看「排在我前面的 alive 闸门」（core/workflow/readiness），同一口径。
+  const downstreamOf = useMemo(() => {
+    const map = {};
+    const pend = allTasks.filter((t) => t.status !== 'consumed' && !t.migratedTo && !t.deletedAt);
+    pend.forEach((t, i) => {
+      if (t.blocksFollowing) map[t.id] = pend.slice(i + 1).map((x) => x.id);
+    });
+    return map;
+  }, [allTasks]);
+  const dagCandidates = useMemo(
+    () => allTasks.filter((t) => t.status !== 'consumed' && !t.migratedTo && !t.deletedAt),
+    [allTasks]
+  );
 
   const openTask = (id) => {
     if (app.openPage) app.openPage({ dirKey, task: String(id), name: `#${id}` });
@@ -230,8 +288,21 @@ export default function DirPanel({ dirKey }) {
           onTplMenu={(e) => setTplMenu({ x: e.clientX, y: e.clientY })}
           onImport={() => fileMdRef.current?.click()}
           onProg={openProgress}
+          onMoveTask={moveTask}
+          onOpenDag={setDagTask}
+          onToggleGate={toggleGate}
+          downstreamOf={downstreamOf}
         />
       </div>
+
+      {dagTask && (
+        <DagEditor
+          task={dagTask}
+          tasks={dagCandidates}
+          onClose={() => setDagTask(null)}
+          onSave={saveDag}
+        />
+      )}
 
       {tplMenu && (
         <PopMenu x={tplMenu.x} y={tplMenu.y} items={tplMenuItems} onClose={() => setTplMenu(null)} />

@@ -5,14 +5,20 @@
 // 每条用项目 tag 标出归属；「新增任务」进 MD 编辑页，工具区选归属项目（限本组成员），
 // 提交按 frontmatter.project 路由进对应项目的队列。成员名册表格已移除（成员管理在仓库页）。
 //
+// 编排（#40）：组任务横跨多个成员队列，而 DAG（排序/blockBy/闸门）按 topic 表达——
+// 跨队列拖动排序在当前机制下不存在（排序在目录页做）；组页提供**每行**的
+// 闸门开关与编排编辑器（候选 = 该任务所属队列的待领取任务），闸门/锁定徽章上屏。
 // 组介绍与项目介绍共用 Introduction（显示 / 编辑 / 补 ref）。
 import { useMemo, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/toast/index.jsx';
+import { RowMenu } from '../../components/popup/index.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import { taskLabel } from '../../components/sidebar/model.js';
 import { useApp } from '../../app-context.jsx';
+import { api } from '../../api/client.js';
+import DagEditor from '../dir/dag-editor.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
 import { useTemplates } from '../../modules/md/use-templates.js';
@@ -29,6 +35,8 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
   const [showDone, setShowDone] = useState(false);
   // 「添加成员」就地弹窗（不跳仓库管理页——组面板里就地改归属）
   const [addOpen, setAddOpen] = useState(false);
+  // 正在编排的任务与其队列（#40 编排编辑器）
+  const [dag, setDag] = useState(null);
 
   const board = useMemo(
     () => boards.find((b) => b.id === dirKey) || boards.find((b) => b.key === dirKey) || null,
@@ -73,6 +81,56 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
   }
 
   const totalPending = items.reduce((n, it) => n + it.pending, 0);
+
+  // ─── 编排（DAG）：闸门开关 / 编排编辑器（#40）───
+  const toastGuard = (fn) => fn().catch((e) => toast(String(e.message || e)));
+
+  // 每个成员队列的编排素材：待领取任务（队列序）+ 闸门的下游映射（同 isReadyToClaim 口径）。
+  // rows = /api/localtasks 的裸 topic（tasks 直挂其上）。
+  const dagByTopic = useMemo(() => {
+    const map = new Map();
+    for (const r of topics) {
+      if (!r.key || r.isGlobal) continue;
+      const pend = (r.tasks || []).filter(
+        (t) => t && !t.deletedAt && !t.migratedTo && t.status !== 'consumed',
+      );
+      const downstream = {};
+      pend.forEach((t, i) => {
+        if (t.blocksFollowing) downstream[t.id] = pend.slice(i + 1).map((x) => x.id);
+      });
+      map.set(r.key, { tasks: pend, downstream });
+    }
+    return map;
+  }, [topics]);
+
+  const toggleGate = (member, t) => {
+    toastGuard(async () => {
+      await api('/api/localtasks/item', {
+        method: 'PATCH',
+        body: { key: member.topicKey, id: t.id, gate: !t.blocksFollowing },
+      });
+      toast(!t.blocksFollowing ? `#${t.id} 已设为闸门——挡住所有后续待领取任务` : `#${t.id} 闸门已取消`);
+      app.refreshLocal && (await app.refreshLocal());
+    });
+  };
+
+  // 保存与目录页同构：逐条 PATCH（本任务 gate/blockBy + 下游各方 blockBy）；
+  // 失败 toast 并上抛——编辑器据此保持打开。
+  const saveDag = async (patches) => {
+    try {
+      for (const p of patches) {
+        await api('/api/localtasks/item', {
+          method: 'PATCH',
+          body: { key: dag.member.topicKey, ...p },
+        });
+      }
+      toast('编排已保存');
+      app.refreshLocal && (await app.refreshLocal());
+    } catch (e) {
+      toast(String(e.message || e));
+      throw e;
+    }
+  };
 
   // 新建任务的默认归属项目：第一个有待领取的成员（面板一打开就对准活儿），
   // 都没有就第一个成员。编辑页的工具区里还可以改（限本组成员）。
@@ -153,24 +211,59 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
           <span className="rp-chip-count">{groupTasks.pend.length} 待领取</span>
           {groupTasks.done.length > 0 && <span className="rp-chip-count">已领取 {groupTasks.done.length}</span>}
         </div>
-        {groupTasks.pend.map(({ member, task }) => (
-          <button
-            key={member.key + ':' + task.id}
-            className="rp-proj-task"
-            title="打开这条任务"
-            onClick={() => onNavigate('#/dir/' + encodeURIComponent(member.topicKey) + '?task=' + task.id)}
-          >
-            <span className="mono">#{task.id}</span>
-            <span className="rp-ptag" title={`归属项目：${member.name}`}>{member.name}</span>
-            <span className="rp-proj-task-tx">{taskLabel(task)}</span>
-            {task.timegoal && (
-              <span className="rp-proj-goal" title={`时间目标 ${task.timegoal.duration}：领取即计时，未到点不许标完成`}>
-                <Icon name="clock" size={11} /> {task.timegoal.duration}
-              </span>
-            )}
-            <span className="rp-tstat" title="待领取">待领取</span>
-          </button>
-        ))}
+        {groupTasks.pend.map(({ member, task }) => {
+          const dagInfo = dagByTopic.get(member.topicKey);
+          const downs = (dagInfo && dagInfo.downstream[task.id]) || [];
+          const locked = task.ready === false;
+          return (
+            <div key={member.key + ':' + task.id} className="rp-proj-row">
+              <button
+                className="rp-proj-task"
+                title="打开这条任务"
+                onClick={() => onNavigate('#/dir/' + encodeURIComponent(member.topicKey) + '?task=' + task.id)}
+              >
+                <span className="mono">#{task.id}</span>
+                <span className="rp-ptag" title={`归属项目：${member.name}`}>{member.name}</span>
+                <span className="rp-proj-task-tx">{taskLabel(task)}</span>
+                {task.timegoal && (
+                  <span className="rp-proj-goal" title={`时间目标 ${task.timegoal.duration}：领取即计时，未到点不许标完成`}>
+                    <Icon name="clock" size={11} /> {task.timegoal.duration}
+                  </span>
+                )}
+                {task.blocksFollowing && (
+                  <span
+                    className="rp-tgate"
+                    title={
+                      downs.length
+                        ? `闸门：未完成前挡住 ${downs.length} 个后续任务（#${downs.join(', #')}）`
+                        : '闸门：未完成前挡住队列里排在后面的待领取任务'
+                    }
+                  >
+                    闸门{downs.length ? `×${downs.length}` : ''}
+                  </span>
+                )}
+                {locked && (
+                  <span
+                    className="rp-tlock"
+                    title={task.blockBy?.length ? `等待依赖完成：#${task.blockBy.join(', #')}` : '被前方闸门挡住'}
+                  >
+                    锁定
+                  </span>
+                )}
+                <span className="rp-tstat" title="待领取">待领取</span>
+              </button>
+              <RowMenu
+                items={[
+                  { label: '编排依赖…', onPick: () => setDag({ task, member }) },
+                  {
+                    label: task.blocksFollowing ? '取消闸门（不再挡后续）' : '设为闸门（挡住后续）',
+                    onPick: () => toggleGate(member, task),
+                  },
+                ]}
+              />
+            </div>
+          );
+        })}
         {!groupTasks.pend.length && (
           <div className="rp-proj-none muted">
             本组还没有待领取任务——点「＋ 新增任务」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。
@@ -208,6 +301,16 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
           onChanged={() => app.refreshRepos && app.refreshRepos()}
         />
       ) : null}
+
+      {/* 编排编辑器：候选 = 该任务所属成员队列的待领取任务（DAG 按 topic 表达） */}
+      {dag && (
+        <DagEditor
+          task={dag.task}
+          tasks={(dagByTopic.get(dag.member.topicKey) || { tasks: [] }).tasks}
+          onClose={() => setDag(null)}
+          onSave={saveDag}
+        />
+      )}
 
     </div>
   );

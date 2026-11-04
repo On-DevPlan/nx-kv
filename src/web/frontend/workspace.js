@@ -233,7 +233,7 @@ export function healSidebarLayout(json) {
       type: 'tabset',
       id: 'ts_sidebar',
       weight: sideStateAttrs('expanded').weight,
-      enableTabStrip: true,
+      enableTabStrip: false, // 侧栏不出页签条（#42：页签条会压住顶部面包屑）
       children: [sidebarTab],
     });
     changed = true;

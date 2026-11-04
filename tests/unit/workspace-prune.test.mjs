@@ -198,7 +198,8 @@ test('healSidebarLayout：目录与内容混在同一 tabset 时拆回左目录'
   assert.equal(side.children.length, 1);
   assert.equal(side.children[0].component, 'sidebar');
   assert.equal(side.children[0].enableClose, false);
-  assert.equal(side.enableTabStrip, true);
+  // 拆回来的侧栏组也不出页签条（#42：无页签化 + 页签条会压住顶部面包屑）
+  assert.equal(side.enableTabStrip, false);
   assert.equal(side.weight, 16);
   assert.equal(main.enableTabStrip, true);
   assert.equal(main.weight, 84);

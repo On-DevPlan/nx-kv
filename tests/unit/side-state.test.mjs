@@ -32,13 +32,15 @@ test('classifySideState: 字符串数字也能分档（getWeight 兜底路径）
 });
 
 test('sideStateAttrs: 三态落模型的 weight 与页签条开关', () => {
-  assert.deepEqual(sideStateAttrs('expanded'), { weight: W_EXPANDED, enableTabStrip: true });
+  // 页签条恒关（#42）：#33「无页签化」之后侧栏不该出页签条——
+  // 它会压在工作区顶部的面包屑上，路径条既看不见也点不到。
+  assert.deepEqual(sideStateAttrs('expanded'), { weight: W_EXPANDED, enableTabStrip: false });
   assert.deepEqual(sideStateAttrs('collapsed'), { weight: W_COLLAPSED, enableTabStrip: false });
   assert.deepEqual(sideStateAttrs('closed'), { weight: W_CLOSED, enableTabStrip: false });
 });
 
 test('sideStateAttrs: 未知状态按展开兜底', () => {
-  assert.deepEqual(sideStateAttrs('whatever'), { weight: W_EXPANDED, enableTabStrip: true });
+  assert.deepEqual(sideStateAttrs('whatever'), { weight: W_EXPANDED, enableTabStrip: false });
 });
 
 test('闭环：三态各自落模型再读回，分类不变', () => {

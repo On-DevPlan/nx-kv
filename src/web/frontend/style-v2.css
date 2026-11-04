@@ -174,7 +174,6 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   --flexlayout-color-tab-textbox-background: var(--paper);
   --flexlayout-color-tabset-background: var(--paper);
   --flexlayout-color-tabset-background-selected: var(--paper);
-  --flexlayout-color-tabset-background-maximized: var(--paper);
   --flexlayout-color-tabset-divider-line: var(--soft-2);
   --flexlayout-color-border: var(--soft-2);
   --flexlayout-color-border-background: var(--paper);

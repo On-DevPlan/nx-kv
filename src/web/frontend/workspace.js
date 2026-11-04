@@ -31,7 +31,10 @@ const GLOBAL_ATTRS = {
   tabEnablePin: false,
   tabSetEnableClose: false,
   tabSetEnableCloseButton: true,
-  tabSetEnableMaximize: true,
+  // 「最大化」全线下掉（2026-11-04 #39）：页签条右端的 Maximize/Restore 按钮、右键
+  // 菜单的「最大化」、双击标题栏最大化，库都走 tabSetNode.canMaximize() 门控——
+  // 这个全局属性一关全部消失，不需要逐处摘按钮。
+  tabSetEnableMaximize: false,
   tabSetEnableDrag: true,
   tabSetEnableDrop: true,
   tabSetEnableTabGroups: false,

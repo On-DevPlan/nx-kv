@@ -255,6 +255,47 @@ function legacyTopic(key, b) {
   };
 }
 
+// 损坏隔离：store 文件读不出来/解析失败时，先把坏文件**改名保留**（.corrupt-<定宽时间戳>），
+// 再让 loadStore 落到空 store——否则下次 saveStore 会把坏文件原地覆盖，全部主题无声清零。
+// 最多留 CORRUPT_KEEP 份，超出删最旧（文件名时间戳定宽，字典序即时间序）。
+// 仅文件不存在（首次启动）不算损坏：access 探测失败直接返回，不产生备份。
+const CORRUPT_KEEP = 3;
+async function quarantineCorruptStore() {
+  const p = storePath();
+  try {
+    await fsp.access(p);
+  } catch {
+    return; // 文件不存在（或探不到）→ 不是「损坏」，不备份
+  }
+  const ts = new Date();
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  const stamp =
+    String(ts.getFullYear()) +
+    pad(ts.getMonth() + 1) +
+    pad(ts.getDate()) +
+    '-' +
+    pad(ts.getHours()) +
+    pad(ts.getMinutes()) +
+    pad(ts.getSeconds()) +
+    '-' +
+    pad(ts.getMilliseconds(), 3);
+  try {
+    await fsp.rename(p, `${p}.corrupt-${stamp}`);
+  } catch {
+    return; // 改名失败（Windows 偶发文件锁）→ 保留原文件等下次，绝不吞掉坏文件
+  }
+  try {
+    const dir = dirname(p);
+    const prefix = basename(p) + '.corrupt-';
+    const corrupts = (await fsp.readdir(dir)).filter((f) => f.startsWith(prefix)).sort();
+    for (const f of corrupts.slice(0, Math.max(0, corrupts.length - CORRUPT_KEEP))) {
+      await fsp.rm(join(dir, f), { force: true });
+    }
+  } catch {
+    /* 备份清理失败不影响主流程 */
+  }
+}
+
 export async function loadStore() {
   let topics = null;
   let settings = null;
@@ -284,7 +325,9 @@ export async function loadStore() {
       if (data.settings && typeof data.settings === 'object') settings = data.settings;
     }
   } catch {
-    /* 损坏/缺失 → 空 store */
+    // 损坏 → 坏文件改名隔离（.corrupt-*，最多留 3 份），别让下次 save 把它覆盖掉。
+    // 文件不存在的「缺失」路径里 access 探测会失败，不会产生多余备份。
+    await quarantineCorruptStore();
   }
   if (!topics) return emptyStore();
   return {

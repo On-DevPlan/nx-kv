@@ -579,14 +579,50 @@ select {
 .rp-table tbody tr:last-child td { border-bottom: 0; }
 .rp-table tbody tr:hover td { background: #faf9f6; }
 .rp-name strong { font-size: 13px; font-weight: 650; color: var(--ink); }
+/* 描述 = 绑定的文档（不是一句话字符串）：行内给一个可点的主篇标题 + 补充篇计数。
+   点标题直接开文档页签，标题就是那篇 md 的第一行 `# `。 */
 .rp-desc {
-  font-size: 11px;
-  margin-top: 2px;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
+.rp-doc {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 5px;
+  max-width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+/* 摘要允许两行：描述是给人扫表用的，一行截断会切在半句上 */
+.rp-doc-tx {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-width: 0;
+}
+.rp-doc:hover { color: #2F6F5E; text-decoration: underline; text-underline-offset: 2px; }
+.rp-doc.ghost { color: var(--mid); }
+.rp-doc-todo {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--soft);
+  font-size: 10.5px;
+  color: var(--mid);
+}
+.rp-doc-more { flex: none; font-size: 11px; color: var(--mid); }
+.rp-docpick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* 路径 = 机器数据：等宽；祖先目录变暗、末段略重（同目录看板的 .board-cwd 画法），
    点击复制全文。纯灰一长串是旧画法，人眼得逐字符对比。 */
 .rp-path { font-size: 11px; color: var(--ink-2); word-break: break-all; }
@@ -669,17 +705,6 @@ select {
 .rp-table td { font-size: 13.5px; padding: 12px 14px; }
 .rp-ref-table td { font-size: 13px; padding: 10px 12px; }
 .rp-name strong { font-size: 14.5px; }
-/* 描述允许两行：一行截断会把「它是干什么的」切在半句上，
-   而这一列恰恰是人在扫表时唯一真正读的东西。 */
-.rp-desc {
-  font-size: 12.5px;
-  line-height: 1.5;
-  white-space: normal;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
 .rp-path { font-size: 12px; line-height: 1.5; }
 .rp-ref-cell-name strong { font-size: 14px; }
 .rp-ref-cell-remote { font-size: 12px; }

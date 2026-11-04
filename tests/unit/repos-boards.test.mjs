@@ -98,7 +98,9 @@ test('改删：重命名 / 改描述 / 删板释放成员（登记不动）', as
   const { a } = await seed();
   const board = await boards.createBoard({ name: '旧名' });
   await boards.assignRepo({ id: a, board: board.id });
-  await boards.updateBoard(board.id, { name: '新名', desc: '新描述' });
+  await boards.updateBoard(board.id, { name: '新名' });
+  // 领域描述已改为文档：updateBoard 不再收 desc
+  await assert.rejects(() => boards.updateBoard(board.id, { desc: '新描述' }), /描述已改为文档/);
   assert.equal((await boards.getBoard(board.id)).name, '新名');
   // 同名校验
   await boards.createBoard({ name: '另一板' });

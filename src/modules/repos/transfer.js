@@ -519,12 +519,18 @@ export async function repoImport({
         }
         if (strategy === 'overwrite') {
           const patch = {};
+          let descIn = null;
           for (const f of item.fields) {
+            // 描述是文档（不再是字符串字段）：攒下来单独写主篇，不进 updateRepo 的 patch
+            if (f.field === 'desc') { descIn = inc.desc; continue; }
             if (f.field === 'type') patch.type = inc.type;
             else if (f.field === 'remote') patch.remote = inc.remote || '';
             else patch[f.field] = inc[f.field];
           }
           await service.updateRepo(item.local.id, patch);
+          if (descIn !== null) {
+            await service.writeRepoDocContent({ key: item.key, name: inc.name || item.key }, descIn);
+          }
           updated.push({ key: item.key, fields: item.fields.map((f) => f.field) });
           continue;
         }
@@ -627,8 +633,17 @@ export async function repoImport({
             .catch(() => {});
         }
         if (m.note) {
-          // 组内描述挂在 key 上：占位成员也保留描述，等仓库补齐后自动生效
-          await boards.setBoardRepoNote({ key: m.key, board: b.id, note: m.note }).catch(() => {});
+          // 组内描述挂在 key 上：占位成员也保留描述，等仓库补齐后自动生效。
+          // **直接写摘要字段**，不走 setBoardRepoNote —— 后者会把这句话写进
+          // group 文档，覆盖刚从 zip 还原的正文（描述以文档为准，文字只是影子）。
+          await service
+            .mutateStore((s) => {
+              const bb = s.boards.find((x) => x.id === b.id);
+              if (!bb) return;
+              if (!bb.repoNotes) bb.repoNotes = {};
+              bb.repoNotes[m.key] = m.note;
+            })
+            .catch(() => {});
         }
         if (!known) {
           unmatched.push({

@@ -123,18 +123,21 @@ export async function getBoard(idOrKey) {
 export async function createBoard({ name, desc } = {}) {
   const nm = cleanText(name);
   if (!nm) throw badInput('看板名称不能为空');
-  return mutateStore((s) => {
-    if (s.boards.some((b) => b.name === nm)) throw conflict('同名看板已存在: ' + nm);
-    const b = {
+  const b = await mutateStore((s) => {
+    if (s.boards.some((x) => x.name === nm)) throw conflict('同名看板已存在: ' + nm);
+    const board = {
       id: newId('b'),
       name: nm,
       desc: cleanText(desc),
       createdAt: new Date().toISOString(),
       repoKeys: [], // 成员按 key 存（不再用随机 id）
     };
-    s.boards.push(b);
-    return { id: b.id, name: b.name, desc: b.desc, key: boardKeyOf(nm), repos: [] };
+    s.boards.push(board);
+    return { id: board.id, name: board.name, desc: board.desc, key: boardKeyOf(nm), repos: [] };
   });
+  // 描述是文档：初始描述写成组介绍的主篇（已有就不动），摘要由回写刷新
+  if (cleanText(desc)) await writeBoardDocContent({ name: nm }, desc);
+  return b;
 }
 
 export async function updateBoard(idOrKey, { name, desc } = {}) {
@@ -147,7 +150,13 @@ export async function updateBoard(idOrKey, { name, desc } = {}) {
       throw conflict('同名看板已存在: ' + nm);
     }
     if (nm !== undefined) b.name = nm;
-    if (desc !== undefined) b.desc = cleanText(desc);
+    // 领域描述同样是文档：写正文用 docs set，换绑主篇用 docs bind --board
+    if (desc !== undefined) {
+      throw badInput(
+        '描述已改为文档（不再是字符串）：改正文用 `docs set board/<组>.md`，' +
+        '换绑主篇用 `docs bind --board <看板> --rel <路径>`'
+      );
+    }
     return { id: b.id, name: b.name, desc: b.desc, key: boardKeyOf(b.name) };
   });
 }
@@ -409,6 +418,35 @@ export async function prunePlaceholders({ board, all = false, apply = false } = 
 }
 
 /**
+ * 看板的领域描述写进 board/<组>.md（文档是权威）。已有文档就不动——
+ * 重复 createBoard（导入/补建）不该把写过的组介绍冲掉。
+ */
+async function writeBoardDocContent(board, text) {
+  const { boardDocRel } = await import('../docs/paths.js');
+  const store = await import('../docs/store.js');
+  const { writeBackSummary } = await import('../docs/seed.js');
+  const rel = boardDocRel(board.name);
+  if (await store.ownDocExists(rel)) return rel;
+  const body = `# ${board.name}\n\n${String(text || '').trim()}\n`;
+  await store.writeOwnDoc(rel, body);
+  await writeBackSummary(rel, body);
+  return rel;
+}
+
+/** 组内描述写进 group/<组>/<key>.md（覆盖正文；空文本 = 只留标题，摘要自然为空）。 */
+async function writeGroupNoteDoc(info, text) {
+  const { groupNoteRel } = await import('../docs/paths.js');
+  const store = await import('../docs/store.js');
+  const { writeBackSummary } = await import('../docs/seed.js');
+  const rel = groupNoteRel(info.boardName, info.key);
+  const head = `# ${info.boardName} · ${info.name}`;
+  const body = text ? `${head}\n\n${text}\n` : `${head}\n`;
+  await store.writeOwnDoc(rel, body);
+  await writeBackSummary(rel, body); // 摘要回填 repoNotes（列表读的那份影子）
+  return rel;
+}
+
+/**
  * 设置组内描述：key = 仓库（id / key / 路径 / 名称 均可），board = 看板。
  * 只对**已在板内**的成员有意义——不是成员就显式报错，别静默挂到没人读的地方。
  * note 为空 = 清除。
@@ -417,28 +455,25 @@ export async function setBoardRepoNote({ id, key, board, note } = {}) {
   const locator = key || id;
   if (!locator) throw badInput('缺少仓库 id 或 key');
   if (!board) throw badInput('缺少看板 id');
-  return mutateStore((s) => {
-    // 占位成员（本地未拥有）也允许写描述——描述挂在 key 上，clone 补齐后自动生效
-    const rkey = repoKeyIn(s, locator) || normalizeKey(locator);
-    const b = findBoardIn(s, board);
-    if (!b) throw notFound('看板不存在: ' + board);
-    if (!boardRepoKeys(b, s).includes(rkey)) {
-      throw conflict(`仓库「${rkey}」不在看板「${b.name}」里——组内描述只对成员有意义`);
-    }
-    const text = String(note || '').trim();
-    if (!b.repoNotes) b.repoNotes = {};
-    if (text) b.repoNotes[rkey] = text;
-    else delete b.repoNotes[rkey];
-    const r = s.repos.find((x) => deriveKey(x) === rkey);
-    return {
-      key: rkey,
-      name: r ? r.name : rkey,
-      board: b.id,
-      boardKey: boardKeyOf(b.name),
-      boardName: b.name,
-      note: text,
-    };
-  });
+  const s = await loadStore();
+  // 占位成员（本地未拥有）也允许写描述——描述挂在 key 上，clone 补齐后自动生效
+  const rkey = repoKeyIn(s, locator) || normalizeKey(locator);
+  const b = findBoardIn(s, board);
+  if (!b) throw notFound('看板不存在: ' + board);
+  if (!boardRepoKeys(b, s).includes(rkey)) {
+    throw conflict(`仓库「${rkey}」不在看板「${b.name}」里——组内描述只对成员有意义`);
+  }
+  const text = String(note || '').trim();
+  const info = {
+    key: rkey,
+    name: (s.repos.find((x) => deriveKey(x) === rkey) || {}).name || rkey,
+    board: b.id,
+    boardKey: boardKeyOf(b.name),
+    boardName: b.name,
+  };
+  // 描述 = 文档：写 group/<组>/<key>.md；repoNotes 只是摘要影子（由回写维护）
+  await writeGroupNoteDoc(info, text);
+  return { ...info, note: text };
 }
 
 // 导入：一段 JSON = 一批主题。{boards:[{name, desc?, repos:[{key|name, desc?}]}]}

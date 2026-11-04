@@ -29,9 +29,15 @@ test.after?.(() => {
 
 async function seedData() {
   const r = await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', desc: '第一个仓库，管清单' });
+  // add 现在会直接把 --desc 播种成主篇；种子测试要的是**老数据**形态
+  // （字符串有值、文档还没落盘），所以把刚种下去的主篇删掉。
+  await store.removeOwnDoc(paths.repoDocRel(r.key));
   const b = await boards.createBoard({ name: 'nx系列', desc: 'nx 工具链' });
   await boards.assignRepo({ key: r.key, board: b.id });
   await boards.setBoardRepoNote({ key: r.key, board: b.id, note: '组里的任务出入口' });
+  // createBoard / setBoardRepoNote 同样会直接落文档，一并清掉才是「老数据」形态
+  await store.removeOwnDoc(paths.boardDocRel('nx系列'));
+  await store.removeOwnDoc(paths.groupNoteRel('nx系列', r.key));
   return r;
 }
 

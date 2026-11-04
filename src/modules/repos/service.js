@@ -369,7 +369,7 @@ export function migrateStoreKeys(store) {
 export async function listRepos() {
   const s = await loadStore();
   // docs/paths 反过来依赖本文件的 normalizeKey（动态引入避免静态环）
-  const { repoDocRel } = await import('../docs/paths.js');
+  const { repoDocRel, groupNoteRel } = await import('../docs/paths.js');
   const boardsOf = new Map(); // repoKey -> [看板投影]
   for (const b of s.boards) {
     for (const rk of boardRepoKeys(b, s)) {
@@ -380,11 +380,14 @@ export async function listRepos() {
         desc: b.desc || '',
         key: boardKeyOf(b.name),
         note: (b.repoNotes || {})[rk] || '',
+        // 组内描述也是文档：前端点「描述」直接开这篇（绑定优先，缺省约定路径）
+        noteDocRel: (b.repoDocs || {})[rk]?.rel || groupNoteRel(b.name, rk),
+        noteDocPath: (b.repoDocs || {})[rk]?.path || '',
       });
     }
   }
-  return s.repos
-    .map(({ tags: _dropped, ...r }) => {
+  const { docSetOf } = await import('../docs/brief.js');
+  const rows = s.repos.map(({ tags: _dropped, ...r }) => {
       const rk = deriveKey(r);
       return {
         ...r,
@@ -397,8 +400,10 @@ export async function listRepos() {
         docRel: r.doc?.rel || repoDocRel(rk),
         boards: boardsOf.get(rk) || [],
       };
-    })
-    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    });
+  // 描述 = 绑定的文档集（主篇标题 + 补充篇），不再是 desc 字符串
+  for (const row of rows) row.descDocs = await docSetOf(row, 'repo');
+  return rows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
 export async function addRepo(input) {
@@ -414,7 +419,38 @@ export async function addRepo(input) {
     if (dup) throw conflict(`该 key 已登记为「${dup.name}」（${dup.id}）: ${repo.key}`);
     s.repos.push(repo);
   });
+  await seedRepoDoc(repo);
   return repo;
+}
+
+/**
+ * 描述是文档：add 时给的 desc 只是**初始正文**，落到主篇 md（repo/<key>/index.md 的旧单文件位），
+ * 再按 md 回写摘要。文档已在就不动——老仓库重登记不该把写过的介绍冲掉。
+ * 动态 import 同 listRepos：docs 是叶子，repos 反向依赖它（静态引会成环）。
+ */
+async function seedRepoDoc(repo) {
+  const desc = String((repo && repo.desc) || '').trim();
+  if (!desc) return null;
+  const { repoDocRel } = await import('../docs/paths.js');
+  const store = await import('../docs/store.js');
+  const rel = repoDocRel(repo.key);
+  if (await store.ownDocExists(rel)) return null;
+  return writeRepoDocContent(repo, desc);
+}
+
+/**
+ * 把一段文本写成仓库的主篇文档（覆盖正文，标题取仓库名）。
+ * 导入覆盖（transfer 的 overwrite 策略）走这里——描述不能再经 updateRepo 的 desc 字段。
+ */
+export async function writeRepoDocContent(repo, text) {
+  const { repoDocRel } = await import('../docs/paths.js');
+  const store = await import('../docs/store.js');
+  const { writeBackSummary } = await import('../docs/seed.js');
+  const rel = repoDocRel(repo.key);
+  const body = `# ${repo.name || repo.key}\n\n${String(text || '').trim()}\n`;
+  await store.writeOwnDoc(rel, body);
+  await writeBackSummary(rel, body);
+  return rel;
 }
 
 export async function updateRepo(id, patch) {
@@ -430,7 +466,12 @@ export async function updateRepo(id, patch) {
     if (!r) throw notFound('repo 不存在: ' + id);
     if (patch.name !== undefined) r.name = String(patch.name).trim();
     if (patch.icon !== undefined) r.icon = sanitizeIcon(patch.icon);
-    if (patch.desc !== undefined) r.desc = String(patch.desc).trim();
+    if (patch.desc !== undefined) {
+      throw badInput(
+        '描述已改为文档（不再是字符串）：改正文用 `docs set <rel>`，换绑主篇用 ' +
+        '`docs bind --repo <仓库> --rel <路径>`，加补充篇用 `docs link --board <看板> --doc <路径>`'
+      );
+    }
     if (patch.notes !== undefined) r.notes = String(patch.notes);
     if (patch.type !== undefined) {
       const t = patch.type === 'ref' ? 'ref' : patch.type === 'dev' ? 'dev' : null;

@@ -20,6 +20,7 @@ import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog, Modal } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
+import { useWikiNav } from '../doc/index.jsx';
 
 const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
 
@@ -37,20 +38,46 @@ function RepoPath({ path }) {
   );
 }
 
-// 仓库行：名称 + 描述 / 路径（点击复制）/ 操作。
+// 描述行 = 绑定的文档集：主篇标题（可点开）+ 补充篇计数。
+// 主篇没写过（文件还不存在）显示「未写」——点进去就是空文档，直接写。
+function DocLine({ docs, onOpen, tip = '' }) {
+  const main = docs && docs.main;
+  const links = (docs && docs.links) || [];
+  if (!main || !main.title) return null;
+  const title = [
+    tip,
+    `主篇：${main.rel || main.path}`,
+    ...links.map((l) => (l.tag ? `[${l.tag}] ` : '') + l.title + (l.note ? ` —— ${l.note}` : '')),
+  ].filter(Boolean).join('\n');
+  return (
+    <div className="rp-desc">
+      <button
+        type="button"
+        className={'rp-doc' + (main.exists ? '' : ' ghost')}
+        title={title || '打开项目介绍文档'}
+        onClick={() => onOpen(main)}
+      >
+        <span className="rp-doc-tx">{main.exists ? (main.summary || main.title) : '未写'}</span>
+      </button>
+      {links.length ? (
+        <span className="rp-doc-more" title={`另有 ${links.length} 篇补充文档`}>+{links.length}</span>
+      ) : null}
+    </div>
+  );
+}
+
+// 仓库行：名称 + 描述文档 / 路径（点击复制）/ 操作。
 // 中心清单里**不再显示所属看板**——行内的 chip + × + 下拉三件套又挤又乱，
 // 归属的增删统一走「成员管理」弹窗（筛选到看板 → 导入仓库 / 摘除）。
-// 看板视图下描述行显示**组内描述**（该仓库在这个组里的角色），没写则回退仓库描述。
+// **描述 = 绑定的文档**（主篇 + 补充篇），不是一句话字符串：点主篇标题直接开文档，
+// 补充篇的数量挂在后面（+N）。组内描述（看板上下文里的 note）降为 title 提示——
+// 它同样有对应的 group 文档，入口在文档里。
 // 主表只放开发仓库（type=dev）——参考仓库有自己的大面板，两份名单不混。
 // 「参考」列显示**绑定到这个开发仓库**的参考仓库（多对多：一个 dev 可挂多个 ref）。
 function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
   const note = filterBoard
     ? ((r.boards || []).find((b) => b.id === filterBoard.id)?.note || '')
     : null;
-  const desc = note !== null ? (note || r.desc || '') : (r.desc || '');
-  const descTitle = note !== null
-    ? (note ? `组内描述：${note}` : `（组内描述未写，暂显示仓库描述）${r.desc || ''}`)
-    : (r.desc || '');
   const refs = refsOfRepo.get(r.key) || [];
   return (
     <tr>
@@ -59,7 +86,7 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
           {r.icon ? <span className="rp-icon" aria-hidden>{r.icon}</span> : null}
           {r.name}
         </strong>
-        {desc ? <div className="muted rp-desc" title={descTitle}>{desc}</div> : null}
+        <DocLine docs={r.descDocs} onOpen={acts.doc} tip={note ? `组内描述：${note}` : ''} />
       </td>
       <td className="mono rp-path"><RepoPath path={r.path} /></td>
       <td className="rp-refs">
@@ -78,7 +105,7 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
           onClick={() => acts.remote(r)}>remote</button>
         <button className="btn small ghost" onClick={() => acts.edit(r)}>编辑</button>
         {filterBoard ? (
-          <button className="btn small ghost" title={`写「${r.name}」在看板「${filterBoard.name}」里的组内描述`}
+          <button className="btn small ghost" title={`打开「${r.name}」在「${filterBoard.name}」里的组内描述文档`}
             onClick={() => acts.note(r)}>描述</button>
         ) : null}
         <button className="btn small ghost rp-del" onClick={() => acts.del(r)}>删除</button>
@@ -91,14 +118,13 @@ export default function ReposView() {
   const guard = useGuard();
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
+  // 描述是文档 → 行内点标题要能开文档页签（useWikiNav 内部拿 app.model + 文档索引）
+  const { openByDocId } = useWikiNav();
   const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   // 成员管理弹窗：打开时 = 正在往这个看板里点选导入 / 摘除仓库
   const [impBoardId, setImpBoardId] = useState(null);
-  // 组内描述编辑：{ id, repo, boardId, boardName, note } | null
-  const [noteFor, setNoteFor] = useState(null);
-  const [noteText, setNoteText] = useState('');
 
   // 看板（只作筛选与标签）
   const [boards, setBoards] = useState(null); // { boards: [...], unassigned: [...] }
@@ -350,17 +376,6 @@ export default function ReposView() {
   };
 
 
-  // 组内描述保存：note 为空 = 清除
-  const saveNote = () => guard(async () => {
-    await api('/api/boards/note', {
-      method: 'POST',
-      body: { id: noteFor.id, board: noteFor.boardId, note: noteText },
-    });
-    setNoteFor(null);
-    await Promise.all([loadRepos(), loadBoards()]);
-    toast('已保存组内描述');
-  });
-
   // 看板清单（用来做「+ 看板」下拉与筛选器）
   const boardList = useMemo(() => (boards && boards.boards) || [], [boards]);
 
@@ -444,12 +459,18 @@ export default function ReposView() {
     setFormOpen(true);
   };
 
+  // 编辑弹窗里的「项目描述」= 这个仓库绑定的文档集（主篇 + 补充篇），不给字符串输入框
+  const editingDocs = useMemo(() => {
+    if (!editing) return null;
+    const r = repos.find((x) => x.id === editing);
+    return (r && r.descDocs) || null;
+  }, [editing, repos]);
+
   const submit = () => guard(async () => {
     if (!form.path.trim()) return;
     const body = {
       path: form.path.trim(),
       name: form.name.trim() || undefined,
-      desc: form.desc.trim() || undefined,
       notes: form.notes,
       type: form.type === 'ref' ? 'ref' : 'dev',
       remote: form.remote.trim() || undefined,
@@ -492,8 +513,11 @@ export default function ReposView() {
 
   // ---- 看板管理 ----
   const saveBoard = () => guard(async () => {
-    const body = { name: boardForm.name.trim(), desc: boardForm.desc.trim() };
+    const body = { name: boardForm.name.trim() };
     if (!body.name) return;
+    // 描述是文档：编辑时不再提交 desc（领域描述在组介绍文档里写）；
+    // 新建时给的那段仍是「初始正文」，后端落成 board/<组>.md
+    if (!boardForm.id) body.desc = boardForm.desc.trim() || undefined;
     if (boardForm.id) await api(`/api/boards/${encodeURIComponent(boardForm.id)}`, { method: 'PATCH', body });
     else await api('/api/boards', { method: 'POST', body });
     setBoardForm(null);
@@ -633,11 +657,26 @@ export default function ReposView() {
       loadBoards();
     });
 
+  // 描述 = 文档：点开主篇/组内描述。还没写过（约定路径上没有文件）就先建一个空文档，
+  // 打开即写——否则「未写」是个死链，人得先去命令行 docs add 才能写描述。
+  // create 失败（已存在 / 并发）一律当成功：下一步是打开，存在与否由文档页自己判断。
+  const openDescDoc = (rel, title) => guard(async () => {
+    if (!rel) return;
+    await api('/api/docs/item', { method: 'POST', body: { rel, body: `# ${title || rel}\n\n` } }).catch(() => {});
+    openByDocId('rel:' + rel);
+    loadRepos();
+  });
+
   const rowActs = {
     open: (r) => rowAct('open', r),
     edit: (r) => rowAct('edit', r),
     del: (r) => rowAct('del', r),
     remote: (r) => openRemote(r),
+    doc: (main) => {
+      if (!main || !main.docId) return;
+      if (main.exists || !main.rel) return openByDocId(main.docId);
+      return openDescDoc(main.rel, main.title);
+    },
     // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它身上（多对多的 dev 侧视角）
     bind: (r) => {
       const sel = {};
@@ -658,16 +697,11 @@ export default function ReposView() {
       if (full) openLinkNote(full, 'repo', devRepo.key, devRepo.name);
     },
     note: (r) => {
-      // 组内描述挂在 **key** 上（成员关系用 key）
+      // 组内描述挂在 **key** 上（成员关系用 key），内容是 group/<组>/<key>.md
       const mine = (r.boards || []).find((b) => b.key === (filterBoard?.key || `board/${filterBoard?.name || ''}`));
-      setNoteFor({
-        id: r.key,
-        repo: r.name,
-        boardId: filterBoard?.key || filter,
-        boardName: filterBoard?.name || '',
-        note: mine?.note || '',
-      });
-      setNoteText(mine?.note || '');
+      if (!mine) return;
+      if (mine.noteDocPath) return openByDocId('path:' + mine.noteDocPath);
+      return openDescDoc(mine.noteDocRel, `${mine.name} · ${r.name}`);
     },
   };
 
@@ -876,7 +910,7 @@ export default function ReposView() {
                         title={c ? (c.ok ? '检查通过' : c.issues.join('\n')) : '尚未检查'} /></td>
                       <td className="rp-ref-cell-name">
                         <strong>{r.name}</strong>
-                        {r.desc ? <div className="muted rp-desc" title={r.desc}>{r.desc}</div> : null}
+                        <DocLine docs={r.descDocs} onOpen={rowActs.doc} />
                       </td>
                       <td className="mono rp-ref-cell-remote">
                         <Copyable text={r.remote || ''} title="点击复制远程地址">{r.remote || '（无）'}</Copyable>
@@ -1002,10 +1036,22 @@ export default function ReposView() {
               <label htmlFor="repo-name">名称</label>
               <input id="repo-name" placeholder="留空则用目录末段" value={form.name} onChange={set('name')} />
             </div>
-            <div className="form-field">
-              <label htmlFor="repo-desc">一句话描述</label>
-              <input id="repo-desc" spellCheck="false" placeholder="这个仓库是干什么的" value={form.desc} onChange={set('desc')} />
-            </div>
+            {/* 描述不是一段字符串，是绑定的文档：这里只显示主篇（点开即编辑），
+                补充篇在文档页里管理。新建时还没有文档，等落地后从行内点进去写。 */}
+            {editingDocs ? (
+              <div className="form-field">
+                <label>项目描述（文档）</label>
+                <div className="rp-docpick">
+                  <button type="button" className="rp-doc" onClick={() => { setFormOpen(false); openByDocId(editingDocs.main.docId); }}>
+                    {editingDocs.main.title}
+                    {editingDocs.main.exists ? null : <span className="rp-doc-todo">未写</span>}
+                  </button>
+                  {editingDocs.links.length ? (
+                    <span className="muted">另有 {editingDocs.links.length} 篇补充文档</span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <div className="form-field">
               <label htmlFor="repo-type">类型</label>
               <select id="repo-type" value={form.type} onChange={set('type')}>
@@ -1045,17 +1091,37 @@ export default function ReposView() {
                 onChange={(e) => setBoardForm((f) => ({ ...f, name: e.target.value }))}
               />
             </div>
-            <div className="form-field">
-              <label htmlFor="bd-desc">领域描述</label>
-              <textarea
-                id="bd-desc"
-                rows={4}
-                spellCheck="false"
-                placeholder={'这组仓库在这个环境里的侧重、配合关系、关键路径与搜索关键词。\n如：go-ah 是 OIDC 认证中心（issuer 192.0.2.47:8082），组内其余仓库都是它的接入终端。\n如：fr 组内仓库共享 API 契约（lib/api/），搜 fr_ 前缀。'}
-                value={boardForm.desc}
-                onChange={(e) => setBoardForm((f) => ({ ...f, desc: e.target.value }))}
-              />
-            </div>
+            {boardForm.id ? (
+              <div className="form-field">
+                <label>领域描述（文档）</label>
+                <div className="rp-docpick">
+                  <button
+                    type="button"
+                    className={'rp-doc' + (boardForm.desc ? '' : ' ghost')}
+                    title="打开组介绍文档"
+                    onClick={() => {
+                      const b = boardList.find((x) => x.id === boardForm.id);
+                      setBoardForm(null);
+                      if (b && (b.docRel || (b.doc && b.doc.rel))) openByDocId('rel:' + (b.docRel || b.doc.rel));
+                    }}
+                  >
+                    {boardForm.desc || '未写'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="form-field">
+                <label htmlFor="bd-desc">初始描述</label>
+                <textarea
+                  id="bd-desc"
+                  rows={3}
+                  spellCheck="false"
+                  placeholder={'新建时给的介绍正文（之后以 board/<组>.md 文档为准）。\n如：这组仓库在这个环境里的侧重、配合关系、关键路径与搜索关键词。'}
+                  value={boardForm.desc}
+                  onChange={(e) => setBoardForm((f) => ({ ...f, desc: e.target.value }))}
+                />
+              </div>
+            )}
             <div className="form-acts">
               <button className="btn ghost" onClick={() => setBoardForm(null)}>取消</button>
               <button className="btn" disabled={!boardForm.name.trim()} onClick={saveBoard}>
@@ -1102,34 +1168,6 @@ export default function ReposView() {
       {expText ? (
         <Modal title="看板 JSON（可回灌给导入）" size="lg" onClose={() => setExpText(null)}>
           <textarea className="bd-exp" rows={14} readOnly value={expText} spellCheck="false" />
-        </Modal>
-      ) : null}
-
-      {/* 组内描述编辑：同一个仓库在不同看板里的角色各不相同，描述挂在成员关系上。
-          agent 读看板时会把它带上（见 kv-repo skill），所以值得写关键路径与搜索词。 */}
-      {noteFor ? (
-        <Modal title={`组内描述 · ${noteFor.repo} @「${noteFor.boardName}」`} onClose={() => setNoteFor(null)}>
-          <div className="form-grid">
-            <div className="form-field">
-              <label htmlFor="rp-note">「{noteFor.repo}」在看板「{noteFor.boardName}」里的角色</label>
-              <div className="form-hint">
-                写它在这个组里的特殊点与配合关系（谁是中心 / 终端、API 关联在哪），
-                可多行、可含关键路径与搜索关键词。留空保存 = 清除。
-              </div>
-              <textarea
-                id="rp-note"
-                rows={5}
-                spellCheck="false"
-                placeholder={'如：OIDC 认证中心（issuer 192.0.2.47:8082），组内其余仓库都是它的接入终端；\nAPI 契约见 internal/middleware/oidc.go，搜 oidc_ 前缀。'}
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-              />
-            </div>
-            <div className="form-acts">
-              <button className="btn ghost" onClick={() => setNoteFor(null)}>取消</button>
-              <button className="btn" onClick={saveNote}>保存</button>
-            </div>
-          </div>
         </Modal>
       ) : null}
 

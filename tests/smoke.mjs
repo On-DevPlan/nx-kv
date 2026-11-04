@@ -655,9 +655,11 @@ try {
       (await cli(['board', 'assign', 'alpha', '--board', 'nx系列'])).status === 0
   );
   check('board note', (await cli(['board', 'note', 'alpha', '--board', 'nx系列', '--note', '组里的任务出入口'])).status === 0);
+  // repo add 的 --desc 现在是「初始描述 → 写进主篇文档」，不再只存字符串
+  check('repo add 直接把 --desc 播种成主篇 md', existsSync(join(tmp, 'docs', 'repo', 'github.com', 'me', 'alpha.md')));
 
   const seedPrev = await cliJson(['docs', 'seed']);
-  check('docs seed 预览 3 份', seedPrev.count === 3, JSON.stringify(seedPrev.items || seedPrev).slice(0, 160));
+  check('docs seed 预览 0 份（add / board add / board note 都已直接落文档）', seedPrev.count === 0, JSON.stringify(seedPrev.items || seedPrev).slice(0, 160));
   check('docs seed --apply', (await cli(['docs', 'seed', '--apply'])).status === 0);
   const list1 = await cliJson(['docs', 'list']);
   check('docs list 落盘 3 份', list1.count === 3, JSON.stringify(list1.docs.map((d) => d.rel)));

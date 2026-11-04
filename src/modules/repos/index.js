@@ -212,7 +212,7 @@ export default {
       flags: {
         name: { type: 'string' },
         icon: { type: 'string', hint: '项目图标（emoji 或单字符，≤8 字；留空 = 用默认图标）' },
-        desc: { type: 'string' },
+        desc: { type: 'string', hint: '初始描述（写成项目主篇文档；之后描述以文档为准）' },
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库（默认），ref=参考仓库' },
         remote: { type: 'string', hint: '远程 git 地址（key 的来源；导出时导它）' },
@@ -231,13 +231,13 @@ export default {
       cli: ['repo', 'update'],
       http: ['PATCH', '/api/repos/:id'],
       summary:
-        '修改仓库路径 / 名称 / 描述 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填 + 交付文本带继续 get 模板）',
+        '修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填 + 交付文本带继续 get 模板）。描述已改为文档，不再经这里改',
       args: ['id'],
       flags: {
         path: { type: 'string' },
         name: { type: 'string' },
         icon: { type: 'string', hint: '项目图标（emoji 或单字符，≤8 字；留空 = 用默认图标）' },
-        desc: { type: 'string' },
+        desc: { type: 'string', hint: '（已废弃）描述是文档：改正文用 docs set，换绑用 docs bind —— 传了会报错' },
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库，ref=参考仓库' },
         remote: { type: 'string', hint: '远程 git 地址' },

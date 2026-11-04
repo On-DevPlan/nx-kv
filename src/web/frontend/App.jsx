@@ -20,7 +20,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Layout, Actions, DockLocation, defaultKeyMap, useUndo } from 'flexlayout-react';
 import { useStore } from './store.jsx';
-import { ErrorBoundary, useDialog, useToast } from './components/ui.jsx';
+import { ErrorBoundary } from './components/ui.jsx';
+import { useToast } from './components/toast/index.jsx';
+import { useDialog } from './components/popup/index.jsx';
 import { api } from './api/client.js';
 import { Icon } from './components/icons.jsx';
 import { AppContext } from './app-context.jsx';
@@ -345,18 +347,24 @@ export default function App() {
     ));
   }, [model, specCtx]);
 
-  const resetLayout = useCallback(() => {
-    if (!confirm('丢掉存下来的布局，回到初始的两栏（目录 + 开始）？')) return;
+  // 确认用应用内弹窗（useDialog，可用键盘 Esc / 点蒙层取消），不用原生 confirm。
+  const { dialog, node: dialogNode } = useDialog();
+
+  const resetLayout = useCallback(async () => {
+    const ok = await dialog({
+      title: '重置为初始两栏',
+      message: '丢掉存下来的布局，回到初始的两栏（目录 + 开始）？',
+      okText: '重置',
+    });
+    if (!ok) return;
     clearStoredModel();
     setModel(loadModel());
-  }, [setModel]);
+  }, [dialog, setModel]);
 
   // ─── 清空当前面板组：页签条右端的「清空」按钮 ───
   // 每个页签组（tabset）条右端放一枚：一次关掉**本组**的全部可关页签。
   // 只作用于按钮所在的组（别的组 / 浮窗 / 边界栏不碰）；目录页签钉死不算，
   // 侧栏组没有可关页签 → 不放按钮，侧栏永远不会被这个按钮清掉。
-  // 确认用应用内弹窗（useDialog，可用键盘 Esc / 点蒙层取消），不用原生 confirm。
-  const { dialog, node: dialogNode } = useDialog();
   const onRenderTabSet = useCallback((node, renderValues) => {
     if (!model || node.getType() !== 'tabset') return;
     const total = countClearable(model, node);

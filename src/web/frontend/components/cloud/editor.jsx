@@ -9,7 +9,7 @@
 // 其中粘贴截图是最常用的那条 —— 截图工具连文件名都不给，所以 upload.js 会替它起名。
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
-import { useToast } from '../ui.jsx';
+import { useToast } from '../toast/index.jsx';
 import { AttachmentText } from './markdown.jsx';
 import { clipboardFiles, droppedFiles, snippetsOf, uploadMany } from './upload.js';
 

@@ -7,8 +7,9 @@
 // 也不持有自己的目录清单——「目录」就是仓库登记里的开发仓库。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../icons.jsx';
-import { PopMenu } from '../overlay.jsx';
-import { useDialog, useToast } from '../ui.jsx';
+import { PopMenu } from '../popup/index.jsx';
+import { useToast } from '../toast/index.jsx';
+import { useDialog } from '../popup/index.jsx';
 import { buildTree } from './model.js';
 import { canDrop, zoneOf, applyDrop } from './drag.js';
 import { rowMenuItems, addMenuItems } from './row-menu.jsx';
@@ -177,7 +178,7 @@ export default function Sidebar({
     setMenu({
       x: e.clientX,
       y: e.clientY,
-      items: rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDataChanged: refreshRepos, refreshLocal, toast }),
+      items: rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDataChanged: refreshRepos, refreshLocal, toast, dialog }),
     });
   };
 

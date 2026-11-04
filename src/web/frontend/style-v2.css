@@ -534,34 +534,9 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .login-empty .tx, .pane-error .tx { font-size: 12.5px; color: var(--ink-2); max-width: 280px; }
 .faint { color: var(--faint); }
 
-/* ---- 浮层：菜单 / 迁移模态 / 撤销 toast / 拖拽提示 ---- */
-.gmenu {
-  position: fixed; z-index: 100; min-width: 168px; background: var(--paper); border: 1px solid var(--soft-2);
-  border-radius: 8px; box-shadow: var(--shadow); padding: 4px; animation: pop 0.1s ease;
-}
-@keyframes pop { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; } }
-.gmenu button {
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 9px; border-radius: 5px;
-  font-family:inherit; font-size: 12.5px; text-align: left; border: 0; background: none; cursor: pointer; color: var(--ink);
-}
-.gmenu button:hover { background: var(--soft); }
-.gmenu button.danger { color: var(--danger); }
-.gmenu .sep { height: 1px; background: var(--line); margin: 4px 6px; }
-.modal-back {
-  position: fixed; inset: 0; background: rgba(22, 24, 28, 0.34); z-index: 140;
-  display: flex; align-items: center; justify-content: center; padding: 20px; animation: pop 0.12s ease;
-}
-/* ⚠ 盒子规则必须挂在 .modal-back 下：v1 ui.jsx 的 <Modal> 里 .modal 是**遮罩**，
-   v2 这里是**盒子**——裸 .modal 会把遮罩改成 540px 纸片，全站弹窗挤在左上角 */
-.modal-back .modal {
-  width: min(540px, 100%); background: var(--paper); border: 1px solid var(--soft-2);
-  border-radius: 10px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.26); overflow: hidden;
-}
-.modal-back .modal-h { padding: 12px 16px; font-weight: 700; font-size: 14px; border-bottom: 1px solid var(--line); }
-.modal-back .modal-b { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
-.modal-back .modal-f {
-  padding: 10px 16px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: var(--soft);
-}
+/* ---- 浮层：菜单 / 迁移模态 / 撤销 toast / 拖拽提示 ----
+   弹层样式已收敛到 components/popup/style.css（.pp-*，2026-11-04 #30）；
+   迁移对话框的 .mx* 内容样式仍在下面。 */
 .mx { display: flex; gap: 10px; align-items: stretch; }
 .mx-box { flex: 1; min-width: 0; border: 1px solid var(--soft-2); border-radius: 8px; padding: 8px 10px; background: var(--canvas); }
 .mx-box .k { font-size: 10.5px; color: var(--faint); margin-bottom: 4px; }
@@ -749,19 +724,9 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   display: inline-flex; align-items: center; justify-content: center;
 }
 .rowmenu-btn:hover, .rowmenu-btn[aria-expanded="true"] { background: var(--soft-2); color: var(--ink); }
-.rowmenu-pop {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; min-width: 96px;
-  background: var(--paper); border: 1px solid var(--soft-2); border-radius: 8px;
-  box-shadow: 0 8px 24px -12px rgba(22, 24, 28, 0.3); padding: 4px;
-  display: flex; flex-direction: column;
-}
-.rowmenu-item {
-  border: 0; background: none; font-family:inherit; font-size: 12px; text-align: left;
-  padding: 6px 10px; border-radius: 6px; cursor: pointer; color: var(--ink); white-space: nowrap;
-}
-.rowmenu-item:hover { background: var(--soft); }
-.rowmenu-item.danger { color: #b3261e; }
-.rowmenu-item.danger:hover { background: rgba(179, 38, 30, 0.07); }
+/* 下拉弹层视觉走 popup 的 .pp-menu（RowMenu 渲染 .rowmenu-pop.pp-menu，
+   这里只留锚定定位，z-index 让位于菜单内部规则） */
+.rowmenu-pop.pp-menu { position: absolute; right: 0; top: calc(100% + 4px); left: auto; }
 
 /* 空态：一句话 + 下一步，替代「（空）」 */
 .cloud-empty { padding: 22px 12px; text-align: center; color: var(--faint); font-size: 12px; line-height: 1.8; }
@@ -884,7 +849,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 /* ---------- 成员选择器（组面板「添加成员」/ 仓库页「成员管理」共用） ----------
  * 界面自己说明自己：条目自带归属与规模，不写解释性段落。
  */
-.rp-mp-box { width: min(760px, 96vw); }
+.pp-card.rp-mp-box { width: min(760px, 96vw); }
 .rp-mp-body { padding: 10px 12px 12px; }
 .rp-mp-search {
   display: flex; align-items: center; gap: 8px;

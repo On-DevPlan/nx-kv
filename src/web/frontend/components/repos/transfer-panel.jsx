@@ -12,7 +12,7 @@
 // CLI 侧有完全同构的 `repo export` / `repo import --diff` / `repo import`。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
-import { useGuard, useToast } from '../ui.jsx';
+import { useGuard, useToast } from '../toast/index.jsx';
 
 const STATUS_META = {
   new: { label: '新增', cls: 'new' },

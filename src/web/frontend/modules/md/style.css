@@ -773,23 +773,8 @@
   .mdw-lp input.mdw-lp-title,.mdw-lp textarea.mdw-lp-title,.mdw-reader-title{font-size:24px}
 }
 
-/* 快捷键速查面板：白纸浮层 + 分组键位表（Ctrl/⌘ / 唤起） */
-.mdw-sheet-back{
-  position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
-  background:rgba(20,22,26,.32);padding:24px;
-}
-.mdw-sheet{
-  width:min(560px,100%);max-height:82vh;overflow:auto;box-sizing:border-box;
-  padding:18px 20px 20px;border-radius:12px;border:1px solid var(--line,#E4E2DC);
-  background:var(--paper,#fff);box-shadow:0 18px 48px rgba(20,22,26,.18);
-}
-.mdw-sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-.mdw-sheet-title{font-weight:650;font-size:14px;font-family:inherit;color:var(--ink,#16181C)}
-.mdw-sheet-x{
-  width:24px;height:24px;border:0;border-radius:6px;background:none;cursor:pointer;
-  color:var(--mid,#838A93);font-size:16px;line-height:1;
-}
-.mdw-sheet-x:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+/* 快捷键速查面板：外壳走 popup/Modal（pp-card pp-lg + .mdw-sheet 追加类），
+   这里只留内容排版（2026-11-04 弹窗组件收敛，壳样式已删） */
 .mdw-sheet-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px 26px}
 .mdw-sheet-cols h4{
   margin:0 0 8px;font-weight:650;font-size:11px;font-family:inherit;letter-spacing:.06em;text-transform:uppercase;

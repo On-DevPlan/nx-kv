@@ -8,7 +8,7 @@
 // 组介绍与项目介绍共用 Introduction（显示 / 编辑 / 补 ref）。
 import { useMemo, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
-import { useToast } from '../../components/ui.jsx';
+import { useToast } from '../../components/toast/index.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import { taskLabel } from '../../components/sidebar/model.js';

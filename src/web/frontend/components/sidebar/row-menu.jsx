@@ -1,7 +1,7 @@
 // 侧边栏的菜单装配：行菜单（⋯ / 右键）+「＋」菜单。
 // （设置已从气泡菜单搬进**浮动设置面板** modules/settings/panel.jsx）
 //
-// 只回答「菜单里有什么」——怎么弹、怎么关、键盘怎么走，在 overlay.jsx 的 PopMenu；
+// 只回答「菜单里有什么」——怎么弹、怎么关、键盘怎么走，在 components/popup 的 PopMenu；
 // 菜单项点了之后改什么，由调用方传进来的回调决定。
 //
 // **菜单操作的是真实数据**：看板归属走 board assign（仓库页的那套看板），
@@ -10,7 +10,7 @@ import { api } from '../../api/client.js';
 import { ensureQueueAndGo } from './queue-nav.js';
 
 /** 仓库行 / 看板行 / 全局池行的菜单项 */
-export function rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDataChanged, refreshLocal, toast }) {
+export function rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDataChanged, refreshLocal, toast, dialog }) {
   if (row.type === 'repo') {
     const boardList = boards || [];
     // 归属看板上带 key（看板的成员按 key 存）
@@ -25,7 +25,7 @@ export function rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDat
         });
         onDataChanged && onDataChanged();
       } catch (err) {
-        alert('归属变更失败: ' + err.message);
+        toast('归属变更失败: ' + err.message);
       }
     };
     return [
@@ -49,12 +49,18 @@ export function rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDat
       'sep',
       {
         label: '删除看板（成员仓库回到未分组）', icon: 'trash', danger: true, onClick: async () => {
-          if (!confirm(`删除看板「${row.name}」？它的 ${row.count} 个仓库会回到未分组（登记不动）。`)) return;
+          const ok = await dialog({
+            title: `删除看板「${row.name}」`,
+            message: `它的 ${row.count} 个仓库会回到未分组（登记不动）。`,
+            danger: true,
+            okText: '删除',
+          });
+          if (!ok) return;
           try {
             await api(`/api/boards/${encodeURIComponent(row.id)}`, { method: 'DELETE', body: {} });
             onDataChanged && onDataChanged();
           } catch (err) {
-            alert('删除失败: ' + err.message);
+            toast('删除失败: ' + err.message);
           }
         },
       },

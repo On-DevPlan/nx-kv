@@ -8,6 +8,8 @@ import { Icon } from '../../components/icons.jsx';
 import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
 import { STAGE_LABELS, taskToProgress } from '../../modules/md/md-parse.js';
 import { findOpenPanel } from '../../workspace.js';
+import { useToast } from '../../components/toast/index.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
 
 function fmtElapsed(ms) {
   if (ms == null || ms < 0 || Number.isNaN(ms)) return '—';
@@ -43,6 +45,8 @@ function stageChips(card) {
 }
 
 export default function ProgressPanel({ dirKey, rows = [], refreshLocal, model, onOpenTask, onClosePage }) {
+  const toast = useToast();
+  const { dialog, node: dialogNode } = useDialog();
   const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
   const topic = useMemo(() => {
     if (isGlobal) return (rows || []).find((r) => r.isGlobal) || null;
@@ -105,7 +109,13 @@ export default function ProgressPanel({ dirKey, rows = [], refreshLocal, model, 
     const ids = pickedCards.map((c) => c.id);
     const names = pickedCards.map((c) => `#${c.id} ${c.title}`);
     const shown = names.length <= 6 ? names.join('\n') : `${names.slice(0, 6).join('\n')}… 共 ${names.length} 条`;
-    if (!confirm(`删除选中的 ${ids.length} 条任务？\n${shown}\n\n软删除：CLI localtask task restore 可恢复。`)) return;
+    const ok = await dialog({
+      title: `删除选中的 ${ids.length} 条任务`,
+      message: `${shown}\n\n软删除：CLI localtask task restore 可恢复。`,
+      danger: true,
+      okText: '删除',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const res = await api('/api/localtasks/items', {
@@ -123,10 +133,10 @@ export default function ProgressPanel({ dirKey, rows = [], refreshLocal, model, 
       }
       setPicked(new Set());
       refreshLocal();
-      alert(`已删除 ${n} 条任务${miss}`);
+      toast(`已删除 ${n} 条任务${miss}`);
     } catch (e) {
       // 失败保留勾选，便于改了再试
-      alert('删除失败: ' + (e.message || e));
+      toast('删除失败: ' + (e.message || e));
     } finally {
       setBusy(false);
     }
@@ -138,6 +148,7 @@ export default function ProgressPanel({ dirKey, rows = [], refreshLocal, model, 
 
   return (
     <div className="mdw-prog-host">
+      {dialogNode}
       <div className="mdw-prog-h">
         <span className="t">{topic?.name || (isGlobal ? '全局任务池' : '任务进程')}</span>
         {cards.length > 0 && (

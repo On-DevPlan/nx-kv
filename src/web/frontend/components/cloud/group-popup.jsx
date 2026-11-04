@@ -9,7 +9,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useStore } from '../../store.jsx';
-import { useToast, useGuard, useDialog, Copyable, Modal } from '../ui.jsx';
+import { Copyable } from '../ui.jsx';
+import { useToast, useGuard } from '../toast/index.jsx';
+import { useDialog, Modal } from '../popup/index.jsx';
 
 export default function GroupPopup({ onClose }) {
   const { boot, refreshBoot } = useStore();

@@ -1,0 +1,62 @@
+/* 弹层统一视觉（components/popup 唯一出处）：
+   .pp-back / .pp-card（模态与对话框共用外壳）· .pp-menu（浮层菜单） */
+
+.pp-back {
+  position: fixed; inset: 0; background: rgba(22, 24, 28, 0.34); z-index: 140;
+  display: flex; align-items: center; justify-content: center; padding: 20px; animation: pp-pop 0.12s ease;
+}
+/* 对话框（确认/输入）：偏上更贴合视线，与旧 .dlg 一致 */
+.pp-back.pp-dlg { align-items: flex-start; padding-top: 96px; background: rgba(251, 251, 252, 0.86); backdrop-filter: blur(2px); }
+@keyframes pp-pop { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; } }
+
+.pp-card {
+  background: var(--paper); border: 1px solid var(--soft-2);
+  border-radius: 10px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.26); overflow: hidden;
+  width: min(540px, 100%);
+  display: flex; flex-direction: column;
+  max-height: calc(100vh - 48px);
+}
+.pp-card.pp-sm { width: min(460px, 94vw); }
+.pp-card.pp-lg { width: min(880px, 96vw); }
+
+.pp-head {
+  padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border-bottom: 1px solid var(--line); flex: none;
+}
+.pp-title { font-weight: 700; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-x {
+  border: 0; background: none; padding: 0 6px; border-radius: 6px; flex: none;
+  font-size: 16px; line-height: 1.4; color: var(--mid, #838A93); cursor: pointer;
+}
+.pp-x:hover { background: var(--soft, #F1F0EC); color: var(--ink); }
+
+.pp-body { padding: 14px 16px; overflow: auto; }
+.pp-foot {
+  padding: 10px 16px; border-top: 1px solid var(--line); flex: none;
+  display: flex; justify-content: flex-end; gap: 8px; background: var(--soft);
+}
+
+/* 对话框（useDialog）内部排版 */
+.pp-dlg-title { font-weight: 700; margin-bottom: 6px; }
+.pp-dlg-msg { color: var(--ink); white-space: pre-wrap; word-break: break-all; margin-bottom: 6px; }
+.pp-input {
+  width: 100%;
+  margin: 8px 0 4px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12.5px;
+}
+.pp-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* 浮层菜单（坐标式 PopMenu / 锚定式 RowMenu 共用） */
+.pp-menu {
+  position: fixed; z-index: 100; min-width: 168px; background: var(--paper); border: 1px solid var(--soft-2);
+  border-radius: 8px; box-shadow: var(--shadow); padding: 4px; animation: pp-pop 0.1s ease;
+}
+.rowmenu .pp-menu { position: absolute; top: calc(100% + 4px); right: 0; left: auto; }
+.pp-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 9px; border-radius: 5px;
+  font-family: inherit; font-size: 12.5px; text-align: left; border: 0; background: none; cursor: pointer; color: var(--ink);
+}
+.pp-menu-item:hover { background: var(--soft); }
+.pp-menu-item.danger { color: var(--danger); }
+.pp-sep { height: 1px; background: var(--line); margin: 4px 6px; }

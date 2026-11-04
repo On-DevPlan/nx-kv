@@ -14,7 +14,8 @@
 import { useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
-import { useToast } from '../../components/ui.jsx';
+import { useToast } from '../../components/toast/index.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
 import { titleFromMd } from '../../modules/md/md-parse.js';
 import { GLOBAL_KEY, splitQueueTasks } from '../../../../modules/localtask/board.js';
 
@@ -30,6 +31,7 @@ function statusTag(t) {
 
 export default function Overview({ rows, onNavigate, refreshLocal }) {
   const toast = useToast();
+  const { dialog, node: dialogNode } = useDialog();
   // 勾选状态：Map<分区 key, Set<任务编号>>。行会随轮询刷新而消失，所以计数与删除
   // 一律与「当前队列里仍存在且未删除」取交集，不额外做清理 effect。
   const [sel, setSel] = useState(() => new Map());
@@ -116,7 +118,13 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
     const total = groups.reduce((n, g) => n + g.ids.length, 0);
     if (!total) return;
     const scope = groups.length > 1 ? `（跨 ${groups.length} 个目录）` : '';
-    if (!confirm(`删除 ${total} 条任务${scope}？\n软删除：CLI localtask task restore 可恢复。`)) return;
+    const ok = await dialog({
+      title: `删除 ${total} 条任务${scope}`,
+      message: '软删除：CLI localtask task restore 可恢复。',
+      danger: true,
+      okText: '删除',
+    });
+    if (!ok) return;
     let n = 0;
     let miss = 0;
     const errs = [];
@@ -150,6 +158,7 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
 
   return (
     <div className="ov-wrap">
+      {dialogNode}
       <div className="ov-head">
         <h2>全部目录总览</h2>
         <span className="muted">

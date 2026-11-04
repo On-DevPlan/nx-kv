@@ -15,7 +15,9 @@
 // 看板退成上方的筛选器与行内的标签。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
-import { useGuard, useDialog, useToast, Modal, Copyable } from '../../components/ui.jsx';
+import { Copyable } from '../../components/ui.jsx';
+import { useGuard, useToast } from '../../components/toast/index.jsx';
+import { useDialog, Modal } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
 
@@ -997,7 +999,7 @@ export default function ReposView() {
 
       {/* 导入看板弹窗 */}
       {impOpen ? (
-        <Modal title="导入看板 JSON" onClose={() => { setImpOpen(false); setImpText(''); }}>
+        <Modal title="导入看板 JSON" size="lg" onClose={() => { setImpOpen(false); setImpText(''); }}>
           <div className="form-grid">
             <div className="form-field">
               <label htmlFor="bd-imp">看板 JSON</label>
@@ -1029,7 +1031,7 @@ export default function ReposView() {
 
       {/* 导出结果 */}
       {expText ? (
-        <Modal title="看板 JSON（可回灌给导入）" onClose={() => setExpText(null)}>
+        <Modal title="看板 JSON（可回灌给导入）" size="lg" onClose={() => setExpText(null)}>
           <textarea className="bd-exp" rows={14} readOnly value={expText} spellCheck="false" />
         </Modal>
       ) : null}

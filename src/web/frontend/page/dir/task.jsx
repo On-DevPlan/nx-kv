@@ -9,7 +9,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
-import { useToast } from '../../components/ui.jsx';
+import { useToast } from '../../components/toast/index.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
 import { GLOBAL_KEY } from '../../../../modules/localtask/board.js';
 import { buildReopenText } from '../../../../modules/localtask/reopen-text.js';
 import ToolBar from '../../components/md/tool-bar.jsx';
@@ -36,6 +37,7 @@ import {
 export default function PagePanel({ dirKey, task, tabId, model }) {
   const app = useApp() || {};
   const toast = useToast();
+  const { dialog, node: dialogNode } = useDialog();
   const rows = app.rows || [];
   const refreshLocal = app.refreshLocal;
   const tpl = app.tpl;
@@ -356,9 +358,16 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
   };
 
   // ─── 删除本页（软删除）───
-  const delTask = () => {    if (!doc || isDraft) return;
+  const delTask = async () => {
+    if (!doc || isDraft) return;
     const title = doc.title || `#${task}`;
-    if (!confirm(`删除任务「${title}」？\n软删除：CLI localtask task restore 可恢复。`)) return;
+    const ok = await dialog({
+      title: `删除任务「${title}」`,
+      message: '软删除：CLI localtask task restore 可恢复。',
+      danger: true,
+      okText: '删除',
+    });
+    if (!ok) return;
     guard(async () => {
       await api('/api/localtasks/item', {
         method: 'DELETE',
@@ -592,6 +601,7 @@ export default function PagePanel({ dirKey, task, tabId, model }) {
 
   return (
     <div className="mdw" data-mode={doc.mode || 'split'} onMouseUp={onPreviewMouseUp}>
+      {dialogNode}
       <div className="mdw-main">
         <div className="mdw-top">
           <div className="mdw-head">

@@ -1,7 +1,7 @@
 // MD 工作台快捷键速查：专业编辑器的必备「键盘地图」。
 // Ctrl/⌘ / 唤起（Notion 习惯），工具栏问号按钮也可打开；Esc / 点遮罩关闭。
-import { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+// 外壳走 popup/Modal（全站统一模态），本文件只管快捷键内容。
+import { Modal } from '../popup/index.jsx';
 
 const GROUPS = [
   {
@@ -37,54 +37,23 @@ const GROUPS = [
 ];
 
 export default function ShortcutSheet({ onClose }) {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
-
-  useEffect(() => {
-    ref.current?.querySelector('button')?.focus();
-  }, []);
-
-  return createPortal(
-    <div
-      className="mdw-sheet-back"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="mdw-sheet" role="dialog" aria-modal="true" aria-label="快捷键速查" ref={ref}>
-        <div className="mdw-sheet-head">
-          <span className="mdw-sheet-title">快捷键</span>
-          <button type="button" className="mdw-sheet-x" onClick={onClose} aria-label="关闭快捷键速查">
-            ×
-          </button>
-        </div>
-        <div className="mdw-sheet-cols">
-          {GROUPS.map((g) => (
-            <section key={g.title} className={g.title === '导航与文件' ? 'wide' : undefined}>
-              <h4>{g.title}</h4>
-              <dl>
-                {g.items.map(([k, d]) => (
-                  <div className="mdw-sheet-row" key={k}>
-                    <dt><kbd>{k}</kbd></dt>
-                    <dd>{d}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          ))}
-        </div>
+  return (
+    <Modal title="快捷键" onClose={onClose} size="lg" className="mdw-sheet">
+      <div className="mdw-sheet-cols">
+        {GROUPS.map((g) => (
+          <section key={g.title} className={g.title === '导航与文件' ? 'wide' : undefined}>
+            <h4>{g.title}</h4>
+            <dl>
+              {g.items.map(([k, d]) => (
+                <div className="mdw-sheet-row" key={k}>
+                  <dt><kbd>{k}</kbd></dt>
+                  <dd>{d}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ))}
       </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }

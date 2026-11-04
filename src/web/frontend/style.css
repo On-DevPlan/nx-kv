@@ -286,58 +286,7 @@ select {
 .btn:disabled { opacity: 0.4; cursor: default; }
 .btn.danger { background: #b3261e; color: #fff; }
 
-/* ---------- toast / 对话框（取代浏览器原生弹窗） ---------- */
-.toast-stack {
-  position: fixed;
-  left: 50%;
-  bottom: 28px;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  z-index: 60;
-  pointer-events: none;
-}
-.toast {
-  background: var(--ink);
-  color: var(--paper);
-  font-size: 12.5px;
-  padding: 9px 16px;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(20, 22, 26, 0.25);
-  max-width: 72vw;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.dlg {
-  position: fixed;
-  inset: 0;
-  background: rgba(251, 251, 252, 0.86);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 96px 16px;
-  z-index: 50;
-}
-.dlg-box {
-  background: var(--paper);
-  border-radius: var(--radius);
-  box-shadow: 0 12px 40px rgba(20, 22, 26, 0.16);
-  width: min(460px, 94vw);
-  padding: 16px 18px;
-}
-.dlg-title { font-weight: 700; margin-bottom: 6px; }
-.dlg-msg { color: var(--ink); white-space: pre-wrap; word-break: break-all; margin-bottom: 6px; }
-.dlg-input {
-  width: 100%;
-  margin: 8px 0 4px;
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 12.5px;
-}
-.dlg-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+/* toast / 对话框样式已收敛到 components/toast 与 components/popup（2026-11-04 #30） */
 
 /* ---------- 卡片与列表 ---------- */
 .card {
@@ -1814,38 +1763,7 @@ dd .adapter-dir { display: inline-block; margin-right: 14px; }
 .row-inline { display: flex; gap: 8px; margin-top: 8px; }
 .row-inline input { flex: 1; }
 
-/* ---------- 弹窗 ---------- */
-.modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(251, 251, 252, 0.86);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 48px 16px;
-  z-index: 20;
-}
-.modal.hidden { display: none; }
-.modal-box {
-  background: var(--paper);
-  border-radius: var(--radius);
-  box-shadow: 0 12px 40px rgba(20, 22, 26, 0.16);
-  width: min(880px, 96vw);
-  max-height: 84vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.modal-title {
-  padding: 12px 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 700;
-  box-shadow: 0 1px 0 var(--soft);
-}
-.modal-body { padding: 14px; overflow: auto; }
+/* 弹窗样式已收敛到 components/popup（2026-11-04 #30） */
 
 /* ---------- 等待设置弹窗（agent 用法 / 超时 / 收尾追加语） ---------- */
 .spacer { flex: 1; }

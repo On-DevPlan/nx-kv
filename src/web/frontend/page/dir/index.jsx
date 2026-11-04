@@ -1,8 +1,9 @@
 // 目录面板 —— 简介（统一 Introduction）+ 子任务表。
 import { useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
-import { useDialog, useToast } from '../../components/ui.jsx';
-import { PopMenu } from '../../components/overlay.jsx';
+import { useToast } from '../../components/toast/index.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
+import { PopMenu } from '../../components/popup/index.jsx';
 import { GLOBAL_KEY, sortTasksForDisplay } from '../../../../modules/localtask/board.js';
 import {
   FEEDBACK_HEADING,
@@ -154,10 +155,16 @@ export default function DirPanel({ dirKey }) {
     });
   };
 
-  const delTask = (t) => {
+  const delTask = async (t) => {
     if (!t) return;
     const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
-    if (!confirm(`删除任务「${title.replace(/^#\s*/, '')}」？\n软删除：CLI localtask task restore 可恢复。`)) return;
+    const ok = await dialog({
+      title: `删除任务「${title.replace(/^#\s*/, '')}」`,
+      message: '软删除：CLI localtask task restore 可恢复。',
+      danger: true,
+      okText: '删除',
+    });
+    if (!ok) return;
     guard(async () => {
       await api('/api/localtasks/item', {
         method: 'DELETE',

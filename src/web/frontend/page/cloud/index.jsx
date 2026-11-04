@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useStore } from '../../store.jsx';
-import { useToast, useGuard, useDialog, Modal, Copyable } from '../../components/ui.jsx';
+import { Copyable } from '../../components/ui.jsx';
+import { useToast, useGuard } from '../../components/toast/index.jsx';
+import { useDialog, Modal } from '../../components/popup/index.jsx';
 import TaskEditor from '../../components/cloud/editor.jsx';
 import GroupPopup from '../../components/cloud/group-popup.jsx';
-import RowMenu from '../../components/cloud/row-menu.jsx';
+import { RowMenu } from '../../components/popup/index.jsx';
 import { AttachmentText } from '../../components/cloud/markdown.jsx';
 import { clipboardFiles, snippetsOf, uploadMany } from '../../components/cloud/upload.js';
 
@@ -465,7 +467,7 @@ export default function TodoView() {
           />
         </Modal>
       ) : null}
-      {modal ? <Modal title={modal.title} onClose={() => setModal(null)}>{modal.node}</Modal> : null}
+      {modal ? <Modal title={modal.title} size="lg" onClose={() => setModal(null)}>{modal.node}</Modal> : null}
       {dialogNode}
     </div>
   );

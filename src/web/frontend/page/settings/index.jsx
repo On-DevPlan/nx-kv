@@ -15,7 +15,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useApp } from '../../app-context.jsx';
-import { useDialog, useToast } from '../../components/ui.jsx';
+import { useToast } from '../../components/toast/index.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
 import { openPanel } from '../../workspace.js';
 import './style.css';
@@ -467,8 +468,13 @@ export default function SettingsPanel() {
           <span>布局</span>
           <button
             className="btn ghost sm"
-            onClick={() => {
-              if (!confirm('丢掉存下来的布局，回到初始的两栏（目录 + 开始）？')) return;
+            onClick={async () => {
+              const ok = await dialog({
+                title: '重置为初始两栏',
+                message: '丢掉存下来的布局，回到初始的两栏（目录 + 开始）？',
+                okText: '重置',
+              });
+              if (!ok) return;
               app.shell && app.shell.resetLayout();
             }}
           >

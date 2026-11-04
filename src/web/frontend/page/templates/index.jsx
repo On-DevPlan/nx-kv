@@ -19,7 +19,8 @@
 //   - 删除走 confirm（一键误触没后悔药）；名字输入框 Enter 直接提交。
 import { useRef, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
-import { useToast } from '../../components/ui.jsx';
+import { useToast } from '../../components/toast/index.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
 import { useApp } from '../../app-context.jsx';
 import TemplateEditor from '../../components/md/template-editor.jsx';
 // 面板由工作区 factory 直接渲染，样式不随某个视图 chunk 走 —— 自己 import
@@ -30,6 +31,7 @@ export default function TemplatePanel() {
   const app = useApp() || {};
   const tpl = app.tpl;
   const toast = useToast();
+  const { dialog, node: dialogNode } = useDialog();
   const [name, setName] = useState('');
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
@@ -85,8 +87,13 @@ export default function TemplatePanel() {
   }, '已保存模板');
 
   const setDefault = (t) => act(() => tpl.setDefault(t.id), `默认模板已设为「${t.name}」`)();
-  const removeTpl = (t) => {
-    if (!confirm(`删除模板「${t.name}」？`)) return;
+  const removeTpl = async (t) => {
+    const ok = await dialog({
+      title: `删除模板「${t.name}」`,
+      danger: true,
+      okText: '删除',
+    });
+    if (!ok) return;
     act(() => tpl.remove(t.id), `已删除「${t.name}」`)();
   };
 
@@ -101,6 +108,7 @@ export default function TemplatePanel() {
 
   return (
     <div className="mdw-tpl-panel">
+      {dialogNode}
       <div className="mdw-tpl-panel-inner">
         <div className="mdw-tpl-panel-head">
           <span className="mdw-tpl-panel-title">任务模板</span>

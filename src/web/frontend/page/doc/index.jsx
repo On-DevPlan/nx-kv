@@ -9,7 +9,8 @@
 // 外部绑定（writable:false）强制预览态——改动请回 vault。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
-import { useDialog, useToast } from '../../components/ui.jsx';
+import { useToast } from '../../components/toast/index.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
 import { useApp } from '../../app-context.jsx';
 import { openPanel } from '../../workspace.js';
 import { MdPanes, ModeSeg } from '../../components/md/md-panes.jsx';

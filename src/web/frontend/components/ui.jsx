@@ -1,42 +1,11 @@
-// 通用 UI 件：toast、对话框、弹窗、错误边界、diff 渲染。
-// 约定延续自 vanilla 版：无 emoji、不用浏览器原生弹窗（alert/confirm/prompt 一律页内实现）。
-import { Component, createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-
-// ---- toast：页内轻提示（自动消失） ----
-
-const ToastCtx = createContext(null);
-
-export function ToastProvider({ children }) {
-  const [msgs, setMsgs] = useState([]);
-  const idRef = useRef(0);
-
-  const toast = useCallback((msg) => {
-    const id = ++idRef.current;
-    setMsgs((m) => [...m, { id, msg }]);
-    setTimeout(() => setMsgs((m) => m.filter((x) => x.id !== id)), 2800);
-  }, []);
-
-  return (
-    <ToastCtx.Provider value={toast}>
-      {children}
-      <div className="toast-stack">
-        {msgs.map((m) => <div key={m.id} className="toast show">{m.msg}</div>)}
-      </div>
-    </ToastCtx.Provider>
-  );
-}
-
-export function useToast() {
-  return useContext(ToastCtx) || ((m) => console.log(m));
-}
-
-// 操作守卫：包一层，失败自动 toast 错误信息（对应 vanilla 版的 guard()）
-export function useGuard() {
-  const toast = useToast();
-  return useCallback(async (fn) => {
-    try { return await fn(); } catch (e) { toast(String((e && e.message) || e)); }
-  }, [toast]);
-}
+// 通用 UI 件：点击复制、错误边界、diff 渲染。
+//
+// 弹窗与轻提示已收敛到专用目录（2026-11-04 任务 #30 弹窗组件收敛）：
+//   toast  → components/toast/（ToastProvider / useToast / useGuard）
+//   弹层   → components/popup/（Modal / useDialog / PopMenu / RowMenu / useDismiss）
+// 这里只留与弹层无关的展示件。
+import { Component } from 'react';
+import { useToast } from './toast/index.jsx';
 
 // ---- 点击即复制：所有路径/长标识的展示标准 ----
 // 点一下复制全文；hover 显示「点击复制」提示；复制成功 toast 确认。
@@ -72,80 +41,6 @@ export function Copyable({ text, className = '', title, children }) {
   );
 }
 
-// ---- 对话框：确认 / 输入（Promise 风格，对应 vanilla 版 dialog()） ----
-
-export function useDialog() {
-  const [state, setState] = useState(null); // {resolve, ...opts}
-  // 用 ref 读输入框，而不是 document.querySelector('.dlg-input')——
-  // 后者绕开 React 直接摸 DOM，页面上有第二个同名类名时就会读错。
-  const inputRef = useRef(null);
-  const tagRef = useRef(null);
-
-  const close = useCallback((val) => {
-    setState((s) => { if (s && s.resolve) s.resolve(val); return null; });
-  }, []);
-
-  const dialog = useCallback((opts = {}) => new Promise((resolve) => {
-    setState({ ...opts, resolve });
-  }), []);
-
-  // 双输入（input + tagInput）：确定/Enter 回 `{ value, tag }`；
-  // 单输入沿用旧口径回 string——既有调用方（只给 input:true 的）完全不受影响。
-  const collect = () => {
-    if (state.tagInput) {
-      return { value: inputRef.current?.value.trim() ?? '', tag: tagRef.current?.value.trim() ?? '' };
-    }
-    return inputRef.current?.value.trim() ?? null;
-  };
-
-  const node = state ? (
-    <div className="dlg" onMouseDown={(e) => { if (e.target === e.currentTarget) close(null); }}>
-      <div className="dlg-box">
-        {state.title ? <div className="dlg-title">{state.title}</div> : null}
-        {state.message ? <div className="dlg-msg">{state.message}</div> : null}
-        {state.input ? (
-          <input
-            ref={inputRef}
-            className="dlg-input"
-            autoFocus
-            spellCheck="false"
-            placeholder={state.placeholder || ''}
-            defaultValue={state.value || ''}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') close(collect());
-              if (e.key === 'Escape') close(null);
-            }}
-          />
-        ) : null}
-        {state.input && state.tagInput ? (
-          <input
-            ref={tagRef}
-            className="dlg-input"
-            spellCheck="false"
-            placeholder={state.tagPlaceholder || '标签（可选，如 qa）'}
-            defaultValue={state.tagValue || ''}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') close(collect());
-              if (e.key === 'Escape') close(null);
-            }}
-          />
-        ) : null}
-        <div className="dlg-acts">
-          <button className="btn ghost" onClick={() => close(null)}>取消</button>
-          <button
-            className={'btn' + (state.danger ? ' danger' : '')}
-            onClick={() => close(state.input ? collect() : true)}
-          >
-            {state.okText || '确定'}
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
-  return { dialog, node };
-}
-
 // ---- 错误边界：把崩溃限制在单个视图内 ----
 // 视图都是 lazy() 加载的，没有这层兜底时，任何一个视图抛错（或 chunk 加载失败）
 // 都会让整个面板白屏，用户连切到别的 tab 自救都做不到。
@@ -169,7 +64,9 @@ export class ErrorBoundary extends Component {
     return (
       <div className="card" style={{ padding: 16 }}>
         <div className="colhead"><h3>这个面板出错了</h3></div>
-        <div className="dlg-msg">{String(this.state.error?.message || this.state.error)}</div>
+        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginBottom: 10 }}>
+          {String(this.state.error?.message || this.state.error)}
+        </div>
         <div className="muted" style={{ marginBottom: 10 }}>
           其他面板不受影响，可以切到别的 tab 继续操作；控制台有完整堆栈。
         </div>
@@ -177,28 +74,6 @@ export class ErrorBoundary extends Component {
       </div>
     );
   }
-}
-
-// ---- 弹窗：大块内容（diff / 冲突详情 / 命令输出） ----
-
-export function Modal({ title, onClose, children }) {
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return (
-    <div className="modal" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal-box">
-        <div className="modal-title">
-          <span>{title}</span>
-          <button className="btn small ghost" onClick={onClose}>关闭</button>
-        </div>
-        <div className="modal-body">{children}</div>
-      </div>
-    </div>
-  );
 }
 
 // ---- diff 文本渲染（+/- 行着色） ----

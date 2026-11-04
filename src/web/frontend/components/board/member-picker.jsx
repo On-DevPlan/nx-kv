@@ -12,7 +12,8 @@
 // 所以「并入」= 把另一个组的项目加进本组，别的组不受影响。
 import { useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
-import { useToast } from '../ui.jsx';
+import { useToast } from '../toast/index.jsx';
+import { Modal } from '../popup/index.jsx';
 import { Icon } from '../icons.jsx';
 
 const hit = (q, ...texts) =>
@@ -150,25 +151,20 @@ export default function MemberPicker({ board, boards = [], repos = [], onClose, 
   const empty = !shownProjects.length && !shownBoards.length && !shownGhosts.length;
 
   return (
-    <div className="modal" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal-box rp-mp-box">
-        <div className="modal-title">
-          <span>{board.name} · 成员</span>
-          <button className="btn small ghost" onClick={onClose}>关闭</button>
+    <Modal title={`${board.name} · 成员`} onClose={onClose} size="lg" className="rp-mp-box">
+      <div>
+        <div className="rp-mp-search">
+          <Icon name="search" size={13} />
+          <input
+            autoFocus
+            value={q}
+            placeholder="搜项目或项目组"
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <span className="rp-mp-count">
+            {shownProjects.length + shownGhosts.length} 个项目 · {shownBoards.length} 个组
+          </span>
         </div>
-        <div className="modal-body rp-mp-body">
-          <div className="rp-mp-search">
-            <Icon name="search" size={13} />
-            <input
-              autoFocus
-              value={q}
-              placeholder="搜项目或项目组"
-              onChange={(e) => setQ(e.target.value)}
-            />
-            <span className="rp-mp-count">
-              {shownProjects.length + shownGhosts.length} 个项目 · {shownBoards.length} 个组
-            </span>
-          </div>
 
           {empty ? <div className="rp-mp-empty">没有匹配项</div> : null}
 
@@ -250,8 +246,7 @@ export default function MemberPicker({ board, boards = [], repos = [], onClose, 
               })}
             </div>
           ) : null}
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

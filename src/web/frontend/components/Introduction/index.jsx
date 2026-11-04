@@ -2,7 +2,8 @@
 //
 // 页面不内嵌渲染正文——阅读体验（标题滚动目录、双链跳转、编辑保存）
 // 全收敛在文档页签（DocPanel）里，那边带归属上下文与滚动目录轨。
-import { useDialog, useToast } from '../ui.jsx';
+import { useToast } from '../toast/index.jsx';
+import { useDialog } from '../popup/index.jsx';
 import { useIntro } from './use-intro.js';
 import './style.css';
 

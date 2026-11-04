@@ -467,8 +467,6 @@ select {
 }
 .page-head .title-block { min-width: 0; flex: 1 1 280px; }
 .page-head h2 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: 0.2px; }
-.page-head .page-desc { color: var(--mid); font-size: 12px; margin-top: 3px; max-width: 760px; line-height: 1.55; }
-.page-head .page-desc strong { color: var(--ink-2); }
 .page-head .acts { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
 
 .form-grid { display: flex; flex-direction: column; gap: 13px; }
@@ -704,21 +702,6 @@ select {
 
 /* 三条图例：这一页有两种仓库 + 一种关系，先说清各自是什么。
    （四行说明文字改成一排标签：想深究的看 title，扫一眼就懂的看这里） */
-.rp-legend { display: flex; flex-wrap: wrap; gap: 8px; flex: none; }
-.rp-legend-item {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 5px 12px; border-radius: 999px;
-  background: var(--soft); border: 1px solid var(--line);
-  font-size: 12.5px; color: var(--ink-2); cursor: default;
-}
-.rp-legend-item::before {
-  content: ''; width: 7px; height: 7px; border-radius: 50%;
-  background: var(--mid); flex: none;
-}
-.rp-legend-dev::before { background: #2F6F5E; }
-.rp-legend-ref::before { background: #6F5AA8; }
-.rp-legend-board::before { background: var(--wait); }
-
 /* 成员管理弹窗：顶部领域描述（多行原样）+ 仓库点选列表 */
 .rp-imp-desc {
   padding: 7px 10px;
@@ -800,9 +783,10 @@ select {
  * 状态徽标 8px 圆点：灰=未检查，绿=通过，红=有问题（title 带明细）。 */
 /* 弹窗里的工具条：一句说明 + 右侧动作。以前挂在 colhead 里，标题和五个按钮
  * 抢同一行，窄屏时说明被挤成竖条。 */
-.rp-modal-bar { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-.rp-modal-bar .muted { font-size: 12.5px; line-height: 1.7; flex: 1 1 320px; min-width: 0; }
-.rp-modal-bar .acts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+/* 弹窗工具条：只放操作，从行首排起。说明文字不进这里——首屏留给能点的东西，
+   想解释的塞 button 的 title（悬停才出现，不占位置）。 */
+.rp-modal-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.rp-modal-bar .acts { display: flex; gap: 6px; flex-wrap: wrap; }
 .rp-ref-warn {
   padding: 9px 12px;
   margin-bottom: 10px;

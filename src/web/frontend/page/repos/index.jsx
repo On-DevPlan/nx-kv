@@ -676,26 +676,11 @@ export default function ReposView() {
       <div className="page-head">
         <div className="title-block">
           <h2>仓库</h2>
-          <p
-            className="page-desc"
-            title="仓库登记是本机事实（路径、key、描述）；看板只存 key 引用，删组不动仓库。参考仓库与开发仓库多对多绑定，绑定描述写在关系上——同一份参考在不同组里的意义可以不同。"
-          >
-            一台机器上的仓库都在这张清单里：<strong>开发仓库</strong>是你在写的，
-            <strong>参考仓库</strong>是 clone 下来读的，<strong>看板</strong>只是把它们按领域分组。
-          </p>
         </div>
         <div className="acts">
           <button className="btn" onClick={openAdd}>添加仓库</button>
         </div>
       </div>
-      {/* 三条图例：这一页有两种仓库 + 一种关系，先说清各自是什么，
-          比塞一段四行的说明文字好读——说明文字写在 title 里，想深究再看。 */}
-      <div className="rp-legend" title="开发仓库 = 本机在写的仓库；参考仓库 = clone 下来读的；看板 = 领域分组（只存引用）">
-        <span className="rp-legend-item rp-legend-dev">开发仓库 · 本机路径，不碰 git</span>
-        <span className="rp-legend-item rp-legend-ref">参考仓库 · clone 到 gitRepoRoot，只同步与检查</span>
-        <span className="rp-legend-item rp-legend-board">看板 · 只存 key 引用，一个仓库可在多个组</span>
-      </div>
-
       {/* 看板筛选器：主表 = 开发仓库；参考仓库 / 看板管理靠右 */}
       <div className="rp-filters" data-testid="rp-filters">
         <div className="rp-filters-main">
@@ -854,10 +839,6 @@ export default function ReposView() {
       {refOpen ? (
         <Modal size="wide" title={`参考仓库 · ${refRepos.length}`} onClose={() => setRefOpen(false)}>
           <div className="rp-modal-bar">
-            <span className="muted">
-              远程 clone 下来读的仓库，统一存放在 gitRepoRoot；与开发仓库 / 看板<strong>多对多绑定</strong>，
-              绑定描述写在关系上（同一条参考在不同组里意义可以不同）。
-            </span>
             <span className="acts">
               <button className="btn small" onClick={() => { setCloneTargets({}); setCloneOpen(true); }}>克隆参考仓库</button>
               <button className="btn small ghost" onClick={syncAll}>同步全部</button>
@@ -945,10 +926,6 @@ export default function ReposView() {
       {boardsOpen ? (
         <Modal title={`看板 · ${boardList.length}`} onClose={() => setBoardsOpen(false)}>
           <div className="rp-modal-bar">
-            <span className="muted">
-              看板 = 领域分组，描述写给人和 agent 读：侧重、配合关系、关键路径与关键词。
-              删一个看板，仓库全都在清单里，只是少了一份归属。
-            </span>
             <span className="acts">
               <button className="btn small ghost" onClick={() => setBoardForm({ id: null, name: '', desc: '' })}>新建看板</button>
               <button className="btn small ghost" title="粘贴/选择看板 JSON，一个看板 = 一个主题" onClick={() => setImpOpen(true)}>导入看板</button>

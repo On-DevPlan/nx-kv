@@ -1,11 +1,12 @@
-// MD 任务附件：新附件走**后端图床**（上传拿 fileId，正文嵌标准 markdown），
-// 旧附件仍在浏览器 localStorage（按 task id，只读兼容）。
+// MD 任务附件：贴图/文件一律走**本机附件仓**（上传落本机盘，正文嵌标准 markdown）。
 //
-// 图床路径（2026-11-03 任务 #8「本地任务支持附件」）：附件以 `![名](fileId)` /
-// `[名](fileId)` 嵌进任务正文——正文即载体，附件跟着任务走（CLI / 其他机器 /
-// 云端迁移都认），不再锁死在某个浏览器的 localStorage 里。
-// 图床不可达（未登录 / 离线）时退回 localStorage 老路：功能不因登录态而断，
-// 代价是这类附件只活在当前浏览器（界面会照常显示）。
+// 图床路径（2026-11-03 任务 #8「本地任务支持附件」）最初传云端图床；任务 #15
+// 验收反馈改口径：**本地任务的贴图走本地存储，与云端零关联**——上传不发网
+// （本机 serve 落盘即回）、预览读本机文件、agent 领取直接拿本地路径。
+// 附件以 `![名](fileId)` / `[名](fileId)` 嵌进任务正文——正文即载体，附件跟着
+// 任务走（CLI / 其他机器认语法，本机仓按 id 给文件）。
+// 本机仓不可达（serve 没起来——面板本身也起不来）时退回 localStorage 老路：
+// 功能不中断，代价是这类附件只活在当前浏览器（界面会照常显示）。
 import { uploadMany } from '../cloud/upload.js';
 
 const ATT_KEY = 'nx-kv-md-attachments-v1';
@@ -69,15 +70,16 @@ async function legacyFilesToAttachments(fileList) {
 
 /**
  * 文件 → 附件条目 + 正文嵌入片段。
- * 优先图床（返回 fileId 嵌入：图片插在光标处 imageInserts、文件追加文尾 fileInserts）；
- * 图床不可达时整体退回 localStorage 老路（items 带 dataURL，行为与旧版一致）。
+ * 本地任务编辑器专条：**本机附件仓**（local: true——上传不发网，落 ~/.nx-kv
+ * /attachments/local/，正文嵌 fileId）；本机仓不可达时整体退回 localStorage
+ * 老路（items 带 dataURL，行为与旧版一致）。
  * @returns {Promise<{items: object[], imageInserts: string[], fileInserts: string[]}>}
  */
 export async function filesToAttachments(fileList, opts = {}) {
   const files = [...(fileList || [])];
   if (!files.length) return { items: [], imageInserts: [], fileInserts: [] };
   try {
-    const ups = await uploadMany(files, opts.group ? { group: opts.group } : {});
+    const ups = await uploadMany(files, { ...(opts.group ? { group: opts.group } : {}), local: true });
     const items = [];
     const imageInserts = [];
     const fileInserts = [];

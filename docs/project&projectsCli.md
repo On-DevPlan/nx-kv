@@ -295,21 +295,29 @@ nx-kv localtask remove --id 3            # 软删除（可 restore）
 nx-kv localtask list                    # 主题总览
 
 # 附件（嵌入即附件：正文里的 ![名](fileId) / [名](fileId)，面板编辑器同一条语法）
-nx-kv localtask attach --id 3 --path "D:\doc\需求.docx"          # 上传本机文件并嵌入
-nx-kv localtask attach --id 3 --fileId <32位hex> --name "需求"   # 复用已上传附件
+nx-kv localtask attach --id 3 --path "D:\doc\需求.docx"          # 落本机附件仓并嵌入（不碰云端）
+nx-kv localtask attach --id 3 --fileId <32位hex> --name "需求"   # 引用已有附件（本机仓 / 云端）
 nx-kv localtask attachments --id 3                       # 附件清单 + 本地是否已有
 ```
 
-**附件链路口径**（与云端 todo 同构，落点 `src/modules/tasktool/attach.js`）：
+**附件链路口径**（2026-11-04 任务 #15 验收反馈定稿：**本地任务贴图走本地存储，
+与云端零关联**）：
 
-- **写侧**：`localtask attach` / 面板编辑器上传，都以 markdown 嵌入追加到正文——
-  正文即载体，附件跟着任务走（CLI / 跨机 / 云端迁移天然可见）；
-- **读侧**：`get` / `wait` / `show` 交付时解析正文引用，载荷带 `task.attachments`
-  （id / kind / name / localPath / synced），instruction 追加〔附件〕段告诉 agent
-  去哪读文件；本机设置开了「读任务时自动下载附件」时按引用同步到本地
-  （与 `file sync` 同一台账，同一 id 只落一次盘）；
-- **fail-open**：附件能不能下载跟任务能不能交付是两件事——同步失败不阻断领取
+- **写侧**：`localtask attach --path` 与面板编辑器贴图/选文件都落**本机附件仓**
+  （`~/.nx-kv/attachments/local/`，`core/localatt.js`——不发网、上传即落盘），
+  以 markdown 嵌入追加到正文——正文即载体，附件跟着任务走；`file upload --local`
+  是同一存储的直入口。`--fileId` 仍可引用已有附件（本机仓 id / 云端 id 都认）。
+- **读侧**：`get` / `wait` / `show` 交付时解析正文引用，**先查本机附件仓**（命中
+  直接给绝对路径，零网络），未命中的 id（云端清单附件引用）才按本机设置
+  「读任务时自动下载附件」走云端镜像（与 `file sync` 同一台账）。载荷带
+  `task.attachments`（id / kind / name / localPath / synced / storage），
+  instruction 追加〔附件〕段告诉 agent 去哪读文件。
+- **预览**：`/api/file/content/:fileId` 本机仓优先——本地任务的贴图面板直读
+  本机文件（离线可预览），未命中再透传云端出图（云端清单附件行为不变）。
+- **fail-open**：附件能不能拿到跟任务能不能交付是两件事——同步失败不阻断领取
   （如实记进 `attachmentsSync.failures`）；正文没有引用时载荷与改造前逐字节一致。
+- **云端清单（todo）不受影响**：清单页贴图仍走云端图床（那边本来就是云端任务配
+  云端附件）；两条链路只共享「正文嵌入语法」这一份实现（`modules/todo/attach.js`）。
 
 **领取交付**实测形状（组内项目任务）：
 
@@ -369,7 +377,7 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
 | 修改反馈重开 | `localtask reopen --id --text` | 通：回 pending、可再领、**frontmatter 保住** |
 | 交付带**项目**介绍 | `localtask get` | 通：`〔项目介绍 · X〕` + 正文 + 可读路径 |
 | 交付带**组**上下文 | `localtask get` | 通：组定位 / 组介绍 / 本项目位置 / 兄弟成员 / 参考文件路径 |
-| 任务附件（嵌入即附件） | `localtask attach` / `localtask attachments` | 通：CLI 上传/复用 fileId 追加正文；`get`/`wait`/`show` 交付带附件清单 + 本地路径（自动下载跟随本机设置） |
+| 任务附件（嵌入即附件） | `localtask attach` / `localtask attachments` | 通：CLI `--path` 落本机附件仓 / `--fileId` 引用已有附件，嵌入正文；`get`/`wait`/`show` 交付带附件清单 + 本地路径（本机仓优先，云端引用按设置自动下载） |
 | waitgoal 开关 | `repo update --get-loop*` | 通：配置落库；**只在开启时**才投递「继续 get」模板 |
 
 ### 🔧 本轮修掉的断点
@@ -384,11 +392,13 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
 | **F. 面板口径与 CLI 不同源** | ①面板草稿自带 `board`+`project` 提交，服务端不补介绍引用；②组面板建的任务在归属项目**还没有队列**时落进全局池；③提交后页签停在旧 scope，指向别的队列里的任务号；④落点判定三处实现（CLI action 内联 / 面板四路分支 / 远程导入绕过组语义），必然分叉 | 派任务编排收敛为一条链路：`tasktool/add.js` 的 `submitTask`（与领取侧 get/wait 同构，action 层一行委托）；显式 `board`/`project` 走严格口径，正文自带 frontmatter 走 fail-open——补介绍引用**且落点跟到项目队列**（显式给过 `--cwd` 时不挪窝）；面板只认归属不再自判队列，页签跟到服务端返回的真实主题 key | `src/modules/tasktool/add.js`、`src/modules/localtask/index.js`、`src/modules/localtask/service.js`、`src/web/frontend/page/dir/task.jsx` |
 | **G. 正文以 `---` 开头被当 flag** | `localtask add "---…"` 报「未知参数 ---」——带 frontmatter 的正文根本提交不上去 | 只把「像 flag」的 token（`--` + 字母/数字）当 flag；`---` 与 `--` 分别是正文与「后面全是位置参数」 | `src/runtime/cli.js` |
 | **H. 附件链路与 web 界面不对齐** | 面板编辑器已把附件嵌进正文（任务 #8），但 `get`/`wait` 交付不带附件清单、不自动下载、不标本地路径，CLI 也没法挂附件——agent 拿到 `![x](fileId)` 无从下手 | 口径与云端 todo 同构：新增 `localtask attach` / `localtask attachments`；交付侧 `annotateTaskDelivery` 解析正文引用 → 按设置自动下载 → `task.attachments` + instruction〔附件〕段；零引用时载荷逐字节不变 | `src/modules/tasktool/attach.js`、`src/modules/tasktool/wait.js`、`src/modules/localtask/index.js` |
+| **I. 本地任务贴图被送上了云端（H 的验收反馈，任务 #15 重开）** | 面板编辑器贴图走 `POST /api/file` → **云端图床**；云端不可达/未登录时静默退回 localStorage dataURL——界面看着有图，正文里只有死引用甚至什么都没有，agent 领取时 `attachments count: 0`（用户案例：sedoc 组 #23「图片参考：如附件」实为空） | 口径改定：**本地任务贴图走本地存储，与云端零关联**——新增本机附件仓 `core/localatt.js`（`~/.nx-kv/attachments/local/`，台账同 attachstore 形状）；编辑器贴图改走 `file upload --local`（上传即落盘）；`file content` 路由本机仓优先（离线可预览）；领取标注先查本机仓（命中即绝对路径，全命中零网络），未命中的云端 id 才走镜像同步；`localtask attach --path` 同步改落本机仓 | `src/core/localatt.js`、`src/modules/file/{index,service}.js`、`src/modules/tasktool/attach.js`、`src/web/frontend/components/cloud/upload.js`、`src/web/frontend/components/md/attachments.js` |
 
 > 回归测试：`tests/unit/localtask-submit.test.mjs`（派任务统一链路：fail-open 落点跟到项目队列 / 显式 cwd 不挪窝 / 认不出归属不拦任务 / 严格口径不变 / action 委托）、
 > `tests/unit/localtask-group.test.mjs`（frontmatter / 介绍引用 / 保留 / 面板口径）、
 > `tests/unit/group-context.test.mjs`（交付带项目介绍）、
-> `tests/unit/localtask-attach.test.mjs`（附件链路：零引用载荷不变 / 标注与〔附件〕段 / 台账命中给绝对路径 / attach 参数校验 / claim 交付带附件）、
+> `tests/unit/localtask-attach.test.mjs`（附件链路：零引用载荷不变 / 标注与〔附件〕段 / 台账命中给绝对路径 / 本机仓命中零网络标注 / `--path` 落本机附件仓 / attach 参数校验 / claim 交付带附件）、
+> `tests/unit/localatt.test.mjs`（本机附件仓：落盘台账 / id 与云端同构 / 重名去重 / 补扩展名 / `file upload --local` / `file get` 本机仓优先）、
 > `tests/unit/taskgoal.test.mjs`（未开持续 get 不带循环指令 / 改文案不丢 frontmatter）、
 > `tests/unit/cli-args.test.mjs`（`---` 开头正文 / `--` 位置参数）。
 

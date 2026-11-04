@@ -2,6 +2,17 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### Changed
+
+- **本地任务附件改走本机附件仓（任务 #15 验收反馈）**：面板编辑器贴图/选文件、
+  `localtask attach --path` 一律落 `~/.nx-kv/attachments/local/`（不发网，与云端
+  图床零关联）——修掉「云端不可达时界面看着有图、agent 领取却 `count: 0`」的
+  断链。领取标注本机仓优先（命中即给绝对路径，全命中零网络），云端清单（todo）
+  的附件链路保持不变。`file upload --local` 是本机仓的直入口；`/api/file/content`
+  本机仓优先、未命中再透传云端（面板预览离线可用）。
+
 ## [0.15.0] - 2026-11-04 工作组两级口径（任务带归属）+ 划线评论与完成验收闭环 + 任务附件 + 队列显示序与分页
 
 ### Added

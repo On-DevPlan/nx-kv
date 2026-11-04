@@ -1,8 +1,9 @@
-// 附件模块：用户空间里的图片 / 文档等二进制原件。
-//
-// 后端是 dev_ctr_hello 的图床（/api/v1/files*，上传 multipart，出图 /files/:fileId）。
-// 本模块只做「业务编排 + 人读渲染」，网络细节全在 core/fileapi.js，
-// 本地镜像细节全在 core/attachstore.js。
+// 附件模块：用户空间里的图片 / 文档等二进制原件，**双后端**：
+//   - 云端图床（dev_ctr_hello /api/v1/files*，上传 multipart，出图 /files/:fileId）
+//     —— 云端清单（todo）的附件走这边，本地镜像细节在 core/attachstore.js；
+//   - 本地附件仓（core/localatt.js）—— 本地任务（localtask）的贴图走这边，
+//     不碰网：上传落本机盘、预览读本机文件、agent 直接拿本地路径。
+// 本模块只做「业务编排 + 人读渲染」，网络细节全在 core/fileapi.js。
 //
 // 与 todo 的分工：附件**内容**归这里；附件**怎么被任务引用**归 todo
 // （任务正文里的 ![说明](fileId)，见 modules/todo/attach.js）。
@@ -16,6 +17,7 @@ import {
   accessUrlOf, contentTypeOf, deleteFile, fileInfo, fileUpload, isImageName, listFiles, openFileStream,
 } from '../../core/fileapi.js';
 import { localDirFor, localIndex, resolveLocal, syncAttachments } from '../../core/attachstore.js';
+import { localDir, localReadStream, localResolve, localUpload } from '../../core/localatt.js';
 
 const fmtBytes = (n) => {
   const v = Number(n) || 0;
@@ -65,8 +67,7 @@ export async function listFilesAction({ group, limit = 100, offset = 0 } = {}) {
 }
 
 export async function uploadFileAction(patch = {}) {
-  const { path: localPath, content, name, contentType, group, accessLevel = 'public' } = patch;
-  const gid = await resolveGroupId(group);
+  const { path: localPath, content, name, contentType, group, accessLevel = 'public', local: toLocal } = patch;
   let buffer;
   let fileName;
 
@@ -86,6 +87,26 @@ export async function uploadFileAction(patch = {}) {
     throw badInput('上传需要 --path <本机文件>，或 --content <base64> --name <文件名>');
   }
 
+  // 本地任务贴图 → 本地附件仓：不碰网、不解析工作空间（group 是云端图床的归属维度），
+  // 上传即已在本地，agent 直接读 localPath——这条链路与云端零关联。
+  if (toLocal) {
+    const rec = await localUpload({ name: fileName, buffer, contentType: contentType || contentTypeOf(fileName) });
+    return {
+      fileId: rec.fileId,
+      name: rec.name,
+      size: rec.size,
+      contentType: rec.contentType,
+      url: `/api/file/content/${rec.fileId}`,
+      isImage: isImageName(rec.name, rec.contentType),
+      localPath: rec.path,
+      localDir: localDir(),
+      storage: 'local',
+      markdown: snippetOf(rec.name, rec.fileId),
+    };
+  }
+
+  const cfg = await loadConfig();
+  const gid = await resolveGroupId(group);
   const meta = await fileUpload({
     name: fileName,
     buffer,
@@ -93,18 +114,33 @@ export async function uploadFileAction(patch = {}) {
     groupId: gid,
     accessLevel,
   });
-  const cfg = await loadConfig();
   return {
     ...meta,
     url: accessUrlOf(cfg.baseUrl, meta.fileId),
     isImage: isImageName(fileName, meta.contentType),
     localDir: localDirFor(gid, cfg.attachmentsDir),
+    storage: 'cloud',
     markdown: snippetOf(fileName, meta.fileId),
   };
 }
 
 export async function getFileAction(fileId, { group } = {}) {
   if (!fileId) throw badInput('缺少 fileId');
+  // 本地仓命中就不问云端：本地任务贴图的查询零网络、离线可用。
+  // 两套 id 同构（32 位 hex），先本地后云端的顺序天然消歧。
+  const hit = await localResolve(fileId);
+  if (hit) {
+    return {
+      fileId: hit.fileId,
+      name: hit.name,
+      size: hit.size,
+      contentType: hit.contentType,
+      url: `/api/file/content/${hit.fileId}`,
+      isImage: isImageName(hit.name, hit.contentType),
+      localPath: hit.path,
+      storage: 'local',
+    };
+  }
   const cfg = await loadConfig();
   const gid = await resolveGroupId(group);
   const meta = await fileInfo(fileId, gid);
@@ -115,6 +151,7 @@ export async function getFileAction(fileId, { group } = {}) {
     isImage: isImageName(meta.fileId, meta.contentType),
     localPath: local?.path || '',
     localName: local?.name || '',
+    storage: 'cloud',
   };
 }
 
@@ -138,10 +175,24 @@ export async function syncFilesAction({ group, ids, dir, prune, dryRun } = {}) {
   return { ...result, usedDir: localDirFor(gid, dir || cfg.attachmentsDir) };
 }
 
-/** HTTP 原始流：把后端的出图内容原样透给浏览器（面板里 <img src> 直接用）。 */
+/** HTTP 原始流：附件本体直接透给浏览器（面板里 <img src> 直接用）。
+ *  本地仓命中 → 读本机文件（离线可预览，本地任务贴图不依赖云端）；
+ *  未命中 → 云端出图原样透传（云端清单附件的老路径，行为不变）。 */
 export async function serveContent(ctx) {
   const { res } = ctx.__raw || {};
   if (!res) throw badInput('内部错误：缺少响应对象');
+  const hit = await localResolve(ctx.fileId);
+  if (hit) {
+    res.writeHead(200, { 'content-type': hit.contentType || 'application/octet-stream', 'cache-control': 'no-store' });
+    await new Promise((done, fail) => {
+      const rs = localReadStream(hit.path);
+      rs.once('error', fail);
+      res.once('close', done);
+      res.once('finish', done);
+      rs.pipe(res);
+    });
+    return;
+  }
   const up = await openFileStream(ctx.fileId);
   const ct = up.headers.get('content-type') || 'application/octet-stream';
   res.writeHead(200, { 'content-type': ct, 'cache-control': 'no-store' });
@@ -167,6 +218,14 @@ export function renderFileList(d) {
 }
 
 export function renderUpload(d) {
+  if (d.storage === 'local') {
+    return [
+      `已上传 ${d.fileId}（${fmtBytes(d.size)} · ${d.contentType}）→ 本机附件仓`,
+      `本地:   ${d.localPath}`,
+      `贴进任务正文（编辑时也可直接选图上传）:`,
+      `  ${d.isImage ? d.markdown.image : d.markdown.file}`,
+    ].join('\n');
+  }
   return [
     `已上传 ${d.fileId}（${fmtBytes(d.size)} · ${d.contentType}）`,
     `地址:   ${d.url}`,
@@ -177,6 +236,13 @@ export function renderUpload(d) {
 }
 
 export function renderFileInfo(d) {
+  if (d.storage === 'local') {
+    return [
+      `${d.fileId} · ${d.isImage ? '图片' : '文件'} · ${fmtBytes(d.size)} · ${d.contentType}`,
+      `地址:   ${d.url}`,
+      `本地:   ${d.localPath}（本机附件仓，不依赖云端）`,
+    ].join('\n');
+  }
   return [
     `${d.fileId} · ${d.isImage ? '图片' : '文件'} · ${fmtBytes(d.size)} · ${d.contentType}`,
     `地址:   ${d.url}`,

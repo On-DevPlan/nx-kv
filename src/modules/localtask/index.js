@@ -356,21 +356,20 @@ export default {
             : ''),
     },
     {
-      // 附件追加（与云端 todo attach 同构）：上传/复用 fileId → markdown 嵌入正文末尾。
-      // 面板编辑器贴的是同一条语法（components/md/attachments.js），两端渲染一致。
+      // 附件追加（与云端 todo attach 同构）：--path 落**本机附件仓**（零云端）→ 嵌入正文末尾；
+      // --fileId 引用已有附件（本机仓 / 云端 id）。面板编辑器贴同一条语法（components/md/attachments.js）。
       id: 'localtask.attach',
       cli: ['localtask', 'attach'],
       http: ['POST', '/api/localtasks/attach'],
-      summary: '给任务追加附件：--path 上传本机文件，或 --fileId 追加已上传附件，以 markdown 嵌入正文末尾（不替换正文）',
+      summary: '给任务追加附件：--path 存本机附件仓（不碰云端），或 --fileId 引用已有附件，以 markdown 嵌入正文末尾（不替换正文）',
       flags: {
         id: { type: 'number', required: true, hint: '任务编号' },
         cwd: CWD,
         key: KEY,
-        path: { type: 'string', hint: '本机文件路径（先上传再嵌入）' },
-        fileId: { type: 'string', hint: '已上传附件的 id（32 位 hex，可带扩展名）' },
+        path: { type: 'string', hint: '本机文件路径（落 ~/.nx-kv/attachments/local/ 再嵌入）' },
+        fileId: { type: 'string', hint: '已有附件的 id（32 位 hex，可带扩展名；本机仓或云端）' },
         name: { type: 'string', hint: '嵌入文字与本地文件名（默认取原文件名）' },
         kind: { type: 'string', hint: 'image | file（不给按文件名/扩展名判）' },
-        accessLevel: { type: 'string', hint: 'public | private | protected（默认 public；仅 --path 上传时生效）' },
       },
       run: async (ctx) => {
         const { attachToTask } = await import('../tasktool/attach.js');
@@ -382,7 +381,6 @@ export default {
           fileId: ctx.fileId,
           name: ctx.name,
           kind: ctx.kind,
-          accessLevel: ctx.accessLevel,
         });
       },
       render: (d) =>

@@ -44,6 +44,7 @@
 - [x] **waitgoal**（项目级「持续 get」）：默认直接 get；开启后无任务自动唤起阻塞窗口 + 模板增强「继续 get 直到超时」（模板可多条，与回调提示词同款按条编辑）
 - [x] 时间窗口从领取起算；check / 剩余时间 / 提示词模板可配
 - [x] 回调提示词可配多条（列表存储，按条增删；拼接后统一分流渲染）：设置面板 →「模板与任务工具」；时长无全局默认（曾有的全局默认时长已删），只在发布/编辑任务时显式给——CLI `--duration` 或面板编辑页「时间目标」栏；**未领取**的任务可在编辑页改/清声明，已领取计时中的冻结（要调先 reopen）
+- [x] **任务附件（2026-11-04 #15 定稿口径：本地贴图走本地存储，与云端零关联）**：面板编辑器贴图/选文件与 `localtask attach --path` 都落**本机附件仓**（`~/.nx-kv/attachments/local/`，`core/localatt.js`——不发网、上传即落盘）；正文嵌 `![名](fileId)`（id 与云端 fileId 同构，语法零分叉）；领取标注本机仓优先（命中即绝对路径，全命中零网络），云端清单引用才按设置走镜像同步；`/api/file/content` 本机仓优先（面板预览离线可用）。修掉的现象：旧链路把贴图送上云端图床，云端不可达时界面看着有图、正文只有死引用，agent 领取 `attachments count: 0`
 
 ### 导入导出
 
@@ -73,6 +74,12 @@
 - [x] 全局设置进侧边栏浮动面板（偏好 / 工作区 / 云端与存储 / 模板与任务工具 / 项目级）
 - [x] 功能性：模板配置入口、任务工具（回调提示词）、项目级「持续 get」
 - [x] 项目级设置 UI：icon 入口在标题行左侧圆形预览，点开就地编辑（与侧栏同步显示）
+
+### 弹层组件收敛（2026-11-04 #30）
+
+- [x] **两个唯一出处**：`components/toast/`（ToastProvider / useToast / useGuard）与 `components/popup/`（Modal / useDialog / PopMenu / RowMenu / useDismiss + `.pp-*` 统一视觉）——ui.jsx 只剩 Copyable / ErrorBoundary / DiffPre
+- [x] **原生 alert/confirm 全部清零**（12 处、8 文件）：confirm → `useDialog`（danger 红 + 页内键盘可取消），成功/失败提示 → toast；此前 ui.jsx 头注释写着「不用浏览器原生弹窗」却一直有 12 处违规
+- [x] **旧弹层外壳收编**：迁移确认框 / 快捷键 sheet / 成员选择器重壳到 Modal；`.dlg`、`.modal`（v1 遮罩 与 v2 盒子两套互斥定义的历史雷）、`.mdw-sheet`、`.gmenu`、`.rowmenu-pop` 样式块删除，Esc/点外关闭统一进 `useDismiss`
 
 ## 开发
 

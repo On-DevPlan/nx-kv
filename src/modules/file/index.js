@@ -1,8 +1,11 @@
-// 附件模块（= 后端图床的用户空间视图）。
+// 附件模块（双后端：云端图床的用户空间视图 + 本机附件仓）。
 //
-// 不声明 `resource`：这里的「集合」是后端图床的投影，`upload/sync` 是它的动作，
-// 硬凑 get/update/remove 五动词只会得到语义别扭的命令。
+// 不声明 `resource`：这里的「集合」是附件存储的投影（云端图床 / 本机仓），
+// `upload/sync` 是它的动作，硬凑 get/update/remove 五动词只会得到语义别扭的命令。
 // 命令与路由仍然一一对应，所以「面板上能做的，CLI 都能做」依旧成立。
+//
+// 两条链路的分工（任务 #15 口径）：云端清单（todo）附件走图床；
+// 本地任务（localtask）贴图走 --local 本机仓——不碰网、零云端依赖。
 import * as service from './service.js';
 
 // 所有动作都接受 --group 覆盖当前工作空间；默认取本机配置里的当前值
@@ -34,13 +37,14 @@ export default {
       id: 'file.upload',
       cli: ['file', 'upload'],
       http: ['POST', '/api/file'],
-      summary: '上传附件到当前用户空间（--path 本机文件；面板走 --content base64 --name 文件名）',
+      summary: '上传附件（--local 存本机附件仓，本地任务贴图用；默认传当前用户空间的云端图床）',
       flags: {
         path: { type: 'string', hint: '本机文件路径' },
         content: { type: 'string', hint: 'base64 内容（面板上传用，可为 data URL）' },
         name: { type: 'string', hint: '文件名（content 上传时必填）' },
         contentType: { type: 'string', hint: '覆盖 Content-Type（默认按扩展名猜）' },
-        accessLevel: { type: 'string', enum: ['public', 'private', 'protected'], default: 'public', hint: '出图权限；public 才能被 <img> 直接预览' },
+        local: { type: 'boolean', hint: '存本机附件仓（~/.nx-kv/attachments/local/），不碰云端' },
+        accessLevel: { type: 'string', enum: ['public', 'private', 'protected'], default: 'public', hint: '出图权限；public 才能被 <img> 直接预览（--local 时无意义）' },
         group: GROUP,
       },
       run: (ctx) => service.uploadFileAction(ctx),

@@ -76,13 +76,14 @@ function readAsDataURL(file) {
   });
 }
 
-/** 上传单个文件，返回后端元数据 + 可直接贴进正文的 markdown 片段。 */
-export async function uploadOne(file, { group, index = 0 } = {}) {
+/** 上传单个文件，返回后端元数据 + 可直接贴进正文的 markdown 片段。
+ *  local: true → 存本机附件仓（本地任务贴图，零云端依赖）；默认传云端图床。 */
+export async function uploadOne(file, { group, index = 0, local = false } = {}) {
   const name = readableName(file, index);
   const content = await readAsDataURL(file);
   const r = await api('/api/file', {
     method: 'POST',
-    body: { name, content, contentType: file.type || '', group },
+    body: { name, content, contentType: file.type || '', group, local },
   });
   return { ...r, name };
 }
@@ -92,11 +93,11 @@ export async function uploadOne(file, { group, index = 0 } = {}) {
  * 后者在连续插入时会和光标位置打架（插入后 DOM 里光标还没更新，
  * 第二次插入会算错落点，几个附件就变成倒序）。
  */
-export async function uploadMany(files, { group, onProgress } = {}) {
+export async function uploadMany(files, { group, onProgress, local = false } = {}) {
   const out = [];
   for (let i = 0; i < files.length; i++) {
     if (onProgress) onProgress(i + 1, files.length, files[i]);
-    out.push(await uploadOne(files[i], { group, index: i }));
+    out.push(await uploadOne(files[i], { group, index: i, local }));
   }
   return out;
 }

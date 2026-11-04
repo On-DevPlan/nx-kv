@@ -1,26 +1,29 @@
 // tasktool/attach.js —— 本地任务链路的附件编排（标注 / 追加 / 清单）。
 //
-// 背景（任务 #15「localtask 附件功能未实现」）：web 编辑器（任务 #8）已把附件
-// 以 `![名](fileId)` 嵌进正文，但链路的 **agent 侧**对不上——get/wait 交付的
-// 正文里躺着一串 fileId，没有附件清单、没有本地路径、也不自动下载；CLI 也没法
-// 给本机任务挂附件（云端 todo 有 todo attach / todo attachments，本机没有）。
+// 背景（任务 #15「localtask 附件功能未实现」）：web 编辑器已把附件以
+// `![名](fileId)` 嵌进正文，但链路的 **agent 侧**对不上——get/wait 交付的
+// 正文里躺着一串 fileId，没有附件清单、没有本地路径；CLI 也没法给本机任务挂附件。
 //
-// 这里把这条链补齐，**口径与云端 todo 完全同构**：
+// 口径（任务 #15 验收反馈 2026-11-04）：**本地任务的贴图走本地存储，与云端
+// 零关联**——
+//   - `localtask attach --path` 落**本机附件仓**（core/localatt.js，不发网）；
+//   - 领取标注先查本机仓：命中直接给绝对路径，agent 零网络读文件；
+//   - 未命中的 id（云端清单附件的引用、或 CLI --fileId 引的云端 id）才按本机
+//     设置 autoSyncAttachments 走云端镜像（core/attachstore.js），fail-open。
 //   - 解析：附件语法只有一份实现（modules/todo/attach.js——零依赖纯函数，
 //     面板与 Node 共用），这里只消费不重写；
-//   - 下载：跟随本机设置 autoSyncAttachments（「读任务时自动下载附件」），
-//     落点与 file sync 同一台账（core/attachstore.js）——同一 id 只落一次盘；
-//   - 标注：交付载荷带 task.attachments（id/kind/name/localPath/synced），
+//   - 标注：交付载荷带 task.attachments（id/kind/name/localPath/synced/storage），
 //     instruction 追加〔附件〕段告诉 agent 去哪读文件。
 //
-// fail-open 纪律与 todo 相同：附件能不能下载跟任务能不能交付是两件事——
+// fail-open 纪律与 todo 相同：附件能不能拿到跟任务能不能交付是两件事——
 // 标注 / 同步的任何失败都不许拖垮 get/wait；正文没有引用时**载荷逐字节不变**。
 import { readFile } from 'node:fs/promises';
 import { basename, resolve as resolvePath } from 'node:path';
 import { badInput } from '../../core/errors.js';
 import { loadConfig, resolveGroupId } from '../../core/config.js';
-import { contentTypeOf, fileUpload, isImageName } from '../../core/fileapi.js';
-import { localIndex, syncAttachments } from '../../core/attachstore.js';
+import { contentTypeOf, isImageName } from '../../core/fileapi.js';
+import { localIndex as cloudMirrorIndex, syncAttachments } from '../../core/attachstore.js';
+import { localIndex as localStoreIndex, localUpload } from '../../core/localatt.js';
 import * as service from '../localtask/service.js';
 
 // 附件语法的唯一解析/生成实现（零依赖纯函数；todo 与面板共用同一份）。
@@ -32,11 +35,11 @@ async function todoAttachMod() {
 }
 
 /**
- * 领取/查看时刻的附件标注：解析正文引用 → 按设置自动下载 → 标注本地路径。
+ * 领取/查看时刻的附件标注：本机仓优先 → 云端镜像兜底 → 标注本地路径。
  *
  * @param {object|null} task 库存任务（normalizeTask 形状）
  * @returns {Promise<null|{task:object, sync:object|null}>} null = 正文没有附件引用
- *   （调用方据此保持载荷原样）；sync 只在真的跑过同步时非 null。
+ *   （调用方据此保持载荷原样）；sync 只在真的跑过云端同步时非 null。
  */
 export async function annotateTaskDelivery(task) {
   if (!task) return null;
@@ -44,31 +47,38 @@ export async function annotateTaskDelivery(task) {
   const refs = attachmentRefs(task.text);
   if (!refs.length) return null;
 
+  // 本机附件仓：本地任务贴图的正文引用（零云端依赖，命中即绝对路径）
+  const store = await localStoreIndex();
   const cfg = await loadConfig();
   const gid = await resolveGroupId();
 
+  // 不在本机仓的 id 才考虑云端镜像；自动下载关（或全命中）就一次网都不碰
+  const cloudIds = refs.filter((r) => !store.index.has(r.id)).map((r) => r.id);
   let sync = null;
-  if (cfg.autoSyncAttachments) {
+  if (cloudIds.length && cfg.autoSyncAttachments) {
     // 说明文字 → 本地文件名：`![季度报表.docx](id)` 落盘就叫「季度报表.docx」
     // （与 todo 读任务的同一套语义，见 todo/service.js annotateAttachments）。
     const names = {};
-    for (const r of refs) if (r.alt) names[r.id] = r.alt;
+    for (const r of refs) if (cloudIds.includes(r.id) && r.alt) names[r.id] = r.alt;
     try {
-      sync = await syncAttachments({ groupId: gid, ids: refs.map((r) => r.id), names, dir: cfg.attachmentsDir });
+      sync = await syncAttachments({ groupId: gid, ids: cloudIds, names, dir: cfg.attachmentsDir });
     } catch (e) {
       sync = { dir: '', downloaded: 0, skipped: 0, failures: [{ id: '(整体)', error: String(e && e.message ? e.message : e) }] };
     }
   }
 
-  const { index } = await localIndex(gid, cfg.attachmentsDir);
+  const mirror = await cloudMirrorIndex(gid, cfg.attachmentsDir);
   const attachments = refs.map((r) => {
-    const local = index.get(r.id);
+    const s = store.index.get(r.id);
+    if (s) return { id: r.id, kind: r.kind, name: r.alt || s.name, localPath: s.path, synced: true, storage: 'local' };
+    const m = mirror.index.get(r.id);
     return {
       id: r.id,
       kind: r.kind,
-      name: r.alt || (local && local.name) || r.id,
-      localPath: (local && local.path) || '',
-      synced: !!local,
+      name: r.alt || (m && m.name) || r.id,
+      localPath: (m && m.path) || '',
+      synced: !!m,
+      storage: 'cloud',
     };
   });
   return { task: { ...task, attachments }, sync };
@@ -76,7 +86,7 @@ export async function annotateTaskDelivery(task) {
 
 /**
  * 交付 instruction 里的〔附件〕段（纯函数）。没有附件 → ''（整段消失）。
- * 本地已同步 → 直接给绝对路径；没同步 → 给图床 id 与拉取命令，agent 自己决定。
+ * 本机仓/镜像已有 → 直接给绝对路径；都没有 → 给图床 id 与拉取命令，agent 自己决定。
  */
 export function attachmentInstruction(attachments, sync) {
   const list = Array.isArray(attachments) ? attachments : [];
@@ -99,18 +109,19 @@ export function attachmentInstruction(attachments, sync) {
 }
 
 /**
- * 给任务追加附件（CLI `localtask attach`）：--path 先上传拿 fileId，或直接
- * --fileId 复用已上传附件；以 markdown 嵌入**追加**到正文末尾（不替换正文）。
+ * 给任务追加附件（CLI `localtask attach`）：--path 落**本机附件仓**（本地任务
+ * 的附件与云端零关联），或 --fileId 引用已有附件（本机仓 / 云端 id 都认）；
+ * 以 markdown 嵌入**追加**到正文末尾（不替换正文）。
  * 面板编辑器贴的是同一条语法（components/md/attachments.js 的嵌入片段）。
  */
-export async function attachToTask({ id, cwd, key, path, fileId, name, kind, accessLevel } = {}) {
+export async function attachToTask({ id, cwd, key, path, fileId, name, kind } = {}) {
   const cur = await service.getTask({ id, cwd, key }); // 存在性与参数校验都在队列本体
 
   let fid = fileId ? String(fileId).trim() : '';
   let displayName = String(name || '').trim();
   let resolvedKind = kind ? String(kind) : '';
 
-  // --path：先上传再嵌——「正文里的 id」与「图床里的文件」一次性对齐
+  // --path：先落本机附件仓再嵌——「正文里的 id」与「本机文件」一次性对齐，全程不发网
   if (path) {
     const abs = resolvePath(String(path));
     let buffer;
@@ -120,22 +131,16 @@ export async function attachToTask({ id, cwd, key, path, fileId, name, kind, acc
       throw badInput(`读不到文件: ${abs}（${(e && e.code) || e.message}）`);
     }
     const fileName = displayName || basename(abs);
-    const meta = await fileUpload({
-      name: fileName,
-      buffer,
-      contentType: contentTypeOf(fileName),
-      groupId: await resolveGroupId(),
-      accessLevel: accessLevel || 'public',
-    });
-    fid = meta.fileId;
-    displayName = fileName;
-    if (!resolvedKind) resolvedKind = isImageName(fileName, meta.contentType) ? 'image' : 'file';
+    const rec = await localUpload({ name: fileName, buffer, contentType: contentTypeOf(fileName) });
+    fid = rec.fileId;
+    displayName = rec.name;
+    if (!resolvedKind) resolvedKind = isImageName(rec.name, rec.contentType) ? 'image' : 'file';
   }
 
-  if (!fid) throw badInput('需要 --path <本机文件>（先上传）或 --fileId <已上传的附件 id>');
+  if (!fid) throw badInput('需要 --path <本机文件>（存本机附件仓）或 --fileId <已有附件 id>');
   const { looksLikeFileId, embedMarkdown } = await todoAttachMod();
   if (!looksLikeFileId(fid)) {
-    throw badInput(`附件 id 不合法: ${fid}（应为后端返回的 32 位 hex，可带扩展名）`);
+    throw badInput(`附件 id 不合法: ${fid}（应为 32 位 hex，可带扩展名）`);
   }
   if (resolvedKind && resolvedKind !== 'image' && resolvedKind !== 'file') {
     throw badInput(`--kind 只能是 image 或 file，收到: ${resolvedKind}`);
@@ -152,29 +157,33 @@ export async function attachToTask({ id, cwd, key, path, fileId, name, kind, acc
 
 /**
  * 列出某条任务引用的附件（CLI `localtask attachments`）：不依赖自动下载开关，
- * 但标注本地是否已有（agent 据此决定直接读本地还是先 sync）。
+ * 本机仓 → 云端镜像逐个标注（agent 据此决定直接读本地还是先 sync）。
  */
 export async function listTaskAttachments({ id, cwd, key } = {}) {
   const cur = await service.getTask({ id, cwd, key });
   const cfg = await loadConfig();
   const gid = await resolveGroupId();
   const { attachmentRefs } = await todoAttachMod();
-  const { dir, index } = await localIndex(gid, cfg.attachmentsDir);
+  const store = await localStoreIndex();
+  const mirror = await cloudMirrorIndex(gid, cfg.attachmentsDir);
 
   const attachments = attachmentRefs(cur.text).map((r) => {
-    const local = index.get(r.id);
+    const s = store.index.get(r.id);
+    const m = s || mirror.index.get(r.id);
     return {
       id: r.id,
       kind: r.kind,
-      name: r.alt || (local && local.name) || r.id,
-      localPath: (local && local.path) || '',
-      synced: !!local,
-      size: (local && local.size) || 0,
+      name: r.alt || (m && m.name) || r.id,
+      localPath: (m && m.path) || '',
+      synced: !!m,
+      size: (m && m.size) || 0,
+      storage: s ? 'local' : 'cloud',
     };
   });
   return {
     task: { id: cur.id, key },
-    localDir: dir,
+    localDir: store.dir,
+    cloudDir: mirror.dir,
     autoSync: !!cfg.autoSyncAttachments,
     count: attachments.length,
     attachments,

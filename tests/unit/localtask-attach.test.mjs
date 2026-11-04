@@ -1,5 +1,5 @@
 import { test } from 'node:test';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
@@ -23,6 +23,7 @@ const mod = (await import('../../src/modules/localtask/index.js')).default;
 
 const IMG_ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'; // 32 位 hex（合法 fileId）
 const DOC_ID = '0f9e8d7c6b5a493827160514d3c2b1a0.docx'; // 带扩展名的合法 fileId
+const LOCAL_ID = 'c3d4e5f60718293a4b5c6d7e8f90a1b2'; // 32 位 hex（本机附件仓条目用）
 const URL_ID = 'https://example.com/a.png'; // URL 不是 fileId——不得当附件
 
 // 收尾指令关闭：隔离出「instruction 里只有〔附件〕段」的断言环境
@@ -94,6 +95,43 @@ test('attachToTask：--fileId 追加嵌入到正文末尾（不替换正文）',
   const listed = await listTaskAttachments({ id: added.task.id });
   assert.equal(listed.count, 1);
   assert.equal(listed.attachments[0].id, DOC_ID);
+});
+
+test('attachToTask：--path 落本机附件仓（零云端）→ 嵌入 + 清单直接标注本地路径', async () => {
+  const src = join(sb, 'src-图.png');
+  writeFileSync(src, 'fake-png');
+  const added = await service.addTask({ text: '# 路径附件' });
+  const r = await attachToTask({ id: added.task.id, path: src });
+  assert.match(r.fileId, /^[0-9a-f]{32}$/, '--path 也要给 32 位 hex id（正文语法零分叉）');
+  assert.ok(r.task.text.endsWith(`![src-图.png](${r.fileId})`), `末尾是图片嵌入（实际 ${JSON.stringify(r.task.text.slice(-60))}）`);
+  // 本机仓台账里真的有这个 id（任务 #15 口径：本地附件不碰云端）
+  const man = JSON.parse(readFileSync(join(sb, 'att', 'local', 'manifest.json'), 'utf8'));
+  assert.ok(man.files[r.fileId], '本机仓台账记录了这次上传');
+  const listed = await listTaskAttachments({ id: added.task.id });
+  assert.equal(listed.count, 1);
+  assert.equal(listed.attachments[0].synced, true, '本机仓命中 → 直接视为已同步');
+  assert.equal(listed.attachments[0].storage, 'local');
+  assert.ok(existsSync(listed.attachments[0].localPath), 'localPath 是真实在盘的绝对路径');
+});
+
+test('annotateTaskDelivery：本机仓命中 → 零云端标注绝对路径；未命中的 id 才走云端镜像语义', async () => {
+  // 本机仓条目（同 core/localatt 落盘形状）
+  const dir = join(sb, 'att', 'local');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, '仓图.png'), 'png');
+  writeFileSync(
+    join(dir, 'manifest.json'),
+    JSON.stringify({ dir, updatedAt: 'x', files: { [LOCAL_ID]: { name: '仓图.png', size: 3, contentType: 'image/png', createdAt: 'x' } } })
+  );
+  const added = await service.addTask({ text: `# 本机仓直读\n![仓图.png](${LOCAL_ID})` });
+  const att = await annotateTaskDelivery(added.task);
+  const a = att.task.attachments[0];
+  assert.equal(a.synced, true);
+  assert.equal(a.storage, 'local');
+  assert.ok(a.localPath.endsWith('仓图.png'));
+  assert.equal(att.sync, null, '本机仓全命中 → 一次网都不碰（sync 为 null）');
+  const seg = attachmentInstruction(att.task.attachments, att.sync);
+  assert.ok(seg.includes(a.localPath));
 });
 
 test('attachToTask：参数校验——缺参 / id 不合法 / kind 非法 → 报错', async () => {

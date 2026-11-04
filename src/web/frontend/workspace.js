@@ -663,9 +663,13 @@ export function openPanel(model, spec) {
  * 设置面板用这个形态：设置是「临时开一块、看完就关」的东西，
  * 长期挤在工作区里占位不合适；浮动窗可拖走、可叠放、关掉不带走布局。
  * 已开着同一个面板时不重复开，只把它选中（findOpenPanel 遍历所有布局，浮窗也算）。
+ *
+ * ⚠️ 内层 openPanel 必须**显式给 area**（AREA.MAIN）：否则 areaOf(component) 又判成
+ * FLOAT → 又调回 openFloatingPanel → 无限递归（首次打开设置面板直接爆栈，
+ * 2026-11-04 #41 实测发现；老布局因为已存着设置浮窗、走 existing 早退而侥幸没踩到）。
  */
 export function openFloatingPanel(model, spec) {
-  const r = openPanel(model, { ...spec, location: spec.location || 'center' });
+  const r = openPanel(model, { ...spec, area: AREA.MAIN, location: spec.location || 'center' });
   if (!r || !r.tabId || r.reused) return r;
   const before = new Set([...model.getLayouts().keys()]);
   model.doAction(Actions.popoutTab(r.tabId, 'float'));

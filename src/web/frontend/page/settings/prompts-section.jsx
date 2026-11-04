@@ -1,6 +1,7 @@
-// 设置面板「提示词 / 模板」一栏：左 tab 切换种类，右栏编辑/新增。
+// 设置面板「提示词 / 模板」一栏：左 tab 悬停即切换（点击兜底），右栏编辑/新增。
+// #41 交互收敛：说明文字全部删除；提示词条目默认收起成标题行，点击才展开。
 //
-// 三类（验收反馈：操作别纵向堆散）：
+// 三类：
 //   1. 任务模板——骨架锁死，只填槽位文字；新建任务正文必须已渲染（无裸 {{槽}}）
 //   2. 回调提示词（全局）——领到任务时的收尾指令，多条
 //   3. ack 完成总结提示词（全局）——agent 写完成总结的格式要求，多条
@@ -21,10 +22,11 @@ const TABS = [
 ];
 
 /** 全局提示词列表（回调 / ack 共用一套读写） */
-function GlobalPrompts({ field, listKey, label, hint, placeholder, offText }) {
+function GlobalPrompts({ listFlag, listKey, placeholder, offText }) {
   const toast = useToast();
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [openIdx, setOpenIdx] = useState(-1); // 手风琴展开态（受控：新增条目自动展开）
 
   const load = useCallback(() => {
     api('/api/localtasks')
@@ -40,7 +42,9 @@ function GlobalPrompts({ field, listKey, label, hint, placeholder, offText }) {
     if (list == null || busy) return;
     setBusy(true);
     try {
-      const d = await api('/api/localtasks/setting', { method: 'PATCH', body: { [field]: list } });
+      // 整体替换列表走 listFlag（suffixList / ackList）——action 此前只暴露单条
+      // flag，面板用 taskSuffix/ackPrompt 保存会 400 且静默无效（#41 实测修）。
+      const d = await api('/api/localtasks/setting', { method: 'PATCH', body: { [listFlag]: list } });
       const saved = d?.[listKey] ?? [];
       setItems(saved);
       toast(saved.length ? `已保存（${saved.length} 条）` : offText);
@@ -54,7 +58,7 @@ function GlobalPrompts({ field, listKey, label, hint, placeholder, offText }) {
   return (
     <div className="setp-suffix">
       <div className="setp-row">
-        <span>{label}</span>
+        <span>{offText === '已关闭回调提示词' ? '回调提示词' : 'ack 完成总结提示词'}</span>
         {items !== null && !items.length && <span className="setp-badge">已关闭</span>}
       </div>
       {items !== null && (
@@ -64,14 +68,20 @@ function GlobalPrompts({ field, listKey, label, hint, placeholder, offText }) {
           disabled={busy}
           placeholder={placeholder}
           sections
+          accordion
+          openIndex={openIdx}
+          onOpenChange={setOpenIdx}
         />
       )}
-      <div className="setp-note">{hint}</div>
       <div className="setp-proj-a">
         <button
           className="btn ghost sm"
           disabled={busy || items === null || items.length >= MAX_ITEMS}
-          onClick={() => setItems([...items, ''])}
+          onClick={() => {
+            const next = items.length;
+            setItems([...items, '']);
+            setOpenIdx(next);
+          }}
         >
           添加一条…
         </button>
@@ -161,9 +171,6 @@ function TemplateSlots({ openTemplates }) {
             </button>
           ))}
         </div>
-        <div className="setp-note">
-          内置骨架锁死，只能改槽位里的文字；增删/改名/设默认请开模板面板。
-        </div>
       </div>
       <div className="setp-tpl-main">
         {current ? (
@@ -177,9 +184,6 @@ function TemplateSlots({ openTemplates }) {
               disabled={busy}
               onSave={(values) => saveValues(current, values)}
             />
-            <div className="setp-note">
-              新建任务时写入**已填好的正文**（不会出现 <span className="mono">{'{{槽位}}'}</span> 标记）。
-            </div>
             {preview.trim() ? (
               <details className="setp-tpl-preview">
                 <summary>预览新建任务正文</summary>
@@ -206,6 +210,7 @@ export default function PromptsSection({ openTemplates }) {
             key={t.id}
             type="button"
             className={`setp-prompts-tab${tab === t.id ? ' is-on' : ''}`}
+            onMouseEnter={() => setTab(t.id)}
             onClick={() => setTab(t.id)}
           >
             {t.label}
@@ -216,30 +221,17 @@ export default function PromptsSection({ openTemplates }) {
         {tab === 'template' && <TemplateSlots openTemplates={openTemplates} />}
         {tab === 'suffix' && (
           <GlobalPrompts
-            field="taskSuffix"
+            listFlag="suffixList"
             listKey="taskSuffixList"
-            label="回调提示词（领到任务时随交付的收尾指令，可配多条）"
             placeholder={'一条收尾指令（支持 {{task.text}} / {{goal.*}} 占位符）'}
-            hint={
-              <>
-                多条按空行拼接后统一分流：任一条含 <span className="mono">{'{{'}</span> 渲染为独立
-                instruction 字段；纯文本追加到正文末尾。<b>删光或「关闭」= 不交付收尾指令</b>。
-              </>
-            }
             offText="已关闭回调提示词"
           />
         )}
         {tab === 'ack' && (
           <GlobalPrompts
-            field="ackPrompt"
+            listFlag="ackList"
             listKey="ackPromptList"
-            label="ack 完成总结提示词（agent 写完成总结的格式要求，可配多条）"
             placeholder={'例如：完成总结按「改了什么 · 怎么验证 · 遗留什么」三段写，每段一行'}
-            hint={
-              <>
-                随领取交付一起给到 agent；<b>默认不配置 = 交付里不追加这段</b>。
-              </>
-            }
             offText="已关闭 ack 提示词"
           />
         )}

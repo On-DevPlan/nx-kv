@@ -553,10 +553,27 @@ export default {
           type: 'string',
           hint: 'ack 完成总结提示词（agent 完成任务时写完成总结的格式要求；随领取交付的 instruction 给到 agent）。占位符同 --suffix；传空 = 关闭。设置面板「提示词 / 模板」一栏也能配',
         },
+        // **整体替换**多条列表（面板「提示词 / 模板」一栏用这个保存；服务层本就吃列表，
+        // 但此前 action 只暴露单条 flag → 面板保存 400 且静默无效，2026-11-04 #41 实测发现）。
+        'suffix-list': { type: 'array', hint: '整体替换收尾指令列表（多条，一项一条）' },
+        suffixList: { type: 'array', hint: '同 --suffix-list（驼峰写法，HTTP body 用）' },
+        'ack-list': { type: 'array', hint: '整体替换 ack 完成总结提示词列表（多条）' },
+        ackList: { type: 'array', hint: '同 --ack-list（驼峰写法，HTTP body 用）' },
       },
       run: async (ctx) => {
         const patch = { timeoutSec: ctx.timeout };
         if (ctx.ack !== undefined) patch.ackPrompt = ctx.ack;
+        const suffixList = ctx.suffixList ?? ctx['suffix-list'];
+        const ackList = ctx.ackList ?? ctx['ack-list'];
+        if (suffixList !== undefined || ackList !== undefined) {
+          if (ctx.suffix !== undefined || ctx['no-suffix'] || ctx['reset-suffix']
+            || ctx['suffix-add'] !== undefined || ctx['suffix-remove'] !== undefined) {
+            throw badInput('--suffix-list 不能与 --suffix / --no-suffix / --reset-suffix / --suffix-add / --suffix-remove 同用');
+          }
+          if (ctx.ack !== undefined) throw badInput('--ack-list 不能与 --ack 同用');
+          if (suffixList !== undefined) patch.taskSuffix = suffixList;
+          if (ackList !== undefined) patch.ackPrompt = ackList;
+        }
         const add = ctx['suffix-add'];
         const removeN = ctx['suffix-remove'];
         if (add !== undefined || removeN !== undefined) {

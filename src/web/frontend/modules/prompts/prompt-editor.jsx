@@ -126,6 +126,10 @@ export function PromptField({ value, onChange, placeholder, rows = 3, sections =
 /**
  * 多条提示词（每条一个 PromptField + 序号 + 删除）。
  * 「添加一条…」与保存按钮由调用方排布——不同设置项的保存语义不一样。
+ *
+ * accordion 模式（#41）：条目默认**收起成一行标题**（首行截断 + 字数），
+ * 点击才展开编辑（单开——点另一条收起上一条）；「点击具体 item 才显示详细内容」。
+ * openIndex/onOpenChange 可选受控——调用方「添加一条」后能直接展开新条目。
  */
 export function PromptItemsEditor({
   items,
@@ -135,35 +139,96 @@ export function PromptItemsEditor({
   rows = 3,
   sections = false,
   hint = '',
+  accordion = false,
+  openIndex: openIndexProp,
+  onOpenChange,
 }) {
+  const [openIdxState, setOpenIdxState] = useState(-1);
+  const openIdx = openIndexProp !== undefined ? openIndexProp : openIdxState;
+  const setOpenIdx = (v) => {
+    setOpenIdxState(v);
+    onOpenChange && onOpenChange(v);
+  };
   const editItem = (i, v) => onChange(items.map((x, j) => (j === i ? v : x)));
-  const removeItem = (i) => onChange(items.filter((_, j) => j !== i));
-  return (
-    <>
-      {items.map((t, i) => (
-        <div className="pp-items-item" key={i}>
-          <span className="pp-items-no">{i + 1}</span>
-          <div className="pp-items-body">
-            <PromptField
-              value={t}
-              onChange={(v) => editItem(i, v)}
-              placeholder={placeholder}
-              rows={rows}
-              sections={sections}
-              hint={hint}
-            />
+  const removeItem = (i) => {
+    onChange(items.filter((_, j) => j !== i));
+    setOpenIdx((cur) => (cur === i ? -1 : cur > i ? cur - 1 : cur));
+  };
+  if (!accordion) {
+    return (
+      <>
+        {items.map((t, i) => (
+          <div className="pp-items-item" key={i}>
+            <span className="pp-items-no">{i + 1}</span>
+            <div className="pp-items-body">
+              <PromptField
+                value={t}
+                onChange={(v) => editItem(i, v)}
+                placeholder={placeholder}
+                rows={rows}
+                sections={sections}
+                hint={hint}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn ghost sm"
+              disabled={disabled}
+              onClick={() => removeItem(i)}
+              title={`删除第 ${i + 1} 条`}
+            >
+              删除
+            </button>
           </div>
-          <button
-            type="button"
-            className="btn ghost sm"
-            disabled={disabled}
-            onClick={() => removeItem(i)}
-            title={`删除第 ${i + 1} 条`}
-          >
-            删除
-          </button>
-        </div>
-      ))}
-    </>
+        ))}
+      </>
+    );
+  }
+  return (
+    <div className="pp-items">
+      {items.map((t, i) => {
+        const open = openIdx === i;
+        const firstLine = String(t).split('\n')[0].trim();
+        return (
+          <div className="pp-items-item" key={i}>
+            {open ? (
+              <>
+                <span className="pp-items-no">{i + 1}</span>
+                <div className="pp-items-body">
+                  <PromptField
+                    value={t}
+                    onChange={(v) => editItem(i, v)}
+                    placeholder={placeholder}
+                    rows={rows}
+                    sections={sections}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  disabled={disabled}
+                  onClick={() => removeItem(i)}
+                  title={`删除第 ${i + 1} 条`}
+                >
+                  删除
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="pp-items-row"
+                disabled={disabled}
+                title="点击展开编辑"
+                onClick={() => setOpenIdx(i)}
+              >
+                <span className="pp-items-no">{i + 1}</span>
+                <span className="pp-items-title">{firstLine || '（空）'}</span>
+                <span className="pp-items-len">{String(t).length} 字</span>
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

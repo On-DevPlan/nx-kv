@@ -15,13 +15,30 @@ import './style.css';
 export default function Introduction({ kind, owner, model }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
-  const { label, docRef, links, openMain, openDoc, addRef, canEdit } = useIntro({ kind, owner, model });
+  const { label, docRef, links, openMain, openDoc, addRef, setLinkTag, canEdit } = useIntro({ kind, owner, model });
 
   if (!owner || !docRef) return null;
 
   const pathLabel = docRef.startsWith('rel:') ? docRef.slice(4) : docRef;
   const extras = links.filter((l) => !l.main);
   const onAdd = () => addRef(dialog, toast).catch((e) => toast(String(e.message || e)));
+
+  /** 改 / 清一篇补充文档的标签（对话框留空 = 清掉） */
+  const onEditTag = (l) => {
+    (async () => {
+      const res = await dialog({
+        title: `标签 · ${l.label}`,
+        input: true,
+        placeholder: '标签（如 qa；留空 = 清掉）',
+        value: l.tag || '',
+        okText: '保存标签',
+      });
+      if (res === null) return;
+      const tag = typeof res === 'string' ? res : (res && res.tag) || '';
+      await setLinkTag(l.docId, tag, l);
+      toast(tag ? `标签已设为 [${tag}]` : '标签已清除');
+    })().catch((e) => toast(String(e.message || e)));
+  };
 
   return (
     <div className="nx-intro">
@@ -52,17 +69,30 @@ export default function Introduction({ kind, owner, model }) {
         <div className="nx-intro-links">
           <span className="nx-intro-links-lab">补充</span>
           {extras.map((l) => (
-            <button
-              key={l.docId}
-              type="button"
-              className={'nx-intro-link' + (l.docId.startsWith('path:') ? ' ext' : '')}
-              title={l.note ? `${l.label} — ${l.note}` : l.label}
-              onClick={() => openDoc(l.docId)}
-            >
-              <span className="nx-intro-link-label">{l.label}</span>
-              {l.note ? <span className="nx-intro-link-note">{l.note}</span> : null}
-              {l.docId.startsWith('path:') ? <span className="nx-intro-link-tag">外部</span> : null}
-            </button>
+            <span key={l.docId} className="nx-intro-link-item">
+              <button
+                type="button"
+                className={'nx-intro-link' + (l.docId.startsWith('path:') ? ' ext' : '')}
+                title={l.note ? `${l.label} — ${l.note}` : l.label}
+                onClick={() => openDoc(l.docId)}
+              >
+                <span className="nx-intro-link-label">{l.label}</span>
+                {l.tag ? <span className="nx-intro-link-tag" title={`标签：${l.tag}`}>{l.tag}</span> : null}
+                {l.note ? <span className="nx-intro-link-note">{l.note}</span> : null}
+                {l.docId.startsWith('path:') ? <span className="nx-intro-link-tag">外部</span> : null}
+              </button>
+              {canEdit && !l.ref && (
+                <button
+                  type="button"
+                  className="nx-intro-tag-btn"
+                  title={l.tag ? `改标签（当前：${l.tag}）` : '加标签'}
+                  aria-label={`标签：${l.label}`}
+                  onClick={() => onEditTag(l)}
+                >
+                  ＃
+                </button>
+              )}
+            </span>
           ))}
         </div>
       )}

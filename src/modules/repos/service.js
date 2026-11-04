@@ -14,7 +14,7 @@ import fsp from 'node:fs/promises';
 import { APP_DIR } from '../../core/paths.js';
 import { openPath } from '../../core/open.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
-import { sanitizeDocRef } from '../docs/docref.js';
+import { sanitizeDocRef, withLinkMeta } from '../docs/docref.js';
 import { sanitizeGetLoop } from '../tasktool/getloop.js';
 
 // ─── 存储（NX_KV_REPOS_STORE 可覆盖；测试隔离）──────────────────────────
@@ -94,8 +94,7 @@ function normalizeDocRefs(store) {
       .map((l) => {
         const d = sanitizeDocRef(l);
         if (!d) return null;
-        const note = l && typeof l.note === 'string' ? l.note.trim() : '';
-        return note ? { ...d, note } : d;
+        return withLinkMeta(d, l);
       })
       .filter(Boolean);
     if (links.length) r.docLinks = links;
@@ -109,8 +108,7 @@ function normalizeDocRefs(store) {
       .map((l) => {
         const d = sanitizeDocRef(l);
         if (!d) return null;
-        const note = l && typeof l.note === 'string' ? l.note.trim() : '';
-        return note ? { ...d, note } : d;
+        return withLinkMeta(d, l);
       })
       .filter(Boolean);
     if (links.length) b.docLinks = links;

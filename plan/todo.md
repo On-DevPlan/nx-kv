@@ -30,6 +30,7 @@
 - [x] 项目：绑定仓库，一仓库 = 一个项目
 - [x] 项目组：组合关系（看板），无父子层级，具有语义方向性
 - [x] 项目 / 组均可绑定 markdown 目录，支持 `[[双链]]`
+- [x] 介绍的「补充文档」可带**分类标签**（`--tag`，如 qa）——面板 ＋ ref 新增可选填、每条链接旁 ＃ 可改/可清，渲染成小 chip；docLinks 条目 = DocRef + 注解（note/tag），写入口 / loadStore 归一化 / zip 导出导入三处同一口径（`docref.withLinkMeta`）；同 doc 重复添加 = 更新该条
 - [x] 组内每个仓库有独立组内描述（note）——地位、解决问题、与兄弟关联
 - [x] CLI 可快速拿到本项目知识（`board list` / `repo knowledge` / `repo ref of`）
 - [x] 发布任务指定归属（`--project`，配 `--board` 时必须是该组成员；落点目录由项目推导，`--cwd` 只做一致性校验）；领取按落点目录定位

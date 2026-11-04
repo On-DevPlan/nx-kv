@@ -79,6 +79,7 @@ export function useDialog() {
   // 用 ref 读输入框，而不是 document.querySelector('.dlg-input')——
   // 后者绕开 React 直接摸 DOM，页面上有第二个同名类名时就会读错。
   const inputRef = useRef(null);
+  const tagRef = useRef(null);
 
   const close = useCallback((val) => {
     setState((s) => { if (s && s.resolve) s.resolve(val); return null; });
@@ -87,6 +88,15 @@ export function useDialog() {
   const dialog = useCallback((opts = {}) => new Promise((resolve) => {
     setState({ ...opts, resolve });
   }), []);
+
+  // 双输入（input + tagInput）：确定/Enter 回 `{ value, tag }`；
+  // 单输入沿用旧口径回 string——既有调用方（只给 input:true 的）完全不受影响。
+  const collect = () => {
+    if (state.tagInput) {
+      return { value: inputRef.current?.value.trim() ?? '', tag: tagRef.current?.value.trim() ?? '' };
+    }
+    return inputRef.current?.value.trim() ?? null;
+  };
 
   const node = state ? (
     <div className="dlg" onMouseDown={(e) => { if (e.target === e.currentTarget) close(null); }}>
@@ -102,7 +112,20 @@ export function useDialog() {
             placeholder={state.placeholder || ''}
             defaultValue={state.value || ''}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') close(e.currentTarget.value.trim());
+              if (e.key === 'Enter') close(collect());
+              if (e.key === 'Escape') close(null);
+            }}
+          />
+        ) : null}
+        {state.input && state.tagInput ? (
+          <input
+            ref={tagRef}
+            className="dlg-input"
+            spellCheck="false"
+            placeholder={state.tagPlaceholder || '标签（可选，如 qa）'}
+            defaultValue={state.tagValue || ''}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') close(collect());
               if (e.key === 'Escape') close(null);
             }}
           />
@@ -111,7 +134,7 @@ export function useDialog() {
           <button className="btn ghost" onClick={() => close(null)}>取消</button>
           <button
             className={'btn' + (state.danger ? ' danger' : '')}
-            onClick={() => close(state.input ? (inputRef.current?.value.trim() ?? null) : true)}
+            onClick={() => close(state.input ? collect() : true)}
           >
             {state.okText || '确定'}
           </button>

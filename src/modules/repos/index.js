@@ -273,7 +273,7 @@ export default {
       args: ['id'],
       run: (ctx) => listRepoDocs(ctx.id),
       render: (d) => {
-        const one = (x, i) => `  ${i}. ${x.rel ? '自有 ' + x.rel : x.ref ? 'ref  ' + x.ref + '/' + x.rel : '外部 ' + x.path}${x.note ? '  #' + x.note : ''}`;
+        const one = (x, i) => `  ${i}. ${x.rel ? '自有 ' + x.rel : x.ref ? 'ref  ' + x.ref + '/' + x.rel : '外部 ' + x.path}${x.tag ? `  [${x.tag}]` : ''}${x.note ? `  # ${x.note}` : ''}`;
         const lines = [`【${d.repo.name}】介绍文档 ${d.count} 篇`];
         if (d.main) lines.push(one(d.main, 1));
         d.links.forEach((x, i) => lines.push(one(x, i + 2)));
@@ -284,7 +284,7 @@ export default {
       id: 'repo.doc.add',
       cli: ['repo', 'doc', 'add'],
       http: ['POST', '/api/repos/docs'],
-      summary: '给项目加一篇介绍文档：--rel 自有树路径 / --path 外部绝对路径 / --ref <参考仓库key> --file <仓库内相对路径>',
+      summary: '给项目加一篇介绍文档：--rel 自有树路径 / --path 外部绝对路径 / --ref <参考仓库key> --file <仓库内相对路径>（同 rel/path 重复添加 = 更新）',
       args: ['id'],
       flags: {
         rel: { type: 'string', hint: '自有树内相对路径（如 repo/github.com/me/x.md）' },
@@ -292,8 +292,9 @@ export default {
         ref: { type: 'string', hint: '参考仓库 key（type=ref 的本机仓库）' },
         file: { type: 'string', hint: '参考仓库内的相对路径（配合 --ref）' },
         note: { type: 'string', hint: '这篇的说明' },
+        tag: { type: 'string', hint: '分类标签（如 qa；简介行渲染成小 chip；空串 = 清掉）' },
       },
-      run: (ctx) => addRepoDoc(ctx.id, { rel: ctx.rel, path: ctx.path, ref: ctx.ref, file: ctx.file, note: ctx.note }),
+      run: (ctx) => addRepoDoc(ctx.id, { rel: ctx.rel, path: ctx.path, ref: ctx.ref, file: ctx.file, note: ctx.note, tag: ctx.tag }),
       render: (d) => `已加一篇介绍文档（共 ${d.count} 篇）`,
     },
     {
@@ -613,7 +614,7 @@ export default {
           lines.push(`  ◇ 组「${b.name}」`);
           if (b.intro && !b.intro.missing) lines.push(`    组介绍: ${b.intro.docId}`);
           if (b.note && !b.note.missing) lines.push(`    组内描述: ${b.note.docId}`);
-          for (const l of b.docLinks) lines.push(`    绑定: ${l.docId}${l.note ? `  · ${l.note}` : ''}${l.missing ? '（缺失）' : ''}`);
+          for (const l of b.docLinks) lines.push(`    绑定: ${l.docId}${l.tag ? `  [${l.tag}]` : ''}${l.note ? `  · ${l.note}` : ''}${l.missing ? '（缺失）' : ''}`);
           for (const x of b.externalDirs) lines.push(`    外部目录: ${x.path}（${x.files.length} 个文档，按需读盘）`);
         }
         if (d.refs.length) {

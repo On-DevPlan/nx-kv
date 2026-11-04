@@ -50,6 +50,23 @@ export function sanitizeDocRef(raw) {
   }
 }
 
+/**
+ * DocRef + 链接级注解（note/tag）合成列表条目。
+ *
+ * 为什么收在 DocRef 模块：docLinks 条目 = DocRef + 注解，而注解要过三道关
+ * （写入口合并 / 读归一化回贴 / 导出保留），三处口径必须一致——
+ * 实现只此一份，docs/refs 与 repos/service、transfer 都从这里拿。
+ * 空串/缺省 = 不落字段（对已有条目即「清掉」）。
+ */
+export function withLinkMeta(ref, raw = {}) {
+  const note = typeof raw.note === 'string' ? raw.note.trim() : '';
+  const tag = typeof raw.tag === 'string' ? raw.tag.trim() : '';
+  const entry = { ...ref };
+  if (note) entry.note = note;
+  if (tag) entry.tag = tag;
+  return entry;
+}
+
 // ─── docId（前后端统一寻址）────────────────────────────────────────────
 //
 // 自有：rel:<相对路径>（裸相对路径视为自有——人类可以直接给路径）

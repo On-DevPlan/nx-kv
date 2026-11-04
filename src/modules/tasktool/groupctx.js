@@ -76,7 +76,7 @@ export function renderGroupContext(ctx) {
     if (g.docLinks && g.docLinks.length) {
       lines.push('组绑定参考文件（可直接读取）：');
       for (const d of g.docLinks) {
-        lines.push(`  - ${d.abs || d.rel}${d.note ? `  # ${d.note}` : ''}`);
+        lines.push(`  - ${d.abs || d.rel}${d.tag ? `  [${d.tag}]` : ''}${d.note ? `  # ${d.note}` : ''}`);
       }
     }
     lines.push('');

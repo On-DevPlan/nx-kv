@@ -66,23 +66,47 @@ export function useIntro({ kind, owner, model }) {
           const out = [];
           if (d.main) {
             const id = linkDocId(d.main);
-            if (id) out.push({ docId: id, label: d.main.rel || d.main.path || '主篇', note: d.main.note || '', main: true });
+            if (id) out.push({ docId: id, label: d.main.rel || d.main.path || '主篇', note: d.main.note || '', tag: d.main.tag || '', main: true, ref: d.main.ref || '' });
           }
           for (const l of d.links || []) {
             const id = linkDocId(l);
-            if (id) out.push({ docId: id, label: l.rel || l.path || '补充', note: l.note || '', main: false });
+            // ref 随条目留着：ref 形态的链接（参考仓库内文件）不能按 rel 回写，标签编辑要对它关掉
+            if (id) out.push({ docId: id, label: l.rel || l.path || '补充', note: l.note || '', tag: l.tag || '', main: false, ref: l.ref || '' });
           }
           setLinks(out);
         })
         .catch(() => { if (alive) setLinks([]); });
     } else {
-      const out = [];
-      if (docRef) out.push({ docId: docRef, label: '主篇', note: '', main: true });
-      for (const l of owner?.docLinks || []) {
-        const id = linkDocId(l);
-        if (id) out.push({ docId: id, label: l.rel || l.path || '补充', note: l.note || '', main: false });
-      }
-      setLinks(out);
+      // board 分支拉实时数据（GET /api/boards/:id）而不是读 owner prop——
+      // owner 是父层的 repoData 快照，addRef / 改 tag 后不会自动刷新：
+      // 旧实现读 prop 导致「＋ ref 之后补充行不出现，要刷新页面才见」（既有缺陷）。
+      const fromOwner = () => {
+        const out = [];
+        if (docRef) out.push({ docId: docRef, label: '主篇', note: '', tag: '', main: true, ref: '' });
+        for (const l of owner?.docLinks || []) {
+          const id = linkDocId(l);
+          if (id) out.push({ docId: id, label: l.rel || l.path || '补充', note: l.note || '', tag: l.tag || '', main: false, ref: l.ref || '' });
+        }
+        return out;
+      };
+      api('/api/boards/' + encodeURIComponent(String(ownerKey)))
+        .then((bd) => {
+          if (!alive) return;
+          const links = Array.isArray(bd && bd.docLinks) ? bd.docLinks : null;
+          if (!links) {
+            setLinks(fromOwner());
+            return;
+          }
+          const out = [];
+          if (docRef) out.push({ docId: docRef, label: '主篇', note: '', tag: '', main: true, ref: '' });
+          // ref 随条目留着：ref 形态的链接（参考仓库内文件）不能按 rel 回写，标签编辑要对它关掉
+          for (const l of links) {
+            const id = linkDocId(l);
+            if (id) out.push({ docId: id, label: l.rel || l.path || '补充', note: l.note || '', tag: l.tag || '', main: false, ref: l.ref || '' });
+          }
+          setLinks(out);
+        })
+        .catch(() => { if (alive) setLinks(fromOwner()); });
     }
     return () => { alive = false; };
   }, [kind, ownerKey, owner, docRef, tick]);
@@ -104,18 +128,22 @@ export function useIntro({ kind, owner, model }) {
     [openByDocId, openExtra]
   );
 
-  /** 追加一篇 reference（落盘 + 挂进介绍集） */
+  /** 追加一篇 reference（落盘 + 挂进介绍集；tag 可选，简介行渲染成小 chip） */
   const addRef = useCallback(async (dialog, toast) => {
     if (!ownerKey || !docRef.startsWith('rel:')) {
       toast && toast('当前简介无法补充（需要自有树路径）');
       return null;
     }
-    const name = await dialog({
+    const res = await dialog({
       title: '补充介绍文档',
       input: true,
+      tagInput: true,
       placeholder: '文档名（如 architecture / api-notes）',
+      tagPlaceholder: '标签（可选，如 qa）',
     });
-    if (name === null) return null;
+    if (res === null) return null;
+    const name = typeof res === 'string' ? res : (res && res.value) || '';
+    const tag = typeof res === 'object' && res ? (res.tag || '') : '';
     const slug = slugName(String(name).trim() || 'note').replace(/\.md$/i, '');
     const dir = introDirFromRef(docRef) || (kind === 'repo' ? `repo/${ownerKey}` : `board/${ownerName || ownerKey}`);
     const rel = `${dir}/reference/${slug}.md`;
@@ -125,18 +153,39 @@ export function useIntro({ kind, owner, model }) {
     });
     try {
       if (kind === 'repo') {
-        await api('/api/repos/docs', { method: 'POST', body: { id: ownerKey, rel } });
+        await api('/api/repos/docs', { method: 'POST', body: { id: ownerKey, rel, tag: tag || undefined } });
       } else {
-        await api('/api/docs/link', { method: 'POST', body: { board: ownerKey, doc: rel } });
+        await api('/api/docs/link', { method: 'POST', body: { board: ownerKey, doc: rel, tag: tag || undefined } });
       }
     } catch {
-      /* 集里已有 / 旧数据：文件已创建即可 */
+      /* 集里已有 / 旧数据：文件已创建即可——同 doc 重复添加 = 更新（tag 以本次为准） */
     }
-    toast && toast(`已补充：${rel}`);
+    toast && toast(`已补充：${rel}${tag ? ` [${tag}]` : ''}`);
     reload();
     openByDocId('rel:' + rel, null, openExtra);
     return rel;
   }, [ownerKey, docRef, kind, ownerName, openByDocId, openExtra, reload]);
+
+  /** 改 / 清一篇补充文档的标签（同 doc 重复添加 = 更新该条，note 原样保留） */
+  const setLinkTag = useCallback(async (docId, tag, cur) => {
+    if (!ownerKey) throw new Error('缺少归属');
+    const raw = String(docId || '').startsWith('path:')
+      ? { path: String(docId).slice(5) }
+      : { rel: String(docId || '').startsWith('rel:') ? String(docId).slice(4) : String(docId || '') };
+    const note = (cur && cur.note) || '';
+    if (kind === 'repo') {
+      await api('/api/repos/docs', {
+        method: 'POST',
+        body: { id: ownerKey, ...raw, note: note || undefined, tag: tag || undefined },
+      });
+    } else {
+      await api('/api/docs/link', {
+        method: 'POST',
+        body: { board: ownerKey, doc: raw.path || raw.rel, note: note || undefined, tag: tag || undefined },
+      });
+    }
+    reload();
+  }, [ownerKey, kind, reload]);
 
   return {
     kind,
@@ -147,6 +196,7 @@ export function useIntro({ kind, owner, model }) {
     openMain,
     openDoc,
     addRef,
+    setLinkTag,
     reload,
     canEdit: !!docRef,
   };

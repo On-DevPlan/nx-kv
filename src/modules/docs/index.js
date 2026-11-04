@@ -207,7 +207,9 @@ const renderNoteRef = (d) =>
 const renderLink = (d) => {
   if (d.removed !== undefined) return `已移除组绑定: ${d.removed}（剩 ${d.count} 条）`;
   const lines = [`「${d.boardName}」的组绑定（${d.count} 条）:`];
-  for (const l of d.links) lines.push(`  ${l.rel ? 'rel:' + l.rel : 'path:' + l.path}${l.note ? `  · ${l.note}` : ''}`);
+  for (const l of d.links) {
+    lines.push(`  ${l.rel ? 'rel:' + l.rel : 'path:' + l.path}${l.tag ? `  [${l.tag}]` : ''}${l.note ? `  · ${l.note}` : ''}`);
+  }
   return lines.join('\n');
 };
 
@@ -331,11 +333,12 @@ export default {
       id: 'docs.link',
       cli: ['docs', 'link'],
       http: ['POST', '/api/docs/link'],
-      summary: '维护组的附加文档列表（--doc <自有路径|绝对路径> + --note；--remove <序号> 移除；--before <序号> 插位）',
+      summary: '维护组的附加文档列表（--doc <自有路径|绝对路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 doc 重复添加 = 更新）',
       args: ['board'],
       flags: {
         doc: { type: 'string', hint: '自有树路径 = 自有文档；盘符/绝对路径 = 外部只读引用' },
         note: { type: 'string', hint: '条目说明' },
+        tag: { type: 'string', hint: '分类标签（如 qa；简介行渲染成小 chip；空串 = 清掉）' },
         remove: { type: 'number', hint: '移除第 N 条（1 起）' },
         before: { type: 'number', hint: '插到第 N 条之前（缺省追加到末尾）' },
       },

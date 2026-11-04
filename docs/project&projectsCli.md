@@ -71,9 +71,12 @@ KV 清单管理中枢。"
 nx-kv docs bind --board nx --path "D:\vault\nx\nx.md"
 nx-kv docs bind --repo nx-kv --path "D:\vault\nx-kv.md"
 
-# 给项目追加「其余介绍文档」（主篇之外）
-nx-kv repo doc add <repoId> --rel repo/local/nx-kv/reference/arch.md --note "架构说明"
+# 给项目追加「其余介绍文档」（主篇之外；--tag 分类标签，简介行渲染成小 chip）
+nx-kv repo doc add <repoId> --rel repo/local/nx-kv/reference/arch.md --note "架构说明" --tag 规范
 nx-kv repo doc list <repoId>
+
+# 给组追加「附加文档」（自有 rel / 外部绝对路径皆可；同 doc 重复添加 = 更新该条）
+nx-kv docs link nx --doc board/nx/reference/qa.md --note "问答集" --tag qa
 ```
 
 > 介绍**懒播种**：即使没跑 `docs seed`，读取时也会按 desc/note 现场补种。

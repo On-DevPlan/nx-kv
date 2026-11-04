@@ -125,8 +125,9 @@ export async function repoKnowledge(locator, { md = false } = {}) {
     const docLinks = [];
     const externalDirs = [];
     for (const l of Array.isArray(b.docLinks) ? b.docLinks : []) {
+      const meta = l.tag ? { tag: l.tag } : {};
       if (l.rel) {
-        docLinks.push({ note: l.note || '', ...(await readOwn(l.rel, { warnings, label: `组绑定·${l.rel}` })) });
+        docLinks.push({ note: l.note || '', ...meta, ...(await readOwn(l.rel, { warnings, label: `组绑定·${l.rel}` })) });
         continue;
       }
       const abs = l.path && store.resolveExternal(l.path, closure);
@@ -136,11 +137,11 @@ export async function repoKnowledge(locator, { md = false } = {}) {
       }
       const st = await import('node:fs/promises').then((m) => m.stat(abs).catch(() => null));
       if (!st) {
-        docLinks.push({ note: l.note || '', missing: true, docId: paths.extDocId(abs) });
+        docLinks.push({ note: l.note || '', ...meta, missing: true, docId: paths.extDocId(abs) });
       } else if (st.isDirectory()) {
-        externalDirs.push({ path: abs, note: l.note || '', files: await listDirMd(abs) });
+        externalDirs.push({ path: abs, note: l.note || '', ...meta, files: await listDirMd(abs) });
       } else {
-        docLinks.push({ note: l.note || '', ...(await readExternalDoc(abs, { warnings, label: `组绑定·${l.path}` })) });
+        docLinks.push({ note: l.note || '', ...meta, ...(await readExternalDoc(abs, { warnings, label: `组绑定·${l.path}` })) });
       }
     }
     boards.push({ name: b.name, key: bkey, intro: bIntro, note, docLinks, externalDirs });
@@ -250,16 +251,16 @@ export async function groupContextFor(cwd) {
       );
       peers.push({ name: mname, note: peerNote.body || (b.repoNotes || {})[mkey] || '' });
     }
-    // 组绑定参考文件（给可读路径——agent 直接读盘）
+    // 组绑定参考文件（给可读路径——agent 直接读盘）；tag 随条目走（有才带）
     const docLinks = [];
     for (const l of Array.isArray(b.docLinks) ? b.docLinks : []) {
       if (l.rel) {
-        docLinks.push({ rel: l.rel, abs: join(paths.docsRoot(), l.rel), note: l.note || '' });
+        docLinks.push({ rel: l.rel, abs: join(paths.docsRoot(), l.rel), note: l.note || '', ...(l.tag ? { tag: l.tag } : {}) });
         continue;
       }
       const abs = l.path && store.resolveExternal(l.path, closure);
       if (!abs) continue;
-      docLinks.push({ path: abs, abs, note: l.note || '' });
+      docLinks.push({ path: abs, abs, note: l.note || '', ...(l.tag ? { tag: l.tag } : {}) });
     }
     groups.push({
       name: b.name,

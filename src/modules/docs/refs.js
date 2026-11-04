@@ -10,6 +10,7 @@ import * as paths from './paths.js';
 import { normalizeKey } from '../../core/keys.js';
 import { reposBridge } from './repos-bridge.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
+import { withLinkMeta } from './docref.js';
 
 // 看板定位（id / key / 名称）：boardKeyOf 由 bridge 注入（key 口径必须与 repos 完全一致）
 function findBoardIn(s, idOrKey, { normalizeKey: nk, boardKeyOf }) {
@@ -95,10 +96,13 @@ export async function setNoteDocRef({ board, repo, rel, path, reset } = {}) {
  * 维护组的 docLinks。
  *   doc    --doc <rel|绝对路径>（盘符/绝对 → 外部，否则自有）
  *   note   条目说明
+ *   tag    分类标签（如 qa——简介行的补充链接会渲染成小 chip；传空串=清掉）
  *   remove --remove <序号>（1 起）
  *   before --before <序号>（插到该条之前；缺省追加）
+ *
+ * 同 rel/path 重复添加 = 更新该条（note/tag 以本次为准）——改标签就是重加一遍。
  */
-export async function setDocLink({ board, doc, note, remove, before } = {}) {
+export async function setDocLink({ board, doc, note, tag, remove, before } = {}) {
   if (!board) throw badInput('缺少看板（id / key / 名称）');
   const { mutateStore, boardKeyOf } = await reposBridge();
   return mutateStore((s) => {
@@ -124,7 +128,8 @@ export async function setDocLink({ board, doc, note, remove, before } = {}) {
         ? { path: String(doc).trim() }
         : { rel: String(doc || '') }
     );
-    const entry = note ? { ...ref, note: String(note).trim() } : ref;
+    // 条目 = DocRef + 注解（note/tag）；合成逻辑收在 docref.withLinkMeta
+    const entry = withLinkMeta(ref, { note, tag });
     const at = b.docLinks.findIndex((x) => (x.rel || '') === (entry.rel || '') && (x.path || '') === (entry.path || ''));
     if (at >= 0) b.docLinks.splice(at, 1);
     const want = before !== undefined ? idxOf(before) : -1;
@@ -162,18 +167,26 @@ export async function listRepoDocs(locator) {
   };
 }
 
-/** 往项目的介绍文档集里加一篇（rel / path / ref+rel 三选一） */
+/** 往项目的介绍文档集里加一篇（rel / path / ref+rel 三选一；note/tag 可选注解）。
+ *
+ * 同 rel/path 重复添加 = 更新该条（与组级 setDocLink 同一语义）——
+ * 此前是盲目 push：改个说明就得先 remove 再 add，还顺手丢掉 note
+ * （assertDocRef 只认 rel/path，注解要在这里显式贴回去）。
+ */
 export async function addRepoDoc(locator, raw) {
   const { getRepo, deriveKey, mutateStore } = await reposBridge();
   const repo = await getRepo(locator);
   const docRef = paths.assertDocRef(raw);
+  const entry = withLinkMeta(docRef, { note: raw && raw.note, tag: raw && raw.tag });
   return mutateStore((s) => {
     const r = s.repos.find((x) => deriveKey(x) === deriveKey(repo));
     if (!r) throw notFound('repo 不存在: ' + locator);
     if (!Array.isArray(r.docLinks)) r.docLinks = [];
-    r.docLinks.push(docRef);
+    const at = r.docLinks.findIndex((x) => (x.rel || '') === (entry.rel || '') && (x.path || '') === (entry.path || ''));
+    if (at >= 0) r.docLinks.splice(at, 1);
+    r.docLinks.push(entry);
     r.updatedAt = new Date().toISOString();
-    return { key: deriveKey(r), name: r.name, added: docRef, count: r.docLinks.length };
+    return { key: deriveKey(r), name: r.name, added: entry, count: r.docLinks.length };
   });
 }
 

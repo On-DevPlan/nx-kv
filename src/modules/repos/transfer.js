@@ -15,7 +15,7 @@ import { loadConfig } from '../../core/config.js';
 import { badInput } from '../../core/errors.js';
 import { makeZip } from '../../core/zip.js';
 import { md5Of } from '../../core/fstree.js';
-import { sanitizeDocRef } from '../docs/docref.js';
+import { sanitizeDocRef, withLinkMeta } from '../docs/docref.js';
 import { listOwnDocs, writeOwnDoc, externalClosure } from '../docs/store.js';
 import * as service from './service.js';
 import * as boards from './boards.js';
@@ -105,11 +105,12 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
     // 文档绑定（v4）：组介绍覆盖 / 组级附加列表 / 组内描述覆盖
     const bdoc = sanitizeDocRef(b.doc);
     if (bdoc) entry.doc = bdoc;
+    // docLinks 条目 = DocRef + 注解（note/tag），注解跟条目一起走（withLinkMeta 统一口径）
     const links = (Array.isArray(b.docLinks) ? b.docLinks : [])
       .map((l) => {
         const d = sanitizeDocRef(l);
         if (!d) return null;
-        return l.note ? { ...d, note: String(l.note).trim() } : d;
+        return withLinkMeta(d, l);
       })
       .filter(Boolean);
     if (links.length) entry.docLinks = links;
@@ -223,12 +224,11 @@ function parseLayout(json) {
 }
 
 // v2 → v3：没有 key 的条目用 remote/name 现算，让老导出文件也能导入。
-// v3 → v4：文档绑定字段做形状归一（非法形状丢弃；带 note 的保留 note）。
+// v3 → v4：文档绑定字段做形状归一（非法形状丢弃；note/tag 注解原样保留）。
 const refOf = (raw) => {
   const d = sanitizeDocRef(raw);
   if (!d) return null;
-  const note = raw && typeof raw.note === 'string' ? raw.note.trim() : '';
-  return note ? { ...d, note } : d;
+  return withLinkMeta(d, raw);
 };
 
 function normalizeLayout(data) {

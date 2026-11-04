@@ -5,18 +5,18 @@
 // 每条用项目 tag 标出归属；「新增任务」进 MD 编辑页，工具区选归属项目（限本组成员），
 // 提交按 frontmatter.project 路由进对应项目的队列。成员名册表格已移除（成员管理在仓库页）。
 //
-// 编排（#40）：组任务横跨多个成员队列，而 DAG（排序/blockBy/闸门）按 topic 表达——
-// 跨队列拖动排序在当前机制下不存在（排序在目录页做）；组页提供**每行**的
-// 闸门开关与编排编辑器（候选 = 该任务所属队列的待领取任务），闸门/锁定徽章上屏。
+// 编排（#40）：组任务横跨多个成员队列；待领取行可拖动排序（同目录页）——
+// reorder API 按 topic，故只允许拖到**同一成员队列**的落点；跨项目落点会提示。
 // 组介绍与项目介绍共用 Introduction（显示 / 编辑 / 补 ref）。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import { taskLabel } from '../../components/sidebar/model.js';
 import { useApp } from '../../app-context.jsx';
+import { api } from '../../api/client.js';
 import { openPanel } from '../../workspace.js';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
@@ -56,6 +56,7 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
         key: m.key,
         name: m.name || (repo && repo.name) || m.key,
         path: m.path || (repo && repo.path) || '',
+        cwd: (topic && topic.cwd) || m.path || (repo && repo.path) || '',
         desc: m.note || (repo && repo.desc) || '',
         pending: topic ? topic.pending || 0 : 0,
         waiting: !!(topic && topic.waiting),
@@ -108,8 +109,8 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
     items[0] ||
     null;
 
-  // 本组任务 = 成员队列里**正文 frontmatter.board 指向本组**的任务——
-  // 只有从组面板「新增任务」创建的才带这个语义（提交时自动写入），不是成员全部任务。
+  // 本组任务 = 成员队列里**正文 frontmatter.board 指向本组**的任务。
+  // 待领取保持各成员队列序（可拖动排序）；已领取按领取时间倒序。
   const groupTasks = useMemo(() => {
     const ids = board ? [board.id, board.key, board.name].filter(Boolean) : [];
     const pend = [];
@@ -121,10 +122,78 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
         (t.status === 'pending' ? pend : done).push({ member: it, task: t, project: fm.project || '' });
       }
     }
-    pend.sort((a, b) => b.task.id - a.task.id);
     done.sort((a, b) => String(b.task.consumedAt || '').localeCompare(String(a.task.consumedAt || '')));
     return { pend, done };
   }, [board, items]);
+
+  // 待领取拖动排序（同目录页 HTML5 DnD；落点须同 topic）
+  const dragRef = useRef(null); // { id, topicKey, cwd }
+  const [dragId, setDragId] = useState(null);
+  const [dropAt, setDropAt] = useState(null); // { key: memberKey:taskId, zone }
+  const rowKey = (member, task) => member.key + ':' + task.id;
+  const zoneOf = (e, el) => {
+    const r = el.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2 ? 'before' : 'after';
+  };
+  const onDragStart = (e, member, task) => {
+    dragRef.current = {
+      id: Number(task.id),
+      topicKey: member.topicKey,
+      cwd: member.cwd || member.path || '',
+      row: rowKey(member, task),
+    };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', 'task:' + task.id);
+    setDragId(rowKey(member, task));
+  };
+  const onDragOver = (e, member, task) => {
+    const drag = dragRef.current;
+    if (!drag || drag.row === rowKey(member, task)) return;
+    // 异队列也可 hover 提示，松手再拦
+    e.preventDefault();
+    e.dataTransfer.dropEffect = drag.topicKey === member.topicKey ? 'move' : 'none';
+    setDropAt({ key: rowKey(member, task), zone: zoneOf(e, e.currentTarget) });
+  };
+  const onDragLeave = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setDropAt(null);
+  };
+  const onDrop = async (e, member, task) => {
+    e.preventDefault();
+    const zone = zoneOf(e, e.currentTarget);
+    const drag = dragRef.current;
+    dragRef.current = null;
+    setDragId(null);
+    setDropAt(null);
+    if (!drag || drag.row === rowKey(member, task)) return;
+    if (drag.topicKey !== member.topicKey) {
+      toast('只能在同一项目队列内排序（跨项目请用编排连线）');
+      return;
+    }
+    const cwd = member.cwd || member.path;
+    if (!member.topicKey || !cwd) {
+      toast('该成员还没有本地队列，无法排序');
+      return;
+    }
+    try {
+      await api('/api/localtasks/reorder', {
+        method: 'PATCH',
+        body: {
+          cwd,
+          id: drag.id,
+          ...(zone === 'before' ? { beforeId: Number(task.id) } : { afterId: Number(task.id) }),
+        },
+      });
+      app.refreshLocal && (await app.refreshLocal());
+    } catch (err) {
+      toast(String(err.message || err));
+    }
+  };
+  const onDragEnd = () => {
+    dragRef.current = null;
+    setDragId(null);
+    setDropAt(null);
+  };
 
   // 组里建任务：草稿预写 frontmatter（board + 默认归属项目），提交时编辑页的工具区
   // 可改归属项目（限本组成员），按它路由进对应项目的队列。
@@ -184,7 +253,7 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
             className="dag-link rp-tasks-orch"
             role="button"
             tabIndex={-1}
-            title="打开可视化编排面板：拖拽排序、连线建立依赖、设闸门、加时间目标"
+            title="打开可视化编排面板：有向连线定顺序（未连线走默认序）、设闸门、加时间目标"
             onClick={() => {
               if (!model) return;
               openPanel(model, {
@@ -201,8 +270,34 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
           const dagInfo = dagByTopic.get(member.topicKey);
           const downs = (dagInfo && dagInfo.downstream[task.id]) || [];
           const locked = task.ready === false;
+          const rk = rowKey(member, task);
           return (
-            <div key={member.key + ':' + task.id} className="rp-proj-row">
+            <div
+              key={rk}
+              className={
+                'rp-proj-row'
+                + (dragId === rk ? ' dragging' : '')
+                + (dropAt && dropAt.key === rk ? ' drop-' + dropAt.zone : '')
+              }
+              onDragOver={(e) => onDragOver(e, member, task)}
+              onDragLeave={onDragLeave}
+              onDrop={(e) => onDrop(e, member, task)}
+            >
+              {member.topicKey ? (
+                <span
+                  className="rp-drag-handle"
+                  draggable
+                  title="拖动调整本项目队列内顺序"
+                  aria-label="拖动排序"
+                  onDragStart={(e) => onDragStart(e, member, task)}
+                  onDragEnd={onDragEnd}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Icon name="grip" size={12} />
+                </span>
+              ) : (
+                <span className="rp-drag-handle off" aria-hidden="true" />
+              )}
               <button
                 className="rp-proj-task"
                 title="打开这条任务"

@@ -144,7 +144,7 @@ export default function Landing({
             className="dag-link mdw-land-orch"
             role="button"
             tabIndex={-1}
-            title="打开可视化编排面板：拖拽排序、连线建立依赖、设闸门、加时间目标"
+            title="打开可视化编排面板：有向连线定顺序（未连线走默认序）、设闸门、加时间目标"
             onClick={(e) => {
               e.stopPropagation();
               onOpenFlow();

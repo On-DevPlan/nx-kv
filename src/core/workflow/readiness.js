@@ -1,17 +1,90 @@
 // 拓扑就绪（自 localtask/dag.js 下沉）。任务行与快照节点两套入口。
+//
+// blockBy 支持：
+//   - 本地 id（number）——同队列依赖（兼容旧存盘）
+//   - 跨队列引用 `"<topicKey>:<taskId>"`——组编排跨项目边；get 时跨 topic 解析
 
-/** 规范化 blockBy：正整数 id、去重、丢掉自身 */
+/** topicKey:id —— key 允许字母数字与 _-（含 __GLOBAL__） */
+const FOREIGN_RE = /^([A-Za-z0-9_-]+):(\d+)$/;
+
+/**
+ * @typedef {{ kind: 'local', id: number } | { kind: 'foreign', key: string, id: number }} DepRef
+ */
+
+/**
+ * 解析单条依赖引用。
+ * @param {unknown} x
+ * @returns {DepRef | null}
+ */
+export function parseDepRef(x) {
+  if (typeof x === 'number' && Number.isFinite(x) && x > 0) {
+    return { kind: 'local', id: Math.trunc(x) };
+  }
+  const s = String(x ?? '').trim();
+  if (!s) return null;
+  const m = FOREIGN_RE.exec(s);
+  if (m) return { kind: 'foreign', key: m[1], id: Number(m[2]) };
+  // 纯数字字符串 → 本地 id（避免把 "12" 当 foreign）
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    if (Number.isFinite(n) && n > 0) return { kind: 'local', id: n };
+  }
+  return null;
+}
+
+/** @param {DepRef} ref @returns {number|string} */
+export function formatDepRef(ref) {
+  if (!ref) return '';
+  if (ref.kind === 'foreign') return `${ref.key}:${ref.id}`;
+  return ref.id;
+}
+
+/**
+ * 规范化 blockBy：本地正整数 id + 跨队列 "key:id"、去重、丢掉本地自身。
+ * @param {unknown} raw
+ * @param {number|string} [selfId]
+ * @returns {Array<number|string>}
+ */
 export function normalizeBlockBy(raw, selfId) {
   const self = Number(selfId);
   const seen = new Set();
   const out = [];
-  for (const x of Array.isArray(raw) ? raw : []) {
-    const n = Number(x);
-    if (!Number.isFinite(n) || n <= 0) continue;
-    if (Number.isFinite(self) && n === self) continue;
-    if (seen.has(n)) continue;
-    seen.add(n);
-    out.push(n);
+
+  /** @type {unknown[]} */
+  let items = [];
+  if (raw == null || raw === '') items = [];
+  else if (Array.isArray(raw)) items = raw;
+  else if (typeof raw === 'string' && /[,，\s]/.test(raw) && !FOREIGN_RE.test(raw.trim())) {
+    items = raw.split(/[,，\s]+/).filter(Boolean);
+  } else {
+    items = [raw];
+  }
+
+  // 数组元素里也可能是逗号串（HTTP 偶发）
+  const flat = [];
+  for (const x of items) {
+    if (typeof x === 'string' && /[,，]/.test(x) && !FOREIGN_RE.test(x.trim())) {
+      flat.push(...x.split(/[,，\s]+/).filter(Boolean));
+    } else {
+      flat.push(x);
+    }
+  }
+
+  for (const x of flat) {
+    const ref = parseDepRef(x);
+    if (!ref) continue;
+    if (ref.kind === 'local') {
+      if (Number.isFinite(self) && ref.id === self) continue;
+      const token = String(ref.id);
+      if (seen.has(`L:${token}`)) continue;
+      seen.add(`L:${token}`);
+      out.push(ref.id);
+    } else {
+      const token = `${ref.key}:${ref.id}`;
+      if (seen.has(`F:${token}`)) continue;
+      seen.add(`F:${token}`);
+      out.push(token);
+    }
   }
   return out;
 }
@@ -29,17 +102,35 @@ function isPendingLike(t) {
 }
 
 /**
+ * @typedef {object} ReadyOpts
+ * @property {(topicKey: string, taskId: number) => object|null|undefined} [resolveForeign]
+ *   跨队列依赖解析；缺席或返回空 = fail-open（挡不住）
+ */
+
+/**
  * 某条 pending 现在能不能领（任务行模型）。
  * @param {object} task
  * @param {object[]} all
+ * @param {ReadyOpts} [opts]
  */
-export function isReadyToClaim(task, all = []) {
+export function isReadyToClaim(task, all = [], opts = {}) {
   if (!isPendingLike(task)) return false;
   const byId = new Map((all || []).filter(isAlive).map((t) => [Number(t.id), t]));
 
   const deps = normalizeBlockBy(task.blockBy, task.id);
-  for (const id of deps) {
-    const dep = byId.get(id);
+  for (const d of deps) {
+    const ref = parseDepRef(d);
+    if (!ref) continue;
+    let dep = null;
+    if (ref.kind === 'local') {
+      dep = byId.get(ref.id) || null;
+    } else if (typeof opts.resolveForeign === 'function') {
+      const found = opts.resolveForeign(ref.key, ref.id);
+      dep = found && isAlive(found) ? found : null;
+    } else {
+      // 无解析器：跨队列依赖无法验证 → fail-open（与「依赖缺失」同口径）
+      continue;
+    }
     if (!dep) continue;
     if (!isCompleted(dep)) return false;
   }
@@ -56,10 +147,14 @@ export function isReadyToClaim(task, all = []) {
   return true;
 }
 
-/** 按数组序找第一条可领取的 pending；没有 → null */
-export function findFirstReadyPending(tasks = []) {
+/**
+ * 按数组序找第一条可领取的 pending；没有 → null
+ * @param {object[]} tasks
+ * @param {ReadyOpts} [opts]
+ */
+export function findFirstReadyPending(tasks = [], opts = {}) {
   for (const t of tasks || []) {
-    if (isReadyToClaim(t, tasks)) return t;
+    if (isReadyToClaim(t, tasks, opts)) return t;
   }
   return null;
 }

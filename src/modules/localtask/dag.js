@@ -1,5 +1,7 @@
 // 过渡再导出：实现已下沉 core/workflow/readiness.js
 export {
+  parseDepRef,
+  formatDepRef,
   normalizeBlockBy,
   isReadyToClaim,
   findFirstReadyPending,

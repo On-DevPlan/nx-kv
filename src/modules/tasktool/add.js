@@ -18,28 +18,7 @@ import { badInput } from '../../core/errors.js';
 import { addTask, normalizeCwd } from '../localtask/service.js';
 import { applyGroupFields, parseFrontmatter } from '../../shared/frontmatter.js';
 import { resolveGroupTarget } from '../localtask/board-target.js';
-
-// repos 在模块互依禁列里 → 动态 import（与 getloop.js 的 reposStore 同一惯例）。
-let reposMod = null;
-async function reposStore() {
-  if (!reposMod) reposMod = await import('../repos/service.js');
-  return reposMod;
-}
-
-// raw store → 归一化形状（看板成员是 repoKeys/repoIds、仓库 key 是派生的——
-// 归一后喂给纯解析器 board-target.js；boardRepoKeys/deriveKey 只能由这里动态引入后使用）。
-async function normalizedGroupStore() {
-  const repos = await reposStore();
-  const store = await repos.loadStore();
-  const boards = (store.boards || []).map((b) => ({
-    ...b,
-    memberKeys: repos.boardRepoKeys(b, store),
-  }));
-  return {
-    boards,
-    repos: (store.repos || []).map((r) => ({ ...r, key: r.key || repos.deriveKey(r) })),
-  };
-}
+import { normalizedGroupStore } from './group-store.js';
 
 /**
  * 派任务统一入口。

@@ -29,6 +29,7 @@ export const PANEL_AREA = {
   overview: AREA.MAIN,
   templates: AREA.MAIN,
   doc: AREA.MAIN,
+  dag: AREA.MAIN,
   progress: AREA.RIGHT,
   settings: AREA.FLOAT,
 };

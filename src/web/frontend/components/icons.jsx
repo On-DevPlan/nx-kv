@@ -96,6 +96,17 @@ const ICONS = {
       <circle cx="18.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
     </>
   ),
+  /** 竖向六点抓手（拖排序） */
+  grip: (
+    <>
+      <circle cx="9" cy="6" r="1.35" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="6" r="1.35" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="12" r="1.35" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1.35" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="18" r="1.35" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="18" r="1.35" fill="currentColor" stroke="none" />
+    </>
+  ),
   clock: (
     <>
       <circle cx="12" cy="12" r="8.5" />

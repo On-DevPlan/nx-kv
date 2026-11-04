@@ -1020,9 +1020,24 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .mdw-dag-hint { color: var(--faint, #A9AEB4); font-size: 11px; font-weight: 400; }
 .mdw-dag-note { margin-top: 8px; font-size: 11.5px; color: var(--faint, #A9AEB4); }
 
-/* 组任务行（#40）：行本体 + 行尾「⋮」编排菜单；闸门/锁定徽章与目录页同语义 */
+/* 组任务行（#40）：左侧抓手拖排序；闸门/锁定徽章与目录页同语义 */
 .rp-proj-row { display: flex; align-items: center; gap: 4px; }
-.rp-proj-row .rp-proj-task { flex: 1; min-width: 0; }
+.rp-proj-row.dragging { opacity: .45; }
+.rp-proj-row.drop-before { box-shadow: inset 0 2px 0 0 var(--doing, #2F6F5E); }
+.rp-proj-row.drop-after { box-shadow: inset 0 -2px 0 0 var(--doing, #2F6F5E); }
+.rp-drag-handle {
+  flex: none; width: 16px; height: 24px; margin-right: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; color: var(--faint, #A9AEB4);
+  cursor: grab; touch-action: none; user-select: none;
+  opacity: 0; transition: opacity .12s ease, color .12s ease;
+}
+.rp-proj-row:hover .rp-drag-handle,
+.rp-proj-row.dragging .rp-drag-handle { opacity: .7; }
+.rp-drag-handle:hover { opacity: 1; color: var(--mid, #838A93); }
+.rp-drag-handle:active, .rp-proj-row.dragging .rp-drag-handle { cursor: grabbing; opacity: 1; }
+.rp-drag-handle.off { visibility: hidden; pointer-events: none; cursor: default; opacity: 0; }
+.rp-proj-row .rp-proj-task { flex: 1; min-width: 0; cursor: pointer; }
 .rp-proj-row .rowmenu-btn { width: 22px; height: 22px; }
 .rp-tgate {
   flex: none; font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 9px;
@@ -1033,7 +1048,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   background: var(--soft, #F1F0EC); color: var(--mid, #838A93);
 }
 
-/* ---- 编排面板（可视化 DAG，#40 验收反馈）---- */
+/* ---- 编排面板（可视化 DAG 画布，#40）---- */
 .dag-link {
   color: var(--mdw-accent, #2F6F5E); font-size: 11px; cursor: pointer;
   text-decoration: underline; text-underline-offset: 2px; padding: 0 4px;
@@ -1042,62 +1057,94 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 
 .dagp { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .dagp-head {
-  flex: none; display: flex; align-items: baseline; gap: 10px;
+  flex: none; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
   padding: 12px 16px 8px; border-bottom: 1px solid var(--line, #E4E2DC);
 }
 .dagp-title { font-weight: 700; font-size: 14px; }
 .dagp-count { font-size: 11.5px; color: var(--mid, #838A93); }
+.dagp-hint { font-size: 11px; color: var(--mid, #838A93); }
 .dagp-canvas {
   position: relative; flex: 1; min-height: 0; overflow: auto;
-  padding: 18px 16px 40px 46px;
   background-image:
     linear-gradient(to right, rgba(120, 120, 110, .07) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(120, 120, 110, .07) 1px, transparent 1px);
   background-size: 24px 24px;
+  cursor: default;
 }
-.dagp-edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.dagp-edge { fill: none; stroke: var(--mdw-accent, #2F6F5E); stroke-width: 1.5; opacity: .75; }
-.dagp-edge.hot { stroke-width: 2.5; opacity: 1; }
-/* 节点 = 小圆角卡片（不是整行长条）：定宽 260px，卡片之间留出行距 */
+.dagp.is-linking .dagp-canvas { cursor: crosshair; }
+.dagp-edges { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; z-index: 1; }
+.dagp-edge { fill: none; stroke: var(--mdw-accent, #2F6F5E); stroke-width: 1.75; opacity: .8; }
+.dagp-edge.preview { stroke-width: 2; opacity: 1; stroke-dasharray: 6 4; }
+.dagp-nodes { position: relative; z-index: 2; }
+/* 节点 = 绝对定位卡片：指针拖动；左右端口做有向连线 */
 .dagp-node {
-  position: relative; display: flex; align-items: center; gap: 7px;
-  width: 260px; max-width: calc(100% - 40px);
-  margin-bottom: 14px; padding: 7px 9px 7px 22px;
+  position: absolute; left: 0; top: 0; display: flex; align-items: stretch; gap: 0;
+  box-sizing: border-box; padding: 0;
   background: var(--paper, #fff); border: 1px solid var(--line, #E4E2DC);
   border-radius: 10px; box-shadow: 0 1px 3px rgba(20, 22, 26, .06);
+  cursor: grab; user-select: none; touch-action: none;
+  will-change: transform;
 }
+.dagp-node.done { opacity: .55; cursor: default; background: var(--soft, #F1F0EC); }
 .dagp-node.gate { border-color: var(--mdw-accent, #2F6F5E); }
-.dagp-node.dragging { opacity: .45; }
-.dagp-node.drop-before { box-shadow: inset 0 3px 0 0 var(--mdw-accent, #2F6F5E); }
-.dagp-node.drop-after { box-shadow: inset 0 -3px 0 0 var(--mdw-accent, #2F6F5E); }
-.dagp-node.over { border-color: var(--mdw-accent, #2F6F5E); box-shadow: 0 0 0 2px rgba(47, 111, 94, .18); }
-.dagp-handle {
-  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
-  width: 10px; height: 10px; border-radius: 50%;
-  background: var(--soft-2, #DDD9D0); cursor: crosshair;
+.dagp-node.dragging { opacity: .85; cursor: grabbing; z-index: 5; box-shadow: 0 6px 18px rgba(20, 22, 26, .14); }
+.dagp-node.over,
+.dagp-node.link-target:hover {
+  border-color: var(--mdw-accent, #2F6F5E); box-shadow: 0 0 0 2px rgba(47, 111, 94, .22);
 }
-.dagp-handle:hover { background: var(--mdw-accent, #2F6F5E); }
+.dagp-node.linking-src { border-color: var(--mdw-accent, #2F6F5E); box-shadow: 0 0 0 2px rgba(47, 111, 94, .3); }
+.dagp.is-linking .dagp-node.link-target { cursor: crosshair; }
+.dagp-body { flex: 1; min-width: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.dagp-top { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.dagp-port {
+  flex: none; align-self: center; width: 14px; height: 14px; margin: 0 8px;
+  border-radius: 50%; border: 2px solid var(--mdw-accent, #2F6F5E);
+  background: var(--paper, #fff); box-sizing: border-box; padding: 0;
+}
+.dagp-port.in { pointer-events: none; border-color: var(--soft-2, #DDD9D0); }
+/* 出端口：大热区；点一下进连线态 / 按住拖到目标 */
+.dagp-port.out {
+  position: relative; cursor: crosshair; background: var(--mdw-accent, #2F6F5E);
+  border: 0; width: 22px; height: 22px; min-width: 22px; min-height: 22px;
+  flex: 0 0 22px; margin-right: 10px;
+  display: inline-block; appearance: none; -webkit-appearance: none;
+  box-shadow: 0 0 0 3px rgba(47, 111, 94, .18);
+}
+.dagp-port.out::before { content: ''; position: absolute; inset: -14px; }
+.dagp-port.out:hover,
+.dagp-node.linking-src .dagp-port.out {
+  transform: scale(1.12); box-shadow: 0 0 0 4px rgba(47, 111, 94, .28);
+}
+.dagp.is-linking .dagp-node.over .dagp-port.in,
+.dagp.is-linking .dagp-node.link-target:hover .dagp-port.in {
+  border-color: var(--mdw-accent, #2F6F5E); background: var(--mdw-accent-soft, #E8F2EE);
+  box-shadow: 0 0 0 3px rgba(47, 111, 94, .25);
+}
 .dagp-no { flex: none; font-size: 11px; color: var(--mid, #838A93); }
 .dagp-name {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 12.5px; cursor: pointer;
+  font-size: 12.5px; line-height: 1.35; color: var(--ink, #16181C);
+  white-space: normal; overflow: hidden; display: -webkit-box;
+  -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; word-break: break-word;
 }
-.dagp-name:hover { color: var(--mdw-accent, #2F6F5E); }
+.dagp-node:not(.done) .dagp-name { cursor: grab; }
+.dagp-deps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .dagp-chip {
   flex: none; font-size: 10.5px; line-height: 16px; padding: 0 6px; border-radius: 8px;
   background: var(--soft, #F1F0EC); color: var(--ink-2, #4B515A);
 }
 .dagp-chip.gate { background: var(--mdw-accent-soft, #E8F2EE); color: var(--mdw-accent, #2F6F5E); }
+.dagp-chip.proj { background: var(--soft, #F1F0EC); color: var(--ink-2, #4B515A); }
+.dagp-chip.done { background: var(--soft-2, #DDD9D0); }
 .dagp-chip.dep { background: transparent; border: 1px solid var(--soft-2, #DDD9D0); color: var(--ink-2, #4B515A); }
 .dagp-chip.dep i { font-style: normal; cursor: pointer; margin-left: 3px; color: var(--mid, #838A93); }
 .dagp-chip.dep i:hover { color: var(--danger, #B3261E); }
 .dagp-ops {
-  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  flex: none; margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border: 0; border-radius: 6px; background: none;
   color: var(--mid, #838A93); cursor: pointer;
 }
 .dagp-ops:hover { background: var(--soft, #F1F0EC); color: var(--ink, #16181C); }
-.dagp-empty { font-size: 12.5px; color: var(--mid, #838A93); padding: 20px 4px; }
+.dagp-empty { font-size: 12.5px; color: var(--mid, #838A93); padding: 20px 16px; }
 /* 编排入口绿链：放在任务面板头部右侧（目录落地页 / 项目组任务面板各一处） */
 .mdw-land-orch, .rp-tasks-orch { margin-left: auto; padding-right: 4px; }
 .rp-tasks-h { display: flex; align-items: center; gap: 8px; }
@@ -1107,9 +1154,9 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   border: 1px solid var(--line, #E4E2DC); background: var(--paper, #fff); border-radius: 999px;
   padding: 1px 9px; font: inherit; font-size: 11px; color: var(--ink-2, #4B515A); cursor: pointer;
 }
+.dagp-queue i { font-style: normal; margin-left: 4px; opacity: .7; }
 .dagp-queue:hover { background: var(--soft, #F1F0EC); }
 .dagp-queue.on { background: var(--mdw-accent-soft, #E8F2EE); border-color: var(--mdw-accent, #2F6F5E); color: var(--mdw-accent, #2F6F5E); }
-
 /* 面包屑条上的返回键（#42：页面缺返回键） */
 .nx-crumb-back {
   flex: none; border: 0; background: none; cursor: pointer;

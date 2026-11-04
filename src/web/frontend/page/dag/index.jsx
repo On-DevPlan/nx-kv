@@ -1,25 +1,97 @@
-// 编排面板（可视化 DAG）——目录与项目组**共用**同一块面板（任务 #40 验收反馈）。
+// 编排面板（可视化 DAG）——目录与项目组共用。
 //
-// 形态：画布式节点流。队列序 = 节点纵向位置；依赖边用曲线连出来（SVG 叠加层）。
-// 能做的编排动作（全部落到既有 API，语义仍由 DAG 引擎定）：
-//   - 拖拽节点 → 改队列顺序（PATCH /api/localtasks/reorder）
-//   - 从节点左侧把手拉一条线到另一个节点 → 建立有向依赖（后者等前者，
-//     PATCH /api/localtasks/item 的 blockBy）
-//   - 节点设闸门（挡住后续）/ 加时间目标（timegoal）/ 打开任务
-//   - 没编排过的节点保持原队列序——编排只改被碰过的那几项
+// 顺序语义：
+//   - 只有有向连线表达先后（blockBy：A→B = B 等 A）
+//   - 未连线 = 无编排序，走各队列默认序
+//   - 拖节点只改摆位，不 reorder
 //
-// 面板按 config.dirKey 定位一个**队列**（topic）：DAG 的排序/依赖/闸门都按队列表达，
-// 项目组里的任务分属不同队列，点哪条就编哪条。
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+// 组模式（groupId）：一次展示组内全部任务；跨项目边落盘为 "topicKey:id"，对 get 生效。
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useApp } from '../../app-context.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { PopMenu, useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
-import { titleFromMd } from '../../modules/md/md-parse.js';
+import { parseFrontmatter, titleFromMd } from '../../modules/md/md-parse.js';
 import { taskLabel } from '../../components/sidebar/model.js';
 
-const GUTTER = 30; // 左侧走线槽（边画在这里，节点卡片从它右侧开始）
+const NODE_W = 280;
+const NODE_GAP_Y = 22;
+const PAD_X = 56;
+const PAD_Y = 28;
+const COL_GAP = 320;
+const DRAG_THRESH = 6;
+const FILTER_ALL = '';
+
+function isAlive(t) {
+  return t && !t.deletedAt && !t.migratedTo;
+}
+function isPending(t) {
+  return isAlive(t) && t.status !== 'consumed';
+}
+function labelOf(t) {
+  return titleFromMd(t.text) || taskLabel(t) || `#${t.id}`;
+}
+function nodeKeyOf(topicKey, id) {
+  return `${topicKey}:${Number(id)}`;
+}
+/** @returns {{ kind:'local', id:number } | { kind:'foreign', key:string, id:number } | null} */
+function parseDep(x) {
+  if (typeof x === 'number' && Number.isFinite(x) && x > 0) return { kind: 'local', id: Math.trunc(x) };
+  const s = String(x ?? '').trim();
+  if (!s) return null;
+  const m = /^([A-Za-z0-9_-]+):(\d+)$/.exec(s);
+  if (m) return { kind: 'foreign', key: m[1], id: Number(m[2]) };
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    if (n > 0) return { kind: 'local', id: n };
+  }
+  return null;
+}
+function depToNodeKey(dep, ownerTopicKey) {
+  const ref = parseDep(dep);
+  if (!ref) return null;
+  if (ref.kind === 'foreign') return nodeKeyOf(ref.key, ref.id);
+  return nodeKeyOf(ownerTopicKey, ref.id);
+}
+function formatDepForTarget(sourceNode, targetTopicKey) {
+  if (sourceNode.topicKey === targetTopicKey) return Number(sourceNode.id);
+  return nodeKeyOf(sourceNode.topicKey, sourceNode.id);
+}
+
+function defaultLayout(nodes) {
+  // 按 topic 分列，列内按原序纵向
+  const byTopic = new Map();
+  for (const n of nodes) {
+    if (!byTopic.has(n.topicKey)) byTopic.set(n.topicKey, []);
+    byTopic.get(n.topicKey).push(n);
+  }
+  const pos = new Map();
+  let col = 0;
+  for (const [, list] of byTopic) {
+    list.forEach((n, i) => {
+      pos.set(n.nodeKey, {
+        x: PAD_X + col * COL_GAP,
+        y: PAD_Y + i * (72 + NODE_GAP_Y),
+      });
+    });
+    col += 1;
+  }
+  return pos;
+}
+
+function cubic(x1, y1, x2, y2) {
+  const dx = Math.max(48, Math.abs(x2 - x1) * 0.5);
+  return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+}
+
+function canvasPoint(canvas, clientX, clientY) {
+  const base = canvas.getBoundingClientRect();
+  return {
+    x: clientX - base.left + canvas.scrollLeft,
+    y: clientY - base.top + canvas.scrollTop,
+  };
+}
 
 export default function DagPanel({ dirKey, groupId }) {
   const app = useApp() || {};
@@ -27,327 +99,676 @@ export default function DagPanel({ dirKey, groupId }) {
   const { dialog, node: dialogNode } = useDialog();
   const rows = app.rows || [];
   const refreshLocal = app.refreshLocal;
+  const markerId = useId().replace(/:/g, '');
 
-  // 组模式：编排面板按**队列**表达（DAG 的排序/依赖/闸门都是队列内的），
-  // 所以组视图进来给一条队列切换带——点哪条队列就编哪条。
   const boards = (app.repoData && app.repoData.boards) || [];
   const board = useMemo(
     () => boards.find((b) => b.id === groupId || b.key === groupId) || null,
     [boards, groupId]
   );
+  const groupMode = !!board;
+
   const queues = useMemo(() => {
     if (!board) return [];
     const out = [];
     for (const m of board.repos || []) {
       const t = rows.find((r) => r.repo && r.repo.key === m.key);
       if (!t) continue;
-      const pend = (t.tasks || []).filter((x) => x && !x.deletedAt && !x.migratedTo && x.status !== 'consumed');
-      if (!pend.length) continue;
-      out.push({ key: t.key, name: m.name || m.key, count: pend.length });
+      const boardIds = [board.id, board.key, board.name].filter(Boolean);
+      const pendingTasks = (t.tasks || []).filter((task) => {
+        if (!isPending(task)) return false;
+        const fm = parseFrontmatter(task.text);
+        return fm.board && boardIds.includes(fm.board);
+      });
+      if (!pendingTasks.length) continue;
+      out.push({
+        key: t.key,
+        name: m.name || m.key,
+        cwd: t.cwd,
+        isGlobal: !!t.isGlobal,
+        count: pendingTasks.length,
+        total: pendingTasks.length,
+      });
     }
     return out;
   }, [board, rows]);
 
-  const [queueKey, setQueueKey] = useState(dirKey || '');
-  const activeKey = queues.some((q) => q.key === queueKey) ? queueKey : (queues[0] && queues[0].key) || dirKey;
-  const topic = useMemo(() => rows.find((r) => r.key === activeKey) || null, [rows, activeKey]);
-  const pending = useMemo(
-    () => (topic?.tasks || []).filter((t) => t && !t.deletedAt && !t.migratedTo && t.status !== 'consumed'),
-    [topic]
-  );
-  const doneCount = useMemo(
-    () => (topic?.tasks || []).filter((t) => t && !t.deletedAt && !t.migratedTo && t.status === 'consumed').length,
-    [topic]
+  // 滤镜：组模式默认「全部」；目录模式钉死本目录
+  const [filterKey, setFilterKey] = useState(FILTER_ALL);
+  useEffect(() => {
+    if (!groupMode) setFilterKey(FILTER_ALL);
+  }, [groupMode, groupId]);
+
+  const dirTopic = useMemo(
+    () => (!groupMode ? rows.find((r) => r.key === dirKey) || null : null),
+    [groupMode, rows, dirKey]
   );
 
-  // 拖拽排序（HTML5 DnD）：拖拽态走 ref——dragstart/dragover 只隔几毫秒，
-  // state 那一拍渲染延迟会让 onDragOver 读到旧值（与目录任务表同一教训）。
-  const dragRef = useRef(null);
-  const [dragId, setDragId] = useState(null);
-  const [dropAt, setDropAt] = useState(null); // { id, zone }
+  /** @type {Array<object>} 画布节点：只含待领取；task 字段 + topicKey/cwd/projectName/nodeKey */
+  const nodes = useMemo(() => {
+    if (groupMode) {
+      const boardIds = [board.id, board.key, board.name].filter(Boolean);
+      const out = [];
+      for (const m of board.repos || []) {
+        const t = rows.find((r) => r.repo && r.repo.key === m.key);
+        if (!t) continue;
+        if (filterKey && t.key !== filterKey) continue;
+        for (const task of t.tasks || []) {
+          if (!isPending(task)) continue;
+          const fm = parseFrontmatter(task.text);
+          if (!fm.board || !boardIds.includes(fm.board)) continue;
+          out.push({
+            ...task,
+            topicKey: t.key,
+            topicCwd: t.cwd,
+            topicIsGlobal: !!t.isGlobal,
+            projectName: m.name || m.key,
+            nodeKey: nodeKeyOf(t.key, task.id),
+          });
+        }
+      }
+      return out;
+    }
+    if (!dirTopic) return [];
+    return (dirTopic.tasks || []).filter(isPending).map((task) => ({
+      ...task,
+      topicKey: dirTopic.key,
+      topicCwd: dirTopic.cwd,
+      topicIsGlobal: !!dirTopic.isGlobal,
+      projectName: dirTopic.name || dirTopic.key,
+      nodeKey: nodeKeyOf(dirTopic.key, task.id),
+    }));
+  }, [groupMode, board, rows, filterKey, dirTopic]);
 
-  // 连线（指针事件，与上面的 HTML5 拖拽互不干扰）
-  const [linking, setLinking] = useState(null); // { sourceId, overId }
-  const [opsMenu, setOpsMenu] = useState(null); // { x, y, items }
+  const byNodeKey = useMemo(() => new Map(nodes.map((n) => [n.nodeKey, n])), [nodes]);
+  const byNodeKeyRef = useRef(byNodeKey);
+  byNodeKeyRef.current = byNodeKey;
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
 
   const canvasRef = useRef(null);
-  const nodeRefs = useRef(new Map());
-  const [edges, setEdges] = useState([]); // [{from,to,x1,y1,x2,y2}]
-  const edgeSigRef = useRef(''); // 边集合指纹——没变就不 setState（否则无限渲染）
+  const [pos, setPos] = useState(() => new Map());
+  const posRef = useRef(pos);
+  posRef.current = pos;
+  const layoutSigRef = useRef('');
 
-  // 节点位置 → 边路径（DOM 量出来的，节点一动就重算）
-  const measure = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const base = canvas.getBoundingClientRect();
-    const out = [];
-    const pos = new Map();
-    for (const [id, el] of nodeRefs.current) {
-      if (!el) continue;
-      const r = el.getBoundingClientRect();
-      pos.set(Number(id), {
-        left: r.left - base.left,
-        midY: r.top - base.top + r.height / 2,
-        h: r.height,
-      });
-    }
-    for (const t of pending) {
-      const deps = (t.blockBy || []).map(Number);
-      for (const d of deps) {
-        const a = pos.get(d);
-        const b = pos.get(Number(t.id));
-        if (!a || !b) continue;
-        out.push({ from: d, to: Number(t.id), x1: a.left, y1: a.midY, x2: b.left, y2: b.midY });
-      }
-    }
-    // 边集合没变就别 setState：setEdges 会触发重渲染 → layout effect 再跑 → 再 setEdges，
-    // 无限循环（React #185）。指纹相同即视为无变化。
-    const sig = out.map((e) => `${e.from}>${e.to}:${Math.round(e.x1)},${Math.round(e.y1)},${Math.round(e.x2)},${Math.round(e.y2)}`).join('|');
-    if (sig === edgeSigRef.current) return;
-    edgeSigRef.current = sig;
-    setEdges(out);
-  }, [pending]);
-
-  useLayoutEffect(() => { measure(); });
   useEffect(() => {
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [measure]);
+    const sig = nodes.map((n) => n.nodeKey).join('|') + '#' + (groupMode ? filterKey || 'ALL' : dirKey || '');
+    const switched = layoutSigRef.current.split('#')[0] !== sig.split('#')[0]
+      || layoutSigRef.current.split('#')[1] !== sig.split('#')[1];
+    layoutSigRef.current = sig;
+    setPos((prev) => {
+      const next = new Map();
+      const fresh = defaultLayout(nodes);
+      for (const n of nodes) {
+        next.set(
+          n.nodeKey,
+          !switched && prev.has(n.nodeKey) ? prev.get(n.nodeKey) : (fresh.get(n.nodeKey) || { x: PAD_X, y: PAD_Y }),
+        );
+      }
+      return next;
+    });
+  }, [nodes, groupMode, filterKey, dirKey]);
 
-  const patchTask = async (id, body, okMsg) => {
+  const modeRef = useRef(null);
+  const [dragId, setDragId] = useState(null);
+  const [linking, setLinking] = useState(null);
+  const [opsMenu, setOpsMenu] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+  const commitRef = useRef(async () => false);
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+
+  const patchNode = async (node, body, okMsg) => {
+    setBusy(true);
     try {
+      const payload = { ...body };
+      if (Array.isArray(payload.blockBy)) payload.blockBy = payload.blockBy.join(',');
+      const scope = node.topicIsGlobal ? { key: node.topicKey } : { cwd: node.topicCwd };
       await api('/api/localtasks/item', {
         method: 'PATCH',
-        body: { ...(topic?.isGlobal ? { key: topic.key } : { cwd: topic.cwd }), id, ...body },
+        body: { ...scope, id: Number(node.id), ...payload },
       });
-      toast(okMsg);
+      if (okMsg) toast(okMsg);
       refreshLocal && (await refreshLocal());
     } catch (e) {
       toast(String(e.message || e));
+    } finally {
+      setBusy(false);
     }
   };
 
-  // ── 拖拽排序 ──
-  const movable = (t) => t.status !== 'consumed' && !t.migratedTo && !t.deletedAt;
-  const zoneOf = (e, el) => {
-    const r = el.getBoundingClientRect();
-    return e.clientY < r.top + r.height / 2 ? 'before' : 'after';
-  };
-  const onDragStart = (e, t) => {
-    dragRef.current = { id: Number(t.id) };
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', 'task:' + t.id);
-    setDragId(Number(t.id));
-  };
-  const onDragOver = (e, t) => {
-    if (!dragRef.current || !movable(t) || Number(t.id) === dragRef.current.id) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDropAt({ id: Number(t.id), zone: zoneOf(e, e.currentTarget) });
-  };
-  const onDragLeave = (e) => {
-    if (e.currentTarget.contains(e.relatedTarget)) return;
-    setDropAt(null);
-  };
-  const onDrop = async (e, t) => {
-    e.preventDefault();
-    const zone = zoneOf(e, e.currentTarget);
-    const drag = dragRef.current;
-    dragRef.current = null;
-    setDragId(null);
-    setDropAt(null);
-    if (!drag || !movable(t) || Number(t.id) === drag.id) return;
-    try {
-      await api('/api/localtasks/reorder', {
-        method: 'PATCH',
-        body: {
-          ...(topic?.isGlobal ? { key: topic.key } : { cwd: topic.cwd }),
-          id: drag.id,
-          ...(zone === 'before' ? { beforeId: Number(t.id) } : { afterId: Number(t.id) }),
-        },
-      });
-      refreshLocal && (await refreshLocal());
-    } catch (err) {
-      toast(String(err.message || err));
+  const hitNodeAt = (clientX, clientY) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const { x, y } = canvasPoint(canvas, clientX, clientY);
+    const list = nodesRef.current;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const nk = list[i].nodeKey;
+      const p = posRef.current.get(nk);
+      if (!p) continue;
+      const el = canvas.querySelector(`[data-node-id="${CSS.escape(nk)}"]`);
+      const h = el ? el.offsetHeight : 64;
+      if (x >= p.x - 10 && x <= p.x + NODE_W + 28 && y >= p.y - 6 && y <= p.y + h + 6) return nk;
     }
+    return null;
   };
 
-  // ── 连线：source → target（target 等 source）──
-  const startLink = (e, t) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setLinking({ sourceId: Number(t.id), overId: null });
+  const portOrigin = (nk) => {
+    const canvas = canvasRef.current;
+    const p = posRef.current.get(nk) || { x: 0, y: 0 };
+    const el = canvas?.querySelector(`[data-node-id="${CSS.escape(nk)}"]`);
+    const h = el ? el.offsetHeight : 64;
+    return { x: p.x + NODE_W, y: p.y + h / 2 };
   };
-  const hoverNode = (t) => {
-    if (!linking) return;
-    setLinking((l) => (l ? { ...l, overId: Number(t.id) } : l));
-  };
-  const finishLink = async (t) => {
-    if (!linking) return;
-    const src = linking.sourceId;
-    const dst = Number(t.id);
-    setLinking(null);
-    if (!src || src === dst) return;
-    const target = pending.find((x) => Number(x.id) === dst);
-    const cur = (target?.blockBy || []).map(Number);
-    if (cur.includes(src)) {
-      toast(`#${dst} 已经等 #${src}`);
+
+  const publishLink = (m) => {
+    if (!m || m.kind !== 'link') {
+      setLinking(null);
       return;
     }
-    await patchTask(dst, { blockBy: [...cur, src] }, `#${dst} 现在等 #${src}`);
-  };
-  const removeDep = async (t, depId) => {
-    const cur = (t.blockBy || []).map(Number);
-    await patchTask(
-      Number(t.id),
-      { blockBy: cur.filter((x) => x !== Number(depId)) },
-      `#${t.id} 不再等 #${depId}`
-    );
+    setLinking({
+      sourceId: m.sourceId,
+      x: m.x1,
+      y: m.y1,
+      cx: m.cx,
+      cy: m.cy,
+      overId: m.overId,
+      dragged: !!m.dragged,
+    });
   };
 
-  // ── 节点操作 ──
-  const toggleGate = (t) =>
-    patchTask(
-      Number(t.id),
-      { gate: !t.blocksFollowing },
-      !t.blocksFollowing ? `#${t.id} 设为闸门` : `#${t.id} 取消闸门`
-    );
+  const clearMode = () => {
+    modeRef.current = null;
+    setDragId(null);
+    setLinking(null);
+  };
 
-  const addTimegoal = async (t) => {
+  const tryCommitLink = async (srcKey, dstKey) => {
+    if (!dstKey || dstKey === srcKey) return false;
+    const source = byNodeKeyRef.current.get(srcKey);
+    const target = byNodeKeyRef.current.get(dstKey);
+    if (!source || !target || !isPending(target)) {
+      toastRef.current('只能连到待领取任务');
+      return false;
+    }
+    if (target.blocksFollowing) {
+      toastRef.current(`#${target.id} 是闸门，不能声明上游`);
+      return false;
+    }
+    const edgeToken = formatDepForTarget(source, target.topicKey);
+    const cur = [...(target.blockBy || [])];
+    const already = cur.some((d) => {
+      const a = parseDep(d);
+      const b = parseDep(edgeToken);
+      if (!a || !b) return false;
+      if (a.kind !== b.kind) return false;
+      if (a.kind === 'local') return a.id === b.id;
+      return a.key === b.key && a.id === b.id;
+    });
+    if (already) {
+      toastRef.current(`已有该有向边`);
+      return false;
+    }
+    // 环检测：在可见节点图上沿 blockBy（含跨队列）走
+    const depsOf = (nk) => {
+      const n = byNodeKeyRef.current.get(nk);
+      if (!n) return [];
+      const out = [];
+      for (const d of n.blockBy || []) {
+        const k = depToNodeKey(d, n.topicKey);
+        if (k && byNodeKeyRef.current.has(k)) out.push(k);
+      }
+      return out;
+    };
+    const reaches = (from, to) => {
+      const stack = [from];
+      const seen = new Set();
+      while (stack.length) {
+        const curK = stack.pop();
+        if (curK === to) return true;
+        if (seen.has(curK)) continue;
+        seen.add(curK);
+        for (const d of depsOf(curK)) stack.push(d);
+      }
+      return false;
+    };
+    if (reaches(srcKey, dstKey)) {
+      toastRef.current('会形成环，已取消');
+      return false;
+    }
+    const cross = source.topicKey !== target.topicKey;
+    await patchNode(
+      target,
+      { blockBy: [...cur, edgeToken] },
+      cross
+        ? `#${source.id}@${source.projectName} → #${target.id}@${target.projectName}`
+        : `#${source.id} → #${target.id}`,
+    );
+    return true;
+  };
+  commitRef.current = tryCommitLink;
+
+  useEffect(() => {
+    const onMove = (e) => {
+      const m = modeRef.current;
+      if (!m) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const pt = canvasPoint(canvas, e.clientX, e.clientY);
+      if (m.kind === 'drag') {
+        const x = Math.max(8, pt.x - m.ox);
+        const y = Math.max(8, pt.y - m.oy);
+        setPos((prev) => {
+          const next = new Map(prev);
+          next.set(m.id, { x, y });
+          return next;
+        });
+        return;
+      }
+      if (m.kind === 'link') {
+        const over = hitNodeAt(e.clientX, e.clientY);
+        const overId = over && over !== m.sourceId ? over : null;
+        const dist = Math.hypot(pt.x - m.sx, pt.y - m.sy);
+        const dragged = m.dragged || dist >= DRAG_THRESH;
+        const next = { ...m, cx: pt.x, cy: pt.y, overId, dragged };
+        modeRef.current = next;
+        publishLink(next);
+      }
+    };
+    const onUp = async (e) => {
+      const m = modeRef.current;
+      if (!m) return;
+      if (m.kind === 'drag') {
+        clearMode();
+        return;
+      }
+      if (m.kind === 'link') {
+        const dst = m.overId || hitNodeAt(e.clientX, e.clientY);
+        const src = m.sourceId;
+        if (dst && dst !== src) {
+          clearMode();
+          await commitRef.current(src, dst);
+          return;
+        }
+        if (m.dragged) {
+          clearMode();
+          return;
+        }
+        const srcNode = byNodeKeyRef.current.get(src);
+        toastRef.current(`已选 #${srcNode?.id ?? src}，再点目标画出有向边`);
+      }
+    };
+    const onKey = (ev) => {
+      if (ev.key === 'Escape') clearMode();
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointercancel', clearMode);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointercancel', clearMode);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
+
+  const startDrag = (e, n) => {
+    if (busyRef.current) return;
+    if (e.button !== 0) return;
+    if (e.target.closest('.dagp-port, .dagp-ops, .dagp-chip, button, a')) return;
+    const m = modeRef.current;
+    if (m && m.kind === 'link') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (n.nodeKey === m.sourceId) {
+        clearMode();
+        return;
+      }
+      if (!isPending(n)) {
+        toastRef.current('只能连到待领取任务');
+        return;
+      }
+      const src = m.sourceId;
+      clearMode();
+      commitRef.current(src, n.nodeKey);
+      return;
+    }
+    if (modeRef.current || !isPending(n)) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const p = posRef.current.get(n.nodeKey) || { x: 0, y: 0 };
+    const pt = canvasPoint(canvas, e.clientX, e.clientY);
+    modeRef.current = { kind: 'drag', id: n.nodeKey, ox: pt.x - p.x, oy: pt.y - p.y };
+    setDragId(n.nodeKey);
+  };
+
+  const startLink = (e, n) => {
+    if (busyRef.current || !isPending(n)) return;
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (modeRef.current?.kind === 'link' && modeRef.current.sourceId === n.nodeKey) {
+      clearMode();
+      return;
+    }
+    const o = portOrigin(n.nodeKey);
+    const canvas = canvasRef.current;
+    const pt = canvas ? canvasPoint(canvas, e.clientX, e.clientY) : { x: o.x, y: o.y };
+    const state = {
+      kind: 'link',
+      sourceId: n.nodeKey,
+      x1: o.x,
+      y1: o.y,
+      cx: pt.x,
+      cy: pt.y,
+      overId: null,
+      dragged: false,
+      sx: pt.x,
+      sy: pt.y,
+    };
+    modeRef.current = state;
+    publishLink(state);
+  };
+
+  const onCanvasPointerDown = (e) => {
+    if (!modeRef.current || modeRef.current.kind !== 'link') return;
+    if (e.target.closest('.dagp-node')) return;
+    clearMode();
+  };
+
+  const removeDep = async (n, depToken) => {
+    const cur = [...(n.blockBy || [])];
+    const next = cur.filter((d) => {
+      const a = parseDep(d);
+      const b = parseDep(depToken);
+      if (!a || !b) return String(d) !== String(depToken);
+      if (a.kind !== b.kind) return true;
+      if (a.kind === 'local') return a.id !== b.id;
+      return !(a.key === b.key && a.id === b.id);
+    });
+    await patchNode(n, { blockBy: next }, `已解除依赖 → #${n.id}`);
+  };
+
+  const toggleGate = (n) =>
+    patchNode(n, { gate: !n.blocksFollowing }, !n.blocksFollowing ? `#${n.id} 设为闸门` : `#${n.id} 取消闸门`);
+
+  const addTimegoal = async (n) => {
     const v = await dialog({
-      title: `时间目标 · #${t.id}`,
+      title: `时间目标 · #${n.id}`,
       input: true,
-      placeholder: '如 2h / 90m（领取即计时，未到点不许标完成）',
-      value: t.timegoal?.duration || '',
+      placeholder: '如 2h / 90m',
+      value: n.timegoal?.duration || '',
     });
     if (v === null || v === undefined) return;
     const duration = String(v).trim();
     if (!duration) {
-      await patchTask(Number(t.id), { clearGoal: true }, `#${t.id} 已清除时间目标`);
+      await patchNode(n, { clearGoal: true }, `#${n.id} 已清除时间目标`);
       return;
     }
-    await patchTask(Number(t.id), { duration }, `#${t.id} 时间目标 ${duration}`);
+    await patchNode(n, { duration }, `#${n.id} 时间目标 ${duration}`);
   };
 
-  const openTask = (t) => {
-    if (app.openPage) app.openPage({ dirKey, task: String(t.id), name: `#${t.id}` });
+  const openTask = (n) => {
+    if (app.openPage) app.openPage({ dirKey: n.topicKey, task: String(n.id), name: `#${n.id}` });
   };
 
-  const byId = useMemo(() => new Map(pending.map((t) => [Number(t.id), t])), [pending]);
+  const edges = useMemo(() => {
+    const out = [];
+    for (const n of nodes) {
+      const b = pos.get(n.nodeKey);
+      if (!b) continue;
+      const elTo = canvasRef.current?.querySelector(`[data-node-id="${CSS.escape(n.nodeKey)}"]`);
+      const hTo = elTo ? elTo.offsetHeight : 64;
+      for (const d of n.blockBy || []) {
+        const fromKey = depToNodeKey(d, n.topicKey);
+        if (!fromKey || !byNodeKey.has(fromKey)) continue;
+        const a = pos.get(fromKey);
+        if (!a) continue;
+        const elFrom = canvasRef.current?.querySelector(`[data-node-id="${CSS.escape(fromKey)}"]`);
+        const hFrom = elFrom ? elFrom.offsetHeight : 64;
+        out.push({
+          from: fromKey,
+          to: n.nodeKey,
+          x1: a.x + NODE_W,
+          y1: a.y + hFrom / 2,
+          x2: b.x,
+          y2: b.y + hTo / 2,
+        });
+      }
+    }
+    return out;
+  }, [nodes, pos, byNodeKey, dragId, linking]);
+
+  const extent = useMemo(() => {
+    let maxX = 480;
+    let maxY = 240;
+    for (const n of nodes) {
+      const p = pos.get(n.nodeKey);
+      if (!p) continue;
+      maxX = Math.max(maxX, p.x + NODE_W + 100);
+      maxY = Math.max(maxY, p.y + 140);
+    }
+    if (linking) {
+      maxX = Math.max(maxX, linking.cx + 40);
+      maxY = Math.max(maxY, linking.cy + 40);
+    }
+    return { w: maxX, h: maxY };
+  }, [nodes, pos, linking]);
+
+  const title = groupMode
+    ? (board?.name || '组编排')
+    : (dirTopic?.name || dirKey || '编排');
+
+  const linkArmed = !!linking;
+  const srcLabel = linking
+    ? (byNodeKey.get(linking.sourceId)?.id ?? linking.sourceId)
+    : '';
 
   return (
-    <div className="dagp">
+    <div className={'dagp' + (linkArmed ? ' is-linking' : '') + (dragId != null ? ' is-dragging' : '')}>
       <div className="dagp-head">
-        <span className="dagp-title">{topic?.name || activeKey || '编排'}</span>
-        <span className="dagp-count">{pending.length} 个待领取节点{doneCount ? ` · 已领取 ${doneCount}` : ''}</span>
-        {queues.length > 1 && (
+        <span className="dagp-title">{title}</span>
+        <span className="dagp-count">{nodes.length} 个待领取节点</span>
+        <span className="dagp-hint">
+          {linkArmed
+            ? `连线中：再点目标完成 #${srcLabel} → 目标（Esc 取消）`
+            : groupMode
+              ? '组内全量任务；跨项目连线对 get 生效；未连线走各队列默认序'
+              : '点右侧 ● 再点目标 = 有向顺序；未连线 = 无先后、走默认序'}
+        </span>
+        {groupMode && queues.length > 0 && (
           <span className="dagp-queues">
+            <button
+              type="button"
+              className={'dagp-queue' + (filterKey === FILTER_ALL ? ' on' : '')}
+              onClick={() => setFilterKey(FILTER_ALL)}
+            >
+              全部
+              <i>{queues.reduce((s, q) => s + q.total, 0)}</i>
+            </button>
             {queues.map((q) => (
               <button
                 key={q.key}
                 type="button"
-                className={'dagp-queue' + (q.key === activeKey ? ' on' : '')}
-                title={`${q.name} · ${q.count} 个待领取`}
-                onClick={() => setQueueKey(q.key)}
+                className={'dagp-queue' + (q.key === filterKey ? ' on' : '')}
+                title={`${q.name} · ${q.count}/${q.total}`}
+                onClick={() => setFilterKey(q.key)}
               >
                 {q.name}
+                <i>{q.count}</i>
               </button>
             ))}
           </span>
         )}
       </div>
 
-      <div className="dagp-canvas" ref={canvasRef}>
-        <svg className="dagp-edges" aria-hidden="true">
+      <div className="dagp-canvas" ref={canvasRef} onPointerDown={onCanvasPointerDown}>
+        <svg
+          className="dagp-edges"
+          width={extent.w}
+          height={extent.h}
+          style={{ width: extent.w, height: extent.h }}
+          aria-hidden="true"
+        >
           <defs>
-            <marker id="dagp-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <marker
+              id={`dagp-arrow-${markerId}`}
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto"
+            >
               <path d="M0 0 L10 5 L0 10 z" fill="var(--mdw-accent, #2F6F5E)" />
             </marker>
           </defs>
-          {edges.map((e, i) => {
-            return (
-              <path
-                key={`${e.from}-${e.to}-${i}`}
-                className={'dagp-edge' + (linking && linking.overId === e.to ? ' hot' : '')}
-                d={`M ${e.x1 - 6} ${e.y1} C ${GUTTER - 14} ${e.y1}, ${GUTTER - 14} ${e.y2}, ${e.x2 - 6} ${e.y2}`}
-                markerEnd="url(#dagp-arrow)"
-              />
-            );
-          })}
+          {edges.map((e) => (
+            <path
+              key={`${e.from}->${e.to}`}
+              className="dagp-edge"
+              d={cubic(e.x1, e.y1, e.x2, e.y2)}
+              markerEnd={`url(#dagp-arrow-${markerId})`}
+            />
+          ))}
+          {linking && (
+            <path
+              className="dagp-edge preview"
+              d={cubic(linking.x, linking.y, linking.cx, linking.cy)}
+              markerEnd={`url(#dagp-arrow-${markerId})`}
+            />
+          )}
         </svg>
 
-        {pending.map((t) => {
-          const id = Number(t.id);
-          const deps = (t.blockBy || []).map(Number).filter((d) => byId.has(d));
-          const isOver = linking && linking.overId === id;
-          return (
-            <div
-              key={t.id}
-              ref={(el) => { if (el) nodeRefs.current.set(id, el); else nodeRefs.current.delete(id); }}
-              className={
-                'dagp-node'
-                + (dragId === id ? ' dragging' : '')
-                + (dropAt && dropAt.id === id ? ' drop-' + dropAt.zone : '')
-                + (isOver ? ' over' : '')
-                + (t.blocksFollowing ? ' gate' : '')
-              }
-              draggable={movable(t)}
-              onDragStart={(e) => onDragStart(e, t)}
-              onDragOver={(e) => onDragOver(e, t)}
-              onDragLeave={onDragLeave}
-              onDrop={(e) => onDrop(e, t)}
-              onDragEnd={() => { dragRef.current = null; setDragId(null); setDropAt(null); }}
-              onPointerEnter={() => hoverNode(t)}
-              onPointerUp={() => finishLink(t)}
-            >
-              <span
-                className="dagp-handle"
-                title="从这里拉一条线到另一个节点 = 让它等那个节点"
-                onPointerDown={(e) => startLink(e, t)}
-              />
-              <span className="dagp-no mono">#{t.id}</span>
-              <span className="dagp-name" title={t.text} onClick={() => openTask(t)}>
-                {titleFromMd(t.text) || taskLabel(t)}
-              </span>
-              {t.blocksFollowing && <span className="dagp-chip gate">闸门</span>}
-              {t.ready === false && <span className="dagp-chip lock">锁定</span>}
-              {t.timegoal?.duration && <span className="dagp-chip goal">⏱ {t.timegoal.duration}</span>}
-              {deps.map((d) => (
-                <span key={d} className="dagp-chip dep" title={`等 #${d} 完成`}>
-                  等 #{d}
-                  <i role="button" aria-label={`解除对 #${d} 的依赖`} onClick={(e) => { e.stopPropagation(); removeDep(t, d); }}>×</i>
-                </span>
-              ))}
-              <button
-                type="button"
-                className="dagp-ops"
-                title="节点操作"
-                aria-label="节点操作"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // PopMenu 的条目回调是 **onClick**（RowMenu 才是 onPick——写错会静默无反应）
-                  const items = [
-                    { label: '打开任务', onClick: () => openTask(t) },
-                    {
-                      label: t.blocksFollowing ? '取消闸门' : '设为闸门（挡住后续）',
-                      onClick: () => toggleGate(t),
-                    },
-                    { label: t.timegoal?.duration ? '改时间目标' : '加时间目标（timegoal）', onClick: () => addTimegoal(t) },
-                  ];
-                  const r = e.currentTarget.getBoundingClientRect();
-                  setOpsMenu({ x: r.left, y: r.bottom, items });
-                }}
+        <div className="dagp-nodes" style={{ width: extent.w, height: extent.h }}>
+          {nodes.map((n) => {
+            const p = pos.get(n.nodeKey) || { x: PAD_X, y: PAD_Y };
+            const depEntries = (n.blockBy || [])
+              .map((d) => ({ token: d, key: depToNodeKey(d, n.topicKey) }))
+              .filter((x) => x.key && byNodeKey.has(x.key));
+            const isOver = linking && linking.overId === n.nodeKey;
+            const isSrc = linking && linking.sourceId === n.nodeKey;
+            return (
+              <div
+                key={n.nodeKey}
+                data-node-id={n.nodeKey}
+                className={
+                  'dagp-node'
+                  + (dragId === n.nodeKey ? ' dragging' : '')
+                  + (isOver ? ' over' : '')
+                  + (isSrc ? ' linking-src' : '')
+                  + (n.blocksFollowing ? ' gate' : '')
+                  + (linkArmed && !isSrc ? ' link-target' : '')
+                }
+                style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: NODE_W }}
+                onPointerDown={(e) => startDrag(e, n)}
               >
-                <Icon name="dots" size={13} />
-              </button>
-            </div>
-          );
-        })}
+                <span className="dagp-port in" title="入：箭头指向我 = 我等对方" aria-hidden="true" />
+                <div className="dagp-body">
+                  <div className="dagp-top">
+                    <span className="dagp-no mono">#{n.id}</span>
+                    {groupMode && <span className="dagp-chip proj">{n.projectName}</span>}
+                    {n.blocksFollowing && <span className="dagp-chip gate">闸门</span>}
+                    {n.ready === false && <span className="dagp-chip lock">锁定</span>}
+                    {n.timegoal?.duration && (
+                      <span className="dagp-chip goal">⏱ {n.timegoal.duration}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="dagp-ops"
+                      title="节点操作"
+                      aria-label="节点操作"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const items = [
+                          { label: '打开任务', onClick: () => openTask(n) },
+                          {
+                            label: n.blocksFollowing ? '取消闸门' : '设为闸门（挡住后续）',
+                            onClick: () => toggleGate(n),
+                          },
+                          {
+                            label: n.timegoal?.duration ? '改时间目标' : '加时间目标（timegoal）',
+                            onClick: () => addTimegoal(n),
+                          },
+                        ];
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setOpsMenu({ x: r.left, y: r.bottom, items });
+                      }}
+                    >
+                      <Icon name="dots" size={13} />
+                    </button>
+                  </div>
+                  <div
+                    className="dagp-name"
+                    title={n.text}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      openTask(n);
+                    }}
+                  >
+                    {labelOf(n)}
+                  </div>
+                  {depEntries.length > 0 && (
+                    <div className="dagp-deps">
+                      {depEntries.map(({ token, key }) => {
+                        const src = byNodeKey.get(key);
+                        const cross = src && src.topicKey !== n.topicKey;
+                        return (
+                          <span
+                            key={String(token)}
+                            className="dagp-chip dep"
+                            title={cross ? `跨项目 #${src.id}@${src.projectName} → #${n.id}` : `#${src?.id} → #${n.id}`}
+                          >
+                            ← #{src?.id}{cross ? `@${src.projectName}` : ''}
+                            <i
+                              role="button"
+                              aria-label="解除依赖"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeDep(n, token);
+                              }}
+                            >
+                              ×
+                            </i>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="dagp-port out"
+                  title="点一下再点目标，或按住拖到目标 = 有向顺序（可跨项目）"
+                  aria-label={`从 #${n.id} 开始连线`}
+                  onPointerDown={(e) => startLink(e, n)}
+                />
+              </div>
+            );
+          })}
+        </div>
 
-        {!pending.length && <div className="dagp-empty">这个队列没有待领取任务。</div>}
+        {!nodes.length && (
+          <div className="dagp-empty">
+            {groupMode
+              ? '本组还没有带 board 归属的任务。连线可跨项目，对 get 生效。'
+              : '这个队列没有任务。连线是编排里唯一的顺序关系；不连就保持默认序。'}
+          </div>
+        )}
       </div>
 
-      {opsMenu && <PopMenu x={opsMenu.x} y={opsMenu.y} items={opsMenu.items} onClose={() => setOpsMenu(null)} />}
+      {opsMenu && (
+        <PopMenu x={opsMenu.x} y={opsMenu.y} items={opsMenu.items} onClose={() => setOpsMenu(null)} />
+      )}
       {dialogNode}
     </div>
   );

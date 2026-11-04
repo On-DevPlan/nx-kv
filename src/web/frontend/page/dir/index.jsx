@@ -188,7 +188,7 @@ export default function DirPanel({ dirKey }) {
               bold: acked,
             })
           : '';
-      await api('/api/localtasks/reopen', {
+      const res = await api('/api/localtasks/reopen', {
         method: 'POST',
         body: {
           ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic.cwd }),
@@ -207,7 +207,10 @@ export default function DirPanel({ dirKey }) {
           saveDoc(docKey, { body: text });
         }
       }
-      toast(`已重开「${title.replace(/^#\s*/, '')}」——agent 可再次领取`);
+      toast(
+        `已重开「${title.replace(/^#\s*/, '')}」——agent 可再次领取` +
+          (res?.moved && res.name ? `；已改归属项目，迁到「${res.name}」#${res.task?.id}` : ''),
+      );
       refreshLocal();
     });
   };

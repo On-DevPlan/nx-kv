@@ -158,7 +158,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
         feedback: fb,
         ackSummary: taskRow?.roundSummary || '',
       });
-      await api('/api/localtasks/reopen', {
+      const res = await api('/api/localtasks/reopen', {
         method: 'POST',
         body: {
           ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }),
@@ -170,6 +170,20 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
       // 服务端队列正文——不写回的话，这一页显示的还是旧正文，用户看不到刚追加的
       // 「上一轮完成总结 / 验收反馈」两段（agent 领到的新正文却是新的，两边对不上）。
       // text 是拿 doc.body 拼的，未保存的编辑原样带在里面，不会被抹掉。
+      // 归属改了会搬家（同保存路径，任务 #43）——文档与页签跟到新队列新号。
+      if (res?.moved) {
+        const landedKey = res.key || dirKey;
+        const newId = String(res.task?.id ?? task);
+        const newDocId = docIdOf(scopeOf(landedKey), newId);
+        promoteDoc(id, newDocId, { title: titleFromMd(text), body: text });
+        if (model && tabId) {
+          model.doAction(Actions.updateNodeAttributes(tabId, { config: { dirKey: landedKey, task: newId } }));
+        }
+        setDirty(false);
+        toast(`已重开并改归属：「${title}」迁到「${res.name}」#${newId}`);
+        refreshLocal();
+        return;
+      }
       saveDoc(id, { title: titleFromMd(text), body: text });
       setDirty(false);
       toast(`已重开「${title}」——agent 可再次领取`);
@@ -378,7 +392,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
       return;
     }
     if (!isDraft) {
-      await api('/api/localtasks/item', {
+      const res = await api('/api/localtasks/item', {
         method: 'PATCH',
         body: {
           cwd: isGlobal ? (projTopic ? projTopic.cwd : undefined) : topic?.cwd,
@@ -388,6 +402,23 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
           ...gp,
         },
       });
+      // 归属改了会搬家（服务端按 frontmatter.project 落到新项目队列，任务 #43）——
+      // 页签与文档跟过去（同「草稿提交落点跟到真实主题」一套），不然这页还开着旧队列的旧号。
+      if (res?.moved) {
+        const landedKey = res.key || dirKey;
+        const newId = String(res.task?.id ?? task);
+        const newDocId = docIdOf(scopeOf(landedKey), newId);
+        persistAtt(newId, doc.attachments);
+        promoteDoc(id, newDocId, { title: t, body: res.task?.text || b });
+        if (model && tabId) {
+          model.doAction(Actions.updateNodeAttributes(tabId, { config: { dirKey: landedKey, task: newId } }));
+        }
+        setDirty(false);
+        clearHistory(histRef.current, newDocId);
+        toast(`已改归属项目：任务迁到「${res.name}」#${newId}`);
+        refreshLocal();
+        return;
+      }
       persistAtt(task, doc.attachments);
       saveDoc(id, { title: t, body: b });
       setDirty(false);

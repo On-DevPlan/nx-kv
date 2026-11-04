@@ -1,7 +1,9 @@
 // 主题队列（localtask topic.tasks）↔ WorkflowSnapshot 双向投影。
 // 存盘形状仍是任务行；快照是引擎视图。正文不进快照（payload.textRef）。
+// 跨队列 blockBy（"topicKey:id"）不进引擎边，投影回写时必须保留。
 
 import { BUILTIN_GOALS, edgesFromTasks, taskToNode } from './types.js';
+import { normalizeBlockBy, parseDepRef } from './readiness.js';
 
 /** @typedef {import('./types.js').WorkflowSnapshot} WorkflowSnapshot */
 /** @typedef {import('./types.js').WfNode} WfNode */
@@ -75,14 +77,18 @@ export function applySnapshotToTopic(topic, snap) {
 
   for (const task of tasks) {
     if (task.deletedAt || task.migratedTo) continue;
+    const keepForeign = normalizeBlockBy(task.blockBy, task.id).filter(
+      (d) => parseDepRef(d)?.kind === 'foreign',
+    );
     const incoming = (snap.edges || []).filter((e) => String(e.to) === String(task.id));
-    const deps = [];
+    const localDeps = [];
     for (const e of incoming) {
       // 跳过「闸门挡后续」推出来的边：from 是闸门且闸门在数组序上早于本任务时由 blocksFollowing 覆盖
       if (gateIds.has(String(e.from))) continue;
-      deps.push(e.from);
+      const n = Number(e.from);
+      if (Number.isFinite(n) && n > 0) localDeps.push(n);
     }
-    task.blockBy = deps.map((d) => Number(d)).filter((n) => Number.isFinite(n) && n > 0);
+    task.blockBy = normalizeBlockBy([...localDeps, ...keepForeign], task.id);
   }
 
   topic.workflowRevision = Number(snap.revision) || 0;

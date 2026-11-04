@@ -160,6 +160,12 @@ projectDesc: KV 清单管理中枢：远程清单 + 本机任务队列
 - **改文案不丢 frontmatter**：`localtask update --text` / `localtask reopen --text`
   换正文时保留原 frontmatter（新正文自带的键优先，旧值补缺）——
   归组信息丢了，任务就会从组 / 项目面板里掉出去。
+- **改归属即搬家**：上述两条路径的 effective `project` 解析到哪个登记项目，
+  任务就迁到哪个队列（归属决定落点，与派任务同一套判定；编排收在
+  `src/modules/tasktool/update.js`）。约束：已领取的任务不能改归属（先 reopen）；
+  带队列内依赖/闸门的任务搬运会断链，先解除再改；搬家后任务拿到新队列的 id，
+  返回值带 `moved/movedFrom` 供调用方跟号；指向它的跨队列引用（`topicKey:id`）
+  改写到新地址；`projectIntro/projectDesc` 随归属刷新。
 - **面板里单独显示**：frontmatter 在 MD 工作台（实时预览 / 阅读）渲染成独立的
   **属性卡**（键值表），自成一块、不与首行内容合并；点击卡片就地编辑这段
   frontmatter（等宽小字），正文块不受影响。

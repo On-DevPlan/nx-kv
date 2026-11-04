@@ -35,7 +35,7 @@ import { badInput, notFound } from '../../core/errors.js';
 import { formatDuration } from '../../core/instruction-template.js';
 // 任务级 timegoal 的声明校验（taskgoal.js 不依赖本模块——无环，静态引入安全）
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
-import { preserveFrontmatter } from '../../shared/frontmatter.js';
+import { parseFrontmatter, preserveFrontmatter } from '../../shared/frontmatter.js';
 import { findFirstReadyPending, isReadyToClaim, normalizeBlockBy } from './dag.js';
 
 export const DEFAULT_TIMEOUT_MS = 180_000; // 阻塞默认 3 分钟（推荐值）
@@ -391,7 +391,77 @@ function pickupSecOf(t) {
   return Math.max(0, Math.round((consumed - created) / 1000));
 }
 
-function normalizeTask(t, siblings) {
+// 跨队列依赖引用（"topicKey:id"）是**绝对地址**——任务搬家后依然有效；
+// 本地数字 id 是**队列内相对地址**——搬走就断了。队列内语义的判定全靠这条分界。
+const isForeignDep = (d) => typeof d === 'string' && d.includes(':');
+
+/**
+ * 队列内语义的关系清单（跨队列搬任务搬不动的那些）：
+ *   - 自己的上游依赖（本地 id）
+ *   - 自己是闸门（挡本队列后续任务）
+ *   - 被本队列其他任务依赖（本地 id）
+ * 外来引用（"topicKey:id"）是绝对的，搬家后依然成立，不算 blocker。
+ */
+function queueRelationsOf(topic, task) {
+  const rel = [];
+  const self = Number(task.id);
+  const localDeps = (task.blockBy || []).filter((d) => !isForeignDep(d) && Number(d) > 0);
+  if (localDeps.length) rel.push(`上游依赖 #${localDeps.map((d) => Number(d)).join(', #')}`);
+  if (task.blocksFollowing) rel.push('它是闸门（挡住本队列后续任务）');
+  const dependents = (topic.tasks || []).filter(
+    (x) => x !== task && !x.deletedAt && (x.blockBy || []).some((d) => !isForeignDep(d) && Number(d) === self),
+  );
+  if (dependents.length) rel.push(`被 #${dependents.map((x) => x.id).join(', #')} 依赖`);
+  return rel;
+}
+
+/**
+ * 把任务行从源主题搬进目标主题（改归属项目 = 换队列，归属决定落点）。
+ * 同一主题 → 原样返回 null（不搬）。引用修复：源队列里指向它的本地 id 依赖已被
+ * 上游拒绝；跨队列引用（含源队列其他任务对它的 "fromKey:oldId"）在搬完统改写到
+ * 新地址，编排连线不断。
+ */
+function relocateInStore(store, fromTopic, task, moveTo) {
+  const toCwd = String(moveTo?.cwd || '').trim();
+  if (!toCwd) return null;
+  const toKey = topicKeyFor(basename(toCwd));
+  if (toKey === fromTopic.key) return null;
+  const target = topicOf(store, toKey, toCwd, moveTo.name || '');
+  const oldId = Number(task.id);
+  fromTopic.tasks.splice(fromTopic.tasks.indexOf(task), 1);
+  let id = oldId;
+  if (target.tasks.some((x) => Number(x.id) === id)) {
+    // id 是队列内序号：目标队列已有同号 → 重新编号
+    id = nextTaskId(target.tasks);
+    task.id = id;
+  }
+  target.tasks.push(task);
+  // 源队列里指向它的跨队列引用改写到新地址（本地 id 依赖在搬前已被拒绝，不会残留）
+  for (const topic of Object.values(store.topics)) {
+    for (const other of topic.tasks || []) {
+      if (!Array.isArray(other.blockBy) || !other.blockBy.some((d) => isForeignDep(d))) continue;
+      const from = `${fromTopic.key}:${oldId}`;
+      const to = `${toKey}:${id}`;
+      other.blockBy = other.blockBy.map((d) => (String(d) === from ? to : d));
+    }
+  }
+  fromTopic.updatedAt = stampNow();
+  target.updatedAt = stampNow();
+  return { topic: target, task };
+}
+
+/** 跨队列 blockBy 解析：按 topicKey 找任务（已删/迁出走 null → fail-open） */
+function foreignResolver(store) {
+  return (topicKey, taskId) => {
+    const topic = store?.topics?.[topicKey];
+    if (!topic) return null;
+    const task = (topic.tasks || []).find((x) => Number(x.id) === Number(taskId));
+    if (!task || task.deletedAt || task.migratedTo) return null;
+    return task;
+  };
+}
+
+function normalizeTask(t, siblings, readyOpts = {}) {
   const blockBy = normalizeBlockBy(t.blockBy, t.id);
   const blocksFollowing = !!t.blocksFollowing;
   const base = {
@@ -430,8 +500,9 @@ function normalizeTask(t, siblings) {
     blocksFollowing,
   };
   // ready：待领取且未被依赖/闸门挡住（面板徽标用）；给 siblings 才算得准
+  // 跨队列依赖靠 readyOpts.resolveForeign（list/get 带 store 时传入）
   if (Array.isArray(siblings) && base.status === 'pending' && !base.deletedAt && !base.migratedTo) {
-    base.ready = isReadyToClaim(t, siblings);
+    base.ready = isReadyToClaim(t, siblings, readyOpts);
   } else if (base.status === 'pending' && !base.deletedAt && !base.migratedTo) {
     base.ready = blockBy.length === 0 && !blocksFollowing ? true : undefined;
   } else {
@@ -495,8 +566,8 @@ export function repoCtxOf(index, cwd) {
   return index.map.get(index.mod.normalizePathKey(cwd)) || null;
 }
 
-function topicView(t, repoCtx = null) {
-  const tasks = t.tasks.map((x) => normalizeTask(x, t.tasks));
+function topicView(t, repoCtx = null, readyOpts = {}) {
+  const tasks = t.tasks.map((x) => normalizeTask(x, t.tasks, readyOpts));
   const live = isLiveWaiting(t);
   return {
     key: t.key,
@@ -613,7 +684,7 @@ function markConsumed(task, roundSummary, meta = {}) {
 //   - 完成标记清空：上一轮不算数；
 //   - 上一轮的完成总结（roundSummary）**保留**——agent 下一轮接手时能看到自己上轮做了什么。
 // 任务正文就是 Markdown，用户在面板里改完存回来即走这条路。
-export async function reopenTask({ cwd: rawCwd, key: rawKey, id, text } = {}) {
+export async function reopenTask({ cwd: rawCwd, key: rawKey, id, text, moveTo } = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
@@ -633,9 +704,32 @@ export async function reopenTask({ cwd: rawCwd, key: rawKey, id, text } = {}) {
   task.completedAt = '';
   task.reopenCount = (Number(task.reopenCount) || 0) + 1;
   task.lastReopenedAt = stampNow();
-  t.updatedAt = stampNow();
+  // 归属变了（reopen 的正文可能带着改过的 project）→ 先翻回待领取再搬家，
+  // 搬家守卫按 pending 口径放行；同一主题 → 不搬。
+  let host = t;
+  let moved = false;
+  let movedFrom = null;
+  if (moveTo) {
+    const movedTo = relocateInStore(store, t, task, moveTo);
+    if (movedTo) {
+      host = movedTo.topic;
+      moved = true;
+      movedFrom = { key, name: t.name, id: want };
+    }
+  }
+  host.updatedAt = stampNow();
   await saveStore(store);
-  return { status: 'ok', reopened: true, id: want, key, name: t.name, before, task: normalizeTask(task) };
+  return {
+    status: 'ok',
+    reopened: true,
+    id: Number(task.id),
+    key: host.key,
+    name: host.name,
+    before,
+    moved,
+    movedFrom,
+    task: normalizeTask(task, host.tasks),
+  };
 }
 
 // 取走该主题第一条 pending；没有则返回 null。roundSummary 显式指定本轮完成总结，
@@ -646,7 +740,8 @@ export async function consumeFirstPending(key, roundSummary, by) {
   const t = store.topics[key];
   if (!t) return null;
   // D-first：跳过被 blockBy / 闸门挡住的 pending，按数组序取第一条**可领**的
-  const task = findFirstReadyPending(t.tasks || []);
+  // 跨队列依赖经 resolveForeign 认 completedAt
+  const task = findFirstReadyPending(t.tasks || [], { resolveForeign: foreignResolver(store) });
   if (!task || !isPending(task)) return null;
   markConsumed(task, roundSummary || t.summary || '', {
     from: isGlobalKey(key) ? 'global' : 'local',
@@ -902,8 +997,9 @@ export async function listTasks() {
   const store = await loadStore();
   // 仓库上下文一次读一张表（逐主题读文件太浪费）
   const repoIndex = await repoContextIndex();
+  const readyOpts = { resolveForeign: foreignResolver(store) };
   const topics = Object.values(store.topics)
-    .map((t) => topicView(t, repoCtxOf(repoIndex, t.cwd)))
+    .map((t) => topicView(t, repoCtxOf(repoIndex, t.cwd), readyOpts))
     .sort(
       (a, b) =>
         Number(!!b.isGlobal) - Number(!!a.isGlobal) ||
@@ -1080,7 +1176,7 @@ export async function addTask({
   // DAG：被挡住的新任务**不能**直接塞给 waiter——否则闸门/依赖形同虚设。
   let delivered = false;
   let wake = null; // (task) => void
-  const canDeliver = isReadyToClaim(task, t.tasks);
+  const canDeliver = isReadyToClaim(task, t.tasks, { resolveForeign: foreignResolver(store) });
 
   if (canDeliver && toGlobal) {
     const direct = takeTopicWaiter(GLOBAL_KEY); // 显式等全局 key 的（罕见路径）
@@ -1159,6 +1255,7 @@ export async function updateTask({
   blockBy,
   clearBlockBy = false,
   blocksFollowing,
+  moveTo,
 } = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const { cwd } = normalizeCwd(rawCwd);
@@ -1182,45 +1279,98 @@ export async function updateTask({
     const { notFound } = await import('../../core/errors.js');
     throw notFound(`主题「${t ? t.name : cwd}」里没有 #${want} 任务`);
   }
-  if (body) {
-    task.text = preserveFrontmatter(task.text, body);
-  }
   let goalChanged = null; // 'set' | 'cleared' | null（render 与前端提示用）
-  if (hasGoalInput) {
-    if (task.status === 'consumed') {
-      throw badInput(`#${want} 已领取计时中，时间目标声明不可改——要调整先 reopen 重开任务`);
-    }
-    if (task.deletedAt) throw badInput(`#${want} 已删除，时间目标声明不可改`);
-    if (task.migratedTo) throw badInput(`#${want} 已迁出，时间目标声明不可改`);
-    if (goal.clear) {
-      task.timegoal = null;
-      goalChanged = 'cleared';
-    } else {
-      // 只改时长没带 prompt → 保留原附加要求；带了（含空串）→ 以传入为准
-      const prev = sanitizeTaskGoal(task.timegoal);
-      const prompt = goal.prompt != null ? String(goal.prompt).trim() : prev ? prev.prompt : '';
-      task.timegoal = sanitizeTaskGoal({ duration: goal.duration, prompt });
-      goalChanged = 'set';
-    }
-  }
-  // DAG 边可在 pending 时改；已领取后改依赖不改变「已被领走」的事实，但闸门标记仍影响后面
+  // DAG 边可在 pending 时改；已领取后改依赖不改变「已被领走」的事实，但闸门标记仍影响后面。
+  // 先落依赖再搬家：--clear-block-by 可以把依赖先解除，随后搬家守卫就按解除后的口径放行。
   if (hasDagInput) {
     if (task.deletedAt) throw badInput(`#${want} 已删除，依赖/闸门不可改`);
     if (clearBlockBy) task.blockBy = [];
     else if (blockBy !== undefined) task.blockBy = normalizeBlockBy(blockBy, want);
     if (blocksFollowing !== undefined) task.blocksFollowing = !!blocksFollowing;
   }
-  t.updatedAt = stampNow();
+  // 归属变更 → 换队列（归属决定落点，与派任务同一口径）。moveTo 由编排层解析给出。
+  // 同一次落盘：搬完再改正文/时间目标，中间任何一步抛错都不落盘。
+  // 两种触发、两套口径：
+  //   ① 正文里 project 字段变了（明确改归属）→ 搬不动（已领取 / 队列内依赖闸门）就
+  //      报错说明，绝不静默吞——吞了就是「改了没生效」这个 bug 本身；
+  //   ② 归属没变但队列对不上（历史脏数据自愈）→ 能搬就搬（自愈），搬不动原地保留，
+  //      绝不拦普通文案编辑；全局池的任务不搞自愈（别在普通编辑时把共享池搬空）。
+  let host = t;
+  let hostTask = task;
+  let moved = false;
+  let movedFrom = null;
+  if (moveTo) {
+    const toKey = topicKeyFor(basename(String(moveTo.cwd || '')));
+    if (toKey && toKey !== key) {
+      const oldProject = String(parseFrontmatter(task.text).project || '').trim();
+      const afterText = body ? preserveFrontmatter(task.text, body) : task.text;
+      const newProject = String(parseFrontmatter(afterText).project || '').trim();
+      const explicitChange = !!newProject && newProject !== oldProject;
+      const rel = queueRelationsOf(t, task);
+      const movable = task.status !== 'consumed' && !rel.length;
+      if (explicitChange && !movable) {
+        if (task.status === 'consumed') {
+          throw badInput(
+            `#${want} 已领取——已领取的任务不能改归属项目（落点是提交/领取时定下的，要改先 reopen）`,
+          );
+        }
+        throw badInput(
+          `#${want} 在本队列里有${rel.join('、')}——依赖/闸门是队列内语义，改归属项目会跨队列断链；` +
+            '请先解除这些关系（编排面板可清），再改归属项目',
+        );
+      }
+      if (movable && !isGlobalKey(key)) {
+        const movedTo = relocateInStore(store, t, task, moveTo);
+        if (movedTo) {
+          host = movedTo.topic;
+          hostTask = movedTo.task;
+          moved = true;
+          movedFrom = { key, name: t.name, id: want };
+        }
+      }
+    }
+  }
+  if (body) {
+    hostTask.text = preserveFrontmatter(hostTask.text, body);
+  }
+  if (hasGoalInput) {
+    if (hostTask.status === 'consumed') {
+      throw badInput(`#${want} 已领取计时中，时间目标声明不可改——要调整先 reopen 重开任务`);
+    }
+    if (hostTask.deletedAt) throw badInput(`#${want} 已删除，时间目标声明不可改`);
+    if (hostTask.migratedTo) throw badInput(`#${want} 已迁出，时间目标声明不可改`);
+    if (goal.clear) {
+      hostTask.timegoal = null;
+      goalChanged = 'cleared';
+    } else {
+      // 只改时长没带 prompt → 保留原附加要求；带了（含空串）→ 以传入为准
+      const prev = sanitizeTaskGoal(hostTask.timegoal);
+      const prompt = goal.prompt != null ? String(goal.prompt).trim() : prev ? prev.prompt : '';
+      hostTask.timegoal = sanitizeTaskGoal({ duration: goal.duration, prompt });
+      goalChanged = 'set';
+    }
+  }
+  host.updatedAt = stampNow();
+  if (host !== t) t.updatedAt = stampNow();
   await saveStore(store);
   if (hasDagInput) {
     try {
       const { syncTaskDagUpdate } = await import('./writes.js');
-      await syncTaskDagUpdate(key, want, { blockBy, clearBlockBy, blocksFollowing });
+      await syncTaskDagUpdate(host.key, Number(hostTask.id), { blockBy, clearBlockBy, blocksFollowing });
     } catch {
       /* fail-open */
     }
   }
-  return { status: 'ok', key, cwd: t.cwd || cwd, name: t.name, goalChanged, task: normalizeTask(task) };
+  return {
+    status: 'ok',
+    key: host.key,
+    cwd: host.cwd || cwd,
+    name: host.name,
+    goalChanged,
+    task: normalizeTask(hostTask, host.tasks),
+    moved,
+    movedFrom,
+  };
 }
 
 export async function removeTask({ cwd: rawCwd, key: rawKey, id, purge = false } = {}) {

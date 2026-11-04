@@ -1,7 +1,18 @@
 // 日常 DAG 写路径 —— 一律经 Mutator（单一写入口），再投影回主题任务行。
+// 跨队列依赖（"topicKey:id"）只落在任务行 blockBy，不进本 topic 引擎节点图。
 import '../tasktool/plugins/index.js';
 import { createTopicEngine } from './engine.js';
-import { normalizeBlockBy } from '../../core/workflow/readiness.js';
+import { normalizeBlockBy, parseDepRef } from '../../core/workflow/readiness.js';
+
+/** @param {Array<number|string>} deps */
+function localDepIds(deps) {
+  const out = [];
+  for (const d of deps || []) {
+    const ref = parseDepRef(d);
+    if (ref?.kind === 'local') out.push(ref.id);
+  }
+  return out;
+}
 
 /**
  * @param {string} topicKey
@@ -52,7 +63,7 @@ export async function syncNewTaskDag(topicKey, task) {
         { name: 'blockgoal', scope: 'control' },
       );
     }
-    for (const from of deps) {
+    for (const from of localDepIds(deps)) {
       await ensureNode(mutator, store, topicKey, from, 'task');
       await mutator.addEdge(topicKey, from, task.id);
     }
@@ -100,7 +111,7 @@ export async function syncTaskDagUpdate(
         if (!isGate) await mutator.removeEdge(topicKey, e.from, taskId);
       }
       if (!clearBlockBy && blockBy !== undefined) {
-        for (const from of normalizeBlockBy(blockBy, taskId)) {
+        for (const from of localDepIds(normalizeBlockBy(blockBy, taskId))) {
           await ensureNode(mutator, store, topicKey, from, 'task');
           await mutator.addEdge(topicKey, from, taskId);
         }

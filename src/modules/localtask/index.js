@@ -203,8 +203,14 @@ export default {
         key: KEY,
         text: { type: 'string', hint: '修改后的任务正文（Markdown）；不给则只重开不改内容' },
       },
-      run: (ctx) => service.reopenTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, text: ctx.text }),
-      render: (d) => `已重开任务 #${d.id} @ ${d.name}（回到待领取，第 ${d.task.reopenCount} 次重开）`,
+      run: async (ctx) => {
+        // 重开也可能带着改过的归属（--text 的 frontmatter.project 变了）→ 同样搬家
+        const { reopenTask } = await import('../tasktool/update.js');
+        return reopenTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, text: ctx.text });
+      },
+      render: (d) =>
+        `已重开任务 #${d.id} @ ${d.name}（回到待领取，第 ${d.task.reopenCount} 次重开）` +
+        (d.moved && d.movedFrom ? `；已改归属项目，原 ${d.movedFrom.name} #${d.movedFrom.id}` : ''),
     },
     {
       // 完成门禁：带时间目标的任务未到点拒绝标记完成（提示派 sub agent 重提需求）。
@@ -314,10 +320,11 @@ export default {
         // CLI、HTTP、面板提交同走这一条链路。
         const { submitTask } = await import('../tasktool/add.js');
         const rawBlock = ctx.blockBy ?? ctx['block-by'];
-        const blockBy = String(rawBlock || '')
-          .split(/[,，\s]+/)
-          .map((s) => Number(s))
-          .filter((n) => Number.isFinite(n) && n > 0);
+        // 支持本地 id 与跨队列 "topicKey:id"（组编排边）；空 → undefined
+        const { normalizeBlockBy } = await import('./dag.js');
+        const blockBy = rawBlock != null && String(rawBlock).trim()
+          ? normalizeBlockBy(String(rawBlock), 0)
+          : [];
         return submitTask({
           text: ctx.text,
           cwd: ctx.cwd,
@@ -355,7 +362,7 @@ export default {
         clearBlockBy: { type: 'boolean', hint: '同 --clear-block-by' },
         gate: { type: 'boolean', hint: '设/清闸门（true=挡住后续；false=取消闸门）' },
       },
-      run: (ctx) => {
+      run: async (ctx) => {
         const gp = ctx.goalPrompt ?? ctx['goal-prompt'];
         const cg = ctx.clearGoal ?? ctx['clear-goal'];
         const hasGoalInput = ctx.duration != null || gp != null || cg;
@@ -363,12 +370,17 @@ export default {
         const clearBlockBy = !!(ctx.clearBlockBy ?? ctx['clear-block-by']);
         let blockBy;
         if (!clearBlockBy && rawBlock !== undefined) {
-          blockBy = String(rawBlock || '')
-            .split(/[,，\s]+/)
-            .map((s) => Number(s))
-            .filter((n) => Number.isFinite(n) && n > 0);
+          // 本地 id + "topicKey:id"；数组 body（面板）与逗号串都走 normalizeBlockBy
+          const { normalizeBlockBy } = await import('./dag.js');
+          blockBy = normalizeBlockBy(
+            Array.isArray(rawBlock) ? rawBlock : String(rawBlock || ''),
+            ctx.id,
+          );
         }
-        return service.updateTask({
+        // 改归属即搬家（任务 #43）：正文 effective project 变了 → 任务迁到新项目的队列。
+        // 编排在 tasktool/update.js，与派任务（tasktool/add.js）同一套落点判定。
+        const { updateTask: editTask } = await import('../tasktool/update.js');
+        return editTask({
           id: ctx.id,
           text: ctx.text,
           cwd: ctx.cwd,
@@ -380,7 +392,11 @@ export default {
         });
       },
       render: (d) =>
-        `已更新主题「${d.name}」#${d.task.id}: ${d.task.text}` +
+        (d.moved
+          ? `已改归属项目：迁到主题「${d.name}」#${d.task.id}` +
+            (d.movedFrom ? `（原 ${d.movedFrom.name} #${d.movedFrom.id}）` : '')
+          : `已更新主题「${d.name}」#${d.task.id}`) +
+        `: ${d.task.text}` +
         (d.goalChanged === 'set'
           ? `（时间目标：${d.task.timegoal.duration}${d.task.timegoal.prompt ? ' · 附加要求已固化' : ''}）`
           : d.goalChanged === 'cleared'

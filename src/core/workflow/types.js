@@ -155,7 +155,10 @@ export const edgesFromTasks = (tasks = []) => {
   const alive = (tasks || []).filter((t) => t && !t.deletedAt && !t.migratedTo);
   for (const t of alive) {
     for (const dep of Array.isArray(t.blockBy) ? t.blockBy : []) {
-      edges.push({ from: dep, to: t.id });
+      // 引擎快照只认本队列数字边；跨队列 "key:id" 留给 get/ready 解析
+      const n = Number(dep);
+      if (!Number.isFinite(n) || n <= 0 || String(dep).includes(':')) continue;
+      edges.push({ from: n, to: t.id });
     }
   }
   for (let i = 0; i < alive.length; i += 1) {

@@ -1,6 +1,6 @@
 ---
 name: dev-nxkv
-description: 在 nx-kv 仓库里开发或改动一个功能模块时的施工单 —— 分层边界、模块骨架、action 声明格式、CLI/HTTP/面板三端同源、注册与自检、常见坑。触发词：开发 nx-kv 模块、nx-kv 加功能、nx-kv 改 action、加一条 CLI 命令、加一个面板视图、模块怎么分层、模块结构、dev nx-kv、nx-kv 架构。凡「要动 nx-kv 仓库里的模块代码」都走本 skill；只是**用** nx-kv（领任务 / 操作清单 / 提交任务）请走 nx-kv、kv-get、kv-submit，不要走本 skill。
+description: 在 nx-kv 仓库里开发或改动一个功能模块时的施工单 —— 分层边界、模块骨架、action 声明格式、CLI/HTTP/面板三端同源、注册与自检、常见坑。触发词：开发 nx-kv 模块、nx-kv 加功能、nx-kv 改 action、加一条 CLI 命令、加一个面板视图、模块怎么分层、模块结构、dev nx-kv、nx-kv 架构、DAG 怎么实现、blockBy / 闸门 / 依赖怎么改、编排面板、tasktool plugins。凡「要动 nx-kv 仓库里的模块代码」都走本 skill；只是**用** nx-kv（领任务 / 操作清单 / 提交任务）请走 nx-kv、kv-get、kv-submit，不要走本 skill。
 ---
 
 # dev-nxkv — 在 nx-kv 里开发一个模块
@@ -79,6 +79,15 @@ src/shared/*.js                          两端共用的纯函数（可选，零
 - `rest` flag 必须声明在 `flags` 的**最后**（CLI 路径最长匹配，声明顺序决定谁吃掉下一个 token）。
 - 每条 action **必须**有 `cli`；`http` 可以是 `null`，但不能「声明了 http 却没有 cli」。
 
+## DAG / 编排系统（动依赖、闸门、编排面板前先读）
+
+任务的先后顺序有**四种表达**：队列序（数组 + reorder）、blockBy 本地依赖、
+闸门（blocksFollowing，按数组序挡后续）、跨队列依赖（blockBy 里的 `"topicKey:id"`，
+组编排边，对 get 生效）。真相源是任务行，引擎快照只是投影；就绪判定有任务行/快照
+两条入口；`resolveForeign` 必须在三处调用点都传。动 `core/workflow/**`、localtask
+的依赖路径、tasktool/plugins（goal 族）、或前端编排面板（page/dag、dag-editor、组页
+拖排序）任何一处前 → [[dag-system]]。
+
 ## 前端怎么挂
 
 - 新页面：`src/web/frontend/page/<name>/index.jsx` → `registry.js` 登记 `VIEWS`（带 `module:` 归属）→ `panels.jsx` 加面板与路由。
@@ -149,3 +158,5 @@ pnpm test            # 以上四步全跑
 
 - [[module-skeleton]] —— 分层地图、模块骨架、前端视图骨架、注册三步
 - [[action-contract]] —— action 字段全表、flag 类型、CRUD 契约、装载期自检
+- [[dag-system]] —— DAG 体系全图：四种顺序表达、blockBy 解析（local/foreign）、
+  投影不变式、Mutator/Scheduler 约束、goal 插件族、编排面板三入口、常见坑

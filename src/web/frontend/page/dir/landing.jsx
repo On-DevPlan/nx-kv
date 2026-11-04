@@ -39,6 +39,7 @@ export default function Landing({
   onProg,
   onMoveTask,      // (t, targetId, 'before'|'after') 拖动排序落盘
   onOpenDag,       // (t) 打开编排编辑器
+  onOpenFlow,      // () 打开可视化编排面板（绿色超链入口）
   onToggleGate,    // (t) 闸门快捷开关
   downstreamOf,    // { [gateTaskId]: number[] } 闸门挡住的后续任务 id
 }) {
@@ -136,6 +137,20 @@ export default function Landing({
           {' '}
           {taskCount} 个任务
         </span>
+        {onOpenFlow && (
+          <span
+            className="dag-link mdw-land-orch"
+            role="button"
+            tabIndex={-1}
+            title="打开可视化编排面板：拖拽排序、连线建立依赖、设闸门、加时间目标"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenFlow();
+            }}
+          >
+            编排
+          </span>
+        )}
       </div>
 
       <div className="mdw-land-table-wrap">

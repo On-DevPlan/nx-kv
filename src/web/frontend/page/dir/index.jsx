@@ -290,6 +290,7 @@ export default function DirPanel({ dirKey }) {
           onProg={openProgress}
           onMoveTask={moveTask}
           onOpenDag={setDagTask}
+          onOpenFlow={() => model && openPanel(model, { component: 'dag', name: '编排', config: { dirKey } })}
           onToggleGate={toggleGate}
           downstreamOf={downstreamOf}
         />

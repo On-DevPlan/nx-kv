@@ -21,6 +21,7 @@ const OverviewView = lazy(() => import('./page/overview/index.jsx'));
 const TemplatePanel = lazy(() => import('./page/templates/index.jsx'));
 const DocPanel = lazy(() => import('./page/doc/index.jsx'));
 const SettingsPanel = lazy(() => import('./page/settings/index.jsx'));
+const DagPanel = lazy(() => import('./page/dag/index.jsx'));
 
 /** 给懒加载的视图套上 Suspense（传的是**元素**，不是组件） */
 const wrap = (el) => (
@@ -120,6 +121,8 @@ export const PANELS = {
   },
   // 设置：浮动面板（临时开一块、看完就关）——齿轮按钮走 openFloatingPanel
   settings: { title: '设置', render: () => wrap(<SettingsPanel />) },
+  // 编排：可视化 DAG 面板（目录与项目组共用；按 config.dirKey 定位一个队列）
+  dag: { title: '编排', render: (cfg) => wrap(<DagPanel dirKey={cfg && cfg.dirKey} />) },
 };
 
 /**

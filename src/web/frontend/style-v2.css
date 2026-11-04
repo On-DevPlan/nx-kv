@@ -1030,3 +1030,80 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   flex: none; font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 9px;
   background: var(--soft, #F1F0EC); color: var(--mid, #838A93);
 }
+
+/* ---- 编排面板（可视化 DAG，#40 验收反馈）---- */
+.dag-link {
+  color: var(--mdw-accent, #2F6F5E); font-size: 11px; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px; padding: 0 4px;
+}
+.dag-link:hover { color: var(--ink, #16181C); }
+
+.dagp { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.dagp-head {
+  flex: none; display: flex; align-items: baseline; gap: 10px;
+  padding: 12px 16px 8px; border-bottom: 1px solid var(--line, #E4E2DC);
+}
+.dagp-title { font-weight: 700; font-size: 14px; }
+.dagp-count { font-size: 11.5px; color: var(--mid, #838A93); }
+.dagp-canvas {
+  position: relative; flex: 1; min-height: 0; overflow: auto;
+  padding: 18px 16px 40px 46px;
+  background-image:
+    linear-gradient(to right, rgba(120, 120, 110, .07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(120, 120, 110, .07) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.dagp-edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.dagp-edge { fill: none; stroke: var(--mdw-accent, #2F6F5E); stroke-width: 1.5; opacity: .75; }
+.dagp-edge.hot { stroke-width: 2.5; opacity: 1; }
+/* 节点 = 小圆角卡片（不是整行长条）：定宽 260px，卡片之间留出行距 */
+.dagp-node {
+  position: relative; display: flex; align-items: center; gap: 7px;
+  width: 260px; max-width: calc(100% - 40px);
+  margin-bottom: 14px; padding: 7px 9px 7px 22px;
+  background: var(--paper, #fff); border: 1px solid var(--line, #E4E2DC);
+  border-radius: 10px; box-shadow: 0 1px 3px rgba(20, 22, 26, .06);
+}
+.dagp-node.gate { border-color: var(--mdw-accent, #2F6F5E); }
+.dagp-node.dragging { opacity: .45; }
+.dagp-node.drop-before { box-shadow: inset 0 3px 0 0 var(--mdw-accent, #2F6F5E); }
+.dagp-node.drop-after { box-shadow: inset 0 -3px 0 0 var(--mdw-accent, #2F6F5E); }
+.dagp-node.over { border-color: var(--mdw-accent, #2F6F5E); box-shadow: 0 0 0 2px rgba(47, 111, 94, .18); }
+.dagp-handle {
+  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--soft-2, #DDD9D0); cursor: crosshair;
+}
+.dagp-handle:hover { background: var(--mdw-accent, #2F6F5E); }
+.dagp-no { flex: none; font-size: 11px; color: var(--mid, #838A93); }
+.dagp-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px; cursor: pointer;
+}
+.dagp-name:hover { color: var(--mdw-accent, #2F6F5E); }
+.dagp-chip {
+  flex: none; font-size: 10.5px; line-height: 16px; padding: 0 6px; border-radius: 8px;
+  background: var(--soft, #F1F0EC); color: var(--ink-2, #4B515A);
+}
+.dagp-chip.gate { background: var(--mdw-accent-soft, #E8F2EE); color: var(--mdw-accent, #2F6F5E); }
+.dagp-chip.dep { background: transparent; border: 1px solid var(--soft-2, #DDD9D0); color: var(--ink-2, #4B515A); }
+.dagp-chip.dep i { font-style: normal; cursor: pointer; margin-left: 3px; color: var(--mid, #838A93); }
+.dagp-chip.dep i:hover { color: var(--danger, #B3261E); }
+.dagp-ops {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: 0; border-radius: 6px; background: none;
+  color: var(--mid, #838A93); cursor: pointer;
+}
+.dagp-ops:hover { background: var(--soft, #F1F0EC); color: var(--ink, #16181C); }
+.dagp-empty { font-size: 12.5px; color: var(--mid, #838A93); padding: 20px 4px; }
+/* 编排入口绿链：放在任务面板头部右侧（目录落地页 / 项目组任务面板各一处） */
+.mdw-land-orch, .rp-tasks-orch { margin-left: auto; padding-right: 4px; }
+.rp-tasks-h { display: flex; align-items: center; gap: 8px; }
+/* 编排面板：组内队列切换带 */
+.dagp-queues { margin-left: auto; display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.dagp-queue {
+  border: 1px solid var(--line, #E4E2DC); background: var(--paper, #fff); border-radius: 999px;
+  padding: 1px 9px; font: inherit; font-size: 11px; color: var(--ink-2, #4B515A); cursor: pointer;
+}
+.dagp-queue:hover { background: var(--soft, #F1F0EC); }
+.dagp-queue.on { background: var(--mdw-accent-soft, #E8F2EE); border-color: var(--mdw-accent, #2F6F5E); color: var(--mdw-accent, #2F6F5E); }

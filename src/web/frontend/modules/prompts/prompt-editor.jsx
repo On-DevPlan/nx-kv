@@ -9,6 +9,25 @@ import { PLACEHOLDER_GROUPS, SECTION_TOKENS, insertToken, usedPlaceholders } fro
 import './style.css';
 
 /**
+ * 条目的**可读标题**：把原始模板标记洗掉再截断。
+ * 收起行直接甩「{{#goal}}〔时间目标「{{goal.name}}」…〕{{/goal}}规划计划…」给用户看，
+ * 又长又像日志——洗成「规划计划，然后完成这个任务；…」。
+ */
+export function promptTitle(text) {
+  const raw = String(text ?? '');
+  if (!raw.trim()) return '';
+  const cleaned = raw
+    .replace(/\{\{#[^}]*\}\}/g, '')      // 段落开标记
+    .replace(/\{\{\/[^}]*\}\}/g, '')    // 段落闭标记
+    .replace(/\{\{[^}]*\}\}/g, '')        // 占位符
+    .replace(/「\s*」/g, '')               // 剥完占位符留下的空引号对
+    .replace(/〔\s*〕/g, '')               // 同上（方括号形态）
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || raw.replace(/\s+/g, ' ').trim();
+}
+
+/**
  * 单条提示词文本框 + 占位符菜单。
  * @param {object} p
  * @param {string} p.value
@@ -188,7 +207,7 @@ export function PromptItemsEditor({
     <div className="pp-items">
       {items.map((t, i) => {
         const open = openIdx === i;
-        const firstLine = String(t).split('\n')[0].trim();
+        const firstLine = promptTitle(t.split('\n')[0]);
         return (
           <div className="pp-items-item" key={i}>
             {open ? (

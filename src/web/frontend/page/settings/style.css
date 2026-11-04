@@ -97,8 +97,8 @@
 .setp-proj > .setp-loop { grid-column: 1 / -1; }
 .setp-gl-off {
   display: inline-flex; align-items: center; gap: 5px; flex: none;
-  border: 1px solid var(--line); border-radius: 999px; background: transparent;
-  padding: 2px 9px; font: inherit; font-size: 10.5px; color: var(--mid); cursor: pointer;
+  border: 0; border-radius: 999px; background: transparent;
+  padding: 2px 7px; font: inherit; font-size: 10.5px; color: var(--faint); cursor: pointer;
 }
 .setp-gl-off:hover { background: var(--soft); color: var(--ink); }
 .setp-gl-off .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--soft-2); }
@@ -209,13 +209,13 @@
    原来左侧一条 112px 的竖排 tab 侧栏，只放三个短标签，右边留下大片空白——
    改成横向药丸带，内容限宽，不再通栏。） */
 .setp-prompts{
-  display:flex;flex-direction:column;gap:0;min-height:0;margin-top:4px;
-  border:1px solid var(--line,#E4E2DC);border-radius:10px;overflow:hidden;
-  background:var(--paper,#fff);
+  display:flex;flex-direction:column;gap:0;min-height:0;margin-top:2px;
+  /* 不再套一张卡：设置面板本身就是卡，盒中盒显脏 */
+  border:0;border-radius:0;background:transparent;
 }
 .setp-prompts-nav{
   flex:none;display:flex;gap:4px;align-items:center;
-  padding:8px 10px;border-bottom:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
+  padding:2px 0 8px;border-bottom:1px solid var(--line,#E4E2DC);background:transparent;
 }
 .setp-prompts-tab{
   border:0;border-radius:999px;padding:4px 12px;cursor:pointer;

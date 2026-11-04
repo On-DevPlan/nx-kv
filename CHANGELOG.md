@@ -2,7 +2,7 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased]
+## [0.19.0] - 2026-11-04 提示词/模板收敛到设置面板 + 面板无页签化（面包屑 + 区域策略）+ DAG 引擎与 goal 插件族
 
 ### Added
 
@@ -21,6 +21,48 @@
 - **共享的提示词编辑器**（`modules/prompts/`）：文本框 + 「占位符」插入菜单 +
   已用占位符标记，回调提示词 / ack 提示词 / 持续 get 模板 / 模板槽位共用一份实现
   ——此前三套长得不一样的编辑器，现在只有一套。
+- **面板模型收敛（任务 #33）**：工作区统一为四个区域——sidebar / maincontent /
+  rightSidebar / float；面板落点由一张**策略表**声明（单例与否一并声明），
+  打开新面板即替换主内容区（主区是**单面板位**）。页签与页签条彻底删除：
+  面板头部不再有 float / popup 标识，「清空本组全部页签」垃圾桶按钮一并移除；
+  顶部新增**面包屑**显示当前位置（如 `[ nx / nx-kv / #28 ]`）。老布局读盘
+  自动愈合（关页签条、补右侧栏）。
+- **DAG 依赖与闸门（任务 #34）**：`localtask add --block-by 12,13`（依赖：这些
+  任务全部完成后本条才可领取）、`--gate`（闸门：自身未完成前挡住队列里排在
+  后面的 pending）；`localtask update` 可改依赖 / 设清闸门。领取按 D-first 取
+  第一条**可领**的 pending，目录任务列表带「闸门 / 锁定」徽标。
+- **workflow 契约与引擎骨架（任务 #34 阶段 0）**：`core/workflow/` 冻结类型契约
+  （workflowId → 主题 key；对外稳定门面只有 submit / get；goal 是插件族：
+  block=调度侧、wait/time=消费侧）；`localtask` 拆出 store / bus / mutator /
+  scheduler 分层（唯一写快照入口 Mutator，原子覆盖）；`tasktool/plugins/`
+  目录扫描自注册（base / blockgoal / container / taskgoal / timegoal /
+  waitgoal），`tasktool/facade/` 收敛 submit / get / wait 门面。
+- **评论任务旁路原文**：工具栏「原文」或 Ctrl/⌘⇧O 在主区右侧并排打开锚定
+  原文（`frontmatter.parent`，旧数据从「锚定自…」回推），可单独关掉、不改路由。
+- **验收条 ack 按 md 渲染**：完成总结走正文同一套渲染；过长默认夹紧、
+  可展开全文（任务 #20）。
+
+### Changed
+
+- **面板贴图嵌入修复（任务 #15 再开）**：实时预览的块内光标坐标与源码全文偏移
+  分开（`insertAttachmentSnippet` 双坐标），落点禁止进 frontmatter；已落库任务
+  贴图后立刻 PATCH 同步服务端，不再等「保存并同步」——修掉「贴图上传成功但
+  正文未嵌入、agent 领取 attachments count: 0」。
+- **frontmatter 键自愈**：贴图误插撕出的残留键（`board:` 被撕成 `oard:` / `d:`）
+  解析时升回规范键、保存时写回（#15 / #23 案例），组面板不再丢任务。
+- **模板槽位不露 {{标记}}**：新建任务正文一律按槽位值渲染（缺省用内置默认值
+  兜底），`{{背景}}` 之类标记不再出现在任务正文里；设置面板「提示词 / 模板」
+  栏改左 tab 布局，槽位显示名字不给标记。
+- **右栏可关 + 进程面板跟随**：进程面板可关闭（右栏随之收起）；主区切到别的
+  任务时已开的进程面板同步跟随（#33 验收反馈）；侧栏收起入口挪到品牌行。
+- **面包屑带组名**：目录页面包屑显示 `[ 组 / 目录 / 任务 ]`（层级抽成纯函数
+  `crumbs.js`，面板与单测共用）。
+
+### Fixed
+
+- **float 面板（设置）自调用栈溢出**：`openPanel` 的 float 分支原先递归调
+  `openFloatingPanel`，表现是「设置按钮点了没反应」；改为直接走
+  「加进主区 → floatTab 浮出」，`openFloatingPanel` 只做委托。
 
 ## [0.18.0] - 2026-11-04 描述绑定文档 + 描述弹窗
 

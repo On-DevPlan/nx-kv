@@ -2,7 +2,7 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased]
+## [0.18.0] - 2026-11-04 描述绑定文档 + 描述弹窗
 
 ### Changed
 

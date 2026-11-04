@@ -31,9 +31,9 @@ const wrap = (el) => (
 function WelcomePanel() {
   return (
     <div className="pad stack welcome">
-      <div><strong>从左边目录选一个项目组或目录</strong>，或用右上角「＋ 面板」开一块。</div>
-      <div className="hint">面板可以拖到任意一边拆分，也可以拖出成浮窗；布局会自动记住。</div>
-      <div className="hint">目录本身也是一块面板 —— 它能被拖走、拖到右边、拖成浮窗。</div>
+      <div><strong>从左边目录选一个项目组或目录</strong>——选中的内容显示在中间主内容区。</div>
+      <div className="hint">主内容区一次只放一块面板（顶部面包屑告诉你现在在哪）；设置这类临时面板以浮窗形式出现。</div>
+      <div className="hint">目录在左、并发进程在右，都常驻，不用关。</div>
     </div>
   );
 }

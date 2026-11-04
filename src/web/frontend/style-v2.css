@@ -34,7 +34,12 @@
 }
 .nx-title { font-weight: 800; font-size: 13px; }
 
-.nx-workarea { flex: 1; min-height: 0; position: relative; }
+.nx-workarea{
+  flex:1;min-height:0;position:relative;
+  /* 列布局：顶部面包屑 + 下面面板区（#33 起页签条不再占一行） */
+  display:flex;flex-direction:column;
+}
+.nx-workarea > .flexlayout__layout, .nx-workarea > .nx-shell-layout { flex:1; min-height:0; }
 .nx-workarea .flexlayout__layout { height: 100%; }
 
 /* ---- 侧栏作为工作区面板 ---- */
@@ -938,3 +943,15 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   background: var(--soft); border: 1px solid var(--soft-2); color: var(--ink-2); white-space: nowrap;
 }
 .rp-mp-ghost .rp-mp-name { color: var(--mid); }
+
+/* 面包屑（工作区顶部，2026-11-04 #33：页签删除后的「当前位置」指示） */
+.nx-crumb{
+  flex:none;display:flex;align-items:center;gap:2px;flex-wrap:wrap;
+  height:26px;padding:0 12px;background:var(--paper,#fff);
+  border-bottom:1px solid var(--line,#E4E2DC);
+  font-size:11.5px;color:var(--ink-2,#4B515A);
+}
+.nx-crumb-i{display:inline-flex;align-items:center;gap:2px;min-width:0}
+.nx-crumb-sep{color:var(--faint,#A9AEB4);padding:0 2px}
+.nx-crumb-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+.nx-crumb-i:last-child .nx-crumb-t{color:var(--ink,#16181C);font-weight:650}

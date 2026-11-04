@@ -11,6 +11,7 @@
 // prefs 是「这个浏览器的口味」，布局是「这个工作区的骨架」。
 import { Actions, DockLocation, Model, Rect } from 'flexlayout-react';
 import { normalizeSidebarWeight, sideStateAttrs } from './components/sidebar/side-state.js';
+import { AREA, areaOf } from './workspace/areas.js';
 
 /** 布局的落点。与 prefs 的 LS_KEY 分开存：布局大、单独读写不易互相踩。 */
 export const WORKSPACE_KEY = 'nx-kv-ui.workspace';
@@ -20,10 +21,13 @@ const GLOBAL_ATTRS = {
   tabEnableClose: true,
   tabEnableDrag: true,
   tabEnableRename: false, // 页签只读：双击不出改名输入框
+  // 「弹出 / 浮窗」**按钮**一律不要（2026-11-04 #33）：面板的落点由策略表决定，
+  // 用户不需要在标题栏上挑「这块面板开成什么样」。能力留着——设置面板就是
+  // float 面板（openFloatingPanel 走 popoutTab，与按钮无关）。
   tabEnablePopout: true,
-  tabEnablePopoutIcon: true, // 标题栏出现「弹出」按钮——可见入口
+  tabEnablePopoutIcon: false,
   tabEnableFloat: true,
-  tabEnableFloatIcon: true, // 标题栏出现「浮窗」按钮——可见入口
+  tabEnableFloatIcon: false,
   tabEnablePin: false,
   tabSetEnableClose: false,
   tabSetEnableCloseButton: true,
@@ -60,8 +64,18 @@ export function initialLayoutJson() {
         {
           type: 'tabset',
           id: 'ts_main',
-          weight: 84,
+          weight: 68,
+          // 没有页签条（2026-11-04 #33）：主内容区**同时只显示一个面板**，
+          // 顶部用面包屑显示当前位置（见 components/layout/breadcrumb.jsx）。
+          enableTabStrip: false,
           children: [{ type: 'tab', id: 't_welcome', name: '开始', component: 'welcome' }],
+        },
+        {
+          type: 'tabset',
+          id: 'ts_right',
+          weight: 16,
+          enableTabStrip: false,
+          children: [],
         },
       ],
     },
@@ -244,6 +258,37 @@ export function healSidebarLayout(json) {
   return changed;
 }
 
+
+/**
+ * 读盘时按新面板模型愈合（2026-11-04 #33）：
+ *   1. 内容 tabset 一律**不显示页签条**（页签概念已删）；
+ *   2. 老布局里没有**右侧栏**（ts_right）→ 补一个空的；
+ *   3. 侧栏 tabset 同样不显示页签条（原来那条「目录」标题没意义了）。
+ *
+ * 老布局里的多页并存由 clearMainPanels 收拾：主区是单面板位。
+ */
+export function healNoTabs(json) {
+  if (!json || !json.layout) return false;
+  let changed = false;
+  const walk = (node) => {
+    if (node.type === 'tabset') {
+      if (node.enableTabStrip !== false) {
+        node.enableTabStrip = false;
+        changed = true;
+      }
+    }
+    if (Array.isArray(node.children)) for (const c of node.children) walk(c);
+  };
+  walk(json.layout);
+  const row = json.layout;
+  if (row && row.type === 'row' && Array.isArray(row.children)
+      && !row.children.some((c) => c && c.id === 'ts_right')) {
+    row.children.push({ type: 'tabset', id: 'ts_right', weight: 16, enableTabStrip: false, children: [] });
+    changed = true;
+  }
+  return changed;
+}
+
 /** 读盘 → 模型；坏数据不吞掉整台应用，退回初始布局 */
 export function loadModel() {
   try {
@@ -255,6 +300,7 @@ export function loadModel() {
     if (!pruneEmptyTabsets(json.layout)) return applyGlobalAttrs(Model.fromJson(initialLayoutJson()));
     pruneBlankChrome(json);
     healSidebarLayout(json);
+    healNoTabs(json); // 新面板模型：没有页签条、补右侧栏
     return applyGlobalAttrs(Model.fromJson(json));
   } catch {
     return applyGlobalAttrs(Model.fromJson(initialLayoutJson()));
@@ -358,6 +404,56 @@ export function activeTabsetId(model, exclude = []) {
   return fallback ? fallback.getId() : (ts ? ts.getId() : undefined);
 }
 
+
+// ─── 区域定位（2026-11-04 #33 统一命名：sidebar / maincontent / rightSidebar / float）───
+
+/** 主内容区的 tabset（主内容区**同时只显示一个面板**——没有页签） */
+export function mainTabsetId(model) {
+  if (!model) return null;
+  let hit = null;
+  model.visitNodes((node) => {
+    if (hit) return;
+    if (node.getType() !== 'tabset') return;
+    const id = node.getId();
+    if (id === 'ts_main') { hit = id; return; }
+    // 老布局里主区的 id 可能不是 ts_main：取「不是侧栏、不是右侧栏」的那组
+    if (id !== 'ts_sidebar' && id !== 'ts_right' && !hasComponent(node, ['sidebar'])) hit = id;
+  });
+  return hit;
+}
+
+/** 右侧栏（并发进程面板）的 tabset */
+export function rightTabsetId(model) {
+  if (!model) return null;
+  let hit = null;
+  model.visitNodes((node) => {
+    if (hit) return;
+    if (node.getType() === 'tabset' && node.getId() === 'ts_right') hit = node.getId();
+  });
+  return hit;
+}
+
+/**
+ * 主内容区只留一个面板：开新面板前把主区里**别的**内容面板关掉。
+ *
+ * 为什么：工作区没有页签了（#33），多个面板并存但用户看不见页签条 →
+ * 「点了没反应」。所以主区是**单面板位**：新的进来，旧的出去。
+ * 侧栏与右侧栏不动。
+ */
+export function clearMainPanels(model) {
+  const tsId = mainTabsetId(model);
+  if (!tsId) return 0;
+  const ts = model.getTabsetById ? model.getTabsetById(tsId) : null;
+  const tabs = ts ? (ts.getTabNodes() || []) : [];
+  let n = 0;
+  for (const t of tabs) {
+    if (t.getComponent() === 'sidebar') continue;
+    model.doAction(Actions.deleteTab(t.getId()));
+    n += 1;
+  }
+  return n;
+}
+
 /**
  * 开一个面板。
  * @param {object} model
@@ -366,10 +462,15 @@ export function activeTabsetId(model, exclude = []) {
  * @returns {{tabId:string, reused:boolean}}
  */
 export function openPanel(model, spec) {
-  const { component, name, config = {}, location = 'center' } = spec;
+  const { component, name, config = {} } = spec;
   if (!model) return { tabId: null, reused: false };
+  // 落点由**策略表**决定（workspace/areas.js）：sidebar / maincontent /
+  // rightSidebar / float —— 以前散在调用点各处特判。
+  const area = spec.area || areaOf(component);
+
   const existing = findOpenPanel(model, component, config);
   if (existing) {
+    // 同款已开：主内容区（只有一个位）与单例面板都是「聚焦即可」，不重复开。
     model.doAction(Actions.selectTab(existing.getId()));
     // 复用面板时**同步页签名**：深链给的标题与旧页签不一致时，
     // 页签还挂着旧名字，就会出现「两个面板同名、分不清谁是谁」。
@@ -379,12 +480,49 @@ export function openPanel(model, spec) {
     return { tabId: existing.getId(), reused: true };
   }
 
+  // 主内容区：**单面板位**——没有页签了，新的进来旧的出去（#33）。
+  if (area === AREA.MAIN) {
+    clearMainPanels(model);
+    const mainTs = mainTabsetId(model);
+    if (!mainTs) return { tabId: null, reused: false };
+    model.doAction(Actions.addTab(
+      { type: 'tab', name, component, config },
+      mainTs,
+      DockLocation.getByName('center'),
+      -1,
+      true
+    ));
+    const created = findOpenPanel(model, component, config);
+    return { tabId: created ? created.getId() : null, reused: false };
+  }
+
+  // 右侧栏：并发进程面板停在那儿（可多个并存，各自一块）
+  if (area === AREA.RIGHT) {
+    const rightTs = rightTabsetId(model);
+    if (rightTs) {
+      model.doAction(Actions.addTab(
+        { type: 'tab', name, component, config },
+        rightTs,
+        DockLocation.getByName('center'),
+        -1,
+        true
+      ));
+      const created = findOpenPanel(model, component, config);
+      return { tabId: created ? created.getId() : null, reused: false };
+    }
+    // 没有右侧栏（旧布局）→ 退回主区
+  }
+
+  // 浮窗面板：先按普通面板加进主区，再 popoutTab 成浮动窗
+  if (area === AREA.FLOAT) {
+    return openFloatingPanel(model, { ...spec, component, name, config });
+  }
+
+  // 兜底（未登记的面板）：按老逻辑进当前面板组
   const target = activeTabsetId(model, ['sidebar']);
   if (!target) return { tabId: null, reused: false };
-
-  const dock = DockLocation.getByName(location);
+  const dock = DockLocation.getByName(spec.location || 'center');
   model.doAction(Actions.addTab({ type: 'tab', name, component, config }, target, dock, -1, true));
-  // addTab 之后按 component+config 找回刚建的 tab（FlexLayout 会分配 id）
   const created = findOpenPanel(model, component, config);
   return { tabId: created ? created.getId() : null, reused: false };
 }

@@ -812,6 +812,107 @@ select {
    想解释的塞 button 的 title（悬停才出现，不占位置）。 */
 .rp-modal-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .rp-modal-bar .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---------- 描述弹窗：左栏清单 + 右栏 md 编辑器 ---------- */
+/* 高度跟着内容走，上限 560：短描述（一两行）不该被撑成一屏空白，
+   长描述到顶后由编辑器内部滚动。 */
+.rpd {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  min-height: 240px;
+  max-height: min(66vh, 560px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.rpd-list {
+  border-right: 1px solid var(--line);
+  background: var(--soft);
+  overflow: auto;
+  min-height: 0;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rpd-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  padding: 7px 9px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink);
+}
+.rpd-item:hover { background: var(--paper); }
+.rpd-item.on { background: var(--paper); border-color: var(--line); box-shadow: var(--shadow-sm); }
+.rpd-item-top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.rpd-item-label {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 预览行：两行封顶，正文再长也不把清单撑成文章 */
+.rpd-item-note {
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--mid);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.rpd-badge {
+  flex: none;
+  font-size: 10.5px;
+  line-height: 1.5;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  color: var(--mid);
+  background: var(--soft);
+}
+.rpd-item.on .rpd-badge { background: var(--soft); }
+.rpd-todo { flex: none; font-size: 10.5px; color: var(--warn); }
+.rpd-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--paper); overflow: hidden; }
+.rpd-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.rpd-path {
+  font-size: 11.5px;
+  color: var(--mid);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rpd-dirty { flex: none; font-size: 11px; color: var(--warn); }
+/* 没改动时「保存」不该看着能按：全局 disabled 只降透明度，
+   绿色主按钮淡一点仍然是绿的，容易误以为有未落盘的内容。 */
+.rpd-bar .btn:disabled { background: var(--soft); color: var(--mid); opacity: 1; }
+.rpd-body { flex: 1; min-height: 0; overflow: auto; }
+.rpd-empty, .rpd-none { padding: 16px; color: var(--mid); font-size: 12.5px; }
+.rpd-err {
+  margin: 8px 10px 0;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(179, 38, 30, 0.06);
+  color: var(--danger);
+  font-size: 12px;
+}
 .rp-ref-warn {
   padding: 9px 12px;
   margin-bottom: 10px;

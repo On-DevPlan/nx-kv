@@ -20,6 +20,7 @@ import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog, Modal } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
+import DescModal from '../../components/repos/desc-modal.jsx';
 import { useWikiNav } from '../doc/index.jsx';
 
 const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
@@ -155,6 +156,8 @@ export default function ReposView() {
   // dev 侧绑定弹窗：某个开发仓库 → 勾选绑到它身上的参考
   const [bindRepoFor, setBindRepoFor] = useState(null); // dev 仓库对象 | null
   const [bindRepoSel, setBindRepoSel] = useState({}); // { refId: bool }
+  // 描述弹窗：{ repo, board } | null —— 左清单右编辑器，就地改 md
+  const [descFor, setDescFor] = useState(null);
   // 绑定描述编辑：{ ref, kind:'repo'|'board', targetId, targetName, note } | null
   const [linkNoteFor, setLinkNoteFor] = useState(null);
   const [linkNoteText, setLinkNoteText] = useState('');
@@ -697,11 +700,9 @@ export default function ReposView() {
       if (full) openLinkNote(full, 'repo', devRepo.key, devRepo.name);
     },
     note: (r) => {
-      // 组内描述挂在 **key** 上（成员关系用 key），内容是 group/<组>/<key>.md
-      const mine = (r.boards || []).find((b) => b.key === (filterBoard?.key || `board/${filterBoard?.name || ''}`));
-      if (!mine) return;
-      if (mine.noteDocPath) return openByDocId('path:' + mine.noteDocPath);
-      return openDescDoc(mine.noteDocRel, `${mine.name} · ${r.name}`);
+      // 组内描述挂在 **key** 上（成员关系用 key），内容是 group/<组>/<key>.md。
+      // 弹窗里连同项目主篇、补充篇一起列出来——描述不是单篇文档，是一小组。
+      setDescFor({ repo: r, board: filterBoard || null });
     },
   };
 
@@ -1358,6 +1359,17 @@ export default function ReposView() {
             </div>
           </div>
         </Modal>
+      ) : null}
+
+      {/* 描述：左清单右编辑器。就地改 md，不跳页签——改两个字不该丢掉看板筛选。 */}
+      {descFor ? (
+        <DescModal
+          repo={descFor.repo}
+          board={descFor.board}
+          onClose={() => setDescFor(null)}
+          onSaved={loadRepos}
+          onOpenTab={openByDocId}
+        />
       ) : null}
 
       {/* 导入导出：全屏覆盖层面板（逐条选择 / 冲突方案 / 差异检查） */}

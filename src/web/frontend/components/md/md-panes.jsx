@@ -36,6 +36,16 @@ import {
 // 格式快捷键 → 编辑操作（预览态划选后直接套用）
 const FMT_KEYS = { b: 'bold', i: 'italic', e: 'code', k: 'link' };
 
+/** 正文里已经自带 `# 标题` 了吗（跳过 frontmatter）——阅读态据此决定要不要再画题头 */
+function bodyHasH1(body) {
+  let t = String(body || '').replace(/^\uFEFF/, '').trimStart();
+  if (t.startsWith('---')) {
+    const end = t.indexOf('\n---', 3);
+    if (end > 0) t = t.slice(end + 4).trimStart();
+  }
+  return /^#[ \t]+\S/.test(t);
+}
+
 function autoSize(el) {
   if (!el) return;
   el.style.height = '0px';
@@ -1254,8 +1264,12 @@ export const MdPanes = forwardRef(function MdPanes(
       {mode === 'preview' && (
         <div className="mdw-pane mdw-preview">
           <div className="mdw-reader">
-            {/* 阅读态此前不渲染标题，与 live/源码两态断裂；题头与正文同轴同宽 */}
-            {title ? <h1 className="mdw-reader-title">{title}</h1> : null}
+            {/* 阅读态此前不渲染标题，与 live/源码两态断裂；题头与正文同轴同宽。
+                正文自带 `# 标题` 时不再画外部题头——文档的 body 本来就含首行标题，
+                两个都画就是同一行字出现两次（阅读态看起来像渲染 bug）。 */}
+            {title && !bodyHasH1(body) ? (
+              <h1 className="mdw-reader-title">{title}</h1>
+            ) : null}
             <article ref={articleRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
           </div>
         </div>

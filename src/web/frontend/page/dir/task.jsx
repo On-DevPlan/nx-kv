@@ -14,8 +14,10 @@ import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import { buildReopenText } from '../../modules/board/reopen-text.js';
+import { extractAckNodes } from '../../modules/board/ack-nodes.js';
 import ToolBar from '../../components/md/tool-bar.jsx';
 import { MdPanes } from '../../components/md/md-panes.jsx';
+import AckRail from '../../components/md/ack-rail.jsx';
 import AttachBar from '../../components/md/attach-bar.jsx';
 import SelMenu from '../../components/md/sel-menu.jsx';
 import ShortcutSheet from '../../components/md/shortcut-sheet.jsx';
@@ -287,6 +289,24 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     () => (taskRow?.roundSummary ? renderMarkdownHtml(taskRow.roundSummary) : ''),
     [taskRow?.roundSummary]
   );
+
+  // ack 定位轨（任务 #48）：反复 ack 反馈的长任务页，按轮次快速跳转。
+  // 轮次从正文里抽（每轮一个「## 上一轮完成总结」段）——正文即历史，正文变了轨也跟着变。
+  const ackNodes = useMemo(() => (doc ? extractAckNodes(doc.body) : []), [doc && doc.body]);
+  // 滚动容器：实时预览是 .mdw-lp（可滚），阅读态是 .mdw-preview。
+  // ⚠️ articleRef 指的是 **.mdw-lp-sheet**（live）/ **article**（阅读），两者都是
+  // 滚动容器的**子节点**——要往上找（closest），不是往下查（querySelector）。
+  // 两种态的 DOM 形状不同，轨内部按态分别定位（见 ack-rail.jsx 的 blockAt）。
+  const [ackScrollRoot, setAckScrollRoot] = useState(null);
+  useEffect(() => {
+    const root = articleRef.current;
+    if (!root) return undefined;
+    const pick = () => root.closest('.mdw-lp') || root.closest('.mdw-preview') || null;
+    setAckScrollRoot(pick());
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => setAckScrollRoot(pick())) : null;
+    mo?.observe(root, { childList: true, subtree: true });
+    return () => mo?.disconnect();
+  }, [doc && doc.mode]);
 
   useEffect(() => {
     setSelMenu(null);
@@ -960,6 +980,10 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
           </div>
         )}
       </div>
+
+      {/* ack 定位轨（任务 #48）：反复 ack 反馈的长任务页，一轮一个节点，点击跳过去。
+          只有真的有多轮时才有内容（ackNodes 为空 → 组件自身返回 null）。 */}
+      <AckRail nodes={ackNodes} scrollRoot={ackScrollRoot} />
 
       <SelMenu
         at={selMenu}

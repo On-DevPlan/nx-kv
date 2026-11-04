@@ -1053,6 +1053,12 @@
   background:var(--paper,#fff);border:1px solid var(--line,#E4E2DC);border-radius:10px;
   box-shadow:0 8px 24px rgba(20,22,26,.12);padding:8px 0;
 }
+
+/* 任务页的 ack 定位轨（任务 #48）：复用 .doc-rail 视觉，位置贴任务正文区
+   —— 任务页顶部有 mdw-top + mdw-toolbar 两条，轨往下挪，别压住工具栏。
+   .mdw 本身是 position:relative，absolute 轨锚在它上面。 */
+.mdw > .ack-rail{top:96px;bottom:44px}
+.mdw > .ack-rail .doc-rail-ticks{gap:12px}
 .doc-rail-sec{padding:4px 0 8px;border-bottom:1px solid var(--line,#E4E2DC)}
 .doc-rail-sec:last-child{border-bottom:0;padding-bottom:4px}
 .doc-rail-sec-lab{

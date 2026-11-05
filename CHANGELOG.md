@@ -2,6 +2,15 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.24.9] - 2026-11-05 侧栏显示编排真的生效了
+
+### Fixed
+
+- **「侧栏显示」配了不显示却仍然全部显示**（任务 #61 验收反馈实测，两个根因）：
+  - 隐藏清单以前**只过滤仓库行**，项目组行根本不受它管——勾掉项目组在侧栏看着完全没反应；
+    现在看板行也走同一份隐藏清单（components/sidebar/model.js）。
+  - 设置面板那一栏以前**直接写 localStorage**，而侧栏拿的是 App 里的 React state，
+    不会重读——改成走 app.patchPrefs（写 state + 落盘），勾完立刻生效。
 ## [0.24.8] - 2026-11-05 仓库 key 迁到远程派生
 
 ### Changed

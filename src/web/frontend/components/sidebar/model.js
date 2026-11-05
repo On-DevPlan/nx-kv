@@ -83,6 +83,9 @@ export function buildTree(repos, boards, topics, prefs, kw = '') {
   // 侧栏操作的对象是「工作组」，不是组下的某个文件——成员清单与项目切换
   // 收进组详情面板（#/group/<id>，面板内下拉选项目）。组行徽标 = 组内待领取总数。
   for (const b of boardList) {
+    // **显示编排**：隐藏的项目组也不出行（之前只过滤了仓库行——
+    // 于是「勾掉项目组」在侧栏看着完全没反应，任务 #61 验收反馈实测）。
+    if (hidden.has(b.key || b.id)) continue;
     // 看板成员按 key 存；本地未拥有的占位成员没有登记，不成行（只占组里的位置）
     const members = (b.repos || [])
       .map((m) => byKey.get(m.key))

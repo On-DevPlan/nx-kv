@@ -350,3 +350,15 @@ T1/T4/T5 的核心断言**已复核属实**（store 隔离端到端实测通过�
   组内描述路径都跟着迁了）、任务队列 frontmatter（project 已是新 key）、文档树（出现
   github.com/ 与 git.yyrd.com/ 目录）。
 - [x] 遗留：云端清单（todo）里的任务正文若带 `project: local/…` 需单独同步（本轮只迁本机）。
+
+### 侧栏显示编排不生效的根因（2026-11-05 #61 验收反馈）
+
+- [x] **反馈**：「当前我已经配置了显示和不显示，但是仍然全部显示，检查根因」。
+- [x] **根因一**：隐藏清单**只过滤了仓库行**（sidebar/model.js 的 repoRows 过滤），看板行根本不受它管——
+  勾掉项目组在侧栏完全没反应。现已让看板行走同一份隐藏清单。
+- [x] **根因二**：设置面板那一栏直接写 localStorage（updatePrefs），而侧栏拿的是 App 里的
+  **React state**（App.jsx 的 useState(loadPrefs)），不重读 → 勾完侧栏不变。现改为走
+  app.patchPrefs（写 state + 落盘），立刻生效。
+- [x] 验收：新增 tests/unit/sidebar-model.test.mjs 3 条（仓库平铺且都在 / 隐藏仓库 / 隐藏项目组）；
+  真机 CDP 实测（隔离 store + 临时端口 7993，1 组 3 仓库）：写入隐藏清单 board/grp +
+  github.com/me/rb 后重载，侧栏只剩 ra / rc——组行与仓库行都按配置隐藏。

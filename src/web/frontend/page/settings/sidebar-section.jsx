@@ -9,10 +9,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
-import { loadPrefs, updatePrefs } from '../../prefs.js';
+import { useApp } from '../../app-context.jsx';
 
 export default function SidebarSection() {
   const toast = useToast();
+  // 用 app 的 patchPrefs：**它会更新 React state**（侧栏拿的就是 state 里的
+  // prefs），直接写 localStorage 的话侧栏不会重读——勾了也像没反应（#61 反馈）。
+  const app = useApp() || {};
+  const patchPrefs = app.patchPrefs;
   const [repos, setRepos] = useState([]);
   const [boards, setBoards] = useState([]);
   const [hidden, setHidden] = useState([]);
@@ -22,19 +26,19 @@ export default function SidebarSection() {
       .then(([r, b]) => {
         setRepos(Array.isArray(r) ? r : r?.repos || []);
         setBoards(Array.isArray(b) ? b : b?.boards || []);
-        setHidden(loadPrefs().hidden || []);
+        setHidden(app.prefs?.hidden || []);
       })
       .catch((e) => toast('读取失败：' + (e.message || e)));
-  }, [toast]);
+  }, [toast, app.prefs]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const toggle = (key) => {
-    const cur = loadPrefs().hidden || [];
+    const cur = app.prefs?.hidden || [];
     const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
-    updatePrefs({ hidden: next });
+    if (patchPrefs) patchPrefs({ hidden: next });
     setHidden(next);
   };
 

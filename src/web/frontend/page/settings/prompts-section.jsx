@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
 import { useTemplates } from '../../modules/md/use-templates.js';
 import { PromptItemsEditor } from '../../modules/prompts/prompt-editor.jsx';
 import { TemplateSlotsEditor } from '../../modules/prompts/template-slots.jsx';
@@ -25,6 +26,7 @@ const TABS = [
 /** 全局提示词列表（回调 / ack 共用一套读写） */
 function GlobalPrompts({ listFlag, listKey, placeholder, offText }) {
   const toast = useToast();
+  const { dialog, node: dialogNode } = useDialog();
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(false);
   const [openIdx, setOpenIdx] = useState(-1); // 手风琴展开态（受控：新增条目自动展开）
@@ -54,6 +56,23 @@ function GlobalPrompts({ listFlag, listKey, placeholder, offText }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  // 停用 = 清空全部条目（save([])）。曾用文案「关闭」排在「保存 / 撤销改动」
+  // 一排里，怎么看都是「关掉这个页面」——一点却把整份已配置的条目清掉
+  // （#80：反直觉且不可恢复）。改成明说后果的「停用」，有配置时先弹确认。
+  const disableAll = async () => {
+    if (busy || items === null) return;
+    if (items.length) {
+      const ok = await dialog({
+        title: '清空并停用？',
+        message: `将删除全部 ${items.length} 条已配置条目并停用，保存后不可恢复。`,
+        okText: '清空并停用',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    save([]);
   };
 
   return (
@@ -88,17 +107,18 @@ function GlobalPrompts({ listFlag, listKey, placeholder, offText }) {
           保存
         </button>
         <button
-          className="btn ghost sm"
+          className="btn ghost sm danger"
           disabled={busy || items === null}
-          onClick={() => save([])}
-          title={offText}
+          onClick={disableAll}
+          title="清空全部条目并停用"
         >
-          关闭
+          停用
         </button>
         <button className="btn ghost sm" disabled={busy} onClick={load}>
           撤销改动
         </button>
       </div>
+      {dialogNode}
     </div>
   );
 }

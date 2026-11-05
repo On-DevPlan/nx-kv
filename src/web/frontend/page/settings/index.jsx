@@ -21,6 +21,7 @@ import { useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
 import { PromptItemsEditor } from '../../modules/prompts/prompt-editor.jsx';
 import PromptsSection from './prompts-section.jsx';
+import SidebarSection from './sidebar-section.jsx';
 import { openPanel } from '../../workspace.js';
 import './style.css';
 
@@ -38,6 +39,7 @@ const SECTIONS = [
   { id: 'work', label: '工作区', icon: 'sidebar' },
   { id: 'cloud', label: '云端与存储', icon: 'cloud' },
   { id: 'prompts', label: '提示词 / 模板', icon: 'list' },
+  { id: 'sidebar', label: '侧栏显示', icon: 'sidebar' },
   { id: 'template', label: '任务工具', icon: 'clock' },
   { id: 'project', label: '项目级设置', icon: 'repo' },
 ];
@@ -504,6 +506,11 @@ export default function SettingsPanel() {
 
     prompts: (
       <PromptsSection openTemplates={openTemplates} />
+    ),
+
+    // 侧栏显示编排（任务 #61 反馈③）：菜单式的「显示哪些项目组 / 项目」
+    sidebar: (
+      <SidebarSection />
     ),
 
     project: (

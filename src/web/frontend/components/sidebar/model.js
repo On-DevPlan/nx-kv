@@ -103,28 +103,14 @@ export function buildTree(repos, boards, topics, prefs, kw = '') {
     });
   }
 
-  // **分组是逻辑组**（任务 #61）：看板是给项目贴的标签，不是容器——
-  // 每个项目在左边都**单独成行**（能直接进去单干），组行只做聚合入口与归拢。
-  // 一个项目可以属于多个组：它只出现一次，行上标出它属于哪些组。
+  // **仓库是独立的模块，项目组只是指向它的指针**（任务 #61 反馈）：
+  //   - 组行 = 指针（聚合入口），**不铺成员**：组下面不列它指向的仓库；
+  //   - 仓库行 = 模块：**每个仓库一行**，且**永远不因为被组链接就消失**。
+  // 所以仓库行平铺（不进任何组的桶、不缩进），组行仍是叶子。
   //
-  // （2026-11-03 曾把成员收进组行当叶子——那样组里的项目在左边点不到，
-  //   也就没法「按单项目」干活；这里恢复单项目入口。）
-  const firstGroupOf = new Map(); // repoKey -> 首个组 id（决定行落在哪个桶）
-  const groupNamesOf = new Map(); // repoKey -> 它所属的组名（可多个）
-  for (const b of boardList) {
-    for (const m of b.repos || []) {
-      if (!firstGroupOf.has(m.key)) firstGroupOf.set(m.key, b.id);
-      if (!groupNamesOf.has(m.key)) groupNamesOf.set(m.key, []);
-      const names = groupNamesOf.get(m.key);
-      if (!names.includes(b.name)) names.push(b.name);
-    }
-  }
+  // 「显示哪些」由设置面板「侧栏显示」一栏编排（隐藏清单走 prefs.hidden）。
   for (const r of matched) {
-    rows.push({
-      ...r,
-      groupId: firstGroupOf.get(r.key) || '',
-      groupNames: groupNamesOf.get(r.key) || [],
-    });
+    rows.push({ ...r, groupId: '' });
   }
 
   // 排序：用户编过的顺序在前（order 存 key），其余按名称自然序

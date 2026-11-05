@@ -211,7 +211,7 @@ export default function Landing({
                           闸门{downs.length ? `×${downs.length}` : ''}
                         </span>
                       ) : null}
-                      {t.status !== 'consumed' && t.ready === false ? (
+                      {t.status !== 'consumed' && t.status !== 'archived' && t.ready === false ? (
                         <span
                           className="mdw-tg"
                           title={t.blockBy?.length ? `等待依赖完成：#${t.blockBy.join(', #')}` : '被前方闸门挡住'}
@@ -222,8 +222,11 @@ export default function Landing({
                     </div>
                   </td>
                   <td>
-                    <span className={'st' + (t.status === 'consumed' ? ' done' : t.from ? ' run' : '')}>
-                      {t.status === 'consumed' ? '完' : (t.from ? '跑' : '等')}
+                    <span
+                      className={'st' + (t.status === 'consumed' || t.status === 'archived' ? ' done' : t.from ? ' run' : '')}
+                      title={t.status === 'archived' ? '已归档：被新任务取代，原文留档' : ''}
+                    >
+                      {t.status === 'archived' ? '档' : t.status === 'consumed' ? '完' : t.from ? '跑' : '等'}
                     </span>
                   </td>
                   <td className="mono faint">{shortTime(t.createdAt)}</td>
@@ -243,10 +246,10 @@ export default function Landing({
                           />
                         </span>
                       )}
-                      {onReopenTask && (t.status === 'consumed' || t.completedAt) && (
+                      {onReopenTask && t.status !== 'archived' && (t.status === 'consumed' || t.completedAt) && (
                         <span
                           className="op" role="button" tabIndex={-1}
-                          title={t.completedAt ? '重做（验收反馈）：任务回到待领取，agent 可再次领取' : '反馈修改：任务回到待领取，agent 可再次领取'}
+                          title={t.completedAt ? '重做（验收反馈）：新建一条任务继续做，旧任务归档留档' : '反馈修改：新建一条任务继续做，旧任务归档留档'}
                           aria-label={`重开 ${titleFromMd(t.text)}`}
                           onClick={(e) => {
                             e.stopPropagation();

@@ -11,7 +11,8 @@ import { stampNow, parseStampMs, topicOf, nextTaskId } from './store-io.js';
 // 也省得存一份会漂移的冗余副本。
 // 只有真的被领走的才有值；还没被领的返回 null（那是"还在等"，由使用方按当前时间算）。
 function pickupSecOf(t) {
-  if (!t || t.status !== 'consumed') return null;
+  // 归档的任务也是被领走过（consumedAt 保留）——领取耗时照旧算。
+  if (!t || (t.status !== 'consumed' && t.status !== 'archived')) return null;
   const created = parseStampMs(t.createdAt);
   const consumed = parseStampMs(t.consumedAt);
   if (!Number.isFinite(created) || !Number.isFinite(consumed)) return null;
@@ -94,7 +95,9 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
   const base = {
     id: Number(t.id) || 0,
     text: String(t.text ?? ''),
-    status: t.status === 'consumed' ? 'consumed' : 'pending',
+    // 状态词汇：pending → consumed（已领取）→ archived（终态：被新任务取代）。
+    // **单向**：没有回退边——完成等待验收之后只能往前（归档），不能回 pending（#59）。
+    status: t.status === 'consumed' ? 'consumed' : t.status === 'archived' ? 'archived' : 'pending',
     roundSummary: String(t.roundSummary ?? ''),
     createdAt: String(t.createdAt ?? ''),
     consumedAt: String(t.consumedAt ?? ''),
@@ -119,7 +122,14 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
     timegoal: sanitizeTaskGoal(t.timegoal),
     // 完成标记（localtask done 写入）：带时间目标的任务未到点会被拒绝，写不进来。
     completedAt: String(t.completedAt ?? ''),
-    // 重开轨迹（用户修改反馈 → 重新进入执行循环）：reopenCount / lastReopenedAt
+    // 重开轨迹：现在重开 = **新建一条任务**，旧任务归档（#59）。
+    //   forkOf       这条是从哪一条派生的（'队列key:旧编号'）
+    //   supersededBy 被哪一条取代（归档那条的落点：{ key, id }）
+    //   archivedAt / archivedReason 归档时刻与原因
+    forkOf: String(t.forkOf ?? ''),
+    supersededBy: t.supersededBy && typeof t.supersededBy === 'object' ? t.supersededBy : null,
+    archivedAt: String(t.archivedAt ?? ''),
+    archivedReason: String(t.archivedReason ?? ''),
     reopenCount: Number(t.reopenCount) || 0,
     lastReopenedAt: String(t.lastReopenedAt ?? ''),
     // DAG / 闸门（#34）：blockBy=依赖 id；blocksFollowing=挡住数组其后所有 pending
@@ -141,7 +151,8 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
 // pending 的统一判据：未领取、未删除、未迁出。
 // 迁出（tombstone）不算活——它不会被派发，也不该阻塞主题删除或挡住 prune。
 export function isPending(t) {
-  return t.status !== 'consumed' && !t.deletedAt && !t.migratedTo;
+  // 归档（archived）是终态：不再算待领取——否则归档的任务会被重新派发（#59）。
+  return t.status !== 'consumed' && t.status !== 'archived' && !t.deletedAt && !t.migratedTo;
 }
 
 // 主题的截止时刻（epoch ms）。优先用 waitingUntilMs（毫秒精度，新数据都有），

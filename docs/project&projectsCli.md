@@ -173,7 +173,8 @@ projectDesc: KV 清单管理中枢：远程清单 + 本机任务队列
   归组信息丢了，任务就会从组 / 项目面板里掉出去。
 - **改归属即搬家**：上述两条路径的 effective `project` 解析到哪个登记项目，
   任务就迁到哪个队列（归属决定落点，与派任务同一套判定；编排收在
-  `src/modules/tasktool/update.js`）。约束：已领取的任务不能改归属（先 reopen）；
+  `src/modules/tasktool/update.js`）。约束：已领取的任务不能改归属（先 reopen——
+  reopen 现在是**新建一条任务**、旧任务归档）；
   带队列内依赖/闸门的任务搬运会断链，先解除再改；搬家后任务拿到新队列的 id，
   返回值带 `moved/movedFrom` 供调用方跟号；指向它的跨队列引用（`topicKey:id`）
   改写到新地址；`projectIntro/projectDesc` 随归属刷新。
@@ -315,9 +316,10 @@ nx-kv localtask wait --cwd "D:\DevProjects\my\github\nx-kv" --summary "现状"
 # 完成回填
 nx-kv localtask done --id 3 --summary "完成总结" --progress "完成度/下一步"
 
-# 修改反馈 → 重开（任务回 pending，领取时间作废，可再次领取）
+# 修改反馈 → 重开：**新建一条任务**（新的 md），旧任务归档留档（状态单向）
 nx-kv localtask reopen --id 3 --text "# 标题
 改过的正文"
+# 返回值里的 id 是**新任务**的编号；旧任务状态前进到 archived（原文留档）
 
 # 查看 / 编辑 / 删除
 nx-kv localtask show   --id 3 --cwd "<dir>"

@@ -191,12 +191,13 @@ export default {
       render: renderWait, // 返回形状与 wait 同构（ok/timeout），复用同一份人读渲染
     },
     {
-      // 修改反馈 → 重新进入执行循环：任务回到 pending，agent 可再次领取。
+      // 修改反馈 / 重做 / 加评论 → **新建一条任务**（新的 md），旧任务**归档**。
+      // 状态单向：完成等待验收之后没有回退边——不会回到「重新开始」（任务 #59）。
       id: 'localtask.reopen',
       cli: ['localtask', 'reopen'],
       http: ['POST', '/api/localtasks/reopen'],
       summary:
-        '重开任务（用户的修改反馈）：任务回到待领取，领取时间作废（新一轮重新计时）；--text 可带上修改后的正文（Markdown）',
+        '重开任务（用户的修改反馈 / 重做 / 加评论）：新建一条待领取任务（正文 = --text 给的内容），旧任务归档留档（状态单向，不回退）',
       flags: {
         id: { type: 'number', required: true, hint: '任务编号' },
         cwd: CWD,
@@ -209,7 +210,8 @@ export default {
         return reopenTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, text: ctx.text });
       },
       render: (d) =>
-        `已重开任务 #${d.id} @ ${d.name}（回到待领取，第 ${d.task.reopenCount} 次重开）` +
+        `已新建任务 #${d.id} @ ${d.name}（待领取）` +
+        (d.from ? `；旧任务 #${d.from.id} 已归档留档` : '') +
         (d.moved && d.movedFrom ? `；已改归属项目，原 ${d.movedFrom.name} #${d.movedFrom.id}` : ''),
     },
     {

@@ -14,7 +14,7 @@ import { useApp } from '../../app-context.jsx';
 import Landing from './landing.jsx';
 import DagEditor from './dag-editor.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
-import { docIdOf, nextDraftId, peekDoc, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
+import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 
 // 目录任务表每页条数（队列一长就翻页，不再一次渲染全部）
 const PAGE_SIZE = 20;
@@ -196,20 +196,14 @@ export default function DirPanel({ dirKey }) {
           ...(text ? { text } : {}),
         },
       });
-      // 这条任务若在某个页签里开着，把新正文写回那份文档——否则页面还显示旧正文，
-      // 看不见刚追加的「上一轮完成总结 / 验收反馈」两段。
-      // 只在文档**与服务端一致**（没有未保存编辑）时写：文档里若有人改过，
-      // 那是他的活，别覆盖。
-      if (text) {
-        const docKey = docIdOf(scopeOf(dirKey), t.id);
-        const open = peekDoc(docKey);
-        if (open && String(open.body || '').trim() === String(t.text || '').trim()) {
-          saveDoc(docKey, { body: text });
-        }
-      }
+      // 重开 = **新建一条任务**（新 md），旧任务归档留档（#59：状态单向）。
+      // 旧文档**不动**（那是历史）；新正文写进新任务自己的文档。
+      const landedKey = res?.key || dirKey;
+      const newId = String(res?.task?.id ?? t.id);
+      if (text) saveDoc(docIdOf(scopeOf(landedKey), newId), { body: text });
       toast(
-        `已重开「${title.replace(/^#\s*/, '')}」——agent 可再次领取` +
-          (res?.moved && res.name ? `；已改归属项目，迁到「${res.name}」#${res.task?.id}` : ''),
+        `已重开「${title.replace(/^#\s*/, '')}」→ 新任务 #${newId}（旧任务归档留档）` +
+          (res?.moved && res.name ? `；归属迁到「${res.name}」` : ''),
       );
       refreshLocal();
     });

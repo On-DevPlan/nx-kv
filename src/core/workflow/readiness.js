@@ -99,12 +99,20 @@ function isAlive(t) {
   return t && !t.deletedAt && !t.migratedTo;
 }
 
+/**
+ * 已完成口径。**归档（archived）也算完成**——归档是终态：它不会再动，
+ * 依赖它的人不该永远被挡着（#59）。
+ */
 function isCompleted(t) {
-  return isAlive(t) && !!t.completedAt;
+  return isAlive(t) && (!!t.completedAt || t.status === 'archived');
 }
 
+/**
+ * 待领取口径：活着（没删没迁出）且不是「已领走」。
+ * **归档（archived）也不算待领取**——归档是终态：状态单向，没有回退边（#59）。
+ */
 function isPendingLike(t) {
-  return isAlive(t) && t.status !== 'consumed';
+  return isAlive(t) && t.status !== 'consumed' && t.status !== 'archived';
 }
 
 /**

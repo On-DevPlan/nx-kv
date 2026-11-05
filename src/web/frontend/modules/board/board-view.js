@@ -69,8 +69,10 @@ export function withGlobalRow(rows) {
 export function splitQueueTasks(tasks = []) {
   const list = Array.isArray(tasks) ? tasks : [];
   return {
-    pending: list.filter((t) => t.status !== 'consumed' && !t.deletedAt && !t.migratedTo),
+    pending: list.filter((t) => t.status !== 'consumed' && t.status !== 'archived' && !t.deletedAt && !t.migratedTo),
     consumed: list.filter((t) => t.status === 'consumed' && !t.deletedAt).slice().reverse(),
+    // 归档（#59）：被新任务取代的旧任务——终态留档，不再算进行中
+    archived: list.filter((t) => t.status === 'archived' && !t.deletedAt).slice().reverse(),
     deleted: list.filter((t) => !!t.deletedAt).slice().reverse(),
     // 迁出记录（tombstone）：原条目留在队列里但已不算待领取，看板渲染成
     // 虚线灰卡「已迁移 → …」，可跳转/移除/撤销。保持队列原序（正序）。
@@ -97,15 +99,18 @@ export function sortTasksForDisplay(tasks = []) {
   const list = Array.isArray(tasks) ? tasks : [];
   const pending = [];
   const consumed = [];
+  const archived = [];
   const migrated = [];
   const deleted = [];
   for (const t of list) {
     if (t.deletedAt) deleted.push(t);
     else if (t.status === 'consumed') consumed.push(t);
+    else if (t.status === 'archived') archived.push(t);
     else if (t.migratedTo) migrated.push(t);
     else pending.push(t);
   }
-  return [...pending, ...consumed.reverse(), ...migrated, ...deleted.reverse()];
+  // 归档沉在历史区（与迁出记录同层），删除记录垫底
+  return [...pending, ...consumed.reverse(), ...migrated, ...archived.reverse(), ...deleted.reverse()];
 }
 
 export function mergeDirectoryRows(topics = [], goals = []) {  const rows = [];

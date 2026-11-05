@@ -121,9 +121,10 @@ test('splitQueueTasks：待领取按领取优先级（数组原序，不反转�
 });
 
 test('splitQueueTasks：空输入与脏输入都不炸', () => {
-  assert.deepEqual(splitQueueTasks([]), { pending: [], consumed: [], deleted: [], migrated: [] });
-  assert.deepEqual(splitQueueTasks(null), { pending: [], consumed: [], deleted: [], migrated: [] });
-  assert.deepEqual(splitQueueTasks(undefined), { pending: [], consumed: [], deleted: [], migrated: [] });
+  const empty = { pending: [], consumed: [], archived: [], deleted: [], migrated: [] };
+  assert.deepEqual(splitQueueTasks([]), empty);
+  assert.deepEqual(splitQueueTasks(null), empty);
+  assert.deepEqual(splitQueueTasks(undefined), empty);
 });
 
 // ─── 显示序：未完成优先（2026-11-03 反馈「优先显示没有完成的任务」）──────

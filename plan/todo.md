@@ -255,3 +255,22 @@ T1/T4/T5 的核心断言**已复核属实**（store 隔离端到端实测通过�
 - [x] 验收：单测 `tests/unit/intro-set.test.mjs` 6 条（主篇优先序 / 目录其余 / 外部绑定 /
   `repo doc list` 三段 / 交付渲染两例）；冒烟新增 3 条（目录补充篇进 `repo doc list`、
   `knowledge --md` 列出其余篇、文档树份数随补充篇变化）；`pnpm test` 全绿。
+
+### 任务状态单向 + 重开即新建（2026-11-05 #59）
+
+- [x] **需求**：「完成等待验收」之后若重做或加评论，**创建新的 md**，不改之前的 md；
+  状态必须单向，不能「完成等待验收 → 重新开始」。
+- [x] **状态机**：加终态 `archived`（已归档）——`待领取 → 已领取 → 已归档`，没有回退边。
+  归档不再算待领取（isPending / isPendingLike 口径）、不能再重开；作为上游依赖时
+  视为「已了结」（taskToNode → success），不再挡后来者。
+- [x] **重开 = 新建任务**：`reopenTask` 不再就地改正文、翻状态，而是同队列**新建一条**
+  pending 任务（`forkOf` 指回上一条），旧任务前进到 archived 留档（`supersededBy` 记
+  新任务落点）。新任务继承时间目标 / 闸门 / 上游依赖——同一件活，约束跟着走。
+- [x] **面板**：重做 / 评论后开新任务的新文档（旧文档留档，页签切到新任务）；列表新增
+  「已归档」徽标「档」，归档任务不再算进行中。
+- [x] 验收：新增 `tests/unit/localtask-fork.test.mjs` 5 条（新旧任务形态 / 归档是终态 /
+  归档上游不再挡人 / 面板分桶 / 时间目标继承）；改写既有 `taskgoal.test.mjs` 的重开用例
+  （旧口径「回到 pending」→ 新口径「新建 + 归档」）与 `localtask-board.test.mjs` 的分桶
+  期望形状；`pnpm test` 全绿。
+- [x] 口径同步：skill 文档 `assets/kv-get/SKILL.md`（含安装到用户目录的副本）与
+  `docs/project&projectsCli.md` 都改成「新建任务 + 旧任务归档」。

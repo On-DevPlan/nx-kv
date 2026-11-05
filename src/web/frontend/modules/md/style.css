@@ -650,6 +650,23 @@
   font-weight:600;font-size:11px;font-family:inherit;color:var(--mid,#838A93);
 }
 .mdw-prog-all:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
+/* 组模式的项目筛选 chips（任务 #56）：「全部」+ 各成员项目，点击过滤进程卡；
+   数量小字用 <b>，选中态用 accent 描边 */
+.mdw-prog-filters{
+  flex:none;display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;
+  border-bottom:1px solid var(--line,#E4E2DC);
+}
+.mdw-prog-fchip{
+  border:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);color:var(--ink-2,#4B515A);
+  border-radius:14px;padding:3px 10px;cursor:pointer;font-size:11px;font-weight:600;font-family:inherit;
+  display:inline-flex;align-items:center;gap:4px;
+}
+.mdw-prog-fchip b{font-weight:700;font-size:10px;color:var(--mid,#838A93)}
+.mdw-prog-fchip:hover{border-color:var(--mdw-accent);color:var(--mdw-accent)}
+.mdw-prog-fchip.on{background:var(--mdw-accent-soft);border-color:var(--mdw-accent);color:var(--mdw-accent)}
+.mdw-prog-fchip.on b{color:var(--mdw-accent)}
+/* 组模式卡片标题旁的项目 tag（复用 rp-ptag 视觉，略收间距贴标题） */
+.mdw-tcard-proj{margin-left:6px}
 /* 勾选后的操作条：已选 n 条 + 清除 + 删除所选 */
 .mdw-prog-sel{
   flex:none;display:flex;align-items:center;gap:6px;padding:7px 10px;

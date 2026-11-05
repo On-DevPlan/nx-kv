@@ -230,6 +230,21 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
           </button>
           <button
             className="btn small ghost"
+            title="打开本组的任务进程面板：组内各项目队列聚合显示，可按项目筛选（任务 #56）"
+            onClick={() => {
+              if (!model) return;
+              openPanel(model, {
+                component: 'progress',
+                name: '进程',
+                config: { groupKey: dirKey },
+                location: 'right',
+              });
+            }}
+          >
+            进程
+          </button>
+          <button
+            className="btn small ghost"
             title="挑项目加进这个组（可搜索项目与项目组）"
             onClick={() => setAddOpen(true)}
           >

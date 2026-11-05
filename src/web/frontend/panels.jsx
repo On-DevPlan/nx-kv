@@ -49,17 +49,25 @@ function PagePanelView({ dirKey, task, beside, tabId, model }) {
   return wrap(<PagePanel dirKey={dirKey} task={task} beside={!!beside} tabId={tabId} model={model} />);
 }
 
-/** 并发进程面板：独立成块，可拖到任意一边；task = 当前主区任务，用于高亮 */
-function ProgressPanelView({ dirKey, task }) {
+/** 并发进程面板：独立成块，可拖到任意一边；task = 当前主区任务，用于高亮。
+ *  groupKey（任务 #56）= 项目组（board）id：进程按**组**聚合组内各项目队列的任务，
+ *  卡片带项目 tag 并可按项目筛选；不传 = 目录/全局模式（现状）。 */
+function ProgressPanelView({ dirKey, task, groupKey }) {
   const app = useApp() || {};
+  const board = groupKey
+    ? ((app.repoData && app.repoData.boards) || []).find(
+      (b) => b && (b.id === groupKey || b.key === groupKey),
+    ) || null
+    : null;
   return wrap(
     <ProgressPanel
       dirKey={dirKey}
       task={task}
+      group={board}
       rows={app.rows}
       refreshLocal={app.refreshLocal}
       model={app.model}
-      onOpenTask={(id) => app.openPage && app.openPage({ dirKey, task: String(id), name: `#${id}` })}
+      onOpenTask={(id, dk) => app.openPage && app.openPage({ dirKey: dk || dirKey, task: String(id), name: `#${id}` })}
       onClosePage={(tabId) => app.closePanel && app.closePanel(tabId)}
     />
   );
@@ -98,7 +106,7 @@ export const PANELS = {
       model={ctx && ctx.model}
     />
   ) },
-  progress: { title: '进程', render: (cfg) => <ProgressPanelView dirKey={cfg && cfg.dirKey} task={cfg && cfg.task} /> },
+  progress: { title: '进程', render: (cfg) => <ProgressPanelView dirKey={cfg && cfg.dirKey} task={cfg && cfg.task} groupKey={cfg && cfg.groupKey} /> },
   group: { title: '项目组', render: (cfg, ctx) => <GroupPanel boardId={cfg && cfg.boardId} model={ctx && ctx.model} /> },
   repos: { title: '仓库管理', render: () => wrap(<ReposView />) },
   cloud: { title: '云端总览', render: () => wrap(<TodoView />) },

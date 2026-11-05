@@ -325,13 +325,18 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
   // 工具栏「进程」：面板化之后进程不再是内嵌右侧栏，而是工作区里独立的一块
   // （可拖动 / 可浮出 / 可单独关掉）。已开着同一目录的进程面板就聚焦它，不重复开。
   // 注意 config 要带上 dirKey：进程面板是按**目录**取任务的，缺了会落到全局池。
+  // 任务带工作组语义（frontmatter.board，任务 #56）→ 进程按**组**聚合打开：
+  // 组发布的任务散在成员项目各自的队列里，单目录视图看不见全景。
   const openProgress = () => {
     const m = model || app.model;
     if (!m) return;
+    const boardId = docFm && docFm.board ? String(docFm.board) : '';
     openPanel(m, {
       component: 'progress',
       name: '进程',
-      config: { dirKey: dirKey || GLOBAL_KEY, task: task != null ? String(task) : undefined },
+      config: boardId
+        ? { groupKey: boardId, task: task != null ? String(task) : undefined }
+        : { dirKey: dirKey || GLOBAL_KEY, task: task != null ? String(task) : undefined },
       location: 'right',
     });
   };

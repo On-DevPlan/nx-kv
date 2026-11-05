@@ -2,11 +2,16 @@
 //
 // 每张卡片左侧带复选框：多选后批量删除（软删除，CLI localtask task restore 可恢复）。
 // 点卡片 → 在工作区里开一个 MD 页签（不是切内部 tab）。
+//
+// 组模式（任务 #56）：config.groupKey 指向项目组（board）时，进程按**组**聚合——
+// 组发布的任务散在成员项目各自的队列里，单目录视图看不见全景；这里扫全部队列、
+// 收正文 frontmatter.board 指向本组的任务（与组页 groupTasks 同一口径），卡片带
+// 项目 tag，顶部一组筛选 chips 按**项目**过滤，统计随筛选范围走。
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
-import { STAGE_LABELS, taskToProgress } from '../../modules/md/md-parse.js';
+import { parseFrontmatter, STAGE_LABELS, taskToProgress } from '../../modules/md/md-parse.js';
 import { closeRightSidebar, findOpenPanel } from '../../workspace.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
@@ -46,6 +51,7 @@ function stageChips(card) {
 
 export default function ProgressPanel({
   dirKey, task: focusTask, rows = [], refreshLocal, model, onOpenTask, onClosePage,
+  group = null,
 }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
@@ -58,7 +64,8 @@ export default function ProgressPanel({
   const tasks = useMemo(() => (topic?.tasks || []).filter((t) => !t.deletedAt), [topic]);
 
   const [now, setNow] = useState(Date.now());
-  // 多选：存任务 id（不是下标——列表会重排，下标会指错任务）
+  // 多选：存卡片键（目录模式 = 任务 id 数字；组模式 = "topicKey:id" 复合键——
+  // 不同队列同号任务多的是，拿裸 id 当键会把两个队列的 #1 当成同一张卡）
   const [picked, setPicked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -66,21 +73,84 @@ export default function ProgressPanel({
     return () => clearInterval(t);
   }, []);
 
+  // ─── 组模式聚合（任务 #56）──────────────────────────────────────
+  // 本组任务 = 全部队列里正文 frontmatter.board 指向本组的任务（与组页同口径）。
+  // 每张卡带 topicKey/topicCwd（点开、删除要按任务**所在队列**寻址）与项目名（筛选用）。
+  const groupCards = useMemo(() => {
+    if (!group) return [];
+    const ids = [group.id, group.key, group.name].filter(Boolean);
+    const members = group.repos || [];
+    const projectNameOf = (projKey, row) => {
+      const m = members.find(
+        (x) => x && (x.key === projKey || x.name === projKey || (x.path && x.path === projKey)),
+      );
+      if (m && m.name) return m.name;
+      if (projKey) return String(projKey).split('/').pop() || String(projKey);
+      return (row && row.name) || '';
+    };
+    const out = [];
+    for (const r of rows || []) {
+      if (!r || r.isGlobal || !Array.isArray(r.tasks)) continue;
+      for (const t of r.tasks) {
+        if (!t || t.deletedAt) continue;
+        let fm = {};
+        try {
+          fm = parseFrontmatter(t.text || '');
+        } catch {
+          fm = {};
+        }
+        if (!fm.board || !ids.includes(fm.board)) continue;
+        out.push({
+          ...taskToProgress(t),
+          key: `${r.key}:${t.id}`,
+          taskId: t.id,
+          topicKey: r.key,
+          topicCwd: r.cwd || '',
+          project: fm.project || '',
+          projectName: projectNameOf(fm.project, r),
+        });
+      }
+    }
+    const order = { run: 0, wait: 1, done: 2 };
+    return out.sort(
+      (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9)
+        || a.projectName.localeCompare(b.projectName)
+        || Number(a.taskId) - Number(b.taskId),
+    );
+  }, [group, rows]);
+
+  // 项目筛选（组模式）：'' = 全部；值为 projectName。会话内状态，不持久化——
+  // 筛选是临时视角；切组后旧筛选不在新组的项目列表里，派生时自动回落「全部」。
+  const [projFilter, setProjFilter] = useState('');
+
+  const projects = useMemo(() => {
+    const seen = new Map();
+    for (const c of groupCards) {
+      if (c.projectName && !seen.has(c.projectName)) seen.set(c.projectName, true);
+    }
+    return [...seen.keys()];
+  }, [groupCards]);
+
   const cards = useMemo(() => {
+    if (group) {
+      const active = projFilter && projects.includes(projFilter) ? projFilter : '';
+      return groupCards.filter((c) => !active || c.projectName === active);
+    }
     const list = tasks.map(taskToProgress);
     const order = { run: 0, wait: 1, done: 2 };
     return list.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
-  }, [tasks]);
+  }, [group, groupCards, projFilter, projects, tasks]);
 
   // 选中的任务可能已被别处删掉 → 只留还活着的编号（否则「删除所选」带着死编号）
+  const cidOf = (c) => (group ? c.key : c.id); // 组模式 = 复合键,与 picked Set 同口径
   useEffect(() => {
     setPicked((prev) => {
       if (!prev.size) return prev;
-      const alive = new Set(cards.map((c) => c.id));
+      const alive = new Set(cards.map(cidOf));
       const next = new Set([...prev].filter((id) => alive.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [cards]);
+  }, [cards, group]);
 
   const live = cards.filter((c) => c.status === 'run' || c.status === 'wait');
   const running = cards.filter((c) => c.status === 'run').length;
@@ -91,7 +161,7 @@ export default function ProgressPanel({
     : 0;
 
   const allPicked = cards.length > 0 && picked.size === cards.length;
-  const pickedCards = cards.filter((c) => picked.has(c.id));
+  const pickedCards = cards.filter((c) => picked.has(cidOf(c)));
 
   const togglePick = (id) => {
     setPicked((s) => {
@@ -102,17 +172,17 @@ export default function ProgressPanel({
     });
   };
   const toggleAll = () => {
-    setPicked(allPicked ? new Set() : new Set(cards.map((c) => c.id)));
+    setPicked(allPicked ? new Set() : new Set(cards.map(cidOf)));
   };
 
-  // 批量删除（软删除）：一次请求逐条删，顺手关掉已打开的页签
+  // 批量删除（软删除）：目录模式一次请求；组模式按任务**所在队列**分桶逐桶删
+  //（删除 API 按目录寻址，跨队列的选中项必须拆开）
   const delPicked = async () => {
     if (busy || !pickedCards.length) return;
-    const ids = pickedCards.map((c) => c.id);
-    const names = pickedCards.map((c) => `#${c.id} ${c.title}`);
+    const names = pickedCards.map((c) => `#${c.taskId ?? c.id} ${c.title}`);
     const shown = names.length <= 6 ? names.join('\n') : `${names.slice(0, 6).join('\n')}… 共 ${names.length} 条`;
     const ok = await dialog({
-      title: `删除选中的 ${ids.length} 条任务`,
+      title: `删除选中的 ${pickedCards.length} 条任务`,
       message: `${shown}\n\n软删除：CLI localtask task restore 可恢复。`,
       danger: true,
       okText: '删除',
@@ -120,22 +190,41 @@ export default function ProgressPanel({
     if (!ok) return;
     setBusy(true);
     try {
-      const res = await api('/api/localtasks/items', {
-        method: 'DELETE',
-        body: { ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic.cwd }), ids },
-      });
-      const n = res?.count ?? ids.length;
-      const miss = res?.missing?.length ? `（${res.missing.length} 条已不存在）` : '';
-      // 关掉这些任务的页签（开着的话）
+      let n = 0;
+      let miss = 0;
+      if (group) {
+        const byTopic = new Map();
+        for (const c of pickedCards) {
+          if (!byTopic.has(c.topicKey)) byTopic.set(c.topicKey, { cwd: c.topicCwd, ids: [] });
+          byTopic.get(c.topicKey).ids.push(c.taskId);
+        }
+        for (const { cwd, ids } of byTopic.values()) {
+          const res = await api('/api/localtasks/items', { method: 'DELETE', body: { cwd, ids } });
+          n += res?.count ?? ids.length;
+          miss += res?.missing?.length || 0;
+        }
+      } else {
+        const ids = pickedCards.map((c) => c.id);
+        const res = await api('/api/localtasks/items', {
+          method: 'DELETE',
+          body: { ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic.cwd }), ids },
+        });
+        n = res?.count ?? ids.length;
+        miss = res?.missing?.length || 0;
+      }
+      const missTxt = miss ? `（${miss} 条已不存在）` : '';
+      // 关掉这些任务的页签（开着的话）——组模式按各卡所在目录找页签
       if (model) {
-        for (const id of ids) {
-          const page = findOpenPanel(model, 'page', { dirKey, task: String(id) });
+        for (const c of pickedCards) {
+          const dk = group ? c.topicKey : dirKey;
+          const tid = group ? c.taskId : c.id;
+          const page = findOpenPanel(model, 'page', { dirKey: dk, task: String(tid) });
           if (page && onClosePage) onClosePage(page.getId());
         }
       }
       setPicked(new Set());
       refreshLocal();
-      toast(`已删除 ${n} 条任务${miss}`);
+      toast(`已删除 ${n} 条任务${missTxt}`);
     } catch (e) {
       // 失败保留勾选，便于改了再试
       toast('删除失败: ' + (e.message || e));
@@ -144,8 +233,11 @@ export default function ProgressPanel({
     }
   };
 
-  const openTask = (id) => {
-    if (onOpenTask) onOpenTask(id);
+  // 点卡打开任务：组模式的任务散在各成员目录，要带**所在队列**的 dirKey 寻址
+  const openCard = (c) => {
+    if (!onOpenTask) return;
+    if (group) onOpenTask(c.taskId, c.topicKey);
+    else onOpenTask(c.id);
   };
 
   const focusId = focusTask != null && String(focusTask) !== '' ? String(focusTask) : '';
@@ -154,7 +246,9 @@ export default function ProgressPanel({
     <div className="mdw-prog-host">
       {dialogNode}
       <div className="mdw-prog-h">
-        <span className="t">{topic?.name || (isGlobal ? '全局任务池' : '任务进程')}</span>
+        <span className="t">
+          {group ? `${group.name} · 任务进程` : topic?.name || (isGlobal ? '全局任务池' : '任务进程')}
+        </span>
         {cards.length > 0 && (
           <button
             type="button"
@@ -177,6 +271,27 @@ export default function ProgressPanel({
           </button>
         )}
       </div>
+      {group && projects.length > 1 && (
+        <div className="mdw-prog-filters" role="tablist" aria-label="按项目筛选进程卡">
+          <button
+            type="button"
+            className={'mdw-prog-fchip' + (!projFilter || !projects.includes(projFilter) ? ' on' : '')}
+            onClick={() => setProjFilter('')}
+          >
+            全部 <b>{groupCards.length}</b>
+          </button>
+          {projects.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={'mdw-prog-fchip' + (projFilter === p ? ' on' : '')}
+              onClick={() => setProjFilter(projFilter === p ? '' : p)}
+            >
+              {p} <b>{groupCards.filter((c) => c.projectName === p).length}</b>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="mdw-prog-sum">
         <div className="pct-row">
           <span className="pct">{avg}%</span>
@@ -204,30 +319,49 @@ export default function ProgressPanel({
       )}
       <div className="mdw-prog-list">
         {!cards.length && (
-          <div className="mdw-prog-empty">此目录还没有 MD 任务<br />写 MD 提交或导入</div>
+          <div className="mdw-prog-empty">
+            {group ? (
+              <>
+                本组还没有进行中的任务<br />在本组创建的任务会出现在这里
+              </>
+            ) : (
+              <>
+                此目录还没有 MD 任务<br />写 MD 提交或导入
+              </>
+            )}
+          </div>
         )}
         {cards.map((c) => {
-          const on = picked.has(c.id);
-          const isFocus = focusId !== '' && String(c.id) === focusId;
+          const cid = cidOf(c);
+          const on = picked.has(cid);
+          const isFocus = focusId !== '' && String(c.taskId ?? c.id) === focusId;
           return (
-            <div className={`mdw-tcard-row${on ? ' on' : ''}`} key={c.id}>
+            <div className={`mdw-tcard-row${on ? ' on' : ''}`} key={cid}>
               <input
                 type="checkbox"
                 className="mdw-tcard-pick"
                 checked={on}
-                onChange={() => togglePick(c.id)}
-                aria-label={`选择任务 #${c.id} ${c.title}`}
+                onChange={() => togglePick(cid)}
+                aria-label={`选择任务 #${c.taskId ?? c.id} ${c.title}`}
                 title="选择此任务（可多选后批量删除）"
               />
               <button
                 type="button"
                 className={`mdw-tcard ${c.status}${isFocus ? ' focus' : ''}`}
-                onClick={() => openTask(c.id)}
+                onClick={() => openCard(c)}
               >
                 <div className="mdw-tcard-h">
                   <span className={`st ${c.status}`} />
                   <div className="titles">
-                    <div className="n">{c.title}<span className="kind">md</span></div>
+                    <div className="n">
+                      {c.title}
+                      {group && c.projectName && (
+                        <span className="rp-ptag mdw-tcard-proj" title={`归属项目：${c.projectName}`}>
+                          {c.projectName}
+                        </span>
+                      )}
+                      <span className="kind">md</span>
+                    </div>
                     <div className="sub">{c.detail}</div>
                   </div>
                   <span
@@ -244,7 +378,11 @@ export default function ProgressPanel({
           );
         })}
       </div>
-      <div className="mdw-prog-note">同一目录下任务<strong>并发</strong>。点卡打开对应 MD；勾选后可批量删除。</div>
+      <div className="mdw-prog-note">
+        {group
+          ? '组发布的任务散在各成员项目队列，这里聚合显示；按项目筛选，勾选后可跨队列批量删除。'
+          : <>同一目录下任务<strong>并发</strong>。点卡打开对应 MD；勾选后可批量删除。</>}
+      </div>
     </div>
   );
 }

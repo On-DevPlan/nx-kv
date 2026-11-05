@@ -10,6 +10,7 @@
 - **`core/json-store.js` 统一存储原语**（任务 #66）：把复制了 6 份的「串行写队列 + tmp+rename 原子写 + Windows EPERM/EACCES 退避 + 损坏隔离」收口为一个原语（`createJsonStore` / `atomicWriteText` / `atomicWriteTextSync`），localtask / repos / timegoal / templates 四个 store 已接入（语义逐一对齐）；为后续迁 SQLite 做代码隔离——届时只换这一层 driver，业务调用点一行不改。
 - **任务链**（任务 #69）：评论生成 / 验收反馈重开派生的新任务统一带 `forkOf`（'队列key:编号'）+ `forkKind`（reopen / comment）落在队列行上（此前面板划选评论只有正文 frontmatter 弱链，CLI 查不到）。新增 `localtask chain --id <n>`：一条任务的祖先链 + 全部子任务一次查清（跨主题）；`localtask add --fork-of` 支持显式派生（父任务必须存在，虚链发布时报错）。
 - **任务克隆**（任务 #70）：编辑页「更多 → 克隆任务」与 `localtask clone --id <n>` ——以现任务为模板快速复制正文成一条新任务（同主题；全局任务仍进全局池）。**不带派生链**、不继承时间目标与依赖（开新活，与评论/反馈的链式派生划清界限），源任务不动。
+- **附件预览**（任务 #71）：编辑器里的图片可**点击放大**（灯箱，Esc / 点遮罩关闭）；PDF 附件**点击内置预览**（浏览器原生查看器 + 下载按钮）；其它类型（docx/zip/…）维持点击下载。文档级委托实现，编辑预览 / 旁路原文 / 弹层等所有渲染面通用。
 
 ### Fixed
 

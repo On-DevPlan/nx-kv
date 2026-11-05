@@ -36,6 +36,7 @@ import {
   saveModel,
 } from './workspace.js';
 import { useTemplates } from './modules/md/use-templates.js';
+import { installAttachmentPreview } from './modules/md/lightbox.js';
 import { loadPrefs, updatePrefs } from './prefs.js';
 import SidebarRescueFab from './components/sidebar/rescue-fab.jsx';
 import { pushRoute } from './components/layout/route-history.js';
@@ -116,6 +117,9 @@ export default function App() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+
+  // 附件预览（任务 #71）：文档级委托——图片点击放大、PDF 内置预览。装一次即覆盖全部渲染面。
+  useEffect(() => installAttachmentPreview(), []);
 
   const onNavigate = useCallback((hash) => {
     if (location.hash !== hash) location.hash = hash;

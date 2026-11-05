@@ -11,7 +11,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
-import { useDialog } from '../../components/popup/index.jsx';
+import { Modal, useDialog } from '../../components/popup/index.jsx';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import { buildReopenText } from '../../modules/board/reopen-text.js';
 import { extractAckNodes } from '../../modules/board/ack-nodes.js';
@@ -370,6 +370,27 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     else bare = bare.replace(/^#\s+.+$/m, `# ${t}`);
     return hasFm ? withFrontmatter(bare, fm) : bare;
   };
+
+  // ─── 预览提示词（任务 #65）───
+  // 工具栏「更多 → 预览提示词」：把 agent 执行 get 时会收到的**原文**摆出来。
+  // 后端是只读接口（不领取 / 不写盘 / 不启动时间目标计时 / 不为附件发网），
+  // 排版与 CLI 取任务共用 tasktool/delivery-text.js 同一份代码。
+  const [preview, setPreview] = useState(null); // null | {busy} | {error} | {data}
+  const openPreview = useCallback(() => {
+    setPreview({ busy: true });
+    // 草稿还没落库：把编辑器里的正文送去渲染（走与提交相同的 composeText，
+    // 标题行 / frontmatter 的位置与真实落库一致，预览才不会假装干净）。
+    const body = {
+      cwd: isGlobal ? (topic?.cwd || undefined) : topic?.cwd,
+      key: isGlobal ? GLOBAL_KEY : dirKey,
+      ...(isDraft
+        ? { text: composeText((doc?.title || '').trim() || '未命名任务', doc?.body || '') }
+        : { id: Number(task) }),
+    };
+    api('/api/localtasks/preview', { method: 'POST', body })
+      .then((d) => setPreview({ data: d }))
+      .catch((e) => setPreview({ error: String(e.message || e) }));
+  }, [isGlobal, topic?.cwd, dirKey, isDraft, doc?.title, doc?.body, task]);
 
   // ─── 保存 / 提交 ───
   // 时间目标的落库口径：草稿 → POST 带 duration/goalPrompt（后端 sanitize 校验写法）；
@@ -811,6 +832,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
   return (
     <div className={`mdw${beside ? ' is-beside' : ''}`} data-mode={doc.mode || 'split'} onMouseUp={onPreviewMouseUp}>
       {dialogNode}
+      {preview && <PreviewModal state={preview} onClose={() => setPreview(null)} />}
       {beside && (
         <div className="mdw-beside-h">
           <span className="mdw-beside-lab">原文（旁路）</span>
@@ -922,6 +944,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
           onSubmit={submit}
           onDelete={isDraft ? null : delTask}
           onProg={openProgress}
+          onPreview={openPreview}
           onSource={parentRef ? openParentBeside : null}
           onOverview={() => app.onNavigate && app.onNavigate('#/overview')}
           onFormat={(op) => editorApiRef.current?.format?.(op)}
@@ -1047,5 +1070,76 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
       />
       {showShortcuts && <ShortcutSheet onClose={() => setShowShortcuts(false)} />}
     </div>
+  );
+}
+
+/**
+ * 预览弹层（任务 #65）：「agent 执行 get 会收到的提示词」。
+ *
+ * 只展示服务端渲染好的原文（data.rendered）+ 段落来源，**不在前端二次拼装**——
+ * 前端一拼就会与真实交付漂移，而预览的全部价值就是「所见即所得」。
+ */
+function PreviewModal({ state, onClose }) {
+  const toast = useToast();
+  const data = state?.data;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(String(data?.rendered || ''));
+      toast('已复制原文');
+    } catch {
+      toast('复制失败（剪贴板不可用）');
+    }
+  };
+  const sw = data?.switches || {};
+  const swLine = data
+    ? [
+        `回调提示词 ${sw.suffix?.on ? `开（${sw.suffix.count} 条）` : '关'}`,
+        `ack ${sw.ack?.on ? `开（${sw.ack.count} 条）` : '关'}`,
+        `交付上下文 ${sw.deliveryTemplate?.custom ? '自定义' : '内置默认'}`,
+        `持续 get ${data.getLoop?.enabled ? `开（${data.getLoop.waitMinutes} 分钟）` : '关'}`,
+      ].join(' · ')
+    : '';
+  const title = data
+    ? `预览：agent 执行 get 会收到的提示词${data.task?.id ? ` · #${data.task.id}` : ' · 草稿'}`
+    : '预览：agent 执行 get 会收到的提示词';
+  return (
+    <Modal
+      title={title}
+      size='wide'
+      onClose={onClose}
+      footer={
+        <>
+          <span className='mdw-prev-hint'>与 CLI 取任务共用同一份排版；不含「已取得下一条任务…」头部行。</span>
+          <span className='grow' />
+          <button type='button' className='btn ghost sm' onClick={copy} disabled={!data}>复制原文</button>
+          <button type='button' className='btn sm' onClick={onClose}>关闭</button>
+        </>
+      }
+    >
+      {state.busy && <div className='mdw-prev-note'>渲染中…</div>}
+      {state.error && <div className='mdw-prev-note'>预览失败：{state.error}</div>}
+      {data && (
+        <>
+          <pre className='mdw-prev-body'>{data.rendered || ''}</pre>
+          {data.segments?.length ? (
+            <details className='mdw-prev-seg'>
+              <summary>段落来源（{data.segments.length} 段）</summary>
+              <ol>
+                {data.segments.map((s, i) => (
+                  <li key={i}>
+                    <span className='mdw-prev-seg-lab'>{s.label}</span>
+                    <span className='mdw-prev-seg-n'>{String(s.text || '').length} 字</span>
+                  </li>
+                ))}
+              </ol>
+              <div className='mdw-prev-note'>改这些段去「设置 → 提示词 / 模板」；「持续 get」在项目级设置里。</div>
+            </details>
+          ) : (
+            <div className='mdw-prev-note'>当前没有任何模板段：交付时就只有任务正文。</div>
+          )}
+          <div className='mdw-prev-switch'>{swLine}</div>
+        </>
+      )}
+    </Modal>
   );
 }

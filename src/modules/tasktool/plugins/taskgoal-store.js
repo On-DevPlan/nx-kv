@@ -97,4 +97,46 @@ export async function ensureTaskGoal(p) {
   };
 }
 
+/**
+ * 预览用的 goal 上下文（**零副作用**：不起表、不写盘）。
+ *
+ * 「预览 get 提示词」必须与真实领取**逐字一致**，否则预览就没有意义：
+ *   - 已经起过表 → 回显固化后的 prompt（领取时写死在 goal 里的那份原文）；
+ *   - 还没起表（pending 任务）→ 按声明现算（= 领取那一刻会固化的同一份文本）。
+ */
+export async function previewTaskGoal({ topicKey, taskId, name, timegoal }) {
+  if (!timegoal || !topicKey || taskId === undefined || taskId === null) return null;
+  let durationSec;
+  try {
+    durationSec = parseDuration(timegoal.duration);
+  } catch {
+    return null;
+  }
+  const state = await taskGoalState({ topicKey, taskId }).catch(() => null);
+  if (state && state.hasGoal && state.goal) {
+    return {
+      name: state.goal.name || name || `任务 #${taskId}`,
+      deadline: state.goal.deadline || '',
+      prompt: state.goal.prompt || '',
+      goalKey: taskGoalKey(topicKey, taskId),
+      durationSec,
+      started: true,
+    };
+  }
+  const goalKey = taskGoalKey(topicKey, taskId);
+  return {
+    name: name || `任务 #${taskId}`,
+    deadline: '',
+    prompt: taskGoalPrompt({
+      goalKey,
+      taskId,
+      durationHuman: formatDuration(durationSec),
+      extra: timegoal.prompt,
+    }),
+    goalKey,
+    durationSec,
+    started: false,
+  };
+}
+
 export { taskGoalState, recordTaskCheck, taskGoalKey };

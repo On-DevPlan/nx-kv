@@ -1161,3 +1161,23 @@
   border-radius:8px;background:var(--paper,#fff);
 }
 .mdw-tpl-note{margin-top:6px;font-size:11px;color:var(--mid,#838A93)}
+
+/* 预览提示词弹层（任务 #65）：交付原文 + 段落来源 + 开关状态 */
+.mdw-prev-body{
+  margin:0 0 10px;max-height:52vh;overflow:auto;padding:10px 12px;border-radius:8px;
+  border:1px solid var(--line,#E4E2DC);background:var(--soft,#F1F0EC);
+  font:400 11.5px/1.55 ui-monospace,Consolas,monospace;
+  white-space:pre-wrap;word-break:break-word;color:var(--ink,#16181C);
+}
+.mdw-prev-note{margin:6px 0;font-size:11.5px;color:var(--mid,#838A93)}
+.mdw-prev-hint{font-size:11px;color:var(--mid,#838A93)}
+.mdw-prev-seg{margin:0 0 8px;font-size:11.5px;color:var(--ink-2,#4B515A)}
+.mdw-prev-seg summary{cursor:pointer;font-weight:650}
+.mdw-prev-seg ol{margin:6px 0 0;padding-left:20px}
+.mdw-prev-seg li{margin:2px 0}
+.mdw-prev-seg-lab{margin-right:8px}
+.mdw-prev-seg-n{color:var(--mid,#838A93);font:400 11px ui-monospace,Consolas,monospace}
+.mdw-prev-switch{
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--line,#E4E2DC);
+  font-size:11.5px;color:var(--mid,#838A93);
+}

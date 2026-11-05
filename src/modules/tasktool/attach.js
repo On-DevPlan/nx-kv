@@ -38,10 +38,14 @@ async function todoAttachMod() {
  * 领取/查看时刻的附件标注：本机仓优先 → 云端镜像兜底 → 标注本地路径。
  *
  * @param {object|null} task 库存任务（normalizeTask 形状）
+ * @param {object} [opts]
+ * @param {boolean} [opts.sync=true] 是否允许为未命中的附件跑一次云端同步。
+ *   预览（面板「预览 get 提示词」）传 false——**只读盘、不发网**：预览不该因为
+ *   打开一次就悄悄下载一堆附件，也不该凭预览改变本机缓存状态。
  * @returns {Promise<null|{task:object, sync:object|null}>} null = 正文没有附件引用
  *   （调用方据此保持载荷原样）；sync 只在真的跑过云端同步时非 null。
  */
-export async function annotateTaskDelivery(task) {
+export async function annotateTaskDelivery(task, { sync: allowSync = true } = {}) {
   if (!task) return null;
   const { attachmentRefs } = await todoAttachMod();
   const refs = attachmentRefs(task.text);
@@ -55,7 +59,7 @@ export async function annotateTaskDelivery(task) {
   // 不在本机仓的 id 才考虑云端镜像；自动下载关（或全命中）就一次网都不碰
   const cloudIds = refs.filter((r) => !store.index.has(r.id)).map((r) => r.id);
   let sync = null;
-  if (cloudIds.length && cfg.autoSyncAttachments) {
+  if (allowSync && cloudIds.length && cfg.autoSyncAttachments) {
     // 说明文字 → 本地文件名：`![季度报表.docx](id)` 落盘就叫「季度报表.docx」
     // （与 todo 读任务的同一套语义，见 todo/service.js annotateAttachments）。
     const names = {};

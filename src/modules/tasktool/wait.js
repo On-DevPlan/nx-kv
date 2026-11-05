@@ -34,7 +34,7 @@ import {
   unregisterTopicWaiter,
 } from '../localtask/service.js';
 import { ensureMainPanel, deepLinkUrl, escortPanel } from './panel-escort.js';
-import { ensureTaskGoal } from './taskgoal.js';
+import { ensureTaskGoal, previewTaskGoal } from './taskgoal.js';
 import { readGroupContext } from './groupctx.js';
 import { annotateTaskDelivery, attachmentInstruction } from './attach.js';
 import * as timegoal from './timegoal.js';
@@ -113,7 +113,14 @@ function withTaskSuffix(task, suffix) {
 //                   （模板原文若追加进正文会把 {{...}} 漏进任务文本）；
 //   ''（关闭）    → 只回任务。
 // 任何异常都降级为「只回任务」——wait 绝不能因渲染挂掉（与探针同一条 fail-open 纪律）。
-async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, topicKey, params } = {}) {
+//
+// preview / trace（任务 #65「预览 get 提示词」）：
+//   preview=true → **零副作用**：不问附件云端同步（只读本机仓与镜像）、不启动
+//     任务级 timegoal 计时（用声明现算同一份 check 指令）。其余渲染路径与真实领取
+//     完全同一条代码，所以预览出来的字符串就是 agent 会拿到的那一份。
+//   trace=[]     → 按顺序记下每一段的来源（谁贡献的、开关是否开着），供面板展示
+//     「这段是哪来的」。真实领取不传 trace，行为与改造前逐字节一致。
+export async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, topicKey, params, preview = false, trace } = {}) {
   // 多条收尾指令（settings.taskSuffix 存 string[]）先按空行拼成单串再分流；
   // 兼容旧单条 string（joinTaskSuffix 对 string 原样算一条）。
   const tpl = joinTaskSuffix(suffix);
@@ -123,7 +130,7 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
   let attSeg = '';
   let attSync = null;
   try {
-    const att = await annotateTaskDelivery(task);
+    const att = await annotateTaskDelivery(task, { sync: !preview });
     if (att) {
       task = att.task;
       attSeg = attachmentInstruction(att.task.attachments, att.sync);
@@ -132,6 +139,10 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
   } catch {
     /* 标注失败照常交付（agent 还能从正文里的嵌入自行处理） */
   }
+  // 段落来源记录（预览用）：trace 为 undefined 时零开销、零行为变化
+  const mark = (id, label, text) => {
+    if (trace && text) trace.push({ id, label, text });
+  };
   try {
     // 任务级 timegoal（发布带 --duration）：**领取即计时**——这里起表（幂等），
     // goal 上下文换成任务级（prompt = check 指令，固化进 timegoal 存储，之后每轮原文回显）。
@@ -142,14 +153,17 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
         .split('\n')
         .map((l) => l.trim())
         .find(Boolean) || `任务 #${task.id}`).slice(0, 40);
-      taskGoalCtx = await ensureTaskGoal({
-        topicKey,
-        taskId: task.id,
-        cwd,
-        name: title,
-        timegoal: task.timegoal,
-        startedAtMs: parseStampMs(task.consumedAt) || undefined,
-      });
+      // 预览走只读版本：同一份 check 指令文本，但不落盘、不起表
+      taskGoalCtx = preview
+        ? await previewTaskGoal({ topicKey, taskId: task.id, cwd, name: title, timegoal: task.timegoal })
+        : await ensureTaskGoal({
+            topicKey,
+            taskId: task.id,
+            cwd,
+            name: title,
+            timegoal: task.timegoal,
+            startedAtMs: parseStampMs(task.consumedAt) || undefined,
+          });
     }
     const goal = taskGoalCtx || (await readGoalCtx(cwd));
 
@@ -191,6 +205,7 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
 
     const parts = [];
     if (groupText) parts.push(groupText);
+    mark('delivery', '交付上下文模板（组 / 项目关键路径）', groupText);
     if (hasTemplateMarkers(tpl)) {
       const instruction = renderInstruction(tpl, {
         goal,
@@ -201,6 +216,7 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
         name: name || '',
       });
       if (instruction) parts.push(instruction);
+      mark('suffix', '回调提示词（收尾指令，模板渲染）', instruction);
     } else if (!groupText) {
       // 纯文本后缀 + 无组上下文 → 老行为：追加到 task.text 末尾（幂等、不回写库存）
       const base = { task: withTaskSuffix(task, tpl) };
@@ -211,15 +227,23 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
       if (attSeg) base.instruction = base.instruction ? `${base.instruction}\n\n${attSeg}` : attSeg;
       if (ackSeg) base.instruction = base.instruction ? `${base.instruction}\n\n${ackSeg}` : ackSeg;
       if (attSync) base.attachmentsSync = attSync;
+      mark('suffix', '回调提示词（纯文本，追加在任务正文末尾）', tpl);
+      mark('goal', '任务级 check 指令（时间目标）', taskGoalCtx ? taskGoalCtx.prompt : '');
+      mark('attach', '附件段（本地路径 / 拉取方式）', attSeg);
+      mark('ack', 'ack 完成总结提示词', ackSeg);
       return base;
     } else {
       parts.push(tpl); // 纯文本后缀 + 有组上下文 → 进 instruction，不污染 task.text
+      mark('suffix', '回调提示词（纯文本）', tpl);
     }
     // 任务级 check 指令必须原样到达 agent（默认 suffix 模板不含 {{goal.prompt}}，
     // 用户自定义模板也可能漏写）——任务级 goal 存在时始终以独立段落追加。
     if (taskGoalCtx) parts.push(taskGoalCtx.prompt);
     if (attSeg) parts.push(attSeg);
     if (ackSeg) parts.push(ackSeg);
+    mark('goal', '任务级 check 指令（时间目标）', taskGoalCtx ? taskGoalCtx.prompt : '');
+    mark('attach', '附件段（本地路径 / 拉取方式）', attSeg);
+    mark('ack', 'ack 完成总结提示词', ackSeg);
 
     const full = parts.join('\n\n').trim();
     if (!full) return attSync ? { task, attachmentsSync: attSync } : { task };

@@ -79,6 +79,11 @@ function renderAdd(d) {
   return body + ignored;
 }
 
+// 交付载荷的人读正文：实现下沉到 tasktool/delivery-text.js（与面板预览共用一份，
+// 「预览 = 真实领取」这件事才有保障）。这里再导出，既有调用点与单测不用改。
+import { deliveryBodyText } from '../tasktool/delivery-text.js';
+export { deliveryBodyText };
+
 // wait 的人读输出：成功给任务（注明来自本地队列还是全局共享池），超时明确提示「本轮结束」
 function renderWait(r) {
   if (r.status === 'timeout') {
@@ -96,15 +101,30 @@ function renderWait(r) {
   const how = r.delivered ? '实时回填' : '排队任务';
   const origin = (r.source === 'global' ? '全局任务池' : '本目录队列') + ` · ${how}`;
   const header = `已取得下一条任务（${origin} · 主题「${r.cwd}」现状「${r.summary}」）: #${r.task.id}`;
-  const indent = (s) => String(s).replace(/\n/g, '\n  ');
-  // instruction（模板渲染的收尾指令）与任务正文分区打印：正文块照旧；
-  // instruction 自包含正文（模板含 {{task.text}}，服务端给出 coversBody 标志）时
-  // 直接替掉正文块——两种排布都不丢内容。无 instruction → 与旧输出逐字节一致。
-  if (r.instruction && r.coversBody) {
-    return `${header}\n  ${indent(r.instruction)}`;
+  return `${header}\n${deliveryBodyText(r)}`;
+}
+
+// 预览的人读输出：先给 agent 会收到的原文，再逐段标注来源与当前开关——
+// 用户问的是「当前具体会获得怎么样的字符串」，那就把字符串原样摆出来。
+function renderPreview(d) {
+  const t = d.task || {};
+  const lines = [
+    `预览 ${t.id ? `#${t.id}` : '(草稿)'}（只读：不领取、不写盘、不启动计时）· 交付 ${d.segments.length} 段`,
+  ];
+  lines.push('── agent 执行 get 时会收到的原文 ──');
+  lines.push(d.rendered || deliveryBodyText(d).replace(/^ {2}/gm, ''));
+  if (d.segments.length) {
+    lines.push('── 段落来源 ──');
+    for (const s of d.segments) lines.push(`  · ${s.label}（${String(s.text || '').length} 字）`);
   }
-  const body = `${header}\n  ${indent(r.task.text)}`;
-  return r.instruction ? `${body}\n  ── 收尾指令 ──\n  ${indent(r.instruction)}` : body;
+  const sw = d.switches || {};
+  lines.push(
+    `── 开关 ── 回调提示词 ${sw.suffix?.on ? `开（${sw.suffix.count} 条）` : '关'}` +
+      ` · ack ${sw.ack?.on ? `开（${sw.ack.count} 条）` : '关'}` +
+      ` · 交付上下文 ${sw.deliveryTemplate?.custom ? '自定义' : '内置默认'}` +
+      ` · 持续 get ${d.getLoop?.enabled ? `开（${d.getLoop.waitMinutes} 分钟）` : '关'}`,
+  );
+  return lines.join('\n');
 }
 
 // cancel 的人读输出：等待中→已关闭（主题与任务保留）；非等待中→无操作；全局→不可关闭
@@ -191,6 +211,45 @@ export default {
         return getTask({ cwd: ctx.cwd, summary: ctx.summary, timeoutSec: ctx.timeout, open: !ctx['no-open'], params: parseParams(ctx.param) });
       },
       render: renderWait, // 返回形状与 wait 同构（ok/timeout），复用同一份人读渲染
+    },
+    {
+      // 预览（任务 #65）：编辑页「更多 → 预览 get 提示词」的接口层。
+      // **只读**：不领取、不写盘、不启动时间目标计时、不为附件发网。
+      // 它与真实领取走同一条 buildTaskDelivery（见 tasktool/preview.js 的三条纪律），
+      // 所以预览出来的字符串就是 agent 会拿到的那一份。
+      id: 'localtask.preview',
+      cli: ['localtask', 'preview'],
+      http: ['POST', '/api/localtasks/preview'],
+      summary:
+        '预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览',
+      flags: {
+        id: { type: 'number', hint: '任务编号（草稿预览可省，改给 --text）' },
+        cwd: CWD,
+        key: KEY,
+        text: { type: 'string', hint: '直接预览这段正文（草稿未落库时用；给了就不读库存）' },
+        param: { type: 'array', hint: '外部参数（平面扩展）：k=v，与 get 的 --param 同语义' },
+      },
+      run: async (ctx) => {
+        const { previewTaskDelivery } = await import('../tasktool/preview.js');
+        const { parseParams } = await import('../tasktool/params.js');
+        const draftText = ctx.text === undefined || ctx.text === null ? '' : String(ctx.text);
+        if (!draftText.trim() && (ctx.id === undefined || ctx.id === null)) {
+          throw badInput('需要 --id <任务编号>（预览库存任务）或 --text <正文>（预览草稿）');
+        }
+        const task = draftText.trim()
+          ? { id: 0, text: draftText, status: 'draft' }
+          : await service.getTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
+        // 任务级 timegoal 按主题 key 寻址：没显式给 key 就从 cwd 归一化出来
+        const topicKey = ctx.key || service.normalizeCwd(ctx.cwd).key;
+        return previewTaskDelivery({
+          task,
+          cwd: ctx.cwd,
+          key: topicKey,
+          summary: '',
+          params: parseParams(ctx.param),
+        });
+      },
+      render: renderPreview,
     },
     {
       // 修改反馈 / 重做 / 加评论 → **新建一条任务**（新的 md），旧任务**归档**。

@@ -92,6 +92,7 @@ export default function ToolBar({
   onSubmit,
   onDelete,
   onProg,
+  onPreview,
   onSource,
   onOverview,
   onFormat,
@@ -108,6 +109,10 @@ export default function ToolBar({
   }, [mode]);
 
   const secondary = [
+    // 预览：**看 agent 到底会收到什么**（任务 #65）。不是「预览渲染效果」，
+    // 而是把交付链路（组上下文 / 收尾指令 / check 指令 / 附件 / ack / 持续 get）
+    // 拼出来的原文摆出来——模板可配之后，这是唯一可信的观测口。
+    onPreview && { id: 'preview', label: '预览提示词', run: onPreview },
     mode !== 'split' && { id: 'import', label: '导入', run: onImport },
     { id: 'new', label: '新任务', run: onNew },
     showMark && { id: 'mark', label: '评论', run: onMark },

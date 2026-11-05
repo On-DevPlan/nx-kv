@@ -93,6 +93,7 @@ export default function ToolBar({
   onDelete,
   onProg,
   onPreview,
+  onClone,
   onSource,
   onOverview,
   onFormat,
@@ -115,6 +116,8 @@ export default function ToolBar({
     onPreview && { id: 'preview', label: '预览提示词', run: onPreview },
     mode !== 'split' && { id: 'import', label: '导入', run: onImport },
     { id: 'new', label: '新任务', run: onNew },
+    // 克隆（#70）：内容快速复制成新任务，不建派生链（与评论/反馈的链式派生区分）
+    onClone && { id: 'clone', label: '克隆任务', run: onClone },
     showMark && { id: 'mark', label: '评论', run: onMark },
     mode !== 'split' && { id: 'draft', label: '存草稿', run: onDraft },
     onDelete && { id: 'delete', label: '删除', run: onDelete, danger: true },

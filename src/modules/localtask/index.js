@@ -237,6 +237,20 @@ export default {
       render: renderChain,
     },
     {
+      // 克隆（#70）：以现任务为模板快速复制内容成一条新任务。**不建派生链**——
+      // forkOf 留空（那条语义属于 reopen 反馈 / 评论派生），时间目标与依赖也不继承；
+      // 源任务不动，克隆后两条并存。
+      id: 'localtask.clone',
+      cli: ['localtask', 'clone'],
+      http: ['POST', '/api/localtasks/clone'],
+      summary:
+        '克隆任务：复制正文内容为一条新任务（同主题；全局任务仍进全局池）。不带派生链、不继承时间目标与依赖——开新活用',
+      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
+      run: (ctx) => service.cloneTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
+      render: (d) =>
+        `已克隆 #${d.from.id} → #${d.task.id} @ ${d.name}（内容复制，无派生链；${d.delivered ? '已实时投递' : '待领取'}）`,
+    },
+    {
       // 领取（todo.md 的「get」）：默认直接领——队列有任务立即返回，没有立即空手而回
       // （不阻塞）；项目开启「持续 get」（repo getLoop）后升级为 waitgoal：
       // 无任务自动唤起阻塞窗口（打开页面 + 项目配置的分钟数），领到的交付文本

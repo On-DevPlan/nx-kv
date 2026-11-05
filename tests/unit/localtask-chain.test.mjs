@@ -84,3 +84,31 @@ test('旧数据兼容：无 forkKind 的行 normalizeTask 出空串；taskChain 
   const chain = await svc.taskChain({ key: '0000000000000000', id: 1 }).catch(() => null);
   assert.equal(chain, null, '主题/任务不存在 → notFound（这里没有该主题）');
 });
+
+test('clone：内容逐字复制，不带派生链、不继承约束，源任务不动（#70）', async () => {
+  const src = await svc.addTask({
+    cwd: dirA,
+    text: '# 模板任务\n\n正文原样',
+    timegoal: { duration: '2h', prompt: '别漂' },
+  });
+  const c = await svc.cloneTask({ cwd: dirA, id: src.task.id });
+  assert.equal(c.cloned, true);
+  assert.equal(c.from.id, src.task.id);
+  assert.ok(c.task.id !== src.task.id, '新编号');
+  assert.equal(c.task.text, '# 模板任务\n\n正文原样', '正文逐字复制');
+  assert.equal(c.task.forkOf, '', '克隆不建派生链');
+  assert.equal(c.task.forkKind, '');
+  assert.equal(c.task.timegoal, null, '不继承时间目标（约束跟着活走）');
+  // 源任务不动：仍 pending，链上也没有克隆这条
+  const back = await svc.taskChain({ cwd: dirA, id: src.task.id });
+  assert.equal(back.task.status, 'pending');
+  assert.equal(back.children.some((x) => x.id === c.task.id), false, '克隆不进链');
+});
+
+test('clone：全局任务的克隆仍进全局池', async () => {
+  const g = await svc.addTask({ text: '# 全局模板任务', global: true });
+  const c = await svc.cloneTask({ key: '__GLOBAL__', id: g.task.id });
+  assert.equal(c.isGlobal, true);
+  assert.equal(c.task.forkOf, '');
+  assert.equal(c.task.text, '# 全局模板任务');
+});

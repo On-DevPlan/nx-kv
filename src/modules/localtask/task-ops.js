@@ -1,7 +1,7 @@
 // （#54 自 service.js 拆出）单条任务的查/增/改：getTask、addTask（waiter 唤醒链 +
 // 全局池 FIFO 投递 + ignoredCwd 如实回带）、updateTask（正文/时间目标/DAG 依赖/改归属搬家）。
 import { basename } from 'node:path';
-import { badInput } from '../../core/errors.js';
+import { badInput, notFound } from '../../core/errors.js';
 import { parseFrontmatter, preserveFrontmatter } from '../../shared/frontmatter.js';
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from './dag.js';
@@ -310,4 +310,32 @@ export async function updateTask({
     moved,
     movedFrom,
   };
+}
+
+/**
+ * 克隆任务（#70）：以现任务为模板快速复制一条新任务——**只复制正文内容**。
+ *
+ * 与派生（reopen 反馈 / 评论 forkOf）刻意划清界限：
+ *   - 不写 forkOf / forkKind——克隆没有「从哪来」的语义，就是拿内容当模板开新活；
+ *   - 不继承 timegoal / blockBy / blocksFollowing——约束跟着活走，克隆是新的一件；
+ *   - 源任务一个字不动（不归档、不改状态）——clone 之后两条并存。
+ * 落点：同主题（全局任务仍进全局池）。正文带 frontmatter 时走 addTask 既有口径
+ * （归属 fail-open、落点跟项目队列）。
+ */
+export async function cloneTask({ cwd: rawCwd, key: rawKey, id } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const want = Number(id);
+  if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
+  const store = await loadStore();
+  const t = store.topics[key];
+  if (!t) throw notFound('主题不存在: ' + key);
+  const src = (t.tasks || []).find((x) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
+  if (!src) throw notFound('任务不存在或已删除: #' + want);
+  const toGlobal = isGlobalKey(key);
+  const res = await addTask({
+    text: src.text,
+    global: toGlobal,
+    cwd: toGlobal ? undefined : t.cwd || rawCwd,
+  });
+  return { ...res, cloned: true, from: { key, id: want } };
 }

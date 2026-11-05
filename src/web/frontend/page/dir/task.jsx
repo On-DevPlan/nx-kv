@@ -632,6 +632,28 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     app.openPage && app.openPage({ dirKey, task: draftId, name: '新任务' });
   };
 
+  /** 「更多 → 克隆任务」：以当前任务为模板快速复制一条新任务（#70）。
+   *  只复制正文内容，**不带派生链**（forkOf 留空——那条语义属于评论/反馈派生），
+   *  也不继承时间目标与依赖；源任务不动，克隆后两条并存。 */
+  const cloneCur = () => {
+    if (isDraft || task == null || /^draft/i.test(String(task))) {
+      toast('草稿没有可克隆的队列任务');
+      return;
+    }
+    guard(async () => {
+      const res = await api('/api/localtasks/clone', {
+        method: 'POST',
+        body: isGlobal ? { id: Number(task) } : { id: Number(task), cwd: topic?.cwd },
+      });
+      toast(`已克隆为新任务 #${res.task?.id ?? res.id}`);
+      refreshLocal();
+      const newId = res?.task?.id ?? res?.id;
+      if (newId != null && app.openPage) {
+        app.openPage({ dirKey, task: String(newId), name: `${(doc?.title || '任务').slice(0, 30)}（克隆）` });
+      }
+    });
+  };
+
   /** 划线评论 → **直接提交**成新任务：锚定选区原文，正文就是提出的问题。
    *
    * 两条口径（用户验收反馈 2026-11-04）：
@@ -949,6 +971,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
           onDelete={isDraft ? null : delTask}
           onProg={openProgress}
           onPreview={openPreview}
+          onClone={isDraft ? null : cloneCur}
           onSource={parentRef ? openParentBeside : null}
           onOverview={() => app.onNavigate && app.onNavigate('#/overview')}
           onFormat={(op) => editorApiRef.current?.format?.(op)}

@@ -20,7 +20,11 @@ export default function Introduction({ kind, owner, model }) {
 
   if (!owner || !docRef) return null;
 
-  const pathLabel = docRef.startsWith('rel:') ? docRef.slice(4) : docRef;
+  // 主篇以「介绍文档集」为准（目录 index.md 优先 → 旧单文件回落）——
+  // 路径标签显示的必须是真正的主篇那篇。
+  const mainEntry = links.find((l) => l.main);
+  const mainRef = mainEntry ? mainEntry.docId : docRef;
+  const pathLabel = mainRef.startsWith('rel:') ? mainRef.slice(4) : mainRef;
   const extras = links.filter((l) => !l.main);
   const onAdd = () => addRef(dialog, toast).catch((e) => toast(String(e.message || e)));
 

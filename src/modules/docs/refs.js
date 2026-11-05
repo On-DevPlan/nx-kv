@@ -11,6 +11,7 @@ import { normalizeKey } from '../../core/keys.js';
 import { reposBridge } from './repos-bridge.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
 import { withLinkMeta } from './docref.js';
+import { readIntroSet } from './knowledge.js';
 
 // 看板定位（id / key / 名称）：boardKeyOf 由 bridge 注入（key 口径必须与 repos 完全一致）
 function findBoardIn(s, idOrKey, { normalizeKey: nk, boardKeyOf }) {
@@ -157,14 +158,36 @@ export async function listRepoDocs(locator) {
   const repo = await getRepo(locator);
   const s = await loadStore();
   const r = s.repos.find((x) => deriveKey(x) === deriveKey(repo));
-  const main = r && r.doc ? r.doc : null;
+  const key = deriveKey(repo);
   const links = r && Array.isArray(r.docLinks) ? r.docLinks : [];
-  return {
-    repo: { key: deriveKey(repo), name: repo.name },
-    main,
+  // 介绍文档集：**主篇 + 其余各篇**（目录主篇优先 → 旧单文件回落）——#58
+  const set = await readIntroSet({
+    dirRel: paths.repoDocDirRel(key),
+    legacyRel: paths.repoDocRel(key),
+    ref: r && r.doc ? r.doc : null,
     links,
-    count: (main ? 1 : 0) + links.length,
+    warnings: [],
+    label: '项目介绍',
+  });
+  const main = set.main ? docRefOut(set.main) : null;
+  const extras = (set.extras || []).map((d) => ({ ...docRefOut(d), name: d.name || '', isReference: !!d.isReference }));
+  return {
+    repo: { key, name: repo.name },
+    main,
+    extras,
+    links,
+    count: (main ? 1 : 0) + extras.length + links.length,
   };
+}
+
+/** 文档集条目 → DocRef 形状（自有树给 rel，外部给 path） */
+function docRefOut(d) {
+  if (!d) return null;
+  if (d.rel) return { rel: d.rel };
+  if (d.docId && String(d.docId).startsWith('rel:')) return { rel: String(d.docId).slice(4) };
+  if (d.path) return { path: d.path };
+  if (d.abs) return { path: d.abs };
+  return null;
 }
 
 /** 往项目的介绍文档集里加一篇（rel / path / ref+rel 三选一；note/tag 可选注解）。

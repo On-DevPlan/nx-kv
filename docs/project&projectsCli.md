@@ -58,6 +58,17 @@ nx-kv docs seed --apply
 | `board/<组 slug>.md` | **项目组介绍** | `board add --desc` |
 | `group/<组 slug>/<key>.md` | 组内描述 | `board note --note` |
 
+介绍**不止一篇**：每个项目 / 组都有一棵「介绍目录」，主篇是 `index.md`，其余是补充说明：
+
+```
+repo/<key>/index.md            项目介绍主篇（目录主篇优先于旧单文件 repo/<key>.md）
+repo/<key>/*.md                其余补充说明（都进「描述列表」）
+repo/<key>/reference/*.md      reference 补充说明（列表里单独标记）
+board/<组 slug>/index.md       组介绍主篇
+```
+
+交付与面板都按**列表**呈现：主篇给正文，其余各篇给可读路径。
+
 正文也可以手写或换成外部文件（外部只读、不进导出包）：
 
 ```bash

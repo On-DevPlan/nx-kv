@@ -46,6 +46,33 @@ export async function readGroupContext(cwd) {
 }
 
 /**
+ * 介绍段：主篇（正文）+ 其余各篇（可读路径）。
+ * 描述是**文档集**（主篇 + 其余 md），不是孤立的一篇——#58。
+ * @param {string} header 段标题（如「组介绍」/「〔项目介绍 · x〕」）
+ * @param {{body: string, path: string}} intro 主篇
+ * @param {{count?: number, extras?: Array}|null} set 文档集
+ * @returns {string[]} 渲染行
+ */
+function introLines(header, intro, set) {
+  const out = [];
+  const extras = (set && set.extras) || [];
+  const count = (set && set.count) || (extras.length ? extras.length + 1 : 1);
+  const path = intro.path || 'docs';
+  if (count > 1) {
+    out.push(`${header}（${count} 篇）`);
+    out.push(`主篇（${path}）：`);
+  } else {
+    out.push(`${header}（${path}）：`);
+  }
+  out.push(clipIntro(intro.body, intro.path));
+  if (extras.length) {
+    out.push('其余介绍文档（可直接读取）：');
+    for (const d of extras) out.push(`  - ${d.abs || d.docId || d.rel || ''}`);
+  }
+  return out;
+}
+
+/**
  * 把组上下文渲染成交付文本里的一段。
  * 结构：项目介绍 → 组概念 → 本项目位置 → 兄弟成员 → 参考文件地址。
  *
@@ -55,9 +82,17 @@ export function renderGroupContext(ctx) {
   if (!ctx) return '';
   const lines = [];
   const repo = ctx.repo || {};
+  // 项目介绍：**主篇 + 其余各篇**（描述是 md 列表，不是一篇——#58）
   if (repo.intro && repo.intro.body) {
-    lines.push(`〔项目介绍 · ${repo.name || repo.key || ''}〕${repo.intro.path ? `（${repo.intro.path}）` : ''}：`);
-    lines.push(clipIntro(repo.intro.body, repo.intro.path));
+    lines.push(...introLines(`〔项目介绍 · ${repo.name || repo.key || ''}〕`, repo.intro, repo.introSet));
+    lines.push('');
+  }
+  // 项目自己登记的补充文档（外部 / ref 仓库里的文件）——给可读路径，agent 直接读盘
+  if (repo.docLinks && repo.docLinks.length) {
+    lines.push('项目补充文档（可直接读取）：');
+    for (const d of repo.docLinks) {
+      lines.push(`  - ${d.abs || d.rel}${d.tag ? `  [${d.tag}]` : ''}${d.note ? `  # ${d.note}` : ''}`);
+    }
     lines.push('');
   }
   if (!ctx.groups || !ctx.groups.length) return lines.join('\n').trim();
@@ -65,8 +100,7 @@ export function renderGroupContext(ctx) {
     lines.push(`〔项目组上下文 · ${g.name}〕`);
     if (g.desc) lines.push(`组定位：${g.desc}`);
     if (g.intro && g.intro.body) {
-      lines.push(`组介绍（${g.intro.path || 'docs'}）：`);
-      lines.push(clipIntro(g.intro.body, g.intro.path));
+      lines.push(...introLines('组介绍', g.intro, g.introSet));
     }
     if (g.note) lines.push(`本项目在组里的位置：${g.note}`);
     if (g.peers && g.peers.length) {

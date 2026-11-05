@@ -27,9 +27,20 @@ import {
   findBoard,
 } from './service.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
-import { boardDocRel, groupNoteRel } from '../docs/paths.js';
+import { boardDocDirRel, boardDocRel, groupNoteRel } from '../docs/paths.js';
+import { readIntroSet } from '../docs/knowledge.js';
 
 const cleanText = (v) => String(v || '').trim();
+
+/** 介绍文档集条目 → DocRef 形状（自有树给 rel，外部给 path） */
+function introRefOut(d) {
+  if (!d) return null;
+  if (d.rel) return { rel: d.rel };
+  if (d.docId && String(d.docId).startsWith('rel:')) return { rel: String(d.docId).slice(4) };
+  if (d.path) return { path: d.path };
+  if (d.abs) return { path: d.abs };
+  return null;
+}
 
 // 组内描述：同一个仓库在不同看板里的角色可以各不相同（「fr 组里它是 API 契约方」，
 // 「nx 组里它只是同族工具」），所以描述挂在**看板的成员关系**上（repoNotes，按 key），
@@ -108,6 +119,15 @@ export async function getBoard(idOrKey) {
   if (!b) b = s.boards.find((x) => boardKeyOf(x.name) === normalizeKey(raw));
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!b) throw notFound('看板不存在: ' + raw);
+  // 组介绍是**文档集**（主篇 + 其余各篇），不是孤立的一篇——#58
+  const set = await readIntroSet({
+    dirRel: boardDocDirRel(b.name),
+    legacyRel: boardDocRel(b.name),
+    ref: b.doc || null,
+    links: b.docLinks,
+    warnings: [],
+    label: `组介绍·${b.name}`,
+  });
   return {
     id: b.id,
     name: b.name,
@@ -115,6 +135,10 @@ export async function getBoard(idOrKey) {
     key: boardKeyOf(b.name),
     docRel: b.doc?.rel || boardDocRel(b.name),
     docPath: b.doc?.path || '',
+    // 介绍文档集：主篇（目录 index.md 优先）+ 其余各篇
+    introMain: set.main ? introRefOut(set.main) : null,
+    introExtras: (set.extras || []).map((d) => ({ ...introRefOut(d), name: d.name || '' })),
+    introCount: set.count,
     docLinks: Array.isArray(b.docLinks) ? b.docLinks : [],
     repos: membersOf(s, b),
   };

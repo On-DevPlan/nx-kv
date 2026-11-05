@@ -48,6 +48,9 @@ export function useIntro({ kind, owner, model }) {
   const docRef = useMemo(() => introRefOf(owner, kind), [owner, kind]);
 
   const [links, setLinks] = useState([]); // [{ docId, label, note, main }]
+  // 主篇 docId：以后端返回的「介绍文档集」为准（目录 index.md 优先，
+  // 旧单文件回落）；拿不到才用 prop 推的 docRef。
+  const [mainDocId, setMainDocId] = useState("");
   const [tick, setTick] = useState(0);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
@@ -64,10 +67,18 @@ export function useIntro({ kind, owner, model }) {
         .then((d) => {
           if (!alive) return;
           const out = [];
-          if (d.main) {
-            const id = linkDocId(d.main);
-            if (id) out.push({ docId: id, label: d.main.rel || d.main.path || '主篇', note: d.main.note || '', tag: d.main.tag || '', main: true, ref: d.main.ref || '' });
+          // 主篇：文档集的主篇（目录 index.md 优先 → 旧单文件回落）
+          const mid = linkDocId(d.main);
+          setMainDocId(mid || docRef);
+          if (mid) {
+            out.push({ docId: mid, label: d.main.rel || d.main.path || '主篇', note: d.main.note || '', tag: d.main.tag || '', main: true, ref: d.main.ref || '' });
           }
+          // 其余：介绍目录里的补充说明（同一目录下的其他 md）
+          for (const l of d.extras || []) {
+            const id = linkDocId(l);
+            if (id) out.push({ docId: id, label: l.name || l.rel || l.path || '补充', note: l.note || '', tag: l.tag || '', main: false, ref: l.ref || '' });
+          }
+          // 登记在册的补充文档（外部 / ref 仓库里的文件）
           for (const l of d.links || []) {
             const id = linkDocId(l);
             // ref 随条目留着：ref 形态的链接（参考仓库内文件）不能按 rel 回写，标签编辑要对它关掉
@@ -75,7 +86,7 @@ export function useIntro({ kind, owner, model }) {
           }
           setLinks(out);
         })
-        .catch(() => { if (alive) setLinks([]); });
+        .catch(() => { if (alive) { setLinks([]); setMainDocId(docRef); } });
     } else {
       // board 分支拉实时数据（GET /api/boards/:id）而不是读 owner prop——
       // owner 是父层的 repoData 快照，addRef / 改 tag 后不会自动刷新：
@@ -95,10 +106,19 @@ export function useIntro({ kind, owner, model }) {
           const links = Array.isArray(bd && bd.docLinks) ? bd.docLinks : null;
           if (!links) {
             setLinks(fromOwner());
+            setMainDocId(docRef);
             return;
           }
           const out = [];
-          if (docRef) out.push({ docId: docRef, label: '主篇', note: '', tag: '', main: true, ref: '' });
+          // 主篇：文档集的主篇（目录 index.md 优先 → 旧单文件回落）
+          const mid = linkDocId(bd && bd.introMain) || docRef;
+          setMainDocId(mid);
+          if (mid) out.push({ docId: mid, label: '主篇', note: '', tag: '', main: true, ref: '' });
+          // 其余：介绍目录里的补充说明
+          for (const l of (bd && bd.introExtras) || []) {
+            const id = linkDocId(l);
+            if (id) out.push({ docId: id, label: l.name || l.rel || l.path || '补充', note: l.note || '', tag: l.tag || '', main: false, ref: l.ref || '' });
+          }
           // ref 随条目留着：ref 形态的链接（参考仓库内文件）不能按 rel 回写，标签编辑要对它关掉
           for (const l of links) {
             const id = linkDocId(l);
@@ -106,7 +126,7 @@ export function useIntro({ kind, owner, model }) {
           }
           setLinks(out);
         })
-        .catch(() => { if (alive) setLinks(fromOwner()); });
+        .catch(() => { if (alive) { setLinks(fromOwner()); setMainDocId(docRef); } });
     }
     return () => { alive = false; };
   }, [kind, ownerKey, owner, docRef, tick]);
@@ -119,9 +139,10 @@ export function useIntro({ kind, owner, model }) {
 
   /** 打开主篇（缺文档时 DocPanel 给「创建骨架」） */
   const openMain = useCallback(() => {
-    if (!docRef) return;
-    openByDocId(docRef, null, openExtra);
-  }, [docRef, openByDocId, openExtra]);
+    const target = mainDocId || docRef;
+    if (!target) return;
+    openByDocId(target, null, openExtra);
+  }, [mainDocId, docRef, openByDocId, openExtra]);
 
   const openDoc = useCallback(
     (id) => openByDocId(id, null, openExtra),
@@ -192,6 +213,7 @@ export function useIntro({ kind, owner, model }) {
     label,
     ownerKey,
     docRef,
+    mainDocId,
     links,
     openMain,
     openDoc,

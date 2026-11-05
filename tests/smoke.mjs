@@ -717,6 +717,8 @@ try {
   check('保存后摘要回写 desc', repoShow.desc === '改过的介绍', repoShow.desc);
 
   check('docs add 自由文档', (await cli(['docs', 'add', 'notes/free.md', '--body', '# 自由\n\n链接 [[alpha]]'])).status === 0);
+  // 介绍是**md 列表**（#58）：介绍目录里的补充说明进介绍集
+  check('docs add 补充说明（介绍目录内）', (await cli(['docs', 'add', 'repo/github.com/me/alpha/reference/qa.md', '--body', '# 问答\n\n常见问题'])).status === 0);
   const idx = await cliJson(['docs', 'index']);
   check('docs index 双链索引含 alpha', Array.isArray(idx.index) && idx.index.some((x) => x.name === 'alpha'), JSON.stringify(idx).slice(0, 160));
 
@@ -729,6 +731,14 @@ try {
   check('knowledge 组内描述已播种', know.boards[0].note && !know.boards[0].note.missing);
   const knowMd = await cliJson(['repo', 'knowledge', 'alpha', '--md']);
   check('knowledge --md 单篇以仓库标题开头', typeof knowMd.md === 'string' && knowMd.md.startsWith('# alpha'));
+  const docList = await cliJson(['repo', 'doc', 'list', 'alpha']);
+  check(
+    'repo doc list：主篇 + 介绍目录里的补充篇',
+    !!(docList.main && (docList.extras || []).some((x) => String(x.rel || '').endsWith('qa.md'))),
+    JSON.stringify(docList).slice(0, 240)
+  );
+  const knowMd2 = await cliJson(['repo', 'knowledge', 'alpha', '--md']);
+  check('knowledge --md 列出其余介绍文档', String(knowMd2.md || '').includes('qa.md'), String(knowMd2.md || '').slice(-300));
 
   const zipPath = join(tmp, 'export.zip');
   check('repo export --zip', (await cli(['repo', 'export', '--zip', zipPath])).status === 0);
@@ -737,16 +747,16 @@ try {
   process.env.NX_KV_DOCS_DIR = join(tmp, 'docs2');
   const imp = await cliJson(['repo', 'import', zipPath]);
   check('import zip 执行成功', imp && !imp.__error, JSON.stringify(imp).slice(0, 200));
-  check('import 还原文档树（4 份全写入）', imp.docs && imp.docs.written.length === 4, JSON.stringify(imp.docs).slice(0, 200));
+  check('import 还原文档树（5 份全写入）', imp.docs && imp.docs.written.length === 5, JSON.stringify(imp.docs).slice(0, 200));
   const list2 = await cliJson(['docs', 'list']);
-  check('导入后 docs list 4 份', list2.count === 4, JSON.stringify(list2.docs.map((d) => d.rel)));
+  check('导入后 docs list 5 份', list2.count === 5, JSON.stringify(list2.docs.map((d) => d.rel)));
   const got = await cliJson(['docs', 'get', 'repo/github.com/me/alpha.md']);
   check('导入还原正文', got.body === '# alpha\n\n改过的介绍');
   const boardAfter = await cliJson(['board', 'get', 'nx系列']);
   check('导入还原成员与组内描述', boardAfter.repos.length === 1 && boardAfter.repos[0].note === '组里的任务出入口');
 
   const docsHttp = await (await fetch(base + '/api/docs')).json();
-  check('api docs 列表可达', docsHttp.ok && Array.isArray(docsHttp.data.docs) && docsHttp.data.docs.length === 4);
+  check('api docs 列表可达', docsHttp.ok && Array.isArray(docsHttp.data.docs) && docsHttp.data.docs.length === 5);
 
   // ─── 14. 任务工具：--duration → get 领取带 check 指令 → done 门禁 ───
   const ttDir = join(tmp, 'tt-proj');

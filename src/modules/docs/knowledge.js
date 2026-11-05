@@ -110,7 +110,16 @@ export async function repoKnowledge(locator, { md = false } = {}) {
   const warnings = [];
   const closure = await store.externalClosure(s);
 
-  const intro = await readRef(repo.doc, paths.repoDocRel(rk), { warnings, label: '项目介绍' });
+  // 介绍是**文档集**（主篇 + 其余各篇）——#58
+  const introSet = await readIntroSet({
+    dirRel: paths.repoDocDirRel(rk),
+    legacyRel: paths.repoDocRel(rk),
+    ref: repo.doc,
+    links: repo.docLinks,
+    warnings,
+    label: '项目介绍',
+  });
+  const intro = introSet.main ? { ...introSet.main } : { missing: true, docId: paths.repoDocRel(rk) };
 
   // 所属组：显式成员（与 listBoards 同一口径）
   const boards = [];
@@ -118,7 +127,15 @@ export async function repoKnowledge(locator, { md = false } = {}) {
     const members = boardRepoKeys(b, s);
     if (!members.includes(rk)) continue;
     const bkey = boardKeyOf(b.name);
-    const bIntro = await readRef(b.doc, paths.boardDocRel(b.name), { warnings, label: `组介绍·${b.name}` });
+    const bIntroSet = await readIntroSet({
+      dirRel: paths.boardDocDirRel(b.name),
+      legacyRel: paths.boardDocRel(b.name),
+      ref: b.doc,
+      links: b.docLinks,
+      warnings,
+      label: `组介绍·${b.name}`,
+    });
+    const bIntro = bIntroSet.main ? { ...bIntroSet.main } : { missing: true, docId: paths.boardDocRel(b.name) };
     const noteRef = (b.repoDocs || {})[rk];
     const note = await readRef(noteRef, paths.groupNoteRel(b.name, rk), { warnings, label: `组内描述·${b.name}/${rk}` });
     // 组级附加文档：自有/单文件进全文；目录绑定只列清单
@@ -144,7 +161,7 @@ export async function repoKnowledge(locator, { md = false } = {}) {
         docLinks.push({ note: l.note || '', ...meta, ...(await readExternalDoc(abs, { warnings, label: `组绑定·${l.path}` })) });
       }
     }
-    boards.push({ name: b.name, key: bkey, intro: bIntro, note, docLinks, externalDirs });
+    boards.push({ name: b.name, key: bkey, intro: bIntro, introSet: bIntroSet, note, docLinks, externalDirs });
   }
 
   // 参考仓库（dev 侧反向引用 {kind:'ref'}）
@@ -158,6 +175,7 @@ export async function repoKnowledge(locator, { md = false } = {}) {
   const out = {
     repo: { key: rk, name: repo.name, path: repo.path, desc: repo.desc || '', remote: repo.remote || '', type: repo.type || 'dev' },
     intro: intro.missing ? null : intro,
+    introSet,
     boards,
     refs,
     warnings,
@@ -171,10 +189,10 @@ function renderMd(k) {
   const lines = [];
   const heading = (t) => (lines.length ? lines.push('', t) : lines.push(t));
   heading(`# ${k.repo.name}`);
-  if (k.intro && !k.intro.missing) lines.push(k.intro.body.trim());
+  lines.push(...introMdLines(k.introSet, k.intro));
   for (const b of k.boards) {
     heading(`## 组：${b.name}`);
-    if (b.intro && !b.intro.missing) lines.push(b.intro.body.trim());
+    lines.push(...introMdLines(b.introSet, b.intro));
     if (b.note && !b.note.missing) lines.push(b.note.body.trim());
     for (const d of b.docLinks) {
       if (!d.missing && d.body) lines.push(d.body.trim());
@@ -191,19 +209,6 @@ function renderMd(k) {
   return lines.join('\n');
 }
 
-/**
- * **介绍文档**：绑定优先（外部绝对路径 / 自有 rel），缺省走约定路径。
- * 返回 { body, path }——path 给 agent 直接读盘（自有树给绝对路径）。
- */
-async function readIntroDoc(ref, fallbackRel, { warnings, label }) {
-  if (ref && ref.path) {
-    const ext = await readExternalDoc(ref.path, { warnings, label });
-    return { body: ext.body || '', path: ref.path };
-  }
-  const rel = (ref && ref.rel) || fallbackRel;
-  const own = await readOwn(rel, { warnings, label });
-  return { body: own.body || '', path: join(paths.docsRoot(), rel) };
-}
 
 /**
  * **项目组上下文**（交付层用）：某个工作目录所属仓库所在的项目组材料。
@@ -227,14 +232,33 @@ export async function groupContextFor(cwd) {
   const closure = await store.externalClosure(s);
   const groups = [];
 
-  // 项目介绍（项目级任务也要带——它回答「这个项目是干什么的」）
-  const repoIntro = await readIntroDoc(repo.doc, paths.repoDocRel(rk), { warnings, label: '项目介绍' });
+  // 项目介绍（项目级任务也要带——它回答「这个项目是干什么的」）。
+  // 介绍是**文档集**（主篇 + 其余各篇），不是孤立的一篇——#58。
+  const repoIntroSet = await readIntroSet({
+    dirRel: paths.repoDocDirRel(rk),
+    legacyRel: paths.repoDocRel(rk),
+    ref: repo.doc,
+    links: repo.docLinks,
+    warnings,
+    label: '项目介绍',
+  });
+  const repoIntro = mainAsIntro(repoIntroSet);
+  // 项目自己登记的补充文档（外部 / ref 仓库里的文件）——交付时给可读路径
+  const repoDocLinks = linkEntries(repo.docLinks, closure);
 
   for (const b of s.boards) {
     const members = boardRepoKeys(b, s);
     if (!members.includes(rk)) continue;
-    // 组介绍（绑定优先，缺省约定路径）
-    const intro = await readIntroDoc(b.doc, paths.boardDocRel(b.name), { warnings, label: `组介绍·${b.name}` });
+    // 组介绍（绑定优先 → 介绍目录主篇 → 旧单文件；是文档集，不是一篇）
+    const introSet = await readIntroSet({
+      dirRel: paths.boardDocDirRel(b.name),
+      legacyRel: paths.boardDocRel(b.name),
+      ref: b.doc,
+      links: b.docLinks,
+      warnings,
+      label: `组介绍·${b.name}`,
+    });
+    const intro = mainAsIntro(introSet);
     // 本项目在组里的位置
     const noteRef = (b.repoDocs || {})[rk];
     const noteOwn = await readRef(noteRef, paths.groupNoteRel(b.name, rk), { warnings, label: `组内描述·${b.name}` });
@@ -252,68 +276,77 @@ export async function groupContextFor(cwd) {
       peers.push({ name: mname, note: peerNote.body || (b.repoNotes || {})[mkey] || '' });
     }
     // 组绑定参考文件（给可读路径——agent 直接读盘）；tag 随条目走（有才带）
-    const docLinks = [];
-    for (const l of Array.isArray(b.docLinks) ? b.docLinks : []) {
-      if (l.rel) {
-        docLinks.push({ rel: l.rel, abs: join(paths.docsRoot(), l.rel), note: l.note || '', ...(l.tag ? { tag: l.tag } : {}) });
-        continue;
-      }
-      const abs = l.path && store.resolveExternal(l.path, closure);
-      if (!abs) continue;
-      docLinks.push({ path: abs, abs, note: l.note || '', ...(l.tag ? { tag: l.tag } : {}) });
-    }
+    const docLinks = linkEntries(b.docLinks, closure);
     groups.push({
       name: b.name,
       key: boardKeyOf(b.name),
       desc: b.desc || '',
       intro,
+      introSet,
       note: noteOwn.body || (b.repoNotes || {})[rk] || '',
       peers,
       docLinks,
     });
   }
-  return { repo: { name: repo.name, key: rk, intro: repoIntro }, groups };
+  return { repo: { name: repo.name, key: rk, intro: repoIntro, introSet: repoIntroSet, docLinks: repoDocLinks }, groups };
 }
 
 /**
- * **介绍文档集**（多篇）：目录优先，旧的单文件路径回落。
+ * **介绍文档集**（多篇 md 的列表）：主篇 + 其余各篇。
  *
- *   dirRel    介绍目录（自有树内）：repo/<key> · board/<组> · group/<组>/<key>
+ *   dirRel    介绍目录（自有树内）：repo/<key> · board/<组 slug>
  *   legacyRel 旧单文件路径（读时回落，保证既有数据继续可用）
  *   ref       DocRef 覆盖（绑定的文件或目录）；给了就以它为准
  *
- * 返回 { main: {body,title,path}|null, extras: [{rel,name,path,isReference}], count }
- *   main   = 主篇（目录 index.md；没有目录则旧单文件）
- *   extras = 其余文档（补充说明；reference/ 子目录下的标记 isReference）
+ * 返回 { main, extras, count }：
+ *   main   = 主篇（目录 index.md → 没有目录则旧单文件 → 再没有则绑定的那一篇）
+ *   extras = 其余文档（目录内的其余 md；reference/ 子目录下的标 isReference）
+ *
+ * 每篇都带两套坐标：
+ *   docId  面板导航用（'rel:…' 自有树 / 'path:…' 外部绝对路径）
+ *   abs    **磁盘绝对路径**——agent 拿到就能直接读盘（交付层用这个）
+ *
+ * 为什么描述是「列表」而不是一篇：介绍往往不止主篇——还有架构、问答、规范等补充
+ * 说明。只给一篇，等于让 agent 拿着半张地图干活（#58）。
  */
-// WIP：目录介绍文档集读取（暂无调用方，保留待接线；lint 豁免用 _ 前缀）
-async function _readIntroSet({ dirRel, legacyRel, ref, warnings, label }) {
-  // 1) 绑定了文档/目录 → 以绑定为准
+export async function readIntroSet({ dirRel, legacyRel, ref, links = [], warnings, label }) {
+  // 1) 绑定了文档 / 目录 → 以绑定为准
   if (ref) {
     if (ref.rel) {
       const one = await readOwn(ref.rel, { warnings, label });
-      if (one.missing) return { main: null, extras: [], count: 0 };
-      return { main: { body: one.body, title: one.title, path: paths.ownDocId(ref.rel) }, extras: [], count: 1 };
+      if (one.missing) return emptyIntroSet();
+      return {
+        main: { docId: paths.ownDocId(ref.rel), title: one.title, body: one.body, abs: join(paths.docsRoot(), ref.rel) },
+        extras: [],
+        count: 1,
+      };
     }
     if (ref.path) {
       const st = await import('node:fs/promises').then((m) => m.stat(ref.path).catch(() => null));
-      if (!st) return { main: null, extras: [], count: 0 };
+      if (!st) return emptyIntroSet();
       if (!st.isDirectory()) {
         const one = await readExternalDoc(ref.path, { warnings, label });
-        if (one.missing) return { main: null, extras: [], count: 0 };
-        return { main: { body: one.body, title: one.title, path: ref.path }, extras: [], count: 1 };
+        if (one.missing) return emptyIntroSet();
+        return {
+          main: { docId: paths.extDocId(ref.path), title: one.title, body: one.body, abs: ref.path },
+          extras: [],
+          count: 1,
+        };
       }
       // 绑的是目录 → 目录内全部 .md（主篇 = index.md，其余为补充说明）
       const files = await listDirMd(ref.path);
-      const main = files.find((f) => f.toLowerCase().endsWith('/index.md')) || files[0] || '';
-      const others = files.filter((f) => f !== main);
-      const mainDoc = main ? await readExternalDoc(main, { warnings, label }) : null;
+      const mainFile = files.find((f) => f.toLowerCase().endsWith('/index.md')) || files[0] || '';
+      const others = files.filter((f) => f !== mainFile);
+      const mainDoc = mainFile ? await readExternalDoc(mainFile, { warnings, label }) : null;
       return {
-        main: mainDoc && !mainDoc.missing ? { body: mainDoc.body, title: mainDoc.title, path: main } : null,
+        main: mainDoc && !mainDoc.missing
+          ? { docId: paths.extDocId(mainFile), title: mainDoc.title, body: mainDoc.body, abs: mainFile }
+          : null,
         extras: others.map((f) => ({
+          docId: paths.extDocId(f),
+          name: baseNameOf(f),
           rel: '',
-          name: f.slice(f.lastIndexOf(sep) + 1),
-          path: f,
+          abs: f,
           isReference: isReferencePath(f),
         })),
         count: files.length,
@@ -321,28 +354,106 @@ async function _readIntroSet({ dirRel, legacyRel, ref, warnings, label }) {
     }
   }
   // 2) 无绑定：目录主篇优先 → 回落旧单文件
+  //    目录里没有 index.md 时，目录内的 md 仍然算「描述的一部分」——
+  //    描述是列表，不该因为少一篇主篇就把其余也藏起来。
   const mainRel = dirRel ? paths.docMainRel(dirRel) : '';
+  const inDir = dirRel ? await store.listOwnDocsIn(dirRel) : [];
+  // 已在 store 里登记过的（docLinks）不重复列：它们由「补充文档」那层负责
+  const registered = new Set(
+    (Array.isArray(links) ? links : []).map((l) => String(l.rel || '')).filter(Boolean),
+  );
+  const extrasOf = (skipRel) =>
+    inDir
+      .filter((d) => d.rel !== skipRel && !registered.has(d.rel))
+      .map((d) => ({
+        docId: paths.ownDocId(d.rel),
+        name: d.name,
+        rel: d.rel,
+        abs: d.abs || join(paths.docsRoot(), d.rel),
+        isReference: String(d.name || '').toLowerCase().startsWith(paths.DOC_REFERENCE_DIR + '/'),
+      }));
   if (mainRel && (await store.ownDocExists(mainRel))) {
     const one = await readOwn(mainRel, { warnings, label });
-    const inDir = await store.listOwnDocsIn(dirRel);
+    const extras = extrasOf(mainRel);
     return {
-      main: { body: one.body, title: one.title, path: paths.ownDocId(mainRel) },
-      extras: inDir
-        .filter((d) => d.rel !== mainRel)
-        .map((d) => ({
-          rel: d.rel,
-          name: d.name,
-          path: paths.ownDocId(d.rel),
-          isReference: d.name.toLowerCase().startsWith(paths.DOC_REFERENCE_DIR + '/'),
-        })),
-      count: inDir.length,
+      main: { docId: paths.ownDocId(mainRel), title: one.title, body: one.body, abs: join(paths.docsRoot(), mainRel) },
+      extras,
+      count: 1 + extras.length,
     };
   }
   if (legacyRel) {
     const one = await readOwn(legacyRel, { warnings, label });
     if (!one.missing) {
-      return { main: { body: one.body, title: one.title, path: paths.ownDocId(legacyRel) }, extras: [], count: 1 };
+      const extras = extrasOf(legacyRel);
+      return {
+        main: { docId: paths.ownDocId(legacyRel), title: one.title, body: one.body, abs: join(paths.docsRoot(), legacyRel) },
+        extras,
+        count: 1 + extras.length,
+      };
     }
   }
+  // 目录里既没有 index.md、旧单文件也没有：目录内的 md 就是全部
+  if (inDir.length) {
+    const extras = extrasOf(inDir[0].rel);
+    const first = await readOwn(inDir[0].rel, { warnings, label });
+    return {
+      main: first.missing
+        ? null
+        : { docId: paths.ownDocId(inDir[0].rel), title: first.title, body: first.body, abs: inDir[0].abs || join(paths.docsRoot(), inDir[0].rel) },
+      extras,
+      count: 1 + extras.length,
+    };
+  }
+  return emptyIntroSet();
+}
+
+/** 文档集的主篇 → 旧的单篇形状（{ body, path }），兼容既有消费方 */
+function mainAsIntro(set) {
+  const m = set && set.main;
+  return m ? { body: m.body || '', path: m.abs || '', title: m.title || '' } : { body: '', path: '' };
+}
+
+/** 登记在 store 里的补充文档（rel 自有树 / path 外部）→ 可读绝对路径条目 */
+function linkEntries(links, closure) {
+  const out = [];
+  for (const l of Array.isArray(links) ? links : []) {
+    if (l.rel) {
+      out.push({ rel: l.rel, abs: join(paths.docsRoot(), l.rel), note: l.note || '', ...(l.tag ? { tag: l.tag } : {}) });
+      continue;
+    }
+    const abs = l.path && store.resolveExternal(l.path, closure);
+    if (!abs) continue;
+    out.push({ path: abs, abs, note: l.note || '', ...(l.tag ? { tag: l.tag } : {}) });
+  }
+  return out;
+}
+
+/** 文档集 → markdown 行（主篇正文 + 其余各篇的可读路径） */
+function introMdLines(set, fallback) {
+  const out = [];
+  const main = (set && set.main) || (fallback && !fallback.missing ? fallback : null);
+  if (main && main.body) out.push(String(main.body).trim());
+  const extras = (set && set.extras) || [];
+  if (extras.length) {
+    out.push('', '其余介绍文档（可直接读取）:');
+    for (const d of extras) out.push(`- ${d.abs || d.docId || d.rel || ''}`);
+  }
+  return out;
+}
+
+/** 空文档集（没有主篇、也没有其余） */
+function emptyIntroSet() {
   return { main: null, extras: [], count: 0 };
+}
+
+/** 文件名（路径最后一段） */
+function baseNameOf(p) {
+  const s = String(p || '');
+  return s.split(sep).pop() || s.split('/').pop() || '';
+}
+
+/** 是否在 reference/ 补充说明子目录下 */
+function isReferencePath(p) {
+  const segs = String(p || '').split(sep).join('/').split('/');
+  return segs.includes(paths.DOC_REFERENCE_DIR);
 }

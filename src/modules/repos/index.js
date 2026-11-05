@@ -274,8 +274,11 @@ export default {
       render: (d) => {
         const one = (x, i) => `  ${i}. ${x.rel ? '自有 ' + x.rel : x.ref ? 'ref  ' + x.ref + '/' + x.rel : '外部 ' + x.path}${x.tag ? `  [${x.tag}]` : ''}${x.note ? `  # ${x.note}` : ''}`;
         const lines = [`【${d.repo.name}】介绍文档 ${d.count} 篇`];
-        if (d.main) lines.push(one(d.main, 1));
-        d.links.forEach((x, i) => lines.push(one(x, i + 2)));
+        // 描述是**列表**：主篇 + 介绍目录里的其余 + 登记的补充（#58）
+        let n = 0;
+        if (d.main) lines.push(one(d.main, ++n));
+        for (const x of d.extras || []) lines.push(one(x, ++n));
+        for (const x of d.links || []) lines.push(one(x, ++n));
         return lines.join('\n');
       },
     },

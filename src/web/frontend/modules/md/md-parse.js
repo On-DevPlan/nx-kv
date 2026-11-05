@@ -492,8 +492,11 @@ export function insertAttachmentSnippet(body, snippet, opts = {}) {
   return { body: src.slice(0, at) + snip + src.slice(at), insertAt: at };
 }
 
-export const STAGE_LABELS = ['接收', '解析', '执行', '验证', '回填'];
-
+//
+// 只有三种状态：**待领取 / 执行中 / 已完成**。
+// 曾经还有一套「接收 → 解析 → 执行 → 验证 → 回填」的五段流水线（阶段芯片 +
+// 按阶段序号算的假百分比），那是推断出来的、不是真实进度——面板上让人莫名其妙，
+// 已经删掉（任务 #60）。
 /**
  * 把 localtask 状态映射到并发进程卡。
  *
@@ -512,10 +515,10 @@ export function taskToProgress(t) {
   const claimed = t.status === 'consumed' || !!t.consumedAt;
   const receivedAt = claimed ? String(t.consumedAt || '') : '';
   if (t.deletedAt) {
-    return { id: t.id, title, status: 'done', pct: 100, stageIdx: 4, detail: '已删除', receivedAt };
+    return { id: t.id, title, status: 'done', detail: '已删除', receivedAt };
   }
   if (t.migratedTo) {
-    return { id: t.id, title, status: 'done', pct: 100, stageIdx: 4, detail: `已迁移 → ${t.migratedTo}`, receivedAt };
+    return { id: t.id, title, status: 'done', detail: `已迁移 → ${t.migratedTo}`, receivedAt };
   }
   if (t.completedAt) {
     // 已完成的回填：done 总结落在 roundSummary；不再计时（finishedAt 不给）。
@@ -523,8 +526,6 @@ export function taskToProgress(t) {
       id: t.id,
       title,
       status: 'done',
-      pct: 100,
-      stageIdx: 4,
       detail: t.roundSummary ? String(t.roundSummary).slice(0, 48) : '已回填',
       receivedAt,
     };
@@ -535,8 +536,6 @@ export function taskToProgress(t) {
       id: t.id,
       title,
       status: 'run',
-      pct: 55,
-      stageIdx: 2,
       detail: '执行中 / 待回填',
       receivedAt,
     };
@@ -546,8 +545,6 @@ export function taskToProgress(t) {
     id: t.id,
     title,
     status: 'wait',
-    pct: 12,
-    stageIdx: 0,
     detail: '待领取',
     receivedAt: '',
   };

@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
-import { parseFrontmatter, STAGE_LABELS, taskToProgress } from '../../modules/md/md-parse.js';
+import { parseFrontmatter, taskToProgress } from '../../modules/md/md-parse.js';
 import { closeRightSidebar, findOpenPanel } from '../../workspace.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
@@ -35,19 +35,6 @@ function elapsedOf(card, now) {
   return fmtElapsed(now - start);
 }
 
-function stageChips(card) {
-  return STAGE_LABELS.map((lab, i) => {
-    let cls = 'todo';
-    if (card.status === 'done' || i < card.stageIdx) cls = 'done';
-    else if (i === card.stageIdx) cls = 'now';
-    return (
-      <span key={lab} className={'mdw-sg ' + cls}>
-        {lab}
-        {i < STAGE_LABELS.length - 1 ? <i className="mdw-sg-sep" /> : null}
-      </span>
-    );
-  });
-}
 
 export default function ProgressPanel({
   dirKey, task: focusTask, rows = [], refreshLocal, model, onOpenTask, onClosePage,
@@ -152,13 +139,14 @@ export default function ProgressPanel({
     });
   }, [cards, group]);
 
-  const live = cards.filter((c) => c.status === 'run' || c.status === 'wait');
+  // 统计只留三个**真实**状态：进行中 / 等待 / 已完成。
+  // 原来那一排「并发 / 跑 / 等 / 完」+ 大百分比 + 进度条，同一件事说了四遍，
+  // 而且百分比是「阶段序号」算出来的假进度（#60）。
   const running = cards.filter((c) => c.status === 'run').length;
   const waiting = cards.filter((c) => c.status === 'wait').length;
   const done = cards.filter((c) => c.status === 'done').length;
-  const avg = cards.length
-    ? Math.round(cards.reduce((s, c) => s + (c.pct || 0), 0) / cards.length)
-    : 0;
+  // 真实进度 = 已完成 / 总数
+  const donePct = cards.length ? Math.round((done * 100) / cards.length) : 0;
 
   const allPicked = cards.length > 0 && picked.size === cards.length;
   const pickedCards = cards.filter((c) => picked.has(cidOf(c)));
@@ -293,17 +281,14 @@ export default function ProgressPanel({
         </div>
       )}
       <div className="mdw-prog-sum">
-        <div className="pct-row">
-          <span className="pct">{avg}%</span>
-          <span className="stage">{cards.length ? (live.length ? `${live.length} 路并发` : '全部完成') : '暂无任务'}</span>
+        <div className="counts">
+          <span className="run">进行中 <b>{running}</b></span>
+          <span className="wait">等待 <b>{waiting}</b></span>
+          <span className="done">已完成 <b>{done}</b></span>
         </div>
-        <div className="meta">
-          <span>并发 <b>{live.length}</b></span>
-          <span>跑 <b>{running}</b></span>
-          <span>等 <b>{waiting}</b></span>
-          <span>完 <b>{done}</b></span>
+        <div className="bar" title={`已完成 ${done} / 共 ${cards.length}`}>
+          <i style={{ width: `${donePct}%` }} />
         </div>
-        <div className="bar"><i style={{ width: `${avg}%` }} /></div>
       </div>
       {picked.size > 0 && (
         <div className="mdw-prog-sel">
@@ -360,7 +345,7 @@ export default function ProgressPanel({
                           {c.projectName}
                         </span>
                       )}
-                      <span className="kind">md</span>
+
                     </div>
                     <div className="sub">{c.detail}</div>
                   </div>
@@ -371,17 +356,14 @@ export default function ProgressPanel({
                     {elapsedOf(c, now)}
                   </span>
                 </div>
-                <div className="mdw-tcard-bar"><i style={{ width: `${c.pct || 0}%` }} /></div>
-                <div className="mdw-tcard-stages">{stageChips(c)}</div>
+
               </button>
             </div>
           );
         })}
       </div>
       <div className="mdw-prog-note">
-        {group
-          ? '组发布的任务散在各成员项目队列，这里聚合显示；按项目筛选，勾选后可跨队列批量删除。'
-          : <>同一目录下任务<strong>并发</strong>。点卡打开对应 MD；勾选后可批量删除。</>}
+        {group ? '组内各项目的任务聚在这里；可按项目筛选，勾选后批量删除。' : '本目录的任务；点卡打开，勾选后批量删除。'}
       </div>
     </div>
   );

@@ -6,27 +6,27 @@
 // 把它追加到重开后的正文末尾，下一轮接手的人/agent 一眼看到「上轮做到哪 +
 // 这轮要改什么」。
 //
-// 纯函数、零依赖：面板的两条重开入口（任务页评论框 / 列表页行内重做）共用同一份
-// 拼装逻辑——两处各写一套，段名与加粗口径迟早分叉。
+// 段名 / 锚定格式 / 加粗口径收口在 src/shared/feedback-text.js（#79：服务端把反馈
+// 追加到盘上正文时要用同一套段名，两处各写一套迟早分叉）——这里只 re-export +
+// 保留面板专属的 buildReopenText（整篇拼装；服务端追加用 appendFeedback）。
 //
 // 注意：只拼**队列正文**，不动 md 文档本身（文档是编辑器的事，正文是队列的事）。
 
-/** 上轮 ack 完成总结段标题 */
-export const ACK_SUMMARY_HEADING = '## 上一轮完成总结';
-/** 验收反馈段标题（ack 场景：已完成任务的重做） */
-export const FEEDBACK_HEADING = '## 验收反馈';
-/** 普通反馈段标题（非 ack 场景：任务没完成时的「反馈修改」） */
-export const PLAIN_FEEDBACK_HEADING = '## 反馈修改';
+export {
+  ACK_SUMMARY_HEADING,
+  FEEDBACK_HEADING,
+  PLAIN_FEEDBACK_HEADING,
+  boldFeedback,
+  quoteBlock,
+  feedbackSection,
+  appendFeedback,
+} from '../../../../shared/feedback-text.js';
 
-/**
- * 反馈逐行加粗（用户口径：重开的任务要携带着反馈文字在正文中，最好加粗）。
- * 空行不加粗（`**` 会渲染成一行空的粗体）。 */
-export function boldFeedback(text) {
-  return String(text ?? '')
-    .split('\n')
-    .map((line) => (line.trim() ? `**${line}**` : line))
-    .join('\n');
-}
+import {
+  ACK_SUMMARY_HEADING,
+  FEEDBACK_HEADING,
+  boldFeedback,
+} from '../../../../shared/feedback-text.js';
 
 /**
  * 拼重开后的任务正文。

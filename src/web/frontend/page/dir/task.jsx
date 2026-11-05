@@ -17,6 +17,7 @@ import {
   buildReopenText,
   FEEDBACK_HEADING,
   PLAIN_FEEDBACK_HEADING,
+  quoteBlock,
 } from '../../modules/board/reopen-text.js';
 import { extractAckNodes } from '../../modules/board/ack-nodes.js';
 import ToolBar from '../../components/md/tool-bar.jsx';
@@ -153,7 +154,19 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
     }
     submitCommentInPlace(p);
   };
-  /** 验收反馈 → 新开任务（#75）：正文 = 原正文 + 上轮总结 + 本轮反馈；forkOf 指回本条。 */
+  /** 服务端当前任务（#79）：评论/反馈的 base 以**盘上正文**为准——会话 doc 可能
+   *  过期（别的会话改过 / 上一轮重开追加过 / 首轮还没加载完），拿旧正文拼回去
+   *  整篇重写就是「评论一次丢一次」。草稿没有服务端正文，返回 null。 */
+  const fetchServerTask = async () => {
+    if (isDraft || task == null || /^draft/i.test(String(task))) return null;
+    const q = isGlobal
+      ? `key=${encodeURIComponent(GLOBAL_KEY)}&id=${Number(task)}`
+      : `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(task)}`;
+    return api(`/api/localtasks/item?${q}`).catch(() => null);
+  };
+  /** 验收反馈 → 新开任务（#75）：正文 = 完整之前的任务 + 上轮总结 + 本轮反馈；
+   *  forkOf 指回本条。#79：base 取服务端当前正文，取不到才退回会话 doc——
+   *  两头都空就中止（真实任务），绝不发一条丢掉原任务的空壳反馈。 */
   const spawnFeedbackTask = ({ text: fbRaw, attachments = [], inserts = '' } = {}) => {
     const fb = String(fbRaw || '').trim();
     closeSelMenu();
@@ -163,12 +176,18 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
     }
     const title = doc?.title || `#${task}`;
     guard(async () => {
+      const fresh = await fetchServerTask();
+      const baseText = String(fresh?.text ?? '').trim() || String(doc?.body ?? '').trim();
+      if (!baseText && !isDraft) {
+        toast('拿不到任务当前正文，已取消反馈（防止丢内容）');
+        return;
+      }
       let feedbackBody = fb || '（见附件）';
       if (inserts) feedbackBody = `${feedbackBody}${inserts}`;
       const text = buildReopenText({
-        base: doc?.body || '',
+        base: baseText,
         feedback: feedbackBody,
-        ackSummary: taskRow?.roundSummary || '',
+        ackSummary: fresh?.roundSummary || taskRow?.roundSummary || '',
         feedbackHeading: FEEDBACK_HEADING,
         bold: true,
       });
@@ -196,7 +215,11 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
       if (app.openPage) app.openPage({ dirKey: landedKey, task: newId, name: `${title.slice(0, 24)}（反馈）` });
     });
   };
-  /** 划选评论 → 就地回写原任务（#74），可带附件。 */
+  /** 划选评论 → 就地回写原任务（#74），可带附件。
+   *  #79 防丢数据：第一个区块永远是**完整的之前的任务**，接着才是引用字符和评论。
+   *  干净态（无未保存编辑、无附件片段）干脆不传 text——服务端把评论段原子追加到
+   *  盘上正文，谁先改过都不丢；带未保存编辑 / 附件片段时才由面板拉服务端最新正文
+   *  整篇回写（编辑器里正在写的内容以编辑器为准）。 */
   const submitCommentInPlace = ({ text: fbRaw, attachments = [], inserts = '', quote } = {}) => {
     const fb = String(fbRaw || '').trim();
     const quoteText = String(quote || lastSel.current || '').trim();
@@ -209,26 +232,41 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
       toast('先划选一段再评论');
       return;
     }
+    if (isDraft || task == null || /^draft/i.test(String(task))) {
+      toast('草稿先提交成任务再评论');
+      return;
+    }
     const title = doc?.title || `#${task}`;
     guard(async () => {
-      let feedbackBody = fb;
-      if (quoteText) {
-        feedbackBody = `> 锚定：\n> ${quoteText.replace(/\n/g, '\n> ')}\n\n${fb || '（见附件）'}`;
+      // 纯文字 + 无未保存编辑 → 服务端拼装（不传 text，base = 服务端正文）
+      const serverCompose = !dirty && !inserts && !(attachments && attachments.length);
+      let text;
+      if (!serverCompose) {
+        const fresh = await fetchServerTask();
+        const baseText = String(fresh?.text ?? '').trim() || String(doc?.body ?? '').trim();
+        if (!baseText) {
+          toast('拿不到任务当前正文，已取消评论（防止丢内容）');
+          return;
+        }
+        const feedbackBody = [
+          quoteBlock(quoteText),
+          fb || '（见附件）',
+          inserts,
+        ].filter(Boolean).join('\n\n');
+        text = buildReopenText({
+          base: baseText,
+          feedback: feedbackBody,
+          ackSummary: '',
+          feedbackHeading: PLAIN_FEEDBACK_HEADING,
+          bold: false,
+        });
       }
-      if (inserts) feedbackBody = `${feedbackBody || ''}${inserts}`;
-      const text = buildReopenText({
-        base: doc?.body || '',
-        feedback: feedbackBody,
-        ackSummary: '',
-        feedbackHeading: PLAIN_FEEDBACK_HEADING,
-        bold: false,
-      });
       const res = await api('/api/localtasks/reopen', {
         method: 'POST',
         body: {
           ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }),
           id: Number(task),
-          text,
+          ...(text ? { text } : {}),
           kind: 'comment',
           quote: quoteText,
           feedback: fb,
@@ -241,9 +279,13 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
           })),
         },
       });
+      // 回写后的正文以服务端为准刷回编辑器（服务端拼装时新段只有服务端知道）
       const landedKey = res?.key || dirKey;
       const sameId = String(res?.task?.id ?? task);
-      saveDoc(docIdOf(scopeOf(landedKey), sameId), { title: titleFromMd(text), body: text });
+      const finalText = String(res?.task?.text ?? text ?? '');
+      if (finalText) {
+        saveDoc(docIdOf(scopeOf(landedKey), sameId), { title: titleFromMd(finalText), body: finalText });
+      }
       if (attachments?.length) persistAtt(sameId, [...(doc?.attachments || []), ...attachments]);
       if (model && tabId && landedKey !== dirKey) {
         model.doAction(Actions.updateNodeAttributes(tabId, { config: { dirKey: landedKey, task: sameId } }));

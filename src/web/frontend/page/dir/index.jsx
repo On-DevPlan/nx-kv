@@ -158,6 +158,16 @@ export default function DirPanel({ dirKey }) {
     { label: '管理模板…', icon: 'gear', onClick: openTplPanel },
   ];
 
+  // #79：反馈的 base 以**服务端当前正文**为准——列表行的 t.text 是 rows 快照，
+  // 可能落后于盘上（别的会话改过 / 上一轮重开追加过），拿旧正文拼回去就是丢数据。
+  const fetchServerTask = async (t) => {
+    if (t == null) return null;
+    const q = isGlobal
+      ? `key=${encodeURIComponent(GLOBAL_KEY)}&id=${Number(t.id)}`
+      : `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(t.id)}`;
+    return api(`/api/localtasks/item?${q}`).catch(() => null);
+  };
+
   const reopenTask = (t) => {
     if (!t) return;
     const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
@@ -172,20 +182,29 @@ export default function DirPanel({ dirKey }) {
       });
       if (body === null || body === undefined) return;
       const fb = String(body).trim();
-      const ackSummary = acked ? t.roundSummary || '' : '';
-      const text =
-        fb || ackSummary
+      // #79：base 取服务端当前正文（取不到才退回 rows 快照）；两头的都没有就中止。
+      const fresh = await fetchServerTask(t);
+      const baseText = String(fresh?.text ?? '').trim() || String(t.text || '').trim();
+      const ackSummary = acked ? (fresh?.roundSummary || t.roundSummary || '') : '';
+      if (!fb && !acked && !baseText) {
+        // 只重开（不改正文）不需要 base；带反馈但拿不到正文时不能瞎拼
+        toast('拿不到任务当前正文，已取消（防止丢内容）');
+        return;
+      }
+
+      // #75：已完成 → 反馈 = **新开任务**（forkOf 指回本条），原任务留档不动。
+      // 新任务的正文 = 完整之前的任务 + 上轮总结 + 本轮反馈（面板拼装——新任务
+      // 的落点内容只能整篇给）。
+      if (acked) {
+        const text = fb
           ? buildReopenText({
-              base: t.text || '',
+              base: baseText,
               feedback: fb,
               ackSummary,
-              feedbackHeading: acked ? FEEDBACK_HEADING : PLAIN_FEEDBACK_HEADING,
-              bold: acked,
+              feedbackHeading: FEEDBACK_HEADING,
+              bold: true,
             })
           : '';
-
-      // #75：已完成 → 反馈 = **新开任务**（forkOf 指回本条），原任务留档不动
-      if (acked) {
         if (!text) {
           toast('写一下反馈');
           return;
@@ -204,20 +223,27 @@ export default function DirPanel({ dirKey }) {
         return;
       }
 
-      // 未完成：就地回写（#74 reopen）
+      // 未完成：就地回写（#74 reopen）。#79：纯反馈不传 text——服务端把反馈段
+      // 原子追加到盘上当前正文；「只重开不改正文」（无反馈）维持只翻状态。
       const res = await api('/api/localtasks/reopen', {
         method: 'POST',
         body: {
-          ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic.cwd }),
+          ...scopeBody(),
           id: t.id,
           kind: 'reopen',
-          feedback: fb,
-          ...(text ? { text } : {}),
+          ...(fb
+            ? {
+                feedback: fb,
+                feedbackHeading: PLAIN_FEEDBACK_HEADING,
+                feedbackBold: false,
+              }
+            : {}),
         },
       });
       const landedKey = res?.key || dirKey;
       const sameId = String(res?.task?.id ?? t.id);
-      if (text) saveDoc(docIdOf(scopeOf(landedKey), sameId), { body: text });
+      const finalText = String(res?.task?.text ?? '');
+      if (finalText) saveDoc(docIdOf(scopeOf(landedKey), sameId), { body: finalText });
       toast(
         `已回写「${title.replace(/^#\s*/, '')}」#${sameId}` +
           (res?.moved && res.name ? `；归属迁到「${res.name}」` : ''),

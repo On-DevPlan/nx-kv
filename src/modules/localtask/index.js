@@ -336,7 +336,9 @@ export default {
         text: { type: 'string', hint: '修改后的任务正文（Markdown）；不给则只重开不改内容' },
         kind: { type: 'string', hint: 'reopen（验收反馈，默认）或 comment（划选评论）' },
         quote: { type: 'string', hint: '划选原文（comment 时）' },
-        feedback: { type: 'string', hint: '用户反馈原文（写入 history 节点）' },
+        feedback: { type: 'string', hint: '用户反馈原文；不给 text 时追加到当前正文末尾（#79，base = 服务端最新正文）' },
+        feedbackHeading: { type: 'string', hint: '追加反馈段的段名（缺省 comment=## 反馈修改 / reopen=## 验收反馈）' },
+        feedbackBold: { type: 'boolean', hint: '追加的反馈是否逐行加粗（缺省 comment=false / reopen=true）' },
       },
       run: async (ctx) => {
         // 重开也可能带着改过的归属（--text 的 frontmatter.project 变了）→ 同样搬家
@@ -349,6 +351,8 @@ export default {
           kind: ctx.kind,
           quote: ctx.quote,
           feedback: ctx.feedback,
+          feedbackHeading: ctx.feedbackHeading,
+          feedbackBold: ctx.feedbackBold,
           attachments: ctx.attachments,
         });
       },

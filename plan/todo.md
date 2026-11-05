@@ -404,3 +404,29 @@ T1/T4/T5 的核心断言**已复核属实**（store 隔离端到端实测通过�
   （隔离 store + 临时端口 7879）实测：头部按钮恰好 [新任务, 保存并同步, 更多]，无格式条 / 图标 /
   目标行；菜单含时间目标区 + 全部动作项；菜单内输 90m → 勋章即时出现；带 2h 目标的任务勋章
   ⏱ 2h + tooltip 附加要求，「更多」内回显声明值。
+
+### 评论 / 反馈不再丢数据：base 以服务端正文为准（2026-11-06 #79）
+
+- [x] **反馈**：「评论功能 创建的新任务 第一个区块是完整的之前的任务 接着才是引用字符和评论
+  当前的评论功能太容易丢失数据了」。
+- [x] **根因**：面板拿会话编辑器正文（doc.body）当 base 整篇拼回去重写——doc 过期
+  （别的会话改过盘上正文 / 上一轮重开追加过段落 / 页面刚开还没加载完）时，重开
+  （reopen）会把盘上最新正文整个覆盖成旧正文 + 评论，「评论一次丢一次」；doc 为空时
+  甚至只剩一条评论。
+- [x] **改法**：
+  - `localtask reopen`（task-lifecycle.js）：反馈不带 text → **服务端**把反馈段原子追加到
+    盘上当前正文（`appendFeedback`，src/shared/feedback-text.js）；新增
+    `--feedback-heading` / `--feedback-bold` 覆盖段名与加粗（缺省 comment=## 反馈修改/
+    不加粗、reopen=## 验收反馈/加粗）；显式 text 整篇替换口径不变。
+  - 面板划选评论（task.jsx）：干净态（无未保存编辑、无附件片段）不传 text 走服务端拼装；
+    带编辑/附件时先 GET /api/localtasks/item 取服务端最新正文当 base 再整篇回写；
+    拿不到正文 → 中止 + 提示，绝不发空壳回写；草稿评论给明确提示（原来 id=NaN 报错）。
+  - 验收反馈新开任务（task.jsx）与列表页重做/反馈（dir/index.jsx）：base 同样先取服务端
+    当前正文，再没有才退会话 doc/rows 快照。
+  - 段名/锚定/加粗口径收口 `src/shared/feedback-text.js`，前端 reopen-text.js 变 re-export
+    （layering：web → shared 合规，同 attach.js/wikilink.js 先例）。
+- [x] 验收：pnpm test 全绿（lint ✓ + build ✓ + smoke 198/198 + unit 627/627，新增
+  feedback-text 5 例 + localtask-reopen-compose 6 例）；真机 Chrome 探针（隔离 store、
+  端口 7879）三场景全过——干净页评论（原任务完整 + 锚定 + 评论顺序正确）、
+  **页面开着时外部改盘上正文再评论（外部改动不丢，防丢核心场景）**、
+  已完成任务验收反馈 → 新任务（原文 + 上轮总结 + 加粗反馈，forkOf 指回）。

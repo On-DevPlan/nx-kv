@@ -4,6 +4,11 @@
 import { badInput, notFound } from '../../core/errors.js';
 import { formatDuration } from '../../core/instruction-template.js';
 import { preserveFrontmatter } from '../../shared/frontmatter.js';
+import {
+  FEEDBACK_HEADING,
+  PLAIN_FEEDBACK_HEADING,
+  appendFeedback,
+} from '../../shared/feedback-text.js';
 import { findFirstReadyPending } from './dag.js';
 import { basename } from 'node:path';
 import { isGlobalKey, resolveTaskKey, topicKeyFor } from './paths.js';
@@ -73,6 +78,8 @@ export async function reopenTask({
   kind: rawKind,
   quote,
   feedback,
+  feedbackHeading,
+  feedbackBold,
   attachments,
 } = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
@@ -103,8 +110,25 @@ export async function reopenTask({
   }
 
   const body = String(text ?? '').trim();
+  const fb = String(feedback ?? '').trim();
   if (body) {
     task.text = preserveFrontmatter(task.text, normalizeText(body));
+  } else if (fb) {
+    // #79：反馈不带 text —— 服务端把反馈段**追加**到盘上当前正文。
+    // base 永远是服务端正文（完整、最新）：面板会话 doc 可能落后于盘上
+    // （别的会话改过 / 上一轮重开追加过 / 首轮还没加载完），拿旧正文整篇拼回去
+    // 重写，就是「评论一次丢一次」。只有显式给 text（带未保存编辑的整篇回写）
+    // 才替换正文。段名 / 锚定 / 加粗与面板共用 src/shared/feedback-text.js。
+    const heading = String(feedbackHeading ?? '').trim()
+      || (kind === 'comment' ? PLAIN_FEEDBACK_HEADING : FEEDBACK_HEADING);
+    const useBold = typeof feedbackBold === 'boolean' ? feedbackBold : kind !== 'comment';
+    task.text = preserveFrontmatter(task.text, appendFeedback({
+      base: task.text,
+      heading,
+      quote,
+      feedback: fb,
+      bold: useBold,
+    }));
   }
 
   // 本轮事件节点：记反馈/选区/附件；text 取**更新后**的正文（旁路点开即这一轮交付形态）

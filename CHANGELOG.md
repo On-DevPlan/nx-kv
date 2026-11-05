@@ -2,6 +2,23 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.24.8] - 2026-11-05 仓库 key 迁到远程派生
+
+### Changed
+
+- **仓库 key 统一到「远程派生」**（任务 #63）：key 的标准是 `github.com/<owner>/<repo>`
+  这类**远程派生**形态，`local/<目录名>` 只是没有 remote 时的兜底。
+  - 新增 `scripts/migrate-remote-keys.mjs`（幂等、可重跑、**先备份**）：读每个仓库
+    本机 checkout 的 `git remote get-url origin`，用**仓库模块同一套派生**算出新 key，
+    并迁移全部引用——看板成员表 / 组内描述 / 组绑定描述、文档树路径、任务正文 frontmatter
+    的 `project` 与 `projectIntro`、文档正文里的旧路径引用。
+  - 用法：`node scripts/migrate-remote-keys.mjs --board nx`（预演）、`--all --apply`（真改，
+    写盘前备份到 `~/.nx-kv/backup/rekeys-<时间戳>/`）。
+  - 已在本机跑过：23 个仓库迁到远程 key（文档树搬家 6 个文件、任务正文改写 91 条）；
+    剩下 4 个（br_tb / fr / sl / wb）本机没有 git origin，保持本地 key。
+
+> 注意：云端清单（todo）里的任务正文若也带 `project: local/…`，需要单独同步——本轮只迁
+> 本机仓库登记 / 文档树 / 本机任务队列。
 ## [0.24.7] - 2026-11-05 侧栏：仓库是模块，组是指针
 
 ### Changed

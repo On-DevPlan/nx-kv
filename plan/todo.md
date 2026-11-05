@@ -335,3 +335,18 @@ T1/T4/T5 的核心断言**已复核属实**（store 隔离端到端实测通过�
 - [x] 验收：`pnpm test` 全绿（lint ✓ + build ✓ + smoke ✓ + unit 590/590）；真机 CDP 实测
   （隔离 store + 临时端口 7994，1 组 2 项目 + 1 未归组项目）：侧栏行序 = 「nx（组行，
   叶子）」→「nx-kv」「nx-rp」「solo」，仓库行**平铺无缩进**、组行下面没有仓库。
+
+### 仓库 key 迁到远程派生（2026-11-05 #63）
+
+- [x] **现状**：27 个登记仓库里 **27 个 key 都是 local/<目录名>**，remote 一条没登记——
+  key 的标准应是**远程派生**（github.com/<owner>/<repo>），本地 key 只是没 remote 时的兜底。
+- [x] **工具**：`scripts/migrate-remote-keys.mjs`——读本机 checkout 的 git origin → 用仓库
+  模块同一套派生算新 key → 迁移全部引用（看板成员表 / 组内描述 / 组绑定描述 / 文档树路径 /
+  任务正文 frontmatter 的 project 与 projectIntro / 文档正文旧路径）；幂等、可重跑、
+  **写盘前备份**到 `~/.nx-kv/backup/rekeys-<时间戳>/`。
+- [x] **实跑**：nx 组 11 个 + 其余 12 个 = **23 个仓库**迁到远程 key（文档树搬家 6 个文件、
+  任务正文改写 91 条）；剩下 4 个（br_tb / fr / sl / wb）本机没有 git origin，保持本地 key。
+- [x] 验收：核过 `repo list`（23 个远程 key，4 个本地 key）、`board get nx/todo`（成员 key 与
+  组内描述路径都跟着迁了）、任务队列 frontmatter（project 已是新 key）、文档树（出现
+  github.com/ 与 git.yyrd.com/ 目录）。
+- [x] 遗留：云端清单（todo）里的任务正文若带 `project: local/…` 需单独同步（本轮只迁本机）。

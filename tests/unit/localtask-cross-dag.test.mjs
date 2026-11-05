@@ -7,6 +7,8 @@ import { join } from 'node:path';
 
 const sb = mkdtempSync(join(tmpdir(), 'nx-kv-cross-dag-'));
 process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
+// dag sync 隔离：缺省会写进真实 ~/.nx-kv/workflows/
+process.env.NX_KV_WORKFLOW_STORE = join(sb, 'workflows');
 
 const svc = await import('../../src/modules/localtask/service.js');
 const { waitForTask } = await import('../../src/modules/tasktool/wait.js');

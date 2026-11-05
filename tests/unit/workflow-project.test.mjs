@@ -69,3 +69,74 @@ test('往返：显式 blockBy 保留', () => {
   assert.deepEqual(topic.tasks.find((t) => t.id === 2).blockBy, [1]);
   assert.equal(topic.workflowRevision, 3);
 });
+
+// 现场回归（CI：localtask-attribution「历史脏数据但带本地依赖」偶发搬家）：
+// 外部把 blockBy 写进任务行之后，引擎**在途**的过期快照（还没有这条边）落盘，
+// 投影必须保留外部依赖（并集），而不是按过期边把它洗成 [] ——否则「队列内依赖不搬」
+// 的守卫读不到依赖，搬家被错误放行。
+test('applySnapshotToTopic：过期快照不洗外部新设的本地依赖（并集）', () => {
+  const topic = {
+    key: 'k',
+    tasks: [
+      { id: 1, status: 'pending', text: 'a', blockBy: [], blocksFollowing: false },
+      { id: 2, status: 'pending', text: 'b', blockBy: [], blocksFollowing: false },
+    ],
+  };
+  // T0 拍快照：此刻 #2 还没有依赖 → 边里没有 1→2
+  const staleSnap = topicToSnapshot(topic);
+  assert.equal(staleSnap.edges.length, 0);
+  // T1 外部写（不走引擎）：#2 设 blockBy=[1]
+  topic.tasks.find((t) => t.id === 2).blockBy = [1];
+  // 在途过期快照落盘（topic-adapter.set 的投影动作）
+  applySnapshotToTopic(topic, staleSnap);
+  assert.deepEqual(
+    topic.tasks.find((t) => t.id === 2).blockBy,
+    [1],
+    '外部依赖必须存活，不能被过期边洗掉',
+  );
+});
+
+test('applySnapshotToTopic：跨队列引用同样存活（keepForeign 不回退）', () => {
+  const topic = {
+    key: 'k',
+    tasks: [
+      { id: 1, status: 'pending', text: 'a', blockBy: ['other:9'], blocksFollowing: false },
+    ],
+  };
+  const staleSnap = topicToSnapshot(topic);
+  applySnapshotToTopic(topic, staleSnap);
+  assert.deepEqual(topic.tasks[0].blockBy, ['other:9']);
+});
+
+// 外部写顶 revision 之后，引擎在途快照（旧 revision）落盘必须 CAS 冲突——
+// 这是「过期写洗任务行」的第一道闸（投影并集是第二道）。
+test('topic-adapter：外部写 bump revision → 过期快照 saveAtomic CAS 冲突', async () => {
+  const bag = {
+    topics: {
+      t1: {
+        key: 't1',
+        name: 't1',
+        tasks: [{ id: 1, status: 'pending', text: 'a', blockBy: [], blocksFollowing: false }],
+        workflowRevision: 0,
+      },
+    },
+  };
+  const adapter = createTopicAdapter({
+    loadStore: async () => bag,
+    saveStore: async (data) => {
+      Object.assign(bag, data);
+    },
+  });
+  const store = createSnapshotStore({ adapter });
+
+  // 引擎在 T0 拍下快照（revision 0），随后外部写把 revision 顶到 1
+  const staleSnap = await store.load('t1');
+  assert.equal(staleSnap.revision, 0);
+  bag.topics.t1.workflowRevision = 1; // bumpWorkflowRevision 的等效外部写
+
+  await assert.rejects(
+    () => store.saveAtomic(staleSnap, { expectedRevision: staleSnap.revision }),
+    (err) => err.code === 'CAS_CONFLICT',
+    '过期快照落盘必须被 CAS 拦下',
+  );
+});

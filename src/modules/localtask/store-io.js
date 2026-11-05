@@ -248,6 +248,19 @@ export function nextTaskId(tasks) {
   }
   return max + 1;
 }
+
+// 外部写（不经引擎 Mutator）落盘前把主题的 workflowRevision 顶一格。
+// 为什么必须：引擎侧落盘有 revision CAS（saveAtomic），但这条 CAS 只对「引擎自己的写」
+// 成立——外部改任务行（设 blockBy / 领取 / 完成 / 删除）不动 revision，引擎**在途**的
+// 过期快照（scheduler 定时器 / close 没等到的 runOnce）落盘时 CAS 照样通过，
+// applySnapshotToTopic 会把过期边**重建**回全队列 blockBy，把刚写进去的依赖洗掉
+// （现场：CI 上 localtask-attribution「历史脏数据但带本地依赖」偶发搬家，就是依赖被
+// 在途写洗空后守卫放行）。顶一格让过期快照必然 CAS 冲突 → fail-open 丢弃；
+// 引擎写全是任务行的可重投影，丢了无副作用，下一次 sync 会按新任务行重新投影。
+export function bumpWorkflowRevision(topic) {
+  if (!topic) return;
+  topic.workflowRevision = (Number(topic.workflowRevision) || 0) + 1;
+}
 // "YYYY-MM-DD HH:mm:ss"（本地）→ epoch ms；无法解析返回 NaN
 export function parseStampMs(s) {
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(String(s || ''));

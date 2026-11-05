@@ -2,7 +2,7 @@
 // 迁出 tombstone（目标端写成功后才调用）、撤销迁出、云端回插待领取首位。
 import { badInput } from '../../core/errors.js';
 import { normalizeCwd, resolveTaskKey } from './paths.js';
-import { loadStore, saveStore, stampNow, normalizeText, topicOf, nextTaskId } from './store-io.js';
+import { loadStore, saveStore, stampNow, normalizeText, topicOf, nextTaskId, bumpWorkflowRevision } from './store-io.js';
 import { normalizeTask, isPending } from './task-view.js';
 // ─── 迁移原语（task move 用；store 封装不外泄）─────────────────────
 //
@@ -43,6 +43,7 @@ export async function markTaskMigrated({ cwd: rawCwd, key: rawKey, id, migratedT
   }
   raw.migratedTo = { side: 'cloud', topic: String(migratedTo.topic || ''), targetId: Number(migratedTo.targetId) || 0, at: String(migratedTo.at || stampNow()) };
   t.updatedAt = stampNow();
+  bumpWorkflowRevision(t);
   await saveStore(store);
   return { status: 'ok', key, cwd: t.cwd || '', name: t.name, task: normalizeTask(raw) };
 }
@@ -70,6 +71,7 @@ export async function clearTaskMigrated({ cwd: rawCwd, key: rawKey, id, toTop = 
     t.tasks.unshift(raw);
   }
   t.updatedAt = stampNow();
+  bumpWorkflowRevision(t);
   await saveStore(store);
   return { status: 'ok', restored: true, key, cwd: t.cwd || '', name: t.name, task: normalizeTask(raw) };
 }
@@ -90,6 +92,7 @@ export async function insertTaskAtTop({ cwd: rawCwd, key: rawKey, text, from = '
   if (firstPending >= 0) t.tasks.splice(firstPending, 0, task);
   else t.tasks.unshift(task);
   t.updatedAt = stampNow();
+  bumpWorkflowRevision(t);
   await saveStore(store);
   return { status: 'ok', key, cwd: t.cwd || cwd, name: t.name, task };
 }

@@ -15,6 +15,9 @@ process.env.NX_KV_REPOS_STORE = join(sb, 'repos.json');
 process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
 process.env.NX_KV_DOCS_DIR = join(sb, 'docs');
 process.env.NX_KV_TIMEGOAL_STORE = join(sb, 'timegoals.json');
+// dag sync（updateTask 设 blockBy 后的 Mutator 投影）也必须隔离——缺省会写进真实
+// ~/.nx-kv/workflows/，既污染用户目录，也让本套件的结果取决于宿主机的残留状态。
+process.env.NX_KV_WORKFLOW_STORE = join(sb, 'workflows');
 
 const repos = await import('../../src/modules/repos/service.js');
 const boards = await import('../../src/modules/repos/boards.js');

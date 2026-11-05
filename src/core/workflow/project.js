@@ -64,16 +64,20 @@ export function applySnapshotToTopic(topic, snap) {
     syncTaskFromNode(task, node);
   }
 
-  // 边 → blockBy（显式依赖）；闸门边由 blocksFollowing 表达，不写进每条 blockBy
+  // 边 → blockBy（显式依赖）；闸门边由 blocksFollowing 表达，不写进每条 blockBy。
+  // 本地依赖取「现有 ∪ 快照边」的**并集**而不是按边重建：快照可能滞后于外部任务行写
+  // （引擎在途写），按边重建会把外部刚设好的 blockBy 洗掉。依赖是「只能多、不能凭空少」
+  // 的保守口径——解除依赖一律走外部 clear 先落盘，再由 syncTaskDagUpdate 拆边，
+  // 不存在「只删引擎边、不删任务行」的路径，所以并集不会让解除失效。
   const gateIds = new Set(
     (snap.nodes || []).filter((n) => isGateNode(n)).map((n) => String(n.id)),
   );
 
   for (const task of tasks) {
     if (task.deletedAt || task.migratedTo) continue;
-    const keepForeign = normalizeBlockBy(task.blockBy, task.id).filter(
-      (d) => parseDepRef(d)?.kind === 'foreign',
-    );
+    const keep = normalizeBlockBy(task.blockBy, task.id);
+    const keepForeign = keep.filter((d) => parseDepRef(d)?.kind === 'foreign');
+    const keepLocal = keep.filter((d) => parseDepRef(d)?.kind === 'local');
     const incoming = (snap.edges || []).filter((e) => String(e.to) === String(task.id));
     const localDeps = [];
     for (const e of incoming) {
@@ -82,7 +86,7 @@ export function applySnapshotToTopic(topic, snap) {
       const n = Number(e.from);
       if (Number.isFinite(n) && n > 0) localDeps.push(n);
     }
-    task.blockBy = normalizeBlockBy([...localDeps, ...keepForeign], task.id);
+    task.blockBy = normalizeBlockBy([...keepLocal, ...localDeps, ...keepForeign], task.id);
   }
 
   topic.workflowRevision = Number(snap.revision) || 0;

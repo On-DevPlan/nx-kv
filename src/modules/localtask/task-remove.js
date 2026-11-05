@@ -2,7 +2,7 @@
 // 与 purge 彻底摘除两套词汇；reorder 只在 pending 子序列内换位。
 import { badInput } from '../../core/errors.js';
 import { normalizeCwd, resolveTaskKey } from './paths.js';
-import { loadStore, saveStore, stampNow } from './store-io.js';
+import { loadStore, saveStore, stampNow, bumpWorkflowRevision } from './store-io.js';
 import { normalizeTask, topicView } from './task-view.js';
 export async function removeTask({ cwd: rawCwd, key: rawKey, id, purge = false } = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
@@ -22,6 +22,7 @@ export async function removeTask({ cwd: rawCwd, key: rawKey, id, purge = false }
     // 彻底清除：把行真的摘出去（不可恢复）。软删除区里的"清干净"用这个。
     t.tasks.splice(index, 1);
     t.updatedAt = stampNow();
+    bumpWorkflowRevision(t);
     await saveStore(store);
     return { status: 'ok', purged: true, key, cwd: t.cwd || cwd, name: t.name, removed: normalizeTask(task) };
   }
@@ -32,6 +33,7 @@ export async function removeTask({ cwd: rawCwd, key: rawKey, id, purge = false }
   task.deletedAt = stampNow();
   task.trashIndex = index; // 恢复时放回原位
   t.updatedAt = stampNow();
+  bumpWorkflowRevision(t);
   await saveStore(store);
   return { status: 'ok', purged: false, key, cwd: t.cwd || cwd, name: t.name, removed: normalizeTask(task) };
 }
@@ -77,6 +79,7 @@ export async function removeTasks({ cwd: rawCwd, key: rawKey, ids, purge = false
   }
   if (removed.length) {
     t.updatedAt = stampNow();
+    bumpWorkflowRevision(t);
     await saveStore(store);
   }
   return {
@@ -114,6 +117,7 @@ export async function restoreTask({ cwd: rawCwd, key: rawKey, id } = {}) {
   task.deletedAt = '';
   delete task.trashIndex;
   t.updatedAt = stampNow();
+  bumpWorkflowRevision(t);
   await saveStore(store);
   return { status: 'ok', restored: true, key, cwd: t.cwd || cwd, name: t.name, task: normalizeTask(task) };
 }
@@ -161,6 +165,7 @@ export async function reorderTasks({ cwd: rawCwd, key: rawKey, id, beforeId, aft
   const ti = t.tasks.indexOf(target); // 删除 drag 后目标下标自动修正
   t.tasks.splice(hasBefore ? ti : ti + 1, 0, drag);
   t.updatedAt = stampNow();
+  bumpWorkflowRevision(t);
 
   await saveStore(store);
   return { status: 'ok', key, cwd: t.cwd || '', name: t.name, topic: topicView(t) };

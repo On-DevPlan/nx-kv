@@ -6,7 +6,7 @@ import { formatDuration } from '../../core/instruction-template.js';
 import { preserveFrontmatter } from '../../shared/frontmatter.js';
 import { findFirstReadyPending } from './dag.js';
 import { isGlobalKey, resolveTaskKey } from './paths.js';
-import { loadStore, saveStore, stampNow, normalizeSummary, normalizeText } from './store-io.js';
+import { loadStore, saveStore, stampNow, normalizeSummary, normalizeText, bumpWorkflowRevision } from './store-io.js';
 import { normalizeTask, foreignResolver, isPending, relocateInStore } from './task-view.js';
 import { markConsumed } from './waiters.js';
 // 把一条任务重新开放（用户的**修改反馈** → 重新进入执行循环）。
@@ -51,6 +51,8 @@ export async function reopenTask({ cwd: rawCwd, key: rawKey, id, text, moveTo } 
     }
   }
   host.updatedAt = stampNow();
+  bumpWorkflowRevision(host);
+  if (host !== t) bumpWorkflowRevision(t);
   await saveStore(store);
   return {
     status: 'ok',
@@ -81,6 +83,7 @@ export async function consumeFirstPending(key, roundSummary, by) {
     byName: by && by.name,
   });
   t.updatedAt = stampNow();
+  bumpWorkflowRevision(t);
   await saveStore(store);
   return normalizeTask(task);
 }
@@ -145,6 +148,7 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
   task.completedAt = stampNow();
   task.roundSummary = summary;
   t.updatedAt = stampNow();
+  bumpWorkflowRevision(t);
   await saveStore(store);
   // 单一写路径：完成 → Mutator 标 success + 调度一轮（fail-open）
   try {

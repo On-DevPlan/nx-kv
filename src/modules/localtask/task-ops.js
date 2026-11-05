@@ -14,6 +14,7 @@ import {
   normalizeText,
   topicOf,
   nextTaskId,
+  bumpWorkflowRevision,
 } from './store-io.js';
 import { GLOBAL_KEY, GLOBAL_NAME, GLOBAL_CWD, isGlobalKey, normalizeCwd, resolveTaskKey, topicKeyFor } from './paths.js';
 import { normalizeTask, foreignResolver, queueRelationsOf, relocateInStore } from './task-view.js';
@@ -131,6 +132,7 @@ export async function addTask({
     }
   }
 
+  bumpWorkflowRevision(t);
   await saveStore(store); // 先落盘再唤醒：wait 返回时数据必然一致
   if (wake) wake(normalizeTask(task));
 
@@ -273,6 +275,9 @@ export async function updateTask({
   }
   host.updatedAt = stampNow();
   if (host !== t) t.updatedAt = stampNow();
+  // 搬家动了两个队列，源/目标都要顶 revision（引擎在途快照对两个都可能过期）
+  bumpWorkflowRevision(host);
+  if (host !== t) bumpWorkflowRevision(t);
   await saveStore(store);
   if (hasDagInput) {
     try {

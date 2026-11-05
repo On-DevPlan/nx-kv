@@ -17,10 +17,10 @@
 //   - 与 localtask wait 互不感知：timegoal 不阻塞、不依赖面板是否存在，
 //     agent 按 `reached` 自行决定下一轮动作。
 import crypto from 'node:crypto';
-import fsp from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { APP_DIR } from '../../../core/paths.js';
 import { badInput } from '../../../core/errors.js';
+import { createJsonStore } from '../../../core/json-store.js';
 
 export const MIN_DURATION_SEC = 60; // 最小 1 分钟（避免误设 0 立即到点）
 // 上限从「24 小时」放宽到「365 天」。真实场景里"跑一晚上""连续优化几天"是常态，
@@ -85,41 +85,27 @@ function emptyStore() {
 }
 
 async function loadStore() {
-  let goals = null;
-  try {
-    const raw = await fsp.readFile(storePath(), 'utf8');
-    const data = JSON.parse(raw);
-    if (data && typeof data === 'object' && data.goals && typeof data.goals === 'object') {
-      goals = data.goals;
-    }
-  } catch {
-    /* 缺失或损坏 → 空 store */
-  }
-  if (!goals) return emptyStore();
-  return { version: 1, goals };
+  return store.load();
 }
 
-// 原子写 + 进程内串行化队列；与 localtask service 同模式（Windows 锁偶发 EPERM 重试）。
-let saveQueue = Promise.resolve();
 function saveStore(data) {
-  const run = saveQueue.then(async () => {
-    const p = storePath();
-    await fsp.mkdir(dirname(p), { recursive: true });
-    const tmp = p + '.tmp';
-    await fsp.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
-    for (let i = 0; ; i++) {
-      try {
-        await fsp.rename(tmp, p);
-        return;
-      } catch (err) {
-        if (i >= 4 || (err.code !== 'EPERM' && err.code !== 'EACCES')) throw err;
-        await new Promise((r) => setTimeout(r, 25 * (i + 1)));
-      }
-    }
-  });
-  saveQueue = run.catch(() => {});
-  return run;
+  return store.save(data);
 }
+
+// 原子写 / 串行队列 / EPERM 退避收口到 core/json-store.js（任务 #66）。
+// 语义：缺失或损坏 → 空 store（无隔离备份）；形状不认识（goals 不是对象）→ 空 store。
+function normalizeRawStore(data) {
+  if (!data || typeof data !== 'object' || !data.goals || typeof data.goals !== 'object') {
+    return null;
+  }
+  return { version: 1, goals: data.goals };
+}
+
+const store = createJsonStore({
+  path: storePath,
+  empty: emptyStore,
+  normalize: normalizeRawStore,
+});
 
 function goalView(g, { withPrompt = true } = {}) {
   const view = {

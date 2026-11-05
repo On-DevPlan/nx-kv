@@ -12,6 +12,7 @@
 import { basename, join, resolve } from 'node:path';
 import fsp from 'node:fs/promises';
 import { APP_DIR } from '../../core/paths.js';
+import { createJsonStore } from '../../core/json-store.js';
 import { openPath } from '../../core/open.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
 import { sanitizeDocRef, withLinkMeta } from '../docs/docref.js';
@@ -28,57 +29,41 @@ function emptyStore() {
   return { version: 1, repos: [], boards: [] };
 }
 
-// 原子写 + 进程内串行化（与 localtask / timegoal 同一模式：Windows 上 rename
-// 偶发 EPERM，重试几次即可；串行化避免并发写互相覆盖）。
-let saveQueue = Promise.resolve();
-function saveStore(data) {
-  const run = saveQueue.then(async () => {
-    const p = storePath();
-    await fsp.mkdir(join(p, '..'), { recursive: true });
-    const tmp = p + '.tmp';
-    await fsp.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
-    for (let i = 0; ; i++) {
-      try {
-        await fsp.rename(tmp, p);
-        return;
-      } catch (err) {
-        if (i >= 4 || (err.code !== 'EPERM' && err.code !== 'EACCES')) throw err;
-        await new Promise((r) => setTimeout(r, 25 * (i + 1)));
-      }
-    }
-  });
-  saveQueue = run.then(
-    () => {},
-    () => {}
-  );
-  return run;
+// 原子写 / 串行队列 / EPERM 退避收口到 core/json-store.js（任务 #66，SQLite 迁移只换那层）。
+// 语义：缺失或损坏 → 空 store（无隔离备份，本 store 写频率低、可重建）；形状不认识 → 空 store。
+function normalizeRawStore(data) {
+  if (!data || typeof data !== 'object') return null;
+  const store = {
+    // v2 起 store 携带文档绑定字段（doc / docLinks / repoDocs，DocRef 形状）
+    version: 2,
+    repos: Array.isArray(data.repos) ? data.repos : [],
+    boards: Array.isArray(data.boards) ? data.boards : [],
+    // prefixGroups（前缀分组规则）已废除（2026-11-02）：规则改一次性命令
+    // （board prefix），命中结果固化成显式成员（repoKeys），盘上残留字段下次
+    // 落盘时随本白名单一起丢弃。
+  };
+  normalizeDocRefs(store);
+  return store;
+}
+
+const store = createJsonStore({
+  path: storePath,
+  empty: emptyStore,
+  normalize: normalizeRawStore,
+});
+
+export function saveStore(data) {
+  return store.save(data);
 }
 
 export async function loadStore() {
-  try {
-    const raw = await fsp.readFile(storePath(), 'utf8');
-    const data = JSON.parse(raw);
-    if (!data || typeof data !== 'object') return emptyStore();
-    const store = {
-      // v2 起 store 携带文档绑定字段（doc / docLinks / repoDocs，DocRef 形状）
-      version: 2,
-      repos: Array.isArray(data.repos) ? data.repos : [],
-      boards: Array.isArray(data.boards) ? data.boards : [],
-      // prefixGroups（前缀分组规则）已废除（2026-11-02）：规则改一次性命令
-      // （board prefix），命中结果固化成显式成员（repoKeys），盘上残留字段下次
-      // 落盘时随本白名单一起丢弃。
-    };
-    normalizeDocRefs(store);
-    // 老结构（看板成员存随机 id）→ 新结构（存 key）：读时改写并落盘。
-    // 放这里 = 唯一入口，任何读路径都自动看到迁移后的数据。
-    if (migrateStoreKeys(store)) {
-      await saveStore(store).catch(() => {});
-    }
-    return store;
-  } catch {
-    /* 缺失或损坏 → 空 store */
-    return emptyStore();
+  const s = await store.load();
+  // 老结构（看板成员存随机 id）→ 新结构（存 key）：读时改写并落盘。
+  // 放这里 = 唯一入口，任何读路径都自动看到迁移后的数据。
+  if (migrateStoreKeys(s)) {
+    await saveStore(s).catch(() => {});
   }
+  return s;
 }
 
 // v2 文档绑定归一：非法 DocRef 形状直接丢弃（盘上脏数据不炸读取）。

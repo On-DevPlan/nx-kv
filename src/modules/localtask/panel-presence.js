@@ -2,9 +2,10 @@
 // 常驻主面板发现（APP_DIR/panels.json 登记）、逐端口活性探测、窗口重开节流判据
 // shouldReopenWindow（panel-guard 与 tasktool/panel-escort 用）。
 import http from 'node:http';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { APP_DIR, DEFAULT_PORT } from '../../core/paths.js';
+import { atomicWriteTextSync } from '../../core/json-store.js';
 import { loadStore } from './store-io.js';
 import { isLiveWaiting } from './task-view.js';
 // ─── 面板空闲自释放所需的观测接口（panel-guard.js 调用）────────────
@@ -264,11 +265,10 @@ function readAllPanels() {
 function writePanels(list) {
   try {
     const f = PANEL_REGISTRY_FILE();
-    // 目录可能还不存在（全新机器 / CI runner：第一次跑就是干净的用户目录）。
-    // 旧实现只 writeFileSync，ENOENT 被下面的 catch 静默吞掉——registerPanel
-    // 表面上成功、实际一条没落盘，queryPanelPresence 因此永远发现不了非默认端口面板。
-    mkdirSync(dirname(f), { recursive: true });
-    writeFileSync(f, JSON.stringify({ panels: list }, null, 2), 'utf8');
+    // 原子写（tmp+rename，收口自 core/json-store）：旧实现直接 writeFileSync，
+    // 半途被杀会留下半个 JSON——下次 readAllPanels 解析失败，全部登记无声清零。
+    // atomicWriteTextSync 内部 mkdirp，首次跑的干净用户目录也不会 ENOENT。
+    atomicWriteTextSync(f, JSON.stringify({ panels: list }, null, 2));
   } catch {
     /* 登记失败不影响面板本身 */
   }

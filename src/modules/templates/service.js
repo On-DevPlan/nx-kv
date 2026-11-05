@@ -8,11 +8,12 @@
 // 的 titleFromMd 约定一致）。内置正文刻意与前端 md-parse 的 NEW_TEMPLATE 保持
 // 同构——那是 API 不可达时（版本偏差）前端的兜底，两边谁先改都不破坏行为。
 import crypto from 'node:crypto';
-import fsp from 'node:fs/promises';
+import fsp from 'node:fs/promises'; // 仅用于读用户 --body-file（store 读写已走 json-store）
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { APP_DIR } from '../../core/paths.js';
 import { badInput, notFound } from '../../core/errors.js';
+import { createJsonStore } from '../../core/json-store.js';
 
 export const BUILTIN_ID = 'default';
 
@@ -58,45 +59,30 @@ function emptyStore() {
   return { version: 1, defaultId: BUILTIN_ID, templates: [builtin()] };
 }
 
-async function loadStore() {
-  try {
-    const raw = await fsp.readFile(storePath(), 'utf8');
-    const data = JSON.parse(raw);
-    if (!data || !Array.isArray(data.templates)) return emptyStore();
-    // 内置模板永远在场（被旧版本 store 漏掉时补回）；builtin 标记以代码为准
-    const templates = data.templates.filter((t) => t && t.id && !t.builtin);
-    templates.unshift(builtin());
-    let defaultId = typeof data.defaultId === 'string' ? data.defaultId : BUILTIN_ID;
-    if (!templates.some((t) => t.id === defaultId)) defaultId = BUILTIN_ID;
-    return { version: 1, defaultId, templates };
-  } catch {
-    return emptyStore(); // 缺失/损坏 → 出厂态（内置模板兜底，用户数据无则可丢）
-  }
+// 原子写 / 串行队列 / 锁退避收口到 core/json-store.js（任务 #66）。
+// 语义：缺失/损坏 → 出厂态（内置模板兜底）；templates 不是数组（形状不认识）→ 出厂态。
+function normalizeRawStore(data) {
+  if (!data || !Array.isArray(data.templates)) return null;
+  // 内置模板永远在场（被旧版本 store 漏掉时补回）；builtin 标记以代码为准
+  const templates = data.templates.filter((t) => t && t.id && !t.builtin);
+  templates.unshift(builtin());
+  let defaultId = typeof data.defaultId === 'string' ? data.defaultId : BUILTIN_ID;
+  if (!templates.some((t) => t.id === defaultId)) defaultId = BUILTIN_ID;
+  return { version: 1, defaultId, templates };
 }
 
-// 落盘：tmp + 原子 rename + Windows 锁退避（与 localtask saveStore 同一套语义）。
-// 同进程串行队列：连续两次「新增」不会互相踩 tmp 文件。
-let saveQueue = Promise.resolve();
+const store = createJsonStore({
+  path: storePath,
+  empty: emptyStore,
+  normalize: normalizeRawStore,
+});
+
+async function loadStore() {
+  return store.load();
+}
+
 function saveStore(data) {
-  const run = saveQueue.then(async () => {
-    const p = storePath();
-    await fsp.mkdir(dirname(p), { recursive: true });
-    const tmp = p + '.tmp';
-    await fsp.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
-    for (let i = 0; ; i++) {
-      try {
-        await fsp.rename(tmp, p);
-        return;
-      } catch (err) {
-        if (i >= 4 || (err.code !== 'EPERM' && err.code !== 'EACCES')) throw err;
-        await new Promise((r) => setTimeout(r, 25 * (i + 1)));
-      }
-    }
-  });
-  saveQueue = run.catch(() => {
-    /* 失败不阻断后续排队者；本次调用的 rejection 仍返回给调用方 */
-  });
-  return run;
+  return store.save(data);
 }
 
 /** 列表视图：templates + defaultId（面板「新建页」按 defaultId 取起始正文） */

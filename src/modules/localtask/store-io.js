@@ -1,9 +1,12 @@
-// （#54 自 service.js 拆出）store 读写层：localtasks.json 的加载/原子落盘（同进程链式写队列 +
-// Windows rename EPERM 退避）+ 损坏隔离（.corrupt-*）+ 主题桶/任务行原语（topicOf/nextTaskId）
-// + 基础输入校验（summary/text）与时间工具（stampNow/parseStampMs）。
-import fsp from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+// （#54 自 service.js 拆出）store 读写层：localtasks.json 的加载/原子落盘 + 损坏隔离
+// （.corrupt-*）+ 主题桶/任务行原语（topicOf/nextTaskId）+ 基础输入校验（summary/text）
+// 与时间工具（stampNow/parseStampMs）。
+// 任务 #66：读写的「串行队列 + 原子写 + EPERM 退避 + 损坏隔离」已收口到
+// core/json-store.js（SQLite 迁移时只换那一层的 driver），这里只剩本 store 的
+// 白名单重建 / v1/v2 迁移语义。
+import { basename } from 'node:path';
 import { badInput } from '../../core/errors.js';
+import { createJsonStore } from '../../core/json-store.js';
 import { DEFAULT_TASK_SUFFIX, clampTaskSuffixList, clampAckPromptList } from './task-templates.js';
 import { storePath, legacyStorePath } from './paths.js';
 export const DEFAULT_TIMEOUT_MS = 180_000; // 阻塞默认 3 分钟（推荐值）
@@ -82,81 +85,28 @@ function legacyTopic(key, b) {
   };
 }
 
-// 损坏隔离：store 文件读不出来/解析失败时，先把坏文件**改名保留**（.corrupt-<定宽时间戳>），
-// 再让 loadStore 落到空 store——否则下次 saveStore 会把坏文件原地覆盖，全部主题无声清零。
-// 最多留 CORRUPT_KEEP 份，超出删最旧（文件名时间戳定宽，字典序即时间序）。
-// 仅文件不存在（首次启动）不算损坏：access 探测失败直接返回，不产生备份。
-const CORRUPT_KEEP = 3;
-async function quarantineCorruptStore() {
-  const p = storePath();
-  try {
-    await fsp.access(p);
-  } catch {
-    return; // 文件不存在（或探不到）→ 不是「损坏」，不备份
-  }
-  const ts = new Date();
-  const pad = (n, w = 2) => String(n).padStart(w, '0');
-  const stamp =
-    String(ts.getFullYear()) +
-    pad(ts.getMonth() + 1) +
-    pad(ts.getDate()) +
-    '-' +
-    pad(ts.getHours()) +
-    pad(ts.getMinutes()) +
-    pad(ts.getSeconds()) +
-    '-' +
-    pad(ts.getMilliseconds(), 3);
-  try {
-    await fsp.rename(p, `${p}.corrupt-${stamp}`);
-  } catch {
-    return; // 改名失败（Windows 偶发文件锁）→ 保留原文件等下次，绝不吞掉坏文件
-  }
-  try {
-    const dir = dirname(p);
-    const prefix = basename(p) + '.corrupt-';
-    const corrupts = (await fsp.readdir(dir)).filter((f) => f.startsWith(prefix)).sort();
-    for (const f of corrupts.slice(0, Math.max(0, corrupts.length - CORRUPT_KEEP))) {
-      await fsp.rm(join(dir, f), { force: true });
-    }
-  } catch {
-    /* 备份清理失败不影响主流程 */
-  }
-}
-
-export async function loadStore() {
+// 损坏隔离 / 串行写队列 / tmp+rename 原子写 / EPERM 退避——全部由 createJsonStore
+// 统一提供（CORRUPT_KEEP=3：坏文件改名 .corrupt-* 最多留 3 份，防止下次 save 原地
+// 覆盖把数据无声清零）。这里只保留本 store 独有的语义：
+//   - legacy 兜底（改用 topics.json 前的旧文件，一次性迁移读取）
+//   - v2 slots / v1 sessions 桶 → topics 的版本迁移
+//   - settings 白名单式重建（未列出的字段在读时被丢掉，新增设置项必须补一行）
+function normalizeRawStore(data) {
+  if (!data || typeof data !== 'object') return null; // 形状不认识 ≠ 文件损坏 → 落 empty，不隔离
   let topics = null;
-  let settings = null;
-  try {
-    let raw;
-    try {
-      raw = await fsp.readFile(storePath(), 'utf8');
-    } catch (err) {
-      // 新文件不存在 → 尝试改名前的旧文件（一次性迁移读取；再缺失才落到空 store）
-      const legacy = err && err.code === 'ENOENT' ? legacyStorePath() : null;
-      if (!legacy) throw err;
-      raw = await fsp.readFile(legacy, 'utf8');
-    }
-    const data = JSON.parse(raw);
-    if (data && typeof data === 'object') {
-      if (data.topics && typeof data.topics === 'object') {
-        topics = data.topics;
-      } else if (data.slots && typeof data.slots === 'object') {
-        // v2（slots 桶）→ topics
-        topics = {};
-        for (const [k, b] of Object.entries(data.slots)) topics[k] = legacyTopic(k, b);
-      } else if (data.sessions && typeof data.sessions === 'object') {
-        // v1（sessions 桶）→ topics
-        topics = {};
-        for (const [k, b] of Object.entries(data.sessions)) topics[k] = legacyTopic(k, b);
-      }
-      if (data.settings && typeof data.settings === 'object') settings = data.settings;
-    }
-  } catch {
-    // 损坏 → 坏文件改名隔离（.corrupt-*，最多留 3 份），别让下次 save 把它覆盖掉。
-    // 文件不存在的「缺失」路径里 access 探测会失败，不会产生多余备份。
-    await quarantineCorruptStore();
+  if (data.topics && typeof data.topics === 'object') {
+    topics = data.topics;
+  } else if (data.slots && typeof data.slots === 'object') {
+    // v2（slots 桶）→ topics
+    topics = {};
+    for (const [k, b] of Object.entries(data.slots)) topics[k] = legacyTopic(k, b);
+  } else if (data.sessions && typeof data.sessions === 'object') {
+    // v1（sessions 桶）→ topics
+    topics = {};
+    for (const [k, b] of Object.entries(data.sessions)) topics[k] = legacyTopic(k, b);
   }
-  if (!topics) return emptyStore();
+  if (!topics) return null;
+  const settings = data.settings && typeof data.settings === 'object' ? data.settings : null;
   return {
     version: 4,
     settings: {
@@ -168,8 +118,6 @@ export async function loadStore() {
         ? clampTaskSuffixList(settings.taskSuffix)
         : [DEFAULT_TASK_SUFFIX],
       // ack 完成总结提示词（v0.16 起）：字段存在才认，缺省 = 空（不追加）。
-      // 注意——这里是**白名单式重建**：没列出的字段会在读时被丢掉，
-      // 新增设置项必须在这里补一行，否则「写进去读不回来」。
       ackPrompt: settings && Object.prototype.hasOwnProperty.call(settings, 'ackPrompt')
         ? clampAckPromptList(settings.ackPrompt)
         : [],
@@ -178,34 +126,21 @@ export async function loadStore() {
   };
 }
 
-// 落盘串行化：同进程内多个写操作可能重叠（如 poll 消费落盘与 finally 复位等待态、
-// 全局 FIFO 唤醒与另一路 clearWaiting）——它们共用同一个 .tmp 中转文件，不排队的话
-// A 的 rename 会把 tmp 消耗掉，B 再 rename 就 ENOENT。链式队列保证同进程顺序写。
-// （跨进程仍靠 rename 原子性 last-writer-wins，与本模块既有语义一致。）
-let saveQueue = Promise.resolve();
-/** @public 供 SnapshotStore topic-adapter 原子落盘（与内部写路径同一队列） */
+const store = createJsonStore({
+  path: storePath,
+  empty: emptyStore,
+  normalize: normalizeRawStore,
+  legacyPath: legacyStorePath,
+  quarantineKeep: 3,
+});
+
+export async function loadStore() {
+  return store.load();
+}
+
+/** @public 供 SnapshotStore topic-adapter 原子落盘（与内部写路径同一队列，由 json-store 提供） */
 export function saveStore(data) {
-  const run = saveQueue.then(async () => {
-    const p = storePath();
-    await fsp.mkdir(dirname(p), { recursive: true });
-    const tmp = p + '.tmp';
-    await fsp.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
-    // Windows 上目标文件可能被并发读者（loadStore 的 readFile）或杀软短暂锁住，
-    // rename 偶发 EPERM/EACCES——小退避重试几次即可。跨进程并发写也靠原子 rename 兜底。
-    for (let i = 0; ; i++) {
-      try {
-        await fsp.rename(tmp, p);
-        return;
-      } catch (err) {
-        if (i >= 4 || (err.code !== 'EPERM' && err.code !== 'EACCES')) throw err;
-        await new Promise((r) => setTimeout(r, 25 * (i + 1)));
-      }
-    }
-  });
-  saveQueue = run.catch(() => {
-    /* 失败不阻断后续排队者；本次调用的 rejection 仍返回给调用方 */
-  });
-  return run;
+  return store.save(data);
 }
 
 // 取（必要时新建）某个主题

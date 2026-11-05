@@ -13,7 +13,11 @@ import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { Modal, useDialog } from '../../components/popup/index.jsx';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
-import { buildReopenText } from '../../modules/board/reopen-text.js';
+import {
+  buildReopenText,
+  FEEDBACK_HEADING,
+  PLAIN_FEEDBACK_HEADING,
+} from '../../modules/board/reopen-text.js';
 import { extractAckNodes } from '../../modules/board/ack-nodes.js';
 import ToolBar from '../../components/md/tool-bar.jsx';
 import { MdPanes } from '../../components/md/md-panes.jsx';
@@ -21,6 +25,7 @@ import AckRail from '../../components/md/ack-rail.jsx';
 import AttachBar from '../../components/md/attach-bar.jsx';
 import SelMenu from '../../components/md/sel-menu.jsx';
 import ShortcutSheet from '../../components/md/shortcut-sheet.jsx';
+import { TaskChainModal } from '../../components/md/task-chain.jsx';
 import { useApp } from '../../app-context.jsx';
 import { openBesideMain, openPanel } from '../../workspace.js';
 import { filesToAttachments, persistAtt } from '../../components/md/attachments.js';
@@ -47,7 +52,7 @@ import {
   useDocs,
 } from '../../modules/md/doc-store.js';
 
-export default function PagePanel({ dirKey, task, beside = false, tabId, model }) {
+export default function PagePanel({ dirKey, task, beside = false, tabId, model, historyId = null }) {
   const app = useApp() || {};
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
@@ -85,9 +90,10 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
   const goal = goalDraft || { duration: declaredGoal?.duration || '', prompt: declaredGoal?.prompt || '' };
   const goalEditable = isDraft || (!!taskRow && taskRow.status !== 'consumed');
 
-  // ─── 验收条（完成任务）：agent 的完成总结（ack）+ 用户回复（通行 / 重做 / 划线评论提详细问题）───
+  // ─── 验收条（完成任务）：agent 的完成总结（ack）+ 用户回复（通行 / 反馈 / 划线评论）───
   // 「通行」只在本机记一笔（localStorage，per-viewer 的轻量状态）：done 本身已是终态，
   // 验收与否不进队列 schema——「无更新则直接结束」的口径里，通行 = 不需要再做什么。
+  // 「反馈」(#75)：**新开一条任务**（不是重做/就地重开），原完成任务留档不动。
   const reviewAckKey = `nx-kv/review/${scope}/${task}`;
   const [reviewAcked, setReviewAcked] = useState(() => {
     try {
@@ -114,10 +120,8 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     setReviewAcked(true);
     toast('已验收');
   };
-  /** 重做：走**正常评论模式**（不再弹窗输入框）——评论框开在正文末尾，
-      提交即把这条任务重开，反馈文字（加粗）带进正文。 */
-  const redoTask = () => {
-    // 浮层是 .mdw 内的绝对定位 → 坐标要相对容器（用条带相对容器的偏移）
+  /** 反馈：开评论框写意见；提交后**新建一条任务**（forkOf 指回本条），原任务不动。 */
+  const openFeedback = () => {
     const bar = reviewBarRef.current;
     const host = bar?.closest?.('.mdw');
     const b = bar?.getBoundingClientRect();
@@ -126,39 +130,98 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     const y = b && h ? b.top - h.top - 190 : 120;
     setSelMenu({
       kind: 'task',
-      text: '', // 重做针对整条任务，不锚定选区
+      text: '',
       comment: true,
-      mode: 'redo',
+      mode: 'feedback',
       x: Math.min(window.innerWidth - 320, Math.max(8, x)),
       y: Math.min(window.innerHeight - 260, Math.max(8, y)),
     });
   };
-  /** 评论框提交：重做模式 → 重开本任务（反馈加粗进正文）；普通划线评论 → 开新任务 */
-  const onCommentSubmit = (q) => {
-    if (selMenu?.mode === 'redo') {
-      submitRedo(q);
+  /** 统一提交入口：feedback → 新开任务；comment → 就地回写原任务（可带附件）。 */
+  const onCommentSubmit = (payload) => {
+    const p =
+      payload && typeof payload === 'object'
+        ? payload
+        : {
+            text: String(payload || ''),
+            mode: selMenu?.mode === 'feedback' || selMenu?.mode === 'redo' ? 'feedback' : 'comment',
+            quote: lastSel.current || '',
+          };
+    if (p.mode === 'feedback' || p.mode === 'redo' || selMenu?.mode === 'feedback' || selMenu?.mode === 'redo') {
+      spawnFeedbackTask(p);
       return;
     }
-    spawnComment(q);
+    submitCommentInPlace(p);
   };
-  const submitRedo = (feedback) => {
-    const fb = String(feedback || '').trim();
+  /** 验收反馈 → 新开任务（#75）：正文 = 原正文 + 上轮总结 + 本轮反馈；forkOf 指回本条。 */
+  const spawnFeedbackTask = ({ text: fbRaw, attachments = [], inserts = '' } = {}) => {
+    const fb = String(fbRaw || '').trim();
     closeSelMenu();
-    if (!fb) {
-      toast('写一下要改的地方');
+    if (!fb && !(attachments && attachments.length)) {
+      toast('写一下反馈');
       return;
     }
     const title = doc?.title || `#${task}`;
     guard(async () => {
-      // 反馈是**追加**不是替换：reopen 的 text 是整段新正文，直接把反馈当正文发
-      // 会把原任务丢掉。拼成「原正文 + 上一轮 ack 完成总结 + 验收反馈」——
-      // 重做后验收条会消失，上轮总结若不落进正文就没人看得见了（agent 下一轮
-      // 同样看不见：它只拿到正文）。反馈逐行加粗（用户口径：重开的任务要携带着
-      // 反馈文字在正文中，最好加粗）。
+      let feedbackBody = fb || '（见附件）';
+      if (inserts) feedbackBody = `${feedbackBody}${inserts}`;
       const text = buildReopenText({
         base: doc?.body || '',
-        feedback: fb,
+        feedback: feedbackBody,
         ackSummary: taskRow?.roundSummary || '',
+        feedbackHeading: FEEDBACK_HEADING,
+        bold: true,
+      });
+      const linkFields =
+        !isDraft && task != null && !/^draft/i.test(String(task))
+          ? { forkOf: String(task), forkKind: 'reopen' }
+          : {};
+      const res = await api('/api/localtasks', {
+        method: 'POST',
+        body: isGlobal
+          ? { global: true, text, ...linkFields }
+          : { cwd: topic?.cwd, text, ...linkFields },
+      });
+      const newId = String(res?.task?.id ?? res?.id ?? '');
+      if (!newId) {
+        toast('反馈已提交，但未拿到新任务编号');
+        refreshLocal();
+        return;
+      }
+      const landedKey = res?.key || dirKey;
+      saveDoc(docIdOf(scopeOf(landedKey), newId), { title: titleFromMd(text), body: text });
+      if (attachments?.length) persistAtt(newId, attachments);
+      toast(`已反馈「${title}」→ 新任务 #${newId}`);
+      refreshLocal();
+      if (app.openPage) app.openPage({ dirKey: landedKey, task: newId, name: `${title.slice(0, 24)}（反馈）` });
+    });
+  };
+  /** 划选评论 → 就地回写原任务（#74），可带附件。 */
+  const submitCommentInPlace = ({ text: fbRaw, attachments = [], inserts = '', quote } = {}) => {
+    const fb = String(fbRaw || '').trim();
+    const quoteText = String(quote || lastSel.current || '').trim();
+    closeSelMenu();
+    if (!fb && !(attachments && attachments.length)) {
+      toast('写一下要提的问题');
+      return;
+    }
+    if (!quoteText && !fb) {
+      toast('先划选一段再评论');
+      return;
+    }
+    const title = doc?.title || `#${task}`;
+    guard(async () => {
+      let feedbackBody = fb;
+      if (quoteText) {
+        feedbackBody = `> 锚定：\n> ${quoteText.replace(/\n/g, '\n> ')}\n\n${fb || '（见附件）'}`;
+      }
+      if (inserts) feedbackBody = `${feedbackBody || ''}${inserts}`;
+      const text = buildReopenText({
+        base: doc?.body || '',
+        feedback: feedbackBody,
+        ackSummary: '',
+        feedbackHeading: PLAIN_FEEDBACK_HEADING,
+        bold: false,
       });
       const res = await api('/api/localtasks/reopen', {
         method: 'POST',
@@ -166,25 +229,27 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
           ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }),
           id: Number(task),
           text,
+          kind: 'comment',
+          quote: quoteText,
+          feedback: fb,
+          attachments: (attachments || []).map((a) => ({
+            id: a.id,
+            name: a.name,
+            type: a.type,
+            size: a.size,
+            url: a.url || '',
+          })),
         },
       });
-      // 重开 = **新建一条任务**（新 md），旧任务归档留档（#59：状态单向）。
-      // 所以：旧文档**不动**（那是历史），新正文写进**新任务自己的文档**，
-      // 页签切到新任务——用户接着看的就是「这一轮要干的活」。
-      // text 是拿 doc.body 拼的，未保存的编辑原样带在里面，不会被抹掉。
-      // 归属改了会搬家（同保存路径，任务 #43）——文档与页签跟到新队列新号。
       const landedKey = res?.key || dirKey;
-      const newId = String(res?.task?.id ?? task);
-      const newDocId = docIdOf(scopeOf(landedKey), newId);
-      saveDoc(newDocId, { title: titleFromMd(text), body: text });
-      if (model && tabId) {
-        model.doAction(Actions.updateNodeAttributes(tabId, { config: { dirKey: landedKey, task: newId } }));
+      const sameId = String(res?.task?.id ?? task);
+      saveDoc(docIdOf(scopeOf(landedKey), sameId), { title: titleFromMd(text), body: text });
+      if (attachments?.length) persistAtt(sameId, [...(doc?.attachments || []), ...attachments]);
+      if (model && tabId && landedKey !== dirKey) {
+        model.doAction(Actions.updateNodeAttributes(tabId, { config: { dirKey: landedKey, task: sameId } }));
       }
       setDirty(false);
-      toast(
-        `已重开「${title}」→ 新任务 #${newId}（旧任务归档留档）` +
-          (res?.moved && res.name ? `；归属迁到「${res.name}」` : ''),
-      );
+      toast(`已回写评论「${title}」#${sameId}`);
       refreshLocal();
     });
   };
@@ -236,6 +301,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
 
   const [selMenu, setSelMenu] = useState(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [chainOpen, setChainOpen] = useState(false);
   const fileMdRef = useRef(null);
   const fileAttRef = useRef(null);
   const articleRef = useRef(null);
@@ -352,11 +418,153 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     });
   }, [parentRef, model, app.model, toast]);
 
+  /** 任务链节点 → 旁路查看：history 快照 / 祖先或子任务正文 */
+  const openHistoryBeside = useCallback(
+    (node) => {
+      const m = model || app.model;
+      if (!m || isDraft) return;
+      if (node?.current) {
+        toast('当前节点就是本页');
+        return;
+      }
+      // 同任务 history 快照
+      if (node?.historyId != null) {
+        openBesideMain(m, {
+          component: 'page',
+          name: `链 #${task} · ${node.kind || node.historyId}`,
+          config: {
+            dirKey: dirKey || GLOBAL_KEY,
+            task: String(task),
+            historyId: Number(node.historyId),
+          },
+        });
+        return;
+      }
+      // fork 祖先 / 子任务：打开对应任务页（旁路）
+      if (node?.taskId != null && node?.dirKey) {
+        openBesideMain(m, {
+          component: 'page',
+          name: node.excerpt ? String(node.excerpt).slice(0, 24) : `#${node.taskId}`,
+          config: { dirKey: String(node.dirKey), task: String(node.taskId) },
+        });
+        return;
+      }
+      toast('这个节点没有可打开的内容');
+    },
+    [model, app.model, isDraft, dirKey, task, toast],
+  );
+
   const closeBesideSelf = useCallback(() => {
     const m = model || app.model;
     if (!m || !tabId) return;
     m.doAction(Actions.deleteTab(tabId));
   }, [model, app.model, tabId]);
+
+  // 任务链：优先 history；无 history 时用 forkOf 祖先/子任务（#76 反馈「看不到链」）
+  const [chainApi, setChainApi] = useState(null);
+  useEffect(() => {
+    if (isDraft || task == null || /^draft/i.test(String(task))) {
+      setChainApi(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const q = isGlobal
+      ? `key=${encodeURIComponent(GLOBAL_KEY)}&id=${Number(task)}`
+      : `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(task)}`;
+    api(`/api/localtasks/chain?${q}`)
+      .then((d) => {
+        if (!cancelled) setChainApi(d);
+      })
+      .catch(() => {
+        if (!cancelled) setChainApi(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDraft, task, isGlobal, topic?.cwd, taskRow?.history?.length, taskRow?.forkOf, taskRow?.reopenCount]);
+
+  const chainNodes = useMemo(() => {
+    if (isDraft || !taskRow) return [];
+    const tip =
+      String(taskRow.text || '')
+        .split('\n')
+        .map((l) => l.trim())
+        .find(Boolean) || '';
+    const tipEx = tip.replace(/^#+\s*/, '').slice(0, 100);
+
+    // 1) 同任务 history 链
+    const hist = Array.isArray(taskRow.history) ? taskRow.history : [];
+    if (hist.length) {
+      const nodes = hist.map((h) => ({
+        historyId: h.id,
+        kind: h.kind,
+        at: h.at,
+        excerpt: h.excerpt || h.feedback || '',
+        feedback: h.feedback,
+        quote: h.quote,
+        attachmentCount: (h.attachments || []).length,
+        current: false,
+      }));
+      nodes.push({
+        historyId: null,
+        kind: 'current',
+        at: taskRow.lastReopenedAt || taskRow.createdAt || '',
+        excerpt: tipEx,
+        attachmentCount: 0,
+        current: true,
+      });
+      return nodes;
+    }
+
+    // 2) fork 派生链（祖先 → 本条 → 子任务）
+    const ancestors = Array.isArray(chainApi?.ancestors) ? [...chainApi.ancestors].reverse() : [];
+    const children = Array.isArray(chainApi?.children) ? chainApi.children : [];
+    if (!ancestors.length && !children.length && !taskRow.forkOf) return [];
+    const nodes = [];
+    for (const a of ancestors) {
+      if (a.missing) continue;
+      nodes.push({
+        historyId: null,
+        kind: a.forkKind || 'origin',
+        at: a.createdAt || '',
+        excerpt: a.excerpt || `#${a.id}`,
+        attachmentCount: 0,
+        current: false,
+        taskId: a.id,
+        dirKey: a.key,
+      });
+    }
+    nodes.push({
+      historyId: null,
+      kind: 'current',
+      at: taskRow.createdAt || '',
+      excerpt: tipEx,
+      attachmentCount: 0,
+      current: true,
+      taskId: Number(task),
+      dirKey: dirKey || GLOBAL_KEY,
+    });
+    for (const c of children) {
+      nodes.push({
+        historyId: null,
+        kind: c.forkKind || 'comment',
+        at: c.createdAt || '',
+        excerpt: c.excerpt || `#${c.id}`,
+        attachmentCount: 0,
+        current: false,
+        taskId: c.id,
+        dirKey: c.key,
+      });
+    }
+    // 弹窗里即使只有当前节点也展示（说明这是链的尖）
+    return nodes;
+  }, [isDraft, taskRow, chainApi, task, dirKey]);
+
+  const historyNode = useMemo(() => {
+    if (historyId == null || !taskRow) return null;
+    const want = Number(historyId);
+    return (taskRow.history || []).find((h) => Number(h.id) === want) || null;
+  }, [historyId, taskRow]);
 
   const markDirty = useCallback(() => setDirty(true), []);
 
@@ -654,53 +862,6 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     });
   };
 
-  /** 划线评论 → **直接提交**成新任务：锚定选区原文，正文就是提出的问题。
-   *
-   * 两条口径（用户验收反馈 2026-11-04）：
-   *   1. 原任务带工作组语义（frontmatter 里的 board / project）→ 评论出的新任务
-   *      **也归该组**。不继承的话，这条问题会从组面板里掉出去——用户是在组里
-   *      提问的，闭环断在半路。正文整块继承原 frontmatter（归属 + 介绍引用）。
-   *   2. 评论**直接提交**，不再先落成草稿、让人再点一次提交。评论是提问不是
-   *      写作，多一道编辑页就多一次流失；提交完再打开新任务页（看得到提交了什么）。
-   */
-  const spawnComment = (question) => {
-    const quote = lastSel.current || '';
-    const q = String(question || '').trim();
-    if (!quote) {
-      toast('先划选一段再评论');
-      return;
-    }
-    if (!q) {
-      toast('写一下要提的问题');
-      return;
-    }
-    const parent = doc?.title || topic?.name || '';
-    const t = `问题：${q.slice(0, 28)}`;
-    const raw = `# ${t}\n\n> 锚定自「${parent}」：\n> ${quote.replace(/\n/g, '\n> ')}\n\n## 问题\n${q}\n\n## 要做什么\n- [ ] …\n`;
-    // 工作组语义继承 + 原文锚点（parent/parentDir）：评论页可一键并排打开原文。
-    // 任务链（#69）：forkOf/forkKind 进 store schema——frontmatter 只是正文锚点，
-    // 链条本体在队列行上，CLI 的 localtask chain 靠它才能查（正文可被编辑，schema 不会）。
-    const isRealTask = !isDraft && task != null && !/^draft/i.test(String(task));
-    const parentFields = isRealTask ? { parent: String(task), parentDir: dirKey || '' } : {};
-    const linkFields = isRealTask ? { forkOf: String(task), forkKind: 'comment' } : {};
-    const b = withFrontmatter(raw, { ...docFm, ...parentFields });
-    guard(async () => {
-      // 落点 = 原任务所在队列（显式给 cwd：尊重当前落点，不被归属推导挪走）；
-      // 归属由正文 frontmatter 决定（服务端 fail-open 补介绍引用）。
-      const res = await api('/api/localtasks', {
-        method: 'POST',
-        body: isGlobal
-          ? { global: true, text: b, ...linkFields }
-          : { cwd: topic?.cwd, text: b, ...linkFields },
-      });
-      closeSelMenu();
-      toast('已提交问题（评论）');
-      refreshLocal();
-      const newId = res?.task?.id ?? res?.id;
-      if (newId != null && app.openPage) app.openPage({ dirKey, task: String(newId), name: t });
-    });
-  };
-
   /** 工具栏「评论」：只用当前可见选区；浮层已开时沿用其原文（正写评论） */
   const openCommentFromToolbar = () => {
     const live = String(window.getSelection() || '').trim();
@@ -831,6 +992,49 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     return () => window.removeEventListener('keydown', onKey);
   }, [parentRef, beside, openParentBeside]);
 
+  // 链节点旁路：只读展示 history 快照（不占编辑文档）
+  if (historyId != null) {
+    const kindLab = { origin: '起点', reopen: '反馈', comment: '评论' }[historyNode?.kind] || '节点';
+    const html = historyNode
+      ? renderMarkdownHtml(historyNode.text || '', historyNode.attachments || [])
+      : '';
+    return (
+      <div className="mdw is-beside">
+        <div className="mdw-beside-h">
+          <span className="mdw-beside-lab">链节点 · {kindLab} #{historyId}</span>
+          <span className="grow" />
+          <button
+            type="button"
+            className="iconbtn"
+            title="关闭"
+            aria-label="关闭"
+            onClick={closeBesideSelf}
+          >
+            ×
+          </button>
+        </div>
+        <div className="mdw-hist-ro">
+          {!historyNode ? (
+            <div className="muted">找不到链节点 #{historyId}</div>
+          ) : (
+            <>
+              <div className="mdw-hist-meta">
+                <span>{historyNode.at || '—'}</span>
+                {historyNode.quote ? <span>锚定：{historyNode.quote.slice(0, 80)}</span> : null}
+                {historyNode.feedback ? <span>反馈：{historyNode.feedback.slice(0, 80)}</span> : null}
+                {historyNode.summary ? <span>上轮总结：{historyNode.summary.slice(0, 80)}</span> : null}
+              </div>
+              <article
+                className="md-body"
+                dangerouslySetInnerHTML={{ __html: html || '<p class="muted">（空）</p>' }}
+              />
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // 读不到文档分两种：**还在读**（队列首轮没回来）与**确实没有这一条**（被删 / 深链写错）。
   // 后者不该永远转圈——给一句实话 + 一个出口（回目录）。
   if (!doc) {
@@ -859,6 +1063,12 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     <div className={`mdw${beside ? ' is-beside' : ''}`} data-mode={doc.mode || 'split'} onMouseUp={onPreviewMouseUp}>
       {dialogNode}
       {preview && <PreviewModal state={preview} onClose={() => setPreview(null)} />}
+      <TaskChainModal
+        open={chainOpen}
+        nodes={chainNodes}
+        onOpenNode={openHistoryBeside}
+        onClose={() => setChainOpen(false)}
+      />
       {beside && (
         <div className="mdw-beside-h">
           <span className="mdw-beside-lab">原文（旁路）</span>
@@ -976,6 +1186,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
           onOverview={() => app.onNavigate && app.onNavigate('#/overview')}
           onFormat={(op) => editorApiRef.current?.format?.(op)}
           onTurn={(id2) => editorApiRef.current?.turn?.(id2)}
+          onChain={isDraft ? null : () => setChainOpen(true)}
         />
 
         <MdPanes
@@ -1008,8 +1219,8 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
         />
 
         {/* 验收条：已完成任务的 ack 卡——放在**正文末尾**（用户口径）：读完正文
-            正好看到 agent 的完成总结，等你回复——划选正文评论 = 提详细问题（生成
-            新任务）；重做 = 评论模式下带反馈重开；通行 = 验收通过。 */}
+            正好看到 agent 的完成总结，等你回复——反馈 = 新开任务；划选评论 = 回写
+            本任务；通行 = 验收通过。 */}
         {!isDraft && taskRow?.completedAt && (
           <div className="mdw-review" ref={reviewBarRef}>
             <div className="mdw-review-main">
@@ -1040,8 +1251,8 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
                 <span className="mdw-review-ok">已验收</span>
               ) : (
                 <>
-                  <button type="button" className="ghost" onClick={redoTask}>
-                    重做（带反馈）
+                  <button type="button" className="ghost" onClick={openFeedback} title="新开一条任务携带反馈（原任务不动）">
+                    反馈
                   </button>
                   <button type="button" className="primary" onClick={ackReview}>
                     通行

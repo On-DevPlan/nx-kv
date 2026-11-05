@@ -766,6 +766,50 @@
 .mdw-sel-comment-acts button.primary:disabled{opacity:.45;cursor:not-allowed;filter:none}
 .mdw-sel-comment-hint{font-size:10.5px;color:var(--faint,#A9AEB4);text-align:right}
 .mdw-sel-fmt-btn.comment{font-family:inherit;font-weight:650;letter-spacing:0}
+.mdw-sel-comment-acts .grow{flex:1}
+.mdw-sel-att-list{display:flex;flex-wrap:wrap;gap:4px}
+.mdw-sel-att-chip{
+  font-size:10.5px;padding:2px 6px;border-radius:4px;
+  background:var(--soft,#F1F0EC);color:var(--ink-2,#4B515A);max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* 任务链弹窗（#77）：「更多 → 任务链」竖排时间线 */
+.mdw-chain-hint{margin:0 0 12px;font-size:12px;color:var(--faint,#A9AEB4);line-height:1.45}
+.mdw-chain-empty{padding:18px 8px;text-align:center;font-size:13px}
+.mdw-chain-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
+.mdw-chain-li{display:flex;gap:10px;align-items:stretch;min-height:0}
+.mdw-chain-rail{
+  flex:none;width:14px;display:flex;flex-direction:column;align-items:center;
+}
+.mdw-chain-dot{
+  width:10px;height:10px;border-radius:50%;flex:none;margin-top:14px;
+  background:var(--mdw-accent,#2F6F5E);border:2px solid var(--paper,#fff);
+  box-shadow:0 0 0 1px var(--mdw-accent-line,#9CB8AE);
+}
+.mdw-chain-li.is-current .mdw-chain-dot{background:var(--ink,#16181C);box-shadow:0 0 0 1px var(--ink,#16181C)}
+.mdw-chain-line{flex:1;width:2px;background:var(--line,#E4E2DC);margin:4px 0 0}
+.mdw-chain-card{
+  flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:3px;
+  margin:0 0 8px;padding:10px 12px;border-radius:8px;text-align:left;
+  border:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
+  cursor:pointer;font:inherit;color:var(--ink,#16181C);
+}
+.mdw-chain-card:hover:not(:disabled){
+  border-color:var(--mdw-accent-line,#9CB8AE);background:var(--mdw-accent-soft,#E8F2EE);
+}
+.mdw-chain-card:disabled{cursor:default;opacity:1;background:var(--soft,#F7F6F3)}
+.mdw-chain-card.is-comment .mdw-chain-kind{color:var(--info,#1558BC)}
+.mdw-chain-kind{font-size:10.5px;font-weight:700;color:var(--mdw-accent,#2F6F5E);letter-spacing:.02em}
+.mdw-chain-ex{font-size:13px;line-height:1.4;color:var(--ink,#16181C);overflow-wrap:anywhere}
+.mdw-chain-meta{font-size:11px;color:var(--faint,#A9AEB4)}
+.mdw-hist-ro{
+  flex:1;min-height:0;overflow:auto;padding:16px 18px;
+  font-size:13px;line-height:1.55;
+}
+.mdw-hist-meta{
+  font-size:11px;color:var(--faint,#A9AEB4);margin-bottom:10px;
+  display:flex;gap:8px;flex-wrap:wrap;
+}
 /* 验收条：已完成任务的 ack 卡——放在正文末尾的页脚条：完成总结等用户回复
    （通行 / 重做；划线评论提详细问题） */
 .mdw-review{

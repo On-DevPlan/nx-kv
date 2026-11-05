@@ -249,8 +249,8 @@ export default function Landing({
                       {onReopenTask && t.status !== 'archived' && (t.status === 'consumed' || t.completedAt) && (
                         <span
                           className="op" role="button" tabIndex={-1}
-                          title={t.completedAt ? '重做（验收反馈）：新建一条任务继续做，旧任务归档留档' : '反馈修改：新建一条任务继续做，旧任务归档留档'}
-                          aria-label={`重开 ${titleFromMd(t.text)}`}
+                          title={t.completedAt ? '反馈：新开一条任务（原任务不动）' : '反馈修改：回写本任务并记入任务链'}
+                          aria-label={`反馈 ${titleFromMd(t.text)}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             onReopenTask(t);

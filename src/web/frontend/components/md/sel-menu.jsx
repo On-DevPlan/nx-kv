@@ -1,5 +1,6 @@
-/** 划选浮层：格式条（源码/live 编辑）与划线评论（任意选区） */
+/** 划选浮层：格式条 + 统一「评论/反馈」组件（可粘贴/添加图片附件） */
 import { useEffect, useRef, useState } from 'react';
+import { filesToAttachments } from './attachments.js';
 
 const FMT = [
   { op: 'bold', label: 'B', title: '粗体', cls: 'b' },
@@ -7,6 +8,24 @@ const FMT = [
   { op: 'code', label: '</>', title: '代码', cls: 'code' },
   { op: 'link', label: '链', title: '链接', cls: 'link' },
 ];
+
+function clipboardFiles(e) {
+  const out = [];
+  const cd = e.clipboardData;
+  if (!cd) return out;
+  if (cd.files?.length) {
+    for (const f of cd.files) out.push(f);
+  }
+  if (!out.length && cd.items?.length) {
+    for (const it of cd.items) {
+      if (it.kind === 'file') {
+        const f = it.getAsFile();
+        if (f) out.push(f);
+      }
+    }
+  }
+  return out;
+}
 
 export default function SelMenu({
   at,
@@ -18,12 +37,16 @@ export default function SelMenu({
 }) {
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState('');
+  const [pendingAtt, setPendingAtt] = useState({ items: [], inserts: '' });
+  const [busy, setBusy] = useState(false);
   const taRef = useRef(null);
+  const fileRef = useRef(null);
 
   useEffect(() => {
     setComposing(!!at?.comment);
     setDraft('');
-  }, [at?.text, at?.x, at?.y, at?.comment]);
+    setPendingAtt({ items: [], inserts: '' });
+  }, [at?.text, at?.x, at?.y, at?.comment, at?.mode]);
 
   useEffect(() => {
     if (!composing) return undefined;
@@ -36,25 +59,61 @@ export default function SelMenu({
   const showFmt = kind === 'format' || kind === 'both';
   const quote = String(at.text || '');
   const quoteShort = quote.length > 72 ? `${quote.slice(0, 72)}…` : quote;
-  // 重做模式：针对整条任务（不锚定选区），没有引文可显示
-  const isRedo = at.mode === 'redo';
-  const cap = isRedo ? '重做：写下要改的地方' : '划线评论';
+  const isFeedback = at.mode === 'feedback' || at.mode === 'redo';
+  const cap = isFeedback ? '反馈：写下要改的地方（将新开任务）' : '划线评论（回写本任务）';
+  const canSubmit = !!draft.trim() || pendingAtt.items.length > 0;
 
   const startCompose = () => {
     setComposing(true);
-    onCompose?.(); // 父级打上 comment:true，避免选区塌缩时关掉浮层
+    onCompose?.();
   };
 
   const cancelCompose = () => {
     setComposing(false);
     setDraft('');
-    onClose?.(); // 取消直接收起：选区已塌，格式条也没用了
+    setPendingAtt({ items: [], inserts: '' });
+    onClose?.();
   };
 
   const submit = () => {
-    const q = draft.trim();
-    if (!q) return;
-    onComment?.(q);
+    if (!canSubmit || busy) return;
+    onComment?.({
+      text: draft.trim(),
+      attachments: pendingAtt.items,
+      inserts: pendingAtt.inserts,
+      mode: isFeedback ? 'feedback' : 'comment',
+      quote,
+    });
+  };
+
+  const pickFiles = async (fileList) => {
+    if (!fileList?.length) return;
+    setBusy(true);
+    try {
+      const { items, imageInserts, fileInserts } = await filesToAttachments(fileList);
+      const inserts = [...(imageInserts || []), ...(fileInserts || [])].join('');
+      setPendingAtt((prev) => ({
+        items: [...prev.items, ...items],
+        inserts: `${prev.inserts}${inserts}`,
+      }));
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const onPaste = (e) => {
+    const files = clipboardFiles(e);
+    if (!files.length) return; // 纯文本走默认粘贴
+    e.preventDefault();
+    pickFiles(files);
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = [...(e.dataTransfer?.files || [])];
+    if (files.length) pickFiles(files);
   };
 
   return (
@@ -64,13 +123,19 @@ export default function SelMenu({
       style={{ left: at.x, top: at.y }}
       role="menu"
       onMouseDown={(e) => {
-        // 保划选：点按钮不丢选区；输入框要能聚焦，不能 preventDefault
-        if (e.target.closest?.('textarea, input')) return;
+        if (e.target.closest?.('textarea, input, button')) return;
         e.preventDefault();
       }}
     >
       {composing ? (
-        <div className="mdw-sel-comment">
+        <div
+          className="mdw-sel-comment"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDrop={onDrop}
+        >
           <div className="mdw-sel-comment-cap">{cap}</div>
           {quote ? (
             <div className="mdw-sel-quote" title={quote}>{quoteShort}</div>
@@ -80,9 +145,10 @@ export default function SelMenu({
             className="mdw-sel-comment-ta"
             rows={3}
             value={draft}
-            placeholder={isRedo ? '写下要改的地方…' : '对此处提出问题…'}
-            aria-label="评论文本"
+            placeholder={isFeedback ? '写下反馈…可粘贴/拖入图片' : '对此处提出问题…可粘贴/拖入图片'}
+            aria-label={isFeedback ? '反馈文本' : '评论文本'}
             onChange={(e) => setDraft(e.target.value)}
+            onPaste={onPaste}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.preventDefault();
@@ -96,20 +162,47 @@ export default function SelMenu({
               }
             }}
           />
+          {pendingAtt.items.length ? (
+            <div className="mdw-sel-att-list">
+              {pendingAtt.items.map((a) => (
+                <span key={a.id} className="mdw-sel-att-chip" title={a.name}>
+                  {a.type === 'image' ? '🖼' : '📎'} {a.name}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="mdw-sel-comment-acts">
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              hidden
+              accept="image/*,*/*"
+              onChange={(e) => pickFiles(e.target.files)}
+            />
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy}
+              title="添加图片或附件（也可粘贴/拖入）"
+              onClick={() => fileRef.current?.click()}
+            >
+              {busy ? '上传中…' : '附件'}
+            </button>
+            <span className="grow" />
             <button type="button" className="ghost" onClick={cancelCompose}>
               取消
             </button>
             <button
               type="button"
               className="primary"
-              disabled={!draft.trim()}
+              disabled={!canSubmit || busy}
               onClick={submit}
             >
-              {isRedo ? '重开此任务' : '提交为任务'}
+              {isFeedback ? '新开任务' : '回写本任务'}
             </button>
           </div>
-          <div className="mdw-sel-comment-hint">Ctrl/⌘+Enter 提交</div>
+          <div className="mdw-sel-comment-hint">Ctrl/⌘+Enter 提交 · 粘贴/拖入图片 · 附件</div>
         </div>
       ) : (
         <>
@@ -134,7 +227,7 @@ export default function SelMenu({
               <button
                 type="button"
                 className="mdw-sel-fmt-btn comment"
-                title="划线评论 → 新任务"
+                title="划线评论 → 回写本任务"
                 onClick={startCompose}
               >
                 评论

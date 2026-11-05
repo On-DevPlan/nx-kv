@@ -1,104 +1,178 @@
 // （#54 自 service.js 拆出）队列出口的任务生命周期：consumeFirstPending（D-first 领取，
 // 跳过被依赖/闸门挡住的 pending）、completeTask（完成门禁：timegoal 未到点返回 blocked
-// 业务值而不是抛错）、reopenTask（用户修改反馈 → **新建一条任务**，旧任务归档）。
+// 业务值而不是抛错）、reopenTask（用户修改反馈 → **就地重开原任务**，历史进 history 链）。
 import { badInput, notFound } from '../../core/errors.js';
 import { formatDuration } from '../../core/instruction-template.js';
 import { preserveFrontmatter } from '../../shared/frontmatter.js';
 import { findFirstReadyPending } from './dag.js';
 import { basename } from 'node:path';
 import { isGlobalKey, resolveTaskKey, topicKeyFor } from './paths.js';
-import { loadStore, saveStore, stampNow, normalizeSummary, normalizeText, bumpWorkflowRevision, topicOf, nextTaskId } from './store-io.js';
+import { loadStore, saveStore, stampNow, normalizeSummary, normalizeText, bumpWorkflowRevision } from './store-io.js';
 import { normalizeTask, foreignResolver, isPending } from './task-view.js';
 import { normalizeBlockBy } from './dag.js';
 import { markConsumed } from './waiters.js';
-// 把一条任务重新开放（用户的**修改反馈** / 重做 / 加评论）。
+
+/** 下一条 history 节点编号（任务内自增） */
+function nextHistoryId(history) {
+  let max = 0;
+  for (const h of history || []) {
+    const n = Number(h && h.id) || 0;
+    if (n > max) max = n;
+  }
+  return max + 1;
+}
+
+/** 把当前任务态压成一条 history 节点（就地重开前留档） */
+function snapshotNode(task, { kind, quote, feedback, attachments } = {}) {
+  const excerpt =
+    String(task.text ?? '')
+      .split('\n')
+      .map((l) => l.trim())
+      .find(Boolean) || '';
+  return {
+    id: nextHistoryId(task.history),
+    kind: kind === 'comment' ? 'comment' : kind === 'origin' ? 'origin' : 'reopen',
+    at: stampNow(),
+    text: String(task.text ?? ''),
+    summary: String(task.roundSummary ?? ''),
+    status: String(task.status || 'pending'),
+    completedAt: String(task.completedAt ?? ''),
+    quote: String(quote ?? ''),
+    feedback: String(feedback ?? ''),
+    attachments: Array.isArray(attachments)
+      ? attachments
+          .filter((a) => a && typeof a === 'object')
+          .map((a) => ({
+            id: String(a.id || ''),
+            name: String(a.name || ''),
+            type: a.type === 'image' ? 'image' : 'file',
+            size: String(a.size || ''),
+            url: a.url ? String(a.url) : '',
+          }))
+      : [],
+    excerpt: excerpt.replace(/^#+\s*/, '').slice(0, 100),
+  };
+}
+
+// 把一条任务重新开放（用户的**修改反馈** / 重做 / 划选评论）。
 //
-// 语义（任务 #59）：**新建一条任务**（新的 md），旧任务**归档**——状态只往前。
-//   - 旧任务：状态前进到终态 archived，正文、完成总结、领取记录**一个字都不动**（留档）；
-//     它不会再回到「重新开始」，也就没有「完成等待验收 → 重新开始」这条回退边。
-//   - 新任务：正文 = 调用方拼好的（面板口径：原正文 + 上一轮完成总结 + 本轮反馈），
-//     forkOf 指回上一条（'队列key:旧编号'），supersededBy 记在旧任务上。
-//   - 落点：默认同主题；带改过归属（moveTo）就落那边——归属决定落点。
+// 语义（任务 #74）：**就地重开原任务**——同一编号、同一 md，不新建队列行。
+//   - 旧态压进 `history[]`（可追链、可点开旁路查看）
+//   - 正文 = 调用方拼好的（面板口径：原正文 + 上一轮完成总结 + 本轮反馈）
+//   - 清领取/完成标记，状态回到 pending，等再领（同号继续）
+//   - 落点：默认同主题；带改过归属（moveTo）就搬整条任务
 //
-// 为什么不再「就地改同一条、把状态翻回 pending」：
-//   1. 那是**回退边**——完成等待验收的任务被拉回重新开始，历史被抹掉；
-//   2. 就地改写会覆盖旧正文——上轮做过什么、用户评了什么，都被新正文吃掉；
-//   3. 现在链条可追：旧任务留档、新任务指回它，状态机 pending → consumed → archived。
-export async function reopenTask({ cwd: rawCwd, key: rawKey, id, text, moveTo } = {}) {
+// 对比 #59「新建 md + 归档」：那会把同一件活拆成多条待领，验收/评论闭环断在新号上；
+// #74 要求 ack 与评论统一回写原任务，历史用链可视化而不是多条归档任务。
+export async function reopenTask({
+  cwd: rawCwd,
+  key: rawKey,
+  id,
+  text,
+  moveTo,
+  kind: rawKind,
+  quote,
+  feedback,
+  attachments,
+} = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
   const store = await loadStore();
   const t = store.topics[key];
   if (!t) throw notFound('主题不存在: ' + key);
-  const old = t.tasks.find((x) => Number(x.id) === want);
-  if (!old || old.deletedAt) throw notFound('任务不存在或已删除: #' + want);
-  if (old.status === 'archived') {
+  const task = t.tasks.find((x) => Number(x.id) === want);
+  if (!task || task.deletedAt) throw notFound('任务不存在或已删除: #' + want);
+  // 旧口径（#59）归档的 superseded 任务仍拒绝——那是被新号取代的残留，不是本条活。
+  if (task.status === 'archived') {
     throw badInput(`#${want} 已归档（被新任务取代）——不能再重开；要继续做请新建任务`);
   }
-  const before = { status: old.status, consumedAt: old.consumedAt || '', completedAt: old.completedAt || '' };
-  const body = String(text ?? '').trim();
 
-  // 落点：默认同主题；带改过归属（moveTo）就落那边——归属决定落点。
+  const kind = rawKind === 'comment' ? 'comment' : 'reopen';
+  const before = {
+    status: task.status,
+    consumedAt: task.consumedAt || '',
+    completedAt: task.completedAt || '',
+    roundSummary: task.roundSummary || '',
+  };
+
+  if (!Array.isArray(task.history)) task.history = [];
+  // 首次重开：先落一条 origin，把「改之前」的正文留住（后续节点只记事件态）。
+  if (task.history.length === 0) {
+    task.history.push(snapshotNode(task, { kind: 'origin' }));
+  }
+
+  const body = String(text ?? '').trim();
+  if (body) {
+    task.text = preserveFrontmatter(task.text, normalizeText(body));
+  }
+
+  // 本轮事件节点：记反馈/选区/附件；text 取**更新后**的正文（旁路点开即这一轮交付形态）
+  const node = snapshotNode(task, {
+    kind,
+    quote,
+    feedback: feedback || '',
+    attachments,
+  });
+  // origin 已占「改前」；事件节点用更新后正文，避免与 origin 完全重复时仍要能看反馈字段
+  task.history.push(node);
+
+  // 重开 = 重新进入待领取：清领取/完成标记，让 get/wait 能再领到同一条。
+  // （划选评论也走此入口——反馈已写进正文，下一轮 agent 从同号再领。）
+  task.status = 'pending';
+  task.consumedAt = '';
+  task.completedAt = '';
+  task.roundSummary = '';
+  task.claimedFrom = '';
+  task.claimedBy = '';
+  task.claimedByName = '';
+
+  task.reopenCount = (Number(task.reopenCount) || 0) + 1;
+  task.lastReopenedAt = stampNow();
+  // 链上的「当前尖」语义：forkKind 记最近一次事件种类（兼容旧 chain 查询展示）
+  task.forkKind = kind;
+
+  // 落点：默认同主题；带改过归属（moveTo）就搬整条。
   let host = t;
   let moved = false;
   let movedFrom = null;
   if (moveTo && moveTo.cwd) {
     const toKey = topicKeyFor(basename(String(moveTo.cwd)));
     if (toKey !== t.key) {
-      host = topicOf(store, toKey, moveTo.cwd, moveTo.name || '');
-      moved = true;
-      movedFrom = { key, name: t.name, id: want };
+      const { relocateInStore } = await import('./task-view.js');
+      const relocated = relocateInStore(store, t, task, moveTo);
+      if (relocated) {
+        host = relocated.topic;
+        moved = true;
+        movedFrom = { key, name: t.name, id: want };
+      }
     }
   }
 
-  // 新任务：正文用调用方拼好的（面板口径 = 原正文 + 上一轮完成总结 + 本轮反馈）；
-  // 没给正文就沿用旧正文（只归档、不改内容）。
-  const newId = nextTaskId(host.tasks);
-  const forked = normalizeTask({
-    id: newId,
-    text: body ? preserveFrontmatter(old.text, normalizeText(body)) : old.text,
-    status: 'pending',
-    createdAt: stampNow(),
-    forkOf: `${key}:${want}`,
-    forkKind: 'reopen', // 验收反馈 / 重做派生（#69 任务链；评论派生是 addTask 的 'comment'）
-    // 同一件活，约束也接着走：
-    //   timegoal       时间目标继承——新任务从**再次领取**开始重新计时（与旧口径一致）
-    //   blocksFollowing 闸门继承——旧任务归档后不再挡人，闸门得由新任务接着当
-    //   blockBy        上游依赖继承（去掉指向自己的那条）
-    timegoal: old.timegoal || null,
-    blocksFollowing: !!old.blocksFollowing,
-    blockBy: normalizeBlockBy(old.blockBy, newId),
-  });
-  host.tasks.push(forked);
-
-  // 旧任务：**前进**到终态（归档）。正文与完成总结一个字都不动——留档。
-  old.status = 'archived';
-  old.archivedAt = stampNow();
-  old.archivedReason = 'superseded';
-  old.supersededBy = { key: host.key, id: newId };
-  old.reopenCount = (Number(old.reopenCount) || 0) + 1;
-  old.lastReopenedAt = stampNow();
+  // blockBy 仍指向自己时清掉（编号没变，一般不会；搬家后仍校验一次）
+  task.blockBy = normalizeBlockBy(task.blockBy, Number(task.id));
 
   host.updatedAt = stampNow();
   bumpWorkflowRevision(host);
   if (host !== t) bumpWorkflowRevision(t);
   await saveStore(store);
+
   return {
     status: 'ok',
     reopened: true,
-    forked: true,
-    id: newId, // 新任务编号（面板据此切到新的 md）
+    forked: false, // #74：不再新建
+    id: Number(task.id),
     key: host.key,
     name: host.name,
     before,
-    from: { key, id: want }, // 上一条（已归档）
+    kind,
+    historyId: node.id,
     moved,
     movedFrom,
-    task: normalizeTask(forked, host.tasks),
-    archived: normalizeTask(old, t.tasks),
+    task: normalizeTask(task, host.tasks),
   };
 }
+
 // 取走该主题第一条 pending；没有则返回 null。roundSummary 显式指定本轮完成总结，
 // 缺省回落到主题当前 summary（等待中即本轮现状）。
 // by = 领取方身份 {key,name,cwd}（wait 传入），用于记领取审计。
@@ -227,4 +301,3 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
 //
 // （goal 探针与目标上下文已随 wait 编排迁往 tasktool/wait.js——任务工具语义归
 // tasktool，队列本体不再依赖 timegoal 模块。）
-

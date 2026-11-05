@@ -375,3 +375,16 @@ T1/T4/T5 的核心断言**已复核属实**（store 隔离端到端实测通过�
 - [x] 验收：`pnpm test` 全绿（lint ✓ + build ✓ + smoke ✓ + unit 593/593）；真机 CDP 实测
   （隔离 store + 临时端口 7992，1 组 1 项目 + 一条带组语义的任务）：任务页「更多 → 新任务」
   开出的草稿页显示「归属项目：alpha」，正文属性卡带 board: b_… + project: github.com/me/alpha。
+
+### ack 与评论统一回写原任务 + 任务链可视化（2026-11-05 #74）
+
+- [x] **推翻 v0.24.9 的「重开即新建」**：验收反馈与划选评论**就地回写原任务**（同号、同 md），
+  旧态压进 history[] 链（起点 → 反馈/评论 → 当前）；清领取/完成标记回 pending，等再领。
+  「新建任务 + 归档」会把同一件活拆成多条待领，验收/评论闭环断在新号上。
+- [x] **评论与反馈都支持附件/图片**（划选评论入口走附件链路）；reopen 新增 kind / quote /
+  feedback / attachments 参数。
+- [x] **任务链可视化**：编辑页弹窗展示 history 节点（起点/反馈/评论/当前），点节点旁路只读
+  查看那一轮正文（页签 historyId 只读形态）；旧 forkOf 派生链（祖先 + 子任务）兼容显示。
+  localtask chain 人读输出同步改为以 history 节点为主。
+- [x] 验收：pnpm test 全绿（lint ✓ + build ✓ + smoke ✓ + unit 616/616，含改写后的
+  localtask-chain / localtask-fork / taskgoal 用例）。

@@ -79,18 +79,28 @@ function renderAdd(d) {
   return body + ignored;
 }
 
-// `localtask chain` 的人读输出（#69）：本条 → 祖先链（逐级 fork 自）→ 子任务
-const KIND_TAG = { reopen: '反馈', comment: '评论' };
+// `localtask chain` 的人读输出（#74）：同任务 history 节点为主；旧 forkOf 祖先/子任务为辅
+const KIND_TAG = { origin: '起点', reopen: '反馈', comment: '评论', current: '当前' };
 function renderChain(d) {
   const self = d.task;
   const lines = [
     `#${self.id}  [${STATUS_TAG[self.status] || self.status}]  ${d.name}`,
     `  ${self.text.split('\n').map((l) => l.trim()).find(Boolean) || ''}`,
   ];
+  const nodes = Array.isArray(d.nodes) ? d.nodes : [];
+  if (nodes.length) {
+    lines.push(`  任务链（${nodes.length} 节点）:`);
+    for (const n of nodes) {
+      const tag = KIND_TAG[n.kind] || n.kind || '?';
+      const mark = n.current ? '●' : '○';
+      const att = n.attachmentCount ? ` 📎${n.attachmentCount}` : '';
+      lines.push(`    ${mark} [${tag}] ${n.excerpt || '—'}${att}`);
+    }
+  }
   if (self.forkOf) {
     lines.push(`  派生自: ${self.forkOf}${self.forkKind ? `（${KIND_TAG[self.forkKind] || self.forkKind}）` : ''}`);
   }
-  if (d.ancestors.length) {
+  if (d.ancestors && d.ancestors.length) {
     lines.push(`  祖先链（${d.ancestors.length} 级）:`);
     for (const a of d.ancestors) {
       lines.push(
@@ -100,7 +110,7 @@ function renderChain(d) {
       );
     }
   }
-  if (d.children.length) {
+  if (d.children && d.children.length) {
     lines.push(`  子任务（${d.children.length} 条）:`);
     for (const c of d.children) {
       lines.push(
@@ -109,8 +119,8 @@ function renderChain(d) {
       );
     }
   }
-  if (!self.forkOf && !d.ancestors.length && !d.children.length) {
-    lines.push('  （这条任务没有派生关联）');
+  if (!nodes.length && !self.forkOf && !(d.ancestors && d.ancestors.length) && !(d.children && d.children.length)) {
+    lines.push('  （这条任务还没有链节点）');
   }
   return lines.join('\n');
 }
@@ -225,13 +235,12 @@ export default {
       render: renderTask,
     },
     {
-      // 任务链（#69）：「评论生成新任务」「验收反馈重开」都派生新任务，链路存在
-      // forkOf + forkKind。这里把一条任务的祖先链与全部子任务一次查清（跨主题）。
+      // 任务链（#74）：同任务 history 节点（就地重开/评论）为主；旧 forkOf 祖先/子任务仍返回。
       id: 'localtask.chain',
       cli: ['localtask', 'chain'],
       http: ['GET', '/api/localtasks/chain'],
       summary:
-        '查一条任务的派生链：祖先（forkOf 逐级上溯）+ 全部子任务（谁 fork 自它，跨主题）；forkKind 区分 reopen（验收反馈）/ comment（划选评论）',
+        '查一条任务的链：history 节点（origin/reopen/comment/current）+ 旧 forkOf 祖先/子任务；面板点节点可旁路查看正文',
       flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
       run: (ctx) => service.taskChain({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
       render: renderChain,
@@ -314,27 +323,39 @@ export default {
       render: renderPreview,
     },
     {
-      // 修改反馈 / 重做 / 加评论 → **新建一条任务**（新的 md），旧任务**归档**。
-      // 状态单向：完成等待验收之后没有回退边——不会回到「重新开始」（任务 #59）。
+      // 修改反馈 / 重做 / 划选评论 → **就地重开原任务**（#74），历史进 history 链。
       id: 'localtask.reopen',
       cli: ['localtask', 'reopen'],
       http: ['POST', '/api/localtasks/reopen'],
       summary:
-        '重开任务（用户的修改反馈 / 重做 / 加评论）：新建一条待领取任务（正文 = --text 给的内容），旧任务归档留档（状态单向，不回退）',
+        '重开任务（验收反馈 / 重做 / 评论）：回写原任务正文，旧态压进 history；已完成则回到 pending 待再领',
       flags: {
         id: { type: 'number', required: true, hint: '任务编号' },
         cwd: CWD,
         key: KEY,
         text: { type: 'string', hint: '修改后的任务正文（Markdown）；不给则只重开不改内容' },
+        kind: { type: 'string', hint: 'reopen（验收反馈，默认）或 comment（划选评论）' },
+        quote: { type: 'string', hint: '划选原文（comment 时）' },
+        feedback: { type: 'string', hint: '用户反馈原文（写入 history 节点）' },
       },
       run: async (ctx) => {
         // 重开也可能带着改过的归属（--text 的 frontmatter.project 变了）→ 同样搬家
         const { reopenTask } = await import('../tasktool/update.js');
-        return reopenTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, text: ctx.text });
+        return reopenTask({
+          id: ctx.id,
+          cwd: ctx.cwd,
+          key: ctx.key,
+          text: ctx.text,
+          kind: ctx.kind,
+          quote: ctx.quote,
+          feedback: ctx.feedback,
+          attachments: ctx.attachments,
+        });
       },
       render: (d) =>
-        `已新建任务 #${d.id} @ ${d.name}（待领取）` +
-        (d.from ? `；旧任务 #${d.from.id} 已归档留档` : '') +
+        `已重开 #${d.id} @ ${d.name}` +
+        (d.before?.completedAt ? '（已完成→待领取）' : '') +
+        (d.historyId != null ? `；链节点 #${d.historyId}` : '') +
         (d.moved && d.movedFrom ? `；已改归属项目，原 ${d.movedFrom.name} #${d.movedFrom.id}` : ''),
     },
     {

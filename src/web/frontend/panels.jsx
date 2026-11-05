@@ -44,9 +44,18 @@ function DirPanelView({ dirKey }) {
   return wrap(<DirPanel dirKey={dirKey} />);
 }
 
-/** 一个 MD 页（编辑器）：页签在工作区里，内容在会话内存里；beside=旁路原文（可关） */
-function PagePanelView({ dirKey, task, beside, tabId, model }) {
-  return wrap(<PagePanel dirKey={dirKey} task={task} beside={!!beside} tabId={tabId} model={model} />);
+/** 一个 MD 页（编辑器）：页签在工作区里，内容在会话内存里；beside=旁路原文（可关）；historyId=链节点只读 */
+function PagePanelView({ dirKey, task, beside, tabId, model, historyId }) {
+  return wrap(
+    <PagePanel
+      dirKey={dirKey}
+      task={task}
+      beside={!!beside}
+      tabId={tabId}
+      model={model}
+      historyId={historyId != null ? Number(historyId) : null}
+    />,
+  );
 }
 
 /** 并发进程面板：独立成块，可拖到任意一边；task = 当前主区任务，用于高亮。
@@ -101,6 +110,7 @@ export const PANELS = {
       dirKey={cfg && cfg.dirKey}
       task={cfg && cfg.task}
       beside={cfg && cfg.beside}
+      historyId={cfg && cfg.historyId}
       tabId={ctx && ctx.tabId}
       model={ctx && ctx.model}
     />

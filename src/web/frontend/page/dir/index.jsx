@@ -162,22 +162,17 @@ export default function DirPanel({ dirKey }) {
     if (!t) return;
     const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
     guard(async () => {
+      const acked = !!t.completedAt;
       const body = await dialog({
-        title: `反馈修改 · #${t.id}`,
+        title: acked ? `反馈 · #${t.id}` : `反馈修改 · #${t.id}`,
         input: true,
-        placeholder: '写下要改的地方（留空 = 只重开，不改正文）',
+        placeholder: acked
+          ? '写下反馈（将新开一条任务，原任务不动）'
+          : '写下要改的地方（留空 = 只重开，不改正文）',
       });
       if (body === null || body === undefined) return;
-      // 反馈是**追加**不是替换：reopen 的 text 是整段新正文，直接把反馈当正文发过去
-      // 会把原任务丢掉（agent 下一轮只看得见这句反馈）。拼成「原正文 + 反馈」。
-      //
-      // 已完成的任务走 **ack 语义**：除了用户反馈，还要把上一轮 agent 的完成总结
-      // 追加进正文——重开后验收条消失，总结若不落进正文就没人看得见了。
-      // 未完成的任务只是「反馈修改」，保持旧口径（不追加总结、段名不同）。
       const fb = String(body).trim();
-      const acked = !!t.completedAt;
       const ackSummary = acked ? t.roundSummary || '' : '';
-      // 没有新增内容 → 不带 text 字段（服务端只翻状态，正文一个字不动）。
       const text =
         fb || ackSummary
           ? buildReopenText({
@@ -188,21 +183,43 @@ export default function DirPanel({ dirKey }) {
               bold: acked,
             })
           : '';
+
+      // #75：已完成 → 反馈 = **新开任务**（forkOf 指回本条），原任务留档不动
+      if (acked) {
+        if (!text) {
+          toast('写一下反馈');
+          return;
+        }
+        const res = await api('/api/localtasks', {
+          method: 'POST',
+          body: isGlobal
+            ? { global: true, text, forkOf: String(t.id), forkKind: 'reopen' }
+            : { cwd: topic.cwd, text, forkOf: String(t.id), forkKind: 'reopen' },
+        });
+        const newId = String(res?.task?.id ?? res?.id ?? '');
+        const landedKey = res?.key || dirKey;
+        if (newId) saveDoc(docIdOf(scopeOf(landedKey), newId), { body: text });
+        toast(`已反馈「${title.replace(/^#\s*/, '')}」→ 新任务 #${newId || '?'}`);
+        refreshLocal();
+        return;
+      }
+
+      // 未完成：就地回写（#74 reopen）
       const res = await api('/api/localtasks/reopen', {
         method: 'POST',
         body: {
           ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic.cwd }),
           id: t.id,
+          kind: 'reopen',
+          feedback: fb,
           ...(text ? { text } : {}),
         },
       });
-      // 重开 = **新建一条任务**（新 md），旧任务归档留档（#59：状态单向）。
-      // 旧文档**不动**（那是历史）；新正文写进新任务自己的文档。
       const landedKey = res?.key || dirKey;
-      const newId = String(res?.task?.id ?? t.id);
-      if (text) saveDoc(docIdOf(scopeOf(landedKey), newId), { body: text });
+      const sameId = String(res?.task?.id ?? t.id);
+      if (text) saveDoc(docIdOf(scopeOf(landedKey), sameId), { body: text });
       toast(
-        `已重开「${title.replace(/^#\s*/, '')}」→ 新任务 #${newId}（旧任务归档留档）` +
+        `已回写「${title.replace(/^#\s*/, '')}」#${sameId}` +
           (res?.moved && res.name ? `；归属迁到「${res.name}」` : ''),
       );
       refreshLocal();

@@ -1,6 +1,6 @@
 ---
 name: kv-get
-description: 领取与完成排给本工作目录的本地任务（别人通过 kv-submit 委托的、用户排队的，都落在「目录名即主题」的队列里）——用 localtask get 取活（默认直接领；项目开启「持续 get」后自动阻塞等人回填）、localtask wait 挂着等人接力、localtask done 标记完成（带时间目标的任务未到点会被拒绝，提示派 sub agent 重提需求）、localtask reopen 把用户的修改反馈变成**一条新任务**（旧任务归档留档，状态单向）。触发词：领取本地任务、看看有没有排给我的任务、本地队列、领取委托任务、拿任务、本目录的任务、排队任务、localtask get、localtask wait、标记完成、任务完成、修改反馈、重新执行、kv-get。凡「主动获取排给本目录的任务」以及「把任务标记完成/按反馈重开」的场景都走本 skill。反例：把需求提交/委托给别的目录用 kv-submit；查本机仓库分组与参考仓库用 kv-repo；操作远程 KV 清单（todo）用 nx-kv。
+description: 领取与完成排给本工作目录的本地任务（别人通过 kv-submit 委托的、用户排队的，都落在「目录名即主题」的队列里）——用 localtask get 取活（默认直接领；项目开启「持续 get」后自动阻塞等人回填）、localtask wait 挂着等人接力、localtask done 标记完成（带时间目标的任务未到点会被拒绝，提示派 sub agent 重提需求）、localtask reopen **就地重开原任务**（历史进 history 链，已完成则回到待领取）。触发词：领取本地任务、看看有没有排给我的任务、本地队列、领取委托任务、拿任务、本目录的任务、排队任务、localtask get、localtask wait、标记完成、任务完成、修改反馈、重新执行、kv-get。凡「主动获取排给本目录的任务」以及「把任务标记完成/按反馈重开」的场景都走本 skill。反例：把需求提交/委托给别的目录用 kv-submit；查本机仓库分组与参考仓库用 kv-repo；操作远程 KV 清单（todo）用 nx-kv。
 ---
 
 # kv-get — 领取、执行、完成（领取侧）
@@ -69,20 +69,16 @@ nx-kv localtask done --id <n> --summary "<完成总结>" --json
 # 标记完成（完成总结必填——它就是下一轮 agent 能看到的「上轮做了什么」）
 nx-kv localtask done --id <n> --summary "<完成总结>" [--progress "<完成度/下一步>"]
 
-# 用户看了结果提修改意见 → **新建一条任务**（新的 md），旧任务归档留档
-nx-kv localtask reopen --id <n> [--text "<改后的正文（Markdown）>"] --json
+# 用户看了结果提修改意见 → **就地重开原任务**（同号回写，旧态压进 history）
+nx-kv localtask reopen --id <n> [--text "<改后的正文（Markdown）>"] [--kind reopen|comment] --json
 
-# 查派生链（评论生成 / 反馈重开的关联）：祖先 + 全部子任务，跨主题
+# 查任务链：同任务 history 节点（origin/reopen/comment/current）+ 旧 forkOf 派生（若有）
 nx-kv localtask chain --id <n> --json
 ```
 
-`reopen` **不改旧任务**：它在同一条队列里**新建一条待领取任务**（正文 = `--text` 给的
-内容），旧任务状态前进到终态「已归档」——原文、上一轮完成总结、完成标记全部留档。
-新任务继承同一件活的约束（时间目标从再次领取重新计时、闸门、上游依赖），
-并用 `forkOf` 指回上一条。
-
-任务状态是**单向**的：`待领取 → 已领取 → 已归档`，**没有回退边**——
-完成等待验收之后不会回到「重新开始」。
+`reopen` **回写同一条任务**：正文 = `--text`；上一轮完成总结等压进 `history[]`。
+若任务已完成（有 `completedAt`），清领取/完成标记并回到 `pending` 等待再领；
+未完成则只改正文 + 记链。面板的验收重做与划选评论共用这一入口（可带附件）。
 
 ## 硬规则
 

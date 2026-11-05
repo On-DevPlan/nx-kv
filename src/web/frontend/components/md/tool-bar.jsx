@@ -98,6 +98,7 @@ export default function ToolBar({
   onOverview,
   onFormat,
   onTurn,
+  onChain,
 }) {
   const canFormat = mode === 'edit' || mode === 'split';
   const liveOrEdit = mode !== 'preview';
@@ -110,10 +111,15 @@ export default function ToolBar({
   }, [mode]);
 
   const secondary = [
+    // #77：任务链进「更多」弹窗入口（置顶，别埋在删除旁边）
+    onChain && { id: 'chain', label: '任务链', run: onChain },
     // 预览：**看 agent 到底会收到什么**（任务 #65）。不是「预览渲染效果」，
     // 而是把交付链路（组上下文 / 收尾指令 / check 指令 / 附件 / ack / 持续 get）
     // 拼出来的原文摆出来——模板可配之后，这是唯一可信的观测口。
     onPreview && { id: 'preview', label: '预览提示词', run: onPreview },
+    // #76：附件入口放进「更多」，预览态也能找到（左栏图标只在编辑态）
+    onImg && { id: 'img', label: '插入图片', run: onImg },
+    onAtt && { id: 'att', label: '添加附件', run: onAtt },
     mode !== 'split' && { id: 'import', label: '导入', run: onImport },
     { id: 'new', label: '新任务', run: onNew },
     // 克隆（#70）：内容快速复制成新任务，不建派生链（与评论/反馈的链式派生区分）

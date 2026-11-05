@@ -165,7 +165,7 @@ test('get：多条持续 get 模板按空行拼接后统一渲染', async () => 
   assert.match(r.instruction, /GO_ON_1\n\n[\s\S]*多模板任务\|\|GO_ON_2/, '多条模板拼接成单段统一渲染');
 });
 
-test('修改反馈 → 重开：**新建一条任务**，旧任务归档留档（状态单向，#59）', async () => {
+test('修改反馈 → 重开：就地回写原任务，history 留档（#74）', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
   const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
   const cwd = join(dir, 'reopen-proj');
@@ -175,36 +175,26 @@ test('修改反馈 → 重开：**新建一条任务**，旧任务归档留档�
   assert.equal(first.status, 'ok');
   const id = first.task.id;
 
-  // 干完（无时间目标 → 直接放行）
   const done = await localtask.completeTask({ cwd, id, summary: '第一轮完成' });
   assert.equal(done.status, 'ok');
   assert.ok(done.task.completedAt);
 
-  // 用户反馈 → 重开：**新任务**（新的 md），旧任务归档
   const re = await localtask.reopenTask({ cwd, id, text: '改登录页（不对，要加暗色模式）' });
   assert.equal(re.status, 'ok');
-  assert.notEqual(re.id, id, '重开产出的是**新任务**，不是同一条');
+  assert.equal(re.id, id, '就地重开，同号');
+  assert.equal(re.forked, false);
   assert.equal(re.task.status, 'pending');
-  assert.equal(re.task.consumedAt, '', '新任务没被领过——领取时间从新任务起算');
+  assert.equal(re.task.consumedAt, '', '完成态清掉，等再领');
   assert.equal(re.task.completedAt, '');
   assert.match(re.task.text, /暗色模式/);
-  assert.match(re.task.forkOf, /:\d+$/, '新任务指回上一条');
+  assert.equal(re.task.history[0].kind, 'origin');
+  assert.equal(re.task.history[0].text.trim(), '改登录页');
+  assert.equal(re.task.history[0].summary, '第一轮完成');
 
-  // 旧任务：归档留档——正文、完成总结、完成标记一个都不动
-  assert.equal(re.archived.status, 'archived');
-  assert.equal(re.archived.completedAt, done.task.completedAt, '完成标记保留（它确实完成过）');
-  assert.equal(re.archived.roundSummary, '第一轮完成', '上一轮完成总结留档');
-  assert.equal(re.archived.text.trim(), '改登录页', '旧正文一个字都不改');
-
-  // 再次领取：执行循环继续（领到的是新任务）
   const again = await waitForTask({ cwd, summary: '再来一轮', timeoutSec: 1, open: false });
   assert.equal(again.status, 'ok');
-  assert.equal(again.task.id, re.id, '领到的是新任务');
+  assert.equal(again.task.id, id, '领到的仍是原任务');
   assert.match(again.task.text, /暗色模式/);
-
-  // 旧任务不会再被派发（状态不回退到待领取）
-  const none = await waitForTask({ cwd, summary: '还有吗', timeoutSec: 1, open: false });
-  assert.equal(none.status, 'timeout', '归档的任务不再回队列');
 });
 
 test('项目图标：写入后读回（≤8 字）', async () => {

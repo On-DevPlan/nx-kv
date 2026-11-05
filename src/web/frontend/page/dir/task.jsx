@@ -1059,6 +1059,51 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
     );
   }
 
+  // ─── 时间目标 UI（#78）───
+  // 设置收进「更多」菜单（goalMenu），外部只以勋章回显（goalBadge）——头部不再
+  // 给整行；没设（无草稿值也无声明）勋章就不出现，零噪音。勋章跟随 goalDraft
+  // （正在编辑的草稿值），落库仍走 submit 里的 goalPatchOf 同一套口径。
+  const goalDur = (goal.duration || '').trim();
+  const goalPrompt = (goal.prompt || '').trim();
+  const goalBadge = (goalDur || goalPrompt)
+    ? {
+      label: `⏱ ${goalDur || '目标'}`,
+      title: goalPrompt
+        || (goalEditable ? '任务级时间目标（在「更多」里设置；领取即计时）' : '已领取计时，声明不可改'),
+    }
+    : null;
+  const goalMenu = (goalEditable || declaredGoal) ? (
+    <div className="mdw-goal-menu">
+      <div className="mdw-goal-menu-lab">时间目标</div>
+      {goalEditable ? (
+        <>
+          <input
+            className="mdw-goal-dur mono"
+            value={goal.duration}
+            placeholder="2h / 90m / 30分钟，留空不带"
+            onChange={(e) => {
+              setGoalDraft({ ...goal, duration: e.target.value });
+              markDirty();
+            }}
+          />
+          <input
+            className="mdw-goal-prompt"
+            value={goal.prompt}
+            placeholder="附加要求（可选，随 check 指令一起固化）"
+            onChange={(e) => {
+              setGoalDraft({ ...goal, prompt: e.target.value });
+              markDirty();
+            }}
+          />
+        </>
+      ) : (
+        <span className="mdw-goal-ro mono" title={declaredGoal?.prompt || '已领取计时，声明不可改'}>
+          {declaredGoal?.duration || '—'} · 已领取计时
+        </span>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div className={`mdw${beside ? ' is-beside' : ''}`} data-mode={doc.mode || 'split'} onMouseUp={onPreviewMouseUp}>
       {dialogNode}
@@ -1098,40 +1143,6 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
           </div>
         </div>
 
-        {/* 时间目标行：可编辑（草稿/未领取）或只读回显（已领取计时中）。整行在没有
-            任何目标信息且不可编辑时隐藏，不给已完成页面添噪音。 */}
-        {(goalEditable || declaredGoal) && (
-          <div className="mdw-goal">
-            <span className="mdw-goal-lab" title="任务级 timegoal：领取即计时，未到点不许标完成">⏱ 时间目标</span>
-            {goalEditable ? (
-              <>
-                <input
-                  className="mdw-goal-dur mono"
-                  value={goal.duration}
-                  placeholder="2h / 90m / 30分钟，留空不带"
-                  onChange={(e) => {
-                    setGoalDraft({ ...goal, duration: e.target.value });
-                    markDirty();
-                  }}
-                />
-                <input
-                  className="mdw-goal-prompt"
-                  value={goal.prompt}
-                  placeholder="附加要求（可选，随 check 指令一起固化）"
-                  onChange={(e) => {
-                    setGoalDraft({ ...goal, prompt: e.target.value });
-                    markDirty();
-                  }}
-                />
-              </>
-            ) : (
-              <span className="mdw-goal-ro mono" title={declaredGoal?.prompt || '已领取计时，声明不可改'}>
-                {declaredGoal?.duration || '—'} · 已领取计时
-              </span>
-            )}
-          </div>
-        )}
-
         {/* 归属项目（组任务）：组面板「新增任务」带 frontmatter 的草稿/任务才显示。
             草稿与未领取可改（改写 frontmatter），已领取只读；提交按 project 路由队列。 */}
         {boardCtx && (
@@ -1165,28 +1176,31 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
           </div>
         )}
 
+        {/* #78：头部只留 新任务 / 提交；其余动作（含进程/原文/快捷键）全进「更多」，
+            时间目标在「更多」顶部编辑、外部勋章回显。MD 格式条撤出头部——
+            划选浮条 + 行首 / 命令 + Ctrl/⌘B 等快捷键已覆盖。 */}
         <ToolBar
           mode={doc.mode}
           onMode={(m) => saveDoc(id, { mode: m })}
           showMark={doc.mode !== 'edit'}
           submitLabel={isDraft ? '提交为任务' : '保存并同步'}
+          onNew={newTask}
+          onSubmit={submit}
+          onChain={isDraft ? null : () => setChainOpen(true)}
+          onPreview={openPreview}
           onImg={() => pickAtt('image/*')}
           onAtt={() => pickAtt('image/*,.pdf,.zip,.txt,.json,.csv')}
-          onShortcuts={() => setShowShortcuts(true)}
           onImport={() => fileMdRef.current?.click()}
-          onNew={newTask}
+          onClone={isDraft ? null : cloneCur}
           onMark={openCommentFromToolbar}
           onDraft={() => toast('草稿随页签保留（刷新后需从侧栏或页签重新打开）')}
-          onSubmit={submit}
           onDelete={isDraft ? null : delTask}
-          onProg={openProgress}
-          onPreview={openPreview}
-          onClone={isDraft ? null : cloneCur}
-          onSource={parentRef ? openParentBeside : null}
           onOverview={() => app.onNavigate && app.onNavigate('#/overview')}
-          onFormat={(op) => editorApiRef.current?.format?.(op)}
-          onTurn={(id2) => editorApiRef.current?.turn?.(id2)}
-          onChain={isDraft ? null : () => setChainOpen(true)}
+          onProg={openProgress}
+          onSource={parentRef ? openParentBeside : null}
+          onShortcuts={() => setShowShortcuts(true)}
+          goalBadge={goalBadge}
+          goalMenu={goalMenu}
         />
 
         <MdPanes

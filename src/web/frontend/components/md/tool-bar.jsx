@@ -1,35 +1,10 @@
-// MD 工作台工具区：左模式/格式工具，右动作按钮贴齐最右
+// MD 工作台工具区：头部只留「模式 · 时间目标勋章 | 新任务 · 提交 · 更多」。
+// #78：头部按钮过多——次级动作一律收进「更多」菜单（含进程/原文/快捷键）；
+// MD 格式不再占头部（划选浮条 + 行首 / 命令 + Ctrl/⌘B 等快捷键已覆盖）；
+// 时间目标设置同样在「更多」里，外部只以勋章回显（goalBadge，点击展开菜单）。
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon } from '../icons.jsx';
 import { ModeSeg } from './md-panes.jsx';
-import { TURN_INTO } from '../../modules/md/md-edit-ops.js';
-
-const FMT_MAIN = [
-  { op: 'bold', label: 'B', title: '粗体 Ctrl/⌘B', cls: 'b' },
-  { op: 'italic', label: 'I', title: '斜体 Ctrl/⌘I', cls: 'i' },
-  { op: 'code', label: '</>', title: '行内代码 Ctrl/⌘E', cls: 'code' },
-  { op: 'link', label: '链', title: '链接 Ctrl/⌘K', cls: 'link' },
-];
-
-const FMT_MORE = [
-  { op: 'ul', label: '列表', title: '无序列表', cls: 'ul' },
-  { op: 'todo', label: '待办', title: '待办勾选', cls: 'todo' },
-  { op: 'quote', label: '引用', title: '引用', cls: 'quote' },
-];
-
-function FmtBtn({ f, onFormat }) {
-  return (
-    <button
-      type="button"
-      className={`mdw-fmt-btn ${f.cls}`}
-      title={f.title}
-      onClick={() => onFormat?.(f.op)}
-    >
-      {f.label}
-    </button>
-  );
-}
 
 function useMenu() {
   const [open, setOpen] = useState(false);
@@ -82,155 +57,77 @@ export default function ToolBar({
   onMode,
   showMark,
   submitLabel,
+  onNew,
+  onSubmit,
+  onChain,
+  onPreview,
   onImg,
   onAtt,
-  onShortcuts,
   onImport,
-  onNew,
+  onClone,
   onMark,
   onDraft,
-  onSubmit,
   onDelete,
-  onProg,
-  onPreview,
-  onClone,
-  onSource,
   onOverview,
-  onFormat,
-  onTurn,
-  onChain,
+  onProg,
+  onSource,
+  onShortcuts,
+  goalBadge,
+  goalMenu,
 }) {
-  const canFormat = mode === 'edit' || mode === 'split';
-  const liveOrEdit = mode !== 'preview';
-  const fmtMore = useMenu();
   const actMore = useMenu();
 
   useEffect(() => {
-    fmtMore.setOpen(false);
     actMore.setOpen(false);
   }, [mode]);
 
-  const secondary = [
+  // 「更多」收拢一切次级动作（#78）：头部只留 新任务 / 提交为任务。
+  const menuItems = [
     // #77：任务链进「更多」弹窗入口（置顶，别埋在删除旁边）
     onChain && { id: 'chain', label: '任务链', run: onChain },
     // 预览：**看 agent 到底会收到什么**（任务 #65）。不是「预览渲染效果」，
     // 而是把交付链路（组上下文 / 收尾指令 / check 指令 / 附件 / ack / 持续 get）
     // 拼出来的原文摆出来——模板可配之后，这是唯一可信的观测口。
     onPreview && { id: 'preview', label: '预览提示词', run: onPreview },
-    // #76：附件入口放进「更多」，预览态也能找到（左栏图标只在编辑态）
+    // #76：附件入口放进「更多」，预览态也能找到
     onImg && { id: 'img', label: '插入图片', run: onImg },
     onAtt && { id: 'att', label: '添加附件', run: onAtt },
     mode !== 'split' && { id: 'import', label: '导入', run: onImport },
-    { id: 'new', label: '新任务', run: onNew },
     // 克隆（#70）：内容快速复制成新任务，不建派生链（与评论/反馈的链式派生区分）
     onClone && { id: 'clone', label: '克隆任务', run: onClone },
     showMark && { id: 'mark', label: '评论', run: onMark },
     mode !== 'split' && { id: 'draft', label: '存草稿', run: onDraft },
     onDelete && { id: 'delete', label: '删除', run: onDelete, danger: true },
     { id: 'overview', label: '总览', run: onOverview },
+    { id: 'prog', label: '进程', run: onProg },
+    onSource && { id: 'source', label: '原文', run: onSource },
+    onShortcuts && { id: 'shortcuts', label: '快捷键', run: onShortcuts },
   ].filter(Boolean);
 
   return (
     <div className="mdw-toolbar">
       <div className="mdw-toolbar-left">
         <ModeSeg mode={mode} onChange={onMode} />
-        {canFormat && (
-          <div className="mdw-fmt" role="group" aria-label="格式">
-            {FMT_MAIN.map((f) => (
-              <FmtBtn key={f.op} f={f} onFormat={onFormat} />
-            ))}
-            <span className="mdw-fmt-sep" aria-hidden />
-            <div className="mdw-fmt-turn" role="group" aria-label="转变为">
-              {TURN_INTO.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className="mdw-fmt-btn turn"
-                  title={`${t.label}（${t.key}）`}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => onTurn?.(t.id)}
-                >
-                  <kbd>{t.key}</kbd>
-                  <span className="mdw-fmt-turn-lab">{t.label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="mdw-fmt-more" ref={fmtMore.ref}>
-              <button
-                type="button"
-                className={`mdw-fmt-btn more${fmtMore.open ? ' on' : ''}`}
-                title="更多格式"
-                aria-expanded={fmtMore.open}
-                aria-haspopup="menu"
-                onClick={(e) => openMenuAt(fmtMore, e)}
-              >
-                ···
-              </button>
-              <MenuPortal menu={fmtMore}>
-                {FMT_MORE.map((f) => (
-                  <button
-                    key={f.op}
-                    type="button"
-                    role="menuitem"
-                    className="mdw-fmt-menu-item"
-                    onClick={() => {
-                      onFormat?.(f.op);
-                      fmtMore.setOpen(false);
-                    }}
-                  >
-                    {f.label}
-                    <span className="hint">{f.title}</span>
-                  </button>
-                ))}
-                <div className="mdw-fmt-menu-sep" role="separator" />
-                {TURN_INTO.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    role="menuitem"
-                    className="mdw-fmt-menu-item"
-                    onClick={() => {
-                      onTurn?.(t.id);
-                      fmtMore.setOpen(false);
-                    }}
-                  >
-                    {t.key} {t.label}
-                    <span className="hint">转变</span>
-                  </button>
-                ))}
-              </MenuPortal>
-            </div>
-          </div>
-        )}
-        {liveOrEdit && (
-          <div className="mdw-tools" role="group" aria-label="编辑工具">
-            <button type="button" className="iconbtn" title="插入图片" aria-label="插入图片" onClick={onImg}>
-              <Icon name="pin" size={14} />
-            </button>
-            <button type="button" className="iconbtn" title="添加附件" aria-label="添加附件" onClick={onAtt}>
-              <Icon name="list" size={14} />
-            </button>
-            <button
-              type="button"
-              className="iconbtn"
-              title="快捷键"
-              aria-label="快捷键速查"
-              onClick={onShortcuts}
-            >
-              <Icon name="help" size={14} />
-            </button>
-          </div>
+        {/* 时间目标勋章（#78）：设了目标才出现；点击同样展开「更多」菜单去改 */}
+        {goalBadge && (
+          <button
+            type="button"
+            className="mdw-goal-badge"
+            title={goalBadge.title}
+            aria-haspopup="menu"
+            aria-expanded={actMore.open}
+            onClick={(e) => openMenuAt(actMore, e, 'right')}
+          >
+            {goalBadge.label}
+          </button>
         )}
       </div>
 
       <div className="mdw-actions" role="group" aria-label="任务操作">
-        <div className="mdw-actions-wide">
-          {secondary.map((a) => (
-            <button key={a.id} type="button" className={'btn ghost sm' + (a.danger ? ' danger' : '')} onClick={a.run}>
-              {a.label}
-            </button>
-          ))}
-        </div>
+        {onNew && (
+          <button type="button" className="btn ghost sm" onClick={onNew}>新任务</button>
+        )}
+        <button type="button" className="btn sm primary" onClick={onSubmit}>{submitLabel}</button>
         <div className="mdw-actions-more" ref={actMore.ref}>
           <button
             type="button"
@@ -243,7 +140,10 @@ export default function ToolBar({
             更多
           </button>
           <MenuPortal menu={actMore} className="mdw-act-menu">
-            {secondary.map((a) => (
+            {/* 时间目标编辑区（#78）摆菜单顶部：点输入不关菜单（useMenu 判定在 menuRef 内） */}
+            {goalMenu}
+            {goalMenu && <div className="mdw-fmt-menu-sep" role="separator" />}
+            {menuItems.map((a) => (
               <button
                 key={a.id}
                 type="button"
@@ -259,19 +159,6 @@ export default function ToolBar({
             ))}
           </MenuPortal>
         </div>
-        <button type="button" className="btn sm primary" onClick={onSubmit}>{submitLabel}</button>
-        <span className="sep" aria-hidden />
-        {onSource && (
-          <button
-            type="button"
-            className="btn ghost sm"
-            title="在右侧并排打开评论锚定的原文（Ctrl/⌘⇧O）"
-            onClick={onSource}
-          >
-            原文
-          </button>
-        )}
-        <button type="button" className="btn ghost sm" onClick={onProg}>进程</button>
       </div>
     </div>
   );

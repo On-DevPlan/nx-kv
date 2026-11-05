@@ -5,7 +5,8 @@
 // 跨机导入导出、参考仓库挂载、组内归属都按 key 对齐，key 不统一就没法跨机用。
 //
 // 本脚本做的事（幂等，可重跑）：
-//   1. 读每个仓库本机 checkout 的 git origin（没登记 remote 的那些）；
+//   1. 读每个仓库本机 checkout 的**采纳 remote**（origin → upstream → 第一条；
+//      口径直接复用 src/modules/repos/git.js 的 pickRemote，不再各写一份）；
 //   2. 用**仓库模块同一套派生**算出新 key（src/modules/repos/service.js 的 deriveKey）；
 //   3. 迁移所有引用：
 //      - 看板成员表 repoKeys、组内描述 repoNotes、组绑定描述 repoDocs（都按 repo key 索引）
@@ -18,11 +19,11 @@
 //   node scripts/migrate-remote-keys.mjs --board nx          # 预演（只报告）
 //   node scripts/migrate-remote-keys.mjs --board nx --apply   # 真改（先备份）
 //   node scripts/migrate-remote-keys.mjs --all --apply        # 全部仓库
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { deriveKey } from '../src/modules/repos/service.js';
+import { gitRemotes, pickRemote } from '../src/modules/repos/git.js';
 import { repoDocRel } from '../src/modules/docs/paths.js';
 
 const args = process.argv.slice(2);
@@ -43,17 +44,22 @@ const die = (m) => {
   process.exit(1);
 };
 
-/** 本机 checkout 的 git origin（取不到就空串） */
-function gitOrigin(dir) {
-  try {
-    const out = execFileSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    return String(out || '').trim();
-  } catch {
-    return '';
-  }
+/**
+ * 本机 checkout 采纳的远程地址。
+ *
+ * 口径与运行时完全一致（复用 git.js 的 gitRemotes + pickRemote）：
+ *   1. 有 origin → 用 origin（同名多条时 SSH 优先）；
+ *   2. 没有 origin → 回落到 upstream（GitHub fork 工作流的常态：只有 upstream，
+ *      没有 origin —— 上一版这里只读 origin，这 3 个仓库就被判成「没有远程」跳过了）；
+ *   3. 再没有 → 取第一条 remote；
+ *   4. 一条都没有 → null（保持 local/ 兜底 key）。
+ * 返回 { url, remotes }。
+ */
+async function pickLocalRemote(dir) {
+  if (!dir) return { url: '', remotes: [] };
+  const remotes = await gitRemotes(dir);
+  const picked = pickRemote(remotes);
+  return { url: picked ? picked.url : '', remotes: remotes.map((x) => x.url) };
 }
 
 /** 递归收集目录下所有文件（相对路径） */
@@ -80,12 +86,24 @@ function moveFile(from, to) {
   fs.renameSync(from, to);
 }
 
-/** 文本里替换若干组字面量 */
+/**
+ * 文本里替换若干组字面量。
+ *
+ * key 形态（不带 .md 的）按**右边界**匹配：`local/fr` 不能吃掉 `local/frontend`，
+ * 也不能吃掉 `local/fr-x`。右边界只排除「key 合法字符」[a-z0-9_-]，
+ * 所以 `repo/local/fr/x.md` 这种目录形态仍能命中（斜杠不算边界）。
+ * 带 .md 的路径对（oldDocRel/newDocRel）本身就是完整文件名，按字面替换。
+ */
 function replaceAll(text, pairs) {
   let out = text;
   for (const [from, to] of pairs) {
     if (!from || from === to) continue;
-    out = out.split(from).join(to);
+    if (/\.md$/i.test(from)) {
+      out = out.split(from).join(to);
+      continue;
+    }
+    const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(esc + '(?![a-z0-9_-])', 'gi'), to);
   }
   return out;
 }
@@ -108,12 +126,12 @@ if (boardArg) {
 }
 
 // ─── 2) 算迁移计划 ────────────────────────────────────────────────────
-const plan = []; // { repo, oldKey, newKey, remote, docMoves: [{from,to}], textPairs: [[from,to]] }
+const plan = []; // { repo, oldKey, newKey, remote, remotes, oldDocRel, newDocRel }
 for (const r of targets) {
   if (r.keyCustom) continue; // 自定义 key：用户的显式选择，不动
-  const origin = gitOrigin(r.path || '');
-  if (!origin) continue; // 没 git / 没 origin：保持现状
-  const next = deriveKey({ remote: origin });
+  const picked = await pickLocalRemote(r.path || '');
+  if (!picked.url) continue; // 没有 checkout / 一条 remote 都没有：保持 local/ 兜底
+  const next = deriveKey({ remote: picked.url });
   if (!next || next === r.key) continue; // 已经是远程 key
   const oldDocRel = repoDocRel(r.key);
   const newDocRel = repoDocRel(next);
@@ -121,14 +139,15 @@ for (const r of targets) {
     repo: r,
     oldKey: r.key,
     newKey: next,
-    remote: origin,
+    remote: picked.url,
+    remotes: picked.remotes,
     oldDocRel,
     newDocRel,
   });
 }
 
 if (!plan.length) {
-  log('没有需要迁移的仓库（key 已是远程派生，或没有 git origin）。');
+  log('没有需要迁移的仓库（key 已是远程派生，或没有任何 remote）。');
   process.exit(0);
 }
 
@@ -179,9 +198,10 @@ for (const b of repos.boards || []) {
   }
 }
 
-// 4b) 仓库登记：remote + key
+// 4b) 仓库登记：remote + remotes + key
 for (const p of plan) {
   p.repo.remote = p.remote;
+  if (p.remotes.length) p.repo.remotes = p.remotes;
   p.repo.key = p.newKey;
   p.repo.keyUpdatedAt = new Date().toISOString();
 }

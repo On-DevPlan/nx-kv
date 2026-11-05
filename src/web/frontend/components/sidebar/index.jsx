@@ -332,6 +332,15 @@ export default function Sidebar({
                 <span className="nm">
                   {row.name}
                   {row.type === 'global' && row.waiting ? <span className="wdot" title="有等待中的主题" /> : null}
+                  {/* 逻辑组：项目行标出它属于哪些组（一个项目可属于多个组） */}
+                  {row.groupNames && row.groupNames.length ? (
+                    <span
+                      className="gtag"
+                      title={`所属分组：${row.groupNames.join('、')}`}
+                    >
+                      {row.groupNames.join('·')}
+                    </span>
+                  ) : null}
                 </span>
                 {row.pending > 0 && <span className="cnt">{row.pending}</span>}
                 {row.type === 'repo' && row.waiting && <span className="wdot" title="agent 等待回填中" />}

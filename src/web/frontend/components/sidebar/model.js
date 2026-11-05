@@ -103,12 +103,28 @@ export function buildTree(repos, boards, topics, prefs, kw = '') {
     });
   }
 
-  // 未归入任何看板的仓库
-  const grouped = new Set();
-  for (const b of boardList) for (const m of b.repos || []) grouped.add(m.key);
+  // **分组是逻辑组**（任务 #61）：看板是给项目贴的标签，不是容器——
+  // 每个项目在左边都**单独成行**（能直接进去单干），组行只做聚合入口与归拢。
+  // 一个项目可以属于多个组：它只出现一次，行上标出它属于哪些组。
+  //
+  // （2026-11-03 曾把成员收进组行当叶子——那样组里的项目在左边点不到，
+  //   也就没法「按单项目」干活；这里恢复单项目入口。）
+  const firstGroupOf = new Map(); // repoKey -> 首个组 id（决定行落在哪个桶）
+  const groupNamesOf = new Map(); // repoKey -> 它所属的组名（可多个）
+  for (const b of boardList) {
+    for (const m of b.repos || []) {
+      if (!firstGroupOf.has(m.key)) firstGroupOf.set(m.key, b.id);
+      if (!groupNamesOf.has(m.key)) groupNamesOf.set(m.key, []);
+      const names = groupNamesOf.get(m.key);
+      if (!names.includes(b.name)) names.push(b.name);
+    }
+  }
   for (const r of matched) {
-    if (grouped.has(r.key)) continue;
-    rows.push({ ...r, groupId: '' });
+    rows.push({
+      ...r,
+      groupId: firstGroupOf.get(r.key) || '',
+      groupNames: groupNamesOf.get(r.key) || [],
+    });
   }
 
   // 排序：用户编过的顺序在前（order 存 key），其余按名称自然序

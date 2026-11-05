@@ -193,13 +193,43 @@ async function installOne(name, { to, force } = {}) {
   return { status: 'ok', installed: !exists, replaced: exists, name, path: dst, files: files.length, group: null };
 }
 
+// `--all`：把 assets/ 下**所有**内置 skill 一次装齐，且**隐式覆盖**（不需要 --force）。
+//
+// 与 `--group` 的关键差别：范围由**目录扫描**决定，不由 groups.json 决定。组表只是
+// 便捷别名，`assets/<x>/SKILL.md` 才是事实源——新加一个 skill 忘了登记组时，
+// `--all` 照样装得上，`--group` 会漏。所以「本机装全」该用 --all 而不是列举组名。
+async function installAll({ to } = {}) {
+  const names = await assetSkillDirs();
+  if (!names.length) throw notFound('assets/ 下没有任何内置 skill（缺 SKILL.md？）');
+  const skills = [];
+  // force 恒为 true：--all 的语义就是「装全 + 对齐到包内版本」，
+  // 让人再补一个 --force 只是多一次来回。要保留本地改动就别用 --all。
+  for (const s of names) skills.push(await installOne(s, { to, force: true }));
+  return {
+    status: skills.every((r) => r.status === 'ok') ? 'ok' : 'conflict',
+    all: true,
+    count: skills.length,
+    skills,
+  };
+}
+
 // 安装内置 skill 到目标 skills 目录（默认 nx-kv → ~/.claude/skills）。
 // 返回 { status: 'ok' | 'conflict', ... }——已存在且内容不同是**业务结果**，
 // 需要用户决定是否覆盖，不是错误。
 //
 // `group` 给定时装该组的**全部** skill，返回聚合形状 { status, group, skills:[…] }；
-// 不给则装单个，形状与历史一致。两者的判别靠显式 `group` 字段。
-export async function installBundledSkill({ name = DEFAULT_SKILL_NAME, group, to, force } = {}) {
+// `all` 给定时装**目录里有的全部**，形状 { status, all, skills:[…] }（隐式 force）；
+// 都不给则装单个，形状与历史一致。判别一律靠显式字段，不做形状嗅探。
+export async function installBundledSkill({ name = DEFAULT_SKILL_NAME, group, all, to, force } = {}) {
+  if (all) {
+    // name 有默认值，这里分不出「用户显式给了 name」还是「默认」，
+    // 所以 name 与 --all 的互斥放在 CLI 层（ctx.name 才是用户真正输入的）。
+    // group 给了就是调用方用错了，直接报。
+    if (group !== undefined && group !== null && group !== '') {
+      throw badInput('--all 与 --group 只能给一个（--all 已覆盖所有组）');
+    }
+    return installAll({ to });
+  }
   if (group !== undefined && group !== null && group !== '') {
     const g = await resolveGroup(group);
     const skills = [];

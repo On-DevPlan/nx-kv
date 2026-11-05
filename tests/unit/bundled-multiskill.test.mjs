@@ -5,7 +5,7 @@
 // tests/unit/registry.test.mjs（cli 路径可解析回自身）+ CI 的 smoke 覆盖。
 //
 // 伪资产树走 NX_KV_ASSETS 指向临时目录（调用时读取），**绝不碰仓库里的 assets/**。
-import { mkdtempSync, mkdirSync, existsSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, existsSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -124,6 +124,36 @@ try {
 
   // ── 11. 不存在的 skill ──
   check('装不存在的内置 skill → NOT_FOUND', (await errCode(() => svc.installBundledSkill({ name: 'nope', to }))) === CODES.NOT_FOUND);
+
+  // ── 12. --all：装全部 + 隐式覆盖 ──
+  //
+  // 上方 step 6 把 to/extra/SKILL.md 改成了本地内容（此时它是 conflict 状态）。
+  // --all 的语义就是「对齐到包内版本」，所以不经 --force 也必须覆盖掉它。
+  const all1 = await svc.installBundledSkill({ all: true, to });
+  check(
+    '--all 装齐目录里的每个 skill（不依赖 groups.json）',
+    all1.all === true && all1.count === 2 && all1.skills.map((r) => r.name).join() === 'extra,nx-kv',
+    item(all1.skills.map((r) => r.name))
+  );
+  check(
+    '--all 隐式覆盖：本地改过的 extra 被 replaced，不是 conflict',
+    all1.status === 'ok' && all1.skills.find((r) => r.name === 'extra').replaced === true,
+    item(all1.skills)
+  );
+  check(
+    '覆盖后的内容 == 包内版本（本地改动确实被抹掉）',
+    existsSync(join(to, 'extra', 'SKILL.md')) &&
+      readFileSync(join(to, 'extra', 'SKILL.md'), 'utf8').includes('extra 的说明')
+  );
+
+  // 幂等：刚装完再装一次全部 skipped，但仍然 status=ok
+  const all2 = await svc.installBundledSkill({ all: true, to });
+  check('--all 幂等：全部 skipped 且 status=ok',
+    all2.status === 'ok' && all2.skills.every((r) => r.skipped === true), item(all2.skills));
+
+  // 与 --group 互斥（name 的互斥在 CLI 层，service 侧 name 有默认值分不出来）
+  check('--all 与 --group 互斥 → INVALID_INPUT',
+    (await errCode(() => svc.installBundledSkill({ all: true, group: 'both', to }))) === CODES.INVALID_INPUT);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

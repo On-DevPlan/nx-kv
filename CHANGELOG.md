@@ -2,7 +2,16 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased]
+## [0.26.1] - 2026-11-05 任务页头部收敛 + `skill install --all`
+
+### Added
+
+- **`skill install --all`：一次装齐包内全部 skill，且直接覆盖**。以前要给本机装全
+  只能逐个点名或按 `--group` 一组一组来（组表是别名，漏登记的 skill 就装不上）。
+  `--all` 的范围由 `assets/` **目录扫描**决定——事实源是 `assets/<x>/SKILL.md`，
+  新增 skill 忘了写进 `groups.json` 也照样装得到。覆盖是隐式的：不用再补 `--force`，
+  目标目录会被删掉重建，与包内版本对齐（要保留本地改动就别用 `--all`）。
+  `--all` 与 `<name>` / `--group` 互斥，同时给会直接报错。
 
 ### Changed
 

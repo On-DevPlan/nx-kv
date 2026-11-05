@@ -4,7 +4,7 @@
 // 所以「面板上有按钮、CLI 里没命令」在结构上不可能发生。
 import { ACTIONS } from './registry.js';
 import { compileRoute, applySpec } from './spec.js';
-import { toErrorPayload, httpStatusOf, CODES } from '../core/errors.js';
+import { toErrorPayload, httpStatusOf } from '../core/errors.js';
 
 // 逐段比较两条模式，决定谁该先匹配：**字面量段优先于参数段**，段数多的优先。
 //
@@ -56,20 +56,6 @@ async function readBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
-// 跨站防护。服务虽然只绑 127.0.0.1，但用户浏览器里的任意页面都能向它发起请求——
-// 少了这道校验，一个恶意网页就能 POST /api/repos/scan 或 DELETE /api/repos/:id。
-// 浏览器发跨域请求必带 Origin，非浏览器客户端（curl / agent / 测试）不带，故放行。
-function originAllowed(req) {
-  const origin = req.headers.origin;
-  if (!origin) return true;
-  try {
-    const h = new URL(origin).hostname;
-    return h === '127.0.0.1' || h === 'localhost' || h === '::1';
-  } catch {
-    return false;
-  }
-}
-
 export async function handleApi(req, res, url) {
   const method = (req.method || 'GET').toUpperCase();
 
@@ -78,14 +64,11 @@ export async function handleApi(req, res, url) {
     const m = route.regex.exec(url.pathname);
     if (!m) continue;
 
-    if (method !== 'GET' && method !== 'HEAD' && !originAllowed(req)) {
-      sendJson(res, 403, {
-        ok: false,
-        error: '跨站请求被拒绝（面板仅接受本机来源）',
-        code: CODES.BLOCKED,
-      });
-      return;
-    }
+    // 这里不再按 Origin 拒绝写请求（任务 #57）。
+    // 原先那道校验比对 Origin 主机名是不是 127.0.0.1——但浏览器对 POST 一律带
+    // Origin（哪怕同源），于是走内网穿透从手机访问时 Origin 是隧道域名，
+    // 自己面板的同源写请求被判成跨站 → 403，任务提交不了。
+    // 跨域改由标准 CORS 头处理（预检 + allow-origin），见 runtime/cors.js。
 
     try {
       const raw = {};

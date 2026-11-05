@@ -24,7 +24,7 @@ const BUILTINS = [
   {
     id: 'serve',
     cli: ['serve'],
-    summary: '启动 Web 面板（默认 :7877；--port N 改端口；--no-open 不开浏览器；端口上已有本面板则直接打开它；NX_SERVE_NO_OPEN=1 全局不开浏览器）',
+    summary: '启动 Web 面板（默认 :7877；--port N 改端口；--no-open 不开浏览器；--allow-origin 收紧跨域来源；端口上已有本面板则直接打开它；NX_SERVE_NO_OPEN=1 全局不开浏览器）',
     flags: {
       port: { type: 'number', default: DEFAULT_PORT },
       'no-open': { type: 'boolean' },
@@ -34,6 +34,9 @@ const BUILTINS = [
       'auto-exit': { type: 'boolean', hint: '面板关闭后空闲自释放（wait 临时拉起实例专用）' },
       // 宽限期：连续多久无面板活动后才允许释放（与 --auto-exit 配合使用）
       idle: { type: 'number', hint: '空闲宽限期（秒；与 --auto-exit 配合，默认 120）' },
+      // --allow-origin：跨域来源白名单（逗号分隔）。缺省 = 放行全部——面板要能被
+      // 内网穿透 / 移动端访问（任务 #57）。收紧时只放行指定来源。
+      'allow-origin': { type: 'string', hint: '跨域来源白名单（逗号分隔）；缺省放行全部' },
     },
     run: (ctx) => cmdServe(ctx),
   },
@@ -281,6 +284,8 @@ async function cmdServe(ctx) {
   const { openBrowser } = await import('../core/open.js');
   const { autoOpenEnabled, resolvePortConflict, describeOccupant } = await import('../core/serve-port.js');
   const host = '127.0.0.1';
+  // 跨域放行策略：缺省放行全部；--allow-origin 传具体来源则只放行它们。
+  const allowOrigin = ctx['allow-origin'];
   const port = ctx.port || DEFAULT_PORT;
   const autoExit = !!ctx['auto-exit'];
   // --no-open 与 NX_SERVE_NO_OPEN 都看这里：任一为真即完全不开浏览器。
@@ -311,7 +316,7 @@ async function cmdServe(ctx) {
 
   let server;
   try {
-    server = await startServer({ port, host, onRequest });
+    server = await startServer({ port, host, onRequest, allowOrigin });
   } catch (err) {
     if (!err || err.code !== 'EADDRINUSE') throw err;
 
@@ -331,7 +336,7 @@ async function cmdServe(ctx) {
     console.log(
       `端口 ${port} 已被占用（占用者: ${describeOccupant(decision.occupant)}），改用 ${decision.port}`
     );
-    server = await startServer({ port: decision.port, host, onRequest });
+    server = await startServer({ port: decision.port, host, onRequest, allowOrigin });
   }
 
   const addr = `http://127.0.0.1:${server.address().port}`;

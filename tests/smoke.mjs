@@ -619,13 +619,60 @@ try {
   const notFound = await (await fetch(base + '/api/nothing')).json();
   check('api 404', !notFound.ok);
 
-  // 跨站写请求必须被拒
-  const blocked = await fetch(base + '/api/todo', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
-    body: JSON.stringify({ topic: 'x', text: 'y' }),
+  // Origin 校验已放行：带异站 Origin 的写请求应正常落库（主防线仍是绑 127.0.0.1）
+  const crossOrigin = await (
+    await fetch(base + '/api/todo', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
+      body: JSON.stringify({ topic: 'x', text: 'y' }),
+    })
+  ).json();
+  check('异站 Origin 写请求放行', crossOrigin.ok === true, JSON.stringify(crossOrigin).slice(0, 200));
+  // 跨域（CORS）：光「不拦」不够——浏览器要先过预检才发真正的跨源请求，
+  // 预检与实际响应都得带 allow-origin，否则跨源提交依然发不出去。
+  const preflight = await fetch(base + '/api/todo', {
+    method: 'OPTIONS',
+    headers: {
+      origin: 'https://panel.example',
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'content-type',
+    },
   });
-  check('跨站写请求被拒（403）', blocked.status === 403);
+  check(
+    '跨域预检 204 且带 allow-origin',
+    preflight.status === 204 && preflight.headers.get('access-control-allow-origin') === '*',
+    `${preflight.status}/${preflight.headers.get('access-control-allow-origin')}`
+  );
+  check(
+    '预检回显允许的方法与请求头',
+    /POST/.test(preflight.headers.get('access-control-allow-methods') || '') &&
+      /content-type/.test(preflight.headers.get('access-control-allow-headers') || ''),
+  );
+  const corsGet = await fetch(base + '/api/ping', { headers: { origin: 'https://panel.example' } });
+  check('实际响应也带 CORS 头', corsGet.headers.get('access-control-allow-origin') === '*');
+
+  // 收紧模式（serve --allow-origin）：只放行白名单来源，
+  // 其余来源不给 allow-origin——由浏览器拦下，服务端不再回 403。
+  const strictServer = await startServer({ port: 0, allowOrigin: 'https://ok.example' });
+  const strictBase = 'http://127.0.0.1:' + strictServer.address().port;
+  const okPre = await fetch(strictBase + '/api/todo', {
+    method: 'OPTIONS',
+    headers: { origin: 'https://ok.example', 'access-control-request-method': 'POST' },
+  });
+  check(
+    '白名单来源预检放行（回显该来源）',
+    okPre.status === 204 && okPre.headers.get('access-control-allow-origin') === 'https://ok.example',
+    `${okPre.status}/${okPre.headers.get('access-control-allow-origin')}`
+  );
+  const evilPre = await fetch(strictBase + '/api/todo', {
+    method: 'OPTIONS',
+    headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' },
+  });
+  check(
+    '非白名单来源不给 allow-origin（浏览器自己拦）',
+    evilPre.headers.get('access-control-allow-origin') === null
+  );
+  await new Promise((r) => strictServer.close(r));
 
   // /api/ping：纯本机心跳，serve --auto-exit 据此判面板是否还开着
   const pingRes = await (await fetch(base + '/api/ping')).json();

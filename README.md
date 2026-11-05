@@ -35,6 +35,27 @@ pnpm test
 
 `--no-open` 只关这一次；`NX_SERVE_NO_OPEN=1`（`true` / `yes` / `on` 同义）则是**所有 nx-xx 项目共用**的全局开关，设为真值后 `serve` 完全不开浏览器。
 
+### 跨域（内网穿透 / 移动端访问）
+
+面板的写请求**不再按 `Origin` 判定「跨站」并拒绝**。原先那道校验比对 `Origin` 的
+主机名是不是 `127.0.0.1`，但浏览器对 POST/PUT/DELETE **一律带 `Origin`**——经内网穿透
+（frp / cloudflared / ngrok）从手机访问时 `Origin` 是隧道域名，**自己面板的同源写请求**
+也被判成跨站而 403，任务提交不了。
+
+现在的口径：
+
+- 同源请求（含隧道同源）**不预检**，直接放行；
+- 跨源请求走标准 CORS：先 `OPTIONS` 预检，服务端回 `access-control-allow-origin` 才放行；
+- 非浏览器客户端（curl / 原生 App）不带 `Origin`，本来就不受限。
+
+要收紧来源时用 `--allow-origin`（逗号分隔，支持 `https://*.example.com` 通配；缺省放行全部）：
+
+```bash
+nx-kv serve --allow-origin https://panel.example.com
+```
+
+> 面板只绑 `127.0.0.1`，是本机工具。**经内网穿透暴露到公网后，真正的边界是隧道自身的
+> 访问控制**（访问密码 / basic auth / IP 白名单）——非浏览器客户端从不经过 `Origin` 校验。
 ## 登录
 
 ```bash

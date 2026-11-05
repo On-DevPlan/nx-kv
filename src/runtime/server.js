@@ -5,6 +5,7 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fsp from 'node:fs/promises';
 import { handleApi, sendJson } from './api.js';
+import { corsHeaders, isPreflight, parseAllowOrigin, preflightHeaders } from './cors.js';
 import { DEFAULT_PORT } from '../core/paths.js';
 
 // vite 的 outDir：src/web/public（构建产物，gitignore）
@@ -57,7 +58,9 @@ async function handlePing(_req, res) {
   sendJson(res, 200, { ok: true, data: { pong: true, ts: Date.now() } });
 }
 
-export function startServer({ port = DEFAULT_PORT, host = '127.0.0.1', onRequest } = {}) {
+export function startServer({ port = DEFAULT_PORT, host = '127.0.0.1', onRequest, allowOrigin } = {}) {
+  // 跨域放行策略：缺省放行全部（面板要能被内网穿透 / 移动端访问，见 runtime/cors.js）。
+  const cors = parseAllowOrigin(allowOrigin);
   const server = http.createServer(async (req, res) => {
     // 活动观测：每个请求（包括 /api/ping 与静态文件）都回调一次；
     // 回调只上报，不参与响应；异常必须吞掉以免影响主流程。
@@ -66,6 +69,16 @@ export function startServer({ port = DEFAULT_PORT, host = '127.0.0.1', onRequest
     }
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      // CORS 头统一在这里补：静态页与 /api 都要带（跨源嵌入面板时静态资源也得能取）。
+      // setHeader 的值会与后面 writeHead 的对象合并（同名以 writeHead 为准）。
+      for (const [k, v] of Object.entries(corsHeaders(req, cors))) res.setHeader(k, v);
+      // 预检（OPTIONS + Access-Control-Request-Method）：不匹配路由，直接回 CORS 头。
+      // 浏览器要求预检通过才发真正的跨源请求——同源（含隧道同源）根本不预检。
+      if (url.pathname.startsWith('/api/') && isPreflight(req)) {
+        res.writeHead(204, preflightHeaders(req, cors));
+        res.end();
+        return;
+      }
       if (url.pathname === '/api/ping') {
         await handlePing(req, res);
         return;

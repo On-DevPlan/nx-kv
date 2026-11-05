@@ -3,10 +3,11 @@
 // 每张卡片左侧带复选框：多选后批量删除（软删除，CLI localtask task restore 可恢复）。
 // 点卡片 → 在工作区里开一个 MD 页签（不是切内部 tab）。
 //
-// 组模式（任务 #56）：config.groupKey 指向项目组（board）时，进程按**组**聚合——
-// 组发布的任务散在成员项目各自的队列里，单目录视图看不见全景；这里扫全部队列、
-// 收正文 frontmatter.board 指向本组的任务（与组页 groupTasks 同一口径），卡片带
-// 项目 tag，顶部一组筛选 chips 按**项目**过滤，统计随筛选范围走。
+// 组模式（任务 #56，口径 #72 收紧）：config.groupKey 指向项目组（board）时，
+// 进程按**组**聚合——显示**整个项目组**的：所有成员项目队列里的任务全收（不再要求
+// 正文 frontmatter.board 指向本组），卡片带项目 tag，顶部一组筛选 chips 按**项目**
+// 过滤，统计随筛选范围走。非成员队列里「组发布」的旧任务（frontmatter.board 指向
+// 本组）仍兜底收录。
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
@@ -60,13 +61,18 @@ export default function ProgressPanel({
     return () => clearInterval(t);
   }, []);
 
-  // ─── 组模式聚合（任务 #56）──────────────────────────────────────
-  // 本组任务 = 全部队列里正文 frontmatter.board 指向本组的任务（与组页同口径）。
+  // ─── 组模式聚合（任务 #56；口径 #72 = 整个项目组）─────────────────────────
+  // 整组口径：任务**所在队列**是本组成员 → 全收（不要求正文带 board 标记）；
+  // 项目归属优先按成员名（队列即项目），非成员队列保留旧口径兜底（board 指向本组）。
   // 每张卡带 topicKey/topicCwd（点开、删除要按任务**所在队列**寻址）与项目名（筛选用）。
   const groupCards = useMemo(() => {
     if (!group) return [];
     const ids = [group.id, group.key, group.name].filter(Boolean);
     const members = group.repos || [];
+    const memberByKey = new Map();
+    for (const m of members) {
+      if (m && m.key) memberByKey.set(m.key, m);
+    }
     const projectNameOf = (projKey, row) => {
       const m = members.find(
         (x) => x && (x.key === projKey || x.name === projKey || (x.path && x.path === projKey)),
@@ -78,6 +84,8 @@ export default function ProgressPanel({
     const out = [];
     for (const r of rows || []) {
       if (!r || r.isGlobal || !Array.isArray(r.tasks)) continue;
+      const member = (r.repo && memberByKey.get(r.repo.key)) || null;
+      const inGroupQueue = !!member; // 成员队列 → 整组口径；否则走旧口径兜底
       for (const t of r.tasks) {
         if (!t || t.deletedAt) continue;
         let fm = {};
@@ -86,7 +94,7 @@ export default function ProgressPanel({
         } catch {
           fm = {};
         }
-        if (!fm.board || !ids.includes(fm.board)) continue;
+        if (!inGroupQueue && (!fm.board || !ids.includes(fm.board))) continue;
         out.push({
           ...taskToProgress(t),
           key: `${r.key}:${t.id}`,
@@ -94,7 +102,9 @@ export default function ProgressPanel({
           topicKey: r.key,
           topicCwd: r.cwd || '',
           project: fm.project || '',
-          projectName: projectNameOf(fm.project, r),
+          projectName: inGroupQueue
+            ? (member.name || projectNameOf(fm.project, r))
+            : projectNameOf(fm.project, r),
         });
       }
     }
@@ -307,7 +317,7 @@ export default function ProgressPanel({
           <div className="mdw-prog-empty">
             {group ? (
               <>
-                本组还没有进行中的任务<br />在本组创建的任务会出现在这里
+                本组成员项目还没有任务<br />任务会随成员队列自动聚到这里
               </>
             ) : (
               <>

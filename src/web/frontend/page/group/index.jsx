@@ -22,7 +22,7 @@ import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-sto
 import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
 import { useTemplates } from '../../modules/md/use-templates.js';
 
-export default function GroupView({ dirKey, rows, repoData, onNavigate, model }) {
+export default function GroupView({ dirKey, rows, repoData, model }) {
   const toast = useToast();
   const app = useApp() || {};
   const tpl = useTemplates();
@@ -230,7 +230,7 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
           </button>
           <button
             className="btn small ghost"
-            title="打开本组的任务进程面板：组内各项目队列聚合显示，可按项目筛选（任务 #56）"
+            title="打开本组的任务进程面板：聚合本组全部成员项目的任务，可按项目筛选（任务 #56 / #72）"
             onClick={() => {
               if (!model) return;
               openPanel(model, {
@@ -316,7 +316,7 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
               <button
                 className="rp-proj-task"
                 title="打开这条任务"
-                onClick={() => onNavigate('#/dir/' + encodeURIComponent(member.topicKey) + '?task=' + task.id)}
+                onClick={() => app.openPage && app.openPage({ dirKey: member.topicKey, task: String(task.id), name: `#${task.id}` })}
               >
                 <span className="mono">#{task.id}</span>
                 <span className="rp-ptag" title={`归属项目：${member.name}`}>{member.name}</span>
@@ -366,7 +366,7 @@ export default function GroupView({ dirKey, rows, repoData, onNavigate, model })
                 key={member.key + ':' + task.id}
                 className="rp-proj-task done"
                 title="打开这条任务"
-                onClick={() => onNavigate('#/dir/' + encodeURIComponent(member.topicKey) + '?task=' + task.id)}
+                onClick={() => app.openPage && app.openPage({ dirKey: member.topicKey, task: String(task.id), name: `#${task.id}` })}
               >
                 <span className="mono">#{task.id}</span>
                 <span className="rp-ptag" title={`归属项目：${member.name}`}>{member.name}</span>

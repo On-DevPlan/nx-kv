@@ -81,7 +81,6 @@ function GroupPanel({ boardId, model }) {
       dirKey={boardId}
       rows={app.rows}
       repoData={app.repoData}
-      onNavigate={app.onNavigate}
       refreshLocal={app.refreshLocal}
       model={model || app.model}
     />

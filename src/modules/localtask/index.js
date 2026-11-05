@@ -79,6 +79,42 @@ function renderAdd(d) {
   return body + ignored;
 }
 
+// `localtask chain` 的人读输出（#69）：本条 → 祖先链（逐级 fork 自）→ 子任务
+const KIND_TAG = { reopen: '反馈', comment: '评论' };
+function renderChain(d) {
+  const self = d.task;
+  const lines = [
+    `#${self.id}  [${STATUS_TAG[self.status] || self.status}]  ${d.name}`,
+    `  ${self.text.split('\n').map((l) => l.trim()).find(Boolean) || ''}`,
+  ];
+  if (self.forkOf) {
+    lines.push(`  派生自: ${self.forkOf}${self.forkKind ? `（${KIND_TAG[self.forkKind] || self.forkKind}）` : ''}`);
+  }
+  if (d.ancestors.length) {
+    lines.push(`  祖先链（${d.ancestors.length} 级）:`);
+    for (const a of d.ancestors) {
+      lines.push(
+        a.missing
+          ? `    ↑ ${a.ref}（已不在队列：软删或迁出）`
+          : `    ↑ #${a.id} [${a.status}]${a.forkKind ? `（${KIND_TAG[a.forkKind] || a.forkKind}）` : ''} ${a.excerpt}`,
+      );
+    }
+  }
+  if (d.children.length) {
+    lines.push(`  子任务（${d.children.length} 条）:`);
+    for (const c of d.children) {
+      lines.push(
+        `    ↳ #${c.id} [${c.status}]${c.forkKind ? `（${KIND_TAG[c.forkKind] || c.forkKind}）` : ''} ${c.excerpt}` +
+          (c.key !== d.key ? `  @ ${c.name}` : ''),
+      );
+    }
+  }
+  if (!self.forkOf && !d.ancestors.length && !d.children.length) {
+    lines.push('  （这条任务没有派生关联）');
+  }
+  return lines.join('\n');
+}
+
 // 交付载荷的人读正文：实现下沉到 tasktool/delivery-text.js（与面板预览共用一份，
 // 「预览 = 真实领取」这件事才有保障）。这里再导出，既有调用点与单测不用改。
 import { deliveryBodyText } from '../tasktool/delivery-text.js';
@@ -187,6 +223,18 @@ export default {
           : task;
       },
       render: renderTask,
+    },
+    {
+      // 任务链（#69）：「评论生成新任务」「验收反馈重开」都派生新任务，链路存在
+      // forkOf + forkKind。这里把一条任务的祖先链与全部子任务一次查清（跨主题）。
+      id: 'localtask.chain',
+      cli: ['localtask', 'chain'],
+      http: ['GET', '/api/localtasks/chain'],
+      summary:
+        '查一条任务的派生链：祖先（forkOf 逐级上溯）+ 全部子任务（谁 fork 自它，跨主题）；forkKind 区分 reopen（验收反馈）/ comment（划选评论）',
+      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
+      run: (ctx) => service.taskChain({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
+      render: renderChain,
     },
     {
       // 领取（todo.md 的「get」）：默认直接领——队列有任务立即返回，没有立即空手而回
@@ -376,6 +424,16 @@ export default {
           type: 'boolean',
           hint: '闸门任务：自身未完成（无 completedAt）时，队列里排在它后面的 pending 都不可领',
         },
+        'fork-of': {
+          type: 'string',
+          hint: '任务链（#69）：这条任务从哪条派生——裸数字=同主题父任务编号，或 "key:id"=跨主题；父任务必须存在',
+        },
+        forkOf: { type: 'string', hint: '同 --fork-of（驼峰 / HTTP body）' },
+        'fork-kind': {
+          type: 'string',
+          hint: '派生种类：comment（评论/随手派生，默认）或 reopen（验收反馈重开）',
+        },
+        forkKind: { type: 'string', hint: '同 --fork-kind（驼峰写法）' },
       },
       run: async (ctx) => {
         // 派任务编排已迁 tasktool/add.js（任务工具语义归 tasktool；命令名不变）。
@@ -399,6 +457,8 @@ export default {
           goalPrompt: ctx.goalPrompt ?? ctx['goal-prompt'],
           blockBy: blockBy.length ? blockBy : undefined,
           blocksFollowing: !!ctx.gate,
+          forkOf: ctx.forkOf ?? ctx['fork-of'],
+          forkKind: ctx.forkKind ?? ctx['fork-kind'],
         });
       },
       render: renderAdd,

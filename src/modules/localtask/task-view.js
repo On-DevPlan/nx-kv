@@ -2,10 +2,11 @@
 // normalizeTask（含 ready 徽标）、topicView、跨队列依赖解析器（foreignResolver）、
 // 队列内关系清单（queueRelationsOf）与搬家（relocateInStore）。
 import { basename } from 'node:path';
+import { badInput, notFound } from '../../core/errors.js';
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from './dag.js';
-import { isGlobalKey, topicKeyFor } from './paths.js';
-import { stampNow, parseStampMs, topicOf, nextTaskId } from './store-io.js';
+import { isGlobalKey, topicKeyFor, resolveTaskKey } from './paths.js';
+import { stampNow, parseStampMs, topicOf, nextTaskId, loadStore } from './store-io.js';
 // 领取耗时（秒）：**发布 → 被领取**的时间差。
 // 数据本来就在（createdAt / consumedAt），这里算成派生字段，省得每个使用方自己算，
 // 也省得存一份会漂移的冗余副本。
@@ -124,9 +125,11 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
     completedAt: String(t.completedAt ?? ''),
     // 重开轨迹：现在重开 = **新建一条任务**，旧任务归档（#59）。
     //   forkOf       这条是从哪一条派生的（'队列key:旧编号'）
+    //   forkKind     派生种类（#69 任务链）：reopen=验收反馈/重做；comment=面板划选评论生成
     //   supersededBy 被哪一条取代（归档那条的落点：{ key, id }）
     //   archivedAt / archivedReason 归档时刻与原因
     forkOf: String(t.forkOf ?? ''),
+    forkKind: t.forkKind === 'reopen' || t.forkKind === 'comment' ? t.forkKind : '',
     supersededBy: t.supersededBy && typeof t.supersededBy === 'object' ? t.supersededBy : null,
     archivedAt: String(t.archivedAt ?? ''),
     archivedReason: String(t.archivedReason ?? ''),
@@ -220,5 +223,106 @@ export function topicView(t, repoCtx = null, readyOpts = {}) {
     deleted: tasks.filter((x) => !!x.deletedAt).length,
     total: tasks.length,
     tasks,
+  };
+}
+
+// ─── 任务链（#69） ────────────────────────────────────────────────────
+// 「面板划选评论生成新任务」与「验收反馈重开」都会**派生新任务**；链路结构统一存在
+// forkOf（'队列key:编号'）+ forkKind（reopen / comment）。三个原语：
+//   resolveForkRef —— 发布侧：裸数字（同主题）/'key:id'（跨主题）规范化 + 验证父任务存在
+//   forkRow        —— 按引用取行（内部；软删/迁出不算存在）
+//   taskChain      —— 查询侧：一条任务的祖先链 + 全部子任务（跨主题扫 forkOf）
+
+function forkRow(store, ref) {
+  const m = /^(.+):(\d+)$/.exec(String(ref || ''));
+  if (!m) return null;
+  const topic = store.topics[m[1]];
+  if (!topic) return null;
+  const task = (topic.tasks || []).find(
+    (x) => Number(x.id) === Number(m[2]) && !x.deletedAt && !x.migratedTo,
+  );
+  return task ? { topic, task } : null;
+}
+
+/** 发布侧把 forkOf 引用规范化成 'key:id'。父任务不存在直接报错（链就是拿来查的，虚链没意义）。 */
+export function resolveForkRef(store, raw, defaultKey) {
+  const s = String(raw ?? '').trim();
+  if (!s) throw badInput('forkOf 不能为空');
+  const m = /^(.+):(\d+)$/.exec(s);
+  const key = m ? m[1] : String(defaultKey || '');
+  const id = Number(m ? m[2] : s);
+  if (!key) throw badInput(`forkOf 跨主题引用必须带主题: ${s}（'key:id'）`);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw badInput(`forkOf 无法解析: ${s}（裸数字=同主题父任务编号，或 'key:id'=跨主题）`);
+  }
+  if (!forkRow(store, `${key}:${id}`)) {
+    throw badInput(`forkOf 指向的任务不存在: ${key}:${id}`);
+  }
+  return `${key}:${id}`;
+}
+
+// 链条节点的人读视图：不吐正文全文（链上可能一长串），给首行节选。
+function chainLite(topic, t) {
+  const firstLine =
+    String(t.text ?? '')
+      .split('\n')
+      .map((l) => l.trim())
+      .find(Boolean) || '';
+  return {
+    key: topic.key,
+    name: topic.name,
+    id: Number(t.id) || 0,
+    status: t.status,
+    forkKind: t.forkKind === 'reopen' || t.forkKind === 'comment' ? t.forkKind : '',
+    forkOf: String(t.forkOf ?? ''),
+    createdAt: String(t.createdAt ?? ''),
+    excerpt: firstLine.replace(/^#+\s*/, '').slice(0, 100),
+  };
+}
+
+/** 任务链查询：祖先链（forkOf 逐级上溯）+ 全部子任务（谁 fork 自它，跨主题）。 */
+export async function taskChain({ id, cwd, key } = {}) {
+  const k = resolveTaskKey({ key, cwd });
+  const want = Number(id);
+  if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
+  const store = await loadStore();
+  const t = store.topics[k];
+  if (!t) throw notFound('主题不存在: ' + k);
+  const self = (t.tasks || []).find((x) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
+  if (!self) throw notFound('任务不存在或已删除: #' + want);
+  // 祖先链：visited 防环；上限 32（这是条链不是树，合理深度远小于它——超限即数据异常）
+  const ancestors = [];
+  const seen = new Set([`${k}:${want}`]);
+  let cur = String(self.forkOf || '');
+  while (cur && ancestors.length < 32) {
+    if (seen.has(cur)) break;
+    seen.add(cur);
+    const row = forkRow(store, cur);
+    if (!row) {
+      // 引用还在、行没了（软删 / 迁出 / 旧格式）——如实标注，不静默吞
+      ancestors.push({ ref: cur, missing: true });
+      break;
+    }
+    ancestors.push(chainLite(row.topic, row.task));
+    cur = String(row.task.forkOf || '');
+  }
+  // 子任务：派生落点可能换主题（reopen 带 moveTo / 评论跨队列），所以全 store 扫
+  const ref = `${k}:${want}`;
+  const children = [];
+  for (const topic of Object.values(store.topics)) {
+    for (const x of topic.tasks || []) {
+      if (x.deletedAt || x.migratedTo) continue;
+      if (String(x.forkOf || '') === ref) children.push(chainLite(topic, x));
+    }
+  }
+  children.sort((a, b) => a.id - b.id);
+  return {
+    status: 'ok',
+    key: k,
+    name: t.name,
+    id: want,
+    task: normalizeTask(self, t.tasks),
+    ancestors,
+    children,
   };
 }

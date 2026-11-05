@@ -8,6 +8,7 @@
 
 - **编辑页「更多 → 预览提示词」**（任务 #65）：发布前可看「agent 执行 get 会收到的完整提示词」——原文（可复制）+ 段落来源 + 开关状态。整条链路复用真实领取的 `buildTaskDelivery`（预览 = 真实交付，逐字一致），零副作用（不领取、不写盘、不启动 timegoal 计时）。CLI 同步开放 `localtask preview` 动词，草稿可 `--text` 直接预览。
 - **`core/json-store.js` 统一存储原语**（任务 #66）：把复制了 6 份的「串行写队列 + tmp+rename 原子写 + Windows EPERM/EACCES 退避 + 损坏隔离」收口为一个原语（`createJsonStore` / `atomicWriteText` / `atomicWriteTextSync`），localtask / repos / timegoal / templates 四个 store 已接入（语义逐一对齐）；为后续迁 SQLite 做代码隔离——届时只换这一层 driver，业务调用点一行不改。
+- **任务链**（任务 #69）：评论生成 / 验收反馈重开派生的新任务统一带 `forkOf`（'队列key:编号'）+ `forkKind`（reopen / comment）落在队列行上（此前面板划选评论只有正文 frontmatter 弱链，CLI 查不到）。新增 `localtask chain --id <n>`：一条任务的祖先链 + 全部子任务一次查清（跨主题）；`localtask add --fork-of` 支持显式派生（父任务必须存在，虚链发布时报错）。
 
 ### Fixed
 

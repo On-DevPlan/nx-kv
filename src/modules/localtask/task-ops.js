@@ -17,7 +17,7 @@ import {
   bumpWorkflowRevision,
 } from './store-io.js';
 import { GLOBAL_KEY, GLOBAL_NAME, GLOBAL_CWD, isGlobalKey, normalizeCwd, resolveTaskKey, topicKeyFor } from './paths.js';
-import { normalizeTask, foreignResolver, queueRelationsOf, relocateInStore } from './task-view.js';
+import { normalizeTask, foreignResolver, queueRelationsOf, relocateInStore, resolveForkRef } from './task-view.js';
 import { takeTopicWaiter, takeGlobalWaiter, markConsumed } from './waiters.js';
 export async function getTask({ cwd: rawCwd, key: rawKey, id } = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
@@ -47,6 +47,8 @@ export async function addTask({
   timegoal: rawGoal,
   blockBy: rawBlockBy,
   blocksFollowing = false,
+  forkOf: rawForkOf,
+  forkKind: rawForkKind,
 } = {}) {
   const body = normalizeText(text);
   const summary = normalizeSummary(rawSummary, { optional: true });
@@ -77,6 +79,15 @@ export async function addTask({
   }
 
   const id = nextTaskId(t.tasks);
+  // 链路（#69）：forkOf = 「这条从哪派生」。裸数字 = 同主题父任务编号；
+  // 'key:id' = 跨主题。规范化成 'key:id' 存储，父任务必须真实存在（发布时报错）。
+  // forkKind 缺省按 comment（评论/随手派生）——reopen 有自己的写入口（task-lifecycle）。
+  let forkOf = '';
+  let forkKind = '';
+  if (rawForkOf !== undefined && rawForkOf !== null && String(rawForkOf).trim() !== '') {
+    forkOf = resolveForkRef(store, rawForkOf, key);
+    forkKind = rawForkKind === 'reopen' ? 'reopen' : 'comment';
+  }
   const task = normalizeTask({
     id,
     text: body,
@@ -85,6 +96,8 @@ export async function addTask({
     timegoal,
     blockBy: normalizeBlockBy(rawBlockBy, id),
     blocksFollowing: !!blocksFollowing,
+    forkOf,
+    forkKind,
   });
   t.tasks.push(task);
   t.updatedAt = stampNow();

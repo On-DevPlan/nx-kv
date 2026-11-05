@@ -655,17 +655,21 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     const parent = doc?.title || topic?.name || '';
     const t = `问题：${q.slice(0, 28)}`;
     const raw = `# ${t}\n\n> 锚定自「${parent}」：\n> ${quote.replace(/\n/g, '\n> ')}\n\n## 问题\n${q}\n\n## 要做什么\n- [ ] …\n`;
-    // 工作组语义继承 + 原文锚点（parent/parentDir）：评论页可一键并排打开原文
-    const parentFields = (!isDraft && task != null && !/^draft/i.test(String(task)))
-      ? { parent: String(task), parentDir: dirKey || '' }
-      : {};
+    // 工作组语义继承 + 原文锚点（parent/parentDir）：评论页可一键并排打开原文。
+    // 任务链（#69）：forkOf/forkKind 进 store schema——frontmatter 只是正文锚点，
+    // 链条本体在队列行上，CLI 的 localtask chain 靠它才能查（正文可被编辑，schema 不会）。
+    const isRealTask = !isDraft && task != null && !/^draft/i.test(String(task));
+    const parentFields = isRealTask ? { parent: String(task), parentDir: dirKey || '' } : {};
+    const linkFields = isRealTask ? { forkOf: String(task), forkKind: 'comment' } : {};
     const b = withFrontmatter(raw, { ...docFm, ...parentFields });
     guard(async () => {
       // 落点 = 原任务所在队列（显式给 cwd：尊重当前落点，不被归属推导挪走）；
       // 归属由正文 frontmatter 决定（服务端 fail-open 补介绍引用）。
       const res = await api('/api/localtasks', {
         method: 'POST',
-        body: isGlobal ? { global: true, text: b } : { cwd: topic?.cwd, text: b },
+        body: isGlobal
+          ? { global: true, text: b, ...linkFields }
+          : { cwd: topic?.cwd, text: b, ...linkFields },
       });
       closeSelMenu();
       toast('已提交问题（评论）');

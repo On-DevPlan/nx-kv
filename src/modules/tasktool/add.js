@@ -55,6 +55,8 @@ export async function submitTask({
   goalPrompt,
   blockBy,
   blocksFollowing = false,
+  forkOf,
+  forkKind,
 } = {}) {
   let text = String(rawText ?? '');
   let cwd = rawCwd;
@@ -98,5 +100,8 @@ export async function submitTask({
     timegoal,
     blockBy,
     blocksFollowing: !!blocksFollowing,
+    // 任务链（#69）：这条任务从哪条派生（裸数字=同主题父任务，'key:id'=跨主题）
+    forkOf,
+    forkKind,
   });
 }

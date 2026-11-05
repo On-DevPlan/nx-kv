@@ -61,6 +61,7 @@ export async function reopenTask({ cwd: rawCwd, key: rawKey, id, text, moveTo } 
     status: 'pending',
     createdAt: stampNow(),
     forkOf: `${key}:${want}`,
+    forkKind: 'reopen', // 验收反馈 / 重做派生（#69 任务链；评论派生是 addTask 的 'comment'）
     // 同一件活，约束也接着走：
     //   timegoal       时间目标继承——新任务从**再次领取**开始重新计时（与旧口径一致）
     //   blocksFollowing 闸门继承——旧任务归档后不再挡人，闸门得由新任务接着当

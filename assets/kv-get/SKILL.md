@@ -71,6 +71,9 @@ nx-kv localtask done --id <n> --summary "<完成总结>" [--progress "<完成度
 
 # 用户看了结果提修改意见 → **新建一条任务**（新的 md），旧任务归档留档
 nx-kv localtask reopen --id <n> [--text "<改后的正文（Markdown）>"] --json
+
+# 查派生链（评论生成 / 反馈重开的关联）：祖先 + 全部子任务，跨主题
+nx-kv localtask chain --id <n> --json
 ```
 
 `reopen` **不改旧任务**：它在同一条队列里**新建一条待领取任务**（正文 = `--text` 给的

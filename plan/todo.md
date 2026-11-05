@@ -183,3 +183,19 @@ T1/T4/T5 的核心断言**已复核属实**（store 隔离端到端实测通过�
   节点分别落到第 3/1/2 轮（视口内可见的正是对应 MARKER 块），active 节点随滚动跟随；
   阅读态点第 2 个节点落到第 2 轮；展开面板列出各轮可点；全程零 console error。
   单测 `tests/unit/ack-nodes.test.mjs` 8 条（抽取口径 + 块序号与 DOM 对齐 + 标题生成）。
+
+### 定位轨可拖动（2026-11-05 #55）
+
+- [x] **汉堡钮当拖把，整条轨拖到容器内任意位置**（Pointer Events，>4px 算拖、否则算
+  点击），双击回默认钉位；落点存 localStorage 重开还在。拖后 click 被吃（不误触展开）。
+  - 钳制必须用**自然高**：钉位态轨盒子被 `top/bottom` 双锚拉满（高 760），直接拿它钳
+    会把第一次拖动错钳到容器顶部（y≤132）——beginDrag 时临时解除底锚量一次自然高
+    再恢复（同帧同步，子元素本来堆顶部，无视觉跳动）。
+  - 落点存盘用**拖动会话的最终落点**（`d.last`）：`pointerup` 时 React 状态可能未提交，
+    读 state 会存回拖动前旧位置，等于白拖。
+  - 落点纯逻辑独立成 `modules/board/ack-rail-pos.js`（钳制 + localStorage 存取），
+    单测 `tests/unit/ack-rail-pos.test.mjs` 6 条（钳制边界 + 存取往返 + 脏数据容忍）。
+- [x] 验收：Playwright 探针（隔离 store + 临时端口 7879 + 本机 Chrome）11 条断言全过
+  ——界内跟手、越界钳制（落点矩形完全在容器内）、拖完即持久化、拖后 click 不误触、
+  点击展开、展开态拖动、重开还原落点、双击回默认位、探针 store 隔离完好、零 console error。
+  探针实测揪出并修掉两个真 bug：endDrag 存未提交 state（白拖）；拉伸盒高错钳首拖落点。

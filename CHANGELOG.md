@@ -2,7 +2,12 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [0.25.0] - 2026-11-05 新建任务不再丢上下文
+## [0.25.0] - 2026-11-05 新建任务不再丢上下文 + 交付预览 + 存储层收口
+
+### Added
+
+- **编辑页「更多 → 预览提示词」**（任务 #65）：发布前可看「agent 执行 get 会收到的完整提示词」——原文（可复制）+ 段落来源 + 开关状态。整条链路复用真实领取的 `buildTaskDelivery`（预览 = 真实交付，逐字一致），零副作用（不领取、不写盘、不启动 timegoal 计时）。CLI 同步开放 `localtask preview` 动词，草稿可 `--text` 直接预览。
+- **`core/json-store.js` 统一存储原语**（任务 #66）：把复制了 6 份的「串行写队列 + tmp+rename 原子写 + Windows EPERM/EACCES 退避 + 损坏隔离」收口为一个原语（`createJsonStore` / `atomicWriteText` / `atomicWriteTextSync`），localtask / repos / timegoal / templates 四个 store 已接入（语义逐一对齐）；为后续迁 SQLite 做代码隔离——届时只换这一层 driver，业务调用点一行不改。
 
 ### Fixed
 
@@ -13,6 +18,17 @@
   - 现在与组页同一套口径：正文 = 模板默认正文 + frontmatter（board / project 跟着当前
     任务走），落点仍由服务端按归属推导。
   - 编辑体验一致：两条新建入口的正文骨架、归属展示、提交路径完全一致。
+- **预览接口 404 给出可操作引导**（任务 #65 验收反馈）：正在跑的旧 serve 进程没有新路由
+  （HTTP 路由在启动时加载、页面资产现读磁盘），面板点「预览提示词」会报「接口不存在」——
+  现在检测到该错误会提示重启面板 serve 进程（刷新页面无效）。
+- **panels.json 登记改原子写**（任务 #66）：半途被杀不再留下半个 JSON 把面板注册表清空。
+
+### Changed
+
+- **内置 skill 资产精简**（任务 #67）：assets/ 里的 skill 只保留 agent 用 CLI 的方法，
+  删去开发知识（后端实现、工具演进史、弹窗实现细节）与 Web UI 操作路径（面板按钮位置、
+  「Web 端操作」整节等），保留行为事实与 CLI 入口；修正陈旧引用与旧 skill 名。
+
 ## [0.24.9] - 2026-11-05 侧栏显示编排真的生效了
 
 ### Fixed

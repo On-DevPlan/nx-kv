@@ -14,7 +14,7 @@
 ## 边界：git 操作只给参考仓库
 
 仓库模块只维护一份**目录清单**。开发仓库（type=dev）的 git 状态、diff、pull、push、
-冲突落地全部不做：git 客户端是无底洞，面板做不出比 IDE 更好的体验，
+冲突落地全部不做：git 客户端是无底洞，状态/diff 类需求交给 IDE 与 git 自己，
 而半吊子的状态显示比没有更危险（用户会拿它当决策依据）。
 
 要用 git 时直接用它自己：
@@ -120,10 +120,6 @@ nx-kv repo import <file> --select <key1,key2> --clone ref   # 只处理选中的
 nx-kv repo clone <remote> --key <占位的key>    # 按 remote 克隆并用占位的 key 登记 → 占位自动转正
 nx-kv repo key set <id> <key>                   # 纯自定义 key 的占位：自己建仓库后再指定同一个 key
 ```
-
-面板：仓库页 →「参考仓库」面板 →「导入导出」→ 全屏面板（左右两栏，逐条勾选 +
-冲突方案 + 克隆选项）。「本地未拥有」的条目会显示 key 与 remote，有远程地址的可一键
-「克隆到本地」；仓库页的「成员管理」弹窗里也能看到占位成员并补齐。
 
 
 ## SOP

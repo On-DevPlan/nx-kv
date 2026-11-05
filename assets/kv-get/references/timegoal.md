@@ -86,7 +86,7 @@ nx-kv timegoal set --cwd "$PWD" \
 
 - 没设过 timegoal → `{hasGoal:false, reached:false, prompt:""}`（需先 `set`）
 - 到点后 `reached:true`，goal 对象仍在；可继续 `check` 看 prompt，直到 `clear`
-- 到点后目标**立即失效**：从活动列表与面板消失（`show`/`check` 在保留期内照样查得到）；
+- 到点后目标**立即失效**：从活动列表消失（`show`/`check` 在保留期内照样查得到）；
   保留期（默认 7 天）到后整条自动删掉（详见下面的「到点之后会发生什么」）
 
 ## 四条硬规则
@@ -121,8 +121,7 @@ nx-kv timegoal log    --cwd <dir>                                    # 回看每
 
 ### 到点之后会发生什么（自动失效）
 
-- 目标过了截止时刻 → **立即失效**：从 `list` 的活动列表与面板上消失，
-  不再越堆越多（以前要手动点一次「回收已到点」）。
+- 目标过了截止时刻 → **立即失效**：从 `list` 的活动列表上消失，不再越堆越多。
 - 但**保留期内** `show` / `check` **仍然查得到**：agent 最后一轮照样拿到 `reached:true` +
   提示词原文，能写完最终总结再停手。这就是"最后一轮还能读到"的保证。
 - 保留期（默认 **7 天**）到后**整条自动删掉**（连提示词原文一起）——**不需要任何人
@@ -130,8 +129,7 @@ nx-kv timegoal log    --cwd <dir>                                    # 回看每
   实际落盘点是下一轮 `check`（或 set/update/clear）。
 - 失效的目标**不可复活**：`update` 会报错。**要继续这个目录的工作，请用 `set` 开新一局**
   （起点从现在重算）。
-- `check` 会额外返回 `overtimeSec`（已经超时多久）——**面板不显示它**（超时长是内部量，
-  摆一个已经停掉的钟在眼前只会让人盯着它）。
+- `check` 会额外返回 `overtimeSec`（已经超时多久）。
 - 日志只保留最近 200 条；`totalChecks` 记总轮次、`logTruncated` 标记历史被截断，
   截断是**可见的**，不会静默丢历史。
 
@@ -148,25 +146,6 @@ nx-kv timegoal log    --cwd <dir>                                    # 回看每
 
 `update` 改时长时：`deadline = startedAt + 新时长`。
 
-## Web 端操作
-
-面板「本地任务」页有两处入口（都是**纯 UI 便利**，数据与逻辑仍属 timegoal 模块）：
-
-**1. 顶部「时间目标」汇总卡** —— 列出所有目录的 timegoal（包括还没在看板里出现过
-的目录）：
-
-- **新建**：填目录 + 时长 + 提示词 → 创建
-- **编辑**：改时长 / 提示词；默认**保留计时起点**，勾「重置起点」才从头计
-- **清空**：删除该目录的 timegoal
-- 状态列显示 `剩 mm:ss`，每 1.5s 自动刷新；到点后这一格**留空**（目标已失效）
-
-**2. 主题卡里的 timegoal 行**：
-
-- 已设置 → `时间目标剩余 mm:ss` / `已到点（用时 ...）` +「查看提示词 / 编辑 / 清空」
-- 未设置 → 「未设置时间目标」+「设置」（为该目录新建）
-
-时长输入带快捷按钮（30 分钟 / 1 / 2 / 3 / 8 小时）。
-
 ## 与其它机制的关系
 
 **没有依赖关系。** timegoal 只做两件事：算时间、回显提示词原文。
@@ -182,7 +161,7 @@ nx-kv timegoal log    --cwd <dir>                                    # 回看每
 
 **与 wait 的融合（只读，单向）**：这个目录挂着 timegoal 时，`localtask wait`
 返回的 `instruction` 字段会带上目标状态（默认模板：`〔时间目标「目录名」剩余 X〕`；
-到点后显示「已到点」）——kv-waittask 循环里的 agent 不调 check 也能看到预算。
+到点后显示「已到点」）——kv-get 循环里的 agent 不调 check 也能看到预算。
 融合是**渲染时只读**（`showTimegoal` 只读路径，不写盘、不写 check 日志、不影响
 计时与到点判定），timegoal 自身的命令族与契约完全不变；`check` 的 prompt 原文
 回显仍是防漂移的唯一正式通道。要到 wait 的 instruction 里携带 prompt 原文，
@@ -194,7 +173,7 @@ nx-kv timegoal log    --cwd <dir>                                    # 回看每
 ## 安装
 
 ```bash
-nx-kv skill install kv-timegoal
+nx-kv skill install kv-get
 ```
 
 要详细时序与一份可抄走的 prompt 模板（"调研开源 Redis 差距并逼近生产级数据库"

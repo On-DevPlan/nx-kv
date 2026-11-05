@@ -5,11 +5,8 @@ description: KV 清单（todo）的收单与操作 —— 既用来**领取任�
 
 # nx-kv — 收单流程 + 命令手册
 
-KV 清单（todo）的操作入口。四把 key 上的任务管理，对接 GoFrame KV 后端。
-
-> 历史：本 skill 合并了原先独立的 `taskget`。以前它走 `kvcli`，现在统一走 `nx-kv`——
-> 后者是同一后端的 Node 实现，多了 Web 面板、覆盖全部四把 key（含 freeze / topics）、
-> 且随包自带本 skill（`nx-kv skill install` 一条命令装好）。
+KV 清单（todo）的操作入口——领任务、确认意图、完成后回填、直接读写清单。
+随包自带本 skill（`nx-kv skill install` 一条命令装到本地 skill 目录）。
 
 ## 先判断你要做哪件事
 
@@ -32,12 +29,7 @@ nx-kv group current          # 当前工作空间
 **所有清单操作都需要登录**，否则报「未登录」并 exit 1。
 
 数据按 `groupId` 隔离。**先确认工作空间对不对**——在错的空间里会「什么都查不到」，
-而那不是「没有任务」，是「看错地方了」。
-
-> 工作空间是**清单的设置**（不是独立功能域）：面板上没有单独的「工作空间」页，
-> 入口在**清单页**工具栏里那颗可点的工作空间药丸 —— 点开是子弹窗，
-> 切换 / 成员 / 改名 / 解散 / 新建都在那儿。命令与路由一字未改
-> （`nx-kv group ...`、`/api/groups*`）。
+而那不是「没有任务」，是「看错地方了」。工作空间操作走 `nx-kv group ...` 命令族。
 
 ## 最常用的四条
 
@@ -66,8 +58,8 @@ nx-kv todo done --ref "<任务内容>" --result "改了什么 / 关键决策 / �
 任务**正文本身**就能带附件——用标准 markdown 写，不发明新语法：
 
 ```
-修一下首页 logo  ![设计稿](3f2a1b…9c)       ← 图片，面板里内联预览
-补充材料见 [需求说明.docx](b71e…04.docx)     ← 其他文件，点开即下载/预览
+修一下首页 logo  ![设计稿](3f2a1b…9c)       ← 图片附件
+补充材料见 [需求说明.docx](b71e…04.docx)     ← 其他文件附件（docx/pdf/…）
 ```
 
 `( )` 里是**后端图床的 fileId**（32 位 hex，原文件名带后缀时结尾会接 `.<ext>`）。
@@ -85,7 +77,7 @@ nx-kv todo attach --ref "<任务内容>" --fileId <fileId>       # 追加一个�
 nx-kv file sync --json      # 同步当前工作空间的附件 → ~/.nx-kv/attachments/<工作空间>/
 ```
 
-**更省事的做法是打开「读任务时自动下载」**（面板「清单」页的开关，或 CLI 一条命令）：
+**更省事的做法是打开「读任务时自动下载」**（一条命令）：
 
 ```bash
 nx-kv setting set --autoSyncAttachments        # 开
@@ -133,17 +125,6 @@ $ nx-kv todo get --ref "旧记录" --topic fr    # 或按主题收窄
 同一规则适用于 `get` / `update` / `remove` / `done` / `freeze` / `unfreeze`。
 `update` 用 `--match-topic` 消歧（`--topic` 在那里表示「改成这个主题」）。
 **内容含空格时要加引号**（`--ref "修复登录页 500"`）——`--ref` 是普通 flag，值不会自动吃掉后面的 token。
-
-## 与 kvcli 的关系
-
-两者对接同一后端、同一份数据，可以混用（`kvcli auth login` 与 `nx-kv auth login` 各自存 token）。
-差异：
-
-- nx-kv 覆盖全部四把 key（`todo:freeze` / `todo:topics`），kvcli 只管 open / done
-- nx-kv 有 Web 面板：`nx-kv serve`
-- nx-kv 单条操作按**内容**定位（`--ref`），kvcli 的 `done` 只在 open 里按 **id** 匹配
-  —— 而 id 会被复用，所以 kvcli 那套在 done 上定位不安全
-- **本 skill 的命令一律写 nx-kv**。若环境里只有 kvcli，见 [[todo-commands]] 末尾的对应关系表
 
 ## Ref 加载引导
 

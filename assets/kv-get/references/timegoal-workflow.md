@@ -114,9 +114,8 @@ nx-kv timegoal update --cwd "$PWD" --prompt "V2 改得更简洁" --json
 # 6. check：prompt 已是 V2，deadline 仍是 1 小时后
 nx-kv timegoal check --cwd "$PWD" --summary "改完 prompt" --progress "继续" --json
 
-# 7. 等到点（或手动改 store）后：reached:true
-#   （实操：把 ~/.nx-kv/timegoals.json 里 startedAt 改成 4 小时前）
-#   到点后目标立即失效（面板上不再显示），但保留期内 show/check 仍查得到 —— 最后一轮照样能读到 prompt
+# 7. 等到点后：reached:true
+#   到点后目标立即失效，但保留期内 show/check 仍查得到 —— 最后一轮照样能读到 prompt
 
 # 8. 回看每轮日志（现状 / 完成度 / 剩余）
 nx-kv timegoal log --cwd "$PWD" --json

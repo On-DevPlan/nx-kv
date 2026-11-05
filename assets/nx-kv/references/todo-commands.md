@@ -109,8 +109,8 @@ nx-kv group use <id|name|default>     # 别名：group switch
 **正文里的嵌入语法**（标准 markdown，不发明方言）：
 
 ```
-![说明](fileId)      图片：面板里内联预览
-[文件名](fileId)      其他文件（docx/pdf/…）：点开即下载/预览
+![说明](fileId)      图片附件
+[文件名](fileId)      其他文件附件（docx/pdf/…）
 ```
 
 `fileId` 是后端图床的不透明 id：32 位 hex，原文件名带扩展名时结尾接 `.<ext>`
@@ -249,7 +249,7 @@ nx-kv todo list --status open --topic bug    # bug 消费者
 > 而 id 会被复用。当日志/清单里出现同 id 多条时，它可能完成掉另一条。
 > 能用 nx-kv 就别换算。
 
-**kvcli 没有的能力**：`todo:freeze`、`todo:topics`、`todo archive`、Web 面板、
+**kvcli 没有的能力**：`todo:freeze`、`todo:topics`、`todo archive`、
 以及**按内容定位与「同内容多条」的消歧防护**。要用这些就得用 nx-kv。
 
 ## 避坑

@@ -24,7 +24,7 @@ description: 把当前对话里的需求打包成任务，通过 nx-kv localtask
 # 提交到目标目录的队列（务必加 --json；--cwd 是接收方 agent 的工作目录）
 nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --json
 
-# 可选：顺带刷新该目录主题的现状展示（面板/弹窗顶部那句话）
+# 可选：顺带刷新该目录主题的现状展示（目标目录 agent 领取时会看到）
 nx-kv localtask add "<任务文本>" --cwd "<目标目录>" --summary "<该目录当前现状>" --json
 
 # 不限定接收方、谁闲谁领 → 推到全局任务池（--cwd 被忽略）：
@@ -81,7 +81,7 @@ nx-kv localtask reopen --id <n> --text "<改后的正文（Markdown）>" --json
 
 | 场景 | 用哪个 |
 | --- | --- |
-| 你自己干完活、等用户在浏览器回填下一条 | kv-get（wait / done / reopen） |
+| 你自己干完活、等用户回填下一条 | kv-get（wait / done / reopen） |
 | 主动领取排给**本目录**的任务 | kv-get（get） |
 | 操作远程 KV 后端的 todo 清单（需登录） | nx-kv |
 | 给**正在等待**的 agent 补一条任务 | 本 skill（add 到它的目录） |

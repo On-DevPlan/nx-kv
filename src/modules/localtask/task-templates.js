@@ -58,6 +58,17 @@ export function joinTaskSuffix(v) {
 //      任何东西，默认交付逐字不变。
 //   2. 它不是「收尾指令」，是「总结格式要求」——所以不拼进 task.text，只进
 //      instruction 字段。
+/** 交付上下文模板（任务 #62）的长度上限——防把整本书塞进设置。 */
+export const MAX_DELIVERY_TEMPLATE_LEN = 8000;
+
+/** 交付上下文模板：空串 = 用内置默认模板（不关掉这一段）。 */
+export function clampDeliveryTemplate(v) {
+  if (v === undefined || v === null) return '';
+  const s = String(v).trim();
+  if (!s) return '';
+  return s.slice(0, MAX_DELIVERY_TEMPLATE_LEN);
+}
+
 export function clampAckPromptList(v) {
   if (v === undefined || v === null) return [];
   const raw = Array.isArray(v) ? v : [v];

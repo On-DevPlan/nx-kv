@@ -12,7 +12,7 @@ import {
   normalizeSummary,
   topicOf,
 } from './store-io.js';
-import { DEFAULT_TASK_SUFFIX, clampTaskSuffixList, clampAckPromptList } from './task-templates.js';
+import { DEFAULT_TASK_SUFFIX, clampTaskSuffixList, clampAckPromptList, clampDeliveryTemplate } from './task-templates.js';
 import { foreignResolver, isPending, topicView } from './task-view.js';
 import { deleteGuard } from './deletion.js';
 import { repoContextIndex, repoCtxOf } from './repo-ctx.js';
@@ -35,6 +35,9 @@ function settingsView(s) {
     suffixEnabled: suffixList.length > 0,
     // ack 完成总结提示词（多条）：缺省空 = 不追加（默认交付逐字不变）
     ackPromptList: clampAckPromptList(s && s.ackPrompt),
+    // 交付上下文模板（任务 #62）：原始提示词之外的那段「组 / 项目关键路径」
+    // 怎么写。空串 = 用内置默认模板（不是关掉——关掉就丢上下文了）。
+    deliveryTemplate: clampDeliveryTemplate(s && s.deliveryTemplate),
   };
 }
 
@@ -125,11 +128,12 @@ export async function pruneTopics({ allFinished = false, dryRun = false } = {}) 
 // 也兼容 string（旧单条写法，整体算一条）。条数上限 10、单条 ≤2000 字；
 // 含 {{ 占位符 → 渲染进返回的 instruction 字段；纯文本 → 追加到 task.text 末尾；
 // 传 '' / [] 关闭、不传保持不变。
-export async function updateSettings({ timeoutSec, taskSuffix, ackPrompt } = {}) {
+export async function updateSettings({ timeoutSec, taskSuffix, ackPrompt, deliveryTemplate } = {}) {
   const hasTimeout = timeoutSec !== undefined && timeoutSec !== null;
   const hasSuffix = taskSuffix !== undefined;
   const hasAck = ackPrompt !== undefined;
-  if (!hasTimeout && !hasSuffix && !hasAck) {
+  const hasDelivery = deliveryTemplate !== undefined;
+  if (!hasTimeout && !hasSuffix && !hasAck && !hasDelivery) {
     throw badInput(
       '请至少指定一项：--timeout <秒>，或 --suffix "<收尾指令模板>"（--no-suffix 关闭、--reset-suffix 恢复默认、--suffix-add/--suffix-remove 按条增删），或 --ack "<ack 提示词>"'
     );
@@ -145,6 +149,7 @@ export async function updateSettings({ timeoutSec, taskSuffix, ackPrompt } = {})
   }
   if (hasSuffix) next.taskSuffix = clampTaskSuffixList(taskSuffix);
   if (hasAck) next.ackPrompt = clampAckPromptList(ackPrompt);
+  if (hasDelivery) next.deliveryTemplate = clampDeliveryTemplate(deliveryTemplate);
   store.settings = next;
   await saveStore(store);
   return settingsView(store.settings);

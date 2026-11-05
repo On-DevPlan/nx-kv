@@ -2,6 +2,25 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.24.6] - 2026-11-05 交付提示词模板化 + 外部参数平面扩展
+
+### Changed
+
+- **交付给 agent 的提示词改成「模板 + 占位符」，并在面板上可见可改**（任务 #62）：
+  领到组内仓库的任务时，交付文本 = **原始提示词（正文逐字）** + **组 / 项目的关键路径**
+  （组 / 项目的描述本身就是本地 markdown，给的是磁盘真实路径，agent 拿到就能读盘）。
+  - 新增 `tasktool/delivery-template.js`：默认模板逐字复现改造前的输出口径；ctx 只给
+    **数据**，措辞归模板（`{{repo.*}}` / `{{group.*}}` / `{{task.text}}` / `{{goal.*}}`…）。
+  - 模板存设置里（`settings.deliveryTemplate`）：CLI `localtask config
+    --delivery-template "…"`（`--reset-delivery-template` 恢复默认）；面板设置 →
+    「提示词 / 模板」→「交付上下文」一栏，多行编辑 + **占位符清单**。
+  - **领取引擎支持平面扩展**：`localtask get` / `wait` 新增 `--param k=v`（可重复 /
+    逗号分隔），参数进 ctx 顶层（`{{k}}`）同时归拢在 `{{params.k}}`；内建同名键不被覆盖。
+  - 渲染器（`core/instruction-template.js`）段落名推广到**任意名字**（`{{#repo}}`、
+    `{{#group}}`…）：`goal` / `task` 缺失即丢弃的旧语义不变，其他名字在 ctx 里显式给了
+    键才按值取舍。
+
+> 评估文档：`plan/cli-get-template-eval.md`（现状评估 + 设计 + 遗留建议）。
 ## [0.24.5] - 2026-11-05 侧栏支持单项目
 
 ### Changed

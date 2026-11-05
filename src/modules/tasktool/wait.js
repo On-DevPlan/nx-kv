@@ -10,6 +10,7 @@
 //     同模块的 timegoal.js（探针只读 + 交付时刻的目标上下文）。
 import { DEFAULT_PORT } from '../../core/paths.js';
 import { formatGoalTiming, hasTemplateMarkers, renderInstruction } from '../../core/instruction-template.js';
+import { DEFAULT_DELIVERY_TEMPLATE, buildDeliveryCtx, renderDelivery } from './delivery-template.js';
 import {
   clampTaskSuffix,
   clampTimeoutSec,
@@ -34,7 +35,7 @@ import {
 } from '../localtask/service.js';
 import { ensureMainPanel, deepLinkUrl, escortPanel } from './panel-escort.js';
 import { ensureTaskGoal } from './taskgoal.js';
-import { readGroupContext, renderGroupContext } from './groupctx.js';
+import { readGroupContext } from './groupctx.js';
 import { annotateTaskDelivery, attachmentInstruction } from './attach.js';
 import * as timegoal from './timegoal.js';
 
@@ -112,7 +113,7 @@ function withTaskSuffix(task, suffix) {
 //                   （模板原文若追加进正文会把 {{...}} 漏进任务文本）；
 //   ''（关闭）    → 只回任务。
 // 任何异常都降级为「只回任务」——wait 绝不能因渲染挂掉（与探针同一条 fail-open 纪律）。
-async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, topicKey } = {}) {
+async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, topicKey, params } = {}) {
   // 多条收尾指令（settings.taskSuffix 存 string[]）先按空行拼成单串再分流；
   // 兼容旧单条 string（joinTaskSuffix 对 string 原样算一条）。
   const tpl = joinTaskSuffix(suffix);
@@ -155,7 +156,17 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
     // 项目组上下文（组概念 + 本项目位置 + 兄弟成员 + 参考文件地址）：
     // 只进 instruction，**task.text 保持库存原文**——todo 的口径是
     // 「封装对应的提示词保持在原本的提示此任务下面对上下文环境进行一个封装」。
-    const groupText = renderGroupContext(await readGroupContext(cwd));
+    //
+    // **模板化**（任务 #62）：这段封装是一份模板 + 占位符（默认模板复现旧口径，
+    // 设置里可改，面板「提示词 / 模板」可见）；外部参数（--param k=v）平铺进
+    // ctx，模板里 {{k}} 直接取——引擎支持平面扩展。
+    const groupCtx = await readGroupContext(cwd);
+    const settings = await getSettings().catch(() => null);
+    const deliveryTpl = (settings && settings.deliveryTemplate) || DEFAULT_DELIVERY_TEMPLATE;
+    const groupText = renderDelivery(
+      deliveryTpl,
+      buildDeliveryCtx({ task, goal, source, summary, cwd, name, groupCtx, params }),
+    );
 
     // 〔ack 完成总结格式要求〕：settings.ackPrompt（多条，设置面板「提示词 / 模板」
     // 一栏可配）——agent 领取时就拿到「完成总结该按什么格式写」的提示词。
@@ -215,7 +226,10 @@ async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, top
     // coversBody = 模板是否包含 {{task.text}}（即 instruction 是否自包含任务正文）。
     // 由服务端判定而不是 CLI 端做子串猜测——短任务文本可能碰巧是指令的子串，
     // 子串启发会误吞正文块的显示。
-    const coversBody = hasTemplateMarkers(tpl) && /\{\{\s*task\.text\s*\}\}/.test(tpl);
+    // **交付上下文模板也算**：它在正文之外另起一段，自带原文时同样覆盖正文块。
+    const coversBody =
+      (hasTemplateMarkers(tpl) && /\{\{\s*task\.text\s*\}\}/.test(tpl)) ||
+      (hasTemplateMarkers(deliveryTpl) && /\{\{\s*task\.text\s*\}\}/.test(deliveryTpl));
     return {
       task,
       instruction: full,
@@ -246,6 +260,7 @@ export async function waitForTask({
   timeoutMs,
   open = true,
   onReady,
+  params = {}, // 外部参数（平面扩展）：进交付模板的 ctx（--param k=v）
   instant = false, // get 的「直接领」形态：没有 pending 立即空手而回，不开窗不阻塞
 } = {}) {
   const { key, cwd, name } = normalizeCwd(rawCwd);
@@ -269,7 +284,7 @@ export async function waitForTask({
   // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
   const queued = await consumeFirstPending(key, summary, by);
   if (queued) {
-    const delivery = await buildTaskDelivery(queued, suffix, { source: 'local', summary, cwd, name, topicKey: key });
+    const delivery = await buildTaskDelivery(queued, suffix, { source: 'local', summary, cwd, name, topicKey: key, params });
     return { status: 'ok', key, cwd, name, summary, ...delivery, queued: true, source: 'local', repo: repoCtx };
   }
 
@@ -286,7 +301,7 @@ export async function waitForTask({
   if (fromGlobal) {
     // 全局池投递渲染的仍是**等待方目录**的 goal——目标绑定在等待中的 agent 目录上，
     // 与任务来自哪个队列无关。
-    const delivery = await buildTaskDelivery(fromGlobal, suffix, { source: 'global', summary, cwd, name, topicKey: key });
+    const delivery = await buildTaskDelivery(fromGlobal, suffix, { source: 'global', summary, cwd, name, topicKey: key, params });
     return {
       status: 'ok',
       key,
@@ -404,7 +419,7 @@ export async function waitForTask({
     // 只对拿到任务的结果生效——timeout/goal_expired/cancelled 的返回形状是钉死的契约，不动。
     const delivery =
       r.kind === 'task'
-        ? await buildTaskDelivery(r.task, suffix, { source: r.source || 'local', summary, cwd, name, topicKey: key })
+        ? await buildTaskDelivery(r.task, suffix, { source: r.source || 'local', summary, cwd, name, topicKey: key, params })
         : null;
     result =
       r.kind === 'timeout'

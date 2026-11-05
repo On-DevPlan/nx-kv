@@ -183,10 +183,12 @@ export default {
         summary: { type: 'string', hint: '当前现状（agent 状态，展示给用户）' },
         timeout: { type: 'number', hint: '阻塞上限（秒）；仅项目开启「持续 get」时有意义' },
         'no-open': { type: 'boolean', hint: '不自动打开浏览器（测试用）' },
+        param: { type: 'array', hint: '外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取' },
       },
       run: async (ctx) => {
         const { getTask } = await import('../tasktool/get.js');
-        return getTask({ cwd: ctx.cwd, summary: ctx.summary, timeoutSec: ctx.timeout, open: !ctx['no-open'] });
+        const { parseParams } = await import('../tasktool/params.js');
+        return getTask({ cwd: ctx.cwd, summary: ctx.summary, timeoutSec: ctx.timeout, open: !ctx['no-open'], params: parseParams(ctx.param) });
       },
       render: renderWait, // 返回形状与 wait 同构（ok/timeout），复用同一份人读渲染
     },
@@ -577,6 +579,11 @@ export default {
         suffixList: { type: 'array', hint: '同 --suffix-list（驼峰写法，HTTP body 用）' },
         'ack-list': { type: 'array', hint: '整体替换 ack 完成总结提示词列表（多条）' },
         ackList: { type: 'array', hint: '同 --ack-list（驼峰写法，HTTP body 用）' },
+        'delivery-template': {
+          type: 'string',
+          hint: '交付上下文模板（原始提示词之外那段「组/项目关键路径」怎么写）。占位符：{{task.text}} {{repo.name}} {{repo.intro}} {{repo.introPath}} {{repo.docs}} {{group.name}} {{group.desc}} {{group.intro}} {{group.introPath}} {{group.note}} {{group.peers}} {{group.docs}} {{source}} {{summary}} {{cwd}} {{name}}；段落 {{#repo}}…{{/repo}}、{{#group}}…{{/group}}；外部参数 {{params.k}} 与顶层 {{k}}。置空 = 恢复内置默认模板',
+        },
+        'reset-delivery-template': { type: 'boolean', hint: '恢复内置默认交付上下文模板' },
       },
       run: async (ctx) => {
         const patch = { timeoutSec: ctx.timeout };
@@ -613,6 +620,9 @@ export default {
         } else if (ctx['no-suffix']) patch.taskSuffix = [];
         else if (ctx['reset-suffix']) patch.taskSuffix = [service.DEFAULT_TASK_SUFFIX];
         else if (ctx.suffix !== undefined) patch.taskSuffix = ctx.suffix;
+        // 交付上下文模板（任务 #62）：置空 = 恢复内置默认模板
+        if (ctx['delivery-template'] !== undefined) patch.deliveryTemplate = ctx['delivery-template'];
+        if (ctx['reset-delivery-template']) patch.deliveryTemplate = '';
         return service.updateSettings(patch);
       },
       render: (s) => {
@@ -737,15 +747,18 @@ export default {
         summary: SUMMARY,
         timeout: { type: 'number', hint: '阻塞上限（秒）；缺省用页面配置（推荐 180，最大 600）' },
         'no-open': { type: 'boolean', hint: '不自动打开浏览器（测试用）' },
+        param: { type: 'array', hint: '外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取' },
       },
       run: async (ctx) => {
         // wait 编排已迁 tasktool/wait.js（任务工具语义归 tasktool；命令名不变）
         const { waitForTask } = await import('../tasktool/wait.js');
+        const { parseParams } = await import('../tasktool/params.js');
         return waitForTask({
           cwd: ctx.cwd,
           summary: ctx.summary,
           timeoutSec: ctx.timeout,
           open: !ctx['no-open'],
+          params: parseParams(ctx.param),
         });
       },
       render: renderWait,

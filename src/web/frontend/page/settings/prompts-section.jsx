@@ -19,6 +19,7 @@ const TABS = [
   { id: 'template', label: '任务模板' },
   { id: 'suffix', label: '回调提示词' },
   { id: 'ack', label: 'ack 总结' },
+  { id: 'delivery', label: '交付上下文' },
 ];
 
 /** 全局提示词列表（回调 / ack 共用一套读写） */
@@ -197,6 +198,87 @@ function TemplateSlots({ openTemplates }) {
   );
 }
 
+/**
+ * 交付上下文模板（任务 #62）：原始提示词之外那段「组 / 项目关键路径」怎么写。
+ * 面板上**看得见、改得动**——占位符清单直接列在旁边，不靠记忆。
+ */
+function DeliveryTemplate() {
+  const toast = useToast();
+  const [text, setText] = useState(null); // null = 还没读
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    api('/api/localtasks')
+      .then((d) => setText(d?.settings?.deliveryTemplate ?? ''))
+      .catch((e) => toast('读取失败：' + (e.message || e)));
+  }, [toast]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const d = await api('/api/localtasks/setting', {
+        method: 'PATCH',
+        body: { deliveryTemplate: text ?? '' },
+      });
+      setText(d?.deliveryTemplate ?? '');
+      toast('已保存交付上下文模板');
+    } catch (e) {
+      toast(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reset = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const d = await api('/api/localtasks/setting', {
+        method: 'PATCH',
+        body: { deliveryTemplate: '' },
+      });
+      setText(d?.deliveryTemplate ?? '');
+      toast('已恢复内置默认模板');
+    } catch (e) {
+      toast(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="setp-suffix">
+      <div className="setp-row">
+        <span>交付上下文模板（原始提示词之外的组 / 项目关键路径）</span>
+        <button type="button" className="btn ghost sm" onClick={save} disabled={busy || text === null}>
+          保存
+        </button>
+        <button type="button" className="btn ghost sm" onClick={reset} disabled={busy || text === null}>
+          恢复默认
+        </button>
+      </div>
+      <textarea
+        className="setp-area"
+        rows={12}
+        value={text ?? ''}
+        placeholder={'留空 = 用内置默认模板'}
+        disabled={text === null}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <details className="setp-tpl-preview">
+        <summary>可用占位符</summary>
+        <pre className="setp-tpl-preview-body">
+          {'{{task.text}} 原始提示词（正文逐字）\n{{repo.name}} {{repo.intro}} {{repo.introPath}} {{repo.docs}} 项目介绍与补充文档\n{{group.name}} {{group.desc}} {{group.intro}} {{group.introPath}} {{group.note}} {{group.peers}} {{group.docs}}\n{{source}} {{summary}} {{cwd}} {{name}} {{goal.*}}\n{{params.k}} / {{k}} 外部参数（--param k=v 平铺传入）\n段落：{{#repo}}…{{/repo}}、{{#group}}…{{/group}}（ctx 里没有就整段不出现）'}
+        </pre>
+      </details>
+    </div>
+  );
+}
 export default function PromptsSection({ openTemplates }) {
   const [tab, setTab] = useState('template');
 
@@ -233,6 +315,7 @@ export default function PromptsSection({ openTemplates }) {
             offText="已关闭 ack 提示词"
           />
         )}
+        {tab === 'delivery' && <DeliveryTemplate />}
       </div>
     </div>
   );

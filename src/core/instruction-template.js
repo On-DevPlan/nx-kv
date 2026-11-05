@@ -7,8 +7,10 @@
 // （DEFAULT_TASK_SUFFIX）留在 localtask service。
 //
 // 语法（v1 无转义：模板正文无法表达字面 {{，纯文本后缀不该含 {{）：
-//   段落     {{#goal}}…{{/goal}}、{{#task}}…{{/task}}
-//            ctx.goal / ctx.task 缺失（null/undefined）时整段丢弃
+//   段落     {{#goal}}…{{/goal}}、{{#task}}…{{/task}}、{{#任意名}}…{{/任意名}}
+//            goal / task：ctx 里缺失（null/undefined）时整段丢弃；
+//            其他名字：ctx **显式给了这个键**才按值取舍（null → 丢弃），
+//            没给这个键 → 当未知标记处理（内容保留，与旧语义一致）
 //   占位符   {{goal.name}} {{goal.deadline}} {{goal.remainingHuman}} {{goal.prompt}}
 //            {{task.id}} {{task.text}} {{source}} {{summary}} {{cwd}} {{name}}
 //            按 `.` 分段走 ctx，任何一步缺失或未知路径一律 ''（宽容，绝不抛错）
@@ -26,8 +28,16 @@
 //
 // 单测：tests/unit/instruction-template.test.mjs（段落/占位符/单遍/空白全钉死）。
 
-const TOKEN_RE = /\{\{(#|\/)(goal|task)\}\}|\{\{([^{}]*)\}\}/g;
-const SECTION_TAGS = new Set(['{{#goal}}', '{{/goal}}', '{{#task}}', '{{/task}}']);
+const TOKEN_RE = /\{\{(#|\/)([A-Za-z][A-Za-z0-9_]*)\}\}|\{\{([^{}]*)\}\}/g;
+// 段落取舍：goal / task 缺了就整段丢弃（既有语义不变）；
+// 其他名字——ctx 里**显式给了这个键**才按值取舍（给 null 即丢弃），
+// 没给这个键 = 未知标记，当普通占位符处理（内容保留，兼容旧行为）。
+function sectionKeep(name, ctx) {
+  if (name === 'goal' || name === 'task') return !!(ctx && ctx[name]);
+  if (!ctx || typeof ctx !== 'object') return true;
+  if (!Object.prototype.hasOwnProperty.call(ctx, name)) return true;
+  return !!ctx[name];
+}
 
 /** 含任意 {{ 即视为模板（决定走渲染路径还是旧的纯文本追加路径）。 */
 export function hasTemplateMarkers(template) {
@@ -85,11 +95,11 @@ export function renderInstruction(template, ctx = {}) {
   for (let m = TOKEN_RE.exec(src); m; m = TOKEN_RE.exec(src)) {
     // 字面段：插入值（此处是模板里的字面文本）只在发射态进入输出
     if (emitting()) out += src.slice(last, m.index);
-    const token = m[0];
+
     let consumed = TOKEN_RE.lastIndex;
     if (m[1] === '#') {
       const name = m[2];
-      frames.push({ name, keep: name === 'goal' ? !!(ctx && ctx.goal) : !!(ctx && ctx.task) });
+      frames.push({ name, keep: sectionKeep(name, ctx) });
     } else if (m[1] === '/') {
       // 按名匹配才弹栈：错配的 close（如 goal 段里写 {{/task}}）是无操作——
       // 宽容但不泄漏：被丢弃段的内容不会因为一个错配 close 就提前"出栈"见光。
@@ -99,8 +109,8 @@ export function renderInstruction(template, ctx = {}) {
       out += resolvePath(m[3].trim(), ctx);
     }
     // 独占一行的段落标记：连同紧跟的换行一起消费（丢弃段不留空行；保留段不多空行）。
-    // 只对四个已知标记生效，且只吞"标记之后"的换行——标记之前的换行天然属于上一行。
-    if (SECTION_TAGS.has(token) && src[consumed] === '\n') consumed += 1;
+    // 只吞"标记之后"的换行——标记之前的换行天然属于上一行。
+    if ((m[1] === '#' || m[1] === '/') && src[consumed] === '\n') consumed += 1;
     last = consumed;
     TOKEN_RE.lastIndex = consumed;
   }

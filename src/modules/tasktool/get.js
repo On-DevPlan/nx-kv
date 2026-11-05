@@ -16,7 +16,7 @@ import { waitForTask } from './wait.js';
 import { getLoopForCwd, DEFAULT_GET_LOOP_TEMPLATE } from './getloop.js';
 import { hasTemplateMarkers, renderInstruction } from '../../core/instruction-template.js';
 
-export async function getTask({ cwd, summary, timeoutSec, open = true } = {}) {
+export async function getTask({ cwd, summary, timeoutSec, open = true, params } = {}) {
   const loop = await getLoopForCwd(cwd);
   const r = await waitForTask({
     cwd,
@@ -26,6 +26,7 @@ export async function getTask({ cwd, summary, timeoutSec, open = true } = {}) {
     timeoutSec: timeoutSec ?? (loop.enabled ? loop.waitMinutes * 60 : undefined),
     open,
     instant: !loop.enabled,
+    params: params || {}, // 外部参数（平面扩展）进交付模板
   });
   if (r.status !== 'ok' || !r.task) return r;
 

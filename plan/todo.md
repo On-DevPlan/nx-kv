@@ -302,3 +302,21 @@ T1/T4/T5 的核心断言**已复核属实**（store 隔离端到端实测通过�
 - [x] 验收：`pnpm test` 全绿（lint ✓ + build ✓ + smoke ✓ + unit 583/583）；真机 CDP
   实测（隔离 store + 临时端口 7995，1 组 2 项目 + 1 未归组项目）：侧栏渲染
   「nx（2）」→「nx-kv [nx]」「nx-rp [nx]」→「solo」，每个项目都可单独点开。
+
+### 交付提示词模板化 + 外部参数平面扩展（2026-11-05 #62）
+
+- [x] **评估**（`plan/cli-get-template-eval.md`）：CLI 领取链路逐环节过了一遍——取数稳、
+  收尾指令 / ack / goal 已是模板；缺口三条：组上下文那段是硬编码拼装、段落只认
+  goal/task、领取引擎没有外部参数入口。
+- [x] **模板化**：新增 `tasktool/delivery-template.js`——默认模板逐字复现旧口径（既有
+  group-context 单测钉死），ctx 只给数据（repo/group/task/goal…），措辞归模板。
+- [x] **面板可见**：`settings.deliveryTemplate` + 设置 →「提示词 / 模板」→「交付上下文」
+  一栏（多行编辑 + 保存 / 恢复默认 + 占位符清单）。CLI：`localtask config
+  --delivery-template`。
+- [x] **平面扩展**：`localtask get` / `wait` 新增 `--param k=v`（可重复 / 逗号分隔）；
+  参数进 ctx 顶层 + `{{params.*}}`；内建同名键不被外部参数覆盖。
+- [x] **渲染器**：段落名推广到任意名字（`{{#repo}}` / `{{#group}}`…），goal/task 的旧语义
+  不变；未知标记仍按老语义处理。
+- [x] 验收：新增 `tests/unit/delivery-template.test.mjs` 7 条（默认模板复现 / 无组时整段
+  不出现 / 原始提示词可进交付 / 外部参数平铺且不覆盖内建键 / parseParams 口径 / 任意段落名 /
+  可读路径）；既有 group-context 4 条全绿；`pnpm test` 全绿。

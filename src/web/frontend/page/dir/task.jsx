@@ -590,6 +590,27 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
     lastSel.current = '';
   };
 
+  /** 「更多 → 新任务」：新草稿**带着当前上下文**（工作组 + 归属项目）。
+   *
+   * 原来这里只是开一个新页签（nextDraftId），草稿正文是空模板、**没有 frontmatter**——
+   * 于是「在组内的任务里新建任务」会丢掉归属：新任务落进本目录队列，而不是组里那个
+   * 项目（任务 #64：「创建新任务会丢失相关的一个上下文」）。
+   *
+   * 现在与组页「新增任务」同一套口径：正文 = 模板默认正文 + frontmatter（board/project）。
+   */
+  const newTask = () => {
+    const draftId = nextDraftId();
+    const docId = docIdOf(scopeOf(dirKey), draftId);
+    const fm = {};
+    if (boardCtx && boardCtx.board && boardCtx.board.id) fm.board = boardCtx.board.id;
+    if (docFm.project) fm.project = docFm.project;
+    saveDoc(docId, {
+      title: '',
+      body: withFrontmatter(tpl ? tpl.defaultBody() : '', fm),
+    });
+    app.openPage && app.openPage({ dirKey, task: draftId, name: '新任务' });
+  };
+
   /** 划线评论 → **直接提交**成新任务：锚定选区原文，正文就是提出的问题。
    *
    * 两条口径（用户验收反馈 2026-11-04）：
@@ -895,7 +916,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model }
           onAtt={() => pickAtt('image/*,.pdf,.zip,.txt,.json,.csv')}
           onShortcuts={() => setShowShortcuts(true)}
           onImport={() => fileMdRef.current?.click()}
-          onNew={() => app.openPage && app.openPage({ dirKey, task: nextDraftId(), name: '新任务' })}
+          onNew={newTask}
           onMark={openCommentFromToolbar}
           onDraft={() => toast('草稿随页签保留（刷新后需从侧栏或页签重新打开）')}
           onSubmit={submit}

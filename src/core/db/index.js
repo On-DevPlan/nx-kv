@@ -9,12 +9,14 @@
 // 为什么是**进程级单例**：SQLite 的写锁是"一个连接一个事务"，同一进程里开两条
 // 连接去写同一份库，等于自己跟自己抢锁（`SQLITE_BUSY`）。多进程并发靠 WAL +
 // busy_timeout，进程内一律共用一条连接。
-import { APP_DIR, dbPathFromEnv } from '../paths.js';
+import { dbPathFromEnv, defaultStoreTarget } from '../paths.js';
 import { openAndBootstrap, inspectStore } from './bootstrap.js';
 import { currentDb, hasDefaultDb, setDefaultDb, resetDefaultDb, tx, txDepth } from './tx.js';
 
 /** @type {{db: object, result: object, existedBefore: boolean}|null} */
 let singleton = null;
+/** 当前单例是按哪个目标打开的（env 换库检测用）。 */
+let openedForTarget = null;
 
 /** 库文件路径（`NX_KV_DB` 优先，否则 `APP_DIR/nxkv.db`）。**每次现取**。 */
 export function dbPath() {
@@ -33,11 +35,26 @@ export function dbPath() {
  * @returns {object} 连接
  */
 export function openStore(opts = {}) {
-  if (singleton && !singleton.db.closed) return singleton.db;
-  const path = opts.path || dbPath();
-  const appDir = opts.appDir || APP_DIR;
+  const target = opts.path
+    ? { path: opts.path, appDir: opts.appDir }
+    : { path: dbPathFromEnv(), appDir: defaultStoreTarget().appDir };
+  if (singleton && !singleton.db.closed) {
+    // env 指向了另一个库（测试中途换目录 / legacy env 切换）→ 关旧开新。
+    // 这是「读路径静默换库」的统一防线：任何裸调 openStore() 的调用方
+    //（config / templates / core 内部）都自动获得同一语义。
+    if (
+      !opts.path &&
+      openedForTarget &&
+      (openedForTarget.path !== target.path || (openedForTarget.appDir || '') !== (target.appDir || ''))
+    ) {
+      closeDb();
+    } else {
+      return singleton.db;
+    }
+  }
+  const appDir = opts.appDir || target.appDir;
   const { db, result, existedBefore } = openAndBootstrap({
-    path,
+    path: target.path,
     appDir,
     importLegacyData: opts.importLegacyData !== false,
     dryRun: opts.dryRun === true,
@@ -45,6 +62,7 @@ export function openStore(opts = {}) {
     atMs: opts.atMs,
   });
   singleton = { db, result, existedBefore };
+  openedForTarget = { path: target.path, appDir };
   setDefaultDb(db);
   return db;
 }
@@ -78,6 +96,7 @@ export function closeDb() {
       singleton = null;
     }
   }
+  openedForTarget = null;
   resetDefaultDb();
 }
 

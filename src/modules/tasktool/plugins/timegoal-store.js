@@ -1,33 +1,48 @@
 // timegoal 模块 service —— 固化"持续运行 N 小时"任务的时间运算与全局提示词回显。
 //
 // 设计要点（与 localtask 严格分离）：
-//   1. **独立 store**：`~/.nx-kv/timegoals.json`，不读 localtasks.json、不动
-//      localtask 的 waiting / tasks / roundSummary。两套并行存储、两套并行循环链路。
-//   2. **每 cwd 一对一**：用与 localtask 一致的"目录名 → 16 位 hex key"算法
-//      让一个 topic（目录）最多绑定一个 timegoal；set 时已有则覆盖并标 `replaced`。
-//   3. **不可变 prompt**：set 写进 store 之后，prompt 字段变成只读事实。
-//      后续 `check` 永远从 store 原文回显，不让 agent 改 prompt 或从对话历史里
+//   1. **存储进库（T06）**，两套作用域两个落点：
+//      · **任务级** goal（`localtask add --duration` → 领取起算）→ `goals` +
+//        `goal_checks` 表（task_id 外键；删任务连 goal 与流水级联消失）。
+//        见 localtask/repo/goals.js。
+//      · **队列级** goal（`timegoal set --cwd`）→ `settings` 表 `tg.cwd.<topicKey>`
+//        一键一目标（value 是 JSON：目标字段 + checks 流水）。队列是容器、没有
+//        可挂的 task_id（goals.task_id NOT NULL 是 schema 定稿），而 goal 恰是
+//        「按键取值、不做关系查询」的运行时状态 —— settings 表的硬规则
+//        （WHERE 里的东西不进 settings）对它恰好不构成约束。
+//   2. **每 cwd 一对一**：topicKeyOf(完整 cwd) 派生，set 时已有则覆盖并标 replaced。
+//   3. **不可变 prompt**：set 写进库之后，prompt 字段变成只读事实。
+//      后续 `check` 永远从库原文回显，不让 agent 改 prompt 或从对话历史里
 //      重新拼接——这是"避免偏移"的物理保证。
 //   4. **纯函数时间运算**：`evalTimegoal(goal, nowMs)` 不读时钟，单测钉各种边界
 //      （到点前/临门/到点整/过线）；`checkTimegoal` 调它前才 `Date.now()`。
+//   5. **check 流水只增不改**：elapsed / remaining / overtime 存**当日快照**
+//      （deadline 会被延期，查时重算会把历史改写）。行级追加没有
+//      logTruncated 的概念（那是 JSON 整份重写时代的产物）——总量用 count。
 //
 // 模块边界：
-//   - 不依赖 localtask 的 service；本文件里 3 个辅助函数（topicKeyFor /
-//     stampNow / parseStampMs）都是 4-6 行的纯工具，本地复制避免跨模块耦合。
+//   - 本文件只 import core（db / errors / topic-key）与 localtask/repo/goals.js
+//     （叶子仓储，不构成环）；localtask 反向引用本模块的出口在 taskgoal.js。
 //   - 与 localtask wait 互不感知：timegoal 不阻塞、不依赖面板是否存在，
 //     agent 按 `reached` 自行决定下一轮动作。
-import { basename, join, resolve } from 'node:path';
-import { APP_DIR } from '../../../core/paths.js';
+import { basename, resolve } from 'node:path';
 import { badInput } from '../../../core/errors.js';
-import { createJsonStore } from '../../../core/json-store.js';
+import { topicKeyOf } from '../../../core/topic-key.js';
+import { readSettingRaw, writeSettingRaw, deleteSettingRaw, listSettingsByPrefix } from '../../../core/db/settings.js';
+import { tx } from '../../../core/db/index.js';
+import { db as ltDb } from '../../localtask/repo/open.js';
+import { nowMs, msToStamp, parseStampMs } from '../../../core/db/time.js';
+import * as goalsRepo from '../../localtask/repo/goals.js';
 
 export const MIN_DURATION_SEC = 60; // 最小 1 分钟（避免误设 0 立即到点）
 // 上限从「24 小时」放宽到「365 天」。真实场景里"跑一晚上""连续优化几天"是常态，
 // 24 小时上限逼着用户去改代码而不是改配置——这正是"从真实角度"最刺手的一处。
 export const MAX_DURATION_SEC = 365 * 24 * 3600; // 365 天
 export const MAX_PROMPT = 20_000; // prompt 长度上限（与 localtask MAX_TEXT 同档）
-export const MAX_LOG_ENTRIES = 200; // 每个 goal 保留的最近检查条数（日志不无限膨胀）
 export const ARCHIVE_RETENTION_SEC = 7 * 24 * 3600; // 到点自动归档后保留多久再丢弃日志
+
+/** settings 表里队列级 goal 的键前缀。 */
+const CWD_GOAL_PREFIX = 'tg.cwd.';
 
 // 保留期可用环境变量覆盖（NX_KV_TIMEGOAL_RETENTION_SEC）。
 // 默认 7 天：按"消费方轮询间隔 × 安全系数"取——agent 每轮 check 一次，
@@ -50,20 +65,13 @@ export function stampNow(d = new Date()) {
   );
 }
 
-// "YYYY-MM-DD HH:mm:ss" → epoch ms；无法解析返回 NaN
-function parseStampMs(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(String(s || ''));
-  if (!m) return NaN;
-  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
-}
+const stampOf = (ms) => (Number.isFinite(Number(ms)) && Number(ms) > 0 ? msToStamp(Number(ms)) : '');
 
 // ─── cwd → 主题 key（T03 起与 localtask 同一派生：topicKeyOf(完整 cwd)）─────
 //
 // 必须同源：任务级目标的 scope 是 `task:<topicKey>:<id>`，topicKey 来自
 // localtask 的 normalizeCwd —— 两边派生不同，任务级目标就全部失联。
-// 仍不 import localtask 的 service（独立 store 边界），key 纯函数下沉在
-// core/topic-key.js（core 层，两边都能 import）。
-import { topicKeyOf } from '../../../core/topic-key.js';
+// key 纯函数下沉在 core/topic-key.js（core 层，两边都能 import）。
 
 export function topicKeyFor(cwdOrName) {
   return topicKeyOf(String(cwdOrName ?? ''), '');
@@ -75,69 +83,6 @@ function normalizeCwd(raw) {
   const cwd = trimmed ? resolve(trimmed) : process.cwd();
   const name = basename(cwd);
   return { cwd, name, key: topicKeyOf(cwd, '') };
-}
-
-// ─── 存储（NX_KV_TIMEGOAL_STORE 可覆盖；测试隔离）─────────────────────
-
-export function storePath() {
-  return process.env.NX_KV_TIMEGOAL_STORE || join(APP_DIR, 'timegoals.json');
-}
-
-function emptyStore() {
-  return { version: 1, goals: {} };
-}
-
-async function loadStore() {
-  return store.load();
-}
-
-function saveStore(data) {
-  return store.save(data);
-}
-
-// 原子写 / 串行队列 / EPERM 退避收口到 core/json-store.js（任务 #66）。
-// 语义：缺失或损坏 → 空 store（无隔离备份）；形状不认识（goals 不是对象）→ 空 store。
-function normalizeRawStore(data) {
-  if (!data || typeof data !== 'object' || !data.goals || typeof data.goals !== 'object') {
-    return null;
-  }
-  return { version: 1, goals: data.goals };
-}
-
-const store = createJsonStore({
-  path: storePath,
-  empty: emptyStore,
-  normalize: normalizeRawStore,
-});
-
-function goalView(g, { withPrompt = true } = {}) {
-  const view = {
-    key: g.key,
-    cwd: g.cwd,
-    name: g.name,
-    durationSec: g.durationSec,
-    startedAt: g.startedAt,
-    deadline: g.deadline,
-    // 归档态：到点自动归档。归档后**不再出现在活动列表/看板**，
-    // 但仍可被 show/check 查到（agent 最后一轮 check 照样拿到 reached:true + prompt 原文）。
-    archived: !!g.archived,
-    archivedAt: g.archivedAt || '',
-    // 保留期已过：日志被丢弃，**提示词原文仍在**（见 autoRecycle 的说明）。
-    purged: !!g.purged,
-    purgedAt: g.purgedAt || '',
-    logCount: Array.isArray(g.log) ? g.log.length : 0,
-    // 总轮次与是否截断：让"只保留最近 200 条"是**可见的**，而不是静默丢历史。
-    totalChecks: Number(g.totalChecks) || (Array.isArray(g.log) ? g.log.length : 0),
-    logTruncated: !!g.logTruncated,
-  };
-  if (withPrompt) {
-    view.prompt = g.prompt;
-  } else if (g.prompt) {
-    // 列表不吐完整 prompt：归档区 N 个目标就是 N×20KB，面板每 1.5s 拉一次会白烧带宽。
-    // 只给一小段预览；要看全文用 timegoal show（按 cwd 取单个目标）。
-    view.promptPreview = g.prompt.length > 120 ? g.prompt.slice(0, 120) + '…' : g.prompt;
-  }
-  return view;
 }
 
 // ─── 输入校验 ──────────────────────────────────────────────────────────
@@ -201,85 +146,116 @@ function normalizePrompt(raw) {
 
 // ─── 纯函数：给定 goal 与 nowMs，算 reached / elapsed / remaining ────────
 // 抽出来便于单测钉边界（不依赖系统时钟）。
-export function evalTimegoal(goal, nowMs) {
+export function evalTimegoal(goal, nowMsArg) {
   if (!goal) {
     return { hasGoal: false, reached: false, elapsedSec: 0, remainingSec: 0, overtimeSec: 0 };
   }
   const startMs = parseStampMs(goal.startedAt);
   const deadlineMs = parseStampMs(goal.deadline);
   if (!Number.isFinite(startMs) || !Number.isFinite(deadlineMs)) {
-    // 数据损坏：start/ deadline 必须能解析；保守地算到点（避免 agent 误认为没到）
+    // 数据损坏：start/deadline 必须能解析；保守地算到点（避免 agent 误认为没到）
     return { hasGoal: true, reached: true, elapsedSec: 0, remainingSec: 0, overtimeSec: 0 };
   }
-  const elapsedSec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
-  const remainingSec = Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000));
-  const reached = nowMs >= deadlineMs;
+  const elapsedSec = Math.max(0, Math.floor((nowMsArg - startMs) / 1000));
+  const remainingSec = Math.max(0, Math.ceil((deadlineMs - nowMsArg) / 1000));
+  const reached = nowMsArg >= deadlineMs;
   // 超时多久：到点之后这个数继续涨——「已到点」不再是一个静止的标签，
   // 而是"已经超时 2 小时 13 分"这样能看出严重程度的量。
-  const overtimeSec = reached ? Math.max(0, Math.floor((nowMs - deadlineMs) / 1000)) : 0;
+  const overtimeSec = reached ? Math.max(0, Math.floor((nowMsArg - deadlineMs) / 1000)) : 0;
   return { hasGoal: true, reached, elapsedSec, remainingSec, overtimeSec };
 }
 
-// ─── 自动回收（到点自动归档 + 保留期后自动失效）──────────────────────
-//
-// 原来的痛点：到点的目标永远挂着，得手动点一次「回收已到点」——设得越多堆得越久
-// （真实 store 里就躺着 4 个早已过期的目标）。
-//
-// 这里的设计是**先归档、再自动失效**，两段各自有理由：
-//
-//   1. deadline 已过 → 标记 archived（不再出现在活动列表 / 看板 / 面板）。
-//      **面板上彻底不再显示**——一个已经结束的目标不该占着用户的界面。
-//   2. 归档超过保留期（默认 7 天）→ **整条删掉**（连提示词原文一起）。
-//      到这一步它就"自动失效"了：不需要任何人再去点一次「彻底清除」。
-//
-// 第 1 段为什么要留着（而不是到点即删）：agent 最后一轮 check 必须仍能拿到
-// reached:true + prompt 原文，才能写完最终总结停手。到点即删会砸掉这个契约。
-// 保留期给了 agent 足够的收尾窗口（最后一轮就在到点后几分钟内发生）。
-//
-// ⚠️ 契约变更（用户明确选择"面板层失效 + 到期自动清"）：早期版本在保留期后
-// **只丢日志、提示词永久保留**（防的是"机器关机一周回来读不到根指令"）。
-// 现在改成整条删掉：到期即自动失效。保留期可用 NX_KV_TIMEGOAL_RETENTION_SEC 调整；
-// 想让"关机很久后仍能读到"就把这个值调大（调 0 = 到点即失效，但那样最后一轮
-// 就可能读不到提示词了）。
-const ARCHIVE_RETENTION_MS = () => archiveRetentionSec() * 1000;
+// ─── 视图（与 JSON 时代同形状；logTruncated 已随 JSON store 一起消失）────
 
-function autoRecycle(store, nowMs) {
+function blobToGoal(blob) {
+  if (!blob || typeof blob !== 'object') return null;
+  return {
+    key: String(blob.key || ''),
+    cwd: String(blob.cwd || ''),
+    name: String(blob.name || ''),
+    durationSec: Number(blob.durationSec) || 0,
+    prompt: String(blob.prompt || ''),
+    startedAt: stampOf(blob.startedAtMs),
+    deadline: stampOf(blob.deadlineMs),
+    archived: !!blob.archived,
+    archivedAt: stampOf(blob.archivedAtMs),
+    purged: false,
+    purgedAt: '',
+    totalChecks: Number(blob.totalChecks) || 0,
+  };
+}
+
+function blobToGoalView(blob, { withPrompt = true } = {}) {
+  const g = blobToGoal(blob);
+  if (!g) return null;
+  const checks = Array.isArray(blob.checks) ? blob.checks : [];
+  const view = {
+    ...g,
+    logCount: checks.length,
+    totalChecks: Number(blob.totalChecks) || checks.length,
+  };
+  if (withPrompt) {
+    view.prompt = g.prompt;
+  } else {
+    // 列表不吐完整 prompt：归档区 N 个目标就是 N×20KB，面板每 1.5s 拉一次会白烧带宽。
+    // 只给一小段预览；要看全文用 timegoal show（按 cwd 取单个目标）。
+    delete view.prompt;
+    view.promptPreview = g.prompt.length > 120 ? g.prompt.slice(0, 120) + '…' : g.prompt;
+  }
+  return view;
+}
+
+// goal_checks 行的 progress 与 summary 合存在同一列（JSON 编码，见 goals.js），
+// 不再需要独立的行→条目映射器 —— 队列级走 blob、任务级走 applyGoalCheck。
+
+// ─── 队列级 goal（settings 表 blob）的读写 ──────────────────────────────
+
+const cwdGoalKeyOf = (topicKey) => CWD_GOAL_PREFIX + String(topicKey || '');
+
+function readCwdGoal(conn, topicKey) {
+  const blob = readSettingRaw(conn, cwdGoalKeyOf(topicKey));
+  return blob && typeof blob === 'object' ? blob : null;
+}
+
+function writeCwdGoal(conn, blob, atMs) {
+  writeSettingRaw(conn, cwdGoalKeyOf(blob.key), blob, atMs);
+}
+
+/** 到点归档 + 超期自动失效（写路径才落库；读路径只推导不写）。 */
+function autoRecycleCwdBlob(blob, atNow) {
   let changed = false;
-  const retentionMs = ARCHIVE_RETENTION_MS();
-  for (const g of Object.values(store.goals)) {
-    if (!g) continue;
-    if (!g.archived && evalTimegoal(g, nowMs).reached) {
-      g.archived = true;
-      g.archivedAt = g.archivedAt || stampNow(new Date(nowMs));
-      changed = true;
-    }
-    if (g.archived && !g.purged) {
-      // 保留期从 deadline 起算（而不是从"归档那一刻"）：它是可推导的，
-      // 不依赖是否有人读过这个目标。
-      const deadlineMs = parseStampMs(g.deadline);
-      const base = Number.isFinite(deadlineMs) ? deadlineMs : nowMs;
-      if (nowMs - base >= retentionMs) {
-        // 保留期到 → **自动失效**：整条删掉（提示词原文一起）。
-        // 不再需要人工点「彻底清除」——到期就自己没了。
-        delete store.goals[g.key];
-        changed = true;
-      }
+  const retentionMs = archiveRetentionSec() * 1000;
+  const deadlineMs = Number(blob.deadlineMs);
+  if (!blob.archived && Number.isFinite(deadlineMs) && atNow >= deadlineMs) {
+    blob.archived = true;
+    blob.archivedAtMs = blob.archivedAtMs || atNow;
+    changed = true;
+  }
+  if (blob.archived) {
+    // 保留期从 deadline 起算（而不是从"归档那一刻"）：它是可推导的，
+    // 不依赖是否有人读过这个目标。
+    const base = Number.isFinite(deadlineMs) ? deadlineMs : atNow;
+    if (atNow - base >= retentionMs) {
+      changed = 'purge'; // 调用方负责删键
     }
   }
   return changed;
 }
 
-// 读 store 并顺手回收（到点归档 / 超期丢日志）。
-//
-// ⚠️ **读路径刻意不落盘**：写盘意味着"一次 list"会触发整文件覆写，
-// 而 saveStore 只在**单进程内**串行——面板每 1.5s 拉一次 list，与并发的
-// CLI check 互相覆盖是真实风险。归档状态本身可从 deadline 推导，不需要持久化
-// 才正确；真正会写盘的路径（check/set/update）会顺手把它落盘。
-async function loadRecycledStore({ persist = false } = {}) {
-  const store = await loadStore();
-  if (autoRecycle(store, Date.now()) && persist) await saveStore(store);
-  return store;
+function withCwdGoalDb(fn) {
+  return tx((conn) => fn(conn), { db: ltDb(), mode: 'IMMEDIATE' });
 }
+
+/** 只读探针共用：读 blob（不写库）；null = 没有目标或已自动失效。 */
+function readLiveCwdBlob(topicKey, atNow) {
+  const conn = ltDb();
+  const blob = readCwdGoal(conn, topicKey);
+  if (!blob) return null;
+  if (autoRecycleCwdBlob(blob, atNow) === 'purge') return null; // 超期：读路径不落库，视为已消失
+  return blob;
+}
+
+// ─── 只读探针 ──────────────────────────────────────────────────────────
 
 /**
  * 只读探针：这个 key 上的时间目标**到点了吗**。
@@ -289,27 +265,25 @@ async function loadRecycledStore({ persist = false } = {}) {
  * 继续空等。wait 每轮轮询问一次这个探针，到点就立刻收尾（与用户点「关闭等待」
  * 同一条出口：status:"timeout" + cancelled:true）。
  *
- * 刻意**不写盘、不归档**：读路径写盘意味着"一次探针"会触发整文件覆写（见上面
- * loadRecycledStore 的警告）。到点归档由真正的读写路径负责，探针只回答"到没到点"。
+ * 刻意**不写库、不归档**：探针是 500ms 轮询的热路径。到点归档由真正的写路径负责。
  *
  * @returns {Promise<null | {key,name,cwd,deadline,reached}>} 没有目标 → null
  */
 export async function probeGoalExpiry(key) {
   if (!key) return null;
-  const store = await loadStore();
-  const g = store.goals[key];
-  if (!g) return null;
+  const blob = readLiveCwdBlob(String(key), Date.now());
+  if (!blob) return null;
   return {
-    key,
-    name: g.name || '',
-    cwd: g.cwd || '',
-    deadline: g.deadline || '',
-    deadlineMs: parseStampMs(g.deadline),
-    reached: evalTimegoal(g, Date.now()).reached,
+    key: String(key),
+    name: blob.name || '',
+    cwd: blob.cwd || '',
+    deadline: stampOf(blob.deadlineMs),
+    deadlineMs: Number(blob.deadlineMs),
+    reached: evalTimegoal(blobToGoal(blob), Date.now()).reached,
   };
 }
 
-// ─── CRUD 风格命令（与 localtask 思路一致但命令族更窄）────────────────
+// ─── 队列级 CRUD（与 localtask 思路一致但命令族更窄）────────────────────
 
 /**
  * 设置本目录的 timegoal；已存在则覆盖并标 `replaced:true`。
@@ -322,48 +296,47 @@ export async function setTimegoal({ cwd: rawCwd, durationSec: rawDur, prompt: ra
   const prompt = normalizePrompt(rawPrompt);
   const { cwd, name, key } = normalizeCwd(rawCwd);
 
-  // 写路径顺手清扫（Redis 式的"主动回收"那一半）：长期没人读时 store 也不会一直堆着
-  const store = await loadRecycledStore({ persist: true });
-  const replaced = !!store.goals[key];
-
-  const startMs = Date.now();
-  const deadlineMs = startMs + durationSec * 1000;
-  const goal = {
-    key,
-    cwd,
-    name,
-    durationSec,
-    prompt,
-    startedAt: stampNow(new Date(startMs)),
-    deadline: stampNow(new Date(deadlineMs)),
-  };
-  // set = 开一局新的：归档标记必须清掉，否则新目标会被当成"已归档的旧目标"藏起来
-  goal.archived = false;
-  goal.archivedAt = '';
-  store.goals[key] = goal;
-  await saveStore(store);
-
-  return { status: 'ok', replaced, key, name, cwd, goal: goalView(goal) };
+  // 写路径顺手清扫（Redis 式的"主动回收"那一半）：长期没人读时库里也不会一直堆着
+  recycleAllCwdGoals({ persist: true });
+  const at = nowMs();
+  return withCwdGoalDb((conn) => {
+    const replaced = !!readCwdGoal(conn, key);
+    const startMs = at;
+    const deadlineMs = startMs + durationSec * 1000;
+    // set = 开一局新的：归档标记必须清掉，否则新目标会被当成"已归档的旧目标"藏起来
+    const blob = {
+      key,
+      cwd,
+      name,
+      durationSec,
+      prompt,
+      startedAtMs: startMs,
+      deadlineMs,
+      archived: false,
+      archivedAtMs: 0,
+      totalChecks: 0,
+      checks: [],
+    };
+    writeCwdGoal(conn, blob, at);
+    return { status: 'ok', replaced, key, name, cwd, goal: blobToGoalView(blob) };
+  });
 }
 
-/**
- * 查看本目录的 timegoal；无则返回 `{hasGoal:false}`。
- */
+/** 查看本目录的 timegoal；无则返回 `{hasGoal:false}`。 */
 export async function showTimegoal({ cwd: rawCwd } = {}) {
   if (rawCwd === undefined || rawCwd === null || !String(rawCwd).trim()) {
     throw badInput('需要 --cwd "<工作目录>"');
   }
   const { key, name, cwd } = normalizeCwd(rawCwd);
-  const store = await loadRecycledStore();
-  const g = store.goals[key];
-  if (!g) return { hasGoal: false, key, name, cwd };
-  const evalRes = evalTimegoal(g, Date.now());
+  const blob = readLiveCwdBlob(key, Date.now());
+  if (!blob) return { hasGoal: false, key, name, cwd };
+  const evalRes = evalTimegoal(blobToGoal(blob), Date.now());
   return {
     hasGoal: true,
     key,
     name,
     cwd,
-    goal: goalView(g),
+    goal: blobToGoalView(blob),
     reached: evalRes.reached,
     remainingSec: evalRes.remainingSec,
     elapsedSec: evalRes.elapsedSec,
@@ -375,15 +348,18 @@ export async function showTimegoal({ cwd: rawCwd } = {}) {
  * 时间运算 + 回显原 prompt，并追加一条状态日志。
  * - 每次有效 check 都要求调用方提供 `summary`（当前现状）与 `progress`
  *   （完成度/下一步），空值、缺值、超长都拒绝，保证日志有用且可比较。
- * - 有 goal：日志先成功落盘，再返回 reached/time/prompt 和本次日志记录。
+ * - 有 goal：日志先成功落库，再返回 reached/time/prompt 和本次日志记录。
  * - 无 goal：仍需要提交 summary/progress，但不写日志（没有目标就不该有 goal 日志）。
- * `prompt` 永远从 store 原文回显 —— 不让 agent 在长对话里漂移。
+ * `prompt` 永远从库原文回显 —— 不让 agent 在长对话里漂移。
  */
-// check 的共同实现（目录级 / 任务级共用）：写一条日志 + 组装返回。
-// 日志先成功落盘，再返回——「这轮 check 发生过」有据可查。
-function applyCheck(store, g, key, name, cwd, summary, progress) {
-  const nowMs = Date.now();
-  if (!g) {
+
+/**
+ * check 的共同实现（队列级）：写一条流水 + 组装返回。
+ * 日志先成功落库，再返回——「这轮 check 发生过」有据可查。
+ */
+function applyCwdCheck(conn, blob, key, name, cwd, summary, progress) {
+  const at = nowMs();
+  if (!blob) {
     return {
       hasGoal: false,
       reached: false,
@@ -396,47 +372,45 @@ function applyCheck(store, g, key, name, cwd, summary, progress) {
       key,
       name,
       cwd,
-      now: stampNow(new Date(nowMs)),
+      now: stampNow(new Date(at)),
     };
   }
-
-  const result = evalTimegoal(g, nowMs);
-  const entry = {
-    checkedAt: stampNow(new Date(nowMs)),
+  const goal = blobToGoal(blob);
+  const result = evalTimegoal(goal, at);
+  // 归档惰性：check 是写路径，到点归档顺手落库
+  if (result.reached && !blob.archived) {
+    blob.archived = true;
+    blob.archivedAtMs = blob.archivedAtMs || at;
+  }
+  blob.checks = Array.isArray(blob.checks) ? blob.checks : [];
+  blob.checks.push({
+    at,
     elapsedSec: result.elapsedSec,
     remainingSec: result.remainingSec,
     overtimeSec: result.overtimeSec,
     reached: result.reached,
     summary,
     progress,
-  };
-  if (!Array.isArray(g.log)) g.log = [];
-  g.log.push(entry);
-  // 日志只留最近 N 条：长跑任务每轮都记，不封顶的话 store 会无限膨胀。
-  // 截断是**可见的**（logTruncated / totalChecks），不是静默丢历史。
-  g.totalChecks = (Number(g.totalChecks) || 0) + 1;
-  if (g.log.length > MAX_LOG_ENTRIES) {
-    g.log.splice(0, g.log.length - MAX_LOG_ENTRIES);
-    g.logTruncated = true;
-  }
+  });
+  blob.totalChecks = (Number(blob.totalChecks) || blob.checks.length - 1) + 1;
+  writeCwdGoal(conn, blob, at);
 
   return {
     ...result,
-    prompt: g.prompt, // 永远原文回显，绝不拼接/裁剪
+    prompt: goal.prompt, // 永远原文回显，绝不拼接/裁剪
     summary,
     progress,
-    checkedAt: entry.checkedAt,
-    startedAt: g.startedAt,
-    deadline: g.deadline,
-    now: stampNow(new Date(nowMs)),
+    checkedAt: stampOf(at),
+    startedAt: goal.startedAt,
+    deadline: goal.deadline,
+    now: stampNow(new Date(at)),
     key,
     name,
     cwd,
-    logCount: g.log.length,
-    totalChecks: Number(g.totalChecks) || g.log.length,
-    logTruncated: !!g.logTruncated,
-    archived: !!g.archived,
-    purged: !!g.purged,
+    logCount: blob.checks.length,
+    totalChecks: blob.totalChecks,
+    archived: !!blob.archived,
+    purged: false,
   };
 }
 
@@ -447,23 +421,19 @@ export async function checkTimegoal({ cwd: rawCwd, summary: rawSummary, progress
   const summary = normalizeLogField(rawSummary, 'summary', 2000);
   const progress = normalizeLogField(rawProgress, 'progress', 2000);
   const { key, name, cwd } = normalizeCwd(rawCwd);
-  // ⚠️ 这里用 persist:true —— check 是**写路径**（每轮都要写一条日志），
-  // 所以"自动失效"（超过保留期 → 整条删掉）可以顺便落盘。
-  // 读路径（show / list / 面板的 /api/timegoals/all）刻意不落盘：面板每 1.5s
-  // 轮询一次，一次读就覆写整个文件会把并发的 CLI 写入冲掉。
-  // 于是"自动清"实际发生在：agent 下一轮 check（或 set/update/clear）时 ——
-  // 不需要任何人手动点「彻底清除」。
-  const store = await loadRecycledStore({ persist: true });
-  const payload = applyCheck(store, store.goals[key], key, name, cwd, summary, progress);
-  await saveStore(store); // 日志先成功落盘，再返回（「这轮 check 发生过」有据可查）
-  return payload;
+  // ⚠️ check 是**写路径**（每轮都要写一条流水），"自动失效"（超过保留期 → 整条删掉）
+  // 在这里顺便落库。读路径（show / list / 面板的 /api/timegoals/all）刻意不写：
+  // 面板每 1.5s 轮询一次，读路径写库会把并发的 CLI 写入冲掉。
+  recycleAllCwdGoals({ persist: true });
+  return withCwdGoalDb((conn) => {
+    const blob = readCwdGoal(conn, key);
+    return applyCwdCheck(conn, blob, key, name, cwd, summary, progress);
+  });
 }
 
-// ─── 任务维度 goal（发布带时长 → 领取起算）────────────────────────────
+// ─── 任务维度 goal（发布带时长 → 领取起算；goals / goal_checks 表）──────
 //
-// 目录级 goal 与目录一对一（key = 目录哈希）；任务级 goal 与**单条任务**一对一
-// （key = task:<topicKey>:<taskId>）。两者共用同一棵存储与同一套状态机
-// （evalTimegoal / autoRecycle / 日志 / 保留期全部复用），只是寻址方式不同。
+// 任务级 goal 与**单条任务**一对一（goals.task_id 外键，删任务级联删 goal）。
 // 起点 = **领取时刻**（localtask 领取路径调 startTaskGoal 时传入 consumedAt）。
 
 export function taskGoalKey(topicKey, taskId) {
@@ -474,62 +444,118 @@ export function isTaskGoalKey(key) {
   return String(key || '').startsWith('task:');
 }
 
+/** 解析 task:<topicKey>:<seq> → { topicKey, seq }；不合法返回 null。 */
+function parseTaskGoalKey(rawKey) {
+  const m = /^task:(.+):(\d+)$/.exec(String(rawKey || ''));
+  return m ? { topicKey: m[1], seq: Number(m[2]) } : null;
+}
+
+/** goals 行 + join 信息 → 旧 goalView 形状（key 由 taskGoalKey 拼回）。 */
+function goalRowToView(row, { withPrompt = true } = {}) {
+  if (!row) return null;
+  const archived = String(row.state || '') === 'archived';
+  const view = {
+    key: taskGoalKey(row.topic_key, row.task_seq),
+    taskId: Number(row.task_id),
+    topicKey: String(row.topic_key || ''),
+    cwd: String(row.topic_cwd || ''),
+    name: String(row.topic_name || ''),
+    durationSec: Number(row.duration_sec) || 0,
+    startedAt: stampOf(row.started_at),
+    deadline: stampOf(row.deadline),
+    archived,
+    archivedAt: archived ? stampOf(row.updated_at) : '',
+    purged: false,
+    purgedAt: '',
+    totalChecks: 0,
+    logCount: 0,
+  };
+  if (withPrompt) {
+    view.prompt = String(row.prompt || '');
+  } else if (row.prompt) {
+    const p = String(row.prompt);
+    view.promptPreview = p.length > 120 ? p.slice(0, 120) + '…' : p;
+  }
+  return view;
+}
+
+/** goals 行（未 join）→ evalTimegoal 可吃的 goal 视图（startedAt/deadline 为本地戳）。 */
+function goalRowToGoal(row) {
+  if (!row) return null;
+  return {
+    startedAt: stampOf(row.started_at),
+    deadline: stampOf(row.deadline),
+    durationSec: Number(row.duration_sec) || 0,
+  };
+}
+
 /**
  * 领取时刻建任务级 goal。幂等：已存在直接返回 exists（防重复领取重复起表）。
  * @param {number} [startedAtMs] 计时起点（epoch ms）；缺省 = 现在。localtask 领取时传 consumedAt。
  */
-export async function startTaskGoal({ topicKey, taskId, cwd, name, durationSec, prompt = '', startedAtMs } = {}) {
-  if (!topicKey || taskId === undefined || taskId === null) {
+export async function startTaskGoal({ topicKey, taskId: seq, cwd, name, durationSec, prompt = '', startedAtMs } = {}) {
+  if (!topicKey || seq === undefined || seq === null) {
     throw badInput('startTaskGoal 需要 topicKey 与 taskId');
   }
   const dur = clampDuration(Number(durationSec));
-  const store = await loadRecycledStore({ persist: true });
-  const k = taskGoalKey(topicKey, taskId);
-  if (store.goals[k]) return { status: 'exists', goal: goalView(store.goals[k]) };
-  const startMs = Number(startedAtMs) || Date.now();
-  const goal = {
-    key: k,
-    scope: 'task',
-    taskId,
-    topicKey,
-    cwd: String(cwd || ''),
-    name: String(name || `任务 #${taskId}`),
-    durationSec: dur,
-    prompt: String(prompt || '').trim(),
-    startedAt: stampNow(new Date(startMs)),
-    deadline: stampNow(new Date(startMs + dur * 1000)),
-    archived: false,
-    archivedAt: '',
-  };
-  store.goals[k] = goal;
-  await saveStore(store);
-  return { status: 'ok', goal: goalView(goal) };
+  const at = Number(startedAtMs) || nowMs();
+  return tx(
+    (conn) => {
+      const taskRow = conn.get(
+        'SELECT t.id, tp.cwd AS topic_cwd, tp.name AS topic_name FROM tasks t JOIN topics tp ON tp.id = t.topic_id WHERE tp.key = :k AND t.seq = :s AND t.deleted_at IS NULL',
+        { k: String(topicKey), s: Number(seq) }
+      );
+      if (!taskRow) throw badInput(`找不到任务 task:${topicKey}:${seq}（goal 无处挂载）`);
+      const { id, existed } = goalsRepo.insertGoal(conn, {
+        taskId: Number(taskRow.id),
+        durationSec: dur,
+        startedAtMs: at,
+        deadlineMs: at + dur * 1000,
+        prompt: String(prompt || '').trim(),
+        atMs: at,
+      });
+      const row = goalsRepo.getGoalById(id, conn);
+      const view = goalRowToView(
+        {
+          ...row,
+          task_seq: Number(seq),
+          topic_key: String(topicKey),
+          topic_cwd: String(cwd || taskRow.topic_cwd || ''),
+          topic_name: String(name || taskRow.topic_name || `任务 #${seq}`),
+        },
+        { withPrompt: true }
+      );
+      return { status: existed ? 'exists' : 'ok', goal: view };
+    },
+    { db: ltDb(), mode: 'IMMEDIATE' }
+  );
 }
 
 /** 任务级 goal 状态（完成门禁的查询口）：hasGoal/reached/remaining/overtime + goal 视图。 */
-export async function taskGoalState({ topicKey, taskId } = {}) {
-  if (!topicKey || taskId === undefined || taskId === null) return { hasGoal: false };
-  const store = await loadRecycledStore();
-  const g = store.goals[taskGoalKey(topicKey, taskId)];
-  if (!g) return { hasGoal: false, key: taskGoalKey(topicKey, taskId) };
-  const r = evalTimegoal(g, Date.now());
-  return { hasGoal: true, key: g.key, goal: goalView(g), ...r };
+export async function taskGoalState({ topicKey, taskId: seq } = {}) {
+  if (!topicKey || seq === undefined || seq === null) return { hasGoal: false };
+  const key = taskGoalKey(topicKey, seq);
+  const row = goalsRepo.getGoalRowByTaskKey(topicKey, seq, ltDb());
+  if (!row) return { hasGoal: false, key };
+  const r = evalTimegoal(goalRowToGoal(row), nowMs());
+  return { hasGoal: true, key, goal: goalRowToView(row), ...r };
 }
 
 /** 任务维度的查询（show --task 用）：按 goal key 直查。 */
 export async function showGoalByKey(rawKey) {
   const key = String(rawKey || '').trim();
   if (!key) throw badInput('请给 --cwd <工作目录> 或 --task <任务goal key>');
-  const store = await loadRecycledStore();
-  const g = store.goals[key];
-  if (!g) return { hasGoal: false, key };
-  const r = evalTimegoal(g, Date.now());
+  const parsed = parseTaskGoalKey(key);
+  if (!parsed) return { hasGoal: false, key };
+  const row = goalsRepo.getGoalRowByTaskKey(parsed.topicKey, parsed.seq, ltDb());
+  if (!row) return { hasGoal: false, key };
+  const r = evalTimegoal(goalRowToGoal(row), nowMs());
   return {
     hasGoal: true,
     key,
-    name: g.name,
-    cwd: g.cwd,
-    goal: goalView(g),
+    name: String(row.topic_name || ''),
+    cwd: String(row.topic_cwd || ''),
+    goal: goalRowToView(row),
     reached: r.reached,
     remainingSec: r.remainingSec,
     elapsedSec: r.elapsedSec,
@@ -543,39 +569,87 @@ export async function checkGoalByKey(rawKey, { summary: rawSummary, progress: ra
   if (!key) throw badInput('请给 --cwd <工作目录> 或 --task <任务goal key>');
   const summary = normalizeLogField(rawSummary, 'summary', 2000);
   const progress = normalizeLogField(rawProgress, 'progress', 2000);
-  const store = await loadRecycledStore({ persist: true });
-  const g = store.goals[key];
-  const payload = applyCheck(store, g, key, g ? g.name : key, g ? g.cwd : '', summary, progress);
-  await saveStore(store); // 日志先成功落盘，再返回
-  return payload;
+  const parsed = parseTaskGoalKey(key);
+  if (!parsed) throw badInput('goal key 不合法（应为 task:<topicKey>:<seq>）: ' + key);
+  return tx(
+    (conn) => {
+      const row = goalsRepo.getGoalRowByTaskKey(parsed.topicKey, parsed.seq, conn);
+      if (!row) {
+        return {
+          hasGoal: false,
+          reached: false,
+          elapsedSec: 0,
+          remainingSec: 0,
+          overtimeSec: 0,
+          prompt: '',
+          summary,
+          progress,
+          key,
+          name: key,
+          cwd: '',
+          now: stampNow(new Date(nowMs())),
+        };
+      }
+      return applyGoalCheck(conn, row, parsed, summary, progress);
+    },
+    { db: ltDb(), mode: 'IMMEDIATE' }
+  );
 }
 
-export async function recordTaskCheck({ topicKey, taskId, summary, progress } = {}) {
-  const sum = normalizeLogField(summary, 'summary', 2000);
-  const prog = normalizeLogField(progress, 'progress', 2000);
-  const store = await loadRecycledStore({ persist: true });
-  const g = store.goals[taskGoalKey(topicKey, taskId)];
-  if (!g) return { recorded: false, reason: 'no_goal' };
-  const nowMs = Date.now();
-  const result = evalTimegoal(g, nowMs);
-  const entry = {
-    checkedAt: stampNow(new Date(nowMs)),
+/** 任务级 check 的共同实现：写一条 goal_checks 流水 + 组装返回。 */
+function applyGoalCheck(conn, row, parsed, summary, progress) {
+  const at = nowMs();
+  const goal = goalRowToGoal(row);
+  const result = evalTimegoal(goal, at);
+  // 归档惰性：check 是写路径，到点归档顺手落库
+  if (result.reached && String(row.state || '') !== 'archived') {
+    goalsRepo.archiveGoal(conn, Number(row.id), at);
+    row.state = 'archived';
+    row.updated_at = at;
+  }
+  goalsRepo.appendCheck(conn, {
+    goalId: Number(row.id),
+    atMs: at,
     elapsedSec: result.elapsedSec,
     remainingSec: result.remainingSec,
     overtimeSec: result.overtimeSec,
     reached: result.reached,
-    summary: sum,
-    progress: prog,
+    summary,
+    progress,
+  });
+  const totalChecks = goalsRepo.countChecks(Number(row.id), conn);
+  return {
+    ...result,
+    prompt: String(row.prompt || ''), // 永远原文回显，绝不拼接/裁剪
+    summary,
+    progress,
+    checkedAt: stampOf(at),
+    startedAt: goal.startedAt,
+    deadline: goal.deadline,
+    now: stampNow(new Date(at)),
+    key: taskGoalKey(parsed.topicKey, parsed.seq),
+    name: String(row.topic_name || ''),
+    cwd: String(row.topic_cwd || ''),
+    logCount: totalChecks,
+    totalChecks,
+    archived: String(row.state || '') === 'archived',
+    purged: false,
   };
-  if (!Array.isArray(g.log)) g.log = [];
-  g.log.push(entry);
-  g.totalChecks = (Number(g.totalChecks) || 0) + 1;
-  if (g.log.length > MAX_LOG_ENTRIES) {
-    g.log.splice(0, g.log.length - MAX_LOG_ENTRIES);
-    g.logTruncated = true;
-  }
-  await saveStore(store);
-  return { recorded: true, reached: result.reached, checkedAt: entry.checkedAt };
+}
+
+export async function recordTaskCheck({ topicKey, taskId: seq, summary, progress } = {}) {
+  const sum = normalizeLogField(summary, 'summary', 2000);
+  const prog = normalizeLogField(progress, 'progress', 2000);
+  if (!topicKey || seq === undefined || seq === null) return { recorded: false, reason: 'no_goal' };
+  return tx(
+    (conn) => {
+      const row = goalsRepo.getGoalRowByTaskKey(topicKey, seq, conn);
+      if (!row) return { recorded: false, reason: 'no_goal' };
+      const payload = applyGoalCheck(conn, row, { topicKey: String(topicKey), seq: Number(seq) }, sum, prog);
+      return { recorded: true, reached: payload.reached, checkedAt: payload.checkedAt };
+    },
+    { db: ltDb(), mode: 'IMMEDIATE' }
+  );
 }
 
 /**
@@ -587,18 +661,15 @@ export async function getTimegoalLog({ cwd: rawCwd } = {}) {
     throw badInput('需要 --cwd "<工作目录>"');
   }
   const { key, name, cwd } = normalizeCwd(rawCwd);
-  const store = await loadRecycledStore();
-  const g = store.goals[key];
-  if (!g) return { hasGoal: false, count: 0, entries: [], key, name, cwd };
-  const entries = Array.isArray(g.log) ? g.log : [];
+  const blob = readLiveCwdBlob(key, Date.now());
+  if (!blob) return { hasGoal: false, count: 0, entries: [], key, name, cwd };
+  const checks = Array.isArray(blob.checks) ? blob.checks : [];
   return {
     hasGoal: true,
-    count: entries.length,
-    // 截断可见：读者能分清"这就是全部轮次"与"只留了最近 200 条"
-    totalEntries: Number(g.totalChecks) || entries.length,
-    truncated: !!g.logTruncated,
-    entries: entries.map((e) => ({
-      checkedAt: e.checkedAt || '',
+    count: checks.length,
+    totalEntries: Number(blob.totalChecks) || checks.length,
+    entries: checks.map((e) => ({
+      checkedAt: stampOf(e.at),
       elapsedSec: Number(e.elapsedSec) || 0,
       remainingSec: Number(e.remainingSec) || 0,
       overtimeSec: Number(e.overtimeSec) || 0,
@@ -620,7 +691,6 @@ function normalizeLogField(raw, flag, maxLength) {
   }
   return value;
 }
-
 
 /**
  * 更新本目录 timegoal 的 prompt（可选同时改时长），**不动 startedAt**。
@@ -644,31 +714,29 @@ export async function updateTimegoal({ cwd: rawCwd, prompt: rawPrompt, durationS
   }
   const prompt = normalizePrompt(rawPrompt);
   const { cwd, name, key } = normalizeCwd(rawCwd);
-
-  const store = await loadRecycledStore({ persist: true });
-  const g = store.goals[key];
-  if (!g) {
-    throw badInput(`主题「${name}」尚未设置 timegoal——请先 nx-kv timegoal set`);
-  }
-  // ⚠️ **已到点的目标不可复活**：「失效」就是失效。
-  // 以前 update 会把归档的目标救回来（"续上这局"），现在到期即失效——
-  // 想继续这个目录的工作，请用 `set` 开新一局（起点从现在重算）。
-  if (g.archived) {
-    throw badInput(
-      `主题「${name}」的时间目标已经到点失效了，不能续上——请用 nx-kv timegoal set 开新一局`
-    );
-  }
-  g.prompt = prompt;
-  if (rawDur !== undefined && rawDur !== null && rawDur !== '') {
-    const dur = parseDuration(rawDur);
-    g.durationSec = dur;
-    // 保留起点：deadline = startedAt + 新时长（已用时间仍算数）
-    const startMs = parseStampMs(g.startedAt);
-    const base = Number.isFinite(startMs) ? startMs : Date.now();
-    g.deadline = stampNow(new Date(base + dur * 1000));
-  }
-  await saveStore(store);
-  return { updated: true, key, name, cwd, goal: goalView(g) };
+  recycleAllCwdGoals({ persist: true });
+  return withCwdGoalDb((conn) => {
+    const blob = readCwdGoal(conn, key);
+    if (!blob) {
+      throw badInput(`主题「${name}」尚未设置 timegoal——请先 nx-kv timegoal set`);
+    }
+    // ⚠️ **已到点的目标不可复活**：「失效」就是失效。
+    if (blob.archived) {
+      throw badInput(
+        `主题「${name}」的时间目标已经到点失效了，不能续上——请用 nx-kv timegoal set 开新一局`
+      );
+    }
+    blob.prompt = prompt;
+    if (rawDur !== undefined && rawDur !== null && rawDur !== '') {
+      const dur = parseDuration(rawDur);
+      blob.durationSec = dur;
+      // 保留起点：deadline = startedAt + 新时长（已用时间仍算数）
+      const base = Number(blob.startedAtMs);
+      blob.deadlineMs = (Number.isFinite(base) ? base : nowMs()) + dur * 1000;
+    }
+    writeCwdGoal(conn, blob, nowMs());
+    return { updated: true, key, name, cwd, goal: blobToGoalView(blob) };
+  });
 }
 
 /**
@@ -680,13 +748,13 @@ export async function clearTimegoal({ cwd: rawCwd } = {}) {
     throw badInput('需要 --cwd "<工作目录>"');
   }
   const { key, cwd, name } = normalizeCwd(rawCwd);
-  const store = await loadRecycledStore({ persist: true });
-  if (!store.goals[key]) {
-    return { cleared: false, reason: 'no_goal', key, name, cwd };
-  }
-  delete store.goals[key];
-  await saveStore(store);
-  return { cleared: true, key, name, cwd };
+  return withCwdGoalDb((conn) => {
+    if (!readCwdGoal(conn, key)) {
+      return { cleared: false, reason: 'no_goal', key, name, cwd };
+    }
+    deleteSettingRaw(conn, cwdGoalKeyOf(key));
+    return { cleared: true, key, name, cwd };
+  });
 }
 
 /**
@@ -696,42 +764,84 @@ export async function clearTimegoal({ cwd: rawCwd } = {}) {
  * 到点即自动归档的活动目标不会再出现在这里——用户不必再手动点「回收已到点」。
  */
 export async function listTimegoals() {
-  const store = await loadRecycledStore();
-  const all = Object.values(store.goals);
+  // 读路径不落库，但**归档态照样可见**：在内存副本上跑 recycle（与 JSON 时代的
+  // loadRecycledStore({persist:false}) 同语义），列表/归档区据此分类。
   const byDeadline = (a, b) => String(a.deadline).localeCompare(String(b.deadline));
-  const active = all.filter((g) => !g.archived).sort(byDeadline);
-  const archived = all.filter((g) => g.archived).sort(byDeadline);
+  const active = [];
+  const archived = [];
+  const at = nowMs();
+  for (const { value } of listSettingsByPrefix(ltDb(), CWD_GOAL_PREFIX)) {
+    if (!value || typeof value !== 'object') continue;
+    // 内存内生效；写路径负责真正落库。返回 'purge' = 保留期已过 → 不再列出（已失效）
+    if (autoRecycleCwdBlob(value, at) === 'purge') continue;
+    const view = blobToGoalView(value, { withPrompt: false });
+    if (!view) continue;
+    (view.archived ? archived : active).push(view);
+  }
+  active.sort(byDeadline);
+  archived.sort(byDeadline);
   return {
     count: active.length,
     // 列表**不返回完整 prompt**：每个 prompt 上限 20000 字，归档区 N 个目标就是
     // N×20KB，而面板每 1.5s 拉一次 list。要看全文用 `timegoal show --cwd <目录>`。
-    goals: active.map((g) => goalView(g, { withPrompt: false })),
+    goals: active,
     archivedCount: archived.length,
-    archived: archived.map((g) => goalView(g, { withPrompt: false })),
+    archived,
   };
+}
+
+/** 队列级目标的到点归档 / 超期失效（persist=true 才落库）。返回是否有变化。 */
+function recycleAllCwdGoals({ persist = false } = {}) {
+  const conn = ltDb();
+  const at = nowMs();
+  let changed = false;
+  for (const { key, value } of listSettingsByPrefix(conn, CWD_GOAL_PREFIX)) {
+    if (!value || typeof value !== 'object') continue;
+    const res = autoRecycleCwdBlob(value, at);
+    if (res === 'purge') {
+      if (persist) deleteSettingRaw(conn, key);
+      changed = true;
+    } else if (res) {
+      if (persist) writeSettingRaw(conn, key, value, at);
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 /**
  * 彻底删除已到点 / 已归档的时间目标（硬删，不是归档）。
  *
  * 用途：面板「彻底清除」按钮 / 手动清理。**只删到点的或已归档的**——还在跑的不动。
- * 注意：正常的"到点回收"是**自动归档**（见 autoRecycle），不需要人来点这个；
+ * 注意：正常的"到点回收"是**自动归档**，不需要人来点这个；
  * 保留期过后系统会自动丢掉旧日志（提示词仍留着）；本命令用于把整个目标连提示词一起清掉。
  *
  * @returns {{count:number, removed:Array}} removed 是删除前的快照（供 UI 汇报）
  */
 export async function pruneExpired() {
-  const store = await loadStore();
-  const now = Date.now();
+  const at = nowMs();
   const removed = [];
-  for (const [k, g] of Object.entries(store.goals)) {
-    // 已归档的、或已经过线的，都属于"使命完成"——删掉
-    if (g.archived || evalTimegoal(g, now).reached) {
-      removed.push(goalView(g));
-      delete store.goals[k];
-    }
-  }
-  if (removed.length) await saveStore(store);
-  return { count: removed.length, removed };
+  return tx(
+    (conn) => {
+      for (const { key, value } of listSettingsByPrefix(conn, CWD_GOAL_PREFIX)) {
+        if (!value || typeof value !== 'object') continue;
+        const view = blobToGoalView(value);
+        if (view.archived || evalTimegoal(view, at).reached) {
+          removed.push(view);
+          deleteSettingRaw(conn, key);
+        }
+      }
+      // 任务级：到点/已归档的 goals 一并回收（与队列级同一条「彻底清除」语义）
+      for (const row of goalsRepo.listGoalRows(conn)) {
+        const goal = goalRowToGoal(row);
+        const archived = String(row.state || '') === 'archived';
+        if (archived || evalTimegoal(goal, at).reached) {
+          removed.push(goalRowToView(row));
+          goalsRepo.purgeGoal(conn, Number(row.id));
+        }
+      }
+      return { count: removed.length, removed };
+    },
+    { db: ltDb(), mode: 'IMMEDIATE' }
+  );
 }
-

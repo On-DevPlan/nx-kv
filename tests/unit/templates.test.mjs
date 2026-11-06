@@ -1,6 +1,7 @@
 // 任务模板（templates 模块）单元测试：列表 / 新增 / 设默认 / 删除 / 兜底。
 //
-// 存储一律指向临时文件（NX_KV_TEMPLATES_STORE），绝不写脏用户目录。
+// 存储是 templates 表（T06 起进库）：测试用 NX_KV_DB 指到临时库文件，
+// 每个用例先关连接再删库文件（Windows 上连接开着 rmSync 必 EBUSY）。
 // 在 import 服务模块**之前**设好环境变量（模块读 env 在调用时，但早设无害）。
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,22 +10,39 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-tpl-test-'));
-process.env.NX_KV_TEMPLATES_STORE = join(tmp, 'templates.json');
+const dbFile = join(tmp, 'nxkv.db');
+process.env.NX_KV_DB = dbFile;
+// 凭据文件同样隔离（config 拆分后 preferences 走 settings 表，也在这份库上）
+process.env.NX_KV_CONFIG = join(tmp, 'config.json');
 
+const { closeDb } = await import('../../src/core/db/index.js');
 const { BUILTIN_ID, listTemplates, addTemplate, removeTemplate, setDefaultTemplate, updateTemplate } = await import(
   '../../src/modules/templates/service.js'
 );
 
 beforeEach(() => {
-  rmSync(join(tmp, 'templates.json'), { force: true });
+  closeDb();
+  for (const suffix of ['', '-wal', '-shm', '-journal']) {
+    try {
+      rmSync(dbFile + suffix, { force: true });
+    } catch {
+      /* Windows 偶发句柄残留：留给下一次 */
+    }
+  }
 });
 
-test('空 store → 内置默认模板兜底', async () => {
+test.after?.(() => {
+  try { closeDb(); } catch { /* 已关 */ }
+  try { rmSync(tmp, { recursive: true, force: true }); } catch { /* 忽略 */ }
+});
+
+test('空库 → 内置默认模板兜底（bootstrap seed）', async () => {
   const d = await listTemplates();
   assert.equal(d.defaultId, BUILTIN_ID);
   assert.equal(d.templates.length, 1);
   assert.equal(d.templates[0].builtin, true);
   assert.ok(d.templates[0].body.includes('## 背景'), '内置正文应带骨架');
+  assert.equal(d.templates[0].values['背景'], '（一句话说清要改什么）', '槽位有默认文字');
 });
 
 test('新增模板 + 设默认', async () => {
@@ -65,7 +83,9 @@ test('删除不存在的模板 → NOT_FOUND', async () => {
   await assert.rejects(() => updateTemplate({ id: 't_nope', name: 'x' }), /没有 id/);
 });
 
-test('编辑模板：只改传入字段；内置不可编辑', async () => {
+// T06 起 builtin 的骨架也可编辑（seed 是 INSERT OR IGNORE，用户编辑不被覆盖）——
+// 「内置不可改骨架」的旧护栏随 JSON store 一起退役，新的护栏是「不可删」。
+test('编辑模板：只改传入字段；builtin 骨架也可改（T06 裁决）', async () => {
   const a = await addTemplate({ name: '旧名', body: '# 旧正文' });
   const u = await updateTemplate({ id: a.template.id, name: '新名' });
   assert.equal(u.template.name, '新名');
@@ -75,13 +95,16 @@ test('编辑模板：只改传入字段；内置不可编辑', async () => {
   assert.equal(u2.template.name, '新名', '未提供的 name 应保持不变');
   assert.ok(u2.template.body.includes('## 步骤'));
 
-  await assert.rejects(() => updateTemplate({ id: BUILTIN_ID, name: '改名' }), /内置默认模板的骨架不可改/);
+  // builtin：改名与改骨架现在都放行（下面单独验「重启仍保留」）
+  const u3 = await updateTemplate({ id: BUILTIN_ID, name: '我的骨架', body: '# 我的骨架' });
+  assert.equal(u3.template.name, '我的骨架');
+  assert.equal(u3.template.body, '# 我的骨架');
+
   await assert.rejects(() => updateTemplate({ id: a.template.id, name: '   ' }), /模板名/);
 });
 
-// 槽位（values）：内置模板骨架不可改，但槽位内容可填——用户要改的从来是
-// 「背景/验收里写什么」，不是章节结构本身（任务 #32）。
-test('模板槽位：内置模板只改槽位（骨架锁死）；用户模板槽位可改', async () => {
+// 槽位（values）：内置模板未给的槽位回落出厂默认文字（渲染兜底语义不变）。
+test('模板槽位：内置未给的槽位回落出厂默认；用户模板槽位跟自己存', async () => {
   const builtin = await listTemplates();
   const def = builtin.templates.find((t) => t.id === BUILTIN_ID);
   assert.ok(def, '内置模板在场');
@@ -91,10 +114,7 @@ test('模板槽位：内置模板只改槽位（骨架锁死）；用户模板�
   const upd = await updateTemplate({ id: BUILTIN_ID, values: { 背景: '本轮要做的事' } });
   assert.equal(upd.template.values['背景'], '本轮要做的事');
   assert.equal(upd.template.values['验收'], '…', '没给的槽位保留默认文字');
-  assert.equal(upd.template.body, def.body, '骨架（正文）不动');
-
-  await assert.rejects(() => updateTemplate({ id: BUILTIN_ID, body: '# 改骨架' }), /骨架不可改/);
-  await assert.rejects(() => updateTemplate({ id: BUILTIN_ID }), /只能改槽位内容/);
+  assert.equal(upd.template.body, def.body, '只给 values 时不改正文');
 
   // 用户模板：槽位值跟着自己的模板存
   const t = await addTemplate({ name: '带槽位', body: '# 标题\n\n{{目标}}\n' });
@@ -122,22 +142,41 @@ test('正文可来自文件（--body-file）：多行 Markdown 的实用姿势',
   await assert.rejects(() => addTemplate({ name: 'x', bodyFile: join(tmp, 'nope.md') }), /读模板文件失败/);
 });
 
-test('设默认 + 落盘持久（重读仍在）', async () => {
+test('设默认 + 落库持久（关连接重开仍在 —— 模拟新进程）', async () => {
   const a = await addTemplate({ name: '持久', body: '# 持久' });
   const s = await setDefaultTemplate({ id: a.template.id });
   assert.equal(s.defaultId, a.template.id);
 
-  // 模拟新进程：清掉模块缓存重读同一份 store 文件
-  const svcPath = '../../src/modules/templates/service.js';
-  const mod = await import(svcPath + '?fresh=' + Date.now());
-  const d = await mod.listTemplates();
-  assert.equal(d.defaultId, a.template.id, '重读 store 文件默认应保持');
+  // 模拟新进程：关连接再重读（库文件原样）
+  closeDb();
+  const d = await listTemplates();
+  assert.equal(d.defaultId, a.template.id, '重开库默认应保持');
   assert.ok(d.templates.some((t) => t.name === '持久'));
 });
 
-test('损坏的 store 文件 → 出厂态（内置兜底，不抛错）', async () => {
-  writeFileSync(join(tmp, 'templates.json'), '{ not json', 'utf8');
+test('builtin 的用户编辑在重启后保留（seed 不覆盖用户编辑 —— T06 裁决）', async () => {
+  const u = await updateTemplate({ id: BUILTIN_ID, body: '# 用户改过的骨架\n\n{{目标}}' });
+  assert.ok(u.template.body.includes('用户改过的骨架'));
+
+  closeDb(); // 模拟重启
   const d = await listTemplates();
-  assert.equal(d.defaultId, BUILTIN_ID);
-  assert.equal(d.templates.length, 1);
+  const back = d.templates.find((t) => t.id === BUILTIN_ID);
+  assert.ok(back.body.includes('用户改过的骨架'), 'builtin 编辑原样保留');
+  assert.equal(back.builtin, true, 'builtin 标记不变（不可删）');
+  // 出厂文本没有被 seed 回写
+  assert.ok(!back.body.includes('## 背景'));
+});
+
+test('builtin 永远在场：四个类目的内置都在（seed 于 bootstrap）', async () => {
+  await listTemplates(); // 触发开库 + bootstrap（seed）
+  const { openRaw } = await import('../../src/core/db/driver.js');
+  const db = openRaw(dbFile, { readOnly: true });
+  const rows = db.all('SELECT id, category FROM templates WHERE builtin = 1 ORDER BY category');
+  db.close();
+  assert.deepEqual(
+    rows.map((r) => r.category),
+    ['context', 'delivery', 'enhance', 'newtask'],
+    '四个 tab 的内置模板都在'
+  );
+  assert.ok(rows.some((r) => r.id === BUILTIN_ID));
 });

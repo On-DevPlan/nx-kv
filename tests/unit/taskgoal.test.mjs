@@ -5,7 +5,7 @@
 // （默认直接领 / 项目开启持续 get 后阻塞）也在这里钉住。
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -15,11 +15,18 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'nx-kv-tasktool-'));
   process.env.NX_KV_LOCALTASK_STORE = join(dir, 'localtasks.json');
   process.env.NX_KV_REPOS_STORE = join(dir, 'repos.json');
-  process.env.NX_KV_TIMEGOAL_STORE = join(dir, 'timegoals.json');
+  // T06：timegoal 落库（goals/goal_checks 表），与 localtask 同一份 nxkv.db，
+  // 不再有独立的 NX_KV_TIMEGOAL_STORE —— 隔离由上述两个 env 的目录决定。
   process.env.NX_KV_DOCS_DIR = join(dir, 'docs');
 });
 
-test.after?.(() => {
+test.after?.(async () => {
+  try {
+    const { closeDb } = await import('../../src/core/db/index.js');
+    closeDb();
+  } catch {
+    /* 尚未打开 */
+  }
   try {
     rmSync(dir, { recursive: true, force: true });
   } catch {
@@ -27,18 +34,16 @@ test.after?.(() => {
   }
 });
 
-const retime = (pastMin = 5) => {
-  // 把唯一的任务级 goal 拨回到过去（deadline 已过）——模拟「时间已到点」
-  const p = process.env.NX_KV_TIMEGOAL_STORE;
-  const raw = JSON.parse(readFileSync(p, 'utf8'));
-  for (const g of Object.values(raw.goals)) {
-    const d = new Date(Date.now() - pastMin * 60000);
-    const pad = (n, w = 2) => String(n).padStart(w, '0');
-    const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    g.startedAt = stamp;
-    g.deadline = stamp;
-  }
-  writeFileSync(p, JSON.stringify(raw, null, 2), 'utf8');
+const retime = async (pastMin = 5) => {
+  // 把唯一的任务级 goal 拨回到过去（deadline 已过）——模拟「时间已到点」。
+  // T06：goal 在 goals 表（epoch ms），直接 UPDATE（JSON 时代是改文件）。
+  // goals 表有 CHECK (deadline > started_at)，所以 deadline 取起点 +1s（仍在过去）。
+  const { getDb } = await import('../../src/core/db/index.js');
+  const past = Date.now() - pastMin * 60000;
+  getDb().run('UPDATE goals SET started_at = :s, deadline = :d WHERE deleted_at IS NULL', {
+    s: past,
+    d: past + 1000,
+  });
 };
 
 test('add --duration：任务记录带 timegoal 声明；领取交付带 check 指令', async () => {
@@ -71,17 +76,26 @@ test('add --duration：任务记录带 timegoal 声明；领取交付带 check �
   assert.equal(chk.reached, false);
 
   // 到点（拨回过去）→ done 放行 + 最终 check 记录 + completedAt
-  retime();
+  await retime();
   const done2 = await localtask.completeTask({ cwd, id: 1, summary: '真的完成了', progress: '100%' });
   assert.equal(done2.status, 'ok');
   assert.ok(done2.task.completedAt);
   assert.equal(done2.goal.recorded, true);
-  // 最终 check 落在了任务级 goal 的日志里
-  const tgKey = tg.taskGoalKey(localtask.normalizeCwd(cwd).key, 1);
-  const raw = JSON.parse(readFileSync(process.env.NX_KV_TIMEGOAL_STORE, 'utf8'));
-  const storedGoal = raw.goals[tgKey];
-  assert.ok(storedGoal, '任务级 goal 在 timegoals.json');
-  assert.ok(storedGoal.log.some((e) => e.summary === '真的完成了'), 'done 自动记录最终 check');
+  // 最终 check 落在了任务级 goal 的流水里（goal_checks 表，T06）
+  const { getDb } = await import('../../src/core/db/index.js');
+  const summaries = getDb()
+    .all(
+      `SELECT gc.summary FROM goal_checks gc JOIN goals g ON g.id = gc.goal_id WHERE g.deleted_at IS NULL`
+    )
+    .map((r) => {
+      try {
+        return JSON.parse(r.summary).summary;
+      } catch {
+        return r.summary;
+      }
+    });
+  assert.ok(summaries.length >= 2, '推进中 + 最终 check 两条流水都在');
+  assert.ok(summaries.includes('真的完成了'), 'done 自动记录最终 check');
 });
 
 test('done：未领取 blocked；无 timegoal 直接放行；重复 done 幂等', async () => {

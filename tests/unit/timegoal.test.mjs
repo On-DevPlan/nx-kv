@@ -1,35 +1,57 @@
 // timegoal 模块单测：duration/prompt 边界、纯函数 evalTimegoal 全时段、
-// set/show/check/clear 链路、update 不动起点、不同 cwd 隔离、store 隔离。
+// set/show/check/clear 链路、update 不动起点、不同 cwd 隔离、到点自动回收。
 //
-// 存储一律指向临时文件（NX_KV_TIMEGOAL_STORE），绝不写脏用户目录。
+// 存储进库（T06）：队列级 goal 在 settings 表（`tg.cwd.<topicKey>` 一键一目标），
+// 任务级 goal 在 goals/goal_checks 表。测试用 NX_KV_DB 指到临时库文件；
+// 「到点」的模拟直接改库里的 started_at/deadline（JSON 时代是改文件）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as svc from '../../src/modules/tasktool/timegoal.js';
+import { closeDb, getDb } from '../../src/core/db/index.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-timegoal-'));
-const storeFile = join(tmp, 'timegoals.json');
+const dbFile = join(tmp, 'nxkv.db');
 const dirA = mkdirSync(join(tmp, 'projA'), { recursive: true }) || join(tmp, 'projA');
 const dirB = join(tmp, 'projB');
 mkdirSync(dirB, { recursive: true });
-process.env.NX_KV_TIMEGOAL_STORE = storeFile;
+process.env.NX_KV_DB = dbFile;
 process.on('exit', () => {
+  closeDb();
   try { rmSync(tmp, { recursive: true, force: true }); } catch { /* 忽略 */ }
 });
 
 async function reset() {
-  try { rmSync(storeFile); } catch { /* 不存在即可 */ }
+  closeDb();
+  for (const suffix of ['', '-wal', '-shm', '-journal']) {
+    try {
+      rmSync(dbFile + suffix, { force: true });
+    } catch {
+      /* Windows 偶发句柄残留：留给下一次 */
+    }
+  }
 }
 
-// 把 store 里某个 goal 的 deadline 挪到过去（模拟"已经到点"）
+/** 读队列级 goal 的 blob（settings 表 `tg.cwd.<topicKey>`）。 */
+function readBlob(key) {
+  const row = getDb().get('SELECT value FROM settings WHERE key = ?', ['tg.cwd.' + key]);
+  return row ? JSON.parse(row.value) : null;
+}
+
+/** 写回 blob（到点模拟用）。 */
+function writeBlob(key, blob) {
+  getDb().run('UPDATE settings SET value = ? WHERE key = ?', [JSON.stringify(blob), 'tg.cwd.' + key]);
+}
+
+// 把某个 goal 的 deadline 挪到过去（模拟"已经到点"）
 function expireGoal(key, agoSec = 3600) {
-  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
+  const blob = readBlob(key);
   const past = new Date(Date.now() - agoSec * 1000);
-  raw.goals[key].startedAt = svc.stampNow(past);
-  raw.goals[key].deadline = svc.stampNow(new Date(past.getTime() - 60 * 1000));
-  writeFileSync(storeFile, JSON.stringify(raw, null, 2));
+  blob.startedAtMs = past.getTime();
+  blob.deadlineMs = past.getTime() - 60 * 1000;
+  writeBlob(key, blob);
 }
 
 const PROMPT_OK = '用 subagent 调研 redis 差距并写 CHANGELOG';
@@ -39,7 +61,7 @@ test('duration 边界：59 拒绝 / 60 通过 / 24 小时不再是上限 / 超�
   await assert.rejects(() => svc.setTimegoal({ cwd: dirA, durationSec: 59, prompt: PROMPT_OK }), /至少 60/);
   const ok = await svc.setTimegoal({ cwd: dirA, durationSec: 60, prompt: PROMPT_OK });
   assert.equal(ok.goal.durationSec, 60);
-  rmSync(storeFile);
+  await reset();
   // 24 小时不再是天花板："跑一晚上""连续优化几天"是真实需求
   const ok2 = await svc.setTimegoal({ cwd: dirA, durationSec: 86400 * 30, prompt: PROMPT_OK });
   assert.equal(ok2.goal.durationSec, 86400 * 30);
@@ -105,7 +127,7 @@ test('缺 cwd 报错，不建空记录', async () => {
   await assert.rejects(() => svc.clearTimegoal({}), /--cwd/);
   await assert.rejects(() => svc.checkTimegoal({ cwd: dirA }), /--summary/);
   await assert.rejects(() => svc.checkTimegoal({ cwd: dirA, summary: '现状' }), /--progress/);
-  // 上面所有错误都不应写 store
+  // 上面所有错误都不应写库
   const r = await svc.listTimegoals();
   assert.equal(r.count, 0);
   assert.deepEqual(r.goals, []);
@@ -180,16 +202,16 @@ test('set → show → check 链路：reached:false 且 prompt / 现状 / 完成
   assert.equal(chk.key, svc.topicKeyFor(dirA));
 });
 
-test('模拟到点：直接改 store 里 startedAt 让系统时间到点，check 返回 reached:true', async () => {
+test('模拟到点：直接改库里的 deadline 让系统时间到点，check 返回 reached:true', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 60, prompt: 'P' });
   // 把 started 改成 1 小时前 → deadline 已经过线 59 分钟
-  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
-  const key = Object.keys(raw.goals)[0];
+  const key = (await svc.showTimegoal({ cwd: dirA })).key;
+  const blob = readBlob(key);
   const past = new Date(Date.now() - 3600 * 1000);
-  raw.goals[key].startedAt = svc.stampNow(past);
-  raw.goals[key].deadline = svc.stampNow(new Date(past.getTime() + 60 * 1000));
-  writeFileSync(storeFile, JSON.stringify(raw, null, 2));
+  blob.startedAtMs = past.getTime();
+  blob.deadlineMs = past.getTime() + 60 * 1000;
+  writeBlob(key, blob);
 
   const chk = await svc.checkTimegoal({ cwd: dirA, summary: '达到目标', progress: '完成 100%' });
   assert.equal(chk.reached, true);
@@ -308,47 +330,28 @@ test('list 空时返回 count:0', async () => {
   assert.deepEqual(r.goals, []);
 });
 
-test('store 损坏容忍：把 store 写坏读不出来时 fallback 到空 store', async () => {
-  // 此时 storeFile 不存在 → 空 store
+test('NX_KV_DB 覆盖生效：env 换库路径后读写到另一份库（测试隔离机制）', async () => {
   await reset();
-  // 写一个非 JSON
-  writeFileSync(storeFile, '{this is not json', 'utf8');
-  const r = await svc.listTimegoals();
-  assert.equal(r.count, 0); // 容忍
-  // 清理：自己写的坏 JSON 不污染后续测试
-  rmSync(storeFile);
-});
-
-test('环境变量 NX_KV_TIMEGOAL_STORE 覆盖生效', async () => {
-  const originalEnv = process.env.NX_KV_TIMEGOAL_STORE;
+  const originalEnv = process.env.NX_KV_DB;
   try {
-    const custom = join(tmp, 'custom.json');
-    process.env.NX_KV_TIMEGOAL_STORE = custom;
-    // custom 初始不存在 → 空
+    const other = join(tmp, 'other-nxkv.db');
+    process.env.NX_KV_DB = other;
+    closeDb(); // env 变了 → 下一次打开切到新库
+    // 新库初始为空
     let r = await svc.listTimegoals();
     assert.equal(r.count, 0);
 
-    await svc.setTimegoal({ cwd: dirA, durationSec: 60, prompt: 'in-custom' });
-    // 确认写到了 custom
-    assert.ok(readFileSync(custom, 'utf8').includes('in-custom'));
-    // 主 storeFile 不在 env 覆盖路径上，应当没被写——若该文件不存在则 ENOENT，
-    // 若因前序测试残留则不等式判断不再依赖 err.code，改为读 custom 内容确认隔离。
-    const customData = JSON.parse(readFileSync(custom, 'utf8'));
-    const keyInA = svc.topicKeyFor(dirA);
-    assert.ok(customData.goals[keyInA] && customData.goals[keyInA].prompt === 'in-custom');
+    await svc.setTimegoal({ cwd: dirA, durationSec: 60, prompt: 'in-other' });
+    assert.equal((await svc.showTimegoal({ cwd: dirA })).goal.prompt, 'in-other');
 
-    // 切回主 storeFile，确认 list 看到的是空（custom 与主 store 隔离）
-    process.env.NX_KV_TIMEGOAL_STORE = originalEnv || join(tmp, 'main-isolated.json');
-    if (!originalEnv) {
-      // 没有原值就换一个独立的隔离路径，不读 storeFile 免得踩 #12 残留
-    }
+    // 切回主库：隔离成立（看不到 other 库里的 goal）
+    process.env.NX_KV_DB = originalEnv || dbFile;
+    closeDb();
     r = await svc.listTimegoals();
     assert.equal(r.count, 0);
   } finally {
-    process.env.NX_KV_TIMEGOAL_STORE = originalEnv;
-    // 清理 custom 与可能的隔离 main 路径
-    try { rmSync(join(tmp, 'custom.json')); } catch { /* ignore */ }
-    try { rmSync(join(tmp, 'main-isolated.json')); } catch { /* ignore */ }
+    process.env.NX_KV_DB = originalEnv;
+    closeDb();
   }
 });
 
@@ -422,11 +425,8 @@ test('pruneExpired：只回收已到点目标，未到点的保留；重复调�
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'keep' });
   await svc.setTimegoal({ cwd: dirB, durationSec: 3600, prompt: 'expired' });
 
-  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
-  const expiredKey = svc.topicKeyFor(dirB);
-  raw.goals[expiredKey].startedAt = svc.stampNow(new Date(Date.now() - 7200 * 1000));
-  raw.goals[expiredKey].deadline = svc.stampNow(new Date(Date.now() - 3600 * 1000));
-  writeFileSync(storeFile, JSON.stringify(raw, null, 2));
+  const expiredKey = (await svc.showTimegoal({ cwd: dirB })).key;
+  expireGoal(expiredKey, 7200);
 
   const result = await svc.pruneExpired();
   assert.equal(result.count, 1);
@@ -439,12 +439,12 @@ test('pruneExpired：只回收已到点目标，未到点的保留；重复调�
   assert.equal(again.count, 0, '再次回收无变化');
 });
 
-// ─── 自动回收：到点自动归档 / 超期自动清除 / 日志封顶 ──────────────────
+// ─── 自动回收：到点自动归档 / 超期自动失效 ──────────────────────────────
 
 test('到点自动归档：活动列表不再出现，但仍可 show/check 拿到 reached:true + prompt 原文', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: '归档前的根指令' });
-  const key = svc.topicKeyFor(dirA);
+  const key = (await svc.showTimegoal({ cwd: dirA })).key;
   expireGoal(key);
 
   // list：活动区空了，归档区有它
@@ -472,17 +472,17 @@ test('到点自动归档：活动列表不再出现，但仍可 show/check 拿�
 test('归档超过保留期：整条自动失效（连提示词一起删掉），不需要人工清理', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: '保留期后也要读得到' });
-  const key = svc.topicKeyFor(dirA);
+  const key = (await svc.showTimegoal({ cwd: dirA })).key;
   expireGoal(key);
   await svc.listTimegoals(); // 触发归档
 
   // 把 deadline 往前挪 9 天（超过 7 天保留期）→ 下一次读就该自动失效
-  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
-  const longAgo = new Date(Date.now() - 9 * 24 * 3600 * 1000);
-  raw.goals[key].startedAt = svc.stampNow(longAgo);
-  raw.goals[key].deadline = svc.stampNow(new Date(longAgo.getTime() + 3600 * 1000));
-  raw.goals[key].archivedAt = svc.stampNow(longAgo);
-  writeFileSync(storeFile, JSON.stringify(raw, null, 2));
+  const blob = readBlob(key);
+  const longAgo = Date.now() - 9 * 24 * 3600 * 1000;
+  blob.startedAtMs = longAgo;
+  blob.deadlineMs = longAgo + 3600 * 1000;
+  blob.archivedAtMs = longAgo;
+  writeBlob(key, blob);
 
   const list = await svc.listTimegoals();
   assert.equal(list.count, 0);
@@ -493,15 +493,14 @@ test('归档超过保留期：整条自动失效（连提示词一起删掉）�
   const chk = await svc.checkTimegoal({ cwd: dirA, summary: '收尾', progress: '写总结' });
   assert.equal(chk.hasGoal, false);
   assert.equal(chk.reached, false, '目标已不存在，不再有"已到点"信号');
-  // store 里也真的没了
-  const after = JSON.parse(readFileSync(storeFile, 'utf8'));
-  assert.equal(after.goals[key], undefined, '失效的目标从 store 里删掉了');
+  // 库里也真的没了
+  assert.equal(readBlob(key), null, '失效的目标从库里删掉了');
 });
 
 test('失效的目标不可复活：update 报错，要继续请用 set 开新一局', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'V1' });
-  const key = svc.topicKeyFor(dirA);
+  const key = (await svc.showTimegoal({ cwd: dirA })).key;
   expireGoal(key);
   await svc.listTimegoals(); // 触发归档（到点即失效）
 
@@ -519,15 +518,17 @@ test('失效的目标不可复活：update 报错，要继续请用 set 开新�
   assert.equal(list.archivedCount, 0);
 });
 
-test('日志条数封顶 200：长跑任务的 store 不无限膨胀', async () => {
+// ─── 日志语义（T06：行级追加，无 logTruncated 概念）─────────────────────
+
+test('日志全量保留（行级追加不封顶）：250 条历史 + 1 条新 check = 251 条', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'P' });
-  const key = svc.topicKeyFor(dirA);
+  const key = (await svc.showTimegoal({ cwd: dirA })).key;
 
-  // 直接往 store 里塞 250 条历史日志（比真跑 250 轮快得多）
-  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
-  raw.goals[key].log = Array.from({ length: 250 }, (_, i) => ({
-    checkedAt: svc.stampNow(new Date(Date.now() - (250 - i) * 1000)),
+  // 直接往 blob 里塞 250 条历史日志（比真跑 250 轮快得多）
+  const blob = readBlob(key);
+  blob.checks = Array.from({ length: 250 }, (_, i) => ({
+    at: Date.now() - (250 - i) * 1000,
     elapsedSec: i,
     remainingSec: 3600 - i,
     overtimeSec: 0,
@@ -535,19 +536,24 @@ test('日志条数封顶 200：长跑任务的 store 不无限膨胀', async () 
     summary: `第 ${i} 轮`,
     progress: '继续',
   }));
-  writeFileSync(storeFile, JSON.stringify(raw, null, 2));
+  blob.totalChecks = 250;
+  writeBlob(key, blob);
 
   const chk = await svc.checkTimegoal({ cwd: dirA, summary: '新的一轮', progress: '继续' });
-  assert.equal(chk.logCount, 200, '日志只保留最近 200 条');
+  assert.equal(chk.logCount, 251, '行级追加：一条不丢');
+  assert.equal(chk.totalChecks, 251);
+  assert.equal(chk.logTruncated, undefined, 'logTruncated 概念已随 JSON store 退役');
   const log = await svc.getTimegoalLog({ cwd: dirA });
-  assert.equal(log.count, 200);
+  assert.equal(log.count, 251);
+  assert.equal(log.totalEntries, 251);
   assert.equal(log.entries[log.count - 1].summary, '新的一轮', '最新一条是新写的');
+  assert.equal(log.truncated, undefined, '读侧同样不再有截断标记');
 });
 
 test('prune 会连归档区一起彻底清除', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: '待清除' });
-  const key = svc.topicKeyFor(dirA);
+  const key = (await svc.showTimegoal({ cwd: dirA })).key;
   expireGoal(key);
   await svc.listTimegoals(); // 触发归档
 
@@ -559,14 +565,15 @@ test('prune 会连归档区一起彻底清除', async () => {
   assert.equal(list.archivedCount, 0);
 });
 
-test('读路径不写盘：list/show 不会改动 store 文件（避免与并发 check 互相覆盖）', async () => {
+test('读路径不写库：list/show 不会改动 goal 的落库时刻（避免与并发 check 互相覆盖）', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'P' });
-  const before = readFileSync(storeFile, 'utf8');
+  const key = (await svc.showTimegoal({ cwd: dirA })).key;
+  const before = getDb().get('SELECT updated_at FROM settings WHERE key = ?', ['tg.cwd.' + key]).updated_at;
   await svc.listTimegoals();
   await svc.showTimegoal({ cwd: dirA });
-  const after = readFileSync(storeFile, 'utf8');
-  assert.equal(after, before, '读操作不应写盘——写盘只发生在 set/update/check/clear 这些真写的路径上');
+  const after = getDb().get('SELECT updated_at FROM settings WHERE key = ?', ['tg.cwd.' + key]).updated_at;
+  assert.equal(after, before, '读操作不应写库——写库只发生在 set/update/check/clear 这些真写的路径上');
 });
 
 test('list 不返回完整 prompt（只给预览）；完整原文用 show 取', async () => {
@@ -580,28 +587,3 @@ test('list 不返回完整 prompt（只给预览）；完整原文用 show 取',
   const show = await svc.showTimegoal({ cwd: dirA });
   assert.equal(show.goal.prompt, prompt, 'show 仍是完整原文');
 });
-
-test('日志截断可见：totalChecks 记总轮次，logTruncated 标记历史已丢', async () => {
-  await reset();
-  await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'P' });
-  const key = svc.topicKeyFor(dirA);
-
-  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
-  raw.goals[key].log = Array.from({ length: 250 }, (_, i) => ({
-    checkedAt: svc.stampNow(new Date(Date.now() - (250 - i) * 1000)),
-    elapsedSec: i, remainingSec: 3600 - i, overtimeSec: 0, reached: false,
-    summary: `第 ${i} 轮`, progress: '继续',
-  }));
-  raw.goals[key].totalChecks = 250;
-  writeFileSync(storeFile, JSON.stringify(raw, null, 2));
-
-  const chk = await svc.checkTimegoal({ cwd: dirA, summary: '新的一轮', progress: '继续' });
-  assert.equal(chk.logCount, 200);
-  assert.equal(chk.totalChecks, 251, '总轮次不被截断丢掉');
-  assert.equal(chk.logTruncated, true, '截断是可见的，不是静默丢历史');
-  const log = await svc.getTimegoalLog({ cwd: dirA });
-  assert.equal(log.count, 200);
-  assert.equal(log.totalEntries, 251);
-  assert.equal(log.truncated, true);
-});
-

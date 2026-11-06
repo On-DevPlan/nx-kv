@@ -246,8 +246,112 @@ test('refs / ref_bindings：约定路径绑定宿主，未绑定的留 orphan；
   }
 });
 
-test('settings：localtask 5 项 + config 4 项偏好进库，token 等凭据绝不进库', async () => {
-  const s = await importFixture();
+// ─── T06：templates.json / timegoals.json 的导入路径（含「文件不存在」）────
+
+test('templates.json 导入：values→vars、id 原样、defaultId→is_default；文件缺失 → 只有内置', async () => {
+  const s = await createTestStore({ open: false });
+  s.seedLegacy({
+    templates: {
+      version: 1,
+      defaultId: 't_custom',
+      templates: [
+        // 内置行也走导入（legacy store 里的 builtin 会被 JSON 归一化补回）——
+        // 用户的槽位值原样带走，seed 的 INSERT OR IGNORE 不会覆盖它
+        { id: 'default', name: '默认模板', body: '# 内置骨架\n\n{{背景}}', values: { 背景: '用户改过的背景' }, builtin: true },
+        { id: 't_custom', name: '自定义', body: '# 自定义', values: { 目标: '做点事' } },
+      ],
+    },
+  });
+  s.open();
+  try {
+    const rows = s.db.all('SELECT id, category, is_default, builtin, vars, body FROM templates ORDER BY id');
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    // 全新库路径：bootstrap 先跑 importLegacy 再 seed 内置 —— legacy 的 builtin 行
+    // 先落库，seed（OR IGNORE）不会用出厂文本覆盖用户的槽位值。
+    assert.ok(byId.has('default') && byId.has('t_custom'), 'legacy id 原样保留（就是稳定 key）');
+    const def = byId.get('default');
+    assert.equal(def.category, 'newtask', 'legacy 只有新建骨架一种用途 → newtask');
+    assert.equal(def.builtin, 1);
+    assert.equal(def.body, '# 内置骨架\n\n{{背景}}', 'legacy 的 builtin 正文原样进来');
+    assert.equal(JSON.parse(def.vars).背景, '用户改过的背景', 'values → vars 原样');
+    const custom = byId.get('t_custom');
+    assert.equal(custom.is_default, 1, 'defaultId → is_default 列');
+    assert.equal(def.is_default, 0, '默认只有一个（ux_templates_default 的约束语义）');
+    // 报告对账
+    const report = s.core.getBootstrapResult().report;
+    assert.equal(report.imported.templates, 2);
+  } finally {
+    s.reset();
+  }
+
+  // 文件不存在：全新库 → 只有 bootstrap seed 的四个内置模板
+  const empty = await createTestStore();
+  try {
+    const cats = empty.db.all('SELECT DISTINCT category FROM templates ORDER BY category').map((r) => r.category);
+    assert.deepEqual(cats, ['context', 'delivery', 'enhance', 'newtask'], '内置永远在场');
+    assert.equal(empty.db.get("SELECT count(*) AS c FROM templates WHERE id LIKE 't_%'").c, 0);
+  } finally {
+    empty.reset();
+  }
+});
+
+test('timegoals.json 导入：task: 作用域换算 task_id；队列级丢弃 + 报告；文件缺失 → goals 空', async () => {
+  const fixture = readFixtureJson('legacy-json/localtasks.json');
+  const s = await createTestStore({ open: false });
+  s.seedLegacy({
+    localtasks: fixture,
+    timegoals: {
+      version: 1,
+      goals: {
+        // legacy key（T03 前的 sha1 目录名）+ 任务号 → 换算成 tasks.id
+        'task:legacyhash0000001:3': {
+          key: 'task:legacyhash0000001:3',
+          durationSec: 3600,
+          prompt: '历史目标的提示词',
+          startedAt: '2026-01-01 08:00:00',
+          deadline: '2026-01-01 09:00:00',
+          log: [
+            { at: '2026-01-01 08:30:00', elapsedSec: 1800, remainingSec: 1800, overtimeSec: 0, reached: false, summary: '推进中', progress: '30%' },
+          ],
+        },
+        // 队列级目标（键没有 task: 前缀）→ 既定裁决：丢弃 + 报告
+        legacyhash0000001: { key: 'legacyhash0000001', durationSec: 60, prompt: '队列级', startedAt: '2026-01-01 08:00:00', deadline: '2026-01-01 08:01:00' },
+      },
+    },
+  });
+  s.open();
+  try {
+    const goal = s.db.get(
+      `SELECT g.* FROM goals g JOIN tasks t ON t.id = g.task_id
+       JOIN topics tp ON tp.id = t.topic_id WHERE tp.ext LIKE '%legacyhash0000001%' AND t.seq = 3`
+    );
+    assert.ok(goal, 'task: 作用域换算到 tasks.id');
+    assert.equal(goal.duration_sec, 3600);
+    assert.equal(goal.prompt, '历史目标的提示词');
+    const checks = s.db.all('SELECT * FROM goal_checks WHERE goal_id = :g ORDER BY id', { g: goal.id });
+    assert.equal(checks.length, 1, '历史 check 流水随 goal 一起进库');
+    assert.equal(checks[0].remaining_sec, 1800, '当日快照原样保留');
+
+    const report = s.core.getBootstrapResult().report;
+    assert.ok(
+      report.discarded.some((d) => d.what === 'timegoal(queue-scope)'),
+      '队列级目标按裁决丢弃并报告'
+    );
+  } finally {
+    s.reset();
+  }
+
+  // 文件不存在：goals 表为空（本机真实环境就是这条路径）
+  const empty = await createTestStore();
+  try {
+    assert.equal(empty.db.get('SELECT count(*) AS c FROM goals').c, 0);
+    assert.equal(empty.db.get('SELECT count(*) AS c FROM goal_checks').c, 0);
+  } finally {
+    empty.reset();
+  }
+});
+
+test('settings：localtask 5 项 + config 4 项偏好进库，token 等凭据绝不进库', async () => {  const s = await importFixture();
   try {
     const keys = s.db.all('SELECT key FROM settings ORDER BY key').map((r) => r.key);
     assert.deepEqual(keys, [

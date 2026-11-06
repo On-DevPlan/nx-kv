@@ -1,6 +1,6 @@
 // 路径与常量的唯一权威来源。
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { badInput } from './errors.js';
 
 export const APP_NAME = 'nx-kv';
@@ -14,8 +14,30 @@ export const STORE_PATH = join(APP_DIR, 'store.json');
 // **只这一个路径变量**：库化后再有第二个「某份数据在哪」的变量，
 // 就是最典型的"静默读写错库"。
 export const DB_FILE_NAME = 'nxkv.db';
+
+// 库路径解析（唯一权威）。除了显式 NX_KV_DB，还会回落到各域 legacy env 的
+// 目录（repos / localtask 的 JSON 时代隔离约定）—— T06 起 config 偏好与队列级
+// timegoal 都进同一份库，core 层的默认打开（getDb / openStore 无参）必须与
+// 域仓储的解析落在同一个文件上，否则就是「读路径静默换库」（T05 的教训）。
+// appDir 是 legacy JSON 导入的扫描根，跟着目录走。
+export function defaultStoreTarget() {
+  const explicit = process.env.NX_KV_DB;
+  if (explicit) return { path: explicit, appDir: APP_DIR };
+  for (const v of [
+    process.env.NX_KV_REPOS_STORE,
+    process.env.NX_KV_LOCALTASK_STORE,
+    process.env.NX_KV_SESSIONTASK_STORE,
+  ]) {
+    if (v) {
+      const dir = dirname(v);
+      return { path: join(dir, DB_FILE_NAME), appDir: dir };
+    }
+  }
+  return { path: join(APP_DIR, DB_FILE_NAME), appDir: APP_DIR };
+}
+
 export function dbPathFromEnv() {
-  return process.env.NX_KV_DB || join(APP_DIR, DB_FILE_NAME);
+  return defaultStoreTarget().path;
 }
 // 备份目录（VACUUM INTO 落这里；保留最近 5 份）
 export function backupsDirFromEnv() {

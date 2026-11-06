@@ -25,7 +25,7 @@
 //     **绝不自动建表** —— 那会把别人的库就地改成我们的结构。
 import { existsSync, rmSync, unlinkSync, writeFileSync, renameSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { APP_DIR, dbPathFromEnv, backupsDirFromEnv } from '../paths.js';
+import { dbPathFromEnv, backupsDirFromEnv, defaultStoreTarget } from '../paths.js';
 import { badInput } from '../errors.js';
 import { openRaw } from './driver.js';
 import { tx } from './tx.js';
@@ -44,6 +44,7 @@ import {
   userVersion,
 } from './migrator.js';
 import { importLegacy, scanLegacy, ensureSentinelRepo, LEGACY_FILES } from './import-json.js';
+import { seedBuiltinTemplates } from './seed-templates.js';
 import {
   NotNxKvStoreError,
   StoreMigrationError,
@@ -92,7 +93,7 @@ export function inspectStore(db) {
  */
 export function bootstrap(
   db,
-  { appDir = APP_DIR, importLegacyData = true, dryRun = false, atMs = nowMs() } = {}
+  { appDir = defaultStoreTarget().appDir, importLegacyData = true, dryRun = false, atMs = nowMs() } = {}
 ) {
   const before = inspectStore(db);
   const legacy = scanLegacy(appDir);
@@ -133,6 +134,9 @@ export function bootstrap(
         if (importLegacyData && legacy.any) {
           report = importLegacy(conn, { appDir, atMs });
         }
+        // 内置模板 seed 放在导入**之后**：legacy templates.json 里用户改过的
+        // builtin 行先落库，seed 的 INSERT OR IGNORE 就不会用出厂文本盖掉它。
+        seedBuiltinTemplates(conn, atMs);
         return { created: true, report };
       },
       { db, mode: 'IMMEDIATE', rollback: dryRun }
@@ -205,6 +209,12 @@ export function bootstrap(
     }
   }
 
+  // ── 内置模板 seed（幂等；存量库也可能缺新加的 builtin 行）──
+  //  只读 / 演练 / 未建表的库跳过（情况 A 已在事务内 seed 过）。
+  if (!db.readOnly && !dryRun && before.tables > 0) {
+    tx((conn) => seedBuiltinTemplates(conn, atMs), { db, mode: 'IMMEDIATE' });
+  }
+
   return result;
 }
 
@@ -227,7 +237,7 @@ export function bootstrap(
  */
 export function openAndBootstrap({
   path = dbPathFromEnv(),
-  appDir = APP_DIR,
+  appDir = defaultStoreTarget().appDir,
   importLegacyData = true,
   dryRun = false,
   readOnly = false,

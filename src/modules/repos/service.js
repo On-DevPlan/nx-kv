@@ -43,6 +43,12 @@ import {
 //（localtask 那种 0.5s 轮询才必须拆掉 mutate）。它同时保住了两样东西：
 // docs 域 33 个调用点零改动；boards/ref/transfer 的多实体联动写一个事务搞定。
 // 窄方法（repo/repos.js / repo/refs.js）承担单实体路径与跨表绑定。
+//
+// ⚠️ **禁令（T06 团队裁决）**：这个「BEGIN IMMEDIATE 内读全量→改→整份落回」的
+// 适配器模式**只允许出现在"小表低频"的域**（repos / templates 这种几十行、
+// 偶发写的表）。**热路径禁止照抄**——localtask 的 get/list/wait 是毫秒级轮询，
+// 一次 mutate = 全表读 + 全表写，并发轮询下就是灾难。有新域要切库：
+// 先看写频率，热路径一律走窄方法（仿 localtask/repo），不要回退成 mutate。
 
 const repo = repoLayer;
 

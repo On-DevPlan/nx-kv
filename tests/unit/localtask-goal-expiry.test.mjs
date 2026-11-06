@@ -11,12 +11,13 @@
 //   3. 这个目录**没有**目标 → wait 照常阻塞（探针 fail-open，绝不能把 wait 卡死）；
 //   4. 队列里**还有**任务时照常领走（目标到点不该把已经排好的任务扣住）。
 //
-// 存储一律指向临时文件（NX_KV_LOCALTASK_STORE / NX_KV_TIMEGOAL_STORE），
-// 绝不写脏用户目录。
+// 存储进库（T06）：goal 在库（队列级 = settings 表 `tg.cwd.<topicKey>` blob，
+// 任务级 = goals/goal_checks 表），与 localtask 同一份 nxkv.db —— 隔离由
+// NX_KV_LOCALTASK_STORE 的目录决定，不再有独立的 NX_KV_TIMEGOAL_STORE。
 import { test } from 'node:test';
 import { waitForTask } from '../../src/modules/tasktool/wait.js';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as svc from '../../src/modules/localtask/service.js';
@@ -24,15 +25,18 @@ import * as tgsvc from '../../src/modules/tasktool/timegoal.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-goalexp-'));
 const storeFile = join(tmp, 'localtasks.json');
-const goalFile = join(tmp, 'timegoals.json');
 const dir = join(tmp, 'projG');
 mkdirSync(dir, { recursive: true });
 process.env.NX_KV_LOCALTASK_STORE = storeFile;
-process.env.NX_KV_TIMEGOAL_STORE = goalFile;
 // 隔离登录态：指向不存在的配置，保证远程发现稳定走「未登录」分支（不触网）
 process.env.NX_KV_CONFIG = join(tmp, 'config.json');
 
 process.on('exit', () => {
+  try {
+    svc.resetLocaltaskStore();
+  } catch {
+    /* 忽略 */
+  }
   try {
     rmSync(tmp, { recursive: true, force: true });
   } catch {
@@ -44,30 +48,41 @@ const key = svc.normalizeCwd(dir).key;
 const PROMPT = '把 nx-kv 面板的视觉再收一遍';
 
 async function reset() {
-  svc.resetLocaltaskStore();
-  rmSync(goalFile, { force: true });
+  svc.resetLocaltaskStore(); // 库删掉，goal blob 随之消失（同一份 nxkv.db）
 }
 
-// 把 store 里某个 goal 的 deadline 挪到过去（模拟"已经到点"）
-function expireGoal(k, agoSec = 3600) {
-  const raw = JSON.parse(readFileSync(goalFile, 'utf8'));
-  const past = new Date(Date.now() - agoSec * 1000);
-  raw.goals[k].startedAt = tgsvc.stampNow(past);
-  raw.goals[k].deadline = tgsvc.stampNow(new Date(past.getTime() - 60 * 1000));
-  writeFileSync(goalFile, JSON.stringify(raw, null, 2), 'utf8');
+// 读队列级 goal 的 blob（settings 表）
+async function readBlob(k) {
+  const { getDb } = await import('../../src/core/db/index.js');
+  const row = getDb().get('SELECT value FROM settings WHERE key = ?', ['tg.cwd.' + k]);
+  return row ? JSON.parse(row.value) : null;
+}
+
+async function writeBlob(k, blob) {
+  const { getDb } = await import('../../src/core/db/index.js');
+  getDb().run('UPDATE settings SET value = ? WHERE key = ?', [JSON.stringify(blob), 'tg.cwd.' + k]);
+}
+
+// 把某个 goal 的 deadline 挪到过去（模拟"已经到点"）
+async function expireGoal(k, agoSec = 3600) {
+  const blob = await readBlob(k);
+  const past = Date.now() - agoSec * 1000;
+  blob.startedAtMs = past;
+  blob.deadlineMs = past - 60 * 1000;
+  await writeBlob(k, blob);
 }
 
 // 把 deadline 挪到 inSec 秒后（模拟"再等一会儿就到点"）
-function setDeadlineIn(k, inSec) {
-  const raw = JSON.parse(readFileSync(goalFile, 'utf8'));
-  raw.goals[k].deadline = tgsvc.stampNow(new Date(Date.now() + inSec * 1000));
-  writeFileSync(goalFile, JSON.stringify(raw, null, 2), 'utf8');
+async function setDeadlineIn(k, inSec) {
+  const blob = await readBlob(k);
+  blob.deadlineMs = Date.now() + inSec * 1000;
+  await writeBlob(k, blob);
 }
 
 test('目标在等待期间到点：wait 立刻收尾（cancelled + reason=goal_expired）', async () => {
   await reset();
   await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
-  setDeadlineIn(key, 2); // 等待开始时还在跑，2 秒后到点
+  await setDeadlineIn(key, 2); // 等待开始时还在跑，2 秒后到点
 
   const t0 = Date.now();
   const r = await waitForTask({
@@ -139,7 +154,7 @@ test('这个目录没有时间目标：wait 照常阻塞（探针 fail-open，�
 test('目标到点但队列里还有任务：照常领走（到点不该把已排好的任务扣住）', async () => {
   await reset();
   await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
-  setDeadlineIn(key, 2);
+  await setDeadlineIn(key, 2);
   await svc.addTask({ cwd: dir, text: '队列里排着的任务' });
 
   const r = await waitForTask({ cwd: dir, summary: '有活先干', timeoutSec: 1, open: false });
@@ -150,14 +165,14 @@ test('目标到点但队列里还有任务：照常领走（到点不该把已�
   assert.ok(r.instruction.includes('规划计划'), 'instruction 含默认模板的收尾指令');
 });
 
-test('goal 存活时 wait 的 instruction 携带目标状态（默认模板），且只读不落盘', async () => {
+test('goal 存活时 wait 的 instruction 携带目标状态（默认模板），且只读不落库', async () => {
   await reset();
   await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
   await svc.addTask({ cwd: dir, text: 'BODY' });
 
-  const before = readFileSync(goalFile, 'utf8');
+  const before = JSON.stringify(await readBlob(key));
   const r = await waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
-  const after = readFileSync(goalFile, 'utf8');
+  const after = JSON.stringify(await readBlob(key));
 
   assert.equal(r.status, 'ok');
   assert.equal(r.task.text, 'BODY', 'task.text 保持库存原文');
@@ -167,7 +182,7 @@ test('goal 存活时 wait 的 instruction 携带目标状态（默认模板）�
   );
   assert.ok(r.instruction.includes('规划计划'), '收尾指令在 goal 段之后');
   assert.ok(!r.instruction.includes(PROMPT), '默认模板不携带 prompt 原文（投递保持轻量；prompt 走 check 回显）');
-  assert.equal(after, before, 'wait 渲染不许写 timegoal store（showTimegoal 只读契约）');
+  assert.equal(after, before, 'wait 渲染不许写库（showTimegoal 只读契约）');
 });
 
 test('自定义模板含 {{goal.prompt}}：prompt 原文逐字嵌入（防漂移契约的字符串学保证）', async () => {
@@ -188,7 +203,7 @@ test('自定义模板含 {{goal.prompt}}：prompt 原文逐字嵌入（防漂移
 test('goal 已到点：instruction 显示已到点（信息性），领取不受影响', async () => {
   await reset();
   await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
-  expireGoal(key); // 等待开始前就到点了
+  await expireGoal(key); // 等待开始前就到点了
   await svc.addTask({ cwd: dir, text: '到期后的活' });
 
   const r = await waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
@@ -213,19 +228,19 @@ test('全局池投递也渲染等待方目录的 goal（goal 属于等待中的 
   );
 });
 
-test('probeGoalExpiry：只读、不改状态（探针不写盘、不归档）', async () => {
+test('probeGoalExpiry：只读、不改状态（探针不写库、不归档）', async () => {
   await reset();
   await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
 
-  const before = readFileSync(goalFile, 'utf8');
+  const before = JSON.stringify(await readBlob(key));
   const live = await tgsvc.probeGoalExpiry(key);
   assert.equal(live.reached, false);
   assert.equal(live.key, key);
   assert.equal(live.name, 'projG');
   assert.ok(live.deadlineMs > Date.now() - 1000, '探针给出可比较的截止时刻');
-  assert.equal(readFileSync(goalFile, 'utf8'), before, '探针不许写盘');
+  assert.equal(JSON.stringify(await readBlob(key)), before, '探针不许写库');
 
-  expireGoal(key);
+  await expireGoal(key);
   const dead = await tgsvc.probeGoalExpiry(key);
   assert.equal(dead.reached, true, '过了 deadline 就算到点');
   assert.equal(await tgsvc.probeGoalExpiry('no-such-key'), null, '没有目标 → null');

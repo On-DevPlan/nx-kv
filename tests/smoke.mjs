@@ -20,9 +20,6 @@ const cfgPath = join(tmp, 'config.json');
 process.env.NX_KV_CONFIG = cfgPath;
 // 附件本地镜像目录也指向临时目录：绝不在测试里往真实的 ~/.nx-kv/attachments/ 写东西
 process.env.NX_KV_ATTACHMENTS = join(tmp, 'attachments');
-// 收尾指令模板渲染会读 timegoal store（readGoalCtx → showTimegoal 只读）——隔离掉，
-// 绝不在测试里碰真实的 ~/.nx-kv/timegoals.json（env 经 cli() 的 spread 传给子进程）
-process.env.NX_KV_TIMEGOAL_STORE = join(tmp, 'timegoals.json');
 // 仓库登记与文档树同样指向临时目录：docs 落盘绝不碰真实的 ~/.nx-kv/docs/
 process.env.NX_KV_REPOS_STORE = join(tmp, 'repos.json');
 process.env.NX_KV_DOCS_DIR = join(tmp, 'docs');

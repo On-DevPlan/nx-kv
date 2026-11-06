@@ -1,94 +1,86 @@
 // 任务模板：MD 工作台「新建页」的起始正文。
 //
-// 存 ~/.nx-kv/templates.json（NX_KV_TEMPLATES_STORE 可覆盖，测试隔离）。
-// 与本机队列一样是**本机数据**：不进云端、不随工作空间走。内置一条默认模板
-// （不可删，可被设为默认的其他模板顶替——删掉的模板若是默认，默认回落到内置）。
+// 存储是 `templates` 表（T06 起进库；templates.json 已消失，legacy 由
+// core/db/import-json 的 importTemplates 迁入 —— values→vars、id 原样）。
+// 与本机队列一样是**本机数据**：不进云端、不随工作空间走。
 //
-// 模板正文是 Markdown，第一行若写 `# 标题`，提交时就是任务标题（与 md-parse
-// 的 titleFromMd 约定一致）。内置正文刻意与前端 md-parse 的 NEW_TEMPLATE 保持
-// 同构——那是 API 不可达时（版本偏差）前端的兜底，两边谁先改都不破坏行为。
+// 内置模板（`builtin=1`，由 core/db/seed-templates 在开库时 INSERT OR IGNORE
+// seed，永远在场）：**不可删，可编辑**。T06 起骨架也可改 —— 用户改了
+// builtin 的 body / 槽位后重启原样保留（seed 是 OR IGNORE，绝不覆盖用户编辑）。
+// 内置正文出厂态仍与前端 md-parse 的 NEW_TEMPLATE 保持同构 —— 那是 API
+// 不可达时（版本偏差）前端的兜底，两边谁先改都不破坏行为。
+//
+// ── 与 schema 列的映射 ────────────────────────────────────────────────
+//   旧 JSON 字段            → 列
+//   values（槽位值对象）     → vars（JSON；**列名换了**，对外视图仍叫 values ——
+//                              调用方与测试一行不改；vars_schema 声明「有哪些变量」，
+//                              vars 填值，声明里不放默认值）
+//   builtin                 → builtin 列
+//   defaultId               → 同类目 `is_default=1` 的那行（ux_templates_default
+//                              保证每类目最多一个默认；**没有**另落 settings 键 ——
+//                              任务书原定 `tpl.defaultId`，实际用 is_default 列：
+//                              它就是为这个语义建的列，且部分索引免费给「每类目
+//                              唯一」的约束，settings 键反而多出一个无约束的真相源）
+//   —                       → category 固定 'newtask'（本文件只管新建页骨架；
+//                              delivery/enhance/context 三个 tab 的内置模板由
+//                              seed 提供，编辑走同一张表）
 import crypto from 'node:crypto';
-import fsp from 'node:fs/promises'; // 仅用于读用户 --body-file（store 读写已走 json-store）
+import fsp from 'node:fs/promises'; // 仅用于读用户 --body-file（存储已进库）
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { APP_DIR } from '../../core/paths.js';
 import { badInput, notFound } from '../../core/errors.js';
-import { createJsonStore } from '../../core/json-store.js';
+import { nowMs } from '../../core/db/time.js';
+import { NEWTASK_BODY, NEWTASK_VARS } from '../../core/db/seed-templates.js';
+import repoLayer from './repo/index.js';
 
 export const BUILTIN_ID = 'default';
+const NEWTASK_CATEGORY = 'newtask';
 
-// 与前端 md-parse.js 的 NEW_TEMPLATE 保持同构（见文件头注释）。
-//
-// 正文里的 {{占位符}} 是**模板的槽位**：骨架（章节结构）固定不可改，用户只填
-// 槽位里的文字（设置面板「提示词 / 模板」一栏 / template update --values）。
-// 槽位默认文字放在 BUILTIN_VALUES——渲染时用它填回，于是「不填也能用」。
-const BUILTIN_BODY = `## 背景
+const repo = repoLayer;
 
-{{背景}}
+export const BUILTIN_BODY = NEWTASK_BODY;
+export const BUILTIN_VALUES = { ...NEWTASK_VARS };
 
-## 验收
-- [ ] {{验收}}
+// ─── 视图：行 ⇄ 旧 JSON 形状（调用方消费的是 values/builtin 这些旧字段）──
 
-## 约束
-- {{约束}}
-
-## 附件
-`;
-
-// 内置模板各槽位的默认文字（渲染时的兜底：没填就显示这些）。
-export const BUILTIN_VALUES = {
-  背景: '（一句话说清要改什么）',
-  验收: '…',
-  约束: '…',
-  附件: '',
-};
-
-const builtin = () => ({
-  id: BUILTIN_ID,
-  name: '默认模板',
-  body: BUILTIN_BODY,
-  values: { ...BUILTIN_VALUES },
-  builtin: true,
-});
-
-export function storePath() {
-  return process.env.NX_KV_TEMPLATES_STORE || join(APP_DIR, 'templates.json');
+/** 行 → 旧 store 形状的模板对象（vars 列对外仍叫 values，契约不变）。 */
+function rowToView(row) {
+  const vars = safeParse(row.vars, {});
+  const out = {
+    id: String(row.id),
+    name: String(row.name || ''),
+    body: String(row.body || ''),
+    values: vars,
+    builtin: !!row.builtin,
+  };
+  if (row.category && row.category !== NEWTASK_CATEGORY) out.category = String(row.category);
+  if (row.enabled === 0) out.enabled = false;
+  return out;
 }
 
-function emptyStore() {
-  return { version: 1, defaultId: BUILTIN_ID, templates: [builtin()] };
+function safeParse(text, fallback) {
+  try {
+    const v = JSON.parse(String(text ?? ''));
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
-// 原子写 / 串行队列 / 锁退避收口到 core/json-store.js（任务 #66）。
-// 语义：缺失/损坏 → 出厂态（内置模板兜底）；templates 不是数组（形状不认识）→ 出厂态。
-function normalizeRawStore(data) {
-  if (!data || !Array.isArray(data.templates)) return null;
-  // 内置模板永远在场（被旧版本 store 漏掉时补回）；builtin 标记以代码为准
-  const templates = data.templates.filter((t) => t && t.id && !t.builtin);
-  templates.unshift(builtin());
-  let defaultId = typeof data.defaultId === 'string' ? data.defaultId : BUILTIN_ID;
-  if (!templates.some((t) => t.id === defaultId)) defaultId = BUILTIN_ID;
-  return { version: 1, defaultId, templates };
-}
-
-const store = createJsonStore({
-  path: storePath,
-  empty: emptyStore,
-  normalize: normalizeRawStore,
-});
-
-async function loadStore() {
-  return store.load();
-}
-
-function saveStore(data) {
-  return store.save(data);
+function defaultIdOf(conn) {
+  const row = repo.templates.getDefaultRow(NEWTASK_CATEGORY, conn);
+  return row ? String(row.id) : BUILTIN_ID;
 }
 
 /** 列表视图：templates + defaultId（面板「新建页」按 defaultId 取起始正文） */
 export async function listTemplates() {
-  const store = await loadStore();
-  return { defaultId: store.defaultId, templates: store.templates };
+  return repo.txw((conn) => {
+    const defaultId = defaultIdOf(conn);
+    const templates = repo.templates
+      .listRows(conn)
+      .filter((r) => r.category === NEWTASK_CATEGORY)
+      .map(rowToView);
+    return { defaultId, templates };
+  });
 }
 
 function normalizeName(raw) {
@@ -152,18 +144,38 @@ async function resolveBody({ body, bodyFile } = {}) {
 export async function addTemplate({ name: rawName, body: rawBody, bodyFile, values, setDefault = false } = {}) {
   const name = normalizeName(rawName);
   const body = normalizeBody(await resolveBody({ body: rawBody, bodyFile }));
-  const store = await loadStore();
-  const t = {
-    id: 't_' + crypto.randomBytes(5).toString('hex'),
-    name,
-    body,
-    // 槽位值：正文里 {{名字}} 处填的文字；未给的槽位按正文里的原样渲染
-    values: normalizeValues(values),
-  };
-  store.templates.push(t);
-  if (setDefault) store.defaultId = t.id;
-  await saveStore(store);
-  return { status: 'ok', template: t, defaultId: store.defaultId };
+  const at = nowMs();
+  return repo.txw((conn) => {
+    const t = {
+      id: 't_' + crypto.randomBytes(5).toString('hex'),
+      name,
+      body,
+      // 槽位值：正文里 {{名字}} 处填的文字；未给的槽位按正文里的原样渲染
+      values: normalizeValues(values),
+    };
+    repo.templates.insertIfAbsent(conn, {
+      id: t.id,
+      category: NEWTASK_CATEGORY,
+      name: t.name,
+      body: t.body,
+      varsSchema: [],
+      vars: t.values,
+      isDefault: 0,
+      sortOrder: repo.templates.nextSortOrder(conn, NEWTASK_CATEGORY),
+      builtin: 0,
+      createdAtMs: at,
+      updatedAtMs: at,
+    });
+    const defaultId = setDefault
+      ? t.id
+      : String((repo.templates.getDefaultRow(NEWTASK_CATEGORY, conn) || {}).id || BUILTIN_ID);
+    if (setDefault) repo.templates.setDefault(conn, NEWTASK_CATEGORY, t.id, at);
+    return {
+      status: 'ok',
+      template: rowToView(repo.templates.getRow(t.id, conn)),
+      defaultId,
+    };
+  });
 }
 
 /** 删除模板。内置模板不可删（它是「删光后」的兜底）；删默认则默认回落到内置。 */
@@ -171,51 +183,50 @@ export async function removeTemplate({ id } = {}) {
   const want = String(id || '').trim();
   if (!want) throw badInput('需要模板 id');
   if (want === BUILTIN_ID) throw badInput('内置默认模板不可删除（可新增自己的模板并设为默认）');
-  const store = await loadStore();
-  const idx = store.templates.findIndex((t) => t.id === want);
-  if (idx < 0) throw notFound(`没有 id 为 ${want} 的模板（template list 可查）`);
-  const [removed] = store.templates.splice(idx, 1);
-  const wasDefault = store.defaultId === want;
-  if (wasDefault) store.defaultId = BUILTIN_ID;
-  await saveStore(store);
-  return { status: 'ok', removed, wasDefault, defaultId: store.defaultId };
+  return repo.txw((conn) => {
+    const row = repo.templates.getRow(want, conn);
+    if (!row) throw notFound(`没有 id 为 ${want} 的模板（template list 可查）`);
+    const removed = rowToView(row);
+    const wasDefault = Number(row.is_default) === 1;
+    repo.templates.deleteRow(conn, want);
+    // 删掉的是默认 → 默认回落到内置（把 is_default 也点亮回去，保持
+    // 「每类目恰一个默认」的不变量；与 JSON 时代同一行为）
+    if (wasDefault) repo.templates.setDefault(conn, NEWTASK_CATEGORY, BUILTIN_ID, nowMs());
+    const defaultId = wasDefault
+      ? BUILTIN_ID
+      : String((repo.templates.getDefaultRow(NEWTASK_CATEGORY, conn) || {}).id || BUILTIN_ID);
+    return { status: 'ok', removed, wasDefault, defaultId };
+  });
 }
 
-/** 编辑模板（改名 / 改正文；只改传入的字段）。内置模板不可编辑——它是「删光后」的兜底。 */
+/** 编辑模板（改名 / 改正文 / 改槽位；只改传入的字段）。 */
 export async function updateTemplate({ id, name: rawName, body: rawBody, bodyFile, values } = {}) {
   const want = String(id || '').trim();
   if (!want) throw badInput('需要模板 id');
-  const store = await loadStore();
-  const t = store.templates.find((x) => x.id === want);
-  if (!t) throw notFound(`没有 id 为 ${want} 的模板（template list 可查）`);
-  // 内置模板：**骨架不可改**（它是「删光后」的兜底），但槽位值可填——
-  // 用户要改的从来是「背景/验收」里写什么，不是章节结构本身。
-  if (want === BUILTIN_ID) {
-    if (rawName !== undefined || rawBody !== undefined || bodyFile) {
-      throw badInput('内置默认模板的骨架不可改（可改槽位内容：template update default --values）');
+  const bodyIn = rawBody !== undefined || bodyFile ? await resolveBody({ body: rawBody, bodyFile }) : undefined;
+  return repo.txw((conn) => {
+    const row = repo.templates.getRow(want, conn);
+    if (!row) throw notFound(`没有 id 为 ${want} 的模板（template list 可查）`);
+    const patch = {};
+    if (rawName !== undefined) patch.name = normalizeName(rawName);
+    if (bodyIn !== undefined) patch.body = normalizeBody(bodyIn);
+    if (values !== undefined) {
+      // 内置模板：槽位未给的项回落出厂默认（渲染时的兜底语义与 JSON 时代一致）
+      patch.vars = normalizeValues(values, row.builtin ? BUILTIN_VALUES : rowToView(row).values);
     }
-    if (values === undefined) throw badInput('内置模板只能改槽位内容（--values）');
-    t.values = normalizeValues(values, BUILTIN_VALUES);
-    await saveStore(store);
-    return { status: 'ok', template: t };
-  }
-  if (rawName !== undefined) t.name = normalizeName(rawName);
-  if (rawBody !== undefined || bodyFile) {
-    t.body = normalizeBody(await resolveBody({ body: rawBody, bodyFile }));
-  }
-  if (values !== undefined) t.values = normalizeValues(values, t.values);
-  await saveStore(store);
-  return { status: 'ok', template: t };
+    repo.templates.updateRow(conn, want, patch, nowMs());
+    return { status: 'ok', template: rowToView(repo.templates.getRow(want, conn)) };
+  });
 }
 
 /** 设默认模板：新建页的起始正文换成它。 */
 export async function setDefaultTemplate({ id } = {}) {
   const want = String(id || '').trim();
   if (!want) throw badInput('需要模板 id');
-  const store = await loadStore();
-  const t = store.templates.find((x) => x.id === want);
-  if (!t) throw notFound(`没有 id 为 ${want} 的模板（template list 可查）`);
-  store.defaultId = want;
-  await saveStore(store);
-  return { status: 'ok', defaultId: store.defaultId, template: t };
+  return repo.txw((conn) => {
+    const row = repo.templates.getRow(want, conn);
+    if (!row) throw notFound(`没有 id 为 ${want} 的模板（template list 可查）`);
+    repo.templates.setDefault(conn, NEWTASK_CATEGORY, want, nowMs());
+    return { status: 'ok', defaultId: want, template: rowToView(repo.templates.getRow(want, conn)) };
+  });
 }

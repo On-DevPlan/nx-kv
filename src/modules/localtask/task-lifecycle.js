@@ -347,7 +347,7 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
 // 但如果这个目录挂着**时间目标**，预算到点这一局就该结束了 —— agent 不该在
 // 预算外继续空等（它等的正是"下一条任务"，而预算已经用完）。
 //
-// 探针来自 timegoal 模块（独立 store，NX_KV_TIMEGOAL_STORE）：
+// 探针来自 timegoal 模块（T06 起目标进库：goals / goal_checks 表）：
 //   - 用**动态 import**：两个模块互不依赖是刻意设计（见 timegoal/service.js 的
 //     模块边界说明），这里只在真的 wait 时才按需加载，不给启动路径加负担。
 //   - **fail-open**：加载失败 / 读不到 / 这个目录没有目标 → 一律当作"没有截止

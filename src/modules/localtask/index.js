@@ -168,6 +168,7 @@ function renderPreview(d) {
     `── 开关 ── 回调提示词 ${sw.suffix?.on ? `开（${sw.suffix.count} 条）` : '关'}` +
       ` · ack ${sw.ack?.on ? `开（${sw.ack.count} 条）` : '关'}` +
       ` · 交付上下文 ${sw.deliveryTemplate?.custom ? '自定义' : '内置默认'}` +
+      ` · 附件段 ${sw.attachTemplate?.custom ? '自定义' : '内置默认'}` +
       ` · 持续 get ${d.getLoop?.enabled ? `开（${d.getLoop.waitMinutes} 分钟）` : '关'}`,
   );
   return lines.join('\n');
@@ -742,6 +743,12 @@ export default {
           hint: '交付上下文模板（原始提示词之外那段「组/项目关键路径」怎么写）。占位符：{{task.text}} {{repo.name}} {{repo.intro}} {{repo.introPath}} {{repo.docs}} {{group.name}} {{group.desc}} {{group.intro}} {{group.introPath}} {{group.note}} {{group.peers}} {{group.docs}} {{source}} {{summary}} {{cwd}} {{name}}；段落 {{#repo}}…{{/repo}}、{{#group}}…{{/group}}；外部参数 {{params.k}} 与顶层 {{k}}。置空 = 恢复内置默认模板',
         },
         'reset-delivery-template': { type: 'boolean', hint: '恢复内置默认交付上下文模板' },
+        'attach-template': {
+          type: 'string',
+          hint: '附件段提示词（交付里〔附件〕段的清单与拉取 SOP 怎么写）。占位符：{{task.id}} {{task.text}} {{attach.count}} {{attach.list}} {{attach.sync}}；段落 {{#attachSync}}…{{/attachSync}}（本次跑过云端同步才出现）。置空 = 用内置默认（附件段带本地路径，不能真关掉）',
+        },
+        attachTemplate: { type: 'string', hint: '同 --attach-template（驼峰写法，HTTP body 用）' },
+        'reset-attach-template': { type: 'boolean', hint: '恢复内置默认附件段提示词' },
       },
       run: async (ctx) => {
         const patch = { timeoutSec: ctx.timeout };
@@ -781,6 +788,10 @@ export default {
         // 交付上下文模板（任务 #62）：置空 = 恢复内置默认模板
         if (ctx['delivery-template'] !== undefined) patch.deliveryTemplate = ctx['delivery-template'];
         if (ctx['reset-delivery-template']) patch.deliveryTemplate = '';
+        // 附件段提示词（任务 #82）：置空 = 恢复内置默认
+        const attachTpl = ctx.attachTemplate ?? ctx['attach-template'];
+        if (attachTpl !== undefined) patch.attachTemplate = attachTpl;
+        if (ctx['reset-attach-template']) patch.attachTemplate = '';
         return service.updateSettings(patch);
       },
       render: (s) => {

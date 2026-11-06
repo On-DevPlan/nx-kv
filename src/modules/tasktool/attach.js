@@ -20,6 +20,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename, resolve as resolvePath } from 'node:path';
 import { badInput } from '../../core/errors.js';
+import { renderInstruction } from '../../core/instruction-template.js';
 import { loadConfig, resolveGroupId } from '../../core/config.js';
 import { contentTypeOf, isImageName } from '../../core/fileapi.js';
 import { localIndex as cloudMirrorIndex, syncAttachments } from '../../core/attachstore.js';
@@ -95,21 +96,56 @@ export async function annotateTaskDelivery(task, { sync: allowSync = true } = {}
 export function attachmentInstruction(attachments, sync) {
   const list = Array.isArray(attachments) ? attachments : [];
   if (!list.length) return '';
-  const lines = ['〔附件〕本任务正文引用了附件（嵌入即附件，正文随任务走）:'];
-  for (const a of list) {
-    const kindLabel = a.kind === 'image' ? '图片' : '附件';
-    lines.push(
-      `  - ${kindLabel} ${a.name}: ` +
-        (a.localPath || `未同步到本地（图床 id ${a.id}；nx-kv file sync --ids ${a.id} 可拉到本地）`)
-    );
-  }
-  if (sync) {
-    lines.push(
-      `  同步: 目录 ${sync.dir || '—'} · 下载 ${sync.downloaded || 0} · 跳过 ${sync.skipped || 0}` +
-        (sync.failures && sync.failures.length ? ` · 失败 ${sync.failures.length}` : '')
-    );
-  }
+  const lines = ['〔附件〕本任务正文引用了附件（嵌入即附件，正文随任务走）:', ...list.map(attachmentLine)];
+  const syncText = attachmentSyncText(sync);
+  if (syncText) lines.push(`  同步: ${syncText}`);
   return lines.join('\n');
+}
+
+// 单个附件的默认清单行（attachmentInstruction 与模板渲染共用同一份口径）。
+function attachmentLine(a) {
+  const kindLabel = a.kind === 'image' ? '图片' : '附件';
+  return (
+    `  - ${kindLabel} ${a.name}: ` +
+    (a.localPath || `未同步到本地（图床 id ${a.id}；nx-kv file sync --ids ${a.id} 可拉到本地）`)
+  );
+}
+
+// 同步详情串（模板里 {{attach.sync}}；没跑云端同步 → ''，闸门 {{#attachSync}} 关）。
+function attachmentSyncText(sync) {
+  if (!sync) return '';
+  return (
+    `目录 ${sync.dir || '—'} · 下载 ${sync.downloaded || 0} · 跳过 ${sync.skipped || 0}` +
+    (sync.failures && sync.failures.length ? ` · 失败 ${sync.failures.length}` : '')
+  );
+}
+
+/**
+ * 〔附件〕段渲染（任务 #82 模板化）：
+ *   - 配置了模板（settings.attachTemplate）→ 模板渲染。ctx：{{task.id}}/{{task.text}}、
+ *     {{attach.count}}/{{attach.list}}（清单多行）/{{attach.sync}}（同步详情，空串）、
+ *     段落闸门 {{#attachSync}}…{{/attachSync}}；
+ *   - 空/未配置 → 内置默认（attachmentInstruction，历史输出逐字节不变）；
+ *   - 渲染失败 → 回退内置默认（fail-open：附件路径必须到达 agent）。
+ */
+export function attachInstructionOf(tpl, attachments, sync, task) {
+  const list = Array.isArray(attachments) ? attachments : [];
+  const t = String(tpl || '').trim();
+  if (!t || !list.length) return attachmentInstruction(list, sync);
+  try {
+    const syncText = attachmentSyncText(sync);
+    return renderInstruction(t, {
+      task: task ? { id: task.id, text: String(task.text || '') } : null,
+      attach: {
+        count: list.length,
+        list: list.map(attachmentLine).join('\n'),
+        sync: syncText,
+      },
+      attachSync: syncText ? {} : null, // 闸门：本次跑过云端同步才出现
+    });
+  } catch {
+    return attachmentInstruction(list, sync);
+  }
 }
 
 /**

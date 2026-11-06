@@ -36,7 +36,7 @@ import {
 import { ensureMainPanel, deepLinkUrl, escortPanel } from './panel-escort.js';
 import { ensureTaskGoal, previewTaskGoal } from './taskgoal.js';
 import { readGroupContext } from './groupctx.js';
-import { annotateTaskDelivery, attachmentInstruction } from './attach.js';
+import { annotateTaskDelivery, attachInstructionOf } from './attach.js';
 import * as timegoal from './timegoal.js';
 
 // 跨进程兜底轮询间隔（只定这里的读取节奏；队列写入节奏与它无关）
@@ -47,6 +47,35 @@ function parseStampMs(v) {
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(String(v || ''));
   if (!m) return NaN;
   return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+}
+
+// goal 上下文的**时间运算字段**统一在这里补齐（任务 #82：模板层要能拿剩余/超时做运算，
+// 不能只有人话的 remainingHuman）。目录级 show 自带 reached/remainingSec/overtimeSec；
+// 任务级只有 deadline 戳——同式解析补算。缺哪个补哪个，已有的不覆盖。
+export function enrichGoalTiming(g) {
+  if (!g) return g;
+  let { remainingSec, overtimeSec, reached } = g;
+  remainingSec = Number(remainingSec);
+  overtimeSec = Number(overtimeSec);
+  if (!Number.isFinite(remainingSec) && !Number.isFinite(overtimeSec)) {
+    const ms = parseStampMs(g.deadline);
+    if (Number.isFinite(ms)) {
+      const diff = Math.round((ms - Date.now()) / 1000);
+      remainingSec = diff >= 0 ? diff : 0;
+      overtimeSec = diff >= 0 ? 0 : -diff;
+    }
+  }
+  if (reached === undefined) {
+    if (Number.isFinite(overtimeSec)) reached = overtimeSec > 0;
+    else if (Number.isFinite(remainingSec)) reached = remainingSec <= 0;
+  }
+  if (Number.isFinite(remainingSec)) {
+    g.remainingSec = remainingSec;
+    g.remainingMin = Math.ceil(remainingSec / 60);
+  }
+  if (Number.isFinite(overtimeSec)) g.overtimeSec = overtimeSec;
+  if (reached !== undefined) g.reached = reached;
+  return g;
 }
 
 // ─── 时间目标探针与交付时刻的目标上下文 ──────────────────────────────
@@ -84,6 +113,9 @@ async function readGoalCtx(cwd) {
       name: g.name || show.name || '',
       deadline: g.deadline || '',
       prompt: g.prompt || '',
+      reached: !!show.reached,
+      remainingSec: show.remainingSec,
+      overtimeSec: show.overtimeSec,
       remainingHuman: formatGoalTiming({
         reached: show.reached,
         remainingSec: show.remainingSec,
@@ -127,14 +159,15 @@ export async function buildTaskDelivery(task, suffix, { source, summary, cwd, na
   // 附件标注（任务 #15：正文里的 ![名](fileId) 嵌入 → 附件清单 + 本地路径）。
   // fail-open：标注失败绝不拖垮交付；正文没有引用时 annotateTaskDelivery 返回
   // null，载荷与改造前**逐字节一致**（与 todo 读任务的同一条纪律）。
-  let attSeg = '';
+  // 〔附件〕段本身等 settings 读到后再渲染（模板可配，任务 #82）——标注先行。
+  let att = null;
   let attSync = null;
   try {
-    const att = await annotateTaskDelivery(task, { sync: !preview });
-    if (att) {
-      task = att.task;
-      attSeg = attachmentInstruction(att.task.attachments, att.sync);
-      attSync = att.sync;
+    const a = await annotateTaskDelivery(task, { sync: !preview });
+    if (a) {
+      task = a.task;
+      att = a;
+      attSync = a.sync;
     }
   } catch {
     /* 标注失败照常交付（agent 还能从正文里的嵌入自行处理） */
@@ -165,7 +198,7 @@ export async function buildTaskDelivery(task, suffix, { source, summary, cwd, na
             startedAtMs: parseStampMs(task.consumedAt) || undefined,
           });
     }
-    const goal = taskGoalCtx || (await readGoalCtx(cwd));
+    const goal = enrichGoalTiming(taskGoalCtx || (await readGoalCtx(cwd)));
 
     // 项目组上下文（组概念 + 本项目位置 + 兄弟成员 + 参考文件地址）：
     // 只进 instruction，**task.text 保持库存原文**——todo 的口径是
@@ -176,6 +209,11 @@ export async function buildTaskDelivery(task, suffix, { source, summary, cwd, na
     // ctx，模板里 {{k}} 直接取——引擎支持平面扩展。
     const groupCtx = await readGroupContext(cwd);
     const settings = await getSettings().catch(() => null);
+    // 〔附件〕段：配置了模板（settings.attachTemplate）按模板渲染（ctx 见设置页
+    // 「变量字典」），空 = 内置默认（历史输出逐字节不变）。
+    const attSeg = att
+      ? attachInstructionOf(settings && settings.attachTemplate, att.task.attachments, att.sync, att.task)
+      : '';
     const deliveryTpl = (settings && settings.deliveryTemplate) || DEFAULT_DELIVERY_TEMPLATE;
     const groupText = renderDelivery(
       deliveryTpl,

@@ -112,3 +112,32 @@ test('草稿也能预览（id=0，不读库存）', async () => {
   assert.match(pre.rendered, /草稿任务/);
   assert.match(pre.rendered, /还没提交/);
 });
+
+test('附件段模板可配：自定义进交付、开关如实、置空回默认（#82）', async () => {
+  await svc.updateSettings({ taskSuffix: [], ackPrompt: [] });
+  const added = await svc.addTask({ cwd: dir, text: '# 任务戊\n\n看图 ![截图](abcdef0123456789)' });
+
+  const pre0 = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
+  assert.match(pre0.instruction, /〔附件〕/, '默认走内置附件段');
+  assert.equal(pre0.switches.attachTemplate.custom, false);
+
+  await svc.updateSettings({ attachTemplate: '【附件 SOP】共 {{attach.count}} 个：\n{{attach.list}}' });
+  const pre1 = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
+  assert.match(pre1.instruction, /【附件 SOP】共 1 个/, '自定义模板渲染进交付');
+  assert.match(pre1.instruction, /abcdef0123456789/, '附件 id 在清单里');
+  assert.doesNotMatch(pre1.instruction, /〔附件〕本任务正文引用了附件/, '内置默认不再出现');
+  assert.equal(pre1.switches.attachTemplate.custom, true);
+
+  await svc.updateSettings({ attachTemplate: '' });
+  const pre2 = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
+  assert.match(pre2.instruction, /〔附件〕/, '置空 = 回到内置默认（附件段关不掉）');
+});
+
+test('模板设置落盘后重读不丢（store-io 白名单回归，#82）', async () => {
+  // loadStore cache=false：每次都重读盘并过白名单重建——之前 deliveryTemplate 不在
+  // 白名单里，保存成功、下一次 load 即被剥掉（重启即丢），这里钉死两个模板键。
+  await svc.updateSettings({ deliveryTemplate: 'DLV-{{task.id}}', attachTemplate: 'ATT-{{attach.count}}' });
+  const s = await svc.getSettings();
+  assert.equal(s.deliveryTemplate, 'DLV-{{task.id}}');
+  assert.equal(s.attachTemplate, 'ATT-{{attach.count}}');
+});

@@ -471,3 +471,41 @@ T1/T4/T5 的核心断言**已复核属实**（store 隔离端到端实测通过�
 - [x] **数据侧待用户定夺**（非代码）：fr/mobile、ve/workspace 的归属如确非所愿，在
   面板侧栏「归入」取消勾选即可；nx 组的定位文案「按前缀「nx」自动归组」是前缀规则
   废除后的陈旧描述，建议顺手更新。
+
+### 提示词模板聚合：变量字典页 + 附件段可配 + goal 时间运算（2026-11-06 #82，reopen #65）
+
+- [x] **反馈**（reopen #65）：设置页聚合**所有**提示词模板与占位符到一个模块；第一页 =
+  变量字典（每个变量的含义：原始任务、timegoal「必须满足 {xx} 分钟」、剩余时间 JS 运算
+  变量、仓库组 / 仓库描述与关键路径、变长列表模板动态渲染）；尽可能把系统变量 / 上下文
+  暴露给模板层，让用户自建 get 返回字符串；代码层面整个队列接收一个对象（变量 + 启用
+  配置），责任链模式；最好用开源标准模板语法、导入标准库。
+- [x] **变量字典页**（prompts-section.jsx 首页，默认选中）：模板清单表（七份模板各管什么、
+  在哪配——交付上下文 / 回调 / ack / 附件 / 任务模板在设置页，getLoop 在项目级设置，
+  任务级 check 系统内置暂不可配）+ 四张变量表：通用（task/source/summary/cwd/name/
+  params）、项目 / 组（repo.* / group.* / groups 与各自 {{#…}} 闸门）、时间目标（goal.*）、
+  附件段（attach.*）。页头写清占位符语法：Mustache 同形子集、段落闸门、列表预拼接、
+  空壳组整段不渲染。
+- [x] **附件段模板化**：settings.attachTemplate（≤4000 字，clampAttachTemplate）；
+  attachInstructionOf（attach.js）——配置了按模板渲染（{{attach.count}}/{{attach.list}}/
+  {{attach.sync}} + {{#attachSync}} 闸门 + 通用变量），空 / 未配置 = 内置默认逐字节不变，
+  渲染失败回退内置默认；附件段带本地路径不可关。buildTaskDelivery 里〔附件〕段挪到
+  settings 读到之后渲染（此前在标注阶段就拼死）。设置页新增「附件提示词」子页签
+  （保存 / 恢复默认 + 占位符速查）。
+- [x] **goal 时间运算字段**（wait.js enrichGoalTiming，导出供测试）：remainingSec /
+  remainingMin（ceil）/ overtimeSec / reached——目录级 show 自带就透传，任务级从
+  deadline 戳同式补算；已有字段不覆盖，解析不了就不动，null 原样过。模板层从此能写
+  「剩余不足 N 分钟就先收尾」这类条件。
+- [x] **顺带修掉 #62 遗留 bug**：store-io settings 白名单重建漏 deliveryTemplate——写盘
+  成功、每次读盘重建 settings 时被剥（业务 store cache=false 不缓存），自定义交付模板
+  **从不生效**且静默无报错；用户一直没配过所以无人察觉。deliveryTemplate / attachTemplate
+  两键钉进白名单（带 ⚠️ 注释），回归单测锁死「落盘后重读不丢」。
+- [x] 验收：新增单测 8 例（attach-template 6 + localtask-preview 2，后者含两进程语义的
+  落盘回归）；pnpm test 全绿（lint ✓ + build ✓ + smoke ✓ + unit 638/638）；真机 Chrome
+  探针（隔离 store、端口 7893、?cb=1）：六页签齐全且顺序对、变量字典默认首页、五张表
+  渲染完整（关键变量 remainingSec/Min、overtimeSec、reached、attach.*、#attachSync 全在）、
+  附件模板保存 → toast → **整页刷新后仍在**（白名单读路径实测通过）→ 恢复默认回空。
+- [ ] **明确不做 / 后续**：换 Handlebars 等标准模板库（引依赖 + 语义评审：{{#sec}} 闸门
+  语义与存量模板兼容性要过一遍）；formal 责任链 / 单对象流水线重构（现有 parts[] +
+  trace + switches 已是那条缝的接缝，重构无行为收益）；getLoop 模板聚合进全局设置
+  （它是项目级配置，入口在项目设置页）；任务级 check 指令仍系统内置（发布时固化进
+  timegoal 存储，之后每轮原文回显，可配需要动冻结语义）。

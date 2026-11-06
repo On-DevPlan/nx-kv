@@ -17,11 +17,197 @@ import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
 const MAX_ITEMS = 10; // 与服务端 clampTaskSuffixList / clampAckPromptList 一致
 
 const TABS = [
+  { id: 'vars', label: '变量字典' },
   { id: 'template', label: '任务模板' },
   { id: 'suffix', label: '回调提示词' },
   { id: 'ack', label: 'ack 总结' },
+  { id: 'attach', label: '附件提示词' },
   { id: 'delivery', label: '交付上下文' },
 ];
+
+// ─── 变量字典（任务 #82）─────────────────────────────────────────────
+//
+// 所有提示词模板的占位符都聚在这一页：每份模板管什么、在哪配、能用哪些变量、
+// 每个变量装的是什么。第一页放它——「先认识变量，再动手改模板」。
+
+/** 字典表：两列（变量 / 含义），行数据驱动的纯展示。 */
+function VarsTable({ rows }) {
+  return (
+    <div className="setp-vars-wrap">
+      <table>
+        <tbody>
+          {rows.map(([v, desc]) => (
+            <tr key={v}>
+              <td>
+                <code>{v}</code>
+              </td>
+              <td>{desc}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 模板清单：系统里每份提示词模板的位置与配置入口。 */
+function TemplateMap() {
+  const rows = [
+    ['交付上下文', '任务原文之外的组 / 项目关键路径（介绍、成员、参考文件路径）', '本页「交付上下文」'],
+    ['回调提示词', '领取任务后的收尾指令（可多条，按空行拼接）', '本页「回调提示词」'],
+    ['ack 总结', '完成任务时写总结的格式要求', '本页「ack 总结」'],
+    ['附件提示词', '交付里〔附件〕段的清单与拉取 SOP', '本页「附件提示词」'],
+    ['任务模板', '新建任务的正文骨架（槽位填写）', '本页「任务模板」'],
+    ['持续 get 指令', '项目开启持续 get 后追加的循环指令', '项目级设置（侧栏项目 → 持续 get）'],
+    ['任务级 check 指令', '任务带时间目标（--duration）时的计时 check 要求', '系统内置：发布时固化，暂不可配'],
+  ];
+  return (
+    <div className="setp-vars-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>模板</th>
+            <th>管什么</th>
+            <th>在哪配</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([name, what, where]) => (
+            <tr key={name}>
+              <td>{name}</td>
+              <td>{what}</td>
+              <td>{where}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function VarDictionary() {
+  return (
+    <div className="setp-vars">
+      <div className="setp-note">
+        所有模板共用一套占位符语法（与 Mustache 同形的子集）：<code>{'{{var}}'}</code> 取值；
+        <code>{'{{#sec}}…{{/sec}}'}</code> 是段落闸门——上下文里没有这个键，整段就不出现。
+        列表类变量（成员、文档、附件清单）是预拼接好的多行文本，写进模板即整块展开。
+        空壳组（没有任何可交付内容的组）整段不渲染。
+      </div>
+      <h4>模板清单（都在哪配）</h4>
+      <TemplateMap />
+      <h4>通用变量（所有模板可用）</h4>
+      <VarsTable
+        rows={[
+          ['{{task.id}}', '任务编号'],
+          ['{{task.text}}', '任务正文（逐字）。交付模板含它 = 交付自包含原文'],
+          ['{{source}}', '任务来源：local（本目录队列）/ global（全局共享池）'],
+          ['{{summary}}', '领取方现状（wait/get --summary）'],
+          ['{{cwd}}', '工作目录绝对路径'],
+          ['{{name}}', '目录名'],
+          ['{{params.k}} / {{k}}', '外部参数（--param k=v 平铺传入；内建同名键不被覆盖）'],
+        ]}
+      />
+      <h4>项目 / 组（交付上下文模板）</h4>
+      <VarsTable
+        rows={[
+          ['{{repo.name}} / {{repo.key}}', '仓库名 / 仓库 key（github.com/owner/repo）'],
+          ['{{repo.intro}} / {{repo.introPath}}', '项目介绍正文 / 主篇文件路径'],
+          ['{{repo.docs}}', '项目登记的补充文档清单（多行，可直接读取）'],
+          ['{{#repo}}…{{/repo}}', '闸门：有项目介绍才出现'],
+          ['{{group.name}} / {{group.desc}}', '组名 / 组定位（组描述）'],
+          ['{{group.intro}} / {{group.introPath}}', '组介绍正文 / 主篇路径'],
+          ['{{group.note}}', '本项目在组里的位置（本仓库的组内描述）'],
+          ['{{group.peers}}', '组内成员清单（多行：名字 + 组内描述）'],
+          ['{{group.docs}}', '组绑定参考文件清单（多行，可直接读取）'],
+          ['{{groups}}', '多组归属时其余组的概览（一行一组）'],
+          ['{{#group}} / {{#groupPeers}} / {{#groupDocs}}', '闸门：组在 / 有成员 / 有参考文件才出现'],
+        ]}
+      />
+      <h4>时间目标（回调 / ack / getLoop 模板）</h4>
+      <VarsTable
+        rows={[
+          ['{{goal.name}}', '时间目标名'],
+          ['{{goal.deadline}}', '截止时刻（YYYY-MM-DD HH:mm:ss）'],
+          ['{{goal.prompt}}', '任务级 check 指令原文（任务带 --duration 时固化）'],
+          ['{{goal.remainingHuman}}', '人话时间：「剩 12 分钟」/「已超时 3 分钟」'],
+          ['{{goal.remainingSec}} / {{goal.remainingMin}}', '剩余秒数 / 剩余分钟（向上取整，可做运算比较）'],
+          ['{{goal.overtimeSec}}', '已超时秒数（未超时 = 0）'],
+          ['{{goal.reached}}', '是否已到点'],
+          ['{{#goal}}…{{/goal}}', '闸门：没有时间目标整段消失'],
+        ]}
+      />
+      <h4>附件段（附件提示词模板）</h4>
+      <VarsTable
+        rows={[
+          ['{{attach.count}}', '附件个数'],
+          ['{{attach.list}}', '附件清单（多行：「- 图片 名: 本地路径 / 图床 id 与拉取命令」）'],
+          ['{{attach.sync}}', '本次云端同步详情（目录 · 下载 · 跳过 · 失败）；空串 = 本次没跑同步'],
+          ['{{#attachSync}}…{{/attachSync}}', '闸门：本次跑过云端同步才出现'],
+        ]}
+      />
+    </div>
+  );
+}
+
+/** 附件段提示词（任务 #82）：交付里〔附件〕段的清单与拉取 SOP，可配；空 = 内置默认。 */
+function AttachTemplate() {
+  const toast = useToast();
+  const [text, setText] = useState(null); // null = 还没读
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    api('/api/localtasks')
+      .then((d) => setText(d?.settings?.attachTemplate ?? ''))
+      .catch((e) => toast('读取失败：' + (e.message || e)));
+  }, [toast]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = async (v) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const d = await api('/api/localtasks/setting', { method: 'PATCH', body: { attachTemplate: v ?? '' } });
+      setText(d?.attachTemplate ?? '');
+      toast(v && v.trim() ? '已保存附件段提示词' : '已恢复内置默认附件段');
+    } catch (e) {
+      toast(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="setp-suffix">
+      <div className="setp-row">
+        <span>附件段提示词（〔附件〕段的清单与拉取 SOP；空 = 内置默认，附件段不能关）</span>
+        <button type="button" className="btn ghost sm" onClick={() => save(text)} disabled={busy || text === null}>
+          保存
+        </button>
+        <button type="button" className="btn ghost sm" onClick={() => save('')} disabled={busy || text === null}>
+          恢复默认
+        </button>
+      </div>
+      <textarea
+        className="setp-area"
+        rows={8}
+        value={text ?? ''}
+        placeholder={'留空 = 用内置默认（附件清单 + 本地路径 + 拉取命令）'}
+        disabled={text === null}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <details className="setp-tpl-preview">
+        <summary>可用占位符（完整含义见「变量字典」页）</summary>
+        <pre className="setp-tpl-preview-body">
+          {'{{task.id}} {{task.text}} {{source}} {{summary}} {{cwd}} {{name}}\n{{attach.count}} 附件个数\n{{attach.list}} 附件清单（多行：路径 / 图床 id 与拉取命令）\n{{attach.sync}} 本次同步详情（空串 = 没跑云端同步）\n{{#attachSync}}…{{/attachSync}} 跑过同步才出现的段'}
+        </pre>
+      </details>
+    </div>
+  );
+}
 
 /** 全局提示词列表（回调 / ack 共用一套读写） */
 function GlobalPrompts({ listFlag, listKey, placeholder, offText }) {
@@ -300,7 +486,8 @@ function DeliveryTemplate() {
   );
 }
 export default function PromptsSection({ openTemplates }) {
-  const [tab, setTab] = useState('template');
+  // 第一页 = 变量字典（#82）：先认识有哪些变量，再动手改模板。
+  const [tab, setTab] = useState('vars');
 
   return (
     <div className="setp-prompts">
@@ -318,6 +505,7 @@ export default function PromptsSection({ openTemplates }) {
         ))}
       </nav>
       <div className="setp-prompts-pane">
+        {tab === 'vars' && <VarDictionary />}
         {tab === 'template' && <TemplateSlots openTemplates={openTemplates} />}
         {tab === 'suffix' && (
           <GlobalPrompts
@@ -335,6 +523,7 @@ export default function PromptsSection({ openTemplates }) {
             offText="已关闭 ack 提示词"
           />
         )}
+        {tab === 'attach' && <AttachTemplate />}
         {tab === 'delivery' && <DeliveryTemplate />}
       </div>
     </div>

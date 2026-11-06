@@ -69,6 +69,23 @@ export function clampDeliveryTemplate(v) {
   return s.slice(0, MAX_DELIVERY_TEMPLATE_LEN);
 }
 
+// ─── 附件段提示词（settings.attachTemplate，任务 #82）──────────────────
+//
+// 交付里的〔附件〕段（附件清单 + 本地路径 + 拉取 SOP）原先硬编码在
+// tasktool/attach.js 的 attachmentInstruction。模板化后：
+//   - 空串 = 用内置默认（**不是关掉**——附件段带本地路径，关掉 agent 就找不到文件）；
+//   - 占位符：{{task.id}} {{task.text}} {{attach.count}} {{attach.list}}
+//     {{attach.sync}}（详情串：目录/下载/跳过/失败），段落闸门 {{#attachSync}}…{{/attachSync}}
+//     （本次没跑云端同步 → 整段消失）；渲染失败回退内置默认。
+export const MAX_ATTACH_TEMPLATE_LEN = 4000;
+
+export function clampAttachTemplate(v) {
+  if (v === undefined || v === null) return '';
+  const s = String(v).trim();
+  if (!s) return '';
+  return s.slice(0, MAX_ATTACH_TEMPLATE_LEN);
+}
+
 export function clampAckPromptList(v) {
   if (v === undefined || v === null) return [];
   const raw = Array.isArray(v) ? v : [v];

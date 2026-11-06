@@ -90,6 +90,7 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params } = 
       suffix: { on: suffixList.length > 0, count: suffixList.length },
       ack: { on: ackList.length > 0, count: ackList.length },
       deliveryTemplate: { custom: !!(settings.deliveryTemplate || '').trim() },
+      attachTemplate: { custom: !!(settings.attachTemplate || '').trim() },
       attachments: delivery.attachmentsSync ? { synced: delivery.attachmentsSync } : null,
     },
   };

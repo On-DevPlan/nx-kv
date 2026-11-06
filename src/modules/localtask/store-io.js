@@ -7,7 +7,7 @@
 import { basename } from 'node:path';
 import { badInput } from '../../core/errors.js';
 import { createJsonStore } from '../../core/json-store.js';
-import { DEFAULT_TASK_SUFFIX, clampTaskSuffixList, clampAckPromptList } from './task-templates.js';
+import { DEFAULT_TASK_SUFFIX, clampTaskSuffixList, clampAckPromptList, clampDeliveryTemplate, clampAttachTemplate } from './task-templates.js';
 import { storePath, legacyStorePath } from './paths.js';
 export const DEFAULT_TIMEOUT_MS = 180_000; // 阻塞默认 3 分钟（推荐值）
 export const DEFAULT_TIMEOUT_SEC = 180; // 推荐阻塞时长（3 分钟）
@@ -121,6 +121,15 @@ function normalizeRawStore(data) {
       ackPrompt: settings && Object.prototype.hasOwnProperty.call(settings, 'ackPrompt')
         ? clampAckPromptList(settings.ackPrompt)
         : [],
+      // 交付上下文模板（#62）/ 附件段提示词（#82）：字段存在才认，缺省 = 空（用内置默认）。
+      // ⚠️ 白名单里必须有这两个键——之前 deliveryTemplate 漏在这里，写盘成功、读时被
+      // 剥掉，serve 重启即静默丢失（#82 两进程实测抓到）。
+      deliveryTemplate: settings && Object.prototype.hasOwnProperty.call(settings, 'deliveryTemplate')
+        ? clampDeliveryTemplate(settings.deliveryTemplate)
+        : '',
+      attachTemplate: settings && Object.prototype.hasOwnProperty.call(settings, 'attachTemplate')
+        ? clampAttachTemplate(settings.attachTemplate)
+        : '',
     },
     topics,
   };

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as repos from '../../src/modules/repos/service.js';
 import * as boards from '../../src/modules/repos/boards.js';
+import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
 
 let dir = '';
 
@@ -23,6 +24,7 @@ beforeEach(() => {
 });
 
 test.after?.(() => {
+  try { closeDb(); } catch { /* 尚未打开 */ }
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* 忽略 */ }
 });
 
@@ -206,8 +208,9 @@ test('组内描述：挂在成员关系上，非成员报错，摘出成员时�
   await boards.assignRepo({ id: a, board: board.id, remove: true });
   d = await boards.listBoards();
   assert.ok(!d.boards.find((x) => x.name === '常用').repos.some((r) => r.name === 'alpha'));
-  const raw = JSON.parse(await (await import('node:fs/promises')).readFile(process.env.NX_KV_REPOS_STORE, 'utf8'));
-  const stored = raw.boards.find((x) => x.name === '常用');
+  // 存储已库化（T05）：读「已摘成员不留孤儿键」改从 loadStore 断言
+  // （repo_group_members.note 随成员边重建，占位/真实成员都不留已摘成员的键）。
+  const stored = (await repos.loadStore()).boards.find((x) => x.name === '常用');
   assert.ok(!stored.repoNotes || !stored.repoNotes[a], 'repoNotes 里不留已摘成员的键');
 });
 

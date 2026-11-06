@@ -11,59 +11,224 @@
 // （见 git.js / ref.js）——它的价值就是「把远程仓库抓到本机参考并保持新鲜」。
 import { basename, join, resolve } from 'node:path';
 import fsp from 'node:fs/promises';
-import { APP_DIR } from '../../core/paths.js';
-import { createJsonStore } from '../../core/json-store.js';
 import { openPath } from '../../core/open.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
 import { sanitizeDocRef, withLinkMeta } from '../docs/docref.js';
 import { sanitizeGetLoop } from '../tasktool/getloop.js';
+import { listDocFiles } from '../../core/db/import-json.js';
+import { nowMs } from '../../core/db/time.js';
+import { APP_DIR } from '../../core/paths.js';
+import repoLayer from './repo/index.js';
+import {
+  SENTINEL_REPO_KEY,
+  REPO_EXT,
+  GROUP_EXT,
+  parseExt,
+  jsonText,
+  msOfAny,
+  compact,
+  repoRowToStore,
+  groupRowToStore,
+} from './repo/rows.js';
 
-// ─── 存储（NX_KV_REPOS_STORE 可覆盖；测试隔离）──────────────────────────
-// 独立文件，不塞进 localtasks.json：仓库登记的写频率低、内容性质不同
-// （它是"这台机器上有什么"，而 localtask 是"队列里有什么"）。
-export function storePath() {
-  return process.env.NX_KV_REPOS_STORE || join(APP_DIR, 'repos.json');
-}
+// ─── 存储（SQLite，T05）────────────────────────────────────────────────
+//
+// repos.json 的读写已消失：登记与看板落 `repos` 表（组 = type='group'），成员边落
+// `repo_group_members`，队列绑定落 `topics.repo_key`。JSON 形态的 store
+//（{repos, boards}）在这里按需组装/落库 —— docs 域经 repos-bridge 消费的
+// 正是这层形状，存储切换对它完全透明。
+//
+// 为什么保留 loadStore/mutateStore 的形状：repos 域写频率低、数据量小
+//（几十个仓库），「读全量 → 同步改 → 一个事务落回」在这里不是热路径
+//（localtask 那种 0.5s 轮询才必须拆掉 mutate）。它同时保住了两样东西：
+// docs 域 33 个调用点零改动；boards/ref/transfer 的多实体联动写一个事务搞定。
+// 窄方法（repo/repos.js / repo/refs.js）承担单实体路径与跨表绑定。
 
-function emptyStore() {
-  return { version: 1, repos: [], boards: [] };
-}
+const repo = repoLayer;
 
-// 原子写 / 串行队列 / EPERM 退避收口到 core/json-store.js（任务 #66，SQLite 迁移只换那层）。
-// 语义：缺失或损坏 → 空 store（无隔离备份，本 store 写频率低、可重建）；形状不认识 → 空 store。
-function normalizeRawStore(data) {
-  if (!data || typeof data !== 'object') return null;
+/**
+ * JSON 形态 store 的组装（同步；事务内复用 —— mutateStore 用它读当前态）。
+ * 哨兵仓库不进 store（隐藏：不是用户登记的仓库，面板/导出/上下文都看不见它）。
+ */
+function assembleStore(conn) {
+  const repoRows = repo.repos.listRepoRows(conn);
+  const groupRows = repo.repos.listGroupRows(conn);
+  const members = repo.repos.listAllMembers(conn);
   const store = {
-    // v2 起 store 携带文档绑定字段（doc / docLinks / repoDocs，DocRef 形状）
     version: 2,
-    repos: Array.isArray(data.repos) ? data.repos : [],
-    boards: Array.isArray(data.boards) ? data.boards : [],
-    // prefixGroups（前缀分组规则）已废除（2026-11-02）：规则改一次性命令
-    // （board prefix），命中结果固化成显式成员（repoKeys），盘上残留字段下次
-    // 落盘时随本白名单一起丢弃。
+    repos: repoRows.map((row) => repoRowToStore(row)),
+    boards: groupRows.map((row) => groupRowToStore(row, members)),
   };
+  // v2 文档绑定归一：非法 DocRef 形状直接丢弃（ext 里的脏数据不炸读取）。
   normalizeDocRefs(store);
   return store;
 }
 
-const store = createJsonStore({
-  path: storePath,
-  empty: emptyStore,
-  normalize: normalizeRawStore,
-});
-
-export function saveStore(data) {
-  return store.save(data);
+export async function loadStore() {
+  return assembleStore(repo.db());
 }
 
-export async function loadStore() {
-  const s = await store.load();
-  // 老结构（看板成员存随机 id）→ 新结构（存 key）：读时改写并落盘。
-  // 放这里 = 唯一入口，任何读路径都自动看到迁移后的数据。
-  if (migrateStoreKeys(s)) {
-    await saveStore(s).catch(() => {});
+// 读-改-写事务：fn 直接修改传入的深拷贝；fn 抛错则不落库。
+// fn 必须同步（事务体同步是硬约束）；返回值原样透传给调用方。
+// 导出给 boards.js / docs 域（经 repos-bridge）用，不重复实现一遍。
+export async function mutateStore(fn) {
+  return repo.txw((conn) => {
+    const cur = assembleStore(conn);
+    const draft = structuredClone(cur);
+    const out = fn(draft);
+    persistStore(conn, draft);
+    return out;
+  });
+}
+
+/** 整份 store 落库（一个事务）。测试与批量导入用；常规写走 mutateStore。 */
+export async function saveStore(data) {
+  return repo.txw((conn) => persistStore(conn, data));
+}
+
+// ─── 落库（JSON 形态 → 行）────────────────────────────────────────────
+
+/** JSON 形态登记对象 → repos 行。key 缺失时现算（与 JSON 时代同一兜底）。 */
+function repoToRow(r, atMs) {
+  const key = String(r.key || deriveKey(r) || '').trim();
+  if (!key) throw badInput('key 不能为空');
+  const remotes = Array.isArray(r.remotes) ? r.remotes.map((x) => String(x).trim()).filter(Boolean) : [];
+  const linked = Array.isArray(r.linked)
+    ? r.linked.filter((l) => l && typeof l === 'object' && l.kind && l.id).map((l) => ({ kind: String(l.kind), id: String(l.id), ...(l.note ? { note: String(l.note) } : {}) }))
+    : [];
+  const ext = compact({
+    [REPO_EXT.LEGACY_ID]: r.id ? String(r.id) : undefined,
+    [REPO_EXT.LEGACY_TYPE]: r.type === 'ref' ? 'ref' : 'dev',
+    [REPO_EXT.NOTES]: r.notes ? String(r.notes) : undefined,
+    [REPO_EXT.ICON]: r.icon ? String(r.icon) : undefined,
+    [REPO_EXT.REMOTES]: remotes.length ? remotes : undefined,
+    [REPO_EXT.KEY_CUSTOM]: r.keyCustom ? 1 : undefined,
+    [REPO_EXT.KEY_UPDATED_AT]: r.keyUpdatedAt ? String(r.keyUpdatedAt) : undefined,
+    [REPO_EXT.LINKED]: linked.length ? linked : undefined,
+    [REPO_EXT.GETLOOP]: r.getLoop && typeof r.getLoop === 'object' ? r.getLoop : undefined,
+    [REPO_EXT.DOC]: r.doc && typeof r.doc === 'object' ? r.doc : undefined,
+    [REPO_EXT.DOC_LINKS]: Array.isArray(r.docLinks) && r.docLinks.length ? r.docLinks : undefined,
+  });
+  return {
+    key,
+    type: 'repo',
+    name: String(r.name || key),
+    description: String(r.desc ?? ''),
+    path: String(r.path ?? ''),
+    remote: String(r.remote ?? ''),
+    ext: jsonText(ext),
+    legacyId: r.id ? String(r.id) : null,
+    createdAtMs: msOfAny(r.addedAt, atMs),
+    updatedAtMs: msOfAny(r.updatedAt, atMs),
+  };
+}
+
+/**
+ * JSON 形态看板对象 → 组行 + 真实成员边。
+ *
+ * key：冻结（b.key 优先，缺省 boardKeyOf(name)）—— 改名后 key 不变，
+ * 成员边 / ref 绑定 / topics.group_key 的引用跟着冻结 key 走。
+ * 占位成员（本机没有登记的 key）进不了 repo_group_members（FK 拒绝）→
+ * 落 ext.ext_placeholders，读时按 pos 合并还原数组序。
+ */
+function groupToRow(b, atMs, knownRepoKeys) {
+  const key = String(b.key || boardKeyOf(b.name) || '').trim();
+  if (!key) throw badInput('看板 key 不能为空');
+  if (key === SENTINEL_REPO_KEY) throw badInput('哨兵仓库不能入组: ' + SENTINEL_REPO_KEY);
+  const repoKeys = Array.isArray(b.repoKeys) ? b.repoKeys.map((k) => String(k || '').trim()).filter(Boolean) : [];
+  const notes = b.repoNotes && typeof b.repoNotes === 'object' ? b.repoNotes : {};
+  const members = [];
+  const placeholders = [];
+  const seen = new Set();
+  repoKeys.forEach((rk, position) => {
+    if (seen.has(rk)) return; // 重复成员去重（位次取首次出现）
+    seen.add(rk);
+    if (rk === SENTINEL_REPO_KEY) throw badInput('哨兵仓库不能入组: ' + SENTINEL_REPO_KEY);
+    if (knownRepoKeys.has(rk)) members.push({ repoKey: rk, position, note: String(notes[rk] ?? '') });
+    else placeholders.push({ key: rk, note: String(notes[rk] ?? ''), pos: position });
+  });
+  const hints = b.repoHints && typeof b.repoHints === 'object' ? b.repoHints : null;
+  const repoDocs = b.repoDocs && typeof b.repoDocs === 'object' && Object.keys(b.repoDocs).length ? b.repoDocs : null;
+  const docLinks = Array.isArray(b.docLinks) && b.docLinks.length ? b.docLinks : null;
+  const ext = compact({
+    [GROUP_EXT.LEGACY_ID]: b.id ? String(b.id) : undefined,
+    [GROUP_EXT.REPO_HINTS]: hints ? hints : undefined,
+    [GROUP_EXT.PLACEHOLDERS]: placeholders.length ? placeholders : undefined,
+    [GROUP_EXT.DOC]: b.doc && typeof b.doc === 'object' ? b.doc : undefined,
+    [GROUP_EXT.DOC_LINKS]: docLinks ? docLinks : undefined,
+    [GROUP_EXT.REPO_DOCS]: repoDocs ? repoDocs : undefined,
+  });
+  return {
+    key,
+    type: 'group',
+    name: String(b.name || key),
+    description: String(b.desc ?? ''),
+    path: '',
+    remote: '',
+    ext: jsonText(ext),
+    legacyId: b.id ? String(b.id) : null,
+    members,
+    createdAtMs: msOfAny(b.createdAt, atMs),
+    updatedAtMs: atMs,
+  };
+}
+
+/**
+ * 整份 JSON 形态 store 落库（**必须在事务内**调用）。
+ *
+ * 行身份 = ext.ext_legacy_id（r_xxx / b_xxx，本机行主键）：key 变了（改 key /
+ * 改组名后 key 重派）而 id 没变 → 按 id 找到旧行，UPDATE key 原地改名
+ * （成员边 / 绑定 / topics 外键全部 ON UPDATE CASCADE 跟随）。
+ * 消失的行真删（成员边与绑定级联清）；哨兵仓库不受落库影响（永远在场）。
+ */
+function persistStore(conn, store) {
+  const at = nowMs();
+  const repos = Array.isArray(store && store.repos) ? store.repos : [];
+  const boards = Array.isArray(store && store.boards) ? store.boards : [];
+
+  // 事前行身份表：legacy id → 现落点 key（rename 探测用）
+  const before = conn.all('SELECT key, type, ext FROM repos');
+  const idToKey = new Map();
+  const keySet = new Set();
+  for (const row of before) {
+    keySet.add(String(row.key));
+    const lid = parseExt(row.ext)[REPO_EXT.LEGACY_ID];
+    if (lid) idToKey.set(String(lid), String(row.key));
   }
-  return s;
+
+  // ① 登记（type='repo'）
+  const seenRepoKeys = new Set();
+  for (const r of repos) {
+    const row = repoToRow(r, at);
+    const prior = (row.legacyId && idToKey.get(row.legacyId)) || (keySet.has(row.key) ? row.key : null);
+    if (prior && prior !== row.key) repo.repos.renameRow(conn, prior, row.key, at);
+    repo.repos.upsertRow(conn, row);
+    seenRepoKeys.add(row.key);
+  }
+  for (const k of keySet) {
+    if (k === SENTINEL_REPO_KEY) continue; // 哨兵永远在场，不随 store 落库增删
+    if (!seenRepoKeys.has(k)) repo.repos.deleteRow(conn, k);
+  }
+
+  // ② 组（type='group'）+ 成员边。真实成员的 key 必须已在 repos 表（FK），
+  //    所以成员重建放在登记 upsert 之后。
+  const knownRepoKeys = new Set(
+    conn.all("SELECT key FROM repos WHERE type <> 'group' AND deleted_at IS NULL").map((x) => String(x.key))
+  );
+  const seenGroupKeys = new Set();
+  for (const b of boards) {
+    const row = groupToRow(b, at, knownRepoKeys);
+    const prior = (row.legacyId && idToKey.get(row.legacyId)) || (keySet.has(row.key) ? row.key : null);
+    if (prior && prior !== row.key) repo.repos.renameRow(conn, prior, row.key, at);
+    repo.repos.upsertRow(conn, row);
+    repo.repos.replaceMembers(conn, row.key, row.members, at);
+    seenGroupKeys.add(row.key);
+  }
+  for (const row of before) {
+    const k = String(row.key);
+    if (row.type !== 'group') continue;
+    if (!seenGroupKeys.has(k)) repo.repos.deleteRow(conn, k);
+  }
 }
 
 // v2 文档绑定归一：非法 DocRef 形状直接丢弃（盘上脏数据不炸读取）。
@@ -106,15 +271,6 @@ function normalizeDocRefs(store) {
     if (Object.keys(repoDocs).length) b.repoDocs = repoDocs;
     else delete b.repoDocs;
   }
-}
-
-// 读-改-写事务：fn 直接修改传入的深拷贝；fn 抛错则不落盘。
-// 导出给 boards.js 用（看板与登记共用同一份 store），不重复实现一遍原子写。
-export async function mutateStore(fn) {
-  const cur = structuredClone(await loadStore());
-  const out = fn(cur);
-  await saveStore(cur);
-  return out;
 }
 
 export function newId(prefix) {
@@ -270,9 +426,21 @@ export function dirnameFromRemote(url) {
   return base.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 80) || 'repo';
 }
 
-// 看板的 key（board/<slug(name)>）。看板改名时 key 跟随（看板没有自定义 key 的概念）。
+// 看板的 key（board/<slug(name)>）——**派生函数**（JSON 时代按名字现算）。
+// 库化后组的 key 冻结落库（`group/<slug(初始 name)>`，import 裁决）：看板对象上
+// 多带一个 `key` 字段，定位与导出用冻结 key（storedBoardKey）；本函数保留给
+// 「新建看板时算初始 key」与 docs 模块的路径 slug（口径必须一致）。
 export function boardKeyOf(name) {
   return 'board/' + localKeyOf(name).slice('local/'.length);
+}
+
+/**
+ * 看板的**冻结 key**（身份）：优先库里的 stored key，缺省按名字现算
+ *（JSON 时代形状的兜底——手工构造的 board 对象没有 key 字段）。
+ * 关系引用（组成员、ref 绑定 {kind:'board'}、topics.group_key）一律用它。
+ */
+export function storedBoardKey(b) {
+  return (b && b.key) || boardKeyOf(b && b.name);
 }
 
 /**
@@ -305,37 +473,17 @@ export function boardRepoKeys(board, store) {
 // 直接固化成看板的显式成员（repoKeys），之后与手工挂的成员完全同权。
 // 好处：成员关系只有一个来源，读路径不用再叠加「规则命中」一层。
 
-/** 找看板：按 id → key → 名称依次找；都找不到返回 null */
+/** 找看板：按 id → 冻结 key → 名称依次找；都找不到返回 null */
 export function findBoard(store, ref) {
   const raw = String(ref || '').trim();
   if (!raw) return null;
   const boards = store.boards || [];
   return (
     boards.find((b) => b.id === raw) ||
-    boards.find((b) => boardKeyOf(b.name) === normalizeKey(raw)) ||
+    boards.find((b) => storedBoardKey(b) === normalizeKey(raw)) ||
     boards.find((b) => String(b.name).toLowerCase() === raw.toLowerCase()) ||
     null
   );
-}
-
-/**
- * 老结构（board.repoIds）→ 新结构（board.repoKeys）的一次性**落盘**迁移。
- *
- * boardRepoKeys 的兼容读解决「迁移前也能看清单」，但盘上还是老结构：
- * 每次读都现算，而且仓库登记一变（改名/换 remote），key 就跟着变，
- * 与别处按 key 存的关系对不上。所以读的时候顺手把新结构写回去（幂等）。
- */
-export function migrateStoreKeys(store) {
-  if (!store || !Array.isArray(store.boards)) return false;
-  let changed = false;
-  for (const b of store.boards) {
-    if (Array.isArray(b.repoKeys)) continue; // 已是新结构
-    const ids = Array.isArray(b.repoIds) ? b.repoIds : [];
-    b.repoKeys = ids.length ? boardRepoKeys(b, store) : [];
-    delete b.repoIds;
-    changed = true;
-  }
-  return changed;
 }
 
 /**
@@ -363,7 +511,7 @@ export async function listRepos() {
         id: b.id,
         name: b.name,
         desc: b.desc || '',
-        key: boardKeyOf(b.name),
+        key: storedBoardKey(b),
         note: (b.repoNotes || {})[rk] || '',
         // 组内描述也是文档：前端点「描述」直接开这篇（绑定优先，缺省约定路径）
         noteDocRel: (b.repoDocs || {})[rk]?.rel || groupNoteRel(b.name, rk),
@@ -518,6 +666,18 @@ export async function updateRepo(id, patch) {
 }
 
 export async function removeRepo(id) {
+  // 删仓库前置检查：队列绑定在 topics.repo_key（FK CASCADE）——真删会把
+  // 该仓库下的队列连同任务一起级联掉，这是谁都不预期的副作用，必须先挡。
+  const raw = String(id || '').trim();
+  if (raw) {
+    const k = await resolveRepoKey(raw).catch(() => null);
+    if (k) {
+      const bound = repo.txw((conn) => repo.repos.countTopicsOfRepo(k, conn));
+      if (bound > 0) {
+        throw conflict(`仓库「${k}」下还有 ${bound} 条队列绑定 —— 先解绑（或删除队列）再删除登记`);
+      }
+    }
+  }
   return mutateStore((s) => {
     // 定位：id → key → 绝对路径 → 名称（与 getRepo/updateRepo 同一口径）
     const raw = String(id || '').trim();
@@ -566,7 +726,7 @@ export async function getRepo(idOrPathOrKey) {
   const { repoDocRel } = await import('../docs/paths.js');
   const boards = s.boards
     .filter((b) => boardRepoKeys(b, s).includes(rk))
-    .map((b) => ({ id: b.id, name: b.name, desc: b.desc || '', key: boardKeyOf(b.name) }));
+    .map((b) => ({ id: b.id, name: b.name, desc: b.desc || '', key: storedBoardKey(b) }));
   const { tags: _dropped, ...base } = r;
   return {
     ...base,
@@ -609,7 +769,7 @@ export async function resolveRepoKey(locator) {
   return deriveKey(r);
 }
 
-/** 定位看板的 key：入参可以是 id / key / 名称。 */
+/** 定位看板的 key：入参可以是 id / 冻结 key / 名称派生 key / 名称。 */
 export async function resolveBoardKey(locator) {
   const raw = String(locator || '').trim();
   if (!raw) throw badInput('缺少看板标识（id / key / 名称）');
@@ -617,11 +777,11 @@ export async function resolveBoardKey(locator) {
   let b = s.boards.find((x) => x.id === raw);
   if (!b) {
     const k = normalizeKey(raw);
-    if (k) b = s.boards.find((x) => boardKeyOf(x.name) === k);
+    if (k) b = s.boards.find((x) => storedBoardKey(x) === k);
   }
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!b) throw notFound('看板不存在: ' + raw);
-  return boardKeyOf(b.name);
+  return storedBoardKey(b);
 }
 
 const SKIP_DIRS = new Set([
@@ -762,7 +922,7 @@ export async function contextMap() {
         id: b.id,
         name: b.name,
         desc: b.desc || '',
-        key: boardKeyOf(b.name),
+        key: storedBoardKey(b),
         note: (b.repoNotes || {})[rk] || '',
       });
     }
@@ -792,4 +952,80 @@ export async function findRepoByName(name) {
   if (!nm) return null;
   const s = await loadStore();
   return s.repos.find((r) => String(r.name).toLowerCase() === nm) || null;
+}
+
+// ─── 队列绑定（T05）：把「未绑定」队列按路径前缀 re-point 到真实仓库 ─────
+//
+// 迁移裁决（D3）：legacy 队列全部挂哨兵仓库 `__unbound__`（旧 key 是目录名
+// sha1，对不上任何真实仓库），**不做自动猜绑**——猜错比不猜糟。真实绑定
+// 只有一个写入口：用户显式跑本命令（按登记的仓库路径前缀匹配，最长前缀赢）。
+//
+// **顺序：先建 refs 再绑 topic**（裁决原文）。绑定落库前先跑
+// repo/refs.js 的 rebuildRefIndex 把文档索引（约定路径绑定 + 孤儿清单）
+// 补齐 —— 队列绑到仓库后，面板立刻要展示「这个仓库有哪些文档」，索引
+// 不能等到那时才现建。docs 树扫描（fs）在事务外完成，事务体内只有写库。
+
+/** 文档索引的树根（与 docs/paths 的 NX_KV_DOCS_DIR 覆盖同一口径）。 */
+export function docsIndexRoot() {
+  return process.env.NX_KV_DOCS_DIR || join(APP_DIR, 'docs');
+}
+
+/**
+ * 按路径前缀把哨兵上的队列绑到真实仓库。
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.repo]    仓库标识（id / key / 路径 / 名称）；缺省 = 全部登记仓库
+ * @param {boolean} [opts.apply]  false = 预览（零副作用）；true = 先建 refs 再绑
+ * @returns {{apply, scanned, bound: Array, left: Array, refs?: object}}
+ *   bound  = 命中并绑定的队列（apply=false 时是计划）
+ *   left   = 留在哨兵的队列（cwd 对不上任何仓库 / 全局池）
+ */
+export async function bindTopicsToRepos({ repo: repoLocator = '', apply = false } = {}) {
+  const s = await loadStore();
+  let targets;
+  if (repoLocator) {
+    targets = [await getRepo(repoLocator)];
+  } else {
+    targets = s.repos.filter((r) => r.path);
+  }
+  const prefixes = targets
+    .map((r) => ({ key: deriveKey(r), name: r.name, prefix: normalizePathKey(r.path) }))
+    .filter((x) => x.prefix);
+
+  // docs 树扫描在事务外（fs 不进事务体）
+  const docsFiles = apply ? listDocFiles(docsIndexRoot()) : [];
+
+  const planFor = (conn) => {
+    const topics = repo.repos.listUnboundTopics(conn);
+    const bound = [];
+    const left = [];
+    for (const t of topics) {
+      const nk = normalizePathKey(t.cwd);
+      let hit = null;
+      for (const p of prefixes) {
+        // 相等或在其子目录下；嵌套登记时**最长前缀赢**（更具体的仓库接管）
+        if (nk && (nk === p.prefix || nk.startsWith(p.prefix + '/'))) {
+          if (!hit || p.prefix.length > hit.prefix.length) hit = p;
+        }
+      }
+      if (hit) bound.push({ topicKey: String(t.key), name: String(t.name || ''), cwd: String(t.cwd || ''), repoKey: hit.key, repoName: hit.name });
+      else left.push({ topicKey: String(t.key), name: String(t.name || ''), cwd: String(t.cwd || '') });
+    }
+    return { scanned: topics.length, bound, left };
+  };
+
+  if (!apply) {
+    const plan = repo.txw(planFor);
+    return { apply: false, ...plan };
+  }
+  return repo.txw((conn) => {
+    const refs = repo.refs.rebuildRefIndex(conn, { docsFiles, atMs: nowMs() });
+    const plan = planFor(conn);
+    let changed = 0;
+    for (const b of plan.bound) {
+      const row = conn.get('SELECT id FROM topics WHERE key = :k', { k: b.topicKey });
+      if (row && repo.repos.bindTopicToRepo(conn, row.id, b.repoKey, nowMs())) changed += 1;
+    }
+    return { apply: true, refs, bound: plan.bound, left: plan.left, scanned: plan.scanned, changed };
+  });
 }

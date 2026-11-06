@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
 
 let dir = '';
 
@@ -19,6 +20,7 @@ beforeEach(() => {
 });
 
 test.after?.(() => {
+  try { closeDb(); } catch { /* 尚未打开 */ }
   try {
     rmSync(dir, { recursive: true, force: true });
   } catch {

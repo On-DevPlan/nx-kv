@@ -162,10 +162,10 @@ function boardKeyInside(s, idOrKey) {
   let b = s.boards.find((x) => x.id === raw);
   if (!b) {
     const k = service.normalizeKey(raw);
-    if (k) b = s.boards.find((x) => service.boardKeyOf(x.name) === k);
+    if (k) b = s.boards.find((x) => service.storedBoardKey(x) === k);
   }
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
-  return b ? service.boardKeyOf(b.name) : null;
+  return b ? service.storedBoardKey(b) : null;
 }
 
 /**
@@ -360,7 +360,7 @@ export async function refsForRepo(idOrPathOrName) {
   const boardsOut = [];
   for (const b of s.boards) {
     if (!service.boardRepoKeys(b, s).includes(repoKey)) continue;
-    const bkey = service.boardKeyOf(b.name);
+    const bkey = service.storedBoardKey(b);
     const refs = [];
     for (const r of refByKey.values()) {
       const l = (r.linked || []).find((x) => x.kind === 'board' && x.id === bkey);
@@ -405,7 +405,7 @@ export async function checkRefs() {
   const s = await service.loadStore();
   // 死链判定按 **key**（关系引用一律用 key）
   const repoKeys = new Set(s.repos.map((r) => service.deriveKey(r)));
-  const boardKeys = new Set(s.boards.map((b) => service.boardKeyOf(b.name)));
+  const boardKeys = new Set(s.boards.map((b) => service.storedBoardKey(b)));
   const refs = s.repos.filter((r) => (r.type || 'dev') === 'ref');
   const out = [];
   for (const r of refs) {
@@ -446,10 +446,10 @@ export async function refsForBoard(boardIdOrKey) {
   const s = await service.loadStore();
   const raw = String(boardIdOrKey || '').trim();
   let b = s.boards.find((x) => x.id === raw);
-  if (!b) b = s.boards.find((x) => service.boardKeyOf(x.name) === service.normalizeKey(raw));
+  if (!b) b = s.boards.find((x) => service.storedBoardKey(x) === service.normalizeKey(raw));
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!b) throw notFound('看板不存在: ' + raw);
-  const bkey = service.boardKeyOf(b.name);
+  const bkey = service.storedBoardKey(b);
   const memberKeys = new Set(service.boardRepoKeys(b, s));
   const hit = (l) => (l.kind === 'board' && l.id === bkey) || (l.kind === 'repo' && memberKeys.has(l.id));
   const refs = s.repos.filter((r) => (r.type || 'dev') === 'ref' && (r.linked || []).some(hit));

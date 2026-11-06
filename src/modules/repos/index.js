@@ -701,6 +701,32 @@ export default {
       render: (d) => transfer.renderResult(d),
     },
 
+    // ---- 队列绑定（T05）：哨兵上的「未绑定」队列按路径前缀挂到真实仓库 ----
+    {
+      id: 'repo.bind-topics',
+      cli: ['repo', 'bind-topics'],
+      http: ['POST', '/api/repos/bind-topics'],
+      summary: '把「未绑定」队列按路径前缀绑到真实仓库（先建 refs 再绑；默认预览，--apply 落盘）',
+      flags: {
+        repo: { type: 'string', hint: '仓库 id / key / 路径 / 名称（缺省 = 全部登记仓库）' },
+        apply: { type: 'boolean', hint: '真正落盘（省略 = 只预览命中计划）' },
+      },
+      run: (ctx) => service.bindTopicsToRepos({ repo: ctx.repo, apply: !!ctx.apply }),
+      render: (d) => {
+        const lines = [
+          `${d.apply ? '已绑定' : '绑定预览（未落盘）'}: 扫描 ${d.scanned} 条未绑定队列，命中 ${d.bound.length} 条`,
+        ];
+        for (const b of d.bound) lines.push(`  ${b.topicKey}  ${b.cwd || b.name} → ${b.repoName}（${b.repoKey}）`);
+        if (d.left.length) {
+          lines.push(`留在哨兵（对不上任何仓库路径）: ${d.left.length} 条`);
+          for (const t of d.left.slice(0, 10)) lines.push(`  ${t.topicKey}  ${t.cwd || '(全局池)'}`);
+        }
+        if (d.refs) lines.push(`refs 索引: 新增 ${d.refs.refs} / 约定绑定 ${d.refs.bindings}`);
+        if (!d.apply && d.bound.length) lines.push('', '落盘: nx-kv repo bind-topics --apply');
+        return lines.join('\n');
+      },
+    },
+
     // ---- 看板（主题容器）：多项目编排层，面板与 CLI 同源 ----
     {
       id: 'board.list',

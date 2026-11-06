@@ -21,6 +21,7 @@ import {
   mutateStore,
   newId,
   boardKeyOf,
+  storedBoardKey,
   boardRepoKeys,
   deriveKey,
   normalizeKey,
@@ -29,6 +30,9 @@ import {
 import { badInput, notFound, conflict } from '../../core/errors.js';
 import { boardDocDirRel, boardDocRel, groupNoteRel } from '../docs/paths.js';
 import { readIntroSet } from '../docs/knowledge.js';
+import repoLayer from './repo/index.js';
+
+const repo = repoLayer;
 
 const cleanText = (v) => String(v || '').trim();
 
@@ -94,7 +98,7 @@ export async function listBoards() {
       id: b.id,
       name: b.name,
       desc: b.desc,
-      key: boardKeyOf(b.name),
+      key: storedBoardKey(b),
       // 组介绍文档与组级附加文档列表（绑定优先；前端渲染介绍 md 与 docLinks chips）
       docRel: b.doc?.rel || boardDocRel(b.name),
       docPath: b.doc?.path || '',
@@ -116,7 +120,7 @@ export async function getBoard(idOrKey) {
   const s = await loadStore();
   const raw = String(idOrKey || '').trim();
   let b = s.boards.find((x) => x.id === raw);
-  if (!b) b = s.boards.find((x) => boardKeyOf(x.name) === normalizeKey(raw));
+  if (!b) b = s.boards.find((x) => storedBoardKey(x) === normalizeKey(raw));
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!b) throw notFound('看板不存在: ' + raw);
   // 组介绍是**文档集**（主篇 + 其余各篇），不是孤立的一篇——#58
@@ -132,7 +136,7 @@ export async function getBoard(idOrKey) {
     id: b.id,
     name: b.name,
     desc: b.desc,
-    key: boardKeyOf(b.name),
+    key: storedBoardKey(b),
     docRel: b.doc?.rel || boardDocRel(b.name),
     docPath: b.doc?.path || '',
     // 介绍文档集：主篇（目录 index.md 优先）+ 其余各篇
@@ -144,7 +148,7 @@ export async function getBoard(idOrKey) {
   };
 }
 
-export async function createBoard({ name, desc } = {}) {
+export async function createBoard({ name, desc, key } = {}) {
   const nm = cleanText(name);
   if (!nm) throw badInput('看板名称不能为空');
   const b = await mutateStore((s) => {
@@ -156,8 +160,13 @@ export async function createBoard({ name, desc } = {}) {
       createdAt: new Date().toISOString(),
       repoKeys: [], // 成员按 key 存（不再用随机 id）
     };
+    // 冻结 key：布局导入带 key（改名过的组往返后 key 不漂）；缺省按名字派生
+    const fk = key ? normalizeKey(key) : boardKeyOf(nm);
+    if (key && !fk) throw badInput('看板 key 不合法: ' + key);
+    if (s.boards.some((x) => storedBoardKey(x) === fk)) throw conflict(`看板 key 已存在: ${fk}`);
+    board.key = fk;
     s.boards.push(board);
-    return { id: board.id, name: board.name, desc: board.desc, key: boardKeyOf(nm), repos: [] };
+    return { id: board.id, name: board.name, desc: board.desc, key: fk, repos: [] };
   });
   // 描述是文档：初始描述写成组介绍的主篇（已有就不动），摘要由回写刷新
   if (cleanText(desc)) await writeBoardDocContent({ name: nm }, desc);
@@ -174,6 +183,8 @@ export async function updateBoard(idOrKey, { name, desc } = {}) {
       throw conflict('同名看板已存在: ' + nm);
     }
     if (nm !== undefined) b.name = nm;
+    // 改名只动显示名：冻结 key 不变（成员边 / ref 绑定 / topics.group_key 都指它）。
+    // （updateBoard 不接受 key 参数 —— key 是身份，改身份没有入口。）
     // 领域描述同样是文档：写正文用 docs set，换绑主篇用 docs bind --board
     if (desc !== undefined) {
       throw badInput(
@@ -181,14 +192,14 @@ export async function updateBoard(idOrKey, { name, desc } = {}) {
         '换绑主篇用 `docs bind --board <看板> --rel <路径>`'
       );
     }
-    return { id: b.id, name: b.name, desc: b.desc, key: boardKeyOf(b.name) };
+    return { id: b.id, name: b.name, desc: b.desc, key: storedBoardKey(b) };
   });
 }
 
 function findBoardIn(s, idOrKey) {
   const raw = String(idOrKey || '').trim();
   let b = s.boards.find((x) => x.id === raw);
-  if (!b) b = s.boards.find((x) => boardKeyOf(x.name) === normalizeKey(raw));
+  if (!b) b = s.boards.find((x) => storedBoardKey(x) === normalizeKey(raw));
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   return b || null;
 }
@@ -213,10 +224,23 @@ function repoKeyIn(s, idOrKey) {
 // 删看板 = 摘容器：repoKeys 随之消失，里面的仓库自动回未分组（登记不动）。
 // 参考仓库对它的绑定（linked 里 kind:'board'）同步摘除——看板没了，绑定就是死链。
 export async function removeBoard(idOrKey) {
+  // 删组前置检查：topics.group_key 是 RESTRICT —— 挂着队列上下文的组删不掉，
+  // 先把那些队列处理掉（改上下文或删除）再删。与其等 FK 报「外键违规」，
+  // 不如提前说人话。
+  const s0 = await loadStore();
+  const target = findBoardIn(s0, idOrKey);
+  if (target) {
+    const bound = repo.txw((conn) => repo.repos.countTopicsOfGroup(storedBoardKey(target), conn));
+    if (bound > 0) {
+      throw conflict(
+        `看板「${target.name}」下还有 ${bound} 条队列按该组上下文运行 —— 先处理这些队列再删组`
+      );
+    }
+  }
   return mutateStore((s) => {
     const b = findBoardIn(s, idOrKey);
     if (!b) throw notFound('看板不存在: ' + idOrKey);
-    const bkey = boardKeyOf(b.name);
+    const bkey = storedBoardKey(b);
     const released = boardRepoKeys(b, s).length;
     s.boards = s.boards.filter((x) => x.id !== b.id);
     for (const r of s.repos) {
@@ -243,6 +267,9 @@ export async function assignRepo({ id, key, board, before, remove } = {}) {
   if (!locator) throw badInput('缺少仓库 id 或 key');
   return mutateStore((s) => {
     const rkey = repoKeyIn(s, locator) || normalizeKey(locator);
+    if (rkey === '__unbound__') {
+      throw badInput('哨兵仓库 __unbound__ 不能入组（它是「未绑定」占位，不是真实仓库）');
+    }
     const target = board ? findBoardIn(s, board) : null;
     if (board && !target) throw notFound('看板不存在: ' + board);
 
@@ -259,7 +286,7 @@ export async function assignRepo({ id, key, board, before, remove } = {}) {
       };
       if (target) drop(target);
       else for (const b of s.boards) drop(b);
-      return { key: rkey, board: target ? boardKeyOf(target.name) : '', removed: true, count: n };
+      return { key: rkey, board: target ? storedBoardKey(target) : '', removed: true, count: n };
     }
 
     if (!target) throw badInput('请给 --board <看板id>');
@@ -272,7 +299,7 @@ export async function assignRepo({ id, key, board, before, remove } = {}) {
     const want = beforeKey ? target.repoKeys.indexOf(beforeKey) : -1;
     if (want >= 0) target.repoKeys.splice(want, 0, rkey);
     else target.repoKeys.push(rkey);
-    return { key: rkey, board: boardKeyOf(target.name), removed: false, added: at < 0 };
+    return { key: rkey, board: storedBoardKey(target), removed: false, added: at < 0 };
   });
 }
 
@@ -377,7 +404,7 @@ export async function rekeyMember({ board, from, to } = {}) {
       r.linked = next;
     }
     return {
-      board: boardKeyOf(b.name),
+      board: storedBoardKey(b),
       boardName: b.name,
       boards: targets.map((t) => t.name),
       from: src,
@@ -413,14 +440,14 @@ export async function prunePlaceholders({ board, all = false, apply = false } = 
       const hint = hintOf(b, k) || {};
       const remote = String(hint.remote || '');
       if (remote && !all) continue; // 能克隆回来的不算"无来源"
-      items.push({ board: b.name, boardKey: boardKeyOf(b.name), key: k, name: hint.name || k, remote });
+      items.push({ board: b.name, boardKey: storedBoardKey(b), key: k, name: hint.name || k, remote });
     }
   }
   if (apply && items.length) {
     await mutateStore((cur) => {
       const gone = new Set(items.map((it) => it.key));
       for (const it of items) {
-        const b = cur.boards.find((x) => boardKeyOf(x.name) === it.boardKey);
+        const b = cur.boards.find((x) => storedBoardKey(x) === it.boardKey);
         if (!b) continue;
         if (!Array.isArray(b.repoKeys)) b.repoKeys = boardRepoKeys(b, cur);
         b.repoKeys = b.repoKeys.filter((k) => k !== it.key);
@@ -492,7 +519,7 @@ export async function setBoardRepoNote({ id, key, board, note } = {}) {
     key: rkey,
     name: (s.repos.find((x) => deriveKey(x) === rkey) || {}).name || rkey,
     board: b.id,
-    boardKey: boardKeyOf(b.name),
+    boardKey: storedBoardKey(b),
     boardName: b.name,
   };
   // 描述 = 文档：写 group/<组>/<key>.md；repoNotes 只是摘要影子（由回写维护）
@@ -576,6 +603,8 @@ export async function exportBoards() {
   return {
     version: 1,
     boards: s.boards.map((b) => ({
+      // 冻结 key 随导出走：改名过的组往返后 key 不漂（导入端按 key 优先匹配）
+      key: storedBoardKey(b),
       name: b.name,
       desc: b.desc,
       // 占位成员（本机没有登记）也导出——以前这里 filter 掉了它们，
@@ -624,6 +653,7 @@ export async function applyPrefixGroup({ prefix: rawPrefix, board: rawBoard } = 
         desc: `按前缀「${prefix}」归组`,
         createdAt: new Date().toISOString(),
         repoKeys: [],
+        key: boardKeyOf(want), // 冻结 key：新建组按初始名字派生
       };
       s.boards.push(b);
       created = true;

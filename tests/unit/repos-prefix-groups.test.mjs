@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as repos from '../../src/modules/repos/service.js';
 import * as boards from '../../src/modules/repos/boards.js';
+import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
 
 let dir = '';
 
@@ -20,6 +21,7 @@ beforeEach(() => {
 });
 
 test.after?.(() => {
+  try { closeDb(); } catch { /* 尚未打开 */ }
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* 忽略 */ }
 });
 
@@ -45,7 +47,8 @@ test('按前缀归组：命中仓库固化成显式成员（看板不存在则�
   assert.deepEqual(nx.repos.map((x) => x.name).sort(), ['nx-kv', 'nx-rh']);
 
   // 成员是真的显式成员（repoKeys 固化），不是动态规则算出来的
-  const store = JSON.parse(await import('node:fs').then((m) => m.readFileSync(repos.storePath(), 'utf8')));
+  // T05 起存储是 SQLite：store 形状经 loadStore 组装，不再读盘上 JSON 文件
+  const store = await repos.loadStore();
   const nxRaw = store.boards.find((b) => b.name === 'nx');
   assert.equal(nxRaw.repoKeys.length, 2, 'repoKeys 应固化两个成员');
   assert.ok(!('prefixGroups' in store), '旧规则字段不再读写');

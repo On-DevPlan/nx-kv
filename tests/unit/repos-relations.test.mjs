@@ -4,7 +4,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as repos from '../../src/modules/repos/service.js';
@@ -13,6 +13,7 @@ import * as ref from '../../src/modules/repos/ref.js';
 import * as keys from '../../src/modules/repos/keys.js';
 import * as remote from '../../src/modules/repos/remote.js';
 import * as transfer from '../../src/modules/repos/transfer.js';
+import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
 
 let dir = '';
 let cfgDir = '';
@@ -39,6 +40,7 @@ beforeEach(() => {
 });
 
 test.after?.(() => {
+  try { closeDb(); } catch { /* 尚未打开 */ }
   for (const d of [dir, cfgDir]) {
     try { rmSync(d, { recursive: true, force: true }); } catch { /* 忽略 */ }
   }
@@ -51,8 +53,9 @@ test('看板成员存 key：assign 后 repoKeys 是 key 不是随机 id', async 
   const b = await boards.createBoard({ name: 'grp' });
   await boards.assignRepo({ id: dev.id, board: b.id });
 
-  const raw = JSON.parse(readFileSync(process.env.NX_KV_REPOS_STORE, 'utf8'));
-  const board = raw.boards.find((x) => x.name === 'grp');
+  // 存储已库化（T05）：读“成员按 key 固化”改从 loadStore 断言
+  //（repo_group_members 两端都是 repos.key，随机 id 在库层就不存在了）
+  const board = (await repos.loadStore()).boards.find((x) => x.name === 'grp');
   assert.deepEqual(board.repoKeys, ['github.com/o/d1']);
   assert.equal(board.repoIds, undefined, '不再用随机 id');
 
@@ -69,8 +72,8 @@ test('组内描述按 key：note 落在 repoNotes[key] 上', async () => {
   await boards.assignRepo({ id: dev.key, board: b.key });
   await boards.setBoardRepoNote({ id: dev.key, board: b.key, note: '契约方' });
 
-  const raw = JSON.parse(readFileSync(process.env.NX_KV_REPOS_STORE, 'utf8'));
-  const board = raw.boards.find((x) => x.name === 'grp');
+  // 存储已库化（T05）：repo_group_members.note 承载组内描述，按 key 读回
+  const board = (await repos.loadStore()).boards.find((x) => x.name === 'grp');
   assert.equal(board.repoNotes['github.com/o/d1'], '契约方');
 
   const got = await boards.getBoard(b.key);
@@ -177,34 +180,21 @@ test('clone 补齐占位：用占位的 key 登记 → 占位自动转正、位�
 
 // ─── 迁移 ───────────────────────────────────────────────────────────────
 
-test('migrateRelations：把随机 id 改成 key；幂等；死链被清掉', async () => {
-  // 手写一份老结构数据
-  writeFileSync(process.env.NX_KV_REPOS_STORE, JSON.stringify({
-    version: 1,
-    repos: [
-      { id: 'r_old1', name: 'old1', path: join(dir, 'old1'), desc: '', notes: '', remote: 'git@github.com:o/old1.git', addedAt: '', updatedAt: '' },
-      { id: 'r_old2', name: 'old2', path: join(dir, 'old2'), desc: '', notes: '', remote: 'git@github.com:o/old2.git', type: 'ref', linked: [{ kind: 'repo', id: 'r_old1' }], addedAt: '', updatedAt: '' },
-    ],
-    boards: [{ id: 'b_old', name: 'oldgrp', desc: '', repoIds: ['r_old1', 'r_old2'], repoNotes: { r_old1: '老的组内描述' } }],
-  }), 'utf8');
+test('migrateRelations：库化后幂等空转（repoIds→key 的换算在导入事务里，见 db-migrate-from-json）', async () => {
+  // T05 起存储是 SQLite：老结构（成员存随机 id）只能经 JSON 导入进库，
+  // 换算发生在 importRepos（repoIds / 按 id 键的 repoNotes → key）。运行期
+  // 的 store 里 boards 永远带 repoKeys 数组 —— migrateRelations 应是幂等空转。
+  const dev = await repos.addRepo({ path: join(dir, 'm1'), name: 'm1', remote: 'git@github.com:o/m1.git' });
+  const b = await boards.createBoard({ name: 'mgrp' });
+  await boards.assignRepo({ id: dev.id, board: b.id });
 
   const preview = await keys.migrateRelations({ apply: false });
-  assert.equal(preview.changed > 0, true);
+  assert.equal(preview.changed, 0, '新结构无待改写关系');
 
   const applied = await keys.migrateRelations({ apply: true });
-  assert.ok(applied.linkedRewritten >= 1);
-
-  const raw = JSON.parse(readFileSync(process.env.NX_KV_REPOS_STORE, 'utf8'));
-  const b = raw.boards.find((x) => x.name === 'oldgrp');
-  assert.deepEqual(b.repoKeys, ['github.com/o/old1', 'github.com/o/old2']);
-  assert.equal(b.repoIds, undefined);
-  assert.equal(b.repoNotes['github.com/o/old1'], '老的组内描述');
-  const r2 = raw.repos.find((x) => x.id === 'r_old2');
-  assert.deepEqual(r2.linked, [{ kind: 'repo', id: 'github.com/o/old1' }]);
-
-  // 幂等：再跑一次没变化
-  const again = await keys.migrateRelations({ apply: true });
-  assert.equal(again.changed, 0);
+  assert.equal(applied.changed, 0, 'apply 也是空转');
+  const board = (await repos.loadStore()).boards.find((x) => x.name === 'mgrp');
+  assert.deepEqual(board.repoKeys, ['github.com/o/m1'], '成员关系原样保留');
 });
 
 // ─── remote 对齐 ───────────────────────────────────────────────────────

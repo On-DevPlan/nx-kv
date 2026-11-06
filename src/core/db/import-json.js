@@ -312,8 +312,24 @@ function importRepos(db, reposData, atMs, report) {
   boards.forEach((b, bi) => {
     const groupKey = groupKeys[bi];
     if (!groupKey) return;
-    const keys = Array.isArray(b.repoKeys) ? b.repoKeys : [];
-    const notes = b.repoNotes && typeof b.repoNotes === 'object' ? b.repoNotes : {};
+    const notesIn = b.repoNotes && typeof b.repoNotes === 'object' ? b.repoNotes : {};
+    let keys = Array.isArray(b.repoKeys) ? b.repoKeys : [];
+    let notes = notesIn;
+    // 老结构（迁移前的存量数据）：成员存随机 id（repoIds / repoNotes 按 id 键）。
+    // repos 已全部入库（legacyIdToKey 齐），一次性换算成 key；换算不到的丢弃 + 报告
+    //（与 JSON 时代 keys.js migrateRelations 同一口径，只是搬进了导入事务）。
+    const oldIds = Array.isArray(b.repoIds) ? b.repoIds : null;
+    if (!keys.length && oldIds && oldIds.length) {
+      keys = [];
+      for (const id of oldIds) {
+        const k = legacyIdToKey.get(String(id));
+        if (k) keys.push(k);
+        else report.warnings.push({ what: 'member', why: 'repoIds 里的 id 换算不到 key（登记缺失），已丢弃', group: groupKey, id: String(id) });
+      }
+      notes = {};
+      for (const [k, v] of Object.entries(notesIn)) notes[legacyIdToKey.get(String(k)) || k] = v;
+      report.warnings.push({ what: 'member', why: 'repoIds（旧结构）已换算为 repoKeys', group: groupKey, count: keys.length });
+    }
     keys.forEach((repoKeyRaw, position) => {
       const repoKey = String(repoKeyRaw || '').trim();
       if (!repoKey) return;

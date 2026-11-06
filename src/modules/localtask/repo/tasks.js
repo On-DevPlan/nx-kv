@@ -263,42 +263,10 @@ export function purgeTask(topicId, seq) {
 }
 
 /**
- * 搬队列：把一行挪到另一个主题（topic_id 改写；编号让位于目标队列的 next_seq ——
- * 目标队列可能已有同号任务，两个队列各自从 1 编号，撞号是常态；这与 JSON 时代
- * 「整行 push 进目标数组、id 按目标队列 nextTaskId 重新分配」一致）。
- * @returns {{task: object, fromSeq: number, toSeq: number}|null}
+ * （T04 后已删除 moveTaskToTopic：搬队列改走派生模型 —— task-view.js 的
+ * relocateTask 派生新任务 + 软删原任务，绝不再 UPDATE seq/created_at。
+ * `trg_tasks_identity` 的收窄条件保留：同队列改号仍 ABORT，语义正确。）
  */
-/**
- * 搬队列：把一行挪到另一个主题 —— **单条 UPDATE，全局 id 天然保留**。
- *
- * task_links / task_deps 引用的都是全局 tasks.id，UPDATE 后自动跟着走——
- * 不需要"迁移边"代码（旧的 INSERT+DELETE 方案会被 ON DELETE CASCADE
- * 把碰到旧 id 的链静默删光）。
- *
- * 编号：目标队列已有同号 → advanceSeq 重编号（跨队列搬迁允许重编号，
- * 触发器已收窄为只拦同队列改号）；目标队列空 → 保留同号。
- * next_seq 的 MAX 顶推两个分支都走。
- *
- * @returns {{task: object, oldId: number, newId: number}|null}
- */
-export function moveTaskToTopic(fromTopicId, seq, toTopicId) {
-  return txw((conn) => {
-    const src = conn.get(`${TASK_SELECT} WHERE topic_id = :t AND seq = :s`, { t: fromTopicId, s: seq });
-    if (!src) return null;
-    const clash = conn.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', { t: toTopicId, s: seq });
-    const targetSeq = clash ? advanceSeq(toTopicId, conn) : seq;
-    conn.run(
-      'UPDATE tasks SET topic_id = :to, seq = :s, updated_at = :at WHERE id = :id',
-      { to: toTopicId, s: targetSeq, at: nowMs(), id: src.row.id }
-    );
-    // next_seq 顶推（目标队列空 → 保留同号时也要顶，否则下一条 addTask 撞号）
-    conn.run('UPDATE topics SET next_seq = MAX(next_seq, :n) WHERE id = :id', {
-      n: targetSeq + 1,
-      id: toTopicId,
-    });
-    return { task: getTaskRow(toTopicId, targetSeq, conn).task, oldId: seq, newId: targetSeq };
-  });
-}
 
 /** 闸门判定用的存在性查询：同队列里排在我前面、还没被领走的闸门（走 ix_tasks_pending）。 */
 export function hasBlockingGate(topicId, seq, conn = null) {

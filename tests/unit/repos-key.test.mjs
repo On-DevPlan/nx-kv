@@ -14,6 +14,7 @@ import * as boards from '../../src/modules/repos/boards.js';
 import * as keys from '../../src/modules/repos/keys.js';
 import * as transfer from '../../src/modules/repos/transfer.js';
 import { makeZip } from '../../src/core/zip.js';
+import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
 
 let dir = '';
 let cfgDir = '';
@@ -40,6 +41,7 @@ beforeEach(() => {
 });
 
 test.after?.(() => {
+  try { closeDb(); } catch { /* 尚未打开 */ }
   for (const d of [dir, cfgDir]) {
     try { rmSync(d, { recursive: true, force: true }); } catch { /* 忽略 */ }
   }

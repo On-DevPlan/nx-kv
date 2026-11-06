@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as store from '../../src/modules/docs/store.js';
 import * as repos from '../../src/modules/repos/service.js';
+import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
 
 let dir = '';
 
@@ -17,6 +18,7 @@ beforeEach(() => {
 });
 
 test.after?.(() => {
+  try { closeDb(); } catch { /* 尚未打开 */ }
   try {
     rmSync(dir, { recursive: true, force: true });
   } catch {

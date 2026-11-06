@@ -38,7 +38,8 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
   const s = await service.loadStore();
   const warnings = [];
   const keyOf = new Map(s.repos.map((r) => [r.id, service.deriveKey(r)]));
-  const boardKeyOf = new Map(s.boards.map((b) => [b.id, boardKey(b.name)]));
+  // 看板用**冻结 key**（库里落库的那个；改名过的组不随名字漂）
+  const boardKeyOf = new Map(s.boards.map((b) => [b.id, service.storedBoardKey(b)]));
 
   const wantRepo = (k) => !repoKeys?.length || repoKeys.includes(k);
   const wantBoard = (k) => !boardKeys?.length || boardKeys.includes(k);
@@ -366,7 +367,7 @@ export async function diffImport(json, docsFiles = []) {
     for (const t of l.to) if (t.repo && !knownKeys.has(t.repo)) missing.add(t.repo);
   }
 
-  const boardByKey = new Map(s.boards.map((b) => [boardKey(b.name), b]));
+  const boardByKey = new Map(s.boards.map((b) => [service.storedBoardKey(b), b]));
   const boardsOut = layout.boards.map((inc) => {
     const local = boardByKey.get(inc.key) || null;
     const fields = [];
@@ -607,12 +608,12 @@ export async function repoImport({
   for (const bd of diff.boards) {
     if (!wantBoard(bd.key)) continue;
     const inc = bd.incoming;
-    let b = (await service.loadStore()).boards.find((x) => boardKey(x.name) === bd.key);
+    let b = (await service.loadStore()).boards.find((x) => service.storedBoardKey(x) === bd.key);
     try {
       if (!b) {
-        await boards.createBoard({ name: inc.name, desc: inc.desc });
+        await boards.createBoard({ name: inc.name, desc: inc.desc, key: bd.key });
         boardsCreated += 1;
-        b = (await service.loadStore()).boards.find((x) => boardKey(x.name) === bd.key);
+        b = (await service.loadStore()).boards.find((x) => service.storedBoardKey(x) === bd.key);
       } else {
         boardsMerged += 1;
         if (strategy === 'overwrite' && inc.desc && inc.desc !== (b.desc || '')) {
@@ -676,7 +677,7 @@ export async function repoImport({
   if (bindingBoards.length || bindingRepos.length) {
     await service.mutateStore((s2) => {
       for (const bd of bindingBoards) {
-        const b = s2.boards.find((x) => boardKey(x.name) === bd.key);
+        const b = s2.boards.find((x) => service.storedBoardKey(x) === bd.key);
         if (!b) continue;
         const inc = bd.incoming;
         if (inc.doc) b.doc = { ...inc.doc };
@@ -722,9 +723,9 @@ export async function repoImport({
           }
           await refBind(rkey, t.repo, null, t.note);
         } else if (t.board) {
-          const bs = (await service.loadStore()).boards.find((x) => boardKey(x.name) === t.board);
+          const bs = (await service.loadStore()).boards.find((x) => service.storedBoardKey(x) === t.board);
           if (!bs) { unmatched.push({ board: `(参考关系 ${l.ref})`, entry: '看板 ' + t.board, reason: '看板未建立' }); continue; }
-          await refBind(rkey, null, boardKey(bs.name), t.note);
+          await refBind(rkey, null, service.storedBoardKey(bs), t.note);
         }
         linksDone += 1;
       } catch (err) {

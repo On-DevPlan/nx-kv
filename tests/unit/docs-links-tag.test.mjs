@@ -6,7 +6,7 @@
 // 把三道关各钉一遍。
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as refs from '../../src/modules/docs/refs.js';
@@ -14,6 +14,7 @@ import * as service from '../../src/modules/repos/service.js';
 import * as boards from '../../src/modules/repos/boards.js';
 import * as transfer from '../../src/modules/repos/transfer.js';
 import { readZip } from '../../src/core/zip.js';
+import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
 
 function unzipExport(buf) {
   let json = '';
@@ -34,6 +35,7 @@ beforeEach(() => {
 });
 
 test.after?.(() => {
+  try { closeDb(); } catch { /* 尚未打开 */ }
   try {
     rmSync(dir, { recursive: true, force: true });
   } catch {
@@ -99,12 +101,12 @@ test('项目级 addRepoDoc：note/tag 贴回条目（不再被 assertDocRef 吃�
 test('loadStore 归一化：盘上带 tag 的条目回贴，不丢（脏数据护栏对 tag 放行）', async () => {
   const { b } = await seed();
   await refs.setDocLink({ board: b.id, doc: REL_QA, tag: 'qa', note: '问答集' });
-  // 直接改盘上文件，绕过写入口（模拟手改 / 旧版本数据）
-  const p = service.storePath();
-  const raw = JSON.parse(readFileSync(p, 'utf8'));
-  const bd = raw.boards.find((x) => x.id === b.id);
-  bd.docLinks[0].tag = '手改标签';
-  writeFileSync(p, JSON.stringify(raw));
+  // 直接改存储里已落库的条目，绕过写入口（模拟手改 / 旧版本数据）。
+  // T05 起存储是 SQLite：不再改盘上 JSON，改经 mutateStore 绕过 setDocLink 的归一化。
+  await service.mutateStore((s) => {
+    const bd = s.boards.find((x) => x.id === b.id);
+    bd.docLinks[0].tag = '手改标签';
+  });
 
   const loaded = await service.loadStore();
   const entry = loaded.boards.find((x) => x.id === b.id).docLinks[0];

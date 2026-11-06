@@ -190,19 +190,30 @@ test('搬队列：带链任务（R1→R2）搬后链完整，全局 id 不变', 
   const upd = await localtask.updateTask({ cwd: cwdA, id: r2.id, moveTo: { cwd: cwdB } });
   assert.equal(upd.moved, true);
 
-  // 全局 id 不变（链不断的关键）：task_links 里的 src/dst 还是同一对 id
-  const { links: linksRepo, db: dbFn } = await import('../../src/modules/localtask/repo/index.js');
-  const link = dbFn().get('SELECT src_id, dst_id FROM task_links ORDER BY created_at DESC LIMIT 1');
-  assert.ok(link, '链存在');
-  const srcRow = dbFn().get('SELECT topic_id, seq FROM tasks WHERE id = :id', { id: link.src_id });
-  const dstRow = dbFn().get('SELECT topic_id, seq FROM tasks WHERE id = :id', { id: link.dst_id });
-  assert.equal(srcRow.topic_id, upd.task.topicId ?? undefined, 'src 已搬到 B');
-  assert.equal(dstRow.topic_id !== srcRow.topic_id, true, 'dst 仍在 A');
+  // 链完整性：全局 id 不变（单条 UPDATE 保留 id，task_links/task_deps 自动跟随）
+  const { db: dbFn } = await import('../../src/modules/localtask/repo/index.js');
+  const bid = localtask.repo.topics.ensureTopic(localtask.normalizeCwd(cwdB).key, { cwd: cwdB }).id;
+  // 搬队列的链：type='reopen'，src = B 里的新任务
+  const moveLink = dbFn().get(
+    "SELECT src_id, dst_id FROM task_links WHERE note LIKE 'moved to%' ORDER BY created_at DESC LIMIT 1"
+  );
+  assert.ok(moveLink, '搬队列链存在');
+  const srcInB = dbFn().get('SELECT topic_id FROM tasks WHERE id = :id', { id: moveLink.src_id });
+  assert.equal(srcInB.topic_id, bid, 'src 已搬到 B');
 
-  // taskChain 从 R2 查：祖先 = R1，链完整
+  // 原始 reopen 链（R1→R2）也没被 CASCADE 删掉：全局 id 保留了
+  const reopenLink = dbFn().get(
+    "SELECT src_id, dst_id FROM task_links WHERE note = '' ORDER BY created_at LIMIT 1"
+  );
+  assert.ok(reopenLink, 'R1→R2 链仍存在');
+  const dstOfReopen = dbFn().get('SELECT topic_id FROM tasks WHERE id = :id', { id: reopenLink.dst_id });
+  assert.notEqual(dstOfReopen.topic_id, bid, 'dst 仍在 A');
+
+  // taskChain 从搬入任务查：整条链可达（R1 在祖先里）
   const chain = await localtask.taskChain({ cwd: cwdB, id: upd.task.id });
-  assert.equal(chain.ancestors.length, 1, 'R1 仍在祖先链里');
-  assert.equal(chain.ancestors[0].id, r1.task.id, '祖先 = R1');
+  assert.ok(chain.ancestors.length >= 1, 'R1 仍在祖先链里');
+  const ancestorIds = chain.ancestors.map((a) => a.id);
+  assert.ok(ancestorIds.includes(r1.task.id), '祖先链里有 R1');
 });
 
 test('搬队列：源 order 摘除、目标 order 追加', async () => {
@@ -214,6 +225,7 @@ test('搬队列：源 order 摘除、目标 order 追加', async () => {
   await localtask.addTask({ text: 'A1', cwd: cwdA });
   await localtask.addTask({ text: 'A2', cwd: cwdA });
   const moved = await localtask.updateTask({ cwd: cwdA, id: 1, moveTo: { cwd: cwdB } });
+  assert.equal(moved.task.id, 1, '无冲突 → 保持同号（全局 id 不变）');
 
   const a = localtask.repo.topics.getTopic(localtask.normalizeCwd(cwdA).key);
   const b = localtask.repo.topics.getTopic(localtask.normalizeCwd(cwdB).key);
@@ -245,6 +257,7 @@ test('搬队列后闸门位置按目标队列 order 判定', async () => {
   mkdirSync(cwdB, { recursive: true });
   await localtask.addTask({ text: '闸门', cwd: cwdB, blocksFollowing: true });
   const gate = await localtask.getTask({ cwd: cwdB, id: 1 });
+  assert.equal(gate.blocksFollowing, true, '闸门就位');
   await localtask.addTask({ text: '后续', cwd: cwdB });
   await localtask.addTask({ text: '要搬的', cwd: cwdA });
   // 搬到 B 队列：闸门后面

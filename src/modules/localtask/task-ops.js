@@ -233,8 +233,8 @@ export async function updateTask({
   const body = String(text ?? '').trim();
   const hasGoalInput = goal && (goal.clear || goal.duration != null || goal.prompt != null);
   const hasDagInput = clearBlockBy || blockBy !== undefined || blocksFollowing !== undefined;
-  if (!body && !hasGoalInput && !hasDagInput) {
-    throw badInput('--text 不能为空（改时间目标 / blockBy / 闸门时才可省）');
+  if (!body && !hasGoalInput && !hasDagInput && !moveTo) {
+    throw badInput('--text 不能为空（改时间目标 / blockBy / 闸门 / 搬队列时才可省）');
   }
   if (body && body.length > MAX_TEXT) throw badInput(`任务内容过长（≤${MAX_TEXT} 字）`);
   if (hasGoalInput && goal.clear && goal.duration != null) {

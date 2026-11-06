@@ -152,6 +152,50 @@ export function taskInBoard(t, idsOrBoard) {
   return ids.includes(String(t.boardMark));
 }
 
+/**
+ * 组路由的任务寻址（任务 #86）：组任务详情路由是 `#/group/<boardId>?task=N`，
+ * route.key 是**看板 id**，不是队列 key——这条任务物理上落在哪个成员队列，
+ * 要在成员队列里搜出来。
+ *
+ * 口径：只在组成员的队列里找（board.repos 的 key）；同一任务号在不同项目里
+ * 可能撞号，所以**优先**取 boardMark 指向本组的候选，找不到再退第一个命中
+ * （手工改归属导致 boardMark 缺失/漂移时仍能打开）。找到返回
+ * { board, topic, taskRow }，找不到对应字段为 null。纯函数。
+ */
+export function findGroupTask(rows = [], boards = [], groupKey, taskId) {
+  const board = (boards || []).find(
+    (b) => b && (b.id === groupKey || b.key === groupKey || b.name === groupKey)
+  ) || null;
+  const out = { board, topic: null, taskRow: null };
+  if (!board || taskId == null || String(taskId) === '') return out;
+  // 成员 key 是**仓库 key**（/api/boards 的 repos[].key），而队列行的 r.key 是
+  // owner 哈希——两个键空间！全 app 的桥都是 r.repo.key（task.jsx boardCtx、
+  // 组页 items 同款）；队列行没有 repo 时退 r.key 兜底（旧数据形态）。
+  const memberKeys = new Set(((board.repos || [])).map((m) => m && (m.key || m.id)).filter(Boolean));
+  // 行侧候选：repo.key（主桥）、repo.id（成员登记只有 id 时的兜底）、r.key（旧形态）
+  const rowKeyOf = (r) => {
+    const repo = r && r.repo;
+    return [repo && repo.key, repo && repo.id, r && r.key].filter(Boolean);
+  };
+  const ids = boardMatchIds(board);
+  for (const r of rows || []) {
+    if (!r || r.isGlobal) continue;
+    if (memberKeys.size && !rowKeyOf(r).some((k) => memberKeys.has(k))) continue;
+    const hit = (r.tasks || []).find((t) => t && !t.deletedAt && String(t.id) === String(taskId));
+    if (!hit) continue;
+    if (!out.topic) {
+      out.topic = r;
+      out.taskRow = hit;
+    }
+    if (ids.includes(String(hit.boardMark || ''))) {
+      out.topic = r;
+      out.taskRow = hit;
+      break;
+    }
+  }
+  return out;
+}
+
 export function mergeDirectoryRows(topics = [], goals = []) {  const rows = [];
   const byKey = new Map();
 

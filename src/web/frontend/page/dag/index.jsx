@@ -510,7 +510,11 @@ export default function DagPanel({ dirKey, groupId }) {
   };
 
   const openTask = (n) => {
-    if (app.openPage) app.openPage({ dirKey: n.topicKey, task: String(n.id), name: `#${n.id}` });
+    if (!app.openPage) return;
+    // 组模式（groupId 在场，#86）：节点散在成员队列里，页签锚在**组路由**上，
+    // 不跳进单个项目——成员队列由任务页内部解析。
+    if (groupId) app.openPage({ groupId, task: String(n.id), name: `#${n.id}` });
+    else app.openPage({ dirKey: n.topicKey, task: String(n.id), name: `#${n.id}` });
   };
 
   const edges = useMemo(() => {

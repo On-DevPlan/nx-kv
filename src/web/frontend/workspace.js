@@ -355,15 +355,30 @@ export function clearStoredModel() {
   }
 }
 
+/**
+ * config 的**序无关**签名（#86 实测坑）：openPage 拼的 config 键序和
+ * panelSpecOfRoute 生成的不一定一致（{task,groupId} vs {groupId,task}），
+ * JSON.stringify 对键序敏感——同一页签被裂成两块（去重失效，双页签）。
+ * 键排序后拼平；undefined 字段跳过（旧 JSON 行为里 undefined ≡ 缺省）。
+ */
+export function configSig(config) {
+  const c = config || {};
+  return Object.keys(c)
+    .filter((k) => c[k] !== undefined)
+    .sort()
+    .map((k) => `${k}=${String(c[k])}`)
+    .join('|');
+}
+
 /** 找到已打开的同款面板（component + config 一致）——避免重复开同名面板 */
 export function findOpenPanel(model, component, config) {
-  const want = JSON.stringify(config || {});
+  const want = configSig(config);
   let hit = null;
   model.visitNodes((node) => {
     if (hit) return;
     if (node.getType() !== 'tab') return;
     if (node.getComponent() !== component) return;
-    if (JSON.stringify(node.getConfig() || {}) !== want) return;
+    if (configSig(node.getConfig() || {}) !== want) return;
     hit = node;
   });
   return hit;
@@ -470,17 +485,20 @@ export function closeRightSidebar(model) {
 /**
  * 主内容区切到某目录/任务时，若右侧进程面板已开，同步它的 dirKey/task——
  * 否则会一直显示「上一个任务」所属目录的进程（#33 验收反馈）。
+ * #86：主区切到**组锚定页**（config.groupId）时进程跟着切组模式
+ * （config.groupKey）——「进程跟着主区走」对组任务同样成立；不传 groupId
+ * 维持目录/全局模式。已关的进程面板不会因此被拉出来（无 tab 早退）。
  */
-export function syncProgressPanel(model, { dirKey, task } = {}) {
+export function syncProgressPanel(model, { dirKey, groupId, task } = {}) {
   if (!model) return;
   const tab = findComponentPanel(model, 'progress');
   if (!tab) return;
   const prev = tab.getConfig() || {};
-  const next = { dirKey: dirKey || '' };
+  const next = groupId ? { groupKey: groupId } : { dirKey: dirKey || '' };
   if (task != null && String(task) !== '') next.task = String(task);
   if (JSON.stringify(prev) === JSON.stringify(next)) return;
   model.doAction(Actions.updateNodeAttributes(tab.getId(), { config: next }));
-  if (dirKey) setRightSidebarVisible(model, true);
+  if (dirKey || groupId) setRightSidebarVisible(model, true);
 }
 
 /**
@@ -493,21 +511,29 @@ export function syncProgressPanel(model, { dirKey, task } = {}) {
 /**
  * 清掉主内容区里的面板（含并排的「旁路原文」）。
  * 侧栏 / 右侧进程栏不动；浮窗也不动。
+ * @param {string} [keepId] 保留这一块（openPanel 先落新页签再清旧内容时传它——
+ *   先清后落会把唯一 tabset 清空，FlexLayout 自动删掉空 tabset，新页签没地方落）
  */
-export function clearMainPanels(model) {
+export function clearMainPanels(model, keepId = null) {
   if (!model) return 0;
   const rightTs = rightTabsetId(model);
   const victims = [];
   model.visitNodes((node) => {
     if (node.getType() !== 'tab') return;
+    if (keepId && node.getId() === keepId) return;
     const c = node.getComponent();
     if (c === 'sidebar' || c === 'progress') return;
     const parent = node.getParent && node.getParent();
     if (!parent || parent.getType() !== 'tabset') return;
     const tsId = parent.getId();
     if (tsId === 'ts_sidebar' || (rightTs && tsId === rightTs)) return;
-    // 浮窗在 subLayout 里，父 tabset 不在主布局——用 getWindowId / floating 判断
-    if (typeof node.getWindowId === 'function' && node.getWindowId()) return;
+    // 浮窗在 subLayout 里，父 tabset 不在主布局——用窗口 id 判断。
+    // ⚠️ 只认 'float'：新 flexlayout 里**主窗页签**的 getWindowId() 也返回真值
+    // （主 layout 自己的 GUID）——旧写法 `if (node.getWindowId())` 把主区页签
+    // 全判成浮窗，clearMainPanels 变空转，主区单面板位失效、页签越堆越多
+    //（#86 探针实测：组页 ↔ 任务页来回点，隐藏页签成堆）。popoutTab 开的
+    // 浮窗窗口 id 恒为 'float'（openFloatingPanel 传入）。
+    if (typeof node.getWindowId === 'function' && node.getWindowId() === 'float') return;
     victims.push(node.getId());
   });
   for (const id of victims) model.doAction(Actions.deleteTab(id));
@@ -588,7 +614,7 @@ export function openPanel(model, spec) {
     }
     if (area === AREA.RIGHT) setRightSidebarVisible(model, true);
     if (area === AREA.MAIN && (component === 'page' || component === 'dir')) {
-      syncProgressPanel(model, { dirKey: config.dirKey, task: config.task });
+      syncProgressPanel(model, { dirKey: config.dirKey, groupId: config.groupId, task: config.task });
     }
     return { tabId: existing.getId(), reused: true };
   }
@@ -610,7 +636,11 @@ export function openPanel(model, spec) {
 
   // 主内容区：**单面板位**——没有页签了，新的进来旧的出去（#33）。
   if (area === AREA.MAIN) {
-    clearMainPanels(model);
+    // 顺序不能反：先把新页签落进**还没清**的 tabset，再清旧内容（keepId 留住新页签）。
+    // 先清后落会把唯一 tabset 清空——FlexLayout 自动删空 tabset，addTab 没地方落、
+    // 静默丢失，主区一片空白（#86 探针实测）。
+    // 浮窗流路（_float，openFloatingPanel 借道主区再 popout）不清场：设置这类面板
+    // 浮在内容上，主区清空了 popout 一走 tabset 就空、被自动删，主区从此打不开面板。
     const mainTs = mainTabsetId(model);
     if (!mainTs) return { tabId: null, reused: false };
     model.doAction(Actions.addTab(
@@ -621,9 +651,10 @@ export function openPanel(model, spec) {
       true
     ));
     const created = findOpenPanel(model, component, config);
-    // 切主区目录/任务时，已打开的进程面板跟着换目录
-    if (created && (component === 'page' || component === 'dir')) {
-      syncProgressPanel(model, { dirKey: config.dirKey, task: config.task });
+    if (created && !spec._float) clearMainPanels(model, created.getId());
+    // 切主区目录/任务时，已打开的进程面板跟着换目录（组锚定页跟组，#86）
+    if (created && !spec._float && (component === 'page' || component === 'dir')) {
+      syncProgressPanel(model, { dirKey: config.dirKey, groupId: config.groupId, task: config.task });
     }
     return { tabId: created ? created.getId() : null, reused: false };
   }
@@ -672,7 +703,9 @@ export function openPanel(model, spec) {
  * 2026-11-04 #41 实测发现；老布局因为已存着设置浮窗、走 existing 早退而侥幸没踩到）。
  */
 export function openFloatingPanel(model, spec) {
-  const r = openPanel(model, { ...spec, area: AREA.MAIN, location: spec.location || 'center' });
+  // _float：借道主区落页签，但不清场（见 openPanel MAIN 分支注释——popout 之后
+  // 主区必须还留着自己的内容，否则空 tabset 被自动删、主区死掉）
+  const r = openPanel(model, { ...spec, area: AREA.MAIN, location: spec.location || 'center', _float: true });
   if (!r || !r.tabId || r.reused) return r;
   const before = new Set([...model.getLayouts().keys()]);
   model.doAction(Actions.popoutTab(r.tabId, 'float'));

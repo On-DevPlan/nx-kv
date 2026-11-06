@@ -202,13 +202,16 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
     if (!board) return;
     if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
     const id = nextDraftId();
-    const docId = docIdOf(scopeOf(sel.topicKey || ''), id);
+    // 草稿 doc 种在**组 scope**（docIdOf(scopeOf(board.id), id)）：从组路由
+    // #/group/<id>?task=draft-N 打开寻得回同一份（#86）。以前种在成员 scope、
+    // 打开走 dir 路由——组语义在建任务这步就断了。
+    const docId = docIdOf(scopeOf(board.id), id);
     // 与目录任务页同一条 defaultBody：已按槽位值渲染，不出现裸 {{背景}}
     saveDoc(docId, {
       title: '',
       body: withFrontmatter(tpl.defaultBody(), { board: board.id, project: sel.key }),
     });
-    app.openPage?.({ dirKey: sel.topicKey || '', task: id, name: '新任务' });
+    app.openPage?.({ groupId: board.id, task: id, name: '新任务' });
   };
 
   return (
@@ -316,7 +319,7 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
               <button
                 className="rp-proj-task"
                 title="打开这条任务"
-                onClick={() => app.openPage && app.openPage({ dirKey: member.topicKey, task: String(task.id), name: `#${task.id}` })}
+                onClick={() => app.openPage && app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })}
               >
                 <span className="mono">#{task.id}</span>
                 <span className="rp-ptag" title={`归属项目：${member.name}`}>{member.name}</span>
@@ -366,7 +369,7 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
                 key={member.key + ':' + task.id}
                 className="rp-proj-task done"
                 title="打开这条任务"
-                onClick={() => app.openPage && app.openPage({ dirKey: member.topicKey, task: String(task.id), name: `#${task.id}` })}
+                onClick={() => app.openPage && app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })}
               >
                 <span className="mono">#{task.id}</span>
                 <span className="rp-ptag" title={`归属项目：${member.name}`}>{member.name}</span>

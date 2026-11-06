@@ -59,3 +59,38 @@ test('crumbCtxOf：仓库路由不再从 repo.boards 挂组名（#84 根因）',
   assert.equal(groupCtx.boardName, 'nx');
   assert.equal(groupCtx.dirName, '');
 });
+
+// ─── #86：组任务详情路由 #/group/<boardId>?task=N ───
+
+test('crumbsOf group+task：[ 组名 / #N ]（挂组页之下）', () => {
+  assert.deepEqual(
+    crumbsOf({ view: 'group', key: 'b_1', task: '86' }, { boardName: 'nx', pageTitle: '#86' }),
+    ['nx', '#86']
+  );
+  // ctx 未就绪时页名兜底 #<task>
+  assert.deepEqual(crumbsOf({ view: 'group', key: 'b_1', task: '86' }, { boardName: 'nx' }), ['nx', '#86']);
+  // 草稿统一显示 draft
+  assert.deepEqual(crumbsOf({ view: 'group', key: 'b_1', task: 'draft-3' }, { boardName: 'nx' }), ['nx', 'draft']);
+});
+
+test('parentRouteOf：组任务页回组页（不是总览）', () => {
+  assert.equal(parentRouteOf({ view: 'group', key: 'b_1', task: '86' }), '#/group/b_1');
+  assert.equal(parentRouteOf({ view: 'group', key: 'b_1' }), '#/overview');
+});
+
+test('crumbCtxOf group+task：成员队列里搜任务（组路由 key 不是队列 key）', () => {
+  const rows = [
+    { key: 'k_a', name: 'nx-kv', tasks: [{ id: 86, boardMark: 'b_1' }] },
+    { key: 'k_b', name: 'other', tasks: [{ id: 86, boardMark: 'b_x' }] },
+  ];
+  const repoData = { boards: [{ id: 'b_1', name: 'nx', repos: [{ key: 'k_a' }, { key: 'k_b' }] }] };
+  const ctx = crumbCtxOf({ view: 'group', key: 'b_1', task: '86' }, rows, repoData);
+  assert.equal(ctx.boardName, 'nx');
+  // 撞号：优先 boardMark 指向本组的候选
+  assert.equal(ctx.dirName, 'nx-kv');
+  assert.equal(ctx.pageTitle, '#86');
+  // 组路由无任务段时行为不变
+  const plain = crumbCtxOf({ view: 'group', key: 'b_1' }, rows, repoData);
+  assert.equal(plain.dirName, '');
+  assert.equal(plain.pageTitle, '');
+});

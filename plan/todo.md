@@ -585,3 +585,59 @@ pnpm test 全绿（640/640）；真机 Chrome 探针（隔离 store：repos.json
 （旧 index.html 缓存竞态，与 #84 那次同族）——两次干净深链（cb=85c/d）行为一致且
 hash 稳定，按「缓存会话不作数」处理。另：目录页深链直开某条组任务（#/dir/<key>?task=N）
 仍可打开——分流只管列表与计数，不管深链（引用了组任务的 blockBy 文字回退同理）。
+
+### 组任务详情新路由：组锚定页全链路（2026-11-06 #86）
+
+**反馈**：「未修复，明明是nx项目组提交的任务，会跳转到项目里去，而且进程会跟着变化，
+严重bug」。用户随后点名方案：「给组任务详情发明新路由」。
+
+**根因**（三层，探针逐层实锤）：
+1. **没有路由**——点组任务 openPage 只拼 `{dirKey, task}`，视图身份锚在成员项目上，
+   跳进 `#/dir/...` 是必然；
+2. **进程翻面**——openPanel 对 page/dir 开复用/新建都会调 syncProgressPanel
+   （workspace.js）整卡替换进程 config `{dirKey: dirKey || ''}`；组锚定 config 没有
+   dirKey → `{dirKey:''}` → 进程被打回全局任务池。这不是「进程自己变了」，是
+   主区开面板时的同步副作用；
+3. **去重裂开**——openPage 拼 config 的键序（task,groupId）≠ 路由反推的键序
+   （groupId,task），findOpenPanel 按 JSON.stringify 比较、对键序敏感 → 同一页签
+   裂成两块。
+
+**修法**：
+- **新路由** `#/group/<boardId>?task=N`：route-map.js（纯函数、不引 React、node 单测
+  可 import）承载 routeOfPanel / panelSpecOfRoute 往返恒等式——config 恰为
+  `{groupId, task}`、逐字互逆；routeFromHash 组分支透传 ?task=；
+- **组锚定页**（task.jsx）：`groupAnchored = !!(groupId && !dirKey)`，成员队列在面板
+  内部解析（findGroupTask：boardMark 优先、撞号退首个命中）；所有队列寻址
+  dirKey→topicKey；移动/转正/反馈/克隆/导入全部保锚；
+- **组锚定草稿全链路**：组页「新增任务」种 doc 在**组 scope**（docIdOf(scopeOf(board.id),
+  draft-N)）、组路由打开；页内新任务/导入同口径；提交转正**留在组路由**（页签 config
+  与 hash 一起换——不换 hash 刷新会落在旧 draft 号上开出空壳）；组锚定实任务 doc 仍在
+  队列 scope（与目录页打开同一任务共享一份文档 + 验收状态）；
+- **进程跟随**（Bug 2 修复）：syncProgressPanel 认 `groupId` → 进程切组模式
+  `{groupKey}`；两处调用点透传；dir 模式照旧——「跟着主区走」双向对称；
+- **configSig**（Bug 3 修复）：键排序、undefined 跳过的序无关签名，findOpenPanel 与
+  App.jsx onModelChange 地址同判统一改用；
+- **成员寻址桥**（探针第三 bug）：`/api/boards` 成员 key 是**仓库 key**、队列行 key 是
+  owner 哈希——findGroupTask 改按 `r.repo.key`（|| repo.id || 行 key）匹配；
+- **顺手修活主区单面板位**：clearMainPanels 浮窗守卫 `if (getWindowId())` 在新
+  flexlayout 下恒真（主窗页签也返回主 layout GUID）→ 清场空转、页签成堆；改认
+  `'float'`。连锁两坑：先清后落会把唯一 tabset 清空（FlexLayout 自动删空 tabset）
+  → addTab 静默丢失、主区空白——改**先落后清**（keepId）；设置浮窗借道主区再
+  popout，popout 后主区空 → 同死——`_float` 标记不清场（浮窗本就不该动主区内容）。
+
+**验收**：单测 +12（route-map 往返恒等 5、findGroupTask 生产形态/撞号/退化 4、
+面包屑 3），pnpm test 全绿（661/661，lint ✓ build ✓）；真机 Chrome 探针（隔离 store
+端口 4787，cb=865/866 干净载入）：组页点行 → `#/group/b_probe86?task=1` 单页签、
+进程 `{groupKey, task}` 组模式、面包屑 `[probe86 / #1]`、← 回组页；冷深链 + 刷新
+复现同一屏；「新增任务」→ `?task=draft-1`（FM chips board/project 齐）→ 提交转正
+→ `?task=3`、页签 #3、服务端落成员队列 boardMark=b_probe86；dir 深链回归不变；
+进程组↔目录双向跟随翻转；主区任何导航后恒单页签。
+
+**坑**：① JSON.stringify 键序敏感是「隐式协议」——凡是拿它比 config 的地方都要换成
+序无关签名（findOpenPanel、onModelChange 两处都裂过）；② 两个键空间（仓库 key vs
+owner 哈希）全 app 靠 `t.repo.key` 桥接，新写的成员匹配一律走这个桥，别拿行 key；
+③ PS 5.1 Invoke-RestMethod 字符串 -Body 按 ASCII 发送，中文变 ?——要
+`[Text.Encoding]::UTF8.GetBytes($json)` 字节体；④ clearMainPanels 的浮窗守卫教训：
+「真值即浮窗」的假设随库版本升级静默失效，主区功能悄悄坏死——判断浮窗认窗口 id
+字面量 `'float'`；⑤ 转正后页签 config 换了但 hash 不会自己跟（onModelChange 只在
+选中页签**变化**时写地址）——要显式 onNavigate。

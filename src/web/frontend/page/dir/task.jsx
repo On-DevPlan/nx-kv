@@ -12,7 +12,7 @@ import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { Modal, useDialog } from '../../components/popup/index.jsx';
-import { GLOBAL_KEY } from '../../modules/board/board-view.js';
+import { GLOBAL_KEY, findGroupTask } from '../../modules/board/board-view.js';
 import {
   buildReopenText,
   FEEDBACK_HEADING,
@@ -53,7 +53,7 @@ import {
   useDocs,
 } from '../../modules/md/doc-store.js';
 
-export default function PagePanel({ dirKey, task, beside = false, tabId, model, historyId = null }) {
+export default function PagePanel({ dirKey, groupId, task, beside = false, tabId, model, historyId = null }) {
   const app = useApp() || {};
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
@@ -61,16 +61,30 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
   const refreshLocal = app.refreshLocal;
   const tpl = app.tpl;
 
-  const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
-  const scope = scopeOf(dirKey);
+  // 组锚定页（#86）：dirKey 缺席、groupId 在场——路由是 #/group/<boardId>?task=N，
+  // 这条任务物理上落在哪个成员队列，在这里搜出来（优先 boardMark 指向本组的候选，
+  // 与组页「本组任务」同口径）。队列数据（rows 轮询）到位前解析为空，随后自然补上。
+  const groupAnchored = !!(groupId && !dirKey);
+  const groupResolved = useMemo(
+    () => (groupAnchored ? findGroupTask(rows, (app.repoData && app.repoData.boards) || [], groupId, task) : null),
+    [groupAnchored, rows, app.repoData, groupId, task]
+  );
+  // 本页所属队列的 key：组锚定 = 解析出的成员队列；目录锚定 = dirKey
+  const topicKey = (groupResolved && groupResolved.topic && groupResolved.topic.key) || dirKey || '';
+
+  const isGlobal = !groupAnchored && (!topicKey || topicKey === GLOBAL_KEY);
   const isDraft = isDraftTask(task);
+  // 文档作用域（#86）：组锚定的**草稿**种在组 scope——组页「新增任务」从组路由
+  // 打开能寻回同一份；其余（实任务 / 目录页）都在队列 scope，同一任务两种锚共享一份文档。
+  const scope = groupAnchored && isDraft ? scopeOf(groupId) : scopeOf(topicKey);
   const id = docIdOf(scope, task);
 
   // 本目录的主题（提交/删除要它的 cwd）
   const topic = useMemo(() => {
+    if (groupAnchored) return (groupResolved && groupResolved.topic) || null;
     if (isGlobal) return rows.find((r) => r.isGlobal) || null;
-    return rows.find((r) => r.key === dirKey) || null;
-  }, [rows, dirKey, isGlobal]);
+    return rows.find((r) => r.key === topicKey) || null;
+  }, [rows, topicKey, isGlobal, groupAnchored, groupResolved]);
 
   const taskRow = useMemo(
     () => (topic?.tasks || []).find((x) => String(x.id) === String(task)) || null,
@@ -207,12 +221,16 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
         refreshLocal();
         return;
       }
-      const landedKey = res?.key || dirKey;
+      const landedKey = res?.key || topicKey;
       saveDoc(docIdOf(scopeOf(landedKey), newId), { title: titleFromMd(text), body: text });
       if (attachments?.length) persistAtt(newId, attachments);
       toast(`已反馈「${title}」→ 新任务 #${newId}`);
       refreshLocal();
-      if (app.openPage) app.openPage({ dirKey: landedKey, task: newId, name: `${title.slice(0, 24)}（反馈）` });
+      // 反馈新任务继承原任务的组语义（正文连 FM 一起带下去）——组锚定页就留在组里开
+      if (app.openPage) {
+        if (groupAnchored) app.openPage({ groupId, task: newId, name: `${title.slice(0, 24)}（反馈）` });
+        else app.openPage({ dirKey: landedKey, task: newId, name: `${title.slice(0, 24)}（反馈）` });
+      }
     });
   };
   /** 划选评论 → 就地回写原任务（#74），可带附件。
@@ -280,14 +298,14 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
         },
       });
       // 回写后的正文以服务端为准刷回编辑器（服务端拼装时新段只有服务端知道）
-      const landedKey = res?.key || dirKey;
+      const landedKey = res?.key || topicKey;
       const sameId = String(res?.task?.id ?? task);
       const finalText = String(res?.task?.text ?? text ?? '');
       if (finalText) {
         saveDoc(docIdOf(scopeOf(landedKey), sameId), { title: titleFromMd(finalText), body: finalText });
       }
       if (attachments?.length) persistAtt(sameId, [...(doc?.attachments || []), ...attachments]);
-      if (model && tabId && landedKey !== dirKey) {
+      if (model && tabId && landedKey !== topicKey) {
         model.doAction(Actions.updateNodeAttributes(tabId, { config: { dirKey: landedKey, task: sameId } }));
       }
       setDirty(false);
@@ -304,9 +322,9 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
   const parentRef = useMemo(() => {
     if (beside) return null; // 旁路原文自己不再开旁路
     const pid = String(docFm.parent || '').trim();
-    const pdir = String(docFm.parentDir || dirKey || '').trim();
+    const pdir = String(docFm.parentDir || topicKey || '').trim();
     if (pid && !/^draft/i.test(pid)) {
-      return { dirKey: pdir || dirKey, task: pid, name: `#${pid}` };
+      return { dirKey: pdir || topicKey, task: pid, name: `#${pid}` };
     }
     const body = String(doc?.body || '');
     const m = body.match(/>\s*锚定自「([^」]+)」/);
@@ -317,8 +335,8 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
       return titleFromMd(t.text || '') === title || String(t.text || '').includes(`# ${title}`);
     });
     if (!hit) return null;
-    return { dirKey, task: String(hit.id), name: `#${hit.id}` };
-  }, [beside, docFm.parent, docFm.parentDir, doc?.body, dirKey, topic, task]);
+    return { dirKey: topicKey, task: String(hit.id), name: `#${hit.id}` };
+  }, [beside, docFm.parent, docFm.parentDir, doc?.body, topicKey, topic, task]);
   const boardCtx = useMemo(() => {
     const bid = docFm.board;
     if (!bid) return null;
@@ -335,11 +353,18 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
   }, [docFm.board, app.repoData]);
 
   // 首开这一页时把内容「种」进去：真实任务用服务端正文，草稿用默认模板
+  // （组锚定草稿带上 board 语义——与组页「新增任务」种的同一份；已有文档不覆盖）
   useEffect(() => {
     if (docs[id]) return;
-    if (isDraft) getDoc(id, { title: '', body: tpl ? tpl.defaultBody() : '' });
-    else if (taskRow) getDoc(id, { title: titleFromMd(taskRow.text), body: taskRow.text });
-  }, [id, isDraft, taskRow]);
+    if (isDraft) {
+      getDoc(id, {
+        title: '',
+        body: tpl
+          ? (groupAnchored ? withFrontmatter(tpl.defaultBody(), { board: groupId }) : tpl.defaultBody())
+          : '',
+      });
+    } else if (taskRow) getDoc(id, { title: titleFromMd(taskRow.text), body: taskRow.text });
+  }, [id, isDraft, taskRow, groupAnchored, groupId]);
 
   const [selMenu, setSelMenu] = useState(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -440,7 +465,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
       name: '进程',
       config: boardId
         ? { groupKey: boardId, task: task != null ? String(task) : undefined }
-        : { dirKey: dirKey || GLOBAL_KEY, task: task != null ? String(task) : undefined },
+        : { dirKey: topicKey || GLOBAL_KEY, task: task != null ? String(task) : undefined },
       location: 'right',
     });
   };
@@ -475,7 +500,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
           component: 'page',
           name: `链 #${task} · ${node.kind || node.historyId}`,
           config: {
-            dirKey: dirKey || GLOBAL_KEY,
+            dirKey: topicKey || GLOBAL_KEY,
             task: String(task),
             historyId: Number(node.historyId),
           },
@@ -493,7 +518,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
       }
       toast('这个节点没有可打开的内容');
     },
-    [model, app.model, isDraft, dirKey, task, toast],
+    [model, app.model, isDraft, topicKey, task, toast],
   );
 
   const closeBesideSelf = useCallback(() => {
@@ -584,7 +609,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
       attachmentCount: 0,
       current: true,
       taskId: Number(task),
-      dirKey: dirKey || GLOBAL_KEY,
+      dirKey: topicKey || GLOBAL_KEY,
     });
     for (const c of children) {
       nodes.push({
@@ -600,7 +625,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
     }
     // 弹窗里即使只有当前节点也展示（说明这是链的尖）
     return nodes;
-  }, [isDraft, taskRow, chainApi, task, dirKey]);
+  }, [isDraft, taskRow, chainApi, task, topicKey]);
 
   const historyNode = useMemo(() => {
     if (historyId == null || !taskRow) return null;
@@ -632,7 +657,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
     // 标题行 / frontmatter 的位置与真实落库一致，预览才不会假装干净）。
     const body = {
       cwd: isGlobal ? (topic?.cwd || undefined) : topic?.cwd,
-      key: isGlobal ? GLOBAL_KEY : dirKey,
+      key: isGlobal ? GLOBAL_KEY : topicKey,
       ...(isDraft
         ? { text: composeText((doc?.title || '').trim() || '未命名任务', doc?.body || '') }
         : { id: Number(task) }),
@@ -640,7 +665,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
     api('/api/localtasks/preview', { method: 'POST', body })
       .then((d) => setPreview({ data: d }))
       .catch((e) => setPreview({ error: String(e.message || e) }));
-  }, [isGlobal, topic?.cwd, dirKey, isDraft, doc?.title, doc?.body, task]);
+  }, [isGlobal, topic?.cwd, topicKey, isDraft, doc?.title, doc?.body, task]);
 
   // ─── 保存 / 提交 ───
   // 时间目标的落库口径：草稿 → POST 带 duration/goalPrompt（后端 sanitize 校验写法）；
@@ -696,15 +721,24 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
       });
       // 归属改了会搬家（服务端按 frontmatter.project 落到新项目队列，任务 #43）——
       // 页签与文档跟过去（同「草稿提交落点跟到真实主题」一套），不然这页还开着旧队列的旧号。
+      // 组锚定页（#86）保持组锚：任务还是本组的，只是换了个成员队列。
       if (res?.moved) {
-        const landedKey = res.key || dirKey;
+        const landedKey = res.key || topicKey;
         const newId = String(res.task?.id ?? task);
         const newDocId = docIdOf(scopeOf(landedKey), newId);
         persistAtt(newId, doc.attachments);
         promoteDoc(id, newDocId, { title: t, body: res.task?.text || b });
         if (model && tabId) {
-          model.doAction(Actions.updateNodeAttributes(tabId, { config: { dirKey: landedKey, task: newId } }));
+          model.doAction(Actions.updateNodeAttributes(tabId, {
+            config: groupAnchored ? { groupId, task: newId } : { dirKey: landedKey, task: newId },
+          }));
         }
+        // 地址跟页签一起走（同「草稿转正」——刷新不能落在搬家前的旧号上）
+        app.onNavigate && app.onNavigate(
+          groupAnchored
+            ? `#/group/${encodeURIComponent(groupId || '')}?task=${encodeURIComponent(newId)}`
+            : `#/dir/${encodeURIComponent(landedKey || '')}?task=${encodeURIComponent(newId)}`
+        );
         setDirty(false);
         clearHistory(histRef.current, newDocId);
         toast(`已改归属项目：任务迁到「${res.name}」#${newId}`);
@@ -740,15 +774,25 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
     if (newId != null) {
       // 落点 = 服务端返回的真实主题 key（组任务按 project 推导，可能是别的项目/目录）。
       // 页签与文档都跟到真实落点——不然页签开着旧 scope，却指向别的队列里的任务号。
-      const landedKey = res?.key || dirKey;
+      // 组锚定页保持组锚（#86）：提交后的实任务带 boardMark，组路由照样解析得回；
+      // 文档搬去队列 scope（与目录页打开同一任务共享一份）。
+      const landedKey = res?.key || topicKey;
       const landedScope = scopeOf(landedKey);
       persistAtt(newId, doc.attachments);
       const newDocId = docIdOf(landedScope, String(newId));
       promoteDoc(id, newDocId, { title: t, body: b });
-      // 页签的 config 换成新任务（否则刷新后还认着 draft 号）
+      // 页签的 config 换成新任务（否则刷新后还认着 draft 号）；地址跟着走——
+      // 不然刷新还落在旧 draft 号上（那份草稿已转正搬走，会开出一份空壳新草稿）
       if (model && tabId) {
-        model.doAction(Actions.updateNodeAttributes(tabId, { config: { dirKey: landedKey, task: String(newId) } }));
+        model.doAction(Actions.updateNodeAttributes(tabId, {
+          config: groupAnchored ? { groupId, task: String(newId) } : { dirKey: landedKey, task: String(newId) },
+        }));
       }
+      app.onNavigate && app.onNavigate(
+        groupAnchored
+          ? `#/group/${encodeURIComponent(groupId || '')}?task=${encodeURIComponent(String(newId))}`
+          : `#/dir/${encodeURIComponent(landedKey || '')}?task=${encodeURIComponent(String(newId))}`
+      );
       setDirty(false);
       clearHistory(histRef.current, newDocId);
     }
@@ -756,7 +800,7 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
     refreshLocal();
   });
 
-  // ─── 导入 .md（在本目录里建一个任务，并开它的页签）───
+  // ─── 导入 .md（建一个任务，并开它的页签）───
   const importMd = async (file) => {
     const text = await file.text();
     const name = file.name.replace(/\.md$/i, '');
@@ -764,12 +808,21 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
       const bodyText = text.startsWith('#') ? text : `# ${name}\n\n${text}`;
       const res = await api('/api/localtasks', {
         method: 'POST',
-        body: isGlobal ? { global: true, text: bodyText } : { cwd: topic.cwd, text: bodyText },
+        // 组锚定页（#86）：按归属项目落队（与提交同一口径——组草稿页 topic 还没解析，
+        // cwd 寻不到）；目录/全局页维持 cwd / 全局池。
+        body: isGlobal
+          ? { global: true, text: bodyText }
+          : groupAnchored && docFm.project
+            ? { project: docFm.project, text: bodyText }
+            : { cwd: topic?.cwd, text: bodyText },
       });
       toast(`已导入：${file.name}`);
       refreshLocal();
       const newId = res?.task?.id ?? res?.id;
-      if (newId != null && app.openPage) app.openPage({ dirKey, task: String(newId), name: `#${newId}` });
+      if (newId != null && app.openPage) {
+        if (groupAnchored) app.openPage({ groupId, task: String(newId), name: `#${newId}` });
+        else app.openPage({ dirKey: topicKey, task: String(newId), name: `#${newId}` });
+      }
     });
   };
 
@@ -871,7 +924,9 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
    */
   const newTask = () => {
     const draftId = nextDraftId();
-    const docId = docIdOf(scopeOf(dirKey), draftId);
+    // 草稿 doc 的 scope：组锚定页种在**组 scope**（与组页「新增任务」同一套，
+    // 组路由寻得回，#86）；目录页种在本目录 scope
+    const docId = docIdOf(groupAnchored ? scopeOf(groupId) : scopeOf(topicKey), draftId);
     const fm = {};
     if (boardCtx && boardCtx.board && boardCtx.board.id) fm.board = boardCtx.board.id;
     if (docFm.project) fm.project = docFm.project;
@@ -879,7 +934,11 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
       title: '',
       body: withFrontmatter(tpl ? tpl.defaultBody() : '', fm),
     });
-    app.openPage && app.openPage({ dirKey, task: draftId, name: '新任务' });
+    app.openPage && app.openPage(
+      groupAnchored
+        ? { groupId, task: draftId, name: '新任务' }
+        : { dirKey: topicKey, task: draftId, name: '新任务' }
+    );
   };
 
   /** 「更多 → 克隆任务」：以当前任务为模板快速复制一条新任务（#70）。
@@ -899,7 +958,9 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
       refreshLocal();
       const newId = res?.task?.id ?? res?.id;
       if (newId != null && app.openPage) {
-        app.openPage({ dirKey, task: String(newId), name: `${(doc?.title || '任务').slice(0, 30)}（克隆）` });
+        // 克隆连 FM 一起复制——组任务的克隆还是组任务，组锚定页就留在组里开
+        if (groupAnchored) app.openPage({ groupId, task: String(newId), name: `${(doc?.title || '任务').slice(0, 30)}（克隆）` });
+        else app.openPage({ dirKey: topicKey, task: String(newId), name: `${(doc?.title || '任务').slice(0, 30)}（克隆）` });
       }
     });
   };
@@ -1091,7 +1152,11 @@ export default function PagePanel({ dirKey, task, beside = false, tabId, model, 
           <div>
             <button
               className="btn ghost sm"
-              onClick={() => app.onNavigate && app.onNavigate(isGlobal ? '#/global' : '#/dir/' + encodeURIComponent(dirKey || ''))}
+              onClick={() => app.onNavigate && app.onNavigate(
+                groupAnchored
+                  ? '#/group/' + encodeURIComponent(groupId || '')
+                  : isGlobal ? '#/global' : '#/dir/' + encodeURIComponent(dirKey || '')
+              )}
             >
               回到目录
             </button>

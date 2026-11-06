@@ -2,6 +2,42 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased] 组任务详情路由 + 组锚定页全链路（任务 #86）
+
+### Added
+
+- **组任务详情有了自己的路由 `#/group/<boardId>?task=N`（任务 #86 反馈）**：
+  点组任务不再跳进成员项目的 `#/dir/...`——详情页挂在组页之下，面包屑
+  `[ 组名 / #N ]`、左上 ← 回组页。任务物理上仍落在成员队列（打开寻址按
+  boardMark 优先、撞号退首个命中，与组页「本组任务」同一套原语），只是
+  **视图身份锚在组上**：刷新 / 冷深链 / 复制地址都能原样复现这一屏。
+- **组页「新增任务」走组路由**：新草稿种在组作用域、从 `#/group/<id>?task=draft-N`
+  打开（带 board/project frontmatter）；页内「更多 → 新任务」「导入 .md」同口径；
+  草稿提交转正后**留在组路由**（`?task=N`，地址与页签一起换），不再弹回目录路径。
+
+### Fixed
+
+- **进程面板「跟着变化」改成有意的跟随（任务 #86 反馈的另一半）**：主区切到
+  组任务页时，已打开的进程面板跟着切**组模式**（按组聚合，config.groupKey）；
+  切回目录任务页再翻回目录模式——双向对称，与 #33「进程跟着主区走」同语义。
+  此前的翻面是事故：openPanel 给进程面板同步 config 时组锚定页的 dirKey 是
+  undefined，`{dirKey:''}` 直接把它打回全局任务池。
+- **主区单面板位复活**：clearMainPanels 的浮窗守卫写的是 `if (getWindowId())`——
+  新版 flexlayout 里主窗页签的 getWindowId() 也返回真值（主 layout 自己的 GUID），
+  守卫把主区页签全判成浮窗、清场变空转，主区页签越堆越多（组任务页与详情页
+  来回点就叠一对）。现在只认 `'float'`（popoutTab 开的浮窗窗口 id 恒为它）；
+  同时把「先清场后落签」改成「**先落后清**」——先清会把唯一 tabset 清空，
+  FlexLayout 自动删空 tabset，新页签没地方落、静默丢失（主区一片空白，探针实测）；
+  设置浮窗借道主区时不清场（`_float` 标记），popout 后主区还留着自己的内容。
+- **面板去重按序无关签名**：openPage 拼的 config 键序和路由反推的不一定一致
+  （`{task,groupId}` vs `{groupId,task}`），JSON.stringify 对键序敏感——同一页签
+  裂成两块。findOpenPanel 与地址回写改用排序后的 configSig 比较；undefined 字段
+  跳过，保持「`task:undefined` ≡ 缺省」的旧等价。
+- **组成员寻址桥接到仓库 key**：`/api/boards` 的成员 key 是**仓库 key**
+  （`probe86/nx-kv`），队列行的 key 是 owner 哈希——两个键空间，直接拿成员 key
+  比行 key 会把整队滤掉（表现为「找不到任务 #N」）。findGroupTask 改按
+  `r.repo.key`（全 app 与组页/任务页同款桥）匹配，行无 repo 时退行 key 兜底。
+
 ## [0.27.1] - 2026-11-06 项目组任务不再混进项目侧（两种走向分流）
 
 ### Fixed

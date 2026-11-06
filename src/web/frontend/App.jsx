@@ -30,12 +30,14 @@ import { factory, routeOfPanel, panelSpecOfRoute, openSettingsPanel } from './pa
 import {
   activeTab,
   clearStoredModel,
+  configSig,
   loadModel,
   openPanel,
   pruneBlankTabsets,
   saveModel,
 } from './workspace.js';
 import { useTemplates } from './modules/md/use-templates.js';
+import { findGroupTask } from './modules/board/board-view.js';
 import { installAttachmentPreview } from './modules/md/lightbox.js';
 import { loadPrefs, updatePrefs } from './prefs.js';
 import SidebarRescueFab from './components/sidebar/rescue-fab.jsx';
@@ -53,9 +55,10 @@ function routeFromHash() {
   if (path.startsWith('dir/')) {
     return { view: 'dir', key: decodeURIComponent(path.slice(4)), task };
   }
-  // 项目组详情：组里的子目录表（点击侧栏的项目组行进来）
+  // 项目组详情：组里的子目录表（点击侧栏的项目组行进来）；?task=N 是组内某一页的
+  // 深链（组任务详情路由，#86）——组页与目录页一样带任务段
   if (path.startsWith('group/')) {
-    return { view: 'group', key: decodeURIComponent(path.slice(6)), task: '' };
+    return { view: 'group', key: decodeURIComponent(path.slice(6)), task };
   }
   const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos', 'templates'];
   if (KNOWN.includes(path)) {
@@ -262,6 +265,15 @@ export default function App() {
   const specCtx = useMemo(() => {
     // group 路由的 key = 看板 id；dir 路由的 key = 主题 key——两组身份别混。
     // 组名只给组页的面板命名用——仓库是独立模块，仓库路由不再向上挂组（#84）。
+    if (route.view === 'group') {
+      // 组路由带 ?task=（#86）：页名要从成员队列里搜出这条任务才知道
+      const g = findGroupTask(rows, repoData.boards || [], route.key, route.task);
+      return {
+        boardName: (g.board && g.board.name) || '',
+        dirName: g.topic ? g.topic.name : '',
+        pageTitle: g.taskRow ? `#${g.taskRow.id}` : '',
+      };
+    }
     const boardById = (repoData.boards || []).find((b) => b.id === route.key);
     const topic = rows.find((r) => r.key === route.key);
     const taskRow = topic && route.task
@@ -272,7 +284,7 @@ export default function App() {
       dirName: topic ? topic.name : '',
       pageTitle: taskRow ? `#${taskRow.id}` : '',
     };
-  }, [repoData.boards, rows, route.key, route.task]);
+  }, [repoData.boards, rows, route.view, route.key, route.task]);
 
   // 路由 → 面板：地址指向哪块，就打开/聚焦哪块。
   // **只跟路由走**（模型用 ref）：模型一变就重跑，会按**旧路由**把面板抢回去
@@ -306,13 +318,18 @@ export default function App() {
     openPanel(m, spec);
   }, [route, specCtxKey]);
 
-  /** 开一个 MD 页签（工作区页签，不是工作台内部的 tab） */
+  /** 开一个 MD 页签（工作区页签，不是工作台内部的 tab）
+   *  spec.groupId（#86）= 组锚定页：组任务详情，成员队列由面板内部解析 */
   const openPage = useCallback((spec) => {
     if (!model) return;
     openPanel(model, {
       component: 'page',
       name: spec.name || '页面',
-      config: { dirKey: spec.dirKey, task: spec.task },
+      // 组锚定页（#86）：config 恰为 {groupId, task}，与 panelSpecOfRoute 逐字互逆
+      // （去重按 configSig 序无关比，但形态一致才不会在 routeOfPanel 写回时多出 dirKey:undefined）
+      config: spec.groupId
+        ? { groupId: spec.groupId, task: spec.task }
+        : { dirKey: spec.dirKey, task: spec.task },
       location: spec.location || 'center',
     });
   }, [model]);
@@ -342,7 +359,7 @@ export default function App() {
     const same =
       curSpec &&
       curSpec.component === node.getComponent() &&
-      JSON.stringify(curSpec.config || {}) === JSON.stringify(node.getConfig() || {});
+      configSig(curSpec.config || {}) === configSig(node.getConfig() || {});
     if (same) return;
     history.replaceState(null, '', r);
     // replaceState 不触发 hashchange —— 路由状态要**自己**跟上，否则它停在旧值，

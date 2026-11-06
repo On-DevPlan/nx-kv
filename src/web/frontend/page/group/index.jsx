@@ -88,7 +88,7 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
     for (const r of topics) {
       if (!r.key || r.isGlobal) continue;
       const pend = (r.tasks || []).filter(
-        (t) => t && !t.deletedAt && !t.migratedTo && t.status !== 'consumed',
+        (t) => t && !t.deletedAt && !t.migratedTo && t.status === 'pending',
       );
       const downstream = {};
       pend.forEach((t, i) => {

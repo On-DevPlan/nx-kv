@@ -103,7 +103,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   }, [id]);
   const declaredGoal = taskRow?.timegoal || null;
   const goal = goalDraft || { duration: declaredGoal?.duration || '', prompt: declaredGoal?.prompt || '' };
-  const goalEditable = isDraft || (!!taskRow && taskRow.status !== 'consumed');
+  // 只有「待领取」能改时间目标声明（已领取在计时、已交付是终态；要改先 reopen）
+  const goalEditable = isDraft || (!!taskRow && taskRow.status === 'pending');
 
   // ─── 验收条（完成任务）：agent 的完成总结（ack）+ 用户回复（通行 / 反馈 / 划线评论）───
   // 「通行」只在本机记一笔（localStorage，per-viewer 的轻量状态）：done 本身已是终态，

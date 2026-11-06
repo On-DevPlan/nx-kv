@@ -64,7 +64,8 @@ test('add --duration：任务记录带 timegoal 声明；领取交付带 check �
 
   // timegoal check --task：任务维度 check 可用（日志落 timegoal 存储）
   const tg = await import('../../src/modules/tasktool/timegoal.js');
-  const key = tg.taskGoalKey(localtask.topicKeyFor('proj'), 1);
+  // T03：key 由完整 cwd 派生（topicKeyOf），与领取时 ensureTaskGoal 的 key 同源
+  const key = tg.taskGoalKey(localtask.normalizeCwd(cwd).key, 1);
   const chk = await tg.checkGoalByKey(key, { summary: '推进中', progress: '50%' });
   assert.equal(chk.hasGoal, true);
   assert.equal(chk.reached, false);
@@ -76,7 +77,7 @@ test('add --duration：任务记录带 timegoal 声明；领取交付带 check �
   assert.ok(done2.task.completedAt);
   assert.equal(done2.goal.recorded, true);
   // 最终 check 落在了任务级 goal 的日志里
-  const tgKey = tg.taskGoalKey(localtask.topicKeyFor('proj'), 1);
+  const tgKey = tg.taskGoalKey(localtask.normalizeCwd(cwd).key, 1);
   const raw = JSON.parse(readFileSync(process.env.NX_KV_TIMEGOAL_STORE, 'utf8'));
   const storedGoal = raw.goals[tgKey];
   assert.ok(storedGoal, '任务级 goal 在 timegoals.json');

@@ -10,12 +10,11 @@ import {
   appendFeedback,
 } from '../../shared/feedback-text.js';
 import { findFirstReadyPending } from './dag.js';
-import { basename } from 'node:path';
 import { isGlobalKey, resolveTaskKey, topicKeyFor } from './paths.js';
-import { loadStore, saveStore, stampNow, normalizeSummary, normalizeText, bumpWorkflowRevision } from './store-io.js';
-import { normalizeTask, foreignResolver, isPending } from './task-view.js';
+import { normalizeSummary, normalizeText, stampNow } from './store-io.js';
+import { normalizeTask, foreignResolver, isPending, relocateTask } from './task-view.js';
+import { openLocaltaskStore as openStore, topics as topicsRepo, tasks as tasksRepo, txw as tx } from './repo/index.js';
 import { normalizeBlockBy } from './dag.js';
-import { markConsumed } from './waiters.js';
 
 /** 下一条 history 节点编号（任务内自增） */
 function nextHistoryId(history) {
@@ -85,14 +84,16 @@ export async function reopenTask({
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
-  const store = await loadStore();
-  const t = store.topics[key];
+  openStore();
+  const t = topicsRepo.getTopic(key);
   if (!t) throw notFound('主题不存在: ' + key);
   const task = t.tasks.find((x) => Number(x.id) === want);
   if (!task || task.deletedAt) throw notFound('任务不存在或已删除: #' + want);
-  // 旧口径（#59）归档的 superseded 任务仍拒绝——那是被新号取代的残留，不是本条活。
-  if (task.status === 'archived') {
-    throw badInput(`#${want} 已归档（被新任务取代）——不能再重开；要继续做请新建任务`);
+  // 终态里**只有 cancelled 拒绝重开**：done 允许就地重开（#74 的"完成验收后回待领取"），
+  // cancelled 是"被新号取代/明确作废"的留档行，重开它等于让一条死记录复活。
+  // 词表见 src/shared/task-status.js。
+  if (task.status === 'cancelled') {
+    throw badInput(`#${want} 已取消（被新任务取代或明确作废）——不能再重开；要继续做请新建任务`);
   }
 
   const kind = rawKind === 'comment' ? 'comment' : 'reopen';
@@ -156,15 +157,15 @@ export async function reopenTask({
   // 链上的「当前尖」语义：forkKind 记最近一次事件种类（兼容旧 chain 查询展示）
   task.forkKind = kind;
 
-  // 落点：默认同主题；带改过归属（moveTo）就搬整条。
+  // 落点：默认同主题；带改过归属（moveTo）就搬整条（repo 版搬家在**同一事务**里跑）。
   let host = t;
   let moved = false;
   let movedFrom = null;
   if (moveTo && moveTo.cwd) {
-    const toKey = topicKeyFor(basename(String(moveTo.cwd)));
+    // 新寻址：key 由完整 cwd 派生（topicKeyFor 现在吃完整路径，不再吃 basename）
+    const toKey = topicKeyFor(String(moveTo.cwd));
     if (toKey !== t.key) {
-      const { relocateInStore } = await import('./task-view.js');
-      const relocated = relocateInStore(store, t, task, moveTo);
+      const relocated = relocateTask(t, want, moveTo);
       if (relocated) {
         host = relocated.topic;
         moved = true;
@@ -174,26 +175,42 @@ export async function reopenTask({
   }
 
   // blockBy 仍指向自己时清掉（编号没变，一般不会；搬家后仍校验一次）
-  task.blockBy = normalizeBlockBy(task.blockBy, Number(task.id));
+  tx(() => {
+    tasksRepo.updateTask(host.id, Number(task.id), {
+      text: task.text,
+      status: 'pending',
+      consumedAt: '',
+      completedAt: '',
+      roundSummary: '',
+      claimedFrom: '',
+      claimedBy: '',
+      claimedByName: '',
+      reopenCount: task.reopenCount,
+      lastReopenedAt: task.lastReopenedAt,
+      forkKind: task.forkKind,
+      blockBy: normalizeBlockBy(task.blockBy, Number(task.id)),
+      history: task.history,
+    });
+    topicsRepo.updateTopic(host.key, { bumpRevision: true });
+    if (host.key !== key) topicsRepo.updateTopic(key, { bumpRevision: true });
+    return true;
+  });
 
-  host.updatedAt = stampNow();
-  bumpWorkflowRevision(host);
-  if (host !== t) bumpWorkflowRevision(t);
-  await saveStore(store);
-
+  const hostView = topicsRepo.getTopic(host.key);
+  const live = hostView.tasks.find((x) => Number(x.id) === Number(task.id)) || task;
   return {
     status: 'ok',
     reopened: true,
     forked: false, // #74：不再新建
-    id: Number(task.id),
-    key: host.key,
-    name: host.name,
+    id: Number(live.id),
+    key: hostView.key,
+    name: hostView.name,
     before,
     kind,
     historyId: node.id,
     moved,
     movedFrom,
-    task: normalizeTask(task, host.tasks),
+    task: normalizeTask(live, hostView.tasks),
   };
 }
 
@@ -201,22 +218,31 @@ export async function reopenTask({
 // 缺省回落到主题当前 summary（等待中即本轮现状）。
 // by = 领取方身份 {key,name,cwd}（wait 传入），用于记领取审计。
 export async function consumeFirstPending(key, roundSummary, by) {
-  const store = await loadStore();
-  const t = store.topics[key];
+  openStore();
+  const t = topicsRepo.getTopic(key);
   if (!t) return null;
-  // D-first：跳过被 blockBy / 闸门挡住的 pending，按数组序取第一条**可领**的
-  // 跨队列依赖经 resolveForeign 认 completedAt
-  const task = findFirstReadyPending(t.tasks || [], { resolveForeign: foreignResolver(store) });
+  // D-first：跳过被 blockBy / 闸门挡住的 pending，按队列序取第一条**可领**的
+  // 跨队列依赖经 resolveForeign 认 completedAt（直接查库，永远最新）
+  const task = findFirstReadyPending(t.tasks || [], { resolveForeign: foreignResolver() });
   if (!task || !isPending(task)) return null;
-  markConsumed(task, roundSummary || t.summary || '', {
-    from: isGlobalKey(key) ? 'global' : 'local',
-    byKey: by && by.key,
-    byName: by && by.name,
+  // 领取 = 带守卫的单条 UPDATE（pending ∧ 未删除）：两个进程抢同一条时，
+  // changes=0 的一方拿 null —— 「不重复领取」是结构性保证。
+  const claimed = tx(() =>
+    tasksRepo.claimTask(t.id, task.id, {
+      summary: roundSummary || t.summary || '',
+      from: isGlobalKey(key) ? 'global' : 'local',
+      byKey: by && by.key,
+      byName: by && by.name,
+    })
+  );
+  if (!claimed) return null; // 被并发抢先：调用方按「没有可领」处理（下轮重试）
+  // 注意：**不动等待态** —— wait 轮询期间 waiting 仍为真（agent 还阻塞着），
+  // 清等待是 wait 自己收尾的事（clearWaiting）。与 JSON 时代 markConsumed 的行为一致。
+  tx(() => {
+    topicsRepo.updateTopic(key, { bumpRevision: true });
+    return true;
   });
-  t.updatedAt = stampNow();
-  bumpWorkflowRevision(t);
-  await saveStore(store);
-  return normalizeTask(task);
+  return normalizeTask(claimed);
 }
 // ─── 标记完成（任务工具的完成门禁）────────────────────────────────────
 //
@@ -230,12 +256,27 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
   const summary = normalizeSummary(rawSummary); // 完成总结必填（记为该任务的终态）
   const progress = String(rawProgress ?? '').trim().slice(0, 2000);
-  const store = await loadStore();
-  const t = store.topics[key];
+  openStore();
+  const t = topicsRepo.getTopic(key);
   if (!t) throw notFound('主题不存在: ' + key);
   const task = t.tasks.find((x) => Number(x.id) === want);
   if (!task || task.deletedAt) throw notFound('任务不存在或已删除: #' + want);
-  if (task.status !== 'consumed') {
+  // 「已完成」的幂等分支必须排在领取判定**之前**：done 行的 status 已经不是 claimed，
+  // 先判 claimed 会把它误报成「还没领取」（旧代码里 done 与 claimed 共用 consumed，
+  // 所以顺序无所谓；词表一分家就暴露了）。
+  if (task.status === 'done' || task.completedAt) {
+    return {
+      status: 'ok',
+      already: true,
+      id: want,
+      key,
+      doneAt: task.completedAt || '',
+      feedback: task.roundSummary || '',
+      completedAt: task.completedAt,
+      task: normalizeTask(task),
+    };
+  }
+  if (task.status !== 'claimed') {
     return {
       status: 'blocked',
       reason: 'not_claimed',
@@ -244,9 +285,6 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
       name: t.name,
       hint: '任务还没被领取——先 wait/get 领取，干完再标完成',
     };
-  }
-  if (task.completedAt) {
-    return { status: 'ok', already: true, id: want, key, completedAt: task.completedAt, task: normalizeTask(task) };
   }
   let goal = null;
   if (task.timegoal) {
@@ -276,11 +314,30 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
       goal = { recorded: false, reason: 'goal_expired' };
     }
   }
-  task.completedAt = stampNow();
-  task.roundSummary = summary;
-  t.updatedAt = stampNow();
-  bumpWorkflowRevision(t);
-  await saveStore(store);
+  // 完成 = 带守卫的单条 UPDATE（claimed ∧ 未删除 → done），反馈与时刻同事务写入。
+  // 状态升为终态 done（词表见 src/shared/task-status.js）。
+  // 旧代码靠「consumed + completedAt」两个字段表达「已完成」——两个真值源迟早分叉，
+  // 统一后 status 是唯一的状态真值，completedAt / roundSummary 只是"何时/结论"的载体。
+  const doneAtMs = Date.now();
+  const okDone = tx(() => {
+    const changed = tasksRepo.completeTask(t.id, want, { feedback: summary, atMs: doneAtMs });
+    if (changed) topicsRepo.updateTopic(key, { bumpRevision: true });
+    return changed;
+  });
+  if (!okDone) {
+    // 并发窗口：刚好被别人完成 / 被删除 —— 按 already 口径返回当前行（幂等语义）
+    const fresh = topicsRepo.getTopic(key).tasks.find((x) => Number(x.id) === want);
+    return {
+      status: 'ok',
+      already: true,
+      id: want,
+      key,
+      doneAt: fresh ? fresh.completedAt : '',
+      feedback: fresh ? fresh.roundSummary : '',
+      completedAt: fresh ? fresh.completedAt : '',
+      task: fresh ? normalizeTask(fresh) : normalizeTask(task),
+    };
+  }
   // 单一写路径：完成 → Mutator 标 success + 调度一轮（fail-open）
   try {
     const { markTaskSuccess } = await import('./writes.js');
@@ -293,15 +350,19 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
       /* ignore */
     }
   }
+  const doneView = topicsRepo.getTopic(key).tasks.find((x) => Number(x.id) === want) || task;
   return {
     status: 'ok',
     completed: true,
     id: want,
     key,
     name: t.name,
-    completedAt: task.completedAt,
+    // 词表统一后的规范字段名（旧名 completedAt/roundSummary 在 T03 后仍随视图返回）
+    doneAt: doneView.completedAt,
+    feedback: doneView.roundSummary || '',
+    completedAt: doneView.completedAt,
     goal,
-    task: normalizeTask(task),
+    task: normalizeTask(doneView),
   };
 }
 // ─── 时间目标到点 → 本轮立刻收尾 ───────────────────────────────────────
@@ -315,7 +376,7 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
 //     模块边界说明），这里只在真的 wait 时才按需加载，不给启动路径加负担。
 //   - **fail-open**：加载失败 / 读不到 / 这个目录没有目标 → 一律当作"没有截止
 //     时刻"，wait 照原样按超时走。探针坏了绝不能把 wait 卡死。
-//   - 键是同一个：两个模块的 topicKeyFor 都是 sha1(小写目录名) 前 16 位，
+//   - 键是同一个：localtask 与 timegoal 都按 (cwd, group) 派生 key（见 core/topic-key.js）；
 //     所以「同名目录」= 同一个 key = 同一个目标。
 //
 // ⚠️ **只在"等待期间到期"才取消**：等待开始时目标就已经过期的，**不**取消。

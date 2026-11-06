@@ -8,6 +8,10 @@
 // 与后端的共同约定只有 `__GLOBAL__` 这一个字符串（见 localtask service 的 GLOBAL_KEY），
 // 由 tests/unit/registry.test.mjs 的边界断言与 shared/ 层共同守住。
 
+// 任务状态词表与谓词：前后端共用同一份实现（src/shared/task-status.js）。
+// 以前这里抄了一份「排除法」的 isPendingRow，与后端各写一遍迟早分叉。
+import { isPending } from '../../../../shared/task-status.js';
+
 // 全局任务池（共享池）的固定标识 —— 与 localtask service 的 GLOBAL_KEY 一致。
 export const GLOBAL_KEY = '__GLOBAL__';
 export const GLOBAL_NAME = '全局任务';
@@ -69,14 +73,16 @@ export function withGlobalRow(rows) {
 export function splitQueueTasks(tasks = []) {
   const list = Array.isArray(tasks) ? tasks : [];
   return {
-    pending: list.filter((t) => t.status !== 'consumed' && t.status !== 'archived' && !t.deletedAt && !t.migratedTo),
-    consumed: list.filter((t) => t.status === 'consumed' && !t.deletedAt).slice().reverse(),
-    // 归档（#59）：被新任务取代的旧任务——终态留档，不再算进行中
-    archived: list.filter((t) => t.status === 'archived' && !t.deletedAt).slice().reverse(),
+    // 四桶与任务状态词表一一对应（src/shared/task-status.js）：
+    // pending 待领取 / claimed 已领取（在干）/ done 已交付 / cancelled 已取消（终态留档）
+    pending: list.filter((t) => t.status === 'pending' && !t.deletedAt && !t.migratedTo),
+    claimed: list.filter((t) => t.status === 'claimed' && !t.deletedAt).slice().reverse(),
+    done: list.filter((t) => t.status === 'done' && !t.deletedAt).slice().reverse(),
+    cancelled: list.filter((t) => t.status === 'cancelled' && !t.deletedAt).slice().reverse(),
     deleted: list.filter((t) => !!t.deletedAt).slice().reverse(),
     // 迁出记录（tombstone）：原条目留在队列里但已不算待领取，看板渲染成
     // 虚线灰卡「已迁移 → …」，可跳转/移除/撤销。保持队列原序（正序）。
-    migrated: list.filter((t) => !!t.migratedTo && !t.deletedAt && t.status !== 'consumed'),
+    migrated: list.filter((t) => !!t.migratedTo && !t.deletedAt),
   };
 }
 
@@ -98,19 +104,28 @@ export function splitQueueTasks(tasks = []) {
 export function sortTasksForDisplay(tasks = []) {
   const list = Array.isArray(tasks) ? tasks : [];
   const pending = [];
-  const consumed = [];
-  const archived = [];
+  const claimed = [];
+  const done = [];
+  const cancelled = [];
   const migrated = [];
   const deleted = [];
   for (const t of list) {
     if (t.deletedAt) deleted.push(t);
-    else if (t.status === 'consumed') consumed.push(t);
-    else if (t.status === 'archived') archived.push(t);
+    else if (t.status === 'claimed') claimed.push(t);
+    else if (t.status === 'done') done.push(t);
+    else if (t.status === 'cancelled') cancelled.push(t);
     else if (t.migratedTo) migrated.push(t);
     else pending.push(t);
   }
-  // 归档沉在历史区（与迁出记录同层），删除记录垫底
-  return [...pending, ...consumed.reverse(), ...migrated, ...archived.reverse(), ...deleted.reverse()];
+  // 终态（已交付 / 已取消）沉在历史区（与迁出记录同层），删除记录垫底
+  return [
+    ...pending,
+    ...claimed.reverse(),
+    ...migrated,
+    ...done.reverse(),
+    ...cancelled.reverse(),
+    ...deleted.reverse(),
+  ];
 }
 
 // ─── 两种走向（任务 #85）─────────────────────────────────────────────
@@ -124,9 +139,12 @@ export function isGroupTask(t) {
   return !!(t && t.boardMark);
 }
 
-/** 服务端 isPending（task-view.js）的前端同款：未领取、未删除、未迁出、未归档 */
+/**
+ * 服务端 isPending（shared/task-status.js）的前端同款。
+ * 现在直接调同一份实现 —— 以前前后端各写一遍排除法，两边迟早分叉。
+ */
 export function isPendingRow(t) {
-  return t.status !== 'consumed' && t.status !== 'archived' && !t.deletedAt && !t.migratedTo;
+  return isPending(t);
 }
 
 /** 项目走向视图的任务清单：组任务剔除、软删除不进（与各列表页的基底过滤同口径） */

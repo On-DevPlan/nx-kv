@@ -1,0 +1,879 @@
+{
+  "version": 4,
+  "settings": {
+    "timeoutSec": 120,
+    "taskSuffix": [
+      "收尾提示词"
+    ],
+    "ackPrompt": []
+  },
+  "topics": {
+    "topic-01": {
+      "key": "topic-01",
+      "cwd": "D:/fixture/proj-01",
+      "name": "proj-01",
+      "createdAt": "2026-10-02 10:00:00",
+      "updatedAt": "2026-10-12 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": [
+        {
+          "id": 1,
+          "text": "任务正文 topic-01#1",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00"
+        },
+        {
+          "id": 2,
+          "text": "任务正文 topic-01#2",
+          "status": "consumed",
+          "createdAt": "2026-10-02 12:00:00",
+          "consumedAt": "2026-10-02 12:30:00"
+        },
+        {
+          "id": 3,
+          "text": "任务正文 topic-01#3",
+          "status": "consumed",
+          "createdAt": "2026-10-03 12:00:00",
+          "consumedAt": "2026-10-03 12:30:00"
+        },
+        {
+          "id": 4,
+          "text": "任务正文 topic-01#4",
+          "status": "consumed",
+          "createdAt": "2026-10-04 12:00:00",
+          "consumedAt": "2026-10-04 12:30:00"
+        },
+        {
+          "id": 5,
+          "text": "任务正文 topic-01#5",
+          "status": "consumed",
+          "createdAt": "2026-10-05 12:00:00",
+          "consumedAt": "2026-10-05 12:30:00"
+        },
+        {
+          "id": 6,
+          "text": "任务正文 topic-01#6",
+          "status": "consumed",
+          "createdAt": "2026-10-06 12:00:00",
+          "consumedAt": "2026-10-06 12:30:00",
+          "roundSummary": "第6轮已交付"
+        },
+        {
+          "id": 7,
+          "text": "任务正文 topic-01#7",
+          "status": "consumed",
+          "createdAt": "2026-10-07 12:00:00",
+          "consumedAt": "2026-10-07 12:30:00",
+          "roundSummary": "第7轮已交付"
+        },
+        {
+          "id": 8,
+          "text": "任务正文 topic-01#8",
+          "status": "consumed",
+          "createdAt": "2026-10-08 12:00:00",
+          "consumedAt": "2026-10-08 12:30:00",
+          "roundSummary": "第8轮已交付"
+        },
+        {
+          "id": 9,
+          "text": "任务正文 topic-01#9",
+          "status": "consumed",
+          "createdAt": "2026-10-09 12:00:00",
+          "consumedAt": "2026-10-09 12:30:00",
+          "roundSummary": "第9轮已交付"
+        },
+        {
+          "id": 10,
+          "text": "任务正文 topic-01#10",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "第10轮已交付"
+        },
+        {
+          "id": 11,
+          "text": "任务正文 topic-01#11",
+          "status": "consumed",
+          "createdAt": "2026-10-02 12:00:00",
+          "consumedAt": "2026-10-02 12:30:00",
+          "roundSummary": "第11轮已交付"
+        },
+        {
+          "id": 12,
+          "text": "任务正文 topic-01#12",
+          "status": "consumed",
+          "createdAt": "2026-10-03 12:00:00",
+          "consumedAt": "2026-10-03 12:30:00",
+          "roundSummary": "第12轮已交付"
+        },
+        {
+          "id": 13,
+          "text": "任务正文 topic-01#13",
+          "status": "consumed",
+          "createdAt": "2026-10-04 12:00:00",
+          "consumedAt": "2026-10-04 12:30:00",
+          "roundSummary": "第13轮已交付"
+        },
+        {
+          "id": 14,
+          "text": "任务正文 topic-01#14",
+          "status": "consumed",
+          "createdAt": "2026-10-05 12:00:00",
+          "consumedAt": "2026-10-05 12:30:00",
+          "roundSummary": "第14轮已交付"
+        },
+        {
+          "id": 15,
+          "text": "任务正文 topic-01#15",
+          "status": "consumed",
+          "createdAt": "2026-10-06 12:00:00",
+          "consumedAt": "2026-10-06 12:30:00",
+          "roundSummary": "第15轮已交付"
+        },
+        {
+          "id": 16,
+          "text": "任务正文 topic-01#16",
+          "status": "consumed",
+          "createdAt": "2026-10-07 12:00:00",
+          "consumedAt": "2026-10-07 12:30:00",
+          "roundSummary": "第16轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 17,
+          "text": "任务正文 topic-01#17",
+          "status": "consumed",
+          "createdAt": "2026-10-08 12:00:00",
+          "consumedAt": "2026-10-08 12:30:00",
+          "roundSummary": "第17轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 18,
+          "text": "任务正文 topic-01#18",
+          "status": "consumed",
+          "createdAt": "2026-10-09 12:00:00",
+          "consumedAt": "2026-10-09 12:30:00",
+          "roundSummary": "第18轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 19,
+          "text": "任务正文 topic-01#19",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "第19轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 20,
+          "text": "任务正文 topic-01#20",
+          "status": "consumed",
+          "createdAt": "2026-10-02 12:00:00",
+          "consumedAt": "2026-10-02 12:30:00",
+          "roundSummary": "第20轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 21,
+          "text": "任务正文 topic-01#21",
+          "status": "consumed",
+          "createdAt": "2026-10-03 12:00:00",
+          "consumedAt": "2026-10-03 12:30:00",
+          "roundSummary": "第21轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 22,
+          "text": "任务正文 topic-01#22",
+          "status": "consumed",
+          "createdAt": "2026-10-04 12:00:00",
+          "consumedAt": "2026-10-04 12:30:00",
+          "roundSummary": "第22轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 23,
+          "text": "任务正文 topic-01#23",
+          "status": "consumed",
+          "createdAt": "2026-10-05 12:00:00",
+          "consumedAt": "2026-10-05 12:30:00",
+          "roundSummary": "第23轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 24,
+          "text": "任务正文 topic-01#24",
+          "status": "consumed",
+          "createdAt": "2026-10-06 12:00:00",
+          "consumedAt": "2026-10-06 12:30:00",
+          "roundSummary": "第24轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 25,
+          "text": "任务正文 topic-01#25",
+          "status": "consumed",
+          "createdAt": "2026-10-07 12:00:00",
+          "consumedAt": "2026-10-07 12:30:00",
+          "roundSummary": "第25轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 26,
+          "text": "任务正文 topic-01#26",
+          "status": "consumed",
+          "createdAt": "2026-10-08 12:00:00",
+          "consumedAt": "2026-10-08 12:30:00",
+          "roundSummary": "第26轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 27,
+          "text": "任务正文 topic-01#27",
+          "status": "consumed",
+          "createdAt": "2026-10-09 12:00:00",
+          "consumedAt": "2026-10-09 12:30:00",
+          "roundSummary": "第27轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 28,
+          "text": "任务正文 topic-01#28",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "第28轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 29,
+          "text": "任务正文 topic-01#29",
+          "status": "consumed",
+          "createdAt": "2026-10-02 12:00:00",
+          "consumedAt": "2026-10-02 12:30:00",
+          "roundSummary": "第29轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 30,
+          "text": "任务正文 topic-01#30",
+          "status": "consumed",
+          "createdAt": "2026-10-03 12:00:00",
+          "consumedAt": "2026-10-03 12:30:00",
+          "roundSummary": "第30轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 31,
+          "text": "任务正文 topic-01#31",
+          "status": "consumed",
+          "createdAt": "2026-10-04 12:00:00",
+          "consumedAt": "2026-10-04 12:30:00",
+          "roundSummary": "第31轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 32,
+          "text": "任务正文 topic-01#32",
+          "status": "consumed",
+          "createdAt": "2026-10-05 12:00:00",
+          "consumedAt": "2026-10-05 12:30:00",
+          "roundSummary": "第32轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 33,
+          "text": "任务正文 topic-01#33",
+          "status": "consumed",
+          "createdAt": "2026-10-06 12:00:00",
+          "consumedAt": "2026-10-06 12:30:00",
+          "roundSummary": "第33轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 34,
+          "text": "任务正文 topic-01#34",
+          "status": "consumed",
+          "createdAt": "2026-10-07 12:00:00",
+          "consumedAt": "2026-10-07 12:30:00",
+          "roundSummary": "第34轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 35,
+          "text": "任务正文 topic-01#35",
+          "status": "consumed",
+          "createdAt": "2026-10-08 12:00:00",
+          "consumedAt": "2026-10-08 12:30:00",
+          "roundSummary": "第35轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 36,
+          "text": "任务正文 topic-01#36",
+          "status": "consumed",
+          "createdAt": "2026-10-09 12:00:00",
+          "consumedAt": "2026-10-09 12:30:00",
+          "roundSummary": "第36轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 37,
+          "text": "任务正文 topic-01#37",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "第37轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 38,
+          "text": "任务正文 topic-01#38",
+          "status": "consumed",
+          "createdAt": "2026-10-02 12:00:00",
+          "consumedAt": "2026-10-02 12:30:00",
+          "roundSummary": "第38轮已交付",
+          "remote": "",
+          "deletedAt": "2026-10-02 13:00:00"
+        },
+        {
+          "id": 39,
+          "text": "任务正文 topic-01#39",
+          "status": "pending",
+          "createdAt": "2026-10-03 12:00:00",
+          "consumedAt": "2026-10-03 12:30:00",
+          "roundSummary": "",
+          "from": "fixture",
+          "completedAt": "",
+          "reopenCount": 0,
+          "timegoal": null
+        },
+        {
+          "id": 40,
+          "text": "任务正文 topic-01#40",
+          "status": "pending",
+          "createdAt": "2026-10-04 12:00:00",
+          "consumedAt": "2026-10-04 12:30:00",
+          "roundSummary": "",
+          "from": "fixture",
+          "completedAt": "",
+          "reopenCount": 0,
+          "timegoal": null
+        },
+        {
+          "id": 41,
+          "text": "任务正文 topic-01#41",
+          "status": "pending",
+          "createdAt": "2026-10-05 12:00:00",
+          "consumedAt": "2026-10-05 12:30:00",
+          "roundSummary": "",
+          "from": "fixture",
+          "completedAt": "",
+          "reopenCount": 0,
+          "timegoal": null
+        },
+        {
+          "id": 42,
+          "text": "任务正文 topic-01#42",
+          "status": "pending",
+          "createdAt": "2026-10-06 12:00:00",
+          "consumedAt": "2026-10-06 12:30:00",
+          "roundSummary": "",
+          "from": "fixture",
+          "completedAt": "",
+          "reopenCount": 0,
+          "timegoal": null
+        }
+      ]
+    },
+    "topic-02": {
+      "key": "topic-02",
+      "cwd": "D:/fixture/proj-02",
+      "name": "proj-02",
+      "createdAt": "2026-10-03 10:00:00",
+      "updatedAt": "2026-10-13 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": [
+        {
+          "id": 1,
+          "text": "任务正文 topic-02#1",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "第1轮已交付"
+        },
+        {
+          "id": 2,
+          "text": "任务正文 topic-02#2",
+          "status": "consumed",
+          "createdAt": "2026-10-02 12:00:00",
+          "consumedAt": "2026-10-02 12:30:00",
+          "roundSummary": "第2轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 3,
+          "text": "任务正文 topic-02#3",
+          "status": "consumed",
+          "createdAt": "2026-10-03 12:00:00",
+          "consumedAt": "2026-10-03 12:30:00",
+          "roundSummary": "第3轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 4,
+          "text": "任务正文 topic-02#4",
+          "status": "consumed",
+          "createdAt": "2026-10-04 12:00:00",
+          "consumedAt": "2026-10-04 12:30:00",
+          "roundSummary": "第4轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 5,
+          "text": "任务正文 topic-02#5",
+          "status": "consumed",
+          "createdAt": "2026-10-05 12:00:00",
+          "consumedAt": "2026-10-05 12:30:00",
+          "roundSummary": "第5轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 6,
+          "text": "任务正文 topic-02#6",
+          "status": "consumed",
+          "createdAt": "2026-10-06 12:00:00",
+          "consumedAt": "2026-10-06 12:30:00",
+          "roundSummary": "第6轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 7,
+          "text": "任务正文 topic-02#7",
+          "status": "consumed",
+          "createdAt": "2026-10-07 12:00:00",
+          "consumedAt": "2026-10-07 12:30:00",
+          "roundSummary": "第7轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 8,
+          "text": "任务正文 topic-02#8",
+          "status": "consumed",
+          "createdAt": "2026-10-08 12:00:00",
+          "consumedAt": "2026-10-08 12:30:00",
+          "roundSummary": "第8轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 9,
+          "text": "任务正文 topic-02#9",
+          "status": "consumed",
+          "createdAt": "2026-10-09 12:00:00",
+          "consumedAt": "2026-10-09 12:30:00",
+          "roundSummary": "第9轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 10,
+          "text": "任务正文 topic-02#10",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "第10轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 11,
+          "text": "任务正文 topic-02#11",
+          "status": "consumed",
+          "createdAt": "2026-10-02 12:00:00",
+          "consumedAt": "2026-10-02 12:30:00",
+          "roundSummary": "第11轮已交付",
+          "remote": ""
+        },
+        {
+          "id": 12,
+          "text": "任务正文 topic-02#12",
+          "status": "pending",
+          "createdAt": "2026-10-03 12:00:00",
+          "consumedAt": "2026-10-03 12:30:00",
+          "roundSummary": "",
+          "from": "fixture",
+          "deletedAt": "2026-10-03 13:00:00",
+          "completedAt": "",
+          "reopenCount": 0,
+          "timegoal": null
+        },
+        {
+          "id": 13,
+          "text": "任务正文 topic-02#13",
+          "status": "pending",
+          "createdAt": "2026-10-04 12:00:00",
+          "consumedAt": "2026-10-04 12:30:00",
+          "roundSummary": "",
+          "from": "fixture",
+          "completedAt": "",
+          "reopenCount": 0,
+          "timegoal": null
+        }
+      ]
+    },
+    "topic-03": {
+      "key": "topic-03",
+      "cwd": "",
+      "name": "全局任务",
+      "createdAt": "2026-10-04 10:00:00",
+      "updatedAt": "2026-10-14 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": [
+        {
+          "id": 1,
+          "text": "任务正文 topic-03#1",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "第1轮已交付"
+        },
+        {
+          "id": 2,
+          "text": "任务正文 topic-03#2",
+          "status": "consumed",
+          "createdAt": "2026-10-02 12:00:00",
+          "consumedAt": "2026-10-02 12:30:00",
+          "roundSummary": "第2轮已交付"
+        },
+        {
+          "id": 3,
+          "text": "任务正文 topic-03#3",
+          "status": "consumed",
+          "createdAt": "2026-10-03 12:00:00",
+          "consumedAt": "2026-10-03 12:30:00",
+          "roundSummary": "第3轮已交付"
+        },
+        {
+          "id": 4,
+          "text": "任务正文 topic-03#4",
+          "status": "consumed",
+          "createdAt": "2026-10-04 12:00:00",
+          "consumedAt": "2026-10-04 12:30:00",
+          "roundSummary": "第4轮已交付"
+        },
+        {
+          "id": 5,
+          "text": "任务正文 topic-03#5",
+          "status": "consumed",
+          "createdAt": "2026-10-05 12:00:00",
+          "consumedAt": "2026-10-05 12:30:00",
+          "roundSummary": "第5轮已交付"
+        },
+        {
+          "id": 6,
+          "text": "任务正文 topic-03#6",
+          "status": "consumed",
+          "createdAt": "2026-10-06 12:00:00",
+          "consumedAt": "2026-10-06 12:30:00",
+          "roundSummary": "第6轮已交付"
+        },
+        {
+          "id": 7,
+          "text": "任务正文 topic-03#7",
+          "status": "consumed",
+          "createdAt": "2026-10-07 12:00:00",
+          "consumedAt": "2026-10-07 12:30:00",
+          "roundSummary": "第7轮已交付"
+        },
+        {
+          "id": 8,
+          "text": "任务正文 topic-03#8",
+          "status": "consumed",
+          "createdAt": "2026-10-08 12:00:00",
+          "consumedAt": "2026-10-08 12:30:00",
+          "roundSummary": "第8轮已交付"
+        },
+        {
+          "id": 9,
+          "text": "任务正文 topic-03#9",
+          "status": "consumed",
+          "createdAt": "2026-10-09 12:00:00",
+          "consumedAt": "2026-10-09 12:30:00",
+          "roundSummary": "第9轮已交付"
+        },
+        {
+          "id": 10,
+          "text": "任务正文 topic-03#10",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "第10轮已交付"
+        },
+        {
+          "id": 11,
+          "text": "任务正文 topic-03#11",
+          "status": "consumed",
+          "createdAt": "2026-10-02 12:00:00",
+          "consumedAt": "2026-10-02 12:30:00",
+          "roundSummary": "第11轮已交付"
+        },
+        {
+          "id": 12,
+          "text": "任务正文 topic-03#12",
+          "status": "consumed",
+          "createdAt": "2026-10-03 12:00:00",
+          "consumedAt": "2026-10-03 12:30:00",
+          "roundSummary": "第12轮已交付"
+        },
+        {
+          "id": 13,
+          "text": "任务正文 topic-03#13",
+          "status": "consumed",
+          "createdAt": "2026-10-04 12:00:00",
+          "consumedAt": "2026-10-04 12:30:00",
+          "roundSummary": "第13轮已交付"
+        },
+        {
+          "id": 14,
+          "text": "任务正文 topic-03#14",
+          "status": "consumed",
+          "createdAt": "2026-10-05 12:00:00",
+          "consumedAt": "2026-10-05 12:30:00",
+          "roundSummary": "第14轮已交付"
+        },
+        {
+          "id": 15,
+          "text": "任务正文 topic-03#15",
+          "status": "consumed",
+          "createdAt": "2026-10-06 12:00:00",
+          "consumedAt": "2026-10-06 12:30:00",
+          "roundSummary": "第15轮已交付"
+        },
+        {
+          "id": 16,
+          "text": "任务正文 topic-03#16",
+          "status": "consumed",
+          "createdAt": "2026-10-07 12:00:00",
+          "consumedAt": "2026-10-07 12:30:00",
+          "roundSummary": "第16轮已交付"
+        }
+      ]
+    },
+    "topic-04": {
+      "key": "topic-04",
+      "cwd": "D:/fixture/proj-04",
+      "name": "proj-04",
+      "createdAt": "2026-10-05 10:00:00",
+      "updatedAt": "2026-10-15 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    },
+    "topic-05": {
+      "key": "topic-05",
+      "cwd": "D:/fixture/proj-05",
+      "name": "proj-05",
+      "createdAt": "2026-10-06 10:00:00",
+      "updatedAt": "2026-10-16 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": [
+        {
+          "id": 1,
+          "text": "任务正文 topic-05#1",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "第1轮已交付"
+        }
+      ]
+    },
+    "topic-06": {
+      "key": "topic-06",
+      "cwd": "D:/fixture/proj-06",
+      "name": "proj-06",
+      "createdAt": "2026-10-07 10:00:00",
+      "updatedAt": "2026-10-17 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": [
+        {
+          "id": 1,
+          "text": "任务正文 topic-06#1",
+          "status": "pending",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "",
+          "from": "fixture",
+          "deletedAt": "2026-10-01 13:00:00"
+        }
+      ]
+    },
+    "topic-07": {
+      "key": "topic-07",
+      "cwd": "D:/fixture/proj-07",
+      "name": "proj-07",
+      "createdAt": "2026-10-08 10:00:00",
+      "updatedAt": "2026-10-18 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    },
+    "topic-08": {
+      "key": "topic-08",
+      "cwd": "D:/fixture/proj-08",
+      "name": "proj-08",
+      "createdAt": "2026-10-09 10:00:00",
+      "updatedAt": "2026-10-19 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    },
+    "topic-09": {
+      "key": "topic-09",
+      "cwd": "D:/fixture/proj-09",
+      "name": "proj-09",
+      "createdAt": "2026-10-01 10:00:00",
+      "updatedAt": "2026-10-11 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": [
+        {
+          "id": 1,
+          "text": "任务正文 topic-09#1",
+          "status": "pending",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "",
+          "from": "fixture",
+          "deletedAt": "2026-10-01 13:00:00"
+        }
+      ]
+    },
+    "topic-10": {
+      "key": "topic-10",
+      "cwd": "D:/fixture/proj-10",
+      "name": "proj-10",
+      "createdAt": "2026-10-02 10:00:00",
+      "updatedAt": "2026-10-12 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    },
+    "topic-11": {
+      "key": "topic-11",
+      "cwd": "D:/fixture/proj-11",
+      "name": "proj-11",
+      "createdAt": "2026-10-03 10:00:00",
+      "updatedAt": "2026-10-13 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": [
+        {
+          "id": 1,
+          "text": "任务正文 topic-11#1",
+          "status": "consumed",
+          "createdAt": "2026-10-01 12:00:00",
+          "consumedAt": "2026-10-01 12:30:00",
+          "roundSummary": "第1轮已交付",
+          "from": "fixture",
+          "completedAt": "",
+          "reopenCount": 0,
+          "timegoal": null
+        }
+      ]
+    },
+    "topic-12": {
+      "key": "topic-12",
+      "cwd": "D:/fixture/proj-12",
+      "name": "proj-12",
+      "createdAt": "2026-10-04 10:00:00",
+      "updatedAt": "2026-10-14 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    },
+    "topic-13": {
+      "key": "topic-13",
+      "cwd": "D:/fixture/proj-13",
+      "name": "proj-13",
+      "createdAt": "2026-10-05 10:00:00",
+      "updatedAt": "2026-10-15 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    },
+    "topic-14": {
+      "key": "topic-14",
+      "cwd": "D:/fixture/proj-14",
+      "name": "proj-14",
+      "createdAt": "2026-10-06 10:00:00",
+      "updatedAt": "2026-10-16 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    },
+    "topic-15": {
+      "key": "topic-15",
+      "cwd": "D:/fixture/proj-15",
+      "name": "proj-15",
+      "createdAt": "2026-10-07 10:00:00",
+      "updatedAt": "2026-10-17 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    },
+    "topic-16": {
+      "key": "topic-16",
+      "cwd": "D:/fixture/proj-16",
+      "name": "proj-16",
+      "createdAt": "2026-10-08 10:00:00",
+      "updatedAt": "2026-10-18 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    },
+    "topic-17": {
+      "key": "topic-17",
+      "cwd": "D:/fixture/proj-17",
+      "name": "proj-17",
+      "createdAt": "2026-10-09 10:00:00",
+      "updatedAt": "2026-10-19 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    },
+    "topic-18": {
+      "key": "topic-18",
+      "cwd": "D:/fixture/proj-18",
+      "name": "proj-18",
+      "createdAt": "2026-10-01 10:00:00",
+      "updatedAt": "2026-10-11 11:00:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    }
+  }
+}

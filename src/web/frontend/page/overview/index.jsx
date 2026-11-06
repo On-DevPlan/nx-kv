@@ -26,7 +26,9 @@ const NO_IDS = new Set();
 function statusTag(t) {
   if (t.deletedAt) return { label: '已删除', cls: 't-gone' };
   if (t.migratedTo) return { label: '已迁移', cls: 't-gone' };
-  if (t.status === 'consumed') return { label: '已领取', cls: 't-done' };
+  if (t.status === 'done') return { label: '已交付', cls: 't-done' };
+  if (t.status === 'claimed') return { label: '已领取', cls: 't-done' };
+  if (t.status === 'cancelled') return { label: '已取消', cls: 't-gone' };
   return { label: '待领取', cls: 't-pend' };
 }
 
@@ -293,7 +295,10 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
 function Sec({ secKey, icon, title, cwd, tasks, waiting, selected, doneOpen, onToggle, onToggleAll, onToggleDone, onOpenDir, onOpenTask }) {
   const split = splitQueueTasks(tasks || []);
   const pending = split.pending;
-  const consumed = split.consumed;
+  // 非待领取的行分三类展示：在干（claimed）/ 已交付（done）/ 已取消（cancelled）。
+  // 旧口径把前两类都塞在「已领取」里（那时 done 与 claimed 共用一个词）。
+  const claimed = split.claimed;
+  const closed = [...split.done, ...split.cancelled];
   const on = new Set(selected);
   const allOn = pending.length > 0 && pending.every((t) => on.has(Number(t.id)));
   const someOn = on.size > 0 && !allOn;
@@ -334,16 +339,17 @@ function Sec({ secKey, icon, title, cwd, tasks, waiting, selected, doneOpen, onT
         <TaskRow key={t.id} t={t} checked={on.has(Number(t.id))} onToggle={onToggle} onOpenTask={onOpenTask} />
       ))}
 
-      {consumed.length > 0 && (
+      {claimed.length + closed.length > 0 && (
         <>
           <button type="button" className="ov-done-toggle" onClick={onToggleDone} aria-expanded={doneOpen}>
             <span className={'tri' + (doneOpen ? ' open' : '')} aria-hidden="true">
               ▸
             </span>
-            已领取 {consumed.length}
+            已领取 {claimed.length} · 已交付 {split.done.length}
+            {split.cancelled.length ? ` · 已取消 ${split.cancelled.length}` : ''}
           </button>
           {doneOpen &&
-            consumed.map((t) => (
+            [...claimed, ...closed].map((t) => (
               <TaskRow
                 key={t.id}
                 t={t}

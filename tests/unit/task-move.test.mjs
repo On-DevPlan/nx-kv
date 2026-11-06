@@ -7,14 +7,16 @@
 // 存储一律指向临时文件（NX_KV_LOCALTASK_STORE），绝不写脏用户目录。
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-task-move-'));
 process.env.NX_KV_LOCALTASK_STORE = join(tmp, 'store.json');
 
-const { addTask, listTasks } = await import('../../src/modules/localtask/service.js');
+const { addTask, listTasks, resetLocaltaskStore } = await import(
+  '../../src/modules/localtask/service.js'
+);
 const { moveTask } = await import('../../src/modules/localtask/move.js');
 const { splitQueueTasks } = await import('../../src/web/frontend/modules/board/board-view.js');
 
@@ -50,7 +52,8 @@ async function topicByName(name) {
 }
 
 beforeEach(async () => {
-  rmSync(process.env.NX_KV_LOCALTASK_STORE, { force: true });
+  // T03：存储是 SQLite，reset = 清空库文件（否则上一条测试的 tombstone 会泄漏）
+  resetLocaltaskStore();
 });
 
 test('local→cloud：目标端先写成功，源端才打迁出标记（原子序）', async () => {

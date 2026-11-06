@@ -44,7 +44,7 @@ const key = svc.normalizeCwd(dir).key;
 const PROMPT = '把 nx-kv 面板的视觉再收一遍';
 
 async function reset() {
-  rmSync(storeFile, { force: true });
+  svc.resetLocaltaskStore();
   rmSync(goalFile, { force: true });
 }
 

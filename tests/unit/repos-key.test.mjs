@@ -34,6 +34,9 @@ beforeEach(() => {
   cfgDir = mkdtempSync(join(tmpdir(), 'nx-kv-keycfg-'));
   process.env.NX_KV_REPOS_STORE = join(dir, 'repos.json');
   process.env.NX_KV_CONFIG = join(cfgDir, 'config.json');
+  // docs 树也要隔离：本文件的用例会经 repos/boards/ref 写项目与组介绍文档，
+  // 不设就会落到真实 ~/.nx-kv/docs（docsRoot() 回落 APP_DIR/docs）。
+  process.env.NX_KV_DOCS_DIR = join(dir, 'docs');
 });
 
 test.after?.(() => {

@@ -1,6 +1,10 @@
 // （#54 自 service.js 拆出）进程内 waiter 注册表：主题级（同 key 覆盖）+ 全局 FIFO
-// （工作窃取兜底），以及领取标记 markConsumed（领取审计字段在这里写）。
-import { stampNow } from './store-io.js';
+// （工作窃取兜底）。
+//
+// T03：领取标记（status/claimed_at/审计字段）随 repo.tasks.claimTask 写库；
+// 本文件只剩**进程内**的 waiter 注册表（跨进程的等待态在 topic_presence 表）。
+// 旧的 markConsumed 已删：它的调用点全部改走 claimTask（带守卫的单条 UPDATE，
+// 并发领取不重复由此保证）。
 // ─── 进程内 waiter：key -> { resolve(task), summary, by } ───────────────
 //
 // 注册表**留在 localtask**（addTask 的唤醒路径要认领它），但注册/取走以 API 导出——
@@ -57,15 +61,3 @@ export function takeGlobalWaiter() {
   return null;
 }
 
-export function markConsumed(task, roundSummary, meta = {}) {
-  task.status = 'consumed';
-  task.consumedAt = stampNow();
-  // 记录该任务所回应的「agent 上一轮完成总结」（本轮等待时的现状）
-  if (roundSummary) task.roundSummary = roundSummary;
-  // 领取审计：这条**从哪个池**被领走、**被谁**领走。
-  // 全局池里的任务被别的目录的 agent 领走时，光看"它在全局池里"看不出谁干的。
-  if (meta.from) task.claimedFrom = meta.from;
-  if (meta.byKey) task.claimedBy = meta.byKey;
-  if (meta.byName) task.claimedByName = meta.byName;
-  return task;
-}

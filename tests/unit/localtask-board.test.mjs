@@ -104,15 +104,35 @@ test('globalPlaceholderTopic：空池子也能直接拿来当投递目标', () =
 test('splitQueueTasks：软删除的任务不在待领取、也不在已领取里', () => {
   const tasks = [
     { id: 1, status: 'pending', deletedAt: '' },
-    { id: 2, status: 'consumed', deletedAt: '' },
+    { id: 2, status: 'claimed', deletedAt: '' },
     { id: 3, status: 'pending', deletedAt: '2026-10-22 21:05:44' }, // 软删除但还没被领
-    { id: 4, status: 'consumed', deletedAt: '2026-10-22 21:05:44' }, // 软删除且已领
+    { id: 4, status: 'claimed', deletedAt: '2026-10-22 21:05:44' }, // 软删除且已领
   ];
-  const { pending, consumed, deleted } = splitQueueTasks(tasks);
+  const { pending, claimed, deleted } = splitQueueTasks(tasks);
 
   assert.deepEqual(pending.map((t) => t.id), [1], '待领取里不能有软删除的任务');
-  assert.deepEqual(consumed.map((t) => t.id), [2], '已领取里也不能有软删除的任务');
+  assert.deepEqual(claimed.map((t) => t.id), [2], '已领取里也不能有软删除的任务');
   assert.deepEqual(deleted.map((t) => t.id), [4, 3], '已删除区按倒序（新的在上面）');
+});
+
+test('splitQueueTasks：四个状态各进各桶（done / cancelled 不再混进已领取）', () => {
+  const tasks = [
+    { id: 1, status: 'pending' },
+    { id: 2, status: 'claimed' },
+    { id: 3, status: 'done' },
+    { id: 4, status: 'cancelled' },
+    { id: 5, status: 'unknown-word' }, // 不认识的词既不是待领取、也不进任何桶
+  ];
+  const split = splitQueueTasks(tasks);
+  assert.deepEqual(split.pending.map((t) => t.id), [1]);
+  assert.deepEqual(split.claimed.map((t) => t.id), [2]);
+  assert.deepEqual(split.done.map((t) => t.id), [3]);
+  assert.deepEqual(split.cancelled.map((t) => t.id), [4]);
+  assert.equal(
+    split.pending.length + split.claimed.length + split.done.length + split.cancelled.length,
+    4,
+    '未知状态不落任何桶（宁可看不见，也不冒充可领取）'
+  );
 });
 
 test('splitQueueTasks：待领取按领取优先级（数组原序，不反转）', () => {
@@ -126,7 +146,7 @@ test('splitQueueTasks：待领取按领取优先级（数组原序，不反转�
 });
 
 test('splitQueueTasks：空输入与脏输入都不炸', () => {
-  const empty = { pending: [], consumed: [], archived: [], deleted: [], migrated: [] };
+  const empty = { pending: [], claimed: [], done: [], cancelled: [], deleted: [], migrated: [] };
   assert.deepEqual(splitQueueTasks([]), empty);
   assert.deepEqual(splitQueueTasks(null), empty);
   assert.deepEqual(splitQueueTasks(undefined), empty);
@@ -138,11 +158,11 @@ test('splitQueueTasks：空输入与脏输入都不炸', () => {
 // 下面——用户加完活儿在列表里找不到它。显示序与队列序分开：显示时把待领取
 // 提到最前，其余沉到后面；**领取优先级不变**（待领取桶内仍是队列原序）。
 
-test('sortTasksForDisplay：待领取提到最前，已领取/已迁出/已删除依次下沉', () => {
+test('sortTasksForDisplay：待领取提到最前，已领取/已迁出/已交付/已删除依次下沉', () => {
   const tasks = [
-    { id: 1, status: 'consumed' },
+    { id: 1, status: 'claimed' },
     { id: 2, status: 'pending' },
-    { id: 3, status: 'consumed' },
+    { id: 3, status: 'claimed' },
     { id: 4, status: 'pending' },
     { id: 5, status: 'pending', migratedTo: { side: 'cloud', topic: 't', targetId: 9 } },
     { id: 6, status: 'pending', deletedAt: '2026-11-03 10:00:00' },
@@ -158,7 +178,7 @@ test('sortTasksForDisplay：待领取提到最前，已领取/已迁出/已删�
 test('sortTasksForDisplay：待领取内部保持队列原序（领取优先级不能乱）', () => {
   const tasks = [
     { id: 7, status: 'pending' },
-    { id: 8, status: 'consumed' },
+    { id: 8, status: 'claimed' },
     { id: 9, status: 'pending' },
     { id: 10, status: 'pending' },
   ];
@@ -167,7 +187,7 @@ test('sortTasksForDisplay：待领取内部保持队列原序（领取优先级�
 
 test('sortTasksForDisplay：不改传入数组（纯函数）', () => {
   const tasks = [
-    { id: 1, status: 'consumed' },
+    { id: 1, status: 'claimed' },
     { id: 2, status: 'pending' },
   ];
   sortTasksForDisplay(tasks);
@@ -222,8 +242,8 @@ test('projectTasks / projectPending：组任务与软删除都不在项目走向
     { id: 1, status: 'pending', boardMark: '' },
     { id: 2, status: 'pending', boardMark: 'b1' }, // 组任务 → 组页管
     { id: 3, status: 'pending', deletedAt: 'x' }, // 软删除 → 不可见
-    { id: 4, status: 'consumed' }, // 已领取：不算待领取，但留在项目侧列表
-    { id: 5, status: 'archived', boardMark: 'b1' }, // 组任务 + 归档 → 彻底不可见
+    { id: 4, status: 'claimed' }, // 已领取：不算待领取，但留在项目侧列表
+    { id: 5, status: 'cancelled', boardMark: 'b1' }, // 组任务 + 已取消 → 彻底不可见
     { id: 6, status: 'pending', migratedTo: { side: 'cloud' } }, // 迁出 tombstone
   ];
   assert.deepEqual(projectTasks(tasks).map((t) => t.id), [1, 4, 6], '项目走向列表：剔除组任务与软删除（迁出 tombstone 留着，只是不算待领取）');

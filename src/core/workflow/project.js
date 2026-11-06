@@ -104,8 +104,9 @@ function syncTaskFromNode(task, node) {
     if (!task.completedAt) {
       task.completedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
     }
-  } else if (node.state === 'running' && task.status !== 'consumed') {
-    task.status = 'consumed';
+  } else if (node.state === 'running' && task.status !== 'claimed') {
+    // 词表见 src/shared/task-status.js：claimed = 已领取、还没交付
+    task.status = 'claimed';
   }
   // pending/ready：不改 status（领取态由 wait/get 管；ready 由 isReadyToClaim 现算）
 }

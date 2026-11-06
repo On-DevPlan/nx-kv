@@ -100,19 +100,26 @@ function isAlive(t) {
 }
 
 /**
- * 已完成口径。**归档（archived）也算完成**——归档是终态：它不会再动，
- * 依赖它的人不该永远被挡着（#59）。
+ * 已完成口径（终态：**done / cancelled** 都算）。
+ *
+ * 为什么 cancelled 也算：旧口径里「归档（archived）」既不是交付也不是在干，
+ * 但是**终态**——它不会再动了，依赖它的人不该被永久挡住（#59）。
+ * 新词表把这种终态拆成 done / cancelled 两个词，判据随之覆盖两者。
+ * 词表权威见 src/shared/task-status.js（core 层不得 import shared，故此处内联）。
  */
 function isCompleted(t) {
-  return isAlive(t) && (!!t.completedAt || t.status === 'archived');
+  return isAlive(t) && (!!t.completedAt || t.status === 'done' || t.status === 'cancelled');
 }
 
 /**
- * 待领取口径：活着（没删没迁出）且不是「已领走」。
- * **归档（archived）也不算待领取**——归档是终态：状态单向，没有回退边（#59）。
+ * 待领取口径：**正判定** —— 只有 `pending` 且活着。
+ *
+ * 以前是排除法（不是 consumed、不是 archived 就算待领取），语义是
+ * 「不认识的一律当可领」：任何新状态/漏迁移的行都会被派给 agent 重干一遍，且不报错。
+ * 改成正判定后，不认识的词一律不算待领取（宁可少派，不可多派）。
  */
 function isPendingLike(t) {
-  return isAlive(t) && t.status !== 'consumed' && t.status !== 'archived';
+  return isAlive(t) && t.status === 'pending';
 }
 
 /**

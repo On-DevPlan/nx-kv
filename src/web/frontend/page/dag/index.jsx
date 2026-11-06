@@ -28,8 +28,10 @@ const FILTER_ALL = '';
 function isAlive(t) {
   return t && !t.deletedAt && !t.migratedTo;
 }
+// 正判定：只有 pending 可领（与 shared/task-status.js 的 isPending 同口径）。
+// 排除法时代「不认识的状态一律当可领」，会把已交付的任务画进待领取图里。
 function isPending(t) {
-  return isAlive(t) && t.status !== 'consumed';
+  return isAlive(t) && t.status === 'pending';
 }
 function labelOf(t) {
   return titleFromMd(t.text) || taskLabel(t) || `#${t.id}`;

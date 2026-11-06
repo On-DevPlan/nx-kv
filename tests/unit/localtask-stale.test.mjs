@@ -12,7 +12,7 @@
 import { test } from 'node:test';
 import { waitForTask } from '../../src/modules/tasktool/wait.js';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import * as svc from '../../src/modules/localtask/service.js';
@@ -25,34 +25,21 @@ process.on('exit', () => {
   try { rmSync(tmp, { recursive: true, force: true }); } catch { /* 忽略 */ }
 });
 
-const key = svc.topicKeyFor('projA');
+// key 与 cwd 寻址同源（topicKeyOf(完整 cwd)）—— 种子用这个 key，removeTopic({cwd:dirA}) 才找得到
+const key = svc.normalizeCwd(dirA).key;
 const cwd = resolve(dirA);
 
-// 往 store 里塞一个「僵尸等待」主题：waiting=true、截止已过 10 小时、无任务。
+// 往库里塞一个「僵尸等待」主题：waiting=true、截止已过 10 小时、无任务（presence 表）。
 function writeStaleTopic({ waiting = true, until = '2020-01-01 00:00:00', since = '2019-12-31 23:57:00' } = {}) {
-  writeFileSync(
-    storeFile,
-    JSON.stringify({
-      version: 4,
-      settings: { timeoutSec: 180, taskSuffix: '' },
-      topics: {
-        [key]: {
-          key,
-          cwd,
-          name: 'projA',
-          summary: '僵尸等待',
-          createdAt: since,
-          updatedAt: since,
-          waiting,
-          waitingUntil: until,
-          waitingSince: since,
-          cancelRequested: true,
-          tasks: [],
-        },
-      },
-    }),
-    'utf8'
-  );
+  svc.resetLocaltaskStore();
+  svc.repo.topics.ensureTopic(key, { cwd, name: 'projA' });
+  svc.repo.presence.setPresence(key, {
+    waiting,
+    untilMs: new Date(until.replace(' ', 'T')).getTime(),
+    sinceMs: new Date(since.replace(' ', 'T')).getTime(),
+    cancelRequested: true,
+  });
+  svc.repo.topics.updateTopic(key, { summary: '僵尸等待' });
 }
 
 test('isLiveWaiting：截止未过才算等待中；已过 / 无时刻 / 未标记都不算', () => {
@@ -159,13 +146,12 @@ test('老数据没有 waitingUntilMs 时回退解析字符串（向后兼容）'
 });
 
 test('真实 wait 会写入毫秒精度的截止时刻', async () => {
-  try { rmSync(storeFile); } catch { /* 不存在即可 */ }
+  try { svc.resetLocaltaskStore(); } catch { /* 不存在即可 */ }
   const dirC = mkdirSync(join(tmp, 'projC'), { recursive: true }) || join(tmp, 'projC');
   const p = waitForTask({ cwd: dirC, summary: 's', timeoutSec: 3, open: false });
   await new Promise((r) => setTimeout(r, 150));
 
-  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
-  const t = raw.topics[svc.topicKeyFor('projC')];
+  const t = svc.repo.topics.getTopic(svc.topicKeyFor(resolve(dirC)));
   assert.ok(t.waitingUntilMs > 0, '应写入 waitingUntilMs');
   assert.equal(svc.isLiveWaiting(t), true);
 

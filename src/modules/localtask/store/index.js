@@ -86,15 +86,14 @@ export function createSnapshotStore(opts = {}) {
 export { createMemoryAdapter, createFileAdapter };
 
 /**
- * 现网主题队列绑定的 SnapshotStore（localtasks.json ↔ 快照）。
- * 动态 import service，避免 store↔service 静态环。
+ * 现网主题队列绑定的 SnapshotStore（SQLite topics/tasks ↔ 快照）。
+ *
+ * T03：适配器换成 DB 版（repo/snapshot.js），CAS 从「先读后写」变成**事务内比较**，
+ * SnapshotStore / DagMutator 的接口面不变。
  */
 export async function createTopicSnapshotStore() {
-  const service = await import('../service.js');
-  const { createTopicAdapter } = await import('./topic-adapter.js');
-  const adapter = createTopicAdapter({
-    loadStore: () => service.loadStore(),
-    saveStore: (data) => service.saveStore(data),
-  });
-  return createSnapshotStore({ adapter });
+  const { createDbTopicAdapter } = await import('../repo/snapshot.js');
+  const { openLocaltaskStore } = await import('../repo/index.js');
+  openLocaltaskStore(); // 确保连接就绪（建表 / 迁移在此发生）
+  return createSnapshotStore({ adapter: createDbTopicAdapter() });
 }

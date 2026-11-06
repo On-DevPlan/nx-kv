@@ -61,7 +61,7 @@ export default function DirPanel({ dirKey }) {
   );
   const pager = usePager(allTasks, PAGE_SIZE);
   const pendingCount = useMemo(
-    () => allTasks.filter((t) => t.status !== 'consumed' && !t.migratedTo).length,
+    () => allTasks.filter((t) => t.status === 'pending' && !t.migratedTo).length,
     [allTasks]
   );
   const guard = (fn) => fn().catch((e) => toast(String(e.message || e)));
@@ -111,14 +111,14 @@ export default function DirPanel({ dirKey }) {
   // 领取闸判定只看「排在我前面的 alive 闸门」（core/workflow/readiness），同一口径。
   const downstreamOf = useMemo(() => {
     const map = {};
-    const pend = allTasks.filter((t) => t.status !== 'consumed' && !t.migratedTo && !t.deletedAt);
+    const pend = allTasks.filter((t) => t.status === 'pending' && !t.migratedTo && !t.deletedAt);
     pend.forEach((t, i) => {
       if (t.blocksFollowing) map[t.id] = pend.slice(i + 1).map((x) => x.id);
     });
     return map;
   }, [allTasks]);
   const dagCandidates = useMemo(
-    () => allTasks.filter((t) => t.status !== 'consumed' && !t.migratedTo && !t.deletedAt),
+    () => allTasks.filter((t) => t.status === 'pending' && !t.migratedTo && !t.deletedAt),
     [allTasks]
   );
 

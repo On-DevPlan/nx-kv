@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { listPluginIds } from '../../src/modules/tasktool/plugins/container.js';
 import { discoverPlugins } from '../../src/modules/tasktool/plugins/discover.js';
 import { submit, get } from '../../src/modules/tasktool/facade/index.js';
+import { closeDb } from '../../src/modules/localtask/repo/index.js';
 
 test('discoverPlugins：目录扫描注册四插件', async () => {
   await discoverPlugins();
@@ -26,7 +27,10 @@ test('facade submit：返回 workflowId；可带 text 入队', async () => {
   } finally {
     if (prev === undefined) delete process.env.NX_KV_LOCALTASK_STORE;
     else process.env.NX_KV_LOCALTASK_STORE = prev;
-    rmSync(dir, { recursive: true, force: true });
+    // T03：先关库连接再删临时目录（Windows 连接开着必 EBUSY）；env 已还原，
+    // 下一次 open 会按新路径重开。
+    closeDb();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
   }
 });
 
@@ -46,6 +50,9 @@ test('facade get：AsyncIterable 可拉取入队任务', async () => {
   } finally {
     if (prev === undefined) delete process.env.NX_KV_LOCALTASK_STORE;
     else process.env.NX_KV_LOCALTASK_STORE = prev;
-    rmSync(dir, { recursive: true, force: true });
+    // T03：先关库连接再删临时目录（Windows 连接开着必 EBUSY）；env 已还原，
+    // 下一次 open 会按新路径重开。
+    closeDb();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
   }
 });

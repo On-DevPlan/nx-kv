@@ -130,13 +130,14 @@ export function isGateNode(node) {
  */
 export function taskToNode(task) {
   const completed = !!task?.completedAt;
-  const consumed = task?.status === 'consumed';
-  // 归档（archived）是终态：它不会再动，依赖它的人不该永远被挡着（#59）。
-  const archived = task?.status === 'archived';
+  const claimed = task?.status === 'claimed';
+  // 终态（done / cancelled）不会再动：依赖它的人不该永远被挡着（#59）。
+  // 词表见 src/shared/task-status.js（core 层不得 import shared，故内联）。
+  const terminal = task?.status === 'done' || task?.status === 'cancelled';
   /** @type {NodeState} */
   let state = 'pending';
-  if (completed || archived) state = 'success';
-  else if (consumed) state = 'running';
+  if (completed || terminal) state = 'success';
+  else if (claimed) state = 'running';
   else if (task?.ready === true) state = 'ready';
 
   /** @type {PluginSpec[]} */

@@ -1,0 +1,53 @@
+{
+  "version": 2,
+  "repos": [
+    {
+      "id": "r_fixture_web",
+      "name": "web",
+      "path": "D:/work/web",
+      "desc": "前端仓库",
+      "notes": "随手记的备注",
+      "addedAt": "2026-09-01T02:00:00.000Z",
+      "updatedAt": "2026-09-02T03:00:00.000Z",
+      "remote": "git@github.com:Acme/Web.git",
+      "key": "github.com/acme/web",
+      "keyUpdatedAt": "2026-09-03T04:00:00.000Z",
+      "remotes": ["git@github.com:Acme/Web.git", "https://github.com/Acme/Web.git"],
+      "type": "dev",
+      "icon": "🌐",
+      "keyCustom": true,
+      "linked": [{ "kind": "board", "id": "b_fixture_group" }]
+    },
+    {
+      "id": "r_fixture_api",
+      "name": "api",
+      "path": "D:/work/api",
+      "desc": "后端仓库",
+      "notes": "",
+      "addedAt": "2026-09-04T02:00:00.000Z",
+      "updatedAt": "2026-09-04T02:00:00.000Z",
+      "remote": "",
+      "key": "github.com/acme/api",
+      "keyUpdatedAt": "",
+      "remotes": [],
+      "type": "ref",
+      "linked": [
+        { "kind": "ref", "id": "github.com/acme/web" },
+        { "kind": "ref", "id": "github.com/acme/docs" }
+      ]
+    }
+  ],
+  "boards": [
+    {
+      "id": "b_fixture_group",
+      "name": "前端组",
+      "desc": "前端相关仓库",
+      "createdAt": "2026-09-05T00:00:00.000Z",
+      "repoKeys": ["github.com/acme/web", "github.com/acme/api", "github.com/acme/ghost"],
+      "repoNotes": {
+        "github.com/acme/web": "主站",
+        "github.com/acme/api": "接口"
+      }
+    }
+  ]
+}

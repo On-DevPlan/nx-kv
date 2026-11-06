@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { APP_DIR, DEFAULT_PORT } from '../../core/paths.js';
 import { atomicWriteTextSync } from '../../core/json-store.js';
-import { loadStore } from './store-io.js';
+import { openLocaltaskStore as openStore, topics as topicsRepo } from './repo/index.js';
 import { isLiveWaiting } from './task-view.js';
 // ─── 面板空闲自释放所需的观测接口（panel-guard.js 调用）────────────
 
@@ -16,10 +16,10 @@ import { isLiveWaiting } from './task-view.js';
 // waiting 标志由 wait 进程写入、结束复位，跨进程可见；但 wait 被强杀（SIGKILL）时
 // 标志会残留。判据统一走 isLiveWaiting（含「截止时刻已过 = 不算等待」这道闸）。
 export async function countWaitingTopics() {
-  const store = await loadStore();
+  openStore();
   const now = Date.now();
   let n = 0;
-  for (const t of Object.values(store.topics)) {
+  for (const t of topicsRepo.listTopics()) {
     if (isLiveWaiting(t, now)) n += 1;
   }
   return n;

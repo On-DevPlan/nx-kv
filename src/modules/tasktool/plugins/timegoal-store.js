@@ -16,7 +16,6 @@
 //     stampNow / parseStampMs）都是 4-6 行的纯工具，本地复制避免跨模块耦合。
 //   - 与 localtask wait 互不感知：timegoal 不阻塞、不依赖面板是否存在，
 //     agent 按 `reached` 自行决定下一轮动作。
-import crypto from 'node:crypto';
 import { basename, join, resolve } from 'node:path';
 import { APP_DIR } from '../../../core/paths.js';
 import { badInput } from '../../../core/errors.js';
@@ -58,20 +57,24 @@ function parseStampMs(s) {
   return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
 }
 
-// ─── cwd → 主题 key（与 localtask 一致：Windows 折叠大小写）───────────
+// ─── cwd → 主题 key（T03 起与 localtask 同一派生：topicKeyOf(完整 cwd)）─────
+//
+// 必须同源：任务级目标的 scope 是 `task:<topicKey>:<id>`，topicKey 来自
+// localtask 的 normalizeCwd —— 两边派生不同，任务级目标就全部失联。
+// 仍不 import localtask 的 service（独立 store 边界），key 纯函数下沉在
+// core/topic-key.js（core 层，两边都能 import）。
+import { topicKeyOf } from '../../../core/topic-key.js';
 
-export function topicKeyFor(name) {
-  const fold = process.platform === 'win32' ? String(name).toLowerCase() : String(name);
-  return crypto.createHash('sha1').update(fold, 'utf8').digest('hex').slice(0, 16);
+export function topicKeyFor(cwdOrName) {
+  return topicKeyOf(String(cwdOrName ?? ''), '');
 }
 
-// 归一化工作目录：trim → resolve → 用目录名做 key。注意：与 localtask normalizeCwd
-// 行为一致但内部不依赖 localtask 模块（独立 store 边界）。
+// 归一化工作目录：trim → resolve → 用完整 cwd 做 key。
 function normalizeCwd(raw) {
   const trimmed = raw && String(raw).trim() ? String(raw).trim() : '';
   const cwd = trimmed ? resolve(trimmed) : process.cwd();
   const name = basename(cwd);
-  return { cwd, name, key: topicKeyFor(name) };
+  return { cwd, name, key: topicKeyOf(cwd, '') };
 }
 
 // ─── 存储（NX_KV_TIMEGOAL_STORE 可覆盖；测试隔离）─────────────────────

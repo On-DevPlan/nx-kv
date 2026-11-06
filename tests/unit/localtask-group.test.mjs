@@ -17,6 +17,7 @@ import {
   findRepo,
   memberKeysOf,
 } from '../../src/modules/localtask/board-target.js';
+import * as svc from '../../src/modules/localtask/service.js';
 
 // ─── frontmatter ────────────────────────────────────────────────
 
@@ -260,5 +261,7 @@ test('localtask.add：正文自带 frontmatter（面板草稿口径）→ 补上
   assert.equal(fm.projectDesc, '面板口径项目');
   assert.equal(fm.boardIntro, 'board/fm组.md', '服务端补上组介绍引用');
 
-  rmSync(sb, { recursive: true, force: true });
+  // T03：先关库连接再删临时目录（Windows 连接开着必 EBUSY）
+  try { svc.closeDb(); } catch { /* ignore */ }
+  rmSync(sb, { recursive: true, force: true, maxRetries: 3 });
 });

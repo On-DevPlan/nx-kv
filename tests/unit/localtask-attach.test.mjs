@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
+import * as svc from '../../src/modules/localtask/service.js';
 
 // env 先行（模块导入前钉住独立 store/config/附件根）——标注会真读台账、真写任务队列，
 // 不能落到用户的真实 ~/.nx-kv 上。默认 autoSyncAttachments=false（配置文件不存在即缺省），
@@ -179,5 +180,6 @@ test('localtask.attachments / localtask.attach 动作齐备且委托 tasktool/at
 });
 
 test('清理', () => {
-  rmSync(sb, { recursive: true, force: true });
+  try { svc.closeDb(); console.error('[DBG cleanup] closed'); } catch (e) { console.error('[DBG cleanup] close threw:', e.message); }
+  try { rmSync(sb, { recursive: true, force: true }); } catch (e) { console.error('[DBG cleanup] rm fail:', e.message); }
 });

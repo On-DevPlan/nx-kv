@@ -54,7 +54,8 @@ export default function Landing({
   const dragRef = useRef(null);               // { id }
   const [dragId, setDragId] = useState(null); // 仅视觉：正在拖的行
   const [dropAt, setDropAt] = useState(null); // 仅视觉：{ id, zone }
-  const movable = (t) => t.status !== 'consumed' && !t.migratedTo && !t.deletedAt;
+  // 只有待领取行能拖动调序（已领取/已交付/已取消都是固定历史）
+  const movable = (t) => t.status === 'pending' && !t.migratedTo && !t.deletedAt;
   const zoneOf = (e, tr) => {
     const r = tr.getBoundingClientRect();
     return e.clientY < r.top + r.height / 2 ? 'before' : 'after';
@@ -211,7 +212,7 @@ export default function Landing({
                           闸门{downs.length ? `×${downs.length}` : ''}
                         </span>
                       ) : null}
-                      {t.status !== 'consumed' && t.status !== 'archived' && t.ready === false ? (
+                      {t.status === 'pending' && t.ready === false ? (
                         <span
                           className="mdw-tg"
                           title={t.blockBy?.length ? `等待依赖完成：#${t.blockBy.join(', #')}` : '被前方闸门挡住'}
@@ -223,10 +224,33 @@ export default function Landing({
                   </td>
                   <td>
                     <span
-                      className={'st' + (t.status === 'consumed' || t.status === 'archived' ? ' done' : t.from ? ' run' : '')}
-                      title={t.status === 'archived' ? '已归档：被新任务取代，原文留档' : ''}
+                      className={
+                        'st' +
+                        (t.status === 'done' || t.status === 'claimed'
+                          ? ' done'
+                          : t.status === 'cancelled'
+                            ? ' done'
+                            : t.from
+                              ? ' run'
+                              : '')
+                      }
+                      title={
+                        t.status === 'cancelled'
+                          ? '已取消：被新任务取代或明确作废，原文留档'
+                          : t.status === 'done'
+                            ? '已交付'
+                            : ''
+                      }
                     >
-                      {t.status === 'archived' ? '档' : t.status === 'consumed' ? '完' : t.from ? '跑' : '等'}
+                      {t.status === 'cancelled'
+                        ? '档'
+                        : t.status === 'done'
+                          ? '完'
+                          : t.status === 'claimed'
+                            ? '跑'
+                            : t.from
+                              ? '跑'
+                              : '等'}
                     </span>
                   </td>
                   <td className="mono faint">{shortTime(t.createdAt)}</td>
@@ -246,7 +270,7 @@ export default function Landing({
                           />
                         </span>
                       )}
-                      {onReopenTask && t.status !== 'archived' && (t.status === 'consumed' || t.completedAt) && (
+                      {onReopenTask && t.status !== 'cancelled' && (t.status === 'claimed' || t.status === 'done' || t.completedAt) && (
                         <span
                           className="op" role="button" tabIndex={-1}
                           title={t.completedAt ? '反馈：新开一条任务（原任务不动）' : '反馈修改：回写本任务并记入任务链'}

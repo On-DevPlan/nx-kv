@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../../src/modules/tasktool/plugins/index.js';
 import { applySnapshotToTopic, topicToSnapshot } from '../../src/core/workflow/project.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createTopicAdapter } from '../../src/modules/localtask/store/topic-adapter.js';
 import { createSnapshotStore } from '../../src/modules/localtask/store/index.js';
 import { createDagMutator } from '../../src/modules/localtask/mutator/index.js';
@@ -23,37 +26,35 @@ test('topicToSnapshot：闸门任务 → control + blockgoal + 边', () => {
   assert.ok(snap.edges.some((e) => e.from === 1 && e.to === 2));
 });
 
-test('applySnapshotToTopic：bind blockgoal → blocksFollowing', async () => {
-  const bag = {
-    topics: {
-      t1: {
-        key: 't1',
-        name: 't1',
-        tasks: [
-          { id: 10, status: 'pending', text: 'a', blockBy: [], blocksFollowing: false },
-          { id: 11, status: 'pending', text: 'b', blockBy: [], blocksFollowing: false },
-        ],
-        workflowRevision: 0,
-      },
-    },
-  };
-  const adapter = createTopicAdapter({
-    loadStore: async () => bag,
-    saveStore: async (data) => {
-      Object.assign(bag, data);
-    },
-  });
-  const store = createSnapshotStore({ adapter });
-  const mutator = createDagMutator({ store, bus: createEventBus() });
+test('adapter set：bind blockgoal → blocksFollowing（DB 版 topic-adapter）', async () => {
+  const sb = mkdtempSync(join(tmpdir(), 'nxkv-wfproj-'));
+  const prev = process.env.NX_KV_LOCALTASK_STORE;
+  process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
+  try {
+    const repo = (await import('../../src/modules/localtask/repo/index.js')).default;
+    repo.open();
+    const t = repo.topics.ensureTopic('t1', { cwd: join(sb, 't1'), name: 't1' });
+    repo.tasks.insertTask(t.id, { id: 10, text: 'a', status: 'pending' });
+    repo.tasks.insertTask(t.id, { id: 11, text: 'b', status: 'pending' });
 
-  await mutator.bindPlugin('t1', { nodeId: 10 }, { name: 'blockgoal', scope: 'control' });
-  await mutator.addEdge('t1', 10, 11);
+    const adapter = createTopicAdapter();
+    const store = createSnapshotStore({ adapter });
+    const mutator = createDagMutator({ store, bus: createEventBus() });
 
-  const topic = bag.topics.t1;
-  assert.equal(topic.tasks.find((t) => t.id === 10).blocksFollowing, true);
-  // 闸门边不写进 blockBy（由 blocksFollowing 表达）
-  assert.deepEqual(topic.tasks.find((t) => t.id === 11).blockBy, []);
-  assert.ok(topic.workflowRevision >= 1);
+    await mutator.bindPlugin('t1', { nodeId: 10 }, { name: 'blockgoal', scope: 'control' });
+    await mutator.addEdge('t1', 10, 11);
+
+    const topic = repo.topics.getTopic('t1');
+    assert.equal(topic.tasks.find((x) => x.id === 10).blocksFollowing, true);
+    assert.deepEqual(topic.tasks.find((x) => x.id === 11).blockBy, []);
+    assert.ok(topic.workflowRevision >= 1);
+  } finally {
+    if (prev === undefined) delete process.env.NX_KV_LOCALTASK_STORE;
+    else process.env.NX_KV_LOCALTASK_STORE = prev;
+    const { closeDb } = await import('../../src/modules/localtask/repo/index.js');
+    closeDb();
+    rmSync(sb, { recursive: true, force: true, maxRetries: 3 });
+  }
 });
 
 test('往返：显式 blockBy 保留', () => {
@@ -111,32 +112,35 @@ test('applySnapshotToTopic：跨队列引用同样存活（keepForeign 不回退
 // 外部写顶 revision 之后，引擎在途快照（旧 revision）落盘必须 CAS 冲突——
 // 这是「过期写洗任务行」的第一道闸（投影并集是第二道）。
 test('topic-adapter：外部写 bump revision → 过期快照 saveAtomic CAS 冲突', async () => {
-  const bag = {
-    topics: {
-      t1: {
-        key: 't1',
-        name: 't1',
-        tasks: [{ id: 1, status: 'pending', text: 'a', blockBy: [], blocksFollowing: false }],
-        workflowRevision: 0,
-      },
-    },
-  };
-  const adapter = createTopicAdapter({
-    loadStore: async () => bag,
-    saveStore: async (data) => {
-      Object.assign(bag, data);
-    },
-  });
-  const store = createSnapshotStore({ adapter });
+  const sb = mkdtempSync(join(tmpdir(), 'nxkv-wfproj2-'));
+  const prev = process.env.NX_KV_LOCALTASK_STORE;
+  process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
+  try {
+    const repo = (await import('../../src/modules/localtask/repo/index.js')).default;
+    repo.open();
+    const t = repo.topics.ensureTopic('t1', { cwd: join(sb, 't1'), name: 't1' });
+    repo.tasks.insertTask(t.id, { id: 1, text: 'a', status: 'pending' });
 
-  // 引擎在 T0 拍下快照（revision 0），随后外部写把 revision 顶到 1
-  const staleSnap = await store.load('t1');
-  assert.equal(staleSnap.revision, 0);
-  bag.topics.t1.workflowRevision = 1; // bumpWorkflowRevision 的等效外部写
+    const adapter = createTopicAdapter();
+    const store = createSnapshotStore({ adapter });
 
-  await assert.rejects(
-    () => store.saveAtomic(staleSnap, { expectedRevision: staleSnap.revision }),
-    (err) => err.code === 'CAS_CONFLICT',
-    '过期快照落盘必须被 CAS 拦下',
-  );
+    // 引擎在 T0 拍下快照（version 0）；随后外部写把 revision 顶到 1
+    const staleSnap = await store.load('t1');
+    assert.equal(staleSnap.revision, 0);
+    repo.topics.updateTopic('t1', { bumpRevision: true });
+
+    await assert.rejects(
+      () => store.saveAtomic(staleSnap, { expectedRevision: staleSnap.revision }),
+      (err) => err.code === 'CAS_CONFLICT',
+      '过期快照落盘必须被 CAS 拦下',
+    );
+    // 数据没被洗：任务行原样
+    assert.equal(repo.tasks.getTaskRow(t.id, 1).task.text, 'a');
+  } finally {
+    if (prev === undefined) delete process.env.NX_KV_LOCALTASK_STORE;
+    else process.env.NX_KV_LOCALTASK_STORE = prev;
+    const { closeDb } = await import('../../src/modules/localtask/repo/index.js');
+    closeDb();
+    rmSync(sb, { recursive: true, force: true, maxRetries: 3 });
+  }
 });

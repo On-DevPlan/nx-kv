@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import { waitForTask } from '../../src/modules/tasktool/wait.js';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -22,7 +22,7 @@ const svcUrl = pathToFileURL(join(cwd, 'src/modules/localtask/service.js')).href
 const svc = await import(svcUrl);
 
 async function reset() {
-  try { rmSync(storeFile); } catch { /* 不存在即可 */ }
+  try { svc.resetLocaltaskStore(); } catch { /* 不存在即可 */ }
   await svc.updateSettings({ taskSuffix: '' });
 }
 
@@ -115,14 +115,14 @@ test('streamEventsSSE：连接即推 waiting 快照帧，断开干净结束', as
   // 这里换一种方式：开一个 wait，把 store 写入
   // 构造一个 waiting 主题
   await svc.addTask({ cwd: dirC, text: 'T' });
-  await svc.consumeFirstPending(svc.topicKeyFor(dirC.split(/[\\/]/).pop()), ''); // 队列清空
-  // 直接写 store 设置 waiting=true + waitingUntil
-  const fs = await import('node:fs/promises');
-  const data = JSON.parse(await fs.readFile(storeFile, 'utf8'));
-  const k = svc.topicKeyFor(dirC.split(/[\\/]/).pop());
-  data.topics[k].waiting = true;
-  data.topics[k].waitingUntil = svc.stampNow(new Date(Date.now() + 30000));
-  await fs.writeFile(storeFile, JSON.stringify(data, null, 2), 'utf8');
+  await svc.consumeFirstPending(svc.topicKeyFor(dirC), ''); // 队列清空（key 由完整 cwd 派生）
+  // 直接写库设置 waiting=true + waitingUntil（presence 表）
+  svc.repo.presence.setPresence(svc.topicKeyFor(dirC), {
+    waiting: true,
+    untilMs: Date.now() + 30_000,
+    sinceMs: Date.now(),
+    cancelRequested: false,
+  });
 
   // 起一个临时 server 跑 streamEventsSSE
   const server = http.createServer((req, res) => {
@@ -139,7 +139,7 @@ test('streamEventsSSE：连接即推 waiting 快照帧，断开干净结束', as
   const got = await new Promise((resolve_) => {
     const events = [];
     const req = http.get(
-      { host: '127.0.0.1', port, path: '/api/localtasks/events?key=' + k },
+      { host: '127.0.0.1', port, path: '/api/localtasks/events?key=' + svc.topicKeyFor(dirC) },
       (res) => {
         res.setEncoding('utf8');
         res.on('data', (chunk) => {
@@ -165,7 +165,7 @@ test('streamEventsSSE：连接即推 waiting 快照帧，断开干净结束', as
 
   const waiting = got.find((e) => e.event === 'waiting');
   assert.ok(waiting, '应收到 waiting 事件');
-  assert.equal(waiting.data.key, k);
+  assert.equal(waiting.data.key, svc.topicKeyFor(dirC));
   assert.equal(waiting.data.replay, true, '首次连接已在等待 → replay:true');
   assert.ok(waiting.id, '事件帧应带单调 id（浏览器重连可据此续传）');
 });

@@ -2,7 +2,7 @@
 // 已领取数的变化里派生 waiting/reminder/resolved 事件；SSE（streamEventsSSE）与
 // CLI（NDJSON）共用 watchEvents 生成器。
 import { isGlobalKey, normalizeCwd } from './paths.js';
-import { loadStore } from './store-io.js';
+import { openLocaltaskStore as openStore, topics as topicsRepo } from './repo/index.js';
 import { deadlineMsOf } from './task-view.js';
 import { addEventStreamConn } from './panel-presence.js';
 // ─── 等待生命周期事件流（主面板及时通知，避免用户漏过超时）────────────
@@ -24,8 +24,15 @@ export function remindersDue(remainSec, firedSet) {
   return out;
 }
 
-function consumedCount(t) {
-  return (Array.isArray(t.tasks) ? t.tasks : []).filter((x) => x.status === 'consumed').length;
+/**
+ * 「已经离开待领取」的任务数 —— 用来判断一轮等待里有没有真的交出任务。
+ *
+ * 为什么不只数 `claimed`：一轮等待里任务可能被领取后**立刻交付**（claim → done），
+ * 那时 `claimed` 计数会回到原值，只数它就会把"已交付"误判成"超时"。
+ * 三个非 pending 状态都算「交出去了」（词表见 src/shared/task-status.js）。
+ */
+function deliveredCount(t) {
+  return (Array.isArray(t.tasks) ? t.tasks : []).filter((x) => x.status !== 'pending').length;
 }
 
 /**
@@ -58,8 +65,8 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
   while (!(signal && signal.aborted)) {
     let topics = [];
     try {
-      const store = await loadStore();
-      topics = Object.values(store.topics).filter(
+      openStore();
+      topics = topicsRepo.listTopics().filter(
         (t) => Array.isArray(t.tasks) && (!onlyKey || t.key === onlyKey)
       );
     } catch {
@@ -84,7 +91,7 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
             phase: 'waiting',
             waitingUntil: t.waitingUntil,
             deadline,
-            consumed0: consumedCount(t),
+            delivered0: deliveredCount(t),
             reminders: new Set(),
           };
           state.set(t.key, st);
@@ -117,7 +124,7 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
           };
         }
       } else if (st && st.phase === 'waiting') {
-        const outcome = consumedCount(t) > st.consumed0 ? 'delivered' : 'timeout';
+        const outcome = deliveredCount(t) > st.delivered0 ? 'delivered' : 'timeout';
         state.set(t.key, { phase: 'ended' });
         yield { type: 'resolved', key: t.key, cwd: t.cwd || '', name: t.name || '', isGlobal: isGlobalKey(t.key), outcome };
       } else if (!st) {

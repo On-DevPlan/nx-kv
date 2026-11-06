@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import { waitForTask } from '../../src/modules/tasktool/wait.js';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as svc from '../../src/modules/localtask/service.js';
@@ -27,7 +27,7 @@ process.on('exit', () => {
 
 async function reset() {
   try {
-    rmSync(storeFile);
+    svc.resetLocaltaskStore();
   } catch {
     /* 不存在即可 */
   }
@@ -152,22 +152,14 @@ test('跨进程兜底：wait 阻塞中，另一进程直接写 store 投全局�
   const p = waitForTask({ cwd: dirA, summary: '等跨进程', timeoutSec: 10, open: false, onReady: () => fire() });
   await ready;
 
-  // 模拟另一个进程：直接覆写 store 文件，往全局主题塞一条 pending
-  const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
-  raw.topics[svc.GLOBAL_KEY] = {
-    key: svc.GLOBAL_KEY,
-    cwd: '',
-    name: svc.GLOBAL_NAME,
-    summary: '',
+  // 模拟另一个进程：直接写同一份库（往全局主题插一条 pending）
+  const gid = svc.repo.topics.ensureTopic(svc.GLOBAL_KEY, { cwd: '', name: svc.GLOBAL_NAME }).id;
+  svc.repo.tasks.insertTask(gid, {
+    id: 1,
+    text: '别的进程投的全局活',
+    status: 'pending',
     createdAt: svc.stampNow(),
-    updatedAt: svc.stampNow(),
-    waiting: false,
-    waitingUntil: '',
-    tasks: [
-      { id: 1, text: '别的进程投的全局活', status: 'pending', roundSummary: '', createdAt: svc.stampNow(), consumedAt: '' },
-    ],
-  };
-  writeFileSync(storeFile, JSON.stringify(raw, null, 2), 'utf8');
+    consumedAt: '' });
 
   const r = await p;
   assert.equal(r.status, 'ok');

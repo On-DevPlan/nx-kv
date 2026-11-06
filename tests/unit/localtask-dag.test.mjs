@@ -35,7 +35,7 @@ test('无依赖：按数组序 FIFO', () => {
 
 test('blockBy：依赖未完成 → 跳过；完成后可领', () => {
   const tasks = [
-    T(1, { status: 'consumed', completedAt: '' }), // 领了但没 done
+    T(1, { status: 'claimed', completedAt: '' }), // 领了但没 done
     T(2, { blockBy: [1] }),
     T(3),
   ];
@@ -56,14 +56,14 @@ test('blocksFollowing 闸门：挡住后面所有 pending，直到自身 complet
   // #1 在闸门前，可领
   assert.equal(findFirstReadyPending(tasks).id, 1);
 
-  tasks[0].status = 'consumed';
+  tasks[0].status = 'done';
   tasks[0].completedAt = '2026-11-04 10:00:00';
   // #2 闸门自身可领
   assert.equal(findFirstReadyPending(tasks).id, 2);
   assert.equal(isReadyToClaim(tasks[2], tasks), false);
   assert.equal(isReadyToClaim(tasks[3], tasks), false);
 
-  tasks[1].status = 'consumed';
+  tasks[1].status = 'done';
   tasks[1].completedAt = '2026-11-04 11:00:00';
   assert.equal(findFirstReadyPending(tasks).id, 3);
 });
@@ -78,7 +78,7 @@ test('删除 / 迁出的依赖不算有效依赖（挡不住）', () => {
 
 test('跨队列 blockBy：前驱未完成挡住；完成后放行；缺失 fail-open', () => {
   const foreign = { key: 'otherkey', id: 7 };
-  const foreignTask = T(7, { status: 'consumed', completedAt: '' });
+  const foreignTask = T(7, { status: 'claimed', completedAt: '' });
   const resolveForeign = (key, id) =>
     key === foreign.key && id === foreign.id ? foreignTask : null;
 

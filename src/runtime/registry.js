@@ -27,10 +27,11 @@ import docs from '../modules/docs/index.js';
 import file from '../modules/file/index.js';
 import templates from '../modules/templates/index.js';
 import bundled from '../modules/bundled/index.js';
+import db from '../modules/db/index.js';
 
 // 工作空间（group）已于 2026-10-23 并入 todo 模块：它是**清单的设置**，
 // 不该单独占一个模块/一个 tab。命令与路由一字未改。
-export const MODULES = [system, setting, auth, localtask, tasktool, todo, repos, docs, file, templates, bundled].sort(
+export const MODULES = [system, setting, auth, localtask, tasktool, todo, repos, docs, file, templates, bundled, db].sort(
   (a, b) => (a.order ?? 100) - (b.order ?? 100)
 );
 

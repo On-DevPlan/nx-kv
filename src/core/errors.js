@@ -22,6 +22,10 @@ export const CODES = {
   BLOCKED: 'BLOCKED', // 业务规则主动阻止
   EXTERNAL: 'EXTERNAL', // 外部命令（git / gh）失败
   INTERNAL: 'INTERNAL', // 兜底
+  // 存储迁移失败：**唯一一个退出码不是 1 的失败**。
+  // 单独一个码的理由：迁移失败是"数据没进来、库已回滚"的可恢复状态，
+  // 脚本要能把它与"参数错"区分开（迁移脚本会据此决定是重试还是报人）。
+  STORE_MIGRATION_FAILED: 'STORE_MIGRATION_FAILED',
 };
 
 // code -> HTTP 状态。只在这里映射一次，api.js 不再自行判断。
@@ -32,9 +36,11 @@ const HTTP_STATUS = {
   [CODES.BLOCKED]: 409,
   [CODES.EXTERNAL]: 502,
   [CODES.INTERNAL]: 500,
+  [CODES.STORE_MIGRATION_FAILED]: 500,
 };
 
 // code -> 进程退出码。CLI 只区分「成功 / 失败」，保持 agent-workflow.md 声明的契约。
+// 例外：迁移失败 → 2（见上面的 CODES 注释）。
 const EXIT_CODE = {
   [CODES.INVALID_INPUT]: 1,
   [CODES.NOT_FOUND]: 1,
@@ -42,6 +48,7 @@ const EXIT_CODE = {
   [CODES.BLOCKED]: 1,
   [CODES.EXTERNAL]: 1,
   [CODES.INTERNAL]: 1,
+  [CODES.STORE_MIGRATION_FAILED]: 2,
 };
 
 export class AppError extends Error {

@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as svc from '../../src/modules/localtask/service.js';
 
 let dir = '';
 
@@ -68,44 +69,46 @@ test('已归档（旧 fork 残留）不能再重开；就地重开可多次', as
   assert.equal(re2.id, first.task.id);
   assert.ok(re2.task.history.length >= 3);
 
-  // 手工把任务标成 archived（模拟 #59 残留）→ 拒绝
-  const storePath = process.env.NX_KV_LOCALTASK_STORE;
-  const { readFileSync, writeFileSync } = await import('node:fs');
-  const raw = JSON.parse(readFileSync(storePath, 'utf8'));
-  const topic = Object.values(raw.topics).find((t) => String(t.cwd) === String(cwd));
-  const row = topic.tasks.find((x) => Number(x.id) === Number(first.task.id));
-  row.status = 'archived';
-  row.archivedReason = 'superseded';
-  writeFileSync(storePath, JSON.stringify(raw));
+  // 手工把任务标成 cancelled（旧口径 #59 的「被新号取代」现在是 cancelled）→ 拒绝
+  svc.repo.tasks.updateTaskByKey(first.key, first.task.id, { status: 'cancelled' });
 
   await assert.rejects(
     () => localtask.reopenTask({ cwd, id: first.task.id, text: '# 不行' }),
-    /已归档/,
+    /已取消/,
   );
 });
 
-test('归档的上游不再挡住后来者（终态 = 已了结）', async () => {
+test('终态（done / cancelled）的上游不再挡住后来者', async () => {
   const { findFirstReadyPending } = await import('../../src/core/workflow/readiness.js');
-  const archived = { id: 1, status: 'archived', completedAt: '', deletedAt: '', blockBy: [] };
+  const cancelled = { id: 1, status: 'cancelled', completedAt: '', deletedAt: '', blockBy: [] };
   const follower = { id: 2, status: 'pending', deletedAt: '', blockBy: [1] };
+  assert.equal(Number(findFirstReadyPending([cancelled, follower]).id), 2, '已取消的上游不再挡人');
 
-  const ready = findFirstReadyPending([archived, follower]);
-  assert.ok(ready, '归档的上游不再挡住后来者');
-  assert.equal(Number(ready.id), 2);
+  // done 同样不挡（终态 = 已了结）
+  const done = { id: 1, status: 'done', completedAt: '2026-11-01 10:00:00', deletedAt: '', blockBy: [] };
+  assert.equal(Number(findFirstReadyPending([done, follower]).id), 2, '已交付的上游不再挡人');
+
+  // claimed（在干、没交付）**要**挡：闸门/依赖仍然有效
+  const claimed = { id: 1, status: 'claimed', completedAt: '', deletedAt: '', blockBy: [] };
+  assert.equal(findFirstReadyPending([claimed, follower]), null, '已领取未交付的上游继续挡人');
 });
 
-test('面板分桶：归档单列一桶，不再算进行中', async () => {
-  const { splitQueueTasks, sortTasksForDisplay } = await import('../../src/web/frontend/modules/board/board-view.js');
+test('面板分桶：done / cancelled 各占一桶，都不算进行中', async () => {
+  const { splitQueueTasks, sortTasksForDisplay } = await import(
+    '../../src/web/frontend/modules/board/board-view.js'
+  );
   const tasks = [
     { id: 1, status: 'pending' },
-    { id: 2, status: 'consumed' },
-    { id: 3, status: 'archived' },
+    { id: 2, status: 'claimed' },
+    { id: 3, status: 'done' },
+    { id: 4, status: 'cancelled' },
   ];
   const split = splitQueueTasks(tasks);
-  assert.deepEqual(split.pending.map((t) => t.id), [1], '归档不在待领取里');
-  assert.deepEqual(split.consumed.map((t) => t.id), [2]);
-  assert.deepEqual(split.archived.map((t) => t.id), [3]);
-  assert.deepEqual(sortTasksForDisplay(tasks).map((t) => t.id), [1, 2, 3]);
+  assert.deepEqual(split.pending.map((t) => t.id), [1], '终态不在待领取里');
+  assert.deepEqual(split.claimed.map((t) => t.id), [2], '已领取（在干）单列');
+  assert.deepEqual(split.done.map((t) => t.id), [3], '已交付单列');
+  assert.deepEqual(split.cancelled.map((t) => t.id), [4], '已取消单列');
+  assert.deepEqual(sortTasksForDisplay(tasks).map((t) => t.id), [1, 2, 3, 4]);
 });
 
 test('就地重开保留时间目标声明（再次领取重新计时）', async () => {

@@ -17,6 +17,9 @@ let dir = '';
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'nx-kv-boards-'));
   process.env.NX_KV_REPOS_STORE = join(dir, 'repos.json');
+  // docs 树也必须隔离：本文件的用例会经 repos/boards 写「项目介绍 / 组介绍」，
+  // 不设它就会落到真实 ~/.nx-kv/docs（docsRoot() 回落 APP_DIR/docs）。
+  process.env.NX_KV_DOCS_DIR = join(dir, 'docs');
 });
 
 test.after?.(() => {

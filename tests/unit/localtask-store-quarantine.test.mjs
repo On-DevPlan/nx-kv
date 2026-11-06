@@ -1,7 +1,10 @@
-// loadStore 损坏隔离：坏文件改名保留（.corrupt-*），绝不被下次 save 覆盖掉
+// 「坏数据不炸服务」的 DB 时代对应测试（原 JSON 损坏隔离在 core/json-store，随 T03 下线）：
+//   1. legacy JSON 损坏 → 导入器报警告、跳过，服务照常打开（空库可重建）；
+//   2. 库文件被写成垃圾（别人误占路径）→ NotNxKvStoreError 拒绝，原文件不动；
+//   3. 打开失败可重试：换一个干净路径即恢复（库文件可重建 = 无数据损失）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,58 +14,50 @@ process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
 
 const svc = await import('../../src/modules/localtask/service.js');
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const corruptsOf = () =>
-  readdirSync(sb)
-    .filter((f) => f.startsWith('localtasks.json.corrupt-'))
-    .sort();
-
-test('损坏文件 → 改名隔离 + 空 store + save 后备份仍在', async () => {
-  const p = process.env.NX_KV_LOCALTASK_STORE;
-  writeFileSync(p, '{ this is not json !!!', 'utf8');
+test('legacy JSON 损坏 → 导入器警告跳过，服务照常打开（空库可重建）', async () => {
+  // 预置一份坏 JSON（模拟导入源损坏）
+  writeFileSync(join(sb, 'localtasks.json'), '{ this is not json !!!', 'utf8');
   const s = await svc.loadStore();
-  assert.deepEqual(s.topics, {}, '损坏 → 空 store');
-  assert.ok(!existsSync(p), '原路径不应再有坏文件');
-  const corrupts = corruptsOf();
-  assert.equal(corrupts.length, 1, '坏文件应被改名保留一份');
-  assert.match(readFileSync(join(sb, corrupts[0]), 'utf8'), /not json/, '备份内容 = 原坏文件');
-  await svc.saveStore(s);
-  assert.equal(corruptsOf().length, 1, '正常写路径后备份仍在（未被覆盖）');
-  assert.ok(existsSync(p), 'save 后新 store 已就位');
+  assert.deepEqual(s.topics, {}, '损坏 → 导入跳过，空库打开');
+  // 服务可正常写读（空库可重建 = 无数据损失）
+  const a = await svc.addTask({ cwd: join(sb, 'proj'), text: '照常可用' });
+  assert.equal(a.task.text, '照常可用');
 });
 
-test('文件不存在（首次启动）→ 空 store 且不产生备份', async () => {
-  const sb2 = mkdtempSync(join(tmpdir(), 'nx-kv-store-fresh-'));
-  const prev = process.env.NX_KV_LOCALTASK_STORE;
+test('库文件被别的 SQLite 内容占用 → NotNxKvStoreError 拒绝，原文件不动', async () => {
+  const sb2 = mkdtempSync(join(tmpdir(), 'nx-kv-store-foreign-'));
   process.env.NX_KV_LOCALTASK_STORE = join(sb2, 'localtasks.json');
   try {
-    const s = await svc.loadStore();
-    assert.deepEqual(s.topics, {});
-    assert.equal(readdirSync(sb2).filter((f) => f.includes('.corrupt-')).length, 0, '缺失不算损坏');
+    const { openRaw } = await import('../../src/core/db/index.js');
+    const foreign = openRaw(join(sb2, 'nxkv.db'));
+    foreign.exec('CREATE TABLE not_ours (a INTEGER)');
+    foreign.close();
+
+    await assert.rejects(() => svc.addTask({ cwd: join(sb2, 'p'), text: 'x' }), /缺 meta.store_kind/);
+    // 原文件没被改：还是只有那张外来表
+    const check = openRaw(join(sb2, 'nxkv.db'), { readOnly: true });
+    const names = check
+      .all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+      .map((r) => r.name);
+    check.close();
+    assert.deepEqual(names, ['not_ours'], '别人的库一个字节都不该被改');
   } finally {
-    process.env.NX_KV_LOCALTASK_STORE = prev;
-    rmSync(sb2, { recursive: true, force: true });
+    process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
+    svc.resetLocaltaskStore();
+    rmSync(sb2, { recursive: true, force: true, maxRetries: 3 });
   }
 });
 
-test('连续损坏 → 最多保留 3 份，留的是最新', async () => {
-  const p = process.env.NX_KV_LOCALTASK_STORE;
-  for (let i = 1; i <= 4; i++) {
-    writeFileSync(p, `broken round ${i}`, 'utf8');
-    const s = await svc.loadStore();
-    assert.deepEqual(s.topics, {});
-    if (i < 4) await sleep(5); // 文件名时间戳含毫秒，错开避免同名覆盖
-  }
-  const corrupts = corruptsOf();
-  assert.ok(corrupts.length <= 3, `最多留 3 份，实际 ${corrupts.length}`);
-  assert.match(readFileSync(join(sb, corrupts.at(-1)), 'utf8'), /round 4/, '留的是最新一份');
-  assert.ok(!existsSync(p), '最后一份坏文件也已让位（原路径清空）');
-});
-
-test.after(() => {
+test('打开失败可重试：换干净路径即恢复（库文件可重建 = 无数据损失）', async () => {
+  const sb3 = mkdtempSync(join(tmpdir(), 'nx-kv-store-retry-'));
+  process.env.NX_KV_LOCALTASK_STORE = join(sb3, 'localtasks.json');
   try {
-    rmSync(sb, { recursive: true, force: true });
-  } catch {
-    /* ignore */
+    const a = await svc.addTask({ cwd: join(sb3, 'p'), text: '新库照常' });
+    assert.equal(a.task.text, '新库照常');
+  } finally {
+    svc.closeDb();
+    process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
+    svc.resetLocaltaskStore();
+    rmSync(sb3, { recursive: true, force: true, maxRetries: 3 });
   }
 });

@@ -41,7 +41,7 @@ test('外部写逐次顶 workflowRevision（引擎过期快照的 CAS 依据）'
   const afterDag = await revisionOf();
   assert.ok(afterDag > afterUpdate, `改依赖后 revision 必须上涨（${afterUpdate} → ${afterDag}）`);
 
-  await svc.consumeFirstPending(svc.topicKeyFor('proj-a'), '领取');
+  await svc.consumeFirstPending(svc.normalizeCwd(dirA).key, '领取');
   const afterClaim = await revisionOf();
   assert.ok(afterClaim > afterDag, `领取后 revision 必须上涨（${afterDag} → ${afterClaim}）`);
 
@@ -56,7 +56,7 @@ test('过期快照落盘被 CAS 拦下，外部 blockBy 存活（端到端）', 
   const { createSnapshotStore } = await import('../../src/modules/localtask/store/index.js');
 
   const dirB = join(sb, 'proj-b');
-  const bKey = svc.topicKeyFor('proj-b');
+  const bKey = svc.normalizeCwd(dirB).key;
   await svc.addTask({ cwd: dirB, text: '# 依赖源\nx' });
   const r = await svc.addTask({ cwd: dirB, text: '# 带依赖\nx' });
 
@@ -76,12 +76,9 @@ test('过期快照落盘被 CAS 拦下，外部 blockBy 存活（端到端）', 
     '外部依赖已落盘',
   );
 
-  // T2：过期快照走 topic-adapter 落盘（loadStore → applySnapshotToTopic → saveStore，
-  // 与真实在途写同一条路径；store.load 会带着过期 revision，saveAtomic 先行验证 CAS）
-  const adapter = createTopicAdapter({
-    loadStore: () => svc.loadStore(),
-    saveStore: (data) => svc.saveStore(data),
-  });
+  // T2：过期快照走 DB 版 topic-adapter 落盘（同一接口面；CAS 在 BEGIN IMMEDIATE 里
+  // 比较 topics.version —— 比旧「先读后写」更严：过期快照连写盘机会都没有）
+  const adapter = createTopicAdapter();
   const store = createSnapshotStore({ adapter });
   const staleSnap = { ...snapAtT0, revision: snapAtT0.revision };
   await assert.rejects(
@@ -101,5 +98,6 @@ test('过期快照落盘被 CAS 拦下，外部 blockBy 存活（端到端）', 
 });
 
 test('清理', () => {
+  try { svc.closeDb(); } catch { /* ignore */ }
   rmSync(sb, { recursive: true, force: true });
 });

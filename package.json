@@ -20,11 +20,12 @@
     "lint": "eslint . && node scripts/check-tdz.mjs --all",
     "test": "pnpm run lint && pnpm run build && pnpm run test:smoke && pnpm run test:unit",
     "test:smoke": "node tests/smoke.mjs",
-    "test:unit": "node --test tests/unit/*.test.mjs"
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "test:db": "node --test tests/unit/db-*.test.mjs"
   },
   "packageManager": "pnpm@10.33.0",
   "engines": {
-    "node": ">=18.17"
+    "node": ">=22.13.0"
   },
   "files": [
     "bin/",

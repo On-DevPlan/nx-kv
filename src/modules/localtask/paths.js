@@ -1,6 +1,6 @@
 // （#54 自 service.js 拆出）全局主题常量 + 存储位置 + 「工作目录 → 主题 key」的纯解析。
-import crypto from 'node:crypto';
 import { basename, join, resolve } from 'node:path';
+import { topicKeyOf } from '../../core/topic-key.js';
 import { APP_DIR } from '../../core/paths.js';
 import { badInput } from '../../core/errors.js';
 // ─── 全局主题：跨目录共享队列（工作窃取）───────────────────────────
@@ -53,14 +53,20 @@ export function normalizeCwd(raw) {
     cwd = process.cwd();
   }
   const name = basename(cwd);
-  return { cwd, name, key: topicKeyFor(name) };
+  return { cwd, name, key: topicKeyOf(cwd, '') };
 }
 
-// 主题以「目录名」标识：在名为 br_ct 的目录里执行 CLI → 自动领取 br_ct 主题队列的任务；
-// 同名目录共用同一队列。Windows 折叠目录名大小写。
+// 队列身份（T03 起与 topics.key 同一派生）：**完整 cwd**（小写折叠）+ 无组上下文。
+//
+// 旧版是 `sha1(目录名)`——同名目录共用一条队列，路径可能被另一个同名目录覆盖
+// （面板显示的路径跟着变，看着像队列跑到别处去了）。新版修正这个语义：
+// 不同路径 = 不同队列。**旧 key 一律失效、不做别名解析**（设计裁决）——
+// 旧 key 只留在 topics.ext.ext_legacy_key 作取证，CLI 提示「旧版 key 请改用 --cwd」。
+// 全局池：topicKeyOf('') === '__GLOBAL__'，与旧 GLOBAL_KEY 同值，地址不变。
 export function topicKeyFor(name) {
-  const fold = process.platform === 'win32' ? String(name).toLowerCase() : String(name);
-  return crypto.createHash('sha1').update(fold, 'utf8').digest('hex').slice(0, 16);
+  // 保留旧名（几个调用点按名字寻址），但**语义已变**：它只该用于「从 cwd 派生」，
+  // 不再接受裸目录名 —— 名字仍在是为了调用点少改一处。
+  return topicKeyOf(String(name ?? ''), '');
 }
 // 任务级寻址：显式 key 优先（全局主题只能按 key 定位——它没有 cwd），否则按工作目录
 //

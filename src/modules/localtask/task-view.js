@@ -1,20 +1,22 @@
 // （#54 自 service.js 拆出）任务行/主题的只读视图与队列内关系原语：
 // normalizeTask（含 ready 徽标）、topicView、跨队列依赖解析器（foreignResolver）、
-// 队列内关系清单（queueRelationsOf）与搬家（relocateInStore）。
-import { basename } from 'node:path';
+// 队列内关系清单（queueRelationsOf）与搬家（relocateTask）。
 import { badInput, notFound } from '../../core/errors.js';
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from './dag.js';
 import { isGlobalKey, topicKeyFor, resolveTaskKey } from './paths.js';
-import { stampNow, parseStampMs, topicOf, nextTaskId, loadStore } from './store-io.js';
+import { parseStampMs } from './store-io.js';
+import { topics as topicsRepo, tasks as tasksRepo, db as getDb } from './repo/index.js';
 import { parseFrontmatter } from '../../shared/frontmatter.js';
+import { isPending } from '../../shared/task-status.js';
 // 领取耗时（秒）：**发布 → 被领取**的时间差。
 // 数据本来就在（createdAt / consumedAt），这里算成派生字段，省得每个使用方自己算，
 // 也省得存一份会漂移的冗余副本。
 // 只有真的被领走的才有值；还没被领的返回 null（那是"还在等"，由使用方按当前时间算）。
 function pickupSecOf(t) {
-  // 归档的任务也是被领走过（consumedAt 保留）——领取耗时照旧算。
-  if (!t || (t.status !== 'consumed' && t.status !== 'archived')) return null;
+  // 不再按 status 判：没被领过的行 consumedAt 本来就是空串，parseStampMs 会返回 NaN。
+  // （以前这里靠「status 是 consumed 或 archived」当闸门 —— 词表一改就成了第二个真值源。）
+  if (!t) return null;
   const created = parseStampMs(t.createdAt);
   const consumed = parseStampMs(t.consumedAt);
   if (!Number.isFinite(created) || !Number.isFinite(consumed)) return null;
@@ -47,43 +49,55 @@ export function queueRelationsOf(topic, task) {
 
 /**
  * 把任务行从源主题搬进目标主题（改归属项目 = 换队列，归属决定落点）。
- * 同一主题 → 原样返回 null（不搬）。引用修复：源队列里指向它的本地 id 依赖已被
- * 上游拒绝；跨队列引用（含源队列其他任务对它的 "fromKey:oldId"）在搬完统改写到
- * 新地址，编排连线不断。
+ * 同一主题 → 原样返回 null（不搬）。**必须在调用方的事务里**（updateTask 的搬家
+ * 与正文/时间目标写入是同一次落盘 —— repo 方法嵌套进外层 tx 自动降级 SAVEPOINT）。
+ *
+ * 引用修复：源队列里指向它的本地 id 依赖已被上游拒绝；跨队列引用（含源队列其他
+ * 任务对它的 "fromKey:oldSeq"）在搬完统改写到新地址，编排连线不断。
+ * 撞号时目标队列按其 next_seq 重新编号（与 JSON 时代 nextTaskId 重编号一致）。
  */
-export function relocateInStore(store, fromTopic, task, moveTo) {
+export function relocateTask(fromTopic, seq, moveTo) {
   const toCwd = String(moveTo?.cwd || '').trim();
   if (!toCwd) return null;
-  const toKey = topicKeyFor(basename(toCwd));
+  const toKey = topicKeyFor(toCwd);
   if (toKey === fromTopic.key) return null;
-  const target = topicOf(store, toKey, toCwd, moveTo.name || '');
-  const oldId = Number(task.id);
-  fromTopic.tasks.splice(fromTopic.tasks.indexOf(task), 1);
-  let id = oldId;
-  if (target.tasks.some((x) => Number(x.id) === id)) {
-    // id 是队列内序号：目标队列已有同号 → 重新编号
-    id = nextTaskId(target.tasks);
-    task.id = id;
-  }
-  target.tasks.push(task);
-  // 源队列里指向它的跨队列引用改写到新地址（本地 id 依赖在搬前已被拒绝，不会残留）
-  for (const topic of Object.values(store.topics)) {
-    for (const other of topic.tasks || []) {
-      if (!Array.isArray(other.blockBy) || !other.blockBy.some((d) => isForeignDep(d))) continue;
-      const from = `${fromTopic.key}:${oldId}`;
-      const to = `${toKey}:${id}`;
-      other.blockBy = other.blockBy.map((d) => (String(d) === from ? to : d));
+  const target = topicsRepo.ensureTopic(toKey, { cwd: toCwd, name: moveTo.name || '' });
+  const oldSeq = Number(seq);
+  const moved = tasksRepo.moveTaskToTopic(fromTopic.id, oldSeq, target.id);
+  if (!moved) return null;
+  // 队列顺序跟着走：源队列摘除，目标队列按 JSON 语义 push 到尾
+  topicsRepo.mutateOrder(fromTopic.key, (order) => order.filter((s) => s !== oldSeq));
+  topicsRepo.mutateOrder(toKey, (order) => {
+    const list = [...order];
+    const at = list.indexOf(moved.toSeq);
+    if (at >= 0) list.splice(at, 1);
+    list.push(moved.toSeq);
+    return list;
+  });
+  // 全库把 "fromKey:oldSeq" 改写到新地址（跨队列引用是绝对地址，搬家要跟着改）
+  for (const row of getDb().all('SELECT topic_id, seq, ext FROM tasks WHERE ext LIKE :pat', {
+    pat: `%${fromTopic.key}:${oldSeq}%`,
+  })) {
+    for (const other of tasksRepo.listTaskRowsByTopic(Number(row.topic_id))) {
+      if (!Array.isArray(other.task.blockBy) || !other.task.blockBy.some((d) => isForeignDep(d))) continue;
+      const from = `${fromTopic.key}:${oldSeq}`;
+      const to = `${toKey}:${moved.toSeq}`;
+      if (!other.task.blockBy.some((d) => String(d) === from)) continue;
+      tasksRepo.updateTask(row.topic_id, other.task.id, {
+        blockBy: other.task.blockBy.map((d) => (String(d) === from ? to : d)),
+      });
     }
   }
-  fromTopic.updatedAt = stampNow();
-  target.updatedAt = stampNow();
-  return { topic: target, task };
+  topicsRepo.updateTopic(fromTopic.key, { bumpRevision: true });
+  topicsRepo.updateTopic(toKey, { bumpRevision: true });
+  return { topic: topicsRepo.getTopic(toKey), task: moved.task };
 }
 
-/** 跨队列 blockBy 解析：按 topicKey 找任务（已删/迁出走 null → fail-open） */
-export function foreignResolver(store) {
+/** 跨队列 blockBy 解析：按 topicKey 找任务（已删/迁出走 null → fail-open）。
+ *  T03：直接查库（不喂 store 快照）—— 依赖判定永远看最新一行。 */
+export function foreignResolver() {
   return (topicKey, taskId) => {
-    const topic = store?.topics?.[topicKey];
+    const topic = topicsRepo.getTopic(String(topicKey));
     if (!topic) return null;
     const task = (topic.tasks || []).find((x) => Number(x.id) === Number(taskId));
     if (!task || task.deletedAt || task.migratedTo) return null;
@@ -106,9 +120,11 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
   const base = {
     id: Number(t.id) || 0,
     text: String(t.text ?? ''),
-    // 状态词汇：pending → consumed（已领取）；完成验收后可就地回 pending（#74）。
-    // archived 仍保留给旧口径（#59 fork 取代）的残留行，不再由 reopen 写入。
-    status: t.status === 'consumed' ? 'consumed' : t.status === 'archived' ? 'archived' : 'pending',
+    // 状态词表：pending / claimed / done / cancelled（权威见 src/shared/task-status.js）。
+    // **不认识的词原样透出**，不做「归一成 pending」的兜底 —— 兜底等于把没见过的状态
+    // 变成可领取任务（agent 会把已交付的活儿再干一遍）。旧词（consumed/archived）在
+    // 过渡期会原样出现，跑一次 scripts/rewrite-json-status.mjs 即可消除。
+    status: String(t.status ?? '') || 'pending',
     roundSummary: String(t.roundSummary ?? ''),
     createdAt: String(t.createdAt ?? ''),
     consumedAt: String(t.consumedAt ?? ''),
@@ -136,6 +152,12 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
     timegoal: sanitizeTaskGoal(t.timegoal),
     // 完成标记（localtask done 写入）：带时间目标的任务未到点会被拒绝，写不进来。
     completedAt: String(t.completedAt ?? ''),
+    // ─── 过渡别名（T03 之后删除）───────────────────────────────────────
+    // 词表统一后「交付完成」的规范叫法是 doneAt + feedback（库里是 done_at / feedback）。
+    // JSON 过渡期这两个字段还是 completedAt / roundSummary，这里给同一事实补上规范名，
+    // 让 API 使用方不必再记两套名字；**写路径只有旧名**，别名只读。
+    doneAt: String(t.completedAt ?? ''),
+    feedback: String(t.roundSummary ?? ''),
     // 重开轨迹（#74）：就地重开，历史进 history[]；forkOf 仅兼容旧 #59/#69 派生数据。
     //   history      同任务内的链节点（origin / reopen / comment），点开可旁路查看
     //   forkOf       旧派生链（'队列key:旧编号'）——新 reopen 不再写
@@ -165,12 +187,13 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
   return base;
 }
 
-// pending 的统一判据：未领取、未删除、未迁出。
+// pending 的统一判据（**正判定**）：`status === 'pending'` 且未删除、未迁出。
 // 迁出（tombstone）不算活——它不会被派发，也不该阻塞主题删除或挡住 prune。
-export function isPending(t) {
-  // 归档（archived）是终态：不再算待领取——否则归档的任务会被重新派发（#59）。
-  return t.status !== 'consumed' && t.status !== 'archived' && !t.deletedAt && !t.migratedTo;
-}
+//
+// 权威实现在 src/shared/task-status.js（前端与后端共用同一份），这里只做转发，
+// 让 `import { isPending } from './task-view.js'` 的老调用点（deletion / move-prims /
+// task-lifecycle）一行不用改。**别再在这里写第二份判断**。
+export { isPending };
 
 // 主题的截止时刻（epoch ms）。优先用 waitingUntilMs（毫秒精度，新数据都有），
 // 老数据没有这个字段时才回退解析 waitingUntil 字符串（秒级精度）。
@@ -232,7 +255,9 @@ export function topicView(t, repoCtx = null, readyOpts = {}) {
     pending: tasks.filter(isPending).length,
     // 开/关两个计数分开给（Kanboard 的 nb_open_tasks / nb_closed_tasks）：
     // 面板上「N 待领 · M 已领」比一个总数有用得多——一眼看出还剩多少活、已经干完多少。
-    consumed: tasks.filter((x) => x.status === 'consumed' && !x.deletedAt).length,
+    // 词表统一后「已领」与「已交付」是两个词，计数也分开（旧口径把两者算在一起）。
+    claimed: tasks.filter((x) => x.status === 'claimed' && !x.deletedAt).length,
+    done: tasks.filter((x) => x.status === 'done' && !x.deletedAt).length,
     // 软删除的条数（还在队列里，可恢复）
     deleted: tasks.filter((x) => !!x.deletedAt).length,
     total: tasks.length,
@@ -286,10 +311,10 @@ export function normalizeHistory(raw) {
 //   forkRow        —— 按引用取行（内部；软删/迁出不算存在）
 //   taskChain      —— 查询侧：history 节点 + 祖先链 + 子任务
 
-function forkRow(store, ref) {
+function forkRow(ref) {
   const m = /^(.+):(\d+)$/.exec(String(ref || ''));
   if (!m) return null;
-  const topic = store.topics[m[1]];
+  const topic = topicsRepo.getTopic(m[1]);
   if (!topic) return null;
   const task = (topic.tasks || []).find(
     (x) => Number(x.id) === Number(m[2]) && !x.deletedAt && !x.migratedTo,
@@ -298,7 +323,7 @@ function forkRow(store, ref) {
 }
 
 /** 发布侧把 forkOf 引用规范化成 'key:id'。父任务不存在直接报错（链就是拿来查的，虚链没意义）。 */
-export function resolveForkRef(store, raw, defaultKey) {
+export function resolveForkRef(raw, defaultKey) {
   const s = String(raw ?? '').trim();
   if (!s) throw badInput('forkOf 不能为空');
   const m = /^(.+):(\d+)$/.exec(s);
@@ -308,7 +333,7 @@ export function resolveForkRef(store, raw, defaultKey) {
   if (!Number.isFinite(id) || id <= 0) {
     throw badInput(`forkOf 无法解析: ${s}（裸数字=同主题父任务编号，或 'key:id'=跨主题）`);
   }
-  if (!forkRow(store, `${key}:${id}`)) {
+  if (!forkRow(`${key}:${id}`)) {
     throw badInput(`forkOf 指向的任务不存在: ${key}:${id}`);
   }
   return `${key}:${id}`;
@@ -338,8 +363,7 @@ export async function taskChain({ id, cwd, key } = {}) {
   const k = resolveTaskKey({ key, cwd });
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
-  const store = await loadStore();
-  const t = store.topics[k];
+  const t = topicsRepo.getTopic(k);
   if (!t) throw notFound('主题不存在: ' + k);
   const self = (t.tasks || []).find((x) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
   if (!self) throw notFound('任务不存在或已删除: #' + want);
@@ -385,7 +409,7 @@ export async function taskChain({ id, cwd, key } = {}) {
   while (cur && ancestors.length < 32) {
     if (seen.has(cur)) break;
     seen.add(cur);
-    const row = forkRow(store, cur);
+    const row = forkRow(cur);
     if (!row) {
       // 引用还在、行没了（软删 / 迁出 / 旧格式）——如实标注，不静默吞
       ancestors.push({ ref: cur, missing: true });
@@ -394,13 +418,14 @@ export async function taskChain({ id, cwd, key } = {}) {
     ancestors.push(chainLite(row.topic, row.task));
     cur = String(row.task.forkOf || '');
   }
-  // 子任务：派生落点可能换主题（旧 reopen 带 moveTo / 评论跨队列），所以全 store 扫
+  // 子任务：派生落点可能换主题（旧 reopen 带 moveTo / 评论跨队列），所以全库扫
   const ref = `${k}:${want}`;
   const children = [];
-  for (const topic of Object.values(store.topics)) {
-    for (const x of topic.tasks || []) {
-      if (x.deletedAt || x.migratedTo) continue;
-      if (String(x.forkOf || '') === ref) children.push(chainLite(topic, x));
+  for (const { task, topicKey } of tasksRepo.listAllTaskRows()) {
+    if (task.deletedAt || task.migratedTo) continue;
+    if (String(task.forkOf || '') === ref) {
+      const owner = topicsRepo.getTopic(topicKey);
+      if (owner) children.push(chainLite(owner, task));
     }
   }
   children.sort((a, b) => a.id - b.id);

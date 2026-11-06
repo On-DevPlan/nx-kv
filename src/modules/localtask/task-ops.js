@@ -1,31 +1,22 @@
 // （#54 自 service.js 拆出）单条任务的查/增/改：getTask、addTask（waiter 唤醒链 +
 // 全局池 FIFO 投递 + ignoredCwd 如实回带）、updateTask（正文/时间目标/DAG 依赖/改归属搬家）。
-import { basename } from 'node:path';
 import { badInput, notFound } from '../../core/errors.js';
 import { parseFrontmatter, preserveFrontmatter } from '../../shared/frontmatter.js';
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from './dag.js';
-import {
-  MAX_TEXT,
-  loadStore,
-  saveStore,
-  stampNow,
-  normalizeSummary,
-  normalizeText,
-  topicOf,
-  nextTaskId,
-  bumpWorkflowRevision,
-} from './store-io.js';
+import { MAX_TEXT, normalizeSummary, normalizeText } from './store-io.js';
+import { openLocaltaskStore as openStore, topics as topicsRepo, tasks as tasksRepo, txw as tx } from './repo/index.js';
 import { GLOBAL_KEY, GLOBAL_NAME, GLOBAL_CWD, isGlobalKey, normalizeCwd, resolveTaskKey, topicKeyFor } from './paths.js';
-import { normalizeTask, foreignResolver, queueRelationsOf, relocateInStore, resolveForkRef } from './task-view.js';
-import { takeTopicWaiter, takeGlobalWaiter, markConsumed } from './waiters.js';
+import { normalizeTask, foreignResolver, queueRelationsOf, relocateTask, resolveForkRef } from './task-view.js';
+import { takeTopicWaiter, takeGlobalWaiter } from './waiters.js';
+import { presence as presenceRepo } from './repo/index.js';
 export async function getTask({ cwd: rawCwd, key: rawKey, id } = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const { cwd } = normalizeCwd(rawCwd);
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
-  const store = await loadStore();
-  const t = store.topics[key];
+  openStore();
+  const t = topicsRepo.getTopic(key);
   const task = t && t.tasks.find((x) => Number(x.id) === want);
   if (!task) {
     const { notFound } = await import('../../core/errors.js');
@@ -60,7 +51,7 @@ export async function addTask({
     timegoal = sanitizeTaskGoal(rawGoal);
   }
 
-  const store = await loadStore();
+  openStore();
   let key;
   let cwd;
   let t;
@@ -72,82 +63,103 @@ export async function addTask({
     //   选择"照做 + 明说"，而不是改语义。）
     key = GLOBAL_KEY;
     cwd = GLOBAL_CWD;
-    t = topicOf(store, key, cwd, GLOBAL_NAME);
+    t = topicsRepo.ensureTopic(key, { cwd, name: GLOBAL_NAME });
   } else {
     ({ key, cwd } = normalizeCwd(rawCwd));
-    t = topicOf(store, key, cwd);
+    t = topicsRepo.ensureTopic(key, { cwd });
   }
+  const tView = topicsRepo.getTopic(key);
 
-  const id = nextTaskId(t.tasks);
+  const id = tasksRepo.nextSeq(t.id);
   // 链路（#69）：forkOf = 「这条从哪派生」。裸数字 = 同主题父任务编号；
   // 'key:id' = 跨主题。规范化成 'key:id' 存储，父任务必须真实存在（发布时报错）。
   // forkKind 缺省按 comment（评论/随手派生）——reopen 有自己的写入口（task-lifecycle）。
   let forkOf = '';
   let forkKind = '';
   if (rawForkOf !== undefined && rawForkOf !== null && String(rawForkOf).trim() !== '') {
-    forkOf = resolveForkRef(store, rawForkOf, key);
+    forkOf = resolveForkRef(rawForkOf, key);
     forkKind = rawForkKind === 'reopen' ? 'reopen' : 'comment';
   }
-  const task = normalizeTask({
+  const taskDraft = {
     id,
     text: body,
     status: 'pending',
-    createdAt: stampNow(),
     timegoal,
     blockBy: normalizeBlockBy(rawBlockBy, id),
     blocksFollowing: !!blocksFollowing,
     forkOf,
     forkKind,
-  });
-  t.tasks.push(task);
-  t.updatedAt = stampNow();
-  // 提交方的补充说明写**自己的字段**（submitSummary），不再覆盖 t.summary。
-  // t.summary 是「agent 当前现状」（由 setWaiting 写）——两个写入者抢同一个字段时，
-  // 面板上"当前现状"一会儿是 agent 的、一会儿是提交者的，看着像乱跳。
-  if (summary) t.submitSummary = summary;
+    createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+  };
 
-  // 唤醒分两步：先在 store 里标记消费，saveStore 之后才 resolve——保证 wait 返回时
-  // 数据必然一致（沿用旧本地路径的顺序）。
+  // 唤醒分两步：先在事务里完成「插入 + 领取标记 + 等待态清理」，提交后才 resolve
+  // ——保证 wait 返回时数据必然一致（沿用旧本地路径的顺序）。
   // DAG：被挡住的新任务**不能**直接塞给 waiter——否则闸门/依赖形同虚设。
   let delivered = false;
-  let wake = null; // (task) => void
-  const canDeliver = isReadyToClaim(task, t.tasks, { resolveForeign: foreignResolver(store) });
+  let task = null;
+  let wakeMeta = null;
+  const readyOpts = { resolveForeign: foreignResolver() };
+  const probe = normalizeTask(taskDraft, tView.tasks, readyOpts);
+  const canDeliver = isReadyToClaim(probe, tView.tasks, readyOpts);
 
   if (canDeliver && toGlobal) {
     const direct = takeTopicWaiter(GLOBAL_KEY); // 显式等全局 key 的（罕见路径）
     if (direct) {
-      markConsumed(task, t.summary, { from: 'global', byKey: GLOBAL_KEY, byName: GLOBAL_NAME });
-      t.waiting = false;
-      t.waitingUntil = '';
+      wakeMeta = { summary: tView.summary, from: 'global', byKey: GLOBAL_KEY, byName: GLOBAL_NAME, wake: direct.resolve };
       delivered = true;
-      wake = direct.resolve;
     } else {
       const gw = takeGlobalWaiter(); // FIFO：最早阻塞的先领
       if (gw) {
-        markConsumed(task, gw.summary, {
+        wakeMeta = {
           // roundSummary 记领取方 wait 的现状；claimedBy 记领取方是谁
+          summary: gw.summary,
           from: 'global',
           byKey: gw.by && gw.by.key,
           byName: gw.by && gw.by.name,
-        });
+          wake: gw.onTask,
+        };
         delivered = true;
-        wake = gw.onTask;
       }
     }
   } else if (canDeliver) {
     const waiter = takeTopicWaiter(key);
     if (waiter) {
-      markConsumed(task, t.summary, { from: 'local', byKey: key, byName: t.name });
-      t.waiting = false;
-      t.waitingUntil = '';
+      wakeMeta = { summary: tView.summary, from: 'local', byKey: key, byName: tView.name, wake: waiter.resolve };
       delivered = true;
-      wake = waiter.resolve;
     }
   }
 
-  bumpWorkflowRevision(t);
-  await saveStore(store); // 先落盘再唤醒：wait 返回时数据必然一致
-  if (wake) wake(normalizeTask(task));
+  tx(() => {
+    const inserted = tasksRepo.insertTask(t.id, taskDraft);
+    task = inserted.task;
+    // 队列顺序：追加到尾（JSON 数组 push 的等价物）
+    topicsRepo.mutateOrder(key, (order) => {
+      const list = [...order];
+      const at = list.indexOf(inserted.id);
+      if (at >= 0) list.splice(at, 1);
+      list.push(inserted.id);
+      return list;
+    });
+    // 提交方的补充说明写**自己的字段**（submitSummary），不再覆盖 summary。
+    // summary 是「agent 当前现状」（由 setWaiting 写）——两个写入者抢同一个字段时，
+    // 面板上"当前现状"一会儿是 agent 的、一会儿是提交者的，看着像乱跳。
+    if (summary) topicsRepo.updateTopic(key, { submitSummary: summary });
+    if (delivered && wakeMeta) {
+      // 领取标记（带守卫的 UPDATE：pending ∧ 未删除 才会命中）
+      const claimed = tasksRepo.claimTask(t.id, inserted.id, {
+        summary: wakeMeta.summary,
+        from: wakeMeta.from,
+        byKey: wakeMeta.byKey,
+        byName: wakeMeta.byName,
+      });
+      task = claimed || task;
+      // 直接投递路径顺带清等待态（旧代码 t.waiting=false / waitingUntil=''）
+      presenceRepo.setPresence(key, { waiting: false, untilMs: 0, sinceMs: 0, cancelRequested: false });
+    }
+    topicsRepo.updateTopic(key, { bumpRevision: true });
+    return true;
+  });
+  if (wakeMeta && wakeMeta.wake) wakeMeta.wake(normalizeTask(task));
 
   // DAG 单一写路径：闸门/依赖经 Mutator 投影（fail-open，不挡入队）
   if (!toGlobal && (task.blocksFollowing || (task.blockBy && task.blockBy.length))) {
@@ -208,8 +220,8 @@ export async function updateTask({
     throw badInput('--clear-goal 与 --duration 不能同时给（清除就清除，不猜意图）');
   }
 
-  const store = await loadStore();
-  const t = store.topics[key];
+  openStore();
+  const t = topicsRepo.getTopic(key);
   const task = t && t.tasks.find((x) => Number(x.id) === want);
   if (!task) {
     const { notFound } = await import('../../core/errors.js');
@@ -220,9 +232,14 @@ export async function updateTask({
   // 先落依赖再搬家：--clear-block-by 可以把依赖先解除，随后搬家守卫就按解除后的口径放行。
   if (hasDagInput) {
     if (task.deletedAt) throw badInput(`#${want} 已删除，依赖/闸门不可改`);
-    if (clearBlockBy) task.blockBy = [];
-    else if (blockBy !== undefined) task.blockBy = normalizeBlockBy(blockBy, want);
-    if (blocksFollowing !== undefined) task.blocksFollowing = !!blocksFollowing;
+    tx(() => {
+      const patch = {};
+      if (clearBlockBy) patch.blockBy = [];
+      else if (blockBy !== undefined) patch.blockBy = normalizeBlockBy(blockBy, want);
+      if (blocksFollowing !== undefined) patch.blocksFollowing = !!blocksFollowing;
+      tasksRepo.updateTask(t.id, want, patch);
+      return true;
+    });
   }
   // 归属变更 → 换队列（归属决定落点，与派任务同一口径）。moveTo 由编排层解析给出。
   // 同一次落盘：搬完再改正文/时间目标，中间任何一步抛错都不落盘。
@@ -236,18 +253,19 @@ export async function updateTask({
   let moved = false;
   let movedFrom = null;
   if (moveTo) {
-    const toKey = topicKeyFor(basename(String(moveTo.cwd || '')));
+    const toKey = topicKeyFor(String(moveTo.cwd || ''));
     if (toKey && toKey !== key) {
       const oldProject = String(parseFrontmatter(task.text).project || '').trim();
       const afterText = body ? preserveFrontmatter(task.text, body) : task.text;
       const newProject = String(parseFrontmatter(afterText).project || '').trim();
       const explicitChange = !!newProject && newProject !== oldProject;
       const rel = queueRelationsOf(t, task);
-      const movable = task.status !== 'consumed' && !rel.length;
+      // 正判定：只有「待领取」能改归属项目（已领取/已交付的落点在领取时定下，要改先 reopen）
+      const movable = task.status === 'pending' && !rel.length;
       if (explicitChange && !movable) {
-        if (task.status === 'consumed') {
+        if (task.status !== 'pending') {
           throw badInput(
-            `#${want} 已领取——已领取的任务不能改归属项目（落点是提交/领取时定下的，要改先 reopen）`,
+            `#${want} 已领取或已交付——这种任务不能改归属项目（落点是提交/领取时定下的，要改先 reopen）`,
           );
         }
         throw badInput(
@@ -256,7 +274,7 @@ export async function updateTask({
         );
       }
       if (movable && !isGlobalKey(key)) {
-        const movedTo = relocateInStore(store, t, task, moveTo);
+        const movedTo = relocateTask(t, want, moveTo);
         if (movedTo) {
           host = movedTo.topic;
           hostTask = movedTo.task;
@@ -266,32 +284,38 @@ export async function updateTask({
       }
     }
   }
-  if (body) {
-    hostTask.text = preserveFrontmatter(hostTask.text, body);
-  }
-  if (hasGoalInput) {
-    if (hostTask.status === 'consumed') {
-      throw badInput(`#${want} 已领取计时中，时间目标声明不可改——要调整先 reopen 重开任务`);
+  // 正文 / 时间目标与搬家**同一个事务**：中间任何一步抛错都不落盘（旧行为注释保留）。
+  tx(() => {
+    if (body) {
+      tasksRepo.updateTask(host.id, hostTask.id, {
+        text: preserveFrontmatter(hostTask.text, body),
+      });
     }
-    if (hostTask.deletedAt) throw badInput(`#${want} 已删除，时间目标声明不可改`);
-    if (hostTask.migratedTo) throw badInput(`#${want} 已迁出，时间目标声明不可改`);
-    if (goal.clear) {
-      hostTask.timegoal = null;
-      goalChanged = 'cleared';
-    } else {
-      // 只改时长没带 prompt → 保留原附加要求；带了（含空串）→ 以传入为准
-      const prev = sanitizeTaskGoal(hostTask.timegoal);
-      const prompt = goal.prompt != null ? String(goal.prompt).trim() : prev ? prev.prompt : '';
-      hostTask.timegoal = sanitizeTaskGoal({ duration: goal.duration, prompt });
-      goalChanged = 'set';
+    if (hasGoalInput) {
+      const live = topicsRepo.getTopic(host.key).tasks.find((x) => Number(x.id) === Number(hostTask.id));
+      if (live.status !== 'pending') {
+        throw badInput(`#${want} 已领取或已交付，时间目标声明不可改——要调整先 reopen 重开任务`);
+      }
+      if (live.deletedAt) throw badInput(`#${want} 已删除，时间目标声明不可改`);
+      if (live.migratedTo) throw badInput(`#${want} 已迁出，时间目标声明不可改`);
+      if (goal.clear) {
+        tasksRepo.updateTask(host.id, live.id, { timegoal: null });
+        goalChanged = 'cleared';
+      } else {
+        // 只改时长没带 prompt → 保留原附加要求；带了（含空串）→ 以传入为准
+        const prev = sanitizeTaskGoal(live.timegoal);
+        const prompt = goal.prompt != null ? String(goal.prompt).trim() : prev ? prev.prompt : '';
+        tasksRepo.updateTask(host.id, live.id, {
+          timegoal: sanitizeTaskGoal({ duration: goal.duration, prompt }),
+        });
+        goalChanged = 'set';
+      }
     }
-  }
-  host.updatedAt = stampNow();
-  if (host !== t) t.updatedAt = stampNow();
-  // 搬家动了两个队列，源/目标都要顶 revision（引擎在途快照对两个都可能过期）
-  bumpWorkflowRevision(host);
-  if (host !== t) bumpWorkflowRevision(t);
-  await saveStore(store);
+    // 搬家动了两个队列，源/目标都要顶 revision（引擎在途快照对两个都可能过期）
+    topicsRepo.updateTopic(host.key, { bumpRevision: true });
+    if (host.key !== key) topicsRepo.updateTopic(key, { bumpRevision: true });
+    return true;
+  });
   if (hasDagInput) {
     try {
       const { syncTaskDagUpdate } = await import('./writes.js');
@@ -300,13 +324,16 @@ export async function updateTask({
       /* fail-open */
     }
   }
+  // 搬家/编辑后的最新视图（host.tasks 需要重读 —— 上面写的是行，不是视图对象）
+  const hostView = topicsRepo.getTopic(host.key);
+  const liveTask = hostView.tasks.find((x) => Number(x.id) === Number(hostTask.id)) || hostTask;
   return {
     status: 'ok',
     key: host.key,
-    cwd: host.cwd || cwd,
-    name: host.name,
+    cwd: hostView.cwd || cwd,
+    name: hostView.name,
     goalChanged,
-    task: normalizeTask(hostTask, host.tasks),
+    task: normalizeTask(liveTask, hostView.tasks),
     moved,
     movedFrom,
   };
@@ -326,8 +353,8 @@ export async function cloneTask({ cwd: rawCwd, key: rawKey, id } = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
-  const store = await loadStore();
-  const t = store.topics[key];
+  openStore();
+  const t = topicsRepo.getTopic(key);
   if (!t) throw notFound('主题不存在: ' + key);
   const src = (t.tasks || []).find((x) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
   if (!src) throw notFound('任务不存在或已删除: #' + want);

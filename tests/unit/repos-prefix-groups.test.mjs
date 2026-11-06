@@ -15,6 +15,8 @@ let dir = '';
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'nx-kv-prefix-'));
   process.env.NX_KV_REPOS_STORE = join(dir, 'repos.json');
+  // docs 树同样隔离：用例会写项目介绍文档，不设会落进真实 ~/.nx-kv/docs。
+  process.env.NX_KV_DOCS_DIR = join(dir, 'docs');
 });
 
 test.after?.(() => {

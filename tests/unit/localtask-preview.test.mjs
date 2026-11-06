@@ -9,7 +9,7 @@
 // 存储一律指向临时文件，绝不写脏用户目录。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as svc from '../../src/modules/localtask/service.js';
@@ -44,8 +44,7 @@ test('预览与真实领取的交付逐字一致（且预览在前、领取在�
     task: added.task,
     cwd: dir,
     key: keyOf(),
-    summary: '本轮现状',
-  });
+    summary: '本轮现状' });
 
   const got = await getTask({ cwd: dir, summary: '本轮现状', open: false });
   assert.ok(got && got.task, '真实领取拿到任务');
@@ -55,16 +54,24 @@ test('预览与真实领取的交付逐字一致（且预览在前、领取在�
   assert.equal(got.task.text.includes('{{task.text}}'), false, '模板不落进任务正文');
 });
 
-test('预览是只读的：不改队列文件、不领取、不改状态', async () => {
+test('预览是只读的：不领取、不改状态、不动行', async () => {
   const added = await svc.addTask({ cwd: dir, text: '# 任务乙\n\n待领取' });
-  const before = readFileSync(storeFile, 'utf8');
+  const beforeRow = await svc.getTask({ id: added.task.id, cwd: dir });
+  const beforeCount = (await svc.listTasks()).topics[0].tasks.length;
+  const beforeExt = svc.repo.db().get('SELECT ext, status, claimed_at FROM tasks WHERE seq = :s', {
+    s: added.task.id });
 
   const pre = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
   assert.ok(pre.instruction.length > 0, '渲染出了内容');
 
-  assert.equal(readFileSync(storeFile, 'utf8'), before, '队列文件一个字节都不该变');
+  // 库里那一行一个字段都不该变（ext / status / claimed_at 三样都验）
+  const afterExt = svc.repo.db().get('SELECT ext, status, claimed_at FROM tasks WHERE seq = :s', {
+    s: added.task.id });
+  assert.deepEqual(afterExt, beforeExt, '预览不许写库');
+  assert.equal((await svc.listTasks()).topics[0].tasks.length, beforeCount, '任务数不变');
   const row = await svc.getTask({ id: added.task.id, cwd: dir });
   assert.equal(row.status, 'pending', '任务仍是待领取（预览不等于领取）');
+  assert.equal(row.createdAt, beforeRow.createdAt);
 });
 
 test('带时间目标的任务：预览会给出 check 指令，但不启动计时', async () => {
@@ -73,8 +80,7 @@ test('带时间目标的任务：预览会给出 check 指令，但不启动计�
   const added = await svc.addTask({
     cwd: dir,
     text: '# 任务丙\n\n带时间目标',
-    timegoal: { duration: '2h', prompt: '先写测试' },
-  });
+    timegoal: { duration: '2h', prompt: '先写测试' } });
   assert.ok(!existsSync(goalFile), '前置：还没有 timegoals.json');
 
   const pre = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
@@ -107,8 +113,7 @@ test('草稿也能预览（id=0，不读库存）', async () => {
     task: { id: 0, text: '# 草稿任务\n\n还没提交', status: 'draft' },
     cwd: dir,
     key: keyOf(),
-    summary: '',
-  });
+    summary: '' });
   assert.match(pre.rendered, /草稿任务/);
   assert.match(pre.rendered, /还没提交/);
 });

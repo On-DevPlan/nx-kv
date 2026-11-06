@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { parseFrontmatter } from '../../src/shared/frontmatter.js';
+import * as svc from '../../src/modules/localtask/service.js';
 
 // env 先行（模块导入前钉住独立 store）——派任务编排 submitTask 会真的登记仓库/看板、
 // 真的写任务队列，不能落到用户的真实 store 上。
@@ -130,5 +131,7 @@ test('localtask.add action：goalPrompt 驼峰写法（HTTP body）照常归一�
 });
 
 test('清理', () => {
+  // T03：先关库连接再删临时目录（Windows 上连接开着必 EBUSY）
+  try { svc.closeDb(); } catch { /* 尚未打开 */ }
   rmSync(sb, { recursive: true, force: true });
 });

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import * as svc from '../../src/modules/tasktool/timegoal.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-timegoal-'));
@@ -177,7 +177,7 @@ test('set → show → check 链路：reached:false 且 prompt / 现状 / 完成
   assert.ok(chk.checkedAt);
   assert.ok(chk.startedAt && chk.deadline && chk.now);
   assert.ok(chk.remainingSec > 3500 && chk.remainingSec <= 3600);
-  assert.equal(chk.key, svc.topicKeyFor(basename(dirA)));
+  assert.equal(chk.key, svc.topicKeyFor(dirA));
 });
 
 test('模拟到点：直接改 store 里 startedAt 让系统时间到点，check 返回 reached:true', async () => {
@@ -285,7 +285,7 @@ test('不同 cwd 互相独立：dirA 设了 goal，dirB show 是空的', async (
 
   // 同名目录共用（key 一致）：dir 下手动新建同 basename 的目录也应共享
   // 这里只断言 key 算法与 localtask 一致
-  assert.equal(svc.topicKeyFor(basename(dirA)), svc.topicKeyFor(basename(dirA)));
+  assert.equal(svc.topicKeyFor(dirA), svc.topicKeyFor(dirA));
 });
 
 test('list 返回所有有 timegoal 的目录', async () => {
@@ -334,7 +334,7 @@ test('环境变量 NX_KV_TIMEGOAL_STORE 覆盖生效', async () => {
     // 主 storeFile 不在 env 覆盖路径上，应当没被写——若该文件不存在则 ENOENT，
     // 若因前序测试残留则不等式判断不再依赖 err.code，改为读 custom 内容确认隔离。
     const customData = JSON.parse(readFileSync(custom, 'utf8'));
-    const keyInA = svc.topicKeyFor(basename(dirA));
+    const keyInA = svc.topicKeyFor(dirA);
     assert.ok(customData.goals[keyInA] && customData.goals[keyInA].prompt === 'in-custom');
 
     // 切回主 storeFile，确认 list 看到的是空（custom 与主 store 隔离）
@@ -423,7 +423,7 @@ test('pruneExpired：只回收已到点目标，未到点的保留；重复调�
   await svc.setTimegoal({ cwd: dirB, durationSec: 3600, prompt: 'expired' });
 
   const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
-  const expiredKey = svc.topicKeyFor(basename(dirB));
+  const expiredKey = svc.topicKeyFor(dirB);
   raw.goals[expiredKey].startedAt = svc.stampNow(new Date(Date.now() - 7200 * 1000));
   raw.goals[expiredKey].deadline = svc.stampNow(new Date(Date.now() - 3600 * 1000));
   writeFileSync(storeFile, JSON.stringify(raw, null, 2));
@@ -444,7 +444,7 @@ test('pruneExpired：只回收已到点目标，未到点的保留；重复调�
 test('到点自动归档：活动列表不再出现，但仍可 show/check 拿到 reached:true + prompt 原文', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: '归档前的根指令' });
-  const key = svc.topicKeyFor(basename(dirA));
+  const key = svc.topicKeyFor(dirA);
   expireGoal(key);
 
   // list：活动区空了，归档区有它
@@ -472,7 +472,7 @@ test('到点自动归档：活动列表不再出现，但仍可 show/check 拿�
 test('归档超过保留期：整条自动失效（连提示词一起删掉），不需要人工清理', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: '保留期后也要读得到' });
-  const key = svc.topicKeyFor(basename(dirA));
+  const key = svc.topicKeyFor(dirA);
   expireGoal(key);
   await svc.listTimegoals(); // 触发归档
 
@@ -501,7 +501,7 @@ test('归档超过保留期：整条自动失效（连提示词一起删掉）�
 test('失效的目标不可复活：update 报错，要继续请用 set 开新一局', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'V1' });
-  const key = svc.topicKeyFor(basename(dirA));
+  const key = svc.topicKeyFor(dirA);
   expireGoal(key);
   await svc.listTimegoals(); // 触发归档（到点即失效）
 
@@ -522,7 +522,7 @@ test('失效的目标不可复活：update 报错，要继续请用 set 开新�
 test('日志条数封顶 200：长跑任务的 store 不无限膨胀', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'P' });
-  const key = svc.topicKeyFor(basename(dirA));
+  const key = svc.topicKeyFor(dirA);
 
   // 直接往 store 里塞 250 条历史日志（比真跑 250 轮快得多）
   const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
@@ -547,7 +547,7 @@ test('日志条数封顶 200：长跑任务的 store 不无限膨胀', async () 
 test('prune 会连归档区一起彻底清除', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: '待清除' });
-  const key = svc.topicKeyFor(basename(dirA));
+  const key = svc.topicKeyFor(dirA);
   expireGoal(key);
   await svc.listTimegoals(); // 触发归档
 
@@ -584,7 +584,7 @@ test('list 不返回完整 prompt（只给预览）；完整原文用 show 取',
 test('日志截断可见：totalChecks 记总轮次，logTruncated 标记历史已丢', async () => {
   await reset();
   await svc.setTimegoal({ cwd: dirA, durationSec: 3600, prompt: 'P' });
-  const key = svc.topicKeyFor(basename(dirA));
+  const key = svc.topicKeyFor(dirA);
 
   const raw = JSON.parse(readFileSync(storeFile, 'utf8'));
   raw.goals[key].log = Array.from({ length: 250 }, (_, i) => ({

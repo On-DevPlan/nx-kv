@@ -1,0 +1,11 @@
+{
+  "baseUrl": "http://127.0.0.1:8988",
+  "token": "SECRET-TOKEN-MUST-NOT-ENTER-DB",
+  "email": "someone@example.com",
+  "userId": 42,
+  "groupId": 7,
+  "autoSyncAttachments": true,
+  "attachmentsDir": "D:/attachments",
+  "gitRepoRoot": "D:/refs",
+  "gitDevRoot": "D:/dev"
+}

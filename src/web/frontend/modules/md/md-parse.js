@@ -503,7 +503,7 @@ export function insertAttachmentSnippet(body, snippet, opts = {}) {
  * 三种状态（与用户口径一致）：**待领取 / 执行中 / 已完成回填**。
  *
  * 两条容易搞错的判据：
- *   - 「已领取」看 `status === 'consumed'`（或有领取时刻），**不看 `t.from`**——
+ *   - 「已领取」看 `status === 'claimed' / 'done'`（或有领取时刻），**不看 `t.from`**——
  *     `from` 是**来源标记**（云端迁入才有 'cloud'），拿它判领取会让本地已领的
  *     任务显示成「待领取」、云端迁入还没人领的显示成「执行中」。
  *   - 时间起点是**领取时刻**（consumedAt）：在队列里排了多久不算「跑了多久」；
@@ -512,7 +512,9 @@ export function insertAttachmentSnippet(body, snippet, opts = {}) {
 export function taskToProgress(t) {
   const text = t.text || '';
   const title = titleFromMd(text, String(t.id));
-  const claimed = t.status === 'consumed' || !!t.consumedAt;
+  // claimed / done 都算「已经被领走过」：done 是 claimed 之后的下一个状态，
+  // 它的 consumedAt 一定在（卡片要按领取时刻计时）。
+  const claimed = t.status === 'claimed' || t.status === 'done' || !!t.consumedAt;
   const receivedAt = claimed ? String(t.consumedAt || '') : '';
   if (t.deletedAt) {
     return { id: t.id, title, status: 'done', detail: '已删除', receivedAt };

@@ -42,8 +42,8 @@ const board = await boards.createBoard({ name: '归属组', desc: '归属变更�
 await boards.assignRepo({ key: repoA.key, board: board.id });
 await boards.assignRepo({ key: repoB.key, board: board.id });
 
-const aKey = svc.topicKeyFor('proj-a');
-const bKey = svc.topicKeyFor('proj-b');
+const aKey = svc.normalizeCwd(dirA).key;
+const bKey = svc.normalizeCwd(dirB).key;
 const samePath = (a, b) =>
   resolve(a).replace(/[\\/]+/g, '/').toLowerCase() === resolve(b).replace(/[\\/]+/g, '/').toLowerCase();
 
@@ -83,10 +83,13 @@ test('归属没改 → 原地不动（moved:false）', async () => {
 });
 
 test('目标队列已有同号任务 → 重新编号，不撞号', async () => {
-  // A 里提交两条（#1、#2），B 里先放一条（占 #1）
+  // A 里提交两条，B 里先放一条，再往 B 直插一条与 A#1 同号的任务（制造确定性撞号）
   const t1 = await submitTask({ text: '# 一号\nx', board: board.id, project: repoA.key });
   await submitTask({ text: '# 二号\nx', board: board.id, project: repoA.key });
   await submitTask({ text: '# B 占位\nx', board: board.id, project: repoB.key });
+  svc.repo.tasks.insertTask(svc.repo.topics.getTopic(bKey).id, {
+    id: t1.task.id, text: '同号占位', status: 'pending',
+  });
   const upd = await updateAction.run({ id: t1.task.id, cwd: dirA, text: swapProject(t1.task.text) });
   assert.equal(upd.moved, true);
   assert.notEqual(upd.task.id, t1.task.id, '目标队列已有同号 → 换号');
@@ -129,10 +132,10 @@ test('被本队列其他任务依赖 → 拒绝搬家', async () => {
   const t = await submitTask({ text: '# 被依赖\nx', board: board.id, project: repoA.key });
   await submitTask({ text: '# 依赖方\nx', board: board.id, project: repoA.key });
   // 后一条依赖前一条
-  const store = await svc.loadStore();
-  const list = store.topics[aKey].tasks;
-  list[list.length - 1].blockBy = [t.task.id];
-  await svc.saveStore(store);
+  // T03：外部直写走 repo（给队尾那条挂上对 #被依赖 的本地依赖）
+  const list = (await svc.loadStore()).topics[aKey].tasks;
+  const lastOne = list[list.length - 1];
+  svc.repo.tasks.updateTaskByKey(aKey, lastOne.id, { blockBy: [t.task.id] });
   await assert.rejects(
     () => updateAction.run({ id: t.task.id, cwd: dirA, text: swapProject(t.task.text) }),
     /被 #\d+ 依赖/,
@@ -249,5 +252,6 @@ test('历史脏数据但带本地依赖 → 不搬也不拦普通编辑', async 
 });
 
 test('清理', () => {
-  rmSync(sb, { recursive: true, force: true });
+  try { svc.closeDb(); } catch { /* ignore */ }
+  rmSync(sb, { recursive: true, force: true, maxRetries: 3 });
 });

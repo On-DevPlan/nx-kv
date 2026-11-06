@@ -1,8 +1,11 @@
 // （#54 自 service.js 拆出）主题删除：四条删除路径共用的同一套判定（deleteGuard：
 // 全局池/等待中/有未领取 → 需 --force）+ 单个/批量删除。
+//
+// T03：删除 = DELETE topics 行（FK 级联清任务 / presence / goals），事务内完成。
+// 判定所需的只读形状由 repo.topics.getTopic 给出（JSON 形态，deleteGuard 不感知存储）。
 import { badInput } from '../../core/errors.js';
 import { isGlobalKey, normalizeCwd, resolveTopicKey } from './paths.js';
-import { loadStore, saveStore } from './store-io.js';
+import { openLocaltaskStore as openStore, topics as topicsRepo } from './repo/index.js';
 import { isLiveWaiting, isPending, topicView } from './task-view.js';
 // ─── 删除判定：四条删除路径共用同一套规则 ──────────────────────────────
 //
@@ -71,8 +74,8 @@ export async function removeTopic({ cwd: rawCwd, key: rawKey, force = false } = 
     throw badInput('需要 --cwd "<工作目录>" 或 --key "<主题key>"');
   }
   const key = resolveTopicKey({ key: rawKey, cwd: rawCwd });
-  const store = await loadStore();
-  const t = store.topics[key];
+  openStore();
+  const t = topicsRepo.getTopic(key);
   if (!t) {
     const { notFound } = await import('../../core/errors.js');
     throw notFound(`主题不存在（key ${key}）`);
@@ -81,8 +84,7 @@ export async function removeTopic({ cwd: rawCwd, key: rawKey, force = false } = 
   const guard = deleteGuard(t, { force, key });
   if (!guard.ok) throw badInput(guard.message);
   const view = topicView(t);
-  delete store.topics[key];
-  await saveStore(store);
+  topicsRepo.deleteTopic(key);
   return { status: 'removed', key, name: t.name, cwd: t.cwd, topic: view };
 }
 
@@ -94,10 +96,12 @@ export async function removeTopics({ keys, cwds, all = false, force = false } = 
     throw badInput('需要 --keys "<key,key>" 或 --cwds "<目录,目录>"，或 --all');
   }
 
-  const store = await loadStore();
+  openStore();
+  const allTopics = topicsRepo.listTopics();
+  const byKey = new Map(allTopics.map((t) => [t.key, t]));
   let targets;
   if (all) {
-    targets = Object.keys(store.topics);
+    targets = allTopics.map((t) => t.key);
   } else {
     const list = [];
     if (Array.isArray(keys)) list.push(...keys.map((x) => String(x).trim()).filter(Boolean));
@@ -110,7 +114,7 @@ export async function removeTopics({ keys, cwds, all = false, force = false } = 
   const removed = [];
   const skipped = [];
   for (const key of targets) {
-    const t = store.topics[key];
+    const t = byKey.get(key);
     if (!t) {
       skipped.push({ key, reason: 'not_found' });
       continue;
@@ -122,8 +126,7 @@ export async function removeTopics({ keys, cwds, all = false, force = false } = 
       continue;
     }
     removed.push({ key, name: t.name, cwd: t.cwd });
-    delete store.topics[key];
   }
-  if (removed.length) await saveStore(store);
+  for (const r of removed) topicsRepo.deleteTopic(r.key);
   return { status: 'ok', all: !!all, count: removed.length, removed, skipped };
 }

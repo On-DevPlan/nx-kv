@@ -22,7 +22,6 @@ import {
   GLOBAL_KEY,
   isGlobalKey,
   joinAckPrompt,
-  loadStore,
   normalizeCwd,
   normalizeSummary,
   probeEffectivePresence,
@@ -335,13 +334,14 @@ export async function waitForTask({
   const repoCtx = repoCtxOf(repoIndex, cwd);
 
   // 超时：显式 --timeout（秒/毫秒）优先；否则用页面配置；统一夹到 1-600
-  const startStore = await loadStore();
+  // T03：设置走 settings 表（repo/settings），不再有 JSON store 对象
+  const startSettings = await getSettings();
   let sec;
   if (timeoutSec !== undefined && timeoutSec !== null) sec = timeoutSec;
   else if (timeoutMs !== undefined && timeoutMs !== null) sec = Number(timeoutMs) / 1000;
-  else sec = startStore.settings.timeoutSec;
+  else sec = startSettings.timeoutSec;
   const tmo = clampTimeoutSec(sec) * 1000;
-  const suffix = startStore.settings.taskSuffix; // 返回任务时追加的收尾指令（本轮固定；多条列表，交付时拼接）
+  const suffix = startSettings.taskSuffix; // 返回任务时追加的收尾指令（本轮固定；多条列表，交付时拼接）
 
   // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
   const queued = await consumeFirstPending(key, summary, by);

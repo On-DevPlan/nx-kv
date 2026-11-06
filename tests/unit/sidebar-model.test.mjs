@@ -49,7 +49,7 @@ const TOPICS = [
       { id: 1, status: 'pending', deletedAt: '' }, // 项目任务
       { id: 2, status: 'pending', deletedAt: '', boardMark: 'b1' }, // 本组的组任务
       { id: 3, status: 'pending', deletedAt: '', boardMark: 'bX' }, // 别的组的组任务
-      { id: 4, status: 'consumed', deletedAt: '' }, // 已领取
+      { id: 4, status: 'claimed', deletedAt: '' }, // 已领取
     ],
   },
 ];
@@ -80,7 +80,7 @@ test('组行徽标：consumed / 软删除的组任务不算', () => {
       repo: { id: 'r1' },
       pending: 2,
       tasks: [
-        { id: 6, status: 'consumed', boardMark: 'b1' },
+        { id: 6, status: 'claimed', boardMark: 'b1' },
         { id: 7, status: 'pending', deletedAt: '2026-11-06 10:00:00', boardMark: 'b1' },
         { id: 8, status: 'pending', boardMark: 'b1' },
       ],

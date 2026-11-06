@@ -15,6 +15,16 @@ import { useToast } from '../toast/index.jsx';
 import { taskLabel } from './model.js';
 import { ensureQueueAndGo } from './queue-nav.js';
 import { sortTasksForDisplay, isGroupTask } from '../../modules/board/board-view.js';
+
+// 任务行的单字状态徽标（侧栏太窄，只放一个字）：
+//   完 = done（交付完成）/ 跑 = claimed 或从云端迁入 / 档 = cancelled / 等 = pending
+// 词表见 src/shared/task-status.js（这里只做展示取舍，不做状态判断）。
+function taskStatusShort(t) {
+  if (t.status === 'done') return '完';
+  if (t.status === 'claimed') return '跑';
+  if (t.status === 'cancelled') return '档';
+  return t.from ? '跑' : '等';
+}
 import Pager, { usePager } from '../pager.jsx';
 
 const PAGE_SIZE = 12; // 每页条数（与旧 limit 同值，但不再截断——有翻页出口）
@@ -52,7 +62,7 @@ export default function TaskChildren({ row, onNavigate, refreshLocal, limit = PA
           <span className="gico"><Icon name="list" size={12} /></span>
           <span className="nm">{taskLabel(t)}</span>
           <span className="cnt">
-            {t.status === 'consumed' ? '完' : (t.from ? '跑' : '等')}
+            {taskStatusShort(t)}
           </span>
         </button>
       ))}

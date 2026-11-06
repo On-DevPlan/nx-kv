@@ -30,3 +30,15 @@ export function localKeyOf(name) {
     .replace(/^-+|-+$/g, '');
   return 'local/' + (slug || 'repo');
 }
+
+// 仓库组（旧 boards）的 key：`group/<slug(初始 name)>`。
+//
+// **一旦生成就冻结**：name 之后可以改，key 不变。理由与 repos.key 完全一样 ——
+// key 是身份（导出/导入、成员边、队列的 group_key 都指它），跟着显示名漂会让
+// 所有外部引用在改名那一刻全断，而且不报错。
+//
+// slug 复用 localKeyOf 的规则（同一套口径），只把 `local/` 前缀换成 `group/`：
+// 两处各写一份 slug 规则的话，「登记的是 A、文档路径算出 B」迟早会发生。
+export function groupKeyOf(name) {
+  return 'group/' + localKeyOf(name).slice('local/'.length);
+}

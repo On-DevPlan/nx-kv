@@ -1,0 +1,119 @@
+%% nx-kv 存储层重构 · 关键时序（v2）
+%% 来源：docs/research/SQLITE-REFACTOR.md §8.1 / §8.2 / §8.3
+%% 三张图：①启动检测与迁移 ②领取任务的事务边界 ③重开=派生（D2）
+
+%% ── ① 启动：检测版本标志 → 导入/升级 → 交出连接 ─────────────────────
+sequenceDiagram
+    autonumber
+    participant Entry as bin/cli.mjs / runtime/server.js
+    participant BS as core/db/bootstrap.js
+    participant DR as core/db/driver.js
+    participant MG as core/db/migrator.js
+    participant IM as core/db/import-json.js
+    participant DB as SQLite (~/.nx-kv/nxkv.db)
+    participant FS as ~/.nx-kv/*.json
+
+    Entry->>Entry: Node >= 22.13 硬检
+    Entry->>BS: openStore()
+    BS->>DR: openRaw(NX_KV_DB || APP_DIR/nxkv.db) + PRAGMA(WAL, FK, busy_timeout, synchronous)
+    BS->>DB: BEGIN IMMEDIATE   (拿写锁；第二个进程在此等待)
+    BS->>DB: SELECT value FROM meta WHERE key='store_kind'
+
+    alt meta 表不存在（新库 / 空文件）
+        BS->>DB: migrate(from=0) → 001_init.sql, user_version=1
+        BS->>FS: 探测 legacy JSON
+        alt 有 legacy
+            BS->>IM: importLegacy(tx)
+            IM->>DB: repos(+__unbound__) → members → refs → bindings → topics(key 重算)
+            IM->>DB:  → tasks(状态5步嵌套判据) → deps → links → task_refs → goals → checks
+            IM->>DB:  → relations(留空) → templates → settings
+            IM->>DB: 校验：行数/body哈希/seq/next_seq/状态分布/FK/integrity
+            alt 全通过
+                IM->>DB: UPDATE meta(store_kind, schema_version, migrated_from_json_at)
+                BS->>DB: COMMIT
+                BS->>FS: rename *.json → *.migrated-<stamp>.json
+            else 任一项不匹配
+                IM->>DB: ROLLBACK
+                BS->>FS: 写 migration-failed-<stamp>.log（JSON 一字节不动）
+                BS-->>Entry: StoreMigrationError（退出码 2）
+            end
+        else 无 legacy
+            BS->>DB: INSERT meta(store_kind='sqlite', schema_version=1)
+            BS->>DB: COMMIT
+        end
+    else meta 存在
+        BS->>DB: 读 user_version + meta.schema_version
+        alt user_version < CURRENT
+            BS->>DB: VACUUM INTO backups/nxkv-v<from>-<stamp>.db
+            BS->>MG: migrate(from=user_version)
+        else user_version > CURRENT
+            BS-->>Entry: StoreTooNewError（提示升级 nx-kv）
+        else 相等
+            BS->>DB: COMMIT（空事务，释放锁）
+        end
+    end
+    BS-->>Entry: Db handle（进程内单例）
+
+%% ── ② 领取任务：事务边界与原子性 ────────────────────────────────────
+sequenceDiagram
+    autonumber
+    participant CLI as nx-kv localtask wait
+    participant SV as localtask/task-ops.js
+    participant TR as localtask/repo/tasks.js
+    participant PR as localtask/repo/presence.js
+    participant TX as core/db/tx.js
+    participant DB as SQLite
+
+    CLI->>SV: claimNext({cwd})
+    SV->>TX: tx(ctx)   ← 同步事务体，内部不得出现 await
+    TX->>DB: BEGIN IMMEDIATE
+    TX->>TR: listClaimable(topicId, {limit:1})
+    TR->>DB: SELECT ... WHERE status='pending' AND deleted_at IS NULL
+    TR->>DB:   AND NOT EXISTS(同 topic、seq 更小、status='pending'、blocks_following=1)  ← ix_tasks_pending
+    alt 有候选
+        TR->>DB: UPDATE topics SET next_seq=next_seq+1 RETURNING next_seq
+        TR->>DB: UPDATE tasks SET status='claimed', claimed_at=?, updated_at=? WHERE id=? AND status='pending'
+        TR->>PR: clearWaiting(topicId)
+        TX->>DB: COMMIT
+        SV-->>CLI: {status:'ok', task, goal?}
+    else 无候选
+        TX->>DB: COMMIT（空事务）
+        SV->>PR: setWaiting(...)（另一个事务：等待态属于队列，不属于这次领取）
+        SV-->>CLI: 阻塞直到有任务 / 超时 / cancelRequested
+    end
+
+%% ── ③ 重开 = 派生新任务（D2）────────────────────────────────────────
+sequenceDiagram
+    autonumber
+    participant CLI as nx-kv localtask reopen
+    participant SV as localtask/task-lifecycle.js
+    participant LR as localtask/repo/links.js
+    participant TR as localtask/repo/tasks.js
+    participant TX as core/db/tx.js
+    participant DB as SQLite
+
+    CLI->>SV: reopenTask({cwd, id, feedback})
+    SV->>TX: tx(ctx)   ← 同步
+    TX->>DB: BEGIN IMMEDIATE
+    TX->>TR: getBySeq(topicId, id)
+    TR-->>SV: parent {id, seq, status, round, body}
+    alt parent 已删 / status='cancelled'
+        TX-->>CLI: notFound / badInput（作废的不再重开）
+    else 可派生
+        TX->>TR: allocateSeq(targetTopic) → seq'
+        TX->>TR: insertTask({seq', status:'pending', round: parent.round+1,
+                             body: 原正文+上轮feedback+本轮反馈, ext.ext_reopen_of})
+        TX->>LR: addLink({src: 新id, dst: parent.id, type:'reopen', note})
+        alt parent.status = 'done'
+            Note over TX: 不动 —— done 是终态，这是派生模型的核心收益
+        else parent.status ∈ {claimed, pending}
+            TX->>TR: cancel(parent.id) + updateExt(superseded_by = seq')
+        end
+        TX->>DB: COMMIT
+        SV-->>CLI: {status:'ok', from:{id:旧}, task:{id:新}, round}
+    end
+    Note over SV,DB: 先 COMMIT 再 notify（SSE / waiter 唤醒一律在 tx 返回之后）
+
+%% 搬队列 = 同一条路径，差别只有三处：
+%%   targetTopic ≠ sourceTopic；type='reopen' + ext.ext_move_from；源任务软删而非仅 cancel。
+%% 绝不允许 UPDATE tasks SET seq（trg_tasks_identity 会 RAISE(ABORT)）。

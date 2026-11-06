@@ -781,7 +781,18 @@ try {
   await new Promise((r) => server.close(r));
 } finally {
   if (backend) await backend.close();
-  rmSync(tmp, { recursive: true, force: true });
+  // T03：localtask 存储是 SQLite —— 先关本进程的连接再删临时目录
+  //（子进程 CLI 各自持有的连接随进程退出释放）。
+  try {
+    const { closeDb: closeTaskDb } = await import('../src/modules/localtask/repo/index.js');
+    closeTaskDb();
+  } catch { /* ignore */ }
+  try {
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (e) {
+    // 残留句柄（子进程 CLI）可能仍占着库文件：目录留在 tmp 里，不影响结果
+    console.error('（提示：临时目录清理失败，可手动删除:', e.message, '）');
+  }
 }
 
 const failed = results.filter((r) => !r.ok);

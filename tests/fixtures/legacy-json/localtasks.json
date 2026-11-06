@@ -1,0 +1,167 @@
+{
+  "version": 4,
+  "settings": {
+    "timeoutSec": 240,
+    "taskSuffix": ["收尾：再调用一次 wait"],
+    "ackPrompt": ["收到"],
+    "deliveryTemplate": "",
+    "attachTemplate": ""
+  },
+  "topics": {
+    "legacyhash0000001": {
+      "key": "legacyhash0000001",
+      "cwd": "D:/work/web",
+      "cwds": ["D:/work/web", "D:/work/web-alias"],
+      "name": "web",
+      "createdAt": "2026-10-01 09:00:00",
+      "updatedAt": "2026-10-02 10:00:00",
+      "waiting": true,
+      "waitingUntilMs": 1793000000000,
+      "waitingSince": "2026-10-02 09:55:00",
+      "cancelRequested": false,
+      "summary": "队列现状摘要",
+      "workflowRevision": 7,
+      "manual": true,
+      "subs": ["legacy-sub-a"],
+      "tasks": [
+        {
+          "id": 1,
+          "text": "待领取任务（带空串 roundSummary —— 不能判成 done）",
+          "status": "pending",
+          "createdAt": "2026-10-01 09:01:00",
+          "consumedAt": "2026-10-01 09:01:00",
+          "roundSummary": ""
+        },
+        {
+          "id": 2,
+          "text": "已交付任务",
+          "status": "consumed",
+          "createdAt": "2026-10-01 09:02:00",
+          "consumedAt": "2026-10-01 09:03:00",
+          "roundSummary": "做完了一件事",
+          "completedAt": "",
+          "remote": "r_task_2",
+          "claimedBy": "agent-a",
+          "claimedFrom": "cli",
+          "from": "cli"
+        },
+        {
+          "id": 3,
+          "text": "已领取但没交付",
+          "status": "consumed",
+          "createdAt": "2026-10-01 09:04:00",
+          "consumedAt": "2026-10-01 09:05:00"
+        },
+        {
+          "id": 4,
+          "text": "归档且有结论 → done",
+          "status": "archived",
+          "createdAt": "2026-10-01 09:06:00",
+          "consumedAt": "2026-10-01 09:07:00",
+          "roundSummary": "归档前已交付",
+          "archivedAt": "2026-10-01 12:00:00",
+          "archivedReason": "超时归档"
+        },
+        {
+          "id": 5,
+          "text": "归档但没有结论 → cancelled",
+          "status": "archived",
+          "createdAt": "2026-10-01 09:08:00",
+          "consumedAt": "2026-10-01 09:09:00"
+        },
+        {
+          "id": 6,
+          "text": "未知状态 → pending 并报告",
+          "status": "weird-status",
+          "createdAt": "2026-10-01 09:10:00",
+          "consumedAt": "2026-10-01 09:10:30"
+        },
+        {
+          "id": 7,
+          "text": "已软删的待领取任务（软删与状态正交）",
+          "status": "pending",
+          "createdAt": "2026-10-01 09:11:00",
+          "consumedAt": "2026-10-01 09:11:00",
+          "deletedAt": "2026-10-01 18:00:00",
+          "trashIndex": 1
+        },
+        {
+          "id": 8,
+          "text": "带内嵌目标与派生边、依赖边、历史",
+          "status": "consumed",
+          "createdAt": "2026-10-01 09:12:00",
+          "consumedAt": "2026-10-01 09:13:00",
+          "roundSummary": "第二轮也交付了",
+          "reopenCount": 2,
+          "lastReopenedAt": "2026-10-01 15:00:00",
+          "forkOf": "legacyhash0000001:2",
+          "forkKind": "reopen",
+          "blockBy": ["legacyhash0000001:3"],
+          "blocksFollowing": true,
+          "history": [{ "kind": "origin", "at": "2026-10-01 09:12:00" }],
+          "pickupSec": 42,
+          "ready": true,
+          "supersededBy": 9,
+          "migratedTo": "elsewhere",
+          "timegoal": {
+            "durationSec": 1800,
+            "startedAt": "2026-10-01 09:13:00",
+            "deadline": "2026-10-01 09:43:00",
+            "prompt": "半小时内交",
+            "log": [
+              {
+                "at": "2026-10-01 09:20:00",
+                "elapsedSec": 420,
+                "remainingSec": 1380,
+                "overtimeSec": 0,
+                "reached": false,
+                "summary": "进行中"
+              },
+              {
+                "at": "2026-10-01 09:45:00",
+                "elapsedSec": 1920,
+                "remainingSec": 0,
+                "overtimeSec": 120,
+                "reached": true,
+                "summary": "已超时"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "__GLOBAL__": {
+      "key": "__GLOBAL__",
+      "cwd": "",
+      "cwds": [],
+      "name": "全局任务",
+      "createdAt": "2026-10-03 08:00:00",
+      "updatedAt": "2026-10-03 08:30:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": [
+        {
+          "id": 1,
+          "text": "全局池里的已交付任务",
+          "status": "consumed",
+          "createdAt": "2026-10-03 08:10:00",
+          "consumedAt": "2026-10-03 08:12:00",
+          "roundSummary": "全局池结论"
+        }
+      ]
+    },
+    "legacyhash0000002": {
+      "key": "legacyhash0000002",
+      "cwd": "D:/work/api",
+      "cwds": ["D:/work/api"],
+      "name": "api",
+      "createdAt": "2026-10-04 08:00:00",
+      "updatedAt": "2026-10-04 08:05:00",
+      "waiting": false,
+      "waitingUntil": "",
+      "summary": "",
+      "tasks": []
+    }
+  }
+}

@@ -32,6 +32,21 @@
 export * from './task-templates.js';
 export * from './paths.js';
 export * from './store-io.js';
+// 存储仓储（T03）：reset 仅测试用（清空库）；repo 是窄方法的命名空间聚合。
+export { resetLocaltaskStore, closeDb, default as repo } from './repo/index.js';
+
+/**
+ * 只读快照：把库投成旧 JSON store 的形状（{ version, settings, topics: {key: topic} }）。
+ * 仅供测试与只读消费者（attribution/revision-bump 的对账读）使用 ——
+ * **没有 saveStore**：写路径必须走 repo 窄方法，「读全表→改→整表重写」被禁止。
+ */
+export async function loadStore() {
+  const repo = await import('./repo/index.js');
+  repo.openLocaltaskStore();
+  const map = {};
+  for (const t of repo.topics.listTopics()) map[t.key] = t;
+  return { version: 4, settings: repo.settings.getLtSettings(), topics: map };
+}
 export * from './repo-ctx.js';
 export * from './task-view.js';
 export * from './waiters.js';

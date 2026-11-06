@@ -1,0 +1,192 @@
+%% nx-kv 存储层重构 · 类与接口（v2 分层）
+%% 来源：docs/research/SQLITE-REFACTOR.md §3 / §4
+%% 依赖方向：service → repo → core/db → node:sqlite（严格单向）
+classDiagram
+    direction TB
+
+    class Db {
+        +raw
+        +path
+        +exec(sql)
+        +get(sql, params) Object
+        +all(sql, params) Object[]
+        +run(sql, params) {changes,lastInsertRowid}
+        +close()
+    }
+
+    class Driver {
+        <<module>>
+        +openRaw(dbPath, opts) Db
+        +bind(v) any
+        +suppressExperimentalWarning()
+    }
+
+    class Tx {
+        <<module>>
+        +tx(fn, opts) any
+        -depth int
+        -mode IMMEDIATE
+    }
+
+    class Bootstrap {
+        <<module>>
+        +openStore(opts) Db
+        +getDb() Db
+        +dbPath() string
+        +closeDb()
+        +resetDbForTests()
+    }
+
+    class Migrator {
+        <<module>>
+        +CURRENT_SCHEMA_VERSION int
+        +migrate(rawDb, from, to)
+    }
+
+    class ImportJson {
+        <<module>>
+        +importLegacy(ctx, files) Report
+        -statusOf(row) string
+        -verify(ctx, expect)
+        -reportDropped(field, reason)
+    }
+
+    class TopicsRepo {
+        +listTopics(opts) Topic[]
+        +getTopicByKey(key) Topic
+        +getTopicByCwd(cwd, group) Topic
+        +ensureTopic(spec) Topic
+        +bindTopicToRepo(topicId, repoKey)
+        +allocateSeq(topicId) int
+        +bumpTopicVersion(id)
+        +listTopicsWaiting(nowMs) Topic[]
+    }
+
+    class TasksRepo {
+        +listByTopic(topicId, opts) Task[]
+        +getBySeq(topicId, seq) Task
+        +insertTask(spec) Task
+        +claim(id, atMs) int
+        +complete(id, spec)
+        +cancel(id, atMs)
+        +softDelete(id, atMs)
+        +listClaimable(topicId, opts) Task[]
+        +withChainStats(rows) Task[]
+        +addDep(taskId, depId, atMs)
+    }
+
+    class LinksRepo {
+        +addLink(spec)
+        +getParentLink(taskId) Link
+        +listChildren(taskId) Task[]
+        +walkUp(taskId, opts) Node[]
+        +walkDown(taskId) Node[]
+        +getChain(taskId) Chain
+    }
+
+    class PresenceRepo {
+        +getPresence(topicId) Presence
+        +setWaiting(spec)
+        +clearWaiting(topicId)
+        +requestCancel(topicId)
+        +consumeCancelRequest(topicId) bool
+    }
+
+    class GoalsRepo {
+        +getGoalByTask(taskId) Goal
+        +insertGoal(spec) Goal
+        +appendCheck(spec)
+        +listExpiredGoals(nowMs) Goal[]
+    }
+
+    class ReposRepo {
+        +listRepos(opts) Repo[]
+        +getRepoByKey(key) Repo
+        +upsertRepo(patch) Repo
+        +softDeleteRepo(key)
+        +purgeRepo(key)
+        +addMember(spec)
+        +listMembers(groupKey) Member[]
+    }
+
+    class RefsRepo {
+        +scanRefs(opts) Ref[]
+        +upsertRef(spec) Ref
+        +bindRef(spec)
+        +listBindings(spec) Binding[]
+        +replaceRelations(spec)
+        +listBrokenLinks() Broken[]
+    }
+
+    class TemplatesRepo {
+        +listTemplates(opts) Template[]
+        +upsertTemplate(patch)
+        +setDefault(category, id)
+    }
+
+    class SettingsRepo {
+        +getSetting(key, fallback) string
+        +getSettings(prefix) Map
+        +setSettings(obj)
+    }
+
+    class LocalTaskService {
+        +claimNext(spec) Result
+        +addTask(spec) Result
+        +completeTask(spec) Result
+        +reopenTask(spec) Result
+        +moveTask(spec) Result
+        +taskChain(spec) Chain
+        +setWaiting(spec)
+    }
+
+    class ReposService {
+        +addRepo(spec) Repo
+        +updateRepo(key, patch) Repo
+        +removeRepo(key)
+        +exportZip() Buffer
+    }
+
+    class Config {
+        <<module>>
+        +loadConfig(path) Config
+        +saveConfig(next, path) Config
+        -pickCredentials(cfg) Object
+        -pickPrefs(cfg) Object
+    }
+
+    class TaskView {
+        +normalizeTask(row) View
+        +isPending(row) bool
+        +msToStamp(ms) string
+    }
+
+    Db --> Driver : openRaw 创建
+    Bootstrap --> Driver
+    Bootstrap --> Migrator
+    Bootstrap --> ImportJson
+    Tx --> Db
+    TopicsRepo --> Tx
+    TasksRepo --> Tx
+    LinksRepo --> Tx
+    PresenceRepo --> Tx
+    GoalsRepo --> Tx
+    ReposRepo --> Tx
+    RefsRepo --> Tx
+    TemplatesRepo --> Tx
+    SettingsRepo --> Tx
+    LocalTaskService --> TopicsRepo
+    LocalTaskService --> TasksRepo
+    LocalTaskService --> LinksRepo
+    LocalTaskService --> PresenceRepo
+    LocalTaskService --> GoalsRepo
+    LocalTaskService --> TaskView
+    ReposService --> ReposRepo
+    ReposService --> RefsRepo
+    Config --> SettingsRepo
+
+    note for Tx "tx(fn) 的 fn 必须是同步函数\n检测到 Promise 立即抛 TypeError"
+    note for ImportJson "状态5步嵌套判据：\nstatus 先判，roundSummary 只在 consumed/archived 内用\n（实测 8 条 pending 全带 roundSummary 空串，全局先判会全错）"
+    note for TaskView "isPending 必须是正判定 status==='pending'\n排除法每加一个状态就多一种「可领」"
+    note for LinksRepo "ux_task_links_parent 保证一个任务只有一个来源\n链是树不是网；派生不继承 deps"
+    note for Config "凭据 5 项留 config.json，偏好 4 项进 settings\nloadConfig 仍返回一个对象，调用方零感知"

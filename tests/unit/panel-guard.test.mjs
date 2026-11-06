@@ -10,7 +10,7 @@
 // 存储一律指向临时文件（NX_KV_LOCALTASK_STORE），绝不写脏用户目录。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -18,7 +18,8 @@ import {
   shouldAutoExit,
   startPanelIdleGuard,
 } from '../../src/modules/localtask/panel-guard.js';
-import { countWaitingTopics } from '../../src/modules/localtask/service.js';
+import * as svc from '../../src/modules/localtask/service.js';
+const { countWaitingTopics } = svc;
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-panel-guard-'));
 const storeFile = join(tmp, 'localtasks.json');
@@ -40,13 +41,22 @@ function stamp(d) {
   )}:${p(d.getSeconds())}`;
 }
 
+// T03：等待态种子直接写库（presence 表）；key 仍用测试自定的字符串 key
 function writeStore(topics) {
-  writeFileSync(storeFile, JSON.stringify({ version: 4, settings: {}, topics }, null, 2), 'utf8');
+  for (const [key, t] of Object.entries(topics)) {
+    svc.repo.topics.ensureTopic(key, { cwd: t.cwd || '', name: t.name || key });
+    svc.repo.presence.setPresence(key, {
+      waiting: !!t.waiting,
+      untilMs: t.waitingUntil ? new Date(t.waitingUntil.replace(' ', 'T')).getTime() : 0,
+      sinceMs: t.waiting ? Date.now() : 0,
+      cancelRequested: false,
+    });
+  }
 }
 
-const WAITING_TOPIC = (until) => ({
-  key: 'aaaa',
-  cwd: 'D:\\x\\proj',
+const WAITING_TOPIC = (until, key = 'aaaa', cwd = 'D:////x////proj') => ({
+  key,
+  cwd,
   name: 'proj',
   createdAt: stamp(new Date()),
   updatedAt: stamp(new Date()),
@@ -98,14 +108,14 @@ test('countWaitingTopics：正常等待中计入；非等待主题不计入', as
   const future = new Date(Date.now() + 120_000);
   writeStore({
     a: WAITING_TOPIC(stamp(future)),
-    b: { ...WAITING_TOPIC(''), waiting: false },
-    c: { ...WAITING_TOPIC(stamp(future)), waiting: false },
+    b: { ...WAITING_TOPIC('', 'bbbb', 'D:////x////proj-b'), waiting: false },
+    c: { ...WAITING_TOPIC(stamp(future), 'cccc', 'D:////x////proj-c'), waiting: false },
   });
   assert.equal(await countWaitingTopics(), 1);
 });
 
 test('countWaitingTopics：store 缺失时按 0 处理（不因读盘异常卡住释放）', async () => {
-  rmSync(storeFile, { force: true });
+  svc.resetLocaltaskStore();
   assert.equal(await countWaitingTopics(), 0);
 });
 

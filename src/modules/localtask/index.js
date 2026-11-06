@@ -13,6 +13,7 @@
 // 任务队列，数据存本地文件，不依赖后端登录态。
 import * as service from './service.js';
 import * as move from './move.js';
+import { STATUS_TAG } from '../../shared/task-status.js';
 import { badInput } from '../../core/errors.js';
 
 const CWD = { type: 'string', hint: '工作目录（作为主题；默认当前目录）' };
@@ -20,7 +21,7 @@ const SUMMARY = { type: 'string', required: true, hint: '当前现状（agent �
 // 任务级寻址的 key flag：全局主题没有 cwd，只能按 key 定位（__GLOBAL__）
 const KEY = { type: 'string', hint: '主题 key（与 --cwd 二选一；全局任务池固定 __GLOBAL__）' };
 
-const STATUS_TAG = { pending: '待领取', consumed: '已领取' };
+// STATUS_TAG 来自同构词表（src/shared/task-status.js）：CLI 与面板共用一份措辞。
 
 // 总览：每个主题（工作目录）一行，先看目录与现状再决定回填哪条
 function renderOverview(d) {
@@ -845,7 +846,7 @@ export default {
           key: ctx.key,
         }),
       render: (d) => {
-        const order = d.topic.tasks.filter((x) => x.status !== 'consumed').map((x) => `#${x.id}`);
+        const order = d.topic.tasks.filter((x) => x.status === 'pending').map((x) => `#${x.id}`);
         return `主题「${d.name}」待领取顺序：${order.join(' -> ') || '（无待领取）'}`;
       },
     },

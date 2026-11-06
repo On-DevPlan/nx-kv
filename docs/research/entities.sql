@@ -8,6 +8,37 @@
 -- 各实体的专有字段同样逐个确认后再加，一次只加一个。
 
 -- ═══════════════════════════════════════════════════════════════════════
+-- 连接级设置：**必须最先执行，而且每个连接都要设**
+-- ═══════════════════════════════════════════════════════════════════════
+--
+-- SQLite 的外键**默认是关的**，且是 per-connection 的。少了下面这行，
+-- 所有 REFERENCES 都不生效：删仓库不级联、依赖能指向不存在的任务、约束错误静默通过 ——
+-- 而且不报错。这是最容易"表建好了、跑起来全对、其实全是脏数据"的一处。
+--
+-- journal_mode=WAL 是给「serve 与 CLI 两个进程同时写」用的；WAL 下直接复制
+-- .db 文件会拿到不一致快照，备份一律用 VACUUM INTO。
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+PRAGMA busy_timeout = 5000;
+PRAGMA synchronous = NORMAL;
+PRAGMA user_version = 1;                 -- schema 版本，迁移脚本据此判断
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- 软删除的两套语义（别混）
+-- ═══════════════════════════════════════════════════════════════════════
+--
+-- 身份型（repos.key）：**不可重用**。key 是跨机器导出的身份，删了又建同一个 key，
+--   等于把两份关系指到同一个名字上。API 遇到"已软删的同名 key"应该提示恢复
+--   （restore），而不是新建。
+--
+-- 实例型（topics / goals / templates）：**可重建**。删掉一个队列/目标/模板后再建
+--   同名的，是正常操作。所以这些表的唯一索引都带 `WHERE deleted_at IS NULL`，
+--   否则软删的行会把名字永久占住 —— 用户删完重建会撞 UNIQUE，且无法自解。
+--
+-- 任务不在两者之内：`tasks.seq` 只增不减，软删的任务仍然占着编号（这是刻意的，
+-- 编号复用会让历史引用指向另一条任务）。
+
+-- ═══════════════════════════════════════════════════════════════════════
 -- 队列（topic）：任务的分组容器
 -- ═══════════════════════════════════════════════════════════════════════
 
@@ -41,8 +72,18 @@ CREATE TABLE topics (
   group_key     TEXT             REFERENCES repos(key) ON DELETE RESTRICT ON UPDATE CASCADE,
   name          TEXT    NOT NULL DEFAULT '',
   next_seq      INTEGER NOT NULL DEFAULT 1,              -- 只增不减，避免编号复用
-  waiting       INTEGER NOT NULL DEFAULT 0,
-  waiting_until INTEGER,                                 -- epoch ms
+  -- 队列级开关与个性配置。队列是**开发侧概念**，用户只关心任务，所以这里不放业务内容，
+  -- 只放"这个队列怎么跑"的旋钮。键名用 `ext_` 前缀（理由见 tasks.ext）。
+  --
+  --   ext_auto_wait        0/1  没有任务时，get 要不要自动转成等（默认 0 = 立刻返回空）
+  --   ext_auto_wait_sec    int  自动等的超时秒数；到点直接返回空，不报错
+  --
+  -- 这样 CLI 侧**只有 get 一个动作**：调 get → 有任务就领，没任务且开了自动等就等，
+  -- 等到超时或等到任务都走同一条返回路径。调用方不必先判断该用 get 还是 wait，
+  -- 单次调用可以用参数覆盖（--wait / --no-wait / --timeout），优先级：参数 > ext > 全局设置。
+  -- 全局默认在设置里（面板「设置 - 队列」），ext 是这个队列的覆盖。
+  ext           TEXT    NOT NULL DEFAULT '{}'
+                CHECK (json_valid(ext) AND json_type(ext) = 'object'),
   state         TEXT    NOT NULL DEFAULT '',
   version       INTEGER NOT NULL DEFAULT 0,
   deleted_at    INTEGER,
@@ -52,9 +93,39 @@ CREATE TABLE topics (
 -- (cwd, group) 唯一。COLLATE NOCASE 让 D:/Work/Web 与 D:/work/web 算同一个目录。
 -- group_key 可空，必须 COALESCE 才能做唯一性：SQLite 里 NULL 在唯一索引中互不相等，
 -- 不包一层的话「单跑队列」可以重复插无数次，约束等于没写。
+--
+-- WHERE deleted_at IS NULL：实例型数据，删掉的队列不该把 (cwd, group) 永久占住，
+-- 否则用户删完重建会撞 UNIQUE 且无法自解。详见文件头「软删除的两套语义」。
 CREATE UNIQUE INDEX ux_topics_cwd_group
-  ON topics (cwd COLLATE NOCASE, COALESCE(group_key,''));
+  ON topics (cwd COLLATE NOCASE, COALESCE(group_key,''))
+  WHERE deleted_at IS NULL;
 CREATE INDEX ix_topics_repo ON topics (repo_key);
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- 队列的运行时存在感（瞬态，不是业务数据）
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- 「有没有人正在等这个队列」——放进库里唯一的原因是**跨进程**：
+-- get/wait 进程与面板进程不共享内存，没有别的通道能把"我在等"传出去。
+--
+-- 单独成表而不是塞 topics 里的原因：
+--   1. 瞬态和持久混在一行，清理时只能逐字段重置；独立表可以整表清空（进程重启即清）；
+--   2. topics 是"这条队列是什么"，presence 是"此刻谁在动它"，生命周期完全不同
+--      （队列活几个月，一次等待只有几分钟）；
+--   3. 进程被 SIGKILL 时 finally 不执行，标志会永久残留 —— 残留只污染这张小表，
+--      不会让队列本身看起来像在等。
+--
+-- 仍然保留「截止时刻过了就不算在等」的兜底：数据库没有 TTL，残留是必然的。
+CREATE TABLE topic_presence (
+  topic_id         INTEGER PRIMARY KEY REFERENCES topics(id) ON DELETE CASCADE,
+  waiting          INTEGER NOT NULL DEFAULT 0 CHECK (waiting IN (0,1)),
+  since_ms         INTEGER,                -- 这轮等待开始
+  until_ms         INTEGER,                -- 这轮等待的截止（epoch ms）
+  cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),
+  updated_at       INTEGER NOT NULL
+);
+-- 判定「真的在等」永远是两件事：waiting=1 **且** until_ms > now。
+-- 只看 waiting 会把被杀进程的残留当活人。
 
 -- 正文**可改**：任务是「这一轮的工作单」，边上边补命令、贴日志、改措辞都是正常的。
 -- 不可改的是**身份**（队列内编号 + 创建时刻），以及「编辑不能让它重新进状态机」。
@@ -80,11 +151,26 @@ CREATE TABLE tasks (
   ext              TEXT    NOT NULL DEFAULT '{}'
                    CHECK (json_valid(ext) AND json_type(ext) = 'object'),
 
-  -- 完成回调：任务交付后由 AI 回调写入的反馈/评价。
-  -- 在「任务不可变」的模型下它只写一次，写完这条任务就定格；
-  -- 需要因为反馈再干一轮 → 不在这里改，派生一条新任务（见 task_links）。
+  -- 完成回调：任务交付后由 AI 回调写入的结论（旧数据的 roundSummary 就落这里，
+  -- 两者是同一个东西：一条任务干完，回一句话说结果）。
+  -- 不可变语义下它只写一次，写完这条任务就定格；需要因为反馈再干一轮 →
+  -- 不在这里改，派生一条新任务（见 task_links）。
   feedback         TEXT    NOT NULL DEFAULT '',
   feedback_at      INTEGER,                          -- 反馈写入时刻，未回调则为空
+
+  -- 来源标记：这条任务是谁弄进来的（cli / panel / agent / template / import…）。
+  -- 列名用 from_src 而不是 from —— FROM 是 SQL 关键字，裸用会一直要加引号，
+  -- 迟早有人忘了加。对外 JSON 字段名仍是 from，映射在仓储层做。
+  from_src         TEXT    NOT NULL DEFAULT '',
+
+  -- 闸门：挡住**本队列里 seq 比它大的所有 pending**，直到它自己完成。
+  -- 不能只用 task_deps 表达：deps 是逐对边，而闸门是"一条挡住后面一整片"，
+  -- 而且是**动态**的（它之后新加的任务也要被挡）。要物化就得在每次插入时扫一遍
+  -- 前面所有带闸门的任务，还得在这条任务完成/取消时回收那些边 —— 一个布尔列的事，
+  -- 变成两条维护路径，还会跟 deps 的语义混在一起。
+  -- 判据：读取时 `EXISTS(同 topic, seq < t.seq, status='pending', blocks_following=1)`。
+  blocks_following INTEGER NOT NULL DEFAULT 0
+                   CHECK (blocks_following IN (0,1)),
 
   -- 状态时间戳：没有它们就没法回答「什么时候领的 / 多久交付的」，
   -- 而 updated_at 会被任意写入刷新，当不了完成时刻用。
@@ -102,6 +188,15 @@ CREATE TABLE tasks (
   updated_at INTEGER NOT NULL,
   UNIQUE (topic_id, seq)
 );
+
+-- 取任务的路径全走这两条：
+--   单队列：WHERE topic_id=? AND status='pending' ... ORDER BY seq  （UNIQUE(topic_id,seq) 已够）
+--   闸门：  EXISTS(... topic_id=? AND status='pending' AND seq < ?)
+CREATE INDEX ix_tasks_pending ON tasks (topic_id, seq)
+  WHERE status = 'pending' AND deleted_at IS NULL;
+-- 跨队列总览（面板看板「所有队列的待领取」）：以前没有这条，会全表扫。
+CREATE INDEX ix_tasks_open ON tasks (status)
+  WHERE deleted_at IS NULL;
 
 -- 只锁身份，不锁正文。
 -- 锁两样：队列内编号、创建时刻 —— 这两样一变，「这个 id 当初指的是哪一条」就没了。
@@ -216,7 +311,9 @@ CREATE TABLE goals (
   CHECK (duration_sec > 0),
   CHECK (deadline > started_at)                      -- 负时长/倒挂直接拒
 );
-CREATE UNIQUE INDEX ux_goals_task ON goals (task_id);
+-- 一个任务一个目标。带 WHERE deleted_at IS NULL：目标属于实例型数据，
+-- 删掉之后应该能给同一任务重新设目标，而不是被那条软删的行永久占住。
+CREATE UNIQUE INDEX ux_goals_task ON goals (task_id) WHERE deleted_at IS NULL;
 CREATE INDEX ix_goals_deadline ON goals (deadline) WHERE deleted_at IS NULL;  -- 到点扫描
 
 -- ═══════════════════════════════════════════════════════════════════════
@@ -523,3 +620,124 @@ CREATE INDEX ix_ref_relations_open ON ref_relations (src_id) WHERE dst_id IS NUL
 --   SELECT src_id, raw FROM ref_relations WHERE state = 'missing';
 -- 删图之前先问"还有谁在用"：
 --   SELECT count(*) FROM ref_relations WHERE dst_id = ? AND state = 'resolved';
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- 提示词模板：所有交给 agent 的文本，都在这里
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- 旧实现分两处：任务骨架在 templates.json（正文 + 槽位 values），
+-- 交付上下文在 settings.deliveryTemplate（一整段可改文本）。两边各一套渲染，
+-- 谁也不认谁。这里合成一张表，**按用途分类**，用户全都能改、都能看。
+--
+-- category = 面板上的 tab（也是唯一约束的分区）：
+--   newtask   新建任务的骨架正文
+--   delivery  领取/交付时包在正文外面的那段
+--   enhance   条件增强段：满足条件才出现（见下）
+--   context   组/仓库上下文（参考文档地址、关键要求）
+--
+-- slot = 这段落在交付文本的哪里：
+--   prefix  正文之前          suffix  正文之后、收尾指令之前        tail  最末尾
+-- 同一 slot 内按 sort_order 升序拼接。
+--
+-- 条件增强不需要发明条件语言：**body 自己用条件语法包起来就行**。
+--   例如「启用 timegoal 才出现」的段落，正文写成：
+--     {{#if goal}}
+--     ⏱ 本次任务有 {{goal.durationHuman}} 的时间目标，到点前应交…
+--     {{/if}}
+--   ctx 里没有 goal，整段自动消失；有就出现。开关另有 enabled 管，
+--   两者分开：enabled 是"用户想不想要"，条件段是"这次数据适不适用"。
+--
+--   一定要写 {{#if x}}，**不要写裸的 {{#x}}**：在 Handlebars 里裸段是
+--   "以 x 为上下文渲染"，切进去之后就取不到 {{x.字段}} 了。实测：
+--     {{#goal}}{{goal.durationHuman}}{{/goal}}  → 空
+--     {{#if goal}}{{goal.durationHuman}}{{/if}}  → 2 小时
+--
+-- 引擎选型（Handlebars，noEscape 必开）见同目录 `template-engine-choice.md`，
+-- 那里有 handlebars / liquidjs / mustache 的实测对照。
+--
+-- vars = 这条模板自己的变量默认值（JSON 对象），渲染时与内置变量合并：
+--   内置变量 < 模板 vars < 外部参数（--param k=v）
+-- 这样用户可以在「设置 - 提示词」里直接改一句话，不必改代码。
+CREATE TABLE templates (
+  id          TEXT    PRIMARY KEY,          -- 稳定 key：delivery / enhance.timegoal
+  category    TEXT    NOT NULL DEFAULT '',  -- 面板 tab：newtask / delivery / enhance / context
+  name        TEXT    NOT NULL DEFAULT '',  -- 显示名
+  slot        TEXT    NOT NULL DEFAULT 'suffix'
+              CHECK (slot IN ('prefix','suffix','tail')),
+  body        TEXT    NOT NULL,             -- markdown + {{变量}} + {{#段}} + {{#each 列表}}
+  -- 这条模板**声明**它接受哪些变量。前端据此渲染表单，不用猜、不用读正文。
+  -- 数组，每项：
+  --   { "key":"goal.durationHuman",   ← 变量路径（占位符里点号后那串）
+  --     "type":"string",              ← string|text|number|bool|array|object
+  --     "label":"约定时长",            ← 表单上的字段名
+  --     "hint":"人话时长，如 2 小时",   ← 输入提示 / 说明
+  --     "source":"builtin",           ← builtin=系统注入(只读展示) / custom=用户填(输入框)
+  --     "usage":"{{goal.durationHuman}}",  ← 占位符原样写法，前端可一键复制
+  --     "required":true,
+  --     "items":{...} }               ← 仅 type=array：声明数组每项有哪些字段
+  --
+  -- 两个字段分工明确，别混：
+  --   vars_schema  声明「有哪些变量、什么类型、怎么显示」——写模板的人定
+  --   vars         值「这些变量现在填的是什么」——用户改
+  -- 声明里不放默认值，否则同一件事有两个真相。
+  vars_schema TEXT    NOT NULL DEFAULT '[]'
+              CHECK (json_valid(vars_schema) AND json_type(vars_schema) = 'array'),
+  vars        TEXT    NOT NULL DEFAULT '{}'
+              CHECK (json_valid(vars) AND json_type(vars) = 'object'),
+  is_default  INTEGER NOT NULL DEFAULT 0
+              CHECK (is_default IN (0,1)),  -- 该类目的默认模板（新建任务用它）
+  enabled     INTEGER NOT NULL DEFAULT 1
+              CHECK (enabled IN (0,1)),
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  builtin     INTEGER NOT NULL DEFAULT 0
+              CHECK (builtin IN (0,1)),     -- 内置：不可删，可改（改后仍标记 builtin）
+  state       TEXT    NOT NULL DEFAULT '',
+  version     INTEGER NOT NULL DEFAULT 0,
+  deleted_at  INTEGER,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  CHECK (id <> '')
+);
+
+-- 每个类目最多一个默认。
+CREATE UNIQUE INDEX ux_templates_default
+  ON templates (category) WHERE is_default = 1 AND deleted_at IS NULL;
+-- 渲染时按类目取启用的、按顺序拼。
+CREATE INDEX ix_templates_render
+  ON templates (category, slot, sort_order) WHERE enabled = 1 AND deleted_at IS NULL;
+
+-- 变量字典就在这一行的 vars_schema 里，前端拿模板对象直接读数组，不需要视图：
+--   列表页  SELECT id,category,name,vars_schema FROM templates WHERE deleted_at IS NULL
+--   编辑页  SELECT * FROM templates WHERE id = ?
+-- 数组里每项的 key/type/label/source/usage 就是表单要的全部信息，按数组顺序排即可。
+--
+-- 真要跨模板查（「哪些模板用到 goal.*」）用一条 json_each 就够，不必固化成视图：
+--   SELECT t.id FROM templates t, json_each(t.vars_schema) j
+--    WHERE json_extract(j.value,'$.key') = ?
+
+-- ── 变量字典（内置，代码提供，不入库） ──────────────────────────────────
+-- 写在这里是为了让改模板的人知道有哪些可用，不必翻源码。
+--
+--   {{task.id}} {{task.text}} {{task.round}}        任务本身
+--   {{repo.name}} {{repo.desc}} {{repo.docs}}       仓库（docs 是数组，配 {{#each}}）
+--   {{group.name}} {{group.desc}} {{group.docs}}    组上下文
+--   {{goal.durationHuman}} {{goal.remainingHuman}}  时间目标（没有 goal 时整段丢弃）
+--   {{cwd}} {{name}} {{source}} {{summary}}         环境
+--   {{params.任意}}                                 外部参数（--param k=v）
+--
+-- 语法三件：
+--   占位符   {{a.b.c}}                 缺失一律空串（不抛错：模板要能部分渲染）
+--   条件     {{#if x}}…{{/if}}          x 为空/缺失/0/false → 整段丢弃（不换上下文）
+--            {{#unless x}}…{{/unless}}  取反
+--   列表     {{#each xs}}…{{/each}}     逐项渲染，项内用 {{this}} / {{this.f}} / {{@index}}
+--
+-- 列表语法是这次补的关键一项：现在「补充文档」的行格式是 JS 里拼死的
+-- （delivery-template.js 的 linkLines），用户改不了。有了 {{#each}}，
+-- 行怎么排、带不带 tag、要不要缩进，都写进模板正文，代码不再插手。
+-- 例：
+--   {{#each repo.docs}}
+--     - {{this.path}}{{#if this.tag}} [{{this.tag}}]{{/if}}  # {{this.note}}
+--   {{/each}}
+--
+-- 单遍渲染、不折叠空白这两条老契约必须保留：用户正文里的 {{...}} 要逐字原样，
+-- 不能被当成模板再展开一次。

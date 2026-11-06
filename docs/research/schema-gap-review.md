@@ -23,11 +23,19 @@
 这样延期后历史不会被重算改写。`logTruncated` 不再需要（那是 JSON 整份重写时代的产物，
 行级追加用 `count(*)` 就有总量）。
 
-**2. `templates`（任务模板）**
+**2. `templates`（所有提示词的管理）** ✅ **已补**
 
-现在在 `templates.json`，`{id, name, body, values, builtin}`。
-`builtin` 那个标记尤其要进库 —— 现在的逻辑是「内置模板永远在场，被旧 store 漏掉时补回」，
-这是拿代码去纠数据的错，进了库就只剩一条 `WHERE builtin = 0`。
+旧实现分两处：任务骨架在 `templates.json`（正文 + 槽位 values），交付上下文在
+`settings.deliveryTemplate`（一整段可改文本）。两边各一套渲染，谁也不认谁。
+
+**已合成一张表**：`category` 当面板 tab（newtask / delivery / enhance / context），
+`slot` 决定插在交付文本的 prefix / suffix / tail，"条件增强"直接用正文里的
+`{{#goal}}…{{/goal}}` 表达，**不发明条件语言**。`builtin` 标记进库，
+内置模板"永远在场"不再靠代码纠数据。
+
+配套补了**列表语法** `{{#each xs}}…{{/each}}`（`{{this}}` / `{{this.f}}` / `{{@index}}`）——
+现在「补充文档」的行格式是 JS 里拼死的（`delivery-template.js` 的 `linkLines`），
+用户改不了；有了 `{{#each}}`，行怎么排都写进模板正文。
 
 ### B. 建议不进库 —— 留在文件里更好
 

@@ -545,3 +545,43 @@ pnpm test 全绿（640/640）；真机 Chrome 探针（隔离 store：repos.json
 表存 `repoKeys`（不是 `repos:[{key}]`），种子写错归属建立不起来，仓库镜像
 `boards:[]`。另：浏览器缓存过旧 index.html 时新旧行为会混着出现（一次「←」去组页
 的假象），干净重载（新 cb 值 + 确认资源 hash）后才算数。
+
+### 项目组任务不再混进项目侧：两种走向分流（2026-11-06 #85）
+
+**反馈**：本产品分两种仓库归属——项目与项目组；「当前错将项目组的任务归于项目中了，
+这是两种不同的走向。修复」。
+
+**根因**：组任务（正文 frontmatter 带 board）**物理上**就落在成员项目队列里——这是
+故意的（agent 领取按目录 cwd 找队列，物理队列不能分家）；但面板所有项目走向的视图
+都把它当普通项目任务渲染并计数，组页反而成了唯一能看到它归属的地方——「归到项目
+下」的观感由此来。真正的错不在存储，在**显示层不分流**。
+
+**修法**（标注一次、各面读标注）：
+- 服务端单点标注：`normalizeTask` 新增 `boardMark`（parseFrontmatter(t.text).board
+  原样，'' = 纯项目任务；解析不抛错，坏块安全）——API / CLI list 一并透出；
+  **topic.pending 保持队列真相（含组任务）不动**，agent 领取路径零改动；
+- 前端分流原语（board-view.js，web 层纯函数）：`isGroupTask` / `isPendingRow` /
+  `projectTasks` / `projectPending` / `boardMatchIds` / `taskInBoard`（id / key / name
+  三种组身份都认，与组页「本组任务」同口径）；
+- 项目走向各面剔除（读 `!isGroupTask`）：目录页 allTasks（表 / 待领计数 / 编排下游
+  / DAG 候选一并继承）、侧栏仓库行徽标（按走向客户端重数，不再直接用服务端
+  pending）、侧栏子任务行、总览（view 包装行：列表 + chips + totalPending + 批量
+  清单统一走剔除后的 tasks）、进程面板目录模式、编排画布目录模式；
+- 组走向不动：组页「本组任务」（本就按 fm.board）、进程面板组模式（#72 整组口径）、
+  DAG 组模式（本就 fm 过滤）；
+- 侧栏**组行徽标改口径**：从「成员队列整队求和」改为「成员队列里指向本组的组任务
+  待领取数」——旧口径把成员项目的纯项目任务也算成组内待领取（正是本任务的镜像
+  错误），同仓库属两组时还会重复计数；改后与组页徽标一致。
+
+**验收**：单测新增 9 例（normalizeTask 标注 2 + 分流原语 3 + 侧栏徽标 4），pnpm test
+全绿（649/649，lint ✓ + build ✓）；真机 Chrome 探针（隔离 store：repos.json 种组
+`探针组85` + 成员 repoKeys + 仓库镜像 boards、localtasks.json 种 3 任务——纯项目 /
+组任务 / 已领，端口 7894）：API 实测 #2 boardMark='b_probe85'、topic.pending=2（队列
+真相不变）；总览 chip 与分区剔除组任务（repo-x 徽标 1）；目录页表 = #1+#3、
+「1 待领取 · 共 2 个任务」；侧栏仓库行 1 / 组行 1；组页「本组任务 1 待领取」列
+#2 且纯项目任务不出现；CLI `localtask list` pending=2（物理队列照旧可领）。
+
+**坑**：探针首刷（cb=85b）出现过一次「组页 tab 自动挂载 + hash 变 #/group」的假象
+（旧 index.html 缓存竞态，与 #84 那次同族）——两次干净深链（cb=85c/d）行为一致且
+hash 稳定，按「缓存会话不作数」处理。另：目录页深链直开某条组任务（#/dir/<key>?task=N）
+仍可打开——分流只管列表与计数，不管深链（引用了组任务的 blockBy 文字回退同理）。

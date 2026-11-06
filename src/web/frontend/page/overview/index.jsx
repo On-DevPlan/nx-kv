@@ -18,7 +18,7 @@ import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { titleFromMd } from '../../modules/md/md-parse.js';
-import { GLOBAL_KEY, splitQueueTasks } from '../../modules/board/board-view.js';
+import { GLOBAL_KEY, splitQueueTasks, projectTasks, isPendingRow } from '../../modules/board/board-view.js';
 
 const NO_IDS = new Set();
 
@@ -41,23 +41,34 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
   // 「已领取」历史折叠：展开的分区 key 集合（默认全收起）。
   const [doneOpen, setDoneOpen] = useState(() => new Set());
 
-  const dirs = useMemo(() => rows.filter((r) => !r.isGlobal), [rows]);
-  const globalRow = rows.find((r) => r.isGlobal);
+  // #85 两种走向：总览是**项目走向**的页面——组任务（frontmatter.board）归组页管，
+  // 列表与计数按「剔除组任务」后的视图走（pending 一并在客户端按走向重数；
+  // 全局池不会有组任务，同样过滤无害）。其余字段原样透传。
+  const view = useMemo(
+    () =>
+      rows.map((r) => {
+        const tasks = projectTasks(r.tasks);
+        return { ...r, tasks, pending: tasks.filter(isPendingRow).length };
+      }),
+    [rows]
+  );
+  const dirs = useMemo(() => view.filter((r) => !r.isGlobal), [view]);
+  const globalRow = view.find((r) => r.isGlobal);
   const totalPending = dirs.reduce((n, r) => n + (r.pending || 0), 0) + (globalRow?.pending || 0);
-  const waiting = rows.filter((r) => r.waiting);
+  const waiting = view.filter((r) => r.waiting);
 
   const secKeyOf = (r) => (r.isGlobal ? GLOBAL_KEY : r.key);
 
   // 跨目录的当前选中总数（只数仍存在且未删除的）
   const selCount = useMemo(() => {
     let n = 0;
-    for (const r of rows) {
+    for (const r of view) {
       const cur = sel.get(secKeyOf(r));
       if (!cur || !cur.size) continue;
       for (const t of r.tasks || []) if (cur.has(Number(t.id)) && !t.deletedAt) n += 1;
     }
     return n;
-  }, [rows, sel]);
+  }, [view, sel]);
 
   const idsOf = (secKey) => sel.get(secKey) || NO_IDS;
   const pickedOf = (secKey, pending) => {
@@ -107,7 +118,7 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
   /** 底部操作条的删除：把选中项按目录分组，逐组调批量删除接口。 */
   const dropAll = async () => {
     const groups = [];
-    for (const r of rows) {
+    for (const r of view) {
       const key = secKeyOf(r);
       const cur = sel.get(key);
       if (!cur || !cur.size) continue;

@@ -13,6 +13,7 @@ import { useToast } from '../../components/toast/index.jsx';
 import { PopMenu, useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
 import { parseFrontmatter, titleFromMd } from '../../modules/md/md-parse.js';
+import { isGroupTask } from '../../modules/board/board-view.js';
 import { taskLabel } from '../../components/sidebar/model.js';
 import { reaches } from '../../../../shared/graph.js';
 
@@ -171,7 +172,8 @@ export default function DagPanel({ dirKey, groupId }) {
       return out;
     }
     if (!dirTopic) return [];
-    return (dirTopic.tasks || []).filter(isPending).map((task) => ({
+    // #85 两种走向：目录模式是项目走向的画布——组任务归组页（组模式分支不受影响）
+    return (dirTopic.tasks || []).filter((task) => isPending(task) && !isGroupTask(task)).map((task) => ({
       ...task,
       topicKey: dirTopic.key,
       topicCwd: dirTopic.cwd,

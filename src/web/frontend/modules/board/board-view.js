@@ -113,6 +113,45 @@ export function sortTasksForDisplay(tasks = []) {
   return [...pending, ...consumed.reverse(), ...migrated, ...archived.reverse(), ...deleted.reverse()];
 }
 
+// ─── 两种走向（任务 #85）─────────────────────────────────────────────
+// 本产品有两种仓库归属：**项目**与**项目组**。组任务（正文 frontmatter 带 board，
+// 服务端已在行上标好 boardMark）物理上落在项目队列里（领取流程按目录领），但
+// **走向**属于组：项目侧的列表与计数剔除，组页按 board 归属认领。
+// 判据只读行上的标注，不在这里重复解析正文。
+
+/** 是否组任务（frontmatter.board 存在；服务端 normalizeTask 负责标注） */
+export function isGroupTask(t) {
+  return !!(t && t.boardMark);
+}
+
+/** 服务端 isPending（task-view.js）的前端同款：未领取、未删除、未迁出、未归档 */
+export function isPendingRow(t) {
+  return t.status !== 'consumed' && t.status !== 'archived' && !t.deletedAt && !t.migratedTo;
+}
+
+/** 项目走向视图的任务清单：组任务剔除、软删除不进（与各列表页的基底过滤同口径） */
+export function projectTasks(tasks = []) {
+  const list = Array.isArray(tasks) ? tasks : [];
+  return list.filter((t) => !t.deletedAt && !isGroupTask(t));
+}
+
+/** 项目走向的待领取数 */
+export function projectPending(tasks = []) {
+  return projectTasks(tasks).filter(isPendingRow).length;
+}
+
+/** 组的三种身份（id / key / name 都认——面板创建写 id，手写 frontmatter 可能给 key/name） */
+export function boardMatchIds(board) {
+  return [board && board.id, board && board.key, board && board.name].filter(Boolean).map(String);
+}
+
+/** 任务是否指向这个组（ids 数组或 board 对象都收）；与组页「本组任务」同口径 */
+export function taskInBoard(t, idsOrBoard) {
+  if (!isGroupTask(t)) return false;
+  const ids = Array.isArray(idsOrBoard) ? idsOrBoard : boardMatchIds(idsOrBoard);
+  return ids.includes(String(t.boardMark));
+}
+
 export function mergeDirectoryRows(topics = [], goals = []) {  const rows = [];
   const byKey = new Map();
 

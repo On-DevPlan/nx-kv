@@ -7,6 +7,7 @@ import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from './dag.js';
 import { isGlobalKey, topicKeyFor, resolveTaskKey } from './paths.js';
 import { stampNow, parseStampMs, topicOf, nextTaskId, loadStore } from './store-io.js';
+import { parseFrontmatter } from '../../shared/frontmatter.js';
 // 领取耗时（秒）：**发布 → 被领取**的时间差。
 // 数据本来就在（createdAt / consumedAt），这里算成派生字段，省得每个使用方自己算，
 // 也省得存一份会漂移的冗余副本。
@@ -90,6 +91,15 @@ export function foreignResolver(store) {
   };
 }
 
+// 组任务标注（#85 两种走向）：正文 frontmatter 的 board 值——项目组「＋ 新增任务」
+// 预写、CLI add --board 落下来的都算。**物理队列不变**（agent 按项目目录领取照旧）；
+// 面板据此把组任务从**项目走向**的列表与计数里分流出去，组页仍按 board 归属认领。
+// parseFrontmatter 不抛错（无块/坏块都回空对象），没有 board → ''（= 纯项目任务）。
+function boardMarkOf(t) {
+  const fm = parseFrontmatter(String(t.text ?? ''));
+  return fm.board ? String(fm.board).trim() : '';
+}
+
 export function normalizeTask(t, siblings, readyOpts = {}) {
   const blockBy = normalizeBlockBy(t.blockBy, t.id);
   const blocksFollowing = !!t.blocksFollowing;
@@ -113,6 +123,9 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
     deletedAt: String(t.deletedAt ?? ''),
     // 来源标记：云端清单迁入的任务带 'cloud'（面板据此渲染「来自云端」徽标）
     from: String(t.from ?? ''),
+    // 组任务标注（#85）：frontmatter.board 原样（面板创建写 board id，也可能有
+    // 手写 key/name）；'' = 纯项目任务。分流判据只在标注，不重复解析正文。
+    boardMark: boardMarkOf(t),
     // 迁出标记：本机 → 云端迁移后原条目保留在此，作为 tombstone（可撤销/移除）。
     // 带 migratedTo 的任务**不再算待领取**（不会被派发给 agent，也不再进看板的
     // 待领取列）——它只是一条「去哪了」的记录。结构 {side:'cloud', topic, targetId, at}。

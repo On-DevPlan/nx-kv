@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
-import { GLOBAL_KEY } from '../../modules/board/board-view.js';
+import { GLOBAL_KEY, isGroupTask } from '../../modules/board/board-view.js';
 import { parseFrontmatter, taskToProgress } from '../../modules/md/md-parse.js';
 import { closeRightSidebar, findOpenPanel } from '../../workspace.js';
 import { useToast } from '../../components/toast/index.jsx';
@@ -49,7 +49,9 @@ export default function ProgressPanel({
     return (rows || []).find((r) => r.key === dirKey) || null;
   }, [rows, dirKey, isGlobal]);
 
-  const tasks = useMemo(() => (topic?.tasks || []).filter((t) => !t.deletedAt), [topic]);
+  // #85 两种走向：目录/全局模式是**项目走向**——组任务归组页管（组模式另一条
+  // 分支整组口径收成员队列，不受此影响）
+  const tasks = useMemo(() => (topic?.tasks || []).filter((t) => !t.deletedAt && !isGroupTask(t)), [topic]);
 
   const [now, setNow] = useState(Date.now());
   // 多选：存卡片键（目录模式 = 任务 id 数字；组模式 = "topicKey:id" 复合键——

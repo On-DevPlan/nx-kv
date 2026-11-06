@@ -6,8 +6,13 @@ import {
   globalPlaceholderTopic,
   splitQueueTasks,
   sortTasksForDisplay,
+  isGroupTask,
+  projectTasks,
+  projectPending,
+  taskInBoard,
   GLOBAL_KEY,
 } from '../../src/web/frontend/modules/board/board-view.js';
+import { normalizeTask } from '../../src/modules/localtask/task-view.js';
 
 test('mergeDirectoryRows：同一个目录的 localtask 与 timegoal 合并成一行', () => {
   const topics = [
@@ -173,4 +178,65 @@ test('sortTasksForDisplay：空输入与脏输入都不炸', () => {
   assert.deepEqual(sortTasksForDisplay([]), []);
   assert.deepEqual(sortTasksForDisplay(null), []);
   assert.deepEqual(sortTasksForDisplay(undefined), []);
+});
+
+// ─── 两种走向（任务 #85）：组任务的标注与项目侧分流 ─────────────────────
+//
+// 组任务（正文 frontmatter 带 board）物理上落在项目队列里（领取流程按目录领），
+// 但**走向**属于组：项目侧的列表与计数剔除，组页按 board 归属认领。
+// 服务端 normalizeTask 负责标注 boardMark；前端读标注分流，不重复解析正文。
+
+test('normalizeTask：frontmatter.board 标到 boardMark；没有/坏块都是空串', () => {
+  const marked = normalizeTask({
+    id: 1,
+    status: 'pending',
+    text: '---\nboard: b_mvwc2mzrwnlby\nproject: local/nx-kv\n---\n\n# 组任务\n',
+  });
+  assert.equal(marked.boardMark, 'b_mvwc2mzrwnlby');
+
+  const plain = normalizeTask({ id: 2, status: 'pending', text: '# 普通项目任务\n\n正文' });
+  assert.equal(plain.boardMark, '');
+
+  // 文档以 --- 开头的分割线不算 frontmatter（无 key: value 行 → 空对象）
+  const noFm = normalizeTask({ id: 3, status: 'pending', text: '---\n只是分割线\n---\n正文' });
+  assert.equal(noFm.boardMark, '');
+
+  const empty = normalizeTask({ id: 4 });
+  assert.equal(empty.boardMark, '');
+});
+
+test('normalizeTask：board 值两边空白裁掉（手写 frontmatter 容错）', () => {
+  const t = normalizeTask({ id: 5, status: 'pending', text: '---\nboard:   b_x  \n---\n# 手写' });
+  assert.equal(t.boardMark, 'b_x');
+});
+
+test('isGroupTask：只认 boardMark 标注', () => {
+  assert.equal(isGroupTask({ boardMark: 'b1' }), true);
+  assert.equal(isGroupTask({ boardMark: '' }), false);
+  assert.equal(isGroupTask({}), false);
+  assert.equal(isGroupTask(null), false);
+});
+
+test('projectTasks / projectPending：组任务与软删除都不在项目走向里', () => {
+  const tasks = [
+    { id: 1, status: 'pending', boardMark: '' },
+    { id: 2, status: 'pending', boardMark: 'b1' }, // 组任务 → 组页管
+    { id: 3, status: 'pending', deletedAt: 'x' }, // 软删除 → 不可见
+    { id: 4, status: 'consumed' }, // 已领取：不算待领取，但留在项目侧列表
+    { id: 5, status: 'archived', boardMark: 'b1' }, // 组任务 + 归档 → 彻底不可见
+    { id: 6, status: 'pending', migratedTo: { side: 'cloud' } }, // 迁出 tombstone
+  ];
+  assert.deepEqual(projectTasks(tasks).map((t) => t.id), [1, 4, 6], '项目走向列表：剔除组任务与软删除（迁出 tombstone 留着，只是不算待领取）');
+  assert.equal(projectPending(tasks), 1, '项目走向待领取：只剩纯项目任务');
+});
+
+test('taskInBoard：id / key / name 三种身份都认；不匹配的组不算', () => {
+  const byId = { status: 'pending', boardMark: 'b_mvwc2mzrwnlby' };
+  assert.equal(taskInBoard(byId, { id: 'b_mvwc2mzrwnlby', key: 'nx', name: 'nx' }), true);
+  assert.equal(taskInBoard(byId, { id: 'b_x', key: 'other', name: '别的组' }), false);
+  // 手写 frontmatter 给的是组名/key，不是面板写的 id
+  const byName = { status: 'pending', boardMark: 'nx' };
+  assert.equal(taskInBoard(byName, { id: 'b_other', key: 'nx', name: '别的组' }), true, 'key 也认');
+  assert.equal(taskInBoard(byName, { id: 'b_other', key: 'other', name: 'nx' }), true, 'name 也认');
+  assert.equal(taskInBoard({ boardMark: '' }, { id: 'b_mvwc2mzrwnlby' }), false);
 });

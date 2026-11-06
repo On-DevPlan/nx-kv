@@ -10,6 +10,7 @@
 //
 // 「可见序 = 渲染序」是键盘导航的前提：↑↓ 走的就是这份扁平序。
 import { stripFrontmatter } from '../../modules/md/md-parse.js';
+import { projectPending, isPendingRow, taskInBoard } from '../../modules/board/board-view.js';
 
 export const GLOBAL_KEY = '__GLOBAL__';
 
@@ -58,7 +59,9 @@ export function buildTree(repos, boards, topics, prefs, kw = '') {
         desc: r.desc || '',
         boards: r.boards || [],
         summary: ts.map((t) => t.summary).filter(Boolean).join(' / '),
-        pending: ts.reduce((n, t) => n + (t.pending || 0), 0),
+        // 仓库行徽标 = **项目走向**的待领取之和（#85：组任务走组页，不在项目侧
+        // 计数。服务端 topic.pending 是队列真相、含组任务——面板侧按走向重数）
+        pending: ts.reduce((n, t) => n + projectPending(t.tasks), 0),
         waiting: ts.some((t) => t.waiting),
         topics: ts,
       };
@@ -81,7 +84,10 @@ export function buildTree(repos, boards, topics, prefs, kw = '') {
 
   // 看板行（分组）：**组是叶子，不再铺成员子行**（2026-11-03 语义化改版）。
   // 侧栏操作的对象是「工作组」，不是组下的某个文件——成员清单与项目切换
-  // 收进组详情面板（#/group/<id>，面板内下拉选项目）。组行徽标 = 组内待领取总数。
+  // 收进组详情面板（#/group/<id>，面板内下拉选项目）。
+  // 组行徽标 = 成员队列里**指向本组**的组任务的待领取数（#85 两种走向，与组页
+  // 「本组任务」同口径）。以前按成员队列整队求和：把成员项目的纯项目任务也算成
+  // 「组内待领取」，同一仓库属于两组时还会被两组重复计数。
   for (const b of boardList) {
     // **显示编排**：隐藏的项目组也不出行（之前只过滤了仓库行——
     // 于是「勾掉项目组」在侧栏看着完全没反应，任务 #61 验收反馈实测）。
@@ -100,7 +106,11 @@ export function buildTree(repos, boards, topics, prefs, kw = '') {
       name: b.name,
       desc: b.desc || '',
       count: (b.repos || []).length,
-      pending: members.reduce((n, m) => n + (m.pending || 0), 0),
+      pending: members.reduce(
+        (n, m) =>
+          n + (m.topics || []).reduce((k, t) => k + (t.tasks || []).filter((x) => taskInBoard(x, b)).filter(isPendingRow).length, 0),
+        0
+      ),
       waiting: members.some((m) => m.waiting),
       members: (b.repos || []).map((m) => m.key),
     });

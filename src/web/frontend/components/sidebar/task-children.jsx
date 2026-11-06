@@ -14,7 +14,7 @@ import { Icon } from '../icons.jsx';
 import { useToast } from '../toast/index.jsx';
 import { taskLabel } from './model.js';
 import { ensureQueueAndGo } from './queue-nav.js';
-import { sortTasksForDisplay } from '../../modules/board/board-view.js';
+import { sortTasksForDisplay, isGroupTask } from '../../modules/board/board-view.js';
 import Pager, { usePager } from '../pager.jsx';
 
 const PAGE_SIZE = 12; // 每页条数（与旧 limit 同值，但不再截断——有翻页出口）
@@ -26,7 +26,8 @@ export default function TaskChildren({ row, onNavigate, refreshLocal, limit = PA
     const list =
       row.type === 'global'
         ? (row.tasks || [])
-        : (row.topics || []).flatMap((t) => (t.tasks || []).filter((x) => !x.deletedAt));
+        // #85 两种走向：仓库行下的子任务是**项目走向**的入口——组任务归组页管
+        : (row.topics || []).flatMap((t) => (t.tasks || []).filter((x) => !x.deletedAt && !isGroupTask(x)));
     return sortTasksForDisplay(list);
   }, [row]);
   const pager = usePager(tasks, limit);

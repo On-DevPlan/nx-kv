@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog, PopMenu } from '../../components/popup/index.jsx';
-import { GLOBAL_KEY, sortTasksForDisplay } from '../../modules/board/board-view.js';
+import { GLOBAL_KEY, sortTasksForDisplay, isGroupTask } from '../../modules/board/board-view.js';
 import {
   FEEDBACK_HEADING,
   PLAIN_FEEDBACK_HEADING,
@@ -53,8 +53,10 @@ export default function DirPanel({ dirKey }) {
 
   // 显示序：未完成（待领取）优先，追加的新任务不会被历史埋在下面；
   // 软删除的行不进表。分页：队列一长就翻页，不一次渲染全部。
+  // #85 两种走向：目录页是**项目走向**的视图——组任务（frontmatter.board）
+  // 物理上在这条队列里，但归组页管，列表与下面的计数/编排一并排除。
   const allTasks = useMemo(
-    () => sortTasksForDisplay((topic?.tasks || []).filter((t) => !t.deletedAt)),
+    () => sortTasksForDisplay((topic?.tasks || []).filter((t) => !t.deletedAt && !isGroupTask(t))),
     [topic]
   );
   const pager = usePager(allTasks, PAGE_SIZE);

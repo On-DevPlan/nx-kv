@@ -1,6 +1,12 @@
 /**
- * 路由 → 面包屑层级（组 / 项目 / 草稿或任务号）。
+ * 路由 → 面包屑层级（仓库 / 页；组页单独一组）。
  * 纯函数，供面板与单测共用。
+ *
+ * #84：仓库是独立模块、项目组只是指向它的指针（侧栏 2026-11-03 语义化改版），
+ * 但面包屑还按旧容器语义拼组名（[ nx/nx-kv/#81 ]）——侧栏里的「单独仓库」
+ * 一进面板左上角又变回「组/仓库」，两个视图自相矛盾。现在仓库页/任务页的
+ * 面包屑只到仓库（[ nx-kv/#81 ]）；组名只在组页（#/group/<id>）出现——
+ * 那是组这个实体自己的页面，不是仓库的容器前缀。
  * @param {object} route {view, key, task}
  * @param {object} ctx   {boardName, dirName, pageTitle}
  */
@@ -9,10 +15,9 @@ export function crumbsOf(route, ctx = {}) {
   switch (route.view) {
     case 'dir': {
       const out = [];
-      if (ctx.boardName) out.push(ctx.boardName);
       if (ctx.dirName) out.push(ctx.dirName);
       if (route.task) {
-        // 验收例：[ nx/nx-kv/draft ]——草稿统一显示 draft，不暴露 draft-N
+        // 草稿统一显示 draft，不暴露 draft-N
         if (/^draft/i.test(String(route.task))) out.push('draft');
         else out.push(ctx.pageTitle || `#${route.task}`);
       }
@@ -35,17 +40,16 @@ export function crumbsOf(route, ctx = {}) {
 
 /**
  * 上一级路由（面包屑条上的「← 返回」用）。
- *   任务页 → 该目录的任务表；目录页 → 所属项目组（无组则总览）；组页 → 总览。
+ *   任务页 → 该目录的任务表；目录页 → 总览（仓库是顶层模块，上面没有组）；组页 → 总览。
  * 没有上一级时返回 ''（不画返回键）。
  * @param {object} route {view, key, task}
- * @param {object} ctx   {boardId}
  */
-export function parentRouteOf(route, ctx = {}) {
+export function parentRouteOf(route) {
   if (!route || !route.view) return '';
   switch (route.view) {
     case 'dir':
       if (route.task) return `#/dir/${encodeURIComponent(route.key || '')}`;
-      return ctx.boardId ? `#/group/${encodeURIComponent(ctx.boardId)}` : '#/overview';
+      return '#/overview';
     case 'group':
       return '#/overview';
     case 'overview':
@@ -58,27 +62,23 @@ export function parentRouteOf(route, ctx = {}) {
 /**
  * 面包屑上下文（组名 / 目录名 / 页标题）——由路由 + 队列 + 仓库登记算出。
  * 面包屑条现在挂在**各主面板内部**（#44：不该在窗口顶部），所以这段要能被面板共用。
+ * boardName 只认 group 路由的 key（看板 id）——仓库路由不再向上挂组（#84 根因：
+ * 之前从 repo.boards[0] 回落取组名，仓库只要登记过组，侧栏再独立面包屑也带组前缀）。
  * @param {object} route {view, key, task}
  * @param {object[]} rows   /api/localtasks 的裸 topic 列表
  * @param {object} repoData {boards, repos}
  */
 export function crumbCtxOf(route, rows = [], repoData = {}) {
-  if (!route) return { boardName: '', boardId: '', dirName: '', pageTitle: '' };
+  if (!route) return { boardName: '', dirName: '', pageTitle: '' };
   // group 路由的 key = 看板 id；dir 路由的 key = 主题 key——两组身份别混。
   const boardById = (repoData.boards || []).find((b) => b.id === route.key);
   const topic = (rows || []).find((r) => r.key === route.key);
-  const repo =
-    (topic && topic.repo) ||
-    (repoData.repos || []).find((r) => topic && (r.id === topic.repo?.id || r.path === topic.cwd)) ||
-    null;
-  const boardFromRepo = (repo && repo.boards && repo.boards[0]) || null;
   const taskRow =
     topic && route.task
       ? (topic.tasks || []).find((t) => String(t.id) === String(route.task))
       : null;
   return {
-    boardName: (boardById && boardById.name) || (boardFromRepo && boardFromRepo.name) || '',
-    boardId: (boardById && boardById.id) || (boardFromRepo && boardFromRepo.id) || '',
+    boardName: (boardById && boardById.name) || '',
     dirName: topic ? topic.name : '',
     pageTitle: taskRow ? `#${taskRow.id}` : '',
   };

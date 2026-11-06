@@ -509,3 +509,39 @@ T1/T4/T5 的核心断言**已复核属实**（store 隔离端到端实测通过�
   trace + switches 已是那条缝的接缝，重构无行为收益）；getLoop 模板聚合进全局设置
   （它是项目级配置，入口在项目设置页）；任务级 check 指令仍系统内置（发布时固化进
   timegoal 存储，之后每轮原文回显，可配需要动冻结语义）。
+
+### 面包屑与侧栏语义对齐：仓库路由不再挂组前缀（2026-11-06 #84）
+
+**反馈**：左边有单独的仓库，进去之后面板左上角还是有组 / 仓库的概念（截图：
+任务页面包屑 `[ nx / nx-kv / #81 ]`）。
+
+**根因**：侧栏 2026-11-03 语义化改版后仓库是平铺的独立模块（组只是指向它的指针，
+`buildTree` 里仓库行恒 `groupId: ''`），但面包屑链路还按旧容器语义拼组名——
+`crumbCtxOf` 对仓库路由也从 `repo.boards[0]` 回落取组名 / 组 id，只要仓库登记过组
+（哪怕侧栏把它当独立行渲染），左上角就变回 `[ 组 / 仓库 / 页 ]`。App.jsx 的
+`specCtx` 还有同构的一份推导（面板命名用），同样带组。
+
+**修法**（路由是唯一「当前位置」真源，改 crumbs.js 一处全收——7 个面板共用）：
+- `crumbsOf` dir 分支：只推目录名 + 页码 / draft，不再推组名；
+- `parentRouteOf` dir 分支（无 task）：恒回 `#/overview`（仓库是顶层模块，上面
+  没有组），不再 `ctx.boardId ? '#/group/<id>'`；
+- `crumbCtxOf`：boardName 只认 group 路由的 key（看板 id）——repo.boards[0] 回落
+  整段删除（#84 根因所在）；boardId 字段随之删除；
+- App.jsx `specCtx` 同步收口（组名只给组页面板命名，boardFromRepo / boardId 删除）；
+- 组名保留在组实体自己的页面语义里（crumbsOf group 分支不动；组页主分支本就不挂
+  面包屑，标题即位置）。
+- 「←」按来处返回（route-history）不变：从组页点进任务再返回，仍按会话历史走；
+  兜底（深链直达）才落到总览。
+
+**验收**：breadcrumb 单测重写 6 例（仓库路由 ctx 给了组名也不出现、目录页兜底回
+总览不回组页、crumbCtxOf 对带 boards[] 的仓库路由不出组名——根因钉死、组页照常）；
+pnpm test 全绿（640/640）；真机 Chrome 探针（隔离 store：repos.json 种组 + 成员 +
+仓库镜像 boards、localtask add 落队列，端口 7894）实测：目录页 `[ repo-x ]`、
+任务页 `[ repo-x / #1 ]`、任务 ← → 目录、目录 ← 兜底 → overview，组行 / 仓库行
+侧栏形态与改前一致。
+
+**坑**（探针侧）：PS 5.1 `Out-File -Encoding utf8` 写种子带 BOM，json-store 按形状
+不认识落空 store——要用 `[IO.File]::WriteAllText` + `UTF8Encoding($false)`；看板成员
+表存 `repoKeys`（不是 `repos:[{key}]`），种子写错归属建立不起来，仓库镜像
+`boards:[]`。另：浏览器缓存过旧 index.html 时新旧行为会混着出现（一次「←」去组页
+的假象），干净重载（新 cb 值 + 确认资源 hash）后才算数。

@@ -2,7 +2,7 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased]
+## [0.27.0] - 2026-11-06 提示词模板体系收口（变量字典 + 附件模板）+ 交付提示词修复
 
 ### Added
 

@@ -640,4 +640,7 @@ owner 哈希）全 app 靠 `t.repo.key` 桥接，新写的成员匹配一律走�
 `[Text.Encoding]::UTF8.GetBytes($json)` 字节体；④ clearMainPanels 的浮窗守卫教训：
 「真值即浮窗」的假设随库版本升级静默失效，主区功能悄悄坏死——判断浮窗认窗口 id
 字面量 `'float'`；⑤ 转正后页签 config 换了但 hash 不会自己跟（onModelChange 只在
-选中页签**变化**时写地址）——要显式 onNavigate。
+选中页签**变化**时写地址）——要显式 onNavigate；⑥ 坏窗口期存坏的布局会**持续放血**：
+主区空 tabset 被库自动删 → saveModel 存盘时就没有主区 → 每次加载都白板，点什么都
+开不出来——loadModel 必须有 healMainTabset 兜底（没有装内容页签的 tabset 就补
+带「开始」页的 ts_main；判断「主区」看有没有非 sidebar 页签，空 tabset 不算）。

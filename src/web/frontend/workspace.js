@@ -295,6 +295,49 @@ export function healNoTabs(json) {
   return changed;
 }
 
+/**
+ * 读盘时愈合**主区 tabset 丢失**（maincontent 白板的直接病因）。
+ *
+ * 主区 tabset 什么时候会没：主区最后一个页签被关掉/清掉的瞬间，FlexLayout
+ * 会把空 tabset **自动从活模型里删除**——saveModel 存盘时它已经不在了。
+ * 这样的布局读回来，主区永远白板：openPanel 的主区分支 mainTabsetId() 找不到
+ * 落点，点什么都开不出来（任务 #86 修复窗口期存坏过一批这样的布局）。
+ *
+ * 愈合 = 没有任何「内容 tabset」（ts_sidebar/ts_right 或纯侧栏 tabset 之外的）
+ * 时，补一块带「开始」页的 ts_main——与初始布局同形，不空（空的会在存盘前
+ * 被 pruneEmptyTabsets 再剪掉，白修）。
+ *
+ * 纯函数：就地修改并返回是否改过（调用方决定要不要回写）。单测直接覆盖。
+ */
+export function healMainTabset(json) {
+  if (!json || !json.layout || json.layout.type !== 'row' || !Array.isArray(json.layout.children)) return false;
+  let hasMain = false;
+  const walk = (node) => {
+    if (hasMain) return;
+    if (node.type === 'tabset') {
+      const kids = node.children || [];
+      // 装着**非侧栏**页签的 tabset 才算主区；空 tabset 和纯目录 tabset（含旧
+      // 布局 ts_sidebar 丢 id 的形态）都不算——空的更不是，它正是病灶本身
+      if (kids.some((k) => k && k.component !== 'sidebar')) hasMain = true;
+    }
+    if (Array.isArray(node.children)) for (const c of node.children) walk(c);
+  };
+  walk(json.layout);
+  if (hasMain) return false;
+  const seed = {
+    type: 'tabset',
+    id: 'ts_main',
+    weight: 68,
+    enableTabStrip: false,
+    children: [{ type: 'tab', id: 't_welcome', name: '开始', component: 'welcome' }],
+  };
+  const row = json.layout;
+  const rightIdx = row.children.findIndex((c) => c && c.id === 'ts_right');
+  if (rightIdx >= 0) row.children.splice(rightIdx, 0, seed);
+  else row.children.push(seed);
+  return true;
+}
+
 /** 读盘 → 模型；坏数据不吞掉整台应用，退回初始布局 */
 export function loadModel() {
   try {
@@ -307,6 +350,7 @@ export function loadModel() {
     pruneBlankChrome(json);
     healSidebarLayout(json);
     healNoTabs(json); // 新面板模型：没有页签条、补右侧栏
+    healMainTabset(json); // 主区 tabset 被存丢的布局：补回带「开始」页的 ts_main（否则主区永远白板）
     return applyGlobalAttrs(Model.fromJson(json));
   } catch {
     return applyGlobalAttrs(Model.fromJson(initialLayoutJson()));

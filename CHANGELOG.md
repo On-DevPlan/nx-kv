@@ -37,6 +37,13 @@
   （`probe86/nx-kv`），队列行的 key 是 owner 哈希——两个键空间，直接拿成员 key
   比行 key 会把整队滤掉（表现为「找不到任务 #N」）。findGroupTask 改按
   `r.repo.key`（全 app 与组页/任务页同款桥）匹配，行无 repo 时退行 key 兜底。
+- **存坏的布局读盘自愈（maincontent 白板的直接病因）**：主区最后一个页签被关/清
+  的瞬间，FlexLayout 把空 tabset 从活模型里自动删除——坏窗口期 saveModel 把
+  「没有主区 tabset」的布局存进了 localStorage，此后每次加载主区永远白板：
+  openPanel 的主区分支找不到落点，点什么都开不出来。loadModel 补一枚
+  healMainTabset：布局里没有任何装着内容页签的 tabset 时（空 tabset 和纯目录
+  tabset 都不算），补回带「开始」页的 `ts_main`（插在 ts_right 之前），落位后
+  由路由页自然替换。老布局里目录+内容混装的 tabset 仍视作主区、不动。
 
 ## [0.27.1] - 2026-11-06 项目组任务不再混进项目侧（两种走向分流）
 

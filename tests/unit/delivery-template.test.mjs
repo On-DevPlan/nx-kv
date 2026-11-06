@@ -110,3 +110,59 @@ test('deliveryCtxOf：补充文档 / 参考文件给可读路径', () => {
   assert.match(frag.group.docs, /waitgoal\.md/);
   assert.match(frag.group.peers, /beta/);
 });
+
+// #81：空壳组（只有成员名单、全员无描述）不该渲染——喷一排空标签还让
+// 「单独仓库」看着像被归了组。模板的 {{#group}} 闸门是「键在不在」，
+// 所以在 deliveryCtxOf 里把空壳组过滤成 null。
+test('空壳组不渲染：无定位/介绍/位置、成员全无描述 → ctx.group 为 null（#81）', () => {
+  // fr/mobile 形态：唯一「内容」是成员名单，且全员（无组内描述）
+  const shell = {
+    repo: { name: 'fr', key: 'local/fr' },
+    groups: [
+      { name: 'mobile', key: 'board/mobile', desc: '', intro: null, note: '', peers: [{ name: 'mn-rt', note: '' }] },
+    ],
+  };
+  const ctx = buildDeliveryCtx({ task: { id: 1, text: 'x' }, groupCtx: shell });
+  assert.equal(ctx.group, null);
+  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+  assert.doesNotMatch(out, /项目组上下文/);
+  assert.doesNotMatch(out, /组定位：/);
+  assert.doesNotMatch(out, /组内成员/);
+
+  // ve/workspace 形态：独苗成员，连 peers 都没有
+  const bare = {
+    repo: { name: 've', key: 'local/ve' },
+    groups: [{ name: 'workspace', key: 'board/workspace', desc: '', intro: null, note: '' }],
+  };
+  const ctx2 = buildDeliveryCtx({ task: { id: 2, text: 'x' }, groupCtx: bare });
+  assert.equal(ctx2.group, null);
+  assert.doesNotMatch(renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx2), /项目组上下文/);
+});
+
+test('多组：空壳组被跳过，第一个有料的当主组', () => {
+  const multi = {
+    repo: { name: 'x', key: 'local/x' },
+    groups: [
+      { name: 'shell', desc: '', intro: null, note: '', peers: [{ name: 'p', note: '' }] },
+      { name: 'real', desc: '真有料', note: '占个位', peers: [] },
+    ],
+  };
+  const ctx = buildDeliveryCtx({ task: { id: 3, text: 'x' }, groupCtx: multi });
+  assert.equal(ctx.group.name, 'real');
+  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+  assert.doesNotMatch(out, /shell/);
+  assert.match(out, /组定位：真有料/);
+  assert.match(out, /本项目在组里的位置：占个位/);
+});
+
+test('组只要有一项真内容就照给：仅成员带描述也算', () => {
+  const g = {
+    repo: { name: 'x', key: 'local/x' },
+    groups: [
+      { name: 'g1', desc: '', intro: null, note: '', peers: [{ name: 'p', note: '干活的' }] },
+    ],
+  };
+  const ctx = buildDeliveryCtx({ task: { id: 4, text: 'x' }, groupCtx: g });
+  assert.notEqual(ctx.group, null);
+  assert.match(renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx), /- p：干活的/);
+});

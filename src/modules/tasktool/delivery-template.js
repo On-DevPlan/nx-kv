@@ -22,7 +22,8 @@
 //   {{params.k}} 与顶层 {{k}}   外部参数（平面扩展；内建同名键不被覆盖）
 //
 // 段落：{{#repo}}…{{/repo}} / {{#group}}…{{/group}} —— ctx 里没这个键就整段丢弃
-// （项目级任务没有组，那一段就不出现）。
+// （项目级任务没有组，那一段就不出现；组在但毫无可交付内容——空壳组——同样整段
+// 丢弃，#81：只挂着成员名单的组会喷出一排空标签，让「单独仓库」看着像被归了组）。
 import { renderInstruction } from '../../core/instruction-template.js';
 
 /**
@@ -70,13 +71,30 @@ function peerLines(peers) {
 }
 
 /**
+ * 组有没有值得交付的内容：定位 / 介绍 / 位置 / 参考文件 / 有描述的成员，任一即可。
+ * 纯「成员名单（全员无描述）」不算——那只会喷出一排空标签，还让单独仓库看起来
+ * 被当成了组成员（#81：这种空壳组的 {{#group}} 段整个不渲染）。
+ */
+function groupHasContent(g) {
+  if (!g) return false;
+  if (g.desc || g.note) return true;
+  if (g.intro && g.intro.body) return true;
+  if (g.docLinks && g.docLinks.length) return true;
+  return (g.peers || []).some((p) => p.note);
+}
+
+/**
  * 组上下文 → 模板 ctx（数据，不含成文措辞——措辞归模板）。
  * @param {object} groupCtx readGroupContext 的返回值
  * @returns {object} ctx 片段
  */
 export function deliveryCtxOf(groupCtx) {
   const repo = groupCtx && groupCtx.repo ? groupCtx.repo : null;
-  const groups = (groupCtx && groupCtx.groups) || [];
+  const allGroups = (groupCtx && groupCtx.groups) || [];
+  // {{#group}} 的闸门是「键在不在」，不是「内容空不空」——空壳组进了 ctx 就会
+  // 印出「组定位：」「组介绍（）：」这样的空标签（#81）。过滤掉空壳；多组时
+  // 跳过空壳选第一个有料的当主组，其余有料的进 {{groups}} 概览。
+  const groups = allGroups.filter(groupHasContent);
   const g = groups[0] || null;
   const repoDocs = linkLines(repo && repo.docLinks);
   const peers = g ? peerLines(g.peers) : '';

@@ -61,10 +61,13 @@ test('归属改了 → 任务迁到新项目队列，旧队列不再有它，介
   assert.ok(samePath(upd.cwd, dirB), `落点应为 B 的登记路径（实际 ${upd.cwd}）`);
   assert.equal(upd.movedFrom.key, aKey);
   assert.equal(upd.movedFrom.id, r.task.id);
-  // 目标队列原本是空的 → id 保留
-  assert.equal(upd.task.id, r.task.id);
-  // A 队列里没有它了
-  await assert.rejects(() => svc.getTask({ cwd: dirA, id: r.task.id }), /没有/);
+  // T04 派生模型：搬队列 = 旧任务软删 + cancelled，新任务落 B
+  // （目标队列空 → seq 保留同号；有占用 → 换号。两种都合法，不变式是"搬走了"）
+  assert.equal(upd.movedFrom.id, r.task.id, '返回值带旧号（movedFrom.id）');
+  // A 队列里它变成 tombstone（cancelled + deletedAt），不再是可领任务
+  const tombstone = await svc.getTask({ cwd: dirA, id: r.task.id });
+  assert.equal(tombstone.status, 'cancelled', '旧任务 cancelled');
+  assert.ok(tombstone.deletedAt, '旧任务软删');
   // B 队列里有它，frontmatter 归属与介绍引用都是 B 的
   const inB = await svc.getTask({ cwd: dirB, id: upd.task.id });
   const fm = parseFrontmatter(inB.text);
@@ -131,11 +134,11 @@ test('有上游依赖（本地 id）→ 拒绝搬家，错误说清楚', async (
 test('被本队列其他任务依赖 → 拒绝搬家', async () => {
   const t = await submitTask({ text: '# 被依赖\nx', board: board.id, project: repoA.key });
   await submitTask({ text: '# 依赖方\nx', board: board.id, project: repoA.key });
-  // 后一条依赖前一条
-  // T03：外部直写走 repo（给队尾那条挂上对 #被依赖 的本地依赖）
-  const list = (await svc.loadStore()).topics[aKey].tasks;
-  const lastOne = list[list.length - 1];
-  svc.repo.tasks.updateTaskByKey(aKey, lastOne.id, { blockBy: [t.task.id] });
+  // 后一条依赖前一条（T04：外部直写走 repo；按文本找「依赖方」——前面测试的
+  // tombstone 会让"队尾"不再是本测试刚提交的那条）
+  const list = (await svc.loadStore()).topics[aKey].tasks.filter((x) => !x.deletedAt);
+  const dependent = list.find((x) => x.text.includes('依赖方'));
+  svc.repo.tasks.updateTaskByKey(aKey, dependent.id, { blockBy: [t.task.id] });
   await assert.rejects(
     () => updateAction.run({ id: t.task.id, cwd: dirA, text: swapProject(t.task.text) }),
     /被 #\d+ 依赖/,

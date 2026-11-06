@@ -5,8 +5,8 @@ import { badInput, notFound } from '../../core/errors.js';
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from './dag.js';
 import { isGlobalKey, topicKeyFor, resolveTaskKey } from './paths.js';
-import { parseStampMs } from './store-io.js';
-import { topics as topicsRepo, tasks as tasksRepo, db as getDb } from './repo/index.js';
+import { parseStampMs, stampNow } from './store-io.js';
+import { topics as topicsRepo, tasks as tasksRepo, links as linksRepo, db } from './repo/index.js';
 import { parseFrontmatter } from '../../shared/frontmatter.js';
 import { isPending } from '../../shared/task-status.js';
 // 领取耗时（秒）：**发布 → 被领取**的时间差。
@@ -56,6 +56,15 @@ export function queueRelationsOf(topic, task) {
  * 任务对它的 "fromKey:oldSeq"）在搬完统改写到新地址，编排连线不断。
  * 撞号时目标队列按其 next_seq 重新编号（与 JSON 时代 nextTaskId 重编号一致）。
  */
+/**
+ * 搬队列（T04 派生模型）：旧任务软删 + cancelled；目标队列派生新任务
+ * （目标队列新 seq、进目标 order 数组尾），链 type='reopen' + ext_move_from
+ * 标记"这是搬队列不是真 reopen"。返回值同时带旧号与新号。
+ *
+ * 必须在调用方的事务里（updateTask 的搬家与正文/时间目标写入是同一次落盘）。
+ * 引用修复：本地 id 依赖在搬前已被守卫拒绝；跨队列引用（含指向旧地址的
+ * "fromKey:oldSeq"）在搬完统改写到新地址。
+ */
 export function relocateTask(fromTopic, seq, moveTo) {
   const toCwd = String(moveTo?.cwd || '').trim();
   if (!toCwd) return null;
@@ -63,34 +72,80 @@ export function relocateTask(fromTopic, seq, moveTo) {
   if (toKey === fromTopic.key) return null;
   const target = topicsRepo.ensureTopic(toKey, { cwd: toCwd, name: moveTo.name || '' });
   const oldSeq = Number(seq);
-  const moved = tasksRepo.moveTaskToTopic(fromTopic.id, oldSeq, target.id);
-  if (!moved) return null;
-  // 队列顺序跟着走：源队列摘除，目标队列按 JSON 语义 push 到尾
-  topicsRepo.mutateOrder(fromTopic.key, (order) => order.filter((s) => s !== oldSeq));
-  topicsRepo.mutateOrder(toKey, (order) => {
-    const list = [...order];
-    const at = list.indexOf(moved.toSeq);
-    if (at >= 0) list.splice(at, 1);
-    list.push(moved.toSeq);
-    return list;
+  const src = tasksRepo.getTaskRow(fromTopic.id, oldSeq);
+  if (!src) return null;
+
+  // 1. 派生新任务到目标队列（新 seq 由 advanceSeq 分配；round/正文/timegoal 跟着走）
+  const inserted = tasksRepo.insertTask(target.id, {
+    text: src.task.text,
+    status: src.task.status,
+    round: Number(src.task.reopenCount) + 1, // round 不变（搬队列不是新一轮）
+    fromSrc: src.task.from || '',
+    timegoal: src.task.timegoal || null,
+    createdAt: src.task.createdAt,
+    consumedAt: src.task.consumedAt || '',
+    completedAt: src.task.completedAt || '',
+    feedback: src.task.feedback || '',
+    moveFrom: { key: fromTopic.key, seq: oldSeq, at: stampNow() },
+    blocksFollowing: !!src.task.blocksFollowing,
+    blockBy: (src.task.blockBy || []).filter((d) => String(d).includes(':')).map(String),
   });
-  // 全库把 "fromKey:oldSeq" 改写到新地址（跨队列引用是绝对地址，搬家要跟着改）
-  for (const row of getDb().all('SELECT topic_id, seq, ext FROM tasks WHERE ext LIKE :pat', {
-    pat: `%${fromTopic.key}:${oldSeq}%`,
+  const newId = inserted.id;
+
+  // 2. 源任务软删 + cancelled（tombstone：留一行"搬去哪了"的记录）
+  tasksRepo.updateTask(fromTopic.id, oldSeq, {
+    deletedAt: stampNow(),
+    status: 'cancelled',
+    moveFrom: { key: toKey, seq: newId, at: stampNow() },
+  });
+
+  // 3. 链：新 → 旧，type='reopen'（搬队列是派生的特例）
+  linksRepo.addLink({
+    srcId: Number(
+      (db().get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', {
+        t: target.id,
+        s: newId,
+      }) || {}).id
+    ),
+    dstId: src.row.id,
+    type: 'reopen',
+    note: 'moved to ' + toKey,
+    atMs: Date.now(),
+  });
+
+  // 4. 跨队列引用改写：指向旧地址的 "fromKey:oldSeq" → 新地址
+  for (const row of db().all('SELECT topic_id FROM tasks WHERE ext LIKE :pat', {
+    pat: '%' + fromTopic.key + ':' + oldSeq + '%',
   })) {
     for (const other of tasksRepo.listTaskRowsByTopic(Number(row.topic_id))) {
-      if (!Array.isArray(other.task.blockBy) || !other.task.blockBy.some((d) => isForeignDep(d))) continue;
-      const from = `${fromTopic.key}:${oldSeq}`;
-      const to = `${toKey}:${moved.toSeq}`;
+      if (!Array.isArray(other.task.blockBy) || !other.task.blockBy.some((d) => String(d).includes(':'))) continue;
+      const from = fromTopic.key + ':' + oldSeq;
+      const to = toKey + ':' + newId;
       if (!other.task.blockBy.some((d) => String(d) === from)) continue;
-      tasksRepo.updateTask(row.topic_id, other.task.id, {
+      tasksRepo.updateTask(Number(row.topic_id), other.task.id, {
         blockBy: other.task.blockBy.map((d) => (String(d) === from ? to : d)),
       });
     }
   }
+
+  // 5. 队列顺序：源摘除、目标追加
+  topicsRepo.mutateOrder(fromTopic.key, (order) => order.filter((x) => x !== oldSeq));
+  topicsRepo.mutateOrder(toKey, (order) => {
+    const list = [...order];
+    const at = list.indexOf(newId);
+    if (at >= 0) list.splice(at, 1);
+    list.push(newId);
+    return list;
+  });
+
   topicsRepo.updateTopic(fromTopic.key, { bumpRevision: true });
   topicsRepo.updateTopic(toKey, { bumpRevision: true });
-  return { topic: topicsRepo.getTopic(toKey), task: moved.task };
+  return {
+    topic: topicsRepo.getTopic(toKey),
+    task: tasksRepo.getTaskRow(target.id, newId).task,
+    oldId: oldSeq,
+    newId,
+  };
 }
 
 /** 跨队列 blockBy 解析：按 topicKey 找任务（已删/迁出走 null → fail-open）。
@@ -163,14 +218,16 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
     //   forkOf       旧派生链（'队列key:旧编号'）——新 reopen 不再写
     //   forkKind     最近一次事件种类（reopen / comment），或旧派生种类
     //   supersededBy / archived*  旧归档残留字段
-    history: normalizeHistory(t.history),
-    forkOf: String(t.forkOf ?? ''),
-    forkKind: t.forkKind === 'reopen' || t.forkKind === 'comment' ? t.forkKind : '',
-    supersededBy: t.supersededBy && typeof t.supersededBy === 'object' ? t.supersededBy : null,
+    // 被取代标记：派生模型里 = 取代本任务的新任务编号（数字）；迁移来的旧数据可能是对象
+    supersededBy:
+      typeof t.supersededBy === 'object' && t.supersededBy !== null
+        ? t.supersededBy
+        : t.supersededBy != null && t.supersededBy !== ''
+          ? Number(t.supersededBy) || t.supersededBy
+          : null,
     archivedAt: String(t.archivedAt ?? ''),
     archivedReason: String(t.archivedReason ?? ''),
     reopenCount: Number(t.reopenCount) || 0,
-    lastReopenedAt: String(t.lastReopenedAt ?? ''),
     // DAG / 闸门（#34）：blockBy=依赖 id；blocksFollowing=挡住数组其后所有 pending
     blockBy,
     blocksFollowing,
@@ -265,43 +322,6 @@ export function topicView(t, repoCtx = null, readyOpts = {}) {
   };
 }
 
-// ─── 任务链（#69） ────────────────────────────────────────────────────
-/** 规范化任务内 history 链（#74）。非法项丢弃，顺序保留。 */
-export function normalizeHistory(raw) {
-  if (!Array.isArray(raw)) return [];
-  const out = [];
-  for (const h of raw) {
-    if (!h || typeof h !== 'object') continue;
-    const kind = h.kind === 'comment' || h.kind === 'origin' ? h.kind : 'reopen';
-    const attachments = Array.isArray(h.attachments)
-      ? h.attachments
-          .filter((a) => a && typeof a === 'object')
-          .map((a) => ({
-            id: String(a.id || ''),
-            name: String(a.name || ''),
-            type: a.type === 'image' ? 'image' : 'file',
-            size: String(a.size || ''),
-            url: a.url ? String(a.url) : '',
-          }))
-      : [];
-    out.push({
-      id: Number(h.id) || out.length + 1,
-      kind,
-      at: String(h.at ?? ''),
-      text: String(h.text ?? ''),
-      summary: String(h.summary ?? ''),
-      status: String(h.status ?? ''),
-      completedAt: String(h.completedAt ?? ''),
-      quote: String(h.quote ?? ''),
-      feedback: String(h.feedback ?? ''),
-      attachments,
-      excerpt: String(h.excerpt ?? '')
-        .replace(/^#+\s*/, '')
-        .slice(0, 100),
-    });
-  }
-  return out;
-}
 
 // 任务链两套来源（#74 / 兼容 #69）：
 //   history[]     —— 同任务内就地重开/评论节点（主路径）
@@ -358,7 +378,7 @@ function chainLite(topic, t) {
   };
 }
 
-/** 任务链查询：同任务 history 节点 + 旧 forkOf 祖先/子任务。 */
+/** 任务链查询（T04 派生模型）：链 = task_links（唯一来源），不再读 history[] / forkOf。 */
 export async function taskChain({ id, cwd, key } = {}) {
   const k = resolveTaskKey({ key, cwd });
   const want = Number(id);
@@ -368,67 +388,31 @@ export async function taskChain({ id, cwd, key } = {}) {
   const self = (t.tasks || []).find((x) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
   if (!self) throw notFound('任务不存在或已删除: #' + want);
 
-  const history = normalizeHistory(self.history);
-  // nodes：history 按时间序 + 当前尖（live）。面板链图只吃这一列。
-  const nodes = history.map((h) => ({
-    historyId: h.id,
-    kind: h.kind,
-    at: h.at,
-    excerpt: h.excerpt || h.feedback?.slice(0, 100) || '',
-    feedback: h.feedback,
-    quote: h.quote,
-    summary: h.summary,
-    status: h.status,
-    completedAt: h.completedAt,
-    attachmentCount: (h.attachments || []).length,
-    current: false,
-  }));
-  const tipExcerpt =
-    String(self.text ?? '')
-      .split('\n')
-      .map((l) => l.trim())
-      .find(Boolean) || '';
-  nodes.push({
-    historyId: null,
-    kind: 'current',
-    at: String(self.lastReopenedAt || self.createdAt || ''),
-    excerpt: tipExcerpt.replace(/^#+\s*/, '').slice(0, 100),
-    feedback: '',
-    quote: '',
-    summary: String(self.roundSummary || ''),
-    status: self.status,
-    completedAt: String(self.completedAt || ''),
-    attachmentCount: 0,
-    current: true,
-  });
+  const selfRow = tasksRepo.getTaskRow(t.id, want);
+  const { ancestors: ancestorLinks, descendants: descendantLinks } = linksRepo.chainOf(selfRow.row.id);
 
-  // 祖先链：visited 防环；上限 32（这是条链不是树，合理深度远小于它——超限即数据异常）
-  const ancestors = [];
-  const seen = new Set([`${k}:${want}`]);
-  let cur = String(self.forkOf || '');
-  while (cur && ancestors.length < 32) {
-    if (seen.has(cur)) break;
-    seen.add(cur);
-    const row = forkRow(cur);
-    if (!row) {
-      // 引用还在、行没了（软删 / 迁出 / 旧格式）——如实标注，不静默吞
-      ancestors.push({ ref: cur, missing: true });
-      break;
-    }
-    ancestors.push(chainLite(row.topic, row.task));
-    cur = String(row.task.forkOf || '');
-  }
-  // 子任务：派生落点可能换主题（旧 reopen 带 moveTo / 评论跨队列），所以全库扫
-  const ref = `${k}:${want}`;
-  const children = [];
-  for (const { task, topicKey } of tasksRepo.listAllTaskRows()) {
-    if (task.deletedAt || task.migratedTo) continue;
-    if (String(task.forkOf || '') === ref) {
-      const owner = topicsRepo.getTopic(topicKey);
-      if (owner) children.push(chainLite(owner, task));
-    }
-  }
-  children.sort((a, b) => a.id - b.id);
+  // 节点 = 链上每一代任务（每轮一条，seq 做面板 key），从根排到叶；自己是"当前尖"
+  // wrapper = getTaskRowById 的返回（{ row, task }）；row.topicId 是主题内部 id
+  const nodeOf = (wrapper) => {
+    const owner = topicsRepo.getTopicById(wrapper.row.topicId);
+    return {
+      ...chainLite(owner || { key: k, name: t.name }, wrapper.task),
+      at: String(wrapper.task.createdAt || ''),
+      current: Number(wrapper.task.id) === Number(selfRow.task.id),
+    };
+  };
+  const upNodes = ancestorLinks.map((l) => nodeOf(tasksRepo.getTaskRowById(l.id)));
+  const downNodes = descendantLinks.map((l) => nodeOf(tasksRepo.getTaskRowById(l.id)));
+  const selfNode = nodeOf(selfRow);
+  // 根 → … → 自己 → … → 叶（自己是"当前尖"；查询哪条，哪条就是尖）
+  const nodes = [...upNodes, selfNode, ...downNodes].map(
+    (n) => ({ ...n, current: n.id === Number(selfRow.task.id) || n.current })
+  );
+
+  // 祖先/子任务清单（旧字段形状保留：面板兼容）
+  const ancestors = upNodes.map((n) => ({ key: n.key, name: n.name, id: n.id, status: n.status, forkKind: n.type || '', forkOf: '', createdAt: n.createdAt, excerpt: n.excerpt }));
+  const children = downNodes.map((n) => ({ key: n.key, name: n.name, id: n.id, status: n.status, forkKind: n.type || '', forkOf: '', createdAt: n.createdAt, excerpt: n.excerpt }));
+
   return {
     status: 'ok',
     key: k,
@@ -436,8 +420,13 @@ export async function taskChain({ id, cwd, key } = {}) {
     id: want,
     task: normalizeTask(self, t.tasks),
     nodes,
-    history,
     ancestors,
     children,
+    // T04：轮次与派生来源（CLI localtask chain 输出用）
+    round: (Number(self.reopenCount) || 0) + 1,
+    derivedFrom: upNodes.length
+      ? `${upNodes.at(-1).id} @ ${upNodes.at(-1).name}（${ancestorLinks.at(-1)?.type || 'reopen'}）`
+      : null,
+    childCount: children.length,
   };
 }

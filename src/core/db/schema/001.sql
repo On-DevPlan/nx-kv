@@ -219,13 +219,18 @@ CREATE INDEX ix_tasks_open ON tasks (status)
   WHERE deleted_at IS NULL;
 
 -- 只锁身份，不锁正文。
--- 锁两样：队列内编号、创建时刻 —— 这两样一变，「这个 id 当初指的是哪一条」就没了。
+-- 锁两样：同队列内改号、创建时刻。
+--   · 同队列内把 #5 改成 #7 → 历史引用漂移 → 拦。
+--   · 跨队列搬迁是整体换一对 (topic, seq)（rekey）→ 语义上是"这条活搬到别的队列"，
+--     不是篡改身份 → 允许（搬队列的 seq 重编号靠 advanceSeq，不手动改）。
+--   · created_at 不论如何都不许动。
 -- 正文、status、feedback、claimed_at/done_at、ext、version、topic_id（搬队列）都可以改。
 CREATE TRIGGER trg_tasks_identity
 BEFORE UPDATE OF seq, created_at ON tasks
-WHEN OLD.seq <> NEW.seq OR OLD.created_at <> NEW.created_at
+WHEN (OLD.topic_id = NEW.topic_id AND OLD.seq <> NEW.seq)
+     OR OLD.created_at <> NEW.created_at
 BEGIN
-  SELECT RAISE(ABORT, '任务身份不可修改：编号与创建时刻是 (topic, seq) 的一部分');
+  SELECT RAISE(ABORT, '任务身份不可修改：同队列内改号或改创建时刻（跨队列搬迁由 advanceSeq 重编号）');
 END;
 
 -- ═══════════════════════════════════════════════════════════════════════

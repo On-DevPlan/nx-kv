@@ -13,6 +13,13 @@ import { db, txw } from './open.js';
 import { nowMs } from '../../../core/db/time.js';
 import { EXT, parseExt, jsonText, rowToTask, splitTaskFields } from './rows.js';
 
+// 行查询的统一列清单（camelCase 别名 = rowToTask 的入参形状）
+const TASK_SELECT = `SELECT id, topic_id AS topicId, seq, type, status, version, body, ext, feedback,
+       feedback_at AS feedbackAt, from_src AS fromSrc, blocks_following AS blocksFollowing,
+       claimed_at AS claimedAtMs, done_at AS doneAtMs, round, deleted_at AS deletedAtMs,
+       created_at AS createdAtMs, updated_at AS updatedAtMs
+  FROM tasks`;
+
 /** 主题的下一个编号（next_seq 列维护，等价于旧 nextTaskId 的 max+1）。 */
 export function nextSeq(topicId, conn = null) {
   const c = conn || db();
@@ -117,11 +124,15 @@ export function insertTask(topicId, task = {}) {
 /** 查一条任务（JSON 形态，含 deps / ext）；不存在返回 null。 */
 export function getTaskRow(topicId, seq, conn = null) {
   const c = conn || db();
-  const row = c.get(`SELECT id, topic_id AS topicId, seq, type, status, version, body, ext, feedback,
-       feedback_at AS feedbackAt, from_src AS fromSrc, blocks_following AS blocksFollowing,
-       claimed_at AS claimedAtMs, done_at AS doneAtMs, round, deleted_at AS deletedAtMs,
-       created_at AS createdAtMs, updated_at AS updatedAtMs
-  FROM tasks WHERE topic_id = :t AND seq = :s`, { t: topicId, s: seq });
+  const row = c.get(`${TASK_SELECT} WHERE topic_id = :t AND seq = :s`, { t: topicId, s: seq });
+  if (!row) return null;
+  return rowToTaskWithDeps(c, row);
+}
+
+/** 按内部主键取任务行（链节点用：链存的是全局 tasks.id）。 */
+export function getTaskRowById(id, conn = null) {
+  const c = conn || db();
+  const row = c.get(`${TASK_SELECT} WHERE id = :id`, { id });
   if (!row) return null;
   return rowToTaskWithDeps(c, row);
 }
@@ -132,11 +143,7 @@ export function getTaskRow(topicId, seq, conn = null) {
  */
 export function listTaskRowsByTopic(topicId, conn = null) {
   const c = conn || db();
-  const rows = c.all(`SELECT id, topic_id AS topicId, seq, type, status, version, body, ext, feedback,
-       feedback_at AS feedbackAt, from_src AS fromSrc, blocks_following AS blocksFollowing,
-       claimed_at AS claimedAtMs, done_at AS doneAtMs, round, deleted_at AS deletedAtMs,
-       created_at AS createdAtMs, updated_at AS updatedAtMs
-  FROM tasks WHERE topic_id = :t ORDER BY seq`, { t: topicId });
+  const rows = c.all(`${TASK_SELECT} WHERE topic_id = :t ORDER BY seq`, { t: topicId });
   return rows.map((row) => rowToTaskWithDeps(c, row));
 }
 
@@ -261,39 +268,35 @@ export function purgeTask(topicId, seq) {
  * 「整行 push 进目标数组、id 按目标队列 nextTaskId 重新分配」一致）。
  * @returns {{task: object, fromSeq: number, toSeq: number}|null}
  */
+/**
+ * 搬队列：把一行挪到另一个主题 —— **单条 UPDATE，全局 id 天然保留**。
+ *
+ * task_links / task_deps 引用的都是全局 tasks.id，UPDATE 后自动跟着走——
+ * 不需要"迁移边"代码（旧的 INSERT+DELETE 方案会被 ON DELETE CASCADE
+ * 把碰到旧 id 的链静默删光）。
+ *
+ * 编号：目标队列已有同号 → advanceSeq 重编号（跨队列搬迁允许重编号，
+ * 触发器已收窄为只拦同队列改号）；目标队列空 → 保留同号。
+ * next_seq 的 MAX 顶推两个分支都走。
+ *
+ * @returns {{task: object, oldId: number, newId: number}|null}
+ */
 export function moveTaskToTopic(fromTopicId, seq, toTopicId) {
   return txw((conn) => {
-    const src = conn.get('SELECT * FROM tasks WHERE topic_id = :t AND seq = :s', { t: fromTopicId, s: seq });
+    const src = conn.get(`${TASK_SELECT} WHERE topic_id = :t AND seq = :s`, { t: fromTopicId, s: seq });
     if (!src) return null;
     const clash = conn.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', { t: toTopicId, s: seq });
     const targetSeq = clash ? advanceSeq(toTopicId, conn) : seq;
     conn.run(
-      `INSERT INTO tasks (topic_id, seq, type, status, version, body, ext, feedback, feedback_at,
-                          from_src, blocks_following, claimed_at, done_at, round, deleted_at,
-                          created_at, updated_at)
-       SELECT :to, :s, type, status, version, body, ext, feedback, feedback_at,
-              from_src, blocks_following, claimed_at, done_at, round, deleted_at,
-              created_at, :at
-         FROM tasks WHERE id = :id`,
-      { to: toTopicId, s: targetSeq, id: src.id, at: nowMs() }
+      'UPDATE tasks SET topic_id = :to, seq = :s, updated_at = :at WHERE id = :id',
+      { to: toTopicId, s: targetSeq, at: nowMs(), id: src.row.id }
     );
-    const newRow = conn.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', {
-      t: toTopicId,
-      s: targetSeq,
-    });
-    // 依赖边跟着搬：本地依赖引用的是「源队列的编号」，搬走后指向可能失效；
-    // JSON 时代 relocateInStore 的守卫（queueRelationsOf）保证只有无队列内关系的
-    // 任务能搬，所以这里只需原样迁移边。
-    conn.run('UPDATE task_deps SET task_id = :new WHERE task_id = :old', { new: newRow.id, old: src.id });
-    conn.run('DELETE FROM task_deps WHERE dep_id = :old', { old: src.id });
-    conn.run('DELETE FROM tasks WHERE id = :id', { id: src.id });
-    // 无 clash 的分支同样要顶 next_seq：否则搬完之后 nextSeq 还停在旧值，
-    // 下一条 addTask 会算出与搬入任务相同的编号（主键冲突）。
+    // next_seq 顶推（目标队列空 → 保留同号时也要顶，否则下一条 addTask 撞号）
     conn.run('UPDATE topics SET next_seq = MAX(next_seq, :n) WHERE id = :id', {
       n: targetSeq + 1,
       id: toTopicId,
     });
-    return { task: getTaskRow(toTopicId, targetSeq, conn).task, fromSeq: seq, toSeq: targetSeq };
+    return { task: getTaskRow(toTopicId, targetSeq, conn).task, oldId: seq, newId: targetSeq };
   });
 }
 

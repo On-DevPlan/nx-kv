@@ -25,18 +25,15 @@ export const EXT = Object.freeze({
   PICKUP_SEC: 'ext_pickup_sec',
   TRASH_INDEX: 'ext_trash_index',
   TIMEGOAL: 'ext_timegoal',
-  HISTORY: 'ext_history',
-  FORK_OF: 'ext_fork_of',
-  FORK_KIND: 'ext_fork_kind',
   SUPERSEDED_BY: 'ext_superseded_by',
   ARCHIVED_AT: 'ext_archived_at',
   ARCHIVED_REASON: 'ext_archived_reason',
   CLAIMED_FROM: 'ext_claimed_from',
   CLAIMED_BY: 'ext_claimed_by',
   CLAIMED_BY_NAME: 'ext_claimed_by_name',
-  LAST_REOPENED_AT: 'ext_last_reopened_at',
   DEPS_FOREIGN: 'ext_deps_foreign',
   MIGRATED_TO: 'ext_migrated_to',
+  MOVE_FROM: 'ext_move_from',
 });
 
 /** topics.ext 的键名。 */
@@ -93,9 +90,6 @@ export function rowToTask(row) {
     timegoal: ext[EXT.TIMEGOAL] || null,
     trashIndex: ext[EXT.TRASH_INDEX] ?? undefined,
     pickupSec: ext[EXT.PICKUP_SEC] ?? undefined,
-    history: Array.isArray(ext[EXT.HISTORY]) ? ext[EXT.HISTORY] : [],
-    forkOf: String(ext[EXT.FORK_OF] ?? ''),
-    forkKind: String(ext[EXT.FORK_KIND] ?? ''),
     supersededBy: ext[EXT.SUPERSEDED_BY] ?? null,
     archivedAt: String(ext[EXT.ARCHIVED_AT] ?? ''),
     archivedReason: String(ext[EXT.ARCHIVED_REASON] ?? ''),
@@ -103,9 +97,9 @@ export function rowToTask(row) {
     claimedBy: String(ext[EXT.CLAIMED_BY] ?? ''),
     claimedByName: String(ext[EXT.CLAIMED_BY_NAME] ?? ''),
     reopenCount: Math.max(0, Number(row.round ?? 1) - 1),
-    lastReopenedAt: String(ext[EXT.LAST_REOPENED_AT] ?? ''),
     // 迁出 tombstone（本机 → 云端）：原条目留在队列里只作记录，不算待领取
     migratedTo: ext[EXT.MIGRATED_TO] || null,
+    moveFrom: ext[EXT.MOVE_FROM] || null,
     updatedAtMs: Number(row.updatedAtMs ?? 0),
     createdAtMs: Number(row.createdAtMs ?? 0),
   };
@@ -124,16 +118,14 @@ export function splitTaskFields(t) {
   put(EXT.TRASH_INDEX, t.trashIndex);
   if (t.timegoal !== undefined) put(EXT.TIMEGOAL, t.timegoal || null);
   if (t.history !== undefined) put(EXT.HISTORY, Array.isArray(t.history) ? t.history : []);
-  put(EXT.FORK_OF, t.forkOf);
-  put(EXT.FORK_KIND, t.forkKind);
   put(EXT.SUPERSEDED_BY, t.supersededBy);
   put(EXT.ARCHIVED_AT, t.archivedAt);
   put(EXT.ARCHIVED_REASON, t.archivedReason);
   put(EXT.CLAIMED_FROM, t.claimedFrom);
   put(EXT.CLAIMED_BY, t.claimedBy);
   put(EXT.CLAIMED_BY_NAME, t.claimedByName);
-  put(EXT.LAST_REOPENED_AT, t.lastReopenedAt);
   if (t.migratedTo !== undefined) put(EXT.MIGRATED_TO, t.migratedTo || null);
+  if (t.moveFrom !== undefined) put(EXT.MOVE_FROM, t.moveFrom || null);
 
   const all = Array.isArray(t.blockBy) ? t.blockBy : [];
   const depsLocal = all.filter((d) => !String(d).includes(':')).map(Number).filter((n) => Number.isFinite(n) && n > 0);
@@ -150,7 +142,8 @@ export function splitTaskFields(t) {
       deletedAtMs: t.deletedAt !== undefined ? msOf(t.deletedAt) : undefined,
       fromSrc: t.from !== undefined ? String(t.from ?? '') : undefined,
       blocksFollowing: t.blocksFollowing !== undefined ? (t.blocksFollowing ? 1 : 0) : undefined,
-      round: t.reopenCount !== undefined ? Number(t.reopenCount) + 1 : undefined,
+      // round 显式优先（派生 reopen：新.round = 父.round + 1，不走 reopenCount 换算）
+      round: t.round !== undefined ? Number(t.round) : t.reopenCount !== undefined ? Number(t.reopenCount) + 1 : undefined,
       createdAtMs: t.createdAt !== undefined ? msOf(t.createdAt) : undefined,
     },
     ext,

@@ -5,7 +5,7 @@ import { parseFrontmatter, preserveFrontmatter } from '../../shared/frontmatter.
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from './dag.js';
 import { MAX_TEXT, normalizeSummary, normalizeText } from './store-io.js';
-import { openLocaltaskStore as openStore, topics as topicsRepo, tasks as tasksRepo, txw as tx } from './repo/index.js';
+import { openLocaltaskStore as openStore, topics as topicsRepo, tasks as tasksRepo, links as linksRepo, txw as tx, db } from './repo/index.js';
 import { GLOBAL_KEY, GLOBAL_NAME, GLOBAL_CWD, isGlobalKey, normalizeCwd, resolveTaskKey, topicKeyFor } from './paths.js';
 import { normalizeTask, foreignResolver, queueRelationsOf, relocateTask, resolveForkRef } from './task-view.js';
 import { takeTopicWaiter, takeGlobalWaiter } from './waiters.js';
@@ -74,10 +74,11 @@ export async function addTask({
   // 链路（#69）：forkOf = 「这条从哪派生」。裸数字 = 同主题父任务编号；
   // 'key:id' = 跨主题。规范化成 'key:id' 存储，父任务必须真实存在（发布时报错）。
   // forkKind 缺省按 comment（评论/随手派生）——reopen 有自己的写入口（task-lifecycle）。
-  let forkOf = '';
+  let forkOf = null; // 解析结果 { key, seq } —— 插入后写链
   let forkKind = '';
   if (rawForkOf !== undefined && rawForkOf !== null && String(rawForkOf).trim() !== '') {
-    forkOf = resolveForkRef(rawForkOf, key);
+    const ref = resolveForkRef(rawForkOf, key);
+    forkOf = { ref };
     forkKind = rawForkKind === 'reopen' ? 'reopen' : 'comment';
   }
   const taskDraft = {
@@ -132,6 +133,26 @@ export async function addTask({
   tx(() => {
     const inserted = tasksRepo.insertTask(t.id, taskDraft);
     task = inserted.task;
+    // 派生链：forkOf → addLink(src=新, dst=父)（T04：链 = task_links，不再存 ext_fork_of）
+    // forkOf.ref = '父主题key:父seq'——父可能在别的主题，按 key 定位
+    if (forkOf) {
+      const at = forkOf.ref.lastIndexOf(':');
+      const parentTopicKey = forkOf.ref.slice(0, at);
+      const parentSeq = Number(forkOf.ref.slice(at + 1));
+      const parentTopic = topicsRepo.getTopic(parentTopicKey);
+      const parentRow = tasksRepo.getTaskRow(parentTopic.id, parentSeq);
+      linksRepo.addLink({
+        srcId: Number(
+          (db().get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', {
+            t: t.id,
+            s: inserted.id,
+          }) || {}).id
+        ),
+        dstId: parentRow.row.id,
+        type: forkKind,
+        atMs: Date.now(),
+      });
+    }
     // 队列顺序：追加到尾（JSON 数组 push 的等价物）
     topicsRepo.mutateOrder(key, (order) => {
       const list = [...order];

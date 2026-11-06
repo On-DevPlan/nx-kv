@@ -82,25 +82,25 @@ function renderAdd(d) {
 
 // `localtask chain` 的人读输出（#74）：同任务 history 节点为主；旧 forkOf 祖先/子任务为辅
 const KIND_TAG = { origin: '起点', reopen: '反馈', comment: '评论', current: '当前' };
+// T04：链 = task_links（每轮一条任务，seq 做节点 key）。节点没有 origin/comment
+// 事件层了——每轮的"正文 + 反馈"完整活在那一轮的任务行上。
 function renderChain(d) {
   const self = d.task;
   const lines = [
-    `#${self.id}  [${STATUS_TAG[self.status] || self.status}]  ${d.name}`,
+    `#${self.id}  [${STATUS_TAG[self.status] || self.status}]  ${d.name}  （R${d.round ?? 1}）`,
     `  ${self.text.split('\n').map((l) => l.trim()).find(Boolean) || ''}`,
   ];
+  if (d.derivedFrom) lines.push(`  派生自: ${d.derivedFrom}`);
   const nodes = Array.isArray(d.nodes) ? d.nodes : [];
-  if (nodes.length) {
-    lines.push(`  任务链（${nodes.length} 节点）:`);
+  if (nodes.length > 1) {
+    lines.push(`  任务链（R1 → R${nodes.length}，共 ${nodes.length} 条）:`);
     for (const n of nodes) {
-      const tag = KIND_TAG[n.kind] || n.kind || '?';
       const mark = n.current ? '●' : '○';
-      const att = n.attachmentCount ? ` 📎${n.attachmentCount}` : '';
-      lines.push(`    ${mark} [${tag}] ${n.excerpt || '—'}${att}`);
+      const tag = `[${STATUS_TAG[n.status] || n.status}]`;
+      lines.push(`    ${mark} #${n.id} ${tag} ${n.excerpt || '—'}`);
     }
   }
-  if (self.forkOf) {
-    lines.push(`  派生自: ${self.forkOf}${self.forkKind ? `（${KIND_TAG[self.forkKind] || self.forkKind}）` : ''}`);
-  }
+  if (d.childCount) lines.push(`  子任务: ${d.childCount} 条（派生链见各自 --chain）`);
   if (d.ancestors && d.ancestors.length) {
     lines.push(`  祖先链（${d.ancestors.length} 级）:`);
     for (const a of d.ancestors) {

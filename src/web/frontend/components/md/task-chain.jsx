@@ -15,11 +15,8 @@ function ChainList({ nodes = [], onOpenNode }) {
   return (
     <ol className="mdw-chain-list" aria-label="任务链节点">
       {nodes.map((n, i) => {
-        const key = n.current
-          ? 'current'
-          : n.historyId != null
-            ? `h-${n.historyId}`
-            : `t-${n.dirKey || ''}-${n.taskId ?? i}`;
+        // T04：节点 = 链上每一轮的任务（seq 做唯一 key）；不再有 history 事件层
+        const key = n.current ? 'current' : `t-${n.dirKey || ''}-${n.id ?? n.taskId ?? i}`;
         const lab = KIND_LAB[n.kind] || n.kind || '?';
         const title = n.excerpt || n.feedback || lab;
         const meta = [

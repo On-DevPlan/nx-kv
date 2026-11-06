@@ -21,7 +21,7 @@ const dirA = join(tmp, 'projA');
 const dirB = join(tmp, 'projB');
 const keyA = svc.normalizeCwd(dirA).key;
 
-test('reopen：就地写 history；chain.nodes 含 origin + 事件 + current', async () => {
+test('reopen 派生新任务：链 = task_links（R1→R2），节点 seq 做 key', async () => {
   const added = await svc.addTask({ cwd: dirA, text: '# 原任务\n\n做某事' });
   const re = await svc.reopenTask({
     cwd: dirA,
@@ -29,33 +29,43 @@ test('reopen：就地写 history；chain.nodes 含 origin + 事件 + current', a
     text: '# 原任务\n\n+用户反馈：这里不对',
     feedback: '这里不对',
   });
-  assert.equal(re.id, added.task.id, '同号');
-  assert.equal(re.forked, false);
-  assert.ok(re.task.history.length >= 2);
-  assert.equal(re.task.history[0].kind, 'origin');
-  assert.equal(re.task.history.at(-1).kind, 'reopen');
+  assert.notEqual(re.id, added.task.id, '派生 = 新编号');
+  assert.equal(re.kind, 'reopen');
+  assert.equal(re.parentId, added.task.id);
+  assert.equal(re.task.status, 'pending', '新任务立即可领');
+  assert.match(re.task.text, /这里不对/, '反馈段跟正文走');
 
-  const chain = await svc.taskChain({ cwd: dirA, id: re.task.id });
-  assert.ok(chain.nodes.length >= 3, 'origin + reopen + current');
-  assert.equal(chain.nodes[0].kind, 'origin');
-  assert.equal(chain.nodes.at(-1).kind, 'current');
-  assert.equal(chain.nodes.at(-1).current, true);
-  assert.equal(chain.task.id, added.task.id);
+  const chain = await svc.taskChain({ cwd: dirA, id: re.id });
+  assert.equal(chain.status, 'ok');
+  assert.equal(chain.round, 2, 'R2');
+  assert.equal(chain.derivedFrom && chain.derivedFrom.includes(added.task.id), true, '派生自 R1');
+  // 节点从根到叶：R1（done 保持）→ R2（当前尖）
+  assert.equal(chain.nodes.length, 2, '每轮一条任务');
+  assert.equal(chain.nodes[0].id, added.task.id);
+  assert.equal(chain.nodes.at(-1).id, re.id);
+  assert.equal(chain.nodes.at(-1).current, true, '当前尖 = 查询的那条');
+  assert.equal(chain.task.id, re.id);
+  // 父是 pending 被重开 → cancelled + superseded 标记（done 父则保持 done）
+  const parent = await svc.getTask({ cwd: dirA, id: added.task.id });
+  assert.equal(parent.status, 'cancelled');
+  assert.equal(parent.supersededBy, re.id, 'ext_superseded_by 指向派生的新任务');
 });
 
-test('addTask：裸数字 forkOf=同主题；forkKind 缺省 comment（旧派生仍可用）', async () => {
-  const parent = await svc.addTask({ cwd: dirA, text: '# 父任务\n\n正文' });
-  const child = await svc.addTask({ cwd: dirA, text: '# 评论任务\n\n问题', forkOf: parent.task.id });
-  assert.equal(child.task.forkOf, `${keyA}:${parent.task.id}`);
-  assert.equal(child.task.forkKind, 'comment');
-  const chain = await svc.taskChain({ cwd: dirA, id: parent.task.id });
-  assert.ok(chain.children.some((c) => c.id === child.task.id));
+test('addTask：裸数字 forkOf=同主题；跨主题用 "key:id"（派生链写入 task_links）', async () => {
+  const b = await svc.addTask({ cwd: dirB, text: '# B 的任务', forkOf: 'nosuchkey:1' }).catch(() => null);
+  assert.equal(b, null, '父任务不存在 → 报错');
 });
 
 test('addTask：forkOf 跨主题用 "key:id"；父任务不存在直接报错', async () => {
+  const repo = svc.repo;
   const parent = await svc.addTask({ cwd: dirA, text: '# 跨主题父任务' });
   const child = await svc.addTask({ cwd: dirB, text: '# 别的目录的子任务', forkOf: `${keyA}:${parent.task.id}` });
-  assert.equal(child.task.forkOf, `${keyA}:${parent.task.id}`);
+  // T04：forkOf 落 task_links（视图不再暴露 forkOf 字段）
+  const parentLink = repo.links.parentLink(
+    repo.tasks.getTaskRow(repo.topics.getTopic(svc.normalizeCwd(dirB).key).id, child.task.id).row.id
+  );
+  assert.equal(parentLink.dst_id, parent.task.id, '链指向父任务');
+  assert.equal(parentLink.type, 'comment', 'forkKind 缺省 comment');
   assert.equal(child.task.key || child.key, svc.normalizeCwd(dirB).key, '子任务落在自己的主题');
 
   await assert.rejects(
@@ -68,11 +78,11 @@ test('addTask：forkOf 跨主题用 "key:id"；父任务不存在直接报错', 
   );
 });
 
-test('旧数据兼容：无 forkKind 的行 normalizeTask 出空串；taskChain 正常', async () => {
+test('旧数据兼容：normalizeTask 不再暴露 forkOf/forkKind/history（T04 下线）', async () => {
   const t = svc.normalizeTask({ id: 1, text: '# 旧任务', status: 'pending', forkOf: 'abc:9' });
-  assert.equal(t.forkKind, '');
-  assert.equal(t.forkOf, 'abc:9');
-  assert.deepEqual(t.history, []);
+  assert.equal(t.forkOf, undefined, 'forkOf 字段已下线');
+  assert.equal(t.forkKind, undefined);
+  assert.equal(t.history, undefined);
   const chain = await svc.taskChain({ key: '0000000000000000', id: 1 }).catch(() => null);
   assert.equal(chain, null, '主题/任务不存在 → notFound');
 });
@@ -88,18 +98,16 @@ test('clone：内容逐字复制，不带派生链、不继承约束，源任务
   assert.equal(c.from.id, src.task.id);
   assert.ok(c.task.id !== src.task.id, '新编号');
   assert.equal(c.task.text, '# 模板任务\n\n正文原样', '正文逐字复制');
-  assert.equal(c.task.forkOf, '', '克隆不建派生链');
-  assert.equal(c.task.forkKind, '');
-  assert.equal(c.task.timegoal, null, '不继承时间目标（约束跟着活走）');
-  const back = await svc.taskChain({ cwd: dirA, id: src.task.id });
-  assert.equal(back.task.status, 'pending');
-  assert.equal(back.children.some((x) => x.id === c.task.id), false, '克隆不进链');
+  assert.equal(c.task.timegoal, null, '不继承 timegoal');
+  // 源任务不动
+  const srcAfter = await svc.getTask({ cwd: dirA, id: src.task.id });
+  assert.equal(srcAfter.status, 'pending');
+  assert.equal(srcAfter.text, '# 模板任务\n\n正文原样');
 });
 
 test('clone：全局任务的克隆仍进全局池', async () => {
   const g = await svc.addTask({ text: '# 全局模板任务', global: true });
   const c = await svc.cloneTask({ key: '__GLOBAL__', id: g.task.id });
   assert.equal(c.isGlobal, true);
-  assert.equal(c.task.forkOf, '');
   assert.equal(c.task.text, '# 全局模板任务');
 });

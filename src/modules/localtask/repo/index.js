@@ -9,6 +9,7 @@ import * as tasks from './tasks.js';
 import * as presence from './presence.js';
 import * as settings from './settings.js';
 import { createDbTopicAdapter } from './snapshot.js';
+import * as links from './links.js';
 
 export {
   openLocaltaskStore,
@@ -20,6 +21,7 @@ export {
   tasks,
   presence,
   settings,
+  links,
   createDbTopicAdapter,
 };
 export { closeDb, isStoreOpen } from '../../../core/db/index.js';
@@ -33,6 +35,7 @@ export default {
   resolveLocaltaskDb,
   topics,
   tasks,
+  links,
   presence,
   settings,
   createDbTopicAdapter,

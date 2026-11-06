@@ -10,64 +10,30 @@ import {
   appendFeedback,
 } from '../../shared/feedback-text.js';
 import { findFirstReadyPending } from './dag.js';
+import { basename } from 'node:path';
 import { isGlobalKey, resolveTaskKey, topicKeyFor } from './paths.js';
 import { normalizeSummary, normalizeText, stampNow } from './store-io.js';
-import { normalizeTask, foreignResolver, isPending, relocateTask } from './task-view.js';
-import { openLocaltaskStore as openStore, topics as topicsRepo, tasks as tasksRepo, txw as tx } from './repo/index.js';
-import { normalizeBlockBy } from './dag.js';
+import { normalizeTask, foreignResolver, isPending } from './task-view.js';
+import {
+  openLocaltaskStore as openStore,
+  topics as topicsRepo,
+  tasks as tasksRepo,
+  links as linksRepo,
+  txw as tx,
+} from './repo/index.js';
 
-/** 下一条 history 节点编号（任务内自增） */
-function nextHistoryId(history) {
-  let max = 0;
-  for (const h of history || []) {
-    const n = Number(h && h.id) || 0;
-    if (n > max) max = n;
-  }
-  return max + 1;
-}
-
-/** 把当前任务态压成一条 history 节点（就地重开前留档） */
-function snapshotNode(task, { kind, quote, feedback, attachments } = {}) {
-  const excerpt =
-    String(task.text ?? '')
-      .split('\n')
-      .map((l) => l.trim())
-      .find(Boolean) || '';
-  return {
-    id: nextHistoryId(task.history),
-    kind: kind === 'comment' ? 'comment' : kind === 'origin' ? 'origin' : 'reopen',
-    at: stampNow(),
-    text: String(task.text ?? ''),
-    summary: String(task.roundSummary ?? ''),
-    status: String(task.status || 'pending'),
-    completedAt: String(task.completedAt ?? ''),
-    quote: String(quote ?? ''),
-    feedback: String(feedback ?? ''),
-    attachments: Array.isArray(attachments)
-      ? attachments
-          .filter((a) => a && typeof a === 'object')
-          .map((a) => ({
-            id: String(a.id || ''),
-            name: String(a.name || ''),
-            type: a.type === 'image' ? 'image' : 'file',
-            size: String(a.size || ''),
-            url: a.url ? String(a.url) : '',
-          }))
-      : [],
-    excerpt: excerpt.replace(/^#+\s*/, '').slice(0, 100),
-  };
-}
-
-// 把一条任务重新开放（用户的**修改反馈** / 重做 / 划选评论）。
+// 把一条任务重新开放（用户的**修改反馈** / 重做 / 划选评论）——
+// **T04 派生模型**：重开 = 派生一条新任务，不再就地改写旧行。
 //
-// 语义（任务 #74）：**就地重开原任务**——同一编号、同一 md，不新建队列行。
-//   - 旧态压进 `history[]`（可追链、可点开旁路查看）
-//   - 正文 = 调用方拼好的（面板口径：原正文 + 上一轮完成总结 + 本轮反馈）
-//   - 清领取/完成标记，状态回到 pending，等再领（同号继续）
-//   - 落点：默认同主题；带改过归属（moveTo）就搬整条任务
+//   · 旧任务定格：done 保持 done；claimed/pending → cancelled + ext_superseded_by
+//     （旧的执行历史不该被抹掉——它记录的是"那一轮实际发生了什么"）
+//   · 新任务：round = 旧.round + 1；正文 = 旧正文 + 上轮总结 + 本轮反馈（buildReopenText
+//     的 #74 口径：原正文、总结、反馈顺序固定）；状态 pending，立即可领
+//   · task_links(src=新, dst=旧, type=reopen|comment) 是链的唯一来源（history[] 下线）
+//   · 落点：默认同主题；带 moveTo 就直接落在目标主题（派生不需要先建后搬）
 //
-// 对比 #59「新建 md + 归档」：那会把同一件活拆成多条待领，验收/评论闭环断在新号上；
-// #74 要求 ack 与评论统一回写原任务，历史用链可视化而不是多条归档任务。
+// 对比旧就地重开：同号继续的口径改为"新号接着做"——对外编号不漂移（每个 round
+// 一个编号），验收/评论闭环挂在 task_links 上。
 export async function reopenTask({
   cwd: rawCwd,
   key: rawKey,
@@ -79,21 +45,38 @@ export async function reopenTask({
   feedback,
   feedbackHeading,
   feedbackBold,
-  attachments,
+  attachments: _attachments,
 } = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
-  const want = Number(id);
+  let want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
   openStore();
   const t = topicsRepo.getTopic(key);
   if (!t) throw notFound('主题不存在: ' + key);
-  const task = t.tasks.find((x) => Number(x.id) === want);
+  let task = t.tasks.find((x) => Number(x.id) === want);
   if (!task || task.deletedAt) throw notFound('任务不存在或已删除: #' + want);
-  // 终态里**只有 cancelled 拒绝重开**：done 允许就地重开（#74 的"完成验收后回待领取"），
-  // cancelled 是"被新号取代/明确作废"的留档行，重开它等于让一条死记录复活。
-  // 词表见 src/shared/task-status.js。
-  if (task.status === 'cancelled') {
-    throw badInput(`#${want} 已取消（被新任务取代或明确作废）——不能再重开；要继续做请新建任务`);
+  // cancelled 的两种形态：
+  //   · 被 superseded（ext_superseded_by 指着链尖）→ **顺着链走到当前尖**，从尖派生
+  //     （二次评论/继续重开是正常流程——反馈落在最新一代上，而不是让死记录复活）
+  //   · 手动作废（无 superseder）→ 拒绝（要继续请新建任务）
+  {
+    // 顺链走尖：被取代就跳到取代者，直到没有后继（const want 不变，用局部游标）
+    let cur = want;
+    let guard = 0;
+    for (;;) {
+      const row = tasksRepo.getTaskRow(t.id, cur);
+      if (!row || row.task.status !== 'cancelled' || row.task.supersededBy == null) break;
+      const next = Number(row.task.supersededBy);
+      if (!next || next === cur || guard++ > 32) break;
+      cur = next;
+      task = t.tasks.find((x) => Number(x.id) === cur);
+      if (!task) throw notFound('链尖任务不存在: #' + cur);
+    }
+    if (task.status === 'cancelled') {
+      throw badInput(`#${task.id} 已取消（明确作废）——不能再重开；要继续做请新建任务`);
+    }
+    want = cur;
+    task = t.tasks.find((x) => Number(x.id) === want);
   }
 
   const kind = rawKind === 'comment' ? 'comment' : 'reopen';
@@ -104,26 +87,20 @@ export async function reopenTask({
     roundSummary: task.roundSummary || '',
   };
 
-  if (!Array.isArray(task.history)) task.history = [];
-  // 首次重开：先落一条 origin，把「改之前」的正文留住（后续节点只记事件态）。
-  if (task.history.length === 0) {
-    task.history.push(snapshotNode(task, { kind: 'origin' }));
-  }
-
   const body = String(text ?? '').trim();
   const fb = String(feedback ?? '').trim();
+
+  // ── 新任务正文（#74 口径）：显式 text 整篇替换；否则旧正文 + 本轮反馈段。
+  // 反馈不带 text 时，反馈段追加在**旧任务的当前正文**上（base 永远是服务端正文，
+  // 防「评论一次丢一次」#79）。上轮完成总结已在旧正文里（done 时追加），不重复拼。
+  let newText = task.text;
   if (body) {
-    task.text = preserveFrontmatter(task.text, normalizeText(body));
+    newText = preserveFrontmatter(task.text, normalizeText(body));
   } else if (fb) {
-    // #79：反馈不带 text —— 服务端把反馈段**追加**到盘上当前正文。
-    // base 永远是服务端正文（完整、最新）：面板会话 doc 可能落后于盘上
-    // （别的会话改过 / 上一轮重开追加过 / 首轮还没加载完），拿旧正文整篇拼回去
-    // 重写，就是「评论一次丢一次」。只有显式给 text（带未保存编辑的整篇回写）
-    // 才替换正文。段名 / 锚定 / 加粗与面板共用 src/shared/feedback-text.js。
     const heading = String(feedbackHeading ?? '').trim()
       || (kind === 'comment' ? PLAIN_FEEDBACK_HEADING : FEEDBACK_HEADING);
     const useBold = typeof feedbackBold === 'boolean' ? feedbackBold : kind !== 'comment';
-    task.text = preserveFrontmatter(task.text, appendFeedback({
+    newText = preserveFrontmatter(task.text, appendFeedback({
       base: task.text,
       heading,
       quote,
@@ -132,85 +109,84 @@ export async function reopenTask({
     }));
   }
 
-  // 本轮事件节点：记反馈/选区/附件；text 取**更新后**的正文（旁路点开即这一轮交付形态）
-  const node = snapshotNode(task, {
-    kind,
-    quote,
-    feedback: feedback || '',
-    attachments,
-  });
-  // origin 已占「改前」；事件节点用更新后正文，避免与 origin 完全重复时仍要能看反馈字段
-  task.history.push(node);
-
-  // 重开 = 重新进入待领取：清领取/完成标记，让 get/wait 能再领到同一条。
-  // （划选评论也走此入口——反馈已写进正文，下一轮 agent 从同号再领。）
-  task.status = 'pending';
-  task.consumedAt = '';
-  task.completedAt = '';
-  task.roundSummary = '';
-  task.claimedFrom = '';
-  task.claimedBy = '';
-  task.claimedByName = '';
-
-  task.reopenCount = (Number(task.reopenCount) || 0) + 1;
-  task.lastReopenedAt = stampNow();
-  // 链上的「当前尖」语义：forkKind 记最近一次事件种类（兼容旧 chain 查询展示）
-  task.forkKind = kind;
-
-  // 落点：默认同主题；带改过归属（moveTo）就搬整条（repo 版搬家在**同一事务**里跑）。
-  let host = t;
+  // ── 落点：默认同主题；带 moveTo 就直接派生到目标主题
+  let hostKey = key;
   let moved = false;
   let movedFrom = null;
   if (moveTo && moveTo.cwd) {
-    // 新寻址：key 由完整 cwd 派生（topicKeyFor 现在吃完整路径，不再吃 basename）
     const toKey = topicKeyFor(String(moveTo.cwd));
-    if (toKey !== t.key) {
-      const relocated = relocateTask(t, want, moveTo);
-      if (relocated) {
-        host = relocated.topic;
-        moved = true;
-        movedFrom = { key, name: t.name, id: want };
-      }
+    if (toKey !== key) {
+      hostKey = toKey;
+      moved = true;
+      movedFrom = { key, name: t.name, id: want };
     }
   }
 
-  // blockBy 仍指向自己时清掉（编号没变，一般不会；搬家后仍校验一次）
-  tx(() => {
-    tasksRepo.updateTask(host.id, Number(task.id), {
-      text: task.text,
-      status: 'pending',
-      consumedAt: '',
-      completedAt: '',
-      roundSummary: '',
-      claimedFrom: '',
-      claimedBy: '',
-      claimedByName: '',
-      reopenCount: task.reopenCount,
-      lastReopenedAt: task.lastReopenedAt,
-      forkKind: task.forkKind,
-      blockBy: normalizeBlockBy(task.blockBy, Number(task.id)),
-      history: task.history,
+  const parentRowId = tasksRepo.getTaskRow(t.id, want).row.id;
+  const created = tx((conn) => {
+    // 1. 派生新任务：round = 旧.round + 1，状态 pending 立即可领
+    const hostTopic = topicsRepo.ensureTopic(hostKey, {
+      cwd: hostKey === key ? t.cwd : String(moveTo.cwd),
+      name: hostKey === key ? t.name : basename(String(moveTo.cwd)),
     });
-    topicsRepo.updateTopic(host.key, { bumpRevision: true });
-    if (host.key !== key) topicsRepo.updateTopic(key, { bumpRevision: true });
-    return true;
+    const inserted = tasksRepo.insertTask(hostTopic.id, {
+      text: newText,
+      status: 'pending',
+      round: (Number(task.reopenCount) || 0) + 1 + 1, // splitTaskFields: round = reopenCount + 1
+      fromSrc: task.from || '',
+      timegoal: task.timegoal || null, // 时间目标声明跟着活走（再次领取重新计时）
+      createdAt: stampNow(),
+    });
+    // 2. 链：src=新, dst=旧（task_links 是链的唯一来源）
+    linksRepo.addLink({
+      srcId: Number(
+        (conn.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', {
+          t: hostTopic.id,
+          s: inserted.id,
+        }) || {}).id
+      ),
+      dstId: parentRowId,
+      type: kind,
+      note: fb,
+      atMs: Date.now(),
+    });
+    // 3. 旧任务定格：done 保持 done；claimed/pending → cancelled + superseded 标记
+    if (task.status === 'done') {
+      // done 是终态、保持不变——上一轮的交付事实不因重开而消失
+    } else {
+      tasksRepo.updateTask(t.id, want, {
+        status: 'cancelled',
+        supersededBy: inserted.id,
+      });
+    }
+    topicsRepo.updateTopic(key, { bumpRevision: true });
+    if (hostKey !== key) topicsRepo.updateTopic(hostKey, { bumpRevision: true });
+    // 队列顺序：新任务追加到尾（JSON 时代 push 的等价物）
+    topicsRepo.mutateOrder(hostKey, (order) => {
+      const list = [...order];
+      const at = list.indexOf(inserted.id);
+      if (at >= 0) list.splice(at, 1);
+      list.push(inserted.id);
+      return list;
+    });
+    return inserted;
   });
 
-  const hostView = topicsRepo.getTopic(host.key);
-  const live = hostView.tasks.find((x) => Number(x.id) === Number(task.id)) || task;
+  const hostView = topicsRepo.getTopic(hostKey);
+  const live = hostView.tasks.find((x) => Number(x.id) === created.id) || null;
   return {
     status: 'ok',
     reopened: true,
-    forked: false, // #74：不再新建
-    id: Number(live.id),
+    forked: false,
+    id: created.id,
+    parentId: want,
     key: hostView.key,
     name: hostView.name,
     before,
     kind,
-    historyId: node.id,
     moved,
     movedFrom,
-    task: normalizeTask(live, hostView.tasks),
+    task: live ? normalizeTask(live, hostView.tasks) : normalizeTask(created.task),
   };
 }
 

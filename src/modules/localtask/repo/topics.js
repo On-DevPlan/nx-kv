@@ -63,6 +63,14 @@ export function getTopic(key) {
   return assembleTopic(conn, row);
 }
 
+/** 按内部 id 取主题（链节点归属用）。 */
+export function getTopicById(id) {
+  const conn = db();
+  const row = conn.get('SELECT * FROM topics WHERE id = :id', { id });
+  if (!row) return null;
+  return assembleTopic(conn, row);
+}
+
 /** 全部主题（JSON 形态）。 */
 export function listTopics() {
   const conn = db();

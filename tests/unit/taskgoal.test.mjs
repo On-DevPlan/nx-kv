@@ -166,7 +166,7 @@ test('get：多条持续 get 模板按空行拼接后统一渲染', async () => 
   assert.match(r.instruction, /GO_ON_1\n\n[\s\S]*多模板任务\|\|GO_ON_2/, '多条模板拼接成单段统一渲染');
 });
 
-test('修改反馈 → 重开：就地回写原任务，history 留档（#74）', async () => {
+test('修改反馈 → 重开：派生新任务，旧任务 done 定格（#74 派生口径）', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
   const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
   const cwd = join(dir, 'reopen-proj');
@@ -182,19 +182,21 @@ test('修改反馈 → 重开：就地回写原任务，history 留档（#74）'
 
   const re = await localtask.reopenTask({ cwd, id, text: '改登录页（不对，要加暗色模式）' });
   assert.equal(re.status, 'ok');
-  assert.equal(re.id, id, '就地重开，同号');
+  assert.notEqual(re.id, id, '派生新编号（R2）');
+  assert.equal(re.parentId, id);
   assert.equal(re.forked, false);
   assert.equal(re.task.status, 'pending');
-  assert.equal(re.task.consumedAt, '', '完成态清掉，等再领');
+  assert.equal(re.task.consumedAt, '', '新任务未领取');
   assert.equal(re.task.completedAt, '');
   assert.match(re.task.text, /暗色模式/);
-  assert.equal(re.task.history[0].kind, 'origin');
-  assert.equal(re.task.history[0].text.trim(), '改登录页');
-  assert.equal(re.task.history[0].summary, '第一轮完成');
+  // 父任务 done 定格：R1 的交付事实原样保留
+  const parent = await localtask.getTask({ cwd, id });
+  assert.equal(parent.status, 'done');
+  assert.ok(parent.completedAt);
 
   const again = await waitForTask({ cwd, summary: '再来一轮', timeoutSec: 1, open: false });
   assert.equal(again.status, 'ok');
-  assert.equal(again.task.id, id, '领到的仍是原任务');
+  assert.equal(again.task.id, re.id, '领到的是派生出的 R2');
   assert.match(again.task.text, /暗色模式/);
 });
 

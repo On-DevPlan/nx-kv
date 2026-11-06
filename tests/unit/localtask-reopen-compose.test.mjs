@@ -67,23 +67,25 @@ test('comment 不带 text：反馈段追加到服务端正文，锚定引用在�
       '',
     ].join('\n')
   );
-  // history：origin（改前）+ comment（改后事件）
-  assert.equal(res.task.history.length, 2);
-  assert.equal(res.task.history[0].kind, 'origin');
-  assert.equal(res.task.history[1].kind, 'comment');
-  assert.equal(res.task.history[1].quote, '第一段。');
-  assert.equal(res.task.history[1].feedback, '这里写得不对');
+  // T04：链 = task_links（type=comment）；父 cancelled + superseded
+  assert.equal(res.parentId, id);
+  const parent = await svc.getTask({ cwd: CWD, id });
+  assert.equal(parent.status, 'cancelled');
+  assert.equal(parent.supersededBy, res.id);
 });
 
-test('comment 二次评论：继续追加，上一轮评论段不丢', async () => {
+test('comment 二次评论：顺链走尖，两轮评论段都保留在最新正文里', async () => {
   const { svc, id } = await seedTask('# 原任务\n\n正文。');
   const first = await svc.reopenTask({ cwd: CWD, id, kind: 'comment', feedback: '第一条评论' });
   const second = await svc.reopenTask({ cwd: CWD, id, kind: 'comment', feedback: '第二条评论' });
+  // 二次评论作用在同一任务上 → 顺链走尖，从 R2 派生 R3；两轮评论段都在正文里
+  assert.notEqual(second.id, first.id, 'R3 派生新编号');
   assert.ok(second.task.text.includes('第一条评论'));
   assert.ok(second.task.text.includes('第二条评论'));
-  assert.ok(second.task.text.indexOf('第一条评论') < second.task.text.indexOf('第二条评论'));
-  assert.equal(second.task.history.length, 3); // origin + comment + comment
-  assert.equal(first.task.history.length, 2);
+  assert.ok(second.task.text.indexOf('第一条评论') < second.task.text.indexOf('第二条评论'), '评论按时间序');
+  assert.equal(second.task.status, 'pending', 'R3 是当前尖');
+  const firstTask = await svc.getTask({ cwd: CWD, id: first.id });
+  assert.equal(firstTask.status, 'cancelled', 'R2 被 R3 取代');
 });
 
 test('reopen 不带 text：段名默认「## 验收反馈」且逐行加粗', async () => {

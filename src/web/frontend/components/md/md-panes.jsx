@@ -284,6 +284,16 @@ function SlashMenu({ items, active, onPick, onHover, style }) {
 
 // 标题输入：自动增高 textarea —— input 不能软换行，长标题会横向溢出（UIUX E1）。
 // 标题在语义上仍是单条逻辑行：Enter 不产生换行，把焦点交给正文。
+//
+// **高度必须跟着宽度一起重算**（2026-11-08 #94 验收反馈「title下有一大段空白」）：
+// fit() 读 scrollHeight，而 scrollHeight 是**当前宽度**下折行的结果——面板
+// 刚打开、布局尚未定宽时，标题会按极窄宽度折成七八行，scrollHeight 暴涨到
+// 几百 px（实测窄容器 316px、用户现场 271px）。此后宽度恢复正常、标题只占
+// 一行，高度却再也降不回去（fit 只在 value 变化时跑，宽度变化不触发）——
+// 标题下方就留着一大段空白。
+//
+// 修法：ResizeObserver 观察自身宽度，宽度一变就重算高度（宽度是唯一会让
+// scrollHeight 变化的外部因素；文字变化由 value 依赖覆盖）。
 function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter }) {
   const ref = useRef(null);
   useLayoutEffect(() => {
@@ -294,8 +304,20 @@ function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter })
       el.style.height = `${el.scrollHeight}px`;
     };
     fit();
-    window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    // 宽度变了要重算：面板拖宽/拖窄、布局首次定宽、浮窗开合都会改宽度。
+    // 观察自身盒子（含 padding）比监听 window resize 准——窗口没变、面板变了
+    // 同样要重算。
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => fit());
+      ro.observe(el);
+    } else {
+      window.addEventListener('resize', fit);
+    }
+    return () => {
+      if (ro) ro.disconnect();
+      else window.removeEventListener('resize', fit);
+    };
   }, [value]);
   return (
     <textarea

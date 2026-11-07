@@ -103,13 +103,15 @@ test('编辑模板：只改传入字段；builtin 骨架也可改（T06 裁决�
   await assert.rejects(() => updateTemplate({ id: a.template.id, name: '   ' }), /模板名/);
 });
 
-// 槽位（values）：内置模板未给的槽位回落出厂默认文字（渲染兜底语义不变）。
-test('模板槽位：内置未给的槽位回落出厂默认；用户模板槽位跟自己存', async () => {
+// 槽位（values）：出厂正文已是**文字**（任务 #87：「直接文字就是模板」），
+// values 只服务老模板（正文里还留着 {{槽位}} 的那些）。
+test('模板正文：出厂是文字；老模板的槽位值仍跟自己存', async () => {
   const builtin = await listTemplates();
   const def = builtin.templates.find((t) => t.id === BUILTIN_ID);
   assert.ok(def, '内置模板在场');
-  assert.ok(def.body.includes('{{背景}}'), '内置正文含槽位标记');
-  assert.equal(def.values['背景'], '（一句话说清要改什么）', '槽位有默认文字');
+  assert.equal(def.body.includes('{{'), false, '内置正文是文字，不含槽位标记');
+  assert.match(def.body, /一句话说清要改什么/, '默认提示语直接写进正文');
+  assert.equal(def.values['背景'], '（一句话说清要改什么）', '出厂槽位值仍在（兼容老模板）');
 
   const upd = await updateTemplate({ id: BUILTIN_ID, values: { 背景: '本轮要做的事' } });
   assert.equal(upd.template.values['背景'], '本轮要做的事');

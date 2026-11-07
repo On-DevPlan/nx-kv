@@ -245,17 +245,18 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
 }
 
 // 与后端出厂文本（core/db/seed-templates.js 的 BUILTIN_BODY） / BUILTIN_VALUES 同构。
-// 正文里的 {{槽位名}} 是模板槽位（骨架锁死）——新建任务必须先按槽位值渲染，
-// **禁止**把 `{{背景}}` 这种标记原样塞进任务正文（验收反馈：用户不知何意）。
+// 出厂骨架是**文字**（任务 #87：「直接文字就是模板」——不再用 {{槽位名}} 骨架）。
+// 老模板（库里还留着 {{背景}} 这类标记）仍按 NEW_TEMPLATE_VALUES 渲染后再进任务正文——
+// **禁止**把标记原样塞进任务正文（验收反馈：用户不知何意）。
 export const NEW_TEMPLATE = `## 背景
 
-{{背景}}
+（一句话说清要改什么）
 
 ## 验收
-- [ ] {{验收}}
+- [ ] …
 
 ## 约束
-- {{约束}}
+- …
 
 ## 附件
 `;

@@ -2,17 +2,17 @@
 // #41 交互收敛：说明文字全部删除；提示词条目默认收起成标题行，点击才展开。
 //
 // 三类：
-//   1. 任务模板——骨架锁死，只填槽位文字；新建任务正文必须已渲染（无裸 {{槽}}）
+//   1. 任务模板——直接改正文（文字就是模板，任务 #87）；新建任务正文必须已渲染（无裸 {{槽}}）
 //   2. 回调提示词（全局）——领到任务时的收尾指令，多条
 //   3. ack 完成总结提示词（全局）——agent 写完成总结的格式要求，多条
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { useTemplates } from '../../modules/md/use-templates.js';
 import { PromptItemsEditor } from '../../modules/prompts/prompt-editor.jsx';
-import { TemplateSlotsEditor } from '../../modules/prompts/template-slots.jsx';
 import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
+import TemplateEditor from '../../components/md/template-editor.jsx';
 
 const MAX_ITEMS = 10; // 与服务端 clampTaskSuffixList / clampAckPromptList 一致
 
@@ -309,11 +309,14 @@ function GlobalPrompts({ listFlag, listKey, placeholder, offText }) {
   );
 }
 
-/** 任务模板：左侧点选模板，右侧只填槽位（骨架只读预览） */
-function TemplateSlots({ openTemplates }) {
-  const toast = useToast();
+/**
+ * 任务模板（任务 #87）：左侧点选模板，右侧**直接改正文**——
+ * 「直接文字就是模板」：不再有「槽位内容」那套 {{槽位}} 填值界面，
+ * 写下的文字就是模板正文，新建页拿到的也是这段文字。
+ * 旧的 {{槽位}} 模板仍能正常渲染（renderTemplateBody 兜底），但不再暴露槽位概念。
+ */
+function TemplateBody({ openTemplates }) {
   const tpl = useTemplates();
-  const [busy, setBusy] = useState(false);
   const templates = tpl.templates || [];
   const [editingId, setEditingId] = useState(null);
 
@@ -327,29 +330,14 @@ function TemplateSlots({ openTemplates }) {
     }
   }, [templates, tpl.defaultId, editingId]);
 
-  const current = templates.find((t) => t.id === editingId) || null;
-  const preview = current
-    ? renderTemplateBody(current.body, current.values || {})
-    : '';
-
-  const saveValues = async (t, values) => {
-    setBusy(true);
-    try {
-      await tpl.update(t.id, { values });
-      toast(`已保存「${t.name}」的槽位内容`);
-    } catch (e) {
-      toast(String(e.message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   if (tpl.unsupported) {
     return <div className="setp-note">当前服务比面板旧——重启面板后才有模板功能。</div>;
   }
   if (!templates.length) {
     return <div className="setp-note">还没有模板（内置默认模板加载中…）。</div>;
   }
+
+  const current = templates.find((t) => t.id === editingId) || null;
 
   return (
     <div className="setp-tpl-split">
@@ -379,28 +367,62 @@ function TemplateSlots({ openTemplates }) {
       </div>
       <div className="setp-tpl-main">
         {current ? (
-          <>
-            <div className="setp-row">
-              <span>槽位内容 · {current.name}</span>
-            </div>
-            <TemplateSlotsEditor
-              body={current.body}
-              values={current.values}
-              disabled={busy}
-              onSave={(values) => saveValues(current, values)}
-            />
-            {preview.trim() ? (
-              <details className="setp-tpl-preview">
-                <summary>预览新建任务正文</summary>
-                <pre className="setp-tpl-preview-body">{preview}</pre>
-              </details>
-            ) : null}
-          </>
+          // key=模板 id：切模板即重挂载，草稿随之重置（不跨模板保留半截改动）
+          <TemplateBodyEditor key={current.id} tpl={tpl} template={current} />
         ) : (
           <div className="setp-note">从左侧选一个模板。</div>
         )}
       </div>
     </div>
+  );
+}
+
+/** 模板正文编辑器（直接改文字）——草稿 + 显式保存（每次按键都存会把接口刷爆）。 */
+function TemplateBodyEditor({ tpl, template }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  // 草稿初始 = **渲染后的文字**（出厂骨架里的 {{槽位}} 落到正文里）——
+  // 用户看到什么、存回去的就是什么：文字就是模板（任务 #87）。
+  const [draft, setDraft] = useState(() =>
+    renderTemplateBody(template.body || '', template.values || {}));
+  const dirty = draft !== renderTemplateBody(template.body || '', template.values || {});
+  // 预览 = 新建页会拿到的正文（老模板里的 {{槽位}} 仍按 values 渲染，不露标记）
+  const preview = useMemo(
+    () => renderTemplateBody(draft, template.values || {}),
+    [draft, template.values],
+  );
+
+  const save = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await tpl.update(template.id, { body: draft });
+      toast(`已保存「${template.name}」`);
+    } catch (e) {
+      toast(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="setp-row">
+        <span>模板正文 · {template.name}</span>
+        <span className="grow" />
+        {dirty ? <span className="muted">未保存</span> : null}
+        <button type="button" className="btn sm" disabled={busy || !dirty} onClick={save}>
+          保存
+        </button>
+      </div>
+      <TemplateEditor value={draft} onChange={setDraft} onSubmit={save} rows={12} />
+      {preview.trim() ? (
+        <details className="setp-tpl-preview">
+          <summary>预览新建任务正文</summary>
+          <pre className="setp-tpl-preview-body">{preview}</pre>
+        </details>
+      ) : null}
+    </>
   );
 }
 
@@ -506,7 +528,7 @@ export default function PromptsSection({ openTemplates }) {
       </nav>
       <div className="setp-prompts-pane">
         {tab === 'vars' && <VarDictionary />}
-        {tab === 'template' && <TemplateSlots openTemplates={openTemplates} />}
+        {tab === 'template' && <TemplateBody openTemplates={openTemplates} />}
         {tab === 'suffix' && (
           <GlobalPrompts
             listFlag="suffixList"

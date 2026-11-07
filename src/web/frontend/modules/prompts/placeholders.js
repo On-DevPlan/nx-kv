@@ -74,19 +74,6 @@ export function usedPlaceholders(text) {
   return out;
 }
 
-/** 扫出模板正文里的槽位名（去重，保持出现顺序）——槽位不另存清单，正文改了跟着变 */
-export function slotsOf(body) {
-  const out = [];
-  const re = /\{\{\s*([^}{\s][^{}]*?)\s*\}\}/g;
-  let m = re.exec(String(body ?? ''));
-  while (m) {
-    const name = m[1].trim();
-    if (name && !out.includes(name)) out.push(name);
-    m = re.exec(String(body ?? ''));
-  }
-  return out;
-}
-
 /** 渲染模板正文：{{槽位名}} → 槽位值（没值就留空） */
 export function renderTemplateBody(body, values) {
   const vals = values && typeof values === 'object' ? values : {};

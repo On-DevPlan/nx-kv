@@ -16,6 +16,8 @@ import DagEditor from './dag-editor.jsx';
 import DeletedPanel from './deleted-panel.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
+import { NEW_TEMPLATE_VALUES } from '../../modules/md/md-parse.js';
+import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
 
 // 目录任务表每页条数（队列一长就翻页，不再一次渲染全部）
 const PAGE_SIZE = 20;
@@ -156,7 +158,8 @@ export default function DirPanel({ dirKey }) {
       ? tpl.templates.map((t) => ({
           label: (t.id === tpl.defaultId ? '✓ ' : '') + t.name,
           icon: 'list',
-          onClick: () => newDraft(t.body),
+          // 正文按模板取值渲染（老模板可能带 {{槽位}}，任务里不能出现裸标记）
+          onClick: () => newDraft(renderTemplateBody(t.body, { ...NEW_TEMPLATE_VALUES, ...(t.values || {}) })),
         }))
       : [{ label: '按默认模板新建一页', icon: 'list', onClick: () => newDraft(tpl ? tpl.defaultBody() : '') }]),
     'sep',

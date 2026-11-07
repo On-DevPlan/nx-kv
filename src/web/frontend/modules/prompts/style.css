@@ -48,20 +48,6 @@
 }
 .pp-items-body{flex:1;min-width:0}
 
-/* 模板槽位编辑（模板正文里的 {{槽位名}} 处填文字） */
-.pp-slots{display:flex;flex-direction:column;gap:6px}
-.pp-slots-row{display:flex;align-items:center;gap:8px}
-.pp-slots-name{
-  flex:none;min-width:96px;font-size:11.5px;color:var(--mdw-accent,#2F6F5E);
-}
-.pp-slots-input{
-  flex:1;min-width:0;font:inherit;font-size:12px;padding:4px 8px;
-  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);
-}
-.pp-slots-input:focus{outline:none;border-color:var(--mdw-accent,#2F6F5E)}
-.pp-slots-empty{font-size:11px;color:var(--mid,#838A93)}
-.pp-slots-acts{display:flex;gap:8px;margin-top:8px}
-
 /* 手风琴收起行（#41）：条目默认只显标题，点击展开编辑。
    轻量行——不描边、编号不用圆圈，hover 才出底色（反馈「ui 太丑」的整��方向）。 */
 .pp-items-row{

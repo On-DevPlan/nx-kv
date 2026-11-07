@@ -894,9 +894,15 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 }
 .rp-pending-acts { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-/* 组详情页头部动作（添加成员 → 跳仓库页对应分组） */
+/* 组详情页头部动作（添加成员 → 跳仓库页对应分组）
+   动作行改为**静态流内右对齐**（原为 position:absolute 右上角）：绝对定位会压在
+   标题/简介文字上（任务 #87 截图：组简介被按钮盖住一半）。改成独立一行后，
+   名字再长、简介再长都不会被按钮遮挡。 */
 .rp-group-head { position: relative; }
-.rp-group-acts { position: absolute; top: 10px; right: 16px; display: flex; gap: 6px; }
+.rp-group-acts {
+  position: static; display: flex; justify-content: flex-end; gap: 6px;
+  margin: 8px 0 2px; flex-wrap: wrap;
+}
 
 /* 组面板 · 本组任务面板（首屏）：只列 frontmatter 归属本组的任务，项目 tag 标归属 */
 .rp-tasks { margin: 14px 0 4px; border: 1px solid var(--soft-2); border-radius: var(--r8); background: var(--paper); padding: 10px 12px; }

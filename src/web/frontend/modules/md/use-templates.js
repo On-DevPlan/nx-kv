@@ -53,7 +53,9 @@ export function useTemplates() {
   }, [refetch]);
 
   const update = useCallback(async (id, patch) => {
-    const d = await api(`/api/templates/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch });
+    // body 里带上 id：id 恰是 'default' 时请求会命中「设默认」那条字面量路由
+    // （字面量优先于 :id），那里 ctx.id 只能从 body 取——不带就 400（任务 #87）。
+    const d = await api(`/api/templates/${encodeURIComponent(id)}`, { method: 'PATCH', body: { id, ...patch } });
     await refetch();
     return d;
   }, [refetch]);

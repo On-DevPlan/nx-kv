@@ -225,7 +225,9 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
           <span className="rp-chip-count">{items.length} 个目录</span>
           {totalPending > 0 && <span className="rp-chip-count">待领取 {totalPending}</span>}
         </h2>
-        {board.desc ? <p className="muted">{board.desc}</p> : null}
+        {/* 组简介（board/<组>.md）不在头部铺正文：那一大段文字会被右侧动作按钮压住，
+            而且组介绍已经是文档（下面的「组介绍」入口直达）。任务 #87：
+            「文字被按钮遮挡，不显示简介文本」——此处只留名字与计数。 */}
         <div className="rp-group-acts">
           <button
             className="btn small"

@@ -74,7 +74,7 @@ export default {
       id: 'templates.update',
       cli: ['template', 'update'],
       http: ['PATCH', '/api/templates/:id'],
-      summary: '编辑任务模板（--name 改名 / --body 改正文，只改传入项；多行正文用 --body-file；内置模板不可编辑）',
+      summary: '编辑任务模板（--name 改名 / --body 改正文，只改传入项；多行正文用 --body-file；内置模板的正文也可改）',
       args: ['id'],
       flags: {
         name: { type: 'string', hint: '新名字（不传保持不变）' },
@@ -83,7 +83,7 @@ export default {
         'body-file': { type: 'string', hint: '同 --bodyFile（连字符写法）' },
         values: {
           type: 'string',
-          hint: '槽位值 JSON（形如 {"背景":"要做的事"}）——正文里的 {{槽位名}} 处填这段文字；内置模板只能改这个（骨架不可改）',
+          hint: '槽位值 JSON（形如 {"背景":"要做的事"}）——老模板正文里的 {{槽位名}} 处填这段文字（新模板直接写正文即可）',
         },
       },
       run: (ctx, opts) =>
@@ -109,9 +109,24 @@ export default {
       id: 'templates.default',
       cli: ['template', 'default'],
       http: ['PATCH', '/api/templates/default'],
-      summary: '设置默认模板（新建页的起始正文换成它）',
+      // 这条路由同时管两件事——**字面量路由优先于 :id**（runtime/api.js 的路由排序：
+      // 字面量段在前），所以 id 恰是 'default' 的模板，正文更新会被这条路由截走：
+      //   带 name/body/values → 改**默认模板本身**（id 就是 default）
+      //   只带 id             → 把默认模板换成它
+      // 不分派的话，「默认模板」永远存不进去（面板里改默认模板 400，2026-11-07 任务 #87 实锤）。
+      summary: '设置默认模板（新建页的起始正文换成它）；带 --body/--name 则改默认模板本身',
       args: ['id'],
-      run: (ctx) => service.setDefaultTemplate({ id: ctx.id }),
+      run: (ctx) => {
+        if (ctx.body !== undefined || ctx.name !== undefined || ctx.values !== undefined) {
+          return service.updateTemplate({
+            id: ctx.id || 'default',
+            name: ctx.name,
+            body: ctx.body,
+            values: parseValues(ctx.values),
+          });
+        }
+        return service.setDefaultTemplate({ id: ctx.id });
+      },
       render: (d) => `默认模板已设为「${d.template.name}」（${d.template.id}）`,
     },
   ],

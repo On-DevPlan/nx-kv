@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  isFrontmatterBlock,
   isEmptyBlock,
   joinMdBlocks,
   liveBodyBlocks,
@@ -581,28 +582,105 @@ function LivePreview({
       return;
     }
 
-    if (e.key === 'Backspace' && isEmptyBlock(val) && blocks.length > 1) {
+    if (e.key === 'Backspace' && isEmptyBlock(val) && i === 0 && blocks.length > 1) {
       e.preventDefault();
       setSlashBoth(null);
       const next = blocks.slice();
       next.splice(i, 1);
       commit(next);
-      setFocus(Math.max(0, i - 1));
+      setFocus(0);
       return;
+    }
+    // Backspace 在块首（无选区、非首块）：并入上一块，光标落在接缝处（Notion 行为）。
+    // 这也是清掉「头上莫名多出的空块」的自然手段——空块并一次就消失。
+    // FM 块（属性卡）不许被并进正文：合并会把 `---` 撕碎成普通文本。
+    if (
+      e.key === 'Backspace'
+      && ta.selectionStart === 0 && ta.selectionEnd === 0
+      && i > 0 && !slashRef.current
+      && !isFrontmatterBlock(normalizeBlockText(blocks[i - 1] ?? ''))
+    ) {
+      e.preventDefault();
+      setSlashBoth(null);
+      const prev = normalizeBlockText(blocks[i - 1] ?? '');
+      const next = blocks.slice();
+      next[i - 1] = prev + val;
+      next.splice(i, 1);
+      pendingSelRef.current = { index: i - 1, start: prev.length, end: prev.length };
+      commit(next);
+      setFocus(i - 1);
+      return;
+    }
+    // Shift+Enter = 块内软换行。**中段**放行原生插入（\n 在块内存活，实测）；
+    // 块头/块尾不能放行——joinMdBlocks 剥尾随 \n、splitMdBlocks 把前导空行当
+    // 分隔符（2026-11-07 #92 实测换行被往返吃掉，表现为按键无响应）——
+    // 等效改写为「新开一个空块」：视觉同为多出一行，且模型存得住。
+    if (e.key === 'Enter' && e.shiftKey && !mod && !slashRef.current) {
+      const s = ta.selectionStart;
+      const en = ta.selectionEnd;
+      if (s === 0 && en === 0) {
+        e.preventDefault();
+        setSlashBoth(null);
+        const next = blocks.slice();
+        next.splice(i, 0, '');
+        pendingSelRef.current = { index: i, start: 0, end: 0 };
+        commit(next);
+        setFocus(i);
+        return;
+      }
+      if (s === val.length && en === val.length) {
+        e.preventDefault();
+        setSlashBoth(null);
+        const next = blocks.slice();
+        next.splice(i + 1, 0, '');
+        pendingSelRef.current = { index: i + 1, start: 0, end: 0 };
+        commit(next);
+        setFocus(i + 1);
+        return;
+      }
+      return; // 中段：原生插入
     }
     // 斜杠菜单打开时禁止块间跳转（必须用 ref，避免闭包过期）
     if (slashRef.current) return;
-    if (e.key === 'ArrowUp' && e.target.selectionStart === 0 && i > 0) {
-      e.preventDefault();
-      setFocus(i - 1);
-    }
-    if (
-      e.key === 'ArrowDown'
-      && e.target.selectionStart === val.length
-      && i < blocks.length - 1
-    ) {
-      e.preventDefault();
-      setFocus(i + 1);
+    // ↑↓ 跨块：块首 ↑ 落上一块**末尾**、块尾 ↓ 落下一块**开头**（#92）——
+    // 以前两个方向都落下一块的末尾（LiveBlock 默认光标在末尾），往下走时
+    // 光标总在块的右下角、像跳过了整块开头，只能鼠标点回来。
+    const collapsed = ta.selectionStart === ta.selectionEnd;
+    if (collapsed && !e.shiftKey && !e.altKey) {
+      if (e.key === 'ArrowUp' && ta.selectionStart === 0 && i > 0) {
+        e.preventDefault();
+        const prevLen = normalizeBlockText(blocks[i - 1] ?? '').length;
+        pendingSelRef.current = { index: i - 1, start: prevLen, end: prevLen };
+        setFocus(i - 1);
+        return;
+      }
+      if (e.key === 'ArrowDown' && ta.selectionEnd === val.length && i < blocks.length - 1) {
+        e.preventDefault();
+        pendingSelRef.current = { index: i + 1, start: 0, end: 0 };
+        setFocus(i + 1);
+        return;
+      }
+      // 软换行块的**视觉行**兜底：光标不在块首/块尾时先放行原生移动，
+      // 一帧后没动 = 已在第一/最后视觉行——补一次跨块跳转（Notion 行为）
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const before = { start: ta.selectionStart, end: ta.selectionEnd };
+        const dir = e.key;
+        requestAnimationFrame(() => {
+          const el = liveTaRef.current;
+          if (!el || el !== document.activeElement) return;
+          if (el.selectionStart !== before.start || el.selectionEnd !== before.end) return;
+          const len = normalizeBlockText(blocks[i] ?? '').length;
+          if (dir === 'ArrowUp' && before.start > 0 && i > 0) {
+            // ↑ 到上一块**末尾**（跨块只动光标不改内容，FM 块也可进入）
+            const prevLen = normalizeBlockText(blocks[i - 1] ?? '').length;
+            pendingSelRef.current = { index: i - 1, start: prevLen, end: prevLen };
+            setFocus(i - 1);
+          } else if (dir === 'ArrowDown' && before.end < len && i < blocks.length - 1) {
+            pendingSelRef.current = { index: i + 1, start: 0, end: 0 };
+            setFocus(i + 1);
+          }
+        });
+      }
     }
   };
 

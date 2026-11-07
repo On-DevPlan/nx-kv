@@ -1076,8 +1076,12 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       return;
     }
     if (selMenu?.comment) return; // 正写评论，别被新划选冲掉
-    const r = sel.getRangeAt(0).getBoundingClientRect();
-    placeSelMenu('task', text, r.left + r.width / 2 - 140, r.bottom + 8);
+    // 锚定**选区末行**（松手处）：跨块/跨行划选以前按整段选区的包围盒居中偏下，
+    // 浮层落在离手很远的地方（#92「划线跨行不丝滑」）
+    const range = sel.getRangeAt(0);
+    const rects = range.getClientRects();
+    const last = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
+    placeSelMenu('task', text, last.right - 60, last.bottom + 8);
   };
 
   const pickAtt = (accept) => {

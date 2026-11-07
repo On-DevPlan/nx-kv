@@ -6,7 +6,7 @@
 // 编排（#40）：待领取行可**拖动排序**（落点前/后，走 localtask reorder）、
 // 行尾「⋮」菜单开**编排编辑器**（闸门 / 上下游依赖）；已领取行是固定历史，不可拖。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import Pager from '../../components/pager.jsx';
@@ -34,6 +34,8 @@ export default function Landing({
   onNew,
   onOpenTask,
   onDeleteTask,
+  onDeleteTasks,     // (ids) 批量删除选中任务
+  onCancelTasks,     // (ids) 批量取消选中待领取任务
   onReopenTask,
   onTplMenu,
   onImport,
@@ -56,6 +58,44 @@ export default function Landing({
   const dragRef = useRef(null);               // { id }
   const [dragId, setDragId] = useState(null); // 仅视觉：正在拖的行
   const [dropAt, setDropAt] = useState(null); // 仅视觉：{ id, zone }
+  const [picked, setPicked] = useState(() => new Set()); // 多选：任务 id 集合
+
+  // 翻页后清空选择，避免批量操作跨页误伤看不到的行
+  useEffect(() => {
+    setPicked(new Set());
+  }, [page]);
+
+  const pageIds = tasks.map((t) => Number(t.id));
+  const allPicked = pageIds.length > 0 && pageIds.every((id) => picked.has(id));
+  const pickedTasks = tasks.filter((t) => picked.has(Number(t.id)));
+  // 取消只对待领取生效；已领取/已交付/已取消由后端跳过
+  const cancellableTasks = pickedTasks.filter(
+    (t) => t.status === 'pending' && !t.migratedTo && !t.deletedAt
+  );
+  const togglePick = (id) => {
+    const want = Number(id);
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(want)) next.delete(want);
+      else next.add(want);
+      return next;
+    });
+  };
+  const togglePickAll = () => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (allPicked) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+  const runBatch = async (kind) => {
+    const ids = [...picked];
+    const fn = kind === 'cancel' ? onCancelTasks : onDeleteTasks;
+    if (!ids.length || !fn) return;
+    const ok = await fn(ids);
+    if (ok) setPicked(new Set());
+  };
   // 只有待领取行能拖动调序（已领取/已交付/已取消都是固定历史）
   const movable = (t) => t.status === 'pending' && !t.migratedTo && !t.deletedAt;
   const zoneOf = (e, tr) => {
@@ -169,10 +209,48 @@ export default function Landing({
         )}
       </div>
 
+      {pickedTasks.length > 0 && (
+        <div className="mdw-land-batch">
+          <span className="mdw-land-batch-count">已选 {pickedTasks.length} 条</span>
+          {onCancelTasks && (
+            <button
+              type="button"
+              className="btn ghost sm"
+              disabled={!cancellableTasks.length}
+              title={
+                cancellableTasks.length
+                  ? '把选中的待领取任务标为已取消（终态，原文留档）'
+                  : '只有待领取任务可以取消'
+              }
+              onClick={() => runBatch('cancel')}
+            >
+              取消选中{cancellableTasks.length ? ` (${cancellableTasks.length})` : ''}
+            </button>
+          )}
+          {onDeleteTasks && (
+            <button type="button" className="btn ghost sm danger" onClick={() => runBatch('delete')}>
+              删除选中 ({pickedTasks.length})
+            </button>
+          )}
+          <button type="button" className="btn ghost sm" onClick={() => setPicked(new Set())}>
+            清空
+          </button>
+        </div>
+      )}
+
       <div className="mdw-land-table-wrap">
         <table className="mdw-land-table">
           <thead>
             <tr>
+              <th scope="col" className="pick">
+                <input
+                  type="checkbox"
+                  checked={allPicked}
+                  onChange={togglePickAll}
+                  aria-label="全选当前页任务"
+                  title="全选/取消全选当前页"
+                />
+              </th>
               <th scope="col" style={{ width: '56px' }}>#</th>
               <th scope="col">任务</th>
               <th scope="col" style={{ width: '74px' }}>状态</th>
@@ -190,6 +268,7 @@ export default function Landing({
                   key={t.id}
                   className={
                     'mdw-land-tr'
+                    + (picked.has(Number(t.id)) ? ' picked' : '')
                     + (dragId === Number(t.id) ? ' dragging' : '')
                     + (dropAt && dropAt.id === Number(t.id) ? ' drop-' + dropAt.zone : '')
                   }
@@ -201,6 +280,18 @@ export default function Landing({
                   onDragEnd={onDragEnd}
                   onClick={() => onOpenTask(t.id)}
                 >
+                  <td
+                    className="pick"
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={picked.has(Number(t.id))}
+                      onChange={() => togglePick(t.id)}
+                      aria-label={`选择任务 #${t.id}`}
+                    />
+                  </td>
                   <td className="mono faint" title={movableRow ? '拖动整行可调整队列顺序' : undefined}>#{t.id}</td>
                   <td className="tx">
                     <div className="mdw-tg-row">
@@ -316,7 +407,7 @@ export default function Landing({
             })}
             {!tasks.length && (
               <tr>
-                <td colSpan="6">
+                <td colSpan="7">
                   <div className="mdw-land-empty">
                     还没有页面：点「＋ 新建页」写第一篇，或让 agent 往{isGlobal ? '全局池' : '这个目录'}投递任务。
                   </div>

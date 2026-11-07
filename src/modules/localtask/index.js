@@ -653,6 +653,30 @@ export default {
       },
     },
     {
+      id: 'localtask.cancelMany',
+      cli: ['localtask', 'cancel-many'],
+      http: ['POST', '/api/localtasks/items/cancel'],
+      summary:
+        '批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已交付/已取消跳过；取消为终态，原文留档',
+      flags: {
+        ids: { type: 'array', required: true, hint: '任务编号，逗号分隔或给多次' },
+        cwd: CWD,
+        key: KEY,
+      },
+      run: (ctx) => service.cancelTasks({ ids: ctx.ids, cwd: ctx.cwd, key: ctx.key }),
+      render: (d) => {
+        const done = d.cancelled.map((x) => `#${x.id}`).join(' ');
+        const head = d.count
+          ? `已在主题「${d.name}」取消 ${d.count} 条待领取任务（${done}）`
+          : `主题「${d.name}」没有可取消的待领取任务`;
+        const skip = d.skipped.length
+          ? `；跳过 ${d.skipped.map((x) => `#${x.id}(${x.status})`).join(' ')}`
+          : '';
+        const miss = d.missing.length ? `；未找到 #${d.missing.join(' #')}` : '';
+        return head + skip + miss;
+      },
+    },
+    {
       id: 'localtask.task.restore',
       cli: ['localtask', 'task', 'restore'],
       http: ['POST', '/api/localtasks/tasks/restore'],

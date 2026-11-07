@@ -284,6 +284,49 @@ export default function DirPanel({ dirKey }) {
     });
   };
 
+  // ─── 批量操作（多选删除 / 取消）────────────────────────────────────
+  const batchDeleteTasks = async (ids) => {
+    const list = (ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+    if (!list.length) return false;
+    const ok = await dialog({
+      title: `删除选中的 ${list.length} 条任务`,
+      message: '软删除：CLI localtask task restore 可恢复。',
+      danger: true,
+      okText: '删除',
+    });
+    if (!ok) return false;
+    return guard(async () => {
+      const res = await api('/api/localtasks/items', {
+        method: 'DELETE',
+        body: { ...scopeBody(), ids: list },
+      });
+      toast(`已删除 ${res?.count ?? list.length} 条任务`);
+      refreshLocal();
+      return true;
+    });
+  };
+
+  const batchCancelTasks = async (ids) => {
+    const list = (ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+    if (!list.length) return false;
+    const ok = await dialog({
+      title: `取消选中的 ${list.length} 条待领取任务`,
+      message: '只处理待领取任务；已领取/已交付/已取消会跳过。取消为终态，原文留档。',
+      okText: '取消任务',
+    });
+    if (!ok) return false;
+    return guard(async () => {
+      const res = await api('/api/localtasks/items/cancel', {
+        method: 'POST',
+        body: { ...scopeBody(), ids: list },
+      });
+      const skipped = res?.skipped?.length || 0;
+      toast(`已取消 ${res?.count ?? 0} 条任务${skipped ? `，跳过 ${skipped} 条` : ''}`);
+      refreshLocal();
+      return true;
+    });
+  };
+
   // ─── 已删除（软删回收站）──────────────────────────────────────────
   // 软删的行仍在 topic.tasks 里（带 deletedAt），看板/列表把它们过滤掉了，
   // 这里捞出来给「更多 → 已删除任务」面板。倒序：刚删的在上。
@@ -399,6 +442,8 @@ export default function DirPanel({ dirKey }) {
           onNew={() => newDraft(tpl ? tpl.defaultBody() : '')}
           onOpenTask={openTask}
           onDeleteTask={delTask}
+          onDeleteTasks={batchDeleteTasks}
+          onCancelTasks={batchCancelTasks}
           onReopenTask={reopenTask}
           onTplMenu={(e) => setTplMenu({ x: e.clientX, y: e.clientY })}
           onImport={() => fileMdRef.current?.click()}

@@ -36,20 +36,24 @@ test.after?.(() => {
   try { rmSync(tmp, { recursive: true, force: true }); } catch { /* 忽略 */ }
 });
 
-test('空库 → 内置默认模板兜底（bootstrap seed）', async () => {
+test('空库 → 内置模板不留空（bootstrap seed 一批可选）', async () => {
   const d = await listTemplates();
   assert.equal(d.defaultId, BUILTIN_ID);
-  assert.equal(d.templates.length, 1);
-  assert.equal(d.templates[0].builtin, true);
-  assert.ok(d.templates[0].body.includes('## 背景'), '内置正文应带骨架');
-  assert.equal(d.templates[0].values['背景'], '（一句话说清要改什么）', '槽位有默认文字');
+  assert.ok(d.templates.length >= 5, '内置模板应有一批可直接选，而不是只留一个空壳');
+  assert.ok(d.templates.every((t) => t.builtin), '首次建库列出的应全是内置模板');
+  const def = d.templates.find((t) => t.id === BUILTIN_ID);
+  assert.ok(def.body.includes('## 背景'), '内置正文应带骨架');
+  assert.equal(def.values['背景'], '（一句话说清要改什么）', '槽位有默认文字');
+  assert.ok(d.templates.some((t) => t.name === '缺陷修复'), '应内置缺陷修复模板');
+  assert.ok(d.templates.some((t) => t.name === '功能开发'), '应内置功能开发模板');
 });
 
 test('新增模板 + 设默认', async () => {
-  const a = await addTemplate({ name: '缺陷修复', body: '# 缺陷修复\n\n## 复现步骤' });
+  const before = (await listTemplates()).templates.length;
+  const a = await addTemplate({ name: '临时模板', body: '# 临时模板\n\n## 复现步骤' });
   assert.notEqual(a.template.id, BUILTIN_ID);
   let d = await listTemplates();
-  assert.equal(d.templates.length, 2);
+  assert.equal(d.templates.length, before + 1);
   assert.equal(d.defaultId, BUILTIN_ID, '没给 setDefault 就不该改默认');
 
   const b = await addTemplate({ name: '周报', body: '# 周报', setDefault: true });
@@ -67,6 +71,7 @@ test('新增缺名字 → INVALID_INPUT', async () => {
 });
 
 test('删除：内置不可删；删自定义默认 → 默认回落内置', async () => {
+  const builtinCount = (await listTemplates()).templates.length;
   const b = await addTemplate({ name: '临时', body: '# 临时', setDefault: true });
   await assert.rejects(() => removeTemplate({ id: BUILTIN_ID }), /内置默认模板不可删除/);
 
@@ -74,7 +79,7 @@ test('删除：内置不可删；删自定义默认 → 默认回落内置', asy
   assert.equal(r.wasDefault, true);
   const d = await listTemplates();
   assert.equal(d.defaultId, BUILTIN_ID, '删掉默认模板后默认应回落到内置');
-  assert.equal(d.templates.length, 1);
+  assert.equal(d.templates.length, builtinCount, '删掉自定义模板后只剩内置模板');
 });
 
 test('删除不存在的模板 → NOT_FOUND', async () => {
@@ -175,10 +180,11 @@ test('builtin 永远在场：四个类目的内置都在（seed 于 bootstrap）
   const db = openRaw(dbFile, { readOnly: true });
   const rows = db.all('SELECT id, category FROM templates WHERE builtin = 1 ORDER BY category');
   db.close();
-  assert.deepEqual(
-    rows.map((r) => r.category),
-    ['context', 'delivery', 'enhance', 'newtask'],
-    '四个 tab 的内置模板都在'
-  );
+  const categories = [...new Set(rows.map((r) => r.category))].sort();
+  assert.deepEqual(categories, ['context', 'delivery', 'enhance', 'newtask'], '四个 tab 的内置模板都在');
   assert.ok(rows.some((r) => r.id === BUILTIN_ID));
+  assert.ok(
+    rows.filter((r) => r.category === 'newtask').length >= 5,
+    '任务模板内置一批可选骨架，不是单一空壳'
+  );
 });

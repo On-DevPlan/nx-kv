@@ -27,9 +27,6 @@ const DOC_ID = '0f9e8d7c6b5a493827160514d3c2b1a0.docx'; // 带扩展名的合法
 const LOCAL_ID = 'c3d4e5f60718293a4b5c6d7e8f90a1b2'; // 32 位 hex（本机附件仓条目用）
 const URL_ID = 'https://example.com/a.png'; // URL 不是 fileId——不得当附件
 
-// 收尾指令关闭：隔离出「instruction 里只有〔附件〕段」的断言环境
-await service.updateSettings({ taskSuffix: [] });
-
 test('annotateTaskDelivery：正文没有附件引用 → null（载荷逐字节不变的前提）', async () => {
   const added = await service.addTask({ text: '# 普通任务\n只有一条链接 https://example.com/x 和 [文字](./相对路径)' });
   assert.equal(await annotateTaskDelivery(added.task), null);
@@ -150,14 +147,15 @@ test('listTaskAttachments：无引用 → count 0；台账目录与开关如实�
   assert.ok(d.localDir.startsWith(join(sb, 'att')));
 });
 
-test('claim 交付（tasktool/get）：task.attachments 进载荷、〔附件〕段进 instruction', async () => {
+test('claim 交付（tasktool/get）：task.attachments 进载荷、附件区块进 instruction', async () => {
   const dir = join(sb, 'claim-dir');
   mkdirSync(dir, { recursive: true });
   await service.addTask({ cwd: dir, text: `# 领取侧交付\n![设计稿.png](${IMG_ID})` });
   const r = await claimTask({ cwd: dir, summary: '测试领取', open: false });
   assert.equal(r.status, 'ok');
   assert.ok(Array.isArray(r.task.attachments) && r.task.attachments.length === 1, '交付任务带附件清单');
-  assert.ok(r.instruction.includes('〔附件〕'), 'instruction 带〔附件〕段');
+  assert.ok(r.instruction.includes('<nx-kv.attachment>'), 'instruction 带附件区块');
+  assert.ok(r.instruction.includes('本任务包含 1 个附件'), '附件段模板由 attach 变量渲染');
   // 指令段必须带「去哪读」：本地已同步 → 绝对路径；未同步 → 图床 id + 拉取命令
   const a0 = r.task.attachments[0];
   assert.ok(r.instruction.includes(a0.localPath || a0.id));

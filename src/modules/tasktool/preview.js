@@ -10,11 +10,11 @@
 //   2. **不复制渲染逻辑**：整条链路就是 buildTaskDelivery + getTask 的持续 get 叠加，
 //      与真实领取走同一份代码——复制一份「预览专用渲染」迟早与真实交付漂移，
 //      那种预览比没有更糟。
-//   3. **分段可追溯**：每段标明来源（交付上下文 / 收尾指令 / check 指令 / 附件 /
-//      ack / 持续 get），并附带各项开关的当前状态——用户要能看出「这段是哪来的、
+//   3. **分段可追溯**：每段标明来源（交付上下文 / check 指令 / 附件 / ack /
+//      持续 get），并附带各项开关的当前状态——用户要能看出「这段是哪来的、
 //      想关该关哪个开关」。
-import { hasTemplateMarkers, renderInstruction } from '../../core/instruction-template.js';
 import { getSettings } from '../localtask/service.js';
+import { BLOCK_DEFS, resolveBlockTemplates } from '../../shared/prompt-blocks.js';
 import { deliveryPlainText } from './delivery-text.js';
 import { DEFAULT_GET_LOOP_TEMPLATE, getLoopForCwd } from './getloop.js';
 import { buildTaskDelivery } from './wait.js';
@@ -33,7 +33,11 @@ import { buildTaskDelivery } from './wait.js';
 export async function previewTaskDelivery({ task, cwd, key, summary, params } = {}) {
   const settings = (await getSettings().catch(() => null)) || {};
   const segments = [];
-  const delivery = await buildTaskDelivery(task, settings.taskSuffix, {
+  // 项目级「持续 get」模板：与 tasktool/get.js 同口径（只在开启时传入）。
+  // 统一交给 buildTaskDelivery 编排成 getloop 区块，预览与真实领取不会各拼一份。
+  const loop = await getLoopForCwd(cwd).catch(() => ({ enabled: false }));
+  const getLoopTpl = loop.enabled ? loop.template || DEFAULT_GET_LOOP_TEMPLATE : '';
+  const delivery = await buildTaskDelivery(task, {
     source: 'local',
     summary: summary || '',
     cwd,
@@ -42,38 +46,15 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params } = 
     params: params || {},
     preview: true,
     trace: segments,
+    getLoopTpl,
+    getLoopWaitMinutes: loop.enabled ? loop.waitMinutes || 0 : 0,
   });
 
   const previewTask = delivery.task || task;
-  let instruction = delivery.instruction || '';
+  const instruction = delivery.instruction || '';
 
-  // 项目级「持续 get」模板：与 tasktool/get.js 的叠加口径一致（只在开启时出现）
-  const loop = await getLoopForCwd(cwd).catch(() => ({ enabled: false }));
-  let getLoopText = '';
-  if (loop.enabled) {
-    const tpl = loop.template || DEFAULT_GET_LOOP_TEMPLATE;
-    try {
-      if (hasTemplateMarkers(tpl)) {
-        getLoopText = renderInstruction(tpl, {
-          task: previewTask ? { id: previewTask.id, text: String(previewTask.text || '') } : null,
-          source: 'local',
-          summary: summary || '',
-          cwd: cwd || '',
-          name: '',
-          goal: null,
-        });
-      }
-    } catch {
-      getLoopText = '';
-    }
-  }
-  if (getLoopText) {
-    instruction = instruction ? `${instruction}\n\n${getLoopText}` : getLoopText;
-    segments.push({ id: 'getloop', label: '持续 get 模板（项目级）', text: getLoopText });
-  }
-
-  const suffixList = settings.taskSuffixList || [];
   const ackList = settings.ackPromptList || [];
+  const active = resolveBlockTemplates(settings.blockTemplates);
   return {
     task: previewTask,
     instruction,
@@ -87,10 +68,23 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params } = 
       customTemplate: !!(loop.template && loop.template.trim()),
     },
     switches: {
-      suffix: { on: suffixList.length > 0, count: suffixList.length },
       ack: { on: ackList.length > 0, count: ackList.length },
-      deliveryTemplate: { custom: !!(settings.deliveryTemplate || '').trim() },
-      attachTemplate: { custom: !!(settings.attachTemplate || '').trim() },
+      // 兼容旧预览面板：这两个开关表示对应区块当前是否用了自定义模板
+      deliveryTemplate: { custom: !active.context.builtin, name: active.context.name },
+      attachTemplate: { custom: !active.attachment.builtin, name: active.attachment.name },
+      appendMode: settings.appendMode || 'xml',
+      // 每个区块各自选中的生效模板（内置 / 自定义）
+      blockTemplates: Object.fromEntries(
+        BLOCK_DEFS.map((d) => [
+          d.id,
+          {
+            id: active[d.id].id,
+            name: active[d.id].name,
+            custom: !active[d.id].builtin,
+            builtin: active[d.id].builtin,
+          },
+        ])
+      ),
       attachments: delivery.attachmentsSync ? { synced: delivery.attachmentsSync } : null,
     },
   };

@@ -9,19 +9,20 @@
 //   - 与队列的耦合全部走 localtask/service.js 的导出面；与计时目标的耦合走
 //     同模块的 timegoal.js（探针只读 + 交付时刻的目标上下文）。
 import { DEFAULT_PORT } from '../../core/paths.js';
-import { formatGoalTiming, hasTemplateMarkers, renderInstruction } from '../../core/instruction-template.js';
-import { DEFAULT_DELIVERY_TEMPLATE, buildDeliveryCtx, renderDelivery } from './delivery-template.js';
+import { formatGoalTiming, renderInstruction } from '../../core/instruction-template.js';
+import { buildDeliveryCtx } from './delivery-template.js';
 import {
-  clampTaskSuffix,
+  BLOCK_DEFS,
+  resolveBlockTemplates,
+} from '../../shared/prompt-blocks.js';
+import {
   clampTimeoutSec,
-  joinTaskSuffix,
   clearWaiting,
   consumeCancelRequest,
   consumeFirstPending,
   getSettings,
   GLOBAL_KEY,
   isGlobalKey,
-  joinAckPrompt,
   normalizeCwd,
   normalizeSummary,
   probeEffectivePresence,
@@ -35,7 +36,8 @@ import {
 import { ensureMainPanel, deepLinkUrl, escortPanel } from './panel-escort.js';
 import { ensureTaskGoal, previewTaskGoal } from './taskgoal.js';
 import { readGroupContext } from './groupctx.js';
-import { annotateTaskDelivery, attachInstructionOf } from './attach.js';
+import { annotateTaskDelivery, attachTemplateCtx } from './attach.js';
+import { composeSystemBlocks } from './system-blocks.js';
 import * as timegoal from './timegoal.js';
 
 // 跨进程兜底轮询间隔（只定这里的读取节奏；队列写入节奏与它无关）
@@ -128,21 +130,10 @@ async function readGoalCtx(cwd) {
 
 // ─── 阻塞等待：核心入口 ─────────────────────────────────────────────
 
-// 把收尾追加语拼到返回给 agent 的 task.text 末尾（只改返回载荷，绝不回写库存原文）。
-// suffix 为空 → 原样返回；已包含同样追加语（幂等）→ 不重复追加。
-function withTaskSuffix(task, suffix) {
-  const s = clampTaskSuffix(suffix);
-  if (!task || !s) return task;
-  const base = String(task.text || '');
-  if (base.includes(s)) return task;
-  return { ...task, text: `${base.replace(/\s+$/, '')}\n\n${s}` };
-}
-
-// 组装 wait/get 返回的任务载荷 + 收尾指令。分流（见 DEFAULT_TASK_SUFFIX 注释）：
-//   纯文本（无 {{）→ v0.x 行为：拼到 task.text 末尾（幂等、不回写库存）、无新字段；
-//   模板（含 {{） → 渲染进返回载荷的 instruction 字段，task.text 保持库存原文
-//                   （模板原文若追加进正文会把 {{...}} 漏进任务文本）；
-//   ''（关闭）    → 只回任务。
+// 组装 wait/get 返回的任务载荷 + 指令。**单一路径**：
+//   所有段落（上下文 / 附件 / 时间目标 / ack / 持续 get）一律进返回载荷的
+//   instruction 字段；task.text 始终是库存原文，绝不把系统提示词拼进正文。
+//   旧 rule 区块已删除：done 指令与收尾要求统一由 ack 区块承载。
 // 任何异常都降级为「只回任务」——wait 绝不能因渲染挂掉（与探针同一条 fail-open 纪律）。
 //
 // preview / trace（任务 #65「预览 get 提示词」）：
@@ -151,14 +142,10 @@ function withTaskSuffix(task, suffix) {
 //     完全同一条代码，所以预览出来的字符串就是 agent 会拿到的那一份。
 //   trace=[]     → 按顺序记下每一段的来源（谁贡献的、开关是否开着），供面板展示
 //     「这段是哪来的」。真实领取不传 trace，行为与改造前逐字节一致。
-export async function buildTaskDelivery(task, suffix, { source, summary, cwd, name, topicKey, params, preview = false, trace } = {}) {
-  // 多条收尾指令（settings.taskSuffix 存 string[]）先按空行拼成单串再分流；
-  // 兼容旧单条 string（joinTaskSuffix 对 string 原样算一条）。
-  const tpl = joinTaskSuffix(suffix);
+export async function buildTaskDelivery(task, { source, summary, cwd, name, topicKey, params, preview = false, trace, getLoopTpl = '', getLoopWaitMinutes = 0 } = {}) {
   // 附件标注（任务 #15：正文里的 ![名](fileId) 嵌入 → 附件清单 + 本地路径）。
   // fail-open：标注失败绝不拖垮交付；正文没有引用时 annotateTaskDelivery 返回
   // null，载荷与改造前**逐字节一致**（与 todo 读任务的同一条纪律）。
-  // 〔附件〕段本身等 settings 读到后再渲染（模板可配，任务 #82）——标注先行。
   let att = null;
   let attSync = null;
   try {
@@ -171,10 +158,6 @@ export async function buildTaskDelivery(task, suffix, { source, summary, cwd, na
   } catch {
     /* 标注失败照常交付（agent 还能从正文里的嵌入自行处理） */
   }
-  // 段落来源记录（预览用）：trace 为 undefined 时零开销、零行为变化
-  const mark = (id, label, text) => {
-    if (trace && text) trace.push({ id, label, text });
-  };
   try {
     // 任务级 timegoal（发布带 --duration）：**领取即计时**——这里起表（幂等），
     // goal 上下文换成任务级（prompt = check 指令，固化进 timegoal 存储，之后每轮原文回显）。
@@ -199,107 +182,87 @@ export async function buildTaskDelivery(task, suffix, { source, summary, cwd, na
     }
     const goal = enrichGoalTiming(taskGoalCtx || (await readGoalCtx(cwd)));
 
-    // 项目组上下文（组概念 + 本项目位置 + 兄弟成员 + 参考文件地址）：
-    // 只进 instruction，**task.text 保持库存原文**——todo 的口径是
-    // 「封装对应的提示词保持在原本的提示此任务下面对上下文环境进行一个封装」。
-    //
-    // **模板化**（任务 #62）：这段封装是一份模板 + 占位符（默认模板复现旧口径，
-    // 设置里可改，面板「提示词 / 模板」可见）；外部参数（--param k=v）平铺进
-    // ctx，模板里 {{k}} 直接取——引擎支持平面扩展。
+    // 项目组上下文（组概念 + 本项目位置 + 兄弟成员 + 参考文件地址）：只进 instruction。
     const groupCtx = await readGroupContext(cwd);
-    const settings = await getSettings().catch(() => null);
-    // 〔附件〕段：配置了模板（settings.attachTemplate）按模板渲染（ctx 见设置页
-    // 「变量字典」），空 = 内置默认（历史输出逐字节不变）。
-    const attSeg = att
-      ? attachInstructionOf(settings && settings.attachTemplate, att.task.attachments, att.sync, att.task)
-      : '';
-    const deliveryTpl = (settings && settings.deliveryTemplate) || DEFAULT_DELIVERY_TEMPLATE;
-    const groupText = renderDelivery(
-      deliveryTpl,
-      buildDeliveryCtx({ task, goal, source, summary, cwd, name, groupCtx, params }),
-    );
+    const settings = (await getSettings().catch(() => null)) || {};
+    const deliveryCtx = buildDeliveryCtx({ task, goal, source, summary, cwd, name, groupCtx, params });
 
-    // 〔ack 完成总结格式要求〕：settings.ackPrompt（多条，设置面板「提示词 / 模板」
-    // 一栏可配）——agent 领取时就拿到「完成总结该按什么格式写」的提示词。
-    // 缺省为空 → 不追加任何东西（默认交付逐字不变）；渲染失败也不拖垮交付。
-    let ackSeg = '';
-    try {
-      const ackTpl = joinAckPrompt((await getSettings()).ackPromptList);
-      if (ackTpl) {
-        const text = renderInstruction(ackTpl, {
-          goal,
-          task: task ? { id: task.id, text: String(task.text || '') } : null,
-          source: source || '',
-          summary: summary || '',
-          cwd: cwd || '',
-          name: name || '',
+    // ── 区块 v3：先备好**一份共享 ctx**，所有区块模板都从这份数据取值 ──
+    // 任务级 goal → 完整 check 指令；目录级 goal → 状态行（二者都进 timecheck 区块）。
+    const goalCheck = taskGoalCtx ? taskGoalCtx.prompt : null;
+    const goalStatus = !taskGoalCtx && goal
+      ? `〔时间目标「${goal.name || ''}」${goal.remainingHuman || ''}〕`
+      : null;
+    const attachCtx = att ? attachTemplateCtx(att.task.attachments, att.sync) : { attach: null };
+    const baseCtx = {
+      ...deliveryCtx,
+      // 共享 ctx 里的 goal 同时暴露 check / statusLine，模板不必区分两种来源。
+      goal: goal
+        ? { ...goal, check: goalCheck || '', statusLine: goalStatus || '' }
+        : null,
+      ...attachCtx,
+      task: task ? { id: task.id, text: String(task.text || '') } : null,
+    };
+    // 持续 get 模板本身也是模板（可含 {{task.id}} 等），先在变量上下文里渲染成文本，
+    // 再由 getloop 区块的 `{{getloop.text}}` 输出。渲染失败同样记告警（不静默）。
+    const renderWarnings = [];
+    let loopText = '';
+    if (getLoopTpl) {
+      try {
+        loopText = renderInstruction(getLoopTpl, baseCtx) || '';
+      } catch (e) {
+        renderWarnings.push({
+          block: 'getloop',
+          label: '持续 get 指令（项目级）',
+          message: String((e && e.message) || e).replace(/\s+/g, ' ').trim(),
         });
-        if (text) ackSeg = text;
       }
-    } catch {
-      /* 读不到 / 渲染失败 → 当没配 */
     }
+    const blockCtx = {
+      ...baseCtx,
+      getloop: loopText
+        ? { text: loopText, waitMinutes: Number(getLoopWaitMinutes) || 0 }
+        : null,
+    };
 
-    const parts = [];
-    if (groupText) parts.push(groupText);
-    mark('delivery', '交付上下文模板（组 / 项目关键路径）', groupText);
-    if (hasTemplateMarkers(tpl)) {
-      const instruction = renderInstruction(tpl, {
-        goal,
-        task: task ? { id: task.id, text: String(task.text || '') } : null,
-        source: source || '',
-        summary: summary || '',
-        cwd: cwd || '',
-        name: name || '',
-      });
-      if (instruction) parts.push(instruction);
-      mark('suffix', '回调提示词（收尾指令，模板渲染）', instruction);
-    } else if (!groupText) {
-      // 纯文本后缀 + 无组上下文 → 老行为：追加到 task.text 末尾（幂等、不回写库存）
-      const base = { task: withTaskSuffix(task, tpl) };
-      // 任务级 goal 必须把 check 指令带到 agent 手里——即使交付模板被关/是纯文本，
-      // 也要以独立 instruction 交付（这就是「提示词当中写上，让他进行一个 check」）。
-      if (taskGoalCtx) base.instruction = taskGoalCtx.prompt;
-      // 〔附件〕段同样必须到达 agent（它带本地路径/拉取方式），与 goal 段同一待遇
-      if (attSeg) base.instruction = base.instruction ? `${base.instruction}\n\n${attSeg}` : attSeg;
-      if (ackSeg) base.instruction = base.instruction ? `${base.instruction}\n\n${ackSeg}` : ackSeg;
-      if (attSync) base.attachmentsSync = attSync;
-      mark('suffix', '回调提示词（纯文本，追加在任务正文末尾）', tpl);
-      mark('goal', '任务级 check 指令（时间目标）', taskGoalCtx ? taskGoalCtx.prompt : '');
-      mark('attach', '附件段（本地路径 / 拉取方式）', attSeg);
-      mark('ack', 'ack 完成总结提示词', ackSeg);
-      return base;
-    } else {
-      parts.push(tpl); // 纯文本后缀 + 有组上下文 → 进 instruction，不污染 task.text
-      mark('suffix', '回调提示词（纯文本）', tpl);
+    const mode = settings.appendMode === 'plain' ? 'plain' : 'xml';
+    // 每个区块按各自列表中选中的生效模板渲染（内置常驻，找不到就回落内置）
+    const blockTemplates = resolveBlockTemplates(settings.blockTemplates);
+    const segments = [
+      { id: 'context', label: '组 / 项目上下文（模板）', traceId: 'delivery' },
+      { id: 'attachment', label: '附件段（清单 / 本地路径）', traceId: 'attach' },
+      { id: 'timecheck', label: '时间目标（状态 / check 指令）', traceId: 'goal' },
+      { id: 'ack', label: 'ack 完成总结提示词', traceId: 'ack' },
+      { id: 'getloop', label: '持续 get 指令（项目级）', traceId: 'getloop' },
+    ];
+    const full = composeSystemBlocks(segments, {
+      mode,
+      templates: blockTemplates,
+      ctx: blockCtx,
+      trace,
+      warnings: renderWarnings,
+    });
+    const warnField = renderWarnings.length ? { renderWarnings } : {};
+    if (!full) {
+      return { task, ...warnField, ...(attSync ? { attachmentsSync: attSync } : {}) };
     }
-    // 任务级 check 指令必须原样到达 agent（默认 suffix 模板不含 {{goal.prompt}}，
-    // 用户自定义模板也可能漏写）——任务级 goal 存在时始终以独立段落追加。
-    if (taskGoalCtx) parts.push(taskGoalCtx.prompt);
-    if (attSeg) parts.push(attSeg);
-    if (ackSeg) parts.push(ackSeg);
-    mark('goal', '任务级 check 指令（时间目标）', taskGoalCtx ? taskGoalCtx.prompt : '');
-    mark('attach', '附件段（本地路径 / 拉取方式）', attSeg);
-    mark('ack', 'ack 完成总结提示词', ackSeg);
-
-    const full = parts.join('\n\n').trim();
-    if (!full) return attSync ? { task, attachmentsSync: attSync } : { task };
-    // coversBody = 模板是否包含 {{task.text}}（即 instruction 是否自包含任务正文）。
-    // 由服务端判定而不是 CLI 端做子串猜测——短任务文本可能碰巧是指令的子串，
-    // 子串启发会误吞正文块的显示。
-    // **交付上下文模板也算**：它在正文之外另起一段，自带原文时同样覆盖正文块。
-    const coversBody =
-      (hasTemplateMarkers(tpl) && /\{\{\s*task\.text\s*\}\}/.test(tpl)) ||
-      (hasTemplateMarkers(deliveryTpl) && /\{\{\s*task\.text\s*\}\}/.test(deliveryTpl));
+    // coversBody = 启用区块的任一模板含 {{task.text}}（instruction 自包含任务正文）。
+    // 由服务端判定，避免 CLI 端做子串猜测。
     return {
       task,
       instruction: full,
-      coversBody,
+      coversBody: blocksCoverBody(blockTemplates),
+      ...warnField,
       ...(attSync ? { attachmentsSync: attSync } : {}),
     };
   } catch {
     return { task };
   }
+}
+
+/** 当前生效模板里是否有模板写了 {{task.text}}（instruction 自包含任务正文）。 */
+function blocksCoverBody(templates) {
+  return BLOCK_DEFS.some((d) => /\{\{\s*task\.text\s*\}\}/.test(String(templates?.[d.id]?.template || '')));
 }
 
 /**
@@ -323,6 +286,7 @@ export async function waitForTask({
   onReady,
   params = {}, // 外部参数（平面扩展）：进交付模板的 ctx（--param k=v）
   instant = false, // get 的「直接领」形态：没有 pending 立即空手而回，不开窗不阻塞
+  getLoopTpl = '', // 项目级「持续 get」模板（仅 get/preview 传；wait 不传 → 不出现该区块）
 } = {}) {
   const { key, cwd, name } = normalizeCwd(rawCwd);
   const summary = normalizeSummary(rawSummary); // 现状必填
@@ -341,12 +305,11 @@ export async function waitForTask({
   else if (timeoutMs !== undefined && timeoutMs !== null) sec = Number(timeoutMs) / 1000;
   else sec = startSettings.timeoutSec;
   const tmo = clampTimeoutSec(sec) * 1000;
-  const suffix = startSettings.taskSuffix; // 返回任务时追加的收尾指令（本轮固定；多条列表，交付时拼接）
 
   // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
   const queued = await consumeFirstPending(key, summary, by);
   if (queued) {
-    const delivery = await buildTaskDelivery(queued, suffix, { source: 'local', summary, cwd, name, topicKey: key, params });
+    const delivery = await buildTaskDelivery(queued, { source: 'local', summary, cwd, name, topicKey: key, params, getLoopTpl });
     return { status: 'ok', key, cwd, name, summary, ...delivery, queued: true, source: 'local', repo: repoCtx };
   }
 
@@ -363,7 +326,7 @@ export async function waitForTask({
   if (fromGlobal) {
     // 全局池投递渲染的仍是**等待方目录**的 goal——目标绑定在等待中的 agent 目录上，
     // 与任务来自哪个队列无关。
-    const delivery = await buildTaskDelivery(fromGlobal, suffix, { source: 'global', summary, cwd, name, topicKey: key, params });
+    const delivery = await buildTaskDelivery(fromGlobal, { source: 'global', summary, cwd, name, topicKey: key, params, getLoopTpl });
     return {
       status: 'ok',
       key,
@@ -477,11 +440,11 @@ export async function waitForTask({
   let result;
   try {
     const r = await outcome;
-    // 收尾指令在**返回时刻**组装（此刻的 goal 状态才是真实状态；阻塞期间到点会渲染出已到点）。
+    // 交付指令在**返回时刻**组装（此刻的 goal 状态才是真实状态；阻塞期间到点会渲染出已到点）。
     // 只对拿到任务的结果生效——timeout/goal_expired/cancelled 的返回形状是钉死的契约，不动。
     const delivery =
       r.kind === 'task'
-        ? await buildTaskDelivery(r.task, suffix, { source: r.source || 'local', summary, cwd, name, topicKey: key, params })
+        ? await buildTaskDelivery(r.task, { source: r.source || 'local', summary, cwd, name, topicKey: key, params, getLoopTpl })
         : null;
     result =
       r.kind === 'timeout'

@@ -165,7 +165,8 @@ nx-kv timegoal log    --cwd <dir>                                    # 回看每
 融合是**渲染时只读**（`showTimegoal` 只读路径，不写盘、不写 check 日志、不影响
 计时与到点判定），timegoal 自身的命令族与契约完全不变；`check` 的 prompt 原文
 回显仍是防漂移的唯一正式通道。要到 wait 的 instruction 里携带 prompt 原文，
-用 `localtask config --suffix` 自定义模板并写入 `{{goal.prompt}}`。
+用 `localtask config --block-templates` 给 timecheck 区块写自定义模板并包含
+`{{goal.prompt}}`。
 
 你可以把它当成一个独立计时器 + 便签本：`set` 把便签写进文件，`check` 读出来
 顺便告诉你还剩多少时间。

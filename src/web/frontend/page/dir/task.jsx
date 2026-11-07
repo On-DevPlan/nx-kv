@@ -1455,7 +1455,6 @@ function PreviewModal({ state, onClose }) {
   const sw = data?.switches || {};
   const swLine = data
     ? [
-        `回调提示词 ${sw.suffix?.on ? `开（${sw.suffix.count} 条）` : '关'}`,
         `ack ${sw.ack?.on ? `开（${sw.ack.count} 条）` : '关'}`,
         `交付上下文 ${sw.deliveryTemplate?.custom ? '自定义' : '内置默认'}`,
         `持续 get ${data.getLoop?.enabled ? `开（${data.getLoop.waitMinutes} 分钟）` : '关'}`,

@@ -13,6 +13,7 @@
 // 任务队列，数据存本地文件，不依赖后端登录态。
 import * as service from './service.js';
 import * as move from './move.js';
+import { BLOCK_DEFS, resolveBlockTemplates } from '../../shared/prompt-blocks.js';
 import { STATUS_TAG } from '../../shared/task-status.js';
 import { badInput } from '../../core/errors.js';
 
@@ -166,8 +167,7 @@ function renderPreview(d) {
   }
   const sw = d.switches || {};
   lines.push(
-    `── 开关 ── 回调提示词 ${sw.suffix?.on ? `开（${sw.suffix.count} 条）` : '关'}` +
-      ` · ack ${sw.ack?.on ? `开（${sw.ack.count} 条）` : '关'}` +
+    `── 开关 ── ack 提示词 ${sw.ack?.on ? `开（${sw.ack.count} 条）` : '关'}` +
       ` · 交付上下文 ${sw.deliveryTemplate?.custom ? '自定义' : '内置默认'}` +
       ` · 附件段 ${sw.attachTemplate?.custom ? '自定义' : '内置默认'}` +
       ` · 持续 get ${d.getLoop?.enabled ? `开（${d.getLoop.waitMinutes} 分钟）` : '关'}`,
@@ -712,80 +712,44 @@ export default {
       cli: ['localtask', 'config'],
       http: ['PATCH', '/api/localtasks/setting'],
       summary:
-        '配置等待超时（秒）/ 收尾指令（wait 返回时渲染进 instruction 字段或追加正文，可配多条）',
+        '配置等待超时（秒）/ ack 汇报要求（ack 区块，done 指令与收尾要求唯一出口）/ 每区块模板列表',
       flags: {
         timeout: { type: 'number', hint: '超时秒数（1-600）' },
-        suffix: {
-          type: 'string',
-          hint: '收尾指令（整体替换为这一条）。占位符：{{goal.name}} {{goal.remainingHuman}} {{goal.deadline}} {{goal.prompt}} {{task.id}} {{task.text}} {{source}} {{summary}} {{cwd}} {{name}}；段落 {{#goal}}…{{/goal}}/{{#task}}…{{/task}}（上下文缺失整段消失）。含 {{ 渲染进 instruction、task.text 保持原文；纯文本（无 {{）维持旧追加行为；置空关闭；不支持字面 {{ 转义（与 --reset-suffix/--no-suffix 互斥）',
-        },
-        'reset-suffix': { type: 'boolean', hint: '恢复默认收尾指令（单条）' },
-        'no-suffix': { type: 'boolean', hint: '清空并关闭收尾指令' },
-        'suffix-add': {
-          type: 'string',
-          hint: '追加一条收尾指令（与既有各条并存，按空行拼接交付；≤2000 字）——与 --suffix/--no-suffix/--reset-suffix 互斥',
-        },
-        'suffix-remove': {
-          type: 'number',
-          hint: '按序号删除一条收尾指令（--json settings.taskSuffixList 的 1 基序号）——与 --suffix/--no-suffix/--reset-suffix 互斥',
-        },
         ack: {
           type: 'string',
-          hint: 'ack 完成总结提示词（agent 完成任务时写完成总结的格式要求；随领取交付的 instruction 给到 agent）。占位符同 --suffix；传空 = 关闭。设置面板「提示词 / 模板」一栏也能配',
+          hint: 'ack 汇报要求（写入 ack 区块的「命令行」模板并启用；默认内置要求 agent 调 localtask done）。传空 = 恢复内置',
         },
-        // **整体替换**多条列表（面板「提示词 / 模板」一栏用这个保存；服务层本就吃列表，
-        // 但此前 action 只暴露单条 flag → 面板保存 400 且静默无效，2026-11-04 #41 实测发现）。
-        'suffix-list': { type: 'array', hint: '整体替换收尾指令列表（多条，一项一条）' },
-        suffixList: { type: 'array', hint: '同 --suffix-list（驼峰写法，HTTP body 用）' },
+        // **整体替换**多条列表（面板旧字段兼容；服务层按条拼接后写入对应区块）
         'ack-list': { type: 'array', hint: '整体替换 ack 完成总结提示词列表（多条）' },
         ackList: { type: 'array', hint: '同 --ack-list（驼峰写法，HTTP body 用）' },
         'delivery-template': {
           type: 'string',
-          hint: '交付上下文模板（原始提示词之外那段「组/项目关键路径」怎么写）。占位符：{{task.text}} {{repo.name}} {{repo.intro}} {{repo.introPath}} {{repo.docs}} {{group.name}} {{group.desc}} {{group.intro}} {{group.introPath}} {{group.note}} {{group.peers}} {{group.docs}} {{source}} {{summary}} {{cwd}} {{name}}；段落 {{#repo}}…{{/repo}}、{{#group}}…{{/group}}；外部参数 {{params.k}} 与顶层 {{k}}。置空 = 恢复内置默认模板',
+          hint: '交付上下文模板（写入 context 区块的「命令行」模板并启用）；置空 = 恢复内置默认模板。变量与语法见 skill / docs',
         },
-        'reset-delivery-template': { type: 'boolean', hint: '恢复内置默认交付上下文模板' },
+        'reset-delivery-template': { type: 'boolean', hint: '恢复 context 区块内置模板' },
         'attach-template': {
           type: 'string',
-          hint: '附件段提示词（交付里〔附件〕段的清单与拉取 SOP 怎么写）。占位符：{{task.id}} {{task.text}} {{attach.count}} {{attach.list}} {{attach.sync}}；段落 {{#attachSync}}…{{/attachSync}}（本次跑过云端同步才出现）。置空 = 用内置默认（附件段带本地路径，不能真关掉）',
+          hint: '附件段提示词（写入 attachment 区块的「命令行」模板并启用）；置空 = 恢复内置默认模板',
         },
         attachTemplate: { type: 'string', hint: '同 --attach-template（驼峰写法，HTTP body 用）' },
-        'reset-attach-template': { type: 'boolean', hint: '恢复内置默认附件段提示词' },
+        'reset-attach-template': { type: 'boolean', hint: '恢复 attachment 区块内置模板' },
+        'append-mode': {
+          type: 'string',
+          hint: '系统上下文追加模式（全局）：xml（默认，每段包独立标签）/ plain（按空行直接拼正文）。HTTP body 用 appendMode',
+        },
+        'block-templates': {
+          type: 'string',
+          hint: '每区块模板列表（JSON 对象）：{"context":{"active":"builtin","list":[…]},…}。HTTP body 用 blockTemplates（对象）',
+        },
       },
       run: async (ctx) => {
         const patch = { timeoutSec: ctx.timeout };
         if (ctx.ack !== undefined) patch.ackPrompt = ctx.ack;
-        const suffixList = ctx.suffixList ?? ctx['suffix-list'];
         const ackList = ctx.ackList ?? ctx['ack-list'];
-        if (suffixList !== undefined || ackList !== undefined) {
-          if (ctx.suffix !== undefined || ctx['no-suffix'] || ctx['reset-suffix']
-            || ctx['suffix-add'] !== undefined || ctx['suffix-remove'] !== undefined) {
-            throw badInput('--suffix-list 不能与 --suffix / --no-suffix / --reset-suffix / --suffix-add / --suffix-remove 同用');
-          }
+        if (ackList !== undefined) {
           if (ctx.ack !== undefined) throw badInput('--ack-list 不能与 --ack 同用');
-          if (suffixList !== undefined) patch.taskSuffix = suffixList;
-          if (ackList !== undefined) patch.ackPrompt = ackList;
+          patch.ackPrompt = ackList;
         }
-        const add = ctx['suffix-add'];
-        const removeN = ctx['suffix-remove'];
-        if (add !== undefined || removeN !== undefined) {
-          // 按条增删要在**现有列表**上操作——与整体替换类 flag 互斥，避免同一次调用
-          // 又替换又增删时序号语义说不清。
-          if (ctx['no-suffix'] || ctx['reset-suffix'] || ctx.suffix !== undefined) {
-            throw badInput('--suffix-add / --suffix-remove 不能与 --suffix / --no-suffix / --reset-suffix 同用');
-          }
-          const cur = (await service.getSettings()).taskSuffixList;
-          if (removeN !== undefined) {
-            const n = Number(removeN);
-            if (!Number.isInteger(n) || n < 1 || n > cur.length) {
-              throw badInput(`--suffix-remove 需为 1-${cur.length} 的序号（当前 ${cur.length} 条）`);
-            }
-            cur.splice(n - 1, 1);
-          }
-          if (add !== undefined && String(add).trim()) cur.push(String(add));
-          patch.taskSuffix = cur;
-        } else if (ctx['no-suffix']) patch.taskSuffix = [];
-        else if (ctx['reset-suffix']) patch.taskSuffix = [service.DEFAULT_TASK_SUFFIX];
-        else if (ctx.suffix !== undefined) patch.taskSuffix = ctx.suffix;
         // 交付上下文模板（任务 #62）：置空 = 恢复内置默认模板
         if (ctx['delivery-template'] !== undefined) patch.deliveryTemplate = ctx['delivery-template'];
         if (ctx['reset-delivery-template']) patch.deliveryTemplate = '';
@@ -793,14 +757,29 @@ export default {
         const attachTpl = ctx.attachTemplate ?? ctx['attach-template'];
         if (attachTpl !== undefined) patch.attachTemplate = attachTpl;
         if (ctx['reset-attach-template']) patch.attachTemplate = '';
+        // 系统上下文追加模式（全局）
+        const appendMode = ctx.appendMode ?? ctx['append-mode'];
+        if (appendMode !== undefined) patch.appendMode = appendMode;
+        // 每区块模板列表（设置面板「提示词模板」模块）：支持 JSON 字符串 / HTTP body 对象
+        let blockTemplates = ctx.blockTemplates ?? ctx['block-templates'];
+        if (typeof blockTemplates === 'string') {
+          try {
+            blockTemplates = JSON.parse(blockTemplates);
+          } catch {
+            throw badInput(
+              '--block-templates 需为合法 JSON 对象（形如 {"context":{"active":"builtin","list":[…]}}）'
+            );
+          }
+        }
+        if (blockTemplates !== undefined) patch.blockTemplates = blockTemplates;
         return service.updateSettings(patch);
       },
       render: (s) => {
-        const x = s.suffixEnabled
-          ? `收尾指令已开启（${s.taskSuffixList.length} 条）`
-          : '收尾指令已关闭';
-        const ack = s.ackPromptList && s.ackPromptList.length ? ` · ack 提示词 ${s.ackPromptList.length} 条` : '';
-        return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· ${x}${ack}`;
+        const ack = s.ackPromptList && s.ackPromptList.length ? `ack 提示词 ${s.ackPromptList.length} 条` : 'ack 提示词已清空';
+        const mode = s.appendMode === 'plain' ? '正文直追加' : 'XML 区块';
+        const active = resolveBlockTemplates(s.blockTemplates);
+        const blocks = BLOCK_DEFS.map((d) => `${d.id}=${active[d.id].builtin ? '内置' : `「${active[d.id].name}」`}`).join('，');
+        return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· ${ack} · 追加模式：${mode} · 区块模板：${blocks}`;
       },
     },
 

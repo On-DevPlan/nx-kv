@@ -14,10 +14,12 @@
 // get 后由系统负责把循环指令带进交付文本，agent 不用自己记）。
 import { waitForTask } from './wait.js';
 import { getLoopForCwd, DEFAULT_GET_LOOP_TEMPLATE } from './getloop.js';
-import { hasTemplateMarkers, renderInstruction } from '../../core/instruction-template.js';
 
 export async function getTask({ cwd, summary, timeoutSec, open = true, params } = {}) {
   const loop = await getLoopForCwd(cwd);
+  // 项目开启「持续 get」时，循环指令作为 getloop 区块随其余系统段一起由
+  // buildTaskDelivery 统一编排（不再在 get 层后置拼接，避免同一份 instruction
+  // 有两个拼装入口）。
   const r = await waitForTask({
     cwd,
     summary,
@@ -27,33 +29,10 @@ export async function getTask({ cwd, summary, timeoutSec, open = true, params } 
     open,
     instant: !loop.enabled,
     params: params || {}, // 外部参数（平面扩展）进交付模板
+    getLoopTpl: loop.enabled ? loop.template || DEFAULT_GET_LOOP_TEMPLATE : '',
+    getLoopWaitMinutes: loop.enabled ? loop.waitMinutes || 0 : 0,
   });
   if (r.status !== 'ok' || !r.task) return r;
-
-  // 项目模板叠加：领到任务时把「继续 get」的循环指令渲染进 instruction
-  // （与收尾指令 suffix 并存：先 suffix 渲染，再追加项目模板段）。
-  //
-  // **只在项目开启了「持续 get」时才叠加**：默认形态是「直接 get」——
-  // 队列空就立即空手而回（instant），再附一条「继续 get 直到超时」的指令等于
-  // 让 agent 去追一个永远不会来的任务，也与本文件的语义注释相矛盾。
-  const tpl = loop.enabled ? loop.template || DEFAULT_GET_LOOP_TEMPLATE : '';
-  try {
-    if (hasTemplateMarkers(tpl)) {
-      const seg = renderInstruction(tpl, {
-        task: r.task ? { id: r.task.id, text: String(r.task.text || '') } : null,
-        source: r.source || 'local',
-        summary: r.summary || '',
-        cwd: r.cwd || '',
-        name: r.name || '',
-        goal: null,
-      });
-      if (seg) {
-        r.instruction = r.instruction ? `${r.instruction}\n\n${seg}` : seg;
-        r.getLoop = true; // 交付里带了持续 get 指令（调试/文档可辨）
-      }
-    }
-  } catch {
-    /* 模板渲染失败不拖垮领取 */
-  }
+  if (loop.enabled) r.getLoop = true; // 交付里带了持续 get 指令（调试/文档可辨）
   return r;
 }

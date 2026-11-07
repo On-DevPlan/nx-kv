@@ -160,9 +160,10 @@ test('目标到点但队列里还有任务：照常领走（到点不该把已�
   const r = await waitForTask({ cwd: dir, summary: '有活先干', timeoutSec: 1, open: false });
 
   assert.equal(r.status, 'ok', '队列里有活就先领走');
-  // 默认后缀已升级为模板：task.text 保持库存原文（精确相等），收尾指令在 instruction 字段
+  // 默认 rule 注入已取消：task.text 保持库存原文，交付里只带默认 ack 汇报指令
   assert.equal(r.task.text, '队列里排着的任务', '模板模式下 task.text 不再追加');
-  assert.ok(r.instruction.includes('规划计划'), 'instruction 含默认模板的收尾指令');
+  assert.ok(r.instruction.includes('localtask done'), 'instruction 含默认 ack 汇报指令');
+  assert.doesNotMatch(r.instruction, /<nx-kv\.rule>/, '不再注入隐藏的默认 rule');
 });
 
 test('goal 存活时 wait 的 instruction 携带目标状态（默认模板），且只读不落库', async () => {
@@ -180,24 +181,25 @@ test('goal 存活时 wait 的 instruction 携带目标状态（默认模板）�
     r.instruction.includes(`〔时间目标「projG」剩余`),
     `instruction 含默认模板 goal 段：${JSON.stringify(r.instruction)}`
   );
-  assert.ok(r.instruction.includes('规划计划'), '收尾指令在 goal 段之后');
   assert.ok(!r.instruction.includes(PROMPT), '默认模板不携带 prompt 原文（投递保持轻量；prompt 走 check 回显）');
   assert.equal(after, before, 'wait 渲染不许写库（showTimegoal 只读契约）');
 });
 
 test('自定义模板含 {{goal.prompt}}：prompt 原文逐字嵌入（防漂移契约的字符串学保证）', async () => {
   await reset();
-  await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: '根指令：含 {{字面}} 与 {{#goal}} 的原文' });
-  await svc.updateSettings({ taskSuffix: '{{#goal}}PROMPT>>{{goal.prompt}}<<{{/goal}}' });
+  await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: '根指令：含 {{字面}} 与 {{goal.name}} 的原文' });
+  await svc.updateSettings({ ackPrompt: '{{#if goal}}PROMPT>>{{goal.prompt}}<<{{/if}}' });
   await svc.addTask({ cwd: dir, text: 'BODY' });
 
   const r = await waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
 
-  assert.equal(
-    r.instruction,
-    'PROMPT>>根指令：含 {{字面}} 与 {{#goal}} 的原文<<',
+  // 系统上下文默认包进 <nx-kv.ack> 区块；核心契约不变——prompt 原文逐字进交付，
+  // 且只渲染一遍（prompt 里的 {{字面}} / {{goal.name}} 不会被二次展开）。
+  assert.ok(
+    r.instruction.includes('PROMPT>>根指令：含 {{字面}} 与 {{goal.name}} 的原文<<'),
     '单遍渲染：prompt 里的 {{...}} 与段落标记逐字原样，不再展开'
   );
+  assert.match(r.instruction, /<nx-kv\.ack>/, '默认 XML 模式：ack 指令进独立区块');
 });
 
 test('goal 已到点：instruction 显示已到点（信息性），领取不受影响', async () => {

@@ -16,6 +16,7 @@ import http from 'node:http';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-sse-'));
 const storeFile = join(tmp, 'localtasks.json');
+process.env.NX_KV_DB = join(tmp, 'nxkv.db'); // 显式钉库：防止外部 NX_KV_DB 覆盖隔离
 process.env.NX_KV_LOCALTASK_STORE = storeFile;
 const cwd = process.cwd();
 const svcUrl = pathToFileURL(join(cwd, 'src/modules/localtask/service.js')).href;
@@ -23,7 +24,6 @@ const svc = await import(svcUrl);
 
 async function reset() {
   try { svc.resetLocaltaskStore(); } catch { /* 不存在即可 */ }
-  await svc.updateSettings({ taskSuffix: '' });
 }
 
 test('remindersDue：剩余 30s/10s 各触发一次，过后不重复', () => {

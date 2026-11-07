@@ -97,20 +97,22 @@ export async function pruneTopics({ allFinished = false, dryRun = false } = {}) 
   return { status: 'ok', dryRun: !!dryRun, count: removed.length, removed };
 }
 
-// 配置等待超时 / 收尾指令（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟；
-// taskSuffix 为 wait 交付的收尾指令：v0.14 起接受 string[]（多条，canonical），
-// 也兼容 string（旧单条写法，整体算一条）。条数上限 10、单条 ≤2000 字；
-// 含 {{ 占位符 → 渲染进返回的 instruction 字段；纯文本 → 追加到 task.text 末尾；
-// 传 '' / [] 关闭、不传保持不变。
-export async function updateSettings({ timeoutSec, taskSuffix, ackPrompt, deliveryTemplate, attachTemplate } = {}) {
+// 配置等待超时 / ack 汇报要求（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟；
+// ackPrompt 写入 ack 区块的「命令行」模板并启用（done 指令与收尾要求只有这一个出口），
+// 传 '' / [] 恢复内置、不传保持不变。
+//
+// blockTemplates：每区块独立模板列表 `{ [blockId]: { active, list } }`
+// （结构见 shared/prompt-blocks.js 的 normalizeBlockTemplateLists）。
+export async function updateSettings({ timeoutSec, ackPrompt, deliveryTemplate, attachTemplate, appendMode, blockTemplates } = {}) {
   const hasTimeout = timeoutSec !== undefined && timeoutSec !== null;
-  const hasSuffix = taskSuffix !== undefined;
   const hasAck = ackPrompt !== undefined;
   const hasDelivery = deliveryTemplate !== undefined;
   const hasAttach = attachTemplate !== undefined;
-  if (!hasTimeout && !hasSuffix && !hasAck && !hasDelivery && !hasAttach) {
+  const hasAppend = appendMode !== undefined;
+  const hasBlocks = blockTemplates !== undefined;
+  if (!hasTimeout && !hasAck && !hasDelivery && !hasAttach && !hasAppend && !hasBlocks) {
     throw badInput(
-      '请至少指定一项：--timeout <秒>，或 --suffix "<收尾指令模板>"（--no-suffix 关闭、--reset-suffix 恢复默认、--suffix-add/--suffix-remove 按条增删），或 --ack "<ack 提示词>"'
+      '请至少指定一项：--timeout <秒>，或 --ack "<ack 提示词>"，或 --append-mode，或 --block-templates "JSON 对象"'
     );
   }
   if (hasTimeout) {
@@ -122,10 +124,11 @@ export async function updateSettings({ timeoutSec, taskSuffix, ackPrompt, delive
   openStore();
   settingsRepo.setLtSettings({
     timeoutSec: hasTimeout ? timeoutSec : undefined,
-    taskSuffix: hasSuffix ? taskSuffix : undefined,
     ackPrompt: hasAck ? ackPrompt : undefined,
     deliveryTemplate: hasDelivery ? deliveryTemplate : undefined,
     attachTemplate: hasAttach ? attachTemplate : undefined,
+    appendMode: hasAppend ? appendMode : undefined,
+    blockTemplates: hasBlocks ? blockTemplates : undefined,
   });
   return settingsRepo.settingsView();
 }

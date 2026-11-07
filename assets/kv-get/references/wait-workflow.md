@@ -21,7 +21,7 @@
         自动打开浏览器弹窗，然后阻塞。
 4. 用户看清现状，回填新任务。
 5. wait 解除阻塞，stdout(--json) 返回 {status:"ok", task}，进程退出。
-6. agent 从工具结果读 task.text（任务本体）与 instruction（收尾指令模板的渲染结果，
+6. agent 从工具结果读 task.text（任务本体）与 instruction（5 个系统区块的渲染结果，
    有则必读），继续干活、提交结果；做完【必须】回到第 2 步——
    循环，不许自行中断。
 7. 若阻塞时限（默认 180 秒）内没有回填：wait 返回 {status:"timeout"}（exit 0），
@@ -79,7 +79,7 @@ wait 必带一句当前现状总结（≤2000 字，连续空白会折叠为单�
   "task": { "id": 3, "text": "选择工作空间 A", "status": "consumed",
             "createdAt": "2026-10-11 10:00:00", "consumedAt": "2026-10-11 10:00:04",
             "roundSummary": "已完成登录，等待选择工作空间" },
-  "instruction": "〔时间目标「demo」剩余 2.5 小时〕规划计划，然后完成这个任务；计划的最后一个动作，是再次调用 nx-kv localtask wait（带上 --cwd 当前工作目录、--summary 当前现状、--json）收尾本轮，在拿到下一条任务或超时之前不要提前结束。",
+  "instruction": "<nx-kv><nx-kv.context>…项目 / 组上下文…</nx-kv.context><nx-kv.timecheck>〔时间目标「demo」剩余 2.5 小时〕</nx-kv.timecheck><nx-kv.ack>完成之后必须调用 nx-kv localtask done --id 3 --summary \"<完成总结>\" 汇报结果。</nx-kv.ack></nx-kv>",
   "delivered": true,
   "queued": false,
   "source": "local"
@@ -90,18 +90,43 @@ wait 必带一句当前现状总结（≤2000 字，连续空白会折叠为单�
 - `source` = 任务来自哪个队列：`"local"`（本目录队列，含实时回填）或 `"global"`
   （全局任务池）；agent 不必区分，照常执行 `task.text`。
 - **任务内容永远读 `task.text`**，多行换行原样保留。
-- **`instruction` 有则必读**：收尾指令模板的服务端渲染结果——默认含该目录 timegoal
-  的剩余预算（没挂目标则无这段）+「计划最后再 wait 一次」。模板含 `{{task.text}}`
-  时 instruction 自包含（正文以它为准）。字段缺席 = 已关闭或本轮没有可渲染内容，只执行任务。
-- **配置**：`nx-kv localtask config --suffix "<模板>"`（占位符
-  `{{goal.name}} {{goal.remainingHuman}} {{goal.prompt}} {{task.text}} {{source}} {{name}}…`，
-  段落 `{{#goal}}…{{/goal}}` 上下文缺失整段消失；`--no-suffix` 关闭、
-  `--reset-suffix` 恢复默认；**多条**用 `--suffix-list "第一条,第二条"`（逗号分隔）整体替换，
-  或 `--suffix-add` / `--suffix-remove <序号>` 按条增删）。字段缺席 = 已关闭或本轮没有可渲染内容。
-- **ack 提示词（完成总结的格式要求）**：`nx-kv localtask config --ack "<提示词>"`
-  （占位符同上；多条用 `--ack-list "第一条,第二条"`（逗号分隔）整体替换）。配置后，它会随 `instruction` 一起交给你——按它要求的格式
-  写 `localtask done --summary "<完成总结>"` 即可；没配置时 `instruction` 里没有
-  这段，格式自便。
+- **`instruction` 有则必读**：系统区块的服务端渲染结果——项目 / 组上下文、附件清单与
+  本地路径、时间目标状态（任务级目标另带 check 指令）、ack 汇报指令、项目级持续 get 指令。
+  字段缺席 = 本轮没有可渲染内容，直接执行任务。
+- **配置模型（一份共享变量 + Handlebars 模板）**：所有系统段落都由同一份入参列表渲染——
+  项目（`repo.*`）、组（`group.*`，含组定位 / 本项目位置 / 成员 / 参考文件）、
+  任务（`task.*`）、附件（`attach.*`）、时间目标（`goal.*`）、持续 get（`getloop.*`），
+  外加 `source / summary / cwd / name / params`。引擎是 **Handlebars 4.x**：
+  `{{var}}` 取值、`{{#if x}}…{{else}}…{{/if}}` 条件、`{{#each list}}…{{/each}}` 循环。
+  列表类变量是**结构化数组**（`group.peers` / `repo.docs` / `group.docs` / `attach.list` /
+  `groups`），模板用循环组织，服务端不预拼多行文本。
+  旧语法**已废弃、不再兼容**：`{{#repo}}…{{/repo}}` 这类旧闸门、旧纯文本占位符
+  （`{{group.peers}}` / `{{repo.docs}}` / `{{attach.list}}` / `{{groups}}`）、
+  `{{attach.sync}}` / `{{attach.syncText}}` 旧别名、`{{block.content}}` 旧包装都不再生效；
+  保存时直接拒绝并提示改用 `{{#if}}` / `{{#each}}`，运行期遇到按坏模板回落内置模板。
+  旧模板不保证可用；升级前请按新语法改写（迁移说明见 CHANGELOG）。
+  语法错误**保存时直接拒绝**并指出模板与区块；渲染期若仍遇到坏模板，该区块回落到
+  内置模板，并在返回载荷的 `renderWarnings` 里给出原因（不静默、不阻断领取）。
+- **ack（完成指令与收尾要求的唯一出口）**：默认已内置——`完成之后必须调用 nx-kv
+  localtask done --id {{task.id}} --summary "<完成总结>" 汇报结果。`；在面板
+  「设置 → 提示词模板 → ack 完成总结」里可见、可编辑、可复制后改。`--ack ""`
+  恢复内置模板（不是关闭：每个区块始终保留系统内置模板）；多条用 `--ack-list` 整体替换。
+  旧 `rule`（回调提示词）区块已删除：`--suffix*` 与 `taskSuffix*` 视图字段一并移除；
+  旧数据里的 rule 内容（含 `lt.taskSuffix` / 残留的 `blockTemplates.rule`）首次读取时
+  按空行并入 ack 当前生效模板，不丢内容。
+- **系统上下文默认是 XML 区块**：`instruction` 里每段系统内容各包一个标签——
+  `<nx-kv.context>`（组 / 项目上下文）、`<nx-kv.attachment>`（附件清单与识别要求）、
+  `<nx-kv.timecheck>`（时间目标状态 / check 指令）、
+  `<nx-kv.ack>`（完成总结汇报指令，默认内置）、`<nx-kv.getloop>`（项目开启持续 get 时），
+  整体再包一层 `<nx-kv>`。看到这些标签就知道是系统追加内容，`task.text` 仍是任务原文。
+  追加模式可配：`--append-mode xml|plain`（默认 `xml`；`plain` = 按空行直拼）。
+- **每个区块各自一份模板列表**：context / attachment / timecheck / ack / getloop 各自
+  有独立的列表与生效项（共 5 个区块）。面板「设置 → 提示词模板」按区块新建 / 编辑 /
+  复制 / 删除 / 启用；CLI 用 `--block-templates '<JSON>'` 整体或按区块更新。
+  每个区块始终保留系统内置模板（不可删除）；用户模板删光后按内置渲染。
+  旧配置（`{{block.content}}` 包装模板、多段 items、`deliveryTemplate/attachTemplate/
+  taskSuffix/ackPrompt`、整组模板与 `xmlBlocks`）在首次读取时自动迁移到对应区块，
+  其中 rule 内容并入 ack，不丢内容；旧语法模板不迁移（旧模板不保证可用）。
 
 超时（exit 0，业务结果而非错误）：
 

@@ -2,6 +2,64 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### Changed
+
+- **提示词模板改用 Handlebars 4.x 渲染（替换自研解析器）**：原生支持
+  `{{#if x}}…{{else}}…{{/if}}` 与 `{{#each list}}…{{/each}}`，关闭 HTML 转义，
+  单遍渲染（插入正文里的 `{{…}}` 逐字保留）。列表类变量改为**结构化数组**
+  （`repo.docs` / `group.peers` / `group.docs` / `attach.list` / `groups`），
+  由模板循环组织，服务端不再预拼多行文本放进变量。
+- **旧写法不再兼容（Breaking）**：删除 `{{#repo}}…{{/repo}}` 这类旧闸门的兼容
+  （含 `blockHelperMissing` 覆盖）、旧列表占位符自动改写、`{{attach.sync}}` /
+  `{{attach.syncText}}` 别名与 `{{block.content}}` 旧包装。不再维护新旧两套语法：
+  保存时直接拒绝并提示改用 `{{#if}}` / `{{#each}}`；运行期遇到按坏模板回落该区块
+  内置模板，并在返回载荷的 `renderWarnings` 说明原因。**旧模板不保证可用**，
+  迁移时只保留语法有效的旧模板（旧语法模板跳过）。
+- **每个区块各自一份模板列表（设置面板重构）**：context / attachment / timecheck /
+  ack / getloop 各自有独立的模板列表页，可在列表内新建、编辑、复制、删除，
+  并指定该区块当前生效的那一个，保存即生效；不再有「全局模板集合 + 整体切换」，
+  `activePromptTemplate` 概念已删除。每个区块始终保留一个**系统内置模板**
+  （不可删除、不可编辑，可恢复内置）；用户模板删光后按内置模板渲染，不会出现空区块。
+  各区块仍共用同一份 ctx；全局设置（`appendMode`）整体生效。
+- **设置页不再展示引擎与语法说明**：去掉变量字典、示例片段、引擎名称与语法讲解，
+  页面只保留模板编辑、启用与列表操作；语法 / 变量说明只写在 skill 与 `docs/`。
+- 内置的上下文 / 附件 / timecheck / ack / getloop 模板全部用新语法重写。
+
+- **设置拆成两个独立模块**：左侧分区改为「任务模板」（任务正文骨架，纯字符串槽位）与
+  「提示词模板」（每区块模板列表 / 启用项）两块，不再混在同一个「模板管理」里；
+  分区与子页签仍是**点击才切换**，不随鼠标悬浮跳页。
+- **领取任务的系统上下文默认按 XML 区块追加**：附件识别、时间目标状态 / check 指令、
+  组 / 项目上下文、ack 汇报指令各包独立标签（`<nx-kv.attachment>` 等，整体再包 `<nx-kv>`），
+  agent 能一眼分清系统内容与 `task.text` 原文。可在「设置 → 提示词模板」切换
+  `xml` / `plain`（`plain` = 按空行直拼的逐字行为）。
+- **提示词渲染模型收敛为「一份共享入参列表 + 每区块模板列表」**：所有区块模板共用同一个
+  ctx（`repo.*`、`group.*`、`task.*`、`attach.*`、`goal.*`、`getloop.*`、`source/summary/
+  cwd/name/params`）；每个区块由自己的列表 + `active` 指定生效模板，标签与输出顺序由系统编排。
+  撤掉 v2 的区块对象（`items` / `wrapper` / 每块独立变量表 / 预设）与 `{{block.content}}`。
+- **ack 是完成指令的唯一出口**：缺省注入「完成之后必须调用 `nx-kv localtask done --id {{task.id}}`」，
+  在 ack 区块列表里直接看到、复制修改或恢复内置。**旧 `rule`（回调提示词）区块已删除**，
+  `--suffix` / `--no-suffix` / `--reset-suffix` / `--suffix-add` / `--suffix-remove` /
+  `--suffix-list` 与 `taskSuffix*` 视图字段一并移除；旧数据里的 rule 模板（含 `lt.taskSuffix`
+  与残留的 `blockTemplates.rule`）在首次读取时**并入 ack**（与 ack 当前生效模板按空行拼接），
+  不静默丢内容；写盘后 `lt.blockTemplates` 不再出现 `rule` 键。
+- **领取交付的上下文只留业务信息**：压缩工具 / 机制说明，只保留项目与组业务上下文
+  （组定位、本项目在组内位置、成员与参考文件）、时间目标状态与必要执行信息。
+- **提示词模板改为「每区块独立列表」的配置页**：每个区块各自新建 / 复制 / 删除 / 启用 /
+  编辑，保存即生效；内置模板常驻且不可删，删光用户模板后仍按内置渲染。
+  旧 `appendMode/xmlBlocks`、`deliveryTemplate`、`attachTemplate`、`taskSuffix`、`ackPrompt`
+  （以及旧的整组 `promptTemplates` / `activePromptTemplate`）只作为**首次迁移来源**，
+  迁入各区块列表后不再读写。
+- **内置任务模板扩充**：除默认模板外新增「缺陷修复 / 功能开发 / 调研任务 / 文档修订」
+  四套带槽位默认文字的骨架，模板列表可直接选，不再只有单一空壳。
+
+### Added
+
+- `nx-kv localtask config --append-mode xml|plain`：CLI 侧配置全局追加模式。
+- `nx-kv localtask config --block-templates '<JSON>'`：CLI 侧整体/按区块更新
+  「每区块模板列表 + 生效项」（与设置面板同源）。
+
 ## [0.29.0] - 2026-11-07 存储层全量迁移 SQLite（nxkv.db）
 
 ### Breaking（升级前必读）

@@ -90,15 +90,17 @@ nx-kv repo doc list <repoId>
 nx-kv docs link nx --doc board/nx/reference/qa.md --note "问答集" --tag qa
 ```
 
-### 提示词 / 模板（设置面板「提示词 / 模板」一栏，CLI 同口径）
+### 提示词模板（设置面板「提示词模板」一栏，CLI 同口径）
+
+5 个区块各有一份模板列表与生效项：context / attachment / timecheck / ack / getloop。
+ack 是完成指令与收尾要求的唯一出口（旧 `rule` / `--suffix*` 已移除，旧数据读取时并入 ack）。
 
 ```bash
-# 回调提示词（收尾指令）：多条，每条 ≤2000 字，最多 10 条
-nx-kv localtask config --suffix "本轮最后再 wait 一次"
-nx-kv localtask config --suffix-add "先读 docs 再动手"   # 按条增删：--suffix-remove <序号>
-
 # ack 完成总结提示词：agent 写完成总结（ack）时的格式要求，随领取交付给到它
 nx-kv localtask config --ack "完成总结按「改了什么 · 怎么验证 · 遗留什么」三段写"
+
+# 按区块整体更新（JSON：每个区块 { active, list }；只传部分区块时不动其它区块）
+nx-kv localtask config --block-templates '{"ack":{"active":"t1","list":[{"id":"t1","name":"自定义 ack","template":"完成后调用 localtask done --id {{task.id}}"}]}}'
 
 # 任务模板槽位：正文里的 {{槽位名}} 处填这段文字（内置模板只改槽位，骨架不可改）
 nx-kv template update default --values '{"背景":"把简介文档支持 tag"}'
@@ -369,7 +371,7 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
   ---
   # 修 bug
   正文内容
-  ── 收尾指令 ──
+  ── 系统区块（instruction）──
   〔项目介绍 · nx-kv〕（…\docs\repo\local\nx-kv.md）：
   # nx-kv
   KV 清单管理中枢：远程清单 + 本机任务队列

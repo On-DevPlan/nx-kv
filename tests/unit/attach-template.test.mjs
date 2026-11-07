@@ -1,7 +1,7 @@
 // 任务 #82：附件段提示词模板化 + goal 时间运算字段。
 //
-//   - attachInstructionOf：配置了模板按模板渲染（{{attach.*}} + {{#attachSync}} 闸门），
-//     空/未配置 = 内置默认逐字节不变；渲染失败回退内置默认。
+//   - attachInstructionOf：配置了模板按模板渲染（{{attach.*}} + {{#each attach.list}} +
+//     {{#if attach.sync}}），空/未配置 = 内置默认逐字节不变；渲染失败回退内置默认。
 //   - clampAttachTemplate：空 = ''（用内置默认，不是关掉——附件段带本地路径）。
 //   - enrichGoalTiming：goal ctx 缺的时间运算字段（remainingSec/remainingMin/
 //     overtimeSec/reached）从 deadline 戳补算；已有的不覆盖。
@@ -26,7 +26,13 @@ test('内置默认：空模板 = 历史输出逐字节不变（含同步行）',
 
 test('自定义模板：清单 / 个数 / 同步详情如实渲染', () => {
   const out = attachInstructionOf(
-    '共 {{attach.count}} 个附件，逐个处理：\n{{attach.list}}\n{{#attachSync}}同步情况：{{attach.sync}}{{/attachSync}}',
+    [
+      '共 {{attach.count}} 个附件，逐个处理：',
+      '{{#each attach.list}}',
+      '  - {{kindLabel}} {{name}}: {{#if localPath}}{{localPath}}{{else}}未同步到本地（图床 id {{id}}）{{/if}}',
+      '{{/each}}',
+      '{{#if attach.sync}}同步情况：目录 {{attach.sync.dir}} / 下载 {{attach.sync.downloaded}}{{/if}}',
+    ].join('\n'),
     ATT,
     SYNC,
     { id: 9, text: '# 正文' }
@@ -37,18 +43,28 @@ test('自定义模板：清单 / 个数 / 同步详情如实渲染', () => {
   assert.match(out, /同步情况：目录 D:\/mirror/);
 });
 
-test('自定义模板：{{#attachSync}} 闸门——没跑同步整段消失', () => {
-  const tpl = '清单：\n{{attach.list}}{{#attachSync}}\n同步：{{attach.sync}}{{/attachSync}}';
+test('自定义模板：{{#if attach.sync}}——没跑同步整段消失', () => {
+  const tpl = [
+    '清单：',
+    '{{#each attach.list}}  - {{name}}{{/each}}',
+    '{{#if attach.sync}}同步：{{attach.sync.dir}}{{/if}}',
+  ].join('\n');
   const out = attachInstructionOf(tpl, ATT, null, { id: 9 });
   assert.match(out, /清单：/);
   assert.doesNotMatch(out, /同步：/);
+});
+
+test('旧语法不再兼容：{{attach.list}} / {{#attachSync}} 回落内置默认', () => {
+  for (const tpl of ['清单：{{attach.list}}', '{{#attachSync}}同步：{{attach.sync}}{{/attachSync}}']) {
+    assert.equal(attachInstructionOf(tpl, ATT, SYNC, { id: 9 }), attachmentInstruction(ATT, SYNC));
+  }
 });
 
 test('clampAttachTemplate：缺省/空 = 用内置默认（不可关掉附件段）', () => {
   assert.equal(clampAttachTemplate(undefined), '');
   assert.equal(clampAttachTemplate(null), '');
   assert.equal(clampAttachTemplate('   '), '');
-  assert.equal(clampAttachTemplate('{{attach.list}}'), '{{attach.list}}');
+  assert.equal(clampAttachTemplate('{{#each attach.list}}x{{/each}}'), '{{#each attach.list}}x{{/each}}');
   assert.equal(clampAttachTemplate('x'.repeat(5000)).length, 4000, '超长截断');
 });
 

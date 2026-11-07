@@ -96,23 +96,28 @@ test('parseParams：k=v 可重复 / 逗号分隔，坏项忽略', () => {
   assert.deepEqual(parseParams(undefined), {});
 });
 
-test('渲染器支持任意段落名（{{#repo}} / {{#group}}）', () => {
-  assert.equal(renderInstruction('A{{#repo}}B{{/repo}}C', { repo: { x: 1 } }), 'ABC');
-  assert.equal(renderInstruction('A{{#repo}}B{{/repo}}C', { repo: null }), 'AC');
-  // 未给这个键 = 未知标记：内容保留（与旧语义一致）
-  assert.equal(renderInstruction('A{{#other}}B{{/other}}C', {}), 'ABC');
+test('渲染器不再接受旧段落名（{{#repo}} / {{#group}} 已废弃）', () => {
+  assert.throws(() => renderInstruction('A{{#repo}}B{{/repo}}C', { repo: { x: 1 } }), /旧区块语法/);
+  assert.throws(() => renderInstruction('A{{#group}}B{{/group}}C', { group: { x: 1 } }), /旧区块语法/);
+  assert.throws(() => renderInstruction('A{{#other}}B{{/other}}C', {}), /旧区块语法/);
 });
 
-test('deliveryCtxOf：补充文档 / 参考文件给可读路径', () => {
+test('deliveryCtxOf：补充文档 / 参考文件 / 成员是结构化数组（模板用循环）', () => {
   const frag = deliveryCtxOf(GROUP_CTX);
-  assert.match(frag.repo.docs, /D:\/vault\/qa\.md/);
-  assert.match(frag.repo.docs, /\[qa\]/);
-  assert.match(frag.group.docs, /waitgoal\.md/);
-  assert.match(frag.group.peers, /beta/);
+  assert.equal(frag.repo.docCount, 1);
+  assert.equal(frag.repo.docs[0].path, 'D:/vault/qa.md');
+  assert.equal(frag.repo.docs[0].tag, 'qa');
+  assert.equal(frag.group.docCount, 1);
+  assert.match(frag.group.docs[0].path, /waitgoal\.md/);
+  assert.equal(frag.group.peerCount, frag.group.peers.length);
+  assert.ok(frag.group.peers.some((p) => p.name === 'beta'));
+  // 旧闸门键（repoDocs / groupPeers）已删除，不再作为变量提供
+  assert.equal(frag.repoDocs, undefined);
+  assert.equal(frag.groupPeers, undefined);
 });
 
 // #81：空壳组（只有成员名单、全员无描述）不该渲染——喷一排空标签还让
-// 「单独仓库」看着像被归了组。模板的 {{#group}} 闸门是「键在不在」，
+// 「单独仓库」看着像被归了组。内置模板的 {{#if group}} 是「键在不在」，
 // 所以在 deliveryCtxOf 里把空壳组过滤成 null。
 test('空壳组不渲染：无定位/介绍/位置、成员全无描述 → ctx.group 为 null（#81）', () => {
   // fr/mobile 形态：唯一「内容」是成员名单，且全员（无组内描述）

@@ -22,6 +22,7 @@ const storeFile = join(tmp, 'localtasks.json');
 const goalFile = join(tmp, 'timegoals.json');
 const dir = join(tmp, 'projP');
 mkdirSync(dir, { recursive: true });
+process.env.NX_KV_DB = join(tmp, 'nxkv.db'); // 显式钉库：防止外部 NX_KV_DB 覆盖隔离
 process.env.NX_KV_LOCALTASK_STORE = storeFile;
 process.env.NX_KV_CONFIG = join(tmp, 'config.json');
 
@@ -36,7 +37,7 @@ process.on('exit', () => {
 const keyOf = () => svc.normalizeCwd(dir).key;
 
 test('预览与真实领取的交付逐字一致（且预览在前、领取在后）', async () => {
-  await svc.updateSettings({ taskSuffix: ['收尾：{{task.text}} 之后继续'] });
+  await svc.updateSettings({ deliveryTemplate: '上下文：{{task.text}} 之后继续' });
   const added = await svc.addTask({ cwd: dir, text: '# 任务甲\n\n正文一段' });
 
   const pre = await previewTaskDelivery({
@@ -50,7 +51,7 @@ test('预览与真实领取的交付逐字一致（且预览在前、领取在�
   assert.equal(pre.instruction, got.instruction || '', 'instruction 必须逐字一致');
   assert.equal(pre.coversBody, !!got.coversBody, 'coversBody 必须一致');
   assert.equal(pre.rendered, deliveryPlainText(got), '面板原文 = CLI 正文排版');
-  assert.equal(got.task.text.includes('{{task.text}}'), false, '模板不落进任务正文');
+  assert.equal(got.task.text.includes('之后继续'), false, '模板不落进任务正文');
 });
 
 test('预览是只读的：不领取、不改状态、不动行', async () => {
@@ -75,7 +76,7 @@ test('预览是只读的：不领取、不改状态、不动行', async () => {
 
 test('带时间目标的任务：预览会给出 check 指令，但不启动计时', async () => {
   // 目录级 goal 先清干净，避免串味
-  await svc.updateSettings({ taskSuffix: [] });
+  await svc.updateSettings({ deliveryTemplate: '' });
   const added = await svc.addTask({
     cwd: dir,
     text: '# 任务丙\n\n带时间目标',
@@ -91,18 +92,32 @@ test('带时间目标的任务：预览会给出 check 指令，但不启动计�
   assert.ok(seg, '段落来源里应有一段「任务级 check 指令」');
 });
 
-test('开关状态如实：关掉的模板不出现，开着的出现', async () => {
-  await svc.updateSettings({ taskSuffix: [], ackPrompt: [] });
+test('开关状态如实：每个区块按自己的生效模板渲染', async () => {
   const added = await svc.addTask({ cwd: dir, text: '# 任务丁\n\n干净交付' });
+
+  // 给 ack 区块新建一个「空白」模板并启用 → 该块不输出（其它块不受影响）
+  const s = await svc.getSettings();
+  await svc.updateSettings({
+    blockTemplates: {
+      ack: {
+        active: 'empty',
+        list: [
+          ...s.blockTemplates.ack.list,
+          { id: 'empty', name: '空白', template: '' },
+        ],
+      },
+    },
+  });
   const off = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
-  assert.equal(off.switches.suffix.on, false);
   assert.equal(off.switches.ack.on, false);
-  assert.equal(off.segments.some((s) => s.id === 'ack'), false, '没配 ack 就不该有这一段');
+  assert.equal(off.switches.blockTemplates.ack.custom, true, 'ack 当前用的是自定义空白模板');
+  assert.equal(off.segments.some((s) => s.id === 'ack'), false, '空白模板不输出 ack 段');
 
   await svc.updateSettings({ ackPrompt: ['完成总结写「改了什么 / 怎么验证」'] });
   const on = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
   assert.equal(on.switches.ack.on, true);
   assert.equal(on.switches.ack.count, 1);
+  assert.equal(on.switches.blockTemplates.ack.custom, true);
   assert.match(on.instruction, /改了什么 \/ 怎么验证/, 'ack 段进了交付');
   assert.equal(on.segments.some((s) => s.id === 'ack'), true);
 });
@@ -118,23 +133,33 @@ test('草稿也能预览（id=0，不读库存）', async () => {
 });
 
 test('附件段模板可配：自定义进交付、开关如实、置空回默认（#82）', async () => {
-  await svc.updateSettings({ taskSuffix: [], ackPrompt: [] });
+  await svc.updateSettings({ attachTemplate: '', ackPrompt: [] });
   const added = await svc.addTask({ cwd: dir, text: '# 任务戊\n\n看图 ![截图](abcdef0123456789)' });
 
   const pre0 = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
-  assert.match(pre0.instruction, /〔附件〕/, '默认走内置附件段');
+  assert.match(pre0.instruction, /本任务包含 1 个附件/, '默认走内置附件段');
   assert.equal(pre0.switches.attachTemplate.custom, false);
 
-  await svc.updateSettings({ attachTemplate: '【附件 SOP】共 {{attach.count}} 个：\n{{attach.list}}' });
+  await svc.updateSettings({
+    attachTemplate:
+      '【附件 SOP】共 {{attach.count}} 个：\n{{#each attach.list}}  - {{name}} {{id}}{{/each}}',
+  });
   const pre1 = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
   assert.match(pre1.instruction, /【附件 SOP】共 1 个/, '自定义模板渲染进交付');
   assert.match(pre1.instruction, /abcdef0123456789/, '附件 id 在清单里');
-  assert.doesNotMatch(pre1.instruction, /〔附件〕本任务正文引用了附件/, '内置默认不再出现');
+  assert.doesNotMatch(pre1.instruction, /请先识别附件内容/, '内置默认不再出现');
   assert.equal(pre1.switches.attachTemplate.custom, true);
 
   await svc.updateSettings({ attachTemplate: '' });
   const pre2 = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
-  assert.match(pre2.instruction, /〔附件〕/, '置空 = 回到内置默认（附件段关不掉）');
+  assert.match(pre2.instruction, /本任务包含 1 个附件/, '置空 = 回到内置默认（附件段关不掉）');
+});
+
+test('模板语法错误：保存时拒绝并指出区块（渲染期回落是兜底，不是正常出口）', async () => {
+  const bad = '附件 {{#if attach}}{{attach.count}}'; // 未闭合
+  await assert.rejects(() => svc.updateSettings({ attachTemplate: bad }), /语法错误/);
+  const s = await svc.getSettings();
+  assert.notEqual(s.attachTemplate, bad, '坏模板不该落盘');
 });
 
 test('模板设置落盘后重读不丢（store-io 白名单回归，#82）', async () => {

@@ -280,8 +280,7 @@ try {
 
   // ─── 11b. 实时任务输入 localtask（工作目录为主题、主题拥有队列，本机不依赖后端）─
   process.env.NX_KV_LOCALTASK_STORE = join(tmp, 'localtasks.json');
-  // 这一段用例校验 wait 行为：先把收尾追加语关掉，避免自动追加污染 task.text 严格相等断言
-  await cliJson(['localtask', 'config', '--no-suffix']);
+  // 这一段用例校验 wait 行为：系统提示词只进 instruction，task.text 保持库存原文
   const topicA = join(tmp, 'projA');
   const topicB = join(tmp, 'projB');
   mkdirSync(topicA, { recursive: true });
@@ -333,45 +332,56 @@ try {
   const stCfg = await cliJson(['localtask', 'config', '--timeout', '300']);
   check('localtask config 设置超时（推荐 180、最大 600）', stCfg.timeoutSec === 300 && stCfg.maxSec === 600, JSON.stringify(stCfg));
 
-  // 收尾追加语：默认 / 自定义 / 关闭 / 恢复
-  const stSuffixOn = await cliJson(['localtask', 'config', '--suffix', 'SMOKE_TAIL 计划最后再次 nx-kv localtask wait']);
-  check('config 自定义收尾追加语已开启', stSuffixOn.suffixEnabled === true && /SMOKE_TAIL/.test(stSuffixOn.taskSuffix), JSON.stringify(stSuffixOn));
-
-  // 加一条任务 → wait 拿到的 task.text 末尾应包含自定义追加语
-  await cliJson(['localtask', 'add', '任务本体', '--cwd', topicA]);
-  const waitWithSuffix = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', '追加语冒烟']);
+  // ack 汇报要求：默认（内置 done 指令）/ 自定义 / 恢复内置
+  const stAckDefault = await cliJson(['localtask', 'config', '--ack', '']);
   check(
-    'wait 返回末尾追加收尾语',
-    waitWithSuffix.status === 'ok' && /任务本体[\s\S]*SMOKE_TAIL/.test(waitWithSuffix.task.text),
-    JSON.stringify(waitWithSuffix)
+    'config 恢复内置 ack（仍带 done 指令）',
+    /localtask done/.test(stAckDefault.ackPromptList.join('\n')),
+    JSON.stringify(stAckDefault)
+  );
+
+  const stAckOn = await cliJson([
+    'localtask', 'config', '--ack', 'SMOKE_ACK 计划最后再次 nx-kv localtask wait',
+  ]);
+  check(
+    'config 自定义 ack 已开启',
+    /SMOKE_ACK/.test(stAckOn.ackPromptList.join('\n')),
+    JSON.stringify(stAckOn)
+  );
+
+  // 加一条任务 → wait 拿到的 instruction（ack 段）应包含自定义 ack；正文保持原文
+  await cliJson(['localtask', 'add', '任务本体', '--cwd', topicA]);
+  const waitWithAck = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', 'ack 冒烟']);
+  check(
+    'wait 返回 instruction 带自定义 ack（task.text 保持原文）',
+    waitWithAck.status === 'ok' &&
+      waitWithAck.task.text === '任务本体' &&
+      /SMOKE_ACK/.test(waitWithAck.instruction || ''),
+    JSON.stringify(waitWithAck)
   );
 
   // 库存原文不应被改写
   const listAfter = await cliJson(['localtask', 'list']);
-  const consumed = listAfter.topics.find((t) => t.key === waitWithSuffix.key).tasks.find((x) => x.id === waitWithSuffix.task.id);
-  check('库存原文不含追加语', consumed && consumed.text === '任务本体', JSON.stringify(consumed));
+  const consumed = listAfter.topics.find((t) => t.key === waitWithAck.key).tasks.find((x) => x.id === waitWithAck.task.id);
+  check('库存原文不含 ack 痕迹', consumed && consumed.text === '任务本体', JSON.stringify(consumed));
 
-  // 关闭追加：PATCH suffix=''
-  const stSuffixOff = await cliJson(['localtask', 'config', '--no-suffix']);
-  check('--suffix "" 关闭追加', stSuffixOff.suffixEnabled === false && stSuffixOff.taskSuffix === '', JSON.stringify(stSuffixOff));
-
-  // 收尾指令**模板**（含 {{ 占位符）：渲染进 instruction 字段，task.text 保持库存原文
+  // ack **模板**（含 {{ 占位符）：渲染进 instruction 字段，task.text 保持库存原文
   const stTpl = await cliJson([
-    'localtask', 'config', '--suffix',
-    '{{task.text}} TPL_TAIL {{#goal}}〔{{goal.remainingHuman}}〕{{/goal}}',
+    'localtask', 'config', '--ack',
+    '{{task.text}} TPL_ACK {{#if goal}}〔{{goal.remainingHuman}}〕{{/if}}',
   ]);
   check(
-    'config 设置模板收尾指令已开启',
-    stTpl.suffixEnabled === true && /\{\{task\.text\}\}/.test(stTpl.taskSuffix),
+    'config 设置 ack 模板',
+    /\{\{task\.text\}\}/.test(stTpl.ackPromptList.join('\n')),
     JSON.stringify(stTpl)
   );
   await cliJson(['localtask', 'add', '模板任务本体', '--cwd', topicA]);
   const waitTpl = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', '模板冒烟']);
   check(
-    'wait 模板渲染：instruction 含正文与 TPL_TAIL，task.text 保持原文',
+    'wait ack 模板渲染：instruction 含正文与 TPL_ACK，task.text 保持原文',
     waitTpl.status === 'ok' &&
       waitTpl.task.text === '模板任务本体' &&
-      /模板任务本体[\s\S]*TPL_TAIL/.test(waitTpl.instruction || ''),
+      /模板任务本体[\s\S]*TPL_ACK/.test(waitTpl.instruction || ''),
     JSON.stringify(waitTpl)
   );
   // 模板模式同样不回写库存
@@ -381,35 +391,11 @@ try {
     .tasks.find((x) => x.id === waitTpl.task.id);
   check('模板模式库存原文不含模板痕迹', consumedTpl && consumedTpl.text === '模板任务本体', JSON.stringify(consumedTpl));
 
-  // 多条收尾指令：--suffix-add 逐条追加、--suffix-remove 按序号删、交付按空行拼接
-  await cliJson(['localtask', 'config', '--no-suffix']); // 先回到关闭态（空列表），从零加起
-  const stAdd1 = await cliJson(['localtask', 'config', '--suffix-add', 'MULTI_ONE']);
-  check(
-    'config --suffix-add 追加第一条',
-    stAdd1.suffixEnabled === true &&
-      JSON.stringify(stAdd1.taskSuffixList) === JSON.stringify(['MULTI_ONE']),
-    JSON.stringify(stAdd1)
-  );
-  const stAdd2 = await cliJson(['localtask', 'config', '--suffix-add', 'MULTI_TWO']);
-  check(
-    'config --suffix-add 再加一条（两条并存）',
-    JSON.stringify(stAdd2.taskSuffixList) === JSON.stringify(['MULTI_ONE', 'MULTI_TWO']) &&
-      stAdd2.taskSuffix === 'MULTI_ONE\n\nMULTI_TWO',
-    JSON.stringify(stAdd2)
-  );
-  const stRm = await cliJson(['localtask', 'config', '--suffix-remove', '1']);
-  check(
-    'config --suffix-remove 按序号删',
-    JSON.stringify(stRm.taskSuffixList) === JSON.stringify(['MULTI_TWO']),
-    JSON.stringify(stRm)
-  );
-  const stRmBad = await cli(['localtask', 'config', '--suffix-remove', '5']);
-  check('config --suffix-remove 越界报错', stRmBad.status !== 0, `exit=${stRmBad.status}`);
-  // 恢复关闭态，让主题清理不受影响
-  await cliJson(['localtask', 'config', '--no-suffix']);
+  // 恢复内置 ack，让主题清理不受影响
+  await cliJson(['localtask', 'config', '--ack', '']);
 
-  // 收尾追加语冒烟主题用完即清（避免影响后续用例）
-  await cliJson(['localtask', 'topic', 'remove', '--key', waitWithSuffix.key, '--force']);
+  // ack 冒烟主题用完即清（避免影响后续用例）
+  await cliJson(['localtask', 'topic', 'remove', '--key', waitWithAck.key, '--force']);
 
   // cancel：非等待中的主题为无操作（cancelled:false + reason:not_waiting）
   const cancelIdle = await cliJson(['localtask', 'cancel', '--cwd', topicA]);

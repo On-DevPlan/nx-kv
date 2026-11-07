@@ -1,28 +1,21 @@
-// instruction-template 纯函数单测（仿 localtask-board.test.mjs：纯 fixture、无 store、无 env）。
-// 钉死的契约：段落按 ctx 有无整段丢弃、占位符缺失一律 ''、单遍渲染（插入值永不再扫描）、
-// 独立行段落标记整行移除、时间格式化与 timegoal fmtDur/renderCheck 措辞对齐。
+// instruction-template 单测（v5：Handlebars 薄封装，只保留一套语法）。
+// 钉死的契约：
+//   - `{{var}}` 按路径取值，缺失一律 ''；不 HTML 转义；
+//   - `{{#if}}` / `{{#each}}` 原生可用；
+//   - 旧闸门（`{{#repo}}…{{/repo}}`）与旧占位符**已废弃**：保存校验拒绝，
+//     运行期直接抛错（由上层回落内置模板 + 告警）；
+//   - 单遍渲染：插入值里的 {{…}} 逐字保留；
+//   - 语法错误可被 validateTemplate 检出（保存时拒绝）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  hasTemplateMarkers,
   renderInstruction,
+  validateTemplate,
   formatDuration,
   formatGoalTiming,
 } from '../../src/core/instruction-template.js';
 
-// ─── hasTemplateMarkers ────────────────────────────────────────────────
-
-test('hasTemplateMarkers：任何 {{ 即模板，纯文本/空值不是', () => {
-  assert.equal(hasTemplateMarkers(''), false);
-  assert.equal(hasTemplateMarkers(null), false);
-  assert.equal(hasTemplateMarkers(undefined), false);
-  assert.equal(hasTemplateMarkers('规划计划，然后 wait 收尾'), false);
-  assert.equal(hasTemplateMarkers('{{'), true);
-  assert.equal(hasTemplateMarkers('{{#goal}}x{{/goal}}'), true);
-  assert.equal(hasTemplateMarkers('前缀 {{task.text}} 后缀'), true);
-});
-
-// ─── 占位符 ────────────────────────────────────────────────────────────
+// ─── 取值 ──────────────────────────────────────────────────────────────
 
 test('占位符：嵌套路径与顶层键都按 . 分段解析', () => {
   const ctx = {
@@ -35,63 +28,94 @@ test('占位符：嵌套路径与顶层键都按 . 分段解析', () => {
   assert.equal(renderInstruction('{{task.text}}', ctx), 'BODY');
 });
 
-test('占位符：缺失一律空串（未知路径 / 缺段落 / 缺 ctx / 空花括号）', () => {
+test('占位符：缺失一律空串；路径两侧空格被忽略', () => {
   assert.equal(renderInstruction('[{{goal.name}}]', {}), '[]');
   assert.equal(renderInstruction('[{{task.text}}]', { task: null }), '[]');
   assert.equal(renderInstruction('[{{task.text}}]', { task: {} }), '[]');
   assert.equal(renderInstruction('[{{nope.deep}}]', { goal: {} }), '[]');
-  assert.equal(renderInstruction('[{{ }}]', { goal: { name: 'x' } }), '[]');
-  assert.equal(renderInstruction('[{{ goal.name }}]', { goal: { name: 'x' } }), '[x]', '路径两侧空格被 trim');
+  assert.equal(renderInstruction('[{{ goal.name }}]', { goal: { name: 'x' } }), '[x]');
 });
 
-// ─── 段落 ──────────────────────────────────────────────────────────────
-
-test('段落：ctx 缺失整段丢弃（含内联与独立行两种写法）', () => {
-  // 内联：丢弃后前后片段直接拼接
-  assert.equal(renderInstruction('A{{#goal}}G{{/goal}}B', {}), 'AB');
-  assert.equal(renderInstruction('A{{#goal}}G{{/goal}}B', { goal: { name: 'x' } }), 'AGB');
-  // 独立行：标记行整行移除，段落丢弃后不留空行
-  const tpl = ['头部', '{{#goal}}', '目标行 {{goal.name}}', '{{/goal}}', '尾部'].join('\n');
-  assert.equal(renderInstruction(tpl, {}), '头部\n尾部');
-  const kept = renderInstruction(tpl, { goal: { name: 'proj' } });
-  assert.equal(kept, '头部\n目标行 proj\n尾部');
-});
-
-test('段落：task 段与 goal 段各自独立开关', () => {
-  const tpl = '{{#task}}[{{task.id}}]{{/task}}{{#goal}}(G){{/goal}}';
-  assert.equal(renderInstruction(tpl, { task: { id: 3 } }), '[3]');
-  assert.equal(renderInstruction(tpl, { goal: { name: 'x' } }), '(G)');
-  assert.equal(renderInstruction(tpl, { task: { id: 3 }, goal: { name: 'x' } }), '[3](G)');
-  assert.equal(renderInstruction(tpl, {}), '');
-});
-
-test('段落：close 按名匹配弹栈，错配 close 是无操作（钉死）', () => {
-  // 同名嵌套：第一个 close 弹内层，外层继续
-  assert.equal(renderInstruction('A{{#goal}}X{{/goal}}Y{{/goal}}Z', { goal: { name: 'g' } }), 'AXYZ');
-  // 多余的 close 是无操作（弹空栈）
-  assert.equal(renderInstruction('A{{/goal}}B', { goal: { name: 'g' } }), 'AB');
-  // 未知段落标记落占位符分支 → ''
-  assert.equal(renderInstruction('A{{#other}}B{{/other}}C', {}), 'ABC');
-  // 错配 close 不弹栈：被丢弃 task 段的内容不会提前见光
+test('占位符：不 HTML 转义（提示词是纯文本）', () => {
   assert.equal(
-    renderInstruction('{{#goal}}A{{#task}}B{{/goal}}C{{/task}}D', { goal: { name: 'g' } }),
-    'AD',
-    'C 在被丢弃的 task 段内，不许泄漏'
+    renderInstruction('{{x}}', { x: 'a < b & c "d" > e' }),
+    'a < b & c "d" > e'
   );
-  // {{/other}} 永不弹 task 帧
-  assert.equal(renderInstruction('{{#task}}{{#other}}B{{/other}}C{{/task}}', {}), '');
 });
 
-test('占位符：只认自有属性，不解析原型链', () => {
+test('占位符：原型链成员不可取（Handlebars 4.7 默认拦截）', () => {
   assert.equal(renderInstruction('[{{constructor}}]', {}), '[]');
   assert.equal(renderInstruction('[{{toString}}]', {}), '[]');
   assert.equal(renderInstruction('[{{goal.constructor}}]', { goal: { name: 'x' } }), '[]');
 });
 
-test('段落：全段丢弃 → 空串（调用方据此省略 instruction 字段）', () => {
-  const tpl = '{{#goal}}〔{{goal.name}}〕{{/goal}}';
-  assert.equal(renderInstruction(tpl, {}), '');
-  assert.equal(renderInstruction('{{#goal}}X{{/goal}}   \n  ', { goal: null }), '');
+// ─── if / each ─────────────────────────────────────────────────────────
+
+test('{{#if}}：真假分支（缺失键为假）', () => {
+  assert.equal(renderInstruction('A{{#if goal}}G{{else}}N{{/if}}B', {}), 'ANB');
+  assert.equal(renderInstruction('A{{#if goal}}G{{else}}N{{/if}}B', { goal: { name: 'x' } }), 'AGB');
+  assert.equal(renderInstruction('{{#if x}}Y{{/if}}', { x: 0 }), '');
+  assert.equal(renderInstruction('{{#if x}}Y{{/if}}', { x: '' }), '');
+});
+
+test('{{#each}}：数组 / 对象循环，@first / @index 可用', () => {
+  const ctx = { group: { peers: [{ name: 'a', note: 'x' }, { name: 'b', note: '' }] } };
+  assert.equal(
+    renderInstruction('{{#each group.peers}}[{{@index}}:{{name}}{{#if note}}/{{note}}{{/if}}]{{/each}}', ctx),
+    '[0:a/x][1:b]'
+  );
+  assert.equal(
+    renderInstruction('{{#each list}}{{#if @first}}{{else}},{{/if}}{{this}}{{/each}}', { list: ['a', 'b', 'c'] }),
+    'a,b,c'
+  );
+  assert.equal(renderInstruction('{{#each list}}x{{/each}}', { list: [] }), '');
+  assert.equal(renderInstruction('{{#each nope}}x{{/each}}', {}), '');
+  assert.equal(
+    renderInstruction('{{#each list}}{{#if this}}Y{{/if}}{{/each}}', { list: [1, 0, 2] }),
+    'YY'
+  );
+});
+
+// ─── 旧语法已废弃（不兼容、不静默生效）────────────────────────────────
+
+test('旧闸门：保存校验拒绝，运行期抛错（不再按旧语义生效）', () => {
+  assert.equal(validateTemplate('A{{#repo}}B{{repo.name}}{{/repo}}C').ok, false);
+  assert.equal(validateTemplate('{{#group}}G{{/group}}').ok, false);
+  assert.equal(validateTemplate('{{#attachSync}}S{{/attachSync}}').ok, false);
+  assert.equal(validateTemplate('{{#goalCheck}}G{{/goalCheck}}').ok, false);
+  assert.throws(
+    () => renderInstruction('A{{#repo}}B{{repo.name}}{{/repo}}C', { repo: { name: 'n' } }),
+    /旧区块语法/
+  );
+  assert.throws(
+    () => renderInstruction('A{{#goal}}G{{/goal}}B', { goal: { name: 'x' } }),
+    /旧区块语法/
+  );
+});
+
+test('旧占位符：保存校验拒绝，运行期抛错并提示新写法', () => {
+  for (const tpl of [
+    '{{group.peers}}',
+    '{{repo.docs}}',
+    '{{group.docs}}',
+    '{{attach.list}}',
+    '{{groups}}',
+    '{{attach.sync}}',
+    '{{attach.syncText}}',
+    '{{block.content}}',
+  ]) {
+    const r = validateTemplate(tpl);
+    assert.equal(r.ok, false, `${tpl} 必须拒绝`);
+    assert.match(r.error, /已废弃/, `${tpl} 错误信息要说明废弃`);
+  }
+  assert.throws(() => renderInstruction('{{attach.list}}', { attach: { list: [] } }), /已废弃/);
+  assert.throws(() => renderInstruction('{{attach.sync}}', { attach: { sync: {} } }), /已废弃/);
+});
+
+test('旧闸门：独立行标记不再保留/不再丢弃（直接判为坏模板）', () => {
+  const tpl = ['头部', '{{#goal}}', '目标行 {{goal.name}}', '{{/goal}}', '尾部'].join('\n');
+  assert.equal(validateTemplate(tpl).ok, false, '旧闸门模板不能保存');
+  assert.throws(() => renderInstruction(tpl, {}), /旧区块语法/);
 });
 
 // ─── 单遍渲染（防漂移的字符串学保证）──────────────────────────────────
@@ -106,6 +130,18 @@ test('单遍：goal.prompt 含 {{ }} 与 {{#goal}} 均逐字（prompt 原文不�
   const prompt = '根指令：保持 {{字面}}，含 {{#goal}} 与 {{task.text}}，结尾 }}';
   const out = renderInstruction('{{goal.prompt}}', { goal: { name: 'g', prompt } });
   assert.equal(out, prompt);
+});
+
+// ─── 语法校验（保存时拒绝坏模板）────────────────────────────────────
+
+test('validateTemplate：合法模板 ok，语法错误返回 error', () => {
+  assert.deepEqual(validateTemplate('{{#if repo}}x{{/if}}'), { ok: true });
+  assert.deepEqual(validateTemplate('{{#each list}}{{name}}{{/each}}'), { ok: true });
+  assert.deepEqual(validateTemplate('纯文本无标记'), { ok: true });
+  const bad = validateTemplate('{{#if repo}}x{{/each}}');
+  assert.equal(bad.ok, false);
+  assert.ok(bad.error.length > 0, '错误信息非空');
+  assert.equal(validateTemplate('{{ }}').ok, false, '空 mustache 是语法错误');
 });
 
 // ─── 时间格式化（对齐 timegoal fmtDur / renderCheck）──────────────────

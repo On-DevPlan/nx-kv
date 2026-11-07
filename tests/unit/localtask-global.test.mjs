@@ -31,8 +31,6 @@ async function reset() {
   } catch {
     /* 不存在即可 */
   }
-  // 关掉收尾追加语，保持 task.text 的精确相等断言
-  await svc.updateSettings({ taskSuffix: '' });
 }
 
 test('addTask global:true 落到全局主题；列表置顶且 isGlobal:true', async () => {

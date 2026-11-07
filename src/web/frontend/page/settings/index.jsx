@@ -4,13 +4,15 @@
 // 齿轮按钮（侧边栏头部 / 窄轨）打开它，重复点只聚焦已开的那块。
 //
 // 分区（tab）竖排在面板左侧——设置项一多，堆成一根长列就得上下滚；
-// 竖排导航把「有哪几类设置」摊开在一眼可见的位置，点哪看哪。
+// 竖排导航把「有哪几类设置」摊开在一眼可见的位置，点哪看哪（只响应点击，
+// 不随鼠标悬浮切换——避免路过就把正在编辑的页切走）。
 //
 // 收敛了什么（todo「设置面板统一收敛到侧边栏」的落点）：
 //   - 偏好：侧边栏/看板默认收起、隐藏仓库恢复——原在齿轮气泡里
 //   - 工作区：重置布局
 //   - 云端与存储：附件自动下载 / 附件目录 / 仓库存储根——原散在云端页与仓库页弹窗
-//   - 提示词 / 模板：任务模板槽位 + 回调提示词 + ack 完成总结提示词（都收在这一栏，多条可配）
+//   - 模板分两块（不混在一起）：任务模板（任务正文骨架，纯字符串槽位）与
+//     提示词模板（每区块各自的模板列表 / 启用项；语法与变量说明只写在 skill / docs）
 //   - 任务工具：timegoal / waitgoal 的用法口径（时长在发布/编辑任务时显式给——CLI --duration 或编辑页「时间目标」栏，无全局默认）
 //   - 项目级设置：介绍文档 / 项目 icon（标题旁圆形入口）/ 持续 get
 import { useCallback, useEffect, useState } from 'react';
@@ -20,12 +22,13 @@ import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
 import { PromptItemsEditor } from '../../modules/prompts/prompt-editor.jsx';
-import PromptsSection from './prompts-section.jsx';
+import PromptTemplatesSection from './prompt-templates-section.jsx';
+import TaskTemplatesSection from './task-templates-section.jsx';
 import SidebarSection from './sidebar-section.jsx';
 import { openPanel } from '../../workspace.js';
 import './style.css';
 
-// 多条提示词的条数上限（与服务端 clampTaskSuffixList / clampAckPromptList 一致）
+// 多条提示词的条数上限（与服务端 clampAckPromptList 一致）
 const MAX_PROMPT_ITEMS = 10;
 
 // 内置「持续 get」默认模板的预设文案（与服务端 waitgoal-config 默认同文案；%s = 任务编号，
@@ -38,7 +41,8 @@ const SECTIONS = [
   { id: 'pref', label: '偏好', icon: 'flow' },
   { id: 'work', label: '工作区', icon: 'sidebar' },
   { id: 'cloud', label: '云端与存储', icon: 'cloud' },
-  { id: 'prompts', label: '提示词 / 模板', icon: 'list' },
+  { id: 'taskTemplates', label: '任务模板', icon: 'list' },
+  { id: 'prompts', label: '提示词模板', icon: 'flow' },
   { id: 'sidebar', label: '侧栏显示', icon: 'sidebar' },
   { id: 'template', label: '任务工具', icon: 'clock' },
   { id: 'project', label: '项目级设置', icon: 'repo' },
@@ -187,15 +191,7 @@ function GetLoopEditor({ repo }) {
   });
   const [openIdx, setOpenIdx] = useState(-1);
   const [line, setLine] = useState(''); // 一句话输入（可含 %s）
-  const [presets, setPresets] = useState([]); // 全局回调提示词条目（选模板用）
   const [busy, setBusy] = useState(false);
-
-  // 选模板的数据源：全局回调提示词（提示词/模板栏里配的那份）
-  useEffect(() => {
-    api('/api/localtasks')
-      .then((d) => setPresets(d?.settings?.taskSuffixList ?? []))
-      .catch(() => setPresets([]));
-  }, []);
 
   const save = async () => {
     setBusy(true);
@@ -235,8 +231,6 @@ function GetLoopEditor({ repo }) {
     setLine('');
   };
 
-  const fillFromPreset = (text) => setLine(text);
-
   // 关着时只给一枚行内小开关（#41 密度）：大多数项目没开持续 get，
   // 不该每个都占一整行。开着才展开整块配置。
   if (!on) {
@@ -264,23 +258,14 @@ function GetLoopEditor({ repo }) {
             <input className="setp-min" value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" />
           </div>
           <div className="setp-oneline">
-            <select
-              className="setp-oneline-pick"
-              value=""
-              title="选提示词模板填入下方输入框"
-              onChange={(e) => {
-                if (e.target.value) fillFromPreset(e.target.value);
-                e.target.value = '';
-              }}
+            <button
+              type="button"
+              className="btn ghost sm"
+              title="填入内置默认（继续 get 直到 timeout）"
+              onClick={() => setLine(GETLOOP_DEFAULT_PRESET)}
             >
-              <option value="">选模板…</option>
-              <option value={GETLOOP_DEFAULT_PRESET}>内置默认（继续 get 直到 timeout）</option>
-              {presets.map((p, i) => (
-                <option key={i} value={p}>
-                  {(p.split('\n')[0] || '').slice(0, 40) || `回调提示词 ${i + 1}`}
-                </option>
-              ))}
-            </select>
+              填入内置默认
+            </button>
             <input
               className="setp-oneline-input"
               value={line}
@@ -504,8 +489,12 @@ export default function SettingsPanel() {
       </>
     ),
 
+    taskTemplates: (
+      <TaskTemplatesSection openTemplates={openTemplates} />
+    ),
+
     prompts: (
-      <PromptsSection openTemplates={openTemplates} />
+      <PromptTemplatesSection />
     ),
 
     // 侧栏显示编排（任务 #61 反馈③）：菜单式的「显示哪些项目组 / 项目」
@@ -540,7 +529,6 @@ export default function SettingsPanel() {
             key={s.id}
             className={'setp-navitem' + (tab === s.id ? ' on' : '')}
             aria-current={tab === s.id}
-            onMouseEnter={() => setTab(s.id)}
             onClick={() => setTab(s.id)}
           >
             <Icon name={s.icon} size={14} />

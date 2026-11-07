@@ -111,7 +111,8 @@ function attachmentLine(a) {
   );
 }
 
-// 同步详情串（模板里 {{attach.sync}}；没跑云端同步 → ''，闸门 {{#attachSync}} 关）。
+// 同步详情串（内置默认附件段用；模板里请写 {{attach.sync.dir}} 等具体字段）。
+// 没跑云端同步 → ''（模板里用 {{#if attach.sync}} 判断）。
 function attachmentSyncText(sync) {
   if (!sync) return '';
   return (
@@ -121,10 +122,46 @@ function attachmentSyncText(sync) {
 }
 
 /**
- * 〔附件〕段渲染（任务 #82 模板化）：
- *   - 配置了模板（settings.attachTemplate）→ 模板渲染。ctx：{{task.id}}/{{task.text}}、
- *     {{attach.count}}/{{attach.list}}（清单多行）/{{attach.sync}}（同步详情，空串）、
- *     段落闸门 {{#attachSync}}…{{/attachSync}}；
+ * 附件模板 ctx（附件段与系统区块共用）。
+ * 新语法：{{attach.count}}、`{{#each attach.list}}`（结构化元素）、
+ * `{{#if attach.sync}}`（本次跑过云端同步才出现）。
+ * 旧写法 `{{#attach}}` / `{{attach.sync}}` / `{{attach.syncText}}` 已废弃，不再提供别名。
+ */
+export function attachTemplateCtx(attachments, sync) {
+  const list = Array.isArray(attachments) ? attachments : [];
+  return {
+    attach: {
+      count: list.length,
+      // 结构化数组：模板用循环组织清单，不再由服务端拼多行字符串。
+      list: list.map((a) => ({
+        id: a.id || '',
+        kind: a.kind || '',
+        kindLabel: a.kind === 'image' ? '图片' : '附件',
+        isImage: a.kind === 'image',
+        name: a.name || '',
+        localPath: a.localPath || '',
+        synced: !!a.synced,
+        storage: a.storage || '',
+      })),
+      sync: sync
+        ? {
+            dir: sync.dir || '—',
+            downloaded: sync.downloaded || 0,
+            skipped: sync.skipped || 0,
+            failureCount: (sync.failures || []).length,
+            failures: sync.failures || [],
+          }
+        : null,
+    },
+  };
+}
+
+/**
+ * 〔附件〕段渲染（任务 #82 模板化；v4 起走 Handlebars）：
+ *   - 配置了模板（attachment 区块当前生效模板）→ 模板渲染。ctx：{{task.id}}/{{task.text}}、
+ *     {{attach.count}}、`{{#each attach.list}}`（结构化清单）、
+ *     `{{#if attach.sync}}`（同步详情）；
+ *   - 旧占位符 / 旧闸门**不再兼容**（保存校验会拒绝旧语法，运行期回退内置默认）；
  *   - 空/未配置 → 内置默认（attachmentInstruction，历史输出逐字节不变）；
  *   - 渲染失败 → 回退内置默认（fail-open：附件路径必须到达 agent）。
  */
@@ -133,15 +170,9 @@ export function attachInstructionOf(tpl, attachments, sync, task) {
   const t = String(tpl || '').trim();
   if (!t || !list.length) return attachmentInstruction(list, sync);
   try {
-    const syncText = attachmentSyncText(sync);
     return renderInstruction(t, {
       task: task ? { id: task.id, text: String(task.text || '') } : null,
-      attach: {
-        count: list.length,
-        list: list.map(attachmentLine).join('\n'),
-        sync: syncText,
-      },
-      attachSync: syncText ? {} : null, // 闸门：本次跑过云端同步才出现
+      ...attachTemplateCtx(list, sync),
     });
   } catch {
     return attachmentInstruction(list, sync);

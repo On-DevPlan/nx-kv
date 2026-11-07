@@ -14,6 +14,7 @@ import * as links from './links.js';
 import { reposBridge } from './repos-bridge.js';
 import { badInput, blocked } from '../../core/errors.js';
 import fsp from 'node:fs/promises';
+import path from 'node:path';
 
 const clean = (v) => String(v || '').trim();
 
@@ -90,7 +91,7 @@ async function getDoc({ ref } = {}) {
     /* 缺失：按 missing 返回 */
   }
   if (!st) {
-    return { docId: paths.extDocId(abs), path: abs, missing: true, writable: false, title: '', summary: '', body: '' };
+    return { docId: paths.extDocId(abs), path: abs, missing: true, writable: true, title: '', summary: '', body: '' };
   }
   if (st.isDirectory()) {
     const files = await store.listExternalDocs([{ path: abs, exists: true, isDir: true }], { maxDepth: 3, maxFiles: 200 });
@@ -100,6 +101,13 @@ async function getDoc({ ref } = {}) {
 }
 
 // ─── 增 / 改 / 删 ──────────────────────────────────────────────────────
+//
+// 读写口径（2026-11 任务 #88「简介文档优化」）：
+//   rel:  自有树（~/.nx-kv/docs/）——可读可写可删
+//   path: 外部（Obsidian vault / 任意登记目录）——**登记在册即可写**：
+//         读侧要求路径在绑定闭包内；写侧再校验一次（闭包 + .md + 非目录），
+//         等于「文档集里的每一篇都能就地改」，同时不把 PATCH 变成任意文件写入口。
+//         删除仍不给外部：删除是可恢复性最差的操作，让它回来源做。
 
 // body-file 只给 CLI（templates 先例）：HTTP 是面板的通道，不该变成任意读本机文件的入口
 async function bodyOf({ body, bodyFile }, opts) {
@@ -119,13 +127,35 @@ async function addDoc(ctx, opts) {
   return { docId: paths.ownDocId(rel), rel, bytes: Buffer.byteLength(body, 'utf8'), summary };
 }
 
+// 外部文档写回（面板/CLI 均可）：路径必须仍在**绑定闭包**内——闭包是唯一的授权来源，
+// 否则 PATCH 就成了任意文件写入口（与 getDoc 的读侧守卫同口径）。
+// 目录绑定只允许改写目录内的 .md；单文件绑定只允许那一个文件。
+async function writeExternalDoc(abs, body) {
+  const { loadStore } = await reposBridge();
+  const s = await loadStore();
+  const closure = await store.externalClosure(s);
+  const hit = store.resolveExternal(abs, closure);
+  if (!hit) throw blocked(`外部路径不在绑定闭包内（先 docs bind 登记）: ${abs}`);
+  if (!/\.md$/i.test(abs)) throw badInput('只能写回 .md 文档: ' + abs);
+  let st = null;
+  try {
+    st = await fsp.stat(abs);
+  } catch {
+    st = null;
+  }
+  if (st && st.isDirectory()) throw blocked('这是目录绑定，不能整体写回: ' + abs);
+  await fsp.mkdir(path.dirname(abs), { recursive: true });
+  await fsp.writeFile(abs, body, 'utf8');
+  const saved = await safeRead(abs);
+  return { docId: paths.extDocId(abs), path: abs, bytes: Buffer.byteLength(saved, 'utf8'), external: true };
+}
+
 async function updateDoc(ctx, opts) {
   const parsed = paths.parseDocId(ctx.ref);
-  if (parsed.kind !== 'own') {
-    throw blocked('外部绑定是只读引用——改动请回到来源（如 Obsidian vault）');
-  }
   const body = await bodyOf(ctx, opts);
   if (body === null) throw badInput('请给 --body <正文>（多行用 --body-file <文件> 或 - 读管道）');
+  // 外部绑定：登记在册 = 我的文档集，允许就地写回来源文件（闭包内校验）
+  if (parsed.kind !== 'own') return writeExternalDoc(parsed.path, body);
   // 不存在即创建（面板保存语义：脏页签保存不该因为别人先建了而失败，也不该在这里静默分叉出第二份）
   const rel = await store.writeOwnDoc(parsed.rel, body);
   const saved = await store.readOwnDoc(rel);
@@ -163,7 +193,9 @@ function outExternal(abs, body) {
     title: m ? m[1].trim() : '',
     summary: seed.summaryFromMd(body),
     body,
-    writable: false,
+    // 登记在册的外部文档 = 用户的文档集，允许就地写回来源文件（写侧另过闭包校验）
+    writable: true,
+    external: true,
   };
 }
 
@@ -185,7 +217,7 @@ const renderList = (d) => {
 const renderGet = (d) => {
   if (d.missing) return `（文档不存在: ${d.rel || d.path}）`;
   if (d.dir) return `（外部目录绑定: ${d.path}，${d.files.length} 个文档）\n  ${d.files.slice(0, 20).join('\n  ')}`;
-  const head = [`【${d.title || docHead(d)}】`, `  ${d.rel || d.path}${d.writable ? '' : '  （外部绑定 · 只读）'}`, ''];
+  const head = [`【${d.title || docHead(d)}】`, `  ${d.rel || d.path}${d.external ? '  （外部 · 可写回来源）' : ''}`, ''];
   return head.join('\n') + d.body;
 };
 
@@ -264,7 +296,7 @@ export default {
       id: 'doc.update',
       cli: ['docs', 'set'],
       http: ['PATCH', '/api/docs/item'],
-      summary: '写文档正文（面板保存走这里；外部绑定只读拒写；写盘后摘要回写 desc / 组内 note）',
+      summary: '写文档正文（面板保存走这里；自有走 own 树、外部走绑定闭包内原文件；写盘后摘要回写 desc / 组内 note）',
       args: ['ref'],
       flags: {
         body: { type: 'string', hint: 'Markdown 全文' },

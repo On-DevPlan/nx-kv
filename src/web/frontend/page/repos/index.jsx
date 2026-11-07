@@ -23,6 +23,7 @@ import { useDialog, Modal } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
 import DocsModal from '../../components/Introduction/docs-modal.jsx';
+import { useApp } from '../../app-context.jsx';
 import { useWikiNav } from '../doc/index.jsx';
 
 const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
@@ -122,6 +123,7 @@ export default function ReposView() {
   const guard = useGuard();
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
+  const app = useApp() || {};
   // 描述是文档 → 行内点标题要能开文档页签（useWikiNav 内部拿 app.model + 文档索引）
   const { openByDocId } = useWikiNav();
   const [form, setForm] = useState(EMPTY_FORM);
@@ -1757,11 +1759,13 @@ export default function ReposView() {
       ) : null}
 
       {/* 查看详情（文档集弹窗）：完整列表 + 复用编辑器就地编辑；
-          增删改标签后回灌仓库与文档数据（行内摘要与文档检索同步更新） */}
+          增删改标签后回灌仓库与文档数据（行内摘要与文档检索同步更新）。
+          model 必须传：弹窗里「更多 → 文字列表」要在工作区开 refs 右侧栏。 */}
       {docsFor ? (
         <DocsModal
           kind={docsFor.kind}
           owner={docsFor.owner}
+          model={app.model}
           onClose={() => setDocsFor(null)}
           onChanged={() => { loadRepos(); loadDocs(); }}
         />

@@ -6,7 +6,8 @@
 //
 // 双链 [[..]] 点击 → 在工作区开目标文档的页签：openPanel 按 component+config 去重，
 // 同一文档反复点只会聚焦已开的页签。解析规则与后端共用 core/wikilink.js。
-// 外部绑定（writable:false）强制预览态——改动请回 vault。
+// 外部绑定（path:）也可写：登记在册 = 我的文档集，保存直接写回来源文件
+// （后端再校验一次绑定闭包）；只有目录绑定（dir）仍是只读清单。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
@@ -15,7 +16,8 @@ import { useDialog } from '../../components/popup/index.jsx';
 import { useApp } from '../../app-context.jsx';
 import { openPanel } from '../../workspace.js';
 import { MdPanes } from '../../components/md/md-panes.jsx';
-import { MenuPortal, openMenuAt, useMenu } from '../../components/md/tool-bar.jsx';
+import DocHead, { groupOf } from '../../components/doc/doc-head.jsx';
+import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { IntroRail, introDirFromRef } from '../../components/Introduction/index.jsx';
 import { uploadMany, snippetsOf } from '../../components/cloud/upload.js';
 import { extractMdHeadings, insertAttachmentSnippet, renderMarkdownHtml, slugName, titleFromMd } from '../../modules/md/md-parse.js';
@@ -107,8 +109,6 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [mode, setMode] = useState('split');
-  // 页头「更多」：源码模式 + 重命名/删除 收进菜单（#47），页头只留 保存
-  const docMore = useMenu();
   const [introLinks, setIntroLinks] = useState([]);
   const [scrollRoot, setScrollRoot] = useState(null);
   // 最新文档镜像：附件上传是异步的，await 期间用户可能还在敲字，
@@ -220,6 +220,21 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     (id) => openByDocId(id, null, openExtra),
     [openByDocId, openExtra]
   );
+
+  // 「更多 → 文字列表」（#88）：与「进程」同一个右侧栏位，列本项目 / 项目组的全部文章。
+  // docs 页签挂在 center、refs 挂在 right，互不顶替，编辑器不会被挤走。
+  const openRefsPanel = useCallback(() => {
+    const m = model;
+    if (!m || !ownerKey) return;
+    openPanel(m, {
+      component: 'refs',
+      name: '文档列表',
+      config: repoKey
+        ? { repoKey }
+        : { boardKey, boardName: boardName || '' },
+      location: 'right',
+    });
+  }, [model, ownerKey, repoKey, boardKey, boardName]);
 
   // 补充一篇 reference（项目 / 组同口径）
   const addRefDoc = () => {
@@ -447,74 +462,40 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   return (
     <div className="mdw docp" data-mode={effMode} onClick={onNavClick} ref={rootRef}>
       <div className="mdw-main">
-        <div className="docp-head">
-          <span className="docp-path mono" title={doc.rel || doc.path}>
-            {doc.rel || doc.path}
-          </span>
-          {dirty && <span className="docp-dirty">未保存</span>}
-          {!writable && <span className="docp-tag ext">外部绑定 · 只读</span>}
-          <span className="grow" />
-          {writable && (
-            <>
-              {/* 页头只留主按钮「保存」；源码模式与重命名/删除收进「更多」并按两层分组（#47） */}
-              <div className="docp-more" ref={docMore.ref}>
-                <button
-                  type="button"
-                  className={`btn sm${docMore.open ? ' on' : ''}`}
-                  aria-haspopup="menu"
-                  aria-expanded={docMore.open}
-                  onClick={(e) => openMenuAt(docMore, e, 'right')}
-                >
-                  更多
-                </button>
-                <MenuPortal menu={docMore}>
-                  {[
-                    {
-                      id: 'edit',
-                      label: '编辑',
-                      items: [
-                        {
-                          id: 'mode',
-                          label: mode === 'edit' ? '返回实时预览' : '源码模式',
-                          hint: mode === 'edit' ? '当前' : '',
-                          run: () => setMode(mode === 'edit' ? 'split' : 'edit'),
-                        },
-                      ],
-                    },
-                    {
-                      id: 'doc',
-                      label: '文档',
-                      items: [
-                        { id: 'rename', label: '重命名', run: renameDoc },
-                        { id: 'delete', label: '删除', run: delDoc, danger: true },
-                      ],
-                    },
-                  ].map((g) => (
-                    <div className="mdw-fmt-menu-group" role="group" aria-label={g.label} key={g.id}>
-                      <div className="mdw-fmt-menu-cap">{g.label}</div>
-                      {g.items.map((a) => (
-                        <button
-                          key={a.id}
-                          type="button"
-                          role="menuitem"
-                          className={'mdw-fmt-menu-item' + (a.danger ? ' danger' : '')}
-                          onClick={() => {
-                            a.run?.();
-                            docMore.setOpen(false);
-                          }}
-                        >
-                          {a.label}
-                          {a.hint ? <span className="hint">{a.hint}</span> : null}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                </MenuPortal>
-              </div>
-              <button className="btn sm docp-save" onClick={save}>保存</button>
-            </>
-          )}
-        </div>
+        {/* 页头与「查看详情」弹窗共用 DocHead（#88：两处布局必须同构）——
+            面包屑 / 标题·路径 / 更多 · 保存 一条线，下面是编辑器本体。 */}
+        <DocHead
+          crumb={<RouteBreadcrumb />}
+          title={doc.title || doc.rel || doc.path || '文档'}
+          pathLabel={doc.rel || doc.path || ''}
+          dirty={dirty}
+          writable={writable}
+          mode={mode}
+          external={!!doc.external}
+          menuGroups={[
+            groupOf('edit', '编辑', [
+              {
+                id: 'mode',
+                label: mode === 'edit' ? '返回实时预览' : '源码模式',
+                hint: mode === 'edit' ? '当前' : '',
+                run: () => setMode(mode === 'edit' ? 'split' : 'edit'),
+              },
+            ]),
+            groupOf('doc', '文档', [
+              { id: 'rename', label: '重命名', run: renameDoc },
+              { id: 'delete', label: '删除', run: delDoc, danger: true },
+            ]),
+            groupOf('view', '查看', [
+              ownerKey && {
+                id: 'list',
+                label: '文字列表',
+                hint: '右侧边栏',
+                run: openRefsPanel,
+              },
+            ]),
+          ]}
+          onSave={save}
+        />
         {doc.summary && writable && <div className="docp-summary">摘要（回写 desc）：{doc.summary}</div>}
         <MdPanes
           mode={effMode}

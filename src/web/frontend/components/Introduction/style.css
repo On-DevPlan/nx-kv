@@ -26,9 +26,9 @@
 }
 .nx-intro-btn:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
 
-/* ── 查看详情弹窗（DocsModal）：列表条目的行内小动作（＃标签 / ×摘除）────── */
+/* ── 查看详情弹窗（DocsModal）────────────────────────────────────────────
+   #88：弹窗分两态——列表视图只列标题；文档视图与任务页同构（DocHead + MdPanes）。 */
 .nx-docs-modal-item-wrap{display:flex;align-items:stretch;gap:2px}
-.nx-docs-modal-item-wrap .rpd-item{flex:1 1 auto;min-width:0}
 .nx-docs-modal-item-acts{display:flex;align-items:center;gap:2px;flex:none}
 .nx-docs-modal-mini{
   border:0;background:transparent;padding:2px 5px;border-radius:5px;
@@ -37,3 +37,41 @@
 .nx-docs-modal-mini:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
 .nx-docs-modal-mini.danger:hover{background:#FBEDEC;color:#B4443C}
 .nx-docs-modal-acts{display:flex;justify-content:flex-end;gap:6px;padding:0 0 8px}
+
+/* 列表视图：只有标题，点击进文档视图 */
+.nx-dl{display:flex;flex-direction:column;min-height:0}
+.nx-dl-head{display:flex;align-items:center;gap:8px;padding:0 0 8px}
+.nx-dl-count{font-size:11.5px;color:var(--ink-2,#4B515A)}
+.nx-dl-list{
+  display:flex;flex-direction:column;gap:1px;
+  max-height:min(62vh,520px);overflow:auto;
+  border:1px solid var(--line,#E4E2DC);border-radius:8px;padding:6px;background:#FBFAF8;
+}
+.nx-dl-row-wrap{display:flex;align-items:stretch;gap:2px}
+.nx-dl-row{
+  flex:1 1 auto;min-width:0;display:flex;align-items:baseline;gap:8px;
+  border:1px solid transparent;border-radius:6px;background:none;
+  padding:8px 10px;text-align:left;font:inherit;color:var(--ink,#16181C);cursor:pointer;
+}
+.nx-dl-row:hover{background:var(--paper,#fff);border-color:var(--line,#E4E2DC)}
+.nx-dl-row-title{
+  flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+/* 文档视图：撑满弹窗，编辑器在内部滚动（与任务页 .mdw-main 同构） */
+.nx-doc-modal{display:flex;flex-direction:column;height:min(74vh,720px);min-height:0}
+.nx-doc-modal .mdw-main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.nx-doc-modal .mdw-main-body{flex:1 1 auto;min-height:0;display:flex;overflow:hidden}
+.nx-doc-modal .mdw-main-body > *{flex:1 1 auto;min-width:0;min-height:0}
+.nx-doc-back{
+  flex:none;border:1px solid var(--line,#E4E2DC);background:transparent;
+  padding:3px 9px;border-radius:6px;font:inherit;font-size:11.5px;
+  color:var(--ink-2,#4B515A);cursor:pointer;white-space:nowrap;
+}
+.nx-doc-back:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+.nx-doc-bar{
+  display:flex;align-items:center;gap:8px;padding:6px 10px;
+  border-bottom:1px solid var(--line,#E4E2DC);flex:none;min-height:32px;
+}
+.nx-doc-bar .docp-summary{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

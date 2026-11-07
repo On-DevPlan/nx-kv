@@ -2,6 +2,35 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.31.0] - 2026-11-07 仓库 key 必填 / ext 队列余量 / 持续 get 时长 / Fork 任务
+
+### Added
+
+- **`ext` 待领取队列区块**：交付文本新增「同主题还有 x 条待领取任务」及标题清单，
+  由结构化 `ext.count/list` 用 `{{#if}}` / `{{#each}}` 渲染；队列空时整段省略，
+  查询失败不阻断领取，只记入 `renderWarnings`。
+- **`localtask fork`（#67）**：正文逐字复制为新任务，同时写入 `task_links`
+  （`type=comment`）挂到源任务下，保留评论/反馈链；源任务不动，不继承时间目标与依赖。
+  面板「更多 → Fork 任务」、`POST /api/localtasks/fork` 同口径。
+
+### Changed
+
+- **仓库 key 变为必填（行为变更，Breaking）**：删除 `local/<名字>` 兜底，key 只能
+  显式给出或由远程地址归一化（`ssh` / `https` / 带 `.git` / 带 user 统一成
+  `host/owner/repo`）。无 key 且无 remote 的登记和导入直接报错，不再静默生成。
+- **仓库编辑/新建面板显示 key（#原需求）**：远程地址自动填充 key 且可手改；
+  key 重复时点名冲突仓库与 path，不加后缀、不覆盖；导入布局在差异检查阶段校验
+  key 必填与包内重复。改已有 key 需二次确认（外键级联，文档目录需手动迁移）。
+- **持续 get 指令带阻塞时长（#66）**：`waitForTask` 把项目级 `getLoopWaitMinutes`
+  透传进 `getloop` 模板，`{{getloop.waitMinutes}}` 可用；默认文案明确
+  「有活立即返回，没活每轮最多阻塞 N 分钟，直到 timeout」。
+- 版本号升至 0.31.0（0.x 下 minor 视作行为变更；存量仓库与已有 key 不受影响）。
+
+### Docs
+
+- README/docs 补充 key 必填与 remote 归一化、`ext` 区块、`{{getloop.waitMinutes}}`。
+- `.claude/skills/dev-nxkv` 同步 repo key 规则、fork、ext 六区块与验证口径。
+
 ## [0.30.1] - 2026-11-07 目录多选批量操作 / 组上下文作用域收敛 / 参数清单
 
 ### Added

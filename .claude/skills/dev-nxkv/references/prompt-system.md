@@ -34,7 +34,7 @@
 共享 ctx 形状（所有区块共用，不存在「某模块自带变量域」）：
 
 ```text
-{ task, repo, group, attach, goal, getloop, source, summary, cwd, name, params }
+{ task, repo, group, attach, goal, ext, getloop, source, summary, cwd, name, params }
 ```
 
 - `task`：`{ id, text }`，`text` 是正文原文。
@@ -43,7 +43,8 @@
 - `attach`：`{ count, list[], sync }`；`list` 元素含 `kindLabel/name/localPath/id/isImage/synced`。
   `sync` 是结构化对象（`dir/downloaded/skipped/failureCount`），未跑同步为 `null`。
 - `goal`：时间目标字段，另有 `check`（任务级 check 指令）与 `statusLine`（队列级状态行）。
-- `getloop`：项目级「持续 get」渲染后的 `{ text, waitMinutes }`，未开启为 `null`。
+- `ext`：同主题待领取队列 `{ count, list[] }`（元素含 `id/title/topic`），队列空时为 `null`。
+- `getloop`：项目级「持续 get」渲染后的 `{ text, waitMinutes }`，未开启为 `null`；指令模板自身也可用 `{{getloop.waitMinutes}}`。
 - `params`：`--param k=v` 的外部参数；同时平铺到顶层（内建同名键不被覆盖）。
 
 区块、标签与固定顺序（`BLOCK_DEFS`）：
@@ -53,8 +54,9 @@
 | 1 | `context` | `<nx-kv.context>` | 项目介绍 + 补充文档 + 组定位/介绍/成员/参考文件 |
 | 2 | `attachment` | `<nx-kv.attachment>` | 附件数量、清单、本地路径/同步详情 |
 | 3 | `timecheck` | `<nx-kv.timecheck>` | 任务级 check 指令或队列级状态行 |
-| 4 | `ack` | `<nx-kv.ack>` | 默认可见：完成后 `localtask done --summary`（完成指令与收尾要求的唯一出口） |
-| 5 | `getloop` | `<nx-kv.getloop>` | 项目开启持续 get 时输出指令 |
+| 4 | `ext` | `<nx-kv.ext>` | 同主题待领取任务数量与标题；空队列整段省略 |
+| 5 | `ack` | `<nx-kv.ack>` | 默认可见：完成后 `localtask done --summary`（完成指令与收尾要求的唯一出口） |
+| 6 | `getloop` | `<nx-kv.getloop>` | 项目开启持续 get 时输出指令，含每轮阻塞分钟数 |
 
 旧 `rule` 区块已删除：它不单独成块，`done` 指令与收尾要求统一由 `ack` 承载。
 
@@ -100,12 +102,12 @@
 
 **每个区块一份独立的模板列表**，各块按自己的列表与生效项工作。
 
-- 五个区块：`context` / `attachment` / `timecheck` / `ack` / `getloop`；每个区块的列表可新建、编辑、复制、删除，并指定该区块当前生效的那一个，保存即生效。
+- 六个区块：`context` / `attachment` / `timecheck` / `ext` / `ack` / `getloop`；每个区块的列表可新建、编辑、复制、删除，并指定该区块当前生效的那一个，保存即生效。
 - 每个区块始终至少保留一个系统内置模板：内置不可删除、不可编辑，可「恢复内置」；用户模板删到只剩内置时区块仍按内置渲染。
 - 所有区块共用 `buildDeliveryCtx` 的同一份 ctx；全局设置（`appendMode` 等）对所有区块整体生效。
 - 存储、归一化、迁移与保存校验集中在 `src/modules/localtask/repo/settings.js` 与 `src/shared/prompt-blocks.js`；旧键（`lt.deliveryTemplate` / `lt.attachTemplate` / `lt.taskSuffix` / `lt.ackPrompt` / `lt.xmlBlocks` / 旧的整组模板键）只作为**迁移来源**，不再作为读写模型。
 - 读取旧库时由迁移把旧键中**语法有效**的模板映射到各区块列表，并保证每块至少有一个内置模板；旧语法模板（`{{group.peers}}` 占位符、`{{#repo}}` 闸门等）不迁移、直接跳过——旧模板不保证可用。
-- **rule 迁移**：旧的 `lt.taskSuffix`、整组模板里的 `rule`、`lt.xmlBlocks.rule`、以及已落盘 `blockTemplates.rule`，都会在首次读取时按空行并入 `ack` 当前生效模板（固定条目 `legacy-rule`），内容不丢；保存后 `lt.blockTemplates` 只写五个区块键，不再出现 `rule`。
+- **rule 迁移**：旧的 `lt.taskSuffix`、整组模板里的 `rule`、`lt.xmlBlocks.rule`、以及已落盘 `blockTemplates.rule`，都会在首次读取时按空行并入 `ack` 当前生效模板（固定条目 `legacy-rule`），内容不丢；保存后 `lt.blockTemplates` 只写六个区块键，不再出现 `rule`。
 - 持续 get：项目级模板先在共享 ctx 中渲染成 `getloop.text`，再由 `getloop` 区块输出；渲染失败同样记入 `renderWarnings`。
 - 面板/CLI 读写与预览的具体 action/路由以 `localtask` 的 settings/preview action 为准（`node bin/cli.mjs routes --module localtask` 可直接核对），预览只读。
 

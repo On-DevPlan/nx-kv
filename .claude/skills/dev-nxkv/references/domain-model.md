@@ -10,13 +10,13 @@
 
 | 表 | 业务对象 | 主键 / 关键外键 | 在链路中的位置 |
 |---|---|---|---|
-| `repos` | 仓库或仓库组（`type` = `repo`/`group`） | PK `key` | 一切归属的根；`topics.repo_key`、`repo_group_members.*`、`ref_bindings.*` 都指向它 |
+| `repos` | 仓库或仓库组（DB `type` = `repo`/`group`；对外投影 `dev`/`ref`） | PK `key`（**非空、全局唯一**） | 一切归属的根；`topics.repo_key`、`repo_group_members.*`、`ref_bindings.*` 都指向它。key 只能显式给出或由 remote 归一化（host/owner/repo），**绝不按名字生成 local/<name>** |
 | `repo_group_members` | 仓库组成员关系 | PK `(group_key, repo_key)`，两列都 FK `repos(key)` | 决定「一个项目挂在哪些组」；`position` / `note` 是组内展示 |
 | `topics` | 本机队列 | PK `id`；`key` UNIQUE；FK `repo_key`、`group_key` → `repos(key)` | 任务容器；`key` 由 `(cwd, group_key)` 纯函数派生，不是第二个身份 |
 | `topic_presence` | 队列等待态（SSE 用） | PK/FK `topic_id` → `topics(id)` | `wait` 是否阻塞、取消、截止时间 |
 | `tasks` | 任务 | PK `id`；FK `topic_id`；UNIQUE `(topic_id, seq)` | 业务主体；`body` 是正文，`seq` 是 CLI 显示的编号 |
 | `task_deps` | 队列内依赖边 | PK `(task_id, dep_id)`，两列 FK `tasks(id)` | 本地 DAG 的持久边；跨队列依赖不在本表 |
-| `task_links` | 派生链（comment/reopen/feedback） | PK `(src_id, dst_id, type)` | 反馈再开一轮时派生新任务，保留历史链 |
+| `task_links` | 派生链（comment/reopen/feedback） | PK `(src_id, dst_id, type)` | 反馈再开一轮时派生新任务，保留历史链；`fork` 复用 `type='comment'`，正文复制但链不断 |
 | `goals` | 任务级时间目标 | PK `id`；FK `task_id` | 领取时开始计时，交付时校验 |
 | `goal_checks` | 时间目标的检查快照 | PK `id`；FK `goal_id` | 记录某刻已用/剩余/超时与 summary |
 | `refs` | 文档索引（md/dir/image/file/path/url） | PK `id`（TEXT，locator 的纯函数） | 文档索引层：内容仍在 `~/.nx-kv/docs/` 或外部路径，ref 只做稳定身份/孤儿清单 |

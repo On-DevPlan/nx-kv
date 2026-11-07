@@ -11,6 +11,7 @@
 import { DEFAULT_PORT } from '../../core/paths.js';
 import { formatGoalTiming, renderInstruction } from '../../core/instruction-template.js';
 import { buildDeliveryCtx } from './delivery-template.js';
+import { parseFrontmatter } from '../../shared/frontmatter.js';
 import {
   BLOCK_DEFS,
   resolveBlockTemplates,
@@ -183,7 +184,10 @@ export async function buildTaskDelivery(task, { source, summary, cwd, name, topi
     const goal = enrichGoalTiming(taskGoalCtx || (await readGoalCtx(cwd)));
 
     // 项目组上下文（组概念 + 本项目位置 + 兄弟成员 + 参考文件地址）：只进 instruction。
-    const groupCtx = await readGroupContext(cwd);
+    // #64 作用域：组材料只挂**组任务**（正文 frontmatter 带 board）；单 repo 主题里
+    // 提交的纯项目任务只带项目介绍，不把所属组的材料挂进来。
+    const boardMark = String(parseFrontmatter(String((task && task.text) || '')).board || '').trim();
+    const groupCtx = await readGroupContext(cwd, { board: boardMark });
     const settings = (await getSettings().catch(() => null)) || {};
     const deliveryCtx = buildDeliveryCtx({ task, goal, source, summary, cwd, name, groupCtx, params });
 

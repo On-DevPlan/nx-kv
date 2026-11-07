@@ -55,11 +55,12 @@ async function buildGroup() {
 }
 
 test('组上下文封装：交付文本带组概念/组介绍/组内位置/兄弟成员/参考文件路径', async () => {
-  const { cwd } = await buildGroup();
+  const { cwd, b } = await buildGroup();
   const localtask = await import('../../src/modules/localtask/service.js');
   const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
 
-  await localtask.addTask({ text: '改登录页', cwd });
+  // #64 作用域：组任务 = 正文 frontmatter 带 board（组面板/CLI --board 提交的形态）
+  await localtask.addTask({ text: `---\nboard: ${b.id}\n---\n\n改登录页`, cwd });
   const r = await waitForTask({ cwd, summary: '开干', timeoutSec: 1, open: false });
   assert.equal(r.status, 'ok');
   const ins = String(r.instruction || '');
@@ -70,8 +71,21 @@ test('组上下文封装：交付文本带组概念/组介绍/组内位置/兄�
   assert.match(ins, /组里的任务出入口/, '本项目在组里的位置');
   assert.match(ins, /仓库与技能登记/, '兄弟成员的组内描述');
   assert.match(ins, /waitgoal-设计\.md/, '组绑定参考文件地址');
-  // 上下文只进 instruction：task.text 保持库存原文
-  assert.equal(String(r.task.text || '').trim(), '改登录页');
+  // 上下文只进 instruction：task.text 保持库存原文（含归属 frontmatter）
+  assert.match(String(r.task.text || ''), /改登录页/);
+});
+
+test('单 repo 主题：成员仓库的纯项目任务不挂组上下文（#64）', async () => {
+  const { cwd } = await buildGroup();
+  const localtask = await import('../../src/modules/localtask/service.js');
+  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+
+  // 没有 board frontmatter = 仓库自己的活：成员身份不等于这条任务属于组
+  await localtask.addTask({ text: '仓库自己的活', cwd });
+  const r = await waitForTask({ cwd, summary: '开干', timeoutSec: 1, open: false });
+  const ins = String(r.instruction || '');
+  assert.doesNotMatch(ins, /项目组上下文/, '纯项目任务不挂组材料');
+  assert.match(ins, /项目介绍 · alpha/, '项目介绍照给');
 });
 
 test('不在项目组里的目录：不拼组上下文段', async () => {
@@ -102,14 +116,29 @@ test('交付带项目介绍：已登记的项目即使不在任何组里也知�
 });
 
 test('交付带项目介绍 + 组介绍：组内项目的介绍两样都在', async () => {
-  const { cwd } = await buildGroup();
+  const { cwd, b } = await buildGroup();
   const localtask = await import('../../src/modules/localtask/service.js');
   const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
 
-  await localtask.addTask({ text: '组内任务', cwd });
+  await localtask.addTask({ text: `---\nboard: ${b.id}\n---\n\n组内任务`, cwd });
   const r = await waitForTask({ cwd, summary: '开干', timeoutSec: 1, open: false });
   const ins = String(r.instruction || '');
   assert.match(ins, /项目介绍 · alpha/, '项目介绍段带项目名');
   assert.match(ins, /管清单的/, '项目介绍正文');
   assert.match(ins, /项目组上下文 · nx系列/, '组上下文段照旧');
+});
+
+test('组任务只挂它归属的那个组：同仓库多组时不串组', async () => {
+  const { cwd, alpha, b } = await buildGroup();
+  const boards = await import('../../src/modules/repos/boards.js');
+  const other = await boards.createBoard({ name: '别的组', desc: '与本任务无关' });
+  await boards.assignRepo({ key: alpha.key, board: other.id });
+  const localtask = await import('../../src/modules/localtask/service.js');
+  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+
+  await localtask.addTask({ text: `---\nboard: ${b.id}\n---\n\n归属 nx系列`, cwd });
+  const r = await waitForTask({ cwd, summary: '开干', timeoutSec: 1, open: false });
+  const ins = String(r.instruction || '');
+  assert.match(ins, /项目组上下文 · nx系列/, '归属组照给');
+  assert.doesNotMatch(ins, /别的组/, '同仓库的其他组不串进来');
 });

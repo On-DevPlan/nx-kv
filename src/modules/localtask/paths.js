@@ -21,20 +21,12 @@ export const GLOBAL_CWD = ''; // 全局主题永不指向真实目录
 export function isGlobalKey(key) {
   return key === GLOBAL_KEY;
 }
-// ─── 存储位置：可环境变量覆盖（测试隔离）；旧名/旧文件自动兼容 ──────────
+// ─── 存储位置（历史兼容层已随 T07 下线；存储进 nxkv.db，见 repo/open.js）───
 
-export function storePath() {
-  return (
-    process.env.NX_KV_LOCALTASK_STORE ||
-    process.env.NX_KV_SESSIONTASK_STORE || // 改名前的环境变量，兼容既有脚本
-    join(APP_DIR, 'localtasks.json')
-  );
-}
-
-// 改名前的存储文件。显式覆盖（任一环境变量）时不迁移；新文件缺失时读它，
-// 首次保存即落到新文件（旧文件保留不删，数据零丢失）。
+// 改名前的存储文件（sessiontasks.json）。显式覆盖（NX_KV_LOCALTASK_STORE）时
+// 不迁移；新文件缺失时读它（T07 收档改名后由 import-json 的 findLegacy 兜底）。
 export function legacyStorePath() {
-  if (process.env.NX_KV_LOCALTASK_STORE || process.env.NX_KV_SESSIONTASK_STORE) return null;
+  if (process.env.NX_KV_LOCALTASK_STORE) return null;
   return join(APP_DIR, 'sessiontasks.json');
 }
 // ─── 工作目录 → 主题 ───────────────────────────────────────────────

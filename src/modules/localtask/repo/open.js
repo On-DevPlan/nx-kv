@@ -10,7 +10,6 @@
 //   NX_KV_LOCALTASK_STORE       JSON 时代指向 `<dir>/localtasks.json`；
 //                               现在映射为 `<dir>/nxkv.db`，legacy JSON 导入也以
 //                               `<dir>` 为 home —— 约 25 个既有测试文件靠它隔离
-//   NX_KV_SESSIONTASK_STORE     改名前的旧变量，同上
 import { rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { openStore, getDb, closeDb, isStoreOpen, tx } from '../../../core/db/index.js';
@@ -20,7 +19,7 @@ let openedFor = null;
 
 /** 按当前环境解析库路径与 legacy 目录（每次现取 —— 测试会在用例间改 env）。 */
 export function resolveLocaltaskDb() {
-  const ltStore = process.env.NX_KV_LOCALTASK_STORE || process.env.NX_KV_SESSIONTASK_STORE || '';
+  const ltStore = process.env.NX_KV_LOCALTASK_STORE || '';
   if (ltStore) {
     const dir = dirname(ltStore);
     return { path: process.env.NX_KV_DB || join(dir, 'nxkv.db'), appDir: dir };

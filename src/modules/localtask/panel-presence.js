@@ -5,7 +5,7 @@ import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { APP_DIR, DEFAULT_PORT } from '../../core/paths.js';
-import { atomicWriteTextSync } from '../../core/json-store.js';
+import { atomicWriteTextSync } from '../../core/atomic-file.js';
 import { openLocaltaskStore as openStore, topics as topicsRepo } from './repo/index.js';
 import { isLiveWaiting } from './task-view.js';
 // ─── 面板空闲自释放所需的观测接口（panel-guard.js 调用）────────────
@@ -265,7 +265,7 @@ function readAllPanels() {
 function writePanels(list) {
   try {
     const f = PANEL_REGISTRY_FILE();
-    // 原子写（tmp+rename，收口自 core/json-store）：旧实现直接 writeFileSync，
+    // 原子写（tmp+rename，收口自 core/atomic-file）：旧实现直接 writeFileSync，
     // 半途被杀会留下半个 JSON——下次 readAllPanels 解析失败，全部登记无声清零。
     // atomicWriteTextSync 内部 mkdirp，首次跑的干净用户目录也不会 ENOENT。
     atomicWriteTextSync(f, JSON.stringify({ panels: list }, null, 2));

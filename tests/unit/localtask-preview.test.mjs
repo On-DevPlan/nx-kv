@@ -23,7 +23,6 @@ const goalFile = join(tmp, 'timegoals.json');
 const dir = join(tmp, 'projP');
 mkdirSync(dir, { recursive: true });
 process.env.NX_KV_LOCALTASK_STORE = storeFile;
-process.env.NX_KV_TIMEGOAL_STORE = goalFile;
 process.env.NX_KV_CONFIG = join(tmp, 'config.json');
 
 process.on('exit', () => {

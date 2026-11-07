@@ -244,7 +244,7 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
   return html || '<p class="mdw-empty">（空文档）</p>';
 }
 
-// 与后端 templates/service.js 的 BUILTIN_BODY / BUILTIN_VALUES 同构。
+// 与后端出厂文本（core/db/seed-templates.js 的 BUILTIN_BODY） / BUILTIN_VALUES 同构。
 // 正文里的 {{槽位名}} 是模板槽位（骨架锁死）——新建任务必须先按槽位值渲染，
 // **禁止**把 `{{背景}}` 这种标记原样塞进任务正文（验收反馈：用户不知何意）。
 export const NEW_TEMPLATE = `## 背景
@@ -260,7 +260,7 @@ export const NEW_TEMPLATE = `## 背景
 ## 附件
 `;
 
-/** 内置槽位默认值（与 templates/service.js BUILTIN_VALUES 同构） */
+/** 内置槽位默认值（与后端出厂值（core/db/seed-templates.js 的 BUILTIN_VALUES）同构） */
 export const NEW_TEMPLATE_VALUES = {
   背景: '（一句话说清要改什么）',
   验收: '…',

@@ -16,7 +16,6 @@ const sb = mkdtempSync(join(tmpdir(), 'nx-kv-revbump-'));
 process.env.NX_KV_REPOS_STORE = join(sb, 'repos.json');
 process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
 process.env.NX_KV_DOCS_DIR = join(sb, 'docs');
-process.env.NX_KV_TIMEGOAL_STORE = join(sb, 'timegoals.json');
 process.env.NX_KV_WORKFLOW_STORE = join(sb, 'workflows');
 
 const svc = await import('../../src/modules/localtask/service.js');

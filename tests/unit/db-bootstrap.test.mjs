@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { createTestStore, assertUnderTmp } from '../helpers/create-test-store.mjs';
+import { createTestStore, assertUnderTmp } from '../support/test-store.mjs';
 import { tmpdir } from 'node:os';
 
 const execFileAsync = promisify(execFile);

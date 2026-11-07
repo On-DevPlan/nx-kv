@@ -16,7 +16,6 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'nx-kv-fork-'));
   process.env.NX_KV_LOCALTASK_STORE = join(dir, 'localtasks.json');
   process.env.NX_KV_REPOS_STORE = join(dir, 'repos.json');
-  process.env.NX_KV_TIMEGOAL_STORE = join(dir, 'timegoals.json');
   process.env.NX_KV_DOCS_DIR = join(dir, 'docs');
 });
 

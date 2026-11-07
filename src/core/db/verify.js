@@ -224,7 +224,13 @@ export function verifyStore(db, { appDir } = {}) {
         problems.length ? '：' + JSON.stringify(problems.slice(0, 5)) : ''
       }`;
       add('每条 task 的 body 哈希 = 原 text', hashOk, hashDetail);
-      add('legacy 任务数 = 迁移后任务数', legacyTasks === statusTotal, `${legacyTasks} vs ${statusTotal}`);
+      // 对账口径是 **≥** 而不是 =：库是活数据，迁移后又会新增任务、老 JSON 快照
+      // 不会跟 —— 要求相等会让任何真实使用过的库永远红一条（T07 裁决）。
+      add(
+        'legacy 任务数 ≤ 迁移后任务数（库是活数据，允许新增）',
+        legacyTasks <= statusTotal,
+        `${legacyTasks} vs ${statusTotal}`
+      );
     } else {
       add('每条 task 的 body 哈希 = 原 text', true, hashDetail);
     }

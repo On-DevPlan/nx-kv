@@ -5,7 +5,7 @@
 // 那是静默丢写，靠人工 review 是抓不住的。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestStore } from '../helpers/create-test-store.mjs';
+import { createTestStore } from '../support/test-store.mjs';
 
 const rowsOf = (db, sql = 'SELECT count(*) AS c FROM settings') => Number(db.get(sql).c);
 

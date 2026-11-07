@@ -2,6 +2,46 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.29.0] - 2026-11-07 存储层全量迁移 SQLite（nxkv.db）
+
+### Breaking（升级前必读）
+
+- **存储层整体迁移 SQLite**：所有业务数据（队列 / 任务 / 仓库登记 / 看板 / 组成员 /
+  队列绑定 / 时间目标 / 模板 / 设置偏好）从 `~/.nx-kv/*.json` 迁入 `~/.nx-kv/nxkv.db`
+  （单文件库，WAL 模式）。首次启动自动一次性导入；导入成功后 legacy JSON
+  改名 `*.migrated-<时间戳>.json` 保留（不删），迁移失败整体回滚、JSON 一字节不动。
+  **迁移是单向的**：装回 0.28.0 读不到新库，回退需手动把 `*.migrated-*` 改回原名。
+- **engines 抬升 Node >= 22.13.0**：存储使用 Node 内置 `node:sqlite`，
+  22.13 起不再需要 --experimental-sqlite 标志。低于此版本直接拒绝启动并给出指引。
+- **任务状态词表统一**：`pending / claimed / done / cancelled` 四个词全链路唯一
+  （库 / API / CLI / 前端 / 测试断言）。旧词映射：`consumed`（有交付结论）→ `done`、
+  `consumed`（无结论）→ `claimed`、`archived`（有结论）→ `done`、
+  `archived`（无结论）→ `cancelled`；待领取的正判定只认 `pending`。
+- **队列身份改为 (cwd, group) 的派生值**：旧 key（目录名 sha1）一律失效、不做别名
+  解析——所有引用旧 topic key 的地方（脚本 / 面板书签）需要重新寻址（按 cwd）。
+  **同一目录可以按不同组各开一条队列**（(cwd, group) 唯一）。
+- **重开 / 搬队列改为派生模型**：reopen 与搬队列不再就地改任务，而是软删原任务 +
+  派生新任务（task_links 连线，旧任务交付事实定格）——**任务编号会换**，历史引用
+  （脚本里写死的 task:<key>:<id>）按 task_links 找新号。
+- **目录级 timegoal 与任务级 goal 分家**：任务级目标进 goals/goal_checks 表
+  （删任务级联删）；目录级目标随库走。legacy timegoals.json 里纯队列级目标
+  （键无 task: 前缀）按裁决**丢弃并报告**。
+- **config.json 只剩凭据 5 项**（baseUrl / token / email / userId / groupId）；
+  偏好 4 项（autoSyncAttachments / attachmentsDir / gitRepoRoot / gitDevRoot）进
+  settings 表。手改 config.json 的偏好不再生效，用 `nx-kv setting set`。
+- **内置模板可编辑**：builtin 模板的骨架不再锁死（仍不可删）；用户改动重启保留，
+  出厂文本不再自动覆盖回来。
+- **新增 `nx-kv repo bind-topics`**：把迁移时挂在哨兵仓库（__unbound__）上的队列
+  按路径前缀绑回真实仓库（默认预览，--apply 落盘；最长路径前缀优先）。
+- **删除旧存储 env**：NX_KV_TEMPLATES_STORE / NX_KV_TIMEGOAL_STORE /
+  NX_KV_SESSIONTASK_STORE 下线；NX_KV_LOCALTASK_STORE / NX_KV_REPOS_STORE 保留
+  （测试隔离机制，映射到所在目录的 nxkv.db）。
+
+### 建议版本号
+
+本次发布建议以 **0.29.0** 起跳（存储不兼容属于 minor 内 breaking；若按 1.x 语义
+应为 1.0.0——团队按 0.x 惯例持续发布，minor 位即 breaking 位）。
+
 ## [0.28.0] - 2026-11-06 组任务详情路由 + 组锚定页全链路（任务 #86）
 
 ### Added

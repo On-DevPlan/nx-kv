@@ -23,11 +23,10 @@ export const DB_FILE_NAME = 'nxkv.db';
 export function defaultStoreTarget() {
   const explicit = process.env.NX_KV_DB;
   if (explicit) return { path: explicit, appDir: APP_DIR };
-  for (const v of [
-    process.env.NX_KV_REPOS_STORE,
-    process.env.NX_KV_LOCALTASK_STORE,
-    process.env.NX_KV_SESSIONTASK_STORE,
-  ]) {
+  // 只保留两个**活**的测试隔离 env（localtask / repos 的 open.js 映射机制）；
+  // NX_KV_TEMPLATES_STORE / NX_KV_TIMEGOAL_STORE / NX_KV_SESSIONTASK_STORE 已随
+  // 各域切库下线（T07），不再进解析链。
+  for (const v of [process.env.NX_KV_REPOS_STORE, process.env.NX_KV_LOCALTASK_STORE]) {
     if (v) {
       const dir = dirname(v);
       return { path: join(dir, DB_FILE_NAME), appDir: dir };

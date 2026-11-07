@@ -65,6 +65,7 @@ export default function ToolBar({
   onAtt,
   onImport,
   onClone,
+  onFork,
   onMark,
   onDraft,
   onDelete,
@@ -111,6 +112,8 @@ export default function ToolBar({
         onChain && { id: 'chain', label: '任务链', run: onChain },
         // 克隆（#70）：内容快速复制成新任务，不建派生链（与评论/反馈的链式派生区分）
         onClone && { id: 'clone', label: '克隆任务', run: onClone },
+        // Fork（#67）：同样复制正文，但挂到源任务链下——评论/反馈链不丢
+        onFork && { id: 'fork', label: 'Fork 任务', run: onFork },
         showMark && { id: 'mark', label: '评论', run: onMark },
         onDelete && { id: 'delete', label: '删除', run: onDelete, danger: true },
       ].filter(Boolean),

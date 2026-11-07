@@ -111,3 +111,18 @@ test('clone：全局任务的克隆仍进全局池', async () => {
   assert.equal(c.isGlobal, true);
   assert.equal(c.task.text, '# 全局模板任务');
 });
+
+test('fork：正文逐字复制，同时挂到源任务链下（#67）', async () => {
+  const src = await svc.addTask({ cwd: dirA, text: '# 模板任务\n\n正文原样' });
+  const f = await svc.forkTask({ cwd: dirA, id: src.task.id });
+  assert.equal(f.forked, true);
+  assert.equal(f.from.id, src.task.id);
+  assert.equal(f.task.text, '# 模板任务\n\n正文原样', '照样是原文复制');
+  const chain = await svc.taskChain({ cwd: dirA, id: f.task.id });
+  assert.equal(chain.nodes.length, 2, 'fork 之后链上有源 + 新任务');
+  assert.equal(chain.nodes[0].id, src.task.id, '源任务在链上');
+  assert.equal(chain.nodes.at(-1).id, f.task.id);
+  assert.equal(chain.nodes.at(-1).current, true);
+  // 源任务不动
+  assert.equal((await svc.getTask({ cwd: dirA, id: src.task.id })).status, 'pending');
+});

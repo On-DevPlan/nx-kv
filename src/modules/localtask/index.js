@@ -262,6 +262,20 @@ export default {
         `已克隆 #${d.from.id} → #${d.task.id} @ ${d.name}（内容复制，无派生链；${d.delivered ? '已实时投递' : '待领取'}）`,
     },
     {
+      // Fork（#67）：克隆的原文复制 + 派生链。clone 有时被当成新活后，原任务的
+      // 评论/反馈链就看不到了；fork 把新任务挂到源任务下（task_links type=comment），
+      // 链在任务链弹窗里继续可见。正文逐字复制，源任务不动。
+      id: 'localtask.fork',
+      cli: ['localtask', 'fork'],
+      http: ['POST', '/api/localtasks/fork'],
+      summary:
+        'Fork 任务：复制正文内容为新任务，并把它挂到源任务的任务链下（保留评论/反馈链）；不继承时间目标与依赖',
+      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
+      run: (ctx) => service.forkTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
+      render: (d) =>
+        `已 Fork #${d.from.id} → #${d.task.id} @ ${d.name}（内容复制 + 保留任务链；${d.delivered ? '已实时投递' : '待领取'}）`,
+    },
+    {
       // 领取（todo.md 的「get」）：默认直接领——队列有任务立即返回，没有立即空手而回
       // （不阻塞）；项目开启「持续 get」（repo getLoop）后升级为 waitgoal：
       // 无任务自动唤起阻塞窗口（打开页面 + 项目配置的分钟数），领到的交付文本

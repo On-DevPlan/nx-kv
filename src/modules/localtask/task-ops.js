@@ -390,3 +390,31 @@ export async function cloneTask({ cwd: rawCwd, key: rawKey, id } = {}) {
   });
   return { ...res, cloned: true, from: { key, id: want } };
 }
+
+/**
+ * Fork 任务（#67）：克隆的「原文复制」+ 派生链的「从哪来」。
+ *
+ * 与 clone 的差别只有一处：把新任务挂到源任务下面（task_links，type=comment）。
+ * 这样源任务已有的评论/反馈链在新任务的任务链弹窗里仍然可见；正文仍是逐字复制，
+ * 源任务不动。时间目标与依赖依旧不继承（fork 是开新活，不是新一轮执行）。
+ */
+export async function forkTask({ cwd: rawCwd, key: rawKey, id } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const want = Number(id);
+  if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
+  openStore();
+  const t = topicsRepo.getTopic(key);
+  if (!t) throw notFound('主题不存在: ' + key);
+  const src = (t.tasks || []).find((x) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
+  if (!src) throw notFound('任务不存在或已删除: #' + want);
+  const toGlobal = isGlobalKey(key);
+  const res = await addTask({
+    text: src.text,
+    global: toGlobal,
+    cwd: toGlobal ? undefined : t.cwd || rawCwd,
+    // 跨主题也拼成 'key:id'，父任务定位与 reopen 同一条链路
+    forkOf: `${key}:${want}`,
+    forkKind: 'comment',
+  });
+  return { ...res, forked: true, from: { key, id: want } };
+}

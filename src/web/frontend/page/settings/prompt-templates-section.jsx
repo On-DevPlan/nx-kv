@@ -96,6 +96,20 @@ const BLOCK_PARAMS = {
       items: [['task.id', '任务号']],
     },
   ],
+  ext: [
+    {
+      label: '队列',
+      items: [
+        ['ext.topic', '主题 / 队列名'],
+        ['ext.count', '待领取任务数'],
+        ['ext.list', '待领取清单（可循环 id/title/topic）'],
+      ],
+    },
+    {
+      label: '通用',
+      items: [['task.id', '任务号']],
+    },
+  ],
   ack: [
     {
       label: '通用',

@@ -290,7 +290,7 @@ function GetLoopEditor({ repo }) {
               onOpenChange={setOpenIdx}
             />
           ) : (
-            <div className="setp-note">未配置模板 —— 用默认「继续调用 localtask get 直到 timeout」。</div>
+            <div className="setp-note">{'未配置模板 —— 用默认「完成后续调 localtask get；没活时每轮最多阻塞 {{getloop.waitMinutes}} 分钟，直到 timeout」。'}</div>
           )}
           <div className="setp-proj-a">
             <button

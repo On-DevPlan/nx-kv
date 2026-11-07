@@ -140,6 +140,7 @@ test('get：项目开启持续 get → 交付文本带「继续 get」模板；d
   assert.equal(r.status, 'ok');
   assert.equal(r.getLoop, true);
   assert.match(r.instruction, /localtask get/, '交付文本带继续 get 模板');
+  assert.match(r.instruction, /每次最多阻塞 1 分钟/, '阻塞窗口分钟数要传给 getloop 模板');
 
   // 阻塞形态：队列空 + 持续 get 开 → 阻塞到窗口上限（这里 1s 显式缩短验证 timeout 出口）
   const t0 = Date.now();
@@ -172,12 +173,12 @@ test('get：多条持续 get 模板按空行拼接后统一渲染', async () => 
   const { getTask } = await import('../../src/modules/tasktool/get.js');
   const cwd = join(dir, 'loop-multi');
   const repo = await repos.addRepo({ path: cwd, name: 'loop-multi', remote: 'https://github.com/me/lm' });
-  await repos.updateRepo(repo.id, { getLoop: { enabled: true, waitMinutes: 1, template: ['GO_ON_1', '{{task.text}}||GO_ON_2'] } });
+  await repos.updateRepo(repo.id, { getLoop: { enabled: true, waitMinutes: 1, template: ['GO_ON_1', '等{{getloop.waitMinutes}}分||{{task.text}}||GO_ON_2'] } });
   await localtask.addTask({ text: '多模板任务', cwd });
   const r = await getTask({ cwd, summary: '领活' });
   assert.equal(r.status, 'ok');
   assert.equal(r.getLoop, true);
-  assert.match(r.instruction, /GO_ON_1\n\n[\s\S]*多模板任务\|\|GO_ON_2/, '多条模板拼接成单段统一渲染');
+  assert.match(r.instruction, /GO_ON_1\n\n[\s\S]*等1分\|\|多模板任务\|\|GO_ON_2/, '多条模板拼接成单段统一渲染，且能读到阻塞分钟数');
 });
 
 test('修改反馈 → 重开：派生新任务，旧任务 done 定格（#74 派生口径）', async () => {

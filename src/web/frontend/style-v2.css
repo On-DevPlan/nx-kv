@@ -78,6 +78,8 @@
 .nx-rail-act:hover { background: var(--soft); color: var(--ink); }
 .nx-rail-act:disabled { opacity: .4; cursor: default; }
 .nx-rail-act:disabled:hover { background: none; color: var(--ink-2); }
+/* 带文字的窄轨动作（#95：撤销/恢复要有可见文字，工具按文字才定位得到） */
+.nx-rail-act.labeled { font-size: 12px; line-height: 1; height: 26px; }
 
 /* 关闭态：tabset 占位条透明（几乎看不见）；展开入口是 portal 到工作区的半圆弧把手 */
 .nx-side-closed-host {
@@ -146,6 +148,25 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .brandrow .grow { flex: 1 1 auto; min-width: 0; }
 .brandrow .iconbtn { width: 24px; height: 24px; flex: none; }
 .brandrow .iconbtn:disabled { opacity: .4; cursor: default; background: none; }
+/* 带文字的图标钮（#95：撤销/恢复要**可见文字**——纯 SVG 图标没有 textContent，
+   按文字找按钮的工具定位不到、判「未实现」）。图标给形，文字给名。
+   放在搜索行（操作行）：那边宽度充足，文字完整可读。 */
+.iconbtn.labeled {
+  width: auto; min-width: 0; height: 24px; padding: 0 8px 0 6px; gap: 4px;
+  font-size: 12px; line-height: 1; white-space: nowrap;
+}
+.searchrow .iconbtn.labeled { flex: none; overflow: hidden; }
+.searchrow .iconbtn.labeled span { overflow: hidden; text-overflow: ellipsis; }
+.searchrow .iconbtn.labeled > svg { flex: none; }
+/* 侧栏拖得很窄时搜索框优先（主功能），文字按钮**先缩**（flex-shrink）——
+   文字不隐藏：display:none 会让 innerText 变空，按文字定位的工具又找不到了
+   （#95 的原委）。这里让按钮收缩、文字省略号截断，图标始终在。 */
+@media (max-width: 1100px) {
+  .searchrow .iconbtn.labeled { flex: 0 1 auto; }
+  .searchrow .iconbtn.labeled span { min-width: 0; }
+}
+/* 品牌行标题：优先保留（logo 已是标识，标题是「这是哪个应用」） */
+.brandrow .nx-title { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 面板内的通用留白（与仓库管理页的 .pad/.stack 同义） */
 .pad { padding: 18px 20px; }

@@ -205,17 +205,20 @@ export default function Sidebar({
           <span className="nx-logo" aria-hidden>nx</span>
           <span className="nx-title">nx-kv</span>
           <span className="grow" />
+          {/* 撤销/恢复（#93 验收反馈）：布局操作的两颗标准钮。以前是 ↶↷ 文本字形——
+              24px 灰 glyph 读不出「这是按钮」，redo 无历史时再叠 0.4 透明度，
+              用户直接当装饰符号看不见。换线形图标 + 明确的撤销/恢复文案。 */}
           <button
-            className="iconbtn undo" title="撤销上一次布局操作" aria-label="撤销上一次布局操作"
+            className="iconbtn undo" title="撤销（上一次布局操作）" aria-label="撤销上一次布局操作"
             disabled={!shell || !shell.canUndo} onClick={shell && shell.undo}
           >
-            ↶
+            <Icon name="undo" size={14} />
           </button>
           <button
-            className="iconbtn redo" title="重做" aria-label="重做"
+            className="iconbtn redo" title="恢复（重做布局操作）" aria-label="恢复上一次布局操作"
             disabled={!shell || !shell.canRedo} onClick={shell && shell.redo}
           >
-            ↷
+            <Icon name="redo" size={14} />
           </button>
           <button
             className="iconbtn" title="设置（浮动面板）" aria-label="设置"

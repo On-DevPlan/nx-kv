@@ -834,19 +834,43 @@ export function openPanel(model, spec) {
  * 2026-11-04 #41 实测发现；老布局因为已存着设置浮窗、走 existing 早退而侥幸没踩到）。
  */
 export function openFloatingPanel(model, spec) {
-  // _float：借道主区落页签，但不清场（见 openPanel MAIN 分支注释——popout 之后
-  // 主区必须还留着自己的内容，否则空 tabset 被自动删、主区死掉）
-  const r = openPanel(model, { ...spec, area: AREA.MAIN, location: spec.location || 'center', _float: true });
-  if (!r || !r.tabId || r.reused) return r;
-  const before = new Set([...model.getLayouts().keys()]);
-  model.doAction(Actions.popoutTab(r.tabId, 'float'));
-  // 新浮窗的默认矩形会铺满主区（不像「浮动面板」），这里收成面板尺寸并居中。
+  // 整条链（落页签 → 弹出成浮窗 → 挪矩形）**一个 group**，撤销只回退一步（#93）。
+  //
+  // 为什么自己拼而不复用 openPanel：openPanel 内部 model.doAction(addTab) 是
+  // **独立一次** doAction——撤销栈会记两步，用户连点几次撤销才把浮窗关掉
+  // （实测：点一次撤销浮窗还在，第二次才消失）。库的 applyGroup 内部走
+  // applyAction、不触发 change 监听器上的 onBeforeAction，所以整段只占一步。
+  //
+  // popoutTab 需要 tabId，而 tabId 是 addTab 执行后才有的——所以**先自己发一个
+  // tab id**（tab 的 id 是普通属性，可自带），三个 action 就能一次性排好。
+  const existing = findOpenPanel(model, spec.component, spec.config || {});
+  if (existing) {
+    model.doAction(Actions.selectTab(existing.getId()));
+    return { tabId: existing.getId(), reused: true };
+  }
+  const mainTs = mainTabsetId(model);
+  if (!mainTs) return { tabId: null, reused: false };
+  const tabId = model.nextUniqueId();
+  const actions = [
+    Actions.addTab(
+      { type: 'tab', id: tabId, name: spec.name || spec.component, component: spec.component, config: spec.config || {} },
+      mainTs,
+      DockLocation.getByName('center'),
+      -1,
+      true
+    ),
+    Actions.popoutTab(tabId, 'float'),
+  ];
+  model.doAction(Actions.group(actions));
+  // 浮窗的默认矩形会铺满主区（不像「浮动面板」），这里收成面板尺寸并居中。
+  // 挪矩形**不进 group**：它要等浮窗 layout 已存在才知道 layoutId 与宿主矩形，
+  // 且挪位置不该单独占一步撤销（用户撤销的是「开浮窗」这件事）。
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
   const width = Math.min(760, Math.max(560, vw - 160)); // 设置面板：左侧分区导航 + 右侧内容
   const height = Math.min(700, Math.max(460, vh - 160));
-  for (const [id, layout] of model.getLayouts()) {
-    if (before.has(id) || layout.getType() !== 'float') continue;
+  for (const [, layout] of model.getLayouts()) {
+    if (layout.getType() !== 'float') continue;
     // 用库自己的 moveFloat 动作改矩形：直接 setRect 不会被浮窗组件读到
     // （浮窗样式在渲染时读 layout.getRect()，但只有 moveFloat 会触发重绘）。
     // 初始矩形 = 页签所在容器的内容区（≈主工作区，不含侧栏）——在它里面居中，
@@ -860,7 +884,7 @@ export function openFloatingPanel(model, spec) {
     );
     model.doAction(Actions.moveFloat(layout.getLayoutId(), rect));
   }
-  return r;
+  return { tabId, reused: false };
 }
 
 /** 把一个面板挪到指定停靠位（换布局用） */

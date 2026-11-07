@@ -76,6 +76,8 @@
   color: var(--ink-2); font-family:inherit;
 }
 .nx-rail-act:hover { background: var(--soft); color: var(--ink); }
+.nx-rail-act:disabled { opacity: .4; cursor: default; }
+.nx-rail-act:disabled:hover { background: none; color: var(--ink-2); }
 
 /* 关闭态：tabset 占位条透明（几乎看不见）；展开入口是 portal 到工作区的半圆弧把手 */
 .nx-side-closed-host {

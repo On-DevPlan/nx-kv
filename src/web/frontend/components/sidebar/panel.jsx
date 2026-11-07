@@ -145,6 +145,20 @@ export default function SidebarPanel() {
           <span className="nx-rail-label">目录</span>
         </button>
         <div className="nx-rail-acts">
+          {/* 撤销/恢复（#93 验收反馈）：展开态品牌行有这两颗，收起态窄轨此前没有——
+              「收起侧栏 = 摸不到布局撤销」与齿轮同一类缺口，补齐（全局动作收口在侧栏）。 */}
+          <button
+            className="nx-rail-act" title="撤销（上一次布局操作）" aria-label="撤销上一次布局操作"
+            disabled={!app.shell || !app.shell.canUndo} onClick={() => app.shell && app.shell.undo()}
+          >
+            <Icon name="undo" size={14} />
+          </button>
+          <button
+            className="nx-rail-act" title="恢复（重做布局操作）" aria-label="恢复上一次布局操作"
+            disabled={!app.shell || !app.shell.canRedo} onClick={() => app.shell && app.shell.redo()}
+          >
+            <Icon name="redo" size={14} />
+          </button>
           <button
             className="nx-rail-act" title="关闭目录（完全隐藏，左缘把手可展开）" aria-label="关闭目录"
             onClick={close}

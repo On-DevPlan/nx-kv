@@ -228,7 +228,7 @@ export default function DescModal({ repo, board, onClose, onSaved, onOpenTab }) 
           {doc ? (
             <div className="rpd-body">
               <MdPanes
-                mode={writable ? mode : 'preview'}
+                mode={writable ? mode : 'read'}
                 title={doc.title}
                 body={doc.body}
                 previewHtml={previewHtml}

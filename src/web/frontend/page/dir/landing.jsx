@@ -43,6 +43,8 @@ export default function Landing({
   onOpenFlow,      // () 打开可视化编排面板（绿色超链入口）
   onToggleGate,    // (t) 闸门快捷开关
   downstreamOf,    // { [gateTaskId]: number[] } 闸门挡住的后续任务 id
+  onMoreMenu,      // (e) 打开头部「更多 ▾」菜单（已删除任务入口在里面）
+  deletedCount = 0 // 已软删任务数（「更多」按钮角标提示）
 }) {
   const name = isGlobal ? '全局池' : (topic?.name || '目录');
   const path = isGlobal ? '共享池（无固定目录）' : (topic?.cwd || '—');
@@ -133,6 +135,17 @@ export default function Landing({
             onClick={onProg}
           >
             进程
+          </button>
+        )}
+        {onMoreMenu && (
+          <button
+            type="button"
+            className="btn ghost sm"
+            title={deletedCount > 0 ? `更多操作（含 ${deletedCount} 条已删除任务，可恢复）` : '更多操作'}
+            aria-haspopup="menu"
+            onClick={(e) => onMoreMenu(e)}
+          >
+            更多{deletedCount > 0 ? ` (${deletedCount})` : ''} ▾
           </button>
         )}
         <span className="mdw-land-count">

@@ -4,18 +4,24 @@ import { db, txw } from './open.js';
 import { nowMs, msToStamp } from '../../../core/db/time.js';
 import { GLOBAL_TOPIC_KEY } from '../../../core/topic-key.js';
 import { TOPIC_EXT, parseExt, jsonText } from './rows.js';
-import { listTaskRowsByTopic } from './tasks.js';
+import { listTaskRowsByTopic, listAllTaskRows } from './tasks.js';
 
 const SENTINEL_REPO = '__unbound__';
 
-/** 轻量主题行（不含任务）。不存在返回 null。 */
+// 统一列清单：assembleTopic 读的是 camelCase 别名（createdAtMs/updatedAtMs），
+// SELECT * 只有蛇形列名 —— 时间戳恒为空、面板排序失效都是从这里来的。
+const TOPIC_SELECT = `SELECT id, key, repo_key, cwd, group_key, name, next_seq, ext, state, version,
+       deleted_at AS deletedAtMs, created_at AS createdAtMs, updated_at AS updatedAtMs
+  FROM topics`;
+
+/** 轻量主题行（不含任务）。软删的按不存在处理（restore 经 ensureTopic）。 */
 export function getTopicRow(key) {
-  return db().get('SELECT * FROM topics WHERE key = :key', { key });
+  return db().get(`${TOPIC_SELECT} WHERE key = :key AND deleted_at IS NULL`, { key });
 }
 
-/** 全部主题行（稳定序）。 */
+/** 全部主题行（稳定序；不含软删）。 */
 export function listTopicRows() {
-  return db().all('SELECT * FROM topics ORDER BY id');
+  return db().all(`${TOPIC_SELECT} WHERE deleted_at IS NULL ORDER BY id`);
 }
 
 /**
@@ -25,7 +31,7 @@ export function listTopicRows() {
 export function ensureTopic(key, { cwd = '', name = '' } = {}) {
   return txw((conn) => {
     const at = nowMs();
-    let row = conn.get('SELECT id, cwd, name, ext FROM topics WHERE key = :key', { key });
+    let row = conn.get('SELECT id, cwd, name, ext, deleted_at FROM topics WHERE key = :key', { key });
     if (!row) {
       const ext = {};
       if (key === GLOBAL_TOPIC_KEY) ext[TOPIC_EXT.GLOBAL] = 1;
@@ -43,7 +49,12 @@ export function ensureTopic(key, { cwd = '', name = '' } = {}) {
           }
         );
       row = conn.get('SELECT id, cwd, name, ext FROM topics WHERE key = :key', { key });
-    } else if (cwd && !row.cwd) {
+    } else if (row.deleted_at) {
+      // 软删后再建同名队列 = 恢复那条行（同一个 key 就是同一个队列，任务/顺序都还在）
+      conn.run('UPDATE topics SET deleted_at = NULL, updated_at = :at WHERE id = :id', { at, id: row.id });
+      row = conn.get('SELECT id, cwd, name, ext FROM topics WHERE key = :key', { key });
+    }
+    if (row && cwd && !row.cwd) {
       conn.run('UPDATE topics SET cwd = :cwd, updated_at = :at WHERE id = :id', {
         cwd: String(cwd),
         at,
@@ -66,22 +77,42 @@ export function getTopic(key) {
 /** 按内部 id 取主题（链节点归属用）。 */
 export function getTopicById(id) {
   const conn = db();
-  const row = conn.get('SELECT * FROM topics WHERE id = :id', { id });
+  const row = conn.get(`${TOPIC_SELECT} WHERE id = :id AND deleted_at IS NULL`, { id });
   if (!row) return null;
   return assembleTopic(conn, row);
 }
 
-/** 全部主题（JSON 形态）。 */
+/** 全部主题（JSON 形态）。任务与 presence 一次批量取，避免逐主题 N+1。 */
 export function listTopics() {
   const conn = db();
-  return listTopicRows().map((row) => assembleTopic(conn, row));
+  const rows = listTopicRows();
+  if (!rows.length) return [];
+  const tasksByTopic = new Map();
+  for (const x of listAllTaskRows(conn)) {
+    const list = tasksByTopic.get(x.topicId) || [];
+    list.push(x.task);
+    tasksByTopic.set(x.topicId, list);
+  }
+  const presenceByTopic = new Map(
+    conn.all('SELECT * FROM topic_presence').map((p) => [Number(p.topic_id), p])
+  );
+  return rows.map((row) =>
+    assembleTopic(conn, row, {
+      tasks: tasksByTopic.get(Number(row.id)) || [],
+      presence: presenceByTopic.get(Number(row.id)) || null,
+    })
+  );
 }
 
 /** 行 + presence + 任务 + ext → JSON 形态主题（与旧 store.topics[key] 同形状）。 */
-function assembleTopic(conn, row) {
+function assembleTopic(conn, row, preloaded = null) {
   const ext = parseExt(row.ext);
-  const presence = conn.get('SELECT * FROM topic_presence WHERE topic_id = :id', { id: row.id });
-  const tasks = listTaskRowsByTopic(Number(row.id), conn).map((x) => x.task);
+  const presence = preloaded
+    ? preloaded.presence
+    : conn.get('SELECT * FROM topic_presence WHERE topic_id = :id', { id: row.id });
+  const tasks = preloaded
+    ? preloaded.tasks
+    : listTaskRowsByTopic(Number(row.id), conn).map((x) => x.task);
   const order = Array.isArray(ext[TOPIC_EXT.TASK_ORDER]) ? ext[TOPIC_EXT.TASK_ORDER].map(Number) : [];
   const bySeq = new Map(tasks.map((t) => [t.id, t]));
   // 队列顺序 = ext_task_order；没进单子的（新插入 / 迁移来的老数据）按 seq 补尾
@@ -131,7 +162,7 @@ function assembleTopic(conn, row) {
  */
 export function updateTopic(key, patch = {}) {
   return txw((conn) => {
-    const row = conn.get('SELECT id, ext, version FROM topics WHERE key = :key', { key });
+    const row = conn.get('SELECT id, ext, version FROM topics WHERE key = :key AND deleted_at IS NULL', { key });
     if (!row) return null;
     const ext = parseExt(row.ext);
     const sets = [];
@@ -204,10 +235,24 @@ export function mutateOrder(key, fn) {
   });
 }
 
-/** 删除主题（FK 级联清任务 / presence / goals）。返回是否存在。 */
-export function deleteTopic(key) {
+/**
+ * 删主题：
+ *   · 默认软删（deleted_at 打标，任务/依赖/presence 原样保留，ensureTopic 同名即恢复）；
+ *   · purge=true 真删（FK 级联清任务/presence/goals）—— 只用于「全局池清空」这种
+ *     同一个 key 永远会再出现的场景，否则下次 ensureTopic 会把旧任务复活。
+ * @returns {boolean} 是否命中
+ */
+export function deleteTopic(key, { purge = false } = {}) {
   return txw((conn) => {
-    const r = conn.run('DELETE FROM topics WHERE key = :key', { key });
+    if (purge) {
+      const r = conn.run('DELETE FROM topics WHERE key = :key', { key });
+      return Number(r.changes) > 0;
+    }
+    const at = nowMs();
+    const r = conn.run(
+      'UPDATE topics SET deleted_at = :at, updated_at = :at WHERE key = :key AND deleted_at IS NULL',
+      { key, at }
+    );
     return Number(r.changes) > 0;
   });
 }

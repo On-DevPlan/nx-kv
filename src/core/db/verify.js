@@ -164,6 +164,46 @@ export function verifyStore(db, { appDir } = {}) {
   }
   add('topics.key = topicKeyOf(cwd, group_key)', keyBad.length === 0, JSON.stringify(keyBad.slice(0, 5)));
 
+  // ── 跨表类型硬规则（FOREIGN KEY 只能保证"行存在"，保证不了"类型对"）──
+  const topicGroupBad = Number(
+    (db.get(
+      `SELECT count(*) AS c FROM topics t LEFT JOIN repos r ON r.key = t.group_key
+        WHERE t.group_key IS NOT NULL AND (r.key IS NULL OR r.type <> 'group')`
+    ) || {}).c || 0
+  );
+  add('topics.group_key 指向 type=group 的行', topicGroupBad === 0, `违规 ${topicGroupBad} 条`);
+
+  const topicRepoBad = Number(
+    (db.get(
+      `SELECT count(*) AS c FROM topics t LEFT JOIN repos r ON r.key = t.repo_key
+        WHERE r.key IS NULL OR r.type = 'group'`
+    ) || {}).c || 0
+  );
+  add('topics.repo_key 指向非组行', topicRepoBad === 0, `违规 ${topicRepoBad} 条`);
+
+  const memberTypeBad = Number(
+    (db.get(
+      `SELECT count(*) AS c FROM repo_group_members m
+         LEFT JOIN repos g ON g.key = m.group_key
+         LEFT JOIN repos r ON r.key = m.repo_key
+        WHERE g.key IS NULL OR g.type <> 'group' OR r.key IS NULL OR r.type = 'group'`
+    ) || {}).c || 0
+  );
+  add('repo_group_members：group_key 是组、repo_key 是仓库', memberTypeBad === 0, `违规 ${memberTypeBad} 条`);
+
+  const bindTypeBad = Number(
+    (db.get(
+      `SELECT count(*) AS c FROM ref_bindings b
+         LEFT JOIN repos h ON h.key = b.repo_key
+         LEFT JOIN repos g ON g.key = b.group_key
+        WHERE h.key IS NULL
+           OR (b.type = 'group' AND h.type <> 'group')
+           OR (b.type <> 'group' AND h.type = 'group')
+           OR (b.group_key IS NOT NULL AND (g.key IS NULL OR g.type <> 'group'))`
+    ) || {}).c || 0
+  );
+  add('ref_bindings：repo/group 宿主类型正确', bindTypeBad === 0, `违规 ${bindTypeBad} 条`);
+
   // ── 编号只增不减 ──
   const seqBad = [];
   for (const t of topics) {

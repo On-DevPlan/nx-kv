@@ -41,7 +41,8 @@ export function getGoalRowByTaskKey(topicKey, seq, conn = db()) {
        FROM goals g
        JOIN tasks t ON t.id = g.task_id
        JOIN topics tp ON tp.id = t.topic_id
-       WHERE tp.key = :k AND t.seq = :s AND t.deleted_at IS NULL AND g.deleted_at IS NULL`,
+       WHERE tp.key = :k AND t.seq = :s AND t.deleted_at IS NULL AND g.deleted_at IS NULL
+         AND tp.deleted_at IS NULL`,
       { k: String(topicKey || ''), s: Number(seq) }
     ) || null
   );
@@ -144,7 +145,7 @@ export function listGoalRows(conn = db()) {
      FROM goals g
      JOIN tasks t ON t.id = g.task_id
      JOIN topics tp ON tp.id = t.topic_id
-     WHERE g.deleted_at IS NULL
+     WHERE g.deleted_at IS NULL AND t.deleted_at IS NULL AND tp.deleted_at IS NULL
      ORDER BY g.deadline`
   );
 }

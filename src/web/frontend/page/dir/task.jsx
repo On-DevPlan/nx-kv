@@ -93,6 +93,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
 
   const docs = useDocs();
   const doc = docs[id] || null;
+  // #47：撤掉「阅读」模式——老草稿里存过的 preview 一律按实时预览处理，只有 edit 是源码态
+  const editorMode = doc && doc.mode === 'edit' ? 'edit' : 'split';
 
   // 时间目标（任务级 timegoal 声明）：草稿与未领取任务可设/改/清；已领取计时中的
   // 只读展示（领取即计时，声明是既成事实——要调先在目录页重开任务）。
@@ -997,7 +999,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     pushHistory(histRef.current, id, { title: doc.title, body: doc.body }, kind);
     markDirty();
     const patch = { title: next };
-    if (doc.mode !== 'split' && /^# (?!#)/m.test(doc.body)) {
+    if (editorMode !== 'split' && /^# (?!#)/m.test(doc.body)) {
       patch.body = doc.body.replace(/^# (?!#).+$/m, `# ${next || '未命名任务'}`);
     }
     saveDoc(id, patch);
@@ -1008,7 +1010,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     pushHistory(histRef.current, id, { title: doc.title, body: doc.body }, kind);
     markDirty();
     const patch = { body: next };
-    if (doc.mode !== 'split') patch.title = titleFromMd(next);
+    if (editorMode !== 'split') patch.title = titleFromMd(next);
     saveDoc(id, patch);
   };
 
@@ -1060,7 +1062,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   };
 
   const onPreviewMouseUp = (e) => {
-    if (!doc || doc.mode === 'edit') return;
+    if (!doc || editorMode === 'edit') return;
     if (e.target.closest?.('#mdw-sel-menu')) return;
     if (e.target.closest?.('textarea')) return;
     const sel = window.getSelection();
@@ -1213,7 +1215,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   ) : null;
 
   return (
-    <div className={`mdw${beside ? ' is-beside' : ''}`} data-mode={doc.mode || 'split'} onMouseUp={onPreviewMouseUp}>
+    <div className={`mdw${beside ? ' is-beside' : ''}`} data-mode={editorMode} onMouseUp={onPreviewMouseUp}>
       {dialogNode}
       {preview && <PreviewModal state={preview} onClose={() => setPreview(null)} />}
       <TaskChainModal
@@ -1288,9 +1290,9 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
             时间目标在「更多」顶部编辑、外部勋章回显。MD 格式条撤出头部——
             划选浮条 + 行首 / 命令 + Ctrl/⌘B 等快捷键已覆盖。 */}
         <ToolBar
-          mode={doc.mode}
+          mode={editorMode}
           onMode={(m) => saveDoc(id, { mode: m })}
-          showMark={doc.mode !== 'edit'}
+          showMark={editorMode !== 'edit'}
           submitLabel={isDraft ? '提交为任务' : '保存并同步'}
           onNew={newTask}
           onSubmit={submit}
@@ -1313,7 +1315,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
 
         <MdPanes
           ref={articleRef}
-          mode={doc.mode}
+          mode={editorMode}
           title={doc.title}
           body={doc.body}
           previewHtml={previewHtml}

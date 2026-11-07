@@ -540,6 +540,63 @@ select {
 .rp-filters-side .rp-chip { border-style: dashed; }
 .rp-chip-go { font-size: 11px; color: var(--mid); margin-left: 1px; }
 .rp-chip:hover .rp-chip-go { color: #2F6F5E; }
+/* 检索框：管理页要的是「找人」而不是「翻长列表」 */
+.rp-search {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 4px 9px;
+  min-width: 210px;
+}
+.rp-search::placeholder { color: var(--mid); }
+.rp-search:focus { outline: none; border-color: var(--mid); }
+.rp-search-count { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+
+/* 分组管理弹窗：紧凑表格，不要卡片网格那种「一眼看三个、其余靠滚」的版式 */
+.rp-board-admin { display: flex; flex-direction: column; }
+.rp-board-admin-head,
+.rp-board-admin-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(180px, 1.4fr) 110px minmax(230px, 1.3fr);
+  gap: 10px;
+  align-items: center;
+  padding: 7px 2px;
+}
+.rp-board-admin-head {
+  font-family: var(--label);
+  font-size: 11px;
+  color: var(--mid);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  z-index: 1;
+}
+.rp-board-admin-row { border-bottom: 1px solid var(--line); }
+.rp-board-admin-row:last-of-type { border-bottom: 0; }
+.rp-board-admin-row:hover { background: var(--soft); }
+.rp-board-admin-name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rp-board-admin-members { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
+.rp-board-admin-doc { display: flex; align-items: center; gap: 4px; }
+.rp-board-admin-acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.rp-mini-link {
+  font: inherit;
+  font-size: 11px;
+  color: var(--mid);
+  background: transparent;
+  border: 0;
+  padding: 0 2px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rp-mini-link:hover { color: var(--ink); }
+/* 文档检索弹窗里的列表限高滚动，弹窗本身不无限长 */
+.rp-doc-rows-modal { max-height: 58vh; overflow-y: auto; }
+.rp-doc-bar { gap: 8px; align-items: center; }
 
 .rp-table-wrap {
   flex: none;
@@ -699,7 +756,7 @@ select {
 .rp-chip { font-size: 12.5px; padding: 5px 12px; }
 /* 表格要够宽才装得下一行操作（打开/remote/编辑/描述/删除）。
    窄屏宁可横向滚动，也不要让「删除」被裁在视口外——按钮少一个比挤成一团更糟。 */
-.rp-table { min-width: 900px; }
+.rp-table { min-width: 1060px; }
 .rp-table th,
 .rp-ref-table th { font-size: 11.5px; padding: 10px 14px; }
 .rp-table td { font-size: 13.5px; padding: 12px 14px; }
@@ -2149,4 +2206,384 @@ footer code {
 .toggle .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mid); }
 .toggle.on { background: var(--ink); color: var(--paper); }
 .toggle.on .dot { background: var(--paper); }
+
+/* ---------- 仓库管理页：平台化区块（统计 / 分组卡片 / 文档 chips / 文档区块） ---------- */
+
+/* 头部统计 chips：既是计数也是跳转入口（按钮，不是死标签） */
+.rp-stats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.rp-stat {
+  font-family: var(--label);
+  font-size: 11.5px;
+  color: var(--mid);
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.rp-stat:hover { border-color: var(--mid); background: var(--paper); color: var(--ink); }
+.rp-stat:focus-visible { outline: 2px solid var(--focus, var(--ink)); outline-offset: 1px; }
+.rp-stat b { color: var(--ink); font-family: var(--mono); font-weight: 600; margin-left: 2px; }
+
+/* 区块外壳：分组 / 文档两个一等区块共用 */
+.rp-sec {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.rp-sec-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.rp-sec-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.rp-sec-title h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.rp-sec-title .muted { font-size: 12px; }
+.rp-sec-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mid);
+  background: var(--soft);
+  border-radius: 9px;
+  padding: 1px 7px;
+}
+.rp-sec-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* 分组卡片网格：等高卡片（头部 / 描述 / 成员 / 操作四段，操作钉在底部） */
+.rp-board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+.rp-board-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 11px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.rp-board-card:hover { border-color: var(--soft-2); box-shadow: var(--shadow); }
+.rp-board-card.on { border-color: var(--ink); }
+.rp-board-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.rp-board-name {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-board-name:hover { text-decoration: underline; }
+.rp-board-count { font-family: var(--mono); font-size: 11px; color: var(--mid); white-space: nowrap; }
+/* 组介绍预览：固定两行高度（按钮元素上 line-clamp 不可靠，用 height 兜底不溢出）；
+   真正的编辑入口是底部的「组介绍 ✎」按钮 */
+.rp-board-desc {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border: 1px dashed var(--soft-2);
+  border-radius: var(--radius-sm);
+  background: var(--canvas);
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 6px 9px;
+  height: 3.2em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  transition: border-color 0.15s, background 0.15s;
+}
+.rp-board-desc:hover { border-color: var(--mid); background: var(--soft); }
+.rp-board-desc.ghost { color: var(--mid); font-style: italic; }
+/* 成员条：单行不换行，溢出收进 +N（卡片高度不随成员多少抖动） */
+.rp-board-members {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+  min-height: 24px;
+  overflow: hidden;
+}
+.rp-board-mchip {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-board-more {
+  font: inherit;
+  font-size: 11.5px;
+  background: transparent;
+  border: 1px dashed var(--soft-2);
+  border-radius: 6px;
+  color: var(--mid);
+  padding: 1px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rp-board-more:hover { border-color: var(--mid); color: var(--ink); }
+.rp-board-missing {
+  font-size: 11px;
+  color: var(--warn, var(--mid));
+  border: 1px dashed var(--soft-2);
+  border-radius: 6px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.rp-board-card-acts {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.rp-board-empty {
+  border: 1px dashed var(--soft-2);
+  border-radius: var(--radius-sm);
+  padding: 18px 14px;
+  text-align: center;
+  font-size: 12.5px;
+  background: var(--canvas);
+}
+.rp-boards-unassigned { margin-top: 10px; color: var(--mid); font-size: 12px; }
+.rp-boards-unassigned b { font-family: var(--mono); }
+
+/* 行内 ref 文档 chips（DocChips）：主篇 + 补充篇，逐篇可点开/可摘除 */
+.rp-docs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.rp-doc-chip {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft);
+  overflow: hidden;
+}
+.rp-doc-chip-tx {
+  font: inherit;
+  font-size: 11.5px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  padding: 2px 8px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-doc-chip-tx:hover { background: var(--soft-2); color: var(--ink); }
+/* 主篇：略重一档，与补充篇拉开层级 */
+.rp-doc-chip.main { border-color: var(--soft-2); background: var(--paper); }
+.rp-doc-chip.main .rp-doc-chip-tx { font-weight: 600; color: var(--ink); }
+/* 「未写」虚态：约定路径上还没有文件，点进去就是空文档 */
+.rp-doc-chip.ghost { border-style: dashed; }
+.rp-doc-chip.ghost .rp-doc-chip-tx { color: var(--mid); font-weight: 400; font-style: italic; }
+.rp-doc-chip-tag {
+  font-style: normal;
+  font-family: var(--label);
+  font-size: 10.5px;
+  color: var(--mid);
+  margin-right: 4px;
+}
+.rp-doc-chip-x {
+  font: inherit;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--mid);
+  cursor: pointer;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 1;
+}
+.rp-doc-chip-x:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--paper)); }
+/* 铅笔标记：每片文档 chip 都是「进入编辑」的入口，不是只读标签 */
+.rp-doc-chip-pen { color: var(--mid); font-size: 10.5px; margin-right: 3px; }
+.rp-doc-chip-tx:hover .rp-doc-chip-pen { color: var(--ink); }
+/* 组内文档（仓库 × 分组这一层的 key）：组名做前缀，视觉上和项目文档分成两组 */
+.rp-docs-scoped { margin-top: 5px; }
+.rp-doc-chip.scoped { border-color: var(--soft-2); background: transparent; }
+.rp-doc-chip-scope {
+  font-style: normal;
+  font-family: var(--label);
+  font-size: 10.5px;
+  color: var(--mid);
+  border-right: 1px solid var(--line);
+  padding: 2px 6px;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 5px;
+}
+/* 「＋」加下一篇文档 */
+.rp-doc-chip.add {
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.6;
+  border-style: dashed;
+  background: transparent;
+  color: var(--mid);
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.rp-doc-chip.add:hover { border-color: var(--mid); color: var(--ink); background: var(--soft); }
+
+/* 主表：路径挪到仓库名下（原来单列一列太散） */
+.rp-name-path { display: block; font-size: 11px; margin-top: 2px; }
+.rp-cell-docs { vertical-align: top; }
+.rp-cell-groups { vertical-align: top; }
+.rp-group-chip {
+  font: inherit;
+  font-size: 11.5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: pointer;
+  padding: 2px 8px;
+  margin: 0 4px 4px 0;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s;
+}
+.rp-group-chip:hover { border-color: var(--mid); background: var(--soft); }
+.rp-group-chip.on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+
+/* 文档区块：一行一个文档（标题 + rel + 绑定宿主 chips + 操作） */
+.rp-doc-rows { display: flex; flex-direction: column; }
+.rp-doc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.rp-doc-row:first-child { border-top: 0; }
+.rp-doc-row:hover { background: var(--soft); }
+.rp-doc-row-title {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+  font-weight: 600;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.rp-doc-row-title:hover { text-decoration: underline; }
+.rp-doc-row-rel {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mid);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-doc-row-hosts { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; min-width: 0; }
+/* 绑定 chip：可点（跳到宿主），三档配色区分「仓库 / 组内 / 分组」 */
+.rp-bind-chip {
+  font: inherit;
+  font-family: var(--label);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.rp-bind-chip:hover { border-color: var(--mid); background: var(--paper); color: var(--ink); }
+.rp-bind-chip.repo { border-left: 2px solid var(--mid); }
+.rp-bind-chip.scoped { border-left: 2px solid var(--soft-2); }
+.rp-bind-chip.board { border-left: 2px solid var(--ink); }
+.rp-bind-chip.none {
+  color: var(--mid);
+  border-style: dashed;
+  background: transparent;
+  cursor: default;
+}
+.rp-doc-row-acts { display: flex; gap: 4px; margin-left: auto; flex: none; }
+/* 文档分档 chips（全部 / 仓库 / 组内 / 分组 / 未绑定） */
+.rp-doc-scopes { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.rp-chip {
+  font: inherit;
+  font-family: var(--label);
+  font-size: 11.5px;
+  color: var(--mid);
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.rp-chip b { font-family: var(--mono); color: var(--ink); margin-left: 2px; }
+.rp-chip:hover { border-color: var(--mid); background: var(--paper); }
+.rp-chip.on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.rp-chip.on b { color: var(--paper); }
+/* 表头小提示：说明这一列可点进编辑 */
+.rp-th-hint { display: block; font-size: 11px; font-weight: 400; color: var(--mid); margin-top: 1px; }
+/* 跳到宿主时闪一下，避免只看滚动猜落点 */
+@keyframes rp-row-flash {
+  0% { background: color-mix(in srgb, var(--ink) 10%, var(--paper)); }
+  100% { background: transparent; }
+}
+.rp-row-flash { animation: rp-row-flash 1.4s ease-out; }
+/* 分区锚点跳转（统计 chip 用）：留出头部吸顶高度 */
+#rp-boards, #rp-repos, #rp-docs { scroll-margin-top: 72px; }
+/* 成员选择器：当前分组的归属徽章高亮（不再是「只显示别的组」） */
+.rp-mp-tag.on {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
 

@@ -83,6 +83,9 @@ test('ext 取证：archived / legacy_key / pickupSec / history / supersededBy �
     assert.equal(rExt.ext_trash_index, undefined);
     assert.equal(rExt.ext_superseded_by, 9);
     assert.ok(Array.isArray(rExt.ext_legacy_history), 'history 整体丢弃但要在 ext 留证');
+    // 迁出墓碑必须保留（否则搬去云端、本机还挂 pending 的那条会被当成待领取复活）
+    assert.equal(rExt.ext_migrated_to.side, 'cloud');
+    assert.equal(rExt.ext_migrated_to.topic, 'elsewhere');
     assert.equal(rich.round, 3, 'round = reopenCount + 1');
     assert.equal(rich.blocks_following, 1);
   } finally {

@@ -36,7 +36,8 @@
 //   name 之后可改），旧 `b_xxx` 存 `ext.ext_legacy_id`。
 // · `consumedAt → claimed_at`（75/75 有值，它就是领取时刻）。
 // · `roundSummary → feedback`（同一个东西：干完回一句话说结果）。
-// · `claimedFrom/By/ByName`、`remote`、`migratedTo` 不迁移（审计已裁定）。
+// · `claimedFrom/By/ByName`、`remote` 不迁移；`migratedTo` 作为**迁出墓碑**保留
+//   （丢了它，已搬到云端、本机还挂着 pending 的那条会被当成待领取复活）。
 // · `tasks.seq` 保持原 `id`（对外编号不能漂），`topics.next_seq = max(seq)+1`。
 // · 内嵌 `timegoal`（本机 7 条**值全是 null**，实际 0 条）→ `goals` + `goal_checks`；
 //   队列级 timegoal 丢弃并报告。
@@ -481,6 +482,30 @@ function numberOrNull(n) {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * 旧 timegoal 的时长写法：既可能是 `{durationSec: 1800}`（新夹具），
+ * 也可能是 `{duration: "2h"}`（真机上更早的存档）。只认 durationSec 会让后者
+ * 静默变成 0 → 目标被跳过，迁移报告却说「已迁入 goals」。
+ */
+const DURATION_UNITS = {
+  s: 1, sec: 1, secs: 1, second: 1, seconds: 1, 秒: 1,
+  m: 60, min: 60, mins: 60, minute: 60, minutes: 60, 分: 60, 分钟: 60,
+  h: 3600, hr: 3600, hrs: 3600, hour: 3600, hours: 3600, 小时: 3600, 时: 3600,
+  d: 86400, day: 86400, days: 86400, 天: 86400, 日: 86400,
+  w: 604800, week: 604800, weeks: 604800, 周: 604800,
+};
+
+export function legacyDurationSec(tg) {
+  const direct = Math.trunc(Number(tg && tg.durationSec) || 0);
+  if (direct > 0) return direct;
+  const raw = tg && tg.duration;
+  if (Number.isFinite(Number(raw)) && Number(raw) > 0) return Math.trunc(Number(raw));
+  const m = /^(\d+(?:\.\d+)?)\s*([a-zA-Z\u4e00-\u9fa5]+)$/.exec(String(raw || '').trim());
+  if (!m) return 0;
+  const unit = DURATION_UNITS[m[2].toLowerCase()];
+  return unit ? Math.trunc(Number(m[1]) * unit) : 0;
+}
+
 function insertTask(db, { row, legacyKey, task, atMs, report }) {
   const mapped = mapLegacyStatus(task);
   report.distribution[mapped.status] = (report.distribution[mapped.status] || 0) + 1;
@@ -538,7 +563,18 @@ function insertTask(db, { row, legacyKey, task, atMs, report }) {
   if (task.claimedBy !== undefined || task.claimedFrom !== undefined || task.claimedByName !== undefined) {
     report.discarded.push({ what: 'task.claimedBy/From/ByName', key: legacyKey, id: seq, count: 1 });
   }
-  if (task.migratedTo !== undefined) report.discarded.push({ what: 'task.migratedTo', key: legacyKey, id: seq, count: 1 });
+  if (task.migratedTo !== undefined && task.migratedTo !== null && task.migratedTo !== '') {
+    // 迁出墓碑：丢了它，云端那条已搬走的任务会被当成「待领取」复活。
+    // 旧形状可能是字符串（"elsewhere"），新视图只认对象 → 统一包成对象。
+    const m = task.migratedTo;
+    ext.ext_migrated_to =
+      m && typeof m === 'object'
+        ? m
+        : { side: 'cloud', topic: String(m), targetId: 0, at: '' };
+    if (!m || typeof m !== 'object') {
+      report.warnings.push({ what: 'task.migratedTo', why: '旧字符串形状 → 已包装成对象保留', key: legacyKey, id: seq });
+    }
+  }
 
   const createdAt = anyTimeMs(task.createdAt, atMs);
   const updatedAt = anyTimeMs(task.updatedAt, createdAt);
@@ -605,10 +641,14 @@ function insertTask(db, { row, legacyKey, task, atMs, report }) {
 function insertGoal(db, { topicId, seq, legacyKey, timegoal, claimedAt, createdAt, report }) {
   const taskRow = db.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', { t: topicId, s: seq });
   if (!taskRow) return;
-  const durationSec = Math.trunc(Number(timegoal.durationSec) || 0);
+  let durationSec = legacyDurationSec(timegoal);
   const startedAt = anyTimeMs(timegoal.startedAt, NaN);
   const start = Number.isFinite(startedAt) ? startedAt : claimedAt || createdAt;
   const deadline = anyTimeMs(timegoal.deadline, NaN);
+  // 只有「起止时刻」没有时长时，用差值补出时长（旧数据常见形状）
+  if (durationSec <= 0 && Number.isFinite(deadline) && deadline > start) {
+    durationSec = Math.trunc((deadline - start) / 1000);
+  }
   const end = Number.isFinite(deadline) ? deadline : start + durationSec * 1000;
   // CHECK (duration_sec > 0) / CHECK (deadline > started_at)：不满足就不插，
   // 记报告（脏数据不能让整个迁移回滚）
@@ -616,10 +656,13 @@ function insertGoal(db, { topicId, seq, legacyKey, timegoal, claimedAt, createdA
     report.warnings.push({ what: 'goal', why: '时长或截止时刻非法，已跳过', key: legacyKey, id: seq });
     return;
   }
+  // 同一条任务最多一个未删目标：内嵌 timegoal 与 standalone timegoals.json 可能
+  // 指向同一任务，裸 INSERT 会撞 ux_goals_active → 整库回滚。冲突时保留先到的一条。
   const res = db.run(
     `INSERT INTO goals (task_id, duration_sec, started_at, deadline, prompt, state, version,
                         deleted_at, created_at, updated_at)
-     VALUES (:task, :dur, :start, :deadline, :prompt, '', 0, NULL, :at, :at)`,
+     VALUES (:task, :dur, :start, :deadline, :prompt, '', 0, NULL, :at, :at)
+     ON CONFLICT(task_id) WHERE deleted_at IS NULL DO NOTHING`,
     {
       task: taskRow.id,
       dur: durationSec,
@@ -629,7 +672,9 @@ function insertGoal(db, { topicId, seq, legacyKey, timegoal, claimedAt, createdA
       at: start,
     }
   );
-  report.imported.goals += 1;
+  const goalRow = db.get('SELECT id FROM goals WHERE task_id = :t AND deleted_at IS NULL', { t: taskRow.id });
+  if (!goalRow) return;
+  if (Number(res.changes) > 0) report.imported.goals += 1;
 
   for (const log of Array.isArray(timegoal.log) ? timegoal.log : []) {
     const at = anyTimeMs(log.at, NaN);
@@ -638,7 +683,7 @@ function insertGoal(db, { topicId, seq, legacyKey, timegoal, claimedAt, createdA
       `INSERT INTO goal_checks (goal_id, at, elapsed_sec, remaining_sec, overtime_sec, reached, summary)
        VALUES (:g, :at, :elapsed, :remaining, :overtime, :reached, :summary)`,
       {
-        g: res.lastInsertRowid,
+        g: goalRow.id,
         at,
         elapsed: Math.trunc(Number(log.elapsedSec) || 0),
         remaining: Math.trunc(Number(log.remainingSec) || 0),
@@ -749,19 +794,24 @@ function importStandaloneGoals(db, timegoalsData, byLegacyKey, report) {
       report.warnings.push({ what: 'goal', why: '作用域里的任务对不上，已丢弃', scope });
       continue;
     }
-    const durationSec = Math.trunc(Number(g.durationSec) || 0);
+    let durationSec = legacyDurationSec(g);
     const start = anyTimeMs(g.startedAt, NaN);
     const startMs = Number.isFinite(start) ? start : taskRow.claimed_at || taskRow.created_at;
     const deadlineRaw = anyTimeMs(g.deadline, NaN);
+    if (durationSec <= 0 && Number.isFinite(deadlineRaw) && deadlineRaw > startMs) {
+      durationSec = Math.trunc((deadlineRaw - startMs) / 1000);
+    }
     const deadline = Number.isFinite(deadlineRaw) ? deadlineRaw : startMs + durationSec * 1000;
     if (durationSec <= 0 || deadline <= startMs) {
       report.warnings.push({ what: 'goal', why: '时长或截止时刻非法，已跳过', scope });
       continue;
     }
+    // 与内嵌 timegoal 撞同一条任务时保留先到的一条，不能整库回滚
     const res = db.run(
       `INSERT INTO goals (task_id, duration_sec, started_at, deadline, prompt, state, version,
                           deleted_at, created_at, updated_at)
-       VALUES (:task, :dur, :start, :deadline, :prompt, :state, 0, :deleted, :at, :updated)`,
+       VALUES (:task, :dur, :start, :deadline, :prompt, :state, 0, :deleted, :at, :updated)
+       ON CONFLICT(task_id) WHERE deleted_at IS NULL DO NOTHING`,
       {
         task: taskRow.id,
         dur: durationSec,
@@ -774,7 +824,14 @@ function importStandaloneGoals(db, timegoalsData, byLegacyKey, report) {
         updated: anyTimeMs(g.updatedAt, startMs),
       }
     );
-    report.imported.goals += 1;
+    let goalId = Number(res.lastInsertRowid) || 0;
+    if (Number(res.changes) > 0) {
+      report.imported.goals += 1;
+    } else {
+      const existing = db.get('SELECT id FROM goals WHERE task_id = :t AND deleted_at IS NULL', { t: taskRow.id });
+      if (!existing) continue;
+      goalId = Number(existing.id);
+    }
     for (const log of Array.isArray(g.log) ? g.log : []) {
       const at = anyTimeMs(log.at, NaN);
       if (!Number.isFinite(at)) continue;
@@ -782,7 +839,7 @@ function importStandaloneGoals(db, timegoalsData, byLegacyKey, report) {
         `INSERT INTO goal_checks (goal_id, at, elapsed_sec, remaining_sec, overtime_sec, reached, summary)
          VALUES (:g, :at, :elapsed, :remaining, :overtime, :reached, :summary)`,
         {
-          g: res.lastInsertRowid,
+          g: goalId,
           at,
           elapsed: Math.trunc(Number(log.elapsedSec) || 0),
           remaining: Math.trunc(Number(log.remainingSec) || 0),
@@ -835,17 +892,37 @@ export function listDocFiles(docsRoot) {
  */
 function importRefs(db, reposData, docsRoot, atMs, report) {
   const files = listDocFiles(docsRoot);
-  if (!files.length) return;
   const fileSet = new Set(files);
   for (const locator of files) {
-    db.run(
+    const r = db.run(
       `INSERT INTO refs (id, type, locator, state, version, deleted_at, created_at, updated_at)
        VALUES (:id, 'md', :locator, 'orphan', 0, NULL, :at, :at)
        ON CONFLICT(id) DO NOTHING`,
       { id: refIdOf(locator), locator, at: atMs }
     );
-    report.imported.refs += 1;
+    if (Number(r.changes) > 0) report.imported.refs += 1;
   }
+
+  // legacy id → 真实 key：repos 合并/重名加后缀后，旧 id 对应的 key 可能已经不是
+  // 原始字符串。绑定前必须按真实行校验（否则 FK 一拒，整个迁移回滚）。
+  const repoKeyById = new Map();
+  const groupKeyById = new Map();
+  for (const row of db.all("SELECT key, type, ext FROM repos WHERE deleted_at IS NULL")) {
+    let ext = {};
+    try {
+      ext = JSON.parse(String(row.ext || '{}')) || {};
+    } catch {
+      ext = {};
+    }
+    const lid = ext && ext.ext_legacy_id;
+    if (lid === undefined || lid === null || lid === '') continue;
+    if (row.type === 'group') groupKeyById.set(String(lid), String(row.key));
+    else repoKeyById.set(String(lid), String(row.key));
+  }
+  const isRepo = (k) =>
+    !!db.get("SELECT 1 AS x FROM repos WHERE key = :k AND type <> 'group' AND deleted_at IS NULL", { k });
+  const isGroup = (k) =>
+    !!db.get("SELECT 1 AS x FROM repos WHERE key = :k AND type = 'group' AND deleted_at IS NULL", { k });
 
   const bind = (repoKey, groupKey, locator, type, position, note) => {
     if (!fileSet.has(locator)) return false;
@@ -853,12 +930,12 @@ function importRefs(db, reposData, docsRoot, atMs, report) {
     db.run(`UPDATE refs SET state = '' WHERE id = :id`, { id });
     // ON CONFLICT 的冲突目标带表达式（COALESCE）在 SQLite 里要写成一模一样的表达式，
     // 这里用 INSERT OR IGNORE：绑定边重复插是幂等的正常情况，不该报错。
-    db.run(
+    const r = db.run(
       `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, created_at)
        VALUES (:repo, :group, :ref, :type, :pos, :note, :at)`,
       { repo: repoKey, group: groupKey, ref: id, type, pos: position, note, at: atMs }
     );
-    report.imported.refBindings += 1;
+    if (Number(r.changes) > 0) report.imported.refBindings += 1;
     return true;
   };
 
@@ -885,8 +962,13 @@ function importRefs(db, reposData, docsRoot, atMs, report) {
 
   let position = 0;
   for (const r of repos) {
-    const key = String((r && r.key) || '').trim();
-    if (!key) continue;
+    const legacyKey = String((r && r.key) || '').trim();
+    if (!legacyKey) continue;
+    const key = repoKeyById.get(String(r.id)) || legacyKey;
+    if (!isRepo(key)) {
+      report.warnings.push({ what: 'docRef', why: '宿主仓库不存在（合并/改名后失配），已跳过该仓库的文档绑定', repo: legacyKey });
+      continue;
+    }
     // 约定路径：目录主篇优先，其次旧单文件（与 docs 模块的读回落顺序一致）
     position = 0;
     const boundMain = bind(key, null, `repo/${key}/index.md`, 'repo', position, '');
@@ -896,18 +978,23 @@ function importRefs(db, reposData, docsRoot, atMs, report) {
       if (d.extPath) {
         // 外部路径（Obsidian 等）：只在库里留地址，字节在库外
         db.run(
-          `INSERT OR IGNORE INTO refs (id, type, locator, state, version, deleted_at, created_at, updated_at)
-           VALUES (:id, :type, :locator, '', 0, NULL, :at, :at)`,
+          `INSERT INTO refs (id, type, locator, state, version, deleted_at, created_at, updated_at)
+           VALUES (:id, :type, :locator, '', 0, NULL, :at, :at)
+           ON CONFLICT(id) DO NOTHING`,
           { id: refIdOf(d.locator), type: d.type, locator: d.locator, at: atMs }
         );
         report.imported.refs += 1;
+      } else if (!fileSet.has(d.locator)) {
+        // 相对 DocRef 指向的文件不在 docs 树里：没有 refs 行，绑定会撞 FK → 跳过并记账
+        report.warnings.push({ what: 'docRef', why: '引用文件不在 docs 树里，已跳过绑定', repo: key, locator: d.locator });
+        continue;
       }
-      db.run(
+      const br = db.run(
         `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, created_at)
          VALUES (:repo, NULL, :ref, 'repo', :pos, :note, :at)`,
         { repo: key, ref: refIdOf(d.locator), pos: position, note: d.note, at: atMs }
       );
-      report.imported.refBindings += 1;
+      if (Number(br.changes) > 0) report.imported.refBindings += 1;
       position += 1;
     }
   }
@@ -916,18 +1003,23 @@ function importRefs(db, reposData, docsRoot, atMs, report) {
   for (const b of boards) {
     const name = String((b && b.name) || '').trim();
     if (!name) continue;
-    // 组 key 在 importRepos 里可能加了冲突后缀，这里按 type='group' 反查真实 key
     const base = groupKeyOf(name);
-    const groupRow =
-      db.get("SELECT key FROM repos WHERE key = :k AND type = 'group'", { k: base }) ||
-      db.get("SELECT key FROM repos WHERE type = 'group' AND name = :n", { n: name });
-    const gk = groupRow ? groupRow.key : base;
+    const byName = db.get("SELECT key FROM repos WHERE type = 'group' AND name = :n AND deleted_at IS NULL", { n: name });
+    const gk = groupKeyById.get(String(b.id)) || (isGroup(base) ? base : byName && byName.key) || base;
+    if (!isGroup(gk)) {
+      report.warnings.push({ what: 'docRef', why: '组宿主不存在，已跳过该组的文档绑定', group: name });
+      continue;
+    }
     const seg = base.slice('group/'.length);
     const boundGroup = bind(gk, null, `board/${seg}/index.md`, 'group', 0, '');
     if (!boundGroup) bind(gk, null, `board/${seg}.md`, 'group', 0, '');
     for (const repoKeyRaw of Array.isArray(b.repoKeys) ? b.repoKeys : []) {
-      const repoKey = String(repoKeyRaw || '').trim();
+      const repoKey = repoKeyById.get(String(repoKeyRaw || '').trim()) || String(repoKeyRaw || '').trim();
       if (!repoKey) continue;
+      if (!isRepo(repoKey)) {
+        report.warnings.push({ what: 'docRef', why: '组成员不存在，已跳过成员文档绑定', group: gk, repo: repoKey });
+        continue;
+      }
       const boundMember = bind(repoKey, gk, `group/${seg}/${repoKey}/index.md`, 'group_repo', 0, '');
       if (!boundMember) bind(repoKey, gk, `group/${seg}/${repoKey}.md`, 'group_repo', 0, '');
     }

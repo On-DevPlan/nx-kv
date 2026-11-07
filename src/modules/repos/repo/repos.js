@@ -60,6 +60,7 @@ function nextSortOrder(conn, type) {
  * upsert 一行（repo 或 group 由 row.type 决定）。
  * 冲突时只更新内容列：sort_order 与 created_at 保持首次落库值
  * （登记顺序与创建时间是「来历」，不随后续写漂移）。
+ * 软删过的同 key 行在这里**恢复**（同一个 key 就是同一个仓库身份）。
  */
 export function upsertRow(conn, row) {
   const sort = Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : nextSortOrder(conn, row.type);
@@ -70,7 +71,7 @@ export function upsertRow(conn, row) {
      ON CONFLICT(key) DO UPDATE SET
        type = excluded.type, name = excluded.name, description = excluded.description,
        path = excluded.path, remote = excluded.remote, ext = excluded.ext,
-       updated_at = excluded.updated_at`,
+       deleted_at = NULL, updated_at = excluded.updated_at`,
     {
       key: row.key,
       type: row.type,
@@ -102,6 +103,18 @@ export function renameRow(conn, fromKey, toKey, atMs) {
 /** 真删一行（硬删；成员边 / ref 绑定级联清）。返回是否存在。 */
 export function deleteRow(conn, key) {
   const r = conn.run('DELETE FROM repos WHERE key = :key', { key: String(key || '') });
+  return Number(r.changes) > 0;
+}
+
+/**
+ * 软删一行：行还在（key 身份、成员边、文档绑定全部保留），只是不出现在读路径里。
+ * 再登记同 key 时由 upsertRow 的 `deleted_at = NULL` 恢复。
+ */
+export function softDeleteRow(conn, key, atMs) {
+  const r = conn.run(
+    'UPDATE repos SET deleted_at = :at, updated_at = :at WHERE key = :key AND deleted_at IS NULL',
+    { key: String(key || ''), at: Number(atMs) || Date.now() }
+  );
   return Number(r.changes) > 0;
 }
 

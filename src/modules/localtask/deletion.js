@@ -1,8 +1,9 @@
 // （#54 自 service.js 拆出）主题删除：四条删除路径共用的同一套判定（deleteGuard：
 // 全局池/等待中/有未领取 → 需 --force）+ 单个/批量删除。
 //
-// T03：删除 = DELETE topics 行（FK 级联清任务 / presence / goals），事务内完成。
-// 判定所需的只读形状由 repo.topics.getTopic 给出（JSON 形态，deleteGuard 不感知存储）。
+// 删除 = 软删 topics 行（deleted_at 打标；任务/依赖/presence 保留，同名目录再出现即恢复）。
+// 全局池例外：同一个 key 永远会再出现，软删会被下一次 ensureTopic 复活成「没删掉」，
+// 所以 force 清空全局池走真删（FK 级联清任务）。
 import { badInput } from '../../core/errors.js';
 import { isGlobalKey, normalizeCwd, resolveTopicKey } from './paths.js';
 import { openLocaltaskStore as openStore, topics as topicsRepo } from './repo/index.js';
@@ -84,7 +85,7 @@ export async function removeTopic({ cwd: rawCwd, key: rawKey, force = false } = 
   const guard = deleteGuard(t, { force, key });
   if (!guard.ok) throw badInput(guard.message);
   const view = topicView(t);
-  topicsRepo.deleteTopic(key);
+  topicsRepo.deleteTopic(key, { purge: isGlobalKey(key) });
   return { status: 'removed', key, name: t.name, cwd: t.cwd, topic: view };
 }
 
@@ -127,6 +128,6 @@ export async function removeTopics({ keys, cwds, all = false, force = false } = 
     }
     removed.push({ key, name: t.name, cwd: t.cwd });
   }
-  for (const r of removed) topicsRepo.deleteTopic(r.key);
+  for (const r of removed) topicsRepo.deleteTopic(r.key, { purge: isGlobalKey(r.key) });
   return { status: 'ok', all: !!all, count: removed.length, removed, skipped };
 }

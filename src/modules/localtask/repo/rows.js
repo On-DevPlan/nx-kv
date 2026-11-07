@@ -34,6 +34,7 @@ export const EXT = Object.freeze({
   DEPS_FOREIGN: 'ext_deps_foreign',
   MIGRATED_TO: 'ext_migrated_to',
   MOVE_FROM: 'ext_move_from',
+  HISTORY: 'ext_history',
 });
 
 /** topics.ext 的键名。 */

@@ -27,11 +27,17 @@ export function nextSeq(topicId, conn = null) {
   return Math.max(1, Number((row && row.next_seq) || 1));
 }
 
-/** 单主题内推进 next_seq（并发插入靠事务串行化，同 JSON 时代的进程内单写）。 */
-function advanceSeq(topicId, conn) {
-  const n = nextSeq(topicId, conn);
-  conn.run('UPDATE topics SET next_seq = :n WHERE id = :id', { n: n + 1, id: topicId });
-  return n;
+/**
+ * 单主题内原子取号：`UPDATE ... RETURNING` 让「读 next_seq → 写回」不再分两步，
+ * 事务串行化下两个进程各拿一个不同编号；调用方必须在同一个事务里调用（insertTask 已保证）。
+ */
+function takeSeq(topicId, conn) {
+  const row = conn.get(
+    'UPDATE topics SET next_seq = next_seq + 1 WHERE id = :id RETURNING next_seq - 1 AS seq',
+    { id: topicId }
+  );
+  if (!row) throw new Error(`主题 ${topicId} 不存在，无法分配任务编号`);
+  return Math.max(1, Number(row.seq));
 }
 
 function extOf(conn, topicId, seq) {
@@ -45,30 +51,50 @@ function mergeExt(conn, topicId, seq, patch) {
     if (v === undefined) delete ext[k];
     else ext[k] = v;
   }
-  conn.run('UPDATE tasks SET ext = :ext WHERE topic_id = :t AND seq = :s', {
+  conn.run('UPDATE tasks SET ext = :ext, version = version + 1 WHERE topic_id = :t AND seq = :s', {
     ext: jsonText(ext),
     t: topicId,
     s: seq,
   });
 }
 
-/** 本地依赖整组重写（task_deps 是逐对边；「这条任务挡在这些后面」就是块级语义）。 */
-function writeLocalDeps(conn, taskId, depsLocal) {
+/**
+ * 本地依赖整组重写（task_deps 是逐对边；「这条任务挡在这些后面」就是块级语义）。
+ *
+ * 边存的是**全局 tasks.id**（外键列），而 JSON 形态的 blockBy 是**主题内 seq**。
+ * 多队列下两者不相等：写入时按 (topic_id, seq) 解析，读时反向解析，视图层仍只见 seq。
+ */
+function writeLocalDeps(conn, topicId, taskId, depsLocal) {
   conn.run('DELETE FROM task_deps WHERE task_id = :id', { id: taskId });
   for (const dep of depsLocal || []) {
+    const depSeq = Number(dep);
+    if (!Number.isFinite(depSeq) || depSeq <= 0) continue;
+    const dr = conn.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', {
+      t: topicId,
+      s: depSeq,
+    });
+    if (!dr) continue; // 依赖指到不存在的任务：与旧 store 一样当坏输入忽略
+    const depId = Number(dr.id);
+    if (depId === Number(taskId)) continue; // 自依赖无意义
     conn.run('INSERT OR IGNORE INTO task_deps (task_id, dep_id, created_at) VALUES (:t, :d, :at)', {
       t: taskId,
-      d: Number(dep),
+      d: depId,
       at: nowMs(),
     });
   }
 }
 
-/** 行 + 依赖 → { row, task }（task 是 JSON 形态）。 */
+/** 行 + 依赖 → { row, task }（依赖从全局 id 反解成同主题 seq）。 */
 function rowToTaskWithDeps(conn, row) {
   const deps = conn
-    .all('SELECT dep_id FROM task_deps WHERE task_id = :id ORDER BY dep_id', { id: row.id })
-    .map((r) => Number(r.dep_id))
+    .all(
+      `SELECT d.seq AS depSeq
+         FROM task_deps td JOIN tasks d ON d.id = td.dep_id
+        WHERE td.task_id = :id AND d.topic_id = :t
+        ORDER BY d.seq`,
+      { id: row.id, t: row.topicId }
+    )
+    .map((r) => Number(r.depSeq))
     .filter((n) => Number.isFinite(n) && n > 0);
   return { row, task: rowToTask({ ...row, depsLocal: deps }) };
 }
@@ -81,13 +107,21 @@ function rowToTaskWithDeps(conn, row) {
 export function insertTask(topicId, task = {}) {
   return txw((conn) => {
     const at = nowMs();
-    const seq = Number(task.id) || advanceSeq(topicId, conn);
-    // 显式给了编号（引擎造节点 / 搬队列）也要把 next_seq 顶过去 —— 否则下一批
-    // addTask 会从旧值重新编号，撞主键 (topic_id, seq)。
-    conn.run('UPDATE topics SET next_seq = MAX(next_seq, :n) WHERE id = :id', {
-      n: seq + 1,
-      id: topicId,
-    });
+    // 编号必须在同一个事务里取：事务外的 next_seq 会被别的进程同时读到，
+    // 两边拿同一个号 → INSERT 撞 UNIQUE(topic_id, seq)。
+    const explicit = Number(task.id);
+    let seq;
+    if (Number.isFinite(explicit) && explicit > 0) {
+      // 显式给了编号（引擎造节点 / 搬队列）也要把 next_seq 顶过去 —— 否则下一批
+      // addTask 会从旧值重新编号，撞主键 (topic_id, seq)。
+      seq = Math.trunc(explicit);
+      conn.run('UPDATE topics SET next_seq = MAX(next_seq, :n) WHERE id = :id', {
+        n: seq + 1,
+        id: topicId,
+      });
+    } else {
+      seq = takeSeq(topicId, conn);
+    }
     const fields = splitTaskFields({ status: 'pending', createdAt: undefined, ...task });
     const c = fields.columns;
     conn.run(
@@ -116,7 +150,7 @@ export function insertTask(topicId, task = {}) {
       }
     );
     const row = conn.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', { t: topicId, s: seq });
-    writeLocalDeps(conn, Number(row.id), fields.depsLocal);
+    writeLocalDeps(conn, topicId, Number(row.id), fields.depsLocal);
     return { id: seq, task: getTaskRow(topicId, seq, conn).task };
   });
 }
@@ -147,7 +181,7 @@ export function listTaskRowsByTopic(topicId, conn = null) {
   return rows.map((row) => rowToTaskWithDeps(c, row));
 }
 
-/** 全库任务（跨主题总览用），带 topicKey。 */
+/** 全库任务（跨主题总览用），带 topicKey。软删主题下的任务不出现（祖先过滤）。 */
 export function listAllTaskRows(conn = null) {
   const c = conn || db();
   const rows = c.all(
@@ -155,11 +189,13 @@ export function listAllTaskRows(conn = null) {
             t.feedback_at AS feedbackAt, t.from_src AS fromSrc, t.blocks_following AS blocksFollowing,
             t.claimed_at AS claimedAtMs, t.done_at AS doneAtMs, t.round, t.deleted_at AS deletedAtMs,
             t.created_at AS createdAtMs, t.updated_at AS updatedAtMs, k.key AS topic_key
-       FROM tasks t JOIN topics k ON k.id = t.topic_id ORDER BY t.topic_id, t.seq`
+       FROM tasks t JOIN topics k ON k.id = t.topic_id
+      WHERE k.deleted_at IS NULL
+      ORDER BY t.topic_id, t.seq`
   );
   return rows.map((row) => {
     const { task } = rowToTaskWithDeps(c, row);
-    return { task, topicKey: String(row.topic_key), topicId: Number(row.topic_id) };
+    return { task, topicKey: String(row.topic_key), topicId: Number(row.topicId) };
   });
 }
 
@@ -176,7 +212,8 @@ export function claimTask(
     // summary = 领取方本轮的现状（wait 的 --summary）。JSON 时代它落在 roundSummary，
     // done 时被交付结论覆盖 —— 这里同样落 feedback 列（done 的 UPDATE 会整格覆写）。
     const r = conn.run(
-      `UPDATE tasks SET status = 'claimed', claimed_at = :at, feedback = :fb, updated_at = :at
+      `UPDATE tasks SET status = 'claimed', claimed_at = :at, feedback = :fb, version = version + 1,
+              updated_at = :at
         WHERE topic_id = :t AND seq = :s AND status = 'pending' AND deleted_at IS NULL`,
       { t: topicId, s: seq, at: atMs, fb: String(summary ?? '') }
     );
@@ -194,7 +231,8 @@ export function claimTask(
 export function completeTask(topicId, seq, { feedback = '', atMs = nowMs() } = {}) {
   return txw((conn) => {
     const r = conn.run(
-      `UPDATE tasks SET status = 'done', done_at = :at, feedback_at = :at, feedback = :fb, updated_at = :at
+      `UPDATE tasks SET status = 'done', done_at = :at, feedback_at = :at, feedback = :fb,
+              version = version + 1, updated_at = :at
         WHERE topic_id = :t AND seq = :s AND status = 'claimed' AND deleted_at IS NULL`,
       { t: topicId, s: seq, at: atMs, fb: String(feedback ?? '') }
     );
@@ -236,9 +274,12 @@ export function updateTask(topicId, seq, patch = {}) {
     }
     sets.push('ext = :ext');
     params.ext = jsonText({ ...extOf(conn, topicId, seq), ...fields.ext });
+    // version 是行版本（只递增、不做乐观锁校验）：每次字段更新都前进一格，
+    // 它就不再是死列，还能给外部同步/审计一个廉价的变更判据。
+    sets.push('version = version + 1');
     sets.push('updated_at = :at');
     conn.run(`UPDATE tasks SET ${sets.join(', ')} WHERE topic_id = :t AND seq = :s`, params);
-    writeLocalDeps(conn, Number(cur.row.id), fields.depsLocal);
+    writeLocalDeps(conn, topicId, Number(cur.row.id), fields.depsLocal);
     return getTaskRow(topicId, seq, conn).task;
   });
 }

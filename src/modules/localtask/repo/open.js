@@ -56,8 +56,6 @@ export function txw(fn, opts = {}) {
  * **生产代码不要调**（它会把库清空）。
  */
 export function resetLocaltaskStore() {
-  console.error('[DBG resetLocaltaskStore] called');
-
   const target = resolveLocaltaskDb();
   closeDb();
   for (const suffix of ['', '-wal', '-shm', '-journal']) {

@@ -8,14 +8,17 @@
 // 同一文档反复点只会聚焦已开的页签。解析规则与后端共用 core/wikilink.js。
 // 外部绑定（writable:false）强制预览态——改动请回 vault。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { useApp } from '../../app-context.jsx';
 import { openPanel } from '../../workspace.js';
-import { MdPanes, ModeSeg } from '../../components/md/md-panes.jsx';
+import { MdPanes } from '../../components/md/md-panes.jsx';
+import { MenuPortal, openMenuAt, useMenu } from '../../components/md/tool-bar.jsx';
 import { IntroRail, introDirFromRef } from '../../components/Introduction/index.jsx';
-import { extractMdHeadings, renderMarkdownHtml, slugName, titleFromMd } from '../../modules/md/md-parse.js';
+import { uploadMany, snippetsOf } from '../../components/cloud/upload.js';
+import { extractMdHeadings, insertAttachmentSnippet, renderMarkdownHtml, slugName, titleFromMd } from '../../modules/md/md-parse.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
 import { resolveWikiLink } from '../../../../shared/wikilink.js';
 
@@ -83,7 +86,7 @@ export function useWikiNav(model) {
   return { nav, onClick, ensureIndex, openByDocId };
 }
 
-export default function DocPanel({ docId, repoKey, boardKey, boardName, model }) {
+export default function DocPanel({ docId, repoKey, boardKey, boardName, model, tabId }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
   const histRef = useRef(new Map());
@@ -104,8 +107,14 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model })
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [mode, setMode] = useState('split');
+  // 页头「更多」：源码模式 + 重命名/删除 收进菜单（#47），页头只留 保存
+  const docMore = useMenu();
   const [introLinks, setIntroLinks] = useState([]);
   const [scrollRoot, setScrollRoot] = useState(null);
+  // 最新文档镜像：附件上传是异步的，await 期间用户可能还在敲字，
+  // 插入片段得基于最新正文（同任务页 peekDoc 的考量），不能拿闭包里的旧 doc 覆盖
+  const docRef = useRef(null);
+  useEffect(() => { docRef.current = doc; }, [doc]);
 
   const load = useCallback(async () => {
     setError('');
@@ -293,6 +302,77 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model })
     requestAnimationFrame(() => editorApiRef.current?.caretFromDiff?.(doc.body, snap.body));
   };
 
+  // ─── 附件：粘贴 / 拖入图片 → 传本机附件仓（一律 local:true）→ markdown 片段插到落点 ───
+  // 落点换算交给 insertAttachmentSnippet：源码模式给全文偏移 insertAt，
+  // 实时预览给块内坐标（focusIndex/caretInBlock）；拿不到落点就追加文尾。
+  const addFiles = async (fileList, opts = {}) => {
+    if (!writable) return;
+    const files = [...(fileList || [])];
+    if (!files.length) return;
+    try {
+      const results = await uploadMany(files, {
+        local: true,
+        onProgress: (i, total, f) => toast(`正在上传 ${i}/${total}：${f.name}`),
+      });
+      const snippet = snippetsOf(results);
+      if (!snippet) return;
+      const cur = docRef.current || doc;
+      if (!cur) return;
+      const placed = insertAttachmentSnippet(cur.body, snippet, opts);
+      pushHistory(histRef.current, docId, { body: cur.body });
+      setDirty(true);
+      setDoc((d) => (d ? { ...d, body: placed.body, title: titleFromMd(placed.body, d.title) } : d));
+      toast(`已插入 ${results.length} 个附件`);
+    } catch (e) {
+      toast(`附件上传失败：${String(e.message || e)}`);
+    }
+  };
+
+  // ─── 重命名：自有文档 = 磁盘文件换路径 —— POST 新 rel（复制正文）→ DELETE 旧 ref → 开新页签 ───
+  const renameDoc = () => {
+    if (!doc || !doc.rel) return;
+    guard(async () => {
+      const next = await dialog({
+        title: '重命名文档',
+        input: true,
+        value: doc.rel,
+        placeholder: '新路径（相对 docs 根，以 .md 结尾）',
+      });
+      if (next === null) return;
+      const rel = String(next).trim();
+      if (!rel || rel === doc.rel) return;
+      if (!/\.md$/i.test(rel)) return toast('文档路径必须以 .md 结尾');
+      try {
+        await api('/api/docs/item', { method: 'POST', body: { rel, body: doc.body } });
+      } catch (e) {
+        // 目标已存在等冲突由后端报错，原样透出
+        toast(`重命名失败：${String(e.message || e)}`);
+        return;
+      }
+      await api('/api/docs/item', { method: 'DELETE', body: { ref: docId } });
+      clearHistory(histRef.current, docId);
+      toast(`已重命名为：${rel}`);
+      openByDocId('rel:' + rel, null, openExtra);
+    });
+  };
+
+  // ─── 删除：danger 确认 → DELETE 落盘 → 关掉当前页签 ───
+  const delDoc = () => {
+    if (!doc) return;
+    guard(async () => {
+      const ok = await dialog({
+        title: `删除文档「${doc.title || doc.rel || docId}」`,
+        message: `磁盘上的 ${doc.rel || docId} 会被一并删除，不可恢复。`,
+        danger: true,
+        okText: '删除',
+      });
+      if (!ok) return;
+      await api('/api/docs/item', { method: 'DELETE', body: { ref: docId } });
+      toast(`已删除：${doc.rel || docId}`);
+      if (model && tabId) model.doAction(Actions.deleteTab(tabId));
+    });
+  };
+
   // 缺失的自有文档：给一个「创建骨架」的出口（约定路径/自选路径都走 POST）
   const createDoc = () =>
     guard(async () => {
@@ -361,7 +441,8 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model })
     );
   }
 
-  const effMode = writable ? mode : 'preview';
+  // 只读文档：没有模式可选，渲染阅读视图（「阅读」不再是可选模式，#47）
+  const effMode = writable ? mode : 'read';
 
   return (
     <div className="mdw docp" data-mode={effMode} onClick={onNavClick} ref={rootRef}>
@@ -375,7 +456,61 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model })
           <span className="grow" />
           {writable && (
             <>
-              <ModeSeg mode={effMode} onChange={setMode} />
+              {/* 页头只留主按钮「保存」；源码模式与重命名/删除收进「更多」并按两层分组（#47） */}
+              <div className="docp-more" ref={docMore.ref}>
+                <button
+                  type="button"
+                  className={`btn sm${docMore.open ? ' on' : ''}`}
+                  aria-haspopup="menu"
+                  aria-expanded={docMore.open}
+                  onClick={(e) => openMenuAt(docMore, e, 'right')}
+                >
+                  更多
+                </button>
+                <MenuPortal menu={docMore}>
+                  {[
+                    {
+                      id: 'edit',
+                      label: '编辑',
+                      items: [
+                        {
+                          id: 'mode',
+                          label: mode === 'edit' ? '返回实时预览' : '源码模式',
+                          hint: mode === 'edit' ? '当前' : '',
+                          run: () => setMode(mode === 'edit' ? 'split' : 'edit'),
+                        },
+                      ],
+                    },
+                    {
+                      id: 'doc',
+                      label: '文档',
+                      items: [
+                        { id: 'rename', label: '重命名', run: renameDoc },
+                        { id: 'delete', label: '删除', run: delDoc, danger: true },
+                      ],
+                    },
+                  ].map((g) => (
+                    <div className="mdw-fmt-menu-group" role="group" aria-label={g.label} key={g.id}>
+                      <div className="mdw-fmt-menu-cap">{g.label}</div>
+                      {g.items.map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          role="menuitem"
+                          className={'mdw-fmt-menu-item' + (a.danger ? ' danger' : '')}
+                          onClick={() => {
+                            a.run?.();
+                            docMore.setOpen(false);
+                          }}
+                        >
+                          {a.label}
+                          {a.hint ? <span className="hint">{a.hint}</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </MenuPortal>
+              </div>
               <button className="btn sm docp-save" onClick={save}>保存</button>
             </>
           )}
@@ -388,6 +523,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model })
           previewHtml={previewHtml}
           onTitle={writable ? onTitle : null}
           onBody={writable ? onBody : null}
+          onFiles={writable ? addFiles : null}
           attachments={[]}
           docKey={docId}
           editorApiRef={editorApiRef}

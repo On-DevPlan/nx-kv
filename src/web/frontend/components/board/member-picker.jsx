@@ -223,15 +223,25 @@ export default function MemberPicker({ board, boards = [], repos = [], onClose, 
               ))}
               {shownProjects.map((r) => {
                 const inGroup = isMember(r.key);
-                const others = (r.boards || []).filter((b) => b.id !== board.id);
+                // 归属徽章显示**全部分组**（含本组）：只列「别的组」会让本组成员看起来
+                // 没有任何归属，和「加入」行不对称。本组那枚单独高亮，当场表明现状。
+                const allBoards = r.boards || [];
                 return (
                   <div className={'rp-mp-row' + (inGroup ? ' on' : '')} key={r.key}>
                     <Icon name="folder" size={13} />
                     <span className="rp-mp-name">{r.name}</span>
                     <span className="rp-mp-sub mono" title={r.path}>{parentPath(r)}</span>
-                    {others.length ? (
+                    {allBoards.length ? (
                       <span className="rp-mp-tags">
-                        {others.map((b) => <span className="rp-mp-tag" key={b.id}>{b.name}</span>)}
+                        {allBoards.map((b) => (
+                          <span
+                            className={'rp-mp-tag' + (b.id === board.id ? ' on' : '')}
+                            key={b.id}
+                            title={b.id === board.id ? `当前分组：${board.name}` : `属于「${b.name}」`}
+                          >
+                            {b.name}
+                          </span>
+                        ))}
                       </span>
                     ) : null}
                     <button

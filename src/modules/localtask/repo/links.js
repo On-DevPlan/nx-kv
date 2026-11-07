@@ -97,14 +97,17 @@ export function childLinks(taskId) {
 export function chainOf(taskId) {
   const conn = db();
   const id = Number(taskId);
-  // 祖先（到根）：depth 1 = 直接来源
+  // 祖先（到根）：depth 1 = 直接来源。schema 只保证「一个任务一个来源」，
+  // 保证不了无环（手工/迁移脏数据可以造出 A→B→A）。递归里挡回环 + 限深，
+  // 否则一条坏边能把查询变成无限递归。
   const ancestors = conn
     .all(
       `WITH RECURSIVE up(id, type, note, depth) AS (
-         SELECT dst_id, type, note, 1 FROM task_links WHERE src_id = :id
+         SELECT dst_id, type, note, 1 FROM task_links WHERE src_id = :id AND dst_id <> :id
          UNION ALL
          SELECT l.dst_id, l.type, l.note, up.depth + 1
            FROM task_links l JOIN up ON l.src_id = up.id
+          WHERE l.dst_id <> :id AND up.depth < 64
        )
        SELECT up.id, up.type, up.note, up.depth, t.seq
          FROM up JOIN tasks t ON t.id = up.id
@@ -112,14 +115,15 @@ export function chainOf(taskId) {
       { id }
     )
     .map((r) => ({ ...r, id: Number(r.id), seq: Number(r.seq), depth: Number(r.depth) }));
-  // 后代（所有代）
+  // 后代（所有代）：同样挡回环 + 限深
   const descendants = conn
     .all(
       `WITH RECURSIVE down(id, type, note, depth) AS (
-         SELECT src_id, type, note, 1 FROM task_links WHERE dst_id = :id
+         SELECT src_id, type, note, 1 FROM task_links WHERE dst_id = :id AND src_id <> :id
          UNION ALL
          SELECT l.src_id, l.type, l.note, down.depth + 1
            FROM task_links l JOIN down ON l.dst_id = down.id
+          WHERE l.src_id <> :id AND down.depth < 64
        )
        SELECT down.id, down.type, down.note, down.depth, t.seq
          FROM down JOIN tasks t ON t.id = down.id

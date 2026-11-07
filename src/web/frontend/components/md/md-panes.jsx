@@ -1232,29 +1232,10 @@ export const MdPanes = forwardRef(function MdPanes(
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onSave, onUndo, onRedo, mode, editorApiRef]);
 
-  if (mode === 'split') {
+  // 源码态：偶尔切过去改标记（入口在「更多」菜单里，不再占页头）
+  if (mode === 'edit') {
     return (
-      <div className="mdw-split mode-split live">
-        <LivePreview
-          title={title}
-          body={body}
-          onTitle={onTitle}
-          onBody={onBody}
-          articleRef={articleRef}
-          attachments={attachments}
-          docKey={docKey}
-          onFiles={onFiles}
-          editorApiRef={editorApiRef}
-          onTextSel={onTextSel}
-          onCloseSelMenu={onCloseSelMenu}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className={`mdw-split mode-${mode}`}>
-      {mode === 'edit' && (
+      <div className="mdw-split mode-edit">
         <SourceEditor
           title={title}
           body={body}
@@ -1264,8 +1245,15 @@ export const MdPanes = forwardRef(function MdPanes(
           onFiles={onFiles}
           onTextSel={onTextSel}
         />
-      )}
-      {mode === 'preview' && (
+      </div>
+    );
+  }
+
+  // 只读文档（外部绑定）：没有模式可切，直接渲染阅读视图。
+  // 「阅读」不再是用户可选模式（#47 撤掉），只作为不可写文档的兜底呈现。
+  if (!onBody && !onTitle) {
+    return (
+      <div className="mdw-split mode-read">
         <div className="mdw-pane mdw-preview">
           <div className="mdw-reader">
             {/* 阅读态此前不渲染标题，与 live/源码两态断裂；题头与正文同轴同宽。
@@ -1277,7 +1265,25 @@ export const MdPanes = forwardRef(function MdPanes(
             <article ref={articleRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
           </div>
         </div>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mdw-split mode-split live">
+      <LivePreview
+        title={title}
+        body={body}
+        onTitle={onTitle}
+        onBody={onBody}
+        articleRef={articleRef}
+        attachments={attachments}
+        docKey={docKey}
+        onFiles={onFiles}
+        editorApiRef={editorApiRef}
+        onTextSel={onTextSel}
+        onCloseSelMenu={onCloseSelMenu}
+      />
     </div>
   );
 });
@@ -1285,7 +1291,6 @@ export const MdPanes = forwardRef(function MdPanes(
 const MODES = [
   { id: 'split', label: '实时预览' },
   { id: 'edit', label: '源码' },
-  { id: 'preview', label: '阅读' },
 ];
 
 export function ModeSeg({ mode, onChange }) {

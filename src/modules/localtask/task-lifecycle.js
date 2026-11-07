@@ -22,6 +22,23 @@ import {
   txw as tx,
 } from './repo/index.js';
 
+/**
+ * 解析 supersededBy：本地是数字（同主题 seq），跨队列搬家后写的是 "key:seq"。
+ * 主题 key 本身不含 ':'（见 core/topic-key.js），所以最后一个 ':' 就是分隔符。
+ */
+function supersederRef(raw, sameKey) {
+  if (raw == null || raw === '' || typeof raw === 'object') return null;
+  const s = String(raw);
+  const at = s.lastIndexOf(':');
+  if (at > 0) {
+    const seq = Number(s.slice(at + 1));
+    if (!Number.isFinite(seq) || seq <= 0) return null;
+    return { key: s.slice(0, at), seq };
+  }
+  const n = Number(s);
+  return Number.isFinite(n) && n > 0 ? { key: sameKey, seq: n } : null;
+}
+
 // 把一条任务重新开放（用户的**修改反馈** / 重做 / 划选评论）——
 // **T04 派生模型**：重开 = 派生一条新任务，不再就地改写旧行。
 //
@@ -53,6 +70,7 @@ export async function reopenTask({
   openStore();
   const t = topicsRepo.getTopic(key);
   if (!t) throw notFound('主题不存在: ' + key);
+  let curTopic = t;
   let task = t.tasks.find((x) => Number(x.id) === want);
   if (!task || task.deletedAt) throw notFound('任务不存在或已删除: #' + want);
   // cancelled 的两种形态：
@@ -60,24 +78,29 @@ export async function reopenTask({
   //     （二次评论/继续重开是正常流程——反馈落在最新一代上，而不是让死记录复活）
   //   · 手动作废（无 superseder）→ 拒绝（要继续请新建任务）
   {
-    // 顺链走尖：被取代就跳到取代者，直到没有后继（const want 不变，用局部游标）
+    // 顺链走尖：被取代就跳到取代者，直到没有后继。跨队列的取代者存成 "key:seq"，
+    // 所以游标要带着 topic 一起走 —— 只按原主题查会解析到同号的另一条任务。
     let cur = want;
     let guard = 0;
     for (;;) {
-      const row = tasksRepo.getTaskRow(t.id, cur);
+      const row = tasksRepo.getTaskRow(curTopic.id, cur);
       if (!row || row.task.status !== 'cancelled' || row.task.supersededBy == null) break;
-      const next = Number(row.task.supersededBy);
-      if (!next || next === cur || guard++ > 32) break;
-      cur = next;
-      task = t.tasks.find((x) => Number(x.id) === cur);
-      if (!task) throw notFound('链尖任务不存在: #' + cur);
+      const next = supersederRef(row.task.supersededBy, curTopic.key);
+      if (!next || (next.key === curTopic.key && next.seq === cur) || guard++ > 32) break;
+      const nextTopic = next.key === curTopic.key ? curTopic : topicsRepo.getTopic(next.key);
+      if (!nextTopic) throw notFound('取代者所在主题不存在: ' + next.key);
+      const nextTask = nextTopic.tasks.find((x) => Number(x.id) === next.seq);
+      if (!nextTask) throw notFound('链尖任务不存在: #' + next.seq);
+      curTopic = nextTopic;
+      cur = next.seq;
+      task = nextTask;
     }
     if (task.status === 'cancelled') {
       throw badInput(`#${task.id} 已取消（明确作废）——不能再重开；要继续做请新建任务`);
     }
     want = cur;
-    task = t.tasks.find((x) => Number(x.id) === want);
   }
+  const srcKey = curTopic.key;
 
   const kind = rawKind === 'comment' ? 'comment' : 'reopen';
   const before = {
@@ -109,25 +132,25 @@ export async function reopenTask({
     }));
   }
 
-  // ── 落点：默认同主题；带 moveTo 就直接派生到目标主题
-  let hostKey = key;
+  // ── 落点：默认同主题（链尖所在主题）；带 moveTo 就直接派生到目标主题
+  let hostKey = srcKey;
   let moved = false;
   let movedFrom = null;
   if (moveTo && moveTo.cwd) {
     const toKey = topicKeyFor(String(moveTo.cwd));
-    if (toKey !== key) {
+    if (toKey !== srcKey) {
       hostKey = toKey;
       moved = true;
-      movedFrom = { key, name: t.name, id: want };
+      movedFrom = { key: srcKey, name: curTopic.name, id: want };
     }
   }
 
-  const parentRowId = tasksRepo.getTaskRow(t.id, want).row.id;
+  const parentRowId = tasksRepo.getTaskRow(curTopic.id, want).row.id;
   const created = tx((conn) => {
     // 1. 派生新任务：round = 旧.round + 1，状态 pending 立即可领
     const hostTopic = topicsRepo.ensureTopic(hostKey, {
-      cwd: hostKey === key ? t.cwd : String(moveTo.cwd),
-      name: hostKey === key ? t.name : basename(String(moveTo.cwd)),
+      cwd: hostKey === srcKey ? curTopic.cwd : String(moveTo.cwd),
+      name: hostKey === srcKey ? curTopic.name : basename(String(moveTo.cwd)),
     });
     const inserted = tasksRepo.insertTask(hostTopic.id, {
       text: newText,
@@ -135,6 +158,12 @@ export async function reopenTask({
       round: (Number(task.reopenCount) || 0) + 1 + 1, // splitTaskFields: round = reopenCount + 1
       fromSrc: task.from || '',
       timegoal: task.timegoal || null, // 时间目标声明跟着活走（再次领取重新计时）
+      // 依赖/闸门跟着活走：同队列时本地 seq 仍然有效；跨队列只带 "key:seq" 绝对引用
+      blockBy:
+        hostKey === srcKey
+          ? task.blockBy || []
+          : (task.blockBy || []).filter((d) => String(d).includes(':')),
+      blocksFollowing: !!task.blocksFollowing,
       createdAt: stampNow(),
     });
     // 2. 链：src=新, dst=旧（task_links 是链的唯一来源）
@@ -154,13 +183,15 @@ export async function reopenTask({
     if (task.status === 'done') {
       // done 是终态、保持不变——上一轮的交付事实不因重开而消失
     } else {
-      tasksRepo.updateTask(t.id, want, {
+      // supersededBy 必须带上绝对地址：搬到别的队列后，光写目标队列的 seq 会被
+      // 顺链逻辑按源主题解析到一条完全无关的任务上。
+      tasksRepo.updateTask(curTopic.id, want, {
         status: 'cancelled',
-        supersededBy: inserted.id,
+        supersededBy: hostKey === srcKey ? inserted.id : `${hostKey}:${inserted.id}`,
       });
     }
-    topicsRepo.updateTopic(key, { bumpRevision: true });
-    if (hostKey !== key) topicsRepo.updateTopic(hostKey, { bumpRevision: true });
+    topicsRepo.updateTopic(srcKey, { bumpRevision: true });
+    if (hostKey !== srcKey) topicsRepo.updateTopic(hostKey, { bumpRevision: true });
     // 队列顺序：新任务追加到尾（JSON 时代 push 的等价物）
     topicsRepo.mutateOrder(hostKey, (order) => {
       const list = [...order];

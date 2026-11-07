@@ -74,7 +74,14 @@ export function isTriggerAbortError(err) {
 export function mapSqliteError(err) {
   if (!err) return err;
   if (err instanceof AppError) return err;
-  if (isBusyError(err)) return badInput('存储忙，请重试', { errcode: err.errcode });
+  if (isBusyError(err)) {
+    // errcode 必须留在**顶层**：tx.js / WAL 切换的重试判据读的是 err.errcode，
+    // 塞进 details 会让「可退避重试」退化成「直接失败」。
+    const e = badInput('存储忙，请重试', { errcode: err.errcode });
+    e.errcode = Number(err.errcode) || SQLITE.BUSY;
+    if (err.code) e.sqliteCode = String(err.code);
+    return e;
+  }
   if (isTriggerAbortError(err)) return badInput(String(err.message || '数据库约束拒绝本次写入'));
   if (isUniqueError(err)) return conflict('记录已存在（唯一约束冲突）', { message: String(err.message || '') });
   if (isForeignKeyError(err)) return badInput('引用的记录不存在（外键约束）', { message: String(err.message || '') });

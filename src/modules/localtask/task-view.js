@@ -75,7 +75,7 @@ export function relocateTask(fromTopic, seq, moveTo) {
   const src = tasksRepo.getTaskRow(fromTopic.id, oldSeq);
   if (!src) return null;
 
-  // 1. 派生新任务到目标队列（新 seq 由 advanceSeq 分配；round/正文/timegoal 跟着走）
+  // 1. 派生新任务到目标队列（新 seq 由事务内 takeSeq 分配；round/正文/timegoal 跟着走）
   const inserted = tasksRepo.insertTask(target.id, {
     text: src.task.text,
     status: src.task.status,
@@ -85,7 +85,7 @@ export function relocateTask(fromTopic, seq, moveTo) {
     createdAt: src.task.createdAt,
     consumedAt: src.task.consumedAt || '',
     completedAt: src.task.completedAt || '',
-    feedback: src.task.feedback || '',
+    roundSummary: src.task.roundSummary || '',
     moveFrom: { key: fromTopic.key, seq: oldSeq, at: stampNow() },
     blocksFollowing: !!src.task.blocksFollowing,
     blockBy: (src.task.blockBy || []).filter((d) => String(d).includes(':')).map(String),

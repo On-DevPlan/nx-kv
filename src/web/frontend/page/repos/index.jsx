@@ -1,18 +1,19 @@
-// 仓库上下文页：**一张扁平的中心清单** + 看板（只当筛选器与标签用）。
+// 仓库管理页（平台化）：统一展示 **repo / 分组（看板）/ ref 文档** 三者的关联。
 //
 // **来历**：原本长在 nx-rh，2026-10-23 整体迁到 nx-kv（远程清单 topic=goal 的 #72）——
 // 仓库登记是本机事实，它的价值是给「本地任务管理」当上下文，所以它跟着任务走。
 // 每个按钮 = 一条 HTTP 路由 = 一条 CLI 命令（三者同源于模块的 action 声明）。
 //
-// 版面：**中心清单 + 看板只是标签**。
-//   - 仓库登记是唯一真相，一直在这张清单里；
-//   - 看板只存引用 → **加入看板是复制**，不是移动：同一个仓库可以同时在多个
-//     看板里（fr 同时在「fr常用」与「远程打字」）；
-//   - 取消某份副本只摘那个看板的引用，仓库本体纹丝不动。
+// 版面（自上而下 = 任务流）：
+//   1. 头部：统计 chips（开发仓库/参考仓库/分组/文档）+ 主操作
+//      （登记仓库 / 新建分组 / 扫描目录 / 参考仓库管理 / 导入导出）；
+//   - 分组区块：看板升为一等公民的卡片网格（组介绍文档入口、成员 chips、操作）；
+//   - 仓库主表：扁平中心清单，行内核心是**绑定的 ref 文档列表**
+//     （主篇 + 补充篇，逐篇可点开、可摘除），另有参考仓库与所属分组 chips；
+//   - 文档区块：全部自有文档 + 绑定关系反推（文档不记宿主，宿主关系在仓库/分组上）。
 //
-// 之前这一页是「按看板分组的卡片墙 + 拖拽」：同一套数据，但读起来就是「移动」，
-// 而且同一个仓库会在多个分组里重复出现、看不到全貌。现在主视图是扁平的中心清单，
-// 看板退成上方的筛选器与行内的标签。
+// 看板只存引用 → **加入分组是复制**，不是移动：同一个仓库可以同时在多个
+// 分组里；取消某份副本只摘那个分组的引用，仓库本体纹丝不动。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
@@ -21,7 +22,6 @@ import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog, Modal } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
-import DescModal from '../../components/repos/desc-modal.jsx';
 import { useWikiNav } from '../doc/index.jsx';
 
 const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
@@ -40,57 +40,118 @@ function RepoPath({ path }) {
   );
 }
 
-// 描述行 = 绑定的文档集：主篇标题（可点开）+ 补充篇计数。
-// 主篇没写过（文件还不存在）显示「未写」——点进去就是空文档，直接写。
-function DocLine({ docs, onOpen, tip = '' }) {
+// 文档 chips = 一个仓库绑定的 ref 文档列表：主篇 + 补充篇，逐篇一个 chip。
+// 每条可点开编辑器；已绑定的可摘除（×）。主篇没写过（文件还不存在）显示「未写」虚态——
+// 点进去就是空文档，直接写。主篇的 × 只在自定义绑定（repo.doc）时出现：
+// 约定路径（repo/<key>/index.md）不算绑定关系，没有可摘的东西。
+// 每片都带铅笔标记：这里的 chip 是「进入编辑」的入口，不是只读标签。
+function DocChips({ docs, mainBound = false, onOpen, onOpenLink, onRemove, onAdd, tip = '' }) {
   const main = docs && docs.main;
   const links = (docs && docs.links) || [];
-  if (!main || !main.title) return null;
-  const title = [
-    tip,
-    `主篇：${main.rel || main.path}`,
-    ...links.map((l) => (l.tag ? `[${l.tag}] ` : '') + l.title + (l.note ? ` —— ${l.note}` : '')),
-  ].filter(Boolean).join('\n');
+  const mainTip = [tip, main ? `主篇：${main.rel || main.path}` : ''].filter(Boolean).join('\n');
   return (
-    <div className="rp-desc">
-      <button
-        type="button"
-        className={'rp-doc' + (main.exists ? '' : ' ghost')}
-        title={title || '打开项目介绍文档'}
-        onClick={() => onOpen(main)}
-      >
-        <span className="rp-doc-tx">{main.exists ? (main.summary || main.title) : '未写'}</span>
-      </button>
-      {links.length ? (
-        <span className="rp-doc-more" title={`另有 ${links.length} 篇补充文档`}>+{links.length}</span>
+    <div className="rp-docs">
+      {main && main.title ? (
+        <span className={'rp-doc-chip main' + (main.exists ? '' : ' ghost')}>
+          <button
+            type="button"
+            className="rp-doc-chip-tx"
+            title={mainTip || '打开项目介绍文档'}
+            onClick={() => onOpen(main)}
+          >
+            <span className="rp-doc-chip-pen" aria-hidden>✎</span>
+            {main.exists ? (main.summary || main.title) : '＋ 写项目介绍'}
+          </button>
+          {mainBound && onRemove ? (
+            <button
+              type="button"
+              className="rp-doc-chip-x"
+              title="摘除主篇绑定（回退到约定路径，文档不删）"
+              onClick={() => onRemove(1)}
+            >
+              ×
+            </button>
+          ) : null}
+        </span>
+      ) : null}
+      {links.map((l, i) => (
+        <span
+          className="rp-doc-chip"
+          key={l.docId || l.title + i}
+          title={(l.tag ? `[${l.tag}] ` : '') + l.title + (l.note ? `\n${l.note}` : '')}
+        >
+          <button type="button" className="rp-doc-chip-tx" onClick={() => onOpenLink(l)}>
+            {l.tag ? <em className="rp-doc-chip-tag">{l.tag}</em> : null}
+            {l.title}
+          </button>
+          {onRemove ? (
+            <button
+              type="button"
+              className="rp-doc-chip-x"
+              title={`摘除补充篇「${l.title}」（文档不删）`}
+              onClick={() => onRemove(i + 2)}
+            >
+              ×
+            </button>
+          ) : null}
+        </span>
+      ))}
+      {onAdd ? (
+        <button type="button" className="rp-doc-chip add" title="给这个仓库再绑一篇文档" onClick={onAdd}>
+          ＋
+        </button>
       ) : null}
     </div>
   );
 }
 
-// 仓库行：名称 + 描述文档 / 路径（点击复制）/ 操作。
-// 中心清单里**不再显示所属看板**——行内的 chip + × + 下拉三件套又挤又乱，
-// 归属的增删统一走「成员管理」弹窗（筛选到看板 → 导入仓库 / 摘除）。
-// **描述 = 绑定的文档**（主篇 + 补充篇），不是一句话字符串：点主篇标题直接开文档，
-// 补充篇的数量挂在后面（+N）。组内描述（看板上下文里的 note）降为 title 提示——
-// 它同样有对应的 group 文档，入口在文档里。
+// 仓库行 = 仓库信息（名称 + 路径）+ 文档入口（核心）+ 参考仓库 + 所属分组 + 操作。
+// **文档列是这行的核心内容**：项目文档（主篇 + 补充篇）与每个所属分组的组内文档
+// 都逐篇成 chip，点开即编辑器、可摘除，未写的显示「＋ 写项目介绍」虚态。
+// 所属分组 chips 点一下 = 筛到那个组（再点取消）；归属的增删走「成员管理」弹窗。
 // 主表只放开发仓库（type=dev）——参考仓库有自己的大面板，两份名单不混。
 // 「参考」列显示**绑定到这个开发仓库**的参考仓库（多对多：一个 dev 可挂多个 ref）。
 function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
-  const note = filterBoard
-    ? ((r.boards || []).find((b) => b.id === filterBoard.id)?.note || '')
-    : null;
   const refs = refsOfRepo.get(r.key) || [];
   return (
-    <tr>
+    <tr id={'rp-row-' + r.key}>
       <td className="rp-name">
         <strong>
           {r.icon ? <span className="rp-icon" aria-hidden>{r.icon}</span> : null}
           {r.name}
         </strong>
-        <DocLine docs={r.descDocs} onOpen={acts.doc} tip={note ? `组内描述：${note}` : ''} />
+        <span className="mono rp-name-path"><RepoPath path={r.path} /></span>
       </td>
-      <td className="mono rp-path"><RepoPath path={r.path} /></td>
+      {/* 文档列 = 这个仓库的全部文档入口：
+          ① 项目文档（主篇 + 补充篇）
+          ② 组内文档（每个所属分组一篇，标题前挂组名）——「仓库+组」这一层的 key 就在这里 */}
+      <td className="rp-cell-docs">
+        <DocChips
+          docs={r.descDocs}
+          mainBound={!!r.doc}
+          onOpen={acts.doc}
+          onOpenLink={acts.docLink}
+          onRemove={(i) => acts.docRemove(r, i)}
+          onAdd={() => acts.docAdd(r)}
+        />
+        {(r.boards || []).length ? (
+          <div className="rp-docs rp-docs-scoped">
+            {r.boards.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                className="rp-doc-chip scoped"
+                title={`打开「${r.name}」在「${b.name}」里的组内描述文档\n${b.noteDocRel || ''}`}
+                onClick={() => acts.noteOf(r, b)}
+              >
+                <em className="rp-doc-chip-scope">{b.name}</em>
+                组内文档
+                <span className="rp-doc-chip-pen" aria-hidden>✎</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </td>
       <td className="rp-refs">
         {refs.length ? refs.map((ref) => (
           <button key={ref.key} className="rp-ref-chip" title={`直接绑定：${ref.remote || ''}${ref.note ? '\n' + ref.note : ''}\n点击改绑定描述`}
@@ -101,15 +162,23 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
         )) : <span className="muted rp-refs-none">—</span>}
         <button className="btn small ghost rp-ref-bind" title="管理这个仓库绑定的参考仓库" onClick={() => acts.bind(r)}>绑定</button>
       </td>
+      <td className="rp-cell-groups">
+        {(r.boards || []).length ? r.boards.map((b) => (
+          <button
+            key={b.id}
+            className={'rp-group-chip' + (filterBoard && filterBoard.id === b.id ? ' on' : '')}
+            title={`只看「${b.name}」${b.note ? `\n组内描述：${b.note}` : ''}`}
+            onClick={() => acts.filter(b.id)}
+          >
+            {b.name}
+          </button>
+        )) : <span className="muted rp-refs-none">—</span>}
+      </td>
       <td className="rp-acts">
         <button className="btn small ghost" title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</button>
         <button className="btn small ghost" title="对齐 remote：列出 git remote -v 的候选并检查远端是否存在"
           onClick={() => acts.remote(r)}>remote</button>
         <button className="btn small ghost" onClick={() => acts.edit(r)}>编辑</button>
-        {filterBoard ? (
-          <button className="btn small ghost" title={`打开「${r.name}」在「${filterBoard.name}」里的组内描述文档`}
-            onClick={() => acts.note(r)}>描述</button>
-        ) : null}
         <button className="btn small ghost rp-del" onClick={() => acts.del(r)}>删除</button>
       </td>
     </tr>
@@ -131,14 +200,21 @@ export default function ReposView() {
   // 看板（只作筛选与标签）
   const [boards, setBoards] = useState(null); // { boards: [...], unassigned: [...] }
   const [filter, setFilter] = useState(''); // '' = 全部（中心清单）
+  // 检索框：一个输入同时搜仓库名/路径、分组名、文档标题/rel —— 管理页不该靠长列表找人
+  const [q, setQ] = useState('');
+  // 分组管理是「隔一阵维护一次」的东西：弹窗列表，不占主版面
+  const [boardAdminOpen, setBoardAdminOpen] = useState(false);
+  // 文档检索：按 仓库 / 组内 / 分组 三档筛，不铺全量长列表
+  const [docOpen, setDocOpen] = useState(false);
   const [boardForm, setBoardForm] = useState(null); // null | { id?, name, desc }
   const [impOpen, setImpOpen] = useState(false);
   const [impText, setImpText] = useState('');
   const [expText, setExpText] = useState(null);
-  const [boardsOpen, setBoardsOpen] = useState(false);
 
   // 仓库中心清单（扁平；每条带 boards）
   const [repos, setRepos] = useState([]);
+  // 全部自有文档（文档区块的数据面：GET /api/docs）
+  const [docs, setDocs] = useState([]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   // ---- 参考仓库（type=ref）大面板状态 ----
@@ -157,8 +233,6 @@ export default function ReposView() {
   // dev 侧绑定弹窗：某个开发仓库 → 勾选绑到它身上的参考
   const [bindRepoFor, setBindRepoFor] = useState(null); // dev 仓库对象 | null
   const [bindRepoSel, setBindRepoSel] = useState({}); // { refId: bool }
-  // 描述弹窗：{ repo, board } | null —— 左清单右编辑器，就地改 md
-  const [descFor, setDescFor] = useState(null);
   // 绑定描述编辑：{ ref, kind:'repo'|'board', targetId, targetName, note } | null
   const [linkNoteFor, setLinkNoteFor] = useState(null);
   const [linkNoteText, setLinkNoteText] = useState('');
@@ -178,7 +252,11 @@ export default function ReposView() {
   const loadBoards = useCallback(async () => {
     setBoards(await api('/api/boards').catch(() => null));
   }, []);
-  useEffect(() => { loadRepos(); loadBoards(); }, [loadRepos, loadBoards]);
+  const loadDocs = useCallback(async () => {
+    const d = await api('/api/docs').catch(() => null);
+    setDocs((d && d.docs) || []);
+  }, []);
+  useEffect(() => { loadRepos(); loadBoards(); loadDocs(); }, [loadRepos, loadBoards, loadDocs]);
 
   // 从别处跳进来的定位：#/repos?board=<组id>&add=1
   // （组详情页的「添加成员」走这条：不在组页内嵌弹窗，直接落到仓库页对应分组的成员管理）
@@ -389,12 +467,26 @@ export default function ReposView() {
   const devRepos = useMemo(() => repos.filter((r) => (r.type || 'dev') !== 'ref'), [repos]);
   const refRepos = useMemo(() => repos.filter((r) => r.type === 'ref'), [repos]);
 
-  // 筛选后的开发仓库清单：选某个看板时只显示该看板的成员（去重）。
+  // 筛选后的开发仓库清单：选某个看板时只显示该看板的成员（去重）；
+  // 检索词命中仓库名/路径/分组名/文档标题（含 rel）时也收窄到命中的行。
   // 参考仓库不在主表 —— 它们有大面板（筛选器行的「参考仓库」入口）。
   const shown = useMemo(() => {
-    if (!filter) return devRepos;
-    return devRepos.filter((r) => (r.boards || []).some((b) => b.id === filter));
-  }, [devRepos, filter]);
+    let list = devRepos;
+    if (filter) list = list.filter((r) => (r.boards || []).some((b) => b.id === filter));
+    const kw = q.trim().toLowerCase();
+    if (!kw) return list;
+    // 文档命中：主篇 / 补充篇的标题、rel、tag、note 任一含关键词
+    const docHit = (r) => {
+      const main = r.descDocs && r.descDocs.main;
+      if (main && [main.title, main.summary, main.rel].some((s) => s && String(s).toLowerCase().includes(kw))) return true;
+      return ((r.descDocs && r.descDocs.links) || []).some((l) =>
+        [l.title, l.tag, l.note, l.rel].some((s) => s && String(s).toLowerCase().includes(kw)));
+    };
+    return list.filter((r) =>
+      [r.name, r.key, r.path, r.desc].some((s) => s && String(s).toLowerCase().includes(kw))
+      || (r.boards || []).some((b) => String(b.name || '').toLowerCase().includes(kw))
+      || docHit(r));
+  }, [devRepos, filter, q]);
 
   // 当前筛选到的看板（用来显示领域描述上下文条）与成员管理弹窗的目标看板
   const filterBoard = useMemo(() => boardList.find((b) => b.id === filter) || null, [boardList, filter]);
@@ -457,10 +549,111 @@ export default function ReposView() {
       .filter(Boolean);
   }, [refRepos, filterBoard]);
 
+  // 文档 → 绑定宿主 反推表（文档区块用）：一篇文档被哪些仓库/分组引用。
+  // 文档自己不记宿主，宿主关系散落在仓库与分组的绑定字段上：
+  //   repo.descDocs.main.rel（主篇）/ repo.descDocs.links[].docId（补充篇，'rel:' 前缀）
+  //   repo.boards[].noteDocRel（组内描述，仓库侧冗余）
+  //   board.docRel（组介绍）/ board.docLinks[].rel（组补充）/ board.repos[].noteDocRel（组内描述）
+  // kind 用来筛「仓库 / 分组 / 组内」三档；target 是点击跳转的落点（仓库 key 或分组 id）。
+  const docHosts = useMemo(() => {
+    const m = new Map(); // rel → [{ key, kind, label, tip, target }]
+    const add = (rel, kind, label, tip, target) => {
+      if (!rel) return;
+      if (!m.has(rel)) m.set(rel, []);
+      const arr = m.get(rel);
+      if (arr.some((x) => x.label === label)) return;
+      arr.push({ key: rel + '|' + label, kind, label, tip: tip || label, target });
+    };
+    for (const r of repos) {
+      const main = r.descDocs && r.descDocs.main;
+      if (main && main.rel) add(main.rel, 'repo', `仓：${r.name}`, `「${r.name}」的项目介绍主篇`, r.key);
+      for (const l of (r.descDocs && r.descDocs.links) || []) {
+        const rel = String(l.docId || '').startsWith('rel:') ? String(l.docId).slice(4) : '';
+        add(rel, 'repo', `仓：${r.name}`, `「${r.name}」的补充文档${l.tag ? `（${l.tag}）` : ''}`, r.key);
+      }
+      for (const b of r.boards || []) {
+        add(b.noteDocRel, 'scoped', `组内：${b.name} / ${r.name}`, `「${r.name}」在组「${b.name}」里的组内描述`, b.id);
+      }
+    }
+    for (const b of boardList) {
+      if (b.docRel) add(b.docRel, 'board', `组：${b.name}`, `组「${b.name}」的介绍文档`, b.id);
+      for (const l of b.docLinks || []) add(l.rel, 'board', `组：${b.name}`, `组「${b.name}」的补充文档`, b.id);
+      for (const mb of b.repos || []) {
+        add(mb.noteDocRel, 'scoped', `组内：${b.name} / ${mb.name || mb.key}`, `组「${b.name}」里的组内描述`, b.id);
+      }
+    }
+    return m;
+  }, [repos, boardList]);
+
   const openAdd = () => {
     setForm(EMPTY_FORM);
     setEditing(null);
     setFormOpen(true);
+  };
+
+  // 文档检索的分档：仓库文档 / 分组文档 / 组内文档 / 未绑定。
+  // 这三档正是「repo、repo+group、group」三层 key —— 分开看才看得清关联。
+  const [docScope, setDocScope] = useState('all');
+  const [docKw, setDocKw] = useState('');
+  const docRows = useMemo(() => {
+    const kw = docKw.trim().toLowerCase();
+    const rows = docs.map((d) => ({ d, hosts: docHosts.get(d.rel) || [] }));
+    const hit = (x) => {
+      if (!kw) return true;
+      return [x.d.title, x.d.name, x.d.rel]
+        .some((s) => s && String(s).toLowerCase().includes(kw))
+        || x.hosts.some((h) => h.label.toLowerCase().includes(kw));
+    };
+    const list = rows.filter(hit);
+    if (docScope === 'orphan') return list.filter((x) => !x.hosts.length);
+    if (docScope === 'all') return list;
+    return list.filter((x) => x.hosts.some((h) => h.kind === docScope));
+  }, [docs, docHosts, docScope, docKw]);
+  const docScopeCounts = useMemo(() => {
+    const c = { all: docs.length, repo: 0, board: 0, scoped: 0, orphan: 0 };
+    for (const d of docs) {
+      const hosts = docHosts.get(d.rel) || [];
+      if (!hosts.length) c.orphan += 1;
+      for (const k of ['repo', 'board', 'scoped']) {
+        if (hosts.some((h) => h.kind === k)) c[k] += 1;
+      }
+    }
+    return c;
+  }, [docs, docHosts]);
+
+  // 区块跳转：统计 chip / 文档绑定 chip 用（滚动到目标区块，不改变页面状态）。
+  // 不用 scrollIntoView —— 面板内容挂在 FlexLayout 的 tab 里（.flexlayout__tab_moveable
+  // 才是真正的滚动容器），这条链上的 scrollIntoView 实测无效，必须手动算 scrollTop。
+  const scrollToEl = (el, block = 'start') => {
+    if (!el) return;
+    let box = el.parentElement;
+    while (box) {
+      const st = getComputedStyle(box);
+      if ((st.overflowY === 'auto' || st.overflowY === 'scroll') && box.scrollHeight > box.clientHeight) break;
+      box = box.parentElement;
+    }
+    if (!box) box = document.scrollingElement || document.documentElement;
+    const base = box.getBoundingClientRect ? box.getBoundingClientRect().top : 0;
+    const offset = el.getBoundingClientRect().top - base;
+    const pad = block === 'center' ? (box.clientHeight - el.offsetHeight) / 2 : 12;
+    box.scrollTop = Math.max(0, box.scrollTop + offset - pad);
+  };
+  const jumpTo = (id) => scrollToEl(document.getElementById(id));
+
+  // 绑定 chip 点击 = 跳到宿主：分组 → 筛到该组；仓库/组内 → 滚到那行并闪一下
+  const docGo = (h) => {
+    if (!h || !h.target) return;
+    if (h.kind === 'board') {
+      setFilter(h.target);
+      jumpTo('rp-repos');
+      return;
+    }
+    setFilter('');
+    const row = document.getElementById('rp-row-' + h.target);
+    if (!row) { jumpTo('rp-repos'); return; }
+    scrollToEl(row, 'center');
+    row.classList.add('rp-row-flash');
+    setTimeout(() => row.classList.remove('rp-row-flash'), 1400);
   };
 
   // 编辑弹窗里的「项目描述」= 这个仓库绑定的文档集（主篇 + 补充篇），不给字符串输入框
@@ -670,6 +863,49 @@ export default function ReposView() {
     await api('/api/docs/item', { method: 'POST', body: { rel, body: `# ${title || rel}\n\n` } }).catch(() => {});
     openByDocId('rel:' + rel);
     loadRepos();
+    loadDocs();
+  });
+
+  // 组介绍文档入口：docPath（绝对路径落盘的）直接开；
+  // 否则按约定 rel（board/<组>.md）先建空文档再开——点开即写，不让「未写」成死链。
+  const openBoardDoc = (b) => {
+    if (b.docPath) return openByDocId('path:' + b.docPath);
+    return openDescDoc(b.docRel, `${b.name} · 组介绍`);
+  };
+
+  // 「新建文档」不先逼人取名：点＋直接用默认路径落盘并打开编辑器，
+  // 想改名在文档页「更多 → 重命名」里改（#49）。重名自动加序号，不覆盖已有文件。
+  const nextDocRel = (base) => {
+    const taken = new Set((docs || []).map((d) => String(d.rel || '').toLowerCase()));
+    let rel = `${base}.md`;
+    if (!taken.has(rel.toLowerCase())) return rel;
+    for (let i = 2; ; i += 1) {
+      rel = `${base}-${i}.md`;
+      if (!taken.has(rel.toLowerCase())) return rel;
+    }
+  };
+
+  // 新建文档：默认路径 → 落空文档 → 打开编辑器（一步到位，不弹命名框）
+  const createDoc = () => guard(async () => {
+    const rel = nextDocRel('note/untitled');
+    await api('/api/docs/item', { method: 'POST', body: { rel, body: '' } }).catch(() => {});
+    setDocOpen(false); // 从「文档检索」弹窗里建的：先关弹窗，落点是编辑器
+    openByDocId('rel:' + rel);
+    await loadDocs();
+  });
+
+  // 删文档：文件本体删掉（入参 ref = docId）。它仍被引用时先把引用数摆出来让人知情。
+  const delDoc = (d) => guard(async () => {
+    const hosts = docHosts.get(d.rel) || [];
+    const ok = await dialog({
+      message: `删除文档「${d.title || d.rel}」？磁盘文件会被删除。`
+        + (hosts.length ? `它正被 ${hosts.length} 处引用（${hosts.map((h) => h.label).join('、')}）。` : ''),
+      danger: true,
+    });
+    if (!ok) return;
+    await api('/api/docs/item', { method: 'DELETE', body: { ref: d.docId } });
+    toast(`已删除：${d.rel}`);
+    await Promise.all([loadDocs(), loadRepos(), loadBoards()]);
   });
 
   const rowActs = {
@@ -682,6 +918,23 @@ export default function ReposView() {
       if (main.exists || !main.rel) return openByDocId(main.docId);
       return openDescDoc(main.rel, main.title);
     },
+    // 补充篇直接开（docId 一定存在——它是从绑定记录里读出来的）
+    docLink: (l) => {
+      if (l && l.docId) openByDocId(l.docId);
+    },
+    // 摘除一篇绑定文档：index=1 拆主篇的自定义绑定（回退约定路径，文件不删），>=2 摘补充篇
+    docRemove: (r, index) => guard(async () => {
+      const links = (r.descDocs && r.descDocs.links) || [];
+      const what = index === 1
+        ? `主篇绑定（回退到约定路径，文档不删）`
+        : `补充篇「${(links[index - 2] || {}).title || ''}」（文档不删）`;
+      const ok = await dialog({ message: `摘除「${r.name}」的${what}？`, danger: true });
+      if (!ok) return;
+      await api('/api/repos/docs', { method: 'DELETE', body: { id: r.id, index } });
+      await Promise.all([loadRepos(), loadDocs()]);
+    }),
+    // 行内分组 chip = 快捷筛选（再点一次取消）
+    filter: (id) => setFilter((f) => (f === id ? '' : id)),
     // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它身上（多对多的 dev 侧视角）
     bind: (r) => {
       const sel = {};
@@ -701,53 +954,58 @@ export default function ReposView() {
       const full = refRepos.find((x) => x.key === ref.key);
       if (full) openLinkNote(full, 'repo', devRepo.key, devRepo.name);
     },
-    note: (r) => {
-      // 组内描述挂在 **key** 上（成员关系用 key），内容是 group/<组>/<key>.md。
-      // 弹窗里连同项目主篇、补充篇一起列出来——描述不是单篇文档，是一小组。
-      setDescFor({ repo: r, board: filterBoard || null });
+    // 组内描述文档（仓库 × 分组这一层的 key）：外部绑定直接开；
+    // 约定路径（group/<组>/<仓库>.md）先建空文档再开，点开即写。
+    noteOf: (r, b) => {
+      if (b.noteDocPath) return openByDocId('path:' + b.noteDocPath);
+      return openDescDoc(b.noteDocRel, `${b.name} / ${r.name} · 组内描述`);
     },
+    // 给仓库再绑一篇文档：默认路径直接落盘 → 绑进介绍文档集 → 打开编辑器（#49 不再先弹命名框）
+    docAdd: (r) => guard(async () => {
+      const rel = nextDocRel(`repo/${r.key}/note`);
+      await api('/api/docs/item', { method: 'POST', body: { rel, body: '' } }).catch(() => {});
+      await api('/api/repos/docs', { method: 'POST', body: { id: r.id, rel } });
+      toast(`已给「${r.name}」新建并打开 ${rel}`);
+      await Promise.all([loadRepos(), loadDocs()]);
+      openByDocId('rel:' + rel);
+    }),
   };
 
   return (
     <div className="rp-page">
+      {/* 平台头部：标题 + 统计 chips + 主操作。
+          原工具栏动作（看板弹窗的建/导入/导出、参考面板入口、导入导出面板）全部收编到这里。 */}
       <div className="page-head">
         <div className="title-block">
-          <h2>仓库</h2>
+          <h2>仓库管理</h2>
+          {/* 统计 chip = 跳转入口：点一下到对应区块（参考仓库直接开面板） */}
+          <div className="rp-stats">
+            <button className="rp-stat" title="跳到开发仓库列表"
+              onClick={() => { setFilter(''); jumpTo('rp-repos'); }}>
+              开发仓库 <b>{devRepos.length}</b>
+            </button>
+            <button className="rp-stat" title="打开参考仓库面板"
+              onClick={() => setRefOpen(true)}>
+              参考仓库 <b>{refRepos.length}</b>
+            </button>
+            <button className="rp-stat" title="打开分组管理"
+              onClick={() => setBoardAdminOpen(true)}>
+              分组 <b>{boardList.length}</b>
+            </button>
+            <button className="rp-stat" title="文档检索：按仓库 / 组内 / 分组筛"
+              onClick={() => setDocOpen(true)}>
+              文档 <b>{docs.length}</b>
+            </button>
+          </div>
         </div>
         <div className="acts">
-          <button className="btn" onClick={openAdd}>添加仓库</button>
-        </div>
-      </div>
-      {/* 看板筛选器：主表 = 开发仓库；参考仓库 / 看板管理靠右 */}
-      <div className="rp-filters" data-testid="rp-filters">
-        <div className="rp-filters-main">
-          <button
-            className={'rp-chip' + (filter ? '' : ' on')}
-            onClick={() => setFilter('')}
-            title="显示全部开发仓库"
-          >
-            开发仓库 <b>{devRepos.length}</b>
-          </button>
-          {boardList.map((b) => (
-            <button
-              key={b.id}
-              className={'rp-chip' + (filter === b.id ? ' on' : '')}
-              onClick={() => setFilter(filter === b.id ? '' : b.id)}
-              title={`只看「${b.name}」里的仓库（${b.repos.length} 个）`}
-            >
-              {b.name} <b>{b.repos.length}</b>
-            </button>
-          ))}
-        </div>
-        <div className="rp-filters-side">
-          <button className="rp-chip" onClick={() => setRefOpen(true)}
-            title="弹窗管理参考仓库：克隆 / 绑定 / 同步 / 检查 / 布局导入导出">
-            参考仓库 <b>{refRepos.length}</b><span className="rp-chip-go">↗</span>
-          </button>
-          <button className="rp-chip" onClick={() => setBoardsOpen(true)}
-            title="弹窗管理看板：新建 / 编辑 / 删除 / 导入 / 导出 / 成员管理">
-            看板 <b>{boardList.length}</b><span className="rp-chip-go">↗</span>
-          </button>
+          <button className="btn" onClick={openAdd}>登记仓库</button>
+          <button className="btn ghost" title="分组管理：建组 / 成员 / 组介绍文档"
+            onClick={() => setBoardAdminOpen(true)}>分组管理</button>
+          <button className="btn ghost" title="参考仓库面板：克隆 / 绑定 / 同步 / 检查 / 存储根"
+            onClick={() => setRefOpen(true)}>参考仓库管理</button>
+          <button className="btn ghost" title="布局与仓库的导入导出（逐条选择 / 冲突方案 / 差异检查）"
+            onClick={() => setTransferOpen(true)}>导入导出</button>
         </div>
       </div>
 
@@ -807,6 +1065,47 @@ export default function ReposView() {
         </section>
       )}
 
+      {/* 分组不占主版面：它是筛选维度 + 弹窗里的维护对象。
+          分组管理（建组 / 成员 / 组介绍文档 / 导入导出）统一收进「分组管理」弹窗。 */}
+
+      {/* 分组筛选器：主表 = 开发仓库；点 chip 只看那个组的成员（再点取消）。
+          行内的分组 chips 也会落到同一个 filter 上。 */}
+      <div className="rp-filters" data-testid="rp-filters">
+        <div className="rp-filters-main">
+          <button
+            className={'rp-chip' + (filter ? '' : ' on')}
+            onClick={() => setFilter('')}
+            title="显示全部开发仓库"
+          >
+            全部 <b>{devRepos.length}</b>
+          </button>
+          {boardList.map((b) => (
+            <button
+              key={b.id}
+              className={'rp-chip' + (filter === b.id ? ' on' : '')}
+              onClick={() => setFilter(filter === b.id ? '' : b.id)}
+              title={`只看「${b.name}」里的仓库（${b.repos.length} 个）`}
+            >
+              {b.name} <b>{b.repos.length}</b>
+            </button>
+          ))}
+        </div>
+        <div className="rp-filters-side">
+          <input
+            className="rp-search"
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="搜仓库 / 路径 / 分组 / 文档…"
+            aria-label="检索仓库与文档"
+          />
+          {q ? <button className="btn small ghost" onClick={() => setQ('')}>清空</button> : null}
+          <span className="muted rp-search-count">{shown.length} / {devRepos.length}</span>
+          <button className="btn small ghost" title="按仓库 / 组内 / 分组三档检索文档"
+            onClick={() => setDocOpen(true)}>文档检索</button>
+        </div>
+      </div>
+
       {/* 看板上下文条：筛选到某个看板时，把它的领域描述亮出来 —— desc 写的是
           这个领域的侧重、谁配合谁（谁是中心/终端）、关键路径与搜索关键词。 */}
       {filterBoard ? (
@@ -816,10 +1115,14 @@ export default function ReposView() {
             <span className="rp-context-desc" title={filterBoard.desc}>{filterBoard.desc}</span>
           ) : (
             <span className="muted rp-context-desc">
-              还没有领域描述 —— 点「看板管理」补一句：侧重什么、谁配合谁、关键路径与搜索关键词在哪。
+              还没有领域描述 —— 点「组介绍文档」补一段：侧重什么、谁配合谁、关键路径与搜索关键词在哪。
             </span>
           )}
           <span className="acts">
+            <button className="btn small ghost" title="打开这个分组的组介绍文档"
+              onClick={() => openBoardDoc(filterBoard)}>组介绍文档 ✎</button>
+            <a className="btn small ghost" href={'#/group/' + encodeURIComponent(filterBoard.id)}
+              title="组页里看这个组的成员与任务">组页 ↗</a>
             <button className="btn small" onClick={() => setImpBoardId(filterBoard.id)}>添加成员</button>
           </span>
         </div>
@@ -913,7 +1216,13 @@ export default function ReposView() {
                         title={c ? (c.ok ? '检查通过' : c.issues.join('\n')) : '尚未检查'} /></td>
                       <td className="rp-ref-cell-name">
                         <strong>{r.name}</strong>
-                        <DocLine docs={r.descDocs} onOpen={rowActs.doc} />
+                        <DocChips
+                          docs={r.descDocs}
+                          mainBound={!!r.doc}
+                          onOpen={rowActs.doc}
+                          onOpenLink={rowActs.docLink}
+                          onRemove={(i) => rowActs.docRemove(r, i)}
+                        />
                       </td>
                       <td className="mono rp-ref-cell-remote">
                         <Copyable text={r.remote || ''} title="点击复制远程地址">{r.remote || '（无）'}</Copyable>
@@ -958,49 +1267,21 @@ export default function ReposView() {
         </Modal>
       ) : null}
 
-      {/* 看板管理：独立弹窗（建 / 改 / 删 / 导入 / 导出）。
-          看板和参考仓库同属「偶尔维护一次」的元信息，不该和主表抢纵向空间。 */}
-      {boardsOpen ? (
-        <Modal title={`看板 · ${boardList.length}`} onClose={() => setBoardsOpen(false)}>
-          <div className="rp-modal-bar">
-            <span className="acts">
-              <button className="btn small ghost" onClick={() => setBoardForm({ id: null, name: '', desc: '' })}>新建看板</button>
-              <button className="btn small ghost" title="粘贴/选择看板 JSON，一个看板 = 一个主题" onClick={() => setImpOpen(true)}>导入看板</button>
-              <button className="btn small ghost" onClick={doExport}>导出</button>
-            </span>
-          </div>
-          <div className="rp-board-list">
-            {boardList.map((b) => (
-              <div className="rp-board-item" key={b.id}>
-                <span className="rp-board-name">{b.name}</span>
-                {b.desc ? <span className="muted rp-board-desc" title={b.desc}>{b.desc}</span> : null}
-                <span className="rp-board-count">{b.repos.length} 个仓库</span>
-                <span className="acts">
-                  <button className="btn small ghost" title="点选加入/摘除这个看板的成员仓库" onClick={() => setImpBoardId(b.id)}>成员管理</button>
-                  <button className="btn small ghost" onClick={() => setBoardForm({ id: b.id, name: b.name, desc: b.desc || '' })}>编辑</button>
-                  <button className="btn small ghost" onClick={() => removeBoard(b)}>删除看板</button>
-                </span>
-              </div>
-            ))}
-            {!boardList.length ? <div className="muted">还没有看板 —— 建一个当标签用。</div> : null}
-            {boardList.length && boards.unassigned?.length ? (
-              <div className="rp-boards-unassigned">
-                未分组 <b>{boards.unassigned.length}</b> 个 —— 不属于任何看板，只在「全部」里可见。
-              </div>
-            ) : null}
-          </div>
-        </Modal>
-      ) : null}
-
-      {/* 开发仓库主表：一行一个开发仓库；「参考」列 = 绑到它身上的参考仓库（多对多） */}
-      <div className="rp-table-wrap">
+      {/* 开发仓库主表：一行一个开发仓库。核心列是「文档」——项目文档（主篇 + 补充篇）
+          与每个所属分组的组内文档，逐篇可点开/可摘除；「参考」列 = 绑到它身上的
+          参考仓库（多对多）；「分组」列 chips 点一下即筛到那个组。 */}
+      <div className="rp-table-wrap" id="rp-repos">
         <table className="rp-table">
           <thead>
             <tr>
-              <th scope="col" style={{ width: '24%' }}>仓库</th>
-              <th scope="col" style={{ width: '28%' }}>路径</th>
-              <th scope="col">绑定的参考仓库</th>
-              <th scope="col" style={{ width: '20%' }}>操作</th>
+              <th scope="col" style={{ width: '19%' }}>仓库</th>
+              <th scope="col">
+                文档
+                <span className="rp-th-hint">项目文档 + 组内文档 · 点击进入编辑</span>
+              </th>
+              <th scope="col" style={{ width: '16%' }}>参考仓库</th>
+              <th scope="col" style={{ width: '13%' }}>分组</th>
+              <th scope="col" style={{ width: '215px' }}>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -1009,16 +1290,16 @@ export default function ReposView() {
             ))}
             {!shown.length ? (
               <tr>
-                <td colSpan="4" className="muted rp-empty">
+                <td colSpan="5" className="muted rp-empty">
                   {devRepos.length ? (
                     <>
-                      这个组还没有成员{' '}
+                      这个分组还没有成员{' '}
                       {filterBoard ? (
                         <button className="btn small" onClick={() => setImpBoardId(filterBoard.id)}>添加成员</button>
                       ) : null}
                     </>
                   ) : (
-                    '还没有登记开发仓库'
+                    '还没有登记开发仓库 —— 点右上「登记仓库」加一条。'
                   )}
                 </td>
               </tr>
@@ -1026,6 +1307,157 @@ export default function ReposView() {
           </tbody>
         </table>
       </div>
+
+      {/* 文档检索（弹窗）：不铺全量长列表 —— 先按「仓库 / 组内 / 分组 / 未绑定」分档，
+          再叠加关键词过滤；绑定 chip 可点，直接跳到宿主。
+          文档自己不记宿主，宿主关系散在仓库/分组的绑定字段上（见 docHosts）。 */}
+      {docOpen ? (
+        <Modal size="wide" title={`文档检索 · ${docs.length}`} onClose={() => setDocOpen(false)}>
+          <div className="rp-modal-bar rp-doc-bar">
+            <input
+              className="rp-search"
+              type="search"
+              value={docKw}
+              onChange={(e) => setDocKw(e.target.value)}
+              placeholder="搜标题 / 路径 / 组名 / 仓库名…"
+              aria-label="检索文档"
+            />
+            {docKw ? <button className="btn small ghost" onClick={() => setDocKw('')}>清空</button> : null}
+            <span className="acts">
+              <button className="btn small" onClick={createDoc}>新建文档</button>
+            </span>
+          </div>
+          {docs.length ? (
+            <>
+              <div className="rp-doc-scopes">
+                {[
+                  ['all', '全部', docScopeCounts.all],
+                  ['repo', '仓库文档', docScopeCounts.repo],
+                  ['scoped', '组内文档', docScopeCounts.scoped],
+                  ['board', '分组文档', docScopeCounts.board],
+                  ['orphan', '未绑定', docScopeCounts.orphan],
+                ].map(([id, label, n]) => (
+                  <button
+                    key={id}
+                    className={'rp-chip' + (docScope === id ? ' on' : '')}
+                    onClick={() => setDocScope(id)}
+                  >
+                    {label} <b>{n}</b>
+                  </button>
+                ))}
+              </div>
+              <div className="rp-doc-rows rp-doc-rows-modal">
+                {docRows.map(({ d, hosts }) => (
+                  <div className="rp-doc-row" key={d.docId}>
+                    <button
+                      type="button"
+                      className="rp-doc-row-title"
+                      title={`打开「${d.title || d.rel}」`}
+                      onClick={() => openByDocId(d.docId)}
+                    >
+                      {d.title || d.name || d.rel}
+                    </button>
+                    <code className="rp-doc-row-rel" title={d.rel}>{d.rel}</code>
+                    <span className="rp-doc-row-hosts">
+                      {hosts.length ? hosts.map((h) => (
+                        <button
+                          type="button"
+                          className={'rp-bind-chip ' + h.kind}
+                          key={h.key}
+                          title={`${h.tip}\n点击跳到这个宿主`}
+                          onClick={() => { docGo(h); setDocOpen(false); }}
+                        >
+                          {h.label}
+                        </button>
+                      )) : <span className="rp-bind-chip none">未绑定</span>}
+                    </span>
+                    <span className="rp-doc-row-acts">
+                      <button className="btn small ghost" onClick={() => openByDocId(d.docId)}>打开编辑</button>
+                      <button className="btn small ghost rp-del" onClick={() => delDoc(d)}>删除</button>
+                    </span>
+                  </div>
+                ))}
+                {!docRows.length ? (
+                  <div className="rp-board-empty muted">这一档没有匹配的文档。</div>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <div className="rp-board-empty muted">
+              还没有文档 —— 点「新建文档」给一个相对路径（如 note/inbox.md）就开写；
+              或在仓库行上点「＋ 写项目介绍」。
+            </div>
+          )}
+        </Modal>
+      ) : null}
+
+      {/* 分组管理（弹窗）：分组是筛选维度与「思考模型」，维护动作不需要占主版面。
+          每行 = 组名 + 成员 + 组介绍文档 + 操作；筛选/组页/成员/编辑/删除都在行上。 */}
+      {boardAdminOpen ? (
+        <Modal size="wide" title={`分组管理 · ${boardList.length}`} onClose={() => setBoardAdminOpen(false)}>
+          <div className="rp-modal-bar">
+            <span className="acts">
+              <button className="btn small" onClick={() => setBoardForm({ id: null, name: '', desc: '' })}>新建分组</button>
+              <button className="btn small ghost" title="粘贴/选择看板 JSON" onClick={() => setImpOpen(true)}>导入</button>
+              <button className="btn small ghost" title="导出全部看板为 JSON" onClick={doExport}>导出</button>
+            </span>
+            <span className="muted">一个分组 = 一个主题；同一个仓库可以同时在多个分组里。</span>
+          </div>
+          {boardList.length ? (
+            <div className="rp-board-admin">
+              <div className="rp-board-admin-head">
+                <span>分组</span><span>成员</span><span>组介绍</span><span>操作</span>
+              </div>
+              {boardList.map((b) => {
+                const members = (b.repos || []).filter((m) => m.present !== false);
+                const missing = (b.repos || []).filter((m) => m.present === false);
+                return (
+                  <div className="rp-board-admin-row" key={b.id}>
+                    <span className="rp-board-admin-name">
+                      {b.name}
+                      <button
+                        className="rp-mini-link"
+                        title={`只看「${b.name}」里的仓库`}
+                        onClick={() => { setFilter(b.id); setBoardAdminOpen(false); }}
+                      >
+                        筛选
+                      </button>
+                    </span>
+                    <span className="rp-board-admin-members">
+                      {members.slice(0, 4).map((m) => (
+                        <span className="rp-board-mchip" key={m.key} title={m.note || m.key}>{m.name || m.key}</span>
+                      ))}
+                      {members.length > 4 ? <span className="rp-board-more">+{members.length - 4}</span> : null}
+                      {missing.length ? <span className="rp-board-missing">{missing.length} 待初始化</span> : null}
+                      {!b.repos.length ? <span className="muted">—</span> : null}
+                    </span>
+                    <span className="rp-board-admin-doc">
+                      <button className="btn small ghost" title="打开组介绍文档"
+                        onClick={() => openBoardDoc(b)}>组介绍 ✎</button>
+                      {b.docLinks && b.docLinks.length ? <span className="muted">+{b.docLinks.length}</span> : null}
+                    </span>
+                    <span className="rp-board-admin-acts">
+                      <a className="btn small ghost" href={'#/group/' + encodeURIComponent(b.id)} title="组页：成员与任务">组页 ↗</a>
+                      <button className="btn small ghost" onClick={() => setImpBoardId(b.id)}>成员</button>
+                      <button className="btn small ghost" onClick={() => setBoardForm({ id: b.id, name: b.name, desc: b.desc || '' })}>编辑</button>
+                      <button className="btn small ghost rp-del" onClick={() => removeBoard(b)}>删除</button>
+                    </span>
+                  </div>
+                );
+              })}
+              {boards.unassigned?.length ? (
+                <div className="rp-boards-unassigned">
+                  未分组 <b>{boards.unassigned.length}</b> 个 —— 不属于任何分组，只在「全部」里可见。
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rp-board-empty muted">
+              还没有分组 —— 点「新建分组」建一个当主题用（如「前端」「AI 工具」），再把仓库点选进去。
+            </div>
+          )}
+        </Modal>
+      ) : null}
 
       {/* 添加 / 编辑仓库弹窗 */}
       {formOpen ? (
@@ -1361,17 +1793,6 @@ export default function ReposView() {
             </div>
           </div>
         </Modal>
-      ) : null}
-
-      {/* 描述：左清单右编辑器。就地改 md，不跳页签——改两个字不该丢掉看板筛选。 */}
-      {descFor ? (
-        <DescModal
-          repo={descFor.repo}
-          board={descFor.board}
-          onClose={() => setDescFor(null)}
-          onSaved={loadRepos}
-          onOpenTab={openByDocId}
-        />
       ) : null}
 
       {/* 导入导出：全屏覆盖层面板（逐条选择 / 冲突方案 / 差异检查） */}

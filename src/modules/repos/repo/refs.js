@@ -27,24 +27,31 @@ export function upsertRef(conn, { id, type, locator, state = '', atMs }) {
   );
 }
 
-/** 快搜：前缀范围比较（>= q AND < q||上界）走 ix_refs_locator，不用 LIKE（SCAN）。 */
+/** 快搜：前缀范围比较（>= q AND < q||上界）走 ix_refs_locator，不用 LIKE（SCAN）。
+ *  索引是 `locator COLLATE NOCASE`，查询侧必须显式带上同一个 collation，
+ *  否则比较规则不匹配，SQLite 只能全表扫。 */
 export function scanRefs(conn, { prefix, limit = 50 } = {}) {
   const q = String(prefix || '');
   if (!q) return conn.all('SELECT * FROM refs WHERE deleted_at IS NULL ORDER BY locator LIMIT :n', { n: Number(limit) });
   // 上界 = 前缀末字符 +1（逐字节进位；locator 是普通文本，够用）
   const end = q.slice(0, -1) + String.fromCharCode(q.charCodeAt(q.length - 1) + 1);
   return conn.all(
-    'SELECT * FROM refs WHERE locator >= :q AND locator < :end AND deleted_at IS NULL ORDER BY locator LIMIT :n',
+    `SELECT * FROM refs
+      WHERE locator COLLATE NOCASE >= :q AND locator COLLATE NOCASE < :end AND deleted_at IS NULL
+      ORDER BY locator LIMIT :n`,
     { q, end, n: Number(limit) }
   );
 }
 
-/** 孤儿列表：未被任何宿主绑定的 ref（面板「孤儿文档」）。 */
+/** 孤儿列表：未被任何**未软删**宿主绑定的 ref（面板「孤儿文档」）。 */
 export function listOrphans(conn = db()) {
   return conn.all(
     `SELECT r.* FROM refs r
      WHERE r.state = 'orphan' AND r.deleted_at IS NULL
-       AND NOT EXISTS (SELECT 1 FROM ref_bindings b WHERE b.ref_id = r.id)
+       AND NOT EXISTS (
+         SELECT 1 FROM ref_bindings b JOIN repos h ON h.key = b.repo_key
+          WHERE b.ref_id = r.id AND h.deleted_at IS NULL
+       )
      ORDER BY r.locator`
   );
 }

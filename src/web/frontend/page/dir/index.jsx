@@ -13,6 +13,7 @@ import { usePager } from '../../components/pager.jsx';
 import { useApp } from '../../app-context.jsx';
 import Landing from './landing.jsx';
 import DagEditor from './dag-editor.jsx';
+import DeletedPanel from './deleted-panel.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 
@@ -31,6 +32,8 @@ export default function DirPanel({ dirKey }) {
 
   const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
   const [tplMenu, setTplMenu] = useState(null);
+  const [moreMenu, setMoreMenu] = useState(null); // 头部「更多 ▾」下拉（{x, y}）
+  const [showDeleted, setShowDeleted] = useState(false); // 已删除任务面板开关
   const [dagTask, setDagTask] = useState(null); // 正在编排依赖的任务（DAG 节点编辑器）
   const fileMdRef = useRef(null);
 
@@ -278,6 +281,54 @@ export default function DirPanel({ dirKey }) {
     });
   };
 
+  // ─── 已删除（软删回收站）──────────────────────────────────────────
+  // 软删的行仍在 topic.tasks 里（带 deletedAt），看板/列表把它们过滤掉了，
+  // 这里捞出来给「更多 → 已删除任务」面板。倒序：刚删的在上。
+  const deletedTasks = useMemo(
+    () => (topic?.tasks || []).filter((t) => t.deletedAt).slice().reverse(),
+    [topic]
+  );
+
+  const restoreDeleted = (t) => {
+    if (!t) return;
+    guard(async () => {
+      await api('/api/localtasks/tasks/restore', {
+        method: 'POST',
+        body: isGlobal ? { key: GLOBAL_KEY, id: t.id } : { cwd: topic.cwd, id: t.id },
+      });
+      toast(`已恢复 #${t.id}「${(t.text || '').split('\n').find((l) => l.trim())?.replace(/^#\s*/, '') || ''}」`);
+      refreshLocal();
+    });
+  };
+
+  const purgeDeleted = async (t) => {
+    if (!t) return;
+    const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
+    const ok = await dialog({
+      title: `彻底删除「${title.replace(/^#\s*/, '')}」`,
+      message: '彻底删除后不可恢复（行从队列里真正摘除）。',
+      danger: true,
+      okText: '彻底删除',
+    });
+    if (!ok) return;
+    guard(async () => {
+      await api('/api/localtasks/item', {
+        method: 'DELETE',
+        body: { ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic.cwd }), id: t.id, purge: true },
+      });
+      toast(`已彻底删除 #${t.id}`);
+      refreshLocal();
+    });
+  };
+
+  const moreMenuItems = [
+    {
+      label: `已删除任务（${deletedTasks.length}）`,
+      icon: 'trash',
+      onClick: () => setShowDeleted(true),
+    },
+  ];
+
   const importMd = async (file) => {
     const text = await file.text();
     const name = file.name.replace(/\.md$/i, '');
@@ -335,6 +386,8 @@ export default function DirPanel({ dirKey }) {
           onOpenFlow={() => model && openPanel(model, { component: 'dag', name: '编排', config: { dirKey } })}
           onToggleGate={toggleGate}
           downstreamOf={downstreamOf}
+          onMoreMenu={(e) => setMoreMenu({ x: e.clientX, y: e.clientY })}
+          deletedCount={deletedTasks.length}
         />
       </div>
 
@@ -347,8 +400,21 @@ export default function DirPanel({ dirKey }) {
         />
       )}
 
+      {showDeleted && (
+        <DeletedPanel
+          tasks={deletedTasks}
+          onClose={() => setShowDeleted(false)}
+          onRestore={restoreDeleted}
+          onPurge={purgeDeleted}
+        />
+      )}
+
       {tplMenu && (
         <PopMenu x={tplMenu.x} y={tplMenu.y} items={tplMenuItems} onClose={() => setTplMenu(null)} />
+      )}
+
+      {moreMenu && (
+        <PopMenu x={moreMenu.x} y={moreMenu.y} items={moreMenuItems} onClose={() => setMoreMenu(null)} />
       )}
 
       <input

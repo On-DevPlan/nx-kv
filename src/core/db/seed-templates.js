@@ -97,6 +97,10 @@ export const BUILTIN_TEMPLATES = Object.freeze([
 /**
  * seed 内置模板（幂等；必须在外层事务内跑）。
  * INSERT OR IGNORE：任何已有行（用户改过的 builtin、legacy 导入的模板）原样保留。
+ *
+ * is_default 的取值带守卫：某个 category 已经有默认模板（比如 legacy 导入时
+ * defaultId 指到别的模板）时，内置不再抢默认 —— 否则 ux_templates_default 唯一索引
+ * 会让 bootstrap 直接失败（seed 在 import 之后跑）。
  */
 export function seedBuiltinTemplates(conn, atMs) {
   for (const [index, t] of BUILTIN_TEMPLATES.entries()) {
@@ -104,7 +108,11 @@ export function seedBuiltinTemplates(conn, atMs) {
       `INSERT INTO templates (id, category, name, slot, body, vars_schema, vars, is_default,
                               enabled, sort_order, builtin, state, version, deleted_at,
                               created_at, updated_at)
-       VALUES (:id, :category, :name, :slot, :body, :schema, :vars, :isDefault,
+       VALUES (:id, :category, :name, :slot, :body, :schema, :vars,
+               CASE WHEN :isDefault = 1 AND EXISTS (
+                 SELECT 1 FROM templates
+                  WHERE category = :category AND is_default = 1 AND deleted_at IS NULL
+               ) THEN 0 ELSE :isDefault END,
                1, :sort, 1, '', 0, NULL, :at, :at)
        ON CONFLICT(id) DO NOTHING`,
       {

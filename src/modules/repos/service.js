@@ -211,9 +211,11 @@ function persistStore(conn, store) {
     repo.repos.upsertRow(conn, row);
     seenRepoKeys.add(row.key);
   }
-  for (const k of keySet) {
+  for (const row of before) {
+    if (row.type !== 'repo') continue; // 组行归 ② 处理；这里只清「消失的仓库」
+    const k = String(row.key);
     if (k === SENTINEL_REPO_KEY) continue; // 哨兵永远在场，不随 store 落库增删
-    if (!seenRepoKeys.has(k)) repo.repos.deleteRow(conn, k);
+    if (!seenRepoKeys.has(k)) repo.repos.softDeleteRow(conn, k, at);
   }
 
   // ② 组（type='group'）+ 成员边。真实成员的 key 必须已在 repos 表（FK），
@@ -233,7 +235,7 @@ function persistStore(conn, store) {
   for (const row of before) {
     const k = String(row.key);
     if (row.type !== 'group') continue;
-    if (!seenGroupKeys.has(k)) repo.repos.deleteRow(conn, k);
+    if (!seenGroupKeys.has(k)) repo.repos.softDeleteRow(conn, k, at);
   }
 }
 

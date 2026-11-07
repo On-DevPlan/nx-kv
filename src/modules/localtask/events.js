@@ -27,12 +27,14 @@ export function remindersDue(remainSec, firedSet) {
 /**
  * 「已经离开待领取」的任务数 —— 用来判断一轮等待里有没有真的交出任务。
  *
- * 为什么不只数 `claimed`：一轮等待里任务可能被领取后**立刻交付**（claim → done），
- * 那时 `claimed` 计数会回到原值，只数它就会把"已交付"误判成"超时"。
- * 三个非 pending 状态都算「交出去了」（词表见 src/shared/task-status.js）。
+ * 为什么不是所有非 pending：cancelled 是「作废」（reopen 取代 / 手动作废），
+ * 它没有交给任何领取方；把它算进 delivered 会让一轮等待在任务被取消时
+ * 误报 resolved（用户以为有人领了）。只有 claimed / done 算真的交出去。
  */
 function deliveredCount(t) {
-  return (Array.isArray(t.tasks) ? t.tasks : []).filter((x) => x.status !== 'pending').length;
+  return (Array.isArray(t.tasks) ? t.tasks : []).filter(
+    (x) => !x.deletedAt && (x.status === 'claimed' || x.status === 'done')
+  ).length;
 }
 
 /**

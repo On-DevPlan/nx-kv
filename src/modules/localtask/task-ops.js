@@ -70,7 +70,9 @@ export async function addTask({
   }
   const tView = topicsRepo.getTopic(key);
 
-  const id = tasksRepo.nextSeq(t.id);
+  // 编号只在插入的同一个事务里取（insertTask 用 UPDATE ... RETURNING）。
+  // 这里读 next_seq 只作为「探针」：让 blockBy 去掉自引用、让 DAG 就绪判断有个 id。
+  const provisionalId = tasksRepo.nextSeq(t.id);
   // 链路（#69）：forkOf = 「这条从哪派生」。裸数字 = 同主题父任务编号；
   // 'key:id' = 跨主题。规范化成 'key:id' 存储，父任务必须真实存在（发布时报错）。
   // forkKind 缺省按 comment（评论/随手派生）——reopen 有自己的写入口（task-lifecycle）。
@@ -82,11 +84,11 @@ export async function addTask({
     forkKind = rawForkKind === 'reopen' ? 'reopen' : 'comment';
   }
   const taskDraft = {
-    id,
+    // 不写 id：真实编号由 insertTask 在事务内分配，避免事务外读号撞车
     text: body,
     status: 'pending',
     timegoal,
-    blockBy: normalizeBlockBy(rawBlockBy, id),
+    blockBy: normalizeBlockBy(rawBlockBy, provisionalId),
     blocksFollowing: !!blocksFollowing,
     forkOf,
     forkKind,
@@ -100,7 +102,7 @@ export async function addTask({
   let task = null;
   let wakeMeta = null;
   const readyOpts = { resolveForeign: foreignResolver() };
-  const probe = normalizeTask(taskDraft, tView.tasks, readyOpts);
+  const probe = normalizeTask({ ...taskDraft, id: provisionalId }, tView.tasks, readyOpts);
   const canDeliver = isReadyToClaim(probe, tView.tasks, readyOpts);
 
   if (canDeliver && toGlobal) {
@@ -273,40 +275,41 @@ export async function updateTask({
   let hostTask = task;
   let moved = false;
   let movedFrom = null;
-  if (moveTo) {
-    const toKey = topicKeyFor(String(moveTo.cwd || ''));
-    if (toKey && toKey !== key) {
-      const oldProject = String(parseFrontmatter(task.text).project || '').trim();
-      const afterText = body ? preserveFrontmatter(task.text, body) : task.text;
-      const newProject = String(parseFrontmatter(afterText).project || '').trim();
-      const explicitChange = !!newProject && newProject !== oldProject;
-      const rel = queueRelationsOf(t, task);
-      // 正判定：只有「待领取」能改归属项目（已领取/已交付的落点在领取时定下，要改先 reopen）
-      const movable = task.status === 'pending' && !rel.length;
-      if (explicitChange && !movable) {
-        if (task.status !== 'pending') {
+  // 正文 / 时间目标与搬家**同一个事务**：中间任何一步抛错都不落盘（旧行为注释保留）。
+  tx(() => {
+    if (moveTo) {
+      const toKey = topicKeyFor(String(moveTo.cwd || ''));
+      if (toKey && toKey !== key) {
+        const oldProject = String(parseFrontmatter(task.text).project || '').trim();
+        const afterText = body ? preserveFrontmatter(task.text, body) : task.text;
+        const newProject = String(parseFrontmatter(afterText).project || '').trim();
+        const explicitChange = !!newProject && newProject !== oldProject;
+        const rel = queueRelationsOf(t, task);
+        // 正判定：只有「待领取」能改归属项目（已领取/已交付的落点在领取时定下，要改先 reopen）
+        const movable = task.status === 'pending' && !rel.length;
+        if (explicitChange && !movable) {
+          if (task.status !== 'pending') {
+            throw badInput(
+              `#${want} 已领取或已交付——这种任务不能改归属项目（落点是提交/领取时定下的，要改先 reopen）`,
+            );
+          }
           throw badInput(
-            `#${want} 已领取或已交付——这种任务不能改归属项目（落点是提交/领取时定下的，要改先 reopen）`,
+            `#${want} 在本队列里有${rel.join('、')}——依赖/闸门是队列内语义，改归属项目会跨队列断链；` +
+              '请先解除这些关系（编排面板可清），再改归属项目',
           );
         }
-        throw badInput(
-          `#${want} 在本队列里有${rel.join('、')}——依赖/闸门是队列内语义，改归属项目会跨队列断链；` +
-            '请先解除这些关系（编排面板可清），再改归属项目',
-        );
-      }
-      if (movable && !isGlobalKey(key)) {
-        const movedTo = relocateTask(t, want, moveTo);
-        if (movedTo) {
-          host = movedTo.topic;
-          hostTask = movedTo.task;
-          moved = true;
-          movedFrom = { key, name: t.name, id: want };
+        // 搬家必须与后面的正文/目标写入同事务：搬到一半再抛错，就是「任务凭空消失」。
+        if (movable && !isGlobalKey(key)) {
+          const movedTo = relocateTask(t, want, moveTo);
+          if (movedTo) {
+            host = movedTo.topic;
+            hostTask = movedTo.task;
+            moved = true;
+            movedFrom = { key, name: t.name, id: want };
+          }
         }
       }
     }
-  }
-  // 正文 / 时间目标与搬家**同一个事务**：中间任何一步抛错都不落盘（旧行为注释保留）。
-  tx(() => {
     if (body) {
       tasksRepo.updateTask(host.id, hostTask.id, {
         text: preserveFrontmatter(hostTask.text, body),

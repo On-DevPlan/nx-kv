@@ -1,99 +1,123 @@
-# action 契约 —— 一条声明，三端同源
+# Action 契约（CLI / HTTP 单一出口）
 
-> 配套 [[dev-nxkv]]。`src/modules/*/index.js` 里的一个 action 对象，就是
-> **一条 CLI 命令 + 一条 HTTP 路由 + 一个面板入口**的唯一事实源。
-> CLI 的 `--flag` 与 HTTP 的 query/body 走同一套强转与校验（`src/runtime/spec.js`）。
+## 1. 一条 action 的形状
 
-## 字段全表
+```js
+{
+  id: 'localtask.preview',                  // 全局唯一，<module>.<verb>
+  cli: ['localtask', 'preview'],            // 必有；可为多路径别名
+  http: ['POST', '/api/localtasks/preview'], // 可选；纯 CLI 写 null
+  summary: '一句话说人话',                   // help / routes / 面板提示
+  args: ['id'],                             // 位置参数；字符串=必填，对象可 optional
+  flags: {
+    id: { type: 'number', hint: '任务编号' },
+    text: { type: 'string', hint: '草稿正文' },
+  },
+  run: async (ctx) => service.preview(ctx), // 只编排，不写业务
+  render: (data) => '人读文本',               // CLI 输出；HTTP 忽略
+}
+```
 
-| 字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `id` | ✅ | 全局唯一，惯例 `<模块>.<动词>`（如 `todo.add`）。重复会在装载期抛错 |
-| `cli` | ✅ | 命令路径：`['todo','add']`；别名：`[['a','b'],['c','d']]`。**每条 action 都必须有** |
-| `http` | ➖ | `[method, pattern]`（如 `['POST','/api/todo/:id']`）或显式 `null`（纯 CLI）。不能缺、不能是别的形状 |
-| `summary` | ✅ | 一句话说明，进 `help` 与面板提示 |
-| `args` | ➖ | 位置参数：`['text']` = 必填字符串；对象形式可声明 `{name, required:false}` |
-| `flags` | ➖ | 见下 |
-| `run` | ✅ | `(ctx) => any` —— ctx 含已校验强转过的 args/flags 与 HTTP 上下文 |
-| `render` | ➖ | `(data) => string` —— CLI 输出一行人读文本；HTTP 侧忽略 |
-| `view` | ➖ | 模块级字段：`() => import(...)` 惰性入口；`null` 表示没有独立面板 |
-| `resource` / `resources` | ➖ | 模块级：声明 CRUD 资源名（`todo`、`group`…），触发五动词完备性检查 |
-| `stream` | ➖ | action 级：`true` = 直出流（附件本体之类），CLI 与 HTTP 行为不同 |
+### 字段全表
 
-## flag 规格
+| 字段 | 必填 | 位置 | 说明 |
+|---|---|---|---|
+| `id` | 是 | action | 全局唯一；重复启动即抛错 |
+| `cli` | 是 | action | 路径数组；别名 `[['a','b'],['c','d']]`；没有 `cli` 直接失败 |
+| `http` | 是 | action | `[METHOD, '/api/...']` 或显式 `null`；不能缺、不能是别的形状 |
+| `summary` | 建议 | action | `help --json` / `routes` / 面板展示 |
+| `args` | 否 | action | 字符串 = 必填位置参数；`{ name, required: false }` 可选 |
+| `flags` | 否 | action | 见下 |
+| `run` | 是 | action | `(ctx) => data`；入参已按 spec 强转/校验 |
+| `render` | 否 | action | `(data) => string`；只影响 CLI 输出 |
+| `stream` | 否 | action | `true` = 直出流（附件本体等），CLI/HTTP 行为不同 |
+| `resource` | 否 | 模块 | 声明 CRUD 资源名，触发五动词完备性检查 |
+| `resources` | 否 | 模块 | 多个资源名（集合资源，如 `['todo','group']`） |
+
+- **没有模块级 `view`**：视图归 `src/web/frontend/registry.js`，`tests/unit/registry.test.mjs` 断言后端不出现该字段。
+- `http: null` 是合法声明（如 `db` 诊断命令），不是漏写。
+- `rest` flag 字段存在，但**当前实现刻意未启用**；装载期仍校验它必须声明在 `flags` 最后。
+
+## 2. Flag 规格
 
 ```js
 flags: {
-  group:  { type: 'number', hint: '工作空间 id（默认取当前）' },
-  limit:  { type: 'number', default: 100 },
-  name:   { type: 'string' },
-  force:  { type: 'boolean' },
-  ids:    { type: 'array', hint: '逗号分隔' },      // CLI 传 a,b,c → ['a','b','c']
-  mode:   { type: 'string', enum: ['a','b'], default: 'a' },
-  note:   { type: 'string', required: true },
+  group: { type: 'number', hint: '工作空间 id（默认取当前）' },
+  limit: { type: 'number', default: 100 },
+  name:  { type: 'string' },
+  force: { type: 'boolean' },
+  ids:   { type: 'array', hint: '逗号分隔' },      // CLI a,b,c → ['a','b','c']
+  mode:  { type: 'string', enum: ['a','b'], default: 'a' },
+  note:  { type: 'string', required: true },
 }
 ```
 
 - `type`：`string`（默认）/ `number` / `boolean` / `array`。
-- `default`：缺省值；`hint`：帮助文本；`enum`：取值域；`required`：缺了就报错。
-- `rest`：吃掉其后全部 token —— **必须声明在 `flags` 的最后**（当前实现里刻意未启用，
-  但装载期自检会守住这条约束，将来启用时不用重踩）。
-- 布尔 flag 不会吃掉下一个 token：`--force demo` 里 `demo` 是位置参数。
-- 非布尔 flag 后面没值 → 报错「参数 --x 需要提供值」，**不**把笔误静默变成别的语义。
+- `default` / `hint` / `enum` / `required` 都会参与解析与帮助文本。
+- 布尔 flag 不吃下一个 token：`--force demo` 中 `demo` 仍是位置参数。
+- 非布尔 flag 后面缺值 → 报错「参数 --x 需要提供值」，**不**静默改义。
+- `rest` 未启用：含空格的值请加引号，不要指望吃掉剩余 token。
 
-## 参数错误是「对外契约」
+## 3. CLI 与 HTTP 的一致性
 
-缺参数 / 取值非法时，报错文本必须带 **`用法:` + 完整用法串**
-（`spec.js` 的 `inputError` 自动生成）。资产里的 agent 工作流文档教 agent 用这个前缀
-判定「参数错误 → 停下来问人」，所以别手写简化报错。
+- CLI 的 `--flag` 与 HTTP query/body 共用同一套强转、默认值与校验（`src/runtime/spec.js`）。
+- 未声明的键会原样透传（HTTP 可能带界面字段），CLI 不会凭空产生。
+- 参数错误是**对外契约**：报错必须以 `用法:` + 完整用法串开头（`inputError` 自动生成）。内置 skill 的 agent 靠这个前缀判断「参数错 → 停下来问人」，不要手写简化报错。
+- 平台端点（心跳、SSE、静态资源）不进 action 表，由 `runtime/server.js` 直接处理。
 
-## HTTP 路由
+## 4. HTTP 路由形状
 
-- pattern 用 `:param` 占位：`/api/repos/:id`。
-- 单条定位允许固定尾段（如 `/api/todo/item`，内容放 body/query，不塞进路径）。
-- 请求体：前端 `api(path, {method, body})` → JSON；后端 `run` 收到的 ctx 已按声明校验。
-- 平台端点（心跳、SSE）不进 action 表，由 `runtime/server.js` 直接处理。
+- 用 `:param` 占位：`/api/repos/:id`。
+- 单条定位允许固定尾段（如 `/api/todo/item`，内容放 body/query，不塞路径）。
+- `get/update/remove` 不能与 `list` 同路径，否则路由撞车。
+- 前端调 `api('/api/...')`（`api/client.js`），失败抛 `Error` 且带 `.code`。
 
-## CRUD 契约（声明了 `resource` 就有义务齐备）
+## 5. CRUD 契约
 
-资源 `X` 承诺五个动作，且**两端都可调用**：
+模块声明 `resource` / `resources` 后，必须五动词齐备且两端可达：
 
-| 动作 | action id | CLI | HTTP 方法 | 路由形状 |
-| --- | --- | --- | --- | --- |
-| 查（列表） | `X.list` | `x list` | GET | 不含 `:param` |
-| 查（单条） | `X.get` | `x get` | GET | 含 `:param` 或固定定位尾段 |
-| 增 | `X.add` | `x add` | POST | — |
-| 改 | `X.update` | `x update` | PATCH | 含 `:param` 或固定定位尾段 |
-| 删 | `X.remove` | `x remove` | DELETE | 含 `:param` 或固定定位尾段 |
+| 动作 | action id | CLI | HTTP | 路由 |
+|---|---|---|---|---|
+| 列表 | `X.list` | `x list` | GET | 不含 `:param` |
+| 单条 | `X.get` | `x get` | GET | 含 `:param` 或固定尾段 |
+| 新增 | `X.add` | `x add` | POST | — |
+| 修改 | `X.update` | `x update` | PATCH | 含 `:param` 或固定尾段 |
+| 删除 | `X.remove` | `x remove` | DELETE | 含 `:param` 或固定尾段 |
 
-`get/update/remove` 的路径**不能**与 `list` 同路径（否则两条路由撞车）。
-`tests/unit/registry.test.mjs` 会逐条断言 id、CLI、路由、方法、形状。
+`registry.test.mjs` 会逐条断言 id、CLI、路由、方法、形状；只做一半会红。
 
-## 装载期自检（`src/runtime/registry.js` 顶部）
+## 6. 注册期自检（服务一起来就验）
 
-服务一起来就会验，**不等用户敲到那条命令**：
+`src/runtime/registry.js` 检查：
 
-- action id 重复 → 抛错
-- 同一 CLI 路径被两个 action 声明 → 抛错
-- 同一 HTTP 路由重复 → 抛错
-- action 没有 `cli` → 抛错（保证「面板能做的，CLI 都能做」）
-- `http` 既不是数组也不是 `null` → 抛错
-- action 没有 `run` → 抛错
-- `rest` flag 不在最后 → 抛错
+1. `id` 重复；
+2. action 没有任何 CLI 路径；
+3. CLI 路径重复；
+4. HTTP 路由重复；
+5. `http` 既不是数组也不是显式 `null`；
+6. 缺少 `run`；
+7. `flags.rest` 不在最后。
 
-## 命令 ↔ 路由的双向反查
+`tests/unit/registry.test.mjs` 另外断言：
 
-```bash
-nx-kv routes                      # 全量对照表（命令 ↔ 路由）
-nx-kv routes --module localtask   # 只看某模块（工作空间命令归 todo 模块，别拿它举例）
-nx-kv routes --http "POST /api/todo"   # 从端点反查命令（agent 常用：面板 devtools 看到请求 → 怎么用 CLI 重放）
-nx-kv help --json                 # 与 routes 同源同长（测试断言两者一致）
+- 每条 action 都有 `cli`；
+- 前端视图声明的 `module` 指向已登记后端模块、视图文件存在；
+- 前端源码里的 `/api/...` 字面量都能在后端 action 表中找到；
+- 后端模块不出现模块级 `view`。
+
+## 7. 命令 ↔ 路由反查
+
+```powershell
+node bin/cli.mjs routes                    # 全量对照
+node bin/cli.mjs routes --module localtask # 只看某模块
+node bin/cli.mjs routes --http "POST /api/localtasks/preview"
+node bin/cli.mjs help --json               # 与 routes 同源同长
 ```
 
-## 新增一条 action 的清单
+## 8. 新增/修改 action 的检查清单
 
-1. `service.js` 里写业务函数（入参普通对象，返回普通对象）
-2. `index.js` 里加 action：`id` / `cli` / `http` / `summary` / `flags` / `run` / `render`
-3. 需要面板入口 → 前端 `registry.js` 登记 `VIEWS`；已有面板里加按钮即可
-4. `pnpm run lint && pnpm run build && pnpm test`
-5. 文档同步：`docs/project&projectsCli.md`、`CHANGELOG.md`；命令变了还要改 `assets/` 里的用法串——对应 skill 的 `SKILL.md` 与 `references/*.md`（新增 / 删除内置 skill 还要同步 `assets/groups.json`，见主文档「assets/」一节）
+1. `service.js` 写业务函数（普通对象入参/返回），事务与 SQL 不进 action。
+2. `index.js` 声明 `id` / `cli` / `http` / `summary` / args/flags / `run` / `render`。
+3. 需要面板入口：前端 `registry.js` 登记视图，页面里调 `/api/...`。
+4. `pnpm lint && pnpm test:unit && pnpm build`。
+5. 文档同步：`README.md`、`docs/project&projectsCli.md`、`CHANGELOG.md`；命令口径变了再同步 `assets/`。

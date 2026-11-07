@@ -60,6 +60,8 @@
 | 「项目组」和「仓库组」对不上 | UI 叫项目组、CLI 叫 board、schema 叫 group | 代码/文档统一 `repo group` / `group_key`；`board` 仅历史 CLI 别名 |
 | 继续写旧设置键当来源 | 不知道新权威位置 | 权威是各区块自己的模板列表与生效项；旧键只用于迁移 |
 | 把 `config.groupId` 当成仓库组 | 两个 `group` 重名 | `config.groupId` 是云端工作空间；仓库组是 `repos.type='group'` |
+| 仓库 key 又按名字/随机生成 | 沿用了旧 `local/<name>` 兜底 | key 只能显式给或由 remote 归一化；无 remote 时必须报错让用户填，导入同理 |
+| clone 之后任务链断了 | clone 只复制正文，没写派生边 | 需要保留链用 `fork`（正文复制 + `task_links` type=comment）；两者语义不要混用 |
 
 ## 交付与文档
 

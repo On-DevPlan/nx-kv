@@ -34,7 +34,8 @@
 
 ```bash
 # 1.1 登记项目（desc = 一句话介绍，会被播种成「项目介绍」正文）
-nx-kv repo add D:\DevProjects\my\github\nx-kv --name nx-kv \
+# key 是全局唯一身份：有 --remote 时自动归一化为 host/owner/repo；否则必须显式给 --key
+nx-kv repo add D:\DevProjects\my\github\nx-kv --name nx-kv --key local/nx-kv \
   --desc "KV 清单管理中枢：远程清单 + 本机任务队列"
 
 # 1.2 建项目组
@@ -92,8 +93,9 @@ nx-kv docs link nx --doc board/nx/reference/qa.md --note "问答集" --tag qa
 
 ### 提示词模板（设置面板「提示词模板」一栏，CLI 同口径）
 
-5 个区块各有一份模板列表与生效项：context / attachment / timecheck / ack / getloop。
+6 个区块各有一份模板列表与生效项：context / attachment / timecheck / ext / ack / getloop。
 ack 是完成指令与收尾要求的唯一出口（旧 `rule` / `--suffix*` 已移除，旧数据读取时并入 ack）。
+ext 输出同主题待领取任务数量与标题；队列为空时整段省略。
 
 ```bash
 # ack 完成总结提示词：agent 写完成总结（ack）时的格式要求，随领取交付给到它
@@ -299,8 +301,8 @@ nx-kv repo update nx-kv --get-loop off
 - `--get-loop`：`on|off`；`--get-loop-minutes`：阻塞窗口分钟数（默认 10）；
   **实际阻塞上限是 600 秒（10 分钟）**（`localtask` 的 `MAX_TIMEOUT_SEC` 夹制）——
   填大于 10 的分钟数不会延长窗口；
-- `--get-loop-template` 支持 `{{task.id}}` / `{{task.text}}` 等占位符；
-- 落点：仓库登记的 `getLoop` 字段（`~/.nx-kv/repos.json`）；
+- `--get-loop-template` 支持 `{{task.id}}` / `{{task.text}}` / `{{getloop.waitMinutes}}` 等占位符；
+- 落点：仓库登记的 `getLoop` 字段（`repos.ext.ext_getloop`）；
 - 效果：**没任务不再立即空手而回**，而是唤起阻塞窗口（开页面 + 等人回填）；
   领到任务时交付文本额外带「继续 get 直到超时」的项目模板。
 
@@ -451,7 +453,7 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
 ```bash
 # ── 准备（一次性）────────────────────────────────────────
 nx-kv board add nx --desc "nx 系列工具"
-nx-kv repo add D:\DevProjects\my\github\nx-kv --name nx-kv --desc "KV 清单管理中枢"
+nx-kv repo add D:\DevProjects\my\github\nx-kv --name nx-kv --key local/nx-kv --desc "KV 清单管理中枢"
 nx-kv board assign nx-kv --board nx
 nx-kv board note nx-kv --board nx --note "CLI / 面板宿主仓"
 nx-kv docs seed --apply
@@ -485,7 +487,7 @@ nx-kv localtask get --cwd "D:\DevProjects\my\github\nx-kv" --summary "继续"
 
 ```bash
 # ── 准备 ────────────────────────────────────────────────
-nx-kv repo add D:\DevProjects\my\github\nx-kv --name nx-kv --desc "KV 清单管理中枢"
+nx-kv repo add D:\DevProjects\my\github\nx-kv --name nx-kv --key local/nx-kv --desc "KV 清单管理中枢"
 nx-kv docs seed --apply
 
 # ── waitgoal ───────────────────────────────────────────

@@ -262,6 +262,20 @@ export default {
         `已克隆 #${d.from.id} → #${d.task.id} @ ${d.name}（内容复制，无派生链；${d.delivered ? '已实时投递' : '待领取'}）`,
     },
     {
+      // Fork（#67）：克隆的原文复制 + 派生链。clone 有时被当成新活后，原任务的
+      // 评论/反馈链就看不到了；fork 把新任务挂到源任务下（task_links type=comment），
+      // 链在任务链弹窗里继续可见。正文逐字复制，源任务不动。
+      id: 'localtask.fork',
+      cli: ['localtask', 'fork'],
+      http: ['POST', '/api/localtasks/fork'],
+      summary:
+        'Fork 任务：复制正文内容为新任务，并把它挂到源任务的任务链下（保留评论/反馈链）；不继承时间目标与依赖',
+      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
+      run: (ctx) => service.forkTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key }),
+      render: (d) =>
+        `已 Fork #${d.from.id} → #${d.task.id} @ ${d.name}（内容复制 + 保留任务链；${d.delivered ? '已实时投递' : '待领取'}）`,
+    },
+    {
       // 领取（todo.md 的「get」）：默认直接领——队列有任务立即返回，没有立即空手而回
       // （不阻塞）；项目开启「持续 get」（repo getLoop）后升级为 waitgoal：
       // 无任务自动唤起阻塞窗口（打开页面 + 项目配置的分钟数），领到的交付文本
@@ -650,6 +664,30 @@ export default {
         const tail = d.missing.length ? `；未找到 #${d.missing.join(' #')}` : '';
         const how = d.count && !d.purged ? '；可用 localtask task restore 恢复' : '';
         return head + tail + how;
+      },
+    },
+    {
+      id: 'localtask.cancelMany',
+      cli: ['localtask', 'cancel-many'],
+      http: ['POST', '/api/localtasks/items/cancel'],
+      summary:
+        '批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已交付/已取消跳过；取消为终态，原文留档',
+      flags: {
+        ids: { type: 'array', required: true, hint: '任务编号，逗号分隔或给多次' },
+        cwd: CWD,
+        key: KEY,
+      },
+      run: (ctx) => service.cancelTasks({ ids: ctx.ids, cwd: ctx.cwd, key: ctx.key }),
+      render: (d) => {
+        const done = d.cancelled.map((x) => `#${x.id}`).join(' ');
+        const head = d.count
+          ? `已在主题「${d.name}」取消 ${d.count} 条待领取任务（${done}）`
+          : `主题「${d.name}」没有可取消的待领取任务`;
+        const skip = d.skipped.length
+          ? `；跳过 ${d.skipped.map((x) => `#${x.id}(${x.status})`).join(' ')}`
+          : '';
+        const miss = d.missing.length ? `；未找到 #${d.missing.join(' #')}` : '';
+        return head + skip + miss;
       },
     },
     {

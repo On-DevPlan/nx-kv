@@ -26,9 +26,9 @@ test.after?.(() => {
 });
 
 async function seed() {
-  await repos.addRepo({ path: join(dir, 'nx-kv'), name: 'nx-kv' });
-  await repos.addRepo({ path: join(dir, 'nx-rh'), name: 'nx-rh' });
-  await repos.addRepo({ path: join(dir, 'fr'), name: 'fr' });
+  await repos.addRepo({ path: join(dir, 'nx-kv'), name: 'nx-kv', key: 'local/nx-kv' });
+  await repos.addRepo({ path: join(dir, 'nx-rh'), name: 'nx-rh', key: 'local/nx-rh' });
+  await repos.addRepo({ path: join(dir, 'fr'), name: 'fr', key: 'local/fr' });
 }
 
 test('按前缀归组：命中仓库固化成显式成员（看板不存在则自动建）', async () => {

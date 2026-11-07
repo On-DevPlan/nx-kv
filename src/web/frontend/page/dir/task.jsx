@@ -972,6 +972,29 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     });
   };
 
+  /** 「更多 → Fork 任务」：clone 的原文复制 + 保留源任务链（#67）。
+   *  与 clone 同文案、同不继承约束；区别只是新任务挂到源任务下（task_links），
+   *  评论/反馈链在任务链弹窗里继续可见。 */
+  const forkCur = () => {
+    if (isDraft || task == null || /^draft/i.test(String(task))) {
+      toast('草稿没有可 Fork 的队列任务');
+      return;
+    }
+    guard(async () => {
+      const res = await api('/api/localtasks/fork', {
+        method: 'POST',
+        body: isGlobal ? { id: Number(task) } : { id: Number(task), cwd: topic?.cwd },
+      });
+      toast(`已 Fork 为新任务 #${res.task?.id ?? res.id}（保留任务链）`);
+      refreshLocal();
+      const newId = res?.task?.id ?? res?.id;
+      if (newId != null && app.openPage) {
+        if (groupAnchored) app.openPage({ groupId, task: String(newId), name: `${(doc?.title || '任务').slice(0, 30)}（Fork）` });
+        else app.openPage({ dirKey: topicKey, task: String(newId), name: `${(doc?.title || '任务').slice(0, 30)}（Fork）` });
+      }
+    });
+  };
+
   /** 工具栏「评论」：只用当前可见选区；浮层已开时沿用其原文（正写评论） */
   const openCommentFromToolbar = () => {
     const live = String(window.getSelection() || '').trim();
@@ -1310,6 +1333,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           onAtt={() => pickAtt('image/*,.pdf,.zip,.txt,.json,.csv')}
           onImport={() => fileMdRef.current?.click()}
           onClone={isDraft ? null : cloneCur}
+          onFork={isDraft ? null : forkCur}
           onMark={openCommentFromToolbar}
           onDraft={() => toast('草稿随页签保留（刷新后需从侧栏或页签重新打开）')}
           onDelete={isDraft ? null : delTask}

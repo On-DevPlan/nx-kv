@@ -289,6 +289,23 @@
 }
 .setp-tpl-textarea:focus{outline:2px solid var(--soft-2,#E4E2DC);outline-offset:-1px}
 .setp-tpl-textarea[readonly]{background:var(--soft,#F1F0EC);color:var(--ink-2,#4B515A)}
+/* 编辑区下方的只读「可使用参数」速查（#63）：紧凑分组，不挤压编辑区 */
+.setp-params{
+  display:flex;flex-direction:column;gap:4px;min-width:0;
+  padding:7px 9px;border:1px dashed var(--line,#E4E2DC);border-radius:8px;
+  background:var(--soft,#F1F0EC);
+}
+.setp-params-head{font-size:11px;font-weight:600;color:var(--ink-2,#4B515A)}
+.setp-params-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;min-width:0}
+.setp-params-label{flex:none;width:52px;font-size:11px;color:var(--mid,#8A8578)}
+.setp-params-items{display:flex;flex-wrap:wrap;gap:3px 12px;min-width:0}
+.setp-param{display:inline-flex;align-items:baseline;gap:4px;font-size:11.5px;line-height:1.6;white-space:normal}
+.setp-param code{
+  flex:none;font:400 11px/1.5 ui-monospace,Consolas,monospace;white-space:nowrap;
+  padding:0 4px;border:1px solid var(--line,#E4E2DC);border-radius:4px;
+  background:var(--paper,#fff);color:var(--ink,#16181C);
+}
+.setp-param span{color:var(--ink-2,#4B515A)}
 @media (max-width:720px){
   .setp-tpl-split{flex-direction:column}
   .setp-tpl-side{width:auto}

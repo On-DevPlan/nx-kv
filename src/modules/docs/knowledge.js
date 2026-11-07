@@ -220,7 +220,7 @@ function renderMd(k) {
  * 返回 { repo:{name,key,intro:{body,path}}, groups:[{name,key,desc,intro:{body,path},note,peers,docLinks}] }
  * 不在项目组里 → groups 为空数组（组上下文段不拼，但项目介绍照给）。
  */
-export async function groupContextFor(cwd) {
+export async function groupContextFor(cwd, { board = '' } = {}) {
   const { loadStore, deriveKey, boardKeyOf, boardRepoKeys, normalizePathKey } = await reposBridge();
   const s = await loadStore();
   const want = normalizePathKey(cwd);
@@ -246,9 +246,16 @@ export async function groupContextFor(cwd) {
   // 项目自己登记的补充文档（外部 / ref 仓库里的文件）——交付时给可读路径
   const repoDocLinks = linkEntries(repo.docLinks, closure);
 
+  // #64 作用域：只有组任务（正文 frontmatter 带 board）才挂组上下文。单 repo 主题里
+  // 提交的纯项目任务只给项目介绍，组材料一律不挂——成员身份不等于「这条任务属于组」。
+  const wantBoard = String(board || '').trim();
   for (const b of s.boards) {
+    if (!wantBoard) continue;
     const members = boardRepoKeys(b, s);
     if (!members.includes(rk)) continue;
+    // 组任务只挂**它归属的那个组**（id / key / 名称都认，与 --board 的寻址口径一致）；
+    // 归属值对不上任何组（陈旧数据）时同纯项目任务一样不挂，避免错挂别组。
+    if (![String(b.id || ''), boardKeyOf(b.name), String(b.name || '')].includes(wantBoard)) continue;
     // 组介绍（绑定优先 → 介绍目录主篇 → 旧单文件；是文档集，不是一篇）
     const introSet = await readIntroSet({
       dirRel: paths.boardDocDirRel(b.name),

@@ -236,7 +236,15 @@ function normalizeLayout(data) {
   const repos = (data.repos || []).map((r) => {
     const remote = clean(r.remote);
     const name = clean(r.name);
-    const key = clean(r.key) || service.deriveKey({ name, remote }) || service.localKeyOf(name);
+    // key 只认两个来源：布局里显式写的，或远程地址归一化。
+    // **不再按 name 生成 local/<name>** —— 导入是最需要身份稳定的场景，
+    // 按名字猜出来的 key 一旦和本地已有登记撞上，就会被当成同一个仓库覆盖。
+    const key = clean(r.key) || service.deriveKey({ name, remote });
+    if (!key) {
+      throw badInput(
+        `导入布局里的仓库「${name || '(未命名)'}」缺少 key：没有远程地址时必须显式补上 key（有远程地址会自动归一化为 host/owner/repo）`
+      );
+    }
     const out = {
       key,
       keyCustom: r.keyCustom === true,
@@ -252,6 +260,19 @@ function normalizeLayout(data) {
     return out;
   });
 
+  // key 是全局身份：同一个导入包里出现两次，后续 addRepo 一条会失败、一条会覆盖，
+  // 必须在 diff 阶段就拒绝并点名两个仓库，而不是让用户看到半截导入结果。
+  const repoKeyByName = new Map();
+  const seenKeys = new Map();
+  for (const r of repos) {
+    const prev = seenKeys.get(r.key);
+    if (prev) {
+      throw badInput(`导入布局里有重复 key「${r.key}」：仓库「${prev.name || '(未命名)'}」和「${r.name || '(未命名)'}」——同一个 key 只能对应一个仓库，请先改其中一条`);
+    }
+    seenKeys.set(r.key, r);
+    if (r.name) repoKeyByName.set(r.name, r.key);
+  }
+
   const boardsIn = (data.boards || []).map((b) => {
     const name = clean(b?.name);
     const out = {
@@ -259,12 +280,19 @@ function normalizeLayout(data) {
       name,
       desc: clean(b?.desc),
       repos: (Array.isArray(b?.repos) ? b.repos : [])
-        .map((e) => {
+        .map((e, idx) => {
           const entry = typeof e === 'string' ? { key: clean(e) } : e;
-          const key = clean(entry?.key) || clean(entry?.remote)
-            ? (clean(entry?.key) || service.deriveKey({ name: clean(entry?.name), remote: clean(entry?.remote) }))
-            : service.localKeyOf(clean(entry?.name));
-          return key ? { key, note: clean(entry?.note) } : null;
+          const rawKey = clean(entry?.key);
+          const byRemote = entry?.remote ? service.keyFromRemote(clean(entry.remote)) : '';
+          // 只有名字的成员：如果布局里恰好有同名仓库，就沿用它显式声明的 key；
+          // 否则没有身份可用 → 拒绝（不按名字猜 local/<name>，否则会悄悄造 key）。
+          const key = rawKey || byRemote || repoKeyByName.get(clean(entry?.name)) || '';
+          if (!key) {
+            throw badInput(
+              `导入布局里看板「${name || '(未命名)'}」的第 ${idx + 1} 个成员缺少 key/远程地址：请在该仓库条目或成员上写明 key`
+            );
+          }
+          return { key, note: clean(entry?.note) };
         })
         .filter(Boolean),
     };

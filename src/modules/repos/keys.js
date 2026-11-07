@@ -56,9 +56,10 @@ export async function refreshKeys({ id, all = false, apply = false } = {}) {
     const remotes = await gitRemotes(r.path);
     const picked = pickRemote(remotes);
     const suggestedRemote = picked ? picked.url : '';
+    // key 不再按名字兜底：没有远程地址时不给建议值（提示用户 repo key set 手工指定）。
     const suggestedKey = r.keyCustom
       ? currentKey // 自定义 key 不跟随
-      : (service.keyFromRemote(suggestedRemote) || service.localKeyOf(r.name));
+      : service.keyFromRemote(suggestedRemote);
     const changed = suggestedRemote
       ? (suggestedRemote !== cur.remote || suggestedKey !== cur.key)
       : false;

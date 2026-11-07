@@ -26,10 +26,10 @@ const withActive = (lists, blockId, template, id = 'custom', name = '自定义')
   return next;
 };
 
-test('默认每区块列表：5 个区块，各只含系统内置模板，active=builtin', () => {
+test('默认每区块列表：6 个区块，各只含系统内置模板，active=builtin', () => {
   assert.deepEqual(
     BLOCK_DEFS.map((d) => d.id),
-    ['context', 'attachment', 'timecheck', 'ack', 'getloop'],
+    ['context', 'attachment', 'timecheck', 'ext', 'ack', 'getloop'],
     'rule 已并入 ack，不再作为独立区块'
   );
   const lists = defaultBlockTemplateLists();
@@ -117,6 +117,26 @@ test('共享 ctx：一个对象同时喂给所有区块的各自生效模板，�
     text.indexOf('nx-kv.context') < text.indexOf('nx-kv.attachment'),
     '输出顺序由区块 def 固定'
   );
+});
+
+test('ext 默认模板：列同主题余量与标题并给优先级；空队列整段省略', () => {
+  const tpl = defOf('ext').defaultTemplate;
+  const withQueue = renderInstruction(tpl, {
+    ext: { topic: 'nx-kv', count: 2, list: [{ id: 65, title: '第一条' }, { id: 66, title: '第二条' }] },
+    task: { id: 64 },
+  });
+  assert.match(withQueue, /本队列（nx-kv）还有 2 条待领取任务/);
+  assert.match(withQueue, /- #65 第一条/);
+  assert.match(withQueue, /- #66 第二条/);
+  assert.match(withQueue, /先完成当前任务，再领取下一条/);
+  for (const ext of [null, { topic: 'nx-kv', count: 0, list: [] }]) {
+    const text = composeSystemBlocks([], {
+      mode: 'xml',
+      templates: resolveBlockTemplates(defaultBlockTemplateLists()),
+      ctx: { ext },
+    });
+    assert.doesNotMatch(text, /nx-kv\.ext/, '空队列不输出 ext 区块');
+  }
 });
 
 test('旧语法已废弃：保存校验拒绝，运行期不被当作条件/占位符生效', () => {

@@ -19,6 +19,7 @@ import { listDocFiles } from '../../core/db/import-json.js';
 import { nowMs } from '../../core/db/time.js';
 import { APP_DIR } from '../../core/paths.js';
 import repoLayer from './repo/index.js';
+import { gitRemotes, pickRemote } from './git.js';
 import {
   SENTINEL_REPO_KEY,
   REPO_EXT,
@@ -94,10 +95,12 @@ export async function saveStore(data) {
 
 // ─── 落库（JSON 形态 → 行）────────────────────────────────────────────
 
-/** JSON 形态登记对象 → repos 行。key 缺失时现算（与 JSON 时代同一兜底）。 */
+/** JSON 形态登记对象 → repos 行。key 必须已经存在（不允许落库时现算）。 */
 function repoToRow(r, atMs) {
-  const key = String(r.key || deriveKey(r) || '').trim();
-  if (!key) throw badInput('key 不能为空');
+  // 不再用 deriveKey 现算：落库是最后一道关，静默补 key 会把「用户没填」的历史
+  // 覆盖成 local/<名字>，之后再也看不出这个 key 是猜出来的。
+  const key = String(r.key || '').trim();
+  if (!key) throw badInput('仓库「' + (r.name || '未命名') + '」缺少 key：key 是仓库身份，必须显式给出或由远程地址归一化');
   const remotes = Array.isArray(r.remotes) ? r.remotes.map((x) => String(x).trim()).filter(Boolean) : [];
   const linked = Array.isArray(r.linked)
     ? r.linked.filter((l) => l && typeof l === 'object' && l.kind && l.id).map((l) => ({ kind: String(l.kind), id: String(l.id), ...(l.note ? { note: String(l.note) } : {}) }))
@@ -316,8 +319,14 @@ function normalizeRepoInput({ path, name, notes, desc, type, remote, linked, key
     keyCustom: !!keyCustom,
     remotes,
   };
+  // key 来源只有两个：用户显式给出，或远程地址归一化。**不再按名字生成 local/<name>**。
+  // 没有远程地址时，key 是必填项 —— 静默造一个会让「用户以为没设、其实是猜的」。
   const finalKey = rk0 || deriveKey({ ...input, name: nm });
-  if (!finalKey) throw badInput('key 不能为空');
+  if (!finalKey) {
+    throw badInput(
+      `仓库「${nm}」缺少 key：没有远程 git 地址时 key 必填（远程地址存在时会按 host/owner/repo 归一化自动得到）`
+    );
+  }
   return {
     id: newId('r'),
     name: nm,
@@ -365,66 +374,29 @@ function sanitizeLinks(raw) {
   return out;
 }
 
-// ─── 全局唯一 key：仓库的身份 ──────────────────────────────────────────
-//
-// 本地路径是机器事实，换机必失效；远程地址是最好的身份来源，但同一个仓库有 N 种
-// 写法（git@github.com:me/x.git、https://github.com/me/x、ssh://git@ssh.github.com:443/me/x.git、
-// 大小写不同、带不带尾斜杠）——全部归一成同一个 key，导入导出才能精确映射。
-//
-// 归一化步骤：
-//   1. git@host:path            → host/path
-//   2. ssh://[user@]host[:port]/path → host/path（丢 user 与端口）
-//   3. https?://[user@]host/path     → host/path（丢 user 与端口）
-//   4. 去尾 /、去 .git、小写
-//   5. host 别名：ssh.github.com / www.github.com → github.com
-//      （GitHub 的 SSH-over-443 端点，指向同一个仓库）
-export function keyFromRemote(url) {
-  let s = String(url || '').trim();
-  if (!s) return '';
-  s = s.replace(/\/+$/, '');
-  // git@host:path（scp 语法）
-  const scp = /^git@([^:/]+):(.+)$/i.exec(s);
-  if (scp) s = scp[1] + '/' + scp[2];
-  else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) {
-    // 有协议的：剥协议 → [user@]host[:port]/path
-    s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
-    s = s.replace(/^[^/]*@/, '');        // 丢 user@
-    s = s.replace(/^([^/]+?):\d+(\/|$)/, '$1$2'); // 丢 :port（只认紧跟 host 的那个冒号）
-    // file:///D:/path 这类本地 URL：盘符冒号也要丢（key 里不允许 `:`——
-    // normalizeKey 会把它压成 -，两边不一致就会「登记的是 A、成员表里是 B」）
-    s = s.replace(/^([a-z]):/i, '$1');
-  }
-  s = s.replace(/\.git$/i, '');
-  s = s.replace(/\/{2,}/g, '/');
-  const hostAlias = { 'ssh.github.com': 'github.com', 'www.github.com': 'github.com' };
-  const slash = s.indexOf('/');
-  if (slash > 0) {
-    const host = s.slice(0, slash).toLowerCase();
-    s = (hostAlias[host] || host) + s.slice(slash);
-  }
-  // 去首尾斜杠：file:///tmp/x 剥协议后是 "/tmp/x"，带前导斜杠的话同一份数据在
-  // 「派生」与「归一」两条路上会算出不同的 key（/tmp/x vs tmp/x）——
-  // 表现为「登记的是 A、成员表里是 B」，关系连不上。
-  s = s.replace(/^\/+|\/+$/g, '');
-  return s.toLowerCase();
-}
+// key 归一化已下沉 shared/repo-key.js（前端自动填充与后端登记共用同一份口径）。
+// localKeyOf 仍是 core 层的文档路径 slug 函数；这里转发导出，既有调用点不变。
+import { localKeyOf } from '../../core/keys.js';
+import { normalizeKey, keyFromRemote } from '../../shared/repo-key.js';
+export { normalizeKey, localKeyOf, keyFromRemote };
 
 // 兼容旧调用点（ref.js / transfer.js 都在用这个名字）
 export const normalizeRemoteKey = keyFromRemote;
 
-// key 归一化已下沉 core/keys.js（docs 模块的文档路径 slug 也要用同一套口径）；
-// 这里转发导出——本模块内外的既有调用点（keys.js / ref.js / transfer.js …）全部不变。
-import { normalizeKey, localKeyOf } from '../../core/keys.js';
-export { normalizeKey, localKeyOf };
-
-/** 一个仓库的 key：自定义优先，其次 remote 派生，最后 local/<name> 兜底。 */
+/**
+ * 一个仓库的 key：显式 key（自定义）优先，其次 remote 派生。
+ *
+ * **没有 local/<name> 兜底**（2026-11 裁决）：key 是仓库身份，不能由显示名悄悄生成。
+ * 新建/导入时若既没给 key 也没有远程地址，必须报错让用户显式输入。
+ * 读路径仍兼容老数据（库里的 key 一定有值；JSON 时代老对象没有 key 时返回空串）。
+ */
 export function deriveKey(repo) {
   if (!repo) return '';
   if (repo.keyCustom && repo.key) return normalizeKey(repo.key);
   const fromRemote = keyFromRemote(repo.remote || '');
   if (fromRemote) return fromRemote;
   if (repo.key) return normalizeKey(repo.key);
-  return localKeyOf(repo.name);
+  return '';
 }
 
 // 从 URL 推导目录名：取末段、剥 .git。非法字符替换成 -（Windows 目录名约束）。
@@ -555,9 +527,12 @@ export async function addRepo(input) {
       throw conflict('该路径已登记: ' + repo.path);
     }
     // **key 全局唯一**（跨 dev/ref）：它是身份，也是导入导出的映射依据。
-    // 老数据可能还没有 key 字段，用 deriveKey 现算，避免迁移空窗期出现重复。
     const dup = s.repos.find((r) => deriveKey(r) === repo.key);
-    if (dup) throw conflict(`该 key 已登记为「${dup.name}」（${dup.id}）: ${repo.key}`);
+    if (dup) {
+      throw conflict(
+        `key「${repo.key}」已被仓库「${dup.name}」占用（path: ${dup.path || '未登记'}）—— key 是全局身份，不会自动加后缀；请换一个 key，或先修改/删除那条登记`
+      );
+    }
     s.repos.push(repo);
   });
   await seedRepoDoc(repo);
@@ -665,9 +640,13 @@ export async function updateRepo(id, patch) {
     // key 全局唯一：改 key / remote / keyCustom 后统一在这里兜底校验一次。
     // （放在最后、且对所有更新都跑——便宜，且不会漏掉某个分支。）
     const finalKey = deriveKey(r);
-    if (!finalKey) throw badInput('key 不能为空');
+    if (!finalKey) throw badInput('key 不能为空：没有远程地址时，key 必须显式给出');
     const dup = s.repos.find((x) => x.id !== r.id && deriveKey(x) === finalKey);
-    if (dup) throw conflict(`该 key 已登记为「${dup.name}」（${dup.id}）: ${finalKey}`);
+    if (dup) {
+      throw conflict(
+        `key「${finalKey}」已被仓库「${dup.name}」占用（path: ${dup.path || '未登记'}）—— key 是全局身份，不会自动加后缀；请换一个 key`
+      );
+    }
     r.key = finalKey;
     return r;
   });
@@ -861,10 +840,21 @@ export async function scanRepos(root, depth = 3, { dryRun = false } = {}) {
 
   const added = [];
   for (const p of found) {
+    // key 不允许按名字生成：扫描到的 git 仓库先读 remote 作为身份来源；
+    // 没有 remote 的仓库不能悄悄登记（那会产出用户没见过的 local/<名字> key）。
+    let remote = '';
     try {
-      added.push(await addRepo({ path: p }));
+      const remotes = await gitRemotes(p);
+      const picked = pickRemote(remotes);
+      remote = picked ? picked.url : '';
     } catch {
-      // 已登记，跳过
+      remote = '';
+    }
+    if (!remote) continue;
+    try {
+      added.push(await addRepo({ path: p, remote }));
+    } catch {
+      // 已登记或 key 冲突，跳过
     }
   }
   return {

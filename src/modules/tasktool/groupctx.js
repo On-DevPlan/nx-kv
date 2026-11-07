@@ -34,12 +34,15 @@ function clipIntro(body, path) {
 
 /**
  * 读某个工作目录所属的项目组上下文。
+ * @param {string} cwd 工作目录
+ * @param {{board?: string}} [opts] board = 组任务的归属（正文 frontmatter 的 board）；
+ *   为空 = 单 repo 主题的纯项目任务 → 不带任何组材料（#64 作用域）。
  * @returns {Promise<null | {repo:{name,key}, groups:Array}>} null = 不在项目组里 / 读取失败
  */
-export async function readGroupContext(cwd) {
+export async function readGroupContext(cwd, opts = {}) {
   try {
     const { groupContextFor } = await docsService();
-    return await groupContextFor(cwd);
+    return await groupContextFor(cwd, opts);
   } catch {
     return null; // fail-open：上下文是增强，不是领取的前提
   }

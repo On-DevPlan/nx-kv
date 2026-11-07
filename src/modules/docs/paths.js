@@ -11,7 +11,8 @@
 // 段级 slug 只兜 Windows 的两个坑：段尾点（资源管理器拒绝创建）与保留设备名。
 import { join } from 'node:path';
 import { APP_DIR } from '../../core/paths.js';
-import { normalizeKey, localKeyOf } from '../../core/keys.js';
+import { normalizeKey } from '../../shared/repo-key.js';
+import { localKeyOf } from '../../core/keys.js';
 
 // 允许测试与多实例覆盖文档树根：与 NX_KV_REPOS_STORE 同一模式
 export function docsRoot() {

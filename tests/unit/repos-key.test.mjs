@@ -77,13 +77,23 @@ test('normalizeKey / localKeyOf / boardKeyOf：空白与非法字符压平，空
   assert.equal(repos.boardKeyOf('nx'), 'board/nx');
 });
 
-test('deriveKey：自定义优先 → remote 派生 → local 兜底', () => {
-  assert.equal(repos.deriveKey({ name: 'x' }), 'local/x');
+test('deriveKey：自定义优先 → remote 派生；没有 key/remote 时为空（不再按名字兜底）', () => {
+  assert.equal(repos.deriveKey({ name: 'x' }), '');
   assert.equal(repos.deriveKey({ name: 'x', remote: 'git@github.com:a/b.git' }), 'github.com/a/b');
   assert.equal(
     repos.deriveKey({ name: 'x', remote: 'git@github.com:a/b.git', keyCustom: true, key: 'My/Custom' }),
     'my/custom'
   );
+});
+
+test('addRepo：没有 key 也没有远程地址 → 明确报错，不自动生成 local/<名字>', async () => {
+  await assert.rejects(
+    () => repos.addRepo({ path: join(dir, 'no-key'), name: 'no-key' }),
+    /缺少 key/
+  );
+  // 有远程地址时仍可省略 key（按 host/owner/repo 归一化）
+  const ok = await repos.addRepo({ path: join(dir, 'has-remote'), name: 'has-remote', remote: 'git@github.com:me/has-remote.git' });
+  assert.equal(ok.key, 'github.com/me/has-remote');
 });
 
 // ─── 唯一性与自定义 ──────────────────────────────────────────────────────
@@ -92,11 +102,11 @@ test('key 全局唯一：同远程不同写法 / 自定义 key 撞车 都报冲�
   await repos.addRepo({ path: join(dir, 'a'), name: 'a', remote: 'git@github.com:x/a.git' });
   await assert.rejects(
     () => repos.addRepo({ path: join(dir, 'b'), name: 'b', remote: 'https://github.com/x/a' }),
-    /该 key 已登记/
+    /已被仓库「a」占用/
   );
   await assert.rejects(
     () => repos.addRepo({ path: join(dir, 'c'), name: 'c', key: 'github.com/x/a', keyCustom: true }),
-    /该 key 已登记/
+    /已被仓库「a」占用/
   );
   // 不同仓库互不影响
   const ok = await repos.addRepo({ path: join(dir, 'd'), name: 'd', remote: 'https://github.com/x/d' });
@@ -144,9 +154,14 @@ if (hasGit) {
     git(['remote', 'add', 'origin', 'https://github.com/x/proj.git'], p);
     git(['remote', 'set-url', '--add', 'origin', 'git@github.com:x/proj.git'], p);
 
-    // 先登记成 local 兜底 key（模拟"早期版本算的 key"）
-    const r = await repos.addRepo({ path: p, name: 'proj' });
+    // 先登记成早期 local 兜底 key，并把 keyCustom 置回 false（模拟旧版本生成的记录）
+    const r = await repos.addRepo({ path: p, name: 'proj', key: 'local/proj' });
+    await repos.mutateStore((s) => {
+      const x = s.repos.find((y) => y.id === r.id);
+      x.keyCustom = false;
+    });
     assert.equal(r.key, 'local/proj');
+    assert.equal((await repos.getRepo(r.id)).keyCustom, false);
 
     // 只看不落盘
     const dry = await keys.refreshKeys({ id: r.id, apply: false });
@@ -182,7 +197,7 @@ if (hasGit) {
   });
 
   test('refreshKeys：不是 git 仓库 → 如实标注，不报错', async () => {
-    const r = await repos.addRepo({ path: join(dir, 'nongit'), name: 'nongit' });
+    const r = await repos.addRepo({ path: join(dir, 'nongit'), name: 'nongit', key: 'local/nongit' });
     const d = await keys.refreshKeys({ id: r.id });
     assert.equal(d.items[0].suggested, null);
     assert.match(d.items[0].note, /不是 git 仓库/);
@@ -326,6 +341,64 @@ test('兼容 v2 导出：没有 key 时用 remote/name 派生，照样能导入'
   const g = all[0] ? (await boards.listBoards()).boards.find((b) => b.name === '组') : null;
   assert.ok(g);
   assert.equal(g.repos[0].note, '组内');
+});
+
+test('导入布局：只有名字、没有 key 也没有远程地址 → 差异检查就明确拒绝', async () => {
+  const layout = {
+    version: 4,
+    repos: [{ name: 'only-name', type: 'dev' }],
+    boards: [],
+  };
+  await assert.rejects(
+    () => transfer.diffImport(JSON.stringify(layout)),
+    /仓库「only-name」缺少 key/
+  );
+});
+
+test('导入布局：有远程地址、没有 key → 按 host/owner/repo 归一化填入', async () => {
+  const layout = {
+    version: 4,
+    repos: [
+      { name: 'ssh', type: 'dev', remote: 'git@github.com:On-DevPlan/nx-kv.git' },
+      { name: 'https', type: 'dev', remote: 'https://user@GitHub.com/Other/Thing/' },
+    ],
+    boards: [],
+  };
+  const d = await transfer.diffImport(JSON.stringify(layout));
+  assert.deepEqual(d.repos.map((r) => r.key).sort(), [
+    'github.com/on-devplan/nx-kv',
+    'github.com/other/thing',
+  ]);
+});
+
+test('导入布局：两种写法归一成同一个 key → 作为重复 key 点名拒绝，不静默覆盖', async () => {
+  const layout = {
+    version: 4,
+    repos: [
+      { name: 'ssh', type: 'dev', remote: 'git@github.com:On-DevPlan/nx-kv.git' },
+      { name: 'https', type: 'dev', remote: 'https://github.com/On-DevPlan/nx-kv' },
+    ],
+    boards: [],
+  };
+  await assert.rejects(
+    () => transfer.diffImport(JSON.stringify(layout)),
+    /重复 key「github\.com\/on-devplan\/nx-kv」.*「ssh」和「https」/
+  );
+});
+
+test('导入布局：同一个包里出现重复 key → 点名两个仓库，不静默覆盖', async () => {
+  const layout = {
+    version: 4,
+    repos: [
+      { key: 'dup', name: 'one', type: 'dev' },
+      { key: 'dup', name: 'two', type: 'dev' },
+    ],
+    boards: [],
+  };
+  await assert.rejects(
+    () => transfer.diffImport(JSON.stringify(layout)),
+    /重复 key「dup」.*「one」和「two」/
+  );
 });
 
 // ─── zip ────────────────────────────────────────────────────────────────

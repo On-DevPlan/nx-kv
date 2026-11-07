@@ -6,8 +6,8 @@
 //   - 系统内置模板固定存在、不可删除、不可编辑；用户模板可复制内置来改；
 //   - 保存即落库：启用项立即参与领取任务时的系统提示词渲染。
 //
-// UI 边界：这里只做模板编辑与启用。引擎名称、语法讲解、变量字典、示例片段
-// 只写在 skill / docs，不放到设置页。
+// UI 边界：这里只做模板编辑与启用。编辑区下方给**只读参数清单**（参数名 + 一句含义）；
+// 引擎名称、选型理由、语法教程、示例模板与成段说明仍然只写在 skill / docs，不放到设置页。
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
@@ -21,6 +21,148 @@ import {
   MAX_PROMPT_TEMPLATE_NAME,
   normalizeBlockTemplateLists,
 } from '../../../../shared/prompt-blocks.js';
+
+// 每区块**实际可用**的参数（参数名 + 一句含义）：只做速查，不写语法/示例。
+// 数据来自共享 ctx（delivery-template.js 的 buildDeliveryCtx）与 attach 的 attachTemplateCtx。
+const BLOCK_PARAMS = {
+  context: [
+    {
+      label: '项目',
+      items: [
+        ['repo.name', '项目名'],
+        ['repo.intro', '项目介绍正文'],
+        ['repo.introPath', '介绍全文路径'],
+        ['repo.docs', '补充文档（可循环 path/tag/note）'],
+        ['repo.docCount', '补充文档数'],
+      ],
+    },
+    {
+      label: '组',
+      items: [
+        ['group.name', '组名'],
+        ['group.desc', '组定位'],
+        ['group.intro', '组介绍正文'],
+        ['group.note', '本项目在组里的位置'],
+        ['group.peers', '组内成员（可循环 name/note）'],
+        ['group.docs', '组绑定参考文件（可循环）'],
+        ['groups', '其余组（可循环 name/desc/path）'],
+      ],
+    },
+    {
+      label: '通用',
+      items: [
+        ['task.id', '任务号'],
+        ['task.text', '任务原文'],
+        ['params', '外部参数（k=v）'],
+      ],
+    },
+  ],
+  attachment: [
+    {
+      label: '附件',
+      items: [
+        ['attach.count', '附件个数'],
+        ['attach.list', '附件清单（可循环 name/kindLabel/localPath）'],
+        ['attach.sync', '同步结果'],
+        ['attach.sync.dir', '同步目录'],
+        ['attach.sync.downloaded', '已下载数'],
+        ['attach.sync.skipped', '跳过数'],
+        ['attach.sync.failureCount', '失败数'],
+      ],
+    },
+    {
+      label: '通用',
+      items: [
+        ['task.id', '任务号'],
+        ['task.text', '任务原文'],
+      ],
+    },
+  ],
+  timecheck: [
+    {
+      label: '时间目标',
+      items: [
+        ['goal.check', '时间检查指令（任务级）'],
+        ['goal.statusLine', '目录级目标状态行'],
+        ['goal.name', '目标名'],
+        ['goal.deadline', '截止时间'],
+        ['goal.remainingSec', '剩余秒数'],
+        ['goal.remainingMin', '剩余分钟（向上取整）'],
+        ['goal.overtimeSec', '超时秒数'],
+        ['goal.reached', '是否到点'],
+      ],
+    },
+    {
+      label: '通用',
+      items: [['task.id', '任务号']],
+    },
+  ],
+  ext: [
+    {
+      label: '队列',
+      items: [
+        ['ext.topic', '主题 / 队列名'],
+        ['ext.count', '待领取任务数'],
+        ['ext.list', '待领取清单（可循环 id/title/topic）'],
+      ],
+    },
+    {
+      label: '通用',
+      items: [['task.id', '任务号']],
+    },
+  ],
+  ack: [
+    {
+      label: '通用',
+      items: [
+        ['task.id', '任务号'],
+        ['task.text', '任务原文'],
+        ['source', '任务来源（local/global）'],
+        ['summary', '领取方现状'],
+        ['name', '领取方名字'],
+        ['cwd', '领取方目录'],
+        ['params', '外部参数（k=v）'],
+      ],
+    },
+  ],
+  getloop: [
+    {
+      label: '持续 get',
+      items: [
+        ['getloop.text', '持续 get 指令正文'],
+        ['getloop.waitMinutes', '单轮等待分钟数'],
+      ],
+    },
+    {
+      label: '通用',
+      items: [['task.id', '任务号']],
+    },
+  ],
+};
+
+// 只读参数速查：分组紧凑、参数名等宽、含义一行内说完。
+function BlockParams({ blockId }) {
+  const groups = BLOCK_PARAMS[blockId] || [];
+  if (!groups.length) return null;
+  return (
+    <div className="setp-params" aria-label="可使用参数">
+      <div className="setp-params-head">可使用参数</div>
+      {groups.map((g) => (
+        <div className="setp-params-row" key={g.label}>
+          <span className="setp-params-label">{g.label}</span>
+          <div className="setp-params-items">
+            {g.items.map(([name, desc]) => (
+              <span className="setp-param" key={name}>
+                <code>{name}</code>
+                <span>{desc}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function genId() {
   return `bt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -358,6 +500,8 @@ export default function PromptTemplatesSection() {
               placeholder={isBuiltin ? '' : '在这里写该区块的模板'}
               onChange={(e) => patchEditing({ template: e.target.value })}
             />
+
+            <BlockParams blockId={blockId} />
 
             <div className="setp-proj-a">
               {isBuiltin ? (

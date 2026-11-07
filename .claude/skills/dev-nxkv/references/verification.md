@@ -37,7 +37,7 @@ node bin/cli.mjs localtask preview --id <id> --cwd <dir>
 
 看返回里的 `instruction`、`segments`、`switches`、`renderWarnings`：
 
-- 五个区块按 `context → attachment → timecheck → ack → getloop` 顺序出现；每个区块用的是它自己的当前生效模板；
+- 六个区块按 `context → attachment → timecheck → ext → ack → getloop` 顺序出现；每个区块用的是它自己的当前生效模板；
 - 该有的项目/组/附件/目标内容都在，且 `<nx-kv>` 根标签正确；
 - `task.text` 没有被模板二次解析；
 - 无 `renderWarnings`（或告警是你预期并已解释的）。

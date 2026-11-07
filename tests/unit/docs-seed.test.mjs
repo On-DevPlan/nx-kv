@@ -30,7 +30,7 @@ test.after?.(() => {
 });
 
 async function seedData() {
-  const r = await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', desc: '第一个仓库，管清单' });
+  const r = await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', key: 'local/alpha', desc: '第一个仓库，管清单' });
   // add 现在会直接把 --desc 播种成主篇；种子测试要的是**老数据**形态
   // （字符串有值、文档还没落盘），所以把刚种下去的主篇删掉。
   await store.removeOwnDoc(paths.repoDocRel(r.key));

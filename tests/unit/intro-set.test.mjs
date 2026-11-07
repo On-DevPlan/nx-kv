@@ -33,7 +33,7 @@ async function setup() {
   const paths = await import('../../src/modules/docs/paths.js');
   const cwd = join(dir, 'alpha');
   mkdirSync(cwd, { recursive: true });
-  const alpha = await repos.addRepo({ path: cwd, name: 'alpha', desc: '管清单的' });
+  const alpha = await repos.addRepo({ path: cwd, name: 'alpha', key: 'local/alpha', desc: '管清单的' });
   return { repos, store, paths, alpha, cwd };
 }
 

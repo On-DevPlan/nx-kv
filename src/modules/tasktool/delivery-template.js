@@ -21,6 +21,8 @@
 //   {{#each groups}}…{{/each}}        多组时其余组（数组：name / desc / path）
 //   {{source}} {{summary}} {{cwd}} {{name}} {{goal.*}}
 //   {{params.k}} 与顶层 {{k}}   外部参数（平面扩展；内建同名键不被覆盖）
+//   {{ext.topic}} {{ext.count}} {{#each ext.list}}…{{/each}}   同主题待领取余量
+//     （数组：id / title / topic；空队列或读取失败 → ctx.ext = null，整段不出现）
 //
 // 条件：`{{#if repo}}` / `{{#if group}}` —— 没数据整段不出现
 // （项目级任务没有组；组在但毫无可交付内容——空壳组——ctx.group 直接为 null，

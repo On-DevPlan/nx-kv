@@ -114,6 +114,59 @@ export async function removeTasks({ cwd: rawCwd, key: rawKey, ids, purge = false
 }
 
 /**
+ * 批量取消待领取任务（面板「取消选中 n」用）：一个事务处理多条。
+ *
+ * 只接受 pending 任务：已领取（可能有 agent 正在处理）、已交付、已取消都跳过，
+ * 避免误伤正在跑的会话或已留档的交付记录。取消是终态，原文保留，不写 roundSummary。
+ */
+export async function cancelTasks({ cwd: rawCwd, key: rawKey, ids } = {}) {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const { cwd } = normalizeCwd(rawCwd);
+  const wants = (Array.isArray(ids) ? ids : [ids])
+    .map((x) => Number(String(x ?? '').trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!wants.length) throw badInput('缺少参数 --ids <任务编号，逗号分隔或给多次>');
+
+  openStore();
+  const t = topicsRepo.getTopic(key);
+  const topicId = t ? t.id : null;
+  const cancelled = [];
+  const missing = [];
+  const skipped = [];
+  tx(() => {
+    for (const want of wants) {
+      const cur = topicId ? tasksRepo.getTaskRow(topicId, want) : null;
+      if (!cur) {
+        missing.push(want);
+        continue;
+      }
+      if (cur.task.status !== 'pending' || cur.task.migratedTo || cur.task.deletedAt) {
+        skipped.push({
+          id: want,
+          status: cur.task.status,
+          reason: cur.task.migratedTo ? 'migrated' : cur.task.deletedAt ? 'deleted' : 'not_pending',
+        });
+        continue;
+      }
+      const next = tasksRepo.updateTask(topicId, want, { status: 'cancelled' });
+      cancelled.push(normalizeTask(next));
+    }
+    if (cancelled.length) topicsRepo.updateTopic(key, { bumpRevision: true });
+    return true;
+  });
+  return {
+    status: 'ok',
+    key,
+    cwd: t ? t.cwd || cwd : cwd,
+    name: t ? t.name : key,
+    cancelled,
+    missing,
+    skipped,
+    count: cancelled.length,
+  };
+}
+
+/**
  * 恢复一条被软删除的任务（撤销删除）。
  * 与 removeTask 互为逆操作：任务仍在队列里，只是带着 deletedAt 标记。
  */

@@ -11,6 +11,7 @@
 import { DEFAULT_PORT } from '../../core/paths.js';
 import { formatGoalTiming, renderInstruction } from '../../core/instruction-template.js';
 import { buildDeliveryCtx } from './delivery-template.js';
+import { parseFrontmatter } from '../../shared/frontmatter.js';
 import {
   BLOCK_DEFS,
   resolveBlockTemplates,
@@ -25,6 +26,7 @@ import {
   isGlobalKey,
   normalizeCwd,
   normalizeSummary,
+  pendingQueueInfo,
   probeEffectivePresence,
   registerGlobalWaiter,
   registerTopicWaiter,
@@ -183,7 +185,10 @@ export async function buildTaskDelivery(task, { source, summary, cwd, name, topi
     const goal = enrichGoalTiming(taskGoalCtx || (await readGoalCtx(cwd)));
 
     // 项目组上下文（组概念 + 本项目位置 + 兄弟成员 + 参考文件地址）：只进 instruction。
-    const groupCtx = await readGroupContext(cwd);
+    // #64 作用域：组材料只挂**组任务**（正文 frontmatter 带 board）；单 repo 主题里
+    // 提交的纯项目任务只带项目介绍，不把所属组的材料挂进来。
+    const boardMark = String(parseFrontmatter(String((task && task.text) || '')).board || '').trim();
+    const groupCtx = await readGroupContext(cwd, { board: boardMark });
     const settings = (await getSettings().catch(() => null)) || {};
     const deliveryCtx = buildDeliveryCtx({ task, goal, source, summary, cwd, name, groupCtx, params });
 
@@ -202,6 +207,9 @@ export async function buildTaskDelivery(task, { source, summary, cwd, name, topi
         : null,
       ...attachCtx,
       task: task ? { id: task.id, text: String(task.text || '') } : null,
+      // 「持续 get」指令模板自身也能用 {{getloop.waitMinutes}}：先把阻塞窗口放进
+      // 同一份 ctx，外层 getloop 区块再补 text（同一个对象口径，前后不分裂）。
+      getloop: { text: '', waitMinutes: Number(getLoopWaitMinutes) || 0 },
     };
     // 持续 get 模板本身也是模板（可含 {{task.id}} 等），先在变量上下文里渲染成文本，
     // 再由 getloop 区块的 `{{getloop.text}}` 输出。渲染失败同样记告警（不静默）。
@@ -218,11 +226,26 @@ export async function buildTaskDelivery(task, { source, summary, cwd, name, topi
         });
       }
     }
+    // ext（队列余量）：同主题还有多少待领取任务 + 标题，提示优先级。
+    // 现算（同主题一次读取），不做缓存；空队列 → null，整段不渲染。
+    // 读取失败不阻断领取：按缺失处理，并把原因记进 renderWarnings。
+    let extCtx = null;
+    try {
+      const q = await pendingQueueInfo(topicKey, task && task.id);
+      if (q && q.count > 0) extCtx = { topic: q.topic, count: q.count, list: q.list };
+    } catch (e) {
+      renderWarnings.push({
+        block: 'ext',
+        label: '待领取队列（ext）',
+        message: String((e && e.message) || e).replace(/\s+/g, ' ').trim(),
+      });
+    }
     const blockCtx = {
       ...baseCtx,
       getloop: loopText
         ? { text: loopText, waitMinutes: Number(getLoopWaitMinutes) || 0 }
         : null,
+      ext: extCtx,
     };
 
     const mode = settings.appendMode === 'plain' ? 'plain' : 'xml';
@@ -232,6 +255,7 @@ export async function buildTaskDelivery(task, { source, summary, cwd, name, topi
       { id: 'context', label: '组 / 项目上下文（模板）', traceId: 'delivery' },
       { id: 'attachment', label: '附件段（清单 / 本地路径）', traceId: 'attach' },
       { id: 'timecheck', label: '时间目标（状态 / check 指令）', traceId: 'goal' },
+      { id: 'ext', label: '待领取队列（ext）', traceId: 'ext' },
       { id: 'ack', label: 'ack 完成总结提示词', traceId: 'ack' },
       { id: 'getloop', label: '持续 get 指令（项目级）', traceId: 'getloop' },
     ];
@@ -287,6 +311,7 @@ export async function waitForTask({
   params = {}, // 外部参数（平面扩展）：进交付模板的 ctx（--param k=v）
   instant = false, // get 的「直接领」形态：没有 pending 立即空手而回，不开窗不阻塞
   getLoopTpl = '', // 项目级「持续 get」模板（仅 get/preview 传；wait 不传 → 不出现该区块）
+  getLoopWaitMinutes = 0, // 项目级阻塞窗口（分钟）：进 getloop 模板 ctx，让 agent 知道每轮会等多久
 } = {}) {
   const { key, cwd, name } = normalizeCwd(rawCwd);
   const summary = normalizeSummary(rawSummary); // 现状必填
@@ -309,7 +334,7 @@ export async function waitForTask({
   // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
   const queued = await consumeFirstPending(key, summary, by);
   if (queued) {
-    const delivery = await buildTaskDelivery(queued, { source: 'local', summary, cwd, name, topicKey: key, params, getLoopTpl });
+    const delivery = await buildTaskDelivery(queued, { source: 'local', summary, cwd, name, topicKey: key, params, getLoopTpl, getLoopWaitMinutes });
     return { status: 'ok', key, cwd, name, summary, ...delivery, queued: true, source: 'local', repo: repoCtx };
   }
 
@@ -326,7 +351,7 @@ export async function waitForTask({
   if (fromGlobal) {
     // 全局池投递渲染的仍是**等待方目录**的 goal——目标绑定在等待中的 agent 目录上，
     // 与任务来自哪个队列无关。
-    const delivery = await buildTaskDelivery(fromGlobal, { source: 'global', summary, cwd, name, topicKey: key, params, getLoopTpl });
+    const delivery = await buildTaskDelivery(fromGlobal, { source: 'global', summary, cwd, name, topicKey: key, params, getLoopTpl, getLoopWaitMinutes });
     return {
       status: 'ok',
       key,
@@ -444,7 +469,7 @@ export async function waitForTask({
     // 只对拿到任务的结果生效——timeout/goal_expired/cancelled 的返回形状是钉死的契约，不动。
     const delivery =
       r.kind === 'task'
-        ? await buildTaskDelivery(r.task, { source: r.source || 'local', summary, cwd, name, topicKey: key, params, getLoopTpl })
+        ? await buildTaskDelivery(r.task, { source: r.source || 'local', summary, cwd, name, topicKey: key, params, getLoopTpl, getLoopWaitMinutes })
         : null;
     result =
       r.kind === 'timeout'

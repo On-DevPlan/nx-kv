@@ -9,6 +9,7 @@ import { normalizeSummary } from './store-io.js';
 import { openLocaltaskStore as openStore, topics as topicsRepo, settings as settingsRepo, txw as tx } from './repo/index.js';
 import { DEFAULT_TIMEOUT_SEC, MAX_TIMEOUT_SEC } from './repo/settings.js';
 import { foreignResolver, isPending, topicView } from './task-view.js';
+import { stripFrontmatter } from '../../shared/frontmatter.js';
 import { deleteGuard } from './deletion.js';
 import { repoContextIndex, repoCtxOf } from './repo-ctx.js';
 
@@ -131,4 +132,39 @@ export async function updateSettings({ timeoutSec, ackPrompt, deliveryTemplate, 
     blockTemplates: hasBlocks ? blockTemplates : undefined,
   });
   return settingsRepo.settingsView();
+}
+
+/** 任务标题 = 去掉 frontmatter 后的首个非空行（去前导 #，截 80 字）。 */
+function taskTitleOf(row) {
+  const body = String(stripFrontmatter(String((row && row.text) || ''))).trim();
+  const first = body.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || '';
+  const title = first.replace(/^#+\s*/, '').trim().slice(0, 80);
+  return title || `任务 #${Number(row && row.id) || ''}`;
+}
+
+/**
+ * ext 区块数据：**同一主题**里仍处于 pending 的任务（不含当前刚领走的这条）。
+ *
+ * 范围口径：只看这条目录队列（global 任务看共享池），不跨主题汇总——agent 的
+ * 「还能领多少」指它接下来会从哪个队列取活，混进别的主题会虚报余量。
+ * 统计所有活跃 pending（含暂时被依赖挡住的），与面板上的 pending 数同口径；
+ * 「待领取」是队列里还压着的活，不只是此刻 ready 的活。
+ *
+ * 现算而不缓存：一次 getTopic + 内存过滤（同主题通常几十条），而队列会被面板 /
+ * 其他进程随时写入，缓存要么过期、要么还得做跨进程失效，代价高于这次读。
+ *
+ * @param {string} key 主题 key
+ * @param {number} [excludeId] 当前正在领取的任务号（不计入余量）
+ * @returns {Promise<{topic:string,count:number,list:Array<{id:number,title:string,topic:string}>}>}
+ */
+export async function pendingQueueInfo(key, excludeId) {
+  openStore();
+  const t = topicsRepo.getTopic(String(key || ''));
+  if (!t) return { topic: '', count: 0, list: [] };
+  const exclude = Number(excludeId) || 0;
+  const topic = t.name || t.key || '';
+  const list = (t.tasks || [])
+    .filter((x) => isPending(x) && Number(x.id) !== exclude)
+    .map((x) => ({ id: Number(x.id) || 0, title: taskTitleOf(x), topic }));
+  return { topic, count: list.length, list };
 }

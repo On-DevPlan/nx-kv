@@ -108,6 +108,21 @@ export const DEFAULT_TIMECHECK_TEMPLATE = [
   '{{/if}}',
 ].join('\n');
 
+/**
+ * 默认 ext（扩展 / 队列余量）：同主题还有多少待领取任务、分别是什么标题，
+ * 并明确优先级。队列为空 → `ext` 为 null，整段不出现（{{#if ext.count}} 闸门）。
+ */
+export const DEFAULT_EXT_TEMPLATE = [
+  '{{#if ext.count}}',
+  '本队列（{{ext.topic}}）还有 {{ext.count}} 条待领取任务：',
+  '{{#each ext.list}}',
+  '  - #{{id}} {{title}}',
+  '{{/each}}',
+  '先完成当前任务，再领取下一条；不要因为后面还有活就提前收尾或分心。',
+  '{{/if}}',
+].join('\n');
+
+
 /** 默认 ack：完成之后用 localtask done 回填结果（可见、可改）。 */
 export const DEFAULT_ACK_PROMPT =
   '完成之后必须调用 nx-kv localtask done --id {{task.id}} --summary "<完成总结>" 汇报结果。';
@@ -144,6 +159,13 @@ export const BLOCK_DEFS = Object.freeze([
     label: '时间目标检查',
     desc: '任务带时间目标时出现：check 指令或目录级状态',
     defaultTemplate: DEFAULT_TIMECHECK_TEMPLATE,
+  },
+  {
+    id: 'ext',
+    tag: 'nx-kv.ext',
+    label: '待领取队列（ext）',
+    desc: '同主题还有多少待领取任务与标题；队列空时不出现',
+    defaultTemplate: DEFAULT_EXT_TEMPLATE,
   },
   {
     id: 'ack',

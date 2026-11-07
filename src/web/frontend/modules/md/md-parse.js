@@ -272,6 +272,27 @@ export const NEW_TEMPLATE_VALUES = {
 /** 空块占位（ZWSP）：join/split 可往返，渲染与编辑按空串处理 */
 export const EMPTY_BLOCK = '\u200b';
 
+/**
+ * 剥掉正文里的**幻影空块**（ZWSP 独占行），收敛剥落后留下的连续空行。
+ *
+ * 为什么要在落库边界做（2026-11-07 #92「每次打开多一段空白」）：块编辑器把
+ * 「空块」编码成 ZWSP 行落盘——编辑会话里它是回车后的工作状态（占住光标）；
+ * 但落库正文里它只会渲染成一块莫名空白——markdown 语义里空行是分隔符，
+ * **不能是「一段空白」**。保存/同步时剥掉：编辑器内不受影响，下次打开不再
+ * 出现幻影块；已有脏数据在下次保存时自愈。
+ *
+ * 纯空白块（ZWSP+空格，#21 保空格）**不是**幻影——用户敲的空格是内容，保留。
+ */
+export function stripPhantomEmptyLines(src) {
+  const text = String(src ?? '');
+  if (!text.includes(EMPTY_BLOCK)) return text;
+  const lines = text.split('\n').filter((l) => l !== EMPTY_BLOCK);
+  return lines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/^\n+/, '');
+}
+
 export function isEmptyBlock(b) {
   const s = String(b ?? '').replace(/\u200b/g, '').trim();
   return !s;

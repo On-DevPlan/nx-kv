@@ -38,6 +38,7 @@ import {
   titleFromMd,
   parseFrontmatter,
   stripFrontmatter,
+  stripPhantomEmptyLines,
   stripTitleHeading,
   withFrontmatter,
 } from '../../modules/md/md-parse.js';
@@ -644,6 +645,9 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     const fm = parseFrontmatter(bodyText);
     const hasFm = Object.keys(fm).length > 0;
     let bare = stripFrontmatter(bodyText);
+    // 幻影空块清洗（#92）：块编辑器的 ZWSP 空块不落库——落库即「一段莫名空白」，
+    // 下次打开还在、再编辑又攒一条。编辑会话内不受影响（清洗只在保存组合时跑）。
+    bare = stripPhantomEmptyLines(bare);
     if (!/^#\s+/m.test(bare)) bare = `# ${t}\n\n${bare}`;
     else bare = bare.replace(/^#\s+.+$/m, `# ${t}`);
     return hasFm ? withFrontmatter(bare, fm) : bare;

@@ -17,6 +17,7 @@ import {
   frontmatterEndOffset,
   liveBodyBlocks,
   isFrontmatterBlock,
+  stripPhantomEmptyLines,
 } from '../../src/web/frontend/modules/md/md-parse.js';
 
 const FM = '---\nboard: b_1\nproject: local/x\n---';
@@ -196,4 +197,22 @@ test('insertAttachmentSnippet live：无焦点时追加到文末', () => {
   const { body } = insertAttachmentSnippet(src, IMG, { mode: 'live', focusIndex: null });
   assert.equal(parseFrontmatter(body).board, 'b_1');
   assert.ok(body.trimEnd().endsWith(`![shot.png](${FID})`) || body.includes(FID));
+});
+
+// 幻影空块清洗（#92「每次打开多一段空白」）：块编辑器把空块编码成 ZWSP 行
+// 落盘，落库正文里它只会渲染成一块莫名空白。保存组合时剥掉；纯空白块
+// （ZWSP+空格，#21 保空格）是用户敲的内容，保留。
+const ZWSP = '​';
+test('stripPhantomEmptyLines：剥 ZWSP 独占行并收敛连续空行', () => {
+  assert.equal(stripPhantomEmptyLines(`a\n\n${ZWSP}\n\nb`), 'a\n\nb');
+  assert.equal(stripPhantomEmptyLines(`${ZWSP}\na`), 'a');
+  assert.equal(stripPhantomEmptyLines(`a\n${ZWSP}\n\n\n${ZWSP}\n\nb`), 'a\n\nb');
+  assert.equal(stripPhantomEmptyLines(`a\n\n${ZWSP}\n\nb\n\n`), 'a\n\nb\n\n', '只剥 ZWSP 行，不动尾部空行');
+});
+test('stripPhantomEmptyLines：纯空白块（ZWSP+空格）保留', () => {
+  assert.equal(stripPhantomEmptyLines(`a\n\n${ZWSP} \n\nb`), `a\n\n${ZWSP} \n\nb`);
+});
+test('stripPhantomEmptyLines：无 ZWSP 时原样返回', () => {
+  const src = 'a\n\n\n\nb';
+  assert.equal(stripPhantomEmptyLines(src), src);
 });

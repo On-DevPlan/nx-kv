@@ -2,7 +2,7 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased]
+## [0.30.0] - 2026-11-07 提示词模板体系改造（Handlebars + 每区块列表）
 
 ### Changed
 

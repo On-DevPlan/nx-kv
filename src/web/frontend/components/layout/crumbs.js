@@ -43,6 +43,12 @@ export function crumbsOf(route, ctx = {}) {
       return ['全部目录总览'];
     case 'templates':
       return ['任务模板'];
+    // 文档页（#88）：只画**归属**（仓库 / 项目组）——文档名已经在 DocHead 的
+    // 标题行里，面包屑再画一遍就是同一行重复两遍。
+    case 'doc': {
+      const owner = ctx.repoName || ctx.boardName || '';
+      return owner ? [owner] : ['文档'];
+    }
     default:
       return [];
   }
@@ -66,6 +72,11 @@ export function parentRouteOf(route) {
       return '#/overview';
     case 'overview':
       return '';
+    // 文档页（#88）：退回归属页（仓库 → #/repos；项目组 → #/group/<id>）
+    case 'doc':
+      if (route.repoKey) return '#/repos';
+      if (route.boardKey) return `#/group/${encodeURIComponent(route.boardKey)}`;
+      return '#/repos';
     default:
       return '#/overview';
   }
@@ -99,6 +110,17 @@ export function crumbCtxOf(route, rows = [], repoData = {}) {
     topic && route.task
       ? (topic.tasks || []).find((t) => String(t.id) === String(route.task))
       : null;
+  // 文档页（#88）：归属名从仓库登记 / 看板名单里查（路由自己带 boardName 时优先用它）
+  if (route.view === 'doc') {
+    const repo = (repoData.repos || []).find((r) => r.key === route.repoKey);
+    const board = (repoData.boards || []).find((b) => b.id === route.boardKey || b.key === route.boardKey);
+    return {
+      boardName: route.boardName || (board && board.name) || '',
+      dirName: '',
+      pageTitle: '',
+      repoName: (repo && repo.name) || '',
+    };
+  }
   return {
     boardName: (boardById && boardById.name) || '',
     dirName: topic ? topic.name : '',

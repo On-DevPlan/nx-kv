@@ -1,28 +1,25 @@
-// 「查看详情」弹窗（项目 / 项目组统一）：**列表视图 + 文档视图**两态，同在一个弹窗里。
+// 「查看详情」弹窗（项目 / 项目组统一）：**只有文章列表**，不是编辑器。
 //
-// #88 反馈「弹窗面板只是显示文章列表不能编辑」后的口径：
-//   ① 列表视图：只列标题（不铺 tag、不渲染正文），点一行进文档视图；
-//   ② 文档视图：复用 DocPanel 那套 md 编辑器（MdPanes），布局与任务页同构——
-//      面包屑（返回列表）/ 标题·路径 / 「更多 · 保存」，右上角保存，更多里放「文字列表」；
-//   ③ 写回：自有（rel:）写自有树；外部（path:，Obsidian vault 等）写回原文件——
-//      后端 updateDoc 会再校验一次绑定闭包，不在闭包里一律拒写。
+// #88 口径修正（2026-11-07）：编辑页就是 maincontent，不是弹窗面板。
+//   ① 弹窗只干一件事：列出当前项目 / 项目组的全部文章，只显示标题（不铺 tag、不渲染正文）；
+//   ② 点一行 → 在工作区**主内容区**打开该文档（component:'doc'，落点 maincontent），
+//      再由 DocPanel 承担编辑 / 保存 / 更多（那一页本来就是"任务页同构"的编辑器）；
+//   ③ 弹窗里的行内小动作只留管理类：改标签（＃）、摘除（×）、＋补充——都不该跳页。
 //
-// 「文字列表」= 与「进程」同一个右侧栏位（component:refs）。弹窗是模态，侧栏会被遮罩
-// 压住，所以先关弹窗再开侧栏——用户要的就是"出去看全量列表"。
+// 为什么不在这里内嵌编辑器：maincontent 是**单面板位**（areas.js），弹窗里再套一个
+// 编辑器等于两套编辑器、两套保存语义，用户点"更多 → 文字列表"还会被模态遮罩压住。
+// 唯一的数据面在 DocPanel 那边，这里只负责"选哪篇"。
 //
 // 数据面：repo → GET /api/repos/docs（main/extras/links 三段），
-// board → GET /api/boards/:id（introMain/introExtras/docLinks）。列表自带实时拉取，
+// board → GET /api/boards/:id（introMain/introExtras/docLinks）。列表实时拉取，
 // 加/摘/改标签后重拉即可见（不读父层快照——Introduction 旧实现的教训）。
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useApp } from '../../app-context.jsx';
-import { MdPanes, ModeSeg } from '../md/md-panes.jsx';
-import { renderMarkdownHtml, slugName, titleFromMd } from '../../modules/md/md-parse.js';
-import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
 import { Modal, useDialog } from '../popup/index.jsx';
 import { useToast } from '../toast/index.jsx';
-import DocHead, { groupOf } from '../doc/doc-head.jsx';
 import { useIntro, introDirFromRef } from './use-intro.js';
+import { slugName } from '../../modules/md/md-parse.js';
 import { openPanel } from '../../workspace.js';
 import './style.css';
 
@@ -120,7 +117,7 @@ const KIND_MARK = { main: '● ', scoped: '◇ ', extra: '○ ', link: '○ ' };
  * @param {object} props
  * @param {'repo'|'board'} props.kind
  * @param {object} props.owner  仓库 / 看板对象（repoData 行，含 doc / boards / key|id）
- * @param {object} [props.model] FlexLayout model（页签 / 右侧栏用）
+ * @param {object} [props.model] FlexLayout model（主内容区开文档用）
  * @param {() => void} [props.onChanged] 增删改后通知父层刷新
  * @param {() => void} props.onClose
  */
@@ -128,7 +125,7 @@ export default function DocsModal({ kind, owner, model, onClose, onChanged }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
   // model 兜底取全局：仓库页/项目组页调用时并没有把 FlexLayout model 往下传，
-  // 少这一层兜底 → 「更多 → 文字列表」只会弹「工作区不可用」，侧栏永远打不开（探针实证）。
+  // 少这一层兜底 → 点行只会提示「工作区不可用」，文档页永远开不起来（探针实证）。
   const app = useApp() || {};
   const wsModel = model || app.model;
   const intro = useIntro({ kind, owner, model: wsModel });
@@ -136,179 +133,69 @@ export default function DocsModal({ kind, owner, model, onClose, onChanged }) {
   const ownerName = owner && owner.name;
 
   const [items, setItems] = useState([]);
-  const [activeId, setActiveId] = useState(''); // 空 = 列表视图
-  const [doc, setDoc] = useState(null);
-  const [missing, setMissing] = useState(null); // { rel } 约定路径上还没有文件 → 可创建
-  const [dirty, setDirty] = useState(false);
-  const [mode, setMode] = useState('split');
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const apiRef = useRef(null);
-  const histRef = useRef(new Map()); // 撤销栈（与 DocPanel 同一套 md-history）
-
-  const active = items.find((x) => x.id === activeId) || null;
 
   // ─── 列表：实时拉取（repo / board 两个端点，结构化三段）─────────────────
   const reload = useCallback(async () => {
-    if (!ownerKey) { setItems([]); return; }
+    if (!ownerKey) { setItems([]); setLoading(false); return; }
+    setLoading(true);
     try {
       const d = kind === 'repo'
         ? await api('/api/repos/docs?id=' + encodeURIComponent(ownerKey))
         : await api('/api/boards/' + encodeURIComponent(String(ownerKey)));
       setItems(buildSections(d, owner, kind));
+      setErr('');
     } catch (e) {
       setItems([]);
       setErr(String(e.message || e));
-    }
-  }, [kind, ownerKey, owner]);
-
-  // ─── 打开一篇 → 文档视图（读正文，外部/自有同一套）──────────────────────
-  const openDoc = useCallback(async (it) => {
-    if (!it) return;
-    setErr('');
-    setMissing(null);
-    setLoading(true);
-    setActiveId(it.id);
-    try {
-      const d = await api('/api/docs/item?ref=' + encodeURIComponent(it.docId));
-      setDoc(d);
-      setDirty(false);
-    } catch {
-      if (String(it.docId).startsWith('rel:')) {
-        // 约定路径上还没有文件：给「创建」入口，不让「未写」成死链
-        setDoc(null);
-        setMissing({ rel: String(it.docId).slice(4), title: it.label });
-      } else {
-        setDoc(null);
-        setErr('文档不存在（外部路径未落盘）');
-      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [kind, ownerKey, owner]);
 
   useEffect(() => { reload(); }, [reload]);
 
-  // 选中项被摘掉/换列表后不在清单里 → 回列表视图
-  useEffect(() => {
-    if (activeId && items.length && !items.some((x) => x.id === activeId)) {
-      setActiveId('');
-      setDoc(null);
-      setDirty(false);
-    }
-  }, [activeId, items]);
-
-  // ─── 编辑（文档没有独立标题：标题 = 正文首个 # 行，同 DocPanel）──────────
-  const writable = !!(doc && doc.writable);
-
-  const onBody = (next, kindOf = 'op') => {
-    if (!doc) return;
-    pushHistory(histRef.current, activeId, { body: doc.body }, kindOf);
-    setDirty(true);
-    setDoc((d) => (d ? { ...d, body: next, title: titleFromMd(next, d.title) } : d));
-  };
-
-  const onTitle = (next, kindOf = 'typing') => {
-    if (!doc) return;
-    pushHistory(histRef.current, activeId, { body: doc.body }, kindOf);
-    setDirty(true);
-    setDoc((d) => {
-      if (!d) return d;
-      const body = /^#\s+/m.test(d.body)
-        ? d.body.replace(/^#\s+.+$/m, `# ${next || '未命名文档'}`)
-        : `# ${next || '未命名文档'}\n\n${d.body}`;
-      return { ...d, body, title: next };
+  // ─── 点一行 → 主内容区开文档页（编辑 / 保存 / 更多都在那一页）────────────
+  const openInMain = (it) => {
+    if (!it) return;
+    const m = wsModel;
+    if (!m) { toast('工作区不可用，无法打开文档'); return; }
+    openPanel(m, {
+      component: 'doc',
+      name: it.label || it.sub || it.docId,
+      config: {
+        docId: it.docId,
+        ...(kind === 'repo'
+          ? { repoKey: ownerKey }
+          : { boardKey: ownerKey, boardName: ownerName || '' }),
+      },
+      location: 'center',
     });
-  };
-
-  const undo = () => {
-    if (!doc) return;
-    const snap = undoHistory(histRef.current, activeId, { body: doc.body });
-    if (!snap) return;
-    setDoc((d) => ({ ...d, body: snap.body, title: titleFromMd(snap.body, d.title) }));
-    setDirty(true);
-  };
-
-  const redo = () => {
-    if (!doc) return;
-    const snap = redoHistory(histRef.current, activeId, { body: doc.body });
-    if (!snap) return;
-    setDoc((d) => ({ ...d, body: snap.body, title: titleFromMd(snap.body, d.title) }));
-    setDirty(true);
-  };
-
-  const save = useCallback(async () => {
-    if (!doc || !doc.writable || busy) return true;
-    setBusy(true);
-    setErr('');
-    try {
-      const res = missing
-        ? await api('/api/docs/item', { method: 'POST', body: { rel: missing.rel, body: doc.body } })
-        : await api('/api/docs/item', { method: 'PATCH', body: { ref: activeId, body: doc.body } });
-      setDoc((d) => (d ? { ...d, missing: false, writable: true, summary: res && res.summary } : d));
-      setMissing(null);
-      setDirty(false);
-      clearHistory(histRef.current, activeId);
-      toast(doc.external ? '已写回来源文件' : '已保存');
-      onChanged && onChanged();
-      return true;
-    } catch (e) {
-      setErr(String(e.message || e));
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }, [doc, busy, activeId, missing, toast, onChanged]);
-
-  const guard = (fn) => fn().catch((e) => toast(String(e.message || e)));
-
-  /** 回到列表（有改动先落盘——同 DocPanel 的"关窗前落盘"口径） */
-  const backToList = useCallback(async () => {
-    if (dirty && doc && doc.writable) {
-      const ok = await save();
-      if (!ok) return;
-    }
-    setActiveId('');
-    setDoc(null);
-    setMissing(null);
-    setErr('');
-    clearHistory(histRef.current, activeId);
-  }, [dirty, doc, save, activeId]);
-
-  const requestClose = async () => {
-    if (dirty && doc && doc.writable) await save();
+    // 文档页已经落到 maincontent，弹窗（模态）留着只会挡住它
     onClose();
   };
 
-  const createMissing = () => guard(async () => {
-    if (!missing) return;
-    const body = `# ${missing.title || '未命名文档'}\n\n`;
-    await api('/api/docs/item', { method: 'POST', body: { rel: missing.rel, body } });
-    toast(`已创建：${missing.rel}`);
-    setMissing(null);
-    const d = await api('/api/docs/item?ref=' + encodeURIComponent('rel:' + missing.rel));
-    setDoc(d);
-    setDirty(false);
-    onChanged && onChanged();
-  });
+  // ─── 管理：摘除 / 标签 / ＋补充（行内小动作，都不跳页）────────────────────
+  const guard = (fn) => fn().catch((e) => toast(String(e.message || e)));
 
-  // ─── 管理：摘除 / 标签 / ＋补充（列表视图的行内小动作）─────────────────
   const removeItem = (it) => guard(async () => {
-    const ok = await dialog({ message: `摘除「${it.label}」？${it.kind === 'main' ? '（只拆绑定，文档不删）' : '（文档不删，仅移出列表）'}`, danger: true });
+    const ok = await dialog({
+      message: `摘除「${it.label}」？${it.kind === 'main' ? '（只拆绑定，文档不删）' : '（文档不删，仅移出列表）'}`,
+      danger: true,
+    });
     if (!ok) return;
     if (kind === 'repo') {
       await api('/api/repos/docs', { method: 'DELETE', body: { id: ownerKey, index: it.removeIndex } });
     } else {
       await api('/api/docs/link', { method: 'POST', body: { board: ownerKey, remove: it.removeIndex } });
     }
-    if (activeId === it.id) { setDoc(null); setDirty(false); }
     toast('已摘除');
     reload();
     onChanged && onChanged();
   });
 
-  const editTag = (it) => (async () => {
+  const editTag = (it) => guard(async () => {
     const res = await dialog({
       title: `标签 · ${it.label}`,
       input: true,
@@ -322,10 +209,10 @@ export default function DocsModal({ kind, owner, model, onClose, onChanged }) {
     toast(tag ? `标签已设为 [${tag}]` : '标签已清除');
     reload();
     onChanged && onChanged();
-  })().catch((e) => toast(String(e.message || e)));
+  });
 
-  // ＋补充：落一篇 reference 并登记——就地刷新列表（不跳文档页签，主区切走会卸载弹窗）
-  const addDoc = () => (async () => {
+  // ＋补充：落一篇 reference 并登记——就地刷新列表（不跳文档页，免得弹窗被卸载）
+  const addDoc = () => guard(async () => {
     if (!ownerKey || !String(intro.docRef || '').startsWith('rel:')) {
       toast('当前简介无法补充（需要自有树路径）');
       return;
@@ -356,157 +243,61 @@ export default function DocsModal({ kind, owner, model, onClose, onChanged }) {
     toast(`已补充：${rel}${tag ? ` [${tag}]` : ''}`);
     await reload();
     onChanged && onChanged();
-  })().catch((e) => toast(String(e.message || e)));
-
-  // 「文字列表」= refs 右侧边栏；弹窗是模态，先关它再开侧栏（否则被遮罩压住）
-  const openRefsPanel = () => {
-    const m = wsModel;
-    if (!m) { toast('工作区不可用，无法打开右侧列表'); return; }
-    openPanel(m, {
-      component: 'refs',
-      name: '文档列表',
-      config: kind === 'repo'
-        ? { repoKey: ownerKey }
-        : { boardKey: ownerKey, boardName: ownerName || '' },
-      location: 'right',
+    // 新建完直接在主内容区打开它（用户已确认这个口径：少一次点击）
+    openInMain({
+      docId: 'rel:' + rel,
+      label: String(name).trim() || slug,
+      sub: rel,
     });
-    onClose();
-  };
+  });
 
-  const previewHtml = useMemo(() => (doc ? renderMarkdownHtml(doc.body, []) : ''), [doc]);
   const canAdd = !!String(intro.docRef || '').startsWith('rel:') && ownerKey;
   const total = items.length;
-
   const title = `文档列表 · ${ownerName || ''}${kind === 'board' ? '（项目组）' : ''}`;
 
-  // ─── 列表视图：只列标题 ────────────────────────────────────────────────
-  if (!activeId) {
-    return (
-      <Modal size="md" title={title} onClose={onClose}>
-        <div className="nx-dl">
-          <div className="nx-dl-head">
-            <span className="nx-dl-count">{total ? `${total} 篇` : '还没有文档'}</span>
-            <span className="grow" />
-            {canAdd && (
-              <button type="button" className="btn ghost sm" title="补充一篇介绍文档（reference）" onClick={addDoc}>
-                ＋ 补充
-              </button>
-            )}
-          </div>
-          {err ? <div className="rpd-err">{err}</div> : null}
-          {!err && total === 0 ? (
-            <div className="rpd-none">还没有文档 —— 点「＋ 补充」写第一篇</div>
-          ) : null}
-          <div className="nx-dl-list">
-            {items.map((it) => (
-              <div key={it.id} className="nx-dl-row-wrap">
-                <button
-                  type="button"
-                  className="nx-dl-row"
-                  title={it.sub || it.label}
-                  onClick={() => openDoc(it)}
-                >
-                  <span className="nx-dl-row-title">
-                    {KIND_MARK[it.kind] || '○ '}
-                    {it.label}
-                  </span>
-                  {it.tag ? <span className="rpd-badge">{it.tag}</span> : null}
-                </button>
-                <span className="nx-docs-modal-item-acts">
-                  {it.taggable && (
-                    <button type="button" className="nx-docs-modal-mini" title={it.tag ? `改标签（当前：${it.tag}）` : '加标签'} onClick={() => editTag(it)}>＃</button>
-                  )}
-                  {it.removable && (
-                    <button type="button" className="nx-docs-modal-mini danger" title={it.removeTip || `摘除「${it.label}」（文档不删）`} onClick={() => removeItem(it)}>×</button>
-                  )}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-        {dialogNode}
-      </Modal>
-    );
-  }
-
-  // ─── 文档视图：布局与任务页同构（面包屑 / 标题·路径 / 更多 · 保存）────────
   return (
-    <Modal size="wide" title={title} onClose={requestClose}>
-      <div className="mdw docp nx-doc-modal" data-mode={writable ? mode : 'read'}>
-        <div className="mdw-main">
-          <DocHead
-            crumb={(
-              <button type="button" className="nx-doc-back" title="返回文章列表" onClick={() => guard(backToList)}>
-                ← 列表
-              </button>
-            )}
-            title={doc ? (doc.title || (active && active.label) || '文档') : (active && active.label) || '文档'}
-            pathLabel={doc ? (doc.rel || doc.path || '') : (missing ? missing.rel : (active && active.sub) || '')}
-            dirty={dirty}
-            writable={writable}
-            external={!!(doc && doc.external)}
-            saving={busy}
-            menuGroups={[
-              groupOf('edit', '编辑', [
-                mode && {
-                  id: 'mode',
-                  label: mode === 'edit' ? '返回实时预览' : '源码模式',
-                  hint: mode === 'edit' ? '当前' : '',
-                  run: () => setMode(mode === 'edit' ? 'split' : 'edit'),
-                },
-              ]),
-              groupOf('doc', '文档', [
-                active && active.removable && {
-                  id: 'remove',
-                  label: '从列表摘除',
-                  hint: '文档不删',
-                  run: () => removeItem(active),
-                  danger: true,
-                },
-              ]),
-              groupOf('view', '查看', [
-                { id: 'list', label: '文字列表', hint: '右侧边栏', run: openRefsPanel },
-              ]),
-            ]}
-            onSave={save}
-          />
-
-          {err ? <div className="rpd-err">{err}</div> : null}
-
-          {missing ? (
-            <div className="rpd-empty">
-              这篇还没写过（{missing.rel}）
-              <button type="button" className="btn small" style={{ marginLeft: 10 }} onClick={createMissing}>创建</button>
-            </div>
-          ) : loading ? (
-            <div className="rpd-empty">载入中…</div>
-          ) : doc ? (
-            <>
-              <div className="nx-doc-bar">
-                {doc.summary ? <span className="docp-summary">摘要（回写 desc）：{doc.summary}</span> : null}
-                <span className="grow" />
-                {writable ? <ModeSeg mode={mode} onChange={setMode} /> : null}
-              </div>
-              <div className="mdw-main-body">
-                <MdPanes
-                  mode={writable ? mode : 'read'}
-                  title={doc.title}
-                  body={doc.body}
-                  previewHtml={previewHtml}
-                  onTitle={writable ? onTitle : null}
-                  onBody={writable ? onBody : null}
-                  attachments={[]}
-                  docKey={activeId}
-                  editorApiRef={apiRef}
-                  onSave={writable ? save : null}
-                  onUndo={writable ? undo : null}
-                  onRedo={writable ? redo : null}
-                />
-              </div>
-            </>
-          ) : (
-            <div className="rpd-empty">选择左侧的一篇文档开始编辑</div>
+    <Modal size="md" title={title} onClose={onClose}>
+      <div className="nx-dl">
+        <div className="nx-dl-head">
+          <span className="nx-dl-count">{total ? `${total} 篇` : '还没有文档'}</span>
+          <span className="nx-dl-hint">点标题在主内容区打开</span>
+          <span className="grow" />
+          {canAdd && (
+            <button type="button" className="btn ghost sm nx-dl-add" title="补充一篇介绍文档（reference）" onClick={addDoc}>
+              ＋ 补充
+            </button>
           )}
+        </div>
+        {err ? <div className="rpd-err">{err}</div> : null}
+        {!err && loading && total === 0 ? <div className="rpd-empty">载入中…</div> : null}
+        {!err && !loading && total === 0 ? (
+          <div className="rpd-none">还没有文档 —— 点「＋ 补充」写第一篇</div>
+        ) : null}
+        <div className="nx-dl-list">
+          {items.map((it) => (
+            <div key={it.id} className="nx-dl-row-wrap">
+              <button
+                type="button"
+                className="nx-dl-row"
+                title={`${it.sub || it.label}\n点击在主内容区打开（可编辑）`}
+                onClick={() => openInMain(it)}
+              >
+                <span className="nx-dl-row-title">
+                  {KIND_MARK[it.kind] || '○ '}
+                  {it.label}
+                </span>
+                {it.tag ? <span className="rpd-badge">{it.tag}</span> : null}
+              </button>
+              <span className="nx-docs-modal-item-acts">
+                {it.taggable && (
+                  <button type="button" className="nx-docs-modal-mini" title={it.tag ? `改标签（当前：${it.tag}）` : '加标签'} onClick={() => editTag(it)}>＃</button>
+                )}
+                {it.removable && (
+                  <button type="button" className="nx-docs-modal-mini danger" title={it.removeTip || `摘除「${it.label}」（文档不删）`} onClick={() => removeItem(it)}>×</button>
+                )}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
       {dialogNode}

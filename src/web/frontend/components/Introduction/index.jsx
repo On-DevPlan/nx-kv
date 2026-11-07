@@ -1,8 +1,9 @@
 // 简介组件（项目 / 项目组统一）：一行**文字超链接** + 「查看详情」入口。
 //
 // 页面不内嵌渲染正文，补充文档也不再以 tag/chip 外显（任务「简介文档优化」）——
-// 点「查看详情」打开 DocsModal：完整文档列表 + 复用编辑器（MdPanes）就地编辑。
-// 阅读体验（标题滚动目录、双链跳转）仍收敛在文档页签（DocPanel）里。
+// 点「查看详情」打开 DocsModal：**只有文章列表**（只显示标题）。点某一行 →
+// 在**主内容区**打开该文档（DocPanel 负责编辑 / 保存 / 更多），弹窗随即关闭。
+// #88 口径修正：编辑页就是 maincontent，弹窗不是编辑器。
 import { useState } from 'react';
 import { useIntro } from './use-intro.js';
 import DocsModal from './docs-modal.jsx';
@@ -16,7 +17,7 @@ import './style.css';
  */
 export default function Introduction({ kind, owner, model }) {
   const { label, docRef, links, openMain } = useIntro({ kind, owner, model });
-  // 「查看详情」弹窗（完整文档列表 + 就地编辑）
+  // 「查看详情」弹窗（只有文章列表；点行在主内容区开文档页）
   const [docsOpen, setDocsOpen] = useState(false);
 
   if (!owner || !docRef) return null;
@@ -33,7 +34,7 @@ export default function Introduction({ kind, owner, model }) {
         <button
           type="button"
           className="nx-intro-link-main"
-          title={`打开${label}（新页签阅读 / 编辑）`}
+          title={`打开${label}（在主内容区阅读 / 编辑）`}
           onClick={openMain}
         >
           {label}
@@ -43,7 +44,7 @@ export default function Introduction({ kind, owner, model }) {
         <button
           type="button"
           className="nx-intro-btn"
-          title={`查看${label}的完整文档列表（补充 / reference / 组内），可就地编辑`}
+          title={`查看${label}的全部文章（点标题在主内容区打开，可编辑）`}
           onClick={() => setDocsOpen(true)}
         >
           查看详情{extrasCount > 0 ? ` ${extrasCount}` : ''}

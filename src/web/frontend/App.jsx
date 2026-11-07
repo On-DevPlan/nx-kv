@@ -27,6 +27,7 @@ import { api } from './api/client.js';
 import { Icon } from './components/icons.jsx';
 import { AppContext } from './app-context.jsx';
 import { factory, routeOfPanel, panelSpecOfRoute, openSettingsPanel } from './panels.jsx';
+import { decodeDocRef } from './route-map.js';
 import {
   activeTab,
   clearStoredModel,
@@ -51,7 +52,8 @@ import 'flexlayout-react/style/light.css';
 function routeFromHash() {
   const h = (location.hash || '').replace(/^#\/?/, '');
   const [path, query] = h.split('?');
-  const task = new URLSearchParams(query || '').get('task') || '';
+  const qs = new URLSearchParams(query || '');
+  const task = qs.get('task') || '';
   if (path.startsWith('dir/')) {
     return { view: 'dir', key: decodeURIComponent(path.slice(4)), task };
   }
@@ -59,6 +61,25 @@ function routeFromHash() {
   // 深链（组任务详情路由，#86）——组页与目录页一样带任务段
   if (path.startsWith('group/')) {
     return { view: 'group', key: decodeURIComponent(path.slice(6)), task };
+  }
+  // 文档页（#88）：#/doc?ref=<docId>[&repo=<repoKey>|&board=<boardId>&name=<组名>]
+  // docId 是 `rel:` / `path:` 前缀寻址，**不要**整体 encodeURIComponent——
+  // 面板 config 要能逐字复现（openPanel 按 component+config 去重），
+  // 编码方式一变就裂成两个面板。只编码冒号后的路径段。
+  if (path === 'doc') {
+    const ref = qs.get('ref') || '';
+    const repo = qs.get('repo') || '';
+    const board = qs.get('board') || '';
+    const name = qs.get('name') || '';
+    const docId = ref ? decodeDocRef(ref) : '';
+    return {
+      view: 'doc',
+      key: docId,
+      task: '',
+      repoKey: repo,
+      boardKey: board,
+      boardName: name,
+    };
   }
   const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos', 'templates'];
   if (KNOWN.includes(path)) {
@@ -311,12 +332,27 @@ export default function App() {
     const taskRow = topic && route.task
       ? (topic.tasks || []).find((t) => String(t.id) === String(route.task))
       : null;
+    // 文档页（#88）：面板名用文档末段名**原始**字节——面板名一旦被二次解码/编码，
+    // panelSpecOfRoute 与当前面板的 name 就对不上，去重会裂。归属名供面包屑用。
+    // 注意 route.key 是 parse 过的原文（可能是「某 个库」「前端组/a b.md」）：
+    // hash 把 ref 剥出来时 URLSearchParams 已经做过一次解码，这里只管切段。
+    if (route.view === 'doc') {
+      const seg = String(route.key || '').replace(/^(rel|path):/, '').split(/[\\/]/).filter(Boolean).pop() || '';
+      const repo = (repoData.repos || []).find((r) => r.key === route.repoKey);
+      const board = (repoData.boards || []).find((b) => b.id === route.boardKey || b.key === route.boardKey);
+      return {
+        boardName: route.boardName || (board && board.name) || '',
+        dirName: '',
+        pageTitle: seg.replace(/\.md$/i, ''),
+        repoName: (repo && repo.name) || '',
+      };
+    }
     return {
       boardName: (boardById && boardById.name) || '',
       dirName: topic ? topic.name : '',
       pageTitle: taskRow ? `#${taskRow.id}` : '',
     };
-  }, [repoData.boards, rows, route.view, route.key, route.task]);
+  }, [repoData.boards, repoData.repos, rows, route.view, route.key, route.task, route.repoKey, route.boardKey, route.boardName]);
 
   // 路由 → 面板：地址指向哪块，就打开/聚焦哪块。
   // **只跟路由走**（模型用 ref）：模型一变就重跑，会按**旧路由**把面板抢回去
@@ -324,7 +360,7 @@ export default function App() {
   // 路由变化记进历史栈——面板内的面包屑「← 返回」按来处返回（见 route-history.js）
   useEffect(() => {
     pushRoute(location.hash);
-  }, [route.view, route.key, route.task]);
+  }, [route.view, route.key, route.task, route.repoKey, route.boardKey]);
 
   const modelRef = useRef(model);
   useEffect(() => { modelRef.current = model; }, [model]);
@@ -343,7 +379,7 @@ export default function App() {
     if (!m) return;
     const spec = panelSpecOfRoute(route, specCtxRef.current);
     if (!spec) return;
-    const routeSig = `${route.view}|${route.key}|${route.task}`;
+    const routeSig = `${route.view}|${route.key}|${route.task}|${route.repoKey || ''}|${route.boardKey || ''}`;
     const prev = openedRef.current;
     if (prev.route === routeSig && prev.key === specCtxKey) return;
     openedRef.current = { route: routeSig, key: specCtxKey };
@@ -398,7 +434,14 @@ export default function App() {
     // 下一轮路由 effect 会按旧路由把面板抢回去。
     const next = routeFromHash();
     setRoute((prev) => (
-      prev.view === next.view && prev.key === next.key && prev.task === next.task ? prev : next
+      prev.view === next.view
+      && prev.key === next.key
+      && prev.task === next.task
+      && prev.repoKey === next.repoKey
+      && prev.boardKey === next.boardKey
+      && prev.boardName === next.boardName
+        ? prev
+        : next
     ));
   }, [model, specCtx]);
 

@@ -15,6 +15,43 @@ import { docIdOf, peekDoc, scopeOf } from './modules/md/doc-store.js';
 /** 全局池路由的固定 key（#/global → key=__GLOBAL__） */
 export const GLOBAL_KEY = '__GLOBAL__';
 
+// 文档 docId（`rel:…` / `path:…`）与地址段的互转。两条硬约束：
+//   ① docId 带前缀冒号，整串编码会把 `:` 变成 %3A、与 panelSpecOfRoute 回填的
+//      config 对不上 → 裂面板。**冒号后的路径段才编码**，前缀原样保留。
+//   ② 返回值是"已编码"的查询串片段——交给 URLSearchParams 会**二次编码**
+//      （`/` → `%2F` → `%252F`）。所以两个方向都在本函数内完成
+//      encode/decodeURIComponent，调用方只做字符串拼接，绕开 URLSearchParams。
+export function encodeDocRef(docId) {
+  const s = String(docId || '');
+  const i = s.indexOf(':');
+  if (i < 0) return encodeURIComponent(s);
+  return s.slice(0, i) + ':' + encodeURIComponent(s.slice(i + 1));
+}
+
+export function decodeDocRef(v) {
+  const s = String(v || '');
+  const i = s.indexOf(':');
+  if (i < 0) {
+    try {
+      return decodeURIComponent(s);
+    } catch {
+      return s;
+    }
+  }
+  try {
+    return s.slice(0, i) + ':' + decodeURIComponent(s.slice(i + 1));
+  } catch {
+    return s;
+  }
+}
+
+/** 面板默认标题：docId 去掉前缀、取路径末段、去掉 `.md` */
+function docLabelOf(docId) {
+  const s = String(docId || '').replace(/^(rel|path):/, '');
+  const seg = s.split(/[\\/]/).filter(Boolean).pop() || '';
+  return seg.replace(/\.md$/i, '') || '文档';
+}
+
 /** 面板 → 路由（选中的面板变了，地址跟着变） */
 export function routeOfPanel(node) {
   if (!node) return null;
@@ -43,6 +80,20 @@ export function routeOfPanel(node) {
       return '#/overview';
     case 'templates':
       return '#/templates';
+    case 'doc': {
+      // 文档页（#88）：点文档列表的一行进来，地址要能复现同一篇。
+      // 归属（repo / board）一起带上——DocPanel 靠它决定「更多 → 文字列表」列谁的文章。
+      if (!cfg.docId) return null;
+      // 手拼查询串（不走 URLSearchParams）：encodeDocRef 已自行编码，
+      // 交给 URLSearchParams 会二次编码成 %252F，与 panelSpecOfRoute 就对不上了。
+      const parts = [`ref=${encodeDocRef(cfg.docId)}`];
+      if (cfg.repoKey) parts.push(`repo=${encodeURIComponent(cfg.repoKey)}`);
+      else if (cfg.boardKey) {
+        parts.push(`board=${encodeURIComponent(cfg.boardKey)}`);
+        if (cfg.boardName) parts.push(`name=${encodeURIComponent(cfg.boardName)}`);
+      }
+      return `#/doc?${parts.join('&')}`;
+    }
     default:
       return null; // 侧栏 / 开始页 / 进程面板不是路由目标
   }
@@ -96,6 +147,22 @@ export function panelSpecOfRoute(route, ctx = {}) {
       return { component: 'overview', name: '全部目录总览', config: {} };
     case 'templates':
       return { component: 'templates', name: '任务模板', config: {} };
+    case 'doc': {
+      // 必须与 routeOfPanel 的 doc 分支**逐字**互逆：config 少一个字段就裂面板
+      // （openPanel 按 component+config 去重）。归属字段只在有值时出现。
+      if (!route.key) return null;
+      const cfg = { docId: route.key };
+      if (route.repoKey) cfg.repoKey = route.repoKey;
+      else if (route.boardKey) {
+        cfg.boardKey = route.boardKey;
+        cfg.boardName = route.boardName || '';
+      }
+      return {
+        component: 'doc',
+        name: ctx.docTitle || ctx.pageTitle || docLabelOf(route.key),
+        config: cfg,
+      };
+    }
     default:
       return null;
   }

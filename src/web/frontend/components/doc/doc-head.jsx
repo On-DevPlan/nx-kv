@@ -1,16 +1,16 @@
-// 文档编辑器页头（DocPanel 与「查看详情」弹窗共用一份）。
+// 文档编辑器页头。**只有一处使用：maincontent 里的 DocPanel**（#88 修正后弹窗不再内嵌编辑器）。
 //
-// 布局与任务页一致（#88）：`[路径/面包屑] [标题·路径]` 一行、`[更多 · 保存]` 右对齐，
-// 下面是编辑器本体。差异只在数据面，不在排版——两处各写一份必然会漂。
+// 布局与任务页一致：`[面包屑] [标题·路径]` 一行、`[更多 · 保存]` 右对齐，
+// 下面是编辑器本体。
 //
 // 「更多」按 编辑 / 文档 / 查看 三层分组（沿用任务页 ToolBar 口径）：
 //   · 查看 → 文字列表：与「进程」同一个右侧边栏位，列本项目/项目组的全部文章
-//     （refs 面板；弹窗里点它先关弹窗再开侧栏，否则侧栏被模态遮罩压住）
+//     （refs 面板；doc 在 center、refs 在 right，互不顶替，编辑器不会被挤走）
 import { MenuPortal, openMenuAt, useMenu } from '../md/tool-bar.jsx';
 
 /**
  * @param {object} p
- * @param {string} [p.crumb]        面包屑区（弹窗里放「返回列表」；页签里由 DocPanel 自己渲染 RouteBreadcrumb）
+ * @param {string} [p.crumb]        面包屑区（DocPanel 传 <RouteBreadcrumb />）
  * @param {string} p.title          标题
  * @param {string} p.pathLabel      路径/归属行
  * @param {boolean} p.dirty         未保存

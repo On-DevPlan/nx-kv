@@ -462,7 +462,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   return (
     <div className="mdw docp" data-mode={effMode} onClick={onNavClick} ref={rootRef}>
       <div className="mdw-main">
-        {/* 页头与「查看详情」弹窗共用 DocHead（#88：两处布局必须同构）——
+        {/* 页头：#88 之后弹窗只负责"选哪篇"，编辑页只有这一个是 maincontent 里的 DocPanel。
             面包屑 / 标题·路径 / 更多 · 保存 一条线，下面是编辑器本体。 */}
         <DocHead
           crumb={<RouteBreadcrumb />}
@@ -470,7 +470,6 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
           pathLabel={doc.rel || doc.path || ''}
           dirty={dirty}
           writable={writable}
-          mode={mode}
           external={!!doc.external}
           menuGroups={[
             groupOf('edit', '编辑', [

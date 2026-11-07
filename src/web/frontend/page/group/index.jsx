@@ -18,6 +18,7 @@ import { taskLabel } from '../../components/sidebar/model.js';
 import { useApp } from '../../app-context.jsx';
 import { api } from '../../api/client.js';
 import { openPanel } from '../../workspace.js';
+import { PopMenu } from '../../components/popup/index.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
 import { useTemplates } from '../../modules/md/use-templates.js';
@@ -34,6 +35,8 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
   const [showDone, setShowDone] = useState(false);
   // 「添加成员」就地弹窗（不跳仓库管理页——组面板里就地改归属）
   const [addOpen, setAddOpen] = useState(false);
+  // 头部「更多 ▾」下拉（{x, y}）——次级动作收这里（查看列表等）
+  const [moreMenu, setMoreMenu] = useState(null);
 
   const board = useMemo(
     () => boards.find((b) => b.id === dirKey) || boards.find((b) => b.key === dirKey) || null,
@@ -253,6 +256,14 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
           >
             添加成员
           </button>
+          <button
+            className="btn small ghost"
+            title="更多操作"
+            aria-haspopup="menu"
+            onClick={(e) => setMoreMenu({ x: e.clientX, y: e.clientY })}
+          >
+            更多 ▾
+          </button>
         </div>
       </div>
 
@@ -389,6 +400,30 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
           repos={repos}
           onClose={() => setAddOpen(false)}
           onChanged={() => app.refreshRepos && app.refreshRepos()}
+        />
+      ) : null}
+
+      {/* 头部「更多 ▾」：查看列表 = 与进程一致的右侧边栏，列本组的文档 / reference */}
+      {moreMenu && board ? (
+        <PopMenu
+          x={moreMenu.x}
+          y={moreMenu.y}
+          items={[
+            {
+              label: '查看列表（文档 / reference）',
+              icon: 'list',
+              onClick: () => {
+                if (!model) return;
+                openPanel(model, {
+                  component: 'refs',
+                  name: '文档列表',
+                  config: { boardKey: dirKey, boardName: board.name },
+                  location: 'right',
+                });
+              },
+            },
+          ]}
+          onClose={() => setMoreMenu(null)}
         />
       ) : null}
 

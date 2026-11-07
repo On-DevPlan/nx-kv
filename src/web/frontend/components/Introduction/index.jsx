@@ -1,10 +1,11 @@
-// 简介组件（项目 / 项目组统一）：一行**文字超链接**，点开 DocPanel 阅读/编辑。
+// 简介组件（项目 / 项目组统一）：一行**文字超链接** + 「查看详情」入口。
 //
-// 页面不内嵌渲染正文——阅读体验（标题滚动目录、双链跳转、编辑保存）
-// 全收敛在文档页签（DocPanel）里，那边带归属上下文与滚动目录轨。
-import { useToast } from '../toast/index.jsx';
-import { useDialog } from '../popup/index.jsx';
+// 页面不内嵌渲染正文，补充文档也不再以 tag/chip 外显（任务「简介文档优化」）——
+// 点「查看详情」打开 DocsModal：完整文档列表 + 复用编辑器（MdPanes）就地编辑。
+// 阅读体验（标题滚动目录、双链跳转）仍收敛在文档页签（DocPanel）里。
+import { useState } from 'react';
 import { useIntro } from './use-intro.js';
+import DocsModal from './docs-modal.jsx';
 import './style.css';
 
 /**
@@ -14,36 +15,17 @@ import './style.css';
  * @param {object} [props.model]
  */
 export default function Introduction({ kind, owner, model }) {
-  const toast = useToast();
-  const { dialog, node: dialogNode } = useDialog();
-  const { label, docRef, links, openMain, openDoc, addRef, setLinkTag, canEdit } = useIntro({ kind, owner, model });
+  const { label, docRef, links, openMain } = useIntro({ kind, owner, model });
+  // 「查看详情」弹窗（完整文档列表 + 就地编辑）
+  const [docsOpen, setDocsOpen] = useState(false);
 
   if (!owner || !docRef) return null;
 
-  // 主篇以「介绍文档集」为准（目录 index.md 优先 → 旧单文件回落）——
-  // 路径标签显示的必须是真正的主篇那篇。
+  // 主篇以「介绍文档集」为准（目录 index.md 优先 → 旧单文件回落）
   const mainEntry = links.find((l) => l.main);
   const mainRef = mainEntry ? mainEntry.docId : docRef;
   const pathLabel = mainRef.startsWith('rel:') ? mainRef.slice(4) : mainRef;
-  const extras = links.filter((l) => !l.main);
-  const onAdd = () => addRef(dialog, toast).catch((e) => toast(String(e.message || e)));
-
-  /** 改 / 清一篇补充文档的标签（对话框留空 = 清掉） */
-  const onEditTag = (l) => {
-    (async () => {
-      const res = await dialog({
-        title: `标签 · ${l.label}`,
-        input: true,
-        placeholder: '标签（如 qa；留空 = 清掉）',
-        value: l.tag || '',
-        okText: '保存标签',
-      });
-      if (res === null) return;
-      const tag = typeof res === 'string' ? res : (res && res.tag) || '';
-      await setLinkTag(l.docId, tag, l);
-      toast(tag ? `标签已设为 [${tag}]` : '标签已清除');
-    })().catch((e) => toast(String(e.message || e)));
-  };
+  const extrasCount = links.filter((l) => !l.main).length;
 
   return (
     <div className="nx-intro">
@@ -58,51 +40,19 @@ export default function Introduction({ kind, owner, model }) {
         </button>
         <span className="nx-intro-path mono">{pathLabel}</span>
         <span className="nx-intro-spacer" />
-        {canEdit && docRef.startsWith('rel:') && (
-          <button
-            type="button"
-            className="nx-intro-btn"
-            title="补充一篇介绍文档（reference）"
-            onClick={onAdd}
-          >
-            ＋ ref
-          </button>
-        )}
+        <button
+          type="button"
+          className="nx-intro-btn"
+          title={`查看${label}的完整文档列表（补充 / reference / 组内），可就地编辑`}
+          onClick={() => setDocsOpen(true)}
+        >
+          查看详情{extrasCount > 0 ? ` ${extrasCount}` : ''}
+        </button>
       </div>
 
-      {extras.length > 0 && (
-        <div className="nx-intro-links">
-          <span className="nx-intro-links-lab">补充</span>
-          {extras.map((l) => (
-            <span key={l.docId} className="nx-intro-link-item">
-              <button
-                type="button"
-                className={'nx-intro-link' + (l.docId.startsWith('path:') ? ' ext' : '')}
-                title={l.note ? `${l.label} — ${l.note}` : l.label}
-                onClick={() => openDoc(l.docId)}
-              >
-                <span className="nx-intro-link-label">{l.label}</span>
-                {l.tag ? <span className="nx-intro-link-tag" title={`标签：${l.tag}`}>{l.tag}</span> : null}
-                {l.note ? <span className="nx-intro-link-note">{l.note}</span> : null}
-                {l.docId.startsWith('path:') ? <span className="nx-intro-link-tag">外部</span> : null}
-              </button>
-              {canEdit && !l.ref && (
-                <button
-                  type="button"
-                  className="nx-intro-tag-btn"
-                  title={l.tag ? `改标签（当前：${l.tag}）` : '加标签'}
-                  aria-label={`标签：${l.label}`}
-                  onClick={() => onEditTag(l)}
-                >
-                  ＃
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
+      {docsOpen && (
+        <DocsModal kind={kind} owner={owner} model={model} onClose={() => setDocsOpen(false)} />
       )}
-
-      {dialogNode}
     </div>
   );
 }

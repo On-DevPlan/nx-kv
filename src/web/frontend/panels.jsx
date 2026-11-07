@@ -13,6 +13,7 @@ import { openFloatingPanel } from './workspace.js';
 const DirPanel = lazy(() => import('./page/dir/index.jsx'));
 const PagePanel = lazy(() => import('./page/dir/task.jsx'));
 const ProgressPanel = lazy(() => import('./page/progress/index.jsx'));
+const RefsPanel = lazy(() => import('./page/refs/index.jsx'));
 const GroupView = lazy(() => import('./page/group/index.jsx'));
 const ReposView = lazy(() => import('./page/repos/index.jsx'));
 const TodoView = lazy(() => import('./page/cloud/index.jsx'));
@@ -122,6 +123,16 @@ export const PANELS = {
     />
   ) },
   progress: { title: '进程', render: (cfg) => <ProgressPanelView dirKey={cfg && cfg.dirKey} task={cfg && cfg.task} groupKey={cfg && cfg.groupKey} /> },
+  // 文档列表（refs）：右侧栏与进程同位（单面板位，开一块顶掉另一块）
+  // repoKey / boardKey 二选一寻址；model 透下去——点行要在工作区开文档页签
+  refs: { title: '文档列表', render: (cfg, ctx) => wrap(
+    <RefsPanel
+      repoKey={cfg && cfg.repoKey}
+      boardKey={cfg && cfg.boardKey}
+      boardName={cfg && cfg.boardName}
+      model={ctx && ctx.model}
+    />
+  ) },
   group: { title: '项目组', render: (cfg, ctx) => <GroupPanel boardId={cfg && cfg.boardId} model={ctx && ctx.model} /> },
   repos: { title: '仓库管理', render: () => wrap(<ReposView />) },
   cloud: { title: '云端总览', render: () => wrap(<TodoView />) },

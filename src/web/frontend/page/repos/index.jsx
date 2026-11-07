@@ -22,6 +22,7 @@ import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog, Modal } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
+import DocsModal from '../../components/Introduction/docs-modal.jsx';
 import { useWikiNav } from '../doc/index.jsx';
 
 const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '' };
@@ -40,74 +41,32 @@ function RepoPath({ path }) {
   );
 }
 
-// 文档 chips = 一个仓库绑定的 ref 文档列表：主篇 + 补充篇，逐篇一个 chip。
-// 每条可点开编辑器；已绑定的可摘除（×）。主篇没写过（文件还不存在）显示「未写」虚态——
-// 点进去就是空文档，直接写。主篇的 × 只在自定义绑定（repo.doc）时出现：
-// 约定路径（repo/<key>/index.md）不算绑定关系，没有可摘的东西。
-// 每片都带铅笔标记：这里的 chip 是「进入编辑」的入口，不是只读标签。
-function DocChips({ docs, mainBound = false, onOpen, onOpenLink, onRemove, onAdd, tip = '' }) {
+// 文档列入口（查看详情）：一行主篇摘要 + 数量，点击打开 DocsModal——
+// 完整文档列表（主篇 / 补充 / reference / 组内）+ 复用编辑器就地编辑。
+// 文档不再以 chip/tag 形式外显在行内（任务「简介文档优化」）；未写的主篇
+// 显示「＋ 写项目介绍」虚态，点开同样进弹窗创建。
+function DocsEntry({ docs, onOpen }) {
   const main = docs && docs.main;
   const links = (docs && docs.links) || [];
-  const mainTip = [tip, main ? `主篇：${main.rel || main.path}` : ''].filter(Boolean).join('\n');
+  const total = (main ? 1 : 0) + links.length;
   return (
-    <div className="rp-docs">
-      {main && main.title ? (
-        <span className={'rp-doc-chip main' + (main.exists ? '' : ' ghost')}>
-          <button
-            type="button"
-            className="rp-doc-chip-tx"
-            title={mainTip || '打开项目介绍文档'}
-            onClick={() => onOpen(main)}
-          >
-            <span className="rp-doc-chip-pen" aria-hidden>✎</span>
-            {main.exists ? (main.summary || main.title) : '＋ 写项目介绍'}
-          </button>
-          {mainBound && onRemove ? (
-            <button
-              type="button"
-              className="rp-doc-chip-x"
-              title="摘除主篇绑定（回退到约定路径，文档不删）"
-              onClick={() => onRemove(1)}
-            >
-              ×
-            </button>
-          ) : null}
-        </span>
-      ) : null}
-      {links.map((l, i) => (
-        <span
-          className="rp-doc-chip"
-          key={l.docId || l.title + i}
-          title={(l.tag ? `[${l.tag}] ` : '') + l.title + (l.note ? `\n${l.note}` : '')}
-        >
-          <button type="button" className="rp-doc-chip-tx" onClick={() => onOpenLink(l)}>
-            {l.tag ? <em className="rp-doc-chip-tag">{l.tag}</em> : null}
-            {l.title}
-          </button>
-          {onRemove ? (
-            <button
-              type="button"
-              className="rp-doc-chip-x"
-              title={`摘除补充篇「${l.title}」（文档不删）`}
-              onClick={() => onRemove(i + 2)}
-            >
-              ×
-            </button>
-          ) : null}
-        </span>
-      ))}
-      {onAdd ? (
-        <button type="button" className="rp-doc-chip add" title="给这个仓库再绑一篇文档" onClick={onAdd}>
-          ＋
-        </button>
-      ) : null}
-    </div>
+    <button
+      type="button"
+      className="rp-docs-entry"
+      title="查看完整文档列表（主篇 / 补充 / reference / 组内），可就地编辑"
+      onClick={onOpen}
+    >
+      <span className={'rp-docs-entry-main' + (main && main.exists ? '' : ' ghost')}>
+        {main && main.exists ? (main.summary || main.title) : '＋ 写项目介绍'}
+      </span>
+      <span className="rp-docs-entry-n">{total > 0 ? `${total} 篇 · 查看详情` : '查看详情'}</span>
+    </button>
   );
 }
 
 // 仓库行 = 仓库信息（名称 + 路径）+ 文档入口（核心）+ 参考仓库 + 所属分组 + 操作。
-// **文档列是这行的核心内容**：项目文档（主篇 + 补充篇）与每个所属分组的组内文档
-// 都逐篇成 chip，点开即编辑器、可摘除，未写的显示「＋ 写项目介绍」虚态。
+// **文档列是这行的核心内容**：一个「查看详情」入口开 DocsModal——完整文档集
+// （主篇 + 补充 + reference + 组内描述）就地看、就地编辑；行内不再铺 chip 外显。
 // 所属分组 chips 点一下 = 筛到那个组（再点取消）；归属的增删走「成员管理」弹窗。
 // 主表只放开发仓库（type=dev）——参考仓库有自己的大面板，两份名单不混。
 // 「参考」列显示**绑定到这个开发仓库**的参考仓库（多对多：一个 dev 可挂多个 ref）。
@@ -122,35 +81,9 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
         </strong>
         <span className="mono rp-name-path"><RepoPath path={r.path} /></span>
       </td>
-      {/* 文档列 = 这个仓库的全部文档入口：
-          ① 项目文档（主篇 + 补充篇）
-          ② 组内文档（每个所属分组一篇，标题前挂组名）——「仓库+组」这一层的 key 就在这里 */}
+      {/* 文档列 = 这个仓库全部文档的入口：查看详情 → DocsModal（含组内描述） */}
       <td className="rp-cell-docs">
-        <DocChips
-          docs={r.descDocs}
-          mainBound={!!r.doc}
-          onOpen={acts.doc}
-          onOpenLink={acts.docLink}
-          onRemove={(i) => acts.docRemove(r, i)}
-          onAdd={() => acts.docAdd(r)}
-        />
-        {(r.boards || []).length ? (
-          <div className="rp-docs rp-docs-scoped">
-            {r.boards.map((b) => (
-              <button
-                key={b.id}
-                type="button"
-                className="rp-doc-chip scoped"
-                title={`打开「${r.name}」在「${b.name}」里的组内描述文档\n${b.noteDocRel || ''}`}
-                onClick={() => acts.noteOf(r, b)}
-              >
-                <em className="rp-doc-chip-scope">{b.name}</em>
-                组内文档
-                <span className="rp-doc-chip-pen" aria-hidden>✎</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
+        <DocsEntry docs={r.descDocs} onOpen={() => acts.docs(r)} />
       </td>
       <td className="rp-refs">
         {refs.length ? refs.map((ref) => (
@@ -243,6 +176,8 @@ export default function ReposView() {
   const [remoteInfo, setRemoteInfo] = useState(null); // { key, name, current, remotes:[…] }
   const [remoteCheck, setRemoteCheck] = useState(null); // { url, status, detail }
   const [remoteOpen, setRemoteOpen] = useState(false); // 对齐 remote 的弹窗
+  // 查看详情（文档集弹窗）：{ kind:'repo', owner } —— 行内「查看详情」入口
+  const [docsFor, setDocsFor] = useState(null);
 
   const resetForm = () => { setForm(EMPTY_FORM); setEditing(null); setFormOpen(false); };
 
@@ -913,26 +848,9 @@ export default function ReposView() {
     edit: (r) => rowAct('edit', r),
     del: (r) => rowAct('del', r),
     remote: (r) => openRemote(r),
-    doc: (main) => {
-      if (!main || !main.docId) return;
-      if (main.exists || !main.rel) return openByDocId(main.docId);
-      return openDescDoc(main.rel, main.title);
-    },
-    // 补充篇直接开（docId 一定存在——它是从绑定记录里读出来的）
-    docLink: (l) => {
-      if (l && l.docId) openByDocId(l.docId);
-    },
-    // 摘除一篇绑定文档：index=1 拆主篇的自定义绑定（回退约定路径，文件不删），>=2 摘补充篇
-    docRemove: (r, index) => guard(async () => {
-      const links = (r.descDocs && r.descDocs.links) || [];
-      const what = index === 1
-        ? `主篇绑定（回退到约定路径，文档不删）`
-        : `补充篇「${(links[index - 2] || {}).title || ''}」（文档不删）`;
-      const ok = await dialog({ message: `摘除「${r.name}」的${what}？`, danger: true });
-      if (!ok) return;
-      await api('/api/repos/docs', { method: 'DELETE', body: { id: r.id, index } });
-      await Promise.all([loadRepos(), loadDocs()]);
-    }),
+    // 查看详情：完整文档集弹窗（主篇 / 补充 / reference / 组内，就地编辑）
+    // onChanged 回灌仓库与文档两份数据（descDocs 摘要与文档检索都靠它们）
+    docs: (r) => setDocsFor({ kind: 'repo', owner: r }),
     // 行内分组 chip = 快捷筛选（再点一次取消）
     filter: (id) => setFilter((f) => (f === id ? '' : id)),
     // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它身上（多对多的 dev 侧视角）
@@ -954,21 +872,8 @@ export default function ReposView() {
       const full = refRepos.find((x) => x.key === ref.key);
       if (full) openLinkNote(full, 'repo', devRepo.key, devRepo.name);
     },
-    // 组内描述文档（仓库 × 分组这一层的 key）：外部绑定直接开；
-    // 约定路径（group/<组>/<仓库>.md）先建空文档再开，点开即写。
-    noteOf: (r, b) => {
-      if (b.noteDocPath) return openByDocId('path:' + b.noteDocPath);
-      return openDescDoc(b.noteDocRel, `${b.name} / ${r.name} · 组内描述`);
-    },
-    // 给仓库再绑一篇文档：默认路径直接落盘 → 绑进介绍文档集 → 打开编辑器（#49 不再先弹命名框）
-    docAdd: (r) => guard(async () => {
-      const rel = nextDocRel(`repo/${r.key}/note`);
-      await api('/api/docs/item', { method: 'POST', body: { rel, body: '' } }).catch(() => {});
-      await api('/api/repos/docs', { method: 'POST', body: { id: r.id, rel } });
-      toast(`已给「${r.name}」新建并打开 ${rel}`);
-      await Promise.all([loadRepos(), loadDocs()]);
-      openByDocId('rel:' + rel);
-    }),
+    // 组内描述文档收进 DocsModal（查看详情）——行内不再单列入口。
+    // 给仓库再绑一篇文档同样在弹窗里「＋ 补充」。
   };
 
   return (
@@ -1216,13 +1121,7 @@ export default function ReposView() {
                         title={c ? (c.ok ? '检查通过' : c.issues.join('\n')) : '尚未检查'} /></td>
                       <td className="rp-ref-cell-name">
                         <strong>{r.name}</strong>
-                        <DocChips
-                          docs={r.descDocs}
-                          mainBound={!!r.doc}
-                          onOpen={rowActs.doc}
-                          onOpenLink={rowActs.docLink}
-                          onRemove={(i) => rowActs.docRemove(r, i)}
-                        />
+                        <DocsEntry docs={r.descDocs} onOpen={() => rowActs.docs(r)} />
                       </td>
                       <td className="mono rp-ref-cell-remote">
                         <Copyable text={r.remote || ''} title="点击复制远程地址">{r.remote || '（无）'}</Copyable>
@@ -1277,7 +1176,7 @@ export default function ReposView() {
               <th scope="col" style={{ width: '19%' }}>仓库</th>
               <th scope="col">
                 文档
-                <span className="rp-th-hint">项目文档 + 组内文档 · 点击进入编辑</span>
+                <span className="rp-th-hint">主篇摘要 · 查看详情打开完整文档列表</span>
               </th>
               <th scope="col" style={{ width: '16%' }}>参考仓库</th>
               <th scope="col" style={{ width: '13%' }}>分组</th>
@@ -1855,6 +1754,17 @@ export default function ReposView() {
             </div>
           </div>
         </Modal>
+      ) : null}
+
+      {/* 查看详情（文档集弹窗）：完整列表 + 复用编辑器就地编辑；
+          增删改标签后回灌仓库与文档数据（行内摘要与文档检索同步更新） */}
+      {docsFor ? (
+        <DocsModal
+          kind={docsFor.kind}
+          owner={docsFor.owner}
+          onClose={() => setDocsFor(null)}
+          onChanged={() => { loadRepos(); loadDocs(); }}
+        />
       ) : null}
 
       {dialogNode}

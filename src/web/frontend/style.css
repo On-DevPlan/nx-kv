@@ -2386,89 +2386,35 @@ footer code {
 .rp-boards-unassigned { margin-top: 10px; color: var(--mid); font-size: 12px; }
 .rp-boards-unassigned b { font-family: var(--mono); }
 
-/* 行内 ref 文档 chips（DocChips）：主篇 + 补充篇，逐篇可点开/可摘除 */
-.rp-docs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.rp-doc-chip {
-  display: inline-flex;
-  align-items: stretch;
+/* 文档列入口（DocsEntry）：主篇摘要 + 数量，点击打开查看详情弹窗（DocsModal）。
+   文档不再以 chip/tag 形式外显在行内——完整列表收进弹窗就地看、就地编辑。 */
+.rp-docs-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   max-width: 100%;
-  border: 1px solid var(--line);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 2px 4px;
   border-radius: 6px;
-  background: var(--soft);
-  overflow: hidden;
 }
-.rp-doc-chip-tx {
-  font: inherit;
-  font-size: 11.5px;
-  border: 0;
-  background: transparent;
-  color: var(--ink-2);
-  cursor: pointer;
-  padding: 2px 8px;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rp-doc-chip-tx:hover { background: var(--soft-2); color: var(--ink); }
-/* 主篇：略重一档，与补充篇拉开层级 */
-.rp-doc-chip.main { border-color: var(--soft-2); background: var(--paper); }
-.rp-doc-chip.main .rp-doc-chip-tx { font-weight: 600; color: var(--ink); }
-/* 「未写」虚态：约定路径上还没有文件，点进去就是空文档 */
-.rp-doc-chip.ghost { border-style: dashed; }
-.rp-doc-chip.ghost .rp-doc-chip-tx { color: var(--mid); font-weight: 400; font-style: italic; }
-.rp-doc-chip-tag {
-  font-style: normal;
-  font-family: var(--label);
-  font-size: 10.5px;
-  color: var(--mid);
-  margin-right: 4px;
-}
-.rp-doc-chip-x {
-  font: inherit;
-  border: 0;
-  border-left: 1px solid var(--line);
-  background: transparent;
-  color: var(--mid);
-  cursor: pointer;
-  padding: 0 6px;
+.rp-docs-entry:hover { background: var(--soft); }
+.rp-docs-entry-main {
   font-size: 12px;
-  line-height: 1;
-}
-.rp-doc-chip-x:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--paper)); }
-/* 铅笔标记：每片文档 chip 都是「进入编辑」的入口，不是只读标签 */
-.rp-doc-chip-pen { color: var(--mid); font-size: 10.5px; margin-right: 3px; }
-.rp-doc-chip-tx:hover .rp-doc-chip-pen { color: var(--ink); }
-/* 组内文档（仓库 × 分组这一层的 key）：组名做前缀，视觉上和项目文档分成两组 */
-.rp-docs-scoped { margin-top: 5px; }
-.rp-doc-chip.scoped { border-color: var(--soft-2); background: transparent; }
-.rp-doc-chip-scope {
-  font-style: normal;
-  font-family: var(--label);
-  font-size: 10.5px;
-  color: var(--mid);
-  border-right: 1px solid var(--line);
-  padding: 2px 6px;
-  max-width: 90px;
+  color: var(--ink-2);
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  margin-right: 5px;
 }
-/* 「＋」加下一篇文档 */
-.rp-doc-chip.add {
-  font: inherit;
-  font-size: 11.5px;
-  line-height: 1.6;
-  border-style: dashed;
-  background: transparent;
-  color: var(--mid);
-  padding: 1px 8px;
-  cursor: pointer;
-}
-.rp-doc-chip.add:hover { border-color: var(--mid); color: var(--ink); background: var(--soft); }
+.rp-docs-entry-main.ghost { color: var(--mid); font-style: italic; }
+.rp-docs-entry:hover .rp-docs-entry-main { color: var(--ink); }
+.rp-docs-entry-n { font-size: 10.5px; color: var(--mid); }
+.rp-docs-entry:hover .rp-docs-entry-n { color: #2F6F5E; }
 
 /* 主表：路径挪到仓库名下（原来单列一列太散） */
 .rp-name-path { display: block; font-size: 11px; margin-top: 2px; }

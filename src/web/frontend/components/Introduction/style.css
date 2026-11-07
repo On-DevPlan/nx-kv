@@ -1,4 +1,5 @@
-/* 简介行（项目 / 项目组共用）：文字超链接 + 补充文档 chips。正文不内嵌渲染。 */
+/* 简介行（项目 / 项目组共用）：文字超链接 + 「查看详情」入口。
+   补充文档 / reference 不再以 tag/chip 外显——完整列表收进 DocsModal（docs-modal.jsx）。 */
 .nx-intro{
   border:1px solid var(--line,#E4E2DC);
   border-radius:8px;
@@ -25,30 +26,14 @@
 }
 .nx-intro-btn:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
 
-.nx-intro-links{
-  display:flex;flex-wrap:wrap;align-items:center;gap:6px;
-  padding:7px 12px 8px;border-top:1px solid var(--line,#E4E2DC);
+/* ── 查看详情弹窗（DocsModal）：列表条目的行内小动作（＃标签 / ×摘除）────── */
+.nx-docs-modal-item-wrap{display:flex;align-items:stretch;gap:2px}
+.nx-docs-modal-item-wrap .rpd-item{flex:1 1 auto;min-width:0}
+.nx-docs-modal-item-acts{display:flex;align-items:center;gap:2px;flex:none}
+.nx-docs-modal-mini{
+  border:0;background:transparent;padding:2px 5px;border-radius:5px;
+  font:600 11px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4);cursor:pointer;
 }
-.nx-intro-links-lab{font-size:11px;color:var(--mid,#838A93);margin-right:2px}
-/* 链接 + ＃标签按钮成对出现；包裹层不参与视觉，只把两者绑成一组 */
-.nx-intro-link-item{display:inline-flex;align-items:center;gap:2px;min-width:0}
-.nx-intro-link{
-  display:inline-flex;align-items:center;gap:4px;max-width:100%;
-  border:1px solid var(--line,#E4E2DC);border-radius:999px;background:var(--paper,#fff);
-  padding:2px 9px;font:inherit;font-size:11.5px;color:var(--ink,#16181C);cursor:pointer;
-}
-.nx-intro-link:hover{background:var(--soft,#F1F0EC)}
-.nx-intro-link.ext{color:var(--mid,#838A93)}
-/* 长路径（自有树 rel）会撑爆窄窗口 —— 省略，完整路径看 title */
-.nx-intro-link-label{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nx-intro-link-note{color:var(--faint,#A9AEB4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px}
-.nx-intro-link-tag{font-size:10px;color:#9E4C00;background:#FBF3E4;border-radius:6px;padding:0 5px}
-/* ＃改标签：默认几乎隐形（与补充行同底），悬停链接组时浮现 */
-.nx-intro-tag-btn{
-  border:0;background:transparent;padding:1px 3px;border-radius:5px;
-  font:600 10px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4);cursor:pointer;flex:none;
-  opacity:0;transition:opacity .12s;
-}
-.nx-intro-link-item:hover .nx-intro-tag-btn{opacity:1}
-.nx-intro-tag-btn:hover{background:var(--soft,#F1F0EC);color:#9E4C00}
-.nx-intro-tag-btn:focus-visible{opacity:1;outline:1px solid var(--line,#E4E2DC)}
+.nx-docs-modal-mini:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+.nx-docs-modal-mini.danger:hover{background:#FBEDEC;color:#B4443C}
+.nx-docs-modal-acts{display:flex;justify-content:flex-end;gap:6px;padding:0 0 8px}

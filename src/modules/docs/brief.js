@@ -63,7 +63,17 @@ async function mainMeta(ref, fallbackRel, ownerName) {
 export async function docSetOf(owner, kind) {
   if (!owner) return { main: null, links: [], count: 0 };
   const mainRef = owner.doc && (owner.doc.rel || owner.doc.path) ? owner.doc : null;
-  const rel = (mainRef && mainRef.rel) || defaultMainRel(owner, kind);
+  const legacyRel = (mainRef && mainRef.rel) || defaultMainRel(owner, kind);
+  // 主篇落点与「介绍文档集」同一口径：目录 index.md 优先 → 旧单文件回落。
+  // 只看旧单文件路径的话，主篇写在目录 index.md 上的项目会永远显示「未写」
+  // （repos 行的文档入口虚态错——2026-11-07 任务「简介文档优化」实测踩到）。
+  let rel = legacyRel;
+  if (!mainRef && legacyRel) {
+    const dirRel = kind === 'board'
+      ? paths.boardDocDirRel(owner.name)
+      : paths.repoDocDirRel(owner.key || owner.repoKey || '');
+    if (dirRel && (await store.ownDocExists(`${dirRel}/index.md`))) rel = `${dirRel}/index.md`;
+  }
   const exists = !!(rel && (await store.ownDocExists(rel))) || !!(mainRef && mainRef.path);
   const meta = await mainMeta(mainRef, rel, owner.name || '');
   const main = {

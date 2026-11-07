@@ -327,6 +327,25 @@ export default function DirPanel({ dirKey }) {
       icon: 'trash',
       onClick: () => setShowDeleted(true),
     },
+    // 查看列表（任务「简介文档优化」）：与进程一致的右侧边栏，列本项目的文档 / reference
+    ...(!isGlobal && repo ? [{
+      label: '查看列表（文档 / reference）',
+      icon: 'list',
+      onClick: () => {
+        if (!model) return;
+        const rk = repo.key || (topic.repo && topic.repo.key) || '';
+        if (!rk) {
+          toast('这个项目还没有仓库标识（key），无法定位文档列表');
+          return;
+        }
+        openPanel(model, {
+          component: 'refs',
+          name: '文档列表',
+          config: { repoKey: rk },
+          location: 'right',
+        });
+      },
+    }] : []),
   ];
 
   const importMd = async (file) => {

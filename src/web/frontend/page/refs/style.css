@@ -1,0 +1,41 @@
+/* 文档列表右侧面板（refs）：与进程面板（mdw-prog-*）同一观感——窄栏、可关。 */
+.nx-refs{
+  display:flex;flex-direction:column;min-height:0;height:100%;
+  background:var(--paper,#fff);
+}
+.nx-refs-h{
+  flex:none;display:flex;align-items:center;gap:6px;
+  padding:10px 12px;border-bottom:1px solid var(--line,#E4E2DC);
+}
+.nx-refs-h .t{font-weight:600;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nx-refs-h .iconbtn{
+  border:0;background:transparent;padding:3px;border-radius:6px;cursor:pointer;
+  color:var(--mid,#838A93);display:inline-flex;align-items:center;
+}
+.nx-refs-h .iconbtn:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+.nx-refs-list{flex:1;min-height:0;overflow:auto;padding:6px}
+.nx-refs-row{
+  display:flex;flex-direction:column;align-items:stretch;gap:1px;width:100%;
+  border:0;background:transparent;font:inherit;text-align:left;cursor:pointer;
+  padding:7px 8px;border-radius:7px;
+}
+.nx-refs-row:hover{background:var(--soft,#F1F0EC)}
+.nx-refs-row.main .nx-refs-row-label{font-weight:650;color:var(--mdw-accent,#2F6F5E)}
+.nx-refs-row-label{
+  font-size:12px;color:var(--ink,#16181C);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.nx-refs-row-tag{
+  align-self:flex-start;
+  font-size:10px;color:#9E4C00;background:#FBF3E4;border-radius:6px;padding:0 5px;
+  margin-top:2px;
+}
+.nx-refs-row-sub{
+  font-size:10px;color:var(--faint,#A9AEB4);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.nx-refs-empty{padding:16px 12px;color:var(--mid,#838A93);font-size:12px;line-height:1.7;text-align:center}
+.nx-refs-note{
+  flex:none;padding:8px 12px;border-top:1px solid var(--line,#E4E2DC);
+  color:var(--faint,#A9AEB4);font-size:10.5px;line-height:1.5;
+}

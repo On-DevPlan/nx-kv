@@ -487,13 +487,30 @@ export function mainTabsetId(model) {
   return hit;
 }
 
-/** 右侧栏（并发进程面板）的 tabset */
+/** 右侧栏区域的组件（进程 / 文档列表——「右侧栏单面板位」的两个住户） */
+export const RIGHT_AREA_COMPONENTS = ['progress', 'refs'];
+
+/**
+ * 右侧栏（并发进程面板）的 tabset。
+ *
+ * 不只认 id=ts_right：FlexLayout 的 fromJson 会丢**空 tabset**——全新会话
+ * （localStorage 无存盘）走 initialLayoutJson() 直接 fromJson，ts_right 还没出生
+ * 就没了（2026-11-07 探针实锤）。此时第一块右栏面板会 dock 出一个临时 tabset，
+ * 这里按**内容**（装着 progress/refs）认回它，关闭/收起/清场才都有靶子。
+ */
 export function rightTabsetId(model) {
   if (!model) return null;
   let hit = null;
   model.visitNodes((node) => {
     if (hit) return;
-    if (node.getType() === 'tabset' && node.getId() === 'ts_right') hit = node.getId();
+    if (node.getType() === 'tabset' && node.getId() === 'ts_right') {
+      hit = node.getId();
+      return;
+    }
+    if (node.getType() === 'tabset' && typeof node.getTabNodes === 'function') {
+      const kids = node.getTabNodes() || [];
+      if (kids.some((t) => RIGHT_AREA_COMPONENTS.includes(t.getComponent()))) hit = node.getId();
+    }
   });
   return hit;
 }
@@ -527,6 +544,46 @@ export function closeRightSidebar(model) {
 }
 
 /**
+ * 右侧栏是**单面板位**：ts_right 的 enableTabStrip 恒为 false——两块面板共存时
+ * 没有页签条可切换，后开的那块会把先开的挡死（看得见却回不去）。
+ * 开新右栏前把**别的**右栏面板清掉（keepComponent 保留自己）。
+ * 与主区的单面板位（clearMainPanels）同一模型。
+ */
+export function clearRightPanels(model, keepComponent) {
+  if (!model) return 0;
+  const rightTs = rightTabsetId(model);
+  const victims = [];
+  model.visitNodes((node) => {
+    if (node.getType() !== 'tab') return;
+    if (keepComponent && node.getComponent() === keepComponent) return;
+    const parent = node.getParent && node.getParent();
+    if (!parent || parent.getId() !== rightTs) return;
+    victims.push(node.getId());
+  });
+  for (const id of victims) model.doAction(Actions.deleteTab(id));
+  return victims.length;
+}
+
+/**
+ * 关掉右侧栏里的某块面板（refs 等非进程面板用）：
+ * 删掉该 component 的全部页签；右侧栏因此**空了**才收起——
+ * 进程还开着时不连带收起（收起会把进程一起藏掉）。
+ */
+export function closeRightPanelOf(model, component) {
+  if (!model) return;
+  const victims = [];
+  model.visitNodes((node) => {
+    if (node.getType() !== 'tab') return;
+    if (node.getComponent() === component) victims.push(node.getId());
+  });
+  for (const id of victims) model.doAction(Actions.deleteTab(id));
+  const rightTs = rightTabsetId(model);
+  const ts = rightTs && model.getNodeById ? model.getNodeById(rightTs) : null;
+  const rest = ts && ts.getTabNodes ? (ts.getTabNodes() || []).length : 0;
+  if (!rest) setRightSidebarVisible(model, false);
+}
+
+/**
  * 主内容区切到某目录/任务时，若右侧进程面板已开，同步它的 dirKey/task——
  * 否则会一直显示「上一个任务」所属目录的进程（#33 验收反馈）。
  * #86：主区切到**组锚定页**（config.groupId）时进程跟着切组模式
@@ -537,6 +594,8 @@ export function syncProgressPanel(model, { dirKey, groupId, task } = {}) {
   if (!model) return;
   const tab = findComponentPanel(model, 'progress');
   if (!tab) return;
+  // 右侧栏单面板位：进程被同步（主区切了目录/任务）时，refs 这类别的右栏面板让位
+  clearRightPanels(model, 'progress');
   const prev = tab.getConfig() || {};
   const next = groupId ? { groupKey: groupId } : { dirKey: dirKey || '' };
   if (task != null && String(task) !== '') next.task = String(task);
@@ -566,7 +625,8 @@ export function clearMainPanels(model, keepId = null) {
     if (node.getType() !== 'tab') return;
     if (keepId && node.getId() === keepId) return;
     const c = node.getComponent();
-    if (c === 'sidebar' || c === 'progress') return;
+    // 右栏组件（可能在 ts_right，也可能在临时 tabset——见 rightTabsetId 注）永不当主区内容清
+    if (c === 'sidebar' || RIGHT_AREA_COMPONENTS.includes(c)) return;
     const parent = node.getParent && node.getParent();
     if (!parent || parent.getType() !== 'tabset') return;
     const tsId = parent.getId();
@@ -663,9 +723,11 @@ export function openPanel(model, spec) {
     return { tabId: existing.getId(), reused: true };
   }
 
-  // 右侧单例（进程）：config 变了（换目录）也要复用同一块，并改 config——
+  // 右侧单例（进程 / 文档列表）：config 变了（换目录）也要复用同一块，并改 config——
   // 否则会堆多份，或一直钉着上一个目录的进程（#33）。
   if (area === AREA.RIGHT && isSingleton(component)) {
+    // 单面板位：同款复用聚焦前，先把别的右栏面板清掉（没有页签条，共存=互相挡死）
+    clearRightPanels(model, component);
     const any = findComponentPanel(model, component);
     if (any) {
       model.doAction(Actions.updateNodeAttributes(any.getId(), { config }));
@@ -703,10 +765,11 @@ export function openPanel(model, spec) {
     return { tabId: created ? created.getId() : null, reused: false };
   }
 
-  // 右侧栏：并发进程面板
+  // 右侧栏：并发进程面板（单面板位——先清别的右栏面板再落新页签）
   if (area === AREA.RIGHT) {
     const rightTs = rightTabsetId(model);
     if (rightTs) {
+      clearRightPanels(model, component);
       setRightSidebarVisible(model, true);
       model.doAction(Actions.addTab(
         { type: 'tab', name, component, config },
@@ -716,6 +779,22 @@ export function openPanel(model, spec) {
         true
       ));
       const created = findOpenPanel(model, component, config);
+      return { tabId: created ? created.getId() : null, reused: false };
+    }
+    // ts_right 缺失（fromJson 丢空 tabset，见 rightTabsetId 注）：
+    // 把第一块右栏面板 dock 到**根行右缘**——FlexLayout 会为它现建 tabset，
+    // 随后 rightTabsetId 按内容认回它；落点立刻归一成 16% 宽。
+    const root = model.getRoot ? model.getRoot() : null;
+    if (root) {
+      model.doAction(Actions.addTab(
+        { type: 'tab', name, component, config },
+        root.getId(),
+        DockLocation.getByName('right'),
+        -1,
+        true
+      ));
+      const created = findOpenPanel(model, component, config);
+      setRightSidebarVisible(model, true);
       return { tabId: created ? created.getId() : null, reused: false };
     }
     // 没有右侧栏（旧布局）→ 退回主区

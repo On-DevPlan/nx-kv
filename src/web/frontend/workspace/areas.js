@@ -31,6 +31,7 @@ export const PANEL_AREA = {
   doc: AREA.MAIN,
   dag: AREA.MAIN,
   progress: AREA.RIGHT,
+  refs: AREA.RIGHT,
   settings: AREA.FLOAT,
 };
 
@@ -42,6 +43,7 @@ export const SINGLETON_PANELS = new Set([
   'overview',
   'templates',
   'progress',
+  'refs',
   'settings',
 ]);
 

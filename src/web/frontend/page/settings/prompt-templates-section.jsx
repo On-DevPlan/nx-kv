@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
+import { Button } from '../../components/button/index.jsx';
 import {
   APPEND_MODES,
   BLOCK_DEFS,
@@ -254,17 +255,16 @@ export default function PromptTemplatesSection() {
             <span className="setp-note">{activeBlock.desc}</span>
           </div>
           <div className="setp-block-card-actions">
-            <button type="button" className="btn ghost sm" disabled={busy} onClick={create}>
+            <Button variant="secondary" disabled={busy} onClick={create}>
               新建模板
-            </button>
-            <button
-              type="button"
-              className="btn ghost sm"
+            </Button>
+            <Button
+              variant="secondary"
               disabled={busy || currentBlock.active === BUILTIN_TEMPLATE_ID}
               onClick={resetBuiltin}
             >
               恢复内置
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -289,33 +289,34 @@ export default function PromptTemplatesSection() {
                   {t.builtin && <span className="setp-badge">内置</span>}
                   {on && <span className="setp-badge">启用中</span>}
                 </button>
-                <button
-                  type="button"
-                  className="btn ghost sm setp-tpl-act"
+                <Button
+                  variant="secondary"
+                  className="setp-tpl-act"
                   disabled={busy}
                   title={t.builtin ? '复制系统内置模板' : '复制该模板'}
                   onClick={() => duplicate(t.id)}
                 >
                   复制
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost sm setp-tpl-act"
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="setp-tpl-act"
                   disabled={busy || on}
                   title="设为该区块当前生效模板"
                   onClick={() => activate(t.id)}
                 >
                   启用
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost sm danger setp-tpl-act"
+                </Button>
+                <Button
+                  variant="secondary"
+                  danger
+                  className="setp-tpl-act"
                   disabled={busy || t.builtin}
                   title={t.builtin ? '系统内置模板不可删除' : '删除该模板'}
                   onClick={() => remove(t.id)}
                 >
                   删除
-                </button>
+                </Button>
               </div>
             );
           })}
@@ -360,26 +361,25 @@ export default function PromptTemplatesSection() {
 
             <div className="setp-proj-a">
               {isBuiltin ? (
-                <button type="button" className="btn ghost sm" disabled={busy} onClick={duplicate}>
+                <Button variant="secondary" disabled={busy} onClick={duplicate}>
                   复制为我的模板
-                </button>
+                </Button>
               ) : (
                 <>
-                  <button type="button" className="btn sm" disabled={busy} onClick={saveTemplate}>
+                  <Button variant="primary" disabled={busy} onClick={saveTemplate}>
                     保存
-                  </button>
-                  <button type="button" className="btn ghost sm" disabled={busy} onClick={load}>
+                  </Button>
+                  <Button variant="secondary" disabled={busy} onClick={load}>
                     撤销改动
-                  </button>
+                  </Button>
                   {editing.id !== currentBlock.active && (
-                    <button
-                      type="button"
-                      className="btn ghost sm"
+                    <Button
+                      variant="secondary"
                       disabled={busy}
                       onClick={saveAndActivate}
                     >
                       保存并启用
-                    </button>
+                    </Button>
                   )}
                 </>
               )}

@@ -5,6 +5,7 @@
 // （每个区块各自一份模板列表与生效项）。
 import { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../../components/toast/index.jsx';
+import { Button } from '../../components/button/index.jsx';
 import { useTemplates } from '../../modules/md/use-templates.js';
 import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
 import TemplateEditor from '../../components/md/template-editor.jsx';
@@ -41,9 +42,9 @@ function TemplateBodyEditor({ tpl, template }) {
         <span>模板正文 · {template.name}</span>
         <span className="grow" />
         {dirty ? <span className="muted">未保存</span> : null}
-        <button type="button" className="btn sm" disabled={busy || !dirty} onClick={save}>
+        <Button variant="primary" disabled={busy || !dirty} onClick={save}>
           保存
-        </button>
+        </Button>
       </div>
       <TemplateEditor value={draft} onChange={setDraft} onSubmit={save} rows={12} />
       {preview.trim() ? (
@@ -85,9 +86,9 @@ export default function TaskTemplatesSection({ openTemplates }) {
       <div className="setp-tpl-side">
         <div className="setp-row">
           <span>选用模板</span>
-          <button type="button" className="btn ghost sm" onClick={() => openTemplates?.()}>
+          <Button variant="secondary" onClick={() => openTemplates?.()}>
             管理…
-          </button>
+          </Button>
         </div>
         <div className="setp-tpl-list" role="listbox" aria-label="任务模板">
           {templates.map((t) => (

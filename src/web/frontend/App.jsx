@@ -102,9 +102,6 @@ const I18N = {
   Float: '浮窗',
   Dock: '停靠',
   Popout: '弹出到新窗口',
-  // 浮窗头部的两个图标与拖拽提示（原文是 flexlayout.ui.* 键名）
-  'flexlayout.ui.dock.float.to.layout': '迁回主布局（点按钮直接停靠；也可拖到面板边缘）',
-  'flexlayout.ui.popout.float.to.window': '弹出到浏览器窗口',
   'flexlayout.ui.dock.float.tabs (?)': '迁回 ? 个页签',
 };
 const translate = (msg) => I18N[msg] || msg;
@@ -246,46 +243,12 @@ export default function App() {
     return () => model.removeChangeListener(listener);
   }, [model]);
 
-  // ─── 浮窗迁回：点手柄上的「迁回」直接停靠回主布局 ───
-  // 库的迁回只有「拖手柄到根行外沿 10px × 边中点 ±50px 的隐形窄带」一条路（实测），
-  // 正中/普通边缘落点全部静默忽略——用户几乎不可能拖对。这里补点击直达：
-  // 目标 = 主布局活动 tabset（无则第一个）；方位 = 浮窗相对目标的主轴方向。
-  const dockFloatBack = useCallback((e) => {
-    if (!model) return;
-    const floats = [...model.getLayouts().entries()].filter(([, l]) => l.getType() === 'float');
-    if (!floats.length) return;
-    const winEl = e.currentTarget.closest('.flexlayout__float_window');
-    let layoutId = floats[0][0];
-    if (floats.length > 1 && winEl) {
-      // 多浮窗：按 DOM 位置匹配最近的 float layout（模型 rect 与 DOM 同为根容器相对坐标）
-      const rr = winEl.offsetParent ? winEl.offsetParent.getBoundingClientRect() : { left: 0, top: 0 };
-      const wr = winEl.getBoundingClientRect();
-      let best = null;
-      for (const [id, l] of floats) {
-        const r = l.getRect();
-        const d = Math.abs(r.x - (wr.left - rr.left)) + Math.abs(r.y - (wr.top - rr.top));
-        if (!best || d < best.d) best = { id, d };
-      }
-      layoutId = best.id;
-    }
-    const ts = model.getActiveTabset() || model.getFirstTabSet();
-    if (!ts) return;
-    let location = 'right';
-    const fr = model.getLayouts().get(layoutId)?.getRect();
-    const tr = typeof ts.getRect === 'function' ? ts.getRect() : null;
-    if (fr && tr) {
-      const dx = fr.x + fr.width / 2 - (tr.x + tr.width / 2);
-      const dy = fr.y + fr.height / 2 - (tr.y + tr.height / 2);
-      location = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'top' : 'bottom');
-    }
-    // 注意：dockFloatToLayout 的 location 要 DockLocation 实例（内部调 location.getName()），不能传字符串
-    model.doAction(Actions.dockFloatToLayout(layoutId, ts.getId(), DockLocation.getByName(location), -1));
-  }, [model]);
-
   // ─── 浮窗关闭：× 放窗口头右上角 ───
   // 库把页签的关闭按钮画在页签内——浮窗里那一行就落在标题「设置 ×」后面，看着像页面里的×，
-  // 反直觉。这里在浮窗头部（弹出/迁回图标之后）注入一颗关闭按钮，关闭浮窗里的当前页签
+  // 反直觉。这里在浮窗头部注入一颗关闭按钮，关闭浮窗里的当前页签
   // （单页签浮窗随之整体消失）；页签条里那颗由 style-v2.css 隐藏，避免出现两个×。
+  // 浮窗头部不再有「迁回主布局」「弹出到浏览器窗口」（#91：用户不需要在浮窗头上挑
+  // 落点；迁回可拖手柄到面板边缘，弹出被 tabEnablePopout=false 关闭）。
   const closeFloatTab = useCallback((e) => {
     if (!model) return;
     const floats = [...model.getLayouts().entries()].filter(([, l]) => l.getType() === 'float');
@@ -293,7 +256,7 @@ export default function App() {
     const winEl = e.currentTarget.closest('.flexlayout__float_window');
     let layoutId = floats[0][0];
     if (floats.length > 1 && winEl) {
-      // 多浮窗：按 DOM 位置匹配最近的 float layout（与 dockFloatBack 同一套算法）
+      // 多浮窗：按 DOM 位置匹配最近的 float layout（模型 rect 与 DOM 同为根容器相对坐标）
       const rr = winEl.offsetParent ? winEl.offsetParent.getBoundingClientRect() : { left: 0, top: 0 };
       const wr = winEl.getBoundingClientRect();
       let best = null;
@@ -507,33 +470,21 @@ export default function App() {
                   focusNextTabset: 'Ctrl+F6',
                   focusPreviousTabset: 'Ctrl+Shift+F6',
                 }}
-                // 浮窗头部的拖拽手柄：库里只有「拖到隐形窄带」一条迁回路，几乎没有可用性。
-                // 换成可见的图标按钮——点击直接停靠回主布局（拖拽能力保留，图标即手柄）。
-                // 关闭 × 也挂在这里：手柄在头部最右（order:3），× 紧跟在它后面 = 窗口右上角。
+                // 浮窗头部的拖拽手柄：库里原生渲染「弹出到浏览器窗口」图标（#91 关闭，
+                // tabEnablePopout=false）和「迁回主布局」按钮（#91 删除——落点由策略表决定，
+                // 迁回走拖拽）。这里借 icons.dragToDock 槽位只挂一颗「关闭浮窗」×。
                 icons={{
                   dragToDock: (
-                    <>
-                      <button
-                        type="button"
-                        className="flx-dockback"
-                        title="迁回主布局（也可拖到面板边缘停靠）"
-                        aria-label="迁回主布局"
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.stopPropagation(); dockFloatBack(e); }}
-                      >
-                        <Icon name="dock" size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        className="flx-float-close"
-                        title="关闭浮窗"
-                        aria-label="关闭浮窗"
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.stopPropagation(); closeFloatTab(e); }}
-                      >
-                        <Icon name="x" size={14} />
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      className="flx-float-close"
+                      title="关闭浮窗"
+                      aria-label="关闭浮窗"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); closeFloatTab(e); }}
+                    >
+                      <Icon name="x" size={14} />
+                    </button>
                   ),
                 }}
               />

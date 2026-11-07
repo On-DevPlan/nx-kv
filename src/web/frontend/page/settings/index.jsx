@@ -21,6 +21,7 @@ import { useApp } from '../../app-context.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
+import { Button } from '../../components/button/index.jsx';
 import { PromptItemsEditor } from '../../modules/prompts/prompt-editor.jsx';
 import PromptTemplatesSection from './prompt-templates-section.jsx';
 import TaskTemplatesSection from './task-templates-section.jsx';
@@ -114,9 +115,9 @@ function ProjectCard({ repo, docStateOf, openDoc, bindExternal, unbind }) {
           <div className="setp-proj-p mono" title={st.label}>{st.label}</div>
         </div>
         <div className="setp-proj-actions">
-          <button className="btn ghost sm" onClick={() => openDoc(repo)}>介绍</button>
-          <button className="btn ghost sm" onClick={() => bindExternal(repo)}>绑定…</button>
-          {repo.doc ? <button className="btn ghost sm" onClick={() => unbind(repo)}>解绑</button> : null}
+          <Button variant="secondary" onClick={() => openDoc(repo)}>介绍</Button>
+          <Button variant="secondary" onClick={() => bindExternal(repo)}>绑定…</Button>
+          {repo.doc ? <Button variant="secondary" onClick={() => unbind(repo)}>解绑</Button> : null}
         </div>
       </div>
       {iconOpen && (
@@ -137,24 +138,22 @@ function ProjectCard({ repo, docStateOf, openDoc, bindExternal, unbind }) {
             }}
             disabled={iconBusy}
           />
-          <button type="button" className="btn sm" disabled={iconBusy} onClick={() => saveIcon(iconValue)}>保存</button>
-          <button
-            type="button"
-            className="btn ghost sm"
+          <Button variant="primary" disabled={iconBusy} onClick={() => saveIcon(iconValue)}>保存</Button>
+          <Button
+            variant="secondary"
             disabled={iconBusy || !iconValue}
             title="清空，侧栏回退默认文件夹图标"
             onClick={() => saveIcon('')}
           >
             清除
-          </button>
-          <button
-            type="button"
-            className="btn ghost sm"
+          </Button>
+          <Button
+            variant="secondary"
             disabled={iconBusy}
             onClick={() => { setIconValue(repo.icon || ''); setIconOpen(false); }}
           >
             取消
-          </button>
+          </Button>
         </div>
       )}
       <GetLoopEditor repo={repo} />
@@ -258,14 +257,13 @@ function GetLoopEditor({ repo }) {
             <input className="setp-min" value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" />
           </div>
           <div className="setp-oneline">
-            <button
-              type="button"
-              className="btn ghost sm"
+            <Button
+              variant="secondary"
               title="填入内置默认（继续 get 直到 timeout）"
               onClick={() => setLine(GETLOOP_DEFAULT_PRESET)}
             >
               填入内置默认
-            </button>
+            </Button>
             <input
               className="setp-oneline-input"
               value={line}
@@ -275,9 +273,9 @@ function GetLoopEditor({ repo }) {
                 if (e.key === 'Enter') addLine();
               }}
             />
-            <button type="button" className="btn ghost sm" disabled={busy || !line.trim()} onClick={addLine}>
+            <Button variant="secondary" disabled={busy || !line.trim()} onClick={addLine}>
               添加
-            </button>
+            </Button>
           </div>
           {tpls.length ? (
             <PromptItemsEditor
@@ -293,8 +291,8 @@ function GetLoopEditor({ repo }) {
             <div className="setp-note">未配置模板 —— 用默认「继续调用 localtask get 直到 timeout」。</div>
           )}
           <div className="setp-proj-a">
-            <button
-              className="btn ghost sm"
+            <Button
+              variant="secondary"
               disabled={busy || tpls.length >= MAX_PROMPT_ITEMS}
               title={tpls.length >= MAX_PROMPT_ITEMS ? `最多 ${MAX_PROMPT_ITEMS} 条` : '新增一条「继续 get」指令'}
               onClick={() => {
@@ -303,8 +301,8 @@ function GetLoopEditor({ repo }) {
               }}
             >
               添加一条…
-            </button>
-            <button className="btn sm" disabled={busy} onClick={save}>保存持续 get 设置</button>
+            </Button>
+            <Button variant="primary" disabled={busy} onClick={save}>保存持续 get 设置</Button>
           </div>
         </>
       )}
@@ -406,7 +404,7 @@ export default function SettingsPanel() {
         {(prefs.hidden || []).length > 0 && (
           <div className="setp-row">
             <span>隐藏仓库 {prefs.hidden.length} 个</span>
-            <button className="btn ghost sm" onClick={() => patchPrefs({ hidden: [] })}>恢复显示</button>
+            <Button variant="secondary" onClick={() => patchPrefs({ hidden: [] })}>恢复显示</Button>
           </div>
         )}
       </>
@@ -416,8 +414,8 @@ export default function SettingsPanel() {
       <>
         <div className="setp-row">
           <span>布局</span>
-          <button
-            className="btn ghost sm"
+          <Button
+            variant="secondary"
             onClick={async () => {
               const ok = await dialog({
                 title: '重置为初始两栏',
@@ -429,7 +427,7 @@ export default function SettingsPanel() {
             }}
           >
             重置为初始两栏
-          </button>
+          </Button>
         </div>
       </>
     ),
@@ -455,9 +453,9 @@ export default function SettingsPanel() {
               placeholder="（默认 ~/.nx-kv/attachments/）"
               onChange={(e) => setCfg((c) => ({ ...c, attachmentsDir: e.target.value }))}
             />
-            <button className="btn ghost sm" disabled={!cfg || busy} onClick={() => saveSetting({ attachmentsDir: cfg.attachmentsDir })}>
+            <Button variant="secondary" disabled={!cfg || busy} onClick={() => saveSetting({ attachmentsDir: cfg.attachmentsDir })}>
               保存
-            </button>
+            </Button>
           </span>
         </div>
         <div className="setp-row">
@@ -468,9 +466,9 @@ export default function SettingsPanel() {
               placeholder="（未设置 —— clone 参考仓库前先设）"
               onChange={(e) => setCfg((c) => ({ ...c, gitRepoRoot: e.target.value }))}
             />
-            <button className="btn ghost sm" disabled={!cfg || busy} onClick={() => saveSetting({ gitRepoRoot: cfg.gitRepoRoot })}>
+            <Button variant="secondary" disabled={!cfg || busy} onClick={() => saveSetting({ gitRepoRoot: cfg.gitRepoRoot })}>
               保存
-            </button>
+            </Button>
           </span>
         </div>
         <div className="setp-row">
@@ -481,9 +479,9 @@ export default function SettingsPanel() {
               placeholder="（未设置 —— 导入布局时只登记不克隆）"
               onChange={(e) => setCfg((c) => ({ ...c, gitDevRoot: e.target.value }))}
             />
-            <button className="btn ghost sm" disabled={!cfg || busy} onClick={() => saveSetting({ gitDevRoot: cfg.gitDevRoot })}>
+            <Button variant="secondary" disabled={!cfg || busy} onClick={() => saveSetting({ gitDevRoot: cfg.gitDevRoot })}>
               保存
-            </button>
+            </Button>
           </span>
         </div>
       </>

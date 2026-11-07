@@ -23,8 +23,11 @@ const GLOBAL_ATTRS = {
   tabEnableRename: false, // 页签只读：双击不出改名输入框
   // 「弹出 / 浮窗」**按钮**一律不要（2026-11-04 #33）：面板的落点由策略表决定，
   // 用户不需要在标题栏上挑「这块面板开成什么样」。能力留着——设置面板就是
-  // float 面板（openFloatingPanel 走 popoutTab，与按钮无关）。
-  tabEnablePopout: true,
+  // float 面板（openFloatingPanel 走 popoutTab(id,'float')，门控是 tabEnableFloat，
+  // 与这里的 popout 无关）。
+  // tabEnablePopout=false（2026-11-07 #91）：浮窗头部的原生「弹出到浏览器窗口」按钮
+  // 以 getRootRow().isAllowedInWindow()（读 enablePopout）为渲染条件，这里一关即消失。
+  tabEnablePopout: false,
   tabEnablePopoutIcon: false,
   tabEnableFloat: true,
   tabEnableFloatIcon: false,
@@ -783,8 +786,13 @@ export function openPanel(model, spec) {
     }
     // ts_right 缺失（fromJson 丢空 tabset，见 rightTabsetId 注）：
     // 把第一块右栏面板 dock 到**根行右缘**——FlexLayout 会为它现建 tabset，
-    // 随后 rightTabsetId 按内容认回它；落点立刻归一成 16% 宽。
-    const root = model.getRoot ? model.getRoot() : null;
+    // 随后 rightTabsetId 按内容认回它；setRightSidebarVisible 把落点归一成
+    // 16% 宽并压掉页签条（enableTabStrip:false）。
+    // 根行要用 getRootRow()——flexlayout 0.11 的 Model 没有 getRoot()，
+    // 以前写 `model.getRoot ? model.getRoot() : null` 恒为 null，这个分支
+    // 整段死代码，首次开右栏永远掉进下面的兜底：dock 进 ts_main 右缘，
+    // 页签条和乱宽度全冒出来（2026-11-07 #91 探针实锤）。
+    const root = model.getRootRow ? model.getRootRow() : null;
     if (root) {
       model.doAction(Actions.addTab(
         { type: 'tab', name, component, config },

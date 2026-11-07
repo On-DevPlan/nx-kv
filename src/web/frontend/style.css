@@ -261,15 +261,26 @@ select {
 .goal-presets { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .goal-actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
 
-/* ---------- 按钮：圆角、浅底、无硬边框 ---------- */
+/* ---------- 按钮：圆角、浅底、无硬边框 ----------
+   全局规范（#91，2026-11-07）：文字按钮统一高 28px、字号 12px；
+   三种形态见 components/button/index.jsx（primary 实色 / secondary 浅底 /
+   DropdownButton 带箭头）。主按钮一页一个由使用约定保证，CSS 不做强制。 */
 .btn {
   font-family:inherit;
   cursor: pointer;
-  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--ink);
   color: var(--paper);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
   transition: opacity 0.15s, background 0.15s, color 0.15s;
 }
 .btn:hover { opacity: 0.86; }
@@ -282,7 +293,8 @@ select {
   border: 1px solid rgba(179, 38, 30, 0.3);
 }
 .btn.ghost.danger:hover { background: rgba(179, 38, 30, 0.07); opacity: 1; }
-.btn.small { padding: 3px 9px; font-size: 12px; border-radius: 7px; }
+/* small：同高同字号，只收水平内边距（28px/12px 与基类一致，#91 统一后不再降尺寸） */
+.btn.small { padding: 0 9px; }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .btn.danger { background: #b3261e; color: #fff; }
 
@@ -773,7 +785,7 @@ select {
 .rp-board-count { font-size: 12px; }
 .rp-ref-mounted { font-size: 13px; padding: 12px 14px; }
 .rp-ref-mounted-desc { font-size: 12.5px; }
-.rp-page .btn.small { padding: 4px 10px; font-size: 12.5px; }
+/* small 的尺寸/字号随 .btn 基类全局统一（#91），此处不再覆盖 */
 /* 行内操作按钮：ghost 原来只有一圈极淡的描边，扫表时"操作"列看起来是空的
    （按钮在，但看不出来能点）。给一层浅底，保持安静但不隐身。 */
 .rp-page .rp-acts .btn.small.ghost {

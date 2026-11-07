@@ -1,0 +1,45 @@
+/* DropdownButton 的菜单样式（#91）。尺寸规范在 style.css 的 .btn 基类，这里只管菜单。 */
+
+.nx-btn-dd { position: relative; display: inline-flex; }
+
+/* 箭头：文字右侧，随 hover 态轻微下沉示意展开 */
+.nx-btn-dd-arrow { font-size: 10px; line-height: 1; transform: translateY(0); transition: transform .12s ease; }
+.nx-btn-dd.open .nx-btn-dd-arrow { transform: translateY(1px); }
+
+/* 菜单：贴按钮左缘对齐、顶端紧贴按钮下沿（按钮高 28 → top:100% 即可） */
+.nx-btn-dd-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 132px;
+  margin-top: 4px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--paper, #fff);
+  border: 1px solid var(--line, #E4E2DC);
+  border-radius: var(--radius-sm, 7px);
+  box-shadow: 0 8px 24px rgba(20, 22, 26, .12);
+  z-index: 60;
+}
+
+.nx-btn-dd-item {
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--ink, #1F2226);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+.nx-btn-dd-item:hover { background: var(--soft, #F1F0EC); }
+
+/* 向上翻（贴底工具栏等空间不足场景，调用方加 dropUp 类） */
+.nx-btn-dd.dropUp .nx-btn-dd-menu { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 4px; }

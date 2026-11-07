@@ -61,7 +61,7 @@ test('listOwnDocs 只收 .md，跳过树不存在与非 md 杂物', async () => 
 });
 
 test('外部绑定闭包：从 store 收集全部 path 绑定，探测存在性', async () => {
-  await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha' });
+  await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', key: 'local/alpha' });
   const vault = join(dir, 'vault');
   mkdirSync(join(vault, 'docs'), { recursive: true });
   writeFileSync(join(vault, 'root.md'), '# vault');
@@ -100,7 +100,7 @@ test('外部绑定闭包：从 store 收集全部 path 绑定，探测存在性'
 });
 
 test('缺失的外部路径保留在闭包里（exists=false，导入侧标待初始化的依据）', async () => {
-  await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha' });
+  await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', key: 'local/alpha' });
   await repos.mutateStore((s) => {
     s.repos[0].doc = { path: join(dir, '不存在的vault') };
   });

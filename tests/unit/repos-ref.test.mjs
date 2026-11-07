@@ -79,21 +79,22 @@ test('登记 ref：type/remote 落库；同 remoteKey 重复登记 → conflict�
 
   await assert.rejects(
     () => repos.addRepo({ path: join(dir, 'lib-a2'), type: 'ref', remote: 'https://github.com/lib/a.git' }),
-    /已登记/
+    /已被仓库/
   );
   // dev 一样受 remoteKey 查重约束（remote 是全局唯一 key，不只是 ref 内部）
   await assert.rejects(
     () => repos.addRepo({ path: join(dir, 'lib-a3'), remote: 'https://github.com/LIB/A' }),
-    /已登记/
+    /已被仓库/
   );
   // 无 remote 的 dev 不受影响
-  const dev = await repos.addRepo({ path: join(dir, 'dev-x'), name: 'dev-x' });
+  const dev = await repos.addRepo({ path: join(dir, 'dev-x'), name: 'dev-x', key: 'local/dev-x' });
   assert.equal(dev.type, 'dev');
   assert.equal(dev.remote, '');
 });
 
 test('updateRepo：type 转回 dev 时清空 linked；remote 改成别人占用的 → conflict', async () => {
-  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
+  // 非自定义 key（由 remote 派生）才会跟随 remote 重算——这正是会撞车的场景。
+  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', remote: 'https://github.com/x/d1.git' });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   await ref.bindTarget({ id: r.id, repo: dev.id });
   assert.equal((await repos.getRepo(r.id)).linked.length, 1);
@@ -105,15 +106,15 @@ test('updateRepo：type 转回 dev 时清空 linked；remote 改成别人占用�
 
   await assert.rejects(
     () => repos.updateRepo(dev.id, { remote: 'https://github.com/x/r1.git' }),
-    /已登记/
+    /已被仓库/
   );
 });
 
 // ─── 绑定与联动清理 ─────────────────────────────────────────────────────
 
 test('bind：ref 可同时绑开发仓库与看板；一个目标可被多个 ref 绑；幂等不重复', async () => {
-  const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
-  const d2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2' });
+  const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
+  const d2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
   const b1 = await boards.createBoard({ name: 'fr' });
   const r1 = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   const r2 = await repos.addRepo({ path: join(dir, 'r2'), name: 'r2', type: 'ref', remote: 'https://github.com/x/r2.git' });
@@ -136,8 +137,8 @@ test('bind：ref 可同时绑开发仓库与看板；一个目标可被多个 re
 });
 
 test('摘绑定：--remove --repo 只摘指定；都不带 = 清空；目标不存在显式报错', async () => {
-  const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
-  const d2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2' });
+  const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
+  const d2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
   const r1 = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   await ref.bindTarget({ id: r1.id, repo: [d1.id, d2.id] });
 
@@ -153,7 +154,7 @@ test('摘绑定：--remove --repo 只摘指定；都不带 = 清空；目标不�
 });
 
 test('联动清理：删开发仓库 / 删看板 → ref 的 linked 同步摘除', async () => {
-  const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
+  const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const b1 = await boards.createBoard({ name: 'fr' });
   const r1 = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   await ref.bindTarget({ id: r1.id, repo: d1.id, board: b1.id });
@@ -170,7 +171,7 @@ test('联动清理：删开发仓库 / 删看板 → ref 的 linked 同步摘除
 // ─── checkRefs（零副作用）───────────────────────────────────────────────
 
 test('checkRefs：目录缺失 / 绑定死链 显式报 issue；正常 ref 全 ok', async () => {
-  const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
+  const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const ok = await repos.addRepo({ path: join(dir, 'ref-ok'), name: 'ref-ok', type: 'ref', remote: 'https://github.com/x/ok.git' });
   const gone = await repos.addRepo({ path: join(dir, 'ref-gone'), name: 'ref-gone', type: 'ref', remote: 'https://github.com/x/gone.git' });
   await ref.bindTarget({ id: ok.id, repo: d1.id });
@@ -211,7 +212,7 @@ if (hasGit) {
     const { saveConfig } = await import('../../src/core/config.js');
     await saveConfig({ gitRepoRoot: root });
 
-    const dev = await repos.addRepo({ path: join(dir, 'dev-host'), name: 'dev-host' });
+    const dev = await repos.addRepo({ path: join(dir, 'dev-host'), name: 'dev-host', key: 'local/dev-host' });
 
     const r = await ref.cloneRef({
       url: 'file://' + src.replace(/\\/g, '/'),
@@ -280,7 +281,7 @@ if (hasGit) {
 
 test('repoExport：以 key 为身份、不含本地路径；dev 无 remote 进 warnings；boards/links 用 key 引用', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'dev'), name: 'dev-app', desc: '主应用', remote: 'git@github.com:me/dev-app.git' });
-  const plainDev = await repos.addRepo({ path: join(dir, 'plain'), name: 'plain', desc: '无远程' });
+  const plainDev = await repos.addRepo({ path: join(dir, 'plain'), name: 'plain', key: 'local/plain', desc: '无远程' });
   const ref1 = await repos.addRepo({ path: join(dir, 'ref1'), name: 'ref1', type: 'ref', remote: 'https://github.com/lib/ref1.git', desc: '参考一' });
   const b1 = await boards.createBoard({ name: 'fr', desc: '领域一' });
   await boards.assignRepo({ id: dev.id, board: b1.id });
@@ -409,7 +410,7 @@ test('repoImport：--select 白名单只处理指定 key', async () => {
 });
 
 test('绑定是双向记录的：ref 侧写 {repo}，dev 侧写反向 {ref}；描述两侧一致；摘绑两侧同步清', async () => {
-  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
+  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
 
   await ref.bindTarget({ id: r.id, repo: [{ id: dev.name, note: '双向描述' }] });
@@ -436,7 +437,7 @@ test('绑定是双向记录的：ref 侧写 {repo}，dev 侧写反向 {ref}；�
 });
 
 test('删除开发仓库 → dev 侧反向引用与 ref 侧绑定同步清理（不留死链）', async () => {
-  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
+  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   await ref.bindTarget({ id: r.id, repo: dev.id });
   await repos.removeRepo(dev.id);
@@ -456,7 +457,7 @@ test('repoImport：坏 JSON / 缺 repos 数组 → badInput', async () => {
 // ─── 绑定描述（link note）与分层查询 ────────────────────────────────────
 
 test('setLinkNote：写/清单条绑定描述；未绑定显式报错；随摘绑一起消失', async () => {
-  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
+  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const b1 = await boards.createBoard({ name: 'grp' });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   await ref.bindTarget({ id: r.id, repo: dev.id, board: b1.id });
@@ -470,7 +471,7 @@ test('setLinkNote：写/清单条绑定描述；未绑定显式报错；随摘�
   // 同 repo + board 一起给 = 报错（一条绑定一条描述）
   await assert.rejects(() => ref.setLinkNote({ id: r.id, repo: dev.id, board: b1.id, note: 'x' }), /只能选一/);
   // 未绑定的目标 = 显式报错，不静默挂空
-  const dev2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2' });
+  const dev2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
   await assert.rejects(() => ref.setLinkNote({ id: r.id, repo: dev2.id, note: 'x' }), /未绑定/);
 
   // note 留空 = 清除；摘绑 = 描述一起消失
@@ -483,7 +484,7 @@ test('setLinkNote：写/清单条绑定描述；未绑定显式报错；随摘�
 });
 
 test('bindTarget 带 note：绑定时一并写描述；重复绑定时补写描述', async () => {
-  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
+  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   await ref.bindTarget({ id: r.id, repo: [{ id: dev.name, note: '首次绑定的描述' }] });
   let got = await repos.getRepo(r.id);
@@ -496,8 +497,8 @@ test('bindTarget 带 note：绑定时一并写描述；重复绑定时补写描�
 });
 
 test('refsForRepo 分层：第一层直接绑定，第二层按看板命名空间分组（带描述）', async () => {
-  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
-  const other = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2' });
+  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
+  const other = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
   const b1 = await boards.createBoard({ name: 'grp', desc: '领域一' });
   await boards.assignRepo({ id: dev.id, board: b1.id });
 
@@ -528,7 +529,7 @@ test('refsForRepo 分层：第一层直接绑定，第二层按看板命名空�
 });
 
 test('refsForBoard：组级绑定优先带命名空间描述', async () => {
-  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1' });
+  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const b1 = await boards.createBoard({ name: 'grp' });
   await boards.assignRepo({ id: dev.id, board: b1.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });

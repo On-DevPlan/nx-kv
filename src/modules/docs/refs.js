@@ -7,7 +7,7 @@
 // 全部写路径走 mutateStore（与登记/看板同一把锁）。repos 的 store 事务经
 // repos-bridge 动态加载（模块分层规则，见 repos-bridge.js 文件头）。
 import * as paths from './paths.js';
-import { normalizeKey } from '../../core/keys.js';
+import { normalizeKey } from '../../shared/repo-key.js';
 import { reposBridge } from './repos-bridge.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
 import { withLinkMeta } from './docref.js';

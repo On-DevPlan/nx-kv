@@ -1,25 +1,13 @@
-// key 归一化纯函数（core 层）。
+// key 归一化纯函数（core 层）：只剩文档路径 slug 相关的 localKeyOf / groupKeyOf。
 //
-// 从 repos/service.js 下沉而来（模块分层规则：跨模块共享的纯逻辑落 core）——
-// docs 模块的文档路径 slug（docSeg/boardSeg）与 repos 的 key 派生必须是同一套
-// 口径，否则「登记的是 A、文档路径算出 B」。repos/service.js 仍转发导出，
-// 模块内外的既有调用点（keys.js / ref.js / transfer.js …）全部不变。
+// normalizeKey / keyFromRemote 已下沉到 **shared/repo-key.js**：前端（添加仓库时
+// 自动填充）也要用同一份规则，而 web 不允许依赖 core。core 反过来也不允许依赖
+// shared（见 layering.test.mjs），所以 core 内不再转发这两个函数；需要它们的
+// 文件（repos/service.js、docs/paths.js、docs/refs.js）直接引 shared/repo-key.js。
 
-// 自定义 key 归一：允许中文与 `/`（像命名空间），其余空白/非法字符压成 -。
-// 空 key 不合法——key 是身份，不能空（由调用方校验）。
-export function normalizeKey(k) {
-  const s = String(k || '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[<>:"\\|?*\x00-\x1f]/g, '-')
-    .replace(/\.git$/i, '')
-    .replace(/\/{2,}/g, '/')
-    .replace(/^\/+|\/+$/g, '')
-    .slice(0, 160);
-  return s.toLowerCase();
-}
-
-// 无 remote 时的兜底 key：local/<slug>。slug 保留可读性（中文也行）。
+// 文档路径的 slug：local/<slug>（slug 保留可读性，中文也行）。
+// **不再用于给仓库生成 key**：仓库 key 必须显式给出，或由远程地址归一化而来。
+// 保留此函数是因为 docs 的路径口径（boardSeg / 旧 local/ 文档目录）仍复用它。
 export function localKeyOf(name) {
   const slug = String(name || '')
     .trim()
@@ -42,3 +30,4 @@ export function localKeyOf(name) {
 export function groupKeyOf(name) {
   return 'group/' + localKeyOf(name).slice('local/'.length);
 }
+

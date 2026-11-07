@@ -216,8 +216,8 @@ export default {
         notes: { type: 'string' },
         type: { type: 'string', enum: ['dev', 'ref'], hint: 'dev=开发仓库（默认），ref=参考仓库' },
         remote: { type: 'string', hint: '远程 git 地址（key 的来源；导出时导它）' },
-        key: { type: 'string', hint: '自定义全局唯一 key（缺省按 remote/名字派生）' },
-        'key-custom': { type: 'boolean', hint: '把 key 标记为自定义（不跟随 remote 变化）' },
+        key: { type: 'string', hint: '全局唯一 key（必填：有 remote 可省略并按 host/owner/repo 归一化；无 remote 时必须给）' },
+        'key-custom': { type: 'boolean', hint: '把 key 标记为自定义（显式给 --key 时默认就是自定义，不跟随 remote 变化）' },
       },
       run: (ctx) => service.addRepo({
         ...ctx,

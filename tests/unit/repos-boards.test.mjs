@@ -29,9 +29,9 @@ test.after?.(() => {
 });
 
 async function seed() {
-  const a = await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', desc: '第一个' });
-  const b = await repos.addRepo({ path: join(dir, 'beta'), name: 'beta', desc: '第二个' });
-  const c = await repos.addRepo({ path: join(dir, 'gamma'), name: 'gamma', desc: '第三个' });
+  const a = await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', key: 'local/alpha', desc: '第一个' });
+  const b = await repos.addRepo({ path: join(dir, 'beta'), name: 'beta', key: 'local/beta', desc: '第二个' });
+  const c = await repos.addRepo({ path: join(dir, 'gamma'), name: 'gamma', key: 'local/gamma', desc: '第三个' });
   // 看板成员按 **key** 存（key = 仓库身份，跨机稳定），id 只是本机行主键。
   // 断言与插位一律用 key。
   return { a: a.id, b: b.id, c: c.id, ak: a.key, bk: b.key, ck: c.key };
@@ -333,7 +333,7 @@ test('重绑连带改绑定：linked 指向占位 key 的一起改指，绑定�
   await boards.assignRepo({ key: 'local/ghost', board: board.id });
   const ref = await repos.addRepo({
     path: join(dir, 'refx'),
-    name: 'refx',
+    name: 'refx', key: 'local/refx',
     type: 'ref',
     linked: [{ kind: 'repo', id: 'local/ghost', note: '给 ghost 用' }],
   });
@@ -351,7 +351,7 @@ test('清理占位连带摘死链：指向被清 key 的绑定一起消失', asy
   await boards.assignRepo({ key: 'local/ghost', board: board.id });
   const ref = await repos.addRepo({
     path: join(dir, 'refy'),
-    name: 'refy',
+    name: 'refy', key: 'local/refy',
     type: 'ref',
     linked: [{ kind: 'repo', id: 'local/ghost' }],
   });

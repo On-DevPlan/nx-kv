@@ -92,7 +92,7 @@ test('软删主题：list 不可见，ensureTopic 同名恢复且旧任务还在
 });
 
 test('看板保存：组行不删后重建，ref_bindings 不被级联清掉', async () => {
-  const r = await reposService.addRepo({ path: A, name: 'alpha' });
+  const r = await reposService.addRepo({ path: A, name: 'alpha', key: 'local/alpha' });
   const b = await boards.createBoard({ name: '前端' });
   await boards.assignRepo({ id: r.id, board: b.id });
 
@@ -109,7 +109,7 @@ test('看板保存：组行不删后重建，ref_bindings 不被级联清掉', a
   );
 
   // 任意一次 repos 写都会走 mutateStore → persistStore（旧实现会把组行删掉重建）
-  await reposService.addRepo({ path: B, name: 'beta' });
+  await reposService.addRepo({ path: B, name: 'beta', key: 'local/beta' });
 
   const binding = conn.get("SELECT * FROM ref_bindings WHERE ref_id = 'ref_review'");
   assert.ok(binding, 'ref_bindings 必须存活');

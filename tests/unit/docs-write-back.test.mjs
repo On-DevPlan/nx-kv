@@ -29,7 +29,7 @@ beforeEach(async () => {
   writeFileSync(join(vault, 'sub', 'deep.md'), '# 深文档\n', 'utf8');
   writeFileSync(join(dir, 'outside.md'), '# 闭包外\n', 'utf8');
 
-  await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha' });
+  await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', key: 'local/alpha' });
   await repos.mutateStore((s) => {
     // 单文件绑定 + 目录绑定同时在场：前者精确命中，后者覆盖目录内所有 .md
     s.repos[0].doc = { path: join(vault, 'root.md') };

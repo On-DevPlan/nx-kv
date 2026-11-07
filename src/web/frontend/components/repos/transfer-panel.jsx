@@ -284,6 +284,10 @@ export default function TransferPanel({ onClose, onChanged, repos, boards }) {
               <textarea className="rp-full-input" rows={7} spellCheck="false"
                 placeholder="粘贴布局 JSON，或选一个 .json 文件"
                 value={impText} onChange={(e) => { setImpText(e.target.value); setDiff(null); }} />
+              <div className="form-hint">
+                每个仓库的 key 必须有：文件里已写 key 就直接用；只写了远程地址就按 host/owner/repo 归一化；
+                两样都没有会在差异检查阶段直接报错（不会按名字猜 key）。要改 key 就改上面的 JSON 再检查。
+              </div>
               <div className="form-acts">
                 <button className="btn" disabled={!impText.trim() || busy} onClick={doDiff}>差异检查</button>
               </div>

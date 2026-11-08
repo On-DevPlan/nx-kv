@@ -778,6 +778,40 @@ export default {
       },
     },
     {
+      id: 'localtask.closeMany',
+      cli: ['localtask', 'close-many'],
+      http: ['POST', '/api/localtasks/items/close'],
+      summary:
+        '批量收口待领取任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；已领取/已交付跳过',
+      flags: {
+        ids: { type: 'array', required: true, hint: '任务编号，逗号分隔或给多次' },
+        cwd: CWD,
+        key: KEY,
+        status: { type: 'string', hint: 'done（标为完成，默认）或 cancelled（取消）' },
+        summary: { type: 'string', hint: '完成总结（status=done 时可选）' },
+      },
+      run: (ctx) =>
+        service.closeTasks({
+          ids: ctx.ids,
+          cwd: ctx.cwd,
+          key: ctx.key,
+          status: ctx.status,
+          summary: ctx.summary,
+        }),
+      render: (d) => {
+        const done = d.closed.map((x) => `#${x.id}`).join(' ');
+        const verb = d.closeStatus === 'cancelled' ? '取消' : '标为完成';
+        const head = d.count
+          ? `已在主题「${d.name}」${verb} ${d.count} 条待领取任务（${done}）`
+          : `主题「${d.name}」没有可${verb}的待领取任务`;
+        const skip = d.skipped.length
+          ? `；跳过 ${d.skipped.map((x) => `#${x.id}(${x.status})`).join(' ')}`
+          : '';
+        const miss = d.missing.length ? `；未找到 #${d.missing.join(' #')}` : '';
+        return head + skip + miss;
+      },
+    },
+    {
       id: 'localtask.task.restore',
       cli: ['localtask', 'task', 'restore'],
       http: ['POST', '/api/localtasks/tasks/restore'],

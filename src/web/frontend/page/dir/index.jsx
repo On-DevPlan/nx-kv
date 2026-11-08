@@ -327,6 +327,27 @@ export default function DirPanel({ dirKey }) {
     });
   };
 
+  const batchCompleteTasks = async (ids) => {
+    const list = (ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+    if (!list.length) return false;
+    const ok = await dialog({
+      title: `把选中的 ${list.length} 条待领取任务标为完成`,
+      message: '只处理待领取任务；已领取/已交付/已取消会跳过。完成会补一条完成记录，原文留档。',
+      okText: '标为完成',
+    });
+    if (!ok) return false;
+    return guard(async () => {
+      const res = await api('/api/localtasks/items/close', {
+        method: 'POST',
+        body: { ...scopeBody(), ids: list, status: 'done' },
+      });
+      const skipped = res?.skipped?.length || 0;
+      toast(`已标为完成 ${res?.count ?? 0} 条任务${skipped ? `，跳过 ${skipped} 条` : ''}`);
+      refreshLocal();
+      return true;
+    });
+  };
+
   // ─── 已删除（软删回收站）──────────────────────────────────────────
   // 软删的行仍在 topic.tasks 里（带 deletedAt），看板/列表把它们过滤掉了，
   // 这里捞出来给「更多 → 已删除任务」面板。倒序：刚删的在上。
@@ -444,6 +465,7 @@ export default function DirPanel({ dirKey }) {
           onDeleteTask={delTask}
           onDeleteTasks={batchDeleteTasks}
           onCancelTasks={batchCancelTasks}
+          onCompleteTasks={batchCompleteTasks}
           onReopenTask={reopenTask}
           onTplMenu={(e) => setTplMenu({ x: e.clientX, y: e.clientY })}
           onImport={() => fileMdRef.current?.click()}

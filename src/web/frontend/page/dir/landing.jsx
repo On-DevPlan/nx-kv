@@ -36,6 +36,7 @@ export default function Landing({
   onDeleteTask,
   onDeleteTasks,     // (ids) 批量删除选中任务
   onCancelTasks,     // (ids) 批量取消选中待领取任务
+  onCompleteTasks,   // (ids) 批量把选中待领取任务标为完成
   onReopenTask,
   onTplMenu,
   onImport,
@@ -68,8 +69,8 @@ export default function Landing({
   const pageIds = tasks.map((t) => Number(t.id));
   const allPicked = pageIds.length > 0 && pageIds.every((id) => picked.has(id));
   const pickedTasks = tasks.filter((t) => picked.has(Number(t.id)));
-  // 取消只对待领取生效；已领取/已交付/已取消由后端跳过
-  const cancellableTasks = pickedTasks.filter(
+  // 取消/标为完成只对待领取生效；已领取/已交付/已取消由后端跳过
+  const closableTasks = pickedTasks.filter(
     (t) => t.status === 'pending' && !t.migratedTo && !t.deletedAt
   );
   const togglePick = (id) => {
@@ -91,7 +92,8 @@ export default function Landing({
   };
   const runBatch = async (kind) => {
     const ids = [...picked];
-    const fn = kind === 'cancel' ? onCancelTasks : onDeleteTasks;
+    const fn =
+      kind === 'cancel' ? onCancelTasks : kind === 'complete' ? onCompleteTasks : onDeleteTasks;
     if (!ids.length || !fn) return;
     const ok = await fn(ids);
     if (ok) setPicked(new Set());
@@ -212,19 +214,34 @@ export default function Landing({
       {pickedTasks.length > 0 && (
         <div className="mdw-land-batch">
           <span className="mdw-land-batch-count">已选 {pickedTasks.length} 条</span>
+          {onCompleteTasks && (
+            <button
+              type="button"
+              className="btn ghost sm"
+              disabled={!closableTasks.length}
+              title={
+                closableTasks.length
+                  ? '把选中的待领取任务标为已完成（补一条完成记录，原文留档）'
+                  : '只有待领取任务可以直接标为完成'
+              }
+              onClick={() => runBatch('complete')}
+            >
+              标为完成选中{closableTasks.length ? ` (${closableTasks.length})` : ''}
+            </button>
+          )}
           {onCancelTasks && (
             <button
               type="button"
               className="btn ghost sm"
-              disabled={!cancellableTasks.length}
+              disabled={!closableTasks.length}
               title={
-                cancellableTasks.length
+                closableTasks.length
                   ? '把选中的待领取任务标为已取消（终态，原文留档）'
                   : '只有待领取任务可以取消'
               }
               onClick={() => runBatch('cancel')}
             >
-              取消选中{cancellableTasks.length ? ` (${cancellableTasks.length})` : ''}
+              取消选中{closableTasks.length ? ` (${closableTasks.length})` : ''}
             </button>
           )}
           {onDeleteTasks && (

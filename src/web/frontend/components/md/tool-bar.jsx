@@ -66,6 +66,8 @@ export default function ToolBar({
   onImport,
   onClone,
   onFork,
+  onComplete,
+  onCancelTask,
   onMark,
   onDraft,
   onDelete,
@@ -114,6 +116,9 @@ export default function ToolBar({
         onClone && { id: 'clone', label: '克隆任务', run: onClone },
         // Fork（#67）：同样复制正文，但挂到源任务链下——评论/反馈链不丢
         onFork && { id: 'fork', label: 'Fork 任务', run: onFork },
+        // #75：待领取任务用户自己已经做完/不做了——直接收口，不要求先领取
+        onComplete && { id: 'complete', label: '标为完成', run: onComplete },
+        onCancelTask && { id: 'cancel-task', label: '取消任务', run: onCancelTask, danger: true },
         showMark && { id: 'mark', label: '评论', run: onMark },
         onDelete && { id: 'delete', label: '删除', run: onDelete, danger: true },
       ].filter(Boolean),

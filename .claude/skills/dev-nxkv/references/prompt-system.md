@@ -40,8 +40,14 @@
 - `task`：`{ id, text }`，`text` 是正文原文。
 - `repo`：`{ name, key, intro, introPath, docs[], docCount }`，无项目介绍时为 `null`。
 - `group`：`{ name, key, desc, intro, introPath, note, position, peers[], docs[], peerCount, docCount }`；空壳组（只有成员名单、全员无描述）会被过滤成 `null`。`groups` 是多组概览数组（`name/desc/path`）。
-- `attach`：`{ count, list[], sync }`；`list` 元素含 `kindLabel/name/localPath/id/isImage/synced`。
-  `sync` 是结构化对象（`dir/downloaded/skipped/failureCount`），未跑同步为 `null`。
+- `attach`：`{ count, inlineCount, areaCount, hasInline, hasArea, needsSyncCount, list[], syncSummary }`。
+  - 通用条目字段：`kind`（`file/url/task/ref`）、`kindLabel`、`name`、`size`、`sizeText`、`mime`、`storage`、`role`、`origin`（`inline/area`）、`originLabel`、`usage`（取用说明，含命令）、`cmd`、`locator`、`needsSync`。
+  - 类型子对象（只有对应类型才出现）：
+    - `file`：`localPath` / `fileId` / `exists` / `syncCmd`（未同步时才给同步命令）
+    - `url`：`href` / `host`
+    - `task`：`taskId` / `topicKey` / `seq` / `title` / `status` / `showCmd` / `address`（`topicKey:seq`）/ `resolved` / `purged`
+    - `ref`：`refId` / `title` / `relPath` / `readCmd`
+  - `syncSummary` 是本次批量同步汇总（`dir/downloaded/skipped/failureCount/text`），未跑同步为 `null`；**单条可达性看它自己的 `file.localPath` / `file.exists`**，不要用 `syncSummary` 推断某条已同步。
 - `goal`：时间目标字段，另有 `check`（任务级 check 指令）与 `statusLine`（队列级状态行）。
 - `ext`：同主题待领取队列 `{ count, list[] }`（元素含 `id/title/topic`），队列空时为 `null`。
 - `getloop`：项目级「持续 get」渲染后的 `{ text, waitMinutes }`，未开启为 `null`；指令模板自身也可用 `{{getloop.waitMinutes}}`。

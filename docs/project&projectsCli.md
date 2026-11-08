@@ -350,8 +350,11 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
 - **读侧**：`get` / `wait` / `show` 交付时解析正文引用，**先查本机附件仓**（命中
   直接给绝对路径，零网络），未命中的 id（云端清单附件引用）才按本机设置
   「读任务时自动下载附件」走云端镜像（与 `file sync` 同一台账）。载荷带
-  `task.attachments`（id / kind / name / localPath / synced / storage），
-  instruction 追加〔附件〕段告诉 agent 去哪读文件。
+  `task.attachments`（通用：`kind` / `kindLabel` / `name` / `size` / `mime` /
+  `storage` / `role` / `origin`；类型子对象：`file`（localPath/fileId/exists/syncCmd）、
+  `url`（href/host）、`task`（taskId/topicKey/seq/title/status/showCmd/address）、
+  `ref`（refId/title/relPath/readCmd）），instruction 的〔附件〕段固定三段：
+  总数（正文内嵌 X · 附件区 Y）/ 逐条清单 / 取用方式（按类型给命令）。
 - **预览**：`/api/file/content/:fileId` 本机仓优先——本地任务的贴图面板直读
   本机文件（离线可预览），未命中再透传云端出图（云端清单附件行为不变）。
 - **fail-open**：附件能不能拿到跟任务能不能交付是两件事——同步失败不阻断领取

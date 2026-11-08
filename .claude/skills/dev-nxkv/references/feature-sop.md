@@ -40,7 +40,7 @@ node bin/cli.mjs db verify
 
 | 数据形态 | 放哪 | 规则 |
 |---|---|---|
-| 有查询条件、需要外键/事务/唯一约束 | SQLite 新表或新列 | 走新 migration；`001.sql` 不改 |
+| 有查询条件、需要外键/事务/唯一约束 | SQLite 新表或新列 | 走新 migration（`vN+1.sql`）；已发布快照不改 |
 | 工单/队列级的小旋钮、提示词配置 | `settings` 表 `lt.*` | k/v，JSON 值；不要加宽表 |
 | 用户偏好（附件目录、克隆根等） | `settings` 表 `app.*` | 凭据仍只进 `config.json` |
 | 附属、永远不进 WHERE 的展示信息 | `<table>.ext` JSON | 键名 `ext_` 前缀；需要过滤的字段不许进 ext |

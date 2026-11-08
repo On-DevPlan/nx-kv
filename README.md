@@ -135,7 +135,8 @@ nx-kv setting set --autoSyncAttachments=false  # 关（默认）
 
 面板里对应「清单」页工具栏的「附件自动下载」勾选。本地文件名优先取正文里的说明文字
 （`![设计稿.png](id)` → `设计稿.png`），否则退回 fileId 并补上扩展名；
-同目录 `manifest.json` 记「fileId → 文件名 + 大小」，所以二次同步会跳过未变更的。
+同步台账已存入本地 SQLite（存储版本 v2）：旧 `manifest.json` 在升级时迁入并归档，
+运行时只以库为真相，不再读写 manifest。
 
 单独的命令参考见 `nx-kv help file` 与 skill 的 `todo-commands`。
 
@@ -160,6 +161,19 @@ nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --json
 `localtask topic remove`（删整个主题）与 `localtask topic remove-many`
 （批量删除，`--keys/--cwds/--all`；等待中需 `--force`），面板上对应「本地任务」页。
 纯本机协调、存本地文件（`~/.nx-kv/localtasks.json`），**不需登录后端**。
+
+**任务附件（v2）**：任务与文档共用一套资源关系（`attachments` + `task_attach` /
+`ref_attach`），支持四类：
+
+```bash
+nx-kv localtask attach --id 3 --path "D:\doc\需求.docx"        # 本机文件（落本机附件仓）
+nx-kv localtask attach --id 3 --url https://example.com/design # 外部链接
+nx-kv localtask attach --id 3 --task 7                          # 同主题另一条任务（引用，不是副本）
+nx-kv localtask attach --id 3 --ref board/quickget.md           # 文档库 md
+nx-kv localtask attach --id 3 --path "D:\doc\需求.docx" --no-embed  # 只挂附件区，不改正文
+nx-kv localtask attachments --id 3                               # 清单（正文内嵌 / 附件区）
+nx-kv localtask detach --id 3 --attachment <id>                  # 解除关系，资源进孤儿池
+```
 
 **全局共享池（工作窃取）**：除按目录划分的本地队列外，还有一个跨目录共享的
 「全局任务池」。本地队列取不到任务时，任何目录的 `wait` 都自动去全局领

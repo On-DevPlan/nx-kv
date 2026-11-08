@@ -70,7 +70,7 @@ node bin/cli.mjs ...
 
 ## 5. 数据库改动验证
 
-1. 改 schema：新增 `src/core/db/schema/00N_*.sql`，在 `migrator.js` 登记版本，**不改 `001.sql` 的已发布语义**。
+1. 改 schema：新增 `src/core/db/migrations/vN+1.sql`，在 `migrations/index.js` 登记边，**不改已发布快照的语义**。
 2. 先演练：
 
 ```powershell

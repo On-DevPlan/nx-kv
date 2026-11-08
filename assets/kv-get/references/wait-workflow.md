@@ -100,6 +100,11 @@ wait 必带一句当前现状总结（≤2000 字，连续空白会折叠为单�
   `{{var}}` 取值、`{{#if x}}…{{else}}…{{/if}}` 条件、`{{#each list}}…{{/each}}` 循环。
   列表类变量是**结构化数组**（`group.peers` / `repo.docs` / `group.docs` / `attach.list` /
   `groups`），模板用循环组织，服务端不预拼多行文本。
+  `attach.list` 每条按 `kind` 分型：`file`（`file.localPath/fileId/exists/syncCmd`）、
+  `url`（`url.href/host`）、`task`（`task.seq/title/status/showCmd/address`）、
+  `ref`（`ref.title/relPath/readCmd`）；取用命令优先用 `{{usage}}` / `{{cmd}}`，
+  模板里不要写死命令格式。同步汇总用 `{{#if attach.syncSummary}}`，单条是否可达看
+  该条自己的 `file.exists` / `file.localPath`。
   旧语法**已废弃、不再兼容**：`{{#repo}}…{{/repo}}` 这类旧闸门、旧纯文本占位符
   （`{{group.peers}}` / `{{repo.docs}}` / `{{attach.list}}` / `{{groups}}`）、
   `{{attach.sync}}` / `{{attach.syncText}}` 旧别名、`{{block.content}}` 旧包装都不再生效；

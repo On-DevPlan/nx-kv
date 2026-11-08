@@ -13,4 +13,5 @@
   - 真实库副本迁移结果：attachments=34（33 条 manifest 台账 + 1 条 URL）、task_attach=43、ref_attach=1、legacyManifest=33；正文 fileId 提及 43 处与 task_attach 43 条一一对应；manifest 有、正文无引用的 1 条成为**无关系**的资源行，未误挂任何任务。
   - 旧 `task_refs`/`ref_relations` 均为 0 行且无读写方（见两份删除决策）。
 - impact: 附件元数据不再以 `manifest.json` 为真相（迁移后归档，库为唯一真相）；正文只是 `role=inline` 那一部分的呈现，关系表是附件清单的权威。
+- export（待定）: `repo export --zip` 维持现状——只打包 `layout.json` + `docs/**`（md 文本），不打包 `attachments` 的二进制原件；是否增加「带二进制导出」开关尚未决定，本轮不新增功能。附件在导出包里的可达性以 `attachments.id` + 本机/云端字节为准。
 - alternatives: 单张多态关系表（宿主 task/ref 混存）——外键无法同时指向 `tasks` 与 `refs`，级联语义只能退化为应用层维护，role 校验也不得不放宽；否决。继续以 manifest.json 为真相——两套真相、删除任务无法收敛孤儿；否决。

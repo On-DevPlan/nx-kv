@@ -7,12 +7,14 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { assertUnderTmp, createTestStore, readFixtureJson } from '../support/test-store.mjs';
 
 test('assertUnderTmp：tmpdir 下放行（返回绝对路径）', () => {
   const p = join(tmpdir(), 'nx-kv-anything', 'nxkv.db');
-  assert.equal(assertUnderTmp(p), p.replace(/\//g, '\\') || p);
+  // 返回值是 resolve(p)：平台原生分隔符（Windows 反斜杠 / POSIX 正斜杠）——
+  // 不能硬编码把 / 换成 \，Linux CI 上路径不变、断言必炸（2026-11-08 修）
+  assert.equal(assertUnderTmp(p), resolve(p));
 });
 
 test('assertUnderTmp：用户真实目录直接抛错（绝不放行）', () => {

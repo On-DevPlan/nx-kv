@@ -369,10 +369,16 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .trow.child.task-child:hover { background: color-mix(in srgb, #2F6F5E 7%, transparent); }
 .trow.child.task-child .gico { color: #2F6F5E; opacity: 0.75; }
 .trow.child.task-child .cnt {
-  background: color-mix(in srgb, #2F6F5E 12%, transparent);
-  color: #2F6F5E;
+  background: var(--doing-bg);
+  color: var(--doing);
   font-size: 10px;
 }
+/* #76 状态徽标配色：等=蓝（等待回填）、跑=青绿（在跑）、完=灰（历史）、档=更淡的灰。
+   同色会让一列「等/跑/完」糊成一片，区分后一眼能看出队列节奏。 */
+.trow.child.task-child .cnt.wait { background: var(--doing-bg); color: var(--doing); }
+.trow.child.task-child .cnt.run { background: color-mix(in srgb, var(--live, #1f7a4d) 12%, transparent); color: var(--live, #1f7a4d); }
+.trow.child.task-child .cnt.done { background: var(--soft-2); color: var(--mid, #838A93); }
+.trow.child.task-child .cnt.cancel { background: var(--soft); color: var(--faint); }
 /* 展开子行尾部的「＋ 新建页」 */
 .trow.child.task-new { height: 26px; font-size: 12px; color: var(--faint); }
 .trow.child.task-new:hover { background: color-mix(in srgb, #2F6F5E 7%, transparent); color: #2F6F5E; }

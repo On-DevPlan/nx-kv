@@ -347,13 +347,11 @@ export default function Landing({
                     <span
                       className={
                         'st' +
-                        (t.status === 'done' || t.status === 'claimed'
+                        (t.status === 'done' || t.status === 'cancelled'
                           ? ' done'
-                          : t.status === 'cancelled'
-                            ? ' done'
-                            : t.from
-                              ? ' run'
-                              : '')
+                          : t.status === 'claimed' || t.from
+                            ? ' run'
+                            : '')
                       }
                       title={
                         t.status === 'cancelled'

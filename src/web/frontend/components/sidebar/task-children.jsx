@@ -25,6 +25,15 @@ function taskStatusShort(t) {
   if (t.status === 'cancelled') return '档';
   return t.from ? '跑' : '等';
 }
+
+// 徽标配色跟随状态（#76）：等=蓝、跑=青绿、完=灰、档=更淡的灰。
+// 以前四个字全是同一种青绿，扫一眼分不出队列里谁在等我、谁在跑、谁已经收口。
+function taskStatusTone(t) {
+  if (t.status === 'done') return 'done';
+  if (t.status === 'cancelled') return 'cancel';
+  if (t.status === 'claimed' || t.from) return 'run';
+  return 'wait';
+}
 import Pager, { usePager } from '../pager.jsx';
 
 const PAGE_SIZE = 12; // 每页条数（与旧 limit 同值，但不再截断——有翻页出口）
@@ -61,7 +70,7 @@ export default function TaskChildren({ row, onNavigate, refreshLocal, limit = PA
         >
           <span className="gico"><Icon name="list" size={12} /></span>
           <span className="nm">{taskLabel(t)}</span>
-          <span className="cnt">
+          <span className={`cnt ${taskStatusTone(t)}`}>
             {taskStatusShort(t)}
           </span>
         </button>

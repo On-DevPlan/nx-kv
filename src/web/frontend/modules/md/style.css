@@ -427,6 +427,9 @@
 .mdw-lp-block.kind-h3{padding-top:10px;padding-bottom:10px}
 .mdw-lp-block.kind-quote{padding-top:8px}
 .mdw-lp-block.is-view{cursor:text}
+/* 待办复选框（视图态可点击切换，#99）：光标提示可点，悬停给一点强调反馈 */
+.mdw-lp-block.is-view .mdw-cb{cursor:pointer;user-select:none}
+.mdw-lp-block.is-view .mdw-cb:hover{color:var(--mdw-accent,#2F6F5E)}
 .mdw-lp-block.is-view:focus,.mdw-lp-block.is-edit,.mdw-lp-block.is-edit:focus{
   outline:none;border:0;box-shadow:none;background:transparent;
 }

@@ -30,6 +30,7 @@ import {
   runFormat,
   scrollTextareaToIndex,
   slashQueryAt,
+  toggleNthTodo,
   turnBlock,
   turnLine,
 } from '../../modules/md/md-edit-ops.js';
@@ -85,6 +86,7 @@ function LiveBlock({
   focused,
   hit,
   onFocus,
+  onToggleTodo,
   onChange,
   onBlur,
   onKeyDown,
@@ -171,7 +173,17 @@ function LiveBlock({
       data-i={index}
       role="button"
       tabIndex={0}
-      onClick={() => {
+      onClick={(e) => {
+        // 复选框点击直接切换（#99：视图态 ☑/☐ 可点——专业编辑器基线行为）。
+        // 不进编辑态；开关走 updateAt=op 通道（可撤销）。DOM 里 .mdw-cb 的序号
+        // 与块源码里 todo 行的序号一一对应（按行序渲染）。
+        const cb = e.target.closest?.('.mdw-cb');
+        if (cb) {
+          e.stopPropagation();
+          const cbs = [...e.currentTarget.querySelectorAll('.mdw-cb')];
+          onToggleTodo?.(index, cbs.indexOf(cb));
+          return;
+        }
         // 划选评论：有选区时不进编辑，把选区留给上层 mouseup 浮层
         const sel = window.getSelection();
         if (sel && !sel.isCollapsed && String(sel).trim()) return;
@@ -587,6 +599,11 @@ function LivePreview({
     const ta = e.target;
     liveTaRef.current = ta;
 
+    // IME 组合中（拼音候选未上屏）：按键归输入法，块级快捷键一概不接——
+    // 否则选字回车的 Enter 会被当「拆块」、删拼音的 Backspace 会被当「并块」
+    // （标题区同款守卫，见 TitleArea 的 onEnter）。
+    if (e.nativeEvent?.isComposing || e.keyCode === 229) return;
+
     // 优先处理斜杠菜单（用 ref，避免闭包里 slash 过期）
     if (handleSlashKey(e, slashRef, {
       move: moveSlash,
@@ -667,6 +684,26 @@ function LivePreview({
       pendingSelRef.current = { index: i - 1, start: prev.length, end: prev.length };
       commit(next);
       setFocus(i - 1);
+      return;
+    }
+    // Delete 在块尾（无选区、非末块）：把下一块并进来，光标落接缝——
+    // Backspace 并上块的镜像（Notion 行为）。FM 块同理不许被并：
+    // 合并会把下一块的 `---` 撕碎成普通文本。
+    if (
+      e.key === 'Delete'
+      && ta.selectionStart === val.length && ta.selectionEnd === val.length
+      && i < blocks.length - 1 && !slashRef.current
+      && !isFrontmatterBlock(normalizeBlockText(blocks[i + 1] ?? ''))
+    ) {
+      e.preventDefault();
+      setSlashBoth(null);
+      const nxt = normalizeBlockText(blocks[i + 1] ?? '');
+      const next = blocks.slice();
+      next[i] = val + nxt;
+      next.splice(i + 1, 1);
+      pendingSelRef.current = { index: i, start: val.length, end: val.length };
+      commit(next);
+      setFocus(i);
       return;
     }
     // Shift+Enter = 块内软换行。**中段**放行原生插入（\n 在块内存活，实测）；
@@ -834,6 +871,11 @@ function LivePreview({
                 });
               }}
               onKeyDown={(e) => onKeyDown(i, e)}
+              onToggleTodo={(idx, n) => {
+                const raw = normalizeBlockText(blocks[idx] ?? '');
+                const next = toggleNthTodo(raw, n);
+                if (next) updateAt(idx, next);
+              }}
               onPasteFiles={(files, ta) => ingestFiles(files, ta)}
               onTextSel={onTextSel}
             />
@@ -1086,6 +1128,7 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
   const onKeyDown = (e) => {
     const ta = taRef.current;
     if (!ta) return;
+    if (e.nativeEvent?.isComposing || e.keyCode === 229) return; // IME 组合中：按键归输入法
     if (handleSlashKey(e, slashRef, {
       move: moveSlash,
       pick: pickSlash,
@@ -1229,6 +1272,13 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
             onScroll={syncGutter}
             onPaste={(e) => {
               const files = imageFilesFromDataTransfer(e.clipboardData);
+              if (!files.length) return;
+              e.preventDefault();
+              ingestImages(files);
+            }}
+            onDrop={(e) => {
+              // 拖文件进来 = 与粘贴同一通道（实时预览态已有拖放，源码态补齐对等能力）
+              const files = imageFilesFromDataTransfer(e.dataTransfer);
               if (!files.length) return;
               e.preventDefault();
               ingestImages(files);

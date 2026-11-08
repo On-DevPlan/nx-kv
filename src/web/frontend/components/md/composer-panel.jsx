@@ -1,0 +1,110 @@
+// 评论 / 反馈编辑面板（#104）：工作区里新开的一块 **md 编辑页**。
+//
+// 顶部：模式徽标 + 引用信息（评论 = 被引用的那段话；反馈 = 「反馈 #xx 的任务」）。
+// 中部：完整 md 编辑器（与任务正文同一套 live 块编辑器，粘贴/拖图片即附件）。
+// 底部：提交（评论 = 回写本任务；反馈 = 新开一条任务）。
+//
+// 提交逻辑在任务页那边（带会话状态），这里按 token 取回回调——见 composer-launch.js。
+import { useRef, useState } from 'react';
+import { MdPanes } from './md-panes.jsx';
+import { filesToAttachments } from './attachments.js';
+import { insertAttachmentSnippet } from '../../modules/md/md-parse.js';
+import { composerOf, closeComposer } from './composer-launch.js';
+import { useApp } from '../../app-context.jsx';
+import { useToast } from '../toast/index.jsx';
+import '../../modules/md/style.css';
+
+export default function ComposePanel({
+  token,
+  mode = 'comment',
+  quote = '',
+  taskLabel = '',
+  taskTitle = '',
+  tabId = null,
+}) {
+  const app = useApp() || {};
+  const toast = useToast();
+  const [body, setBody] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const editorApiRef = useRef(null);
+  const isFeedback = mode === 'feedback';
+
+  const submit = async () => {
+    const text = String(body || '').trim();
+    if (!text && !attachments.length) {
+      toast(isFeedback ? '写一下要改的地方' : '写一下要提的问题');
+      return;
+    }
+    const h = composerOf(token);
+    if (!h || !h.onSubmit) {
+      toast('提交入口已失效（来源页面已关闭）');
+      return;
+    }
+    setBusy(true);
+    try {
+      await h.onSubmit({ text, attachments, inserts: '' });
+      closeComposer(token);
+      if (tabId && app.closePanel) app.closePanel(tabId);
+    } catch (e) {
+      toast(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 编辑器里粘贴 / 拖图片 = 附件（沿用任务正文的通道：正文留 ![]() 片段 + 附件列表）
+  const onFiles = async (fileList) => {
+    if (!fileList || !fileList.length) return;
+    const { items, imageInserts, fileInserts } = await filesToAttachments(fileList);
+    const snippet = [...imageInserts, ...fileInserts].join('');
+    if (snippet) setBody((b) => insertAttachmentSnippet(b, snippet, {}).body);
+    if (items.length) setAttachments((a) => [...a, ...items]);
+  };
+
+  return (
+    <div className="cmp">
+      <div className="cmp-head">
+        <span className={'cmp-tag' + (isFeedback ? ' is-fb' : '')}>{isFeedback ? '反馈' : '评论'}</span>
+        <div className="cmp-ctx">
+          {isFeedback ? (
+            <span className="cmp-ctx-line" title={taskTitle || ''}>
+              反馈 {taskLabel || ''} 的任务{taskTitle ? ` · ${taskTitle}` : ''}
+            </span>
+          ) : quote ? (
+            <span className="cmp-ctx-quote" title={quote}>{quote}</span>
+          ) : (
+            <span className="cmp-ctx-line">对本任务提出问题</span>
+          )}
+        </div>
+        <span className="grow" />
+        <button
+          type="button"
+          className="btn ghost sm"
+          onClick={() => tabId && app.closePanel && app.closePanel(tabId)}
+          disabled={busy}
+        >
+          关闭
+        </button>
+        <button type="button" className="btn sm" onClick={submit} disabled={busy}>
+          {isFeedback ? '提交反馈' : '提交评论'}
+        </button>
+      </div>
+      <div className="cmp-body">
+        <MdPanes
+          mode="split"
+          title=""
+          body={body}
+          onTitle={() => {}}
+          onBody={setBody}
+          attachments={attachments}
+          docKey={'compose-' + token}
+          editorApiRef={editorApiRef}
+          onFiles={onFiles}
+          onSave={submit}
+          hideTitle
+        />
+      </div>
+    </div>
+  );
+}

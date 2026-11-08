@@ -25,6 +25,7 @@ import { MdPanes } from '../../components/md/md-panes.jsx';
 import AckRail from '../../components/md/ack-rail.jsx';
 import AttachBar from '../../components/md/attach-bar.jsx';
 import SelMenu from '../../components/md/sel-menu.jsx';
+import { openComposer } from '../../components/md/composer-launch.js';
 import ShortcutSheet from '../../components/md/shortcut-sheet.jsx';
 import { TaskChainModal } from '../../components/md/task-chain.jsx';
 import { useApp } from '../../app-context.jsx';
@@ -139,38 +140,18 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     setReviewAcked(true);
     toast('已验收');
   };
-  /** 反馈：开评论框写意见；提交后**新建一条任务**（forkOf 指回本条），原任务不动。 */
+  /** 反馈：开一块 **md 编辑面板** 写意见；提交后**新建一条任务**（forkOf 指回本条），原任务不动。
+   *  #104：不再是浮层里的输入框弹窗——工作区里新开一块 md 编辑页，顶部带
+   *  「反馈 #xx 的任务」引用信息，正文下面是完整的 md 编辑器。 */
   const openFeedback = () => {
-    const bar = reviewBarRef.current;
-    const host = bar?.closest?.('.mdw');
-    const b = bar?.getBoundingClientRect();
-    const h = host?.getBoundingClientRect();
-    const x = b && h ? b.left - h.left + 80 : 80;
-    const y = b && h ? b.top - h.top - 190 : 120;
-    setSelMenu({
-      kind: 'task',
-      text: '',
-      comment: true,
+    const m = model || app.model;
+    if (!m) return;
+    openComposer(m, {
       mode: 'feedback',
-      x: Math.min(window.innerWidth - 320, Math.max(8, x)),
-      y: Math.min(window.innerHeight - 260, Math.max(8, y)),
+      taskLabel: task != null ? '#' + task : '',
+      taskTitle: String(doc?.title || '').replace(/^#+\s*/, ''),
+      onSubmit: (payload) => spawnFeedbackTask(payload),
     });
-  };
-  /** 统一提交入口：feedback → 新开任务；comment → 就地回写原任务（可带附件）。 */
-  const onCommentSubmit = (payload) => {
-    const p =
-      payload && typeof payload === 'object'
-        ? payload
-        : {
-            text: String(payload || ''),
-            mode: selMenu?.mode === 'feedback' || selMenu?.mode === 'redo' ? 'feedback' : 'comment',
-            quote: lastSel.current || '',
-          };
-    if (p.mode === 'feedback' || p.mode === 'redo' || selMenu?.mode === 'feedback' || selMenu?.mode === 'redo') {
-      spawnFeedbackTask(p);
-      return;
-    }
-    submitCommentInPlace(p);
   };
   /** 服务端当前任务（#79）：评论/反馈的 base 以**盘上正文**为准——会话 doc 可能
    *  过期（别的会话改过 / 上一轮重开追加过 / 首轮还没加载完），拿旧正文拼回去
@@ -447,8 +428,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   }, [id]);
 
   useEffect(() => {
-    // 滚动收起；正在写评论时不打断
-    const close = () => setSelMenu((cur) => (cur?.comment ? cur : null));
+    // 滚动收起浮层
+    const close = () => setSelMenu(null);
     document.addEventListener('scroll', close, true);
     return () => document.removeEventListener('scroll', close, true);
   }, []);
@@ -995,7 +976,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     });
   };
 
-  /** 工具栏「评论」：只用当前可见选区；浮层已开时沿用其原文（正写评论） */
+  /** 工具栏「评论」：只用当前可见选区；**新开 md 编辑面板**（#104） */
   const openCommentFromToolbar = () => {
     const live = String(window.getSelection() || '').trim();
     const quote = live || (selMenu?.text ? String(selMenu.text) : '');
@@ -1004,20 +985,16 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       return;
     }
     lastSel.current = quote;
-    const r = (() => {
-      try {
-        const sel = window.getSelection();
-        if (sel && !sel.isCollapsed) return sel.getRangeAt(0).getBoundingClientRect();
-      } catch { /* ignore */ }
-      return null;
-    })();
-    setSelMenu({
-      kind: selMenu?.kind || 'task',
-      text: quote,
-      comment: true,
-      x: Math.min(window.innerWidth - 300, Math.max(8, r ? r.left + r.width / 2 - 140 : (selMenu?.x ?? 80))),
-      y: Math.min(window.innerHeight - 240, Math.max(8, r ? r.bottom + 8 : (selMenu?.y ?? 120))),
+    const m = model || app.model;
+    if (!m) return;
+    openComposer(m, {
+      mode: 'comment',
+      quote,
+      taskLabel: task != null ? '#' + task : '',
+      taskTitle: String(doc?.title || '').replace(/^#+\s*/, ''),
+      onSubmit: (payload) => submitCommentInPlace({ ...payload, quote }),
     });
+    closeSelMenu();
   };
 
   /** 标题与正文首行 # 双向同步 */
@@ -1072,19 +1049,15 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
 
   const onEditorTextSel = (info) => {
     if (!info?.text || info.text.length < 1) {
-      // 评论撰写中选区会塌缩——浮层必须粘住
-      setSelMenu((cur) => (cur?.comment ? cur : null));
+      setSelMenu(null);
       return;
     }
-    setSelMenu((cur) => {
-      if (cur?.comment) return cur;
-      lastSel.current = info.text;
-      return {
-        kind: 'format',
-        text: info.text,
-        x: Math.min(window.innerWidth - 300, Math.max(8, info.x)),
-        y: Math.min(window.innerHeight - 240, Math.max(8, info.y)),
-      };
+    lastSel.current = info.text;
+    setSelMenu({
+      kind: 'format',
+      text: info.text,
+      x: Math.min(window.innerWidth - 300, Math.max(8, info.x)),
+      y: Math.min(window.innerHeight - 240, Math.max(8, info.y)),
     });
   };
 
@@ -1095,14 +1068,13 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     const sel = window.getSelection();
     const text = (sel && String(sel)).trim();
     if (!text || text.length < 1) {
-      setSelMenu((cur) => (cur?.comment ? cur : null));
+      setSelMenu(null);
       return;
     }
     if (!articleRef.current?.contains(sel.anchorNode)) {
-      setSelMenu((cur) => (cur?.comment ? cur : null));
+      setSelMenu(null);
       return;
     }
-    if (selMenu?.comment) return; // 正写评论，别被新划选冲掉
     // 锚定**选区末行**（松手处）：跨块/跨行划选以前按整段选区的包围盒居中偏下，
     // 浮层落在离手很远的地方（#92「划线跨行不丝滑」）
     const range = sel.getRangeAt(0);
@@ -1430,9 +1402,21 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           editorApiRef.current?.format?.(op);
           closeSelMenu();
         }}
-        onComment={onCommentSubmit}
-        onCompose={() => setSelMenu((cur) => (cur ? { ...cur, comment: true } : cur))}
-        onClose={closeSelMenu}
+        onCompose={() => {
+          // #104：评论 = 新开一块 md 编辑面板（顶部带引用的那段话），
+          // 不再用浮层里的输入框弹窗。
+          const m = model || app.model;
+          if (!m) return;
+          const quote = String(selMenu?.text || lastSel.current || '');
+          openComposer(m, {
+            mode: 'comment',
+            quote,
+            taskLabel: task != null ? '#' + task : '',
+            taskTitle: String(doc?.title || '').replace(/^#+\s*/, ''),
+            onSubmit: (payload) => submitCommentInPlace({ ...payload, quote }),
+          });
+          closeSelMenu();
+        }}
         onCopy={() => {
           navigator.clipboard?.writeText(lastSel.current || selMenu?.text || '');
           toast('已复制');

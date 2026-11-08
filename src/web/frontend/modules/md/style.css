@@ -740,48 +740,35 @@
   border:1px solid var(--line,#E4E2DC);border-radius:8px;box-shadow:0 6px 20px rgba(20,22,26,.12);padding:4px;
 }
 .mdw-sel-menu.kind-format{min-width:0;padding:3px}
-.mdw-sel-menu.kind-comment{min-width:280px;max-width:min(360px, calc(100vw - 16px));padding:8px}
 .mdw-sel-menu .cap{font-size:10.5px;color:var(--faint,#A9AEB4);padding:4px 10px 2px}
 .mdw-sel-menu > button{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:6px;background:none;cursor:pointer;font-size:12px;font-family:inherit;color:var(--ink,#16181C)}
 .mdw-sel-menu > button:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
 .mdw-sel-menu .sep{height:1px;background:var(--line,#E4E2DC);margin:4px 2px}
-.mdw-sel-comment{display:flex;flex-direction:column;gap:6px}
-.mdw-sel-comment-cap{font-size:10.5px;font-weight:650;color:var(--faint,#A9AEB4);letter-spacing:.02em}
-.mdw-sel-quote{
+.mdw-sel-fmt-btn.comment{font-family:inherit;font-weight:650;letter-spacing:0}
+
+/* ─── 评论 / 反馈编辑面板（#104）：工作区里新开的一块 md 编辑页 ─── */
+.cmp{display:flex;flex-direction:column;height:100%;min-height:0}
+.cmp-head{
+  flex:none;display:flex;align-items:center;gap:10px;min-width:0;
+  padding:8px 12px;border-bottom:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
+}
+.cmp-tag{
+  flex:none;font:650 10.5px Bahnschrift,"Segoe UI",sans-serif;letter-spacing:.06em;
+  color:var(--mdw-accent,#2F6F5E);background:var(--mdw-accent-soft,#E8F2EE);
+  border-radius:6px;padding:2px 7px;
+}
+.cmp-tag.is-fb{color:#9E4C00;background:#FBF3E4}
+.cmp-ctx{flex:1;min-width:0;display:flex;align-items:center}
+.cmp-ctx-line{font-size:11.5px;color:var(--ink-2,#4B515A);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmp-ctx-quote{
   font-size:11.5px;line-height:1.45;color:var(--ink-2,#4B515A);
-  padding:6px 8px;border-radius:6px;background:var(--soft,#F1F0EC);
+  padding:4px 9px;border-radius:6px;background:var(--soft,#F1F0EC);
   border-left:2px solid var(--mdw-accent,#2F6F5E);
   overflow-wrap:anywhere;max-height:4.4em;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
 }
-.mdw-sel-comment-ta{
-  display:block;width:100%;box-sizing:border-box;margin:0;padding:8px 9px;
-  border:1px solid var(--line,#E4E2DC);border-radius:6px;resize:vertical;min-height:64px;
-  font:400 12.5px/1.45 inherit;color:var(--ink,#16181C);background:var(--paper,#fff);
-  caret-color:var(--mdw-accent);
-}
-.mdw-sel-comment-ta:focus{
-  outline:none;border-color:var(--mdw-accent-line,#9CB8AE);
-  box-shadow:0 0 0 2px var(--mdw-accent-soft,#E8F2EE);
-}
-.mdw-sel-comment-ta::placeholder{color:var(--faint,#A9AEB4)}
-.mdw-sel-comment-acts{display:flex;justify-content:flex-end;gap:6px}
-.mdw-sel-comment-acts button{
-  border:0;border-radius:6px;padding:5px 10px;font:650 12px inherit;cursor:pointer;
-}
-.mdw-sel-comment-acts button.ghost{background:transparent;color:var(--ink-2,#4B515A)}
-.mdw-sel-comment-acts button.ghost:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
-.mdw-sel-comment-acts button.primary{background:var(--mdw-accent,#2F6F5E);color:#fff}
-.mdw-sel-comment-acts button.primary:hover{filter:brightness(1.06)}
-.mdw-sel-comment-acts button.primary:disabled{opacity:.45;cursor:not-allowed;filter:none}
-.mdw-sel-comment-hint{font-size:10.5px;color:var(--faint,#A9AEB4);text-align:right}
-.mdw-sel-fmt-btn.comment{font-family:inherit;font-weight:650;letter-spacing:0}
-.mdw-sel-comment-acts .grow{flex:1}
-.mdw-sel-att-list{display:flex;flex-wrap:wrap;gap:4px}
-.mdw-sel-att-chip{
-  font-size:10.5px;padding:2px 6px;border-radius:4px;
-  background:var(--soft,#F1F0EC);color:var(--ink-2,#4B515A);max-width:100%;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
+.cmp-body{flex:1;min-height:0;overflow:auto;padding:10px 12px 14px}
+.cmp-body .mdw-split{height:100%}
 /* 任务链弹窗（#77）：「更多 → 任务链」竖排时间线 */
 .mdw-chain-hint{margin:0 0 12px;font-size:12px;color:var(--faint,#A9AEB4);line-height:1.45}
 .mdw-chain-empty{padding:18px 8px;text-align:center;font-size:13px}

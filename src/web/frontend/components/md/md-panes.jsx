@@ -355,7 +355,7 @@ function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter })
 
 function LivePreview({
   title, body, onTitle, onBody, articleRef, attachments, docKey, onFiles, editorApiRef, onTextSel,
-  onCloseSelMenu,
+  onCloseSelMenu, hideTitle = false,
 }) {
   const [focus, setFocus] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -881,14 +881,17 @@ function LivePreview({
             inputRef={findInputRef}
           />
         )}
-        <TitleArea
-          className="mdw-lp-title"
-          value={title}
-          placeholder="无标题"
-          onTitle={onTitle}
-          onFocus={() => { setFocus(null); setSlashBoth(null); }}
-          onEnter={() => { if (blocks.length) setFocus(0); }}
-        />
+        {/* 标题行：评论/反馈面板不要（#104——引用信息在面板头部，标题行是多余的） */}
+        {!hideTitle && (
+          <TitleArea
+            className="mdw-lp-title"
+            value={title}
+            placeholder="无标题"
+            onTitle={onTitle}
+            onFocus={() => { setFocus(null); setSlashBoth(null); }}
+            onEnter={() => { if (blocks.length) setFocus(0); }}
+          />
+        )}
         <div className={`mdw-lp-blocks${emptyDoc ? ' is-empty-doc' : ''}`}>
           {blocks.map((b, i) => (
             <LiveBlock
@@ -1422,6 +1425,7 @@ export const MdPanes = forwardRef(function MdPanes(
     onUndo = null,
     onRedo = null,
     onCloseSelMenu = null,
+    hideTitle = false,
   },
   articleRef
 ) {
@@ -1520,6 +1524,7 @@ export const MdPanes = forwardRef(function MdPanes(
         editorApiRef={editorApiRef}
         onTextSel={onTextSel}
         onCloseSelMenu={onCloseSelMenu}
+        hideTitle={hideTitle}
       />
     </div>
   );

@@ -72,23 +72,6 @@ function esc(s) {
   ));
 }
 
-/**
- * frontmatter → **属性卡** HTML（无 frontmatter 返回空串）。
- *
- * 为什么要单独渲染：任务头部的 frontmatter（board/project/介绍引用）是结构化字段，
- * 此前在实时预览里被无声吞掉、在编辑态里与首行内容并进同一个块——用户看到的是
- * 「frontmatter 合并在第一行中」。现在它永远是独立的可视单元：键值卡片。
- */
-export function frontmatterHtml(src) {
-  const fm = parseFrontmatter(src);
-  const keys = Object.keys(fm);
-  if (!keys.length) return '';
-  const rows = keys
-    .map((k) => `<div class="mdw-fm-row"><span class="mdw-fm-k">${esc(k)}</span><span class="mdw-fm-v">${esc(fm[k])}</span></div>`)
-    .join('');
-  return `<div class="mdw-fm">${rows}</div>`;
-}
-
 // 双链目标是否在索引里：完整路径（剥 .md）或文件名（末段）命中都算已解析
 function wikiKnown(target, knownNames) {
   const norm = normalizeWikiTarget(target);
@@ -138,10 +121,10 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
   for (const a of attachments) {
     if (a.type === 'image' && a.url) imgMap[a.name] = a.url;
   }
-  // frontmatter 属性卡置顶（键值见 frontmatterHtml；无 frontmatter 时为空串）
-  const fmCard = frontmatterHtml(src);
+  // frontmatter **不再渲染成属性卡**（#113）：board/project 这些是投递元数据，
+  // 摆在一堆任务正文上方纯属噪音——正文里剥掉即可（编辑态仍能点开原 YAML 看）。
   const lines = stripFrontmatter(src).split('\n');
-  let html = fmCard;
+  let html = '';
   let inUl = false;
   let inCode = false;
   const usedIds = new Set();

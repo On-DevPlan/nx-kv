@@ -102,7 +102,9 @@ function LiveBlock({
 }) {
   const taRef = useRef(null);
   const display = normalizeBlockText(text);
-  const html = blockHtml(display, attachments);
+  // frontmatter 块在视图态**渲染为空**（#113：属性卡已撤，元数据不占正文位；
+  // 也不显示「（空文档）」占位——点它仍能进编辑态看原 YAML）。
+  const html = isFrontmatterBlock(display) ? '' : blockHtml(display, attachments);
   const kind = blockKind(display);
 
   useLayoutEffect(() => {

@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import AttachPicker, { useAttachPicker } from './attach-picker.jsx';
-import { atTriggerAt } from '../../modules/md/attach-mention.js';
+import { atTriggerAt, padEmbed } from '../../modules/md/attach-mention.js';
 import {
   isFrontmatterBlock,
   isEmptyBlock,
@@ -471,18 +471,48 @@ function LivePreview({
     if (next) applyBlockOp(idx, next);
   };
 
-  // ── @ 附件选择（#108）──
+  // ── @ 附件选择（#108/#111）──
+  // 草稿（无 v2 host）数据源 = 会话 doc 的附件（图片按名字内嵌，v1 渲染口径）
+  const draftItems = useMemo(
+    () => (attachHost ? null : (attachments || [])
+      .filter((a) => a.type === 'image')
+      // 映射成伪附件（kind/id 对齐 embedForAttachment）：草稿的图片按**名字**内嵌
+      // （v1 渲染口径：imgMap[name] → dataURL），所以 id 就是名字。
+      .map((a) => ({ kind: 'image', id: a.name, name: a.name, sizeText: a.size }))),
+    [attachHost, attachments]
+  );
   const picker = useAttachPicker({
     host: attachHost,
+    itemsOverride: attachHost ? null : draftItems,
     onInsert: ({ index, embed, at, caret }) => {
-      // 块内替换：把 '@' 那一段换成引用语法，光标落在引用之后
+      // 块内替换：把 '@' 那一段换成引用语法，光标落在引用之后；
+      // 引用与正文**前后隔一空**（#111：贴着中文会黏连，行内元素需要边界）
       const val = normalizeBlockText(blocks[index] ?? '');
-      const next = val.slice(0, at) + embed + val.slice(caret);
+      const padded = padEmbed(embed, at > 0 ? val[at - 1] : '', val[caret] || '');
+      const next = val.slice(0, at) + padded.text + val.slice(caret);
+      const caretAt = at + padded.caretAt;
       updateAt(index, next);
-      pendingSelRef.current = { index, start: at + embed.length, end: at + embed.length };
+      pendingSelRef.current = { index, start: caretAt, end: caretAt };
       setFocus(index);
     },
   });
+  // 草稿「＋ 添加附件」：文件走页面附件通道（粘贴同款——传会话 doc 并在插入点
+  // 落片段）；@ 占位字符先清掉，插入点用 '@' 原位置。
+  const onDraftAddFiles = (files) => {
+    const m = picker.menu;
+    const pos = m ? { index: m.index, at: m.at, caret: m.caret } : { index: focus ?? 0, at: null, caret: null };
+    if (m) {
+      const val = normalizeBlockText(blocks[m.index] ?? '');
+      updateAt(m.index, val.slice(0, m.at) + val.slice(m.caret));
+    }
+    requestAnimationFrame(() => {
+      onFiles?.(files, {
+        mode: 'live',
+        focusIndex: pos.index,
+        ...(pos.at != null ? { caretInBlock: pos.at } : {}),
+      });
+    });
+  };
 
   const applyTurn = (index, turnId) => {
     const ta = liveTaRef.current;
@@ -1005,6 +1035,7 @@ function LivePreview({
           position={{ left: picker.menu.x, top: picker.menu.y }}
           host={attachHost}
           onReload={picker.reload}
+          onAddFiles={attachHost ? null : onDraftAddFiles}
         />,
         document.body
       )}

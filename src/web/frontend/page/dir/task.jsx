@@ -845,6 +845,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   };
 
   const addFiles = async (fileList, opts = {}) => {
+    console.log('[dbg] addFiles n=', fileList && fileList.length, 'doc=', !!doc, 'mode=', opts && opts.mode);
     if (!doc) return;
     // 本机仓优先：图片嵌在光标处、文件追加文尾（嵌入即附件，正文随任务走）；
     // 本机仓不可达时 items 带 dataURL 走 localStorage 老路（fileInserts 为空）。

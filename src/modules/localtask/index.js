@@ -430,6 +430,31 @@ export default {
       },
     },
     {
+      id: 'localtask.timegoalLog',
+      cli: ['localtask', 'timegoal-log'],
+      http: ['GET', '/api/localtasks/timegoal-log'],
+      summary: '查看任务级时间目标的每轮 check 记录（时间、已用/剩余、是否到点、当轮总结与进度）',
+      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
+      run: async (ctx) => {
+        const topicKey = ctx.key || service.normalizeCwd(ctx.cwd).key;
+        const { getTaskGoalLog } = await import('../tasktool/timegoal.js');
+        return getTaskGoalLog({ topicKey, taskId: ctx.id });
+      },
+      render: (d) => {
+        if (!d.hasGoal) return `#${d.seq || ''} 没有任务级时间目标记录。`;
+        const lines = [`#${d.seq} 时间目标 check 记录 ${d.count} 轮（${d.duration} · ${d.startedAt} → ${d.deadline}）`];
+        if (!d.count) lines.push('  （还没有 check 记录）');
+        d.entries.forEach((e, i) => {
+          lines.push(
+            `  R${i + 1}  ${e.checkedAt}  已用 ${e.elapsedSec}s · 剩余 ${e.remainingSec}s${e.reached ? ' · 已到点' : ''}`,
+          );
+          if (e.summary) lines.push(`      ${e.summary}`);
+          if (e.progress) lines.push(`      进度: ${e.progress}`);
+        });
+        return lines.join('\n');
+      },
+    },
+    {
       id: 'localtask.importRemote',
       cli: ['localtask', 'import-remote'],
       http: ['POST', '/api/localtasks/import-remote'],

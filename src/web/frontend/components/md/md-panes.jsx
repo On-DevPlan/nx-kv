@@ -546,6 +546,42 @@ function LivePreview({
     return () => document.removeEventListener('keydown', onKey, true);
   }, [slash]);
 
+  // document 捕获：预览态划选后按 Backspace/Delete —— 把选中文字删掉（#98）。
+  // 视图块是渲染好的 HTML，选区落在不可编辑内容上，浏览器默认对 Backspace
+  // 无动于衷（编辑态 textarea 原生行为本来就对，这里只补视图态这一块）。
+  // 映射口径与 formatSelection 一致：选区文本在块源码里 indexOf 定位；跨
+  // markdown 标记/跨块时 indexOf 不中 → 保守放弃，不做错位改写。
+  // 删除后进编辑态、光标落接缝（op 走历史栈，Ctrl+Z 可撤）。
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target;
+      // 焦点在可编辑元素里：原生行为已正确（textarea 选区删除 / contentEditable 标题）
+      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.isContentEditable)) return;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const text = String(sel.toString() || '');
+      if (!text.trim()) return;
+      const node = sel.anchorNode;
+      const el = node?.nodeType === 3 ? node.parentElement : node;
+      const blockEl = el?.closest?.('.mdw-lp-block');
+      if (!blockEl || !articleRef.current?.contains(blockEl)) return;
+      const i = Number(blockEl.getAttribute('data-i'));
+      if (!Number.isInteger(i) || i < 0 || i >= blocks.length) return;
+      const raw = normalizeBlockText(blocks[i] ?? '');
+      const pos = raw.indexOf(text);
+      if (pos === -1) return; // 跨标记/跨块：保守放弃，不删
+      e.preventDefault();
+      updateAt(i, raw.slice(0, pos) + raw.slice(pos + text.length));
+      pendingSelRef.current = { index: i, start: pos, end: pos };
+      onCloseSelMenu?.();
+      setFocus(i);
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [blocks, onBody, articleRef, onCloseSelMenu]);
+
   const onKeyDown = (i, e) => {
     const val = normalizeBlockText(blocks[i] ?? '');
     const ta = e.target;

@@ -2197,27 +2197,57 @@ footer code {
   padding: 0 4px;
 }
 
-/* ---------- 附件自动下载：胶囊开关 ---------- */
+/* ---------- 开关（switch）：轨道 + 滑块（#101 重塑——旧「胶囊+圆点」读不出
+   开关语义，像状态芯片；现在是标准 switch：关=灰轨白块居左，开=绿轨右移） ---------- */
 .toggle {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 11px;
+  gap: 8px;
+  padding: 3px 8px 3px 4px;
   border-radius: 999px;
-  background: var(--soft);
-  color: var(--mid);
+  background: transparent;
+  color: var(--ink-2);
   font-size: 12px;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  transition: color 0.15s ease;
 }
-.toggle:hover { background: var(--soft-2); }
-.toggle:focus-within { outline: 2px solid var(--soft-2); }
+.toggle:hover { color: var(--ink); }
+.toggle:disabled { opacity: 0.45; cursor: default; }
+.toggle:disabled:hover { color: var(--ink-2); }
+.toggle:focus-visible,
+.toggle:focus-within {
+  outline: 2px solid var(--soft-2);
+  outline-offset: 1px;
+}
 .toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.toggle .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mid); }
-.toggle.on { background: var(--ink); color: var(--paper); }
-.toggle.on .dot { background: var(--paper); }
+/* .dot 即轨道，滑块是它的 ::before */
+.toggle .dot {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--soft-2);
+  transition: background 0.18s ease;
+}
+.toggle .dot::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(22, 24, 28, 0.28);
+  transition: transform 0.18s ease;
+}
+.toggle.on { color: var(--ink); }
+.toggle.on .dot { background: var(--live); }
+.toggle.on .dot::before { transform: translateX(12px); }
 
 /* ---------- 仓库管理页：平台化区块（统计 / 分组卡片 / 文档 chips / 文档区块） ---------- */
 

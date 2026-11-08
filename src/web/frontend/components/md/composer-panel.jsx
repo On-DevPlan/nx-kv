@@ -9,7 +9,7 @@ import { useRef, useState } from 'react';
 import { MdPanes } from './md-panes.jsx';
 import { filesToAttachments } from './attachments.js';
 import { insertAttachmentSnippet } from '../../modules/md/md-parse.js';
-import { composerOf, closeComposer } from './composer-launch.js';
+import { composerOf, restoreComposerSource } from './composer-launch.js';
 import { useApp } from '../../app-context.jsx';
 import { useToast } from '../toast/index.jsx';
 import '../../modules/md/style.css';
@@ -21,7 +21,6 @@ export default function ComposePanel({
   prevQuote = '',
   taskLabel = '',
   taskTitle = '',
-  tabId = null,
 }) {
   const app = useApp() || {};
   const toast = useToast();
@@ -30,6 +29,12 @@ export default function ComposePanel({
   const [busy, setBusy] = useState(false);
   const editorApiRef = useRef(null);
   const isFeedback = mode === 'feedback';
+
+  // 收尾：把**来源面板**放回主区（#106）——主区是单面板位，评论页把任务页
+  // 顶掉了；不放回去主区就空掉，只剩侧边栏。
+  const finish = () => {
+    restoreComposerSource(app.model, token);
+  };
 
   const submit = async () => {
     const text = String(body || '').trim();
@@ -45,8 +50,7 @@ export default function ComposePanel({
     setBusy(true);
     try {
       await h.onSubmit({ text, attachments, inserts: '' });
-      closeComposer(token);
-      if (tabId && app.closePanel) app.closePanel(tabId);
+      finish();
     } catch (e) {
       toast(String(e.message || e));
     } finally {
@@ -80,7 +84,7 @@ export default function ComposePanel({
         <button
           type="button"
           className="btn ghost sm"
-          onClick={() => tabId && app.closePanel && app.closePanel(tabId)}
+          onClick={finish}
           disabled={busy}
         >
           关闭

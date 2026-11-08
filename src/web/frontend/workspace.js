@@ -452,6 +452,26 @@ export function findComponentPanel(model, component) {
   return hit;
 }
 
+/**
+ * 主内容区**当前**面板的规格（component / name / config）。
+ *
+ * 主区是单面板位（新的进来旧的出去，#33）——评论 / 反馈这类临时页会把当前
+ * 面板顶掉；关掉临时页时用它把原面板**放回去**，否则主区空掉、只剩侧边栏
+ * （#106 验收反馈）。
+ */
+export function currentMainPanel(model) {
+  if (!model) return null;
+  const tsId = mainTabsetId(model);
+  if (!tsId) return null;
+  const ts = model.getNodeById ? model.getNodeById(tsId) : null;
+  if (!ts) return null;
+  const sel = typeof ts.getSelectedTab === 'function' ? ts.getSelectedTab() : null;
+  const tabs = (ts.getTabNodes && ts.getTabNodes()) || [];
+  const tab = sel || tabs[tabs.length - 1] || null;
+  if (!tab) return null;
+  return { component: tab.getComponent(), name: tab.getName(), config: tab.getConfig() || {} };
+}
+
 /** 这个 tabset 里有没有指定 component 的页签 */
 function hasComponent(tabset, components) {
   if (!components || !components.length) return false;

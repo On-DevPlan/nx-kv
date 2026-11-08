@@ -157,7 +157,7 @@ export const PANELS = {
   // 设置：浮动面板（临时开一块、看完就关）——齿轮按钮走 openFloatingPanel
   settings: { title: '设置', render: () => wrap(<SettingsPanel />) },
   // 评论 / 反馈编辑面板（#104）：工作区里新开一块 md 编辑页（顶部带引用信息）
-  compose: { title: '评论', render: (cfg, ctx) => wrap(
+  compose: { title: '评论', render: (cfg) => wrap(
     <ComposePanel
       token={cfg && cfg.token}
       mode={cfg && cfg.mode}
@@ -165,7 +165,6 @@ export const PANELS = {
       prevQuote={cfg && cfg.prevQuote}
       taskLabel={cfg && cfg.taskLabel}
       taskTitle={cfg && cfg.taskTitle}
-      tabId={ctx && ctx.tabId}
     />
   ) },
   // 编排：可视化 DAG 面板（目录与项目组共用；dirKey=队列，groupId=组内切队列）

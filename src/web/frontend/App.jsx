@@ -318,7 +318,7 @@ export default function App() {
   // 路由 → 面板：地址指向哪块，就打开/聚焦哪块。
   // **只跟路由走**（模型用 ref）：模型一变就重跑，会按**旧路由**把面板抢回去
   // （点任务开页签 → 模型变 → effect 按旧路由重选目录面板 → 页签被顶掉）。
-  // 路由变化记进历史栈——面板内的面包屑「← 返回」按来处返回（见 route-history.js）
+  // 路由变化记进历史栈——面板内面包屑「点路径返回」按来处回（见 route-history.js）
   useEffect(() => {
     pushRoute(location.hash);
   }, [route.view, route.key, route.task, route.repoKey, route.boardKey]);

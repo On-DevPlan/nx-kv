@@ -82,9 +82,10 @@ function legacySyntaxError(template) {
   while ((m = mustacheRe.exec(src))) {
     const name = m[1].trim();
     if (/^else\b/.test(name)) continue;
-    if (LEGACY_PLACEHOLDERS.has(name)) {
-      const hint = name === 'attach.sync' || name === 'attach.syncText'
-        ? '请改用 {{attach.sync.dir}} 等具体字段（并用 {{#if attach.sync}} 判断是否跑过同步）'
+    if (LEGACY_PLACEHOLDERS.has(name) || /^attach\.sync(?!Summary)(?:\.|\s*$)/.test(name)) {
+      const isSync = name === 'attach.sync' || name === 'attach.syncText' || /^attach\.sync\./.test(name);
+      const hint = isSync
+        ? '同步汇总请改用 {{attach.syncSummary.text}}（并用 {{#if attach.syncSummary}} 判断是否跑过同步）；单条附件可达性看 file.localPath / file.exists'
         : '列表请改用 {{#each 列表}}…{{/each}}，对象请直接取子字段';
       return `旧占位符 {{${name}}} 已废弃；${hint}`;
     }

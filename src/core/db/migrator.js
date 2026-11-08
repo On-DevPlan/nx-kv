@@ -9,21 +9,25 @@
 //
 // 备份：升级前必须 `VACUUM INTO`（WAL 下直接复制 .db 会拿到不一致快照）。
 // `VACUUM` 不能在事务里跑，所以备份是**升级事务之前**的独立动作。
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { CURRENT_SCHEMA_VERSION } from './version.js';
+import { MIGRATION_STEPS, planMigrationPath, readMigrationSql } from './migrations/index.js';
 import { tx } from './tx.js';
 import { stampFileTag } from './time.js';
 
 /**
- * 迁移步骤表。未来加列 → 追加 `{ version: 2, file: '002_xxx.sql' }`，
- * **绝不改 001**（已经发布出去的库不会重跑 001）。
+ * 迁移步骤表 = migrations/index.js 的直接边。未来加版本 → 在那边追加
+ * `{ from: N, to: N+1, file: 'vN+1.sql' }`，**绝不改已发布的 vN.sql**。
+ *
+ * `apply(conn, ctx)` 与 DDL 在**同一个事务**里执行，用于纯 SQL 表达不了的数据迁移
+ * （manifest.json 台账、正文 fileId 引用、docs 树扫描等）。
  */
-export const MIGRATIONS = [{ version: 1, file: '001.sql' }];
+export const MIGRATIONS = MIGRATION_STEPS;
 
-/** 读一份 schema 文件（随包发布，运行时按 URL 取，保持 SQL 可独立 review）。 */
+/** 读一份版本快照 / 跃迁脚本（随包发布，运行时按 URL 取，保持 SQL 可独立 review）。 */
 export function readSchemaSql(file) {
-  return readFileSync(new URL('./schema/' + file, import.meta.url), 'utf8');
+  return readMigrationSql(file);
 }
 
 // 连接级 PRAGMA：由 driver.js 在每个连接上执行（journal_mode 在事务里改不动），
@@ -90,10 +94,12 @@ export function storeKindOf(db) {
   return getMeta(db, 'store_kind');
 }
 
-/** 需要执行的步骤（`from` 之后、`to` 及之前）。 */
+/**
+ * 需要执行的步骤（`from` 之后、`to` 及之前）。
+ * 路径由 migrations/index.js 的边映射表规划：缺边会抛出明确错误，不静默跳过。
+ */
 export function pendingSteps(from, to = CURRENT_SCHEMA_VERSION) {
-  const lo = Number(from) || 0;
-  return MIGRATIONS.filter((s) => s.version > lo && s.version <= to).sort((a, b) => a.version - b.version);
+  return planMigrationPath(from, to);
 }
 
 /**
@@ -103,9 +109,10 @@ export function pendingSteps(from, to = CURRENT_SCHEMA_VERSION) {
  * @param {object} [opts]
  * @param {number} [opts.from] 起始版本（缺省读 user_version）
  * @param {number} [opts.to=CURRENT_SCHEMA_VERSION] 目标版本
+ * @param {object} [opts.context] 传给 step.apply 的迁移上下文（路径、时间戳等）
  * @returns {number[]} 实际执行的版本号
  */
-export function migrate(db, { from, to = CURRENT_SCHEMA_VERSION } = {}) {
+export function migrate(db, { from, to = CURRENT_SCHEMA_VERSION, context = {} } = {}) {
   const applied = [];
   let cur = from === undefined ? userVersion(db) : Number(from) || 0;
   for (const step of pendingSteps(cur, to)) {
@@ -114,17 +121,18 @@ export function migrate(db, { from, to = CURRENT_SCHEMA_VERSION } = {}) {
       (conn) => {
         // 双检：并发进程可能刚把这一步做完（锁在 BEGIN IMMEDIATE 上拿到）。
         const now = userVersion(conn);
-        if (now >= step.version) return;
+        if (now >= step.to) return;
         conn.exec(sql);
-        setUserVersion(conn, step.version);
-        // meta 表可能还没建（001 里建），所以只有建好之后才写 schema_version。
-        if (hasMetaTable(conn)) setMeta(conn, 'schema_version', String(step.version));
+        if (typeof step.apply === 'function') step.apply(conn, context);
+        setUserVersion(conn, step.to);
+        // meta 表可能还没建（v1 里建），所以只有建好之后才写 schema_version。
+        if (hasMetaTable(conn)) setMeta(conn, 'schema_version', String(step.to));
       },
       { db, mode: 'IMMEDIATE' }
     );
-    // 事务里可能因并发跳过，但无论谁做的，此刻库都已在 step.version
-    if (userVersion(db) >= step.version) applied.push(step.version);
-    cur = step.version;
+    // 事务里可能因并发跳过，但无论谁做的，此刻库都已在 step.to
+    if (userVersion(db) >= step.to) applied.push(step.to);
+    cur = step.to;
   }
   return applied;
 }

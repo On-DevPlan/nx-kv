@@ -2,6 +2,55 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.32.0] - 2026-11-08 附件模型 v2（存储版本 1→2，破坏性）
+
+### Breaking
+
+- **存储版本 1 → 2**：新增 `attachments`（资源统一表）、`task_attach`、`ref_attach`；
+  删除空的 `task_refs` / `ref_relations`。升级为单向、不可逆。
+- **升级前自动备份**：启动时先 `VACUUM INTO` 备份到 `~/.nx-kv/backups/`
+  （`nxkv-v1-<时间戳>.db`），迁移失败不改库；备份保留最近 5 份。
+- **旧台账不再是真相**：`manifest.json` 在迁移阶段入库，成功后改名为归档
+  （不删除，留取证）；运行时只读 SQLite，不再读写 manifest。
+- **附件清单以关系表为准**：正文 `![名](fileId)` / `nxkv://task|ref` 写法不变，
+  但「挂在哪条任务/文档」由 `task_attach` / `ref_attach` 决定；正文只是
+  `role=inline` 那部分的呈现。
+- **refs 收窄为文档库**：只装 md（自有树相对路径或外部 md 绝对路径）；
+  非 md 的外部文件在迁移时转为 file 资源，字节仍留在库外。
+
+### Added
+
+- **任务/文档附件区（v2）**：`attachments` + 关系表，支持 `file` / `url` / `task` / `ref`
+  四类资源；正文入库即建边，不再等领取才解析。
+- **CLI/HTTP 附件动作**：`localtask attach --path/--fileId/--url/--task/--ref`，
+  `--no-embed` 只挂附件区不改正文；`localtask detach --purge` 在无人引用时删资源行与本机字节；
+  `docs attachments` / `docs attach` 同口径。
+- **面板附件区**：任务页与文档页共用 `AttachArea`，新增选择弹窗（拖拽、粘贴、
+  URL、任务、文档），附件区与正文内嵌分开列出。
+- **`attachment` 区块按类型渲染**：默认模板固定三段（总数 / 清单 / 取用方式），
+  每条带类型子对象（`file` / `url` / `task` / `ref`），命令由变量给出；
+  同步汇总单列 `attach.syncSummary`（旧 `attach.sync.*` 已移除）。
+
+### Changed
+
+- **task 型附件只存地址**：以 `target_key`（topic_key）+ `target_seq` 为地址，
+  `taskId` 仅作本地 join；标题/状态实时读取，不存正文。任务改正文后领取方看到最新内容；
+  purge 后地址仍可读并标注「已清理」。
+- **附件 `name` 统一为短标签**：任务型为 `#seq 标题`（正文首个非空行去前缀、截 80 字），
+  不再把整段正文写进 `name`；存量数据已按规则重算。
+- **schema 治理**：迁移文件改为 `src/core/db/migrations/vN.sql` 不可变快照 +
+  `index.js` 直接边/组合边规划；删除 `schema/001.sql`；新增决策文档与
+  `scripts/check-schema-decisions.mjs`（已接入 `lint`）。
+
+### Docs / Pending
+
+- `.claude/skills/dev-nxkv` 同步迁移目录、附件 v2 与提示词变量口径；
+  README、`docs/project&projectsCli.md` 同步附件模型说明。
+- **导出二进制资源：维持现状（待定）**。`repo export --zip` 仍只打包
+  `layout.json` + `docs/**`（md 文本），不打包附件二进制；是否增加二进制导出开关
+  尚未决定，本轮不新增功能。口径记录见
+  `docs/decisions/2026-11-08-attachment-model-v2.md`。
+
 ## [0.31.0] - 2026-11-07 仓库 key 必填 / ext 队列余量 / 持续 get 时长 / Fork 任务
 
 ### Added

@@ -19,7 +19,7 @@ description: "nx-kv 仓库开发指引：分层与 action 契约、SQLite 领域
 1. 功能入口只走 `src/modules/<id>/index.js` 的 action；**每条 action 必须有 `cli`**，`http` 可显式为 `null`。
 2. 模块间只通过对方 `service.js`/导出面协作；禁止 import 别的模块内部实现（见 `eslint.config.js`）。
 3. 跨模块、无副作用的纯函数才放 `src/shared/`；`src/core/` 只放原语（db、错误、模板引擎等），不放业务。
-4. SQLite 是唯一业务数据源。schema 只加新 migration：`src/core/db/schema/00N_*.sql` + `migrator.js` 登记；禁止改已发布的 `001.sql`。
+4. SQLite 是唯一业务数据源。schema 只加新 migration：`src/core/db/migrations/vN.sql`（不可变快照，当前 `v2.sql`）+ `migrations/index.js` 登记直接边/组合边；**禁止改已发布版本文件**。
 5. 提示词只走「一份共享 ctx + Handlebars 模板字符串 + 薄编排」。禁止自研解析器、区块对象、每块独立变量域、服务端预拼列表文本。
 6. 测试必须用临时库/临时目录（`tests/support/test-store.mjs`）；禁止写用户真实库。真实库操作前先 `nx-kv db backup`。
 7. 改 CLI、面板、内置技能行为时，同步 `README.md`、`docs/`、`assets/` 与 `.claude/skills/`，不要只改一处。
@@ -42,6 +42,6 @@ description: "nx-kv 仓库开发指引：分层与 action 契约、SQLite 领域
 ## 仓库事实入口（需要核对时先看这些）
 
 - 命令与路由：`node bin/cli.mjs routes --module <id>`、`node bin/cli.mjs help --json`
-- 表结构：`src/core/db/schema/001.sql`（字段注释即设计说明）
+- 表结构：`src/core/db/migrations/v2.sql`（最新快照；历史 `v1.sql` 永远不改）
 - 设计取舍：`docs/research/SQLITE-SCHEMA.md`、`docs/research/template-engine-choice.md`
 - 使用者文档与变更记录：`README.md`、`docs/project&projectsCli.md`、`CHANGELOG.md`

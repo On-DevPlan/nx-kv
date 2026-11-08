@@ -1,0 +1,27 @@
+# 2026-11-07 · 初始 schema（存储版本 1）
+
+- date: 2026-11-07
+- decision: 用 SQLite 单库承载主题/任务/目标/仓库/文档/模板/设置，取代旧的 JSON 文件存储；`PRAGMA user_version` 作为版本号。
+- tables: topics, topic_presence, tasks, task_links, task_deps, goals, goal_checks, repos, repo_group_members, refs, ref_bindings, task_refs, ref_relations, templates, meta, settings
+- producers: 逐表见下表「生产」（「有生产者 + 有消费者」是进 schema 的前提）
+- consumers: 逐表见下表「消费」
+- 逐表生产/消费:
+  - topics — 生产: `modules/localtask/repo/topics.js`、`import-json`；消费: tasks 外键、主题总览、等待超时。
+  - topic_presence — 生产: `localtask wait/ack`；消费: 总览、wait 超时兜底。
+  - tasks — 生产: `tasktool/add`、`localtask repo`、`import-json`；消费: wait/get/list、交付附件、goals、task_links。
+  - task_links — 生产: 评论派生 / reopen / feedback 派生；消费: `localtask chain`。
+  - task_deps — 生产: 依赖设置/调序；消费: wait 取任务顺序。
+  - goals — 生产: 时间目标创建；消费: 领取交付的时间提示、goal check。
+  - goal_checks — 生产: goal check；消费: 交付 instruction 的计时段。
+  - repos — 生产: 仓库/组保存、导入；消费: repo list、组详情、docs seed、knowledge。
+  - repo_group_members — 生产: 组成员编辑；消费: 组详情、repo knowledge。
+  - refs — 生产: docs 写盘口径（`ensureDocRef`）、导入；消费: ref_bindings、v2 起 ref_attach、docs 索引。
+  - ref_bindings — 生产: `docs bind`；消费: docs list、knowledge、导出。
+  - task_refs — 生产: 无（v1 从未接线）；消费: 无；存量 0 行 → v2 删除（见 `2026-11-08-drop-task-refs.md`）。
+  - ref_relations — 生产: 无（v1 从未接线）；消费: 无；存量 0 行 → v2 删除（见 `2026-11-08-drop-ref-relations.md`）。
+  - templates — 生产: 模板设置/种子；消费: instruction 渲染。
+  - meta — 生产: bootstrap/导入；消费: `store_kind` 判库、版本号人读。
+  - settings — 生产: 设置页/CLI 写入；消费: config 读取、面板默认值。
+- evidence: `v1.sql` 是当时落地的完整 DDL；上述生产者/消费者在 `src/modules` 与 `src/core` 中可逐条对应。`task_refs`/`ref_relations` 两项的「无生产者/无消费者/0 行」由 `migrator` 迁移前核查（真实库副本 v1: task_refs=0、ref_relations=0）。
+- impact: 所有业务模块的持久化入口。
+- alternatives: 继续用 JSON 文件（并发写丢数据、无事务/外键）；拆多个库（跨表事务与备份复杂）。均否决。

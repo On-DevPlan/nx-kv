@@ -16,6 +16,8 @@ import { useDialog } from '../../components/popup/index.jsx';
 import { useApp } from '../../app-context.jsx';
 import { openPanel } from '../../workspace.js';
 import { MdPanes } from '../../components/md/md-panes.jsx';
+import AttachArea from '../../components/md/attach-area.jsx';
+import { docIdOfLocator } from '../../components/md/attach-common.js';
 import DocHead, { groupOf } from '../../components/doc/doc-head.jsx';
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { IntroRail, introDirFromRef } from '../../components/Introduction/index.jsx';
@@ -510,6 +512,19 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
           onSave={writable ? save : null}
           onUndo={writable ? undo : null}
           onRedo={writable ? redo : null}
+        />
+        {/* 附件区：ref_attach 的权威清单（正文只呈现 role=inline 的那部分）。
+            挂附件不改正文（no-embed），所以这里不重新 load 文档，避免冲掉未保存的编辑。 */}
+        <AttachArea
+          host="ref"
+          refId={docId}
+          allow={{ file: true, url: true, task: false, ref: true }}
+          disabled={!writable}
+          disabledText="只读文档不能添加附件。"
+          onOpenDoc={(locator) => {
+            const id = docIdOfLocator(locator);
+            if (id) openByDocId(id, null, openExtra);
+          }}
         />
         <div className="docp-hint">双链 [[]] 点击跳转 · Ctrl+S 保存 · 文档即磁盘文件（~/.nx-kv/docs/）</div>
       </div>

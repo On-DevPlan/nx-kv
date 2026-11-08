@@ -24,6 +24,8 @@ import ToolBar from '../../components/md/tool-bar.jsx';
 import { MdPanes } from '../../components/md/md-panes.jsx';
 import AckRail from '../../components/md/ack-rail.jsx';
 import AttachBar from '../../components/md/attach-bar.jsx';
+import AttachArea from '../../components/md/attach-area.jsx';
+import { docIdOfLocator } from '../../components/md/attach-common.js';
 import SelMenu from '../../components/md/sel-menu.jsx';
 import { openComposer } from '../../components/md/composer-launch.js';
 import ShortcutSheet from '../../components/md/shortcut-sheet.jsx';
@@ -359,6 +361,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   const [chainOpen, setChainOpen] = useState(false);
   const fileMdRef = useRef(null);
   const fileAttRef = useRef(null);
+  const attachAreaRef = useRef(null);
   const articleRef = useRef(null);
   const reviewBarRef = useRef(null);
   const reviewSumRef = useRef(null);
@@ -1305,7 +1308,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           onChain={isDraft ? null : () => setChainOpen(true)}
           onPreview={openPreview}
           onImg={() => pickAtt('image/*')}
-          onAtt={() => pickAtt('image/*,.pdf,.zip,.txt,.json,.csv')}
+          onAtt={() => (isDraft ? pickAtt('image/*,.pdf,.zip,.txt,.json,.csv') : attachAreaRef.current?.open())}
           onImport={() => fileMdRef.current?.click()}
           onClone={isDraft ? null : cloneCur}
           onFork={isDraft ? null : forkCur}
@@ -1339,15 +1342,46 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           onCloseSelMenu={closeSelMenu}
         />
 
-        <AttachBar
-          attachments={doc.attachments}
-          onRemove={(aid) => {
-            const next = (doc.attachments || []).filter((x) => x.id !== aid);
-            markDirty();
-            saveDoc(id, { attachments: next });
-            if (!isDraft) persistAtt(task, next);
-          }}
-        />
+        {isDraft ? (
+          <AttachBar
+            attachments={doc.attachments}
+            onRemove={(aid) => {
+              const next = (doc.attachments || []).filter((x) => x.id !== aid);
+              markDirty();
+              saveDoc(id, { attachments: next });
+              if (!isDraft) persistAtt(task, next);
+            }}
+          />
+        ) : topic ? (
+          <AttachArea
+            ref={attachAreaRef}
+            host="task"
+            hostId={Number(task)}
+            hostKey={isGlobal ? GLOBAL_KEY : undefined}
+            hostCwd={isGlobal ? undefined : topic.cwd}
+            allow={{ file: true, url: true, task: true, ref: true }}
+            taskOptions={(topic.tasks || []).map((t) => ({ id: t.id, text: t.text, status: t.status }))}
+            onChanged={refreshLocal}
+            onOpenTask={(hit) => {
+              if (!app.openPage || !hit || hit.seq == null) return;
+              app.openPage({
+                dirKey: hit.key || topicKey,
+                task: String(hit.seq),
+                name: `#${hit.seq}`,
+              });
+            }}
+            onOpenDoc={(locator) => {
+              const docId = docIdOfLocator(locator);
+              if (!model || !docId) return;
+              openPanel(model, {
+                component: 'doc',
+                name: locator.split('/').pop() || locator,
+                config: { docId },
+                location: 'center',
+              });
+            }}
+          />
+        ) : null}
 
         {/* 验收条：已完成任务的 ack 卡——放在**正文末尾**（用户口径）：读完正文
             正好看到 agent 的完成总结，等你回复——反馈 = 新开任务；划选评论 = 回写

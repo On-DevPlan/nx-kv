@@ -18,6 +18,9 @@ import {
 } from '../../core/fileapi.js';
 import { localDirFor, localIndex, resolveLocal, syncAttachments } from '../../core/attachstore.js';
 import { localDir, localReadStream, localResolve, localUpload } from '../../core/localatt.js';
+import { getDb } from '../../core/db/index.js';
+import { attachmentsRootFromEnv } from '../../core/paths.js';
+import { listOrphans, pruneOrphans, upsertFileAttachment } from '../../core/attachmentdb.js';
 
 const fmtBytes = (n) => {
   const v = Number(n) || 0;
@@ -114,6 +117,16 @@ export async function uploadFileAction(patch = {}) {
     groupId: gid,
     accessLevel,
   });
+  // 云端上传也立刻登记资源行：关系表才能按 fileId JOIN 到 name/size/mime。
+  upsertFileAttachment(getDb(), {
+    id: meta.fileId,
+    name: fileName,
+    mime: meta.contentType || contentType || contentTypeOf(fileName),
+    size: Number(meta.size) || buffer.length,
+    storage: 'cloud',
+    groupId: gid || 0,
+    meta: { accessLevel, uploadedAt: meta.createdAt || '' },
+  });
   return {
     ...meta,
     url: accessUrlOf(cfg.baseUrl, meta.fileId),
@@ -159,6 +172,42 @@ export async function removeFileAction(fileId, { group } = {}) {
   if (!fileId) throw badInput('缺少 fileId');
   const r = await deleteFile(fileId, await resolveGroupId(group));
   return { status: 'ok', ...r, note: '本地已同步的副本不会自动删除；要一并清理用 nx-kv file sync --prune' };
+}
+
+/** 无主资源清单：没有任何任务/文档关系边。 */
+export async function listOrphanAttachmentsAction() {
+  const rows = listOrphans(getDb());
+  return {
+    total: rows.length,
+    attachments: rows.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      name: r.name,
+      localPath: r.localPath,
+      url: r.url,
+      size: r.size,
+      storage: r.storage,
+      targetKind: r.targetKind,
+      targetKey: r.targetKey,
+      targetSeq: r.targetSeq,
+    })),
+    localRoot: attachmentsRootFromEnv(),
+  };
+}
+
+/**
+ * 回收无主资源：删 DB 行；本机/云端镜像文件在附件根目录内的一并删字节。
+ * 被任何任务/文档引用的行不会被删（共享资源不能因为另一处删行而消失）。
+ */
+export async function pruneOrphanAttachmentsAction({ dryRun = false } = {}) {
+  const db = getDb();
+  const result = pruneOrphans(db, { attachmentsRoot: attachmentsRootFromEnv(), dryRun });
+  return {
+    dryRun: !!dryRun,
+    removed: result.removed.length,
+    skipped: result.skipped.length,
+    attachments: result.removed.map((r) => ({ id: r.id, kind: r.kind, name: r.name, localPath: r.localPath })),
+  };
 }
 
 /** 同步到本地 —— 这个子命令存在的唯一理由：**让 agent 读本地文件而不是读网**。 */
@@ -277,4 +326,23 @@ export function renderContent(d) {
     `地址: ${d.url}`,
     d.localPath ? `本地: ${d.localPath}` : '本地: （未同步）',
   ].join('\n');
+}
+
+export function renderOrphans(d) {
+  if (!d.total) return `没有无主资源（附件根: ${d.localRoot}）`;
+  const lines = [`无主资源 ${d.total} 个（附件根: ${d.localRoot}）`];
+  for (const a of d.attachments) {
+    const where = a.localPath || a.url || (a.kind === 'task' ? `task ${a.targetKey}#${a.targetSeq}` : a.targetKey);
+    lines.push(`  ${a.id}  [${a.kind}]  ${a.name || '-'}  ${where || ''}`);
+  }
+  lines.push('', '回收: nx-kv file prune（先看清单可加 --dry-run）');
+  return lines.join('\n');
+}
+
+export function renderPrune(d) {
+  if (d.dryRun) return `试运行：将回收 ${d.removed} 个无主资源（跳过 ${d.skipped} 个仍被引用的）`;
+  const lines = [`已回收 ${d.removed} 个无主资源（跳过 ${d.skipped} 个仍被引用的）`];
+  for (const a of d.attachments) lines.push(`  ${a.id}  [${a.kind}]  ${a.name || '-'}  ${a.localPath || ''}`);
+  if (!d.removed) lines.push('（没有可回收的资源）');
+  return lines.join('\n');
 }

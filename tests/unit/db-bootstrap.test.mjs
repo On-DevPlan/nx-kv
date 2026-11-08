@@ -19,28 +19,34 @@ const tablesOf = (db) =>
     .all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
     .map((r) => r.name);
 
-test('全新目录：建 16 张表 / user_version=1 / meta 三件套齐全', async () => {
+test('全新目录：建 17 张表 / user_version=2 / meta 三件套齐全', async () => {
   const s = await createTestStore();
   try {
     const tables = tablesOf(s.db);
-    // 14 张 entities.sql 定稿表 + meta（G1）+ settings（G2）
-    assert.equal(tables.length, 16, `实际: ${tables.join(',')}`);
-    for (const t of ['meta', 'settings', 'topics', 'tasks', 'repos', 'refs', 'templates', 'goals']) {
+    // 001 的 16 张 + v2 新增 attachments / task_attach / ref_attach − 删除 task_refs / ref_relations
+    assert.equal(tables.length, 17, `实际: ${tables.join(',')}`);
+    for (const t of [
+      'meta', 'settings', 'topics', 'tasks', 'repos', 'refs', 'templates', 'goals',
+      'attachments', 'task_attach', 'ref_attach',
+    ]) {
       assert.ok(tables.includes(t), `缺表 ${t}`);
     }
-    assert.equal(s.db.get('PRAGMA user_version').user_version, 1);
+    for (const t of ['task_refs', 'ref_relations']) {
+      assert.ok(!tables.includes(t), `v2 必须删掉旧表 ${t}`);
+    }
+    assert.equal(s.db.get('PRAGMA user_version').user_version, 2);
 
     const meta = Object.fromEntries(s.db.all('SELECT key, value FROM meta').map((r) => [r.key, r.value]));
     assert.equal(meta.store_kind, 'sqlite');
-    assert.equal(meta.schema_version, '1');
+    assert.equal(meta.schema_version, '2');
     assert.match(meta.created_by, /^nx-kv\//);
     assert.equal(meta.migrated_from_json_at, undefined, '全新库不该有"从 JSON 迁来"的标志');
 
-    // 索引与触发器数量（21 索引 / 1 触发器，见 schema 头注释）
+    // 索引与触发器数量（23 索引 / 1 触发器，见 schema 头注释）
     const idx = s.db.get(
       "SELECT count(*) AS c FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'"
     );
-    assert.equal(idx.c, 21);
+    assert.equal(idx.c, 23);
     const trg = s.db.get("SELECT count(*) AS c FROM sqlite_master WHERE type = 'trigger'");
     assert.equal(trg.c, 1);
   } finally {
@@ -54,7 +60,7 @@ test('空文件（0 字节）当全新建库，不当"别人的库"', async () =
     writeFileSync(s.dbPath, '');
     s.open();
     assert.equal(s.core.inspectStore(s.db).storeKind, 'sqlite');
-    assert.equal(tablesOf(s.db).length, 16);
+    assert.equal(tablesOf(s.db).length, 17);
   } finally {
     s.reset();
   }
@@ -239,7 +245,7 @@ test('helper 的硬保险：非临时目录直接抛错', async () => {
 
 test('库文件里的 PRAGMA 头被 migrator 过滤（DDL 里不能有 journal_mode）', async () => {
   const { ddlOf, readSchemaSql } = await import('../../src/core/db/migrator.js');
-  const raw = readSchemaSql('001.sql');
+  const raw = readSchemaSql('v1.sql');
   assert.match(raw, /PRAGMA journal_mode = WAL/, 'schema 文件里保留 PRAGMA 头（供人阅读）');
   const ddl = ddlOf(raw);
   assert.doesNotMatch(ddl, /^PRAGMA\s+journal_mode/im);
@@ -253,5 +259,5 @@ test('库文件里的 PRAGMA 头被 migrator 过滤（DDL 里不能有 journal_m
 test('schema 文件随包发布（src/ 在 files 白名单里）', async () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   assert.ok(pkg.files.includes('src/'), 'files 白名单必须包含 src/，否则安装后读不到 schema');
-  assert.ok(readFileSync(join(ROOT, 'src/core/db/schema/001.sql'), 'utf8').length > 10_000);
+  assert.ok(readFileSync(join(ROOT, 'src/core/db/migrations/v1.sql'), 'utf8').length > 10_000);
 });

@@ -10,6 +10,7 @@
 // 一律不做（git 客户端是无底洞）；参考仓库（type=ref）只做 clone/pull/读 origin 三件事
 // （见 git.js / ref.js）——它的价值就是「把远程仓库抓到本机参考并保持新鲜」。
 import { basename, join, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import fsp from 'node:fs/promises';
 import { openPath } from '../../core/open.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
@@ -990,8 +991,18 @@ export async function bindTopicsToRepos({ repo: repoLocator = '', apply = false 
     .map((r) => ({ key: deriveKey(r), name: r.name, prefix: normalizePathKey(r.path) }))
     .filter((x) => x.prefix);
 
-  // docs 树扫描在事务外（fs 不进事务体）
+  // docs 树扫描在事务外（fs 不进事务体）；正文一并读出来，索引重建时同步 ref_attach。
   const docsFiles = apply ? listDocFiles(docsIndexRoot()) : [];
+  const docsBodies = new Map();
+  if (apply) {
+    for (const rel of docsFiles) {
+      try {
+        docsBodies.set(rel, readFileSync(join(docsIndexRoot(), ...String(rel).split('/')), 'utf8'));
+      } catch {
+        /* 读不到就跳过资源同步，索引本身仍建 */
+      }
+    }
+  }
 
   const planFor = (conn) => {
     const topics = repo.repos.listUnboundTopics(conn);
@@ -1017,7 +1028,7 @@ export async function bindTopicsToRepos({ repo: repoLocator = '', apply = false 
     return { apply: false, ...plan };
   }
   return repo.txw((conn) => {
-    const refs = repo.refs.rebuildRefIndex(conn, { docsFiles, atMs: nowMs() });
+    const refs = repo.refs.rebuildRefIndex(conn, { docsFiles, docsBodies, atMs: nowMs() });
     const plan = planFor(conn);
     let changed = 0;
     for (const b of plan.bound) {

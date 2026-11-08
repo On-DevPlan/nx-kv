@@ -3,8 +3,13 @@
 // 两个数字都只在这里出现，其它地方一律 import，避免「一处改了、另一处没改」——
 // 这类漂移的表现是「库比程序新」的误判，很难看出来。
 
-/** 当前程序认识的 schema 版本（`PRAGMA user_version` 的期望值）。 */
-export const CURRENT_SCHEMA_VERSION = 1;
+/**
+ * 当前程序认识的 schema 版本（`PRAGMA user_version` 的期望值）。
+ *
+ * v2（2026-11-08）：新增 attachments / task_attach / ref_attach，删除 task_refs /
+ * ref_relations；旧 manifest.json 与正文 fileId 引用在迁移阶段落库。
+ */
+export const CURRENT_SCHEMA_VERSION = 2;
 
 /**
  * 运行时最低 Node 版本。

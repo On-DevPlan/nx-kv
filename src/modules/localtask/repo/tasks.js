@@ -12,6 +12,7 @@
 import { db, txw } from './open.js';
 import { nowMs } from '../../../core/db/time.js';
 import { EXT, parseExt, jsonText, rowToTask, splitTaskFields } from './rows.js';
+import { syncTaskAttachments } from '../../../core/attachmentdb.js';
 
 // 行查询的统一列清单（camelCase 别名 = rowToTask 的入参形状）
 const TASK_SELECT = `SELECT id, topic_id AS topicId, seq, type, status, version, body, ext, feedback,
@@ -151,6 +152,8 @@ export function insertTask(topicId, task = {}) {
     );
     const row = conn.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', { t: topicId, s: seq });
     writeLocalDeps(conn, topicId, Number(row.id), fields.depsLocal);
+    // 正文里已经写了 fileId / nxkv 链接：入库即建资源关系，不等到领取才解析。
+    syncTaskAttachments(conn, { taskId: Number(row.id), text: c.body ?? '', atMs: at });
     return { id: seq, task: getTaskRow(topicId, seq, conn).task };
   });
 }
@@ -280,6 +283,14 @@ export function updateTask(topicId, seq, patch = {}) {
     sets.push('updated_at = :at');
     conn.run(`UPDATE tasks SET ${sets.join(', ')} WHERE topic_id = :t AND seq = :s`, params);
     writeLocalDeps(conn, topicId, Number(cur.row.id), fields.depsLocal);
+    // 只有正文真的变了才重写资源关系：status/feedback 更新不动 task_attach。
+    if (patch.text !== undefined || patch.body !== undefined) {
+      syncTaskAttachments(conn, {
+        taskId: Number(cur.row.id),
+        text: merged.text ?? fields.columns.body ?? '',
+        atMs: params.at,
+      });
+    }
     return getTaskRow(topicId, seq, conn).task;
   });
 }

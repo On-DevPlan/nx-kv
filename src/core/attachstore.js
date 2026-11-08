@@ -1,22 +1,22 @@
-// 附件的「本地镜像」：把某个用户空间（group）里的附件落到本机，
-// 好让 agent **直接读本地文件**，不再依赖网络与出图地址。
+// 云端附件的「本地镜像」：把某个用户空间（group）里的附件落到本机，
+// 好让 agent 直接读本地文件，不再依赖网络与出图地址。
 //
-// 目录（刻意落在 nx-kv 的用户目录下）：
+// 目录：
 //   ~/.nx-kv/attachments/<groupId|default>/        ← NX_KV_ATTACHMENTS 可改根目录
-// 台账：
-//   同目录 manifest.json → { groupId, dir, updatedAt, files: { <fileId>: {name, size, contentType, syncedAt} } }
 //
-// 为什么需要台账：后端 FileInfoRes **不回传原始文件名**，本地落点只能自己定；
-// 台账把「fileId → 本地文件名 + 大小」固定下来，于是反复同步能跳过未变更的，
-// 也不会每 sync 一次就换一个名字（那样等于每次重新下载）。
+// 元数据（schema v2 起）：**唯一真相在 attachments 表**（kind='file', storage='cloud',
+// group_id=<groupId>）。旧的 manifest.json 只在 v1→v2 迁移时读一次，之后归档。
+//
+// 为什么早先需要台账：后端 FileInfoRes 不回传原始文件名，本地落点只能自己定。
+// 现在 attachments.name / local_path 承担同一职责，且能与任务/文档关系 JOIN。
 import fsp from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, extname, join, parse as parsePath, resolve } from 'node:path';
 import { attachmentsRootFromEnv } from './paths.js';
 import { normalizeGroupId } from './config.js';
 import { downloadFile, listAllFiles } from './fileapi.js';
-
-export const MANIFEST_NAME = 'manifest.json';
+import { getDb } from './db/index.js';
+import { upsertFileAttachment } from './attachmentdb.js';
 
 const nowIso = () => new Date().toISOString();
 
@@ -25,33 +25,6 @@ export function localDirFor(groupId, override = '') {
   if (override) return resolve(String(override));
   const n = normalizeGroupId(groupId);
   return join(attachmentsRootFromEnv(), n === undefined ? 'default' : String(n));
-}
-
-export function manifestPath(dir) {
-  return join(dir, MANIFEST_NAME);
-}
-
-export async function readManifest(dir) {
-  try {
-    const raw = JSON.parse(await fsp.readFile(manifestPath(dir), 'utf8'));
-    return {
-      groupId: Number(raw.groupId) || 0,
-      dir: String(raw.dir || dir),
-      updatedAt: String(raw.updatedAt || ''),
-      files: raw.files && typeof raw.files === 'object' ? raw.files : {},
-    };
-  } catch {
-    // 台账不存在或损坏：当成空台账。它只是缓存，不是真相源 —— 真相源是后端。
-    return { groupId: 0, dir, updatedAt: '', files: {} };
-  }
-}
-
-export async function writeManifest(dir, data) {
-  await fsp.mkdir(dir, { recursive: true });
-  const tmp = manifestPath(dir) + '.tmp';
-  await fsp.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
-  await fsp.rename(tmp, manifestPath(dir));
-  return data;
 }
 
 // Windows 保留设备名做文件名会让文件无法访问
@@ -90,7 +63,6 @@ const EXT_BY_TYPE = {
 /**
  * 本地落点文件名。优先用调用方给的「人读名字」（任务里 markdown 的说明/链接文字），
  * 否则退回 fileId；两者都没有扩展名时，再按 fileId 自带后缀 / Content-Type 补一个。
- * 补后缀是刚需：没有扩展名，Windows 上双击打不开、内联预览也认不出类型。
  */
 export function localNameFor(fileId, preferred, contentType = '') {
   let base = safeFileName(preferred || fileId);
@@ -102,7 +74,7 @@ export function localNameFor(fileId, preferred, contentType = '') {
   return base;
 }
 
-/** 同目录内不重名的落点（`名字 (2).ext`）。files 是 id → 台账记录。 */
+/** 同目录内不重名的落点（`名字 (2).ext`）。files 是 id → 记录。 */
 function uniqueName(files, name, selfId) {
   const taken = new Set(
     Object.entries(files)
@@ -120,29 +92,71 @@ function uniqueName(files, name, selfId) {
   return candidate;
 }
 
+function groupRows(groupId) {
+  const gid = normalizeGroupId(groupId);
+  return getDb().all(
+    `SELECT id, name, local_path, mime, size, meta
+       FROM attachments
+      WHERE kind = 'file' AND storage = 'cloud' AND group_id = :g AND deleted_at IS NULL
+      ORDER BY id`,
+    { g: gid === undefined ? 0 : Number(gid) }
+  );
+}
+
+function recordOf(row) {
+  let meta = {};
+  try {
+    meta = JSON.parse(String(row.meta || '{}')) || {};
+  } catch {
+    meta = {};
+  }
+  return {
+    name: String(row.name || ''),
+    local_path: String(row.local_path || ''),
+    size: Number(row.size) || 0,
+    contentType: String(row.mime || ''),
+    syncedAt: String(meta.syncedAt || ''),
+  };
+}
+
+function absOf(rec, dir) {
+  if (rec.local_path && existsSync(rec.local_path)) return rec.local_path;
+  return rec.name ? join(dir, rec.name) : '';
+}
+
+/** 只在**当前目录内**找已落盘副本：同步用这个判断「这个根下是否需要下载」。 */
+function absInDir(rec, dir) {
+  const p = absOf(rec, dir);
+  if (!p) return '';
+  return dirname(resolve(p)) === resolve(dir) ? p : '';
+}
+
 /**
- * 读台账 + 落盘文件，判断某个附件是否**已经在本地且内容未变**。
+ * 读 DB + 落盘文件，判断某个附件是否已经在本地且内容未变。
  * 返回绝对路径；没同步过（或本地文件被删了）返回 null。
  */
 export async function resolveLocal(groupId, fileId, overrideDir = '') {
+  const gid = normalizeGroupId(groupId);
   const dir = localDirFor(groupId, overrideDir);
-  const man = await readManifest(dir);
-  const rec = man.files[fileId];
-  if (!rec || !rec.name) return null;
-  const abs = join(dir, String(rec.name));
-  return existsSync(abs) ? { path: abs, name: String(rec.name), size: Number(rec.size) || 0 } : null;
+  const row = getDb().get(
+    `SELECT id, name, local_path, mime, size, meta FROM attachments
+      WHERE id = :id AND kind = 'file' AND storage = 'cloud' AND group_id = :g AND deleted_at IS NULL`,
+    { id: String(fileId || ''), g: gid === undefined ? 0 : Number(gid) }
+  );
+  if (!row) return null;
+  const rec = recordOf(row);
+  const abs = absOf(rec, dir);
+  return abs && existsSync(abs) ? { path: abs, name: rec.name, size: rec.size } : null;
 }
 
-/** 该目录下已同步的全部条目（id → {path,name,size}），供 `todo attachments` 批量标注用。 */
+/** 该目录下已同步的全部条目（id → {path,name,size}），供批量标注用。 */
 export async function localIndex(groupId, overrideDir = '') {
   const dir = localDirFor(groupId, overrideDir);
-  const man = await readManifest(dir);
   const out = new Map();
-  for (const [id, rec] of Object.entries(man.files)) {
-    const abs = join(dir, String(rec?.name || ''));
-    if (rec?.name && existsSync(abs)) {
-      out.set(id, { path: abs, name: String(rec.name), size: Number(rec.size) || 0 });
-    }
+  for (const row of groupRows(groupId)) {
+    const rec = recordOf(row);
+    const abs = absOf(rec, dir);
+    if (abs && existsSync(abs)) out.set(row.id, { path: abs, name: rec.name, size: rec.size });
   }
   return { dir, index: out };
 }
@@ -150,13 +164,12 @@ export async function localIndex(groupId, overrideDir = '') {
 /**
  * 同步附件到本地。
  *
- * - `ids` 为空 → 同步该 group 的**全部**附件（`file sync` 的默认语义）
+ * - `ids` 为空 → 同步该 group 的全部附件（`file sync` 的默认语义）
  * - `ids` 非空 → 只同步这些 id（读任务时按引用同步走这条）
  * - `names` → fileId 的人读文件名（来自任务里 markdown 的说明文字）
- * - `prune` → 删掉本地已不在后端的文件（**仅在 sync-all 时生效**：
- *   带了 ids 过滤还 prune，会把没列出来的附件一起删掉）
+ * - `prune` → 删掉本地已不在后端的文件（仅在 sync-all 时生效）
  *
- * 单个文件下载失败**不中断整体**：如实记进 failures 让调用方知道哪些没拿到。
+ * 单个文件下载失败不中断整体：如实记进 failures 让调用方知道哪些没拿到。
  */
 export async function syncAttachments({
   groupId,
@@ -167,8 +180,9 @@ export async function syncAttachments({
   dryRun = false,
 } = {}) {
   const dir = localDirFor(groupId, overrideDir);
-  const man = await readManifest(dir);
-  const files = { ...man.files };
+  const db = getDb();
+  const files = {};
+  for (const row of groupRows(groupId)) files[row.id] = recordOf(row);
 
   const remote = await listAllFiles({ groupId });
   const wanted = Array.isArray(ids) && ids.length ? new Set(ids.map(String)) : null;
@@ -188,13 +202,15 @@ export async function syncAttachments({
 
     const desired = localNameFor(id, names[id], meta.contentType);
     const prev = files[id];
-    const prevAbs = prev?.name ? join(dir, String(prev.name)) : '';
+    // 换根（attachmentsDir / NX_KV_ATTACHMENTS）后旧绝对路径不算数：
+    // 必须在新目录里重新落一份，否则看起来像「没下载」。
+    const prevAbs = prev ? absInDir(prev, dir) : '';
     const sizeKnown = Number(prev?.size) > 0;
     const unchanged = prevAbs && existsSync(prevAbs) && sizeKnown && Number(prev.size) === Number(meta.size);
 
     if (unchanged) {
       skipped++;
-      entries.push({ id, name: String(prev.name), path: prevAbs, size: Number(prev.size), contentType: meta.contentType, synced: true });
+      entries.push({ id, name: prev.name, path: prevAbs, size: Number(prev.size), contentType: meta.contentType, synced: true });
       continue;
     }
     if (dryRun) {
@@ -207,9 +223,8 @@ export async function syncAttachments({
       buf = await downloadFile(id);
     } catch (e) {
       failures.push({ id, error: String((e && e.message) || e) });
-      // 本地已有旧版本就继续用它，避免「网络抖一下附件就消失」
       if (prevAbs && existsSync(prevAbs)) {
-        entries.push({ id, name: String(prev.name), path: prevAbs, size: Number(prev.size), contentType: meta.contentType, synced: true, stale: true });
+        entries.push({ id, name: prev.name, path: prevAbs, size: Number(prev.size), contentType: meta.contentType, synced: true, stale: true });
       }
       continue;
     }
@@ -223,34 +238,62 @@ export async function syncAttachments({
       failures.push({ id, error: String((e && e.message) || e) });
       continue;
     }
-    files[id] = { name, size: buf.length, contentType: meta.contentType, syncedAt: nowIso() };
+    files[id] = { name, local_path: abs, size: buf.length, contentType: meta.contentType, syncedAt: nowIso() };
+    upsertFileAttachment(db, {
+      id,
+      name,
+      localPath: abs,
+      mime: meta.contentType,
+      size: buf.length,
+      storage: 'cloud',
+      groupId: normalizeGroupId(groupId) || 0,
+      meta: { syncedAt: nowIso(), contentType: meta.contentType },
+    });
     downloaded++;
     entries.push({ id, name, path: abs, size: buf.length, contentType: meta.contentType, synced: true });
   }
 
-  // prune：只在同步全部时生效（理由见函数头）
+  // prune：只在同步全部时生效（理由见函数头）。被任务/文档引用过的行不删，
+  // 只清本地缓存并保留元数据——否则 CASCADE 会把关系边一起删掉。
   const removed = [];
   if (prune && !wanted && !dryRun) {
+    const gid = normalizeGroupId(groupId);
     for (const id of Object.keys(files)) {
       if (remoteIds.has(id)) continue;
-      const abs = join(dir, String(files[id]?.name || ''));
-      try {
-        if (existsSync(abs)) await fsp.unlink(abs);
-      } catch {
-        // 删不掉就留着（可能被占用）；台账条目仍移除，下次同步不会误认它是最新的
+      const rec = files[id];
+      const abs = absOf(rec, dir);
+      if (abs) {
+        try {
+          if (existsSync(abs)) await fsp.unlink(abs);
+        } catch {
+          /* 删不掉就留着 */
+        }
       }
-      removed.push(files[id]?.name || id);
-      delete files[id];
+      removed.push(rec.name || id);
+      const linked = db.get(
+        `SELECT 1 AS x FROM task_attach WHERE attachment_id = :id
+         UNION ALL SELECT 1 FROM ref_attach WHERE attachment_id = :id LIMIT 1`,
+        { id }
+      );
+      if (linked) {
+        db.run(
+          `UPDATE attachments SET local_path = '', size = 0, meta = :meta, updated_at = :at
+            WHERE id = :id AND kind = 'file' AND storage = 'cloud' AND group_id = :g`,
+          {
+            id,
+            g: gid === undefined ? 0 : Number(gid),
+            meta: JSON.stringify({ syncedAt: rec.syncedAt, remoteDeleted: true }),
+            at: Date.now(),
+          }
+        );
+      } else {
+        db.run(
+          `DELETE FROM attachments
+            WHERE id = :id AND kind = 'file' AND storage = 'cloud' AND group_id = :g AND deleted_at IS NULL`,
+          { id, g: gid === undefined ? 0 : Number(gid) }
+        );
+      }
     }
-  }
-
-  if (!dryRun) {
-    await writeManifest(dir, {
-      groupId: normalizeGroupId(groupId) || 0,
-      dir,
-      updatedAt: nowIso(),
-      files,
-    });
   }
 
   return {

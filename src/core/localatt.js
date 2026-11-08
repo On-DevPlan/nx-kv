@@ -1,16 +1,16 @@
-// 本地附件仓：**本地任务**（localtask 队列）的贴图/文件原件，落在本机磁盘上。
+// 本地附件仓：本机任务/文档的贴图与文件原件，字节落在本地磁盘，
+// **元数据唯一真相在 SQLite 的 attachments 表**（schema v2）。
 //
-// 口径（任务 #15 验收反馈 2026-11-04）：本地任务的贴图走本地存储，与云端图床
-// **零关联**——上传不碰网、预览不透传、agent 领取直接读本地路径。云端清单
-// （todo）的附件仍走云端图床（core/fileapi.js + core/attachstore.js 镜像），
-// 两条链路互不依赖；只有「正文引用的附件 id」是同一套语法（modules/todo/attach.js）。
+// 口径（任务 #15 验收反馈 2026-11-04 起，2026-11-08 收口到 DB）：
+//   · 本地任务贴图走本地存储，与云端图床零关联——上传不碰网、预览不透传、
+//     agent 领取直接读本地路径；
+//   · 云端清单（todo）的附件仍走云端图床（core/fileapi.js + core/attachstore.js），
+//     但云端镜像的元数据同样进 attachments（storage='cloud'）；
+//   · 正文引用语法完全不变：`![名](fileId)` / `[名](fileId)`，fileId = attachments.id。
 //
-// 目录：~/.nx-kv/attachments/local/（NX_KV_ATTACHMENTS 可改根目录；与各
-// 工作空间的数字目录天然不撞）。台账 manifest.json 形状与 attachstore 一致
-// （files: fileId → {name,size,contentType,…}），复用同一套读写函数。
-//
-// 正文引用语法不变：`![名](fileId)`，fileId 同样是 32 位 hex——面板/解析端
-// 不需要知道 id 背后是本地仓还是云端；读取时先查本地仓、未命中再走云端。
+// 目录：~/.nx-kv/attachments/local/（NX_KV_ATTACHMENTS 可改根目录）。
+// 旧的 manifest.json 只在 schema v1→v2 迁移时读取一次，之后归档；运行时不再写它，
+// 杜绝「DB 与 JSON 两套真相」。
 import { randomBytes } from 'node:crypto';
 import fsp from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -18,19 +18,11 @@ import { createReadStream } from 'node:fs';
 import { dirname, join, parse as parsePath } from 'node:path';
 import { attachmentsRootFromEnv } from './paths.js';
 import { contentTypeOf } from './fileapi.js';
-import {
-  localNameFor,
-  readManifest as readMirrorManifest,
-  safeFileName,
-  writeManifest as writeMirrorManifest,
-} from './attachstore.js';
+import { getDb } from './db/index.js';
+import { getAttachment, upsertFileAttachment } from './attachmentdb.js';
+import { safeFileName, localNameFor } from './attachstore.js';
 
 export const LOCAL_STORE_DIRNAME = 'local';
-
-// 台账读写直接复用镜像那套（同形状：files 是 fileId → 记录）。groupId 字段
-// 对本地仓没有意义（readManifest 缺省补 0），写入时不带即可。
-const readManifest = (dir) => readMirrorManifest(dir);
-const writeManifest = (dir, data) => writeMirrorManifest(dir, data);
 
 /** 本地附件仓根目录（每个实例独立：NX_KV_ATTACHMENTS 覆盖根时测试天然隔离）。 */
 export function localDir() {
@@ -41,14 +33,13 @@ const nowIso = () => new Date().toISOString();
 
 /**
  * 新条目的 id：32 位 hex（16 字节随机）。与云端 fileId 同构——
- * looksLikeFileId（modules/todo/attach.js）照常认，正文语法零分叉。
- * 撞车概率 2^-128，先查本地仓再查云端的读取顺序天然消歧。
+ * looksLikeFileId 照常认，正文语法零分叉。
  */
 function newFileId() {
   return randomBytes(16).toString('hex');
 }
 
-// 同目录不重名的落点（`名字 (2).ext`）——台账是唯一真相源，文件名只是给人看的。
+// 同目录不重名的落点（`名字 (2).ext`）——资源行是唯一真相，文件名只是给人看的。
 function uniqueName(taken, name) {
   if (!taken.has(name)) return name;
   const { name: stem, ext } = parsePath(name);
@@ -61,8 +52,25 @@ function uniqueName(taken, name) {
   return candidate;
 }
 
+function localRows(db) {
+  return db.all(
+    `SELECT id, name, local_path, mime, size, meta
+       FROM attachments
+      WHERE kind = 'file' AND storage = 'local' AND deleted_at IS NULL`
+  );
+}
+
+function resolvedPath(row, dir) {
+  const stored = String(row.local_path || '');
+  if (stored && existsSync(stored)) return stored;
+  const name = String(row.name || '');
+  if (!name) return '';
+  const fallback = join(dir, name);
+  return existsSync(fallback) ? fallback : '';
+}
+
 /**
- * 上传一个附件到本地仓：落盘 + 记台账，返回元数据。
+ * 上传一个附件到本地仓：落盘 + 写 attachments 行，返回元数据。
  * 不碰网络——本机 serve 进程内一次落盘即完成。
  *
  * @param {{name: string, buffer: Buffer, contentType?: string}} p
@@ -73,39 +81,52 @@ export async function localUpload({ name, buffer, contentType = '' } = {}) {
   const base = safeFileName(name);
   if (!base || base === 'file') throw new Error('上传需要文件名');
   const dir = localDir();
-  const man = await readManifest(dir);
+  const db = getDb();
+  const taken = new Set(localRows(db).map((r) => String(r.name || '')));
   const id = newFileId();
-  // 落盘文件名人读优先（嵌入的说明文字一路跟过来），缺扩展名按 contentType 补
-  const fileName = uniqueName(
-    new Set(Object.values(man.files).map((r) => String(r?.name || ''))),
-    localNameFor(id, base, contentType || contentTypeOf(base))
-  );
+  const fileName = uniqueName(taken, localNameFor(id, base, contentType || contentTypeOf(base)));
   const abs = join(dir, fileName);
   await fsp.mkdir(dirname(abs), { recursive: true });
   await fsp.writeFile(abs, buffer);
   const ct = contentType || contentTypeOf(fileName);
-  man.files[id] = { name: fileName, size: buffer.length, contentType: ct, createdAt: nowIso() };
-  man.updatedAt = nowIso();
-  await writeManifest(dir, { ...man, dir });
+  try {
+    upsertFileAttachment(db, {
+      id,
+      name: fileName,
+      localPath: abs,
+      mime: ct,
+      size: buffer.length,
+      storage: 'local',
+      meta: { contentType: ct, createdAt: nowIso() },
+    });
+  } catch (err) {
+    // DB 写失败 → 字节不留在盘上（否则下次扫描会出现无记录的孤儿文件）
+    try {
+      await fsp.unlink(abs);
+    } catch {
+      /* 删不掉就留下，至少不是「有记录无文件」 */
+    }
+    throw err;
+  }
   return { fileId: id, name: fileName, size: buffer.length, contentType: ct, path: abs, storage: 'local' };
 }
 
-/** 台账 + 落盘文件都在 → 返回本地元数据；没传过或文件被手删 → null。 */
+/** attachments 行 + 落盘文件都在 → 返回本地元数据；没传过或文件被手删 → null。 */
 export async function localResolve(fileId) {
   const id = String(fileId ?? '').trim();
   if (!id) return null;
+  const db = getDb();
+  const row = getAttachment(db, id);
+  if (!row || row.deletedAt || row.kind !== 'file' || row.storage !== 'local') return null;
   const dir = localDir();
-  const man = await readManifest(dir);
-  const rec = man.files[id];
-  if (!rec || !rec.name) return null;
-  const abs = join(dir, String(rec.name));
-  if (!existsSync(abs)) return null;
+  const abs = resolvedPath({ local_path: row.localPath, name: row.name }, dir);
+  if (!abs) return null;
   return {
     fileId: id,
     path: abs,
-    name: String(rec.name),
-    size: Number(rec.size) || 0,
-    contentType: String(rec.contentType || ''),
+    name: String(row.name || ''),
+    size: Number(row.size) || 0,
+    contentType: String(row.mime || ''),
     storage: 'local',
   };
 }
@@ -113,20 +134,18 @@ export async function localResolve(fileId) {
 /** 本地仓全部在盘条目（id → 元数据），供领取侧批量标注。 */
 export async function localIndex() {
   const dir = localDir();
-  const man = await readManifest(dir);
   const index = new Map();
-  for (const [id, rec] of Object.entries(man.files)) {
-    const abs = join(dir, String(rec?.name || ''));
-    if (rec?.name && existsSync(abs)) {
-      index.set(id, {
-        fileId: id,
-        path: abs,
-        name: String(rec.name),
-        size: Number(rec.size) || 0,
-        contentType: String(rec.contentType || ''),
-        storage: 'local',
-      });
-    }
+  for (const row of localRows(getDb())) {
+    const abs = resolvedPath(row, dir);
+    if (!abs) continue;
+    index.set(row.id, {
+      fileId: row.id,
+      path: abs,
+      name: String(row.name || ''),
+      size: Number(row.size) || 0,
+      contentType: String(row.mime || ''),
+      storage: 'local',
+    });
   }
   return { dir, index };
 }

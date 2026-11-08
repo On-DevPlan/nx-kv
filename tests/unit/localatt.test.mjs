@@ -11,6 +11,8 @@ import assert from 'node:assert/strict';
 
 // env 先行（模块导入前钉住独立附件根）——不落到用户的真实 ~/.nx-kv 上
 const sb = mkdtempSync(join(tmpdir(), 'nx-kv-localatt-'));
+process.env.NX_KV_HOME = sb;
+process.env.NX_KV_DB = join(sb, 'nxkv.db');
 process.env.NX_KV_ATTACHMENTS = join(sb, 'att');
 process.env.NX_KV_CONFIG = join(sb, 'config.json'); // 不落盘 → 默认设置
 
@@ -91,6 +93,9 @@ test('file.get：本机仓命中不问云端（离线可查）', async () => {
   assert.equal(d.isImage, true);
 });
 
-test('清理', () => {
-  rmSync(sb, { recursive: true, force: true });
+test('清理', async () => {
+  // Windows 上连接开着删库必 EPERM：先关进程级连接再删目录
+  const { closeDb } = await import('../../src/core/db/index.js');
+  closeDb();
+  rmSync(sb, { recursive: true, force: true, maxRetries: 3 });
 });

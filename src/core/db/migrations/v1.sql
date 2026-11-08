@@ -73,6 +73,7 @@ PRAGMA user_version = 1;                 -- schema 版本，迁移脚本据此�
 -- 删组用 RESTRICT 而不是 SET NULL：置空会让那条队列和「本目录单跑 repo」那条撞成
 -- 同一个 (cwd, NULL)，删不删得成功取决于该目录下有没有单跑队列 —— 这种时灵时不灵的
 -- 行为比直接报错糟糕得多。所以要求先把挂在组上下文下的队列处理掉，再删组。
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE topics (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   -- G3 · 对外寻址串 = `(cwd, group_key)` 的**纯函数派生值**（core/topic-key.js 的
@@ -136,6 +137,7 @@ CREATE INDEX ix_topics_repo ON topics (repo_key);
 --      不会让队列本身看起来像在等。
 --
 -- 仍然保留「截止时刻过了就不算在等」的兜底：数据库没有 TTL，残留是必然的。
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE topic_presence (
   topic_id         INTEGER PRIMARY KEY REFERENCES topics(id) ON DELETE CASCADE,
   waiting          INTEGER NOT NULL DEFAULT 0 CHECK (waiting IN (0,1)),
@@ -157,6 +159,7 @@ CREATE TABLE topic_presence (
 --   claimed    已被 agent 领走（在干）
 --   done       已交付（feedback 在这一刻写入）
 --   cancelled  作废（不再干这条，但要留着说"当年为什么要干这个"）
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE tasks (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   topic_id   INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
@@ -258,6 +261,7 @@ END;
 --   comment    由某条评论派生（评论区划选 → 新任务）
 --   reopen     重开：上一轮没通过，另起一条接着做
 --   feedback   完成回调的反馈里提出了新活，派生一条新任务
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE task_links (
   src_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,  -- 派生出的新任务
   dst_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,  -- 来源任务
@@ -297,6 +301,7 @@ CREATE INDEX ix_task_links_children ON task_links (dst_id);
 --     依赖    = 当下的约束，会加会撤（改顺序、依赖已完成、任务被重排）。
 --   混成一张表后，「删掉一条依赖」和「删掉一段历史」就是同一种 DELETE，
 --   一次手滑就把链删了，而链是后来追溯「这活怎么变成现在这样」的唯一依据。
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE task_deps (
   task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   dep_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -321,6 +326,7 @@ CREATE INDEX ix_task_deps_dep ON task_deps (dep_id);   -- 反查：这条挡住�
 -- 要加时间，是改 duration/deadline；要重做，是派生新任务、新任务自己的目标。
 -- 将来真需要「一个任务挂多个目标」（比如软截止 + 硬截止），把唯一索引去掉即可，
 -- 不影响已有数据。
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE goals (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   task_id       INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -358,6 +364,7 @@ CREATE INDEX ix_goals_deadline ON goals (deadline) WHERE deleted_at IS NULL;  --
 -- 那是 JSON 文件时代的产物 —— 每次写都要重写整份文件，日志必须截断。
 -- 行级追加没有这个约束，总量用 count(*) 就有，不需要"是否截断过"这个标记。
 -- 真要控体积，按时间删旧行即可，那是运维动作，不是 schema 概念。
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE goal_checks (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   goal_id       INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
@@ -397,6 +404,7 @@ CREATE INDEX ix_goal_checks_goal ON goal_checks (goal_id, at DESC);  -- 取最�
 --   二者不是一回事：key 换成目录就导不出去，path 换成 key 就跨不了机器。
 --
 -- 组包含哪些仓库不在这张表里 —— 见下面的 repo_group_members。
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE repos (
   key          TEXT    PRIMARY KEY,          -- 全局唯一身份，导出关系靠它
   type         TEXT    NOT NULL DEFAULT '',  -- repo / group
@@ -430,6 +438,7 @@ CREATE TABLE repos (
 -- 多对多：一个组含多个仓库，一个仓库也可同时属于多个组。
 -- 两端都是 repos.key，其中 group_key 那一侧必须是 type='group'。
 -- 这条约束跨表（要查 repos.type），CHECK 表达不了，由写入层保证，必要时补触发器。
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE repo_group_members (
   group_key  TEXT    NOT NULL REFERENCES repos(key) ON DELETE CASCADE ON UPDATE CASCADE,
   repo_key   TEXT    NOT NULL REFERENCES repos(key) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -456,6 +465,7 @@ CREATE INDEX ix_members_repo ON repo_group_members (repo_key);  -- 反查：这�
 --
 -- locator 同时也是**双链里的地址**，两者是同一个字符串，不存在「逻辑地址 / 物理路径」
 -- 两套需要对账的东西。这是下面那套解析规则能成立的前提。
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE refs (
   id         TEXT PRIMARY KEY,
   type       TEXT    NOT NULL DEFAULT '',   -- md / dir / image / file / path / url
@@ -485,6 +495,7 @@ CREATE INDEX ix_refs_locator ON refs (locator COLLATE NOCASE);
 --   repo        仓库自己的描述列表          group_key 为空
 --   group       仓库组自己的描述列表        group_key 为空
 --   group_repo  仓库在某个组里的单独列表    group_key 必须给出
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE ref_bindings (
   repo_key   TEXT    NOT NULL REFERENCES repos(key) ON DELETE CASCADE ON UPDATE CASCADE,
   group_key  TEXT             REFERENCES repos(key) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -526,6 +537,8 @@ CREATE INDEX ix_ref_bindings_ref ON ref_bindings (ref_id);
 --   inline  正文 markdown 里内嵌（图片、下载链接）
 --   attach  附件区挂着的（没写进正文，但归属于这条任务）
 --   doc     挂载的 md 文档（任务说明、规格书等，点开可看全文）
+-- @decision docs/decisions/2026-11-08-drop-task-refs.md
+-- @sunset 2026-11-08（v2 起由 task_attach 取代，v2 迁移时删除）
 CREATE TABLE task_refs (
   task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   ref_id     TEXT    NOT NULL REFERENCES refs(id)  ON DELETE CASCADE,
@@ -635,6 +648,8 @@ CREATE INDEX ix_task_refs_ref ON task_refs (ref_id);   -- 反查：这个文件�
 --   ref 的正文 → ref_relations
 --   task 的正文 → task_refs
 -- 原因就是开头那句：task 和 ref 都是 md，但本质不是一类东西，归属表也不该混。
+-- @decision docs/decisions/2026-11-08-drop-ref-relations.md
+-- @sunset 2026-11-08（v2 起由 ref_attach 取代，v2 迁移时删除）
 CREATE TABLE ref_relations (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   src_id     TEXT    NOT NULL REFERENCES refs(id) ON DELETE CASCADE,  -- 引用方文档
@@ -697,6 +712,7 @@ CREATE INDEX ix_ref_relations_open ON ref_relations (src_id) WHERE dst_id IS NUL
 -- vars = 这条模板自己的变量默认值（JSON 对象），渲染时与内置变量合并：
 --   内置变量 < 模板 vars < 外部参数（--param k=v）
 -- 这样用户可以在「设置 - 提示词」里直接改一句话，不必改代码。
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE templates (
   id          TEXT    PRIMARY KEY,          -- 稳定 key：delivery / enhance.timegoal
   category    TEXT    NOT NULL DEFAULT '',  -- 面板 tab：newtask / delivery / enhance / context
@@ -800,6 +816,7 @@ CREATE INDEX ix_templates_render
 --   schema_version = '1'             ← 与 user_version 同值，人读用
 --   migrated_from_json_at = '<ms>'   ← 从 legacy JSON 迁来的时刻；全新库为空
 --   created_by = 'nx-kv/0.29.0'      ← 谁建的，排障时能对版本
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE meta (
   key        TEXT    PRIMARY KEY,
   value      TEXT    NOT NULL,
@@ -825,6 +842,7 @@ CREATE TABLE meta (
 -- 现存的键（迁移写入，见 import-json.js）：
 --   app.autoSyncAttachments / app.attachmentsDir / app.gitRepoRoot / app.gitDevRoot
 --   lt.timeoutSec / lt.taskSuffix / lt.ackPrompt / lt.deliveryTemplate / lt.attachTemplate
+-- @decision docs/decisions/2026-11-07-initial-schema.md
 CREATE TABLE settings (
   key        TEXT    PRIMARY KEY,
   value      TEXT    NOT NULL,

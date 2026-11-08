@@ -85,15 +85,32 @@ export const DEFAULT_CONTEXT_TEMPLATE = [
   '{{/if}}',
 ].join('\n');
 
-/** 默认附件段模板：有附件才出现；逐个附件循环，同步详情用 #if 闸门。 */
+/**
+ * 默认附件段模板：固定三段——总数 / 逐条清单 / 取用方式。
+ *
+ * 类型由 ctx 里的 type 子对象驱动（file / url / task / ref），命令与说明通过
+ * {{usage}} / {{cmd}} 由服务端给出，模板里不写死任何命令格式：
+ *   - file：{{file.localPath}} 或未同步时的 fileId（取用命令见 usage）
+ *   - url：{{url.href}}
+ *   - task：{{task.seq}} / {{task.title}} / {{task.address}}
+ *   - ref：{{ref.title}} / {{ref.relPath}}
+ * 同步汇总单列在 syncSummary，不再用全局同步结果驱动单条附件。
+ */
 export const DEFAULT_ATTACH_TEMPLATE = [
   '{{#if attach}}',
-  '本任务包含 {{attach.count}} 个附件（清单见下）。请先识别附件内容（图片先看图、文档先读内容）再开始处理，不要跳过附件。',
+  '〔附件〕本任务包含 {{attach.count}} 个附件（正文内嵌 {{attach.inlineCount}} · 附件区 {{attach.areaCount}}）。请先识别附件内容（图片先看图、文档先读内容）再开始处理，不要跳过附件。',
+  '',
+  '附件清单：',
   '{{#each attach.list}}',
-  '  - {{kindLabel}} {{name}}: {{#if localPath}}{{localPath}}{{else}}未同步到本地（图床 id {{id}}；nx-kv file sync --ids {{id}} 可拉到本地）{{/if}}',
+  '  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{#if ref.relPath}}（{{ref.relPath}}）{{/if}}{{/if}}',
   '{{/each}}',
-  '{{#if attach.sync}}',
-  '  同步: 目录 {{attach.sync.dir}} · 下载 {{attach.sync.downloaded}} · 跳过 {{attach.sync.skipped}}{{#if attach.sync.failureCount}} · 失败 {{attach.sync.failureCount}}{{/if}}',
+  '',
+  '取用方式：',
+  '{{#each attach.list}}',
+  '  - {{kindLabel}} 《{{name}}》：{{usage}}',
+  '{{/each}}',
+  '{{#if attach.syncSummary}}',
+  '同步情况：{{attach.syncSummary.text}}',
   '{{/if}}',
   '{{/if}}',
 ].join('\n');

@@ -8,6 +8,8 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import AttachPicker, { useAttachPicker } from './attach-picker.jsx';
+import { atTriggerAt } from '../../modules/md/attach-mention.js';
 import {
   isFrontmatterBlock,
   isEmptyBlock,
@@ -123,6 +125,9 @@ function LiveBlock({
       return;
     }
     if (document.activeElement !== el) {
+      // @ 附件面板开着时焦点归它（#108）：别把焦点抢回 textarea——
+      // 否则面板刚聚焦的搜索框立刻失焦，键盘输入落回正文。
+      if (document.activeElement?.closest?.('.mdw-atpick')) return;
       el.focus();
       const n = el.value.length;
       try { el.setSelectionRange(n, n); } catch { /* ignore */ }
@@ -355,7 +360,7 @@ function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter })
 
 function LivePreview({
   title, body, onTitle, onBody, articleRef, attachments, docKey, onFiles, editorApiRef, onTextSel,
-  onCloseSelMenu, hideTitle = false,
+  onCloseSelMenu, hideTitle = false, attachHost = null,
 }) {
   const [focus, setFocus] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -465,6 +470,19 @@ function LivePreview({
     setSlashBoth(null);
     if (next) applyBlockOp(idx, next);
   };
+
+  // ── @ 附件选择（#108）──
+  const picker = useAttachPicker({
+    host: attachHost,
+    onInsert: ({ index, embed, at, caret }) => {
+      // 块内替换：把 '@' 那一段换成引用语法，光标落在引用之后
+      const val = normalizeBlockText(blocks[index] ?? '');
+      const next = val.slice(0, at) + embed + val.slice(caret);
+      updateAt(index, next);
+      pendingSelRef.current = { index, start: at + embed.length, end: at + embed.length };
+      setFocus(index);
+    },
+  });
 
   const applyTurn = (index, turnId) => {
     const ta = liveTaRef.current;
@@ -913,13 +931,19 @@ function LivePreview({
                 cancelAnimationFrame(slashRafRef.current);
                 slashRafRef.current = requestAnimationFrame(() => {
                   const ta = liveTaRef.current;
-                  if (ta) refreshSlash(i, ta);
+                  if (!ta) return;
+                  refreshSlash(i, ta);
+                  // @ → 唤起附件选择面板（#108）；不在触发点就收掉
+                  const hit = atTriggerAt(ta);
+                  if (hit) picker.open({ index: i, ta, at: hit.at, caret: hit.caret });
+                  else picker.close();
                 });
               }}
               onBlur={() => {
                 requestAnimationFrame(() => {
                   if (document.activeElement?.closest?.('.mdw-lp-block.is-edit')) return;
                   if (document.activeElement?.closest?.('.mdw-slash')) return;
+                  if (document.activeElement?.closest?.('.mdw-atpick')) return; // @ 附件面板（#108）
                   setFocus(null);
                   setSlashBoth(null);
                 });
@@ -963,6 +987,21 @@ function LivePreview({
           onHover={(n) => setSlashBoth((s) => s && ({ ...s, active: n }))}
           onPick={pickSlash}
           style={{ left: slash.x, top: slash.y }}
+        />,
+        document.body
+      )}
+      {/* @ 附件选择面板（#108）：圆角下拉 + 搜索框 + ↑↓ 选择 */}
+      {picker.menu && createPortal(
+        <AttachPicker
+          items={picker.items}
+          query={picker.menu.query}
+          onQuery={picker.setQuery}
+          active={picker.active}
+          onHover={picker.move}
+          onPick={picker.pick}
+          loading={picker.menu.loading}
+          error={picker.menu.error}
+          position={{ left: picker.menu.x, top: picker.menu.y }}
         />,
         document.body
       )}
@@ -1426,6 +1465,7 @@ export const MdPanes = forwardRef(function MdPanes(
     onRedo = null,
     onCloseSelMenu = null,
     hideTitle = false,
+    attachHost = null,
   },
   articleRef
 ) {
@@ -1525,6 +1565,7 @@ export const MdPanes = forwardRef(function MdPanes(
         onTextSel={onTextSel}
         onCloseSelMenu={onCloseSelMenu}
         hideTitle={hideTitle}
+        attachHost={attachHost}
       />
     </div>
   );

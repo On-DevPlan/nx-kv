@@ -1343,6 +1343,14 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           onUndo={undo}
           onRedo={redo}
           onCloseSelMenu={closeSelMenu}
+          /* @ 附件选择面板的取数描述（#108）：任务侧附件清单（正文内嵌 + 附件区）。
+             草稿还没有附件关系（AttachArea 同口径：提交任务后才挂得上），不传。 */
+          attachHost={isDraft ? null : {
+            host: 'task',
+            hostId: Number(task),
+            hostKey: isGlobal ? GLOBAL_KEY : undefined,
+            hostCwd: isGlobal ? undefined : topic?.cwd,
+          }}
         />
 
         {isDraft ? (

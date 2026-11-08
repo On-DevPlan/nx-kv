@@ -25,6 +25,7 @@ import TransferPanel from '../../components/repos/transfer-panel.jsx';
 import DocsModal from '../../components/Introduction/docs-modal.jsx';
 import { useApp } from '../../app-context.jsx';
 import { useWikiNav } from '../doc/index.jsx';
+import { Button, DropdownButton } from '../../components/button/index.jsx';
 // key 归一化与后端共用同一份纯函数（shared/repo-key.js 无 Node 依赖，可直接进前端包），
 // 避免面板里显示/自动填充的 key 和后端登记时算出来的 key 不一致。
 import { keyFromRemote, normalizeKey } from '../../../../shared/repo-key.js';
@@ -97,7 +98,7 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
             {ref.name}
           </button>
         )) : <span className="muted rp-refs-none">—</span>}
-        <button className="btn small ghost rp-ref-bind" title="管理这个仓库绑定的参考仓库" onClick={() => acts.bind(r)}>绑定</button>
+        <Button small className="rp-ref-bind" title="管理这个仓库绑定的参考仓库" onClick={() => acts.bind(r)}>绑定</Button>
       </td>
       <td className="rp-cell-groups">
         {(r.boards || []).length ? r.boards.map((b) => (
@@ -112,11 +113,16 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
         )) : <span className="muted rp-refs-none">—</span>}
       </td>
       <td className="rp-acts">
-        <button className="btn small ghost" title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</button>
-        <button className="btn small ghost" title="对齐 remote：列出 git remote -v 的候选并检查远端是否存在"
-          onClick={() => acts.remote(r)}>remote</button>
-        <button className="btn small ghost" onClick={() => acts.edit(r)}>编辑</button>
-        <button className="btn small ghost rp-del" onClick={() => acts.del(r)}>删除</button>
+        <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</Button>
+        <Button small onClick={() => acts.edit(r)}>编辑</Button>
+        <Button small danger onClick={() => acts.del(r)}>删除</Button>
+        {/* #114：低频动作（对齐 remote）收进「更多」下拉，行内只留三个高频按钮。 */}
+        <DropdownButton
+          small
+          label="更多"
+          items={[{ key: 'remote', label: '对齐 remote' }]}
+          onSelect={(k) => { if (k === 'remote') acts.remote(r); }}
+        />
       </td>
     </tr>
   );
@@ -937,39 +943,31 @@ export default function ReposView() {
 
   return (
     <div className="rp-page">
-      {/* 平台头部：标题 + 统计 chips + 主操作。
-          原工具栏动作（看板弹窗的建/导入/导出、参考面板入口、导入导出面板）全部收编到这里。 */}
+      {/* 平台头部：标题 + 统计数字 + 主操作。
+          原工具栏动作（看板弹窗的建/导入/导出、参考面板入口、导入导出面板）全部收编到这里。
+          #114：统计 chip 改成**纯数字**（原先是可点的跳转入口，与工具条里的
+          分组管理/参考仓库/文档检索重复）；「文档检索」的入口补进工具条，
+          页面上每个功能只留一个入口。 */}
       <div className="page-head">
         <div className="title-block">
           <h2>仓库管理</h2>
-          {/* 统计 chip = 跳转入口：点一下到对应区块（参考仓库直接开面板） */}
           <div className="rp-stats">
-            <button className="rp-stat" title="跳到开发仓库列表"
-              onClick={() => { setFilter(''); jumpTo('rp-repos'); }}>
-              开发仓库 <b>{devRepos.length}</b>
-            </button>
-            <button className="rp-stat" title="打开参考仓库面板"
-              onClick={() => setRefOpen(true)}>
-              参考仓库 <b>{refRepos.length}</b>
-            </button>
-            <button className="rp-stat" title="打开分组管理"
-              onClick={() => setBoardAdminOpen(true)}>
-              分组 <b>{boardList.length}</b>
-            </button>
-            <button className="rp-stat" title="文档检索：按仓库 / 组内 / 分组筛"
-              onClick={() => setDocOpen(true)}>
-              文档 <b>{docs.length}</b>
-            </button>
+            <span className="rp-stat">开发仓库 <b>{devRepos.length}</b></span>
+            <span className="rp-stat">参考仓库 <b>{refRepos.length}</b></span>
+            <span className="rp-stat">分组 <b>{boardList.length}</b></span>
+            <span className="rp-stat">文档 <b>{docs.length}</b></span>
           </div>
         </div>
         <div className="acts">
-          <button className="btn" onClick={openAdd}>登记仓库</button>
-          <button className="btn ghost" title="分组管理：建组 / 成员 / 组介绍文档"
-            onClick={() => setBoardAdminOpen(true)}>分组管理</button>
-          <button className="btn ghost" title="参考仓库面板：克隆 / 绑定 / 同步 / 检查 / 存储根"
-            onClick={() => setRefOpen(true)}>参考仓库管理</button>
-          <button className="btn ghost" title="布局与仓库的导入导出（逐条选择 / 冲突方案 / 差异检查）"
-            onClick={() => setTransferOpen(true)}>导入导出</button>
+          <Button variant="primary" onClick={openAdd}>登记仓库</Button>
+          <Button title="分组管理：建组 / 成员 / 组介绍文档"
+            onClick={() => setBoardAdminOpen(true)}>分组管理</Button>
+          <Button title="参考仓库面板：克隆 / 绑定 / 同步 / 检查 / 存储根"
+            onClick={() => setRefOpen(true)}>参考仓库管理</Button>
+          {/* #114：「文档检索」入口在下面的**列表搜索行**里（贴着搜索框，
+              同一动作不摆第二颗）——这里不再重复。 */}
+          <Button title="布局与仓库的导入导出（逐条选择 / 冲突方案 / 差异检查）"
+            onClick={() => setTransferOpen(true)}>导入导出</Button>
         </div>
       </div>
 
@@ -985,9 +983,9 @@ export default function ReposView() {
               </h3>
               <p>组里有位置、本机没有登记。接到本机仓库、克隆下来，或者直接移除。</p>
             </div>
-            <button className="btn small ghost" onClick={prunePending}>
+            <Button small onClick={prunePending}>
               清理无来源占位
-            </button>
+            </Button>
           </header>
           <div className="rp-pending-list">
             {pendingInit.map((m) => (
@@ -1003,25 +1001,25 @@ export default function ReposView() {
                 </div>
                 <div className="rp-pending-acts">
                   {m.match ? (
-                    <button
-                      className="btn small"
+                    <Button
+                      small
                       title={`把组里这个位置指向本机仓库「${m.match.name}」（仓库身份不变）`}
                       onClick={() => bindPending(m, m.match.id)}
                     >
                       绑定到「{m.match.name}」
-                    </button>
+                    </Button>
                   ) : null}
                   {m.remote ? (
-                    <button className="btn small ghost" onClick={() => clonePending(m)}>克隆到本地</button>
+                    <Button small onClick={() => clonePending(m)}>克隆到本地</Button>
                   ) : null}
-                  <button className="btn small ghost" onClick={() => bindPendingPick(m)}>选本机仓库</button>
-                  <button
-                    className="btn small ghost rp-del"
+                  <Button small onClick={() => bindPendingPick(m)}>选本机仓库</Button>
+                  <Button
+                    small danger
                     title="只从组里摘掉这个位置，本机仓库与看板都不动"
                     onClick={() => removePending(m)}
                   >
                     移除
-                  </button>
+                  </Button>
                 </div>
               </article>
             ))}
@@ -1063,10 +1061,10 @@ export default function ReposView() {
             placeholder="搜仓库 / 路径 / 分组 / 文档…"
             aria-label="检索仓库与文档"
           />
-          {q ? <button className="btn small ghost" onClick={() => setQ('')}>清空</button> : null}
+          {q ? <Button small onClick={() => setQ('')}>清空</Button> : null}
           <span className="muted rp-search-count">{shown.length} / {devRepos.length}</span>
-          <button className="btn small ghost" title="按仓库 / 组内 / 分组三档检索文档"
-            onClick={() => setDocOpen(true)}>文档检索</button>
+          <Button small title="按仓库 / 组内 / 分组三档检索文档"
+            onClick={() => setDocOpen(true)}>文档检索</Button>
         </div>
       </div>
 
@@ -1083,11 +1081,11 @@ export default function ReposView() {
             </span>
           )}
           <span className="acts">
-            <button className="btn small ghost" title="打开这个分组的组介绍文档"
-              onClick={() => openBoardDoc(filterBoard)}>组介绍文档 ✎</button>
+            <Button small title="打开这个分组的组介绍文档"
+              onClick={() => openBoardDoc(filterBoard)}>组介绍文档 ✎</Button>
             <a className="btn small ghost" href={'#/group/' + encodeURIComponent(filterBoard.id)}
               title="组页里看这个组的成员与任务">组页 ↗</a>
-            <button className="btn small" onClick={() => setImpBoardId(filterBoard.id)}>添加成员</button>
+            <Button small onClick={() => setImpBoardId(filterBoard.id)}>添加成员</Button>
           </span>
         </div>
       ) : null}
@@ -1116,16 +1114,16 @@ export default function ReposView() {
                     {r.boardNote.split('\n')[0]}
                   </button>
                 ) : (
-                  <button className="btn small ghost" title={`写「${r.name}」在这个组里参考什么（命名空间描述）`}
-                    onClick={() => openLinkNote(r, 'board', filterBoard.id, filterBoard.name)}>写描述</button>
+                  <Button small title={`写「${r.name}」在这个组里参考什么（命名空间描述）`}
+                    onClick={() => openLinkNote(r, 'board', filterBoard.id, filterBoard.name)}>写描述</Button>
                 )}
                 {r.viaRepos.length ? <span className="muted" title={'经由成员仓库: ' + r.viaRepos.join('、')}>经由 {r.viaRepos.join('、')}</span> : null}
                 <span className="acts">
-                  <button className="btn small ghost" onClick={() => syncOne(r)}>同步</button>
-                  <button className="btn small ghost" onClick={() => rowAct('open', r)}>打开</button>
+                  <Button small onClick={() => syncOne(r)}>同步</Button>
+                  <Button small onClick={() => rowAct('open', r)}>打开</Button>
                   {boardLink ? (
-                    <button className="btn small ghost rp-del" title="只从本组摘除（不影响其它绑定）"
-                      onClick={() => unbindOne(r, 'board', filterBoard.id)}>移出本组</button>
+                    <Button small danger title="只从本组摘除（不影响其它绑定）"
+                      onClick={() => unbindOne(r, 'board', filterBoard.id)}>移出本组</Button>
                   ) : null}
                 </span>
               </div>
@@ -1144,14 +1142,14 @@ export default function ReposView() {
         <Modal size="wide" title={`参考仓库 · ${refRepos.length}`} onClose={() => setRefOpen(false)}>
           <div className="rp-modal-bar">
             <span className="acts">
-              <button className="btn small" onClick={() => { setCloneTargets({}); setCloneOpen(true); }}>克隆参考仓库</button>
-              <button className="btn small ghost" onClick={syncAll}>同步全部</button>
-              <button className="btn small ghost" onClick={loadRefCheck}>检查</button>
-              <button className="btn small ghost" onClick={() => setTransferOpen(true)}>导入导出</button>
-              <button className="btn small ghost" onClick={() => {
+              <Button small onClick={() => { setCloneTargets({}); setCloneOpen(true); }}>克隆参考仓库</Button>
+              <Button small onClick={syncAll}>同步全部</Button>
+              <Button small onClick={loadRefCheck}>检查</Button>
+              {/* #114：「导入导出」与页头工具条同一入口，重复的那颗删掉。 */}
+              <Button small onClick={() => {
                 setRootsForm({ gitRepoRoot: settingInfo?.gitRepoRoot || '', gitDevRoot: settingInfo?.gitDevRoot || '' });
                 setRootsOpen(true);
-              }}>存储根</button>
+              }}>存储根</Button>
             </span>
           </div>
           {!settingInfo?.gitRepoRoot ? (
@@ -1203,13 +1201,13 @@ export default function ReposView() {
                             </span>
                           );
                         }) : <span className="muted rp-refs-none">未绑定</span>}
-                        <button className="btn small ghost rp-ref-bind" onClick={() => openBind(r)}>绑定…</button>
+                        <Button small className="rp-ref-bind" onClick={() => openBind(r)}>绑定…</Button>
                       </td>
                       <td className="rp-acts">
-                        <button className="btn small ghost" onClick={() => syncOne(r)}>同步</button>
-                        <button className="btn small ghost" onClick={() => rowAct('open', r)}>打开</button>
-                        <button className="btn small ghost" onClick={() => rowAct('edit', r)}>编辑</button>
-                        <button className="btn small ghost rp-del" onClick={() => rowAct('del', r)}>删除</button>
+                        <Button small onClick={() => syncOne(r)}>同步</Button>
+                        <Button small onClick={() => rowAct('open', r)}>打开</Button>
+                        <Button small onClick={() => rowAct('edit', r)}>编辑</Button>
+                        <Button small danger onClick={() => rowAct('del', r)}>删除</Button>
                       </td>
                     </tr>
                   );
@@ -1253,7 +1251,7 @@ export default function ReposView() {
                     <>
                       这个分组还没有成员{' '}
                       {filterBoard ? (
-                        <button className="btn small" onClick={() => setImpBoardId(filterBoard.id)}>添加成员</button>
+                        <Button small onClick={() => setImpBoardId(filterBoard.id)}>添加成员</Button>
                       ) : null}
                     </>
                   ) : (
@@ -1280,9 +1278,9 @@ export default function ReposView() {
               placeholder="搜标题 / 路径 / 组名 / 仓库名…"
               aria-label="检索文档"
             />
-            {docKw ? <button className="btn small ghost" onClick={() => setDocKw('')}>清空</button> : null}
+            {docKw ? <Button small onClick={() => setDocKw('')}>清空</Button> : null}
             <span className="acts">
-              <button className="btn small" onClick={createDoc}>新建文档</button>
+              <Button small onClick={createDoc}>新建文档</Button>
             </span>
           </div>
           {docs.length ? (
@@ -1330,8 +1328,8 @@ export default function ReposView() {
                       )) : <span className="rp-bind-chip none">未绑定</span>}
                     </span>
                     <span className="rp-doc-row-acts">
-                      <button className="btn small ghost" onClick={() => openByDocId(d.docId)}>打开编辑</button>
-                      <button className="btn small ghost rp-del" onClick={() => delDoc(d)}>删除</button>
+                      <Button small onClick={() => openByDocId(d.docId)}>打开编辑</Button>
+                      <Button small danger onClick={() => delDoc(d)}>删除</Button>
                     </span>
                   </div>
                 ))}
@@ -1355,9 +1353,9 @@ export default function ReposView() {
         <Modal size="wide" title={`分组管理 · ${boardList.length}`} onClose={() => setBoardAdminOpen(false)}>
           <div className="rp-modal-bar">
             <span className="acts">
-              <button className="btn small" onClick={() => setBoardForm({ id: null, name: '', desc: '' })}>新建分组</button>
-              <button className="btn small ghost" title="粘贴/选择看板 JSON" onClick={() => setImpOpen(true)}>导入</button>
-              <button className="btn small ghost" title="导出全部看板为 JSON" onClick={doExport}>导出</button>
+              <Button small onClick={() => setBoardForm({ id: null, name: '', desc: '' })}>新建分组</Button>
+              <Button small title="粘贴/选择看板 JSON" onClick={() => setImpOpen(true)}>导入</Button>
+              <Button small title="导出全部看板为 JSON" onClick={doExport}>导出</Button>
             </span>
             <span className="muted">一个分组 = 一个主题；同一个仓库可以同时在多个分组里。</span>
           </div>
@@ -1390,15 +1388,15 @@ export default function ReposView() {
                       {!b.repos.length ? <span className="muted">—</span> : null}
                     </span>
                     <span className="rp-board-admin-doc">
-                      <button className="btn small ghost" title="打开组介绍文档"
-                        onClick={() => openBoardDoc(b)}>组介绍 ✎</button>
+                      <Button small title="打开组介绍文档"
+                        onClick={() => openBoardDoc(b)}>组介绍 ✎</Button>
                       {b.docLinks && b.docLinks.length ? <span className="muted">+{b.docLinks.length}</span> : null}
                     </span>
                     <span className="rp-board-admin-acts">
                       <a className="btn small ghost" href={'#/group/' + encodeURIComponent(b.id)} title="组页：成员与任务">组页 ↗</a>
-                      <button className="btn small ghost" onClick={() => setImpBoardId(b.id)}>成员</button>
-                      <button className="btn small ghost" onClick={() => setBoardForm({ id: b.id, name: b.name, desc: b.desc || '' })}>编辑</button>
-                      <button className="btn small ghost rp-del" onClick={() => removeBoard(b)}>删除</button>
+                      <Button small onClick={() => setImpBoardId(b.id)}>成员</Button>
+                      <Button small onClick={() => setBoardForm({ id: b.id, name: b.name, desc: b.desc || '' })}>编辑</Button>
+                      <Button small danger onClick={() => removeBoard(b)}>删除</Button>
                     </span>
                   </div>
                 );
@@ -1474,10 +1472,10 @@ export default function ReposView() {
               <textarea id="repo-notes" placeholder="补充信息（可选）" value={form.notes} onChange={set('notes')} />
             </div>
             <div className="form-acts">
-              <button className="btn ghost" onClick={resetForm}>取消</button>
-              <button className="btn" disabled={!form.path.trim() || (!form.key.trim() && !form.remote.trim())} onClick={submit}>
+              <Button  onClick={resetForm}>取消</Button>
+              <Button  disabled={!form.path.trim() || (!form.key.trim() && !form.remote.trim())} onClick={submit}>
                 {editing ? '保存修改' : '添加仓库'}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>
@@ -1528,10 +1526,10 @@ export default function ReposView() {
               </div>
             )}
             <div className="form-acts">
-              <button className="btn ghost" onClick={() => setBoardForm(null)}>取消</button>
-              <button className="btn" disabled={!boardForm.name.trim()} onClick={saveBoard}>
+              <Button  onClick={() => setBoardForm(null)}>取消</Button>
+              <Button  disabled={!boardForm.name.trim()} onClick={saveBoard}>
                 {boardForm.id ? '保存' : '新建看板'}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>
@@ -1562,8 +1560,8 @@ export default function ReposView() {
               />
             </div>
             <div className="form-acts">
-              <button className="btn ghost" onClick={() => { setImpOpen(false); setImpText(''); }}>取消</button>
-              <button className="btn" disabled={!impText.trim()} onClick={doImport}>导入</button>
+              <Button  onClick={() => { setImpOpen(false); setImpText(''); }}>取消</Button>
+              <Button  disabled={!impText.trim()} onClick={doImport}>导入</Button>
             </div>
           </div>
         </Modal>
@@ -1635,10 +1633,10 @@ export default function ReposView() {
               <div className="form-hint">一个参考可同时服务多个仓库/组；之后随时在「绑定…」里增删。</div>
             </div>
             <div className="form-acts">
-              <button className="btn ghost" onClick={() => { setCloneOpen(false); setCloneTargets({}); }}>取消</button>
-              <button className="btn" disabled={!cloneForm.url.trim() || !settingInfo?.gitRepoRoot}
+              <Button  onClick={() => { setCloneOpen(false); setCloneTargets({}); }}>取消</Button>
+              <Button  disabled={!cloneForm.url.trim() || !settingInfo?.gitRepoRoot}
                 title={settingInfo?.gitRepoRoot ? `克隆到 ${settingInfo.gitRepoRoot}` : '先在「存储根」设置 gitRepoRoot'}
-                onClick={doClone}>克隆</button>
+                onClick={doClone}>克隆</Button>
             </div>
           </div>
         </Modal>
@@ -1678,8 +1676,8 @@ export default function ReposView() {
               </div>
             </div>
             <div className="form-acts">
-              <button className="btn ghost" onClick={() => setBindFor(null)}>取消</button>
-              <button className="btn" onClick={saveBind}>保存绑定</button>
+              <Button  onClick={() => setBindFor(null)}>取消</Button>
+              <Button  onClick={saveBind}>保存绑定</Button>
             </div>
           </div>
         </Modal>
@@ -1709,8 +1707,8 @@ export default function ReposView() {
               </div>
             </div>
             <div className="form-acts">
-              <button className="btn ghost" onClick={() => setBindRepoFor(null)}>取消</button>
-              <button className="btn" onClick={saveBindRepo}>保存绑定</button>
+              <Button  onClick={() => setBindRepoFor(null)}>取消</Button>
+              <Button  onClick={saveBindRepo}>保存绑定</Button>
             </div>
           </div>
         </Modal>
@@ -1735,8 +1733,8 @@ export default function ReposView() {
                 value={linkNoteText} onChange={(e) => setLinkNoteText(e.target.value)} />
             </div>
             <div className="form-acts">
-              <button className="btn ghost" onClick={() => setLinkNoteFor(null)}>取消</button>
-              <button className="btn" onClick={saveLinkNote}>保存</button>
+              <Button  onClick={() => setLinkNoteFor(null)}>取消</Button>
+              <Button  onClick={saveLinkNote}>保存</Button>
             </div>
           </div>
         </Modal>
@@ -1758,8 +1756,8 @@ export default function ReposView() {
                 value={rootsForm.gitDevRoot} onChange={(e) => setRootsForm((f) => ({ ...f, gitDevRoot: e.target.value }))} />
             </div>
             <div className="form-acts">
-              <button className="btn ghost" onClick={() => setRootsOpen(false)}>取消</button>
-              <button className="btn" onClick={saveRoots}>保存</button>
+              <Button  onClick={() => setRootsOpen(false)}>取消</Button>
+              <Button  onClick={saveRoots}>保存</Button>
             </div>
           </div>
         </Modal>
@@ -1793,9 +1791,9 @@ export default function ReposView() {
                     {rm.current ? <span className="rp-remote-on">当前</span> : null}
                     <span className="acts">
                       {!rm.current ? (
-                        <button className="btn small" onClick={() => pickRemote(rm.url)}>对齐这条</button>
+                        <Button small onClick={() => pickRemote(rm.url)}>对齐这条</Button>
                       ) : null}
-                      <button className="btn small ghost" onClick={() => checkRemote(rm.url)}>检查</button>
+                      <Button small onClick={() => checkRemote(rm.url)}>检查</Button>
                     </span>
                   </div>
                 ))}
@@ -1820,8 +1818,8 @@ export default function ReposView() {
               </div>
             ) : null}
             <div className="form-acts">
-              <button className="btn ghost" onClick={() => setRemoteOpen(false)}>关闭</button>
-              <button className="btn" onClick={() => checkRemote('')}>检查当前 remote</button>
+              <Button  onClick={() => setRemoteOpen(false)}>关闭</Button>
+              <Button  onClick={() => checkRemote('')}>检查当前 remote</Button>
             </div>
           </div>
         </Modal>

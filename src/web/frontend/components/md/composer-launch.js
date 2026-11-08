@@ -17,7 +17,8 @@ const handlers = new Map();
  * @param {object} model 工作区模型
  * @param {object} spec
  *   - mode: 'comment' | 'feedback'
- *   - quote: 评论时引用的那段话（顶部展示）
+ *   - quote: 评论时引用的那段话（页面里的引用段）
+ *   - prevQuote: 反馈时引用的「之前的引用」（上轮总结，没有就退回原任务正文）
  *   - taskLabel: 反馈时引用的任务编号（如「#123」）
  *   - taskTitle: 反馈时引用的任务标题（顶部展示）
  *   - onSubmit(payload): 提交回调（{text, attachments, inserts}）
@@ -26,13 +27,16 @@ const handlers = new Map();
  */
 export function openComposer(model, spec = {}) {
   if (!model) return null;
-  const { mode = 'comment', quote = '', taskLabel = '', taskTitle = '', onSubmit = null, onFiles = null } = spec;
+  const {
+    mode = 'comment', quote = '', prevQuote = '', taskLabel = '', taskTitle = '',
+    onSubmit = null, onFiles = null,
+  } = spec;
   const token = 'cmp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   handlers.set(token, { onSubmit, onFiles });
   openPanel(model, {
     component: 'compose',
     name: mode === 'feedback' ? '反馈' : '评论',
-    config: { token, mode, quote, taskLabel, taskTitle },
+    config: { token, mode, quote, prevQuote, taskLabel, taskTitle },
     location: 'center',
   });
   return token;

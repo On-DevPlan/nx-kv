@@ -150,6 +150,9 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       mode: 'feedback',
       taskLabel: task != null ? '#' + task : '',
       taskTitle: String(doc?.title || '').replace(/^#+\s*/, ''),
+      // 之前的引用（#105）：反馈针对的是**上轮总结**；没有就退回原任务正文开头
+      prevQuote: String(taskRow?.roundSummary || '').trim()
+        || String(doc?.body || '').trim().slice(0, 400),
       onSubmit: (payload) => spawnFeedbackTask(payload),
     });
   };

@@ -18,6 +18,7 @@ export default function ComposePanel({
   token,
   mode = 'comment',
   quote = '',
+  prevQuote = '',
   taskLabel = '',
   taskTitle = '',
   tabId = null,
@@ -71,8 +72,6 @@ export default function ComposePanel({
             <span className="cmp-ctx-line" title={taskTitle || ''}>
               反馈 {taskLabel || ''} 的任务{taskTitle ? ` · ${taskTitle}` : ''}
             </span>
-          ) : quote ? (
-            <span className="cmp-ctx-quote" title={quote}>{quote}</span>
           ) : (
             <span className="cmp-ctx-line">对本任务提出问题</span>
           )}
@@ -90,6 +89,19 @@ export default function ComposePanel({
           {isFeedback ? '提交反馈' : '提交评论'}
         </button>
       </div>
+      {/* 引用段（#105）：引用不是头部一行小字，而是**页面里的一段引用**——
+          评论 = 被评论的那段话；反馈 = 之前的引用（上轮总结，没有就退回原任务正文）。 */}
+      {isFeedback ? (
+        <div className="cmp-quote-wrap">
+          <div className="cmp-quote-cap">之前的引用</div>
+          <div className="cmp-quote">{prevQuote || '（这条任务还没有可引用的上轮总结）'}</div>
+        </div>
+      ) : quote ? (
+        <div className="cmp-quote-wrap">
+          <div className="cmp-quote-cap">引用</div>
+          <div className="cmp-quote">{quote}</div>
+        </div>
+      ) : null}
       <div className="cmp-body">
         <MdPanes
           mode="split"

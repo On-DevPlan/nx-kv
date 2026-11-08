@@ -162,6 +162,7 @@ export const PANELS = {
       token={cfg && cfg.token}
       mode={cfg && cfg.mode}
       quote={cfg && cfg.quote}
+      prevQuote={cfg && cfg.prevQuote}
       taskLabel={cfg && cfg.taskLabel}
       taskTitle={cfg && cfg.taskTitle}
       tabId={ctx && ctx.tabId}

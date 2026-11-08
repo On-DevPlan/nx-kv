@@ -114,7 +114,13 @@ function inline(s, knownNames) {
       if (!looksLikeFileId(t)) return m;
       return `<a class="md-att" href="/api/file/content/${t}" download="${text}" title="附件：${text}">${text}</a>`;
     });
-  return withAtt.replace(/\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g, (_, target, label) => {
+  // 内部资源链接（attachments 表里的 task / ref）：保持可点，但明确标成内部资源，
+  // 不让它落到「普通 markdown 链接」而被当外链。
+  const withInternal = withAtt.replace(/\[([^\]]+)\]\((nxkv:\/\/[^)\s]+)\)/g, (m, text, target) => {
+    if (!/^nxkv:\/\/(?:task|ref)\//i.test(target)) return m;
+    return `<a class="md-wl" data-nxkv="${target}" title="内部资源：${target}">${text}</a>`;
+  });
+  return withInternal.replace(/\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g, (_, target, label) => {
     const t = target.trim();
     const text = (label || target).trim();
     const miss = knownNames && !wikiKnown(t, knownNames);

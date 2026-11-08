@@ -1257,3 +1257,154 @@
 .md-lightbox-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .md-lightbox-dl{color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.5);border-radius:6px;padding:2px 10px}
 .md-lightbox-dl:hover{background:rgba(255,255,255,.15)}
+
+/* ─── 附件区（任务页 / 文档页共用；task_attach / ref_attach 的呈现）────────
+   正文只呈现 role=inline 的部分，这里额外列出「只挂附件区、不写正文」的资源。
+   与 .mdw-attach（旧的会话内存附件条）是两件事：那边是尚未入库的粘贴缓存，
+   这里是**关系表的权威清单**。 */
+.att-area{
+  flex:none;max-height:38vh;overflow:auto;
+  padding:8px 12px 10px;border-top:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
+}
+.att-area.is-disabled{opacity:.72}
+.att-area-head{
+  display:flex;align-items:center;gap:8px;padding:4px 6px;margin:-4px -6px 4px;
+  border-radius:7px;transition:background .12s,box-shadow .12s;
+}
+.att-area-head.is-over{
+  background:var(--mdw-accent-soft,#E8F2EE);
+  box-shadow:inset 0 0 0 1.5px var(--mdw-accent-line,#B7D4C8);
+}
+.att-area-title{display:flex;align-items:center;gap:6px;font-weight:650;font-size:12px;color:var(--ink,#16181C)}
+.att-count{
+  min-width:17px;height:17px;padding:0 5px;border-radius:9px;
+  font:650 10px/17px var(--mono,ui-monospace,Consolas,monospace);
+  background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E);text-align:center;
+}
+.att-area-note{font-size:11px;color:var(--mid,#838A93)}
+.att-area-acts{margin-left:auto;display:flex;align-items:center;gap:6px}
+.att-sort{
+  height:24px;padding:0 6px;border:1px solid var(--line,#E4E2DC);border-radius:6px;
+  background:var(--paper,#fff);color:var(--ink-2,#4B515A);font:400 11px inherit;cursor:pointer;
+}
+.att-add-btn{height:24px;padding:0 9px;font-size:11px}
+.att-empty{
+  padding:8px 6px 4px;font-size:11.5px;line-height:1.55;color:var(--faint,#A9AEB4);
+}
+.att-err-text{color:var(--danger,#B3261E);font-size:11.5px}
+.att-section{margin-top:6px}
+.att-section-head{
+  display:flex;align-items:baseline;gap:6px;padding:2px 0 4px;
+  font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--mid,#838A93);
+}
+.att-section-hint{font-weight:400;letter-spacing:0;color:var(--faint,#A9AEB4)}
+.att-item{
+  display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;min-width:0;
+}
+.att-item:hover{background:var(--soft,#F1F0EC)}
+.att-thumb{
+  flex:none;width:38px;height:38px;padding:0;border:1px solid var(--line,#E4E2DC);border-radius:5px;
+  overflow:hidden;background:var(--soft,#F1F0EC);cursor:zoom-in;display:block;
+}
+.att-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.att-kind-badge{
+  flex:none;width:38px;height:26px;border:1px solid var(--line,#E4E2DC);border-radius:5px;
+  display:flex;align-items:center;justify-content:center;
+  font:600 10px inherit;color:var(--mid,#838A93);background:var(--canvas,#F5F4F1);
+}
+.att-item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.att-item-name,.att-link{
+  max-width:100%;font-size:12.5px;line-height:1.35;color:var(--ink,#16181C);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.att-link{
+  padding:0;border:0;background:none;text-align:left;cursor:pointer;
+  font-family:inherit;color:var(--mdw-accent,#2F6F5E);text-decoration:none;
+  display:block;
+}
+.att-link:hover{text-decoration:underline}
+.att-item-meta{
+  display:flex;gap:8px;min-width:0;
+  font:400 10.5px var(--mono,ui-monospace,Consolas,monospace);color:var(--faint,#A9AEB4);
+}
+.att-item-meta .att-note{
+  font-family:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.att-item-acts{flex:none;display:flex;gap:8px}
+.att-act{font-size:11px;color:var(--mid,#838A93);text-decoration:none;white-space:nowrap}
+.att-act:hover{color:var(--mdw-accent,#2F6F5E);text-decoration:underline}
+.att-x{
+  flex:none;width:22px;height:22px;padding:0;border:0;border-radius:5px;background:none;
+  color:var(--mid,#838A93);cursor:pointer;font-size:15px;line-height:1;
+}
+.att-x:hover{background:var(--soft,#F1F0EC);color:var(--danger,#B3261E)}
+
+/* 添加附件弹窗（AttachModal）：拖拽区 / 待确认清单 / 逐项失败重试 */
+.att-drop{
+  padding:18px 14px;border:1.5px dashed var(--line,#E4E2DC);border-radius:9px;
+  background:var(--canvas,#F5F4F1);text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  transition:border-color .12s,background .12s;
+}
+.att-drop.is-over{
+  border-color:var(--mdw-accent,#2F6F5E);background:var(--mdw-accent-soft,#E8F2EE);
+}
+.att-drop-title{font-size:12.5px;color:var(--mid,#838A93)}
+.att-drop-sub{font-size:11px;color:var(--faint,#A9AEB4)}
+.att-row{display:flex;align-items:center;gap:8px;margin-top:10px}
+.att-url-row .pp-input{flex:1;min-width:0}
+.att-pick{margin-top:12px}
+.att-pick-head{font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--mid,#838A93);margin-bottom:6px}
+.att-pick-list{
+  margin-top:6px;max-height:150px;overflow:auto;
+  border:1px solid var(--line,#E4E2DC);border-radius:7px;background:var(--paper,#fff);
+}
+.att-pick-item{
+  display:flex;align-items:center;gap:8px;width:100%;padding:6px 9px;border:0;
+  border-bottom:1px solid var(--line,#E4E2DC);background:none;text-align:left;
+  font:inherit;color:var(--ink,#16181C);cursor:pointer;min-width:0;
+}
+.att-pick-item:last-child{border-bottom:0}
+.att-pick-item:hover{background:var(--mdw-accent-soft,#E8F2EE)}
+.att-pick-main{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-pick-path{flex:none;max-width:42%;font:400 10.5px var(--mono,ui-monospace,Consolas,monospace);color:var(--faint,#A9AEB4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-empty-inline{padding:8px;font-size:11.5px;color:var(--faint,#A9AEB4)}
+.att-badge{
+  flex:none;font-size:10px;line-height:16px;padding:0 6px;border-radius:8px;
+  background:var(--soft,#F1F0EC);color:var(--mid,#838A93);font-weight:600;
+}
+.att-pending{margin-top:14px;padding-top:10px;border-top:1px solid var(--line,#E4E2DC)}
+.att-pending-head{font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--mid,#838A93);margin-bottom:6px}
+.att-pending-item{
+  display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;min-width:0;
+}
+.att-pending-item.is-error{background:color-mix(in srgb, var(--danger,#B3261E) 7%, transparent)}
+.att-pending-name{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-pending-type,.att-pending-size{
+  flex:none;font:400 10.5px var(--mono,ui-monospace,Consolas,monospace);color:var(--faint,#A9AEB4);
+}
+.att-pending-state{flex:none;font-size:11px;color:var(--mdw-accent,#2F6F5E)}
+.att-mini{height:22px;padding:0 8px;font-size:11px}
+.att-foot{display:flex;align-items:center;gap:8px;width:100%}
+.att-foot-hint{margin-right:auto;font-size:11.5px;color:var(--mid,#838A93);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-confirm-name{font-weight:650;font-size:12.5px;margin-bottom:6px;overflow-wrap:anywhere}
+.att-confirm-text{font-size:11.5px;line-height:1.6;color:var(--mid,#838A93);white-space:pre-wrap}
+
+/* 附件区图片灯箱（与正文里的 .md-lightbox 同一视觉，但结构独立） */
+.att-lightbox{
+  position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);
+  display:flex;align-items:center;justify-content:center;padding:24px;
+}
+.att-lightbox-card{display:flex;flex-direction:column;gap:8px;max-width:94vw;max-height:92vh}
+.att-lightbox-head{display:flex;align-items:center;gap:12px;color:#fff;font-size:12.5px;min-width:0}
+.att-lightbox-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-lightbox-open{flex:none;color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.5);border-radius:6px;padding:2px 10px}
+.att-lightbox-open:hover{background:rgba(255,255,255,.15)}
+.att-lightbox-head .pp-x{color:#fff}
+.att-lightbox-head .pp-x:hover{background:rgba(255,255,255,.15);color:#fff}
+.att-lightbox-img{max-width:94vw;max-height:calc(92vh - 44px);border-radius:6px;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+
+@container mdwmain (max-width: 640px){
+  .att-area{max-height:46vh}
+  .att-item-acts{display:none}
+}

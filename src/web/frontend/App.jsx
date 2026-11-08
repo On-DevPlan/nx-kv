@@ -18,7 +18,7 @@
 //   #/templates  任务模板（面板，不是弹窗）
 //   （经典看板 #/localtask 已下线；wait 深链改落 #/dir/<key>）
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Layout, Actions, DockLocation, defaultKeyMap, useUndo } from 'flexlayout-react';
+import { Layout, Actions, DockLocation, defaultKeyMap } from 'flexlayout-react';
 import { useStore } from './store.jsx';
 import { ErrorBoundary } from './components/ui.jsx';
 import { useToast } from './components/toast/index.jsx';
@@ -119,13 +119,9 @@ export default function App() {
   const tpl = useTemplates();
   const layoutRef = useRef(null);
 
-  // 工作区模型（布局的唯一真源）；撤销/重做整段拖拽折叠成一步。
-  // 空壳剪枝（DELETE_TABSET）不算用户操作，排除出撤销/重做历史。
-  // MOVE_FLOAT 同理：挪浮窗位置不是「用户想撤销的一件事」（#93）——
-  // 否则撤销「开浮窗」要先撤掉挪位置、才撤掉开浮窗。
-  const { model, setModel, undo, redo, canUndo, canRedo } = useUndo(() => loadModel(), {
-    ignoreActionTypes: [Actions.SET_ACTIVE_TABSET, Actions.DELETE_TABSET, Actions.MOVE_FLOAT],
-  });
+  // 工作区模型（布局的唯一真源）。布局撤销/重做已整体下线（#96）：
+  // useUndo 的逐动作全量快照在没有撤销入口后只剩开销，模型管理回退普通 state。
+  const [model, setModel] = useState(() => loadModel());
   // 调试探针句柄：自动化测试需要模型级观测/驱动（拖拽链路、float 布局等无法从 DOM 反查）。
   // 只读暴露；生产环境多一个 window 属性无副作用。
   useEffect(() => {
@@ -330,26 +326,6 @@ export default function App() {
   const modelRef = useRef(model);
   useEffect(() => { modelRef.current = model; }, [model]);
 
-  // 撤销/恢复后**补一次落盘**（#93 实测发现）。
-  //
-  // 为什么：useUndo 的 undo/redo 是**换掉整个 model 实例**（Model.fromJson），
-  // 不走 doAction → 不触发 onAfterAction → 布局不落盘。用户撤销完一刷新，
-  // 撤销结果就没了（浮窗又回来了）。
-  //
-  // 落盘用的是**新模型**：useUndo 的 setModel 回调拿到的是新实例，undo 本身
-  // 不把它交出来——所以这里在 undo/redo 之后**下一帧**从既有 modelRef 里取
-  // 当前 model（React 状态已更新），剪空壳再存。
-  const persistAfterHistory = useCallback(() => {
-    requestAnimationFrame(() => {
-      const m = modelRef.current;
-      if (!m) return;
-      pruneBlankTabsets(m);
-      saveModel(m);
-    });
-  }, []);
-  const undoLayout = useCallback(() => { undo(); persistAfterHistory(); }, [undo, persistAfterHistory]);
-  const redoLayout = useCallback(() => { redo(); persistAfterHistory(); }, [redo, persistAfterHistory]);
-
   // 同理不能跟 specCtx 的**身份**走：rows 每 15s 轮询换一次新数组，
   // specCtx 就重算一次 → effect 重跑 → 按**旧路由**把用户刚开的页签顶掉
   // （实测：从目录页点开文档页签，十几秒后文档面板自己没了）。
@@ -444,18 +420,14 @@ export default function App() {
     setModel(loadModel());
   }, [dialog, setModel]);
 
-  // 全局动作：集中在侧边栏头部（窄轨保留设置入口）
+  // 全局动作：集中在侧边栏头部（窄轨保留设置入口）；布局撤销/重做已下线（#96）
   const shell = useMemo(
     () => ({
-      undo: undoLayout,
-      redo: redoLayout,
-      canUndo,
-      canRedo,
       resetLayout,
       // 设置 = 浮动面板：临时开一块、看完就关（重复点只聚焦已开的那块）
       openSettings: () => openSettingsPanel(model),
     }),
-    [undoLayout, redoLayout, canUndo, canRedo, resetLayout, model]
+    [resetLayout, model]
   );
 
   const appValue = useMemo(

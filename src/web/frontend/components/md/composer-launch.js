@@ -21,6 +21,7 @@ const handlers = new Map();
  *   - prevQuote: 反馈时引用的「之前的引用」（上轮总结，没有就退回原任务正文）
  *   - taskLabel: 反馈时引用的任务编号（如「#123」）
  *   - taskTitle: 反馈时引用的任务标题（顶部展示）
+ *   - src: 原文定位（{dirKey, task, name}）——点引用区在右侧并排打开原文（#107）
  *   - onSubmit(payload): 提交回调（{text, attachments, inserts}）
  *   - onFiles(files): 附件通道（面板默认自带，可覆盖）
  * @returns {string|null} token（面板按它取回回调）
@@ -29,7 +30,7 @@ export function openComposer(model, spec = {}) {
   if (!model) return null;
   const {
     mode = 'comment', quote = '', prevQuote = '', taskLabel = '', taskTitle = '',
-    onSubmit = null, onFiles = null,
+    src = null, onSubmit = null, onFiles = null,
   } = spec;
   const token = 'cmp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   // 记住主区**来源面板**（主区是单面板位：这块评论页会把任务页顶掉，
@@ -39,7 +40,7 @@ export function openComposer(model, spec = {}) {
   openPanel(model, {
     component: 'compose',
     name: mode === 'feedback' ? '反馈' : '评论',
-    config: { token, mode, quote, prevQuote, taskLabel, taskTitle },
+    config: { token, mode, quote, prevQuote, taskLabel, taskTitle, src },
     location: 'center',
   });
   return token;

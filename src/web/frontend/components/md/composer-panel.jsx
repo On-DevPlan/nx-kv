@@ -12,6 +12,7 @@ import { insertAttachmentSnippet } from '../../modules/md/md-parse.js';
 import { composerOf, restoreComposerSource } from './composer-launch.js';
 import { useApp } from '../../app-context.jsx';
 import { useToast } from '../toast/index.jsx';
+import { openBesideMain } from '../../workspace.js';
 import '../../modules/md/style.css';
 
 export default function ComposePanel({
@@ -21,6 +22,7 @@ export default function ComposePanel({
   prevQuote = '',
   taskLabel = '',
   taskTitle = '',
+  src = null,
 }) {
   const app = useApp() || {};
   const toast = useToast();
@@ -67,6 +69,18 @@ export default function ComposePanel({
     if (items.length) setAttachments((a) => [...a, ...items]);
   };
 
+  // 点引用区 → 主区右侧并排打开**原文**（旁路原文面板），方便对照（#107）
+  const openOriginal = () => {
+    const m = app.model;
+    if (!m || !src || !src.task) return;
+    openBesideMain(m, {
+      component: 'page',
+      name: src.name || '原文',
+      config: { dirKey: src.dirKey, task: String(src.task) },
+    });
+  };
+  const canOpenOriginal = !!(src && src.task);
+
   return (
     <div className="cmp">
       <div className="cmp-head">
@@ -94,16 +108,43 @@ export default function ComposePanel({
         </button>
       </div>
       {/* 引用段（#105）：引用不是头部一行小字，而是**页面里的一段引用**——
-          评论 = 被评论的那段话；反馈 = 之前的引用（上轮总结，没有就退回原任务正文）。 */}
+          评论 = 被评论的那段话；反馈 = 之前的引用（上轮总结，没有就退回原任务正文）。
+          #107：引用区**可点**——点在右侧并排打开原文，方便对照。 */}
       {isFeedback ? (
         <div className="cmp-quote-wrap">
-          <div className="cmp-quote-cap">之前的引用</div>
-          <div className="cmp-quote">{prevQuote || '（这条任务还没有可引用的上轮总结）'}</div>
+          <div className="cmp-quote-cap">
+            之前的引用
+            {canOpenOriginal && (
+              <button type="button" className="cmp-quote-cmp" onClick={openOriginal} title="在右侧并排显示原文，方便对照">
+                对照原文 ↗
+              </button>
+            )}
+          </div>
+          {canOpenOriginal ? (
+            <button type="button" className="cmp-quote" onClick={openOriginal} title="点击在右侧并排显示原文，方便对照">
+              {prevQuote || '（这条任务还没有可引用的上轮总结）'}
+            </button>
+          ) : (
+            <div className="cmp-quote">{prevQuote || '（这条任务还没有可引用的上轮总结）'}</div>
+          )}
         </div>
       ) : quote ? (
         <div className="cmp-quote-wrap">
-          <div className="cmp-quote-cap">引用</div>
-          <div className="cmp-quote">{quote}</div>
+          <div className="cmp-quote-cap">
+            引用
+            {canOpenOriginal && (
+              <button type="button" className="cmp-quote-cmp" onClick={openOriginal} title="在右侧并排显示原文，方便对照">
+                对照原文 ↗
+              </button>
+            )}
+          </div>
+          {canOpenOriginal ? (
+            <button type="button" className="cmp-quote" onClick={openOriginal} title="点击在右侧并排显示原文，方便对照">
+              {quote}
+            </button>
+          ) : (
+            <div className="cmp-quote">{quote}</div>
+          )}
         </div>
       ) : null}
       <div className="cmp-body">

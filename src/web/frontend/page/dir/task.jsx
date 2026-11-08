@@ -155,6 +155,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       // 之前的引用（#105）：反馈针对的是**上轮总结**；没有就退回原任务正文开头
       prevQuote: String(taskRow?.roundSummary || '').trim()
         || String(doc?.body || '').trim().slice(0, 400),
+      // 原文定位（#107）：点引用区在右侧并排打开这条任务的原文
+      src: { dirKey: topicKey || dirKey || GLOBAL_KEY, task: String(task), name: `原文 #${task}` },
       onSubmit: (payload) => spawnFeedbackTask(payload),
     });
   };
@@ -998,6 +1000,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       quote,
       taskLabel: task != null ? '#' + task : '',
       taskTitle: String(doc?.title || '').replace(/^#+\s*/, ''),
+      src: { dirKey: topicKey || dirKey || GLOBAL_KEY, task: String(task), name: `原文 #${task}` },
       onSubmit: (payload) => submitCommentInPlace({ ...payload, quote }),
     });
     closeSelMenu();
@@ -1450,6 +1453,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
             quote,
             taskLabel: task != null ? '#' + task : '',
             taskTitle: String(doc?.title || '').replace(/^#+\s*/, ''),
+            src: { dirKey: topicKey || dirKey || GLOBAL_KEY, task: String(task), name: `原文 #${task}` },
             onSubmit: (payload) => submitCommentInPlace({ ...payload, quote }),
           });
           closeSelMenu();

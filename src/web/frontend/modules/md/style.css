@@ -768,13 +768,27 @@
 .cmp-quote-cap{
   font:650 10px Bahnschrift,"Segoe UI",sans-serif;letter-spacing:.06em;
   color:var(--mid,#838A93);text-transform:uppercase;margin-bottom:4px;
+  display:flex;align-items:center;gap:8px;
 }
+/* 「对照原文」入口（#107）：点它在右侧并排打开原文 */
+.cmp-quote-cmp{
+  border:0;background:none;padding:0;font:inherit;font-size:10.5px;letter-spacing:0;
+  text-transform:none;color:var(--mdw-accent,#2F6F5E);cursor:pointer;
+}
+.cmp-quote-cmp:hover{text-decoration:underline}
 .cmp-quote{
   font-size:12px;line-height:1.55;color:var(--ink-2,#4B515A);
   border-left:2px solid var(--mdw-accent,#2F6F5E);padding-left:9px;
   white-space:pre-wrap;overflow-wrap:anywhere;
   max-height:8.5em;overflow:auto;
 }
+/* 可点形态（按钮）：去掉浏览器默认外观，保留引用块的左边条 */
+button.cmp-quote{
+  display:block;width:100%;text-align:left;margin:0;
+  border:0;background:none;font-family:inherit;cursor:pointer;
+}
+button.cmp-quote:hover{color:var(--ink,#16181C);background:var(--mdw-accent-soft,#E8F2EE);border-radius:0 4px 4px 0}
+button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);outline-offset:2px}
 .cmp-body{flex:1;min-height:0;overflow:auto;padding:10px 12px 14px}
 .cmp-body .mdw-split{height:100%}
 /* 任务链弹窗（#77）：「更多 → 任务链」竖排时间线 */

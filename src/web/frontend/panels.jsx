@@ -165,6 +165,7 @@ export const PANELS = {
       prevQuote={cfg && cfg.prevQuote}
       taskLabel={cfg && cfg.taskLabel}
       taskTitle={cfg && cfg.taskTitle}
+      src={cfg && cfg.src}
     />
   ) },
   // 编排：可视化 DAG 面板（目录与项目组共用；dirKey=队列，groupId=组内切队列）

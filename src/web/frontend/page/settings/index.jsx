@@ -191,10 +191,14 @@ function GetLoopEditor({ repo }) {
   const [openIdx, setOpenIdx] = useState(-1);
   const [line, setLine] = useState(''); // 一句话输入（可含 %s）
   const [busy, setBusy] = useState(false);
+  // 配置区（阻塞窗口/收尾模板/动作行）默认收起（#103）：开启「持续 get」
+  // 只是一枚开关的语义，细节按需展开；头上给一行摘要（几分钟·几条模板）。
+  const [cfgOpen, setCfgOpen] = useState(false);
 
-  const save = async () => {
+  const save = async (override) => {
     setBusy(true);
     try {
+      const enabled = override && override.enabled !== undefined ? override.enabled : on;
       // %s → {{task.id}}（槽位落库为占位符）；空行丢弃
       const stored = tpls
         .map((s) => String(s ?? '').trim().replaceAll('%s', '{{task.id}}'))
@@ -204,13 +208,13 @@ function GetLoopEditor({ repo }) {
         method: 'PATCH',
         body: {
           getLoop: {
-            enabled: on,
-            ...(on ? { waitMinutes: Number(minutes) || 10, template: stored } : {}),
+            enabled,
+            ...(enabled ? { waitMinutes: Number(minutes) || 10, template: stored } : {}),
           },
         },
       });
       toast(
-        on
+        enabled
           ? `已保存「${repo.name}」的持续 get 设置（模板 ${stored.length} 条）`
           : `已关闭「${repo.name}」的持续 get`
       );
@@ -220,6 +224,14 @@ function GetLoopEditor({ repo }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  // 开关即刻落库（#103）：配置区收起时用户也要能真正「开启」持续 get，
+  // 不能等展开配置按保存才生效。
+  const toggleOn = async (next) => {
+    setOn(next);
+    if (!next) setCfgOpen(false);
+    await save({ enabled: next });
   };
 
   const addLine = () => {
@@ -232,9 +244,11 @@ function GetLoopEditor({ repo }) {
 
   // 关着时给一枚**真开关**（off 态）做行内入口（#102：与展开后的开关同形态，
   // 不再是一枚意义不明的圆点药丸）；开着才展开整块配置。
+  // 点击 = 真的开启（#103：此前只翻本地状态，展开后开关显示「开」而库里仍是
+  // 关——骗人；现在开关与入口都即时落库）。
   if (!on) {
     return (
-      <button className="setp-gl-off" title="开启持续 get（waitgoal）" onClick={() => setOn(true)}>
+      <button className="setp-gl-off" title="开启持续 get（waitgoal）" onClick={() => toggleOn(true)}>
         <span className="dot" />
         持续 get
       </button>
@@ -248,13 +262,31 @@ function GetLoopEditor({ repo }) {
           <span className="setp-loop-name">持续 get</span>
           <span className="setp-loop-desc">无任务时阻塞等待新任务回填（waitgoal）</span>
         </div>
-        <button className={'toggle' + (on ? ' on' : '')} onClick={() => setOn(false)}>
-          <span className="dot" />
-          {on ? '开' : '关'}
-        </button>
+        <div className="setp-loop-head-acts">
+          {on && (
+            <button
+              className="setp-loop-cfg"
+              onClick={() => setCfgOpen((v) => !v)}
+              aria-expanded={cfgOpen}
+              title={cfgOpen ? '收起配置' : '展开配置'}
+            >
+              <Icon name="chevron" size={11} className={cfgOpen ? 'rot' : ''} />
+              配置
+              <span className="setp-loop-cfg-sum">{minutes} 分钟 · {tpls.length} 条模板</span>
+            </button>
+          )}
+          <button
+            className={'toggle' + (on ? ' on' : '')}
+            onClick={() => toggleOn(!on)}
+            disabled={busy}
+          >
+            <span className="dot" />
+            {on ? '开' : '关'}
+          </button>
+        </div>
       </div>
-      {on && (
-        <>
+      {on && cfgOpen && (
+        <div className="setp-loop-cfg-body">
           <label className="setp-row setp-loop-row">
             <span>阻塞窗口</span>
             <span className="setp-loop-unit">
@@ -312,9 +344,9 @@ function GetLoopEditor({ repo }) {
               添加一条…
             </Button>
             <span className="spacer" />
-            <Button variant="primary" disabled={busy} onClick={save}>保存持续 get 设置</Button>
+            <Button variant="primary" disabled={busy} onClick={() => save()}>保存持续 get 设置</Button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

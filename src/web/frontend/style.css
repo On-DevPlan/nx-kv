@@ -2206,6 +2206,9 @@ footer code {
   gap: 8px;
   padding: 3px 8px 3px 4px;
   border-radius: 999px;
+  /* 按钮默认边框要显式去掉——全局没有 button 重置，UA 的深色边框会露在
+     开关外圈（#103 验收反馈「难看 switch 的黑色边框」） */
+  border: 0;
   background: transparent;
   color: var(--ink-2);
   font-size: 12px;

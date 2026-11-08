@@ -230,8 +230,8 @@ function GetLoopEditor({ repo }) {
     setLine('');
   };
 
-  // 关着时只给一枚行内小开关（#41 密度）：大多数项目没开持续 get，
-  // 不该每个都占一整行。开着才展开整块配置。
+  // 关着时给一枚**真开关**（off 态）做行内入口（#102：与展开后的开关同形态，
+  // 不再是一枚意义不明的圆点药丸）；开着才展开整块配置。
   if (!on) {
     return (
       <button className="setp-gl-off" title="开启持续 get（waitgoal）" onClick={() => setOn(true)}>
@@ -243,53 +243,62 @@ function GetLoopEditor({ repo }) {
 
   return (
     <div className="setp-loop">
-      <label className="setp-row">
-        <span>持续 get（waitgoal）</span>
+      <div className="setp-loop-head">
+        <div className="setp-loop-title">
+          <span className="setp-loop-name">持续 get</span>
+          <span className="setp-loop-desc">无任务时阻塞等待新任务回填（waitgoal）</span>
+        </div>
         <button className={'toggle' + (on ? ' on' : '')} onClick={() => setOn(false)}>
           <span className="dot" />
           {on ? '开' : '关'}
         </button>
-      </label>
+      </div>
       {on && (
         <>
-          <div className="setp-row">
-            <span>阻塞窗口（分钟）</span>
-            <input className="setp-min" value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" />
+          <label className="setp-row setp-loop-row">
+            <span>阻塞窗口</span>
+            <span className="setp-loop-unit">
+              <input className="setp-min" value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" />
+              分钟
+            </span>
+          </label>
+          <div className="setp-loop-tpl">
+            <div className="setp-h">收尾模板</div>
+            <div className="setp-oneline">
+              <Button
+                variant="secondary"
+                title="填入内置默认（继续 get 直到 timeout）"
+                onClick={() => setLine(GETLOOP_DEFAULT_PRESET)}
+              >
+                填入内置默认
+              </Button>
+              <input
+                className="setp-oneline-input"
+                value={line}
+                placeholder="一句话（%s = 任务编号），选模板后可改"
+                onChange={(e) => setLine(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addLine();
+                }}
+              />
+              <Button variant="secondary" disabled={busy || !line.trim()} onClick={addLine}>
+                添加
+              </Button>
+            </div>
+            {tpls.length ? (
+              <PromptItemsEditor
+                items={tpls}
+                onChange={setTpls}
+                disabled={busy}
+                placeholder={'一句话（%s = 任务编号）'}
+                accordion
+                openIndex={openIdx}
+                onOpenChange={setOpenIdx}
+              />
+            ) : (
+              <div className="setp-note">{'未配置模板 —— 用默认「完成后续调 localtask get；没活时每轮最多阻塞 {{getloop.waitMinutes}} 分钟，直到 timeout」。'}</div>
+            )}
           </div>
-          <div className="setp-oneline">
-            <Button
-              variant="secondary"
-              title="填入内置默认（继续 get 直到 timeout）"
-              onClick={() => setLine(GETLOOP_DEFAULT_PRESET)}
-            >
-              填入内置默认
-            </Button>
-            <input
-              className="setp-oneline-input"
-              value={line}
-              placeholder="一句话（%s = 任务编号），选模板后可改"
-              onChange={(e) => setLine(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') addLine();
-              }}
-            />
-            <Button variant="secondary" disabled={busy || !line.trim()} onClick={addLine}>
-              添加
-            </Button>
-          </div>
-          {tpls.length ? (
-            <PromptItemsEditor
-              items={tpls}
-              onChange={setTpls}
-              disabled={busy}
-              placeholder={'一句话（%s = 任务编号）'}
-              accordion
-              openIndex={openIdx}
-              onOpenChange={setOpenIdx}
-            />
-          ) : (
-            <div className="setp-note">{'未配置模板 —— 用默认「完成后续调 localtask get；没活时每轮最多阻塞 {{getloop.waitMinutes}} 分钟，直到 timeout」。'}</div>
-          )}
           <div className="setp-proj-a">
             <Button
               variant="secondary"
@@ -302,6 +311,7 @@ function GetLoopEditor({ repo }) {
             >
               添加一条…
             </Button>
+            <span className="spacer" />
             <Button variant="primary" disabled={busy} onClick={save}>保存持续 get 设置</Button>
           </div>
         </>

@@ -167,6 +167,75 @@ export async function cancelTasks({ cwd: rawCwd, key: rawKey, ids } = {}) {
 }
 
 /**
+ * 批量收口「待领取」任务（面板「标为完成 / 取消」用）：**不要求先领取**。
+ *
+ * 场景：有的任务在队列里等着被领，但其实用户已经自己干完了（或决定不做）。
+ * 以前只有 agent 领取后走 completeTask 才能收口；这里补上用户侧的直接操作。
+ * - status=done：写完成总结与完成时刻（总结缺省为「用户确认已完成（任务未领取，直接关闭）」）
+ * - status=cancelled：只改状态（与 cancelTasks 同口径，原文留档）
+ * 已领取（可能有 agent 正在处理）、已交付、已取消、已删除都跳过。
+ */
+export async function closeTasks({ cwd: rawCwd, key: rawKey, ids, status = 'done', summary = '' } = {}) {
+  const wantStatus = String(status ?? 'done');
+  if (wantStatus !== 'done' && wantStatus !== 'cancelled') {
+    throw badInput('--status 只接受 done / cancelled');
+  }
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const { cwd } = normalizeCwd(rawCwd);
+  const wants = (Array.isArray(ids) ? ids : [ids])
+    .map((x) => Number(String(x ?? '').trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!wants.length) throw badInput('缺少参数 --ids <任务编号，逗号分隔或给多次>');
+
+  openStore();
+  const t = topicsRepo.getTopic(key);
+  const topicId = t ? t.id : null;
+  const closed = [];
+  const missing = [];
+  const skipped = [];
+  const feedback =
+    wantStatus === 'done'
+      ? String(summary ?? '').trim() || '用户确认已完成（任务未领取，直接关闭）'
+      : '';
+  tx(() => {
+    for (const want of wants) {
+      const cur = topicId ? tasksRepo.getTaskRow(topicId, want) : null;
+      if (!cur) {
+        missing.push(want);
+        continue;
+      }
+      if (cur.task.status !== 'pending' || cur.task.migratedTo || cur.task.deletedAt) {
+        skipped.push({
+          id: want,
+          status: cur.task.status,
+          reason: cur.task.migratedTo ? 'migrated' : cur.task.deletedAt ? 'deleted' : 'not_pending',
+        });
+        continue;
+      }
+      const ok = tasksRepo.closePendingTask(topicId, want, { status: wantStatus, feedback });
+      if (!ok) {
+        skipped.push({ id: want, status: cur.task.status, reason: 'not_pending' });
+        continue;
+      }
+      closed.push(normalizeTask(tasksRepo.getTaskRow(topicId, want).task));
+    }
+    if (closed.length) topicsRepo.updateTopic(key, { bumpRevision: true });
+    return true;
+  });
+  return {
+    status: 'ok',
+    key,
+    cwd: t ? t.cwd || cwd : cwd,
+    name: t ? t.name : key,
+    closeStatus: wantStatus,
+    closed,
+    missing,
+    skipped,
+    count: closed.length,
+  };
+}
+
+/**
  * 恢复一条被软删除的任务（撤销删除）。
  * 与 removeTask 互为逆操作：任务仍在队列里，只是带着 deletedAt 标记。
  */

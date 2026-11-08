@@ -244,6 +244,29 @@ export function completeTask(topicId, seq, { feedback = '', atMs = nowMs() } = {
 }
 
 /**
+ * 用户侧关闭「待领取」任务（面板「标为完成 / 取消任务」）：不要求先领取。
+ * 只动 pending ∧ 未删除；done 写完成总结与时刻，cancelled 只改状态（与批量取消同口径）。
+ */
+export function closePendingTask(topicId, seq, { status = 'done', feedback = '', atMs = nowMs() } = {}) {
+  const isDone = String(status) === 'done';
+  return txw((conn) => {
+    const r = isDone
+      ? conn.run(
+          `UPDATE tasks SET status = 'done', done_at = :at, feedback_at = :at, feedback = :fb,
+                  version = version + 1, updated_at = :at
+            WHERE topic_id = :t AND seq = :s AND status = 'pending' AND deleted_at IS NULL`,
+          { t: topicId, s: seq, at: atMs, fb: String(feedback ?? '') }
+        )
+      : conn.run(
+          `UPDATE tasks SET status = 'cancelled', version = version + 1, updated_at = :at
+            WHERE topic_id = :t AND seq = :s AND status = 'pending' AND deleted_at IS NULL`,
+          { t: topicId, s: seq, at: atMs }
+        );
+    return Number(r.changes) === 1;
+  });
+}
+
+/**
  * 字段级更新（reopen / update / 软删 / 恢复都用它）。
  * `patch` 是 JSON 形态的字段子集；写不进任何列的低频字段进 ext。
  * @returns {object|null} 更新后的 JSON 形态任务

@@ -683,6 +683,66 @@ export async function getTimegoalLog({ cwd: rawCwd } = {}) {
   };
 }
 
+function durationLabel(sec) {
+  const s = Math.max(0, Number(sec) || 0);
+  if (s >= 3600 && s % 3600 === 0) return `${s / 3600}h`;
+  if (s >= 60 && s % 60 === 0) return `${s / 60}m`;
+  return `${s}s`;
+}
+
+/**
+ * 任务维度的 check 流水：面板「查看每轮 check」与 CLI `localtask timegoal-log` 共用。
+ * 与队列级 getTimegoalLog 不同——任务级记录落在 goal_checks 行，逐轮读。
+ */
+export async function getTaskGoalLog({ topicKey, taskId: seq } = {}) {
+  const key = taskGoalKey(topicKey, seq);
+  if (!topicKey || seq === undefined || seq === null) {
+    return { hasGoal: false, key, seq: Number(seq) || 0, count: 0, entries: [] };
+  }
+  const row = goalsRepo.getGoalRowByTaskKey(topicKey, seq, ltDb());
+  if (!row) return { hasGoal: false, key, seq: Number(seq) || 0, count: 0, entries: [] };
+  const checks = goalsRepo.listChecks(Number(row.id), ltDb());
+  const view = goalRowToView(row);
+  return {
+    hasGoal: true,
+    key,
+    seq: Number(seq) || 0,
+    name: String(row.topic_name || ''),
+    cwd: String(row.topic_cwd || ''),
+    durationSec: Number(view.durationSec) || 0,
+    duration: durationLabel(view.durationSec),
+    startedAt: view.startedAt,
+    deadline: view.deadline,
+    archived: view.archived,
+    count: checks.length,
+    totalChecks: checks.length,
+    entries: checks.map((c) => {
+      let summary = '';
+      let progress = '';
+      try {
+        const v = JSON.parse(String(c.summary || '{}'));
+        if (v && typeof v === 'object') {
+          summary = String(v.summary || '');
+          progress = String(v.progress || '');
+        } else {
+          summary = String(c.summary || '');
+        }
+      } catch {
+        summary = String(c.summary || '');
+      }
+      return {
+        checkedAt: stampOf(c.at),
+        elapsedSec: Number(c.elapsed_sec) || 0,
+        remainingSec: Number(c.remaining_sec) || 0,
+        overtimeSec: Number(c.overtime_sec) || 0,
+        reached: !!c.reached,
+        summary,
+        progress,
+      };
+    }),
+  };
+}
+
 function normalizeLogField(raw, flag, maxLength) {
   const value = String(raw ?? '').trim();
   if (!value) throw badInput(`--${flag} 不能为空（每次 check 都会写入 timegoal 日志）`);

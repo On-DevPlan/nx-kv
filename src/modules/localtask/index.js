@@ -430,6 +430,31 @@ export default {
       },
     },
     {
+      id: 'localtask.timegoalLog',
+      cli: ['localtask', 'timegoal-log'],
+      http: ['GET', '/api/localtasks/timegoal-log'],
+      summary: '查看任务级时间目标的每轮 check 记录（时间、已用/剩余、是否到点、当轮总结与进度）',
+      flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
+      run: async (ctx) => {
+        const topicKey = ctx.key || service.normalizeCwd(ctx.cwd).key;
+        const { getTaskGoalLog } = await import('../tasktool/timegoal.js');
+        return getTaskGoalLog({ topicKey, taskId: ctx.id });
+      },
+      render: (d) => {
+        if (!d.hasGoal) return `#${d.seq || ''} 没有任务级时间目标记录。`;
+        const lines = [`#${d.seq} 时间目标 check 记录 ${d.count} 轮（${d.duration} · ${d.startedAt} → ${d.deadline}）`];
+        if (!d.count) lines.push('  （还没有 check 记录）');
+        d.entries.forEach((e, i) => {
+          lines.push(
+            `  R${i + 1}  ${e.checkedAt}  已用 ${e.elapsedSec}s · 剩余 ${e.remainingSec}s${e.reached ? ' · 已到点' : ''}`,
+          );
+          if (e.summary) lines.push(`      ${e.summary}`);
+          if (e.progress) lines.push(`      进度: ${e.progress}`);
+        });
+        return lines.join('\n');
+      },
+    },
+    {
       id: 'localtask.importRemote',
       cli: ['localtask', 'import-remote'],
       http: ['POST', '/api/localtasks/import-remote'],
@@ -745,6 +770,40 @@ export default {
         const head = d.count
           ? `已在主题「${d.name}」取消 ${d.count} 条待领取任务（${done}）`
           : `主题「${d.name}」没有可取消的待领取任务`;
+        const skip = d.skipped.length
+          ? `；跳过 ${d.skipped.map((x) => `#${x.id}(${x.status})`).join(' ')}`
+          : '';
+        const miss = d.missing.length ? `；未找到 #${d.missing.join(' #')}` : '';
+        return head + skip + miss;
+      },
+    },
+    {
+      id: 'localtask.closeMany',
+      cli: ['localtask', 'close-many'],
+      http: ['POST', '/api/localtasks/items/close'],
+      summary:
+        '批量收口待领取任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；已领取/已交付跳过',
+      flags: {
+        ids: { type: 'array', required: true, hint: '任务编号，逗号分隔或给多次' },
+        cwd: CWD,
+        key: KEY,
+        status: { type: 'string', hint: 'done（标为完成，默认）或 cancelled（取消）' },
+        summary: { type: 'string', hint: '完成总结（status=done 时可选）' },
+      },
+      run: (ctx) =>
+        service.closeTasks({
+          ids: ctx.ids,
+          cwd: ctx.cwd,
+          key: ctx.key,
+          status: ctx.status,
+          summary: ctx.summary,
+        }),
+      render: (d) => {
+        const done = d.closed.map((x) => `#${x.id}`).join(' ');
+        const verb = d.closeStatus === 'cancelled' ? '取消' : '标为完成';
+        const head = d.count
+          ? `已在主题「${d.name}」${verb} ${d.count} 条待领取任务（${done}）`
+          : `主题「${d.name}」没有可${verb}的待领取任务`;
         const skip = d.skipped.length
           ? `；跳过 ${d.skipped.map((x) => `#${x.id}(${x.status})`).join(' ')}`
           : '';

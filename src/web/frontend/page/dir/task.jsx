@@ -7,6 +7,7 @@
 // 文档内容存在会话内存（doc-store.js），页签身份在 FlexLayout 模型里——
 // 两者分工明确：布局归布局，内容归内容。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
+import { Icon } from '../../components/icons.jsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import { api } from '../../api/client.js';
@@ -112,36 +113,105 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   // 只有「待领取」能改时间目标声明（已领取在计时、已交付是终态；要改先 reopen）
   const goalEditable = isDraft || (!!taskRow && taskRow.status === 'pending');
 
-  // ─── 验收条（完成任务）：agent 的完成总结（ack）+ 用户回复（通行 / 反馈 / 划线评论）───
-  // 「通行」只在本机记一笔（localStorage，per-viewer 的轻量状态）：done 本身已是终态，
-  // 验收与否不进队列 schema——「无更新则直接结束」的口径里，通行 = 不需要再做什么。
-  // 「反馈」(#75)：**新开一条任务**（不是重做/就地重开），原完成任务留档不动。
-  const reviewAckKey = `nx-kv/review/${scope}/${task}`;
-  const [reviewAcked, setReviewAcked] = useState(() => {
-    try {
-      return localStorage.getItem(reviewAckKey) === '1';
-    } catch {
-      return false;
-    }
-  });
+  // 时间目标 check 流水（#74）：已声明目标的任务才可查，逐轮读 goal_checks。
+  // 入口在底部状态栏的 check 条目（#79），点开在信息面板里看每轮。
+  // 注意：hooks 必须留在所有提前 return 之前（下面「读不到文档」会提前返回）。
+  const canShowGoalLog = !isDraft && !!declaredGoal && task != null;
+  const [goalLog, setGoalLog] = useState({ busy: false, error: '', data: null });
+  const loadGoalLog = useCallback(() => {
+    if (isDraft || !topicKey || task == null) return;
+    setGoalLog((s) => ({ ...s, busy: true, error: '' }));
+    const q = new URLSearchParams({ id: String(task), key: String(topicKey) });
+    api(`/api/localtasks/timegoal-log?${q.toString()}`)
+      .then((d) => setGoalLog((s) => ({ ...s, data: d, busy: false })))
+      .catch((e) => setGoalLog((s) => ({ ...s, busy: false, error: String(e.message || e) })));
+  }, [isDraft, topicKey, task]);
   useEffect(() => {
-    setReviewAcked(() => {
-      try {
-        return localStorage.getItem(reviewAckKey) === '1';
-      } catch {
-        return false;
-      }
-    });
-  }, [reviewAckKey]);
-  const ackReview = () => {
-    try {
-      localStorage.setItem(reviewAckKey, '1');
-    } catch {
-      /* 私隐模式等存不了就只在本次会话里认 */
+    if (canShowGoalLog) loadGoalLog();
+  }, [canShowGoalLog, loadGoalLog]);
+
+  // ─── 底部状态栏 / 抽屉（#79，VSCode 风）───
+  // 编辑区不再被「附件 / check / 验收总结」这些内容块往下挤：它们收进底部抽屉，
+  // 底部常驻一条细状态栏（左：附件 / check / 反馈；右：状态 + 展开）。
+  // 点条目展开对应面板；抽屉上沿可拖拉调高；▾ 收起后只剩状态栏。
+  const DOCK_MIN = 96;
+  const [dockOpen, setDockOpen] = useState(() => localStorage.getItem('nxkv.taskDockOpen') !== '0');
+  const [dockTab, setDockTab] = useState(() => localStorage.getItem('nxkv.taskDockTab') || 'attach');
+  const [dockH, setDockH] = useState(() => {
+    const v = Number(localStorage.getItem('nxkv.taskDockH'));
+    return Number.isFinite(v) && v >= DOCK_MIN ? v : 176;
+  });
+  const dockHRef = useRef(dockH);
+  dockHRef.current = dockH;
+  const dockRef = useRef(null);
+  const [dockMax, setDockMax] = useState(false);
+  const dockPrevHRef = useRef(176);
+  useEffect(() => {
+    localStorage.setItem('nxkv.taskDockOpen', dockOpen ? '1' : '0');
+  }, [dockOpen]);
+  useEffect(() => {
+    localStorage.setItem('nxkv.taskDockTab', dockTab);
+  }, [dockTab]);
+  const showDockTab = useCallback((tab) => {
+    setDockTab(tab);
+    setDockOpen(true);
+  }, []);
+  const onDockDragStart = useCallback(
+    (e) => {
+      if (!dockOpen) return;
+      e.preventDefault();
+      setDockMax(false);
+      const startY = e.clientY;
+      const startH = dockHRef.current;
+      const hostH = dockRef.current?.parentElement?.clientHeight || window.innerHeight;
+      const clamp = (h) =>
+        Math.max(DOCK_MIN, Math.min(Math.round(hostH * 0.62), Math.round(h)));
+      const move = (ev) => {
+        const h = clamp(startH - (ev.clientY - startY));
+        dockHRef.current = h;
+        setDockH(h);
+      };
+      const up = () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        localStorage.setItem('nxkv.taskDockH', String(dockHRef.current));
+      };
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'row-resize';
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    },
+    [dockOpen]
+  );
+  const openGoalLog = useCallback(() => {
+    showDockTab('check');
+    loadGoalLog();
+  }, [showDockTab, loadGoalLog]);
+  // 面板右上角「最大化 / 还原」（VSCode 的 panel 控制钮之一）：在常规高度与宿主 62% 之间切
+  const toggleDockMax = useCallback(() => {
+    if (dockMax) {
+      setDockH(dockPrevHRef.current);
+      setDockMax(false);
+      return;
     }
-    setReviewAcked(true);
-    toast('已验收');
-  };
+    dockPrevHRef.current = dockHRef.current;
+    const hostH = dockRef.current?.parentElement?.clientHeight || window.innerHeight;
+    const h = Math.max(DOCK_MIN, Math.round(hostH * 0.62));
+    dockHRef.current = h;
+    setDockH(h);
+    setDockMax(true);
+  }, [dockMax]);
+  // 头部「添加附件」：附件区只在面板的 attach tab 挂载，先切过去再开弹窗（下一拍等挂载）
+  const openAttachPanel = useCallback(() => {
+    showDockTab('attach');
+    setTimeout(() => attachAreaRef.current?.open(), 0);
+  }, [showDockTab]);
+
+  // ─── 验收条（完成任务）：agent 的完成总结（ack）+ 用户回复（反馈 / 划线评论）───
+  // 不再提供「通行」：done 本身已是终态，不需要再点一次确认；
+  // 「反馈」(#75)：**新开一条任务**（不是重做/就地重开），原完成任务留档不动。
   /** 反馈：开一块 **md 编辑面板** 写意见；提交后**新建一条任务**（forkOf 指回本条），原任务不动。
    *  #104：不再是浮层里的输入框弹窗——工作区里新开一块 md 编辑页，顶部带
    *  「反馈 #xx 的任务」引用信息，正文下面是完整的 md 编辑器。 */
@@ -399,7 +469,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       cancelAnimationFrame(raf);
       ro?.disconnect();
     };
-  }, [ackOpen, taskRow?.roundSummary, taskRow?.completedAt]);
+  }, [ackOpen, taskRow?.roundSummary, taskRow?.completedAt, dockTab, dockOpen]);
 
   // 阅读视图：剥掉首个一级标题行——它就是文档标题（页头已渲染），正文再渲染一遍是重复
   const previewHtml = useMemo(
@@ -844,6 +914,45 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     });
   };
 
+  // ─── #75 待领取任务直接收口（不要求先领取）───
+  const canClosePending = !isDraft && !!taskRow && taskRow.status === 'pending';
+  const closeTask = (kind) => {
+    if (!canClosePending) return;
+    guard(async () => {
+      const title = doc?.title || `#${task}`;
+      const scope = isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd };
+      if (kind === 'done') {
+        const summary = await dialog({
+          title: `标为完成「${title}」`,
+          message: '任务还没被领取。确认把当前正文视为已完成？可写一句完成总结。',
+          input: true,
+          placeholder: '完成总结（可选；留空使用默认说明）',
+          okText: '标为完成',
+        });
+        if (summary === null || summary === undefined) return;
+        await api('/api/localtasks/items/close', {
+          method: 'POST',
+          body: { ...scope, ids: [Number(task)], status: 'done', summary: String(summary).trim() },
+        });
+        toast(`已标为完成 #${task}`);
+      } else {
+        const ok = await dialog({
+          title: `取消任务「${title}」`,
+          message: '只处理待领取任务。取消为终态，原文留档。',
+          danger: true,
+          okText: '取消任务',
+        });
+        if (!ok) return;
+        await api('/api/localtasks/items/close', {
+          method: 'POST',
+          body: { ...scope, ids: [Number(task)], status: 'cancelled' },
+        });
+        toast(`已取消 #${task}`);
+      }
+      refreshLocal();
+    });
+  };
+
   const addFiles = async (fileList, opts = {}) => {
     console.log('[dbg] addFiles n=', fileList && fileList.length, 'doc=', !!doc, 'mode=', opts && opts.mode);
     if (!doc) return;
@@ -1224,6 +1333,11 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           {declaredGoal?.duration || '—'} · 已领取计时
         </span>
       )}
+      {declaredGoal && task != null ? (
+        <button type="button" className="ghost" onClick={openGoalLog} title="查看时间目标的每轮 check 记录">
+          查看每轮 check 日志
+        </button>
+      ) : null}
     </div>
   ) : null;
 
@@ -1312,10 +1426,12 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           onChain={isDraft ? null : () => setChainOpen(true)}
           onPreview={openPreview}
           onImg={() => pickAtt('image/*')}
-          onAtt={() => (isDraft ? pickAtt('image/*,.pdf,.zip,.txt,.json,.csv') : attachAreaRef.current?.open())}
+          onAtt={() => (isDraft ? pickAtt('image/*,.pdf,.zip,.txt,.json,.csv') : openAttachPanel())}
           onImport={() => fileMdRef.current?.click()}
           onClone={isDraft ? null : cloneCur}
           onFork={isDraft ? null : forkCur}
+          onComplete={canClosePending ? () => closeTask('done') : null}
+          onCancelTask={canClosePending ? () => closeTask('cancel') : null}
           onMark={openCommentFromToolbar}
           onDraft={() => toast('草稿随页签保留（刷新后需从侧栏或页签重新打开）')}
           onDelete={isDraft ? null : delTask}
@@ -1357,91 +1473,247 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           }}
         />
 
-        {isDraft ? (
-          <AttachBar
-            attachments={doc.attachments}
-            onRemove={(aid) => {
-              const next = (doc.attachments || []).filter((x) => x.id !== aid);
-              markDirty();
-              saveDoc(id, { attachments: next });
-              if (!isDraft) persistAtt(task, next);
-            }}
-          />
-        ) : topic ? (
-          <AttachArea
-            ref={attachAreaRef}
-            host="task"
-            hostId={Number(task)}
-            hostKey={isGlobal ? GLOBAL_KEY : undefined}
-            hostCwd={isGlobal ? undefined : topic.cwd}
-            allow={{ file: true, url: true, task: true, ref: true }}
-            taskOptions={(topic.tasks || []).map((t) => ({ id: t.id, text: t.text, status: t.status }))}
-            onChanged={refreshLocal}
-            onOpenTask={(hit) => {
-              if (!app.openPage || !hit || hit.seq == null) return;
-              app.openPage({
-                dirKey: hit.key || topicKey,
-                task: String(hit.seq),
-                name: `#${hit.seq}`,
-              });
-            }}
-            onOpenDoc={(locator) => {
-              const docId = docIdOfLocator(locator);
-              if (!model || !docId) return;
-              openPanel(model, {
-                component: 'doc',
-                name: locator.split('/').pop() || locator,
-                config: { docId },
-                location: 'center',
-              });
-            }}
-          />
-        ) : null}
-
-        {/* 验收条：已完成任务的 ack 卡——放在**正文末尾**（用户口径）：读完正文
-            正好看到 agent 的完成总结，等你回复——反馈 = 新开任务；划选评论 = 回写
-            本任务；通行 = 验收通过。 */}
-        {!isDraft && taskRow?.completedAt && (
-          <div className="mdw-review" ref={reviewBarRef}>
-            <div className="mdw-review-main">
-              <span className="mdw-review-badge">已完成 · 等待验收</span>
-              <span className="mdw-review-at mono">{taskRow.completedAt}</span>
-              {taskRow.roundSummary ? (
-                <>
-                  <div
-                    ref={reviewSumRef}
-                    className={`mdw-review-sum${ackOpen ? ' is-open' : ''}`}
-                    title={ackOpen || !(ackOverflow || ackLong) ? 'agent 的完成总结（ack）' : '点击下方展开全文'}
-                    dangerouslySetInnerHTML={{ __html: ackHtml }}
-                  />
-                  {(ackOverflow || ackLong || ackOpen) && (
-                    <button
-                      type="button"
-                      className="mdw-review-more"
-                      onClick={() => setAckOpen((o) => !o)}
-                    >
-                      {ackOpen ? '收起' : '展开全文'}
-                    </button>
-                  )}
-                </>
-              ) : null}
+        {/* ─── 底部抽屉（#79）：附件 / check / 反馈收在这里，编辑区不再被内容块挤占 ─── */}
+        {dockOpen && (
+          <div className="mdw-dock" ref={dockRef} style={{ height: `${dockH}px` }}>
+            <div
+              className="mdw-dock-drag"
+              role="separator"
+              aria-orientation="horizontal"
+              title="上下拖动调整信息面板高度（双击最大化 / 还原）"
+              onMouseDown={onDockDragStart}
+              onDoubleClick={toggleDockMax}
+            />
+            {/* 面板头（#79）：左上功能切换 tab，右上两个控制钮（最大化 / 关闭）——照 VSCode 底部面板 */}
+            <div className="mdw-dock-head">
+              <div className="mdw-dock-tabs" role="tablist" aria-label="信息面板">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={dockTab === 'attach'}
+                  className={`mdw-dock-tab${dockTab === 'attach' ? ' is-on' : ''}`}
+                  onClick={() => showDockTab('attach')}
+                >
+                  附件
+                </button>
+                {canShowGoalLog ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={dockTab === 'check'}
+                    className={`mdw-dock-tab${dockTab === 'check' ? ' is-on' : ''}`}
+                    onClick={openGoalLog}
+                  >
+                    check
+                    <span className="mdw-dock-tab-num">{goalLog.data?.count ?? 0}</span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={dockTab === 'feedback'}
+                  className={`mdw-dock-tab${dockTab === 'feedback' ? ' is-on' : ''}`}
+                  onClick={() => showDockTab('feedback')}
+                >
+                  反馈
+                </button>
+              </div>
+              <div className="mdw-dock-acts">
+                <button
+                  type="button"
+                  className="mdw-dock-act"
+                  onClick={toggleDockMax}
+                  title={dockMax ? '还原面板高度' : '最大化面板高度'}
+                  aria-label={dockMax ? '还原面板高度' : '最大化面板高度'}
+                >
+                  <Icon name={dockMax ? 'collapse' : 'expand'} />
+                </button>
+                <button
+                  type="button"
+                  className="mdw-dock-act"
+                  onClick={() => setDockOpen(false)}
+                  title="关闭面板（底部状态栏仍保留入口）"
+                  aria-label="关闭面板"
+                >
+                  <Icon name="x" />
+                </button>
+              </div>
             </div>
-            <div className="mdw-review-acts">
-              {reviewAcked ? (
-                <span className="mdw-review-ok">已验收</span>
-              ) : (
-                <>
-                  <button type="button" className="ghost" onClick={openFeedback} title="新开一条任务携带反馈（原任务不动）">
-                    反馈
-                  </button>
-                  <button type="button" className="primary" onClick={ackReview}>
-                    通行
-                  </button>
-                </>
-              )}
+            <div className="mdw-dock-body">
+              {dockTab === 'attach' ? (
+                isDraft ? (
+                  <AttachBar
+                    attachments={doc.attachments}
+                    onRemove={(aid) => {
+                      const next = (doc.attachments || []).filter((x) => x.id !== aid);
+                      markDirty();
+                      saveDoc(id, { attachments: next });
+                      if (!isDraft) persistAtt(task, next);
+                    }}
+                  />
+                ) : topic ? (
+                  <AttachArea
+                    ref={attachAreaRef}
+                    host="task"
+                    hostId={Number(task)}
+                    hostKey={isGlobal ? GLOBAL_KEY : undefined}
+                    hostCwd={isGlobal ? undefined : topic.cwd}
+                    allow={{ file: true, url: true, task: true, ref: true }}
+                    taskOptions={(topic.tasks || []).map((t) => ({ id: t.id, text: t.text, status: t.status }))}
+                    onChanged={refreshLocal}
+                    onOpenTask={(hit) => {
+                      if (!app.openPage || !hit || hit.seq == null) return;
+                      app.openPage({
+                        dirKey: hit.key || topicKey,
+                        task: String(hit.seq),
+                        name: `#${hit.seq}`,
+                      });
+                    }}
+                    onOpenDoc={(locator) => {
+                      const docId = docIdOfLocator(locator);
+                      if (!model || !docId) return;
+                      openPanel(model, {
+                        component: 'doc',
+                        name: locator.split('/').pop() || locator,
+                        config: { docId },
+                        location: 'center',
+                      });
+                    }}
+                  />
+                ) : (
+                  <div className="mdw-dock-empty">没有可挂载附件的上下文。</div>
+                )
+              ) : null}
+
+              {dockTab === 'check' ? (
+                <div className="mdw-dock-check">
+                  {goalLog.busy && !goalLog.data ? <div className="mdw-dock-empty">读取中…</div> : null}
+                  {goalLog.error ? <div className="mdw-dock-empty">读取失败：{goalLog.error}</div> : null}
+                  {goalLog.data ? (
+                    <>
+                      <div className="mdw-dock-meta mono">
+                        {`时间目标 ${goalLog.data.duration || '—'}`}
+                        {goalLog.data.startedAt ? ` · 开始 ${goalLog.data.startedAt}` : ''}
+                        {goalLog.data.deadline ? ` · 截止 ${goalLog.data.deadline}` : ' · 尚未开始计时'}
+                        {goalLog.data.archived ? ' · 已归档' : ''}
+                        {` · ${goalLog.data.count || 0} 轮`}
+                      </div>
+                      {(goalLog.data.count || 0) > 0 ? (
+                        <div className="mdw-goal-log">
+                          {goalLog.data.entries.map((e, i) => (
+                            <div key={`${e.checkedAt}-${i}`} className="mdw-goal-log-row">
+                              <div className="mdw-goal-log-head mono">
+                                R{i + 1} · {e.checkedAt} · {e.reached ? '已到点' : '未到点'} · 已用{' '}
+                                {fmtSec(e.elapsedSec)} · 剩余 {fmtSec(e.remainingSec)}
+                              </div>
+                              {e.summary ? <div className="mdw-goal-log-body">{e.summary}</div> : null}
+                              {e.progress ? <div className="mdw-goal-log-prog">{e.progress}</div> : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mdw-dock-empty">还没有 check 记录——任务领取后每轮 check 会出现在这里。</div>
+                      )}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {dockTab === 'feedback' ? (
+                !isDraft && taskRow?.completedAt ? (
+                  <div className="mdw-review" ref={reviewBarRef}>
+                    <div className="mdw-review-main">
+                      <span className="mdw-review-badge">已完成 · 等待验收</span>
+                      <span className="mdw-review-at mono">{taskRow.completedAt}</span>
+                      {taskRow.roundSummary ? (
+                        <>
+                          <div
+                            ref={reviewSumRef}
+                            className={`mdw-review-sum${ackOpen ? ' is-open' : ''}`}
+                            title={ackOpen || !(ackOverflow || ackLong) ? 'agent 的完成总结（ack）' : '点击下方展开全文'}
+                            dangerouslySetInnerHTML={{ __html: ackHtml }}
+                          />
+                          {(ackOverflow || ackLong || ackOpen) && (
+                            <button
+                              type="button"
+                              className="mdw-review-more"
+                              onClick={() => setAckOpen((o) => !o)}
+                            >
+                              {ackOpen ? '收起' : '展开全文'}
+                            </button>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                    <div className="mdw-review-acts">
+                      <button type="button" className="ghost" onClick={openFeedback} title="新开一条任务携带反馈（原任务不动）">
+                        反馈
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mdw-dock-empty">任务完成后，agent 的完成总结会显示在这里。</div>
+                )
+              ) : null}
             </div>
           </div>
         )}
+
+        {/* ─── 底部状态栏（#79）：VSCode 风细条，左信息 / 右状态；窄了先省略中间 ─── */}
+        <div className="mdw-sbar">
+          <button
+            type="button"
+            className={`mdw-sbar-item${dockOpen && dockTab === 'attach' ? ' is-on' : ''}`}
+            onClick={() => showDockTab('attach')}
+            title="附件（点击展开信息面板）"
+          >
+            <Icon name="list" />
+            <span className="mdw-sbar-lab">附件</span>
+          </button>
+          {canShowGoalLog ? (
+            <button
+              type="button"
+              className={`mdw-sbar-item${dockOpen && dockTab === 'check' ? ' is-on' : ''}`}
+              onClick={openGoalLog}
+              title="时间目标每轮 check（点击展开信息面板）"
+            >
+              <Icon name="clock" />
+              <span className="mdw-sbar-lab">check</span>
+              <span className="mdw-sbar-num">{goalLog.data?.count ?? 0}</span>
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={`mdw-sbar-item${dockOpen && dockTab === 'feedback' ? ' is-on' : ''}`}
+            onClick={() => showDockTab('feedback')}
+            title="完成总结 / 反馈（点击展开信息面板）"
+          >
+            <Icon name="edit" />
+            <span className="mdw-sbar-lab">反馈</span>
+          </button>
+          <span className="mdw-sbar-grow" />
+          {!isDraft && taskRow ? (
+            <span className={`mdw-sbar-stat is-${taskRow.status}`} title="任务状态">
+              {taskRow.status === 'done'
+                ? '已交付'
+                : taskRow.status === 'claimed'
+                  ? '已领取'
+                  : taskRow.status === 'cancelled'
+                    ? '已取消'
+                    : '待领取'}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className={`mdw-sbar-chev${dockOpen ? ' is-open' : ''}`}
+            onClick={() => setDockOpen((v) => !v)}
+            title={dockOpen ? '收起信息面板' : '展开信息面板'}
+            aria-expanded={dockOpen}
+            aria-label={dockOpen ? '收起信息面板' : '展开信息面板'}
+          >
+            <Icon name="chevron" />
+          </button>
+        </div>
       </div>
 
       {/* ack 定位轨（任务 #48）：反复 ack 反馈的长任务页，一轮一个节点，点击跳过去。
@@ -1584,4 +1856,12 @@ function PreviewModal({ state, onClose }) {
       )}
     </Modal>
   );
+}
+
+/** 秒 → 人读（check 日志的已用/剩余）。 */
+function fmtSec(v) {
+  const s = Math.max(0, Number(v) || 0);
+  if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  if (s >= 60) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${s}s`;
 }

@@ -27,6 +27,7 @@ import {
   imageFilesFromDataTransfer,
   indentLines,
   insertTextAtCursor,
+  isBareListItemLine,
   runFormat,
   scrollTextareaToIndex,
   slashQueryAt,
@@ -685,6 +686,56 @@ function LivePreview({
       commit(next);
       setFocus(i - 1);
       return;
+    }
+    // Backspace 在**空的列表项行**上（光标前只剩 `- ` / `- [ ] ` / `1. ` 这类裸前缀，
+    // #100 验收反馈）：一键剥掉前缀「逃出列表」——落点是**空白行**继续打字，
+    // 而不是被顶回上一行（此前：删完前缀再按一下，原生会把行首 \n 吃掉、光标
+    // 跳到上一行行尾）。与 continueListOnEnter 的「空项 Enter 收回」成对，
+    // 同为 Notion 语义。落点按行在块里的位置分三种（块内存不住空行——空行是
+    // 块分隔符，join/split 往返即裂）：
+    //   独行块   → 本块原地变空，光标留在本块
+    //   块尾行   → 上文留下，新开一个空块（Shift+Enter 块尾同款约定）
+    //   块中行   → 拆成 [上文, '', 下文]，光标落中间空块
+    if (
+      e.key === 'Backspace'
+      && ta.selectionStart === ta.selectionEnd && !slashRef.current
+    ) {
+      const s = ta.selectionStart;
+      const lineStart = val.lastIndexOf('\n', s - 1) + 1;
+      const lineEndIdx = val.indexOf('\n', s);
+      const lineEnd = lineEndIdx === -1 ? val.length : lineEndIdx;
+      // 整行必须只有裸前缀（光标夹在中间也一样）——否则 `- 待办|` 会整行被误删
+      const wholeLine = val.slice(lineStart, lineEnd);
+      const isBareItem = isBareListItemLine(wholeLine);
+      if (isBareItem) {
+        e.preventDefault();
+        setSlashBoth(null);
+        const above = val.slice(0, lineStart).replace(/\n$/, '');
+        const below = lineEndIdx === -1 ? '' : val.slice(lineEnd + 1);
+        const next = blocks.slice();
+        if (!above && !below) {
+          // 独行块：本块原地变空
+          next[i] = '';
+          pendingSelRef.current = { index: i, start: 0, end: 0 };
+          commit(next);
+          setFocus(i);
+        } else if (!below) {
+          // 块尾行：上文留下，新开一个空块
+          next[i] = above;
+          next.splice(i + 1, 0, '');
+          pendingSelRef.current = { index: i + 1, start: 0, end: 0 };
+          commit(next);
+          setFocus(i + 1);
+        } else {
+          // 块中行：上文 / 空块 / 下文，光标落中间空块
+          next[i] = above;
+          next.splice(i + 1, 0, '', below);
+          pendingSelRef.current = { index: i + 1, start: 0, end: 0 };
+          commit(next);
+          setFocus(i + 1);
+        }
+        return;
+      }
     }
     // Delete 在块尾（无选区、非末块）：把下一块并进来，光标落接缝——
     // Backspace 并上块的镜像（Notion 行为）。FM 块同理不许被并：

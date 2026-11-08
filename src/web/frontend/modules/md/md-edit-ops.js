@@ -129,6 +129,15 @@ export function runFormat(ta, op) {
 }
 
 /**
+ * 整行只是列表/待办/有序前缀（`- `、`- [ ] `、`1. `、`-` 等），没有任何内容。
+ * #100：空列表项行上按 Backspace = 剥前缀逃出列表（落空白行），不顶回上一行。
+ */
+export function isBareListItemLine(line) {
+  const t = String(line ?? '');
+  return t !== '' && /^[ \t]*(?:[-*+][ \t]*|\d+\.[ \t]+)(?:\[[ xX]\][ \t]*)?$/.test(t);
+}
+
+/**
  * 切换块内第 n 个（0 起）待办复选框：`- [ ]` ↔ `- [x]`（#99）。
  * 视图态点击 ☑/☐ 用——按**出现顺序**数第 n 个 todo 行；没有第 n 个返回 null
  * （DOM 里的 .mdw-cb 序号与源码里的 todo 行序号天然一一对应，按行序渲染）。

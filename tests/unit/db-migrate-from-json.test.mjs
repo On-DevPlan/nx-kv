@@ -223,7 +223,7 @@ test('links / deps / goals：forkOf → task_links，blockBy → task_deps，内
   }
 });
 
-test('refs / ref_bindings：约定路径绑定宿主，未绑定的留 orphan；ref_relations 留空', async () => {
+test('refs / ref_bindings：约定路径绑定宿主，未绑定的留 orphan；v2 关系表为空', async () => {
   const s = await importFixture();
   try {
     const refs = s.db.all('SELECT locator, state FROM refs ORDER BY locator');
@@ -243,7 +243,13 @@ test('refs / ref_bindings：约定路径绑定宿主，未绑定的留 orphan；
       bindings.map((b) => `${b.type}:${b.repo_key}${b.group_key ? '#' + b.group_key : ''}`).sort(),
       ['group:group/前端组', 'group_repo:github.com/acme/web#group/前端组', 'repo:github.com/acme/api', 'repo:github.com/acme/web']
     );
-    assert.equal(s.db.get('SELECT count(*) AS c FROM ref_relations').c, 0);
+    // v2：ref_relations 已删除；文档↔资源关系改由 ref_attach 承担
+    assert.equal(s.db.get('SELECT count(*) AS c FROM ref_attach').c, 0);
+    assert.equal(
+      s.db.get("SELECT count(*) AS c FROM sqlite_master WHERE type='table' AND name='ref_relations'").c,
+      0,
+      'ref_relations 在 v2 必须删除'
+    );
   } finally {
     s.reset();
   }

@@ -56,17 +56,42 @@ const renderTask = (t) =>
 // `localtask attachments` 的人读输出（与 todo attachments 同构）
 function renderTaskAttachments(d) {
   const lines = [
-    `#${d.task.id}  附件 ${d.count} 个 · 本地目录: ${d.localDir}（自动下载 ${d.autoSync ? '开' : '关'}）`,
+    `#${d.task.id}  附件 ${d.count} 个（正文内嵌 ${d.inlineCount ?? d.count} · 附件区 ${d.areaCount ?? 0}）· 本地目录: ${d.localDir}（自动下载 ${d.autoSync ? '开' : '关'}）`,
   ];
   if (!d.count) {
-    lines.push('  （这条任务没有引用附件）');
+    lines.push('  （这条任务没有附件；localtask attach --no-embed 可只挂到附件区）');
     return lines.join('\n');
   }
-  for (const a of d.attachments) {
-    lines.push(`  ${a.kind === 'image' ? '图片' : '附件'}  ${a.name}  [${a.id}]`);
-    lines.push(`      ${a.localPath || '（未同步；nx-kv file sync --ids ' + a.id + '）'}`);
+  const groups = [
+    { key: 'inline', label: '正文内嵌' },
+    { key: 'area', label: '附件区' },
+  ];
+  for (const g of groups) {
+    const rows = d.attachments.filter((a) => (a.area === 'area' ? 'area' : 'inline') === g.key);
+    if (!rows.length) continue;
+    lines.push(`  [${g.label}]`);
+    for (const a of rows) {
+      lines.push(`  ${a.kind === 'image' ? '图片' : a.kind === 'url' ? '链接' : a.kind === 'task' ? '任务' : a.kind === 'ref' ? '文档' : '附件'}  ${a.name}  [${a.id}]`);
+      lines.push(`      ${a.localPath || a.url || a.target || '（未同步；nx-kv file sync --ids ' + a.id + '）'}`);
+    }
   }
   return lines.join('\n');
+}
+
+function renderDetach(d) {
+  const head = d.unlinked
+    ? `已解除主题「${d.name}」#${d.task.id} 与附件 ${d.attachment} 的关系`
+    : `主题「${d.name}」#${d.task.id} 本来就没有引用附件 ${d.attachment}`;
+  const tail = d.purged
+    ? '；资源已删除（含本机字节）'
+    : d.purgeReason === 'in-use'
+      ? '；资源仍被其他任务/文档引用，未删字节'
+      : d.purgeReason === 'file-locked'
+        ? '；文件被占用，未删字节（关系已解除）'
+        : d.purgeReason === 'not-found'
+          ? '；资源行不存在'
+          : '';
+  return head + tail;
 }
 
 function renderAdd(d) {
@@ -589,15 +614,22 @@ export default {
       id: 'localtask.attach',
       cli: ['localtask', 'attach'],
       http: ['POST', '/api/localtasks/attach'],
-      summary: '给任务追加附件：--path 存本机附件仓（不碰云端），或 --fileId 引用已有附件，以 markdown 嵌入正文末尾（不替换正文）',
+      summary:
+        '给任务挂附件：--path 存本机附件仓 / --fileId 引用已有附件 / --url / --task（同主题任务）/ --ref（文档）；默认嵌进正文，--no-embed 只挂到附件区（不写正文）',
       flags: {
         id: { type: 'number', required: true, hint: '任务编号' },
         cwd: CWD,
         key: KEY,
-        path: { type: 'string', hint: '本机文件路径（落 ~/.nx-kv/attachments/local/ 再嵌入）' },
+        path: { type: 'string', hint: '本机文件路径（落 ~/.nx-kv/attachments/local/ 再登记）' },
         fileId: { type: 'string', hint: '已有附件的 id（32 位 hex，可带扩展名；本机仓或云端）' },
-        name: { type: 'string', hint: '嵌入文字与本地文件名（默认取原文件名）' },
-        kind: { type: 'string', hint: 'image | file（不给按文件名/扩展名判）' },
+        url: { type: 'string', hint: '外部链接（http/https；kind=url）' },
+        task: { type: 'string', hint: '同主题下的任务编号（kind=task，落 nxkv://task/<id>）' },
+        ref: { type: 'string', hint: '文档路径或 ref id（kind=ref，落 nxkv://ref/<refId>）' },
+        name: { type: 'string', hint: '显示名 / 本地文件名（默认取原名）' },
+        kind: { type: 'string', hint: 'image | file（仅 --path/--fileId 用；不给按扩展名判）' },
+        note: { type: 'string', hint: '附件区条目备注' },
+        noEmbed: { type: 'boolean', hint: '只写 attachments + task_attach（role=attach），不改正文' },
+        'no-embed': { type: 'boolean', hint: '同 --noEmbed（连字符写法）' },
       },
       run: async (ctx) => {
         const { attachToTask } = await import('../tasktool/attach.js');
@@ -607,12 +639,42 @@ export default {
           key: ctx.key,
           path: ctx.path,
           fileId: ctx.fileId,
+          url: ctx.url,
+          task: ctx.task,
+          ref: ctx.ref,
           name: ctx.name,
           kind: ctx.kind,
+          note: ctx.note,
+          noEmbed: !!(ctx.noEmbed ?? ctx['no-embed']),
         });
       },
       render: (d) =>
-        `已附加 ${d.fileId}（${d.kind === 'image' ? '图片' : '文件'}）到主题「${d.name}」#${d.task.id}\n嵌入: ${d.markdown}`,
+        `已附加 ${d.fileId}（${d.kind === 'image' ? '图片' : d.kind === 'url' ? '链接' : d.kind === 'task' ? '任务' : d.kind === 'ref' ? '文档' : '文件'}）到主题「${d.name}」#${d.task.id} · ${d.area === 'area' ? '附件区（未写正文）' : '正文内嵌'}${d.markdown ? `\n嵌入: ${d.markdown}` : ''}`,
+    },
+    {
+      id: 'localtask.detach',
+      cli: ['localtask', 'detach'],
+      http: ['DELETE', '/api/localtasks/attach'],
+      summary:
+        '解除任务与附件的关系（默认只解除关系，资源进孤儿池）；--purge 在无人引用时连资源行与本机字节一起删',
+      flags: {
+        id: { type: 'number', required: true, hint: '任务编号' },
+        cwd: CWD,
+        key: KEY,
+        attachment: { type: 'string', required: true, hint: '资源 id（见 localtask attachments）' },
+        purge: { type: 'boolean', hint: '连资源行与本机字节一起删（仍被其他任务/文档引用时拒绝删）' },
+      },
+      run: async (ctx) => {
+        const { detachTaskAttachment } = await import('../tasktool/attach.js');
+        return detachTaskAttachment({
+          id: ctx.id,
+          cwd: ctx.cwd,
+          key: ctx.key,
+          attachment: ctx.attachment,
+          purge: ctx.purge,
+        });
+      },
+      render: renderDetach,
     },
     {
       id: 'localtask.attachments',

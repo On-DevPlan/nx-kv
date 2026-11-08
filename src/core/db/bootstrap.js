@@ -25,7 +25,12 @@
 //     **绝不自动建表** —— 那会把别人的库就地改成我们的结构。
 import { existsSync, rmSync, unlinkSync, writeFileSync, renameSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { dbPathFromEnv, backupsDirFromEnv, defaultStoreTarget } from '../paths.js';
+import { attachmentsRootFromEnv, dbPathFromEnv, backupsDirFromEnv, defaultStoreTarget } from '../paths.js';
+import {
+  archiveAttachmentManifests,
+  syncDocAttachmentIndex,
+  syncTaskAttachmentIndex,
+} from '../attachmentdb.js';
 import { badInput } from '../errors.js';
 import { openRaw } from './driver.js';
 import { tx } from './tx.js';
@@ -97,6 +102,12 @@ export function bootstrap(
 ) {
   const before = inspectStore(db);
   const legacy = scanLegacy(appDir);
+  // 迁移上下文：002 的 apply 需要把 manifest.json / docs 树 / 任务正文一起迁走。
+  const migrationContext = {
+    attachmentsRoot: attachmentsRootFromEnv(),
+    docsRoot: process.env.NX_KV_DOCS_DIR || join(appDir, 'docs'),
+    atMs,
+  };
   const result = {
     action: 'none',
     createdSchema: false,
@@ -125,7 +136,7 @@ export function bootstrap(
       (conn) => {
         // 双检：并发进程可能刚把表建好（锁是在 BEGIN IMMEDIATE 上等的）
         if (countTables(conn) > 0) return { raced: true };
-        migrate(conn, { from: 0 });
+        migrate(conn, { from: 0, context: migrationContext });
         ensureSentinelRepo(conn, atMs); // topics.repo_key 的 FK 目标，无它一条队列都建不出
         setMeta(conn, 'store_kind', STORE_KIND, atMs);
         setMeta(conn, 'schema_version', String(CURRENT_SCHEMA_VERSION), atMs);
@@ -134,6 +145,10 @@ export function bootstrap(
         if (importLegacyData && legacy.any) {
           report = importLegacy(conn, { appDir, atMs });
         }
+        // 导入之后立刻把正文引用/文档资源落关系表（002 的 apply 在导入之前跑，
+        // 这里补一次，保证「导入的历史任务」也不是只有正文里的 fileId 字符串）。
+        syncTaskAttachmentIndex(conn, { atMs });
+        syncDocAttachmentIndex(conn, { docsRoot: migrationContext.docsRoot, atMs });
         // 内置模板 seed 放在导入**之后**：legacy templates.json 里用户改过的
         // builtin 行先落库，seed 的 INSERT OR IGNORE 就不会用出厂文本盖掉它。
         seedBuiltinTemplates(conn, atMs);
@@ -182,7 +197,7 @@ export function bootstrap(
       tag: `nxkv-v${before.userVersion}-${stampFileTag()}`,
       keep: 5,
     });
-    const applied = migrate(db, { from: before.userVersion });
+    const applied = migrate(db, { from: before.userVersion, context: migrationContext });
     result.action = applied.length ? 'upgraded' : 'none';
   }
 
@@ -199,7 +214,11 @@ export function bootstrap(
           setMeta(conn, 'migrated_from_json_at', String(atMs), atMs);
           return null;
         }
-        return importLegacy(conn, { appDir, atMs });
+        const out = importLegacy(conn, { appDir, atMs });
+        // 导入的数据在本事务里落资源关系；失败则整段回滚，不会留下半套关系。
+        syncTaskAttachmentIndex(conn, { atMs });
+        syncDocAttachmentIndex(conn, { docsRoot: migrationContext.docsRoot, atMs });
+        return out;
       },
       { db, mode: 'IMMEDIATE', rollback: dryRun }
     );
@@ -213,6 +232,13 @@ export function bootstrap(
   //  只读 / 演练 / 未建表的库跳过（情况 A 已在事务内 seed 过）。
   if (!db.readOnly && !dryRun && before.tables > 0) {
     tx((conn) => seedBuiltinTemplates(conn, atMs), { db, mode: 'IMMEDIATE' });
+  }
+
+  // 旧 manifest 台账在迁移阶段已进库；成功后归档（改名不删，留取证）。
+  // 运行时不再读写 manifest，归档失败也不影响 DB 作为唯一真相。
+  if (!db.readOnly && !dryRun) {
+    const archived = archiveAttachmentManifests(migrationContext.attachmentsRoot, stampFileTag(atMs));
+    if (archived.length) result.manifestsArchived = archived;
   }
 
   return result;

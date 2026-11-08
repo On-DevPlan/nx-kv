@@ -22,7 +22,8 @@ export async function getTask({ cwd: rawCwd, key: rawKey, id } = {}) {
     const { notFound } = await import('../../core/errors.js');
     throw notFound(`主题「${t ? t.name : cwd}」里没有 #${want} 任务`);
   }
-  return normalizeTask(task);
+  // key 一并回带：附件标注按 (topic.key, seq) 查 task_attach，不必再反查队列。
+  return { ...normalizeTask(task), key };
 }
 
 /**
@@ -204,7 +205,8 @@ export async function addTask({
     // --global 与 --cwd 同时给时，cwd 被忽略（--global 优先）。不静默：
     // 把被忽略的那个带出来，让调用方能如实告诉用户"任务进了全局池，不是你给的目录"。
     ignoredCwd: toGlobal && rawCwd && String(rawCwd).trim() ? String(rawCwd).trim() : '',
-    task: normalizeTask(task),
+    // key 一并回带：附件标注按 (topic.key, seq) 查 task_attach（与 getTask 同一口径）。
+    task: { ...normalizeTask(task), key },
     delivered,
     queued: !delivered,
   };
@@ -357,7 +359,7 @@ export async function updateTask({
     cwd: hostView.cwd || cwd,
     name: hostView.name,
     goalChanged,
-    task: normalizeTask(liveTask, hostView.tasks),
+    task: { ...normalizeTask(liveTask, hostView.tasks), key: host.key },
     moved,
     movedFrom,
   };

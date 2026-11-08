@@ -82,9 +82,9 @@ export const LOCALTASK_SETTING_KEYS = [
   'attachTemplate',
 ];
 
-/** 稳定的 ref id：locator 的纯函数（同一份文档换台机器也是同一个 id）。 */
+/** 稳定的 ref id：locator 的纯函数（同一份文档换台机器也是同一个 id；路径统一 POSIX）。 */
 export function refIdOf(locator) {
-  return 'ref_' + crypto.createHash('sha1').update(String(locator), 'utf8').digest('hex').slice(0, 16);
+  return 'ref_' + crypto.createHash('sha1').update(String(locator).replace(/\\/g, '/'), 'utf8').digest('hex').slice(0, 16);
 }
 
 /** 空报告。所有分支都填它，调用方（CLI / 测试）只读这一个对象。 */
@@ -950,7 +950,8 @@ function importRefs(db, reposData, docsRoot, atMs, report) {
       const rel = String(ref.rel || '').trim();
       const path = String(ref.path || '').trim();
       if (rel) out.push({ locator: rel, type: 'md', note: String(ref.tag || note || ''), extPath: '' });
-      else if (path) out.push({ locator: path, type: 'path', note: String(ref.tag || note || ''), extPath: path });
+      // v2 起 refs 只装文档：外部 .md 绝对路径也是文档，type 统一为 md。
+      else if (path) out.push({ locator: path, type: 'md', note: String(ref.tag || note || ''), extPath: path });
     };
     pushRef(host && host.doc);
     for (const l of Array.isArray(host && host.docLinks) ? host.docLinks : []) pushRef(l);

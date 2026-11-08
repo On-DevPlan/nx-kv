@@ -10,6 +10,7 @@
 // 绑定命令（repo bind-topics）落库前先跑 rebuildRefIndex 把索引补齐。
 import { db } from './open.js';
 import { refIdOf } from '../../../core/db/import-json.js';
+import { syncRefAttachments } from '../../../core/attachmentdb.js';
 import { SENTINEL_REPO_KEY } from './rows.js';
 
 /** 稳定 ref id：locator 的纯函数（同一份文档换台机器也是同一个 id）。 */
@@ -113,7 +114,7 @@ export function listBindingsOfHost(conn, { repoKey, groupKey = null } = {}) {
  * 与 import-json.importRefs 同一口径（docs 模块读文档时的回落顺序）。
  * @returns {{refs: number, bindings: number}}
  */
-export function rebuildRefIndex(conn, { docsFiles = [], atMs }) {
+export function rebuildRefIndex(conn, { docsFiles = [], docsBodies = null, atMs }) {
   let refCount = 0;
   let bindCount = 0;
   const fileSet = new Set(docsFiles.map(String));
@@ -122,6 +123,10 @@ export function rebuildRefIndex(conn, { docsFiles = [], atMs }) {
     const before = conn.get('SELECT id FROM refs WHERE id = :id', { id: refIdOf(locator) });
     if (!before) refCount += 1;
     upsertRef(conn, { id: refIdOf(locator), type: 'md', locator, state: 'orphan', atMs });
+    // 索引重建顺带重扫正文：外部改动（手工丢进 docs 树）也能把资源关系补齐。
+    if (docsBodies && docsBodies.has(locator)) {
+      syncRefAttachments(conn, { refId: refIdOf(locator), text: docsBodies.get(locator), atMs });
+    }
   }
 
   const bind = (repoKey, groupKey, locator, type, position = 0, note = '') => {

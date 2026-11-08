@@ -11,6 +11,9 @@ import fsp from 'node:fs/promises';
 import { docsRoot, assertOwnedRel, ownDocId, extDocId } from './paths.js';
 import { exists, walkFiles } from '../../core/fstree.js';
 import { notFound } from '../../core/errors.js';
+import { getDb } from '../../core/db/index.js';
+import { tx } from '../../core/db/tx.js';
+import { ensureDocRef, forgetDocRef, syncRefAttachments } from '../../core/attachmentdb.js';
 
 // 外部目录枚举的跳过名单（Obsidian vault 里也有 .obsidian / node_modules 这类噪音）
 const SKIP_DIRS = new Set(['node_modules', '.git', '.obsidian', '.trash', 'dist', 'build', '__pycache__', '.venv']);
@@ -74,7 +77,18 @@ export async function readOwnDoc(rel) {
 /** 写自有文档（mkdir -p + 原子写）。返回归一化 rel，调用方应使用返回值。 */
 export async function writeOwnDoc(rel, body) {
   const norm = assertOwnedRel(rel);
-  await queuedWrite(join(docsRoot(), ...norm.split('/')), String(body ?? ''));
+  const text = String(body ?? '');
+  await queuedWrite(join(docsRoot(), ...norm.split('/')), text);
+  // 文档正文里用到的资源立刻进 ref_attach：不论从 CLI、面板还是别的模块写盘，
+  // 都在这个唯一落盘口同步，避免「有的入口写了关系、有的没写」。
+  const db = getDb();
+  tx(
+    (conn) => {
+      const refId = ensureDocRef(conn, { locator: norm });
+      syncRefAttachments(conn, { refId, text });
+    },
+    { db, mode: 'IMMEDIATE' }
+  );
   return norm;
 }
 
@@ -89,6 +103,10 @@ export async function removeOwnDoc(rel) {
     throw err;
   }
   await fsp.unlink(abs + '.tmp').catch(() => {});
+  // 文档删除 = refs 行删除（ref_bindings / ref_attach 由 FK CASCADE 跟着走），
+  // 它引用过的资源因此变成可列出的孤儿，交给 file orphans / prune 回收。
+  const db = getDb();
+  tx((conn) => forgetDocRef(conn, norm), { db, mode: 'IMMEDIATE' });
   return norm;
 }
 

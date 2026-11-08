@@ -34,18 +34,26 @@ export const COUNTED_TABLES = [
   'goal_checks',
   'refs',
   'ref_bindings',
-  'task_refs',
-  'ref_relations',
+  'attachments',
+  'task_attach',
+  'ref_attach',
   'templates',
   'settings',
 ];
 
 const sha256 = (s) => crypto.createHash('sha256').update(String(s), 'utf8').digest('hex');
 
-/** 各表行数。 */
+/** 各表行数（v1 只读诊断时新表可能还不存在：存在才查，缺失记 0）。 */
 export function tableCounts(db) {
+  const names = new Set(
+    db.all("SELECT name FROM sqlite_master WHERE type = 'table'").map((r) => r.name)
+  );
   const out = {};
   for (const t of COUNTED_TABLES) {
+    if (!names.has(t)) {
+      out[t] = 0;
+      continue;
+    }
     const row = db.get(`SELECT count(*) AS c FROM ${t}`);
     out[t] = Number((row && row.c) || 0);
   }

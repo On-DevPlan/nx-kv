@@ -85,6 +85,26 @@ export default {
       render: (d) => service.renderContent(d),
     },
     {
+      id: 'file.orphans',
+      cli: ['file', 'orphans'],
+      http: ['GET', '/api/file/orphans'],
+      summary: '列出无主资源（没有任何任务/文档关系边；删任务、删文档、删正文行之后用）',
+      run: () => service.listOrphanAttachmentsAction(),
+      render: (d) => service.renderOrphans(d),
+    },
+    {
+      id: 'file.prune',
+      cli: ['file', 'prune'],
+      http: ['POST', '/api/file/prune'],
+      summary: '回收无主资源（DB 行 + 附件根目录内的本机/镜像字节；仍被引用的不删）',
+      flags: {
+        'dry-run': { type: 'boolean', hint: '只列清单不删除' },
+        dryRun: { type: 'boolean', hint: '同 --dry-run（HTTP body 用）' },
+      },
+      run: (ctx) => service.pruneOrphanAttachmentsAction({ dryRun: (ctx.dryRun ?? ctx['dry-run']) === true }),
+      render: (d) => service.renderPrune(d),
+    },
+    {
       id: 'file.sync',
       cli: ['file', 'sync'],
       http: ['POST', '/api/file/sync'],

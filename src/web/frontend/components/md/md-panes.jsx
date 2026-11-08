@@ -990,7 +990,8 @@ function LivePreview({
         />,
         document.body
       )}
-      {/* @ 附件选择面板（#108）：圆角下拉 + 搜索框 + ↑↓ 选择 */}
+      {/* @ 附件选择面板（#108/#109）：圆角下拉 + 搜索框 + ↑↓ 选择 +
+          「＋ 添加附件」（共享选择弹窗）+ 任务条目 ↗ 右侧并排看原文 */}
       {picker.menu && createPortal(
         <AttachPicker
           items={picker.items}
@@ -1002,6 +1003,8 @@ function LivePreview({
           loading={picker.menu.loading}
           error={picker.menu.error}
           position={{ left: picker.menu.x, top: picker.menu.y }}
+          host={attachHost}
+          onReload={picker.reload}
         />,
         document.body
       )}

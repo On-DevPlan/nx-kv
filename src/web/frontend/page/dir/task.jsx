@@ -1350,6 +1350,9 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
             hostId: Number(task),
             hostKey: isGlobal ? GLOBAL_KEY : undefined,
             hostCwd: isGlobal ? undefined : topic?.cwd,
+            // 「＋ 添加附件」弹窗的配置（#109）：与本页附件区同一套
+            allow: { file: true, url: true, task: true, ref: true },
+            taskOptions: (topic.tasks || []).map((t) => ({ id: t.id, text: t.text, status: t.status })),
           }}
         />
 

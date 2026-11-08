@@ -374,6 +374,9 @@
 }
 .mdw-atpick-search input:focus{outline:none;border-color:var(--mdw-accent,#2F6F5E);background:var(--paper,#fff)}
 .mdw-atpick-list{flex:1;min-height:0;overflow:auto;padding:4px}
+/* 条目行：主按钮（引用）+ 可选的 ↗（右侧并排看原文，#109） */
+.mdw-atpick-row{display:flex;align-items:stretch;gap:2px}
+.mdw-atpick-row .mdw-atpick-item{flex:1;min-width:0}
 .mdw-atpick-empty{padding:12px 10px;font-size:11.5px;color:var(--faint,#A9AEB4);text-align:center}
 .mdw-atpick-item{
   display:flex;align-items:center;gap:10px;width:100%;padding:6px 8px;
@@ -387,10 +390,25 @@
   background:var(--mdw-accent-soft)!important;color:var(--mdw-accent)!important;
   box-shadow:inset 3px 0 0 var(--mdw-accent);
 }
+/* ↗（右侧并排看原文）：小号次级钮，不抢条目视觉 */
+.mdw-atpick-open{
+  flex:none;width:24px;border:0;border-radius:6px;background:none;cursor:pointer;
+  color:var(--mid,#838A93);font-size:12px;line-height:1;
+}
+.mdw-atpick-open:hover{background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E)}
+.mdw-atpick-foot{
+  flex:none;display:flex;align-items:center;gap:8px;
+  padding:5px 10px;border-top:1px solid var(--line,#E4E2DC);
+}
 .mdw-atpick-cap{
-  flex:none;padding:5px 10px;border-top:1px solid var(--line,#E4E2DC);
   font-size:10.5px;color:var(--faint,#A9AEB4);
 }
+.mdw-atpick-foot .grow{flex:1}
+.mdw-atpick-add{
+  border:0;background:none;padding:2px 4px;border-radius:5px;cursor:pointer;
+  font:inherit;font-size:11px;color:var(--mdw-accent,#2F6F5E);
+}
+.mdw-atpick-add:hover{background:var(--mdw-accent-soft,#E8F2EE)}
 
 .mdw-preview{overflow:auto;padding:0;background:var(--canvas,#F5F4F1)}
 .mdw-preview article{user-select:text}

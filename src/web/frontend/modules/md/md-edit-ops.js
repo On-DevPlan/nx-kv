@@ -128,6 +128,30 @@ export function runFormat(ta, op) {
   return fn ? fn(ta) : null;
 }
 
+/**
+ * 整行只是列表/待办/有序前缀（`- `、`- [ ] `、`1. `、`-` 等），没有任何内容。
+ * #100：空列表项行上按 Backspace = 剥前缀逃出列表（落空白行），不顶回上一行。
+ */
+export function isBareListItemLine(line) {
+  const t = String(line ?? '');
+  return t !== '' && /^[ \t]*(?:[-*+][ \t]*|\d+\.[ \t]+)(?:\[[ xX]\][ \t]*)?$/.test(t);
+}
+
+/**
+ * 切换块内第 n 个（0 起）待办复选框：`- [ ]` ↔ `- [x]`（#99）。
+ * 视图态点击 ☑/☐ 用——按**出现顺序**数第 n 个 todo 行；没有第 n 个返回 null
+ * （DOM 里的 .mdw-cb 序号与源码里的 todo 行序号天然一一对应，按行序渲染）。
+ */
+export function toggleNthTodo(text, n) {
+  const re = /^([ \t]*-[ \t]+\[)([ xX])(\])/gm;
+  let count = 0;
+  const out = String(text ?? '').replace(re, (full, head, mark, tail) => {
+    if (count++ !== n) return full;
+    return head + (/x/i.test(mark) ? ' ' : 'x') + tail;
+  });
+  return count > n ? out : null;
+}
+
 export function countStats(text) {
   const t = String(text || '');
   const lines = t.length ? t.split('\n').length : 0;

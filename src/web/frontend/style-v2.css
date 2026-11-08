@@ -78,8 +78,6 @@
 .nx-rail-act:hover { background: var(--soft); color: var(--ink); }
 .nx-rail-act:disabled { opacity: .4; cursor: default; }
 .nx-rail-act:disabled:hover { background: none; color: var(--ink-2); }
-/* 带文字的窄轨动作（#95：撤销/恢复要有可见文字，工具按文字才定位得到） */
-.nx-rail-act.labeled { font-size: 12px; line-height: 1; height: 26px; }
 
 /* 关闭态：tabset 占位条透明（几乎看不见）；展开入口是 portal 到工作区的半圆弧把手 */
 .nx-side-closed-host {
@@ -142,29 +140,12 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   background: var(--mdw-accent-soft, #E8F2EE); color: var(--ink); outline: none;
 }
 
-/* 品牌区（侧栏头部第一行）：logo + 全局动作（布局撤销重做 / 设置） */
+/* 品牌区（侧栏头部第一行）：logo + 全局动作（设置） */
 .brandrow { display: flex; align-items: center; gap: 2px; padding: 0 0 8px; }
 .brandrow .nx-title { margin-right: 2px; }
 .brandrow .grow { flex: 1 1 auto; min-width: 0; }
 .brandrow .iconbtn { width: 24px; height: 24px; flex: none; }
 .brandrow .iconbtn:disabled { opacity: .4; cursor: default; background: none; }
-/* 带文字的图标钮（#95：撤销/恢复要**可见文字**——纯 SVG 图标没有 textContent，
-   按文字找按钮的工具定位不到、判「未实现」）。图标给形，文字给名。
-   放在搜索行（操作行）：那边宽度充足，文字完整可读。 */
-.iconbtn.labeled {
-  width: auto; min-width: 0; height: 24px; padding: 0 8px 0 6px; gap: 4px;
-  font-size: 12px; line-height: 1; white-space: nowrap;
-}
-.searchrow .iconbtn.labeled { flex: none; overflow: hidden; }
-.searchrow .iconbtn.labeled span { overflow: hidden; text-overflow: ellipsis; }
-.searchrow .iconbtn.labeled > svg { flex: none; }
-/* 侧栏拖得很窄时搜索框优先（主功能），文字按钮**先缩**（flex-shrink）——
-   文字不隐藏：display:none 会让 innerText 变空，按文字定位的工具又找不到了
-   （#95 的原委）。这里让按钮收缩、文字省略号截断，图标始终在。 */
-@media (max-width: 1100px) {
-  .searchrow .iconbtn.labeled { flex: 0 1 auto; }
-  .searchrow .iconbtn.labeled span { min-width: 0; }
-}
 /* 品牌行标题：优先保留（logo 已是标识，标题是「这是哪个应用」） */
 .brandrow .nx-title { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -1210,13 +1191,13 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .dagp-queue i { font-style: normal; margin-left: 4px; opacity: .7; }
 .dagp-queue:hover { background: var(--soft, #F1F0EC); }
 .dagp-queue.on { background: var(--mdw-accent-soft, #E8F2EE); border-color: var(--mdw-accent, #2F6F5E); color: var(--mdw-accent, #2F6F5E); }
-/* 面包屑条上的返回键（#42：页面缺返回键） */
-.nx-crumb-back {
-  flex: none; border: 0; background: none; cursor: pointer;
-  font: inherit; font-size: 13px; line-height: 1; color: var(--mid, #838A93);
-  padding: 2px 6px; border-radius: 5px; margin-right: 2px;
+/* 面包屑返回钮（#97：独立「←」删掉，整段路径本身就是返回钮） */
+.nx-crumb-path {
+  border: 0; background: none; cursor: pointer;
+  font: inherit; color: inherit; padding: 0; margin: 0; text-align: left;
 }
-.nx-crumb-back:hover { background: var(--soft, #F1F0EC); color: var(--ink, #16181C); }
+.nx-crumb-path:hover .nx-crumb-t { color: var(--ink, #16181C); text-decoration: underline; }
+.nx-crumb-path:focus-visible { outline: 1px solid var(--mdw-accent, #2F6F5E); border-radius: 4px; }
 
 /* 面板内的路径条形态（#44）：贴在主面板顶部的一枚小药丸，不是窗口通栏 */
 .nx-crumb-inline {

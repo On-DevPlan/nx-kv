@@ -8,6 +8,8 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import AttachPicker, { useAttachPicker } from './attach-picker.jsx';
+import { atTriggerAt } from '../../modules/md/attach-mention.js';
 import {
   isFrontmatterBlock,
   isEmptyBlock,
@@ -27,9 +29,11 @@ import {
   imageFilesFromDataTransfer,
   indentLines,
   insertTextAtCursor,
+  isBareListItemLine,
   runFormat,
   scrollTextareaToIndex,
   slashQueryAt,
+  toggleNthTodo,
   turnBlock,
   turnLine,
 } from '../../modules/md/md-edit-ops.js';
@@ -85,6 +89,7 @@ function LiveBlock({
   focused,
   hit,
   onFocus,
+  onToggleTodo,
   onChange,
   onBlur,
   onKeyDown,
@@ -120,6 +125,9 @@ function LiveBlock({
       return;
     }
     if (document.activeElement !== el) {
+      // @ 附件面板开着时焦点归它（#108）：别把焦点抢回 textarea——
+      // 否则面板刚聚焦的搜索框立刻失焦，键盘输入落回正文。
+      if (document.activeElement?.closest?.('.mdw-atpick')) return;
       el.focus();
       const n = el.value.length;
       try { el.setSelectionRange(n, n); } catch { /* ignore */ }
@@ -171,7 +179,17 @@ function LiveBlock({
       data-i={index}
       role="button"
       tabIndex={0}
-      onClick={() => {
+      onClick={(e) => {
+        // 复选框点击直接切换（#99：视图态 ☑/☐ 可点——专业编辑器基线行为）。
+        // 不进编辑态；开关走 updateAt=op 通道（可撤销）。DOM 里 .mdw-cb 的序号
+        // 与块源码里 todo 行的序号一一对应（按行序渲染）。
+        const cb = e.target.closest?.('.mdw-cb');
+        if (cb) {
+          e.stopPropagation();
+          const cbs = [...e.currentTarget.querySelectorAll('.mdw-cb')];
+          onToggleTodo?.(index, cbs.indexOf(cb));
+          return;
+        }
         // 划选评论：有选区时不进编辑，把选区留给上层 mouseup 浮层
         const sel = window.getSelection();
         if (sel && !sel.isCollapsed && String(sel).trim()) return;
@@ -342,7 +360,7 @@ function TitleArea({ value, onTitle, placeholder, className, onFocus, onEnter })
 
 function LivePreview({
   title, body, onTitle, onBody, articleRef, attachments, docKey, onFiles, editorApiRef, onTextSel,
-  onCloseSelMenu,
+  onCloseSelMenu, hideTitle = false, attachHost = null,
 }) {
   const [focus, setFocus] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -453,6 +471,19 @@ function LivePreview({
     if (next) applyBlockOp(idx, next);
   };
 
+  // ── @ 附件选择（#108）──
+  const picker = useAttachPicker({
+    host: attachHost,
+    onInsert: ({ index, embed, at, caret }) => {
+      // 块内替换：把 '@' 那一段换成引用语法，光标落在引用之后
+      const val = normalizeBlockText(blocks[index] ?? '');
+      const next = val.slice(0, at) + embed + val.slice(caret);
+      updateAt(index, next);
+      pendingSelRef.current = { index, start: at + embed.length, end: at + embed.length };
+      setFocus(index);
+    },
+  });
+
   const applyTurn = (index, turnId) => {
     const ta = liveTaRef.current;
     const fake = ta && focus === index
@@ -546,10 +577,51 @@ function LivePreview({
     return () => document.removeEventListener('keydown', onKey, true);
   }, [slash]);
 
+  // document 捕获：预览态划选后按 Backspace/Delete —— 把选中文字删掉（#98）。
+  // 视图块是渲染好的 HTML，选区落在不可编辑内容上，浏览器默认对 Backspace
+  // 无动于衷（编辑态 textarea 原生行为本来就对，这里只补视图态这一块）。
+  // 映射口径与 formatSelection 一致：选区文本在块源码里 indexOf 定位；跨
+  // markdown 标记/跨块时 indexOf 不中 → 保守放弃，不做错位改写。
+  // 删除后进编辑态、光标落接缝（op 走历史栈，Ctrl+Z 可撤）。
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target;
+      // 焦点在可编辑元素里：原生行为已正确（textarea 选区删除 / contentEditable 标题）
+      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.isContentEditable)) return;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const text = String(sel.toString() || '');
+      if (!text.trim()) return;
+      const node = sel.anchorNode;
+      const el = node?.nodeType === 3 ? node.parentElement : node;
+      const blockEl = el?.closest?.('.mdw-lp-block');
+      if (!blockEl || !articleRef.current?.contains(blockEl)) return;
+      const i = Number(blockEl.getAttribute('data-i'));
+      if (!Number.isInteger(i) || i < 0 || i >= blocks.length) return;
+      const raw = normalizeBlockText(blocks[i] ?? '');
+      const pos = raw.indexOf(text);
+      if (pos === -1) return; // 跨标记/跨块：保守放弃，不删
+      e.preventDefault();
+      updateAt(i, raw.slice(0, pos) + raw.slice(pos + text.length));
+      pendingSelRef.current = { index: i, start: pos, end: pos };
+      onCloseSelMenu?.();
+      setFocus(i);
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [blocks, onBody, articleRef, onCloseSelMenu]);
+
   const onKeyDown = (i, e) => {
     const val = normalizeBlockText(blocks[i] ?? '');
     const ta = e.target;
     liveTaRef.current = ta;
+
+    // IME 组合中（拼音候选未上屏）：按键归输入法，块级快捷键一概不接——
+    // 否则选字回车的 Enter 会被当「拆块」、删拼音的 Backspace 会被当「并块」
+    // （标题区同款守卫，见 TitleArea 的 onEnter）。
+    if (e.nativeEvent?.isComposing || e.keyCode === 229) return;
 
     // 优先处理斜杠菜单（用 ref，避免闭包里 slash 过期）
     if (handleSlashKey(e, slashRef, {
@@ -631,6 +703,76 @@ function LivePreview({
       pendingSelRef.current = { index: i - 1, start: prev.length, end: prev.length };
       commit(next);
       setFocus(i - 1);
+      return;
+    }
+    // Backspace 在**空的列表项行**上（光标前只剩 `- ` / `- [ ] ` / `1. ` 这类裸前缀，
+    // #100 验收反馈）：一键剥掉前缀「逃出列表」——落点是**空白行**继续打字，
+    // 而不是被顶回上一行（此前：删完前缀再按一下，原生会把行首 \n 吃掉、光标
+    // 跳到上一行行尾）。与 continueListOnEnter 的「空项 Enter 收回」成对，
+    // 同为 Notion 语义。落点按行在块里的位置分三种（块内存不住空行——空行是
+    // 块分隔符，join/split 往返即裂）：
+    //   独行块   → 本块原地变空，光标留在本块
+    //   块尾行   → 上文留下，新开一个空块（Shift+Enter 块尾同款约定）
+    //   块中行   → 拆成 [上文, '', 下文]，光标落中间空块
+    if (
+      e.key === 'Backspace'
+      && ta.selectionStart === ta.selectionEnd && !slashRef.current
+    ) {
+      const s = ta.selectionStart;
+      const lineStart = val.lastIndexOf('\n', s - 1) + 1;
+      const lineEndIdx = val.indexOf('\n', s);
+      const lineEnd = lineEndIdx === -1 ? val.length : lineEndIdx;
+      // 整行必须只有裸前缀（光标夹在中间也一样）——否则 `- 待办|` 会整行被误删
+      const wholeLine = val.slice(lineStart, lineEnd);
+      const isBareItem = isBareListItemLine(wholeLine);
+      if (isBareItem) {
+        e.preventDefault();
+        setSlashBoth(null);
+        const above = val.slice(0, lineStart).replace(/\n$/, '');
+        const below = lineEndIdx === -1 ? '' : val.slice(lineEnd + 1);
+        const next = blocks.slice();
+        if (!above && !below) {
+          // 独行块：本块原地变空
+          next[i] = '';
+          pendingSelRef.current = { index: i, start: 0, end: 0 };
+          commit(next);
+          setFocus(i);
+        } else if (!below) {
+          // 块尾行：上文留下，新开一个空块
+          next[i] = above;
+          next.splice(i + 1, 0, '');
+          pendingSelRef.current = { index: i + 1, start: 0, end: 0 };
+          commit(next);
+          setFocus(i + 1);
+        } else {
+          // 块中行：上文 / 空块 / 下文，光标落中间空块
+          next[i] = above;
+          next.splice(i + 1, 0, '', below);
+          pendingSelRef.current = { index: i + 1, start: 0, end: 0 };
+          commit(next);
+          setFocus(i + 1);
+        }
+        return;
+      }
+    }
+    // Delete 在块尾（无选区、非末块）：把下一块并进来，光标落接缝——
+    // Backspace 并上块的镜像（Notion 行为）。FM 块同理不许被并：
+    // 合并会把下一块的 `---` 撕碎成普通文本。
+    if (
+      e.key === 'Delete'
+      && ta.selectionStart === val.length && ta.selectionEnd === val.length
+      && i < blocks.length - 1 && !slashRef.current
+      && !isFrontmatterBlock(normalizeBlockText(blocks[i + 1] ?? ''))
+    ) {
+      e.preventDefault();
+      setSlashBoth(null);
+      const nxt = normalizeBlockText(blocks[i + 1] ?? '');
+      const next = blocks.slice();
+      next[i] = val + nxt;
+      next.splice(i + 1, 1);
+      pendingSelRef.current = { index: i, start: val.length, end: val.length };
+      commit(next);
+      setFocus(i);
       return;
     }
     // Shift+Enter = 块内软换行。**中段**放行原生插入（\n 在块内存活，实测）；
@@ -757,14 +899,17 @@ function LivePreview({
             inputRef={findInputRef}
           />
         )}
-        <TitleArea
-          className="mdw-lp-title"
-          value={title}
-          placeholder="无标题"
-          onTitle={onTitle}
-          onFocus={() => { setFocus(null); setSlashBoth(null); }}
-          onEnter={() => { if (blocks.length) setFocus(0); }}
-        />
+        {/* 标题行：评论/反馈面板不要（#104——引用信息在面板头部，标题行是多余的） */}
+        {!hideTitle && (
+          <TitleArea
+            className="mdw-lp-title"
+            value={title}
+            placeholder="无标题"
+            onTitle={onTitle}
+            onFocus={() => { setFocus(null); setSlashBoth(null); }}
+            onEnter={() => { if (blocks.length) setFocus(0); }}
+          />
+        )}
         <div className={`mdw-lp-blocks${emptyDoc ? ' is-empty-doc' : ''}`}>
           {blocks.map((b, i) => (
             <LiveBlock
@@ -786,18 +931,29 @@ function LivePreview({
                 cancelAnimationFrame(slashRafRef.current);
                 slashRafRef.current = requestAnimationFrame(() => {
                   const ta = liveTaRef.current;
-                  if (ta) refreshSlash(i, ta);
+                  if (!ta) return;
+                  refreshSlash(i, ta);
+                  // @ → 唤起附件选择面板（#108）；不在触发点就收掉
+                  const hit = atTriggerAt(ta);
+                  if (hit) picker.open({ index: i, ta, at: hit.at, caret: hit.caret });
+                  else picker.close();
                 });
               }}
               onBlur={() => {
                 requestAnimationFrame(() => {
                   if (document.activeElement?.closest?.('.mdw-lp-block.is-edit')) return;
                   if (document.activeElement?.closest?.('.mdw-slash')) return;
+                  if (document.activeElement?.closest?.('.mdw-atpick')) return; // @ 附件面板（#108）
                   setFocus(null);
                   setSlashBoth(null);
                 });
               }}
               onKeyDown={(e) => onKeyDown(i, e)}
+              onToggleTodo={(idx, n) => {
+                const raw = normalizeBlockText(blocks[idx] ?? '');
+                const next = toggleNthTodo(raw, n);
+                if (next) updateAt(idx, next);
+              }}
               onPasteFiles={(files, ta) => ingestFiles(files, ta)}
               onTextSel={onTextSel}
             />
@@ -831,6 +987,24 @@ function LivePreview({
           onHover={(n) => setSlashBoth((s) => s && ({ ...s, active: n }))}
           onPick={pickSlash}
           style={{ left: slash.x, top: slash.y }}
+        />,
+        document.body
+      )}
+      {/* @ 附件选择面板（#108/#109）：圆角下拉 + 搜索框 + ↑↓ 选择 +
+          「＋ 添加附件」（共享选择弹窗）+ 任务条目 ↗ 右侧并排看原文 */}
+      {picker.menu && createPortal(
+        <AttachPicker
+          items={picker.items}
+          query={picker.menu.query}
+          onQuery={picker.setQuery}
+          active={picker.active}
+          onHover={picker.move}
+          onPick={picker.pick}
+          loading={picker.menu.loading}
+          error={picker.menu.error}
+          position={{ left: picker.menu.x, top: picker.menu.y }}
+          host={attachHost}
+          onReload={picker.reload}
         />,
         document.body
       )}
@@ -1050,6 +1224,7 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
   const onKeyDown = (e) => {
     const ta = taRef.current;
     if (!ta) return;
+    if (e.nativeEvent?.isComposing || e.keyCode === 229) return; // IME 组合中：按键归输入法
     if (handleSlashKey(e, slashRef, {
       move: moveSlash,
       pick: pickSlash,
@@ -1197,6 +1372,13 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
               e.preventDefault();
               ingestImages(files);
             }}
+            onDrop={(e) => {
+              // 拖文件进来 = 与粘贴同一通道（实时预览态已有拖放，源码态补齐对等能力）
+              const files = imageFilesFromDataTransfer(e.dataTransfer);
+              if (!files.length) return;
+              e.preventDefault();
+              ingestImages(files);
+            }}
             onMouseUp={(e) => {
               syncCaret();
               const ta = taRef.current;
@@ -1285,6 +1467,8 @@ export const MdPanes = forwardRef(function MdPanes(
     onUndo = null,
     onRedo = null,
     onCloseSelMenu = null,
+    hideTitle = false,
+    attachHost = null,
   },
   articleRef
 ) {
@@ -1383,6 +1567,8 @@ export const MdPanes = forwardRef(function MdPanes(
         editorApiRef={editorApiRef}
         onTextSel={onTextSel}
         onCloseSelMenu={onCloseSelMenu}
+        hideTitle={hideTitle}
+        attachHost={attachHost}
       />
     </div>
   );

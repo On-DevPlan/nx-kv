@@ -30,6 +30,7 @@ export const PANEL_AREA = {
   templates: AREA.MAIN,
   doc: AREA.MAIN,
   dag: AREA.MAIN,
+  compose: AREA.MAIN,
   progress: AREA.RIGHT,
   refs: AREA.RIGHT,
   settings: AREA.FLOAT,

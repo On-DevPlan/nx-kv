@@ -1,6 +1,7 @@
 // 侧边栏（应用壳的左栏）：品牌区 + 搜索 + 树（全局池恒顶 → 看板 → 仓库）+ 底部入口。
-// **全局动作集中在品牌区**（顶栏已删）：布局撤销重做 / 设置（齿轮气泡，含重置布局与
-// 偏好开关）。收起成窄轨时保留设置入口（见 panel.jsx）。
+// **全局动作集中在品牌区**（顶栏已删）：设置（齿轮气泡，含重置布局与偏好开关）。
+// 布局撤销/重做已整体下线（#96）：模型管理回退普通 state，不再保留入口。
+// 收起成窄轨时保留设置入口（见 panel.jsx）。
 // 拖拽编排 = 三段式落点（drag.js）；可见序 = 渲染序，键盘导航走同一份扁平序。
 //
 // **数据源**：仓库登记 + 看板（真实数据，见 model.js）。侧边栏不持有自己的分组体系，
@@ -29,7 +30,7 @@ export default function Sidebar({
   refreshRepos,    // 仓库/看板刷新（登记、归属变更后）
   onCollapse,      // 收起成窄轨（工作区面板：改 tabset weight）
   onClose,         // 完全关闭（左缘只剩半圆弧把手，点把手展开）
-  shell,           // 全局动作：{undo, redo, canUndo, canRedo, resetLayout}
+  shell,           // 全局动作：{resetLayout, openSettings}
 }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
@@ -230,29 +231,6 @@ export default function Sidebar({
           </button>
         </div>
         <div className="searchrow">
-          {/* 撤销/恢复（#93/#95 验收反馈）：布局操作的两颗标准钮。以前是 ↶↷ 文本字形——
-              24px 灰 glyph 读不出「这是按钮」，redo 无历史时再叠 0.4 透明度，
-              用户直接当装饰符号看不见；换成图标后仍**没有可见文字**（纯 SVG），
-              按文字找按钮的工具定位不到、判「未实现」（#95 实锤：textContent 空）。
-              所以：图标 + **可见文字**「撤销」「恢复」——图标给形，文字给名，
-              工具按文字能定位，人也一眼认得出。
-              位置从品牌行挪到搜索行：品牌行只有 257px，两颗文字按钮（110px）
-              + 三颗图标钮（72px）+ logo 就把「nx-kv」标题挤没了；搜索行是
-              **操作行**（搜索 + ＋），放这两颗更贴切，也给得起宽度。 */}
-          <button
-            className="iconbtn labeled undo" title="撤销（上一次布局操作）" aria-label="撤销上一次布局操作"
-            disabled={!shell || !shell.canUndo} onClick={shell && shell.undo}
-          >
-            <Icon name="undo" size={13} />
-            <span>撤销</span>
-          </button>
-          <button
-            className="iconbtn labeled redo" title="恢复（重做布局操作）" aria-label="恢复上一次布局操作"
-            disabled={!shell || !shell.canRedo} onClick={shell && shell.redo}
-          >
-            <Icon name="redo" size={13} />
-            <span>恢复</span>
-          </button>
           <label className="sbox">
             <Icon name="search" />
             <input

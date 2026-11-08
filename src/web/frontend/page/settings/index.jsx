@@ -191,10 +191,14 @@ function GetLoopEditor({ repo }) {
   const [openIdx, setOpenIdx] = useState(-1);
   const [line, setLine] = useState(''); // 一句话输入（可含 %s）
   const [busy, setBusy] = useState(false);
+  // 配置区（阻塞窗口/收尾模板/动作行）默认收起（#103）：开启「持续 get」
+  // 只是一枚开关的语义，细节按需展开；头上给一行摘要（几分钟·几条模板）。
+  const [cfgOpen, setCfgOpen] = useState(false);
 
-  const save = async () => {
+  const save = async (override) => {
     setBusy(true);
     try {
+      const enabled = override && override.enabled !== undefined ? override.enabled : on;
       // %s → {{task.id}}（槽位落库为占位符）；空行丢弃
       const stored = tpls
         .map((s) => String(s ?? '').trim().replaceAll('%s', '{{task.id}}'))
@@ -204,13 +208,13 @@ function GetLoopEditor({ repo }) {
         method: 'PATCH',
         body: {
           getLoop: {
-            enabled: on,
-            ...(on ? { waitMinutes: Number(minutes) || 10, template: stored } : {}),
+            enabled,
+            ...(enabled ? { waitMinutes: Number(minutes) || 10, template: stored } : {}),
           },
         },
       });
       toast(
-        on
+        enabled
           ? `已保存「${repo.name}」的持续 get 设置（模板 ${stored.length} 条）`
           : `已关闭「${repo.name}」的持续 get`
       );
@@ -222,6 +226,14 @@ function GetLoopEditor({ repo }) {
     }
   };
 
+  // 开关即刻落库（#103）：配置区收起时用户也要能真正「开启」持续 get，
+  // 不能等展开配置按保存才生效。
+  const toggleOn = async (next) => {
+    setOn(next);
+    if (!next) setCfgOpen(false);
+    await save({ enabled: next });
+  };
+
   const addLine = () => {
     const v = line.trim();
     if (!v || tpls.length >= MAX_PROMPT_ITEMS) return;
@@ -230,11 +242,13 @@ function GetLoopEditor({ repo }) {
     setLine('');
   };
 
-  // 关着时只给一枚行内小开关（#41 密度）：大多数项目没开持续 get，
-  // 不该每个都占一整行。开着才展开整块配置。
+  // 关着时给一枚**真开关**（off 态）做行内入口（#102：与展开后的开关同形态，
+  // 不再是一枚意义不明的圆点药丸）；开着才展开整块配置。
+  // 点击 = 真的开启（#103：此前只翻本地状态，展开后开关显示「开」而库里仍是
+  // 关——骗人；现在开关与入口都即时落库）。
   if (!on) {
     return (
-      <button className="setp-gl-off" title="开启持续 get（waitgoal）" onClick={() => setOn(true)}>
+      <button className="setp-gl-off" title="开启持续 get（waitgoal）" onClick={() => toggleOn(true)}>
         <span className="dot" />
         持续 get
       </button>
@@ -243,53 +257,80 @@ function GetLoopEditor({ repo }) {
 
   return (
     <div className="setp-loop">
-      <label className="setp-row">
-        <span>持续 get（waitgoal）</span>
-        <button className={'toggle' + (on ? ' on' : '')} onClick={() => setOn(false)}>
-          <span className="dot" />
-          {on ? '开' : '关'}
-        </button>
-      </label>
-      {on && (
-        <>
-          <div className="setp-row">
-            <span>阻塞窗口（分钟）</span>
-            <input className="setp-min" value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" />
-          </div>
-          <div className="setp-oneline">
-            <Button
-              variant="secondary"
-              title="填入内置默认（继续 get 直到 timeout）"
-              onClick={() => setLine(GETLOOP_DEFAULT_PRESET)}
+      <div className="setp-loop-head">
+        <div className="setp-loop-title">
+          <span className="setp-loop-name">持续 get</span>
+          <span className="setp-loop-desc">无任务时阻塞等待新任务回填（waitgoal）</span>
+        </div>
+        <div className="setp-loop-head-acts">
+          {on && (
+            <button
+              className="setp-loop-cfg"
+              onClick={() => setCfgOpen((v) => !v)}
+              aria-expanded={cfgOpen}
+              title={cfgOpen ? '收起配置' : '展开配置'}
             >
-              填入内置默认
-            </Button>
-            <input
-              className="setp-oneline-input"
-              value={line}
-              placeholder="一句话（%s = 任务编号），选模板后可改"
-              onChange={(e) => setLine(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') addLine();
-              }}
-            />
-            <Button variant="secondary" disabled={busy || !line.trim()} onClick={addLine}>
-              添加
-            </Button>
-          </div>
-          {tpls.length ? (
-            <PromptItemsEditor
-              items={tpls}
-              onChange={setTpls}
-              disabled={busy}
-              placeholder={'一句话（%s = 任务编号）'}
-              accordion
-              openIndex={openIdx}
-              onOpenChange={setOpenIdx}
-            />
-          ) : (
-            <div className="setp-note">{'未配置模板 —— 用默认「完成后续调 localtask get；没活时每轮最多阻塞 {{getloop.waitMinutes}} 分钟，直到 timeout」。'}</div>
+              <Icon name="chevron" size={11} className={cfgOpen ? 'rot' : ''} />
+              配置
+              <span className="setp-loop-cfg-sum">{minutes} 分钟 · {tpls.length} 条模板</span>
+            </button>
           )}
+          <button
+            className={'toggle' + (on ? ' on' : '')}
+            onClick={() => toggleOn(!on)}
+            disabled={busy}
+          >
+            <span className="dot" />
+            {on ? '开' : '关'}
+          </button>
+        </div>
+      </div>
+      {on && cfgOpen && (
+        <div className="setp-loop-cfg-body">
+          <label className="setp-row setp-loop-row">
+            <span>阻塞窗口</span>
+            <span className="setp-loop-unit">
+              <input className="setp-min" value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" />
+              分钟
+            </span>
+          </label>
+          <div className="setp-loop-tpl">
+            <div className="setp-h">收尾模板</div>
+            <div className="setp-oneline">
+              <Button
+                variant="secondary"
+                title="填入内置默认（继续 get 直到 timeout）"
+                onClick={() => setLine(GETLOOP_DEFAULT_PRESET)}
+              >
+                填入内置默认
+              </Button>
+              <input
+                className="setp-oneline-input"
+                value={line}
+                placeholder="一句话（%s = 任务编号），选模板后可改"
+                onChange={(e) => setLine(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addLine();
+                }}
+              />
+              <Button variant="secondary" disabled={busy || !line.trim()} onClick={addLine}>
+                添加
+              </Button>
+            </div>
+            {tpls.length ? (
+              <PromptItemsEditor
+                items={tpls}
+                onChange={setTpls}
+                disabled={busy}
+                placeholder={'一句话（%s = 任务编号）'}
+                accordion
+                openIndex={openIdx}
+                onOpenChange={setOpenIdx}
+              />
+            ) : (
+              <div className="setp-note">{'未配置模板 —— 用默认「完成后续调 localtask get；没活时每轮最多阻塞 {{getloop.waitMinutes}} 分钟，直到 timeout」。'}</div>
+            )}
+          </div>
           <div className="setp-proj-a">
             <Button
               variant="secondary"
@@ -302,9 +343,10 @@ function GetLoopEditor({ repo }) {
             >
               添加一条…
             </Button>
-            <Button variant="primary" disabled={busy} onClick={save}>保存持续 get 设置</Button>
+            <span className="spacer" />
+            <Button variant="primary" disabled={busy} onClick={() => save()}>保存持续 get 设置</Button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

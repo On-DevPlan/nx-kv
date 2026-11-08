@@ -1,13 +1,14 @@
 // 任务 #82：附件段提示词模板化 + goal 时间运算字段。
 //
 //   - attachInstructionOf：配置了模板按模板渲染（{{attach.*}} + {{#each attach.list}} +
-//     {{#if attach.sync}}），空/未配置 = 内置默认逐字节不变；渲染失败回退内置默认。
+//     {{#if attach.syncSummary}}），空/未配置 = 内置默认三段模板；渲染失败回退内置默认。
+//   - 附件 ctx 按类型分组：file / url / task / ref 各自有子对象与取用命令。
 //   - clampAttachTemplate：空 = ''（用内置默认，不是关掉——附件段带本地路径）。
 //   - enrichGoalTiming：goal ctx 缺的时间运算字段（remainingSec/remainingMin/
 //     overtimeSec/reached）从 deadline 戳补算；已有的不覆盖。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { attachmentInstruction, attachInstructionOf } from '../../src/modules/tasktool/attach.js';
+import { attachmentInstruction, attachInstructionOf, attachTemplateCtx } from '../../src/modules/tasktool/attach.js';
 import { clampAttachTemplate } from '../../src/modules/localtask/task-templates.js';
 import { enrichGoalTiming } from '../../src/modules/tasktool/wait.js';
 
@@ -17,21 +18,27 @@ const ATT = [
 ];
 const SYNC = { dir: 'D:/mirror', downloaded: 1, skipped: 0, failures: [] };
 
-test('内置默认：空模板 = 历史输出逐字节不变（含同步行）', () => {
+test('内置默认：空模板 = 内置三段模板（数量 / 清单 / 取用方式）', () => {
   assert.equal(attachInstructionOf('', ATT, SYNC, { id: 9 }), attachmentInstruction(ATT, SYNC));
   assert.equal(attachInstructionOf(undefined, ATT, null, { id: 9 }), attachmentInstruction(ATT, null));
   assert.equal(attachInstructionOf('  ', [], SYNC, { id: 9 }), '', '无附件 → 空串（整段消失）');
-  assert.match(attachInstructionOf('', ATT, SYNC, { id: 9 }), /同步: 目录 D:\/mirror · 下载 1/);
+  const out = attachInstructionOf('', ATT, SYNC, { id: 9 });
+  assert.match(out, /本任务包含 2 个附件（正文内嵌 2 · 附件区 0）/);
+  assert.match(out, /附件清单：/);
+  assert.match(out, /取用方式：/);
+  assert.match(out, /已在本机：直接读取 D:\/att\/截图\.png/);
+  assert.match(out, /nx-kv file sync --ids att-2/);
+  assert.match(out, /同步情况：目录 D:\/mirror · 下载 1/);
 });
 
-test('自定义模板：清单 / 个数 / 同步详情如实渲染', () => {
+test('自定义模板：清单 / 个数 / 同步汇总如实渲染', () => {
   const out = attachInstructionOf(
     [
       '共 {{attach.count}} 个附件，逐个处理：',
       '{{#each attach.list}}',
-      '  - {{kindLabel}} {{name}}: {{#if localPath}}{{localPath}}{{else}}未同步到本地（图床 id {{id}}）{{/if}}',
+      '  - {{kindLabel}} {{name}}: {{#if file.localPath}}{{file.localPath}}{{else}}未同步到本地（图床 id {{file.fileId}}）{{/if}}',
       '{{/each}}',
-      '{{#if attach.sync}}同步情况：目录 {{attach.sync.dir}} / 下载 {{attach.sync.downloaded}}{{/if}}',
+      '{{#if attach.syncSummary}}同步情况：目录 {{attach.syncSummary.dir}} / 下载 {{attach.syncSummary.downloaded}}{{/if}}',
     ].join('\n'),
     ATT,
     SYNC,
@@ -43,15 +50,62 @@ test('自定义模板：清单 / 个数 / 同步详情如实渲染', () => {
   assert.match(out, /同步情况：目录 D:\/mirror/);
 });
 
-test('自定义模板：{{#if attach.sync}}——没跑同步整段消失', () => {
+test('自定义模板：{{#if attach.syncSummary}}——没跑同步整段消失', () => {
   const tpl = [
     '清单：',
     '{{#each attach.list}}  - {{name}}{{/each}}',
-    '{{#if attach.sync}}同步：{{attach.sync.dir}}{{/if}}',
+    '{{#if attach.syncSummary}}同步：{{attach.syncSummary.dir}}{{/if}}',
   ].join('\n');
   const out = attachInstructionOf(tpl, ATT, null, { id: 9 });
   assert.match(out, /清单：/);
   assert.doesNotMatch(out, /同步：/);
+});
+
+test('ctx 按类型分组：file / url / task / ref 各带专属子对象与取用方式', () => {
+  const four = [
+    { id: 'f1', kind: 'file', name: '报告.pdf', localPath: 'D:/att/报告.pdf', exists: true, size: 1024, mime: 'application/pdf', role: 'attach' },
+    { id: 'u1', kind: 'url', name: '设计稿', url: 'https://example.com/a', role: 'attach' },
+    {
+      id: 't1', kind: 'task', name: '#82 修复附件命名', role: 'attach',
+      taskId: 82, topicKey: 'nx-kv', seq: 82, title: '修复附件命名', status: 'done',
+      address: 'nx-kv:82', showCmd: 'nx-kv localtask show --id 82 --key nx-kv',
+    },
+    {
+      id: 'r1', kind: 'ref', name: '附件规范', role: 'attach',
+      refId: 'ref_1', title: '附件规范', relPath: 'docs/attachment.md',
+      readCmd: 'nx-kv docs get rel:docs/attachment.md',
+    },
+  ];
+  const { attach } = attachTemplateCtx(four, null);
+  assert.equal(attach.count, 4);
+  assert.equal(attach.areaCount, 4);
+  assert.equal(attach.inlineCount, 0);
+  assert.equal(attach.list[0].kind, 'file');
+  assert.equal(attach.list[0].file.localPath, 'D:/att/报告.pdf');
+  assert.equal(attach.list[0].file.exists, true);
+  assert.equal(attach.list[0].file.syncCmd, '');
+  assert.equal(attach.list[1].kind, 'url');
+  assert.equal(attach.list[1].url.href, 'https://example.com/a');
+  assert.equal(attach.list[1].url.host, 'example.com');
+  assert.equal(attach.list[2].kind, 'task');
+  assert.equal(attach.list[2].task.address, 'nx-kv:82');
+  assert.match(attach.list[2].task.showCmd, /localtask show --id 82 --key nx-kv/);
+  assert.match(attach.list[2].usage, /引用而不是副本/);
+  assert.equal(attach.list[3].kind, 'ref');
+  assert.equal(attach.list[3].ref.relPath, 'docs/attachment.md');
+  assert.match(attach.list[3].ref.readCmd, /docs get rel:docs\/attachment\.md/);
+  assert.equal(attach.list[3].usage.includes('文档库里的 md'), true);
+});
+
+test('旧数据没有 kind → 按 file 处理；image 也归并为 file', () => {
+  const { attach } = attachTemplateCtx([
+    { id: 'old-1', name: '老附件.docx', localPath: '' },
+    { id: 'img-1', kind: 'image', name: '图.png', localPath: '/tmp/图.png' },
+  ], null);
+  assert.equal(attach.list[0].kind, 'file');
+  assert.equal(attach.list[1].kind, 'file');
+  assert.equal(attach.list[1].isImage, true);
+  assert.equal(attach.list[1].kindLabel, '图片');
 });
 
 test('旧语法不再兼容：{{attach.list}} / {{#attachSync}} 回落内置默认', () => {

@@ -1,5 +1,5 @@
 import { test } from 'node:test';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
@@ -20,6 +20,9 @@ const { annotateTaskDelivery, attachmentInstruction, attachToTask, listTaskAttac
   '../../src/modules/tasktool/attach.js'
 );
 const { getTask: claimTask } = await import('../../src/modules/tasktool/get.js');
+const { getDb } = await import('../../src/core/db/index.js');
+const { upsertFileAttachment, urlAttachmentId } = await import('../../src/core/attachmentdb.js');
+const { localIndex } = await import('../../src/core/localatt.js');
 const mod = (await import('../../src/modules/localtask/index.js')).default;
 
 const IMG_ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'; // 32 位 hex（合法 fileId）
@@ -34,22 +37,24 @@ test('annotateTaskDelivery：正文没有附件引用 → null（载荷逐字节
 
 test('annotateTaskDelivery：正文引用附件（自动下载关）→ 清单齐、未标注本地路径', async () => {
   const added = await service.addTask({
-    text: `# 带附件\n\n![设计稿.png](${IMG_ID})\n\n[需求文档](${DOC_ID})\n\n外链 [说明](https://example.com/a.png) 不是附件`,
+    text: `# 带附件\n\n![设计稿.png](${IMG_ID})\n\n[需求文档](${DOC_ID})\n\n外链 [说明](https://example.com/a.png) 也登记为资源`,
   });
   const att = await annotateTaskDelivery(added.task);
   assert.ok(att, '有引用就必须标注');
   assert.deepEqual(
-    att.task.attachments.map((a) => ({ id: a.id, kind: a.kind, name: a.name, synced: a.synced })),
+    att.task.attachments.map((a) => ({ id: a.id, kind: a.kind, name: a.name, image: a.isImage, synced: a.synced })),
     [
-      { id: IMG_ID, kind: 'image', name: '设计稿.png', synced: false },
-      { id: DOC_ID, kind: 'file', name: '需求文档', synced: false },
+      { id: IMG_ID, kind: 'file', name: '设计稿.png', image: true, synced: false },
+      { id: DOC_ID, kind: 'file', name: '需求文档', image: false, synced: false },
+      // schema v2：外部 URL 也是受管资源，id 用 att_url_<hash>（不等于裸 URL）
+      { id: urlAttachmentId(URL_ID), kind: 'url', name: '说明', image: false, synced: true },
     ]
   );
   assert.equal(att.sync, null, '自动下载关 → 不跑同步');
-  // URL / 相对路径没有被误判成附件（URL_ID 那条外链留在正文原样）
+  // 相对路径没有被误判成附件；URL 以资源 id 表达，不再当正文里的裸链接
   const ids = att.task.attachments.map((a) => a.id);
-  assert.ok(!ids.includes(URL_ID), '外链不得被当成附件');
-  assert.ok(!JSON.stringify(att.task.attachments).includes('example.com'));
+  assert.ok(!ids.includes(URL_ID), '裸 URL 字符串不得直接作为附件 id');
+  assert.equal(att.task.attachments[2].url, URL_ID);
 });
 
 test('attachmentInstruction：零附件 → 空串；有附件 → 给出 id 与拉取提示', () => {
@@ -64,16 +69,22 @@ test('attachmentInstruction：零附件 → 空串；有附件 → 给出 id 与
   assert.ok(!seg2.includes('未同步'));
 });
 
-test('annotateTaskDelivery：本地台账已有副本 → synced + 绝对路径进标注与指令段', async () => {
-  // 伪造台账：同 file sync 落盘的 manifest.json 形状（core/attachstore 的契约）
+test('annotateTaskDelivery：云端镜像已有副本 → synced + 绝对路径进标注与指令段', async () => {
+  // schema v2：云端镜像的元数据在 attachments（storage='cloud'），不再有 manifest.json
   const dir = join(sb, 'att', 'default');
   mkdirSync(dir, { recursive: true });
   const fileName = '设计稿.png';
   writeFileSync(join(dir, fileName), 'png');
-  writeFileSync(
-    join(dir, 'manifest.json'),
-    JSON.stringify({ groupId: 0, dir, updatedAt: 'x', files: { [IMG_ID]: { name: fileName, size: 3, contentType: 'image/png', syncedAt: 'x' } } })
-  );
+  upsertFileAttachment(getDb(), {
+    id: IMG_ID,
+    name: fileName,
+    localPath: join(dir, fileName),
+    mime: 'image/png',
+    size: 3,
+    storage: 'cloud',
+    groupId: 0,
+    meta: { syncedAt: 'x' },
+  });
   const added = await service.addTask({ text: `# 再看一眼\n![设计稿.png](${IMG_ID})` });
   const att = await annotateTaskDelivery(added.task);
   const a = att.task.attachments[0];
@@ -102,9 +113,9 @@ test('attachToTask：--path 落本机附件仓（零云端）→ 嵌入 + 清单
   const r = await attachToTask({ id: added.task.id, path: src });
   assert.match(r.fileId, /^[0-9a-f]{32}$/, '--path 也要给 32 位 hex id（正文语法零分叉）');
   assert.ok(r.task.text.endsWith(`![src-图.png](${r.fileId})`), `末尾是图片嵌入（实际 ${JSON.stringify(r.task.text.slice(-60))}）`);
-  // 本机仓台账里真的有这个 id（任务 #15 口径：本地附件不碰云端）
-  const man = JSON.parse(readFileSync(join(sb, 'att', 'local', 'manifest.json'), 'utf8'));
-  assert.ok(man.files[r.fileId], '本机仓台账记录了这次上传');
+  // 本机仓台账（schema v2：attachments 行 Storage='local'，不再有 manifest.json）
+  const { index } = await localIndex();
+  assert.ok(index.has(r.fileId), '本机附件仓记录了这次上传');
   const listed = await listTaskAttachments({ id: added.task.id });
   assert.equal(listed.count, 1);
   assert.equal(listed.attachments[0].synced, true, '本机仓命中 → 直接视为已同步');
@@ -113,14 +124,19 @@ test('attachToTask：--path 落本机附件仓（零云端）→ 嵌入 + 清单
 });
 
 test('annotateTaskDelivery：本机仓命中 → 零云端标注绝对路径；未命中的 id 才走云端镜像语义', async () => {
-  // 本机仓条目（同 core/localatt 落盘形状）
+  // 本机仓条目（schema v2：attachments 行 + 落盘文件）
   const dir = join(sb, 'att', 'local');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, '仓图.png'), 'png');
-  writeFileSync(
-    join(dir, 'manifest.json'),
-    JSON.stringify({ dir, updatedAt: 'x', files: { [LOCAL_ID]: { name: '仓图.png', size: 3, contentType: 'image/png', createdAt: 'x' } } })
-  );
+  upsertFileAttachment(getDb(), {
+    id: LOCAL_ID,
+    name: '仓图.png',
+    localPath: join(dir, '仓图.png'),
+    mime: 'image/png',
+    size: 3,
+    storage: 'local',
+    meta: { isImage: true, createdAt: 'x' },
+  });
   const added = await service.addTask({ text: `# 本机仓直读\n![仓图.png](${LOCAL_ID})` });
   const att = await annotateTaskDelivery(added.task);
   const a = att.task.attachments[0];

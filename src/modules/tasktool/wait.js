@@ -151,7 +151,7 @@ export async function buildTaskDelivery(task, { source, summary, cwd, name, topi
   let att = null;
   let attSync = null;
   try {
-    const a = await annotateTaskDelivery(task, { sync: !preview });
+    const a = await annotateTaskDelivery(task, { sync: !preview, topicKey });
     if (a) {
       task = a.task;
       att = a;

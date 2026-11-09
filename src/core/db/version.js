@@ -11,8 +11,11 @@
  *
  * v3（2026-11-09）：templates 加 scope（可见域 JSON 数组，默认 '["*"]'）与
  * origin_topic（创建来源主题，默认 ''）——存量行原地升为全局可见，零破坏。
+ *
+ * v4（2026-11-09）：参考仓库绑定从仓库级升到**组级**（group_refs）；组的成员仓库
+ * 共享组上的参考仓库，不做继承/覆盖。旧 ext_linked 绑定由 v4-data.js 搬运。
  */
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 /**
  * 运行时最低 Node 版本。

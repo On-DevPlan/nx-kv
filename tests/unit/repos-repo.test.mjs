@@ -162,8 +162,8 @@ test('zip 往返：仓库清单 / 组成员 / ref 绑定 / 队列绑定 四项�
   await boards.assignRepo({ id: a.id, board: board.id });
   await boards.assignRepo({ id: b.id, board: board.id });
   await boards.setBoardRepoNote({ id: a.id, board: board.id, note: '主力' });
-  // ref 绑定：ref → repo（双向记录）
-  await (await import('../../src/modules/repos/ref.js')).bindTarget({ id: r.id, repo: a.id });
+  // ref 绑定：组级 + 仓库级两类并存
+  await (await import('../../src/modules/repos/ref.js')).bindTarget({ id: r.id, repo: a.id, board: board.id });
   // 队列绑定
   const cwd = join(dir, 'alpha', 'app');
   repo.txw((conn) => {
@@ -196,7 +196,7 @@ test('zip 往返：仓库清单 / 组成员 / ref 绑定 / 队列绑定 四项�
   const result = await transfer.repoImport({ json, docsFiles, clone: 'none' });
   assert.equal(result.created.length, 3, '三个仓库重建');
   assert.equal(result.boardsCreated, 1, '组重建');
-  assert.equal(result.links, 1, 'ref 绑定重建');
+  assert.equal(result.links, 2, 'ref 绑定重建（组级 + 仓库级）');
 
   // 四项相等
   const before = await repos.loadStore();
@@ -212,7 +212,7 @@ test('zip 往返：仓库清单 / 组成员 / ref 绑定 / 队列绑定 四项�
   assert.deepEqual(
     after.repos.map((x) => [x.key, x.linked]).sort(),
     before.repos.map((x) => [x.key, x.linked]).sort(),
-    'ref 绑定相等（双向记录随 key 重建）'
+    'ref 绑定相等（组级 + 仓库级，仓库行 linked 应一致）'
   );
 
   // ② 组成员（key 序列 + 组内描述）
@@ -226,7 +226,12 @@ test('zip 往返：仓库清单 / 组成员 / ref 绑定 / 队列绑定 四项�
   assert.equal(boardAfter.key, board.key, '组冻结 key 往返一致');
 
   // ③④ ref 绑定 / 队列绑定与 layout 对账
-  assert.deepEqual(layout.links, [{ ref: 'github.com/o/ref1', to: [{ repo: 'github.com/o/alpha' }] }]);
+  assert.deepEqual(layout.links, [
+    {
+      ref: 'github.com/o/ref1',
+      to: [{ board: 'board/常用' }, { repo: 'github.com/o/alpha' }],
+    },
+  ]);
   const boundRows = repo.txw((conn) => conn.all('SELECT cwd, repo_key FROM topics WHERE repo_key <> ?', ['__unbound__']));
   // 注意：清空 store 的 mutateStore 会把 repos 全删，topics.repo_key 外键
   // ON DELETE CASCADE 会连带删掉绑定的队列 —— 换机导入本来就没有队列，

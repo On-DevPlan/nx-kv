@@ -127,12 +127,13 @@ export function repoRowToStore(row) {
 }
 
 /**
- * DB repos 行（type='group'）+ 成员行 → JSON 形态看板对象。
+ * DB repos 行（type='group'）+ 成员行 + 组级参考绑定 → JSON 形态看板对象。
  *
  * 成员顺序 = repo_group_members.position 与 ext_placeholders.pos 合并排序
  * （真实成员的 position 是「上次落盘时它在数组里的下标」，含占位）。
+ * `refs` 来自 v4 的 group_refs：组内所有仓库共享，没有仓库级绑定。
  */
-export function groupRowToStore(row, allMembers) {
+export function groupRowToStore(row, allMembers, allGroupRefs = []) {
   const ext = parseExt(row.ext);
   const real = allMembers
     .filter((m) => m.group_key === row.key)
@@ -158,6 +159,9 @@ export function groupRowToStore(row, allMembers) {
     desc: String(row.description || ''),
     createdAt: msToIso(row.created_at),
     repoKeys,
+    refs: allGroupRefs
+      .filter((l) => l.group_key === row.key)
+      .map((l) => (l.note ? { id: String(l.ref_key || ''), note: String(l.note) } : { id: String(l.ref_key || '') })),
   };
   if (Object.keys(repoNotes).length) out.repoNotes = repoNotes;
   if (ext[GROUP_EXT.REPO_HINTS] && typeof ext[GROUP_EXT.REPO_HINTS] === 'object') {

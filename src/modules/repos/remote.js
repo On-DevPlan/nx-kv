@@ -7,7 +7,7 @@
 //   - remote pick：人工指定采纳哪条（写入 remote，key 随之重算；自定义 key 不动）
 //   - remote check：检查某个 remote 是否存在（git ls-remote，只读）
 //   - clone：按 remote 克隆并登记（可指定 key —— 用于补齐导入留下的占位）
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import fsp from 'node:fs/promises';
 import { loadConfig } from '../../core/config.js';
 import { badInput, conflict } from '../../core/errors.js';
@@ -125,6 +125,35 @@ export async function cloneRepo({ remote, key, name, desc, notes, type = 'dev', 
     remotes: [used],
   });
   return { key: repo.key, name: repo.name, path: repo.path, remote: used, cloned: true };
+}
+
+/**
+ * 登记前探测：给一个**还没登记**的目录，读出它的 git remote，供面板自动填充。
+ * 只读，不落任何东西；目录不存在 / 不是 git 仓库 / 没有 remote 都返回空推荐值，
+ * 由调用方决定是提示还是让人手填（绝不猜一个地址出来）。
+ *
+ * 推荐顺序：origin 优先，其次第一条（与「SSH 优先」的默认值无关——这里只是读现状）。
+ */
+export async function detectRemote(rawPath) {
+  const p = resolve(clean(rawPath));
+  let exists = false;
+  try { exists = (await fsp.stat(p)).isDirectory(); } catch { /* 不存在 */ }
+  let isGit = false;
+  if (exists) {
+    try { isGit = (await fsp.stat(join(p, '.git'))).isDirectory() || (await fsp.stat(join(p, '.git'))).isFile(); } catch { /* 不是 git */ }
+  }
+  const remotes = exists && isGit ? await gitRemotes(p) : [];
+  const pick = remotes.find((x) => x.name === 'origin') || remotes[0] || null;
+  const url = pick ? pick.url : '';
+  return {
+    path: p,
+    exists,
+    isGit,
+    remotes: remotes.map((x) => ({ name: x.name, url: x.url, kind: x.kind })),
+    recommended: url,
+    key: url ? service.keyFromRemote(url) : '',
+    name: basename(p),
+  };
 }
 
 /** 面板用：批量列出所有仓库的 remote 候选 + 当前采纳值（对齐 remote 的数据面）。 */

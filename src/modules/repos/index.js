@@ -8,11 +8,13 @@
 // 本模块只管**登记**：路径、名称、描述、备注。
 // git 边界（2026-10-27 随参考仓库一并声明）：开发仓库（type=dev）的 git 状态 / diff /
 // pull / push 一律不做——git 客户端是无底洞，面板里做不出比 IDE 更好的体验。
+// 例外只有只读的「登记前探测 remote」（repo detect：git remote -v，不碰工作区）。
 // 参考仓库（type=ref）例外，只做 clone / sync / check 三件事（见 ref.* 命令族）——
 // 它的价值就是「把远程仓库抓到本机参考并保持新鲜」，不做这个它就没存在意义。
 import * as service from './service.js';
 import * as boards from './boards.js';
 import * as ref from './ref.js';
+import * as refBackfill from './ref-backfill.js';
 import * as keys from './keys.js';
 import * as remote from './remote.js';
 import * as transfer from './transfer.js';
@@ -116,9 +118,8 @@ function renderRepo(r) {
 
 function renderClone(r) {
   const lines = [`已克隆并登记参考仓库: ${r.name}`, `  目录: ${r.dest || r.path}`, `  远程: ${r.url || r.remote}`];
-  if (r.linked?.length) {
-    lines.push(`  绑定: ${r.linked.map((l) => (l.kind === 'board' ? `看板 ${l.id}` : `仓库 ${l.id}`)).join('、')}`);
-  }
+  if (r.groups?.length) lines.push(`  绑定组: ${r.groups.join('、')}`);
+  if (r.repos?.length) lines.push(`  绑定仓库: ${r.repos.join('、')}`);
   return lines.join('\n');
 }
 
@@ -134,40 +135,58 @@ function renderRefSync(d) {
 
 function renderRefCheck(d) {
   if (!d.total) return '（还没有参考仓库 —— clone 一个: repo ref clone <url>）';
-  const lines = [`检查 ${d.total} 个参考仓库${d.problems ? `，${d.problems} 个有问题` : '，全部正常'}:`];
-  for (const r of d.refs) {
+  const lines = [`检查 ${d.total} 个参考仓库${d.problems ? `，${d.problems} 处有问题` : '，全部正常'}:`];
+  for (const r of d.refRepos) {
     lines.push(`  ${r.ok ? '✓' : '✗'}  ${r.name}  ${r.remote || '(无远程地址)'}`);
+    if (r.groups && r.groups.length) lines.push(`      组: ${r.groups.map((g) => g.name + (g.note ? `（${g.note}）` : '')).join('、')}`);
+    if (r.repos && r.repos.length) lines.push(`      仓库: ${r.repos.map((x) => x.name + (x.note ? `（${x.note}）` : '')).join('、')}`);
     for (const i of r.issues) lines.push(`      ${i}`);
   }
+  for (const i of d.extraIssues || []) lines.push(`  ✗  ${i}`);
   return lines.join('\n');
 }
 
 function renderBind(d) {
-  return d.removed
-    ? `已摘除绑定: ${d.name}（${d.count} 条；剩 ${d.linked.length} 条）`
-    : `已绑定 ${d.name} → ${d.added.length ? d.added.join('、') : '（已存在）'}（共 ${d.linked.length} 条绑定）`;
+  if (d.removed) {
+    return `已摘除 ${d.name}：${d.count} 条绑定（组 ${d.groups} 个 / 仓库 ${d.repos} 个）`;
+  }
+  const parts = [];
+  if (d.addedGroups?.length) parts.push(`组 ${d.addedGroups.map((x) => '「' + x + '」').join('、')}`);
+  if (d.addedRepos?.length) parts.push(`仓库 ${d.addedRepos.map((x) => '「' + x + '」').join('、')}`);
+  return `已把 ${d.name} 绑到 ${parts.length ? parts.join('、') : `组 ${d.groups} 个 / 仓库 ${d.repos} 个（已存在）`}（组级与仓库级并存，互不折算）`;
 }
 
-// 分层查询的人读渲染：第一层自己的参考，第二层按看板命名空间分组。
+// 人读渲染：组级与仓库级两类绑定并列展示。
 function renderRefsOf(d) {
   const line = (r) => `  ${r.name}${r.note ? `  （${r.note.split('\n')[0]}）` : ''}  ${r.remote || ''}`;
   const out = [`【${d.repo.name}】${d.repo.path}`];
-  if (d.direct.length) {
-    out.push('  本仓库直接绑定:');
-    for (const r of d.direct) out.push(line(r));
-  } else {
-    out.push('  本仓库直接绑定:（无）');
-  }
+  out.push('  直接绑定到本仓库:');
+  if (d.direct.length) for (const r of d.direct) out.push(line(r));
+  else out.push('    （无）');
   if (d.boards.length) {
     for (const b of d.boards) {
-      out.push(`  ◇ 看板「${b.name}」${b.desc ? ` —— ${b.desc.split('\n')[0]}` : ''}`);
-      if (b.refs.length) for (const r of b.refs) out.push(line(r));
+      out.push(`  ◇ 组「${b.name}」${b.desc ? ` —— ${b.desc.split('\n')[0]}` : ''}`);
+      if (b.refRepos.length) for (const r of b.refRepos) out.push(line(r));
       else out.push('    （该组暂无绑定的参考仓库）');
     }
   } else {
-    out.push('  （该仓库不属于任何看板 —— 没有组级参考可继承）');
+    out.push('  （该仓库不属于任何组 —— 没有组级参考）');
   }
   return out.join('\n');
+}
+
+function renderBackfill(d) {
+  const lines = [
+    `${d.dryRun ? '预览（未落盘）' : '补录完成'}: 快照 v${d.sourceVersion} 里有 ${d.counts.source} 条仓库级绑定`,
+    `  仓库级绑定: ${d.counts.before} → ${d.counts.after}（新增 ${d.counts.added}，已存在 ${d.counts.already}）`,
+    `  组级绑定: ${d.groupRefs.before} → ${d.groupRefs.after}（本工具不写 group_refs）`,
+  ];
+  for (const p of d.perRepo) {
+    lines.push(`  ${p.name} (${p.repo})  ${p.before.length} → ${p.after.length}${p.added.length ? `（+${p.added.join('、')}）` : ''}`);
+  }
+  if (d.missing.repos.length) lines.push(`  快照里的仓库本地没有: ${d.missing.repos.join('、')}`);
+  if (d.missing.refs.length) lines.push(`  快照里的参考仓库本地没有: ${d.missing.refs.join('、')}`);
+  return lines.join('\n');
 }
 
 export default {
@@ -225,6 +244,25 @@ export default {
         keyCustom: ctx.key ? true : ctx['key-custom'] === true,
       }),
       render: (r) => `已登记: ${r.name} -> ${r.path}（key: ${r.key}）`,
+    },
+    {
+      // 登记前探测：面板填完路径就调它，把 git remote 自动填进「远程 git 地址」。
+      // 只读；不登记、不改库。
+      id: 'repo.detect',
+      cli: ['repo', 'detect'],
+      http: ['POST', '/api/repos/detect'],
+      summary: '探测目录的 git remote（添加仓库前自动填充远程地址；只读）',
+      args: ['path'],
+      run: (ctx) => remote.detectRemote(ctx.path),
+      render: (d) => {
+        if (!d.exists) return `目录不存在: ${d.path}`;
+        if (!d.isGit) return `不是 git 仓库: ${d.path}`;
+        if (!d.recommended) return `git 仓库没有配置 remote: ${d.path}`;
+        return [
+          `远程地址: ${d.recommended}（key: ${d.key}）`,
+          ...d.remotes.filter((x) => x.url !== d.recommended).map((x) => `  其它候选: ${x.name} ${x.url} [${x.kind}]`),
+        ].join('\n');
+      },
     },
     {
       id: 'repo.update',
@@ -547,51 +585,61 @@ export default {
       id: 'repo.ref.check',
       cli: ['repo', 'ref', 'check'],
       http: ['GET', '/api/repos/ref/check'],
-      summary: '检查参考仓库完整性：目录/.git/origin 一致性 + 绑定死链（零副作用）',
+      summary: '检查参考仓库完整性：目录/.git/origin 一致性 + 组级/仓库级绑定死链（零副作用）',
       run: () => ref.checkRefs(),
       render: renderRefCheck,
+    },
+    {
+      // 一次性数据补录工具（不是迁移）：v4 迁移清掉的仓库级绑定，按 v3 快照恢复。
+      // 幂等、可预演；只写 dev.ext.ext_linked，不碰 group_refs。
+      id: 'repo.ref.backfill',
+      cli: ['repo', 'ref', 'backfill'],
+      http: null,
+      summary: '从 v3 快照补录仓库级参考绑定（幂等、可重复；与组级绑定并存；--dry-run 只预览）',
+      args: [{ name: 'from', required: true }],
+      flags: {
+        'dry-run': { type: 'boolean', hint: '只算差异，不落盘' },
+      },
+      run: (ctx) => refBackfill.backfillRepoLinks({ from: ctx.from, dryRun: ctx['dry-run'] === true }),
+      render: renderBackfill,
     },
     {
       id: 'repo.bind',
       cli: ['repo', 'bind'],
       http: ['POST', '/api/repos/bind'],
-      summary: '绑定参考仓库到开发仓库/看板（多对多；--remove 摘除；目标可多个，逗号分隔）',
+      summary: '绑定参考仓库到组或单个开发仓库（两类并存；--board 组级、--repo 仓库级；--remove 摘除）',
       args: ['id'],
       flags: {
-        repo: { type: 'array', hint: '绑定的开发仓库（id/路径/名称，逗号分隔）' },
-        board: { type: 'array', hint: '绑定的看板 id（逗号分隔）' },
-        remove: { type: 'boolean', hint: '摘除：带 --repo/--board 摘指定目标，都不带 = 清空全部绑定' },
+        repo: { type: 'array', hint: '开发仓库（id/路径/名称，逗号分隔）—— 写仓库级绑定（不折算成组）' },
+        board: { type: 'array', hint: '组 id/key/名称（逗号分隔）—— 写组级绑定（组内共享）' },
+        remove: { type: 'boolean', hint: '摘除：带 --repo/--board 摘指定维度，都不带 = 组 + 仓库全部摘除' },
       },
       run: (ctx) => ref.bindTarget(ctx),
       render: renderBind,
     },
     {
-      // 绑定描述：同一条绑定在「本仓库参考什么」与「这个组参考什么」两个语境里
-      // 意义可以不同，描述挂在**绑定关系**上（与看板组内描述 board.note 同一哲学）。
+      // 绑定描述：描述挂在**组 ↔ 参考仓库**或**仓库 ↔ 参考仓库**这条关系上。
       id: 'repo.ref.note',
       cli: ['repo', 'ref', 'note'],
       http: ['POST', '/api/repos/ref/note'],
-      summary: '写/清绑定描述：这个参考在该仓库/看板里参考什么（--note 留空 = 清除）',
+      summary: '写/清绑定描述：这个参考在该组/该仓库里参考什么（--note 留空 = 清除）',
       args: ['id'],
       flags: {
-        repo: { type: 'string', hint: '开发仓库（id/路径/名称；与 --board 二选一）' },
-        board: { type: 'string', hint: '看板 id（与 --repo 二选一）' },
+        repo: { type: 'string', hint: '开发仓库（id/路径/名称）—— 写仓库级绑定的描述' },
+        board: { type: 'string', hint: '组 id/key/名称（与 --repo 二选一）—— 写组级绑定的描述' },
         note: { type: 'string', hint: '绑定描述（多行可含关键路径/关键词；留空 = 清除）' },
       },
       run: (ctx) => ref.setLinkNote(ctx),
-      render: (d) => (d.note
-        ? `已写绑定描述: ${d.name} @ ${d.kind === 'board' ? '看板 ' : '仓库 '}${d.target}`
-        : `已清除绑定描述: ${d.name} @ ${d.kind === 'board' ? '看板 ' : '仓库 '}${d.target}`),
+      render: (d) => `${d.note ? '已写' : '已清除'}绑定描述: ${d.name} @ ${d.group ? `组「${d.group}」` : `仓库「${d.repo}」`}`,
     },
     {
-      // 分层查询：问「这个目录/仓库有什么参考」时，第一层是它直接绑定的，
-      // 第二层是它所在的看板（命名空间）上的——组级参考沿看板继承下来。
+      // 按仓库查参考：仓库级直接绑定 + 所属组的组级绑定，两类并列给出。
       id: 'repo.ref.of',
       cli: ['repo', 'ref', 'of'],
       http: ['GET', '/api/repos/ref/of'],
-      summary: '查某仓库（缺省当前目录）的参考仓库：第一层直接绑定，第二层按看板分组（命名空间）',
+      summary: '查某仓库（缺省当前目录）的参考仓库：直接绑定到本仓库的 + 所属组绑定的，两类并列',
       args: [{ name: 'id', required: false }],
-      run: (ctx) => ref.refsForRepo(ctx.id || process.cwd()),
+      run: (ctx) => ref.refReposOfRepo(ctx.id || process.cwd()),
       render: renderRefsOf,
     },
     {
@@ -619,9 +667,9 @@ export default {
           for (const l of b.docLinks) lines.push(`    绑定: ${l.docId}${l.tag ? `  [${l.tag}]` : ''}${l.note ? `  · ${l.note}` : ''}${l.missing ? '（缺失）' : ''}`);
           for (const x of b.externalDirs) lines.push(`    外部目录: ${x.path}（${x.files.length} 个文档，按需读盘）`);
         }
-        if (d.refs.length) {
+        if (d.refRepos.length) {
           lines.push('  参考仓库:');
-          for (const r of d.refs) lines.push(`    ${r.name}${r.remote ? `（${r.remote}）` : ''}${r.note ? ` —— ${r.note.split('\n')[0]}` : ''}`);
+          for (const r of d.refRepos) lines.push(`    ${r.name}${r.remote ? `（${r.remote}）` : ''}${r.note ? ` —— ${r.note.split('\n')[0]}` : ''}`);
         }
         for (const w of d.warnings) lines.push(`⚠ ${w}`);
         return lines.join('\n');

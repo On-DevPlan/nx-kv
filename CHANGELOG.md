@@ -2,6 +2,23 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.33.1] - 2026-11-09 skill 文档按 0.33.0 实况校准（仅文档）
+
+### Changed
+
+- **客户端 skill（assets/）**：kv-get 重写为「领取 → 读正文 → 取附件 → 完成」流程，
+  补齐 wait 四种出口、任务级 timegoal、`close-many --ids`、reopen 派生新任务；kv-submit
+  修正 `--global` 位置与 `--project/--board`，`delivered/queued` 为布尔；kv-repo / nx-kv
+  校正 `board list` 字段、`repo ref` 命令与 `--matchTopic`。删除与 waitloop / timegoal
+  重复且过期的 wait-workflow、timegoal-workflow。
+- **开发 skill（.claude/skills/dev-nxkv）**：SOP 压缩为一条规则一句；领域模型改为 v2
+  表结构（`attachments` / `task_attach` / `ref_attach`，`refs` 仅收 `.md`）；迁移规则改为
+  `vN.sql` + `index.js` 边映射；提示词补共享 ctx 与区块模板列表；settings 页与底部
+  状态栏只点结构变化。
+- 命令与返回字段全部按 `help --json` / 临时库实跑校准：`instruction` 非任务正文、
+  附件 `area` 取 `inline|area`、`close-many` 的 `--ids` 必填、`todo list` 返回对象等。
+- 无业务代码、schema 或存储变更。
+
 ## [0.33.0] - 2026-11-08 底部信息面板 / check 日志 / 用户侧收口 / 状态配色
 
 ### Added

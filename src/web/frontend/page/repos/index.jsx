@@ -22,15 +22,17 @@ import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog, Modal } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
+import GetLoopModal from '../../components/repos/get-loop-modal.jsx';
 import DocsModal from '../../components/Introduction/docs-modal.jsx';
+import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { useApp } from '../../app-context.jsx';
 import { useWikiNav } from '../doc/index.jsx';
-import { Button, DropdownButton } from '../../components/button/index.jsx';
+import { Button } from '../../components/button/index.jsx';
 // key 归一化与后端共用同一份纯函数（shared/repo-key.js 无 Node 依赖，可直接进前端包），
 // 避免面板里显示/自动填充的 key 和后端登记时算出来的 key 不一致。
 import { keyFromRemote, normalizeKey } from '../../../../shared/repo-key.js';
 
-const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '', key: '' };
+const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '', key: '', icon: '' };
 
 // 路径照搬目录看板的「可扫标签」画法：祖先目录变暗、末段略重，点击复制全文。
 // 纯灰一长串（旧画法）里，人眼要逐字符对比才能找到目录名。
@@ -115,6 +117,14 @@ function RepoRow({ r, filterBoard, groupRefRepoCounts, refRepoChipsByRepo, acts 
         <strong>
           {r.icon ? <span className="rp-icon" aria-hidden>{r.icon}</span> : null}
           {r.name}
+          {/* #145：持续 get 已开启 → 行名绿点（一眼可见；配置在行内「更多 → 持续 get」） */}
+          {r.getLoop && r.getLoop.enabled ? (
+            <span
+              className="rp-gl-dot"
+              title={`持续 get 已开启（${Number(r.getLoop.waitMinutes) || 10} 分钟阻塞窗口）`}
+              aria-label="持续 get 已开启"
+            />
+          ) : null}
         </strong>
         <span className="mono rp-name-path"><RepoPath path={r.path} /></span>
       </td>
@@ -149,16 +159,38 @@ function RepoRow({ r, filterBoard, groupRefRepoCounts, refRepoChipsByRepo, acts 
         )) : <span className="muted rp-refs-none">—</span>}
       </td>
       <td className="rp-acts">
-        {/* #136：编辑 → 打开 → 更多 → 删除 */}
-        <Button small onClick={() => acts.edit(r)}>编辑</Button>
-        <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</Button>
-        <DropdownButton
-          small
-          label="更多"
-          items={[{ key: 'remote', label: '对齐 remote' }]}
-          onSelect={(k) => { if (k === 'remote') acts.remote(r); }}
+        {/* #148：行内动作编排化（kind=repos-row，同一套工具区组件）——默认与旧版
+            同构（编辑/打开/删除上栏，更多收纳 持续 get/对齐 remote）；每个动作都
+            可在「更多 → 自定义工具栏…」里调顺序 / 上栏 / 收纳。 */}
+        <ToolActsBar
+          kind="repos-row"
+          renderers={{
+            edit: () => <Button small onClick={() => acts.edit(r)}>编辑</Button>,
+            open: () => <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</Button>,
+            del: () => <Button small danger onClick={() => acts.del(r)}>删除</Button>,
+            getloop: () => (
+              <Button small title="持续 get（waitgoal）配置" onClick={() => acts.getloop(r)}>
+                <span className="rp-gl-menu-it">
+                  {r.getLoop && r.getLoop.enabled ? <span className="rp-gl-dot" aria-hidden /> : null}
+                  持续 get…
+                </span>
+              </Button>
+            ),
+            remote: () => <Button small onClick={() => acts.remote(r)}>对齐 remote</Button>,
+          }}
+          actions={{
+            edit: () => acts.edit(r),
+            open: () => acts.open(r),
+            del: () => acts.del(r),
+            getloop: () => acts.getloop(r),
+            remote: () => acts.remote(r),
+          }}
+          titles={{
+            getloop: '持续 get（waitgoal）配置',
+            remote: 'key 与远程 git 地址对齐',
+            del: '删除仓库登记（磁盘文件不受影响）',
+          }}
         />
-        <Button small danger onClick={() => acts.del(r)}>删除</Button>
       </td>
     </tr>
   );
@@ -250,6 +282,8 @@ export default function ReposView() {
   const [remoteOpen, setRemoteOpen] = useState(false); // 对齐 remote 的弹窗
   // 查看详情（文档集弹窗）：{ kind:'repo', owner } —— 行内「查看详情」入口
   const [docsFor, setDocsFor] = useState(null);
+  // 持续 get 配置弹窗（#145）：设置页「项目级设置」删除后，配置落到行内「更多」
+  const [glFor, setGlFor] = useState(null);
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
@@ -828,6 +862,9 @@ export default function ReposView() {
       notes: form.notes,
       type: form.type === 'ref' ? 'ref' : 'dev',
       remote: remote || undefined,
+      // 图标（emoji / 单字符；清空 = 回默认文件夹图标）——原设置页「项目级设置」
+      // 的编辑入口（#145 删除该 tab）迁到这里
+      icon: form.icon.trim(),
     };
     if (editing) {
       const r = repos.find((x) => x.id === editing);
@@ -875,6 +912,7 @@ export default function ReposView() {
         remote: r.remote || '',
         notes: r.notes || '',
         key: r.key || '',
+        icon: r.icon || '',
       });
       // 自定义 key 打开即视为「用户声明过」，编辑远程地址时不自动覆盖它；
       // 非自定义 key 仍跟着远程地址走（和编辑前行为一致）。
@@ -1104,6 +1142,8 @@ export default function ReposView() {
     edit: (r) => rowAct('edit', r),
     del: (r) => rowAct('del', r),
     remote: (r) => openRemote(r),
+    // 持续 get（waitgoal）配置弹窗（#145）：保存后刷行数据（绿点/菜单态跟着变）
+    getloop: (r) => setGlFor(r),
     // 查看详情：完整文档集弹窗（主篇 / 补充 / reference / 组内，就地编辑）
     // onChanged 回灌仓库与文档两份数据（descDocs 摘要与文档检索都靠它们）
     docs: (r) => setDocsFor({ kind: 'repo', owner: r }),
@@ -1136,15 +1176,23 @@ export default function ReposView() {
           <h2>仓库管理</h2>
         </div>
         <div className="acts">
-          <Button variant="primary" onClick={openAdd}>登记仓库</Button>
-          <Button title="分组管理：建组 / 成员 / 组介绍文档"
-            onClick={() => setBoardAdminOpen(true)}>分组管理</Button>
-          <Button title="参考仓库面板：克隆 / 绑定 / 同步 / 检查 / 存储根"
-            onClick={() => setRefOpen(true)}>参考仓库管理</Button>
-          {/* #114：「文档检索」入口在下面的**列表搜索行**里（贴着搜索框，
-              同一动作不摆第二颗）——这里不再重复。 */}
-          <Button title="布局与仓库的导入导出（逐条选择 / 冲突方案 / 差异检查）"
-            onClick={() => setTransferOpen(true)}>导入导出</Button>
+          {/* #145：头部动作编排化（复用 #139/#143 工具区组件）——登记仓库固定主位，
+              分组 / 参考仓库 / 导入导出可在「更多 → 自定义工具栏…」里调顺序与显隐。 */}
+          <ToolActsBar
+            kind="repos"
+            titles={{
+              add: '登记本机开发仓库',
+              boards: '分组管理：建组 / 成员 / 组介绍文档',
+              refs: '参考仓库面板：克隆 / 绑定 / 同步 / 检查 / 存储根',
+              transfer: '布局与仓库的导入导出（逐条选择 / 冲突方案 / 差异检查）',
+            }}
+            actions={{
+              add: openAdd,
+              boards: () => setBoardAdminOpen(true),
+              refs: () => setRefOpen(true),
+              transfer: () => setTransferOpen(true),
+            }}
+          />
         </div>
       </div>
 
@@ -1477,14 +1525,16 @@ export default function ReposView() {
         <table className="rp-table">
           <thead>
             <tr>
-              <th scope="col" style={{ width: '19%' }}>仓库</th>
-              <th scope="col">
+              {/* #152/#154：列宽重排——操作列钉在 250px（其余列百分比合计 ≈ 100%-250px，
+                  让余量进文档列而不是把操作列撑宽）。 */}
+              <th scope="col" style={{ width: '16%' }}>仓库</th>
+              <th scope="col" style={{ width: '36%' }}>
                 文档
                 <span className="rp-th-hint">主篇摘要 · 查看详情打开完整文档列表</span>
               </th>
-              <th scope="col" style={{ width: '16%' }}>参考仓库</th>
-              <th scope="col" style={{ width: '13%' }}>分组</th>
-              <th scope="col" style={{ width: '215px' }}>操作</th>
+              <th scope="col" style={{ width: '18%' }}>参考仓库</th>
+              <th scope="col" style={{ width: '14%' }}>分组</th>
+              <th scope="col" style={{ width: '250px' }}>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -1673,6 +1723,11 @@ export default function ReposView() {
             <div className="form-field">
               <label htmlFor="repo-name">名称</label>
               <input id="repo-name" placeholder="留空则用目录末段" value={form.name} onChange={set('name')} />
+            </div>
+            <div className="form-field">
+              <label htmlFor="repo-icon">图标</label>
+              <input id="repo-icon" maxLength={8} placeholder="emoji 或单字符（留空 = 默认文件夹图标）"
+                value={form.icon} onChange={set('icon')} />
             </div>
             {/* 描述不是一段字符串，是绑定的文档：这里只显示主篇（点开即编辑），
                 补充篇在文档页里管理。新建时还没有文档，等落地后从行内点进去写。 */}
@@ -2033,6 +2088,16 @@ export default function ReposView() {
           onChanged={onTransferDone}
           repos={repos}
           boards={boardList}
+        />
+      ) : null}
+
+      {/* 持续 get（waitgoal）配置弹窗（#145）：行内「更多 → 持续 get…」；
+          保存后刷本页仓库数据（行名绿点 / 菜单态跟着变） */}
+      {glFor ? (
+        <GetLoopModal
+          repo={repos.find((x) => x.id === glFor.id) || glFor}
+          onClose={() => setGlFor(null)}
+          onSaved={loadRepos}
         />
       ) : null}
 

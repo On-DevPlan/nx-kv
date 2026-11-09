@@ -228,6 +228,8 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
     archivedAt: String(t.archivedAt ?? ''),
     archivedReason: String(t.archivedReason ?? ''),
     reopenCount: Number(t.reopenCount) || 0,
+    // 派生子任务数（#144）：>0 = 已有后续轮次/评论派生——反馈入口只在链尖显示
+    childCount: Number(t.childCount) || 0,
     // 链上第几轮（#122 进程面板「楼数」）：根任务 = 1，派生 = 来源 + 1（schema 语义
     // 见 v1.sql tasks.round）。库里存的是 round 列，JSON 形态只带 reopenCount = round-1
     // （repo/rows.js），这里换算回来 —— 前端显示「第 N 楼」/按楼搜索不必再回溯链。

@@ -83,102 +83,22 @@
 
 .setp-note { font-size: 11px; color: var(--faint); line-height: 1.65; }
 
-/* 项目级设置：头行 = icon 入口 + 名称/路径；动作行；持续 get 区 */
-.setp-projs { display: flex; flex-direction: column; gap: 8px; }
-/* 项目条目：紧凑**行**而不是大卡片（#41 反馈「ui 太丑」——
-   27 个项目一屏只看得到 2 个，密度太低）。行间一条细线分隔。 */
-.setp-proj {
-  border: 0; border-bottom: 1px solid var(--line);
-  padding: 8px 2px; background: var(--paper);
-  display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 6px; align-items: center;
-}
-.setp-proj-head { grid-column: 1; }
-.setp-proj > .setp-gl-off { grid-column: 2; justify-self: end; }
-.setp-proj > .setp-loop { grid-column: 1 / -1; }
-.setp-gl-off {
-  display: inline-flex; align-items: center; gap: 7px; flex: none;
-  border: 0; background: none; padding: 2px 4px; margin: 0;
-  border-radius: 999px;
-  font: inherit; font-size: 11.5px; color: var(--ink-2); cursor: pointer;
-}
-.setp-gl-off:hover { color: var(--ink); }
-/* 迷你开关（off 态）：与展开后的 switch 同一语言，只是小一号 */
-.setp-gl-off .dot {
-  position: relative; flex: none;
-  width: 24px; height: 14px; border-radius: 999px;
-  background: var(--soft-2);
-}
-.setp-gl-off .dot::before {
-  content: ""; position: absolute; top: 2px; left: 2px;
-  width: 10px; height: 10px; border-radius: 50%;
-  background: var(--paper);
-  box-shadow: 0 1px 2px rgba(22, 24, 28, 0.28);
-}
-.setp-proj:last-child { border-bottom: 0; }
-.setp-proj-head {
-  display: flex; align-items: center; gap: 10px; min-width: 0;
-}
-.setp-proj-actions { display: flex; align-items: center; gap: 6px; flex: none; }
-.setp-proj-actions .btn { background: transparent; border-color: transparent; color: var(--mid); }
-.setp-proj-actions .btn:hover { background: var(--soft); color: var(--ink); }
-.setp-proj-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.setp-proj-t { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-.setp-proj-t b { font-weight: 650; }
+/* （#145：「项目级设置」tab 删除——项目卡 / 持续 get 内嵌编辑器的样式
+   （setp-proj / setp-gl-off / setp-loop / setp-icon / setp-min / setp-oneline）
+   一并移除；配置入口统一收进仓库管理页。）
+   仍被提示词 / 任务模板分区共用的 setp-badge 与 setp-proj-a 留在这里。 */
 .setp-badge {
   display: inline-flex; align-items: center;
   font-size: 10px; padding: 0 6px; border-radius: 8px; line-height: 1.6;
   color: var(--mid); background: var(--soft);
 }
-.setp-badge.external { color: #9E4C00; background: #FBF3E4; }
-.setp-badge.own { color: var(--mdw-accent, #2F6F5E); background: var(--mdw-accent-soft, #E8F2EE); }
-.setp-badge.loop { color: var(--mdw-accent, #2F6F5E); background: var(--mdw-accent-soft, #E8F2EE); }
 .setp-badge.soft { color: var(--faint, #8A8578); background: transparent; border: 1px solid var(--line); }
-.setp-proj-p {
-  font-size: 10.5px; color: var(--faint);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.setp-proj-meta { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; overflow: hidden; }
-.setp-proj-meta .setp-proj-t { flex: none; }
-.setp-proj-meta .setp-proj-p { flex: 1 1 auto; min-width: 0; }
 /* 操作条：左侧主增，右侧存/关/撤——一条线分开，别挤成一排同权重按钮 */
 .setp-proj-a {
   display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
   margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line,#E4E2DC);
 }
 .setp-proj-a .spacer { flex: 1 1 auto; }
-
-/* 项目图标：标题旁圆形入口；展开后编辑条走文档流（避免被 .setp-body overflow 裁切） */
-.setp-icon { flex: none; }
-.setp-icon-btn {
-  width: 32px; height: 32px; padding: 0;
-  border: 1px solid var(--line); border-radius: 8px;
-  background: var(--soft); color: var(--mid);
-  display: inline-flex; align-items: center; justify-content: center;
-  cursor: pointer; flex: none;
-}
-.setp-icon-btn:hover { background: var(--soft-2); color: var(--ink); border-color: var(--mid); }
-.setp-icon.open .setp-icon-btn {
-  border-color: var(--mdw-accent, #2F6F5E);
-  box-shadow: 0 0 0 2px var(--mdw-accent-soft, #E8F2EE);
-}
-.setp-icon-glyph {
-  font-size: 16px; line-height: 1;
-  max-width: 1.4em; overflow: hidden; text-overflow: clip; white-space: nowrap;
-}
-/* 编辑条跨过标题区整宽：挂在卡片头下方，由 JSX 放在 head 外 */
-.setp-icon-edit {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 6px 8px;
-  border: 1px solid var(--line); border-radius: 8px;
-  background: var(--soft);
-}
-.setp-icon-edit input {
-  width: 88px; height: 24px; padding: 0 8px;
-  border: 1px solid var(--line); border-radius: 6px;
-  background: var(--paper); color: var(--ink);
-  font: 400 12px ui-monospace, Consolas, monospace;
-}
-.setp-icon-edit input:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }
 
 /* 回调提示词（收尾指令，可多条）编辑器 */
 .setp-suffix { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
@@ -200,57 +120,6 @@
   font-family: ui-monospace, Consolas, monospace;
   font-size: 10.5px; background: var(--soft); border-radius: 4px; padding: 0 4px;
 }
-
-/* 项目级「持续 get」（waitgoal）编辑器（#102 重排：标题+说明+开关一行；
-   阻塞窗口带单位；收尾模板成组；说明文字装进虚线框不再裸奔） */
-.setp-loop {
-  border-top: 1px dashed var(--line);
-  padding-top: 10px;
-  margin-top: 2px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.setp-loop-head {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; min-width: 0;
-}
-.setp-loop-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.setp-loop-name { font-weight: 650; font-size: 12.5px; color: var(--ink); }
-.setp-loop-desc { font-size: 10.5px; color: var(--faint); }
-.setp-loop-row > span:first-child { color: var(--ink-2); }
-.setp-loop-unit {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11.5px; color: var(--mid);
-}
-.setp-loop-tpl { display: flex; flex-direction: column; gap: 6px; }
-/* 配置手风琴（#103）：开启后默认收起，头上留一枚「配置 ▸」+ 摘要 */
-.setp-loop-head-acts { display: inline-flex; align-items: center; gap: 8px; flex: none; }
-.setp-loop-cfg {
-  display: inline-flex; align-items: center; gap: 5px;
-  border: 0; background: none; padding: 2px 7px; border-radius: 6px;
-  font: inherit; font-size: 11.5px; color: var(--ink-2); cursor: pointer;
-}
-.setp-loop-cfg:hover { background: var(--soft); color: var(--ink); }
-.setp-loop-cfg .ic { color: var(--mid); transition: transform 0.15s ease; }
-.setp-loop-cfg .ic.rot { transform: rotate(90deg); }
-.setp-loop-cfg-sum { color: var(--faint); font-size: 10.5px; }
-.setp-loop-cfg-body { display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
-/* 未配置说明：装进虚线框（裸文本又长又散，像报错） */
-.setp-loop .setp-note {
-  padding: 7px 9px;
-  border: 1px dashed var(--line);
-  border-radius: 7px;
-  background: var(--soft);
-}
-.setp-min {
-  width: 64px; height: 24px; padding: 0 8px;
-  border: 1px solid var(--line); border-radius: 6px;
-  background: var(--paper); color: var(--ink);
-  font: 400 11.5px ui-monospace, Consolas, monospace;
-  text-align: right;
-}
-.setp-min:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }
 
 /* 「提示词 / 模板」一栏：顶部一排分类 + 下方内容（#41 反馈「ui 太丑」：
    原来左侧一条 112px 的竖排 tab 侧栏，只放三个短标签，右边留下大片空白——
@@ -424,18 +293,6 @@
   font:400 11.5px/1.7 ui-monospace,Consolas,monospace;
 }
 .setp-blocks .setp-area:focus{outline:2px solid var(--soft-2,#E4E2DC);outline-offset:-1px}
-
-/* 持续 get「一句话」配置行（#41）：选模板 ▾ + %s 一句话 + 添加 */
-.setp-oneline{display:flex;align-items:center;gap:6px;margin:6px 0;min-width:0}
-.setp-oneline-pick{
-  flex:none;max-width:220px;font:inherit;font-size:11.5px;padding:3px 6px;
-  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);color:var(--ink,#16181C);
-}
-.setp-oneline-input{
-  flex:1;min-width:0;font:inherit;font-size:12px;padding:4px 8px;
-  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);color:var(--ink,#16181C);
-}
-.setp-oneline-input:focus{outline:none;border-color:var(--mdw-accent,#2F6F5E)}
 
 /* 变量字典（任务 #82）：所有提示词模板的占位符与模板清单，放在「提示词 / 模板」第一页 */
 .setp-vars{display:flex;flex-direction:column;gap:6px;min-width:0}

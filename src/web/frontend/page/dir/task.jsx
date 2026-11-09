@@ -698,6 +698,22 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     return (taskRow.history || []).find((h) => Number(h.id) === want) || null;
   }, [historyId, taskRow]);
 
+  // #144 反馈只在链尖：已有任何派生子任务（后续轮次 / 评论派生）就不再是最新一轮，
+  // 反馈入口收起并指到最新一轮——在过去的轮次上反馈会把链分叉。
+  const chainChildren = Array.isArray(chainApi?.children) ? chainApi.children : [];
+  const isChainTip = chainChildren.length === 0;
+  const latestChild = chainChildren.length ? chainChildren[chainChildren.length - 1] : null;
+  const openLatestRound = useCallback(() => {
+    if (!latestChild || !app.openPage) return;
+    // 组锚定页保持组锚（任务还在本组，只是看最新一轮）
+    if (groupAnchored) app.openPage({ groupId, task: String(latestChild.id), name: `#${latestChild.id}` });
+    else app.openPage({
+      dirKey: String(latestChild.key || topicKey || GLOBAL_KEY),
+      task: String(latestChild.id),
+      name: `#${latestChild.id}`,
+    });
+  }, [latestChild, app.openPage, groupAnchored, groupId, topicKey]);
+
   const markDirty = useCallback(() => setDirty(true), []);
 
   /** 标题 + frontmatter 拼装（提交/贴图同步共用）——标题行永远在 FM 之后。 */
@@ -1661,9 +1677,30 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
                       ) : null}
                     </div>
                     <div className="mdw-review-acts">
-                      <button type="button" className="ghost" onClick={openFeedback} title="新开一条任务携带反馈（原任务不动）">
-                        反馈
-                      </button>
+                      {isChainTip ? (
+                        <button type="button" className="ghost" onClick={openFeedback} title="新开一条任务携带反馈（原任务不动）">
+                          反馈
+                        </button>
+                      ) : (
+                        <>
+                          <span
+                            className="mdw-review-later"
+                            title="这条任务已有后续轮次——在旧轮次上反馈会把链分叉，请到最新一轮反馈"
+                          >
+                            已进入后续轮次
+                          </span>
+                          {latestChild ? (
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={openLatestRound}
+                              title={`到最新一轮 #${latestChild.id} 反馈`}
+                            >
+                              去最新一轮 #{latestChild.id}
+                            </button>
+                          ) : null}
+                        </>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -1789,9 +1826,10 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
         multiple
         hidden
         onChange={(e) => {
-          const f = e.target.files;
+          // ⚠️ 先拷贝再清 value：FileList 是活引用，`value = ''` 会把它清空
+          const files = Array.from(e.target.files || []);
           e.target.value = '';
-          if (f && f.length) addFiles(f);
+          if (files.length) addFiles(files);
         }}
       />
       <input

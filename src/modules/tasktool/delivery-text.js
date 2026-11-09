@@ -9,11 +9,16 @@
 //
 // 排版口径：instruction 自包含正文（模板含 {{task.text}}，服务端给出 coversBody）
 // 时直接替掉正文块（否则正文会出现两遍）；否则「正文 + ── 收尾指令 ──」两段。
+// 正文交给阅读方前统一做「倒序聚焦 + 历史精简」重排（#157，shared/feedback-text.js）。
+import { reorderRoundsForDelivery } from '../../shared/feedback-text.js';
+
 export function deliveryBodyText(r) {
   const indent = (s) => String(s).replace(/\n/g, '\n  ');
   const taskText = (r && r.task && r.task.text) || '';
   if (r && r.instruction && r.coversBody) return `  ${indent(r.instruction)}`;
-  const body = `  ${indent(taskText)}`;
+  // 正文交给阅读方前做「倒序聚焦 + 历史精简」重排（#157）：最新轮反馈/总结置顶，
+  // 历史轮次一行摘要——无轮次段的正文原样返回，零影响。
+  const body = `  ${indent(reorderRoundsForDelivery(taskText))}`;
   return r && r.instruction ? `${body}\n  ── 收尾指令 ──\n  ${indent(r.instruction)}` : body;
 }
 

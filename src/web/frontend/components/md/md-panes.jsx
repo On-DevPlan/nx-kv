@@ -107,9 +107,14 @@ function LiveBlock({
 }) {
   const taRef = useRef(null);
   const display = normalizeBlockText(text);
-  // frontmatter 块在视图态**渲染为空**（#113：属性卡已撤，元数据不占正文位；
-  // 也不显示「（空文档）」占位——点它仍能进编辑态看原 YAML）。
-  const html = isFrontmatterBlock(display) ? '' : blockHtml(display, attachments);
+  // frontmatter 块**整体不渲染**（#149）：#113 起视图态已渲染为空，但块本身还在——
+  // 点它/聚焦它仍会开出裸 YAML 编辑框（组草稿首块的 `---\nboard:…\n---` 让人莫名，
+  // 用户原话「删除这个frontmatter」）。归属语义有页头「归属项目」下拉编辑，
+  // 源码模式仍可见可改；这里只动渲染层——块数组里 FM 必须保留（commit 按块列表
+  // 整表回写正文，滤掉会把组语义删没），data-i 坐标也不变（ack 定位轨/块选区共用）。
+  // ⚠️ 早退必须放在所有 hooks 之后（Rules of Hooks）。
+  const isFm = isFrontmatterBlock(display);
+  const html = isFm ? '' : blockHtml(display, attachments);
   const kind = blockKind(display);
 
   useLayoutEffect(() => {
@@ -140,6 +145,8 @@ function LiveBlock({
       try { el.setSelectionRange(n, n); } catch { /* ignore */ }
     }
   }, [focused, text, index, pendingSelRef, pendingFormatRef, onTaReady, onChange]);
+
+  if (isFm) return null;
 
   if (focused) {
     return (
@@ -1581,14 +1588,18 @@ export const MdPanes = forwardRef(function MdPanes(
         return;
       }
       if (k === 'z') {
+        // 只在页面接了自定义历史时拦截（#156）——没接的页面（如外部只读视图）
+        // 回落浏览器原生撤销，别把原生 textarea 撤销也一起 preventDefault 掉
+        const h = e.shiftKey ? onRedo : onUndo;
+        if (!h) return;
         e.preventDefault();
-        if (e.shiftKey) onRedo?.();
-        else onUndo?.();
+        h();
         return;
       }
       if (k === 'y') {
+        if (!onRedo) return;
         e.preventDefault();
-        onRedo?.();
+        onRedo();
       }
     };
     window.addEventListener('keydown', onKey, true);

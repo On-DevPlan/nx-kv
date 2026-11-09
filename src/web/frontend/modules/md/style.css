@@ -501,16 +501,11 @@
   transition:none!important;
 }
 /* 占位提示：聚焦即隐（原先要打字才消失，提示文字压在光标底下）。
-   !important：全局 input/textarea 的 placeholder 规则更晚加载，不加赢不了它。
-   指引文案改挂在**视图态的空块**上（见下方 .mdw-lp-gap::after）——
-   聚焦编辑时干净，失焦时仍有提示，不至于把指引整个弄丢。 */
+   !important：全局 input/textarea 的 placeholder 规则更晚加载，不加赢不了它。 */
 .mdw-lp-src::placeholder{color:var(--faint,#A9AEB4)}
 .mdw-lp textarea.mdw-lp-src:focus::placeholder{color:transparent!important}
-/* 空块（视图态）的操作指引：点进编辑态就换textarea，不再需要占位文字 */
-.mdw-lp-blocks:not(.is-empty-doc) .mdw-lp-block.is-empty .mdw-lp-gap::after{
-  content:"输入… Enter 新块 · 行首 / 命令";
-  color:var(--faint,#A9AEB4);font-size:var(--mdw-lp-body-size,13.5px);
-}
+/* 空块（视图态）不再渲染「输入…」提示语（#151：正文里的空行挂着一句常驻
+   提示太吵——空块保留 1.6em 最小高度可点击，编辑态 textarea 的 placeholder 仍在） */
 /* 划选：不改文字色、不抬行高；淡绿底仅标范围，光标仍是强调色 */
 .mdw-lp ::selection,
 .mdw-lp textarea.mdw-lp-src::selection{
@@ -641,6 +636,30 @@
   margin:8px 0;padding:2px 0 2px 12px;border-left:2px solid var(--line,#E4E2DC);
   background:transparent;font-size:13px;color:var(--ink-2,#4B515A);border-radius:0;
 }
+/* 轮次 callout（#144）：`> [!NOTE]` / `> [!WARNING]` 渲染成醒目色块——
+   完成总结 = 绿（accent），验收反馈 = 琥珀；标题行 + 正文两段式。 */
+.md-callout{
+  margin:10px 0;padding:9px 12px 10px;border-radius:8px;
+  border:1px solid var(--mdw-accent-line,#B7D4C8);
+  border-left:3px solid var(--mdw-accent,#2F6F5E);
+  background:var(--mdw-accent-soft,#E8F2EE);
+}
+.md-callout .md-callout-t{
+  font-weight:650;font-size:12.5px;color:var(--mdw-accent,#2F6F5E);margin-bottom:4px;
+}
+.md-callout .md-callout-b{font-size:13px;line-height:1.55;color:var(--ink-2,#4B515A)}
+.md-callout .md-callout-b>:first-child{margin-top:0}
+.md-callout .md-callout-b>:last-child{margin-bottom:0}
+.md-callout-warning{
+  border-color:#E8D9B5;border-left-color:#C08A2D;background:#FBF3E1;
+}
+.md-callout-warning .md-callout-t{color:#8A6508}
+.md-callout-tip{border-color:#CFE3DA;border-left-color:#3D8F79;background:#EDF6F2}
+.md-callout-tip .md-callout-t{color:#2F6F5E}
+.md-callout-important{border-color:#DCCFE8;border-left-color:#8A5FB0;background:#F5EFFA}
+.md-callout-important .md-callout-t{color:#6B4590}
+.md-callout-caution{border-color:#EBCCCB;border-left-color:#C0504A;background:#FAEDEC}
+.md-callout-caution .md-callout-t{color:#A03934}
 .mdw-preview .mdw-empty,.mdw-lp-view .mdw-empty{
   color:var(--faint,#A9AEB4);padding:40px 0;text-align:center;
 }
@@ -922,6 +941,8 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
   letter-spacing:.02em;white-space:nowrap;
 }
 .mdw-review-at{font-size:10.5px;color:var(--faint,#A9AEB4)}
+/* 已进入后续轮次的提示（#144）：非链尖任务收起反馈入口，指到最新一轮 */
+.mdw-review-later{font-size:11.5px;color:var(--ink-2,#4B515A);white-space:nowrap}
 /* 默认夹 4 行；过长出「展开全文」。ack 是 Markdown（加粗/列表/标题），按 HTML 渲染 */
 .mdw-review-sum{
   font-size:12px;line-height:1.55;color:var(--ink-2,#4B515A);

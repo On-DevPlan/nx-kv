@@ -60,17 +60,42 @@ export const DOC_MODULES = [
   { id: 'list', label: '文字列表', section: 'more', menuGroup: 'view' },
 ];
 
+// 仓库管理页头部（#145/#147）：默认只留「登记仓库 · 更多」（与 task/doc 同构——
+// 次级动作默认收进更多，可在编排里拖上工具栏/调顺序）。
+export const REPOS_MODULES = [
+  { id: 'add', label: '登记仓库', section: 'primary', noHide: true },
+  { id: 'more', label: '更多', section: 'bar', noHide: true },
+  { id: 'boards', label: '分组管理', section: 'more', menuGroup: 'manage' },
+  { id: 'refs', label: '参考仓库管理', section: 'more', menuGroup: 'manage' },
+  { id: 'transfer', label: '导入导出', section: 'more', menuGroup: 'manage' },
+];
+
+// 仓库表**行内**动作（#148）：默认布局与旧版一致（编辑/打开/删除上栏 + 更多收纳
+// 持续 get / 对齐 remote），五个动作全部可编排（kind=repos-row）。
+export const REPOS_ROW_MODULES = [
+  { id: 'edit', label: '编辑', section: 'bar' },
+  { id: 'open', label: '打开', section: 'bar' },
+  { id: 'del', label: '删除', section: 'bar', danger: true },
+  { id: 'more', label: '更多', section: 'bar', noHide: true },
+  { id: 'getloop', label: '持续 get…', section: 'more', menuGroup: 'repo' },
+  { id: 'remote', label: '对齐 remote', section: 'more', menuGroup: 'repo' },
+];
+
 const META = {
   dir: Object.fromEntries(DIR_MODULES.map((m) => [m.id, m])),
   group: Object.fromEntries(GROUP_MODULES.map((m) => [m.id, m])),
   task: Object.fromEntries(TASK_MODULES.map((m) => [m.id, m])),
   doc: Object.fromEntries(DOC_MODULES.map((m) => [m.id, m])),
+  repos: Object.fromEntries(REPOS_MODULES.map((m) => [m.id, m])),
+  'repos-row': Object.fromEntries(REPOS_ROW_MODULES.map((m) => [m.id, m])),
 };
 
 export function modulesOf(kind) {
   if (kind === 'group') return GROUP_MODULES;
   if (kind === 'task') return TASK_MODULES;
   if (kind === 'doc') return DOC_MODULES;
+  if (kind === 'repos') return REPOS_MODULES;
+  if (kind === 'repos-row') return REPOS_ROW_MODULES;
   return DIR_MODULES;
 }
 

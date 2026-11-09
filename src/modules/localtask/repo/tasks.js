@@ -85,7 +85,7 @@ function writeLocalDeps(conn, topicId, taskId, depsLocal) {
   }
 }
 
-/** 行 + 依赖 → { row, task }（依赖从全局 id 反解成同主题 seq）。 */
+/** 行 + 依赖 + 派生子任务数 → { row, task }（依赖从全局 id 反解成同主题 seq）。 */
 function rowToTaskWithDeps(conn, row) {
   const deps = conn
     .all(
@@ -97,7 +97,9 @@ function rowToTaskWithDeps(conn, row) {
     )
     .map((r) => Number(r.depSeq))
     .filter((n) => Number.isFinite(n) && n > 0);
-  return { row, task: rowToTask({ ...row, depsLocal: deps }) };
+  // 派生子任务数（#144）：>0 = 已有后续轮次/评论派生，面板据此收起反馈入口
+  const child = conn.get('SELECT count(*) AS n FROM task_links WHERE dst_id = :id', { id: row.id });
+  return { row, task: rowToTask({ ...row, depsLocal: deps, childCount: Number(child && child.n) || 0 }) };
 }
 
 /**

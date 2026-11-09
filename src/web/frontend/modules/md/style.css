@@ -641,6 +641,30 @@
   margin:8px 0;padding:2px 0 2px 12px;border-left:2px solid var(--line,#E4E2DC);
   background:transparent;font-size:13px;color:var(--ink-2,#4B515A);border-radius:0;
 }
+/* 轮次 callout（#144）：`> [!NOTE]` / `> [!WARNING]` 渲染成醒目色块——
+   完成总结 = 绿（accent），验收反馈 = 琥珀；标题行 + 正文两段式。 */
+.md-callout{
+  margin:10px 0;padding:9px 12px 10px;border-radius:8px;
+  border:1px solid var(--mdw-accent-line,#B7D4C8);
+  border-left:3px solid var(--mdw-accent,#2F6F5E);
+  background:var(--mdw-accent-soft,#E8F2EE);
+}
+.md-callout .md-callout-t{
+  font-weight:650;font-size:12.5px;color:var(--mdw-accent,#2F6F5E);margin-bottom:4px;
+}
+.md-callout .md-callout-b{font-size:13px;line-height:1.55;color:var(--ink-2,#4B515A)}
+.md-callout .md-callout-b>:first-child{margin-top:0}
+.md-callout .md-callout-b>:last-child{margin-bottom:0}
+.md-callout-warning{
+  border-color:#E8D9B5;border-left-color:#C08A2D;background:#FBF3E1;
+}
+.md-callout-warning .md-callout-t{color:#8A6508}
+.md-callout-tip{border-color:#CFE3DA;border-left-color:#3D8F79;background:#EDF6F2}
+.md-callout-tip .md-callout-t{color:#2F6F5E}
+.md-callout-important{border-color:#DCCFE8;border-left-color:#8A5FB0;background:#F5EFFA}
+.md-callout-important .md-callout-t{color:#6B4590}
+.md-callout-caution{border-color:#EBCCCB;border-left-color:#C0504A;background:#FAEDEC}
+.md-callout-caution .md-callout-t{color:#A03934}
 .mdw-preview .mdw-empty,.mdw-lp-view .mdw-empty{
   color:var(--faint,#A9AEB4);padding:40px 0;text-align:center;
 }
@@ -922,6 +946,8 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
   letter-spacing:.02em;white-space:nowrap;
 }
 .mdw-review-at{font-size:10.5px;color:var(--faint,#A9AEB4)}
+/* 已进入后续轮次的提示（#144）：非链尖任务收起反馈入口，指到最新一轮 */
+.mdw-review-later{font-size:11.5px;color:var(--ink-2,#4B515A);white-space:nowrap}
 /* 默认夹 4 行；过长出「展开全文」。ack 是 Markdown（加粗/列表/标题），按 HTML 渲染 */
 .mdw-review-sum{
   font-size:12px;line-height:1.55;color:var(--ink-2,#4B515A);

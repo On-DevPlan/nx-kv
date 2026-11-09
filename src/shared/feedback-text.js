@@ -55,3 +55,121 @@ export function appendFeedback({ base, heading, quote, feedback, bold = false } 
   if (!b && !sec) return '';
   return `${b ? `${b}\n\n` : ''}${sec}\n`;
 }
+
+// ─── 轮次 callout（#144 反馈功能优化）────────────────────────────────
+//
+// 旧段名「## 上一轮完成总结」在多轮正文里说不清是**哪**一轮（每对段都叫上一轮）；
+// 改成带轮次号的 callout 块（#144：层级一眼看清）：
+//
+//   > [!NOTE] 第 1 轮 · 完成总结
+//   > ack 内容……
+//
+//   > [!WARNING] 第 1 轮 · 验收反馈
+//   > **反馈内容……**
+//
+// 面板 md 渲染器（modules/md/md-parse.js）认 `[!TYPE]` 标记渲染成醒目色块；
+// 纯文本（CLI / agent 读正文）也自然可读。旧段名的历史正文仍被 ack-nodes /
+// 渲染器认得——只增不改，老任务页不受影响。
+
+/** 完成总结 callout 类型 */
+export const ACK_CALLOUT_TYPE = 'NOTE';
+/** 验收反馈 callout 类型 */
+export const FEEDBACK_CALLOUT_TYPE = 'WARNING';
+
+const ACK_TITLE_RE = /完成总结/;
+const ROUND_NUM_RE = /第\s*(\d+)\s*轮/;
+const CALLOUT_TITLE_RE = /^>\s*\[![A-Za-z][\w-]*\][ \t]*(.*)$/;
+
+/** ack callout 标题：`第 N 轮 · 完成总结` */
+export function ackCalloutTitle(round) {
+  return `第 ${Number(round) || 1} 轮 · 完成总结`;
+}
+
+/** 反馈 callout 标题：`第 N 轮 · 验收反馈` */
+export function feedbackCalloutTitle(round) {
+  return `第 ${Number(round) || 1} 轮 · 验收反馈`;
+}
+
+/** 多行内容 → callout 逐行（`> ` 前缀；空行给裸 `>` 保持块连续） */
+function calloutBody(text) {
+  return String(text ?? '')
+    .split('\n')
+    .map((l) => (l.trim() ? `> ${l}` : '>'))
+    .join('\n');
+}
+
+/** 完成总结 callout 块；ack 空 → 空串 */
+export function ackCalloutSection({ round, ack } = {}) {
+  const a = String(ack ?? '').trim();
+  if (!a) return '';
+  return `> [!${ACK_CALLOUT_TYPE}] ${ackCalloutTitle(round)}\n${calloutBody(a)}`;
+}
+
+/** 验收反馈 callout 块（锚定引用并进同一块）；反馈空 → 空串 */
+export function feedbackCalloutSection({ round, quote, feedback, bold = false } = {}) {
+  const fb = String(feedback ?? '').trim();
+  if (!fb) return '';
+  const body = bold ? boldFeedback(fb) : fb;
+  const anchor = quoteBlock(quote);
+  const inner = anchor ? `${anchor.replace(/^> ?/gm, '')}\n\n${body}` : body;
+  return `> [!${FEEDBACK_CALLOUT_TYPE}] ${feedbackCalloutTitle(round)}\n${calloutBody(inner)}`;
+}
+
+/** 正文里已有多少轮 ack：旧段名各算一轮；callout 标题带轮次号时取最大号（防手工删段后编号回退） */
+export function countAckRounds(base) {
+  const text = String(base ?? '');
+  let n = 0;
+  let max = 0;
+  const legacy = text.match(/^## 上一轮完成总结\s*$/gm);
+  n += legacy ? legacy.length : 0;
+  for (const m of text.matchAll(/^>\s*\[![A-Za-z][\w-]*\][ \t]*(.*)$/gm)) {
+    const title = String(m[1] ?? '');
+    if (!ACK_TITLE_RE.test(title)) continue;
+    n += 1;
+    const r = title.match(ROUND_NUM_RE);
+    if (r) max = Math.max(max, Number(r[1]));
+  }
+  return Math.max(n, max);
+}
+
+/** 下一轮的轮次号：已有轮数 + 1 */
+export function nextRoundOf(base) {
+  return countAckRounds(base) + 1;
+}
+
+/** 正文里是否已有同一份 ack 总结（旧段名与 callout 两种形态都认）——防连点两次重复追加 */
+export function bodyHasAck(base, ack) {
+  const b = String(base ?? '');
+  const a = String(ack ?? '').trim();
+  if (!a || !b) return false;
+  if (b.includes(`${ACK_SUMMARY_HEADING}\n\n${a}`)) return true;
+  const lines = b.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(CALLOUT_TITLE_RE);
+    if (!m || !ACK_TITLE_RE.test(String(m[1] ?? ''))) continue;
+    const body = [];
+    for (let j = i + 1; j < lines.length && lines[j].startsWith('>'); j++) {
+      body.push(lines[j].replace(/^>[ \t]?/, ''));
+    }
+    if (body.join('\n').trim() === a) return true;
+  }
+  return false;
+}
+
+/**
+ * ack 场景的整段追加（#144 的拼装口径）：base + 本轮完成总结 callout + 验收反馈 callout。
+ * ack 已在正文里（bodyHasAck）不重复追加；轮次号缺省按正文已有轮数 + 1。
+ * base 与 ack、反馈全空 → 空串；只有 base → base 原样（规整尾换行）。
+ */
+export function appendAckFeedback({ base, ack, quote, feedback, bold = true, round } = {}) {
+  const b = String(base ?? '').trimEnd();
+  const r = Number(round) || nextRoundOf(b);
+  const parts = [];
+  if (b) parts.push(b);
+  const a = String(ack ?? '').trim();
+  if (a && !bodyHasAck(b, a)) parts.push(ackCalloutSection({ round: r, ack: a }));
+  const sec = feedbackCalloutSection({ round: r, quote, feedback, bold });
+  if (sec) parts.push(sec);
+  if (!parts.length) return '';
+  return `${parts.join('\n\n')}\n`;
+}

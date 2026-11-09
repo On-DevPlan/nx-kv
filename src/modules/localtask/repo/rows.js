@@ -98,6 +98,8 @@ export function rowToTask(row) {
     claimedBy: String(ext[EXT.CLAIMED_BY] ?? ''),
     claimedByName: String(ext[EXT.CLAIMED_BY_NAME] ?? ''),
     reopenCount: Math.max(0, Number(row.round ?? 1) - 1),
+    // 派生子任务数（#144）：>0 = 链上已有后续轮次，反馈入口只在链尖显示
+    childCount: Number(row.childCount ?? 0),
     // 迁出 tombstone（本机 → 云端）：原条目留在队列里只作记录，不算待领取
     migratedTo: ext[EXT.MIGRATED_TO] || null,
     moveFrom: ext[EXT.MOVE_FROM] || null,

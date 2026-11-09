@@ -104,3 +104,64 @@ test('ackNodeTitle：取首行、剥 markdown 记号、过长截断', () => {
   assert.ok(t.startsWith('第 3 轮 · '));
   assert.ok(t.length < 40, '过长要截断');
 });
+
+// ─── 轮次 callout 形态（#144）：新正文写「> [!NOTE] 第 N 轮 · 完成总结」等 ───
+
+const calloutRound = (n, ack, feedback) =>
+  [
+    `> [!NOTE] 第 ${n} 轮 · 完成总结`,
+    ...ack.split('\n').map((l) => `> ${l}`),
+    '',
+    `> [!WARNING] 第 ${n} 轮 · 验收反馈`,
+    ...feedback.split('\n').map((l) => `> ${l}`),
+  ].join('\n');
+
+test('callout 单轮：抽出 1 个节点，块序号指向 callout 块，轮次号取标题数字', () => {
+  const body = ['# 任务', '', '## 背景', '', '要做的事', '', calloutRound(1, 'callout 总结', 'callout 反馈')].join('\n');
+  const nodes = extractAckNodes(body);
+  assert.equal(nodes.length, 1);
+  assert.equal(nodes[0].round, 1);
+  assert.equal(nodes[0].ackText, 'callout 总结');
+  assert.equal(nodes[0].feedbackText, 'callout 反馈');
+
+  const blocks = liveBodyBlocks(body);
+  assert.ok(String(blocks[nodes[0].blockIndex]).startsWith('> [!NOTE] 第 1 轮 · 完成总结'));
+  assert.ok(String(blocks[nodes[0].feedbackBlockIndex]).startsWith('> [!WARNING] 第 1 轮 · 验收反馈'));
+});
+
+test('callout 多轮：轮次号取标题数字，块序号互不相同且递增', () => {
+  const body = ['# T', '', calloutRound(1, '总结一', '反馈一'), '', calloutRound(2, '总结二', '反馈二'), '', calloutRound(3, '总结三', '反馈三')].join('\n');
+  const nodes = extractAckNodes(body);
+  assert.equal(nodes.length, 3);
+  assert.deepEqual(nodes.map((n) => n.round), [1, 2, 3]);
+  assert.deepEqual(nodes.map((n) => n.ackText), ['总结一', '总结二', '总结三']);
+  assert.deepEqual(nodes.map((n) => n.feedbackText), ['反馈一', '反馈二', '反馈三']);
+  const idxs = nodes.map((n) => n.blockIndex);
+  assert.equal(new Set(idxs).size, 3);
+  assert.ok(idxs[0] < idxs[1] && idxs[1] < idxs[2]);
+});
+
+test('新旧形态混排：历史正文（段名）+ 新追加轮次（callout）都能抽出来', () => {
+  const body = [
+    '# T',
+    '',
+    round('旧轮总结', '旧轮反馈'),
+    '',
+    calloutRound(2, '新轮总结', '新轮反馈'),
+  ].join('\n');
+  const nodes = extractAckNodes(body);
+  assert.equal(nodes.length, 2);
+  assert.deepEqual(nodes.map((n) => n.round), [1, 2]);
+  assert.deepEqual(nodes.map((n) => n.ackText), ['旧轮总结', '新轮总结']);
+});
+
+test('callout 孤儿反馈块（前面没有完成总结块）不算节点', () => {
+  const body = '# T\n\n> [!WARNING] 第 1 轮 · 验收反馈\n> 孤儿反馈';
+  assert.deepEqual(extractAckNodes(body), []);
+});
+
+test('callout 反馈块里的加粗行原样收进 feedbackText（剥 > 前缀）', () => {
+  const body = ['> [!NOTE] 第 1 轮 · 完成总结', '> 总结', '', '> [!WARNING] 第 1 轮 · 验收反馈', '> **反馈甲**', '> **反馈乙**'].join('\n');
+  const nodes = extractAckNodes(body);
+  assert.equal(nodes[0].feedbackText, '**反馈甲**\n**反馈乙**');
+});

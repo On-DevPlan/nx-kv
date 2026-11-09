@@ -38,11 +38,21 @@ function blockAt(root, idx, ackOrdinal) {
   // 实时预览：每块带 data-i
   const live = root.querySelector(`.mdw-lp-block[data-i="${idx}"]`);
   if (live) return live;
-  // 阅读态：整篇渲染 → 按「第 N 个 ack 标题」取
-  const heads = [...root.querySelectorAll('h2')].filter(
-    (h) => (h.textContent || '').trim() === '上一轮完成总结'
+  // 阅读态：整篇渲染 → 按「第 N 个 ack 标题」取。两种形态都可能在场（#144：
+  // 历史正文是 h2「上一轮完成总结」，新追加轮次是 callout 标题「第 N 轮 · 完成总结」），
+  // 收集后按 DOM 顺序排——与正文出现顺序一致。
+  const marks = [
+    ...Array.from(root.querySelectorAll('h2')).filter(
+      (h) => (h.textContent || '').trim() === '上一轮完成总结'
+    ),
+    ...Array.from(root.querySelectorAll('.md-callout-t')).filter((t) =>
+      /完成总结/.test(t.textContent || '')
+    ),
+  ].sort((a, b) =>
+    // 4 = Node.DOCUMENT_POSITION_FOLLOWING（jsx 的 eslint 环境没有 Node 全局，用常量值）
+    a.compareDocumentPosition(b) & 4 ? -1 : 1
   );
-  if (heads[ackOrdinal]) return heads[ackOrdinal];
+  if (marks[ackOrdinal]) return marks[ackOrdinal];
   return null;
 }
 

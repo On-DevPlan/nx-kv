@@ -8,6 +8,7 @@ import {
   FEEDBACK_HEADING,
   PLAIN_FEEDBACK_HEADING,
   appendFeedback,
+  appendAckFeedback,
 } from '../../shared/feedback-text.js';
 import { findFirstReadyPending } from './dag.js';
 import { basename } from 'node:path';
@@ -115,7 +116,9 @@ export async function reopenTask({
 
   // ── 新任务正文（#74 口径）：显式 text 整篇替换；否则旧正文 + 本轮反馈段。
   // 反馈不带 text 时，反馈段追加在**旧任务的当前正文**上（base 永远是服务端正文，
-  // 防「评论一次丢一次」#79）。上轮完成总结已在旧正文里（done 时追加），不重复拼。
+  // 防「评论一次丢一次」#79）。验收反馈（#144）走轮次 callout：完成总结还没进正文的
+  // （CLI 直接 reopen done 任务），这里与面板 buildReopenText 同一份口径顺带补上；
+  // 评论 / 「反馈修改」无轮次语义，维持旧段名。
   let newText = task.text;
   if (body) {
     newText = preserveFrontmatter(task.text, normalizeText(body));
@@ -123,13 +126,23 @@ export async function reopenTask({
     const heading = String(feedbackHeading ?? '').trim()
       || (kind === 'comment' ? PLAIN_FEEDBACK_HEADING : FEEDBACK_HEADING);
     const useBold = typeof feedbackBold === 'boolean' ? feedbackBold : kind !== 'comment';
-    newText = preserveFrontmatter(task.text, appendFeedback({
-      base: task.text,
-      heading,
-      quote,
-      feedback: fb,
-      bold: useBold,
-    }));
+    if (heading === FEEDBACK_HEADING) {
+      newText = preserveFrontmatter(task.text, appendAckFeedback({
+        base: task.text,
+        ack: task.roundSummary || '',
+        quote,
+        feedback: fb,
+        bold: useBold,
+      }));
+    } else {
+      newText = preserveFrontmatter(task.text, appendFeedback({
+        base: task.text,
+        heading,
+        quote,
+        feedback: fb,
+        bold: useBold,
+      }));
+    }
   }
 
   // ── 落点：默认同主题（链尖所在主题）；带 moveTo 就直接派生到目标主题

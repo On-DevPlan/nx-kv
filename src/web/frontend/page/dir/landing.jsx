@@ -369,7 +369,9 @@ export default function Landing({
                           />
                         </span>
                       )}
-                      {onReopenTask && t.status !== 'cancelled' && (t.status === 'claimed' || t.status === 'done' || t.completedAt) && (
+                      {/* #144 反馈只在链尖：已有派生子任务（后续轮次/评论派生）的任务
+                          不再给反馈入口——在旧轮次上反馈会把链分叉 */}
+                      {onReopenTask && t.status !== 'cancelled' && !t.childCount && (t.status === 'claimed' || t.status === 'done' || t.completedAt) && (
                         <span
                           className="op" role="button" tabIndex={-1}
                           title={t.completedAt ? '反馈：新开一条任务（原任务不动）' : '反馈修改：回写本任务并记入任务链'}

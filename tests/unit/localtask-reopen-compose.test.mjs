@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
+import { topicKeyFor } from '../../src/modules/localtask/paths.js';
 
 let dir = '';
 
@@ -89,12 +90,24 @@ test('comment 二次评论：顺链走尖，两轮评论段都保留在最新正
   assert.equal(firstTask.status, 'cancelled', 'R2 被 R3 取代');
 });
 
-test('reopen 不带 text：段名默认「## 验收反馈」且逐行加粗', async () => {
+test('reopen 不带 text：#144 起写轮次 callout（反馈逐行加粗；无总结时只有反馈块）', async () => {
   const { svc, id } = await seedTask('# 原任务\n\n正文。');
   const res = await svc.reopenTask({ cwd: CWD, id, kind: 'reopen', feedback: '重做意见\n第二行' });
-  assert.ok(res.task.text.includes('## 验收反馈'));
-  assert.ok(res.task.text.includes('**重做意见**'));
-  assert.ok(res.task.text.includes('**第二行**'));
+  assert.ok(res.task.text.includes('> [!WARNING] 第 1 轮 · 验收反馈'));
+  assert.ok(res.task.text.includes('> **重做意见**'));
+  assert.ok(res.task.text.includes('> **第二行**'));
+  assert.ok(!res.task.text.includes('[!NOTE]'), '没有总结就不追加空总结块');
+});
+
+test('reopen done 任务不带 text：顺带补本轮完成总结 callout（与面板同一份口径）', async () => {
+  const { svc, id } = await seedTask('# 原任务\n\n正文。');
+  await svc.consumeFirstPending(topicKeyFor(CWD), '测试领取'); // done 门禁要求先领取
+  await svc.completeTask({ cwd: CWD, id, summary: '已把平滑滚动改成瞬时定位' });
+  const res = await svc.reopenTask({ cwd: CWD, id, kind: 'reopen', feedback: '还是卡顿' });
+  assert.ok(res.task.text.includes('> [!NOTE] 第 1 轮 · 完成总结'), 'done 的总结落进 callout');
+  assert.ok(res.task.text.includes('> 已把平滑滚动改成瞬时定位'));
+  assert.ok(res.task.text.includes('> [!WARNING] 第 1 轮 · 验收反馈'));
+  assert.ok(res.task.text.includes('> **还是卡顿**'));
 });
 
 test('feedbackHeading / feedbackBold 覆盖默认段名与加粗口径', async () => {

@@ -19,13 +19,37 @@
 
 import { liveBodyBlocks } from '../md/md-parse.js';
 
-/** ack 段标题（与 reopen-text.js 同口径） */
+/** ack 段标题（与 reopen-text.js 同口径；#144 起新正文改写轮次 callout，旧正文仍认） */
 export const ACK_NODE_HEADING = '## 上一轮完成总结';
 /** 反馈段标题 */
 export const ACK_NODE_FEEDBACK_HEADING = '## 验收反馈';
 
+// callout 形态（#144）：`> [!NOTE] 第 1 轮 · 完成总结` / `> [!WARNING] 第 1 轮 · 验收反馈`
+const CALLOUT_TITLE_RE = /^>\s*\[![A-Za-z][\w-]*\][ \t]*(.*)$/;
+const ACK_TITLE_RE = /完成总结/;
+const FB_TITLE_RE = /反馈/;
+const ROUND_NUM_RE = /第\s*(\d+)\s*轮/;
+
+/** callout 块 → { title, body }（body 为剥掉 `> ` 的正文行）；不是 callout 返回 null */
+function calloutOf(block) {
+  const lines = String(block ?? '').split('\n');
+  const m = lines.length && String(lines[0]).match(CALLOUT_TITLE_RE);
+  if (!m) return null;
+  const body = lines
+    .slice(1)
+    .map((l) => l.replace(/^>[ \t]?/, ''))
+    .filter((l) => l.trim() !== '')
+    .join('\n');
+  return { title: String(m[1] ?? '').trim(), body };
+}
+
 /**
  * 从任务正文里抽出每一轮 ack 节点。
+ *
+ * 两种形态都认（#144）：
+ *   - 旧段名：`## 上一轮完成总结` + `## 验收反馈`（历史正文）
+ *   - 轮次 callout：`> [!NOTE] 第 N 轮 · 完成总结` + `> [!WARNING] 第 N 轮 · 验收反馈`
+ *     （轮次号取标题里的数字；没有数字就按出现顺序排）
  *
  * @param {string} body 任务正文（Markdown）
  * @returns {{ round:number, blockIndex:number, feedbackBlockIndex:number,
@@ -44,6 +68,21 @@ export function extractAckNodes(body) {
 
   blocks.forEach((raw, i) => {
     const b = String(raw || '').trim();
+    const co = calloutOf(b);
+    if (co && ACK_TITLE_RE.test(co.title)) {
+      // callout 完成总结块：轮次号优先取标题里的「第 N 轮」
+      const rNum = Number((co.title.match(ROUND_NUM_RE) || [])[1]);
+      cur = {
+        round: Number.isFinite(rNum) && rNum > 0 ? rNum : out.length + 1,
+        blockIndex: i,
+        feedbackBlockIndex: -1,
+        ackText: co.body,
+        feedbackText: '',
+      };
+      out.push(cur);
+      phase = 'ack';
+      return;
+    }
     if (b === ACK_NODE_HEADING) {
       cur = {
         round: out.length + 1,
@@ -54,6 +93,15 @@ export function extractAckNodes(body) {
       };
       out.push(cur);
       phase = 'ack';
+      return;
+    }
+    if (co && FB_TITLE_RE.test(co.title)) {
+      // callout 反馈块归属**当前正在填的 ack 段**（孤儿反馈块不算节点）
+      if (cur && phase === 'ack') {
+        cur.feedbackBlockIndex = i;
+        cur.feedbackText = co.body;
+        phase = 'feedback';
+      }
       return;
     }
     if (b === ACK_NODE_FEEDBACK_HEADING) {

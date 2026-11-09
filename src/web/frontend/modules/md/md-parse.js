@@ -134,7 +134,8 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
       inUl = false;
     }
   };
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     // fenced code：整块原样输出（不跑 inline/双链——代码里的 [[示例]] 不是链接）
     if (line.startsWith('```')) {
       if (inCode) {
@@ -168,9 +169,46 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
         : `<p><code>![${esc(img[1])}](${esc(img[2])})</code></p>`;
       continue;
     }
-    if (line.startsWith('> ')) {
+    // 引用 / callout（#144）：连续的 `>` 行合成**一个块**——callout 块必须整体渲染。
+    // 首行带 `[!TYPE] 标题` 标记（GFM/Obsidian 口径）→ 渲染成醒目色块；
+    // 无标记 → 普通 blockquote（多行合并，锚定引用不再拆成 N 个散框）。
+    if (line.startsWith('>')) {
       flush();
-      html += `<blockquote>${inline(line.slice(2), knownNames)}</blockquote>`;
+      const q = [];
+      let j = i;
+      while (j < lines.length && lines[j].startsWith('>')) {
+        q.push(lines[j].replace(/^>[ \t]?/, ''));
+        j += 1;
+      }
+      i = j - 1; // 外层循环再 ++，回到最后一条被消费的引用行
+      const cm = q.length && q[0] ? q[0].match(/^\[!([A-Za-z][\w-]*)\][ \t]*(.*)$/) : null;
+      if (cm) {
+        // callout：正文按空行分段（段间 <br><br> 有段落间隔）、段内 <br> 连行
+        // （反馈以短行为主，够用且轻）
+        const type = String(cm[1] || '').toLowerCase();
+        const title = String(cm[2] || '').trim();
+        const paras = [];
+        let curPara = [];
+        for (const l of q.slice(1)) {
+          if (!l.trim()) {
+            if (curPara.length) {
+              paras.push(curPara);
+              curPara = [];
+            }
+            continue;
+          }
+          curPara.push(l);
+        }
+        if (curPara.length) paras.push(curPara);
+        const bodyHtml = paras
+          .map((p) => p.map((l) => inline(l, knownNames)).join('<br>'))
+          .join('<br><br>');
+        html += `<div class="md-callout md-callout-${esc(type)}">`
+          + (title ? `<div class="md-callout-t">${inline(title, knownNames)}</div>` : '')
+          + `<div class="md-callout-b">${bodyHtml}</div></div>`;
+        continue;
+      }
+      html += `<blockquote>${q.map((l) => inline(l, knownNames)).join('<br>')}</blockquote>`;
       continue;
     }
     if (line.startsWith('### ')) {

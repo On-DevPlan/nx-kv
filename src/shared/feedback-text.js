@@ -173,3 +173,73 @@ export function appendAckFeedback({ base, ack, quote, feedback, bold = true, rou
   if (!parts.length) return '';
   return `${parts.join('\n\n')}\n`;
 }
+
+// ─── 交付侧上下文重排（#157「倒序聚焦 + 历史精简」）──────────────────
+//
+// 正文里的轮次 callout 按时间**正序**追加在末尾——agent 收到的提示词里最新
+// 一轮的验收反馈被压在最底，而 LLM 对首尾内容的注意力最高；历史轮次的总结
+// 保留全文占大量 token 且干扰当前决策。交付渲染时重排为：
+//
+//   1. 任务骨架（frontmatter + 原始需求等非轮次内容，保持原位）
+//   2. 最新一轮**完整内容**：验收反馈（当前要改什么）→ 完成总结（上轮做到哪）
+//   3. 历史轮次各一行摘要（反馈「…」；总结「…」——仅供追溯）
+//
+// 纯函数、零依赖；无轮次段时原样返回（老任务 / 单轮任务零影响）。
+
+const DELIVERY_ROUND_RE = /^>\s*\[![A-Za-z][\w-]*\][^\n]*第\s*(\d+)\s*轮[^\n]*(完成总结|验收反馈)/;
+
+const truncLine = (s, n = 60) => {
+  const t = String(s || '').trim();
+  return t.length > n ? `${t.slice(0, n)}…` : t;
+};
+
+/** callout 块里剥掉标题行 / `>` 前缀 / 加粗记号后的首个非空行（历史摘要用） */
+function firstContentLine(block) {
+  const line = String(block || '')
+    .split('\n')
+    .filter((l) => l.trim() && !CALLOUT_TITLE_RE.test(l))
+    .map((l) => l.replace(/^>\s?/, '').replace(/\*\*/g, '').trim())
+    .find((l) => l);
+  return line || '';
+}
+
+export function reorderRoundsForDelivery(body) {
+  const text = String(body ?? '');
+  if (!text) return text;
+  const blocks = text.split(/\n{2,}/);
+  const rounds = new Map(); // n → { ack, fb }
+  const plain = [];
+  for (const b of blocks) {
+    const m = b.match(DELIVERY_ROUND_RE);
+    if (m) {
+      const n = Number(m[1]);
+      const r = rounds.get(n) || {};
+      if (m[2] === '完成总结') r.ack = b;
+      else r.fb = b;
+      rounds.set(n, r);
+      continue;
+    }
+    plain.push(b);
+  }
+  if (!rounds.size) return text;
+  const nums = [...rounds.keys()].sort((a, b) => a - b);
+  const latest = nums[nums.length - 1];
+  const out = [];
+  if (plain.length) out.push(plain.join('\n\n'));
+  const lr = rounds.get(latest) || {};
+  // 最新一轮：反馈（当前要改什么）在前，总结（上轮做到哪）随后
+  if (lr.fb) out.push(lr.fb);
+  if (lr.ack) out.push(lr.ack);
+  const older = nums.filter((n) => n !== latest);
+  if (older.length) {
+    const lines = older.map((n) => {
+      const r = rounds.get(n) || {};
+      const parts = [];
+      if (r.fb) parts.push(`反馈「${truncLine(firstContentLine(r.fb))}」`);
+      if (r.ack) parts.push(`总结「${truncLine(firstContentLine(r.ack))}」`);
+      return `· 第 ${n} 轮 ${parts.join('；') || '（空）'}`;
+    });
+    out.push(`—— 历史轮次（已按最新反馈推进，仅供追溯）——\n${lines.join('\n')}`);
+  }
+  return `${out.join('\n\n')}\n`;
+}

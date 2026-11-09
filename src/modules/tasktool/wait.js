@@ -12,6 +12,7 @@ import { DEFAULT_PORT } from '../../core/paths.js';
 import { formatGoalTiming, renderInstruction } from '../../core/instruction-template.js';
 import { buildDeliveryCtx } from './delivery-template.js';
 import { parseFrontmatter } from '../../shared/frontmatter.js';
+import { reorderRoundsForDelivery } from '../../shared/feedback-text.js';
 import {
   BLOCK_DEFS,
   resolveBlockTemplates,
@@ -206,7 +207,9 @@ export async function buildTaskDelivery(task, { source, summary, cwd, name, topi
         ? { ...goal, check: goalCheck || '', statusLine: goalStatus || '' }
         : null,
       ...attachCtx,
-      task: task ? { id: task.id, text: String(task.text || '') } : null,
+      // task.text 交给模板前做「倒序聚焦 + 历史精简」重排（#157）：最新轮反馈
+      // 与总结置顶、历史轮次一行摘要——无轮次段的正文原样返回，零影响。
+      task: task ? { id: task.id, text: reorderRoundsForDelivery(String(task.text || '')) } : null,
       // 「持续 get」指令模板自身也能用 {{getloop.waitMinutes}}：先把阻塞窗口放进
       // 同一份 ctx，外层 getloop 区块再补 text（同一个对象口径，前后不分裂）。
       getloop: { text: '', waitMinutes: Number(getLoopWaitMinutes) || 0 },

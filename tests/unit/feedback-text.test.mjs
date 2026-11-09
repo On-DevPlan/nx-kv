@@ -16,6 +16,7 @@ import {
   nextRoundOf,
   bodyHasAck,
   appendAckFeedback,
+  reorderRoundsForDelivery,
 } from '../../src/shared/feedback-text.js';
 
 test('quoteBlock：划选原文 → 锚定引用块，多行逐行加 >', () => {
@@ -155,4 +156,57 @@ test('appendAckFeedback：全空 → 空串；只有 base → 原样规整；显
     appendAckFeedback({ base: '', ack: 's', feedback: 'f', round: 7 }),
     '> [!NOTE] 第 7 轮 · 完成总结\n> s\n\n> [!WARNING] 第 7 轮 · 验收反馈\n> **f**\n'
   );
+});
+
+
+// ─── 交付侧上下文重排（#157）────────────────────────────────────────
+
+const roundBody = (n, ack, fb) => [
+  `> [!NOTE] 第 ${n} 轮 · 完成总结`,
+  ...ack.split('\n').map((l) => `> ${l}`),
+  '',
+  `> [!WARNING] 第 ${n} 轮 · 验收反馈`,
+  ...fb.split('\n').map((l) => `> ${l}`),
+].join('\n');
+
+test('reorderRoundsForDelivery：无轮次段 → 原样返回', () => {
+  assert.equal(reorderRoundsForDelivery('# 任务\n\n正文'), '# 任务\n\n正文');
+  assert.equal(reorderRoundsForDelivery(''), '');
+});
+
+test('reorderRoundsForDelivery：骨架置顶 + 最新轮完整 + 历史一行摘要', () => {
+  const body = [
+    '# 任务',
+    '',
+    '原始需求。',
+    '',
+    roundBody(1, '第一轮总结', '第一轮反馈'),
+    '',
+    roundBody(2, '第二轮总结', '第二轮反馈'),
+  ].join('\n');
+  const out = reorderRoundsForDelivery(body);
+  // 骨架在最前
+  assert.ok(out.startsWith('# 任务\n\n原始需求。'));
+  // 最新轮（第 2 轮）完整内容紧随骨架：反馈在前、总结在后
+  const fb2 = out.indexOf('> [!WARNING] 第 2 轮 · 验收反馈');
+  const ack2 = out.indexOf('> [!NOTE] 第 2 轮 · 完成总结');
+  assert.ok(fb2 > 0 && ack2 > fb2, '第 2 轮反馈在前、总结在后');
+  assert.ok(out.includes('> 第二轮反馈'), '最新轮反馈原文保留');
+  assert.ok(out.includes('> 第二轮总结'), '最新轮总结原文保留');
+  // 第 1 轮压成一行摘要，全文不再出现
+  assert.ok(out.includes('· 第 1 轮 反馈「第一轮反馈」；总结「第一轮总结」'));
+  assert.ok(!out.includes('> [!NOTE] 第 1 轮'));
+  assert.ok(out.includes('历史轮次'));
+  // 最新轮在历史段之前
+  assert.ok(out.indexOf('> [!NOTE] 第 2 轮') < out.indexOf('· 第 1 轮'));
+});
+
+test('reorderRoundsForDelivery：单轮无历史段；历史摘要截断到 60 字', () => {
+  const long = 'x'.repeat(100);
+  // 两轮：第 1 轮的长总结进历史段（截断），第 2 轮原文保留
+  const body = ['# T', '', roundBody(1, long, '短反馈'), '', roundBody(2, '新总结', '新反馈')].join('\n');
+  const out = reorderRoundsForDelivery(body);
+  assert.ok(!out.includes(long), '历史长文不再全文出现');
+  assert.ok(out.includes(`总结「${'x'.repeat(60)}…」`), '历史摘要截到 60 字');
+  assert.ok(out.includes('> 新总结'), '最新轮原文保留');
 });

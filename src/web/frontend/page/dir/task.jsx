@@ -27,6 +27,7 @@ import AckRail from '../../components/md/ack-rail.jsx';
 import AttachBar from '../../components/md/attach-bar.jsx';
 import AttachArea from '../../components/md/attach-area.jsx';
 import { docIdOfLocator } from '../../components/md/attach-common.js';
+import StatusTag from '../../components/status-tag/index.jsx';
 import SelMenu from '../../components/md/sel-menu.jsx';
 import { openComposer } from '../../components/md/composer-launch.js';
 import ShortcutSheet from '../../components/md/shortcut-sheet.jsx';
@@ -37,6 +38,7 @@ import { filesToAttachments, persistAtt } from '../../components/md/attachments.
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
 import {
   insertAttachmentSnippet,
+  liveBodyBlocks,
   renderMarkdownHtml,
   slugName,
   titleFromMd,
@@ -954,7 +956,6 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   };
 
   const addFiles = async (fileList, opts = {}) => {
-    console.log('[dbg] addFiles n=', fileList && fileList.length, 'doc=', !!doc, 'mode=', opts && opts.mode);
     if (!doc) return;
     // 本机仓优先：图片嵌在光标处、文件追加文尾（嵌入即附件，正文随任务走）；
     // 本机仓不可达时 items 带 dataURL 走 localStorage 老路（fileInserts 为空）。
@@ -1194,12 +1195,26 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       setSelMenu(null);
       return;
     }
+    // 跨块选区（#124）：两端落在不同视图块 → 记下触到的块区间，浮层多给
+    // 「删除选区」（块粒度整段移除）与「复制」（整段 Markdown 源码）。
+    // 单块选区不带 blockRange，浮层与行为维持原样。
+    const elOf = (n) => (n?.nodeType === 3 ? n.parentElement : n);
+    const bA = elOf(sel.anchorNode)?.closest?.('.mdw-lp-block');
+    const bF = elOf(sel.focusNode)?.closest?.('.mdw-lp-block');
+    let blockRange = null;
+    if (bA && bF && bA !== bF && articleRef.current?.contains(bF)) {
+      const na = Number(bA.getAttribute('data-i'));
+      const nf = Number(bF.getAttribute('data-i'));
+      if (Number.isInteger(na) && Number.isInteger(nf) && na !== nf) {
+        blockRange = [Math.min(na, nf), Math.max(na, nf)];
+      }
+    }
     // 锚定**选区末行**（松手处）：跨块/跨行划选以前按整段选区的包围盒居中偏下，
     // 浮层落在离手很远的地方（#92「划线跨行不丝滑」）
     const range = sel.getRangeAt(0);
     const rects = range.getClientRects();
     const last = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
-    placeSelMenu('task', text, last.right - 60, last.bottom + 8);
+    placeSelMenu('task', text, last.right - 60, last.bottom + 8, blockRange ? { blockRange } : {});
   };
 
   const pickAtt = (accept) => {
@@ -1693,14 +1708,9 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           </button>
           <span className="mdw-sbar-grow" />
           {!isDraft && taskRow ? (
-            <span className={`mdw-sbar-stat is-${taskRow.status}`} title="任务状态">
-              {taskRow.status === 'done'
-                ? '已交付'
-                : taskRow.status === 'claimed'
-                  ? '已领取'
-                  : taskRow.status === 'cancelled'
-                    ? '已取消'
-                    : '待领取'}
+            <span className="mdw-sbar-stat" title="任务状态">
+              {/* #121 统一组件：蓝=进行中、绿=已完成、浅灰=待领取、灰虚线=收口 */}
+              <StatusTag t={taskRow} />
             </span>
           ) : null}
           <button
@@ -1743,10 +1753,34 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           closeSelMenu();
         }}
         onCopy={() => {
-          navigator.clipboard?.writeText(lastSel.current || selMenu?.text || '');
+          // 跨块选区（#124）：复制整段块的 Markdown 源码（粘回任务不丢格式）；
+          // 单块选区维持原行为（复制渲染后的文字）。
+          const br = selMenu?.blockRange;
+          let payload = '';
+          if (br && doc) {
+            const blocks = liveBodyBlocks(doc.body);
+            if (br[1] < blocks.length) {
+              payload = blocks
+                .slice(br[0], br[1] + 1)
+                .filter((b) => String(b ?? '').trim())
+                .join('\n\n');
+            }
+          }
+          navigator.clipboard?.writeText(payload || lastSel.current || selMenu?.text || '');
           toast('已复制');
           closeSelMenu();
         }}
+        onDelete={
+          selMenu?.blockRange
+            ? () => {
+                const br = selMenu.blockRange;
+                const ok = editorApiRef.current?.deleteBlockRange?.(br[0], br[1]);
+                if (ok) toast(`已删除 ${br[1] - br[0] + 1} 个块（Ctrl+Z 可撤销）`);
+                else toast('选区已失效');
+                closeSelMenu();
+              }
+            : null
+        }
       />
 
       <input

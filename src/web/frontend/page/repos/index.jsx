@@ -113,16 +113,16 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
         )) : <span className="muted rp-refs-none">—</span>}
       </td>
       <td className="rp-acts">
-        <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</Button>
+        {/* #136：编辑 → 打开 → 更多 → 删除 */}
         <Button small onClick={() => acts.edit(r)}>编辑</Button>
-        <Button small danger onClick={() => acts.del(r)}>删除</Button>
-        {/* #114：低频动作（对齐 remote）收进「更多」下拉，行内只留三个高频按钮。 */}
+        <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</Button>
         <DropdownButton
           small
           label="更多"
           items={[{ key: 'remote', label: '对齐 remote' }]}
           onSelect={(k) => { if (k === 'remote') acts.remote(r); }}
         />
+        <Button small danger onClick={() => acts.del(r)}>删除</Button>
       </td>
     </tr>
   );
@@ -943,20 +943,14 @@ export default function ReposView() {
 
   return (
     <div className="rp-page">
-      {/* 平台头部：标题 + 统计数字 + 主操作。
-          原工具栏动作（看板弹窗的建/导入/导出、参考面板入口、导入导出面板）全部收编到这里。
-          #114：统计 chip 改成**纯数字**（原先是可点的跳转入口，与工具条里的
-          分组管理/参考仓库/文档检索重复）；「文档检索」的入口补进工具条，
-          页面上每个功能只留一个入口。 */}
+      {/* 平台头部：标题 + 主操作。
+          原工具栏动作（看板弹窗的建/导入/导出、参考面板入口、导入导出面板）全部收编到这里；
+          「文档检索」的入口在下面的**列表搜索行**里（贴着搜索框，同一动作不摆第二颗）。
+          #114 统计去交互、#116 去胶囊、#117 用户拍板整行删除——数量本身
+          在表格/分组管理里都看得到，头部不再摆一排报数。 */}
       <div className="page-head">
         <div className="title-block">
           <h2>仓库管理</h2>
-          <div className="rp-stats">
-            <span className="rp-stat">开发仓库 <b>{devRepos.length}</b></span>
-            <span className="rp-stat">参考仓库 <b>{refRepos.length}</b></span>
-            <span className="rp-stat">分组 <b>{boardList.length}</b></span>
-            <span className="rp-stat">文档 <b>{docs.length}</b></span>
-          </div>
         </div>
         <div className="acts">
           <Button variant="primary" onClick={openAdd}>登记仓库</Button>

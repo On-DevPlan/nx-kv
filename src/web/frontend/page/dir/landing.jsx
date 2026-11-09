@@ -11,6 +11,8 @@ import { Icon } from '../../components/icons.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import Pager from '../../components/pager.jsx';
 import { RowMenu } from '../../components/popup/index.jsx';
+import ToolActsBar from '../../components/tool-acts/bar.jsx';
+import { statusTone, statusShort } from '../../components/status-tag/model.js';
 import { titleFromMd } from '../../modules/md/md-parse.js';
 
 function shortTime(v) {
@@ -43,11 +45,12 @@ export default function Landing({
   onProg,
   onMoveTask,      // (t, targetId, 'before'|'after') 拖动排序落盘
   onOpenDag,       // (t) 打开编排编辑器
-  onOpenFlow,      // () 打开可视化编排面板（绿色超链入口）
+  onOpenFlow,      // () 打开可视化编排面板
   onToggleGate,    // (t) 闸门快捷开关
   downstreamOf,    // { [gateTaskId]: number[] } 闸门挡住的后续任务 id
-  onMoreMenu,      // (e) 打开头部「更多 ▾」菜单（已删除任务入口在里面）
-  deletedCount = 0 // 已软删任务数（「更多」按钮角标提示）
+  onDeleted,       // () 打开已删除任务面板（#139 工具编排）
+  onRefs,          // () 打开文档列表右侧栏
+  deletedCount = 0 // 已软删任务数（「更多」角标提示）
 }) {
   const name = isGlobal ? '全局池' : (topic?.name || '目录');
   const path = isGlobal ? '共享池（无固定目录）' : (topic?.cwd || '—');
@@ -154,61 +157,50 @@ export default function Landing({
       {!isGlobal && repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
 
       <div className="mdw-land-acts">
-        <button type="button" className="btn sm primary" onClick={onNew}>＋ 新建页</button>
-        <button
-          type="button"
-          className="btn ghost sm"
-          title="按模板新建一页（末尾「管理模板…」打开任务模板面板）"
-          aria-haspopup="menu"
-          onClick={(e) => onTplMenu?.(e)}
-        >
-          模板 ▾
-        </button>
-        {onImport && (
-          <button type="button" className="btn ghost sm" title="把一个 .md 文件导入成任务" onClick={onImport}>
-            导入
-          </button>
-        )}
-        {onProg && (
-          <button
-            type="button"
-            className="btn ghost sm"
-            title="打开这个目录的进程面板（可拖到任意一边、可浮出）"
-            onClick={onProg}
-          >
-            进程
-          </button>
-        )}
-        {onMoreMenu && (
-          <button
-            type="button"
-            className="btn ghost sm"
-            title={deletedCount > 0 ? `更多操作（含 ${deletedCount} 条已删除任务，可恢复）` : '更多操作'}
-            aria-haspopup="menu"
-            onClick={(e) => onMoreMenu(e)}
-          >
-            更多{deletedCount > 0 ? ` (${deletedCount})` : ''} ▾
-          </button>
-        )}
+        {/* #139：工具区可编排（顺序 / 显隐；隐藏收入「更多」） */}
+        <ToolActsBar
+          kind="dir"
+          className="mdw-land-ta"
+          labels={{
+            more: deletedCount > 0 ? `更多 (${deletedCount})` : '更多',
+            deleted: deletedCount > 0 ? `已删除任务（${deletedCount}）` : '已删除任务',
+          }}
+          titles={{
+            tpl: '按模板新建一页',
+            import: '把一个 .md 文件导入成任务',
+            progress: '打开这个目录的进程面板',
+            orch: '打开可视化编排面板',
+            more: deletedCount > 0 ? `更多操作（含 ${deletedCount} 条已删除任务）` : '更多操作',
+            deleted: '查看并恢复已删除任务',
+            refs: '查看文档 / reference 列表',
+          }}
+          renderers={{
+            tpl: () => (
+              <button
+                type="button"
+                className="btn small ghost"
+                title="按模板新建一页"
+                aria-haspopup="menu"
+                onClick={(e) => onTplMenu?.(e)}
+              >
+                模板 ▾
+              </button>
+            ),
+          }}
+          actions={{
+            new: onNew,
+            import: onImport,
+            progress: onProg,
+            orch: onOpenFlow,
+            deleted: onDeleted,
+            refs: onRefs,
+          }}
+        />
         <span className="mdw-land-count">
           {pendingCount > 0 && <b className="mdw-land-pending">{pendingCount} 待领取</b>}
           {' '}
           {taskCount} 个任务
         </span>
-        {onOpenFlow && (
-          <span
-            className="dag-link mdw-land-orch"
-            role="button"
-            tabIndex={-1}
-            title="打开可视化编排面板：有向连线定顺序（未连线走默认序）、设闸门、加时间目标"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenFlow();
-            }}
-          >
-            编排
-          </span>
-        )}
       </div>
 
       {pickedTasks.length > 0 && (
@@ -344,15 +336,11 @@ export default function Landing({
                     </div>
                   </td>
                   <td>
+                    {/* 状态徽标（#121 统一口径，components/status-tag/model.js）：
+                        等=浅灰 / 跑=进行中蓝 / 完=已完成绿 / 档=收口灰。
+                        t.from 只是来源标记，不再当「在跑」。 */}
                     <span
-                      className={
-                        'st' +
-                        (t.status === 'done' || t.status === 'cancelled'
-                          ? ' done'
-                          : t.status === 'claimed' || t.from
-                            ? ' run'
-                            : '')
-                      }
+                      className={'st ' + statusTone(t)}
                       title={
                         t.status === 'cancelled'
                           ? '已取消：被新任务取代或明确作废，原文留档'
@@ -361,15 +349,7 @@ export default function Landing({
                             : ''
                       }
                     >
-                      {t.status === 'cancelled'
-                        ? '档'
-                        : t.status === 'done'
-                          ? '完'
-                          : t.status === 'claimed'
-                            ? '跑'
-                            : t.from
-                              ? '跑'
-                              : '等'}
+                      {statusShort(t)}
                     </span>
                   </td>
                   <td className="mono faint">{shortTime(t.createdAt)}</td>

@@ -2,7 +2,7 @@
 
 .nx-btn-dd { position: relative; display: inline-flex; }
 
-/* 箭头：文字右侧，随 hover 态轻微下沉示意展开 */
+/* 箭头：文字右侧；打开态轻微下沉示意展开（#138：点击开关，非 hover） */
 .nx-btn-dd-arrow { font-size: 10px; line-height: 1; transform: translateY(0); transition: transform .12s ease; }
 .nx-btn-dd.open .nx-btn-dd-arrow { transform: translateY(1px); }
 

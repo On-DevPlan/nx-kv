@@ -41,8 +41,11 @@ export function crumbsOf(route, ctx = {}) {
       return ['云端总览'];
     case 'overview':
       return ['全部目录总览'];
-    case 'templates':
+    case 'templates': {
+      if (route.mode === 'new') return ['新建模板'];
+      if (route.mode === 'edit') return ['编辑模板'];
       return ['任务模板'];
+    }
     // 文档页（#88）：只画**归属**（仓库 / 项目组）——文档名已经在 DocHead 的
     // 标题行里，面包屑再画一遍就是同一行重复两遍。
     case 'doc': {

@@ -78,8 +78,23 @@ export function routeOfPanel(node) {
       return '#/cloud';
     case 'overview':
       return '#/overview';
-    case 'templates':
+    case 'templates': {
+      // #137：编辑/新建必须把 mode 写进地址，否则选中回调把 hash 压成 #/templates，
+      // 路由 effect 用空 config 重开 → 落到「模板目录」空页，冲掉全屏编辑器。
+      const mode = String(cfg.mode || '');
+      if (mode === 'edit' && cfg.id) {
+        return `#/templates/edit/${encodeURIComponent(cfg.id)}`;
+      }
+      if (mode === 'new') {
+        const parts = [];
+        if (cfg.topic) parts.push(`topic=${encodeURIComponent(cfg.topic)}`);
+        if (Array.isArray(cfg.scope) && cfg.scope.length) {
+          parts.push(`scope=${encodeURIComponent(cfg.scope.join(','))}`);
+        }
+        return parts.length ? `#/templates/new?${parts.join('&')}` : '#/templates/new';
+      }
       return '#/templates';
+    }
     case 'doc': {
       // 文档页（#88）：点文档列表的一行进来，地址要能复现同一篇。
       // 归属（repo / board）一起带上——DocPanel 靠它决定「更多 → 文字列表」列谁的文章。
@@ -145,8 +160,33 @@ export function panelSpecOfRoute(route, ctx = {}) {
       return { component: 'cloud', name: '云端总览', config: {} };
     case 'overview':
       return { component: 'overview', name: '全部目录总览', config: {} };
-    case 'templates':
+    case 'templates': {
+      if (route.mode === 'edit' && route.id) {
+        return {
+          component: 'templates',
+          name: '编辑模板',
+          config: { mode: 'edit', id: String(route.id), name: '', topic: '', scope: [] },
+        };
+      }
+      if (route.mode === 'new') {
+        const scope = String(route.scope || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        return {
+          component: 'templates',
+          name: '新建模板',
+          config: {
+            mode: 'new',
+            id: '',
+            name: '',
+            topic: String(route.topic || ''),
+            scope,
+          },
+        };
+      }
       return { component: 'templates', name: '任务模板', config: {} };
+    }
     case 'doc': {
       // 必须与 routeOfPanel 的 doc 分支**逐字**互逆：config 少一个字段就裂面板
       // （openPanel 按 component+config 去重）。归属字段只在有值时出现。

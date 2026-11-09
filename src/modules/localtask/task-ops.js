@@ -79,16 +79,25 @@ export async function addTask({
   // forkKind 缺省按 comment（评论/随手派生）——reopen 有自己的写入口（task-lifecycle）。
   let forkOf = null; // 解析结果 { key, seq } —— 插入后写链
   let forkKind = '';
+  // 楼数（#122）：schema 语义（v1.sql tasks.round）「派生任务 = 来源任务的 round + 1」。
+  // 以前 add --fork-of 不带 round、落盘默认 1——链上第二轮会显示「1楼」，与 reopen
+  // 写入口（task-lifecycle：新 round = 父 round + 1）不一致。发布时按父任务算好。
+  let forkRound;
   if (rawForkOf !== undefined && rawForkOf !== null && String(rawForkOf).trim() !== '') {
     const ref = resolveForkRef(rawForkOf, key);
     forkOf = { ref };
     forkKind = rawForkKind === 'reopen' ? 'reopen' : 'comment';
+    const at = ref.lastIndexOf(':');
+    const parent = topicsRepo.getTopic(ref.slice(0, at));
+    const prow = parent && (parent.tasks || []).find((x) => Number(x.id) === Number(ref.slice(at + 1)));
+    if (prow) forkRound = (Number(prow.reopenCount) || 0) + 1 + 1; // 父 round(=reopenCount+1) + 1
   }
   const taskDraft = {
     // 不写 id：真实编号由 insertTask 在事务内分配，避免事务外读号撞车
     text: body,
     status: 'pending',
     timegoal,
+    round: forkRound,
     blockBy: normalizeBlockBy(rawBlockBy, provisionalId),
     blocksFollowing: !!blocksFollowing,
     forkOf,

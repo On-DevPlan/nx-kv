@@ -13,6 +13,7 @@ import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
 import { GLOBAL_KEY, isGroupTask } from '../../modules/board/board-view.js';
 import { parseFrontmatter, taskToProgress } from '../../modules/md/md-parse.js';
+import { hitQuery } from '../../modules/md/progress-search.js';
 import { closeRightSidebar, findOpenPanel } from '../../workspace.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
@@ -35,6 +36,10 @@ function elapsedOf(card, now) {
   if (!Number.isFinite(start)) return '—';
   return fmtElapsed(now - start);
 }
+
+// 搜索匹配在 modules/md/progress-search.js（纯函数、可单测）：
+// #127 编号等值 + 标题模糊；#129 验收反馈补成——纯数字还吃编号前缀
+// （12 → #120-#129）与标题逐位通配（12 ≡ 1*2），带 * 的按段匹配。
 
 
 export default function ProgressPanel({
@@ -121,6 +126,9 @@ export default function ProgressPanel({
   // 项目筛选（组模式）：'' = 全部；值为 projectName。会话内状态，不持久化——
   // 筛选是临时视角；切组后旧筛选不在新组的项目列表里，派生时自动回落「全部」。
   const [projFilter, setProjFilter] = useState('');
+  // 搜索（#127）：按编号或标题过滤卡片。会话内状态；统计/列表/全选随筛选范围走
+  //（与 projFilter 同一语义——面板上看到的基数就是操作的基数）。
+  const [q, setQ] = useState('');
 
   const projects = useMemo(() => {
     const seen = new Map();
@@ -131,14 +139,21 @@ export default function ProgressPanel({
   }, [groupCards]);
 
   const cards = useMemo(() => {
-    if (group) {
-      const active = projFilter && projects.includes(projFilter) ? projFilter : '';
-      return groupCards.filter((c) => !active || c.projectName === active);
-    }
-    const list = tasks.map(taskToProgress);
-    const order = { run: 0, wait: 1, done: 2 };
-    return list.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
-  }, [group, groupCards, projFilter, projects, tasks]);
+    const base = group
+      ? (() => {
+          const active = projFilter && projects.includes(projFilter) ? projFilter : '';
+          return groupCards.filter((c) => !active || c.projectName === active);
+        })()
+      : (() => {
+          const list = tasks.map(taskToProgress);
+          const order = { run: 0, wait: 1, done: 2 };
+          return list.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+        })();
+    // #127/#129 搜索：编号（等值 + 前缀）与标题（模糊 + 逐位通配）——规则见
+    // modules/md/progress-search.js；空串不筛
+    const qs = q.trim().toLowerCase();
+    return qs ? base.filter((c) => hitQuery(c, qs)) : base;
+  }, [group, groupCards, projFilter, projects, tasks, q]);
 
   // 选中的任务可能已被别处删掉 → 只留还活着的编号（否则「删除所选」带着死编号）
   const cidOf = (c) => (group ? c.key : c.id); // 组模式 = 复合键,与 picked Set 同口径
@@ -271,6 +286,29 @@ export default function ProgressPanel({
           </button>
         )}
       </div>
+      {(group ? groupCards.length > 0 : tasks.length > 0) && (
+        <div className="mdw-prog-search">
+          <Icon name="search" size={13} />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="搜索编号或标题（如 12 → #12、#120-129；1*2 通配）"
+            spellCheck="false"
+            aria-label="按编号或标题搜索任务"
+          />
+          {q && (
+            <button
+              type="button"
+              className="mdw-prog-qclear"
+              aria-label="清空搜索"
+              title="清空搜索"
+              onClick={() => setQ('')}
+            >
+              <Icon name="x" size={11} />
+            </button>
+          )}
+        </div>
+      )}
       {group && projects.length > 1 && (
         <div className="mdw-prog-filters" role="tablist" aria-label="按项目筛选进程卡">
           <button
@@ -317,7 +355,11 @@ export default function ProgressPanel({
       <div className="mdw-prog-list">
         {!cards.length && (
           <div className="mdw-prog-empty">
-            {group ? (
+            {q.trim() ? (
+              <>
+                没有匹配的卡片<br />试试编号（如 127）或标题关键词
+              </>
+            ) : group ? (
               <>
                 本组成员项目还没有任务<br />任务会随成员队列自动聚到这里
               </>
@@ -361,6 +403,14 @@ export default function ProgressPanel({
                     </div>
                     <div className="sub">{c.detail}</div>
                   </div>
+                  {/* 任务编号（#127）：卡片右侧 #id——用户口径「楼数」= #xxx 这个
+                      编号（#122 曾按重开轮次渲染「N楼」，反馈不对已改） */}
+                  <span
+                    className="mdw-tcard-num"
+                    title={`任务编号 #${c.taskId ?? c.id}`}
+                  >
+                    #{c.taskId ?? c.id}
+                  </span>
                   <span
                     className={`el ${c.status}`}
                     title="从领取时刻起计；待领取与已完成回填不计时间"

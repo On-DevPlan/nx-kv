@@ -8,7 +8,7 @@
 import { Suspense, lazy } from 'react';
 import { useApp } from './app-context.jsx';
 import SidebarPanel from './components/sidebar/panel.jsx';
-import { openFloatingPanel } from './workspace.js';
+import { openFloatingPanel, openPanel } from './workspace.js';
 
 const DirPanel = lazy(() => import('./page/dir/index.jsx'));
 const PagePanel = lazy(() => import('./page/dir/task.jsx'));
@@ -138,8 +138,13 @@ export const PANELS = {
   repos: { title: '仓库管理', render: () => wrap(<ReposView />) },
   cloud: { title: '云端总览', render: () => wrap(<TodoView />) },
   overview: { title: '全部目录总览', render: () => <OverviewPanel /> },
-  // 任务模板：单例面板（config 恒空，openPanel 会复用已有页签）
-  templates: { title: '任务模板', render: () => wrap(<TemplatePanel />) },
+  // 任务模板：编辑宿主（#135）——列表在设置卡片；config 带 mode/id/scope
+  templates: {
+    title: '任务模板',
+    render: (cfg, ctx) => wrap(
+      <TemplatePanel config={cfg} model={ctx && ctx.model} tabId={ctx && ctx.tabId} />
+    ),
+  },
   // 文档：config.docId 寻址（可 JSON 序列化 → openPanel 按 config 去重复用页签）
   doc: {
     title: '文档',
@@ -184,8 +189,27 @@ export function openSettingsPanel(model) {
   return openFloatingPanel(model, { component: 'settings', name: '设置', config: {} });
 }
 
+/**
+ * 打开模板全屏编辑（#135）。管理列表在设置；这里只承载 MdPanes。
+ * @param {object} model
+ * @param {{ mode?:'edit'|'new', id?:string, name?:string, scope?:string[], topic?:string }} opts
+ */
+export function openTemplateEditor(model, opts = {}) {
+  if (!model) return null;
+  const mode = opts.mode || (opts.id ? 'edit' : 'new');
+  const config = {
+    mode,
+    id: opts.id || '',
+    name: opts.name || '',
+    topic: opts.topic || '',
+    scope: Array.isArray(opts.scope) ? opts.scope : [],
+  };
+  const tabName = mode === 'new' ? '新建模板' : (opts.name || '编辑模板');
+  return openPanel(model, { component: 'templates', name: tabName, config, location: 'center' });
+}
+
 /** 面板类型清单（总览页/文档里的固定顺序；旧「＋面板抽屉」已删，面板打开走侧栏树与路由） */
-export const PANEL_ORDER = ['overview', 'group', 'repos', 'cloud', 'templates'];
+export const PANEL_ORDER = ['overview', 'group', 'repos', 'cloud'];
 
 /**
  * FlexLayout 的 factory：只认 component 字符串，参数从 config 取。

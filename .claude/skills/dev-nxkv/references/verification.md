@@ -5,7 +5,7 @@
 ## 1. 固定检查项（交付前全跑）
 
 ```powershell
-pnpm lint        # eslint . && check-tdz --all && check-schema-decisions
+pnpm lint        # eslint . && node scripts/check-tdz.mjs --all
 pnpm test:unit   # node --test tests/unit/*.test.mjs
 pnpm test:smoke  # node tests/smoke.mjs（假后端 + 临时配置）
 pnpm build       # vite build && node scripts/link-local.mjs --auto
@@ -70,7 +70,7 @@ node bin/cli.mjs ...
 
 ## 5. 数据库改动验证
 
-1. 改 schema：新增 `src/core/db/migrations/vN+1.sql`，在 `migrations/index.js` 登记边，**不改已发布迁移文件**。
+1. 改 schema：新增 `src/core/db/migrations/vN+1.sql`，在 `migrations/index.js` 登记边，**不改已发布快照的语义**。
 2. 先演练：
 
 ```powershell

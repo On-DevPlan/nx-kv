@@ -14,26 +14,12 @@ import { Icon } from '../icons.jsx';
 import { useToast } from '../toast/index.jsx';
 import { taskLabel } from './model.js';
 import { ensureQueueAndGo } from './queue-nav.js';
+import { statusTone, statusShort } from '../status-tag/model.js';
 import { sortTasksForDisplay, isGroupTask } from '../../modules/board/board-view.js';
 
-// 任务行的单字状态徽标（侧栏太窄，只放一个字）：
-//   完 = done（交付完成）/ 跑 = claimed 或从云端迁入 / 档 = cancelled / 等 = pending
-// 词表见 src/shared/task-status.js（这里只做展示取舍，不做状态判断）。
-function taskStatusShort(t) {
-  if (t.status === 'done') return '完';
-  if (t.status === 'claimed') return '跑';
-  if (t.status === 'cancelled') return '档';
-  return t.from ? '跑' : '等';
-}
-
-// 徽标配色跟随状态（#76）：等=蓝、跑=青绿、完=灰、档=更淡的灰。
-// 以前四个字全是同一种青绿，扫一眼分不出队列里谁在等我、谁在跑、谁已经收口。
-function taskStatusTone(t) {
-  if (t.status === 'done') return 'done';
-  if (t.status === 'cancelled') return 'cancel';
-  if (t.status === 'claimed' || t.from) return 'run';
-  return 'wait';
-}
+// 任务行的单字状态徽标（侧栏太窄，只放一个字）：等=待领取 / 跑=进行中 / 完=已完成 / 档=收口。
+// 文案与配色的映射走 components/status-tag/model.js（#121 全应用唯一口径：
+// 等=浅灰、跑=蓝 --doing、完=绿 --live；t.from 只是来源标记，不参与状态判断）。
 import Pager, { usePager } from '../pager.jsx';
 
 const PAGE_SIZE = 12; // 每页条数（与旧 limit 同值，但不再截断——有翻页出口）
@@ -70,8 +56,8 @@ export default function TaskChildren({ row, onNavigate, refreshLocal, limit = PA
         >
           <span className="gico"><Icon name="list" size={12} /></span>
           <span className="nm">{taskLabel(t)}</span>
-          <span className={`cnt ${taskStatusTone(t)}`}>
-            {taskStatusShort(t)}
+          <span className={`cnt ${statusTone(t)}`}>
+            {statusShort(t)}
           </span>
         </button>
       ))}

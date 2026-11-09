@@ -81,7 +81,35 @@ function routeFromHash() {
       boardName: name,
     };
   }
-  const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos', 'templates'];
+  // 任务模板编辑（#137）：#/templates/new[?scope=&topic=] / #/templates/edit/<id>
+  // 必须带 mode，否则会与空 config 的「目录页」互相冲掉全屏编辑器。
+  if (path === 'templates' || path.startsWith('templates/')) {
+    const rest = path === 'templates' ? '' : path.slice('templates/'.length);
+    if (rest.startsWith('edit/')) {
+      return {
+        view: 'templates',
+        key: '',
+        task: '',
+        mode: 'edit',
+        id: decodeURIComponent(rest.slice(5)),
+        topic: '',
+        scope: '',
+      };
+    }
+    if (rest === 'new') {
+      return {
+        view: 'templates',
+        key: '',
+        task: '',
+        mode: 'new',
+        id: '',
+        topic: qs.get('topic') || '',
+        scope: qs.get('scope') || '',
+      };
+    }
+    return { view: 'templates', key: '', task: '', mode: '', id: '', topic: '', scope: '' };
+  }
+  const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos'];
   if (KNOWN.includes(path)) {
     // 全局池的页：#/global?task=1 —— 全局池的子任务表与页都在同一路由下
     return { view: path === 'todo' ? 'cloud' : path, key: path === 'global' ? '__GLOBAL__' : '', task: path === 'global' ? task : '' };
@@ -340,7 +368,7 @@ export default function App() {
     if (!m) return;
     const spec = panelSpecOfRoute(route, specCtxRef.current);
     if (!spec) return;
-    const routeSig = `${route.view}|${route.key}|${route.task}|${route.repoKey || ''}|${route.boardKey || ''}`;
+    const routeSig = `${route.view}|${route.key}|${route.task}|${route.repoKey || ''}|${route.boardKey || ''}|${route.mode || ''}|${route.id || ''}|${route.topic || ''}|${route.scope || ''}`;
     const prev = openedRef.current;
     if (prev.route === routeSig && prev.key === specCtxKey) return;
     openedRef.current = { route: routeSig, key: specCtxKey };
@@ -401,6 +429,10 @@ export default function App() {
       && prev.repoKey === next.repoKey
       && prev.boardKey === next.boardKey
       && prev.boardName === next.boardName
+      && prev.mode === next.mode
+      && prev.id === next.id
+      && prev.topic === next.topic
+      && prev.scope === next.scope
         ? prev
         : next
     ));

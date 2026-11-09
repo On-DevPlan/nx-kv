@@ -7,7 +7,7 @@
 选型理由（与 `src/core/instruction-template.js` 和 `docs/research/template-engine-choice.md` 一致）：
 
 - **同步渲染**：`compile()` 产出的模板函数是纯同步的；`wait/get` 交付链不需要 async 渲染。
-- **原生控制结构**：引擎原生支持 `{{#if}}` / `{{#each}}`（以及 `unless` / `@index`），但本项目保存校验只放行 `if` / `each`，见 §3。
+- **原生控制结构**：`{{#if}}` / `{{#unless}}` / `{{#each}}`（含 `{{else}}`、`{{@index}}`、`{{@first}}`），列表不需要自定义 helper。
 - **可关 HTML 转义**：提示词是给 agent 的纯文本，`noEscape: true`，不会把 `&`、`<`、`"` 变成实体。
 - **无额外运行时依赖**：`handlebars` 自身只带内部小包，ESM 直接可用；不需要模板编译器服务。
 - **默认禁止原型链取值**，4.7 有持续维护与 CVE 跟进。
@@ -34,7 +34,7 @@
 共享 ctx 形状（所有区块共用，不存在「某模块自带变量域」）：
 
 ```text
-{ task, repo, group, groups, attach, goal, ext, getloop, source, summary, cwd, name, params }
+{ task, repo, group, attach, goal, ext, getloop, source, summary, cwd, name, params }
 ```
 
 - `task`：`{ id, text }`，`text` 是正文原文。

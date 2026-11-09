@@ -1,10 +1,19 @@
-// MD 工作台工具区：头部只留「时间目标勋章 | 新任务 · 提交 · 更多」。
-// #78：头部按钮过多——次级动作一律收进「更多」菜单（含进程/原文/快捷键）；
-// MD 格式不再占头部（划选浮条 + 行首 / 命令 + Ctrl/⌘B 等快捷键已覆盖）；
-// 时间目标设置同样在「更多」里，外部只以勋章回显（goalBadge，点击展开菜单）。
-// #47：撤掉「阅读」模式；源码模式偶尔用，入口也收进「更多」——菜单按 编辑/任务/查看 分层。
+// MD 工作台工具区：头部默认「时间目标勋章 | 新任务 · 提交 · 更多」。
+// #78：次级动作收进「更多」；#143：与 group/dir 同套 tool-acts 编排（顺序/显隐）。
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { inMoreOf, metaOf, onBarOf } from '../tool-acts/modules.js';
+import { useToolActsLayout } from '../tool-acts/use-layout.js';
+import ToolActsLayoutPanel from '../tool-acts/layout-panel.jsx';
+import '../tool-acts/style.css';
+
+const KIND = 'task';
+
+const MENU_GROUPS = [
+  { id: 'edit', label: '编辑' },
+  { id: 'task', label: '任务' },
+  { id: 'view', label: '查看' },
+];
 
 export function useMenu() {
   const [open, setOpen] = useState(false);
@@ -79,65 +88,87 @@ export default function ToolBar({
   goalMenu,
 }) {
   const actMore = useMenu();
+  const { layout, setLayout } = useToolActsLayout(KIND);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   useEffect(() => {
     actMore.setOpen(false);
   }, [mode]);
 
-  // 「更多」收拢一切次级动作（#78）：头部只留 新任务 / 提交为任务。
-  // #47：按「编辑 / 任务 / 查看」三层分组——同一类动作排在一起，组间有标题与分隔线，
-  // 十几条平铺的菜单没人能扫完。
-  const modeItem = onMode && {
-    id: 'mode',
-    label: mode === 'edit' ? '返回实时预览' : '源码模式',
-    hint: mode === 'edit' ? '当前' : '',
-    run: () => onMode(mode === 'edit' ? 'split' : 'edit'),
+  // 当前页可用动作：无 handler 的不渲染（草稿态会藏掉 clone/fork/delete 等）
+  const specs = {
+    new: onNew && { label: '新任务', run: onNew },
+    submit: { label: submitLabel || '提交', run: onSubmit, primary: true },
+    mode: onMode && {
+      label: mode === 'edit' ? '返回实时预览' : '源码模式',
+      hint: mode === 'edit' ? '当前' : '',
+      run: () => onMode(mode === 'edit' ? 'split' : 'edit'),
+    },
+    img: onImg && { label: '插入图片', run: onImg },
+    att: onAtt && { label: '添加附件', run: onAtt },
+    import: onImport && mode !== 'split' && { label: '导入', run: onImport },
+    draft: onDraft && mode !== 'split' && { label: '存草稿', run: onDraft },
+    chain: onChain && { label: '任务链', run: onChain },
+    clone: onClone && { label: '克隆任务', run: onClone },
+    fork: onFork && { label: 'Fork 任务', run: onFork },
+    complete: onComplete && { label: '标为完成', run: onComplete },
+    'cancel-task': onCancelTask && { label: '取消任务', run: onCancelTask, danger: true },
+    mark: showMark && onMark && { label: '评论', run: onMark },
+    delete: onDelete && { label: '删除', run: onDelete, danger: true },
+    preview: onPreview && { label: '预览提示词', run: onPreview },
+    overview: onOverview && { label: '总览', run: onOverview },
+    prog: onProg && { label: '进程', run: onProg },
+    source: onSource && { label: '原文', run: onSource },
+    shortcuts: onShortcuts && { label: '快捷键', run: onShortcuts },
   };
-  const menuGroups = [
-    {
-      id: 'edit',
-      label: '编辑',
-      items: [
-        modeItem,
-        // #76：附件入口放进「更多」，预览态也能找到
-        onImg && { id: 'img', label: '插入图片', run: onImg },
-        onAtt && { id: 'att', label: '添加附件', run: onAtt },
-        mode !== 'split' && { id: 'import', label: '导入', run: onImport },
-        mode !== 'split' && { id: 'draft', label: '存草稿', run: onDraft },
-      ].filter(Boolean),
-    },
-    {
-      id: 'task',
-      label: '任务',
-      items: [
-        // #77：任务链进「更多」弹窗入口（置顶，别埋在删除旁边）
-        onChain && { id: 'chain', label: '任务链', run: onChain },
-        // 克隆（#70）：内容快速复制成新任务，不建派生链（与评论/反馈的链式派生区分）
-        onClone && { id: 'clone', label: '克隆任务', run: onClone },
-        // Fork（#67）：同样复制正文，但挂到源任务链下——评论/反馈链不丢
-        onFork && { id: 'fork', label: 'Fork 任务', run: onFork },
-        // #75：待领取任务用户自己已经做完/不做了——直接收口，不要求先领取
-        onComplete && { id: 'complete', label: '标为完成', run: onComplete },
-        onCancelTask && { id: 'cancel-task', label: '取消任务', run: onCancelTask, danger: true },
-        showMark && { id: 'mark', label: '评论', run: onMark },
-        onDelete && { id: 'delete', label: '删除', run: onDelete, danger: true },
-      ].filter(Boolean),
-    },
-    {
-      id: 'view',
-      label: '查看',
-      items: [
-        // 预览：**看 agent 到底会收到什么**（任务 #65）。不是「预览渲染效果」，
-        // 而是把交付链路（组上下文 / 收尾指令 / check 指令 / 附件 / ack / 持续 get）
-        // 拼出来的原文摆出来——模板可配之后，这是唯一可信的观测口。
-        onPreview && { id: 'preview', label: '预览提示词', run: onPreview },
-        { id: 'overview', label: '总览', run: onOverview },
-        { id: 'prog', label: '进程', run: onProg },
-        onSource && { id: 'source', label: '原文', run: onSource },
-        onShortcuts && { id: 'shortcuts', label: '快捷键', run: onShortcuts },
-      ].filter(Boolean),
-    },
-  ].filter((g) => g.items.length);
+
+  const available = (id) => id === 'more' || !!specs[id];
+
+  const barItems = layout.filter((x) => onBarOf(KIND, x) && available(x.id));
+  const moreItems = layout.filter((x) => inMoreOf(KIND, x) && available(x.id));
+
+  const runItem = (id) => {
+    specs[id]?.run?.();
+    actMore.setOpen(false);
+  };
+
+  const renderBarBtn = (id) => {
+    if (id === 'more') {
+      return (
+        <div className="mdw-actions-more" ref={actMore.ref} key="more">
+          <button
+            type="button"
+            className={`btn ghost sm${actMore.open ? ' on' : ''}`}
+            title="更多操作"
+            aria-expanded={actMore.open}
+            aria-haspopup="menu"
+            onClick={(e) => openMenuAt(actMore, e, 'right')}
+          >
+            更多
+          </button>
+        </div>
+      );
+    }
+    const s = specs[id];
+    if (!s) return null;
+    return (
+      <button
+        key={id}
+        type="button"
+        className={s.primary ? 'btn sm primary' : 'btn ghost sm'}
+        onClick={() => runItem(id)}
+      >
+        {s.label}
+      </button>
+    );
+  };
+
+  // 更多菜单：按 menuGroup 分层（#47）；无分组项直接平铺
+  const groupedMore = MENU_GROUPS.map((g) => ({
+    ...g,
+    items: moreItems.filter((x) => metaOf(KIND, x.id).menuGroup === g.id),
+  })).filter((g) => g.items.length);
+  const ungroupedMore = moreItems.filter((x) => !metaOf(KIND, x.id).menuGroup);
 
   return (
     <div className="mdw-toolbar">
@@ -158,48 +189,74 @@ export default function ToolBar({
       </div>
 
       <div className="mdw-actions" role="group" aria-label="任务操作">
-        {onNew && (
-          <button type="button" className="btn ghost sm" onClick={onNew}>新任务</button>
-        )}
-        <button type="button" className="btn sm primary" onClick={onSubmit}>{submitLabel}</button>
-        <div className="mdw-actions-more" ref={actMore.ref}>
-          <button
-            type="button"
-            className={`btn ghost sm${actMore.open ? ' on' : ''}`}
-            title="更多操作"
-            aria-expanded={actMore.open}
-            aria-haspopup="menu"
-            onClick={(e) => openMenuAt(actMore, e, 'right')}
-          >
-            更多
-          </button>
-          <MenuPortal menu={actMore} className="mdw-act-menu">
-            {/* 时间目标编辑区（#78）摆菜单顶部：点输入不关菜单（useMenu 判定在 menuRef 内） */}
-            {goalMenu}
-            {goalMenu && <div className="mdw-fmt-menu-sep" role="separator" />}
-            {menuGroups.map((g) => (
-              <div className="mdw-fmt-menu-group" role="group" aria-label={g.label} key={g.id}>
-                <div className="mdw-fmt-menu-cap">{g.label}</div>
-                {g.items.map((a) => (
+        {barItems.map((x) => renderBarBtn(x.id))}
+
+        <MenuPortal menu={actMore} className="mdw-act-menu">
+          {goalMenu}
+          {goalMenu && <div className="mdw-fmt-menu-sep" role="separator" />}
+          {groupedMore.map((g) => (
+            <div className="mdw-fmt-menu-group" role="group" aria-label={g.label} key={g.id}>
+              <div className="mdw-fmt-menu-cap">{g.label}</div>
+              {g.items.map((x) => {
+                const s = specs[x.id];
+                const danger = s?.danger || metaOf(KIND, x.id).danger;
+                return (
                   <button
-                    key={a.id}
+                    key={x.id}
                     type="button"
                     role="menuitem"
-                    className={'mdw-fmt-menu-item' + (a.danger ? ' danger' : '')}
-                    onClick={() => {
-                      a.run?.();
-                      actMore.setOpen(false);
-                    }}
+                    className={'mdw-fmt-menu-item' + (danger ? ' danger' : '')}
+                    onClick={() => runItem(x.id)}
                   >
-                    {a.label}
-                    {a.hint ? <span className="hint">{a.hint}</span> : null}
+                    {s?.label || metaOf(KIND, x.id).label || x.id}
+                    {s?.hint ? <span className="hint">{s.hint}</span> : null}
                   </button>
-                ))}
-              </div>
-            ))}
-          </MenuPortal>
-        </div>
+                );
+              })}
+            </div>
+          ))}
+          {ungroupedMore.map((x) => {
+            const s = specs[x.id];
+            return (
+              <button
+                key={x.id}
+                type="button"
+                role="menuitem"
+                className={'mdw-fmt-menu-item' + (s?.danger || metaOf(KIND, x.id).danger ? ' danger' : '')}
+                onClick={() => runItem(x.id)}
+              >
+                {s?.label || metaOf(KIND, x.id).label || x.id}
+              </button>
+            );
+          })}
+          <div className="mdw-fmt-menu-sep" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="mdw-fmt-menu-item"
+            onClick={() => {
+              actMore.setOpen(false);
+              setPanelOpen(true);
+            }}
+          >
+            自定义工具栏…
+          </button>
+        </MenuPortal>
       </div>
+
+      {panelOpen && createPortal(
+        <div className="ta-panel-mask" onClick={() => setPanelOpen(false)}>
+          <div className="ta-panel-wrap" onClick={(e) => e.stopPropagation()}>
+            <ToolActsLayoutPanel
+              kind={KIND}
+              layout={layout}
+              setLayout={setLayout}
+              onClose={() => setPanelOpen(false)}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

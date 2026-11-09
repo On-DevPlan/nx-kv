@@ -188,3 +188,52 @@ test('builtin 永远在场：四个类目的内置都在（seed 于 bootstrap）
     '任务模板内置一批可选骨架，不是单一空壳'
   );
 });
+
+// ---- 可见域（#128）走 action 层的回归：强转不许把数组压掉 ----
+//
+// 这条锁的是 runtime/spec.js 的 coerceOne：scope 曾声明成 type:'string'，
+// 于是 String([]) === '' ——「把可见域清空」被静默当成「没传」，界面上
+// 点「关全局」看着没反应。scope 的值本来就是数组/JSON 串，flag 必须是 raw。
+test('action 层：scope 传数组不被强转吞掉（清空可见域要真的写进去）', async () => {
+  const { applySpec } = await import('../../src/runtime/spec.js');
+  const mod = await import('../../src/modules/templates/index.js');
+  const updateAction = mod.default.actions.find((a) => a.id === 'templates.update');
+  const addAction = mod.default.actions.find((a) => a.id === 'templates.add');
+
+  const a = await addAction.run(applySpec(addAction, { name: '域测试', body: '# 域测试' }));
+  assert.deepEqual(a.template.scope, [], '新建无 topic/scope 时不默认全局（#131）');
+  const ag = await addAction.run(applySpec(addAction, { name: '显式全局', body: '# g', scope: ['*'] }));
+  assert.deepEqual(ag.template.scope, ['*'], '显式 --scope * 才全局');
+
+  // 数组形态（HTTP body）：条目与空数组都要原样活到 action 里
+  const ctx1 = applySpec(updateAction, { id: a.template.id, scope: ['topic:abc'] });
+  assert.deepEqual(ctx1.scope, ['topic:abc'], '数组 scope 不能被 String() 压成串');
+  const r1 = await updateAction.run(ctx1);
+  assert.deepEqual(r1.template.scope, ['topic:abc']);
+
+  const ctx2 = applySpec(updateAction, { id: a.template.id, scope: [] });
+  assert.deepEqual(ctx2.scope, [], '空数组不能变成空串（空串=没传）');
+  const r2 = await updateAction.run(ctx2);
+  assert.deepEqual(r2.template.scope, [], '清空可见域要真的落库');
+
+  // 字符串形态（CLI）：JSON 数组串与逗号短写都能解析
+  const ctx3 = applySpec(updateAction, { id: a.template.id, scope: '["*","topic:abc"]' });
+  const r3 = await updateAction.run(ctx3);
+  assert.deepEqual(r3.template.scope, ['*', 'topic:abc']);
+  const ctx4 = applySpec(updateAction, { id: a.template.id, scope: 'topic:abc,repo:xyz' });
+  const r4 = await updateAction.run(ctx4);
+  assert.deepEqual(r4.template.scope, ['topic:abc', 'repo:xyz']);
+});
+
+// #132：组本身是可见主体——只传 group 也能按域过滤（与 topic/repo 平级）
+test('list 可按 group 过滤（项目组是独立可见主体）', async () => {
+  const { listTemplatesForTopic, addTemplate } = await import('../../src/modules/templates/service.js');
+  const g = await addTemplate({ name: '组专属', body: '# 组', scope: ['group:group/nx'] });
+  const other = await addTemplate({ name: '别的组', body: '# 别', scope: ['group:group/other'] });
+  const hit = await listTemplatesForTopic({ group: 'group/nx' });
+  assert.equal(hit.scoped, true);
+  assert.ok(hit.templates.some((t) => t.id === g.template.id), 'group/nx 应看到组专属');
+  assert.ok(!hit.templates.some((t) => t.id === other.template.id), '不应看到别的组');
+  // 全局模板对任何上下文仍可见
+  assert.ok(hit.templates.some((t) => Array.isArray(t.scope) && t.scope.includes('*')));
+});

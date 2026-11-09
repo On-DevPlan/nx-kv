@@ -5,6 +5,7 @@
 // md-parse 的 NEW_TEMPLATE（与后端内置模板同构），行为与旧版一致。
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
+import { useApp } from '../../app-context.jsx';
 import { NEW_TEMPLATE, NEW_TEMPLATE_VALUES } from './md-parse.js';
 import { renderTemplateBody } from '../prompts/placeholders.js';
 
@@ -40,8 +41,19 @@ export function useTemplates() {
     return renderTemplateBody(t.body, { ...NEW_TEMPLATE_VALUES, ...(t.values || {}) });
   }, [state]);
 
-  const add = useCallback(async (name, body, setDefault) => {
-    const d = await api('/api/templates', { method: 'POST', body: { name, body, setDefault } });
+  const add = useCallback(async (name, body, setDefault, opts = {}) => {
+    // opts.topic（#128）：从主题页新建时带上——服务端默认把可见域设为该主题；
+    // opts.scope（#131）：显式可见域（不传且无 topic = 未配置，不再默认全局）。
+    const d = await api('/api/templates', {
+      method: 'POST',
+      body: {
+        name,
+        body,
+        setDefault,
+        ...(opts.topic ? { topic: opts.topic } : {}),
+        ...(opts.scope !== undefined ? { scope: opts.scope } : {}),
+      },
+    });
     await refetch();
     return d;
   }, [refetch]);
@@ -77,4 +89,55 @@ export function useTemplates() {
     update,
     setDefault,
   };
+}
+
+/**
+ * 按可见上下文列可用模板（#128/#132）：GET /api/templates?topic=&group=&repo=
+ *
+ * 入参兼容旧写法（字符串 = topic key），也接受 { topic, group, repo }。
+ * 三把钥匙与 `*` 平级；组页可只传 group。
+ *
+ * 三档退化，菜单永远有东西可显示：
+ *   · 三钥皆空 → templates=null，调用方回落全量；
+ *   · 旧 serve 不认识参数 → 无 scoped 字段 → 原样全量；
+ *   · 请求失败 → templates=null，调用方回落全量。
+ */
+export function useTemplatesFor(topicOrOpts) {
+  const opts =
+    topicOrOpts && typeof topicOrOpts === 'object'
+      ? topicOrOpts
+      : { topic: topicOrOpts || '' };
+  const topic = String(opts.topic || '').trim();
+  const group = String(opts.group || '').trim();
+  const repo = String(opts.repo || '').trim();
+  const [state, setState] = useState({ templates: null, scoped: false });
+  // 全量模板增删改后同步刷 scoped（#135：新建走全屏编辑，不再就地 refetch）
+  const app = useApp() || {};
+  const globalList = (app.tpl && app.tpl.templates) || null;
+  const globalSig = Array.isArray(globalList)
+    ? globalList.map((t) => `${t.id}:${(t.scope || []).join(',')}`).join('|')
+    : '';
+
+  const refetch = useCallback(async () => {
+    if (!topic && !group && !repo) {
+      setState({ templates: null, scoped: false });
+      return;
+    }
+    try {
+      const q = new URLSearchParams();
+      if (topic) q.set('topic', topic);
+      if (group) q.set('group', group);
+      if (repo) q.set('repo', repo);
+      const d = await api(`/api/templates?${q}`);
+      setState({ templates: d.templates || [], scoped: !!d.scoped });
+    } catch {
+      setState({ templates: null, scoped: false });
+    }
+  }, [topic, group, repo]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch, globalSig]);
+
+  return { templates: state.templates, scoped: state.scoped, refetch };
 }

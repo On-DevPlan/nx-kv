@@ -19,7 +19,7 @@
 |---|---|---|
 | 引入 JSON 文件/原子 rename/文件锁做业务数据 | 沿用改造前的存储思路 | 本项目唯一业务数据源是 SQLite；文件只存附件/文档内容 |
 | 测试把数据写进用户真实库 | 测试未隔离库路径 | 用 `tests/support/test-store.mjs` 临时库；它断言路径必须在 tmp 下 |
-| 迁移后真实历史数据丢失 | 只适配夹具格式 | 先 `db backup`，再 `db migrate --dry-run` 演练；覆盖旧 JSON、旧 key、软删行、跨队列依赖 |
+| 迁移后真实历史数据丢失 | 只适配夹具格式 | 迁移前跑 `db backup --dry-run`/`db migrate --dry-run`，覆盖旧 JSON、旧 key、软删行、跨队列依赖 |
 | 软删语义矛盾 | 部分路径软删、部分硬删；查询漏过滤 | 全链路统一 `deleted_at IS NULL`；软删后同 key 再建应是恢复同一行，不是两行抢 UNIQUE |
 | 任务依赖指向错误任务 | 把队列内 `seq` 写进 `task_deps.dep_id` | `dep_id` 必须是全局 `tasks.id`；插入时按 `(topic_id, seq)` 解析后再写，并与插入同事务 |
 | 并发新增撞唯一索引 | 事务外预分配编号 | 编号分配 + 插入放在同一事务（`topics.next_seq` 只增不减） |
@@ -33,8 +33,8 @@
 | 症状 | 根因 | 正确做法 |
 |---|---|---|
 | 改了模板但领取结果没变 | 改的是 `templates` 表（任务正文模板），或没选中该区块的生效模板 | 提示词改对应区块的模板列表，并确认该块当前生效项 |
-| 出现 `[object Object]` | 旧模板把列表变量当字符串插值 | 列表一律 `{{#each}}`；旧占位符不迁移，改写成 `{{#if}}` / `{{#each}}` |
-| 恢复出自研解析器/区块对象 | 参考了旧文档或旧代码 | 只保留「共享 ctx + 字符串模板 + 薄编排」；`items/wrapper/{{block.content}}` 已删除，无运行期兼容 |
+| 出现 `[object Object]` | 旧模板把列表变量当字符串插值 | 列表用 `{{#each}}`；旧纯文本占位符交给 `migrateLegacyPlaceholders` 迁移 |
+| 恢复出自研解析器/区块对象 | 参考了旧文档或旧代码 | 只保留「共享 ctx + 字符串模板 + 薄编排」；`items/wrapper/{{block.content}}` 仅迁移兼容 |
 | 每个区块又搞一套变量域 | 沿用了旧「区块对象」思路 | 所有区块共用 `buildDeliveryCtx` 的一份 ctx，不要把变量字典或语法说明搬进 UI |
 | 服务端先拼多行文本再塞模板 | 为了方便 | 传结构化数组，模板里 `{{#each}}` 组织行 |
 | 提示词里的 `<`/`&` 变成 HTML 实体 | 忘了关转义 | 引擎固定 `noEscape: true`，不要给模板单独加转义选项 |
@@ -73,4 +73,4 @@
 | 在真实库上试迁移/试模板 | 图快 | 先 `nx-kv db backup`；迁移先 `--dry-run`；模板先在临时库或 preview 验证 |
 | 提交混入并行会话的改动 | 图省事 `git add -A` | 只按文件名 add 本次自己的文件；工作区可能有多会话 |
 | 新样式写进 `style.css` | 没注意 v1/v2 | 新样式优先 `style-v2.css` 的 tokens；`style.css` 只存量维护 |
-| 以为任务附件没落库 | 只看正文 markdown，不知道 v2 资源模型 | 附件看 `attachments` + `task_attach`（`role=inline/attach/doc`）；正文只是快捷入口 |
+| 以为 `task_refs` 有数据 | 表存在 ≠ 功能在用 | 任务附件看正文 markdown + 本机附件仓；`task_refs` 当前无写入方 |

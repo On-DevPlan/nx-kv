@@ -29,36 +29,30 @@ nx-kv localtask add "<任务文本>" --cwd "<目标目录>" --summary "<该目�
 
 # 不限定接收方、谁闲谁领 → 推到全局任务池（--cwd 被忽略）：
 # 任何目录的 agent 在本地队列空时都会自动领取（返回 source:"global"）
-nx-kv localtask add "<任务文本>" --global --json
-
-# 带归属（可选）：任务落到项目队列，并带上 board + project 的 frontmatter
-nx-kv localtask add "<任务文本>" --project "<仓库 key/名称/路径>" --board "<工作组 id/key/名称>" --json
+nx-kv localtask add --global "<任务文本>" --json
 
 # 带时间目标（可选）：领取即计时，未到点不许标记完成
 nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --duration 2h --goal-prompt "<附加要求>" --json
 ```
 
-返回 `{status:"ok", key, cwd, name, task:{id,text,...}, delivered, queued}`：
+返回 `{status:"ok", task:{id,text,...}, queued|delivered}`：
 
-- `delivered` / `queued` 是布尔值。跨进程提交通常是 `queued:true` + `delivered:false`。
-- 目标目录里正在 `wait` 的 agent 会立即取走；没人等就排队，等它下次 `get`。
-- `--global` 推全局池，任何目录空闲的 agent 自动领取。
-- `--board` 必须同时给 `--project`，且该仓库必须是这个组的成员。
+- `queued:true`（跨进程提交的常态）→ 已入队；目标目录里正在 wait 的 agent
+  会在约 0.5 秒内取走，没人等就排在队列里等它下次领取。`--global` 提交则排在
+  全局任务池，任何目录空闲的 agent 自动领取。
 - 记下 `task.id`，向用户报告「已提交到哪个目录（或全局池）、第几号任务」。
 
 ## 用户看完结果要改 → 重开那条任务
 
 任务被领走、干完（`localtask done`）之后，用户提了修改意见——**那条任务要重开**，
-否则 agent 看不到新一轮的诉求：
+否则 agent 看不到新一轮的诉求（已领取的任务不会再被派发）：
 
 ```bash
 nx-kv localtask reopen --id <n> --text "<改后的正文（Markdown）>" --json
 ```
 
-重开按「派生新任务」实现：生成一条新的 `pending` 任务（轮次 +1，编号是新号），
-旧任务已 `done` 就保持 `done`、未完成则变 `cancelled` 并记录 `supersededBy`；
-上一轮完成总结留在旧任务正文里。`--text` 不给则沿用旧正文。新任务号见返回值，
-细节见 kv-get skill。
+重开 = 回到待领取 + 领取时间作废（新一轮重新计时），上一轮的完成总结保留。
+`--text` 不给则只重开、不改正文。重开的细节见 kv-get skill。
 
 ## 任务文本怎么写（一句话版）
 
@@ -95,7 +89,7 @@ nx-kv localtask reopen --id <n> --text "<改后的正文（Markdown）>" --json
 
 ## 与其它 skill 的分工
 
-三者共享同一份本机任务存储与按目录划分的队列（SQLite：`~/.nx-kv/nxkv.db`）：
+三者共享同一份本机任务存储与按目录划分的队列（`~/.nx-kv/localtasks.json`）：
 
 - **kv-submit（本 skill）**：提交侧——总结上下文、提炼需求、投递到别的目录。
 - **kv-get**：领取侧——目标目录的 agent 领活（get）、等人接力（wait）、标完成（done）、按反馈重开（reopen）。

@@ -1,34 +1,29 @@
-// 设置面板「任务模板」模块：任务正文骨架（直接文字就是模板）。
-//
-// 与「提示词模板」严格分开：这里是新建任务时填的**正文骨架**（模板 body 只读，
-// 用户只填槽位值，落库为纯字符串）；那边是领取任务时的系统提示词渲染配置
-// （每个区块各自一份模板列表与生效项）。
-import { useEffect, useMemo, useState } from 'react';
-import { useToast } from '../../components/toast/index.jsx';
-import { Button } from '../../components/button/index.jsx';
+// 设置「任务模板」（#135）：卡片列表——可见绑定 / 编辑 / 设默认；改正文进全屏 MdPanes。
+import { useState } from 'react';
 import { useTemplates } from '../../modules/md/use-templates.js';
-import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
-import TemplateEditor from '../../components/md/template-editor.jsx';
+import { Button } from '../../components/button/index.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
+import { useToast } from '../../components/toast/index.jsx';
+import ScopeChips from '../templates/scope-chips.jsx';
 
-/** 模板正文编辑器（直接改文字）——草稿 + 显式保存（每次按键都存会把接口刷爆）。 */
-function TemplateBodyEditor({ tpl, template }) {
+export default function TaskTemplatesSection({ openTemplateEditor }) {
+  const tpl = useTemplates();
   const toast = useToast();
+  const { dialog, node: dialogNode } = useDialog();
+  const templates = tpl.templates || [];
+  const [scopeOpenId, setScopeOpenId] = useState(null);
   const [busy, setBusy] = useState(false);
-  // 草稿初始 = 渲染后的文字（出厂骨架里的 {{槽位}} 落到正文里）——
-  // 用户看到什么、存回去的就是什么：文字就是模板。
-  const [draft, setDraft] = useState(() =>
-    renderTemplateBody(template.body || '', template.values || {}));
-  const original = renderTemplateBody(template.body || '', template.values || {});
-  const dirty = draft !== original;
-  // 预览 = 新建页会拿到的正文（老模板里的 {{槽位}} 仍按 values 渲染，不露标记）
-  const preview = useMemo(() => renderTemplateBody(draft, template.values || {}), [draft, template.values]);
 
-  const save = async () => {
+  if (tpl.unsupported) {
+    return <div className="setp-note">当前服务比面板旧——重启面板后才有模板功能。</div>;
+  }
+
+  const act = async (fn, okMsg) => {
     if (busy) return;
     setBusy(true);
     try {
-      await tpl.update(template.id, { body: draft });
-      toast(`已保存「${template.name}」`);
+      await fn();
+      if (okMsg) toast(okMsg);
     } catch (e) {
       toast(String(e.message || e));
     } finally {
@@ -36,84 +31,84 @@ function TemplateBodyEditor({ tpl, template }) {
     }
   };
 
+  const removeTpl = async (t) => {
+    const ok = await dialog({
+      title: `删除模板「${t.name}」`,
+      danger: true,
+      okText: '删除',
+    });
+    if (!ok) return;
+    await act(() => tpl.remove(t.id), `已删除「${t.name}」`);
+    if (scopeOpenId === t.id) setScopeOpenId(null);
+  };
+
   return (
-    <>
-      <div className="setp-row">
-        <span>模板正文 · {template.name}</span>
-        <span className="grow" />
-        {dirty ? <span className="muted">未保存</span> : null}
-        <Button variant="primary" disabled={busy || !dirty} onClick={save}>
-          保存
+    <div className="setp-tpl setp-tpl-cards">
+      {dialogNode}
+      {!templates.length && (
+        <div className="setp-note">还没有模板（内置默认模板加载中…）。</div>
+      )}
+      {templates.map((t) => {
+        const isDefault = t.id === tpl.defaultId;
+        const scopeOpen = scopeOpenId === t.id;
+        return (
+          <div key={t.id} className={'setp-tpl-card' + (isDefault ? ' is-default' : '')}>
+            <div className="setp-tpl-card-head">
+              <span className="setp-tpl-card-name">{t.name}</span>
+              {isDefault && <span className="setp-badge">默认</span>}
+              {t.builtin && <span className="setp-badge soft">内置</span>}
+            </div>
+            {scopeOpen && (
+              <div className="setp-tpl-card-scope">
+                <ScopeChips
+                  scope={t.scope}
+                  originTopic={t.originTopic}
+                  onChange={(next) => tpl.update(t.id, { scope: next })}
+                />
+              </div>
+            )}
+            <div className="setp-tpl-card-foot">
+              <span className="grow" />
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() => setScopeOpenId(scopeOpen ? null : t.id)}
+              >
+                可见绑定
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() => openTemplateEditor?.({ id: t.id, name: t.name, mode: 'edit' })}
+              >
+                编辑
+              </Button>
+              {!isDefault && (
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => act(() => tpl.setDefault(t.id), `默认模板已设为「${t.name}」`)}
+                >
+                  设为默认
+                </Button>
+              )}
+              {!t.builtin && (
+                <Button variant="secondary" disabled={busy} onClick={() => removeTpl(t)}>
+                  删除
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <div className="setp-tpl-card-new">
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={() => openTemplateEditor?.({ mode: 'new', scope: [] })}
+        >
+          ＋ 新建模板
         </Button>
-      </div>
-      <TemplateEditor value={draft} onChange={setDraft} onSubmit={save} rows={12} />
-      {preview.trim() ? (
-        <details className="setp-tpl-preview">
-          <summary>预览新建任务正文</summary>
-          <pre className="setp-tpl-preview-body">{preview}</pre>
-        </details>
-      ) : null}
-    </>
-  );
-}
-
-export default function TaskTemplatesSection({ openTemplates }) {
-  const tpl = useTemplates();
-  const templates = tpl.templates || [];
-  const [editingId, setEditingId] = useState(null);
-
-  useEffect(() => {
-    if (!templates.length) {
-      setEditingId(null);
-      return;
-    }
-    if (!editingId || !templates.some((t) => t.id === editingId)) {
-      setEditingId(tpl.defaultId || templates[0].id);
-    }
-  }, [templates, tpl.defaultId, editingId]);
-
-  if (tpl.unsupported) {
-    return <div className="setp-note">当前服务比面板旧——重启面板后才有模板功能。</div>;
-  }
-  if (!templates.length) {
-    return <div className="setp-note">还没有模板（内置默认模板加载中…）。</div>;
-  }
-
-  const current = templates.find((t) => t.id === editingId) || null;
-
-  return (
-    <div className="setp-tpl-split">
-      <div className="setp-tpl-side">
-        <div className="setp-row">
-          <span>选用模板</span>
-          <Button variant="secondary" onClick={() => openTemplates?.()}>
-            管理…
-          </Button>
-        </div>
-        <div className="setp-tpl-list" role="listbox" aria-label="任务模板">
-          {templates.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="option"
-              aria-selected={t.id === editingId}
-              className={`setp-tpl-pick${t.id === editingId ? ' is-on' : ''}`}
-              onClick={() => setEditingId(t.id)}
-            >
-              <span className="setp-tpl-name">{t.name}</span>
-              {t.id === tpl.defaultId && <span className="setp-badge">默认</span>}
-              {t.builtin && <span className="setp-badge">内置</span>}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="setp-tpl-main">
-        {current ? (
-          // key=模板 id：切模板即重挂载，草稿随之重置（不跨模板保留半截改动）
-          <TemplateBodyEditor key={current.id} tpl={tpl} template={current} />
-        ) : (
-          <div className="setp-note">从左侧选一个模板。</div>
-        )}
       </div>
     </div>
   );

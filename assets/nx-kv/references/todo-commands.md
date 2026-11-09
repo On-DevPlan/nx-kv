@@ -39,7 +39,7 @@ nx-kv auth me              # 向后端确认 token 仍有效
 nx-kv todo list [--topic T] [--status open|done|freeze|all] [--group N] [--json]
 nx-kv todo get --ref "<内容>" [--topic T] [--pick N] [--group N]
 nx-kv todo add <text> --topic T [--group N]
-nx-kv todo update --ref "<内容>" [--topic T] [--text T] [--note N] [--matchTopic T] [--pick N]
+nx-kv todo update --ref "<内容>" [--topic T] [--text T] [--note N] [--match-topic T] [--pick N]
 nx-kv todo remove --ref "<内容>" [--topic T] [--pick N]
 nx-kv todo done --ref "<内容>" [--result "完成结果"] [--topic T] [--pick N]
 nx-kv todo freeze --ref "<内容>" [--topic T] [--pick N]
@@ -52,8 +52,7 @@ nx-kv todo archive [--before 2026-08-01] [--group N]
 
 **CRUD 五操作齐备**（`list` / `get` / `add` / `update` / `remove`），
 且每条都能从 CLI 与 HTTP 两端调用——`tests/unit/registry.test.mjs` 有断言。
-`get` / `update` / `remove` 走 `/api/todo/item`（定位走 `ref` 参数，不放路径里）；
-`done` / `freeze` / `unfreeze` / `attach` 各有专用路径（见下方附件表）。
+单条操作的 HTTP 路径是 `/api/todo/item`，定位内容走 `ref` 参数（不放路径里）。
 
 **两种取法的区别**：
 
@@ -165,7 +164,7 @@ id 会重复（分配只扫 open + freeze，完成过的 id 会被复用），
 | 精确一条 | `--ref "<完整内容>"` |
 | 内容有多条 → 按编号选 | `--ref "<内容>" --pick <n>`（n 从报错里的候选列表取） |
 | 内容有多条 → 按主题收窄 | `--ref "<内容>" --topic <主题>` |
-| `update` 时消歧 | 用 `--matchTopic`（`--topic` 表示「改成这个主题」） |
+| `update` 时消歧 | 用 `--match-topic`（`--topic` 表示「改成这个主题」） |
 
 内容命中多条时**报错并列出候选**（exit 1 / code `CONFLICT`），**绝不替你猜**。这是保护，不是 bug。
 
@@ -206,7 +205,7 @@ nx-kv todo add --topic bug "修复登录页 500"
 
 # 消费方取该主题全部待办
 nx-kv todo list --status open --topic bug --json
-# → { topic:"bug", status:"open", open:[...], done:null, freeze:null, topics:[...] }
+# → [{...},{...}] 纯待办数组
 
 # 用返回里的 .text 原样回填（不要用 .id）
 nx-kv todo done --ref "修复登录页 500" --result "已修复根因: token 过期未刷新；补了 3 个单测"
@@ -229,7 +228,7 @@ nx-kv todo list --status open --topic docs   # docs 消费者
 nx-kv todo list --status open --topic bug    # bug 消费者
 ```
 
-**空 open 的处理**：人读模式输出「待办: （空）」（JSON 模式 `open: []`），exit 0。
+**空 open 的处理**：列表为空时输出「待办: （空）」（JSON 模式给空数组），exit 0。
 脚本据此判定无任务可做。
 
 ## 与 kvcli 的对应关系

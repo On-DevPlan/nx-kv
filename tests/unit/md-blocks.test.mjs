@@ -204,3 +204,20 @@ test('stripPhantomEmptyLines：无 ZWSP 时原样返回', () => {
   const src = 'a\n\n\n\nb';
   assert.equal(stripPhantomEmptyLines(src), src);
 });
+
+// ── 文件附件 chip 去重（#118：内联 [名](fileId) 已渲染成 a.md-att，
+//    整表再拼 chip 就是重复；实时面板逐块渲染时更是「每一行都显示」）──
+const FILE_ATT = [{ type: 'file', id: FID, name: '测试文档.md', size: '19 B' }];
+
+test('renderMarkdownHtml：正文已内联引用的文件附件不再拼 chip（#118）', () => {
+  const html = renderMarkdownHtml(`正文\n[测试文档.md](${FID})`, FILE_ATT);
+  assert.match(html, /<a class="md-att"[^>]*>测试文档\.md<\/a>/, '内联链接照常');
+  assert.doesNotMatch(html, /mdw-attach-chip/, '不再追加整表 chip');
+});
+
+test('renderMarkdownHtml：未内联引用的文件附件仍出 chip（v1 老数据兜底）', () => {
+  const html = renderMarkdownHtml('正文段', FILE_ATT);
+  assert.match(html, /mdw-attach-chip/);
+  assert.match(html, /测试文档\.md/);
+  assert.ok(!html.includes('md-att'), '正文没有链接');
+});

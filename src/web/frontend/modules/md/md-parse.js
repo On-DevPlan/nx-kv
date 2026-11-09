@@ -221,7 +221,11 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
   }
   if (inCode) html += '</code></pre>';
   flush();
-  const files = attachments.filter((a) => a.type !== 'image');
+  // 文件附件 chip 只作**兜底**：列正文里没有内联引用的那些（#118——内联
+  // `[名](fileId)` 已渲染成 a.md-att，整表再拼一份就是重复；且实时面板是逐块
+  // 调本函数的，整表下发会让每个块都拖一份 chip 出来）。v1 老数据的文件附件
+  // 没有内联表示，仍靠它可见。
+  const files = attachments.filter((a) => a.type !== 'image' && !html.includes(String(a.id)));
   if (files.length) {
     html += files
       .map(

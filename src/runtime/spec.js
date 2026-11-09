@@ -5,7 +5,7 @@
 // 迟早分叉。现在 depth 只在 action 声明里写一次 `{ type: 'number', default: 3 }`。
 import { badInput } from '../core/errors.js';
 
-const TYPES = new Set(['string', 'number', 'boolean', 'array']);
+const TYPES = new Set(['string', 'number', 'boolean', 'array', 'raw']);
 
 // 取 action 的 CLI 路径列表。支持两种写法：
 //   单路径   cli: ['repo', 'list']
@@ -72,6 +72,11 @@ function coerceOne(name, spec, raw) {
     if (Array.isArray(raw)) return raw.map((x) => String(x).trim()).filter(Boolean);
     return String(raw).split(',').map((x) => x.trim()).filter(Boolean);
   }
+  // raw = 原样透传，不做字符串化。给「值本身是数组/对象」的 flag 用
+  // （模板可见域 scope 就是这种：JSON 数组串、逗号短写、HTTP 直接发数组，
+  // 三种形态都要活着走到 action 里）。走 string 会被 String([]) 压成 ''
+  // ——「清空可见域」就变成了「不传」，静默吞掉一次写入。
+  if (type === 'raw') return raw;
   return String(raw);
 }
 

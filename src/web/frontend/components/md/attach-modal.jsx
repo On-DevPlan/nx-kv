@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../popup/index.jsx';
 import { api } from '../../api/client.js';
 import { clipboardFiles, droppedFiles, readableName, uploadOne } from '../cloud/upload.js';
-import { STATUS_TAG } from '../../../../shared/task-status.js';
+import StatusTag from '../status-tag/index.jsx';
 import {
   attachBodyOf,
   badgeOf,
@@ -317,7 +317,8 @@ export default function AttachModal({
               {taskList.map((t) => (
                 <button key={t.id} type="button" className="att-pick-item" onClick={() => addTask(t)}>
                   <span className="att-pick-main">#{t.id} {taskTitleOf(t) || '（无标题）'}</span>
-                  <span className="att-badge">{STATUS_TAG[t.status] || t.status}</span>
+                  {/* #121 统一组件：配色由 tstat-* 接管，att-sbadge 只给尺寸 */}
+                  <StatusTag t={t} className="att-sbadge" />
                 </button>
               ))}
             </div>

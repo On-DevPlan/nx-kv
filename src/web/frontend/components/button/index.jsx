@@ -6,13 +6,13 @@
 //   primary    主按钮：实色块。**一个页面只能出现一个**——由使用约定保证，
 //              页面里第二颗想强调的按钮请降级 secondary。
 //   secondary  次级按钮：浅底（.btn.ghost），表格行、工具栏里的默认形态。
-//   DropdownButton 下拉按钮：文字右侧带向下箭头，hover 展开菜单。
+//   DropdownButton 下拉按钮：文字右侧带向下箭头，点击展开菜单（#138）。
 //
 // 现状（迁移口径）：全库还有 ~30 个文件用裸 `<button className="btn ...">`，
 // 一次性替换 300+ 处风险过大；设置页（任务点名的重灾区）已换成本组件，
 // 其余页面靠 CSS 统一尺寸，后续按页面渐进迁移。图标按钮（.iconbtn 26×26）、
 // 开关（.toggle）不属于这三分类，不走本组件。
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './style.css';
 
 const VARIANT_CLASS = { primary: '', secondary: 'ghost' };
@@ -48,8 +48,8 @@ export function Button({
 }
 
 /**
- * 下拉按钮：文字 + 右侧向下箭头，hover 展开菜单（纯 CSS :hover，无 portal）。
- * 菜单贴按钮右缘展开；空间不足的场景由调用方用 dropUp 翻转。
+ * 下拉按钮：文字 + 右侧向下箭头，**点击**展开菜单（#138：不要 hover）。
+ * 菜单贴按钮左缘；点菜单项 / 点外侧 / Esc 关闭。
  *
  * @param {object} props
  * @param {string} props.label 按钮文字
@@ -59,13 +59,40 @@ export function Button({
  */
 export function DropdownButton({ label, items = [], onSelect, variant = 'secondary', className = '', ...rest }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   return (
     <span
+      ref={rootRef}
       className={'nx-btn-dd' + (open ? ' open' : '') + (className ? ' ' + className : '')}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
     >
-      <Button variant={variant} className="nx-btn-dd-main" aria-haspopup="menu" aria-expanded={open} {...rest}>
+      <Button
+        variant={variant}
+        className="nx-btn-dd-main"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        {...rest}
+        onClick={(e) => {
+          rest.onClick && rest.onClick(e);
+          setOpen((v) => !v);
+        }}
+      >
         {label}
         <span className="nx-btn-dd-arrow" aria-hidden="true">▾</span>
       </Button>

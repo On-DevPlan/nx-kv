@@ -140,17 +140,26 @@ export default function AttachArea({
   const emptyAll = !loading && !error && !list.length;
 
   return (
-    <div className={`att-area${disabled ? ' is-disabled' : ''}`}>
-      <div
-        className={'att-area-head' + (dragOver && !disabled ? ' is-over' : '')}
-        onDragOver={(e) => { if (!disabled) { e.preventDefault(); setDragOver(true); } }}
-        onDragLeave={(e) => { if (e.target === e.currentTarget) setDragOver(false); }}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          if (!disabled) dropFiles(null, e);
-        }}
-      >
+    <div
+      className={`att-area${disabled ? ' is-disabled' : ''}`}
+      // 拖放落点是**整个附件区**：空态提示写着「拖文件到这里」，落点只盖头部
+      // 一条的话提示区反而是空的（md/pdf 等文件拖上去落空，触发浏览器默认打开文件）。
+      onDragOver={(e) => {
+        if (disabled || ![...(e.dataTransfer?.types || [])].includes('Files')) return;
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false);
+      }}
+      onDrop={(e) => {
+        setDragOver(false);
+        if (disabled || ![...(e.dataTransfer?.types || [])].includes('Files')) return;
+        e.preventDefault();
+        dropFiles(null, e);
+      }}
+    >
+      <div className={'att-area-head' + (dragOver && !disabled ? ' is-over' : '')}>
         <span className="att-area-title">
           附件
           {list.length ? <span className="att-count">{list.length}</span> : null}

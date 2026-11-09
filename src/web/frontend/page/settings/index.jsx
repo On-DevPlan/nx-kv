@@ -26,7 +26,7 @@ import { PromptItemsEditor } from '../../modules/prompts/prompt-editor.jsx';
 import PromptTemplatesSection from './prompt-templates-section.jsx';
 import TaskTemplatesSection from './task-templates-section.jsx';
 import SidebarSection from './sidebar-section.jsx';
-import { openPanel } from '../../workspace.js';
+import { openTemplateEditor } from '../../panels.jsx';
 import './style.css';
 
 // 多条提示词的条数上限（与服务端 clampAckPromptList 一致）
@@ -424,9 +424,9 @@ export default function SettingsPanel() {
       app.refreshRepos && app.refreshRepos();
     });
 
-  const openTemplates = () => {
+  const openTplEditor = (opts) => {
     if (!model) return;
-    openPanel(model, { component: 'templates', name: '任务模板', config: {}, location: 'center' });
+    openTemplateEditor(model, opts || {});
   };
 
   // ─── 各分区内容 ──────────────────────────────────────────────────────
@@ -530,7 +530,7 @@ export default function SettingsPanel() {
     ),
 
     taskTemplates: (
-      <TaskTemplatesSection openTemplates={openTemplates} />
+      <TaskTemplatesSection openTemplateEditor={openTplEditor} />
     ),
 
     prompts: (

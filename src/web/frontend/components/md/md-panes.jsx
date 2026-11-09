@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -26,7 +27,7 @@ import {
   diffIndex,
   filterSlashCmds,
   findMatches,
-  imageFilesFromDataTransfer,
+  filesFromDataTransfer,
   indentLines,
   insertTextAtCursor,
   isBareListItemLine,
@@ -63,7 +64,11 @@ function autoSize(el) {
 function blockHtml(text, attachments) {
   const raw = normalizeBlockText(text);
   if (!raw.trim()) return '';
-  return renderMarkdownHtml(raw, attachments).replace(
+  // 只传**图片**（v1 草稿按名字内嵌的 imgMap 只认图片）：文件附件不能整表
+  // 下发——本函数是**逐块**调用的，renderMarkdownHtml 会把文件附件拼成 chip
+  // 附在每个块末尾，拖一个 md 进来就是「每一行都显示」（#118）。
+  const imgs = (attachments || []).filter((a) => a?.type === 'image');
+  return renderMarkdownHtml(raw, imgs).replace(
     /<p class="mdw-empty">[\s\S]*?<\/p>/g,
     ''
   );
@@ -154,7 +159,7 @@ function LiveBlock({
           onBlur={onBlur}
           onKeyDown={onKeyDown}
           onPaste={(e) => {
-            const files = imageFilesFromDataTransfer(e.clipboardData);
+            const files = filesFromDataTransfer(e.clipboardData);
             if (!files.length) return;
             e.preventDefault();
             onPasteFiles?.(files, taRef.current);
@@ -528,6 +533,27 @@ function LivePreview({
     }
   };
 
+  // ── 跨块选区（#124）：块粒度的「统一删除」────────────────────────────
+  // 视图块是渲染好的 HTML，选区字符偏移无法精确映射回各块源码（markdown
+  // 标记在渲染时被剥掉）——沿用本编辑器一贯的保守口径（#98 同源）：**升到
+  // 块级映射**。选区两端落在不同视图块上 → 触到的整段块 [lo, hi] 就是操作
+  // 单元：删除 = 整段移除（浮层按钮与 Backspace/Delete 走同一实现）；
+  // 复制 = 整段源码（task.jsx 侧拼好入剪贴板）。单块内选区仍是 #98 的
+  // 字符级 indexOf 映射，行为不变。
+  const removeBlockRange = useCallback((lo, hi) => {
+    if (!Number.isInteger(lo) || !Number.isInteger(hi)) return false;
+    if (lo < 0 || hi < lo || hi >= blocks.length) return false;
+    const next = blocks.slice();
+    next.splice(lo, hi - lo + 1);
+    commit(next);
+    // 删完落焦到接缝块（原 lo 位置，越界夹回末块），光标在块首——与单块
+    // 删除的落点语义一致（删完可以接着打字）；op 走历史栈，Ctrl+Z 可撤销。
+    const fi = Math.min(lo, Math.max(0, next.length - 1));
+    pendingSelRef.current = { index: fi, start: 0, end: 0 };
+    setFocus(fi);
+    return true;
+  }, [blocks, onBody]);
+
   useImperativeHandle(editorApiRef, () => ({
     format(op) {
       const ta = liveTaRef.current;
@@ -567,6 +593,10 @@ function LivePreview({
       setFocus(i);
       return true;
     },
+    /** 跨块选区的浮层「删除选区」（#124）：整段移除 [lo, hi] 块（含端点） */
+    deleteBlockRange(lo, hi) {
+      return removeBlockRange(lo, hi);
+    },
     /** 撤销/重做后把光标放回改动处：把正文偏移换算到具体块与块内偏移 */
     caretFromDiff(prev, next) {
       const prevJ = joinMdBlocks(bodyBlocksOnly(prev));
@@ -593,7 +623,7 @@ function LivePreview({
         start = end + 2;
       }
     },
-  }), [focus, onBody, blocks]);
+  }), [focus, onBody, blocks, removeBlockRange]);
 
   // document 捕获：即使焦点异常也能 ↑↓
   useEffect(() => {
@@ -612,8 +642,9 @@ function LivePreview({
   // document 捕获：预览态划选后按 Backspace/Delete —— 把选中文字删掉（#98）。
   // 视图块是渲染好的 HTML，选区落在不可编辑内容上，浏览器默认对 Backspace
   // 无动于衷（编辑态 textarea 原生行为本来就对，这里只补视图态这一块）。
-  // 映射口径与 formatSelection 一致：选区文本在块源码里 indexOf 定位；跨
-  // markdown 标记/跨块时 indexOf 不中 → 保守放弃，不做错位改写。
+  // 单块选区按字符级映射（选区文本在块源码里 indexOf 定位；跨 markdown 标记
+  // 时 indexOf 不中 → 保守放弃，不做错位改写）；跨块选区升到块级（#124，
+  // removeBlockRange：触到的整段块全移除）。
   // 删除后进编辑态、光标落接缝（op 走历史栈，Ctrl+Z 可撤）。
   useEffect(() => {
     const onKey = (e) => {
@@ -626,15 +657,27 @@ function LivePreview({
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
       const text = String(sel.toString() || '');
       if (!text.trim()) return;
-      const node = sel.anchorNode;
-      const el = node?.nodeType === 3 ? node.parentElement : node;
-      const blockEl = el?.closest?.('.mdw-lp-block');
-      if (!blockEl || !articleRef.current?.contains(blockEl)) return;
-      const i = Number(blockEl.getAttribute('data-i'));
+      const elOf = (n) => (n?.nodeType === 3 ? n.parentElement : n);
+      const blockA = elOf(sel.anchorNode)?.closest?.('.mdw-lp-block');
+      if (!blockA || !articleRef.current?.contains(blockA)) return;
+      const i = Number(blockA.getAttribute('data-i'));
       if (!Number.isInteger(i) || i < 0 || i >= blocks.length) return;
+      // 跨块选区（#124）：两端落在不同视图块 → 块粒度统一删除。字符级映射
+      // 跨块做不到（渲染 HTML 的选区偏移映射不回源码），按 #98 的保守口径
+      // 升到块级；浮层上的「删除选区」按钮走同一实现（editorApi.deleteBlockRange）。
+      const blockF = elOf(sel.focusNode)?.closest?.('.mdw-lp-block');
+      if (blockF && blockF !== blockA && articleRef.current?.contains(blockF)) {
+        const iff = Number(blockF.getAttribute('data-i'));
+        if (Number.isInteger(iff) && iff >= 0 && iff < blocks.length && iff !== i) {
+          e.preventDefault();
+          removeBlockRange(Math.min(i, iff), Math.max(i, iff));
+          onCloseSelMenu?.();
+        }
+        return;
+      }
       const raw = normalizeBlockText(blocks[i] ?? '');
       const pos = raw.indexOf(text);
-      if (pos === -1) return; // 跨标记/跨块：保守放弃，不删
+      if (pos === -1) return; // 跨标记：保守放弃，不删
       e.preventDefault();
       updateAt(i, raw.slice(0, pos) + raw.slice(pos + text.length));
       pendingSelRef.current = { index: i, start: pos, end: pos };
@@ -643,7 +686,7 @@ function LivePreview({
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [blocks, onBody, articleRef, onCloseSelMenu]);
+  }, [blocks, onBody, articleRef, onCloseSelMenu, removeBlockRange]);
 
   const onKeyDown = (i, e) => {
     const val = normalizeBlockText(blocks[i] ?? '');
@@ -909,7 +952,7 @@ function LivePreview({
       }}
       onDrop={(e) => {
         setDragging(false);
-        const files = imageFilesFromDataTransfer(e.dataTransfer);
+        const files = filesFromDataTransfer(e.dataTransfer);
         if (!files.length) return;
         e.preventDefault();
         ingestFiles(files, null);
@@ -1335,7 +1378,10 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
       }}
       onDrop={(e) => {
         setDragging(false);
-        const files = imageFilesFromDataTransfer(e.dataTransfer);
+        // textarea 自己的 onDrop 已 ingest 过（preventDefault 后事件才冒泡到
+        // 这里）——不查 defaultPrevented 一次拖放会传两遍、传两份附件（#118）。
+        if (e.defaultPrevented) return;
+        const files = filesFromDataTransfer(e.dataTransfer);
         if (!files.length) return;
         e.preventDefault();
         ingestImages(files);
@@ -1400,14 +1446,14 @@ function SourceEditor({ title, body, onTitle, onBody, editorApiRef, onFiles, onT
             onSelect={syncCaret}
             onScroll={syncGutter}
             onPaste={(e) => {
-              const files = imageFilesFromDataTransfer(e.clipboardData);
+              const files = filesFromDataTransfer(e.clipboardData);
               if (!files.length) return;
               e.preventDefault();
               ingestImages(files);
             }}
             onDrop={(e) => {
               // 拖文件进来 = 与粘贴同一通道（实时预览态已有拖放，源码态补齐对等能力）
-              const files = imageFilesFromDataTransfer(e.dataTransfer);
+              const files = filesFromDataTransfer(e.dataTransfer);
               if (!files.length) return;
               e.preventDefault();
               ingestImages(files);

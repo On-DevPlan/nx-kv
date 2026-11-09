@@ -24,12 +24,15 @@
 //   —                       → category 固定 'newtask'（本文件只管新建页骨架；
 //                              delivery/enhance/context 三个 tab 的内置模板由
 //                              seed 提供，编辑走同一张表）
+//   —                       → scope（v3，#128）：可见域 JSON 数组，缺省 ["*"]；
+//                              origin_topic 记创建主题。判定规则在 scope.js（纯函数）
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises'; // 仅用于读用户 --body-file（存储已进库）
 import { readFileSync } from 'node:fs';
 import { badInput, notFound } from '../../core/errors.js';
 import { nowMs } from '../../core/db/time.js';
 import { NEWTASK_BODY, NEWTASK_VARS } from '../../core/db/seed-templates.js';
+import { normalizeScope, topicCtx, canUse, canEdit } from './scope.js';
 import repoLayer from './repo/index.js';
 
 export const BUILTIN_ID = 'default';
@@ -51,6 +54,10 @@ function rowToView(row) {
     body: String(row.body || ''),
     values: vars,
     builtin: !!row.builtin,
+    // 可见域（v3，#128）：scope 数组 + 创建来源主题。全为 '*' / '' 时消费方
+    // 可以当它不存在（与 v2 行为一致），带值的才需要展示/判定。
+    scope: normalizeScope(row.scope),
+    originTopic: String(row.origin_topic || ''),
   };
   if (row.category && row.category !== NEWTASK_CATEGORY) out.category = String(row.category);
   if (row.enabled === 0) out.enabled = false;
@@ -80,6 +87,54 @@ export async function listTemplates() {
       .filter((r) => r.category === NEWTASK_CATEGORY)
       .map(rowToView);
     return { defaultId, templates };
+  });
+}
+
+/**
+ * 按可见上下文列可用模板（v3，#128 / #132）：
+ * GET /api/templates?topic=&group=&repo=
+ *
+ * 三把钥匙平级（#132）：topic / repo / group 与 `*` 都是 scope 绑定条目，
+ * 不是「全局 vs 定向」。组页可只传 group（项目组本身就是一个可见主体）。
+ *
+ * 返回 `scoped: true` 让前端识别「服务端确实按域过滤了」——旧 serve 不认识
+ * 这些参数时无 scoped 字段，前端退化回全量菜单。
+ */
+export async function listTemplatesForTopic({
+  topic: rawTopic,
+  group: rawGroup,
+  repo: rawRepo,
+} = {}) {
+  const key = String(rawTopic || '').trim();
+  const groupKey = String(rawGroup || '').trim();
+  const repoKey = String(rawRepo || '').trim();
+  if (!key && !groupKey && !repoKey) return { ...(await listTemplates()), scoped: false };
+  return repo.txw((conn) => {
+    const row = key ? repo.templates.getTopicKeys(key, conn) : null;
+    const ctx = topicCtx({
+      key: (row && row.key) || key,
+      // 显式 query 优先：组页会带 group/repo，即使成员队列行上 group_key 为空
+      repoKey: repoKey || (row && row.repo_key) || '',
+      groupKey: groupKey || (row && row.group_key) || '',
+    });
+    const defaultId = defaultIdOf(conn);
+    const templates = repo.templates
+      .listRows(conn)
+      .filter((r) => r.category === NEWTASK_CATEGORY)
+      .map((r) => {
+        const v = rowToView(r);
+        v.perm = { use: canUse(v, ctx), edit: canEdit(v, ctx) };
+        return v;
+      })
+      .filter((v) => v.perm.use);
+    return {
+      defaultId,
+      templates,
+      scoped: true,
+      topic: key || undefined,
+      group: groupKey || undefined,
+      repo: repoKey || undefined,
+    };
   });
 }
 
@@ -140,10 +195,30 @@ async function resolveBody({ body, bodyFile } = {}) {
   }
 }
 
-/** 新增模板（--set-default 同时设为默认）。幂等性不做：同名允许存在，靠 id 区分。 */
-export async function addTemplate({ name: rawName, body: rawBody, bodyFile, values, setDefault = false } = {}) {
+/**
+ * 新增模板（--set-default 同时设为默认）。幂等性不做：同名允许存在，靠 id 区分。
+ *
+ * 可见域（v3，#128 / #131）：显式 scope 优先；否则带创建主题 topic 时默认只在
+ * 该主题可见（scope=[topic:<key>]，origin_topic 记锚）；都没有 = 空数组（未配置），
+ * **不再默认全局**——全局必须显式 `--scope *` / UI 勾选。内置模板仍是 `["*"]`。
+ */
+export async function addTemplate({
+  name: rawName,
+  body: rawBody,
+  bodyFile,
+  values,
+  setDefault = false,
+  scope: rawScope,
+  topic: rawTopic,
+} = {}) {
   const name = normalizeName(rawName);
   const body = normalizeBody(await resolveBody({ body: rawBody, bodyFile }));
+  const topicKey = String(rawTopic || '').trim();
+  const scope = rawScope !== undefined
+    ? normalizeScope(rawScope, { strict: true })
+    : topicKey
+      ? [`topic:${topicKey}`]
+      : [];
   const at = nowMs();
   return repo.txw((conn) => {
     const t = {
@@ -163,6 +238,9 @@ export async function addTemplate({ name: rawName, body: rawBody, bodyFile, valu
       isDefault: 0,
       sortOrder: repo.templates.nextSortOrder(conn, NEWTASK_CATEGORY),
       builtin: 0,
+      scope,
+      // 创建来源是事实，不随 scope 策略走：显式给了 topic 才记
+      originTopic: topicKey,
       createdAtMs: at,
       updatedAtMs: at,
     });
@@ -199,8 +277,8 @@ export async function removeTemplate({ id } = {}) {
   });
 }
 
-/** 编辑模板（改名 / 改正文 / 改槽位；只改传入的字段）。 */
-export async function updateTemplate({ id, name: rawName, body: rawBody, bodyFile, values } = {}) {
+/** 编辑模板（改名 / 改正文 / 改槽位 / 改可见域；只改传入的字段）。 */
+export async function updateTemplate({ id, name: rawName, body: rawBody, bodyFile, values, scope: rawScope } = {}) {
   const want = String(id || '').trim();
   if (!want) throw badInput('需要模板 id');
   const bodyIn = rawBody !== undefined || bodyFile ? await resolveBody({ body: rawBody, bodyFile }) : undefined;
@@ -210,6 +288,7 @@ export async function updateTemplate({ id, name: rawName, body: rawBody, bodyFil
     const patch = {};
     if (rawName !== undefined) patch.name = normalizeName(rawName);
     if (bodyIn !== undefined) patch.body = normalizeBody(bodyIn);
+    if (rawScope !== undefined) patch.scope = normalizeScope(rawScope, { strict: true });
     if (values !== undefined) {
       // 内置模板：槽位未给的项回落出厂默认（渲染时的兜底语义与 JSON 时代一致）
       patch.vars = normalizeValues(values, row.builtin ? BUILTIN_VALUES : rowToView(row).values);

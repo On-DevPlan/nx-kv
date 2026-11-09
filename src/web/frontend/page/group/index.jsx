@@ -9,22 +9,28 @@
 // reorder API 按 topic，故只允许拖到**同一成员队列**的落点；跨项目落点会提示。
 // 组介绍与项目介绍共用 Introduction（显示 / 编辑 / 补 ref）。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import { taskLabel } from '../../components/sidebar/model.js';
+import StatusTag from '../../components/status-tag/index.jsx';
 import { useApp } from '../../app-context.jsx';
 import { api } from '../../api/client.js';
 import { openPanel } from '../../workspace.js';
-import { PopMenu } from '../../components/popup/index.jsx';
+import { openTemplateEditor } from '../../panels.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
+import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
-import { useTemplates } from '../../modules/md/use-templates.js';
+import { NEW_TEMPLATE_VALUES, parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
+import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
+import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
 
 export default function GroupView({ dirKey, rows, repoData, model }) {
   const toast = useToast();
+  const { dialog, node: dialogNode } = useDialog();
   const app = useApp() || {};
   const tpl = useTemplates();
   const boards = (repoData && repoData.boards) || [];
@@ -35,8 +41,50 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
   const [showDone, setShowDone] = useState(false);
   // 「添加成员」就地弹窗（不跳仓库管理页——组面板里就地改归属）
   const [addOpen, setAddOpen] = useState(false);
-  // 头部「更多 ▾」下拉（{x, y}）——次级动作收这里（查看列表等）
-  const [moreMenu, setMoreMenu] = useState(null);
+  // 「＋ 新增任务 ▾」（#131/#132）：点击开合；portal + fixed 防组页矮容器裁切出滚动条。
+  const [tplFlyOpen, setTplFlyOpen] = useState(false);
+  const [tplFlyPos, setTplFlyPos] = useState(null); // { top, right } 视口坐标
+  const newtaskRef = useRef(null);
+  const tplFlyRef = useRef(null);
+  useEffect(() => {
+    if (!tplFlyOpen) return undefined;
+    const onDoc = (e) => {
+      if (newtaskRef.current?.contains(e.target) || tplFlyRef.current?.contains(e.target)) return;
+      setTplFlyOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setTplFlyOpen(false);
+    };
+    const onReposition = () => {
+      const btn = newtaskRef.current?.querySelector('button');
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      const menuH = tplFlyRef.current?.offsetHeight || 240;
+      const gap = 6;
+      const spaceBelow = window.innerHeight - r.bottom - gap;
+      const top = spaceBelow >= menuH || spaceBelow >= r.top
+        ? r.bottom + gap
+        : Math.max(8, r.top - gap - menuH);
+      setTplFlyPos({
+        top,
+        right: Math.max(8, window.innerWidth - r.right),
+      });
+    };
+    onReposition();
+    // 下一帧再量一次（菜单已挂到 body，高度准）
+    const t = requestAnimationFrame(onReposition);
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onReposition);
+    window.addEventListener('scroll', onReposition, true);
+    return () => {
+      cancelAnimationFrame(t);
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
+    };
+  }, [tplFlyOpen]);
 
   const board = useMemo(
     () => boards.find((b) => b.id === dirKey) || boards.find((b) => b.key === dirKey) || null,
@@ -201,7 +249,8 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
   // 组里建任务：草稿预写 frontmatter（board + 默认归属项目），提交时编辑页的工具区
   // 可改归属项目（限本组成员），按它路由进对应项目的队列。
   // 落种用 PagePanel 同一套复合键（scope::draft-N）——裸 draft 号会种不到正文上。
-  const createTask = () => {
+  // body 可选（#128）：hover 面板里选了模板就带模板正文；不带 = 默认模板（旧行为）。
+  const createTask = (body) => {
     if (!board) return;
     if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
     const id = nextDraftId();
@@ -212,13 +261,32 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
     // 与目录任务页同一条 defaultBody：已按槽位值渲染，不出现裸 {{背景}}
     saveDoc(docId, {
       title: '',
-      body: withFrontmatter(tpl.defaultBody(), { board: board.id, project: sel.key }),
+      body: withFrontmatter(body || tpl.defaultBody(), { board: board.id, project: sel.key }),
     });
     app.openPage?.({ groupId: board.id, task: id, name: '新任务' });
   };
 
+  // #132：组本身是可见主体——按 group +（可选）成员 repo/topic 三钥过滤。
+  const scopedTpl = useTemplatesFor({
+    topic: sel ? sel.topicKey : '',
+    group: board ? board.key : '',
+    repo: sel ? sel.key : '',
+  });
+  const flyTemplates = scopedTpl.templates || tpl.templates || [];
+
+  // 就地新建（#135）：不弹窗，直进全屏编辑；标题即名称；scope 预置本组。
+  const newTemplateHere = () => {
+    if (!board || !model) return;
+    openTemplateEditor(model, {
+      mode: 'new',
+      scope: [`group:${board.key}`],
+      name: '',
+    });
+  };
+
   return (
     <div className="rp-page">
+      {dialogNode}
       <div className="rp-group-head">
         <h2>
           <Icon name="folder" size={15} /> {board.name}
@@ -229,43 +297,121 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
             而且组介绍已经是文档（下面的「组介绍」入口直达）。任务 #87：
             「文字被按钮遮挡，不显示简介文本」——此处只留名字与计数。 */}
         <div className="rp-group-acts">
-          <button
-            className="btn small"
-            title="新建一个携带本组语义的任务（MD 编辑页里可选归属项目）"
-            onClick={createTask}
-          >
-            ＋ 新增任务
-          </button>
-          <button
-            className="btn small ghost"
-            title="打开本组的任务进程面板：聚合本组全部成员项目的任务，可按项目筛选（任务 #56 / #72）"
-            onClick={() => {
-              if (!model) return;
-              openPanel(model, {
-                component: 'progress',
-                name: '进程',
-                config: { groupKey: dirKey },
-                location: 'right',
-              });
+          {/* #139：工具区可编排；新增任务保留模板下拉（#132 portal） */}
+          <ToolActsBar
+            kind="group"
+            titles={{
+              progress: '打开本组的任务进程面板',
+              addMember: '挑项目加进这个组',
+              orch: '打开可视化编排面板',
+              refs: '查看文档 / reference 列表',
             }}
-          >
-            进程
-          </button>
-          <button
-            className="btn small ghost"
-            title="挑项目加进这个组（可搜索项目与项目组）"
-            onClick={() => setAddOpen(true)}
-          >
-            添加成员
-          </button>
-          <button
-            className="btn small ghost"
-            title="更多操作"
-            aria-haspopup="menu"
-            onClick={(e) => setMoreMenu({ x: e.clientX, y: e.clientY })}
-          >
-            更多 ▾
-          </button>
+            disabled={{ new: !sel }}
+            renderers={{
+              new: () => (
+                <div className="rp-newtask" ref={newtaskRef}>
+                  <button
+                    type="button"
+                    className={'btn small' + (tplFlyOpen ? ' is-open' : '')}
+                    aria-haspopup="menu"
+                    aria-expanded={tplFlyOpen}
+                    title="选择模板新建任务（携带本组语义；MD 编辑页里可选归属项目）"
+                    disabled={!sel}
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setTplFlyPos({
+                        top: r.bottom + 6,
+                        right: Math.max(8, window.innerWidth - r.right),
+                      });
+                      setTplFlyOpen((v) => !v);
+                    }}
+                  >
+                    ＋ 新增任务
+                    <Icon name="chevron" size={11} className={'rp-newtask-caret' + (tplFlyOpen ? ' rot' : '')} />
+                  </button>
+                  {tplFlyOpen &&
+                    sel &&
+                    tplFlyPos &&
+                    createPortal(
+                      <div
+                        ref={tplFlyRef}
+                        className="rp-tpl-fly rp-tpl-fly-portal"
+                        role="menu"
+                        aria-label="选择模板新建任务"
+                        style={{ top: tplFlyPos.top, right: tplFlyPos.right }}
+                      >
+                        <div className="rp-tpl-fly-h">{board.name} · 可用模板</div>
+                        <div className="rp-tpl-fly-list">
+                          {(flyTemplates.length
+                            ? flyTemplates
+                            : [{ id: '__fallback__', name: '按默认模板新建', fallback: true }]
+                          ).map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              className="rp-tpl-fly-it"
+                              role="menuitem"
+                              onClick={() => {
+                                setTplFlyOpen(false);
+                                createTask(
+                                  t.fallback
+                                    ? ''
+                                    : renderTemplateBody(t.body, { ...NEW_TEMPLATE_VALUES, ...(t.values || {}) })
+                                );
+                              }}
+                            >
+                              {(t.id === tpl.defaultId && !t.fallback ? '✓ ' : '') + t.name}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="rp-tpl-fly-foot">
+                          <button
+                            type="button"
+                            className="rp-tpl-fly-new"
+                            onClick={() => {
+                              setTplFlyOpen(false);
+                              newTemplateHere();
+                            }}
+                          >
+                            ＋ 新增模板…
+                          </button>
+                        </div>
+                      </div>,
+                      document.body
+                    )}
+                </div>
+              ),
+            }}
+            actions={{
+              progress: () => {
+                if (!model) return;
+                openPanel(model, {
+                  component: 'progress',
+                  name: '进程',
+                  config: { groupKey: dirKey },
+                  location: 'right',
+                });
+              },
+              addMember: () => setAddOpen(true),
+              orch: () => {
+                if (!model) return;
+                openPanel(model, {
+                  component: 'dag',
+                  name: '编排',
+                  config: { dirKey: (sel && sel.topicKey) || '', groupId: board && board.id },
+                });
+              },
+              refs: () => {
+                if (!model || !board) return;
+                openPanel(model, {
+                  component: 'refs',
+                  name: '文档列表',
+                  config: { boardKey: dirKey, boardName: board.name },
+                  location: 'right',
+                });
+              },
+            }}
+          />
         </div>
       </div>
 
@@ -279,23 +425,6 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
           <Icon name="list" size={13} /> 本组任务
           <span className="rp-chip-count">{groupTasks.pend.length} 待领取</span>
           {groupTasks.done.length > 0 && <span className="rp-chip-count">已领取 {groupTasks.done.length}</span>}
-          {/* 编排入口：头部右侧一个绿色超链（进可视化编排面板，组内可切队列） */}
-          <span
-            className="dag-link rp-tasks-orch"
-            role="button"
-            tabIndex={-1}
-            title="打开可视化编排面板：有向连线定顺序（未连线走默认序）、设闸门、加时间目标"
-            onClick={() => {
-              if (!model) return;
-              openPanel(model, {
-                component: 'dag',
-                name: '编排',
-                config: { dirKey: (sel && sel.topicKey) || '', groupId: board && board.id },
-              });
-            }}
-          >
-            编排
-          </span>
         </div>
         {groupTasks.pend.map(({ member, task }) => {
           const dagInfo = dagByTopic.get(member.topicKey);
@@ -362,7 +491,8 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
                     锁定
                   </span>
                 )}
-                <span className="rp-tstat" title="待领取">待领取</span>
+                {/* #121 统一组件：待领取=浅灰药丸 */}
+                <StatusTag t={task} />
               </button>
             </div>
           );
@@ -387,7 +517,8 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
                 <span className="mono">#{task.id}</span>
                 <span className="rp-ptag" title={`归属项目：${member.name}`}>{member.name}</span>
                 <span className="rp-proj-task-tx">{taskLabel(task)}</span>
-                <span className="rp-tstat done">{task.consumedAt || '已领取'}</span>
+                {/* 已领取=进行中：领取时刻用 #121 口径的进行中蓝（rp-tstat.live） */}
+                <span className="rp-tstat live">{task.consumedAt || '已领取'}</span>
               </button>
             ))}
           </>
@@ -404,31 +535,6 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
           onChanged={() => app.refreshRepos && app.refreshRepos()}
         />
       ) : null}
-
-      {/* 头部「更多 ▾」：查看列表 = 与进程一致的右侧边栏，列本组的文档 / reference */}
-      {moreMenu && board ? (
-        <PopMenu
-          x={moreMenu.x}
-          y={moreMenu.y}
-          items={[
-            {
-              label: '查看列表（文档 / reference）',
-              icon: 'list',
-              onClick: () => {
-                if (!model) return;
-                openPanel(model, {
-                  component: 'refs',
-                  name: '文档列表',
-                  config: { boardKey: dirKey, boardName: board.name },
-                  location: 'right',
-                });
-              },
-            },
-          ]}
-          onClose={() => setMoreMenu(null)}
-        />
-      ) : null}
-
 
     </div>
   );

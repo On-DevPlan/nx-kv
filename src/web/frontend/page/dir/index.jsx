@@ -15,9 +15,11 @@ import Landing from './landing.jsx';
 import DagEditor from './dag-editor.jsx';
 import DeletedPanel from './deleted-panel.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
+import { openSettingsPanel, openTemplateEditor } from '../../panels.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { NEW_TEMPLATE_VALUES } from '../../modules/md/md-parse.js';
 import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
+import { useTemplatesFor } from '../../modules/md/use-templates.js';
 
 // 目录任务表每页条数（队列一长就翻页，不再一次渲染全部）
 const PAGE_SIZE = 20;
@@ -34,7 +36,6 @@ export default function DirPanel({ dirKey }) {
 
   const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
   const [tplMenu, setTplMenu] = useState(null);
-  const [moreMenu, setMoreMenu] = useState(null); // 头部「更多 ▾」下拉（{x, y}）
   const [showDeleted, setShowDeleted] = useState(false); // 已删除任务面板开关
   const [dagTask, setDagTask] = useState(null); // 正在编排依赖的任务（DAG 节点编辑器）
   const fileMdRef = useRef(null);
@@ -139,8 +140,8 @@ export default function DirPanel({ dirKey }) {
     if (app.openPage) app.openPage({ dirKey, task, name: '新任务' });
   };
 
-  const openTplPanel = () => {
-    if (model) openPanel(model, { component: 'templates', name: '任务模板' });
+  const openTplSettings = () => {
+    if (model) openSettingsPanel(model);
   };
 
   const openProgress = () => {
@@ -153,17 +154,38 @@ export default function DirPanel({ dirKey }) {
     });
   };
 
+  // #128 模板可见域：「模板 ▾」只列**本主题可用**的模板（服务端按 scope 过滤）。
+  // 三档退化都回落全量（scoped 未加载/旧 serve/失败时 templates=null），菜单不变空。
+  const topicKeyHere = isGlobal ? GLOBAL_KEY : dirKey;
+  const scopedTpl = useTemplatesFor(topicKeyHere);
+  const menuTemplates = scopedTpl.templates || (tpl && tpl.templates) || [];
+
+  // 「为本目录新建模板」（#135）：不弹窗，直进全屏编辑；标题即名称。
+  const newTemplateForHere = () => {
+    if (!model) {
+      toast('工作区未就绪');
+      return;
+    }
+    openTemplateEditor(model, {
+      mode: 'new',
+      topic: topicKeyHere,
+      scope: isGlobal ? [] : [`topic:${topicKeyHere}`],
+      name: '',
+    });
+  };
+
   const tplMenuItems = [
-    ...((tpl && tpl.templates && tpl.templates.length)
-      ? tpl.templates.map((t) => ({
-          label: (t.id === tpl.defaultId ? '✓ ' : '') + t.name,
+    ...((menuTemplates.length)
+      ? menuTemplates.map((t) => ({
+          label: (t.id === tpl?.defaultId ? '✓ ' : '') + t.name,
           icon: 'list',
           // 正文按模板取值渲染（老模板可能带 {{槽位}}，任务里不能出现裸标记）
           onClick: () => newDraft(renderTemplateBody(t.body, { ...NEW_TEMPLATE_VALUES, ...(t.values || {}) })),
         }))
       : [{ label: '按默认模板新建一页', icon: 'list', onClick: () => newDraft(tpl ? tpl.defaultBody() : '') }]),
     'sep',
-    { label: '管理模板…', icon: 'gear', onClick: openTplPanel },
+    { label: `为本${isGlobal ? '全局池' : '目录'}新建模板…`, icon: 'plus', onClick: newTemplateForHere },
+    { label: '管理模板…', icon: 'gear', onClick: openTplSettings },
   ];
 
   // #79：反馈的 base 以**服务端当前正文**为准——列表行的 t.text 是 rows 快照，
@@ -388,32 +410,26 @@ export default function DirPanel({ dirKey }) {
     });
   };
 
-  const moreMenuItems = [
-    {
-      label: `已删除任务（${deletedTasks.length}）`,
-      icon: 'trash',
-      onClick: () => setShowDeleted(true),
-    },
-    // 查看列表（任务「简介文档优化」）：与进程一致的右侧边栏，列本项目的文档 / reference
-    ...(!isGlobal && repo ? [{
-      label: '查看列表（文档 / reference）',
-      icon: 'list',
-      onClick: () => {
-        if (!model) return;
-        const rk = repo.key || (topic.repo && topic.repo.key) || '';
-        if (!rk) {
-          toast('这个项目还没有仓库标识（key），无法定位文档列表');
-          return;
-        }
-        openPanel(model, {
-          component: 'refs',
-          name: '文档列表',
-          config: { repoKey: rk },
-          location: 'right',
-        });
-      },
-    }] : []),
-  ];
+  const openDeleted = () => setShowDeleted(true);
+
+  const openRefs = () => {
+    if (isGlobal || !repo) {
+      toast('全局池没有项目文档列表');
+      return;
+    }
+    if (!model) return;
+    const rk = repo.key || (topic.repo && topic.repo.key) || '';
+    if (!rk) {
+      toast('这个项目还没有仓库标识（key），无法定位文档列表');
+      return;
+    }
+    openPanel(model, {
+      component: 'refs',
+      name: '文档列表',
+      config: { repoKey: rk },
+      location: 'right',
+    });
+  };
 
   const importMd = async (file) => {
     const text = await file.text();
@@ -475,7 +491,8 @@ export default function DirPanel({ dirKey }) {
           onOpenFlow={() => model && openPanel(model, { component: 'dag', name: '编排', config: { dirKey } })}
           onToggleGate={toggleGate}
           downstreamOf={downstreamOf}
-          onMoreMenu={(e) => setMoreMenu({ x: e.clientX, y: e.clientY })}
+          onDeleted={openDeleted}
+          onRefs={openRefs}
           deletedCount={deletedTasks.length}
         />
       </div>
@@ -500,10 +517,6 @@ export default function DirPanel({ dirKey }) {
 
       {tplMenu && (
         <PopMenu x={tplMenu.x} y={tplMenu.y} items={tplMenuItems} onClose={() => setTplMenu(null)} />
-      )}
-
-      {moreMenu && (
-        <PopMenu x={moreMenu.x} y={moreMenu.y} items={moreMenuItems} onClose={() => setMoreMenu(null)} />
       )}
 
       <input

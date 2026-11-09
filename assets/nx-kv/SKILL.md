@@ -123,7 +123,7 @@ $ nx-kv todo get --ref "旧记录" --topic fr    # 或按主题收窄
 ```
 
 同一规则适用于 `get` / `update` / `remove` / `done` / `freeze` / `unfreeze`。
-`update` 用 `--matchTopic` 消歧（`--topic` 在那里表示「改成这个主题」）。
+`update` 用 `--match-topic` 消歧（`--topic` 在那里表示「改成这个主题」）。
 **内容含空格时要加引号**（`--ref "修复登录页 500"`）——`--ref` 是普通 flag，值不会自动吃掉后面的 token。
 
 ## Ref 加载引导

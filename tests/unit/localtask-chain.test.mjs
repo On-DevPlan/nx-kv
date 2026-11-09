@@ -126,3 +126,15 @@ test('fork：正文逐字复制，同时挂到源任务链下（#67）', async (
   // 源任务不动
   assert.equal((await svc.getTask({ cwd: dirA, id: src.task.id })).status, 'pending');
 });
+
+test('addTask --fork-of：楼数跟随链（派生 = 父 round + 1，#122）', async () => {
+  const root = await svc.addTask({ cwd: dirA, text: '# 楼数根' });
+  assert.equal(root.task.round, 1, '根任务 = 1楼');
+  const r2 = await svc.addTask({ cwd: dirA, text: '# 二轮', forkOf: root.task.id, forkKind: 'reopen' });
+  assert.equal(r2.task.round, 2, '派生 = 父 + 1（以前 add 路径落盘默认 1，与 reopen 口径不一致，#122 修正）');
+  const r3 = await svc.addTask({ cwd: dirA, text: '# 三轮', forkOf: r2.task.id });
+  assert.equal(r3.task.round, 3, '链继续 + 1');
+  // 链查询的 round 与任务行一致（taskChain 自己也算一份，两处不能漂）
+  const chain = await svc.taskChain({ cwd: dirA, id: r3.task.id });
+  assert.equal(chain.round, 3);
+});

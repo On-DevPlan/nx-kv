@@ -42,7 +42,7 @@ export const SINGLETON_PANELS = new Set([
   'repos',
   'cloud',
   'overview',
-  'templates',
+  // templates 不再单例（#137）：new/edit 靠 config.mode 区分，空 config 是目录页
   'progress',
   'refs',
   'settings',

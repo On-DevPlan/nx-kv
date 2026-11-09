@@ -11,7 +11,7 @@
   --soft: #f2f1ed;           /* 次级面：表头、折叠区、hover */
   --soft-2: #e5e3de;         /* 细线 */
   --line: #e7e5e0;           /* 分隔细线（比 soft-2 更浅更暖） */
-  --live: #1f7a4d;           /* 完成 / 已领取（绿；「等待=蓝 --doing、完成=绿 --live」全局统一） */
+  --live: #1f7a4d;           /* 已完成（绿；#121 口径全局统一：进行中=蓝 --doing、已完成=绿 --live、待领取=浅灰——「已领取」不再用绿） */
   --warn: #99690f;           /* 到点 / 超时 */
   --danger: #b3261e;         /* 破坏性动作 */
   --radius: 10px;
@@ -541,17 +541,11 @@ select {
 }
 .rp-chip b { font-family: var(--mono); font-weight: 650; color: var(--ink); }
 .rp-chip:hover { border-color: #2F6F5E; color: #2F6F5E; }
-.rp-chip.on {
-  background: color-mix(in srgb, #2F6F5E 12%, var(--paper));
-  border-color: #B7D4C8;
-  color: #2F6F5E;
-}
-.rp-chip.on b { color: #2F6F5E; }
+/* .rp-chip.on 的选中态统一在下方文档分档那段定义（#126：这里曾写过一套绿、
+ * 后面 2271 段又写了一套黑且靠后者胜出——两套并存让「改了没生效」）。 */
 /* 右侧那两个不是筛选器，是「打开管理弹窗」的入口：虚线框 + 右上箭头，
  * 免得和左边一排筛选 chip 长得一样（点下去却弹出窗口）。 */
 .rp-filters-side .rp-chip { border-style: dashed; }
-.rp-chip-go { font-size: 11px; color: var(--mid); margin-left: 1px; }
-.rp-chip:hover .rp-chip-go { color: #2F6F5E; }
 /* 检索框：管理页要的是「找人」而不是「翻长列表」 */
 .rp-search {
   font: inherit;
@@ -648,15 +642,6 @@ select {
 .rp-table tbody tr:last-child td { border-bottom: 0; }
 .rp-table tbody tr:hover td { background: #faf9f6; }
 .rp-name strong { font-size: 13px; font-weight: 650; color: var(--ink); }
-/* 描述 = 绑定的文档（不是一句话字符串）：行内给一个可点的主篇标题 + 补充篇计数。
-   点标题直接开文档页签，标题就是那篇 md 的第一行 `# `。 */
-.rp-desc {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
 .rp-doc {
   display: inline-flex;
   align-items: flex-start;
@@ -672,14 +657,6 @@ select {
   text-align: left;
   cursor: pointer;
 }
-/* 摘要允许两行：描述是给人扫表用的，一行截断会切在半句上 */
-.rp-doc-tx {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  min-width: 0;
-}
 .rp-doc:hover { color: #2F6F5E; text-decoration: underline; text-underline-offset: 2px; }
 .rp-doc.ghost { color: var(--mid); }
 .rp-doc-todo {
@@ -690,12 +667,7 @@ select {
   font-size: 10.5px;
   color: var(--mid);
 }
-.rp-doc-more { flex: none; font-size: 11px; color: var(--mid); }
 .rp-docpick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* 路径 = 机器数据：等宽；祖先目录变暗、末段略重（同目录看板的 .board-cwd 画法），
-   点击复制全文。纯灰一长串是旧画法，人眼得逐字符对比。 */
-.rp-path { font-size: 11px; color: var(--ink-2); word-break: break-all; }
-.rp-path .anc { color: var(--mid); }
 
 /* ---- 项目组详情（#/group/<id>）：组里的子目录表 ---- */
 .rp-group-head { margin-bottom: 10px; }
@@ -709,22 +681,86 @@ select {
   padding: 2px 8px; border-radius: 999px; background: var(--soft-2, #F1F0EC);
   font-size: 11px; font-weight: 600; color: var(--ink-2);
 }
-.rp-click-row { cursor: pointer; }
-.rp-badge-n {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 22px; padding: 1px 7px; border-radius: 999px;
-  background: var(--soft-2, #F1F0EC); color: var(--ink-2);
-  font-size: 11px; font-weight: 650;
-}
 .rp-acts { white-space: nowrap; }
 .rp-acts .btn { margin: 0 3px 0 0; }
-/* 删除按钮平时与同伴同貌（一排红描边是整张表在喊危险），悬停才表态 */
-.btn.ghost.rp-del:hover {
-  background: rgba(179, 38, 30, 0.07);
-  color: var(--danger);
-  opacity: 1;
-}
 .rp-empty { text-align: center; padding: 22px 12px; }
+
+/* 「＋ 新增任务 ▾」（#131/#132）：portal+fixed 防矮容器裁切；宽度随内容。 */
+.rp-newtask { position: relative; display: inline-flex; vertical-align: middle; }
+.rp-newtask > .btn {
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.rp-newtask-caret {
+  display: inline-block;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+  opacity: 0.75;
+}
+.rp-newtask-caret.rot { transform: rotate(-90deg); }
+.rp-newtask > .btn.is-open { border-color: var(--mid); }
+.rp-tpl-fly {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 168px;
+  max-width: min(260px, calc(100vw - 24px));
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow, 0 8px 24px rgba(0, 0, 0, 0.12));
+  z-index: 80;
+  overflow: hidden;
+}
+.rp-tpl-fly-portal {
+  position: fixed;
+  left: auto;
+}
+.rp-tpl-fly-h {
+  padding: 7px 12px 5px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+  background: var(--soft-2, #F7F6F3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-tpl-fly-list { max-height: 220px; overflow-y: auto; overflow-x: hidden; padding: 4px; }
+.rp-tpl-fly-it {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  padding: 6px 9px;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-tpl-fly-it:hover { background: var(--soft-2, #F1F0EC); }
+.rp-tpl-fly-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 5px 8px;
+  border-top: 1px solid var(--line);
+}
+.rp-tpl-fly-new {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--live);
+  cursor: pointer;
+}
+.rp-tpl-fly-new:hover { text-decoration: underline; }
 
 /* 看板上下文条：筛选到某个看板时亮出它的领域描述（侧重/配合关系/关键路径/关键词），
    并给出「导入仓库」入口 —— 批量加成员不用回「全部」逐行找下拉。 */
@@ -766,7 +802,7 @@ select {
 .rp-page .page-head h2 { font-size: 19px; }
 .rp-page .page-head .page-desc { font-size: 13.5px; line-height: 1.65; max-width: 820px; }
 .rp-chip { font-size: 12.5px; padding: 5px 12px; }
-/* 表格要够宽才装得下一行操作（打开/remote/编辑/描述/删除）。
+/* 表格要够宽才装得下一行操作（打开/编辑/删除 + 更多下拉）。
    窄屏宁可横向滚动，也不要让「删除」被裁在视口外——按钮少一个比挤成一团更糟。 */
 .rp-table { min-width: 1060px; }
 .rp-table th,
@@ -774,15 +810,11 @@ select {
 .rp-table td { font-size: 13.5px; padding: 12px 14px; }
 .rp-ref-table td { font-size: 13px; padding: 10px 12px; }
 .rp-name strong { font-size: 14.5px; }
-.rp-path { font-size: 12px; line-height: 1.5; }
 .rp-ref-cell-name strong { font-size: 14px; }
 .rp-ref-cell-remote { font-size: 12px; }
 .rp-refs-none { font-size: 12px; }
 .rp-context { font-size: 13px; padding: 10px 14px; }
 .rp-context-desc { font-size: 12.5px; }
-.rp-board-item { font-size: 13px; padding: 10px 2px; }
-.rp-board-desc { font-size: 12.5px; }
-.rp-board-count { font-size: 12px; }
 .rp-ref-mounted { font-size: 13px; padding: 12px 14px; }
 .rp-ref-mounted-desc { font-size: 12.5px; }
 /* small 的尺寸/字号随 .btn 基类全局统一（#91），此处不再覆盖 */
@@ -796,79 +828,12 @@ select {
 
 /* 三条图例：这一页有两种仓库 + 一种关系，先说清各自是什么。
    （四行说明文字改成一排标签：想深究的看 title，扫一眼就懂的看这里） */
-/* 成员管理弹窗：顶部领域描述（多行原样）+ 仓库点选列表 */
-.rp-imp-desc {
-  padding: 7px 10px;
-  background: var(--soft);
-  border-radius: var(--radius-sm);
-  font-size: 11.5px;
-  line-height: 1.55;
-  color: var(--ink-2);
-  white-space: pre-line;
-  margin-bottom: 10px;
-}
-.rp-imp-list {
-  max-height: 50vh;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-}
-.rp-imp-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--line);
-  font-size: 12.5px;
-}
-.rp-imp-item:last-child { border-bottom: 0; }
-.rp-imp-item:hover { background: var(--soft); }
-.rp-imp-name { font-weight: 650; color: var(--ink); flex: 0 0 auto; }
-.rp-imp-path {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--mid);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rp-imp-item .btn { flex: 0 0 auto; }
-
-/* 看板列表（看板管理弹窗内）：每行一条发丝线（旧画法 4px 间隙裸排，行与行之间的关系靠猜） */
-.rp-board-list { display: flex; flex-direction: column; }
-.rp-board-item {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  font-size: 13.5px;
-  padding: 9px 2px;
-  border-bottom: 1px solid var(--line);
-}
-.rp-board-item:last-child { border-bottom: 0; }
-.rp-board-name { font-weight: 650; color: var(--ink); flex: 0 0 auto; }
-.rp-board-desc {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 12.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.rp-board-count {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--mid);
-  white-space: nowrap;
-}
 .rp-boards-unassigned {
   padding: 9px 2px;
   font-size: 12.5px;
   color: var(--mid);
 }
 .rp-boards-unassigned b { font-family: var(--mono); color: var(--ink-2); font-weight: 650; }
-.rp-board-item .acts { margin-left: auto; white-space: nowrap; }
 
 /* ---- 参考仓库（type=ref）弹窗与绑定 chips ----
  * 参考仓库与开发仓库分表：主表只放 dev（行内「参考」列显示绑到它的 ref）；
@@ -1214,25 +1179,6 @@ select {
 .rp-ref-note-chip:hover { color: var(--ink); border-color: var(--ink); }
 .rp-ref-mounted-item .acts { margin-left: auto; display: flex; gap: 4px; flex: 0 0 auto; }
 
-/* 布局导入的计划预览：每行一个仓库（复选框 = 是否随导入克隆）+ 看板/关系摘要 */
-.rp-layout-plan { margin: 0; }
-.rp-layout-repos {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 6px 10px;
-  max-height: 260px;
-  overflow-y: auto;
-  font-size: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.rp-layout-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.rp-layout-row input[type='checkbox'] { flex: 0 0 auto; }
-.rp-layout-name { font-weight: 650; color: var(--ink); flex: 0 0 auto; }
-.rp-layout-state { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rp-layout-board { color: var(--ink-2); border-top: 1px dashed var(--line); padding-top: 4px; }
-.rp-layout-link { color: var(--ink-2); }
 .rp-layout-warn { color: #b3261e; font-size: 11.5px; }
 
 /* ---- 对齐 remote（key 是本地身份，remote 是协作的标准单位）---- */
@@ -1300,18 +1246,6 @@ select {
 .rp-missing-remote { font-size: 11px; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-missing-item .btn { flex: 0 0 auto; margin-left: auto; }
 
-/* 本地未拥有的占位成员（导入留下的位置，尚未 clone） */
-.rp-member-missing { opacity: 0.72; }
-.rp-member-missing .rp-name strong::after {
-  content: '本地未拥有';
-  margin-left: 6px;
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--mid);
-  border: 1px dashed var(--mid);
-  border-radius: 999px;
-  padding: 0 6px;
-}
 
 /* ---- 导入导出全屏面板 ----
  * 版面：左右两栏（左=来源/范围/策略，右=差异/结果）。窄屏纵向堆叠。
@@ -1356,7 +1290,9 @@ select {
   color: var(--ink-2);
   border-radius: 999px;
 }
-.rp-tab.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+/* 选中态：绿浅底+绿边框（#119 反馈「不要黑色色块」）——绿即 --live（全局
+   完成/已领取色），浅底沿用状态光点的 rgba(31,122,77,.12) 惯用值。 */
+.rp-tab.on { background: rgba(31, 122, 77, 0.12); border-color: var(--live); color: var(--live); }
 .rp-full-body {
   flex: 1;
   min-height: 0;
@@ -1677,6 +1613,27 @@ h3 { font-size: 13px; margin: 0; font-weight: 700; }
   letter-spacing: 0.02em;
 }
 
+/* ---------- 任务状态 tag（#121）----------
+   全应用统一组件 components/status-tag 的视觉层，口径：
+   蓝(--doing)=进行中（已领取在干）、绿(--live)=已完成、浅灰=待领取；
+   取消/软删/迁出这类「已收口」不入三色，弱化成灰虚线。
+   各处单字徽标/色点（.cnt-*、.st-*、.mdw-tcard 的点）配色跟随同一份映射，
+   由 status-tag/model.js 的 statusTone() 决定——不要再散写状态色。 */
+.tstat {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--soft-2);
+  color: var(--mid);
+  white-space: nowrap;
+}
+.tstat.tstat-pending { color: var(--ink-2); background: var(--soft); border-color: var(--soft-2); }
+.tstat.tstat-doing { color: var(--doing, #2f5fb5); background: var(--doing-bg, #edf2fc); border-color: var(--doing-line, #c9d6f0); }
+.tstat.tstat-done { color: var(--live); background: rgba(31, 122, 77, 0.08); border-color: rgba(31, 122, 77, 0.28); }
+.tstat.tstat-gone { color: var(--faint); border-style: dashed; }
+
 /* ---------- 表格：细线分隔，不画网格 ---------- */
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 9px 10px; vertical-align: top; }
@@ -1734,10 +1691,8 @@ td.ops .btn { margin: 0 3px 3px 0; }
   vertical-align: middle;
 }
 .queue-table tbody td { padding: 8px 10px; vertical-align: middle; }
-/* 队列里的状态：同样用色点 + 文字，和看板行保持一套语言 */
-.queue-table .board-status { font-size: 11.5px; color: var(--ink-2); }
-.queue-table .board-status.done::before { background: var(--soft-2); box-shadow: inset 0 0 0 1.5px var(--soft-2); }
-.queue-table .board-status.pend::before { background: var(--live); box-shadow: 0 0 0 3px rgba(31, 122, 77, 0.12); }
+/* （.queue-table .board-status 已删，#121 清理：全库无渲染点；
+   任务状态一律走 .tstat 统一组件） */
 
 /* ---------- localtask/timegoal 合并目录看板（仪表盘质感） ----------
    三条主线：
@@ -1943,9 +1898,8 @@ table.directory-board { min-width: 780px; table-layout: fixed; border-collapse: 
 .board-ops { white-space: nowrap; }
 .board-ops .btn { margin: 0 3px 2px 0; }
 
-/* 状态与「关闭等待」同一行：让等待中的行和其他行一样高 */
-.board-status-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.board-status-row .board-status { flex: 0 1 auto; min-width: 0; }
+/* （.board-status / .board-status-row 状态点族已删，#121 清理：全库无渲染点；
+   任务状态一律走 .tstat 统一组件。） */
 .board-wait-stop { flex: 0 0 auto; }
 /* 领取耗时（发布 → 被领取）：机器数据，等宽小字 */
 .board-pickup {
@@ -1955,33 +1909,6 @@ table.directory-board { min-width: 780px; table-layout: fixed; border-collapse: 
   margin-top: 2px;
   white-space: nowrap;
 }
-/* 状态点 + 文字：比一排填充色块安静，信息还在 */
-.board-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: var(--ink-2);
-  white-space: nowrap;
-  /* 「等待中 已等 25:16 · 剩 23:58」这类长状态会撑出列宽，
-     溢出后直接压到右边「时间目标」列的字上（窄屏必现）。夹住它。 */
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  vertical-align: bottom;
-}
-.board-status::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--soft-2);
-  flex: none;
-}
-.board-status.live::before { background: var(--live); box-shadow: 0 0 0 3px rgba(31, 122, 77, 0.12); }
-.board-status.busy::before { background: var(--warn); box-shadow: 0 0 0 3px rgba(153, 105, 15, 0.13); }
-.board-status.pool::before { background: var(--ink); }
-.board-status.stale::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--soft-2); }
 
 /* 空状态：要看起来是**设计过的**，不是"表没了" */
 .board-empty { padding: 30px 16px; text-align: center; }
@@ -2252,131 +2179,11 @@ footer code {
 .toggle.on .dot { background: var(--live); }
 .toggle.on .dot::before { transform: translateX(12px); }
 
-/* ---------- 仓库管理页：平台化区块（统计 / 分组卡片 / 文档 chips / 文档区块） ---------- */
+/* ---------- 仓库管理页：平台化区块（分组卡片 / 文档 chips / 文档区块） ---------- */
 
-/* 头部统计 chips：既是计数也是跳转入口（按钮，不是死标签） */
-.rp-stats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.rp-stat {
-  font-family: var(--label);
-  font-size: 11.5px;
-  color: var(--mid);
-  background: var(--soft);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 3px 10px;
-  white-space: nowrap;
-}
-/* 统计数字**不可点**（#114）：原先这排 chip 是跳转入口，与页头工具条里的
-   分组管理/参考仓库/文档检索重复——数字只报数，入口统一收在工具条。 */
-.rp-stat b { color: var(--ink); font-family: var(--mono); font-weight: 600; margin-left: 2px; }
+/* 头部统计行已整行删除（#114 去交互 → #116 去胶囊 → #117 用户拍板删元素）：
+   数量在表格/分组管理里都看得到，头部不再摆一排报数；rp-stats/rp-stat 样式一并清除。 */
 
-/* 区块外壳：分组 / 文档两个一等区块共用 */
-.rp-sec {
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  padding: 14px 16px;
-  margin-bottom: 14px;
-}
-.rp-sec-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.rp-sec-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
-.rp-sec-title h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 7px;
-}
-.rp-sec-title .muted { font-size: 12px; }
-.rp-sec-count {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--mid);
-  background: var(--soft);
-  border-radius: 9px;
-  padding: 1px 7px;
-}
-.rp-sec-acts { display: flex; gap: 6px; flex-wrap: wrap; }
-
-/* 分组卡片网格：等高卡片（头部 / 描述 / 成员 / 操作四段，操作钉在底部） */
-.rp-board-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 10px;
-  align-items: stretch;
-}
-.rp-board-card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--paper);
-  padding: 11px 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.rp-board-card:hover { border-color: var(--soft-2); box-shadow: var(--shadow); }
-.rp-board-card.on { border-color: var(--ink); }
-.rp-board-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.rp-board-name {
-  font: inherit;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--ink);
-  border: 0;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rp-board-name:hover { text-decoration: underline; }
-.rp-board-count { font-family: var(--mono); font-size: 11px; color: var(--mid); white-space: nowrap; }
-/* 组介绍预览：固定两行高度（按钮元素上 line-clamp 不可靠，用 height 兜底不溢出）；
-   真正的编辑入口是底部的「组介绍 ✎」按钮 */
-.rp-board-desc {
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  border: 1px dashed var(--soft-2);
-  border-radius: var(--radius-sm);
-  background: var(--canvas);
-  color: var(--ink-2);
-  font-size: 12px;
-  line-height: 1.55;
-  padding: 6px 9px;
-  height: 3.2em;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  transition: border-color 0.15s, background 0.15s;
-}
-.rp-board-desc:hover { border-color: var(--mid); background: var(--soft); }
-.rp-board-desc.ghost { color: var(--mid); font-style: italic; }
-/* 成员条：单行不换行，溢出收进 +N（卡片高度不随成员多少抖动） */
-.rp-board-members {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 4px;
-  align-items: center;
-  font-size: 12px;
-  min-height: 24px;
-  overflow: hidden;
-}
 .rp-board-mchip {
   background: var(--soft);
   border: 1px solid var(--line);
@@ -2408,15 +2215,6 @@ footer code {
   border-radius: 6px;
   padding: 1px 6px;
   white-space: nowrap;
-}
-.rp-board-card-acts {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-top: auto;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
 }
 .rp-board-empty {
   border: 1px dashed var(--soft-2);
@@ -2477,7 +2275,12 @@ footer code {
   transition: border-color 0.15s, background 0.15s;
 }
 .rp-group-chip:hover { border-color: var(--mid); background: var(--soft); }
-.rp-group-chip.on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+/* 选中态同 chips 的绿三件套（#126：黑块与「不要黑色色块」口径冲突） */
+.rp-group-chip.on {
+  border-color: var(--live);
+  background: rgba(31, 122, 77, 0.12);
+  color: var(--live);
+}
 
 /* 文档区块：一行一个文档（标题 + rel + 绑定宿主 chips + 操作） */
 .rp-doc-rows { display: flex; flex-direction: column; }
@@ -2557,8 +2360,15 @@ footer code {
 }
 .rp-chip b { font-family: var(--mono); color: var(--ink); margin-left: 2px; }
 .rp-chip:hover { border-color: var(--mid); background: var(--paper); }
-.rp-chip.on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
-.rp-chip.on b { color: var(--paper); }
+/* 选中态绿浅底+绿边框（#119 口径；#126：原黑块——「tab选中态不要黑色色块」
+   在 chips 上同样成立，且本段靠后在层叠里盖过上方的绿，用户实测「没有在
+   repos 界面看到」改动。全页 chip 选中态只剩这一处定义。） */
+.rp-chip.on {
+  border-color: var(--live);
+  background: rgba(31, 122, 77, 0.12);
+  color: var(--live);
+}
+.rp-chip.on b { color: var(--live); }
 /* 表头小提示：说明这一列可点进编辑 */
 .rp-th-hint { display: block; font-size: 11px; font-weight: 400; color: var(--mid); margin-top: 1px; }
 /* 跳到宿主时闪一下，避免只看滚动猜落点 */

@@ -17,12 +17,14 @@ import { CURRENT_SCHEMA_VERSION } from '../version.js';
 export const DIRECT_EDGES = [
   { from: 0, to: 1, file: 'v1.sql', title: '初始 schema（topics/tasks/refs/…）' },
   { from: 1, to: 2, file: 'v2.sql', title: '附件/资源统一模型', apply: migrateAttachments },
+  { from: 2, to: 3, file: 'v3.sql', title: '模板可见域（scope/origin_topic）' },
 ];
 
 // 人读版本说明（docs/decisions 是决策的唯一权威位置，里面对应一份 date 化的 .md）
 export const VERSION_NOTES = {
   1: 'docs/decisions/versions/2026-11-08-v1.md',
   2: 'docs/decisions/versions/2026-11-08-v2.md',
+  3: 'docs/decisions/versions/2026-11-09-v3.md',
 };
 
 const keyOf = (from, to) => `${from}->${to}`;

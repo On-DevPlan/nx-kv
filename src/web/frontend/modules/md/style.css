@@ -233,10 +233,13 @@
 .mdw-del-ops .btn + .btn{margin-left:6px}
 .mdw-land-tr .st{
   display:inline-block;font-size:10.5px;line-height:16px;padding:0 7px;border-radius:999px;
-  background:#EAF1FB;color:var(--info,#1558BC);
+  background:var(--soft,#F1F0EC);color:var(--ink-2,#4B515A);
 }
-.mdw-land-tr .st.run{background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E)}
-.mdw-land-tr .st.done{background:var(--soft,#F1F0EC);color:var(--mid,#838A93)}
+/* #121 状态徽标统一口径（components/status-tag/model.js）：等=浅灰（基类）、
+   跑=进行中蓝、完=已完成绿、档=收口灰。旧口径（跑=绿、完=灰、等=蓝）已废。 */
+.mdw-land-tr .st.doing{background:var(--doing-bg,#edf2fc);color:var(--doing,#2f5fb5)}
+.mdw-land-tr .st.done{background:rgba(31,122,77,.08);color:var(--live,#1f7a4d)}
+.mdw-land-tr .st.gone{background:transparent;color:var(--faint,#A9AEB4)}
 /* 完成态会同时出「重试+删除」两钮：必须横排且预留宽度，
    用 opacity 显隐（不用 display:none），hover 行高才不会被竖排撑开。 */
 .mdw-land-tr .act{
@@ -711,6 +714,22 @@
   font-weight:600;font-size:11px;font-family:inherit;color:var(--mid,#838A93);
 }
 .mdw-prog-all:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
+/* 搜索框（#122 建于楼数语义、#127 改编号）：按任务编号 / 标题过滤进程卡；空结果时保持展开（hasAny 控制） */
+.mdw-prog-search{
+  flex:none;display:flex;align-items:center;gap:6px;margin:0;padding:7px 12px;
+  border-bottom:1px solid var(--line,#E4E2DC);
+}
+.mdw-prog-search svg{flex:none;color:var(--mid,#838A93)}
+.mdw-prog-search input{
+  flex:1;min-width:0;border:0;outline:0;background:transparent;
+  font:inherit;font-size:11.5px;padding:2px 0;color:var(--ink,#3D434B);
+}
+.mdw-prog-search input::placeholder{color:var(--faint,#76736C)}
+.mdw-prog-qclear{
+  flex:none;border:0;background:none;cursor:pointer;padding:2px;line-height:0;
+  border-radius:4px;color:var(--faint,#76736C);
+}
+.mdw-prog-qclear:hover{color:var(--ink,#3D434B)}
 /* 组模式的项目筛选 chips（任务 #56）：「全部」+ 各成员项目，点击过滤进程卡；
    数量小字用 <b>，选中态用 accent 描边 */
 .mdw-prog-filters{
@@ -748,9 +767,9 @@
 .mdw-prog-sum{flex:none;padding:10px 12px;border-bottom:1px solid var(--line,#E4E2DC);background:linear-gradient(180deg,var(--mdw-accent-soft),transparent)}
 .mdw-prog-sum .counts{display:flex;gap:10px;flex-wrap:wrap;font:400 11px ui-monospace,Consolas,monospace;color:var(--mid,#838A93);margin-bottom:6px}
 .mdw-prog-sum .counts b{font-weight:650}
-.mdw-prog-sum .counts .run b{color:var(--mdw-accent)}
-.mdw-prog-sum .counts .wait b{color:var(--info,#1558BC)}
-.mdw-prog-sum .counts .done b{color:var(--ink-2,#4B515A)}
+.mdw-prog-sum .counts .run b{color:var(--doing,#2f5fb5)}
+.mdw-prog-sum .counts .wait b{color:var(--mid,#838A93)}
+.mdw-prog-sum .counts .done b{color:var(--live,#1f7a4d)}
 .mdw-prog-sum .bar{height:3px;background:var(--soft,#F1F0EC);border-radius:2px;overflow:hidden}
 .mdw-prog-sum .bar > i{display:block;height:100%;background:var(--mdw-accent);border-radius:2px}
 .mdw-prog-list{flex:1;overflow:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
@@ -771,15 +790,22 @@
 .mdw-tcard-row.on .mdw-tcard{border-color:var(--mdw-accent-line);background:var(--mdw-accent-soft)}
 .mdw-tcard-h{display:flex;align-items:flex-start;gap:6px}
 .mdw-tcard-h .st{width:7px;height:7px;border-radius:50%;margin-top:4px;flex:none}
-.mdw-tcard-h .st.run{background:var(--mdw-accent);box-shadow:0 0 0 2px color-mix(in srgb, var(--mdw-accent) 18%, transparent)}
-.mdw-tcard-h .st.wait{background:var(--info,#1558BC);box-shadow:0 0 0 2px rgba(21,88,188,.14)}
-.mdw-tcard-h .st.done{background:var(--mid,#838A93)}
+/* #121 统一口径：跑(run)=进行中蓝、等(wait)=待领取浅灰、完(done)=已完成绿 */
+.mdw-tcard-h .st.run{background:var(--doing,#2f5fb5);box-shadow:0 0 0 2px rgba(47,95,181,.14)}
+.mdw-tcard-h .st.wait{background:var(--soft-2,#DDD9D2)}
+.mdw-tcard-h .st.done{background:var(--live,#1f7a4d);box-shadow:0 0 0 2px rgba(31,122,77,.14)}
 .mdw-tcard-h .titles{flex:1;min-width:0}
 .mdw-tcard-h .n{font-size:12px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mdw-tcard-h .sub{font-size:10.5px;color:var(--mid,#838A93);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mdw-tcard-h .el{font:650 10.5px ui-monospace,Consolas,monospace;flex:none}
-.mdw-tcard-h .el.run{color:var(--mdw-accent)}
-.mdw-tcard-h .el.wait{color:var(--info,#1558BC)}
+/* 编号徽标（#127）：卡片右侧 #id（用户口径「楼数」= #xxx 编号；#122 曾按
+   重开轮次渲染「N楼」，mdw-tcard-floor 类名随之弃用）。机器数据用等宽小字 + 浅底药丸 */
+.mdw-tcard-num{
+  flex:none;font:650 10px ui-monospace,Consolas,monospace;color:var(--ink-2,#4B515A);
+  background:var(--soft,#F1F0EC);border-radius:4px;padding:1px 5px;margin-top:1px;
+}
+.mdw-tcard-h .el.run{color:var(--doing,#2f5fb5)}
+.mdw-tcard-h .el.wait{color:var(--mid,#838A93)}
 .mdw-tcard .kind{
   display:inline-block;font-size:9.5px;color:var(--mdw-accent);border:1px solid var(--mdw-accent-line);
   border-radius:3px;padding:0 4px;margin-left:5px;vertical-align:1px;
@@ -795,6 +821,8 @@
 .mdw-sel-menu .cap{font-size:10.5px;color:var(--faint,#A9AEB4);padding:4px 10px 2px}
 .mdw-sel-menu > button{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:6px;background:none;cursor:pointer;font-size:12px;font-family:inherit;color:var(--ink,#16181C)}
 .mdw-sel-menu > button:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
+.mdw-sel-menu > button.danger{color:var(--danger,#b3261e)}
+.mdw-sel-menu > button.danger:hover{background:rgba(179,38,30,.07);color:var(--danger,#b3261e)}
 .mdw-sel-menu .sep{height:1px;background:var(--line,#E4E2DC);margin:4px 2px}
 .mdw-sel-fmt-btn.comment{font-family:inherit;font-weight:650;letter-spacing:0}
 
@@ -992,9 +1020,14 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
   display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0 22px;
 }
 
-/* ── 任务模板面板（工作区里的一块，不是弹窗）────────────────────────
-   面板宿主是 FlexLayout 页签的内容区（绝对定位的盒子）：自己撑满 + 内部滚动，
-   否则内容一长就把面板撑破。内容列限宽 880（与旧弹窗同宽），宽面板下不散开。 */
+/* ── 任务模板：全屏编辑（#134）与 dir/group 同壳 .mdw ── */
+.mdw-tpl-edpage{
+  height:100%;width:100%;box-sizing:border-box;
+  display:flex;flex-direction:column;min-height:0;
+}
+
+/* ── 任务模板列表面板 ────────────────────────
+   面板宿主是 FlexLayout 页签的内容区：自己撑满 + 内部滚动。 */
 .mdw-tpl-panel{
   height:100%;width:100%;box-sizing:border-box;overflow:auto;
   padding:16px 18px 28px;background:var(--canvas,#F5F4F1);
@@ -1348,11 +1381,9 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
 .mdw-sbar-item .ic{opacity:.75}
 .mdw-sbar-num{font:400 10px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4)}
 .mdw-sbar-grow{flex:1;min-width:0}
-.mdw-sbar-stat{padding:0 6px;font-weight:600;white-space:nowrap}
-.mdw-sbar-stat.is-done{color:var(--mid,#838A93)}
-.mdw-sbar-stat.is-claimed{color:var(--mdw-accent,#2F6F5E)}
-.mdw-sbar-stat.is-pending{color:var(--info,#1558BC)}
-.mdw-sbar-stat.is-cancelled{color:var(--faint,#A9AEB4)}
+/* 工作台底部状态条里的状态 tag：#121 起里面放统一组件 .tstat（配色在 style.css），
+   这里只当布局壳。（.is-* 旧配色已删——旧「已领取=绿、待领取=蓝」口径废弃。） */
+.mdw-sbar-stat{padding:0 6px;white-space:nowrap}
 .mdw-sbar-chev{
   width:22px;height:20px;display:inline-flex;align-items:center;justify-content:center;
   border:0;border-radius:3px;background:transparent;color:var(--mid,#838A93);cursor:pointer;
@@ -1514,6 +1545,8 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
   flex:none;font-size:10px;line-height:16px;padding:0 6px;border-radius:8px;
   background:var(--soft,#F1F0EC);color:var(--mid,#838A93);font-weight:600;
 }
+/* 任务状态徽标（#121）：StatusTag 统一组件在这里只给尺寸，配色由 tstat-* 接管 */
+.att-sbadge{flex:none;font-size:10px;line-height:16px;padding:0 5px;}
 .att-pending{margin-top:14px;padding-top:10px;border-top:1px solid var(--line,#E4E2DC)}
 .att-pending-head{font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--mid,#838A93);margin-bottom:6px}
 .att-pending-item{

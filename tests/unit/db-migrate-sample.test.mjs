@@ -21,7 +21,7 @@ test('迁移映射表：直接边 / 组合边 / 缺边与降级都要明确报�
   );
   assert.deepEqual(
     planMigrationPath(0, CURRENT_SCHEMA_VERSION).map((s) => `${s.from}->${s.to}`),
-    ['0->1', '1->2']
+    ['0->1', '1->2', '2->3']
   );
   const composed = describeEdges().find((e) => e.from === 0 && e.to === 2);
   assert.ok(composed, '0→2 组合边必须显式登记');

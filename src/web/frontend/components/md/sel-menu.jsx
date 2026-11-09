@@ -19,6 +19,7 @@ export default function SelMenu({
   onFormat,
   onCopy,
   onCompose,
+  onDelete,
 }) {
   if (!at) return null;
   const kind = at.kind || 'task';
@@ -70,6 +71,16 @@ export default function SelMenu({
           </button>
           <div className="sep" />
           <button type="button" onClick={onCopy}>复制选区</button>
+          {/* 跨块选区才有「删除选区」（#124）：块粒度整段移除；单块选区维持
+              原菜单（字符级删除走 Backspace，#98），不给误删整块的机会 */}
+          {onDelete ? (
+            <>
+              <div className="sep" />
+              <button type="button" className="danger" title="删除选区触到的整段块" onClick={onDelete}>
+                删除选区
+              </button>
+            </>
+          ) : null}
         </>
       )}
     </div>

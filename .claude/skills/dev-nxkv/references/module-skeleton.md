@@ -37,7 +37,7 @@ src/web/frontend/
 tests/unit/*.test.mjs        单测
 tests/smoke.mjs              冒烟（假后端 + 临时配置）
 scripts/                     lint 辅助（check-tdz）、link-local 等
-assets/<skill>/              安装后给 agent 的技能（每个目录一个 SKILL.md）
+assets/skills/               安装后给 agent 的技能
 ```
 
 当前模块（`src/runtime/registry.js` 的 `MODULES`）：`system`、`setting`、`auth`、`localtask`、`tasktool`、`todo`、`repos`、`docs`、`file`、`templates`、`bundled`、`db`。
@@ -102,9 +102,8 @@ export default {
 ## 5. 前端骨架
 
 - 页面组件放 `page/<name>/index.jsx`，必要时拆 section；大组件按功能拆分，避免单文件继续膨胀。
-- 设置页在 `page/settings/`：`task-templates-section.jsx`（任务模板）、`prompt-templates-section.jsx`（区块模板列表）、`sidebar-section.jsx`（侧栏偏好）、`index.jsx`（装配）。
+- 设置页在 `page/settings/`：`task-templates-section.jsx`（任务模板）、`prompts-section.jsx` + `prompt-templates-section.jsx` + `blocks-section.jsx`（提示词模板）。
 - 共享展示模块在 `modules/`：`md/`（Markdown 编辑器）、`prompts/`、`board/`。
-- 任务详情页 `page/dir/task.jsx` 底部是常驻状态栏 + 可拖拽信息面板（附件 / check / 反馈 tab），偏好存 `localStorage` 的 `nxkv.taskDock*`；改这里只扩展同一套，不另起第二套面板。
 - 路由/视图登记看 `frontend/registry.js`；面板布局看 `frontend/panels.jsx`。
 - 前端状态与请求走 `api/client.js` 的 `api(path, {method, body})`，失败 `Error` 带 `.code`；不要自己拼鉴权头。
 - 样式：新增优先写 `style-v2.css`（v2 tokens：`--paper/--ink/--soft/--wait/--doing/--live`）；`style.css` 是 v1 存量。

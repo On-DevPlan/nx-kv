@@ -228,6 +228,10 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
     archivedAt: String(t.archivedAt ?? ''),
     archivedReason: String(t.archivedReason ?? ''),
     reopenCount: Number(t.reopenCount) || 0,
+    // 链上第几轮（#122 进程面板「楼数」）：根任务 = 1，派生 = 来源 + 1（schema 语义
+    // 见 v1.sql tasks.round）。库里存的是 round 列，JSON 形态只带 reopenCount = round-1
+    // （repo/rows.js），这里换算回来 —— 前端显示「第 N 楼」/按楼搜索不必再回溯链。
+    round: Math.max(1, (Number(t.reopenCount) || 0) + 1),
     // DAG / 闸门（#34）：blockBy=依赖 id；blocksFollowing=挡住数组其后所有 pending
     blockBy,
     blocksFollowing,

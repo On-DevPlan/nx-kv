@@ -333,21 +333,24 @@ export function scrollTextareaToIndex(ta, index) {
   ta.scrollTop = Math.max(0, pad + (line - 2) * lh - ta.clientHeight / 3);
 }
 
-/** 从 DataTransfer / Clipboard 收集图片 File */
-export function imageFilesFromDataTransfer(dt) {
+/**
+ * 从 DataTransfer / Clipboard 收集**文件**——图片与非图片一律放行
+ * （md/pdf/zip 都该能进附件通道；下游 filesToAttachments 本就按类型分片段）。
+ * 纯文本粘贴没有 files 条目，返回空 → 调用方不走 preventDefault，交给默认文本粘贴。
+ */
+export function filesFromDataTransfer(dt) {
   if (!dt) return [];
   const out = [];
   if (dt.files?.length) {
     for (const f of dt.files) {
-      if (/^image\//.test(f.type)) out.push(f);
+      if (f && f.size > 0) out.push(f);
     }
   }
   if (!out.length && dt.items?.length) {
     for (const it of dt.items) {
-      if (it.kind === 'file' && /^image\//.test(it.type)) {
-        const f = it.getAsFile();
-        if (f) out.push(f);
-      }
+      if (it.kind !== 'file') continue;
+      const f = it.getAsFile();
+      if (f && f.size > 0) out.push(f);
     }
   }
   return out;

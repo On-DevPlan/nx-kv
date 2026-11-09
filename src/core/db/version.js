@@ -8,8 +8,11 @@
  *
  * v2（2026-11-08）：新增 attachments / task_attach / ref_attach，删除 task_refs /
  * ref_relations；旧 manifest.json 与正文 fileId 引用在迁移阶段落库。
+ *
+ * v3（2026-11-09）：templates 加 scope（可见域 JSON 数组，默认 '["*"]'）与
+ * origin_topic（创建来源主题，默认 ''）——存量行原地升为全局可见，零破坏。
  */
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 
 /**
  * 运行时最低 Node 版本。

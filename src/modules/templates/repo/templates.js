@@ -47,9 +47,9 @@ export function insertIfAbsent(conn, row) {
   conn.run(
     `INSERT INTO templates (id, category, name, slot, body, vars_schema, vars, is_default,
                             enabled, sort_order, builtin, state, version, deleted_at,
-                            created_at, updated_at)
+                            created_at, updated_at, scope, origin_topic)
      VALUES (:id, :category, :name, :slot, :body, :schema, :vars, :isDefault,
-             :enabled, :sort, :builtin, '', 0, NULL, :created, :updated)
+             :enabled, :sort, :builtin, '', 0, NULL, :created, :updated, :scope, :originTopic)
      ON CONFLICT(id) DO NOTHING`,
     {
       id: row.id,
@@ -65,6 +65,9 @@ export function insertIfAbsent(conn, row) {
       builtin: row.builtin ? 1 : 0,
       created: row.createdAtMs,
       updated: row.updatedAtMs,
+      // 可见域（v3）：数组归一在 service 层做完，这里只管落库形状
+      scope: rowJson(row.scope, '["*"]'),
+      originTopic: String(row.originTopic || ''),
     }
   );
 }
@@ -89,6 +92,11 @@ export function updateRow(conn, id, patch, atMs) {
     sets.push('enabled = :enabled');
     params.enabled = patch.enabled ? 1 : 0;
   }
+  if (patch.scope !== undefined) {
+    sets.push('scope = :scope');
+    params.scope = rowJson(patch.scope, '["*"]');
+  }
+  // origin_topic 不进 updateRow：它是创建事实（v3 裁决），不随编辑改写
   if (!sets.length) return !!getRow(id, conn);
   sets.push('updated_at = :at');
   const r = conn.run(`UPDATE templates SET ${sets.join(', ')} WHERE id = :id AND deleted_at IS NULL`, params);
@@ -127,6 +135,20 @@ export function nextSortOrder(conn, category) {
     c: String(category || ''),
   });
   return Number((row && row.m) || -1) + 1;
+}
+
+/**
+ * 主题的三把钥匙（key / repo_key / group_key）——scope 判定只认这三列。
+ * 查无此主题返回 null（service 层降级为「只按裸 key 命中 + 全局」）。
+ * topics 是共享存储，这里只读三列，不复制 localtask 的仓储逻辑。
+ */
+export function getTopicKeys(key, conn = db()) {
+  return (
+    conn.get(
+      'SELECT key, repo_key, group_key FROM topics WHERE key = :key AND deleted_at IS NULL',
+      { key: String(key || '') }
+    ) || null
+  );
 }
 
 /** 事务入口的窄转发。 */

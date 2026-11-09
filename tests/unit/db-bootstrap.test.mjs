@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { createTestStore, assertUnderTmp } from '../support/test-store.mjs';
 import { tmpdir } from 'node:os';
+import { CURRENT_SCHEMA_VERSION } from '../../src/core/db/version.js';
 
 const execFileAsync = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -19,11 +20,12 @@ const tablesOf = (db) =>
     .all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
     .map((r) => r.name);
 
-test('全新目录：建 17 张表 / user_version=2 / meta 三件套齐全', async () => {
+test(`全新目录：建 17 张表 / user_version=${CURRENT_SCHEMA_VERSION} / meta 三件套齐全`, async () => {
   const s = await createTestStore();
   try {
     const tables = tablesOf(s.db);
     // 001 的 16 张 + v2 新增 attachments / task_attach / ref_attach − 删除 task_refs / ref_relations
+    // （v3 只给 templates 加列，不动表清单）
     assert.equal(tables.length, 17, `实际: ${tables.join(',')}`);
     for (const t of [
       'meta', 'settings', 'topics', 'tasks', 'repos', 'refs', 'templates', 'goals',
@@ -34,11 +36,11 @@ test('全新目录：建 17 张表 / user_version=2 / meta 三件套齐全', asy
     for (const t of ['task_refs', 'ref_relations']) {
       assert.ok(!tables.includes(t), `v2 必须删掉旧表 ${t}`);
     }
-    assert.equal(s.db.get('PRAGMA user_version').user_version, 2);
+    assert.equal(s.db.get('PRAGMA user_version').user_version, CURRENT_SCHEMA_VERSION);
 
     const meta = Object.fromEntries(s.db.all('SELECT key, value FROM meta').map((r) => [r.key, r.value]));
     assert.equal(meta.store_kind, 'sqlite');
-    assert.equal(meta.schema_version, '2');
+    assert.equal(meta.schema_version, String(CURRENT_SCHEMA_VERSION));
     assert.match(meta.created_by, /^nx-kv\//);
     assert.equal(meta.migrated_from_json_at, undefined, '全新库不该有"从 JSON 迁来"的标志');
 

@@ -125,12 +125,14 @@
 .setp-proj-t { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .setp-proj-t b { font-weight: 650; }
 .setp-badge {
-  font-size: 10px; padding: 0 6px; border-radius: 8px;
+  display: inline-flex; align-items: center;
+  font-size: 10px; padding: 0 6px; border-radius: 8px; line-height: 1.6;
   color: var(--mid); background: var(--soft);
 }
 .setp-badge.external { color: #9E4C00; background: #FBF3E4; }
 .setp-badge.own { color: var(--mdw-accent, #2F6F5E); background: var(--mdw-accent-soft, #E8F2EE); }
 .setp-badge.loop { color: var(--mdw-accent, #2F6F5E); background: var(--mdw-accent-soft, #E8F2EE); }
+.setp-badge.soft { color: var(--faint, #8A8578); background: transparent; border: 1px solid var(--line); }
 .setp-proj-p {
   font-size: 10.5px; color: var(--faint);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -272,33 +274,63 @@
 /* 内容限宽：不再横跨整个浮窗 */
 .setp-prompts-pane > *{max-width:720px}
 
-/* 任务模板：左选模板、右填槽位 */
-.setp-tpl-split{display:flex;gap:12px;align-items:stretch;min-height:200px}
-.setp-tpl-side{flex:none;width:148px;display:flex;flex-direction:column;gap:6px}
-.setp-tpl-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
-.setp-tpl-list{display:flex;flex-direction:column;gap:4px;margin:0}
-.setp-tpl-pick{
-  display:flex;align-items:center;gap:6px;width:100%;flex-wrap:wrap;
-  border:1px solid transparent;border-radius:7px;padding:6px 8px;
-  background:transparent;cursor:pointer;text-align:left;font:inherit;
+/* 任务模板设置（#135）：卡片列表；右下角 可见绑定 / 编辑 / 设默认 */
+.setp-tpl{display:flex;flex-direction:column;gap:10px;min-width:0}
+.setp-tpl-cards{display:flex;flex-direction:column;gap:10px}
+.setp-tpl-card{
+  display:flex;flex-direction:column;gap:8px;min-width:0;
+  padding:12px 12px 10px;border:1px solid var(--line,#E4E2DC);border-radius:10px;
+  background:var(--paper,#fff);
 }
-.setp-tpl-pick:hover{background:var(--soft,#F1F0EC)}
-.setp-tpl-pick.is-on{background:var(--mdw-accent-soft,#E8F2EE);border-color:var(--mdw-accent-line,#B7D4C8)}
-.setp-tpl-pick.is-sel{border-color:var(--line,#E4E2DC)}
-.setp-tpl-name{
-  flex:1 1 160px;min-width:0;display:flex;align-items:center;gap:6px;
-  font:inherit;font-size:12px;color:var(--ink,#16181C);
-  background:none;border:0;padding:0;text-align:left;cursor:pointer;
+.setp-tpl-card.is-default{border-color:var(--mdw-accent-line,#B7D4C8)}
+.setp-tpl-card-head{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.setp-tpl-card-name{
+  min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:13px;font-weight:600;color:var(--ink,#16181C);
 }
-.setp-tpl-name-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.setp-tpl-act{flex:none;padding:2px 5px;font-size:10.5px}
-.setp-tpl-preview{margin-top:4px;font-size:11.5px;color:var(--ink-2,#4B515A)}
-.setp-tpl-preview summary{cursor:pointer;user-select:none}
-.setp-tpl-preview-body{
-  margin:6px 0 0;padding:8px 10px;border-radius:8px;border:1px solid var(--line,#E4E2DC);
-  background:var(--soft,#F1F0EC);white-space:pre-wrap;font:400 11.5px/1.55 ui-monospace,Consolas,monospace;
-  max-height:180px;overflow:auto;
+.setp-tpl-card-scope{padding-top:2px}
+.setp-tpl-card-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.setp-tpl-card-new{display:flex;justify-content:flex-start}
+
+/* 可见范围（#128/#130）：全局 + 定向 chips + 加定向 picker */
+.setp-scope-block{display:flex;flex-direction:column;gap:6px}
+.setp-scope{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.setp-scope-label{font-size:11.5px;color:var(--ink-2,#4B515A)}
+.setp-scope-chip{
+  border:1px solid var(--line,#E4E2DC);border-radius:999px;padding:2px 10px;
+  background:var(--paper,#fff);color:var(--ink-2,#4B515A);font:inherit;font-size:11.5px;cursor:pointer;
 }
+.setp-scope-chip:hover{border-color:var(--mdw-accent-line,#B7D4C8)}
+.setp-scope-chip.on{
+  background:var(--mdw-accent-soft,#E8F2EE);border-color:var(--mdw-accent-line,#B7D4C8);
+  color:var(--mdw-accent,#2F6F5E);
+}
+.setp-scope-none{font-size:11px;color:#9E4C00}
+.setp-scope-origin{margin-left:auto;font-size:11px;color:var(--faint,#8A8578)}
+.setp-scope-add{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.setp-scope-add-label{font-size:11px;color:var(--faint,#8A8578)}
+.setp-scope-add-btn{
+  border:1px dashed var(--line,#E4E2DC);border-radius:6px;padding:2px 8px;
+  background:transparent;color:var(--ink-2,#4B515A);font:inherit;font-size:11px;cursor:pointer;
+}
+.setp-scope-add-btn:hover{border-color:var(--mdw-accent-line,#B7D4C8);color:var(--mdw-accent,#2F6F5E)}
+.setp-scope-add-btn.on{
+  border-style:solid;border-color:var(--mdw-accent-line,#B7D4C8);
+  background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E);
+}
+.setp-scope-pick{
+  max-height:160px;overflow:auto;display:flex;flex-direction:column;gap:2px;
+  padding:6px;border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--paper,#fff);
+}
+.setp-scope-pick-empty{padding:6px 8px;font-size:11.5px;color:var(--faint,#8A8578)}
+.setp-scope-pick-it{
+  display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border:0;border-radius:6px;
+  background:transparent;cursor:pointer;text-align:left;font:inherit;font-size:12px;color:var(--ink,#16181C);
+}
+.setp-scope-pick-it:hover:not(:disabled){background:var(--soft,#F1F0EC)}
+.setp-scope-pick-it:disabled{opacity:.55;cursor:default}
+.setp-scope-pick-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.setp-scope-pick-done{flex:none;font-size:10.5px;color:var(--faint,#8A8578)}
 
 /* 提示词模板：区块切换 + 每块模板列表 / 编辑器 */
 .setp-tpl-editor{display:flex;flex-direction:column;gap:10px;min-width:0}
@@ -351,10 +383,6 @@
   background:var(--paper,#fff);color:var(--ink,#16181C);
 }
 .setp-param span{color:var(--ink-2,#4B515A)}
-@media (max-width:720px){
-  .setp-tpl-split{flex-direction:column}
-  .setp-tpl-side{width:auto}
-}
 
 /* 提示词模板 → 系统区块：追加模式 + 每个区块的模板编辑 */
 .setp-blocks{display:flex;flex-direction:column;gap:10px}

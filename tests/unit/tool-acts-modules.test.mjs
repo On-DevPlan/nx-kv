@@ -108,6 +108,17 @@ test('repos default (#147): bar has add/more only; boards/refs/transfer in more'
   assert.equal(onBarOf('repos', forced.find((x) => x.id === 'add')), true);
 });
 
+test('repos-row default (#148): bar has edit/open/del/more; getloop/remote in more', () => {
+  const layout = defaultLayout('repos-row');
+  const bar = layout.filter((x) => onBarOf('repos-row', x)).map((x) => x.id);
+  const more = layout.filter((x) => inMoreOf('repos-row', x)).map((x) => x.id);
+  assert.deepEqual(bar, ['edit', 'open', 'del', 'more']);
+  assert.deepEqual(more, ['getloop', 'remote']);
+  // 更多本身不可收纳；del 可收进更多（编排自由）
+  const hidden = setVisible(layout, 'del', false, 'repos-row');
+  assert.equal(inMoreOf('repos-row', hidden.find((x) => x.id === 'del')), true);
+});
+
 test('repos: hide transfer → it lands in more menu; restore puts it back on bar', () => {
   let layout = setVisible(defaultLayout('repos'), 'transfer', false, 'repos');
   assert.equal(inMoreOf('repos', layout.find((x) => x.id === 'transfer')), true);

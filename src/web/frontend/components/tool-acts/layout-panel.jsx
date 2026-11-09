@@ -279,7 +279,7 @@ export default function ToolActsLayoutPanel({ kind, layout, setLayout, onClose }
       </div>
 
       <div className="tlp-foot">
-        <span className="tlp-equiv">保存到本机 localStorage（dir / group 各一份）</span>
+        <span className="tlp-equiv">保存到本机 localStorage（每种工具区各存一份）</span>
         <button type="button" className="btn ghost sm" onClick={reset}>恢复默认</button>
         <button type="button" className="btn ghost sm" onClick={onClose}>取消</button>
         <button type="button" className="btn sm primary" onClick={save}>保存</button>

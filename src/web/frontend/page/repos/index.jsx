@@ -27,7 +27,7 @@ import DocsModal from '../../components/Introduction/docs-modal.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { useApp } from '../../app-context.jsx';
 import { useWikiNav } from '../doc/index.jsx';
-import { Button, DropdownButton } from '../../components/button/index.jsx';
+import { Button } from '../../components/button/index.jsx';
 // key 归一化与后端共用同一份纯函数（shared/repo-key.js 无 Node 依赖，可直接进前端包），
 // 避免面板里显示/自动填充的 key 和后端登记时算出来的 key 不一致。
 import { keyFromRemote, normalizeKey } from '../../../../shared/repo-key.js';
@@ -123,30 +123,38 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
         )) : <span className="muted rp-refs-none">—</span>}
       </td>
       <td className="rp-acts">
-        {/* #136：编辑 → 打开 → 更多 → 删除 */}
-        <Button small onClick={() => acts.edit(r)}>编辑</Button>
-        <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</Button>
-        <DropdownButton
-          small
-          label="更多"
-          items={[
-            {
-              key: 'getloop',
-              label: (
+        {/* #148：行内动作编排化（kind=repos-row，同一套工具区组件）——默认与旧版
+            同构（编辑/打开/删除上栏，更多收纳 持续 get/对齐 remote）；每个动作都
+            可在「更多 → 自定义工具栏…」里调顺序 / 上栏 / 收纳。 */}
+        <ToolActsBar
+          kind="repos-row"
+          renderers={{
+            edit: () => <Button small onClick={() => acts.edit(r)}>编辑</Button>,
+            open: () => <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</Button>,
+            del: () => <Button small danger onClick={() => acts.del(r)}>删除</Button>,
+            getloop: () => (
+              <Button small title="持续 get（waitgoal）配置" onClick={() => acts.getloop(r)}>
                 <span className="rp-gl-menu-it">
                   {r.getLoop && r.getLoop.enabled ? <span className="rp-gl-dot" aria-hidden /> : null}
                   持续 get…
                 </span>
-              ),
-            },
-            { key: 'remote', label: '对齐 remote' },
-          ]}
-          onSelect={(k) => {
-            if (k === 'remote') acts.remote(r);
-            if (k === 'getloop') acts.getloop(r);
+              </Button>
+            ),
+            remote: () => <Button small onClick={() => acts.remote(r)}>对齐 remote</Button>,
+          }}
+          actions={{
+            edit: () => acts.edit(r),
+            open: () => acts.open(r),
+            del: () => acts.del(r),
+            getloop: () => acts.getloop(r),
+            remote: () => acts.remote(r),
+          }}
+          titles={{
+            getloop: '持续 get（waitgoal）配置',
+            remote: 'key 与远程 git 地址对齐',
+            del: '删除仓库登记（磁盘文件不受影响）',
           }}
         />
-        <Button small danger onClick={() => acts.del(r)}>删除</Button>
       </td>
     </tr>
   );

@@ -49,8 +49,10 @@ export const BUILTIN_TEMPLATE_NAME = '系统内置';
  */
 export const DEFAULT_CONTEXT_TEMPLATE = [
   '{{#if repo}}',
+  '{{#if repo.intro}}',
   '〔项目介绍 · {{repo.name}}〕（{{repo.introPath}}）：',
   '{{repo.intro}}',
+  '{{/if}}',
   '{{#if repo.docs}}',
   '项目补充文档（可直接读取）：',
   '{{#each repo.docs}}',
@@ -82,6 +84,12 @@ export const DEFAULT_CONTEXT_TEMPLATE = [
   '  - {{path}}{{#if tag}}  [{{tag}}]{{/if}}{{#if note}}  # {{note}}{{/if}}',
   '{{/each}}',
   '{{/if}}',
+  '{{/if}}',
+  '{{#if refRepos.count}}',
+  '参考仓库（可直接读取，共 {{refRepos.count}} 个）：',
+  '{{#each refRepos.list}}',
+  '  - {{name}}{{#if path}}（{{path}}）{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '{{/each}}',
   '{{/if}}',
 ].join('\n');
 

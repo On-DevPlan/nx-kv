@@ -34,6 +34,8 @@ const BLOCK_PARAMS = {
         ['repo.introPath', '介绍全文路径'],
         ['repo.docs', '补充文档（可循环 path/tag/note）'],
         ['repo.docCount', '补充文档数'],
+        ['repo.refRepos', '本仓库直接绑定的参考仓库（repos 中 type=ref，不是文档库 refs；可循环 name/path/note）'],
+        ['repo.refRepoCount', '本仓库直接绑定的参考仓库数'],
       ],
     },
     {
@@ -45,7 +47,16 @@ const BLOCK_PARAMS = {
         ['group.note', '本项目在组里的位置'],
         ['group.peers', '组内成员（可循环 name/note）'],
         ['group.docs', '组绑定参考文件（可循环）'],
+        ['group.refRepos', '本组绑定的参考仓库（repos 中 type=ref，不是文档库 refs；可循环 name/path/note）'],
+        ['group.refRepoCount', '本组绑定的参考仓库数'],
         ['groups', '其余组（可循环 name/desc/path）'],
+      ],
+    },
+    {
+      label: '参考仓库',
+      items: [
+        ['refRepos.list', '直接绑定 ∪ 组级绑定的去重并集（repos 中 type=ref，不是文档库 refs；可循环 name/path/note）'],
+        ['refRepos.count', '去重并集的条目数（无绑定时为 0，整段不出现）'],
       ],
     },
     {

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as repos from '../../src/modules/repos/service.js';
 import * as boards from '../../src/modules/repos/boards.js';
+import * as refService from '../../src/modules/repos/ref.js';
 import * as store from '../../src/modules/docs/store.js';
 import * as paths from '../../src/modules/docs/paths.js';
 import { repoKnowledge } from '../../src/modules/docs/knowledge.js';
@@ -35,7 +36,8 @@ async function build() {
   const b = await boards.createBoard({ name: 'nx系列', desc: 'nx 工具链' });
   await boards.assignRepo({ key: a.key, board: b.id });
   await boards.setBoardRepoNote({ key: a.key, board: b.id, note: '组里的任务出入口' });
-  await repos.updateRepo(a.id, { linked: [{ kind: 'ref', id: ref.key, note: '契约来源' }] });
+  // v4：参考仓库绑在组上（组内共享），note 是组级描述
+  await refService.bindTarget({ id: ref.id, board: [{ id: b.id, note: '契约来源' }] });
   // 组介绍 + 组绑定（自有一份 + 外部目录一份）
   await store.writeOwnDoc(paths.boardDocRel('nx系列'), '# nx系列\n\n本机工具链组合');
   const vault = join(dir, 'vault');
@@ -70,9 +72,9 @@ test('聚合形状：介绍（惰性播种）+ 组（介绍/组内描述/绑定�
   const k2 = await repoKnowledge(a.id);
   assert.deepEqual(k2.boards[0].docLinks, []);
 
-  assert.equal(k.refs.length, 1);
-  assert.equal(k.refs[0].name, 'reflib');
-  assert.equal(k.refs[0].note, '契约来源');
+  assert.equal(k.refRepos.length, 1);
+  assert.equal(k.refRepos[0].name, 'reflib');
+  assert.equal(k.refRepos[0].note, '契约来源');
   assert.ok(join(vault, '命名法.md'));
 });
 

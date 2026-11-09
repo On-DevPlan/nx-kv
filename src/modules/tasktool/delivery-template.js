@@ -18,6 +18,10 @@
 //   {{group.name}} {{group.desc}} {{group.intro}} {{group.introPath}} {{group.note}}
 //   {{#each group.peers}}…{{/each}}   组内成员（数组：name / note）
 //   {{#each group.docs}}…{{/each}}    组绑定参考文件（数组：path / tag / note）
+//   {{#each repo.refRepos}}…{{/each}} 本仓库直接绑定的参考仓库（name / path / note）
+//   {{#each group.refRepos}}…{{/each}} 本组绑定的参考仓库（name / path / note）
+//   {{#each refRepos.list}}…{{/each}} 两者去重并集（{{refRepos.count}} 总数）
+//     ——「参考仓库」= repos 里 type=ref 的实体，不是文档库 refs
 //   {{#each groups}}…{{/each}}        多组时其余组（数组：name / desc / path）
 //   {{source}} {{summary}} {{cwd}} {{name}} {{goal.*}}
 //   {{params.k}} 与顶层 {{k}}   外部参数（平面扩展；内建同名键不被覆盖）
@@ -56,6 +60,19 @@ function peerItems(peers) {
 }
 
 /**
+ * 参考仓库（repos 里 type=ref，不是文档库 refs）→ 结构化数组。
+ * 每条给名称、本机路径、一句描述；模板自己组织行，服务端不拼成文本。
+ */
+function refRepoItems(list) {
+  return (list || []).map((r) => ({
+    key: r.key || '',
+    name: r.name || '',
+    path: r.path || '',
+    note: r.note || '',
+  }));
+}
+
+/**
  * 组有没有值得交付的内容：定位 / 介绍 / 位置 / 参考文件 / 有描述的成员，任一即可。
  * 纯「成员名单（全员无描述）」不算——那只会喷出一排空标签，还让单独仓库看起来
  * 被当成了组成员（#81：这种空壳组的 {{#group}} 段整个不渲染）。
@@ -65,6 +82,7 @@ function groupHasContent(g) {
   if (g.desc || g.note) return true;
   if (g.intro && g.intro.body) return true;
   if (g.docLinks && g.docLinks.length) return true;
+  if (g.refRepos && g.refRepos.length) return true;
   return (g.peers || []).some((p) => p.note);
 }
 
@@ -86,20 +104,34 @@ export function deliveryCtxOf(groupCtx) {
   const repoDocs = docItems(repo && repo.docLinks);
   const peers = g ? peerItems(g.peers) : [];
   const gdocs = g ? docItems(g.docLinks) : [];
+  const repoRefRepos = refRepoItems(repo && repo.refRepos);
+  const groupRefRepos = g ? refRepoItems(g.refRepos) : [];
+  // 交付口径：本仓库直接绑定 ∪ 本次任务所属组的组级绑定，去重后按本仓库在前排序。
+  // 不是「全部参考仓库」——没绑到本仓库 / 本组的参考仓库一律不给。
+  const seenRefRepoKeys = new Set();
+  const refRepoList = [];
+  for (const r of [...repoRefRepos, ...groupRefRepos]) {
+    const k = r.key || r.name;
+    if (seenRefRepoKeys.has(k)) continue;
+    seenRefRepoKeys.add(k);
+    refRepoList.push(r);
+  }
   const others = groups.slice(1).map((x) => ({
     name: x.name || '',
     desc: x.desc || '',
     path: (x.intro && x.intro.path) || '',
   }));
   return {
-    repo: repo && repo.intro && repo.intro.body
+    repo: repo && ((repo.intro && repo.intro.body) || repoRefRepos.length)
       ? {
           name: repo.name || repo.key || '',
           key: repo.key || '',
-          intro: repo.intro.body || '',
-          introPath: repo.intro.path || '',
+          intro: (repo.intro && repo.intro.body) || '',
+          introPath: (repo.intro && repo.intro.path) || '',
           docs: repoDocs,
           docCount: repoDocs.length,
+          refRepos: repoRefRepos,
+          refRepoCount: repoRefRepos.length,
         }
       : null,
     group: g
@@ -116,8 +148,15 @@ export function deliveryCtxOf(groupCtx) {
           peerCount: peers.length,
           docs: gdocs,
           docCount: gdocs.length,
+          refRepos: groupRefRepos,
+          refRepoCount: groupRefRepos.length,
         }
       : null,
+    // 参考仓库（repos 里 type=ref，不是文档库 refs）：直接绑定 ∪ 组级绑定，去重并集。
+    refRepos: {
+      list: refRepoList,
+      count: refRepoList.length,
+    },
     // 其余组：数组，模板用 `{{#each groups}}`。
     groups: others,
   };

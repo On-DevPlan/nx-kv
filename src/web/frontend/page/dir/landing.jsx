@@ -166,25 +166,48 @@ export default function Landing({
             deleted: deletedCount > 0 ? `已删除任务（${deletedCount}）` : '已删除任务',
           }}
           titles={{
-            tpl: '按模板新建一页',
+            new: '按默认模板新建一页（▾ 选模板）',
             import: '把一个 .md 文件导入成任务',
             progress: '打开这个目录的进程面板',
-            orch: '打开可视化编排面板',
             more: deletedCount > 0 ? `更多操作（含 ${deletedCount} 条已删除任务）` : '更多操作',
             deleted: '查看并恢复已删除任务',
             refs: '查看文档 / reference 列表',
           }}
           renderers={{
-            tpl: () => (
-              <button
-                type="button"
-                className="btn small ghost"
-                title="按模板新建一页"
-                aria-haspopup="menu"
-                onClick={(e) => onTplMenu?.(e)}
-              >
-                模板 ▾
-              </button>
+            // #161 新建按钮拆两级（视觉一颗按钮、命中区两层）：
+            //   主区点击 = 按默认模板直接新建；内嵌箭头 = 模板下拉（tplMenuItems）
+            new: () => (
+              <span className="rp-newtask">
+                <button
+                  type="button"
+                  className="btn small primary"
+                  title="按默认模板新建一页（▾ 选模板）"
+                  onClick={() => onNew()}
+                >
+                  ＋ 新建页
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="选择模板新建一页"
+                    aria-haspopup="menu"
+                    className="rp-newtask-caret"
+                    title="选择模板新建一页"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTplMenu?.(e);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onTplMenu?.(e);
+                      }
+                    }}
+                  >
+                    <Icon name="chevron" size={11} />
+                  </span>
+                </button>
+              </span>
             ),
           }}
           actions={{

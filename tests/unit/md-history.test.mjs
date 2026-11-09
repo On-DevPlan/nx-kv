@@ -3,9 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pushHistory, undoHistory, redoHistory } from '../../src/web/frontend/modules/md/md-history.js';
 
-// 打桩 Date.now 控制合并窗口
+// 打桩 Date.now 控制合并窗口（node --test 每个文件独立进程，桩不外泄）
 let nowMs = 1_000_000;
-const realNow = Date.now;
 Date.now = () => nowMs;
 
 test('typing 连续输入：撤销一次回退整段（不是只退一个字符）', () => {

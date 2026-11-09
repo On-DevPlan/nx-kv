@@ -275,9 +275,10 @@ export default function AttachModal({
           multiple
           hidden
           onChange={(e) => {
-            const f = e.target.files;
+            // ⚠️ 先拷贝再清 value：FileList 是活引用，`value = ''` 会把它清空
+            const files = Array.from(e.target.files || []);
             e.target.value = '';
-            addFiles(f);
+            addFiles(files);
           }}
         />
       </div>

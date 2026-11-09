@@ -60,14 +60,14 @@ export const DOC_MODULES = [
   { id: 'list', label: '文字列表', section: 'more', menuGroup: 'view' },
 ];
 
-// 仓库管理页头部（#145）：主按钮登记仓库；次级动作（分组 / 参考仓库 / 导入导出）
-// 可编排进「更多」——与 group/dir/task/doc 同一套编排组件。
+// 仓库管理页头部（#145/#147）：默认只留「登记仓库 · 更多」（与 task/doc 同构——
+// 次级动作默认收进更多，可在编排里拖上工具栏/调顺序）。
 export const REPOS_MODULES = [
   { id: 'add', label: '登记仓库', section: 'primary', noHide: true },
-  { id: 'boards', label: '分组管理', section: 'bar' },
-  { id: 'refs', label: '参考仓库管理', section: 'bar' },
-  { id: 'transfer', label: '导入导出', section: 'bar' },
   { id: 'more', label: '更多', section: 'bar', noHide: true },
+  { id: 'boards', label: '分组管理', section: 'more', menuGroup: 'manage' },
+  { id: 'refs', label: '参考仓库管理', section: 'more', menuGroup: 'manage' },
+  { id: 'transfer', label: '导入导出', section: 'more', menuGroup: 'manage' },
 ];
 
 const META = {

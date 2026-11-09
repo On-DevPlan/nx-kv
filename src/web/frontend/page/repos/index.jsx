@@ -74,9 +74,41 @@ function DocsEntry({ docs, onOpen }) {
 // （主篇 + 补充 + reference + 组内描述）就地看、就地编辑；行内不再铺 chip 外显。
 // 所属分组 chips 点一下 = 筛到那个组（再点取消）；归属的增删走「成员管理」弹窗。
 // 主表只放开发仓库（type=dev）——参考仓库有自己的大面板，两份名单不混。
-// 「参考」列显示**绑定到这个开发仓库**的参考仓库（多对多：一个 dev 可挂多个 ref）。
-function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
-  const refs = refsOfRepo.get(r.key) || [];
+// 「参考」列：全局视图按组汇总（组名 · N，点一下筛到那个组）；
+// 组筛选视图（命名空间）改成两类勋章——`组` = 本组共享的参考仓库，`自` = 这个
+// 仓库自己直接绑定的参考仓库，去重后超过 4 个折叠。
+function RefRepoChips({ chips, boardId, acts }) {
+  const LIMIT = 4;
+  const [open, setOpen] = useState(false);
+  const shown = open ? chips : chips.slice(0, LIMIT);
+  return (
+    <>
+      {shown.map((c) => (
+        <span key={c.source + ':' + c.key} className={'rp-link-chip rp-link-chip-' + (c.source === 'group' ? 'group' : 'repo')}>
+          <button
+            className="rp-link-chip-main"
+            title={c.source === 'group'
+              ? [`组「${c.groupName}」共享的参考仓库`, c.note].filter(Boolean).join('\n')
+              : ['本仓库直接绑定的参考仓库', c.note, '点击跳到这个参考仓库'].filter(Boolean).join('\n')}
+            onClick={() => (c.source === 'group' ? acts.keepFilter(boardId) : acts.gotoRefRepo(c.key))}
+          >
+            <b>{c.source === 'group' ? '组' : '自'}</b>
+            <span className="rp-link-chip-name">{c.name}</span>
+          </button>
+        </span>
+      ))}
+      {chips.length > LIMIT ? (
+        <button className="rp-bind-more" title="展开本行全部参考仓库" onClick={() => setOpen((v) => !v)}>
+          {open ? '收起' : `+${chips.length - LIMIT}`}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+function RepoRow({ r, filterBoard, groupRefRepoCounts, refRepoChipsByRepo, acts }) {
+  const groups = groupRefRepoCounts.get(r.key) || [];
+  const chips = filterBoard ? (refRepoChipsByRepo.get(r.key) || []) : null;
   return (
     <tr id={'rp-row-' + r.key}>
       <td className="rp-name">
@@ -91,14 +123,18 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
         <DocsEntry docs={r.descDocs} onOpen={() => acts.docs(r)} />
       </td>
       <td className="rp-refs">
-        {refs.length ? refs.map((ref) => (
-          <button key={ref.key} className="rp-ref-chip" title={`直接绑定：${ref.remote || ''}${ref.note ? '\n' + ref.note : ''}\n点击改绑定描述`}
-            onClick={() => acts.refNote(ref, r)}>
-            {ref.note ? <span className="rp-ref-chip-dot" /> : null}
-            {ref.name}
+        {filterBoard ? (
+          chips && chips.length
+            ? <RefRepoChips chips={chips} boardId={filterBoard.id} acts={acts} />
+            : <span className="muted rp-refs-none">—</span>
+        ) : (groups.length ? groups.map((g) => (
+          <button key={g.id} className={'rp-group-chip' + (filterBoard && filterBoard.id === g.id ? ' on' : '')}
+            title={`组「${g.name}」绑定 ${g.count} 个参考仓库（组内共享）\n点击只看这个组`}
+            onClick={() => acts.filter(g.id)}>
+            {g.name} <b>{g.count}</b>
           </button>
-        )) : <span className="muted rp-refs-none">—</span>}
-        <Button small className="rp-ref-bind" title="管理这个仓库绑定的参考仓库" onClick={() => acts.bind(r)}>绑定</Button>
+        )) : <span className="muted rp-refs-none">—</span>)}
+        <Button small className="rp-ref-bind" title="管理这个仓库所属组的参考仓库" onClick={() => acts.bind(r)}>绑定</Button>
       </td>
       <td className="rp-cell-groups">
         {(r.boards || []).length ? r.boards.map((b) => (
@@ -166,8 +202,15 @@ export default function ReposView() {
   // 远程地址变化时，只要用户没手动改过 key，就把归一化结果同步到 key 输入框。
   // 判定「没改过」= keyManual=false；这样粘贴 SSH/HTTPS 任一写法都会自动得到
   // github.com/owner/repo 这种统一 key，用户仍可再改。
+  // 路径 → git remote 的探测结果（登记前自动填充；只读，不改库）：
+  //   { loading } | { exists, isGit, recommended, key, remotes } | { error }
+  const [detect, setDetect] = useState(null);
+  // 远程地址是否被人改过：改过就不再用探测结果覆盖（编辑已有仓库时开箱为 true）
+  const [remoteManual, setRemoteManual] = useState(false);
   const setRemote = (e) => {
     const remote = e.target.value;
+    setRemoteManual(true);
+    setDetect(null);
     setForm((f) => ({ ...f, remote, key: keyManual ? f.key : keyFromRemote(remote) }));
   };
   const setKey = (e) => {
@@ -177,6 +220,8 @@ export default function ReposView() {
 
   // ---- 参考仓库（type=ref）大面板状态 ----
   const [refOpen, setRefOpen] = useState(false);
+  // 从组筛选视图点「自」勋章跳过来时定位的参考仓库 key（滚动 + 高亮一行）
+  const [refRepoFocus, setRefRepoFocus] = useState('');
   const [settingInfo, setSettingInfo] = useState(null); // gitRepoRoot / gitDevRoot 当前值
   const [rootsOpen, setRootsOpen] = useState(false);
   const [rootsForm, setRootsForm] = useState({ gitRepoRoot: '', gitDevRoot: '' });
@@ -187,7 +232,9 @@ export default function ReposView() {
   const [refCheck, setRefCheck] = useState(null); // repo.ref.check 的结果（状态徽标的数据面）
   // 绑定管理弹窗：目标 ref（checkbox 列表 = 全部 dev 仓库 + 全部看板）
   const [bindFor, setBindFor] = useState(null); // ref 对象 | null
-  const [bindSel, setBindSel] = useState({}); // { 'repo:<id>': bool, 'board:<id>': bool }
+  const [bindSel, setBindSel] = useState({}); // { 'repo:<key>': bool, 'board:<key>': bool }
+  // 参考面板里每行绑定勋章的折叠状态（refId → 是否展开；默认只显示前几个）
+  const [refBindOpen, setRefBindOpen] = useState({});
   // dev 侧绑定弹窗：某个开发仓库 → 勾选绑到它身上的参考
   const [bindRepoFor, setBindRepoFor] = useState(null); // dev 仓库对象 | null
   const [bindRepoSel, setBindRepoSel] = useState({}); // { refId: bool }
@@ -204,7 +251,37 @@ export default function ReposView() {
   // 查看详情（文档集弹窗）：{ kind:'repo', owner } —— 行内「查看详情」入口
   const [docsFor, setDocsFor] = useState(null);
 
-  const resetForm = () => { setForm(EMPTY_FORM); setEditing(null); setFormOpen(false); setKeyManual(false); };
+  const resetForm = () => {
+    setForm(EMPTY_FORM);
+    setEditing(null);
+    setFormOpen(false);
+    setKeyManual(false);
+    setRemoteManual(false);
+    setDetect(null);
+  };
+
+  // 填完路径自动问一次 git remote（400ms 防抖）；只在「远程地址没人动过」时覆盖，
+  // 用户手填/编辑旧仓库时一律不动。目录不存在/不是 git/没 remote 只提示，不猜地址。
+  useEffect(() => {
+    if (!formOpen) return undefined;
+    const p = form.path.trim();
+    if (!p) { setDetect(null); return undefined; }
+    let alive = true;
+    const timer = setTimeout(async () => {
+      setDetect({ loading: true });
+      try {
+        const d = await api('/api/repos/detect', { method: 'POST', body: { path: p } });
+        if (!alive) return;
+        setDetect({ loading: false, ...d });
+        if (d.recommended && !remoteManual) {
+          setForm((f) => ({ ...f, remote: d.recommended, key: keyManual ? f.key : (d.key || f.key) }));
+        }
+      } catch (e) {
+        if (alive) setDetect({ loading: false, error: e.message });
+      }
+    }, 400);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [form.path, formOpen, remoteManual, keyManual]);
 
   const loadRepos = useCallback(async () => {
     setRepos((await api('/api/repos').catch(() => [])) || []);
@@ -217,6 +294,25 @@ export default function ReposView() {
     setDocs((d && d.docs) || []);
   }, []);
   useEffect(() => { loadRepos(); loadBoards(); loadDocs(); }, [loadRepos, loadBoards, loadDocs]);
+
+  // 组筛选视图点「自」勋章 → 打开参考仓库面板并滚到那一行（等面板挂载一帧再找）。
+  useEffect(() => {
+    if (!refOpen || !refRepoFocus) return undefined;
+    let el = null;
+    let timer = 0;
+    const raf = requestAnimationFrame(() => {
+      el = document.getElementById('rp-refrepo-row-' + refRepoFocus);
+      if (!el) return;
+      el.scrollIntoView({ block: 'center' });
+      el.classList.add('rp-row-flash');
+      timer = setTimeout(() => el.classList.remove('rp-row-flash'), 1600);
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+      if (el) el.classList.remove('rp-row-flash');
+    };
+  }, [refOpen, refRepoFocus]);
 
   // 从别处跳进来的定位：#/repos?board=<组id>&add=1
   // （组详情页的「添加成员」走这条：不在组页内嵌弹窗，直接落到仓库页对应分组的成员管理）
@@ -289,76 +385,103 @@ export default function ReposView() {
     await loadRefCheck();
   });
 
-  // 绑定管理弹窗：打开时按该 ref 现有绑定勾选；保存 = 对比差异，加/摘各一批
+  // 绑定管理弹窗：参考仓库 ↔ 组 / 单个开发仓库（两类并存，互不折算）。
+  // 勾选 = 建立该维度绑定，取消 = 摘除；保存时对比差异。
+  const boardKeyOf = (b) => b.key || `board/${b.name}`;
   const openBind = (r) => {
     const sel = {};
-    for (const l of r.linked || []) sel[l.kind + ':' + l.id] = true;
+    for (const b of boardList) {
+      if ((b.refs || []).some((l) => l.id === r.key)) sel['board:' + boardKeyOf(b)] = true;
+    }
+    for (const d of devRepos) {
+      if ((d.linked || []).some((l) => l && l.kind === 'ref' && String(l.id) === r.key)) sel['repo:' + d.key] = true;
+    }
     setBindSel(sel);
     setBindFor(r);
   };
   const saveBind = () => guard(async () => {
     if (!bindFor) return;
-    const oldKeys = new Set((bindFor.linked || []).map((l) => l.kind + ':' + l.id));
+    const boardOf = (k) => boardList.find((b) => boardKeyOf(b) === k.slice('board:'.length));
+    const oldKeys = new Set([
+      ...boardList.filter((b) => (b.refs || []).some((l) => l.id === bindFor.key)).map((b) => 'board:' + boardKeyOf(b)),
+      ...devRepos
+        .filter((d) => (d.linked || []).some((l) => l && l.kind === 'ref' && String(l.id) === bindFor.key))
+        .map((d) => 'repo:' + d.key),
+    ]);
     const newKeys = new Set(Object.keys(bindSel).filter((k) => bindSel[k]));
     // 先加后摘（摘全部绑定也不会误删刚加的）
     for (const k of newKeys) {
       if (oldKeys.has(k)) continue;
-      const [kind, id] = k.split(':');
-      await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, [kind]: [id] } });
+      if (k.startsWith('board:')) {
+        const b = boardOf(k);
+        if (!b) continue;
+        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, board: [b.id] } });
+      } else {
+        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, repo: [k.slice('repo:'.length)] } });
+      }
     }
     for (const k of oldKeys) {
       if (newKeys.has(k)) continue;
-      const [kind, id] = k.split(':');
-      await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, [kind]: [id], remove: true } });
+      if (k.startsWith('board:')) {
+        const b = boardOf(k);
+        if (!b) continue;
+        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, board: [b.id], remove: true } });
+      } else {
+        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, repo: [k.slice('repo:'.length)], remove: true } });
+      }
     }
     setBindFor(null);
-    await Promise.all([loadRepos(), loadRefCheck()]);
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
 
-  // dev 侧绑定保存：对比该仓库当前挂的参考，加/摘各一批
+  // dev 侧绑定保存：保持原语义（这个仓库所属组的参考，组内共享）。
+  // 后端 --repo 现在写的是仓库级绑定，所以这里显式按 board 下发，避免语义漂移。
   const saveBindRepo = () => guard(async () => {
     if (!bindRepoFor) return;
-    // 当前绑定：dev 侧反向引用优先，老数据回退扫 ref 侧（全部按 key）
-    const current = new Set();
-    for (const l of bindRepoFor.linked || []) {
-      if (l.kind === 'ref') current.add(l.id);
-    }
-    for (const x of refRepos) {
-      if ((x.linked || []).some((l) => l.kind === 'repo' && l.id === bindRepoFor.key)) current.add(x.key);
-    }
+    const current = new Set((groupRefReposByRepo.get(bindRepoFor.key) || []).map((x) => x.key));
     const want = new Set(Object.keys(bindRepoSel).filter((k) => bindRepoSel[k]));
+    const groups = boardList.filter((b) => (b.repos || []).some((x) => x.key === bindRepoFor.key));
+    if (!groups.length) {
+      toast('这个仓库不属于任何组 —— 参考绑定挂在组上；先把它加入组');
+      return;
+    }
     for (const rid of want) {
       if (current.has(rid)) continue;
-      await api('/api/repos/bind', { method: 'POST', body: { id: rid, repo: [bindRepoFor.key] } });
+      for (const g of groups) await api('/api/repos/bind', { method: 'POST', body: { id: rid, board: [g.id] } });
     }
     for (const rid of current) {
       if (want.has(rid)) continue;
-      await api('/api/repos/bind', { method: 'POST', body: { id: rid, repo: [bindRepoFor.key], remove: true } });
+      for (const g of groups) await api('/api/repos/bind', { method: 'POST', body: { id: rid, board: [g.id], remove: true } });
     }
     setBindRepoFor(null);
-    await Promise.all([loadRepos(), loadRefCheck()]);
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
-  // 绑定描述：从 dev 行的参考 chip 或绑定管理弹窗进入
-  const openLinkNote = (ref, kind, targetId, targetName) => {
-    const link = (ref.linked || []).find((l) => l.kind === kind && l.id === targetId);
-    setLinkNoteFor({ ref, kind, targetId, targetName });
-    setLinkNoteText(link?.note || '');
+  // 绑定描述 = 组 ↔ 参考仓库这条关系上的描述
+  const openLinkNote = (ref, groupId, groupName, note) => {
+    setLinkNoteFor({ ref, groupId, groupName });
+    setLinkNoteText(note || '');
   };
   const saveLinkNote = () => guard(async () => {
-    const { ref, kind, targetId } = linkNoteFor;
+    const { ref, groupId } = linkNoteFor;
     await api('/api/repos/ref/note', {
       method: 'POST',
-      body: { id: ref.key, [kind]: targetId, note: linkNoteText },
+      body: { id: ref.key, board: groupId, note: linkNoteText },
     });
     setLinkNoteFor(null);
-    await Promise.all([loadRepos(), loadRefCheck()]);
-    toast('已保存绑定描述');
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
+    toast('已保存组级绑定描述');
   });
 
-  // 从某条绑定弹窗摘除单个目标（chip 上的 ×）
-  const unbindOne = (ref, kind, targetId) => guard(async () => {
-    await api('/api/repos/bind', { method: 'POST', body: { id: ref.key, [kind]: [targetId], remove: true } });
-    await Promise.all([loadRepos(), loadRefCheck()]);
+  // 从某个组摘除这条参考绑定
+  const unbindOne = (ref, groupId) => guard(async () => {
+    await api('/api/repos/bind', { method: 'POST', body: { id: ref.key, board: [groupId], remove: true } });
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
+  });
+
+  // 从某个开发仓库摘除这条参考绑定（只摘仓库级，不影响组级）
+  const unbindRepo = (ref, repoKey) => guard(async () => {
+    await api('/api/repos/bind', { method: 'POST', body: { id: ref.key, repo: [repoKey], remove: true } });
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
 
   // 布局导入导出：整块交给全屏面板（transfer-panel.jsx）。
@@ -454,60 +577,116 @@ export default function ReposView() {
 
   const checkOf = useMemo(() => {
     const m = new Map();
-    (refCheck?.refs || []).forEach((x) => m.set(x.id, x));
+    (refCheck?.refRepos || []).forEach((x) => m.set(x.id, x));
     return m;
   }, [refCheck]);
 
-  // 直接绑定到各开发仓库的参考（dev 行内「参考」列的数据面）。
-  // 绑定是双向记录的：dev 侧自带 {kind:'ref'} 反向引用，直接读它即可；
-  // 老数据（只有 ref 侧）再回退扫一遍 ref 全表。
-  const refsOfRepo = useMemo(() => {
+  // 组级参考：仓库属于哪些组，就能看到这些组上绑定的参考仓库（组内共享，不折算成数量）。
+  // 同一个参考仓库被多个组共享时只出一颗 chip，group 记第一个来源组（点 chip 改的就是它）。
+  const groupRefReposByRepo = useMemo(() => {
     const m = new Map();
-    // 索引按 **key**（关系的身份）：dev 仓库的 key → 挂在它身上的参考仓库列表
-    const add = (devKey, r, note) => {
-      if (!m.has(devKey)) m.set(devKey, []);
-      m.get(devKey).push({ key: r.key, id: r.id, name: r.name, remote: r.remote || '', note: note || '' });
-    };
     const byKey = new Map(refRepos.map((r) => [r.key, r]));
-    const seen = new Set();
-    for (const d of devRepos) {
-      for (const l of d.linked || []) {
-        if (l.kind !== 'ref') continue;
-        const r = byKey.get(l.id);
-        if (!r) continue;
-        seen.add(d.key + ':' + r.key);
-        add(d.key, r, l.note);
-      }
-    }
-    for (const r of refRepos) {
-      for (const l of r.linked || []) {
-        if (l.kind !== 'repo') continue;
-        if (seen.has(l.id + ':' + r.key)) continue;
-        add(l.id, r, l.note);
+    for (const b of boardList) {
+      const bkey = b.key || `board/${b.name}`;
+      for (const rk of (b.repos || []).map((x) => x.key)) {
+        for (const l of b.refs || []) {
+          const r = byKey.get(l.id);
+          if (!r) continue;
+          if (!m.has(rk)) m.set(rk, []);
+          const arr = m.get(rk);
+          const hit = arr.find((x) => x.key === r.key);
+          if (hit) {
+            if (hit.group && hit.group.name !== b.name) hit.alsoIn = [...(hit.alsoIn || []), b.name];
+            continue;
+          }
+          arr.push({
+            key: r.key,
+            id: r.id,
+            name: r.name,
+            remote: r.remote || '',
+            note: l.note || '',
+            group: { id: b.id, key: bkey, name: b.name },
+          });
+        }
       }
     }
     return m;
-  }, [devRepos, refRepos]);
+  }, [boardList, refRepos]);
 
-  // 筛选到看板时：绑定在该看板（命名空间本体）或其成员开发仓库上的参考仓库
-  // 关系引用一律按 key（看板 key = board/<名称>，仓库 key = 归一化远程地址）
-  const boardRefs = useMemo(() => {
+  // 主表「参考」列的汇总：仓库在哪些组、每组绑了几个参考（组内共享，不展开明细）。
+  // 明细在组页的「组参考」区块里看——一行铺十几个 chip 会把表格撑爆。
+  const groupRefRepoCounts = useMemo(() => {
+    const m = new Map();
+    for (const b of boardList) {
+      const n = (b.refs || []).length;
+      if (!n) continue;
+      for (const x of b.repos || []) {
+        if (!x || !x.key) continue;
+        if (!m.has(x.key)) m.set(x.key, []);
+        m.get(x.key).push({ id: b.id, name: b.name, count: n });
+      }
+    }
+    return m;
+  }, [boardList]);
+
+  // 组筛选视图（group = 命名空间）的行内参考仓库：
+  //   自 = 这个仓库自己直接绑的；组 = 本组共享、但这一行没有自己直接绑的。
+  // 两类合并去重（同一个参考仓库在组里和仓库上都绑了 → 只出一颗，按「自」算），
+  // 自在前——这一行最具体的信息先露出来，组共享的在折叠区里补全。
+  // 全局视图不建这张表（那里仍按组汇总）。
+  const refRepoChipsByRepo = useMemo(() => {
+    const m = new Map();
+    if (!filterBoard) return m;
+    const byKey = new Map(refRepos.map((r) => [r.key, r]));
+    const sharedAll = (filterBoard.refs || []).map((l) => {
+      const r = byKey.get(l.id);
+      return r ? { key: r.key, name: r.name, note: l.note || '', source: 'group', groupName: filterBoard.name } : null;
+    }).filter(Boolean);
+    for (const d of devRepos) {
+      const own = (d.linked || [])
+        .filter((l) => l && l.kind === 'ref')
+        .map((l) => {
+          const r = byKey.get(l.id);
+          return r ? { key: r.key, name: r.name, note: l.note || '', source: 'repo' } : null;
+        })
+        .filter(Boolean);
+      const ownKeys = new Set(own.map((c) => c.key));
+      m.set(d.key, [...own, ...sharedAll.filter((c) => !ownKeys.has(c.key))]);
+    }
+    return m;
+  }, [filterBoard, devRepos, refRepos]);
+
+  // 仓库级直接绑定（反向索引）：参考仓库 key → 直接绑在它身上的开发仓库。
+  // 与组级绑定并列展示，不用「组 + 成员数」去近似。
+  const refRepoBackLinks = useMemo(() => {
+    const m = new Map();
+    for (const d of devRepos) {
+      for (const l of d.linked || []) {
+        if (!l || l.kind !== 'ref') continue;
+        if (!m.has(l.id)) m.set(l.id, []);
+        m.get(l.id).push({ repo: d, note: l.note || '' });
+      }
+    }
+    return m;
+  }, [devRepos]);
+
+  // 筛选到组时：这个组上绑定的参考仓库（组内共享；不再有「经由成员仓库」）。
+  const boardRefRepos = useMemo(() => {
     if (!filterBoard) return [];
-    const memberKeys = new Set((filterBoard.repos || []).map((r) => r.key));
-    const bkey = filterBoard.key || `board/${filterBoard.name}`;
-    return refRepos
-      .map((r) => {
-        const boardLink = (r.linked || []).find((l) => l.kind === 'board' && l.id === bkey);
-        const repoLinks = (r.linked || []).filter((l) => l.kind === 'repo' && memberKeys.has(l.id));
-        if (!boardLink && !repoLinks.length) return null;
-        return {
-          ...r,
-          boardNote: boardLink?.note || '',
-          viaRepos: repoLinks.map((l) => (filterBoard.repos || []).find((x) => x.key === l.id)?.name || l.id),
-        };
+    const byKey = new Map(refRepos.map((r) => [r.key, r]));
+    return (filterBoard.refs || [])
+      .map((l) => {
+        const r = byKey.get(l.id);
+        return r ? { ...r, boardNote: l.note || '' } : null;
       })
       .filter(Boolean);
   }, [refRepos, filterBoard]);
+
+  // 组参考区块的折叠：条目多（>8）默认收起，别让一屏全是参考仓库；
+  // 切组时回到「按条目数自动」。用户点了展开/收起以当次选择为准。
+  const [boardRefReposOpen, setBoardRefsOpen] = useState(null); // null = 自动
+  useEffect(() => { setBoardRefsOpen(null); }, [filterBoard ? filterBoard.id : null]);
+  const boardRefReposExpanded = boardRefReposOpen === null ? boardRefRepos.length <= 8 : boardRefReposOpen;
 
   // 文档 → 绑定宿主 反推表（文档区块用）：一篇文档被哪些仓库/分组引用。
   // 文档自己不记宿主，宿主关系散落在仓库与分组的绑定字段上：
@@ -549,6 +728,8 @@ export default function ReposView() {
     setForm(EMPTY_FORM);
     setEditing(null);
     setKeyManual(false);
+    setRemoteManual(false);
+    setDetect(null);
     setFormOpen(true);
   };
 
@@ -615,6 +796,13 @@ export default function ReposView() {
     scrollToEl(row, 'center');
     row.classList.add('rp-row-flash');
     setTimeout(() => row.classList.remove('rp-row-flash'), 1400);
+  };
+
+  // 参考面板里的勋章点击 = 关面板 → 跳到宿主（组 → 筛到该组；仓库 → 滚到那行并闪一下）
+  const goBindTarget = (kind, target) => {
+    setRefOpen(false);
+    setQ('');
+    setTimeout(() => docGo({ kind, target }), 60);
   };
 
   // 编辑弹窗里的「项目描述」= 这个仓库绑定的文档集（主篇 + 补充篇），不给字符串输入框
@@ -691,6 +879,9 @@ export default function ReposView() {
       // 自定义 key 打开即视为「用户声明过」，编辑远程地址时不自动覆盖它；
       // 非自定义 key 仍跟着远程地址走（和编辑前行为一致）。
       setKeyManual(r.keyCustom === true);
+      // 已有仓库的远程地址视为「已定」，不拿目录的 git remote 去覆盖它
+      setRemoteManual(true);
+      setDetect(null);
       setFormOpen(true);
     } else if (act === 'del') {
       const ok = await dialog({
@@ -918,24 +1109,16 @@ export default function ReposView() {
     docs: (r) => setDocsFor({ kind: 'repo', owner: r }),
     // 行内分组 chip = 快捷筛选（再点一次取消）
     filter: (id) => setFilter((f) => (f === id ? '' : id)),
-    // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它身上（多对多的 dev 侧视角）
+    // 组筛选视图里的「组」勋章：维持当前组筛选（不切换成取消）
+    keepFilter: (id) => setFilter(id),
+    // 组筛选视图的「自」勋章 = 跳到这个参考仓库（开参考仓库面板并定位到那一行）
+    gotoRefRepo: (key) => { setRefRepoFocus(key); setRefOpen(true); },
+    // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它所属的组（v4：组内共享）
     bind: (r) => {
       const sel = {};
-      // 优先读 dev 侧的反向引用（绑定双向记录）；老数据回退扫 ref 侧（全部按 key）
-      for (const l of r.linked || []) {
-        if (l.kind !== 'ref') continue;
-        sel[l.id] = true;
-      }
-      for (const x of refRepos) {
-        if (sel[x.key]) continue;
-        if ((x.linked || []).some((l) => l.kind === 'repo' && l.id === r.key)) sel[x.key] = true;
-      }
+      for (const x of groupRefReposByRepo.get(r.key) || []) sel[x.key] = true;
       setBindRepoSel(sel);
       setBindRepoFor(r);
-    },
-    refNote: (ref, devRepo) => {
-      const full = refRepos.find((x) => x.key === ref.key);
-      if (full) openLinkNote(full, 'repo', devRepo.key, devRepo.name);
     },
     // 组内描述文档收进 DocsModal（查看详情）——行内不再单列入口。
     // 给仓库再绑一篇文档同样在弹窗里「＋ 补充」。
@@ -1084,18 +1267,24 @@ export default function ReposView() {
         </div>
       ) : null}
 
-      {/* 看板（项目组）绑定的参考仓库 —— 命名空间展示区。
-          绑到看板本体的是「组级参考」（note 是它的命名空间描述）；
-          绑到成员开发仓库的是仓库级参考（随成员带进来）。 */}
+      {/* 组（项目组）绑定的参考仓库 —— 组内所有仓库共享（v4）。 */}
       {filterBoard ? (
         <div className="rp-ref-mounted" data-testid="rp-board-refs">
           <div className="rp-ref-mounted-head">
-            <span className="rp-ref-mounted-label">「{filterBoard.name}」的参考仓库 <b>{boardRefs.length}</b></span>
-            <span className="muted">组级参考 + 成员仓库各自的参考（多对多：一个参考可同时服务多个组/仓库）</span>
+            <span className="rp-ref-mounted-label">「{filterBoard.name}」的参考仓库 <b>{boardRefRepos.length}</b></span>
+            <span className="muted">绑定在组上：组内所有仓库共享，不区分来源仓库</span>
+            {boardRefRepos.length ? (
+              <Button small className="rp-ref-mounted-toggle"
+                title={boardRefReposExpanded ? '收起这个组的参考仓库清单' : '展开这个组的参考仓库清单'}
+                onClick={() => setBoardRefsOpen(!boardRefReposExpanded)}>
+                {boardRefReposExpanded ? '收起' : `展开 ${boardRefRepos.length}`}
+              </Button>
+            ) : null}
           </div>
-          {boardRefs.length ? boardRefs.map((r) => {
+          {!boardRefRepos.length ? (
+            <div className="muted rp-refs-none">这个组还没有绑定的参考仓库 —— 在下方参考仓库面板里点「绑定」勾选本组。</div>
+          ) : boardRefReposExpanded ? boardRefRepos.map((r) => {
             const c = checkOf.get(r.id);
-            const boardLink = (r.linked || []).find((l) => l.kind === 'board' && l.id === (filterBoard.key || `board/${filterBoard.name}`));
             return (
               <div className="rp-ref-mounted-item" key={r.id}>
                 <span className={'rp-ref-dot' + (c ? (c.ok ? ' ok' : ' bad') : '')}
@@ -1103,28 +1292,23 @@ export default function ReposView() {
                 <Copyable text={r.remote || r.name} title="点击复制远程地址" className="rp-ref-mounted-name">{r.name}</Copyable>
                 {r.desc ? <span className="muted rp-ref-mounted-desc" title={r.desc}>{r.desc}</span> : null}
                 {r.boardNote ? (
-                  <button className="rp-ref-note-chip" title={`${r.boardNote}\n点击编辑这条命名空间描述`}
-                    onClick={() => openLinkNote(r, 'board', filterBoard.id, filterBoard.name)}>
+                  <button className="rp-ref-note-chip" title={`${r.boardNote}\n点击编辑这条组级描述`}
+                    onClick={() => openLinkNote(r, filterBoard.id, filterBoard.name, r.boardNote)}>
                     {r.boardNote.split('\n')[0]}
                   </button>
                 ) : (
-                  <Button small title={`写「${r.name}」在这个组里参考什么（命名空间描述）`}
-                    onClick={() => openLinkNote(r, 'board', filterBoard.id, filterBoard.name)}>写描述</Button>
+                  <Button small title={`写「${r.name}」在这个组里参考什么（组级描述）`}
+                    onClick={() => openLinkNote(r, filterBoard.id, filterBoard.name, '')}>写描述</Button>
                 )}
-                {r.viaRepos.length ? <span className="muted" title={'经由成员仓库: ' + r.viaRepos.join('、')}>经由 {r.viaRepos.join('、')}</span> : null}
                 <span className="acts">
                   <Button small onClick={() => syncOne(r)}>同步</Button>
                   <Button small onClick={() => rowAct('open', r)}>打开</Button>
-                  {boardLink ? (
-                    <Button small danger title="只从本组摘除（不影响其它绑定）"
-                      onClick={() => unbindOne(r, 'board', filterBoard.id)}>移出本组</Button>
-                  ) : null}
+                  <Button small danger title="只从本组摘除（不影响其它组）"
+                    onClick={() => unbindOne(r, filterBoard.id)}>移出本组</Button>
                 </span>
               </div>
             );
-          }) : (
-            <div className="muted rp-refs-none">这个组还没有绑定的参考仓库 —— 在下方参考仓库面板里点「绑定」勾选本组，或在成员仓库行上绑定。</div>
-          )}
+          }) : null}
         </div>
       ) : null}
 
@@ -1158,16 +1342,22 @@ export default function ReposView() {
                   <th scope="col" style={{ width: '30px' }}></th>
                   <th scope="col" style={{ width: '17%' }}>参考仓库</th>
                   <th scope="col" style={{ width: '22%' }}>远程地址</th>
-                  <th scope="col">绑定（组 / 仓库 · 点击写描述 · × 摘除）</th>
+                  <th scope="col">绑定对象（仓库组 / 单独仓库 · 点击跳转）</th>
                   <th scope="col" style={{ width: '220px' }}>操作</th>
                 </tr>
               </thead>
               <tbody>
                 {refRepos.map((r) => {
                   const c = checkOf.get(r.id);
-                  const links = r.linked || [];
+                  // 绑定反查：组级（b.refs）与仓库级（refRepoBackLinks）并列，互不折算
+                  const links = boardList
+                    .map((b) => {
+                      const l = (b.refs || []).find((x) => x.id === r.key);
+                      return l ? { board: b, note: l.note || '' } : null;
+                    })
+                    .filter(Boolean);
                   return (
-                    <tr key={r.id}>
+                    <tr key={r.id} id={'rp-refrepo-row-' + r.key}>
                       <td><span className={'rp-ref-dot' + (c ? (c.ok ? ' ok' : ' bad') : '')}
                         title={c ? (c.ok ? '检查通过' : c.issues.join('\n')) : '尚未检查'} /></td>
                       <td className="rp-ref-cell-name">
@@ -1178,24 +1368,87 @@ export default function ReposView() {
                         <Copyable text={r.remote || ''} title="点击复制远程地址">{r.remote || '（无）'}</Copyable>
                       </td>
                       <td className="rp-ref-cell-links">
-                        {links.length ? links.map((l) => {
-                          // 绑定目标按 key 找（关系引用一律是 key）
-                          const label = l.kind === 'board'
-                            ? (boardList.find((b) => (b.key || `board/${b.name}`) === l.id)?.name || l.id)
-                            : (devRepos.find((d) => d.key === l.id)?.name || l.id);
+                        {(() => {
+                          const groups = links;
+                          const direct = refRepoBackLinks.get(r.key) || [];
+                          if (!groups.length && !direct.length) {
+                            return (
+                              <>
+                                <span className="muted rp-refs-none">未绑定</span>
+                                <Button small className="rp-ref-bind" onClick={() => openBind(r)}>绑定…</Button>
+                              </>
+                            );
+                          }
+                          const open = !!refBindOpen[r.id];
+                          const LIMIT = 4;
+                          const shownGroups = open ? groups : groups.slice(0, LIMIT);
+                          const shownDirect = open ? direct : direct.slice(0, LIMIT);
+                          const collapsible = groups.length > LIMIT || direct.length > LIMIT;
                           return (
-                            <span className="rp-link-chip" key={l.kind + ':' + l.id}>
-                              <button className="rp-link-chip-main" title={l.note ? `${l.note}\n点击编辑这条绑定描述` : `点击写「${r.name}」绑定到这里的描述`}
-                                onClick={() => openLinkNote(r, l.kind, l.id, label)}>
-                                <b>{l.kind === 'board' ? '组' : '仓'}</b> {label}
-                                {l.note ? <i className="rp-link-chip-note" title={l.note}>{l.note.split('\n')[0]}</i> : null}
-                              </button>
-                              <button className="rp-link-chip-x" title={`摘除这条绑定（不影响其它）`}
-                                onClick={() => unbindOne(r, l.kind, l.id)}>×</button>
-                            </span>
+                            <>
+                              {groups.length ? (
+                                <div className="rp-bind-row">
+                                  <span className="rp-bind-label">仓库组</span>
+                                  {shownGroups.map((l) => (
+                                    <span className="rp-link-chip rp-link-chip-group" key={'board:' + l.board.id}>
+                                      <button className="rp-link-chip-main"
+                                        title={[l.note || '点击跳到这个组', '组级绑定（组内共享）'].join('\n')}
+                                        onClick={() => goBindTarget('board', l.board.id)}>
+                                        <b>组</b>
+                                        <span className="rp-link-chip-name">{l.board.name}</span>
+                                      </button>
+                                      <button className="rp-link-chip-note-btn"
+                                        title={l.note ? `编辑组级描述：${l.note}` : '写这条组级描述（这个组里参考什么）'}
+                                        onClick={() => openLinkNote(r, l.board.id, l.board.name, l.note)}>
+                                        {l.note ? l.note.split('\n')[0] : '＋'}
+                                      </button>
+                                      <button className="rp-link-chip-x" title="从本组摘除（不影响其它组、也不动仓库级绑定）"
+                                        onClick={() => unbindOne(r, l.board.id)}>×</button>
+                                    </span>
+                                  ))}
+                                  {!open && groups.length > LIMIT ? (
+                                    <button className="rp-bind-more" title="展开本行全部绑定"
+                                      onClick={() => setRefBindOpen((m) => ({ ...m, [r.id]: true }))}>
+                                      +{groups.length - LIMIT}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                              {direct.length ? (
+                                <div className="rp-bind-row">
+                                  <span className="rp-bind-label">仓库</span>
+                                  {shownDirect.map((d) => (
+                                    <span className="rp-link-chip rp-link-chip-repo" key={'repo:' + d.repo.key}>
+                                      <button className="rp-link-chip-main"
+                                        title={[d.note || '直接绑定到这个仓库（不经过组）', `仓库 key: ${d.repo.key}`, '点击定位到仓库行'].join('\n')}
+                                        onClick={() => goBindTarget('repo', d.repo.key)}>
+                                        <b>仓</b>
+                                        <span className="rp-link-chip-name">{d.repo.name}</span>
+                                        <span className="mono rp-link-chip-key">{d.repo.key}</span>
+                                      </button>
+                                      {d.note ? <i className="rp-link-chip-note" title={d.note}>{d.note.split('\n')[0]}</i> : null}
+                                      <button className="rp-link-chip-x" title="从这个仓库摘除（不影响组级绑定）"
+                                        onClick={() => unbindRepo(r, d.repo.key)}>×</button>
+                                    </span>
+                                  ))}
+                                  {!open && direct.length > LIMIT ? (
+                                    <button className="rp-bind-more" title="展开本行全部绑定"
+                                      onClick={() => setRefBindOpen((m) => ({ ...m, [r.id]: true }))}>
+                                      +{direct.length - LIMIT}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                              {collapsible ? (
+                                <button className="rp-bind-toggle"
+                                  onClick={() => setRefBindOpen((m) => ({ ...m, [r.id]: !open }))}>
+                                  {open ? '收起' : `展开全部 ${groups.length + direct.length}`}
+                                </button>
+                              ) : null}
+                              <Button small className="rp-ref-bind" onClick={() => openBind(r)}>绑定…</Button>
+                            </>
                           );
-                        }) : <span className="muted rp-refs-none">未绑定</span>}
-                        <Button small className="rp-ref-bind" onClick={() => openBind(r)}>绑定…</Button>
+                        })()}
                       </td>
                       <td className="rp-acts">
                         <Button small onClick={() => syncOne(r)}>同步</Button>
@@ -1236,7 +1489,7 @@ export default function ReposView() {
           </thead>
           <tbody>
             {shown.map((r) => (
-              <RepoRow key={r.id} r={r} filterBoard={filterBoard} refsOfRepo={refsOfRepo} acts={rowActs} />
+              <RepoRow key={r.id} r={r} filterBoard={filterBoard} groupRefRepoCounts={groupRefRepoCounts} refRepoChipsByRepo={refRepoChipsByRepo} acts={rowActs} />
             ))}
             {!shown.length ? (
               <tr>
@@ -1448,6 +1701,17 @@ export default function ReposView() {
               <label htmlFor="repo-remote">远程 git 地址</label>
               <input id="repo-remote" spellCheck="false" placeholder="https://github.com/me/x.git（导出时导它，不含本地路径）"
                 value={form.remote} onChange={setRemote} />
+              {detect ? (
+                <div className="form-hint">
+                  {detect.loading ? '正在从目录读取 git remote…'
+                    : detect.error ? `读取 git remote 失败：${detect.error}`
+                    : detect.recommended
+                      ? `已按目录 git remote 自动填入${detect.remotes.length > 1 ? `（另有 ${detect.remotes.length - 1} 条候选）` : ''}`
+                      : detect.exists === false ? '该路径不存在 —— 请检查后重填'
+                      : detect.isGit ? '目录是 git 仓库，但没有配置 remote —— 请手工填写'
+                      : '目录不是 git 仓库 —— 请手工填写'}
+                </div>
+              ) : null}
               <div className="form-hint">
                 有远程地址时，下面的 key 会按它自动归一化：ssh / https / 带 .git / 带 user 的写法
                 都归一成 host/owner/repo（如 github.com/on-devplan/nx-kv）。
@@ -1636,36 +1900,41 @@ export default function ReposView() {
         </Modal>
       ) : null}
 
-      {/* 绑定管理弹窗（参考侧）：这个参考绑到哪些开发仓库 / 看板 —— 全部选项式勾选 */}
+      {/* 绑定管理弹窗（参考侧）：这个参考绑到哪些组 / 哪些单独仓库 —— 两类并列勾选 */}
       {bindFor ? (
         <Modal title={`绑定 · ${bindFor.name}`} onClose={() => setBindFor(null)}>
           <div className="form-grid">
             <div className="form-field">
               <div className="form-hint">
-                勾选 = 绑定，取消 = 摘除（保存时对比差异）。一个参考可同时绑多个仓库/组。
+                两类绑定并存、互不折算：勾「仓库组」= 组内共享（group_refs）；勾「开发仓库」= 只绑这一个仓库（仓库级）。
+                取消勾选 = 摘除该维度（保存时对比差异）。
               </div>
               <div className="rp-pick-list">
                 <div className="rp-pick-group">
-                  <span className="rp-pick-group-label">开发仓库</span>
+                  <span className="rp-pick-group-label">仓库组</span>
+                  {boardList.map((b) => {
+                    const bk = boardKeyOf(b);
+                    return (
+                      <label className="rp-pick-item" key={b.id}>
+                        <input type="checkbox" checked={!!bindSel['board:' + bk]}
+                          onChange={(e) => setBindSel((m) => ({ ...m, ['board:' + bk]: e.target.checked }))} />
+                        <span title={b.desc || ''}>{b.name}</span>
+                      </label>
+                    );
+                  })}
+                  {!boardList.length ? <span className="muted">（还没有看板）</span> : null}
+                </div>
+                <div className="rp-pick-group">
+                  <span className="rp-pick-group-label">开发仓库（单独绑定）</span>
                   {devRepos.map((d) => (
                     <label className="rp-pick-item" key={d.id}>
-                      <input type="checkbox" checked={!!bindSel['repo:' + d.id]}
-                        onChange={(e) => setBindSel((m) => ({ ...m, ['repo:' + d.id]: e.target.checked }))} />
+                      <input type="checkbox" checked={!!bindSel['repo:' + d.key]}
+                        onChange={(e) => setBindSel((m) => ({ ...m, ['repo:' + d.key]: e.target.checked }))} />
                       <span title={d.path}>{d.name}</span>
+                      <span className="muted mono rp-pick-desc">{d.key}</span>
                     </label>
                   ))}
                   {!devRepos.length ? <span className="muted">（还没有开发仓库）</span> : null}
-                </div>
-                <div className="rp-pick-group">
-                  <span className="rp-pick-group-label">看板（项目组）</span>
-                  {boardList.map((b) => (
-                    <label className="rp-pick-item" key={b.id}>
-                      <input type="checkbox" checked={!!bindSel['board:' + b.id]}
-                        onChange={(e) => setBindSel((m) => ({ ...m, ['board:' + b.id]: e.target.checked }))} />
-                      <span title={b.desc || ''}>{b.name}</span>
-                    </label>
-                  ))}
-                  {!boardList.length ? <span className="muted">（还没有看板）</span> : null}
                 </div>
               </div>
             </div>
@@ -1677,13 +1946,13 @@ export default function ReposView() {
         </Modal>
       ) : null}
 
-      {/* dev 侧绑定弹窗：这个开发仓库挂哪些参考 */}
+      {/* dev 侧绑定弹窗：这个开发仓库所属组上的参考（组内共享） */}
       {bindRepoFor ? (
         <Modal title={`「${bindRepoFor.name}」的参考仓库`} onClose={() => setBindRepoFor(null)}>
           <div className="form-grid">
             <div className="form-field">
               <div className="form-hint">
-                勾选 = 绑到「{bindRepoFor.name}」，取消 = 摘除。组级参考（绑在看板上）自动对该组所有成员生效，不在这里重复勾。
+                参考仓库绑定在组上，勾选 = 绑到「{bindRepoFor.name}」所属的组，组内所有仓库共享。仓库不属于任何组时请先把它加入组。
               </div>
               <div className="rp-pick-list">
                 <div className="rp-pick-group">
@@ -1708,16 +1977,16 @@ export default function ReposView() {
         </Modal>
       ) : null}
 
-      {/* 绑定描述弹窗：这条绑定关系上「参考什么」（挂在关系上，摘绑即清） */}
+      {/* 绑定描述弹窗：组 ↔ 参考仓库这条关系上「参考什么」（摘绑即清） */}
       {linkNoteFor ? (
         <Modal
-          title={`绑定描述 · ${linkNoteFor.ref.name} @ ${linkNoteFor.kind === 'board' ? '「' + linkNoteFor.targetName + '」' : linkNoteFor.targetName}`}
+          title={`组级绑定描述 · ${linkNoteFor.ref.name} @ 「${linkNoteFor.groupName}」`}
           onClose={() => setLinkNoteFor(null)}
         >
           <div className="form-grid">
             <div className="form-field">
               <label htmlFor="link-note">
-                「{linkNoteFor.ref.name}」{linkNoteFor.kind === 'board' ? '在这个组里' : '在这个仓库里'}参考什么
+                「{linkNoteFor.ref.name}」在这个组里参考什么
               </label>
               <div className="form-hint">
                 写这条参考在此处的角色与用法（可多行、可含关键路径/搜索词）。留空保存 = 清除。

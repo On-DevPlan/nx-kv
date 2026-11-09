@@ -763,6 +763,10 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .rp-page .rp-acts { opacity: 0.38; transition: opacity 0.12s; }
 .rp-page tr:hover .rp-acts, .rp-page tr:focus-within .rp-acts { opacity: 1; }
 @media (hover: none) { .rp-page .rp-acts { opacity: 1; } }
+/* #152：行内动作改成编排工具区后按钮变宽，操作列被挤成两行——动作栏**不换行**
+   （一行放不下时横向滚动），列宽由表头百分比让给其他列。 */
+.rp-page .rp-acts .ta-bar { flex-wrap: nowrap; gap: 6px; }
+.rp-page .rp-acts { white-space: nowrap; overflow-x: auto; }
 
 /* 面板 colhead 的长说明单行截断（全文语义让位版面）：说明段曾把 h3 挤到折行、
    把右侧按钮组顶成两行。CSS 单边收口，不动 JSX（该文件有并行会话在改）。 */

@@ -60,17 +60,29 @@ export const DOC_MODULES = [
   { id: 'list', label: '文字列表', section: 'more', menuGroup: 'view' },
 ];
 
+// 仓库管理页头部（#145）：主按钮登记仓库；次级动作（分组 / 参考仓库 / 导入导出）
+// 可编排进「更多」——与 group/dir/task/doc 同一套编排组件。
+export const REPOS_MODULES = [
+  { id: 'add', label: '登记仓库', section: 'primary', noHide: true },
+  { id: 'boards', label: '分组管理', section: 'bar' },
+  { id: 'refs', label: '参考仓库管理', section: 'bar' },
+  { id: 'transfer', label: '导入导出', section: 'bar' },
+  { id: 'more', label: '更多', section: 'bar', noHide: true },
+];
+
 const META = {
   dir: Object.fromEntries(DIR_MODULES.map((m) => [m.id, m])),
   group: Object.fromEntries(GROUP_MODULES.map((m) => [m.id, m])),
   task: Object.fromEntries(TASK_MODULES.map((m) => [m.id, m])),
   doc: Object.fromEntries(DOC_MODULES.map((m) => [m.id, m])),
+  repos: Object.fromEntries(REPOS_MODULES.map((m) => [m.id, m])),
 };
 
 export function modulesOf(kind) {
   if (kind === 'group') return GROUP_MODULES;
   if (kind === 'task') return TASK_MODULES;
   if (kind === 'doc') return DOC_MODULES;
+  if (kind === 'repos') return REPOS_MODULES;
   return DIR_MODULES;
 }
 

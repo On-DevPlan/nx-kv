@@ -96,3 +96,21 @@ test('nudgeModule moves within bar segment', () => {
   const i = bar.indexOf('progress');
   assert.equal(bar[i - 1], 'addMember');
 });
+
+test('repos default (#145): bar has add/boards/refs/transfer/more; add is primary noHide', () => {
+  const layout = defaultLayout('repos');
+  const bar = layout.filter((x) => onBarOf('repos', x)).map((x) => x.id);
+  const more = layout.filter((x) => inMoreOf('repos', x)).map((x) => x.id);
+  assert.deepEqual(bar, ['add', 'boards', 'refs', 'transfer', 'more']);
+  assert.deepEqual(more, []);
+  // 主按钮不可收起（noHide），显式藏也藏不掉
+  const forced = setVisible(layout, 'add', false, 'repos');
+  assert.equal(onBarOf('repos', forced.find((x) => x.id === 'add')), true);
+});
+
+test('repos: hide transfer → it lands in more menu; restore puts it back on bar', () => {
+  let layout = setVisible(defaultLayout('repos'), 'transfer', false, 'repos');
+  assert.equal(inMoreOf('repos', layout.find((x) => x.id === 'transfer')), true);
+  layout = setVisible(layout, 'transfer', true, 'repos');
+  assert.equal(onBarOf('repos', layout.find((x) => x.id === 'transfer')), true);
+});

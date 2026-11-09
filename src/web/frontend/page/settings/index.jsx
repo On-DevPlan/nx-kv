@@ -14,7 +14,9 @@
 //   - 模板分两块（不混在一起）：任务模板（任务正文骨架，纯字符串槽位）与
 //     提示词模板（每区块各自的模板列表 / 启用项；编辑区下方给只读参数速查，语法教程只在 skill / docs）
 //   - 任务工具：timegoal / waitgoal 的用法口径（时长在发布/编辑任务时显式给——CLI --duration 或编辑页「时间目标」栏，无全局默认）
-//   - 项目级设置：介绍文档 / 项目 icon（标题旁圆形入口）/ 持续 get
+//   - 任务工具：timegoal / waitgoal 的用法口径（时长在发布/编辑任务时显式给——CLI --duration 或编辑页「时间目标」栏，无全局默认）
+//   （#145：「项目级设置」整 tab 删除——介绍/图标/持续 get 都与仓库管理页重复，
+//    现统一在 repos 页：行内「更多 → 持续 get」modal、编辑表单图标、查看详情文档集。）
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useApp } from '../../app-context.jsx';
@@ -22,21 +24,11 @@ import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
 import { Button } from '../../components/button/index.jsx';
-import { PromptItemsEditor } from '../../modules/prompts/prompt-editor.jsx';
 import PromptTemplatesSection from './prompt-templates-section.jsx';
 import TaskTemplatesSection from './task-templates-section.jsx';
 import SidebarSection from './sidebar-section.jsx';
 import { openTemplateEditor } from '../../panels.jsx';
-import { openPanel } from '../../workspace.js';
 import './style.css';
-
-// 多条提示词的条数上限（与服务端 clampAckPromptList 一致）
-const MAX_PROMPT_ITEMS = 10;
-
-// 内置「持续 get」默认模板的预设文案（与服务端 waitgoal-config 默认同文案；%s = 任务编号，
-// 存取时与 {{task.id}} 互转——见 GetLoopEditor）。服务端常量带 core 依赖，前端本地声明。
-const GETLOOP_DEFAULT_PRESET =
-  '不要直接结束本轮：完成上面的任务（%s）之后，继续调用 nx-kv localtask get（带 --summary 当前现状）领取下一条任务，直到 get 返回 timeout 为止。';
 
 // 分区清单 = 左侧导航 = tab
 const SECTIONS = [
@@ -47,311 +39,7 @@ const SECTIONS = [
   { id: 'prompts', label: '提示词模板', icon: 'flow' },
   { id: 'sidebar', label: '侧栏显示', icon: 'sidebar' },
   { id: 'template', label: '任务工具', icon: 'clock' },
-  { id: 'project', label: '项目级设置', icon: 'repo' },
 ];
-
-/**
- * 单张项目卡：icon 在标题左侧；点开后编辑条走文档流（头下方整宽），
- * 不被设置面板 overflow 裁切。
- */
-function ProjectCard({ repo, docStateOf, openDoc, bindExternal, unbind }) {
-  const app = useApp() || {};
-  const toast = useToast();
-  const [iconValue, setIconValue] = useState(repo.icon || '');
-  const [iconOpen, setIconOpen] = useState(false);
-  const [iconBusy, setIconBusy] = useState(false);
-
-  useEffect(() => {
-    setIconValue(repo.icon || '');
-  }, [repo.icon]);
-
-  const saveIcon = async (next) => {
-    const icon = String(next ?? iconValue).trim();
-    if (icon === String(repo.icon || '').trim()) {
-      setIconOpen(false);
-      return;
-    }
-    setIconBusy(true);
-    try {
-      await api('/api/repos/' + encodeURIComponent(repo.id), { method: 'PATCH', body: { icon } });
-      setIconValue(icon);
-      toast(icon ? `已保存「${repo.name}」的图标` : `已清除「${repo.name}」的图标`);
-      app.refreshRepos && app.refreshRepos();
-      setIconOpen(false);
-    } catch (e) {
-      toast(String(e.message || e));
-    } finally {
-      setIconBusy(false);
-    }
-  };
-
-  const st = docStateOf(repo);
-  const loopOn = !!(repo.getLoop && repo.getLoop.enabled);
-
-  return (
-    <div className="setp-proj">
-      <div className="setp-proj-head">
-        <div className={'setp-icon' + (iconOpen ? ' open' : '')}>
-          <button
-            type="button"
-            className="setp-icon-btn"
-            title={iconValue ? `项目图标：${iconValue}（点击修改）` : '设置项目图标（emoji / 单字符）'}
-            aria-label="项目图标"
-            aria-expanded={iconOpen}
-            onClick={() => setIconOpen((o) => !o)}
-          >
-            {iconValue
-              ? <span className="setp-icon-glyph" aria-hidden>{iconValue}</span>
-              : <Icon name="folder" size={14} />}
-          </button>
-        </div>
-        <div className="setp-proj-meta">
-          <div className="setp-proj-t">
-            <b>{repo.name}</b>
-            <span className={'setp-badge ' + st.kind}>
-              {st.kind === 'external' ? '外部' : st.kind === 'own' ? '自有' : '约定'}
-            </span>
-            {loopOn && <span className="setp-badge loop">持续 get</span>}
-          </div>
-          <div className="setp-proj-p mono" title={st.label}>{st.label}</div>
-        </div>
-        <div className="setp-proj-actions">
-          <Button variant="secondary" onClick={() => openDoc(repo)}>介绍</Button>
-          <Button variant="secondary" onClick={() => bindExternal(repo)}>绑定…</Button>
-          {repo.doc ? <Button variant="secondary" onClick={() => unbind(repo)}>解绑</Button> : null}
-        </div>
-      </div>
-      {iconOpen && (
-        <div className="setp-icon-edit" role="group" aria-label="编辑项目图标">
-          <input
-            autoFocus
-            value={iconValue}
-            maxLength={8}
-            placeholder="emoji 或单字符"
-            onChange={(e) => setIconValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); saveIcon(iconValue); }
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                setIconValue(repo.icon || '');
-                setIconOpen(false);
-              }
-            }}
-            disabled={iconBusy}
-          />
-          <Button variant="primary" disabled={iconBusy} onClick={() => saveIcon(iconValue)}>保存</Button>
-          <Button
-            variant="secondary"
-            disabled={iconBusy || !iconValue}
-            title="清空，侧栏回退默认文件夹图标"
-            onClick={() => saveIcon('')}
-          >
-            清除
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={iconBusy}
-            onClick={() => { setIconValue(repo.icon || ''); setIconOpen(false); }}
-          >
-            取消
-          </Button>
-        </div>
-      )}
-      <GetLoopEditor repo={repo} />
-    </div>
-  );
-}
-
-/**
- * 项目级「持续 get」（waitgoal）编辑器：落在 repo 记录的 getLoop 字段。
- * 开启后该项目 `localtask get` 无任务时自动唤起阻塞窗口等人回填，
- * 领到的交付文本追加「继续 get 直到超时」的项目模板（提示词增强，基于项目）。
- *
- * #41 交互收敛：一句话即配置——「选模板」（内置默认 + 全局回调提示词条目）+
- * 带 %s 槽位的一句话（%s = 任务编号，存取时与 {{task.id}} 互转）；多条目收起成
- * 标题行，点击展开编辑；说明文字删除。
- */
-const GETLOOP_LINE_MAX = 2000;
-
-function GetLoopEditor({ repo }) {
-  const app = useApp() || {};
-  const toast = useToast();
-  const loop = repo.getLoop && typeof repo.getLoop === 'object' ? repo.getLoop : null;
-  const [on, setOn] = useState(!!(loop && loop.enabled));
-  const [minutes, setMinutes] = useState(String((loop && loop.waitMinutes) || 10));
-  // 旧 string 单条归一成一行（按条编辑）；空数组 = 未配置（交付用默认模板）。
-  // 展示层 %s ↔ 存储层 {{task.id}} 互转——项目级只写一句话，槽位写 %s。
-  const [tpls, setTpls] = useState(() => {
-    const raw = loop && loop.template;
-    const arr = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
-    return arr
-      .map((s) => String(s ?? '').trim())
-      .filter(Boolean)
-      .map((s) => s.replaceAll('{{task.id}}', '%s'));
-  });
-  const [openIdx, setOpenIdx] = useState(-1);
-  const [line, setLine] = useState(''); // 一句话输入（可含 %s）
-  const [busy, setBusy] = useState(false);
-  // 配置区（阻塞窗口/收尾模板/动作行）默认收起（#103）：开启「持续 get」
-  // 只是一枚开关的语义，细节按需展开；头上给一行摘要（几分钟·几条模板）。
-  const [cfgOpen, setCfgOpen] = useState(false);
-
-  const save = async (override) => {
-    setBusy(true);
-    try {
-      const enabled = override && override.enabled !== undefined ? override.enabled : on;
-      // %s → {{task.id}}（槽位落库为占位符）；空行丢弃
-      const stored = tpls
-        .map((s) => String(s ?? '').trim().replaceAll('%s', '{{task.id}}'))
-        .filter(Boolean)
-        .slice(0, MAX_PROMPT_ITEMS);
-      await api('/api/repos/' + encodeURIComponent(repo.id), {
-        method: 'PATCH',
-        body: {
-          getLoop: {
-            enabled,
-            ...(enabled ? { waitMinutes: Number(minutes) || 10, template: stored } : {}),
-          },
-        },
-      });
-      toast(
-        enabled
-          ? `已保存「${repo.name}」的持续 get 设置（模板 ${stored.length} 条）`
-          : `已关闭「${repo.name}」的持续 get`
-      );
-      app.refreshRepos && app.refreshRepos();
-    } catch (e) {
-      toast(String(e.message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // 开关即刻落库（#103）：配置区收起时用户也要能真正「开启」持续 get，
-  // 不能等展开配置按保存才生效。
-  const toggleOn = async (next) => {
-    setOn(next);
-    if (!next) setCfgOpen(false);
-    await save({ enabled: next });
-  };
-
-  const addLine = () => {
-    const v = line.trim();
-    if (!v || tpls.length >= MAX_PROMPT_ITEMS) return;
-    setTpls([...tpls, v.slice(0, GETLOOP_LINE_MAX)]);
-    setOpenIdx(tpls.length); // 新行直接展开
-    setLine('');
-  };
-
-  // 关着时给一枚**真开关**（off 态）做行内入口（#102：与展开后的开关同形态，
-  // 不再是一枚意义不明的圆点药丸）；开着才展开整块配置。
-  // 点击 = 真的开启（#103：此前只翻本地状态，展开后开关显示「开」而库里仍是
-  // 关——骗人；现在开关与入口都即时落库）。
-  if (!on) {
-    return (
-      <button className="setp-gl-off" title="开启持续 get（waitgoal）" onClick={() => toggleOn(true)}>
-        <span className="dot" />
-        持续 get
-      </button>
-    );
-  }
-
-  return (
-    <div className="setp-loop">
-      <div className="setp-loop-head">
-        <div className="setp-loop-title">
-          <span className="setp-loop-name">持续 get</span>
-          <span className="setp-loop-desc">无任务时阻塞等待新任务回填（waitgoal）</span>
-        </div>
-        <div className="setp-loop-head-acts">
-          {on && (
-            <button
-              className="setp-loop-cfg"
-              onClick={() => setCfgOpen((v) => !v)}
-              aria-expanded={cfgOpen}
-              title={cfgOpen ? '收起配置' : '展开配置'}
-            >
-              <Icon name="chevron" size={11} className={cfgOpen ? 'rot' : ''} />
-              配置
-              <span className="setp-loop-cfg-sum">{minutes} 分钟 · {tpls.length} 条模板</span>
-            </button>
-          )}
-          <button
-            className={'toggle' + (on ? ' on' : '')}
-            onClick={() => toggleOn(!on)}
-            disabled={busy}
-          >
-            <span className="dot" />
-            {on ? '开' : '关'}
-          </button>
-        </div>
-      </div>
-      {on && cfgOpen && (
-        <div className="setp-loop-cfg-body">
-          <label className="setp-row setp-loop-row">
-            <span>阻塞窗口</span>
-            <span className="setp-loop-unit">
-              <input className="setp-min" value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" />
-              分钟
-            </span>
-          </label>
-          <div className="setp-loop-tpl">
-            <div className="setp-h">收尾模板</div>
-            <div className="setp-oneline">
-              <Button
-                variant="secondary"
-                title="填入内置默认（继续 get 直到 timeout）"
-                onClick={() => setLine(GETLOOP_DEFAULT_PRESET)}
-              >
-                填入内置默认
-              </Button>
-              <input
-                className="setp-oneline-input"
-                value={line}
-                placeholder="一句话（%s = 任务编号），选模板后可改"
-                onChange={(e) => setLine(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addLine();
-                }}
-              />
-              <Button variant="secondary" disabled={busy || !line.trim()} onClick={addLine}>
-                添加
-              </Button>
-            </div>
-            {tpls.length ? (
-              <PromptItemsEditor
-                items={tpls}
-                onChange={setTpls}
-                disabled={busy}
-                placeholder={'一句话（%s = 任务编号）'}
-                accordion
-                openIndex={openIdx}
-                onOpenChange={setOpenIdx}
-              />
-            ) : (
-              <div className="setp-note">{'未配置模板 —— 用默认「完成后续调 localtask get；没活时每轮最多阻塞 {{getloop.waitMinutes}} 分钟，直到 timeout」。'}</div>
-            )}
-          </div>
-          <div className="setp-proj-a">
-            <Button
-              variant="secondary"
-              disabled={busy || tpls.length >= MAX_PROMPT_ITEMS}
-              title={tpls.length >= MAX_PROMPT_ITEMS ? `最多 ${MAX_PROMPT_ITEMS} 条` : '新增一条「继续 get」指令'}
-              onClick={() => {
-                setTpls([...tpls, '']);
-                setOpenIdx(tpls.length);
-              }}
-            >
-              添加一条…
-            </Button>
-            <span className="spacer" />
-            <Button variant="primary" disabled={busy} onClick={() => save()}>保存持续 get 设置</Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function SettingsPanel() {
   const app = useApp() || {};
@@ -360,7 +48,6 @@ export default function SettingsPanel() {
   const prefs = app.prefs || {};
   const patchPrefs = app.patchPrefs || (() => {});
   const model = app.model;
-  const repos = (app.repoData && app.repoData.repos) || [];
 
   const [tab, setTab] = useState('pref');
   const [cfg, setCfg] = useState(null);
@@ -391,39 +78,8 @@ export default function SettingsPanel() {
       }
     });
 
-  // ─── 项目级设置：介绍文档（自有 md 或外部只读绑定）───
-  const docStateOf = (r) => {
-    if (r.doc && r.doc.path) return { kind: 'external', docId: 'path:' + r.doc.path, label: r.doc.path };
-    if (r.doc && r.doc.rel) return { kind: 'own', docId: 'rel:' + r.doc.rel, label: r.doc.rel };
-    return { kind: 'default', docId: 'rel:' + (r.docRel || ''), label: r.docRel || '（未创建）' };
-  };
-
-  const openDoc = (r) => {
-    if (!model) return;
-    const st = docStateOf(r);
-    if (!st.docId || st.docId === 'rel:') return toast('这个项目还没有介绍文档');
-    openPanel(model, { component: 'doc', name: r.name + ' · 介绍', config: { docId: st.docId }, location: 'center' });
-  };
-
-  const bindExternal = (r) =>
-    guard(async () => {
-      const path = await dialog({
-        title: '绑定外部介绍文档',
-        input: true,
-        placeholder: 'D:\\vault\\nx\\nx-kv.md（只读引用，不进导出包）',
-      });
-      if (!path) return;
-      await api('/api/docs/bind', { method: 'POST', body: { repo: r.key, path: path.trim() } });
-      toast(`已绑定：${path.trim()}`);
-      app.refreshRepos && app.refreshRepos();
-    });
-
-  const unbind = (r) =>
-    guard(async () => {
-      await api('/api/docs/bind', { method: 'POST', body: { repo: r.key, reset: true } });
-      toast('已解除绑定（回到约定路径）');
-      app.refreshRepos && app.refreshRepos();
-    });
+  // （#145：「项目级设置」tab 删除——介绍/图标/持续 get 统一收进仓库管理页，
+  //   这里不再保留 docStateOf / openDoc / bindExternal / unbind。）
 
   const openTplEditor = (opts) => {
     if (!model) return;
@@ -541,24 +197,6 @@ export default function SettingsPanel() {
     // 侧栏显示编排（任务 #61 反馈③）：菜单式的「显示哪些项目组 / 项目」
     sidebar: (
       <SidebarSection />
-    ),
-
-    project: (
-      <>
-        <div className="setp-projs">
-          {repos.map((r) => (
-            <ProjectCard
-              key={r.key}
-              repo={r}
-              docStateOf={docStateOf}
-              openDoc={openDoc}
-              bindExternal={bindExternal}
-              unbind={unbind}
-            />
-          ))}
-          {!repos.length && <div className="setp-note">还没有登记仓库。</div>}
-        </div>
-      </>
     ),
   };
 

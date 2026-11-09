@@ -19,6 +19,7 @@ import { reaches } from '../../../../shared/graph.js';
 
 const NODE_W = 280;
 const NODE_GAP_Y = 22;
+const ROW_H = 72 + NODE_GAP_Y; // 一行节点占位高（节点 72 + 行距）
 const PAD_X = 56;
 const PAD_Y = 28;
 const COL_GAP = 320;
@@ -63,7 +64,18 @@ function formatDepForTarget(sourceNode, targetTopicKey) {
   return nodeKeyOf(sourceNode.topicKey, sourceNode.id);
 }
 
-function defaultLayout(nodes) {
+/**
+ * 默认布局：**按 topic 分块 + 块内分栏换行**（#153）。
+ *
+ * 旧版是「一列到底」的竖排（列 = topic，列内纵排）——单目录时只有一列，
+ * 任务一多就出纵向滚动条，而右边大片空着。现在每块按可视高度算容量，
+ * 装不下就换到右边一列，横向铺开把中右区用满。
+ *
+ * @param {Array<object>} nodes
+ * @param {{perCol?:number}} [opts] perCol = 每列最多几个节点
+ */
+function defaultLayout(nodes, opts = {}) {
+  const perCol = Math.max(3, Number(opts.perCol) || 8);
   // 按 topic 分列，列内按原序纵向
   const byTopic = new Map();
   for (const n of nodes) {
@@ -74,14 +86,47 @@ function defaultLayout(nodes) {
   let col = 0;
   for (const [, list] of byTopic) {
     list.forEach((n, i) => {
+      const c = col + Math.floor(i / perCol);
+      const r = i % perCol;
       pos.set(n.nodeKey, {
-        x: PAD_X + col * COL_GAP,
-        y: PAD_Y + i * (72 + NODE_GAP_Y),
+        x: PAD_X + c * COL_GAP,
+        y: PAD_Y + r * ROW_H,
       });
     });
-    col += 1;
+    col += Math.ceil(list.length / perCol);
   }
   return pos;
+}
+
+/** 节点位置持久化（#153）：拖过的位置记住，重开还原——连线也跟着节点走。 */
+const POS_KEY = (scope) => `nx-kv-dag-pos:${scope}`;
+
+/** 读已存位置：{ "topicKey:id": [x, y] } → Map<nodeKey, {x,y}> */
+function loadPos(scope) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(POS_KEY(scope)) || '{}');
+    const out = new Map();
+    for (const [k, v] of Object.entries(raw || {})) {
+      if (Array.isArray(v) && Number.isFinite(v[0]) && Number.isFinite(v[1])) out.set(k, { x: v[0], y: v[1] });
+    }
+    return out;
+  } catch {
+    return new Map();
+  }
+}
+
+/** 写回已存位置（只写有值的节点，键值对 [x,y]） */
+function savePos(scope, pos) {
+  try {
+    const out = {};
+    for (const [k, p] of pos) {
+      if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) out[k] = [Math.round(p.x), Math.round(p.y)];
+    }
+    localStorage.setItem(POS_KEY(scope), JSON.stringify(out));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function cubic(x1, y1, x2, y2) {
@@ -195,25 +240,49 @@ export default function DagPanel({ dirKey, groupId }) {
   const [pos, setPos] = useState(() => new Map());
   const posRef = useRef(pos);
   posRef.current = pos;
-  const layoutSigRef = useRef('');
+  // 画布可视高度 → 每列容量（#153：布局分栏换行，别再一列到底竖着排）
+  const [canvasH, setCanvasH] = useState(0);
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return undefined;
+    const read = () => setCanvasH(el.clientHeight || 0);
+    read();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(read) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', read);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', read);
+    };
+  }, []);
+  const perCol = Math.max(3, Math.floor(((canvasH || 720) - PAD_Y * 2) / ROW_H) || 8);
+
+  // 位置持久化（#153）：scope = 组 id 或目录 key；拖过的位置记在 localStorage
+  const scopeKey = groupMode ? `g:${board?.id || groupId || ''}` : `d:${dirKey || ''}`;
+  const scopeKeyRef = useRef(scopeKey);
+  scopeKeyRef.current = scopeKey; // 拖动写盘用（全局监听是空依赖闭包，得读最新）
+  const storedPos = useMemo(() => loadPos(scopeKey), [scopeKey]);
+  const scopeRef = useRef(scopeKey);
+  const userMovedRef = useRef(new Set());
 
   useEffect(() => {
-    const sig = nodes.map((n) => n.nodeKey).join('|') + '#' + (groupMode ? filterKey || 'ALL' : dirKey || '');
-    const switched = layoutSigRef.current.split('#')[0] !== sig.split('#')[0]
-      || layoutSigRef.current.split('#')[1] !== sig.split('#')[1];
-    layoutSigRef.current = sig;
+    const scopeChanged = scopeRef.current !== scopeKey;
+    scopeRef.current = scopeKey;
     setPos((prev) => {
       const next = new Map();
-      const fresh = defaultLayout(nodes);
+      const fresh = defaultLayout(nodes, { perCol });
       for (const n of nodes) {
-        next.set(
-          n.nodeKey,
-          !switched && prev.has(n.nodeKey) ? prev.get(n.nodeKey) : (fresh.get(n.nodeKey) || { x: PAD_X, y: PAD_Y }),
-        );
+        // 优先级：已存位置（用户拖过）> 本会话拖过的位置 > 默认布局
+        const saved = storedPos.get(n.nodeKey);
+        const kept = saved
+          || (!scopeChanged && userMovedRef.current.has(n.nodeKey) ? prev.get(n.nodeKey) : null)
+          || fresh.get(n.nodeKey)
+          || { x: PAD_X, y: PAD_Y };
+        next.set(n.nodeKey, kept);
       }
       return next;
     });
-  }, [nodes, groupMode, filterKey, dirKey]);
+  }, [nodes, perCol, storedPos, scopeKey]);
 
   const modeRef = useRef(null);
   const [dragId, setDragId] = useState(null);
@@ -376,6 +445,9 @@ export default function DagPanel({ dirKey, groupId }) {
       const m = modeRef.current;
       if (!m) return;
       if (m.kind === 'drag') {
+        // 位置记住（#153）：拖完写盘——重开还原，连线跟着节点走
+        userMovedRef.current.add(m.id);
+        savePos(scopeKeyRef.current, posRef.current);
         clearMode();
         return;
       }
@@ -533,12 +605,15 @@ export default function DagPanel({ dirKey, groupId }) {
         if (!a) continue;
         const elFrom = canvasRef.current?.querySelector(`[data-node-id="${CSS.escape(fromKey)}"]`);
         const hFrom = elFrom ? elFrom.offsetHeight : 64;
+        // 方向自适应（#153）：目标在源右侧 → 源右缘出、目标左缘入；否则反向
+        // （同列纵向依赖、用户把节点拖到左边时，线不再绕回去打结）
+        const toRight = b.x > a.x + NODE_W - 8;
         out.push({
           from: fromKey,
           to: n.nodeKey,
-          x1: a.x + NODE_W,
+          x1: toRight ? a.x + NODE_W : a.x,
           y1: a.y + hFrom / 2,
-          x2: b.x,
+          x2: toRight ? b.x : b.x + NODE_W,
           y2: b.y + hTo / 2,
         });
       }
@@ -565,6 +640,14 @@ export default function DagPanel({ dirKey, groupId }) {
   const title = groupMode
     ? (board?.name || '组编排')
     : (dirTopic?.name || dirKey || '编排');
+
+  /** 恢复默认布局（#153）：清掉记住的摆位，按当前分栏规则重排 */
+  const resetLayout = () => {
+    try { localStorage.removeItem(POS_KEY(scopeKeyRef.current)); } catch { /* 隐私模式 */ }
+    userMovedRef.current.clear();
+    setPos(defaultLayout(nodes, { perCol }));
+    toast('已恢复默认布局');
+  };
 
   const linkArmed = !!linking;
   const srcLabel = linking
@@ -607,6 +690,10 @@ export default function DagPanel({ dirKey, groupId }) {
             ))}
           </span>
         )}
+        {/* #153：摆位记住了（拖动即存），给一条「恢复默认布局」的退路 */}
+        <button type="button" className="dagp-reset" onClick={resetLayout} title="清掉记住的摆位，按默认分栏重排">
+          恢复默认布局
+        </button>
       </div>
 
       <div className="dagp-canvas" ref={canvasRef} onPointerDown={onCanvasPointerDown}>

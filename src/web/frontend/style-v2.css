@@ -1205,6 +1205,13 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .dagp-queue i { font-style: normal; margin-left: 4px; opacity: .7; }
 .dagp-queue:hover { background: var(--soft, #F1F0EC); }
 .dagp-queue.on { background: var(--mdw-accent-soft, #E8F2EE); border-color: var(--mdw-accent, #2F6F5E); color: var(--mdw-accent, #2F6F5E); }
+/* 摆位记住后的退路（#153）：一键清掉记忆、按默认分栏重排 */
+.dagp-reset {
+  margin-left: auto; flex: none;
+  border: 1px solid var(--line, #E4E2DC); background: var(--paper, #fff); border-radius: 999px;
+  padding: 1px 9px; font: inherit; font-size: 11px; color: var(--ink-2, #4B515A); cursor: pointer;
+}
+.dagp-reset:hover { background: var(--soft, #F1F0EC); }
 /* 面包屑返回钮（#97：独立「←」删掉，整段路径本身就是返回钮） */
 .nx-crumb-path {
   border: 0; background: none; cursor: pointer;

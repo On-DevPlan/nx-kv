@@ -17,7 +17,8 @@
   状态栏只点结构变化。
 - 命令与返回字段全部按 `help --json` / 临时库实跑校准：`instruction` 非任务正文、
   附件 `area` 取 `inline|area`、`close-many` 的 `--ids` 必填、`todo list` 返回对象等。
-- 无业务代码、schema 或存储变更。
+- 无业务代码、schema 或存储变更；并入 origin/main 尚未发版的改动（#111–#114：
+  md 草稿与 @ 面板、撤掉 frontmatter 属性卡、总览扁平清单、仓库页按钮规范）。
 
 ## [0.33.0] - 2026-11-08 底部信息面板 / check 日志 / 用户侧收口 / 状态配色
 

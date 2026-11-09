@@ -1588,14 +1588,18 @@ export const MdPanes = forwardRef(function MdPanes(
         return;
       }
       if (k === 'z') {
+        // 只在页面接了自定义历史时拦截（#156）——没接的页面（如外部只读视图）
+        // 回落浏览器原生撤销，别把原生 textarea 撤销也一起 preventDefault 掉
+        const h = e.shiftKey ? onRedo : onUndo;
+        if (!h) return;
         e.preventDefault();
-        if (e.shiftKey) onRedo?.();
-        else onUndo?.();
+        h();
         return;
       }
       if (k === 'y') {
+        if (!onRedo) return;
         e.preventDefault();
-        onRedo?.();
+        onRedo();
       }
     };
     window.addEventListener('keydown', onKey, true);

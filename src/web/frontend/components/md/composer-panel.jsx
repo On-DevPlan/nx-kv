@@ -12,6 +12,7 @@ import { Icon } from '../icons.jsx';
 import { filesToAttachments } from './attachments.js';
 import { insertAttachmentSnippet } from '../../modules/md/md-parse.js';
 import { composerOf, restoreComposerSource } from './composer-launch.js';
+import { pushHistory, undoHistory, redoHistory, clearHistory } from '../../modules/md/md-history.js';
 import { useApp } from '../../app-context.jsx';
 import { useToast } from '../toast/index.jsx';
 import { openBesideMain } from '../../workspace.js';
@@ -37,11 +38,32 @@ export default function ComposePanel({
   const [busy, setBusy] = useState(false);
   const editorApiRef = useRef(null);
   const isFeedback = mode === 'feedback';
+  // 撤销栈（#156）：composer 自己一份——MdPanes 的按键拦截会吃掉 Ctrl+Z 再调
+  // onUndo；不接历史的话原生撤销也一起被拦死（「编辑器无法撤回」的根因）。
+  const histRef = useRef(new Map());
+  const histId = 'compose-' + token;
 
   // 收尾：把**来源面板**放回主区（#106）——主区是单面板位，评论页把任务页
-  // 顶掉了；不放回去主区就空掉，只剩侧边栏。
+  // 顶掉了；不放回去主区就空掉，只剩侧边栏。撤销栈一并销号（防泄漏）。
   const finish = () => {
+    clearHistory(histRef.current, histId);
     restoreComposerSource(app.model, token);
+  };
+
+  // 正文写入统一走这里：先记历史再改状态（Ctrl+Z / Ctrl+⇧Z 走同一份栈）
+  const onBody = (next, kind = 'op') => {
+    pushHistory(histRef.current, histId, { title: '', body }, kind);
+    setBody(next);
+  };
+  const undo = () => {
+    const snap = undoHistory(histRef.current, histId, { title: '', body });
+    if (!snap) return;
+    setBody(snap.body);
+  };
+  const redo = () => {
+    const snap = redoHistory(histRef.current, histId, { title: '', body });
+    if (!snap) return;
+    setBody(snap.body);
   };
 
   const submit = async () => {
@@ -208,12 +230,14 @@ export default function ComposePanel({
           title=""
           body={body}
           onTitle={() => {}}
-          onBody={setBody}
+          onBody={onBody}
           attachments={attachments}
           docKey={'compose-' + token}
           editorApiRef={editorApiRef}
           onFiles={onFiles}
           onSave={submit}
+          onUndo={undo}
+          onRedo={redo}
           hideTitle
         />
       </div>

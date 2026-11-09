@@ -26,8 +26,9 @@ export function pushHistory(store, id, snap, kind = 'op') {
   const typing = kind === 'typing';
   const merge = typing && now - h.lastAt < TYPING_MERGE_MS && h.past.length > 0;
   if (merge) {
-    // 合并进上一条：撤销回到这段输入开始前的状态
-    h.past[h.past.length - 1] = snap;
+    // 合并窗口内**不动 past**：段首快照已经在栈顶，撤销一次回退整段输入。
+    // （曾错写成用本键前置快照覆盖栈顶——段内逐键覆盖后栈顶只剩最后一个
+    // 字符的前置快照，Ctrl+Z 一次只退一个字符、再按就卡死，#156 实测。）
   } else {
     h.past.push(snap);
     // 栈上限：防止长文档编辑把内存吃满

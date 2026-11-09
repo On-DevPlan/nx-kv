@@ -14,9 +14,9 @@
 //   - 模板分两块（不混在一起）：任务模板（任务正文骨架，纯字符串槽位）与
 //     提示词模板（每区块各自的模板列表 / 启用项；编辑区下方给只读参数速查，语法教程只在 skill / docs）
 //   - 任务工具：timegoal / waitgoal 的用法口径（时长在发布/编辑任务时显式给——CLI --duration 或编辑页「时间目标」栏，无全局默认）
-//   - 任务工具：timegoal / waitgoal 的用法口径（时长在发布/编辑任务时显式给——CLI --duration 或编辑页「时间目标」栏，无全局默认）
 //   （#145：「项目级设置」整 tab 删除——介绍/图标/持续 get 都与仓库管理页重复，
 //    现统一在 repos 页：行内「更多 → 持续 get」modal、编辑表单图标、查看详情文档集。）
+//   （#150：「任务工具」tab 删除——正文早已不在 bodies 里，点开只剩空白标题页。）
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useApp } from '../../app-context.jsx';
@@ -38,7 +38,6 @@ const SECTIONS = [
   { id: 'taskTemplates', label: '任务模板', icon: 'list' },
   { id: 'prompts', label: '提示词模板', icon: 'flow' },
   { id: 'sidebar', label: '侧栏显示', icon: 'sidebar' },
-  { id: 'template', label: '任务工具', icon: 'clock' },
 ];
 
 export default function SettingsPanel() {

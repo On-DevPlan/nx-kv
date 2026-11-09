@@ -1,14 +1,33 @@
 # nx-kv
 
-KV 清单（todo）管理中枢。一个 `npx` 命令起一个 Web 面板，同时提供同构 CLI——
+清单（todo）+ 本地任务的一体化工具。一个 `npx` 命令起一个 Web 面板，同时提供同构 CLI——
 **面板上的每个按钮，底层都是同一条 CLI 命令**，输出 `--json` 即可被任何 agent 直接消费。
 
-对接 GoFrame KV 后端（默认 `http://192.0.2.47:8988`），
-数据落在**四把 key** 上：`todo:open` / `todo:done` / `todo:freeze` / `todo:topics`。
+存储分两套，互不混用：
+
+- **云端清单（todo）** 对接 GoFrame KV 后端（默认 `http://192.0.2.47:8988`），数据落在四把 key 上：
+  `todo:open` / `todo:done` / `todo:freeze` / `todo:topics`。
+- **本地任务、仓库、项目组、文档、附件** 走本机 SQLite（`~/.nx-kv/nxkv.db`，schema v4，
+  迁移见 `src/core/db/migrations/`）。
 
 任务正文还能直接**嵌图片与文档**（标准 markdown：`![说明](fileId)` / `[文件名](fileId)`）——
 附件存在后端图床的同一用户空间里，既能同步到本地给 agent 直接读（`nx-kv file sync`），
 也能在读任务时自动下载并把本地绝对路径一并交出去。
+
+## 术语（速查）
+
+完整词表与判定依据见 **[docs/glossary.md](docs/glossary.md)，术语以此为准**；它同时是 nx-kv 文档库的主文档：`rel:repo/github.com/on-devplan/nx-kv/glossary.md`（`nx-kv docs get rel:repo/github.com/on-devplan/nx-kv/glossary.md`）。
+
+- **主题（topic）**：本地任务队列容器，由完整 cwd + 项目组派生；云端那份叫**云端主题**。
+- **本地任务（task）**：`tasks` 行，主题内用 `seq` 编号，依赖/链用全局 `tasks.id`。
+- **项目组（group）**：`repos.type='group'`；CLI 命令名沿用 `board`，概念名统一为项目组。
+- **仓库（repo）**：`repos.type='repo'`，UI 里也叫「项目」。
+- **参考仓库（ref repo）**：`repos` 里参考身份的行（store `type=ref`），可绑项目组或仓库；不是文档库。
+- **文档（ref）**：`refs` 表 + docs 树里的 `.md`，与参考仓库是两回事。
+- **附件（attachment）**：`attachments` 行，kind 为 file / url / task / ref。
+- **工作空间（workspace）**：云端清单的数字隔离域，不是项目组。
+- **看板（board）**：项目组的历史别名；CLI / frontmatter 保留，实体名用项目组。
+- **提示词区块（block）**：context / attachment / timecheck / ext / ack / getloop，共用一份 ctx。
 
 ## 快速开始
 
@@ -135,14 +154,14 @@ nx-kv setting set --autoSyncAttachments=false  # 关（默认）
 
 面板里对应「清单」页工具栏的「附件自动下载」勾选。本地文件名优先取正文里的说明文字
 （`![设计稿.png](id)` → `设计稿.png`），否则退回 fileId 并补上扩展名；
-同步台账已存入本地 SQLite（存储版本 v2）：旧 `manifest.json` 在升级时迁入并归档，
+同步台账已存入本地 SQLite（当前 schema v4）：旧 `manifest.json` 在升级时迁入并归档，
 运行时只以库为真相，不再读写 manifest。
 
 单独的命令参考见 `nx-kv help file` 与 skill 的 `todo-commands`。
 
 ## 本地任务（localtask，不需登录）
 
-本机任务队列，按**工作目录**划分（目录名即主题）：提交（`add`）、领取（`wait`）、
+本机任务队列，按**工作目录**划分（完整 cwd 派生主题 key，显示名取目录名）：提交（`add`）、领取（`wait`）、
 队列管理（`list / get / update / remove / reorder`）与主题管理（`topic remove /
 remove-many`）。阻塞等待弹窗只是 `wait` 当前的一个子功能。三个 skill 角色共用
 同一条队列、一套存储：
@@ -160,7 +179,7 @@ nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --json
 领取。其余命令：`localtask list / get / update / remove / reorder`，以及主题级
 `localtask topic remove`（删整个主题）与 `localtask topic remove-many`
 （批量删除，`--keys/--cwds/--all`；等待中需 `--force`），面板上对应「本地任务」页。
-纯本机协调、存本地文件（`~/.nx-kv/localtasks.json`），**不需登录后端**。
+纯本机协调、存本机 SQLite（`~/.nx-kv/nxkv.db`，schema v4），**不需登录后端**。
 
 **任务附件（v2）**：任务与文档共用一套资源关系（`attachments` + `task_attach` /
 `ref_attach`），支持四类：
@@ -191,9 +210,10 @@ nx-kv localtask add "<任务文本>" --global --json   # 投进全局池，不�
 配套 skill（三件套各管一角；远程清单仍归 nx-kv 主 skill）：
 
 ```bash
-nx-kv skill install kv-waittask   # 等待侧：agent 最后一步阻塞等用户喂任务
+nx-kv skill install               # nx-kv 总手册（清单 / 本地任务 / 文档 / 仓库）
+nx-kv skill install kv-get        # 领取侧：主动领取排给本目录的任务
 nx-kv skill install kv-submit     # 提交侧：总结上下文、提炼需求，委托别的 agent
-nx-kv skill install kv-localget   # 领取侧：主动领取排给本目录的任务
+nx-kv skill install kv-repo       # 仓库 / 项目组 / 参考仓库管理
 ```
 
 ## 时间目标（timegoal，不需登录）
@@ -233,13 +253,14 @@ nx-kv timegoal update --cwd "$PWD" --prompt "<新版>" [--duration 5h] --json
 不再是一句静止的"已到点"。每轮的检查日志只保留最近 200 条（总轮次与是否截断都
 看得到，不静默丢历史），长跑任务不会把 store 撑爆。
 
-**完全独立的模块**：独立 store（`~/.nx-kv/timegoals.json`）、独立命令族、
-独立循环——不调用 `localtask wait`、不被它调用，两者可以同时跑。
+**独立的命令族**：队列级目标存本机 SQLite 的 `settings.tg.cwd.<topicKey>`，
+任务级目标存 `goals` / `goal_checks` 表；命令归 `tasktool` 模块，独立循环——
+不调用 `localtask wait`、不被它调用，两者可以同时跑。
 面板上嵌在「本地任务」页（顶部「时间目标」汇总卡 + 每个主题卡里一行），
 纯粹是为了查看与编辑方便。
 
 ```bash
-nx-kv skill install kv-timegoal   # 持续 N 小时任务的时序与提示词模板
+nx-kv help timegoal   # 时间目标命令族（set / check / update / show / list / log）
 ```
 
 ## ⚠️ 定位一律按内容，不按 id
@@ -302,16 +323,15 @@ nx-kv todo get --ref "旧记录" --topic fr   # 或按主题收窄
 所以「Web 上能做的，CLI 都能做」是结构保证而非口头约定。
 
 ```
-src/core/          零业务语义：kvapi / fileapi（后端客户端） / attachstore（附件本地镜像） / config / errors / fstree
-src/shared/        同构纯函数：附件语法 / 双链 / frontmatter——Node 与浏览器加载同一份，零依赖
-src/modules/       功能域：system / setting / auth / group / localtask / timegoal / todo / file / bundled
+src/core/          零业务语义：db（SQLite） / kvapi / fileapi（后端客户端） / attachstore / config / errors / fstree
+src/shared/        同构纯函数：附件语法 / 双链 / frontmatter / 提示词区块——Node 与浏览器加载同一份，零依赖
+src/modules/       功能域：system / setting / auth / bundled / db / docs / file / localtask / repos / tasktool / templates / todo
 src/runtime/       装配层：registry / spec / cli / api / server
 src/web/frontend/  React 壳（视图全在这里，后端不知道它们的路径）
-assets/nx-kv/            内置 skill：KV 清单操作手册（远程）
-assets/kv-waittask/         内置 skill：对话内本地任务接力（等待侧）
-assets/kv-submit/        内置 skill：需求提炼与委托提交（提交侧）
-assets/kv-localget/         内置 skill：领取本目录本地任务（领取侧）
-assets/kv-timegoal/         内置 skill：持续 N 小时任务的时间目标与提示词回显
+assets/nx-kv/      内置 skill：清单 / 本地任务 / 文档 / 仓库总手册
+assets/kv-get/     内置 skill：领取本目录本地任务
+assets/kv-submit/  内置 skill：需求提炼与委托提交
+assets/kv-repo/    内置 skill：仓库 / 项目组 / 参考仓库管理
 ```
 
 分层由 `eslint.config.js` 的 `no-restricted-imports` 与 `tests/unit/layering.test.mjs` 双重强制：
@@ -332,11 +352,10 @@ modules ← core + shared   runtime ← 装配全部          web ← 只有 sha
 ## 给 agent 用
 
 ```bash
-nx-kv skill install      # 装到 ~/.claude/skills/nx-kv（KV 清单操作手册，远程）
-nx-kv skill install kv-waittask      # 本地任务接力：最后一步阻塞等用户喂任务
+nx-kv skill install               # 装到 ~/.claude/skills/nx-kv（总手册）
+nx-kv skill install kv-get        # 领取侧：主动领取排给本目录的任务
 nx-kv skill install kv-submit     # 提交侧：总结上下文、提炼需求，委托别的 agent
-nx-kv skill install kv-localget      # 领取侧：主动领取排给本目录的任务
-nx-kv skill install kv-timegoal      # 持续 N 小时任务：每轮回显提示词原文、到点自动停手
+nx-kv skill install kv-repo       # 仓库 / 项目组 / 参考仓库管理
 nx-kv skill list         # 列出可装 skill、默认安装项与可装 group
 nx-kv skill groups       # 列出 group → 包含哪些 skill
 nx-kv skill install --group=<key>    # 一键装整组（与 <name> 二选一）

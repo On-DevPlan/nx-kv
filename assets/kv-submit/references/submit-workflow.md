@@ -68,7 +68,10 @@
 nx-kv localtask add "<任务文本>" --cwd "<目标工作目录>" --json
 
 # 全局投递：不限定接收方，谁闲谁领（--cwd 被忽略）
-nx-kv localtask add --global "<任务文本>" --json
+nx-kv localtask add "<任务文本>" --global --json
+
+# 带归属：落到项目队列并带 board + project 的 frontmatter
+nx-kv localtask add "<任务文本>" --project "<仓库 key/名称/路径>" --board "<工作组 id/key/名称>" --json
 ```
 
 - `--cwd`：接收方 agent 的**工作目录**（主题按目录名识别，Windows 折叠大小写；
@@ -80,13 +83,13 @@ nx-kv localtask add --global "<任务文本>" --json
 - 文本含空格必须加引号；跨执行边界传长文本时优先保持**单行**（多行参数可能
   被平台切掉后半截），用 ①②③ 编号替代换行。
 
-成功返回 `{status:"ok", key, cwd, name, summary, task:{id,text,status:"pending",createdAt}, delivered, queued}`：
+成功返回 `{status:"ok", key, cwd, name, isGlobal, ignoredCwd, task:{id,text,status:"pending",...}, delivered, queued}`：
 
 | 字段 | 含义 |
 | --- | --- |
 | `task.id` | 任务编号（该队列内自增），向用户报告用它 |
-| `queued:true` | 已入队（跨进程提交的常态）；那边正在 wait 的 agent 约 0.5 秒内取走（全局投递则由任何空闲 agent 领取） |
-| `delivered:true` | 提交进程内正好有 wait 在等、当场送达（罕见） |
+| `queued` | `true` = 已入队；跨进程提交的常态是 `queued:true` + `delivered:false` |
+| `delivered` | `true` = 当场送达；提交进程内正好有 wait 在等时才会出现 |
 
 文本非法（空、超 20000 字）或目录非法 → 报错 exit 1，按错误处理并修正后重试。
 
@@ -96,12 +99,11 @@ nx-kv localtask add --global "<任务文本>" --json
   按提交先后领取）；发现顺序不对用
   `nx-kv localtask reorder --id <n> --before-id <m> --cwd "<目录>"` 校正。
 - **查状态**：`nx-kv localtask list`（全部主题总览）或
-  `nx-kv localtask get --id <n> --cwd "<目录>"`（单条；`status` 从 pending →
-  consumed 即已被领取）。
-- **改/撤**：`update --id <n> --text "<新内容>"` 改写；`remove --id <n>` 撤回。
-- **完成怎么知道**：本机队列是单向投递，不回传执行结果——接收方完成后的产出
-  在它的目录/对话里，由用户或那边的 agent 汇报。不要轮询本队列等「完成」状态，
-  它没有这个状态。
+  `nx-kv localtask show --id <n> --cwd "<目录>"`（单条；状态为
+  `pending` → `claimed` → `done` / `cancelled`）。
+- **改/撤**：`localtask update --id <n> --text "<新内容>"` 改写；`localtask remove --id <n>` 撤回（软删除）。
+- **完成怎么知道**：可以查任务状态，但**执行产出不会回传**——它在接收方的目录/对话里，
+  由用户或那边的 agent 汇报。不要轮询等产出内容。
 
 ## 五、常见错误与避坑
 
@@ -110,7 +112,7 @@ nx-kv localtask add --global "<任务文本>" --json
 | `--cwd` 随手填或省略（且没用 --global） | 任务排进错误/没人看的队列；省略时提交进**你自己的**目录 | 填接收方 agent 实际工作的目录；不确定先问 |
 | 任务文本引用本对话（「如上所述」） | 接收方无从执行 | 自包含：目标/背景/注意写全，路径写全 |
 | 把没和用户对齐的猜测提交出去 | 那边的 agent 按错误需求白干一轮 | 先确认再提交；提交前给用户过目 |
-| 多行长文本直接塞 argv | 跨执行边界可能被切掉后半截（静默丢内容） | 单行 + ①②③ 编号；确要换行用引号包裹并提交后 `get` 核对 |
+| 多行长文本直接塞 argv | 跨执行边界可能被切掉后半截（静默丢内容） | 单行 + ①②③ 编号；确要换行用引号包裹并提交后 `localtask show --id` 核对 |
 | 一条任务塞一整个项目 | 接收方要么做偏要么摆烂 | 拆成多条可独立完成的单元 |
-| 提交后反复轮询队列等「完成」 | 队列没有完成状态，永远等不到 | 产出由用户/接收方汇报；本侧只管投递与查领取状态 |
+| 提交后反复轮询队列等「完成」 | 只能看到 `done` 状态，看不到产出内容 | 产出由用户/接收方汇报；本侧只查状态 |
 | 没加 --json | 人读文本难解析 | agent 调用一律加 --json |

@@ -1,156 +1,41 @@
----
-name: kv-waittask
-description: 在一个对话里通过工具调用实时接收任务（本机人机接力），替代在原始输入框打字——每完成一步、提交结果后，都必须把 nx-kv localtask wait --summary "<当前现状总结>" 作为该步的结束动作强制调用，领取新任务（循环不自行终止，只有 timeout 才能结束本轮）；命令阻塞并自动打开一个本机网页给用户看现状、回填，解除阻塞后新任务作为工具结果返回，agent 继续；队列按工作目录划分，同目录的任务（含别人委托排队的）按序领取。触发词：本地任务、下一条任务、继续给任务、连续提交任务、补充任务、回填任务、现状总结、阻塞等待、挂起等用户、人机接力、等用户喂任务、每步结束领新任务、localtask wait、kv-waittask。凡是「agent 不结束本轮、靠一个阻塞工具调用等用户继续喂任务」的场景，都走本 skill。反例：要「主动领取排给本目录的委托任务」用 kv-localget；要「把需求打包提交给别的 agent」用 kv-submit；要操作远程 KV 清单（todo）用 nx-kv。
----
+# wait 语义与收尾
 
-# kv-waittask — 对话内本地任务接力（等待侧）
+`wait` 让 agent 停在某个主题里，等用户回填下一条任务；没有任务时就结束本轮，不要在等待中空转。
 
-本质是一个强制循环：**每完成一步 → 提交结果 → 必须调用 wait 领取新任务**。
-循环不自行终止——**每一步的结束动作都只能是 `nx-kv localtask wait`**；「做完
-就收尾停住」是违规，唯一合法的停止条件是 wait 返回 `timeout`。
+## 命令
 
-具体形态：agent 每做完一步、把结果提交后，调用一个**阻塞式**工具
-`nx-kv localtask wait`，并带上一句**当前现状总结**；它自动打开一个本机网页
-（弹窗）给用户看现状、回填，阻塞解除、新任务作为工具结果返回，
-agent 接着干；做完再 wait——如此循环。别人通过 kv-submit / CLI 排进
-**本目录队列**的任务，wait 也会按序取走。
-
-## 四条硬规则（最重要）
-
-1. **每一步的结束都必须是 wait——循环强制，不许做完就停。** 每完成一步（结果
-   已通过正常输出提交），立即调用 wait 领取新任务；队列里有排队的任务就直接
-   领走继续干，没有就阻塞等用户回填。把 wait 安排在本轮所有分析与工具调用
-   之后，调用之后不要再安排任何别的工具、输出或推理——它会阻塞，直到拿到
-   新任务或超时。**只有 timeout（第 4 条）能结束这个循环。**
-2. **这次工具调用的超时设为 `300000` ms（5 分钟）。** CLI 默认阻塞 180 秒、
-   上限 600 秒；5 分钟覆盖默认值并留余量。若显式传了更长的 `--timeout`，
-   工具超时要同步放大到比它更大。
-3. **wait 必须带 `--summary "<当前现状总结>"`。** 总结写**当前做到哪、卡在哪、
-   等用户决定什么**，让用户不读对话也能快速了解现状；它作为「本轮完成总结」
-   记录在被取走的任务上。它**只是状态展示**——
-   措辞不影响领取顺序，不必刻意保持逐字一致。
-4. **返回 `status:"timeout"` 时直接收尾。** 这是循环唯一合法的出口：用户在
-   阻塞时限内没回填，就不要再追问、不要再次调用 wait，把当前结论交代清楚、
-   结束本轮即可。
-
-## 队列模型（一句话版）
-
-**工作目录即主题，主题拥有一个任务队列。** wait 不传 `--cwd` 时以进程当前目录
-（目录名）定位主题；同一目录的所有任务共用一个队列，wait 总是取走其中**最早的
-待领取任务**。队列里有任务时 wait 立即返回（不开窗、不阻塞）；队列为空才开窗
-阻塞。不同目录 → 不同主题 → 互不串。
-
-**本地空了一定去全局池领（内建兜底，没有开关）。** 即便显式传了 `--cwd`，本地
-队列取不到任务时，wait 也会自动去「全局任务池」（跨目录共享队列）领一条；全局
-也没有才阻塞。不要假设「传了 cwd 就只看本地」——习惯性传 cwd 不影响全局任务被
-领取；同样，别往全局池放"只能某人做"的任务，池子对一切空闲 agent 开放。
-
-## 全局任务池（工作窃取）
-
-除按目录划分的本地队列外，还有一个**跨目录共享**的全局主题：任何目录的 agent
-在本地队列空时自动领取池里的任务——类似 Go 调度器的 global runq：本地空就去
-全局拿，全局也空才 park 阻塞。
-
-- **发布**：`nx-kv localtask add --global "<任务文本>" --json`——不限定接收方、
-  谁闲谁领的任务走这里（`--global` 时 `--cwd` 被忽略）。
-- **领取**：无需任何 flag，wait 内建兜底；返回用 `source: "local" | "global"`
-  区分任务来自本目录队列还是全局池。agent 不必区分，照常执行 `task.text`。
-- **顺序**：本地优先、全局兜底——本目录有排队任务时不会去抢全局的。
-- **公平**：多个 agent 同时阻塞时，全局任务按阻塞先后（先到先得）投递。
-- **查看/管理**：`nx-kv localtask list` 中全局主题永远置顶（名称「全局任务」，
-  key 固定 `__GLOBAL__`）；默认受保护，`topic remove --key __GLOBAL__` 需 `--force`
-  才能清空。
-
-## 核心命令
-
-```bash
-# 阻塞等待本目录的下一条任务——每轮最后一步，强制（务必加 --json）
-nx-kv localtask wait --summary "<当前现状总结>" --json
+```powershell
+nx-kv localtask wait --summary "<当前在做什么>" --timeout 180 --json
 ```
 
-返回形状：
+- `--summary` 必填，写给用户看的现状（会显示在面板上）。
+- `--cwd <目录>` 指定主题；`--timeout` 秒，默认 180、最大 600。
+- `--param k=v` 与 `get` 同语义。
+- `--no-open` 不打开面板。
 
-| 返回 | 含义 | agent 怎么做 |
-| --- | --- | --- |
-| `{status:"ok", queued:true, source:"local", task}` | 本目录队列已有**排队任务**（含 kv-submit 委托的） | 直接执行 task |
-| `{status:"ok", queued:true, source:"global", task}` | 本地空，从**全局任务池**领到任务 | 直接执行 task |
-| `{status:"ok", delivered:true, task}` | 用户**实时回填** | 执行 task |
-| `{status:"timeout", cwd, summary, timeoutMs}` | 阻塞时限内未收到回填 | 收尾、结束本轮 |
+## 语义
 
-成功结果里带 `cwd` 与 `summary`；`task` 形如
-`{id, text, status, createdAt, consumedAt, roundSummary}`，**任务内容在 `task.text`**。
+1. 本目录有 pending 任务：立即领取并返回，等价于一次成功 `get`。
+2. 本目录为空：自动去全局共享池领取。
+3. 都没有：阻塞到超时、用户取消、或目录时间目标到点。
 
-**`instruction` 字段（有则必读）**：wait 返回额外带 `instruction` —— 服务端按
-5 个区块（context / attachment / timecheck / ack / getloop）渲染的**本轮根指令**：
-默认含组 / 项目上下文、时间目标状态（`〔时间目标「目录名」剩余 X〕`，该目录挂了
-timegoal 才出现），以及 ack 完成总结（默认「完成后调用 `localtask done` 回填结果」）。
-规则：
+返回与 `get` 同构：`status`、`key`、`task`、`instruction`、`coversBody`、`attachmentsSync`、`renderWarnings`；超时另带 `timeoutMs`，被取消/到点另带 `cancelled:true` + `reason`。
 
-- `task.text` 永远是任务本体原文；`instruction` 是**包裹它的执行指令**，两者一起读。
-- 自定义模板可含 `{{task.text}}`（此时 instruction 自包含，正文以它为准）。
-- ack 是完成指令与收尾要求的**唯一出口**（旧 `rule` 区块已删除并并入 ack）。
-- 该目录的 timegoal 到点后，instruction 会显示「已到点」——预算用完，本轮该收尾了。
+## 出口
 
-## 一次循环长什么样
+| 情况 | 返回 | 后续 |
+|---|---|---|
+| 领到任务 | `status:"ok"` | 按 `instruction` 执行 |
+| 等到超时 | `status:"timeout"`，退出码 0 | 结束本轮，向用户说明现状 |
+| 用户取消 | `status:"timeout"` + `cancelled:true` + `reason` | 同超时 |
+| 目录时间目标到点 | 同上（`reason:"goal_expired"`） | 同超时 |
 
-```
-agent：领到 task.text → 干活 → 提交阶段结果
-       → 必须立即：nx-kv localtask wait --summary "已完成登录，等待选择工作空间" --json
-         （队列空 → 阻塞等回填；队列里有任务 → 直接领走继续）
-用户：看清现状 → 回填「选择工作空间 A」→ 提交
-agent：工具结果拿到 task.text → 干活 → 提交结果
-       → 必须立即再 wait……（循环）
-若阻塞时限内没回填：wait 返回 timeout → agent 收尾，结束本轮（循环唯一出口）
-```
+`timeout` 是业务结果，不是命令失败，不要重试刷屏。
 
-**每一行的「必须立即」不能省、不能晚、不能换成别的话：** 不调 wait 等于
-退出循环，队列里排着的任务（别人提交的、用户排队喂的）就没人领。
+## 规则
 
-## 等待期间用户怎么回填（可转述给用户）
-
-- wait 阻塞时自动打开一个本机网页（地址在终端输出里，`http://127.0.0.1:<端口>/`），
-  用户看清现状后直接输入下一条任务回填；该窗口只在本次 wait 期间有效。
-- 常驻面板（`nx-kv serve`）也能回填：正在阻塞的 wait 通过轮询（约每 0.5 秒）
-  取走，不依赖弹窗本身。
-
-## 配套命令（队列管理，agent 一般不直接用）
-
-```bash
-nx-kv localtask list                                   # 主题总览（各目录、现状、待领取数）
-nx-kv localtask add  "<回填内容>" --cwd "<目录>"        # 给某目录的队列排任务
-nx-kv localtask get   --id <n> [--cwd "<目录>"]         # 查看单条
-nx-kv localtask update --id <n> --text "<新内容>"       # 编辑任务内容；--duration/--clear-goal 改时间目标（仅未领取时）
-nx-kv localtask remove --id <n> [--cwd "<目录>"]        # 删除单条任务
-nx-kv localtask reorder --id <n> --before-id <m>        # 调整待领取优先级（或 --after-id）
-nx-kv localtask topic remove --cwd "<工作目录>"          # 删除整个主题（等待中需 --force）
-nx-kv localtask topic remove-many --keys "<key,key>"    # 批量删除主题（或 --cwds / --all）
-```
-
-## 先判断你要做哪件事
-
-| 你要做的事 | 用哪个 |
-| --- | --- |
-| 干完活，**等用户继续喂下一条** | 本 skill（wait） |
-| 主动**领取排给本目录的委托任务**（他人 / 其它 agent 提交的） | kv-localget |
-| 把当前对话的需求**打包提交给别的 agent** | kv-submit |
-| 操作远程 KV 后端上的清单（todo，需登录） | nx-kv |
-
-要完整时序、返回字段、排队语义与避坑清单，读 [[wait-workflow]]（按需加载，
-只是查命令不必读）。
-
-## 与其它 skill 的分工
-
-- **kv-waittask（本 skill）**：等待侧——阻塞等用户回填，人机接力的「等」。
-- **kv-localget**：领取侧——主动把排给本目录的任务领走执行，附队列管理。
-- **kv-submit**：提交侧——总结上下文、提炼用户需求，委托给别的目录的 agent。
-- **nx-kv**：远程 KV 后端的 todo 清单（需登录、按 groupId 隔离）。
-
-三者共享同一份本机任务存储与按目录划分的队列：kv-submit 提交的、用户回填的、
-CLI add 排队的，wait / kv-localget 都能取走。可与 nx-kv 同时安装，各管一段。
-
-## 安装
-
-```bash
-nx-kv skill install kv-get                # 装到 ~/.claude/skills/kv-get
-nx-kv skill list                        # 列出 nx-kv / kv-get / kv-submit / kv-repo
-```
+- 同一主题同时只允许一个 `wait`；不要并发 `get` / `wait`。
+- `wait` 是本轮最后一步：先交付手上的活，再进入等待。
+- 等期间不要伪造任务、不要用旧任务重复 `done`。
+- 用户要立刻结束等待时，由用户执行 `nx-kv localtask cancel --cwd <目录>`（agent 也可在明确授权下执行）。
+- 被取消的通知会以 `cancelled` 字段带出，不需要额外轮询。

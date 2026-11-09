@@ -1,181 +1,51 @@
----
-name: kv-timegoal
-description: 把"AI 持续运行 N 小时（如 3 小时）"任务固化到 nx-kv 里——用 CLI 设置时间目标 + 完整全局提示词，每轮自动回显提示词原文避免长对话里 agent 漂移（防偏移），到点返回 reached:true，agent 据此停手收尾。timegoal 是独立模块（独立 store、独立循环、独立命令族），与 localtask wait 等任何其它机制都没有关系；UI 上嵌入在「本地任务」主题卡里只是为了方便查看，逻辑上完全不依赖。agent 可通过 `timegoal update` 自己迭代提示词、用户也可在 web 端动态编辑（都不重置计时器）。典型用法：设置 3 小时"调研开源 Redis 差距并逼近生产级数据库"任务；每轮调 subagent 找差距、写 CHANGELOG、调 update 改 prompt，调 check 看是否到点。触发词：timegoal、time goal、时间目标、3 小时、两小时、持续运行、定时任务、跑一晚上、强制 N 小时、N 小时任务、self-improve prompt、自我迭代提示词、agent 改自己的 prompt、到点自动结束、到点停手、循环任务、跑完为止、UX prompt 防漂移、防偏移。
----
-# kv-timegoal — 把"持续 N 小时任务"固化到 nx-kv
+# 时间目标（timegoal）
 
-一个带"到期硬出口"的循环：开头一次性 `set`，**完整全局提示词固化进 store**；
-每轮调 `check`，**拿到的 `prompt` 字段就是这轮的根指令**（永远从 store 原文回显，
-不让 agent 在长对话里漂移）；`reached:true` 那轮**自动停手**，写最终总结退出。
+两层，别混用：
 
-## 怎么用
+| 层级 | 设置方式 | check 对象 | 日志 |
+|---|---|---|---|
+| 目录级 | `timegoal set --cwd <目录>` | `timegoal check --cwd <目录>` | `timegoal log --cwd <目录>` |
+| 任务级 | `localtask add --duration 2h` / `localtask update --duration 2h` | `timegoal check --task task:<topicKey>:<id>` | `localtask timegoal-log --id <id>` |
 
-### 1. 开头 set 一次
+## 目录级
 
-```bash
-nx-kv timegoal set --cwd "$PWD" \
-  --duration 5h \
-  --prompt "<完整全局提示词>" --json
+```powershell
+nx-kv timegoal set --cwd <目录> --duration 2h --prompt "<完整目标提示词>"
+nx-kv timegoal update --cwd <目录> --prompt "<新版提示词>" [--duration 3h]
+nx-kv timegoal show --cwd <目录>
+nx-kv timegoal check --cwd <目录> --summary "<当前现状>" --progress "<完成度/下一步>"
+nx-kv timegoal log --cwd <目录>
+nx-kv timegoal list
+nx-kv timegoal clear --cwd <目录>
+nx-kv timegoal prune
 ```
 
-- `--duration` 持续时长，**1 分钟 - 365 天**。两种写法都认：
-  - **带单位**（推荐，跟人说话一致）：`5h` / `90m` / `2d` / `5小时` / `1.5h`
-  - **纯秒数**：`10800`（= 3 小时，向后兼容）
-  - 上限从 24 小时放宽到 365 天：「跑一晚上」「连续优化几天」是真实需求，
-    不该被 24 小时卡住。
-- `--prompt` 完整全局提示词，≤20000 字
-- `--cwd` 绑定的目录（缺省用当前目录）；**一个目录一个 timegoal**
+- `set` 必须同时给 `--duration` 与 `--prompt`（提示词 ≤20000 字，每轮 check 原文回显）。
+- `update` 保留起点，不重置计时。
+- `check` 的 `--summary`、`--progress` 都必填，各 ≤2000 字，每轮写一条日志。
+- 到点自动归档；`prune` 连归档一起清。
 
-返回：
+## 任务级
 
-```jsonc
-{
-  "status": "ok",
-  "replaced": false,                       // 之前没设过；已有则 true（会重置起点）
-  "goal": {
-    "durationSec": 10800,
-    "startedAt":  "2026-10-19 20:31:12",
-    "deadline":   "2026-10-19 23:31:12",   // = startedAt + duration
-    "prompt":     "<完整提示词原文>"        // 已固化
-  }
-}
+- 创建任务时 `--duration`（如 `2h`、`90m`、`5小时`）表示领取即计时；`--goal-prompt` 可附要求。
+- 未领取时可以用 `localtask update` 改时长/附加要求（`--clear-goal` 清空）；领取后声明即既成事实，不能再改。
+- 领取交付的 `instruction` 会带上完整 check 命令，直接照抄：
+
+```powershell
+nx-kv timegoal check --task task:<topicKey>:<任务编号> --summary "<当前现状>" --progress "<完成度/下一步>"
 ```
 
-### 2. 每轮循环
+- 未到点时 `localtask done` 返回 `goal_not_reached`，带 `remainingSec`，不会写完成。
+- 查看每轮记录：
 
-```
-每轮开始：
-  nx-kv timegoal check --cwd "$PWD" --summary "<当前现状>" --progress "<完成度/下一步>" --json
-    → { remainingSec, prompt, ... }
-    → 把 prompt 字段当作本轮根指令（不要从对话历史里重新拼）
-
-  干活（按 prompt 的指令：调 subagent、写代码、改 CHANGELOG 等）
-
-  写一行本轮总结到 .timegoal-log.md（或 git CHANGELOG.md）
-
-  如本轮调研发现 prompt 漏条件：
-    nx-kv timegoal update --cwd "$PWD" --prompt "<新版>" --json
-    （只换 prompt，截止时间不动）
-
-  回到本轮开头
-
-拿到的 {reached: true} 那一轮：
-  写完本轮总结 → 不再开新轮 → 退出本循环
+```powershell
+nx-kv localtask timegoal-log --id <任务编号> --json
 ```
 
-### 3. check 的返回形状
+返回 `hasGoal`、`seq`、`count`、`duration`、`startedAt`、`deadline`、`entries[]`（`checkedAt`、`elapsedSec`、`remainingSec`、`overtimeSec`、`reached`、`summary`、`progress`）。
 
-```jsonc
-{
-  "hasGoal":      true,
-  "reached":      false,                       // true 即停手信号
-  "elapsedSec":   120,                         // 已用秒
-  "remainingSec": 10680,                       // 还剩秒
-  "overtimeSec":  0,                           // 已超时多少秒（到点后才 > 0）
-  "startedAt":    "2026-10-19 20:31:12",
-  "deadline":     "2026-10-19 23:31:12",
-  "now":          "2026-10-19 20:33:12",
-  "prompt":       "<完整提示词原文>",          // ← 这才是该轮的根指令
-  "cwd":          "/path/to/workdir",
-  "key":          "<目录 key>",
-  "name":         "<目录名>"
-}
-```
+## 规则
 
-边界：
-
-- 没设过 timegoal → `{hasGoal:false, reached:false, prompt:""}`（需先 `set`）
-- 到点后 `reached:true`，goal 对象仍在；可继续 `check` 看 prompt，直到 `clear`
-- 到点后目标**立即失效**：从活动列表消失（`show`/`check` 在保留期内照样查得到）；
-  保留期（默认 7 天）到后整条自动删掉（详见下面的「到点之后会发生什么」）
-
-## 四条硬规则
-
-1. **一次 `set`，整个循环只看 `check` 的返回。** 不要再从对话历史里拼"原始 prompt"
-   —— 长对话里 agent 一定会自己改写、漂移、漏条件。**永远把 `check` 返回的
-   `prompt` 字段当作本轮根指令**。
-2. **想改 prompt 必须用 `timegoal update`，不要 `set`。** `set` 会**重置起点**
-   （一次小迭代把 3 小时清零！）；`update` 保留起点——只换 prompt，或顺带
-   `--duration` 调整时长（deadline 相应平移，已用时间仍算数）。
-3. **`reached:true` 立刻停手。** 干完手头这步、最后写一遍最终总结到
-   `.timegoal-log.md`（或 git CHANGELOG.md），**不再开新轮**；这次循环结束。
-4. **每轮结尾必写一行总结**到 `<workdir>/.timegoal-log.md`（或 git CHANGELOG），
-   格式自定，目的是"失败也能复盘"：时间 / 干了什么 / 下一步计划。
-
-## 完整命令清单
-
-```bash
-nx-kv timegoal set    --cwd <dir> --duration <5h|10800> --prompt "<...>"  # 设/换（新起点）
-nx-kv timegoal update --cwd <dir> --prompt "<新版>" [--duration <5h|秒>] # 改提示词/时长（保起点）
-nx-kv timegoal show   --cwd <dir>                                   # 仅查（不算时间）
-nx-kv timegoal check  --cwd <dir> --summary "<现状>" --progress "<完成度/下一步>"  # 算时间 + 回显 prompt + 写一条日志
-nx-kv timegoal clear  --cwd <dir>                                   # 清空
-nx-kv timegoal list                                                   # 所有有 timegoal 的目录（到点的单列在归档区）
-nx-kv timegoal log    --cwd <dir>                                    # 回看每轮 check 的记录（现状/完成度/剩余）
-```
-
-> `check` **必须**带 `--summary` 与 `--progress`：每次检查都会往该目录的 timegoal
-> 日志里追加一条（现状 + 完成度 + 剩余时间）。缺参数会直接报
-> `缺少参数 --summary`——这是刻意设计的：没有现状的日志等于没记。
-> 日志只保留**最近 200 条**，长跑任务不会把 store 撑爆。
-
-### 到点之后会发生什么（自动失效）
-
-- 目标过了截止时刻 → **立即失效**：从 `list` 的活动列表上消失，不再越堆越多。
-- 但**保留期内** `show` / `check` **仍然查得到**：agent 最后一轮照样拿到 `reached:true` +
-  提示词原文，能写完最终总结再停手。这就是"最后一轮还能读到"的保证。
-- 保留期（默认 **7 天**）到后**整条自动删掉**（连提示词原文一起）——**不需要任何人
-  手动清理**。保留期可用 `NX_KV_TIMEGOAL_RETENTION_SEC` 覆盖（想留更久就调大）。
-  实际落盘点是下一轮 `check`（或 set/update/clear）。
-- 失效的目标**不可复活**：`update` 会报错。**要继续这个目录的工作，请用 `set` 开新一局**
-  （起点从现在重算）。
-- `check` 会额外返回 `overtimeSec`（已经超时多久）。
-- 日志只保留最近 200 条；`totalChecks` 记总轮次、`logTruncated` 标记历史被截断，
-  截断是**可见的**，不会静默丢历史。
-
-全部命令都支持 `--json`（推荐 agent 用）。
-
-`update` 与 `set` 的区别：
-
-|                    | `set`                      | `update`                       |
-| ------------------ | ---------------------------- | -------------------------------- |
-| 起点 `startedAt` | **重置**（计时从头算） | **保留**（已用时间仍算数） |
-| 时长               | 必填                         | 可选（省略=不变）                |
-| prompt             | 必填                         | 必填                             |
-| 用途               | 开一局新的                   | 迭代提示词 / 调整时长            |
-
-`update` 改时长时：`deadline = startedAt + 新时长`。
-
-## 与其它机制的关系
-
-**没有依赖关系。** timegoal 只做两件事：算时间、回显提示词原文。
-
-- 不调用 `localtask wait`：等不到任务是别的事，与是否到点有关
-- **两种 timegoal**：目录级（`--cwd`，与目录一对一）与**任务级**（`--task
-  task:<topicKey>:<taskId>`，发布时 `localtask add --duration 2h` 随任务携带，
-  **领取即计时**）。任务级的 goal key 会随任务交付的 instruction 一起给你，
-  直接照抄执行即可；`timegoal check --task <key> --summary … --progress …` 记日志，
-  未到点 `localtask done` 会拒绝标记完成。
-- 不阻塞任何东西：可以同时跑人机接力、派任务给别的 agent、外部 cron
-- 不需要登录 KV 后端：纯本机
-
-**与 wait 的融合（只读，单向）**：这个目录挂着 timegoal 时，`localtask wait`
-返回的 `instruction` 字段会带上目标状态（默认模板：`〔时间目标「目录名」剩余 X〕`；
-到点后显示「已到点」）——kv-get 循环里的 agent 不调 check 也能看到预算。
-融合是**渲染时只读**（`showTimegoal` 只读路径，不写盘、不写 check 日志、不影响
-计时与到点判定），timegoal 自身的命令族与契约完全不变；`check` 的 prompt 原文
-回显仍是防漂移的唯一正式通道。要到 wait 的 instruction 里携带 prompt 原文，
-用 `localtask config --block-templates` 给 timecheck 区块写自定义模板并包含
-`{{goal.prompt}}`。
-
-你可以把它当成一个独立计时器 + 便签本：`set` 把便签写进文件，`check` 读出来
-顺便告诉你还剩多少时间。
-
-## 安装
-
-```bash
-nx-kv skill install kv-get
-```
-
-要详细时序与一份可抄走的 prompt 模板（"调研开源 Redis 差距并逼近生产级数据库"
-那种 3 小时任务的范例），读 `references/workflow.md`（按需加载，不查时序不必读）。
+- check 只是过程记录，不会完成任务；完成仍用 `localtask done --summary`。
+- 任务级日志只在 `check` 时产生；任务还没 check 过时 `entries` 为空，不代表功能坏了。
+- 目录级到点会让阻塞中的 `wait` 提前以 `timeout` + `cancelled:true` 收尾，按超时处理即可。

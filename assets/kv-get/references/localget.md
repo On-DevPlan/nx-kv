@@ -1,87 +1,61 @@
----
-name: kv-localget
-description: 领取排给本工作目录的本地任务——别人通过 kv-submit 委托的、用户排队的，都落在「目录名即主题」的队列里；agent 在自己目录里用 nx-kv localtask list 查看待领取，用 wait（队列非空时立即返回、不阻塞）按序取走执行，附单条查看/编辑/删除/调序等队列管理。触发词：领取本地任务、看看有没有排给我的任务、本地队列、领取委托任务、拿任务、本目录的任务、排队任务、localtask list、kv-localget。凡「主动获取排给本目录的任务」的场景都走本 skill。反例：干完活等用户回填下一条用 kv-waittask；把需求提交/委托给别的目录用 kv-submit；操作远程 KV 清单（todo）用 nx-kv。
----
-# kv-localget — 领取本目录的本地任务（领取侧）
+# 队列管理（localget）
 
-任务队列按**工作目录**划分（目录名即主题）：kv-submit 委托的、用户排队的，
-都进各自目录的队列。你在哪个目录工作，就领哪个目录的队列——不传
-`--cwd` 时命令自动按进程当前目录定位。数据在本机文件（`~/.nx-kv/localtasks.json`），
-**不需登录**。
+面向使用方 agent 的只读/整理用法；命令名与参数以 `node bin/cli.mjs help --json` 为准。
 
-## 领取流程
+## 查看
 
-```bash
-# 1. 看总览：找到自己目录的主题，看待领取数（pending）与现状
-nx-kv localtask list --json
-# → {topics:[{key,cwd,name,summary,waiting,pending,total,tasks:[...]}], waiting, settings}
-
-# 2. 有待领取 → 取走最早的一条（默认「直接 get」：队列非空立即返回，不开窗不阻塞）
-nx-kv localtask get --summary "<本轮现状，如：空闲，领取新任务>" --json
-# → {status:"ok", queued:true, task:{id,text,...}}
-
-# 2b. 想挂着等活（阻塞等人回填）→ 用 wait（kv-waittask 的循环契约）
-nx-kv localtask wait --summary "<本轮现状>" --timeout 30 --json
-
-# 3. 执行 task.text（内容永远读 task.text，id 只是编号），产出落在本目录
-
-# 4. 干完标记完成（带时间目标的任务：未到点会被拒绝）
-nx-kv localtask done --id <n> --summary "<完成总结>" --json
+```powershell
+nx-kv localtask list                     # 全部主题：工作目录、现状、是否等待中、待领取数
+nx-kv localtask show --id 79 --json      # 单条任务（正文、状态、时间目标）
+nx-kv localtask chain --id 79 --json     # 任务链：nodes[]（轮次、状态、current）、round、derivedFrom、ancestors/children
 ```
 
-- `queued:true` = 从队列取到任务，直接执行。
-- 返回可能带 `instruction` 字段（系统区块的渲染结果：上下文 / 附件识别 / 时间目标 /
-  ack 完成总结 / 持续 get；ack 默认要求完成后调用 `localtask done`）——有则必读，
-  与 `task.text` 一起构成这一轮的根指令；字段缺席 = 本轮没有可渲染内容
-  （如模板只有 goal 段而该目录无目标）。
-- `{status:"timeout"}`（exit 0，不是错误）= 时限内没有新任务：想继续等就再
-  wait（挂起等待，期间别人提交的会立刻送达），不想等就收工。
-- **get 的两种形态**：默认「直接 get」（没任务立即返回 timeout，不阻塞）；项目开启
-  「持续 get（waitgoal）」（`repo update --get-loop on`）后，get 变成**阻塞唤起**——
-  阻塞等项目配置的分钟数，期间用户回填就直接领到；领到的交付文本自带「继续 get 直到
-  超时」的项目模板（不用自己记循环）。
-- **带时间目标的任务**（发布时 `--duration 2h`）：领取即计时，交付的 instruction 里
-  带 `timegoal check --task …` 指令；**时间未到不许标记完成**——`localtask done`
-  会返回 `{status:"blocked", reason:"goal_not_reached"}`，此时应派出 sub agent
-  重新提出新的需求再继续，而不是硬标完成。
-- `--timeout <秒>`：阻塞上限（缺省 180 秒，最大 600）；「查完就走」
-  用短超时，「挂着等活」用长超时。
+- `show` / `chain` 用 `--cwd <目录>` 或 `--key <topicKey>` 定位主题（二选一；全局池 key 为 `__GLOBAL__`）。
+- `show` 只返回任务本体；附件用 `localtask attachments --id <n>` 取，自动下载跟随本机设置。
+- `status`：`pending`、`claimed`、`done`、`cancelled`。
 
-## 队列管理（需要时）
+## 回填与编辑
 
-```bash
-nx-kv localtask show   --id <n>                        # 查看单条（get 已改为领取动作）
-nx-kv localtask update --id <n> --text "<新内容>"       # 改写任务内容；--duration/--clear-goal 改时间目标（仅未领取时）
-nx-kv localtask remove --id <n>                        # 删除单条
-nx-kv localtask reorder --id <n> --before-id <m>       # 调整领取顺序（或 --after-id）
-nx-kv localtask topic remove --cwd "<目录>"             # 删除整个主题（等待中需 --force）
+```powershell
+nx-kv localtask add "<正文>" --cwd <目录>
+nx-kv localtask add "<正文>" --global
+nx-kv localtask add "<正文>" --project <仓库 key/名称/路径> --board <工作组 id/key/名称> [--duration 2h] [--goal-prompt "<附加要求>"]
+nx-kv localtask update --id 79 --text "<新正文>"
+nx-kv localtask remove --id 79            # 软删除，可恢复
+nx-kv localtask remove --id 79 --purge    # 彻底删除
 ```
 
-以上都不传 `--cwd` 时同样按进程当前目录定位。
+- 正文是**位置参数**，不是 `--text`。
+- 有 `wait` 在等时即时投递，否则排队。
+- `--global` 推到全局共享池，任何目录的 `wait` 本地空时自动领。
+- `--board` 必须同时给 `--project`；任务正文会自动带 frontmatter（`board` + `project` + 双方介绍引用），并落进项目队列。
+- `--block-by` 指定前置任务（逗号分隔 id，全部完成后可领）；`--gate` 表示闸门任务（它未完成时后面的 pending 不可领）。
+- `--fork-of` / `--fork-kind` 建立派生链（`comment` 默认 / `reopen`）。
+- `--duration` 领取即计时，未到点不许 `done`。
 
-## 硬规则
+## 调整与清理
 
-1. **内容读 `task.text`**，`task.id` 只是编号；领取顺序 = 队列里待领取任务的
-   先后（可用 reorder 校正）。
-2. **同一目录同一时刻只挂一个 wait**——两个 wait 抢同一队列，只有一个拿得到。
-3. **timeout 是业务结果**（exit 0）：按「暂时没活」处理，不要当错误重试。
-4. **确认目录对不对**：`list` 里自己主题的 `cwd` 与你工作的目录一致才领取；
-   跨目录代领需显式 `--cwd "<目标目录>"`（目录名相同即同一队列）。
-
-## 什么时候不用
-
-| 场景                                                     | 用哪个      |
-| -------------------------------------------------------- | ----------- |
-| 你干完活、**等用户回填**下一条（人机接力） | kv-waittask |
-| 把这个对话的需求**提交/委托**给别的目录的 agent    | kv-submit   |
-| 操作远程 KV 后端的 todo 清单（需登录、按 groupId 隔离）  | nx-kv       |
-
-wait / kv-localget 共用同一个队列与同一条取数命令（`wait`）：区别只在意图——
-kv-waittask 把 wait 当「本轮最后一步等人接力」，kv-localget 把 wait 当「领活」。
-
-## 安装
-
-```bash
-nx-kv skill install kv-localget          # 装到 ~/.claude/skills/kv-localget
-nx-kv skill list                       # 列出 nx-kv / kv-waittask / kv-submit / kv-localget
+```powershell
+nx-kv localtask reorder --id 20 --before-id 12
+nx-kv localtask reorder --id 20 --after-id 13
+nx-kv localtask clone --id 79              # 复制正文为新任务，不继承时间目标/依赖
+nx-kv localtask fork --id 79               # 复制并挂到源任务链下
+nx-kv localtask cancel-many --ids 12,13    # 只取消 pending
+nx-kv localtask close-many --ids 12,13 --status done --summary "<总结>"
+nx-kv localtask topic add --cwd <目录> [--summary "<现状>"]
+nx-kv localtask topic remove --cwd <目录> [--force]
 ```
+
+- `clone` 开新活；`fork` 保留评论/反馈链，两者别混用。
+- `close-many` 的 `--ids` 必填；不要求先领取，已领取/已交付的跳过。
+- 删除主题会连同任务一起软删；等待中需 `--force`。
+
+## 等待与取消
+
+```powershell
+nx-kv localtask cancel --cwd <目录>        # 立即结束该主题阻塞中的 wait
+nx-kv localtask presence                   # 当前打开「实时任务」标签数
+```
+
+- `wait` 被取消或目录时间目标到点时，返回 `timeout` 且带 `cancelled:true` / `reason`。
+- 同一主题只挂一个 `wait`；需要再等就等上一次收尾后再发起。

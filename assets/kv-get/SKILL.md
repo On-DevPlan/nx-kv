@@ -1,105 +1,149 @@
 ---
 name: kv-get
-description: 领取与完成排给本工作目录的本地任务（别人通过 kv-submit 委托的、用户排队的，都落在「目录名即主题」的队列里）——用 localtask get 取活（默认直接领；项目开启「持续 get」后自动阻塞等人回填）、localtask wait 挂着等人接力、localtask done 标记完成（带时间目标的任务未到点会被拒绝，提示派 sub agent 重提需求）、localtask reopen **就地重开原任务**（历史进 history 链，已完成则回到待领取）。触发词：领取本地任务、看看有没有排给我的任务、本地队列、领取委托任务、拿任务、本目录的任务、排队任务、localtask get、localtask wait、标记完成、任务完成、修改反馈、重新执行、kv-get。凡「主动获取排给本目录的任务」以及「把任务标记完成/按反馈重开」的场景都走本 skill。反例：把需求提交/委托给别的目录用 kv-submit；查本机仓库分组与参考仓库用 kv-repo；操作远程 KV 清单（todo）用 nx-kv。
+description: 领取并完成排给自己的本地任务：get 领活、wait 等人回填、timegoal check 门禁、done 回调总结。任务在某个工作目录的队列里，按队列顺序执行。
 ---
 
-# kv-get — 领取、执行、完成（领取侧）
+# kv-get — 领取与完成本地任务
 
-一个 skill 覆盖本机任务的**完整生命周期**：领 → 干 → 标完成 → 按反馈重开。
-细节拆在 references 里，按需读：
+按需读：
 
-- [[localget]] — 领取侧：队列管理、单条查看/编辑/删除/调序
-- [[waitloop]] — 等待侧契约：wait 是本轮最后一步，唯一合法出口是 timeout
-- [[timegoal]] — 时间目标：目录级与**任务级**（领取即计时）的 check 门禁
-- [[wait-workflow]] / [[timegoal-workflow]] — 两套循环的细则
+- [[localget]] —— 队列管理：list / show / add / update / remove / reorder / clone / fork / close-many
+- [[waitloop]] —— wait 的语义、出口与收尾要求
+- [[timegoal]] —— 时间目标：目录级目标、任务级 check、日志
 
-## 三个动作，三种语义（别混用）
+## 1. 领取任务
 
-| 动作 | 命令 | 语义 |
-| --- | --- | --- |
-| **领活** | `nx-kv localtask get --summary "<现状>" --json` | 队列有任务**立即领走**；没有就**立即返回 timeout**（不阻塞、不开窗）——「暂时没活」是正常业务结果 |
-| **等人** | `nx-kv localtask wait --summary "<现状>" --timeout 30 --json` | 阻塞等人回填；**本轮最后一步**，唯一合法出口是 timeout |
-| **挂着领** | 同上，但项目开启了「持续 get」 | `get` 升级为 waitgoal：无任务时**阻塞等待**项目配置的分钟数，期间用户回填就直接领到；领到的交付文本自带「继续 get 直到超时」的项目模板 |
-
-「持续 get」是**项目级**开关（`repo update --get-loop on` 开启），默认关闭——默认就是「直接 get」。
-
-## 领取到的东西必须读全
-
-```bash
-nx-kv localtask get --summary "<本轮现状>" --json
-# → { status:"ok", task:{id,text,...}, instruction:"…" }
+```powershell
+nx-kv localtask get --summary "<当前在做什么>" --json
 ```
 
-- `task.text` = 任务正文（Markdown），**永远读它**；
-- `instruction` = 服务端渲染的指令段，**有则必读**（与 task.text 一起构成这一轮的根指令）：
-  - **项目组上下文**（领的是组内仓库时）：组定位、组介绍、本项目在组里的位置、兄弟成员的角色、组绑定参考文件的**可读路径**——这些路径是磁盘上的真实文件，需要细节就直接读；
-  - **ack 完成总结**（默认「完成后调用 `localtask done --summary` 回填结果」，可在
-    面板「设置 → 提示词模板 → ack」里改；这是完成指令与收尾要求的唯一出口）；
-  - **附件识别**（任务带附件时）；
-  - **任务级时间目标的 check 指令**（见下）。
+- `--cwd <目录>`：指定主题（默认当前目录）。
+- `--summary <文本>`：现状，必填于 `wait`、可选于此。
+- `--timeout <秒>`：最多等多久。
+- `--param k=v`：可重复，作为模板参数进入交付上下文。
+- `--no-open`：不要在浏览器打开面板。
+- `get` 是“领取”，不是“查看”。查看用 `localtask show --id <n>`。
 
-## 时间目标：领取即计时，未到点不许标完成
+行为：
 
-发布方可以给单条任务带时长（`localtask add … --duration 2h`）。这种任务被领取时
-**自动起表**，交付文本里带一条固定指令：
+- 有任务：立即领取，返回 `status:"ok"`。
+- 本目录与全局池都为空、且项目「持续 get」关闭：立即返回 `status:"timeout"`（退出码 0，这是业务结果，不是错误）。
+- 项目开启「持续 get」后，`get` 会像 `wait` 一样阻塞到项目窗口（默认 10 分钟，最多 600 秒）。
+- 本目录没任务时自动去全局池领。
 
-```bash
-nx-kv timegoal check --task task:<topicKey>:<taskId> --summary "<本轮现状>" --progress "<进展/下一步>"
-```
-
-每轮推进先跑一次 check（它会原文回显时间目标提示词，防长对话漂移）。
-**时间未到不能标完成**——`localtask done` 会返回业务结果（不是错误）：
+返回（`--json`）：
 
 ```json
-{ "status": "blocked", "reason": "goal_not_reached", "remainingSec": 1830,
-  "hint": "时间未到，不能标记完成——请派出 sub agent 重新提出新的需求；到点后…再来标完成" }
+{
+  "status": "ok | timeout",
+  "key": "topicKey",
+  "cwd": "D:\\work\\demo",
+  "name": "队列名",
+  "summary": "队列现状",
+  "repo": { "key": "...", "name": "..." },
+  "task": { "id": 79, "text": "...", "status": "claimed", "timegoal": null },
+  "instruction": "timecheck / ext / ack 等附加提示",
+  "coversBody": false,
+  "attachmentsSync": { "dir": "...", "downloaded": 2, "skipped": 0, "failures": [] },
+  "renderWarnings": [],
+  "queued": true,
+  "source": "local | global"
+}
 ```
 
-此时**不要**硬标完成、也不要自己改时间：按提示**派 sub agent 重新提出新的需求**，
-再继续推进；到点（check 返回 `reached:true`）后再 `done`：
+- **任务正文在 `task.text`**，必须读；`instruction` 是附加提示（时间目标 check、队列后续、收尾要求），不是正文。
+- `coversBody:false` 明确表示 `instruction` 没带正文，只看 `instruction` 会漏需求。
+- `renderWarnings` 非空说明某块模板回落了内置模板，任务仍可执行。
+- `delivered:true` 只在提交进程内正好有 `wait`、当场送达时出现；默认是 `queued:true`。
+- `getLoop` 只在项目开启持续 get 时出现。
 
-```bash
-nx-kv localtask done --id <n> --summary "<完成总结>" --json
+## 2. 附件怎么取
+
+领取载荷里的 `task.attachments` 与专门命令都会给出附件列表：
+
+```powershell
+nx-kv localtask attachments --id 79 --json
 ```
 
-没有时间目标的任务直接 done 即可。目录级 timegoal（`timegoal set --cwd …`）是另一回事：
-它是「这个目录整体要跑多久」的预算，见 [[timegoal]]。
+条目字段：`id`、`kind`、`name`、`area`（`inline`=正文内嵌 / `area`=附件区）、`localPath`、`url`、`target`、`storage`、`synced`。
 
-## 完成与反馈：闭环的两端
+按 `kind` 取：
 
-```bash
-# 标记完成（完成总结必填——它就是下一轮 agent 能看到的「上轮做了什么」）
-nx-kv localtask done --id <n> --summary "<完成总结>" [--progress "<完成度/下一步>"]
+| kind | 怎么取 |
+|---|---|
+| `file` / `image` | 有 `localPath` 直接读；没有则 `nx-kv file sync --ids <id>` 拉回本地再读 |
+| `url` | 直接访问 `url` |
+| `task` | 直接用条目里的 `cmd`（即 `nx-kv localtask show --id <seq> --key <topicKey>`）读最新正文 |
+| `ref` | 直接用条目里的 `cmd`（`docs get path:<绝对路径>` 或 `rel:<相对路径>`）读文档 |
 
-# 用户看了结果提修改意见 → **就地重开原任务**（同号回写，旧态压进 history）
-nx-kv localtask reopen --id <n> [--text "<改后的正文（Markdown）>"] [--kind reopen|comment] --json
+- 附件同步由设置项 `autoSyncAttachments` 控制；开启时 `get` 会尽量把可下载的附件落到本地，失败逐条见 `attachmentsSync.failures`。
+- 正文内的 `inline` 附件要按正文位置读；`area` 附件是补充材料，可只读任务需要的部分。
 
-# 查任务链：同任务 history 节点（origin/reopen/comment/current）+ 旧 forkOf 派生（若有）
-nx-kv localtask chain --id <n> --json
+## 3. wait（等人回填）
+
+```powershell
+nx-kv localtask wait --summary "<当前在做什么>" --timeout 180 --json
 ```
 
-`reopen` **回写同一条任务**：正文 = `--text`；上一轮完成总结等压进 `history[]`。
-若任务已完成（有 `completedAt`），清领取/完成标记并回到 `pending` 等待再领；
-未完成则只改正文 + 记链。面板的验收重做与划选评论共用这一入口（可带附件）。
+- `--summary` 必填。默认等 180 秒，最大 600 秒。
+- 本目录没任务时自动领全局池。
+- 出口：
+  - `status:"ok"`：领到任务，读 `task.text` + `instruction` 后继续；
+  - `status:"timeout"`：时间到，退出码 0；
+  - 带 `cancelled:true` + `reason`（如 `goal_expired`）：等待被目录时间目标到点或用户取消提前收尾，同样按 timeout 处理。
+- 同一主题同时只允许一个 `wait`；`wait` 是本轮最后一步，等完再结束本轮。
+- 用户需取消等待时用 `nx-kv localtask cancel --cwd <目录>`。
 
-## 硬规则
+## 4. 完成与总结
 
-1. **同一个目录同一时刻只挂一个 wait**（waiters 是进程内注册表，一个 key 只能有一个）。
-2. **timeout 是业务结果，不是错误**（exit 0）：按「暂时没活」收尾，**不要**当失败重试。
-3. **wait 是本轮最后一步**：拿到任务或超时之前，不要提前结束本轮。
-4. **instruction 有则必读**：里面的组上下文/时间目标/收尾要求都是硬约束。
-5. **带时间目标的任务不许提前标完成**——被拒绝就按提示派 sub agent 重提需求。
-6. **同一时刻只挂一个 wait**；`get` 与 `wait` 不要并发跑（都在同一队列上抢任务）。
-
-## 队列管理（需要时）
-
-```bash
-nx-kv localtask list --json                # 全部主题：目录、现状、等待中、待领取数
-nx-kv localtask show   --id <n> --json      # 查看单条（get 已是「领取」动词）
-nx-kv localtask update --id <n> --text "<新内容>" --json   # 改正文；--duration 2h 设时间目标、--clear-goal 清除（仅未领取时可改）
-nx-kv localtask remove --id <n> --json      # 软删除（CLI restore 可恢复）
-nx-kv localtask reorder --id <n> --before-id <m> --json
-nx-kv localtask topic remove --cwd "<目录>" # 删整个主题（等待中需 --force）
+```powershell
+nx-kv localtask done --id 79 --summary "<完成总结>" --progress "<完成度 / 下一步>"
 ```
 
-以上都不传 `--cwd` 时按进程当前目录定位。
+- `--id` 必填；`--summary` 必填；`--progress` 可选。
+- 返回 `status:"ok"`、`completed`、`feedback`、`goal`；重复提交返回 `already:true`，幂等。
+- 被拒时返回 `status:"blocked"` + `reason`：
+  - `not_claimed`：任务不在你手上，先 `get`；
+  - `goal_not_reached`：任务级时间目标未到点，按返回里的 `remainingSec`/提示处理（可派子 agent 继续干或等到点），不要伪造。
+- 完成总结会被记入任务，供下一轮/重开时查看。
+
+## 5. 重开与关闭
+
+```powershell
+nx-kv localtask reopen --id 79 --kind reopen --feedback "<反馈>"
+```
+
+- 现在按「派生新任务」实现：新任务为 `pending`、轮次 +1，正文为旧正文（可加反馈段）；旧任务若已 `done` 保持 `done`，若 `pending`/`claimed` 变为 `cancelled` 并记录 `supersededBy`。
+- 不会把原任务改回 `pending`，也不会复用原编号。
+
+```powershell
+nx-kv localtask close-many --ids 12,13 --status done --summary "<统一总结>"
+```
+
+- 用户侧批量收口；`--ids` 必填（逗号分隔或给多次），`--status done|cancelled`，`--summary` 在 done 时可省略。
+- 返回 `count`、`closed`、`skipped`、`missing`；跳过原因会给出（如非 pending）。
+- 没有单条 `localtask close`；自己领的任务用 `done` 收尾。
+
+## 6. 时间目标（timegoal）
+
+- 任务带时间目标时，领取交付里已有 check 命令，形如：
+
+```powershell
+nx-kv timegoal check --task task:<topicKey>:79 --summary "<本轮进展>" --progress "<完成度>"
+```
+
+- check 只记录过程，不会替你完成任务；到点后 `done` 才放行。任务级日志用：
+
+```powershell
+nx-kv localtask timegoal-log --id 79 --json
+```
+
+返回 `hasGoal`、`count`、`entries[]`（每轮的 `checkedAt`、`elapsedSec`、`remainingSec`、`overtimeSec`、`reached`、`summary`、`progress`）。
+目录级目标与更多说明见 [[timegoal]]。
+
+## 7. 红线
+
+- 不伪造 `done`、不跳过 `timegoal check` 直接硬 `done`。
+- 不把 `task.id`（队列内序号）当数据库主键，也不在命令里互换。
+- 不在同一目录并发 `get`/`wait`。
+- 仅任务级 `timegoal check` 与 `localtask timegoal-log` 适用于本地任务；旧版说明里的 `timegoal attach` / `todo` 指的是别的功能面，不要拿来操作本地任务。

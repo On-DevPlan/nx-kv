@@ -2,6 +2,21 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.38.0] - 2026-11-09 编辑器撤销修复
+
+### Fixed
+
+- **编辑器 Ctrl+Z 撤销失效（#156）**，两个叠加的根因：
+  1. **typing 合并语义错误**——合并窗口内用「每个键的前置快照」覆盖栈顶，段内
+     逐键覆盖后栈顶只剩最后一个字符的前置快照：Ctrl+Z 一次只退一个字符、再按
+     就卡死。改为合并窗口**不动 past**（保留段首快照），撤销一次回退整段输入；
+  2. **反馈/评论编辑页没接撤销栈**——composer 的 MdPanes 未传 onUndo/onRedo，
+     而按键拦截无条件 preventDefault 原生撤销再调 null：连原生 textarea 撤销
+     都被拦死。composer 接入 md-history（自己的撤销栈 + Ctrl+Z/Ctrl+⇧Z），
+     按键拦截改为只在页面接了自定义历史时才拦截（其余页面回落浏览器原生）。
+  新增 tests/unit/md-history.test.mjs（5 条钉子：整段撤销/分段/op 独立条/
+  redo/空栈）。
+
 ## [0.37.0] - 2026-11-09 反馈/评论编辑页附件 dock
 
 ### Added

@@ -10,7 +10,6 @@ import {
   splitMdBlocks,
   joinMdBlocks,
   parseFrontmatter,
-  frontmatterHtml,
   renderMarkdownHtml,
   normalizeBlockText,
   insertAttachmentSnippet,
@@ -62,26 +61,15 @@ test('splitMdBlocks：正文后部的 ---（thematic break）不当作 frontmatt
   assert.ok(!parseFrontmatter(blocks[0]).board, '块 0 不是 frontmatter');
 });
 
-test('frontmatterHtml：键值行 + HTML 转义；无 frontmatter 返回空串', () => {
-  const html = frontmatterHtml(FM);
-  assert.match(html, /class="mdw-fm"/);
-  assert.match(html, /mdw-fm-k">board</);
-  assert.match(html, /mdw-fm-v">local\/x</);
-  // 值里的 HTML 不逃逸出去
-  const evil = frontmatterHtml('---\nnote: <img src=x onerror=alert(1)>\n---');
-  assert.doesNotMatch(evil, /<img src=x/);
-  assert.match(evil, /&lt;img/);
-  assert.equal(frontmatterHtml('# 无 frontmatter'), '');
-});
-
-test('renderMarkdownHtml：属性卡置顶，正文跟后；FM-only 正文只剩卡', () => {
+test('renderMarkdownHtml：frontmatter 不再渲染成属性卡（#113），正文照常', () => {
   const html = renderMarkdownHtml(`${FM}\n# 标题\n\n正文段`);
-  assert.ok(html.indexOf('mdw-fm') < html.indexOf('正文段'), '卡在正文前');
+  assert.doesNotMatch(html, /mdw-fm/, '不再有属性卡');
   assert.match(html, /<h1[^>]*>标题<\/h1>/);
+  assert.match(html, /正文段/);
 
+  // 只剩 frontmatter 的正文：不再有属性卡（正文位空着）
   const only = renderMarkdownHtml(FM);
-  assert.match(only, /class="mdw-fm"/);
-  assert.doesNotMatch(only, /mdw-empty/);
+  assert.doesNotMatch(only, /mdw-fm/);
 });
 
 // ── 空格打不出来（任务 #21）────────────────────────────────────────

@@ -2265,11 +2265,9 @@ footer code {
   border-radius: 999px;
   padding: 3px 10px;
   white-space: nowrap;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
-.rp-stat:hover { border-color: var(--mid); background: var(--paper); color: var(--ink); }
-.rp-stat:focus-visible { outline: 2px solid var(--focus, var(--ink)); outline-offset: 1px; }
+/* 统计数字**不可点**（#114）：原先这排 chip 是跳转入口，与页头工具条里的
+   分组管理/参考仓库/文档检索重复——数字只报数，入口统一收在工具条。 */
 .rp-stat b { color: var(--ink); font-family: var(--mono); font-weight: 600; margin-left: 2px; }
 
 /* 区块外壳：分组 / 文档两个一等区块共用 */

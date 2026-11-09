@@ -1,26 +1,22 @@
-// 全部目录总览（#/overview）：筛选条（chip：目录名+待领取数+等待标记，**只筛选不跳转**）
-// + 按目录分组的任务列表（待领取 + 可折叠的已领取历史）。
+// 全部目录总览（#/overview）：**一张未完成任务的清单**（#112）。
 //
-// 交互约定（2026-10-31 三次修订）：
-//   1. **顶部 chip 只做筛选**：点 = 选中/取消该目录（多选），「全部」清空筛选。
-//      不再点 chip 跳目录——进目录走分区标题链接，进任务详情点任务行。
-//   2. **每行任务带状态 tag**（待领取 / 已领取 / 已迁移 / 已删除，口径与
-//      splitQueueTasks / taskToProgress 一致）；已领取历史默认折叠，点开可见。
-//   3. **批量删除的落点在底部操作条**：勾选任意行后出现（position:sticky），
+// 口径：只显示当前**未完成**的任务（待领取 + 在干）——已交付/已取消不再占屏；
+// 项目分组（每目录一节）与项目/全局筛选 chip 一并撤掉：总览回答的是
+// 「现在还有什么在等我」，一屏平铺看完，每行带项目 tag 说明它来自哪个目录。
+//
+// 交互约定（2026-10-31 三次修订，#112 收敛）：
+//   1. **每行任务带状态 tag**（待领取 / 已领取，口径与 splitQueueTasks 一致）；
+//      行可点：直接进该任务的工作台详情（#/dir/<key>?task=<id>）。
+//   2. **批量删除的落点在底部操作条**：勾选任意行后出现（position:sticky），
 //      跨目录一次删完（按目录分组逐个调 DELETE /api/localtasks/items）；
-//      仍是软删除（CLI localtask task restore 可恢复）。分区头只留「全选」。
-//   4. 任务行可点：直接进该任务的工作台详情（#/dir/<key>?task=<id>）；
-//      已领取行同样可点（详情页以「已回填」进度卡呈现）。
+//      仍是软删除（CLI localtask task restore 可恢复）。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
-import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { titleFromMd } from '../../modules/md/md-parse.js';
 import { GLOBAL_KEY, splitQueueTasks, projectTasks, isPendingRow } from '../../modules/board/board-view.js';
-
-const NO_IDS = new Set();
 
 /** 任务状态 tag：与 board.splitQueueTasks、md-workspace taskToProgress 同一口径。 */
 function statusTag(t) {
@@ -35,13 +31,8 @@ function statusTag(t) {
 export default function Overview({ rows, onNavigate, refreshLocal }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
-  // 勾选状态：Map<分区 key, Set<任务编号>>。行会随轮询刷新而消失，所以计数与删除
-  // 一律与「当前队列里仍存在且未删除」取交集，不额外做清理 effect。
-  const [sel, setSel] = useState(() => new Map());
-  // 筛选：选中的分区 key 集合；空集 = 全部。chip 只改这里，不做导航。
-  const [filter, setFilter] = useState(() => new Set());
-  // 「已领取」历史折叠：展开的分区 key 集合（默认全收起）。
-  const [doneOpen, setDoneOpen] = useState(() => new Set());
+  // 勾选状态：Set<任务编号>（扁平清单只有一份选择）。
+  const [sel, setSel] = useState(() => new Set());
 
   // #85 两种走向：总览是**项目走向**的页面——组任务（frontmatter.board）归组页管，
   // 列表与计数按「剔除组任务」后的视图走（pending 一并在客户端按走向重数；
@@ -54,80 +45,65 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
       }),
     [rows]
   );
-  const dirs = useMemo(() => view.filter((r) => !r.isGlobal), [view]);
-  const globalRow = view.find((r) => r.isGlobal);
-  const totalPending = dirs.reduce((n, r) => n + (r.pending || 0), 0) + (globalRow?.pending || 0);
-  const waiting = view.filter((r) => r.waiting);
 
-  const secKeyOf = (r) => (r.isGlobal ? GLOBAL_KEY : r.key);
-
-  // 跨目录的当前选中总数（只数仍存在且未删除的）
-  const selCount = useMemo(() => {
-    let n = 0;
+  /**
+   * 扁平清单（#112）：**只留未完成**的任务（待领取 + 在干），
+   * 按目录顺序 → 待领取在前 → 编号。每行记下它来自哪个目录（项目 tag）。
+   */
+  const flat = useMemo(() => {
+    const out = [];
     for (const r of view) {
-      const cur = sel.get(secKeyOf(r));
-      if (!cur || !cur.size) continue;
-      for (const t of r.tasks || []) if (cur.has(Number(t.id)) && !t.deletedAt) n += 1;
+      const split = splitQueueTasks(r.tasks || []);
+      const base = r.isGlobal ? '#/global' : '#/dir/' + encodeURIComponent(r.key);
+      for (const t of [...split.pending, ...split.claimed]) {
+        out.push({
+          t,
+          secKey: r.isGlobal ? GLOBAL_KEY : r.key,
+          proj: r.isGlobal ? '全局' : (r.name || r.key),
+          cwd: r.cwd || '',
+          waiting: !!r.waiting,
+          base,
+        });
+      }
     }
-    return n;
-  }, [view, sel]);
+    return out;
+  }, [view]);
 
-  const idsOf = (secKey) => sel.get(secKey) || NO_IDS;
-  const pickedOf = (secKey, pending) => {
-    const cur = idsOf(secKey);
-    return cur.size ? pending.map((t) => Number(t.id)).filter((id) => cur.has(id)) : [];
-  };
+  const waitingDirs = useMemo(() => view.filter((r) => r.waiting).length, [view]);
+  const pendingCount = useMemo(() => flat.filter((f) => f.t.status !== 'claimed').length, [flat]);
 
-  const toggleOne = (secKey, id) => {
+  // 勾选只认「清单里还在的行」——行会随轮询刷新而消失。
+  const picked = useMemo(() => {
+    const ids = new Set(flat.map((f) => Number(f.t.id)));
+    return [...sel].filter((id) => ids.has(id));
+  }, [sel, flat]);
+  const selCount = picked.length;
+
+  const toggleOne = (id) => {
     setSel((prev) => {
-      const next = new Map(prev);
-      const cur = new Set(next.get(secKey) || []);
-      if (cur.has(id)) cur.delete(id);
-      else cur.add(id);
-      if (cur.size) next.set(secKey, cur);
-      else next.delete(secKey);
-      return next;
-    });
-  };
-
-  const toggleAll = (secKey, pending, clear) => {
-    setSel((prev) => {
-      const next = new Map(prev);
-      if (clear) next.delete(secKey);
-      else next.set(secKey, new Set(pending.map((t) => Number(t.id))));
-      return next;
-    });
-  };
-
-  const toggleFilter = (key) => {
-    setFilter((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
-
-  const toggleDone = (secKey) => {
-    setDoneOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(secKey)) next.delete(secKey);
-      else next.add(secKey);
-      return next;
-    });
+  const toggleAll = (clear) => {
+    setSel(clear ? new Set() : new Set(flat.map((f) => Number(f.t.id))));
   };
+  const allOn = flat.length > 0 && picked.length === flat.length;
 
   /** 底部操作条的删除：把选中项按目录分组，逐组调批量删除接口。 */
   const dropAll = async () => {
+    const pickedSet = new Set(picked);
     const groups = [];
-    for (const r of view) {
-      const key = secKeyOf(r);
-      const cur = sel.get(key);
-      if (!cur || !cur.size) continue;
-      const ids = (r.tasks || [])
-        .filter((t) => cur.has(Number(t.id)) && !t.deletedAt)
-        .map((t) => Number(t.id));
-      if (ids.length) groups.push({ key, name: r.name || key, ids });
+    for (const f of flat) {
+      if (!pickedSet.has(Number(f.t.id))) continue;
+      let g = groups.find((x) => x.key === f.secKey);
+      if (!g) {
+        g = { key: f.secKey, name: f.proj, ids: [] };
+        groups.push(g);
+      }
+      g.ids.push(Number(f.t.id));
     }
     const total = groups.reduce((n, g) => n + g.ids.length, 0);
     if (!total) return;
@@ -162,13 +138,11 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
     } else {
       toast(`已删除 ${n} 条${miss ? `（${miss} 条未找到，可能已被删除）` : ''}`);
     }
-    setSel(new Map());
+    setSel(new Set());
     refreshLocal?.();
   };
 
   const openTask = (base, id) => onNavigate(`${base}?task=${encodeURIComponent(id)}`);
-  const dirBase = (key) => '#/dir/' + encodeURIComponent(key);
-  const shown = (key) => !filter.size || filter.has(key);
 
   return (
     <div className="ov-wrap">
@@ -177,97 +151,44 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
       <div className="ov-head">
         <h2>全部目录总览</h2>
         <span className="muted">
-          {dirs.length} 个目录 · 待领取 {totalPending}
-          {waiting.length ? ` · ${waiting.length} 个等待回填` : ''}
+          {flat.length} 个未完成任务（待领取 {pendingCount}）
+          {waitingDirs ? ` · ${waitingDirs} 个目录等待回填` : ''}
         </span>
-      </div>
-
-      <div className="ov-chips">
-        <span className="ov-filter-label">筛选</span>
-        <button
-          type="button"
-          className={'ov-chip' + (!filter.size ? ' on' : '')}
-          onClick={() => setFilter(new Set())}
-          title="显示全部目录"
-        >
-          全部
-        </button>
-        {globalRow && (
-          <button
-            type="button"
-            className={'ov-chip' + (filter.has(GLOBAL_KEY) ? ' on' : '') + (globalRow.waiting ? ' wait' : '')}
-            onClick={() => toggleFilter(GLOBAL_KEY)}
-            title="筛选：只看全局任务"
-          >
-            <Icon name="globe" size={13} /> 全局任务
-            <span className="c">{globalRow.pending || 0}</span>
-            {globalRow.waiting && <span className="wdot" />}
-          </button>
-        )}
-        {dirs.map((d) => (
-          <button
-            type="button"
-            key={d.key}
-            className={'ov-chip' + (filter.has(d.key) ? ' on' : '') + (d.waiting ? ' wait' : '')}
-            onClick={() => toggleFilter(d.key)}
-            title={`筛选：${filter.has(d.key) ? '取消' : '只看'}「${d.name}」`}
-          >
-            <Icon name="folder" size={13} /> {d.name}
-            <span className="c">{d.pending || 0}</span>
-            {d.waiting && <span className="wdot" />}
-          </button>
-        ))}
-        {!dirs.length && !globalRow && (
-          <span className="muted">暂无目录：在侧边栏点 ＋ 添加，或让 agent 在任意目录提交任务。</span>
+        {flat.length > 0 && (
+          <label className="ov-all">
+            <input
+              type="checkbox"
+              checked={allOn}
+              ref={(el) => {
+                if (el) el.indeterminate = !allOn && selCount > 0;
+              }}
+              onChange={() => toggleAll(allOn)}
+              aria-label="全选未完成任务"
+            />
+            全选
+          </label>
         )}
       </div>
 
-      {globalRow && shown(GLOBAL_KEY) && ((globalRow.pending || 0) > 0 || globalRow.waiting) && (
-        <Sec
-          secKey={GLOBAL_KEY}
-          icon="globe"
-          title="全局任务"
-          cwd=""
-          tasks={globalRow.tasks}
-          waiting={!!globalRow.waiting}
-          selected={pickedOf(GLOBAL_KEY, splitQueueTasks(globalRow.tasks || []).pending)}
-          doneOpen={doneOpen.has(GLOBAL_KEY)}
-          onToggle={(id) => toggleOne(GLOBAL_KEY, id)}
-          onToggleAll={(clear, pending) => toggleAll(GLOBAL_KEY, pending, clear)}
-          onToggleDone={() => toggleDone(GLOBAL_KEY)}
-          onOpenDir={() => onNavigate('#/global')}
-          onOpenTask={(id) => openTask('#/global', id)}
-        />
-      )}
-
-      {dirs.map((d) => {
-        const split = splitQueueTasks(d.tasks || []);
-        if (!shown(d.key)) return null;
-        if (!split.pending.length && !d.waiting) return null;
-        return (
-          <Sec
-            key={d.key}
-            secKey={d.key}
-            icon="folder"
-            title={d.name}
-            cwd={d.cwd}
-            tasks={d.tasks}
-            waiting={!!d.waiting}
-            selected={pickedOf(d.key, split.pending)}
-            doneOpen={doneOpen.has(d.key)}
-            onToggle={(id) => toggleOne(d.key, id)}
-            onToggleAll={(clear, pending) => toggleAll(d.key, pending, clear)}
-            onToggleDone={() => toggleDone(d.key)}
-            onOpenDir={() => onNavigate(dirBase(d.key))}
-            onOpenTask={(id) => openTask(dirBase(d.key), id)}
-          />
-        );
-      })}
-
-      {filter.size > 0 &&
-        !((globalRow && shown(GLOBAL_KEY) && ((globalRow.pending || 0) > 0 || globalRow.waiting)) ||
-          dirs.some((d) => shown(d.key) && (splitQueueTasks(d.tasks || []).pending.length || d.waiting))) && (
-        <div className="muted" style={{ padding: '12px 4px' }}>没有匹配当前筛选的目录。</div>
+      {!flat.length ? (
+        <div className="ov-task muted">
+          没有未完成的任务——当前队列都清空了。在侧边栏点 ＋ 添加目录，或让 agent 在任意目录提交任务。
+        </div>
+      ) : (
+        <div className="ov-list">
+          {flat.map((f) => (
+            <TaskRow
+              key={`${f.secKey}-${f.t.id}`}
+              t={f.t}
+              proj={f.proj}
+              waiting={f.waiting}
+              checked={sel.has(Number(f.t.id))}
+              onToggle={toggleOne}
+              onOpenTask={(id) => openTask(f.base, id)}
+              meta={f.t.status === 'claimed' && f.t.consumedAt ? String(f.t.consumedAt).slice(5, 16) : ''}
+            />
+          ))}
+        </div>
       )}
 
       {selCount > 0 && (
@@ -276,7 +197,7 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
             已选 <b>{selCount}</b> 条任务
           </span>
           <span className="grow" />
-          <button type="button" className="mini" onClick={() => setSel(new Map())}>
+          <button type="button" className="mini" onClick={() => setSel(new Set())}>
             取消选择
           </button>
           <button type="button" className="btn small danger" onClick={dropAll}>
@@ -288,85 +209,8 @@ export default function Overview({ rows, onNavigate, refreshLocal }) {
   );
 }
 
-/**
- * 一个目录分区：标题（可点进落地页）+ 计数 + 全选 + 待领取行 + 可折叠的已领取历史。
- * `selected` 是**已经与当前待领取取过交集**的编号数组，全选判定只看它。
- */
-function Sec({ secKey, icon, title, cwd, tasks, waiting, selected, doneOpen, onToggle, onToggleAll, onToggleDone, onOpenDir, onOpenTask }) {
-  const split = splitQueueTasks(tasks || []);
-  const pending = split.pending;
-  // 非待领取的行分三类展示：在干（claimed）/ 已交付（done）/ 已取消（cancelled）。
-  // 旧口径把前两类都塞在「已领取」里（那时 done 与 claimed 共用一个词）。
-  const claimed = split.claimed;
-  const closed = [...split.done, ...split.cancelled];
-  const on = new Set(selected);
-  const allOn = pending.length > 0 && pending.every((t) => on.has(Number(t.id)));
-  const someOn = on.size > 0 && !allOn;
-
-  return (
-    <section className="ov-sec" data-sec={secKey}>
-      <div className="ov-sec-h">
-        <Icon name={icon} size={13} />
-        <button type="button" className="ov-sec-t" onClick={onOpenDir} title={`进入「${title}」`}>
-          {title}
-        </button>
-        {cwd ? <span className="c mono">{cwd}</span> : null}
-        <span className="c">{pending.length} 待领取</span>
-        {waiting && (
-          <span className="badge-wait">
-            <span className="pulse" /> 等待回填
-          </span>
-        )}
-        <span className="grow" />
-        {pending.length > 0 && (
-          <label className="ov-all">
-            <input
-              type="checkbox"
-              checked={allOn}
-              ref={(el) => {
-                if (el) el.indeterminate = someOn;
-              }}
-              onChange={() => onToggleAll(allOn, pending)}
-              aria-label={`全选「${title}」的待领取任务`}
-            />
-            全选
-          </label>
-        )}
-      </div>
-
-      {!pending.length && <div className="ov-task muted">（队列为空）</div>}
-      {pending.map((t) => (
-        <TaskRow key={t.id} t={t} checked={on.has(Number(t.id))} onToggle={onToggle} onOpenTask={onOpenTask} />
-      ))}
-
-      {claimed.length + closed.length > 0 && (
-        <>
-          <button type="button" className="ov-done-toggle" onClick={onToggleDone} aria-expanded={doneOpen}>
-            <span className={'tri' + (doneOpen ? ' open' : '')} aria-hidden="true">
-              ▸
-            </span>
-            已领取 {claimed.length} · 已交付 {split.done.length}
-            {split.cancelled.length ? ` · 已取消 ${split.cancelled.length}` : ''}
-          </button>
-          {doneOpen &&
-            [...claimed, ...closed].map((t) => (
-              <TaskRow
-                key={t.id}
-                t={t}
-                checked={on.has(Number(t.id))}
-                onToggle={onToggle}
-                onOpenTask={onOpenTask}
-                meta={t.consumedAt ? String(t.consumedAt).slice(5, 16) : ''}
-              />
-            ))}
-        </>
-      )}
-    </section>
-  );
-}
-
-/** 一行任务：勾选框 + 编号 + 标题 + （云端来源 tag）+ （时间）+ 状态 tag。整行可点进详情。 */
-function TaskRow({ t, checked, onToggle, onOpenTask, meta = '' }) {
+/** 一行任务：勾选框 + 编号 + 标题 + 项目 tag + （时间）+ 状态 tag。整行可点进详情。 */
+function TaskRow({ t, proj, waiting, checked, onToggle, onOpenTask, meta = '' }) {
   const tag = statusTag(t);
   return (
     <div
@@ -388,6 +232,12 @@ function TaskRow({ t, checked, onToggle, onOpenTask, meta = '' }) {
       <span className="tx" title={t.text}>
         {titleFromMd(t.text, t.text || '未命名任务')}
       </span>
+      {proj ? (
+        <span className="tag t-proj" title="所属项目">
+          {proj}
+          {waiting ? <span className="wdot" /> : null}
+        </span>
+      ) : null}
       {t.from === 'cloud' && <span className="tag t-cloud">云端</span>}
       {meta ? <span className="m mono">{meta}</span> : null}
       <span className={'tag ' + tag.cls}>{tag.label}</span>

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { atTriggerAt, embedForAttachment } from '../../src/web/frontend/modules/md/attach-mention.js';
+import { atTriggerAt, embedForAttachment, padEmbed } from '../../src/web/frontend/modules/md/attach-mention.js';
 
 // #108：md 编辑器里打 @ 唤起附件选择面板。
 // 这里覆盖两个纯函数：触发点判定（atTriggerAt）与引用语法生成（embedForAttachment）。
@@ -62,4 +62,21 @@ test('embedForAttachment：名字里的方括号被去掉（免得破 markdown�
     embedForAttachment({ kind: 'file', id: 'x1', name: 'a[b].txt' }),
     '[ab.txt](x1)'
   );
+});
+
+test('padEmbed：前贴中文补一空；文末不补尾空（边界合法）', () => {
+  const r = padEmbed('![图](图)', '文', '');
+  assert.equal(r.text, ' ![图](图)');
+  assert.equal(r.caretAt, ' ![图](图)'.length);
+});
+
+test('padEmbed：前后已是空白/边界不重复补', () => {
+  assert.equal(padEmbed('[x](id)', ' ', '').text, '[x](id)');
+  assert.equal(padEmbed('[x](id)', '', ' ').text, '[x](id)');
+});
+
+test('padEmbed：前后都贴字符 → 两侧补空，caretAt 落在插入串末尾', () => {
+  const r = padEmbed('![a.png](a.png)', '件', '。');
+  assert.equal(r.text, ' ![a.png](a.png) ');
+  assert.equal(r.caretAt, r.text.length);
 });

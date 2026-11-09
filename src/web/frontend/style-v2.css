@@ -324,7 +324,7 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   flex: none; font-size: 10.5px; color: var(--ink-2); background: var(--soft-2);
   border-radius: 8px; padding: 0 6px; line-height: 16px;
 }
-.trow .wdot, .ov-chip .wdot, .railbtn .wdot {
+.trow .wdot, .railbtn .wdot {
   flex: none; width: 7px; height: 7px; border-radius: 50%;
   background: var(--doing); box-shadow: 0 0 0 3px var(--doing-bg);
 }
@@ -613,46 +613,13 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .ov-wrap { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
 .ov-head { display: flex; align-items: baseline; gap: 12px; }
 .ov-head h2 { font-size: 16px; margin: 0; }
-.ov-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.ov-filter-label {
-  font-family: var(--label); font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--mid); margin-right: 2px;
-}
-.ov-chip {
-  display: inline-flex; align-items: center; gap: 7px; background: var(--paper);
-  border: 1px solid var(--soft-2); border-radius: 20px; padding: 4px 12px;
-  font-family:inherit; font-size: 12.5px; cursor: pointer; color: var(--ink);
-}
-.ov-chip:hover { border-color: color-mix(in srgb, #2F6F5E 40%, var(--soft-2)); }
-/* chip 只做筛选：选中态复用侧栏选中行/主按钮的那套强调绿（#2F6F5E）浅底——
-   浅色底 + 同色系描边 + 同色字，不出现任何深色块（黑药丸/黑徽章都显重）。
-   计数徽章用 14% 透明绿，跟底色同族、只比底色深一档 → 有层次但不抢眼。 */
-.ov-chip.on {
-  background: color-mix(in srgb, #2F6F5E 10%, var(--paper));
-  border-color: color-mix(in srgb, #2F6F5E 26%, transparent);
-  color: #2F6F5E;
-}
-.ov-chip.on:hover { border-color: color-mix(in srgb, #2F6F5E 46%, transparent); }
-.ov-chip.on .c { background: color-mix(in srgb, #2F6F5E 15%, transparent); color: #2F6F5E; }
-.ov-chip .c { background: var(--soft-2); border-radius: 9px; padding: 0 6px; font-size: 10.5px; color: var(--ink-2); }
-.ov-chip.wait { border-color: var(--doing-line); background: var(--doing-bg); }
-/* 等待回填的目录：选中态保留蓝色语义（浅底 + 蓝描边/字），同样不填色块 */
-.ov-chip.wait.on {
-  background: var(--doing-bg);
-  border-color: color-mix(in srgb, var(--doing) 45%, transparent);
-  color: var(--doing);
-}
-.ov-chip.wait.on .c { background: color-mix(in srgb, var(--doing) 16%, transparent); color: var(--doing); }
-.ov-sec { background: var(--paper); border: 1px solid var(--soft-2); border-radius: var(--r8); overflow: hidden; }
-.ov-sec-h { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; font-weight: 600; flex-wrap: wrap; }
-.ov-sec-h .c { color: var(--ink-2); font-weight: 400; font-size: 11px; }
-/* ⚠ 全局 v1 有一条 `.grow { max-width: 340px }`（style.css:121），会把这里的
-   间隔元素封顶在 340px → 分区头的「全选」、底部条的「删除」都停不到右边界。
-   这两处必须显式解除上限；尾部控件再加 margin-left:auto 兜底（换行时也靠右）。 */
-.ov-sec-h .grow, .ov-bar .grow { flex: 1; max-width: none; }
-.ov-sec-h .ov-all { margin-left: auto; }
+.ov-bar .grow { flex: 1; max-width: none; }
 .ov-bar .mini, .ov-bar .btn { flex: none; }
 .ov-bar .btn { margin-left: auto; }
+/* 扁平清单（#112）：未完成任务一行条；项目 tag 说明来自哪个目录 */
+.ov-list { background: var(--paper); border: 1px solid var(--soft-2); border-radius: var(--r8); overflow: hidden; }
+.ov-head .ov-all { margin-left: auto; }
+.tag.t-proj { color: var(--ink-2); background: var(--soft); border-color: var(--soft-2); }
 .ov-task { display: flex; gap: 10px; align-items: center; padding: 7px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
 .ov-task:last-child { border-bottom: none; }
 .ov-task .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -664,14 +631,6 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .tag.t-gone { color: var(--faint); border-style: dashed; }
 .tag.t-cloud { color: var(--cloud); background: var(--cloud-bg); border-color: transparent; }
 /* 已领取历史折叠行：贴底的浅色展开条（计数用完成绿，与全局「完成=绿」统一） */
-.ov-done-toggle {
-  display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 12px;
-  border: 0; border-top: 1px solid var(--line); background: var(--soft);
-  font-family:inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left;
-}
-.ov-done-toggle:hover { color: var(--ink); background: var(--soft-2); }
-.ov-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
-.ov-done-toggle .tri.open { transform: rotate(90deg); }
 /* 任务行可点（进任务详情）：hover 底色 + 键盘聚焦环，勾选区自己 stopPropagation */
 .ov-task.link { cursor: pointer; }
 .ov-task.link:hover { background: var(--soft-2); }
@@ -679,9 +638,6 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .ov-ck { display: inline-flex; align-items: center; cursor: pointer; }
 .ov-ck input, .ov-all input { width: 13px; height: 13px; margin: 0; cursor: pointer; accent-color: var(--ink); }
 .ov-all { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 400; color: var(--ink-2); cursor: pointer; user-select: none; }
-/* 分组标题即目录链接（原来那个「打开」按钮是重复入口，已删） */
-.ov-sec-t { font-family:inherit; font-size: 12.5px; font-weight: 600; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer; }
-.ov-sec-t:hover { text-decoration: underline; }
 /* 底部批量操作条：勾选任意行后出现，sticky 吸底；删除动作只住在这里，分区头不再放红色按钮 */
 .ov-bar {
   position: sticky; bottom: 0; z-index: 4;

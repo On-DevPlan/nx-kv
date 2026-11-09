@@ -27,7 +27,7 @@ import { openBesideMain } from '../../workspace.js';
  * onInsert({index, embed, at, caret})：调用方做正文替换（两处编辑器口径不同：
  * 块内替换 vs 全文替换）。
  */
-export function useAttachPicker({ host, onInsert }) {
+export function useAttachPicker({ host, itemsOverride = null, onInsert }) {
   const [menu, setMenu] = useState(null); // {index, at, caret, x, y, query, active, loading, error}
   const [items, setItems] = useState([]);
   // host 是对象 prop（每次渲染新对象）——依赖用序列化后的**身份字段**（不含
@@ -38,7 +38,10 @@ export function useAttachPicker({ host, onInsert }) {
 
   const load = useCallback(async () => {
     if (!host) {
+      // 草稿没有 v2 取数描述（清单来自会话 doc 的 itemsOverride）——
+      // 但**必须**把 loading 收掉，否则面板永远停在「读取附件…」（#111 实测）。
       setItems([]);
+      setMenu((cur) => (cur ? { ...cur, loading: false, error: '' } : cur));
       return;
     }
     try {
@@ -53,7 +56,7 @@ export function useAttachPicker({ host, onInsert }) {
   }, [hostKey]); // host 是对象 prop，用序列化后的 key 做依赖（每次渲染新对象）
 
   const open = useCallback(({ index, ta, at, caret }) => {
-    if (!host || !ta) return;
+    if (!ta) return;
     const rect = ta.getBoundingClientRect();
     const lineH = 20;
     const line = caretLineCol(ta.value, caret).line;
@@ -65,11 +68,12 @@ export function useAttachPicker({ host, onInsert }) {
 
   const close = useCallback(() => setMenu((cur) => (cur ? null : cur)), []);
 
+  const source = itemsOverride !== undefined && itemsOverride !== null ? itemsOverride : items;
   const filtered = useMemo(() => {
     const q = String(menu?.query || '').trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((a) => String(a.name || a.title || a.locator || '').toLowerCase().includes(q));
-  }, [items, menu?.query]);
+    if (!q) return source;
+    return source.filter((a) => String(a.name || a.title || a.locator || '').toLowerCase().includes(q));
+  }, [source, menu?.query]);
 
   const active = filtered.length
     ? Math.min(Math.max(0, menu?.active ?? 0), filtered.length - 1)
@@ -114,9 +118,11 @@ export default function AttachPicker({
   position,
   host = null,        // 取数描述（含 allow / taskOptions——「添加附件」弹窗要用）
   onReload = null,    // 添加附件成功后刷新清单
+  onAddFiles = null,  // 草稿通道（无 host）：文件进会话 doc 附件，插入点由调用方管
 }) {
   const listRef = useRef(null);
   const inputRef = useRef(null);
+  const fileRef = useRef(null);
   const app = useApp() || {};
   const [addOpen, setAddOpen] = useState(false);
 
@@ -240,7 +246,7 @@ export default function AttachPicker({
       <div className="mdw-atpick-foot">
         <span className="mdw-atpick-cap">↑↓ 选择 · Enter 引用 · Esc 取消</span>
         <span className="grow" />
-        {host && (
+        {host ? (
           <button
             type="button"
             className="mdw-atpick-add"
@@ -250,8 +256,32 @@ export default function AttachPicker({
           >
             ＋ 添加附件
           </button>
-        )}
+        ) : onAddFiles ? (
+          <button
+            type="button"
+            className="mdw-atpick-add"
+            title="上传本机文件（草稿：先挂进会话草稿，提交任务时一并带上）"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => fileRef.current?.click()}
+          >
+            ＋ 添加附件
+          </button>
+        ) : null}
       </div>
+      {onAddFiles && (
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            // 快照成数组：FileList 是输入框的**活视图**，面板重渲染把它换掉就空了
+            const files = Array.from(e.target.files || []);
+            if (files.length) onAddFiles(files);
+            if (fileRef.current) fileRef.current.value = '';
+          }}
+        />
+      )}
       {host && (
         <AttachModal
           open={addOpen}

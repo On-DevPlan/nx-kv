@@ -46,3 +46,14 @@ export function embedForAttachment(a) {
   }
   return '';
 }
+
+/**
+ * 引用与正文之间补空格（#111：「@ 的语法前后隔一空」）——
+ * 贴着中文或相邻字符会黏连，markdown 行内元素需要边界。
+ * @returns {{text:string, caretAt:number}} text = 带补位的插入串；caretAt = 插入后光标相对起点
+ */
+export function padEmbed(embed, beforeCh, afterCh) {
+  const pre = beforeCh && !/\s/.test(beforeCh) ? ' ' : '';
+  const post = afterCh && !/\s/.test(afterCh) ? ' ' : '';
+  return { text: pre + embed + post, caretAt: pre.length + embed.length + post.length };
+}

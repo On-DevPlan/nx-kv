@@ -36,7 +36,8 @@ const TODO_NO_ID_LOOKUP = [
 
 export default defineConfig([
   {
-    ignores: ['src/web/public/**', 'node_modules/**', '.tool/**', '.claude/**', '.workbuddy/**', 'plan/**', 'dist/**'],
+    // dist/** 因带斜杠被锚定在仓库根，嵌套的构建产物目录要显式列出
+    ignores: ['src/web/public/**', 'src/web/frontend/dist/**', 'node_modules/**', '.tool/**', '.claude/**', '.workbuddy/**', 'plan/**', 'dist/**'],
   },
   {
     files: ['**/*.{js,mjs,jsx}'],

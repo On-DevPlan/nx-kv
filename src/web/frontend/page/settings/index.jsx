@@ -27,6 +27,7 @@ import PromptTemplatesSection from './prompt-templates-section.jsx';
 import TaskTemplatesSection from './task-templates-section.jsx';
 import SidebarSection from './sidebar-section.jsx';
 import { openTemplateEditor } from '../../panels.jsx';
+import { openPanel } from '../../workspace.js';
 import './style.css';
 
 // 多条提示词的条数上限（与服务端 clampAckPromptList 一致）

@@ -24,9 +24,14 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
-    // 构建产物（src/web/public）与依赖不进检查：那里是压缩过的代码，
-    // 里面当然"引用了"一堆没有 import 的东西。
-    if (p.includes('node_modules') || p.includes(join('src', 'web', 'public'))) continue;
+    // 构建产物（src/web/public 与任何 dist/）与依赖不进检查：那里是压缩过的
+    // 代码，里面当然"引用了"一堆没有 import 的东西（#129 当天本地就踩过：
+    // 游离的 src/web/frontend/dist 让本测试报了十几条假缺失）。
+    if (
+      p.includes('node_modules')
+      || p.includes(join('src', 'web', 'public'))
+      || /(^|[\\/])dist([\\/]|$)/.test(p)
+    ) continue;
     const st = statSync(p);
     if (st.isDirectory()) walk(p, out);
     else if (/\.(jsx|js)$/.test(name)) out.push(p);

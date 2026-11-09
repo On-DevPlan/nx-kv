@@ -30,7 +30,7 @@ import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js
 
 export default function GroupView({ dirKey, rows, repoData, model }) {
   const toast = useToast();
-  const { dialog, node: dialogNode } = useDialog();
+  const { node: dialogNode } = useDialog();
   const app = useApp() || {};
   const tpl = useTemplates();
   const boards = (repoData && repoData.boards) || [];

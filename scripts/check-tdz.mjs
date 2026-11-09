@@ -51,10 +51,28 @@ function checkFile(file) {
     return { file, skipped: true };
   }
 
+  // 找组件函数形参列表的最后一行。多行解构参数（`export default function X({`
+  // 之后 `catalog: catalogProp,` 逐行排到 `}) {`）占的行是**形参**，不是引用：
+  // 解构模式的属性键不是标识符，不跳过就会撞上后面的 `const catalog` 误报 TDZ
+  // （头部注释承诺的「跳过形参/解构行」，之前只对单行签名成立）。
+  // 数括号深度：起点行内配平（单行签名）→ sigEnd 停在起点；跨行才配平 → 停在那行。
+  let sigEnd = compStart;
+  let parenDepth = 0;
+  for (let i = compStart; i < lines.length; i++) {
+    for (const ch of lines[i]) {
+      if (ch === '(') parenDepth++;
+      else if (ch === ')') parenDepth--;
+    }
+    if (parenDepth <= 0) {
+      if (i > compStart) sigEnd = i; // 多行签名：形参列表在这行闭合
+      break;
+    }
+  }
+
   // 组件体内的顶层 const（2 空格缩进）
   const decl = new Map();
   lines.forEach((l, i) => {
-    if (i <= compStart) return;
+    if (i <= sigEnd) return;
     const m = /^ {2}const ([A-Za-z_$][\w$]*)\s*=/.exec(l);
     if (m && !decl.has(m[1])) decl.set(m[1], i + 1);
   });
@@ -62,7 +80,7 @@ function checkFile(file) {
   const problems = [];
   for (const [name, declLine] of decl) {
     const re = new RegExp('(^|[^\\w.$])' + name + '([^\\w$]|$)');
-    for (let i = compStart + 1; i < declLine - 1; i++) {
+    for (let i = sigEnd + 1; i < declLine - 1; i++) {
       const l = lines[i];
       // 只看顶层语句行：恰好 2 空格缩进（更深 = 函数体/JSX 表达式，延迟求值）
       if (!/^ {2}\S/.test(l)) continue;

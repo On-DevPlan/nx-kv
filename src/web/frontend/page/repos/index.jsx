@@ -1272,15 +1272,15 @@ export default function ReposView() {
         <table className="rp-table">
           <thead>
             <tr>
-              {/* #152：列宽重排——行内动作变宽后操作列被挤成两行，宽度让给其他列：
-                  仓库/文档/参考仓库/分组收窄，操作列给到一行放得下的 250px。 */}
-              <th scope="col" style={{ width: '17%' }}>仓库</th>
-              <th scope="col" style={{ width: '24%' }}>
+              {/* #152/#154：列宽重排——操作列钉在 250px（其余列百分比合计 ≈ 100%-250px，
+                  让余量进文档列而不是把操作列撑宽）。 */}
+              <th scope="col" style={{ width: '16%' }}>仓库</th>
+              <th scope="col" style={{ width: '36%' }}>
                 文档
                 <span className="rp-th-hint">主篇摘要 · 查看详情打开完整文档列表</span>
               </th>
-              <th scope="col" style={{ width: '15%' }}>参考仓库</th>
-              <th scope="col" style={{ width: '12%' }}>分组</th>
+              <th scope="col" style={{ width: '18%' }}>参考仓库</th>
+              <th scope="col" style={{ width: '14%' }}>分组</th>
               <th scope="col" style={{ width: '250px' }}>操作</th>
             </tr>
           </thead>

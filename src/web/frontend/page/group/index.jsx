@@ -310,24 +310,50 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
             renderers={{
               new: () => (
                 <div className="rp-newtask" ref={newtaskRef}>
+                  {/* #161 拆两级命中区（视觉一颗按钮）：主区点击 = 按默认模板直接
+                      新建；内嵌箭头 = 模板下拉（选择模板新建） */}
                   <button
                     type="button"
                     className={'btn small' + (tplFlyOpen ? ' is-open' : '')}
-                    aria-haspopup="menu"
-                    aria-expanded={tplFlyOpen}
-                    title="选择模板新建任务（携带本组语义；MD 编辑页里可选归属项目）"
+                    title="按默认模板新建任务（▾ 选模板；携带本组语义）"
                     disabled={!sel}
-                    onClick={(e) => {
-                      const r = e.currentTarget.getBoundingClientRect();
-                      setTplFlyPos({
-                        top: r.bottom + 6,
-                        right: Math.max(8, window.innerWidth - r.right),
-                      });
-                      setTplFlyOpen((v) => !v);
-                    }}
+                    onClick={() => createTask('')}
                   >
                     ＋ 新增任务
-                    <Icon name="chevron" size={11} className={'rp-newtask-caret' + (tplFlyOpen ? ' rot' : '')} />
+                    <span
+                      role="button"
+                      tabIndex={sel ? 0 : undefined}
+                      aria-label="选择模板新建任务"
+                      aria-haspopup="menu"
+                      aria-expanded={tplFlyOpen}
+                      className={'rp-newtask-caret' + (tplFlyOpen ? ' rot' : '')}
+                      title="选择模板新建任务"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const host = e.currentTarget.closest('.rp-newtask');
+                        const r = (host || e.currentTarget).getBoundingClientRect();
+                        setTplFlyPos({
+                          top: r.bottom + 6,
+                          right: Math.max(8, window.innerWidth - r.right),
+                        });
+                        setTplFlyOpen((v) => !v);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const host = e.currentTarget.closest('.rp-newtask');
+                          const r = (host || e.currentTarget).getBoundingClientRect();
+                          setTplFlyPos({
+                            top: r.bottom + 6,
+                            right: Math.max(8, window.innerWidth - r.right),
+                          });
+                          setTplFlyOpen((v) => !v);
+                        }
+                      }}
+                    >
+                      <Icon name="chevron" size={11} />
+                    </span>
                   </button>
                   {tplFlyOpen &&
                     sel &&

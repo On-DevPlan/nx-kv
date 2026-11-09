@@ -6,7 +6,6 @@
 
 export const DIR_MODULES = [
   { id: 'new', label: '＋ 新建页', section: 'primary', noHide: true },
-  { id: 'tpl', label: '模板', section: 'bar' },
   { id: 'import', label: '导入', section: 'bar' },
   { id: 'progress', label: '进程', section: 'bar' },
   { id: 'orch', label: '编排', section: 'bar' },

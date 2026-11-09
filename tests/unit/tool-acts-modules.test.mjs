@@ -10,12 +10,15 @@ import {
 } from '../../src/web/frontend/components/tool-acts/modules.js';
 import { moveModule, nudgeModule, setFlag } from '../../src/web/frontend/components/tool-acts/dnd.js';
 
-test('dir default: bar has new/tpl/import/progress/orch/more; deleted/refs in more', () => {
+test('dir default: bar has new/import/progress/orch/more; deleted/refs in more (#161: tpl 并入新建钮箭头)', () => {
   const layout = defaultLayout('dir');
   const bar = layout.filter((x) => onBarOf('dir', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('dir', x)).map((x) => x.id);
-  assert.deepEqual(bar, ['new', 'tpl', 'import', 'progress', 'orch', 'more']);
+  assert.deepEqual(bar, ['new', 'import', 'progress', 'orch', 'more']);
   assert.deepEqual(more, ['deleted', 'refs']);
+  // 旧布局里存过的 tpl id 会被 normalizeLayout 丢掉（未知模块）
+  const norm = normalizeLayout('dir', [...layout, { id: 'tpl', visible: true }]);
+  assert.ok(!norm.some((x) => x.id === 'tpl'));
 });
 
 test('group default: bar has new/progress/addMember/orch/more; refs in more', () => {
@@ -83,9 +86,9 @@ test('moveItem swaps neighbors', () => {
 test('moveModule inserts before/after anchor and can promote from more', () => {
   let layout = defaultLayout('dir');
   layout = setFlag(layout, 'deleted', { visible: false });
-  layout = moveModule('dir', layout, { id: 'deleted', anchorId: 'tpl', after: false, visible: true });
+  layout = moveModule('dir', layout, { id: 'deleted', anchorId: 'import', after: false, visible: true });
   const ids = layout.map((x) => x.id);
-  assert.ok(ids.indexOf('deleted') < ids.indexOf('tpl'));
+  assert.ok(ids.indexOf('deleted') < ids.indexOf('import'));
   assert.equal(onBarOf('dir', layout.find((x) => x.id === 'deleted')), true);
 });
 

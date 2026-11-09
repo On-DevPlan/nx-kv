@@ -9,7 +9,7 @@
 - 需要维护仓库的元信息：名称、描述、备注，或改登记路径
 - **需要 git 状态、差异、拉取、推送时不要进这里**——开发仓库不做 git 操作（见下）
 - **要搜索并克隆参考项目时用 [[kv-repo]]**——那是参考仓库的克隆与**强制读** SOP
-- **只查分组与关系（不改动）时用 [[kv-repo]]**——那是仓库组的查询/报告侧
+- **只查项目组与关系（不改动）时用 [[kv-repo]]**——那是项目组的查询/报告侧
 
 ## 边界：git 操作只给参考仓库
 
@@ -57,18 +57,18 @@ git -C <path> pull --no-edit
   `c/o/r`），或无 remote 时 `local/<名称>` 兜底，也可 `repo key set` 自定义。
   自定义 key 不跟随 remote 变化；`repo key refresh --all` 扫描 `git remote -v`
   （**SSH 优先**）提示可更新的 key/远程地址，`--apply` 才落盘
-- **所有内部关系用 key，不用随机 id**（2026-10-28）：看板成员存 `repoKeys`、
-  组内描述按 key、绑定关系（linked）按 key。id 只是本机行主键，不再参与任何关系引用
-  ——id 换机即失效，key 才能精确映射
+- **所有内部关系用 key，不用随机 id**（2026-10-28）：项目组成员存 `repoKeys`、
+  组内描述按 key、组级参考绑定（`group_refs`）与仓库级参考绑定（`ext.ext_linked`）
+  两端都是 key。id 只是本机行主键，不再参与任何关系引用——id 换机即失效，key 才能精确映射
 - **remote 是协作的标准单位**：key 是本地身份，remote 是别人 clone 用的地址。
   两者要对齐但方向由人定（SSH 优先只是默认值）：
   `repo remote list`（列候选）、`repo remote pick --url`（人工换一条）、
   `repo remote check`（存在 / 不存在 / 不可达，三种结论分清）
-- **没有标签**：分组只走看板一条路（2026-10-24 废除仓库 tags，两套平行分组只会打架）
+- **没有标签**：分组只走项目组一条路（2026-10-24 废除仓库 tags，两套平行分组只会打架）
 - **type 双态**：`dev` = 开发仓库（默认），`ref` = 参考仓库（见下节）
 - **remote 是稳定 key**：参考仓库必有；开发仓库也建议记（`repo remote <id|path>` 一条命令
   从目录 origin 读来存档）——导出布局时导远程地址而非本地路径，换机导入才 clone 得回来
-- **看板的 desc 是领域描述**：写该组仓库的侧重、配合关系（谁是中心/终端）、
+- **项目组的 desc 是领域描述**：写该组仓库的侧重、配合关系（谁是中心/终端）、
   关键路径与搜索关键词——它是给人和 agent 读的上下文，写法约定见 [[kv-repo]]
 
 ## 参考仓库（type=ref）：搜索并克隆外部项目
@@ -79,26 +79,30 @@ mmx-research-gitclone 的整体吸纳（2026-10-27）：远程 clone 下来学�
 [[kv-repo]]；这里登记命令面的速查：
 
 ```bash
-nx-kv repo ref clone <url> [--name N] [--desc D] [--board <看板id>] [--bind <开发仓库>] [--depth 1] [--no-bind]
+nx-kv repo ref clone <url> [--name N] [--desc D] [--board <项目组 id>] [--bind <开发仓库>] [--depth 1] [--no-bind]
 #   clone + 登记 + 绑定一条龙；在开发仓库目录里跑默认自动绑定当前仓库（--no-bind 关掉）
 nx-kv repo ref add <path> [--remote <url>]    # 登记一个已存在的 checkout（不 clone；remote 缺省读 origin）
 nx-kv repo ref sync [--all] [id|名称|url]     # 同步更新（git pull --ff-only；冲突不自动 merge）
-nx-kv repo ref check                          # 完整性检查：目录/.git/origin 一致性 + 绑定死链（零副作用）
-nx-kv repo bind <ref> --repo <开发仓库> --board <看板id>    # 绑定（多对多；目标可多个，逗号分隔）
-nx-kv repo bind <ref> --remove [--repo x | --board y]       # 摘绑定（都不带 = 清空）
-nx-kv repo ref note <ref> --repo <开发仓库> --note "在这参考什么"   # 写/清绑定描述（board 同理；留空=清）
-nx-kv repo ref of [id|路径]                                 # 分层查询：第一层直接绑定，第二层按看板命名空间
+nx-kv repo ref check                          # 完整性检查：目录/.git/origin 一致性 + 两类绑定死链（零副作用）
+nx-kv repo bind <ref> --board <项目组 id>     # 绑到组（组内所有仓库共享）
+nx-kv repo bind <ref> --repo <开发仓库>        # 只绑这个仓库（不进组；两类可同时给）
+nx-kv repo bind <ref> --remove [--repo x | --board y]       # 按维度摘绑定（都不带 = 两类全清）
+nx-kv repo ref note <ref> --board <项目组 id> --note "在这参考什么"   # 写/清组级绑定描述（留空=清）
+nx-kv repo ref note <ref> --repo <开发仓库> --note "为何参考"      # 写/清仓库级绑定描述
+nx-kv repo ref of [id|路径]                                 # 列出直接绑定 + 所属组绑定的参考（缺省当前目录）
+nx-kv repo ref backfill <v3.db> [--dry-run]                 # 从 v3 快照补录仓库级绑定（幂等，不碰组级）
 nx-kv repo remote <id|path> [--url <地址>]    # 登记远程地址（无 --url = 从目录 origin 读）
 ```
 
 - **remote 是参考仓库的唯一 key**：同一远程地址（SSH/HTTPS 写法不同也算同源）只允许一条登记
-- **linked 挂绑定关系（多对多）**：`[{kind:'repo'|'board', id, note?}]`——一个 ref 可服务
-  多个仓库/组，一个仓库/组可挂多个 ref；`note` 是**绑定描述**（这个参考在该仓库/看板里
-  参考什么，挂在关系上、摘绑即清，与看板组内描述 board.note 同一哲学）；
-  删开发仓库/删看板会同步摘指向它们的绑定，`ref check` 也能查出死链
-- **分层查询**：`repo ref of [id|路径]`（缺省当前目录）——第一层 = 直接绑定到该仓库的 ref，
-  第二层 = 它所在看板（命名空间）上的 ref 按组列出；agent 问「做这个仓库的事有什么参考」
-  用这一条命令就够
+- **绑定对象有两类，并列存在**（2026-11-09 口径更正）：① 组级 `group_refs`——参考仓库 ↔ 组
+  多对多，组内所有仓库共享；② 仓库级 `ext.ext_linked`——参考仓库 ↔ 单个开发仓库，只有它拥有。
+  两类**互不折算，也没有继承/覆盖/排除**；同一参考可以既绑组、又直接绑某个仓库。
+  `note` 各写各的（组级描述 / 仓库级描述），摘绑即清
+- **按仓库查参考**：`repo ref of [id|路径]`（缺省当前目录）——先列直接绑定到本仓库的参考，
+  再按所属组列组级参考。agent 问「做这个仓库的事有什么参考」用这一条命令就够
+- **无归属组的仓库**：依然可以拥有仓库级绑定（不需要组）；管理面板的参考页会分两栏
+  「项目组」「仓库」显示两类绑定对象
 - **布局导入导出 v3**（换机/分享整套环境）：
 
 ```bash

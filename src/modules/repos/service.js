@@ -62,10 +62,11 @@ function assembleStore(conn) {
   const repoRows = repo.repos.listRepoRows(conn);
   const groupRows = repo.repos.listGroupRows(conn);
   const members = repo.repos.listAllMembers(conn);
+  const groupRefs = repo.repos.listAllGroupRefs(conn);
   const store = {
     version: 2,
     repos: repoRows.map((row) => repoRowToStore(row)),
-    boards: groupRows.map((row) => groupRowToStore(row, members)),
+    boards: groupRows.map((row) => groupRowToStore(row, members, groupRefs)),
   };
   // v2 文档绑定归一：非法 DocRef 形状直接丢弃（ext 里的脏数据不炸读取）。
   normalizeDocRefs(store);
@@ -234,12 +235,18 @@ function persistStore(conn, store) {
     if (prior && prior !== row.key) repo.repos.renameRow(conn, prior, row.key, at);
     repo.repos.upsertRow(conn, row);
     repo.repos.replaceMembers(conn, row.key, row.members, at);
+    // 组级参考绑定：undefined = 调用方没碰这一维（保留库里现状），数组 = 整组重建。
+    // 读路径装配出来的 board 永远带 refs，所以常规写不会误清。
+    if (Array.isArray(b.refs)) repo.repos.replaceGroupRefs(conn, row.key, b.refs, at);
     seenGroupKeys.add(row.key);
   }
   for (const row of before) {
     const k = String(row.key);
     if (row.type !== 'group') continue;
-    if (!seenGroupKeys.has(k)) repo.repos.softDeleteRow(conn, k, at);
+    if (!seenGroupKeys.has(k)) {
+      repo.repos.clearGroupRefs(conn, k);
+      repo.repos.softDeleteRow(conn, k, at);
+    }
   }
 }
 
@@ -581,6 +588,7 @@ export async function updateRepo(id, patch) {
       s.repos.find((x) => x.path && x.path.toLowerCase() === resolve(raw).toLowerCase()) ||
       s.repos.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
     if (!r) throw notFound('repo 不存在: ' + id);
+    const beforeKey = deriveKey(r);
     if (patch.name !== undefined) r.name = String(patch.name).trim();
     if (patch.icon !== undefined) r.icon = sanitizeIcon(patch.icon);
     if (patch.desc !== undefined) {
@@ -597,7 +605,19 @@ export async function updateRepo(id, patch) {
       if (!Array.isArray(r.linked)) r.linked = [];
       // 转成 dev 时清掉「指向目标」的绑定（{repo|board}），但**保留反向引用**（{ref}）——
       // dev 仓库身上挂的参考列表是它自己的属性，与它是什么类型无关。
-      if (t === 'dev') r.linked = r.linked.filter((l) => l.kind === 'ref');
+      // v4：它若作为参考仓库被组共享，也要从所有组摘掉（组里只允许 type=ref）。
+      if (t === 'dev') {
+        r.linked = r.linked.filter((l) => l.kind === 'ref');
+        const gone = deriveKey(r);
+        for (const b of s.boards) {
+          if (Array.isArray(b.refs)) b.refs = b.refs.filter((x) => x.id !== gone);
+        }
+        // 仓库级直接绑定也要摘（原来指向它这个 ref，现在它已经不是参考仓库了）
+        for (const other of s.repos) {
+          if (other === r || !Array.isArray(other.linked)) continue;
+          other.linked = other.linked.filter((l) => !(l && l.kind === 'ref' && String(l.id) === gone));
+        }
+      }
     }
     if (patch.remote !== undefined) {
       // 改 remote：非自定义 key 跟随 remote 重算；自定义 key 保持不变（用户显式选择）。
@@ -648,6 +668,16 @@ export async function updateRepo(id, patch) {
         `key「${finalKey}」已被仓库「${dup.name}」占用（path: ${dup.path || '未登记'}）—— key 是全局身份，不会自动加后缀；请换一个 key`
       );
     }
+    // 参考仓库改 key：仓库级绑定存在别人的 ext 里（没有 FK），必须跟着改，
+    // 否则绑定会静默指向一个不存在的 key（组级 group_refs 由 DB 的 ON UPDATE CASCADE 跟随）。
+    if (finalKey !== beforeKey) {
+      for (const other of s.repos) {
+        if (other === r || !Array.isArray(other.linked)) continue;
+        for (const l of other.linked) {
+          if (l && l.kind === 'ref' && String(l.id) === beforeKey) l.id = finalKey;
+        }
+      }
+    }
     r.key = finalKey;
     return r;
   });
@@ -682,6 +712,8 @@ export async function removeRepo(id) {
     for (const b of s.boards) {
       if (Array.isArray(b.repoKeys)) b.repoKeys = b.repoKeys.filter((k) => k !== deadKey);
       if (b.repoNotes && b.repoNotes[deadKey]) delete b.repoNotes[deadKey];
+      // 组级参考绑定：删掉的是参考仓库 → 它从所有组里消失
+      if (Array.isArray(b.refs)) b.refs = b.refs.filter((r) => r.id !== deadKey);
     }
     // 绑定是双向记录：两边都要清（全部按 key 比对）
     //   ref 侧的 {kind:'repo', id:被删仓库的 key} 与 {kind:'board', id:被删看板的 key}

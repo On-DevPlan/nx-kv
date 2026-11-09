@@ -20,16 +20,16 @@ const tablesOf = (db) =>
     .all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
     .map((r) => r.name);
 
-test(`全新目录：建 17 张表 / user_version=${CURRENT_SCHEMA_VERSION} / meta 三件套齐全`, async () => {
+test(`全新目录：建 18 张表 / user_version=${CURRENT_SCHEMA_VERSION} / meta 三件套齐全`, async () => {
   const s = await createTestStore();
   try {
     const tables = tablesOf(s.db);
     // 001 的 16 张 + v2 新增 attachments / task_attach / ref_attach − 删除 task_refs / ref_relations
-    // （v3 只给 templates 加列，不动表清单）
-    assert.equal(tables.length, 17, `实际: ${tables.join(',')}`);
+    // （v3 只给 templates 加列；v4 新增 group_refs）
+    assert.equal(tables.length, 18, `实际: ${tables.join(',')}`);
     for (const t of [
       'meta', 'settings', 'topics', 'tasks', 'repos', 'refs', 'templates', 'goals',
-      'attachments', 'task_attach', 'ref_attach',
+      'attachments', 'task_attach', 'ref_attach', 'group_refs',
     ]) {
       assert.ok(tables.includes(t), `缺表 ${t}`);
     }
@@ -44,11 +44,11 @@ test(`全新目录：建 17 张表 / user_version=${CURRENT_SCHEMA_VERSION} / me
     assert.match(meta.created_by, /^nx-kv\//);
     assert.equal(meta.migrated_from_json_at, undefined, '全新库不该有"从 JSON 迁来"的标志');
 
-    // 索引与触发器数量（23 索引 / 1 触发器，见 schema 头注释）
+    // 索引与触发器数量（24 索引 / 1 触发器，见 schema 头注释）
     const idx = s.db.get(
       "SELECT count(*) AS c FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'"
     );
-    assert.equal(idx.c, 23);
+    assert.equal(idx.c, 24);
     const trg = s.db.get("SELECT count(*) AS c FROM sqlite_master WHERE type = 'trigger'");
     assert.equal(trg.c, 1);
   } finally {
@@ -62,7 +62,7 @@ test('空文件（0 字节）当全新建库，不当"别人的库"', async () =
     writeFileSync(s.dbPath, '');
     s.open();
     assert.equal(s.core.inspectStore(s.db).storeKind, 'sqlite');
-    assert.equal(tablesOf(s.db).length, 17);
+    assert.equal(tablesOf(s.db).length, 18);
   } finally {
     s.reset();
   }

@@ -1,4 +1,4 @@
-// 参考仓库（type=ref）的单元测试：
+﻿// 参考仓库（type=ref）的单元测试：
 // remote key 归一 / type 双态登记与查重 / 绑定与联动清理 / 同步与检查 / 布局导入导出。
 // 存储走 NX_KV_REPOS_STORE 指到的临时文件；git 集成点用本地裸仓库（无网络依赖）。
 //
@@ -92,17 +92,22 @@ test('登记 ref：type/remote 落库；同 remoteKey 重复登记 → conflict�
   assert.equal(dev.remote, '');
 });
 
-test('updateRepo：type 转回 dev 时清空 linked；remote 改成别人占用的 → conflict', async () => {
+test('updateRepo：type 转回 dev 时清空 linked 与所有组级绑定；remote 改成别人占用的 → conflict', async () => {
   // 非自定义 key（由 remote 派生）才会跟随 remote 重算——这正是会撞车的场景。
   const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', remote: 'https://github.com/x/d1.git' });
+  const b = await boards.createBoard({ name: 'g1' });
+  await boards.assignRepo({ id: dev.id, board: b.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
-  await ref.bindTarget({ id: r.id, repo: dev.id });
-  assert.equal((await repos.getRepo(r.id)).linked.length, 1);
+  await ref.bindTarget({ id: r.id, repo: dev.id, board: b.id });
+  assert.equal((await boards.getBoard(b.id)).refs.length, 1);
+  assert.equal((await repos.getRepo(dev.id)).linked.length, 1);
 
   await repos.updateRepo(r.id, { type: 'dev' });
   const after = await repos.getRepo(r.id);
   assert.equal(after.type, 'dev');
   assert.deepEqual(after.linked, []);
+  assert.deepEqual((await boards.getBoard(b.id)).refs, []);
+  assert.deepEqual((await repos.getRepo(dev.id)).linked, [], '指向它的仓库级绑定也要摘掉');
 
   await assert.rejects(
     () => repos.updateRepo(dev.id, { remote: 'https://github.com/x/r1.git' }),
@@ -112,87 +117,106 @@ test('updateRepo：type 转回 dev 时清空 linked；remote 改成别人占用�
 
 // ─── 绑定与联动清理 ─────────────────────────────────────────────────────
 
-test('bind：ref 可同时绑开发仓库与看板；一个目标可被多个 ref 绑；幂等不重复', async () => {
+test('bind：--board 写组级、--repo 写仓库级；两类并存、幂等不重复', async () => {
   const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const d2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
   const b1 = await boards.createBoard({ name: 'fr' });
+  await boards.assignRepo({ id: d1.id, board: b1.id });
+  await boards.assignRepo({ id: d2.id, board: b1.id });
   const r1 = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   const r2 = await repos.addRepo({ path: join(dir, 'r2'), name: 'r2', type: 'ref', remote: 'https://github.com/x/r2.git' });
+  const r1Key = repos.deriveKey(r1);
+  const r2Key = repos.deriveKey(r2);
 
   await ref.bindTarget({ id: r1.id, repo: [d1.id, 'd2'], board: b1.id }); // 名称也能认
-  await ref.bindTarget({ id: r1.id, repo: d1.id }); // 幂等
+  await ref.bindTarget({ id: r1.id, repo: d1.id }); // 幂等（同一仓库）
   await ref.bindTarget({ id: r2.id, repo: d1.id });
 
-  // 绑定的目标记的是 **key**（仓库身份 / 看板身份），不是本机行主键 id
-  const got = await repos.getRepo(r1.id);
-  assert.deepEqual(
-    got.linked.map((l) => l.kind + ':' + l.id).sort(),
-    [`repo:${d1.key}`, `repo:${d2.key}`, `board:${b1.key}`].sort()
-  );
-  const got2 = await repos.getRepo(r2.id);
-  assert.equal(got2.linked.length, 1);
+  // 组级只落 group_refs（--repo 不折算成组）
+  const got = await boards.getBoard(b1.id);
+  assert.deepEqual(got.refs.map((x) => x.id), [r1Key]);
+  // 仓库级只落各仓库自己的 linked
+  assert.deepEqual((await repos.getRepo(d1.id)).linked.map((x) => x.id).sort(), [r1Key, r2Key].sort());
+  assert.deepEqual((await repos.getRepo(d2.id)).linked.map((x) => x.id), [r1Key]);
 
   // dev 上 ref 绑定会报「不是参考仓库」
   await assert.rejects(() => ref.bindTarget({ id: d1.id, repo: d2.id }), /不是参考仓库/);
+  // 仓库级绑定不需要组：不属于任何组的仓库也能直接绑
+  const orphan = await repos.addRepo({ path: join(dir, 'orphan'), name: 'orphan', key: 'local/orphan' });
+  await ref.bindTarget({ id: r1.id, repo: orphan.id });
+  assert.deepEqual((await repos.getRepo(orphan.id)).linked.map((x) => x.id), [r1Key]);
 });
 
-test('摘绑定：--remove --repo 只摘指定；都不带 = 清空；目标不存在显式报错', async () => {
+test('摘绑定：--remove 按维度摘（仓库/组），都不带 = 两类全清；目标不存在显式报错', async () => {
   const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const d2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
+  const b1 = await boards.createBoard({ name: 'g1' });
+  const b2 = await boards.createBoard({ name: 'g2' });
+  await boards.assignRepo({ id: d1.id, board: b1.id });
+  await boards.assignRepo({ id: d2.id, board: b2.id });
   const r1 = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
-  await ref.bindTarget({ id: r1.id, repo: [d1.id, d2.id] });
+  await ref.bindTarget({ id: r1.id, repo: [d1.id, d2.id], board: [b1.id, b2.id] });
+  assert.equal((await boards.getBoard(b1.id)).refs.length, 1);
+  assert.equal((await boards.getBoard(b2.id)).refs.length, 1);
+  assert.equal((await repos.getRepo(d1.id)).linked.length, 1);
+  assert.equal((await repos.getRepo(d2.id)).linked.length, 1);
 
+  // 只摘仓库维度：组级不受影响
   await ref.bindTarget({ id: r1.id, remove: true, repo: d1.id });
-  let got = await repos.getRepo(r1.id);
-  assert.deepEqual(got.linked, [{ kind: 'repo', id: d2.key }]);
+  assert.deepEqual((await repos.getRepo(d1.id)).linked, []);
+  assert.equal((await boards.getBoard(b1.id)).refs.length, 1);
 
+  // 只摘组维度：仓库级不受影响
+  await ref.bindTarget({ id: r1.id, remove: true, board: b2.id });
+  assert.deepEqual((await boards.getBoard(b2.id)).refs, []);
+  assert.equal((await repos.getRepo(d2.id)).linked.length, 1);
+
+  // 都不带 = 两类全清
   await ref.bindTarget({ id: r1.id, remove: true });
-  got = await repos.getRepo(r1.id);
-  assert.deepEqual(got.linked, []);
+  assert.deepEqual((await boards.getBoard(b1.id)).refs, []);
+  assert.deepEqual((await repos.getRepo(d2.id)).linked, []);
 
   await assert.rejects(() => ref.bindTarget({ id: r1.id, repo: join(dir, 'nope') }), /不存在/);
 });
 
-test('联动清理：删开发仓库 / 删看板 → ref 的 linked 同步摘除', async () => {
+test('联动清理：删看板 → 组级绑定清；参考仓库转 dev → 从各组摘除', async () => {
   const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const b1 = await boards.createBoard({ name: 'fr' });
+  await boards.assignRepo({ id: d1.id, board: b1.id });
   const r1 = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
-  await ref.bindTarget({ id: r1.id, repo: d1.id, board: b1.id });
+  await ref.bindTarget({ id: r1.id, board: b1.id });
 
   await boards.removeBoard(b1.id);
-  let got = await repos.getRepo(r1.id);
-  assert.deepEqual(got.linked, [{ kind: 'repo', id: d1.key }]);
+  const c = await ref.checkRefs();
+  assert.ok(!c.extraIssues.some((i) => /board\/fr/.test(i)), c.extraIssues);
 
-  await repos.removeRepo(d1.id);
-  got = await repos.getRepo(r1.id);
-  assert.deepEqual(got.linked, []);
+  const b2 = await boards.createBoard({ name: 'fr2' });
+  await boards.assignRepo({ id: d1.id, board: b2.id });
+  await ref.bindTarget({ id: r1.id, board: b2.id });
+  assert.equal((await boards.getBoard(b2.id)).refs.length, 1);
+  await repos.updateRepo(r1.id, { type: 'dev' });
+  assert.deepEqual((await boards.getBoard(b2.id)).refs, []);
 });
 
 // ─── checkRefs（零副作用）───────────────────────────────────────────────
 
-test('checkRefs：目录缺失 / 绑定死链 显式报 issue；正常 ref 全 ok', async () => {
+test('checkRefs：目录缺失 显式报 issue；组级与仓库级绑定分别列出', async () => {
   const d1 = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
+  const b1 = await boards.createBoard({ name: 'g1' });
+  await boards.assignRepo({ id: d1.id, board: b1.id });
   const ok = await repos.addRepo({ path: join(dir, 'ref-ok'), name: 'ref-ok', type: 'ref', remote: 'https://github.com/x/ok.git' });
-  const gone = await repos.addRepo({ path: join(dir, 'ref-gone'), name: 'ref-gone', type: 'ref', remote: 'https://github.com/x/gone.git' });
-  await ref.bindTarget({ id: ok.id, repo: d1.id });
+  await repos.addRepo({ path: join(dir, 'ref-gone'), name: 'ref-gone', type: 'ref', remote: 'https://github.com/x/gone.git' });
+  await ref.bindTarget({ id: ok.id, repo: d1.id, board: b1.id });
 
-  let c = await ref.checkRefs();
-  const byName = new Map(c.refs.map((x) => [x.name, x]));
-  // ref-ok：目录不存在（我们没建），但绑定目标在 → issue 是「本地目录不存在」
+  const c = await ref.checkRefs();
+  const byName = new Map(c.refRepos.map((x) => [x.name, x]));
   assert.ok(byName.get('ref-ok').issues.some((i) => /目录不存在/.test(i)));
-  assert.ok(!byName.get('ref-ok').issues.some((i) => /绑定目标/.test(i)));
   assert.ok(byName.get('ref-gone').issues.some((i) => /目录不存在/.test(i)));
-
-  // 绑定死链：正常的删除路径有联动清理（另有测试），这里直接把目标从登记里改 id 制造死链
-  await repos.mutateStore((s) => {
-    const g = s.repos.find((x) => x.id === gone.id);
-    g.linked = [{ kind: 'repo', id: 'github.com/dead/target' }];
-  });
-  c = await ref.checkRefs();
-  const goneRef = c.refs.find((x) => x.name === 'ref-gone');
-  assert.ok(goneRef.issues.some((i) => /绑定目标已不存在/.test(i)));
+  assert.deepEqual(byName.get('ref-ok').groups.map((g) => g.name), ['g1']);
+  assert.deepEqual(byName.get('ref-ok').repos.map((x) => x.name), ['d1']);
+  assert.deepEqual(byName.get('ref-gone').repos, []);
+  assert.deepEqual(c.extraIssues, []);
   assert.equal(c.problems, 2);
-  assert.ok(ok.id && byName.get('ref-ok'));
 });
 
 // ─── git 集成点：本地裸仓库 clone / sync / check ───────────────────────
@@ -213,22 +237,27 @@ if (hasGit) {
     await saveConfig({ gitRepoRoot: root });
 
     const dev = await repos.addRepo({ path: join(dir, 'dev-host'), name: 'dev-host', key: 'local/dev-host' });
+    const g = await boards.createBoard({ name: 'g-clone' });
+    await boards.assignRepo({ id: dev.id, board: g.id });
 
     const r = await ref.cloneRef({
       url: 'file://' + src.replace(/\\/g, '/'),
       name: 'src-ref',
       desc: '测试参考',
-      bind: [dev.name], // 用名称绑定
+      bind: [dev.name], // 用名称绑定 → 仓库级直接绑定（不折算成组）
       noBind: true, // 关掉 autoBind（测试进程 cwd 不在开发仓库里，绑了也无妨；显式给 bind）
     });
     assert.equal(r.name, 'src-ref');
     assert.ok(existsSync(join(r.dest, '.git')));
     assert.ok(repos.normalizeRemoteKey(r.remote));
 
-    // 登记在册 + 绑定到 dev-host
+    // 登记在册 + 绑定落到仓库级（组上没有，因为没给 --board）
     const got = await repos.getRepo(r.id);
     assert.equal(got.type, 'ref');
-    assert.deepEqual(got.linked, [{ kind: 'repo', id: dev.key }]);
+    assert.deepEqual((await boards.getBoard(g.id)).refs, []);
+    assert.deepEqual((await repos.getRepo(dev.id)).linked.map((x) => x.id), [repos.deriveKey(got)]);
+    assert.deepEqual(r.groups, []);
+    assert.deepEqual(r.repos, [dev.name]);
 
     // 同源重复 clone → conflict 提示已登记
     await assert.rejects(
@@ -242,7 +271,7 @@ if (hasGit) {
 
     // check：目录在、.git 在、origin key 与登记一致 → ok
     const c = await ref.checkRefs();
-    const mine = c.refs.find((x) => x.id === r.id);
+    const mine = c.refRepos.find((x) => x.id === r.id);
     assert.equal(mine.ok, true, JSON.stringify(mine.issues));
   });
 
@@ -310,6 +339,7 @@ test('repoExport：以 key 为身份、不含本地路径；dev 无 remote 进 w
 
   const link = d.links.find((x) => x.ref === 'github.com/lib/ref1');
   assert.ok(link);
+  // 组级与仓库级并列导出（同一个 ref 一条 link，两类目标都在 to 里）
   assert.deepEqual(link.to.map((t) => t.repo || t.board).sort(), ['board/fr', 'github.com/me/dev-app'].sort());
   assert.ok(ref1.id && plainDev.id);
 });
@@ -377,16 +407,18 @@ test('repoImport：diff 零副作用；执行后登记/克隆/看板/关系按 k
   const importedRef = all.find((x) => x.name === 'imp-ref');
   assert.equal(importedRef.type, 'ref');
   assert.ok(existsSync(join(importedRef.path, '.git')));
-  assert.deepEqual(
-    importedRef.linked.map((l) => l.kind + ':' + l.id).sort(),
-    [`repo:${dev.key}`, 'board:' + existingBoard.key].sort()
-  );
   // 看板成员与组内描述重建（成员按 key 关联）
   const g = await boards.getBoard(existingBoard.id);
   assert.equal(g.desc, '新领域描述');
   assert.equal(g.repos.length, 2);
   assert.equal(g.repos.find((x) => x.key === dev.key).note, '中心');
   assert.ok(g.repos.find((x) => x.key === repos.keyFromRemote(srcUrl)));
+  // 关系重建：to.board → 组级；to.repo → 该仓库的仓库级直接绑定（两类并存）
+  assert.deepEqual(g.refs.map((x) => x.id), [repos.keyFromRemote(srcUrl)]);
+  assert.deepEqual(
+    (await repos.getRepo(dev.id)).linked.filter((l) => l.kind === 'ref').map((x) => x.id),
+    [repos.keyFromRemote(srcUrl)]
+  );
 });
 
 test('repoImport：--select 白名单只处理指定 key', async () => {
@@ -409,44 +441,49 @@ test('repoImport：--select 白名单只处理指定 key', async () => {
   assert.ok(!all.some((r) => r.key === 'github.com/a/one'));
 });
 
-test('绑定是双向记录的：ref 侧写 {repo}，dev 侧写反向 {ref}；描述两侧一致；摘绑两侧同步清', async () => {
+test('绑定两类互不覆盖：--repo 只写仓库级、--board 只写组级；描述与摘绑按维度', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
+  const b = await boards.createBoard({ name: 'g1' });
+  await boards.assignRepo({ id: dev.id, board: b.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
+  const refKey = repos.deriveKey(r);
 
-  await ref.bindTarget({ id: r.id, repo: [{ id: dev.name, note: '双向描述' }] });
-  // ref 侧
-  let refSide = await repos.getRepo(r.id);
-  assert.deepEqual(refSide.linked, [{ kind: 'repo', id: dev.key, note: '双向描述' }]);
-  // dev 侧的反向引用
-  let devSide = await repos.getRepo(dev.id);
-  assert.deepEqual(devSide.linked, [{ kind: 'ref', id: repos.deriveKey(r), note: '双向描述' }]);
+  await ref.bindTarget({ id: r.id, repo: [{ id: dev.name, note: '仓库级描述' }] });
+  assert.deepEqual((await repos.getRepo(dev.id)).linked, [{ kind: 'ref', id: refKey, note: '仓库级描述' }]);
+  assert.deepEqual((await boards.getBoard(b.id)).refs, [], '仓库级绑定不写组');
+  assert.deepEqual((await repos.getRepo(r.id)).linked, [], '参考仓库自身不写 linked');
 
-  // 改描述 → 两侧同步
-  await ref.setLinkNote({ id: r.id, repo: dev.id, note: '改过的描述' });
-  refSide = await repos.getRepo(r.id);
-  devSide = await repos.getRepo(dev.id);
-  assert.equal(refSide.linked[0].note, '改过的描述');
-  assert.equal(devSide.linked[0].note, '改过的描述');
+  await ref.bindTarget({ id: r.id, board: [{ id: b.name, note: '组级描述' }] });
+  assert.deepEqual((await boards.getBoard(b.id)).refs, [{ id: refKey, note: '组级描述' }]);
+  assert.equal((await repos.getRepo(dev.id)).linked.length, 1, '组级绑定不动仓库级');
 
-  // 摘绑 → 两侧都清
+  await ref.setLinkNote({ id: r.id, board: b.id, note: '改过的组级描述' });
+  await ref.setLinkNote({ id: r.id, repo: dev.id, note: '改过的仓库级描述' });
+  assert.equal((await boards.getBoard(b.id)).refs[0].note, '改过的组级描述');
+  assert.equal((await repos.getRepo(dev.id)).linked[0].note, '改过的仓库级描述');
+
   await ref.bindTarget({ id: r.id, remove: true, repo: dev.id });
-  refSide = await repos.getRepo(r.id);
-  devSide = await repos.getRepo(dev.id);
-  assert.deepEqual(refSide.linked, []);
-  assert.deepEqual(devSide.linked, []);
+  assert.deepEqual((await repos.getRepo(dev.id)).linked, []);
+  assert.equal((await boards.getBoard(b.id)).refs.length, 1, '摘仓库级不影响组级');
 });
 
-test('删除开发仓库 → dev 侧反向引用与 ref 侧绑定同步清理（不留死链）', async () => {
+test('删除开发仓库不影响组级参考；删除参考仓库 → 从所有组与仓库级绑定摘除（不留死链）', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
+  const other = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
+  const b = await boards.createBoard({ name: 'g1' });
+  await boards.assignRepo({ id: dev.id, board: b.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
-  await ref.bindTarget({ id: r.id, repo: dev.id });
+  await ref.bindTarget({ id: r.id, repo: [dev.id, other.id], board: b.id });
+
   await repos.removeRepo(dev.id);
-  const refSide = await repos.getRepo(r.id);
-  assert.deepEqual(refSide.linked, []);
-  // checkRefs 不该报死链
+  assert.equal((await boards.getBoard(b.id)).refs.length, 1, '组还在，参考绑定不受成员删除影响');
+  assert.deepEqual((await repos.getRepo(other.id)).linked.map((x) => x.id), [repos.deriveKey(r)]);
+
+  await repos.removeRepo(r.id);
+  assert.deepEqual((await boards.getBoard(b.id)).refs, []);
+  assert.deepEqual((await repos.getRepo(other.id)).linked, []);
   const c = await ref.checkRefs();
-  const mine = c.refs.find((x) => x.id === r.id);
-  assert.ok(!mine.issues.some((i) => /绑定目标已不存在/.test(i)), JSON.stringify(mine.issues));
+  assert.ok(!c.extraIssues.some((i) => /已不存在/.test(i)), JSON.stringify(c.extraIssues));
 });
 
 test('repoImport：坏 JSON / 缺 repos 数组 → badInput', async () => {
@@ -456,105 +493,175 @@ test('repoImport：坏 JSON / 缺 repos 数组 → badInput', async () => {
 
 // ─── 绑定描述（link note）与分层查询 ────────────────────────────────────
 
-test('setLinkNote：写/清单条绑定描述；未绑定显式报错；随摘绑一起消失', async () => {
+test('setLinkNote：组级/仓库级描述各写各的；未绑定显式报错；随摘绑一起消失', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const b1 = await boards.createBoard({ name: 'grp' });
+  await boards.assignRepo({ id: dev.id, board: b1.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   await ref.bindTarget({ id: r.id, repo: dev.id, board: b1.id });
 
+  // 仓库级描述
   await ref.setLinkNote({ id: r.id, repo: dev.id, note: '画布交互参考\n搜 registerExtension' });
-  await ref.setLinkNote({ id: r.id, board: b1.id, note: '组级参考' });
-  let got = await repos.getRepo(r.id);
-  assert.equal(got.linked.find((l) => l.kind === 'repo').note, '画布交互参考\n搜 registerExtension');
-  assert.equal(got.linked.find((l) => l.kind === 'board').note, '组级参考');
+  assert.equal((await repos.getRepo(dev.id)).linked[0].note, '画布交互参考\n搜 registerExtension');
+  // 组级描述
+  await ref.setLinkNote({ id: r.id, board: b1.id, note: '组级契约' });
+  assert.equal((await boards.getBoard(b1.id)).refs[0].note, '组级契约');
 
   // 同 repo + board 一起给 = 报错（一条绑定一条描述）
   await assert.rejects(() => ref.setLinkNote({ id: r.id, repo: dev.id, board: b1.id, note: 'x' }), /只能选一/);
-  // 未绑定的目标 = 显式报错，不静默挂空
-  const dev2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
-  await assert.rejects(() => ref.setLinkNote({ id: r.id, repo: dev2.id, note: 'x' }), /未绑定/);
+  // 未绑定的组/仓库 = 显式报错，不静默挂空
+  const b2 = await boards.createBoard({ name: 'grp2' });
+  await assert.rejects(() => ref.setLinkNote({ id: r.id, board: b2.id, note: 'x' }), /未绑定/);
+  const d2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
+  await assert.rejects(() => ref.setLinkNote({ id: r.id, repo: d2.id, note: 'x' }), /未直接绑定/);
 
   // note 留空 = 清除；摘绑 = 描述一起消失
   await ref.setLinkNote({ id: r.id, board: b1.id, note: '' });
-  got = await repos.getRepo(r.id);
-  assert.equal(got.linked.find((l) => l.kind === 'board').note, undefined);
+  assert.equal((await boards.getBoard(b1.id)).refs[0].note, undefined);
   await ref.bindTarget({ id: r.id, remove: true, repo: dev.id });
-  got = await repos.getRepo(r.id);
-  assert.ok(!got.linked.some((l) => l.kind === 'repo'));
+  assert.deepEqual((await repos.getRepo(dev.id)).linked, []);
+  assert.equal((await boards.getBoard(b1.id)).refs.length, 1, '组级那条还在');
 });
 
 test('bindTarget 带 note：绑定时一并写描述；重复绑定时补写描述', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
+  const b = await boards.createBoard({ name: 'g1' });
+  await boards.assignRepo({ id: dev.id, board: b.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
-  await ref.bindTarget({ id: r.id, repo: [{ id: dev.name, note: '首次绑定的描述' }] });
-  let got = await repos.getRepo(r.id);
-  assert.equal(got.linked[0].note, '首次绑定的描述');
+  await ref.bindTarget({ id: r.id, board: [{ id: b.name, note: '首次绑定的描述' }] });
+  let got = await boards.getBoard(b.id);
+  assert.equal(got.refs[0].note, '首次绑定的描述');
   // 已绑定：再给 note = 补写
-  await ref.bindTarget({ id: r.id, repo: [{ id: dev.name, note: '补充后的描述' }] });
-  got = await repos.getRepo(r.id);
-  assert.equal(got.linked.length, 1, '幂等不重复');
-  assert.equal(got.linked[0].note, '补充后的描述');
+  await ref.bindTarget({ id: r.id, board: [{ id: b.name, note: '补充后的描述' }] });
+  got = await boards.getBoard(b.id);
+  assert.equal(got.refs.length, 1, '幂等不重复');
+  assert.equal(got.refs[0].note, '补充后的描述');
 });
 
-test('refsForRepo 分层：第一层直接绑定，第二层按看板命名空间分组（带描述）', async () => {
+test('refReposOfRepo：仓库级直接绑定 + 所属组的组级绑定，两类并列', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const other = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
   const b1 = await boards.createBoard({ name: 'grp', desc: '领域一' });
+  const b2 = await boards.createBoard({ name: 'grp2' });
   await boards.assignRepo({ id: dev.id, board: b1.id });
+  await boards.assignRepo({ id: dev.id, board: b2.id });
+  await boards.assignRepo({ id: other.id, board: b2.id });
 
-  const direct = await repos.addRepo({ path: join(dir, 'rd'), name: 'rd', type: 'ref', remote: 'https://github.com/x/rd.git' });
   const groupRef = await repos.addRepo({ path: join(dir, 'rg'), name: 'rg', type: 'ref', remote: 'https://github.com/x/rg.git' });
   const stranger = await repos.addRepo({ path: join(dir, 'rs'), name: 'rs', type: 'ref', remote: 'https://github.com/x/rs.git' });
-  await ref.bindTarget({ id: direct.id, repo: dev.id });
-  await ref.setLinkNote({ id: direct.id, repo: dev.id, note: '它自己的参考' });
-  await ref.bindTarget({ id: groupRef.id, board: b1.id });
+  await ref.bindTarget({ id: groupRef.id, board: b1.id, repo: dev.id });
   await ref.setLinkNote({ id: groupRef.id, board: b1.id, note: '组级参考' });
-  await ref.bindTarget({ id: stranger.id, repo: other.id }); // 别人的，不该出现
+  await ref.setLinkNote({ id: groupRef.id, repo: dev.id, note: '仓库级参考' });
+  await ref.bindTarget({ id: stranger.id, board: b2.id });
 
   // 按 id / 名称 / 路径都能查
   for (const key of [dev.id, 'd1', join(dir, 'd1')]) {
-    const d = await ref.refsForRepo(key);
+    const d = await ref.refReposOfRepo(key);
     assert.equal(d.repo.id, dev.id);
-    assert.deepEqual(d.direct.map((x) => x.name), ['rd']);
-    assert.equal(d.direct[0].note, '它自己的参考');
-    assert.equal(d.boards.length, 1);
-    assert.equal(d.boards[0].name, 'grp');
-    assert.deepEqual(d.boards[0].refs.map((x) => x.name), ['rg']);
-    assert.equal(d.boards[0].refs[0].note, '组级参考');
-    assert.ok(!d.direct.some((x) => x.name === 'rs'));
-    assert.ok(!d.boards[0].refs.some((x) => x.name === 'rs'));
+    assert.deepEqual(d.direct.map((x) => x.name), ['rg']);
+    assert.equal(d.direct[0].note, '仓库级参考');
+    assert.deepEqual(d.boards.map((x) => x.name).sort(), ['grp', 'grp2']);
+    const g1 = d.boards.find((x) => x.name === 'grp');
+    assert.deepEqual(g1.refRepos.map((x) => x.name), ['rg']);
+    assert.equal(g1.refRepos[0].note, '组级参考');
+    const g2 = d.boards.find((x) => x.name === 'grp2');
+    assert.deepEqual(g2.refRepos.map((x) => x.name), ['rs']);
   }
+
+  // 无组仓库：仓库级直接绑定照样可见，组级为空
+  const orphan = await repos.addRepo({ path: join(dir, 'orphan'), name: 'orphan', key: 'local/orphan' });
+  await ref.bindTarget({ id: groupRef.id, repo: [{ id: 'local/orphan', note: '无组直绑' }] });
+  const od = await ref.refReposOfRepo(orphan.id);
+  assert.deepEqual(od.boards, []);
+  assert.deepEqual(od.direct.map((x) => x.name), ['rg']);
+  assert.equal(od.direct[0].note, '无组直绑');
+  // checkRefs 把仓库级绑定归到对应 ref 的 repos
+  const c = await ref.checkRefs();
+  const rg = c.refRepos.find((x) => x.name === 'rg');
+  assert.deepEqual(rg.repos.map((x) => x.name).sort(), ['d1', 'orphan']);
+
   // 不存在的仓库显式报错
-  await assert.rejects(() => ref.refsForRepo('nope'), /不存在/);
+  await assert.rejects(() => ref.refReposOfRepo('nope'), /不存在/);
 });
 
-test('refsForBoard：组级绑定优先带命名空间描述', async () => {
+test('refReposOfBoard：只读组上的绑定（带组级描述）', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const b1 = await boards.createBoard({ name: 'grp' });
   await boards.assignRepo({ id: dev.id, board: b1.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
-  await ref.bindTarget({ id: r.id, board: b1.id, repo: dev.id });
+  await ref.bindTarget({ id: r.id, board: b1.id });
   await ref.setLinkNote({ id: r.id, board: b1.id, note: '组级描述' });
-  await ref.setLinkNote({ id: r.id, repo: dev.id, note: '仓库级描述' });
 
-  const d = await ref.refsForBoard(b1.id);
-  assert.equal(d.refs.length, 1);
-  assert.equal(d.refs[0].note, '组级描述'); // 组级优先
-  assert.equal(d.refs[0].via.length, 2); // 两条路都标出
+  const d = await ref.refReposOfBoard(b1.id);
+  assert.equal(d.refRepos.length, 1);
+  assert.equal(d.refRepos[0].note, '组级描述');
+  assert.equal(d.refRepos[0].via, undefined, '没有继承/多路径概念');
 });
 
 test('导出/导入携带绑定描述（link note）', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'dev'), name: 'dev', remote: 'git@github.com:me/dev.git' });
+  const b = await boards.createBoard({ name: 'g1' });
+  await boards.assignRepo({ id: dev.id, board: b.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
-  await ref.bindTarget({ id: r.id, repo: [{ id: dev.id, note: '契约参考' }] });
+  await ref.bindTarget({ id: r.id, board: [{ id: b.id, note: '契约参考' }] });
 
   const d = await transfer.repoExport();
+  assert.equal(d.links[0].to[0].board, 'board/g1');
   assert.equal(d.links[0].to[0].note, '契约参考');
 
-  // 清空重导：描述随关系重建
+  // 清空重导：描述随组级关系重建
   await ref.bindTarget({ id: r.id, remove: true });
   const result = await transfer.repoImport({ json: JSON.stringify(d), clone: 'none' });
   assert.equal(result.links, 1);
-  const got = await repos.getRepo(r.id);
-  assert.equal(got.linked.find((l) => l.kind === 'repo').note, '契约参考');
+  const got = await boards.getBoard(b.id);
+  assert.equal(got.refs.find((x) => x.id === repos.deriveKey(r)).note, '契约参考');
+});
+
+// ─── 仓库级绑定补录（v3 快照 → 当前库）─────────────────────────────────
+
+test('repo ref backfill：从 v3 快照补录仓库级绑定（幂等、dry-run、不动组级、拒绝 v4 快照）', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { backfillRepoLinks } = await import('../../src/modules/repos/ref-backfill.js');
+  const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
+  const b = await boards.createBoard({ name: 'g1' });
+  await boards.assignRepo({ id: dev.id, board: b.id });
+  const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
+  const refKey = repos.deriveKey(r);
+  await ref.bindTarget({ id: r.id, board: b.id });
+  const beforeRefs = (await boards.getBoard(b.id)).refs;
+
+  const snap = join(dir, 'v3.db');
+  const db = new DatabaseSync(snap);
+  db.exec('CREATE TABLE repos (key TEXT PRIMARY KEY, type TEXT NOT NULL, ext TEXT, deleted_at INTEGER)');
+  db.exec('PRAGMA user_version = 3');
+  db.prepare('INSERT INTO repos (key, type, ext, deleted_at) VALUES (?, ?, ?, NULL)').run(
+    'local/d1',
+    'repo',
+    JSON.stringify({ ext_legacy_type: 'dev', ext_linked: [{ kind: 'ref', id: refKey, note: '快照里的描述' }] })
+  );
+  db.close();
+
+  const dry = await backfillRepoLinks({ from: snap, dryRun: true });
+  assert.equal(dry.counts.added, 1);
+  assert.deepEqual((await repos.getRepo(dev.id)).linked, [], 'dry-run 不落盘');
+
+  const first = await backfillRepoLinks({ from: snap });
+  assert.equal(first.counts.before, 0);
+  assert.equal(first.counts.added, 1);
+  assert.equal(first.counts.after, 1);
+  assert.equal(first.groupRefs.before, first.groupRefs.after);
+  assert.deepEqual((await repos.getRepo(dev.id)).linked, [{ kind: 'ref', id: refKey, note: '快照里的描述' }]);
+  assert.deepEqual((await boards.getBoard(b.id)).refs, beforeRefs, '组级绑定原样不动');
+
+  const second = await backfillRepoLinks({ from: snap });
+  assert.equal(second.counts.added, 0, '幂等');
+  assert.equal(second.counts.already, 1);
+  assert.equal(second.counts.after, 1);
+
+  const snap4 = join(dir, 'v4.db');
+  const db4 = new DatabaseSync(snap4);
+  db4.exec('CREATE TABLE repos (key TEXT PRIMARY KEY, type TEXT NOT NULL, ext TEXT, deleted_at INTEGER)');
+  db4.exec('PRAGMA user_version = 4');
+  db4.close();
+  await assert.rejects(() => backfillRepoLinks({ from: snap4 }), /v4/);
 });

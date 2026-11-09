@@ -80,13 +80,16 @@ test('组内描述按 key：note 落在 repoNotes[key] 上', async () => {
   assert.equal(got.repos[0].note, '契约方');
 });
 
-test('绑定关系按 key：ref 侧记目标 key，dev 侧记反向 key', async () => {
+test('绑定关系按 key：参考仓库可绑组（group_refs）也可绑单个仓库（ext.linked）', async () => {
+  const b = await boards.createBoard({ name: 'nx' });
   const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', remote: 'git@github.com:o/d1.git' });
+  await boards.assignRepo({ id: dev.id, board: b.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'git@github.com:o/r1.git' });
-  await ref.bindTarget({ id: r.id, repo: dev.id });
+  await ref.bindTarget({ id: r.id, repo: dev.id, board: b.id });
 
-  const refSide = await repos.getRepo(r.id);
-  assert.deepEqual(refSide.linked, [{ kind: 'repo', id: 'github.com/o/d1' }]);
+  const got = await boards.getBoard(b.id);
+  assert.deepEqual(got.refs, [{ id: 'github.com/o/r1' }]);
+  // 仓库级绑定独立存在（不折算成组）
   const devSide = await repos.getRepo(dev.id);
   assert.deepEqual(devSide.linked, [{ kind: 'ref', id: 'github.com/o/r1' }]);
 });
@@ -95,8 +98,8 @@ test('绑定到看板也按 key（board/<名称>）', async () => {
   const b = await boards.createBoard({ name: 'nx' });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'git@github.com:o/r1.git' });
   await ref.bindTarget({ id: r.id, board: b.id });
-  const got = await repos.getRepo(r.id);
-  assert.deepEqual(got.linked, [{ kind: 'board', id: 'board/nx' }]);
+  const got = await boards.getBoard(b.key);
+  assert.deepEqual(got.refs, [{ id: 'github.com/o/r1' }]);
 });
 
 // ─── 导入占位 ───────────────────────────────────────────────────────────

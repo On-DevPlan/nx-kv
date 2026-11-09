@@ -171,3 +171,76 @@ test('组只要有一项真内容就照给：仅成员带描述也算', () => {
   assert.notEqual(ctx.group, null);
   assert.match(renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx), /- p：干活的/);
 });
+
+// #86：参考仓库（repos 里 type=ref，不是文档库 refs）——交付只给
+// 「本仓库直接绑定 ∪ 本次任务所属组」的去重并集，不给无关组；一条都没有时整段不出现。
+const REF_REPO_CTX = {
+  repo: {
+    name: 'alpha',
+    key: 'local/alpha',
+    intro: { body: 'intro', path: 'C:/docs/repo/alpha.md' },
+    docLinks: [],
+    refRepos: [
+      { key: 'github.com/x/shared', name: 'shared', path: 'D:/refs/shared', note: '' },
+      { key: 'github.com/x/own', name: 'own', path: 'D:/refs/own', note: '本仓库专用' },
+    ],
+  },
+  groups: [
+    {
+      name: 'nx',
+      key: 'board/nx',
+      desc: 'nx 组',
+      intro: null,
+      note: '',
+      peers: [],
+      docLinks: [],
+      refRepos: [
+        { key: 'github.com/x/own', name: 'own', path: 'D:/refs/own', note: '组级也绑了' },
+        { key: 'github.com/x/grouped', name: 'grouped', path: 'D:/refs/grouped', note: '组级参考' },
+      ],
+    },
+    {
+      name: 'other',
+      key: 'board/other',
+      desc: '无关组',
+      intro: null,
+      note: '',
+      peers: [],
+      docLinks: [],
+      refRepos: [{ key: 'github.com/x/unrelated', name: 'unrelated', path: 'D:/refs/unrelated', note: '' }],
+    },
+  ],
+};
+
+test('参考仓库段：直接绑定 ∪ 组级绑定（去重、不含无关组、名字与路径齐全）', () => {
+  const frag = deliveryCtxOf(REF_REPO_CTX);
+  assert.equal(frag.repo.refRepos.length, 2);
+  assert.equal(frag.group.refRepos.length, 2);
+  assert.deepEqual(frag.refRepos.list.map((x) => x.name), ['shared', 'own', 'grouped'], '去重并集，本仓库在前');
+  assert.equal(frag.refRepos.count, 3);
+
+  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, buildDeliveryCtx({ task: { id: 9, text: 'x' }, groupCtx: REF_REPO_CTX }));
+  assert.match(out, /参考仓库（可直接读取，共 3 个）：/);
+  const refLines = out.split('\n').filter((l) => /^ {2}- .*（D:\/refs\//.test(l));
+  assert.deepEqual(refLines.map((l) => l.match(/^ {2}- ([^（]+)/)[1]), ['shared', 'own', 'grouped']);
+  assert.match(out, /- own（D:\/refs\/own）/);
+  assert.match(out, /组级也绑了|本仓库专用/, '去重后保留一条描述');
+  assert.doesNotMatch(out, /unrelated/, '无关组的参考仓库不出现');
+});
+
+test('参考仓库段：没有任何绑定时整段不出现', () => {
+  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, buildDeliveryCtx({ task: { id: 10, text: 'x' }, groupCtx: GROUP_CTX }));
+  assert.doesNotMatch(out, /参考仓库（可直接读取/);
+  assert.equal(deliveryCtxOf(GROUP_CTX).refRepos.count, 0);
+});
+
+test('参考仓库段：仓库没有项目介绍也照给（repo 主段仍按 intro 收敛）', () => {
+  const ctx = {
+    repo: { name: 'bare', key: 'local/bare', refRepos: [{ key: 'k', name: 'r1', path: 'D:/refs/r1', note: '' }] },
+    groups: [],
+  };
+  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, buildDeliveryCtx({ task: { id: 11, text: 'x' }, groupCtx: ctx }));
+  assert.doesNotMatch(out, /〔项目介绍/, '没有 intro 不渲染项目介绍段');
+  assert.match(out, /参考仓库（可直接读取，共 1 个）：/);
+  assert.match(out, /- r1（D:\/refs\/r1）/);
+});

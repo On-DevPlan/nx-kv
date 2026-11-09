@@ -103,6 +103,8 @@ export async function listBoards() {
       docRel: b.doc?.rel || boardDocRel(b.name),
       docPath: b.doc?.path || '',
       docLinks: Array.isArray(b.docLinks) ? b.docLinks : [],
+      // 组级参考仓库（v4）：组内所有仓库共享
+      refs: Array.isArray(b.refs) ? b.refs : [],
       repos: reposOf(b),
     })),
     // 未分组 = 有登记但不在任何看板里（占位成员不算——它们在组里）
@@ -144,6 +146,7 @@ export async function getBoard(idOrKey) {
     introExtras: (set.extras || []).map((d) => ({ ...introRefOut(d), name: d.name || '' })),
     introCount: set.count,
     docLinks: Array.isArray(b.docLinks) ? b.docLinks : [],
+    refs: Array.isArray(b.refs) ? b.refs : [],
     repos: membersOf(s, b),
   };
 }
@@ -222,7 +225,8 @@ function repoKeyIn(s, idOrKey) {
 }
 
 // 删看板 = 摘容器：repoKeys 随之消失，里面的仓库自动回未分组（登记不动）。
-// 参考仓库对它的绑定（linked 里 kind:'board'）同步摘除——看板没了，绑定就是死链。
+// 组级参考绑定（group_refs）由 persistStore 随组行删除一并清掉；这里同时摘掉
+// 旧数据里 ref 侧 kind:'board' 的残留（迁移后的库应为空）。
 export async function removeBoard(idOrKey) {
   // 删组前置检查：topics.group_key 是 RESTRICT —— 挂着队列上下文的组删不掉，
   // 先把那些队列处理掉（改上下文或删除）再删。与其等 FK 报「外键违规」，

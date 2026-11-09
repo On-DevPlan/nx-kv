@@ -501,16 +501,11 @@
   transition:none!important;
 }
 /* 占位提示：聚焦即隐（原先要打字才消失，提示文字压在光标底下）。
-   !important：全局 input/textarea 的 placeholder 规则更晚加载，不加赢不了它。
-   指引文案改挂在**视图态的空块**上（见下方 .mdw-lp-gap::after）——
-   聚焦编辑时干净，失焦时仍有提示，不至于把指引整个弄丢。 */
+   !important：全局 input/textarea 的 placeholder 规则更晚加载，不加赢不了它。 */
 .mdw-lp-src::placeholder{color:var(--faint,#A9AEB4)}
 .mdw-lp textarea.mdw-lp-src:focus::placeholder{color:transparent!important}
-/* 空块（视图态）的操作指引：点进编辑态就换textarea，不再需要占位文字 */
-.mdw-lp-blocks:not(.is-empty-doc) .mdw-lp-block.is-empty .mdw-lp-gap::after{
-  content:"输入… Enter 新块 · 行首 / 命令";
-  color:var(--faint,#A9AEB4);font-size:var(--mdw-lp-body-size,13.5px);
-}
+/* 空块（视图态）不再渲染「输入…」提示语（#151：正文里的空行挂着一句常驻
+   提示太吵——空块保留 1.6em 最小高度可点击，编辑态 textarea 的 placeholder 仍在） */
 /* 划选：不改文字色、不抬行高；淡绿底仅标范围，光标仍是强调色 */
 .mdw-lp ::selection,
 .mdw-lp textarea.mdw-lp-src::selection{

@@ -9,9 +9,9 @@
 // 归档的目标仍可被 show/check 查到（agent 最后一轮要拿到 reached:true + prompt
 // 原文才能收尾）；超过保留期的「自动失效」才是真删（连 goal_checks 级联）。
 //
-// goal_checks.summary 一列装两条内容：存 JSON `{summary, progress}` ——
-// schema 没给 progress 单独的列（§12.2 审计裁决），而交付文本要它；统一 JSON
-// 编码避免「分隔符被用户撞上」的歧义。人读稍差，机器解析零歧义。
+// goal_checks.summary 一列一条内容：当轮总结（纯文本）。
+// 旧库可能存过 JSON `{summary, progress}` 编码（progress 已废）——读取侧做
+// 兼容解析（见 timegoal-task-store.getTaskGoalLog），新写入一律纯文本。
 import { db, txw } from './open.js';
 import { nowMs } from '../../../core/db/time.js';
 
@@ -109,7 +109,7 @@ export function purgeGoal(conn, goalId) {
 }
 
 /** 追加一条 check 流水（只增不改）。@returns {{id: number}} */
-export function appendCheck(conn, { goalId, atMs, elapsedSec, remainingSec, overtimeSec, reached, summary, progress }) {
+export function appendCheck(conn, { goalId, atMs, elapsedSec, remainingSec, overtimeSec, reached, summary }) {
   const r = conn.run(
     `INSERT INTO goal_checks (goal_id, at, elapsed_sec, remaining_sec, overtime_sec, reached, summary)
      VALUES (:g, :at, :elapsed, :remaining, :overtime, :reached, :summary)`,
@@ -120,8 +120,7 @@ export function appendCheck(conn, { goalId, atMs, elapsedSec, remainingSec, over
       remaining: Number(remainingSec) || 0,
       overtime: Number(overtimeSec) || 0,
       reached: reached ? 1 : 0,
-      // progress 没有独立的列（schema §12.2）→ 与 summary 合一，统一 JSON 编码
-      summary: JSON.stringify({ summary: String(summary || ''), progress: String(progress || '') }),
+      summary: String(summary || ''),
     }
   );
   return { id: Number(r.lastInsertRowid) };

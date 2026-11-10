@@ -258,11 +258,11 @@ nx-kv timegoal set --cwd "D:\DevProjects\my\github\nx-kv" --duration 2h \
   --prompt "规划计划，然后完成这个任务；计划的最后一个动作是再次调用 localtask wait 收尾本轮。"
 
 nx-kv timegoal show   --cwd "<dir>"          # 只查，不算时间
-nx-kv timegoal check  --cwd "<dir>" --summary "本轮现状" --progress "完成度/下一步"
+nx-kv timegoal check  --cwd "<dir>" --summary "本轮现状"
 nx-kv timegoal update --cwd "<dir>" --prompt "新提示词"   # 保起点，只换提示词
 nx-kv timegoal clear  --cwd "<dir>"
 nx-kv timegoal list                            # 所有有 timegoal 的目录（按截止升序）
-nx-kv timegoal log   --cwd "<dir>"            # 历次 check 的现状 + 完成度
+nx-kv timegoal log   --cwd "<dir>"            # 历次 check 的现状
 nx-kv timegoal prune                          # 清掉已到点/已归档的目标
 ```
 
@@ -271,7 +271,7 @@ nx-kv timegoal prune                          # 清掉已到点/已归档的目�
 ### 4.3 timegoal 与完成的门禁
 
 ```bash
-nx-kv timegoal check --task task:<topicKey>:<taskId> --summary "..." --progress "..."
+nx-kv timegoal check --task task:<topicKey>:<taskId> --summary "..."
 # → reached:true 才允许：
 nx-kv localtask done --id <id> --summary "<完成总结>"
 ```
@@ -399,7 +399,7 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
     - nx-rp：（无组内描述）
   〔时间目标「…」〕……
   本任务带时间目标（领取即计时，持续 30 分钟）。
-  - 每轮推进先执行：nx-kv timegoal check --task task:<topicKey>:<id> --summary "…" --progress "…"
+  - 每轮推进先执行：nx-kv timegoal check --task task:<topicKey>:<id> --summary "…"
   - 时间未到不得标记完成……
 ```
 
@@ -485,14 +485,14 @@ nx-kv localtask add "# 任务标题
   --summary "发布时的现状"
 
 # ── 领取 → 推进 → 完成 ─────────────────────────────────
-nx-kv localtask get --cwd "D:\DevProjects\my\github\nx-kv" --summary "现状"
-nx-kv timegoal check --task task:<topicKey>:<id> --summary "本轮现状" --progress "下一步"
-nx-kv localtask done --id <id> --summary "完成总结" --progress "完成度/下一步"
+nx-kv localtask get --cwd "D:\DevProjects\my\github\nx-kv"
+nx-kv timegoal check --task task:<topicKey>:<id> --summary "本轮现状"
+nx-kv localtask done --id <id> --summary "完成总结"
 
 # ── 修改反馈 → 重开 → 再领 ─────────────────────────────
 nx-kv localtask reopen --id <id> --text "# 任务标题
 改过的正文"
-nx-kv localtask get --cwd "D:\DevProjects\my\github\nx-kv" --summary "继续"
+nx-kv localtask get --cwd "D:\DevProjects\my\github\nx-kv"
 ```
 
 ### 8.2 项目口径
@@ -513,8 +513,8 @@ nx-kv localtask add "# 任务标题
   --summary "发布时的现状"
 
 # ── 领取 → 推进 → 完成 ─────────────────────────────────
-nx-kv localtask get --cwd "D:\DevProjects\my\github\nx-kv" --summary "现状"
-nx-kv timegoal check --task task:<topicKey>:<id> --summary "本轮现状" --progress "下一步"
+nx-kv localtask get --cwd "D:\DevProjects\my\github\nx-kv"
+nx-kv timegoal check --task task:<topicKey>:<id> --summary "本轮现状"
 nx-kv localtask done --id <id> --summary "完成总结"
 
 # ── 需要全量上下文时（项目介绍 + 组介绍 + 组内描述 + 参考仓库）──

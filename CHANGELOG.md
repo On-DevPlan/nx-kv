@@ -2,6 +2,26 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.46.0] - 2026-11-10 progress 参数彻底退役（#92）
+
+### Removed
+
+- **`localtask done --progress`**：flag 彻底删除（0.31.x 起已废弃不生效）——done 只携带
+  `--summary`，完成总结就是本轮终态。
+- **`localtask get --summary`**：废弃占位 flag 删除——get 就是单纯的领取语义，不收任何现状。
+- **`timegoal check --progress`**：参数语义废除——check 只要求 `--summary`（当轮现状），
+  日志每轮只记现状 + 剩余时间；CLI 回显、`timegoal log` / `localtask timegoal-log` 输出、
+  任务级 goal 交付模板与 doneguard 默认文案同步去掉 progress 段。
+- **存储写入简化**：任务级 `goal_checks.summary` 列改为纯文本（旧库 JSON `{summary, progress}`
+  编码在读取侧兼容解析，web 任务页 check 标签的历史 progress 行仍可显示，新行不再产生）；
+  目录级 timegoal blob 的 check 流水同样不再写入 progress 字段（历史字段原样透出）。
+
+### Docs
+
+- `assets/kv-get`（SKILL.md / timegoal / timegoal-workflow）、`README`、
+  `docs/project&projectsCli.md`：全部 check/done 命令示例去掉 `--progress`；
+- 单测：`timegoal.test.mjs`、`taskgoal.test.mjs` 按「check 只要 summary」更新断言。
+
 ## [0.45.1] - 2026-11-10 残留 -shm 打开自愈 + 打开失败错误指路
 
 ### Fixed

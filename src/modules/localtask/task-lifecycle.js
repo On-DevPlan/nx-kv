@@ -365,8 +365,8 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
       };
     }
     if (st.hasGoal) {
-      // #171：done 不再收 --progress（面板上没有对应输入界面）——日志只留完成总结
-      const rec = await recordTaskCheck({ topicKey: key, taskId: want, summary, progress: '完成' });
+      // #92：done 只携带 summary——日志最终一条 = 完成总结（progress 是伪概念）
+      const rec = await recordTaskCheck({ topicKey: key, taskId: want, summary });
       goal = { recorded: rec.recorded, reached: true, checkedAt: rec.checkedAt };
     } else {
       // goal 已被保留期清理（任务拖了 7 天以上才标完成）→ 放行 + 说明：

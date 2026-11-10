@@ -73,7 +73,6 @@ function renderCheck(d) {
     `  状态：${status}`,
     `  截止：${d.deadline}（now=${d.now}）`,
     `  现状：${d.summary}`,
-    `  完成度 / 下一步：${d.progress}`,
     `  日志：本目录已记录 ${d.logCount} 次检查（${d.checkedAt}）`,
     `  本轮提示词（${d.promptRendered ? '实时渲染' : 'store 原文'}）：`,
     prompt,
@@ -183,18 +182,17 @@ export default {
       cli: ['timegoal', 'check'],
       http: ['GET', '/api/timegoals/check'],
       summary:
-        '时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary 与完成度/下一步 --progress',
+        '时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary',
       flags: {
         cwd: { type: 'string', hint: '工作目录（与 --task 二选一）' },
         task: { type: 'string', hint: '任务级 goal key（task:<topicKey>:<taskId>；带时长任务领取时自带）' },
         summary: { type: 'string', required: true, hint: '当前现状（每次 check 记录到日志，≤2000 字）' },
-        progress: { type: 'string', required: true, hint: '完成度/本轮成果/下一步（写入日志，≤2000 字）' },
       },
       run: (ctx) => {
         if (!ctx.cwd && !ctx.task) throw badInput('请给 --cwd <工作目录> 或 --task <任务goal key>');
         return ctx.task
-          ? service.checkGoalByKey(ctx.task, { summary: ctx.summary, progress: ctx.progress })
-          : service.checkTimegoal({ cwd: ctx.cwd, summary: ctx.summary, progress: ctx.progress });
+          ? service.checkGoalByKey(ctx.task, { summary: ctx.summary })
+          : service.checkTimegoal({ cwd: ctx.cwd, summary: ctx.summary });
       },
       render: renderCheck,
     },
@@ -219,7 +217,7 @@ export default {
       id: 'timegoal.log',
       cli: ['timegoal', 'log'],
       http: ['GET', '/api/timegoals/log'],
-      summary: '查看本目录 timegoal 的检查日志（每轮 check 的现状 + 完成度）',
+      summary: '查看本目录 timegoal 的检查日志（每轮 check 的现状）',
       flags: { cwd: CWD },
       run: (ctx) => service.getTimegoalLog({ cwd: ctx.cwd }),
       render: (d) => {
@@ -232,7 +230,6 @@ export default {
         for (const e of d.entries) {
           lines.push(`  ${e.checkedAt}  ${e.reached ? '已到点' : `剩 ${fmtDur(e.remainingSec)}`}`);
           lines.push(`      现状：${e.summary}`);
-          lines.push(`      下一步：${e.progress}`);
         }
         return lines.join('\n');
       },

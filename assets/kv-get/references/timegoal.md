@@ -45,7 +45,7 @@ nx-kv timegoal set --cwd "$PWD" \
 
 ```
 每轮开始：
-  nx-kv timegoal check --cwd "$PWD" --summary "<当前现状>" --progress "<完成度/下一步>" --json
+  nx-kv timegoal check --cwd "$PWD" --summary "<当前现状>" --json
     → { remainingSec, prompt, ... }
     → 把 prompt 字段当作本轮根指令（不要从对话历史里重新拼）
 
@@ -108,14 +108,14 @@ nx-kv timegoal set --cwd "$PWD" \
 nx-kv timegoal set    --cwd <dir> --duration <5h|10800> --prompt "<...>"  # 设/换（新起点）
 nx-kv timegoal update --cwd <dir> --prompt "<新版>" [--duration <5h|秒>] # 改提示词/时长（保起点）
 nx-kv timegoal show   --cwd <dir>                                   # 仅查（不算时间）
-nx-kv timegoal check  --cwd <dir> --summary "<现状>" --progress "<完成度/下一步>"  # 算时间 + 回显 prompt + 写一条日志
+nx-kv timegoal check  --cwd <dir> --summary "<现状>"  # 算时间 + 回显 prompt + 写一条日志
 nx-kv timegoal clear  --cwd <dir>                                   # 清空
 nx-kv timegoal list                                                   # 所有有 timegoal 的目录（到点的单列在归档区）
-nx-kv timegoal log    --cwd <dir>                                    # 回看每轮 check 的记录（现状/完成度/剩余）
+nx-kv timegoal log    --cwd <dir>                                    # 回看每轮 check 的记录（现状/剩余）
 ```
 
-> `check` **必须**带 `--summary` 与 `--progress`：每次检查都会往该目录的 timegoal
-> 日志里追加一条（现状 + 完成度 + 剩余时间）。缺参数会直接报
+> `check` **必须**带 `--summary`：每次检查都会往该目录的 timegoal
+> 日志里追加一条（现状 + 剩余时间）。缺参数会直接报
 > `缺少参数 --summary`——这是刻意设计的：没有现状的日志等于没记。
 > 日志只保留**最近 200 条**，长跑任务不会把 store 撑爆。
 
@@ -154,7 +154,7 @@ nx-kv timegoal log    --cwd <dir>                                    # 回看每
 - **两种 timegoal**：目录级（`--cwd`，与目录一对一）与**任务级**（`--task
   task:<topicKey>:<taskId>`，发布时 `localtask add --duration 2h` 随任务携带，
   **领取即计时**）。任务级的 goal key 会随任务交付的 instruction 一起给你，
-  直接照抄执行即可；`timegoal check --task <key> --summary … --progress …` 记日志，
+  直接照抄执行即可；`timegoal check --task <key> --summary …` 记日志，
   未到点 `localtask done` 会拒绝标记完成。
 - 不阻塞任何东西：可以同时跑人机接力、派任务给别的 agent、外部 cron
 - 不需要登录 KV 后端：纯本机

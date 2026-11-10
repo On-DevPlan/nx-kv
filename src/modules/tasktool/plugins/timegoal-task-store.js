@@ -4,7 +4,7 @@
 // 见 localtask/repo/goals.js）。任务级 goal 与**单条任务**一对一；
 // 起点 = **领取时刻**（localtask 领取路径调 startTaskGoal 时传入 consumedAt）。
 //
-// goal_checks 行的 progress 与 summary 合存在同一列（JSON 编码，见 goals.js）。
+// goal_checks 行的 summary 存当轮总结（纯文本；旧库 JSON 编码在读取侧兼容，见 goals.js）。
 import { badInput } from '../../../core/errors.js';
 import { tx } from '../../../core/db/index.js';
 import { db as ltDb } from '../../localtask/repo/open.js';
@@ -151,11 +151,10 @@ export async function showGoalByKey(rawKey) {
 }
 
 /** 任务维度的最终 check（完成动作自动记录一条日志——「结束必须 check」的记录器语义）。 */
-export async function checkGoalByKey(rawKey, { summary: rawSummary, progress: rawProgress } = {}) {
+export async function checkGoalByKey(rawKey, { summary: rawSummary } = {}) {
   const key = String(rawKey || '').trim();
   if (!key) throw badInput('请给 --cwd <工作目录> 或 --task <任务goal key>');
   const summary = normalizeLogField(rawSummary, 'summary', 2000);
-  const progress = normalizeLogField(rawProgress, 'progress', 2000);
   const parsed = parseTaskGoalKey(key);
   if (!parsed) throw badInput('goal key 不合法（应为 task:<topicKey>:<seq>）: ' + key);
   return tx(
@@ -170,21 +169,20 @@ export async function checkGoalByKey(rawKey, { summary: rawSummary, progress: ra
           overtimeSec: 0,
           prompt: '',
           summary,
-          progress,
           key,
           name: key,
           cwd: '',
           now: stampNow(new Date(nowMs())),
         };
       }
-      return applyGoalCheck(conn, row, parsed, summary, progress);
+      return applyGoalCheck(conn, row, parsed, summary);
     },
     { db: ltDb(), mode: 'IMMEDIATE' }
   );
 }
 
 /** 任务级 check 的共同实现：写一条 goal_checks 流水 + 组装返回。 */
-function applyGoalCheck(conn, row, parsed, summary, progress) {
+function applyGoalCheck(conn, row, parsed, summary) {
   const at = nowMs();
   const goal = goalRowToGoal(row);
   const result = evalTimegoal(goal, at);
@@ -202,7 +200,6 @@ function applyGoalCheck(conn, row, parsed, summary, progress) {
     overtimeSec: result.overtimeSec,
     reached: result.reached,
     summary,
-    progress,
   });
   const totalChecks = goalsRepo.countChecks(Number(row.id), conn);
   // 每轮 check 同源渲染（任务 #87）：读任务**当下**的原文与附加要求，
@@ -232,7 +229,7 @@ function applyGoalCheck(conn, row, parsed, summary, progress) {
     startedAt: row.started_at,
     deadline: row.deadline,
     nowMs: at,
-    check: { summary, progress, at: checkedAt, count: totalChecks },
+    check: { summary, at: checkedAt, count: totalChecks },
   });
   const promptTemplate = String(row.prompt || '');
   return {
@@ -242,7 +239,6 @@ function applyGoalCheck(conn, row, parsed, summary, progress) {
     task: { id: taskSeq, text: String((taskRow && taskRow.body) || '') },
     goal: ctx.goal,
     summary,
-    progress,
     checkedAt,
     startedAt: goal.startedAt,
     deadline: goal.deadline,
@@ -257,15 +253,14 @@ function applyGoalCheck(conn, row, parsed, summary, progress) {
   };
 }
 
-export async function recordTaskCheck({ topicKey, taskId: seq, summary, progress } = {}) {
+export async function recordTaskCheck({ topicKey, taskId: seq, summary } = {}) {
   const sum = normalizeLogField(summary, 'summary', 2000);
-  const prog = normalizeLogField(progress, 'progress', 2000);
   if (!topicKey || seq === undefined || seq === null) return { recorded: false, reason: 'no_goal' };
   return tx(
     (conn) => {
       const row = goalsRepo.getGoalRowByTaskKey(topicKey, seq, conn);
       if (!row) return { recorded: false, reason: 'no_goal' };
-      const payload = applyGoalCheck(conn, row, { topicKey: String(topicKey), seq: Number(seq) }, sum, prog);
+      const payload = applyGoalCheck(conn, row, { topicKey: String(topicKey), seq: Number(seq) }, sum);
       return { recorded: true, reached: payload.reached, checkedAt: payload.checkedAt };
     },
     { db: ltDb(), mode: 'IMMEDIATE' }
@@ -303,6 +298,8 @@ export async function getTaskGoalLog({ topicKey, taskId: seq } = {}) {
       let progress = '';
       try {
         const v = JSON.parse(String(c.summary || '{}'));
+        // 旧库的 summary 列存过 JSON `{summary, progress}` 编码——progress 参数
+        // 已废（不再写入），但历史行原样读出，web check 标签仍可显示
         if (v && typeof v === 'object') {
           summary = String(v.summary || '');
           progress = String(v.progress || '');

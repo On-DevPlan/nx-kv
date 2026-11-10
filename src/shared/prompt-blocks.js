@@ -173,7 +173,7 @@ export const DEFAULT_DONEGUARD_TEMPLATE = [
   '{{#if goal.blocked}}',
   '〔完成门禁 · 时间未到〕任务 #{{task.id}} 还不能 done：持续 {{goal.durationHuman}}，已过 {{goal.elapsedHuman}}（{{percent goal.elapsedSec goal.durationSec}}%），剩余 {{goal.remainingHuman}}。',
   '- 现在可做：{{#if (gte (percent goal.elapsedSec goal.durationSec) 67)}}收尾整理（收敛改动 / 补验证 / 写清遗留），或派 sub agent 提出新的需求继续推进{{else}}继续推进主线，并派 sub agent 重新提出新的需求{{/if}}。',
-  '- 每轮推进先跑：nx-kv timegoal check --task {{goal.goalKey}} --summary "<本轮现状>" --progress "<进展/下一步>"',
+  '- 每轮推进先跑：nx-kv timegoal check --task {{goal.goalKey}} --summary "<本轮现状>"',
   '- 到点后再：nx-kv localtask done --id {{task.id}} --summary "<完成总结>"',
   '{{/if}}',
 ].join('\n');

@@ -51,8 +51,7 @@ export const lifecycleActions = [
       '领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填',
     flags: {
       cwd: CWD,
-      // #171：现状参数已取消——**保留 flag 只为不打断旧调用**（传了也不生效）
-      summary: { type: 'string', hint: '已废弃：当前现状不再收（面板上没有对应输入界面）' },
+      // #171/#92：现状参数彻底删除——get 就是单纯的领取语义，不收任何现状
       timeout: { type: 'number', hint: '阻塞上限（秒）；仅项目开启「持续 get」时有意义' },
       'no-open': { type: 'boolean', hint: '不自动打开浏览器（测试用）' },
       param: { type: 'array', hint: '外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取' },
@@ -163,8 +162,7 @@ export const lifecycleActions = [
       cwd: CWD,
       key: KEY,
       summary: { type: 'string', required: true, hint: '完成总结（记为本轮终态 + timegoal 日志）' },
-      // #171：进度参数已取消——保留 flag 只为不打断旧调用（传了也不生效）
-      progress: { type: 'string', hint: '已废弃：完成度/下一步不再收（面板上没有对应输入界面）' },
+      // #92：进度参数彻底删除——done 只携带 summary
     },
     run: (ctx) =>
       service.completeTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, summary: ctx.summary }),
@@ -186,7 +184,7 @@ export const lifecycleActions = [
     id: 'localtask.timegoalLog',
     cli: ['localtask', 'timegoal-log'],
     http: ['GET', '/api/localtasks/timegoal-log'],
-    summary: '查看任务级时间目标的每轮 check 记录（时间、已用/剩余、是否到点、当轮总结与进度）',
+    summary: '查看任务级时间目标的每轮 check 记录（时间、已用/剩余、是否到点、当轮总结）',
     flags: { id: { type: 'number', required: true, hint: '任务编号' }, cwd: CWD, key: KEY },
     run: async (ctx) => {
       const topicKey = ctx.key || service.normalizeCwd(ctx.cwd).key;
@@ -202,7 +200,6 @@ export const lifecycleActions = [
           `  R${i + 1}  ${e.checkedAt}  已用 ${e.elapsedSec}s · 剩余 ${e.remainingSec}s${e.reached ? ' · 已到点' : ''}`,
         );
         if (e.summary) lines.push(`      ${e.summary}`);
-        if (e.progress) lines.push(`      进度: ${e.progress}`);
       });
       return lines.join('\n');
     },

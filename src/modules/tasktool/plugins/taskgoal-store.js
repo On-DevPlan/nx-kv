@@ -9,7 +9,7 @@
 //      → 任务记录带 timegoal 声明 { duration, prompt }（时长人类写法，领取时才解析）
 //   2. 领取：交付时刻（buildTaskDelivery）调 ensureTaskGoal → **领取即起表**
 //      （起点 = consumedAt），并把 check 指令作为 goal.prompt 固化
-//   3. 推进：agent 每轮 `timegoal check --task <goalKey> --summary --progress`
+//   3. 推进：agent 每轮 `timegoal check --task <goalKey> --summary`
 //   4. 完成：`localtask done --id ...` —— **未到时间拒绝标记完成**，提示派
 //      sub agent 重新提出新的需求；到点自动记录最终 check
 //

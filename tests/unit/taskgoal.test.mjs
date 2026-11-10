@@ -76,7 +76,7 @@ test('add --duration：任务记录带 timegoal 声明；领取交付带 check �
   const tg = await import('../../src/modules/tasktool/timegoal.js');
   // T03：key 由完整 cwd 派生（topicKeyOf），与领取时 ensureTaskGoal 的 key 同源
   const key = tg.taskGoalKey(localtask.normalizeCwd(cwd).key, 1);
-  const chk = await tg.checkGoalByKey(key, { summary: '推进中', progress: '50%' });
+  const chk = await tg.checkGoalByKey(key, { summary: '推进中' });
   assert.equal(chk.hasGoal, true);
   assert.equal(chk.reached, false);
   // #87：check 返回对象带任务实时原文，prompt 按当下 ctx 同源渲染（占位符不残留）
@@ -89,7 +89,7 @@ test('add --duration：任务记录带 timegoal 声明；领取交付带 check �
 
   // 到点（拨回过去）→ done 放行 + 最终 check 记录 + completedAt
   await retime();
-  const done2 = await localtask.completeTask({ cwd, id: 1, summary: '真的完成了', progress: '100%' });
+  const done2 = await localtask.completeTask({ cwd, id: 1, summary: '真的完成了' });
   assert.equal(done2.status, 'ok');
   assert.ok(done2.task.completedAt);
   assert.equal(done2.goal.recorded, true);

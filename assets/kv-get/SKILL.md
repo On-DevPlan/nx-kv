@@ -44,7 +44,7 @@ nx-kv localtask get --json
 **自动起表**，交付文本里带一条固定指令：
 
 ```bash
-nx-kv timegoal check --task task:<topicKey>:<taskId> --summary "<本轮现状>" --progress "<进展/下一步>"
+nx-kv timegoal check --task task:<topicKey>:<taskId> --summary "<本轮现状>"
 ```
 
 每轮推进先跑一次 check（它会原文回显时间目标提示词，防长对话漂移）。

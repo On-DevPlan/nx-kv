@@ -231,7 +231,7 @@ nx-kv timegoal set --cwd "$PWD" --duration 10800 --prompt "<完整全局提示�
 nx-kv timegoal set --cwd "$PWD" --duration 5h --prompt "<完整全局提示词>" --json
 
 # 每轮调一次：算出还剩多少时间，并把提示词【原文】回显给你
-nx-kv timegoal check --cwd "$PWD" --summary "<当前现状>" --progress "<完成度/下一步>" --json
+nx-kv timegoal check --cwd "$PWD" --summary "<当前现状>" --json
 #   → { reached:false, remainingSec:10780, prompt:"<完整提示词原文>", deadline, ... }
 
 # 提示词要改（agent 自我迭代 / 用户在面板上改）——只换提示词，保住计时起点

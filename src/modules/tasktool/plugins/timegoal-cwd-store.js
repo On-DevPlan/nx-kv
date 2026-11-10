@@ -229,7 +229,7 @@ export async function showTimegoal({ cwd: rawCwd } = {}) {
  * check 的共同实现（队列级）：写一条流水 + 组装返回。
  * 日志先成功落库，再返回——「这轮 check 发生过」有据可查。
  */
-function applyCwdCheck(conn, blob, key, name, cwd, summary, progress) {
+function applyCwdCheck(conn, blob, key, name, cwd, summary) {
   const at = nowMs();
   if (!blob) {
     return {
@@ -240,7 +240,6 @@ function applyCwdCheck(conn, blob, key, name, cwd, summary, progress) {
       overtimeSec: 0,
       prompt: '',
       summary,
-      progress,
       key,
       name,
       cwd,
@@ -262,7 +261,6 @@ function applyCwdCheck(conn, blob, key, name, cwd, summary, progress) {
     overtimeSec: result.overtimeSec,
     reached: result.reached,
     summary,
-    progress,
   });
   blob.totalChecks = (Number(blob.totalChecks) || blob.checks.length - 1) + 1;
   writeCwdGoal(conn, blob, at);
@@ -271,7 +269,6 @@ function applyCwdCheck(conn, blob, key, name, cwd, summary, progress) {
     ...result,
     prompt: goal.prompt, // 永远原文回显，绝不拼接/裁剪
     summary,
-    progress,
     checkedAt: stampOf(at),
     startedAt: goal.startedAt,
     deadline: goal.deadline,
@@ -288,18 +285,17 @@ function applyCwdCheck(conn, blob, key, name, cwd, summary, progress) {
 
 /**
  * 时间运算 + 回显原 prompt，并追加一条状态日志。
- * - 每次有效 check 都要求调用方提供 `summary`（当前现状）与 `progress`
- *   （完成度/下一步），空值、缺值、超长都拒绝，保证日志有用且可比较。
+ * - 每次有效 check 都要求调用方提供 `summary`（当前现状），空值、缺值、超长都
+ *   拒绝，保证日志有用且可比较。
  * - 有 goal：日志先成功落库，再返回 reached/time/prompt 和本次日志记录。
- * - 无 goal：仍需要提交 summary/progress，但不写日志（没有目标就不该有 goal 日志）。
+ * - 无 goal：仍需要提交 summary，但不写日志（没有目标就不该有 goal 日志）。
  * `prompt` 永远从库原文回显 —— 不让 agent 在长对话里漂移。
  */
-export async function checkTimegoal({ cwd: rawCwd, summary: rawSummary, progress: rawProgress } = {}) {
+export async function checkTimegoal({ cwd: rawCwd, summary: rawSummary } = {}) {
   if (rawCwd === undefined || rawCwd === null || !String(rawCwd).trim()) {
     throw badInput('需要 --cwd "<工作目录>"');
   }
   const summary = normalizeLogField(rawSummary, 'summary', 2000);
-  const progress = normalizeLogField(rawProgress, 'progress', 2000);
   const { key, name, cwd } = normalizeCwd(rawCwd);
   // ⚠️ check 是**写路径**（每轮都要写一条流水），"自动失效"（超过保留期 → 整条删掉）
   // 在这里顺便落库。读路径（show / list / 面板的 /api/timegoals/all）刻意不写：
@@ -307,12 +303,12 @@ export async function checkTimegoal({ cwd: rawCwd, summary: rawSummary, progress
   recycleAllCwdGoals({ persist: true });
   return withCwdGoalDb((conn) => {
     const blob = readCwdGoal(conn, key);
-    return applyCwdCheck(conn, blob, key, name, cwd, summary, progress);
+    return applyCwdCheck(conn, blob, key, name, cwd, summary);
   });
 }
 
 /**
- * 读本目录 timegoal 的检查日志（每次 check 追加一条：现状 + 完成度）。
+ * 读本目录 timegoal 的检查日志（每次 check 追加一条：当轮现状）。
  * 这是 timegoal 的"历史"——回看每轮干了什么、剩多少时间。
  */
 export async function getTimegoalLog({ cwd: rawCwd } = {}) {
@@ -334,6 +330,7 @@ export async function getTimegoalLog({ cwd: rawCwd } = {}) {
       overtimeSec: Number(e.overtimeSec) || 0,
       reached: !!e.reached,
       summary: String(e.summary || ''),
+      // 历史 blob 可能带 progress 字段——参数已废不再写入，历史行原样透出
       progress: String(e.progress || ''),
     })),
     key,

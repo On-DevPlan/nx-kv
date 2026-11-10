@@ -43,10 +43,11 @@ function assembleStore(conn) {
   const repoRows = repo.repos.listRepoRows(conn);
   const groupRows = repo.repos.listGroupRows(conn);
   const members = repo.repos.listAllMembers(conn);
+  const groupRefs = repo.repos.listAllGroupRefs(conn);
   const store = {
     version: 2,
     repos: repoRows.map((row) => repoRowToStore(row)),
-    boards: groupRows.map((row) => groupRowToStore(row, members)),
+    boards: groupRows.map((row) => groupRowToStore(row, members, groupRefs)),
   };
   // v2 文档绑定归一：非法 DocRef 形状直接丢弃（ext 里的脏数据不炸读取）。
   normalizeDocRefs(store);
@@ -215,12 +216,18 @@ function persistStore(conn, store) {
     if (prior && prior !== row.key) repo.repos.renameRow(conn, prior, row.key, at);
     repo.repos.upsertRow(conn, row);
     repo.repos.replaceMembers(conn, row.key, row.members, at);
+    // 组级参考绑定：undefined = 调用方没碰这一维（保留库里现状），数组 = 整组重建。
+    // 读路径装配出来的 board 永远带 refs，所以常规写不会误清。
+    if (Array.isArray(b.refs)) repo.repos.replaceGroupRefs(conn, row.key, b.refs, at);
     seenGroupKeys.add(row.key);
   }
   for (const row of before) {
     const k = String(row.key);
     if (row.type !== 'group') continue;
-    if (!seenGroupKeys.has(k)) repo.repos.softDeleteRow(conn, k, at);
+    if (!seenGroupKeys.has(k)) {
+      repo.repos.clearGroupRefs(conn, k);
+      repo.repos.softDeleteRow(conn, k, at);
+    }
   }
 }
 

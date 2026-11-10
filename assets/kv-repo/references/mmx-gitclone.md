@@ -1,6 +1,6 @@
 ---
 name: kv-repo-mmx-gitrepo
-description: 深度搜索（mmx）并克隆开源项目为 nx-kv 的「参考仓库」——替代 mmx-research-gitclone 的散装流程（裸 git clone + .claude/www/git.remote 文本清单），落地为登记表：remote 为 key、统一存放 gitRepoRoot（用户自设非 C 盘目录）、可绑定到当前开发仓库或看板、可同步更新与完整性检查。当用户想要搜索技术资料、调研开源项目、查找最佳实践并克隆参考时触发。例如："搜索Flutter liquid glass实现并clone"、"调研某个技术的开源方案"、"找几个参考项目"。保留 mmx 的既有纪律：3-5 路并行深搜、最多 clone 2 个最有价值的项目、SSH 优先失败双向回退、--depth 1 浅克隆。
+description: 深度搜索（mmx）并克隆开源项目为 nx-kv 的「参考仓库」——替代 mmx-research-gitclone 的散装流程（裸 git clone + .claude/www/git.remote 文本清单），落地为登记表：remote 为 key、统一存放 gitRepoRoot（用户自设非 C 盘目录）、可绑定到当前开发仓库或项目组、可同步更新与完整性检查。当用户想要搜索技术资料、调研开源项目、查找最佳实践并克隆参考时触发。例如："搜索Flutter liquid glass实现并clone"、"调研某个技术的开源方案"、"找几个参考项目"。保留 mmx 的既有纪律：3-5 路并行深搜、最多 clone 2 个最有价值的项目、SSH 优先失败双向回退、--depth 1 浅克隆。
 ---
 
 # kv-repo-mmx-gitrepo — 搜索并克隆参考仓库（nx-kv 登记）
@@ -8,7 +8,7 @@ description: 深度搜索（mmx）并克隆开源项目为 nx-kv 的「参考仓
 与旧 mmx-research-gitclone 的区别只有**落地方式**：不再裸 `git clone` 到项目里的
 `.claude/repo/`、不再 append `.claude/www/git.remote` 文本清单。clone 改走
 `nx-kv repo ref clone`——落盘到统一的 gitRepoRoot、写进登记表（remote 为唯一 key）、
-顺手绑定到当前开发仓库或看板。换机/同步/查重/检查都由 nx-kv 接管。
+顺手绑定到当前开发仓库或项目组。换机/同步/查重/检查都由 nx-kv 接管。
 
 ## 前置（首次必查一次）
 
@@ -49,7 +49,7 @@ curl -s https://registry.npmjs.org/<pkg> | grep -o '"repository":{[^}]*}'   # np
 # 在开发仓库目录里跑（推荐）——自动绑定当前目录的开发仓库
 nx-kv repo ref clone <url> --desc "一句话：它参考什么"
 # 显式控制：
-nx-kv repo ref clone <url> --desc "…" --board <看板id> --bind <开发仓库id|路径|名称> --depth 1
+nx-kv repo ref clone <url> --desc "…" --board <项目组 id> --bind <开发仓库id|路径|名称> --depth 1
 # 只想登记、不自动绑当前仓库：
 nx-kv repo ref clone <url> --no-bind
 ```
@@ -72,7 +72,7 @@ check 全 ✓ 即完成；有 ✗ 按提示处理（目录缺失 → 重 clone�
 
 ```bash
 nx-kv repo ref sync --all         # 参考仓库批量更新（git pull --ff-only，冲突不自动 merge）
-nx-kv repo bind <ref> --repo <开发仓库> --board <看板id>   # 补绑/多绑
+nx-kv repo bind <ref> --repo <开发仓库> --board <项目组 id>   # 补绑/多绑
 nx-kv repo bind <ref> --remove --repo <开发仓库>           # 摘某条绑定
 ```
 
@@ -85,7 +85,7 @@ nx-kv repo bind <ref> --remove --repo <开发仓库>           # 摘某条绑定
 
 1. [项目名](github链接) - stars数
    - 主要功能 / 技术栈
-   - nx-kv 登记: <id>，绑定: <开发仓库/看板>
+   - nx-kv 登记: <id>，绑定: <开发仓库/项目组>
 
 2. …（最多 2 个）
 

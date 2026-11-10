@@ -8,6 +8,9 @@ description: KV 清单（todo）的收单与操作 —— 既用来**领取任�
 KV 清单（todo）的操作入口——领任务、确认意图、完成后回填、直接读写清单。
 随包自带本 skill（`nx-kv skill install` 一条命令装到本地 skill 目录）。
 
+> 术语：本 skill 里的「云端主题」指云端清单的 topic；本地任务那份叫「主题（topic）」。
+> 「项目组」的 CLI 命令名沿用 `board`；`refs` 是文档，参考仓库是 `refRepos`。完整词表见仓库 `docs/glossary.md`。
+
 ## 先判断你要做哪件事
 
 | 你要做的事 | 读哪份 |
@@ -132,6 +135,6 @@ $ nx-kv todo get --ref "旧记录" --topic fr    # 或按主题收窄
 | --- | --- | --- |
 | [[agent-workflow]] | 要**领任务/收单**时——按主题拉待办、读上下文、与用户对齐意图、回填结果的完整 SOP | references/agent-workflow.md |
 | [[todo-commands]] | 要**敲具体命令**、查退出码/数据结构/避坑时 | references/todo-commands.md |
-| [[repo-registry]] | 要**登记本机仓库 / 看仓库看板编排**时——`nx-kv repo ...` / `nx-kv board ...`（仓库上下文也用作本地任务的上下文） | references/repo-registry.md |
+| [[repo-registry]] | 要**登记本机仓库 / 查看项目组编排**时——`nx-kv repo ...` / `nx-kv board ...`（`board` 是项目组的命令别名；仓库上下文也用作本地任务的上下文） | references/repo-registry.md |
 
 **不要预先全读**：收单才读前者，查命令才读后者；平时它们不进上下文。

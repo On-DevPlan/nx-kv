@@ -33,6 +33,42 @@ export function listAllMembers(conn = db()) {
   return conn.all('SELECT group_key, repo_key, position, note FROM repo_group_members ORDER BY group_key, position, rowid');
 }
 
+// ─── 组级参考仓库绑定（v4）────────────────────────────────────────────
+
+/** 全部组级参考绑定（跨组；store 装配用）。 */
+export function listAllGroupRefs(conn = db()) {
+  return conn.all('SELECT group_key, ref_key, note, position FROM group_refs ORDER BY group_key, position, rowid');
+}
+
+/** 一个组的参考绑定（有序）。 */
+export function listGroupRefs(groupKey, conn = db()) {
+  return conn.all(
+    'SELECT ref_key, note, position FROM group_refs WHERE group_key = :g ORDER BY position, rowid',
+    { g: String(groupKey || '') }
+  );
+}
+
+/** 整组重建参考绑定（组内共享；ref/组不存在由外键拒绝）。 */
+export function replaceGroupRefs(conn, groupKey, refs, atMs) {
+  conn.run('DELETE FROM group_refs WHERE group_key = :g', { g: String(groupKey || '') });
+  const seen = new Set();
+  refs.forEach((ref, position) => {
+    const key = String(ref && ref.id ? ref.id : '');
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    conn.run(
+      `INSERT OR IGNORE INTO group_refs (group_key, ref_key, note, position, created_at)
+       VALUES (:g, :r, :n, :p, :at)`,
+      { g: String(groupKey || ''), r: key, n: String((ref && ref.note) || ''), p: position, at: atMs }
+    );
+  });
+}
+
+/** 清掉一个组的全部参考绑定（删组时用）。 */
+export function clearGroupRefs(conn, groupKey) {
+  conn.run('DELETE FROM group_refs WHERE group_key = :g', { g: String(groupKey || '') });
+}
+
 /** 一个组的成员行（有序）。 */
 export function listMembers(groupKey, conn = db()) {
   return conn.all(

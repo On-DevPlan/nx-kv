@@ -1,7 +1,8 @@
 // 参考仓库面板（独立弹窗，宽表）：克隆 / 绑定 / 同步 / 检查 / 存储根。
 //
-// 与开发仓库分表——主表只放 dev，行内「参考」列显示绑到它的 ref。
+// 与开发仓库分表——主表只放 dev，行内「参考」列显示绑定关系。
 // 每行：状态徽标 / 名称+描述 / 远程地址 / 绑定 chips / 操作。
+// 绑定两类并存、互不折算：组级（group_refs，组内共享）与仓库级（只绑这一个仓库）。
 // 绑定一律选项式（「绑定」弹窗里勾选），不手填字符串。
 // 做成弹窗：它是「隔一阵来维护一次」的东西，平铺会把开发仓库主表顶到两屏之外。
 import { useCallback, useEffect, useState } from 'react';
@@ -12,7 +13,10 @@ import { Modal } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
 import { DocsEntry } from './repo-table.jsx';
 
-export default function RefPanel({ refRepos, devRepos, boardList, checkOf, onClose, onSyncOne, onUnbind, onLinkNote, onDocs, onRowAct, reload }) {
+export default function RefPanel({
+  refRepos, devRepos, boardList, checkOf, refRepoBackLinks, refBindOpen, onRefBindOpen,
+  onClose, onSyncOne, onUnbind, onUnbindRepo, onLinkNote, onGoBind, onDocs, onRowAct, reload,
+}) {
   const guard = useGuard();
   const toast = useToast();
   const [settingInfo, setSettingInfo] = useState(null); // gitRepoRoot / gitDevRoot 当前值
@@ -22,9 +26,9 @@ export default function RefPanel({ refRepos, devRepos, boardList, checkOf, onClo
   const [cloneForm, setCloneForm] = useState({ url: '', name: '', desc: '', depth: '1' });
   // 选项式绑定：克隆时勾选目标（{repoId:true, boardId:true}）；绑定管理弹窗复用同一形状
   const [cloneTargets, setCloneTargets] = useState({});
-  // 绑定管理弹窗：目标 ref（checkbox 列表 = 全部 dev 仓库 + 全部看板）
+  // 绑定管理弹窗：目标 ref（checkbox 列表 = 全部组 + 全部开发仓库）
   const [bindFor, setBindFor] = useState(null); // ref 对象 | null
-  const [bindSel, setBindSel] = useState({}); // { 'repo:<id>': bool, 'board:<id>': bool }
+  const [bindSel, setBindSel] = useState({}); // { 'repo:<key>': bool, 'board:<key>': bool }
 
   const loadSetting = useCallback(async () => {
     setSettingInfo(await api('/api/setting').catch(() => null));
@@ -71,30 +75,53 @@ export default function RefPanel({ refRepos, devRepos, boardList, checkOf, onClo
     await reload.refCheck();
   });
 
-  // 绑定管理弹窗：打开时按该 ref 现有绑定勾选；保存 = 对比差异，加/摘各一批
+  // 绑定管理弹窗：参考仓库 ↔ 组 / 单个开发仓库（两类并存，互不折算）。
+  // 勾选 = 建立该维度绑定，取消 = 摘除；保存时对比差异。
+  const boardKeyOf = (b) => b.key || `board/${b.name}`;
   const openBind = (r) => {
     const sel = {};
-    for (const l of r.linked || []) sel[l.kind + ':' + l.id] = true;
+    for (const b of boardList) {
+      if ((b.refs || []).some((l) => l.id === r.key)) sel['board:' + boardKeyOf(b)] = true;
+    }
+    for (const d of devRepos) {
+      if ((d.linked || []).some((l) => l && l.kind === 'ref' && String(l.id) === r.key)) sel['repo:' + d.key] = true;
+    }
     setBindSel(sel);
     setBindFor(r);
   };
   const saveBind = () => guard(async () => {
     if (!bindFor) return;
-    const oldKeys = new Set((bindFor.linked || []).map((l) => l.kind + ':' + l.id));
+    const boardOf = (k) => boardList.find((b) => boardKeyOf(b) === k.slice('board:'.length));
+    const oldKeys = new Set([
+      ...boardList.filter((b) => (b.refs || []).some((l) => l.id === bindFor.key)).map((b) => 'board:' + boardKeyOf(b)),
+      ...devRepos
+        .filter((d) => (d.linked || []).some((l) => l && l.kind === 'ref' && String(l.id) === bindFor.key))
+        .map((d) => 'repo:' + d.key),
+    ]);
     const newKeys = new Set(Object.keys(bindSel).filter((k) => bindSel[k]));
     // 先加后摘（摘全部绑定也不会误删刚加的）
     for (const k of newKeys) {
       if (oldKeys.has(k)) continue;
-      const [kind, id] = k.split(':');
-      await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, [kind]: [id] } });
+      if (k.startsWith('board:')) {
+        const b = boardOf(k);
+        if (!b) continue;
+        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, board: [b.id] } });
+      } else {
+        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, repo: [k.slice('repo:'.length)] } });
+      }
     }
     for (const k of oldKeys) {
       if (newKeys.has(k)) continue;
-      const [kind, id] = k.split(':');
-      await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, [kind]: [id], remove: true } });
+      if (k.startsWith('board:')) {
+        const b = boardOf(k);
+        if (!b) continue;
+        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, board: [b.id], remove: true } });
+      } else {
+        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, repo: [k.slice('repo:'.length)], remove: true } });
+      }
     }
     setBindFor(null);
-    await Promise.all([reload.repos(), reload.refCheck()]);
+    await Promise.all([reload.repos(), reload.boards(), reload.refCheck()]);
   });
 
   return (
@@ -123,16 +150,22 @@ export default function RefPanel({ refRepos, devRepos, boardList, checkOf, onClo
               <th scope="col" style={{ width: '30px' }}></th>
               <th scope="col" style={{ width: '17%' }}>参考仓库</th>
               <th scope="col" style={{ width: '22%' }}>远程地址</th>
-              <th scope="col">绑定（组 / 仓库 · 点击写描述 · × 摘除）</th>
+              <th scope="col">绑定对象（仓库组 / 单独仓库 · 点击跳转）</th>
               <th scope="col" style={{ width: '220px' }}>操作</th>
             </tr>
           </thead>
           <tbody>
             {refRepos.map((r) => {
               const c = checkOf.get(r.id);
-              const links = r.linked || [];
+              // 绑定反查：组级（b.refs）与仓库级（refRepoBackLinks）并列，互不折算
+              const links = boardList
+                .map((b) => {
+                  const l = (b.refs || []).find((x) => x.id === r.key);
+                  return l ? { board: b, note: l.note || '' } : null;
+                })
+                .filter(Boolean);
               return (
-                <tr key={r.id}>
+                <tr key={r.id} id={'rp-refrepo-row-' + r.key}>
                   <td><span className={'rp-ref-dot' + (c ? (c.ok ? ' ok' : ' bad') : '')}
                     title={c ? (c.ok ? '检查通过' : c.issues.join('\n')) : '尚未检查'} /></td>
                   <td className="rp-ref-cell-name">
@@ -143,24 +176,87 @@ export default function RefPanel({ refRepos, devRepos, boardList, checkOf, onClo
                     <Copyable text={r.remote || ''} title="点击复制远程地址">{r.remote || '（无）'}</Copyable>
                   </td>
                   <td className="rp-ref-cell-links">
-                    {links.length ? links.map((l) => {
-                      // 绑定目标按 key 找（关系引用一律是 key）
-                      const label = l.kind === 'board'
-                        ? (boardList.find((b) => (b.key || `board/${b.name}`) === l.id)?.name || l.id)
-                        : (devRepos.find((d) => d.key === l.id)?.name || l.id);
+                    {(() => {
+                      const groups = links;
+                      const direct = refRepoBackLinks.get(r.key) || [];
+                      if (!groups.length && !direct.length) {
+                        return (
+                          <>
+                            <span className="muted rp-refs-none">未绑定</span>
+                            <Button small className="rp-ref-bind" onClick={() => openBind(r)}>绑定…</Button>
+                          </>
+                        );
+                      }
+                      const open = !!refBindOpen[r.id];
+                      const LIMIT = 4;
+                      const shownGroups = open ? groups : groups.slice(0, LIMIT);
+                      const shownDirect = open ? direct : direct.slice(0, LIMIT);
+                      const collapsible = groups.length > LIMIT || direct.length > LIMIT;
                       return (
-                        <span className="rp-link-chip" key={l.kind + ':' + l.id}>
-                          <button className="rp-link-chip-main" title={l.note ? `${l.note}\n点击编辑这条绑定描述` : `点击写「${r.name}」绑定到这里的描述`}
-                            onClick={() => onLinkNote(r, l.kind, l.id, label)}>
-                            <b>{l.kind === 'board' ? '组' : '仓'}</b> {label}
-                            {l.note ? <i className="rp-link-chip-note" title={l.note}>{l.note.split('\n')[0]}</i> : null}
-                          </button>
-                          <button className="rp-link-chip-x" title={`摘除这条绑定（不影响其它）`}
-                            onClick={() => onUnbind(r, l.kind, l.id)}>×</button>
-                        </span>
+                        <>
+                          {groups.length ? (
+                            <div className="rp-bind-row">
+                              <span className="rp-bind-label">仓库组</span>
+                              {shownGroups.map((l) => (
+                                <span className="rp-link-chip rp-link-chip-group" key={'board:' + l.board.id}>
+                                  <button className="rp-link-chip-main"
+                                    title={[l.note || '点击跳到这个组', '组级绑定（组内共享）'].join('\n')}
+                                    onClick={() => onGoBind('board', l.board.id)}>
+                                    <b>组</b>
+                                    <span className="rp-link-chip-name">{l.board.name}</span>
+                                  </button>
+                                  <button className="rp-link-chip-note-btn"
+                                    title={l.note ? `编辑组级描述：${l.note}` : '写这条组级描述（这个组里参考什么）'}
+                                    onClick={() => onLinkNote(r, l.board.id, l.board.name, l.note)}>
+                                    {l.note ? l.note.split('\n')[0] : '＋'}
+                                  </button>
+                                  <button className="rp-link-chip-x" title="从本组摘除（不影响其它组、也不动仓库级绑定）"
+                                    onClick={() => onUnbind(r, l.board.id)}>×</button>
+                                </span>
+                              ))}
+                              {!open && groups.length > LIMIT ? (
+                                <button className="rp-bind-more" title="展开本行全部绑定"
+                                  onClick={() => onRefBindOpen((m) => ({ ...m, [r.id]: true }))}>
+                                  +{groups.length - LIMIT}
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {direct.length ? (
+                            <div className="rp-bind-row">
+                              <span className="rp-bind-label">仓库</span>
+                              {shownDirect.map((d) => (
+                                <span className="rp-link-chip rp-link-chip-repo" key={'repo:' + d.repo.key}>
+                                  <button className="rp-link-chip-main"
+                                    title={[d.note || '直接绑定到这个仓库（不经过组）', `仓库 key: ${d.repo.key}`, '点击定位到仓库行'].join('\n')}
+                                    onClick={() => onGoBind('repo', d.repo.key)}>
+                                    <b>仓</b>
+                                    <span className="rp-link-chip-name">{d.repo.name}</span>
+                                    <span className="mono rp-link-chip-key">{d.repo.key}</span>
+                                  </button>
+                                  {d.note ? <i className="rp-link-chip-note" title={d.note}>{d.note.split('\n')[0]}</i> : null}
+                                  <button className="rp-link-chip-x" title="从这个仓库摘除（不影响组级绑定）"
+                                    onClick={() => onUnbindRepo(r, d.repo.key)}>×</button>
+                                </span>
+                              ))}
+                              {!open && direct.length > LIMIT ? (
+                                <button className="rp-bind-more" title="展开本行全部绑定"
+                                  onClick={() => onRefBindOpen((m) => ({ ...m, [r.id]: true }))}>
+                                  +{direct.length - LIMIT}
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {collapsible ? (
+                            <button className="rp-bind-toggle"
+                              onClick={() => onRefBindOpen((m) => ({ ...m, [r.id]: !open }))}>
+                              {open ? '收起' : `展开全部 ${groups.length + direct.length}`}
+                            </button>
+                          ) : null}
+                          <Button small className="rp-ref-bind" onClick={() => openBind(r)}>绑定…</Button>
+                        </>
                       );
-                    }) : <span className="muted rp-refs-none">未绑定</span>}
-                    <Button small className="rp-ref-bind" onClick={() => openBind(r)}>绑定…</Button>
+                    })()}
                   </td>
                   <td className="rp-acts">
                     <Button small onClick={() => onSyncOne(r)}>同步</Button>
@@ -237,36 +333,41 @@ export default function RefPanel({ refRepos, devRepos, boardList, checkOf, onClo
         </Modal>
       ) : null}
 
-      {/* 绑定管理弹窗（参考侧）：这个参考绑到哪些开发仓库 / 看板 —— 全部选项式勾选 */}
+      {/* 绑定管理弹窗（参考侧）：两类绑定并存、互不折算，全部选项式勾选 */}
       {bindFor ? (
         <Modal title={`绑定 · ${bindFor.name}`} onClose={() => setBindFor(null)}>
           <div className="form-grid">
             <div className="form-field">
               <div className="form-hint">
-                勾选 = 绑定，取消 = 摘除（保存时对比差异）。一个参考可同时绑多个仓库/组。
+                两类绑定并存、互不折算：勾「仓库组」= 组内共享（group_refs）；勾「开发仓库」= 只绑这一个仓库（仓库级）。
+                取消勾选 = 摘除该维度（保存时对比差异）。
               </div>
               <div className="rp-pick-list">
                 <div className="rp-pick-group">
-                  <span className="rp-pick-group-label">开发仓库</span>
+                  <span className="rp-pick-group-label">仓库组</span>
+                  {boardList.map((b) => {
+                    const bk = boardKeyOf(b);
+                    return (
+                      <label className="rp-pick-item" key={b.id}>
+                        <input type="checkbox" checked={!!bindSel['board:' + bk]}
+                          onChange={(e) => setBindSel((m) => ({ ...m, ['board:' + bk]: e.target.checked }))} />
+                        <span title={b.desc || ''}>{b.name}</span>
+                      </label>
+                    );
+                  })}
+                  {!boardList.length ? <span className="muted">（还没有看板）</span> : null}
+                </div>
+                <div className="rp-pick-group">
+                  <span className="rp-pick-group-label">开发仓库（单独绑定）</span>
                   {devRepos.map((d) => (
                     <label className="rp-pick-item" key={d.id}>
-                      <input type="checkbox" checked={!!bindSel['repo:' + d.id]}
-                        onChange={(e) => setBindSel((m) => ({ ...m, ['repo:' + d.id]: e.target.checked }))} />
+                      <input type="checkbox" checked={!!bindSel['repo:' + d.key]}
+                        onChange={(e) => setBindSel((m) => ({ ...m, ['repo:' + d.key]: e.target.checked }))} />
                       <span title={d.path}>{d.name}</span>
+                      <span className="muted mono rp-pick-desc">{d.key}</span>
                     </label>
                   ))}
                   {!devRepos.length ? <span className="muted">（还没有开发仓库）</span> : null}
-                </div>
-                <div className="rp-pick-group">
-                  <span className="rp-pick-group-label">看板（项目组）</span>
-                  {boardList.map((b) => (
-                    <label className="rp-pick-item" key={b.id}>
-                      <input type="checkbox" checked={!!bindSel['board:' + b.id]}
-                        onChange={(e) => setBindSel((m) => ({ ...m, ['board:' + b.id]: e.target.checked }))} />
-                      <span title={b.desc || ''}>{b.name}</span>
-                    </label>
-                  ))}
-                  {!boardList.length ? <span className="muted">（还没有看板）</span> : null}
                 </div>
               </div>
             </div>

@@ -96,9 +96,8 @@ export function renderRepo(r) {
 
 export function renderClone(r) {
   const lines = [`已克隆并登记参考仓库: ${r.name}`, `  目录: ${r.dest || r.path}`, `  远程: ${r.url || r.remote}`];
-  if (r.linked?.length) {
-    lines.push(`  绑定: ${r.linked.map((l) => (l.kind === 'board' ? `看板 ${l.id}` : `仓库 ${l.id}`)).join('、')}`);
-  }
+  if (r.groups?.length) lines.push(`  绑定组: ${r.groups.join('、')}`);
+  if (r.repos?.length) lines.push(`  绑定仓库: ${r.repos.join('、')}`);
   return lines.join('\n');
 }
 
@@ -114,38 +113,56 @@ export function renderRefSync(d) {
 
 export function renderRefCheck(d) {
   if (!d.total) return '（还没有参考仓库 —— clone 一个: repo ref clone <url>）';
-  const lines = [`检查 ${d.total} 个参考仓库${d.problems ? `，${d.problems} 个有问题` : '，全部正常'}:`];
-  for (const r of d.refs) {
+  const lines = [`检查 ${d.total} 个参考仓库${d.problems ? `，${d.problems} 处有问题` : '，全部正常'}:`];
+  for (const r of d.refRepos) {
     lines.push(`  ${r.ok ? '✓' : '✗'}  ${r.name}  ${r.remote || '(无远程地址)'}`);
+    if (r.groups && r.groups.length) lines.push(`      组: ${r.groups.map((g) => g.name + (g.note ? `（${g.note}）` : '')).join('、')}`);
+    if (r.repos && r.repos.length) lines.push(`      仓库: ${r.repos.map((x) => x.name + (x.note ? `（${x.note}）` : '')).join('、')}`);
     for (const i of r.issues) lines.push(`      ${i}`);
   }
+  for (const i of d.extraIssues || []) lines.push(`  ✗  ${i}`);
   return lines.join('\n');
 }
 
 export function renderBind(d) {
-  return d.removed
-    ? `已摘除绑定: ${d.name}（${d.count} 条；剩 ${d.linked.length} 条）`
-    : `已绑定 ${d.name} → ${d.added.length ? d.added.join('、') : '（已存在）'}（共 ${d.linked.length} 条绑定）`;
+  if (d.removed) {
+    return `已摘除 ${d.name}：${d.count} 条绑定（组 ${d.groups} 个 / 仓库 ${d.repos} 个）`;
+  }
+  const parts = [];
+  if (d.addedGroups?.length) parts.push(`组 ${d.addedGroups.map((x) => '「' + x + '」').join('、')}`);
+  if (d.addedRepos?.length) parts.push(`仓库 ${d.addedRepos.map((x) => '「' + x + '」').join('、')}`);
+  return `已把 ${d.name} 绑到 ${parts.length ? parts.join('、') : `组 ${d.groups} 个 / 仓库 ${d.repos} 个（已存在）`}（组级与仓库级并存，互不折算）`;
 }
 
-// 分层查询的人读渲染：第一层自己的参考，第二层按看板命名空间分组。
+// 人读渲染：组级与仓库级两类绑定并列展示。
 export function renderRefsOf(d) {
   const line = (r) => `  ${r.name}${r.note ? `  （${r.note.split('\n')[0]}）` : ''}  ${r.remote || ''}`;
   const out = [`【${d.repo.name}】${d.repo.path}`];
-  if (d.direct.length) {
-    out.push('  本仓库直接绑定:');
-    for (const r of d.direct) out.push(line(r));
-  } else {
-    out.push('  本仓库直接绑定:（无）');
-  }
+  out.push('  直接绑定到本仓库:');
+  if (d.direct.length) for (const r of d.direct) out.push(line(r));
+  else out.push('    （无）');
   if (d.boards.length) {
     for (const b of d.boards) {
-      out.push(`  ◇ 看板「${b.name}」${b.desc ? ` —— ${b.desc.split('\n')[0]}` : ''}`);
-      if (b.refs.length) for (const r of b.refs) out.push(line(r));
+      out.push(`  ◇ 组「${b.name}」${b.desc ? ` —— ${b.desc.split('\n')[0]}` : ''}`);
+      if (b.refRepos.length) for (const r of b.refRepos) out.push(line(r));
       else out.push('    （该组暂无绑定的参考仓库）');
     }
   } else {
-    out.push('  （该仓库不属于任何看板 —— 没有组级参考可继承）');
+    out.push('  （该仓库不属于任何组 —— 没有组级参考）');
   }
   return out.join('\n');
+}
+
+export function renderBackfill(d) {
+  const lines = [
+    `${d.dryRun ? '预览（未落盘）' : '补录完成'}: 快照 v${d.sourceVersion} 里有 ${d.counts.source} 条仓库级绑定`,
+    `  仓库级绑定: ${d.counts.before} → ${d.counts.after}（新增 ${d.counts.added}，已存在 ${d.counts.already}）`,
+    `  组级绑定: ${d.groupRefs.before} → ${d.groupRefs.after}（本工具不写 group_refs）`,
+  ];
+  for (const p of d.perRepo) {
+    lines.push(`  ${p.name} (${p.repo})  ${p.before.length} → ${p.after.length}${p.added.length ? `（+${p.added.join('、')}）` : ''}`);
+  }
+  if (d.missing.repos.length) lines.push(`  快照里的仓库本地没有: ${d.missing.repos.join('、')}`);
+  if (d.missing.refs.length) lines.push(`  快照里的参考仓库本地没有: ${d.missing.refs.join('、')}`);
+  return lines.join('\n');
 }

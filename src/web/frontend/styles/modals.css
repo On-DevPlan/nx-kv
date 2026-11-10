@@ -245,6 +245,51 @@
   padding: 0 7px;
 }
 .rp-link-chip-x:hover { background: rgba(179, 38, 30, 0.07); color: var(--danger); }
+/* 绑定对象勋章：组（绿调）与单独仓库（蓝调）必须一眼能区分 */
+.rp-link-chip-group { background: #f3f8f1; border-color: #cddcc9; }
+.rp-link-chip-group .rp-link-chip-main b { color: #3f6b3a; }
+.rp-link-chip-repo { background: #f2f6fb; border-color: #cdd9e6; }
+.rp-link-chip-repo .rp-link-chip-main b { color: #355f8a; }
+.rp-link-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-link-chip-key {
+  color: var(--mid);
+  font-size: 10px;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-link-chip-note-btn {
+  font-family: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--mid);
+  padding: 0 7px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-link-chip-note-btn:hover { color: var(--ink); }
+.rp-bind-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 3px; }
+.rp-bind-label { flex: 0 0 44px; font-size: 10px; color: var(--mid); }
+.rp-bind-more,
+.rp-bind-toggle {
+  font-family: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  color: var(--mid);
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.rp-bind-more:hover,
+.rp-bind-toggle:hover { color: var(--ink); border-color: var(--mid); }
+.rp-bind-toggle { margin: 2px 0 3px; }
 
 /* 选项式绑定弹窗：两组 checkbox（开发仓库 / 看板）。
    高度跟着弹窗走（弹窗自己有 max-height:84vh + body 滚动），这里再套一层固定
@@ -306,6 +351,7 @@
   gap: 5px;
 }
 .rp-ref-mounted-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rp-ref-mounted-toggle { margin-left: auto; }
 .rp-ref-mounted-label { font-weight: 650; color: var(--ink); }
 .rp-ref-mounted-label b { font-family: var(--mono); color: var(--ink-2); }
 .rp-ref-mounted-item {

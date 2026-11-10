@@ -6,7 +6,7 @@
 //
 // 「项目描述」不是一段字符串，是绑定的文档集：这里只显示主篇入口（点开即编辑），
 // 补充篇在文档页里管理。新建时还没有文档，等落地后从行内点进去写。
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog, Modal } from '../../components/popup/index.jsx';
@@ -40,6 +40,33 @@ export default function RepoFormModal({ editing, repos, onClose, onSaved }) {
   // 自定义 key 打开即视为「用户声明过」，编辑远程地址时不自动覆盖它；
   // 非自定义 key 仍跟着远程地址走（和编辑前行为一致）。
   const [keyManual, setKeyManual] = useState(() => (editingRepo ? editingRepo.keyCustom === true : false));
+  // 登记前探测：填完路径问一次 git remote
+  //   null | { loading } | { exists, isGit, recommended, key, remotes } | { error }
+  const [detect, setDetect] = useState(null);
+  // 远程地址是否被人改过：改过就不再用探测结果覆盖（编辑已有仓库时开箱为 true）
+  const [remoteManual, setRemoteManual] = useState(() => !!editingRepo);
+
+  // 填完路径自动问一次 git remote（400ms 防抖）；只在「远程地址没人动过」时覆盖，
+  // 用户手填/编辑旧仓库时一律不动。目录不存在/不是 git/没 remote 只提示，不猜地址。
+  useEffect(() => {
+    const p = form.path.trim();
+    if (!p) { setDetect(null); return undefined; }
+    let alive = true;
+    const timer = setTimeout(async () => {
+      setDetect({ loading: true });
+      try {
+        const d = await api('/api/repos/detect', { method: 'POST', body: { path: p } });
+        if (!alive) return;
+        setDetect({ loading: false, ...d });
+        if (d.recommended && !remoteManual) {
+          setForm((f) => ({ ...f, remote: d.recommended, key: keyManual ? f.key : (d.key || f.key) }));
+        }
+      } catch (e) {
+        if (alive) setDetect({ loading: false, error: e.message });
+      }
+    }, 400);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [form.path, remoteManual, keyManual]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   // 远程地址变化时，只要用户没手动改过 key，就把归一化结果同步到 key 输入框。
@@ -47,6 +74,8 @@ export default function RepoFormModal({ editing, repos, onClose, onSaved }) {
   // github.com/owner/repo 这种统一 key，用户仍可再改。
   const setRemote = (e) => {
     const remote = e.target.value;
+    setRemoteManual(true);
+    setDetect(null);
     setForm((f) => ({ ...f, remote, key: keyManual ? f.key : keyFromRemote(remote) }));
   };
   const setKey = (e) => {
@@ -149,6 +178,17 @@ export default function RepoFormModal({ editing, repos, onClose, onSaved }) {
           <label htmlFor="repo-remote">远程 git 地址</label>
           <input id="repo-remote" spellCheck="false" placeholder="https://github.com/me/x.git（导出时导它，不含本地路径）"
             value={form.remote} onChange={setRemote} />
+          {detect ? (
+            <div className="form-hint">
+              {detect.loading ? '正在从目录读取 git remote…'
+                : detect.error ? `读取 git remote 失败：${detect.error}`
+                : detect.recommended
+                  ? `已按目录 git remote 自动填入${detect.remotes.length > 1 ? `（另有 ${detect.remotes.length - 1} 条候选）` : ''}`
+                  : detect.exists === false ? '该路径不存在 —— 请检查后重填'
+                  : detect.isGit ? '目录是 git 仓库，但没有配置 remote —— 请手工填写'
+                  : '目录不是 git 仓库 —— 请手工填写'}
+            </div>
+          ) : null}
           <div className="form-hint">
             有远程地址时，下面的 key 会按它自动归一化：ssh / https / 带 .git / 带 user 的写法
             都归一成 host/owner/repo（如 github.com/on-devplan/nx-kv）。

@@ -106,23 +106,44 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
     return entry;
   });
 
-  // 参考关系：ref → 目标（repo key / board key），note 随关系走
+  // 参考关系：ref → 组 / ref → 单个开发仓库，两类并存，note 随关系走。
+  // 同一个 ref 被多个组共享 → 一条 link 的 to 里多个 {board}；
+  // 直接绑在仓库上的 → to 里追加 {repo}（不折算成组，也不被组覆盖）。
   const selectedKeySet = new Set(repos.map((r) => r.key));
   const links = [];
-  for (const r of s.repos) {
-    if ((r.type || 'dev') !== 'ref' || !(r.linked || []).length) continue;
-    const k = keyOf.get(r.id);
-    if (!k || !selectedKeySet.has(k)) continue;
-    const to = [];
-    for (const l of r.linked) {
-      // 关系引用已经是 key（迁移后），直接用
-      if (l.kind === 'repo') {
-        if (selectedKeySet.has(l.id)) to.push(l.note ? { repo: l.id, note: l.note } : { repo: l.id });
-      } else if (l.kind === 'board') {
-        if (wantBoard(l.id)) to.push(l.note ? { board: l.id, note: l.note } : { board: l.id });
+  for (const b of s.boards) {
+    const bkey = boardKeyOf.get(b.id);
+    if (!bkey || !wantBoard(bkey)) continue;
+    for (const l of Array.isArray(b.refs) ? b.refs : []) {
+      const r = s.repos.find((x) => keyOf.get(x.id) === l.id);
+      if (!r) continue;
+      const rk = keyOf.get(r.id);
+      if (!rk || !selectedKeySet.has(rk)) continue;
+      let hit = links.find((x) => x.ref === rk);
+      if (!hit) {
+        hit = { ref: rk, to: [] };
+        links.push(hit);
       }
+      hit.to.push(l.note ? { board: bkey, note: l.note } : { board: bkey });
     }
-    if (to.length) links.push({ ref: k, to });
+  }
+  // 仓库级直接绑定：dev 的 linked（{kind:'ref'}）→ to 里追加 {repo}
+  for (const d of s.repos) {
+    if ((d.type || 'dev') === 'ref') continue;
+    const dk = keyOf.get(d.id);
+    if (!dk || !selectedKeySet.has(dk)) continue;
+    for (const l of Array.isArray(d.linked) ? d.linked : []) {
+      if (!l || l.kind !== 'ref') continue;
+      const rk = String(l.id || '');
+      if (!rk || !selectedKeySet.has(rk)) continue;
+      let hit = links.find((x) => x.ref === rk);
+      if (!hit) {
+        hit = { ref: rk, to: [] };
+        links.push(hit);
+      }
+      if (hit.to.some((t) => t.repo === dk)) continue;
+      hit.to.push(l.note ? { repo: dk, note: l.note } : { repo: dk });
+    }
   }
 
   // 看板关系里可能引用了没被选中的仓库 —— 如实报告，导入端会标「本地未拥有」

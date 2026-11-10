@@ -164,12 +164,42 @@ export async function repoKnowledge(locator, { md = false } = {}) {
     boards.push({ name: b.name, key: bkey, intro: bIntro, introSet: bIntroSet, note, docLinks, externalDirs });
   }
 
-  // 参考仓库（dev 侧反向引用 {kind:'ref'}）
-  const refs = [];
+  // 参考仓库（repos 里 type=ref，不是文档库 refs）：两类来源并存——组级
+  // （group_refs，组内共享）与仓库级（dev.linked）。同一个参考仓库出现多次只列
+  // 一次，groups 记它来自哪些组，direct 记它是否直接绑在本仓库。
+  const refRepos = [];
+  const seenRefRepos = new Map();
+  for (const b of s.boards) {
+    if (!boardRepoKeys(b, s).includes(rk)) continue;
+    for (const l of Array.isArray(b.refs) ? b.refs : []) {
+      const r = s.repos.find((x) => deriveKey(x) === l.id);
+      if (!r) continue;
+      const hit = seenRefRepos.get(l.id);
+      if (hit) {
+        if (!hit.groups.includes(b.name)) hit.groups.push(b.name);
+        if (l.note && !hit.note) hit.note = l.note;
+        continue;
+      }
+      const item = { name: r.name, path: r.path || '', remote: r.remote || '', note: l.note || '', groups: [b.name], direct: false };
+      seenRefRepos.set(l.id, item);
+      refRepos.push(item);
+    }
+  }
+  // 仓库级直接绑定：不经过组，单独并入（同一个参考仓库两类都有时只加 direct 标记）
   for (const l of Array.isArray(repo.linked) ? repo.linked : []) {
-    if (l.kind !== 'ref') continue;
-    const r = s.repos.find((x) => deriveKey(x) === l.id);
-    refs.push({ name: r ? r.name : l.id, remote: r ? r.remote || '' : '', note: l.note || '' });
+    if (!l || l.kind !== 'ref') continue;
+    const id = String(l.id);
+    const r = s.repos.find((x) => deriveKey(x) === id);
+    if (!r) continue;
+    const hit = seenRefRepos.get(id);
+    if (hit) {
+      hit.direct = true;
+      if (l.note && !hit.note) hit.note = l.note;
+      continue;
+    }
+    const item = { name: r.name, path: r.path || '', remote: r.remote || '', note: l.note || '', groups: [], direct: true };
+    seenRefRepos.set(id, item);
+    refRepos.push(item);
   }
 
   const out = {
@@ -177,7 +207,7 @@ export async function repoKnowledge(locator, { md = false } = {}) {
     intro: intro.missing ? null : intro,
     introSet,
     boards,
-    refs,
+    refRepos,
     warnings,
   };
   if (md) out.md = renderMd(out);
@@ -202,9 +232,12 @@ function renderMd(k) {
       for (const f of dir.files) lines.push(`- ${f}`);
     }
   }
-  if (k.refs.length) {
+  if (k.refRepos.length) {
     heading('## 参考仓库');
-    for (const r of k.refs) lines.push(`- ${r.name}${r.remote ? `（${r.remote}）` : ''}${r.note ? ` —— ${r.note.split('\n')[0]}` : ''}`);
+    for (const r of k.refRepos) {
+      const src = r.direct && !r.groups.length ? '［直接绑定］' : r.direct ? '［组 + 直接绑定］' : '';
+      lines.push(`- ${r.name}${r.remote ? `（${r.remote}）` : ''}${src}${r.note ? ` —— ${r.note.split('\n')[0]}` : ''}`);
+    }
   }
   return lines.join('\n');
 }
@@ -245,6 +278,18 @@ export async function groupContextFor(cwd, { board = '' } = {}) {
   const repoIntro = mainAsIntro(repoIntroSet);
   // 项目自己登记的补充文档（外部 / ref 仓库里的文件）——交付时给可读路径
   const repoDocLinks = linkEntries(repo.docLinks, closure);
+
+  // 参考仓库（repos 里 type=ref，不是文档库 refs）：本仓库直接绑定与组级绑定
+  // 是两类并列来源，交付时要给「名称 + 本机路径 + 一句描述」。
+  const refRepoItemOf = (id, note) => {
+    const rr = s.repos.find((x) => x.type === 'ref' && deriveKey(x) === String(id));
+    if (!rr) return null;
+    return { key: String(id), name: rr.name, path: rr.path || '', note: note || '' };
+  };
+  const repoRefRepos = (Array.isArray(repo.linked) ? repo.linked : [])
+    .filter((l) => l && l.kind === 'ref')
+    .map((l) => refRepoItemOf(l.id, l.note))
+    .filter(Boolean);
 
   // #64 作用域：只有组任务（正文 frontmatter 带 board）才挂组上下文。单 repo 主题里
   // 提交的纯项目任务只给项目介绍，组材料一律不挂——成员身份不等于「这条任务属于组」。
@@ -293,9 +338,13 @@ export async function groupContextFor(cwd, { board = '' } = {}) {
       note: noteOwn.body || (b.repoNotes || {})[rk] || '',
       peers,
       docLinks,
+      refRepos: (Array.isArray(b.refs) ? b.refs : []).map((l) => refRepoItemOf(l.id, l.note)).filter(Boolean),
     });
   }
-  return { repo: { name: repo.name, key: rk, intro: repoIntro, introSet: repoIntroSet, docLinks: repoDocLinks }, groups };
+  return {
+    repo: { name: repo.name, key: rk, intro: repoIntro, introSet: repoIntroSet, docLinks: repoDocLinks, refRepos: repoRefRepos },
+    groups,
+  };
 }
 
 /**

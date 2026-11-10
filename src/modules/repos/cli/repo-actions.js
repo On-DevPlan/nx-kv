@@ -1,5 +1,6 @@
 // repo.* CRUD / 文档集 / 扫描 / 打开 的 action 声明。
 import * as service from '../service.js';
+import * as remote from '../remote.js';
 import { listRepoDocs, addRepoDoc, removeRepoDoc } from '../../docs/refs.js';
 import { renderRepoList, renderRepo, lastSeg } from './render.js';
 
@@ -46,6 +47,25 @@ export const repoActions = [
       keyCustom: ctx.key ? true : ctx['key-custom'] === true,
     }),
     render: (r) => `已登记: ${r.name} -> ${r.path}（key: ${r.key}）`,
+  },
+  {
+    // 登记前探测：面板填完路径就调它，把 git remote 自动填进「远程 git 地址」。
+    // 只读；不登记、不改库。
+    id: 'repo.detect',
+    cli: ['repo', 'detect'],
+    http: ['POST', '/api/repos/detect'],
+    summary: '探测目录的 git remote（添加仓库前自动填充远程地址；只读）',
+    args: ['path'],
+    run: (ctx) => remote.detectRemote(ctx.path),
+    render: (d) => {
+      if (!d.exists) return `目录不存在: ${d.path}`;
+      if (!d.isGit) return `不是 git 仓库: ${d.path}`;
+      if (!d.recommended) return `git 仓库没有配置 remote: ${d.path}`;
+      return [
+        `远程地址: ${d.recommended}（key: ${d.key}）`,
+        ...d.remotes.filter((x) => x.url !== d.recommended).map((x) => `  其它候选: ${x.name} ${x.url} [${x.kind}]`),
+      ].join('\n');
+    },
   },
   {
     id: 'repo.update',

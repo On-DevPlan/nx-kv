@@ -1,7 +1,7 @@
 // 导入执行：diffImport 的差异 → 按策略落库（文档树还原 → 登记/覆盖/另存 → 看板与绑定 → 关系）。
 import { join, resolve } from 'node:path';
 import { loadConfig } from '../../../core/config.js';
-import { badInput } from '../../../core/errors.js';
+import { badInput, notFound } from '../../../core/errors.js';
 import { writeOwnDoc, externalClosure } from '../../docs/store.js';
 import * as service from '../service.js';
 import * as boards from '../boards.js';
@@ -348,33 +348,30 @@ function placeholderPath(inc, gitRepoRoot, gitDevRoot, keyOverride) {
   return join(base, dir);
 }
 
-// 关系重建的绑定直写（双向：ref 侧写 {repo|board}，dev 侧写反向 {ref}）。
+// 关系重建：参考仓库 → 组 / 单个开发仓库，两类并存。
+//   boardKey_ 给了 → 写组级绑定（group_refs）；
+//   repoKey 给了  → 写仓库级绑定（dev.ext.ext_linked），不再折算成它所属的组。
 // 入参一律是 **key**（关系的身份），不再用随机 id。
 async function refBind(refKey, repoKey, boardKey_, note) {
   return service.mutateStore((s) => {
     const r = s.repos.find((x) => deriveKeyOf(x) === refKey);
     if (!r) throw badInput('参考仓库不存在: ' + refKey);
-    if (!Array.isArray(r.linked)) r.linked = [];
-    const key = boardKey_ ? 'board:' + boardKey_ : 'repo:' + repoKey;
-    const hit = r.linked.find((l) => l.kind + ':' + l.id === key);
-    if (!hit) {
-      r.linked.push(
-        note
-          ? boardKey_ ? { kind: 'board', id: boardKey_, note } : { kind: 'repo', id: repoKey, note }
-          : boardKey_ ? { kind: 'board', id: boardKey_ } : { kind: 'repo', id: repoKey }
-      );
-    } else if (note) {
-      hit.note = note;
+    if (boardKey_) {
+      const b = s.boards.find((x) => service.storedBoardKey(x) === boardKey_);
+      if (!b) throw notFound('看板不存在: ' + boardKey_);
+      if (!Array.isArray(b.refs)) b.refs = [];
+      const hit = b.refs.find((l) => l.id === refKey);
+      if (!hit) b.refs.push(note ? { id: refKey, note } : { id: refKey });
+      else if (note) hit.note = note;
     }
     if (repoKey) {
-      const d = s.repos.find((x) => deriveKeyOf(x) === repoKey);
-      if (d) {
-        if (!Array.isArray(d.linked)) d.linked = [];
-        const back = d.linked.find((l) => l.kind === 'ref' && l.id === refKey);
-        if (!back) d.linked.push(note ? { kind: 'ref', id: refKey, note } : { kind: 'ref', id: refKey });
-        else if (note) back.note = note;
-      }
+      const dev = s.repos.find((x) => deriveKeyOf(x) === repoKey && (x.type || 'dev') !== 'ref');
+      if (!dev) throw badInput('绑定的开发仓库不存在: ' + repoKey);
+      if (!Array.isArray(dev.linked)) dev.linked = [];
+      const hit = dev.linked.find((l) => l && l.kind === 'ref' && String(l.id) === refKey);
+      if (!hit) dev.linked.push(note ? { kind: 'ref', id: refKey, note } : { kind: 'ref', id: refKey });
+      else if (note) hit.note = note;
     }
-    return r.linked.slice();
+    return (boardKey_ ? 1 : 0) + (repoKey ? 1 : 0);
   });
 }

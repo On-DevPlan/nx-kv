@@ -128,6 +128,7 @@ export async function updateRepo(id, patch) {
       s.repos.find((x) => x.path && x.path.toLowerCase() === resolve(raw).toLowerCase()) ||
       s.repos.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
     if (!r) throw notFound('repo 不存在: ' + id);
+    const beforeKey = deriveKey(r);
     if (patch.name !== undefined) r.name = String(patch.name).trim();
     if (patch.icon !== undefined) r.icon = sanitizeIcon(patch.icon);
     if (patch.desc !== undefined) {
@@ -144,7 +145,19 @@ export async function updateRepo(id, patch) {
       if (!Array.isArray(r.linked)) r.linked = [];
       // 转成 dev 时清掉「指向目标」的绑定（{repo|board}），但**保留反向引用**（{ref}）——
       // dev 仓库身上挂的参考列表是它自己的属性，与它是什么类型无关。
-      if (t === 'dev') r.linked = r.linked.filter((l) => l.kind === 'ref');
+      // v4：它若作为参考仓库被组共享，也要从所有组摘掉（组里只允许 type=ref）。
+      if (t === 'dev') {
+        r.linked = r.linked.filter((l) => l.kind === 'ref');
+        const gone = deriveKey(r);
+        for (const b of s.boards) {
+          if (Array.isArray(b.refs)) b.refs = b.refs.filter((x) => x.id !== gone);
+        }
+        // 仓库级直接绑定也要摘（原来指向它这个 ref，现在它已经不是参考仓库了）
+        for (const other of s.repos) {
+          if (other === r || !Array.isArray(other.linked)) continue;
+          other.linked = other.linked.filter((l) => !(l && l.kind === 'ref' && String(l.id) === gone));
+        }
+      }
     }
     if (patch.remote !== undefined) {
       // 改 remote：非自定义 key 跟随 remote 重算；自定义 key 保持不变（用户显式选择）。
@@ -195,6 +208,16 @@ export async function updateRepo(id, patch) {
         `key「${finalKey}」已被仓库「${dup.name}」占用（path: ${dup.path || '未登记'}）—— key 是全局身份，不会自动加后缀；请换一个 key`
       );
     }
+    // 参考仓库改 key：仓库级绑定存在别人的 ext 里（没有 FK），必须跟着改，
+    // 否则绑定会静默指向一个不存在的 key（组级 group_refs 由 DB 的 ON UPDATE CASCADE 跟随）。
+    if (finalKey !== beforeKey) {
+      for (const other of s.repos) {
+        if (other === r || !Array.isArray(other.linked)) continue;
+        for (const l of other.linked) {
+          if (l && l.kind === 'ref' && String(l.id) === beforeKey) l.id = finalKey;
+        }
+      }
+    }
     r.key = finalKey;
     return r;
   });
@@ -229,6 +252,8 @@ export async function removeRepo(id) {
     for (const b of s.boards) {
       if (Array.isArray(b.repoKeys)) b.repoKeys = b.repoKeys.filter((k) => k !== deadKey);
       if (b.repoNotes && b.repoNotes[deadKey]) delete b.repoNotes[deadKey];
+      // 组级参考绑定：删掉的是参考仓库 → 它从所有组里消失
+      if (Array.isArray(b.refs)) b.refs = b.refs.filter((r) => r.id !== deadKey);
     }
     // 绑定是双向记录：两边都要清（全部按 key 比对）
     //   ref 侧的 {kind:'repo', id:被删仓库的 key} 与 {kind:'board', id:被删看板的 key}

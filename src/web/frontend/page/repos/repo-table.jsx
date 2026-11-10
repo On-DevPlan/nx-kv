@@ -4,8 +4,10 @@
 // （主篇 + 补充 + reference + 组内描述）就地看、就地编辑；行内不再铺 chip 外显。
 // 所属分组 chips 点一下 = 筛到那个组（再点取消）；归属的增删走「成员管理」弹窗。
 // 主表只放开发仓库（type=dev）——参考仓库有自己的大面板，两份名单不混。
-// 「参考」列显示**绑定到这个开发仓库**的参考仓库（多对多：一个 dev 可挂多个 ref）。
-import { useMemo } from 'react';
+// 「参考」列：全局视图按组汇总（组名 · N，点一下筛到那个组）；
+// 组筛选视图（命名空间）改成两类勋章——`组` = 本组共享的参考仓库，`自` = 这个
+// 仓库自己直接绑定的参考仓库，去重后超过 4 个折叠。
+import { useState } from 'react';
 import { Copyable } from '../../components/ui.jsx';
 import { Button } from '../../components/button/index.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
@@ -48,9 +50,41 @@ export function DocsEntry({ docs, onOpen }) {
   );
 }
 
+// 参考列的两类勋章：组级（组内共享）与仓库级（只绑这一个仓库）。
+// 超过 4 个折叠成 +N，避免一行铺十几个 chip 把表格撑爆。
+function RefRepoChips({ chips, boardId, acts }) {
+  const LIMIT = 4;
+  const [open, setOpen] = useState(false);
+  const shown = open ? chips : chips.slice(0, LIMIT);
+  return (
+    <>
+      {shown.map((c) => (
+        <span key={c.source + ':' + c.key} className={'rp-link-chip rp-link-chip-' + (c.source === 'group' ? 'group' : 'repo')}>
+          <button
+            className="rp-link-chip-main"
+            title={c.source === 'group'
+              ? [`组「${c.groupName}」共享的参考仓库`, c.note].filter(Boolean).join('\n')
+              : ['本仓库直接绑定的参考仓库', c.note, '点击跳到这个参考仓库'].filter(Boolean).join('\n')}
+            onClick={() => (c.source === 'group' ? acts.keepFilter(boardId) : acts.gotoRefRepo(c.key))}
+          >
+            <b>{c.source === 'group' ? '组' : '自'}</b>
+            <span className="rp-link-chip-name">{c.name}</span>
+          </button>
+        </span>
+      ))}
+      {chips.length > LIMIT ? (
+        <button className="rp-bind-more" title="展开本行全部参考仓库" onClick={() => setOpen((v) => !v)}>
+          {open ? '收起' : `+${chips.length - LIMIT}`}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
 // 仓库行 = 仓库信息（名称 + 路径）+ 文档入口（核心）+ 参考仓库 + 所属分组 + 操作。
-function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
-  const refs = refsOfRepo.get(r.key) || [];
+function RepoRow({ r, filterBoard, groupRefRepoCounts, refRepoChipsByRepo, acts }) {
+  const groups = groupRefRepoCounts.get(r.key) || [];
+  const chips = filterBoard ? (refRepoChipsByRepo.get(r.key) || []) : null;
   return (
     <tr id={'rp-row-' + r.key}>
       <td className="rp-name">
@@ -73,14 +107,18 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
         <DocsEntry docs={r.descDocs} onOpen={() => acts.docs(r)} />
       </td>
       <td className="rp-refs">
-        {refs.length ? refs.map((ref) => (
-          <button key={ref.key} className="rp-ref-chip" title={`直接绑定：${ref.remote || ''}${ref.note ? '\n' + ref.note : ''}\n点击改绑定描述`}
-            onClick={() => acts.refNote(ref, r)}>
-            {ref.note ? <span className="rp-ref-chip-dot" /> : null}
-            {ref.name}
+        {filterBoard ? (
+          chips && chips.length
+            ? <RefRepoChips chips={chips} boardId={filterBoard.id} acts={acts} />
+            : <span className="muted rp-refs-none">—</span>
+        ) : (groups.length ? groups.map((g) => (
+          <button key={g.id} className={'rp-group-chip' + (filterBoard && filterBoard.id === g.id ? ' on' : '')}
+            title={`组「${g.name}」绑定 ${g.count} 个参考仓库（组内共享）\n点击只看这个组`}
+            onClick={() => acts.filter(g.id)}>
+            {g.name} <b>{g.count}</b>
           </button>
-        )) : <span className="muted rp-refs-none">—</span>}
-        <Button small className="rp-ref-bind" title="管理这个仓库绑定的参考仓库" onClick={() => acts.bind(r)}>绑定</Button>
+        )) : <span className="muted rp-refs-none">—</span>)}
+        <Button small className="rp-ref-bind" title="管理这个仓库所属组的参考仓库" onClick={() => acts.bind(r)}>绑定</Button>
       </td>
       <td className="rp-cell-groups">
         {(r.boards || []).length ? r.boards.map((b) => (
@@ -132,38 +170,7 @@ function RepoRow({ r, filterBoard, refsOfRepo, acts }) {
   );
 }
 
-export default function RepoTable({ shown, devRepos, refRepos, filterBoard, acts, onAddMember }) {
-  // 直接绑定到各开发仓库的参考（dev 行内「参考」列的数据面）。
-  // 绑定是双向记录的：dev 侧自带 {kind:'ref'} 反向引用，直接读它即可；
-  // 老数据（只有 ref 侧）再回退扫一遍 ref 全表。
-  const refsOfRepo = useMemo(() => {
-    const m = new Map();
-    // 索引按 **key**（关系的身份）：dev 仓库的 key → 挂在它身上的参考仓库列表
-    const add = (devKey, r, note) => {
-      if (!m.has(devKey)) m.set(devKey, []);
-      m.get(devKey).push({ key: r.key, id: r.id, name: r.name, remote: r.remote || '', note: note || '' });
-    };
-    const byKey = new Map(refRepos.map((r) => [r.key, r]));
-    const seen = new Set();
-    for (const d of devRepos) {
-      for (const l of d.linked || []) {
-        if (l.kind !== 'ref') continue;
-        const r = byKey.get(l.id);
-        if (!r) continue;
-        seen.add(d.key + ':' + r.key);
-        add(d.key, r, l.note);
-      }
-    }
-    for (const r of refRepos) {
-      for (const l of r.linked || []) {
-        if (l.kind !== 'repo') continue;
-        if (seen.has(l.id + ':' + r.key)) continue;
-        add(l.id, r, l.note);
-      }
-    }
-    return m;
-  }, [devRepos, refRepos]);
-
+export default function RepoTable({ shown, devRepos, filterBoard, groupRefRepoCounts, refRepoChipsByRepo, acts, onAddMember }) {
   return (
     <div className="rp-table-wrap" id="rp-repos">
       <table className="rp-table">
@@ -183,7 +190,8 @@ export default function RepoTable({ shown, devRepos, refRepos, filterBoard, acts
         </thead>
         <tbody>
           {shown.map((r) => (
-            <RepoRow key={r.id} r={r} filterBoard={filterBoard} refsOfRepo={refsOfRepo} acts={acts} />
+            <RepoRow key={r.id} r={r} filterBoard={filterBoard}
+              groupRefRepoCounts={groupRefRepoCounts} refRepoChipsByRepo={refRepoChipsByRepo} acts={acts} />
           ))}
           {!shown.length ? (
             <tr>

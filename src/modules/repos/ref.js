@@ -120,13 +120,23 @@ export async function cloneRef({ url, name, desc, notes, board, bind, depth = 1,
     const ctx = await service.contextForPath(process.cwd());
     if (ctx && ctx.key !== service.deriveKey(repo)) targets.push({ kind: 'repo', id: ctx.key });
   }
-  const linked = [];
+  const boundGroups = [];
+  const boundRepos = [];
   for (const t of targets) {
     const arg = t.kind === 'board' ? { board: t.id } : { repo: t.id };
     const r = await bindTarget({ id: repo.id, ...arg }).catch(() => null); // 单个目标失效不拖垮整体
-    if (r) linked.push(t);
+    if (r && Array.isArray(r.addedGroups)) boundGroups.push(...r.addedGroups);
+    if (r && Array.isArray(r.addedRepos)) boundRepos.push(...r.addedRepos);
   }
-  return { ...repo, linked, cloned: true, url: usedUrl, dest };
+  return {
+    ...repo,
+    linked: targets,
+    groups: [...new Set(boundGroups)],
+    repos: [...new Set(boundRepos)],
+    cloned: true,
+    url: usedUrl,
+    dest,
+  };
 }
 
 /** 登记一个已存在的 checkout 为参考仓库（不 clone）。remote 缺省时读目录 origin。 */
@@ -168,12 +178,62 @@ function boardKeyInside(s, idOrKey) {
   return b ? service.storedBoardKey(b) : null;
 }
 
+/** 仓库属于哪些组（组级绑定的一条来源；与仓库级绑定并存）。 */
+function groupsOfRepo(s, repoKey) {
+  return s.boards.filter((b) => service.boardRepoKeys(b, s).includes(repoKey));
+}
+
 /**
- * 绑定/摘除：ref → {repo…, board…}。一个 ref 可绑多个目标；一个目标可被多个 ref 绑。
- * 绑定**双向记录**：ref 侧写 {kind:'repo'|'board', id}，dev 侧写 {kind:'ref', id}。
- * 两侧各存一份 note（同一内容）——描述是「这条绑定」的属性，两边读都拿得到。
- * note（绑定描述）跟某一条绑定走：repo/board 传对象 {id, note} 可在绑定时一并写描述。
- * 摘除用 remove + 想摘的维度（--remove --repo x 只摘 x；都不带 = 清空全部绑定）。
+ * 仓库身上的**直接**参考绑定（仓库级，存在 dev.ext.ext_linked 里）。
+ * 这类绑定不经过组、也不继承：组级与仓库级是两条并列的关系。
+ */
+function directLinksOfRepo(s, repo) {
+  const byKey = new Map(
+    s.repos.filter((r) => (r.type || 'dev') === 'ref').map((r) => [service.deriveKey(r), r])
+  );
+  return (repo.linked || [])
+    .filter((l) => l && l.kind === 'ref')
+    .map((l) => {
+      const r = byKey.get(String(l.id));
+      return r ? { ref: r, note: String(l.note || '') } : null;
+    })
+    .filter(Boolean);
+}
+
+/** 参考仓库行 → 对外投影。 */
+function projectRef(r) {
+  return {
+    id: r.id,
+    key: service.deriveKey(r),
+    name: r.name,
+    desc: r.desc || '',
+    remote: r.remote || '',
+    path: r.path,
+    note: '',
+  };
+}
+
+/** 看板对象的 refs（group_refs）→ [{ref, note}]；已不存在的 ref 行跳过。 */
+function linksOfBoard(s, b) {
+  const byKey = new Map(
+    s.repos.filter((r) => (r.type || 'dev') === 'ref').map((r) => [service.deriveKey(r), r])
+  );
+  return (b.refs || [])
+    .map((l) => {
+      const r = byKey.get(String(l.id));
+      return r ? { ref: r, note: String(l.note || '') } : null;
+    })
+    .filter(Boolean);
+}
+
+/**
+ * 绑定/摘除：ref → 组 与/或 ref → 单个开发仓库。两类绑定**并存、互不折算**：
+ *   --board b   写组级绑定（group_refs），组内仓库共享
+ *   --repo x    写仓库级绑定（dev.ext.ext_linked），只有这个仓库拥有
+ * 两个都给 = 同时建立两条关系；同一个 ref 在同一个仓库上既是组员级又是仓库级时，
+ * 两处都会保留（它们表达的是不同来源的关系，读取侧分开展示）。
+ * note（绑定描述）跟各自的绑定走。
+ * 摘除用 remove + 维度（--repo x 只摘仓库级；--board x 只摘组级；都不带 = 全部摘除）。
  */
 export async function bindTarget({ id, key, repo, board, remove } = {}) {
   const ref = await loadRef(id || key);
@@ -184,130 +244,156 @@ export async function bindTarget({ id, key, repo, board, remove } = {}) {
       .filter((t) => t.id);
   return service.mutateStore((s) => {
     const r = s.repos.find((x) => x.id === ref.id);
-    if (!Array.isArray(r.linked)) r.linked = [];
-    const repos = normTargets(repo);
-    const boards = normTargets(board);
     const refKey = service.deriveKey(r);
+    const boards = normTargets(board);
+    const repos = normTargets(repo);
 
-    // 反向引用维护：dev 侧 {kind:'ref', id:refKey, note}
-    const mirror = (devKey, note, on) => {
-      const d = s.repos.find((x) => service.deriveKey(x) === devKey);
-      if (!d) return;
-      if (!Array.isArray(d.linked)) d.linked = [];
-      const hit = d.linked.find((l) => l.kind === 'ref' && l.id === refKey);
-      if (on) {
-        if (!hit) d.linked.push(note ? { kind: 'ref', id: refKey, note } : { kind: 'ref', id: refKey });
-        else if (note) hit.note = note;
-      } else if (hit) {
-        d.linked = d.linked.filter((l) => !(l.kind === 'ref' && l.id === refKey));
-      }
-    };
-
-    if (remove) {
-      let n = 0;
-      if (repos.length) {
-        for (const one of repos) {
-          const rkey = repoKeyInside(s, one.id);
-          const before = r.linked.length;
-          r.linked = r.linked.filter((l) => !(l.kind === 'repo' && (rkey ? l.id === rkey : true)));
-          if (rkey) mirror(rkey, '', false);
-          n += before - r.linked.length;
-        }
-      } else if (boards.length) {
-        for (const one of boards) {
-          const bkey = boardKeyInside(s, one.id);
-          const before = r.linked.length;
-          r.linked = r.linked.filter((l) => !(l.kind === 'board' && l.id === bkey));
-          n += before - r.linked.length;
-        }
-      } else {
-        // 清空全部：连带把 dev 侧的反向引用也摘掉
-        for (const l of r.linked.slice()) {
-          if (l.kind === 'repo') mirror(l.id, '', false);
-        }
-        n = r.linked.length;
-        r.linked = [];
-      }
-      return { key: refKey, name: r.name, removed: true, count: n, linked: r.linked.slice() };
-    }
-
-    const added = [];
-    for (const one of repos) {
-      const rkey = repoKeyInside(s, one.id);
-      if (!rkey) throw notFound('绑定的开发仓库不存在: ' + one.id);
-      const hit = r.linked.find((l) => l.kind === 'repo' && l.id === rkey);
-      if (!hit) {
-        r.linked.push(one.note ? { kind: 'repo', id: rkey, note: one.note } : { kind: 'repo', id: rkey });
-        added.push(rkey);
-      } else if (one.note) {
-        hit.note = one.note; // 已绑定：补写描述
-      }
-      mirror(rkey, hit ? hit.note : one.note, true);
-    }
+    const boardTargets = new Map(); // boardKey → note
     for (const one of boards) {
       const bkey = boardKeyInside(s, one.id);
       if (!bkey) throw notFound('看板不存在: ' + one.id);
-      const hit = r.linked.find((l) => l.kind === 'board' && l.id === bkey);
+      if (!boardTargets.has(bkey) || one.note) boardTargets.set(bkey, one.note);
+    }
+    const repoTargets = new Map(); // repoKey → note
+    for (const one of repos) {
+      const rkey = repoKeyInside(s, one.id);
+      if (!rkey) throw notFound('绑定的开发仓库不存在: ' + one.id);
+      const dev = s.repos.find((x) => service.deriveKey(x) === rkey);
+      if ((dev.type || 'dev') === 'ref') {
+        throw badInput(`「${dev.name}」是参考仓库 —— 绑定目标只能是开发仓库或组`);
+      }
+      if (!repoTargets.has(rkey) || one.note) repoTargets.set(rkey, one.note);
+    }
+    if (!boardTargets.size && !repoTargets.size && !remove) {
+      throw badInput('请给 --repo <开发仓库> 或 --board <看板>（或 --remove 摘除）');
+    }
+
+    if (remove) {
+      let n = 0;
+      // 给了维度就只摘该维度；两个维度都没给 = 全部摘除（组 + 仓库）
+      const all = !boardTargets.size && !repoTargets.size;
+      const boardKeys = boardTargets.size
+        ? [...boardTargets.keys()]
+        : all
+          ? s.boards.map((b) => service.storedBoardKey(b))
+          : [];
+      const repoKeys = repoTargets.size
+        ? [...repoTargets.keys()]
+        : all
+          ? s.repos.filter((x) => (x.type || 'dev') !== 'ref').map((x) => service.deriveKey(x))
+          : [];
+      for (const bkey of boardKeys) {
+        const b = s.boards.find((x) => service.storedBoardKey(x) === bkey);
+        if (!b) continue;
+        const before = (b.refs || []).length;
+        b.refs = (b.refs || []).filter((l) => l.id !== refKey);
+        n += before - b.refs.length;
+      }
+      for (const rkey of repoKeys) {
+        const dev = s.repos.find((x) => service.deriveKey(x) === rkey);
+        if (!dev || !Array.isArray(dev.linked)) continue;
+        const before = dev.linked.length;
+        dev.linked = dev.linked.filter((l) => !(l && l.kind === 'ref' && String(l.id) === refKey));
+        n += before - dev.linked.length;
+      }
+      return {
+        key: refKey,
+        name: r.name,
+        removed: true,
+        count: n,
+        groups: boardTargets.size,
+        repos: repoTargets.size,
+      };
+    }
+
+    const addedGroups = [];
+    for (const [bkey, note] of boardTargets) {
+      const b = s.boards.find((x) => service.storedBoardKey(x) === bkey);
+      if (!b) continue;
+      if (!Array.isArray(b.refs)) b.refs = [];
+      const hit = b.refs.find((l) => l.id === refKey);
       if (!hit) {
-        r.linked.push(one.note ? { kind: 'board', id: bkey, note: one.note } : { kind: 'board', id: bkey });
-        added.push(bkey);
-      } else if (one.note) {
-        hit.note = one.note;
+        b.refs.push(note ? { id: refKey, note } : { id: refKey });
+        addedGroups.push(b.name);
+      } else if (note) {
+        hit.note = note;
       }
     }
-    if (!repos.length && !boards.length) throw badInput('请给 --repo <开发仓库> 或 --board <看板id>（或 --remove 摘除）');
-    return { key: refKey, name: r.name, removed: false, added, linked: r.linked.slice() };
+    const addedRepos = [];
+    for (const [rkey, note] of repoTargets) {
+      const dev = s.repos.find((x) => service.deriveKey(x) === rkey);
+      if (!dev) continue;
+      if (!Array.isArray(dev.linked)) dev.linked = [];
+      const hit = dev.linked.find((l) => l && l.kind === 'ref' && String(l.id) === refKey);
+      if (!hit) {
+        dev.linked.push(note ? { kind: 'ref', id: refKey, note } : { kind: 'ref', id: refKey });
+        addedRepos.push(dev.name);
+      } else if (note) {
+        hit.note = note;
+      }
+    }
+    return {
+      key: refKey,
+      name: r.name,
+      removed: false,
+      addedGroups,
+      addedRepos,
+      groups: boardTargets.size,
+      repos: repoTargets.size,
+    };
   });
 }
 
 /**
- * 绑定描述：单条绑定的「它在这个仓库/看板里参考什么」。
- * note 留空 = 清除。repo 用 id/key/路径/名称，board 用看板 id/key/名称。
+ * 绑定描述：这条绑定「参考什么」。note 留空 = 清除。
+ *   --board b  写组级绑定（group_refs）的描述
+ *   --repo x   写仓库级绑定（dev.ext.ext_linked）的描述
+ * 两者只能选一个（一条绑定一条描述）；目标关系不存在时显式报错。
  */
 export async function setLinkNote({ id, key, repo, board, note } = {}) {
   const ref = await loadRef(id || key);
-  if (!repo && !board) throw badInput('请给 --repo <开发仓库> 或 --board <看板id>');
+  if (!repo && !board) throw badInput('请给 --repo <开发仓库> 或 --board <看板>');
   if (repo && board) throw badInput('--repo 与 --board 只能选一个（一条绑定一条描述）');
   const text = String(note || '').trim();
   return service.mutateStore((s) => {
     const r = s.repos.find((x) => x.id === ref.id);
-    if (!Array.isArray(r.linked)) r.linked = [];
     const refKey = service.deriveKey(r);
-    let link;
-    if (repo) {
-      const rkey = repoKeyInside(s, repo);
-      if (!rkey) throw notFound('绑定的开发仓库不存在: ' + repo);
-      link = r.linked.find((l) => l.kind === 'repo' && l.id === rkey);
-      if (!link) throw conflict(`「${ref.name}」未绑定到该仓库 —— 先 repo bind ${ref.id} --repo ${repo}`);
-      // dev 侧的反向引用同步改（两侧各存一份同一描述）
-      const d = s.repos.find((x) => service.deriveKey(x) === rkey);
-      if (d && Array.isArray(d.linked)) {
-        const back = d.linked.find((l) => l.kind === 'ref' && l.id === refKey);
-        if (back) {
-          if (text) back.note = text;
-          else delete back.note;
-        }
-      }
-    } else {
+    if (board) {
       const bkey = boardKeyInside(s, board);
       if (!bkey) throw notFound('看板不存在: ' + board);
-      link = r.linked.find((l) => l.kind === 'board' && l.id === bkey);
-      if (!link) throw conflict(`「${ref.name}」未绑定到该看板 —— 先 repo bind ${ref.id} --board ${bkey}`);
+      const b = s.boards.find((x) => service.storedBoardKey(x) === bkey);
+      const link = (b.refs || []).find((l) => l.id === refKey);
+      if (!link) {
+        throw conflict(`「${ref.name}」未绑定到组「${b.name}」—— 先 repo bind ${ref.id} --board ${bkey}`);
+      }
+      if (text) link.note = text;
+      else delete link.note;
+      return { key: refKey, name: r.name, group: b.name, note: text };
+    }
+    const rkey = repoKeyInside(s, repo);
+    if (!rkey) throw notFound('绑定的开发仓库不存在: ' + repo);
+    const dev = s.repos.find((x) => service.deriveKey(x) === rkey);
+    if ((dev.type || 'dev') === 'ref') {
+      throw badInput(`「${dev.name}」是参考仓库 —— 仓库级绑定描述只挂在开发仓库上`);
+    }
+    const link = (dev.linked || []).find((l) => l && l.kind === 'ref' && String(l.id) === refKey);
+    if (!link) {
+      throw conflict(`「${ref.name}」未直接绑定到仓库「${dev.name}」—— 先 repo bind ${ref.id} --repo ${rkey}`);
     }
     if (text) link.note = text;
     else delete link.note;
-    return { key: refKey, name: r.name, kind: link.kind, target: link.id, note: text };
+    return { key: refKey, name: r.name, repo: dev.name, note: text };
   });
 }
 
 /**
- * 分层查询「这个本地仓库有哪些参考」：
- *   第一层 = 直接绑定到该仓库的 ref（它自己的参考）；
- *   第二层 = 绑定到它所在的**看板**（命名空间）上的 ref——按看板分组给出，
- *            同一个 ref 出现在多个组就多次列出（它确实从多条路都能够到）。
- * 返回 { repo, direct: [...], boards: [{id, name, desc, refs: [...]}] }
+ * 「这个本地仓库有哪些参考仓库」：两类来源**并列**给出，互不折算。
+ *   direct  直接绑在这个仓库上的参考（仓库级，dev.ext.ext_linked）
+ *   boards  它所属组绑定的参考（组级，group_refs，组内共享）
+ * 同一个 ref 同时出现在两处是合法的（两条关系都真实存在），读取侧不合并。
+ * 返回 { repo, direct: [...], boards: [{id,key,name,desc,refRepos:[...]}] }
  */
-export async function refsForRepo(idOrPathOrName) {
+export async function refReposOfRepo(idOrPathOrName) {
   const s = await service.loadStore();
   const raw = String(idOrPathOrName || '').trim();
   if (!raw) throw badInput('缺少仓库标识（id / key / 绝对路径 / 名称）');
@@ -324,54 +410,21 @@ export async function refsForRepo(idOrPathOrName) {
   if (!repo) throw notFound('repo 不存在: ' + raw);
 
   const repoKey = service.deriveKey(repo);
-  const refByKey = new Map(
-    s.repos.filter((r) => (r.type || 'dev') === 'ref').map((r) => [service.deriveKey(r), r])
-  );
-  const project = (r) => ({
-    id: r.id,
-    key: service.deriveKey(r),
-    name: r.name,
-    desc: r.desc || '',
-    remote: r.remote || '',
-    path: r.path,
-    note: '',
-  });
+  const groups = groupsOfRepo(s, repoKey);
+  const boardsOut = groups.map((b) => ({
+    id: b.id,
+    key: service.storedBoardKey(b),
+    name: b.name,
+    desc: b.desc || '',
+    refRepos: linksOfBoard(s, b).map(({ ref, note }) => ({ ...projectRef(ref), note })),
+  }));
 
-  // 第一层：直接绑到该仓库的 ref。
-  // 数据面优先读 **dev 侧的反向引用**（{kind:'ref'}）——绑定是双向记录的，dev 自己
-  // 就带着它的参考列表；老数据（只有 ref 侧）再回退扫一遍 ref 全表。
-  const directRefs = [];
-  const seen = new Set();
-  for (const l of repo.linked || []) {
-    if (l.kind !== 'ref') continue;
-    const r = refByKey.get(l.id);
-    if (!r) continue;
-    seen.add(l.id);
-    directRefs.push({ ...project(r), note: l.note || '' });
-  }
-  for (const r of refByKey.values()) {
-    const rk = service.deriveKey(r);
-    if (seen.has(rk)) continue;
-    const l = (r.linked || []).find((x) => x.kind === 'repo' && x.id === repoKey);
-    if (l) directRefs.push({ ...project(r), note: l.note || '' });
-  }
-
-  // 第二层：按看板命名空间分组
-  const boardsOut = [];
-  for (const b of s.boards) {
-    if (!service.boardRepoKeys(b, s).includes(repoKey)) continue;
-    const bkey = service.storedBoardKey(b);
-    const refs = [];
-    for (const r of refByKey.values()) {
-      const l = (r.linked || []).find((x) => x.kind === 'board' && x.id === bkey);
-      if (l) refs.push({ ...project(r), note: l.note || '' });
-    }
-    boardsOut.push({ id: b.id, key: bkey, name: b.name, desc: b.desc || '', refs });
-  }
+  // 仓库级直接绑定：与组无关，永远原样回显（组级结果不覆盖它）
+  const direct = directLinksOfRepo(s, repo).map(({ ref, note }) => ({ ...projectRef(ref), note }));
 
   return {
     repo: { id: repo.id, key: repoKey, name: repo.name, path: repo.path, desc: repo.desc || '' },
-    direct: directRefs,
+    direct,
     boards: boardsOut,
   };
 }
@@ -389,9 +442,9 @@ export async function syncRef(id) {
 /** 同步全部参考仓库（逐条给结果，单条失败不断链）。 */
 export async function syncAllRefs() {
   const s = await service.loadStore();
-  const refs = s.repos.filter((r) => (r.type || 'dev') === 'ref');
+  const refRepos = s.repos.filter((r) => (r.type || 'dev') === 'ref');
   const results = [];
-  for (const r of refs) {
+  for (const r of refRepos) {
     results.push(await syncRef(r.id).catch((err) => ({ id: r.id, name: r.name, status: 'error', output: String(err.message || err) })));
   }
   return { synced: results.length, results };
@@ -399,16 +452,43 @@ export async function syncAllRefs() {
 
 /**
  * 完整性检查（零副作用）：ref 的本地目录 / .git / origin 与登记的 remote 一致性，
- * 加每条 linked 的目标是否存在（死链要显式露出来，而不是等用的时候才炸）。
+ * 以及两类绑定（组级 group_refs、仓库级 dev.ext.ext_linked）的目标是否都存在。
  */
 export async function checkRefs() {
   const s = await service.loadStore();
-  // 死链判定按 **key**（关系引用一律用 key）
-  const repoKeys = new Set(s.repos.map((r) => service.deriveKey(r)));
-  const boardKeys = new Set(s.boards.map((b) => service.storedBoardKey(b)));
-  const refs = s.repos.filter((r) => (r.type || 'dev') === 'ref');
+  const refRepos = s.repos.filter((r) => (r.type || 'dev') === 'ref');
+  const refKeys = new Set(refRepos.map((r) => service.deriveKey(r)));
+  const groupByRef = new Map(); // refKey → [{key,name,note}]
+  const extraIssues = [];
+  for (const b of s.boards) {
+    const bkey = service.storedBoardKey(b);
+    for (const l of b.refs || []) {
+      if (!refKeys.has(String(l.id))) {
+        extraIssues.push(`组「${b.name}」(${bkey}) 绑定的参考仓库 ${l.id} 已不存在 —— 用 repo bind --remove 摘除`);
+        continue;
+      }
+      if (!groupByRef.has(l.id)) groupByRef.set(l.id, []);
+      groupByRef.get(l.id).push({ key: bkey, name: b.name, note: l.note || '' });
+    }
+  }
+  // 仓库级直接绑定（与组级并存）：按 ref 归集，死链单独报出来
+  const repoByRef = new Map(); // refKey → [{key,name,note}]
+  for (const d of s.repos) {
+    if ((d.type || 'dev') === 'ref') continue;
+    const dkey = service.deriveKey(d);
+    for (const l of d.linked || []) {
+      if (!l || l.kind !== 'ref') continue;
+      const id = String(l.id);
+      if (!refKeys.has(id)) {
+        extraIssues.push(`仓库「${d.name}」(${dkey}) 绑定的参考仓库 ${id} 已不存在 —— 用 repo bind --remove --repo ${dkey} 摘除`);
+        continue;
+      }
+      if (!repoByRef.has(id)) repoByRef.set(id, []);
+      repoByRef.get(id).push({ key: dkey, name: d.name, note: l.note || '' });
+    }
+  }
   const out = [];
-  for (const r of refs) {
+  for (const r of refRepos) {
     const issues = [];
     const dirExists = await exists(r.path);
     if (!dirExists) issues.push('本地目录不存在: ' + r.path);
@@ -420,29 +500,27 @@ export async function checkRefs() {
         issues.push(`origin 与登记不一致: origin=${origin} 登记=${r.remote}`);
       }
     }
-    // 死链：ref 侧的 {repo|board} 目标没了，或 dev 侧的 {ref} 反向引用目标没了
-    const dead = (r.linked || []).filter((l) => {
-      if (l.kind === 'repo') return !repoKeys.has(l.id);
-      if (l.kind === 'board') return !boardKeys.has(l.id);
-      if (l.kind === 'ref') return !repoKeys.has(l.id);
-      return false;
+    out.push({
+      id: r.id,
+      name: r.name,
+      path: r.path,
+      remote: r.remote || '',
+      ok: issues.length === 0,
+      issues,
+      groups: groupByRef.get(service.deriveKey(r)) || [],
+      repos: repoByRef.get(service.deriveKey(r)) || [],
     });
-    if (dead.length) issues.push(`绑定目标已不存在 ×${dead.length}（摘除: repo bind ${r.id} --remove）`);
-    out.push({ id: r.id, name: r.name, path: r.path, remote: r.remote || '', ok: issues.length === 0, issues, deadLinks: dead });
   }
-  // dev 侧的反向引用死链（ref 没了但 dev 还挂着它）
-  for (const d of s.repos.filter((r) => (r.type || 'dev') !== 'ref')) {
-    const dead = (d.linked || []).filter((l) => l.kind === 'ref' && !repoKeys.has(l.id));
-    if (dead.length) {
-      const hit = out.find((x) => x.id === d.id);
-      if (hit) hit.issues.push(`反向引用已失效 ×${dead.length}（开发仓库侧）`);
-    }
-  }
-  return { refs: out, total: refs.length, problems: out.filter((x) => !x.ok).length };
+  return {
+    refRepos: out,
+    total: refRepos.length,
+    problems: out.filter((x) => !x.ok).length + extraIssues.length,
+    extraIssues,
+  };
 }
 
-/** 看板 → 绑定在该看板（或其成员开发仓库）上的参考仓库清单。面板「挂载给项目组」用。 */
-export async function refsForBoard(boardIdOrKey) {
+/** 看板 → 绑定在该组上的参考仓库清单（组内共享，无继承）。 */
+export async function refReposOfBoard(boardIdOrKey) {
   const s = await service.loadStore();
   const raw = String(boardIdOrKey || '').trim();
   let b = s.boards.find((x) => x.id === raw);
@@ -450,30 +528,8 @@ export async function refsForBoard(boardIdOrKey) {
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!b) throw notFound('看板不存在: ' + raw);
   const bkey = service.storedBoardKey(b);
-  const memberKeys = new Set(service.boardRepoKeys(b, s));
-  const hit = (l) => (l.kind === 'board' && l.id === bkey) || (l.kind === 'repo' && memberKeys.has(l.id));
-  const refs = s.repos.filter((r) => (r.type || 'dev') === 'ref' && (r.linked || []).some(hit));
-  const nameOf = (l) => {
-    if (l.kind === 'board') return '看板「' + b.name + '」';
-    const r = s.repos.find((x) => service.deriveKey(x) === l.id);
-    return r ? '仓库「' + r.name + '」' : l.id;
-  };
   return {
     board: { id: b.id, key: bkey, name: b.name },
-    refs: refs.map((r) => {
-      const mine = (r.linked || []).filter(hit);
-      // 绑定到看板本体的那条描述优先（它是命名空间索引的正文）
-      const boardLink = mine.find((l) => l.kind === 'board');
-      return {
-        id: r.id,
-        key: service.deriveKey(r),
-        name: r.name,
-        desc: r.desc || '',
-        remote: r.remote || '',
-        path: r.path,
-        note: boardLink?.note || '',
-        via: mine.map(nameOf),
-      };
-    }),
+    refRepos: linksOfBoard(s, b).map(({ ref, note }) => ({ ...projectRef(ref), note })),
   };
 }

@@ -75,6 +75,10 @@ export default function ReposView() {
   const [formFor, setFormFor] = useState(undefined); // undefined=关 | null=新建 | 仓库 id=编辑
   const [boardAdminOpen, setBoardAdminOpen] = useState(false);
   const [refOpen, setRefOpen] = useState(false);
+  // 从组筛选视图点「自」勋章跳过来时定位的参考仓库 key（滚动 + 高亮一行）
+  const [refRepoFocus, setRefRepoFocus] = useState('');
+  // 参考面板里每行绑定勋章的折叠状态（refId → 是否展开；默认只显示前几个）
+  const [refBindOpen, setRefBindOpen] = useState({});
   const [docOpen, setDocOpen] = useState(false);
   // 成员管理弹窗：打开时 = 正在往这个看板里点选导入 / 摘除仓库
   const [impBoardId, setImpBoardId] = useState(null);
@@ -86,7 +90,7 @@ export default function ReposView() {
   const [docsFor, setDocsFor] = useState(null);
   const [remoteFor, setRemoteFor] = useState(null); // 对齐 remote 的目标仓库
   const [bindRepoFor, setBindRepoFor] = useState(null); // dev 侧绑定弹窗的目标仓库
-  // 绑定描述编辑：{ ref, kind:'repo'|'board', targetId, targetName } | null
+  // 绑定描述编辑（组 ↔ 参考仓库这条关系）：{ ref, groupId, groupName, note } | null
   const [linkNoteFor, setLinkNoteFor] = useState(null);
 
   // 从别处跳进来的定位：#/repos?board=<组id>&add=1
@@ -142,9 +146,117 @@ export default function ReposView() {
 
   const checkOf = useMemo(() => {
     const m = new Map();
-    (refCheck?.refs || []).forEach((x) => m.set(x.id, x));
+    (refCheck?.refRepos || []).forEach((x) => m.set(x.id, x));
     return m;
   }, [refCheck]);
+
+  // 组级参考：仓库属于哪些组，就能看到这些组上绑定的参考仓库（组内共享，不折算成数量）。
+  // 同一个参考仓库被多个组共享时只出一颗 chip，group 记第一个来源组（点 chip 改的就是它）。
+  const groupRefReposByRepo = useMemo(() => {
+    const m = new Map();
+    const byKey = new Map(refRepos.map((r) => [r.key, r]));
+    for (const b of boardList) {
+      const bkey = b.key || `board/${b.name}`;
+      for (const rk of (b.repos || []).map((x) => x.key)) {
+        for (const l of b.refs || []) {
+          const r = byKey.get(l.id);
+          if (!r) continue;
+          if (!m.has(rk)) m.set(rk, []);
+          const arr = m.get(rk);
+          const hit = arr.find((x) => x.key === r.key);
+          if (hit) {
+            if (hit.group && hit.group.name !== b.name) hit.alsoIn = [...(hit.alsoIn || []), b.name];
+            continue;
+          }
+          arr.push({
+            key: r.key,
+            id: r.id,
+            name: r.name,
+            remote: r.remote || '',
+            note: l.note || '',
+            group: { id: b.id, key: bkey, name: b.name },
+          });
+        }
+      }
+    }
+    return m;
+  }, [boardList, refRepos]);
+
+  // 主表「参考」列的汇总：仓库在哪些组、每组绑了几个参考（组内共享，不展开明细）。
+  // 明细在组页的「组参考」区块里看——一行铺十几个 chip 会把表格撑爆。
+  const groupRefRepoCounts = useMemo(() => {
+    const m = new Map();
+    for (const b of boardList) {
+      const n = (b.refs || []).length;
+      if (!n) continue;
+      for (const x of b.repos || []) {
+        if (!x || !x.key) continue;
+        if (!m.has(x.key)) m.set(x.key, []);
+        m.get(x.key).push({ id: b.id, name: b.name, count: n });
+      }
+    }
+    return m;
+  }, [boardList]);
+
+  // 组筛选视图（group = 命名空间）的行内参考仓库：
+  //   自 = 这个仓库自己直接绑的；组 = 本组共享、但这一行没有自己直接绑的。
+  // 两类合并去重（同一个参考仓库在组里和仓库上都绑了 → 只出一颗，按「自」算），
+  // 自在前——这一行最具体的信息先露出来，组共享的在折叠区里补全。
+  // 全局视图不建这张表（那里仍按组汇总）。
+  const refRepoChipsByRepo = useMemo(() => {
+    const m = new Map();
+    if (!filterBoard) return m;
+    const byKey = new Map(refRepos.map((r) => [r.key, r]));
+    const sharedAll = (filterBoard.refs || []).map((l) => {
+      const r = byKey.get(l.id);
+      return r ? { key: r.key, name: r.name, note: l.note || '', source: 'group', groupName: filterBoard.name } : null;
+    }).filter(Boolean);
+    for (const d of devRepos) {
+      const own = (d.linked || [])
+        .filter((l) => l && l.kind === 'ref')
+        .map((l) => {
+          const r = byKey.get(l.id);
+          return r ? { key: r.key, name: r.name, note: l.note || '', source: 'repo' } : null;
+        })
+        .filter(Boolean);
+      const ownKeys = new Set(own.map((c) => c.key));
+      m.set(d.key, [...own, ...sharedAll.filter((c) => !ownKeys.has(c.key))]);
+    }
+    return m;
+  }, [filterBoard, devRepos, refRepos]);
+
+  // 仓库级直接绑定（反向索引）：参考仓库 key → 直接绑在它身上的开发仓库。
+  // 与组级绑定并列展示，不用「组 + 成员数」去近似。
+  const refRepoBackLinks = useMemo(() => {
+    const m = new Map();
+    for (const d of devRepos) {
+      for (const l of d.linked || []) {
+        if (!l || l.kind !== 'ref') continue;
+        if (!m.has(l.id)) m.set(l.id, []);
+        m.get(l.id).push({ repo: d, note: l.note || '' });
+      }
+    }
+    return m;
+  }, [devRepos]);
+
+  // 组筛选视图点「自」勋章 → 打开参考仓库面板并滚到那一行（等面板挂载一帧再找）。
+  useEffect(() => {
+    if (!refOpen || !refRepoFocus) return undefined;
+    let el = null;
+    let timer = 0;
+    const raf = requestAnimationFrame(() => {
+      el = document.getElementById('rp-refrepo-row-' + refRepoFocus);
+      if (!el) return;
+      el.scrollIntoView({ block: 'center' });
+      el.classList.add('rp-row-flash');
+      timer = setTimeout(() => el.classList.remove('rp-row-flash'), 1600);
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+      if (el) el.classList.remove('rp-row-flash');
+    };
+  }, [refOpen, refRepoFocus]);
 
   // ---- 跨区块共享动作 ----
 
@@ -153,15 +265,21 @@ export default function ReposView() {
     toast(d.status === 'updated' ? `已更新: ${d.name}` : d.status === 'upToDate' ? `${d.name} 已是最新` : `${d.name}: ${d.status} ${d.output || ''}`);
   });
 
-  // 从某条绑定摘除单个目标（chip 上的 ×）
-  const unbindOne = (ref, kind, targetId) => guard(async () => {
-    await api('/api/repos/bind', { method: 'POST', body: { id: ref.key, [kind]: [targetId], remove: true } });
-    await Promise.all([loadRepos(), loadRefCheck()]);
+  // 从某个组摘除这条参考绑定（只摘组级，不动仓库级）
+  const unbindOne = (ref, groupId) => guard(async () => {
+    await api('/api/repos/bind', { method: 'POST', body: { id: ref.key, board: [groupId], remove: true } });
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
 
-  // 绑定描述：从 dev 行的参考 chip、看板参考区块或参考面板的绑定 chip 进入
-  const openLinkNote = (ref, kind, targetId, targetName) => {
-    setLinkNoteFor({ ref, kind, targetId, targetName });
+  // 从某个开发仓库摘除这条参考绑定（只摘仓库级，不影响组级）
+  const unbindRepo = (ref, repoKey) => guard(async () => {
+    await api('/api/repos/bind', { method: 'POST', body: { id: ref.key, repo: [repoKey], remove: true } });
+    await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
+  });
+
+  // 绑定描述 = 组 ↔ 参考仓库这条关系上的描述
+  const openLinkNote = (ref, groupId, groupName, note) => {
+    setLinkNoteFor({ ref, groupId, groupName, note: note || '' });
   };
 
   const rowAct = (act, r) => guard(async () => {
@@ -195,6 +313,47 @@ export default function ReposView() {
     return openDescDoc(b.docRel, `${b.name} · 组介绍`);
   };
 
+  // 区块跳转：面板内容挂在 FlexLayout 的 tab 里（.flexlayout__tab_moveable 才是
+  // 真正的滚动容器），scrollIntoView 在这条链上实测无效，必须手动算 scrollTop。
+  const scrollPageTo = (el, block = 'start') => {
+    if (!el) return;
+    let box = el.parentElement;
+    while (box) {
+      const st = getComputedStyle(box);
+      if ((st.overflowY === 'auto' || st.overflowY === 'scroll') && box.scrollHeight > box.clientHeight) break;
+      box = box.parentElement;
+    }
+    if (!box) box = document.scrollingElement || document.documentElement;
+    const base = box.getBoundingClientRect ? box.getBoundingClientRect().top : 0;
+    const offset = el.getBoundingClientRect().top - base;
+    const pad = block === 'center' ? (box.clientHeight - el.offsetHeight) / 2 : 12;
+    box.scrollTop = Math.max(0, box.scrollTop + offset - pad);
+  };
+  const jumpTo = (id) => scrollPageTo(document.getElementById(id));
+
+  // 绑定 chip 点击 = 跳到宿主：分组 → 筛到该组；仓库 → 滚到那行并闪一下
+  const docGo = (h) => {
+    if (!h || !h.target) return;
+    if (h.kind === 'board') {
+      setFilter(h.target);
+      jumpTo('rp-repos');
+      return;
+    }
+    setFilter('');
+    const row = document.getElementById('rp-row-' + h.target);
+    if (!row) { jumpTo('rp-repos'); return; }
+    scrollPageTo(row, 'center');
+    row.classList.add('rp-row-flash');
+    setTimeout(() => row.classList.remove('rp-row-flash'), 1400);
+  };
+
+  // 参考面板里的勋章点击 = 关面板 → 跳到宿主（组 → 筛到该组；仓库 → 滚到那行并闪一下）
+  const goBindTarget = (kind, target) => {
+    setRefOpen(false);
+    setQ('');
+    setTimeout(() => docGo({ kind, target }), 60);
+  };
+
   const rowActs = {
     open: (r) => rowAct('open', r),
     edit: (r) => setFormFor(r.id),
@@ -214,12 +373,12 @@ export default function ReposView() {
     docs: (r) => setDocsFor({ kind: 'repo', owner: r }),
     // 行内分组 chip = 快捷筛选（再点一次取消）
     filter: (id) => setFilter((f) => (f === id ? '' : id)),
-    // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它身上（多对多的 dev 侧视角）
+    // 组筛选视图里的「组」勋章：维持当前组筛选（不切换成取消）
+    keepFilter: (id) => setFilter(id),
+    // 组筛选视图的「自」勋章 = 跳到这个参考仓库（开参考仓库面板并定位到那一行）
+    gotoRefRepo: (key) => { setRefRepoFocus(key); setRefOpen(true); },
+    // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它所属的组（v4：组内共享）
     bind: (r) => setBindRepoFor(r),
-    refNote: (ref, devRepo) => {
-      const full = refRepos.find((x) => x.key === ref.key);
-      if (full) openLinkNote(full, 'repo', devRepo.key, devRepo.name);
-    },
   };
 
   if (boards === null) {
@@ -290,8 +449,9 @@ export default function ReposView() {
       <RepoTable
         shown={shown}
         devRepos={devRepos}
-        refRepos={refRepos}
         filterBoard={filterBoard}
+        groupRefRepoCounts={groupRefRepoCounts}
+        refRepoChipsByRepo={refRepoChipsByRepo}
         acts={rowActs}
         onAddMember={setImpBoardId}
       />
@@ -302,10 +462,15 @@ export default function ReposView() {
           devRepos={devRepos}
           boardList={boardList}
           checkOf={checkOf}
+          refRepoBackLinks={refRepoBackLinks}
+          refBindOpen={refBindOpen}
+          onRefBindOpen={setRefBindOpen}
           onClose={() => setRefOpen(false)}
           onSyncOne={syncOne}
           onUnbind={unbindOne}
+          onUnbindRepo={unbindRepo}
           onLinkNote={openLinkNote}
+          onGoBind={goBindTarget}
           onDocs={rowActs.docs}
           onRowAct={rowAct}
           reload={reload}
@@ -358,8 +523,10 @@ export default function ReposView() {
         <BindRepoModal
           repo={bindRepoFor}
           refRepos={refRepos}
+          boardList={boardList}
+          currentRefs={groupRefReposByRepo.get(bindRepoFor.key) || []}
           onClose={() => setBindRepoFor(null)}
-          onSaved={async () => { await Promise.all([loadRepos(), loadRefCheck()]); }}
+          onSaved={reload.all}
         />
       ) : null}
 
@@ -367,7 +534,7 @@ export default function ReposView() {
         <LinkNoteModal
           linkNoteFor={linkNoteFor}
           onClose={() => setLinkNoteFor(null)}
-          onSaved={async () => { await Promise.all([loadRepos(), loadRefCheck()]); }}
+          onSaved={reload.all}
         />
       ) : null}
 

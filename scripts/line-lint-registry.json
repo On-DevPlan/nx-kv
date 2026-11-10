@@ -1,5 +1,6 @@
 {
   "files": {
+    "src/web/frontend/page/group/index.jsx": 603,
     "tests/unit/repos-ref.test.mjs": 667
   }
 }

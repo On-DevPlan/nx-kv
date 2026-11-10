@@ -33,6 +33,7 @@ export {
   syncRefAttachments,
   syncTaskAttachments,
   unlinkAttachment,
+  updateAttachmentNote,
 } from './attachmentdb/relations.js';
 export {
   ensureDocRef,

@@ -13,7 +13,7 @@ import * as seed from './seed.js';
 import * as refs from './refs.js';
 import * as links from './links.js';
 import { addDoc, getDoc, listDocs, removeDoc, updateDoc } from './service.js';
-import { attachToDoc, detachFromDoc, listDocAttachments } from './attach.js';
+import { attachToDoc, detachFromDoc, listDocAttachments, noteOnDoc } from './attach.js';
 import {
   renderAttach,
   renderAttachments,
@@ -131,6 +131,20 @@ export default {
       },
       run: attachToDoc,
       render: renderAttach,
+    },
+    {
+      // #168：改一条绑定的说明（desc）——面板里 ref 条目「✎ 说明」的落点
+      id: 'doc.attach-note',
+      cli: ['docs', 'attach-note'],
+      http: ['PATCH', '/api/docs/attach-note'],
+      summary: '改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变）',
+      args: ['ref'],
+      flags: {
+        attachment: { type: 'string', required: true, hint: '资源 id（见 docs attachments）' },
+        note: { type: 'string', hint: '说明文字（留空 = 清掉）' },
+      },
+      run: (ctx) => noteOnDoc({ ref: ctx.ref, attachment: ctx.attachment, note: ctx.note }),
+      render: (d) => `已更新 ${d.attachment} 的说明：${d.note || '（清空）'}`,
     },
     {
       id: 'doc.detach',

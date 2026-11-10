@@ -89,6 +89,23 @@ export function linkAttachment(conn, {
   return role;
 }
 
+/**
+ * 改一条关系上的说明（desc，#168）：面板里给已挂载的文档绑定补/改说明。
+ * 只动 note，不动 role/position——角色是「这条边是什么」，说明是「它讲什么」。
+ * @returns {number} 受影响行数（0 = 没有这条边）
+ */
+export function updateAttachmentNote(conn, { host, hostId, attachmentId, note = '' } = {}) {
+  const h = hostOf(host);
+  const hostVal = host === 'task' ? Number(hostId) : String(hostId || '');
+  const att = String(attachmentId || '');
+  if (!att) return 0;
+  const r = conn.run(
+    `UPDATE ${h.table} SET note = :note WHERE ${h.col} = :host AND attachment_id = :att`,
+    { note: String(note || ''), host: hostVal, att }
+  );
+  return Number(r.changes) || 0;
+}
+
 /** 解除一条关系（只删边，不删资源字节）。返回是否真的删掉。 */
 export function unlinkAttachment(conn, { host, hostId, attachmentId } = {}) {
   const h = hostOf(host);

@@ -40,6 +40,7 @@ import {
   listTaskAttachmentsBySeq,
   resolveRefId,
   unlinkAttachment,
+  updateAttachmentNote,
   upsertFileAttachment,
 } from '../../core/attachmentdb.js';
 import * as service from '../localtask/service.js';
@@ -71,6 +72,35 @@ function annotateFileRows(rows, lookups, store, mirror) {
       size: m && m.size,
     });
   });
+}
+
+/**
+ * 给 ref 型附件补**文档标题**（#168）：标题 = 文档正文首行的 `# 标题`。
+ * 服务端补（读盘），前端直接显示——用户「填写了标题」后，附件区与 md 编辑器
+ * 里的引用名就该是那个标题，而不是文件名。读不到就留空（前端回落附件名）。
+ */
+async function annotateRefTitles(attachments) {
+  const refs = (attachments || [])
+    .filter((a) => a.kind === 'ref')
+    .map((a) => ({ id: a.refId || a.targetKey || '', locator: a.relPath || a.targetKey || '' }));
+  if (!refs.length) return attachments;
+  let titles = new Map();
+  try {
+    const { refTitlesOf } = await import('../docs/brief.js');
+    titles = await refTitlesOf(refs);
+  } catch {
+    titles = new Map();
+  }
+  for (const a of attachments) {
+    if (a.kind !== 'ref') continue;
+    const t = titles.get(String(a.refId || a.targetKey || ''));
+    if (!t) continue;
+    a.docTitle = t;
+    // 视图标题一并覆盖：附件区、md 编辑器引用名、指令段都读它——一处改，处处一致
+    a.title = t;
+    a.name = t;
+  }
+  return attachments;
 }
 
 /**
@@ -116,6 +146,7 @@ export async function annotateTaskDelivery(task, { sync: allowSync = true, topic
 
   const mirror = await cloudMirrorIndex(gid, cfg.attachmentsDir);
   const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store, mirror);
+  await annotateRefTitles(attachments);
   if (inlineDocs) await inlineDocContent(attachments);
   return { task: { ...task, attachments }, sync };
 }
@@ -330,6 +361,7 @@ export async function listTaskAttachments({ id, cwd, key } = {}) {
   const mirror = await cloudMirrorIndex(gid, cfg.attachmentsDir);
   const rows = listTaskAttachmentsBySeq(getDb(), { topicKey: cur.key || key, seq: cur.id });
   const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store, mirror);
+  await annotateRefTitles(attachments);
 
   return {
     task: { id: cur.id, key: cur.key || key },
@@ -340,6 +372,36 @@ export async function listTaskAttachments({ id, cwd, key } = {}) {
     inlineCount: attachments.filter((a) => a.origin !== 'area').length,
     areaCount: attachments.filter((a) => a.origin === 'area').length,
     attachments,
+  };
+}
+
+/**
+ * 改一条附件绑定上的**说明**（desc，#168）：面板里给已挂载的文档绑定补/改说明。
+ * 只动边上的 note（角色/位置不动）——「这条边是什么」与「它讲什么」分开。
+ */
+export async function noteTaskAttachment({ id, cwd, key, attachment, note = '' } = {}) {
+  const cur = await service.getTask({ id, cwd, key });
+  const topicKey = cur.key || key || '';
+  const attId = String(attachment || '').trim();
+  if (!attId) throw badInput('需要 --attachment <资源 id>（见 localtask attachments 输出）');
+  const db = getDb();
+  let changed = 0;
+  tx(
+    (conn) => {
+      const gid = taskGlobalIdOf(conn, { topicKey, seq: cur.id });
+      if (!gid) throw badInput(`任务 #${cur.id} 已不存在`);
+      changed = updateAttachmentNote(conn, { host: 'task', hostId: gid, attachmentId: attId, note });
+    },
+    { db, mode: 'IMMEDIATE' }
+  );
+  if (!changed) throw badInput(`这条任务上没有附件 ${attId}`);
+  return {
+    status: 'ok',
+    key: cur.key || key,
+    name: topicNameOf(cur),
+    task: { id: cur.id },
+    attachment: attId,
+    note: String(note || ''),
   };
 }
 

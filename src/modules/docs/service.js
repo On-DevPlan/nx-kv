@@ -18,6 +18,7 @@ import { badInput, blocked } from '../../core/errors.js';
 import { getDb } from '../../core/db/index.js';
 import { tx } from '../../core/db/tx.js';
 import { ensureDocRef, syncRefAttachments } from '../../core/attachmentdb.js';
+import { docTitleFromMd } from '../../shared/doc-title.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
@@ -37,12 +38,13 @@ async function safeRead(abs) {
 export async function listDocs({ external } = {}) {
   const docs = [];
   for (const f of await store.listOwnDocs()) {
-    const title = /^#\s+(.+)$/m.exec(f.size <= 512 * 1024 ? await safeRead(f.abs) : '');
+    // #168：标题口径 = 正文**首行**的 `# 标题`（与文档页/附件清单同一口径）
+    const title = docTitleFromMd(f.size <= 512 * 1024 ? await safeRead(f.abs) : '');
     docs.push({
       docId: paths.ownDocId(f.rel),
       rel: f.rel,
       name: f.rel.replace(/\.md$/i, '').split('/').pop(),
-      title: title ? title[1].trim() : '',
+      title,
       size: f.size,
     });
   }
@@ -174,11 +176,13 @@ export async function removeDoc({ ref } = {}) {
 
 function outOwn(rel, body) {
   const { summaryFromMd } = seed;
-  const m = /^#\s+(.+)$/m.exec(body);
+  // #168：标题 = 正文**首行**的 `# 标题`（不是「任意位置的首个 # 行」——
+  // 那样正文中间插一行 ## 就会改标题；也不是「首个非空行」——那会让正文
+  // 第一行顶替标题）。与前端 shared/doc-title.js 同一口径。
   return {
     docId: paths.ownDocId(rel),
     rel,
-    title: m ? m[1].trim() : '',
+    title: docTitleFromMd(body),
     summary: summaryFromMd(body),
     body,
     writable: true,
@@ -186,11 +190,11 @@ function outOwn(rel, body) {
 }
 
 function outExternal(abs, body) {
-  const m = /^#\s+(.+)$/m.exec(body);
   return {
     docId: paths.extDocId(abs),
     path: abs,
-    title: m ? m[1].trim() : '',
+    // #168：与自有树同一口径——标题 = 正文首行的 `# 标题`
+    title: docTitleFromMd(body),
     summary: seed.summaryFromMd(body),
     body,
     // 登记在册的外部文档 = 用户的文档集，允许就地写回来源文件（写侧另过闭包校验）

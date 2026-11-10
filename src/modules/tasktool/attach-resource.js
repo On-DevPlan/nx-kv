@@ -268,6 +268,9 @@ export function resourceOf(row, lookups = {}) {
   }
 
   // ref：文档库里的 md（locator 是 docs 树相对路径，或外部 md 的绝对路径）
+  // 标题口径（#168）：**文档标题**（正文首行的 # 标题）优先 —— 服务端在标注层
+  // （tasktool/attach.js 的 annotateRefTitles）读盘补上并覆盖 title/name；
+  // 这里先给文件名占位，读不到标题时前端回落它。
   const info = lookups.refs && lookups.refs.get(String(meta.refId || row.targetKey || ''));
   const refId = String(meta.refId || row.targetKey || (info && info.refId) || '');
   const relPath = String((info && info.locator) || meta.locator || '');

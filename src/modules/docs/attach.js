@@ -14,6 +14,7 @@ import {
   refIdFor,
   resolveRefId,
   unlinkAttachment,
+  updateAttachmentNote,
   upsertFileAttachment,
 } from '../../core/attachmentdb.js';
 import { localUpload } from '../../core/localatt.js';
@@ -39,7 +40,31 @@ export async function listDocAttachments({ ref } = {}) {
   const d = await getDoc({ ref });
   const locator = String(d.rel || d.path || '').replace(/\\/g, '/');
   if (!locator) throw badInput('无法定位文档: ' + String(ref || ''));
-  return { refId: refIdFor(locator), locator, attachments: listRefAttachments(getDb(), refIdFor(locator)) };
+  const refId = refIdFor(locator);
+  const attachments = listRefAttachments(getDb(), refId);
+  // #168：ref 条目补**文档标题**（正文首行的 # 标题）——面板与编辑器都显示它
+  try {
+    const { refTitlesOf } = await import('./brief.js');
+    const titles = await refTitlesOf(
+      attachments
+        .filter((a) => a.kind === 'ref')
+        .map((a) => ({
+          id: String((a.meta && a.meta.refId) || a.targetKey || ''),
+          locator: String((a.meta && a.meta.locator) || a.targetKey || ''),
+        })),
+    );
+    for (const a of attachments) {
+      if (a.kind !== 'ref') continue;
+      const t = titles.get(String((a.meta && a.meta.refId) || a.targetKey || ''));
+      if (!t) continue;
+      a.docTitle = t;
+      a.title = t;
+      a.name = t;
+    }
+  } catch {
+    /* 读不到标题 → 不补（前端回落文件名） */
+  }
+  return { refId, locator, attachments };
 }
 
 /**
@@ -149,6 +174,26 @@ export async function attachToDoc(ctx) {
     role,
     markdown,
   };
+}
+
+/**
+ * 改一条文档侧绑定上的说明（desc，#168）：与任务侧同一口径——只动 note。
+ */
+export async function noteOnDoc({ ref, attachment, note = '' } = {}) {
+  const { locator } = await docLocatorOf(ref);
+  const attId = String(attachment || '').trim();
+  if (!attId) throw badInput('需要 --attachment <资源 id>（见 docs attachments 输出）');
+  const db = getDb();
+  let changed = 0;
+  tx(
+    (conn) => {
+      const refId = ensureDocRef(conn, { locator });
+      changed = updateAttachmentNote(conn, { host: 'ref', hostId: refId, attachmentId: attId, note });
+    },
+    { db, mode: 'IMMEDIATE' }
+  );
+  if (!changed) throw badInput(`这篇文档上没有附件 ${attId}`);
+  return { refId: refIdFor(locator), locator, attachment: attId, note: String(note || '') };
 }
 
 /** 解除文档与资源的关系；--purge 在无人引用时连资源行与本机字节一起删。 */

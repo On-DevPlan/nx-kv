@@ -132,10 +132,26 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   const editorApiRef = useRef(null);
   const histRef = useRef(new Map());
 
+  // #168：ref 引用在正文里显示**文档标题**（用户在文档里填的标题）——
+  // 需要服务端附件清单里的 ref 条目（标题是服务端读盘补的）。
+  const [refAtts, setRefAtts] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    const t = taskRow;
+    if (!t || !t.id) return undefined;
+    const q = new URLSearchParams({ id: String(t.id) });
+    if (topicKey) q.set('key', topicKey);
+    else if (t.cwd) q.set('cwd', t.cwd);
+    api(`/api/localtasks/attachments?${q.toString()}`)
+      .then((d) => { if (alive) setRefAtts((d && (d.attachments || d.data?.attachments)) || []); })
+      .catch(() => { if (alive) setRefAtts([]); });
+    return () => { alive = false; };
+  }, [taskRow, topicKey]);
+
   // 阅读视图：剥掉首个一级标题行——它就是文档标题（页头已渲染），正文再渲染一遍是重复
   const previewHtml = useMemo(
-    () => (doc ? renderMarkdownHtml(stripTitleHeading(doc.body), doc.attachments) : ''),
-    [doc]
+    () => (doc ? renderMarkdownHtml(stripTitleHeading(doc.body), refAtts.length ? refAtts : doc.attachments) : ''),
+    [doc, refAtts]
   );
   // 验收条 ack：agent 完成总结常带 md（加粗/列表/标题）——按正文同一套渲染，不要当纯文本。
   const ackHtml = useMemo(
@@ -405,7 +421,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           previewHtml={previewHtml}
           onTitle={onTitle}
           onBody={onBody}
-          attachments={doc.attachments}
+          attachments={refAtts.length ? [...doc.attachments, ...refAtts] : doc.attachments}
           docKey={id}
           editorApiRef={editorApiRef}
           onFiles={addFiles}

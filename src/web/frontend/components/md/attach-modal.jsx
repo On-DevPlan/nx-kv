@@ -41,6 +41,10 @@ export default function AttachModal({
   allow = { file: true, url: true, task: false, ref: false },
   taskOptions = [],
   docOptions = null,
+  // #168：替换模式——提交成功后把这条旧绑定换掉（换指向）
+  replaceAttachment = null,
+  // #168：换指向时沿用旧绑定的说明（用户写的 desc 不该因为换篇文档就丢）
+  replaceNote = '',
   onClose,
   onDone,
 }) {
@@ -176,7 +180,11 @@ export default function AttachModal({
         fileId = r.fileId || r.id;
         if (!fileId) throw new Error('上传未返回 fileId');
       }
-      await ep.attach(attachBodyOf({ ...it, fileId }, host));
+      await ep.attach(attachBodyOf({ ...it, fileId, note: it.note || replaceNote || '' }, host));
+      // #168：换指向——新绑定挂好后解除旧的那条（旧资源进孤儿池，不删字节）
+      if (replaceAttachment) {
+        try { await ep.detach(replaceAttachment, false); } catch { /* 旧边解不掉也不影响新绑定 */ }
+      }
       setItems((prev) => prev.filter((x) => x.key !== it.key));
       return true;
     } catch (e) {
@@ -236,7 +244,7 @@ export default function AttachModal({
 
   return (
     <Modal
-      title="添加附件"
+      title={replaceAttachment ? '更换文档绑定' : '添加附件'}
       size="md"
       onClose={busy ? undefined : onClose}
       busy={busy}

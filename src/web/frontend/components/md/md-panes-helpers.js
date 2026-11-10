@@ -33,7 +33,10 @@ export function blockHtml(text, attachments) {
   // 下发——本函数是**逐块**调用的，renderMarkdownHtml 会把文件附件拼成 chip
   // 附在每个块末尾，拖一个 md 进来就是「每一行都显示」（#118）。
   const imgs = (attachments || []).filter((a) => a?.type === 'image');
-  return renderMarkdownHtml(raw, imgs).replace(
+  // #168：ref 条目也传下去——只用来把 `nxkv://ref/<id>` 的显示名换成**文档标题**
+  // （渲染层只查标题表，不产生任何 chip，逐块下发是安全的）。
+  const refs = (attachments || []).filter((a) => a?.kind === 'ref');
+  return renderMarkdownHtml(raw, [...imgs, ...refs]).replace(
     /<p class="mdw-empty">[\s\S]*?<\/p>/g,
     ''
   );

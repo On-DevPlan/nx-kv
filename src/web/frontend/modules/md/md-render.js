@@ -61,7 +61,19 @@ function wikiKnown(target, knownNames) {
   return knownNames.has(norm) || knownNames.has(norm.split('/').pop());
 }
 
-function inline(s, knownNames) {
+/**
+ * ref 链接的显示名（#168）：优先**文档标题**（refId → title 的映射，来自附件
+ * 清单——服务端读盘补的正文首行 # 标题），没有映射才用链接原文。
+ */
+function refTitleOf(target, text, refTitles) {
+  if (!refTitles || !refTitles.size) return text;
+  const m = String(target || '').match(/^nxkv:\/\/ref\/([^)\s]+)$/i);
+  if (!m) return text;
+  const t = refTitles.get(m[1]);
+  return t ? esc(t) : text;
+}
+
+function inline(s, knownNames, refTitles) {
   const base = esc(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
@@ -83,7 +95,9 @@ function inline(s, knownNames) {
   // 不让它落到「普通 markdown 链接」而被当外链。
   const withInternal = withAtt.replace(/\[([^\]]+)\]\((nxkv:\/\/[^)\s]+)\)/g, (m, text, target) => {
     if (!/^nxkv:\/\/(?:task|ref)\//i.test(target)) return m;
-    return `<a class="md-wl" data-nxkv="${target}" title="内部资源：${target}">${text}</a>`;
+    // #168：ref 引用显示**文档标题**（用户在文档里填的那行 # 标题），没有标题才用原文
+    const label = refTitleOf(target, text, refTitles);
+    return `<a class="md-wl" data-nxkv="${target}" title="内部资源：${target}">${label}</a>`;
   });
   return withInternal.replace(/\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g, (_, target, label) => {
     const t = target.trim();
@@ -100,8 +114,17 @@ function inline(s, knownNames) {
  */
 export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
   const imgMap = {};
+  // ref 标题映射（#168）：附件清单里 kind=ref 的条目 → refId → 文档标题，
+  // 渲染 ref 链接时用标题当显示名（用户填了标题，编辑器里就该看到标题）。
+  const refTitles = new Map();
   for (const a of attachments) {
+    if (!a) continue;
     if (a.type === 'image' && a.url) imgMap[a.name] = a.url;
+    if (a.kind === 'ref') {
+      const id = String(a.refId || a.targetKey || a.targetRef || '');
+      const title = String(a.docTitle || a.title || a.name || '');
+      if (id && title) refTitles.set(id, title);
+    }
   }
   // frontmatter **不再渲染成属性卡**（#113）：board/project 这些是投递元数据，
   // 摆在一堆任务正文上方纯属噪音——正文里剥掉即可（编辑态仍能点开原 YAML 看）。
@@ -183,14 +206,14 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
         }
         if (curPara.length) paras.push(curPara);
         const bodyHtml = paras
-          .map((p) => p.map((l) => inline(l, knownNames)).join('<br>'))
+          .map((p) => p.map((l) => inline(l, knownNames, refTitles)).join('<br>'))
           .join('<br><br>');
         html += `<div class="md-callout md-callout-${esc(type)}">`
-          + (title ? `<div class="md-callout-t">${inline(title, knownNames)}</div>` : '')
+          + (title ? `<div class="md-callout-t">${inline(title, knownNames, refTitles)}</div>` : '')
           + `<div class="md-callout-b">${bodyHtml}</div></div>`;
         continue;
       }
-      html += `<blockquote>${q.map((l) => inline(l, knownNames)).join('<br>')}</blockquote>`;
+      html += `<blockquote>${q.map((l) => inline(l, knownNames, refTitles)).join('<br>')}</blockquote>`;
       continue;
     }
     if (line.startsWith('### ')) {
@@ -198,7 +221,7 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
       {
         const text = line.slice(4);
         const id = headingAnchorId(text.trim(), usedIds);
-        html += `<h3 id="${esc(id)}">${inline(text, knownNames)}</h3>`;
+        html += `<h3 id="${esc(id)}">${inline(text, knownNames, refTitles)}</h3>`;
       }
       continue;
     }
@@ -207,7 +230,7 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
       {
         const text = line.slice(3);
         const id = headingAnchorId(text.trim(), usedIds);
-        html += `<h2 id="${esc(id)}">${inline(text, knownNames)}</h2>`;
+        html += `<h2 id="${esc(id)}">${inline(text, knownNames, refTitles)}</h2>`;
       }
       continue;
     }
@@ -216,7 +239,7 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
       {
         const text = line.slice(2);
         const id = headingAnchorId(text.trim(), usedIds);
-        html += `<h1 id="${esc(id)}">${inline(text, knownNames)}</h1>`;
+        html += `<h1 id="${esc(id)}">${inline(text, knownNames, refTitles)}</h1>`;
       }
       continue;
     }
@@ -229,15 +252,15 @@ export function renderMarkdownHtml(src, attachments = [], knownNames = null) {
       const done = m[1] && /x/i.test(m[1]);
       if (m[1]) {
         const mark = done ? '☑' : '☐';
-        html += `<li class="${done ? 'done' : 'todo'}"><span class="mdw-cb" aria-hidden="true">${mark}</span>${inline(m[2], knownNames)}</li>`;
+        html += `<li class="${done ? 'done' : 'todo'}"><span class="mdw-cb" aria-hidden="true">${mark}</span>${inline(m[2], knownNames, refTitles)}</li>`;
       } else {
-        html += `<li>${inline(m[2], knownNames)}</li>`;
+        html += `<li>${inline(m[2], knownNames, refTitles)}</li>`;
       }
       continue;
     }
     flush();
     if (!line.trim()) continue;
-    html += `<p>${inline(line, knownNames)}</p>`;
+    html += `<p>${inline(line, knownNames, refTitles)}</p>`;
   }
   if (inCode) html += '</code></pre>';
   flush();

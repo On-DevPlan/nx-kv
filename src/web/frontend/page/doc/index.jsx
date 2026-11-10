@@ -22,7 +22,8 @@ import DocHead, { groupOf } from '../../components/doc/doc-head.jsx';
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { IntroRail, introDirFromRef } from '../../components/Introduction/index.jsx';
 import { uploadMany, snippetsOf } from '../../components/cloud/upload.js';
-import { extractMdHeadings, insertAttachmentSnippet, renderMarkdownHtml, slugName, titleFromMd } from '../../modules/md/md-parse.js';
+import { extractMdHeadings, insertAttachmentSnippet, renderMarkdownHtml, slugName } from '../../modules/md/md-parse.js';
+import { docTitleFromMd, setDocTitleInMd } from '../../../../shared/doc-title.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
 import { resolveWikiLink } from '../../../../shared/wikilink.js';
 
@@ -198,10 +199,21 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   }, []);
 
   const writable = !!(doc && doc.writable);
+  // #168：ref 引用在预览/编辑器里显示**文档标题**——需要附件清单里的 ref 条目
+  // （服务端读盘补的标题），渲染时按 refId 查表替换链接文字。
+  const [attList, setAttList] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    if (!docId) return undefined;
+    api(`/api/docs/attachments?ref=${encodeURIComponent(docId)}`)
+      .then((d) => { if (alive) setAttList((d && (d.attachments || d.data?.attachments)) || []); })
+      .catch(() => { if (alive) setAttList([]); });
+    return () => { alive = false; };
+  }, [docId]);
   const previewHtml = useMemo(
     // 外部/缺失文档不判未解析态（known=null = 全部普通样式）
-    () => (doc ? renderMarkdownHtml(doc.body, [], writable ? known : null) : ''),
-    [doc, known, writable]
+    () => (doc ? renderMarkdownHtml(doc.body, attList, writable ? known : null) : ''),
+    [doc, known, writable, attList]
   );
   const headings = useMemo(() => (doc ? extractMdHeadings(doc.body) : []), [doc]);
 
@@ -283,21 +295,21 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       toast(res.summary ? '已保存，摘要已回写' : '已保存');
     });
 
-  // ─── 编辑（文档没有独立标题：标题 = 正文首个 # 行）───
+  // ─── 编辑（#168：文档标题 = 正文**首行**的 `# 标题`；正文第一行不再顶替标题）───
   const onBody = (next, kind = 'op') => {
     if (!doc) return;
     pushHistory(histRef.current, docId, { body: doc.body }, kind);
     setDirty(true);
-    setDoc((d) => ({ ...d, body: next, title: titleFromMd(next, d.title) }));
+    setDoc((d) => ({ ...d, body: next, title: docTitleFromMd(next) || d.title }));
   };
 
   const onTitle = (next, kind = 'typing') => {
     if (!doc) return;
     pushHistory(histRef.current, docId, { body: doc.body }, kind);
     setDirty(true);
-    const b = /^#\s+/m.test(doc.body)
-      ? doc.body.replace(/^#\s+.+$/m, `# ${next || '未命名文档'}`)
-      : `# ${next || '未命名文档'}\n\n${doc.body}`;
+    // 改写**首行**的标题行（首行不是 # 就补到文首）——标题行永远在首行，
+    // 不会被正文其它 # 行带偏。
+    const b = setDocTitleInMd(doc.body, next);
     setDoc((d) => ({ ...d, body: b, title: next }));
   };
 
@@ -305,7 +317,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     if (!doc) return;
     const snap = undoHistory(histRef.current, docId, { body: doc.body });
     if (!snap) return;
-    setDoc((d) => ({ ...d, body: snap.body, title: titleFromMd(snap.body, d.title) }));
+    setDoc((d) => ({ ...d, body: snap.body, title: docTitleFromMd(snap.body) || d.title }));
     setDirty(true);
     requestAnimationFrame(() => editorApiRef.current?.caretFromDiff?.(doc.body, snap.body));
   };
@@ -314,7 +326,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     if (!doc) return;
     const snap = redoHistory(histRef.current, docId, { body: doc.body });
     if (!snap) return;
-    setDoc((d) => ({ ...d, body: snap.body, title: titleFromMd(snap.body, d.title) }));
+    setDoc((d) => ({ ...d, body: snap.body, title: docTitleFromMd(snap.body) || d.title }));
     setDirty(true);
     requestAnimationFrame(() => editorApiRef.current?.caretFromDiff?.(doc.body, snap.body));
   };
@@ -338,7 +350,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       const placed = insertAttachmentSnippet(cur.body, snippet, opts);
       pushHistory(histRef.current, docId, { body: cur.body });
       setDirty(true);
-      setDoc((d) => (d ? { ...d, body: placed.body, title: titleFromMd(placed.body, d.title) } : d));
+      setDoc((d) => (d ? { ...d, body: placed.body, title: docTitleFromMd(placed.body) || d.title } : d));
       toast(`已插入 ${results.length} 个附件`);
     } catch (e) {
       toast(`附件上传失败：${String(e.message || e)}`);
@@ -506,7 +518,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
           onTitle={writable ? onTitle : null}
           onBody={writable ? onBody : null}
           onFiles={writable ? addFiles : null}
-          attachments={[]}
+          attachments={attList}
           docKey={docId}
           editorApiRef={editorApiRef}
           onSave={writable ? save : null}

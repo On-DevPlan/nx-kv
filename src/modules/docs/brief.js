@@ -10,8 +10,7 @@
 import * as paths from './paths.js';
 import * as store from './store.js';
 import { summaryFromMd } from './seed.js';
-
-const TITLE_RE = /^#\s+(.+)$/m;
+import { docTitleFromMd } from '../../shared/doc-title.js';
 
 const baseNameOf = (p) => String(p || '').replace(/\\/g, '/').split('/').pop().replace(/\.md$/i, '');
 
@@ -42,9 +41,9 @@ async function mainMeta(ref, fallbackRel, ownerName) {
   if (rel) {
     try {
       const body = await store.readOwnDoc(rel);
-      const t = TITLE_RE.exec(body);
+      // #168：标题 = 正文**首行**的 `# 标题`（与文档页/附件清单同一口径）
       return {
-        title: (t && t[1].trim()) || ownerName || baseNameOf(rel),
+        title: docTitleFromMd(body) || ownerName || baseNameOf(rel),
         summary: summaryFromMd(body),
       };
     } catch { /* 还没落盘 */ }
@@ -52,6 +51,38 @@ async function mainMeta(ref, fallbackRel, ownerName) {
   }
   if (ref && ref.path) return { title: baseNameOf(ref.path), summary: '' };
   return { title: ownerName || '', summary: '' };
+}
+
+/**
+ * 批量取 ref 的**文档标题**（#168）：标题 = 正文首行的 `# 标题`。
+ *
+ * 用途：面板里的 ref 条目（任务/文档附件区、md 编辑器的引用名）此前只能显示
+ * 文件名——用户「填写了标题」后编辑器里看到的仍是文件名。附件清单在服务端补
+ * 上真实标题，前端直接用。
+ *
+ * 只读自有树（外部路径读盘在闭包外不给——与 docs get 读侧同纪律）；读不到就
+ * 不给（前端回落附件名/文件名）。
+ *
+ * @param {Array<{id?:string, locator?:string}>} refs
+ * @returns {Promise<Map<string,string>>} refId → 标题
+ */
+export async function refTitlesOf(refs) {
+  const out = new Map();
+  for (const r of refs || []) {
+    const id = String((r && (r.id || r.refId)) || '');
+    const loc = String((r && r.locator) || '');
+    if (!id || !loc || out.has(id)) continue;
+    // 只认自有树相对路径（外部绝对路径需要闭包校验，附件清单场景不落外部 ref）
+    if (/^[a-zA-Z]:[\\/]/.test(loc) || loc.startsWith('/')) continue;
+    try {
+      const body = await store.readOwnDoc(loc);
+      const title = docTitleFromMd(body);
+      if (title) out.set(id, title);
+    } catch {
+      /* 读不到（缺失/被删）→ 不给标题，前端回落 */
+    }
+  }
+  return out;
 }
 
 /**

@@ -74,6 +74,31 @@ export const attachActions = [
     render: renderDetach,
   },
   {
+    // #168：给已挂载的绑定改说明（desc）——面板里 ref 条目上「✎ 说明」的落点。
+    id: 'localtask.attach-note',
+    cli: ['localtask', 'attach-note'],
+    http: ['PATCH', '/api/localtasks/attach-note'],
+    summary: '改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变）',
+    flags: {
+      id: { type: 'number', required: true, hint: '任务编号' },
+      cwd: CWD,
+      key: KEY,
+      attachment: { type: 'string', required: true, hint: '资源 id（见 localtask attachments）' },
+      note: { type: 'string', hint: '说明文字（留空 = 清掉）' },
+    },
+    run: async (ctx) => {
+      const { noteTaskAttachment } = await import('../tasktool/attach.js');
+      return noteTaskAttachment({
+        id: ctx.id,
+        cwd: ctx.cwd,
+        key: ctx.key,
+        attachment: ctx.attachment,
+        note: ctx.note,
+      });
+    },
+    render: (d) => `已更新 ${d.attachment} 的说明：${d.note || '（清空）'}`,
+  },
+  {
     id: 'localtask.attachments',
     cli: ['localtask', 'attachments'],
     http: ['GET', '/api/localtasks/attachments'],

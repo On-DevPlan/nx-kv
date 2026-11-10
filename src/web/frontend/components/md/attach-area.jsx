@@ -7,8 +7,9 @@
 // 图片缩略图点开大图；pdf/其它给打开/下载；task 点击跳任务；ref 点击开文档；
 // 移除时二选一：只解除关联 / 连资源与字节一起删。
 import { useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
-import { Modal } from '../popup/index.jsx';
+import { Modal, useDialog } from '../popup/index.jsx';
 import { useToast } from '../toast/index.jsx';
+import { api } from '../../api/client.js';
 import { uploadOne, droppedFiles } from '../cloud/upload.js';
 import AttachModal from './attach-modal.jsx';
 import {
@@ -42,6 +43,7 @@ export default function AttachArea({
   onOpenDoc,
 }) {
   const toast = useToast();
+  const { dialog, node: dialogNode } = useDialog();
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -50,6 +52,8 @@ export default function AttachArea({
   const [dropping, setDropping] = useState(false);
   const [sortBy, setSortBy] = useState('position');
   const [removeOf, setRemoveOf] = useState(null);
+  // #168：ref 条目的两个动作——改说明（✎）/ 换指向（⇄，替换成另一篇文档）
+  const [replaceOf, setReplaceOf] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [preview, setPreview] = useState(null);
 
@@ -120,6 +124,41 @@ export default function AttachArea({
     }
   };
 
+  // #168：改一条绑定的说明（desc）——面板直改，不必重挂
+  const editNote = async (item) => {
+    if (!item) return;
+    try {
+      const res = await dialog({
+        title: `说明 · ${item.name}`,
+        input: true,
+        placeholder: '这一行里大概是什么（交付清单会透出给 agent）',
+        value: item.note || '',
+        okText: '保存说明',
+      });
+      if (res === null) return;
+      const note = typeof res === 'string' ? res : (res && (res.value || res.note)) || '';
+      const path = host === 'doc'
+        ? `/api/docs/attach-note?ref=${encodeURIComponent(String(refId || ''))}`
+        : '/api/localtasks/attach-note';
+      const body = host === 'doc'
+        ? { attachment: item.id, note }
+        : { id: Number(hostId), ...(hostKey ? { key: hostKey } : hostCwd ? { cwd: hostCwd } : {}), attachment: item.id, note };
+      await api(path, { method: 'PATCH', body });
+      toast(note ? `已保存说明：${note}` : '已清空说明');
+      await load();
+      onChanged?.();
+    } catch (e) {
+      toast(`改说明失败：${(e && e.message) || e}`);
+    }
+  };
+
+  // #168：换指向——重新打开「添加附件」弹窗（只选文档），提交后把旧绑定换掉
+  const startReplace = (item) => {
+    if (!item) return;
+    setReplaceOf(item);
+    setModalOpen(true);
+  };
+
   const doRemove = async (purge) => {
     const item = removeOf;
     if (!item) return;
@@ -159,6 +198,8 @@ export default function AttachArea({
         dropFiles(null, e);
       }}
     >
+      {/* 「改说明」用的输入弹窗挂在这里（#168） */}
+      {dialogNode}
       <div className={'att-area-head' + (dragOver && !disabled ? ' is-over' : '')}>
         <span className="att-area-title">
           附件
@@ -194,14 +235,14 @@ export default function AttachArea({
       {inline.length ? (
         <div className="att-section">
           <div className="att-section-head">{AREA_LABEL.inline}<span className="att-section-hint">正文里的引用，删正文行会跟着消失</span></div>
-          {inline.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onOpenTask, onOpenDoc, key: a.id }))}
+          {inline.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onOpenTask, onOpenDoc, onEditNote: editNote, onReplace: startReplace, key: a.id }))}
         </div>
       ) : null}
 
       {area.length ? (
         <div className="att-section">
           <div className="att-section-head">{AREA_LABEL.area}<span className="att-section-hint">不依赖正文，删正文行也不会丢</span></div>
-          {area.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onOpenTask, onOpenDoc, key: a.id }))}
+          {area.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onOpenTask, onOpenDoc, onEditNote: editNote, onReplace: startReplace, key: a.id }))}
         </div>
       ) : null}
 
@@ -215,8 +256,10 @@ export default function AttachArea({
         allow={allow}
         taskOptions={taskOptions}
         docOptions={docOptions}
-        onClose={() => setModalOpen(false)}
-        onDone={async () => { await load(); onChanged?.(); }}
+        replaceAttachment={replaceOf ? replaceOf.id : null}
+        replaceNote={replaceOf ? replaceOf.note || '' : ''}
+        onClose={() => { setModalOpen(false); setReplaceOf(null); }}
+        onDone={async () => { setReplaceOf(null); await load(); onChanged?.(); }}
       />
 
       {removeOf ? (
@@ -261,7 +304,7 @@ export default function AttachArea({
   );
 }
 
-function renderItem(a, { onRemove, onPreview, onOpenTask, onOpenDoc }) {
+function renderItem(a, { onRemove, onPreview, onOpenTask, onOpenDoc, onEditNote, onReplace }) {
   const src = a.kind === 'image' ? contentUrl(a.id) : '';
   return (
     <div className={`att-item att-kind-${a.kind}`} key={a.id}>
@@ -307,6 +350,13 @@ function renderItem(a, { onRemove, onPreview, onOpenTask, onOpenDoc }) {
         <span className="att-item-acts">
           <a className="att-act" href={contentUrl(a.id)} target="_blank" rel="noreferrer">打开</a>
           <a className="att-act" href={contentUrl(a.id)} download={a.name}>下载</a>
+        </span>
+      ) : null}
+
+      {a.kind === 'ref' ? (
+        <span className="att-item-acts">
+          <button type="button" className="att-act" title="改这条绑定的一行说明（交付清单会透出）" onClick={() => onEditNote?.(a)}>✎ 说明</button>
+          <button type="button" className="att-act" title="换成另一篇文档（替换这条绑定）" onClick={() => onReplace?.(a)}>⇄ 更换</button>
         </span>
       ) : null}
 

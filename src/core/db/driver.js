@@ -22,10 +22,11 @@
 // 所有 REFERENCES 都不会生效，而且不报错）。这些在 openRaw 里一次设好。
 import './quiet.js';
 import * as nodeSqlite from 'node:sqlite';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { badInput } from '../errors.js';
+import { AppError, CODES, badInput } from '../errors.js';
 import { isBusyError, mapSqliteError } from './errors.js';
+import { stampFileTag } from './time.js';
 
 // v26.11 把 DatabaseSync 改名成 Database；两个都认，只在这里判断。
 const SqliteCtor = nodeSqlite.DatabaseSync ?? nodeSqlite.Database;
@@ -109,6 +110,105 @@ function enableWal(api) {
   // （WAL 一旦由任何人打开就持久生效），也不是迁移失败，所以只是放过。
 }
 
+// ── 残留 -shm 自愈（Windows 实测）──────────────────────────────────────
+//
+// 现场：上一进程没走 sqlite3_close 就退出，留下 `-shm`（`-wal` 为 0 字节）；
+// 新进程以读写方式打开时，SQLite 在恢复 wal-index 阶段要 truncate 这个 shm，
+// 却拿到 `disk I/O error`（扩展码 1546 = SQLITE_IOERR_TRUNCATE，偶发 5386 =
+// SQLITE_IOERR_SHMMAP）。库本身与 WAL 都是好的——把 shm 改名后立刻能打开。
+//
+// 策略（**只改名、不删除、只重试一次**）：
+//   - shm 与 0 字节 wal 一律改名为 `<file>.stale-<时间戳>` 留档；wal 有内容时一个字节不碰
+//     （那里面可能还有未 checkpoint 的已提交事务）；
+//   - **rename 本身就是活性探针**：Windows 不允许改名仍被别的进程映射的文件，
+//     活进程（serve / 另一条 CLI）持有时会 EBUSY → 判定为「不是残留」，不插手；
+//   - 重试仍失败 → 抛出带路径 / errcode / 已改名文件的错误，而不是裸 disk I/O error。
+const STALE_SHM_CODES = new Set([
+  1546, // SQLITE_IOERR_TRUNCATE
+  5386, // SQLITE_IOERR_SHMMAP
+]);
+
+/** 这个错误是不是「残留 shm 导致的打开失败」（扩展码优先，缺失时退回消息）。 */
+export function isStaleShmError(err) {
+  const code = Number(err && err.errcode);
+  if (STALE_SHM_CODES.has(code)) return true;
+  if (Number.isFinite(code) && code !== 0) return false;
+  return /disk I\/O error/i.test(String((err && err.message) || ''));
+}
+
+/** 当前库的 shm / wal 状态（不存在返回 null；`walBytes` 取不到时为 -1）。 */
+function staleShmInfo(dbPath) {
+  if (!dbPath || dbPath === ':memory:') return null;
+  const shm = `${dbPath}-shm`;
+  const wal = `${dbPath}-wal`;
+  if (!existsSync(shm)) return null;
+  let walBytes = 0;
+  try {
+    walBytes = existsSync(wal) ? statSync(wal).size : 0;
+  } catch {
+    walBytes = -1;
+  }
+  return { shm, wal, walBytes };
+}
+
+/**
+ * 把残留的 `-shm`（必要时连同 0 字节 `-wal`）改名留档。
+ * @returns {string[]} 改名后的路径；没有可改的返回空数组
+ */
+export function quarantineStaleShm(dbPath, atMs = Date.now()) {
+  const info = staleShmInfo(dbPath);
+  if (!info) return [];
+  const tag = stampFileTag(atMs);
+  const renamed = [];
+  renameSync(info.shm, `${info.shm}.stale-${tag}`);
+  renamed.push(`${info.shm}.stale-${tag}`);
+  if (info.walBytes === 0) {
+    try {
+      renameSync(info.wal, `${info.wal}.stale-${tag}`);
+      renamed.push(`${info.wal}.stale-${tag}`);
+    } catch {
+      // 0 字节 wal 改名失败不影响重试：SQLite 会重建它。
+    }
+  }
+  return renamed;
+}
+
+/**
+ * 打开失败时尝试一次自愈。
+ *
+ * **rename 即活性探针**：活进程持有 shm 时 Windows 会拒绝改名（EBUSY / EACCES），
+ * 这里把改名失败当成「不是残留、有人在用」→ 返回 null，绝不继续动刀。
+ * @returns {string[]|null} null = 不适用（不是 shm 残留 / 有活进程持有）；数组 = 已改名并应重试
+ */
+export function healStaleShmOnce(dbPath, err) {
+  if (!isStaleShmError(err)) return null;
+  if (!staleShmInfo(dbPath)) return null;
+  try {
+    return quarantineStaleShm(dbPath);
+  } catch {
+    return null;
+  }
+}
+
+/** 打开失败的错误装饰：带上路径、errcode 与处置建议（不吞原始消息）。 */
+function decorateOpenError(err, dbPath) {
+  if (err instanceof AppError) return err;
+  const code = Number(err && err.errcode);
+  const raw = String((err && err.message) || err || '未知错误');
+  const hint = /unable to open database file/i.test(raw)
+    ? '目录不可写 / 文件被占用 / 盘符不存在都会报这句'
+    : '若是「另一个进程正在用这个库」，先停掉那个 serve 或改用 HTTP 领取（POST /api/localtasks/claim）';
+  const e = new AppError(
+    CODES.INTERNAL,
+    `打开库失败: ${dbPath}（errcode=${Number.isFinite(code) ? code : '?'}）：${raw}\n${hint}。` +
+      '残留 -shm 只会改名留档（*.stale-<时间戳>），不会删除任何库文件。',
+    { path: dbPath, errcode: Number.isFinite(code) ? code : null }
+  );
+  e.name = 'StoreOpenError';
+  if (Number.isFinite(code)) e.errcode = code;
+  return e;
+}
+
 /**
  * 打开一个原始连接。
  *
@@ -127,108 +227,133 @@ export function openRaw(dbPath, { readOnly = false, busyTimeoutMs = 5000 } = {})
     throw badInput(`库文件不存在: ${dbPath}（只读打开不会创建它）`);
   }
 
-  let raw;
-  try {
-    raw = new SqliteCtor(dbPath, readOnly ? { readOnly: true } : {});
-  } catch (err) {
-    throw mapSqliteError(err);
-  }
+  /** 一次完整的「打开 + 连接级 PRAGMA」；失败时先关掉半成品再抛。 */
+  const openOnce = () => {
+    let raw;
+    try {
+      raw = new SqliteCtor(dbPath, readOnly ? { readOnly: true } : {});
+    } catch (err) {
+      throw mapSqliteError(err);
+    }
 
-  const stmts = new Map();
-  let closed = false;
+    const stmts = new Map();
+    let closed = false;
 
-  const api = {
-    /** 库文件路径（测试与排障用）。 */
-    path: dbPath,
-    readOnly,
-    /** 底层 DatabaseSync（只在必须绕过封装时用：PRAGMA、VACUUM INTO）。 */
-    raw: () => raw,
-    /** 连接是否已关闭。 */
-    get closed() {
-      return closed;
-    },
+    const api = {
+      /** 库文件路径（测试与排障用）。 */
+      path: dbPath,
+      readOnly,
+      /** 底层 DatabaseSync（只在必须绕过封装时用：PRAGMA、VACUUM INTO）。 */
+      raw: () => raw,
+      /** 连接是否已关闭。 */
+      get closed() {
+        return closed;
+      },
 
-    /** 执行一段 SQL（可多语句，不能带参数）。DDL / PRAGMA 走它。 */
-    exec(sql) {
-      try {
-        raw.exec(sql);
-      } catch (err) {
-        throw mapSqliteError(err);
-      }
-    },
+      /** 执行一段 SQL（可多语句，不能带参数）。DDL / PRAGMA 走它。 */
+      exec(sql) {
+        try {
+          raw.exec(sql);
+        } catch (err) {
+          throw mapSqliteError(err);
+        }
+      },
 
-    /** 预编译（带缓存）。返回 StatementSync 的薄封装。 */
-    prepare(sql) {
-      let st = stmts.get(sql);
-      if (st) return st;
-      try {
-        st = raw.prepare(sql);
-      } catch (err) {
-        throw mapSqliteError(err);
-      }
-      if (stmts.size >= STMT_CACHE_MAX) stmts.clear();
-      stmts.set(sql, st);
-      return st;
-    },
+      /** 预编译（带缓存）。返回 StatementSync 的薄封装。 */
+      prepare(sql) {
+        let st = stmts.get(sql);
+        if (st) return st;
+        try {
+          st = raw.prepare(sql);
+        } catch (err) {
+          throw mapSqliteError(err);
+        }
+        if (stmts.size >= STMT_CACHE_MAX) stmts.clear();
+        stmts.set(sql, st);
+        return st;
+      },
 
-    /** 取一行；没有行返回 `null`（不是 undefined：`null` 在 JSON 里才看得见）。 */
-    get(sql, params) {
-      try {
-        return plain(api.prepare(sql).get(...argsOf(params)));
-      } catch (err) {
-        throw mapSqliteError(err);
-      }
-    },
+      /** 取一行；没有行返回 `null`（不是 undefined：`null` 在 JSON 里才看得见）。 */
+      get(sql, params) {
+        try {
+          return plain(api.prepare(sql).get(...argsOf(params)));
+        } catch (err) {
+          throw mapSqliteError(err);
+        }
+      },
 
-    /** 取全部行（每行都是普通对象）。 */
-    all(sql, params) {
-      try {
-        return api.prepare(sql).all(...argsOf(params)).map(plain);
-      } catch (err) {
-        throw mapSqliteError(err);
-      }
-    },
+      /** 取全部行（每行都是普通对象）。 */
+      all(sql, params) {
+        try {
+          return api.prepare(sql).all(...argsOf(params)).map(plain);
+        } catch (err) {
+          throw mapSqliteError(err);
+        }
+      },
 
-    /** 执行写语句 → `{ changes, lastInsertRowid }`（数字，不是 bigint）。 */
-    run(sql, params) {
-      try {
-        const r = api.prepare(sql).run(...argsOf(params));
-        return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) };
-      } catch (err) {
-        throw mapSqliteError(err);
-      }
-    },
+      /** 执行写语句 → `{ changes, lastInsertRowid }`（数字，不是 bigint）。 */
+      run(sql, params) {
+        try {
+          const r = api.prepare(sql).run(...argsOf(params));
+          return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) };
+        } catch (err) {
+          throw mapSqliteError(err);
+        }
+      },
 
-    /** 取一个标量（第一列第一行）；没有行返回 `null`。 */
-    scalar(sql, params) {
-      const row = api.get(sql, params);
-      if (!row) return null;
-      const keys = Object.keys(row);
-      return keys.length ? row[keys[0]] : null;
-    },
+      /** 取一个标量（第一列第一行）；没有行返回 `null`。 */
+      scalar(sql, params) {
+        const row = api.get(sql, params);
+        if (!row) return null;
+        const keys = Object.keys(row);
+        return keys.length ? row[keys[0]] : null;
+      },
 
-    /** 关连接（幂等）。**测试删库前必须先关**：Windows 上连接开着会 EBUSY。 */
-    close() {
-      if (closed) return;
-      closed = true;
-      stmts.clear();
+      /** 关连接（幂等）。**测试删库前必须先关**：Windows 上连接开着会 EBUSY。 */
+      close() {
+        if (closed) return;
+        closed = true;
+        stmts.clear();
+        try {
+          raw.close();
+        } catch (err) {
+          throw mapSqliteError(err);
+        }
+      },
+    };
+
+    // ── 连接级 PRAGMA：每个连接都要设，且必须在任何业务语句之前 ──
+    //
+    // foreign_keys 默认关：漏了它，所有 REFERENCES 静默失效（删仓库不级联、
+    // 依赖能指向不存在的任务），而且**不报错**。
+    const waitMs = Number.isFinite(Number(busyTimeoutMs)) ? Math.max(0, Number(busyTimeoutMs)) : 5000;
+    try {
+      api.exec('PRAGMA busy_timeout = ' + waitMs);
+      api.exec('PRAGMA foreign_keys = ON');
+      api.exec('PRAGMA synchronous = NORMAL');
+      if (!readOnly) enableWal(api);
+    } catch (err) {
+      // 关键：先把本进程的映射关掉，否则 Windows 不允许后面改名 shm。
       try {
         raw.close();
-      } catch (err) {
-        throw mapSqliteError(err);
+      } catch {
+        /* 半成品连接关不掉也继续：下面按原始错误处理 */
       }
-    },
+      throw mapSqliteError(err);
+    }
+
+    return api;
   };
 
-  // ── 连接级 PRAGMA：每个连接都要设，且必须在任何业务语句之前 ──
-  //
-  // foreign_keys 默认关：漏了它，所有 REFERENCES 静默失效（删仓库不级联、
-  // 依赖能指向不存在的任务），而且**不报错**。
-  const waitMs = Number.isFinite(Number(busyTimeoutMs)) ? Math.max(0, Number(busyTimeoutMs)) : 5000;
-  api.exec('PRAGMA busy_timeout = ' + waitMs);
-  api.exec('PRAGMA foreign_keys = ON');
-  api.exec('PRAGMA synchronous = NORMAL');
-  if (!readOnly) enableWal(api);
-
-  return api;
+  try {
+    return openOnce();
+  } catch (err) {
+    const renamed = readOnly ? null : healStaleShmOnce(dbPath, err);
+    if (!renamed || renamed.length === 0) throw decorateOpenError(err, dbPath);
+    try {
+      return openOnce();
+    } catch (err2) {
+      throw decorateOpenError(err2, dbPath);
+    }
+  }
 }

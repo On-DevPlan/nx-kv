@@ -2,6 +2,22 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.45.1] - 2026-11-10 残留 -shm 打开自愈 + 打开失败错误指路
+
+### Fixed
+
+- **Windows 上「serve 退出后 CLI 打不开库」**：库目录留下 `nxkv.db-shm`（`-wal` 常为
+  0 字节）时，新进程读写打开会报裸 `disk I/O error`（`SQLITE_IOERR_TRUNCATE` 1546 /
+  `SQLITE_IOERR_SHMMAP` 5386）。现在 `openRaw` 会识别该错误，把 shm（连同 0 字节 wal）
+  改名为 `<file>.stale-<时间戳>` **留档**，只重试一次；主库与有内容的 WAL 一个字节不动。
+- **有活进程时不动手**：rename 本身就是活性探针——Windows 不允许改名仍被其他进程映射的
+  文件，serve / 另一条 CLI 持有时会 `EBUSY`，此时直接报清楚的错并提示改用
+  `POST /api/localtasks/claim` 或先停 serve；`-wal` 有内容时也一个字节不碰。
+- **`unable to open database file` 带上下文**：所有打开失败统一追加库路径、errcode 与
+  处置建议（不再只有一句英文）。
+- 单测：`tests/unit/db-stale-shm.test.mjs`（判定码 / 改名契约 / 零副作用 / 错误装饰）；
+  决策记录：`docs/decisions/2026-11-10-stale-shm-self-heal.md`。
+
 ## [0.45.0] - 2026-11-10 模板 helper + 时间目标分档提示 + 未到点 done 拦截可配（#90）
 
 ### Added

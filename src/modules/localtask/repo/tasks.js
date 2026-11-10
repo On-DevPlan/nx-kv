@@ -98,8 +98,24 @@ function rowToTaskWithDeps(conn, row) {
     .map((r) => Number(r.depSeq))
     .filter((n) => Number.isFinite(n) && n > 0);
   // 派生子任务数（#144）：>0 = 已有后续轮次/评论派生，面板据此收起反馈入口
-  const child = conn.get('SELECT count(*) AS n FROM task_links WHERE dst_id = :id', { id: row.id });
-  return { row, task: rowToTask({ ...row, depsLocal: deps, childCount: Number(child && child.n) || 0 }) };
+  // 派生「下一轮」数（#172）：只有 reopen 边 = **同一件活儿继续下一轮** → 本条
+  // 不是链尖（面板只留链尖，旧轮次去任务链里看）。comment / feedback 边是
+  // **旁支新活**（评论派生 / 反馈里提的新需求），父任务照旧是活的，不算被取代。
+  const child = conn.get(
+    `SELECT count(*) AS n,
+            sum(CASE WHEN type = 'reopen' THEN 1 ELSE 0 END) AS rounds
+       FROM task_links WHERE dst_id = :id`,
+    { id: row.id }
+  );
+  return {
+    row,
+    task: rowToTask({
+      ...row,
+      depsLocal: deps,
+      childCount: Number(child && child.n) || 0,
+      childRoundCount: Number(child && child.rounds) || 0,
+    }),
+  };
 }
 
 /**

@@ -95,6 +95,8 @@
 .mdw-prog-fchip.on b{color:var(--mdw-accent)}
 /* 组模式卡片标题旁的项目 tag（复用 rp-ptag 视觉，略收间距贴标题） */
 .mdw-tcard-proj{margin-left:6px}
+/* #172：被编号点名召回的旧轮次 tag（同样复用 rp-ptag 视觉） */
+.mdw-tcard-old{margin-left:6px}
 /* 勾选后的操作条：已选 n 条 + 清除 + 删除所选 */
 .mdw-prog-sel{
   flex:none;display:flex;align-items:center;gap:6px;padding:7px 10px;

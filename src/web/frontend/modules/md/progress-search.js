@@ -93,4 +93,18 @@ export function hitQuery(card, q) {
   return title.includes(body);
 }
 
+/**
+ * 查询串是不是「精确编号」（12 / #12）且与卡片编号**等值**命中。
+ *
+ * #172：进程面板把反馈链的旧轮次折叠了（只留链尖），但「我要找 #87」这种
+ * 明确点名必须还能找到——所以旧轮次只按**编号等值**召回，标题模糊 / 前缀命中
+ * 不召回（一召回就把几十条旧轮次重新堆回屏上，等于没折叠）。
+ */
+export function hitExactId(card, q) {
+  const raw = String(q ?? '').trim().toLowerCase();
+  const body = raw.startsWith('#') ? raw.slice(1).trim() : raw;
+  if (!body || !/^\d+$/.test(body)) return false;
+  return cardIdOf(card) === body;
+}
+
 export default hitQuery;

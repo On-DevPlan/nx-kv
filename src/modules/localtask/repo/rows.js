@@ -100,6 +100,9 @@ export function rowToTask(row) {
     reopenCount: Math.max(0, Number(row.round ?? 1) - 1),
     // 派生子任务数（#144）：>0 = 链上已有后续轮次，反馈入口只在链尖显示
     childCount: Number(row.childCount ?? 0),
+    // 派生的「下一轮」数（#172）：reopen 边数——>0 = 本条已被下一轮取代（不是链尖）。
+    // comment / feedback 边（旁支新活）不计入。
+    childRoundCount: Number(row.childRoundCount ?? 0),
     // 迁出 tombstone（本机 → 云端）：原条目留在队列里只作记录，不算待领取
     migratedTo: ext[EXT.MIGRATED_TO] || null,
     moveFrom: ext[EXT.MOVE_FROM] || null,

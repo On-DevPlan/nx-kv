@@ -138,3 +138,36 @@ test('addTask --fork-of：楼数跟随链（派生 = 父 round + 1，#122）', a
   const chain = await svc.taskChain({ cwd: dirA, id: r3.task.id });
   assert.equal(chain.round, 3);
 });
+
+test('childRoundCount：reopen 边算「下一轮」，comment 边不算（#172 链尖判据）', async () => {
+  const root = await svc.addTask({ cwd: dirA, text: '# 反馈链根' });
+  const r2 = await svc.reopenTask({ cwd: dirA, id: root.task.id, text: '# 反馈链根\n\n+第二轮' });
+  const r3 = await svc.reopenTask({ cwd: dirA, id: r2.id, text: '# 反馈链根\n\n+第三轮' });
+  // comment 边 = 旁支新活（评论派生），**不**取代父任务
+  const side = await svc.addTask({ cwd: dirA, text: '# 旁支新活', forkOf: `${keyA}:${r3.id}` });
+
+  const list = await svc.listTasks();
+  const topic = list.topics.find((t) => t.key === keyA);
+  const byId = new Map(topic.tasks.map((x) => [x.id, x]));
+
+  assert.equal(byId.get(root.task.id).childRoundCount, 1, 'R1 有下一轮 → 不是链尖');
+  assert.equal(byId.get(r2.id).childRoundCount, 1, 'R2 有下一轮 → 不是链尖');
+  assert.equal(byId.get(r3.id).childRoundCount, 0, 'R3 是链尖');
+  assert.equal(byId.get(r3.id).childCount, 1, 'R3 有一个评论派生子任务');
+  assert.equal(byId.get(side.task.id).childRoundCount, 0, '旁支任务自己是链尖');
+  assert.equal(byId.get(root.task.id).childCount, 1, 'childCount 仍统计全部派生边');
+});
+
+test('chain 节点带链边类型（#172：面板链上区分「反馈」轮次与「评论」旁支）', async () => {
+  const root = await svc.addTask({ cwd: dirA, text: '# 带类型的链' });
+  const r2 = await svc.reopenTask({ cwd: dirA, id: root.task.id, text: '# 带类型的链\n\n+反馈' });
+  const side = await svc.addTask({ cwd: dirA, text: '# 评论旁支', forkOf: `${keyA}:${r2.id}` });
+
+  const chain = await svc.taskChain({ cwd: dirA, id: r2.id });
+  assert.equal(chain.ancestors.length, 1);
+  assert.equal(chain.ancestors[0].id, root.task.id);
+  assert.equal(chain.ancestors[0].forkKind, 'reopen', '反馈轮次 = reopen 边');
+  assert.equal(chain.children.length, 1);
+  assert.equal(chain.children[0].id, side.task.id);
+  assert.equal(chain.children[0].forkKind, 'comment', '评论旁支 = comment 边');
+});

@@ -13,7 +13,8 @@ import { api } from '../../api/client.js';
 import { Icon } from '../../components/icons.jsx';
 import { GLOBAL_KEY, isGroupTask } from '../../modules/board/board-view.js';
 import { parseFrontmatter, taskToProgress } from '../../modules/md/md-parse.js';
-import { hitQuery } from '../../modules/md/progress-search.js';
+import { isChainTip, splitChainTips } from '../../modules/md/progress-chain.js';
+import { hitExactId, hitQuery } from '../../modules/md/progress-search.js';
 import { closeRightSidebar, findOpenPanel } from '../../workspace.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
@@ -56,7 +57,14 @@ export default function ProgressPanel({
 
   // #85 两种走向：目录/全局模式是**项目走向**——组任务归组页管（组模式另一条
   // 分支整组口径收成员队列，不受此影响）
-  const tasks = useMemo(() => (topic?.tasks || []).filter((t) => !t.deletedAt && !isGroupTask(t)), [topic]);
+  const liveTasks = useMemo(
+    () => (topic?.tasks || []).filter((t) => !t.deletedAt && !isGroupTask(t)),
+    [topic],
+  );
+  // #172 反馈链折叠：反馈任务链动辄几十轮，进程面板只留**链尖**（最新一轮）。
+  // 旧轮次折叠起来不占屏——要看就去任务页的「更多 → 任务链」。编号精确查询
+  // （#87）仍能把旧轮次点名召回（见 cards 的 recalled）。
+  const { tips, folded } = useMemo(() => splitChainTips(liveTasks), [liveTasks]);
 
   const [now, setNow] = useState(Date.now());
   // 多选：存卡片键（目录模式 = 任务 id 数字；组模式 = "topicKey:id" 复合键——
@@ -72,8 +80,9 @@ export default function ProgressPanel({
   // 整组口径：任务**所在队列**是本组成员 → 全收（不要求正文带 board 标记）；
   // 项目归属优先按成员名（队列即项目），非成员队列保留旧口径兜底（board 指向本组）。
   // 每张卡带 topicKey/topicCwd（点开、删除要按任务**所在队列**寻址）与项目名（筛选用）。
-  const groupCards = useMemo(() => {
-    if (!group) return [];
+  // #172：组模式同样按反馈链折叠——链尖进 cards，被取代的旧轮次进 folded。
+  const { cards: groupCards, folded: groupFolded } = useMemo(() => {
+    if (!group) return { cards: [], folded: [] };
     const ids = [group.id, group.key, group.name].filter(Boolean);
     const members = group.repos || [];
     const memberByKey = new Map();
@@ -89,6 +98,7 @@ export default function ProgressPanel({
       return (row && row.name) || '';
     };
     const out = [];
+    const foldedOut = [];
     for (const r of rows || []) {
       if (!r || r.isGlobal || !Array.isArray(r.tasks)) continue;
       const member = (r.repo && memberByKey.get(r.repo.key)) || null;
@@ -102,7 +112,7 @@ export default function ProgressPanel({
           fm = {};
         }
         if (!inGroupQueue && (!fm.board || !ids.includes(fm.board))) continue;
-        out.push({
+        const card = {
           ...taskToProgress(t),
           key: `${r.key}:${t.id}`,
           taskId: t.id,
@@ -112,15 +122,21 @@ export default function ProgressPanel({
           projectName: inGroupQueue
             ? (member.name || projectNameOf(fm.project, r))
             : projectNameOf(fm.project, r),
-        });
+        };
+        // #172：被下一轮取代的旧轮次不进进程列表（编号精确查询仍可点名召回）
+        if (isChainTip(t)) out.push(card);
+        else foldedOut.push({ ...card, folded: true });
       }
     }
     const order = { run: 0, wait: 1, done: 2 };
-    return out.sort(
-      (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9)
-        || a.projectName.localeCompare(b.projectName)
-        || Number(a.taskId) - Number(b.taskId),
-    );
+    return {
+      cards: out.sort(
+        (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9)
+          || a.projectName.localeCompare(b.projectName)
+          || Number(a.taskId) - Number(b.taskId),
+      ),
+      folded: foldedOut,
+    };
   }, [group, rows]);
 
   // 项目筛选（组模式）：'' = 全部；值为 projectName。会话内状态，不持久化——
@@ -139,21 +155,32 @@ export default function ProgressPanel({
   }, [groupCards]);
 
   const cards = useMemo(() => {
+    const order = { run: 0, wait: 1, done: 2 };
+    const sortCards = group
+      ? (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9)
+        || a.projectName.localeCompare(b.projectName)
+        || Number(a.taskId) - Number(b.taskId)
+      : (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9);
     const base = group
       ? (() => {
           const active = projFilter && projects.includes(projFilter) ? projFilter : '';
           return groupCards.filter((c) => !active || c.projectName === active);
         })()
-      : (() => {
-          const list = tasks.map(taskToProgress);
-          const order = { run: 0, wait: 1, done: 2 };
-          return list.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
-        })();
+      : tips.map(taskToProgress).sort(sortCards);
     // #127/#129 搜索：编号（等值 + 前缀）与标题（模糊 + 逐位通配）——规则见
     // modules/md/progress-search.js；空串不筛
     const qs = q.trim().toLowerCase();
-    return qs ? base.filter((c) => hitQuery(c, qs)) : base;
-  }, [group, groupCards, projFilter, projects, tasks, q]);
+    if (!qs) return base;
+    const hit = base.filter((c) => hitQuery(c, qs));
+    // #172：折叠掉的旧轮次只在「编号等值」时点名召回（#87 → 把 #87 那张旧卡
+    // 找回来）。标题模糊 / 编号前缀命中不召回——一召回就又把几十条旧轮次堆回屏上。
+    const recalled = (group
+      ? groupFolded
+      : folded.map((t) => ({ ...taskToProgress(t), folded: true }))
+    ).filter((c) => hitExactId(c, qs));
+    if (!recalled.length) return hit;
+    return [...hit, ...recalled].sort(sortCards);
+  }, [group, groupCards, groupFolded, projFilter, projects, tips, folded, q]);
 
   // 选中的任务可能已被别处删掉 → 只留还活着的编号（否则「删除所选」带着死编号）
   const cidOf = (c) => (group ? c.key : c.id); // 组模式 = 复合键,与 picked Set 同口径
@@ -257,6 +284,10 @@ export default function ProgressPanel({
 
   const focusId = focusTask != null && String(focusTask) !== '' ? String(focusTask) : '';
 
+  // #172：折叠掉的旧轮次数（反馈链历史节点）——面板上如实说明折叠了多少条，
+  // 免得用户以为历史任务不见了。
+  const foldedCount = group ? groupFolded.length : folded.length;
+
   return (
     <div className="mdw-prog-host">
       {dialogNode}
@@ -286,7 +317,7 @@ export default function ProgressPanel({
           </button>
         )}
       </div>
-      {(group ? groupCards.length > 0 : tasks.length > 0) && (
+      {(group ? groupCards.length > 0 : tips.length > 0) && (
         <div className="mdw-prog-search">
           <Icon name="search" size={13} />
           <input
@@ -368,6 +399,11 @@ export default function ProgressPanel({
                 此目录还没有 MD 任务<br />写 MD 提交或导入
               </>
             )}
+            {foldedCount > 0 && (
+              <>
+                <br />另有 {foldedCount} 条反馈链旧轮次已折叠（搜编号可点名召回）
+              </>
+            )}
           </div>
         )}
         {cards.map((c) => {
@@ -399,6 +435,15 @@ export default function ProgressPanel({
                           {c.projectName}
                         </span>
                       )}
+                      {/* #172：被编号点名召回的旧轮次（默认折叠在任务链里） */}
+                      {c.folded && (
+                        <span
+                          className="rp-ptag mdw-tcard-old"
+                          title="反馈链上的旧轮次：默认折叠，在任务页「更多 → 任务链」里看全部历史"
+                        >
+                          旧轮次
+                        </span>
+                      )}
 
                     </div>
                     <div className="sub">{c.detail}</div>
@@ -426,6 +471,9 @@ export default function ProgressPanel({
       </div>
       <div className="mdw-prog-note">
         {group ? '组内各项目的任务聚在这里；可按项目筛选，勾选后批量删除。' : '本目录的任务；点卡打开，勾选后批量删除。'}
+        {foldedCount > 0 && (
+          <> 反馈链只显示最新一轮，已折叠 {foldedCount} 条旧轮次（旧轮次在任务页「更多 → 任务链」里看）。</>
+        )}
       </div>
     </div>
   );

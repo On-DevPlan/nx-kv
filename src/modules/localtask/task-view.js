@@ -230,6 +230,9 @@ export function normalizeTask(t, siblings, readyOpts = {}) {
     reopenCount: Number(t.reopenCount) || 0,
     // 派生子任务数（#144）：>0 = 已有后续轮次/评论派生——反馈入口只在链尖显示
     childCount: Number(t.childCount) || 0,
+    // 派生的「下一轮」数（#172）：reopen 边数——>0 = 本条已被下一轮取代（不是链尖）。
+    // 进程面板据此只留链尖，旧轮次去任务链里看；comment / feedback 边（旁支新活）不计入。
+    childRoundCount: Number(t.childRoundCount) || 0,
     // 链上第几轮（#122 进程面板「楼数」）：根任务 = 1，派生 = 来源 + 1（schema 语义
     // 见 v1.sql tasks.round）。库里存的是 round 列，JSON 形态只带 reopenCount = round-1
     // （repo/rows.js），这里换算回来 —— 前端显示「第 N 楼」/按楼搜索不必再回溯链。
@@ -399,16 +402,21 @@ export async function taskChain({ id, cwd, key } = {}) {
 
   // 节点 = 链上每一代任务（每轮一条，seq 做面板 key），从根排到叶；自己是"当前尖"
   // wrapper = getTaskRowById 的返回（{ row, task }）；row.topicId 是主题内部 id
-  const nodeOf = (wrapper) => {
+  // 链边的类型（reopen=反馈轮次 / comment=评论旁支）从**边**上取：task_links 是链的
+  // 唯一来源，任务自身那个旧 forkKind 字段多半是空的——空着的话面板的链上每一格
+  // 都显示成「起点」，看不出哪一轮是反馈、哪一条是评论旁支（#172）。
+  const nodeOf = (wrapper, linkType) => {
     const owner = topicsRepo.getTopicById(wrapper.row.topicId);
+    const lite = chainLite(owner || { key: k, name: t.name }, wrapper.task);
     return {
-      ...chainLite(owner || { key: k, name: t.name }, wrapper.task),
+      ...lite,
+      forkKind: linkType || lite.forkKind || '',
       at: String(wrapper.task.createdAt || ''),
       current: Number(wrapper.task.id) === Number(selfRow.task.id),
     };
   };
-  const upNodes = ancestorLinks.map((l) => nodeOf(tasksRepo.getTaskRowById(l.id)));
-  const downNodes = descendantLinks.map((l) => nodeOf(tasksRepo.getTaskRowById(l.id)));
+  const upNodes = ancestorLinks.map((l) => nodeOf(tasksRepo.getTaskRowById(l.id), l.type));
+  const downNodes = descendantLinks.map((l) => nodeOf(tasksRepo.getTaskRowById(l.id), l.type));
   const selfNode = nodeOf(selfRow);
   // 根 → … → 自己 → … → 叶（自己是"当前尖"；查询哪条，哪条就是尖）
   const nodes = [...upNodes, selfNode, ...downNodes].map(
@@ -416,8 +424,8 @@ export async function taskChain({ id, cwd, key } = {}) {
   );
 
   // 祖先/子任务清单（旧字段形状保留：面板兼容）
-  const ancestors = upNodes.map((n) => ({ key: n.key, name: n.name, id: n.id, status: n.status, forkKind: n.type || '', forkOf: '', createdAt: n.createdAt, excerpt: n.excerpt }));
-  const children = downNodes.map((n) => ({ key: n.key, name: n.name, id: n.id, status: n.status, forkKind: n.type || '', forkOf: '', createdAt: n.createdAt, excerpt: n.excerpt }));
+  const ancestors = upNodes.map((n) => ({ key: n.key, name: n.name, id: n.id, status: n.status, forkKind: n.forkKind || '', forkOf: '', createdAt: n.createdAt, excerpt: n.excerpt }));
+  const children = downNodes.map((n) => ({ key: n.key, name: n.name, id: n.id, status: n.status, forkKind: n.forkKind || '', forkOf: '', createdAt: n.createdAt, excerpt: n.excerpt }));
 
   return {
     status: 'ok',

@@ -135,90 +135,90 @@ export default function Landing({
   };
 
   return (
-    <div className="mdw-land">
+    // 根容器与项目组页同款（rp-page：无底色差、同内距、flex gap）——#164 验收反馈
+    // 「两种 ui 仍然不一，比如工具区、背景等」：外壳向 group 页看齐。
+    <div className="rp-page">
       <RouteBreadcrumb />
-      <div className="mdw-land-head">
-        <div className="mdw-land-name">{name}</div>
-        <div className="mdw-land-path mono" title={path}>{path}</div>
-        {status ? (
-          <div className="mdw-land-status-line" title={status}>
-            <span className="mdw-land-lab">现状</span>
-            <span className="mdw-land-status">{status}</span>
-          </div>
-        ) : null}
+      {/* 头部 = group 同构：h2（图标 + 名字 + 计数 chips）+ 右对齐工具区 */}
+      <div className="rp-group-head">
+        <h2>
+          <Icon name="folder" size={15} /> {name}
+          <span className="rp-chip-count">{taskCount} 个任务</span>
+          {pendingCount > 0 ? <span className="rp-chip-count">{pendingCount} 待领取</span> : null}
+        </h2>
+        <div className="rp-group-acts">
+          {/* #139：工具区可编排（顺序 / 显隐；隐藏收入「更多」） */}
+          <ToolActsBar
+            kind="dir"
+            labels={{
+              more: deletedCount > 0 ? `更多 (${deletedCount})` : '更多',
+              deleted: deletedCount > 0 ? `已删除任务（${deletedCount}）` : '已删除任务',
+            }}
+            titles={{
+              new: '按默认模板新建一页（▾ 选模板）',
+              import: '把一个 .md 文件导入成任务',
+              progress: '打开这个目录的进程面板',
+              more: deletedCount > 0 ? `更多操作（含 ${deletedCount} 条已删除任务）` : '更多操作',
+              deleted: '查看并恢复已删除任务',
+              refs: '查看文档 / reference 列表',
+            }}
+            renderers={{
+              // #161 新建按钮拆两级（视觉一颗按钮、命中区两层）：
+              //   主区点击 = 按默认模板直接新建；内嵌箭头 = 模板下拉（tplMenuItems）
+              new: () => (
+                <span className="rp-newtask">
+                  <button
+                    type="button"
+                    className="btn small primary"
+                    title="按默认模板新建一页（▾ 选模板）"
+                    onClick={() => onNew()}
+                  >
+                    ＋ 新建页
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label="选择模板新建一页"
+                      aria-haspopup="menu"
+                      className="rp-newtask-caret"
+                      title="选择模板新建一页"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTplMenu?.(e);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onTplMenu?.(e);
+                        }
+                      }}
+                    >
+                      <Icon name="chevron" size={11} />
+                    </span>
+                  </button>
+                </span>
+              ),
+            }}
+            actions={{
+              new: onNew,
+              import: onImport,
+              progress: onProg,
+              orch: onOpenFlow,
+              deleted: onDeleted,
+              refs: onRefs,
+            }}
+          />
+        </div>
+        {/* 路径与现状：group 页没有的目录特有信息，弱化成一行小字放头部末尾 */}
+        <div className="mdw-land-meta">
+          <span className="mdw-land-path mono" title={path}>{path}</span>
+          {status ? (
+            <span className="mdw-land-status mono" title={status}>现状：{status}</span>
+          ) : null}
+        </div>
       </div>
 
       {!isGlobal && repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
-
-      <div className="mdw-land-acts">
-        {/* #139：工具区可编排（顺序 / 显隐；隐藏收入「更多」） */}
-        <ToolActsBar
-          kind="dir"
-          className="mdw-land-ta"
-          labels={{
-            more: deletedCount > 0 ? `更多 (${deletedCount})` : '更多',
-            deleted: deletedCount > 0 ? `已删除任务（${deletedCount}）` : '已删除任务',
-          }}
-          titles={{
-            new: '按默认模板新建一页（▾ 选模板）',
-            import: '把一个 .md 文件导入成任务',
-            progress: '打开这个目录的进程面板',
-            more: deletedCount > 0 ? `更多操作（含 ${deletedCount} 条已删除任务）` : '更多操作',
-            deleted: '查看并恢复已删除任务',
-            refs: '查看文档 / reference 列表',
-          }}
-          renderers={{
-            // #161 新建按钮拆两级（视觉一颗按钮、命中区两层）：
-            //   主区点击 = 按默认模板直接新建；内嵌箭头 = 模板下拉（tplMenuItems）
-            new: () => (
-              <span className="rp-newtask">
-                <button
-                  type="button"
-                  className="btn small primary"
-                  title="按默认模板新建一页（▾ 选模板）"
-                  onClick={() => onNew()}
-                >
-                  ＋ 新建页
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    aria-label="选择模板新建一页"
-                    aria-haspopup="menu"
-                    className="rp-newtask-caret"
-                    title="选择模板新建一页"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTplMenu?.(e);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onTplMenu?.(e);
-                      }
-                    }}
-                  >
-                    <Icon name="chevron" size={11} />
-                  </span>
-                </button>
-              </span>
-            ),
-          }}
-          actions={{
-            new: onNew,
-            import: onImport,
-            progress: onProg,
-            orch: onOpenFlow,
-            deleted: onDeleted,
-            refs: onRefs,
-          }}
-        />
-        <span className="mdw-land-count">
-          {pendingCount > 0 && <b className="mdw-land-pending">{pendingCount} 待领取</b>}
-          {' '}
-          {taskCount} 个任务
-        </span>
-      </div>
 
       {pickedTasks.length > 0 && (
         <div className="mdw-land-batch">

@@ -45,7 +45,6 @@ export const lifecycleActions = [
       '领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填',
     flags: {
       cwd: CWD,
-      summary: { type: 'string', hint: '当前现状（agent 状态，展示给用户）' },
       timeout: { type: 'number', hint: '阻塞上限（秒）；仅项目开启「持续 get」时有意义' },
       'no-open': { type: 'boolean', hint: '不自动打开浏览器（测试用）' },
       param: { type: 'array', hint: '外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取' },
@@ -53,7 +52,7 @@ export const lifecycleActions = [
     run: async (ctx) => {
       const { getTask } = await import('../tasktool/get.js');
       const { parseParams } = await import('../tasktool/params.js');
-      return getTask({ cwd: ctx.cwd, summary: ctx.summary, timeoutSec: ctx.timeout, open: !ctx['no-open'], params: parseParams(ctx.param) });
+      return getTask({ cwd: ctx.cwd, timeoutSec: ctx.timeout, open: !ctx['no-open'], params: parseParams(ctx.param) });
     },
     render: renderWait, // 返回形状与 wait 同构（ok/timeout），复用同一份人读渲染
   },
@@ -148,10 +147,9 @@ export const lifecycleActions = [
       cwd: CWD,
       key: KEY,
       summary: { type: 'string', required: true, hint: '完成总结（记为本轮终态 + timegoal 日志）' },
-      progress: { type: 'string', hint: '完成度/下一步（≤2000 字，一并写入日志）' },
     },
     run: (ctx) =>
-      service.completeTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, summary: ctx.summary, progress: ctx.progress }),
+      service.completeTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, summary: ctx.summary }),
     render: (d) => {
       if (d.status === 'blocked') {
         const why = d.reason === 'not_claimed' ? d.hint : `时间未到（剩 ${d.remainingHuman || Math.round((d.remainingSec || 0) / 60) + ' 分钟'}，截止 ${d.deadline}）——${d.hint}`;

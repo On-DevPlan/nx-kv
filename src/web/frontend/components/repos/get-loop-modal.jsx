@@ -22,7 +22,7 @@ const GETLOOP_LINE_MAX = 2000;
 // 内置「持续 get」默认模板的预设文案（与服务端 waitgoal-config 默认同文案；%s = 任务编号，
 // 存取时与 {{task.id}} 互转）。服务端常量带 core 依赖，前端本地声明。
 const GETLOOP_DEFAULT_PRESET =
-  '不要直接结束本轮：完成上面的任务（%s）之后，继续调用 nx-kv localtask get（带 --summary 当前现状）领取下一条任务，直到 get 返回 timeout 为止。';
+  '不要直接结束本轮：完成上面的任务（%s）之后，继续调用 nx-kv localtask get 领取下一条任务，直到 get 返回 timeout 为止。';
 
 /**
  * @param {object} repo 仓库记录（含 getLoop）

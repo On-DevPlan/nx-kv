@@ -270,12 +270,11 @@ export async function consumeFirstPending(key, roundSummary, by) {
 // 时间未到 → 拒绝标记完成。返回 blocked 业务结果而不是抛错——agent 要据此行动
 // （派出 sub agent 重新提出新的需求，或等到点）；抛错会把这条指令埋进错误堆里。
 // 到点 → 放行并自动记录最终 check（「结束必须 check」的记录器语义，落 timegoal 日志）。
-export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawSummary, progress: rawProgress } = {}) {
+export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawSummary } = {}) {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
   const summary = normalizeSummary(rawSummary); // 完成总结必填（记为该任务的终态）
-  const progress = String(rawProgress ?? '').trim().slice(0, 2000);
   openStore();
   const t = topicsRepo.getTopic(key);
   if (!t) throw notFound('主题不存在: ' + key);
@@ -326,7 +325,8 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
       };
     }
     if (st.hasGoal) {
-      const rec = await recordTaskCheck({ topicKey: key, taskId: want, summary, progress: progress || '完成' });
+      // #171：done 不再收 --progress（面板上没有对应输入界面）——日志只留完成总结
+      const rec = await recordTaskCheck({ topicKey: key, taskId: want, summary, progress: '完成' });
       goal = { recorded: rec.recorded, reached: true, checkedAt: rec.checkedAt };
     } else {
       // goal 已被保留期清理（任务拖了 7 天以上才标完成）→ 放行 + 说明：

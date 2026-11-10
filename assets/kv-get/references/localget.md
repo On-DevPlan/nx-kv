@@ -17,11 +17,11 @@ nx-kv localtask list --json
 # → {topics:[{key,cwd,name,summary,waiting,pending,total,tasks:[...]}], waiting, settings}
 
 # 2. 有待领取 → 取走最早的一条（默认「直接 get」：队列非空立即返回，不开窗不阻塞）
-nx-kv localtask get --summary "<本轮现状，如：空闲，领取新任务>" --json
+nx-kv localtask get --json
 # → {status:"ok", queued:true, task:{id,text,...}}
 
 # 2b. 想挂着等活（阻塞等人回填）→ 用 wait（kv-waittask 的循环契约）
-nx-kv localtask wait --summary "<本轮现状>" --timeout 30 --json
+nx-kv localtask wait --timeout 30 --json
 
 # 3. 执行 task.text（内容永远读 task.text，id 只是编号），产出落在本目录
 

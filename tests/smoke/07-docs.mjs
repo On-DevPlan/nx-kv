@@ -76,7 +76,7 @@ export async function run(ctx) {
   mkdirSync(ttDir, { recursive: true });
   const ttAdd = await cliJson(['localtask', 'add', '带时限的任务', '--cwd', ttDir, '--duration', '90m', '--goal-prompt', '重点看流程']);
   check('tasktool: add --duration 落声明', ttAdd.task && ttAdd.task.timegoal && ttAdd.task.timegoal.duration === '90m', JSON.stringify(ttAdd.task).slice(0, 120));
-  const ttGet = await cliJson(['localtask', 'get', '--cwd', ttDir, '--summary', '领活', '--json']);
+  const ttGet = await cliJson(['localtask', 'get', '--cwd', ttDir, '--json']);
   check(
     'tasktool: get 领取交付带 check 指令',
     ttGet.status === 'ok' && /timegoal check --task task:/.test(ttGet.instruction || '') && /sub agent/.test(ttGet.instruction || ''),
@@ -88,6 +88,6 @@ export async function run(ctx) {
     ttDone.status === 'blocked' && ttDone.reason === 'goal_not_reached' && ttDone.remainingSec > 0,
     JSON.stringify(ttDone).slice(0, 160)
   );
-  const emptyGet = await cliJson(['localtask', 'get', '--cwd', ttDir, '--summary', '再领', '--json']);
+  const emptyGet = await cliJson(['localtask', 'get', '--cwd', ttDir, '--json']);
   check('tasktool: get 空队列 instant timeout', emptyGet.status === 'timeout' && emptyGet.instant === true);
 }

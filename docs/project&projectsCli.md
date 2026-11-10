@@ -273,7 +273,7 @@ nx-kv timegoal prune                          # 清掉已到点/已归档的目�
 ```bash
 nx-kv timegoal check --task task:<topicKey>:<taskId> --summary "..." --progress "..."
 # → reached:true 才允许：
-nx-kv localtask done --id <id> --summary "<完成总结>" --progress "<完成度/下一步>"
+nx-kv localtask done --id <id> --summary "<完成总结>"
 ```
 
 未到点时 `done` 返回 **blocked**（不是报错）：
@@ -292,7 +292,7 @@ nx-kv localtask done --id <id> --summary "<完成总结>" --progress "<完成度
 nx-kv repo update nx-kv --get-loop on --get-loop-minutes 10
 
 # 自定义「继续 get」指令（整体替换这一条；多条在设置面板按条增删）
-nx-kv repo update nx-kv --get-loop-template "完成上面的任务后，继续调用 nx-kv localtask get --summary \"<现状>\" 领下一条，直到 get 返回 timeout。"
+nx-kv repo update nx-kv --get-loop-template "完成上面的任务后，继续调用 nx-kv localtask get 领下一条，直到 get 返回 timeout。"
 
 # 关闭
 nx-kv repo update nx-kv --get-loop off
@@ -312,13 +312,13 @@ nx-kv repo update nx-kv --get-loop off
 
 ```bash
 # 领取（默认直接领：队列有任务立即取走，没任务立即返回 timeout）
-nx-kv localtask get --cwd "D:\DevProjects\my\github\nx-kv" --summary "我在这儿待命"
+nx-kv localtask get --cwd "D:\DevProjects\my\github\nx-kv"
 
 # 阻塞等待（agent 本轮最后一步：等人接力，唯一合法出口是 timeout）
-nx-kv localtask wait --cwd "D:\DevProjects\my\github\nx-kv" --summary "现状"
+nx-kv localtask wait --cwd "D:\DevProjects\my\github\nx-kv"
 
 # 完成回填
-nx-kv localtask done --id 3 --summary "完成总结" --progress "完成度/下一步"
+nx-kv localtask done --id 3 --summary "完成总结"
 
 # 修改反馈 → 重开：**新建一条任务**（新的 md），旧任务归档留档（状态单向）
 nx-kv localtask reopen --id 3 --text "# 标题

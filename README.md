@@ -168,7 +168,7 @@ remove-many`）。阻塞等待弹窗只是 `wait` 当前的一个子功能。三
 
 ```bash
 # 等待侧：每完成一步、提交结果后【必须】调 wait 领新任务（循环只有 timeout 才终止）
-nx-kv localtask wait --summary "<当前现状总结>" --json
+nx-kv localtask wait --json
 # 队列非空 → 立即取走（queued:true）；空 → 开窗阻塞，默认 180 秒未回填 → {status:"timeout"}（exit 0）
 
 # 提交侧：把提炼好的任务投进目标目录的队列，委托在那边工作的 agent

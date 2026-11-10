@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Removed
+
+- **取消两个没有界面入口的命令行参数（#171）**：
+  - `localtask done --progress`（完成度/下一步）——面板上没有对应输入界面；
+  - `localtask get` / `localtask wait --summary`（当前现状）——同上，且队列现状
+    早已不在面板上展示（上轮删掉了「路径 + 现状」行）。
+  `done --summary`（完成总结）与 `timegoal check --summary/--progress`（日志内容，
+  面板上有展示）**保留**。同步更新：action 声明、service/tasktool 实现、内置
+  skill（kv-get）、README / docs 示例、持续 get 默认模板文案与前端弹窗文案。
+
 ### Changed
 
 - **任务面板页布局整块抽成共享组件（#170）**：新增

@@ -25,19 +25,19 @@ export async function run(ctx) {
   check('localtask add 排队（含 key）', addedA.queued === true && addedA.task.id === 1 && !!addedA.key, JSON.stringify(addedA));
   check('总览 1 个主题、待领取 1', (await cliJson(['localtask', 'list'])).topics[0].pending === 1);
 
-  const waitA = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', sumA]);
+  const waitA = await cliJson(['localtask', 'wait', '--cwd', topicA]);
   check(
     'localtask wait 立即取走排队任务',
-    waitA.status === 'ok' && waitA.queued === true && waitA.task.text === '选择工作空间 A' && waitA.summary === sumA,
+    waitA.status === 'ok' && waitA.queued === true && waitA.task.text === '选择工作空间 A' && waitA.summary === '',
     JSON.stringify(waitA)
   );
 
   // 不同目录 → 不同主题、空队列超时
   const sumB = '已选好工作空间，等待下一步指令';
-  const waitTimeout = await cliJson(['localtask', 'wait', '--cwd', topicB, '--summary', sumB, '--timeout', '1', '--no-open']);
+  const waitTimeout = await cliJson(['localtask', 'wait', '--cwd', topicB, '--timeout', '1', '--no-open']);
   check(
     '不同主题另起队列、空队列超时 → timeout',
-    waitTimeout.status === 'timeout' && waitTimeout.summary === sumB,
+    waitTimeout.status === 'timeout' && waitTimeout.summary === '',
     JSON.stringify(waitTimeout)
   );
 
@@ -47,10 +47,12 @@ export async function run(ctx) {
   // 同主题不同现状复用队列：再回填，id 接续为 2，wait（换现状措辞）取走
   const addedA2 = await cliJson(['localtask', 'add', '再给 A 的任务', '--cwd', topicA]);
   check('同主题复用：新任务 id=2', addedA2.task.id === 2, JSON.stringify(addedA2));
-  const waitA2 = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', '新的现状措辞']);
-  check('wait 取走同主题新回填（跨现状）', waitA2.task.text === '再给 A 的任务' && waitA2.summary === '新的现状措辞', JSON.stringify(waitA2));
+  const waitA2 = await cliJson(['localtask', 'wait', '--cwd', topicA]);
+  check('wait 取走同主题新回填（跨现状）', waitA2.task.text === '再给 A 的任务' && waitA2.summary === '', JSON.stringify(waitA2));
 
-  check('localtask get 缺 id 报错', (await cli(['localtask', 'get', '--cwd', topicA])).status === 1);
+  // #171：localtask get 是**领取**语义（查看走 localtask show）——缺 id 不再报错；
+  //      get 也不再要求 --summary（面板上没有对应输入界面）。
+  check('localtask show 缺 id 报错', (await cli(['localtask', 'show', '--cwd', topicA])).status === 1);
   check(
     'localtask remove 按主题+id 删除',
     (await cli(['localtask', 'remove', '--id', String(addedA2.task.id), '--cwd', topicA])).status === 0
@@ -78,7 +80,7 @@ export async function run(ctx) {
 
   // 加一条任务 → wait 拿到的 instruction（ack 段）应包含自定义 ack；正文保持原文
   await cliJson(['localtask', 'add', '任务本体', '--cwd', topicA]);
-  const waitWithAck = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', 'ack 冒烟']);
+  const waitWithAck = await cliJson(['localtask', 'wait', '--cwd', topicA]);
   check(
     'wait 返回 instruction 带自定义 ack（task.text 保持原文）',
     waitWithAck.status === 'ok' &&
@@ -103,7 +105,7 @@ export async function run(ctx) {
     JSON.stringify(stTpl)
   );
   await cliJson(['localtask', 'add', '模板任务本体', '--cwd', topicA]);
-  const waitTpl = await cliJson(['localtask', 'wait', '--cwd', topicA, '--summary', '模板冒烟']);
+  const waitTpl = await cliJson(['localtask', 'wait', '--cwd', topicA]);
   check(
     'wait ack 模板渲染：instruction 含正文与 TPL_ACK，task.text 保持原文',
     waitTpl.status === 'ok' &&

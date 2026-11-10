@@ -300,7 +300,7 @@ function blocksCoverBody(templates) {
  * 返回带 source: 'local' | 'global' 标明任务来自哪个队列。
  * @param {string}  [cwd]     工作目录（主题按目录名识别）；缺省 → 进程当前 cwd。
  *                            注意：显式传 cwd **不会**关闭全局兜底——本地空了一定去全局领。
- * @param {string}  summary   当前现状（必填，状态展示）
+ * @param {string}  [summary] 当前现状（#171 起不再必填：面板上没有对应输入界面）
  * @param {number}  [timeoutSec] 阻塞上限（秒）；缺省 → 页面配置（推荐 180，最大 600）
  * @param {number}  [timeoutMs] 兼容旧参数（毫秒）
  * @param {boolean} [open]    是否自动打开浏览器弹窗（测试可关）
@@ -319,7 +319,7 @@ export async function waitForTask({
   getLoopWaitMinutes = 0, // 项目级阻塞窗口（分钟）：进 getloop 模板 ctx，让 agent 知道每轮会等多久
 } = {}) {
   const { key, cwd, name } = normalizeCwd(rawCwd);
-  const summary = normalizeSummary(rawSummary); // 现状必填
+  const summary = normalizeSummary(rawSummary, { optional: true }); // #171：现状不再必填
   // 领取方身份：记进 task.claimedBy（事后能看出"这条被谁领的"）
   const by = { key, cwd, name };
   // 仓库上下文：这个目录属于哪个已登记仓库、周围关联哪些看板。

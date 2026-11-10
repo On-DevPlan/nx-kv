@@ -1,7 +1,7 @@
 // 阻塞等待族 action（自 index.js 拆出）：wait（纯 CLI，agent 本轮最后一步）/
 // cancel 关闭等待 / presence 面板活标签探测 / events 等待事件流。
 import * as service from './service.js';
-import { CWD, SUMMARY } from './action-flags.js';
+import { CWD } from './action-flags.js';
 import { renderWait, renderCancel } from './action-render.js';
 
 export const waitingActions = [
@@ -13,7 +13,6 @@ export const waitingActions = [
       '针对某主题（按 cwd 目录名识别）阻塞等待用户回填（默认 3 分钟，最大 10 分钟）；本地空时自动领取全局共享池的任务',
     flags: {
       cwd: CWD,
-      summary: SUMMARY,
       timeout: { type: 'number', hint: '阻塞上限（秒）；缺省用页面配置（推荐 180，最大 600）' },
       'no-open': { type: 'boolean', hint: '不自动打开浏览器（测试用）' },
       param: { type: 'array', hint: '外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取' },
@@ -24,7 +23,6 @@ export const waitingActions = [
       const { parseParams } = await import('../tasktool/params.js');
       return waitForTask({
         cwd: ctx.cwd,
-        summary: ctx.summary,
         timeoutSec: ctx.timeout,
         open: !ctx['no-open'],
         params: parseParams(ctx.param),

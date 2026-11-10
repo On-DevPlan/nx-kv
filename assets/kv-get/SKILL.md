@@ -17,8 +17,8 @@ description: 领取与完成排给本工作目录的本地任务（别人通过 
 
 | 动作 | 命令 | 语义 |
 | --- | --- | --- |
-| **领活** | `nx-kv localtask get --summary "<现状>" --json` | 队列有任务**立即领走**；没有就**立即返回 timeout**（不阻塞、不开窗）——「暂时没活」是正常业务结果 |
-| **等人** | `nx-kv localtask wait --summary "<现状>" --timeout 30 --json` | 阻塞等人回填；**本轮最后一步**，唯一合法出口是 timeout |
+| **领活** | `nx-kv localtask get --json` | 队列有任务**立即领走**；没有就**立即返回 timeout**（不阻塞、不开窗）——「暂时没活」是正常业务结果 |
+| **等人** | `nx-kv localtask wait --timeout 30 --json` | 阻塞等人回填；**本轮最后一步**，唯一合法出口是 timeout |
 | **挂着领** | 同上，但项目开启了「持续 get」 | `get` 升级为 waitgoal：无任务时**阻塞等待**项目配置的分钟数，期间用户回填就直接领到；领到的交付文本自带「继续 get 直到超时」的项目模板 |
 
 「持续 get」是**项目级**开关（`repo update --get-loop on` 开启），默认关闭——默认就是「直接 get」。
@@ -26,7 +26,7 @@ description: 领取与完成排给本工作目录的本地任务（别人通过 
 ## 领取到的东西必须读全
 
 ```bash
-nx-kv localtask get --summary "<本轮现状>" --json
+nx-kv localtask get --json
 # → { status:"ok", task:{id,text,...}, instruction:"…" }
 ```
 
@@ -69,7 +69,7 @@ nx-kv localtask done --id <n> --summary "<完成总结>" --json
 
 ```bash
 # 标记完成（完成总结必填——它就是下一轮 agent 能看到的「上轮做了什么」）
-nx-kv localtask done --id <n> --summary "<完成总结>" [--progress "<完成度/下一步>"]
+nx-kv localtask done --id <n> --summary "<完成总结>"
 
 # 用户看了结果提修改意见 → **就地重开原任务**（同号回写，旧态压进 history）
 nx-kv localtask reopen --id <n> [--text "<改后的正文（Markdown）>"] [--kind reopen|comment] --json

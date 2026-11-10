@@ -50,6 +50,193 @@ const COMPILE_OPTS = { noEscape: true, strict: false };
 const CACHE_MAX = 256;
 const cache = new Map();
 
+// ---- 模板 helper（#90）----------------------------------------------------------
+//
+// 为什么自带一套而不是引 handlebars-helpers：那套 100+ helper 拖一堆依赖（还带
+// lodash），而这里只需要「比较 / 逻辑 / 数值 / 串 / 时间」五小类；命名仍沿用社区
+// 习惯（eq/ne/gt/gte/lt/lte/between、and/or/not、add/sub/mul/div/mod、round/
+// floor/ceil、clamp、includes/length/default），写模板的人不用记新方言。
+//
+// 三条边界约定（写进 docs/glossary.md）：
+//   1. **绝不抛错**——任何 helper 出问题都只影响它自己那一小段输出，不拖垮整份渲染；
+//   2. **数值失败可见**——数值类拿不到有限数时输出 `NaN`（模板里一眼能看见），
+//      比较类拿不到数一律 `false`（条件分支安全地走 else）；
+//   3. **零值语义照 JS**——除零得 `Infinity` / `-Infinity` / `NaN`，`mod` 负数照 JS。
+//
+// 用法：`{{gte goal.elapsedSec 1800}}`、`{{#if (and goal.check (lt goal.remainingSec 300))}}`、
+// `{{percent goal.elapsedSec goal.durationSec}}`（0 位小数）、`{{percent a b 1}}`（1 位）。
+
+/** 数字归一：有限数 → 数；否则 null（区分「0」与「拿不到」）。 */
+function toNum(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'boolean') return v ? 1 : 0;
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** 数值输出：有限数原样字符串（-0 归一成 0）；Infinity 照 JS 语义；拿不到数 → 可见的 `NaN`。 */
+function numOut(n) {
+  if (Number.isNaN(n)) return 'NaN';
+  if (!Number.isFinite(n)) return n > 0 ? 'Infinity' : '-Infinity';
+  return String(Object.is(n, -0) ? 0 : n);
+}
+
+/** 可预测的相等：两边都能当数就按数比，否则按字符串比。 */
+function looseEq(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  const na = toNum(a);
+  const nb = toNum(b);
+  if (na !== null && nb !== null) return na === nb;
+  return String(a) === String(b);
+}
+
+/** 折叠末尾多余的 0：1.50 → 1.5、2.00 → 2。 */
+function fixed(n, digits) {
+  const d = Math.max(0, Math.min(20, Math.trunc(toNum(digits) ?? 0)));
+  const s = n.toFixed(d);
+  return d > 0 ? String(Number(s)) : s;
+}
+
+const HELPER_DEFS = {
+  // —— 比较（返回布尔；拿不到数 → false，保证 {{#if}} 走 else）——
+  eq: (a, b) => looseEq(a, b),
+  ne: (a, b) => !looseEq(a, b),
+  gt: (a, b) => {
+    const [x, y] = [toNum(a), toNum(b)];
+    return x !== null && y !== null && x > y;
+  },
+  gte: (a, b) => {
+    const [x, y] = [toNum(a), toNum(b)];
+    return x !== null && y !== null && x >= y;
+  },
+  lt: (a, b) => {
+    const [x, y] = [toNum(a), toNum(b)];
+    return x !== null && y !== null && x < y;
+  },
+  lte: (a, b) => {
+    const [x, y] = [toNum(a), toNum(b)];
+    return x !== null && y !== null && x <= y;
+  },
+  // 闭区间：min ≤ v ≤ max（min > max 时恒 false，不自动翻转）
+  between: (v, min, max) => {
+    const [x, lo, hi] = [toNum(v), toNum(min), toNum(max)];
+    return x !== null && lo !== null && hi !== null && x >= lo && x <= hi;
+  },
+
+  // —— 逻辑（参数由 wrapper 剥掉 options 后原样传入，对象也按真值参与）——
+  and: (...args) => args.every(Boolean),
+  or: (...args) => args.some(Boolean),
+  not: (v) => !v,
+
+  // —— 数值（失败 → 可见的 NaN）——
+  add: (...args) => {
+    const nums = args.map(toNum);
+    if (nums.some((n) => n === null)) return 'NaN';
+    return numOut(nums.reduce((s, n) => s + n, 0));
+  },
+  sub: (a, ...rest) => {
+    const nums = [a, ...rest].map(toNum);
+    if (nums.some((n) => n === null)) return 'NaN';
+    return numOut(nums.slice(1).reduce((s, n) => s - n, nums[0]));
+  },
+  mul: (...args) => {
+    const nums = args.map(toNum);
+    if (nums.some((n) => n === null)) return 'NaN';
+    return numOut(nums.reduce((s, n) => s * n, 1));
+  },
+  // 除零照 JS：x/0 → Infinity / -Infinity；0/0 → NaN
+  div: (a, b) => {
+    const [x, y] = [toNum(a), toNum(b)];
+    if (x === null || y === null) return 'NaN';
+    return numOut(x / y);
+  },
+  mod: (a, b) => {
+    const [x, y] = [toNum(a), toNum(b)];
+    if (x === null || y === null) return 'NaN';
+    return numOut(x % y);
+  },
+  round: (v, digits = 0) => {
+    const n = toNum(v);
+    if (n === null) return 'NaN';
+    const d = Math.max(0, Math.min(20, Math.trunc(toNum(digits) ?? 0)));
+    const f = 10 ** d;
+    return numOut(Math.round(n * f) / f);
+  },
+  floor: (v) => {
+    const n = toNum(v);
+    return n === null ? 'NaN' : numOut(Math.floor(n));
+  },
+  ceil: (v) => {
+    const n = toNum(v);
+    return n === null ? 'NaN' : numOut(Math.ceil(n));
+  },
+  // percent(part, total, digits=0)：part 占总量的百分比；total 为 0 / 非数 → NaN
+  // （百分比里的「∞%」没有意义，这里刻意不走 JS 的除零语义，输出可见的 NaN）
+  percent: (part, total, digits = 0) => {
+    const [p, t] = [toNum(part), toNum(total)];
+    if (p === null || t === null || t === 0) return 'NaN';
+    return fixed((p / t) * 100, digits);
+  },
+  // ratio(part, total, digits=2)：比例（不做 ×100）；total 为 0 → NaN（与 percent 同口径）
+  ratio: (part, total, digits = 2) => {
+    const [p, t] = [toNum(part), toNum(total)];
+    if (p === null || t === null || t === 0) return 'NaN';
+    return fixed(p / t, digits);
+  },
+  // clamp(v, min, max)：把 v 夹进 [min, max]；非数 → NaN
+  clamp: (v, min, max) => {
+    const [x, lo, hi] = [toNum(v), toNum(min), toNum(max)];
+    if (x === null || lo === null || hi === null) return 'NaN';
+    return numOut(Math.min(Math.max(x, lo), hi));
+  },
+
+  // —— 字符串 ——
+  includes: (haystack, needle) => {
+    if (haystack == null) return false;
+    const h = Array.isArray(haystack) ? haystack : String(haystack);
+    return Array.isArray(h) ? h.some((x) => looseEq(x, needle)) : h.includes(String(needle ?? ''));
+  },
+  // 字符串 / 数组的长度；null / 数字等拿不到长度 → 0（模板里可直接当数比）
+  length: (v) => {
+    if (v == null) return 0;
+    if (typeof v === 'string' || Array.isArray(v)) return v.length;
+    return String(v).length;
+  },
+  // default(v, fallback)：v 为空（null / undefined / 空串 / 空数组）时给兜底文本
+  default: (v, fallback = '') => {
+    if (v == null) return fallback;
+    if (typeof v === 'string' && !v.trim()) return fallback;
+    if (Array.isArray(v) && v.length === 0) return fallback;
+    return v;
+  },
+
+  // —— 时间 ——
+  // 秒 → 人话（与交付文本里的「剩余 / 已过」同一套措辞）
+  formatDuration: (sec) => formatDuration(sec),
+};
+
+/** 已注册的 helper 名（文档 / 测试 / 设置页速查共用）。 */
+export const TEMPLATE_HELPERS = Object.keys(HELPER_DEFS);
+
+// 统一包一层 try/catch：任何 helper 自身异常都退化成可见兜底，不拖垮整份渲染（#90 约束）
+for (const [name, fn] of Object.entries(HELPER_DEFS)) {
+  HB.registerHelper(name, (...args) => {
+    try {
+      // Handlebars 会把 options 对象塞在最后一个参数里
+      const plain = args.length && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
+        ? args.slice(0, -1)
+        : args;
+      return fn(...plain);
+    } catch {
+      return 'NaN';
+    }
+  });
+}
+
+
 // 旧语法识别（不兼容、不迁移）：
 //   - 旧闸门 `{{#repo}}` / `{{#group}}` / `{{#attachSync}}` / `{{#goalCheck}}` 等：
 //     只允许 `{{#if}}` / `{{#each}}` 两种块。

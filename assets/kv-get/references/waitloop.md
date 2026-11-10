@@ -81,12 +81,18 @@ nx-kv localtask wait --summary "<当前现状总结>" --json
 `{id, text, status, createdAt, consumedAt, roundSummary}`，**任务内容在 `task.text`**。
 
 **`instruction` 字段（有则必读）**：wait 返回额外带 `instruction` —— 服务端按
-5 个区块（context / attachment / timecheck / ack / getloop）渲染的**本轮根指令**：
+8 个区块（context / attachment / timecheck / goalhint / doneguard / ext / ack / getloop）
+渲染的**本轮根指令**：
 默认含组 / 项目上下文、时间目标状态（`〔时间目标「目录名」剩余 X〕`，该目录挂了
 timegoal 才出现），以及 ack 完成总结（默认「完成后调用 `localtask done` 回填结果」）。
 规则：
 
 - `task.text` 永远是任务本体原文；`instruction` 是**包裹它的执行指令**，两者一起读。
+- goalhint 是任务级时间目标的「特殊功能提示」（默认带已过百分比与过半 / 2/3 分档话术）；
+  doneguard 只在未到点就想 `done` 时出现在 blocked 返回的 `guard` 里，不进正常交付。
+- 模板可用一套内置 helper：比较（`eq/ne/gt/gte/lt/lte/between`）、逻辑（`and/or/not`）、
+  数值（`add/sub/mul/div/mod/round/floor/ceil/percent/ratio/clamp`）、串（`includes/length/default`）、
+  时间（`formatDuration`）；失败输出可见的 `NaN` / `false`，不抛错。
 - 自定义模板可含 `{{task.text}}`（此时 instruction 自包含，正文以它为准）。
 - ack 是完成指令与收尾要求的**唯一出口**（旧 `rule` 区块已删除并并入 ack）。
 - 该目录的 timegoal 到点后，instruction 会显示「已到点」——预算用完，本轮该收尾了。

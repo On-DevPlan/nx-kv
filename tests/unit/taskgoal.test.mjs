@@ -66,6 +66,11 @@ test('add --duration：任务记录带 timegoal 声明；领取交付带 check �
   assert.equal(done.reason, 'goal_not_reached');
   assert.ok(done.remainingSec > 0);
   assert.match(done.hint, /sub agent/);
+  // #90：拦截文案走可配置的 doneguard 模板（默认文案含门禁标题、剩余时间与下一步指令）
+  assert.match(done.guard, /完成门禁/);
+  assert.match(done.guard, /剩余/);
+  assert.match(done.guard, /timegoal check --task task:/);
+  assert.doesNotMatch(done.guard, /\{\{/, '渲染后不应残留占位符');
 
   // timegoal check --task：任务维度 check 可用（日志落 timegoal 存储）
   const tg = await import('../../src/modules/tasktool/timegoal.js');

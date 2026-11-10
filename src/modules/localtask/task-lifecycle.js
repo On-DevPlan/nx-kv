@@ -2,7 +2,10 @@
 // 跳过被依赖/闸门挡住的 pending）、completeTask（完成门禁：timegoal 未到点返回 blocked
 // 业务值而不是抛错）、reopenTask（用户修改反馈 → **就地重开原任务**，历史进 history 链）。
 import { badInput, notFound } from '../../core/errors.js';
-import { formatDuration } from '../../core/instruction-template.js';
+import { formatDuration, renderInstruction } from '../../core/instruction-template.js';
+import { resolveBlockTemplates } from '../../shared/prompt-blocks.js';
+import { getLtSettings } from './repo/settings.js';
+import { taskGoalTemplateCtx } from '../tasktool/plugins/goal-template.js';
 import { preserveFrontmatter } from '../../shared/frontmatter.js';
 import {
   FEEDBACK_HEADING,
@@ -22,6 +25,34 @@ import {
   links as linksRepo,
   txw as tx,
 } from './repo/index.js';
+
+/**
+ * 「未到点就想 done」的拦截提示（#90）：模板来自设置 lt.blockTemplates.doneguard，
+ * 与其余系统段同一套 Handlebars 引擎与 ctx；渲染失败退回 ''，调用方仍用内置 hint，
+ * 门禁本身的业务结果不受模板影响。
+ */
+function renderDoneGuard({ taskId, taskText, goalKey, st }) {
+  try {
+    const s = getLtSettings();
+    const tpl = resolveBlockTemplates(s && s.blockTemplates).doneguard.template;
+    const goal = st.goal || {};
+    const ctx = taskGoalTemplateCtx({
+      taskId,
+      taskText: taskText || '',
+      goalKey,
+      durationSec: Number(goal.durationSec) || 0,
+      extra: '',
+      startedAt: goal.startedAt,
+      deadline: goal.deadline,
+      nowMs: Date.now(),
+    });
+    // 只在这一条路径上置真：正常交付渲染时没有这个变量，doneguard 段整段省略
+    ctx.goal.blocked = true;
+    return String(renderInstruction(tpl, ctx) || '').trim();
+  } catch {
+    return '';
+  }
+}
 
 /**
  * 解析 supersededBy：本地是数字（同主题 seq），跨队列搬家后写的是 "key:seq"。
@@ -311,6 +342,14 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
     const { taskGoalState, recordTaskCheck } = await import('../tasktool/taskgoal.js');
     const st = await taskGoalState({ topicKey: key, taskId: want });
     if (st.hasGoal && !st.reached) {
+      // 「未到点就想 done」的拦截提示可配（#90）：模板与其它区块同源，落
+      // lt.blockTemplates.doneguard；渲染失败退回内置 hint，不挡业务结果。
+      const guard = renderDoneGuard({
+        taskId: want,
+        taskText: task.text,
+        goalKey: st.key,
+        st,
+      });
       return {
         status: 'blocked',
         reason: 'goal_not_reached',
@@ -322,6 +361,7 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
         remainingSec: st.remainingSec,
         remainingHuman: formatDuration(st.remainingSec),
         hint: '时间未到，不能标记完成——请派出 sub agent 重新提出新的需求；到点后（timegoal check 返回 reached:true）再来标完成',
+        guard,
       };
     }
     if (st.hasGoal) {

@@ -21,7 +21,7 @@
         自动打开浏览器弹窗，然后阻塞。
 4. 用户看清现状，回填新任务。
 5. wait 解除阻塞，stdout(--json) 返回 {status:"ok", task}，进程退出。
-6. agent 从工具结果读 task.text（任务本体）与 instruction（5 个系统区块的渲染结果，
+6. agent 从工具结果读 task.text（任务本体）与 instruction（系统区块的渲染结果，
    有则必读），继续干活、提交结果；做完【必须】回到第 2 步——
    循环，不许自行中断。
 7. 若阻塞时限（默认 180 秒）内没有回填：wait 返回 {status:"timeout"}（exit 0），
@@ -91,13 +91,19 @@ wait 必带一句当前现状总结（≤2000 字，连续空白会折叠为单�
   （全局任务池）；agent 不必区分，照常执行 `task.text`。
 - **任务内容永远读 `task.text`**，多行换行原样保留。
 - **`instruction` 有则必读**：系统区块的服务端渲染结果——项目 / 组上下文、附件清单与
-  本地路径、时间目标状态（任务级目标另带 check 指令）、ack 汇报指令、项目级持续 get 指令。
+  本地路径、时间目标状态（任务级目标另带 check 指令）、时间目标特殊提示（goalhint）、
+  ack 汇报指令、项目级持续 get 指令。
   字段缺席 = 本轮没有可渲染内容，直接执行任务。
 - **配置模型（一份共享变量 + Handlebars 模板）**：所有系统段落都由同一份入参列表渲染——
   项目（`repo.*`）、项目组（`group.*`，含组定位 / 本项目位置 / 成员 / 绑定文档）、
   任务（`task.*`）、附件（`attach.*`）、时间目标（`goal.*`）、持续 get（`getloop.*`），
   外加 `source / summary / cwd / name / params`。引擎是 **Handlebars 4.x**：
   `{{var}}` 取值、`{{#if x}}…{{else}}…{{/if}}` 条件、`{{#each list}}…{{/each}}` 循环。
+  另有内置 helper：比较 `eq / ne / gt / gte / lt / lte / between`（拿不到数 → `false`）、
+  逻辑 `and / or / not`、数值 `add / sub / mul / div / mod / round / floor / ceil /
+  percent / ratio / clamp`（坏输入 → 可见的 `NaN`；`percent a b [位数]` 算百分比）、
+  串 `includes / length / default`、时间 `formatDuration`。helper 永不抛错，
+  可直接写 `{{#if (gte (percent goal.elapsedSec goal.durationSec) 50)}}`。
   列表类变量是**结构化数组**（`group.peers` / `repo.docs` / `group.docs` / `attach.list` /
   `groups`），模板用循环组织，服务端不预拼多行文本。
   `attach.list` 每条按 `kind` 分型：`file`（`file.localPath/fileId/exists/syncCmd`）、
@@ -122,11 +128,15 @@ wait 必带一句当前现状总结（≤2000 字，连续空白会折叠为单�
 - **系统上下文默认是 XML 区块**：`instruction` 里每段系统内容各包一个标签——
   `<nx-kv.context>`（组 / 项目上下文）、`<nx-kv.attachment>`（附件清单与识别要求）、
   `<nx-kv.timecheck>`（时间目标状态 / check 指令）、
+  `<nx-kv.goalhint>`（时间目标特殊提示，任务级目标才有）、
+  `<nx-kv.ext>`（同主题待领取队列，队列空时不出现）、
   `<nx-kv.ack>`（完成总结汇报指令，默认内置）、`<nx-kv.getloop>`（项目开启持续 get 时），
   整体再包一层 `<nx-kv>`。看到这些标签就知道是系统追加内容，`task.text` 仍是任务原文。
+  `<nx-kv.doneguard>` 不进正常交付：只有未到点就想 `done` 时，出现在 blocked 返回的
+  `guard` 字段里（可用「设置 → 提示词模板 → 完成门禁提示」定制）。
   追加模式可配：`--append-mode xml|plain`（默认 `xml`；`plain` = 按空行直拼）。
-- **每个区块各自一份模板列表**：context / attachment / timecheck / ack / getloop 各自
-  有独立的列表与生效项（共 5 个区块）。面板「设置 → 提示词模板」按区块新建 / 编辑 /
+- **每个区块各自一份模板列表**：context / attachment / timecheck / goalhint / doneguard /
+  ext / ack / getloop 各自有独立的列表与生效项（共 8 个区块）。面板「设置 → 提示词模板」按区块新建 / 编辑 /
   复制 / 删除 / 启用；CLI 用 `--block-templates '<JSON>'` 整体或按区块更新。
   每个区块始终保留系统内置模板（不可删除）；用户模板删光后按内置渲染。
   旧配置（`{{block.content}}` 包装模板、多段 items、`deliveryTemplate/attachTemplate/

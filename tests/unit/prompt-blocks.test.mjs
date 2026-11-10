@@ -26,11 +26,11 @@ const withActive = (lists, blockId, template, id = 'custom', name = '自定义')
   return next;
 };
 
-test('默认每区块列表：7 个区块，各只含系统内置模板，active=builtin', () => {
+test('默认每区块列表：8 个区块，各只含系统内置模板，active=builtin', () => {
   assert.deepEqual(
     BLOCK_DEFS.map((d) => d.id),
-    ['context', 'attachment', 'timecheck', 'goalhint', 'ext', 'ack', 'getloop'],
-    'rule 已并入 ack，不再作为独立区块；goalhint 是 #87 新增的 timegoal 上下文段'
+    ['context', 'attachment', 'timecheck', 'goalhint', 'doneguard', 'ext', 'ack', 'getloop'],
+    'rule 已并入 ack，不再作为独立区块；goalhint 是 #87 / doneguard 是 #90 新增的 timegoal 段'
   );
   const lists = defaultBlockTemplateLists();
   for (const def of BLOCK_DEFS) {

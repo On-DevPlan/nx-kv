@@ -4,14 +4,16 @@
 //   - 整个渲染领域只有一个 ctx（见 delivery-template.js 的 buildDeliveryCtx）：
 //     `{ task, repo, group, attach, goal, getloop, source, summary, cwd, name, params }`。
 //     所有区块模板都从这同一份数据取值——不存在「某模块自带一套变量域」。
-//   - 每个区块（context / attachment / timecheck / ack / getloop）各自有一份
-//     独立的模板列表：`blockTemplates[id] = { active, list: [{ id, name, template, builtin }] }`。
+//   - 每个区块（context / attachment / timecheck / goalhint / doneguard / ext / ack /
+//     getloop）各自有一份独立的模板列表：
+//     `blockTemplates[id] = { active, list: [{ id, name, template, builtin }] }`。
 //     旧 rule 区块已合并进 ack（done 指令与收尾要求只留这一个出口）。
 //     列表里可以新建、编辑、复制、删除，并由 `active` 指定该区块当前生效的模板。
 //   - 每个区块**始终至少有一个系统内置模板**（id 固定 `builtin`）：不可删除，
 //     内容固定为该区块的默认模板；用户模板删光后 active 自动回落到它。
 //   - 模板由 core/instruction-template.js（Handlebars 4.x）渲染；列表变量是结构化数组，
-//     用 `{{#each}}` 展开；有无用 `{{#if}}` 判断。
+//     用 `{{#each}}` 展开；有无用 `{{#if}}` 判断。另有一组内置 helper（比较 / 逻辑 /
+//     数值 / 字符串 / 时间，见该文件的 HELPER_DEFS），失败输出可见的 NaN / false，不抛错。
 //   - 旧语法（`{{#repo}}…{{/repo}}` 闸门、`{{group.peers}}` 这类纯文本占位符、
 //     `{{attach.sync}}` 旧别名）**不再兼容**；保存校验会直接拒绝并提示改用新语法。
 //
@@ -143,16 +145,36 @@ export const DEFAULT_TIMECHECK_TEMPLATE = [
 ].join('\n');
 
 /**
- * 默认「特殊功能提示」段（任务 #87）：只在任务带时间目标时出现，给 agent 一份
- * **可运算的**时间上下文（持续 / 剩余 / 是否到点）与任务号。
+ * 默认「特殊功能提示」段（任务 #87，文案在 #90 里补全）：只在任务带时间目标时出现，
+ * 给 agent 一份**可运算的**时间上下文（持续 / 已过 / 剩余 / 是否到点）与任务号，
+ * 并按进度给阶段口径（过半提醒、2/3 收尾、到点收口）。
  *
  * 这一栏存在的意义是「占位符的可见入口」：goal.* 与 task.* 都是每轮 check 同源
  * 渲染的同一份 ctx（check 返回对象走同一套模板），用户在这里改文案即可定制提示，
- * 不必改代码。默认文案刻意不复述 check 指令（那在 timecheck 段里），只补状态。
+ * 不必改代码。默认文案刻意不复述 check 指令（那在 timecheck 段里），只补状态与阶段。
+ * 进度用内置 helper 现算（percent / gte），不新增 ctx 字段。
  */
 export const DEFAULT_GOALHINT_TEMPLATE = [
   '{{#if goal.check}}',
-  '〔特殊功能提示 · 时间目标〕任务 #{{task.id}} 正在计时：持续 {{goal.durationHuman}}，{{#if goal.reached}}已到点{{else}}剩余 {{goal.remainingHuman}}{{/if}}。',
+  '〔特殊功能提示 · 时间目标〕任务 #{{task.id}} 正在计时：持续 {{goal.durationHuman}}，已过 {{goal.elapsedHuman}}（{{percent goal.elapsedSec goal.durationSec}}%），{{#if goal.reached}}已到点（超时 {{formatDuration goal.overtimeSec}}）{{else}}剩余 {{goal.remainingHuman}}{{/if}}。',
+  '{{#if goal.reached}}——时间已到：可以收口，把改动收敛成可交付状态，补验证与说明后按 ack 段 done。',
+  '{{else}}{{#if (gte (percent goal.elapsedSec goal.durationSec) 67)}}——已过 2/3：进入收尾整理（收敛改动 / 补验证 / 写清遗留），别开新战线。',
+  '{{else}}{{#if (gte (percent goal.elapsedSec goal.durationSec) 50)}}——已过半：先确认主线走到哪，剩余时间只做收尾必需项。',
+  '{{else}}——时间尚足：先做主线，再补细节。{{/if}}{{/if}}{{/if}}',
+  '{{/if}}',
+].join('\n');
+
+/**
+ * 默认「完成门禁提示」段（#90）：agent 未到点就想 `localtask done` 时**代替**原来那句
+ * 固定 hint 出现在 blocked 返回里。与其它区块同源：模板可改、变量是 goal.* / task.*，
+ * 并能用 helper 按进度给不同口径。`goal.blocked` 只在这条路径上为真，交付渲染时整段省略。
+ */
+export const DEFAULT_DONEGUARD_TEMPLATE = [
+  '{{#if goal.blocked}}',
+  '〔完成门禁 · 时间未到〕任务 #{{task.id}} 还不能 done：持续 {{goal.durationHuman}}，已过 {{goal.elapsedHuman}}（{{percent goal.elapsedSec goal.durationSec}}%），剩余 {{goal.remainingHuman}}。',
+  '- 现在可做：{{#if (gte (percent goal.elapsedSec goal.durationSec) 67)}}收尾整理（收敛改动 / 补验证 / 写清遗留），或派 sub agent 提出新的需求继续推进{{else}}继续推进主线，并派 sub agent 重新提出新的需求{{/if}}。',
+  '- 每轮推进先跑：nx-kv timegoal check --task {{goal.goalKey}} --summary "<本轮现状>" --progress "<进展/下一步>"',
+  '- 到点后再：nx-kv localtask done --id {{task.id}} --summary "<完成总结>"',
   '{{/if}}',
 ].join('\n');
 
@@ -214,6 +236,13 @@ export const BLOCK_DEFS = Object.freeze([
     label: '特殊功能提示（timegoal）',
     desc: '任务带时间目标时出现：可直接用 goal.* 时间变量与 task 全文占位；每轮 check 同源渲染',
     defaultTemplate: DEFAULT_GOALHINT_TEMPLATE,
+  },
+  {
+    id: 'doneguard',
+    tag: 'nx-kv.doneguard',
+    label: '完成门禁提示（timegoal）',
+    desc: 'agent 未到点就想 done 时出现（blocked 返回的 guard）：说明剩余时间与可做事项，可用 helper 按进度分档',
+    defaultTemplate: DEFAULT_DONEGUARD_TEMPLATE,
   },
   {
     id: 'ext',

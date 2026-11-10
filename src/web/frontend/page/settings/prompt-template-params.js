@@ -206,6 +206,42 @@ export const BLOCK_PARAMS = {
       ],
     },
   ],
+  // #90：未到点就 done 的拦截文案（blocked 返回里的 guard 字段）
+  doneguard: [
+    {
+      label: '时间目标上下文（任务级）',
+      items: [
+        ['goal.blocked', '恒为 true（只在这条拦截路径上出现，交付渲染时整段省略）'],
+        ['goal.goalKey', '任务级目标 key（check --task 用）'],
+        ['goal.durationHuman', '持续时长（人话）'],
+        ['goal.durationSec', '持续秒数'],
+        ['goal.startedAt', '开始计时时间'],
+        ['goal.deadline', '截止时间'],
+        ['goal.remainingHuman', '剩余时长（人话）'],
+        ['goal.remainingSec', '剩余秒数'],
+        ['goal.elapsedHuman', '已过时长（人话）'],
+        ['goal.elapsedSec', '已过秒数'],
+      ],
+    },
+    {
+      label: '任务',
+      items: [
+        ['task.id', '任务号'],
+        ['task.text', '任务实时原文'],
+      ],
+    },
+    {
+      label: '可用的 helper（与所有区块同一套）',
+      items: [
+        ['percent goal.elapsedSec goal.durationSec', '已用百分比（0 位小数；可加第三参控制小数位）'],
+        ['gte a b / gt / lt / lte / eq / ne / between v min max', '比较，返回布尔，可直接进 {{#if}}'],
+        ['and / or / not', '逻辑'],
+        ['add / sub / mul / div / mod / round / floor / ceil / ratio / clamp', '数值计算（坏输入输出 NaN，不抛错）'],
+        ['includes / length / default', '字符串'],
+        ['formatDuration', '秒数转人话'],
+      ],
+    },
+  ],
   ext: [
     {
       label: '队列',

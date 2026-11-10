@@ -112,11 +112,12 @@ flowchart TD
 
 | # | 规范名 | 代码标识（表 / 字段 / 函数） | 定义 | 判定依据 | 常见误用 |
 |---|--------|------------------------------|------|----------|----------|
-| N32 | **提示词区块**（block） | `context` / `attachment` / `timecheck` / `ext` / `ack` / `getloop` | 交付提示词由固定区块按顺序拼接，每块独立模板。 | `src/shared/prompt-blocks.js`；`src/modules/tasktool/system-blocks.js` | 按 `prompt-blocks.js` 文件头注释漏数 `ext`（注释未列，实际存在）。 |
+| N32 | **提示词区块**（block） | `context` / `attachment` / `timecheck` / `goalhint` / `doneguard` / `ext` / `ack` / `getloop` | 交付提示词由固定区块按顺序拼接，每块独立模板；goalhint 进正常交付（任务级时间目标才有），doneguard 只在 `done` 被 blocked 拦截时以 `guard` 字段出现。 | `src/shared/prompt-blocks.js`；`src/modules/tasktool/system-blocks.js` | 把 doneguard 当交付区块；按旧文档只数 5 个区块（漏 goalhint / doneguard / ext）。 |
 | N33 | **共享上下文**（ctx） | `buildDeliveryCtx()`；`{{task}}`、`{{repo}}`、`{{group}}`、`{{refRepos}}`、`{{attach}}`、`{{ext}}`、`{{goal}}`、`{{params}}` | 所有区块共用同一份 ctx；参考仓库固定为 `refRepos`，附件固定为 `attach`。 | `src/modules/tasktool/delivery-template.js`；`src/shared/prompt-blocks.js` | 为单个区块另造变量域；把参考仓库写成 `refs`（`refs` 是文档库）。 |
 | N34 | **区块模板列表** | 设置项 `blockTemplates`；`resolveBlockTemplates()`；`templates` 表 | 每个区块一个模板列表，选一个生效；每块至少保留一个内置模板。 | `src/modules/tasktool/wait.js`；`src/modules/setting/*` | 认为模板是全局单套（实际按区块独立）。 |
 | N35 | **追加模式** | 设置项 `appendMode`：`xml` / `plain` | 控制 `<nx-kv.xxx>` 包裹还是纯文本追加；全局生效，不是按区块。 | `src/modules/tasktool/wait.js` | 在单个模板里切换模式。 |
 | N36 | **任务正文模板** | `templates`；`category = 'newtask'` | 新建任务时的正文骨架，与「提示词区块模板」是两套不同模板。 | `v1.sql` `templates`；`src/modules/templates/*` | 把正文模板塞进 `blockTemplates`。 |
+| N42 | **模板 helper** | `TEMPLATE_HELPERS`；`HELPER_DEFS`（`eq/ne/gt/gte/lt/lte/between`、`and/or/not`、`add/sub/mul/div/mod/round/floor/ceil/percent/ratio/clamp`、`includes/length/default`、`formatDuration`） | 所有提示词区块共用的一套 Handlebars helper；只做比较 / 逻辑 / 数值 / 串 / 时间五类纯计算，不内置业务判断。失败不抛错：比较拿不到数 → `false`，数值坏输入 → 可见的 `NaN`。 | `src/core/instruction-template.js` | 以为 helper 能改任务状态；在 helper 里写业务规则；把 `percent` 的除零当 `Infinity`（total 为 0 时是 `NaN`）。 |
 
 ### 2.6 云端清单域
 
@@ -204,7 +205,7 @@ flowchart TD
 | P08 | 代码里仍存在 `kind === 'image'` 兼容分支，但 schema 只允许 file/url/task/ref | `src/modules/localtask/index.js`；`src/modules/todo/index.js`；`v2.sql` | 确认为兼容历史数据后移除，或补 schema 约束说明 | UI 标签与 schema 不一致 |
 | P09 | `v4.sql` 头注释与 `rows.js` 注释仍说「没有仓库级参考绑定」，与当前「组级 + 仓库级并存」不符 | `v4.sql` 注释；`repos/repo/rows.js` 注释；`docs/decisions/2026-11-09-repo-and-group-ref-bindings.md` | 修注释（不改行为） | 读者会按旧语义实现 |
 | P10 | `localtask/index.js` 注释仍写「数据存本地文件」 | `src/modules/localtask/index.js` 文件头 | 改为 SQLite | 误导实现 |
-| P11 | `prompt-blocks.js` 文件头区块清单漏 `ext`，ctx 签名漏 `refRepos` / `ext` | `src/shared/prompt-blocks.js` 文件头 | 补注释 | 新块接入时漏改 |
+| P11 | `prompt-blocks.js` 文件头 ctx 签名漏 `refRepos` / `ext`（区块清单已补全） | `src/shared/prompt-blocks.js` 文件头 | 补注释 | 新块接入时漏改 |
 | P12 | `v1.sql` 中 `refs.type` 注释仍列 `md/dir/image/file/path/url`，当前业务只写 `md` | `v1.sql` `refs.type` 注释；`attachmentdb.js` `ensureDocRef()` | 收窄注释或在 v5 清理列 | 误以为 refs 还能存图片/URL |
 | P13 | `v1.sql` 文档根注释写 `ext/<绝对路径>`，当前代码是 `repo/` + `board/` + `group/` + `path:` 外部 DocRef | `v1.sql` 注释；`src/modules/docs/paths.js` | 修注释 | 文档地址规则对不上 |
 | P14 | `tasks.type` 列存在但业务未见写入/读取 | `v1.sql` `tasks.type` | 确认是否遗留；若遗留评估删除 | 可能被误用为任务分类 |

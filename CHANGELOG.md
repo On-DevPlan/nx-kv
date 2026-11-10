@@ -2,6 +2,30 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.45.0] - 2026-11-10 模板 helper + 时间目标分档提示 + 未到点 done 拦截可配（#90）
+
+### Added
+
+- **模板引擎内置 helper（25 个，全区块共用）**：比较 `eq/ne/gt/gte/lt/lte/between`、
+  逻辑 `and/or/not`、数值 `add/sub/mul/div/mod/round/floor/ceil/percent/ratio/clamp`、
+  字符串 `includes/length/default`、时间 `formatDuration`。于是可以按进度换话术，例如
+  `{{#if (gte (percent goal.elapsedSec goal.durationSec) 50)}}…过半…{{/if}}`。
+  约定写死并测过：helper **不抛错**；比较拿不到数 → `false`；数值坏输入 → 可见的
+  `NaN`；除零照 JS；`percent/ratio` 总量为 0 → `NaN`。
+- **goalhint 默认文案升级**：显示已过百分比，并按 50% / 67% / 到点三档给不同指引
+  （确认主线 / 收尾整理 / 收口交付），发布方可在设置里继续改。
+- **doneguard 区块（未到点就 done 的拦截提示可配）**：`localtask done` 被时间门禁拦下时，
+  blocked 返回新增 `guard` 字段，内容是 doneguard 模板的渲染结果（默认给剩余时间、
+  `timegoal check` 与 `done` 的确切命令）；CLI 展示优先用它，取不到回落到原固定提示。
+  设置 → 提示词模板多出「完成门禁提示（timegoal）」一栏；该区块**不进正常交付**、
+  不占 `<nx-kv>` 里的段落。
+
+### Docs
+
+- `docs/glossary.md`：区块清单补到 8 个（goalhint / doneguard / ext），新增 helper 条目；
+- `assets/kv-get`：wait/workflow 与 waitloop 同步 8 区块、helper 清单与 doneguard 语义；
+- 新增 `docs/decisions/2026-11-10-template-helpers.md`（选型与边界）。
+
 ## [0.44.2] - 2026-11-10 领取补上 HTTP 路由（serve 在跑也能领）
 
 ### Added

@@ -1,10 +1,10 @@
-// 目录落地页 = 简介 + 子任务表。
+// 目录落地页 = 简介 + 任务面板。
 // 简介由统一组件 Introduction 负责（与项目组同构：显示 / 编辑 / 补 ref）。
 //
-// 任务表：显示序**未完成优先**、长度**分页**（队列长了翻页，不一次渲染全部）。
-// 分页与计数由容器（page/dir/index.jsx）算好传进来——本页只负责画。
-// 编排（#40）：待领取行可**拖动排序**（落点前/后，走 localtask reorder）、
-// 行尾「⋮」菜单开**编排编辑器**（闸门 / 上下游依赖）；已领取行是固定历史，不可拖。
+// 任务面板（#164）：外壳与行组件与项目组页共用（components/task-panel，
+// 以组面板行结构为准）——待领取行拖动排序（拖把手）、行尾操作（编排菜单 /
+// 反馈 / 删除）、多选批量条、状态统一为 StatusTag 全称药丸（原单字徽标
+// 等/跑/完/档 收口）。分页与计数由容器（page/dir/index.jsx）算好传进来。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
@@ -12,15 +12,9 @@ import Introduction from '../../components/Introduction/index.jsx';
 import Pager from '../../components/pager.jsx';
 import { RowMenu } from '../../components/popup/index.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
-import { statusTone, statusShort } from '../../components/status-tag/model.js';
-import { titleFromMd } from '../../modules/md/md-parse.js';
-
-function shortTime(v) {
-  const s = String(v || '').trim();
-  if (!s) return '—';
-  const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
-  return m ? `${m[1].slice(5)} ${m[2]}` : s.slice(0, 16);
-}
+import TaskPanel from '../../components/task-panel/index.jsx';
+import TaskRow from '../../components/task-panel/task-row.jsx';
+import { taskLabel } from '../../components/sidebar/model.js';
 
 export default function Landing({
   isGlobal,
@@ -270,173 +264,96 @@ export default function Landing({
         </div>
       )}
 
-      <div className="mdw-land-table-wrap">
-        <table className="mdw-land-table">
-          <thead>
-            <tr>
-              <th scope="col" className="pick">
-                <input
-                  type="checkbox"
-                  checked={allPicked}
-                  onChange={togglePickAll}
-                  aria-label="全选当前页任务"
-                  title="全选/取消全选当前页"
-                />
-              </th>
-              <th scope="col" style={{ width: '56px' }}>#</th>
-              <th scope="col">任务</th>
-              <th scope="col" style={{ width: '74px' }}>状态</th>
-              <th scope="col" style={{ width: '116px' }}>创建</th>
-              <th scope="col" style={{ width: '116px' }}>领取</th>
-              <th scope="col" style={{ width: '56px' }} />
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.map((t) => {
-              const movableRow = movable(t);
-              const downs = (downstreamOf && downstreamOf[t.id]) || [];
-              return (
-                <tr
-                  key={t.id}
-                  className={
-                    'mdw-land-tr'
-                    + (picked.has(Number(t.id)) ? ' picked' : '')
-                    + (dragId === Number(t.id) ? ' dragging' : '')
-                    + (dropAt && dropAt.id === Number(t.id) ? ' drop-' + dropAt.zone : '')
-                  }
-                  draggable={movableRow}
-                  onDragStart={(e) => movableRow && onDragStart(e, t)}
-                  onDragOver={(e) => onDragOver(e, t)}
-                  onDragLeave={onDragLeave}
-                  onDrop={(e) => onDrop(e, t)}
-                  onDragEnd={onDragEnd}
-                  onClick={() => onOpenTask(t.id)}
-                >
-                  <td
-                    className="pick"
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={picked.has(Number(t.id))}
-                      onChange={() => togglePick(t.id)}
-                      aria-label={`选择任务 #${t.id}`}
+      {/* 任务面板（#164 共享组件）：行结构 / 状态药丸与项目组页一致。
+          当前页行不拆段（分页语义由容器负责）；全选在面板头右侧。 */}
+      <TaskPanel
+        title={isGlobal ? '全局池任务' : '任务'}
+        pendingCount={pendingCount}
+        headerExtra={
+          tasks.length ? (
+            <label className="rp-proj-pickall" title="全选/取消全选当前页">
+              <input
+                type="checkbox"
+                checked={allPicked}
+                onChange={togglePickAll}
+                aria-label="全选当前页任务"
+              />
+              全选本页
+            </label>
+          ) : null
+        }
+        emptyText={`还没有页面：点「＋ 新建页」写第一篇，或让 agent 往${isGlobal ? '全局池' : '这个目录'}投递任务。`}
+      >
+        {tasks.map((t) => {
+          const movableRow = movable(t);
+          const downs = (downstreamOf && downstreamOf[t.id]) || [];
+          return (
+            <TaskRow
+              key={t.id}
+              t={t}
+              selectable
+              picked={picked.has(Number(t.id))}
+              onTogglePick={togglePick}
+              draggable={movableRow}
+              dragHandlers={
+                movableRow
+                  ? {
+                      onDragStart: (e) => onDragStart(e, t),
+                      onDragOver: (e) => onDragOver(e, t),
+                      onDragLeave: onDragLeave,
+                      onDrop: (e) => onDrop(e, t),
+                      onDragEnd: onDragEnd,
+                    }
+                  : null
+              }
+              dragVisual={{
+                dragging: dragId === Number(t.id),
+                drop: dropAt && dropAt.id === Number(t.id) ? dropAt.zone : null,
+              }}
+              showTimes
+              downs={downs}
+              onOpen={(row) => onOpenTask(row.id)}
+              ops={
+                <>
+                  {movableRow && (onOpenDag || onToggleGate) && (
+                    <RowMenu
+                      items={[
+                        { label: '编排依赖…', onPick: () => onOpenDag && onOpenDag(t) },
+                        {
+                          label: t.blocksFollowing ? '取消闸门（不再挡后续）' : '设为闸门（挡住后续）',
+                          onPick: () => onToggleGate && onToggleGate(t),
+                        },
+                      ]}
                     />
-                  </td>
-                  <td className="mono faint" title={movableRow ? '拖动整行可调整队列顺序' : undefined}>#{t.id}</td>
-                  <td className="tx">
-                    <div className="mdw-tg-row">
-                      <span className="mdw-tg-title">{titleFromMd(t.text)}</span>
-                      {t.timegoal?.duration ? (
-                        <span
-                          className="mdw-tg"
-                          title={`时间目标 ${t.timegoal.duration}（领取即计时，未到点不许标完成）${t.timegoal.prompt ? `\n附加要求：${t.timegoal.prompt}` : ''}`}
-                        >
-                          ⏱ {t.timegoal.duration}
-                        </span>
-                      ) : null}
-                      {t.blocksFollowing ? (
-                        <span
-                          className="mdw-tg"
-                          title={
-                            downs.length
-                              ? `闸门：未完成前挡住 ${downs.length} 个后续任务（#${downs.join(', #')}）`
-                              : '闸门：未完成前挡住队列里排在后面的待领取任务'
-                          }
-                        >
-                          闸门{downs.length ? `×${downs.length}` : ''}
-                        </span>
-                      ) : null}
-                      {t.status === 'pending' && t.ready === false ? (
-                        <span
-                          className="mdw-tg"
-                          title={t.blockBy?.length ? `等待依赖完成：#${t.blockBy.join(', #')}` : '被前方闸门挡住'}
-                        >
-                          锁定
-                        </span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td>
-                    {/* 状态徽标（#121 统一口径，components/status-tag/model.js）：
-                        等=浅灰 / 跑=进行中蓝 / 完=已完成绿 / 档=收口灰。
-                        t.from 只是来源标记，不再当「在跑」。 */}
+                  )}
+                  {/* #144 反馈只在链尖：已有派生子任务（后续轮次/评论派生）的任务
+                      不再给反馈入口——在旧轮次上反馈会把链分叉 */}
+                  {onReopenTask && t.status !== 'cancelled' && !t.childCount && (t.status === 'claimed' || t.status === 'done' || t.completedAt) && (
                     <span
-                      className={'st ' + statusTone(t)}
-                      title={
-                        t.status === 'cancelled'
-                          ? '已取消：被新任务取代或明确作废，原文留档'
-                          : t.status === 'done'
-                            ? '已交付'
-                            : ''
-                      }
+                      className="op" role="button" tabIndex={-1}
+                      title={t.completedAt ? '反馈：新开一条任务（原任务不动）' : '反馈修改：回写本任务并记入任务链'}
+                      aria-label={`反馈 ${taskLabel(t)}`}
+                      onClick={() => onReopenTask(t)}
                     >
-                      {statusShort(t)}
+                      <Icon name="refresh" size={12} />
                     </span>
-                  </td>
-                  <td className="mono faint">{shortTime(t.createdAt)}</td>
-                  <td className="mono faint">{t.consumedAt ? shortTime(t.consumedAt) : '—'}</td>
-                  <td className="act">
-                    <span className="act-ops">
-                      {movableRow && (onOpenDag || onToggleGate) && (
-                        <span onClick={(e) => e.stopPropagation()}>
-                          <RowMenu
-                            items={[
-                              { label: '编排依赖…', onPick: () => onOpenDag && onOpenDag(t) },
-                              {
-                                label: t.blocksFollowing ? '取消闸门（不再挡后续）' : '设为闸门（挡住后续）',
-                                onPick: () => onToggleGate && onToggleGate(t),
-                              },
-                            ]}
-                          />
-                        </span>
-                      )}
-                      {/* #144 反馈只在链尖：已有派生子任务（后续轮次/评论派生）的任务
-                          不再给反馈入口——在旧轮次上反馈会把链分叉 */}
-                      {onReopenTask && t.status !== 'cancelled' && !t.childCount && (t.status === 'claimed' || t.status === 'done' || t.completedAt) && (
-                        <span
-                          className="op" role="button" tabIndex={-1}
-                          title={t.completedAt ? '反馈：新开一条任务（原任务不动）' : '反馈修改：回写本任务并记入任务链'}
-                          aria-label={`反馈 ${titleFromMd(t.text)}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onReopenTask(t);
-                          }}
-                        >
-                          <Icon name="refresh" size={12} />
-                        </span>
-                      )}
-                      {onDeleteTask && (
-                        <span
-                          className="op danger" role="button" tabIndex={-1}
-                          title="删除此任务（软删除，CLI 可恢复）"
-                          aria-label={`删除 ${titleFromMd(t.text)}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteTask(t);
-                          }}
-                        >
-                          <Icon name="x" size={12} />
-                        </span>
-                      )}
+                  )}
+                  {onDeleteTask && (
+                    <span
+                      className="op danger" role="button" tabIndex={-1}
+                      title="删除此任务（软删除，CLI 可恢复）"
+                      aria-label={`删除 ${taskLabel(t)}`}
+                      onClick={() => onDeleteTask(t)}
+                    >
+                      <Icon name="x" size={12} />
                     </span>
-                  </td>
-                </tr>
-              );
-            })}
-            {!tasks.length && (
-              <tr>
-                <td colSpan="7">
-                  <div className="mdw-land-empty">
-                    还没有页面：点「＋ 新建页」写第一篇，或让 agent 往{isGlobal ? '全局池' : '这个目录'}投递任务。
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                  )}
+                </>
+              }
+            />
+          );
+        })}
+      </TaskPanel>
 
       {/* 队列长了翻页看（以前一次渲染全部，队列一长就是一堵墙） */}
       {taskCount > 0 && (

@@ -285,3 +285,17 @@
 .rp-proj-goal { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--wait); }
 .rp-proj-none { font-size: 12px; padding: 4px 6px; }
 
+/* 共享任务行组件（#164）：dir 任务页与组面板共用 TaskRow / TaskPanel 后的补充件。
+   rp-proj-task 从 button 换成 div[role=button]——行内要容纳多选框 / 行尾操作这类
+   嵌套交互元素，键盘可达性自己补 focus-visible。 */
+.rp-proj-task:focus-visible { outline: 2px solid var(--doing, #2F6F5E); outline-offset: 1px; }
+.rp-proj-pick { flex: none; display: inline-flex; align-items: center; }
+.rp-proj-pick input { width: 13px; height: 13px; cursor: pointer; accent-color: var(--doing, #2F6F5E); }
+.rp-proj-pickall { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 400; color: var(--mid); cursor: pointer; }
+.rp-proj-pickall input { width: 13px; height: 13px; cursor: pointer; accent-color: var(--doing, #2F6F5E); }
+.rp-proj-times { flex: none; font-size: 10.5px; color: var(--mid); white-space: nowrap; }
+.rp-proj-ops { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.rp-proj-ops .op { cursor: pointer; color: var(--mid); display: inline-flex; align-items: center; }
+.rp-proj-ops .op:hover { color: var(--ink); }
+.rp-proj-ops .op.danger:hover { color: var(--danger, #b44a3c); }
+

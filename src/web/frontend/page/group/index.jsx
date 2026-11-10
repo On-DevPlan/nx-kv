@@ -15,8 +15,8 @@ import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
-import { taskLabel } from '../../components/sidebar/model.js';
-import StatusTag from '../../components/status-tag/index.jsx';
+import TaskPanel from '../../components/task-panel/index.jsx';
+import TaskRow from '../../components/task-panel/task-row.jsx';
 import { useApp } from '../../app-context.jsx';
 import { api } from '../../api/client.js';
 import { openPanel } from '../../workspace.js';
@@ -445,111 +445,64 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
           先看这个组是干什么的，再看活儿 */}
       <Introduction kind="board" owner={board} model={model} />
 
-      {/* 首屏：本组任务面板——只列 frontmatter.board 指向本组的任务，项目 tag 标归属 */}
-      <div className="rp-tasks">
-        <div className="rp-tasks-h">
-          <Icon name="list" size={13} /> 本组任务
-          <span className="rp-chip-count">{groupTasks.pend.length} 待领取</span>
-          {groupTasks.done.length > 0 && <span className="rp-chip-count">已领取 {groupTasks.done.length}</span>}
-        </div>
-        {groupTasks.pend.map(({ member, task }) => {
-          const dagInfo = dagByTopic.get(member.topicKey);
-          const downs = (dagInfo && dagInfo.downstream[task.id]) || [];
-          const locked = task.ready === false;
-          const rk = rowKey(member, task);
-          return (
-            <div
-              key={rk}
-              className={
-                'rp-proj-row'
-                + (dragId === rk ? ' dragging' : '')
-                + (dropAt && dropAt.key === rk ? ' drop-' + dropAt.zone : '')
-              }
-              onDragOver={(e) => onDragOver(e, member, task)}
-              onDragLeave={onDragLeave}
-              onDrop={(e) => onDrop(e, member, task)}
-            >
-              {member.topicKey ? (
-                <span
-                  className="rp-drag-handle"
-                  draggable
-                  title="拖动调整本项目队列内顺序"
-                  aria-label="拖动排序"
-                  onDragStart={(e) => onDragStart(e, member, task)}
-                  onDragEnd={onDragEnd}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Icon name="grip" size={12} />
-                </span>
-              ) : (
-                <span className="rp-drag-handle off" aria-hidden="true" />
-              )}
-              <button
-                className="rp-proj-task"
-                title="打开这条任务"
-                onClick={() => app.openPage && app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })}
-              >
-                <span className="mono">#{task.id}</span>
-                <span className="rp-ptag" title={`归属项目：${member.name}`}>{member.name}</span>
-                <span className="rp-proj-task-tx">{taskLabel(task)}</span>
-                {task.timegoal && (
-                  <span className="rp-proj-goal" title={`时间目标 ${task.timegoal.duration}：领取即计时，未到点不许标完成`}>
-                    <Icon name="clock" size={11} /> {task.timegoal.duration}
-                  </span>
-                )}
-                {task.blocksFollowing && (
-                  <span
-                    className="rp-tgate"
-                    title={
-                      downs.length
-                        ? `闸门：未完成前挡住 ${downs.length} 个后续任务（#${downs.join(', #')}）`
-                        : '闸门：未完成前挡住队列里排在后面的待领取任务'
+      {/* 首屏：本组任务面板——只列 frontmatter.board 指向本组的任务，项目 tag 标归属。
+          #164：面板外壳与任务行抽到 components/task-panel（与目录任务页共用），
+          历史行走 StatusTag 真实状态（已交付/已作废不再被吞成「已领取」）。 */}
+      <TaskPanel
+        title="本组任务"
+        pendingCount={groupTasks.pend.length}
+        historyCount={groupTasks.done.length}
+        historyOpen={showDone}
+        onToggleHistory={() => setShowDone((v) => !v)}
+        emptyText="本组还没有待领取任务——点「＋ 新增任务」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。"
+        children={
+          groupTasks.pend.length
+            ? groupTasks.pend.map(({ member, task }) => {
+                const dagInfo = dagByTopic.get(member.topicKey);
+                const downs = (dagInfo && dagInfo.downstream[task.id]) || [];
+                const rk = rowKey(member, task);
+                return (
+                  <TaskRow
+                    key={rk}
+                    t={task}
+                    projectTag={member.name}
+                    draggable={!!member.topicKey}
+                    dragHandlers={{
+                      onDragStart: (e) => onDragStart(e, member, task),
+                      onDragOver: (e) => onDragOver(e, member, task),
+                      onDragLeave: onDragLeave,
+                      onDrop: (e) => onDrop(e, member, task),
+                      onDragEnd: onDragEnd,
+                    }}
+                    dragVisual={{
+                      dragging: dragId === rk,
+                      drop: dropAt && dropAt.key === rk ? dropAt.zone : null,
+                    }}
+                    downs={downs}
+                    onOpen={() =>
+                      app.openPage &&
+                      app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })
                     }
-                  >
-                    闸门{downs.length ? `×${downs.length}` : ''}
-                  </span>
-                )}
-                {locked && (
-                  <span
-                    className="rp-tlock"
-                    title={task.blockBy?.length ? `等待依赖完成：#${task.blockBy.join(', #')}` : '被前方闸门挡住'}
-                  >
-                    锁定
-                  </span>
-                )}
-                {/* #121 统一组件：待领取=浅灰药丸 */}
-                <StatusTag t={task} />
-              </button>
-            </div>
-          );
-        })}
-        {!groupTasks.pend.length && (
-          <div className="rp-proj-none muted">
-            本组还没有待领取任务——点「＋ 新增任务」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。
-          </div>
-        )}
-        {groupTasks.done.length > 0 && (
-          <>
-            <button type="button" className="rp-done-toggle" onClick={() => setShowDone((v) => !v)}>
-              <span className={'tri' + (showDone ? ' open' : '')}>▸</span> 已领取 {groupTasks.done.length}
-            </button>
-            {showDone && groupTasks.done.map(({ member, task }) => (
-              <button
-                key={member.key + ':' + task.id}
-                className="rp-proj-task done"
-                title="打开这条任务"
-                onClick={() => app.openPage && app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })}
-              >
-                <span className="mono">#{task.id}</span>
-                <span className="rp-ptag" title={`归属项目：${member.name}`}>{member.name}</span>
-                <span className="rp-proj-task-tx">{taskLabel(task)}</span>
-                {/* 已领取=进行中：领取时刻用 #121 口径的进行中蓝（rp-tstat.live） */}
-                <span className="rp-tstat live">{task.consumedAt || '已领取'}</span>
-              </button>
-            ))}
-          </>
-        )}
-      </div>
+                  />
+                );
+              })
+            : null
+        }
+        history={
+          groupTasks.done.map(({ member, task }) => (
+            <TaskRow
+              key={member.key + ':' + task.id}
+              t={task}
+              projectTag={member.name}
+              history
+              onOpen={() =>
+                app.openPage &&
+                app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })
+              }
+            />
+          ))
+        }
+      />
 
       {/* 添加成员：就地弹窗（项目 + 项目组，可搜索） */}
       {addOpen && board ? (

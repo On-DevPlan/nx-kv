@@ -5,7 +5,7 @@
 // 以组面板行结构为准）——待领取行拖动排序（拖把手）、行尾操作（编排菜单 /
 // 反馈 / 删除）、多选批量条、状态统一为 StatusTag 全称药丸（原单字徽标
 // 等/跑/完/档 收口）。分页与计数由容器（page/dir/index.jsx）算好传进来。
-import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
+// #167 三轮：去面包屑（group 页没有，返回导航走左侧树）。
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/icons.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
@@ -137,14 +137,14 @@ export default function Landing({
   return (
     // 根容器与项目组页同款（rp-page：无底色差、同内距、flex gap）——#164 验收反馈
     // 「两种 ui 仍然不一，比如工具区、背景等」：外壳向 group 页看齐。
+    // #167 三轮：去面包屑（group 页没有；返回导航走左侧树，两页顶部结构一致）。
     <div className="rp-page">
-      <RouteBreadcrumb />
       {/* 头部 = group 同构：h2（图标 + 名字 + 计数 chips）+ 右对齐工具区 */}
       <div className="rp-group-head">
         <h2>
           <Icon name="folder" size={15} /> {name}
           <span className="rp-chip-count">{taskCount} 个任务</span>
-          {pendingCount > 0 ? <span className="rp-chip-count">{pendingCount} 待领取</span> : null}
+          {pendingCount > 0 ? <span className="rp-chip-count">待领取 {pendingCount}</span> : null}
         </h2>
         <div className="rp-group-acts">
           {/* #139：工具区可编排（顺序 / 显隐；隐藏收入「更多」） */}

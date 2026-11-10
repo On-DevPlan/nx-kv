@@ -1,0 +1,363 @@
+/* 强调色变量放在 :root —— 斜杠菜单 / 格式菜单 / 速查面板等浮层是 portal 到 body 的，
+   若只在 .mdw 上定义，脱离作用域后 var() 解析失败、整条声明被丢弃
+   （曾导致斜杠菜单选中项没有高亮底色、格式菜单 hover 无效） */
+:root{
+  --mdw-accent:#2F6F5E;
+  --mdw-accent-soft:#E8F2EE;
+  --mdw-accent-line:#B7D4C8;
+}
+/* MD 工作台 —— 主区 + 内嵌进程栏 */
+.mdw{
+  --mdw-prog-w:276px;
+  flex:1;min-height:0;min-width:0;display:flex;flex-direction:row;
+  background:var(--canvas,#F5F4F1);overflow:hidden;position:relative;
+  /* 作为工作区面板时，宿主是 FlexLayout 的页签内容区（绝对定位的盒子）——
+     自己撑满，不然编辑区会塌成 0 高 */
+  height:100%;width:100%;
+}
+/* 旁路原文（评论任务右侧并排）：顶栏「原文 + 关闭」叠在编辑列上方 */
+.mdw.is-beside{flex-direction:column}
+.mdw-beside-h{
+  flex:none;display:flex;align-items:center;gap:8px;
+  padding:6px 12px;background:var(--paper,#fff);
+  border-bottom:1px solid var(--line,#E4E2DC);
+}
+.mdw-beside-lab{font-weight:650;font-size:12px;color:var(--mid,#838A93)}
+.mdw-beside-h .grow{flex:1;min-width:0}
+.mdw-beside-h .iconbtn{
+  width:28px;height:28px;border:0;background:none;cursor:pointer;
+  border-radius:6px;color:var(--mid,#838A93);font-size:16px;line-height:1;
+}
+.mdw-beside-h .iconbtn:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
+.mdw-main{
+  flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;
+  /* 工具栏/纸面的自适应以「编辑列」实际宽度为准（容器查询），
+     右侧进程 rail 开合、侧栏宽窄都天然正确，不再被视口媒体查询误判 */
+  container:mdwmain / inline-size;
+}
+
+.mdw-top{
+  flex:none;min-height:36px;display:flex;align-items:center;gap:12px;
+  padding:6px 14px;background:var(--paper,#fff);border-bottom:1px solid var(--line,#E4E2DC);
+}
+.mdw-head{flex:1;min-width:0}
+.mdw-title{font-weight:650;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdw-path{font:400 11px ui-monospace,Consolas,monospace;color:var(--mid,#838A93);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdw-pill{
+  display:inline-flex;align-items:center;gap:5px;flex:none;
+  font-size:11px;padding:3px 9px;border-radius:999px;
+  background:var(--mdw-accent-soft);color:var(--mdw-accent);border:1px solid var(--mdw-accent-line);
+}
+.mdw-pill .d{width:6px;height:6px;border-radius:50%;background:var(--mdw-accent)}
+.mdw-pill.wait{background:#EAF1FB;color:var(--info,#1558BC);border-color:#C5D6F0}
+.mdw-pill.wait .d{background:var(--info,#1558BC)}
+
+/* 时间目标行（任务级 timegoal）：紧贴标题栏之下的一条窄带 */
+.mdw-goal{
+  flex:none;display:flex;align-items:center;gap:8px;
+  padding:4px 14px;background:var(--paper,#fff);border-bottom:1px solid var(--line,#E4E2DC);
+}
+.mdw-goal-lab{flex:none;font-size:11px;font-weight:600;color:var(--mid,#838A93)}
+.mdw-proj-pick{flex:none;max-width:240px;height:24px;padding:0 8px;font-size:11.5px;border:1px solid var(--line,#E4E2DC);border-radius:6px;background:transparent;color:inherit}
+.mdw-proj-pick:focus-visible{outline:none;border-color:var(--mdw-accent)}
+.mdw-proj-ro{font-size:11.5px;color:var(--mid,#838A93)}
+.mdw-goal-dur{flex:0 0 200px;height:24px;padding:0 8px;font-size:11.5px;border:1px solid var(--line,#E4E2DC);border-radius:6px;background:transparent;color:inherit}
+.mdw-goal-dur:focus{outline:none;border-color:var(--mdw-accent)}
+.mdw-goal-prompt{flex:1;min-width:0;height:24px;padding:0 8px;font-size:11.5px;border:1px solid var(--line,#E4E2DC);border-radius:6px;background:transparent;color:inherit}
+.mdw-goal-prompt:focus{outline:none;border-color:var(--mdw-accent)}
+.mdw-goal-ro{font-size:11.5px;color:var(--mid,#838A93);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 时间目标勋章（#78）：设置收进「更多」菜单，外部只回显一枚可点的勋章——
+   点击展开「更多」菜单（菜单顶部就是时间目标编辑区） */
+.mdw-goal-badge{
+  display:inline-flex;align-items:center;flex:none;height:24px;padding:0 10px;
+  border-radius:999px;font-family:inherit;font-size:11px;font-weight:650;white-space:nowrap;
+  background:var(--mdw-accent-soft);color:var(--mdw-accent);
+  border:1px solid var(--mdw-accent-line);cursor:pointer;
+}
+.mdw-goal-badge:hover{filter:brightness(1.04)}
+/* 「更多」菜单顶部的时间目标编辑区：输入纵向堆叠、宽度吃满菜单 */
+.mdw-goal-menu{display:flex;flex-direction:column;gap:6px;padding:6px 6px 4px;min-width:248px;box-sizing:border-box}
+.mdw-goal-menu-lab{font-size:11px;font-weight:650;color:var(--mid,#838A93)}
+.mdw-goal-menu .mdw-goal-dur,.mdw-goal-menu .mdw-goal-prompt{flex:none;width:100%;box-sizing:border-box}
+
+/* 工具区：左模式/勋章，右按钮贴齐主区右缘 */
+.mdw-toolbar{
+  flex:none;display:flex;align-items:center;justify-content:space-between;
+  gap:12px;width:100%;box-sizing:border-box;flex-wrap:nowrap;
+  padding:6px 12px;border-bottom:1px solid var(--line,#E4E2DC);
+  background:var(--paper,#fff);min-height:40px;
+}
+.mdw-toolbar-left{
+  flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:8px;overflow:hidden;
+}
+/* 簇间 hairline：模式 | 勋章 —— 分区语言对齐 VS Code 工具栏 */
+.mdw-toolbar-left > * + *{border-left:1px solid var(--line,#E4E2DC);padding-left:9px}
+.mdw-toolbar .seg{display:inline-flex;flex:none;background:var(--soft,#F1F0EC);border-radius:7px;padding:2px}
+.mdw-toolbar .seg button{
+  padding:4px 10px;border-radius:5px;font-size:11.5px;color:var(--mid,#838A93);
+  font-weight:600;background:none;border:0;cursor:pointer;
+}
+.mdw-toolbar .seg button.on{
+  background:var(--paper,#fff);color:var(--mdw-accent);
+  box-shadow:0 1px 2px rgba(47,111,94,.1);border:1px solid var(--mdw-accent-line);
+}
+
+/* 格式字标按钮：工具区格式条已撤（#78），模板编辑器还在用这套字标 */
+.mdw-fmt-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:3px;
+  min-width:26px;height:26px;padding:0 6px;border:0;border-radius:5px;
+  background:transparent;cursor:pointer;color:var(--ink-2,#4B515A);
+  font:650 11px ui-monospace,Consolas,monospace;line-height:1;
+}
+.mdw-fmt-btn.b{font-weight:800}
+.mdw-fmt-btn.i{font-style:italic;font-family:inherit;font-weight:600}
+.mdw-fmt-btn:hover{background:var(--soft,#F1F0EC);color:var(--mdw-accent)}
+.mdw-fmt-btn:focus-visible{outline:2px solid var(--mdw-accent-line);outline-offset:1px}
+.mdw-fmt-menu{
+  position:absolute;top:calc(100% + 4px);left:0;z-index:40;min-width:140px;
+  padding:4px;border-radius:8px;border:1px solid var(--line,#E4E2DC);
+  background:var(--paper,#fff);box-shadow:0 6px 18px rgba(20,22,26,.1);
+}
+.mdw-fmt-menu-sep{height:1px;background:var(--line,#E4E2DC);margin:4px 2px}
+/* 菜单分层（#47）：分组标题 + 组间分隔线——十几条动作平铺没人能扫完 */
+.mdw-fmt-menu-cap{
+  padding:6px 10px 2px;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  color:var(--faint,#A9AEB4);user-select:none;
+}
+.mdw-fmt-menu-group + .mdw-fmt-menu-group{
+  margin-top:4px;padding-top:4px;border-top:1px solid var(--line,#E4E2DC);
+}
+.mdw-fmt-menu-item{
+  display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;
+  border:0;border-radius:5px;background:none;cursor:pointer;text-align:left;
+  font-weight:650;font-size:12px;font-family:inherit;color:var(--ink,#16181C);
+}
+.mdw-fmt-menu-item .hint{margin-left:auto;font-weight:400;font-size:10.5px;font-family:inherit;color:var(--faint,#A9AEB4)}
+.mdw-fmt-menu-item:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
+.mdw-fmt-menu-item.danger{color:var(--danger,#b3261e)}
+.mdw-fmt-menu-item.danger:hover{background:rgba(179,38,30,.07);color:var(--danger,#b3261e)}
+
+.mdw-actions{
+  display:flex;align-items:center;gap:4px;
+  flex:0 0 auto;margin-left:auto;flex-wrap:nowrap;
+}
+.mdw-actions .sep{width:1px;height:16px;background:var(--line,#E4E2DC);margin:0 2px;flex:none}
+.mdw-actions-more{display:inline-flex;align-items:center;position:relative}
+/* 次级动作去描边：文本态 + hover 显底，把视觉重量留给主按钮 */
+.mdw-actions .btn.ghost{border-color:transparent;background:none;color:var(--ink-2,#4B515A)}
+.mdw-actions .btn.ghost:hover{background:var(--soft,#F1F0EC);border-color:transparent;color:var(--mdw-accent)}
+.mdw-actions .btn.ghost.on{background:var(--soft,#F1F0EC);color:var(--mdw-accent)}
+.mdw-act-menu{right:0;left:auto}
+
+.mdw .btn{
+  display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;
+  border-radius:7px;border:1px solid transparent;font-weight:650;font-size:12px;font-family:inherit;cursor:pointer;
+  white-space:nowrap;
+}
+/* 字号/高度随 .btn 基类全局统一（#91）：28px/12px，sm 不再单独降尺寸 */
+.mdw .btn.ghost{
+  background:transparent;color:var(--ink-2,#4B515A);border-color:var(--line,#E4E2DC);
+}
+.mdw .btn.ghost:hover{background:var(--soft,#F1F0EC);color:var(--mdw-accent);border-color:var(--mdw-accent-line);opacity:1}
+.mdw .btn.primary,.mdw .btn:not(.ghost){
+  background:var(--mdw-accent);color:#fff;border-color:var(--mdw-accent);
+}
+.mdw .btn:hover{opacity:1}
+.mdw .btn.primary:hover,.mdw .btn:not(.ghost):hover{filter:brightness(1.06);opacity:1}
+
+/* 内容区 */
+.mdw-split{flex:1;display:flex;min-height:0;overflow:hidden}
+
+/* 目录落地页：未打开具体页面时，主区是**子任务表**（表格：编号/任务/状态/创建/领取） */
+.mdw-land{flex:1;min-height:0;overflow:auto;background:var(--canvas,#F5F4F1);padding:18px 22px}
+.mdw-land-head{margin-bottom:12px;min-width:0}
+.mdw-land-name{
+  font-weight:650;font-size:15px;line-height:1.3;color:var(--ink,#16181C);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mdw-land-path{
+  margin-top:2px;font:400 11px ui-monospace,Consolas,monospace;color:var(--mid,#838A93);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mdw-land-status-line{
+  display:flex;align-items:baseline;gap:8px;min-width:0;margin-top:6px;
+}
+.mdw-land-lab{
+  flex:none;width:28px;font-size:11px;font-weight:650;letter-spacing:.04em;
+  color:var(--mid,#838A93);
+}
+.mdw-land-status{
+  flex:1 1 auto;min-width:0;font-size:12.5px;line-height:1.45;color:var(--ink-2,#4B515A);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mdw-land-acts{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.mdw-land-count{font-size:12px;color:var(--mid,#838A93)}
+.mdw-land-pending{color:var(--doing,#2f5fb5);font-weight:650}
+/* 翻页条：队列长了翻页看，不再一次渲染全部 */
+.mdw-land-pager{display:flex;justify-content:flex-end;margin-top:10px}
+.mdw-land-table-wrap{
+  background:var(--paper,#fff);border:1px solid var(--line,#E4E2DC);border-radius:10px;overflow:hidden;
+}
+.mdw-land-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.mdw-land-table th{
+  text-align:left;padding:8px 12px;font-weight:650;font-size:10.5px;font-family:inherit;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--mid,#838A93);border-bottom:1px solid var(--line,#E4E2DC);
+  background:var(--canvas,#F5F4F1);
+}
+.mdw-land-table td{padding:7px 12px;border-bottom:1px solid var(--line,#E4E2DC);font-size:12.5px;vertical-align:middle}
+.mdw-land-table tbody tr:last-child td{border-bottom:0}
+.mdw-land-tr{cursor:pointer}
+.mdw-land-tr:hover td{background:var(--mdw-accent-soft,#E8F2EE)}
+.mdw-land-tr .tx{
+  color:var(--ink,#16181C);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* 任务行的时长徽标：标题省略、徽标恒显（flex:none，不被长标题挤掉） */
+.mdw-tg-row{display:flex;align-items:center;gap:6px;min-width:0}
+.mdw-tg-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdw-tg{
+  flex:none;font-size:10.5px;line-height:16px;padding:0 7px;border-radius:999px;
+  background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E);
+}
+.mdw-land-tr .mono{font:400 11px ui-monospace,Consolas,monospace}
+.mdw-land-tr .faint{color:var(--faint,#A9AEB4)}
+
+/* 已删除任务面板（目录页「更多 → 已删除任务」）：软删回收站，可恢复/彻底删 */
+.mdw-del-empty{padding:18px 4px;color:var(--mid,#838A93);font-size:12.5px;text-align:center}
+.mdw-del-list{width:100%;border-collapse:collapse;table-layout:fixed}
+.mdw-del-list td{padding:7px 8px;border-bottom:1px solid var(--line,#E4E2DC);font-size:12.5px;vertical-align:middle}
+.mdw-del-list tbody tr:last-child td{border-bottom:0}
+.mdw-del-id{width:44px;color:var(--mid,#838A93)}
+.mdw-del-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink,#16181C)}
+.mdw-del-time{width:86px;white-space:nowrap;color:var(--mid,#838A93);font-size:11px}
+.mdw-del-ops{width:132px;text-align:right;white-space:nowrap}
+.mdw-del-ops .btn + .btn{margin-left:6px}
+.mdw-land-tr .st{
+  display:inline-block;font-size:10.5px;line-height:16px;padding:0 7px;border-radius:999px;
+  background:var(--soft,#F1F0EC);color:var(--ink-2,#4B515A);
+}
+/* #121 状态徽标统一口径（components/status-tag/model.js）：等=浅灰（基类）、
+   跑=进行中蓝、完=已完成绿、档=收口灰。旧口径（跑=绿、完=灰、等=蓝）已废。 */
+.mdw-land-tr .st.doing{background:var(--doing-bg,#edf2fc);color:var(--doing,#2f5fb5)}
+.mdw-land-tr .st.done{background:rgba(31,122,77,.08);color:var(--live,#1f7a4d)}
+.mdw-land-tr .st.gone{background:transparent;color:var(--faint,#A9AEB4)}
+/* 完成态会同时出「重试+删除」两钮：必须横排且预留宽度，
+   用 opacity 显隐（不用 display:none），hover 行高才不会被竖排撑开。 */
+.mdw-land-tr .act{
+  width:56px;padding-left:4px;padding-right:8px;text-align:right;
+  white-space:nowrap;vertical-align:middle;
+}
+.mdw-land-tr .act-ops{
+  display:inline-flex;align-items:center;justify-content:flex-end;gap:2px;
+  opacity:0;transition:opacity .12s;
+}
+.mdw-land-tr:hover .act-ops,.mdw-land-tr:focus-within .act-ops{opacity:1}
+.mdw-land-tr .op{
+  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
+  border-radius:6px;color:var(--mid,#838A93);cursor:pointer;flex:none;
+}
+.mdw-land-tr .op:hover{background:var(--soft,#F1F0EC);color:var(--mdw-accent,#2F6F5E)}
+.mdw-land-tr .op.danger:hover{background:rgba(179,38,30,.08);color:var(--danger,#b3261e)}
+@media (hover:none){
+  .mdw-land-tr .act-ops{opacity:1}
+}
+.mdw-land-empty{padding:20px 8px;font-size:12px;color:var(--faint,#A9AEB4);text-align:center;line-height:1.6}
+.mdw-pane{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--paper,#fff)}
+.mdw-title-input{
+  flex:none;display:block;width:100%;box-sizing:border-box;border-radius:0;
+  border:0;border-bottom:1px solid var(--line,#E4E2DC);outline:0;
+  padding:12px 16px 8px;font-weight:650;font-size:16px;line-height:1.35;font-family:inherit;background:transparent;color:inherit;
+  resize:none;overflow:hidden;overflow-wrap:anywhere;
+}
+.mdw-title-input::placeholder{color:var(--faint,#A9AEB4);font-weight:500}
+/* 聚焦态与 live 标题统一「零 chrome」语言：无光晕，底边线转强调色 */
+.mdw-title-input:focus{
+  outline:0;box-shadow:none;border-bottom-color:var(--mdw-accent,#2F6F5E);
+}
+.mdw-editor-row{
+  flex:1;min-height:0;display:flex;align-items:stretch;overflow:hidden;
+  background:transparent;
+}
+.mdw-gutter{
+  flex:none;width:36px;overflow:hidden;text-align:right;
+  padding:12px 6px 8px 4px;border-right:1px solid var(--line,#E4E2DC);
+  font:12.5px/1.7 ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4);
+  user-select:none;background:var(--soft,#F1F0EC);
+}
+.mdw-gutter-ln{min-height:1.7em}
+.mdw-editor-stage{
+  flex:1;min-width:0;min-height:0;position:relative;display:flex;
+}
+.mdw-ruler{
+  position:absolute;top:0;bottom:0;left:calc(16px + 80ch);width:0;
+  border-left:1px dashed color-mix(in srgb, var(--mdw-accent-line) 70%, transparent);
+  pointer-events:none;z-index:1;opacity:.85;
+}
+.mdw-editor{
+  flex:1;width:100%;min-height:0;min-width:0;border:0;outline:0;resize:none;
+  padding:12px 16px 8px;font:12.5px/1.7 ui-monospace,Consolas,monospace;
+  background:transparent;color:inherit;tab-size:2;
+}
+/* soft wrap（默认）：长行折到可视区；nowrap：横向滚动 */
+.mdw-editor.is-wrap{
+  white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;overflow-x:hidden;
+}
+.mdw-editor.is-nowrap{
+  white-space:pre;overflow-wrap:normal;word-break:normal;overflow-x:auto;
+}
+.mdw-find{
+  flex:none;display:flex;align-items:center;gap:6px;
+  padding:5px 10px;border-bottom:1px solid var(--line,#E4E2DC);
+  background:var(--soft,#F1F0EC);
+}
+.mdw-find-input{
+  flex:1;min-width:0;height:26px;padding:0 8px;border-radius:6px;
+  border:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
+  font:12px ui-monospace,Consolas,monospace;outline:0;
+}
+.mdw-find-input:focus{border-color:var(--mdw-accent-line);box-shadow:0 0 0 2px var(--mdw-accent-soft)}
+.mdw-find-count{flex:none;font:400 10.5px ui-monospace,Consolas,monospace;color:var(--mid,#838A93);min-width:3.5em}
+.mdw-find-nav{
+  width:24px;height:24px;border:0;border-radius:5px;background:transparent;
+  cursor:pointer;color:var(--ink-2,#4B515A);font-weight:650;font-size:12px;font-family:inherit
+}
+.mdw-find-nav:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
+.mdw-editor-status{
+  flex:none;display:flex;align-items:center;gap:10px;
+  padding:4px 12px;border-top:1px solid var(--line,#E4E2DC);
+  /* 10.5px 小字至少过 WCAG AA（4.5:1）——mid 只有 4.0，提一档到 ink-2 */
+  font:400 10.5px ui-monospace,Consolas,monospace;color:var(--ink-2,#4B515A);
+  background:var(--paper,#fff);user-select:none;
+}
+.mdw-editor-status .mdw-wrap-toggle:first-of-type{margin-left:auto}
+.mdw-wrap-toggle{
+  height:22px;padding:0 8px;border-radius:5px;
+  border:1px solid var(--line,#E4E2DC);background:transparent;
+  font-weight:650;font-size:10.5px;font-family:inherit;color:var(--ink-2,#4B515A);cursor:pointer;
+}
+.mdw-wrap-toggle:hover{color:var(--mdw-accent);border-color:var(--mdw-accent-line);background:var(--mdw-accent-soft)}
+.mdw-wrap-toggle.on{color:var(--mdw-accent);border-color:var(--mdw-accent-line);background:var(--mdw-accent-soft)}
+.mdw-pane-edit.is-drop,.mdw-lp.is-drop{
+  outline:2px dashed var(--mdw-accent-line);outline-offset:-4px;
+  background:color-mix(in srgb, var(--mdw-accent-soft) 55%, var(--paper,#fff));
+}
+.mdw-slash{
+  position:fixed;z-index:70;min-width:200px;max-height:240px;overflow:auto;
+  padding:4px;border-radius:8px;border:1px solid var(--line,#E4E2DC);
+  background:var(--paper,#fff);box-shadow:0 8px 24px rgba(20,22,26,.12);
+}
+.mdw-slash-cap{
+  font-size:10.5px;color:var(--faint,#A9AEB4);padding:4px 10px 2px;
+}
+.mdw-slash-item{
+  display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;
+  border:0;border-radius:6px;background:none;cursor:pointer;text-align:left;
+  font-weight:650;font-size:12px;font-family:inherit;color:var(--ink,#16181C);
+}
+.mdw-slash-item .hint{margin-left:auto;font:400 11px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4)}
+.mdw-slash-item:hover{background:var(--soft,#F1F0EC)}
+.mdw-slash-item.on{
+  background:var(--mdw-accent-soft)!important;
+  color:var(--mdw-accent)!important;
+  box-shadow:inset 3px 0 0 var(--mdw-accent);
+}
+

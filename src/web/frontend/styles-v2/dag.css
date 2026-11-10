@@ -1,0 +1,285 @@
+/* ---------- 分页器（侧栏任务子行 / 目录任务表共用） ----------
+ * 队列长度有出口：翻页可达，而不是静默截断。
+ */
+.pager { display: inline-flex; align-items: center; gap: 4px; }
+.pager-n { font-size: 11px; color: var(--faint); white-space: nowrap; }
+.pager-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border-radius: var(--r5);
+  border: 1px solid var(--soft-2); background: var(--paper); color: var(--ink-2);
+  font-size: 13px; line-height: 1; cursor: pointer;
+}
+.pager-btn:hover:not(:disabled) { background: var(--soft); }
+.pager-btn:disabled { opacity: 0.4; cursor: default; }
+/* 侧栏里的翻页行：与其它子行同高，但不吃选中态 */
+.trow.child.task-pager { height: 26px; padding: 0 6px; background: none; border: 0; cursor: default; }
+
+/* ---------- 成员选择器（组面板「添加成员」/ 仓库页「成员管理」共用） ----------
+ * 界面自己说明自己：条目自带归属与规模，不写解释性段落。
+ */
+.pp-card.rp-mp-box { width: min(760px, 96vw); }
+.rp-mp-body { padding: 10px 12px 12px; }
+.rp-mp-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border: 1px solid var(--soft-2); border-radius: var(--r8);
+  background: var(--paper); color: var(--faint);
+}
+.rp-mp-search input {
+  flex: 1 1 auto; min-width: 0; border: 0; background: none; outline: none;
+  font-family: inherit; font-size: 13px; color: var(--ink);
+}
+.rp-mp-count { flex: none; font-size: 11px; color: var(--faint); white-space: nowrap; }
+.rp-mp-empty { padding: 18px 4px; text-align: center; font-size: 12.5px; color: var(--faint); }
+
+.rp-mp-sec { margin-top: 12px; }
+.rp-mp-sec-h {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; color: var(--ink-2);
+  padding: 0 2px 6px; border-bottom: 1px solid var(--soft-2);
+}
+.rp-mp-sec-h b { font-weight: 600; color: var(--faint); }
+
+.rp-mp-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px; border-bottom: 1px solid var(--line);
+  font-size: 12.5px; color: var(--ink-2);
+}
+.rp-mp-row:last-child { border-bottom: 0; }
+.rp-mp-row:hover { background: var(--soft); }
+.rp-mp-row.on { background: var(--soft); }
+.rp-mp-row .btn { flex: 0 0 auto; }
+.rp-mp-name { flex: 0 0 auto; font-weight: 650; color: var(--ink); max-width: 32%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-mp-sub {
+  flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rp-mp-meta { flex: none; font-size: 11px; color: var(--faint); white-space: nowrap; }
+.rp-mp-tags { flex: none; display: flex; gap: 4px; }
+.rp-mp-tag {
+  font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 9px;
+  background: var(--soft); border: 1px solid var(--soft-2); color: var(--ink-2); white-space: nowrap;
+}
+.rp-mp-ghost .rp-mp-name { color: var(--mid); }
+
+/* 面包屑（工作区顶部，2026-11-04 #33：页签删除后的「当前位置」指示）
+   形态：[ nx/nx-kv/draft ] —— 方括号包住整条路径 */
+.nx-crumb{
+  flex:none;display:flex;align-items:center;gap:2px;flex-wrap:wrap;
+  height:26px;box-sizing:border-box;padding:0 12px;background:var(--paper,#fff);
+  border-bottom:1px solid var(--line,#E4E2DC);
+  font-size:11.5px;color:var(--ink-2,#4B515A);
+}
+.nx-crumb-br{color:var(--faint,#A9AEB4);flex:none;user-select:none}
+.nx-crumb-i{display:inline-flex;align-items:center;gap:2px;min-width:0}
+.nx-crumb-sep{color:var(--faint,#A9AEB4);padding:0 2px}
+.nx-crumb-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+.nx-crumb-i:last-child .nx-crumb-t{color:var(--ink,#16181C);font-weight:650}
+
+/* ---- 目录落地页任务表：编排（#40 拖动排序 + DAG 节点编辑） ----
+   待领取行可拖动换位（落点 = 上半行前 / 下半行后，青绿线指示）；
+   已领取行是固定历史，不出现任何拖动痕迹。 */
+/* 多选批量操作（#62）：首列勾选 + 选中行底色 + 批量操作条 */
+.mdw-land-table th.pick, .mdw-land-table td.pick {
+  width: 28px; padding-left: 6px; padding-right: 0; text-align: center;
+}
+.mdw-land-table .pick input { width: 13px; height: 13px; cursor: pointer; accent-color: var(--doing, #2F6F5E); }
+.mdw-land-tr.picked td { background: rgba(47, 111, 94, .06); }
+.mdw-land-batch {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 6px 10px;
+  border: 1px solid var(--line, #E4E2DC); border-radius: 8px; background: var(--soft, #F1F0EC);
+}
+.mdw-land-batch-count { margin-right: auto; font-size: 12px; color: var(--ink-2, #4B515A); }
+.btn.ghost.danger { color: var(--danger, #B3261E); }
+.mdw-land-tr[draggable="true"] td:first-child { cursor: grab; }
+.mdw-land-tr.dragging td { opacity: .4; }
+.mdw-land-tr.drop-before td { box-shadow: inset 0 2px 0 0 var(--doing, #2F6F5E); }
+.mdw-land-tr.drop-after td { box-shadow: inset 0 -2px 0 0 var(--doing, #2F6F5E); }
+/* 行尾「⋮」编排菜单：与重开/删除同处 act-ops（悬停显隐） */
+.mdw-land-tr .act-ops .rowmenu { flex: none; }
+.mdw-land-tr .act-ops .rowmenu-btn { width: 20px; height: 20px; }
+
+/* 编排编辑器（DAG 节点视角）：闸门 + 上游 + 下游三段 */
+.mdw-dag { display: flex; flex-direction: column; }
+.mdw-dag-gate {
+  padding: 8px 10px; background: var(--soft, #F1F0EC); border-radius: 8px; font-size: 12.5px;
+}
+.mdw-dag-gate b { font-size: 12.5px; }
+.mdw-dag-sec { margin: 14px 0 6px; font-weight: 700; font-size: 12px; color: var(--ink-2, #4B515A); }
+.mdw-dag-list {
+  display: flex; flex-direction: column; gap: 1px;
+  max-height: 180px; overflow-y: auto;
+  border: 1px solid var(--line, #E4E2DC); border-radius: 8px; padding: 5px 7px;
+}
+.mdw-dag-list.dim { opacity: .55; }
+.mdw-dag-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; padding: 3px 5px; border-radius: 6px; cursor: pointer; min-width: 0;
+}
+.mdw-dag-item:hover { background: var(--soft, #F1F0EC); }
+.mdw-dag-item input[type="checkbox"] { margin: 0; flex: none; }
+.mdw-dag-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.mdw-dag-hint { color: var(--faint, #A9AEB4); font-size: 11px; font-weight: 400; }
+.mdw-dag-note { margin-top: 8px; font-size: 11.5px; color: var(--faint, #A9AEB4); }
+
+/* 组任务行（#40）：左侧抓手拖排序；闸门/锁定徽章与目录页同语义 */
+.rp-proj-row { display: flex; align-items: center; gap: 4px; }
+.rp-proj-row.dragging { opacity: .45; }
+.rp-proj-row.drop-before { box-shadow: inset 0 2px 0 0 var(--doing, #2F6F5E); }
+.rp-proj-row.drop-after { box-shadow: inset 0 -2px 0 0 var(--doing, #2F6F5E); }
+.rp-drag-handle {
+  flex: none; width: 16px; height: 24px; margin-right: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; color: var(--faint, #A9AEB4);
+  cursor: grab; touch-action: none; user-select: none;
+  opacity: 0; transition: opacity .12s ease, color .12s ease;
+}
+.rp-proj-row:hover .rp-drag-handle,
+.rp-proj-row.dragging .rp-drag-handle { opacity: .7; }
+.rp-drag-handle:hover { opacity: 1; color: var(--mid, #838A93); }
+.rp-drag-handle:active, .rp-proj-row.dragging .rp-drag-handle { cursor: grabbing; opacity: 1; }
+.rp-drag-handle.off { visibility: hidden; pointer-events: none; cursor: default; opacity: 0; }
+.rp-proj-row .rp-proj-task { flex: 1; min-width: 0; cursor: pointer; }
+.rp-proj-row .rowmenu-btn { width: 22px; height: 22px; }
+.rp-tgate {
+  flex: none; font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 9px;
+  background: var(--wait-bg, #fbf3e4); color: var(--wait, #a86a12); font-weight: 600;
+}
+.rp-tlock {
+  flex: none; font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 9px;
+  background: var(--soft, #F1F0EC); color: var(--mid, #838A93);
+}
+
+/* ---- 编排面板（可视化 DAG 画布，#40）---- */
+.dag-link {
+  color: var(--mdw-accent, #2F6F5E); font-size: 11px; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px; padding: 0 4px;
+}
+.dag-link:hover { color: var(--ink, #16181C); }
+
+.dagp { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.dagp-head {
+  flex: none; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 12px 16px 8px; border-bottom: 1px solid var(--line, #E4E2DC);
+}
+.dagp-title { font-weight: 700; font-size: 14px; }
+.dagp-count { font-size: 11.5px; color: var(--mid, #838A93); }
+.dagp-hint { font-size: 11px; color: var(--mid, #838A93); }
+.dagp-canvas {
+  position: relative; flex: 1; min-height: 0; overflow: auto;
+  background-image:
+    linear-gradient(to right, rgba(120, 120, 110, .07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(120, 120, 110, .07) 1px, transparent 1px);
+  background-size: 24px 24px;
+  cursor: default;
+}
+.dagp.is-linking .dagp-canvas { cursor: crosshair; }
+.dagp-edges { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; z-index: 1; }
+.dagp-edge { fill: none; stroke: var(--mdw-accent, #2F6F5E); stroke-width: 1.75; opacity: .8; }
+.dagp-edge.preview { stroke-width: 2; opacity: 1; stroke-dasharray: 6 4; }
+.dagp-nodes { position: relative; z-index: 2; }
+/* 节点 = 绝对定位卡片：指针拖动；左右端口做有向连线 */
+.dagp-node {
+  position: absolute; left: 0; top: 0; display: flex; align-items: stretch; gap: 0;
+  box-sizing: border-box; padding: 0;
+  background: var(--paper, #fff); border: 1px solid var(--line, #E4E2DC);
+  border-radius: 10px; box-shadow: 0 1px 3px rgba(20, 22, 26, .06);
+  cursor: grab; user-select: none; touch-action: none;
+  will-change: transform;
+}
+.dagp-node.done { opacity: .55; cursor: default; background: var(--soft, #F1F0EC); }
+.dagp-node.gate { border-color: var(--mdw-accent, #2F6F5E); }
+.dagp-node.dragging { opacity: .85; cursor: grabbing; z-index: 5; box-shadow: 0 6px 18px rgba(20, 22, 26, .14); }
+.dagp-node.over,
+.dagp-node.link-target:hover {
+  border-color: var(--mdw-accent, #2F6F5E); box-shadow: 0 0 0 2px rgba(47, 111, 94, .22);
+}
+.dagp-node.linking-src { border-color: var(--mdw-accent, #2F6F5E); box-shadow: 0 0 0 2px rgba(47, 111, 94, .3); }
+.dagp.is-linking .dagp-node.link-target { cursor: crosshair; }
+.dagp-body { flex: 1; min-width: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.dagp-top { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.dagp-port {
+  flex: none; align-self: center; width: 14px; height: 14px; margin: 0 8px;
+  border-radius: 50%; border: 2px solid var(--mdw-accent, #2F6F5E);
+  background: var(--paper, #fff); box-sizing: border-box; padding: 0;
+}
+.dagp-port.in { pointer-events: none; border-color: var(--soft-2, #DDD9D0); }
+/* 出端口：大热区；点一下进连线态 / 按住拖到目标 */
+.dagp-port.out {
+  position: relative; cursor: crosshair; background: var(--mdw-accent, #2F6F5E);
+  border: 0; width: 22px; height: 22px; min-width: 22px; min-height: 22px;
+  flex: 0 0 22px; margin-right: 10px;
+  display: inline-block; appearance: none; -webkit-appearance: none;
+  box-shadow: 0 0 0 3px rgba(47, 111, 94, .18);
+}
+.dagp-port.out::before { content: ''; position: absolute; inset: -14px; }
+.dagp-port.out:hover,
+.dagp-node.linking-src .dagp-port.out {
+  transform: scale(1.12); box-shadow: 0 0 0 4px rgba(47, 111, 94, .28);
+}
+.dagp.is-linking .dagp-node.over .dagp-port.in,
+.dagp.is-linking .dagp-node.link-target:hover .dagp-port.in {
+  border-color: var(--mdw-accent, #2F6F5E); background: var(--mdw-accent-soft, #E8F2EE);
+  box-shadow: 0 0 0 3px rgba(47, 111, 94, .25);
+}
+.dagp-no { flex: none; font-size: 11px; color: var(--mid, #838A93); }
+.dagp-name {
+  font-size: 12.5px; line-height: 1.35; color: var(--ink, #16181C);
+  white-space: normal; overflow: hidden; display: -webkit-box;
+  -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; word-break: break-word;
+}
+.dagp-node:not(.done) .dagp-name { cursor: grab; }
+.dagp-deps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.dagp-chip {
+  flex: none; font-size: 10.5px; line-height: 16px; padding: 0 6px; border-radius: 8px;
+  background: var(--soft, #F1F0EC); color: var(--ink-2, #4B515A);
+}
+.dagp-chip.gate { background: var(--mdw-accent-soft, #E8F2EE); color: var(--mdw-accent, #2F6F5E); }
+.dagp-chip.proj { background: var(--soft, #F1F0EC); color: var(--ink-2, #4B515A); }
+.dagp-chip.done { background: var(--soft-2, #DDD9D0); }
+.dagp-chip.dep { background: transparent; border: 1px solid var(--soft-2, #DDD9D0); color: var(--ink-2, #4B515A); }
+.dagp-chip.dep i { font-style: normal; cursor: pointer; margin-left: 3px; color: var(--mid, #838A93); }
+.dagp-chip.dep i:hover { color: var(--danger, #B3261E); }
+.dagp-ops {
+  flex: none; margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: 0; border-radius: 6px; background: none;
+  color: var(--mid, #838A93); cursor: pointer;
+}
+.dagp-ops:hover { background: var(--soft, #F1F0EC); color: var(--ink, #16181C); }
+.dagp-empty { font-size: 12.5px; color: var(--mid, #838A93); padding: 20px 16px; }
+/* 编排入口绿链：放在任务面板头部右侧（目录落地页 / 项目组任务面板各一处） */
+.mdw-land-orch, .rp-tasks-orch { margin-left: auto; padding-right: 4px; }
+.rp-tasks-h { display: flex; align-items: center; gap: 8px; }
+/* 编排面板：组内队列切换带 */
+.dagp-queues { margin-left: auto; display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.dagp-queue {
+  border: 1px solid var(--line, #E4E2DC); background: var(--paper, #fff); border-radius: 999px;
+  padding: 1px 9px; font: inherit; font-size: 11px; color: var(--ink-2, #4B515A); cursor: pointer;
+}
+.dagp-queue i { font-style: normal; margin-left: 4px; opacity: .7; }
+.dagp-queue:hover { background: var(--soft, #F1F0EC); }
+.dagp-queue.on { background: var(--mdw-accent-soft, #E8F2EE); border-color: var(--mdw-accent, #2F6F5E); color: var(--mdw-accent, #2F6F5E); }
+/* 摆位记住后的退路（#153）：一键清掉记忆、按默认分栏重排 */
+.dagp-reset {
+  margin-left: auto; flex: none;
+  border: 1px solid var(--line, #E4E2DC); background: var(--paper, #fff); border-radius: 999px;
+  padding: 1px 9px; font: inherit; font-size: 11px; color: var(--ink-2, #4B515A); cursor: pointer;
+}
+.dagp-reset:hover { background: var(--soft, #F1F0EC); }
+/* 面包屑返回钮（#97：独立「←」删掉，整段路径本身就是返回钮） */
+.nx-crumb-path {
+  border: 0; background: none; cursor: pointer;
+  font: inherit; color: inherit; padding: 0; margin: 0; text-align: left;
+}
+.nx-crumb-path:hover .nx-crumb-t { color: var(--ink, #16181C); text-decoration: underline; }
+.nx-crumb-path:focus-visible { outline: 1px solid var(--mdw-accent, #2F6F5E); border-radius: 4px; }
+
+/* 面板内的路径条形态（#44）：贴在主面板顶部的一枚小药丸，不是窗口通栏 */
+.nx-crumb-inline {
+  width: fit-content; max-width: 100%; margin-bottom: 10px;
+  padding: 3px 10px; border: 1px solid var(--line, #E4E2DC);
+  border-radius: 8px; background: var(--soft, #F1F0EC);
+}
+.nx-crumb-inline .nx-crumb-t { font-size: 12px; }
+
+/* 路径条在 MD 工具栏里时不留外边距（它是工具栏的一个元素，不是一条独立条） */
+.mdw-top .nx-crumb-inline { margin-bottom: 0; }

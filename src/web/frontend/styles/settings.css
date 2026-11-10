@@ -1,0 +1,244 @@
+/* ---------- 点击即复制的路径/标识 ---------- */
+.copyable {
+  cursor: copy;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.12s, color 0.12s;
+}
+.copyable:hover { border-bottom-color: var(--mid); }
+.copyable:active { color: var(--ink); }
+/* 适配器总表里多个可复制项并排 */
+dd .adapter-dir { display: inline-block; margin-right: 14px; }
+
+/* ---------- 设置页 ---------- */
+.settings { display: grid; grid-template-columns: 120px 1fr; gap: 10px 16px; align-items: center; }
+.settings dt { color: var(--mid); font-size: 12px; }
+.settings dd { margin: 0; }
+.row-inline { display: flex; gap: 8px; margin-top: 8px; }
+.row-inline input { flex: 1; }
+
+/* 弹窗样式已收敛到 components/popup（2026-11-04 #30） */
+
+/* ---------- 等待设置弹窗（agent 用法 / 超时 / 收尾追加语） ---------- */
+.spacer { flex: 1; }
+.set-section + .set-section { margin-top: 16px; padding-top: 16px; box-shadow: 0 1px 0 var(--soft); }
+.set-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+.set-title .tag { font-size: 11px; }
+.set-desc { margin: 0 0 8px; color: var(--mid); font-size: 12.5px; line-height: 1.7; }
+.set-desc code { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; color: var(--ink); }
+.set-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.set-row .muted { font-size: 12px; }
+.set-row .muted code { font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+.set-suffix {
+  margin-top: 10px;
+  color: var(--mid);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  border-left: 2px solid var(--soft-2);
+  padding: 2px 0 2px 10px;
+}
+.set-textarea {
+  width: 100%;
+  font-family:inherit;
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  resize: vertical;
+}
+
+pre {
+  margin: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.d-add { background: var(--soft-2); font-weight: 600; }
+.d-del { color: var(--mid); text-decoration: line-through; }
+
+.conflict-file { background: var(--soft); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+.conflict-file .cf-head {
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+.conflict-file pre { padding: 10px 12px; background: var(--paper); }
+
+footer { color: var(--mid); padding: 14px 20px 24px; font-size: 11.5px; text-align: center; }
+footer code {
+  font-family: ui-monospace, Consolas, monospace;
+  background: var(--soft);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+/* ---------- 附件嵌入（任务正文里的类 markdown） ---------- */
+.mdtext { white-space: pre-wrap; }
+.mdtext-plain { white-space: pre-wrap; }
+.embed-image {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 2px;
+  line-height: 0;
+}
+.embed-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: var(--radius-sm);
+  background: var(--soft);
+}
+.embed-image.compact img {
+  max-height: 28px;
+  border-radius: 6px;
+  /* 缩略图贴在浅底行里，不给一圈淡边就看不清边界（尤其是白底截图） */
+  box-shadow: 0 0 0 1px var(--soft-2);
+}
+.embed-file {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 1px 8px;
+  border-radius: 7px;
+  background: var(--soft);
+  color: var(--ink);
+  font-size: 12px;
+  text-decoration: none;
+  vertical-align: middle;
+}
+.embed-file:hover { background: var(--soft-2); }
+
+/* ---------- 任务编辑器（选择 / 粘贴 / 拖入 三路共用） ---------- */
+.editor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: min(600px, 80vw);
+  border-radius: var(--radius);
+}
+/* 拖拽悬停：整块给出「松手即上传」的反馈，而不是让用户猜能不能放 */
+.editor.drag { box-shadow: 0 0 0 2px var(--ink); }
+.editor.drag::after {
+  content: '松手即上传';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.86);
+  border-radius: var(--radius);
+  font-weight: 700;
+  pointer-events: none;
+}
+.ed-tip { color: var(--mid); font-size: 11.5px; line-height: 1.8; }
+.ed-link {
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  font-family:inherit;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ed-link:disabled { color: var(--mid); cursor: default; text-decoration: none; }
+.ed-field { display: flex; flex-direction: column; gap: 4px; }
+.ed-label { color: var(--mid); font-size: 11.5px; font-weight: 600; letter-spacing: 0.3px; }
+.ed-textarea {
+  width: 100%;
+  font-family:inherit;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--soft);
+  color: var(--ink);
+  resize: vertical;
+}
+.ed-textarea:focus { outline: 2px solid var(--soft-2); }
+.ed-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ed-acts { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ed-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  box-shadow: 0 -1px 0 var(--soft) inset;
+}
+.preview {
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--soft);
+  max-height: 340px;
+  overflow: auto;
+}
+.hint { color: var(--mid); font-size: 11.5px; }
+.hint code, .ed-tip code, kbd {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  background: var(--soft-2);
+  border-radius: 5px;
+  padding: 0 4px;
+}
+
+/* ---------- 开关（switch）：轨道 + 滑块（#101 重塑——旧「胶囊+圆点」读不出
+   开关语义，像状态芯片；现在是标准 switch：关=灰轨白块居左，开=绿轨右移） ---------- */
+.toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px 3px 4px;
+  border-radius: 999px;
+  /* 按钮默认边框要显式去掉——全局没有 button 重置，UA 的深色边框会露在
+     开关外圈（#103 验收反馈「难看 switch 的黑色边框」） */
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+.toggle:hover { color: var(--ink); }
+.toggle:disabled { opacity: 0.45; cursor: default; }
+.toggle:disabled:hover { color: var(--ink-2); }
+.toggle:focus-visible,
+.toggle:focus-within {
+  outline: 2px solid var(--soft-2);
+  outline-offset: 1px;
+}
+.toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+/* .dot 即轨道，滑块是它的 ::before */
+.toggle .dot {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--soft-2);
+  transition: background 0.18s ease;
+}
+.toggle .dot::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(22, 24, 28, 0.28);
+  transition: transform 0.18s ease;
+}
+.toggle.on { color: var(--ink); }
+.toggle.on .dot { background: var(--live); }
+.toggle.on .dot::before { transform: translateX(12px); }
+

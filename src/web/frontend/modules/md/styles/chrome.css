@@ -1,0 +1,252 @@
+/* ─── 底部信息面板 + 状态栏（#79，VSCode 风）───
+   附件 / check / 反馈 收进面板，编辑区不再被内容块往下挤；
+   面板头：左上 tab 切换，右上两个控制钮（最大化 / 关闭）；上沿可拖线调高。 */
+.mdw-dock{
+  flex:none;min-height:0;display:flex;flex-direction:column;overflow:hidden;
+  background:var(--paper,#fff);border-top:1px solid var(--line,#E4E2DC);
+  position:relative;
+}
+.mdw-dock-drag{flex:none;height:6px;margin-top:-1px;cursor:row-resize;background:transparent}
+.mdw-dock-drag:hover{background:var(--mdw-accent-soft,#E8F2EE)}
+.mdw-dock-head{
+  flex:none;display:flex;align-items:center;gap:8px;height:28px;padding:0 6px;
+  background:var(--soft,#F1F0EC);border-bottom:1px solid var(--line,#E4E2DC);
+}
+.mdw-dock-tabs{flex:1;min-width:0;display:flex;align-items:stretch;overflow:hidden}
+.mdw-dock-tab{
+  display:inline-flex;align-items:center;gap:5px;height:27px;padding:0 10px;
+  border:0;border-bottom:2px solid transparent;background:transparent;
+  color:var(--mid,#838A93);font:600 11.5px inherit;cursor:pointer;white-space:nowrap;
+}
+.mdw-dock-tab:hover{color:var(--ink,#16181C)}
+.mdw-dock-tab.is-on{color:var(--mdw-accent,#2F6F5E);border-bottom-color:var(--mdw-accent,#2F6F5E)}
+.mdw-dock-tab-num{font:400 10px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4)}
+.mdw-dock-acts{flex:none;display:flex;align-items:center;gap:2px}
+.mdw-dock-act{
+  width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
+  border:0;border-radius:3px;background:transparent;color:var(--mid,#838A93);cursor:pointer;
+}
+.mdw-dock-act:hover{background:var(--mdw-accent-soft,#E8F2EE);color:var(--ink,#16181C)}
+.mdw-dock-body{flex:1;min-height:0;overflow:auto;padding:8px 14px 10px;box-sizing:border-box}
+.mdw-dock-body .att-area{border-top:0;padding-top:0}
+.mdw-dock-empty{padding:14px 0;font-size:12px;color:var(--mid,#838A93)}
+.mdw-dock-check{display:flex;flex-direction:column;min-height:0}
+.mdw-dock-meta{font-size:11px;color:var(--mid,#838A93);padding:2px 0 6px}
+
+/* 常驻状态栏：面板收起后仍留入口（VSCode 状态栏同位置）；左信息 / 右状态 */
+.mdw-sbar{
+  flex:none;height:24px;display:flex;align-items:center;gap:2px;padding:0 6px;
+  background:var(--soft,#F1F0EC);border-top:1px solid var(--line,#E4E2DC);
+  font-size:11px;color:var(--mid,#838A93);
+}
+.mdw-sbar-item{
+  display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;
+  border:0;border-radius:3px;background:transparent;color:inherit;
+  font:inherit;cursor:pointer;white-space:nowrap;
+}
+.mdw-sbar-item:hover{background:var(--mdw-accent-soft,#E8F2EE);color:var(--ink,#16181C)}
+.mdw-sbar-item.is-on{background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E);font-weight:650}
+.mdw-sbar-item .ic{opacity:.75}
+.mdw-sbar-num{font:400 10px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4)}
+.mdw-sbar-grow{flex:1;min-width:0}
+/* 工作台底部状态条里的状态 tag：#121 起里面放统一组件 .tstat（配色在 style.css），
+   这里只当布局壳。（.is-* 旧配色已删——旧「已领取=绿、待领取=蓝」口径废弃。） */
+.mdw-sbar-stat{padding:0 6px;white-space:nowrap}
+.mdw-sbar-chev{
+  width:22px;height:20px;display:inline-flex;align-items:center;justify-content:center;
+  border:0;border-radius:3px;background:transparent;color:var(--mid,#838A93);cursor:pointer;
+}
+.mdw-sbar-chev:hover{background:var(--mdw-accent-soft,#E8F2EE);color:var(--ink,#16181C)}
+.mdw-sbar-chev .ic{transform:rotate(-90deg)}
+.mdw-sbar-chev.is-open .ic{transform:rotate(90deg)}
+/* 空间不足：靠右（状态 / 展开）优先保留，中间条目先省略文字，再省略计数 */
+@container mdwmain (max-width: 640px){
+  .mdw-sbar-stat{display:none}
+}
+@container mdwmain (max-width: 520px){
+  .mdw-sbar-lab,.mdw-sbar-num{display:none}
+}
+.mdw-prev-seg{margin:0 0 8px;font-size:11.5px;color:var(--ink-2,#4B515A)}
+.mdw-prev-seg summary{cursor:pointer;font-weight:650}
+.mdw-prev-seg ol{margin:6px 0 0;padding-left:20px}
+.mdw-prev-seg li{margin:2px 0}
+.mdw-prev-seg-lab{margin-right:8px}
+.mdw-prev-seg-n{color:var(--mid,#838A93);font:400 11px ui-monospace,Consolas,monospace}
+.mdw-prev-switch{
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--line,#E4E2DC);
+  font-size:11.5px;color:var(--mid,#838A93);
+}
+
+/* ─── 附件预览灯箱（任务 #71）：图片点击放大 / PDF 内置预览 ─── */
+.md-att-img{cursor:zoom-in}
+.md-lightbox{
+  position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);
+  display:flex;align-items:center;justify-content:center;cursor:zoom-out;
+}
+.md-lightbox[hidden]{display:none}
+.md-lightbox-img{
+  max-width:94vw;max-height:92vh;border-radius:6px;cursor:default;
+  box-shadow:0 8px 40px rgba(0,0,0,.5);
+}
+.md-lightbox-frame{width:min(1100px,94vw);height:92vh;border:0;border-radius:6px;background:#fff;cursor:default}
+.md-lightbox-bar{
+  position:fixed;top:12px;left:50%;transform:translateX(-50%);
+  display:flex;gap:12px;align-items:center;max-width:92vw;
+  color:#fff;font-size:13px;text-shadow:0 1px 2px rgba(0,0,0,.4);
+}
+.md-lightbox-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.md-lightbox-dl{color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.5);border-radius:6px;padding:2px 10px}
+.md-lightbox-dl:hover{background:rgba(255,255,255,.15)}
+
+/* ─── 附件区（任务页 / 文档页共用；task_attach / ref_attach 的呈现）────────
+   正文只呈现 role=inline 的部分，这里额外列出「只挂附件区、不写正文」的资源。
+   与 .mdw-attach（旧的会话内存附件条）是两件事：那边是尚未入库的粘贴缓存，
+   这里是**关系表的权威清单**。 */
+.att-area{
+  flex:none;max-height:38vh;overflow:auto;
+  padding:8px 12px 10px;border-top:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
+}
+.att-area.is-disabled{opacity:.72}
+.att-area-head{
+  display:flex;align-items:center;gap:8px;padding:4px 6px;margin:-4px -6px 4px;
+  border-radius:7px;transition:background .12s,box-shadow .12s;
+}
+.att-area-head.is-over{
+  background:var(--mdw-accent-soft,#E8F2EE);
+  box-shadow:inset 0 0 0 1.5px var(--mdw-accent-line,#B7D4C8);
+}
+.att-area-title{display:flex;align-items:center;gap:6px;font-weight:650;font-size:12px;color:var(--ink,#16181C)}
+.att-count{
+  min-width:17px;height:17px;padding:0 5px;border-radius:9px;
+  font:650 10px/17px var(--mono,ui-monospace,Consolas,monospace);
+  background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E);text-align:center;
+}
+.att-area-note{font-size:11px;color:var(--mid,#838A93)}
+.att-area-acts{margin-left:auto;display:flex;align-items:center;gap:6px}
+.att-sort{
+  height:24px;padding:0 6px;border:1px solid var(--line,#E4E2DC);border-radius:6px;
+  background:var(--paper,#fff);color:var(--ink-2,#4B515A);font:400 11px inherit;cursor:pointer;
+}
+.att-add-btn{height:24px;padding:0 9px;font-size:11px}
+.att-empty{
+  padding:8px 6px 4px;font-size:11.5px;line-height:1.55;color:var(--faint,#A9AEB4);
+}
+.att-err-text{color:var(--danger,#B3261E);font-size:11.5px}
+.att-section{margin-top:6px}
+.att-section-head{
+  display:flex;align-items:baseline;gap:6px;padding:2px 0 4px;
+  font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--mid,#838A93);
+}
+.att-section-hint{font-weight:400;letter-spacing:0;color:var(--faint,#A9AEB4)}
+.att-item{
+  display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;min-width:0;
+}
+.att-item:hover{background:var(--soft,#F1F0EC)}
+.att-thumb{
+  flex:none;width:38px;height:38px;padding:0;border:1px solid var(--line,#E4E2DC);border-radius:5px;
+  overflow:hidden;background:var(--soft,#F1F0EC);cursor:zoom-in;display:block;
+}
+.att-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.att-kind-badge{
+  flex:none;width:38px;height:26px;border:1px solid var(--line,#E4E2DC);border-radius:5px;
+  display:flex;align-items:center;justify-content:center;
+  font:600 10px inherit;color:var(--mid,#838A93);background:var(--canvas,#F5F4F1);
+}
+.att-item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.att-item-name,.att-link{
+  max-width:100%;font-size:12.5px;line-height:1.35;color:var(--ink,#16181C);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.att-link{
+  padding:0;border:0;background:none;text-align:left;cursor:pointer;
+  font-family:inherit;color:var(--mdw-accent,#2F6F5E);text-decoration:none;
+  display:block;
+}
+.att-link:hover{text-decoration:underline}
+.att-item-meta{
+  display:flex;gap:8px;min-width:0;
+  font:400 10.5px var(--mono,ui-monospace,Consolas,monospace);color:var(--faint,#A9AEB4);
+}
+.att-item-meta .att-note{
+  font-family:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.att-item-acts{flex:none;display:flex;gap:8px}
+.att-act{font-size:11px;color:var(--mid,#838A93);text-decoration:none;white-space:nowrap}
+.att-act:hover{color:var(--mdw-accent,#2F6F5E);text-decoration:underline}
+.att-x{
+  flex:none;width:22px;height:22px;padding:0;border:0;border-radius:5px;background:none;
+  color:var(--mid,#838A93);cursor:pointer;font-size:15px;line-height:1;
+}
+.att-x:hover{background:var(--soft,#F1F0EC);color:var(--danger,#B3261E)}
+
+/* 添加附件弹窗（AttachModal）：拖拽区 / 待确认清单 / 逐项失败重试 */
+.att-drop{
+  padding:18px 14px;border:1.5px dashed var(--line,#E4E2DC);border-radius:9px;
+  background:var(--canvas,#F5F4F1);text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  transition:border-color .12s,background .12s;
+}
+.att-drop.is-over{
+  border-color:var(--mdw-accent,#2F6F5E);background:var(--mdw-accent-soft,#E8F2EE);
+}
+.att-drop-title{font-size:12.5px;color:var(--mid,#838A93)}
+.att-drop-sub{font-size:11px;color:var(--faint,#A9AEB4)}
+.att-row{display:flex;align-items:center;gap:8px;margin-top:10px}
+.att-url-row .pp-input{flex:1;min-width:0}
+.att-pick{margin-top:12px}
+.att-pick-head{font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--mid,#838A93);margin-bottom:6px}
+.att-pick-list{
+  margin-top:6px;max-height:150px;overflow:auto;
+  border:1px solid var(--line,#E4E2DC);border-radius:7px;background:var(--paper,#fff);
+}
+.att-pick-item{
+  display:flex;align-items:center;gap:8px;width:100%;padding:6px 9px;border:0;
+  border-bottom:1px solid var(--line,#E4E2DC);background:none;text-align:left;
+  font:inherit;color:var(--ink,#16181C);cursor:pointer;min-width:0;
+}
+.att-pick-item:last-child{border-bottom:0}
+.att-pick-item:hover{background:var(--mdw-accent-soft,#E8F2EE)}
+.att-pick-main{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-pick-path{flex:none;max-width:42%;font:400 10.5px var(--mono,ui-monospace,Consolas,monospace);color:var(--faint,#A9AEB4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-empty-inline{padding:8px;font-size:11.5px;color:var(--faint,#A9AEB4)}
+.att-badge{
+  flex:none;font-size:10px;line-height:16px;padding:0 6px;border-radius:8px;
+  background:var(--soft,#F1F0EC);color:var(--mid,#838A93);font-weight:600;
+}
+/* 任务状态徽标（#121）：StatusTag 统一组件在这里只给尺寸，配色由 tstat-* 接管 */
+.att-sbadge{flex:none;font-size:10px;line-height:16px;padding:0 5px;}
+.att-pending{margin-top:14px;padding-top:10px;border-top:1px solid var(--line,#E4E2DC)}
+.att-pending-head{font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--mid,#838A93);margin-bottom:6px}
+.att-pending-item{
+  display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;min-width:0;
+}
+.att-pending-item.is-error{background:color-mix(in srgb, var(--danger,#B3261E) 7%, transparent)}
+.att-pending-name{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-pending-type,.att-pending-size{
+  flex:none;font:400 10.5px var(--mono,ui-monospace,Consolas,monospace);color:var(--faint,#A9AEB4);
+}
+.att-pending-state{flex:none;font-size:11px;color:var(--mdw-accent,#2F6F5E)}
+.att-mini{height:22px;padding:0 8px;font-size:11px}
+.att-foot{display:flex;align-items:center;gap:8px;width:100%}
+.att-foot-hint{margin-right:auto;font-size:11.5px;color:var(--mid,#838A93);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-confirm-name{font-weight:650;font-size:12.5px;margin-bottom:6px;overflow-wrap:anywhere}
+.att-confirm-text{font-size:11.5px;line-height:1.6;color:var(--mid,#838A93);white-space:pre-wrap}
+
+/* 附件区图片灯箱（与正文里的 .md-lightbox 同一视觉，但结构独立） */
+.att-lightbox{
+  position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);
+  display:flex;align-items:center;justify-content:center;padding:24px;
+}
+.att-lightbox-card{display:flex;flex-direction:column;gap:8px;max-width:94vw;max-height:92vh}
+.att-lightbox-head{display:flex;align-items:center;gap:12px;color:#fff;font-size:12.5px;min-width:0}
+.att-lightbox-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-lightbox-open{flex:none;color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.5);border-radius:6px;padding:2px 10px}
+.att-lightbox-open:hover{background:rgba(255,255,255,.15)}
+.att-lightbox-head .pp-x{color:#fff}
+.att-lightbox-head .pp-x:hover{background:rgba(255,255,255,.15);color:#fff}
+.att-lightbox-img{max-width:94vw;max-height:calc(92vh - 44px);border-radius:6px;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+
+@container mdwmain (max-width: 640px){
+  .att-area{max-height:46vh}
+  .att-item-acts{display:none}
+}

@@ -1,0 +1,412 @@
+/* ---- 参考仓库（type=ref）弹窗与绑定 chips ----
+ * 参考仓库与开发仓库分表：主表只放 dev（行内「参考」列显示绑到它的 ref）；
+ * 参考仓库在自己的弹窗里（状态徽标 / 名称 / 远程 / 绑定 chips / 操作）。
+ * 绑定一律选项式勾选（rp-pick-*），不手填 id 字符串。
+ * 状态徽标 8px 圆点：灰=未检查，绿=通过，红=有问题（title 带明细）。 */
+/* 弹窗里的工具条：一句说明 + 右侧动作。以前挂在 colhead 里，标题和五个按钮
+ * 抢同一行，窄屏时说明被挤成竖条。 */
+/* 弹窗工具条：只放操作，从行首排起。说明文字不进这里——首屏留给能点的东西，
+   想解释的塞 button 的 title（悬停才出现，不占位置）。 */
+.rp-modal-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.rp-modal-bar .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---------- 描述弹窗：左栏清单 + 右栏 md 编辑器 ---------- */
+/* 高度跟着内容走，上限 560：短描述（一两行）不该被撑成一屏空白，
+   长描述到顶后由编辑器内部滚动。 */
+.rpd {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  min-height: 240px;
+  max-height: min(66vh, 560px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.rpd-list {
+  border-right: 1px solid var(--line);
+  background: var(--soft);
+  overflow: auto;
+  min-height: 0;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rpd-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  padding: 7px 9px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink);
+}
+.rpd-item:hover { background: var(--paper); }
+.rpd-item.on { background: var(--paper); border-color: var(--line); box-shadow: var(--shadow-sm); }
+.rpd-item-top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.rpd-item-label {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 预览行：两行封顶，正文再长也不把清单撑成文章 */
+.rpd-item-note {
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--mid);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.rpd-badge {
+  flex: none;
+  font-size: 10.5px;
+  line-height: 1.5;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  color: var(--mid);
+  background: var(--soft);
+}
+.rpd-item.on .rpd-badge { background: var(--soft); }
+.rpd-todo { flex: none; font-size: 10.5px; color: var(--warn); }
+.rpd-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--paper); overflow: hidden; }
+.rpd-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.rpd-path {
+  font-size: 11.5px;
+  color: var(--mid);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rpd-dirty { flex: none; font-size: 11px; color: var(--warn); }
+/* 没改动时「保存」不该看着能按：全局 disabled 只降透明度，
+   绿色主按钮淡一点仍然是绿的，容易误以为有未落盘的内容。 */
+.rpd-bar .btn:disabled { background: var(--soft); color: var(--mid); opacity: 1; }
+.rpd-body { flex: 1; min-height: 0; overflow: auto; }
+.rpd-empty, .rpd-none { padding: 16px; color: var(--mid); font-size: 12.5px; }
+.rpd-err {
+  margin: 8px 10px 0;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(179, 38, 30, 0.06);
+  color: var(--danger);
+  font-size: 12px;
+}
+.rp-ref-warn {
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(179, 38, 30, 0.25);
+  border-radius: var(--radius);
+  background: rgba(179, 38, 30, 0.05);
+  font-size: 12.5px;
+  color: var(--danger, #b3261e);
+}
+.rp-ref-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mid);
+  opacity: 0.5;
+}
+.rp-ref-dot.ok { background: #1b7f4d; opacity: 1; }
+.rp-ref-dot.bad { background: #b3261e; opacity: 1; }
+
+/* 参考面板的表格 */
+.rp-ref-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+/* 弹窗里的参考表：几十个仓库时表头要跟着滚（否则滚到第 20 行就不知道哪列是哪列）。
+ * 表自己当滚动容器——sticky 只认最近的滚动容器，让 .modal-body 滚会失效。 */
+.modal-body .rp-ref-table-wrap {
+  max-height: calc(90vh - 210px);
+  overflow: auto;
+}
+.modal-body .rp-ref-table thead th { position: sticky; top: 0; z-index: 1; }
+.rp-ref-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 860px; }
+.rp-ref-table th {
+  text-align: left;
+  padding: 9px 12px;
+  font-family: var(--label);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.rp-ref-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  font-size: 13px;
+}
+.rp-ref-table tbody tr:last-child td { border-bottom: 0; }
+.rp-ref-table tbody tr:hover td { background: #faf9f6; }
+/* 名字里常是带点的长标识（chrisacroz.wpf.windows.snappingwindow），默认只在空格处断行，
+ * 于是整串冲出单元格、盖住右边的远程地址 —— 允许任意位置折断。 */
+.rp-ref-cell-name { overflow-wrap: anywhere; }
+.rp-ref-cell-name strong { font-size: 13.5px; font-weight: 650; color: var(--ink); }
+.rp-ref-cell-remote { font-size: 12px; color: var(--ink-2); word-break: break-all; }
+.rp-ref-cell-links { line-height: 1.9; }
+.rp-refs-none { font-size: 11px; }
+
+/* dev 行内 / 组区的参考 chip（只读展示，点击写描述） */
+.rp-refs { white-space: normal; }
+.rp-refs .rp-ref-chip {
+  font-family:inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 8px;
+  margin: 0 4px 3px 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rp-refs .rp-ref-chip:hover { border-color: var(--mid); color: var(--ink); }
+.rp-ref-chip-dot { width: 5px; height: 5px; border-radius: 50%; background: #1b7f4d; }
+.rp-ref-bind { margin: 0 0 3px; }
+
+/* 参考面板里的绑定 chips：[组|仓 标签 名字 描述摘要] + × */
+.rp-link-chip {
+  display: inline-flex;
+  align-items: stretch;
+  margin: 0 5px 4px 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--paper);
+  max-width: 100%;
+}
+.rp-link-chip-main {
+  font-family:inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 1px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.rp-link-chip-main:hover { color: var(--ink); }
+.rp-link-chip-main b {
+  font-weight: 650;
+  font-size: 10px;
+  color: var(--mid);
+  flex: 0 0 auto;
+}
+.rp-link-chip-note {
+  font-style: normal;
+  color: var(--mid);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-left: 1px solid var(--line);
+  padding-left: 5px;
+}
+.rp-link-chip-x {
+  font-family:inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--mid);
+  padding: 0 7px;
+}
+.rp-link-chip-x:hover { background: rgba(179, 38, 30, 0.07); color: var(--danger); }
+
+/* 选项式绑定弹窗：两组 checkbox（开发仓库 / 看板）。
+   高度跟着弹窗走（弹窗自己有 max-height:84vh + body 滚动），这里再套一层固定
+   220px 只会让 18 个选项挤进一条小缝——滚动条套滚动条，很难点。 */
+.rp-pick-list {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.rp-pick-group { display: flex; flex-direction: column; gap: 3px; min-width: 180px; flex: 1; }
+.rp-pick-group-label {
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  margin-bottom: 2px;
+}
+.rp-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 0;
+}
+/* 复选框在 .form-field 里会吃到全局 `.form-field input { width: 100% }`——
+   它撑满整行后，名字与描述被挤成 0 宽，面板上看起来就是「一片空白」。
+   这一行是选项不是字段，宽度交还给 flex 自己算。 */
+.rp-pick-item input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--ink);
+}
+.rp-pick-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-pick-item > span:first-of-type { flex: 0 1 auto; min-width: 0; }
+.rp-pick-desc { font-size: 11px; max-width: 200px; flex: 0 1 auto; min-width: 0; }
+
+/* 看板（项目组）的参考仓库命名空间区 */
+.rp-ref-mounted {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.rp-ref-mounted-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rp-ref-mounted-label { font-weight: 650; color: var(--ink); }
+.rp-ref-mounted-label b { font-family: var(--mono); color: var(--ink-2); }
+.rp-ref-mounted-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 0;
+  border-top: 1px dashed var(--line);
+  flex-wrap: wrap;
+}
+.rp-ref-mounted-name { font-weight: 650; color: var(--ink); }
+.rp-ref-mounted-desc {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.rp-ref-note-chip {
+  font-family:inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 8px;
+  border: 1px dashed var(--mid);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-ref-note-chip:hover { color: var(--ink); border-color: var(--ink); }
+.rp-ref-mounted-item .acts { margin-left: auto; display: flex; gap: 4px; flex: 0 0 auto; }
+
+.rp-layout-warn { color: #b3261e; font-size: 11.5px; }
+
+/* ---- 对齐 remote（key 是本地身份，remote 是协作的标准单位）---- */
+.rp-remote-list {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.rp-remote-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--line);
+  min-width: 0;
+}
+.rp-remote-item:last-child { border-bottom: 0; }
+.rp-remote-name { font-weight: 650; color: var(--ink); flex: 0 0 auto; }
+.rp-remote-url { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-remote-kind {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--mid);
+}
+.rp-remote-on {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+}
+.rp-remote-item .acts { flex: 0 0 auto; margin-left: auto; display: flex; gap: 4px; }
+.rp-remote-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+/* 差异表里的「克隆到本地」快捷按钮 */
+.rp-clone-btn { margin-left: 8px; }
+
+/* 导入面板里逐个列出的「本地未拥有」成员（组里已占位，待补齐） */
+.rp-missing-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 0;
+  border-top: 1px dashed var(--line);
+  min-width: 0;
+}
+.rp-missing-key { font-size: 11.5px; color: var(--ink-2); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-missing-remote { font-size: 11px; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-missing-item .btn { flex: 0 0 auto; margin-left: auto; }
+
+

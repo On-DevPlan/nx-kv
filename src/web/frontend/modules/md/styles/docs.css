@@ -1,0 +1,185 @@
+/* ─── 文档落盘（doc 页签 / 组介绍 / 双链）──────────────────────────────── */
+
+/* fenced code：整块原样，不跑 inline 与双链 */
+.mdw-code{
+  margin:0 0 8px;padding:8px 10px;overflow-x:auto;
+  background:var(--soft,#F1F0EC);border:1px solid var(--line,#E4E2DC);border-radius:6px;
+  font:400 11.5px/1.6 ui-monospace,Consolas,monospace;color:var(--ink,#16181C);
+}
+.mdw-code code{background:none;padding:0}
+
+/* 双链 [[目标|文本]]：已解析实链，未解析虚线红（docs/index 缺席时不判） */
+.mdw .md-wl, .rp-page .md-wl{
+  color:var(--mdw-accent,#2F6F5E);text-decoration:none;cursor:pointer;
+  border-bottom:1px solid color-mix(in srgb, var(--mdw-accent,#2F6F5E) 40%, transparent);
+}
+.mdw .md-wl:hover, .rp-page .md-wl:hover{background:var(--mdw-accent-soft,#E8F2EE)}
+.mdw .md-wl-miss, .rp-page .md-wl-miss{
+  color:var(--bad,#B3261E);border-bottom:1px dashed var(--bad,#B3261E);
+}
+.mdw .md-wl-miss:hover, .rp-page .md-wl-miss:hover{background:color-mix(in srgb, var(--bad,#B3261E) 8%, transparent)}
+
+/* 文档页签（DocPanel）：与任务页同构的头 + 模式切换 */
+.docp{display:flex;flex-direction:column;height:100%;position:relative}
+.docp .mdw-main{display:flex;flex-direction:column;min-height:0;flex:1}
+
+/* 右侧滚动目录轨（简介 / 文档页） */
+.doc-rail{
+  position:absolute;right:8px;top:52px;bottom:36px;z-index:30;
+  display:flex;flex-direction:column;align-items:flex-end;gap:10px;
+  pointer-events:none;
+}
+.doc-rail > *{pointer-events:auto}
+.doc-rail-menu{
+  width:28px;height:28px;padding:0;border:0;border-radius:8px;
+  background:var(--paper,#fff);color:var(--mid,#838A93);
+  box-shadow:0 1px 6px rgba(20,22,26,.1);
+  display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  cursor:pointer;
+}
+.doc-rail-menu span{
+  display:block;width:12px;height:1.5px;border-radius:1px;background:currentColor;
+}
+.doc-rail-menu:hover,.doc-rail.open .doc-rail-menu{color:var(--ink,#16181C);background:var(--soft,#F1F0EC)}
+.doc-rail-ticks{
+  display:flex;flex-direction:column;align-items:flex-end;gap:14px;
+  padding:6px 4px;
+}
+.doc-rail-tick{
+  display:block;width:var(--tw,12px);height:2px;padding:0;border:0;border-radius:1px;
+  background:var(--faint,#A9AEB4);cursor:pointer;
+  transition:background .12s,width .12s;
+}
+.doc-rail-tick:hover{background:var(--mid,#838A93)}
+.doc-rail-tick.on{background:#4A5FB4;width:calc(var(--tw,12px) + 4px)}
+.doc-rail-panel{
+  position:absolute;right:36px;top:0;width:220px;max-height:min(70vh,480px);overflow:auto;
+  background:var(--paper,#fff);border:1px solid var(--line,#E4E2DC);border-radius:10px;
+  box-shadow:0 8px 24px rgba(20,22,26,.12);padding:8px 0;
+}
+
+/* 任务页的 ack 定位轨（任务 #48）：复用 .doc-rail 视觉，位置贴任务正文区
+   —— 任务页顶部有 mdw-top + mdw-toolbar 两条，轨往下挪，别压住工具栏。
+   .mdw 本身是 position:relative，absolute 轨锚在它上面。 */
+.mdw > .ack-rail{top:96px;bottom:44px}
+.mdw > .ack-rail .doc-rail-ticks{gap:12px}
+/* 可拖动（任务 #55）：汉堡钮是拖把。touch-action:none 防触屏拖动被页面滚动劫持；
+   拖动态抬层 + grabbing 光标。落点落定后是 inline left/top（组件里写），right/bottom
+   置 auto 解除钉位——所以这里不写任何 top/right，默认位完全交给原规则。 */
+.mdw > .ack-rail .doc-rail-menu{cursor:grab;touch-action:none}
+.mdw > .ack-rail.dragging{z-index:80}
+.mdw > .ack-rail.dragging .doc-rail-menu{cursor:grabbing;background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+.doc-rail-sec{padding:4px 0 8px;border-bottom:1px solid var(--line,#E4E2DC)}
+.doc-rail-sec:last-child{border-bottom:0;padding-bottom:4px}
+.doc-rail-sec-lab{
+  padding:4px 12px 6px;font-size:10.5px;font-weight:650;letter-spacing:.04em;
+  color:var(--mid,#838A93);text-transform:uppercase;
+}
+.doc-rail-row{
+  display:block;width:100%;box-sizing:border-box;border:0;background:transparent;
+  text-align:left;padding:5px 12px;font:inherit;font-size:12px;line-height:1.35;
+  color:var(--ink-2,#4B515A);cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.doc-rail-row[data-lv="2"]{padding-left:20px}
+.doc-rail-row[data-lv="3"]{padding-left:28px;font-size:11.5px;color:var(--mid,#838A93)}
+.doc-rail-row:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+.doc-rail-row.on{color:#4A5FB4;font-weight:650}
+.doc-rail-row:disabled{opacity:.45;cursor:default}
+.doc-rail-add{
+  display:block;width:calc(100% - 16px);margin:6px 8px 2px;padding:6px 8px;border:0;border-radius:6px;
+  background:var(--soft,#F1F0EC);color:var(--ink,#16181C);font:inherit;font-size:12px;
+  text-align:center;cursor:pointer;
+}
+.doc-rail-add:hover{background:var(--mdw-accent-soft,#E8F2EE)}
+.docp-head{
+  display:flex;align-items:center;gap:8px;padding:7px 12px;
+  border-bottom:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);flex:none;
+}
+.docp-path{font:400 10.5px ui-monospace,Consolas,monospace;color:var(--mid,#838A93);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.docp-dirty{color:#9E4C00;font-size:11px;flex:none}
+.docp-tag{
+  flex:none;font-size:10.5px;padding:1px 7px;border-radius:9px;
+  color:#9E4C00;background:#FBF3E4;
+}
+.docp-save{flex:none}
+/* 页头共用组件（DocHead，任务 #88）：面包屑 + 标题·路径 + 更多 · 保存 一条线。
+   .mdw-head 是 flex:1 的标题块，右侧动作组自成一块，不许换行挤压标题。 */
+.docp-top{gap:10px}
+.docp-top .mdw-head{display:flex;align-items:center;gap:8px;min-width:0}
+.docp-top .mdw-title{flex:0 1 auto}
+.docp-top .mdw-path{flex:0 1 auto;min-width:0}
+/* 全局 .grow 是 max-width:340px，推不到右边界——这里显式让位 */
+.docp-top .grow{flex:1 1 auto;max-width:none;min-width:0}
+.docp-actions{display:flex;align-items:center;gap:6px;flex:none}
+.docp-actions .btn{white-space:nowrap}
+.docp-summary{
+  flex:none;padding:5px 12px;font-size:11px;color:var(--mid,#838A93);
+  border-bottom:1px solid var(--line,#E4E2DC);background:var(--soft,#F5F6F7);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.docp-hint{
+  flex:none;padding:5px 12px;border-top:1px solid var(--line,#E4E2DC);
+  font-size:10.5px;color:var(--faint,#A9AEB4);background:var(--paper,#fff);
+}
+.docp-files{padding:10px 14px;display:flex;flex-direction:column;gap:2px;overflow:auto}
+.docp-file{
+  text-align:left;padding:5px 8px;border-radius:6px;
+  font:400 11.5px ui-monospace,Consolas,monospace;color:var(--ink,#16181C);
+}
+.docp-file:hover{background:var(--soft,#F1F0EC)}
+
+/* 组详情页的介绍块与绑定 chips（rp-page 系列） */
+.rp-intro{border:1px solid var(--line,#E4E2DC);border-radius:8px;background:#FBFAF8;margin:0 0 12px;overflow:hidden}
+.rp-intro-head{
+  display:flex;align-items:center;gap:8px;padding:6px 12px;
+  border-bottom:1px solid var(--line,#E4E2DC);
+  font:600 10.5px Bahnschrift,"Segoe UI",sans-serif;letter-spacing:1px;color:var(--mid,#838A93);
+}
+.rp-intro-path{font:400 10.5px ui-monospace,Consolas,monospace;letter-spacing:0;color:var(--faint,#A9AEB4)}
+.rp-intro-edit{
+  height:22px;padding:0 9px;border-radius:6px;font-size:11px;
+  border:1px solid var(--line,#E4E2DC);color:var(--ink,#16181C);background:var(--paper,#fff);
+}
+.rp-intro-edit:hover{background:var(--soft,#F1F0EC)}
+.rp-intro-body{padding:10px 14px;font-size:12.5px;line-height:1.65;color:var(--ink,#16181C)}
+.rp-intro-body h1{font-size:15px;margin:2px 0 6px}
+.rp-intro-body h2{font-size:13px;margin:10px 0 4px}
+.rp-intro-body p{margin:4px 0}
+.rp-intro-body ul{margin:4px 0 4px 18px}
+.rp-intro-body code{font:400 11.5px ui-monospace,Consolas,monospace;background:var(--soft,#F1F0EC);border-radius:4px;padding:1px 4px}
+.rp-doclinks{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px}
+.rp-doclinks-label{font:600 10.5px Bahnschrift,"Segoe UI",sans-serif;letter-spacing:1px;color:var(--mid,#838A93)}
+.rp-doclink{
+  display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:10px;
+  border:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
+  font-size:11px;color:var(--ink,#16181C);cursor:pointer;
+}
+.rp-doclink:hover{background:var(--soft,#F1F0EC)}
+.rp-doclink.ext{color:#9E4C00;background:#FBF3E4;border-color:transparent}
+.rp-doclink-note{color:var(--mid,#838A93)}
+.rp-doclink-tag{font-size:9.5px;padding:0 5px;border-radius:8px;background:rgba(158,76,0,.14)}
+
+/* 模板页：槽位编辑区（正文里的 {{名字}} 处填内容） */
+.mdw-tpl-slots{
+  margin:8px 0 2px;padding:10px 12px;border:1px solid var(--line,#E4E2DC);
+  border-radius:8px;background:var(--paper,#fff);
+}
+.mdw-tpl-note{margin-top:6px;font-size:11px;color:var(--mid,#838A93)}
+
+/* 预览提示词弹层（任务 #65）：交付原文 + 段落来源 + 开关状态 */
+.mdw-prev-body{
+  margin:0 0 10px;max-height:52vh;overflow:auto;padding:10px 12px;border-radius:8px;
+  border:1px solid var(--line,#E4E2DC);background:var(--soft,#F1F0EC);
+  font:400 11.5px/1.55 ui-monospace,Consolas,monospace;
+  white-space:pre-wrap;word-break:break-word;color:var(--ink,#16181C);
+}
+.mdw-prev-note{margin:6px 0;font-size:11.5px;color:var(--mid,#838A93)}
+.mdw-prev-hint{font-size:11px;color:var(--mid,#838A93)}
+/* 时间目标 check 流水（#74）：面板 check tab 里的逐轮列表 */
+.mdw-goal-log{margin:8px 0 0;border-top:1px solid var(--line,#E4E6EA)}
+.mdw-goal-log-row{padding:8px 0;border-bottom:1px solid var(--line,#E4E6EA)}
+.mdw-goal-log-head{font-size:11px;color:var(--mid,#838A93)}
+.mdw-goal-log-body{margin-top:4px;font-size:12.5px;color:var(--ink,#23262B);white-space:pre-wrap}
+.mdw-goal-log-prog{margin-top:3px;font-size:11.5px;color:var(--mid,#838A93);white-space:pre-wrap}
+

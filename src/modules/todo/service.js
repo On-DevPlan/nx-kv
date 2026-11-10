@@ -15,295 +15,46 @@
 //
 // 5. **定位一律按内容（文本 ref），不按 id**。id 只是给人看的元数据——
 //    它既会被复用（分配只扫 open + freeze），同一主题里也本来就有重复内容。
-//    详见下方「定位」一节。
+//    详见 ./locate.js。
 //
-// ─── 时间格式（沿用既有数据的约定，不要统一）───
-//   createdAt / frozenAt：Dart `toIso8601String()` 风格，本地时间无时区
-//                          例 2026-08-14T19:04:56.028788
-//   doneAt              ：RFC3339 带偏移
-//                          例 2026-08-15T14:32:53+08:00
-// 两种格式在同一份数据里并存是既成事实，改掉会破坏既有记录的可比性。
-import { readFile } from 'node:fs/promises';
-import { basename, resolve as resolvePath } from 'node:path';
-import { kvGet, kvSet, kvDelete } from '../../core/kvapi.js';
-import { loadConfig, requireAuth, normalizeGroupId, resolveGroupId } from '../../core/config.js';
+// 分层：key/时间/模型/读写原语在 ./store.js，按内容定位在 ./locate.js，
+// 附件标注与追加在 ./attachments.js；本文件保留全部对外 API（re-export + 变更操作），
+// import 路径不变。
+import { kvDelete } from '../../core/kvapi.js';
+import { normalizeGroupId } from '../../core/config.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
-import { contentTypeOf, fileUpload, isImageName } from '../../core/fileapi.js';
-import { localIndex, syncAttachments } from '../../core/attachstore.js';
-import { attachmentRefs, embedMarkdown, looksLikeFileId } from '../../shared/attach.js';
+import {
+  KEY,
+  PROMPT_PREFIX,
+  COLD_PREFIX,
+  pad,
+  dartNow,
+  rfc3339Now,
+  loadAll,
+  nextTaskId,
+  parseTasks,
+  readKey,
+  resolveGroup,
+  writeKey,
+  writeTasks,
+  writeTopics,
+} from './store.js';
+import { locateUnique } from './locate.js';
+import { annotateAttachments, attachOf } from './attachments.js';
 
-export const KEY = {
-  open: 'todo:open',
-  done: 'todo:done',
-  topics: 'todo:topics',
-  freeze: 'todo:freeze',
-};
-export const PROMPT_PREFIX = 'todo:prompt:';
-export const COLD_PREFIX = 'todo:done:cold:';
-
-const BUCKETS = ['open', 'done', 'freeze'];
-
-// ─── 时间 ──────────────────────────────────────────────────────────
-
-const pad = (n, w = 2) => String(n).padStart(w, '0');
-
-/** Dart toIso8601String() 风格：本地时间、微秒精度、无时区后缀。
- *  JS 的 Date 只有毫秒精度，微秒位补 000 —— 形状与既有数据一致即可，
- *  下游从不解析这两位的实际值。 */
-export function dartNow(d = new Date()) {
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
-    `.${pad(d.getMilliseconds(), 3)}000`
-  );
-}
-
-/** RFC3339 带本地偏移，例 2026-08-15T14:32:53+08:00 */
-export function rfc3339Now(d = new Date()) {
-  const off = -d.getTimezoneOffset();
-  const sign = off >= 0 ? '+' : '-';
-  const abs = Math.abs(off);
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
-    `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
-  );
-}
-
-// ─── 任务模型 ──────────────────────────────────────────────────────
-
-export function normalizeTask(t) {
-  return {
-    id: Number(t.id) || 0,
-    topic: String(t.topic ?? ''),
-    text: String(t.text ?? ''),
-    createdAt: String(t.createdAt ?? ''),
-    doneAt: String(t.doneAt ?? ''),
-    note: String(t.note ?? ''),
-    frozenAt: String(t.frozenAt ?? ''),
-    // 来源标记：本机队列迁入的任务带 'local'（面板据此渲染「来自本机」徽标）。
-    // 老数据没有该字段 → 空串，不渲染徽标。
-    from: String(t.from ?? ''),
-  };
-}
-
-function parseTasks(raw) {
-  if (!raw || !raw.trim()) return [];
-  try {
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr.map(normalizeTask) : [];
-  } catch {
-    // 快照损坏时返回空数组而不抛 —— 读侧不该因为一条脏数据整个失效
-    return [];
-  }
-}
-
-function parseTopics(raw) {
-  if (!raw || !raw.trim()) return [];
-  try {
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr.map(String).filter((s) => s.trim()) : [];
-  } catch {
-    return [];
-  }
-}
-
-// ─── groupId 回落 ──────────────────────────────────────────────────
-//
-// 显式传入（--group）优先，否则用本机配置里的**当前工作空间**。
-//
-// 这一步刻意放在读写边界（下面两个函数）而不是每个 action 里：
-// 放边界上，读与写必然用同一个 groupId；放到 action 里，一旦有人漏了一处，
-// 就会出现「从 A 组读、往 B 组写」——而这类错不会报错，只会静默写错空间。
-//
-// 规则本体在 core/config.resolveGroupId：file 模块选后端分组与本地附件目录
-// 必须用同一条规则，否则会出现「任务读 A 组、附件同步 B 组」。
-async function resolveGroup(groupId) {
-  return resolveGroupId(groupId);
-}
-
-// ─── 读 ────────────────────────────────────────────────────────────
-
-async function readKey(key, groupId) {
-  const item = await kvGet(key, await resolveGroup(groupId));
-  return item ? item.value : '';
-}
-
-/** 读入全部四个 key。list/get 等只读操作走这里，一次拿齐。 */
-export async function loadAll(groupId) {
-  await requireAuth();
-  const gid = normalizeGroupId(groupId);
-  const [open, done, freeze, topics] = await Promise.all([
-    readKey(KEY.open, gid),
-    readKey(KEY.done, gid),
-    readKey(KEY.freeze, gid),
-    readKey(KEY.topics, gid),
-  ]);
-  return {
-    open: parseTasks(open),
-    done: parseTasks(done),
-    freeze: parseTasks(freeze),
-    topics: parseTopics(topics),
-  };
-}
-
-/** 待办 + 冻结的 id 最大值 + 1（契约 1） */
-export function nextTaskId(open, freeze) {
-  let max = 0;
-  for (const t of [...open, ...freeze]) if (t.id > max) max = t.id;
-  return max + 1;
-}
-
-// ─── 定位：一律按**内容**，不按 id ⚠️ ──────────────────────────────
-//
-// **id 非常容易重复，不足以定位一条任务。** 两条独立的原因：
-//
-//   1. 分配只扫 open + freeze（契约 1），任务完成、open 清空后新任务会重新
-//      用上已占过的 id。实测 done 有 68 条、其中 id=29 有 7 条。
-//   2. 同一个主题里，写「修复登录页」这样内容的任务本来就会反复出现——
-//      即使 id 不撞，光看 id 也说不清调用方指的是哪一条。
-//
-// 所以 `id` 在本项目里**只是给人和外部系统看的元数据**：继续分配、继续出现在
-// 输出里，但**不再是任何命令的入参**。定位一律用文本内容，见下面的 ref。
-//
-// 由此推出两条硬约束，违反其一都会静默改错数据：
-//
-//   1. **命中多条时必须消歧，不能猜一条。** 用 `findIndex` 取第一条，
-//      在 done 上取到的是最老的记录，而调用方往往以为自己在操作刚创建的那条。
-//   2. **变更必须按 index 定位，禁止 `filter(t => t.text !== ref)`。**
-//      后者会把**所有**同内容的条目一起删掉。
-
-/** 找出所有内容匹配的条目（跨桶，含同桶内重复）。
- *  用整串精确比对——不做前缀/模糊匹配，避免「看起来像」被当成「就是它」。 */
-export function locateAll(all, ref) {
-  const want = String(ref ?? '');
-  const hits = [];
-  for (const bucket of BUCKETS) {
-    all[bucket].forEach((task, index) => {
-      if (task.text === want) hits.push({ bucket, index, task });
-    });
-  }
-  return hits;
-}
-
-/**
- * 定位唯一一条。`ref` 是任务**内容**（整串）。
- *
- * 消歧手段有两个，按需组合：
- *   `--topic <名字>`  按主题收窄（同内容散落在不同主题时的快捷方式）
- *   `--pick <n>`      按编号选择（最通用；同内容且同主题时唯一可靠的手段）
- *
- * 报错时把候选项编号列出来，调用方（人或 agent）照着选即可——**绝不替调用方猜**。
- */
-export function locateUnique(all, ref, { topic, pick } = {}) {
-  const want = String(ref ?? '');
-
-  // 空 ref 是**参数错误**而不是 NOT_FOUND：绝大多数时候是忘了传 --ref，
-  // 而空串恰好会匹配上数据里 text 为空的坏条目——那等于随机改一条，必须挡在门外。
-  if (!want) throw badInput('task 内容不能为空（用 --ref 指定要操作的任务文本）');
-
-  const allHits = locateAll(all, want);
-  const hits = topic ? allHits.filter((h) => h.task.topic === topic) : allHits;
-  const shown = want.length > 40 ? want.slice(0, 40) + '…' : want;
-
-  if (!hits.length) {
-    if (allHits.length) {
-      const topics = [...new Set(allHits.map((h) => h.task.topic))].join(', ');
-      throw notFound(`task「${shown}」存在，但 topic 不是 ${topic}（实际 topic: ${topics}）`);
-    }
-    throw notFound(`task「${shown}」不存在（待办 / 已完成 / 冻结里都没有）`);
-  }
-
-  if (pick !== undefined && pick !== null) {
-    const n = Number(pick);
-    if (!Number.isInteger(n) || n < 0 || n >= hits.length) {
-      throw badInput(`--pick 必须是 0..${hits.length - 1} 之间的整数，收到: ${pick}`);
-    }
-    return hits[n];
-  }
-
-  if (hits.length > 1) {
-    const list = hits
-      .map((h, i) => `  [${i}] ${h.bucket.padEnd(6)} ${h.task.topic.padEnd(5)} ${h.task.createdAt}`)
-      .join('\n');
-    throw conflict(
-      `task「${shown}」命中 ${hits.length} 条，无法确定是哪一条。用 --pick <n> 选择：\n${list}` +
-        (topic ? '' : `\n（也可先用 --topic <名字> 收窄）`),
-      { candidates: hits.map((h, i) => ({ pick: i, bucket: h.bucket, topic: h.task.topic, createdAt: h.task.createdAt })) }
-    );
-  }
-  return hits[0];
-}
-
-// ─── 写 ────────────────────────────────────────────────────────────
-//
-// 顺序纪律（契约 3）：**主数据先写，辅助数据后写**。
-// 部分失败时抛出的错误里带上「哪一步失败、已经写成功了什么」——
-// 调用方（人或 agent）需要知道当前处于什么状态才能决定下一步。
-
-async function writeKey(key, value, groupId) {
-  await kvSet({ key, value, ttl: 0, groupId: await resolveGroup(groupId) });
-}
-
-async function writeTasks(bucketKey, tasks, groupId) {
-  await writeKey(bucketKey, JSON.stringify(tasks), groupId);
-}
-
-async function writeTopics(topics, groupId) {
-  await writeKey(KEY.topics, JSON.stringify(topics), groupId);
-}
-
-// ─── 附件标注（正文里的 ![说明](fileId)）────────────────────────────
-//
-// 任务正文可以直接嵌附件（图片 / docx 等），语法与解析在 ./attach.js。
-// 读任务时要多做两件事：
-//   1. 把每个任务引用的附件解析出来（id / 类型 / 说明文字）；
-//   2. 若本机设置开了「读取时自动下载」，就把这些附件同步到本地，
-//      并把**本地绝对路径**一并回传 —— agent 因此可以只读本地文件，
-//      不再受网络/出图地址影响。
-//
-// 同步失败**不阻断读取**：清单本身在 KV 里，跟附件能不能下载是两件事；
-// 失败如实记进 sync.failures，读的人自己判断。
-async function annotateAttachments(tasks, groupId) {
-  const refs = new Map();
-  for (const t of tasks) {
-    for (const r of attachmentRefs(t.text)) if (!refs.has(r.id)) refs.set(r.id, r);
-  }
-  const cfg = await loadConfig();
-
-  let sync = null;
-  if (refs.size && cfg.autoSyncAttachments) {
-    // 说明文字 → 本地文件名：`![季度报表.docx](id)` 落盘就叫「季度报表.docx」，
-    // 比一串 hex 有意义得多。
-    const names = {};
-    for (const [id, r] of refs) if (r.alt) names[id] = r.alt;
-    try {
-      sync = await syncAttachments({ groupId, ids: [...refs.keys()], names, dir: cfg.attachmentsDir });
-    } catch (e) {
-      sync = { dir: '', downloaded: 0, skipped: 0, failures: [{ id: '(整体)', error: String(e.message || e) }] };
-    }
-  }
-
-  const { index } = await localIndex(groupId, cfg.attachmentsDir);
-  const byTask = new Map();
-  for (const t of tasks) {
-    const list = attachmentRefs(t.text).map((r) => {
-      const local = index.get(r.id);
-      return {
-        id: r.id,
-        kind: r.kind,
-        name: r.alt || local?.name || r.id,
-        localPath: local?.path || '',
-        synced: !!local,
-      };
-    });
-    if (list.length) byTask.set(t, list);
-  }
-  return { byTask, sync };
-}
-
-const attachOf = (byTask, arr) =>
-  arr ? arr.map((t) => (byTask.has(t) ? { ...t, attachments: byTask.get(t) } : t)) : arr;
+export {
+  KEY,
+  PROMPT_PREFIX,
+  COLD_PREFIX,
+  dartNow,
+  rfc3339Now,
+  normalizeTask,
+  loadAll,
+  nextTaskId,
+  currentGroupId,
+} from './store.js';
+export { locateAll, locateUnique } from './locate.js';
+export { listTaskAttachments, attachToTask } from './attachments.js';
 
 // ─── 只读操作 ──────────────────────────────────────────────────────
 
@@ -352,35 +103,11 @@ export async function getTodo(ref, { topic, pick, groupId } = {}) {
   };
 }
 
-/** 单独查某个任务的附件清单（不依赖设置里的自动下载开关，但会标注本地是否已有）。 */
-export async function listTaskAttachments(ref, { topic, pick, groupId } = {}) {
-  const all = await loadAll(groupId);
-  const hit = locateUnique(all, ref, { topic, pick });
-  const gid = await resolveGroup(groupId);
-  const cfg = await loadConfig();
-  const { dir, index } = await localIndex(gid, cfg.attachmentsDir);
-
-  const attachments = attachmentRefs(hit.task.text).map((r) => {
-    const local = index.get(r.id);
-    return {
-      id: r.id,
-      kind: r.kind,
-      name: r.alt || local?.name || r.id,
-      localPath: local?.path || '',
-      synced: !!local,
-      size: local?.size || 0,
-    };
-  });
-  return {
-    task: { topic: hit.task.topic, text: hit.task.text, bucket: hit.bucket },
-    localDir: dir,
-    autoSync: cfg.autoSyncAttachments,
-    count: attachments.length,
-    attachments,
-  };
-}
-
 // ─── 变更操作 ──────────────────────────────────────────────────────
+//
+// 顺序纪律（契约 3）：**主数据先写，辅助数据后写**。
+// 部分失败时抛出的错误里带上「哪一步失败、已经写成功了什么」——
+// 调用方（人或 agent）需要知道当前处于什么状态才能决定下一步。
 
 /** 新增任务到待办；topic 不在快捷列表时一并补上（契约 2） */
 export async function addTodo({ topic, text, groupId, from = '' }) {
@@ -476,7 +203,6 @@ export async function removeOpenById(id, { groupId } = {}) {
   const all = await loadAll(groupId);
   const index = all.open.findIndex((x) => Number(x.id) === want);
   if (index < 0) {
-    const { notFound } = await import('../../core/errors.js');
     throw notFound(`待办里没有 #${want}（可能已被删除或完成）`);
   }
   const removed = all.open[index];
@@ -544,66 +270,6 @@ export async function unfreezeTodo(ref, { topic, pick, groupId } = {}) {
   await writeTasks(KEY.freeze, from, groupId);
   await writeTasks(KEY.open, [...all.open, revived], groupId);
   return { task: revived, reIded: clashes, from: 'freeze', to: 'open' };
-}
-
-// ─── 追加附件 ──────────────────────────────────────────────────────
-//
-// 把附件**追加**到任务正文（不是替换）：正文里原有内容与已有的嵌入都保留，
-// 新嵌入接在末尾。语义上等价于「在编辑器里点上传、然后手动把 markdown 贴到行尾」。
-//
-// ⚠️ 追加会改变该任务的**内容**，而定位是按内容（--ref）——所以调用方如果
-// 还要继续操作同一条任务，必须用**新**的 text 去 --ref。这是本设计已知的取舍：
-// 用「正文即真相」换掉了「附件单独一张表」，代价是正文会被附件语法污染。
-
-/** 上传本机文件 / 复用已有 fileId，然后以 markdown 形式追加到任务正文。 */
-export async function attachToTask(ref, { path, fileId, name, kind, topic, pick, groupId, accessLevel } = {}) {
-  const all = await loadAll(groupId);
-  const hit = locateUnique(all, ref, { topic, pick });
-
-  let id = fileId ? String(fileId).trim() : '';
-  let displayName = String(name || '').trim();
-  let resolvedKind = kind ? String(kind) : '';
-
-  // --path：先上传，拿到 id 再嵌 —— 这样「正文里的 id」与「图床里的文件」一次性对齐
-  if (path) {
-    const abs = resolvePath(String(path));
-    let buffer;
-    try {
-      buffer = await readFile(abs);
-    } catch (e) {
-      throw badInput(`读不到文件: ${abs}（${e.code || e.message}）`);
-    }
-    const fileName = displayName || basename(abs);
-    const meta = await fileUpload({
-      name: fileName,
-      buffer,
-      contentType: contentTypeOf(fileName),
-      groupId: await resolveGroup(groupId),
-      accessLevel: accessLevel || 'public',
-    });
-    id = meta.fileId;
-    displayName = fileName;
-    if (!resolvedKind) resolvedKind = isImageName(fileName, meta.contentType) ? 'image' : 'file';
-  }
-
-  if (!id) throw badInput('需要 --path <本机文件>（先上传）或 --fileId <已上传的附件 id>');
-  if (!looksLikeFileId(id)) {
-    throw badInput(`附件 id 不合法: ${id}（应为后端返回的 32 位 hex，可能带扩展名）`);
-  }
-  if (resolvedKind && resolvedKind !== 'image' && resolvedKind !== 'file') {
-    throw badInput(`--kind 只能是 image 或 file，收到: ${resolvedKind}`);
-  }
-  if (!resolvedKind) resolvedKind = isImageName(id, '') ? 'image' : 'file';
-
-  const markdown = embedMarkdown({ name: displayName || id, id, kind: resolvedKind });
-  const text = hit.task.text ? `${hit.task.text} ${markdown}` : markdown;
-
-  const next = { ...hit.task, text };
-  const bucket = [...all[hit.bucket]];
-  bucket[hit.index] = next;
-  await writeTasks(KEY[hit.bucket], bucket, groupId);
-
-  return { task: next, bucket: hit.bucket, fileId: id, kind: resolvedKind, markdown };
 }
 
 // ─── 快捷 topic ────────────────────────────────────────────────────
@@ -712,10 +378,4 @@ export async function archiveDone({ before, groupId } = {}) {
   await writeTasks(KEY.done, remaining, groupId);
 
   return { moved: moved.length, coldKey, remaining: remaining.length, total: existing.length + moved.length };
-}
-
-// 供 groupId 默认值的统一来源（service 内多处要用）
-export async function currentGroupId() {
-  const cfg = await loadConfig();
-  return normalizeGroupId(cfg.groupId);
 }

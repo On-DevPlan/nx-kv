@@ -1,0 +1,287 @@
+/* ---- 按钮语言 v2：主按钮青绿（消灭墨黑块），ghost hover 青绿描边 ----
+   与侧栏/工作台同一强调色（#2F6F5E）。写在 v1 .btn 之后靠层叠取胜；
+   danger 用 :not(.danger) 收窄，避免把红色危险态的 hover 染绿。 */
+.btn { background: #2F6F5E; color: #fff; }
+.btn:hover { opacity: 0.92; }
+.btn.ghost { color: var(--ink); }
+.btn.ghost:hover:not(.danger) {
+  background: color-mix(in srgb, #2F6F5E 8%, var(--paper));
+  color: #2F6F5E;
+}
+
+/* ---- 云端清单（todo 视图）---- */
+.cloud-page .cols { flex: none; align-items: stretch; min-width: 0; }
+.cloud-page .col { display: flex; flex-direction: column; min-width: 0; }
+.cloud-page .card.list { flex: 1; min-height: 0; }
+
+/* 筛选行：工作空间 / 主题在左，设置与刷新在右 */
+.cloud-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: none; }
+.cloud-toolbar .grow { flex: 1; }
+
+/* 投递条：一个整体的输入组（主题 | 内容 | 提交），不是三个孤零零的控件。
+   焦点环做在容器上，内部输入框不再各自发光。 */
+.cloud-compose {
+  display: flex; align-items: stretch; flex: none; min-width: 0;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r8);
+  overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cloud-compose:focus-within {
+  border-color: #2F6F5E;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #2F6F5E 10%, transparent);
+}
+.cloud-compose input {
+  border: 0; border-radius: 0; box-shadow: none; background: transparent;
+  padding: 8px 10px; font-size: 12.5px; min-height: 0;
+}
+.cloud-compose input:focus { box-shadow: none; }
+.cloud-compose-topic { flex: 0 0 150px; border-right: 1px solid var(--line); }
+.cloud-compose-text { flex: 1 1 auto; min-width: 120px; }
+.cloud-compose .btn { flex: none; align-self: center; margin: 4px; border-radius: var(--r5); }
+@media (max-width: 680px) {
+  .cloud-compose { flex-wrap: wrap; padding: 6px; gap: 6px; }
+  .cloud-compose-topic { flex: 1 1 100%; border-right: 0; border-bottom: 1px solid var(--line); }
+  .cloud-compose .btn { margin: 0; flex: 1 1 auto; }
+}
+
+/* 桶头：语义色点（待办=青绿 / 已完成=绿 --live / 冻结=琥珀）+ 计数徽章 */
+.colhead { align-items: center; }
+.colhead h3 { display: inline-flex; align-items: center; gap: 6px; }
+.colhead h3::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--soft-2); flex: none; }
+.col-open .colhead h3::before { background: #2F6F5E; }
+.col-done .colhead h3::before { background: var(--live); }
+.col-freeze .colhead h3::before { background: var(--wait); }
+.cloud-page .colhead .cnt {
+  min-width: 20px; text-align: center; padding: 0 6px; border-radius: 9px;
+  background: var(--soft-2); color: var(--ink-2); font-size: 10.5px; font-weight: 600; line-height: 16px;
+}
+.colhead .grow { flex: 1; }
+
+/* 行：单行主行（tid 主题 正文 时间 操作）+ 备注独立成层。
+   操作钮常占布局位但 hover 才浮现 —— 行高不再被换行的按钮撑成两行，
+   长正文也就不会再被挤成一字竖条。窄桶（<560px）先藏时间保操作。 */
+.cloud-page .cols .row { flex-wrap: nowrap; flex-direction: column; align-items: stretch; gap: 3px; padding: 6px 10px; }
+.cloud-page .cols .row .row-main { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; }
+.cloud-page .cols .row .note { flex-basis: auto; }
+.cloud-page .cols .row .acts { display: inline-flex; gap: 4px; opacity: 0; transition: opacity 0.12s; flex: none; }
+.cloud-page .cols .row:hover .acts, .cloud-page .cols .row:focus-within .acts { opacity: 1; }
+@media (hover: none) { .cloud-page .cols .row .acts { opacity: 1; } }
+.cloud-page .col { container-type: inline-size; }
+@container (max-width: 480px) {
+  .cloud-page .cols .row .time { display: none; }
+  .cloud-page .cols .row .note { padding-left: 0; }
+}
+
+/* 行尾 ⋯ 菜单：低频操作收纳（冻结/编辑/删除），弹层浮在行上 */
+.rowmenu { position: relative; flex: none; display: inline-flex; }
+.rowmenu-btn {
+  width: 24px; height: 22px; border-radius: 6px; border: 0; background: none;
+  color: var(--ink-2); cursor: pointer; font-family:inherit;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.rowmenu-btn:hover, .rowmenu-btn[aria-expanded="true"] { background: var(--soft-2); color: var(--ink); }
+/* 下拉弹层视觉走 popup 的 .pp-menu（RowMenu 渲染 .rowmenu-pop.pp-menu，
+   这里只留锚定定位，z-index 让位于菜单内部规则） */
+.rowmenu-pop.pp-menu { position: absolute; right: 0; top: calc(100% + 4px); left: auto; }
+
+/* 空态：一句话 + 下一步，替代「（空）」 */
+.cloud-empty { padding: 22px 12px; text-align: center; color: var(--faint); font-size: 12px; line-height: 1.8; }
+.cloud-empty kbd {
+  font-family:inherit; font-size: 11px; background: var(--soft); border-radius: 4px; padding: 1px 5px;
+}
+
+/* 读取失败横条（琥珀，带重试）与首载占位 */
+.cloud-error {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border: 1px solid var(--wait-line); border-radius: var(--r8);
+  background: var(--wait-bg); color: var(--wait); font-size: 12.5px;
+}
+.cloud-error .btn { margin-left: auto; }
+.cloud-loading { flex: none; text-align: center; padding: 28px 0; font-size: 12.5px; }
+
+/* ---- 仓库页（repos 视图）---- */
+/* 行操作 hover 浮现：26 行 × 3 钮常驻是纯噪音；占位不变，tr:focus-within 保键盘 */
+.rp-page .rp-acts { opacity: 0.38; transition: opacity 0.12s; }
+.rp-page tr:hover .rp-acts, .rp-page tr:focus-within .rp-acts { opacity: 1; }
+@media (hover: none) { .rp-page .rp-acts { opacity: 1; } }
+/* #152：行内动作改成编排工具区后按钮变宽，操作列被挤成两行——动作栏**不换行**
+   （一行放不下时横向滚动），列宽由表头百分比让给其他列。 */
+.rp-page .rp-acts .ta-bar { flex-wrap: nowrap; gap: 6px; }
+.rp-page .rp-acts { white-space: nowrap; overflow-x: auto; }
+
+/* 面板 colhead 的长说明单行截断（全文语义让位版面）：说明段曾把 h3 挤到折行、
+   把右侧按钮组顶成两行。CSS 单边收口，不动 JSX（该文件有并行会话在改）。 */
+.rp-page .colhead > h3 { white-space: nowrap; }
+.rp-page .colhead > .muted {
+  flex: 0 1 auto; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.rp-page .colhead > .acts { flex: none; }
+/* 存储根未设置是「待配置」不是「出错」：红 → 琥珀（--wait 语义） */
+.rp-page .rp-ref-warn {
+  border-color: var(--wait-line);
+  background: var(--wait-bg);
+  color: var(--wait);
+}
+
+/* ---- 动效克制与降级（原型 §6）---- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+/* 窄屏：并列双栏改纵向，侧边栏浮层化 */
+@media (max-width: 900px) {
+  #panes { flex-direction: column; overflow-y: auto; }
+  .pane { min-height: 340px; }
+  .topbar .sum { display: none; }
+  #app-shell { position: relative; }
+  #side { position: absolute; left: 0; top: 0; bottom: 0; z-index: 40; box-shadow: 0 0 26px rgba(0, 0, 0, 0.18); }
+  /* 侧栏浮层的点外收起遮罩：浮层打开时盖住主区，点一下即收起 */
+  .side-scrim { display: block; position: absolute; inset: 0; z-index: 39; background: rgba(22, 24, 28, 0.22); }
+}
+@media (min-width: 901px) {
+  .side-scrim { display: none; }
+}
+
+/* 项目图标（emoji/单字符）：侧栏树行名之前、仓库管理页行首 */
+.trow-icon { font-size: 13px; line-height: 1; }
+.rp-icon { font-size: 13px; margin-right: 4px; }
+
+/* 持续 get（waitgoal）绿点（#145）：行名后一枚小圆点表示「该项目已开启持续 get」；
+   行内「更多 → 持续 get…」菜单项同款。 */
+.rp-gl-dot {
+  display: inline-block;
+  width: 7px; height: 7px; margin-left: 6px; vertical-align: 1px;
+  border-radius: 50%;
+  background: #2E9E5B;
+  box-shadow: 0 0 0 2px rgba(46, 158, 91, 0.18);
+}
+.rp-gl-menu-it { display: inline-flex; align-items: center; gap: 6px; }
+.rp-gl-menu-it .rp-gl-dot { margin-left: 0; vertical-align: 0; }
+/* 配置弹窗（components/repos/get-loop-modal.jsx）：标题行 + 开关；阻塞窗口带单位 */
+.rp-gl { display: flex; flex-direction: column; gap: 10px; }
+.rp-gl-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; min-width: 0;
+}
+.rp-gl-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rp-gl-name { font-weight: 650; font-size: 12.5px; color: var(--ink); }
+.rp-gl-desc { font-size: 10.5px; color: var(--faint); }
+.rp-gl-body { display: flex; flex-direction: column; gap: 10px; }
+.rp-gl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rp-gl-row > span:first-child { color: var(--ink-2); font-size: 12px; }
+.rp-gl-unit { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--mid); }
+.rp-gl-min {
+  width: 64px; height: 24px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+  font: 400 11.5px ui-monospace, Consolas, monospace;
+  text-align: right;
+}
+.rp-gl-min:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }
+.rp-gl-tpl { display: flex; flex-direction: column; gap: 6px; }
+.rp-gl-h { font-size: 12px; font-weight: 650; color: var(--ink); }
+.rp-gl-oneline { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rp-gl-oneline-input {
+  flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 4px 8px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+}
+.rp-gl-oneline-input:focus { outline: none; border-color: var(--mdw-accent, #2F6F5E); }
+.rp-gl-note {
+  font-size: 11px; color: var(--faint); line-height: 1.65;
+  padding: 7px 9px;
+  border: 1px dashed var(--line);
+  border-radius: 7px;
+  background: var(--soft);
+}
+.rp-gl-acts {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-top: 2px; padding-top: 10px; border-top: 1px solid var(--line);
+}
+.rp-gl-acts .spacer { flex: 1 1 auto; }
+
+/* 待初始化清单：组里引用、本机未登记的仓库（导入布局带进来的占位）。
+   一条占位 = 一张卡：名字 / 来源组 / key 各占一层，不再把四段信息压进一行小字。 */
+.rp-pending {
+  flex: none;
+  margin: 2px 0 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow-sm);
+}
+.rp-pending-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 12px;
+}
+.rp-pending-head-main { min-width: 0; }
+.rp-pending-head h3 {
+  margin: 0; display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 650; color: var(--ink);
+}
+.rp-pending-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; padding: 1px 8px; border-radius: 999px;
+  background: var(--wait-bg); color: var(--wait); border: 1px solid var(--wait-line);
+  font-family: var(--mono); font-size: 12px; font-weight: 650;
+}
+.rp-pending-head p { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.rp-pending-list { display: flex; flex-direction: column; gap: 8px; }
+.rp-pending-card {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--r8);
+  background: var(--soft);
+}
+.rp-pending-info { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rp-pending-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rp-pending-title strong { font-size: 14px; font-weight: 650; color: var(--ink); }
+.rp-pending-board {
+  padding: 1px 8px; border-radius: 999px;
+  background: var(--paper); border: 1px solid var(--line);
+  font-size: 12px; color: var(--ink-2);
+}
+.rp-pending-tag {
+  padding: 1px 8px; border-radius: 999px;
+  background: var(--wait-bg); border: 1px solid var(--wait-line);
+  font-size: 12px; color: var(--wait);
+}
+.rp-pending-key { font-family: var(--mono); font-size: 12px; color: var(--mid); word-break: break-all; }
+.rp-pending-desc {
+  margin: 0; font-size: 13px; color: var(--ink-2); line-height: 1.5;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.rp-pending-acts { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* 组详情页头部动作（添加成员 → 跳仓库页对应分组）
+   动作行改为**静态流内右对齐**（原为 position:absolute 右上角）：绝对定位会压在
+   标题/简介文字上（任务 #87 截图：组简介被按钮盖住一半）。改成独立一行后，
+   名字再长、简介再长都不会被按钮遮挡。 */
+.rp-group-head { position: relative; }
+.rp-group-acts {
+  position: static; display: flex; justify-content: flex-end; gap: 6px;
+  margin: 8px 0 2px; flex-wrap: wrap;
+}
+
+/* 组面板 · 本组任务面板（首屏）：只列 frontmatter 归属本组的任务，项目 tag 标归属 */
+.rp-tasks { margin: 14px 0 4px; border: 1px solid var(--soft-2); border-radius: var(--r8); background: var(--paper); padding: 10px 12px; }
+.rp-tasks-h { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+.rp-ptag { flex: none; font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 9px; background: var(--soft); border: 1px solid var(--soft-2); color: var(--ink-2); font-weight: 600; }
+.rp-tstat { flex: none; font-size: 10.5px; color: var(--mid); }
+/* 已领取（进行中）的领取时刻/文案：#121 口径用进行中蓝（旧为完成绿，已废） */
+.rp-tstat.live { color: var(--doing); }
+.rp-proj-task.done { opacity: 0.75; }
+.rp-done-toggle { display: flex; align-items: center; gap: 5px; width: 100%; padding: 5px 6px 2px; border: 0; background: none; font-family:inherit; font-size: 11px; color: var(--live); cursor: pointer; text-align: left; }
+.rp-done-toggle .tri { display: inline-block; font-size: 9px; transition: transform 0.15s ease; }
+.rp-done-toggle .tri.open { transform: rotate(90deg); }
+/* 任务行（组任务面板与项目工作区摘要共用） */
+.rp-proj-task { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 4px 6px; border-radius: var(--r5); cursor: pointer; font-family:inherit; color: inherit; background: var(--paper); border: 1px solid var(--soft-2); }
+.rp-proj-task:hover { background: var(--soft); }
+.rp-proj-task-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.rp-proj-goal { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--wait); }
+.rp-proj-none { font-size: 12px; padding: 4px 6px; }
+

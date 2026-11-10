@@ -6,425 +6,26 @@
 //
 // resource: 'doc' 触发 CRUD 五件断言（tests/unit/registry.test.mjs）：
 //   doc.list / doc.get / doc.add / doc.update / doc.remove 必须齐备且两端可调。
-import * as paths from './paths.js';
-import * as store from './store.js';
+//
+// 业务逻辑在 ./service.js（CRUD + 外部写回），附件在 ./attach.js，
+// CLI 人读渲染在 ./render.js —— 本文件只剩模块声明与 action 表。
 import * as seed from './seed.js';
 import * as refs from './refs.js';
 import * as links from './links.js';
-import { reposBridge } from './repos-bridge.js';
-import { badInput, blocked } from '../../core/errors.js';
-import { getDb } from '../../core/db/index.js';
-import { tx } from '../../core/db/tx.js';
+import { addDoc, getDoc, listDocs, removeDoc, updateDoc } from './service.js';
+import { attachToDoc, detachFromDoc, listDocAttachments } from './attach.js';
 import {
-  deleteAttachment,
-  ensureDocRef,
-  ensureRefAttachment,
-  ensureTaskAttachment,
-  ensureUrlAttachment,
-  linkAttachment,
-  listRefAttachments,
-  refIdFor,
-  resolveRefId,
-  syncRefAttachments,
-  unlinkAttachment,
-  upsertFileAttachment,
-} from '../../core/attachmentdb.js';
-import { localUpload } from '../../core/localatt.js';
-import { contentTypeOf, isImageName } from '../../core/fileapi.js';
-import { attachmentsRootFromEnv } from '../../core/paths.js';
-import { readFile } from 'node:fs/promises';
-import { basename, resolve as resolvePath } from 'node:path';
-import fsp from 'node:fs/promises';
-import path from 'node:path';
-
-const clean = (v) => String(v || '').trim();
-
-// list/get 的人读渲染共用的标题行：rel 或 path，缺省标题来自正文首个 #
-function docHead(d) {
-  const addr = d.rel ? d.rel : d.path || d.docId;
-  const head = d.title ? `「${d.title}」` : '';
-  const extra = d.summary && d.summary !== d.title ? ` · ${d.summary}` : '';
-  return `${addr}${head}${extra}`;
-}
-
-// ─── 查 ────────────────────────────────────────────────────────────────
-
-// 树索引（零副作用，不播种——agent/前端拿它当双链解析的数据源）
-async function listDocs({ external } = {}) {
-  const docs = [];
-  for (const f of await store.listOwnDocs()) {
-    const title = /^#\s+(.+)$/m.exec(f.size <= 512 * 1024 ? await safeRead(f.abs) : '');
-    docs.push({
-      docId: paths.ownDocId(f.rel),
-      rel: f.rel,
-      name: f.rel.replace(/\.md$/i, '').split('/').pop(),
-      title: title ? title[1].trim() : '',
-      size: f.size,
-    });
-  }
-  const out = { docs, count: docs.length };
-  if (external) {
-    const { loadStore } = await reposBridge();
-    const s = await loadStore();
-    const closure = await store.externalClosure(s);
-    const files = await store.listExternalDocs(closure);
-    out.external = files.map((abs) => ({ docId: paths.extDocId(abs), path: abs, name: abs.replace(/\\/g, '/').split('/').pop().replace(/\.md$/i, '') }));
-    out.bound = closure.map((c) => ({ path: c.path, owner: c.owner, exists: c.exists, isDir: c.isDir }));
-  }
-  return out;
-}
-
-async function safeRead(abs) {
-  try {
-    return await fsp.readFile(abs, 'utf8');
-  } catch {
-    return '';
-  }
-}
-
-// 读全文：自有（惰性播种）/ 外部（闭包内才放行）；目录绑定返回文件清单
-async function getDoc({ ref } = {}) {
-  if (!clean(ref)) throw badInput('请给文档标识：自有 rel:<路径>（或裸相对路径），外部 path:<绝对路径>');
-  const parsed = paths.parseDocId(ref);
-  if (parsed.kind === 'own') {
-    let body = null;
-    try {
-      body = await store.readOwnDoc(parsed.rel);
-    } catch {
-      const seeded = await seed.ensureSeedForRel(parsed.rel);
-      if (seeded === null) {
-        return { docId: paths.ownDocId(parsed.rel), rel: parsed.rel, missing: true, writable: true, title: '', summary: '', body: '' };
-      }
-      body = seeded;
-    }
-    return outOwn(parsed.rel, body);
-  }
-  // 外部：先过绑定闭包，闭包外一律拒绝——doc.get 不能变成任意文件读入口
-  const { loadStore } = await reposBridge();
-  const s = await loadStore();
-  const closure = await store.externalClosure(s);
-  const abs = store.resolveExternal(parsed.path, closure);
-  if (!abs) throw blocked(`外部路径不在绑定闭包内（先 docs bind 登记）: ${parsed.path}`);
-  let st = null;
-  try {
-    st = await fsp.stat(abs);
-  } catch {
-    /* 缺失：按 missing 返回 */
-  }
-  if (!st) {
-    return { docId: paths.extDocId(abs), path: abs, missing: true, writable: true, title: '', summary: '', body: '' };
-  }
-  if (st.isDirectory()) {
-    const files = await store.listExternalDocs([{ path: abs, exists: true, isDir: true }], { maxDepth: 3, maxFiles: 200 });
-    return { docId: paths.extDocId(abs), path: abs, dir: true, writable: false, files };
-  }
-  return outExternal(abs, await safeRead(abs));
-}
-
-// ─── 增 / 改 / 删 ──────────────────────────────────────────────────────
-//
-// 读写口径（2026-11 任务 #88「简介文档优化」）：
-//   rel:  自有树（~/.nx-kv/docs/）——可读可写可删
-//   path: 外部（Obsidian vault / 任意登记目录）——**登记在册即可写**：
-//         读侧要求路径在绑定闭包内；写侧再校验一次（闭包 + .md + 非目录），
-//         等于「文档集里的每一篇都能就地改」，同时不把 PATCH 变成任意文件写入口。
-//         删除仍不给外部：删除是可恢复性最差的操作，让它回来源做。
-
-// body-file 只给 CLI（templates 先例）：HTTP 是面板的通道，不该变成任意读本机文件的入口
-async function bodyOf({ body, bodyFile }, opts) {
-  const fileArg = opts && opts.transport === 'http' ? undefined : bodyFile;
-  if (typeof body === 'string') return body;
-  if (fileArg !== undefined) {
-    const { readFileSync } = await import('node:fs');
-    return readFileSync(fileArg === '-' ? 0 : fileArg, 'utf8');
-  }
-  return null;
-}
-
-async function addDoc(ctx, opts) {
-  const rel = await store.writeOwnDoc(ctx.rel, (await bodyOf(ctx, opts)) ?? '');
-  const body = await store.readOwnDoc(rel);
-  const summary = await seed.writeBackSummary(rel, body);
-  return { docId: paths.ownDocId(rel), rel, bytes: Buffer.byteLength(body, 'utf8'), summary };
-}
-
-// 外部文档写回（面板/CLI 均可）：路径必须仍在**绑定闭包**内——闭包是唯一的授权来源，
-// 否则 PATCH 就成了任意文件写入口（与 getDoc 的读侧守卫同口径）。
-// 目录绑定只允许改写目录内的 .md；单文件绑定只允许那一个文件。
-async function writeExternalDoc(abs, body) {
-  const { loadStore } = await reposBridge();
-  const s = await loadStore();
-  const closure = await store.externalClosure(s);
-  const hit = store.resolveExternal(abs, closure);
-  if (!hit) throw blocked(`外部路径不在绑定闭包内（先 docs bind 登记）: ${abs}`);
-  if (!/\.md$/i.test(abs)) throw badInput('只能写回 .md 文档: ' + abs);
-  let st = null;
-  try {
-    st = await fsp.stat(abs);
-  } catch {
-    st = null;
-  }
-  if (st && st.isDirectory()) throw blocked('这是目录绑定，不能整体写回: ' + abs);
-  await fsp.mkdir(path.dirname(abs), { recursive: true });
-  await fsp.writeFile(abs, body, 'utf8');
-  const saved = await safeRead(abs);
-  // 外部文档同样是「文档库的一行」：正文里的 fileId / nxkv 链接也落 ref_attach。
-  // 与自有树同一事务口径（ensureDocRef 幂等；refs 只装 .md）。
-  const db = getDb();
-  tx(
-    (conn) => {
-      const refId = ensureDocRef(conn, { locator: abs });
-      syncRefAttachments(conn, { refId, text: saved });
-    },
-    { db, mode: 'IMMEDIATE' }
-  );
-  return { docId: paths.extDocId(abs), path: abs, bytes: Buffer.byteLength(saved, 'utf8'), external: true };
-}
-
-async function updateDoc(ctx, opts) {
-  const parsed = paths.parseDocId(ctx.ref);
-  const body = await bodyOf(ctx, opts);
-  if (body === null) throw badInput('请给 --body <正文>（多行用 --body-file <文件> 或 - 读管道）');
-  // 外部绑定：登记在册 = 我的文档集，允许就地写回来源文件（闭包内校验）
-  if (parsed.kind !== 'own') return writeExternalDoc(parsed.path, body);
-  // 不存在即创建（面板保存语义：脏页签保存不该因为别人先建了而失败，也不该在这里静默分叉出第二份）
-  const rel = await store.writeOwnDoc(parsed.rel, body);
-  const saved = await store.readOwnDoc(rel);
-  const summary = await seed.writeBackSummary(rel, saved);
-  return { docId: paths.ownDocId(rel), rel, bytes: Buffer.byteLength(saved, 'utf8'), summary };
-}
-
-async function removeDoc({ ref } = {}) {
-  const parsed = paths.parseDocId(ref);
-  if (parsed.kind !== 'own') throw blocked('外部绑定是只读引用，不能在这里删除');
-  const rel = await store.removeOwnDoc(parsed.rel);
-  return { docId: paths.ownDocId(rel), rel };
-}
-
-// ─── 出参整形 ──────────────────────────────────────────────────────────
-
-function outOwn(rel, body) {
-  const { summaryFromMd } = seed;
-  const m = /^#\s+(.+)$/m.exec(body);
-  return {
-    docId: paths.ownDocId(rel),
-    rel,
-    title: m ? m[1].trim() : '',
-    summary: summaryFromMd(body),
-    body,
-    writable: true,
-  };
-}
-
-function outExternal(abs, body) {
-  const m = /^#\s+(.+)$/m.exec(body);
-  return {
-    docId: paths.extDocId(abs),
-    path: abs,
-    title: m ? m[1].trim() : '',
-    summary: seed.summaryFromMd(body),
-    body,
-    // 登记在册的外部文档 = 用户的文档集，允许就地写回来源文件（写侧另过闭包校验）
-    writable: true,
-    external: true,
-  };
-}
-
-// ─── CLI 人读渲染 ──────────────────────────────────────────────────────
-
-const renderList = (d) => {
-  const lines = [`自有文档 ${d.count} 个（~/.nx-kv/docs/，env NX_KV_DOCS_DIR 可覆盖）`];
-  for (const x of d.docs) lines.push(`  ${x.rel}  ${x.title || x.name}`);
-  if (d.external?.length) {
-    lines.push(`外部文档 ${d.external.length} 个（只读引用）:`);
-    for (const x of d.external) lines.push(`  ${x.path}`);
-  }
-  if (!d.count && !d.external?.length) {
-    lines.push('（还没有文档——描述字符串会在首次读取时播种为 md，或直接 docs seed --apply）');
-  }
-  return lines.join('\n');
-};
-
-const renderGet = (d) => {
-  if (d.missing) return `（文档不存在: ${d.rel || d.path}）`;
-  if (d.dir) return `（外部目录绑定: ${d.path}，${d.files.length} 个文档）\n  ${d.files.slice(0, 20).join('\n  ')}`;
-  const head = [`【${d.title || docHead(d)}】`, `  ${d.rel || d.path}${d.external ? '  （外部 · 可写回来源）' : ''}`, ''];
-  return head.join('\n') + d.body;
-};
-
-const renderWritten = (d) =>
-  `已写入 ${d.rel}（${d.bytes} 字节）${d.summary ? `\n摘要已回写: ${d.summary}` : ''}`;
-
-const renderSeed = (d) => {
-  if (d.written !== undefined) return `已播种 ${d.written} 份文档:\n  ${(d.items || []).join('\n  ') || '（无）'}`;
-  if (!d.count) return '没有需要播种的文档（字符串字段都为空，或约定路径已有 md）';
-  return `待播种 ${d.count} 份（--apply 执行）:\n  ${d.items.map((x) => `${x.rel}  ←「${x.title}」`).join('\n  ')}`;
-};
-
-const renderRef = (d) =>
-  `${d.ref ? '已绑定' : '已拆绑定（回到约定路径）'}: ${d.kind} ${d.name} → ${d.ref ? (d.ref.rel ? 'rel:' + d.ref.rel : 'path:' + d.ref.path) : '约定路径'}`;
-
-const renderNoteRef = (d) =>
-  `${d.ref ? '已绑定' : '已拆绑定'}: 「${d.boardName}」× ${d.repoKey} → ${d.ref ? (d.ref.rel ? 'rel:' + d.ref.rel : 'path:' + d.ref.path) : '约定路径'}`;
-
-const renderLink = (d) => {
-  if (d.removed !== undefined) return `已移除组绑定: ${d.removed}（剩 ${d.count} 条）`;
-  const lines = [`「${d.boardName}」的组绑定（${d.count} 条）:`];
-  for (const l of d.links) {
-    lines.push(`  ${l.rel ? 'rel:' + l.rel : 'path:' + l.path}${l.tag ? `  [${l.tag}]` : ''}${l.note ? `  · ${l.note}` : ''}`);
-  }
-  return lines.join('\n');
-};
-
-// ─── 附件（ref_attach：文档的资源关系，与任务侧同一套语义） ──────────────
-
-/** 取文档的 locator（refs 的稳定键）：自有 = rel，外部 = 绝对路径（POSIX）。 */
-async function docLocatorOf(ref) {
-  const d = await getDoc({ ref });
-  if (!d || d.missing) throw badInput('文档不存在: ' + String(ref || ''));
-  if (d.dir) throw badInput('目录绑定不能挂附件（请指定单个文档）');
-  const locator = String(d.rel || d.path || '').replace(/\\/g, '/');
-  if (!locator) throw badInput('无法定位文档: ' + String(ref || ''));
-  return { d, locator };
-}
-
-/**
- * 文档挂附件（`docs attach`）：与任务侧同一条写入路径——
- *   attachments（资源）+ ref_attach（关系，role=attach）；
- *   默认把 markdown 追加进正文，`--no-embed` 只挂附件区。
- */
-async function attachToDoc(ctx) {
-  const { d, locator } = await docLocatorOf(ctx.ref);
-  const db = getDb();
-  const displayName0 = clean(ctx.name);
-  let attachmentId = '';
-  let kind = '';
-  let displayName = displayName0;
-  let markdown = '';
-
-  const mod = await import('../../shared/attach.js');
-  if (ctx.path) {
-    const abs = resolvePath(String(ctx.path));
-    let buffer;
-    try {
-      buffer = await readFile(abs);
-    } catch (e) {
-      throw badInput(`读不到文件: ${abs}（${(e && e.code) || e.message}）`);
-    }
-    const fileName = displayName || basename(abs);
-    const rec = await localUpload({ name: fileName, buffer, contentType: contentTypeOf(fileName) });
-    displayName = rec.name;
-    kind = isImageName(rec.name, rec.contentType) ? 'image' : 'file';
-    tx(
-      (conn) => upsertFileAttachment(conn, {
-        id: rec.fileId,
-        name: rec.name,
-        localPath: rec.path,
-        mime: rec.contentType,
-        size: rec.size,
-        storage: 'local',
-        meta: { isImage: kind === 'image', source: 'docs-cli' },
-      }),
-      { db, mode: 'IMMEDIATE' }
-    );
-    attachmentId = rec.fileId;
-    markdown = mod.embedMarkdown({ name: displayName, id: rec.fileId, kind });
-  } else if (ctx.fileId) {
-    const fid = String(ctx.fileId).trim();
-    if (!mod.looksLikeFileId(fid)) throw badInput(`附件 id 不合法: ${fid}`);
-    kind = isImageName(fid, '') ? 'image' : 'file';
-    displayName = displayName || fid;
-    tx(
-      (conn) => upsertFileAttachment(conn, { id: fid, name: displayName, meta: { isImage: kind === 'image' } }),
-      { db, mode: 'IMMEDIATE' }
-    );
-    attachmentId = fid;
-    markdown = mod.embedMarkdown({ name: displayName, id: fid, kind });
-  } else if (ctx.url) {
-    const u = String(ctx.url).trim();
-    if (!/^https?:\/\//i.test(u)) throw badInput(`--url 需要 http(s) 绝对地址: ${u}`);
-    attachmentId = tx((conn) => ensureUrlAttachment(conn, { url: u, name: displayName }), { db, mode: 'IMMEDIATE' });
-    if (!attachmentId) throw badInput(`URL 登记失败: ${u}`);
-    kind = 'url';
-    markdown = `[${displayName || u}](${u})`;
-  } else if (ctx.task) {
-    const tid = Number(String(ctx.task).replace(/^#/, ''));
-    if (!Number.isFinite(tid)) throw badInput(`--task 需要任务全局 id: ${ctx.task}`);
-    attachmentId = tx((conn) => ensureTaskAttachment(conn, { taskId: tid, name: displayName }), { db, mode: 'IMMEDIATE' });
-    if (!attachmentId) throw badInput(`任务不存在: ${ctx.task}`);
-    kind = 'task';
-    markdown = `[${displayName || `任务 #${tid}`}](nxkv://task/${tid})`;
-  } else if (ctx.doc) {
-    const target = await docLocatorOf(ctx.doc);
-    const refId =
-      resolveRefId(db, target.locator) ||
-      tx((conn) => ensureDocRef(conn, { locator: target.locator }), { db, mode: 'IMMEDIATE' });
-    if (!refId) throw badInput(`找不到文档: ${ctx.doc}`);
-    attachmentId = tx((conn) => ensureRefAttachment(conn, { refId, name: displayName }), { db, mode: 'IMMEDIATE' });
-    if (!attachmentId) throw badInput(`找不到文档: ${ctx.doc}`);
-    kind = 'ref';
-    markdown = `[${displayName || target.locator.split('/').pop()}](nxkv://ref/${refId})`;
-  }
-
-  if (!attachmentId) {
-    throw badInput('需要 --path / --fileId / --url / --task / --doc 之一');
-  }
-
-  const noEmbed = !!(ctx.noEmbed ?? ctx['no-embed']);
-  const role = noEmbed ? 'attach' : 'inline';
-  if (noEmbed) {
-    tx(
-      (conn) => {
-        const refId = ensureDocRef(conn, { locator });
-        linkAttachment(conn, { host: 'ref', hostId: refId, attachmentId, role: 'attach', note: ctx.note });
-      },
-      { db, mode: 'IMMEDIATE' }
-    );
-  } else {
-    const body = d.body || '';
-    const next = body ? `${body}\n${markdown}` : markdown;
-    await updateDoc({ ref: ctx.ref, body: next });
-  }
-
-  return {
-    status: 'ok',
-    ref: locator,
-    attachmentId,
-    kind,
-    area: noEmbed ? 'area' : 'inline',
-    role,
-    markdown,
-  };
-}
-
-/** 解除文档与资源的关系；--purge 在无人引用时连资源行与本机字节一起删。 */
-async function detachFromDoc({ ref, attachment, purge } = {}) {
-  const { locator } = await docLocatorOf(ref);
-  const attId = String(attachment || '').trim();
-  if (!attId) throw badInput('需要 --attachment <资源 id>（见 docs attachments 输出）');
-  const db = getDb();
-  let unlinked = 0;
-  let purgeResult = null;
-  tx(
-    (conn) => {
-      const refId = ensureDocRef(conn, { locator });
-      unlinked = unlinkAttachment(conn, { host: 'ref', hostId: refId, attachmentId: attId });
-      if (purge && unlinked) {
-        purgeResult = deleteAttachment(conn, attId, { attachmentsRoot: attachmentsRootFromEnv() });
-      }
-    },
-    { db, mode: 'IMMEDIATE' }
-  );
-  return {
-    status: 'ok',
-    ref: locator,
-    attachment: attId,
-    unlinked,
-    purged: !!(purgeResult && purgeResult.removed),
-    purgeReason: purgeResult ? purgeResult.reason || '' : '',
-    bytesRemoved: !!(purgeResult && purgeResult.bytesRemoved),
-  };
-}
+  renderAttach,
+  renderAttachments,
+  renderDetach,
+  renderGet,
+  renderLink,
+  renderList,
+  renderNoteRef,
+  renderRef,
+  renderSeed,
+  renderWritten,
+} from './render.js';
 
 export default {
   id: 'docs',
@@ -507,24 +108,8 @@ export default {
       http: ['GET', '/api/docs/attachments'],
       summary: '这篇文档用了哪些资源（ref_attach：图片/文件/URL/内部 task、ref 引用）',
       args: ['ref'],
-      run: async (ctx) => {
-        const d = await getDoc({ ref: ctx.ref });
-        const locator = String(d.rel || d.path || '').replace(/\\/g, '/');
-        if (!locator) throw badInput('无法定位文档: ' + String(ctx.ref || ''));
-        return { refId: refIdFor(locator), locator, attachments: listRefAttachments(getDb(), refIdFor(locator)) };
-      },
-      render: (d) => {
-        if (!d.attachments.length) {
-          return `「${d.locator}」没有登记资源（docs attach --no-embed 可只挂到附件区）`;
-        }
-        const areaOf = (role) => (role === 'attach' ? '附件区' : '正文内嵌');
-        const lines = [`「${d.locator}」的资源（${d.attachments.length}）`];
-        for (const a of d.attachments) {
-          const where = a.localPath || a.url || (a.kind === 'task' ? `task ${a.targetKey}#${a.targetSeq}` : a.targetKey);
-          lines.push(`  ${a.id}  [${a.kind}/${a.role} · ${areaOf(a.role)}]  ${a.name || '-'}  ${where || ''}`);
-        }
-        return lines.join('\n');
-      },
+      run: (ctx) => listDocAttachments(ctx),
+      render: renderAttachments,
     },
     {
       id: 'doc.attach',
@@ -545,8 +130,7 @@ export default {
         'no-embed': { type: 'boolean', hint: '同 --noEmbed' },
       },
       run: attachToDoc,
-      render: (d) =>
-        `已附加 ${d.attachmentId}（${d.kind}）到「${d.ref}」· ${d.area === 'area' ? '附件区（未写正文）' : '正文内嵌'}${d.markdown ? `\n嵌入: ${d.markdown}` : ''}`,
+      render: renderAttach,
     },
     {
       id: 'doc.detach',
@@ -559,19 +143,7 @@ export default {
         purge: { type: 'boolean', hint: '连资源与字节一起删（仍被引用时拒绝）' },
       },
       run: detachFromDoc,
-      render: (d) => {
-        const head = d.unlinked
-          ? `已解除「${d.ref}」与附件 ${d.attachment} 的关系`
-          : `「${d.ref}」本来就没有引用附件 ${d.attachment}`;
-        const tail = d.purged
-          ? '；资源已删除（含本机字节）'
-          : d.purgeReason === 'in-use'
-            ? '；资源仍被其他任务/文档引用，未删字节'
-            : d.purgeReason === 'file-locked'
-              ? '；文件被占用，未删字节'
-              : '';
-        return head + tail;
-      },
+      render: renderDetach,
     },
     {
       id: 'docs.seed',

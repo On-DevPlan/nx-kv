@@ -1,0 +1,322 @@
+/* ---------- 任务状态 tag（#121）----------
+   全应用统一组件 components/status-tag 的视觉层，口径：
+   蓝(--doing)=进行中（已领取在干）、绿(--live)=已完成、浅灰=待领取；
+   取消/软删/迁出这类「已收口」不入三色，弱化成灰虚线。
+   各处单字徽标/色点（.cnt-*、.st-*、.mdw-tcard 的点）配色跟随同一份映射，
+   由 status-tag/model.js 的 statusTone() 决定——不要再散写状态色。 */
+.tstat {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--soft-2);
+  color: var(--mid);
+  white-space: nowrap;
+}
+.tstat.tstat-pending { color: var(--ink-2); background: var(--soft); border-color: var(--soft-2); }
+.tstat.tstat-doing { color: var(--doing, #2f5fb5); background: var(--doing-bg, #edf2fc); border-color: var(--doing-line, #c9d6f0); }
+.tstat.tstat-done { color: var(--live); background: rgba(31, 122, 77, 0.08); border-color: rgba(31, 122, 77, 0.28); }
+.tstat.tstat-gone { color: var(--faint); border-style: dashed; }
+
+/* ---------- 表格：细线分隔，不画网格 ---------- */
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 9px 10px; vertical-align: top; }
+th {
+  color: var(--mid);
+  font-family: var(--label);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+tbody tr:hover { background: var(--soft); }
+tbody tr + tr td { box-shadow: inset 0 1px 0 var(--soft); }
+.mono, td.path { font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
+td.ops { white-space: nowrap; }
+td.ops .btn { margin: 0 3px 3px 0; }
+.muted { color: var(--mid); }
+.bad { font-weight: 700; }
+
+/* 队列任务表：列宽写死，**别让正文挤成一条**。
+   没有列宽时浏览器按内容自动分配，操作列（四五个按钮）会把「任务」列压到
+   十几像素，正文竖着排成一根——这是这个表最难看的地方。 */
+.queue-table { table-layout: fixed; }
+/* 操作列必须装得下四个按钮（编辑/提前/置后/删除 ≈ 177px + 内边距）。
+   以前给 156px，按钮就溢出单元格、被外层裁掉——最右边的「删除」点不到。 */
+.queue-table .c-drag { width: 30px; }
+.queue-table .c-id { width: 46px; }
+.queue-table .c-status { width: 104px; }
+.queue-table .c-time { width: 150px; }
+.queue-table .c-ops { width: 196px; }
+/* 兜底：真装不下时让表横向滚动，而不是把按钮裁在外面 */
+.queue-wrap { overflow-x: auto; }
+.queue-table td.task-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+  font-size: 12.5px;
+}
+.queue-table .c-time { font-family: var(--mono); font-size: 11px; color: var(--mid); }
+/* 同一页两张表必须是**同一种表格语言**。
+   以前看板表头是浅灰底 + 1px 底线，队列表头却是透明底 + 无线 —— 像两个产品。
+   这里把队列表头对齐看板的表头样式。 */
+.queue-table thead th {
+  padding: 7px 10px;
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+  color: var(--mid);
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.queue-table tbody td { padding: 8px 10px; vertical-align: middle; }
+/* （.queue-table .board-status 已删，#121 清理：全库无渲染点；
+   任务状态一律走 .tstat 统一组件） */
+
+/* ---------- localtask/timegoal 合并目录看板（仪表盘质感） ----------
+   三条主线：
+   1) **信息分层靠字重与字号**，不靠一堆边框和底色 —— 标题最重、路径与计数最轻。
+   2) **状态用色点 + 文字**，不用一排填充色块（那是最"廉价后台"的做法）。
+   3) **机器数据用等宽字体**：路径、编号、计数一眼就知道是机器给的。 */
+.board-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.board-heading, .board-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 面板标题：仪表刻度的质感（Bahnschrift + 字号分层；汉字不加字距） */
+.board-heading strong {
+  font-family: var(--label);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.board-heading .muted { font-size: 11.5px; }
+.board-live { display: inline-flex; align-items: center; gap: 6px; color: var(--mid); font-size: 11px; }
+.board-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mid); flex: none; }
+.board-live-dot.ok { background: var(--live); animation: board-pulse 2.4s ease-in-out infinite; }
+.board-live-dot.reconnecting { background: var(--danger); }
+.board-live-dot.connecting { background: var(--mid); }
+@keyframes board-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(31, 122, 77, 0.35); }
+  50% { box-shadow: 0 0 0 3px rgba(31, 122, 77, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-live-dot.ok { animation: none; }
+}
+
+.board-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  /* 看板卡片与它下面的东西（归档区 / 投递条）之间留一条呼吸缝。
+     空 store 时投递条直接贴在卡片下沿上，差 2px，像没画完。 */
+  margin-bottom: 12px;
+}
+table.directory-board { min-width: 780px; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+/* 列标题 = 仪表刻度：小字 + 全大写（拉丁字）。
+   ⚠️ **汉字不能加字距** —— letter-spacing 会把每个汉字都撑开，看着像排版事故。
+   所以字距只留给拉丁文，列标题里的中文靠字号与颜色分层。 */
+.directory-board thead th {
+  padding: 7px 12px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  text-align: left;
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.directory-board td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.directory-board tbody tr:last-child td { border-bottom: 0; }
+.directory-board tbody tr { cursor: pointer; transition: background 0.12s; --rail: var(--soft-2); }
+.directory-board tbody tr:hover { background: #faf9f6; }
+/* 每行左侧一条 2px 状态导轨（Wekan 的 minicard 就是用色条画标签的）。
+   一列对齐的色条是看板最省力也最"贵"的信号：不用看字就知道哪行在等人、哪行已归档。 */
+.directory-board tbody tr td:first-child { box-shadow: inset 2px 0 0 var(--rail); }
+.directory-board tbody tr[data-state="live"] { --rail: var(--live); }
+.directory-board tbody tr[data-state="stale"] { --rail: var(--warn); }
+.directory-board tbody tr[data-state="pool"] { --rail: var(--ink-2); }
+/* 选中的行：导轨换成墨色 + 极浅的底色（比整行高亮克制得多） */
+.directory-board tbody tr.is-active { background: var(--soft); --rail: var(--ink); }
+.directory-board .board-check { width: 34px; text-align: center; }
+/* 表头那格原来是个没内容的空格子，看着像忘了画。给它一个真正的「全选」，
+   既填上了空位，也让批量删除多一个入口。 */
+.directory-board thead .board-check input { vertical-align: middle; cursor: pointer; }
+.directory-board thead .board-check input:disabled { cursor: default; opacity: 0.35; }
+/* 列宽：操作列塞了 4 个按钮（任务 / 目标 / 删除队列 / 导入），要给够宽度，
+   不然最后一个按钮会被挤出格子。目录列相应收窄。 */
+.directory-board .board-directory { width: 36%; min-width: 240px; }
+.directory-board .board-task-state { width: 17%; }
+.directory-board .board-goal-state { width: 17%; }
+.directory-board .board-ops { width: 290px; }
+/* 行内操作：默认低调，hover/选中时全亮（把"操作"从视觉噪音里挪出去）。
+   常态 0.5 太像 disabled（disabled 才是 0.4），两态分不清 → 抬到 0.7。 */
+.directory-board .board-ops .btn { opacity: 0.7; transition: opacity 0.12s, background 0.12s; }
+.directory-board tbody tr:hover .board-ops .btn,
+.directory-board tbody tr.is-active .board-ops .btn,
+.directory-board tbody tr:focus-within .board-ops .btn { opacity: 1; }
+
+.board-name-line { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.board-name-line strong {
+  font-size: 13.5px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+/* 路径 = 机器数据：等宽、更弱。祖先目录变暗，末段略重 —— 路径变成可扫的标签，
+   而不是一坨挤在一起的灰色长串。 */
+.board-cwd {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.board-cwd .anc { color: var(--mid); }
+/* 第 2 行：现状 + 提交说明并排，各占一半，1 行截断 */
+.board-summary-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 1px;
+}
+.board-summary {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-family:inherit;
+  font-size: 11.5px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 以前是 zoom-in —— 点开的是弹窗不是缩放，这是骗人的光标 */
+  cursor: pointer;
+}
+.board-summary:hover { text-decoration: underline dotted; }
+.board-summary.muted { color: var(--mid); }
+.board-submit {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 46%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--mid);
+  font-family:inherit;
+  font-size: 11.5px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.board-submit:hover { color: var(--ink-2); text-decoration: underline dotted; }
+/* 计数：等宽 + 数字加重，等宽字形保证刷新时不抖 */
+.board-count, .board-deadline {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--mid);
+  letter-spacing: -0.01em;
+}
+.board-count b { color: var(--ink); font-weight: 650; }
+.board-count .sep-dot { color: var(--soft-2); margin: 0 2px; }
+.board-deadline { font-size: 10px; }
+/* 时间目标：剩余用绿、到点用琥珀（不是红——到点是预期内的事，不是错误） */
+.board-goal-label {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--live);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  /* 同上：长文案不许溢到隔壁列 */
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 已失效的时间目标：这一格**留空**。
+   到点即失效——面板上不再显示已经结束的目标，也不再有「已到点 · 超时 2:46:07」
+   这种还在走的超时钟。留一个空位，比写一句"已到点"更诚实：它已经不在了。 */
+.board-goal-gone { display: block; }
+.board-goal-label:hover { text-decoration: underline; text-underline-offset: 2px; }
+.board-ops { white-space: nowrap; }
+.board-ops .btn { margin: 0 3px 2px 0; }
+
+/* （.board-status / .board-status-row 状态点族已删，#121 清理：全库无渲染点；
+   任务状态一律走 .tstat 统一组件。） */
+.board-wait-stop { flex: 0 0 auto; }
+/* 领取耗时（发布 → 被领取）：机器数据，等宽小字 */
+.board-pickup {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--mid);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* 空状态：要看起来是**设计过的**，不是"表没了" */
+.board-empty { padding: 30px 16px; text-align: center; }
+.board-empty-mark {
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--soft-2);
+}
+.board-empty-title { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+.board-empty-sub { margin-top: 3px; font-size: 11.5px; color: var(--mid); }
+.localtask-topic-cards-legacy { display: none; }
+.board-settings-dialog { display: grid; gap: 14px; }
+.board-setting-section { padding-bottom: 12px; border-bottom: 1px solid var(--soft-2); }
+.board-setting-section:last-child { padding-bottom: 0; border-bottom: 0; }
+.board-setting-title { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 700; }
+.board-setting-control { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.board-setting-control select { min-width: 170px; padding: 6px 8px; }
+.board-setting-help { margin: 0 0 8px; font-size: 11px; line-height: 1.4; }
+.board-settings-dialog textarea { width: 100%; box-sizing: border-box; resize: vertical; font-family:inherit; font-size: 12px; }
+.board-setting-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.board-add-directory label { display: block; margin-bottom: 5px; font-size: 12px; font-weight: 700; }
+.board-add-directory input { box-sizing: border-box; width: 100%; padding: 8px; font-family:inherit; }
+.board-add-directory p { margin: 6px 0 0; font-size: 11px; }
+

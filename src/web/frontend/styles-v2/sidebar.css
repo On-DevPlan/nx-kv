@@ -1,0 +1,199 @@
+/* ---- 侧边栏（展开态） ---- */
+/* 侧栏现在是**工作区里的一块面板**（.nx-side-host 承担布局）：
+   宽度由 FlexLayout 的 tabset 决定，折叠 = 改 tabset weight（见 workspace.js）。 */
+#side {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--paper);
+}
+.shead { padding: 10px 10px 8px; border-bottom: 1px solid var(--line); }
+.brandrow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.brandrow .logo {
+  width: 22px; height: 22px; border-radius: 6px; background: var(--ink); color: var(--on-ink);
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; flex: none;
+}
+.brandrow .t { font-weight: 800; font-size: 13px; }
+.brandrow .v { font-size: 11px; color: var(--faint); }
+.brandrow .grow { flex: 1; }
+.iconbtn {
+  width: 26px; height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-2); border: 0; background: none; cursor: pointer; font-family:inherit;
+}
+.iconbtn:hover { background: var(--soft-2); color: var(--ink); }
+/* 搜索行：sbox 显式定高（28px 偏高 → 24px），「+」flex:none 永不被挤掉；
+   kwcount 是辅助信息，先于「+」收缩（省略号兜底），行内放不下再按容器宽度藏。 */
+.searchrow { display: flex; gap: 6px; align-items: center; }
+.searchrow .iconbtn { flex: none; }
+.searchrow .sbox {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; background: var(--soft);
+  border-radius: 6px; height: 24px; padding: 0 7px; border: 1px solid transparent; color: var(--ink-2); cursor: text;
+}
+.searchrow .sbox:focus-within { background: var(--paper); border-color: var(--soft-2); }
+.searchrow input { flex: 1; border: 0; outline: 0; background: transparent; font-family:inherit; font-size: 12.5px; min-width: 0; }
+.searchrow .kwcount {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  font-size: 11px; color: var(--faint); white-space: nowrap;
+}
+
+/* 侧栏按**实际像素宽**的降级档（容器查询；须排在上面基础规则之后才覆盖得动）：
+   窄侧栏先收间距、再藏低频件（撤销/重做 → 标题 → 品牌字 → 放大镜 → 匹配数），
+   高频件（搜索框、＋、收起/关闭、齿轮）永远在场。 */
+@container (max-width: 256px) {
+  .brandrow { gap: 4px; }  /* 中宽档先收间距：默认展开宽（≈230 @1440）标题不被挤截 */
+}
+@container (max-width: 195px) {
+  .brandrow .iconbtn.undo, .brandrow .iconbtn.redo { display: none; }
+}
+@container (max-width: 150px) {
+  .brandrow .nx-title { display: none; }
+  .searchrow .sbox .ic { display: none; }
+  .searchrow .sbox { padding: 0 5px; }
+}
+@container (max-width: 125px) {
+  .brandrow .nx-logo { display: none; }
+  .searchrow .kwcount { display: none; }
+}
+
+/* ---- 侧边栏树 ---- */
+#tree { flex: 1; overflow-y: auto; padding: 6px 6px 10px; outline-offset: -2px; }
+.trow {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 5px 8px; border-radius: var(--r5);
+  font-family:inherit; font-size: 13px; text-align: left; position: relative;
+  border: 1px dashed transparent; cursor: pointer; color: var(--ink); background: none;
+}
+.trow:hover { background: var(--soft); }
+.trow .tw { width: 14px; flex: none; display: inline-flex; justify-content: center; color: var(--faint); transition: transform 0.15s; }
+/* chevron 现在是「展开/收起」按钮（点行是去看内容）——给它指针与反馈 */
+.trow .tw[role="button"] { cursor: pointer; }
+.trow .tw[role="button"]:hover { color: var(--ink-2); }
+.trow.open .tw { transform: rotate(90deg); }
+.trow .gico { flex: none; color: var(--ink-2); width: 16px; display: inline-flex; justify-content: center; }
+.trow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 逻辑组标签：项目行标出它属于哪些组（一个项目可属于多个组，#61） */
+.trow .gtag { margin-left: 6px; font-size: 10.5px; color: var(--faint); opacity: .85; }
+.trow .cnt {
+  flex: none; font-size: 10.5px; color: var(--ink-2); background: var(--soft-2);
+  border-radius: 8px; padding: 0 6px; line-height: 16px;
+}
+.trow .wdot, .railbtn .wdot {
+  flex: none; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--doing); box-shadow: 0 0 0 3px var(--doing-bg);
+}
+.trow .more {
+  flex: none; opacity: 0; width: 20px; height: 20px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--faint);
+}
+.trow:hover .more { opacity: 1; }
+.trow .more:hover { background: var(--soft-2); color: var(--ink); }
+.trow.active {
+  background: color-mix(in srgb, #2F6F5E 10%, var(--paper));
+  color: var(--ink);
+}
+.trow.active .cnt { background: color-mix(in srgb, #2F6F5E 16%, transparent); color: #2F6F5E; }
+.trow.active .gico, .trow.active .tw, .trow.active .more { color: #2F6F5E; opacity: 0.85; }
+.trow.child { padding-left: 26px; }
+.trow.child.task-child {
+  padding-left: 40px;
+  height: 26px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.trow.child.task-child:hover { background: color-mix(in srgb, #2F6F5E 7%, transparent); }
+.trow.child.task-child .gico { color: #2F6F5E; opacity: 0.75; }
+.trow.child.task-child .cnt {
+  background: var(--soft);
+  color: var(--ink-2);
+  font-size: 10px;
+}
+/* #121 状态徽标统一口径（components/status-tag/model.js）：等=浅灰（待领取）、
+   跑=进行中蓝（--doing）、完=已完成绿（--live）、档=收口灰。
+   旧口径（#76：等=蓝、跑=青绿、完=灰）已废——「已领取」不再用绿、「待领取」不再用蓝。 */
+.trow.child.task-child .cnt.doing { background: var(--doing-bg); color: var(--doing); }
+.trow.child.task-child .cnt.done { background: rgba(31, 122, 77, 0.1); color: var(--live); }
+.trow.child.task-child .cnt.gone { background: var(--soft); color: var(--faint); }
+/* 展开子行尾部的「＋ 新建页」 */
+.trow.child.task-new { height: 26px; font-size: 12px; color: var(--faint); }
+.trow.child.task-new:hover { background: color-mix(in srgb, #2F6F5E 7%, transparent); color: #2F6F5E; }
+.trow.child.task-new .gico { color: var(--faint); }
+.trow.child.task-new:hover .gico { color: #2F6F5E; opacity: 1; }
+.trow.kb-focus { outline: 2px solid var(--ink); outline-offset: -2px; }
+.trow.dragging { opacity: 0.4; }
+/* 三段式落点：上缘=before 线 / 下缘=after 线 / 中段=into 描边 */
+.trow[data-drop="before"]::before, .trow[data-drop="after"]::after {
+  content: ''; position: absolute; left: 6px; right: 6px; height: 2px; background: var(--ink); border-radius: 2px;
+}
+.trow[data-drop="before"]::before { top: -1px; }
+.trow[data-drop="after"]::after { bottom: -1px; }
+.trow[data-drop="into"] { border-color: var(--ink); background: var(--soft-2); border-style: solid; }
+#tree .droptail { height: 22px; border-radius: var(--r5); margin: 2px 2px 0; }
+.tree-empty { padding: 14px 10px; font-size: 12px; color: var(--faint); text-align: center; }
+.sfoot { border-top: 1px solid var(--line); padding: 6px; }
+.sfoot .trow { padding: 4px 8px; font-size: 12.5px; }
+
+/* ---- 页签栏（封装组件 components/layout/tabs.jsx，主面板顶部） ---- */
+.tabbar {
+  flex: none; display: flex; align-items: stretch;
+  background: var(--paper); border-bottom: 1px solid var(--line);
+  padding: 5px 8px; overflow-x: auto; scrollbar-width: thin;
+}
+.tabbar-strip { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.tab {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 180px; min-width: 0;
+  padding: 4px 8px; border-radius: 7px; cursor: pointer; user-select: none;
+  font-family:inherit; font-size: 12px; color: var(--ink-2); position: relative;
+  border: 1px solid transparent; background: none;
+}
+.tab:hover { background: var(--soft); color: var(--ink); }
+.tab.on {
+  background: color-mix(in srgb, #2F6F5E 10%, var(--paper));
+  border-color: color-mix(in srgb, #2F6F5E 24%, transparent);
+  color: #2F6F5E; font-weight: 650;
+}
+.tab .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tab .tx {
+  flex: none; opacity: 0; width: 16px; height: 16px; border-radius: 4px;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--faint);
+}
+.tab:hover .tx, .tab.on .tx { opacity: 1; }
+.tab .tx:hover { background: rgba(0, 0, 0, 0.08); color: var(--ink); }
+/* 未保存标记：页签标题后一颗强调色点（t.dirty 由调用方注入） */
+.tab .tdot {
+  flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: #2F6F5E; opacity: 0.8;
+}
+.tab-new {
+  flex: none; width: 24px; height: 24px; margin: 0 2px; border-radius: 6px;
+  border: 0; background: none; color: var(--faint); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.tab-new:hover { background: var(--soft-2); color: #2F6F5E; }
+
+/* ---- 侧边栏（收起 rail 态） ---- */
+#rail {
+  width: var(--rail-w); flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: var(--paper); border-right: 1px solid var(--soft-2); padding: 10px 0;
+}
+.railbtn {
+  width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  color: var(--ink-2); position: relative; border: 0; background: none; cursor: pointer;
+  font-family:inherit; font-size: 15px;
+}
+.railbtn:hover { background: var(--soft-2); color: var(--ink); }
+.railbtn.active {
+  background: color-mix(in srgb, #2F6F5E 12%, var(--paper));
+  color: #2F6F5E;
+}
+.railbtn .b {
+  position: absolute; top: 2px; right: 2px; min-width: 14px; height: 14px; border-radius: 7px;
+  background: var(--danger); color: #fff; font-size: 9px; line-height: 14px; padding: 0 3px; font-weight: 600;
+}
+.railbtn .wdot { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; box-shadow: none; border: 1.5px solid var(--paper); }
+.railbtn::after {
+  content: attr(data-tip); position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+  background: var(--ink); color: var(--on-ink); font-size: 11.5px; padding: 3px 8px; border-radius: 5px;
+  white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.12s; z-index: 70;
+}
+.railbtn:hover::after { opacity: 1; }
+.rail-sep { width: 24px; height: 1px; background: var(--line); margin: 4px 0; }
+.rail-grow { flex: 1; }
+

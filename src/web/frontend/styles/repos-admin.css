@@ -1,0 +1,207 @@
+/* ---------- 仓库管理页：平台化区块（分组卡片 / 文档 chips / 文档区块） ---------- */
+
+/* 头部统计行已整行删除（#114 去交互 → #116 去胶囊 → #117 用户拍板删元素）：
+   数量在表格/分组管理里都看得到，头部不再摆一排报数；rp-stats/rp-stat 样式一并清除。 */
+
+.rp-board-mchip {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-board-more {
+  font: inherit;
+  font-size: 11.5px;
+  background: transparent;
+  border: 1px dashed var(--soft-2);
+  border-radius: 6px;
+  color: var(--mid);
+  padding: 1px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rp-board-more:hover { border-color: var(--mid); color: var(--ink); }
+.rp-board-missing {
+  font-size: 11px;
+  color: var(--warn, var(--mid));
+  border: 1px dashed var(--soft-2);
+  border-radius: 6px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.rp-board-empty {
+  border: 1px dashed var(--soft-2);
+  border-radius: var(--radius-sm);
+  padding: 18px 14px;
+  text-align: center;
+  font-size: 12.5px;
+  background: var(--canvas);
+}
+.rp-boards-unassigned { margin-top: 10px; color: var(--mid); font-size: 12px; }
+.rp-boards-unassigned b { font-family: var(--mono); }
+
+/* 文档列入口（DocsEntry）：主篇摘要 + 数量，点击打开查看详情弹窗（DocsModal）。
+   文档不再以 chip/tag 形式外显在行内——完整列表收进弹窗就地看、就地编辑。 */
+.rp-docs-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  max-width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.rp-docs-entry:hover { background: var(--soft); }
+.rp-docs-entry-main {
+  font-size: 12px;
+  color: var(--ink-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-docs-entry-main.ghost { color: var(--mid); font-style: italic; }
+.rp-docs-entry:hover .rp-docs-entry-main { color: var(--ink); }
+.rp-docs-entry-n { font-size: 10.5px; color: var(--mid); }
+.rp-docs-entry:hover .rp-docs-entry-n { color: #2F6F5E; }
+
+/* 主表：路径挪到仓库名下（原来单列一列太散） */
+.rp-name-path { display: block; font-size: 11px; margin-top: 2px; }
+.rp-cell-docs { vertical-align: top; }
+.rp-cell-groups { vertical-align: top; }
+.rp-group-chip {
+  font: inherit;
+  font-size: 11.5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: pointer;
+  padding: 2px 8px;
+  margin: 0 4px 4px 0;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s;
+}
+.rp-group-chip:hover { border-color: var(--mid); background: var(--soft); }
+/* 选中态同 chips 的绿三件套（#126：黑块与「不要黑色色块」口径冲突） */
+.rp-group-chip.on {
+  border-color: var(--live);
+  background: rgba(31, 122, 77, 0.12);
+  color: var(--live);
+}
+
+/* 文档区块：一行一个文档（标题 + rel + 绑定宿主 chips + 操作） */
+.rp-doc-rows { display: flex; flex-direction: column; }
+.rp-doc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.rp-doc-row:first-child { border-top: 0; }
+.rp-doc-row:hover { background: var(--soft); }
+.rp-doc-row-title {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+  font-weight: 600;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.rp-doc-row-title:hover { text-decoration: underline; }
+.rp-doc-row-rel {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mid);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-doc-row-hosts { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; min-width: 0; }
+/* 绑定 chip：可点（跳到宿主），三档配色区分「仓库 / 组内 / 分组」 */
+.rp-bind-chip {
+  font: inherit;
+  font-family: var(--label);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.rp-bind-chip:hover { border-color: var(--mid); background: var(--paper); color: var(--ink); }
+.rp-bind-chip.repo { border-left: 2px solid var(--mid); }
+.rp-bind-chip.scoped { border-left: 2px solid var(--soft-2); }
+.rp-bind-chip.board { border-left: 2px solid var(--ink); }
+.rp-bind-chip.none {
+  color: var(--mid);
+  border-style: dashed;
+  background: transparent;
+  cursor: default;
+}
+.rp-doc-row-acts { display: flex; gap: 4px; margin-left: auto; flex: none; }
+/* 文档分档 chips（全部 / 仓库 / 组内 / 分组 / 未绑定） */
+.rp-doc-scopes { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.rp-chip {
+  font: inherit;
+  font-family: var(--label);
+  font-size: 11.5px;
+  color: var(--mid);
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.rp-chip b { font-family: var(--mono); color: var(--ink); margin-left: 2px; }
+.rp-chip:hover { border-color: var(--mid); background: var(--paper); }
+/* 选中态绿浅底+绿边框（#119 口径；#126：原黑块——「tab选中态不要黑色色块」
+   在 chips 上同样成立，且本段靠后在层叠里盖过上方的绿，用户实测「没有在
+   repos 界面看到」改动。全页 chip 选中态只剩这一处定义。） */
+.rp-chip.on {
+  border-color: var(--live);
+  background: rgba(31, 122, 77, 0.12);
+  color: var(--live);
+}
+.rp-chip.on b { color: var(--live); }
+/* 表头小提示：说明这一列可点进编辑 */
+.rp-th-hint { display: block; font-size: 11px; font-weight: 400; color: var(--mid); margin-top: 1px; }
+/* 跳到宿主时闪一下，避免只看滚动猜落点 */
+@keyframes rp-row-flash {
+  0% { background: color-mix(in srgb, var(--ink) 10%, var(--paper)); }
+  100% { background: transparent; }
+}
+.rp-row-flash { animation: rp-row-flash 1.4s ease-out; }
+/* 分区锚点跳转（统计 chip 用）：留出头部吸顶高度 */
+#rp-boards, #rp-repos, #rp-docs { scroll-margin-top: 72px; }
+/* 成员选择器：当前分组的归属徽章高亮（不再是「只显示别的组」） */
+.rp-mp-tag.on {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+

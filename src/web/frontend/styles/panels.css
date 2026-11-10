@@ -1,0 +1,366 @@
+/* ---- 导入导出全屏面板 ----
+ * 版面：左右两栏（左=来源/范围/策略，右=差异/结果）。窄屏纵向堆叠。
+ * 差异表按状态着色（新增=蓝、有差异=黄、一致=绿、本地未拥有=灰）。 */
+.rp-full {
+  position: fixed;
+  inset: 0;
+  background: rgba(251, 251, 252, 0.92);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 24px;
+}
+.rp-full-box {
+  background: var(--paper);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgba(20, 22, 26, 0.18);
+  width: min(1280px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rp-full-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  box-shadow: 0 1px 0 var(--soft);
+}
+.rp-full-title { font-weight: 700; font-size: 14px; display: flex; align-items: baseline; gap: 10px; }
+.rp-full-title .muted { font-weight: 400; font-size: 11.5px; }
+.rp-full-tabs { margin-left: auto; display: flex; gap: 4px; }
+.rp-tab {
+  font-family:inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 14px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink-2);
+  border-radius: 999px;
+}
+/* 选中态：绿浅底+绿边框（#119 反馈「不要黑色色块」）——绿即 --live（全局
+   完成/已领取色），浅底沿用状态光点的 rgba(31,122,77,.12) 惯用值。 */
+.rp-tab.on { background: rgba(31, 122, 77, 0.12); border-color: var(--live); color: var(--live); }
+.rp-full-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+  padding: 14px 16px 16px;
+  overflow: hidden;
+}
+.rp-full-col {
+  flex: 0 0 34%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+.rp-full-col-wide { flex: 1 1 auto; }
+.rp-full-colhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  margin: 2px 0;
+}
+.rp-full-colhead .acts { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+.rp-full-sel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rp-full-key { font-family: var(--mono); font-size: 10.5px; margin-left: auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-full-tag-ref::before { content: '参考 '; font-size: 9.5px; color: var(--mid); }
+.rp-full-input { min-height: 130px; }
+.rp-full-out {
+  flex: 1;
+  min-height: 280px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  resize: vertical;
+}
+.rp-full-empty { padding: 40px 20px; text-align: center; }
+
+/* 冲突方案单选 */
+.rp-strategy { display: flex; gap: 14px; flex-wrap: wrap; }
+
+/* 差异表 */
+.rp-diff-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.rp-diff-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 720px; }
+.rp-diff-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 7px 10px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+}
+.rp-diff-table td { padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 12px; vertical-align: top; }
+.rp-diff-row.changed td { background: rgba(190, 140, 20, 0.045); }
+.rp-diff-row.new td { background: rgba(30, 90, 180, 0.04); }
+.rp-diff-row.missing td { background: var(--soft); }
+.rp-diff-key { font-size: 11.5px; word-break: break-all; }
+.rp-diff-fields { font-size: 11.5px; color: var(--ink-2); }
+.rp-status {
+  display: inline-block;
+  font-size: 10.5px;
+  padding: 0 7px;
+  line-height: 16px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.rp-status.new { background: rgba(30, 90, 180, 0.12); color: #1e5ab4; }
+.rp-status.changed { background: rgba(190, 140, 20, 0.14); color: #8a6410; }
+.rp-status.same { background: rgba(27, 127, 77, 0.12); color: #1b7f4d; }
+.rp-status.missing { background: var(--soft); color: var(--mid); }
+.rp-status.checking { background: rgba(30, 90, 180, 0.12); color: #1e5ab4; }
+.rp-can-clone {
+  margin-left: 6px;
+  font-size: 9.5px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--mid);
+}
+.rp-was { color: var(--mid); text-decoration: line-through; }
+.rp-now { color: #8a6410; }
+.rp-diff-boards { margin-top: 8px; }
+.rp-import-result {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* ---------- 仓库上下文工作台：主题容器纵向堆叠 + 手机式仓库方格卡片 ----------
+ * 一个看板 = 一个主题容器（card 头 + 卡片网格）；卡片可拖拽入板 / 插到某卡前 /
+ * 拖回未分组。落点高亮用 1px 描边（与看板的行选中标记同一套视觉语言）。
+ * 从 nx-rh 移植过来时把变量名换成了 nx-kv 的（--border→--line、
+ * --accent→--ink、--shadow-pop→--shadow）：nx-kv 没有蓝色主色，强调色是近黑的墨色。 */
+.bd-workbench { display: flex; flex-direction: column; gap: 12px; }
+.bd-board { padding: 0 0 10px; }
+.bd-board.drop { outline: 1px dashed var(--ink); outline-offset: -1px; }
+.bd-board .colhead { padding: 8px 12px; margin: 0; border-bottom: 1px solid var(--line); }
+.bd-head h3 { margin: 0; font-size: 13px; }
+.bd-head .bd-count { margin-left: auto; font-size: 11px; }
+.bd-grid {
+  display: grid;
+  /* 固定列宽（不随行内卡片数拉伸）：手机 app 网格的方正感来自等宽等高的格子 */
+  grid-template-columns: repeat(auto-fill, 118px);
+  justify-content: start;
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+.bd-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  cursor: grab;
+  text-align: center;
+}
+.bd-card:hover { border-color: var(--mid); box-shadow: var(--shadow-sm); }
+.bd-card.dragging { opacity: 0.45; }
+.bd-card.drop { outline: 1px dashed var(--ink); outline-offset: -1px; }
+.bd-card .glyph {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+}
+.bd-card .nm {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.bd-card .ds {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-height: 28px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--mid);
+}
+.bd-card .acts {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+  gap: 2px;
+}
+.bd-card:hover .acts { display: inline-flex; }
+.bd-card .acts .btn { padding: 1px 4px; font-size: 10px; }
+.bd-empty { grid-column: 1 / -1; padding: 14px 0; text-align: center; font-size: 11px; }
+.bd-exp { width: 100%; font-family: var(--mono); font-size: 11px; }
+
+/* 「已到点自动归档」区的样式随该区一起删掉了（到点即失效，面板上不再显示已结束的目标）。
+   归档区没了，列标题/列表的间距直接接回 .colhead。 */
+.colhead { display: flex; align-items: baseline; gap: 8px; margin: 2px 2px 8px; }
+h3 { font-size: 13px; margin: 0; font-weight: 700; }
+.cols { display: flex; gap: 14px; align-items: flex-start; }
+.col { flex: 1; min-width: 0; }
+/* 窄面板（侧边栏、内嵌浏览器）放不下三个并排的桶 → 竖着排。
+   硬挤的结果是每条备注被压成一根竖线，读都不能读。 */
+@media (max-width: 900px) {
+  .cols { flex-direction: column; }
+  .col { width: 100%; }
+}
+.list { padding: 4px; }
+
+/* 行：靠 hover 底色区分，不用分隔线；内容多时允许换行 */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  transition: background 0.12s;
+}
+.row:hover { background: var(--soft); }
+.row + .row { margin-top: 2px; }
+
+/* 清单页行内元素：id / 主题 / 正文 / 时间 / 备注 */
+.row .tid {
+  color: var(--mid);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11.5px;
+  min-width: 30px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.row .topic {
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--soft-2);
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.row .text {
+  flex: 1;
+  min-width: 0; /* 关键：没有它，长文本会把整个 flex 行撑破 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row .time { color: var(--mid); font-size: 11.5px; white-space: nowrap; flex-shrink: 0; }
+.row .note {
+  flex-basis: 100%; /* 强制换行到自己的行 */
+  color: var(--mid);
+  font-size: 11.5px;
+  padding-left: 40px;
+  word-break: break-word;
+  /* 备注最多两行：整段展开会把一条记录撑成半屏，扫不动 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+/* 登录页：行内表单 */
+.row-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.row .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .desc { color: var(--mid); font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .acts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* 平台小按钮（平行、可勾选） */
+.plats { display: flex; gap: 4px; flex-wrap: wrap; }
+.pill {
+  font-family:inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--mid);
+  transition: background 0.12s, color 0.12s;
+}
+.pill:hover { background: var(--soft-2); color: var(--ink); }
+.pill.on { background: var(--ink); color: var(--paper); font-weight: 600; }
+/* 清单页的「工作空间」触发器：点开是子弹窗（工作空间是清单的设置，不是独立 tab） */
+.rp-ws-trigger .rp-caret { font-size: 9px; opacity: 0.75; margin-left: 3px; }
+/* 形态区分：实体 = 实心（默认 on 样式）；软链接 = 虚线描边 */
+.pill.on.lnk {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1.5px dashed var(--ink);
+  padding: 4px 6.5px;
+}
+
+/* 徽标：「已登记」这类**身份**标记不是状态，别用 999px 药丸 ——
+   一排药丸是 GitHub Issues 那种"组件库 demo"味。改成 4px 半径的描边 chip。 */
+.tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--soft-2);
+  color: var(--mid);
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+.tag.strong { background: var(--ink); color: var(--paper); }
+/* 「全局池」这类身份标记：描边徽章（不抢主色的分量） */
+.tag.badge {
+  background: transparent;
+  color: var(--ink-2);
+  border: 1px solid var(--soft-2);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+

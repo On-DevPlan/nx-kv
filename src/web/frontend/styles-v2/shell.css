@@ -1,0 +1,251 @@
+/* ════════════════════════════════════════════════════════════════
+   面板 v2 —— 侧边栏 + 目录工作台（plan/uiux-redesign.html R10 落地）
+   新增两个语义色：等待回填=琥珀、云端=青蓝；差异做进底色/描边，不做大面积色块。
+   ════════════════════════════════════════════════════════════════ */
+:root {
+  --wait: #a86a12;        /* 语义：警示/冻结/计时（琥珀；v2.1 起等待回填改用 --doing 蓝） */
+  --wait-bg: #fbf3e4;
+  --wait-line: #e8d5ab;
+  --doing: #2f5fb5;        /* 语义：等待回填（蓝）——「等待=蓝、完成=绿」全局统一（2026-11-03） */
+  --doing-bg: #edf2fc;
+  --doing-line: #c9d6f0;
+  --cloud: #2b6a8f;       /* 语义：云端（青蓝） */
+  --cloud-bg: #eef5f8;
+  --board: #6b5bb5;       /* 语义：项目组（#125 总览组任务 tag；紫=组，避开蓝绿橙的既有语义） */
+  --board-bg: #f0eefa;
+  --faint: #76736c;       /* 弱文字（对 --paper ≈4.7:1，WCAG AA） */
+  --on-ink: #ffffff;
+  --r8: 8px;
+  --r5: 5px;
+  --side-w: 264px;
+  --rail-w: 52px;
+}
+
+/* ---- 应用壳：FlexLayout 工作区 ----
+ * 侧栏不再是外壳的一部分，而是工作区里的一块**面板**（可拖拽/可拆分/可浮出）。
+ * 旧的 #app-shell / #side 布局规则作废，侧栏样式改由 .nx-side-host 承担。 */
+.nx-shell {
+  display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden; background: var(--canvas);
+}
+/* 顶栏已删：全局动作集中在侧边栏头部（.brandrow，见 sidebar/index.jsx）。
+   logo/标题两个类保留——品牌区还在用。 */
+.nx-logo {
+  width: 22px; height: 22px; border-radius: 6px; background: var(--ink); color: var(--on-ink);
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; flex: none;
+}
+.nx-title { font-weight: 800; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.nx-workarea{
+  flex:1;min-height:0;position:relative;
+  /* 列布局：顶部面包屑 + 下面面板区（#33 起页签条不再占一行） */
+  display:flex;flex-direction:column;
+}
+/* FlexLayout 的根是**绝对定位**（inset:0），不吃 flex 流——它铺满工作区。
+   面包屑条不再挂在窗口顶部（#44），改挂各主面板内部，所以这里不需要给它让位。 */
+.nx-workarea > .flexlayout__layout, .nx-workarea > .nx-shell-layout { flex:1; min-height:0; }
+.nx-workarea .flexlayout__layout { height: 100%; }
+
+/* ---- 侧栏作为工作区面板 ---- */
+/* 侧栏是 FlexLayout 里的块，宽度 = tabset weight（百分比）→ 用容器查询按**实际像素宽**降级；
+   降级规则必须排在下方侧栏基础样式之后（同特异性靠源顺序取胜），见 .searchrow 区块后的统一块。 */
+.nx-side-host { width: 100%; height: 100%; overflow: hidden; background: var(--paper); container-type: inline-size; }
+.nx-side-host #side {
+  width: 100%; height: 100%; display: flex; flex-direction: column;
+  background: var(--paper); border-right: none; transition: none;
+}
+.nx-side-host .shead { padding: 8px 8px 6px; border-bottom: 1px solid var(--line); }
+.nx-side-host .searchrow { gap: 4px; }
+.nx-side-host .iconbtn.collapse { flex: none; }
+
+/* 窄轨：面板被拖窄后自动变 rail；底部保留设置入口（收起后唯一的全局动作） */
+.nx-rail-host {
+  width: 100%; height: 100%; background: var(--paper);
+  display: flex; flex-direction: column;
+}
+.nx-rail {
+  flex: 1; min-height: 0; width: 100%; border: 0; background: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0;
+  color: var(--ink-2); font-family:inherit;
+}
+.nx-rail:hover { background: var(--soft); }
+.nx-rail-btn { font-size: 15px; line-height: 1; }
+.nx-rail-label { writing-mode: vertical-rl; font-size: 11px; color: var(--mid); }
+.nx-rail-acts { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.nx-rail-act {
+  width: 100%; height: 34px; border: 0; background: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-2); font-family:inherit;
+}
+.nx-rail-act:hover { background: var(--soft); color: var(--ink); }
+.nx-rail-act:disabled { opacity: .4; cursor: default; }
+.nx-rail-act:disabled:hover { background: none; color: var(--ink-2); }
+
+/* 关闭态：tabset 占位条透明（几乎看不见）；展开入口是 portal 到工作区的半圆弧把手 */
+.nx-side-closed-host {
+  width: 100%; height: 100%;
+  background: transparent;
+  pointer-events: none;
+}
+body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host),
+body.nx-side-is-closed .flexlayout__tab:has(.nx-side-closed-host),
+body.nx-side-is-closed .flexlayout__tab_content:has(.nx-side-closed-host) {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  min-width: 0 !important;
+}
+/* 关闭后页签条即使库层还留节点，也不要露出来抢视觉 */
+body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout__tabset_tabbar_outer,
+body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout__tabset_tabbar_inner,
+body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout__tab_button,
+body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout__tab_toolbar {
+  display: none !important;
+}
+.nx-side-fab-layer {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 80; /* 盖过 FlexLayout 内容，关闭后一定摸得到 */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none; /* 层本身不挡；子按钮重新打开 */
+}
+/* 壳层救援把手：钉在视口左缘，不吃 workarea / tabset 的 overflow */
+.nx-side-fab-fixed {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10000;
+}
+.nx-side-fab,
+.nx-side-fab-gear { pointer-events: auto; }
+/* 关闭态左缘把手：与设置按钮同尺寸 */
+.nx-side-fab,
+.nx-side-fab-gear {
+  width: 32px; height: 32px; margin: 0; padding: 0;
+  border: 0;
+  border-radius: 0 10px 10px 0;
+  background: var(--paper); color: var(--ink-2);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 2px 0 12px rgba(20, 22, 26, 0.16);
+}
+.nx-side-fab:hover,
+.nx-side-fab:focus-visible,
+.nx-side-fab-gear:hover,
+.nx-side-fab-gear:focus-visible {
+  background: var(--mdw-accent-soft, #E8F2EE); color: var(--ink); outline: none;
+}
+
+/* 品牌区（侧栏头部第一行）：logo + 全局动作（设置） */
+.brandrow { display: flex; align-items: center; gap: 2px; padding: 0 0 8px; }
+.brandrow .nx-title { margin-right: 2px; }
+.brandrow .grow { flex: 1 1 auto; min-width: 0; }
+.brandrow .iconbtn { width: 24px; height: 24px; flex: none; }
+.brandrow .iconbtn:disabled { opacity: .4; cursor: default; background: none; }
+/* 品牌行标题：优先保留（logo 已是标识，标题是「这是哪个应用」） */
+.brandrow .nx-title { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 面板内的通用留白（与仓库管理页的 .pad/.stack 同义） */
+.pad { padding: 18px 20px; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
+.welcome { color: var(--ink-2); font-size: 12.5px; line-height: 1.7; }
+.welcome strong { color: var(--ink); }
+
+/* ---- FlexLayout 配色：只借它的结构 CSS，配色由我们的变量接管 ----
+ * 变量写在 :root → 浮窗（float）、子布局、弹出窗用的是同一批值，
+ * 不会出现「主区变了、浮窗还是老样子」。 */
+:root {
+  --flexlayout-color-text: var(--ink);
+  --flexlayout-color-background: var(--paper);
+  --flexlayout-color-base: var(--paper);
+  --flexlayout-color-1: var(--soft);
+  --flexlayout-color-2: var(--soft-2);
+  --flexlayout-color-3: #e3e6e9;
+  --flexlayout-color-4: #dcdfe3;
+  --flexlayout-color-5: #d5d9dd;
+  --flexlayout-color-6: #ced2d7;
+  --flexlayout-font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --flexlayout-font-size: 12px;
+  --flexlayout-font-weight: 400;
+  --flexlayout-color-tab-content: var(--paper);
+  --flexlayout-color-tab-selected: var(--ink);
+  --flexlayout-color-tab-selected-background: var(--paper);
+  --flexlayout-color-tab-unselected: var(--mid);
+  --flexlayout-color-tab-unselected-background: transparent;
+  --flexlayout-color-tab-textbox: var(--ink);
+  --flexlayout-color-tab-textbox-background: var(--paper);
+  --flexlayout-color-tabset-background: var(--paper);
+  --flexlayout-color-tabset-background-selected: var(--paper);
+  --flexlayout-color-tabset-divider-line: var(--soft-2);
+  --flexlayout-color-border: var(--soft-2);
+  --flexlayout-color-border-background: var(--paper);
+  --flexlayout-color-border-divider-line: var(--soft-2);
+  --flexlayout-color-border-tab-content: var(--paper);
+  --flexlayout-color-border-tab-selected: var(--ink);
+  --flexlayout-color-border-tab-selected-background: var(--paper);
+  --flexlayout-color-border-tab-unselected: var(--mid);
+  --flexlayout-color-border-tab-unselected-background: var(--soft);
+  --flexlayout-color-icon: var(--mid);
+  --flexlayout-color-focus: #2F6F5E;
+  --flexlayout-color-drag1: #2F6F5E;
+  --flexlayout-color-drag1-background: #E8F2EE;
+  --flexlayout-color-drag2: #2F6F5E;
+  --flexlayout-color-drag2-background: #E8F2EE;
+  --flexlayout-color-drag-rect: #2F6F5E;
+  --flexlayout-color-drag-rect-background: #E8F2EE;
+  --flexlayout-color-drag-rect-border: #2F6F5E;
+  --flexlayout-color-edge-icon: #2F6F5E;
+  --flexlayout-color-edge-marker: #2F6F5E;
+  --flexlayout-color-float-window-header-background: var(--paper);
+  --flexlayout-color-mini-scroll-indicator: var(--soft-2);
+  --flexlayout-color-mini-scroll-indicator-hovered: var(--mid);
+  --flexlayout-color-shadow: rgba(20, 22, 26, .16);
+}
+/* 页签条：让选中页签跟面板内容有一条清晰的分界 */
+.flexlayout__tab { font-weight: 600; }
+.flexlayout__tab_set .flexlayout__tab_title { letter-spacing: .01em; }
+.flexlayout__tab_move, .flexlayout__tab_flex_button { color: var(--faint); }
+.flexlayout__tab_move:hover, .flexlayout__tab_flex_button:hover { color: var(--ink); }
+.flexlayout__tab_button:hover { background: var(--soft); }
+.flexlayout__float_window { border-radius: 10px; overflow: hidden; box-shadow: 0 18px 48px rgba(20, 22, 26, .2); }
+/* 浮窗头部：只保留自注入的「关闭浮窗」×（icons.dragToDock 注入，见 App.jsx）。
+   「迁回主布局」按钮与原生「弹出到浏览器窗口」均已移除（2026-11-07 #91：
+   落点由策略表决定；迁回走拖拽；弹出由 tabEnablePopout=false 关闭）。 */
+.flexlayout__float_window_header { gap: 2px; }
+.flexlayout__float_window_drag_handle { order: 3; padding: 0; opacity: 1; }
+
+/* 浮窗关闭 ×：挂在窗口头部最右 = 窗口右上角。
+   页签条里那颗原生关闭同时隐藏——它在浮窗里落在标题「设置 ×」后面，
+   看着像**页面里**的×，与「关闭在右上」的直觉相反。 */
+.flexlayout__float_window .flexlayout__tab_button_trailing { display: none; }
+.flx-float-close {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 22px; height: 22px; padding: 0; margin-left: 2px;
+  border: none; border-radius: 5px; background: none;
+  color: var(--mid, #838A93); cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.flx-float-close:hover { background: rgba(179, 38, 30, .08); color: var(--danger, #B3261E); }
+.flx-float-close:active { transform: scale(.96); }
+.flx-float-close .ic { display: block; }
+
+/* 页签条右端的「清空」按钮：一键关掉**本组**全部可关页签（侧栏组不显示）。
+   日常融入页签工具栏（低调灰），悬停才亮红色表态 ——
+   一整排页签都是「关单个」，只有它是「清整组」，颜色要把它区分开。 */
+.flx-clear-tabs {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 22px; height: 22px; padding: 0; margin-left: 2px;
+  border: none; border-radius: 5px; background: none;
+  color: var(--mid, #838A93); cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.flx-clear-tabs:hover { background: rgba(179, 38, 30, .08); color: var(--danger, #B3261E); }
+.flx-clear-tabs:active { transform: scale(.96); }
+.flx-clear-tabs .ic { display: block; }
+

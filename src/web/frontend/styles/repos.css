@@ -1,0 +1,330 @@
+/* ---------- 仓库中心清单：扁平列表 + 看板筛选 ----------
+ * 一张中心清单（行 = 一个仓库），看板只作筛选器与行内标签。
+ * 加入看板 = 复制一份归属，仓库本体不动 —— 界面要说清这件事，
+ * 免得又读成"移动"（之前那套拖拽卡片墙就是这个误导）。 */
+.rp-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: none;
+  margin: 0;
+}
+.rp-filters-main,
+.rp-filters-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.rp-filters-main { flex: 1 1 auto; min-width: 0; }
+.rp-filters-side { flex: 0 0 auto; margin-left: auto; }
+.rp-chip {
+  font-family:inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.rp-chip b { font-family: var(--mono); font-weight: 650; color: var(--ink); }
+.rp-chip:hover { border-color: #2F6F5E; color: #2F6F5E; }
+/* .rp-chip.on 的选中态统一在下方文档分档那段定义（#126：这里曾写过一套绿、
+ * 后面 2271 段又写了一套黑且靠后者胜出——两套并存让「改了没生效」）。 */
+/* 右侧那两个不是筛选器，是「打开管理弹窗」的入口：虚线框 + 右上箭头，
+ * 免得和左边一排筛选 chip 长得一样（点下去却弹出窗口）。 */
+.rp-filters-side .rp-chip { border-style: dashed; }
+/* 检索框：管理页要的是「找人」而不是「翻长列表」 */
+.rp-search {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 4px 9px;
+  min-width: 210px;
+}
+.rp-search::placeholder { color: var(--mid); }
+.rp-search:focus { outline: none; border-color: var(--mid); }
+.rp-search-count { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+
+/* 分组管理弹窗：紧凑表格，不要卡片网格那种「一眼看三个、其余靠滚」的版式 */
+.rp-board-admin { display: flex; flex-direction: column; }
+.rp-board-admin-head,
+.rp-board-admin-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(180px, 1.4fr) 110px minmax(230px, 1.3fr);
+  gap: 10px;
+  align-items: center;
+  padding: 7px 2px;
+}
+.rp-board-admin-head {
+  font-family: var(--label);
+  font-size: 11px;
+  color: var(--mid);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  z-index: 1;
+}
+.rp-board-admin-row { border-bottom: 1px solid var(--line); }
+.rp-board-admin-row:last-of-type { border-bottom: 0; }
+.rp-board-admin-row:hover { background: var(--soft); }
+.rp-board-admin-name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rp-board-admin-members { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
+.rp-board-admin-doc { display: flex; align-items: center; gap: 4px; }
+.rp-board-admin-acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.rp-mini-link {
+  font: inherit;
+  font-size: 11px;
+  color: var(--mid);
+  background: transparent;
+  border: 0;
+  padding: 0 2px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rp-mini-link:hover { color: var(--ink); }
+/* 文档检索弹窗里的列表限高滚动，弹窗本身不无限长 */
+.rp-doc-rows-modal { max-height: 58vh; overflow-y: auto; }
+.rp-doc-bar { gap: 8px; align-items: center; }
+
+.rp-table-wrap {
+  flex: none;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow-x: auto;
+  max-width: 100%;
+}
+.rp-page > .card,
+.rp-page > .rp-context,
+.rp-page > .rp-ref-mounted {
+  flex: none;
+}
+/* 固定列宽：内容不再抢地盘。窄屏放不下时横向滚动，不压扁列。 */
+.rp-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 780px; }
+.rp-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mid);
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.rp-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  font-size: 12.5px;
+}
+.rp-table tbody tr:last-child td { border-bottom: 0; }
+.rp-table tbody tr:hover td { background: #faf9f6; }
+.rp-name strong { font-size: 13px; font-weight: 650; color: var(--ink); }
+.rp-doc {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 5px;
+  max-width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+.rp-doc:hover { color: #2F6F5E; text-decoration: underline; text-underline-offset: 2px; }
+.rp-doc.ghost { color: var(--mid); }
+.rp-doc-todo {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--soft);
+  font-size: 10.5px;
+  color: var(--mid);
+}
+.rp-docpick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ---- 项目组详情（#/group/<id>）：组里的子目录表 ---- */
+.rp-group-head { margin-bottom: 10px; }
+.rp-group-head h2 {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 4px; font-size: 15px; font-weight: 650; color: var(--ink);
+}
+.rp-group-head p { margin: 0; font-size: 12px; }
+.rp-chip-count {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 999px; background: var(--soft-2, #F1F0EC);
+  font-size: 11px; font-weight: 600; color: var(--ink-2);
+}
+.rp-acts { white-space: nowrap; }
+.rp-acts .btn { margin: 0 3px 0 0; }
+.rp-empty { text-align: center; padding: 22px 12px; }
+
+/* 「＋ 新增任务 ▾」（#131/#132）：portal+fixed 防矮容器裁切；宽度随内容。 */
+.rp-newtask { position: relative; display: inline-flex; vertical-align: middle; }
+.rp-newtask > .btn {
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.rp-newtask-caret {
+  display: inline-block;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+  opacity: 0.75;
+}
+.rp-newtask-caret.rot { transform: rotate(-90deg); }
+.rp-newtask > .btn.is-open { border-color: var(--mid); }
+.rp-tpl-fly {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 168px;
+  max-width: min(260px, calc(100vw - 24px));
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow, 0 8px 24px rgba(0, 0, 0, 0.12));
+  z-index: 80;
+  overflow: hidden;
+}
+.rp-tpl-fly-portal {
+  position: fixed;
+  left: auto;
+}
+.rp-tpl-fly-h {
+  padding: 7px 12px 5px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+  background: var(--soft-2, #F7F6F3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-tpl-fly-list { max-height: 220px; overflow-y: auto; overflow-x: hidden; padding: 4px; }
+.rp-tpl-fly-it {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  padding: 6px 9px;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-tpl-fly-it:hover { background: var(--soft-2, #F1F0EC); }
+.rp-tpl-fly-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 5px 8px;
+  border-top: 1px solid var(--line);
+}
+.rp-tpl-fly-new {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--live);
+  cursor: pointer;
+}
+.rp-tpl-fly-new:hover { text-decoration: underline; }
+
+/* 看板上下文条：筛选到某个看板时亮出它的领域描述（侧重/配合关系/关键路径/关键词），
+   并给出「导入仓库」入口 —— 批量加成员不用回「全部」逐行找下拉。 */
+.rp-context {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
+}
+.rp-context-name { font-weight: 700; color: var(--ink); flex: 0 0 auto; }
+.rp-context-desc {
+  flex: 1 1 auto;
+  min-width: 200px;
+  color: var(--ink-2);
+  font-size: 11.5px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.rp-context .acts { flex: 0 0 auto; display: flex; gap: 6px; }
+
+/* ── 仓库页可读性（2026-11-04）─────────────────────────────────────
+ * 这一页原来的字整体偏小：正文 11–12.5px、待初始化的 key 只有 10.5px。
+ * 一屏是塞得下，但读起来费劲——「密密麻麻的小字」说的就是这里。
+ * 现在把**读的层级**统一提一档；机器数据（路径 / key / 计数）仍用等宽、
+ * 略小一号，因为它们是比较用的，不是逐字读的。
+ * 覆盖写在这里而不是改原规则：原规则被目录页、组页共用，改一处会连带别人。 */
+.rp-page { padding: 18px 20px 32px; gap: 14px; }
+.rp-page .page-head h2 { font-size: 19px; }
+.rp-page .page-head .page-desc { font-size: 13.5px; line-height: 1.65; max-width: 820px; }
+.rp-chip { font-size: 12.5px; padding: 5px 12px; }
+/* 表格要够宽才装得下一行操作（打开/编辑/删除 + 更多下拉）。
+   窄屏宁可横向滚动，也不要让「删除」被裁在视口外——按钮少一个比挤成一团更糟。 */
+.rp-table { min-width: 1060px; }
+.rp-table th,
+.rp-ref-table th { font-size: 11.5px; padding: 10px 14px; }
+.rp-table td { font-size: 13.5px; padding: 12px 14px; }
+.rp-ref-table td { font-size: 13px; padding: 10px 12px; }
+.rp-name strong { font-size: 14.5px; }
+.rp-ref-cell-name strong { font-size: 14px; }
+.rp-ref-cell-remote { font-size: 12px; }
+.rp-refs-none { font-size: 12px; }
+.rp-context { font-size: 13px; padding: 10px 14px; }
+.rp-context-desc { font-size: 12.5px; }
+.rp-ref-mounted { font-size: 13px; padding: 12px 14px; }
+.rp-ref-mounted-desc { font-size: 12.5px; }
+/* small 的尺寸/字号随 .btn 基类全局统一（#91），此处不再覆盖 */
+/* 行内操作按钮：ghost 原来只有一圈极淡的描边，扫表时"操作"列看起来是空的
+   （按钮在，但看不出来能点）。给一层浅底，保持安静但不隐身。 */
+.rp-page .rp-acts .btn.small.ghost {
+  background: var(--soft);
+  border: 1px solid var(--line);
+}
+.rp-page .rp-acts .btn.small.ghost:hover { background: var(--paper); border-color: var(--mid); }
+
+/* 三条图例：这一页有两种仓库 + 一种关系，先说清各自是什么。
+   （四行说明文字改成一排标签：想深究的看 title，扫一眼就懂的看这里） */
+.rp-boards-unassigned {
+  padding: 9px 2px;
+  font-size: 12.5px;
+  color: var(--mid);
+}
+.rp-boards-unassigned b { font-family: var(--mono); color: var(--ink-2); font-weight: 650; }
+

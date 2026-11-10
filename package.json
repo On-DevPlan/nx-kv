@@ -17,7 +17,7 @@
     "start": "pnpm run build && node bin/cli.mjs serve",
     "link:local": "node scripts/link-local.mjs",
     "unlink:local": "node scripts/link-local.mjs --unlink",
-    "lint": "eslint . && node scripts/check-tdz.mjs --all && node scripts/check-schema-decisions.mjs",
+    "lint": "eslint . && node scripts/check-tdz.mjs --all && node scripts/check-schema-decisions.mjs && node scripts/check-lines.mjs",
     "check:schema": "node scripts/check-schema-decisions.mjs",
     "test": "pnpm run lint && pnpm run build && pnpm run test:smoke && pnpm run test:unit",
     "test:smoke": "node tests/smoke.mjs",

@@ -1,0 +1,308 @@
+/* ─── @ 附件选择面板（#108）：圆角下拉 + 搜索框 + ↑↓ 选择 ─── */
+.mdw-atpick{
+  position:fixed;z-index:70;width:320px;max-height:340px;overflow:hidden;
+  display:flex;flex-direction:column;
+  border-radius:10px;border:1px solid var(--line,#E4E2DC);
+  background:var(--paper,#fff);box-shadow:0 8px 24px rgba(20,22,26,.12);
+}
+.mdw-atpick-search{padding:6px;border-bottom:1px solid var(--line,#E4E2DC);flex:none}
+.mdw-atpick-search input{
+  width:100%;height:26px;box-sizing:border-box;padding:0 8px;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;
+  background:var(--soft,#F1F0EC);color:var(--ink,#16181C);
+  font:400 12px inherit;
+}
+.mdw-atpick-search input:focus{outline:none;border-color:var(--mdw-accent,#2F6F5E);background:var(--paper,#fff)}
+.mdw-atpick-list{flex:1;min-height:0;overflow:auto;padding:4px}
+/* 条目行：主按钮（引用）+ 可选的 ↗（右侧并排看原文，#109） */
+.mdw-atpick-row{display:flex;align-items:stretch;gap:2px}
+.mdw-atpick-row .mdw-atpick-item{flex:1;min-width:0}
+.mdw-atpick-empty{padding:12px 10px;font-size:11.5px;color:var(--faint,#A9AEB4);text-align:center}
+.mdw-atpick-item{
+  display:flex;align-items:center;gap:10px;width:100%;padding:6px 8px;
+  border:0;border-radius:6px;background:none;cursor:pointer;text-align:left;
+  font:inherit;font-size:12px;color:var(--ink,#16181C);
+}
+.mdw-atpick-item .lab{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdw-atpick-item .hint{flex:none;font:400 10.5px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4)}
+.mdw-atpick-item:hover{background:var(--soft,#F1F0EC)}
+.mdw-atpick-item.on{
+  background:var(--mdw-accent-soft)!important;color:var(--mdw-accent)!important;
+  box-shadow:inset 3px 0 0 var(--mdw-accent);
+}
+/* ↗（右侧并排看原文）：小号次级钮，不抢条目视觉 */
+.mdw-atpick-open{
+  flex:none;width:24px;border:0;border-radius:6px;background:none;cursor:pointer;
+  color:var(--mid,#838A93);font-size:12px;line-height:1;
+}
+.mdw-atpick-open:hover{background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E)}
+.mdw-atpick-foot{
+  flex:none;display:flex;align-items:center;gap:8px;
+  padding:5px 10px;border-top:1px solid var(--line,#E4E2DC);
+}
+.mdw-atpick-cap{
+  font-size:10.5px;color:var(--faint,#A9AEB4);
+}
+.mdw-atpick-foot .grow{flex:1}
+.mdw-atpick-add{
+  border:0;background:none;padding:2px 4px;border-radius:5px;cursor:pointer;
+  font:inherit;font-size:11px;color:var(--mdw-accent,#2F6F5E);
+}
+.mdw-atpick-add:hover{background:var(--mdw-accent-soft,#E8F2EE)}
+
+.mdw-preview{overflow:auto;padding:0;background:var(--canvas,#F5F4F1)}
+.mdw-preview article{user-select:text}
+/* 阅读态题头：与 live 标题同一套字号/字距语言，正文同轴同宽 */
+.mdw-reader{max-width:720px;margin:0 auto;padding:28px 32px 48px;user-select:text}
+.mdw-reader-title{
+  margin:0 0 18px;padding:0;border:0;
+  font-family:inherit;font-weight:700;font-size:28px;line-height:1.25;
+  letter-spacing:-0.025em;color:var(--ink,#16181C);overflow-wrap:anywhere;
+}
+
+/* 单栏实时预览（Obsidian/Notion）：纸面阅读 + 就地源码，无描边高亮块 */
+.mdw-split.live{
+  display:flex;flex-direction:column;overflow:hidden;background:var(--paper,#fff);
+}
+.mdw-lp{flex:1;min-height:0;overflow:auto;background:var(--paper,#fff)}
+.mdw-lp-sheet{
+  max-width:720px;margin:0 auto;padding:28px 36px 72px;min-height:100%;box-sizing:border-box;
+}
+/* 彻底盖过全局 input/textarea:focus 的边框+光晕（编辑行零 chrome） */
+.mdw-lp input.mdw-lp-title,
+.mdw-lp input.mdw-lp-title:hover,
+.mdw-lp input.mdw-lp-title:focus,
+.mdw-lp input.mdw-lp-title:focus-visible,
+.mdw-lp textarea.mdw-lp-title,
+.mdw-lp textarea.mdw-lp-title:hover,
+.mdw-lp textarea.mdw-lp-title:focus,
+.mdw-lp textarea.mdw-lp-title:focus-visible,
+.mdw-lp textarea.mdw-lp-src,
+.mdw-lp textarea.mdw-lp-src:hover,
+.mdw-lp textarea.mdw-lp-src:focus,
+.mdw-lp textarea.mdw-lp-src:focus-visible{
+  -webkit-appearance:none;appearance:none;
+  border:0!important;outline:0!important;outline-offset:0!important;
+  box-shadow:none!important;border-radius:0!important;
+  background:transparent!important;border-color:transparent!important;
+}
+.mdw-lp input.mdw-lp-title,
+.mdw-lp textarea.mdw-lp-title{
+  display:block;width:100%;box-sizing:border-box;margin:2px 0 30px;padding:0!important;
+  font-family:inherit;font-weight:700;font-size:28px;line-height:1.25;
+  letter-spacing:-0.025em;color:var(--ink,#16181C);caret-color:var(--mdw-accent);
+  resize:none;overflow:hidden;overflow-wrap:anywhere;
+}
+.mdw-lp-title::placeholder{color:var(--faint,#A9AEB4);font-weight:600}
+/* 占位提示聚焦即隐（标题与正文一致）：原先要打字才消失，提示文字压在光标底下 */
+.mdw-lp textarea.mdw-lp-title:focus::placeholder{color:transparent!important}
+.mdw-editor:focus::placeholder{color:transparent!important}
+.mdw-lp-blocks{
+  display:flex;flex-direction:column;gap:0;
+  /* 视图↔编辑共用度量：点进一行只出现绿色光标，色/行高不得跳 */
+  --mdw-lp-body-size:13.5px;
+  --mdw-lp-body-lh:1.75;
+  --mdw-lp-body-color:var(--ink-2,#4B515A);
+}
+/* 块间距由**块容器**承担（视图态与编辑态共享）——
+   视图态内部元素的 margin 归零、编辑态 textarea 的垂直 padding 归零，
+   两态的盒高因此严格相等：点进一块只多一个光标，**不跳行高、不动 padding**
+   （2026-11-04 任务 #31：点块后行高变化 → 底部 padding 增大 → 下方内容抖动）。 */
+.mdw-lp-block{
+  position:relative;margin:0;padding:0 0 6px;border:0;background:transparent;
+  border-radius:0;box-shadow:none;outline:none;min-width:0;
+}
+/* 标题的上下留白也归块容器（视图态原先在元素 margin 上，编辑态在 textarea padding 上，
+   两边数值必须相同，否则点一下就跳） */
+.mdw-lp-block.kind-h1{padding-top:8px;padding-bottom:14px}
+.mdw-lp-block.kind-h2{padding-top:14px;padding-bottom:10px}
+.mdw-lp-block.kind-h3{padding-top:10px;padding-bottom:10px}
+.mdw-lp-block.kind-quote{padding-top:8px}
+.mdw-lp-block.is-view{cursor:text}
+/* 待办复选框（视图态可点击切换，#99）：光标提示可点，悬停给一点强调反馈 */
+.mdw-lp-block.is-view .mdw-cb{cursor:pointer;user-select:none}
+.mdw-lp-block.is-view .mdw-cb:hover{color:var(--mdw-accent,#2F6F5E)}
+.mdw-lp-block.is-view:focus,.mdw-lp-block.is-edit,.mdw-lp-block.is-edit:focus{
+  outline:none;border:0;box-shadow:none;background:transparent;
+}
+.mdw-lp-gap{min-height:1.6em}
+.mdw-lp textarea.mdw-lp-src{
+  display:block;width:100%;box-sizing:border-box;margin:0;padding:0!important;
+  resize:none;overflow:hidden;
+  white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;
+  /* 与视图态同一套字体度量，避免点选一行时重新折行/行高跳 */
+  font-family:inherit;
+  font-size:var(--mdw-lp-body-size);line-height:var(--mdw-lp-body-lh);font-weight:400;
+  color:var(--mdw-lp-body-color);
+  caret-color:var(--mdw-accent);
+  transition:none!important;
+}
+/* 占位提示：聚焦即隐（原先要打字才消失，提示文字压在光标底下）。
+   !important：全局 input/textarea 的 placeholder 规则更晚加载，不加赢不了它。 */
+.mdw-lp-src::placeholder{color:var(--faint,#A9AEB4)}
+.mdw-lp textarea.mdw-lp-src:focus::placeholder{color:transparent!important}
+/* 空块（视图态）不再渲染「输入…」提示语（#151：正文里的空行挂着一句常驻
+   提示太吵——空块保留 1.6em 最小高度可点击，编辑态 textarea 的 placeholder 仍在） */
+/* 划选：不改文字色、不抬行高；淡绿底仅标范围，光标仍是强调色 */
+.mdw-lp ::selection,
+.mdw-lp textarea.mdw-lp-src::selection{
+  background:color-mix(in srgb, var(--mdw-accent,#2F6F5E) 18%, transparent);
+  color:inherit;
+}
+/* 编辑态与视图态**逐项同款**（字号/粗细/行高/颜色/盒内边距）：
+   垂直内边距一律 0（间距在块容器上），水平内边距按视图态元素对齐 */
+.mdw-lp-block.kind-h1 textarea.mdw-lp-src{
+  font-size:22px;font-weight:650;line-height:1.3;letter-spacing:-0.02em;
+  color:var(--ink,#16181C);
+}
+.mdw-lp-block.kind-h2 textarea.mdw-lp-src{
+  font-size:16px;font-weight:650;line-height:1.35;letter-spacing:-0.01em;
+  color:var(--ink,#16181C);
+}
+.mdw-lp-block.kind-h3 textarea.mdw-lp-src{
+  font-size:14px;font-weight:650;line-height:1.4;
+  color:var(--ink-2,#4B515A);
+}
+.mdw-lp-block.kind-li textarea.mdw-lp-src{color:var(--mdw-lp-body-color)}
+.mdw-lp-block.kind-quote textarea.mdw-lp-src{
+  /* 视图态是 blockquote：13px/1.5 + 2px 0 2px 12px 内边距 + 左侧 2px 细线 */
+  font-size:13px;line-height:1.5;padding:2px 0 2px 12px!important;
+  border-left:2px solid var(--line,#E4E2DC)!important;
+  color:var(--ink-2,#4B515A);
+}
+/* frontmatter 块的编辑态：等宽小字，盒型对齐属性卡（视图↔编辑只有内容差，
+   卡片是 3 行键值、源码是 4 行 yaml——这一类天生差一行，其余各类严格等高） */
+.mdw-lp-block.kind-fm textarea.mdw-lp-src{
+  font-family:ui-monospace,Consolas,monospace;font-size:11.5px;line-height:1.6;
+  padding:9px 12px!important;
+  border:1px solid var(--line,#E4E2DC)!important;border-radius:8px;
+  background:var(--canvas,#F5F4F1)!important;
+}
+
+/* frontmatter 属性卡：任务头部的结构化字段（board/project/介绍引用）单独成卡，
+   不与首行内容混排。live 预览块与阅读视图同一份渲染（md-parse frontmatterHtml）。 */
+.mdw-fm{
+  display:flex;flex-direction:column;gap:3px;
+  margin:0 0 10px;padding:9px 12px;
+  background:var(--canvas,#F5F4F1);
+  border:1px solid var(--line,#E4E2DC);
+  border-radius:8px;
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:11.5px;line-height:1.6;
+}
+.mdw-fm-row{display:flex;gap:8px;align-items:baseline;min-width:0}
+.mdw-fm-k{flex:none;color:var(--mid,#838A93)}
+.mdw-fm-k::after{content:':'}
+.mdw-fm-v{min-width:0;overflow-wrap:anywhere;color:var(--ink-2,#4B515A)}
+/* 阅读视图与模板预览同款（.mdw-preview 是阅读态容器） */
+.mdw-preview .mdw-fm{margin-top:2px}
+.mdw-lp-view{user-select:text;overflow-wrap:anywhere;word-break:break-word}
+/* live 预览：块内元素的 margin 归零——间距统一由块容器承担（与编辑态 textarea
+   的零垂直 padding 对称），否则视图态（元素 margin）与编辑态（textarea padding）
+   两套模型高度不等，点一下就跳。阅读态 .mdw-preview 不受此规则影响。 */
+.mdw-lp-view > *{margin:0!important}
+/* 块内多元素（多行引用、列表后接正文）默认贴紧：视图态按元素逐个排版，
+   编辑态是同一个 textarea（元素间没有额外盒子），贴紧才等高 */
+.mdw-lp-view > * + *{margin-top:0!important}
+/* 列表项自身的行间距归零（最后一行的下边距也算进块高 → 与编辑态差 4px） */
+.mdw-lp-view li{margin:0!important}
+.mdw-lp-view li + li{margin-top:4px!important}
+.mdw-lp-block.kind-h2 + .mdw-lp-block.kind-p .mdw-lp-view p{margin-top:0}
+.mdw-lp-add{
+  display:block;width:100%;height:32px;margin:4px 0 0;padding:0;border:0;
+  background:transparent;cursor:text;
+}
+/* 空文档引导：Notion 式幽灵文案（13.5px 正文行高，faint 色） */
+.mdw-lp-add.is-empty-hint{height:auto;padding:6px 0 10px;text-align:left}
+.mdw-lp-add-hint{font-size:13.5px;line-height:1.75;color:var(--faint,#A9AEB4)}
+/* 空文档隐藏隐形空块；进入编辑态（is-edit）立即让位显示 */
+.mdw-lp-blocks.is-empty-doc .mdw-lp-block:not(.is-edit){display:none}
+
+/* 排版：阅读 / 单栏 live 共用 */
+.mdw-lp-view h1,.mdw-preview h1{
+  font-weight:650;font-size:22px;line-height:1.3;font-family:inherit;margin:8px 0 8px;color:var(--ink,#16181C);letter-spacing:-0.02em;
+}
+.mdw-lp-view h2,.mdw-preview h2{
+  font-weight:650;font-size:16px;line-height:1.35;font-family:inherit;margin:14px 0 4px;padding:0;border:0;
+  color:var(--ink,#16181C);letter-spacing:-0.01em;
+}
+.mdw-lp-view h3,.mdw-preview h3{
+  font-weight:650;font-size:14px;line-height:1.4;font-family:inherit;margin:10px 0 4px;color:var(--ink-2,#4B515A);
+}
+.mdw-lp-blocks > .mdw-lp-block:first-child .mdw-lp-view h1,
+.mdw-lp-blocks > .mdw-lp-block:first-child .mdw-lp-view h2,
+.mdw-lp-blocks > .mdw-lp-block:first-child .mdw-lp-view h3{margin-top:0}
+/* 首块在编辑态同样不留上边距（视图 margin-top:0 ↔ 编辑态 padding-top:0） */
+.mdw-lp-blocks > .mdw-lp-block:first-child{padding-top:0!important}
+.mdw-lp-view p,.mdw-lp-view li,.mdw-preview p,.mdw-preview li{
+  font-size:var(--mdw-lp-body-size,13.5px);
+  line-height:var(--mdw-lp-body-lh,1.75);
+  color:var(--mdw-lp-body-color,var(--ink-2,#4B515A));
+  /* 显式 400：与编辑态 textarea 一致，避免点选一行「变细」 */
+  font-weight:400;
+}
+.mdw-lp-view p,.mdw-preview p{margin:0 0 6px}
+.mdw-lp-view ul,.mdw-lp-view ol,.mdw-preview ul,.mdw-preview ol{
+  padding-left:0;margin:2px 0 8px;list-style:none;
+}
+.mdw-lp-view li,.mdw-preview li{
+  margin:0 0 4px;padding-left:1.4em;position:relative;
+}
+.mdw-lp-view li:not(.todo):not(.done)::before,.mdw-preview li:not(.todo):not(.done)::before{
+  content:"•";position:absolute;left:0.35em;color:var(--mid,#838A93);
+}
+.mdw-lp-view li.todo,.mdw-lp-view li.done,.mdw-preview li.todo,.mdw-preview li.done{padding-left:1.5em}
+.mdw-lp-view .mdw-cb,.mdw-preview .mdw-cb{
+  position:absolute;left:0;top:0.05em;font-size:13px;line-height:1.75;color:var(--mid,#838A93);
+}
+.mdw-lp-view li.done,.mdw-preview li.done{color:var(--faint,#A9AEB4);text-decoration:line-through}
+.mdw-lp-view li.done .mdw-cb,.mdw-preview li.done .mdw-cb{text-decoration:none;color:var(--mdw-accent)}
+.mdw-lp-view code,.mdw-preview code{
+  font:12px/1.4 ui-monospace,Consolas,monospace;background:rgba(0,0,0,.04);
+  padding:1px 4px;border-radius:3px;color:var(--ink,#16181C);
+}
+.mdw-lp-view pre,.mdw-preview pre{
+  margin:8px 0;padding:10px 12px;border-radius:6px;background:rgba(0,0,0,.03);
+  border:0;overflow:auto;font:12px/1.55 ui-monospace,Consolas,monospace;
+}
+.mdw-lp-view img,.mdw-preview img{
+  max-width:100%;border-radius:6px;border:0;margin:8px 0;display:block;
+}
+/* 引用：仅左侧细线，无底色块 */
+.mdw-lp-view blockquote,.mdw-preview blockquote{
+  margin:8px 0;padding:2px 0 2px 12px;border-left:2px solid var(--line,#E4E2DC);
+  background:transparent;font-size:13px;color:var(--ink-2,#4B515A);border-radius:0;
+}
+/* 轮次 callout（#144）：`> [!NOTE]` / `> [!WARNING]` 渲染成醒目色块——
+   完成总结 = 绿（accent），验收反馈 = 琥珀；标题行 + 正文两段式。 */
+.md-callout{
+  margin:10px 0;padding:9px 12px 10px;border-radius:8px;
+  border:1px solid var(--mdw-accent-line,#B7D4C8);
+  border-left:3px solid var(--mdw-accent,#2F6F5E);
+  background:var(--mdw-accent-soft,#E8F2EE);
+}
+.md-callout .md-callout-t{
+  font-weight:650;font-size:12.5px;color:var(--mdw-accent,#2F6F5E);margin-bottom:4px;
+}
+.md-callout .md-callout-b{font-size:13px;line-height:1.55;color:var(--ink-2,#4B515A)}
+.md-callout .md-callout-b>:first-child{margin-top:0}
+.md-callout .md-callout-b>:last-child{margin-bottom:0}
+.md-callout-warning{
+  border-color:#E8D9B5;border-left-color:#C08A2D;background:#FBF3E1;
+}
+.md-callout-warning .md-callout-t{color:#8A6508}
+.md-callout-tip{border-color:#CFE3DA;border-left-color:#3D8F79;background:#EDF6F2}
+.md-callout-tip .md-callout-t{color:#2F6F5E}
+.md-callout-important{border-color:#DCCFE8;border-left-color:#8A5FB0;background:#F5EFFA}
+.md-callout-important .md-callout-t{color:#6B4590}
+.md-callout-caution{border-color:#EBCCCB;border-left-color:#C0504A;background:#FAEDEC}
+.md-callout-caution .md-callout-t{color:#A03934}
+.mdw-preview .mdw-empty,.mdw-lp-view .mdw-empty{
+  color:var(--faint,#A9AEB4);padding:40px 0;text-align:center;
+}
+.mdw-attach-chip{
+  display:flex;align-items:center;gap:8px;padding:6px 0;border:0;border-bottom:1px dashed var(--line,#E4E2DC);
+  border-radius:0;background:transparent;margin:6px 0;font-size:12px;
+}
+.mdw-attach-chip .sz{margin-left:auto;font:400 11px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4)}
+

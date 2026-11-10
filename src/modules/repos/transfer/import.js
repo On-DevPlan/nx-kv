@@ -1,0 +1,380 @@
+// 导入执行：diffImport 的差异 → 按策略落库（文档树还原 → 登记/覆盖/另存 → 看板与绑定 → 关系）。
+import { join, resolve } from 'node:path';
+import { loadConfig } from '../../../core/config.js';
+import { badInput } from '../../../core/errors.js';
+import { writeOwnDoc, externalClosure } from '../../docs/store.js';
+import * as service from '../service.js';
+import * as boards from '../boards.js';
+import { gitClone, hasGit } from '../git.js';
+import { clean, parseLayout } from './layout.js';
+import { diffImport } from './diff.js';
+
+// 仓库的 key（自定义 > remote 派生 > local 兜底）
+const deriveKeyOf = (r) => service.deriveKey(r);
+
+function cloneModeFor(type, clone) {
+  if (clone === 'all') return true;
+  if (clone === 'dev') return type === 'dev';
+  if (clone === 'ref') return type === 'ref';
+  return false; // none
+}
+
+/**
+ * 执行导入。
+ *   selection       要处理的 key（空 = 全部）
+ *   strategy        ours=保留本地 / overwrite=用导入覆盖 / duplicate=另存 key-import-N
+ *   boardSelection  要处理的看板 key（空 = 全部）
+ *   clone           all | dev | ref | none
+ *   docsFiles       zip 拆出的文档条目 [{rel, data}]（先还原文档树，再还原绑定）
+ */
+export async function repoImport({
+  json,
+  docsFiles = [],
+  selection,
+  strategy = 'ours',
+  boardSelection,
+  clone = 'none',
+} = {}) {
+  if (!['ours', 'overwrite', 'duplicate'].includes(strategy)) {
+    throw badInput('strategy 只能是 ours | overwrite | duplicate，收到: ' + strategy);
+  }
+  const layout = parseLayout(json);
+  const diff = await diffImport(JSON.stringify(layout), docsFiles);
+
+  const cfg = await loadConfig();
+  const gitRepoRoot = clean(cfg.gitRepoRoot);
+  const gitDevRoot = clean(cfg.gitDevRoot);
+  const warnings = [];
+
+  const sel = new Set((Array.isArray(selection) ? selection : selection ? [selection] : []).map(clean).filter(Boolean));
+  const want = (k) => !sel.size || sel.has(k);
+  const bsel = new Set((Array.isArray(boardSelection) ? boardSelection : boardSelection ? [boardSelection] : []).map(clean).filter(Boolean));
+  const wantBoard = (k) => !bsel.size || bsel.has(k);
+
+  const created = [];
+  const updated = [];
+  const duplicated = [];
+  const cloned = [];
+  const skipped = [];
+  const keyMap = new Map(); // 导入 key -> 本地 repo id
+
+  // ① 文档树还原（先于一切绑定——绑定可能指向即将恢复的文档）。
+  //    ours（缺省）= 本地已有且内容不同 → 跳过保本地；overwrite = 全部覆盖；
+  //    duplicate 对文档不适用（描述没有「另存一份」的意义）→ 按 ours。
+  const docs = { written: [], skipped: [] };
+  if (docsFiles.length) {
+    for (const item of diff.docs) {
+      const f = docsFiles.find((x) => x.rel === item.rel);
+      if (!f) continue;
+      if (strategy !== 'overwrite' && item.status !== 'new') {
+        docs.skipped.push({ rel: item.rel, why: item.status === 'same' ? '一致' : '本地已有不同内容（保留本地）' });
+        continue;
+      }
+      await writeOwnDoc(f.rel, f.data.toString('utf8'));
+      docs.written.push(item.rel);
+    }
+  }
+
+  // 先登记本地已有的（哪怕这次不动，也要能解析关系）
+  // keyMap: repoKey -> repoKey（关系的身份；本地有没有这条登记用 keyMap.has 判断）
+  const s0 = await service.loadStore();
+  for (const r of s0.repos) keyMap.set(service.deriveKey(r), service.deriveKey(r));
+
+  for (const item of diff.repos) {
+    if (!want(item.key)) continue;
+    const inc = item.incoming;
+    try {
+      if (item.status === 'same') {
+        skipped.push({ key: item.key, why: '已一致' });
+        continue;
+      }
+
+      if (item.status === 'changed') {
+        if (strategy === 'ours') {
+          skipped.push({ key: item.key, why: '保留本地（ours）' });
+          continue;
+        }
+        if (strategy === 'overwrite') {
+          const patch = {};
+          let descIn = null;
+          for (const f of item.fields) {
+            // 描述是文档（不再是字符串字段）：攒下来单独写主篇，不进 updateRepo 的 patch
+            if (f.field === 'desc') { descIn = inc.desc; continue; }
+            if (f.field === 'type') patch.type = inc.type;
+            else if (f.field === 'remote') patch.remote = inc.remote || '';
+            else patch[f.field] = inc[f.field];
+          }
+          await service.updateRepo(item.local.id, patch);
+          if (descIn !== null) {
+            await service.writeRepoDocContent({ key: item.key, name: inc.name || item.key }, descIn);
+          }
+          updated.push({ key: item.key, fields: item.fields.map((f) => f.field) });
+          continue;
+        }
+        // duplicate：另存一份（占位路径带上新 key，避免与原记录/前一次复制撞路径）
+        const newKey = await uniqueKey(item.key);
+        const r = await service.addRepo({
+          path: placeholderPath({ ...inc, key: newKey }, gitRepoRoot, gitDevRoot, newKey),
+          name: (inc.name || inc.key) + ' (import)',
+          desc: inc.desc,
+          notes: inc.notes,
+          type: inc.type,
+          remote: inc.remote || '',
+          key: newKey,
+          keyCustom: true,
+          remotes: inc.remotes || [],
+        });
+        duplicated.push({ key: item.key, newKey, id: r.id });
+        keyMap.set(newKey, newKey);
+        continue;
+      }
+
+      // status === 'new'：登记（可选 clone）
+      const type = inc.type;
+      const root = type === 'ref' ? gitRepoRoot : gitDevRoot;
+      const wantClone = cloneModeFor(type, clone) && !!inc.remote && !!root;
+      if (cloneModeFor(type, clone) && inc.remote && !root) {
+        warnings.push(`「${inc.name || inc.key}」需要克隆但 ${type === 'ref' ? 'gitRepoRoot' : 'gitDevRoot'} 未设置 —— 只登记`);
+      }
+
+      // 磁盘上已经有同源目录（换机搬过 / 以前 clone 过）就直登记，不再 clone
+      let dest = null;
+      if (root && inc.remote) {
+        const guess = resolve(join(resolve(root), service.dirnameFromRemote(inc.remote)));
+        if (await hasGit(guess)) dest = guess;
+      }
+
+      if (!dest && wantClone) {
+        dest = resolve(join(resolve(root), service.dirnameFromRemote(inc.remote)));
+        const used = await gitClone(inc.remote, dest, { depth: 1 });
+        cloned.push({ key: item.key, dest, remote: used });
+        const r = await service.addRepo({
+          path: dest, name: inc.name, desc: inc.desc, notes: inc.notes,
+          type, remote: used, key: inc.key, keyCustom: inc.keyCustom, remotes: inc.remotes || [],
+        });
+        created.push({ key: item.key, id: r.id, cloned: true });
+        keyMap.set(item.key, item.key);
+        continue;
+      }
+
+      const r = await service.addRepo({
+        path: dest || placeholderPath(inc, gitRepoRoot, gitDevRoot),
+        name: inc.name,
+        desc: inc.desc,
+        notes: inc.notes,
+        type,
+        remote: inc.remote || '',
+        key: inc.key,
+        keyCustom: inc.keyCustom,
+        remotes: inc.remotes || [],
+      });
+      created.push({ key: item.key, id: r.id, cloned: !!dest });
+      keyMap.set(item.key, item.key);
+    } catch (err) {
+      const msg = String((err && err.message) || err);
+      if (/已.*登记|已存在/.test(msg)) skipped.push({ key: item.key, why: msg });
+      else warnings.push(`「${inc.name || item.key}」导入失败: ${msg}`);
+    }
+  }
+
+  // 看板：按 key 匹配，缺失则新建；成员按 repo key 解析
+  let boardsCreated = 0;
+  let boardsMerged = 0;
+  const unmatched = [];
+  for (const bd of diff.boards) {
+    if (!wantBoard(bd.key)) continue;
+    const inc = bd.incoming;
+    let b = (await service.loadStore()).boards.find((x) => service.storedBoardKey(x) === bd.key);
+    try {
+      if (!b) {
+        await boards.createBoard({ name: inc.name, desc: inc.desc, key: bd.key });
+        boardsCreated += 1;
+        b = (await service.loadStore()).boards.find((x) => service.storedBoardKey(x) === bd.key);
+      } else {
+        boardsMerged += 1;
+        if (strategy === 'overwrite' && inc.desc && inc.desc !== (b.desc || '')) {
+          await boards.updateBoard(b.id, { desc: inc.desc });
+        }
+      }
+      if (!b) continue;
+      // **完整复制导出方的组布局**：按导入文件的顺序重建成员列表。
+      // 本地没有的成员（占位）也保留位置 —— 组结构照抄，缺的那几个标出来等 clone。
+      for (const m of inc.repos) {
+        const known = keyMap.has(m.key);
+        await boards.assignRepo({ key: m.key, board: b.id }).catch(() => {});
+        if (!known) {
+          // 占位成员的线索一起带走：只留一个 key 的话，导入端既看不到名字，
+          // 也不知道该 clone 哪个地址——「待初始化」就永远待着，还删不掉。
+          await boards
+            .setMemberHint({ board: b.id, key: m.key, name: m.name, remote: m.remote, desc: m.desc, type: m.type })
+            .catch(() => {});
+        }
+        if (m.note) {
+          // 组内描述挂在 key 上：占位成员也保留描述，等仓库补齐后自动生效。
+          // **直接写摘要字段**，不走 setBoardRepoNote —— 后者会把这句话写进
+          // group 文档，覆盖刚从 zip 还原的正文（描述以文档为准，文字只是影子）。
+          await service
+            .mutateStore((s) => {
+              const bb = s.boards.find((x) => x.id === b.id);
+              if (!bb) return;
+              if (!bb.repoNotes) bb.repoNotes = {};
+              bb.repoNotes[m.key] = m.note;
+            })
+            .catch(() => {});
+        }
+        if (!known) {
+          unmatched.push({
+            board: inc.name,
+            entry: m.key,
+            reason: '本地未拥有',
+            remote: m.remote || '',
+            clonable: !!m.remote,
+            name: m.name || '',
+          });
+        }
+      }
+    } catch (err) {
+      warnings.push(`看板「${inc.name}」导入失败: ${String((err && err.message) || err)}`);
+    }
+  }
+
+  // ② 文档绑定还原（与成员重建同一哲学：完整复制导出方的布局）。
+  //    看板：doc 覆盖 / docLinks 整表重建 / repoDocs 整表重建——成员都重建了，
+  //    绑定跟着走才不会出现「成员是新的、描述还挂在老 key 上」的错位。
+  //    仓库：新建的仓库带上 doc 覆盖；overwrite 时同样写入（ours 不动本地绑定）。
+  const bindingBoards = diff.boards.filter(
+    (bd) =>
+      wantBoard(bd.key) &&
+      (bd.incoming.doc || (bd.incoming.docLinks && bd.incoming.docLinks.length) || (bd.incoming.repoDocs && Object.keys(bd.incoming.repoDocs).length))
+  );
+  const bindingRepos = diff.repos.filter(
+    (item) => want(item.key) && item.incoming.doc && (item.status === 'new' || strategy === 'overwrite')
+  );
+  if (bindingBoards.length || bindingRepos.length) {
+    await service.mutateStore((s2) => {
+      for (const bd of bindingBoards) {
+        const b = s2.boards.find((x) => service.storedBoardKey(x) === bd.key);
+        if (!b) continue;
+        const inc = bd.incoming;
+        if (inc.doc) b.doc = { ...inc.doc };
+        else delete b.doc;
+        if (inc.docLinks && inc.docLinks.length) b.docLinks = inc.docLinks.map((x) => ({ ...x }));
+        else delete b.docLinks;
+        if (inc.repoDocs && Object.keys(inc.repoDocs).length) {
+          b.repoDocs = {};
+          for (const [rk, ref] of Object.entries(inc.repoDocs)) b.repoDocs[rk] = { ...ref };
+        } else delete b.repoDocs;
+      }
+      for (const item of bindingRepos) {
+        const r = s2.repos.find((x) => deriveKeyOf(x) === item.key);
+        if (r) r.doc = { ...item.incoming.doc };
+      }
+      return true;
+    });
+  }
+
+  // ③ 外部绑定存在性检查：路径缺失 = 待初始化（不阻塞——文档先恢复，等用户接上 vault）
+  const pendingExternal = [];
+  for (const c of await externalClosure(await service.loadStore())) {
+    if (!c.exists) pendingExternal.push({ owner: c.owner, path: c.path });
+  }
+  for (const p of pendingExternal) {
+    warnings.push(`外部绑定路径缺失（待初始化）: ${p.owner} → ${p.path}`);
+  }
+
+  // 参考关系
+  let linksDone = 0;
+  for (const l of diff.links) {
+    const rkey = l.ref;
+    if (!keyMap.has(rkey)) {
+      unmatched.push({ board: '(参考关系)', entry: rkey, reason: '参考仓库本地未拥有' });
+      continue;
+    }
+    for (const t of l.to) {
+      try {
+        if (t.repo) {
+          if (!keyMap.has(t.repo)) {
+            unmatched.push({ board: `(参考关系 ${l.ref})`, entry: t.repo, reason: '本地未拥有' });
+            continue;
+          }
+          await refBind(rkey, t.repo, null, t.note);
+        } else if (t.board) {
+          const bs = (await service.loadStore()).boards.find((x) => service.storedBoardKey(x) === t.board);
+          if (!bs) { unmatched.push({ board: `(参考关系 ${l.ref})`, entry: '看板 ' + t.board, reason: '看板未建立' }); continue; }
+          await refBind(rkey, null, service.storedBoardKey(bs), t.note);
+        }
+        linksDone += 1;
+      } catch (err) {
+        warnings.push(`参考关系 ${l.ref} → ${t.repo || t.board} 失败: ${String((err && err.message) || err)}`);
+      }
+    }
+  }
+
+  return {
+    strategy,
+    created,
+    updated,
+    duplicated,
+    cloned,
+    skipped,
+    unmatched,
+    warnings,
+    boardsCreated,
+    boardsMerged,
+    links: linksDone,
+    docs,
+    pendingExternal,
+  };
+}
+
+// 给重复导入起一个不冲突的 key：key-import-1/2/3…
+async function uniqueKey(base) {
+  const s = await service.loadStore();
+  const used = new Set(s.repos.map((r) => service.deriveKey(r)));
+  for (let i = 1; i < 1000; i++) {
+    const k = `${base}-import-${i}`;
+    if (!used.has(k)) return k;
+  }
+  return `${base}-import-${Date.now().toString(36)}`;
+}
+
+// 没有可 clone 的远程地址时，登记路径只是占位（目录不存在，等 clone 后 update --path）。
+// 占位目录名取 key 的末段——复制出来的条目 key 不同，目录也就不会撞。
+function placeholderPath(inc, gitRepoRoot, gitDevRoot, keyOverride) {
+  const root = inc.type === 'ref' ? gitRepoRoot : gitDevRoot;
+  const base = resolve(root || '.');
+  const k = keyOverride || inc.remote || inc.key;
+  const dir = service.dirnameFromRemote(k).replace(/[<>:"/\\|?*\x00-\x1f]/g, '-');
+  return join(base, dir);
+}
+
+// 关系重建的绑定直写（双向：ref 侧写 {repo|board}，dev 侧写反向 {ref}）。
+// 入参一律是 **key**（关系的身份），不再用随机 id。
+async function refBind(refKey, repoKey, boardKey_, note) {
+  return service.mutateStore((s) => {
+    const r = s.repos.find((x) => deriveKeyOf(x) === refKey);
+    if (!r) throw badInput('参考仓库不存在: ' + refKey);
+    if (!Array.isArray(r.linked)) r.linked = [];
+    const key = boardKey_ ? 'board:' + boardKey_ : 'repo:' + repoKey;
+    const hit = r.linked.find((l) => l.kind + ':' + l.id === key);
+    if (!hit) {
+      r.linked.push(
+        note
+          ? boardKey_ ? { kind: 'board', id: boardKey_, note } : { kind: 'repo', id: repoKey, note }
+          : boardKey_ ? { kind: 'board', id: boardKey_ } : { kind: 'repo', id: repoKey }
+      );
+    } else if (note) {
+      hit.note = note;
+    }
+    if (repoKey) {
+      const d = s.repos.find((x) => deriveKeyOf(x) === repoKey);
+      if (d) {
+        if (!Array.isArray(d.linked)) d.linked = [];
+        const back = d.linked.find((l) => l.kind === 'ref' && l.id === refKey);
+        if (!back) d.linked.push(note ? { kind: 'ref', id: refKey, note } : { kind: 'ref', id: refKey });
+        else if (note) back.note = note;
+      }
+    }
+    return r.linked.slice();
+  });
+}

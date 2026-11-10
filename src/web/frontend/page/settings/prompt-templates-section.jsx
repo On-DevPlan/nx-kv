@@ -96,6 +96,7 @@ export default function PromptTemplatesSection() {
   if (!state) return <div className="setp-note">读取提示词模板…</div>;
 
   const activeBlock = blockOf(blockId);
+  const activeMode = APPEND_MODES.find((m) => m.id === state.appendMode) || APPEND_MODES[0];
   const currentBlock = state.lists[blockId];
   const isBuiltin = editing?.id === BUILTIN_TEMPLATE_ID;
 
@@ -240,19 +241,24 @@ export default function PromptTemplatesSection() {
 
   return (
     <div className="setp-tpl-editor">
-      <div className="setp-mode-picks">
-        {APPEND_MODES.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            className={'setp-mode-pick' + (state.appendMode === m.id ? ' is-on' : '')}
-            disabled={busy}
-            onClick={() => setAppendMode(m.id)}
-          >
-            <b>{m.label}</b>
-            <small>{m.desc}</small>
-          </button>
-        ))}
+      <div className="setp-tpl-head">
+        <span className="setp-tpl-head-label">系统提示词追加方式</span>
+        <div className="setp-seg" role="group" aria-label="系统提示词追加方式">
+          {APPEND_MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className={'setp-seg-btn' + (state.appendMode === m.id ? ' is-on' : '')}
+              aria-pressed={state.appendMode === m.id}
+              title={m.desc}
+              disabled={busy}
+              onClick={() => setAppendMode(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <span className="setp-note">{activeMode.desc}</span>
       </div>
 
       <nav className="setp-block-tabs" aria-label="提示词区块">

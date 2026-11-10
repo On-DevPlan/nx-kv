@@ -256,19 +256,20 @@
 /* 提示词模板 → 系统区块：追加模式 + 每个区块的模板编辑 */
 .setp-blocks{display:flex;flex-direction:column;gap:10px}
 .setp-blocks .setp-row{margin:0}
-.setp-mode-picks{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-@media (max-width:720px){.setp-mode-picks{grid-template-columns:1fr}}
-.setp-mode-pick{
-  text-align:left;cursor:pointer;font:inherit;padding:8px 10px;
-  border:1px solid var(--line,#E4E2DC);border-radius:8px;
-  background:var(--paper,#fff);color:var(--ink,#16181C);
+/* 追加方式（#88）：两块大卡片收成头部一行的小切换钮——选项常驻、说明只留当前项一句 */
+.setp-tpl-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.setp-tpl-head-label{font-size:12px;color:var(--ink-2,#4B515A)}
+.setp-seg{
+  display:inline-flex;overflow:hidden;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);
 }
-.setp-mode-pick b{display:block;font-size:12px}
-.setp-mode-pick small{display:block;margin-top:2px;font-size:11px;line-height:1.5;color:var(--faint,#8A8578)}
-.setp-mode-pick.is-on{
-  border-color:var(--mdw-accent-line,#B7D4C8);
-  background:var(--mdw-accent-soft,#E8F2EE);
+.setp-seg-btn{
+  font:inherit;font-size:11.5px;line-height:1.2;padding:3px 8px;white-space:nowrap;
+  border:0;background:transparent;color:var(--faint,#8A8578);cursor:pointer;
 }
+.setp-seg-btn + .setp-seg-btn{border-left:1px solid var(--line,#E4E2DC)}
+.setp-seg-btn.is-on{background:var(--mdw-accent-soft,#E8F2EE);color:var(--ink,#16181C);font-weight:600}
+.setp-seg-btn:disabled{cursor:default;opacity:.6}
 .setp-block{
   display:flex;flex-direction:column;gap:6px;padding:8px 10px;
   border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--paper,#fff);

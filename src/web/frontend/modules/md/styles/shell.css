@@ -168,16 +168,8 @@
 /* 内容区 */
 .mdw-split{flex:1;display:flex;min-height:0;overflow:hidden}
 
-/* 目录落地页（#164 二轮）：外壳与项目组页同构——根容器用 rp-page（同底色/同内距），
-   头部用 rp-group-head（h2 + 右对齐工具区）；这里只留目录特有的小字 meta 行
-   （队列 cwd + 现状）与翻页条。旧的 head/name/status-line/count 规则已随
-   旧头部结构删除。 */
-.mdw-land-meta{display:flex;align-items:baseline;gap:12px;min-width:0;margin-top:2px}
-.mdw-land-meta .mdw-land-path{margin-top:0;flex:none;max-width:60%}
-.mdw-land-status{
-  min-width:0;font-size:11.5px;color:var(--ink-2,#4B515A);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
+/* 目录落地页（#169）：外壳与项目组页**共用组件** components/task-panel/page-shell
+   （结构与样式同源，这里不再各写一套容器规则）；目录侧只留翻页条。 */
 /* 翻页条：队列长了翻页看，不再一次渲染全部 */
 .mdw-land-pager{display:flex;justify-content:flex-end;margin-top:10px}
 .mdw-land-table-wrap{

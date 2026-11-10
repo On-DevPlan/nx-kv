@@ -13,6 +13,7 @@ import Pager from '../../components/pager.jsx';
 import { RowMenu } from '../../components/popup/index.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import TaskPanel from '../../components/task-panel/index.jsx';
+import PageShell from '../../components/task-panel/page-shell.jsx';
 import TaskRow from '../../components/task-panel/task-row.jsx';
 import { taskLabel } from '../../components/sidebar/model.js';
 
@@ -47,8 +48,6 @@ export default function Landing({
   deletedCount = 0 // 已软删任务数（「更多」角标提示）
 }) {
   const name = isGlobal ? '全局池' : (topic?.name || '目录');
-  const path = isGlobal ? '共享池（无固定目录）' : (topic?.cwd || '—');
-  const status = String(topic?.summary || '').trim();
 
   // 拖动排序（HTML5 DnD）：只在待领取行之间换位，落点 = 上半行之前 / 下半行之后。
   // 拖拽态走 **ref**（同步可读）——dragstart/dragover 在真实拖拽里也只隔几毫秒，
@@ -135,18 +134,14 @@ export default function Landing({
   };
 
   return (
-    // 根容器与项目组页同款（rp-page：无底色差、同内距、flex gap）——#164 验收反馈
-    // 「两种 ui 仍然不一，比如工具区、背景等」：外壳向 group 页看齐。
-    // #167 三轮：去面包屑（group 页没有；返回导航走左侧树，两页顶部结构一致）。
-    <div className="rp-page">
-      {/* 头部 = group 同构：h2（图标 + 名字 + 计数 chips）+ 右对齐工具区 */}
-      <div className="rp-group-head">
-        <h2>
-          <Icon name="folder" size={15} /> {name}
-          <span className="rp-chip-count">{taskCount} 个任务</span>
-          {pendingCount > 0 ? <span className="rp-chip-count">待领取 {pendingCount}</span> : null}
-        </h2>
-        <div className="rp-group-acts">
+    // #169：外壳复用共享组件 PageShell（与项目组页同一份结构与样式——此前两页
+    // 各写各的容器类名，背景/内距靠巧合对齐，一处改一处漂）。
+    // #167 三轮：去面包屑（group 页没有，返回导航走左侧树）。
+    <PageShell
+      name={name}
+      counts={[`${taskCount} 个任务`, ...(pendingCount > 0 ? [`待领取 ${pendingCount}`] : [])]}
+      actions={
+        <>
           {/* #139：工具区可编排（顺序 / 显隐；隐藏收入「更多」） */}
           <ToolActsBar
             kind="dir"
@@ -208,15 +203,9 @@ export default function Landing({
               refs: onRefs,
             }}
           />
-        </div>
-        {/* 路径与现状：group 页没有的目录特有信息，弱化成一行小字放头部末尾 */}
-        <div className="mdw-land-meta">
-          <span className="mdw-land-path mono" title={path}>{path}</span>
-          {status ? (
-            <span className="mdw-land-status mono" title={status}>现状：{status}</span>
-          ) : null}
-        </div>
-      </div>
+        </>
+      }
+    >
 
       {!isGlobal && repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
 
@@ -367,6 +356,6 @@ export default function Landing({
           />
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

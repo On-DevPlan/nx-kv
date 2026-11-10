@@ -16,6 +16,8 @@ import { useToast } from '../../components/toast/index.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TaskPanel from '../../components/task-panel/index.jsx';
+import PageShell from '../../components/task-panel/page-shell.jsx';
+import DeletedPanel from '../dir/deleted-panel.jsx';
 import TaskRow from '../../components/task-panel/task-row.jsx';
 import Pager, { usePager } from '../../components/pager.jsx';
 import { useApp } from '../../app-context.jsx';
@@ -34,7 +36,7 @@ const PAGE_SIZE = 20;
 
 export default function GroupView({ dirKey, rows, repoData, model }) {
   const toast = useToast();
-  const { node: dialogNode } = useDialog();
+  const { dialog, node: dialogNode } = useDialog();
   const app = useApp() || {};
   const tpl = useTemplates();
   const boards = (repoData && repoData.boards) || [];
@@ -43,6 +45,8 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
   // 已领取历史折叠态：#167 三轮起被分页取代（列表进 usePager，历史行混排在页内）
   // 「添加成员」就地弹窗（不跳仓库管理页——组面板里就地改归属）
   const [addOpen, setAddOpen] = useState(false);
+  // #169：本组已删除任务（组任务跨多个成员队列）
+  const [showDeleted, setShowDeleted] = useState(false);
   // 「＋ 新增任务 ▾」（#131/#132）：点击开合；portal + fixed 防组页矮容器裁切出滚动条。
   const [tplFlyOpen, setTplFlyOpen] = useState(false);
   const [tplFlyPos, setTplFlyPos] = useState(null); // { top, right } 视口坐标
@@ -115,7 +119,7 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
         waiting: !!(topic && topic.waiting),
         topicKey: topic ? topic.key : '',
         summary: topic ? topic.summary || '' : '',
-        tasks: topic ? (topic.tasks || []).filter((t) => !t.deletedAt) : [],
+        tasks: topic ? (topic.tasks || []) : [],
         present: m.present !== false,
         // 组内描述文档：绑定优先（外部 path 只读），缺省约定路径
         noteDocId: m.noteDocPath ? 'path:' + m.noteDocPath : 'rel:' + m.noteDocRel,
@@ -171,6 +175,7 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
     const done = [];
     for (const it of items) {
       for (const t of it.tasks || []) {
+        if (t.deletedAt) continue; // 软删的进「已删除任务」面板，不进列表
         const fm = parseFrontmatter(t.text);
         if (!fm.board || !ids.includes(fm.board)) continue;
         (t.status === 'pending' ? pend : done).push({ member: it, task: t, project: fm.project || '' });
@@ -179,6 +184,58 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
     done.sort((a, b) => String(b.task.consumedAt || '').localeCompare(String(a.task.consumedAt || '')));
     return [...pend, ...done];
   }, [board, items]);
+
+  // #169：本组已删除任务（组任务跨多个成员队列——每条记着自己队列的 cwd，
+  // 恢复/彻底删除按各自队列定位）。
+  const deletedTasks = useMemo(() => {
+    const ids = board ? [board.id, board.key, board.name].filter(Boolean) : [];
+    const out = [];
+    for (const it of items) {
+      for (const t of it.tasks || []) {
+        if (!t.deletedAt) continue;
+        const fm = parseFrontmatter(t.text);
+        if (!fm.board || !ids.includes(fm.board)) continue;
+        out.push({ ...t, memberName: it.name, memberCwd: it.cwd });
+      }
+    }
+    return out.reverse();
+  }, [board, items]);
+
+  const restoreDeleted = async (t) => {
+    if (!t) return;
+    try {
+      await api('/api/localtasks/tasks/restore', {
+        method: 'POST',
+        body: { cwd: t.memberCwd, id: t.id },
+      });
+      toast(`已恢复 #${t.id}`);
+      app.refreshLocal && (await app.refreshLocal());
+    } catch (e) {
+      toast(`恢复失败：${(e && e.message) || e}`);
+    }
+  };
+
+  const purgeDeleted = async (t) => {
+    if (!t) return;
+    const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
+    const ok = await dialog({
+      title: `彻底删除「${title.replace(/^#\s*/, '')}」`,
+      message: '彻底删除后不可恢复（行从队列里真正摘除）。',
+      danger: true,
+      okText: '彻底删除',
+    });
+    if (!ok) return;
+    try {
+      await api('/api/localtasks/item', {
+        method: 'DELETE',
+        body: { cwd: t.memberCwd, id: t.id, purge: true },
+      });
+      toast(`已彻底删除 #${t.id}`);
+      app.refreshLocal && (await app.refreshLocal());
+    } catch (e) {
+      toast(`删除失败：${(e && e.message) || e}`);
+    }
+  };
   const groupPendingCount = useMemo(
     () => groupTasks.filter((x) => x.task.status === 'pending').length,
     [groupTasks]
@@ -293,18 +350,11 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
   };
 
   return (
-    <div className="rp-page">
-      {dialogNode}
-      <div className="rp-group-head">
-        <h2>
-          <Icon name="folder" size={15} /> {board.name}
-          <span className="rp-chip-count">{items.length} 个目录</span>
-          {totalPending > 0 && <span className="rp-chip-count">待领取 {totalPending}</span>}
-        </h2>
-        {/* 组简介（board/<组>.md）不在头部铺正文：那一大段文字会被右侧动作按钮压住，
-            而且组介绍已经是文档（下面的「组介绍」入口直达）。任务 #87：
-            「文字被按钮遮挡，不显示简介文本」——此处只留名字与计数。 */}
-        <div className="rp-group-acts">
+    <PageShell
+      name={board.name}
+      counts={[`${items.length} 个目录`, ...(totalPending > 0 ? [`待领取 ${totalPending}`] : [])]}
+      actions={
+        <>
           {/* #139：工具区可编排；新增任务保留模板下拉（#132 portal） */}
           <ToolActsBar
             kind="group"
@@ -312,7 +362,12 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
               progress: '打开本组的任务进程面板',
               addMember: '挑项目加进这个组',
               orch: '打开可视化编排面板',
+              deleted: '查看本组已删除的任务（可恢复）',
               refs: '查看文档 / reference 列表',
+            }}
+            labels={{
+              more: deletedTasks.length ? `更多 (${deletedTasks.length})` : '更多',
+              deleted: deletedTasks.length ? `已删除任务（${deletedTasks.length}）` : '已删除任务',
             }}
             disabled={{ new: !sel }}
             renderers={{
@@ -444,10 +499,13 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
                   location: 'right',
                 });
               },
+              deleted: () => setShowDeleted(true),
             }}
           />
-        </div>
-      </div>
+        </>
+      }
+    >
+      {dialogNode}
 
       {/* 组介绍（board/<组>.md，文字超链接打开 DocPanel）放在本组任务**上方**——
           先看这个组是干什么的，再看活儿 */}
@@ -521,6 +579,15 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
         />
       ) : null}
 
-    </div>
+      {/* #169：本组已删除任务（组任务跨多个成员队列，恢复按各自队列定位） */}
+      {showDeleted && (
+        <DeletedPanel
+          tasks={deletedTasks}
+          onClose={() => setShowDeleted(false)}
+          onRestore={restoreDeleted}
+          onPurge={purgeDeleted}
+        />
+      )}
+    </PageShell>
   );
 }

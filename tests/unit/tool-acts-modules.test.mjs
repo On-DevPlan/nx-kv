@@ -21,12 +21,13 @@ test('dir default: bar has new/import/progress/orch/more; deleted/refs in more (
   assert.ok(!norm.some((x) => x.id === 'tpl'));
 });
 
-test('group default: bar has new/progress/addMember/orch/more; refs in more', () => {
+test('group default: bar has new/progress/addMember/orch/more; deleted+refs in more', () => {
   const layout = defaultLayout('group');
   const bar = layout.filter((x) => onBarOf('group', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('group', x)).map((x) => x.id);
   assert.deepEqual(bar, ['new', 'progress', 'addMember', 'orch', 'more']);
-  assert.deepEqual(more, ['refs']);
+  // #169：组页补「已删除任务」入口（与目录页同款）
+  assert.deepEqual(more, ['deleted', 'refs']);
 });
 
 test('task default: bar has new/submit/more; secondary actions in more', () => {

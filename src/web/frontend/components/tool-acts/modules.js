@@ -20,6 +20,8 @@ export const GROUP_MODULES = [
   { id: 'addMember', label: '添加成员', section: 'bar' },
   { id: 'orch', label: '编排', section: 'bar' },
   { id: 'more', label: '更多', section: 'bar', noHide: true },
+  // #169：组页补「已删除任务」（与目录页同款入口，组任务跨多个成员队列）
+  { id: 'deleted', label: '已删除任务', section: 'more' },
   { id: 'refs', label: '查看列表', section: 'more' },
 ];
 

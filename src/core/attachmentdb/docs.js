@@ -7,6 +7,10 @@ import { syncRefAttachments, syncTaskAttachments } from './relations.js';
 /**
  * 把一个「文档标识」解析成 refs.id：先按 id，再按 locator（原样 / 反斜杠归一），
  * 都没有返回 null。CLI `--ref` 与面板选择器共用这一条，避免各自猜地址语法。
+ *
+ * **docId 前缀也认**（#165 二轮：面板选择器给的是 `rel:` / `path:` 形式，
+ * 而 refs.locator 存的是裸相对路径 / 绝对路径——不剥前缀就永远匹配不上，
+ * 面板「给任务挂文档」直接失败）。故额外按「剥前缀后的 locator」再查一次。
  */
 export function resolveRefId(conn, input) {
   const raw = String(input || '').trim();
@@ -18,6 +22,14 @@ export function resolveRefId(conn, input) {
     'SELECT id FROM refs WHERE locator = :loc AND deleted_at IS NULL', { loc }
   );
   if (byLoc) return byLoc.id;
+  // docId 形态（rel:xxx / path:xxx）→ 剥前缀按 locator 再查
+  const stripped = /^rel:|^path:/i.test(loc) ? loc.replace(/^rel:|^path:/i, '') : '';
+  if (stripped) {
+    const byStripped = conn.get(
+      'SELECT id FROM refs WHERE locator = :loc AND deleted_at IS NULL', { loc: stripped }
+    );
+    if (byStripped) return byStripped.id;
+  }
   const derived = refIdFor(loc);
   const byDerived = conn.get('SELECT id FROM refs WHERE id = :id AND deleted_at IS NULL', { id: derived });
   return byDerived ? byDerived.id : null;

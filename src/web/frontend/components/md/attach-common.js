@@ -85,11 +85,24 @@ export function endpointOf(host, { hostId, hostKey, hostCwd, refId }) {
   };
 }
 
-/** 待确认条目 → attach 请求体（文件先上传拿到 fileId）。 */
-export function attachBodyOf(item) {
+/** 待确认条目 → attach 请求体（文件先上传拿到 fileId）。
+ *
+ * 文档来源的**字段名按宿主分**（#165 二轮）：任务侧 action 收 `ref`
+ * （localtask.attach），文档侧收 `doc`（docs.attach）——之前两侧都发 `doc`，
+ * 面板「给任务挂文档」必然失败（未知键透传，attachToTask 收不到 ref）。
+ * `note`（绑定说明 / desc）与 `inline`（文档进原文，#162）随条目透传。
+ */
+export function attachBodyOf(item, host = 'task') {
   if (item.source === 'file') return { fileId: item.fileId, name: item.name };
   if (item.source === 'url') return { url: item.url, name: item.name };
   if (item.source === 'task') return { task: String(item.seq), name: item.name };
-  if (item.source === 'ref') return { doc: item.docRef, name: item.name };
+  if (item.source === 'ref') {
+    const body = host === 'doc'
+      ? { doc: item.docRef, name: item.name }
+      : { ref: item.docRef, name: item.name };
+    if (item.note) body.note = item.note;
+    if (host !== 'doc' && item.inline) body.inline = true;
+    return body;
+  }
   return {};
 }

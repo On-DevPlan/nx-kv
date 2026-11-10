@@ -152,10 +152,18 @@ export default function AttachModal({
         rel: d.rel || '',
         size: 0,
         status: 'pending',
+        // 文档绑定的两个可选属性（#162）：说明（desc，随边落库、交付清单透出）
+        // 与「进原文」（任务侧：交付带全文而不是只给路径）
+        note: '',
+        inline: false,
       },
     ]);
     setRefSearch('');
   };
+
+  /** 改某个待确认文档条目的说明 / 进原文开关 */
+  const patchRefItem = (key, patch) =>
+    setItems((prev) => prev.map((x) => (x.key === key ? { ...x, ...patch } : x)));
 
   const removeItem = (key) => setItems((prev) => prev.filter((x) => x.key !== key));
 
@@ -168,7 +176,7 @@ export default function AttachModal({
         fileId = r.fileId || r.id;
         if (!fileId) throw new Error('上传未返回 fileId');
       }
-      await ep.attach(attachBodyOf({ ...it, fileId }));
+      await ep.attach(attachBodyOf({ ...it, fileId }, host));
       setItems((prev) => prev.filter((x) => x.key !== it.key));
       return true;
     } catch (e) {
@@ -368,6 +376,30 @@ export default function AttachModal({
                 {badgeOf(it.source === 'file' ? (/^image\//i.test(it.mime) ? 'image' : 'file') : it.source)}
               </span>
               {it.size ? <span className="att-pending-size">{fmtSize(it.size)}</span> : null}
+              {/* 文档条目：说明（desc）+ 进原文（任务侧才有效，#162） */}
+              {it.source === 'ref' ? (
+                <span className="att-pending-ref-opts">
+                  <input
+                    className="att-pending-note"
+                    type="text"
+                    value={it.note || ''}
+                    placeholder="说明（这一行里大概是什么）"
+                    disabled={busy}
+                    onChange={(e) => patchRefItem(it.key, { note: e.target.value })}
+                  />
+                  {host === 'task' ? (
+                    <label className="att-pending-inline" title="交付时把文档全文附进提示词，而不是只给路径">
+                      <input
+                        type="checkbox"
+                        checked={!!it.inline}
+                        disabled={busy}
+                        onChange={(e) => patchRefItem(it.key, { inline: e.target.checked })}
+                      />
+                      进原文
+                    </label>
+                  ) : null}
+                </span>
+              ) : null}
               {it.status === 'uploading' ? <span className="att-pending-state">上传中…</span> : null}
               {it.status === 'error' ? (
                 <>

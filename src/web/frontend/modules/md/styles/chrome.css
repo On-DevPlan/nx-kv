@@ -226,6 +226,15 @@
   flex:none;font:400 10.5px var(--mono,ui-monospace,Consolas,monospace);color:var(--faint,#A9AEB4);
 }
 .att-pending-state{flex:none;font-size:11px;color:var(--mdw-accent,#2F6F5E)}
+/* 文档条目的说明 + 进原文开关（#162：任务侧文档绑定的两个可选属性） */
+.att-pending-ref-opts{flex:none;display:inline-flex;align-items:center;gap:6px;min-width:0}
+.att-pending-note{
+  width:180px;max-width:34vw;height:22px;padding:0 6px;font:inherit;font-size:11.5px;
+  border:1px solid var(--line,#E4E2DC);border-radius:5px;background:var(--paper,#fff);color:inherit;
+}
+.att-pending-note:focus{outline:2px solid var(--mdw-accent,#2F6F5E);outline-offset:1px}
+.att-pending-inline{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--ink-2,#4B515A);white-space:nowrap;cursor:pointer}
+.att-pending-inline input{width:13px;height:13px;accent-color:var(--mdw-accent,#2F6F5E);cursor:pointer}
 .att-mini{height:22px;padding:0 8px;font-size:11px}
 .att-foot{display:flex;align-items:center;gap:8px;width:100%}
 .att-foot-hint{margin-right:auto;font-size:11.5px;color:var(--mid,#838A93);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

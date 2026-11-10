@@ -23,10 +23,14 @@ function hostOf(host) {
 
 /**
  * 写一条宿主 ↔ 资源的关系（upsert，带 role 优先级）。
+ *
+ * note 是**边上的说明**（desc）：只在与现存 role 同级且调用方**显式给了** note
+ * （!== undefined）时才更新——正文同步等不关心 note 的调用方不传，就不会把
+ * 用户写的说明冲掉（#162：attach --ref --note 走 embed 路径时说明不再丢）。
  * @returns {string} 实际落库的 role
  */
 export function linkAttachment(conn, {
-  host, hostId, attachmentId, role = 'attach', position, note = '', atMs = Date.now(),
+  host, hostId, attachmentId, role = 'attach', position, note, atMs = Date.now(),
 } = {}) {
   const h = hostOf(host);
   const hostVal = host === 'task' ? Number(hostId) : String(hostId || '');
@@ -46,10 +50,18 @@ export function linkAttachment(conn, {
     if (curRank > newRank) return cur.role; // 显式边不被正文降级
     if (curRank === newRank) {
       const pos = position === undefined ? cur.position : position;
-      conn.run(
-        `UPDATE ${h.table} SET position = :pos WHERE ${h.col} = :host AND attachment_id = :att`,
-        { pos: Number(pos) || 0, host: hostVal, att }
-      );
+      if (note === undefined) {
+        conn.run(
+          `UPDATE ${h.table} SET position = :pos WHERE ${h.col} = :host AND attachment_id = :att`,
+          { pos: Number(pos) || 0, host: hostVal, att }
+        );
+      } else {
+        conn.run(
+          `UPDATE ${h.table} SET position = :pos, note = :note
+            WHERE ${h.col} = :host AND attachment_id = :att`,
+          { pos: Number(pos) || 0, note: String(note || ''), host: hostVal, att }
+        );
+      }
       return cur.role;
     }
     conn.run(
@@ -99,9 +111,18 @@ export function syncTaskAttachments(conn, { taskId, text, atMs = Date.now() } = 
     const att = ensureAttachment(conn, r, { atMs });
     if (att && !ids.includes(att)) ids.push(att);
   }
+  // 整组重写前先把边上的说明（note，#162）抄下来：正文同步只管「正文里有哪些引用」，
+  // 不该把用户写在该边上的 desc 冲掉——重插时原样带回。
+  const notes = new Map(
+    conn.all("SELECT attachment_id, note FROM task_attach WHERE task_id = :id AND role = 'inline'", { id })
+      .map((r) => [r.attachment_id, r.note])
+  );
   conn.run("DELETE FROM task_attach WHERE task_id = :id AND role = 'inline'", { id });
   ids.forEach((att, pos) => {
-    linkAttachment(conn, { host: 'task', hostId: id, attachmentId: att, role: 'inline', position: pos, atMs });
+    linkAttachment(conn, {
+      host: 'task', hostId: id, attachmentId: att, role: 'inline', position: pos,
+      note: notes.has(att) ? notes.get(att) : undefined, atMs,
+    });
   });
   return ids.length;
 }
@@ -116,9 +137,17 @@ export function syncRefAttachments(conn, { refId, text, atMs = Date.now() } = {}
     const att = ensureAttachment(conn, r, { atMs });
     if (att && !rows.some((x) => x.id === att)) rows.push({ id: att, role: r.role });
   }
+  // 同任务侧：整组重写保留边上的说明（note）。
+  const notes = new Map(
+    conn.all("SELECT attachment_id, note FROM ref_attach WHERE ref_id = :id AND role IN ('inline', 'reference')", { id })
+      .map((r) => [r.attachment_id, r.note])
+  );
   conn.run("DELETE FROM ref_attach WHERE ref_id = :id AND role IN ('inline', 'reference')", { id });
   rows.forEach((x, pos) => {
-    linkAttachment(conn, { host: 'ref', hostId: id, attachmentId: x.id, role: x.role, position: pos, atMs });
+    linkAttachment(conn, {
+      host: 'ref', hostId: id, attachmentId: x.id, role: x.role, position: pos,
+      note: notes.has(x.id) ? notes.get(x.id) : undefined, atMs,
+    });
   });
   return rows.length;
 }

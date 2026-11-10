@@ -334,7 +334,9 @@ nx-kv localtask list                    # 主题总览
 # 附件（嵌入即附件：正文里的 ![名](fileId) / [名](fileId)，面板编辑器同一条语法）
 nx-kv localtask attach --id 3 --path "D:\doc\需求.docx"          # 落本机附件仓并嵌入（不碰云端）
 nx-kv localtask attach --id 3 --fileId <32位hex> --name "需求"   # 引用已有附件（本机仓 / 云端）
-nx-kv localtask attachments --id 3                       # 附件清单 + 本地是否已有
+nx-kv localtask attach --id 3 --ref board/quickget.md --inline --note "领取流程速查"
+                                                                  # 文档进原文：交付带全文（截断 2 万字），--note 是该绑定的一行简介
+nx-kv localtask attachments --id 3                       # 附件清单 + 本地是否已有（含 note / 进原文标记）
 ```
 
 **附件链路口径**（2026-11-04 任务 #15 验收反馈定稿：**本地任务贴图走本地存储，
@@ -351,10 +353,17 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
   直接给绝对路径，零网络），未命中的 id（云端清单附件引用）才按本机设置
   「读任务时自动下载附件」走云端镜像（与 `file sync` 同一台账）。载荷带
   `task.attachments`（通用：`kind` / `kindLabel` / `name` / `size` / `mime` /
-  `storage` / `role` / `origin`；类型子对象：`file`（localPath/fileId/exists/syncCmd）、
+  `storage` / `role` / `origin` / `note`；类型子对象：`file`（localPath/fileId/exists/syncCmd）、
   `url`（href/host）、`task`（taskId/topicKey/seq/title/status/showCmd/address）、
-  `ref`（refId/title/relPath/readCmd）），instruction 的〔附件〕段固定三段：
-  总数（正文内嵌 X · 附件区 Y）/ 逐条清单 / 取用方式（按类型给命令）。
+  `ref`（refId/title/relPath/readCmd/content/truncated）），instruction 的〔附件〕段固定四段：
+  总数（正文内嵌 X · 附件区 Y）/ 逐条清单（带绑定说明）/ 取用方式（按类型给命令）/
+  文档原文（仅有「文档资料」绑定且读到全文时出现）。
+- **文档资料绑定（进原文，2026-11-10 任务 #162）**：`localtask attach --ref <文档> --inline`
+  落 role='doc' 边——交付时把文档**全文**附进〔附件〕段末尾（截断 2 万字，
+  截断时 usage 给完整版 `docs get` 命令），标题取文档首行 `# `（比文件名更说明内容）；
+  `--note` 作为该绑定的一行简介（desc）随边落库，交付清单透出，方便 agent
+  看一眼就知道参考内容大概是什么、要不要真的去读。绑定上的说明在正文同步
+  整组重写 inline 边时原样保留。不传 `--inline` 的文档绑定行为不变（路径 + 取用命令）。
 - **预览**：`/api/file/content/:fileId` 本机仓优先——本地任务的贴图面板直读
   本机文件（离线可预览），未命中再透传云端出图（云端清单附件行为不变）。
 - **fail-open**：附件能不能拿到跟任务能不能交付是两件事——同步失败不阻断领取

@@ -19,7 +19,9 @@ import { hostOfUrl, kindLabelOf, ORIGIN_LABEL, sizeTextOf, STATUS_LABEL } from '
  *   url  → { href, host }
  *   task → { taskId, topicKey, topicName, seq, title, status, statusLabel,
  *            address, storedAddress, addressDrift, resolved, purged, deleted, showCmd }
- *   ref  → { refId, title, relPath, readCmd }
+ *   ref  → { refId, title, relPath, readCmd, content, truncated }
+ *     content 只在「文档资料」绑定（role='doc'，交付读全文）且真的读到时非空。
+ * 通用 note = 边上的说明（desc，#162）：attach --note 的落点，清单行透出。
  * 旧模板兼容：平铺别名 localPath / fileId / urlText / href / taskId / title /
  * seq / showCmd / refId / relPath / readCmd / target / area / areaLabel。
  */
@@ -49,6 +51,8 @@ function ctxItemOf(a) {
     cmd: String(a.cmd || ''),
     locator: String(a.locator || ''),
     needsSync: !!a.needsSync,
+    // 边上的说明（desc，#162）：清单行用 {{#if note}} 透出，agent 据此决定是否深入
+    note: String(a.note || ''),
     // 兼容旧字段
     area: origin,
     areaLabel: a.areaLabel || ORIGIN_LABEL[origin],
@@ -129,18 +133,33 @@ function ctxItemOf(a) {
 
   const refId = String(a.refId || a.targetKey || '');
   const relPath = String(a.relPath || a.locator || '');
-  const title = String(a.title || String(a.name || '').replace(/\.md$/i, ''));
+  // docTitle：文档资料绑定读到全文时提取的首行 # 标题（比文件名更说明内容，#162）
+  const title = String(a.docTitle || a.title || String(a.name || '').replace(/\.md$/i, ''));
   const readCmd = String(a.readCmd || (relPath
     ? `nx-kv docs get ${isAbsolute(relPath) ? `path:${relPath}` : `rel:${relPath}`}`
     : ''));
-  const ref = { refId, title, relPath, readCmd };
+  const content = String(a.docContent || '');
+  const truncated = !!a.docTruncated;
+  const ref = { refId, title, relPath, readCmd, content, truncated };
+  // 文档资料绑定（role='doc'，#162）：读到了全文 → usage 指向「文档原文」段；
+  // 没读到（fail-open）→ 退回普通取用命令，不假装内容存在。
+  let usage = String(a.usage || '');
+  if (a.role === 'doc') {
+    usage = content
+      ? `这是文档资料绑定（进原文）：全文已附在本清单末尾的「文档原文」段${truncated ? `，内容有截断——完整版用 ${readCmd} 读取` : ''}`
+      : readCmd
+        ? `这是文档资料绑定（进原文），但本次未能读到全文：用 ${readCmd} 读取`
+        : `这是文档资料绑定（进原文），但本次未能读到全文（refId ${refId}）：先用 nx-kv docs list 定位路径，再 docs get 读取`;
+  } else {
+    usage = usage || (readCmd
+      ? `这是文档库里的 md 文件：用 ${readCmd} 读取`
+      : `这是文档库里的 md 文件（refId ${refId}）：先用 nx-kv docs list 定位路径，再 docs get 读取`);
+  }
   return {
     ...item,
     ...ref,
     ref,
-    usage: String(a.usage || (readCmd
-      ? `这是文档库里的 md 文件：用 ${readCmd} 读取`
-      : `这是文档库里的 md 文件（refId ${refId}）：先用 nx-kv docs list 定位路径，再 docs get 读取`)),
+    usage,
     cmd: String(a.cmd !== undefined ? a.cmd : readCmd),
     locator: String(a.locator || `${title}${relPath ? `（${relPath}）` : ''}`),
     needsSync: false,
@@ -207,11 +226,17 @@ export function attachmentInstruction(attachments, sync) {
     const lines = [
       `〔附件〕本任务包含 ${ctx.count} 个附件（正文内嵌 ${ctx.inlineCount} · 附件区 ${ctx.areaCount}）。`,
       '附件清单：',
-      ...ctx.list.map((a) => `- [${a.originLabel}] ${a.kindLabel} ${a.name}${a.locator ? `：${a.locator}` : ''}`),
+      ...ctx.list.map((a) => `- [${a.originLabel}] ${a.kindLabel} ${a.name}${a.locator ? `：${a.locator}` : ''}${a.note ? `  # ${a.note}` : ''}`),
       '取用方式：',
       ...ctx.list.map((a) => `- ${a.name}：${a.usage}`),
     ];
     if (ctx.syncSummary) lines.push(`同步情况：${ctx.syncSummary.text}`);
+    // 文档原文段与默认模板同口径（#162）：模板挂了也不许把「进原文」的内容丢掉
+    for (const a of ctx.list) {
+      if (a.kind === 'ref' && a.ref && a.ref.content) {
+        lines.push(`〔文档原文 · ${a.ref.title}〕（${a.ref.relPath}）：`, '', a.ref.content, '');
+      }
+    }
     return lines.join('\n');
   }
 }

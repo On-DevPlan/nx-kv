@@ -189,6 +189,7 @@ nx-kv localtask attach --id 3 --path "D:\doc\需求.docx"        # 本机文件�
 nx-kv localtask attach --id 3 --url https://example.com/design # 外部链接
 nx-kv localtask attach --id 3 --task 7                          # 同主题另一条任务（引用，不是副本）
 nx-kv localtask attach --id 3 --ref board/quickget.md           # 文档库 md
+nx-kv localtask attach --id 3 --ref board/quickget.md --inline  # 文档进原文：交付带全文（截断 2 万字），--note 作为该绑定的一行简介一并透出
 nx-kv localtask attach --id 3 --path "D:\doc\需求.docx" --no-embed  # 只挂附件区，不改正文
 nx-kv localtask attachments --id 3                               # 清单（正文内嵌 / 附件区）
 nx-kv localtask detach --id 3 --attachment <id>                  # 解除关系，资源进孤儿池

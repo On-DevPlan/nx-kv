@@ -50,7 +50,9 @@ export function renderTaskAttachments(d) {
     if (!rows.length) continue;
     lines.push(`  [${g.label}]`);
     for (const a of rows) {
-      lines.push(`  ${a.kind === 'image' ? '图片' : a.kind === 'url' ? '链接' : a.kind === 'task' ? '任务' : a.kind === 'ref' ? '文档' : '附件'}  ${a.name}  [${a.id}]`);
+      const docMark = a.role === 'doc' ? '  〔进原文〕' : '';
+      const noteMark = a.note ? `  # ${a.note}` : '';
+      lines.push(`  ${a.kind === 'image' ? '图片' : a.kind === 'url' ? '链接' : a.kind === 'task' ? '任务' : a.kind === 'ref' ? '文档' : '附件'}  ${a.name}  [${a.id}]${docMark}${noteMark}`);
       lines.push(`      ${a.localPath || a.url || a.target || '（未同步；nx-kv file sync --ids ' + a.id + '）'}`);
     }
   }

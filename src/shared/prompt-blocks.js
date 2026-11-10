@@ -94,14 +94,18 @@ export const DEFAULT_CONTEXT_TEMPLATE = [
 ].join('\n');
 
 /**
- * 默认附件段模板：固定三段——总数 / 逐条清单 / 取用方式。
+ * 默认附件段模板：固定四段——总数 / 逐条清单 / 取用方式 / 文档原文。
  *
  * 类型由 ctx 里的 type 子对象驱动（file / url / task / ref），命令与说明通过
  * {{usage}} / {{cmd}} 由服务端给出，模板里不写死任何命令格式：
  *   - file：{{file.localPath}} 或未同步时的 fileId（取用命令见 usage）
  *   - url：{{url.href}}
  *   - task：{{task.seq}} / {{task.title}} / {{task.address}}
- *   - ref：{{ref.title}} / {{ref.relPath}}
+ *   - ref：{{ref.title}} / {{ref.relPath}}；{{ref.content}} 只有「文档资料」绑定
+ *     （role=doc，#162：交付带全文，减少反复访问 nx-kv）且真的读到时非空，
+ *     此时文末追加〔文档原文〕段——没有内容的条目该段自动消失。
+ * 清单行的 {{note}} 是绑定上的 desc（attach --note）：agent 看一行就知道里面
+ * 大概是什么，再决定是否真的去读。
  * 同步汇总单列在 syncSummary，不再用全局同步结果驱动单条附件。
  */
 export const DEFAULT_ATTACH_TEMPLATE = [
@@ -110,7 +114,7 @@ export const DEFAULT_ATTACH_TEMPLATE = [
   '',
   '附件清单：',
   '{{#each attach.list}}',
-  '  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{#if ref.relPath}}（{{ref.relPath}}）{{/if}}{{/if}}',
+  '  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{#if ref.relPath}}（{{ref.relPath}}）{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}',
   '{{/each}}',
   '',
   '取用方式：',
@@ -120,6 +124,11 @@ export const DEFAULT_ATTACH_TEMPLATE = [
   '{{#if attach.syncSummary}}',
   '同步情况：{{attach.syncSummary.text}}',
   '{{/if}}',
+  '{{#each attach.list}}{{#if ref}}{{#if ref.content}}〔文档原文 · {{ref.title}}〕（{{ref.relPath}}）：',
+  '',
+  '{{ref.content}}',
+  '',
+  '{{/if}}{{/if}}{{/each}}',
   '{{/if}}',
 ].join('\n');
 

@@ -43,6 +43,7 @@ import {
   upsertFileAttachment,
 } from '../../core/attachmentdb.js';
 import * as service from '../localtask/service.js';
+import { inlineDocContent } from './doc-inline.js';
 import { fileStateOf, resourceOf, targetLookupsOf } from './attach-resource.js';
 
 export { attachmentInstruction, attachInstructionOf, attachTemplateCtx } from './attach-template.js';
@@ -80,10 +81,13 @@ function annotateFileRows(rows, lookups, store, mirror) {
  * @param {boolean} [opts.sync=true] 是否允许为未命中的附件跑一次云端同步。
  *   预览（面板「预览 get 提示词」）传 false——**只读盘、不发网**：预览不该因为
  *   打开一次就悄悄下载一堆附件，也不该凭预览改变本机缓存状态。
+ * @param {boolean} [opts.inlineDocs=false] 是否为「文档资料」绑定（role='doc' 的
+ *   kind=ref 附件）读全文并附进视图模型（#162）。读侧只读盘（自有树 / 绑定闭包），
+ *   预览同样安全；读不到内容留空，清单与命令照给（fail-open）。
  * @returns {Promise<null|{task:object, sync:object|null}>} null = 正文没有附件引用
  *   （调用方据此保持载荷原样）；sync 只在真的跑过云端同步时非 null。
  */
-export async function annotateTaskDelivery(task, { sync: allowSync = true, topicKey = '' } = {}) {
+export async function annotateTaskDelivery(task, { sync: allowSync = true, topicKey = '', inlineDocs = false } = {}) {
   if (!task) return null;
   // schema v2：资源关系在任务入库时就写好了，交付侧只读 task_attach，不再解析正文。
   const rows = listTaskAttachmentsBySeq(getDb(), { topicKey: topicKey || task.key, seq: task.id });
@@ -112,6 +116,7 @@ export async function annotateTaskDelivery(task, { sync: allowSync = true, topic
 
   const mirror = await cloudMirrorIndex(gid, cfg.attachmentsDir);
   const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store, mirror);
+  if (inlineDocs) await inlineDocContent(attachments);
   return { task: { ...task, attachments }, sync };
 }
 
@@ -122,6 +127,11 @@ export async function annotateTaskDelivery(task, { sync: allowSync = true, topic
  *   `--no-embed`   ：只写 attachments + task_attach（role=attach），**不动正文**——
  *                    附件区（面板）与 `localtask attachments` 都能列出。
  *
+ * 文档来源专属：
+ *   `--ref` + `--inline`：文档资料绑定（role=doc，#162）——交付时把文档**全文**
+ *                    附进提示词（截断 2 万字），而不是只给一条 docs get 命令；
+ *                    `--note` 作为该绑定的 desc 一并透出。
+ *
  * 来源四选一：
  *   --path <本机文件>  落本机附件仓（零云端）
  *   --fileId <id>      引用已有资源（本机仓 / 云端 id 都认）
@@ -130,7 +140,7 @@ export async function annotateTaskDelivery(task, { sync: allowSync = true, topic
  *   --ref <路径|id>    文档库里的 ref（kind=ref，nxkv://ref/<refId>）
  */
 export async function attachToTask({
-  id, cwd, key, path, fileId, name, kind, url, task, ref, note, noEmbed,
+  id, cwd, key, path, fileId, name, kind, url, task, ref, note, noEmbed, inline,
 } = {}) {
   const cur = await service.getTask({ id, cwd, key }); // 存在性与参数校验都在队列本体
   const topicKey = cur.key || key || '';
@@ -239,27 +249,45 @@ export async function attachToTask({
       '需要 --path <本机文件>、--fileId <已有附件>、--url <链接>、--task <编号> 或 --ref <文档> 之一'
     );
   }
+  const wantInline = !!inline;
+  if (wantInline && resolvedKind !== 'ref') {
+    throw badInput('--inline（文档进原文）只支持 --ref 文档绑定');
+  }
 
   // 关系表是权威：先落边（正文同步不会把 attach 降级），正文只是 inline 的呈现。
-  // --no-embed 不写正文，也就不该把嵌入片段还给调用方（否则 CLI 会打出误导性的「嵌入:」）。
+  // 边语义：--no-embed → attach（附件区）；--inline → doc（文档资料，交付进原文）；
+  // 默认 embed → inline（由正文同步写）。doc 边压得过正文同步的 inline（优先级
+  // doc > inline），后续改正文不会把「进原文」降级成路径引用。
+  // note（desc）显式随边落库：embed 路径此前只写正文、说明会丢（#162）。
   if (noEmbed) markdown = '';
-  const role = noEmbed ? 'attach' : 'inline';
-  if (noEmbed) {
+  const edgeRole = wantInline ? 'doc' : noEmbed ? 'attach' : 'inline';
+  let r = { key: cur.key, name: topicNameOf(cur), task: cur };
+  if (!noEmbed && markdown) {
+    const text = cur.text ? `${cur.text}\n${markdown}` : markdown;
+    r = await service.updateTask({ id: cur.id, cwd, key, text });
+  }
+  if (noEmbed || wantInline || note !== undefined) {
     tx(
       (conn) => {
         const gid = taskGlobalIdOf(conn, { topicKey, seq: cur.id });
         if (!gid) throw badInput(`任务 #${cur.id} 已不存在，无法挂附件`);
-        linkAttachment(conn, { host: 'task', hostId: gid, attachmentId, role: 'attach', note });
+        // --inline 是用户最新的显式意图：现存的 attach 边优先级更高（不会被 doc
+        // 覆盖），这里换边而不是静默忽略；position 跟着旧边走。
+        if (wantInline && !noEmbed) {
+          const curEdge = conn.get(
+            'SELECT role, position FROM task_attach WHERE task_id = :id AND attachment_id = :att',
+            { id: gid, att: attachmentId }
+          );
+          if (curEdge && curEdge.role === 'attach') {
+            unlinkAttachment(conn, { host: 'task', hostId: gid, attachmentId });
+            linkAttachment(conn, { host: 'task', hostId: gid, attachmentId, role: 'doc', note, position: curEdge.position });
+            return;
+          }
+        }
+        linkAttachment(conn, { host: 'task', hostId: gid, attachmentId, role: edgeRole, note });
       },
       { db, mode: 'IMMEDIATE' }
     );
-  }
-
-  let r = { key: cur.key, name: topicNameOf(cur), task: cur };
-  if (!noEmbed && markdown) {
-    // 独立成行追加（与编辑器的插入行为一致：整行图片嵌入渲染为 <img>）
-    const text = cur.text ? `${cur.text}\n${markdown}` : markdown;
-    r = await service.updateTask({ id: cur.id, cwd, key, text });
   }
 
   return {
@@ -269,8 +297,8 @@ export async function attachToTask({
     fileId: attachmentId,
     kind: resolvedKind,
     markdown,
-    area: noEmbed ? 'area' : 'inline',
-    role,
+    area: edgeRole === 'inline' ? 'inline' : 'area',
+    role: edgeRole,
     task: r.task,
   };
 }

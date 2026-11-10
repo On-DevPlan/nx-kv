@@ -152,7 +152,9 @@ export async function buildTaskDelivery(task, { source, summary, cwd, name, topi
   let att = null;
   let attSync = null;
   try {
-    const a = await annotateTaskDelivery(task, { sync: !preview, topicKey });
+    // inlineDocs（#162）：文档资料绑定（role=doc）随交付带全文——只读盘（自有树 /
+    // 绑定闭包），预览同样安全；读不到内容留空，不阻断交付。
+    const a = await annotateTaskDelivery(task, { sync: !preview, topicKey, inlineDocs: true });
     if (a) {
       task = a.task;
       att = a;

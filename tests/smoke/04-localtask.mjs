@@ -33,7 +33,6 @@ export async function run(ctx) {
   );
 
   // 不同目录 → 不同主题、空队列超时
-  const sumB = '已选好工作空间，等待下一步指令';
   const waitTimeout = await cliJson(['localtask', 'wait', '--cwd', topicB, '--timeout', '1', '--no-open']);
   check(
     '不同主题另起队列、空队列超时 → timeout',

@@ -45,6 +45,8 @@ export const lifecycleActions = [
       '领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填',
     flags: {
       cwd: CWD,
+      // #171：现状参数已取消——**保留 flag 只为不打断旧调用**（传了也不生效）
+      summary: { type: 'string', hint: '已废弃：当前现状不再收（面板上没有对应输入界面）' },
       timeout: { type: 'number', hint: '阻塞上限（秒）；仅项目开启「持续 get」时有意义' },
       'no-open': { type: 'boolean', hint: '不自动打开浏览器（测试用）' },
       param: { type: 'array', hint: '外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取' },
@@ -147,6 +149,8 @@ export const lifecycleActions = [
       cwd: CWD,
       key: KEY,
       summary: { type: 'string', required: true, hint: '完成总结（记为本轮终态 + timegoal 日志）' },
+      // #171：进度参数已取消——保留 flag 只为不打断旧调用（传了也不生效）
+      progress: { type: 'string', hint: '已废弃：完成度/下一步不再收（面板上没有对应输入界面）' },
     },
     run: (ctx) =>
       service.completeTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, summary: ctx.summary }),

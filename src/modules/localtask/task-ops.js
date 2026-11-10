@@ -328,20 +328,33 @@ export async function updateTask({
     }
     if (hasGoalInput) {
       const live = topicsRepo.getTopic(host.key).tasks.find((x) => Number(x.id) === Number(hostTask.id));
-      if (live.status !== 'pending') {
-        throw badInput(`#${want} 已领取或已交付，时间目标声明不可改——要调整先 reopen 重开任务`);
-      }
       if (live.deletedAt) throw badInput(`#${want} 已删除，时间目标声明不可改`);
       if (live.migratedTo) throw badInput(`#${want} 已迁出，时间目标声明不可改`);
+      // 任务 #87：**附加要求支持动态编辑**——领取后仍可改 prompt（下一轮 check / 交付即生效）；
+      // 时长与清除仍锁定（领取即计时，起表后声明是既成事实，要调先 reopen）。
+      const locked = live.status !== 'pending';
       if (goal.clear) {
+        if (locked) throw badInput(`#${want} 已领取或已交付，时间目标不可清除——要调整先 reopen（附加要求可直接改）`);
         tasksRepo.updateTask(host.id, live.id, { timegoal: null });
         goalChanged = 'cleared';
-      } else {
+      } else if (goal.duration != null) {
+        if (locked) throw badInput(`#${want} 已领取或已交付，时长不可改——要调整先 reopen（附加要求可直接改）`);
         // 只改时长没带 prompt → 保留原附加要求；带了（含空串）→ 以传入为准
         const prev = sanitizeTaskGoal(live.timegoal);
         const prompt = goal.prompt != null ? String(goal.prompt).trim() : prev ? prev.prompt : '';
         tasksRepo.updateTask(host.id, live.id, {
           timegoal: sanitizeTaskGoal({ duration: goal.duration, prompt }),
+        });
+        goalChanged = 'set';
+      } else {
+        // prompt-only：pending / 已领取都放行（动态编辑）
+        const prev = sanitizeTaskGoal(live.timegoal);
+        if (!prev) {
+          throw badInput(`#${want} 还没有时间目标，附加要求无处挂载（先用 --duration 设目标）`);
+        }
+        const prompt = String(goal.prompt ?? '').trim();
+        tasksRepo.updateTask(host.id, live.id, {
+          timegoal: sanitizeTaskGoal({ duration: prev.duration, prompt }),
         });
         goalChanged = 'set';
       }

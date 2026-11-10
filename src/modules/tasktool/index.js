@@ -64,18 +64,25 @@ function renderCheck(d) {
   const status = d.reached
     ? `已到点（reached:true）${d.overtimeSec ? ` · 已超时 ${fmtDur(d.overtimeSec)}` : ''}—— 这轮结束后停手并写最终总结`
     : `未到点（reached:false）· 剩余 ${fmtDur(d.remainingSec)}（已用 ${fmtDur(d.elapsedSec)}）`;
-  // prompt 原文回显（人读只截断，--json 仍走完整原文）
-  const prompt = d.prompt.length > 200 ? d.prompt.slice(0, 200) + '…' : d.prompt;
-  return [
+  // 任务 #87：任务级 goal 的 prompt 是模板，这里优先展示**本轮实时渲染**的结果
+  // （时间变量 + 任务实时原文都按当下取值）；目录级 goal 仍回显 store 原文。
+  const full = d.promptRendered || d.prompt || '';
+  const prompt = full.length > 2000 ? full.slice(0, 2000) + '…' : full;
+  const lines = [
     `[timegoal] 主题「${d.name}」`,
     `  状态：${status}`,
     `  截止：${d.deadline}（now=${d.now}）`,
     `  现状：${d.summary}`,
     `  完成度 / 下一步：${d.progress}`,
     `  日志：本目录已记录 ${d.logCount} 次检查（${d.checkedAt}）`,
-    `  本轮提示词（store 原文）：`,
+    `  本轮提示词（${d.promptRendered ? '实时渲染' : 'store 原文'}）：`,
     prompt,
-  ].join('\n');
+  ];
+  if (d.task && d.task.text) {
+    const text = d.task.text.length > 2000 ? d.task.text.slice(0, 2000) + '…' : d.task.text;
+    lines.push(`  任务 #${d.task.id} 实时原文：`, text);
+  }
+  return lines.join('\n');
 }
 
 function renderClear(d) {

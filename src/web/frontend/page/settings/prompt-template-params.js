@@ -155,19 +155,55 @@ export const BLOCK_PARAMS = {
     {
       label: '时间目标',
       items: [
-        ['goal.check', '时间检查指令（任务级）'],
+        ['goal.check', '时间检查指令（任务级；每轮 check 按当下模板渲染）'],
         ['goal.statusLine', '目录级目标状态行'],
         ['goal.name', '目标名'],
+        ['goal.goalKey', '任务级目标 key（check --task 用）'],
+        ['goal.durationHuman', '持续时长（人话，如 2 小时）'],
+        ['goal.durationSec', '持续秒数'],
         ['goal.deadline', '截止时间'],
         ['goal.remainingSec', '剩余秒数'],
+        ['goal.remainingHuman', '剩余时长（人话）'],
         ['goal.remainingMin', '剩余分钟（向上取整）'],
+        ['goal.elapsedHuman', '已过时长（人话）'],
+        ['goal.elapsedSec', '已过秒数'],
         ['goal.overtimeSec', '超时秒数'],
         ['goal.reached', '是否到点'],
+        ['goal.extra', '发布方附加要求（领取后可动态改）'],
       ],
     },
     {
       label: '通用',
-      items: [['task.id', '任务号']],
+      items: [
+        ['task.id', '任务号'],
+        ['task.text', '任务实时原文'],
+      ],
+    },
+  ],
+  goalhint: [
+    {
+      label: '时间目标上下文（任务级）',
+      items: [
+        ['goal.goalKey', '任务级目标 key（check --task 用）'],
+        ['goal.durationHuman', '持续时长（人话）'],
+        ['goal.durationSec', '持续秒数'],
+        ['goal.startedAt', '开始计时时间'],
+        ['goal.deadline', '截止时间'],
+        ['goal.remainingHuman', '剩余时长（人话）'],
+        ['goal.remainingSec', '剩余秒数'],
+        ['goal.elapsedHuman', '已过时长（人话）'],
+        ['goal.elapsedSec', '已过秒数'],
+        ['goal.overtimeSec', '超时秒数'],
+        ['goal.reached', '是否到点'],
+        ['goal.extra', '发布方附加要求（领取后可动态改）'],
+      ],
+    },
+    {
+      label: '任务',
+      items: [
+        ['task.id', '任务号'],
+        ['task.text', '任务实时原文（check 返回对象同样可用）'],
+      ],
     },
   ],
   ext: [

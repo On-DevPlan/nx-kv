@@ -133,7 +133,7 @@ test('落盘 blockTemplates 里残留 rule → 读时并入 ack；保存后不�
   await svc.updateSettings({ deliveryTemplate: '' });
   const raw = rawBlockTemplates();
   assert.equal(raw.rule, undefined, 'lt.blockTemplates 不再写 rule 键');
-  assert.deepEqual(Object.keys(raw).sort(), ['ack', 'attachment', 'context', 'ext', 'getloop', 'timecheck']);
+  assert.deepEqual(Object.keys(raw).sort(), ['ack', 'attachment', 'context', 'ext', 'getloop', 'goalhint', 'timecheck']);
 });
 
 test('写旧便捷键 → 落到对应区块的「命令行」条目并启用；置空恢复内置', async () => {

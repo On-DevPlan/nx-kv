@@ -30,7 +30,7 @@ export function useTaskActions({
   groupAnchored, groupId, rows, app, model, tabId, tpl, refreshLocal,
   markDirty, histRef, editorApiRef, attachAreaRef,
   setDirty,
-  goal, goalEditable, declaredGoal, guard, dialog, showDockTab,
+  goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
 }) {
   const toast = useToast();
 
@@ -52,15 +52,23 @@ export function useTaskActions({
     const duration = (goal.duration || '').trim();
     const prompt = (goal.prompt || '').trim();
     if (prompt && !duration) return { error: '时间目标要填时长（如 2h / 90m）；只写附加要求无效' };
-    if (!goalEditable) return {};
     if (!isDraft) {
       const prevDur = declaredGoal?.duration || '';
       const prevPrompt = declaredGoal?.prompt || '';
-      if (duration === prevDur && prompt === prevPrompt) return {};
-      return duration ? { duration, goalPrompt: prompt } : { clearGoal: true };
+      const durChanged = duration !== prevDur;
+      const promptChanged = prompt !== prevPrompt;
+      if (!durChanged && !promptChanged) return {};
+      if (durChanged) {
+        // 时长：领取即计时，只有待领取能改
+        if (!goalEditable) return { error: '已领取计时，时长不可改（附加要求仍可直接改）' };
+        return duration ? { duration, goalPrompt: prompt } : { clearGoal: true };
+      }
+      // 任务 #87：只改附加要求 → 领取后也放行（下一轮 check 用新值渲染）
+      if (!goalPromptEditable) return {};
+      return { goalPrompt: prompt };
     }
     return duration ? { duration, goalPrompt: prompt } : {};
-  }, [goal, goalEditable, isDraft, declaredGoal]);
+  }, [goal, goalEditable, goalPromptEditable, isDraft, declaredGoal]);
 
   const submit = useCallback(() => guard(async () => {
     if (!doc) return;

@@ -105,7 +105,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   const { dockOpen, setDockOpen, dockTab, dockH, dockRef, dockMax, showDockTab, onDockDragStart, toggleDockMax } = dock;
 
   const goalState = useGoal({ id, isDraft, topicKey, task, taskRow });
-  const { goalDraft, setGoalDraft, goal, goalEditable, declaredGoal, goalLog, loadGoalLog, canShowGoalLog } = goalState;
+  const { goalDraft, setGoalDraft, goal, goalEditable, goalPromptEditable, declaredGoal, goalLog, loadGoalLog, canShowGoalLog } = goalState;
 
   const chainState = useChain({
     isDraft, task, taskRow, topicKey, topic, isGlobal, groupAnchored, groupId,
@@ -196,7 +196,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     groupAnchored, groupId, rows, app, model, tabId, tpl, refreshLocal,
     markDirty, histRef, editorApiRef, attachAreaRef,
     setDirty,
-    goal, goalEditable, declaredGoal, guard, dialog, showDockTab,
+    goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
   });
   const { composeText, submit, importMd, delTask, canClosePending, closeTask, addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel } = actions;
 
@@ -214,7 +214,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   }, [showDockTab, loadGoalLog]);
 
   const { goalBadge, goalMenu } = goalSection({
-    goal, goalDraft, setGoalDraft, goalEditable, declaredGoal, openGoalLog, markDirty, task,
+    goal, goalDraft, setGoalDraft, goalEditable, goalPromptEditable, declaredGoal, openGoalLog, markDirty, task,
   });
 
   // ─── 预览提示词（任务 #65）───

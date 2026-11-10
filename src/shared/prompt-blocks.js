@@ -143,6 +143,20 @@ export const DEFAULT_TIMECHECK_TEMPLATE = [
 ].join('\n');
 
 /**
+ * 默认「特殊功能提示」段（任务 #87）：只在任务带时间目标时出现，给 agent 一份
+ * **可运算的**时间上下文（持续 / 剩余 / 是否到点）与任务号。
+ *
+ * 这一栏存在的意义是「占位符的可见入口」：goal.* 与 task.* 都是每轮 check 同源
+ * 渲染的同一份 ctx（check 返回对象走同一套模板），用户在这里改文案即可定制提示，
+ * 不必改代码。默认文案刻意不复述 check 指令（那在 timecheck 段里），只补状态。
+ */
+export const DEFAULT_GOALHINT_TEMPLATE = [
+  '{{#if goal.check}}',
+  '〔特殊功能提示 · 时间目标〕任务 #{{task.id}} 正在计时：持续 {{goal.durationHuman}}，{{#if goal.reached}}已到点{{else}}剩余 {{goal.remainingHuman}}{{/if}}。',
+  '{{/if}}',
+].join('\n');
+
+/**
  * 默认 ext（扩展 / 队列余量）：同主题还有多少待领取任务、分别是什么标题，
  * 并明确优先级。队列为空 → `ext` 为 null，整段不出现（{{#if ext.count}} 闸门）。
  */
@@ -193,6 +207,13 @@ export const BLOCK_DEFS = Object.freeze([
     label: '时间目标检查',
     desc: '任务带时间目标时出现：check 指令或目录级状态',
     defaultTemplate: DEFAULT_TIMECHECK_TEMPLATE,
+  },
+  {
+    id: 'goalhint',
+    tag: 'nx-kv.goalhint',
+    label: '特殊功能提示（timegoal）',
+    desc: '任务带时间目标时出现：可直接用 goal.* 时间变量与 task 全文占位；每轮 check 同源渲染',
+    defaultTemplate: DEFAULT_GOALHINT_TEMPLATE,
   },
   {
     id: 'ext',

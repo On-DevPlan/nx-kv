@@ -11,6 +11,10 @@ import { db as ltDb } from '../../localtask/repo/open.js';
 import { nowMs } from '../../../core/db/time.js';
 import * as goalsRepo from '../../localtask/repo/goals.js';
 import {
+  renderTaskGoalPrompt,
+  taskGoalTemplateCtx,
+} from './goal-template.js';
+import {
   clampDuration,
   durationLabel,
   evalTimegoal,
@@ -201,16 +205,49 @@ function applyGoalCheck(conn, row, parsed, summary, progress) {
     progress,
   });
   const totalChecks = goalsRepo.countChecks(Number(row.id), conn);
+  // 每轮 check 同源渲染（任务 #87）：读任务**当下**的原文与附加要求，
+  // 用与交付时同一套 ctx 重新渲染 goals.prompt 模板 —— 占位符里的时间/任务
+  // 永远是最新的；附加要求领取后动态改，下一轮 check 即生效。
+  const taskRow = conn.get('SELECT id, seq, body, ext FROM tasks WHERE id = :id', {
+    id: Number(row.task_id),
+  });
+  let extra = '';
+  if (taskRow && taskRow.ext) {
+    try {
+      const decl = JSON.parse(String(taskRow.ext)).ext_timegoal;
+      extra = String((decl && decl.prompt) || '');
+    } catch {
+      /* 声明损坏就当没有附加要求 */
+    }
+  }
+  const taskSeq = Number(taskRow && taskRow.seq) || Number(parsed.seq);
+  const goalKey = taskGoalKey(parsed.topicKey, taskSeq);
+  const checkedAt = stampOf(at);
+  const ctx = taskGoalTemplateCtx({
+    taskId: taskSeq,
+    taskText: taskRow ? taskRow.text : '',
+    goalKey,
+    durationSec: row.duration_sec,
+    extra,
+    startedAt: row.started_at,
+    deadline: row.deadline,
+    nowMs: at,
+    check: { summary, progress, at: checkedAt, count: totalChecks },
+  });
+  const promptTemplate = String(row.prompt || '');
   return {
     ...result,
-    prompt: String(row.prompt || ''), // 永远原文回显，绝不拼接/裁剪
+    prompt: promptTemplate, // 模板原文（占位符保留）
+    promptRendered: renderTaskGoalPrompt(ctx, promptTemplate), // 本轮实时渲染（CLI 展示用）
+    task: { id: taskSeq, text: String((taskRow && taskRow.body) || '') },
+    goal: ctx.goal,
     summary,
     progress,
-    checkedAt: stampOf(at),
+    checkedAt,
     startedAt: goal.startedAt,
     deadline: goal.deadline,
     now: stampNow(new Date(at)),
-    key: taskGoalKey(parsed.topicKey, parsed.seq),
+    key: goalKey,
     name: String(row.topic_name || ''),
     cwd: String(row.topic_cwd || ''),
     logCount: totalChecks,

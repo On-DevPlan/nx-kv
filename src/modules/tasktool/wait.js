@@ -38,6 +38,7 @@ import {
 } from '../localtask/service.js';
 import { ensureMainPanel, deepLinkUrl, escortPanel } from './panel-escort.js';
 import { ensureTaskGoal, previewTaskGoal } from './taskgoal.js';
+import { formatDuration } from '../../core/instruction-template.js';
 import { readGroupContext } from './groupctx.js';
 import { annotateTaskDelivery, attachTemplateCtx } from './attach.js';
 import { composeSystemBlocks } from './system-blocks.js';
@@ -79,6 +80,13 @@ export function enrichGoalTiming(g) {
   }
   if (Number.isFinite(overtimeSec)) g.overtimeSec = overtimeSec;
   if (reached !== undefined) g.reached = reached;
+  // 任务 #87：模板里要能直接写「持续 {{goal.durationHuman}}」——人话时长统一在这里补。
+  if (Number.isFinite(Number(g.durationSec)) && Number(g.durationSec) > 0) {
+    g.durationHuman = g.durationHuman || formatDuration(Number(g.durationSec));
+  }
+  if (Number.isFinite(Number(g.elapsedSec))) {
+    g.elapsedHuman = g.elapsedHuman || formatDuration(Number(g.elapsedSec));
+  }
   return g;
 }
 
@@ -175,12 +183,13 @@ export async function buildTaskDelivery(task, { source, summary, cwd, name, topi
         .find(Boolean) || `任务 #${task.id}`).slice(0, 40);
       // 预览走只读版本：同一份 check 指令文本，但不落盘、不起表
       taskGoalCtx = preview
-        ? await previewTaskGoal({ topicKey, taskId: task.id, cwd, name: title, timegoal: task.timegoal })
+        ? await previewTaskGoal({ topicKey, taskId: task.id, cwd, name: title, timegoal: task.timegoal, text: task.text })
         : await ensureTaskGoal({
             topicKey,
             taskId: task.id,
             cwd,
             name: title,
+            text: task.text,
             timegoal: task.timegoal,
             startedAtMs: parseStampMs(task.consumedAt) || undefined,
           });
@@ -206,7 +215,14 @@ export async function buildTaskDelivery(task, { source, summary, cwd, name, topi
       ...deliveryCtx,
       // 共享 ctx 里的 goal 同时暴露 check / statusLine，模板不必区分两种来源。
       goal: goal
-        ? { ...goal, check: goalCheck || '', statusLine: goalStatus || '' }
+        ? {
+            ...goal,
+            // 任务 #87：goal.extra（附加要求，领取后可动态改）与 goalKey 供模板直接引用
+            extra: taskGoalCtx ? taskGoalCtx.extra || '' : '',
+            goalKey: taskGoalCtx ? taskGoalCtx.goalKey || '' : '',
+            check: goalCheck || '',
+            statusLine: goalStatus || '',
+          }
         : null,
       ...attachCtx,
       // task.text 交给模板前做「倒序聚焦 + 历史精简」重排（#157）：最新轮反馈

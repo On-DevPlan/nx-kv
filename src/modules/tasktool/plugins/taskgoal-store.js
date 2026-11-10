@@ -15,7 +15,11 @@
 //
 // 本文件不依赖 localtask（纯 timegoal 存储 + core），localtask 反过来引用这里。
 import { badInput } from '../../../core/errors.js';
-import { formatDuration } from '../../../core/instruction-template.js';
+import {
+  TASK_GOAL_PROMPT_TEMPLATE,
+  renderTaskGoalPrompt,
+  taskGoalTemplateCtx,
+} from './goal-template.js';
 import { MAX_PROMPT, parseDuration, startTaskGoal, taskGoalState, taskGoalKey, recordTaskCheck } from './timegoal-store.js';
 
 /**
@@ -36,33 +40,17 @@ export function sanitizeTaskGoal(raw) {
 }
 
 /**
- * 任务级 goal 的固化 prompt = **check 指令**（系统部分，agent 每轮照做）
- * + 用户 --goal-prompt 追加说明（可选）。
- * goalKey 先算出来直接嵌进指令——agent 复制执行即可，不用自己拼 key。
- */
-function taskGoalPrompt({ goalKey, taskId, durationHuman, extra }) {
-  return [
-    `本任务带时间目标（领取即计时，持续 ${durationHuman}）。`,
-    `- 每轮推进先执行：nx-kv timegoal check --task ${goalKey} --summary "<本轮现状>" --progress "<进展/下一步>"`,
-    `- 时间未到不得标记完成——应派出 sub agent 重新提出新的需求，再继续推进。`,
-    `- check 返回 reached:true 后才允许：nx-kv localtask done --id ${taskId} --summary "<完成总结>"`,
-    extra ? `\n附加要求（发布方）：\n${extra}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
-
-/**
  * 交付时刻调用：确保任务级 goal 已起表（**领取即计时**，幂等——重复领取不重置起点），
  * 并返回渲染用 goal 上下文（与目录级 readGoalCtx 同形状：name/deadline/prompt）。
  * 声明的时长不合法 → 返回 null（发布端已校验，这里是防御）。
  *
- * @param {{topicKey:string, taskId:number, cwd?:string, name?:string,
+ * @param {{topicKey:string, taskId:number, cwd?:string, name?:string, text?:string,
  *          timegoal:{duration:string,prompt?:string}, startedAtMs?:number}} p
- * @returns {Promise<null | {name, deadline, prompt, goalKey, durationSec}>}
+ * @returns {Promise<null | {name, deadline, prompt, promptTemplate, goalKey, durationSec, extra}>}
  */
 export async function ensureTaskGoal(p) {
   const { topicKey, taskId, cwd, name, timegoal, startedAtMs } = p || {};
+  const taskText = p && p.text;
   if (!timegoal || !topicKey || taskId === undefined || taskId === null) return null;
   let durationSec;
   try {
@@ -71,29 +59,39 @@ export async function ensureTaskGoal(p) {
     return null;
   }
   const goalKey = taskGoalKey(topicKey, taskId);
-  const prompt = taskGoalPrompt({
-    goalKey,
-    taskId,
-    durationHuman: formatDuration(durationSec),
-    extra: timegoal.prompt,
-  });
+  // 落库的是**模板**（占位符保留），交付时用领取那一刻的 ctx 渲染。
+  const promptTemplate = TASK_GOAL_PROMPT_TEMPLATE;
   const r = await startTaskGoal({
     topicKey,
     taskId,
     cwd,
     name,
     durationSec,
-    prompt,
+    prompt: promptTemplate,
     startedAtMs,
   });
   const g = r && r.goal;
   if (!g) return null;
+  const extra = timegoal.prompt;
+  const ctx = taskGoalTemplateCtx({
+    taskId,
+    taskText,
+    goalKey: g.key || goalKey,
+    durationSec: g.durationSec || durationSec,
+    extra,
+    startedAt: g.startedAt || g.started_at,
+    deadline: g.deadline,
+    nowMs: Date.now(),
+  });
   return {
     name: g.name,
     deadline: g.deadline,
-    prompt: g.prompt, // check 指令已固化：之后每轮 check 原文回显，agent 不可能「忘了要 check」
-    goalKey: g.key,
-    durationSec: g.durationSec,
+    // check 指令用同一套模板渲染：之后每轮 check 会按当下 ctx 重新渲染（任务 #87）
+    prompt: renderTaskGoalPrompt(ctx, g.prompt || promptTemplate),
+    promptTemplate: g.prompt || promptTemplate,
+    goalKey: g.key || goalKey,
+    durationSec: g.durationSec || durationSec,
+    extra: extra || '',
   };
 }
 
@@ -104,7 +102,7 @@ export async function ensureTaskGoal(p) {
  *   - 已经起过表 → 回显固化后的 prompt（领取时写死在 goal 里的那份原文）；
  *   - 还没起表（pending 任务）→ 按声明现算（= 领取那一刻会固化的同一份文本）。
  */
-export async function previewTaskGoal({ topicKey, taskId, name, timegoal }) {
+export async function previewTaskGoal({ topicKey, taskId, name, timegoal, text }) {
   if (!timegoal || !topicKey || taskId === undefined || taskId === null) return null;
   let durationSec;
   try {
@@ -112,29 +110,49 @@ export async function previewTaskGoal({ topicKey, taskId, name, timegoal }) {
   } catch {
     return null;
   }
+  const goalKey = taskGoalKey(topicKey, taskId);
   const state = await taskGoalState({ topicKey, taskId }).catch(() => null);
   if (state && state.hasGoal && state.goal) {
+    const g = state.goal;
+    const ctx = taskGoalTemplateCtx({
+      taskId,
+      taskText: text,
+      goalKey: g.key || goalKey,
+      durationSec: g.durationSec || durationSec,
+      extra: timegoal.prompt,
+      startedAt: g.startedAt || g.started_at,
+      deadline: g.deadline,
+      nowMs: Date.now(),
+    });
     return {
-      name: state.goal.name || name || `任务 #${taskId}`,
-      deadline: state.goal.deadline || '',
-      prompt: state.goal.prompt || '',
-      goalKey: taskGoalKey(topicKey, taskId),
-      durationSec,
+      name: g.name || name || `任务 #${taskId}`,
+      deadline: g.deadline || '',
+      prompt: renderTaskGoalPrompt(ctx, g.prompt),
+      promptTemplate: g.prompt || '',
+      goalKey: g.key || goalKey,
+      durationSec: g.durationSec || durationSec,
+      extra: timegoal.prompt || '',
       started: true,
     };
   }
-  const goalKey = taskGoalKey(topicKey, taskId);
+  const ctx = taskGoalTemplateCtx({
+    taskId,
+    taskText: text,
+    goalKey,
+    durationSec,
+    extra: timegoal.prompt,
+    startedAt: Date.now(),
+    deadline: Date.now() + durationSec * 1000,
+    nowMs: Date.now(),
+  });
   return {
     name: name || `任务 #${taskId}`,
     deadline: '',
-    prompt: taskGoalPrompt({
-      goalKey,
-      taskId,
-      durationHuman: formatDuration(durationSec),
-      extra: timegoal.prompt,
-    }),
+    prompt: renderTaskGoalPrompt(ctx),
+    promptTemplate: TASK_GOAL_PROMPT_TEMPLATE,
     goalKey,
     durationSec,
+    extra: timegoal.prompt || '',
     started: false,
   };
 }

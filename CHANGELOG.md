@@ -2,6 +2,29 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.44.0] - 2026-11-10 时间目标提示词模板化 + 特殊功能提示栏（#152）
+
+### Added
+
+- **提示词模板新增「特殊功能提示（timegoal）」栏（#152）**：设置 → 提示词模板多一栏
+  `goalhint`，只在任务带时间目标时出现；模板里可直接写 `{{task.id}}` / `{{task.text}}`
+  与 `{{goal.durationHuman}}` / `{{goal.remainingHuman}}` / `{{goal.reached}}` 等
+  上下文变量。默认文案给出任务号、持续时长与剩余/到点状态，不改代码即可 DIY。
+- **时间目标的 check 返回对象带实时上下文（#152）**：`timegoal check` 现在按**当下**
+  的 ctx 重新渲染 goal prompt 模板，返回 `promptRendered`（实时渲染）、`task`
+  （任务实时原文）、`goal`（剩余/已过/超时/是否到点）；CLI 展示「实时渲染」并附
+  本轮任务原文，agent 每轮都能拿到最新的任务正文与时间状态。
+
+### Changed
+
+- **任务级 goal prompt 改为模板落库（#152）**：`goals.prompt` 存的是带占位符的模板，
+  领取交付时用领取那一刻的 ctx 渲染（输出与改造前逐字一致），每轮 check 用当下 ctx
+  重新渲染；占位符清单见设置页参数速查与 `plugins/goal-template.js` 注释。
+- **附加要求支持领取后动态编辑（#152）**：`localtask update --goal-prompt` 在已领取
+  状态下仍可改（服务端放宽为 prompt-only；时长与清除仍锁定，要调整先 reopen）。
+  面板同步：已领取时「更多 → 时间目标」保留附加要求输入框，时长改为只读展示；
+  改动在下一轮 check / 后续交付即生效。
+
 ## [0.43.0] - 2026-11-10 任务面板统一 + 进程链折叠 + 文档绑定收口
 
 ### Removed

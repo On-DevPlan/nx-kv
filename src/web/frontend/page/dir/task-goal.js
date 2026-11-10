@@ -13,6 +13,11 @@ export function useGoal({ id, isDraft, topicKey, task, taskRow }) {
   const goal = goalDraft || { duration: declaredGoal?.duration || '', prompt: declaredGoal?.prompt || '' };
   // 只有「待领取」能改时间目标声明（已领取在计时、已交付是终态；要改先 reopen）
   const goalEditable = isDraft || (!!taskRow && taskRow.status === 'pending');
+  // 任务 #87：**附加要求**支持动态编辑——领取后仍可改（下一轮 check 即生效），
+  // 只有已交付 / 已取消这种终态才锁死；时长仍由 goalEditable 把关。
+  const goalPromptEditable = isDraft
+    || (!!taskRow && taskRow.status !== 'done' && taskRow.status !== 'cancelled'
+      && (taskRow.status === 'pending' || !!declaredGoal));
 
   // 时间目标 check 流水（#74）：已声明目标的任务才可查，逐轮读 goal_checks。
   const canShowGoalLog = !isDraft && !!declaredGoal && task != null;
@@ -30,7 +35,7 @@ export function useGoal({ id, isDraft, topicKey, task, taskRow }) {
   }, [canShowGoalLog, loadGoalLog]);
 
   return {
-    goalDraft, setGoalDraft, goal, goalEditable, declaredGoal,
+    goalDraft, setGoalDraft, goal, goalEditable, goalPromptEditable, declaredGoal,
     goalLog, loadGoalLog, canShowGoalLog,
   };
 }

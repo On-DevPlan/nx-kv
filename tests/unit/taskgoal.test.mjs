@@ -74,6 +74,13 @@ test('add --duration：任务记录带 timegoal 声明；领取交付带 check �
   const chk = await tg.checkGoalByKey(key, { summary: '推进中', progress: '50%' });
   assert.equal(chk.hasGoal, true);
   assert.equal(chk.reached, false);
+  // #87：check 返回对象带任务实时原文，prompt 按当下 ctx 同源渲染（占位符不残留）
+  assert.equal(chk.task.id, 1);
+  assert.match(chk.task.text, /改登录页/);
+  assert.match(chk.promptRendered, /本任务带时间目标/);
+  assert.match(chk.promptRendered, /重点看表单/, '附加要求参与每轮渲染');
+  assert.doesNotMatch(chk.promptRendered, /\{\{/, '渲染后不应残留占位符');
+  assert.ok(Number.isFinite(chk.goal.remainingSec), 'goal.remainingSec 是渲染期实时值');
 
   // 到点（拨回过去）→ done 放行 + 最终 check 记录 + completedAt
   await retime();

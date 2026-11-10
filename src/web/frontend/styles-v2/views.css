@@ -3,7 +3,11 @@
    danger 用 :not(.danger) 收窄，避免把红色危险态的 hover 染绿。 */
 .btn { background: #2F6F5E; color: #fff; }
 .btn:hover { opacity: 0.92; }
-.btn.ghost { color: var(--ink); }
+/* #170：ghost 的观感**全站统一**（透明底 + 浅边 + 中灰字）——此前 v1 的
+   `.btn.ghost{background:var(--soft)}` 与 .mdw 作用域的 `.mdw .btn.ghost`
+   两套并存，同一个按钮类在不同页面呈现灰底 / 透明两种观感（目录页在 .mdw 里、
+   项目组页不在 → 工具区按钮观感不一致）。这里定一份全局口径，与 md 编辑器内一致。 */
+.btn.ghost { background: transparent; color: var(--ink-2, #4B515A); border-color: var(--line, #E4E2DC); }
 .btn.ghost:hover:not(.danger) {
   background: color-mix(in srgb, #2F6F5E 8%, var(--paper));
   color: #2F6F5E;

@@ -16,7 +16,7 @@ import { useToast } from '../../components/toast/index.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TaskPanel from '../../components/task-panel/index.jsx';
-import PageShell from '../../components/task-panel/page-shell.jsx';
+import TaskPanelLayout from '../../components/task-panel/layout.jsx';
 import DeletedPanel from '../dir/deleted-panel.jsx';
 import TaskRow from '../../components/task-panel/task-row.jsx';
 import Pager, { usePager } from '../../components/pager.jsx';
@@ -349,10 +349,71 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
     });
   };
 
+  const introSlot = (
+      <Introduction kind="board" owner={board} model={model} />
+  );
+  const listPanel = (
+      <TaskPanel
+        title="本组任务"
+        pendingCount={groupPendingCount}
+        emptyText="本组还没有任务——点「＋ 新增任务」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。"
+      >
+        {pager.items.map(({ member, task }) => {
+          const isPending = task.status === 'pending';
+          const dagInfo = dagByTopic.get(member.topicKey);
+          const downs = (dagInfo && dagInfo.downstream[task.id]) || [];
+          const rk = rowKey(member, task);
+          return (
+            <TaskRow
+              key={rk}
+              t={task}
+              projectTag={member.name}
+              history={!isPending}
+              draggable={isPending && !!member.topicKey}
+              dragHandlers={
+                isPending && member.topicKey
+                  ? {
+                      onDragStart: (e) => onDragStart(e, member, task),
+                      onDragOver: (e) => onDragOver(e, member, task),
+                      onDragLeave: onDragLeave,
+                      onDrop: (e) => onDrop(e, member, task),
+                      onDragEnd: onDragEnd,
+                    }
+                  : null
+              }
+              dragVisual={{
+                dragging: dragId === rk,
+                drop: dropAt && dropAt.key === rk ? dropAt.zone : null,
+              }}
+              downs={downs}
+              onOpen={() =>
+                app.openPage &&
+                app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })
+              }
+            />
+          );
+        })}
+      </TaskPanel>
+  );
+  const footerBar = (
+      <div className="mdw-land-pager">
+        <Pager
+          page={pager.page}
+          pageCount={pager.pageCount}
+          total={pager.total}
+          onPage={pager.setPage}
+          unit="个任务"
+        />
+      </div>
+  );
+
   return (
-    <PageShell
+    <TaskPanelLayout
       name={board.name}
       counts={[`${items.length} 个目录`, ...(totalPending > 0 ? [`待领取 ${totalPending}`] : [])]}
+      intro={introSlot}
+      list={listPanel}
+      footer={footerBar}
       actions={
         <>
           {/* #139：工具区可编排；新增任务保留模板下拉（#132 portal） */}
@@ -509,64 +570,13 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
 
       {/* 组介绍（board/<组>.md，文字超链接打开 DocPanel）放在本组任务**上方**——
           先看这个组是干什么的，再看活儿 */}
-      <Introduction kind="board" owner={board} model={model} />
 
       {/* 首屏：本组任务面板——只列 frontmatter.board 指向本组的任务，项目 tag 标归属。
           #164：面板外壳与任务行抽到 components/task-panel（与目录任务页共用）；
           #167 三轮：列表进 usePager 分页（待领取在前、历史在后混排当前页），
           与目录页完全同构，历史行走 history 样式 + StatusTag 真实状态。 */}
-      <TaskPanel
-        title="本组任务"
-        pendingCount={groupPendingCount}
-        emptyText="本组还没有任务——点「＋ 新增任务」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。"
-      >
-        {pager.items.map(({ member, task }) => {
-          const isPending = task.status === 'pending';
-          const dagInfo = dagByTopic.get(member.topicKey);
-          const downs = (dagInfo && dagInfo.downstream[task.id]) || [];
-          const rk = rowKey(member, task);
-          return (
-            <TaskRow
-              key={rk}
-              t={task}
-              projectTag={member.name}
-              history={!isPending}
-              draggable={isPending && !!member.topicKey}
-              dragHandlers={
-                isPending && member.topicKey
-                  ? {
-                      onDragStart: (e) => onDragStart(e, member, task),
-                      onDragOver: (e) => onDragOver(e, member, task),
-                      onDragLeave: onDragLeave,
-                      onDrop: (e) => onDrop(e, member, task),
-                      onDragEnd: onDragEnd,
-                    }
-                  : null
-              }
-              dragVisual={{
-                dragging: dragId === rk,
-                drop: dropAt && dropAt.key === rk ? dropAt.zone : null,
-              }}
-              downs={downs}
-              onOpen={() =>
-                app.openPage &&
-                app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })
-              }
-            />
-          );
-        })}
-      </TaskPanel>
 
       {/* 翻页条：与目录任务页同款（#167 三轮：group 列表加分页） */}
-      <div className="mdw-land-pager">
-        <Pager
-          page={pager.page}
-          pageCount={pager.pageCount}
-          total={pager.total}
-          onPage={pager.setPage}
-          unit="个任务"
-        />
-      </div>
 
       {/* 添加成员：就地弹窗（项目 + 项目组，可搜索） */}
       {addOpen && board ? (
@@ -588,6 +598,6 @@ export default function GroupView({ dirKey, rows, repoData, model }) {
           onPurge={purgeDeleted}
         />
       )}
-    </PageShell>
+    </TaskPanelLayout>
   );
 }

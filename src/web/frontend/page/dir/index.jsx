@@ -463,9 +463,13 @@ export default function DirPanel({ dirKey }) {
   }
 
   return (
-    <div className="mdw">
-      <div className="mdw-main">
-        <Landing
+    // #170：落地页**不再套 .mdw 工作台外壳**——.mdw 是「MD 编辑器」的外壳
+    // （自带 canvas 米色底 + 一整套 .mdw 作用域的按钮/字号口径）。落地页只是
+    // 队列列表页，套上它会让**同款按钮在目录页与项目组页呈现两套观感**
+    // （.mdw .btn.ghost 透明浅边 vs .btn.ghost 灰底），页面底色也不同。
+    // 编辑器分支仍用 .mdw（那是编辑器，本就该有工作台外壳）。
+    <>
+      <Landing
           isGlobal={isGlobal}
           topic={topic}
           repo={repo}
@@ -495,7 +499,6 @@ export default function DirPanel({ dirKey }) {
           onRefs={openRefs}
           deletedCount={deletedTasks.length}
         />
-      </div>
 
       {dagTask && (
         <DagEditor
@@ -532,6 +535,6 @@ export default function DirPanel({ dirKey }) {
       />
 
       {dialogNode}
-    </div>
+    </>
   );
 }

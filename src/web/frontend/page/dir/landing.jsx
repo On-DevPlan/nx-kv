@@ -13,7 +13,7 @@ import Pager from '../../components/pager.jsx';
 import { RowMenu } from '../../components/popup/index.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import TaskPanel from '../../components/task-panel/index.jsx';
-import PageShell from '../../components/task-panel/page-shell.jsx';
+import TaskPanelLayout from '../../components/task-panel/layout.jsx';
 import TaskRow from '../../components/task-panel/task-row.jsx';
 import { taskLabel } from '../../components/sidebar/model.js';
 
@@ -133,83 +133,7 @@ export default function Landing({
     setDropAt(null);
   };
 
-  return (
-    // #169：外壳复用共享组件 PageShell（与项目组页同一份结构与样式——此前两页
-    // 各写各的容器类名，背景/内距靠巧合对齐，一处改一处漂）。
-    // #167 三轮：去面包屑（group 页没有，返回导航走左侧树）。
-    <PageShell
-      name={name}
-      counts={[`${taskCount} 个任务`, ...(pendingCount > 0 ? [`待领取 ${pendingCount}`] : [])]}
-      actions={
-        <>
-          {/* #139：工具区可编排（顺序 / 显隐；隐藏收入「更多」） */}
-          <ToolActsBar
-            kind="dir"
-            labels={{
-              more: deletedCount > 0 ? `更多 (${deletedCount})` : '更多',
-              deleted: deletedCount > 0 ? `已删除任务（${deletedCount}）` : '已删除任务',
-            }}
-            titles={{
-              new: '按默认模板新建一页（▾ 选模板）',
-              import: '把一个 .md 文件导入成任务',
-              progress: '打开这个目录的进程面板',
-              more: deletedCount > 0 ? `更多操作（含 ${deletedCount} 条已删除任务）` : '更多操作',
-              deleted: '查看并恢复已删除任务',
-              refs: '查看文档 / reference 列表',
-            }}
-            renderers={{
-              // #161 新建按钮拆两级（视觉一颗按钮、命中区两层）：
-              //   主区点击 = 按默认模板直接新建；内嵌箭头 = 模板下拉（tplMenuItems）
-              new: () => (
-                <span className="rp-newtask">
-                  <button
-                    type="button"
-                    className="btn small primary"
-                    title="按默认模板新建一页（▾ 选模板）"
-                    onClick={() => onNew()}
-                  >
-                    ＋ 新建页
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      aria-label="选择模板新建一页"
-                      aria-haspopup="menu"
-                      className="rp-newtask-caret"
-                      title="选择模板新建一页"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onTplMenu?.(e);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onTplMenu?.(e);
-                        }
-                      }}
-                    >
-                      <Icon name="chevron" size={11} />
-                    </span>
-                  </button>
-                </span>
-              ),
-            }}
-            actions={{
-              new: onNew,
-              import: onImport,
-              progress: onProg,
-              orch: onOpenFlow,
-              deleted: onDeleted,
-              refs: onRefs,
-            }}
-          />
-        </>
-      }
-    >
-
-      {!isGlobal && repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
-
-      {pickedTasks.length > 0 && (
+  const batchBar = pickedTasks.length > 0 ? (
         <div className="mdw-land-batch">
           <span className="mdw-land-batch-count">已选 {pickedTasks.length} 条</span>
           {onCompleteTasks && (
@@ -251,10 +175,8 @@ export default function Landing({
             清空
           </button>
         </div>
-      )}
-
-      {/* 任务面板（#164 共享组件）：行结构 / 状态药丸与项目组页一致。
-          当前页行不拆段（分页语义由容器负责）；全选在面板头右侧。 */}
+  ) : null;
+  const listPanel = (
       <TaskPanel
         title={isGlobal ? '全局池任务' : '任务'}
         pendingCount={pendingCount}
@@ -343,10 +265,9 @@ export default function Landing({
           );
         })}
       </TaskPanel>
-
-      {/* 队列长了翻页看（以前一次渲染全部，队列一长就是一堵墙） */}
-      {taskCount > 0 && (
-        <div className="mdw-land-pager">
+  );
+  const footerBar = taskCount > 0 ? (
+      <div className="mdw-land-pager">
           <Pager
             page={page}
             pageCount={pageCount}
@@ -355,7 +276,90 @@ export default function Landing({
             unit="个任务"
           />
         </div>
-      )}
-    </PageShell>
+  ) : null;
+
+  return (
+    // #170：整页布局复用共享组件 TaskPanelLayout（路由与数据语义各自保留，
+    // 但排布骨架同源：头部 / 简介 / 批量条 / 列表 / 翻页的块序与间距由组件定）。
+    // #167 三轮：去面包屑（group 页没有，返回导航走左侧树）。
+    <TaskPanelLayout
+      name={name}
+      counts={[`${taskCount} 个任务`, ...(pendingCount > 0 ? [`待领取 ${pendingCount}`] : [])]}
+      intro={!isGlobal && repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
+      batch={batchBar}
+      list={listPanel}
+      footer={footerBar}
+      actions={
+        <>
+          {/* #139：工具区可编排（顺序 / 显隐；隐藏收入「更多」） */}
+          <ToolActsBar
+            kind="dir"
+            labels={{
+              more: deletedCount > 0 ? `更多 (${deletedCount})` : '更多',
+              deleted: deletedCount > 0 ? `已删除任务（${deletedCount}）` : '已删除任务',
+            }}
+            titles={{
+              new: '按默认模板新建一页（▾ 选模板）',
+              import: '把一个 .md 文件导入成任务',
+              progress: '打开这个目录的进程面板',
+              more: deletedCount > 0 ? `更多操作（含 ${deletedCount} 条已删除任务）` : '更多操作',
+              deleted: '查看并恢复已删除任务',
+              refs: '查看文档 / reference 列表',
+            }}
+            renderers={{
+              // #161 新建按钮拆两级（视觉一颗按钮、命中区两层）：
+              //   主区点击 = 按默认模板直接新建；内嵌箭头 = 模板下拉（tplMenuItems）
+              new: () => (
+                <span className="rp-newtask">
+                  <button
+                    type="button"
+                    className="btn small primary"
+                    title="按默认模板新建一页（▾ 选模板）"
+                    onClick={() => onNew()}
+                  >
+                    ＋ 新建页
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label="选择模板新建一页"
+                      aria-haspopup="menu"
+                      className="rp-newtask-caret"
+                      title="选择模板新建一页"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTplMenu?.(e);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onTplMenu?.(e);
+                        }
+                      }}
+                    >
+                      <Icon name="chevron" size={11} />
+                    </span>
+                  </button>
+                </span>
+              ),
+            }}
+            actions={{
+              new: onNew,
+              import: onImport,
+              progress: onProg,
+              orch: onOpenFlow,
+              deleted: onDeleted,
+              refs: onRefs,
+            }}
+          />
+        </>
+      }
+    >
+
+
+      {/* 任务面板（#164 共享组件）：行结构 / 状态药丸与项目组页一致。
+          当前页行不拆段（分页语义由容器负责）；全选在面板头右侧。 */}
+
+    </TaskPanelLayout>
   );
 }

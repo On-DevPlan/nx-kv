@@ -314,7 +314,8 @@ export async function groupContextFor(cwd, { board = '' } = {}) {
     // 本项目在组里的位置
     const noteRef = (b.repoDocs || {})[rk];
     const noteOwn = await readRef(noteRef, paths.groupNoteRel(b.name, rk), { warnings, label: `组内描述·${b.name}` });
-    // 兄弟成员（组内各仓库的组内描述）
+    // 兄弟成员（组内各仓库的组内描述）；path = 本机磁盘路径（#163：agent 看到名字
+    // 就能定位兄弟仓库，不用再查清单）
     const peers = [];
     for (const mkey of members) {
       const mr = s.repos.find((x) => deriveKey(x) === mkey);
@@ -325,7 +326,11 @@ export async function groupContextFor(cwd, { board = '' } = {}) {
         paths.groupNoteRel(b.name, mkey),
         { warnings, label: `组内描述·${b.name}/${mkey}` }
       );
-      peers.push({ name: mname, note: peerNote.body || (b.repoNotes || {})[mkey] || '' });
+      peers.push({
+        name: mname,
+        note: peerNote.body || (b.repoNotes || {})[mkey] || '',
+        path: (mr && mr.path) || '',
+      });
     }
     // 组绑定参考文件（给可读路径——agent 直接读盘）；tag 随条目走（有才带）
     const docLinks = linkEntries(b.docLinks, closure);

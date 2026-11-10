@@ -75,7 +75,7 @@ export const DEFAULT_CONTEXT_TEMPLATE = [
   '{{#if group.peers}}',
   '组内成员：',
   '{{#each group.peers}}',
-  '  - {{name}}：{{#if note}}{{note}}{{else}}（无组内描述）{{/if}}',
+  '  - {{name}}：{{#if note}}{{note}}{{else}}（无组内描述）{{/if}}{{#if path}}（{{path}}）{{/if}}',
   '{{/each}}',
   '{{/if}}',
   '{{#if group.docs}}',

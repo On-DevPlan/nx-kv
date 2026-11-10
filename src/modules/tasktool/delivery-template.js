@@ -50,11 +50,12 @@ function docItems(links) {
   }));
 }
 
-/** 组内成员 → 结构化数组（{{name}} / {{note}}）。 */
+/** 组内成员 → 结构化数组（{{name}} / {{note}} / {{path}}——#163：路径方便直接访问）。 */
 function peerItems(peers) {
   return (peers || []).map((p) => ({
     name: p.name || '',
     note: p.note || '',
+    path: p.path || '',
     hasNote: !!p.note,
   }));
 }

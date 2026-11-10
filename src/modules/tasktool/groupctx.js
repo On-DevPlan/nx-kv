@@ -108,7 +108,9 @@ export function renderGroupContext(ctx) {
     if (g.note) lines.push(`本项目在组里的位置：${g.note}`);
     if (g.peers && g.peers.length) {
       lines.push('组内成员：');
-      for (const p of g.peers) lines.push(`  - ${p.name}：${p.note || '（无组内描述）'}`);
+      for (const p of g.peers) {
+        lines.push(`  - ${p.name}：${p.note || '（无组内描述）'}${p.path ? `（${p.path}）` : ''}`);
+      }
     }
     if (g.docLinks && g.docLinks.length) {
       lines.push('组绑定参考文件（可直接读取）：');

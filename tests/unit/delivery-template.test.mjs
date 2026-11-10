@@ -30,7 +30,7 @@ const GROUP_CTX = {
       intro: { body: '# nx系列\n\n本机 nx- 前缀工具链的组合', path: 'C:/docs/board/nx.md' },
       introSet: { count: 1, main: {}, extras: [] },
       note: '组里的任务出入口',
-      peers: [{ name: 'beta', note: '仓库与技能登记' }],
+      peers: [{ name: 'beta', note: '仓库与技能登记', path: 'D:/repos/beta' }],
       docLinks: [{ rel: 'notes/waitgoal.md', abs: 'C:/docs/notes/waitgoal.md', note: '阻塞窗口' }],
     },
   ],
@@ -111,6 +111,13 @@ test('deliveryCtxOf：补充文档 / 参考文件 / 成员是结构化数组（�
   assert.match(frag.group.docs[0].path, /waitgoal\.md/);
   assert.equal(frag.group.peerCount, frag.group.peers.length);
   assert.ok(frag.group.peers.some((p) => p.name === 'beta'));
+  // #163：成员带本机路径，默认模板渲染在括号说明之后，agent 直接定位兄弟仓库
+  assert.equal(frag.group.peers[0].path, 'D:/repos/beta');
+  const peersOut = renderDelivery(
+    DEFAULT_DELIVERY_TEMPLATE,
+    buildDeliveryCtx({ task: { id: 3, text: 'x' }, groupCtx: GROUP_CTX })
+  );
+  assert.match(peersOut, /- beta：仓库与技能登记（D:\/repos\/beta）/);
   // 旧闸门键（repoDocs / groupPeers）已删除，不再作为变量提供
   assert.equal(frag.repoDocs, undefined);
   assert.equal(frag.groupPeers, undefined);

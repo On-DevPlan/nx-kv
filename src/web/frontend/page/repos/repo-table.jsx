@@ -26,8 +26,11 @@ function RepoPath({ path }) {
   );
 }
 
-// 文档列入口（查看详情）：一行主篇摘要 + 数量，点击打开 DocsModal——
+// 文档列入口（查看详情）：一行主篇标题 + 数量，点击打开 DocsModal——
 // 完整文档列表（主篇 / 补充 / reference / 组内）+ 复用编辑器就地编辑。
+// #165：主行显示**文档标题**（正文首个 # 行），摘要（desc）只在没有标题时兜底、
+// 悬浮提示里看全文——此前 summary 优先，用户改了标题这行字永远不变（它显示的
+// 是回写 desc 的摘要），被当成「标题无法修改、标题区变成了 desc」。
 // 文档不再以 chip/tag 形式外显在行内（任务「简介文档优化」）；未写的主篇
 // 显示「＋ 写项目介绍」虚态，点开同样进弹窗创建。
 // 参考仓库面板的名单元格也复用它，所以具名导出。
@@ -35,15 +38,18 @@ export function DocsEntry({ docs, onOpen }) {
   const main = docs && docs.main;
   const links = (docs && docs.links) || [];
   const total = (main ? 1 : 0) + links.length;
+  const tip = main && main.exists
+    ? [main.title, main.summary && `摘要：${main.summary}`].filter(Boolean).join('\n')
+    : '查看完整文档列表（主篇 / 补充 / reference / 组内），可就地编辑';
   return (
     <button
       type="button"
       className="rp-docs-entry"
-      title="查看完整文档列表（主篇 / 补充 / reference / 组内），可就地编辑"
+      title={tip}
       onClick={onOpen}
     >
       <span className={'rp-docs-entry-main' + (main && main.exists ? '' : ' ghost')}>
-        {main && main.exists ? (main.summary || main.title) : '＋ 写项目介绍'}
+        {main && main.exists ? (main.title || main.summary || '未命名') : '＋ 写项目介绍'}
       </span>
       <span className="rp-docs-entry-n">{total > 0 ? `${total} 篇 · 查看详情` : '查看详情'}</span>
     </button>
@@ -181,7 +187,7 @@ export default function RepoTable({ shown, devRepos, filterBoard, groupRefRepoCo
             <th scope="col" style={{ width: '16%' }}>仓库</th>
             <th scope="col" style={{ width: '36%' }}>
               文档
-              <span className="rp-th-hint">主篇摘要 · 查看详情打开完整文档列表</span>
+              <span className="rp-th-hint">主篇标题 · 查看详情打开完整文档列表</span>
             </th>
             <th scope="col" style={{ width: '18%' }}>参考仓库</th>
             <th scope="col" style={{ width: '14%' }}>分组</th>

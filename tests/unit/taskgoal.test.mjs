@@ -156,6 +156,24 @@ test('get：项目开启持续 get → 交付文本带「继续 get」模板；d
   assert.ok(Date.now() - t0 >= 900, '开启持续 get 后确实阻塞了窗口');
 });
 
+test('HTTP 领取：claim 路由存在，且 instant 强制立即返回（持续 get 也不挂住请求）', async () => {
+  const { ACTIONS } = await import('../../src/runtime/registry.js');
+  const claim = ACTIONS.find((a) => a.id === 'localtask.claim');
+  assert.deepEqual(claim.http, ['POST', '/api/localtasks/claim'], '领取补上了 POST 路由');
+
+  const repos = await import('../../src/modules/repos/service.js');
+  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const cwd = join(dir, 'claim-http');
+  const repo = await repos.addRepo({ path: cwd, name: 'claim-http', remote: 'https://github.com/me/ch' });
+  await repos.updateRepo(repo.id, { getLoop: { enabled: true, waitMinutes: 5 } });
+
+  // 队列空 + 持续 get 开：HTTP 侧必须立即 timeout（不阻塞）
+  const t0 = Date.now();
+  const r = await getTask({ cwd, instant: true, open: false });
+  assert.equal(r.status, 'timeout');
+  assert.ok(Date.now() - t0 < 1000, 'instant 覆盖持续 get 的阻塞窗口');
+});
+
 test('repo getLoop 落库：部分更新与已有字段合并', async () => {
   const repos = await import('../../src/modules/repos/service.js');
   const cwd = join(dir, 'gl');

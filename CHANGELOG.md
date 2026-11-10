@@ -2,6 +2,20 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.44.2] - 2026-11-10 领取补上 HTTP 路由（serve 在跑也能领）
+
+### Added
+
+- **`POST /api/localtasks/claim`（领取的 HTTP 通道）**：此前 `localtask get` 只有 CLI，
+  而 serve 持有 live 库时新进程打不开库（`disk I/O error`），结果 serve 一开着谁也领不了
+  任务、`done` 又因 `not_claimed` 被拦。现在领取复用 action 表已有的 `http` 声明方式
+  补了 POST 路由，与 `localtask get` **同源同义**（body 同 flag：`cwd` / `param` / `timeout`），
+  不改 schema。HTTP 侧强制 `instant`（不阻塞：持续 get 的阻塞窗口只属于 CLI 领取）、
+  不自动开浏览器。
+- **幂等边界写清**：领取是消费动作——重复调用拿到的是**再下一条**待领取任务；
+  队列空固定返回 `{status:"timeout", instant:true}`，重试安全（不会重复消费同一条）。
+  `POST /api/localtasks/done` 对未领取任务仍返回 `blocked / not_claimed`（与 CLI 同构）。
+
 ## [0.44.1] - 2026-11-10 追加方式收成头部小切换钮（#88）
 
 ### Changed

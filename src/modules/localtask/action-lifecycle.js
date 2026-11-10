@@ -40,7 +40,13 @@ export const lifecycleActions = [
     // 自带「继续 get 直到超时」的项目模板。
     id: 'localtask.claim',
     cli: ['localtask', 'get'],
-    http: null, // 与 wait 同族：阻塞语义只走 CLI（agent 本轮的领取动作）
+    // HTTP 与 CLI 同源（#82 之前的缺口：serve 一开着，CLI 打不开库就谁也领不了）。
+    // 两条路径语义一致，唯一差别是**阻塞**：HTTP 请求不允许挂住（持续 get 的阻塞
+    // 窗口只属于 agent 本轮的 CLI 领取），所以走 HTTP 时强制 instant（无任务立即
+    // 返回 timeout）。幂等性：领取是「取走下一条 pending」的消费动作——重复调用
+    // 返回的是**再下一条**待领取任务（不是同一条）；队列空时固定返回
+    // `{ status: 'timeout', instant: true }`，因此重试安全（不会重复消费同一条）。
+    http: ['POST', '/api/localtasks/claim'],
     summary:
       '领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填',
     flags: {
@@ -51,10 +57,18 @@ export const lifecycleActions = [
       'no-open': { type: 'boolean', hint: '不自动打开浏览器（测试用）' },
       param: { type: 'array', hint: '外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取' },
     },
-    run: async (ctx) => {
+    run: async (ctx, meta) => {
       const { getTask } = await import('../tasktool/get.js');
       const { parseParams } = await import('../tasktool/params.js');
-      return getTask({ cwd: ctx.cwd, timeoutSec: ctx.timeout, open: !ctx['no-open'], params: parseParams(ctx.param) });
+      // HTTP：不阻塞、不开浏览器（面板/脚本调用不该挂住请求，也不该弹窗）
+      const viaHttp = !!(meta && meta.transport === 'http');
+      return getTask({
+        cwd: ctx.cwd,
+        timeoutSec: viaHttp ? undefined : ctx.timeout,
+        open: viaHttp ? false : !ctx['no-open'],
+        instant: viaHttp ? true : undefined,
+        params: parseParams(ctx.param),
+      });
     },
     render: renderWait, // 返回形状与 wait 同构（ok/timeout），复用同一份人读渲染
   },

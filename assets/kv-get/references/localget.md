@@ -46,6 +46,12 @@ nx-kv localtask done --id <n> --summary "<完成总结>" --json
   重新提出新的需求再继续，而不是硬标完成。
 - `--timeout <秒>`：阻塞上限（缺省 180 秒，最大 600）；「查完就走」
   用短超时，「挂着等活」用长超时。
+- **CLI 打不开库时的替代通道**（serve 正持有 live 库）：`POST /api/localtasks/claim`
+  与 `localtask get` 同源同义（body 同 flag：`cwd` / `param` / `timeout`），
+  **幂等性**：领取是消费动作——重复调用拿到的是**再下一条**待领取任务，队列空时固定
+  返回 `{status:"timeout", instant:true}`，重试安全。HTTP 侧**不阻塞**（持续 get 的
+  阻塞窗口只属于 CLI 领取），也不自动开浏览器；`done` 走 `POST /api/localtasks/done`
+  （未领取同样返回 `blocked / not_claimed`）。
 
 ## 队列管理（需要时）
 

@@ -5,7 +5,7 @@
 // 点一行 → 在工作区开该文档的页签（带归属上下文，双链可跳）。
 // 数据面与 DocsModal 同源：repo → GET /api/repos/docs；board → GET /api/boards/:id。
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../api/client.js';
+import { boardDetail, repoDocs } from './api.js';
 import { Icon } from '../../components/icons.jsx';
 import { useWikiNav } from '../doc/index.jsx';
 import type { DocOpenExtra } from '../doc/index.jsx';
@@ -88,9 +88,7 @@ export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
     setErr('');
     (async () => {
       try {
-        const d = repoKey
-          ? await api('/api/repos/docs?id=' + encodeURIComponent(repoKey))
-          : await api('/api/boards/' + encodeURIComponent(String(boardKey)));
+        const d = repoKey ? await repoDocs(repoKey) : await boardDetail(String(boardKey));
         if (alive) setData(d);
       } catch (e) {
         if (alive) { setData(null); setErr(String((e as Error).message || e)); }

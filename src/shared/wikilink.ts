@@ -1,7 +1,7 @@
 // 双链 [[目标|显示文本]] 的纯函数：解析与目标归一。
 //
-// 前后端共用同一份实现——md-parse.js（前端）负责把 [[..]] 渲染成 <a>，
-// docs/links.js（后端）负责把目标解析成具体文档。放在 shared/（同构纯函数层），
+// 前后端共用同一份实现——md-parse（前端）负责把 [[..]] 渲染成 <a>，
+// docs/links（后端）负责把目标解析成具体文档。放在 shared/（同构纯函数层），
 // 两端就不可能各写一版慢慢漂移：前端够不着 modules/，后端够不着 web/，
 // 唯一能同时被两边 import 的只有这里。
 //
@@ -12,22 +12,33 @@
 
 export const WIKI_LINK_RE = /\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g;
 
+/** 双链索引进项：docs/index 产出的条目形状（name 已归一）。 */
+export interface WikiIndexEntry {
+  docId: string;
+  name: string;
+  rel?: string;
+  path?: string;
+}
+
+/** 双链解析结果：唯一命中 / 多命中候选 / 未命中。 */
+export type WikiResolveResult = { docId: string } | { candidates: string[] } | null;
+
 /** 解析出全部双链引用：[{ target, label }]（label = 渲染文本，缺省同 target） */
-export function parseWikiLinks(src) {
-  const out = [];
+export function parseWikiLinks(src: unknown): { target: string; label: string }[] {
+  const out: { target: string; label: string }[] = [];
   const s = String(src || '');
   WIKI_LINK_RE.lastIndex = 0;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = WIKI_LINK_RE.exec(s))) {
-    const target = m[1].trim();
-    if (target) out.push({ target, label: (m[2] || m[1]).trim() });
+    const target = (m[1] ?? '').trim();
+    if (target) out.push({ target, label: (m[2] || m[1] || '').trim() });
   }
   return out;
 }
 
 // 目标归一：剥 .md 尾、压空白、小写——文件名与路径的比较统一走这里。
 // 小写是有意的：Windows 文件系统不分大小写，key 也一律小写，比较口径必须一致。
-export function normalizeWikiTarget(t) {
+export function normalizeWikiTarget(t: unknown): string {
   return String(t || '')
     .trim()
     .replace(/\.md$/i, '')
@@ -45,8 +56,8 @@ export function normalizeWikiTarget(t) {
  *   ③ 多命中 → 返回候选列表，调用方列出来让用户选（不猜）
  * 返回 { docId } | { candidates: [docId, ...] } | null（未命中 = 未解析）
  */
-export function resolveWikiLink(target, index) {
-  const list = Array.isArray(index) ? index : [];
+export function resolveWikiLink(target: unknown, index: readonly WikiIndexEntry[] | unknown): WikiResolveResult {
+  const list: WikiIndexEntry[] = Array.isArray(index) ? (index as WikiIndexEntry[]) : [];
   if (!list.length) return null;
   const norm = normalizeWikiTarget(target);
   if (!norm) return null;
@@ -57,8 +68,10 @@ export function resolveWikiLink(target, index) {
       (d.path && String(d.path).replace(/\\/g, '/').toLowerCase() === normSlash)
   );
   if (byAddr) return { docId: byAddr.docId };
-  const byName = list.filter((d) => d.name === normSlash.split('/').pop());
-  if (byName.length === 1) return { docId: byName[0].docId };
+  const lastName = normSlash.split('/').pop() ?? '';
+  const byName = list.filter((d) => d.name === lastName);
+  const first = byName[0];
+  if (byName.length === 1 && first) return { docId: first.docId };
   if (byName.length > 1) return { candidates: byName.map((d) => d.docId) };
   return null;
 }

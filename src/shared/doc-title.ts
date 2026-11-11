@@ -9,7 +9,7 @@
 // 任务标题另有口径（titleFromMd：首个非空行也可以），两者刻意不合并。
 
 /** 去 frontmatter 后的正文首行（trim 后）。没有正文行 → ''。 */
-function firstLineOf(body) {
+function firstLineOf(body: unknown): string {
   const text = String(body ?? '');
   // 去掉 frontmatter（--- … ---），标题只看正文部分
   const s = text.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -24,32 +24,25 @@ function firstLineOf(body) {
 
 /**
  * 文档标题：正文**首行**是 `# 标题` 时取其文字，否则空串（调用方决定回落）。
- * @param {string} body 文档正文
- * @returns {string}
  */
-export function docTitleFromMd(body) {
+export function docTitleFromMd(body: unknown): string {
   const first = firstLineOf(body);
   const m = first.match(/^#\s+(.+)$/);
-  return m ? m[1].trim() : '';
+  return m ? (m[1] ?? '').trim() : '';
 }
 
 /**
  * 文档正文是否以 `# 标题` 开头（编辑标题时用来判断「改首行」还是「补首行」）。
- * @param {string} body
- * @returns {boolean}
  */
-export function hasDocTitleLine(body) {
+export function hasDocTitleLine(body: unknown): boolean {
   return !!docTitleFromMd(body);
 }
 
 /**
  * 改写文档正文的标题行：首行是 # 标题就替换它，否则在文首补一行。
  * 返回新正文（不改动原字符串）。
- * @param {string} body
- * @param {string} title 新标题（空 → 用「未命名文档」）
- * @returns {string}
  */
-export function setDocTitleInMd(body, title) {
+export function setDocTitleInMd(body: unknown, title: unknown): string {
   const text = String(body ?? '');
   const t = String(title || '').trim() || '未命名文档';
   const s = text.replace(/\r\n/g, '\n');
@@ -62,7 +55,8 @@ export function setDocTitleInMd(body, title) {
   if (idx < 0) {
     return `${front}# ${t}\n`;
   }
-  if (/^#\s+/.test(lines[idx].trim())) {
+  const line = lines[idx] ?? '';
+  if (/^#\s+/.test(line.trim())) {
     lines[idx] = `# ${t}`;
   } else {
     lines.splice(idx, 0, `# ${t}`);

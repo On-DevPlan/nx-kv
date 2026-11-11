@@ -6,15 +6,20 @@
 // 只解析 name / description 两个字段——不引入 YAML 依赖，手写够用的子集：
 // 单行值、成对引号值、| / > 块标量、缩进续行。
 
-// 返回 { name, description }；无 frontmatter 或字段缺失时为空串（调用方自行兜底）
-export function parseFrontmatter(raw) {
+/** SKILL.md 头部字段；无 frontmatter 或字段缺失时为空串（调用方自行兜底）。 */
+export interface SkillFrontmatter {
+  name: string;
+  description: string;
+}
+
+export function parseFrontmatter(raw: unknown): SkillFrontmatter {
   // 去 BOM：用 charCodeAt 判定而非正则字面量，避免源码里出现不可见的 BOM 字符
   let content = String(raw ?? '');
   if (content.charCodeAt(0) === 0xfeff) content = content.slice(1);
   content = content.replace(/\r\n?/g, '\n');
   const m = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(\n|$)/.exec(content);
   if (!m) return { name: '', description: '' };
-  const lines = m[1].split('\n');
+  const lines = (m[1] ?? '').split('\n');
   return {
     name: readField(lines, 'name').trim(),
     description: readField(lines, 'description').trim(),
@@ -22,7 +27,7 @@ export function parseFrontmatter(raw) {
 }
 
 // 去掉包裹的成对引号
-function unquote(v) {
+function unquote(v: string): string {
   const s = v.trim();
   if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) {
     return s.slice(1, -1).trim();
@@ -31,19 +36,19 @@ function unquote(v) {
 }
 
 // 读取 frontmatter 字段：支持单行值、引号值、| / > 块标量、以及缩进续行
-function readField(lines, key) {
+function readField(lines: string[], key: string): string {
   const re = new RegExp('^' + key + ':[ \\t]*(.*)$');
   for (let i = 0; i < lines.length; i++) {
-    const m = re.exec(lines[i]);
+    const m = re.exec(lines[i] ?? '');
     if (!m) continue;
-    const rawVal = m[1].trim();
+    const rawVal = (m[1] ?? '').trim();
     const isBlock = /^[|>][-+]?$/.test(rawVal);
     if (!isBlock && rawVal !== '') return unquote(rawVal);
 
     // 块标量或空值：收集后续缩进行（YAML 多行标量）
-    const block = [];
+    const block: string[] = [];
     for (let j = i + 1; j < lines.length; j++) {
-      const l = lines[j];
+      const l = lines[j] ?? '';
       if (l.trim() === '') {
         block.push('');
         continue;
@@ -58,7 +63,7 @@ function readField(lines, key) {
   return '';
 }
 
-function stripIndent(l) {
+function stripIndent(l: string): string {
   if (l.startsWith('  ')) return l.slice(2);
   if (l.startsWith('\t')) return l.slice(1);
   return l.replace(/^[ \t]+/, '');

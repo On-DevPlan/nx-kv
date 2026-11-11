@@ -21,7 +21,7 @@ import { upsertFileAttachment } from './attachmentdb.js';
 const nowIso = () => new Date().toISOString();
 
 /** 该 group 的本地目录。override 优先（来自设置里的 attachmentsDir）。 */
-export function localDirFor(groupId, override = '') {
+export function localDirFor(groupId: unknown, override = ''): string {
   if (override) return resolve(String(override));
   const n = normalizeGroupId(groupId);
   return join(attachmentsRootFromEnv(), n === undefined ? 'default' : String(n));
@@ -35,7 +35,7 @@ const RESERVED = new Set([
 ]);
 
 /** 收成跨平台可用的单段文件名（保留中文）。 */
-export function safeFileName(name) {
+export function safeFileName(name: unknown): string {
   let s = String(name ?? '')
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
     .replace(/\s+/g, ' ')
@@ -46,7 +46,7 @@ export function safeFileName(name) {
   return s.slice(0, 120);
 }
 
-const EXT_BY_TYPE = {
+const EXT_BY_TYPE: Record<string, string> = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
   'image/webp': '.webp',
@@ -64,7 +64,7 @@ const EXT_BY_TYPE = {
  * 本地落点文件名。优先用调用方给的「人读名字」（任务里 markdown 的说明/链接文字），
  * 否则退回 fileId；两者都没有扩展名时，再按 fileId 自带后缀 / Content-Type 补一个。
  */
-export function localNameFor(fileId, preferred, contentType = '') {
+export function localNameFor(fileId: string, preferred: unknown, contentType = ''): string {
   let base = safeFileName(preferred || fileId);
   if (!extname(base)) {
     const fromId = extname(String(fileId));
@@ -74,8 +74,17 @@ export function localNameFor(fileId, preferred, contentType = '') {
   return base;
 }
 
+/** DB 里一条附件镜像记录的形状（attachments 表行归一化后）。 */
+interface AttachRecord {
+  name: string;
+  local_path: string;
+  size: number;
+  contentType: string;
+  syncedAt: string;
+}
+
 /** 同目录内不重名的落点（`名字 (2).ext`）。files 是 id → 记录。 */
-function uniqueName(files, name, selfId) {
+function uniqueName(files: Record<string, AttachRecord>, name: string, selfId: string): string {
   const taken = new Set(
     Object.entries(files)
       .filter(([id]) => id !== selfId)
@@ -92,9 +101,9 @@ function uniqueName(files, name, selfId) {
   return candidate;
 }
 
-function groupRows(groupId) {
+function groupRows(groupId: unknown): any[] {
   const gid = normalizeGroupId(groupId);
-  return getDb().all(
+  return (getDb() as any).all(
     `SELECT id, name, local_path, mime, size, meta
        FROM attachments
       WHERE kind = 'file' AND storage = 'cloud' AND group_id = :g AND deleted_at IS NULL
@@ -103,8 +112,8 @@ function groupRows(groupId) {
   );
 }
 
-function recordOf(row) {
-  let meta = {};
+function recordOf(row: any): AttachRecord {
+  let meta: any = {};
   try {
     meta = JSON.parse(String(row.meta || '{}')) || {};
   } catch {
@@ -119,26 +128,33 @@ function recordOf(row) {
   };
 }
 
-function absOf(rec, dir) {
+function absOf(rec: AttachRecord, dir: string): string {
   if (rec.local_path && existsSync(rec.local_path)) return rec.local_path;
   return rec.name ? join(dir, rec.name) : '';
 }
 
 /** 只在**当前目录内**找已落盘副本：同步用这个判断「这个根下是否需要下载」。 */
-function absInDir(rec, dir) {
+function absInDir(rec: AttachRecord, dir: string): string {
   const p = absOf(rec, dir);
   if (!p) return '';
   return dirname(resolve(p)) === resolve(dir) ? p : '';
+}
+
+/** 本地已同步附件的索引条目。 */
+export interface LocalAttachmentEntry {
+  path: string;
+  name: string;
+  size: number;
 }
 
 /**
  * 读 DB + 落盘文件，判断某个附件是否已经在本地且内容未变。
  * 返回绝对路径；没同步过（或本地文件被删了）返回 null。
  */
-export async function resolveLocal(groupId, fileId, overrideDir = '') {
+export async function resolveLocal(groupId: unknown, fileId: unknown, overrideDir = ''): Promise<LocalAttachmentEntry | null> {
   const gid = normalizeGroupId(groupId);
   const dir = localDirFor(groupId, overrideDir);
-  const row = getDb().get(
+  const row = (getDb() as any).get(
     `SELECT id, name, local_path, mime, size, meta FROM attachments
       WHERE id = :id AND kind = 'file' AND storage = 'cloud' AND group_id = :g AND deleted_at IS NULL`,
     { id: String(fileId || ''), g: gid === undefined ? 0 : Number(gid) }
@@ -150,15 +166,41 @@ export async function resolveLocal(groupId, fileId, overrideDir = '') {
 }
 
 /** 该目录下已同步的全部条目（id → {path,name,size}），供批量标注用。 */
-export async function localIndex(groupId, overrideDir = '') {
+export async function localIndex(groupId: unknown, overrideDir = ''): Promise<{ dir: string; index: Map<string, LocalAttachmentEntry> }> {
   const dir = localDirFor(groupId, overrideDir);
-  const out = new Map();
+  const out = new Map<string, LocalAttachmentEntry>();
   for (const row of groupRows(groupId)) {
     const rec = recordOf(row);
     const abs = absOf(rec, dir);
-    if (abs && existsSync(abs)) out.set(row.id, { path: abs, name: rec.name, size: rec.size });
+    if (abs && existsSync(abs)) out.set(String(row.id), { path: abs, name: rec.name, size: rec.size });
   }
   return { dir, index: out };
+}
+
+/** 同步结果里的单文件条目。 */
+export interface SyncedFileEntry {
+  id: string;
+  name: string;
+  path: string;
+  size: number;
+  contentType: string;
+  synced: boolean;
+  stale?: boolean;
+}
+
+/** 同步附件的返回形状（CLI 渲染与面板展示共用）。 */
+export interface SyncAttachmentsResult {
+  dir: string;
+  groupId: number;
+  dryRun: boolean;
+  totalRemote: number;
+  target: number;
+  downloaded: number;
+  skipped: number;
+  removed: string[];
+  missing: string[];
+  failures: { id: string; error: string }[];
+  files: SyncedFileEntry[];
 }
 
 /**
@@ -178,21 +220,28 @@ export async function syncAttachments({
   dir: overrideDir = '',
   prune = false,
   dryRun = false,
-} = {}) {
+}: {
+  groupId?: unknown;
+  ids?: string[] | null;
+  names?: Record<string, string>;
+  dir?: string;
+  prune?: boolean;
+  dryRun?: boolean;
+} = {}): Promise<SyncAttachmentsResult> {
   const dir = localDirFor(groupId, overrideDir);
-  const db = getDb();
-  const files = {};
-  for (const row of groupRows(groupId)) files[row.id] = recordOf(row);
+  const db = getDb() as any;
+  const files: Record<string, AttachRecord> = {};
+  for (const row of groupRows(groupId)) files[String(row.id)] = recordOf(row);
 
   const remote = await listAllFiles({ groupId });
   const wanted = Array.isArray(ids) && ids.length ? new Set(ids.map(String)) : null;
   const remoteIds = new Set(remote.items.map((f) => f.fileId));
 
-  const failures = [];
-  const missing = [];
+  const failures: { id: string; error: string }[] = [];
+  const missing: string[] = [];
   if (wanted) for (const id of wanted) if (!remoteIds.has(id)) missing.push(id);
 
-  const entries = [];
+  const entries: SyncedFileEntry[] = [];
   let downloaded = 0;
   let skipped = 0;
 
@@ -206,9 +255,9 @@ export async function syncAttachments({
     // 必须在新目录里重新落一份，否则看起来像「没下载」。
     const prevAbs = prev ? absInDir(prev, dir) : '';
     const sizeKnown = Number(prev?.size) > 0;
-    const unchanged = prevAbs && existsSync(prevAbs) && sizeKnown && Number(prev.size) === Number(meta.size);
+    const unchanged = prevAbs && existsSync(prevAbs) && sizeKnown && Number(prev?.size) === Number(meta.size);
 
-    if (unchanged) {
+    if (unchanged && prev) {
       skipped++;
       entries.push({ id, name: prev.name, path: prevAbs, size: Number(prev.size), contentType: meta.contentType, synced: true });
       continue;
@@ -218,12 +267,12 @@ export async function syncAttachments({
       continue;
     }
 
-    let buf;
+    let buf: Buffer;
     try {
       buf = await downloadFile(id);
     } catch (e) {
-      failures.push({ id, error: String((e && e.message) || e) });
-      if (prevAbs && existsSync(prevAbs)) {
+      failures.push({ id, error: String((e as Error).message || e) });
+      if (prevAbs && existsSync(prevAbs) && prev) {
         entries.push({ id, name: prev.name, path: prevAbs, size: Number(prev.size), contentType: meta.contentType, synced: true, stale: true });
       }
       continue;
@@ -235,7 +284,7 @@ export async function syncAttachments({
       await fsp.mkdir(dirname(abs), { recursive: true });
       await fsp.writeFile(abs, buf);
     } catch (e) {
-      failures.push({ id, error: String((e && e.message) || e) });
+      failures.push({ id, error: String((e as Error).message || e) });
       continue;
     }
     files[id] = { name, local_path: abs, size: buf.length, contentType: meta.contentType, syncedAt: nowIso() };
@@ -248,19 +297,18 @@ export async function syncAttachments({
       storage: 'cloud',
       groupId: normalizeGroupId(groupId) || 0,
       meta: { syncedAt: nowIso(), contentType: meta.contentType },
-    });
+    } as any);
     downloaded++;
     entries.push({ id, name, path: abs, size: buf.length, contentType: meta.contentType, synced: true });
   }
 
   // prune：只在同步全部时生效（理由见函数头）。被任务/文档引用过的行不删，
   // 只清本地缓存并保留元数据——否则 CASCADE 会把关系边一起删掉。
-  const removed = [];
+  const removed: string[] = [];
   if (prune && !wanted && !dryRun) {
     const gid = normalizeGroupId(groupId);
-    for (const id of Object.keys(files)) {
+    for (const [id, rec] of Object.entries(files)) {
       if (remoteIds.has(id)) continue;
-      const rec = files[id];
       const abs = absOf(rec, dir);
       if (abs) {
         try {

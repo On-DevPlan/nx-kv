@@ -16,19 +16,36 @@ import { loadConfig, normalizeGroupId } from './config.js';
 
 const TIMEOUT_MS = 20000;
 
-// 信封感知的通用调用器。**导出**是为了让 fileapi.js 复用同一套
+// 信封感知的通用调用器。**导出**是为了让 fileapi 复用同一套
 // 「HTTP 恒 200、成败看 code」的判定——两处各写一遍迟早分叉。
-export async function call({ method, path, body, token, baseUrl, allowMissing = false }) {
+//
+// 返回值是后端 JSON 的 data 字段，形状随端点变化且不受我方类型约束——
+// 统一按 any 处理（外部数据，调用方各自归一化），比摆一个假装精确的类型诚实。
+export async function call({
+  method,
+  path,
+  body,
+  token,
+  baseUrl,
+  allowMissing = false,
+}: {
+  method: string;
+  path: string;
+  body?: unknown;
+  token?: string;
+  baseUrl?: string;
+  allowMissing?: boolean;
+}): Promise<any> {
   const cfg = baseUrl ? { baseUrl, token } : await loadConfig();
   const url = cfg.baseUrl.replace(/\/$/, '') + path;
 
-  const headers = {};
+  const headers: Record<string, string> = {};
   if (cfg.token) headers.authorization = `Bearer ${cfg.token}`;
   if (body !== undefined) headers['content-type'] = 'application/json';
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-  let res;
+  let res: Response;
   try {
     res = await fetch(url, {
       method,
@@ -37,13 +54,13 @@ export async function call({ method, path, body, token, baseUrl, allowMissing = 
       signal: ctrl.signal,
     });
   } catch (e) {
-    if (e && e.name === 'AbortError') throw external(`请求超时（${TIMEOUT_MS}ms）: ${method} ${path}`);
-    throw external(`无法连接后端 ${cfg.baseUrl}: ${e.message}`);
+    if ((e as Error).name === 'AbortError') throw external(`请求超时（${TIMEOUT_MS}ms）: ${method} ${path}`);
+    throw external(`无法连接后端 ${cfg.baseUrl}: ${(e as Error).message}`);
   } finally {
     clearTimeout(timer);
   }
 
-  let envelope;
+  let envelope: any;
   try {
     envelope = JSON.parse(await res.text());
   } catch {
@@ -63,14 +80,14 @@ export async function call({ method, path, body, token, baseUrl, allowMissing = 
   return envelope.data ?? null;
 }
 
-const gid = (groupId) => {
+const gid = (groupId: unknown): string => {
   const n = normalizeGroupId(groupId);
   return n === undefined ? '' : `?groupId=${n}`;
 };
 
 // ---- 认证 ----
 
-export async function login(email, password, { baseUrl } = {}) {
+export async function login(email: unknown, password: unknown, { baseUrl }: { baseUrl?: string } = {}): Promise<{ token: string; userId: number }> {
   if (!email || !password) throw badInput('邮箱与密码不能为空');
   const data = await call({
     method: 'POST',
@@ -83,13 +100,23 @@ export async function login(email, password, { baseUrl } = {}) {
   return { token: data.token, userId: Number(data.userId ?? data.user?.id ?? 0) };
 }
 
-export async function userInfo() {
+export async function userInfo(): Promise<any> {
   return call({ method: 'GET', path: '/api/v1/user/info' });
 }
 
 // ---- 工作空间 ----
 
-function normalizeGroup(g) {
+export interface GroupInfo {
+  id: number;
+  name: string;
+  description: string;
+  myRole: string;
+  memberCount: number;
+  ownerId: number;
+  createdAt: string;
+}
+
+function normalizeGroup(g: any): GroupInfo {
   return {
     id: Number(g.id) || 0,
     name: g.name ?? '',
@@ -101,13 +128,13 @@ function normalizeGroup(g) {
   };
 }
 
-export async function listGroups() {
+export async function listGroups(): Promise<GroupInfo[]> {
   const data = await call({ method: 'GET', path: '/api/v1/groups' });
   return (data?.groups ?? []).map(normalizeGroup);
 }
 
 // 建组。返回后端给的完整对象——建完立刻能拿到 id，不必再列一次。
-export async function createGroup({ name, description } = {}) {
+export async function createGroup({ name, description }: { name?: string; description?: string } = {}): Promise<GroupInfo> {
   const n = String(name || '').trim();
   if (!n) throw badInput('工作空间名称不能为空');
   const data = await call({
@@ -119,8 +146,8 @@ export async function createGroup({ name, description } = {}) {
 }
 
 // 改名 / 改描述。只发传入的字段（PATCH 语义）。
-export async function updateGroup(id, { name, description } = {}) {
-  const body = {};
+export async function updateGroup(id: unknown, { name, description }: { name?: string; description?: string } = {}): Promise<GroupInfo> {
+  const body: Record<string, string> = {};
   if (name !== undefined) {
     const n = String(name).trim();
     if (!n) throw badInput('工作空间名称不能为空');
@@ -135,14 +162,14 @@ export async function updateGroup(id, { name, description } = {}) {
 // 解散工作空间。后端有前置条件：组内不能还有 KV，
 // 报错文案会把原因带回来（例如「组内存在 KV，请先删除或转移后再解散组」），
 // 这里原样透出——调用方需要知道到底卡在哪一步。
-export async function deleteGroup(id) {
+export async function deleteGroup(id: unknown): Promise<{ id: number; deleted: boolean }> {
   await call({ method: 'DELETE', path: `/api/v1/groups/${Number(id)}` });
   return { id: Number(id), deleted: true };
 }
 
-export async function listGroupMembers(id) {
+export async function listGroupMembers(id: unknown): Promise<{ userId: number; email: string; nickname: string; role: string }[]> {
   const data = await call({ method: 'GET', path: `/api/v1/groups/${Number(id)}/members` });
-  return (data?.members ?? []).map((m) => ({
+  return (data?.members ?? []).map((m: any) => ({
     userId: Number(m.userId) || 0,
     email: m.email ?? '',
     nickname: m.nickname ?? '',
@@ -153,10 +180,17 @@ export async function listGroupMembers(id) {
 // ---- KV 读写 ----
 //
 // 注意：后端**没有「单条更新」接口**。任何写都是「读整把 key → 改数组 → 整把覆盖」，
-// 所以上层必须先读后写，且两把 key 要一起写（见 modules/todo/service.js 的契约注释）。
+// 所以上层必须先读后写，且两把 key 要一起写（见 modules/todo/service 的契约注释）。
+
+export interface KvItem {
+  key: string;
+  value: any;
+  expiresAt: unknown;
+  tags: string[];
+}
 
 // 读一个 key。key 不存在时返回 null（不是错误）。
-export async function kvGet(key, groupId) {
+export async function kvGet(key: string, groupId?: unknown): Promise<KvItem | null> {
   const data = await call({
     method: 'GET',
     path: '/api/v1/kv/' + encodeURIComponent(key) + gid(groupId),
@@ -171,26 +205,26 @@ export async function kvGet(key, groupId) {
   };
 }
 
-export async function kvSet({ key, value, ttl = 0, groupId }) {
+export async function kvSet({ key, value, ttl = 0, groupId }: { key: string; value: unknown; ttl?: number; groupId?: unknown }): Promise<{ key: string; bytes: number }> {
   const n = normalizeGroupId(groupId);
-  const body = { key, value, ttl };
+  const body: Record<string, unknown> = { key, value, ttl };
   if (n !== undefined) body.groupId = n;
   await call({ method: 'POST', path: '/api/v1/kv', body });
   return { key, bytes: Buffer.byteLength(String(value), 'utf8') };
 }
 
-export async function kvDelete(key, groupId) {
+export async function kvDelete(key: string, groupId?: unknown): Promise<{ key: string; deleted: boolean }> {
   await call({ method: 'DELETE', path: '/api/v1/kv/' + encodeURIComponent(key) + gid(groupId) });
   return { key, deleted: true };
 }
 
-export async function kvList({ limit = 50, offset = 0, groupId } = {}) {
+export async function kvList({ limit = 50, offset = 0, groupId }: { limit?: number; offset?: number; groupId?: unknown } = {}): Promise<{ total: number; items: KvItem[] }> {
   const n = normalizeGroupId(groupId);
   const q = `?limit=${limit}&offset=${offset}` + (n === undefined ? '' : `&groupId=${n}`);
   const data = await call({ method: 'GET', path: '/api/v1/kv' + q });
   return {
     total: Number(data?.total) || 0,
-    items: (data?.items ?? []).map((it) => ({
+    items: (data?.items ?? []).map((it: any) => ({
       key: it.key ?? '',
       value: it.value ?? '',
       expiresAt: it.expires_at ?? it.expiresAt ?? null,

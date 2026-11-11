@@ -1,6 +1,6 @@
 // 任务正文里的「类 markdown 附件嵌入」——解析与生成的**唯一实现**。
 //
-// 纯函数、零依赖（不 import node: 也不 import 任何 core/）：Node 侧的 service.js
+// 纯函数、零依赖（不 import node: 也不 import 任何 core/）：Node 侧的 service
 // 与浏览器侧的 view/markdown 共用**同一份**，避免两端各写一套正则 —— 一处改了
 // 另一处没改，就会得到「面板认得出、CLI 认不出」这种最难查的分叉。
 //
@@ -16,8 +16,13 @@
 
 const FILE_ID_RE = /^[0-9a-fA-F]{16,}(\.[A-Za-z0-9]{1,8})?$/;
 
+/** 嵌入片段：纯文本段或附件嵌入段（discriminated union，渲染端按 type 分支）。 */
+export type EmbedSegment =
+  | { type: 'text'; value: string }
+  | { type: 'image' | 'file'; alt: string; id: string; raw: string };
+
 /** 这个 token 像不像后端返回的附件 id（而不是 URL / 相对路径）。 */
-export function looksLikeFileId(token) {
+export function looksLikeFileId(token: unknown): boolean {
   return FILE_ID_RE.test(String(token ?? '').trim());
 }
 
@@ -29,20 +34,20 @@ const COMBINED_RE = /(!?)\[([^\]]*)\]\(([^)\s]+)\)/g;
  * 把正文切成「纯文本 / 嵌入」片段，供渲染用。
  * 不是嵌入的 markdown 原样留在 text 片段里（渲染端不做 markdown，只做嵌入）。
  */
-export function parseEmbeds(text) {
+export function parseEmbeds(text: unknown): EmbedSegment[] {
   const src = String(text ?? '');
   if (!src) return [];
-  const out = [];
+  const out: EmbedSegment[] = [];
   let last = 0;
-  let m;
+  let m: RegExpExecArray | null;
   COMBINED_RE.lastIndex = 0;
   while ((m = COMBINED_RE.exec(src)) !== null) {
-    const target = m[3];
+    const target = m[3] ?? '';
     if (!looksLikeFileId(target)) continue;
     if (m.index > last) out.push({ type: 'text', value: src.slice(last, m.index) });
     out.push({
       type: m[1] === '!' ? 'image' : 'file',
-      alt: m[2],
+      alt: m[2] ?? '',
       id: target.trim(),
       raw: m[0],
     });
@@ -54,9 +59,9 @@ export function parseEmbeds(text) {
 }
 
 /** 正文引用的全部附件 id（去重、保序）。 */
-export function attachmentIds(text) {
-  const seen = new Set();
-  const out = [];
+export function attachmentIds(text: unknown): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
   for (const seg of parseEmbeds(text)) {
     if (seg.type === 'text' || seen.has(seg.id)) continue;
     seen.add(seg.id);
@@ -69,8 +74,8 @@ export function attachmentIds(text) {
  * 正文引用的附件（去重，同一 id 取**首次出现**的说明文字）——
  * 说明文字会被当作本地文件名，所以第一次写下的那个名字最有信息量。
  */
-export function attachmentRefs(text) {
-  const seen = new Map();
+export function attachmentRefs(text: unknown): { id: string; kind: 'image' | 'file'; alt: string }[] {
+  const seen = new Map<string, { id: string; kind: 'image' | 'file'; alt: string }>();
   for (const seg of parseEmbeds(text)) {
     if (seg.type === 'text' || seen.has(seg.id)) continue;
     seen.set(seg.id, { id: seg.id, kind: seg.type, alt: seg.alt || '' });
@@ -79,16 +84,20 @@ export function attachmentRefs(text) {
 }
 
 /** 生成嵌入语法。kind === 'image' 用图片语法，否则用链接语法。 */
-export function embedMarkdown({ name, id, kind = 'file' } = {}) {
+export function embedMarkdown({
+  name,
+  id,
+  kind = 'file',
+}: { name?: string; id?: string; kind?: 'image' | 'file' } = {}): string {
   const label = String(name || id || '').replace(/[[\]]/g, '');
   if (!id) return '';
   return kind === 'image' ? `![${label}](${id})` : `[${label}](${id})`;
 }
 
 /** 去掉嵌入，只留纯文字 —— 用于列表摘要等不需要贴图的场合。 */
-export function stripEmbeds(text) {
+export function stripEmbeds(text: unknown): string {
   return parseEmbeds(text)
-    .filter((s) => s.type === 'text')
+    .filter((s): s is Extract<EmbedSegment, { type: 'text' }> => s.type === 'text')
     .map((s) => s.value)
     .join(' ')
     .replace(/\s+/g, ' ')

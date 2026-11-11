@@ -1,7 +1,7 @@
 // 提示词渲染共享定义（前后端共用，零依赖；这里只放数据与归一化函数，引擎在 core）。
 //
 // **模型（v5）：一份共享入参 + 每区块各自一份模板列表 + 薄编排。**
-//   - 整个渲染领域只有一个 ctx（见 delivery-template.js 的 buildDeliveryCtx）：
+//   - 整个渲染领域只有一个 ctx（见 delivery-template 的 buildDeliveryCtx）：
 //     `{ task, repo, group, attach, goal, getloop, source, summary, cwd, name, params }`。
 //     所有区块模板都从这同一份数据取值——不存在「某模块自带一套变量域」。
 //   - 每个区块（context / attachment / timecheck / goalhint / doneguard / ext / ack /
@@ -11,7 +11,7 @@
 //     列表里可以新建、编辑、复制、删除，并由 `active` 指定该区块当前生效的模板。
 //   - 每个区块**始终至少有一个系统内置模板**（id 固定 `builtin`）：不可删除，
 //     内容固定为该区块的默认模板；用户模板删光后 active 自动回落到它。
-//   - 模板由 core/instruction-template.js（Handlebars 4.x）渲染；列表变量是结构化数组，
+//   - 模板由 core/instruction-template.ts（Handlebars 4.x）渲染；列表变量是结构化数组，
 //     用 `{{#each}}` 展开；有无用 `{{#if}}` 判断。另有一组内置 helper（比较 / 逻辑 /
 //     数值 / 字符串 / 时间，见该文件的 HELPER_DEFS），失败输出可见的 NaN / false，不抛错。
 //   - 旧语法（`{{#repo}}…{{/repo}}` 闸门、`{{group.peers}}` 这类纯文本占位符、
@@ -19,8 +19,15 @@
 //
 // 区块标记是给 agent 读的「类 XML」分隔语法，不对正文做实体转义。
 
+/** 追加模式条目。 */
+export interface AppendMode {
+  id: string;
+  label: string;
+  desc: string;
+}
+
 /** 追加模式：xml = 区块标记（默认）；plain = 老行为，按空行直接拼正文。 */
-export const APPEND_MODES = Object.freeze([
+export const APPEND_MODES: readonly AppendMode[] = Object.freeze([
   {
     id: 'xml',
     label: 'XML 区块（默认）',
@@ -220,11 +227,34 @@ export const DEFAULT_GETLOOP_TEMPLATE = [
 export const DEFAULT_GETLOOP_INSTRUCTION =
   '{{#if task}}不要直接结束本轮：完成上面的任务（{{task.id}}）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；没活时每次最多阻塞 {{getloop.waitMinutes}} 分钟，直到 get 返回 timeout 为止。{{/if}}';
 
+/** 单条区块模板条目。 */
+export interface PromptTemplateItem {
+  id: string;
+  name: string;
+  template: string;
+  builtin: boolean;
+}
+
+/** 每区块的模板列表：active 指向当前生效条目。 */
+export interface BlockTemplateList {
+  active: string;
+  list: PromptTemplateItem[];
+}
+
+/** 区块定义：tag 是类 XML 标签名，defaultTemplate 是系统内置模板。 */
+export interface BlockDef {
+  id: string;
+  tag: string;
+  label: string;
+  desc: string;
+  defaultTemplate: string;
+}
+
 /**
  * 区块清单（顺序 = 输出顺序）。只保留编排语义：
  * `tag` 是类 XML 标签名，`defaultTemplate` 是系统内置模板。
  */
-export const BLOCK_DEFS = Object.freeze([
+export const BLOCK_DEFS: readonly BlockDef[] = Object.freeze([
   {
     id: 'context',
     tag: 'nx-kv.context',
@@ -283,16 +313,16 @@ export const BLOCK_DEFS = Object.freeze([
   },
 ]);
 
-export function blockDefOf(id) {
+export function blockDefOf(id: string): BlockDef | null {
   return BLOCK_DEFS.find((d) => d.id === id) || null;
 }
 
-function clampTemplate(v) {
+function clampTemplate(v: unknown): string {
   const s = String(v ?? '').trim();
   return s.length > MAX_BLOCK_TEMPLATE_LEN ? s.slice(0, MAX_BLOCK_TEMPLATE_LEN) : s;
 }
 
-function builtinItemOf(def) {
+function builtinItemOf(def: BlockDef): PromptTemplateItem {
   return {
     id: BUILTIN_TEMPLATE_ID,
     name: BUILTIN_TEMPLATE_NAME,
@@ -302,20 +332,21 @@ function builtinItemOf(def) {
 }
 
 /** 缺省：每个区块一份只含系统内置模板的列表（对象每次新建，避免共享引用）。 */
-export function defaultBlockTemplateLists() {
-  const out = {};
+export function defaultBlockTemplateLists(): Record<string, BlockTemplateList> {
+  const out: Record<string, BlockTemplateList> = {};
   for (const d of BLOCK_DEFS) {
     out[d.id] = { active: BUILTIN_TEMPLATE_ID, list: [builtinItemOf(d)] };
   }
   return out;
 }
 
-function normalizeItem(raw) {
+function normalizeItem(raw: unknown): PromptTemplateItem | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const id = String(raw.id ?? '').trim().slice(0, 64);
+  const rec = raw as Record<string, unknown>;
+  const id = String(rec.id ?? '').trim().slice(0, 64);
   if (!id) return null;
-  const name = String(raw.name ?? '').trim().slice(0, MAX_PROMPT_TEMPLATE_NAME) || '未命名模板';
-  return { id, name, template: clampTemplate(raw.template), builtin: false };
+  const name = String(rec.name ?? '').trim().slice(0, MAX_PROMPT_TEMPLATE_NAME) || '未命名模板';
+  return { id, name, template: clampTemplate(rec.template), builtin: false };
 }
 
 /**
@@ -327,27 +358,28 @@ function normalizeItem(raw) {
  *   - 用户条目按 id 去重、丢弃非法项、超长截断、每块最多 `MAX_PROMPT_TEMPLATES` 条。
  *   - `active` 找不到对应条目（或指向已删除模板）→ 回落到 `builtin`。
  *
- * @param {object} raw `{ [blockId]: { active, list } }`（也接受 `{ [blockId]: [...] }`）
- * @returns {object} `{ [blockId]: { active, list } }`
+ * @param raw `{ [blockId]: { active, list } }`（也接受 `{ [blockId]: [...] }`）
  */
-export function normalizeBlockTemplateLists(raw) {
-  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-  const out = {};
+export function normalizeBlockTemplateLists(raw: unknown): Record<string, BlockTemplateList> {
+  const src: Record<string, unknown> =
+    raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const out: Record<string, BlockTemplateList> = {};
   for (const def of BLOCK_DEFS) {
     const br = src[def.id];
-    const rawList = Array.isArray(br) ? br : Array.isArray(br?.list) ? br.list : [];
-    const list = [builtinItemOf(def)];
-    const seen = new Set([BUILTIN_TEMPLATE_ID]);
+    const brRec = br && typeof br === 'object' && !Array.isArray(br) ? (br as Record<string, unknown>) : null;
+    const rawList: unknown[] = Array.isArray(br) ? br : Array.isArray(brRec?.list) ? (brRec.list as unknown[]) : [];
+    const list: PromptTemplateItem[] = [builtinItemOf(def)];
+    const seen = new Set<string>([BUILTIN_TEMPLATE_ID]);
     for (const rawItem of rawList) {
       // 内置条目固定只有一条、内容固定为默认模板；输入里的自定义内置项直接忽略。
-      if (rawItem && typeof rawItem === 'object' && (rawItem.id === BUILTIN_TEMPLATE_ID || rawItem.builtin)) continue;
+      if (rawItem && typeof rawItem === 'object' && ((rawItem as Record<string, unknown>).id === BUILTIN_TEMPLATE_ID || (rawItem as Record<string, unknown>).builtin)) continue;
       const t = normalizeItem(rawItem);
       if (!t || seen.has(t.id)) continue;
       seen.add(t.id);
       list.push(t);
       if (list.length >= MAX_PROMPT_TEMPLATES) break;
     }
-    const wanted = String(br?.active ?? '').trim();
+    const wanted = String(brRec?.active ?? '').trim();
     out[def.id] = {
       active: list.some((t) => t.id === wanted) ? wanted : BUILTIN_TEMPLATE_ID,
       list,
@@ -356,17 +388,26 @@ export function normalizeBlockTemplateLists(raw) {
   return out;
 }
 
+/** 每区块当前生效的那条模板（渲染链唯一入口）。 */
+export interface ResolvedBlockTemplate {
+  id: string;
+  name: string;
+  template: string;
+  builtin: boolean;
+}
+
 /**
  * 解析出「每个区块当前生效的那条模板」（渲染链唯一入口）。
- * @param {object} raw `{ [blockId]: { active, list } }`
- * @returns {object} `{ [blockId]: { id, name, template, builtin } }`
+ * @param raw `{ [blockId]: { active, list } }`
  */
-export function resolveBlockTemplates(raw) {
+export function resolveBlockTemplates(raw: unknown): Record<string, ResolvedBlockTemplate> {
   const lists = normalizeBlockTemplateLists(raw);
-  const out = {};
+  const out: Record<string, ResolvedBlockTemplate> = {};
   for (const def of BLOCK_DEFS) {
     const b = lists[def.id];
-    const item = b.list.find((t) => t.id === b.active) || b.list[0];
+    if (!b) continue;
+    const item = b.list.find((t) => t.id === b.active) ?? b.list[0];
+    if (!item) continue;
     out[def.id] = {
       id: item.id,
       name: item.name,
@@ -377,13 +418,20 @@ export function resolveBlockTemplates(raw) {
   return out;
 }
 
+/** XML 区块段：tag 为标签名，text 为已渲染正文（空 text 由调用方滤掉）。 */
+export interface XmlBlockPart {
+  id?: string;
+  tag: string;
+  text: string;
+}
+
 /**
  * 把已渲染的段落包进根标签。parts: [{ id, tag, text }]（空 text 已由调用方滤掉）。
  * 没有可输出段落 → ''（调用方据此省略 instruction）。
  */
-export function wrapXmlBlocks(parts) {
+export function wrapXmlBlocks(parts?: readonly (XmlBlockPart | null | undefined)[] | null): string {
   const inner = (parts || [])
-    .filter((p) => p && typeof p.text === 'string' && p.text.trim())
+    .filter((p): p is XmlBlockPart => !!p && typeof p.text === 'string' && p.text.trim().length > 0)
     .map((p) => `<${p.tag}>\n${p.text}\n</${p.tag}>`)
     .join('\n');
   return inner ? `<${XML_ROOT_TAG}>\n${inner}\n</${XML_ROOT_TAG}>` : '';

@@ -17,26 +17,41 @@ const CRC_TABLE = (() => {
   return t;
 })();
 
-function crc32(buf) {
+function crc32(buf: Buffer | Uint8Array): number {
   let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  for (let i = 0; i < buf.length; i++) {
+    const byte = buf[i] ?? 0;
+    c = (CRC_TABLE[(c ^ byte) & 0xff] ?? 0) ^ (c >>> 8);
+  }
   return (c ^ 0xffffffff) >>> 0;
 }
 
-function dosTime(d) {
+function dosTime(d: Date): { time: number; date: number } {
   const time = ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((d.getSeconds() / 2) & 31);
   const date = (((d.getFullYear() - 1980) & 127) << 9) | (((d.getMonth() + 1) & 15) << 5) | (d.getDate() & 31);
   return { time, date };
+}
+
+/** 打包入参：条目名 + 字节内容。 */
+export interface ZipEntry {
+  name: string;
+  data: Buffer | string;
+}
+
+/** 拆包产物：条目名 + 解压后的字节。 */
+export interface ZipEntryData {
+  name: string;
+  data: Buffer;
 }
 
 /**
  * 打包。entries: [{ name: 'a/b.json', data: Buffer|string }]
  * 返回 Buffer。
  */
-export function makeZip(entries, { mtime = new Date(0) } = {}) {
+export function makeZip(entries: readonly ZipEntry[], { mtime = new Date(0) }: { mtime?: Date } = {}): Buffer {
   const { time, date } = dosTime(mtime);
-  const locals = [];
-  const centrals = [];
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
   let offset = 0;
 
   for (const e of entries) {
@@ -111,8 +126,8 @@ const MAX_TOTAL_UNCOMPRESSED = 64 * 1024 * 1024;
  * 只认「本地文件头 + 数据 + 中央目录 + EOCD」布局；拒 ZIP64 与加密位。
  * 尺寸一律以中央目录为准——本地头在有 data descriptor 时尺寸位是 0，不可信。
  */
-export function readZip(buf) {
-  const u8 = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+export function readZip(buf: Buffer | Uint8Array | string): ZipEntryData[] {
+  const u8 = Buffer.isBuffer(buf) ? buf : Buffer.from(buf as Uint8Array);
   // EOCD 从尾部往前找签名（容忍 ZIP 注释，注释最长 65535）
   let eocd = -1;
   for (let i = u8.length - 22; i >= Math.max(0, u8.length - 22 - 65535); i--) {
@@ -128,7 +143,7 @@ export function readZip(buf) {
   if (total === 0xffff || cdOff === 0xffffffff || cdSize === 0xffffffff) {
     throw badInput('不支持 ZIP64 的 zip 包');
   }
-  const out = [];
+  const out: ZipEntryData[] = [];
   let p = cdOff;
   let acc = 0;
   for (let n = 0; n < total; n++) {
@@ -151,7 +166,7 @@ export function readZip(buf) {
     const start = localOff + 30 + lNameLen + lExtraLen;
     if (start + compSize > u8.length) throw badInput('zip 数据区越界（包已损坏）');
     const raw = u8.slice(start, start + compSize);
-    let data;
+    let data: Buffer;
     if (method === 0) data = raw;
     else if (method === 8) data = inflateRawSync(raw);
     else throw badInput('不支持的 zip 压缩方法: ' + method);

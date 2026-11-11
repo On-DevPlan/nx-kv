@@ -7,7 +7,7 @@
 
 // 自定义 key 归一：允许中文与 `/`（像命名空间），其余空白/非法字符压成 -。
 // 空 key 不合法——key 是身份，不能空（由调用方校验）。
-export function normalizeKey(k) {
+export function normalizeKey(k: unknown): string {
   const s = String(k || '')
     .trim()
     .replace(/\s+/g, '-')
@@ -25,13 +25,13 @@ export function normalizeKey(k) {
 //   http(s)://[user@]host[:port]/path    → host/path
 //   file:///abs/path 或 file://D:/path   → 去协议/盘符后的路径
 // 之后统一：去 user/端口、去尾 /、去 .git、host 别名（ssh|www.github.com → github.com）、小写。
-export function keyFromRemote(url) {
+export function keyFromRemote(url: unknown): string {
   let s = String(url || '').trim();
   if (!s) return '';
   s = s.replace(/\/+$/, '');
   // git@host:path（scp 语法）
   const scp = /^git@([^:/]+):(.+)$/i.exec(s);
-  if (scp) s = scp[1] + '/' + scp[2];
+  if (scp) s = `${scp[1] ?? ''}/${scp[2] ?? ''}`;
   else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) {
     // 有协议的：剥协议 → [user@]host[:port]/path
     s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
@@ -43,7 +43,7 @@ export function keyFromRemote(url) {
   }
   s = s.replace(/\.git$/i, '');
   s = s.replace(/\/{2,}/g, '/');
-  const hostAlias = { 'ssh.github.com': 'github.com', 'www.github.com': 'github.com' };
+  const hostAlias: Record<string, string> = { 'ssh.github.com': 'github.com', 'www.github.com': 'github.com' };
   const slash = s.indexOf('/');
   if (slash > 0) {
     const host = s.slice(0, slash).toLowerCase();

@@ -27,11 +27,11 @@ export const GLOBAL_TOPIC_CWD = '';
  * 大小写折叠（`toLowerCase`）与 schema 里 `ux_topics_cwd_group` 的 `COLLATE NOCASE`
  * 同口径：D:/Work/Web 与 D:/work/web 必须算出同一个 key，否则「同一条队列两个名字」。
  *
- * @param {string} cwd 本机目录（全局池传空串）
- * @param {string} [groupKey] 组上下文 key（无组上下文传空串/null）
- * @returns {string} 全局池恒为 `__GLOBAL__`；其余为 16 位 sha1 前缀
+ * @param cwd 本机目录（全局池传空串）
+ * @param groupKey 组上下文 key（无组上下文传空串/null）
+ * @returns 全局池恒为 `__GLOBAL__`；其余为 16 位 sha1 前缀
  */
-export function topicKeyOf(cwd, groupKey = '') {
+export function topicKeyOf(cwd: unknown, groupKey: unknown = ''): string {
   const dir = String(cwd ?? '');
   if (dir === '') return GLOBAL_TOPIC_KEY;
   const group = String(groupKey ?? '');

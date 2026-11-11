@@ -27,9 +27,9 @@
 //
 // 失败行为（明确约定，不静默）：
 //   - 保存模板时先 `validateTemplate()` 编译校验，语法错误**拒绝保存**（见
-//     localtask/repo/settings.js），让用户当场看到错在哪；
+//     localtask/repo/settings），让用户当场看到错在哪；
 //   - 渲染时若仍遇到坏模板（老版本存进去的 / 直接改库的），由调用方回落该区块
-//     的**内置模板**并把告警写进 `renderWarnings`（见 tasktool/system-blocks.js）。
+//     的**内置模板**并把告警写进 `renderWarnings`（见 tasktool/system-blocks）。
 //     选择回落而不是阻断领取：一条坏模板不该让整个队列停摆，但问题必须在
 //     CLI 返回载荷 / 面板预览里可见。
 //
@@ -44,11 +44,12 @@ import Handlebars from 'handlebars';
 const HB = Handlebars.create();
 // 关掉库内日志：原型链取值被拒时会按 error 级打印一条提示，那会污染 CLI 的
 // JSON 输出；我们自己的渲染告警走 renderWarnings（结构化、可控）。
-HB.logger.level = 'silent';
+// （@types/handlebars 把 logger.level 标成 number，运行期收字符串，这里按实际 API 走。）
+(HB.logger as unknown as { level: string }).level = 'silent';
 
 const COMPILE_OPTS = { noEscape: true, strict: false };
 const CACHE_MAX = 256;
-const cache = new Map();
+const cache = new Map<string, HandlebarsTemplateDelegate>();
 
 // ---- 模板 helper（#90）----------------------------------------------------------
 //
@@ -67,7 +68,7 @@ const cache = new Map();
 // `{{percent goal.elapsedSec goal.durationSec}}`（0 位小数）、`{{percent a b 1}}`（1 位）。
 
 /** 数字归一：有限数 → 数；否则 null（区分「0」与「拿不到」）。 */
-function toNum(v) {
+function toNum(v: unknown): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v === 'boolean') return v ? 1 : 0;
   const s = String(v ?? '').trim();
@@ -77,14 +78,14 @@ function toNum(v) {
 }
 
 /** 数值输出：有限数原样字符串（-0 归一成 0）；Infinity 照 JS 语义；拿不到数 → 可见的 `NaN`。 */
-function numOut(n) {
+function numOut(n: number): string {
   if (Number.isNaN(n)) return 'NaN';
   if (!Number.isFinite(n)) return n > 0 ? 'Infinity' : '-Infinity';
   return String(Object.is(n, -0) ? 0 : n);
 }
 
 /** 可预测的相等：两边都能当数就按数比，否则按字符串比。 */
-function looseEq(a, b) {
+function looseEq(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a == null || b == null) return false;
   const na = toNum(a);
@@ -94,67 +95,78 @@ function looseEq(a, b) {
 }
 
 /** 折叠末尾多余的 0：1.50 → 1.5、2.00 → 2。 */
-function fixed(n, digits) {
+function fixed(n: number, digits: unknown): string {
   const d = Math.max(0, Math.min(20, Math.trunc(toNum(digits) ?? 0)));
   const s = n.toFixed(d);
   return d > 0 ? String(Number(s)) : s;
 }
 
-const HELPER_DEFS = {
+// helper 都可能收到 Handlebars 的任意运行期值；入参一律 unknown，输出 string|boolean|number。
+type HelperFn = (...args: unknown[]) => unknown;
+
+const HELPER_DEFS: Record<string, HelperFn> = {
   // —— 比较（返回布尔；拿不到数 → false，保证 {{#if}} 走 else）——
   eq: (a, b) => looseEq(a, b),
   ne: (a, b) => !looseEq(a, b),
   gt: (a, b) => {
-    const [x, y] = [toNum(a), toNum(b)];
+    const x = toNum(a);
+    const y = toNum(b);
     return x !== null && y !== null && x > y;
   },
   gte: (a, b) => {
-    const [x, y] = [toNum(a), toNum(b)];
+    const x = toNum(a);
+    const y = toNum(b);
     return x !== null && y !== null && x >= y;
   },
   lt: (a, b) => {
-    const [x, y] = [toNum(a), toNum(b)];
+    const x = toNum(a);
+    const y = toNum(b);
     return x !== null && y !== null && x < y;
   },
   lte: (a, b) => {
-    const [x, y] = [toNum(a), toNum(b)];
+    const x = toNum(a);
+    const y = toNum(b);
     return x !== null && y !== null && x <= y;
   },
   // 闭区间：min ≤ v ≤ max（min > max 时恒 false，不自动翻转）
   between: (v, min, max) => {
-    const [x, lo, hi] = [toNum(v), toNum(min), toNum(max)];
+    const x = toNum(v);
+    const lo = toNum(min);
+    const hi = toNum(max);
     return x !== null && lo !== null && hi !== null && x >= lo && x <= hi;
   },
 
   // —— 逻辑（参数由 wrapper 剥掉 options 后原样传入，对象也按真值参与）——
-  and: (...args) => args.every(Boolean),
-  or: (...args) => args.some(Boolean),
+  and: (...args: unknown[]) => args.every(Boolean),
+  or: (...args: unknown[]) => args.some(Boolean),
   not: (v) => !v,
 
   // —— 数值（失败 → 可见的 NaN）——
-  add: (...args) => {
+  add: (...args: unknown[]) => {
     const nums = args.map(toNum);
     if (nums.some((n) => n === null)) return 'NaN';
-    return numOut(nums.reduce((s, n) => s + n, 0));
+    return numOut(nums.reduce<number>((s, n) => s + (n as number), 0));
   },
-  sub: (a, ...rest) => {
+  sub: (a, ...rest: unknown[]) => {
     const nums = [a, ...rest].map(toNum);
     if (nums.some((n) => n === null)) return 'NaN';
-    return numOut(nums.slice(1).reduce((s, n) => s - n, nums[0]));
+    return numOut(nums.slice(1).reduce<number>((s, n) => s - (n as number), nums[0] as number));
   },
-  mul: (...args) => {
+  mul: (...args: unknown[]) => {
     const nums = args.map(toNum);
     if (nums.some((n) => n === null)) return 'NaN';
-    return numOut(nums.reduce((s, n) => s * n, 1));
+    return numOut(nums.reduce<number>((s, n) => s * (n as number), 1));
   },
   // 除零照 JS：x/0 → Infinity / -Infinity；0/0 → NaN
   div: (a, b) => {
-    const [x, y] = [toNum(a), toNum(b)];
+    const x = toNum(a);
+    const y = toNum(b);
     if (x === null || y === null) return 'NaN';
     return numOut(x / y);
   },
   mod: (a, b) => {
-    const [x, y] = [toNum(a), toNum(b)];
+    const x = toNum(a);
+    const y = toNum(b);
     if (x === null || y === null) return 'NaN';
     return numOut(x % y);
   },
@@ -176,19 +188,23 @@ const HELPER_DEFS = {
   // percent(part, total, digits=0)：part 占总量的百分比；total 为 0 / 非数 → NaN
   // （百分比里的「∞%」没有意义，这里刻意不走 JS 的除零语义，输出可见的 NaN）
   percent: (part, total, digits = 0) => {
-    const [p, t] = [toNum(part), toNum(total)];
+    const p = toNum(part);
+    const t = toNum(total);
     if (p === null || t === null || t === 0) return 'NaN';
     return fixed((p / t) * 100, digits);
   },
   // ratio(part, total, digits=2)：比例（不做 ×100）；total 为 0 → NaN（与 percent 同口径）
   ratio: (part, total, digits = 2) => {
-    const [p, t] = [toNum(part), toNum(total)];
+    const p = toNum(part);
+    const t = toNum(total);
     if (p === null || t === null || t === 0) return 'NaN';
     return fixed(p / t, digits);
   },
   // clamp(v, min, max)：把 v 夹进 [min, max]；非数 → NaN
   clamp: (v, min, max) => {
-    const [x, lo, hi] = [toNum(v), toNum(min), toNum(max)];
+    const x = toNum(v);
+    const lo = toNum(min);
+    const hi = toNum(max);
     if (x === null || lo === null || hi === null) return 'NaN';
     return numOut(Math.min(Math.max(x, lo), hi));
   },
@@ -196,8 +212,8 @@ const HELPER_DEFS = {
   // —— 字符串 ——
   includes: (haystack, needle) => {
     if (haystack == null) return false;
-    const h = Array.isArray(haystack) ? haystack : String(haystack);
-    return Array.isArray(h) ? h.some((x) => looseEq(x, needle)) : h.includes(String(needle ?? ''));
+    const h: unknown = Array.isArray(haystack) ? haystack : String(haystack);
+    return Array.isArray(h) ? h.some((x) => looseEq(x, needle)) : (h as string).includes(String(needle ?? ''));
   },
   // 字符串 / 数组的长度；null / 数字等拿不到长度 → 0（模板里可直接当数比）
   length: (v) => {
@@ -219,11 +235,11 @@ const HELPER_DEFS = {
 };
 
 /** 已注册的 helper 名（文档 / 测试 / 设置页速查共用）。 */
-export const TEMPLATE_HELPERS = Object.keys(HELPER_DEFS);
+export const TEMPLATE_HELPERS: string[] = Object.keys(HELPER_DEFS);
 
 // 统一包一层 try/catch：任何 helper 自身异常都退化成可见兜底，不拖垮整份渲染（#90 约束）
 for (const [name, fn] of Object.entries(HELPER_DEFS)) {
-  HB.registerHelper(name, (...args) => {
+  HB.registerHelper(name, (...args: unknown[]) => {
     try {
       // Handlebars 会把 options 对象塞在最后一个参数里
       const plain = args.length && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null
@@ -253,12 +269,13 @@ const LEGACY_PLACEHOLDERS = new Set([
   'block.content',
 ]);
 
-function legacySyntaxError(template) {
+function legacySyntaxError(template: unknown): string | null {
   const src = String(template ?? '');
   const blockRe = /\{\{\s*([#/^])\s*([A-Za-z_$][\w$-]*)/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = blockRe.exec(src))) {
-    const [, sigil, name] = m;
+    const sigil = m[1] ?? '';
+    const name = m[2] ?? '';
     if (ALLOWED_BLOCKS.has(name) && sigil !== '^') continue;
     if (sigil === '^') {
       return `不支持反向区块 {{^${name}}}；请改用 {{#if 变量}}…{{else}}…{{/if}}`;
@@ -267,7 +284,7 @@ function legacySyntaxError(template) {
   }
   const mustacheRe = /\{\{\s*([^{}#/^!>&][^{}]*?)\s*\}\}/g;
   while ((m = mustacheRe.exec(src))) {
-    const name = m[1].trim();
+    const name = (m[1] ?? '').trim();
     if (/^else\b/.test(name)) continue;
     if (LEGACY_PLACEHOLDERS.has(name) || /^attach\.sync(?!Summary)(?:\.|\s*$)/.test(name)) {
       const isSync = name === 'attach.sync' || name === 'attach.syncText' || /^attach\.sync\./.test(name);
@@ -280,7 +297,7 @@ function legacySyntaxError(template) {
   return null;
 }
 
-function compiledOf(src) {
+function compiledOf(src: string): HandlebarsTemplateDelegate {
   let fn = cache.get(src);
   if (fn) return fn;
   fn = HB.compile(src, COMPILE_OPTS);
@@ -289,13 +306,14 @@ function compiledOf(src) {
   return fn;
 }
 
+/** 模板校验结果：ok=false 时 error 是给人看的中文提示。 */
+export type TemplateValidation = { ok: true } | { ok: false; error: string };
+
 /**
  * 编译校验（保存模板前调用）。
  * 先拒绝旧语法（明确提示改用 #if / #each），再用 precompile 查 Handlebar 语法错误。
- * @param {string} template
- * @returns {{ok: true} | {ok: false, error: string}}
  */
-export function validateTemplate(template) {
+export function validateTemplate(template: unknown): TemplateValidation {
   const legacy = legacySyntaxError(template);
   if (legacy) return { ok: false, error: legacy };
   try {
@@ -303,7 +321,7 @@ export function validateTemplate(template) {
     HB.precompile(String(template ?? ''), COMPILE_OPTS);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: String((e && e.message) || e).replace(/\s+/g, ' ').trim() };
+    return { ok: false, error: String((e as Error).message || e).replace(/\s+/g, ' ').trim() };
   }
 }
 
@@ -311,21 +329,19 @@ export function validateTemplate(template) {
  * 渲染模板为一条文本。
  * 旧语法 / 语法错误 / 运行期异常都会抛出——调用方按「回落该区块内置模板 + 告警」
  * 处理，绝不静默，也绝不让旧语法按旧语义生效。
- * @param {string} template
- * @param {object} ctx 共享入参列表
- * @returns {string}
+ * @param ctx 共享入参列表
  */
-export function renderInstruction(template, ctx = {}) {
+export function renderInstruction(template: unknown, ctx: unknown = {}): string {
   const src = String(template ?? '');
   if (!src) return '';
   const legacy = legacySyntaxError(src);
   if (legacy) throw new Error(legacy);
-  const out = compiledOf(src)(ctx || {});
+  const out = compiledOf(src)(ctx as object);
   return out.trim();
 }
 
 /** 秒 → 人话："2 天" / "1.5 小时" / "90 分钟" / "45 秒"（与 timegoal fmtDur 同风格）。 */
-export function formatDuration(sec) {
+export function formatDuration(sec: unknown): string {
   const s = Math.max(0, Math.floor(Number(sec) || 0));
   if (s >= 86400) return `${(s / 86400).toFixed(s % 86400 ? 1 : 0)} 天`;
   if (s >= 3600) return `${(s / 3600).toFixed(s % 3600 ? 1 : 0)} 小时`;
@@ -334,7 +350,7 @@ export function formatDuration(sec) {
 }
 
 /** 目标时间状态："剩余 X" | "已到点" | "已到点（已超时 X）"（措辞对齐 timegoal renderCheck）。 */
-export function formatGoalTiming({ reached, remainingSec, overtimeSec } = {}) {
+export function formatGoalTiming({ reached, remainingSec, overtimeSec }: { reached?: boolean; remainingSec?: unknown; overtimeSec?: unknown } = {}): string {
   if (!reached) return `剩余 ${formatDuration(remainingSec)}`;
   const over = Math.max(0, Math.floor(Number(overtimeSec) || 0));
   return over > 0 ? `已到点（已超时 ${formatDuration(over)}）` : '已到点';

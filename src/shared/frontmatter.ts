@@ -19,15 +19,15 @@ const KV_RE = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/;
 
 // 工作组语义键：贴图/光标误插进 FM 时曾把 `board:` 撕成 `oard:` / `d:` 等后缀残留
 //（#15 / #23 案例）。解析时把「规范键的真后缀残留」提升回规范键，组面板才能再认到。
-const GROUP_KEYS = ['board', 'project', 'boardIntro', 'boardDesc', 'projectIntro', 'projectDesc'];
+const GROUP_KEYS = ['board', 'project', 'boardIntro', 'boardDesc', 'projectIntro', 'projectDesc'] as const;
 
 /** 把被撕碎的 frontmatter 键修回规范名（只升真后缀，不发明新键） */
-export function healFrontmatterKeys(fm) {
+export function healFrontmatterKeys(fm: unknown): Record<string, string> {
   if (!fm || typeof fm !== 'object') return {};
-  const out = { ...fm };
+  const out: Record<string, string> = { ...(fm as Record<string, string>) };
   for (const canon of GROUP_KEYS) {
     if (out[canon] != null && String(out[canon]).trim() !== '') continue;
-    let hit = null;
+    let hit: string | null = null;
     for (const k of Object.keys(out)) {
       if (k === canon) continue;
       // 真后缀：board→oard/ard/rd/d；project→roject/…；长度至少 1、严格短于规范名
@@ -38,22 +38,22 @@ export function healFrontmatterKeys(fm) {
       break;
     }
     if (!hit) continue;
-    out[canon] = out[hit];
+    out[canon] = String(out[hit] ?? '');
     delete out[hit];
   }
   return out;
 }
 
 /** 解析正文头部的 frontmatter；没有或不是 frontmatter → 空对象 */
-export function parseFrontmatter(src) {
+export function parseFrontmatter(src: unknown): Record<string, string> {
   const m = String(src ?? '').match(FM_RE);
   if (!m) return {};
-  const out = {};
+  const out: Record<string, string> = {};
   let hits = 0;
-  for (const line of m[1].split(/\r?\n/)) {
+  for (const line of (m[1] ?? '').split(/\r?\n/)) {
     const kv = line.match(KV_RE);
     if (kv) {
-      out[kv[1]] = kv[2].trim();
+      out[kv[1] ?? ''] = (kv[2] ?? '').trim();
       hits += 1;
     }
   }
@@ -61,8 +61,8 @@ export function parseFrontmatter(src) {
 }
 
 /** 去掉正文头部的 frontmatter（不是 frontmatter 时原样返回） */
-export function stripFrontmatter(src) {
-  return String(src ?? '').replace(FM_RE, (block, inner) => {
+export function stripFrontmatter(src: unknown): string {
+  return String(src ?? '').replace(FM_RE, (block: string, inner: string) => {
     const kv = String(inner || '').split(/\r?\n/).some((l) => KV_RE.test(l));
     return kv ? '' : block;
   });
@@ -72,7 +72,7 @@ export function stripFrontmatter(src) {
  * 重写/补写 frontmatter：fields 整体替换旧块（调用方自己 merge 旧值），正文不动。
  * fields 为空 → 只剥不加。
  */
-export function withFrontmatter(src, fields = {}) {
+export function withFrontmatter(src: unknown, fields: Record<string, unknown> = {}): string {
   const body = stripFrontmatter(src);
   const lines = Object.entries(fields)
     .filter(([, v]) => v != null && `${v}`.trim() !== '')
@@ -84,9 +84,9 @@ export function withFrontmatter(src, fields = {}) {
  * 把工作组字段并进正文：**flag 优先**（CLI 显式意图是当下最新的决定），正文里
  * 没有的键才由 flag 补齐；正文自带的其它字段原样保留。
  */
-export function applyGroupFields(src, fields = {}) {
+export function applyGroupFields(src: unknown, fields: Record<string, unknown> = {}): string {
   const existing = parseFrontmatter(src);
-  const merged = { ...existing };
+  const merged: Record<string, string> = { ...existing };
   for (const [k, v] of Object.entries(fields)) {
     if (v != null && `${v}`.trim() !== '') merged[k] = `${v}`.trim();
   }
@@ -99,9 +99,9 @@ export function applyGroupFields(src, fields = {}) {
  * 为什么需要它：改文案（修改反馈 / 编辑任务）不该把归组信息一起改没了——
  * frontmatter 丢了，任务就从组 / 项目面板里掉出去，闭环断在半路。
  */
-export function preserveFrontmatter(oldSrc, newSrc) {
+export function preserveFrontmatter(oldSrc: unknown, newSrc: unknown): string {
   const oldFm = parseFrontmatter(oldSrc);
-  if (!Object.keys(oldFm).length) return newSrc;
+  if (!Object.keys(oldFm).length) return String(newSrc ?? '');
   const merged = { ...oldFm, ...parseFrontmatter(newSrc) };
   return withFrontmatter(newSrc, merged);
 }

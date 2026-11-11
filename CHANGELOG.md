@@ -45,6 +45,17 @@
 - 已知约束：TS 对类成员声明没有上下文类型注入通路（override 与装饰器都试过），
   因此注解必须存在——但它是全项目统一样板，不再重述 schema 结构。
 
+## [Unreleased]
+
+### Changed
+
+- **前端页面 API 收口到各页 api.ts**（模板约定，#176）：10 个页面（overview / dag / refs /
+  progress / group / settings / cloud / doc / dir / repos）共约 97 处 `api()` 调用搬到
+  各页私有的 `api.ts` 具名函数——请求路径、方法、body 形状、返回值处理、错误分支与 toast
+  文案逐字保留；页面组件只消费具名函数，不再直接调 `api()`。
+- **eslint 收口规则**：页面组件（`page/**`，不含各页 `api.ts`）禁止出现 `api()` 裸调用
+  （`no-restricted-syntax`），防止形态回潮。
+
 ## [0.48.0] - 2026-11-11 全仓 TypeScript 毕业（#175）
 
 ### Changed

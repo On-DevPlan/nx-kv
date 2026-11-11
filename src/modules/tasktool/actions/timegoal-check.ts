@@ -2,7 +2,7 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { timegoalCheckInput } from '../schemas.js';
 import * as serviceNs from '../timegoal.js';
 import { badInput as _badInput } from '../../../core/errors.js';
@@ -10,7 +10,7 @@ import { renderCheck } from '../support.js';
 const service: any = serviceNs;
 const badInput: any = _badInput;
 
-export class TimegoalCheckAction extends ActionBase {
+export class TimegoalCheckAction extends ActionBase<typeof timegoalCheckInput> {
   @action({
     id: 'timegoal.check',
     cli: ['timegoal', 'check'],
@@ -19,7 +19,7 @@ export class TimegoalCheckAction extends ActionBase {
     input: timegoalCheckInput,
     render: renderCheck,
   })
-  async check(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
           if (!ctx.cwd && !ctx.task) throw badInput('请给 --cwd <工作目录> 或 --task <任务goal key>');
           return ctx.task

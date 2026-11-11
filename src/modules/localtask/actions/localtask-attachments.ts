@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskAttachmentsInput } from '../schemas.js';
 import { renderTaskAttachments as _renderTaskAttachments } from '../action-render.js';
 const renderTaskAttachments: any = _renderTaskAttachments;
 
-export class LocaltaskAttachmentsAction extends ActionBase {
+export class LocaltaskAttachmentsAction extends ActionBase<typeof localtaskAttachmentsInput> {
   @action({
     id: 'localtask.attachments',
     cli: ['localtask', 'attachments'],
@@ -16,7 +16,7 @@ export class LocaltaskAttachmentsAction extends ActionBase {
     input: localtaskAttachmentsInput,
     render: renderTaskAttachments,
   })
-  async attachments(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         const { listTaskAttachments } = await (import('../../tasktool/attach.js') as any);
         return listTaskAttachments({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });

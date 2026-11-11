@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoDocAddInput } from '../schemas.js';
 import { addRepoDoc as _addRepoDoc } from '../../docs/refs.js';
 const addRepoDoc: any = _addRepoDoc;
 
-export class RepoDocAddAction extends ActionBase {
+export class RepoDocAddAction extends ActionBase<typeof repoDocAddInput> {
   @action({
     id: 'repo.doc.add',
     cli: ['repo', 'doc', 'add'],
@@ -17,7 +17,7 @@ export class RepoDocAddAction extends ActionBase {
     input: repoDocAddInput,
     render: (d: any) => `已加一篇介绍文档（共 ${d.count} 篇）`,
   })
-  async add(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return addRepoDoc(ctx.id, { rel: ctx.rel, path: ctx.path, ref: ctx.ref, file: ctx.file, note: ctx.note, tag: ctx.tag });
   

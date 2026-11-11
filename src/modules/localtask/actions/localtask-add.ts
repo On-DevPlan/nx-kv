@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskAddInput } from '../schemas.js';
 import { renderAdd as _renderAdd } from '../action-render.js';
 const renderAdd: any = _renderAdd;
 
-export class LocaltaskAddAction extends ActionBase {
+export class LocaltaskAddAction extends ActionBase<typeof localtaskAddInput> {
   @action({
     id: 'localtask.add',
     cli: ['localtask', 'add'],
@@ -17,7 +17,7 @@ export class LocaltaskAddAction extends ActionBase {
     input: localtaskAddInput,
     render: renderAdd,
   })
-  async add(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         // 派任务编排已迁 tasktool/add.js（任务工具语义归 tasktool；命令名不变）。
         // 落点判定（--board/--project 严格口径 / 正文 frontmatter fail-open）只此一份实现，

@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { promptRemoveInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class PromptRemoveAction extends ActionBase {
+export class PromptRemoveAction extends ActionBase<typeof promptRemoveInput> {
   @action({
     id: 'prompt.remove',
     cli: ['prompt', 'remove'],
@@ -17,7 +17,7 @@ export class PromptRemoveAction extends ActionBase {
     input: promptRemoveInput,
     render: (d: any) => (d.removed ? `已删除 ${d.topic} 的提示词` : `${d.topic} 本就没有提示词`),
   })
-  async remove(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.removePrompt(ctx.topic, { groupId: ctx.group });
   

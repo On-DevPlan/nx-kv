@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { todoUnfreezeInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class TodoUnfreezeAction extends ActionBase {
+export class TodoUnfreezeAction extends ActionBase<typeof todoUnfreezeInput> {
   @action({
     id: 'todo.unfreeze',
     cli: ['todo', 'unfreeze'],
@@ -18,7 +18,7 @@ export class TodoUnfreezeAction extends ActionBase {
         `已解冻 [${d.task.topic}] ${d.task.text}` +
         (d.reIded ? '\n（原 id 与现有待办冲突，已分配新 id）' : ''),
   })
-  async unfreeze(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.unfreezeTodo(ctx.ref, { topic: ctx.topic, pick: ctx.pick, groupId: ctx.group });
   

@@ -2,10 +2,10 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskAttachInput } from '../schemas.js';
 
-export class LocaltaskAttachAction extends ActionBase {
+export class LocaltaskAttachAction extends ActionBase<typeof localtaskAttachInput> {
   @action({
     id: 'localtask.attach',
     cli: ['localtask', 'attach'],
@@ -15,7 +15,7 @@ export class LocaltaskAttachAction extends ActionBase {
     render: (d: any) =>
       `已附加 ${d.fileId}（${d.kind === 'image' ? '图片' : d.kind === 'url' ? '链接' : d.kind === 'task' ? '任务' : d.kind === 'ref' ? '文档' : '文件'}）到主题「${d.name}」#${d.task.id} · ${d.role === 'doc' ? '文档资料（交付进原文）' : d.area === 'area' ? '附件区（未写正文）' : '正文内嵌'}${d.markdown ? `\n嵌入: ${d.markdown}` : ''}`,
   })
-  async attach(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         const { attachToTask } = await (import('../../tasktool/attach.js') as any);
         return attachToTask({

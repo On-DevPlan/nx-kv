@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { groupCurrentInput } from '../schemas.js';
 import { loadConfig as _loadConfig } from '../../../core/config.js';
 import { listGroups as _listGroups } from '../../../core/kvapi.js';
 const loadConfig: any = _loadConfig;
 const listGroups: any = _listGroups;
 
-export class GroupCurrentAction extends ActionBase {
+export class GroupCurrentAction extends ActionBase<typeof groupCurrentInput> {
   @action({
     id: 'group.current',
     cli: ['group', 'current'],
@@ -18,7 +18,7 @@ export class GroupCurrentAction extends ActionBase {
     input: groupCurrentInput,
     render: (d: any) => `当前工作空间: ${d.name}（${d.id === 0 ? '默认组，不传 groupId' : 'id=' + d.id}）`,
   })
-  async current(_ctx: any) {
+  override async run(_ctx: ActionInput<this['_input']>) {
 
         const cfg: any = await loadConfig();
         if (!cfg.groupId) return { id: 0, name: '默认组' };

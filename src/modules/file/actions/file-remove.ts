@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { fileRemoveInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class FileRemoveAction extends ActionBase {
+export class FileRemoveAction extends ActionBase<typeof fileRemoveInput> {
   @action({
     id: 'file.remove',
     cli: ['file', 'remove'],
@@ -17,7 +17,7 @@ export class FileRemoveAction extends ActionBase {
     input: fileRemoveInput,
     render: (d: any) => service.renderRemove(d),
   })
-  async remove(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.removeFileAction(ctx.fileId, { group: ctx.group });
   

@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskForkInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class LocaltaskForkAction extends ActionBase {
+export class LocaltaskForkAction extends ActionBase<typeof localtaskForkInput> {
   @action({
     id: 'localtask.fork',
     cli: ['localtask', 'fork'],
@@ -17,7 +17,7 @@ export class LocaltaskForkAction extends ActionBase {
     render: (d: any) =>
       `已 Fork #${d.from.id} → #${d.task.id} @ ${d.name}（内容复制 + 保留任务链；${d.delivered ? '已实时投递' : '待领取'}）`,
   })
-  async fork(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.forkTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
   

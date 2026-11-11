@@ -2,10 +2,10 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskReopenInput } from '../schemas.js';
 
-export class LocaltaskReopenAction extends ActionBase {
+export class LocaltaskReopenAction extends ActionBase<typeof localtaskReopenInput> {
   @action({
     id: 'localtask.reopen',
     cli: ['localtask', 'reopen'],
@@ -18,7 +18,7 @@ export class LocaltaskReopenAction extends ActionBase {
       (d.historyId != null ? `；链节点 #${d.historyId}` : '') +
       (d.moved && d.movedFrom ? `；已改归属项目，原 ${d.movedFrom.name} #${d.movedFrom.id}` : ''),
   })
-  async reopen(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         // 重开也可能带着改过的归属（--text 的 frontmatter.project 变了）→ 同样搬家
         const { reopenTask } = await (import('../../tasktool/update.js') as any);
@@ -32,7 +32,9 @@ export class LocaltaskReopenAction extends ActionBase {
           feedback: ctx.feedback,
           feedbackHeading: ctx.feedbackHeading,
           feedbackBold: ctx.feedbackBold,
-          attachments: ctx.attachments,
+          // attachments 不在 schema 里，zod parse 会剥掉——恒为 undefined（#177 暴露；
+          // CLI/生成的 client 都只发已声明键，行为不受影响）。保持原样不改行为。
+          attachments: (ctx as Record<string, unknown>).attachments,
         });
     
   }

@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { settingSetInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class SettingSetAction extends ActionBase {
+export class SettingSetAction extends ActionBase<typeof settingSetInput> {
   @action({
     id: 'setting.set',
     cli: ['setting', 'set'],
@@ -16,7 +16,7 @@ export class SettingSetAction extends ActionBase {
     input: settingSetInput,
     render: (d: any) => service.renderSettings(d),
   })
-  async set(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.setSettings(ctx);
   

@@ -14,13 +14,19 @@
 //     是 undefined——tsc 编译后交给原生 Node 时 context.metadata 就是 undefined，
 //     元数据会静默丢失。挂函数上与运行时无关，最稳。
 //
-// (b) 装饰器**不改方法签名**（TC39 要求返回类型与原方法兼容），handler 的入参类型
-//     只能手写 `z.output<typeof schema>`。z.input（调用方形状，.default 字段可选）
-//     与 z.output（解析后形状，.default 字段必填）别混：handler 拿的是 z.output。
+// (b) 装饰器**不改方法签名**（TC39 要求返回类型与原方法兼容），也给不了被标方法
+//     的参数做推断——handler 的入参类型走基类泛型模板：类绑
+//     `extends ActionBase<typeof xxxInput>`，方法注解统一写
+//     `run(ctx: ActionInput<this['_input']>)`（由幻影字段从类型实参推导，
+//     见 action-base.ts）。装饰器因此 value 用 any **透传**：this 依赖类型
+//     出了类声明不可解析，任何收紧的参数签名都会让应用点全红。
+//     z.input（调用方形状，.default 字段可选）与 z.output（解析后形状，
+//     .default 字段必填）别混：handler 拿的是 z.output。
 //
 // (c) 出参没有 schema——**实现即契约**：apiclient 的返回类型从 action 类的方法签名
 //     直接推断（codegen type-only 引类），同一信息只声明一次。
 import { describeInput, type FieldDesc } from './zod-bridge.js';
+import type { ActionRunMeta } from './action-base.js';
 import type { ZodType } from 'zod';
 
 /**
@@ -39,7 +45,7 @@ export interface BoundAction {
   summary?: string;
   // meta 形参刻意与 legacy 的 run(ctx, { transport }) 同形（宽松 string 而非字面量联合）：
   // Registry / CliApp / ApiRouter 把两通道 action 装进同一个数组，run 必须可互相赋值。
-  run: (input: unknown, meta?: { transport?: string }) => unknown;
+  run: (input: unknown, meta?: ActionRunMeta) => unknown;
   [k: string]: unknown;
 }
 
@@ -73,15 +79,24 @@ const META = new WeakMap<object, ActionMeta>();
  * 标注一个 action 方法。用法：
  *
  * ```ts
- * export class SystemModule extends ModuleBase {
- *   @action({ id: 'system.bootstrap', cli: ['bootstrap'], http: ['GET', '/api/bootstrap'],
- *             summary: '…', input: systemBootstrapInput })
- *   bootstrap(ctx: z.output<typeof systemBootstrapInput>) { return this.svc.bootstrap(); }
+ * export class XAction extends ActionBase<typeof xInput> {
+ *   @action({ id: 'x.do', cli: ['x', 'do'], http: ['GET', '/api/x'],
+ *             summary: '…', input: xInput })
+ *   override async run(ctx: ActionInput<this['_input']>) { … }
  * }
  * ```
+ *
+ * 入参/出参的静态类型完全由**声明自持**（类上的 TInput 经幻影字段推导注解，
+ * 返回类型即实现），装饰器只收运行期元数据、不做类型层的参数对账——
+ * value 用 any 透传：`ActionInput<this['_input']>` 是 this 依赖类型，出了类声明
+ * 就不可解析，收紧 value 的签名会让每个应用点都报「装饰器签名无法解析」。
  */
-export function action(meta: ActionMeta) {
-  return function <F extends (...args: never[]) => unknown>(value: F, context: { kind: string }): F {
+export function action<S extends ZodType>(meta: Omit<ActionMeta, 'input'> & { input: S }) {
+  // value 用 any：入参注解 `ActionInput<this['_input']>` 是 this 依赖类型，出了类
+  // 声明不可解析——收紧成具体函数签名会让所有应用点报「装饰器签名无法解析」。
+  // 静态类型由声明自持（见上），这里只收元数据 + 运行期 kind 校验。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 同上
+  return function (value: any, context: { kind: string }): any {
     if (context.kind !== 'method') {
       throw new Error(`@action 只能标注方法（收到 kind=${context.kind}）`);
     }
@@ -164,7 +179,7 @@ export function zodActionsOf(instance: object): ZodBoundAction[] {
     }
 
     const fields = describeInput(meta.input, args);
-    const bound = method as (this: typeof instance, input: unknown, meta?: { transport?: string }) => unknown;
+    const bound = method as (this: typeof instance, input: unknown, meta?: ActionRunMeta) => unknown;
     out.push({
       id: meta.id,
       cli: meta.cli,

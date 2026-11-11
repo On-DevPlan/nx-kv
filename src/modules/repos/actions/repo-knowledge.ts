@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoKnowledgeInput } from '../schemas.js';
 import { repoKnowledge as _repoKnowledge } from '../../docs/knowledge.js';
 const repoKnowledge: any = _repoKnowledge;
 
-export class RepoKnowledgeAction extends ActionBase {
+export class RepoKnowledgeAction extends ActionBase<typeof repoKnowledgeInput> {
   @action({
     id: 'repo.knowledge',
     cli: ['repo', 'knowledge'],
@@ -35,7 +35,7 @@ export class RepoKnowledgeAction extends ActionBase {
       return lines.join('\n');
     },
   })
-  async knowledge(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return repoKnowledge(ctx.id || process.cwd(), { md: ctx.md === true });
   

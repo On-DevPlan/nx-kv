@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { boardRemoveInput } from '../schemas.js';
 import * as boardsNs from '../boards.js';
 const boards: any = boardsNs;
 
-export class BoardRemoveAction extends ActionBase {
+export class BoardRemoveAction extends ActionBase<typeof boardRemoveInput> {
   @action({
     id: 'board.remove',
     cli: ['board', 'remove'],
@@ -17,7 +17,7 @@ export class BoardRemoveAction extends ActionBase {
     input: boardRemoveInput,
     render: (d: any) => `已删除看板: ${d.removed}（${d.released} 个仓库回到未分组）`,
   })
-  async remove(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return boards.removeBoard(ctx.id);
   

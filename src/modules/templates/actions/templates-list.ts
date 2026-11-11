@@ -2,13 +2,13 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { templatesListInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { renderList } from '../support.js';
 const service: any = serviceNs;
 
-export class TemplatesListAction extends ActionBase {
+export class TemplatesListAction extends ActionBase<typeof templatesListInput> {
   @action({
     id: 'templates.list',
     cli: ['template', 'list'],
@@ -17,7 +17,7 @@ export class TemplatesListAction extends ActionBase {
     input: templatesListInput,
     render: renderList,
   })
-  async list(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return ctx.topic || ctx.group || ctx.repo
             ? service.listTemplatesForTopic({ topic: ctx.topic, group: ctx.group, repo: ctx.repo })

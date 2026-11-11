@@ -2,13 +2,13 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { timegoalUpdateInput } from '../schemas.js';
 import * as serviceNs from '../timegoal.js';
 import { renderUpdate } from '../support.js';
 const service: any = serviceNs;
 
-export class TimegoalUpdateAction extends ActionBase {
+export class TimegoalUpdateAction extends ActionBase<typeof timegoalUpdateInput> {
   @action({
     id: 'timegoal.update',
     cli: ['timegoal', 'update'],
@@ -17,7 +17,7 @@ export class TimegoalUpdateAction extends ActionBase {
     input: timegoalUpdateInput,
     render: renderUpdate,
   })
-  async update(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.updateTimegoal({ cwd: ctx.cwd, prompt: ctx.prompt, durationSec: ctx.duration });
   

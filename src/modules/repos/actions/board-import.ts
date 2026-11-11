@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { boardImportInput } from '../schemas.js';
 import * as boardsNs from '../boards.js';
 import { badInput as _badInput } from '../../../core/errors.js';
 const boards: any = boardsNs;
 const badInput: any = _badInput;
 
-export class BoardImportAction extends ActionBase {
+export class BoardImportAction extends ActionBase<typeof boardImportInput> {
   @action({
     id: 'board.import',
     cli: ['board', 'import'],
@@ -26,9 +26,14 @@ export class BoardImportAction extends ActionBase {
       return lines.join('\n');
     },
   })
-  async import(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
-        let json: any = typeof ctx.json === 'string' ? ctx.json : '';
+        // json 不在 schema 里，zod parse 会剥掉未声明键——此分支恒为空串（#177 暴露；
+        // CLI --file 与生成的 client 都只发已声明键，行为不受影响）。
+        // 面板「粘贴 JSON」要走通，需把 json 声明进 schema。
+        let json: any = typeof (ctx as Record<string, unknown>).json === 'string'
+          ? (ctx as Record<string, unknown>).json
+          : '';
         if (!json && ctx.file) {
           const { readFileSync } = await import('node:fs');
           json = readFileSync(ctx.file === '-' ? 0 : ctx.file, 'utf8');

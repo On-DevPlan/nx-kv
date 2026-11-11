@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoScanInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { lastSeg as _lastSeg } from '../cli/render.js';
 const service: any = serviceNs;
 const lastSeg: any = _lastSeg;
 
-export class RepoScanAction extends ActionBase {
+export class RepoScanAction extends ActionBase<typeof repoScanInput> {
   @action({
     id: 'repo.scan',
     cli: ['repo', 'scan'],
@@ -33,7 +33,7 @@ export class RepoScanAction extends ActionBase {
       return lines.join('\n');
     },
   })
-  async scan(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.scanRepos(ctx.root || process.cwd(), ctx.depth, { dryRun: ctx['dry-run'] === true });
   

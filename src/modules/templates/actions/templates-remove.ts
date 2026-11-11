@@ -2,13 +2,13 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { templatesRemoveInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import {  } from 'node:path';
 const service: any = serviceNs;
 
-export class TemplatesRemoveAction extends ActionBase {
+export class TemplatesRemoveAction extends ActionBase<typeof templatesRemoveInput> {
   @action({
     id: 'templates.remove',
     cli: ['template', 'remove'],
@@ -18,7 +18,7 @@ export class TemplatesRemoveAction extends ActionBase {
     input: templatesRemoveInput,
     render: (d: any) => `已删除模板「${d.removed.name}」（${d.removed.id}）${d.wasDefault ? '，默认模板回落为内置' : ''}`,
   })
-  async remove(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.removeTemplate({ id: ctx.id });
   

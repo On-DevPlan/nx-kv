@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { docAttachInput } from '../schemas.js';
 import { attachToDoc as _attachToDoc } from '../attach.js';
 import { renderAttach as _renderAttach } from '../render.js';
 const attachToDoc: any = _attachToDoc;
 const renderAttach: any = _renderAttach;
 
-export class DocAttachAction extends ActionBase {
+export class DocAttachAction extends ActionBase<typeof docAttachInput> {
   @action({
     id: 'doc.attach',
     cli: ['docs', 'attach'],
@@ -19,7 +19,7 @@ export class DocAttachAction extends ActionBase {
     input: docAttachInput,
     render: renderAttach,
   })
-  async attach(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
     return (attachToDoc as any)(ctx);
   }
 }

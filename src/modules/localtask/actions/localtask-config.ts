@@ -2,7 +2,7 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskConfigInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { BLOCK_DEFS as _BLOCK_DEFS, resolveBlockTemplates as _resolveBlockTemplates } from '../../../shared/prompt-blocks.js';
@@ -12,7 +12,7 @@ const BLOCK_DEFS: any = _BLOCK_DEFS;
 const resolveBlockTemplates: any = _resolveBlockTemplates;
 const badInput: any = _badInput;
 
-export class LocaltaskConfigAction extends ActionBase {
+export class LocaltaskConfigAction extends ActionBase<typeof localtaskConfigInput> {
   @action({
     id: 'localtask.config',
     cli: ['localtask', 'config'],
@@ -27,7 +27,7 @@ export class LocaltaskConfigAction extends ActionBase {
       return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· ${ack} · 追加模式：${mode} · 区块模板：${blocks}`;
     },
   })
-  async config(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         const patch: any = { timeoutSec: ctx.timeout };
         if (ctx.ack !== undefined) patch.ackPrompt = ctx.ack;
@@ -44,10 +44,10 @@ export class LocaltaskConfigAction extends ActionBase {
         if (attachTpl !== undefined) patch.attachTemplate = attachTpl;
         if (ctx['reset-attach-template']) patch.attachTemplate = '';
         // 系统上下文追加模式（全局）
-        const appendMode: any = ctx.appendMode ?? ctx['append-mode'];
+        const appendMode: any = ctx['append-mode'];
         if (appendMode !== undefined) patch.appendMode = appendMode;
         // 每区块模板列表（设置面板「提示词模板」模块）：支持 JSON 字符串 / HTTP body 对象
-        let blockTemplates: any = ctx.blockTemplates ?? ctx['block-templates'];
+        let blockTemplates: any = ctx['block-templates'];
         if (typeof blockTemplates === 'string') {
           try {
             blockTemplates = JSON.parse(blockTemplates);

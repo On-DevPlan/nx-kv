@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput, type ActionRunMeta } from '../../../runtime/action-base.js';
 import { templatesUpdateInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import {  } from 'node:path';
 import { parseScope, parseValues } from '../support.js';
 const service: any = serviceNs;
 
-export class TemplatesUpdateAction extends ActionBase {
+export class TemplatesUpdateAction extends ActionBase<typeof templatesUpdateInput> {
   @action({
     id: 'templates.update',
     cli: ['template', 'update'],
@@ -19,7 +19,7 @@ export class TemplatesUpdateAction extends ActionBase {
     input: templatesUpdateInput,
     render: (d: any) => `已更新模板「${d.template.name}」（${d.template.id}）`,
   })
-  async update(ctx: any, opts: any = {}) {
+  override async run(ctx: ActionInput<this['_input']>, opts: ActionRunMeta = {}) {
 
       return service.updateTemplate({
             id: ctx.id,

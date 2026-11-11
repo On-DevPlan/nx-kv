@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoImportDiffInput } from '../schemas.js';
 import * as transferNs from '../transfer.js';
 import { readLayout as _readLayout } from '../cli/render.js';
 const transfer: any = transferNs;
 const readLayout: any = _readLayout;
 
-export class RepoImportDiffAction extends ActionBase {
+export class RepoImportDiffAction extends ActionBase<typeof repoImportDiffInput> {
   @action({
     id: 'repo.import.diff',
     cli: ['repo', 'import', '--diff'],
@@ -19,7 +19,7 @@ export class RepoImportDiffAction extends ActionBase {
     input: repoImportDiffInput,
     render: (d: any) => transfer.renderDiff(d),
   })
-  async diff(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         const { json, docsFiles } = await readLayout(ctx);
         return transfer.diffImport(json, docsFiles);

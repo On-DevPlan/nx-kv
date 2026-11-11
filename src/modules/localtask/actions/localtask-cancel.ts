@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskCancelInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { renderCancel as _renderCancel } from '../action-render.js';
 const service: any = serviceNs;
 const renderCancel: any = _renderCancel;
 
-export class LocaltaskCancelAction extends ActionBase {
+export class LocaltaskCancelAction extends ActionBase<typeof localtaskCancelInput> {
   @action({
     id: 'localtask.cancel',
     cli: ['localtask', 'cancel'],
@@ -18,7 +18,7 @@ export class LocaltaskCancelAction extends ActionBase {
     input: localtaskCancelInput,
     render: renderCancel,
   })
-  async cancel(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.cancelWait({ cwd: ctx.cwd, key: ctx.key });
   

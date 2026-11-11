@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { docDetachInput } from '../schemas.js';
 import { detachFromDoc as _detachFromDoc } from '../attach.js';
 import { renderDetach as _renderDetach } from '../render.js';
 const detachFromDoc: any = _detachFromDoc;
 const renderDetach: any = _renderDetach;
 
-export class DocDetachAction extends ActionBase {
+export class DocDetachAction extends ActionBase<typeof docDetachInput> {
   @action({
     id: 'doc.detach',
     cli: ['docs', 'detach'],
@@ -19,7 +19,7 @@ export class DocDetachAction extends ActionBase {
     input: docDetachInput,
     render: renderDetach,
   })
-  async detach(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
     return (detachFromDoc as any)(ctx);
   }
 }

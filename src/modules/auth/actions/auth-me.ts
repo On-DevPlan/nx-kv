@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { authMeInput } from '../schemas.js';
 import { requireAuth as _requireAuth } from '../../../core/config.js';
 import { userInfo as _userInfo } from '../../../core/kvapi.js';
 const requireAuth: any = _requireAuth;
 const userInfo: any = _userInfo;
 
-export class AuthMeAction extends ActionBase {
+export class AuthMeAction extends ActionBase<typeof authMeInput> {
   @action({
     id: 'auth.me',
     cli: ['auth', 'me'],
@@ -18,7 +18,7 @@ export class AuthMeAction extends ActionBase {
     input: authMeInput,
     render: (d: any) => JSON.stringify(d, null, 2),
   })
-  async me(_ctx: any) {
+  override async run(_ctx: ActionInput<this['_input']>) {
 
           await requireAuth();
           const info: any = await userInfo();

@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { docsNotebindInput } from '../schemas.js';
 import * as refsNs from '../refs.js';
 import { renderNoteRef as _renderNoteRef } from '../render.js';
 const refs: any = refsNs;
 const renderNoteRef: any = _renderNoteRef;
 
-export class DocsNotebindAction extends ActionBase {
+export class DocsNotebindAction extends ActionBase<typeof docsNotebindInput> {
   @action({
     id: 'docs.notebind',
     cli: ['docs', 'note-bind'],
@@ -19,7 +19,7 @@ export class DocsNotebindAction extends ActionBase {
     input: docsNotebindInput,
     render: renderNoteRef,
   })
-  async notebind(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return refs.setNoteDocRef(ctx);
   

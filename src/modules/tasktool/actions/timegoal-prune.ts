@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { timegoalPruneInput } from '../schemas.js';
 import * as serviceNs from '../timegoal.js';
 const service: any = serviceNs;
 
-export class TimegoalPruneAction extends ActionBase {
+export class TimegoalPruneAction extends ActionBase<typeof timegoalPruneInput> {
   @action({
     id: 'timegoal.prune',
     cli: ['timegoal', 'prune'],
@@ -20,7 +20,7 @@ export class TimegoalPruneAction extends ActionBase {
             d.removed.map((g: any) => `  - ${g.name}  ${g.cwd}  截止 ${g.deadline}`).join('\n')
           : '没有到点或已归档的时间目标（还在跑的不动手）。',
   })
-  async prune(_ctx: any) {
+  override async run(_ctx: ActionInput<this['_input']>) {
 
       return service.pruneExpired();
   

@@ -2,6 +2,29 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.48.1] - 2026-11-11 action 入参泛型化（#177 第 3 轮）
+
+### Changed
+
+- **action 入参类型走基类泛型模板**：`ActionBase<TInput>` 绑定 schema，
+  handler 统一写 `override run(ctx: ActionInput<this['_input']>)`——入参类型由类上的
+  类型实参推导，**schema 只声明一次**，154 个 action 文件不再手写 `z.output<typeof …>`、
+  也不再落 `ctx: any`（迁移器生成的那 151 条全部清掉）。
+- **方法名统一为 `run`**（原按动作语义各叫各的）：`@action` 装饰器只收元数据，
+  运行期分派本来就是走 run 闭包，方法名不外泄（`client.generated.ts` 的类型锚点
+  随之从 `['get']` 之类改为 `['run']`，重新 `pnpm gen` 即可）。
+- **类型化顺带抓出 6 处「读未声明键」的死路径**（zod 会剥掉未声明键，这些读取恒为
+  undefined）：`localtask.config` 的 camel 读法、`localtask.importRemote` 的 `refs`、
+  `localtask.reopen` 的 `attachments`、`board.import` 的 `json`。
+  **本次只保证运行期行为不变**（收敛到 kebab 或局部 cast + 注释）；是否给 schema
+  补键以复活这些路径，留给后续裁决。
+
+### Notes
+
+- 本轮为纯类型层重构，对外行为不变（smoke 194 / unit 906 全绿）。
+- 已知约束：TS 对类成员声明没有上下文类型注入通路（override 与装饰器都试过），
+  因此注解必须存在——但它是全项目统一样板，不再重述 schema 结构。
+
 ## [0.48.0] - 2026-11-11 全仓 TypeScript 毕业（#175）
 
 ### Changed

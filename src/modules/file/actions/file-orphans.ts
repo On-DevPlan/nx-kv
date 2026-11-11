@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { fileOrphansInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class FileOrphansAction extends ActionBase {
+export class FileOrphansAction extends ActionBase<typeof fileOrphansInput> {
   @action({
     id: 'file.orphans',
     cli: ['file', 'orphans'],
@@ -16,7 +16,7 @@ export class FileOrphansAction extends ActionBase {
     input: fileOrphansInput,
     render: (d: any) => service.renderOrphans(d),
   })
-  async orphans(_ctx: any) {
+  override async run(_ctx: ActionInput<this['_input']>) {
 
       return service.listOrphanAttachmentsAction();
   

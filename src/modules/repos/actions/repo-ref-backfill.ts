@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoRefBackfillInput } from '../schemas.js';
 import * as refBackfillNs from '../ref-backfill.js';
 import { renderBackfill as _renderBackfill } from '../cli/render.js';
 const refBackfill: any = refBackfillNs;
 const renderBackfill: any = _renderBackfill;
 
-export class RepoRefBackfillAction extends ActionBase {
+export class RepoRefBackfillAction extends ActionBase<typeof repoRefBackfillInput> {
   @action({
     id: 'repo.ref.backfill',
     cli: ['repo', 'ref', 'backfill'],
@@ -19,7 +19,7 @@ export class RepoRefBackfillAction extends ActionBase {
     input: repoRefBackfillInput,
     render: renderBackfill,
   })
-  async backfill(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return refBackfill.backfillRepoLinks({ from: ctx.from, dryRun: ctx['dry-run'] === true });
   

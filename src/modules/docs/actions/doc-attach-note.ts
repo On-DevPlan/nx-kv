@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { docAttachNoteInput } from '../schemas.js';
 import { noteOnDoc as _noteOnDoc } from '../attach.js';
 const noteOnDoc: any = _noteOnDoc;
 
-export class DocAttachNoteAction extends ActionBase {
+export class DocAttachNoteAction extends ActionBase<typeof docAttachNoteInput> {
   @action({
     id: 'doc.attach-note',
     cli: ['docs', 'attach-note'],
@@ -17,7 +17,7 @@ export class DocAttachNoteAction extends ActionBase {
     input: docAttachNoteInput,
     render: (d: any) => `已更新 ${d.attachment} 的说明：${d.note || '（清空）'}`,
   })
-  async attachNote(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return noteOnDoc({ ref: ctx.ref, attachment: ctx.attachment, note: ctx.note });
   

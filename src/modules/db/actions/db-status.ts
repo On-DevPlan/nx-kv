@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { dbStatusInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class DbStatusAction extends ActionBase {
+export class DbStatusAction extends ActionBase<typeof dbStatusInput> {
   @action({
     id: 'db.status',
     cli: ['db', 'status'],
@@ -16,7 +16,7 @@ export class DbStatusAction extends ActionBase {
     input: dbStatusInput,
     render: (d: any) => service.renderStatus(d),
   })
-  async status(_ctx: any) {
+  override async run(_ctx: ActionInput<this['_input']>) {
 
       return service.status();
   

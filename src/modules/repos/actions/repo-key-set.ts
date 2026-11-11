@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoKeySetInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { badInput as _badInput } from '../../../core/errors.js';
 const service: any = serviceNs;
 const badInput: any = _badInput;
 
-export class RepoKeySetAction extends ActionBase {
+export class RepoKeySetAction extends ActionBase<typeof repoKeySetInput> {
   @action({
     id: 'repo.key.set',
     cli: ['repo', 'key', 'set'],
@@ -19,7 +19,7 @@ export class RepoKeySetAction extends ActionBase {
     input: repoKeySetInput,
     render: (r: any) => `已设 key: ${r.name} -> ${r.key}${r.keyCustom ? '（自定义）' : '（跟随远程地址）'}`,
   })
-  async set(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         if (ctx.follow) {
           await service.updateRepo(ctx.id, { keyCustom: false, key: '' });

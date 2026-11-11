@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskCloseManyInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class LocaltaskCloseManyAction extends ActionBase {
+export class LocaltaskCloseManyAction extends ActionBase<typeof localtaskCloseManyInput> {
   @action({
     id: 'localtask.closeMany',
     cli: ['localtask', 'close-many'],
@@ -27,7 +27,7 @@ export class LocaltaskCloseManyAction extends ActionBase {
       return head + skip + miss;
     },
   })
-  async closeMany(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.closeTasks({
           ids: ctx.ids,

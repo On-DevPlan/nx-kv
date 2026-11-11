@@ -2,13 +2,13 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { authStatusInput } from '../schemas.js';
 import { loadConfig as _loadConfig, configPathFromEnv as _configPathFromEnv } from '../../../core/config.js';
 const loadConfig: any = _loadConfig;
 const configPathFromEnv: any = _configPathFromEnv;
 
-export class AuthStatusAction extends ActionBase {
+export class AuthStatusAction extends ActionBase<typeof authStatusInput> {
   @action({
     id: 'auth.status',
     cli: ['auth', 'status'],
@@ -20,7 +20,7 @@ export class AuthStatusAction extends ActionBase {
           ? `已登录: ${d.email}（userId=${d.userId}）\n后端: ${d.baseUrl}\n工作空间: ${d.groupId > 0 ? d.groupId : '默认组'}`
           : `未登录（nx-kv auth login <email>）\n后端: ${d.baseUrl}`,
   })
-  async status(_ctx: any) {
+  override async run(_ctx: ActionInput<this['_input']>) {
 
           const cfg: any = await loadConfig();
           return {

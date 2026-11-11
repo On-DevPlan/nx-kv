@@ -2,7 +2,7 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { groupMembersInput } from '../schemas.js';
 import { requireAuth as _requireAuth } from '../../../core/config.js';
 import { listGroupMembers as _listGroupMembers } from '../../../core/kvapi.js';
@@ -10,7 +10,7 @@ import { findGroup } from '../support.js';
 const requireAuth: any = _requireAuth;
 const listGroupMembers: any = _listGroupMembers;
 
-export class GroupMembersAction extends ActionBase {
+export class GroupMembersAction extends ActionBase<typeof groupMembersInput> {
   @action({
     id: 'group.members',
     cli: ['group', 'members'],
@@ -26,7 +26,7 @@ export class GroupMembersAction extends ActionBase {
         .join('\n');
     },
   })
-  async members(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         await requireAuth();
         const g: any = await findGroup(ctx.id);

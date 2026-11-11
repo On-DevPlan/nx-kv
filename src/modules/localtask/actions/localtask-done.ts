@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskDoneInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class LocaltaskDoneAction extends ActionBase {
+export class LocaltaskDoneAction extends ActionBase<typeof localtaskDoneInput> {
   @action({
     id: 'localtask.done',
     cli: ['localtask', 'done'],
@@ -28,7 +28,7 @@ export class LocaltaskDoneAction extends ActionBase {
       return `已标记完成: #${d.id} @ ${d.name}（${d.completedAt}）${goal}`;
     },
   })
-  async done(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.completeTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key, summary: ctx.summary });
   

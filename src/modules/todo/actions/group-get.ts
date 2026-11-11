@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { groupGetInput } from '../schemas.js';
 import { loadConfig as _loadConfig, requireAuth as _requireAuth } from '../../../core/config.js';
 import { findGroup } from '../support.js';
 const loadConfig: any = _loadConfig;
 const requireAuth: any = _requireAuth;
 
-export class GroupGetAction extends ActionBase {
+export class GroupGetAction extends ActionBase<typeof groupGetInput> {
   @action({
     id: 'group.get',
     cli: ['group', 'get'],
@@ -27,7 +27,7 @@ export class GroupGetAction extends ActionBase {
         `  创建:   ${String(g.createdAt || '').slice(0, 10) || '-'}`,
       ].join('\n'),
   })
-  async get(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         await requireAuth();
         const g: any = await findGroup(ctx.id);

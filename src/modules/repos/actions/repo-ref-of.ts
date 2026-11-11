@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoRefOfInput } from '../schemas.js';
 import * as refNs from '../ref.js';
 import { renderRefsOf as _renderRefsOf } from '../cli/render.js';
 const ref: any = refNs;
 const renderRefsOf: any = _renderRefsOf;
 
-export class RepoRefOfAction extends ActionBase {
+export class RepoRefOfAction extends ActionBase<typeof repoRefOfInput> {
   @action({
     id: 'repo.ref.of',
     cli: ['repo', 'ref', 'of'],
@@ -19,7 +19,7 @@ export class RepoRefOfAction extends ActionBase {
     input: repoRefOfInput,
     render: renderRefsOf,
   })
-  async of(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return ref.refReposOfRepo(ctx.id || process.cwd());
   

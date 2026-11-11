@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput, type ActionRunMeta } from '../../../runtime/action-base.js';
 import { localtaskClaimInput } from '../schemas.js';
 import { renderWait as _renderWait } from '../action-render.js';
 const renderWait: any = _renderWait;
 
-export class LocaltaskClaimAction extends ActionBase {
+export class LocaltaskClaimAction extends ActionBase<typeof localtaskClaimInput> {
   @action({
     id: 'localtask.claim',
     cli: ['localtask', 'get'],
@@ -16,7 +16,7 @@ export class LocaltaskClaimAction extends ActionBase {
     input: localtaskClaimInput,
     render: renderWait,
   })
-  async claim(ctx: any, meta: any = {}) {
+  override async run(ctx: ActionInput<this['_input']>, meta: ActionRunMeta = {}) {
 
         const { getTask } = await (import('../../tasktool/get.js') as any);
         const { parseParams } = await (import('../../tasktool/params.js') as any);

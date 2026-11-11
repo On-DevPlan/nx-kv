@@ -2,7 +2,7 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskPreviewInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { badInput as _badInput } from '../../../core/errors.js';
@@ -11,7 +11,7 @@ const service: any = serviceNs;
 const badInput: any = _badInput;
 const renderPreview: any = _renderPreview;
 
-export class LocaltaskPreviewAction extends ActionBase {
+export class LocaltaskPreviewAction extends ActionBase<typeof localtaskPreviewInput> {
   @action({
     id: 'localtask.preview',
     cli: ['localtask', 'preview'],
@@ -20,7 +20,7 @@ export class LocaltaskPreviewAction extends ActionBase {
     input: localtaskPreviewInput,
     render: renderPreview,
   })
-  async preview(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         const { previewTaskDelivery } = await (import('../../tasktool/preview.js') as any);
         const { parseParams } = await (import('../../tasktool/params.js') as any);

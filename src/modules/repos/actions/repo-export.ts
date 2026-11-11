@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoExportInput } from '../schemas.js';
 import * as transferNs from '../transfer.js';
 const transfer: any = transferNs;
 
-export class RepoExportAction extends ActionBase {
+export class RepoExportAction extends ActionBase<typeof repoExportInput> {
   @action({
     id: 'repo.export',
     cli: ['repo', 'export'],
@@ -18,7 +18,7 @@ export class RepoExportAction extends ActionBase {
       ? `已导出 zip: ${d.file}（${d.bytes} 字节）\n包含 layout.json + README.txt + docs/（自有文档树），可回灌 repo import`
       : JSON.stringify(d, null, 2)),
   })
-  async export(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         const opts: any = {
           repoKeys: ctx.repos,

@@ -4,14 +4,13 @@
 // 写入**含平台命令的完整版**（registry 先写过一次 action 版）。所以这条命令
 // 看到的表与 `help --json` 看到的完全同源同长。过滤逻辑在 ../routes.ts（纯函数），
 // 这里只做声明与装配。
-import { z } from 'zod';
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { commandTable, type CommandEntry } from '../../../core/command-table.js';
 import { filterRoutes, renderRoutes } from '../routes.js';
 import { systemRoutesInput } from '../schemas.js';
 
-export class RoutesAction extends ActionBase {
+export class RoutesAction extends ActionBase<typeof systemRoutesInput> {
   @action({
     id: 'system.routes',
     cli: ['routes'],
@@ -20,7 +19,7 @@ export class RoutesAction extends ActionBase {
     input: systemRoutesInput,
     render: (list) => renderRoutes(list as CommandEntry[]),
   })
-  async routes(ctx: z.output<typeof systemRoutesInput>): Promise<CommandEntry[]> {
+  override async run(ctx: ActionInput<this['_input']>): Promise<CommandEntry[]> {
     return filterRoutes(commandTable(), ctx);
   }
 }

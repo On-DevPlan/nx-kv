@@ -2,13 +2,13 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { todoAttachmentsInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { renderTaskAttachments } from '../support.js';
 const service: any = serviceNs;
 
-export class TodoAttachmentsAction extends ActionBase {
+export class TodoAttachmentsAction extends ActionBase<typeof todoAttachmentsInput> {
   @action({
     id: 'todo.attachments',
     cli: ['todo', 'attachments'],
@@ -17,7 +17,7 @@ export class TodoAttachmentsAction extends ActionBase {
     input: todoAttachmentsInput,
     render: renderTaskAttachments,
   })
-  async attachments(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.listTaskAttachments(ctx.ref, ctx);
   

@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { boardAddInput } from '../schemas.js';
 import * as boardsNs from '../boards.js';
 const boards: any = boardsNs;
 
-export class BoardAddAction extends ActionBase {
+export class BoardAddAction extends ActionBase<typeof boardAddInput> {
   @action({
     id: 'board.add',
     cli: ['board', 'add'],
@@ -17,7 +17,7 @@ export class BoardAddAction extends ActionBase {
     input: boardAddInput,
     render: (b: any) => `已新建看板: ${b.name}`,
   })
-  async add(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return boards.createBoard(ctx);
   

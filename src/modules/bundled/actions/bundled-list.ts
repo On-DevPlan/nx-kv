@@ -2,13 +2,13 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput, type ActionRunMeta } from '../../../runtime/action-base.js';
 import { bundledListInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { renderList } from '../support.js';
 const service: any = serviceNs;
 
-export class BundledListAction extends ActionBase {
+export class BundledListAction extends ActionBase<typeof bundledListInput> {
   @action({
     id: 'bundled.list',
     cli: [['skill', 'list'], ['skill', 'install', '--list'], ['bundled', 'list']],
@@ -17,7 +17,7 @@ export class BundledListAction extends ActionBase {
     input: bundledListInput,
     render: renderList,
   })
-  async list(__ctx: any, meta: any = {}) {
+  override async run(__ctx: ActionInput<this['_input']>, meta: ActionRunMeta = {}) {
 
           const info: any = await service.groupsInfo();
           if (meta.transport !== 'http') return info;

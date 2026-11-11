@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoRemoveInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class RepoRemoveAction extends ActionBase {
+export class RepoRemoveAction extends ActionBase<typeof repoRemoveInput> {
   @action({
     id: 'repo.remove',
     cli: ['repo', 'remove'],
@@ -17,7 +17,7 @@ export class RepoRemoveAction extends ActionBase {
     input: repoRemoveInput,
     render: (r: any) => `已移除登记: ${r.name}（磁盘文件未动）`,
   })
-  async remove(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.removeRepo(ctx.id);
   

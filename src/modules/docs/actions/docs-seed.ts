@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { docsSeedInput } from '../schemas.js';
 import * as seedNs from '../seed.js';
 import { renderSeed as _renderSeed } from '../render.js';
 const seed: any = seedNs;
 const renderSeed: any = _renderSeed;
 
-export class DocsSeedAction extends ActionBase {
+export class DocsSeedAction extends ActionBase<typeof docsSeedInput> {
   @action({
     id: 'docs.seed',
     cli: ['docs', 'seed'],
@@ -18,7 +18,7 @@ export class DocsSeedAction extends ActionBase {
     input: docsSeedInput,
     render: renderSeed,
   })
-  async seed(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return (ctx.apply ? seed.seedApply() : seed.seedPlan());
   

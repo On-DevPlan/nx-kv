@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoUpdateInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class RepoUpdateAction extends ActionBase {
+export class RepoUpdateAction extends ActionBase<typeof repoUpdateInput> {
   @action({
     id: 'repo.update',
     cli: ['repo', 'update'],
@@ -17,7 +17,7 @@ export class RepoUpdateAction extends ActionBase {
     input: repoUpdateInput,
     render: (r: any) => `已更新: ${r.name}（key: ${r.key}）`,
   })
-  async update(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         const patch: any = { ...ctx, keyCustom: ctx['key-custom'] === undefined ? undefined : ctx['key-custom'] === true };
         if (ctx['get-loop'] !== undefined || ctx['get-loop-minutes'] !== undefined || ctx['get-loop-template'] !== undefined) {

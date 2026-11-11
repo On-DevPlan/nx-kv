@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput, type ActionRunMeta } from '../../../runtime/action-base.js';
 import { localtaskPresenceInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class LocaltaskPresenceAction extends ActionBase {
+export class LocaltaskPresenceAction extends ActionBase<typeof localtaskPresenceInput> {
   @action({
     id: 'localtask.presence',
     cli: ['localtask', 'presence'],
@@ -18,7 +18,7 @@ export class LocaltaskPresenceAction extends ActionBase {
       `主面板当前有 ${d.clients} 个活动标签` +
       (d.source === 'self' ? '（主面板没在跑或探测失败，这里是本进程内计数）' : ''),
   })
-  async presence(_ctx: any, opts: any = {}) {
+  override async run(_ctx: ActionInput<this['_input']>, opts: ActionRunMeta = {}) {
 
       return opts && opts.transport === 'http'
           ? service.httpPanelPresence()

@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoRefCloneInput } from '../schemas.js';
 import * as refNs from '../ref.js';
 import { renderClone as _renderClone } from '../cli/render.js';
 const ref: any = refNs;
 const renderClone: any = _renderClone;
 
-export class RepoRefCloneAction extends ActionBase {
+export class RepoRefCloneAction extends ActionBase<typeof repoRefCloneInput> {
   @action({
     id: 'repo.ref.clone',
     cli: ['repo', 'ref', 'clone'],
@@ -19,7 +19,7 @@ export class RepoRefCloneAction extends ActionBase {
     input: repoRefCloneInput,
     render: renderClone,
   })
-  async clone(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return ref.cloneRef({
           url: ctx.url,

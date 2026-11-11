@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { promptSetInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class PromptSetAction extends ActionBase {
+export class PromptSetAction extends ActionBase<typeof promptSetInput> {
   @action({
     id: 'prompt.set',
     cli: ['prompt', 'set'],
@@ -17,7 +17,7 @@ export class PromptSetAction extends ActionBase {
     input: promptSetInput,
     render: (d: any) => `已写入 ${d.topic} 的提示词（${d.bytes} 字节）`,
   })
-  async set(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.setPrompt(ctx.topic, ctx.text, { groupId: ctx.group });
   

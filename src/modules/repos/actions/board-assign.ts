@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { boardAssignInput } from '../schemas.js';
 import * as boardsNs from '../boards.js';
 const boards: any = boardsNs;
 
-export class BoardAssignAction extends ActionBase {
+export class BoardAssignAction extends ActionBase<typeof boardAssignInput> {
   @action({
     id: 'board.assign',
     cli: ['board', 'assign'],
@@ -19,7 +19,7 @@ export class BoardAssignAction extends ActionBase {
       ? `已移出: ${d.key}（${d.count} 个看板）`
       : `${d.added ? '已聚合' : '已在（位次已调）'}: ${d.key} → ${d.board}`),
   })
-  async assign(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return boards.assignRepo(ctx);
   

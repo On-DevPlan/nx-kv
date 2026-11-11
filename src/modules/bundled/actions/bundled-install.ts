@@ -2,13 +2,13 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { bundledInstallInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { exclusive, renderScoped } from '../support.js';
 const service: any = serviceNs;
 
-export class BundledInstallAction extends ActionBase {
+export class BundledInstallAction extends ActionBase<typeof bundledInstallInput> {
   @action({
     id: 'bundled.install',
     cli: ['skill', 'install'],
@@ -28,7 +28,7 @@ export class BundledInstallAction extends ActionBase {
         return `${d.replaced ? '已更新' : '已安装'} ${d.name}（${d.files} 个文件）-> ${d.path}`;
       },
   })
-  async install(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
           exclusive(ctx, 'skill install');
           return service.installBundledSkill({

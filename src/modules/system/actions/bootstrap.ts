@@ -2,10 +2,9 @@
 //
 // 「一条 action 一个文件」：声明（@action 元数据）与实现同文件；契约在 ../schemas.ts。
 // 依赖经 IoC 容器取（this.deps.get('config')）——测试可换一整个容器，不必改构造参数。
-import { z } from 'zod';
 import { readFileSync } from 'node:fs';
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { commandTable, type CommandEntry } from '../../../core/command-table.js';
 import { APP_NAME, DEFAULT_PORT } from '../../../core/paths.js';
 import { systemBootstrapInput } from '../schemas.js';
@@ -15,7 +14,7 @@ const VERSION: string = JSON.parse(
   readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'),
 ).version;
 
-export class BootstrapAction extends ActionBase {
+export class BootstrapAction extends ActionBase<typeof systemBootstrapInput> {
   @action({
     id: 'system.bootstrap',
     cli: ['bootstrap'],
@@ -23,7 +22,7 @@ export class BootstrapAction extends ActionBase {
     summary: '聚合上下文：版本 / 登录态 / 工作空间 / 命令表',
     input: systemBootstrapInput,
   })
-  async bootstrap(_ctx: z.output<typeof systemBootstrapInput>): Promise<{
+  override async run(_ctx: ActionInput<this['_input']>): Promise<{
     app: { name: string; version: string };
     version: string;
     configPath: string;

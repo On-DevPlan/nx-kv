@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoCloneInput } from '../schemas.js';
 import * as remoteNs from '../remote.js';
 const remote: any = remoteNs;
 
-export class RepoCloneAction extends ActionBase {
+export class RepoCloneAction extends ActionBase<typeof repoCloneInput> {
   @action({
     id: 'repo.clone',
     cli: ['repo', 'clone'],
@@ -17,7 +17,7 @@ export class RepoCloneAction extends ActionBase {
     input: repoCloneInput,
     render: (d: any) => `已克隆并登记: ${d.name}（key ${d.key}）→ ${d.path}`,
   })
-  async clone(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return remote.cloneRepo(ctx);
   

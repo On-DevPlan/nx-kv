@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { todoDoneInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class TodoDoneAction extends ActionBase {
+export class TodoDoneAction extends ActionBase<typeof todoDoneInput> {
   @action({
     id: 'todo.done',
     cli: ['todo', 'done'],
@@ -16,7 +16,7 @@ export class TodoDoneAction extends ActionBase {
     input: todoDoneInput,
     render: (d: any) => `已完成 [${d.task.topic}] ${d.task.text}\n  ${d.task.doneAt}`,
   })
-  async done(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.doneTodo(ctx.ref, { result: ctx.result, topic: ctx.topic, pick: ctx.pick, groupId: ctx.group });
   

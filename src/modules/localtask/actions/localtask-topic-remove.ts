@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskTopicRemoveInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class LocaltaskTopicRemoveAction extends ActionBase {
+export class LocaltaskTopicRemoveAction extends ActionBase<typeof localtaskTopicRemoveInput> {
   @action({
     id: 'localtask.topic.remove',
     cli: ['localtask', 'topic', 'remove'],
@@ -17,7 +17,7 @@ export class LocaltaskTopicRemoveAction extends ActionBase {
     render: (d: any) =>
       `已删除主题「${d.name}」（待领取/共 ${d.topic.pending}/${d.topic.total} 条任务一并删除）`,
   })
-  async remove(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.removeTopic({ cwd: ctx.cwd, key: ctx.key, force: ctx.force });
   

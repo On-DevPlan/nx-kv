@@ -2,13 +2,13 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { authLogoutInput } from '../schemas.js';
 import { loadConfig as _loadConfig, saveConfig as _saveConfig } from '../../../core/config.js';
 const loadConfig: any = _loadConfig;
 const saveConfig: any = _saveConfig;
 
-export class AuthLogoutAction extends ActionBase {
+export class AuthLogoutAction extends ActionBase<typeof authLogoutInput> {
   @action({
     id: 'auth.logout',
     cli: ['auth', 'logout'],
@@ -17,7 +17,7 @@ export class AuthLogoutAction extends ActionBase {
     input: authLogoutInput,
     render: (d: any) => (d.was ? `已登出（原账号 ${d.was}）` : '本就未登录'),
   })
-  async logout(_ctx: any) {
+  override async run(_ctx: ActionInput<this['_input']>) {
 
           const before: any = await loadConfig();
           // 只清登录态，保留 baseUrl 与当前工作空间选择

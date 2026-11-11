@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { dbBackupInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class DbBackupAction extends ActionBase {
+export class DbBackupAction extends ActionBase<typeof dbBackupInput> {
   @action({
     id: 'db.backup',
     cli: ['db', 'backup'],
@@ -16,7 +16,7 @@ export class DbBackupAction extends ActionBase {
     input: dbBackupInput,
     render: (d: any) => service.renderBackup(d),
   })
-  async backup(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.backup({ dir: ctx.dir, keep: ctx.keep });
   

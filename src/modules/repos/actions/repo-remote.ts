@@ -2,7 +2,7 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoRemoteInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import * as keysNs from '../keys.js';
@@ -13,7 +13,7 @@ const keys: any = keysNs;
 const gitOrigin: any = _gitOrigin;
 const badInput: any = _badInput;
 
-export class RepoRemoteAction extends ActionBase {
+export class RepoRemoteAction extends ActionBase<typeof repoRemoteInput> {
   @action({
     id: 'repo.remote',
     cli: ['repo', 'remote'],
@@ -23,7 +23,7 @@ export class RepoRemoteAction extends ActionBase {
     input: repoRemoteInput,
     render: (r: any) => (r.items ? keys.renderRefresh(r) : `已登记远程地址: ${r.name} -> ${r.remote}（key: ${r.key}）`),
   })
-  async remote(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         if (ctx.refresh) return keys.refreshKeys({ id: ctx.id, apply: false });
         let url: any = String(ctx.url || '').trim();

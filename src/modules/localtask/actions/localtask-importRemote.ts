@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskImportRemoteInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class LocaltaskImportRemoteAction extends ActionBase {
+export class LocaltaskImportRemoteAction extends ActionBase<typeof localtaskImportRemoteInput> {
   @action({
     id: 'localtask.importRemote',
     cli: ['localtask', 'import-remote'],
@@ -23,13 +23,15 @@ export class LocaltaskImportRemoteAction extends ActionBase {
       return lines.join('\n');
     },
   })
-  async importRemote(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.importRemoteTasks({
-          // ref（CLI 的 --ref，可给多次）与 refs（面板发的列表）**都传过去**：
-          // HTTP body 里未声明的键会原样透传，两边各叫各的更顺手。
+          // ref（CLI 的 --ref，可给多次）与 refs（面板发的列表）**都传过去**。
+          // 注意：refs 不在 schema 里，zod parse 会剥掉未声明键——它恒为 undefined
+          //（#177 类型化后暴露；CLI/生成的 client 都只发已声明键，行为不受影响）。
+          // 想启用面板直发列表，就把 refs 声明进 schema，而不是靠透传。
           ref: ctx.ref,
-          refs: ctx.refs,
+          refs: (ctx as Record<string, unknown>).refs,
           cwd: ctx.cwd,
           global: ctx.global,
           topic: ctx.topic,

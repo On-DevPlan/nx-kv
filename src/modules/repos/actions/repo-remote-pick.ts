@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoRemotePickInput } from '../schemas.js';
 import * as remoteNs from '../remote.js';
 const remote: any = remoteNs;
 
-export class RepoRemotePickAction extends ActionBase {
+export class RepoRemotePickAction extends ActionBase<typeof repoRemotePickInput> {
   @action({
     id: 'repo.remote.pick',
     cli: ['repo', 'remote', 'pick'],
@@ -17,7 +17,7 @@ export class RepoRemotePickAction extends ActionBase {
     input: repoRemotePickInput,
     render: (d: any) => `已对齐 remote: ${d.key} → ${d.remote}${d.keyCustom ? '（自定义 key 不变）' : ''}`,
   })
-  async pick(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return remote.pickRemote(ctx.id, ctx.url);
   

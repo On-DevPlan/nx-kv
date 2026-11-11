@@ -2,10 +2,10 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskAttachNoteInput } from '../schemas.js';
 
-export class LocaltaskAttachNoteAction extends ActionBase {
+export class LocaltaskAttachNoteAction extends ActionBase<typeof localtaskAttachNoteInput> {
   @action({
     id: 'localtask.attach-note',
     cli: ['localtask', 'attach-note'],
@@ -14,7 +14,7 @@ export class LocaltaskAttachNoteAction extends ActionBase {
     input: localtaskAttachNoteInput,
     render: (d: any) => `已更新 ${d.attachment} 的说明：${d.note || '（清空）'}`,
   })
-  async attachNote(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         const { noteTaskAttachment } = await (import('../../tasktool/attach.js') as any);
         return noteTaskAttachment({

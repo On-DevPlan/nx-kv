@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskReorderInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class LocaltaskReorderAction extends ActionBase {
+export class LocaltaskReorderAction extends ActionBase<typeof localtaskReorderInput> {
   @action({
     id: 'localtask.reorder',
     cli: ['localtask', 'reorder'],
@@ -19,7 +19,7 @@ export class LocaltaskReorderAction extends ActionBase {
       return `主题「${d.name}」待领取顺序：${order.join(' -> ') || '（无待领取）'}`;
     },
   })
-  async reorder(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.reorderTasks({
           id: ctx.id,

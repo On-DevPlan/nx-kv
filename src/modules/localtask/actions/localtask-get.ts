@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskGetInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { renderTask as _renderTask } from '../action-render.js';
 const service: any = serviceNs;
 const renderTask: any = _renderTask;
 
-export class LocaltaskGetAction extends ActionBase {
+export class LocaltaskGetAction extends ActionBase<typeof localtaskGetInput> {
   @action({
     id: 'localtask.get',
     cli: ['localtask', 'show'],
@@ -18,7 +18,7 @@ export class LocaltaskGetAction extends ActionBase {
     input: localtaskGetInput,
     render: renderTask,
   })
-  async get(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
         const task: any = await service.getTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
         // 附件标注（任务 #15）：解析正文嵌入 + 按设置自动下载 + 标本地路径。

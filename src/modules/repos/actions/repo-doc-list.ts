@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoDocListInput } from '../schemas.js';
 import { listRepoDocs as _listRepoDocs } from '../../docs/refs.js';
 const listRepoDocs: any = _listRepoDocs;
 
-export class RepoDocListAction extends ActionBase {
+export class RepoDocListAction extends ActionBase<typeof repoDocListInput> {
   @action({
     id: 'repo.doc.list',
     cli: ['repo', 'doc', 'list'],
@@ -26,7 +26,7 @@ export class RepoDocListAction extends ActionBase {
       return lines.join('\n');
     },
   })
-  async list(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return listRepoDocs(ctx.id);
   

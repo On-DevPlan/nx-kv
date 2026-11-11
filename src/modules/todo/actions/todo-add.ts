@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { todoAddInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class TodoAddAction extends ActionBase {
+export class TodoAddAction extends ActionBase<typeof todoAddInput> {
   @action({
     id: 'todo.add',
     cli: ['todo', 'add'],
@@ -19,7 +19,7 @@ export class TodoAddAction extends ActionBase {
         `已加入待办: [${d.task.topic}] ${d.task.text}` +
         (d.topicAdded ? `\n（已把 ${d.task.topic} 加入快捷 topic）` : ''),
   })
-  async add(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.addTodo({ topic: ctx.topic, text: ctx.text, groupId: ctx.group });
   

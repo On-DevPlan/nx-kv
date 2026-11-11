@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskRemoveManyInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class LocaltaskRemoveManyAction extends ActionBase {
+export class LocaltaskRemoveManyAction extends ActionBase<typeof localtaskRemoveManyInput> {
   @action({
     id: 'localtask.removeMany',
     cli: ['localtask', 'remove-many'],
@@ -24,7 +24,7 @@ export class LocaltaskRemoveManyAction extends ActionBase {
       return head + tail + how;
     },
   })
-  async removeMany(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.removeTasks({ ids: ctx.ids, cwd: ctx.cwd, key: ctx.key, purge: ctx.purge });
   

@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput, type ActionRunMeta } from '../../../runtime/action-base.js';
 import { templatesAddInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import {  } from 'node:path';
 import { parseScope, topicFromCwd } from '../support.js';
 const service: any = serviceNs;
 
-export class TemplatesAddAction extends ActionBase {
+export class TemplatesAddAction extends ActionBase<typeof templatesAddInput> {
   @action({
     id: 'templates.add',
     cli: ['template', 'add'],
@@ -24,7 +24,7 @@ export class TemplatesAddAction extends ActionBase {
             : ''
         }`,
   })
-  async add(ctx: any, opts: any = {}) {
+  override async run(ctx: ActionInput<this['_input']>, opts: ActionRunMeta = {}) {
 
       return service.addTemplate({
             name: ctx.name,

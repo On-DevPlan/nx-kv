@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { taskMoveInput } from '../schemas.js';
 import * as moveNs from '../move.js';
 const move: any = moveNs;
 
-export class TaskMoveAction extends ActionBase {
+export class TaskMoveAction extends ActionBase<typeof taskMoveInput> {
   @action({
     id: 'task.move',
     cli: ['task', 'move'],
@@ -28,7 +28,7 @@ export class TaskMoveAction extends ActionBase {
       return head + (d.dupCount ? `\n（目标端原有 ${d.dupCount} 条同内容）` : '') + tail;
     },
   })
-  async move(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return move.moveTask({
           from: ctx.from,

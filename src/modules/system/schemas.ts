@@ -11,7 +11,8 @@
 //
 // 已知边界（模板 spike 结论，别踩）：
 //   - z.coerce 不能用（'false'→true、''→0）——归一化在 runtime/zod-bridge.ts 做；
-//   - handler 入参类型手写 z.output（解析后形状）；前端 client 入参是 z.input。
+//   - handler 入参类型由基类泛型模板给出（ActionBase<typeof xxxInput> +
+//     ActionInput<this['_input']>，解析后形状）；前端 client 入参是 z.input。
 import { z } from 'zod';
 
 // ---- system.bootstrap ----

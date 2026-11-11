@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { docRemoveInput } from '../schemas.js';
 import { removeDoc as _removeDoc } from '../service.js';
 const removeDoc: any = _removeDoc;
 
-export class DocRemoveAction extends ActionBase {
+export class DocRemoveAction extends ActionBase<typeof docRemoveInput> {
   @action({
     id: 'doc.remove',
     cli: ['docs', 'remove'],
@@ -17,7 +17,7 @@ export class DocRemoveAction extends ActionBase {
     input: docRemoveInput,
     render: (d: any) => `已删除: ${d.rel}`,
   })
-  async remove(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return removeDoc(ctx);
   

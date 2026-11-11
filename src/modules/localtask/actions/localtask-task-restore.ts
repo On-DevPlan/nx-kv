@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskTaskRestoreInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class LocaltaskTaskRestoreAction extends ActionBase {
+export class LocaltaskTaskRestoreAction extends ActionBase<typeof localtaskTaskRestoreInput> {
   @action({
     id: 'localtask.task.restore',
     cli: ['localtask', 'task', 'restore'],
@@ -19,7 +19,7 @@ export class LocaltaskTaskRestoreAction extends ActionBase {
         ? `已恢复主题「${d.name}」#${d.task.id}: ${d.task.text}`
         : `主题「${d.name}」#${d.task.id} 本来就没被删除，无需恢复。`,
   })
-  async restore(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.restoreTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
   

@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { repoBindInput } from '../schemas.js';
 import * as refNs from '../ref.js';
 import { renderBind as _renderBind } from '../cli/render.js';
 const ref: any = refNs;
 const renderBind: any = _renderBind;
 
-export class RepoBindAction extends ActionBase {
+export class RepoBindAction extends ActionBase<typeof repoBindInput> {
   @action({
     id: 'repo.bind',
     cli: ['repo', 'bind'],
@@ -19,7 +19,7 @@ export class RepoBindAction extends ActionBase {
     input: repoBindInput,
     render: renderBind,
   })
-  async bind(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return ref.bindTarget(ctx);
   

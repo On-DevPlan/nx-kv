@@ -2,12 +2,12 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskPruneInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-export class LocaltaskPruneAction extends ActionBase {
+export class LocaltaskPruneAction extends ActionBase<typeof localtaskPruneInput> {
   @action({
     id: 'localtask.prune',
     cli: ['localtask', 'prune'],
@@ -20,7 +20,7 @@ export class LocaltaskPruneAction extends ActionBase {
       return `${head} ${d.count} 个主题：\n` + d.removed.map((r: any) => `  - [${r.reason}] ${r.name}${r.cwd ? `  ${r.cwd}` : ''}`).join('\n');
     },
   })
-  async prune(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.pruneTopics({ allFinished: ctx['all-finished'], dryRun: ctx['dry-run'] });
   

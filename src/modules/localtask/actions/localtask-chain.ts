@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { localtaskChainInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { renderChain as _renderChain } from '../action-render.js';
 const service: any = serviceNs;
 const renderChain: any = _renderChain;
 
-export class LocaltaskChainAction extends ActionBase {
+export class LocaltaskChainAction extends ActionBase<typeof localtaskChainInput> {
   @action({
     id: 'localtask.chain',
     cli: ['localtask', 'chain'],
@@ -18,7 +18,7 @@ export class LocaltaskChainAction extends ActionBase {
     input: localtaskChainInput,
     render: renderChain,
   })
-  async chain(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return service.taskChain({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
   

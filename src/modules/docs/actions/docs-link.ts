@@ -2,14 +2,14 @@
 //
 // 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
-import { ActionBase } from '../../../runtime/action-base.js';
+import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { docsLinkInput } from '../schemas.js';
 import * as refsNs from '../refs.js';
 import { renderLink as _renderLink } from '../render.js';
 const refs: any = refsNs;
 const renderLink: any = _renderLink;
 
-export class DocsLinkAction extends ActionBase {
+export class DocsLinkAction extends ActionBase<typeof docsLinkInput> {
   @action({
     id: 'docs.link',
     cli: ['docs', 'link'],
@@ -19,7 +19,7 @@ export class DocsLinkAction extends ActionBase {
     input: docsLinkInput,
     render: renderLink,
   })
-  async link(ctx: any) {
+  override async run(ctx: ActionInput<this['_input']>) {
 
       return refs.setDocLink(ctx);
   

@@ -9,7 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const src = readFileSync(join(root, 'src/web/frontend/components/layout/breadcrumb.jsx'), 'utf-8');
+const src = readFileSync(join(root, 'src/web/frontend/components/layout/breadcrumb.tsx'), 'utf-8');
 const css = readFileSync(join(root, 'src/web/frontend/style-v2.css'), 'utf-8');
 
 test('独立「←」返回键已删（nx-crumb-back 不再出现在组件与样式里）', () => {

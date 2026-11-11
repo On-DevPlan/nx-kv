@@ -9,7 +9,7 @@
 // 视图注册表再写一份。任何一处漏改都不会被发现——直到用户点到一个没有 CLI 的按钮。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -17,10 +17,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MODULES_DIR = join(ROOT, 'src', 'modules');
 
 const { MODULES, ACTIONS } = await import(
-  pathToFileURL(join(ROOT, 'src', 'runtime', 'registry.js')).href
+  pathToFileURL(join(ROOT, 'src', 'runtime', 'registry.ts')).href
 );
 const { cliPathsOf, usageOf } = await import(
-  pathToFileURL(join(ROOT, 'src', 'runtime', 'spec.js')).href
+  pathToFileURL(join(ROOT, 'src', 'runtime', 'spec.ts')).href
 );
 
 const moduleDirs = readdirSync(MODULES_DIR, { withFileTypes: true })
@@ -39,7 +39,7 @@ const moduleDirs = readdirSync(MODULES_DIR, { withFileTypes: true })
     return false;
   });
 
-const frontendRegistrySrc = readFileSync(join(ROOT, 'src', 'web', 'frontend', 'registry.js'), 'utf8');
+const frontendRegistrySrc = readFileSync(join(ROOT, 'src', 'web', 'frontend', 'registry.ts'), 'utf8');
 const frontendViewIds = [...frontendRegistrySrc.matchAll(/\{\s*id:\s*'([^']+)'/g)].map((m) => m[1]);
 // v2 契约：每条视图声明归属模块（module: 'x'）与组件文件（lazy(() => import('path'))）
 const frontendViewModules = [...frontendRegistrySrc.matchAll(/module:\s*'([^']+)'/g)].map((m) => m[1]);
@@ -114,10 +114,25 @@ test('前端视图注册表的 module 都指向已登记的后端功能域', () 
   assert.equal(frontendViewModules.length, frontendViewIds.length, '每条视图都要声明 module 字段');
 });
 
+/**
+ * 说明符 → 物理文件：全仓毕业成 .ts/.tsx 后，import 里仍按 NodeNext/bundler 的
+ * 惯例写 .js/.jsx（tsc 与 Vite 都做「.js→.ts、.jsx→.tsx」的后缀替换）。
+ * 这里跟工具链保持同一套替换规则，否则会拿说明符当物理路径误判「文件不存在」。
+ */
+function resolveModuleFile(abs) {
+  if (existsSync(abs)) return abs;
+  for (const [from, to] of [['.jsx', '.tsx'], ['.js', '.ts']]) {
+    if (!abs.endsWith(from)) continue;
+    const alt = abs.slice(0, -from.length) + to;
+    if (existsSync(alt)) return alt;
+  }
+  return abs;
+}
+
 test('前端注册表里的视图文件真实存在', () => {
   for (const rel of frontendComponentPaths) {
-    // registry 里的 import 路径相对 src/web/frontend/registry.js
-    const p = join(ROOT, 'src', 'web', 'frontend', ...rel.split('/'));
+    // registry 里的 import 路径相对 src/web/frontend/registry.ts
+    const p = resolveModuleFile(join(ROOT, 'src', 'web', 'frontend', ...rel.split('/')));
     assert.doesNotThrow(() => readFileSync(p), `视图注册表引用了不存在的文件: ${p}`);
   }
   assert.ok(frontendComponentPaths.length > 0, '视图注册表为空');
@@ -185,7 +200,7 @@ test('每条 action 的 CLI 路径都能被运行器解析回它自己', async (
   // 因此不会误装 skill 或起服务。匹配算法一改坏（比如别名竞争、最长匹配失效），
   // 这里立刻失败。
   const { resolveCommand } = await import(
-    pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.js')).href
+    pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.ts')).href
   );
 
   for (const a of ACTIONS) {
@@ -204,7 +219,7 @@ test('每条 action 的 CLI 路径都能被运行器解析回它自己', async (
 
 test('内置命令（serve/help/version）也在命令表里', async () => {
   const { ALL_COMMANDS } = await import(
-    pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.js')).href
+    pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.ts')).href
   );
   const ids = ALL_COMMANDS.map((c) => c.id);
   for (const b of ['serve', 'help', 'version']) {
@@ -312,7 +327,7 @@ test('CRUD 的 HTTP 方法符合语义', () => {
 // routes 是**平台命令**，不参与 action 表：它描述的就是 ALL_COMMANDS 本身，
 // 只有 runtime/cli.js 拿得到它（模块反过来 import 会成环）。逻辑仍在 modules/system/routes.js。
 const { ALL_COMMANDS: ALL_CMDS } = await import(
-  pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.js')).href
+  pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.ts')).href
 );
 const routesAction = ALL_CMDS.find((a) => a.id === 'system.routes');
 
@@ -340,7 +355,7 @@ test('routes 正查：--module 过滤，且纯 CLI 命令如实标注 http:null'
 
   const all = await routesAction.run({});
   const { ALL_COMMANDS } = await import(
-    pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.js')).href
+    pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.ts')).href
   );
   // 对照表覆盖**全部**命令，含 serve/help/version 这类平台命令——
   // 否则 `nx-rh routes` 与 `nx-rh help --json` 会给出两个长度不同的"命令表"。
@@ -356,7 +371,7 @@ test('routes 与 help --json 覆盖同一批命令', async () => {
   const routes = await routesAction.run({});
   // help 的 run 返回同形状的条目；两者必须同源同长，否则「命令表」就有了两份。
   const { ALL_COMMANDS } = await import(
-    pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.js')).href
+    pathToFileURL(join(ROOT, 'src', 'runtime', 'cli.ts')).href
   );
   const viaHelp = await ALL_COMMANDS.find((c) => c.id === 'help').run({ topic: undefined });
   assert.equal(viaHelp.length, routes.length);

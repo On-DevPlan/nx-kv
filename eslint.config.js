@@ -311,4 +311,21 @@ export default defineConfig([
     },
     rules: { 'no-undef': 'error' },
   },
+
+  // ---- 前端 TS 文件：no-undef 退场（交给 tsc） ----
+  //
+  // 上面那份白名单只列**运行时全局**，用途是抓「写了个没 import 的名字」——
+  // 那三个历史 bug（`useMemo` / `dialog` / `<CliHints>` 漏 import）当时之所以
+  // 只有浏览器能看见，是因为前端还是 allowJs + checkJs:false，tsc 根本不看这些文件。
+  //
+  // 现在前端全部毕业成 .ts/.tsx、strict 全开：同一批错误都会变成
+  // `Cannot find name 'xxx'` / `Cannot find module`，在 typecheck 阶段就拦下，
+  // 比 lint 更早也更准。而 no-undef 反而开始误报：它不做类型分析，认不出类型
+  // 位置上的 DOM 类型（`HTMLDivElement` / `Element` / `File` … 在 lib.dom 里是
+  // `declare var`，既能当类型又能当值），会把这些合法写法判成 undefined。
+  // 所以：JS 存量继续留 no-undef，TS 文件交给 tsc。
+  {
+    files: ['src/web/frontend/**/*.{ts,tsx}'],
+    rules: { 'no-undef': 'off' },
+  },
 ]);

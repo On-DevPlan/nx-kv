@@ -13,7 +13,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const src = readFileSync(join(root, 'src/web/frontend/components/md/md-panes.jsx'), 'utf-8');
+const src = readFileSync(join(root, 'src/web/frontend/components/md/md-panes.tsx'), 'utf-8');
 
 test('视图态划选删除：document 捕获的 Backspace/Delete 处理存在', () => {
   assert.match(src, /Backspace' && e\.key !== 'Delete'/, '同时接管 Backspace 与 Delete');
@@ -49,23 +49,23 @@ test('#124 跨块删除：Backspace 分流到 removeBlockRange（块粒度整段
   assert.match(src, /removeBlockRange\(Math\.min\(i, iff\), Math\.max\(i, iff\)\)/, '按块序整理成 [lo, hi] 后整段移除');
   assert.match(
     src,
-    /const removeBlockRange = useCallback\(\(lo, hi\) => \{/,
+    /const removeBlockRange = useCallback\(\(lo: number, hi: number\) => \{/,
     '删除实现收口在 removeBlockRange（keydown 与浮层按钮共用）'
   );
   assert.match(src, /next\.splice\(lo, hi - lo \+ 1\);/, '块粒度：触到的整段块全移除');
 });
 
 test('#124 浮层「删除选区」：editorApi.deleteBlockRange 暴露同一实现', () => {
-  assert.match(src, /deleteBlockRange\(lo, hi\) \{\s*\n\s*return removeBlockRange\(lo, hi\);/, 'imperative handle 转发 removeBlockRange');
-  const menu = readFileSync(join(root, 'src/web/frontend/components/md/sel-menu.jsx'), 'utf-8');
+  assert.match(src, /deleteBlockRange\(lo: number, hi: number\) \{\s*\n\s*return removeBlockRange\(lo, hi\);/, 'imperative handle 转发 removeBlockRange');
+  const menu = readFileSync(join(root, 'src/web/frontend/components/md/sel-menu.tsx'), 'utf-8');
   assert.match(menu, /onDelete/, 'SelMenu 支持 onDelete 入参');
   assert.match(menu, /删除选区/, '浮层带「删除选区」按钮');
-  const task = readFileSync(join(root, 'src/web/frontend/page/dir/task.jsx'), 'utf-8');
+  const task = readFileSync(join(root, 'src/web/frontend/page/dir/task.tsx'), 'utf-8');
   assert.match(task, /deleteBlockRange\?\.\(br\[0\], br\[1\]\)/, '浮层按钮走 editorApi.deleteBlockRange');
 });
 
 test('#124 跨块复制：浮层 onCopy 对 blockRange 复制整段 Markdown 源码', () => {
-  const task = readFileSync(join(root, 'src/web/frontend/page/dir/task.jsx'), 'utf-8');
+  const task = readFileSync(join(root, 'src/web/frontend/page/dir/task.tsx'), 'utf-8');
   assert.match(task, /blockRange/, 'mouseup 时记下选区触到的块区间');
   assert.match(task, /liveBodyBlocks\(doc\.body\)/, '按同一块切分口径取源码');
   assert.match(task, /\.join\('\\n\\n'\)/, '块间按正文 joiner 拼接');

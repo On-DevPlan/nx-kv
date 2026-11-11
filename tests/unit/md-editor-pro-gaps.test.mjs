@@ -11,7 +11,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const src = readFileSync(join(root, 'src/web/frontend/components/md/md-panes.jsx'), 'utf-8');
+const src = readFileSync(join(root, 'src/web/frontend/components/md/md-panes.tsx'), 'utf-8');
 
 test('IME 守卫：块编辑器与源码态都在按键分发前拦组合输入', () => {
   const hits = src.match(/e\.nativeEvent\?\.isComposing \|\| e\.keyCode === 229/g) || [];
@@ -26,7 +26,8 @@ test('Delete 块尾合并：镜像 Backspace 并块，FM 块同样不并', () =>
 });
 
 test('视图态复选框可点：点击拦截 .mdw-cb 走 toggleNthTodo', () => {
-  assert.match(src, /e\.target\.closest\?\.\('\.mdw-cb'\)/, '点击落在复选框上时接管');
+  // 类型化后 target 需要收窄到 Element 才能调 closest（结构钉子跟着写法走，语义不变）
+  assert.match(src, /\(e\.target as Element\)\.closest\?\.\('\.mdw-cb'\)/, '点击落在复选框上时接管');
   assert.match(src, /onToggleTodo\?\.\(index, cbs\.indexOf\(cb\)\)/, '按 DOM 序号映射到源码第 n 个 todo');
   assert.match(src, /toggleNthTodo\(raw, n\)/, '切换经纯函数 toggleNthTodo');
 });

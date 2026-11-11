@@ -12,13 +12,11 @@
     "declarationMap": true,
     "sourceMap": true,
     "composite": true,
-    "tsBuildInfoFile": "node_modules/.tmp/tsc/node.tsbuildinfo",
-    // 迁移期过渡：未类型化的存量 .js 与新 .ts 并存（allowJs 编译、不做类型检查）。
-    // 类型化「毕业」逐文件推进——某文件迁成 .ts 即纳入 strict 检查。
-    // 全部毕业（本仓库最终态）后 allowJs 应移除。
-    "allowJs": true,
-    "checkJs": false
+    "tsBuildInfoFile": "node_modules/.tmp/tsc/node.tsbuildinfo"
   },
-  "include": ["src/**/*.ts", "src/**/*.js"],
+  // 毕业后：src 下只剩 .ts（唯一的 .js 是 src/index.js —— 面向包外消费方的 tsx 垫片，
+  // 不属于编译单元，也不需要类型检查）。所以 allowJs/checkJs 已移除，
+  // 「改了忘 build → 全局命令静默跑旧代码」这类问题在类型层也被堵住了。
+  "include": ["src/**/*.ts"],
   "exclude": ["src/web/**"]
 }

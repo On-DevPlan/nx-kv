@@ -29,7 +29,12 @@ const LIMIT_HARD = 1000;   // >1000 严禁
 // 已删未提交的文件也不该读到。
 const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', 'plan', 'temp', '.tool', '.claude', '.workbuddy']);
 const IGNORED_PREFIX = ['src/web/public/', 'src/web/frontend/dist/'];
-const SCAN_RE = /\.(js|jsx|mjs|css)$/;
+// 受控源码后缀：全仓毕业成 TypeScript 后 .ts/.tsx 才是主体，正则必须跟上——
+// 否则门禁会「扫不到任何文件、全绿放行」而没人发现（毕业那轮就是先漏了这一步）。
+const SCAN_RE = /\.(ts|tsx|js|jsx|mjs|css)$/;
+// codegen 产物不参与行数门禁：形状由生成器决定（client.generated.ts 是 154 条
+// action 的契约全集），瘦身只能靠改生成策略，靠「拆文件」没有意义。
+const GENERATED_RE = /\.generated\.ts$/;
 
 function sourceFiles(dir = ROOT, prefix = '') {
   const out = [];
@@ -37,7 +42,11 @@ function sourceFiles(dir = ROOT, prefix = '') {
     const rel = prefix ? `${prefix}/${e.name}` : e.name;
     if (e.isDirectory()) {
       if (!IGNORED_DIRS.has(e.name)) out.push(...sourceFiles(join(dir, e.name), rel));
-    } else if (SCAN_RE.test(e.name) && !IGNORED_PREFIX.some((p) => rel.startsWith(p))) {
+    } else if (
+      SCAN_RE.test(e.name)
+      && !GENERATED_RE.test(e.name)
+      && !IGNORED_PREFIX.some((p) => rel.startsWith(p))
+    ) {
       out.push(rel);
     }
   }

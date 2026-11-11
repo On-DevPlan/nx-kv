@@ -17,7 +17,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const src = readFileSync(join(root, 'src/web/frontend/components/md/md-panes.jsx'), 'utf-8');
+const src = readFileSync(join(root, 'src/web/frontend/components/md/md-panes.tsx'), 'utf-8');
 
 // 取 TitleArea 函数体（到下一个顶层 function 声明为止）
 function titleAreaBody() {

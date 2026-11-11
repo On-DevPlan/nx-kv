@@ -1,0 +1,262 @@
+{
+  "panels": {
+    "page-dir": "#/dir/D?task=5",
+    "page-group": "#/group/B?task=7",
+    "page-beside": null,
+    "dir": "#/dir/D",
+    "dir-global": "#/global",
+    "group": "#/group/B",
+    "repos": "#/repos",
+    "cloud": "#/cloud",
+    "overview": "#/overview",
+    "templates-plain": "#/templates",
+    "templates-edit": "#/templates/edit/t1",
+    "templates-new-full": "#/templates/new?topic=k%201&scope=topic%3Ak%201%2Crepo%3Ar",
+    "templates-new-bare": "#/templates/new",
+    "doc-repo": "#/doc?ref=rel:a%2Fb.md&repo=r1",
+    "doc-board": "#/doc?ref=path:x%2Fy.md&board=b1&name=%E7%BB%84%20%E4%B8%80",
+    "doc-bare": null,
+    "sidebar": null,
+    "welcome": null,
+    "progress": null,
+    "compose": null,
+    "settings": null,
+    "dag": null
+  },
+  "routes": {
+    "dir-page": {
+      "empty": {
+        "component": "page",
+        "name": "页 5",
+        "config": {
+          "dirKey": "D",
+          "task": "5"
+        }
+      },
+      "named": {
+        "component": "page",
+        "name": "页标题",
+        "config": {
+          "dirKey": "D",
+          "task": "5"
+        }
+      }
+    },
+    "dir-page-draft": {
+      "empty": {
+        "component": "page",
+        "name": "页 draft-3",
+        "config": {
+          "dirKey": "D",
+          "task": "draft-3"
+        }
+      },
+      "named": {
+        "component": "page",
+        "name": "页标题",
+        "config": {
+          "dirKey": "D",
+          "task": "draft-3"
+        }
+      }
+    },
+    "dir-plain": {
+      "empty": {
+        "component": "dir",
+        "name": "目录",
+        "config": {
+          "dirKey": "D"
+        }
+      },
+      "named": {
+        "component": "dir",
+        "name": "D名",
+        "config": {
+          "dirKey": "D"
+        }
+      }
+    },
+    "group-page": {
+      "empty": {
+        "component": "page",
+        "name": "页 7",
+        "config": {
+          "groupId": "B",
+          "task": "7"
+        }
+      },
+      "named": {
+        "component": "page",
+        "name": "页标题",
+        "config": {
+          "groupId": "B",
+          "task": "7"
+        }
+      }
+    },
+    "group-plain": {
+      "empty": {
+        "component": "group",
+        "name": "项目组",
+        "config": {
+          "boardId": "B"
+        }
+      },
+      "named": {
+        "component": "group",
+        "name": "组名",
+        "config": {
+          "boardId": "B"
+        }
+      }
+    },
+    "repos": {
+      "empty": {
+        "component": "repos",
+        "name": "仓库管理",
+        "config": {}
+      },
+      "named": {
+        "component": "repos",
+        "name": "仓库管理",
+        "config": {}
+      }
+    },
+    "cloud": {
+      "empty": {
+        "component": "cloud",
+        "name": "云端总览",
+        "config": {}
+      },
+      "named": {
+        "component": "cloud",
+        "name": "云端总览",
+        "config": {}
+      }
+    },
+    "overview": {
+      "empty": {
+        "component": "overview",
+        "name": "全部目录总览",
+        "config": {}
+      },
+      "named": {
+        "component": "overview",
+        "name": "全部目录总览",
+        "config": {}
+      }
+    },
+    "templates-plain": {
+      "empty": {
+        "component": "templates",
+        "name": "任务模板",
+        "config": {}
+      },
+      "named": {
+        "component": "templates",
+        "name": "任务模板",
+        "config": {}
+      }
+    },
+    "templates-edit": {
+      "empty": {
+        "component": "templates",
+        "name": "编辑模板",
+        "config": {
+          "mode": "edit",
+          "id": "t1",
+          "name": "",
+          "topic": "",
+          "scope": []
+        }
+      },
+      "named": {
+        "component": "templates",
+        "name": "编辑模板",
+        "config": {
+          "mode": "edit",
+          "id": "t1",
+          "name": "",
+          "topic": "",
+          "scope": []
+        }
+      }
+    },
+    "templates-new": {
+      "empty": {
+        "component": "templates",
+        "name": "新建模板",
+        "config": {
+          "mode": "new",
+          "id": "",
+          "name": "",
+          "topic": "k 1",
+          "scope": [
+            "topic:k 1",
+            "repo:r"
+          ]
+        }
+      },
+      "named": {
+        "component": "templates",
+        "name": "新建模板",
+        "config": {
+          "mode": "new",
+          "id": "",
+          "name": "",
+          "topic": "k 1",
+          "scope": [
+            "topic:k 1",
+            "repo:r"
+          ]
+        }
+      }
+    },
+    "doc-repo": {
+      "empty": {
+        "component": "doc",
+        "name": "b",
+        "config": {
+          "docId": "rel:a/b.md",
+          "repoKey": "r1"
+        }
+      },
+      "named": {
+        "component": "doc",
+        "name": "文档标题",
+        "config": {
+          "docId": "rel:a/b.md",
+          "repoKey": "r1"
+        }
+      }
+    },
+    "doc-board": {
+      "empty": {
+        "component": "doc",
+        "name": "y",
+        "config": {
+          "docId": "path:x/y.md",
+          "boardKey": "b1",
+          "boardName": "组 一"
+        }
+      },
+      "named": {
+        "component": "doc",
+        "name": "文档标题",
+        "config": {
+          "docId": "path:x/y.md",
+          "boardKey": "b1",
+          "boardName": "组 一"
+        }
+      }
+    },
+    "doc-bare": {
+      "empty": null,
+      "named": null
+    },
+    "unknown": {
+      "empty": null,
+      "named": null
+    }
+  }
+}

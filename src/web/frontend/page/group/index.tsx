@@ -22,7 +22,7 @@ import DeletedPanel from '../dir/deleted-panel.jsx';
 import TaskRow from '../../components/task-panel/task-row.jsx';
 import Pager, { usePager } from '../../components/pager.jsx';
 import { useApp } from '../../app-context.jsx';
-import { api } from '../../api/client.js';
+import { removeTask, reorderTask, restoreTask } from './api.js';
 import { openPanel } from '../../workspace.js';
 import { openTemplateEditor } from '../../panels.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
@@ -296,10 +296,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   const restoreDeleted = async (t: DeletedRow) => {
     if (!t) return;
     try {
-      await api('/api/localtasks/tasks/restore', {
-        method: 'POST',
-        body: { cwd: t.memberCwd, id: t.id },
-      });
+      await restoreTask({ cwd: t.memberCwd, id: t.id });
       toast(`已恢复 #${t.id}`);
       if (app.refreshLocal) await app.refreshLocal();
     } catch (e) {
@@ -318,10 +315,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     });
     if (!ok) return;
     try {
-      await api('/api/localtasks/item', {
-        method: 'DELETE',
-        body: { cwd: t.memberCwd, id: t.id, purge: true },
-      });
+      await removeTask({ cwd: t.memberCwd, id: t.id, purge: true });
       toast(`已彻底删除 #${t.id}`);
       if (app.refreshLocal) await app.refreshLocal();
     } catch (e) {
@@ -384,13 +378,10 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
       return;
     }
     try {
-      await api('/api/localtasks/reorder', {
-        method: 'PATCH',
-        body: {
-          cwd,
-          id: drag.id,
-          ...(zone === 'before' ? { beforeId: Number(task.id) } : { afterId: Number(task.id) }),
-        },
+      await reorderTask({
+        cwd,
+        id: drag.id,
+        ...(zone === 'before' ? { beforeId: Number(task.id) } : { afterId: Number(task.id) }),
       });
       if (app.refreshLocal) await app.refreshLocal();
     } catch (err) {

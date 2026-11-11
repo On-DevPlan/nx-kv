@@ -9,7 +9,7 @@
 // UI 边界：这里只做模板编辑与启用。编辑区下方给**只读参数清单**（参数名 + 一句含义）；
 // 引擎名称、选型理由、语法教程、示例模板与成段说明仍然只写在 skill / docs，不放到设置页。
 import { useEffect, useState } from 'react';
-import { api } from '../../api/client.js';
+import { getLocaltaskSettings, saveLocaltaskSettings } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -113,7 +113,7 @@ export default function PromptTemplatesSection() {
   };
 
   const load = () => {
-    api('/api/localtasks')
+    getLocaltaskSettings()
       .then((d) => {
         // 响应是外部数据（/api/localtasks）：settings 形状按后端 schema 读
         const s = d?.settings || {};
@@ -142,7 +142,7 @@ export default function PromptTemplatesSection() {
     if (busy) return;
     setBusy(true);
     try {
-      const d = await api('/api/localtasks/setting', {
+      const d = await saveLocaltaskSettings({
         method: 'PATCH',
         body: { blockTemplates: nextLists },
       });
@@ -271,7 +271,7 @@ export default function PromptTemplatesSection() {
     if (busy || mode === state.appendMode) return;
     setBusy(true);
     try {
-      const d = await api('/api/localtasks/setting', {
+      const d = await saveLocaltaskSettings({
         method: 'PATCH',
         body: { appendMode: mode },
       });

@@ -19,7 +19,7 @@
 //   （#150：「任务工具」tab 删除——正文早已不在 bodies 里，点开只剩空白标题页。）
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { api } from '../../api/client.js';
+import { getSettings, saveSettings } from './api.js';
 import { useApp } from '../../app-context.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
@@ -64,7 +64,7 @@ export default function SettingsPanel() {
 
   const load = useCallback(async () => {
     try {
-      setCfg(await api('/api/setting'));
+      setCfg(await getSettings());
     } catch (e) {
       toast('读取设置失败：' + ((e as Error).message || e));
     }
@@ -80,7 +80,7 @@ export default function SettingsPanel() {
     guard(async () => {
       setBusy(true);
       try {
-        setCfg(await api('/api/setting', { method: 'POST', body: patch }));
+        setCfg(await saveSettings(patch));
         toast('已保存');
       } finally {
         setBusy(false);

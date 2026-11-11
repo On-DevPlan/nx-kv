@@ -8,7 +8,7 @@
 // 这一栏就是「菜单的显示设置」：勾掉哪个，侧栏就不显示哪个（不删登记、不改数据）。
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { api } from '../../api/client.js';
+import { loadReposAndBoards } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useApp } from '../../app-context.jsx';
 import type { BoardRow, RepoRow } from '../../types.js';
@@ -24,7 +24,7 @@ export default function SidebarSection() {
   const [hidden, setHidden] = useState<string[]>([]);
 
   const load = useCallback(() => {
-    Promise.all([api('/api/repos'), api('/api/boards')])
+    loadReposAndBoards()
       .then(([r, b]) => {
         // 两个端点都可能回数组或包一层对象（外部数据边界）：按实际形状取，元素形状由调用处收口
         setRepos(Array.isArray(r) ? r : r?.repos || []);

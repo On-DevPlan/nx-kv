@@ -19,7 +19,7 @@
 //      仍是软删除（CLI localtask task restore 可恢复）。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useMemo, useState } from 'react';
-import { api } from '../../api/client.js';
+import { removeTasks } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import StatusTag from '../../components/status-tag/index.jsx';
@@ -158,7 +158,7 @@ export default function Overview({ rows, onNavigate, refreshLocal }: OverviewPro
     const errs = [];
     for (const g of groups) {
       try {
-        const r = await api('/api/localtasks/items', { method: 'DELETE', body: { key: g.key, ids: g.ids } });
+        const r = await removeTasks({ key: g.key, ids: g.ids });
         n += Number(r?.count ?? 0);
         miss += (r?.missing || []).length;
       } catch (e) {

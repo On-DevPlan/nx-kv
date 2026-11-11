@@ -15,12 +15,18 @@ export const STORE_PATH = join(APP_DIR, 'store.json');
 // 就是最典型的"静默读写错库"。
 export const DB_FILE_NAME = 'nxkv.db';
 
+/** 库落点：path 是库文件，appDir 是 legacy JSON 导入的扫描根（跟着目录走）。 */
+export interface StoreTarget {
+  path: string;
+  appDir: string;
+}
+
 // 库路径解析（唯一权威）。除了显式 NX_KV_DB，还会回落到各域 legacy env 的
 // 目录（repos / localtask 的 JSON 时代隔离约定）—— T06 起 config 偏好与队列级
 // timegoal 都进同一份库，core 层的默认打开（getDb / openStore 无参）必须与
 // 域仓储的解析落在同一个文件上，否则就是「读路径静默换库」（T05 的教训）。
 // appDir 是 legacy JSON 导入的扫描根，跟着目录走。
-export function defaultStoreTarget() {
+export function defaultStoreTarget(): StoreTarget {
   const explicit = process.env.NX_KV_DB;
   if (explicit) return { path: explicit, appDir: APP_DIR };
   // 只保留两个**活**的测试隔离 env（localtask / repos 的 open.js 映射机制）；
@@ -35,11 +41,11 @@ export function defaultStoreTarget() {
   return { path: join(APP_DIR, DB_FILE_NAME), appDir: APP_DIR };
 }
 
-export function dbPathFromEnv() {
+export function dbPathFromEnv(): string {
   return defaultStoreTarget().path;
 }
 // 备份目录（VACUUM INTO 落这里；保留最近 5 份）
-export function backupsDirFromEnv() {
+export function backupsDirFromEnv(): string {
   return process.env.NX_KV_BACKUPS || join(APP_DIR, 'backups');
 }
 
@@ -50,24 +56,24 @@ export const DEFAULT_PORT = 7877;
 export const ATTACHMENTS_DIR = join(APP_DIR, 'attachments');
 
 // 允许测试与多实例覆盖存储位置：NX_KV_STORE 环境变量优先
-export function storePathFromEnv() {
+export function storePathFromEnv(): string {
   return process.env.NX_KV_STORE || STORE_PATH;
 }
 
 // 允许测试与多实例覆盖附件目录：NX_KV_ATTACHMENTS 环境变量优先
-export function attachmentsRootFromEnv() {
+export function attachmentsRootFromEnv(): string {
   return process.env.NX_KV_ATTACHMENTS || ATTACHMENTS_DIR;
 }
 
-// 名称安全校验：拒绝路径穿越（保留中文等合法命名，与 fileops.go 语义一致）。
+// 名称安全校验：拒绝路径穿越（保留中文等合法命名）。
 //
 // 用于「这个字符串会被用作**目录名**」的场景：skill 名、内置包名、适配器 id。
 // 因此拒绝前导点——避免意外生成隐藏目录。
 // 注意：文件路径不要用这个，用下面的 assertSafeRelPath——像 .gitignore 这样的
 // 文件名是合法且常见的，用名称规则去卡它会把正常文件挡在门外。
-export function assertSafeName(name, label = 'skill 名称') {
+export function assertSafeName(name: unknown, label = 'skill 名称'): string {
   if (!name || typeof name !== 'string' || /[\\/]/.test(name) || name.includes('..') || name.startsWith('.')) {
-    throw badInput('非法 ' + label + ': ' + name);
+    throw badInput('非法 ' + label + ': ' + String(name));
   }
   return name;
 }
@@ -78,7 +84,10 @@ export function assertSafeName(name, label = 'skill 名称') {
 // 同一类输入校验强度不一致，本身就是可乘之口。
 //
 // 返回**归一化后**的路径（折叠重复分隔符、去掉 './' 段），调用方应使用返回值。
-export function assertSafeRelPath(input, { label = '文件路径', allowSubdir = true } = {}) {
+export function assertSafeRelPath(
+  input: unknown,
+  { label = '文件路径', allowSubdir = true }: { label?: string; allowSubdir?: boolean } = {},
+): string {
   if (!input || typeof input !== 'string') throw badInput(label + '不能为空');
   if (/^([a-zA-Z]:|[\\/])/.test(input)) throw badInput(label + '必须是相对路径: ' + input);
 

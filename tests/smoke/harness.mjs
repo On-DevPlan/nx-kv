@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 export const TESTS_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 export const REPO_ROOT = dirname(TESTS_DIR);
-export const BIN = join(REPO_ROOT, 'bin', 'cli.mjs');
+export const BIN = join(REPO_ROOT, 'bin', 'kv.mjs');
 
 export function createCtx() {
   const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-smoke-'));

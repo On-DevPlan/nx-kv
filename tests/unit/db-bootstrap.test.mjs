@@ -13,7 +13,7 @@ import { CURRENT_SCHEMA_VERSION } from '../../src/core/db/version.js';
 
 const execFileAsync = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const BIN = join(ROOT, 'bin', 'cli.mjs');
+const BIN = join(ROOT, 'bin', 'kv.mjs');
 
 const tablesOf = (db) =>
   db

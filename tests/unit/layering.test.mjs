@@ -35,7 +35,7 @@ function collect(dir, out = []) {
       // public/ 是 vite 构建产物；node_modules 不该出现在 src 里
       if (e.name === 'node_modules' || p.endsWith(join('web', 'public'))) continue;
       collect(p, out);
-    } else if (/\.(js|jsx|mjs)$/.test(e.name)) {
+    } else if (/\.(js|jsx|mjs|ts|tsx)$/.test(e.name)) {
       out.push(p);
     }
   }
@@ -61,6 +61,22 @@ const ALLOWED = {
   entry: new Set(['core', 'shared', 'runtime', 'modules', 'web', 'entry']),
 };
 
+// 模块 → runtime 的**契约层**例外（模板形态）：模块按模板写就得 import
+// ModuleBase 基类、@action 装饰器、IoC 容器——它们是公共契约，且不 import
+// registry，所以不成环。禁的是 runtime 的装配层（cli / registry / server /
+// api / spec / help / codegen）：registry → modules → runtime → registry 会成环。
+const MODULE_RUNTIME_CONTRACT = new Set([
+  'runtime/types/module.js',
+  'runtime/action-base.js',
+  'runtime/action-decorator.js',
+  'runtime/container.js',
+]);
+
+/** 模块依赖 runtime 时，是否只碰了契约层。 */
+function moduleRuntimeOk(target) {
+  return MODULE_RUNTIME_CONTRACT.has(target) || MODULE_RUNTIME_CONTRACT.has(target.replace(/\.ts$/, '.js'));
+}
+
 const FILES = collect(SRC);
 
 // 抓静态 import / 再导出 / 动态 import() 三种写法。
@@ -78,8 +94,12 @@ function stripComments(src) {
 function specifiersOf(srcRaw) {
   const src = stripComments(srcRaw);
   const specs = [];
-  for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g)) {
-    specs.push(m[1]);
+  for (const m of src.matchAll(/(?:^|\n)\s*(import|export)\s+(type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g)) {
+    // `import type { X } from '…'` 是**类型引用**：编译期擦除，不构成运行期依赖。
+    // 前端生成的 typed client 正是靠它引后端 schema（类型契约的单一来源），
+    // 浏览器包里不会因此多出任何后端代码。模板的分层测试同款放行。
+    if (m[2]) continue;
+    specs.push(m[3]);
   }
   for (const m of src.matchAll(/import\(\s*['"]([^'"]+)['"]\s*\)/g)) specs.push(m[1]);
   return specs;
@@ -98,6 +118,8 @@ test('分层依赖方向：web 只能碰 web + shared，core/shared 不能向上
       const target = rel(posix.normalize(posix.join(posix.dirname(from), spec)));
       const toLayer = layerOf(target);
       if (allowed.has(toLayer)) continue;
+      // 模块 → runtime 的契约层（模板形态的公共契约，不成环）
+      if (fromLayer === 'modules' && toLayer === 'runtime' && moduleRuntimeOk(target)) continue;
       problems.push(`${from}  →  ${spec}（${fromLayer} 不得依赖 ${toLayer}）`);
     }
   }
@@ -131,7 +153,9 @@ test('shared 只放同构纯函数：不得依赖第三方包（含 react）', (
   assert.deepEqual(problems, [], `shared 出现了外部依赖:\n${problems.join('\n')}`);
 });
 
-test('后端模块目录里不允许出现 .jsx（视图归前端）', () => {
-  const strays = FILES.filter((f) => rel(f).startsWith('modules/') && f.endsWith('.jsx')).map(rel);
+test('后端模块目录里不允许出现 .jsx/.tsx（视图归前端）', () => {
+  const strays = FILES.filter(
+    (f) => rel(f).startsWith('modules/') && (f.endsWith('.jsx') || f.endsWith('.tsx')),
+  ).map(rel);
   assert.deepEqual(strays, [], `这些视图文件长在后端模块目录里: ${strays}`);
 });

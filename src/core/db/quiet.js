@@ -17,3 +17,7 @@ process.on('warning', (w) => {
   const message = (w && w.message) || String(w);
   console.error(`${name}: ${message}`);
 });
+
+// 让本文件成为 ES 模块（tsconfig 的 isolatedModules 要求每个文件都是模块；
+// 副作用模块的标准写法——不导出任何值）。
+export {};

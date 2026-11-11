@@ -26,7 +26,7 @@ description: "nx-kv 仓库开发指引（按层路由）：A 数据结构与关�
 
 ## 不可省略的硬约束（跨层，任何改动都适用）
 
-1. 功能入口只走 `src/modules/<id>/index.js` 的 action；**每条 action 必须有 `cli`**，`http` 可显式为 `null`。
+1. 功能入口只走模块的 action 声明：`src/modules/<id>/index.js`（legacy 形态：plain-object + flags 表）或 `src/modules/<id>/index.ts`（模板形态：ModuleBase 子类 + `@action` 装饰器 + zod 契约）；**每条 action 必须有 `cli`**，`http` 可显式为 `null`。两通道并存期间（迁移中），新 action 走模板形态，legacy 通道只维护不扩张。
 2. 模块间只通过对方 `service.js` / 导出面协作；禁止 import 别的模块内部实现（`eslint.config.js` 会拦，但模块禁列是**枚举式**的，新增模块要手动补）。
 3. 跨模块、无副作用的纯函数才放 `src/shared/`；`src/core/` 只放原语（db、错误、模板引擎等），不放业务。
 4. SQLite 是唯一业务数据源。schema 只加新 migration：`src/core/db/migrations/vN+1.sql`（已发布快照**不可变**）+ `migrations/index.js` 登记边；**禁止改已发布版本文件**。
@@ -89,7 +89,7 @@ description: "nx-kv 仓库开发指引（按层路由）：A 数据结构与关�
 
 ## 仓库事实入口（需要核对时先看这些）
 
-- 命令与路由：`node bin/cli.mjs routes --module <id>`、`node bin/cli.mjs help --json`
+- 命令与路由：`node bin/kv.mjs routes --module <id>`、`node bin/kv.mjs help --json`
 - 表结构：`src/core/db/migrations/`（`v4.sql` 是最新跃迁；`v1.sql` 是初始快照，永不修改）
 - 决策依据：`docs/decisions/`（含 `versions/` 下逐版说明）
 - 使用者文档与变更记录：`README.md`、`docs/project&projectsCli.md`、`CHANGELOG.md`

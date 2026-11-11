@@ -3,35 +3,83 @@
 // 一处声明，两端生效：CLI 的 `--flag` 与 HTTP 的 query/body 都走同一套强转与校验。
 // 这正是历史上 `parseInt(flags.depth, 10) || 3` 散落在各处的根源——两端各写一遍解析，
 // 迟早分叉。现在 depth 只在 action 声明里写一次 `{ type: 'number', default: 3 }`。
+//
+// 迁移期双通道：legacy action 走本文件的 flags 表契约（applySpec / coerceOne），
+// @action 装饰的 zod action 走 zod-bridge（normalizeCliValue / parseZodInput）。
+// usageOf / compileRoute / entryOf / cliPathsOf 对两通道共用。
 import { badInput } from '../core/errors.js';
+import { APP_NAME } from '../core/paths.js';
+import type { FieldDesc } from './zod-bridge.js';
 
-const TYPES = new Set(['string', 'number', 'boolean', 'array', 'raw']);
+export type LegacyFlagType = 'string' | 'number' | 'boolean' | 'array' | 'raw';
+
+/** legacy flags 表的一个 flag 声明。 */
+export interface FlagSpec {
+  type?: LegacyFlagType;
+  /** 用法串里的值占位符（help 因此不可能与实际命令脱节） */
+  hint?: string;
+  /** 枚举：值必须是其中之一 */
+  enum?: readonly string[];
+  /** 缺省即可填 default；true 则必填 */
+  required?: boolean;
+  default?: unknown;
+  /** ⚠️ rest flag 刻意未启用（见 restFlagNames），保留声明位与装载期自检 */
+  rest?: boolean;
+}
+
+/** 位置参数：字符串是必填的具名参数，对象可声明 optional / rest（收集剩余全部）。 */
+export type ArgSpecInput = string | { name: string; required?: boolean; rest?: boolean };
+
+export interface ArgSpec {
+  name: string;
+  required: boolean;
+  rest?: boolean;
+}
+
+/** 迁移期并存的两通道 action 的公共形状。 */
+export interface AnyAction {
+  id: string;
+  cli: unknown;
+  http?: readonly [string, string] | null;
+  summary?: string;
+  module?: string;
+  args?: readonly ArgSpecInput[];
+  flags?: Record<string, FlagSpec>;
+  run?: (input: unknown, meta?: { transport?: string }) => unknown;
+  render?: (result: unknown, ctx?: unknown) => string | Promise<string>;
+  stream?: boolean;
+  /** zod 通道标记（zodActionsOf 写入）；缺省 = legacy flags 通道 */
+  channel?: 'zod';
+  /** zod 通道的逐字段说明（describeInput 产物） */
+  fields?: FieldDesc[];
+  /** zod 通道的尾部收参字段名 */
+  restArg?: string;
+  [k: string]: unknown;
+}
 
 // 取 action 的 CLI 路径列表。支持两种写法：
 //   单路径   cli: ['repo', 'list']
 //   多路径   cli: [['bundled','list'], ['skill','install','--list']]   ← 别名
-export function cliPathsOf(action) {
+export function cliPathsOf(action: { cli?: unknown }): string[][] {
   const cli = action.cli;
-  if (!cli || !cli.length) return [];
-  return Array.isArray(cli[0]) ? cli : [cli];
+  if (!cli || !Array.isArray(cli) || !cli.length) return [];
+  return Array.isArray(cli[0]) ? (cli as string[][]) : [cli as string[]];
 }
 
 // 位置参数规格：字符串表示必填，对象可声明 optional / rest（收集剩余全部）
-export function argSpecsOf(action) {
+export function argSpecsOf(action: { args?: readonly ArgSpecInput[] }): ArgSpec[] {
   return (action.args || []).map((a) =>
-    typeof a === 'string'
-      ? { name: a, required: true }
-      : { ...a, required: a.required !== false }
+    typeof a === 'string' ? { name: a, required: true } : { name: a.name, required: a.required !== false, rest: a.rest },
   );
 }
 
-export function flagSpecsOf(action) {
+export function flagSpecsOf(action: { flags?: Record<string, FlagSpec> }): Array<FlagSpec & { name: string }> {
   return Object.entries(action.flags || {}).map(([name, spec]) => ({ name, ...spec }));
 }
 
 // 该 action 里哪些 flag 是布尔型——CLI 解析据此决定要不要吃掉下一个 token 当值。
 // 少了这份信息，`skill install --force demo` 会把 force 解析成字符串 'demo'。
-export function booleanFlagNames(action) {
+export function booleanFlagNames(action: { flags?: Record<string, FlagSpec> }): Set<string> {
   return new Set(flagSpecsOf(action).filter((f) => (f.type || 'string') === 'boolean').map((f) => f.name));
 }
 
@@ -40,15 +88,17 @@ export function booleanFlagNames(action) {
 // 而「同内容多条 → 用 --pick 消歧」正是最需要 ref 的场景。消歧能力比少打
 // 一对引号重要，所以 ref 走普通 flag（值带空格时加引号）。
 //
-// 保留这个判定函数与装载期自检（runtime/registry.js），是为了让将来真要启用时
+// 保留这个判定函数与装载期自检（registry），是为了让将来真要启用时
 // 那条「必须置尾」的约束已经就位，而不是重新踩一遍。
-export function restFlagNames(action) {
+export function restFlagNames(action: { flags?: Record<string, FlagSpec> }): Set<string> {
   return new Set(flagSpecsOf(action).filter((f) => f.rest).map((f) => f.name));
 }
 
-function coerceOne(name, spec, raw) {
+function coerceOne(name: string, spec: FlagSpec, raw: unknown): unknown {
   const type = spec.type || 'string';
-  if (!TYPES.has(type)) throw new Error(`action 声明有误：flag "${name}" 的 type 非法 (${type})`);
+  if (!(['string', 'number', 'boolean', 'array', 'raw'] as string[]).includes(type)) {
+    throw new Error(`action 声明有误：flag "${name}" 的 type 非法 (${type})`);
+  }
   if (raw === undefined || raw === null) return undefined;
 
   // 需要值的 flag 写在末尾时（`--depth` 后面没跟东西），解析器只能记成 true。
@@ -65,12 +115,15 @@ function coerceOne(name, spec, raw) {
   }
   if (type === 'number') {
     const n = Number(raw);
-    if (!Number.isFinite(n)) throw badInput(`参数 ${name} 必须是数字，收到: ${raw}`);
+    if (!Number.isFinite(n)) throw badInput(`参数 ${name} 必须是数字，收到: ${String(raw)}`);
     return n;
   }
   if (type === 'array') {
     if (Array.isArray(raw)) return raw.map((x) => String(x).trim()).filter(Boolean);
-    return String(raw).split(',').map((x) => x.trim()).filter(Boolean);
+    return String(raw)
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
   }
   // raw = 原样透传，不做字符串化。给「值本身是数组/对象」的 flag 用
   // （模板可见域 scope 就是这种：JSON 数组串、逗号短写、HTTP 直接发数组，
@@ -85,12 +138,12 @@ function coerceOne(name, spec, raw) {
 // 「用法:」前缀是**对外契约**：assets/repo-hub/references/agent-workflow.md 明确
 // 教 agent 用错误文本里的「用法:」判定为参数错误，并据此决定「停下来问人」。
 // 所以这里不能只写「缺少参数 X」，必须带上完整用法串。
-function inputError(action, detail) {
+function inputError(action: AnyAction, detail: string): Error {
   return badInput(`用法: ${usageOf(action)} —— ${detail}`);
 }
 
 // 按声明校验并强转输入。未声明的键原样透传（HTTP body 可能带界面用的额外字段）。
-export function applySpec(action, raw) {
+export function applySpec(action: AnyAction, raw: Record<string, unknown>): Record<string, unknown> {
   const out = { ...raw };
 
   for (const spec of flagSpecsOf(action)) {
@@ -100,8 +153,8 @@ export function applySpec(action, raw) {
       else if (spec.required) throw inputError(action, `缺少参数 --${spec.name}`);
       continue;
     }
-    if (spec.enum && !spec.enum.includes(v)) {
-      throw inputError(action, `参数 --${spec.name} 只能是 ${spec.enum.join(' | ')}，收到: ${v}`);
+    if (spec.enum && !spec.enum.includes(v as string)) {
+      throw inputError(action, `参数 --${spec.name} 只能是 ${spec.enum.join(' | ')}，收到: ${String(v)}`);
     }
     out[spec.name] = v;
   }
@@ -116,13 +169,19 @@ export function applySpec(action, raw) {
 
 // ---- HTTP 路由模式编译：'/api/repos/:id' → 正则 + 键名 ----
 
-const ROUTE_CACHE = new WeakMap();
+interface CompiledRoute {
+  method: string;
+  keys: string[];
+  regex: RegExp;
+}
 
-export function compileRoute(action) {
+const ROUTE_CACHE = new WeakMap<object, CompiledRoute>();
+
+export function compileRoute(action: { http: readonly [string, string] }): CompiledRoute {
   const cached = ROUTE_CACHE.get(action);
   if (cached) return cached;
   const [method, pattern] = action.http;
-  const keys = [];
+  const keys: string[] = [];
   const body = pattern
     .split('/')
     .map((seg) => {
@@ -131,30 +190,62 @@ export function compileRoute(action) {
       return '([^/]+)';
     })
     .join('/');
-  const compiled = { method, keys, regex: new RegExp('^' + body + '$') };
+  const compiled: CompiledRoute = { method, keys, regex: new RegExp('^' + body + '$') };
   ROUTE_CACHE.set(action, compiled);
   return compiled;
 }
 
 // 命令表的一行。`routes`、`help`、`bootstrap` 共用它，因此几张表必然同源同长——
 // 面板底部的「CLI 等价」提示用的也是这个形状（经 /api/bootstrap 下发）。
-// 放在 spec.js 是因为它纯粹是「action 声明 → 一行文本」，没有任何运行期状态。
-export function entryOf(c) {
+// 放在 spec.ts 是因为它纯粹是「action 声明 → 一行文本」，没有任何运行期状态。
+export function entryOf(c: AnyAction): {
+  id: string;
+  module: string;
+  command: string;
+  usage: string;
+  http: { method: string; path: string } | null;
+  summary?: string;
+} {
   return {
     id: c.id,
     module: c.module || 'platform',
-    command: 'nx-kv ' + cliPathsOf(c)[0].join(' '),
+    command: APP_NAME + ' ' + cliPathsOf(c)[0]!.join(' '),
     usage: usageOf(c),
     http: c.http ? { method: c.http[0], path: c.http[1] } : null,
     summary: c.summary,
   };
 }
 
+// ---- zod 通道的用法串：从 fields 反推（模板同款） ----
+
+function zodUsageOf(action: { cli?: unknown; fields?: FieldDesc[]; restArg?: string }): string {
+  const fields = action.fields ?? [];
+  const [path] = cliPathsOf(action);
+  const parts: string[] = [APP_NAME, ...(path || [])];
+
+  for (const f of fields.filter((x) => x.positional)) {
+    parts.push(f.required ? `<${f.name}>` : `[${f.name}]`);
+  }
+  if (action.restArg) parts.push(`<${action.restArg}...>`);
+  for (const f of fields.filter((x) => !x.positional)) {
+    if (f.kind === 'boolean') {
+      parts.push(f.required ? `--${f.name}` : `[--${f.name}]`);
+      continue;
+    }
+    const hint = f.enumValues?.length ? f.enumValues.join('|') : f.kind === 'raw' ? f.name : f.kind;
+    const token = `--${f.name} <${hint}>`;
+    parts.push(f.required ? token : `[${token}]`);
+  }
+  return parts.join(' ');
+}
+
 // ---- 用法串生成：从声明反推，help 因此不可能与实际命令脱节 ----
 
-export function usageOf(action) {
+export function usageOf(action: AnyAction): string {
+  if (action.channel === 'zod') return zodUsageOf(action);
+
   const [path] = cliPathsOf(action);
-  const parts = ['nx-kv', ...path];
+  const parts: string[] = [APP_NAME, ...(path || [])];
 
   for (const a of argSpecsOf(action)) {
     const label = a.rest ? `${a.name}...` : a.name;
@@ -162,8 +253,8 @@ export function usageOf(action) {
   }
 
   // 出现在 rest flag 之后的 flag，都渲染进同一个括号里 —— 它们在命令行上
-  // 也是「同一片尾部」，必须整体后置（见 spec.js 顶部 restFlagNames 的说明）。
-  let trailing = [];
+  // 也是「同一片尾部」，必须整体后置（见 restFlagNames 的说明）。
+  let trailing: string[] = [];
   for (const f of flagSpecsOf(action)) {
     if (f.type === 'boolean') {
       const token = `--${f.name}`;

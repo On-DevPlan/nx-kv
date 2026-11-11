@@ -3,7 +3,25 @@
 > B 序列 · 架构之三。回答「一条 action 怎么写、CLI 与 HTTP 怎么保持一致、什么会被测试拦住」。
 > 全量入口清单见 [[B02-action注册全表]]。
 
-## 1. 一条 action 的形状
+## 0. 两种声明形态（迁移期并存）
+
+| 形态 | 位置 | 契约 | 适用 |
+|---|---|---|---|
+| **legacy** | `src/modules/<id>/index.js`（plain-object） | `flags` 表 + `applySpec` 强转 | 存量模块（11 个），只维护不扩张 |
+| **模板形态** | `src/modules/<id>/index.ts`（ModuleBase 子类）+ `actions/<名>.ts` | **zod schema 即契约**（`@action` 装饰器） | 新增 / 正在迁移的模块（`system` 已迁移） |
+
+两通道由 `runtime/registry.ts` 的 Registry 同时装载，`runtime/cli.ts`（CliApp）与
+`runtime/api.ts`（ApiRouter）对通道无感：
+
+- legacy：token 扫描 → `applySpec`（flags 表强转 + 必填/枚举校验）
+- zod 通道：token 扫描 → `normalizeCliValue` 归一化 → `parseZodInput`（zod 校验）
+
+**新 action 一律走模板形态**；一条 action 一个文件 `actions/<名>.ts`，
+契约常量放同域 `schemas.ts`（命名 `<camelCase(actionId)>Input`），
+类清单由 `pnpm gen:actions` 扫目录生成到 `actions/_manifest.generated.ts`——
+**模块 index.ts 不手工列举 action**（加一条 action = 新建一个文件 + 跑一次 `pnpm gen`）。
+
+## 1. 一条 action 的形状（legacy 形态）
 
 ```js
 {
@@ -72,7 +90,7 @@ flags: {
 
 ## 3. CLI 与 HTTP 的一致性
 
-- CLI 的 `--flag` 与 HTTP 的 query/body **共用同一套**强转、默认值与校验（`src/runtime/spec.js` 的 `applySpec`）。
+- CLI 的 `--flag` 与 HTTP 的 query/body **共用同一套**强转、默认值与校验（`src/runtime/spec.ts` 的 `applySpec`）。
 - 未声明的键原样透传（HTTP body 可能带界面用的额外字段）；CLI 不会凭空产生。
 - **参数错误是对外契约**：报错必须以 `用法:` + 完整用法串开头（`spec.js` 的 `inputError` 自动生成）。内置 skill 的 agent 靠这个前缀判断「参数错 → 停下来问人」，不要手写简化报错。
 - 用法串由声明反推（`usageOf`），所以 `help` 不可能与实际命令脱节；`--flag` 的占位符优先用 `enum` 展开，其次 `hint`，最后才退回 flag 名。
@@ -103,7 +121,7 @@ flags: {
 
 ## 6. 两层校验
 
-### 装载期（`src/runtime/registry.js`）
+### 装载期（`src/runtime/registry.ts`）
 
 见 [[B02-action注册全表]] §4 的 7 条。
 
@@ -119,7 +137,7 @@ flags: {
 
 ## 7. CLI 侧的命令匹配
 
-`src/runtime/cli.js` 的 `resolveCommand`：把声明路径与 argv 前缀**逐 token** 比较，选**最长匹配**。
+`src/runtime/cli.ts` 的 `resolveCommand`：把声明路径与 argv 前缀**逐 token** 比较，选**最长匹配**。
 
 - 逐 token 比对是必需的——有些命令路径本身就含 flag（`skill install --list` 是「列出内置包」而非「安装」）。
 - 最长优先让 `['skill','central','add']` 压过 `['skill','central']`，子命令与别名因此共存。

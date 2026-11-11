@@ -4,6 +4,7 @@
 // 把「谁可以依赖谁」写成机器可检查的规则。架构意图一旦只写在文档里，
 // 就会随提交次数慢慢衰减；写成 lint 规则则会当场拦下。
 import { defineConfig } from 'eslint/config';
+import tseslint from 'typescript-eslint';
 
 const BASE_RULES = {
   'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
@@ -13,6 +14,39 @@ const BASE_RULES = {
   'no-var': 'error',
   'no-console': 'off', // CLI 工具，输出就是产品
 };
+
+// TS 文件的基础规则：unused 检查交给 @typescript-eslint（认得出类型层的用法，
+// no-unused-vars 的 JS 版会把「参数声明了类型但没读」误报）；no-undef 交给 tsc。
+const TS_BASE_RULES = {
+  '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+  eqeqeq: ['error', 'smart'],
+  'prefer-const': 'error',
+  'no-var': 'error',
+  'no-console': 'off',
+};
+
+// TS 专属规则的文件范围（typescript-eslint 的部分推荐条目不带 files，
+// 展开前必须补上，否则会误伤存量 .js/.jsx）。
+const TS_FILES = ['**/*.{ts,tsx,mts,cts}'];
+
+// runtime 的**装配层**（模块不得 import：registry → modules → runtime → registry 会成环）。
+// runtime 的类型/装饰器/容器层不在此列——模板形态下模块必须 import 它们。
+const RUNTIME_ASSEMBLY_BAN = [
+  '../../runtime/cli.js',
+  '../../runtime/cli.ts',
+  '../../runtime/registry.js',
+  '../../runtime/registry.ts',
+  '../../runtime/server.js',
+  '../../runtime/server.ts',
+  '../../runtime/api.js',
+  '../../runtime/api.ts',
+  '../../runtime/spec.js',
+  '../../runtime/spec.ts',
+  '../../runtime/help.js',
+  '../../runtime/help.ts',
+  '../../runtime/codegen.js',
+  '../../runtime/codegen.ts',
+];
 
 // 清单定位的硬约束，写成 lint 规则让它在编辑器和 CI 里立刻拦下。
 //
@@ -37,7 +71,7 @@ const TODO_NO_ID_LOOKUP = [
 export default defineConfig([
   {
     // dist/** 因带斜杠被锚定在仓库根，嵌套的构建产物目录要显式列出
-    ignores: ['src/web/public/**', 'src/web/frontend/dist/**', 'node_modules/**', '.tool/**', '.claude/**', '.workbuddy/**', 'plan/**', 'dist/**'],
+    ignores: ['src/web/public/**', 'src/web/frontend/dist/**', 'node_modules/**', '.tool/**', '.claude/**', '.workbuddy/**', 'plan/**', 'dist/**', 'temp/**'],
   },
   {
     files: ['**/*.{js,mjs,jsx}'],
@@ -49,9 +83,31 @@ export default defineConfig([
     rules: BASE_RULES,
   },
 
+  // ---- TypeScript：typescript-eslint 推荐集 + TS 版基础规则 ----
+  //
+  // 不开 type-aware 规则（那需要 parserOptions.project，lint 会慢一个量级）；
+  // 类型正确性由 `pnpm typecheck`（tsc -b，strict）把关，这里只管语法层。
+  //
+  // ⚠️ recommended 里有两个条目**不带 files**（base / recommended 本身）——
+  // 直接展开会让 TS 专属规则跑到 .js/.jsx/.mjs 上（存量前端代码会被
+  // @typescript-eslint/no-unused-expressions 之类误伤）。这里给它们补上
+  // TS 专属的 files 范围，TS 用推荐集、JS 继续用 BASE_RULES。
+  ...tseslint.configs.recommended.map((c) => (c.files ? c : { ...c, files: TS_FILES })),
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: TS_BASE_RULES,
+  },
+  {
+    // codegen 产物：生成物不追求「手写级」整洁（长 import 块、必要的类型断言）
+    files: ['**/*.generated.ts'],
+    rules: {
+      '@typescript-eslint/no-unnecessary-type-parameters': 'off',
+    },
+  },
+
   // ---- todo 模块：禁止按 id 定位 ----
   {
-    files: ['src/modules/todo/**/*.{js,jsx}'],
+    files: ['src/modules/todo/**/*.{js,jsx,ts,tsx}'],
     rules: { 'no-restricted-syntax': ['error', ...TODO_NO_ID_LOOKUP] },
   },
 
@@ -59,7 +115,7 @@ export default defineConfig([
   {
     // core 是零业务语义的基础层：常量、存储、git、diff、文件树、错误。
     // 它一旦依赖上层，复用性就没了——而这些正是别的项目要照搬的部分。
-    files: ['src/core/**/*.js'],
+    files: ['src/core/**/*.{js,ts}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -76,8 +132,8 @@ export default defineConfig([
   },
   {
     // 功能域模块之间禁止互相依赖。需要共享的东西下沉到 core/。
-    // 唯一的只读例外是 settings（基础模块），故不在禁列。
-    files: ['src/modules/**/*.js'],
+    // 唯一的只读例外是 system（聚合模块），单独在下面放开。
+    files: ['src/modules/**/*.{js,ts}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -97,8 +153,16 @@ export default defineConfig([
             {
               // 反向同理：registry → modules → runtime → registry 会成环。
               // 需要运行期数据（命令表之类）时，由 runtime 传给模块的纯函数，而不是模块去拿。
-              group: ['../../runtime/**', '../runtime/**'],
-              message: '模块不得依赖 runtime（会成环）：运行期数据由 runtime 注入模块的纯函数。',
+              //
+              // 例外：**runtime 的类型/装饰器/容器层**（types/module、action-base、
+              // action-decorator、container）是模板形态的公共契约，模块按模板写就得 import
+              // 它们（ModuleBase 基类、@action 装饰器、IoC 容器）。它们**不 import
+              // registry**，所以不成环——禁的是 runtime 的**装配层**（cli / registry /
+              // server / api / spec / help / codegen）。
+              group: RUNTIME_ASSEMBLY_BAN,
+              message:
+                '模块不得依赖 runtime 的装配层（会成环）：只能用 runtime 的类型/装饰器/容器层' +
+                '（types/module、action-base、action-decorator、container）；运行期数据由 runtime 注入模块的纯函数。',
             },
           ],
           paths: [
@@ -112,7 +176,7 @@ export default defineConfig([
   {
     // 同构纯函数层：Node 与浏览器加载**同一份**代码（附件语法、双链、frontmatter…），
     // 所以它必须零依赖——碰 node: 就进不了浏览器包，碰第三方包就进不了 Node。
-    files: ['src/shared/**/*.js'],
+    files: ['src/shared/**/*.{js,ts}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -130,8 +194,8 @@ export default defineConfig([
   {
     // system 是刻意的聚合模块（bootstrap 要一次拿齐各模块状态）：放开「模块互依」，
     // 其余边界照旧 —— 它曾经靠 `await import('../../runtime/cli.js')` 拿命令表，
-    // 那正是这条规则要拦的形状（现在改成 runtime 把表传给 routes 的纯函数）。
-    files: ['src/modules/system/**/*.js'],
+    // 那正是这条规则要拦的形状（现在改成 core 快照格子传表给 routes 的纯函数）。
+    files: ['src/modules/system/**/*.{js,ts}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -142,8 +206,10 @@ export default defineConfig([
               message: '后端模块不得 import 前端代码。',
             },
             {
-              group: ['../../runtime/**', '../runtime/**'],
-              message: '模块不得依赖 runtime（会成环）。',
+              group: RUNTIME_ASSEMBLY_BAN,
+              message:
+                '模块不得依赖 runtime 的装配层（会成环）：只能用 runtime 的类型/装饰器/容器层；' +
+                '运行期数据由 runtime 注入模块的纯函数。',
             },
           ],
           paths: [
@@ -157,7 +223,7 @@ export default defineConfig([
   {
     // 前端：这条规则的价值最高——把 Node 侧代码 import 进视图，
     // Vite 会把 node: 内置模块一起打进浏览器包，构建期报错或运行期炸掉。
-    files: ['src/web/frontend/**/*.{js,jsx}'],
+    files: ['src/web/frontend/**/*.{js,jsx,ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -181,6 +247,16 @@ export default defineConfig([
     },
   },
 
+  {
+    // 生成的 typed client 例外：它 type-only 引后端 schema 与 action 类
+    // （类型契约的单一来源），`import type` 在编译期被擦除——浏览器包里
+    // 不会有任何后端代码，node: 内置模块也就进不去。
+    // ESLint 的 no-restricted-imports 分不清 type import 与值 import，所以在这
+    // 一处显式豁免（文件是 codegen 产物，手改会被下次生成覆盖）。
+    files: ['src/web/frontend/api/client.generated.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+
   // ---- 前端：打开 no-undef ----
   //
   // 为什么单独开：全局 `no-undef` 是关掉的（浏览器/Node 全局混用），
@@ -194,7 +270,7 @@ export default defineConfig([
   // 下面这份全局表就是浏览器 + ES2024 的交集，不多不少；
   // 装了 globals 包也省不掉这份"白名单"——前端自己知道该用哪些全局。
   {
-    files: ['src/web/frontend/**/*.{js,jsx}'],
+    files: ['src/web/frontend/**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
       globals: {
         // 浏览器

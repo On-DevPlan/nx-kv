@@ -1,5 +1,5 @@
 // Vite 配置：前端源码在 src/web/frontend/，构建产物输出到 src/web/public/。
-// server.js 只服务 public/（静态 + /api），对构建工具零感知——发布产物与开发模式共用同一入口。
+// server.ts 只服务该目录（静态 + /api），对构建工具零感知——发布产物与开发模式共用同一入口。
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -13,10 +13,15 @@ const FRONTEND_ASSET = /\.(jsx?|mjs|cjs|tsx?|css|map|svg|png|jpe?g|webp|ico|woff
 
 // 返回真值表示「这个请求该由 Vite 自己服务」，返回 undefined 表示「交给代理」。
 // 导出是为了单测能直接钉住它——这条规则一旦被改坏，dev 模式会整页白屏。
-export function shouldServeLocally(url) {
-  const path = String(url || '').split('?')[0];
+export function shouldServeLocally(url: string | undefined): string | undefined {
+  const path = String(url || '').split('?')[0]!;
   return FRONTEND_ASSET.test(path) ? path : undefined;
 }
+
+// 后端端口：默认 7877（core/paths.ts 的 DEFAULT_PORT 同源），
+// dev 脚本会在端口被占时改用别的端口——代理目标必须跟着后端**实际监听**的端口走。
+// 写死 7877 的话，dev 前端会去连占用那个端口的别的服务：页面能开、数据全错。
+const BACKEND_PORT = Number(process.env.NX_KV_PORT) || 7877;
 
 export default defineConfig({
   root: 'src/web/frontend',
@@ -26,10 +31,10 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: 5181,
+    port: Number(process.env.NX_KV_VITE_PORT) || 5181,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:7877',
+        target: `http://127.0.0.1:${BACKEND_PORT}`,
         bypass: (req) => shouldServeLocally(req.url),
       },
     },

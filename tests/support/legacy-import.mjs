@@ -9,7 +9,7 @@ import { createTestStore } from './test-store.mjs';
 
 export const execFileAsync = promisify(execFile);
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const BIN = join(ROOT, 'bin', 'cli.mjs');
+export const BIN = join(ROOT, 'bin', 'kv.mjs');
 export const sha256 = (s) => createHash('sha256').update(String(s), 'utf8').digest('hex');
 
 /** 建一个"legacy 数据已就位、库还没建"的 store，然后跑导入。 */

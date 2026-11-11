@@ -1,28 +1,33 @@
 {
   "name": "nx-kv",
-  "version": "0.46.0",
+  "version": "0.47.0",
   "description": "nx-kv — KV 清单管理中枢（远程）+ 本机本地任务队列（localtask）：serve 驱动 CLI 与 Web 面板，同源同构，附带可安装 skill 供 agent 提交 / 领取 / 阻塞接收任务",
   "type": "module",
   "bin": {
-    "nx-kv": "bin/cli.mjs"
+    "nx-kv": "bin/kv.mjs"
   },
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js"
   },
   "scripts": {
-    "build": "vite build && node scripts/link-local.mjs --auto",
-    "dev": "vite",
-    "dev:serve": "node bin/cli.mjs serve --no-open",
-    "start": "pnpm run build && node bin/cli.mjs serve",
+    "gen:actions": "node --import tsx scripts/gen-actions.mjs",
+    "gen:api": "node --import tsx scripts/gen-api-client.mjs",
+    "gen": "pnpm run gen:actions && pnpm run gen:api",
+    "typecheck": "pnpm run gen && tsc -b tsconfig.node.json tsconfig.web.json",
+    "build": "pnpm run gen && tsc -b tsconfig.node.json && vite build && node scripts/link-local.mjs --auto",
+    "dev": "node --import tsx scripts/dev.mjs",
+    "vite": "vite",
+    "dev:serve": "node --import tsx src/runtime/cli.ts serve --no-open",
+    "start": "pnpm run build && node --import tsx src/runtime/cli.ts serve",
     "link:local": "node scripts/link-local.mjs",
     "unlink:local": "node scripts/link-local.mjs --unlink",
     "lint": "eslint . && node scripts/check-tdz.mjs --all && node scripts/check-schema-decisions.mjs && node scripts/check-lines.mjs",
     "check:schema": "node scripts/check-schema-decisions.mjs",
-    "test": "pnpm run lint && pnpm run build && pnpm run test:smoke && pnpm run test:unit",
-    "test:smoke": "node tests/smoke.mjs",
-    "test:unit": "node --test tests/unit/*.test.mjs",
-    "test:db": "node --test tests/unit/db-*.test.mjs"
+    "test": "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:smoke && pnpm run test:unit",
+    "test:smoke": "node --import tsx tests/smoke.mjs",
+    "test:unit": "node --import tsx --test tests/unit/*.test.mjs",
+    "test:db": "node --import tsx --test tests/unit/db-*.test.mjs"
   },
   "packageManager": "pnpm@10.33.0",
   "engines": {
@@ -49,14 +54,21 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.1.1",
     "eslint": "^10.10.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.2",
     "vite": "^8.3.0"
   },
   "dependencies": {
     "flexlayout-react": "0.11.1",
     "handlebars": "^4.7.10",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.7"
   }
 }

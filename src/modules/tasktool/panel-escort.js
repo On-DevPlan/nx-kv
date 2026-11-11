@@ -29,7 +29,7 @@ export function deepLinkUrl(key, port) {
 
 // 本仓库/已安装包的 CLI 入口（src/modules/tasktool/ 上三级到包根）。
 function binCliPath() {
-  return fileURLToPath(new URL('../../../bin/cli.mjs', import.meta.url));
+  return fileURLToPath(new URL('../../../bin/kv.mjs', import.meta.url));
 }
 
 // 确保常驻主面板可用：已在运行直接复用；否则后台 detached 拉起一个独立

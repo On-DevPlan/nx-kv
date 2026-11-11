@@ -1,0 +1,49 @@
+{
+  "name": "",
+  "path": [],
+  "action": null,
+  "children": [
+    {
+      "name": "bootstrap",
+      "path": [
+        "bootstrap"
+      ],
+      "action": {
+        "id": "system.bootstrap",
+        "module": "system",
+        "summary": "聚合上下文：版本 / 登录态 / 工作空间 / 命令表",
+        "usage": "bootstrap",
+        "http": "GET /api/bootstrap"
+      },
+      "children": []
+    },
+    {
+      "name": "health",
+      "path": [
+        "health"
+      ],
+      "action": {
+        "id": "system.health",
+        "module": "system",
+        "summary": "健康检查（本机配置 + 后端可达性）",
+        "usage": "health",
+        "http": "GET /api/health"
+      },
+      "children": []
+    },
+    {
+      "name": "routes",
+      "path": [
+        "routes"
+      ],
+      "action": {
+        "id": "system.routes",
+        "module": "system",
+        "summary": "命令 ↔ 路由对照表（--module 过滤；--http 反查命令）",
+        "usage": "routes",
+        "http": null
+      },
+      "children": []
+    }
+  ]
+}

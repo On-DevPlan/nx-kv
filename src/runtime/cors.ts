@@ -1,6 +1,6 @@
 // 跨域（CORS）策略：面板对外来请求的态度。
 //
-// 为什么不再按 Origin 拒绝写请求（任务 #57）：
+// 为什么不按 Origin 拒绝写请求（任务 #57）：
 // 浏览器对 POST/PUT/DELETE **一律带 Origin 头，哪怕请求与页面同源**。
 // 面板原先那道校验是「Origin 的主机名必须是 127.0.0.1/localhost」——
 // 走内网穿透（frp / cloudflared / ngrok）从手机或外网访问时，Origin 变成隧道
@@ -23,12 +23,31 @@ const DEFAULT_ALLOWED_METHODS = 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS';
 const DEFAULT_ALLOWED_HEADERS = 'content-type,authorization,x-requested-with';
 const PREFLIGHT_MAX_AGE = '600';
 
+/** 请求头里我们关心的形状（Node 的 IncomingHttp.headers 是 (string|string[]|undefined)）。 */
+export type ReqHeaders = Record<string, string | string[] | undefined>;
+
+/** 极简请求形状：cors 只看 method 与 headers。 */
+export interface CorsRequest {
+  method?: string;
+  headers?: ReqHeaders;
+}
+
+/** 放行策略：all = 放行全部；否则精确/通配名单。 */
+export interface AllowOrigin {
+  all: boolean;
+  list: string[];
+}
+
+function header(req: CorsRequest | undefined, name: string): string {
+  const v = req?.headers?.[name];
+  return Array.isArray(v) ? (v[0] ?? '') : String(v ?? '');
+}
+
 /**
  * 解析 --allow-origin 规格。
- * @param {string|undefined|null} spec 逗号分隔的来源列表；'*' 或缺省 = 放行全部
- * @returns {{all: boolean, list: string[]}} 放行策略
+ * @param spec 逗号分隔的来源列表；'*' 或缺省 = 放行全部
  */
-export function parseAllowOrigin(spec) {
+export function parseAllowOrigin(spec: string | undefined | null): AllowOrigin {
   if (spec === undefined || spec === null) return { all: true, list: [] };
   const raw = String(spec).trim();
   if (!raw || raw === '*') return { all: true, list: [] };
@@ -44,33 +63,29 @@ export function parseAllowOrigin(spec) {
 /**
  * 名单项匹配：支持通配（https://*.example.com）。只有通配是「宽松」的语义，
  * 其余字符按字面量比对。
- * @param {string} pattern 名单项
- * @param {string} origin 实际来源
- * @returns {boolean} 是否命中
  */
-function patternMatches(pattern, origin) {
+function patternMatches(pattern: string, origin: string): boolean {
   if (!pattern.includes('*')) return pattern === origin;
   const parts = pattern.split('*');
   let rest = origin;
   for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
+    const part = parts[i]!;
     if (!part) continue;
     const idx = rest.indexOf(part);
     if (idx === -1) return false;
     if (i === 0 && idx !== 0) return false; // 首段必须贴在开头
     rest = rest.slice(idx + part.length);
   }
-  const tail = parts[parts.length - 1];
+  const tail = parts[parts.length - 1]!;
   return !tail || origin.endsWith(tail);
 }
 
 /**
  * 来源是否在放行名单里。
- * @param {string} origin 请求的 Origin 头
- * @param {{all: boolean, list: string[]}} allow 放行策略
- * @returns {boolean} 是否放行
+ * @param origin 请求的 Origin 头
+ * @param allow 放行策略
  */
-export function originAllowed(origin, allow) {
+export function originAllowed(origin: string, allow: AllowOrigin): boolean {
   if (!origin) return false;
   if (!allow || allow.all) return true;
   const o = String(origin).replace(/\/+$/, '');
@@ -79,13 +94,11 @@ export function originAllowed(origin, allow) {
 
 /**
  * 是否是 CORS 预检请求（OPTIONS + Access-Control-Request-Method）。
- * @param {{method?: string, headers: object}} req 原始请求
- * @returns {boolean} 是否预检
  */
-export function isPreflight(req) {
+export function isPreflight(req: CorsRequest | undefined): boolean {
   return (
     String((req && req.method) || '').toUpperCase() === 'OPTIONS' &&
-    !!(req && req.headers && req.headers['access-control-request-method'])
+    !!header(req, 'access-control-request-method')
   );
 }
 
@@ -94,12 +107,9 @@ export function isPreflight(req) {
  * 非浏览器客户端（无 Origin）不加头；来源不在名单里也**故意不加** allow-origin
  * ——让浏览器自己拦下这次跨源请求（而不是服务端回 403，那会把「跨源不支持」
  * 和「请求出错」混成一种状态码）。
- * @param {{headers: object}} req 原始请求
- * @param {{all: boolean, list: string[]}} allow 放行策略
- * @returns {Record<string, string>} CORS 响应头
  */
-export function corsHeaders(req, allow) {
-  const origin = req && req.headers ? req.headers.origin : '';
+export function corsHeaders(req: CorsRequest | undefined, allow: AllowOrigin): Record<string, string> {
+  const origin = header(req, 'origin');
   if (!origin) return { vary: 'Origin' };
   if (!originAllowed(origin, allow)) return { vary: 'Origin' };
   return {
@@ -110,12 +120,9 @@ export function corsHeaders(req, allow) {
 
 /**
  * 预检响应头：回显浏览器这次请求的方法与请求头（只回该次预检涉及的）。
- * @param {{headers: object}} req 原始请求
- * @param {{all: boolean, list: string[]}} allow 放行策略
- * @returns {Record<string, string>} 预检响应头
  */
-export function preflightHeaders(req, allow) {
-  const requested = req && req.headers ? req.headers['access-control-request-headers'] : '';
+export function preflightHeaders(req: CorsRequest | undefined, allow: AllowOrigin): Record<string, string> {
+  const requested = header(req, 'access-control-request-headers');
   return {
     ...corsHeaders(req, allow),
     'access-control-allow-methods': DEFAULT_ALLOWED_METHODS,

@@ -6,13 +6,13 @@
 ## 1. 进程链路
 
 ```text
-bin/cli.mjs
+bin/kv.mjs
   ├─ checkNodeVersion()                    ← 必须在任何业务 import 之前
   │    （否则用户看到 ERR_UNKNOWN_BUILTIN_MODULE + 栈，完全指不出「Node 太老」）
-  └─ dynamic import → src/runtime/cli.js
+  └─ dynamic import → src/runtime/cli.ts
        └─ resolveCommand(argv) → cmdServe(ctx)
-            ├─ src/runtime/server.js  startServer()
-            ├─ src/core/serve-port.js resolvePortConflict() / findFreePort() / probePanel()
+            ├─ src/runtime/server.ts  startServer()
+            ├─ src/core/serve-port.ts resolvePortConflict() / findFreePort() / probePanel()
             ├─ src/core/open.js      openBrowser()
             └─ src/modules/localtask/panel-guard.js  空闲自释放看门狗（仅 --auto-exit）
 ```
@@ -21,7 +21,7 @@ bin/cli.mjs
 
 | flag | 说明 |
 |---|---|
-| `--port N` | 端口（默认 `7877`，`src/core/paths.js` 的 `DEFAULT_PORT`） |
+| `--port N` | 端口（默认 `7877`，`src/core/paths.ts` 的 `DEFAULT_PORT`） |
 | `--no-open` | 不自动开浏览器（本次） |
 | `--allow-origin <list>` | 跨域来源白名单（逗号分隔，支持 `*` 通配）；缺省放行全部 |
 | `--auto-exit` | 面板关闭且无等待中的主题后自动退出（`wait` 临时拉起 serve 时用） |
@@ -31,7 +31,7 @@ bin/cli.mjs
 
 主机固定 `127.0.0.1`（本机工具）。
 
-## 2. 请求分派（`src/runtime/server.js`）
+## 2. 请求分派（`src/runtime/server.ts`）
 
 `node:http` 零依赖服务器，只做两件事：发静态面板文件 + 把 `/api/*` 交给路由层。
 
@@ -54,7 +54,7 @@ bin/cli.mjs
 - 越界校验：解析成绝对路径后必须仍落在 `PUBLIC_DIR` 内（比对解析结果，而不是剥离 `..` 字面量——后者挡不住编码变形）。越界 → 403。
 - MIME 表覆盖 html/js/mjs/css/json/svg/png/jpg/webp/ico/woff2/map；`cache-control: no-store`。
 
-## 3. HTTP 路由（`src/runtime/api.js`）
+## 3. HTTP 路由（`src/runtime/api.ts`）
 
 **这里没有手写路由**——每条路由都来自某个模块的 action 声明，所以「面板上有按钮、CLI 里没命令」在结构上不可能发生。
 
@@ -98,7 +98,7 @@ ACTIONS.filter(a => a.http)
 
 **安全边界**：面板只绑 `127.0.0.1`，是本机工具。一旦经内网穿透暴露到公网，**真正的边界是隧道自身的访问控制**（访问密码 / basic auth / IP 白名单）——任何非浏览器客户端都能直接调 API，从头到尾不经过 Origin 校验。想收紧来源用 `--allow-origin`。
 
-## 4. CORS（`src/runtime/cors.js`）
+## 4. CORS（`src/runtime/cors.ts`）
 
 | 函数 | 作用 |
 |---|---|
@@ -111,7 +111,7 @@ ACTIONS.filter(a => a.http)
 - 无 Origin 的请求**不加** CORS 头（只 `vary: Origin`）。
 - 来源不在名单里**故意不加** `allow-origin`——让浏览器自己拦下这次跨源请求，而不是服务端回 403（那会把「跨源不支持」和「请求出错」混成一种状态码）。
 
-## 5. 端口协商（`src/core/serve-port.js`）
+## 5. 端口协商（`src/core/serve-port.ts`）
 
 这份文件在所有 nx-xx 面板之间**逐字节相同**——改一处就要全量同步，否则「口径统一」这件事本身会悄悄分叉。
 
@@ -139,7 +139,7 @@ ACTIONS.filter(a => a.http)
 | `groups` / `groupsError` | 云端工作空间列表；**拉取失败不致命**（未登录时面板仍应能打开并提示去登录） |
 | `defaultPort` | 默认端口 |
 | `projectRoot` | serve 进程的工作目录（仓库页「扫描」的缺省根目录用它——面板进程 cwd 即宿主项目） |
-| `commands` | 命令表快照（`core/command-table.js`），供面板显示「CLI 等价」提示；没有快照时给空数组，面板照常打开 |
+| `commands` | 命令表快照（`core/command-table.ts`），供面板显示「CLI 等价」提示；没有快照时给空数组，面板照常打开 |
 
 ## 7. 空闲自释放（`--auto-exit`）
 
@@ -163,7 +163,7 @@ ACTIONS.filter(a => a.http)
 1. 新接口 = **新 action**（`cli` 必有），不要在 `api.js` 手写路由（那会绕过 CLI 等价与注册期自检）。
 2. 改路由匹配 → 记住「字面量优先」的排序规则，不要靠声明顺序。
 3. 改 CORS → 别把「拒绝跨源写请求」加回来（见 §3 的事故说明）。
-4. 改端口 → `core/serve-port.js` 是跨项目共享文件，改一处要全量同步。
+4. 改端口 → `core/serve-port.ts` 是跨项目共享文件，改一处要全量同步。
 5. 改完实际打开面板验证（构建产物要先 `pnpm build`；`src/web/public` 是 gitignore 的构建结果）。
 6. 面板改动的端到端验证可用 `nx-kv-panel-probe` skill（独立 store + 临时端口 + Playwright 探针，绝不碰用户真实队列）。
 
@@ -171,13 +171,13 @@ ACTIONS.filter(a => a.http)
 
 | 文件 | 作用 |
 |---|---|
-| `bin/cli.mjs` | Node 版本硬拦 + 入口 |
-| `src/runtime/server.js` | HTTP 服务器、静态文件、请求分派 |
-| `src/runtime/api.js` | 路由编译与排序、body 读取、错误映射 |
-| `src/runtime/cors.js` | 跨域策略 |
-| `src/runtime/spec.js` | 参数强转（CLI/HTTP 共用）、路由正则、用法串 |
-| `src/core/serve-port.js` | 端口协商、探测、自动开浏览器策略 |
-| `src/core/command-table.js` | 命令表快照格子 |
+| `bin/kv.mjs` | Node 版本硬拦 + 入口 |
+| `src/runtime/server.ts` | HTTP 服务器、静态文件、请求分派 |
+| `src/runtime/api.ts` | 路由编译与排序、body 读取、错误映射 |
+| `src/runtime/cors.ts` | 跨域策略 |
+| `src/runtime/spec.ts` | 参数强转（CLI/HTTP 共用）、路由正则、用法串 |
+| `src/core/serve-port.ts` | 端口协商、探测、自动开浏览器策略 |
+| `src/core/command-table.ts` | 命令表快照格子 |
 | `src/core/open.js` | 打开浏览器 |
 | `src/modules/system/index.js` | `bootstrap` / `health` |
 | `src/modules/system/routes.js` | `routes` 的纯逻辑 |

@@ -17,7 +17,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const BIN = join(ROOT, 'bin', 'cli.mjs');
+const BIN = join(ROOT, 'bin', 'kv.mjs');
 const execFileAsync = promisify(execFile);
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-review-'));

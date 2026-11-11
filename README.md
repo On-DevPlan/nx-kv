@@ -34,16 +34,22 @@
 ```bash
 pnpm install
 
-# 开发模式（需要两个终端）
-pnpm run dev:serve    # 终端 1：后端 :7877
-pnpm run dev          # 终端 2：Vite :5181，/api 代理到 7877
+# 开发模式（一条命令：vite + 后端一起起，ctrl-c 一起退）
+pnpm dev              # vite :5181 + 后端 :7877，/api 自动代理到后端实际端口
+
+# 只想跑其中一半时
+pnpm run dev:serve    # 只起后端 :7877
+pnpm run vite         # 只起 Vite :5181（等价于 npx vite）
 
 # 生产模式
 pnpm start            # 构建 + 起面板
 
-# 校验：lint + 构建 + 94 项端到端冒烟 + 33 项单元/一致性测试
+# 校验：lint + 类型检查 + 构建 + 194 项端到端冒烟 + 894 项单元/一致性测试
 pnpm test
 ```
+
+> 代码是 TypeScript（strict）：`pnpm typecheck` 跑 `tsc -b`，
+> `pnpm gen` 重新生成 action 清单与前端 typed client（改了 action 声明就要跑）。
 
 冒烟测试**对着假后端跑**（`tests/fake-backend.mjs`），不会碰生产服务器上的真实数据。
 

@@ -33,7 +33,7 @@ import { nowMs } from './db/time.js';
 export const CONFIG_PATH = join(homedir(), '.nx-kv', 'config.json');
 
 // 测试与多实例覆盖：NX_KV_CONFIG 环境变量优先，其次是 NX_KV_STORE 所在目录
-export function configPathFromEnv() {
+export function configPathFromEnv(): string {
   return process.env.NX_KV_CONFIG || CONFIG_PATH;
 }
 
@@ -42,15 +42,33 @@ export const DEFAULT_BASE_URL = 'http://192.0.2.47:8988';
 // ── 显式白名单（#82 的教训：不列出的字段两边都不写）────────────────────
 
 /** 留在 config.json 的字段（凭据 + 会话身份）。config.json 的键集合精确等于它。 */
-export const CREDENTIAL_KEYS = Object.freeze(['baseUrl', 'token', 'email', 'userId', 'groupId']);
+export const CREDENTIAL_KEYS = Object.freeze(['baseUrl', 'token', 'email', 'userId', 'groupId'] as const);
 
 /** 进 settings 表（`app.*` 前缀）的偏好字段。 */
-export const PREF_KEYS = Object.freeze(['autoSyncAttachments', 'attachmentsDir', 'gitRepoRoot', 'gitDevRoot']);
+export const PREF_KEYS = Object.freeze([
+  'autoSyncAttachments',
+  'attachmentsDir',
+  'gitRepoRoot',
+  'gitDevRoot',
+] as const);
 
 /** settings 表里偏好字段的键名。 */
 export const APP_SETTING_KEYS = Object.freeze(PREF_KEYS.map((k) => 'app.' + k));
 
-const EMPTY = () => ({
+/** 归一后的本机配置形状（文件 5 项 + settings 偏好）。 */
+export interface AppConfig {
+  baseUrl: string;
+  token: string;
+  email: string;
+  userId: number;
+  groupId: number;
+  autoSyncAttachments: boolean;
+  attachmentsDir: string;
+  gitRepoRoot: string;
+  gitDevRoot: string;
+}
+
+const EMPTY = (): AppConfig => ({
   baseUrl: process.env.NX_KV_BASE_URL || DEFAULT_BASE_URL,
   token: '',
   email: '',
@@ -70,30 +88,31 @@ const EMPTY = () => ({
   gitDevRoot: '',
 });
 
-let cache = null;
+let cache: AppConfig | null = null;
 let cacheMtime = -1;
 
 /** 全量归一（文件 5 项 + settings 偏好合并后跑一次，保证形状与类型稳定）。 */
-function normalize(data) {
+function normalize(data: unknown): AppConfig {
   const base = EMPTY();
   if (!data || typeof data !== 'object') return base;
+  const d = data as Record<string, unknown>;
   return {
-    baseUrl: String(data.baseUrl || base.baseUrl),
-    token: String(data.token || ''),
-    email: String(data.email || ''),
-    userId: Number(data.userId) || 0,
-    groupId: Number(data.groupId) || 0,
-    autoSyncAttachments: data.autoSyncAttachments === true,
-    attachmentsDir: String(data.attachmentsDir || ''),
-    gitRepoRoot: String(data.gitRepoRoot || ''),
-    gitDevRoot: String(data.gitDevRoot || ''),
+    baseUrl: String(d.baseUrl || base.baseUrl),
+    token: String(d.token || ''),
+    email: String(d.email || ''),
+    userId: Number(d.userId) || 0,
+    groupId: Number(d.groupId) || 0,
+    autoSyncAttachments: d.autoSyncAttachments === true,
+    attachmentsDir: String(d.attachmentsDir || ''),
+    gitRepoRoot: String(d.gitRepoRoot || ''),
+    gitDevRoot: String(d.gitDevRoot || ''),
   };
 }
 
 /** 从 settings 表读偏好（每次现读 —— 不缓存，跨进程改设置立刻可见）。 */
-function readPrefs() {
+function readPrefs(): Record<string, unknown> {
   const db = openStore();
-  const prefs = {};
+  const prefs: Record<string, unknown> = {};
   for (const key of APP_SETTING_KEYS) {
     const v = readSettingRaw(db, key);
     if (v !== undefined) prefs[key.slice('app.'.length)] = v;
@@ -102,7 +121,7 @@ function readPrefs() {
 }
 
 /** 把偏好写进 settings 表（一个事务；只写白名单里的字段）。 */
-function writePrefs(next) {
+function writePrefs(next: AppConfig): void {
   const at = nowMs();
   tx(
     (conn) => {
@@ -111,13 +130,13 @@ function writePrefs(next) {
         writeSettingRaw(conn, 'app.' + k, next[k], at);
       }
     },
-    { db: openStore(), mode: 'IMMEDIATE' }
+    { db: openStore(), mode: 'IMMEDIATE' },
   );
 }
 
-export async function loadConfig(explicitPath) {
+export async function loadConfig(explicitPath?: string): Promise<AppConfig> {
   const p = explicitPath || configPathFromEnv();
-  let filePart;
+  let filePart: AppConfig;
   try {
     const st = await fsp.stat(p);
     if (!(cache && cacheMtime === st.mtimeMs)) {
@@ -135,11 +154,11 @@ export async function loadConfig(explicitPath) {
   return normalize({ ...filePart, ...readPrefs() });
 }
 
-export async function saveConfig(next, explicitPath) {
+export async function saveConfig(next: unknown, explicitPath?: string): Promise<AppConfig> {
   const full = normalize(next);
   // ① 文件：只写凭据白名单里的字段（**键集合精确等于 CREDENTIAL_KEYS** ——
   //    偏好进了 settings，再写回文件会让「凭据文件」再次长出业务配置）。
-  const filePart = {};
+  const filePart: Record<string, unknown> = {};
   for (const k of CREDENTIAL_KEYS) filePart[k] = full[k];
   const p = explicitPath || configPathFromEnv();
   await fsp.mkdir(dirname(p), { recursive: true });
@@ -157,14 +176,14 @@ export async function saveConfig(next, explicitPath) {
   return full;
 }
 
-export async function updateConfig(patch) {
+export async function updateConfig(patch: Partial<AppConfig>): Promise<AppConfig> {
   const cur = await loadConfig();
   return saveConfig({ ...cur, ...patch });
 }
 
 // 读配置并要求已登录。所有需要 token 的 action 都先过这里，
 // 报错文案里的「未登录」是 agent 的失败分类锚点（与 kvcli 保持一致）。
-export async function requireAuth() {
+export async function requireAuth(): Promise<AppConfig> {
   const cfg = await loadConfig();
   if (!cfg.token) {
     throw badInput('未登录（先执行 nx-kv auth login <email>）');
@@ -173,7 +192,7 @@ export async function requireAuth() {
 }
 
 // groupId 归一：0 / 负数 / 空 → undefined（不传参，由后端回落默认组）
-export function normalizeGroupId(v) {
+export function normalizeGroupId(v: unknown): number | undefined {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
@@ -186,7 +205,7 @@ export function normalizeGroupId(v) {
  * file 拿它选后端分组与本地附件目录。两处各写一遍的话，一旦有人只改了一处，
  * 就会出现「从 A 组读任务、往 B 组同步附件」—— 这类错不报错，只是静默地对不上。
  */
-export async function resolveGroupId(groupId) {
+export async function resolveGroupId(groupId: unknown): Promise<number | undefined> {
   if (groupId !== undefined && groupId !== null && groupId !== '') return normalizeGroupId(groupId);
   const cfg = await loadConfig();
   return normalizeGroupId(cfg.groupId);

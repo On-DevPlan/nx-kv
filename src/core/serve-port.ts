@@ -25,7 +25,7 @@ export const NO_OPEN_ENV = 'NX_SERVE_NO_OPEN';
 export const PROBE_TIMEOUT_MS = 1500;
 
 /** 真值判定：1 / true / yes / on（大小写不敏感）算开，其他一律算关。 */
-export function isEnvTruthy(value) {
+export function isEnvTruthy(value: unknown): boolean {
   if (value === undefined || value === null) return false;
   const s = String(value).trim().toLowerCase();
   return s === '1' || s === 'true' || s === 'yes' || s === 'on';
@@ -35,10 +35,23 @@ export function isEnvTruthy(value) {
  * 是否允许自动打开浏览器。
  * 优先级：`--no-open` 命令行开关 > NX_SERVE_NO_OPEN 环境变量 > 默认允许。
  */
-export function autoOpenEnabled(flagNoOpen) {
+export function autoOpenEnabled(flagNoOpen: unknown): boolean {
   if (flagNoOpen) return false;
   return !isEnvTruthy(process.env[NO_OPEN_ENV]);
 }
+
+/** /api/bootstrap 的探测结果（面板认领签名：app.name / app.version）。 */
+export interface PanelBootstrap {
+  app?: { name?: string; version?: string };
+  [k: string]: unknown;
+}
+
+interface ProbeResult {
+  data: PanelBootstrap | null;
+  timedOut: boolean;
+}
+
+type FetchHeaders = Record<string, string>;
 
 /**
  * 探一次端口，返回 { data, timedOut }。
@@ -47,11 +60,11 @@ export function autoOpenEnabled(flagNoOpen) {
  * 超时说明端口上可能正是一个应答慢的面板，值得再等一次；
  * 明确不是面板就没有再等的必要。
  */
-async function probePanelOnce(port, host, timeoutMs, headers) {
+async function probePanelOnce(port: number, host: string, timeoutMs: number, headers: FetchHeaders | null): Promise<ProbeResult> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    let res;
+    let res: Response;
     try {
       res = await fetch(`http://${host}:${port}/api/bootstrap`, {
         signal: controller.signal,
@@ -61,10 +74,10 @@ async function probePanelOnce(port, host, timeoutMs, headers) {
       clearTimeout(timer);
     }
     if (!res.ok) return { data: null, timedOut: false };
-    const body = await res.json();
+    const body = (await res.json()) as { data?: PanelBootstrap } | null;
     return { data: (body && body.data) || null, timedOut: false };
   } catch (err) {
-    return { data: null, timedOut: !!(err && err.name === 'AbortError') };
+    return { data: null, timedOut: !!(err && (err as { name?: string }).name === 'AbortError') };
   }
 }
 
@@ -78,7 +91,12 @@ async function probePanelOnce(port, host, timeoutMs, headers) {
  * headers 形参给需要鉴权的项目用（nx-as 的管理面要 Bearer 密钥）；
  * 默认不传，匿名探测。
  */
-export async function probePanel(port, host = '127.0.0.1', timeoutMs = PROBE_TIMEOUT_MS, headers = null) {
+export async function probePanel(
+  port: number,
+  host = '127.0.0.1',
+  timeoutMs: number = PROBE_TIMEOUT_MS,
+  headers: FetchHeaders | null = null,
+): Promise<PanelBootstrap | null> {
   const { data } = await probePanelOnce(port, host, timeoutMs, headers);
   return data;
 }
@@ -87,16 +105,16 @@ export async function probePanel(port, host = '127.0.0.1', timeoutMs = PROBE_TIM
  * 从 start 起逐个试，返回第一个能监听的端口（最多试 50 个）。
  * 用临时 net.Server 探测、立刻关闭；与 startServer 走同一套 EADDRINUSE 判定。
  */
-export function findFreePort(start, host = '127.0.0.1') {
+export function findFreePort(start: number, host = '127.0.0.1'): Promise<number> {
   return new Promise((resolve_, reject) => {
-    const tryPort = (p) => {
+    const tryPort = (p: number): void => {
       if (p > start + 50) {
         reject(new Error(`找不到空闲端口（从 ${start} 起连续 50 个被占）`));
         return;
       }
       const probe = net.createServer();
       probe.once('error', (err) => {
-        if (err && err.code === 'EADDRINUSE') tryPort(p + 1);
+        if (err && (err as NodeJS.ErrnoException).code === 'EADDRINUSE') tryPort(p + 1);
         else reject(err);
       });
       probe.listen(p, host, () => probe.close(() => resolve_(p)));
@@ -105,19 +123,27 @@ export function findFreePort(start, host = '127.0.0.1') {
   });
 }
 
+/** 端口冲突决策：reuse = 复用已有实例；shift = 顺延到空闲端口。 */
+export interface PortDecision {
+  action: 'reuse' | 'shift';
+  port: number;
+  occupant: string | null;
+  existing: PanelBootstrap | null;
+}
+
 /**
  * 端口冲突的统一决策。
  *
  * reuse —— 端口上跑的就是本项目的面板：复用它，不再起第二个进程。
  *          起第二个会让「切项目」变成「切端口」，而用户想看的其实是已经开着的那一个。
  * shift —— 端口被别的东西占着：顺延到下一个空闲端口，再起自己的面板。
- *
- * 返回 { action, port, occupant, existing }：
- *   action   'reuse' | 'shift'
- *   port     reuse 时是原端口；shift 时是下一个空闲端口
- *   occupant 占用者的 app 名（探测不到就是 null）
  */
-export async function resolvePortConflict(port, appName, host = '127.0.0.1', headers = null) {
+export async function resolvePortConflict(
+  port: number,
+  appName: string,
+  host = '127.0.0.1',
+  headers: FetchHeaders | null = null,
+): Promise<PortDecision> {
   let probe = await probePanelOnce(port, host, PROBE_TIMEOUT_MS, headers);
   if (probe.timedOut) {
     // 慢应答的面板也认：再等一次。别把「自己的面板」误判成「别人的服务」，
@@ -134,6 +160,6 @@ export async function resolvePortConflict(port, appName, host = '127.0.0.1', hea
 }
 
 /** 占用者的一句话描述，用于终端提示。探测不到就是「未知服务」。 */
-export function describeOccupant(occupant) {
+export function describeOccupant(occupant: string | null): string {
   return occupant || '未知服务';
 }

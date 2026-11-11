@@ -2,7 +2,7 @@
 // 零业务语义，且刻意不抛错——打不开就算了，调用方已经打印了地址。
 import { spawn } from 'node:child_process';
 
-function open(target) {
+function open(target: string): void {
   try {
     const plat = process.platform;
     if (plat === 'win32') {
@@ -17,10 +17,10 @@ function open(target) {
   }
 }
 
-export function openBrowser(url) {
+export function openBrowser(url: string): void {
   open(url);
 }
 
-export function openPath(dir) {
+export function openPath(dir: string): void {
   open(dir);
 }

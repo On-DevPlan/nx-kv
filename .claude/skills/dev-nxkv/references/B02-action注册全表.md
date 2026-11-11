@@ -9,11 +9,11 @@
 src/modules/<id>/index.js  的 actions[]
             │
             ▼
-   src/runtime/registry.js   MODULES → ACTIONS，装载期自检
+   src/runtime/registry.ts   MODULES → ACTIONS，装载期自检
             │
-            ├─→ src/runtime/cli.js    ALL_COMMANDS → CLI 命令表 + help 文本
-            ├─→ src/runtime/api.js    ACTIONS → HTTP 路由表（compileRoute）
-            └─→ src/core/command-table.js  命令表快照 → /api/bootstrap 下发给面板
+            ├─→ src/runtime/cli.ts    ALL_COMMANDS → CLI 命令表 + help 文本
+            ├─→ src/runtime/api.ts    ACTIONS → HTTP 路由表（compileRoute）
+            └─→ src/core/command-table.ts  命令表快照 → /api/bootstrap 下发给面板
 ```
 
 「Web 上每个操作都有等价 CLI 命令」是**结构性保证**，不是口头约定：一条 action 同时声明 `cli` 与 `http`，二者写在同一处，不可能分叉。
@@ -315,7 +315,7 @@ src/modules/<id>/index.js  的 actions[]
 
 ## 4. 装载期自检（服务一起来就验）
 
-`src/runtime/registry.js` 在 import 阶段逐条检查，**启动瞬间**暴露问题，而不是等某个用户敲到那条命令时才发现：
+`src/runtime/registry.ts` 在 import 阶段逐条检查，**启动瞬间**暴露问题，而不是等某个用户敲到那条命令时才发现：
 
 1. `id` 重复；
 2. action 没有任何 CLI 路径（**每条 action 必须有 `cli`**——保证「Web 上能做的，CLI 都能做」）；
@@ -330,13 +330,13 @@ src/modules/<id>/index.js  的 actions[]
 ## 5. 命令 ↔ 路由反查（核对用）
 
 ```powershell
-node bin/cli.mjs routes                      # 全量对照（157 行：153 action + 4 平台命令）
-node bin/cli.mjs routes --module localtask   # 只看某模块
-node bin/cli.mjs routes --http "POST /api/localtasks/preview"
-node bin/cli.mjs help --json                 # 与 routes 同源同长
+node bin/kv.mjs routes                      # 全量对照（157 行：153 action + 4 平台命令）
+node bin/kv.mjs routes --module localtask   # 只看某模块
+node bin/kv.mjs routes --http "POST /api/localtasks/preview"
+node bin/kv.mjs help --json                 # 与 routes 同源同长
 ```
 
-本表如与 `node bin/cli.mjs routes` 不一致，**以命令输出为准**（代码是唯一真相，本表只是快照）。
+本表如与 `node bin/kv.mjs routes` 不一致，**以命令输出为准**（代码是唯一真相，本表只是快照）。
 
 ## 6. 新增一条 action 要落在哪
 
@@ -344,5 +344,5 @@ node bin/cli.mjs help --json                 # 与 routes 同源同长
 2. 业务函数写进同模块 `service.js`（普通对象入参 / 返回；SQL 与事务不进 action）。
 3. 需要面板入口：前端写视图并在 `src/web/frontend/registry.js` 登记（见 [[D02-页面与组件关系]]）。
 4. 启动自检必须通过（id / CLI / HTTP 不重复、`run` 存在）。
-5. `node bin/cli.mjs routes --module <id>` 能看到新命令。
+5. `node bin/kv.mjs routes --module <id>` 能看到新命令。
 6. 文档同步：`README.md`、`docs/project&projectsCli.md`、`CHANGELOG.md`；命令口径变了再同步 `assets/`。

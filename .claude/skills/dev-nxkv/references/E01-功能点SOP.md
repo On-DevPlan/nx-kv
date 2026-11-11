@@ -25,15 +25,15 @@
 现成命令：
 
 ```powershell
-node bin/cli.mjs routes --module <id>   # 现有命令/路由
-node bin/cli.mjs help --json            # 可解析的命令表
+node bin/kv.mjs routes --module <id>   # 现有命令/路由
+node bin/kv.mjs help --json            # 可解析的命令表
 ```
 
 查数据不要猜：
 
 ```powershell
-node bin/cli.mjs db status
-node bin/cli.mjs db verify
+node bin/kv.mjs db status
+node bin/kv.mjs db verify
 ```
 
 **产出**：一张「入口 → service → repo → 表/设置键 → 前端」的路径图。找不到唯一入口，先停下来讨论，**不要新增重复路径**。
@@ -62,7 +62,7 @@ node bin/cli.mjs db verify
 ## 3. 后端实现（单一入口）
 
 1. **repo 层**：SQL 只写在 `modules/<id>/repo/*.js`；时间统一 `core/db/time.js` 的 `nowMs()`；JSON 列用现成 parse/stringify 辅助。
-2. **service 层**：业务规则、事务边界、错误语义（`core/errors.js` 的 `badInput` 等）。不要从 action 直接拼 SQL。
+2. **service 层**：业务规则、事务边界、错误语义（`core/errors.ts` 的 `badInput` 等）。不要从 action 直接拼 SQL。
 3. **action 层**：在 `modules/<id>/index.js` 增加 action：
    - `id`：`<module>.<verb>`，全局唯一；
    - `cli`：**必须有**，路径不得与现有命令重复；
@@ -73,7 +73,7 @@ node bin/cli.mjs db verify
    - `render`：CLI 人读输出；HTTP 返回结构化数据。
 4. 需要动态 import 的重依赖 / 可选路径可以延迟 import，但不要制造循环依赖。
 
-**自检**：`node bin/cli.mjs routes --module <id>` 能看到新命令；registry 启动自检通过（id/CLI/HTTP 不重复、`run` 存在）。
+**自检**：`node bin/kv.mjs routes --module <id>` 能看到新命令；registry 启动自检通过（id/CLI/HTTP 不重复、`run` 存在）。
 
 细节见 [[B02-action注册全表]] 与 [[B03-action契约]]。
 

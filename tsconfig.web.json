@@ -1,0 +1,31 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    // vite/client 提供 import.meta.glob 的类型——前端路由自动发现靠它
+    "types": ["node", "vite/client"],
+    "noEmit": true,
+    "composite": true,
+    "tsBuildInfoFile": "node_modules/.tmp/tsc/web.tsbuildinfo",
+    // 迁移期过渡：前端仍是 .jsx/.js 主体（allowJs 编译、不做类型检查），
+    // 新增/毕业的 .tsx/.ts 逐个纳入 strict。与 tsconfig.node.json 同一条毕业路线。
+    "allowJs": true,
+    "checkJs": false
+  },
+  // 生成的 typed client（web/frontend/api/client.generated.ts）会 type-only 引到
+  // modules/*/schemas.js 与 actions/_manifest.generated.js，进而牵出整个后端树——
+  // composite 项目必须列全传递闭包，所以 include 覆盖整个 src（noEmit 只做类型检查，
+  // 存量 .js 在 checkJs:false 下仅解析不查类型）。
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.js",
+    "src/**/*.jsx",
+    "vite.config.ts"
+  ],
+  "exclude": ["src/web/public/**"]
+}

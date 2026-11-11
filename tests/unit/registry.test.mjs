@@ -27,12 +27,16 @@ const moduleDirs = readdirSync(MODULES_DIR, { withFileTypes: true })
   .filter((e) => e.isDirectory())
   .map((e) => e.name)
   .filter((name) => {
-    try {
-      readFileSync(join(MODULES_DIR, name, 'index.js'));
-      return true;
-    } catch {
-      return false;
+    // 模块入口：index.js（legacy plain-object）或 index.ts（模板形态 ModuleBase）
+    for (const entry of ['index.js', 'index.ts']) {
+      try {
+        readFileSync(join(MODULES_DIR, name, entry));
+        return true;
+      } catch {
+        /* 试下一个 */
+      }
     }
+    return false;
   });
 
 const frontendRegistrySrc = readFileSync(join(ROOT, 'src', 'web', 'frontend', 'registry.js'), 'utf8');

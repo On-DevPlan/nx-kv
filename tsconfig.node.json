@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "tsBuildInfoFile": "node_modules/.tmp/tsc/node.tsbuildinfo",
+    // 迁移期过渡：未类型化的存量 .js 与新 .ts 并存（allowJs 编译、不做类型检查）。
+    // 类型化「毕业」逐文件推进——某文件迁成 .ts 即纳入 strict 检查。
+    // 全部毕业（本仓库最终态）后 allowJs 应移除。
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["src/**/*.ts", "src/**/*.js"],
+  "exclude": ["src/web/**"]
+}

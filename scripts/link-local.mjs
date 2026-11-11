@@ -23,7 +23,7 @@ import { execFileSync } from 'node:child_process';
 const NAME = 'nx-kv';
 const MARK = 'nx-kv-local-shim';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const CLI_TARGET = join(REPO_ROOT, 'bin', 'cli.mjs');
+const CLI_TARGET = join(REPO_ROOT, 'bin', 'kv.mjs');
 const NODE = process.execPath;
 const RECEIPT = join(homedir(), '.nx-kv', 'dev', 'install.json');
 const DEV_BIN = join(homedir(), '.nx-kv', 'dev', 'bin');

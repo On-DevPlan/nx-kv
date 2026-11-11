@@ -26,10 +26,13 @@ export const CODES = {
   // 单独一个码的理由：迁移失败是"数据没进来、库已回滚"的可恢复状态，
   // 脚本要能把它与"参数错"区分开（迁移脚本会据此决定是重试还是报人）。
   STORE_MIGRATION_FAILED: 'STORE_MIGRATION_FAILED',
-};
+} as const;
 
-// code -> HTTP 状态。只在这里映射一次，api.js 不再自行判断。
-const HTTP_STATUS = {
+export type ErrorCode = (typeof CODES)[keyof typeof CODES];
+
+// code -> HTTP 状态。只在这里映射一次，api.ts 不再自行判断。
+// Record 穷尽性：新增错误码漏映射，编译期立即报错。
+const HTTP_STATUS: Record<ErrorCode, number> = {
   [CODES.INVALID_INPUT]: 400,
   [CODES.NOT_FOUND]: 404,
   [CODES.CONFLICT]: 409,
@@ -41,7 +44,7 @@ const HTTP_STATUS = {
 
 // code -> 进程退出码。CLI 只区分「成功 / 失败」，保持 agent-workflow.md 声明的契约。
 // 例外：迁移失败 → 2（见上面的 CODES 注释）。
-const EXIT_CODE = {
+const EXIT_CODE: Record<ErrorCode, number> = {
   [CODES.INVALID_INPUT]: 1,
   [CODES.NOT_FOUND]: 1,
   [CODES.CONFLICT]: 1,
@@ -51,38 +54,52 @@ const EXIT_CODE = {
   [CODES.STORE_MIGRATION_FAILED]: 2,
 };
 
+export interface ErrorPayload {
+  code: ErrorCode;
+  message: string;
+  details?: unknown;
+}
+
 export class AppError extends Error {
-  constructor(code, message, details) {
+  code: ErrorCode;
+  details?: unknown;
+
+  constructor(code: ErrorCode, message: string, details?: unknown) {
     super(message);
     this.name = 'AppError';
-    this.code = CODES[code] ? code : CODES.INTERNAL;
+    this.code = CODES[code as ErrorCode] ? (code as ErrorCode) : CODES.INTERNAL;
     if (details !== undefined) this.details = details;
   }
 }
 
-export function httpStatusOf(code) {
-  return HTTP_STATUS[code] || 500;
+export function httpStatusOf(code: ErrorCode): number {
+  return HTTP_STATUS[code] ?? 500;
 }
 
-export function exitCodeOf(code) {
-  return EXIT_CODE[code] || 1;
+export function exitCodeOf(code: ErrorCode): number {
+  return EXIT_CODE[code] ?? 1;
 }
 
 // 把任意抛出物归一成 { code, message, details }，供 API / CLI 统一序列化。
 // 非 AppError 一律归为 INTERNAL——不把内部堆栈细节泄漏给 agent。
-export function toErrorPayload(err) {
+export function toErrorPayload(err: unknown): ErrorPayload {
   if (err instanceof AppError) {
-    const out = { code: err.code, message: err.message };
+    const out: ErrorPayload = { code: err.code, message: err.message };
     if (err.details !== undefined) out.details = err.details;
     return out;
   }
-  return { code: CODES.INTERNAL, message: String((err && err.message) || err) };
+  return { code: CODES.INTERNAL, message: String((err as { message?: string } | null)?.message || err) };
 }
 
 // ---- 构造快捷方式：让 service 层读起来是「为什么失败」而不是「怎么构造」 ----
 
-export const badInput = (message, details) => new AppError(CODES.INVALID_INPUT, message, details);
-export const notFound = (message, details) => new AppError(CODES.NOT_FOUND, message, details);
-export const conflict = (message, details) => new AppError(CODES.CONFLICT, message, details);
-export const blocked = (message, details) => new AppError(CODES.BLOCKED, message, details);
-export const external = (message, details) => new AppError(CODES.EXTERNAL, message, details);
+export const badInput = (message: string, details?: unknown): AppError =>
+  new AppError(CODES.INVALID_INPUT, message, details);
+export const notFound = (message: string, details?: unknown): AppError =>
+  new AppError(CODES.NOT_FOUND, message, details);
+export const conflict = (message: string, details?: unknown): AppError =>
+  new AppError(CODES.CONFLICT, message, details);
+export const blocked = (message: string, details?: unknown): AppError =>
+  new AppError(CODES.BLOCKED, message, details);
+export const external = (message: string, details?: unknown): AppError =>
+  new AppError(CODES.EXTERNAL, message, details);

@@ -6,7 +6,7 @@
 // 绑定一律选项式（「绑定」弹窗里勾选），不手填字符串。
 // 做成弹窗：它是「隔一阵来维护一次」的东西，平铺会把开发仓库主表顶到两屏之外。
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../api/client.js';
+import { bindRef, getSettings, refClone, refSync, saveSettings, type SettingInfo } from './api.js';
 import { Copyable } from '../../components/ui.jsx';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { Modal } from '../../components/popup/index.jsx';
@@ -15,11 +15,6 @@ import { DocsEntry } from './repo-table.jsx';
 import type { BoardRecord, RefBackLink, RefCheckMap, RepoRecord, ReposReload } from './repo-table.js';
 
 /** /api/setting 里本面板用到的两项（存储根）。 */
-interface SettingInfo {
-  gitRepoRoot?: string;
-  gitDevRoot?: string;
-}
-
 /** 克隆提交体：绑定走选项式（bind=开发仓库 id，board=看板 id）。 */
 interface CloneBody {
   url: string;
@@ -66,7 +61,7 @@ export default function RefPanel({
   const [bindSel, setBindSel] = useState<Record<string, boolean>>({}); // { 'repo:<key>': bool, 'board:<key>': bool }
 
   const loadSetting = useCallback(async () => {
-    setSettingInfo(await api<SettingInfo>('/api/setting').catch(() => null));
+    setSettingInfo(await getSettings().catch(() => null));
   }, []);
   useEffect(() => { loadSetting(); }, [loadSetting]);
 
@@ -75,7 +70,7 @@ export default function RefPanel({
     if (rootsForm.gitRepoRoot.trim()) body.gitRepoRoot = rootsForm.gitRepoRoot.trim();
     if (rootsForm.gitDevRoot.trim()) body.gitDevRoot = rootsForm.gitDevRoot.trim();
     if (!Object.keys(body).length) return;
-    setSettingInfo(await api<SettingInfo>('/api/setting', { method: 'POST', body }));
+    setSettingInfo(await saveSettings(body));
     setRootsOpen(false);
     toast('已保存存储根目录');
   });
@@ -95,7 +90,7 @@ export default function RefPanel({
     const boardBinds = boardList.filter((b) => cloneTargets['board:' + b.id]).map((b) => b.id);
     if (repoBinds.length) body.bind = repoBinds;
     if (boardBinds.length) body.board = boardBinds;
-    const r = await api('/api/repos/ref/clone', { method: 'POST', body });
+    const r = await refClone(body);
     setCloneOpen(false);
     setCloneForm({ url: '', name: '', desc: '', depth: '1' });
     setCloneTargets({});
@@ -104,7 +99,7 @@ export default function RefPanel({
   });
 
   const syncAll = () => guard(async () => {
-    const d = await api('/api/repos/ref/sync', { method: 'POST', body: { all: true } });
+    const d = await refSync({ all: true });
     const bad = d.results.filter((x: { status?: string }) => x.status !== 'updated' && x.status !== 'upToDate');
     toast(`同步 ${d.synced} 个${bad.length ? `，${bad.length} 个有问题（见检查结果）` : '，全部完成'}`);
     await reload.refCheck();
@@ -140,9 +135,9 @@ export default function RefPanel({
       if (k.startsWith('board:')) {
         const b = boardOf(k);
         if (!b) continue;
-        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, board: [b.id] } });
+        await bindRef({ id: bindFor.key, board: [b.id] });
       } else {
-        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, repo: [k.slice('repo:'.length)] } });
+        await bindRef({ id: bindFor.key, repo: [k.slice('repo:'.length)] });
       }
     }
     for (const k of oldKeys) {
@@ -150,9 +145,9 @@ export default function RefPanel({
       if (k.startsWith('board:')) {
         const b = boardOf(k);
         if (!b) continue;
-        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, board: [b.id], remove: true } });
+        await bindRef({ id: bindFor.key, board: [b.id], remove: true });
       } else {
-        await api('/api/repos/bind', { method: 'POST', body: { id: bindFor.key, repo: [k.slice('repo:'.length)], remove: true } });
+        await bindRef({ id: bindFor.key, repo: [k.slice('repo:'.length)], remove: true });
       }
     }
     setBindFor(null);

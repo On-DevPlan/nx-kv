@@ -1,7 +1,7 @@
 // 绑定关系弹窗：dev 侧绑定（一个开发仓库所属组挂哪些参考）+ 组级绑定描述编辑。
 // v4 语义：参考仓库绑定在「组」上，组内所有仓库共享；仓库不属于任何组时无处可挂。
 import { useState } from 'react';
-import { api } from '../../api/client.js';
+import { bindRef, refNote } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { Modal } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -43,11 +43,11 @@ export default function BindRepoModal({ repo, refRepos, boardList, currentRefs, 
     const want = new Set(Object.keys(sel).filter((k) => sel[k]));
     for (const rid of want) {
       if (current.has(rid)) continue;
-      for (const g of groups) await api('/api/repos/bind', { method: 'POST', body: { id: rid, board: [g.id] } });
+      for (const g of groups) await bindRef({ id: rid, board: [g.id] });
     }
     for (const rid of current) {
       if (want.has(rid)) continue;
-      for (const g of groups) await api('/api/repos/bind', { method: 'POST', body: { id: rid, board: [g.id], remove: true } });
+      for (const g of groups) await bindRef({ id: rid, board: [g.id], remove: true });
     }
     onClose();
     await onSaved();
@@ -102,10 +102,7 @@ export function LinkNoteModal({ linkNoteFor, onClose, onSaved }: {
   const [text, setText] = useState(() => note || '');
 
   const save = () => guard(async () => {
-    await api('/api/repos/ref/note', {
-      method: 'POST',
-      body: { id: ref.key, board: groupId, note: text },
-    });
+    await refNote({ id: ref.key, board: groupId, note: text });
     onClose();
     await onSaved();
     toast('已保存组级绑定描述');

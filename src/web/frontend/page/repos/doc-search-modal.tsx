@@ -2,7 +2,7 @@
 // 再叠加关键词过滤；绑定 chip 可点，直接跳到宿主。
 // 文档自己不记宿主，宿主关系散在仓库/分组的绑定字段上（docHosts 反推）。
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api } from '../../api/client.js';
+import { createDocItem, listDocs, removeDocItem } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog, Modal } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -48,7 +48,7 @@ export default function DocSearchModal({ repos, boardList, onClose, onFilter, re
   const [docKw, setDocKw] = useState('');
 
   const loadDocs = useCallback(async () => {
-    const d = await api('/api/docs').catch(() => null);
+    const d = await listDocs().catch(() => null);
     setDocs((d && d.docs) || []);
   }, []);
   useEffect(() => { loadDocs(); }, [loadDocs]);
@@ -166,7 +166,7 @@ export default function DocSearchModal({ repos, boardList, onClose, onFilter, re
   // 新建文档：默认路径 → 落空文档 → 打开编辑器（一步到位，不弹命名框）
   const createDoc = () => guard(async () => {
     const rel = nextDocRel('note/untitled');
-    await api('/api/docs/item', { method: 'POST', body: { rel, body: '' } }).catch(() => {});
+    await createDocItem({ rel, body: '' }).catch(() => {});
     onClose(); // 先关弹窗，落点是编辑器
     openByDocId('rel:' + rel);
     await loadDocs();
@@ -181,7 +181,7 @@ export default function DocSearchModal({ repos, boardList, onClose, onFilter, re
       danger: true,
     });
     if (!ok) return;
-    await api('/api/docs/item', { method: 'DELETE', body: { ref: d.docId } });
+    await removeDocItem({ ref: d.docId });
     toast(`已删除：${d.rel}`);
     await Promise.all([loadDocs(), reload.repos(), reload.boards()]);
   });

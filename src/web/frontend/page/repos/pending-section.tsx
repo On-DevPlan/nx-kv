@@ -5,7 +5,7 @@
 // 三条出口：接到本机仓库（改关系，不动身份）/ 克隆到本地 / 直接移除。
 // 「无远程地址」的占位克隆不回来，只能清 —— 所以给一条批量清理。
 import { useMemo } from 'react';
-import { api } from '../../api/client.js';
+import { assignBoard, cloneRepo, pruneBoards, rekeyBoard } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -50,10 +50,7 @@ export default function PendingSection({ boards, devRepos, refRepos, reload }: {
 
   const clonePending = (m: PendingItem) =>
     guard(async () => {
-      await api('/api/repos/clone', {
-        method: 'POST',
-        body: { remote: m.remote, key: m.key, name: m.name || undefined, type: 'dev' },
-      });
+      await cloneRepo({ remote: m.remote, key: m.key, name: m.name || undefined, type: 'dev' });
       toast(`已克隆并登记：${m.name || m.key}`);
       reload.repos();
       reload.boards();
@@ -64,7 +61,7 @@ export default function PendingSection({ boards, devRepos, refRepos, reload }: {
   // 那样会把真实身份降级成 local/xxx，再导出就把假 key 传播出去。
   const bindPending = (m: PendingItem, target: string) =>
     guard(async () => {
-      await api('/api/boards/rekey', { method: 'POST', body: { from: m.key, to: target } });
+      await rekeyBoard({ from: m.key, to: target });
       toast(`已把「${m.name || m.key}」这个位置接到本机仓库`);
       reload.repos();
       reload.boards();
@@ -78,7 +75,7 @@ export default function PendingSection({ boards, devRepos, refRepos, reload }: {
         placeholder: '本机仓库：id / key / 名称 / 绝对路径',
       });
       if (!which) return;
-      await api('/api/boards/rekey', { method: 'POST', body: { from: m.key, to: which } });
+      await rekeyBoard({ from: m.key, to: which });
       toast('已重绑——这个位置现在指向本机仓库');
       reload.repos();
       reload.boards();
@@ -87,10 +84,7 @@ export default function PendingSection({ boards, devRepos, refRepos, reload }: {
   const removePending = (m: PendingItem) =>
     guard(async () => {
       if (!confirm(`把「${m.name || m.key}」从组「${m.board}」里移除？\n\n只摘这个组里的位置：本机仓库与看板本身都不动。`)) return;
-      await api('/api/boards/assign', {
-        method: 'POST',
-        body: { key: m.key, board: m.boardId, remove: true },
-      });
+      await assignBoard({ key: m.key, board: m.boardId, remove: true });
       toast(`已从组「${m.board}」移除`);
       reload.boards();
     });
@@ -99,14 +93,14 @@ export default function PendingSection({ boards, devRepos, refRepos, reload }: {
   // 先预览再落盘，清单给到人看。
   const prunePending = () =>
     guard(async () => {
-      const dry = await api('/api/boards/prune', { method: 'POST', body: { apply: false } });
+      const dry = await pruneBoards({ apply: false });
       if (!dry?.total) {
         toast('没有可清理的占位（有远程地址的那些留着等 clone）');
         return;
       }
       const names = dry.items.map((i: { name?: string; board?: string }) => `· ${i.name}（组 ${i.board}）`).join('\n');
       if (!confirm(`清理 ${dry.total} 个无来源占位？\n\n${names}\n\n它们没有远程地址，克隆不回来，只能删。`)) return;
-      await api('/api/boards/prune', { method: 'POST', body: { apply: true } });
+      await pruneBoards({ apply: true });
       toast(`已清理 ${dry.total} 个占位`);
       reload.boards();
     });

@@ -8,7 +8,7 @@
 // 补充篇在文档页里管理。新建时还没有文档，等落地后从行内点进去写。
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { api } from '../../api/client.js';
+import { addRepo, detectRepo, updateRepo } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog, Modal } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -88,7 +88,7 @@ export default function RepoFormModal({ editing, repos, onClose, onSaved }: {
     const timer = setTimeout(async () => {
       setDetect({ loading: true });
       try {
-        const d = await api('/api/repos/detect', { method: 'POST', body: { path: p } });
+        const d = await detectRepo({ path: p });
         if (!alive) return;
         setDetect({ loading: false, ...d });
         if (d.recommended && !remoteManual) {
@@ -164,8 +164,8 @@ export default function RepoFormModal({ editing, repos, onClose, onSaved }: {
       body.key = nextKey;
       if (keyManual) body.keyCustom = true;
     }
-    if (editing) await api(`/api/repos/${encodeURIComponent(editing)}`, { method: 'PATCH', body });
-    else await api('/api/repos', { method: 'POST', body });
+    if (editing) await updateRepo(encodeURIComponent(editing), body);
+    else await addRepo(body);
     onClose();
     await onSaved();
   });

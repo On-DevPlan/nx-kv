@@ -5,7 +5,7 @@
 // 分组里；取消某份副本只摘那个分组的引用，仓库本体纹丝不动。
 import { useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { api } from '../../api/client.js';
+import { createBoard, deleteBoard, exportBoards, importBoards, updateBoard } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog, Modal } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -45,8 +45,8 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
     // 描述是文档：编辑时不再提交 desc（领域描述在组介绍文档里写）；
     // 新建时给的那段仍是「初始正文」，后端落成 board/<组>.md
     if (!boardForm.id) body.desc = boardForm.desc.trim() || undefined;
-    if (boardForm.id) await api(`/api/boards/${encodeURIComponent(boardForm.id)}`, { method: 'PATCH', body });
-    else await api('/api/boards', { method: 'POST', body });
+    if (boardForm.id) await updateBoard(encodeURIComponent(boardForm.id), body);
+    else await createBoard(body);
     setBoardForm(null);
     await reload.boards();
   });
@@ -57,13 +57,13 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
       danger: true,
     });
     if (!ok) return;
-    await api(`/api/boards/${encodeURIComponent(b.id)}`, { method: 'DELETE', body: {} });
+    await deleteBoard(encodeURIComponent(b.id));
     await Promise.all([reload.repos(), reload.boards()]);
   });
 
   const doImport = () => guard(async () => {
     if (!impText.trim()) return;
-    const r = await api('/api/boards/import', { method: 'POST', body: { json: impText } });
+    const r = await importBoards({ json: impText });
     setImpOpen(false);
     setImpText('');
     toast(`已导入：新建 ${r.created} 个看板、合并 ${r.merged} 个、匹配仓库 ${r.matched} 个`
@@ -72,7 +72,7 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
   });
 
   const doExport = () => guard(async () => {
-    const r = await api('/api/boards/export');
+    const r = await exportBoards();
     setExpText(JSON.stringify(r, null, 2));
   });
 

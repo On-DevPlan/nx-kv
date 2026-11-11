@@ -2,35 +2,15 @@
 // 但对齐方向由人定（自动的 SSH 优先只是默认值）。数据面来自 git remote -v。
 // 这里给出「列候选 / 人工换一条 / 查存在性」。
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../api/client.js';
+import { checkRemote, listRemotes, pickRemote, type CheckState, type RemoteInfo } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { Modal } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
 import type { RepoRecord } from './repo-table.js';
 
 /** 一条 git remote 候选（数据面来自 git remote -v）。 */
-interface RemoteItem {
-  name: string;
-  url: string;
-  kind?: string;
-  current?: boolean;
-}
-
 /** /api/repos/remote/list 的出站形状。 */
-interface RemoteInfo {
-  key: string;
-  name: string;
-  current?: string;
-  remotes: RemoteItem[];
-}
-
 /** 存在性检查的本地状态（checking 是提交中的临时态）。 */
-interface CheckState {
-  url: string;
-  status: string;
-  detail?: string;
-}
-
 export default function RemoteModal({ repo, onClose, onSaved }: {
   repo: RepoRecord;
   onClose: () => void;
@@ -44,7 +24,7 @@ export default function RemoteModal({ repo, onClose, onSaved }: {
   // 候选加载失败 = 打不开弹窗（与旧行为一致：只 toast，不出现空弹窗）
   const load = useCallback(async () => {
     try {
-      const d = await api<RemoteInfo>('/api/repos/remote/list?id=' + encodeURIComponent(repo.key));
+      const d = await listRemotes(repo.key);
       if (!d || !Array.isArray(d.remotes)) throw new Error('远程地址读取失败');
       setInfo(d);
     } catch (e) {
@@ -57,10 +37,7 @@ export default function RemoteModal({ repo, onClose, onSaved }: {
   const pick = (url: string) => guard(async () => {
     // info 为空时弹窗根本不会渲染（见下方 if (!info) return null），这里只是收窄
     if (!info) return;
-    await api('/api/repos/remote/pick', {
-      method: 'POST',
-      body: { id: info.key, url },
-    });
+    await pickRemote({ id: info.key, url });
     onClose();
     toast('已对齐 remote');
     await onSaved();
@@ -76,8 +53,7 @@ export default function RemoteModal({ repo, onClose, onSaved }: {
     }
     setCheck({ url: url || info?.current || '', status: 'checking', detail: '检查中…' });
     try {
-      const d = await api<CheckState>('/api/repos/remote/check?id=' + encodeURIComponent(key)
-        + (url ? '&url=' + encodeURIComponent(url) : ''));
+      const d = await checkRemote(key, url);
       setCheck(d);
     } catch (e) {
       setCheck({

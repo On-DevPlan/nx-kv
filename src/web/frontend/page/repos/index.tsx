@@ -15,7 +15,7 @@
 // 分组里；取消某份副本只摘那个分组的引用，仓库本体纹丝不动。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api } from '../../api/client.js';
+import { bindRef, createDocItem, fetchRefCheck, listBoards, listRepos, openRepo, refSync, removeRepo, type RefCheckPayload } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
@@ -51,10 +51,6 @@ import type { LinkNoteTarget } from './bind-modals.jsx';
 import RemoteModal from './remote-modal.jsx';
 
 /** /api/repos/ref/check 的出站形状。 */
-interface RefCheckPayload {
-  refRepos?: RefCheckRow[];
-}
-
 /** 「查看详情」弹窗的目标（行内入口）。 */
 interface DocsTarget {
   kind: string;
@@ -74,13 +70,13 @@ export default function ReposView() {
   const [boards, setBoards] = useState<BoardsPayload | null>(null); // { boards: [...], unassigned: [...] }
   const [refCheck, setRefCheck] = useState<RefCheckPayload | null>(null); // repo.ref.check 的结果（状态徽标的数据面）
   const loadRepos = useCallback(async () => {
-    setRepos((await api<RepoRecord[]>('/api/repos').catch(() => [])) || []);
+    setRepos((await listRepos().catch(() => [])) || []);
   }, []);
   const loadBoards = useCallback(async () => {
-    setBoards(await api<BoardsPayload>('/api/boards').catch(() => null));
+    setBoards(await listBoards().catch(() => null));
   }, []);
   const loadRefCheck = useCallback(async () => {
-    setRefCheck(await api<RefCheckPayload>('/api/repos/ref/check').catch(() => null));
+    setRefCheck(await fetchRefCheck().catch(() => null));
   }, []);
   useEffect(() => { loadRepos(); loadBoards(); loadRefCheck(); }, [loadRepos, loadBoards, loadRefCheck]);
 
@@ -289,19 +285,19 @@ export default function ReposView() {
   // ---- 跨区块共享动作 ----
 
   const syncOne = (r: RepoRecord) => guard(async () => {
-    const d = await api('/api/repos/ref/sync', { method: 'POST', body: { id: r.id } });
+    const d = await refSync({ id: r.id });
     toast(d.status === 'updated' ? `已更新: ${d.name}` : d.status === 'upToDate' ? `${d.name} 已是最新` : `${d.name}: ${d.status} ${d.output || ''}`);
   });
 
   // 从某个组摘除这条参考绑定（只摘组级，不动仓库级）
   const unbindOne = (ref: RepoRecord, groupId: string) => guard(async () => {
-    await api('/api/repos/bind', { method: 'POST', body: { id: ref.key, board: [groupId], remove: true } });
+    await bindRef({ id: ref.key, board: [groupId], remove: true });
     await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
 
   // 从某个开发仓库摘除这条参考绑定（只摘仓库级，不影响组级）
   const unbindRepo = (ref: RepoRecord, repoKey: string) => guard(async () => {
-    await api('/api/repos/bind', { method: 'POST', body: { id: ref.key, repo: [repoKey], remove: true } });
+    await bindRef({ id: ref.key, repo: [repoKey], remove: true });
     await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
 
@@ -312,14 +308,14 @@ export default function ReposView() {
 
   const rowAct = (act: string, r: RepoRecord) => guard(async () => {
     if (act === 'open') {
-      await api('/api/repos/open', { method: 'POST', body: { id: r.id } });
+      await openRepo({ id: r.id });
     } else if (act === 'del') {
       const ok = await dialog({
         message: `删除仓库登记「${r.name}」？（仅移除登记，磁盘文件不受影响；各看板里的归属同步摘除）`,
         danger: true,
       });
       if (!ok) return;
-      await api(`/api/repos/${encodeURIComponent(r.id)}`, { method: 'DELETE' });
+      await removeRepo(encodeURIComponent(r.id));
       await reload.all();
     }
   });
@@ -329,7 +325,7 @@ export default function ReposView() {
   // create 失败（已存在 / 并发）一律当成功：下一步是打开，存在与否由文档页自己判断。
   const openDescDoc = (rel?: string, title?: string) => guard(async () => {
     if (!rel) return;
-    await api('/api/docs/item', { method: 'POST', body: { rel, body: `# ${title || rel}\n\n` } }).catch(() => {});
+    await createDocItem({ rel, body: `# ${title || rel}\n\n` }).catch(() => {});
     openByDocId('rel:' + rel);
     loadRepos();
   });

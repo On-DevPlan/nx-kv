@@ -16,7 +16,7 @@
 import { getSettings } from '../localtask/service.js';
 import { BLOCK_DEFS, resolveBlockTemplates } from '../../shared/prompt-blocks.js';
 import { deliveryPlainText } from './delivery-text.js';
-import { DEFAULT_GET_LOOP_TEMPLATE, getLoopForCwd } from './getloop.js';
+import { getLoopForCwd, getLoopInstruction } from './getloop.js';
 import { buildTaskDelivery } from './wait.js';
 
 /**
@@ -36,7 +36,7 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params } = 
   // 项目级「持续 get」模板：与 tasktool/get.js 同口径（只在开启时传入）。
   // 统一交给 buildTaskDelivery 编排成 getloop 区块，预览与真实领取不会各拼一份。
   const loop = await getLoopForCwd(cwd).catch(() => ({ enabled: false }));
-  const getLoopTpl = loop.enabled ? loop.template || DEFAULT_GET_LOOP_TEMPLATE : '';
+  const getLoopTpl = getLoopInstruction(loop);
   const delivery = await buildTaskDelivery(task, {
     source: 'local',
     summary: summary || '',

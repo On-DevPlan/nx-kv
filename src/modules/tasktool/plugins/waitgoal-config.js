@@ -13,14 +13,37 @@
 //
 // repos 在模块互依禁列里 → 动态 import（与 localtask→timegoal 探针同一惯例）。
 import { badInput } from '../../../core/errors.js';
+import { DEFAULT_GETLOOP_INSTRUCTION } from '../../../shared/prompt-blocks.js';
 
-export const DEFAULT_GET_LOOP_TEMPLATE =
-  '{{#if task}}不要直接结束本轮：完成上面的任务（{{task.id}}）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；没活时每次最多阻塞 {{getloop.waitMinutes}} 分钟，直到 get 返回 timeout 为止。{{/if}}';
+// 持续 get 内文的默认文案：**唯一来源在共享层**（src/shared/prompt-blocks.js），
+// 前端「持续 get」配置弹窗也从那里取——此前前端另存了一份副本，两边文案会悄悄分叉。
+export const DEFAULT_GET_LOOP_TEMPLATE = DEFAULT_GETLOOP_INSTRUCTION;
 
 export const GET_LOOP_DEFAULT_MINUTES = 10; // 阻塞窗口默认 10 分钟（上限仍受 wait 的 600s 夹制）
 
 const MAX_LOOP_TEMPLATES = 10; // 模板条数上限（多条按空行拼接后统一渲染；与回调提示词同规则）
 const MAX_LOOP_TEMPLATE_LEN = 2000; // 单条长度上限
+
+/**
+ * 把项目的持续 get 模板归一成**一段可渲染的文本**。
+ *
+ * ⚠️ 这里必须显式拼接：落库形态是 string[]（v0.14 起多条），而渲染器
+ * renderInstruction 会 `String(template)`——数组直接传进去会变成逗号相连
+ * （'A,B'），不是设计里说的「按空行拼接」。多条时这里统一用空行分隔。
+ *
+ * @param {{ enabled?: boolean; template?: string[] | string }} loop 项目级 getLoop 配置
+ * @returns {string} 可渲染的模板文本；未开启时返回空串
+ */
+export function getLoopInstruction(loop) {
+  if (!loop || !loop.enabled) return '';
+  const raw = loop.template;
+  const list = Array.isArray(raw) ? raw : raw == null || raw === '' ? [] : [raw];
+  const joined = list
+    .map((s) => String(s ?? '').trim())
+    .filter(Boolean)
+    .join('\n\n');
+  return joined || DEFAULT_GET_LOOP_TEMPLATE;
+}
 
 let reposMod = null;
 async function reposStore() {

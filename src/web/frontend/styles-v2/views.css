@@ -200,6 +200,30 @@
   border-radius: 7px;
   background: var(--soft);
 }
+/* 「从设置中的提示词模板选」的选择器：按区块分组，条目是可直接点的小 chip */
+.rp-gl-lib {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+.rp-gl-lib-block { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rp-gl-lib-label {
+  font-size: 11px; font-weight: 650; color: var(--ink);
+  min-width: 68px;
+}
+.rp-gl-lib-item {
+  font: inherit; font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rp-gl-lib-item:hover { border-color: var(--mdw-accent, #2F6F5E); }
 .rp-gl-acts {
   display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
   margin-top: 2px; padding-top: 10px; border-top: 1px solid var(--line);

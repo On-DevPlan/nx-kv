@@ -4,6 +4,7 @@ import {
   GET_LOOP_DEFAULT_MINUTES,
   sanitizeGetLoop,
   getLoopForCwd,
+  getLoopInstruction,
   DEFAULT_GET_LOOP_TEMPLATE,
   clampLoopTemplateList,
 } from './waitgoal-config.js';
@@ -12,6 +13,7 @@ export {
   GET_LOOP_DEFAULT_MINUTES,
   sanitizeGetLoop,
   getLoopForCwd,
+  getLoopInstruction,
   DEFAULT_GET_LOOP_TEMPLATE,
   clampLoopTemplateList,
 };

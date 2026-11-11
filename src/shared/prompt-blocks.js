@@ -205,6 +205,22 @@ export const DEFAULT_GETLOOP_TEMPLATE = [
 ].join('\n');
 
 /**
+ * 默认「持续 get」**内文**（持续 get 区块模板外壳里的那一句指令）。
+ *
+ * 两层的分工，别混：
+ *   - 外壳 = 区块模板（`DEFAULT_GETLOOP_TEMPLATE`，在设置 → 提示词模板 → 持续 get 区块里编辑），
+ *     它只负责 `{{getloop.text}}` 的输出位置；
+ *   - 内文 = 本模板（项目级的「继续 get 直到超时」指令，可按仓库覆写多条）。
+ *
+ * 放共享层是因为**前后端都要用同一份文案**：服务端渲染内文，前端「持续 get」配置弹窗
+ * 把它当内置默认展示（此前前端另存了一份已经过期的副本，两边文案会悄悄分叉）。
+ * 槽位口径：{{task.id}} = 任务编号（前端展示时转成 %s，保存时转回）；{{getloop.waitMinutes}}
+ * = 阻塞窗口分钟数。
+ */
+export const DEFAULT_GETLOOP_INSTRUCTION =
+  '{{#if task}}不要直接结束本轮：完成上面的任务（{{task.id}}）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；没活时每次最多阻塞 {{getloop.waitMinutes}} 分钟，直到 get 返回 timeout 为止。{{/if}}';
+
+/**
  * 区块清单（顺序 = 输出顺序）。只保留编排语义：
  * `tag` 是类 XML 标签名，`defaultTemplate` 是系统内置模板。
  */

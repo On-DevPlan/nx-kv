@@ -14,15 +14,20 @@ import { useApp } from '../../app-context.jsx';
 import { Button } from '../../components/button/index.jsx';
 import { Modal } from '../../components/popup/index.jsx';
 import { PromptItemsEditor } from '../../modules/prompts/prompt-editor.jsx';
+import {
+  BLOCK_DEFS,
+  DEFAULT_GETLOOP_INSTRUCTION,
+  normalizeBlockTemplateLists,
+} from '../../../../shared/prompt-blocks.js';
 
 // 多条提示词的条数上限（与服务端 clampAckPromptList 一致；settings 同源口径）
 const MAX_PROMPT_ITEMS = 10;
 const GETLOOP_LINE_MAX = 2000;
 
-// 内置「持续 get」默认模板的预设文案（与服务端 waitgoal-config 默认同文案；%s = 任务编号，
-// 存取时与 {{task.id}} 互转）。服务端常量带 core 依赖，前端本地声明。
-const GETLOOP_DEFAULT_PRESET =
-  '不要直接结束本轮：完成上面的任务（%s）之后，继续调用 nx-kv localtask get 领取下一条任务，直到 get 返回 timeout 为止。';
+// 内置「持续 get」默认内文：**唯一来源在共享层**（src/shared/prompt-blocks.js，
+// 服务端渲染内文也用同一份）——此前本文件另存了一份副本，且文案已经落后于服务端。
+// 展示层 %s ↔ 存储层 {{task.id}} 互转（其余占位符原样保留）。
+const GETLOOP_DEFAULT_PRESET = DEFAULT_GETLOOP_INSTRUCTION.replaceAll('{{task.id}}', '%s');
 
 /**
  * @param {object} repo 仓库记录（含 getLoop）
@@ -48,6 +53,43 @@ export default function GetLoopModal({ repo, onClose, onSaved }) {
   const [openIdx, setOpenIdx] = useState(-1);
   const [line, setLine] = useState(''); // 一句话输入（可含 %s）
   const [busy, setBusy] = useState(false);
+  // 「设置中的提示词模板」选择器：设置页按区块存模板，这里把可复用的条目拉过来，
+  // 免得同一段提示词在设置与仓库配置里各写一遍（两边漂移的根源）。
+  const [lib, setLib] = useState(null); // { blocks: [{ id, label, items }] } | null
+  const [libBusy, setLibBusy] = useState(false);
+
+  const openLib = async () => {
+    setLibBusy(true);
+    try {
+      // 提示词模板存在 localtask 的设置里（面板的提示词模板分区也是这么读的）：
+      // GET /api/localtasks → d.settings.blockTemplates。
+      const d = await api('/api/localtasks');
+      const lists = normalizeBlockTemplateLists(d && d.settings && d.settings.blockTemplates);
+      const blocks = BLOCK_DEFS.map((def) => {
+        const b = lists[def.id];
+        const items = (b?.list || []).map((t) => ({
+          id: t.id,
+          name: t.name,
+          template: t.template,
+          builtin: !!t.builtin,
+        }));
+        return { id: def.id, label: def.label, items };
+      }).filter((b) => b.items.length);
+      setLib({ blocks });
+    } catch (e) {
+      toast(String(e.message || e));
+    } finally {
+      setLibBusy(false);
+    }
+  };
+
+  // 选中一条设置里的模板 → 填进输入行（仍可再改后再添加）。
+  // getloop 区块是**外壳**（输出 {{getloop.text}} 的位置），不是内文——不提供选用。
+  const pickTemplate = (tpl) => {
+    const text = String(tpl.template || '').replaceAll('{{task.id}}', '%s');
+    setLine(text.slice(0, GETLOOP_LINE_MAX));
+    setLib(null);
+  };
 
   const save = async (override) => {
     setBusy(true);
@@ -131,6 +173,14 @@ export default function GetLoopModal({ repo, onClose, onSaved }) {
                 >
                   填入内置默认
                 </Button>
+                <Button
+                  variant="secondary"
+                  title="从设置 → 提示词模板里挑一条复用（免得同一段话两处各写一遍）"
+                  onClick={openLib}
+                  disabled={busy || libBusy}
+                >
+                  {libBusy ? '读取中…' : '从设置中的提示词模板选…'}
+                </Button>
                 <input
                   className="rp-gl-oneline-input"
                   value={line}
@@ -144,6 +194,37 @@ export default function GetLoopModal({ repo, onClose, onSaved }) {
                   添加
                 </Button>
               </div>
+              {lib && (
+                <div className="rp-gl-lib">
+                  <div className="rp-gl-h">设置里的提示词模板（点击填入输入行，可再改后添加）</div>
+                  {lib.blocks.map((b) => (
+                    <div className="rp-gl-lib-block" key={b.id}>
+                      <span className="rp-gl-lib-label">{b.label}</span>
+                      {b.id === 'getloop' ? (
+                        <span className="rp-gl-note">
+                          持续 get 区块是**外壳**（决定这段话出现在交付的哪个位置），
+                          在设置 → 提示词模板 → 持续 get 里编辑；这里配置的是它的内文。
+                        </span>
+                      ) : (
+                        b.items.map((t) => (
+                          <button
+                            key={t.id}
+                            className="rp-gl-lib-item"
+                            title={t.template}
+                            onClick={() => pickTemplate(t)}
+                          >
+                            {t.name}
+                            {t.builtin ? '（内置）' : ''}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  ))}
+                  <Button variant="secondary" onClick={() => setLib(null)}>
+                    收起
+                  </Button>
+                </div>
+              )}
               {tpls.length ? (
                 <PromptItemsEditor
                   items={tpls}

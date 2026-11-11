@@ -12,7 +12,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Actions } from 'flexlayout-react';
 import type { Model } from 'flexlayout-react';
-import { api } from '../../api/client.js';
+import {
+  bindRepoDoc,
+  createDocItem,
+  docAttachments,
+  getDocsIndex,
+  linkBoardDoc,
+  listBoards,
+  loadDocsIndex,
+  removeDocItem,
+  getDocItem,
+  updateDocItem,
+  type DocItem,
+  repoDocs,
+} from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { useApp } from '../../app-context.jsx';
@@ -52,19 +65,6 @@ export interface WikiNav {
 }
 
 /** GET /api/docs/item 的返回：正文之外还有只读 / 目录 / 缺失几种形态。 */
-interface DocItem {
-  body?: string;
-  title?: string;
-  summary?: string;
-  rel?: string;
-  path?: string;
-  writable?: boolean;
-  external?: boolean;
-  missing?: boolean;
-  dir?: boolean;
-  files?: string[];
-}
-
 /** 介绍文档集的一行（右侧轨）。 */
 interface IntroLink {
   docId: string;
@@ -99,7 +99,7 @@ export function useWikiNav(model?: Model | null): WikiNav {
   const ensureIndex = useCallback(async () => {
     if (!indexRef.current) {
       try {
-        indexRef.current = (await api('/api/docs/index')).index || [];
+        indexRef.current = (await getDocsIndex()).index || [];
       } catch {
         indexRef.current = [];
       }
@@ -190,7 +190,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   const load = useCallback(async () => {
     setError('');
     try {
-      const d = await api<DocItem>('/api/docs/item?ref=' + encodeURIComponent(docId || ''));
+      const d = await getDocItem(docId || '');
       setDoc(d);
       setDirty(false);
     } catch (e) {
@@ -211,7 +211,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       return;
     }
     if (ownerKind === 'repo') {
-      api('/api/repos/docs?id=' + encodeURIComponent(ownerKey))
+      repoDocs(ownerKey)
         .then((d) => {
           const out: IntroLink[] = [];
           const push = (x: { rel?: string; path?: string; note?: string } | null | undefined, main: boolean) => {
@@ -233,7 +233,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       return;
     }
     // board：从看板数据里取 docLinks（看板在 /api/boards，不在 /api/repos）
-    api('/api/boards')
+    listBoards()
       .then((d) => {
         const boards = (d && d.boards) || (Array.isArray(d) ? d : []);
         const b = boards.find((x: { id?: string; key?: string }) => x.id === ownerKey || x.key === ownerKey);
@@ -253,7 +253,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   // 双链索引：一次拉取（刷新页签即刷新；不监听文件系统是第一块的取舍）
   const [known, setKnown] = useState<Set<string> | null>(null); // 双链已解析名集合（渲染未解析态用）
   useEffect(() => {
-    api('/api/docs/index')
+    loadDocsIndex()
       .then((d) => {
         const set = new Set<string>();
         for (const x of d.index || []) {
@@ -273,7 +273,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   useEffect(() => {
     let alive = true;
     if (!docId) return undefined;
-    api(`/api/docs/attachments?ref=${encodeURIComponent(docId)}`)
+    docAttachments(docId)
       .then((d) => { if (alive) setAttList((d && (d.attachments || d.data?.attachments)) || []); })
       .catch(() => { if (alive) setAttList([]); });
     return () => { alive = false; };
@@ -333,15 +333,12 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
         ? introDirFromRef(docId)
         : (ownerKind === 'repo' ? `repo/${ownerKey}` : `board/${boardName || ownerKey}`);
       const rel = `${base}/reference/${slug}.md`;
-      await api('/api/docs/item', {
-        method: 'POST',
-        body: { rel, body: `# ${String(name).trim() || slug}\n\n（待补）\n` },
-      });
+      await createDocItem({ rel, body: `# ${String(name).trim() || slug}\n\n（待补）\n` });
       try {
         if (ownerKind === 'repo') {
-          await api('/api/repos/docs', { method: 'POST', body: { id: ownerKey, rel } });
+          await bindRepoDoc({ id: ownerKey, rel });
         } else {
-          await api('/api/docs/link', { method: 'POST', body: { board: ownerKey, doc: rel } });
+          await linkBoardDoc({ board: ownerKey, doc: rel });
         }
       } catch {
         /* 已在集里 / 旧数据：文件已创建即可打开 */
@@ -357,7 +354,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     guard(async () => {
       if (!doc || !writable) return;
       const nextBody = doc.body;
-      const res = await api<{ summary?: string }>('/api/docs/item', { method: 'PATCH', body: { ref: docId, body: nextBody } });
+      const res = await updateDocItem({ ref: docId, body: nextBody });
       setDoc((d) => (d ? { ...d, body: nextBody, summary: res.summary } : d));
       setDirty(false);
       clearHistory(histRef.current, docId);
@@ -445,13 +442,13 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       if (!rel || rel === prevRel) return;
       if (!/\.md$/i.test(rel)) return toast('文档路径必须以 .md 结尾');
       try {
-        await api('/api/docs/item', { method: 'POST', body: { rel, body: prevBody } });
+        await createDocItem({ rel, body: prevBody });
       } catch (e) {
         // 目标已存在等冲突由后端报错，原样透出
         toast(`重命名失败：${String((e as Error).message || e)}`);
         return;
       }
-      await api('/api/docs/item', { method: 'DELETE', body: { ref: docId } });
+      await removeDocItem({ ref: docId });
       clearHistory(histRef.current, docId);
       toast(`已重命名为：${rel}`);
       openByDocId('rel:' + rel, null, openExtra);
@@ -471,7 +468,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
         okText: '删除',
       });
       if (!ok) return;
-      await api('/api/docs/item', { method: 'DELETE', body: { ref: docId } });
+      await removeDocItem({ ref: docId });
       toast(`已删除：${docRel || docId}`);
       if (model && tabId) model.doAction(Actions.deleteTab(tabId));
     });
@@ -487,7 +484,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
           : String(docId || '');
       if (!rel) return;
       const name = rel.replace(/\.md$/i, '').split('/').pop() || '未命名文档';
-      await api('/api/docs/item', { method: 'POST', body: { rel, body: `# ${name}\n\n（待补）\n` } });
+      await createDocItem({ rel, body: `# ${name}\n\n（待补）\n` });
       toast(`已创建：${rel}`);
       await load();
     });
@@ -501,7 +498,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
           <span className="docp-tag ext">外部目录 · 只读</span>
         </div>
         <div className="docp-files">
-          {(doc.files || []).map((f) => (
+          {(doc.files || []).map((f: string) => (
             <button key={f} className="docp-file" onClick={() => openByDocId('path:' + f, null)}>
               {f}
             </button>

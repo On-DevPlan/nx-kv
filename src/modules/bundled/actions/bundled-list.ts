@@ -1,20 +1,25 @@
 // bundled.list —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
-// 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
+// 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
+import { z } from 'zod';
 import { ActionBase, type ActionInput, type ActionRunMeta } from '../../../runtime/action-base.js';
-import { bundledListInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { renderList } from '../support.js';
 const service: any = serviceNs;
 
-export class BundledListAction extends ActionBase<typeof bundledListInput> {
+/** bundled.list 的入参契约（CLI 与 HTTP 共用同一份）。 */
+const input = z.object({
+
+});
+
+export class BundledListAction extends ActionBase<typeof input> {
   @action({
     id: 'bundled.list',
     cli: [['skill', 'list'], ['skill', 'install', '--list'], ['bundled', 'list']],
     http: ['GET', '/api/bundled'],
     summary: '列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group',
-    input: bundledListInput,
+    input,
     render: renderList,
   })
   override async run(__ctx: ActionInput<this['_input']>, meta: ActionRunMeta = {}) {

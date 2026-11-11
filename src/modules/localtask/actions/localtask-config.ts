@@ -1,9 +1,9 @@
 // localtask.config —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
-// 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
+// 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
+import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import { localtaskConfigInput } from '../schemas.js';
 import * as serviceNs from '../service.js';
 import { BLOCK_DEFS as _BLOCK_DEFS, resolveBlockTemplates as _resolveBlockTemplates } from '../../../shared/prompt-blocks.js';
 import { badInput as _badInput } from '../../../core/errors.js';
@@ -12,13 +12,28 @@ const BLOCK_DEFS: any = _BLOCK_DEFS;
 const resolveBlockTemplates: any = _resolveBlockTemplates;
 const badInput: any = _badInput;
 
-export class LocaltaskConfigAction extends ActionBase<typeof localtaskConfigInput> {
+/** localtask.config 的入参契约（CLI 与 HTTP 共用同一份）。 */
+const input = z.object({
+  timeout: z.number().optional().describe("超时秒数（1-600）"),
+  ack: z.string().optional().describe("ack 汇报要求（写入 ack 区块的「命令行」模板并启用；默认内置要求 agent 调 localtask done）。传空 = 恢复内置"),
+  'ack-list': z.array(z.string()).optional().describe("整体替换 ack 完成总结提示词列表（多条）"),
+  ackList: z.array(z.string()).optional().describe("同 --ack-list（驼峰写法，HTTP body 用）"),
+  'delivery-template': z.string().optional().describe("交付上下文模板（写入 context 区块的「命令行」模板并启用）；置空 = 恢复内置默认模板。变量与语法见 skill / docs"),
+  'reset-delivery-template': z.boolean().optional().describe("恢复 context 区块内置模板"),
+  'attach-template': z.string().optional().describe("附件段提示词（写入 attachment 区块的「命令行」模板并启用）；置空 = 恢复内置默认模板"),
+  attachTemplate: z.string().optional().describe("同 --attach-template（驼峰写法，HTTP body 用）"),
+  'reset-attach-template': z.boolean().optional().describe("恢复 attachment 区块内置模板"),
+  'append-mode': z.string().optional().describe("系统上下文追加模式（全局）：xml（默认，每段包独立标签）/ plain（按空行直接拼正文）。HTTP body 用 appendMode"),
+  'block-templates': z.string().optional().describe("每区块模板列表（JSON 对象）：{\"context\":{\"active\":\"builtin\",\"list\":[…]},…}。HTTP body 用 blockTemplates（对象）"),
+});
+
+export class LocaltaskConfigAction extends ActionBase<typeof input> {
   @action({
     id: 'localtask.config',
     cli: ['localtask', 'config'],
     http: ['PATCH', '/api/localtasks/setting'],
     summary: '配置等待超时（秒）/ ack 汇报要求（ack 区块，done 指令与收尾要求唯一出口）/ 每区块模板列表',
-    input: localtaskConfigInput,
+    input,
     render: (s: any) => {
       const ack: any = s.ackPromptList && s.ackPromptList.length ? `ack 提示词 ${s.ackPromptList.length} 条` : 'ack 提示词已清空';
       const mode: any = s.appendMode === 'plain' ? '正文直追加' : 'XML 区块';

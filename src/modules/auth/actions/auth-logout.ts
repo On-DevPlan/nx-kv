@@ -1,20 +1,25 @@
 // auth.logout —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
-// 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
+// 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
+import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import { authLogoutInput } from '../schemas.js';
 import { loadConfig as _loadConfig, saveConfig as _saveConfig } from '../../../core/config.js';
 const loadConfig: any = _loadConfig;
 const saveConfig: any = _saveConfig;
 
-export class AuthLogoutAction extends ActionBase<typeof authLogoutInput> {
+/** auth.logout 的入参契约（CLI 与 HTTP 共用同一份）。 */
+const input = z.object({
+
+});
+
+export class AuthLogoutAction extends ActionBase<typeof input> {
   @action({
     id: 'auth.logout',
     cli: ['auth', 'logout'],
     http: ['POST', '/api/auth/logout'],
     summary: '清除本机保存的 token',
-    input: authLogoutInput,
+    input,
     render: (d: any) => (d.was ? `已登出（原账号 ${d.was}）` : '本就未登录'),
   })
   override async run(_ctx: ActionInput<this['_input']>) {

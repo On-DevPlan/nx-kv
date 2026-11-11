@@ -3,9 +3,9 @@
 // 依赖经 IoC 容器取（config）；后端探测是**只读**的 /api/v1/user/info，
 // 失败不算错误（health 的语义是「如实报告」，错误文案进 backendError 字段）。
 import { readFileSync } from 'node:fs';
+import { z } from 'zod';
 import { action } from '../../../runtime/action-decorator.js';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import { systemHealthInput } from '../schemas.js';
 
 const VERSION: string = JSON.parse(
   readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'),
@@ -21,13 +21,16 @@ export interface HealthReport {
   backendError: string;
 }
 
-export class HealthAction extends ActionBase<typeof systemHealthInput> {
+/** system.health 的入参契约（CLI 与 HTTP 共用同一份）。 */
+const input = z.object({});
+
+export class HealthAction extends ActionBase<typeof input> {
   @action({
     id: 'system.health',
     cli: ['health'],
     http: ['GET', '/api/health'],
     summary: '健康检查（本机配置 + 后端可达性）',
-    input: systemHealthInput,
+    input,
   })
   override async run(_ctx: ActionInput<this['_input']>): Promise<HealthReport> {
     const config = this.deps.get('config');

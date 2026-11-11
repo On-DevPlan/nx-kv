@@ -5,8 +5,8 @@
 // 一条 action 同时声明 cli 与 http，二者写在同一处，不可能分叉。
 //
 // 新增功能域：
-//   1. 写 src/modules/<name>/（模板形态：index.ts 装配 ModuleBase 子类 + schemas.ts
-//      契约 + actions/*.ts 一条 action 一个文件 + _manifest.generated.ts）
+//   1. 写 src/modules/<name>/（模板形态：index.ts 装配 ModuleBase 子类 +
+//      actions/*.ts 一条 action 一个文件（契约 zod 就声明在该文件里）+ _manifest.generated.ts）
 //   2. 在下面的 create 调用里加上它的实例
 //   3. 需要面板的话，到 web/frontend/ 写视图并在前端 registry 登记——**不经过后端**
 //

@@ -17,27 +17,32 @@
 - zod 通道：token 扫描 → `normalizeCliValue` 归一化 → `parseZodInput`（zod 校验）
 
 **新 action 一律走模板形态**；一条 action 一个文件 `actions/<名>.ts`，
-契约常量放同域 `schemas.ts`（命名 `<camelCase(actionId)>Input`），
+**契约（zod schema）就声明在该文件里**（#178 起不再有独立的 `schemas.ts`），
 类清单由 `pnpm gen:actions` 扫目录生成到 `actions/_manifest.generated.ts`——
 **模块 index.ts 不手工列举 action**（加一条 action = 新建一个文件 + 跑一次 `pnpm gen`）。
 
 ## 0.5 模板形态的一条 action（泛型模板版）
 
 ```ts
+import { z } from 'zod';
 import { action } from '../../../runtime/action-decorator.js';
 import { ActionBase, type ActionInput, type ActionRunMeta } from '../../../runtime/action-base.js';
-import { xInput } from '../schemas.js';
 
-export class XAction extends ActionBase<typeof xInput> {
+/** x.do 的入参契约（CLI 与 HTTP 共用同一份）。 */
+const input = z.object({
+  id: z.number().optional().describe('编号'),
+});
+
+export class XAction extends ActionBase<typeof input> {
   @action({
     id: 'x.do',
     cli: ['x', 'do'],
     http: ['POST', '/api/x'],
     summary: '一句话说明',
-    input: xInput,          // 运行期契约（zod 校验 + codegen 取字段）
+    input,                  // 运行期契约（zod 校验 + codegen 取字段）
   })
   override async run(ctx: ActionInput<this['_input']>) {
-    // ctx 的类型由基类泛型推出来：z.output<typeof xInput>
+    // ctx 的类型由基类泛型推出来：z.output<typeof input>
     return this.deps.get('config');
   }
 }
@@ -45,9 +50,10 @@ export class XAction extends ActionBase<typeof xInput> {
 
 | 约定 | 说明 |
 |---|---|
+| **契约内联、名为 `input`** | 一文件一契约；schema 内容逐字保留（`.describe()` 是 CLI 用法串与 help 文案的来源） |
 | **方法名固定 `run`** | 只有 override 基类方法才能拿到泛型；分方法名（`get`/`list`…）会让基类模板失效 |
 | **注解 `ActionInput<this['_input']>`** | 全项目统一样板；类型从类上的 `TInput` 推导，schema 只声明一次 |
-| **`extends ActionBase<typeof xInput>`** | 入参类型的唯一声明点（编译期）；`meta.input` 是它的运行期镜像 |
+| **`extends ActionBase<typeof input>`** | 入参类型的唯一声明点（编译期）；`meta.input` 是它的运行期镜像 |
 | **第二参 `opts: ActionRunMeta = {}`** | 只有读 `transport` 的 action 才需要（`opts.transport === 'http'`） |
 | **`@action` 只收元数据** | 装饰器不改方法签名、不做类型对账（this 依赖类型出了类声明不可解析） |
 
@@ -55,9 +61,13 @@ export class XAction extends ActionBase<typeof xInput> {
 override 不从基类取参数类型，TC39 装饰器也不给被标方法做推断（都实测过）。
 `this['_input']` 幻影字段是「注解可写、schema 不重述」的唯一通路。
 
+**前端怎么拿到入参类型**：codegen 从 **action 类**反推
+（`z.input<InstanceType<typeof XAction>['_input']>`）——契约常量是文件内的实现细节，
+不再跨文件被引用，也不再有 `<camelCase(actionId)>Input` 命名约定。
+
 **改动这类文件时的红线**：注解不许退回 `ctx: any`、也不许手写 `z.output<typeof …>`
 （后者会让 schema 声明点分裂到两处）。类型报错先看是不是 schema 与 handler 真的错位
-——本轮正是靠它抓出 6 处「读未声明键」的死路径。
+——#177 正是靠它抓出 6 处「读未声明键」的死路径。
 
 ## 1. 一条 action 的形状（legacy 形态）
 
@@ -185,8 +195,9 @@ flags: {
 
 1. `service.js` 写业务函数（普通对象入参 / 返回），事务与 SQL 不进 action。
 2. `index.js` 声明 `id` / `cli` / `http` / `summary` / args / flags / `run` / `render`。
-   （模板形态：`actions/<名>.ts` 一个文件一条 action，`extends ActionBase<typeof xxxInput>`
-   + `override run(ctx: ActionInput<this['_input']>)`——见 §0.5）
+   （模板形态：`actions/<名>.ts` 一个文件一条 action，契约 zod 内联在该文件、
+   `extends ActionBase<typeof input>` + `override run(ctx: ActionInput<this['_input']>)`
+   ——见 §0.5）
 3. `id` 命名 `<module>.<verb>`，全局唯一；CLI 路径不得与现有命令重复。
 4. 需要面板入口：前端 `registry.js` 登记视图，页面里调 `/api/...`。
 5. `pnpm lint && pnpm test:unit && pnpm build`。

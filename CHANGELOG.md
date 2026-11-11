@@ -2,6 +2,26 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.48.2] - 2026-11-12 zod 契约内联进 action 文件（#178 第 4 轮）
+
+### Changed
+
+- **不再有独立的 `schemas.ts`**：每条 action 的 zod 契约（运行期契约）直接声明在
+  自己的 action 文件里，模块私有、就在类上方，命名为 `input`。12 个 `schemas.ts`
+  （1201 行）随之删除，154 个 action 文件各带一份契约。
+  契约内容**逐字保留**——`.describe()` 是 CLI 用法串与 help 文案的来源，动了就改口径。
+- **前端入参类型改为从 action 类反推**（`z.input<InstanceType<typeof XAction>['_input']>`）：
+  类型经基类泛型模板流到前端，契约常量降级为「文件内的实现细节」，
+  生成物不再 import 后端契约文件。
+- **删掉 `<camelCase(actionId)>Input` 命名约定**：旧方案靠约定拼 import 名，
+  约定破了会生成指向不存在符号的代码；现在约定不再存在，也就没有破的可能。
+
+### Notes
+
+- 纯结构调整，对外行为不变（契约内容与位置语义不变：字段、用法串、help 文案均不变）。
+- 验证：node 侧 strict 0 错误 / 生成物及传递依赖 web 编译 0 错误 / eslint 0 error /
+  unit 906 / smoke 194。
+
 ## [0.48.1] - 2026-11-11 action 入参泛型化（#177 第 3 轮）
 
 ### Changed

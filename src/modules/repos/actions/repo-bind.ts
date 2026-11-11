@@ -1,22 +1,30 @@
 // repo.bind —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
-// 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
+// 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
+import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import { repoBindInput } from '../schemas.js';
 import * as refNs from '../ref.js';
 import { renderBind as _renderBind } from '../cli/render.js';
 const ref: any = refNs;
 const renderBind: any = _renderBind;
 
-export class RepoBindAction extends ActionBase<typeof repoBindInput> {
+/** repo.bind 的入参契约（CLI 与 HTTP 共用同一份）。 */
+const input = z.object({
+  id: z.string(),
+  repo: z.array(z.string()).optional().describe("开发仓库（id/路径/名称，逗号分隔）—— 写仓库级绑定（不折算成组）"),
+  board: z.array(z.string()).optional().describe("组 id/key/名称（逗号分隔）—— 写组级绑定（组内共享）"),
+  remove: z.boolean().optional().describe("摘除：带 --repo/--board 摘指定维度，都不带 = 组 + 仓库全部摘除"),
+});
+
+export class RepoBindAction extends ActionBase<typeof input> {
   @action({
     id: 'repo.bind',
     cli: ['repo', 'bind'],
     http: ['POST', '/api/repos/bind'],
     summary: '绑定参考仓库到组或单个开发仓库（两类并存；--board 组级、--repo 仓库级；--remove 摘除）',
     args: ['id'],
-    input: repoBindInput,
+    input,
     render: renderBind,
   })
   override async run(ctx: ActionInput<this['_input']>) {

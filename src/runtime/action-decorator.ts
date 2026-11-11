@@ -1,7 +1,7 @@
 // action 装饰器：在 ModuleBase 子类的方法上声明 action（zod schema 即契约）。
 //
-// 单一通道：全部新业务 action 都走这里——声明（@action 元数据）与实现同文件，
-// 契约常量放同域 schemas.ts；模块的 actions 字段由 zodActionsOf(instance) 收集。
+// 单一通道：全部新业务 action 都走这里——声明（@action 元数据）、契约（zod schema）
+// 与实现同文件；模块的 actions 字段由 zodActionsOf(instance) 收集。
 // legacy plain-object action（flags 表契约）只剩 runtime 内建命令在用
 // （serve / help / version）——它们是平台命令，不是业务 action。
 // Registry / CliApp / ApiRouter 仍对两通道无感；内建命令迁进 platform 模块后，

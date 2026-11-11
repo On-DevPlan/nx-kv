@@ -15,9 +15,10 @@
 // 只生成 zod 通道（@action 装饰）的 action；legacy flags 通道的 action 继续由前端
 // 手写 client.js 调用（迁移完成后删除）。
 //
-// 入参 schema 常量命名约定：<camelCase(actionId)>Input（如 system.bootstrap →
-// systemBootstrapInput）。约定破了 codegen 会生成指向不存在符号的 import，
-// tests/unit/api-client.test.mjs 的新鲜度对账会当场红。
+// 入参 schema 常量**不再跨文件引用**：契约（zod）就声明在各自的 action 文件里，
+// 入参类型经基类泛型模板（ActionBase<typeof input> + 幻影字段 _input）流到前端——
+// 生成物只引 action 类（清单），不引契约文件，也不再依赖
+// `<camelCase(actionId)>Input` 命名约定。
 //
 // 出参没有 schema——**实现即契约**：返回类型直接从 action 类的方法签名推断，
 // 同一信息只声明一次，「两份声明漂移」无从发生。
@@ -25,16 +26,9 @@ import { describeInput } from './zod-bridge.js';
 import { routeParams, type ZodBoundAction } from './action-decorator.js';
 import { cliPathsOf } from './spec.js';
 
-/** actionId → 入参 schema 常量名：system.bootstrap → systemBootstrapInput */
-export function schemaName(actionId: string): string {
-  const parts = actionId.split(/[.\-_]/).filter(Boolean);
-  const camel = parts
-    .map((seg, i) => (i === 0 ? seg : seg[0]!.toUpperCase() + seg.slice(1)))
-    .join('');
-  return camel + 'Input';
-}
-
-/** 前端方法名：取 actionId 最后一段，撞名时加模块前缀（todo.get 与 repo.get → get / repoGet）。 */
+/**
+ * 前端方法名：取 actionId 最后一段，撞名时加模块前缀（todo.get 与 repo.get → get / repoGet）。
+ */
 export function clientMethodNames(actions: readonly ZodBoundAction[]): Map<string, string> {
   const used = new Set<string>();
   const names = new Map<string, string>();
@@ -56,53 +50,44 @@ export function clientMethodNames(actions: readonly ZodBoundAction[]): Map<strin
 }
 
 /**
- * schema 常量按**模块**分组 import：一个模块一份 schemas.ts
- * （src/modules/<域>/schemas.ts），生成物从 src/web/frontend/api/ 算起
- * 的相对路径固定为 '../../../modules/<域>/schemas.js'。
+ * 入参类型锚点：**从 action 类反推**——类上的泛型实参（基类模板封装的 schema 类型）
+ * 经幻影字段 `_input` 露出，前端只引 action 类即可拿到入参形状：
+ *
+ *   z.input<InstanceType<typeof LocaltaskGetAction>['_input']>
+ *
+ * 契约常量因此降级为「文件内的实现细节」——不再有独立的 schemas.ts，
+ * 也不再需要 `<camelCase(actionId)>Input` 命名约定（约定破了会生成指向不存在
+ * 符号的代码，是旧方案最大的脆弱点）。
  */
-function schemaModuleOf(moduleId: string): string {
-  return `../../../modules/${moduleId}/schemas.js`;
+function inputTypeOf(a: ZodBoundAction): string {
+  return `z.input<InstanceType<typeof ${a.className}>['_input']>`;
 }
 
-/** 生成前端 apiclient 的 TS 源码（type-only 引 schema：zod 不进浏览器包）。 */
+/** 生成前端 apiclient 的 TS 源码（type-only 引 action 类：zod 不进浏览器包）。 */
 export function generateClientSource(actions: readonly ZodBoundAction[]): string {
   const withHttp = actions.filter((a) => a.http);
   const methodNames = clientMethodNames(withHttp);
 
-  // 按模块分组收集两类类型锚点：入参 schema 常量（schemas.ts）+ action 类（清单）。
-  // 返回类型不引 schema——**实现即契约**：从 action 类的方法签名直接推断。
-  const inputTypes = new Map<string, Set<string>>();
+  // 类型锚点只有一类：action 类（清单）。入参形状由类上的泛型推出来，
+  // 返回类型则从方法签名直接推断——**实现即契约**。
   const actionClasses = new Map<string, Set<string>>();
   for (const a of withHttp) {
-    if (describeInput(a.input, a.args ?? []).length) {
-      const set = inputTypes.get(a.module) || new Set<string>();
-      set.add(schemaName(a.id));
-      inputTypes.set(a.module, set);
-    }
     const classes = actionClasses.get(a.module) || new Set<string>();
     classes.add(a.className);
     actionClasses.set(a.module, classes);
   }
-  const imports = [...inputTypes.entries()]
+  const imports = [...actionClasses.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([module, names]) => {
       const list = [...names].sort().map((n) => `  ${n},`).join('\n');
-      return `import type {\n${list}\n} from '${schemaModuleOf(module)}';`;
+      return `import type {\n${list}\n} from '../../../modules/${module}/actions/_manifest.generated.js';`;
     })
-    .concat(
-      [...actionClasses.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([module, names]) => {
-          const list = [...names].sort().map((n) => `  ${n},`).join('\n');
-          return `import type {\n${list}\n} from '../../../modules/${module}/actions/_manifest.generated.js';`;
-        }),
-    )
     .join('\n');
 
   const iface = withHttp
     .map((a) => {
       const fields = describeInput(a.input, a.args ?? []);
-      const paramType = `z.input<typeof ${schemaName(a.id)}>`;
+      const paramType = inputTypeOf(a);
       const required = fields.some((f) => f.required);
       const sig = fields.length === 0 ? '' : required ? `input: ${paramType}` : `input?: ${paramType}`;
       const doc = a.summary ? `/** ${a.summary} */\n  ` : '';
@@ -112,7 +97,7 @@ export function generateClientSource(actions: readonly ZodBoundAction[]): string
 
   const impl = withHttp
     .map((a) => {
-      const inName = schemaName(a.id);
+      const paramType = inputTypeOf(a);
       const methodName = methodNames.get(a.id)!;
       const [method, pattern] = a.http!;
       const params = routeParams(pattern);
@@ -124,11 +109,11 @@ export function generateClientSource(actions: readonly ZodBoundAction[]): string
       const lines: string[] = [];
       lines.push(`    // action: ${a.id}`);
       const argSig =
-        fields.length === 0 ? '' : required ? `input: z.input<typeof ${inName}>` : `input?: z.input<typeof ${inName}>`;
+        fields.length === 0 ? '' : required ? `input: ${paramType}` : `input?: ${paramType}`;
       lines.push(`    async ${methodName}(${argSig}) {`);
       if (fields.length) {
         // 可选入参统一兜底成对象：后面的索引访问不用再判 undefined
-        lines.push(`      const inp = input ?? ({} as z.input<typeof ${inName}>);`);
+        lines.push(`      const inp = input ?? ({} as ${paramType});`);
       }
 
       // 路径参数是位置参数（zodActionsOf 已校验 :param ⊆ args），编码后插进模板。

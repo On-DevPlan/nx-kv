@@ -8,7 +8,7 @@
 import { badInput, notFound } from '../../core/errors.js';
 import type { CommandEntry } from '../../core/command-table.js';
 
-/** routes 的输入（--module / --http，schema 见 ../schemas.ts）。 */
+/** routes 的输入（--module / --http，schema 见本文件下方）。 */
 export interface RoutesCtx {
   module?: string;
   http?: string;

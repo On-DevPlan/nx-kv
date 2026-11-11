@@ -1,26 +1,29 @@
 // system.bootstrap —— 面板启动上下文：版本 / 登录态 / 工作空间 / 命令表。
 //
-// 「一条 action 一个文件」：声明（@action 元数据）与实现同文件；契约在 ../schemas.ts。
+// 「一条 action 一个文件」：声明（@action 元数据）、契约（zod）与实现同文件。
 // 依赖经 IoC 容器取（this.deps.get('config')）——测试可换一整个容器，不必改构造参数。
 import { readFileSync } from 'node:fs';
+import { z } from 'zod';
 import { action } from '../../../runtime/action-decorator.js';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { commandTable, type CommandEntry } from '../../../core/command-table.js';
 import { APP_NAME, DEFAULT_PORT } from '../../../core/paths.js';
-import { systemBootstrapInput } from '../schemas.js';
 
 /** package.json 的版本号（只读一次；与 cli.ts 各读各的，避免引入跨层依赖）。 */
 const VERSION: string = JSON.parse(
   readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'),
 ).version;
 
-export class BootstrapAction extends ActionBase<typeof systemBootstrapInput> {
+/** system.bootstrap 的入参契约（CLI 与 HTTP 共用同一份）。 */
+const input = z.object({});
+
+export class BootstrapAction extends ActionBase<typeof input> {
   @action({
     id: 'system.bootstrap',
     cli: ['bootstrap'],
     http: ['GET', '/api/bootstrap'],
     summary: '聚合上下文：版本 / 登录态 / 工作空间 / 命令表',
-    input: systemBootstrapInput,
+    input,
   })
   override async run(_ctx: ActionInput<this['_input']>): Promise<{
     app: { name: string; version: string };

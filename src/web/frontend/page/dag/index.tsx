@@ -12,7 +12,6 @@
 // （视图）、use-interactions.js（拖拽/连线的全局指针监听）。
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { api } from '../../api/client.js';
 import { useApp } from '../../app-context.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { PopMenu, useDialog } from '../../components/popup/index.jsx';
@@ -21,6 +20,7 @@ import { isGroupTask } from '../../modules/board/board-view.js';
 import { reaches } from '../../../../shared/graph.js';
 import { depToNodeKey, formatDepForTarget, isPending, nodeKeyOf, parseDep } from './model.js';
 import type { DagLinkMode, DagMode, DagNode, DagPosMap, DepToken, LinkPreview } from './model.js';
+import { patchTaskItem } from './api.js';
 import { FILTER_ALL, NODE_W, PAD_X, PAD_Y, ROW_H, clearPos, defaultLayout, loadPos } from './layout.js';
 import { canvasPoint, computeEdges, cubic, portOriginOf } from './edges.js';
 import { useDagInteractions } from './use-interactions.js';
@@ -204,10 +204,7 @@ export default function DagPanel({ dirKey, groupId }: DagPanelProps) {
       const payload: { blockBy?: DepToken[] | string; gate?: boolean; duration?: string; clearGoal?: boolean } = { ...body };
       if (Array.isArray(payload.blockBy)) payload.blockBy = payload.blockBy.join(',');
       const scope = node.topicIsGlobal ? { key: node.topicKey } : { cwd: node.topicCwd };
-      await api('/api/localtasks/item', {
-        method: 'PATCH',
-        body: { ...scope, id: Number(node.id), ...payload },
-      });
+      await patchTaskItem({ ...scope, id: Number(node.id), ...payload });
       if (okMsg) toast(okMsg);
       if (refreshLocal) await refreshLocal();
     } catch (e) {

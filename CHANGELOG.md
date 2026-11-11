@@ -2,6 +2,51 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.48.0] - 2026-11-11 全仓 TypeScript 毕业（#175）
+
+### Changed
+
+- **服务层全部毕业 TypeScript**（`src/shared` 9 个 + `src/core` 47 个 + `src/modules`
+  12 域约 200 个文件，合计约 3 万行）：strict 全开（`strict` / `noUncheckedIndexedAccess`
+  / `noImplicitOverride` / `verbatimModuleSyntax` / `useUnknownInCatchVariables`）。
+  语义零改动，`pnpm test` 全绿作为兜底。
+- **前端全部毕业 TypeScript**（98 个 `.jsx` → `.tsx`、63 个 `.js` → `.ts`）：
+  按裁决**保留 FlexLayout 多面板工作台**（不引入 react-router、不改交互范式），
+  只做类型化 + 引入模板的页面目录约定。共享契约集中在新文件
+  `src/web/frontend/types.ts`（路由 / 面板 / 全局上下文 / 队列数据形状）。
+- **移除 `allowJs` / `checkJs`**：两份 tsconfig 的迁移期过渡配置退场，
+  `include` 只留 `.ts`/`.tsx`。仓库里唯一的 `.js` 是 `src/index.js`
+  （面向包外 `import('nx-kv')` 的 tsx 垫片，不属于编译单元）。
+- **eslint 的 `no-undef` 对前端 `.ts/.tsx` 退场**：那三条历史 bug（`useMemo` /
+  `dialog` / `<CliHints>` 漏 import）当时只有浏览器能看见，是因为 `checkJs:false`
+  让 tsc 不看这些文件；现在同一批错误变成编译错误，比 lint 更早也更准。
+  而 `no-undef` 不做类型分析，会把类型位置上的 DOM 类型（`HTMLDivElement` /
+  `Element` / `File`…）误判成 undefined。
+
+### Added
+
+- **`routes/<名>.ts` 路由声明层**（模板 `definePage` 约定）：每个 hash 视图一份文件，
+  写清「路由 → 面板 config」与「面板 config → 地址」两个方向。`route-map.ts`
+  退化成纯适配层，对外 API 不变；加一个页面 = 加一个文件 + 一行登记。
+  「两个方向必须逐字互逆」（#86 裂面板的根因）由
+  `tests/unit/fixtures/route-table.json` 基线夹具 + `route-table.test.mjs` 钉住。
+- **前端共享契约 `types.ts`**：`AppRoute` / `PanelSpec` / `PanelCtx` / `SpecCtx` /
+  `LocalTask` / `LocalTopic` / `RepoData` / `Prefs` / `TemplatesApi` /
+  `OpenPageSpec` / `ShellApi` / `TemplateEditorOpts`。
+
+### Fixed
+
+- **行数门禁的扫描面**（`scripts/check-lines.mjs`）：`SCAN_RE` 原本只认
+  `.js/.jsx/.mjs/.css`，全仓改成 `.ts` 后门禁会「扫不到文件、全绿放行」。
+  补上 `ts/tsx`，并豁免 `*.generated.ts`（`client.generated.ts` 是 154 条 action
+  的契约全集，瘦身靠改生成策略而非拆文件）。
+
+### Breaking
+
+- **不再接受 `.js` / `.jsx` 源码**（`src/index.js` 垫片除外）。按物理路径读源码的
+  工具与夹具一律跟着改：文件名断言换成 `.ts/.tsx`，需要解析 import 说明符的地方
+  按工具链同一套后缀替换（`.js→.ts`、`.jsx→.tsx`）解析——tsc 与 Vite 本来就这么做。
+
 ## [0.47.0] - 2026-11-11 按 server-cli-web 模板形态 TS 化（#174）
 
 ### Changed

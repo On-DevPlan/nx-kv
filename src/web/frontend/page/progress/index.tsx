@@ -9,7 +9,7 @@
 // 过滤，统计随筛选范围走。非成员队列里「组发布」的旧任务（frontmatter.board 指向
 // 本组）仍兜底收录。
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '../../api/client.js';
+import { removeTasks } from './api.js';
 import { Icon } from '../../components/icons.jsx';
 import { GLOBAL_KEY, isGroupTask } from '../../modules/board/board-view.js';
 import { parseFrontmatter, taskToProgress } from '../../modules/md/md-parse.js';
@@ -304,16 +304,13 @@ export default function ProgressPanel({
           if (bucket) bucket.ids.push(c.taskId);
         }
         for (const { cwd, ids } of byTopic.values()) {
-          const res = await api('/api/localtasks/items', { method: 'DELETE', body: { cwd, ids } });
+          const res = await removeTasks({ cwd, ids });
           n += res?.count ?? ids.length;
           miss += res?.missing?.length || 0;
         }
       } else {
         const ids = pickedCards.map((c) => c.id);
-        const res = await api('/api/localtasks/items', {
-          method: 'DELETE',
-          body: { ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }), ids },
-        });
+        const res = await removeTasks({ ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }), ids });
         n = res?.count ?? ids.length;
         miss = res?.missing?.length || 0;
       }

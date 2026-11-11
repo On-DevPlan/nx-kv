@@ -108,6 +108,37 @@ export default defineConfig([
     },
   },
 
+  // ---- 页面组件：API 调用收口到本页 api.ts（模板约定，#176）----
+  //
+  // 页面组件（含页面私有组件）不许出现 api() 裸调用——所有 /api 请求都从本页
+  // api.ts 的具名函数走。api.ts 自身豁免：它就是「调 api() 的那一层」。
+  // 这条与 tests 的 grep 对账互为备份：lint 拦写法，测试拦存量。
+  // files 随迁移进度生长：每迁完一页就把它的目录加进来（该页 lint 即受此约束）；
+  // 全部页面迁完后换成 page/**（见 #176）。
+  {
+    files: [
+      'src/web/frontend/page/cloud/**/*.{ts,tsx}',
+      'src/web/frontend/page/dag/**/*.{ts,tsx}',
+      'src/web/frontend/page/dir/**/*.{ts,tsx}',
+      'src/web/frontend/page/doc/**/*.{ts,tsx}',
+      'src/web/frontend/page/group/**/*.{ts,tsx}',
+      'src/web/frontend/page/overview/**/*.{ts,tsx}',
+      'src/web/frontend/page/progress/**/*.{ts,tsx}',
+      'src/web/frontend/page/refs/**/*.{ts,tsx}',
+      'src/web/frontend/page/repos/**/*.{ts,tsx}',
+      'src/web/frontend/page/settings/**/*.{ts,tsx}',
+    ],
+    ignores: ['src/web/frontend/page/**/api.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.name='api']",
+          message: '页面组件不许直接调 api()：把调用收口到本页 api.ts（模板约定）。',
+        },
+      ],
+    },
+  },
   // ---- todo 模块：禁止按 id 定位 ----
   {
     files: ['src/modules/todo/**/*.{js,jsx,ts,tsx}'],

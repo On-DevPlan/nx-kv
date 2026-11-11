@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { Actions } from 'flexlayout-react';
 import type { Model } from 'flexlayout-react';
-import { api } from '../../api/client.js';
+import { addTask, findTaskItem, postReopen } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { openComposer } from '../../components/md/composer-launch.js';
 import { persistAtt } from '../../components/md/attachments.js';
@@ -64,7 +64,7 @@ export function useFeedback({
     const q = isGlobal
       ? `key=${encodeURIComponent(GLOBAL_KEY)}&id=${Number(task)}`
       : `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(task)}`;
-    return api(`/api/localtasks/item?${q}`).catch(() => null);
+    return findTaskItem(q).catch(() => null);
   }, [isDraft, task, isGlobal, topic?.cwd]);
 
   /** 反馈：开一块 **md 编辑面板** 写意见；提交后**新建一条任务**（forkOf 指回本条），原任务不动。 */
@@ -115,12 +115,11 @@ export function useFeedback({
         !isDraft && task != null && !/^draft/i.test(String(task))
           ? { forkOf: String(task), forkKind: 'reopen' }
           : {};
-      const res = await api('/api/localtasks', {
-        method: 'POST',
-        body: isGlobal
+      const res = await addTask(
+        isGlobal
           ? { global: true, text, ...linkFields }
           : { cwd: topic?.cwd, text, ...linkFields },
-      });
+      );
       const newId = String(res?.task?.id ?? res?.id ?? '');
       if (!newId) {
         toast('反馈已提交，但未拿到新任务编号');
@@ -184,23 +183,20 @@ export function useFeedback({
         };
         text = buildReopenText(reopenArgs);
       }
-      const res = await api('/api/localtasks/reopen', {
-        method: 'POST',
-        body: {
-          ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }),
-          id: Number(task),
-          ...(text ? { text } : {}),
-          kind: 'comment',
-          quote: quoteText,
-          feedback: fb,
-          attachments: (attachments || []).map((a: Attachment) => ({
-            id: a.id,
-            name: a.name,
-            type: a.type,
-            size: a.size,
-            url: a.url || '',
-          })),
-        },
+      const res = await postReopen({
+        ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }),
+        id: Number(task),
+        ...(text ? { text } : {}),
+        kind: 'comment',
+        quote: quoteText,
+        feedback: fb,
+        attachments: (attachments || []).map((a: Attachment) => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          size: a.size,
+          url: a.url || '',
+        })),
       });
       // 回写后的正文以服务端为准刷回编辑器（服务端拼装时新段只有服务端知道）
       const landedKey = res?.key || topicKey;

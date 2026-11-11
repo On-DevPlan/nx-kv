@@ -3,7 +3,14 @@ import { useCallback } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { Actions } from 'flexlayout-react';
 import type { Model } from 'flexlayout-react';
-import { api } from '../../api/client.js';
+import {
+  addTask,
+  cloneTask,
+  closeManyTasks,
+  forkTask,
+  patchTaskItem,
+  removeTaskItem,
+} from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { openPanel } from '../../workspace.js';
 import { filesToAttachments, persistAtt } from '../../components/md/attachments.js';
@@ -143,15 +150,12 @@ export function useTaskActions({
       return;
     }
     if (!isDraft) {
-      const res = await api('/api/localtasks/item', {
-        method: 'PATCH',
-        body: {
-          cwd: isGlobal ? (projTopic ? projTopic.cwd : undefined) : topic?.cwd,
-          key: isGlobal && !projTopic ? GLOBAL_KEY : undefined,
-          id: Number(task),
-          text: b,
-          ...gp,
-        },
+      const res = await patchTaskItem({
+        cwd: isGlobal ? (projTopic ? projTopic.cwd : undefined) : topic?.cwd,
+        key: isGlobal && !projTopic ? GLOBAL_KEY : undefined,
+        id: Number(task),
+        text: b,
+        ...gp,
       });
       if (res?.moved) {
         const landedKey = res.key || topicKey;
@@ -185,19 +189,16 @@ export function useTaskActions({
       refreshLocal?.();
       return;
     }
-    const res = await api('/api/localtasks', {
-      method: 'POST',
-      body: {
-        ...(groupSubmit
-          ? { text: b, board: boardCtx.board.id, project: fm.project }
-          : fm.project
-            ? { text: b, project: fm.project }
-            : isGlobal
-              ? { global: true, text: b }
-              : { cwd: topic?.cwd, text: b }),
-        ...gp,
-      },
-    });
+    const res = await addTask({
+      ...(groupSubmit
+        ? { text: b, board: boardCtx.board.id, project: fm.project }
+        : fm.project
+          ? { text: b, project: fm.project }
+          : isGlobal
+            ? { global: true, text: b }
+            : { cwd: topic?.cwd, text: b }),
+      ...gp,
+      });
     const newId = res?.task?.id ?? res?.id;
     if (newId != null) {
       const landedKey = res?.key || topicKey;
@@ -229,14 +230,11 @@ export function useTaskActions({
     const name = file.name.replace(/\.md$/i, '');
     await guard(async () => {
       const bodyText = text.startsWith('#') ? text : `# ${name}\n\n${text}`;
-      const res = await api('/api/localtasks', {
-        method: 'POST',
-        body: isGlobal
+      const res = await addTask(
+        isGlobal
           ? { global: true, text: bodyText }
-          : groupAnchored && docFm.project
-            ? { project: docFm.project, text: bodyText }
-            : { cwd: topic?.cwd, text: bodyText },
-      });
+          : { cwd: topic?.cwd, text: bodyText },
+      );
       toast(`已导入：${file.name}`);
       refreshLocal?.();
       const newId = res?.task?.id ?? res?.id;
@@ -258,10 +256,7 @@ export function useTaskActions({
     });
     if (!ok) return;
     guard(async () => {
-      await api('/api/localtasks/item', {
-        method: 'DELETE',
-        body: isGlobal ? { key: GLOBAL_KEY, id: Number(task) } : { cwd: topic?.cwd, id: Number(task) },
-      });
+      await removeTaskItem(isGlobal ? { key: GLOBAL_KEY, id: Number(task) } : { cwd: topic?.cwd, id: Number(task) });
       toast(`已删除「${title}」`);
       if (model && tabId) model.doAction(Actions.deleteTab(tabId));
       refreshLocal?.();
@@ -283,10 +278,7 @@ export function useTaskActions({
           okText: '标为完成',
         });
         if (summary === null || summary === undefined) return;
-        await api('/api/localtasks/items/close', {
-          method: 'POST',
-          body: { ...scope, ids: [Number(task)], status: 'done', summary: String(summary).trim() },
-        });
+        await closeManyTasks({ ...scope, ids: [Number(task)], status: 'done', summary: String(summary).trim() });
         toast(`已标为完成 #${task}`);
       } else {
         const ok = await dialog({
@@ -296,10 +288,7 @@ export function useTaskActions({
           okText: '取消任务',
         });
         if (!ok) return;
-        await api('/api/localtasks/items/close', {
-          method: 'POST',
-          body: { ...scope, ids: [Number(task)], status: 'cancelled' },
-        });
+        await closeManyTasks({ ...scope, ids: [Number(task)], status: 'cancelled' });
         toast(`已取消 #${task}`);
       }
       refreshLocal?.();
@@ -341,15 +330,12 @@ export function useTaskActions({
       const synced = composeText(cur.title, patch.body || body);
       saveDoc(id, { body: synced, title: titleFromMd(synced) });
       try {
-        await api('/api/localtasks/item', {
-          method: 'PATCH',
-          body: {
-            cwd: isGlobal ? undefined : topic?.cwd,
-            key: isGlobal ? GLOBAL_KEY : undefined,
-            id: Number(task),
-            text: synced,
-          },
-        });
+        await patchTaskItem({
+          cwd: isGlobal ? undefined : topic?.cwd,
+          key: isGlobal ? GLOBAL_KEY : undefined,
+          id: Number(task),
+          text: synced,
+      });
         setDirty(false);
         refreshLocal?.();
         toast(items.length ? `已添加附件并同步（${items.length}）` : '已同步附件');
@@ -389,10 +375,7 @@ export function useTaskActions({
       return;
     }
     guard(async () => {
-      const res = await api('/api/localtasks/clone', {
-        method: 'POST',
-        body: isGlobal ? { id: Number(task) } : { id: Number(task), cwd: topic?.cwd },
-      });
+      const res = await cloneTask(isGlobal ? { id: Number(task) } : { id: Number(task), cwd: topic?.cwd });
       toast(`已克隆为新任务 #${res.task?.id ?? res.id}`);
       refreshLocal?.();
       const newId = res?.task?.id ?? res?.id;
@@ -410,10 +393,7 @@ export function useTaskActions({
       return;
     }
     guard(async () => {
-      const res = await api('/api/localtasks/fork', {
-        method: 'POST',
-        body: isGlobal ? { id: Number(task) } : { id: Number(task), cwd: topic?.cwd },
-      });
+      const res = await forkTask(isGlobal ? { id: Number(task) } : { id: Number(task), cwd: topic?.cwd });
       toast(`已 Fork 为新任务 #${res.task?.id ?? res.id}（保留任务链）`);
       refreshLocal?.();
       const newId = res?.task?.id ?? res?.id;

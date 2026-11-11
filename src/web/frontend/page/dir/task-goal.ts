@@ -1,8 +1,8 @@
 // 时间目标（任务级 timegoal 声明）状态与日志查询。
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../api/client.js';
+import { getGoalLog } from './api.js';
 import type { LocalTask } from '../../types.js';
-import type { DeclaredGoal, GoalLogData, GoalLogState, TimeGoal } from './task-utils.js';
+import type { DeclaredGoal, GoalLogState, TimeGoal } from './task-utils.js';
 
 interface UseGoalArgs {
   id: string;
@@ -36,7 +36,7 @@ export function useGoal({ id, isDraft, topicKey, task, taskRow }: UseGoalArgs) {
     if (isDraft || !topicKey || task == null) return;
     setGoalLog((s) => ({ ...s, busy: true, error: '' }));
     const q = new URLSearchParams({ id: String(task), key: String(topicKey) });
-    api<GoalLogData>(`/api/localtasks/timegoal-log?${q.toString()}`)
+    getGoalLog(q.toString())
       .then((d) => setGoalLog((s) => ({ ...s, data: d, busy: false })))
       .catch((e) => setGoalLog((s) => ({ ...s, busy: false, error: String((e as Error).message || e) })));
   }, [isDraft, topicKey, task]);

@@ -1,6 +1,17 @@
 // 目录面板 —— 简介（统一 Introduction）+ 子任务表。
 import { useMemo, useRef, useState } from 'react';
-import { api } from '../../api/client.js';
+import {
+  addTask,
+  cancelManyTasks,
+  closeManyTasks,
+  findTaskItem,
+  patchTaskItem,
+  removeManyTasks,
+  removeTaskItem,
+  reorderTask,
+  postReopen,
+  restoreTaskItem,
+} from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog, PopMenu } from '../../components/popup/index.jsx';
 import { GLOBAL_KEY, isGroupTask } from '../../modules/board/board-view.js';
@@ -95,20 +106,14 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
   // 拖动排序：服务端只许 pending ↔ pending 换位（已领取是固定历史），UI 侧已同口径过滤
   const moveTask = (t: { id: number }, targetId: number | string, zone: DropZone) => {
     guard(async () => {
-      await api('/api/localtasks/reorder', {
-        method: 'PATCH',
-        body: { ...scopeBody(), id: t.id, ...(zone === 'before' ? { beforeId: targetId } : { afterId: targetId }) },
-      });
+      await reorderTask({ ...scopeBody(), id: t.id, ...(zone === 'before' ? { beforeId: targetId } : { afterId: targetId }) });
       refreshLocal?.();
     });
   };
 
   const toggleGate = (t: LocalTask) => {
     guard(async () => {
-      await api('/api/localtasks/item', {
-        method: 'PATCH',
-        body: { ...scopeBody(), id: t.id, gate: !t.blocksFollowing },
-      });
+      await patchTaskItem({ ...scopeBody(), id: t.id, gate: !t.blocksFollowing });
       toast(!t.blocksFollowing ? `#${t.id} 已设为闸门——挡住所有后续待领取任务` : `#${t.id} 闸门已取消`);
       refreshLocal?.();
     });
@@ -119,7 +124,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
   const saveDag = async (patches: DagPatchInput[]) => {
     try {
       for (const p of patches) {
-        await api('/api/localtasks/item', { method: 'PATCH', body: { ...scopeBody(), ...p } });
+        await patchTaskItem({ ...scopeBody(), ...p });
       }
       toast('编排已保存');
       refreshLocal?.();
@@ -211,7 +216,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     const q = isGlobal
       ? `key=${encodeURIComponent(GLOBAL_KEY)}&id=${Number(t.id)}`
       : `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(t.id)}`;
-    return api(`/api/localtasks/item?${q}`).catch(() => null);
+    return findTaskItem(q);
   };
 
   const reopenTask = (t: LocalTask | null) => {
@@ -255,12 +260,11 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
           toast('写一下反馈');
           return;
         }
-        const res = await api('/api/localtasks', {
-          method: 'POST',
-          body: isGlobal
+        const res = await addTask(
+          isGlobal
             ? { global: true, text, forkOf: String(t.id), forkKind: 'reopen' }
             : { cwd: topic?.cwd, text, forkOf: String(t.id), forkKind: 'reopen' },
-        });
+        );
         const newId = String(res?.task?.id ?? res?.id ?? '');
         const landedKey = res?.key || dirKey;
         if (newId) saveDoc(docIdOf(scopeOf(landedKey), newId), { body: text });
@@ -271,20 +275,17 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
 
       // 未完成：就地回写（#74 reopen）。#79：纯反馈不传 text——服务端把反馈段
       // 原子追加到盘上当前正文；「只重开不改正文」（无反馈）维持只翻状态。
-      const res = await api('/api/localtasks/reopen', {
-        method: 'POST',
-        body: {
-          ...scopeBody(),
-          id: t.id,
-          kind: 'reopen',
-          ...(fb
-            ? {
-                feedback: fb,
-                feedbackHeading: PLAIN_FEEDBACK_HEADING,
-                feedbackBold: false,
-              }
-            : {}),
-        },
+      const res = await postReopen({
+        ...scopeBody(),
+        id: t.id,
+        kind: 'reopen',
+        ...(fb
+          ? {
+              feedback: fb,
+              feedbackHeading: PLAIN_FEEDBACK_HEADING,
+              feedbackBold: false,
+            }
+          : {}),
       });
       const landedKey = res?.key || dirKey;
       const sameId = String(res?.task?.id ?? t.id);
@@ -309,10 +310,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     });
     if (!ok) return;
     guard(async () => {
-      await api('/api/localtasks/item', {
-        method: 'DELETE',
-        body: isGlobal ? { key: GLOBAL_KEY, id: t.id } : { cwd: topic?.cwd, id: t.id },
-      });
+      await removeTaskItem(isGlobal ? { key: GLOBAL_KEY, id: t.id } : { cwd: topic?.cwd, id: t.id });
       toast(`已删除「${title.replace(/^#\s*/, '')}」`);
       if (model) {
         // workspace.findOpenPanel 的返回类型尚未收口（被推断成 null），按实际契约窄化
@@ -335,10 +333,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     });
     if (!ok) return false;
     return guard(async () => {
-      const res = await api('/api/localtasks/items', {
-        method: 'DELETE',
-        body: { ...scopeBody(), ids: list },
-      });
+      const res = await removeManyTasks({ ...scopeBody(), ids: list });
       toast(`已删除 ${res?.count ?? list.length} 条任务`);
       refreshLocal?.();
       return true;
@@ -355,10 +350,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     });
     if (!ok) return false;
     return guard(async () => {
-      const res = await api('/api/localtasks/items/cancel', {
-        method: 'POST',
-        body: { ...scopeBody(), ids: list },
-      });
+      const res = await cancelManyTasks({ ...scopeBody(), ids: list });
       const skipped = res?.skipped?.length || 0;
       toast(`已取消 ${res?.count ?? 0} 条任务${skipped ? `，跳过 ${skipped} 条` : ''}`);
       refreshLocal?.();
@@ -376,10 +368,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     });
     if (!ok) return false;
     return guard(async () => {
-      const res = await api('/api/localtasks/items/close', {
-        method: 'POST',
-        body: { ...scopeBody(), ids: list, status: 'done' },
-      });
+      const res = await closeManyTasks({ ...scopeBody(), ids: list, status: 'done' });
       const skipped = res?.skipped?.length || 0;
       toast(`已标为完成 ${res?.count ?? 0} 条任务${skipped ? `，跳过 ${skipped} 条` : ''}`);
       refreshLocal?.();
@@ -398,10 +387,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
   const restoreDeleted = (t: LocalTask | null) => {
     if (!t) return;
     guard(async () => {
-      await api('/api/localtasks/tasks/restore', {
-        method: 'POST',
-        body: isGlobal ? { key: GLOBAL_KEY, id: t.id } : { cwd: topic?.cwd, id: t.id },
-      });
+      await restoreTaskItem(isGlobal ? { key: GLOBAL_KEY, id: t.id } : { cwd: topic?.cwd, id: t.id });
       toast(`已恢复 #${t.id}「${(t.text || '').split('\n').find((l) => l.trim())?.replace(/^#\s*/, '') || ''}」`);
       refreshLocal?.();
     });
@@ -418,10 +404,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     });
     if (!ok) return;
     guard(async () => {
-      await api('/api/localtasks/item', {
-        method: 'DELETE',
-        body: { ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }), id: t.id, purge: true },
-      });
+      await removeTaskItem({ ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }), id: t.id, purge: true });
       toast(`已彻底删除 #${t.id}`);
       refreshLocal?.();
     });
@@ -453,10 +436,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     const name = file.name.replace(/\.md$/i, '');
     await guard(async () => {
       const bodyText = text.startsWith('#') ? text : `# ${name}\n\n${text}`;
-      const res = await api('/api/localtasks', {
-        method: 'POST',
-        body: isGlobal ? { global: true, text: bodyText } : { cwd: topic?.cwd, text: bodyText },
-      });
+      const res = await addTask(isGlobal ? { global: true, text: bodyText } : { cwd: topic?.cwd, text: bodyText });
       toast(`已导入：${file.name}`);
       refreshLocal?.();
       const newId = res?.task?.id ?? res?.id;

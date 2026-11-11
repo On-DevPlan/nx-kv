@@ -1,7 +1,7 @@
 // 任务链（history / fork 派生）状态与导航。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Model } from 'flexlayout-react';
-import { api } from '../../api/client.js';
+import { getTaskChain } from './api.js';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import { openBesideMain } from '../../workspace.js';
 import type { LocalTask, LocalTopic } from '../../types.js';
@@ -36,7 +36,7 @@ export function useChain({
     const q = isGlobal
       ? `key=${encodeURIComponent(GLOBAL_KEY)}&id=${Number(task)}`
       : `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(task)}`;
-    api<ChainApi>(`/api/localtasks/chain?${q}`)
+    getTaskChain(q)
       .then((d) => {
         if (!cancelled) setChainApi(d);
       })

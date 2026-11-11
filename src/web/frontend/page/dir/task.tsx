@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { Actions } from 'flexlayout-react';
 import type { Model } from 'flexlayout-react';
-import { api } from '../../api/client.js';
+import { getTaskAttachments, previewTask } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
@@ -172,7 +172,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     const q = new URLSearchParams({ id: String(t.id) });
     if (topicKey) q.set('key', topicKey);
     else if (t.cwd) q.set('cwd', t.cwd);
-    api(`/api/localtasks/attachments?${q.toString()}`)
+    getTaskAttachments(q.toString())
       .then((d) => { if (alive) setRefAtts((d && (d.attachments || d.data?.attachments)) || []); })
       .catch(() => { if (alive) setRefAtts([]); });
     return () => { alive = false; };
@@ -257,7 +257,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
         ? { text: composeText((doc?.title || '').trim() || '未命名任务', doc?.body || '') }
         : { id: Number(task) }),
     };
-    api('/api/localtasks/preview', { method: 'POST', body })
+    previewTask(body)
       .then((d) => setPreview({ data: d }))
       .catch((e) => setPreview({ error: String((e as Error).message || e) }));
   }, [isGlobal, topic?.cwd, topicKey, isDraft, doc?.title, doc?.body, task, composeText]);

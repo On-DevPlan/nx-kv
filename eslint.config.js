@@ -19,6 +19,9 @@ const BASE_RULES = {
 // no-unused-vars 的 JS 版会把「参数声明了类型但没读」误报）；no-undef 交给 tsc。
 const TS_BASE_RULES = {
   '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+  // 迁移期允许 any：从 legacy JS 迁来的 action 体与服务层绑定还没类型化
+  // （契约由入口的 zod schema 把关，类型化随服务层毕业推进逐步收紧）。
+  '@typescript-eslint/no-explicit-any': 'warn',
   eqeqeq: ['error', 'smart'],
   'prefer-const': 'error',
   'no-var': 'error',

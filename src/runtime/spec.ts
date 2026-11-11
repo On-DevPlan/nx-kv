@@ -4,8 +4,9 @@
 // 这正是历史上 `parseInt(flags.depth, 10) || 3` 散落在各处的根源——两端各写一遍解析，
 // 迟早分叉。现在 depth 只在 action 声明里写一次 `{ type: 'number', default: 3 }`。
 //
-// 迁移期双通道：legacy action 走本文件的 flags 表契约（applySpec / coerceOne），
-// @action 装饰的 zod action 走 zod-bridge（normalizeCliValue / parseZodInput）。
+// 双通道：业务 action 走 @action 装饰的 zod 契约（zod-bridge 的
+// normalizeCliValue / parseZodInput）；legacy flags 表契约（applySpec / coerceOne）
+// 只服务 runtime 内建命令（serve / help / version）。
 // usageOf / compileRoute / entryOf / cliPathsOf 对两通道共用。
 import { badInput } from '../core/errors.js';
 import { APP_NAME } from '../core/paths.js';
@@ -232,7 +233,11 @@ function zodUsageOf(action: { cli?: unknown; fields?: FieldDesc[]; restArg?: str
       parts.push(f.required ? `--${f.name}` : `[--${f.name}]`);
       continue;
     }
-    const hint = f.enumValues?.length ? f.enumValues.join('|') : f.kind === 'raw' ? f.name : f.kind;
+    // 值占位符优先用字段说明（迁移自 legacy flags 的 hint）——help 因此仍然说人话
+    const hint =
+      f.enumValues?.length
+        ? f.enumValues.join('|')
+        : f.hint || (f.kind === 'raw' ? f.name : f.kind);
     const token = `--${f.name} <${hint}>`;
     parts.push(f.required ? token : `[${token}]`);
   }

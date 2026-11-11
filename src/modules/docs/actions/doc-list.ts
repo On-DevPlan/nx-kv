@@ -1,0 +1,26 @@
+// doc.list —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
+//
+// 契约常量在 ../schemas.ts（zod）；本文件只做「声明 + 实现」，业务在服务层。
+import { action } from '../../../runtime/action-decorator.js';
+import { ActionBase } from '../../../runtime/action-base.js';
+import { docListInput } from '../schemas.js';
+import { listDocs as _listDocs } from '../service.js';
+import { renderList as _renderList } from '../render.js';
+const listDocs: any = _listDocs;
+const renderList: any = _renderList;
+
+export class DocListAction extends ActionBase {
+  @action({
+    id: 'doc.list',
+    cli: ['docs', 'list'],
+    http: ['GET', '/api/docs'],
+    summary: '文档树索引（自有 + 可选外部；零副作用，双链解析的数据源）',
+    input: docListInput,
+    render: renderList,
+  })
+  async list(ctx: any) {
+
+      return listDocs(ctx);
+  
+  }
+}

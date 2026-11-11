@@ -4,9 +4,9 @@
 // renderXxx 四处重复登记。现在命令表、help 文本、参数校验全部由 action 声明派生，
 // 新增命令只需在所属模块的 actions 里加一条（或按模板形态写一个 @action 装饰类）。
 //
-// **迁移期双通道**：@action 装饰的 zod action 走 zod-bridge（归一化 + zod 校验），
-// legacy action 走 flags 表契约（parseRest / applySpec）。token 扫描一层两通道共用
-// （`--` / `---` 的语义只有一份），只在「归一化 + 校验」处分叉。
+// **双通道**：业务 action 走 @action 装饰的 zod 契约（zod-bridge：归一化 + zod 校验）；
+// legacy flags 表契约只服务 runtime 内建命令（serve / help / version）。
+// token 扫描一层两通道共用（`--` / `---` 的语义只有一份），只在「归一化 + 校验」处分叉。
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { APP_NAME, DEFAULT_PORT } from '../core/paths.js';

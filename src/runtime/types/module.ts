@@ -39,5 +39,9 @@ export abstract class ModuleBase {
   abstract readonly id: string;
   abstract readonly title: string;
   readonly order?: number;
+  /** CRUD 完备性声明：本模块管理的资源名（tests/unit/registry.test.mjs 据此断言五操作齐备）。 */
+  readonly resource?: string;
+  /** 同上，多资源版本。 */
+  readonly resources?: readonly string[];
   abstract readonly actions: readonly unknown[];
 }

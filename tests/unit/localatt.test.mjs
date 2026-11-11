@@ -74,7 +74,8 @@ test('localReadStream：按 resolve 出的绝对路径读出原字节', async ()
 
 test('file.upload --local：action 层返回 storage=local + 本地路径（零网络路径）', async () => {
   const act = fileMod.actions.find((a) => a.id === 'file.upload');
-  assert.ok(act.flags.local, 'file.upload 声明 --local');
+  // 迁移到模板形态后，action 的入参契约在 zod schema 里（不再是 legacy 的 flags 表）：
+  assert.ok(act.input.shape.local, 'file.upload 声明 --local');
   const content = Buffer.from('web-bytes').toString('base64');
   const d = await fileService.uploadFileAction({ name: '面板贴图.png', content, contentType: 'image/png', local: true });
   assert.equal(d.storage, 'local');

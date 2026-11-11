@@ -23,6 +23,7 @@
 // 同一信息只声明一次，「两份声明漂移」无从发生。
 import { describeInput } from './zod-bridge.js';
 import { routeParams, type ZodBoundAction } from './action-decorator.js';
+import { cliPathsOf } from './spec.js';
 
 /** actionId → 入参 schema 常量名：system.bootstrap → systemBootstrapInput */
 export function schemaName(actionId: string): string {
@@ -39,7 +40,8 @@ export function clientMethodNames(actions: readonly ZodBoundAction[]): Map<strin
   const names = new Map<string, string>();
   for (const a of actions) {
     const parts = a.id.split('.');
-    const base = parts[parts.length - 1]!;
+    // 方法名必须是合法标识符：'repo.bind-topics' → 'bindTopics'
+    const base = parts[parts.length - 1]!.replace(/[-_](\w)/g, (_m, c) => c.toUpperCase());
     let candidate = base;
     if (used.has(candidate)) {
       const module = parts.length > 1 ? parts[parts.length - 2]! : 'action';
@@ -136,7 +138,9 @@ export function generateClientSource(actions: readonly ZodBoundAction[]): string
       );
       lines.push(`      ${isGet && bodyFields.length ? 'let' : 'const'} path = \`${pathTemplate}\`;`);
 
-      const ret = `return (await transport.request(${JSON.stringify(method)}, path${isGet ? '' : ', body'})) as Awaited<ReturnType<InstanceType<typeof ${a.className}>['${a.method}']>>;`;
+      // 非 GET 且没有 body 字段时，传 undefined（body 变量并不存在）
+      const bodyArg = isGet ? '' : bodyFields.length ? ', body' : ', undefined';
+      const ret = `return (await transport.request(${JSON.stringify(method)}, path${bodyArg})) as Awaited<ReturnType<InstanceType<typeof ${a.className}>['${a.method}']>>;`;
 
       if (isGet) {
         if (bodyFields.length) {
@@ -209,16 +213,19 @@ export function buildTreeJson(actions: readonly ZodBoundAction[]): TreeNodeJson 
   type Node = { name: string; path: string[]; children: Node[]; action?: ZodBoundAction };
   const root: Node = { name: '', path: [], children: [] };
   for (const action of actions) {
-    let node = root;
-    action.cli.forEach((seg, i) => {
-      let next = node.children.find((c) => c.name === seg);
-      if (!next) {
-        next = { name: seg, path: action.cli.slice(0, i + 1), children: [] };
-        node.children.push(next);
-      }
-      node = next;
-    });
-    node.action = action;
+    // 别名也是命令路径：每条路径都进树（树 = 命令表的层级视图）
+    for (const cliPath of cliPathsOf(action)) {
+      let node = root;
+      cliPath.forEach((seg, i) => {
+        let next = node.children.find((c) => c.name === seg);
+        if (!next) {
+          next = { name: seg, path: cliPath.slice(0, i + 1), children: [] };
+          node.children.push(next);
+        }
+        node = next;
+      });
+      node.action = action;
+    }
   }
   const toJson = (node: Node): TreeNodeJson => ({
     name: node.name,

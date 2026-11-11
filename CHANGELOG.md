@@ -2,42 +2,40 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [0.47.0] - 2026-11-11 按 server-cli-web 模板形态 TS 化（阶段一：骨架，#174）
+## [0.47.0] - 2026-11-11 按 server-cli-web 模板形态 TS 化（#174）
+
+### Changed
+
+- **action 注册层完全重构到模板形态**（154 条业务 action）：每个模块改成
+  `src/modules/<域>/index.ts`（ModuleBase 子类，只做装配）+ `schemas.ts`（zod 契约）
+  + `actions/<名>.ts`（一条 action 一个文件，@action 装饰器 + ActionBase）
+  + `actions/_manifest.generated.ts`（codegen 产物，模块 index 零手工列举）。
+  加一条 action = 新建一个文件 + 跑一次 `pnpm gen`。
+- **flags 表契约 → zod 契约**：CLI 与 HTTP 共用同一份入参 schema（归一化 + 校验走
+  `runtime/zod-bridge.ts`）；flag 的 hint 迁进 `.describe()`，help 的用法串因此仍然说人话。
+- **legacy plain-object action 通道仅剩平台命令**（serve / help / version）；
+  业务 action 已全部走 zod 通道，Registry / CliApp / ApiRouter 对两通道无感。
+- **跨域策略保持不变**（任务 #57 的裁决）：HTTP 层不做「Origin 主机名必须是本机」的拒绝，
+  仍走标准 CORS 头 + 预检——模板自带的跨站拒绝会把内网穿透场景的真实用户挡在门外。
 
 ### Added
 
 - **模板骨架（对齐 `nx-nx/templates/server-cli-web`）**：`src/runtime/` 全部改写为
-  strict TypeScript——`@action` 装饰器（zod schema 即契约）、IoC 容器（`Container` +
-  `DependencyMap`）、`Registry` 类、`CliApp` / `ApiRouter` / `PanelServer`、
-  `zod-bridge`（CLI/HTTP 共用的归一化 + 校验）、`codegen`（前端 typed client +
-  CLI 树快照）。
-- **codegen 工具链**：`pnpm gen:actions` 扫 `modules/<域>/actions/*.ts` 生成
-  `_manifest.generated.ts`（加一条 action = 新建一个文件 + 跑一次生成，模块 index 零改动）；
-  `pnpm gen:api` 生成前端 `api/client.generated.ts` + `api/cli-tree.json`；
-  新鲜度由 `tests/unit/api-client.test.mjs` 对账。
-- **`system` 模块按模板形态重写**：`ModuleBase` 子类 + `schemas.ts`（zod 契约）+
-  `actions/<名>.ts` 一条 action 一个文件（bootstrap / health / routes）。
-- **工具链**：三份 tsconfig（`base` / `node` / `web`，strict + `noUncheckedIndexedAccess`）、
-  `vite.config.ts`、`pnpm typecheck`、`pnpm dev`（vite + 后端一条命令起，端口先谈定再起进程）。
-- **双通道并存**：legacy flags 表 action 与 zod 通道 action 由同一个 Registry 装载，
-  CLI / HTTP / help / routes 对通道无感——存量 166 条 action 行为零回归。
+  strict TypeScript——@action 装饰器、IoC 容器（`Container` + `DependencyMap`）、
+  `Registry` 类、`CliApp` / `ApiRouter` / `PanelServer`、`zod-bridge`、`codegen`。
+- **codegen 工具链**：`pnpm gen:actions`（扫 actions/ 生成清单）、`pnpm gen:api`
+  （前端 typed client + CLI 树快照），新鲜度由 `tests/unit/api-client.test.mjs` 对账。
+- **工具链**：三份 tsconfig（base / node / web，strict + noUncheckedIndexedAccess）、
+  `vite.config.ts`、`pnpm typecheck`、`pnpm dev`（vite + 后端一条命令起）。
 
-### Changed
+### Fixed
 
-- **CLI 入口 `bin/cli.mjs` → `bin/kv.mjs`**（模板形态）；**直跑 TS 源码**（tsx 注册 loader），
-  不再走 dist——避免「改了源码忘 build」导致全局命令静默跑旧逻辑。
-- `serve` / `help` / `version` 暂留 runtime 内建（help / version 要看注册表全集，
-  serve 要挂 localtask 面板占位；迁入 platform 模块列入后续阶段）。
-- `routes` 命令从 runtime 内建迁入 `system` 模块（命令表改由 core 快照格子提供，
-  不再依赖 runtime，解除「模块 ↔ runtime」的历史耦合）。
-- **跨域策略保持不变**（任务 #57 的裁决）：HTTP 层不做「Origin 主机名必须是本机」的拒绝，
-  仍走标准 CORS 头 + 预检——模板自带的跨站拒绝会把内网穿透场景的真实用户挡在门外。
-- `src/core/` 的 errors / paths / config / command-table / serve-port / open 改写为 TS。
+- **持续 get 的多条模板按空行拼接**（此前落库是 string[]，渲染器 `String(template)`
+  会把它变成逗号相连）；默认内文文案提升到共享层（前端此前另存了一份过期副本）。
 
 ### Docs
 
-- `plan/174-template-ts-refactor-stage1.md`：本次范围、分期与偏离模板之处（含理由）。
-- 项目级 skill `dev-nxkv` 同步新结构：分层树、action 双形态契约、验证命令（typecheck / gen）。
+- `plan/174-template-ts-refactor-stage1.md`：范围、分期与偏离模板之处（含理由）。
 
 ## [0.46.0] - 2026-11-10 progress 参数彻底退役（#92）
 

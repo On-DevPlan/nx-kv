@@ -2,8 +2,10 @@
 //
 // 单一通道：全部新业务 action 都走这里——声明（@action 元数据）与实现同文件，
 // 契约常量放同域 schemas.ts；模块的 actions 字段由 zodActionsOf(instance) 收集。
-// 迁移期 legacy plain-object action（flags 表契约）并存，Registry / CliApp /
-// ApiRouter 对两通道无感；全部模块迁移后 legacy 删除。
+// legacy plain-object action（flags 表契约）只剩 runtime 内建命令在用
+// （serve / help / version）——它们是平台命令，不是业务 action。
+// Registry / CliApp / ApiRouter 仍对两通道无感；内建命令迁进 platform 模块后，
+// legacy 通道即可整体删除。
 //
 // 三条实测结论（模板 spike 逼出来的，改前先读）：
 //
@@ -21,11 +23,18 @@
 import { describeInput, type FieldDesc } from './zod-bridge.js';
 import type { ZodType } from 'zod';
 
+/**
+ * CLI 路径声明：单路径 `['repo','list']` 或多路径别名 `[['repo','list'],['r','l']]`。
+ * 模板的类型只写了单路径——但别名是既有能力（`bundled list` 与 `skill install --list`
+ * 同一条命令），迁移不能把它削掉。
+ */
+export type CliPaths = readonly string[] | readonly (readonly string[])[];
+
 /** 装饰式 action 绑定到实例后的公共形状（registry.actions 的元素类型之一）。 */
 export interface BoundAction {
   id: string;
   module: string;
-  cli: readonly string[];
+  cli: CliPaths;
   http?: readonly [string, string] | null;
   summary?: string;
   // meta 形参刻意与 legacy 的 run(ctx, { transport }) 同形（宽松 string 而非字面量联合）：
@@ -37,8 +46,8 @@ export interface BoundAction {
 export interface ActionMeta {
   /** 全局唯一 id，编成 `模块.动作`（如 `system.bootstrap`） */
   id: string;
-  /** CLI 命令路径的各段（如 ['bootstrap']） */
-  cli: readonly string[];
+  /** CLI 命令路径的各段（如 ['bootstrap']）；多路径别名写 [[a,b],[c,d]] */
+  cli: CliPaths;
   /** HTTP 路由：[METHOD, PATTERN]。纯 CLI 命令**显式写 null**（与 legacy 一致，测试断言两态） */
   http?: readonly [string, string] | null;
   /** 一句话说明，进 help 与面板 */
@@ -50,7 +59,9 @@ export interface ActionMeta {
   /** 输入 schema：CLI 与 HTTP 共用的真相源（运行时校验 + 归一化的依据）。 */
   input: ZodType;
   /** CLI 人读渲染（面板不用——面板拿 data 走 JSON）。 */
-  render?: (result: unknown, ctx?: unknown) => string | Promise<string>;
+  // 参数用 any：渲染函数普遍要读结果字段，给 unknown 会让属性访问整片红。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 见上；eslint 对 any 仅警告
+  render?: (result: any, ctx?: any) => string | Promise<string>;
   /** SSE 类动作：true 时 HTTP 侧把 req/res 透传给 run，action 自己接管响应 */
   stream?: boolean;
 }
@@ -91,7 +102,7 @@ export function metaOf(method: unknown): ActionMeta | undefined {
  */
 export interface ZodBoundAction extends BoundAction {
   id: string;
-  cli: readonly string[];
+  cli: CliPaths;
   /** 纯 CLI 命令显式为 null（与 legacy 的两态约定一致） */
   http: readonly [string, string] | null;
   summary?: string;
@@ -102,7 +113,7 @@ export interface ZodBoundAction extends BoundAction {
   /** 逐字段说明（收集时用 describeInput 算好一次，CLI/HTTP/usage/codegen 共用） */
   fields: FieldDesc[];
   input: ZodType;
-  render?: (result: unknown, ctx?: unknown) => string | Promise<string>;
+  render?: (result: any, ctx?: any) => string | Promise<string>;
   stream?: boolean;
   channel: 'zod';
   /** 绑定的 action 类名（codegen 按它从清单 type-only 引类）；tsc 编译后类名不变形（无压缩）。 */

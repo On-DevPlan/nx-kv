@@ -34,6 +34,11 @@ export interface FieldDesc {
   required: boolean;
   default?: unknown;
   enumValues?: string[];
+  /**
+   * 字段说明（zod 的 .describe()，迁移自 legacy flags 的 hint）。
+   * 用法串里拿它当值占位符——help 因此仍然说人话，而不是 `--module <string>`。
+   */
+  hint?: string;
 }
 
 interface Unwrapped {
@@ -95,6 +100,13 @@ function enumValuesOf(inner: unknown): string[] {
   return Object.values(def?.entries ?? {});
 }
 
+
+/** 取 zod schema 上的说明（.describe()）：help 的值占位符用它。 */
+function hintOf(field: unknown): string | undefined {
+  const d = (field as { description?: unknown })?.description;
+  return typeof d === 'string' && d ? d : undefined;
+}
+
 /**
  * 把 action 的 input schema 拆成逐字段说明（CLI 与 HTTP 共用同一份）。
  *
@@ -117,6 +129,7 @@ export function describeInput(input: ZodType, args: readonly string[] = []): Fie
   for (const [name, field] of entries) {
     const { inner, optional, defaultValue } = unwrap(field);
     const kind = kindOf(inner);
+    const hint = hintOf(field) || hintOf(inner);
     out.push({
       name,
       kind,
@@ -124,6 +137,7 @@ export function describeInput(input: ZodType, args: readonly string[] = []): Fie
       required: !optional && defaultValue === undefined,
       default: defaultValue,
       enumValues: kind === 'enum' ? enumValuesOf(inner) : undefined,
+      hint,
     });
   }
   return out;

@@ -44,6 +44,2559 @@
         "http": null
       },
       "children": []
+    },
+    {
+      "name": "setting",
+      "path": [
+        "setting"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "get",
+          "path": [
+            "setting",
+            "get"
+          ],
+          "action": {
+            "id": "setting.get",
+            "module": "setting",
+            "summary": "读本机设置（附件自动下载、附件目录、参考仓库存储根）",
+            "usage": "setting get",
+            "http": "GET /api/setting"
+          },
+          "children": []
+        },
+        {
+          "name": "set",
+          "path": [
+            "setting",
+            "set"
+          ],
+          "action": {
+            "id": "setting.set",
+            "module": "setting",
+            "summary": "改本机设置（只改传入项）",
+            "usage": "setting set",
+            "http": "POST /api/setting"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "auth",
+      "path": [
+        "auth"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "login",
+          "path": [
+            "auth",
+            "login"
+          ],
+          "action": {
+            "id": "auth.login",
+            "module": "auth",
+            "summary": "登录并保存 token 到本机配置",
+            "usage": "auth login",
+            "http": "POST /api/auth/login"
+          },
+          "children": []
+        },
+        {
+          "name": "logout",
+          "path": [
+            "auth",
+            "logout"
+          ],
+          "action": {
+            "id": "auth.logout",
+            "module": "auth",
+            "summary": "清除本机保存的 token",
+            "usage": "auth logout",
+            "http": "POST /api/auth/logout"
+          },
+          "children": []
+        },
+        {
+          "name": "me",
+          "path": [
+            "auth",
+            "me"
+          ],
+          "action": {
+            "id": "auth.me",
+            "module": "auth",
+            "summary": "向后端确认身份（验证 token 是否仍有效）",
+            "usage": "auth me",
+            "http": "GET /api/auth/me"
+          },
+          "children": []
+        },
+        {
+          "name": "status",
+          "path": [
+            "auth",
+            "status"
+          ],
+          "action": {
+            "id": "auth.status",
+            "module": "auth",
+            "summary": "查看本机登录态（不请求后端，离线可用）",
+            "usage": "auth status",
+            "http": "GET /api/auth"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "board",
+      "path": [
+        "board"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "add",
+          "path": [
+            "board",
+            "add"
+          ],
+          "action": {
+            "id": "board.add",
+            "module": "repos",
+            "summary": "新建看板（主题容器）",
+            "usage": "board add",
+            "http": "POST /api/boards"
+          },
+          "children": []
+        },
+        {
+          "name": "assign",
+          "path": [
+            "board",
+            "assign"
+          ],
+          "action": {
+            "id": "board.assign",
+            "module": "repos",
+            "summary": "把仓库聚合进看板（可同时在多个看板；--remove 移出；--before 插位；仓库给 id / key / 路径）",
+            "usage": "board assign",
+            "http": "POST /api/boards/assign"
+          },
+          "children": []
+        },
+        {
+          "name": "export",
+          "path": [
+            "board",
+            "export"
+          ],
+          "action": {
+            "id": "board.export",
+            "module": "repos",
+            "summary": "导出看板 JSON（可回灌给 board import）",
+            "usage": "board export",
+            "http": "GET /api/boards/export"
+          },
+          "children": []
+        },
+        {
+          "name": "get",
+          "path": [
+            "board",
+            "get"
+          ],
+          "action": {
+            "id": "board.get",
+            "module": "repos",
+            "summary": "查看单个看板（含成员仓库与描述）",
+            "usage": "board get",
+            "http": "GET /api/boards/:id"
+          },
+          "children": []
+        },
+        {
+          "name": "import",
+          "path": [
+            "board",
+            "import"
+          ],
+          "action": {
+            "id": "board.import",
+            "module": "repos",
+            "summary": "导入看板 JSON（一个看板 = 一个主题；按 path/name 匹配已登记仓库）",
+            "usage": "board import",
+            "http": "POST /api/boards/import"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "board",
+            "list"
+          ],
+          "action": {
+            "id": "board.list",
+            "module": "repos",
+            "summary": "看板清单：每个主题里有哪些仓库、各自的一句话描述",
+            "usage": "board list",
+            "http": "GET /api/boards"
+          },
+          "children": []
+        },
+        {
+          "name": "note",
+          "path": [
+            "board",
+            "note"
+          ],
+          "action": {
+            "id": "board.note",
+            "module": "repos",
+            "summary": "写/清组内描述：仓库在看板里的角色与配合关系（--note 留空 = 清除；仓库给 id / key / 绝对路径）",
+            "usage": "board note",
+            "http": "POST /api/boards/note"
+          },
+          "children": []
+        },
+        {
+          "name": "prefix",
+          "path": [
+            "board",
+            "prefix"
+          ],
+          "action": {
+            "id": "board.prefix",
+            "module": "repos",
+            "summary": "按前缀归组：把名字以 <prefix> 开头的仓库一次性挂进看板（--board 给目标看板；不给就按前缀名自动建同名看板）",
+            "usage": "board prefix",
+            "http": "POST /api/boards/prefix"
+          },
+          "children": []
+        },
+        {
+          "name": "prune",
+          "path": [
+            "board",
+            "prune"
+          ],
+          "action": {
+            "id": "board.prune",
+            "module": "repos",
+            "summary": "清理占位成员：组里引用、本机没登记且没有远程地址的仓库（默认预览，--apply 落盘；带 remote 的加 --all 才清）",
+            "usage": "board prune",
+            "http": "POST /api/boards/prune"
+          },
+          "children": []
+        },
+        {
+          "name": "rekey",
+          "path": [
+            "board",
+            "rekey"
+          ],
+          "action": {
+            "id": "board.rekey",
+            "module": "repos",
+            "summary": "把组里的占位 key 重绑到本机仓库（关系改、登记不动；组内描述与文档绑定跟着搬）",
+            "usage": "board rekey",
+            "http": "POST /api/boards/rekey"
+          },
+          "children": []
+        },
+        {
+          "name": "remove",
+          "path": [
+            "board",
+            "remove"
+          ],
+          "action": {
+            "id": "board.remove",
+            "module": "repos",
+            "summary": "删看板（里面的仓库回到未分组，登记不动）",
+            "usage": "board remove",
+            "http": "DELETE /api/boards/:id"
+          },
+          "children": []
+        },
+        {
+          "name": "update",
+          "path": [
+            "board",
+            "update"
+          ],
+          "action": {
+            "id": "board.update",
+            "module": "repos",
+            "summary": "改看板名称 / 描述",
+            "usage": "board update",
+            "http": "PATCH /api/boards/:id"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "repo",
+      "path": [
+        "repo"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "add",
+          "path": [
+            "repo",
+            "add"
+          ],
+          "action": {
+            "id": "repo.add",
+            "module": "repos",
+            "summary": "登记一个仓库",
+            "usage": "repo add",
+            "http": "POST /api/repos"
+          },
+          "children": []
+        },
+        {
+          "name": "bind-topics",
+          "path": [
+            "repo",
+            "bind-topics"
+          ],
+          "action": {
+            "id": "repo.bind-topics",
+            "module": "repos",
+            "summary": "把「未绑定」队列按路径前缀绑到真实仓库（先建 refs 再绑；默认预览，--apply 落盘）",
+            "usage": "repo bind-topics",
+            "http": "POST /api/repos/bind-topics"
+          },
+          "children": []
+        },
+        {
+          "name": "bind",
+          "path": [
+            "repo",
+            "bind"
+          ],
+          "action": {
+            "id": "repo.bind",
+            "module": "repos",
+            "summary": "绑定参考仓库到组或单个开发仓库（两类并存；--board 组级、--repo 仓库级；--remove 摘除）",
+            "usage": "repo bind",
+            "http": "POST /api/repos/bind"
+          },
+          "children": []
+        },
+        {
+          "name": "clone",
+          "path": [
+            "repo",
+            "clone"
+          ],
+          "action": {
+            "id": "repo.clone",
+            "module": "repos",
+            "summary": "按 remote 克隆并登记（--key 指定占位 key → 组里位置自动补齐）",
+            "usage": "repo clone",
+            "http": "POST /api/repos/clone"
+          },
+          "children": []
+        },
+        {
+          "name": "detect",
+          "path": [
+            "repo",
+            "detect"
+          ],
+          "action": {
+            "id": "repo.detect",
+            "module": "repos",
+            "summary": "探测目录的 git remote（添加仓库前自动填充远程地址；只读）",
+            "usage": "repo detect",
+            "http": "POST /api/repos/detect"
+          },
+          "children": []
+        },
+        {
+          "name": "doc",
+          "path": [
+            "repo",
+            "doc"
+          ],
+          "action": null,
+          "children": [
+            {
+              "name": "add",
+              "path": [
+                "repo",
+                "doc",
+                "add"
+              ],
+              "action": {
+                "id": "repo.doc.add",
+                "module": "repos",
+                "summary": "给项目加一篇介绍文档：--rel 自有树路径 / --path 外部绝对路径 / --ref <参考仓库key> --file <仓库内相对路径>（同 rel/path 重复添加 = 更新）",
+                "usage": "repo doc add",
+                "http": "POST /api/repos/docs"
+              },
+              "children": []
+            },
+            {
+              "name": "list",
+              "path": [
+                "repo",
+                "doc",
+                "list"
+              ],
+              "action": {
+                "id": "repo.doc.list",
+                "module": "repos",
+                "summary": "列出项目的介绍文档集（主篇 + 其余各篇，含来源形态：自有树 / 外部 / ref 仓库）",
+                "usage": "repo doc list",
+                "http": "GET /api/repos/docs"
+              },
+              "children": []
+            },
+            {
+              "name": "remove",
+              "path": [
+                "repo",
+                "doc",
+                "remove"
+              ],
+              "action": {
+                "id": "repo.doc.remove",
+                "module": "repos",
+                "summary": "从项目的介绍文档集里摘掉一篇（--index 从 1 起，1 = 主篇）",
+                "usage": "repo doc remove",
+                "http": "DELETE /api/repos/docs"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "export",
+          "path": [
+            "repo",
+            "export"
+          ],
+          "action": {
+            "id": "repo.export",
+            "module": "repos",
+            "summary": "导出仓库布局 JSON（全局 key + 分组 + 参考关系；不含本地路径）；--zip 打包成 zip",
+            "usage": "repo export",
+            "http": "GET /api/repos/export"
+          },
+          "children": []
+        },
+        {
+          "name": "get",
+          "path": [
+            "repo",
+            "get"
+          ],
+          "action": {
+            "id": "repo.get",
+            "module": "repos",
+            "summary": "查看单个仓库的登记信息",
+            "usage": "repo get",
+            "http": "GET /api/repos/:id"
+          },
+          "children": []
+        },
+        {
+          "name": "import",
+          "path": [
+            "repo",
+            "import"
+          ],
+          "action": {
+            "id": "repo.import",
+            "module": "repos",
+            "summary": "导入仓库布局（--strategy ours|overwrite|duplicate；--select 按 key 挑；--clone 选克隆范围）",
+            "usage": "repo import",
+            "http": "POST /api/repos/import"
+          },
+          "children": [
+            {
+              "name": "--diff",
+              "path": [
+                "repo",
+                "import",
+                "--diff"
+              ],
+              "action": {
+                "id": "repo.import.diff",
+                "module": "repos",
+                "summary": "导入前的差异检查：逐条给出 新增/有差异/一致/本地未拥有（零副作用）",
+                "usage": "repo import --diff",
+                "http": "POST /api/repos/import/diff"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "key",
+          "path": [
+            "repo",
+            "key"
+          ],
+          "action": null,
+          "children": [
+            {
+              "name": "migrate",
+              "path": [
+                "repo",
+                "key",
+                "migrate"
+              ],
+              "action": {
+                "id": "repo.key.migrate",
+                "module": "repos",
+                "summary": "把内部关系（看板成员/绑定）从随机 id 改写成 key（幂等；--apply 落盘）",
+                "usage": "repo key migrate",
+                "http": "POST /api/repos/key/migrate"
+              },
+              "children": []
+            },
+            {
+              "name": "refresh",
+              "path": [
+                "repo",
+                "key",
+                "refresh"
+              ],
+              "action": {
+                "id": "repo.key.refresh",
+                "module": "repos",
+                "summary": "刷新仓库 key：扫描 git remote（SSH 优先），提示可更新的 key/远程地址；--apply 落盘",
+                "usage": "repo key refresh",
+                "http": "POST /api/repos/key/refresh"
+              },
+              "children": []
+            },
+            {
+              "name": "set",
+              "path": [
+                "repo",
+                "key",
+                "set"
+              ],
+              "action": {
+                "id": "repo.key.set",
+                "module": "repos",
+                "summary": "设置自定义 key（全局唯一，不跟随远程地址自动变）；--follow 恢复为跟随 remote",
+                "usage": "repo key set",
+                "http": "POST /api/repos/key"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "knowledge",
+          "path": [
+            "repo",
+            "knowledge"
+          ],
+          "action": {
+            "id": "repo.knowledge",
+            "module": "repos",
+            "summary": "取仓库完整知识：项目介绍 + 所属组（介绍/组内描述/绑定文档）+ 参考仓库（--md 拼成单篇 markdown；缺省当前目录）",
+            "usage": "repo knowledge",
+            "http": "GET /api/repos/knowledge"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "repo",
+            "list"
+          ],
+          "action": {
+            "id": "repo.list",
+            "module": "repos",
+            "summary": "仓库清单（本地任务的主题会按路径匹配到这里，取它的上下文）",
+            "usage": "repo list",
+            "http": "GET /api/repos"
+          },
+          "children": []
+        },
+        {
+          "name": "open",
+          "path": [
+            "repo",
+            "open"
+          ],
+          "action": {
+            "id": "repo.open",
+            "module": "repos",
+            "summary": "在系统文件管理器中打开",
+            "usage": "repo open",
+            "http": "POST /api/repos/open"
+          },
+          "children": []
+        },
+        {
+          "name": "ref",
+          "path": [
+            "repo",
+            "ref"
+          ],
+          "action": null,
+          "children": [
+            {
+              "name": "add",
+              "path": [
+                "repo",
+                "ref",
+                "add"
+              ],
+              "action": {
+                "id": "repo.ref.add",
+                "module": "repos",
+                "summary": "把一个已存在的 checkout 登记为参考仓库（不 clone；remote 缺省读 origin）",
+                "usage": "repo ref add",
+                "http": "POST /api/repos/ref/add"
+              },
+              "children": []
+            },
+            {
+              "name": "backfill",
+              "path": [
+                "repo",
+                "ref",
+                "backfill"
+              ],
+              "action": {
+                "id": "repo.ref.backfill",
+                "module": "repos",
+                "summary": "从 v3 快照补录仓库级参考绑定（幂等、可重复；与组级绑定并存；--dry-run 只预览）",
+                "usage": "repo ref backfill",
+                "http": null
+              },
+              "children": []
+            },
+            {
+              "name": "check",
+              "path": [
+                "repo",
+                "ref",
+                "check"
+              ],
+              "action": {
+                "id": "repo.ref.check",
+                "module": "repos",
+                "summary": "检查参考仓库完整性：目录/.git/origin 一致性 + 组级/仓库级绑定死链（零副作用）",
+                "usage": "repo ref check",
+                "http": "GET /api/repos/ref/check"
+              },
+              "children": []
+            },
+            {
+              "name": "clone",
+              "path": [
+                "repo",
+                "ref",
+                "clone"
+              ],
+              "action": {
+                "id": "repo.ref.clone",
+                "module": "repos",
+                "summary": "克隆远程仓库为参考仓库（落到 gitRepoRoot，登记 + 可选绑定当前目录的开发仓库）",
+                "usage": "repo ref clone",
+                "http": "POST /api/repos/ref/clone"
+              },
+              "children": []
+            },
+            {
+              "name": "note",
+              "path": [
+                "repo",
+                "ref",
+                "note"
+              ],
+              "action": {
+                "id": "repo.ref.note",
+                "module": "repos",
+                "summary": "写/清绑定描述：这个参考在该组/该仓库里参考什么（--note 留空 = 清除）",
+                "usage": "repo ref note",
+                "http": "POST /api/repos/ref/note"
+              },
+              "children": []
+            },
+            {
+              "name": "of",
+              "path": [
+                "repo",
+                "ref",
+                "of"
+              ],
+              "action": {
+                "id": "repo.ref.of",
+                "module": "repos",
+                "summary": "查某仓库（缺省当前目录）的参考仓库：直接绑定到本仓库的 + 所属组绑定的，两类并列",
+                "usage": "repo ref of",
+                "http": "GET /api/repos/ref/of"
+              },
+              "children": []
+            },
+            {
+              "name": "sync",
+              "path": [
+                "repo",
+                "ref",
+                "sync"
+              ],
+              "action": {
+                "id": "repo.ref.sync",
+                "module": "repos",
+                "summary": "同步参考仓库（git pull --ff-only；--all 同步全部）",
+                "usage": "repo ref sync",
+                "http": "POST /api/repos/ref/sync"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "remote",
+          "path": [
+            "repo",
+            "remote"
+          ],
+          "action": {
+            "id": "repo.remote",
+            "module": "repos",
+            "summary": "登记/更新仓库的远程 git 地址（无 --url = 从目录 origin 读取存档并重算 key）",
+            "usage": "repo remote",
+            "http": "POST /api/repos/remote"
+          },
+          "children": [
+            {
+              "name": "check",
+              "path": [
+                "repo",
+                "remote",
+                "check"
+              ],
+              "action": {
+                "id": "repo.remote.check",
+                "module": "repos",
+                "summary": "检查 remote 是否存在（git ls-remote：存在 / 不存在 / 不可达，三种结论分清）",
+                "usage": "repo remote check",
+                "http": "GET /api/repos/remote/check"
+              },
+              "children": []
+            },
+            {
+              "name": "list",
+              "path": [
+                "repo",
+                "remote",
+                "list"
+              ],
+              "action": {
+                "id": "repo.remote.list",
+                "module": "repos",
+                "summary": "列出仓库的全部 remote 候选（git remote -v），标出当前采纳的那条",
+                "usage": "repo remote list",
+                "http": "GET /api/repos/remote/list"
+              },
+              "children": []
+            },
+            {
+              "name": "pick",
+              "path": [
+                "repo",
+                "remote",
+                "pick"
+              ],
+              "action": {
+                "id": "repo.remote.pick",
+                "module": "repos",
+                "summary": "人工指定采纳哪条 remote（key 随之重算；自定义 key 不动）",
+                "usage": "repo remote pick",
+                "http": "POST /api/repos/remote/pick"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "remove",
+          "path": [
+            "repo",
+            "remove"
+          ],
+          "action": {
+            "id": "repo.remove",
+            "module": "repos",
+            "summary": "移除登记（不动磁盘文件）",
+            "usage": "repo remove",
+            "http": "DELETE /api/repos/:id"
+          },
+          "children": []
+        },
+        {
+          "name": "scan",
+          "path": [
+            "repo",
+            "scan"
+          ],
+          "action": {
+            "id": "repo.scan",
+            "module": "repos",
+            "summary": "扫描目录发现 git 仓库；--dry-run 只列出（发现模式，不登记）",
+            "usage": "repo scan",
+            "http": "POST /api/repos/scan"
+          },
+          "children": []
+        },
+        {
+          "name": "update",
+          "path": [
+            "repo",
+            "update"
+          ],
+          "action": {
+            "id": "repo.update",
+            "module": "repos",
+            "summary": "修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填 + 交付文本带继续 get 模板）。描述已改为文档，不再经这里改",
+            "usage": "repo update",
+            "http": "PATCH /api/repos/:id"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "docs",
+      "path": [
+        "docs"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "add",
+          "path": [
+            "docs",
+            "add"
+          ],
+          "action": {
+            "id": "doc.add",
+            "module": "docs",
+            "summary": "新建自有文档（--body 给 Markdown 正文；--body-file <文件> / - 读管道；已存在则报冲突）",
+            "usage": "docs add",
+            "http": "POST /api/docs/item"
+          },
+          "children": []
+        },
+        {
+          "name": "attach-note",
+          "path": [
+            "docs",
+            "attach-note"
+          ],
+          "action": {
+            "id": "doc.attach-note",
+            "module": "docs",
+            "summary": "改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变）",
+            "usage": "docs attach-note",
+            "http": "PATCH /api/docs/attach-note"
+          },
+          "children": []
+        },
+        {
+          "name": "attach",
+          "path": [
+            "docs",
+            "attach"
+          ],
+          "action": {
+            "id": "doc.attach",
+            "module": "docs",
+            "summary": "给文档挂资源：--path / --fileId / --url / --task / --doc 之一；默认追加进正文，--no-embed 只挂附件区（不写正文）",
+            "usage": "docs attach",
+            "http": "POST /api/docs/attach"
+          },
+          "children": []
+        },
+        {
+          "name": "attachments",
+          "path": [
+            "docs",
+            "attachments"
+          ],
+          "action": {
+            "id": "doc.attachments",
+            "module": "docs",
+            "summary": "这篇文档用了哪些资源（ref_attach：图片/文件/URL/内部 task、ref 引用）",
+            "usage": "docs attachments",
+            "http": "GET /api/docs/attachments"
+          },
+          "children": []
+        },
+        {
+          "name": "detach",
+          "path": [
+            "docs",
+            "detach"
+          ],
+          "action": {
+            "id": "doc.detach",
+            "module": "docs",
+            "summary": "解除文档与附件的关系（默认只解除关系）；--purge 无人引用时连资源行与本机字节一起删",
+            "usage": "docs detach",
+            "http": "DELETE /api/docs/attach"
+          },
+          "children": []
+        },
+        {
+          "name": "get",
+          "path": [
+            "docs",
+            "get"
+          ],
+          "action": {
+            "id": "doc.get",
+            "module": "docs",
+            "summary": "读文档全文：rel:<路径>（或裸相对路径）= 自有；path:<绝对路径> = 外部（须在绑定闭包内）；约定路径缺失时惰性播种",
+            "usage": "docs get",
+            "http": "GET /api/docs/item"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "docs",
+            "list"
+          ],
+          "action": {
+            "id": "doc.list",
+            "module": "docs",
+            "summary": "文档树索引（自有 + 可选外部；零副作用，双链解析的数据源）",
+            "usage": "docs list",
+            "http": "GET /api/docs"
+          },
+          "children": []
+        },
+        {
+          "name": "remove",
+          "path": [
+            "docs",
+            "remove"
+          ],
+          "action": {
+            "id": "doc.remove",
+            "module": "docs",
+            "summary": "删除自有文档（外部绑定不可删）",
+            "usage": "docs remove",
+            "http": "DELETE /api/docs/item"
+          },
+          "children": []
+        },
+        {
+          "name": "set",
+          "path": [
+            "docs",
+            "set"
+          ],
+          "action": {
+            "id": "doc.update",
+            "module": "docs",
+            "summary": "写文档正文（面板保存走这里；自有走 own 树、外部走绑定闭包内原文件；写盘后摘要回写 desc / 组内 note）",
+            "usage": "docs set",
+            "http": "PATCH /api/docs/item"
+          },
+          "children": []
+        },
+        {
+          "name": "bind",
+          "path": [
+            "docs",
+            "bind"
+          ],
+          "action": {
+            "id": "docs.bind",
+            "module": "docs",
+            "summary": "绑定项目/组介绍的文档覆盖（--repo 或 --board 二选一 + --rel <自有路径> | --path <外部文件/目录>；--reset 拆回约定路径）",
+            "usage": "docs bind",
+            "http": "POST /api/docs/bind"
+          },
+          "children": []
+        },
+        {
+          "name": "index",
+          "path": [
+            "docs",
+            "index"
+          ],
+          "action": {
+            "id": "docs.index",
+            "module": "docs",
+            "summary": "双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js）",
+            "usage": "docs index",
+            "http": "GET /api/docs/index"
+          },
+          "children": []
+        },
+        {
+          "name": "link",
+          "path": [
+            "docs",
+            "link"
+          ],
+          "action": {
+            "id": "docs.link",
+            "module": "docs",
+            "summary": "维护组的附加文档列表（--doc <自有路径|绝对路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 doc 重复添加 = 更新）",
+            "usage": "docs link",
+            "http": "POST /api/docs/link"
+          },
+          "children": []
+        },
+        {
+          "name": "note-bind",
+          "path": [
+            "docs",
+            "note-bind"
+          ],
+          "action": {
+            "id": "docs.notebind",
+            "module": "docs",
+            "summary": "绑定组内仓库描述的文档覆盖（--board <看板> --repo <仓库> + --rel/--path/--reset；仓库须为该组成员）",
+            "usage": "docs note-bind",
+            "http": "POST /api/docs/note-bind"
+          },
+          "children": []
+        },
+        {
+          "name": "seed",
+          "path": [
+            "docs",
+            "seed"
+          ],
+          "action": {
+            "id": "docs.seed",
+            "module": "docs",
+            "summary": "把仓库 desc / 看板 desc / 组内 note 字符串播种成约定路径的 md（缺省预览，--apply 执行；幂等）",
+            "usage": "docs seed",
+            "http": "POST /api/docs/seed"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "localtask",
+      "path": [
+        "localtask"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "add",
+          "path": [
+            "localtask",
+            "add"
+          ],
+          "action": {
+            "id": "localtask.add",
+            "module": "localtask",
+            "summary": "向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝）",
+            "usage": "localtask add",
+            "http": "POST /api/localtasks"
+          },
+          "children": []
+        },
+        {
+          "name": "attach-note",
+          "path": [
+            "localtask",
+            "attach-note"
+          ],
+          "action": {
+            "id": "localtask.attach-note",
+            "module": "localtask",
+            "summary": "改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变）",
+            "usage": "localtask attach-note",
+            "http": "PATCH /api/localtasks/attach-note"
+          },
+          "children": []
+        },
+        {
+          "name": "attach",
+          "path": [
+            "localtask",
+            "attach"
+          ],
+          "action": {
+            "id": "localtask.attach",
+            "module": "localtask",
+            "summary": "给任务挂附件：--path 存本机附件仓 / --fileId 引用已有附件 / --url / --task（同主题任务）/ --ref（文档）；默认嵌进正文，--no-embed 只挂到附件区（不写正文），--ref 加 --inline 文档进原文（交付带全文）",
+            "usage": "localtask attach",
+            "http": "POST /api/localtasks/attach"
+          },
+          "children": []
+        },
+        {
+          "name": "attachments",
+          "path": [
+            "localtask",
+            "attachments"
+          ],
+          "action": {
+            "id": "localtask.attachments",
+            "module": "localtask",
+            "summary": "列出某条任务引用的附件（正文里的 ![名](fileId) 嵌入），以及本地是否已有（给 agent 直接读本地文件）",
+            "usage": "localtask attachments",
+            "http": "GET /api/localtasks/attachments"
+          },
+          "children": []
+        },
+        {
+          "name": "cancel",
+          "path": [
+            "localtask",
+            "cancel"
+          ],
+          "action": {
+            "id": "localtask.cancel",
+            "module": "localtask",
+            "summary": "关闭某主题的等待：阻塞中的 wait 立即收尾（与超时同一出口，带 cancelled 标记；不删主题与任务）",
+            "usage": "localtask cancel",
+            "http": "POST /api/localtasks/cancel"
+          },
+          "children": []
+        },
+        {
+          "name": "cancel-many",
+          "path": [
+            "localtask",
+            "cancel-many"
+          ],
+          "action": {
+            "id": "localtask.cancelMany",
+            "module": "localtask",
+            "summary": "批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已交付/已取消跳过；取消为终态，原文留档",
+            "usage": "localtask cancel-many",
+            "http": "POST /api/localtasks/items/cancel"
+          },
+          "children": []
+        },
+        {
+          "name": "chain",
+          "path": [
+            "localtask",
+            "chain"
+          ],
+          "action": {
+            "id": "localtask.chain",
+            "module": "localtask",
+            "summary": "查一条任务的链：history 节点（origin/reopen/comment/current）+ 旧 forkOf 祖先/子任务；面板点节点可旁路查看正文",
+            "usage": "localtask chain",
+            "http": "GET /api/localtasks/chain"
+          },
+          "children": []
+        },
+        {
+          "name": "get",
+          "path": [
+            "localtask",
+            "get"
+          ],
+          "action": {
+            "id": "localtask.claim",
+            "module": "localtask",
+            "summary": "领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填",
+            "usage": "localtask get",
+            "http": "POST /api/localtasks/claim"
+          },
+          "children": []
+        },
+        {
+          "name": "clone",
+          "path": [
+            "localtask",
+            "clone"
+          ],
+          "action": {
+            "id": "localtask.clone",
+            "module": "localtask",
+            "summary": "克隆任务：复制正文内容为一条新任务（同主题；全局任务仍进全局池）。不带派生链、不继承时间目标与依赖——开新活用",
+            "usage": "localtask clone",
+            "http": "POST /api/localtasks/clone"
+          },
+          "children": []
+        },
+        {
+          "name": "close-many",
+          "path": [
+            "localtask",
+            "close-many"
+          ],
+          "action": {
+            "id": "localtask.closeMany",
+            "module": "localtask",
+            "summary": "批量收口待领取任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；已领取/已交付跳过",
+            "usage": "localtask close-many",
+            "http": "POST /api/localtasks/items/close"
+          },
+          "children": []
+        },
+        {
+          "name": "config",
+          "path": [
+            "localtask",
+            "config"
+          ],
+          "action": {
+            "id": "localtask.config",
+            "module": "localtask",
+            "summary": "配置等待超时（秒）/ ack 汇报要求（ack 区块，done 指令与收尾要求唯一出口）/ 每区块模板列表",
+            "usage": "localtask config",
+            "http": "PATCH /api/localtasks/setting"
+          },
+          "children": []
+        },
+        {
+          "name": "detach",
+          "path": [
+            "localtask",
+            "detach"
+          ],
+          "action": {
+            "id": "localtask.detach",
+            "module": "localtask",
+            "summary": "解除任务与附件的关系（默认只解除关系，资源进孤儿池）；--purge 在无人引用时连资源行与本机字节一起删",
+            "usage": "localtask detach",
+            "http": "DELETE /api/localtasks/attach"
+          },
+          "children": []
+        },
+        {
+          "name": "done",
+          "path": [
+            "localtask",
+            "done"
+          ],
+          "action": {
+            "id": "localtask.done",
+            "module": "localtask",
+            "summary": "标记任务完成：--summary 完成总结必填；带时间目标的任务未到点会被拒绝（blocked），到点自动记录最终 check",
+            "usage": "localtask done",
+            "http": "POST /api/localtasks/done"
+          },
+          "children": []
+        },
+        {
+          "name": "events",
+          "path": [
+            "localtask",
+            "events"
+          ],
+          "action": {
+            "id": "localtask.events",
+            "module": "localtask",
+            "summary": "等待事件流：waiting 开始 / reminder 30s·10s / resolved delivered|timeout（SSE 长连接）",
+            "usage": "localtask events",
+            "http": "GET /api/localtasks/events"
+          },
+          "children": []
+        },
+        {
+          "name": "fork",
+          "path": [
+            "localtask",
+            "fork"
+          ],
+          "action": {
+            "id": "localtask.fork",
+            "module": "localtask",
+            "summary": "Fork 任务：复制正文内容为新任务，并把它挂到源任务的任务链下（保留评论/反馈链）；不继承时间目标与依赖",
+            "usage": "localtask fork",
+            "http": "POST /api/localtasks/fork"
+          },
+          "children": []
+        },
+        {
+          "name": "show",
+          "path": [
+            "localtask",
+            "show"
+          ],
+          "action": {
+            "id": "localtask.get",
+            "module": "localtask",
+            "summary": "查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置）",
+            "usage": "localtask show",
+            "http": "GET /api/localtasks/item"
+          },
+          "children": []
+        },
+        {
+          "name": "import-remote",
+          "path": [
+            "localtask",
+            "import-remote"
+          ],
+          "action": {
+            "id": "localtask.importRemote",
+            "module": "localtask",
+            "summary": "从远程清单（KV 后端）导入任务到本地队列：按内容定位远程那条 → 落进本地队列 → 远程那条标记为已完成（note 写明被哪个队列领走）",
+            "usage": "localtask import-remote",
+            "http": "POST /api/localtasks/import-remote"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "localtask",
+            "list"
+          ],
+          "action": {
+            "id": "localtask.list",
+            "module": "localtask",
+            "summary": "总览全部主题（工作目录、现状、是否等待中、待领取数）",
+            "usage": "localtask list",
+            "http": "GET /api/localtasks"
+          },
+          "children": []
+        },
+        {
+          "name": "presence",
+          "path": [
+            "localtask",
+            "presence"
+          ],
+          "action": {
+            "id": "localtask.presence",
+            "module": "localtask",
+            "summary": "探测主面板上当前打开的「实时任务」标签数（活动 SSE 连接数；用于 wait 不重复开页）",
+            "usage": "localtask presence",
+            "http": "GET /api/localtasks/presence"
+          },
+          "children": []
+        },
+        {
+          "name": "preview",
+          "path": [
+            "localtask",
+            "preview"
+          ],
+          "action": {
+            "id": "localtask.preview",
+            "module": "localtask",
+            "summary": "预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览",
+            "usage": "localtask preview",
+            "http": "POST /api/localtasks/preview"
+          },
+          "children": []
+        },
+        {
+          "name": "prune",
+          "path": [
+            "localtask",
+            "prune"
+          ],
+          "action": {
+            "id": "localtask.prune",
+            "module": "localtask",
+            "summary": "清理旧脏数据（旧模型无目录主题、空主题；等待中一律保留）",
+            "usage": "localtask prune",
+            "http": "POST /api/localtasks/prune"
+          },
+          "children": []
+        },
+        {
+          "name": "remove",
+          "path": [
+            "localtask",
+            "remove"
+          ],
+          "action": {
+            "id": "localtask.remove",
+            "module": "localtask",
+            "summary": "删除一条任务（按 --id，定位到 --cwd 主题或 --key）；删除是**可恢复**的（软删除），加 --purge 彻底清除",
+            "usage": "localtask remove",
+            "http": "DELETE /api/localtasks/item"
+          },
+          "children": []
+        },
+        {
+          "name": "remove-many",
+          "path": [
+            "localtask",
+            "remove-many"
+          ],
+          "action": {
+            "id": "localtask.removeMany",
+            "module": "localtask",
+            "summary": "批量删除任务（按 --ids，定位到 --cwd 主题或 --key）：一次落盘，逐条软删除（可 restore 恢复）；缺失的编号不阻断其余删除",
+            "usage": "localtask remove-many",
+            "http": "DELETE /api/localtasks/items"
+          },
+          "children": []
+        },
+        {
+          "name": "reopen",
+          "path": [
+            "localtask",
+            "reopen"
+          ],
+          "action": {
+            "id": "localtask.reopen",
+            "module": "localtask",
+            "summary": "重开任务（验收反馈 / 重做 / 评论）：回写原任务正文，旧态压进 history；已完成则回到 pending 待再领",
+            "usage": "localtask reopen",
+            "http": "POST /api/localtasks/reopen"
+          },
+          "children": []
+        },
+        {
+          "name": "reorder",
+          "path": [
+            "localtask",
+            "reorder"
+          ],
+          "action": {
+            "id": "localtask.reorder",
+            "module": "localtask",
+            "summary": "调整待领取任务优先级（--id <编号> 移到 --before-id <编号> 前或 --after-id <编号> 后）",
+            "usage": "localtask reorder",
+            "http": "PATCH /api/localtasks/reorder"
+          },
+          "children": []
+        },
+        {
+          "name": "task",
+          "path": [
+            "localtask",
+            "task"
+          ],
+          "action": null,
+          "children": [
+            {
+              "name": "restore",
+              "path": [
+                "localtask",
+                "task",
+                "restore"
+              ],
+              "action": {
+                "id": "localtask.task.restore",
+                "module": "localtask",
+                "summary": "恢复一条被删除（软删除）的任务（撤销删除）",
+                "usage": "localtask task restore",
+                "http": "POST /api/localtasks/tasks/restore"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "timegoal-log",
+          "path": [
+            "localtask",
+            "timegoal-log"
+          ],
+          "action": {
+            "id": "localtask.timegoalLog",
+            "module": "localtask",
+            "summary": "查看任务级时间目标的每轮 check 记录（时间、已用/剩余、是否到点、当轮总结）",
+            "usage": "localtask timegoal-log",
+            "http": "GET /api/localtasks/timegoal-log"
+          },
+          "children": []
+        },
+        {
+          "name": "topic",
+          "path": [
+            "localtask",
+            "topic"
+          ],
+          "action": null,
+          "children": [
+            {
+              "name": "add",
+              "path": [
+                "localtask",
+                "topic",
+                "add"
+              ],
+              "action": {
+                "id": "localtask.topic.add",
+                "module": "localtask",
+                "summary": "登记一个工作目录：空目录也常驻（prune 不清）；--summary 顺带写「现状摘要」（面板顶栏摘要的编辑入口）",
+                "usage": "localtask topic add",
+                "http": "POST /api/localtasks/topic"
+              },
+              "children": []
+            },
+            {
+              "name": "remove",
+              "path": [
+                "localtask",
+                "topic",
+                "remove"
+              ],
+              "action": {
+                "id": "localtask.topic.remove",
+                "module": "localtask",
+                "summary": "删除整个主题（含全部任务；按 --cwd 或 --key，等待中需 --force）",
+                "usage": "localtask topic remove",
+                "http": "DELETE /api/localtasks/topic"
+              },
+              "children": []
+            },
+            {
+              "name": "remove-many",
+              "path": [
+                "localtask",
+                "topic",
+                "remove-many"
+              ],
+              "action": {
+                "id": "localtask.topic.removeMany",
+                "module": "localtask",
+                "summary": "批量删除主题（--keys/--cwds 逗号分隔，或 --all；等待中默认跳过，--force 连等待中删）",
+                "usage": "localtask topic remove-many",
+                "http": "POST /api/localtasks/topics/remove"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "update",
+          "path": [
+            "localtask",
+            "update"
+          ],
+          "action": {
+            "id": "localtask.update",
+            "module": "localtask",
+            "summary": "编辑任务内容（按 --id，定位到 --cwd 主题或 --key）；可同时改时间目标声明（--duration/--goal-prompt/--clear-goal，仅未领取时可改——领取即计时，起表后声明是既成事实）",
+            "usage": "localtask update",
+            "http": "PATCH /api/localtasks/item"
+          },
+          "children": []
+        },
+        {
+          "name": "wait",
+          "path": [
+            "localtask",
+            "wait"
+          ],
+          "action": {
+            "id": "localtask.wait",
+            "module": "localtask",
+            "summary": "针对某主题（按 cwd 目录名识别）阻塞等待用户回填（默认 3 分钟，最大 10 分钟）；本地空时自动领取全局共享池的任务",
+            "usage": "localtask wait",
+            "http": null
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "task",
+      "path": [
+        "task"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "move",
+          "path": [
+            "task",
+            "move"
+          ],
+          "action": {
+            "id": "task.move",
+            "module": "localtask",
+            "summary": "在本机队列与云端清单之间迁移任务（先写目标端、成功才改源端；--undo 按返回的 target-id 精确撤销）",
+            "usage": "task move",
+            "http": "POST /api/task/move"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "timegoal",
+      "path": [
+        "timegoal"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "check",
+          "path": [
+            "timegoal",
+            "check"
+          ],
+          "action": {
+            "id": "timegoal.check",
+            "module": "tasktool",
+            "summary": "时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary",
+            "usage": "timegoal check",
+            "http": "GET /api/timegoals/check"
+          },
+          "children": []
+        },
+        {
+          "name": "clear",
+          "path": [
+            "timegoal",
+            "clear"
+          ],
+          "action": {
+            "id": "timegoal.clear",
+            "module": "tasktool",
+            "summary": "清空本目录 timegoal（无则 no_goal，不抛错）",
+            "usage": "timegoal clear",
+            "http": "DELETE /api/timegoals"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "timegoal",
+            "list"
+          ],
+          "action": {
+            "id": "timegoal.list",
+            "module": "tasktool",
+            "summary": "列出所有有 timegoal 的目录（按截止升序；已到点的单列在归档区）",
+            "usage": "timegoal list",
+            "http": "GET /api/timegoals/all"
+          },
+          "children": []
+        },
+        {
+          "name": "log",
+          "path": [
+            "timegoal",
+            "log"
+          ],
+          "action": {
+            "id": "timegoal.log",
+            "module": "tasktool",
+            "summary": "查看本目录 timegoal 的检查日志（每轮 check 的现状）",
+            "usage": "timegoal log",
+            "http": "GET /api/timegoals/log"
+          },
+          "children": []
+        },
+        {
+          "name": "prune",
+          "path": [
+            "timegoal",
+            "prune"
+          ],
+          "action": {
+            "id": "timegoal.prune",
+            "module": "tasktool",
+            "summary": "彻底清除已到点 / 已归档的时间目标（到点本身已自动归档，这里是连归档区一起清）",
+            "usage": "timegoal prune",
+            "http": "POST /api/timegoals/prune"
+          },
+          "children": []
+        },
+        {
+          "name": "set",
+          "path": [
+            "timegoal",
+            "set"
+          ],
+          "action": {
+            "id": "timegoal.set",
+            "module": "tasktool",
+            "summary": "为本目录设置/替换 timegoal：duration + 完整全局提示词（原文固化到 store）",
+            "usage": "timegoal set",
+            "http": "POST /api/timegoals"
+          },
+          "children": []
+        },
+        {
+          "name": "show",
+          "path": [
+            "timegoal",
+            "show"
+          ],
+          "action": {
+            "id": "timegoal.show",
+            "module": "tasktool",
+            "summary": "查看当前 timegoal（不算时间）：--cwd 目录级，--task 任务级（key 在领取交付里自带）",
+            "usage": "timegoal show",
+            "http": "GET /api/timegoals"
+          },
+          "children": []
+        },
+        {
+          "name": "update",
+          "path": [
+            "timegoal",
+            "update"
+          ],
+          "action": {
+            "id": "timegoal.update",
+            "module": "tasktool",
+            "summary": "更新本目录 timegoal 的提示词（可选同时改时长，--duration；保留起点，不重置计时）",
+            "usage": "timegoal update",
+            "http": "PATCH /api/timegoals"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "template",
+      "path": [
+        "template"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "add",
+          "path": [
+            "template",
+            "add"
+          ],
+          "action": {
+            "id": "templates.add",
+            "module": "templates",
+            "summary": "新增任务模板（--body 给 Markdown 正文；多行正文用 --body-file <文件> 或 --body - 读管道；--setDefault 同时设为默认；--scope 设可见域、--topic 记创建主题并默认仅该主题可见）",
+            "usage": "template add",
+            "http": "POST /api/templates"
+          },
+          "children": []
+        },
+        {
+          "name": "default",
+          "path": [
+            "template",
+            "default"
+          ],
+          "action": {
+            "id": "templates.default",
+            "module": "templates",
+            "summary": "设置默认模板（新建页的起始正文换成它）；带 --body/--name/--scope 则改默认模板本身",
+            "usage": "template default",
+            "http": "PATCH /api/templates/default"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "template",
+            "list"
+          ],
+          "action": {
+            "id": "templates.list",
+            "module": "templates",
+            "summary": "列出任务模板（含默认模板 id；新建页的起始正文按默认模板取）",
+            "usage": "template list",
+            "http": "GET /api/templates"
+          },
+          "children": []
+        },
+        {
+          "name": "remove",
+          "path": [
+            "template",
+            "remove"
+          ],
+          "action": {
+            "id": "templates.remove",
+            "module": "templates",
+            "summary": "删除任务模板（内置默认模板不可删；删的是默认模板则默认回落到内置）",
+            "usage": "template remove",
+            "http": "DELETE /api/templates/:id"
+          },
+          "children": []
+        },
+        {
+          "name": "update",
+          "path": [
+            "template",
+            "update"
+          ],
+          "action": {
+            "id": "templates.update",
+            "module": "templates",
+            "summary": "编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改）",
+            "usage": "template update",
+            "http": "PATCH /api/templates/:id"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "group",
+      "path": [
+        "group"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "add",
+          "path": [
+            "group",
+            "add"
+          ],
+          "action": {
+            "id": "group.add",
+            "module": "todo",
+            "summary": "新建工作空间",
+            "usage": "group add",
+            "http": "POST /api/groups"
+          },
+          "children": []
+        },
+        {
+          "name": "current",
+          "path": [
+            "group",
+            "current"
+          ],
+          "action": {
+            "id": "group.current",
+            "module": "todo",
+            "summary": "查看当前工作空间",
+            "usage": "group current",
+            "http": "GET /api/group"
+          },
+          "children": []
+        },
+        {
+          "name": "get",
+          "path": [
+            "group",
+            "get"
+          ],
+          "action": {
+            "id": "group.get",
+            "module": "todo",
+            "summary": "查看单个工作空间",
+            "usage": "group get",
+            "http": "GET /api/groups/:id"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "group",
+            "list"
+          ],
+          "action": {
+            "id": "group.list",
+            "module": "todo",
+            "summary": "列出我的工作空间（* 为当前）",
+            "usage": "group list",
+            "http": "GET /api/groups"
+          },
+          "children": []
+        },
+        {
+          "name": "members",
+          "path": [
+            "group",
+            "members"
+          ],
+          "action": {
+            "id": "group.members",
+            "module": "todo",
+            "summary": "查看工作空间成员",
+            "usage": "group members",
+            "http": "GET /api/groups/:id/members"
+          },
+          "children": []
+        },
+        {
+          "name": "remove",
+          "path": [
+            "group",
+            "remove"
+          ],
+          "action": {
+            "id": "group.remove",
+            "module": "todo",
+            "summary": "解散工作空间（后端要求组内已无 KV）",
+            "usage": "group remove",
+            "http": "DELETE /api/groups/:id"
+          },
+          "children": []
+        },
+        {
+          "name": "update",
+          "path": [
+            "group",
+            "update"
+          ],
+          "action": {
+            "id": "group.update",
+            "module": "todo",
+            "summary": "改名 / 改描述（只改传入的字段）",
+            "usage": "group update",
+            "http": "PATCH /api/groups/:id"
+          },
+          "children": []
+        },
+        {
+          "name": "use",
+          "path": [
+            "group",
+            "use"
+          ],
+          "action": {
+            "id": "group.use",
+            "module": "todo",
+            "summary": "切换当前工作空间（id 或名称；0 / default 回默认组）",
+            "usage": "group,use group,switch",
+            "http": "POST /api/group"
+          },
+          "children": []
+        },
+        {
+          "name": "switch",
+          "path": [
+            "group",
+            "switch"
+          ],
+          "action": {
+            "id": "group.use",
+            "module": "todo",
+            "summary": "切换当前工作空间（id 或名称；0 / default 回默认组）",
+            "usage": "group,use group,switch",
+            "http": "POST /api/group"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "prompt",
+      "path": [
+        "prompt"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "get",
+          "path": [
+            "prompt",
+            "get"
+          ],
+          "action": {
+            "id": "prompt.get",
+            "module": "todo",
+            "summary": "读取某主题的上下文提示词",
+            "usage": "prompt get",
+            "http": "GET /api/prompts/:topic"
+          },
+          "children": []
+        },
+        {
+          "name": "remove",
+          "path": [
+            "prompt",
+            "remove"
+          ],
+          "action": {
+            "id": "prompt.remove",
+            "module": "todo",
+            "summary": "删除某主题的提示词",
+            "usage": "prompt remove",
+            "http": "DELETE /api/prompts/:topic"
+          },
+          "children": []
+        },
+        {
+          "name": "set",
+          "path": [
+            "prompt",
+            "set"
+          ],
+          "action": {
+            "id": "prompt.set",
+            "module": "todo",
+            "summary": "写入某主题的上下文提示词（覆盖）",
+            "usage": "prompt set",
+            "http": "POST /api/prompts/:topic"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "todo",
+      "path": [
+        "todo"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "add",
+          "path": [
+            "todo",
+            "add"
+          ],
+          "action": {
+            "id": "todo.add",
+            "module": "todo",
+            "summary": "新增任务到待办（topic 不在快捷列表时自动补上）",
+            "usage": "todo add",
+            "http": "POST /api/todo"
+          },
+          "children": []
+        },
+        {
+          "name": "archive",
+          "path": [
+            "todo",
+            "archive"
+          ],
+          "action": {
+            "id": "todo.archive",
+            "module": "todo",
+            "summary": "把已完成里较旧的条目归档到冷 key（默认 30 天前）",
+            "usage": "todo archive",
+            "http": "POST /api/todo/archive"
+          },
+          "children": []
+        },
+        {
+          "name": "attach",
+          "path": [
+            "todo",
+            "attach"
+          ],
+          "action": {
+            "id": "todo.attach",
+            "module": "todo",
+            "summary": "给任务追加附件：--path 上传本机文件，或 --fileId 追加已上传附件，以 markdown 嵌入正文末尾",
+            "usage": "todo attach",
+            "http": "POST /api/todo/attach"
+          },
+          "children": []
+        },
+        {
+          "name": "attachments",
+          "path": [
+            "todo",
+            "attachments"
+          ],
+          "action": {
+            "id": "todo.attachments",
+            "module": "todo",
+            "summary": "列出某条任务引用的附件，以及本地是否已有（给 agent 直接读本地文件）",
+            "usage": "todo attachments",
+            "http": "GET /api/todo/attachments"
+          },
+          "children": []
+        },
+        {
+          "name": "done",
+          "path": [
+            "todo",
+            "done"
+          ],
+          "action": {
+            "id": "todo.done",
+            "module": "todo",
+            "summary": "标记完成（--ref 定位；--result 写进 note 作为完成结果）",
+            "usage": "todo done",
+            "http": "POST /api/todo/done"
+          },
+          "children": []
+        },
+        {
+          "name": "freeze",
+          "path": [
+            "todo",
+            "freeze"
+          ],
+          "action": {
+            "id": "todo.freeze",
+            "module": "todo",
+            "summary": "冻结任务（按内容定位；id 保留，解冻时校验冲突）",
+            "usage": "todo freeze",
+            "http": "POST /api/todo/freeze"
+          },
+          "children": []
+        },
+        {
+          "name": "get",
+          "path": [
+            "todo",
+            "get"
+          ],
+          "action": {
+            "id": "todo.get",
+            "module": "todo",
+            "summary": "查看单个任务（按内容定位；自动在待办/已完成/冻结里找）",
+            "usage": "todo get",
+            "http": "GET /api/todo/item"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "todo",
+            "list"
+          ],
+          "action": {
+            "id": "todo.list",
+            "module": "todo",
+            "summary": "列出任务（--topic / --status 过滤；默认三个桶全列）",
+            "usage": "todo list",
+            "http": "GET /api/todo"
+          },
+          "children": []
+        },
+        {
+          "name": "remove",
+          "path": [
+            "todo",
+            "remove"
+          ],
+          "action": {
+            "id": "todo.remove",
+            "module": "todo",
+            "summary": "删除任务（按内容定位，只删命中的那一条）",
+            "usage": "todo remove",
+            "http": "DELETE /api/todo/item"
+          },
+          "children": []
+        },
+        {
+          "name": "unfreeze",
+          "path": [
+            "todo",
+            "unfreeze"
+          ],
+          "action": {
+            "id": "todo.unfreeze",
+            "module": "todo",
+            "summary": "解冻回待办（按内容定位；id 撞车时自动换新 id）",
+            "usage": "todo unfreeze",
+            "http": "POST /api/todo/unfreeze"
+          },
+          "children": []
+        },
+        {
+          "name": "update",
+          "path": [
+            "todo",
+            "update"
+          ],
+          "action": {
+            "id": "todo.update",
+            "module": "todo",
+            "summary": "编辑任务（按内容定位，只改传入的字段）",
+            "usage": "todo update",
+            "http": "PATCH /api/todo/item"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "topic",
+      "path": [
+        "topic"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "add",
+          "path": [
+            "topic",
+            "add"
+          ],
+          "action": {
+            "id": "topic.add",
+            "module": "todo",
+            "summary": "加入快捷主题",
+            "usage": "topic add",
+            "http": "POST /api/topics"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "topic",
+            "list"
+          ],
+          "action": {
+            "id": "topic.list",
+            "module": "todo",
+            "summary": "快捷主题列表（含各状态任务数）",
+            "usage": "topic list",
+            "http": "GET /api/topics"
+          },
+          "children": []
+        },
+        {
+          "name": "remove",
+          "path": [
+            "topic",
+            "remove"
+          ],
+          "action": {
+            "id": "topic.remove",
+            "module": "todo",
+            "summary": "移出快捷主题（不动已有任务；仍被任务使用时会在结果里提示）",
+            "usage": "topic remove",
+            "http": "DELETE /api/topics"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "file",
+      "path": [
+        "file"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "content",
+          "path": [
+            "file",
+            "content"
+          ],
+          "action": {
+            "id": "file.content",
+            "module": "file",
+            "summary": "取附件本体：面板内联预览；CLI 打印出图地址与本地路径",
+            "usage": "file content",
+            "http": "GET /api/file/content/:fileId"
+          },
+          "children": []
+        },
+        {
+          "name": "get",
+          "path": [
+            "file",
+            "get"
+          ],
+          "action": {
+            "id": "file.get",
+            "module": "file",
+            "summary": "查单个附件的元数据与本地路径",
+            "usage": "file get",
+            "http": "GET /api/file/item"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "file",
+            "list"
+          ],
+          "action": {
+            "id": "file.list",
+            "module": "file",
+            "summary": "列出当前用户空间的附件（含本地已同步路径）",
+            "usage": "file list",
+            "http": "GET /api/file"
+          },
+          "children": []
+        },
+        {
+          "name": "orphans",
+          "path": [
+            "file",
+            "orphans"
+          ],
+          "action": {
+            "id": "file.orphans",
+            "module": "file",
+            "summary": "列出无主资源（没有任何任务/文档关系边；删任务、删文档、删正文行之后用）",
+            "usage": "file orphans",
+            "http": "GET /api/file/orphans"
+          },
+          "children": []
+        },
+        {
+          "name": "prune",
+          "path": [
+            "file",
+            "prune"
+          ],
+          "action": {
+            "id": "file.prune",
+            "module": "file",
+            "summary": "回收无主资源（DB 行 + 附件根目录内的本机/镜像字节；仍被引用的不删）",
+            "usage": "file prune",
+            "http": "POST /api/file/prune"
+          },
+          "children": []
+        },
+        {
+          "name": "remove",
+          "path": [
+            "file",
+            "remove"
+          ],
+          "action": {
+            "id": "file.remove",
+            "module": "file",
+            "summary": "删除附件（后端软删；本地副本要清用 file sync --prune）",
+            "usage": "file remove",
+            "http": "DELETE /api/file/item"
+          },
+          "children": []
+        },
+        {
+          "name": "sync",
+          "path": [
+            "file",
+            "sync"
+          ],
+          "action": {
+            "id": "file.sync",
+            "module": "file",
+            "summary": "把附件同步到本机（默认全部；--ids 只同步指定附件）——为了不再依赖网络读附件",
+            "usage": "file sync",
+            "http": "POST /api/file/sync"
+          },
+          "children": []
+        },
+        {
+          "name": "upload",
+          "path": [
+            "file",
+            "upload"
+          ],
+          "action": {
+            "id": "file.upload",
+            "module": "file",
+            "summary": "上传附件（--local 存本机附件仓，本地任务贴图用；默认传当前用户空间的云端图床）",
+            "usage": "file upload",
+            "http": "POST /api/file"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "skill",
+      "path": [
+        "skill"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "get",
+          "path": [
+            "skill",
+            "get"
+          ],
+          "action": {
+            "id": "bundled.get",
+            "module": "bundled",
+            "summary": "输出内置 skill 全文（prefix + sentinel + 正文 + install 状态），并顺手装到本机",
+            "usage": "skill get",
+            "http": "GET /api/bundled/content"
+          },
+          "children": []
+        },
+        {
+          "name": "groups",
+          "path": [
+            "skill",
+            "groups"
+          ],
+          "action": {
+            "id": "bundled.groups",
+            "module": "bundled",
+            "summary": "列出可装的 group（groups.json 的组名 → 它包含哪些 skill）",
+            "usage": "skill,groups bundled,groups",
+            "http": "GET /api/bundled/groups"
+          },
+          "children": []
+        },
+        {
+          "name": "install",
+          "path": [
+            "skill",
+            "install"
+          ],
+          "action": {
+            "id": "bundled.install",
+            "module": "bundled",
+            "summary": "安装内置 skill 到 skills 目录（默认 nx-kv → ~/.claude/skills；--group <key> 一键装一组；--all 装全部并直接覆盖）",
+            "usage": "skill install",
+            "http": "POST /api/bundled/install"
+          },
+          "children": [
+            {
+              "name": "--list",
+              "path": [
+                "skill",
+                "install",
+                "--list"
+              ],
+              "action": {
+                "id": "bundled.list",
+                "module": "bundled",
+                "summary": "列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group",
+                "usage": "skill,list skill,install,--list bundled,list",
+                "http": "GET /api/bundled"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "path": [
+            "skill",
+            "list"
+          ],
+          "action": {
+            "id": "bundled.list",
+            "module": "bundled",
+            "summary": "列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group",
+            "usage": "skill,list skill,install,--list bundled,list",
+            "http": "GET /api/bundled"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "bundled",
+      "path": [
+        "bundled"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "groups",
+          "path": [
+            "bundled",
+            "groups"
+          ],
+          "action": {
+            "id": "bundled.groups",
+            "module": "bundled",
+            "summary": "列出可装的 group（groups.json 的组名 → 它包含哪些 skill）",
+            "usage": "skill,groups bundled,groups",
+            "http": "GET /api/bundled/groups"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "bundled",
+            "list"
+          ],
+          "action": {
+            "id": "bundled.list",
+            "module": "bundled",
+            "summary": "列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group",
+            "usage": "skill,list skill,install,--list bundled,list",
+            "http": "GET /api/bundled"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "db",
+      "path": [
+        "db"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "backup",
+          "path": [
+            "db",
+            "backup"
+          ],
+          "action": {
+            "id": "db.backup",
+            "module": "db",
+            "summary": "VACUUM INTO 备份（WAL 下不能直接 copy .db；保留最近 5 份）",
+            "usage": "db backup",
+            "http": null
+          },
+          "children": []
+        },
+        {
+          "name": "migrate",
+          "path": [
+            "db",
+            "migrate"
+          ],
+          "action": {
+            "id": "db.migrate",
+            "module": "db",
+            "summary": "迁移：无标志 = 从 legacy JSON 全量导入；版本落后 = 走升级链（含 --dry-run 演练）",
+            "usage": "db migrate",
+            "http": null
+          },
+          "children": []
+        },
+        {
+          "name": "status",
+          "path": [
+            "db",
+            "status"
+          ],
+          "action": {
+            "id": "db.status",
+            "module": "db",
+            "summary": "库状态：路径、user_version、各表行数、任务状态分布（只读，不升级）",
+            "usage": "db status",
+            "http": null
+          },
+          "children": []
+        },
+        {
+          "name": "verify",
+          "path": [
+            "db",
+            "verify"
+          ],
+          "action": {
+            "id": "db.verify",
+            "module": "db",
+            "summary": "逐项校验：版本/行数/状态分布/正文哈希/seq 对应/外键/完整性",
+            "usage": "db verify",
+            "http": null
+          },
+          "children": []
+        }
+      ]
     }
   ]
 }

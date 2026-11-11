@@ -5,8 +5,8 @@
 // ApiRouter 在构造期把注册表的 actions 编译成排好序的路由表，
 // handle() 是 server 的 /api/* 入口——一次编译，常驻复用。
 //
-// **迁移期双通道**：zod action 走 fields + normalizeCliValue + parseZodInput；
-// legacy action 走 applySpec（flags 表契约）。路由匹配 / stream 透传 / 错误信封
+// **双通道**：业务 action 走 fields + normalizeCliValue + parseZodInput；
+// legacy flags 表契约只服务 runtime 内建命令。路由匹配 / stream 透传 / 错误信封
 // 两通道完全一致。
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { compileRoute, applySpec, usageOf, type AnyAction } from './spec.js';

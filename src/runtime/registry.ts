@@ -14,9 +14,10 @@
 // 后端只提供 /api/*，前端只消费 /api/*，跨端的唯一例外是同构纯函数（src/shared/）。
 // tests/unit/registry.test.mjs 会断言两侧的模块集合对齐，漏登记直接测试失败。
 //
-// **迁移期双通道**：system 已是模板形态（@action + zod）；其余模块还是 legacy
-// plain-object（flags 表契约）。两者都满足 AnyModule，Registry 对通道无感——
-// load 期自检对两通道一视同仁（重复 id / 重复路由 / 缺 run 启动即红）。
+// **双通道**：业务模块全部是模板形态（@action + zod 契约）；legacy plain-object
+// （flags 表契约）只剩 runtime 内建命令（serve / help / version）在用。
+// 两者都满足 AnyModule，Registry 对通道无感——load 期自检对两通道一视同仁
+// （重复 id / 重复路由 / 缺 run 启动即红）。
 import { ModuleBase, type AnyModule } from './types/module.js';
 import { cliPathsOf, entryOf, type AnyAction } from './spec.js';
 import { publishCommandTable } from '../core/command-table.js';

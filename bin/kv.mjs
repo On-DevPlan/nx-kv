@@ -16,19 +16,22 @@
 // module: node:sqlite` 加一段栈 —— 完全指不出「你的 Node 太老」这个真因。
 //
 // 所以先查版本、给出人话错误，再**动态** import 业务入口（动态 import 保证
-// 检查发生在求值之前）。version.js 自身不碰 node:sqlite，import 它是安全的。
-import { checkNodeVersion } from '../src/core/db/version.js';
+// 检查发生在求值之前）。version.ts 自身不碰 node:sqlite，import 它是安全的。
+//
+// 源码毕业为 TS 后，源码里的 `xxx.js` 路径要靠 tsx loader 解析到同名 `.ts`——
+// 注册 loader 本身不导入任何业务代码，所以「先注册、再查版本」仍满足上面这条铁律。
+import { register } from 'tsx/esm/api';
+
+// 注册 tsx loader（返回 unregister，进程退出无需清理）
+register();
+
+const { checkNodeVersion } = await import('../src/core/db/version.js');
 
 const versionCheck = checkNodeVersion();
 if (!versionCheck.ok) {
   console.error(versionCheck.message);
   process.exit(1);
 }
-
-import { register } from 'tsx/esm/api';
-
-// 注册 tsx loader（返回 unregister，进程退出无需清理）
-register();
 
 const { runCli } = await import('../src/runtime/cli.ts');
 

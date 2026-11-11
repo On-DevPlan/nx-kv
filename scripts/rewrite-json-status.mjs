@@ -19,6 +19,11 @@ import { readFileSync, writeFileSync, renameSync, existsSync, statSync } from 'n
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
+// 源码是 TS：下面的 `import-json.js` 要靠 tsx loader 解析到同名 `.ts`
+// （与 bin/kv.mjs / scripts/db-inspect.mjs 同一条执行路径）。
+import { register } from 'tsx/esm/api';
+
+register();
 
 // 与测试隔离同一套环境约定：NX_KV_HOME / NX_KV_LOCALTASK_STORE 都认。
 const home = process.env.NX_KV_HOME || join(process.env.USERPROFILE || process.env.HOME || tmpdir(), '.nx-kv');

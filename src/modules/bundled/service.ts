@@ -1,0 +1,377 @@
+// 内置 skill 包：随 nx-kv 一起发布的 assets/<name>/（SKILL.md + references/…）
+// 负责列出与安装到用户/项目的 skills 目录，供 agent 一键获得 nx-kv 的使用说明。
+//
+// 多 skill（见脚手架 B04）：`assets/` 下可以有多个 skill，由 `assets/groups.json`
+// 归组；`skill install --group <key>` 一键装一组。groups.json 只是**便捷别名表**，
+// 缺失/损坏时降级为「每个 assets/<x> 各成一组」——事实源永远只有 `assets/<x>/SKILL.md`。
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fsp from 'node:fs/promises';
+import { diffTrees } from '../../core/fstree.js';
+import { parseFrontmatter } from '../../core/frontmatter.js';
+import { assertSafeName } from '../../core/paths.js';
+import { notFound, badInput } from '../../core/errors.js';
+
+// assets/ 在包根，src/modules/bundled/ 的上三级
+const DEFAULT_ASSETS_DIR = fileURLToPath(new URL('../../../assets/', import.meta.url));
+
+/** groups.json 里的一个组。 */
+export interface SkillGroup {
+  skills: string[];
+  summary: string;
+}
+
+/** 单个内置 skill 的安装结果（ok / conflict 两态共用一个宽形状）。 */
+export interface InstallResult {
+  status: string;
+  name: string;
+  path: string;
+  files?: number | any[];
+  count?: number;
+  group: string | null;
+  skipped?: boolean;
+  installed?: boolean;
+  replaced?: boolean;
+}
+
+/** `--all` 的聚合结果。 */
+export interface InstallAllResult {
+  status: string;
+  all: true;
+  count: number;
+  skills: InstallResult[];
+}
+
+/** `--group` 的聚合结果。 */
+export interface InstallGroupResult {
+  status: string;
+  group: string;
+  skills: InstallResult[];
+}
+
+/** 单个 skill 的全文（skill get）。 */
+export interface SkillContentResult {
+  skillName: string;
+  ref: string;
+  content: string;
+  contentBytes: number;
+  install: InstallResult;
+}
+
+/** `skill list` 的数据形状。 */
+export interface GroupsInfo {
+  skills: string[];
+  defaultGroup: string | null;
+  groups: string[];
+  summaries: Record<string, string>;
+  groupSkills: Record<string, string[]>;
+  source: string;
+}
+
+// assets 根。NX_KV_ASSETS 可覆盖，且**在调用时读、不在模块加载时快照**——
+// 测试要拿一棵伪资产树验 groups.json 的降级 / schema 错误，绝不能真去改仓库里的 assets/。
+function assetsRoot(): string {
+  return process.env.NX_KV_ASSETS ? resolve(process.env.NX_KV_ASSETS) : DEFAULT_ASSETS_DIR;
+}
+
+// 默认安装到 Claude Code 的用户级 skills 目录
+export const DEFAULT_SKILLS_DIR = join(homedir(), '.claude', 'skills');
+
+// 内置主 skill 的规范名 = 包名（A03 §二：用户不必记两个名字）。
+export const DEFAULT_SKILL_NAME = 'nx-kv';
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fsp.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ─── B04：多 skill 的分组（assets/groups.json） ──────────────────────
+//
+// 事实源只有一个：`assets/<name>/SKILL.md`。`groups.json` 只是「便捷别名表」——
+// 它缺失或损坏时降级成「每个 assets/<x> 各成一组」，用户照样能装，只是没了 --group。
+// 但 **schema 错**必须显式报错：那是作者/打包事故，静默吞掉只会让排查抓瞎。
+
+const GROUPS_REL = 'groups.json';
+
+// 包内实际存在的 skill：靠 assets/<x>/SKILL.md 判定
+async function assetSkillDirs(): Promise<string[]> {
+  const entries = await fsp.readdir(assetsRoot(), { withFileTypes: true }).catch(() => []);
+  const out: string[] = [];
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    if (await pathExists(join(assetsRoot(), e.name, 'SKILL.md'))) out.push(e.name);
+  }
+  return out.sort();
+}
+
+function degradeGroups(names: string[]): Record<string, SkillGroup> {
+  const groups: Record<string, SkillGroup> = {};
+  for (const n of names) {
+    groups[n] = { skills: [n], summary: '（groups.json 缺失或损坏，按目录扫描兜底）' };
+  }
+  return groups;
+}
+
+export async function loadGroups(): Promise<{ groups: Record<string, SkillGroup>; source: string }> {
+  const raw = await fsp.readFile(join(assetsRoot(), GROUPS_REL), 'utf8').catch(() => null);
+  if (raw === null) return { groups: degradeGroups(await assetSkillDirs()), source: 'assets-dirs' };
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    process.stderr.write('[nx-kv] assets/groups.json 不是合法 JSON，已降级为目录扫描\n');
+    return { groups: degradeGroups(await assetSkillDirs()), source: 'assets-dirs' };
+  }
+
+  const g = parsed && parsed.groups;
+  if (!g || typeof g !== 'object' || Array.isArray(g)) {
+    throw badInput('assets/groups.json 缺少 groups 对象（schema 错）');
+  }
+  const groups: Record<string, SkillGroup> = {};
+  // JSON 解析产物无 schema：就地断言为宽松键值形状
+  for (const [key, val] of Object.entries(g) as [string, any][]) {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(key)) throw badInput(`assets/groups.json 的 group 名非法: ${key}`);
+    if (!val || !Array.isArray(val.skills) || !val.skills.length) {
+      throw badInput(`assets/groups.json 的 group "${key}" 缺少非空 skills 数组（schema 错）`);
+    }
+    for (const s of val.skills) assertSafeName(s, 'group 里的 skill 名');
+    // 同一组里重复的 skill 名去重，避免重复三态与重复计数
+    groups[key] = { skills: [...new Set(val.skills as string[])], summary: String(val.summary || '') };
+  }
+  if (!Object.keys(groups).length) throw badInput('assets/groups.json 里没有任何 group（schema 错）');
+  return { groups, source: 'manifest' };
+}
+
+// 默认 group 名 = 包名（B04「默认 install 的约定」）。
+// 全局安装时 cwd 是用户目录，读 cwd 永远匹配不上，故优先读**本包自己的** package.json；
+// 读不到就 null（不崩）。
+let pkgNameCache: string | null | undefined;
+async function packageName(): Promise<string | null> {
+  if (pkgNameCache !== undefined) return pkgNameCache;
+  const own = fileURLToPath(new URL('../../../package.json', import.meta.url));
+  for (const p of [own, join(process.cwd(), 'package.json')]) {
+    try {
+      const name = JSON.parse(await fsp.readFile(p, 'utf8')).name;
+      if (name) { pkgNameCache = String(name); return pkgNameCache; }
+    } catch { /* 换下一个 */ }
+  }
+  pkgNameCache = null;
+  return pkgNameCache;
+}
+
+async function resolveGroup(key: unknown): Promise<SkillGroup> {
+  const k = String(key ?? '').trim();
+  if (!k) {
+    throw badInput('--group 需要一个值（可用: ' + (Object.keys((await loadGroups()).groups).join(', ') || '(无)') + '）');
+  }
+  if (k.startsWith('-')) throw badInput(`--group 的值不能以 - 开头: ${k}`);
+  const { groups } = await loadGroups();
+  const g = groups[k];
+  if (!g) throw badInput(`未知 group: ${k}（可用: ${Object.keys(groups).join(', ') || '(无)'}）`);
+  return g;
+}
+
+// `skill list` 的数据：可装的 skill + 默认装哪个 + 有哪些 group + 数据来源
+export async function groupsInfo(): Promise<GroupsInfo> {
+  const { groups, source } = await loadGroups();
+  const ids = Object.keys(groups);
+  const def = await packageName();
+  return {
+    skills: await assetSkillDirs(),
+    // 标记只认「与包名同名」的那一项；无匹配就不显示标记（不崩）
+    defaultGroup: def && groups[def] ? def : null,
+    groups: ids,
+    summaries: Object.fromEntries(ids.map((id): [string, string] => [id, groups[id]!.summary])),
+    groupSkills: Object.fromEntries(ids.map((id): [string, string[]] => [id, groups[id]!.skills])),
+    source,
+  };
+}
+
+export function assetsDir(): string {
+  return assetsRoot();
+}
+
+// 列出包内自带的所有 skill（含文件数与描述）
+export async function listBundledSkills(): Promise<Array<{ name: string; dir: string; files: number; description: string }>> {
+  const out: Array<{ name: string; dir: string; files: number; description: string }> = [];
+  const entries = await fsp.readdir(assetsRoot(), { withFileTypes: true }).catch(() => []);
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const dir = join(assetsRoot(), e.name);
+    // 用不存在的路径当哨兵，diffTrees 会把包内文件全列为 only-central，等于列出文件清单
+    const files = await diffTrees(dir, join(dir, '__nx_kv_missing__'));
+    if (!files.length) continue;
+
+    // 描述解析复用 core/frontmatter.js —— 这里原本抄了一份简化正则，
+    // 于是 CRLF / 块标量 / 引号的处理与 skills 侧并不一致。
+    const md = await fsp.readFile(join(dir, 'SKILL.md'), 'utf8').catch(() => null);
+    const description = md ? parseFrontmatter(md).description : '';
+    out.push({ name: e.name, dir, files: files.length, description });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// 安装**一个**内置 skill。返回值形状与历史逐字节兼容，只多一个 `group` 字段
+// （B04 §实现要点：判别单/多 skill 必须用显式 `group` 字段，不做形状嗅探）。
+async function installOne(name: string, { to, force }: { to?: string; force?: boolean } = {}): Promise<InstallResult> {
+  name = assertSafeName(String(name || '').trim());
+  const src = join(assetsRoot(), name);
+  if (!(await pathExists(join(src, 'SKILL.md')))) {
+    const available = (await assetSkillDirs()).join(', ') || '(无)';
+    throw notFound(`未找到内置 skill: ${name}（可用: ${available}）`);
+  }
+
+  const targetRoot = resolve(to || DEFAULT_SKILLS_DIR);
+  const dst = join(targetRoot, name);
+  const files = await diffTrees(src, dst); // side: only-central=新增, both-differ=不同, only-project=多余
+
+  if (!files.length) {
+    return { status: 'ok', skipped: true, name, path: dst, files: 0, group: null };
+  }
+
+  const exists = await pathExists(dst);
+  if (exists && !force) {
+    return { status: 'conflict', name, path: dst, files, count: files.length, group: null };
+  }
+
+  if (exists) await fsp.rm(dst, { recursive: true, force: true });
+  await fsp.mkdir(targetRoot, { recursive: true });
+  await fsp.cp(src, dst, { recursive: true, dereference: true, force: true });
+
+  return { status: 'ok', installed: !exists, replaced: exists, name, path: dst, files: files.length, group: null };
+}
+
+// `--all`：把 assets/ 下**所有**内置 skill 一次装齐，且**隐式覆盖**（不需要 --force）。
+//
+// 与 `--group` 的关键差别：范围由**目录扫描**决定，不由 groups.json 决定。组表只是
+// 便捷别名，`assets/<x>/SKILL.md` 才是事实源——新加一个 skill 忘了登记组时，
+// `--all` 照样装得上，`--group` 会漏。所以「本机装全」该用 --all 而不是列举组名。
+async function installAll({ to }: { to?: string } = {}): Promise<InstallAllResult> {
+  const names = await assetSkillDirs();
+  if (!names.length) throw notFound('assets/ 下没有任何内置 skill（缺 SKILL.md？）');
+  const skills: InstallResult[] = [];
+  // force 恒为 true：--all 的语义就是「装全 + 对齐到包内版本」，
+  // 让人再补一个 --force 只是多一次来回。要保留本地改动就别用 --all。
+  for (const s of names) skills.push(await installOne(s, { to, force: true }));
+  return {
+    status: skills.every((r) => r.status === 'ok') ? 'ok' : 'conflict',
+    all: true,
+    count: skills.length,
+    skills,
+  };
+}
+
+// 安装内置 skill 到目标 skills 目录（默认 nx-kv → ~/.claude/skills）。
+// 返回 { status: 'ok' | 'conflict', ... }——已存在且内容不同是**业务结果**，
+// 需要用户决定是否覆盖，不是错误。
+//
+// `group` 给定时装该组的**全部** skill，返回聚合形状 { status, group, skills:[…] }；
+// `all` 给定时装**目录里有的全部**，形状 { status, all, skills:[…] }（隐式 force）；
+// 都不给则装单个，形状与历史一致。判别一律靠显式字段，不做形状嗅探。
+export async function installBundledSkill({ name = DEFAULT_SKILL_NAME, group, all, to, force }: {
+  name?: string;
+  group?: unknown;
+  all?: boolean;
+  to?: string;
+  force?: boolean;
+} = {}): Promise<InstallResult | InstallAllResult | InstallGroupResult> {
+  if (all) {
+    // name 有默认值，这里分不出「用户显式给了 name」还是「默认」，
+    // 所以 name 与 --all 的互斥放在 CLI 层（ctx.name 才是用户真正输入的）。
+    // group 给了就是调用方用错了，直接报。
+    if (group !== undefined && group !== null && group !== '') {
+      throw badInput('--all 与 --group 只能给一个（--all 已覆盖所有组）');
+    }
+    return installAll({ to });
+  }
+  if (group !== undefined && group !== null && group !== '') {
+    const g = await resolveGroup(group);
+    const skills: InstallResult[] = [];
+    for (const s of g.skills) skills.push(await installOne(s, { to, force }));
+    return {
+      // 有一个冲突就是 conflict：调用方要么加 --force 要么逐个处理
+      status: skills.every((r) => r.status === 'ok') ? 'ok' : 'conflict',
+      group: String(group).trim(),
+      skills,
+    };
+  }
+  return installOne(name, { to, force });
+}
+
+// ─── skill get：把内置 skill 全文交给外部 agent（A03 §三） ───────────
+// install 解决「本骨架的 agent 学得会用」，get 解决「外部 agent 一键拿全上下文」——
+// 两者互补，不是二选一。get 永远给文档：目标端 conflict 也照常输出，
+// 冲突信息放在 install 字段里让调用方自己决定要不要 --force。
+
+// ref 解析（A03 §三）：缺省 → SKILL.md；裸名 → references/<名>.md 再 <名>.md；
+// 带分隔符 → 相对 assets/<name>/；含 .. 或绝对路径一律拒绝。
+async function listRefs(dir: string): Promise<string> {
+  const out: string[] = [];
+  const entries = await fsp.readdir(join(dir, 'references'), { withFileTypes: true }).catch(() => []);
+  for (const e of entries) if (e.isFile() && e.name.endsWith('.md')) out.push(e.name.slice(0, -3));
+  return out.join(', ') || '(无)';
+}
+
+async function contentOne(name: string, { ref, to }: { ref?: unknown; to?: string } = {}): Promise<SkillContentResult> {
+  name = assertSafeName(String(name || '').trim());
+  const dir = join(assetsRoot(), name);
+  if (!(await pathExists(join(dir, 'SKILL.md')))) {
+    const available = (await assetSkillDirs()).join(', ') || '(无)';
+    throw notFound(`未找到内置 skill: ${name}（可用: ${available}）`);
+  }
+
+  let rel: string;
+  const raw = String(ref || '').trim();
+  if (!raw) {
+    rel = 'SKILL.md';
+  } else {
+    if (raw.split(/[\\/]+/).includes('..')) throw badInput(`ref 路径不允许包含 '..': ${raw}`);
+    if (/^([a-zA-Z]:|[\\/])/.test(raw)) throw badInput('ref 越界（必须是相对路径）: ' + raw);
+    if (/[\\/]/.test(raw) || raw.startsWith('./')) {
+      rel = raw.replace(/^\.\//, '');
+    } else {
+      const bare = raw.endsWith('.md') ? raw : raw + '.md';
+      const inRefs = join('references', bare);
+      if (await pathExists(join(dir, inRefs))) rel = inRefs;
+      else if (await pathExists(join(dir, bare))) rel = bare;
+      else throw badInput(`未找到 ref: ${raw}（可用: ${await listRefs(dir)}）`);
+    }
+  }
+
+  const content = await fsp.readFile(join(dir, rel), 'utf8').catch(() => null);
+  if (content === null) throw notFound(`skill ${name} 里没有文件: ${rel}`);
+
+  // get 的语义是「读」不是「修」：conflict 照常返回文档，不提供 --force
+  const install = await installOne(name, { to });
+  return {
+    skillName: name,
+    // 机器契约字段统一正斜杠，Windows 上不出现反斜杠
+    ref: rel.split('\\').join('/'),
+    content,
+    contentBytes: Buffer.byteLength(content, 'utf8'),
+    install,
+  };
+}
+
+// `group` 给定时把该组**每个** skill 的全文都取回来，返回 { group, skills:[…] }；
+// 不给则单个。判别同样用显式 `group` 字段。
+export async function bundledSkillContent({ name = DEFAULT_SKILL_NAME, group, ref, to }: {
+  name?: string;
+  group?: unknown;
+  ref?: unknown;
+  to?: string;
+} = {}): Promise<SkillContentResult | { group: string; skills: SkillContentResult[] }> {
+  if (group !== undefined && group !== null && group !== '') {
+    const g = await resolveGroup(group);
+    const skills: SkillContentResult[] = [];
+    for (const s of g.skills) skills.push(await contentOne(s, { ref, to }));
+    return { group: String(group).trim(), skills };
+  }
+  return contentOne(name, { ref, to });
+}

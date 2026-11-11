@@ -71,7 +71,7 @@ test('layout：语义子目录已建且带 index 桶', () => {
   for (const dir of REQUIRED_SEMANTIC_DIRS) {
     const abs = join(root, dir);
     assert.ok(existsSync(abs), `missing dir ${dir}`);
-    assert.ok(existsSync(join(abs, 'index.js')), `missing barrel ${dir}/index.js`);
+    assert.ok(existsSync(join(abs, 'index.ts')), `missing barrel ${dir}/index.ts`);
   }
   assert.ok(TARGET_PATHS['store/'].endsWith('/'));
   assert.ok(TARGET_PATHS['mutator/'].endsWith('/'));

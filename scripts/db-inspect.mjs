@@ -14,7 +14,14 @@
 //   node scripts/db-inspect.mjs --json              机器可读（脚本里用）
 //
 // 库路径与 legacy 目录同样认 NX_KV_DB / NX_KV_HOME（测试与多实例用）。
-import { checkNodeVersion } from '../src/core/db/version.js';
+//
+// 源码是 TS：所有 `xxx.js` 路径都要靠 tsx loader 解析到同名 `.ts`（与 bin/kv.mjs
+// 同一条执行路径）。注册 loader 不导入业务代码，所以先注册再查 Node 版本仍有效。
+import { register } from 'tsx/esm/api';
+
+register();
+
+const { checkNodeVersion } = await import('../src/core/db/version.js');
 
 const versionCheck = checkNodeVersion();
 if (!versionCheck.ok) {

@@ -3,7 +3,8 @@
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ClipboardEvent as ReactClipboardEvent, ReactNode } from 'react';
-import { api } from '../../api/client.js';
+import { addTodo, archiveDone, authLogin, authLogout, doneTask, freezeTask, getSettings, listTodos, removeTask,
+  saveSettings, unfreezeTask, type TodoData, type TodoTask } from './api.js';
 import { useStore } from '../../store.jsx';
 import { Copyable } from '../../components/ui.jsx';
 import { useToast, useGuard } from '../../components/toast/index.jsx';
@@ -19,26 +20,6 @@ const BUCKETS = [
   ['done', '已完成'],
   ['freeze', '冻结'],
 ] as const;
-
-/** 清单里的一条任务（/api/todo 三个桶的元素）。 */
-interface TodoTask {
-  id: number | string;
-  text: string;
-  topic?: string;
-  note?: string;
-  createdAt?: string;
-  doneAt?: string;
-  frozenAt?: string;
-}
-
-/** /api/todo 的出站形状（桶名固定三个）。 */
-interface TodoData {
-  open?: TodoTask[];
-  done?: TodoTask[];
-  freeze?: TodoTask[];
-  topics?: string[];
-  [k: string]: any;
-}
 
 /** 登录卡的表单态。 */
 interface AcctState {
@@ -153,7 +134,7 @@ export default function TodoView() {
     if (!acct.password) { toast('请填密码'); return; }
     setAcct((s) => ({ ...s, busy: true }));
     try {
-      const r = await api('/api/auth/login', { method: 'POST', body: { email: acct.email.trim(), password: acct.password } });
+      const r = await authLogin({ email: acct.email.trim(), password: acct.password });
       setAcct((s) => ({ ...s, password: '' })); // 用完即清，不留在组件状态里
       toast(`已登录: ${r.email}`);
       await refreshBoot();
@@ -163,7 +144,7 @@ export default function TodoView() {
   });
 
   const logout = () => guard(async () => {
-    await api('/api/auth/logout', { method: 'POST' });
+    await authLogout();
     toast('已登出');
     await refreshBoot();
   });
@@ -171,7 +152,7 @@ export default function TodoView() {
   const load = useCallback(async () => {
     if (!boot?.loggedIn) return;
     try {
-      setData(await api<TodoData>('/api/todo'));
+      setData(await listTodos());
       setLoadErr('');
     } catch (e) {
       setLoadErr(String((e as Error).message || e));
@@ -186,7 +167,7 @@ export default function TodoView() {
   // 设置是**本机**行为（存 ~/.nx-kv/config.json），与登录态无关，所以单独取一次。
   // 失败静默：拿不到设置不该让清单页打不开。
   useEffect(() => {
-    api('/api/setting')
+    getSettings()
       .then(setSetting)
       .catch(() => {});
   }, []);
@@ -195,7 +176,7 @@ export default function TodoView() {
 
   const toggleAutoSync = () => guard(async () => {
     const next = !autoSync;
-    const s = await api('/api/setting', { method: 'POST', body: { autoSyncAttachments: next } });
+    const s = await saveSettings({ autoSyncAttachments: next });
     setSetting(s);
     toast(next ? '已开启：读任务时自动下载附件到本地' : '已关闭自动下载附件');
   });
@@ -298,18 +279,18 @@ export default function TodoView() {
     if (act === 'done') {
       const result = await dialog({ title: '完成结果', message: `完成「${task.text.slice(0, 40)}」`, input: true, placeholder: '可选：写一句完成结果' });
       if (result === null) return;
-      await api('/api/todo/done', { method: 'POST', body: { ...body, result: result || undefined } });
+      await doneTask({ ...body, result: result || undefined });
       toast('已完成');
     } else if (act === 'freeze') {
-      await api('/api/todo/freeze', { method: 'POST', body });
+      await freezeTask(body);
       toast('已冻结');
     } else if (act === 'unfreeze') {
-      await api('/api/todo/unfreeze', { method: 'POST', body });
+      await unfreezeTask(body);
       toast('已解冻');
     } else if (act === 'remove') {
       const ok = await dialog({ message: `删除「${task.text.slice(0, 40)}」？`, danger: true });
       if (!ok) return;
-      await api('/api/todo/item', { method: 'DELETE', body });
+      await removeTask(body);
       toast('已删除');
     } else if (act === 'edit') {
       // 编辑现在要能上传图片、插入嵌入，单行 dialog 装不下 —— 交给编辑器弹窗。
@@ -333,7 +314,7 @@ export default function TodoView() {
     if (answer === null) return;
     // dialog 在 input 模式下返回字符串；组件尚未类型化，这里在调用边界上收窄
     const before = String(answer);
-    const r = await api('/api/todo/archive', { method: 'POST', body: { before: before.trim() || undefined, group } });
+    const r = await archiveDone({ before: before.trim() || undefined, group });
     toast(r.moved ? `已归档 ${r.moved} 条 → ${r.coldKey}` : '没有需要归档的记录');
     await reload();
   });
@@ -361,7 +342,7 @@ export default function TodoView() {
     const text = form.text.trim();
     if (!topic) { toast('请填主题'); return; }
     if (!text) { toast('请填内容'); return; }
-    const r = await api('/api/todo', { method: 'POST', body: { topic, text, group } });
+    const r = await addTodo({ topic, text, group });
     setForm({ topic, text: '' });
     toast(`已加入待办${r.topicAdded ? `（新主题 ${topic}）` : ''}`);
     await reload();

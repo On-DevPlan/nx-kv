@@ -1,15 +1,16 @@
 // 文档模块的业务逻辑：CRUD + 外部写回。
 //
-// 「描述的权威是磁盘上的 .md 文件」——本模块只做这件事：CRUD、绑定、种子、知识聚合。
-// 面板编辑（DocPanel）与组详情渲染都从这里取数；`repo knowledge` 在 repos 模块
-// （它属于 repo.* 命令族），聚合逻辑在 knowledge.js。
+// 「自有文档的正文权威在 DB」——v6 起正文只存 `ref_bodies`；mdfile 默认目录
+// 只是 mdfile 默认附件目录，不再是文档来源（面板编辑与组详情都从这里取数）。
+// `repo knowledge` 在 repos 模块（它属于 repo.* 命令族），聚合逻辑在 knowledge.js。
 //
 // ─── 读写口径（2026-11 任务 #88「简介文档优化」）───────────────────────
-//   rel:  自有树（~/.nx-kv/docs/）——可读可写可删
+//   rel:  自有树（DB 里的逻辑 rel）——可读可写可删，不落盘
 //   path: 外部（Obsidian vault / 任意登记目录）——**登记在册即可写**：
 //         读侧要求路径在绑定闭包内；写侧再校验一次（闭包 + .md + 非目录），
 //         等于「文档集里的每一篇都能就地改」，同时不把 PATCH 变成任意文件写入口。
 //         删除仍不给外部：删除是可恢复性最差的操作，让它回来源做。
+//         （外部路径不在 mdfile 默认目录下；后者只允许经 mdfile 附件访问。）
 import * as paths from './paths.js';
 import * as store from './store.js';
 import * as seed from './seed.js';
@@ -17,7 +18,8 @@ import { reposBridge } from './repos-bridge.js';
 import { badInput, blocked } from '../../core/errors.js';
 import { getDb } from '../../core/db/index.js';
 import { tx } from '../../core/db/tx.js';
-import { ensureDocRef, syncRefAttachments } from '../../core/attachmentdb.js';
+import { ensureDocRef, noBodyReason, syncRefAttachments } from '../../core/attachmentdb.js';
+import type { RelKind } from '../../core/attachmentdb.js';
 import { docTitleFromMd } from '../../shared/doc-title.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -39,6 +41,11 @@ export interface DocSummary {
   name: string;
   title: string;
   size: number;
+  /** v6：normal | legacy | external | empty（后三类不是正常文档） */
+  relKind: RelKind;
+  hasBody: boolean;
+  missing?: boolean;
+  reason?: string;
 }
 
 /** docs list 的出参。 */
@@ -62,6 +69,9 @@ export interface DocGetResult {
   dir?: boolean;
   files?: string[];
   external?: boolean;
+  /** v6：条目类别；没有正文时与 reason 一起返回 missing 语义 */
+  relKind?: RelKind;
+  reason?: string;
 }
 
 /** doc add / update 的入参（body-file 只给 CLI）。 */
@@ -88,15 +98,20 @@ export interface DocWriteResult {
 // 树索引（零副作用，不播种——agent/前端拿它当双链解析的数据源）
 export async function listDocs({ external }: { external?: boolean } = {}): Promise<ListDocsResult> {
   const docs: DocSummary[] = [];
-  for (const f of await store.listOwnDocs()) {
+  // includeEmpty：历史空壳 / 外部镜像 / 无正文行也要出现在清单里，但必须显式标注，
+  // 不能让它们看起来像正常文档（v6 验收项）。
+  for (const f of await store.listOwnDocs({ includeEmpty: true })) {
     // #168：标题口径 = 正文**首行**的 `# 标题`（与文档页/附件清单同一口径）
-    const title = docTitleFromMd(f.size <= 512 * 1024 ? await safeRead(f.abs) : '');
+    const title = f.hasBody ? docTitleFromMd(f.body ?? '') : '';
     docs.push({
       docId: paths.ownDocId(f.rel),
       rel: f.rel,
       name: f.rel.replace(/\.md$/i, '').split('/').pop() ?? '',
       title,
       size: f.size,
+      relKind: f.relKind,
+      hasBody: f.hasBody,
+      ...(f.hasBody ? {} : { missing: true, reason: noBodyReason(f.relKind) }),
     });
   }
   const out: ListDocsResult = { docs, count: docs.length };
@@ -116,17 +131,31 @@ export async function getDoc({ ref }: { ref?: unknown } = {}): Promise<DocGetRes
   if (!clean(ref)) throw badInput('请给文档标识：自有 rel:<路径>（或裸相对路径），外部 path:<绝对路径>');
   const parsed = paths.parseDocId(ref);
   if (parsed.kind === 'own') {
-    let body: string | null = null;
-    try {
-      body = await store.readOwnDoc(parsed.rel);
-    } catch {
-      const seeded = await seed.ensureSeedForRel(parsed.rel);
-      if (seeded === null) {
-        return { docId: paths.ownDocId(parsed.rel), rel: parsed.rel, missing: true, writable: true, title: '', summary: '', body: '' };
-      }
-      body = seeded;
+    const state = await store.ownDocState(parsed.rel);
+    if (state.exists && state.hasBody) return outOwn(parsed.rel, state.body ?? '', state.relKind);
+    // v6：有行但没有正文（历史空壳 / 外部镜像 / 正文缺失）→ 显式 missing + 原因，
+    // 不返回空文档成功态，也不把壳行播种成新文档。
+    if (state.exists) {
+      return {
+        docId: paths.ownDocId(parsed.rel),
+        rel: parsed.rel,
+        missing: true,
+        writable: false,
+        title: '',
+        summary: '',
+        body: '',
+        relKind: state.relKind,
+        reason: state.reason,
+      };
     }
-    return outOwn(parsed.rel, body);
+    const seeded = await seed.ensureSeedForRel(parsed.rel);
+    if (seeded === null) {
+      return {
+        docId: paths.ownDocId(parsed.rel), rel: parsed.rel, missing: true, writable: true,
+        title: '', summary: '', body: '', relKind: 'empty', reason: '文档不存在',
+      };
+    }
+    return outOwn(parsed.rel, seeded, 'normal');
   }
   // 外部：先过绑定闭包，闭包外一律拒绝——doc.get 不能变成任意文件读入口
   const { loadStore } = await reposBridge();
@@ -225,7 +254,7 @@ export async function removeDoc({ ref }: { ref?: unknown } = {}): Promise<{ docI
 
 // ─── 出参整形 ──────────────────────────────────────────────────────────
 
-function outOwn(rel: string, body: string): DocGetResult {
+function outOwn(rel: string, body: string, relKind: RelKind = 'normal'): DocGetResult {
   const { summaryFromMd } = seed;
   // #168：标题 = 正文**首行**的 `# 标题`（不是「任意位置的首个 # 行」——
   // 那样正文中间插一行 ## 就会改标题；也不是「首个非空行」——那会让正文
@@ -237,6 +266,7 @@ function outOwn(rel: string, body: string): DocGetResult {
     summary: summaryFromMd(body),
     body,
     writable: true,
+    relKind,
   };
 }
 

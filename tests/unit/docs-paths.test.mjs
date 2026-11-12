@@ -5,7 +5,6 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  docsRoot,
   docSeg,
   boardSeg,
   repoDocRel,
@@ -18,14 +17,15 @@ import {
   ownDocId,
   extDocId,
 } from '../../src/modules/docs/paths.js';
+import { mdfileDirFromEnv } from '../../src/core/paths.js';
 
-test('docsRoot：默认 ~/.nx-kv/docs，env 可覆盖（测试隔离的依据）', () => {
+test('mdfileDirFromEnv：默认 ~/.nx-kv/docs，env 可覆盖（测试隔离的依据）', () => {
   const prev = process.env.NX_KV_DOCS_DIR;
   try {
     delete process.env.NX_KV_DOCS_DIR;
-    assert.ok(docsRoot().endsWith(join('.nx-kv', 'docs')));
+    assert.ok(mdfileDirFromEnv().endsWith(join('.nx-kv', 'docs')));
     process.env.NX_KV_DOCS_DIR = join(tmpdir(), 'nx-kv-docs-x');
-    assert.equal(docsRoot(), join(tmpdir(), 'nx-kv-docs-x'));
+    assert.equal(mdfileDirFromEnv(), join(tmpdir(), 'nx-kv-docs-x'));
   } finally {
     if (prev === undefined) delete process.env.NX_KV_DOCS_DIR;
     else process.env.NX_KV_DOCS_DIR = prev;

@@ -46,7 +46,6 @@ import {
   upsertFileAttachment,
 } from '../../core/attachmentdb.js';
 import * as service from '../localtask/service.js';
-import { docsRoot } from '../docs/paths.js';
 import { inlineDocContent } from './doc-inline.js';
 import { fileStateOf, resourceOf, targetLookupsOf, type ResourceLookups } from './attach-resource.js';
 
@@ -183,7 +182,7 @@ export async function annotateTaskDelivery(
   const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store, mirror);
   await annotateMdfileContent(attachments);
   await annotateRefTitles(attachments);
-  if (inlineDocs) await inlineDocContent(attachments);
+  if (inlineDocs) await inlineDocContent(attachments, { id: (task as any).id, key: (task as any).key || (task as any).topicKey });
   return { task: { ...task, attachments }, sync };
 }
 
@@ -332,7 +331,7 @@ export async function attachToTask({
   } else if (mdfile) {
     // 外部 md 文件：登记指针（kind=mdfile / storage=external），正文留在磁盘原地
     const rec = tx(
-      (conn) => registerMdfile(conn, { path: mdfile, name: displayName, docsRoot: docsRoot() }),
+      (conn) => registerMdfile(conn, { path: mdfile, name: displayName }),
       { db, mode: 'IMMEDIATE' }
     );
     attachmentId = rec.id;

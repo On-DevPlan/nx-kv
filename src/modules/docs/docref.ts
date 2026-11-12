@@ -38,6 +38,18 @@ export function assertOwnedRel(rel: unknown, label = '文档路径'): string {
   return norm;
 }
 
+/**
+ * 读路径用的 rel 校验：在自有 rel 的基础上，额外放行 v6 的壳行命名空间
+ * `legacy/<id>` / `external/<hash>`——它们不是磁盘路径，也不以 .md 结尾，
+ * 但必须能被 `docs get` 命中并返回 missing 语义（而不是抛「必须是 .md」）。
+ * 写入口仍然用 assertOwnedRel，避免把壳行写成正常文档。
+ */
+export function assertDocRel(rel: unknown, label = '文档路径'): string {
+  const norm = assertSafeRelPath(rel, { label });
+  if (/^(legacy|external)\//.test(norm)) return norm;
+  return assertOwnedRel(norm, label);
+}
+
 // ─── DocRef ────────────────────────────────────────────────────────────
 
 /** 严格版：形状非法抛 badInput（bind 入口用） */
@@ -105,5 +117,5 @@ export function parseDocId(docId: unknown): ParsedDocId {
     return { kind: 'external', path: p };
   }
   const rel = s.startsWith('rel:') ? s.slice(4).trim() : s;
-  return { kind: 'own', rel: assertOwnedRel(rel) };
+  return { kind: 'own', rel: assertDocRel(rel) };
 }

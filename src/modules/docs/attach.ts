@@ -24,7 +24,6 @@ import type { DeleteAttachmentResult } from '../../core/attachmentdb/query.js';
 import { localUpload } from '../../core/localatt.js';
 import { contentTypeOf, isImageName } from '../../core/fileapi.js';
 import { attachmentsRootFromEnv } from '../../core/paths.js';
-import { docsRoot } from './paths.js';
 import { readFile } from 'node:fs/promises';
 import { basename, resolve as resolvePath } from 'node:path';
 
@@ -186,7 +185,7 @@ export async function attachToDoc(ctx: AttachToDocCtx): Promise<AttachToDocResul
   } else if (ctx.mdfile) {
     // 外部 md 文件：只登记指针（kind=mdfile, storage=external），正文仍在磁盘原地
     const rec = tx(
-      (conn) => registerMdfile(conn, { path: ctx.mdfile, name: displayName, docsRoot: docsRoot() }),
+      (conn) => registerMdfile(conn, { path: ctx.mdfile, name: displayName }),
       { db, mode: 'IMMEDIATE' }
     );
     attachmentId = rec.id;

@@ -241,7 +241,8 @@ export async function repoExportZip(options: RepoExportOptions = {}): Promise<Bu
       layout.warnings.push(`文档超过 2MB 未打包: ${f.rel}`);
       continue;
     }
-    docEntries.push({ name: 'docs/' + f.rel, data: await fsp.readFile(f.abs) });
+    // 正文只从 DB 取（v6 起不再有磁盘副本）
+    docEntries.push({ name: 'docs/' + f.rel, data: Buffer.from(f.body ?? '', 'utf8') });
   }
   // zip 内清单进 layout（diff 展示用；实际内容就是 zip 条目本身）
   layout.docs = { files: docEntries.map((e) => e.name.slice('docs/'.length)) };

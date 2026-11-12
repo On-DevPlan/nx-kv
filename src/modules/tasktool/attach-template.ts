@@ -175,13 +175,19 @@ function ctxItemOf(a: any): any {
   const ref = { refId, title, relPath, readCmd, content, truncated };
   // 文档资料绑定（role='doc'，#162）：读到了全文 → usage 指向「文档原文」段；
   // 没读到（fail-open）→ 退回普通取用命令，不假装内容存在。
+  // 外部 md 未登记附件时必须说清楚「为什么没有正文」并给登记命令，
+  // 否则用户会以为文档本身是空的（2026-11 收口口径）。
   let usage = String(a.usage || '');
   if (a.role === 'doc') {
     usage = content
       ? `这是文档资料绑定（进原文）：全文已附在本清单末尾的「文档原文」段${truncated ? `，内容有截断——完整版用 ${readCmd} 读取` : ''}`
-      : readCmd
-        ? `这是文档资料绑定（进原文），但本次未能读到全文：用 ${readCmd} 读取`
-        : `这是文档资料绑定（进原文），但本次未能读到全文（refId ${refId}）：先用 nx-kv docs list 定位路径，再 docs get 读取`;
+      : a.docMissing
+        ? `这是文档资料绑定（进原文），但无法内联：${String(a.docMissingReason || '正文缺失')}` +
+          `${a.docRegisterCmd ? `。先登记为附件：${a.docRegisterCmd}` : ''}` +
+          `${readCmd ? `；登记后用 ${readCmd} 读取` : ''}`
+        : readCmd
+          ? `这是文档资料绑定（进原文），但本次未能读到全文：用 ${readCmd} 读取`
+          : `这是文档资料绑定（进原文），但本次未能读到全文（refId ${refId}）：先用 nx-kv docs list 定位路径，再 docs get 读取`;
   } else {
     usage = usage || (readCmd
       ? `这是文档库里的 md 文件：用 ${readCmd} 读取`

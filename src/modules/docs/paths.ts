@@ -1,4 +1,4 @@
-// docs 自有树的路径权威：根目录、段级 slug、约定路径。
+// docs 自有树的路径权威：约定路径与段级 slug。
 // （DocRef / docId 校验在 docref.js——那里刻意不依赖 repos/service，见其文件头。）
 //
 // 目录树承载语义（键位约定，导出 zip 原样带走）：
@@ -7,17 +7,14 @@
 //   group/<组 slug>/<key 分段>.md      组内描述   group/nx系列/github.com/me/x.md
 //   其余任意 .md                      自由文档（同样可索引/双链/绑定）
 //
+// **磁盘不再是文档来源**（v6 + DOCS_DIR 收口）：自有文档正文只从 `ref_bodies` 读，
+// mdfile 默认附件目录定义在 core/paths（环境变量名保持不变）。
+// 这里保留的是 **rel 的命名规则**，与文件系统无关。
+//
 // key 全局唯一（repos 模块保证）→ 约定路径不可能互相撞，不需要指纹后缀。
 // 段级 slug 只兜 Windows 的两个坑：段尾点（资源管理器拒绝创建）与保留设备名。
-import { join } from 'node:path';
-import { APP_DIR } from '../../core/paths.js';
 import { normalizeKey } from '../../shared/repo-key.js';
 import { localKeyOf } from '../../core/keys.js';
-
-// 允许测试与多实例覆盖文档树根：与 NX_KV_REPOS_STORE 同一模式
-export function docsRoot(): string {
-  return process.env.NX_KV_DOCS_DIR || join(APP_DIR, 'docs');
-}
 
 // Windows 保留设备名（不分大小写）：命中即追加下划线
 const RESERVED = new Set([
@@ -61,7 +58,7 @@ export function groupNoteRel(boardName: unknown, repoKey: unknown): string {
 }
 
 // DocRef / docId 校验（docref.js）：这里转发导出，调用方统一从 paths 拿
-export { assertOwnedRel, assertDocRef, sanitizeDocRef, parseDocId, ownDocId, extDocId } from './docref.js';
+export { assertOwnedRel, assertDocRel, assertDocRef, sanitizeDocRef, parseDocId, ownDocId, extDocId } from './docref.js';
 export type { DocRef, DocRefWithMeta, ParsedDocId } from './docref.js';
 
 // ─── 介绍目录（多篇）──────────────────────────────────────────────────

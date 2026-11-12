@@ -61,7 +61,8 @@ test('readIntroSet：目录主篇优先，旧单文件回落', async () => {
   });
   assert.equal(set.main.title, '目录主篇');
   assert.equal(set.main.docId, 'rel:' + paths.docMainRel(paths.repoDocDirRel(alpha.key)));
-  assert.ok(set.main.abs.endsWith('index.md'), '主篇带磁盘绝对路径');
+  assert.ok(String(set.main.docId).endsWith('index.md'), '主篇带 docId');
+  assert.equal(set.main.abs, undefined, '自有文档正文在 DB，没有磁盘路径');
 });
 
 test('readIntroSet：目录里的其余 md 进列表（reference 单独标记）', async () => {
@@ -80,7 +81,7 @@ test('readIntroSet：目录里的其余 md 进列表（reference 单独标记）
   const qa = set.extras.find((d) => d.rel.endsWith('qa.md'));
   assert.ok(arch && !arch.isReference, 'arch 是普通补充');
   assert.ok(qa && qa.isReference, 'reference/ 下的标 isReference');
-  assert.ok(arch.abs && arch.docId, '每篇都带可读路径与 docId');
+  assert.ok(arch.rel && arch.docId, '每篇都带 rel 与 docId');
 });
 
 test('readIntroSet：绑定的外部文件覆盖约定路径', async () => {

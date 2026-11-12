@@ -7,12 +7,10 @@
 // **顺序：先建 refs 再绑 topic**（裁决原文）。绑定落库前先跑
 // repo/refs.js 的 rebuildRefIndex 把文档索引（约定路径绑定 + 孤儿清单）
 // 补齐 —— 队列绑到仓库后，面板立刻要展示「这个仓库有哪些文档」，索引
-// 不能等到那时才现建。docs 树扫描（fs）在事务外完成，事务体内只有写库。
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { listDocFiles } from '../../../core/db/import-json.js';
+// 不能等到那时才现建。文档清单与正文从 DB 取（v6 起正文只存 ref_bodies），
+// 事务体内只有写库。
 import { nowMs } from '../../../core/db/time.js';
-import { APP_DIR } from '../../../core/paths.js';
+import { listOwnDocs } from '../../docs/store.js';
 import repoLayer from '../repo/index.js';
 import { loadStore } from './store.js';
 import { deriveKey } from './identity.js';
@@ -48,11 +46,6 @@ export type BindTopicsResult =
       refs: { refs: number; bindings: number };
     };
 
-/** 文档索引的树根（与 docs/paths 的 NX_KV_DOCS_DIR 覆盖同一口径）。 */
-export function docsIndexRoot(): string {
-  return process.env.NX_KV_DOCS_DIR || join(APP_DIR, 'docs');
-}
-
 /**
  * 按路径前缀把哨兵上的队列绑到真实仓库。
  *
@@ -75,16 +68,13 @@ export async function bindTopicsToRepos({ repo: repoLocator = '', apply = false 
     .map((r) => ({ key: deriveKey(r), name: r.name, prefix: normalizePathKey(r.path) }))
     .filter((x) => x.prefix);
 
-  // docs 树扫描在事务外（fs 不进事务体）；正文一并读出来，索引重建时同步 ref_attach。
-  const docsFiles = apply ? listDocFiles(docsIndexRoot()) : [];
+  // 文档清单与正文都从 DB 取（v6 起正文只存 ref_bodies，不再扫盘）。
+  const docsFiles: string[] = [];
   const docsBodies = new Map<string, string>();
   if (apply) {
-    for (const rel of docsFiles) {
-      try {
-        docsBodies.set(rel, readFileSync(join(docsIndexRoot(), ...String(rel).split('/')), 'utf8'));
-      } catch {
-        /* 读不到就跳过资源同步，索引本身仍建 */
-      }
+    for (const d of await listOwnDocs()) {
+      docsFiles.push(d.rel);
+      if (d.body !== undefined) docsBodies.set(d.rel, d.body);
     }
   }
 

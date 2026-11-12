@@ -7,7 +7,7 @@
 // 队列行经 localtask/repo/topics 直接落在同一个库（两者本就共用一条连接）。
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as repos from '../../src/modules/repos/service.js';
@@ -85,11 +85,10 @@ test('bindTopicsToRepos：预览零副作用；apply 按**最长路径前缀**�
   const parent = await repos.addRepo({ path: join(dir, 'proj'), name: 'proj', remote: 'git@github.com:o/proj.git' });
   const child = await repos.addRepo({ path: join(dir, 'proj', 'sub'), name: 'sub', remote: 'git@github.com:o/sub.git' });
 
-  // docs 树里放两份文档：一份命中 alpha 约定路径，一份自由文档（孤儿）
-  mkdirSync(join(dir, 'docs', 'repo', child.key), { recursive: true });
-  writeFileSync(join(dir, 'docs', 'repo', child.key, 'index.md'), '# sub 介绍\n');
-  mkdirSync(join(dir, 'docs', 'free'), { recursive: true });
-  writeFileSync(join(dir, 'docs', 'free', 'note.md'), '# 自由文档\n');
+  // 文档只存 DB（v6 起不落盘）：一份命中 alpha 约定路径，一份自由文档（孤儿）
+  const docsStore = await import('../../src/modules/docs/store.js');
+  await docsStore.writeOwnDoc(`repo/${child.key}/index.md`, '# sub 介绍\n');
+  await docsStore.writeOwnDoc('free/note.md', '# 自由文档\n');
 
   // 队列：proj 下一条、proj/sub 下一条、无关目录一条、全局池一条
   const mk = (cwd) => repo.txw((conn) => {
@@ -126,13 +125,19 @@ test('bindTopicsToRepos：预览零副作用；apply 按**最长路径前缀**�
   assert.equal(plan.bound.some((x) => x.cwd === join(dir, 'other')), false, '无关目录不绑');
   assert.equal(plan.bound.some((x) => x.topicKey === GLOBAL_TOPIC_KEY), false, '全局池永远留哨兵');
 
-  // apply 前：refs 索引还没建（预览零副作用）
-  const orphanBefore = repo.txw((conn) => repo.refs.listOrphans(conn).map((o) => o.locator));
-  assert.deepEqual(orphanBefore, []);
+  // apply 前：预览零副作用（没有绑定、也没有 ref_bindings）
+  const before = repo.txw((conn) => ({
+    bound: conn.all("SELECT key FROM topics WHERE repo_key != '__unbound__'"),
+    bindings: conn.get('SELECT count(*) AS c FROM ref_bindings').c,
+  }));
+  assert.deepEqual(before.bound, []);
+  assert.equal(before.bindings, 0);
 
   const done = await repos.bindTopicsToRepos({ apply: true });
   assert.equal(done.changed, 2);
-  assert.equal(done.refs.refs, 2, 'refs 索引先建：约定主篇 + 自由文档');
+  // v6 起写文档就会建 refs 行，rebuild 的 refs 计数只算「新增」，这里看总数更有意义
+  const refTotal = repo.txw((conn) => conn.get('SELECT count(*) AS c FROM refs WHERE deleted_at IS NULL').c);
+  assert.equal(refTotal, 2, 'refs 索引先建：约定主篇 + 自由文档');
   assert.equal(done.refs.bindings, 1, '约定路径绑定 1 条（sub 的 index.md）');
 
   // 库面：绑定生效（ix_topics_repo 可查）

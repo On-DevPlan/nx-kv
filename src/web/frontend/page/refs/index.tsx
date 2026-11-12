@@ -11,6 +11,7 @@ import { useWikiNav } from '../doc/index.jsx';
 import type { DocOpenExtra } from '../doc/index.jsx';
 import type { Model } from 'flexlayout-react';
 import { closeRightPanelOf } from '../../workspace.js';
+import { onDocsChanged } from '../../modules/md/doc-bus.js';
 import './style.css';
 
 /** 文档条目（/api/repos/docs 与 /api/boards/:id 里的 main / extras / links 共用形状）。 */
@@ -53,19 +54,36 @@ function baseLabel(l: DocLink) {
   return String(s).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || s || '未命名';
 }
 
-/** 数据 → 行（主篇 / 补充 / reference 三段，顺序稳定） */
+/** 数据 → 行（主篇 / 补充 / reference 三段，顺序稳定）
+ *
+ * 去重是必需的（#183「仓库/组/组内的 ref 混乱」）：介绍目录里的
+ * `repo/<key>/reference/*.md` 会同时出现在 extras（目录枚举）与 links（登记）
+ * 里，此前两段各推一行 → 同一篇在列表里出现两次，一次带 tag、一次不带。
+ * 口径：**登记行优先**（它带 note/tag 与顺序），extras 只补登记里没有的。
+ */
 function buildRows(d: RefsData | null): RefRow[] {
   const rows: RefRow[] = [];
+  const seen = new Set<string>();
+  const links = (d && (d.links || d.docLinks)) || [];
+  const registered = new Set(links.map((l) => docIdOf(l)).filter(Boolean));
   const main = d && (d.main || d.introMain);
-  if (main) rows.push({ ...main, docId: docIdOf(main), main: true, label: d.repo ? d.repo.name : '主篇' });
+  const mainId = docIdOf(main);
+  if (main && mainId) {
+    seen.add(mainId);
+    rows.push({ ...(main as DocLink), docId: mainId, main: true, label: d?.repo ? d.repo.name : '主篇' });
+  }
   for (const l of (d && (d.extras || d.introExtras)) || []) {
     const id = docIdOf(l);
-    if (id) rows.push({ ...l, docId: id, main: false, label: baseLabel(l) });
+    if (!id || seen.has(id) || registered.has(id)) continue;
+    seen.add(id);
+    rows.push({ ...l, docId: id, main: false, label: baseLabel(l) });
   }
   // 登记的 reference：repo 响应叫 links，board 响应叫 docLinks
-  for (const l of (d && (d.links || d.docLinks)) || []) {
+  for (const l of links) {
     const id = docIdOf(l);
-    if (id) rows.push({ ...l, docId: id, main: false, label: baseLabel(l) });
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    rows.push({ ...l, docId: id, main: false, label: baseLabel(l) });
   }
   return rows.filter((r) => r.docId);
 }
@@ -96,6 +114,9 @@ export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
     })();
     return () => { alive = false; };
   }, [repoKey, boardKey, tick]);
+
+  // 文档页保存 / 补充 / 删除后自动刷新（#183：编辑器与 ref 列表不同步）
+  useEffect(() => onDocsChanged(reload), [reload]);
 
   const rows = buildRows(data);
   const title = data

@@ -158,29 +158,11 @@ export default function DocHead({
   })).filter((g) => g.items.length);
   const ungroupedMore = moreItems.filter((x) => !metaOf(KIND, x.id).menuGroup);
 
-  if (!writable) {
-    return (
-      <div className="mdw-top docp-top">
-        {crumb}
-        <div className="mdw-head">
-          <div className="mdw-title">{title || '文档'}</div>
-          <div className="mdw-path">
-            {pathLabel}
-            {dirty ? ' · 未保存' : ''}
-            {external ? ' · 外部' : ''}
-          </div>
-          <span className="grow" />
-          {afterTitle}
-          <div className="docp-actions">
-            <span className="docp-tag ext">只读</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mdw-top docp-top">
+  // 头部两行与任务页逐字同构（#183）：`.mdw-top` = 面包屑 + 标题/路径两行，
+  // 动作组另起 `.mdw-toolbar` 一行。此前把标题与路径压成一行塞在 `.docp-top`
+  // 里，标题被挤成 30px、动作组贴在路径右边——与任务页/组页一眼就不像同一个应用。
+  const head = (
+    <div className="mdw-top">
       {crumb}
       <div className="mdw-head">
         <div className="mdw-title">{title || '文档'}</div>
@@ -189,9 +171,30 @@ export default function DocHead({
           {dirty ? ' · 未保存' : ''}
           {external ? ' · 外部' : ''}
         </div>
-        <span className="grow" />
-        {afterTitle}
-        <div className="docp-actions">
+      </div>
+    </div>
+  );
+
+  if (!writable) {
+    return (
+      <>
+        {head}
+        <div className="mdw-toolbar">
+          <div className="mdw-toolbar-left">{afterTitle}</div>
+          <div className="mdw-actions">
+            <span className="docp-tag ext">只读</span>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {head}
+      <div className="mdw-toolbar">
+        <div className="mdw-toolbar-left">{afterTitle}</div>
+        <div className="mdw-actions">
           {barItems.map((x) => renderBarBtn(x.id))}
 
           <MenuPortal menu={more} className="mdw-act-menu">
@@ -259,7 +262,7 @@ export default function DocHead({
         </div>,
         document.body
       )}
-    </div>
+    </>
   );
 }
 

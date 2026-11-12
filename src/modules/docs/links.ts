@@ -5,6 +5,7 @@
 import * as paths from './paths.js';
 import * as store from './store.js';
 import { reposBridge } from './repos-bridge.js';
+import { syncRefIndex } from './ref-sync.js';
 import { parseWikiLinks, resolveWikiLink, normalizeWikiTarget } from '../../shared/wikilink.js';
 import type { WikiIndexEntry, WikiResolveResult } from '../../shared/wikilink.js';
 
@@ -19,8 +20,13 @@ export async function buildIndex(): Promise<WikiIndexEntry[]> {
   const { loadStore } = await reposBridge();
   const s = await loadStore();
   const closure = await store.externalClosure(s);
+  const own = await store.listOwnDocs();
+  // 顺手把「盘上有、库里没有」的文档补进 refs，并按 ext 重建绑定（#183）：
+  // 双链索引是面板打开时拉一次的地方，放在这里既不会拖热路径，也不会漏掉
+  // 用户手工拷进 docs 树的 md。
+  await syncRefIndex({ files: own.map((f) => f.rel), store: s }).catch(() => null);
   const index: WikiIndexEntry[] = [];
-  for (const f of await store.listOwnDocs()) {
+  for (const f of own) {
     index.push({ docId: paths.ownDocId(f.rel), name: normalizeWikiTarget(baseNameOf(f.rel)), rel: f.rel });
   }
   for (const abs of await store.listExternalDocs(closure)) {

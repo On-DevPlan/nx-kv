@@ -60,6 +60,14 @@ export async function createTestStore({ open = true, bootstrap = true, importLeg
   const appDir = join(dir, 'home');
   mkdirSync(appDir, { recursive: true });
 
+  // 硬保险 #2：docs 树同样不许落真实 ~/.nx-kv。docsRoot() 是调用时读
+  // NX_KV_DOCS_DIR（src/modules/docs/paths.ts），这里给个临时默认值，
+  // 没显式覆盖的测试也安全；reset 时还原，避免向同进程后续测试泄漏。
+  // （2026-11-07 实锤：未设此变量时测试文档写进了真实 docs 树，残留 238 行孤儿 refs。）
+  const docsDir = join(appDir, 'docs');
+  const prevDocsDir = process.env.NX_KV_DOCS_DIR;
+  process.env.NX_KV_DOCS_DIR = docsDir;
+
   // 动态 import：这些模块在 import 时读环境算 APP_DIR，而测试要在 import 之前
   // 把路径指到临时目录。生产代码不该为了测试改结构，所以这里用动态 import。
   const core = await import('../../src/core/db/index.js');
@@ -72,7 +80,7 @@ export async function createTestStore({ open = true, bootstrap = true, importLeg
     core,
     /** 子进程（CLI）要用的环境变量：整份数据都在临时目录里。 */
     env(extra = {}) {
-      return { ...process.env, NX_KV_HOME: appDir, NX_KV_DB: dbPath, ...extra };
+      return { ...process.env, NX_KV_HOME: appDir, NX_KV_DB: dbPath, NX_KV_DOCS_DIR: docsDir, ...extra };
     },
     /** 打开连接（默认走 bootstrap：建表 + 迁移）。 */
     open(opts = {}) {
@@ -109,6 +117,9 @@ export async function createTestStore({ open = true, bootstrap = true, importLeg
     },
     /** 关连接 + 删临时目录（幂等）。**必须用它清场**，别自己 rmSync。 */
     reset() {
+      // 还原进程级 docs 根，防止同进程后续测试拿到已删除的临时路径
+      if (prevDocsDir === undefined) delete process.env.NX_KV_DOCS_DIR;
+      else process.env.NX_KV_DOCS_DIR = prevDocsDir;
       try {
         core.closeDb();
       } catch {

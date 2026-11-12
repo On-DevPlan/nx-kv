@@ -36,8 +36,12 @@ export {
   updateAttachmentNote,
 } from './attachmentdb/relations.js';
 export {
+  clearRefBindings,
   ensureDocRef,
   forgetDocRef,
+  markRefBound,
+  markUnboundRefsOrphan,
+  putRefBinding,
   resolveRefId,
   syncDocAttachmentIndex,
   syncTaskAttachmentIndex,

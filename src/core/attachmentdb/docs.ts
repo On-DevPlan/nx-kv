@@ -63,6 +63,64 @@ export function forgetDocRef(conn: any, locator?: string): number {
   return Number(r.changes) || 0;
 }
 
+// ─── 宿主绑定（ref_bindings）──────────────────────────────────────────
+//
+// ref_bindings 一行 = 「某个宿主（仓库 / 组 / 组内某仓库）的文档列表里的一项」。
+// 表在 v3 迁移时建好，但长期只有 bind-topics 与导入器在写——docs 域改 ext
+// （r.doc / docLinks / b.repoDocs）时不同步，于是库里全是 orphan、面板上却
+// 显示「已绑定」（#183 实锤：4 篇已挂文档，ref_bindings 零行）。这四个
+// 原语给 docs 域的整表重建用，写入方只允许 docs/ref-sync。
+
+export interface RefBindingRow {
+  repoKey?: string;
+  groupKey?: string | null;
+  refId?: string;
+  type?: string;
+  position?: number;
+  note?: string;
+  atMs?: number;
+}
+
+/** 绑一条（幂等：唯一键冲突时保留原行）。 */
+export function putRefBinding(conn: any, { repoKey, groupKey = null, refId, type = 'repo', position = 0, note = '', atMs = Date.now() }: RefBindingRow = {}): void {
+  conn.run(
+    `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, created_at)
+     VALUES (:repo, :group, :ref, :type, :pos, :note, :at)`,
+    {
+      repo: String(repoKey || ''),
+      group: groupKey == null ? null : String(groupKey),
+      ref: String(refId || ''),
+      type: String(type || 'repo'),
+      pos: Number(position) || 0,
+      note: String(note || ''),
+      at: atMs,
+    }
+  );
+}
+
+/** 清空全部绑定（整表重建的第一步；只在重建事务内用）。 */
+export function clearRefBindings(conn: any): void {
+  conn.run('DELETE FROM ref_bindings');
+}
+
+/** 绑定命中的 ref → state 清空（不再是孤儿）。 */
+export function markRefBound(conn: any, refId?: string): void {
+  const id = String(refId || '');
+  if (!id) return;
+  conn.run("UPDATE refs SET state = '', updated_at = :at WHERE id = :id", { id, at: Date.now() });
+}
+
+/** 没有任何绑定的 ref → 回到 orphan（重建收尾，防止摘绑定后状态残留）。 */
+export function markUnboundRefsOrphan(conn: any): number {
+  const r = conn.run(
+    `UPDATE refs SET state = 'orphan', updated_at = :at
+      WHERE deleted_at IS NULL AND state <> 'orphan'
+        AND id NOT IN (SELECT ref_id FROM ref_bindings)`,
+    { at: Date.now() }
+  );
+  return Number(r.changes) || 0;
+}
+
 /** 全量重扫任务正文（迁移与导入后用；幂等）。 */
 export function syncTaskAttachmentIndex(conn: any, { atMs = Date.now() }: { atMs?: number } = {}): number {
   const rows = conn.all('SELECT id, body FROM tasks ORDER BY id');

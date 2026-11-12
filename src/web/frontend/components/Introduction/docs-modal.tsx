@@ -22,6 +22,7 @@ import { useToast } from '../toast/index.jsx';
 import { useIntro, introDirFromRef } from './use-intro.js';
 import type { DialogResult, IntroDocEntry, IntroKind, IntroOwner } from './use-intro.js';
 import { slugName } from '../../modules/md/md-parse.js';
+import { notifyDocsChanged, onDocsChanged } from '../../modules/md/doc-bus.js';
 import { openPanel } from '../../workspace.js';
 import './style.css';
 
@@ -78,8 +79,12 @@ function buildSections(
   kind: string
 ): DocsItem[] {
   const out: DocsItem[] = [];
+  const seen = new Set<string>();
+  const registered = ((data && (data.links || data.docLinks)) || []) as IntroDocEntry[];
+  const registeredIds = new Set(registered.map((l) => docIdOf(l)).filter(Boolean));
   const main = (data && (data.main || data.introMain)) as IntroDocEntry | null | undefined;
   if (main) {
+    seen.add(docIdOf(main));
     out.push({
       id: docIdOf(main),
       kind: 'main',
@@ -95,7 +100,10 @@ function buildSections(
   }
   for (const l of ((data && (data.extras || data.introExtras)) || []) as IntroDocEntry[]) {
     const id = docIdOf(l);
-    if (!id) continue;
+    // 介绍目录里的 reference 同时是「目录补充」与「登记项」——登记行带 tag/note，
+    // 优先它，别让同一篇在弹窗里出现两遍（#183）
+    if (!id || seen.has(id) || registeredIds.has(id)) continue;
+    seen.add(id);
     out.push({
       id,
       kind: 'extra',
@@ -109,10 +117,10 @@ function buildSections(
     });
   }
   // 登记的 reference：repo 与 board 的响应字段名不同（links / docLinks）
-  const registered = ((data && (data.links || data.docLinks)) || []) as IntroDocEntry[];
   registered.forEach((l, i) => {
     const id = docIdOf(l);
-    if (!id) return;
+    if (!id || seen.has(id)) return;
+    seen.add(id);
     out.push({
       id,
       kind: 'link',
@@ -132,7 +140,8 @@ function buildSections(
     const abs = b.noteDocPath || '';
     const rel = b.noteDocRel || '';
     const id = abs ? 'path:' + abs : rel ? 'rel:' + rel : '';
-    if (!id) continue;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
     out.push({
       id,
       kind: 'scoped',
@@ -185,6 +194,8 @@ export default function DocsModal({ kind, owner, model, onClose, onChanged }: Do
   }, [kind, ownerKey, owner]);
 
   useEffect(() => { reload(); }, [reload]);
+  // 文档页保存 / 补充 / 摘除后同步刷新（#183）
+  useEffect(() => onDocsChanged(reload), [reload]);
 
   // ─── 点一行 → 主内容区开文档页（编辑 / 保存 / 更多都在那一页）────────────
   const openInMain = (it: OpenTarget | null | undefined) => {
@@ -221,6 +232,7 @@ export default function DocsModal({ kind, owner, model, onClose, onChanged }: Do
       await api('/api/docs/link', { method: 'POST', body: { board: ownerKey, remove: it.removeIndex } });
     }
     toast('已摘除');
+    notifyDocsChanged();
     reload();
     if (onChanged) onChanged();
   });
@@ -273,6 +285,7 @@ export default function DocsModal({ kind, owner, model, onClose, onChanged }: Do
       /* 集里已有 / 旧数据：文件已创建即可——同 doc 重复添加 = 更新（tag 以本次为准） */
     }
     toast(`已补充：${rel}${tag ? ` [${tag}]` : ''}`);
+    notifyDocsChanged();
     await reload();
     if (onChanged) onChanged();
     // 新建完直接在主内容区打开它（用户已确认这个口径：少一次点击）

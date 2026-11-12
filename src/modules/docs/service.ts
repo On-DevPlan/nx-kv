@@ -18,6 +18,7 @@ import { badInput, blocked } from '../../core/errors.js';
 import { getDb } from '../../core/db/index.js';
 import { tx } from '../../core/db/tx.js';
 import { ensureDocRef, syncRefAttachments } from '../../core/attachmentdb.js';
+import { syncRefIndex } from './ref-sync.js';
 import { docTitleFromMd } from '../../shared/doc-title.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -167,6 +168,9 @@ export async function addDoc(ctx: DocWriteCtx, opts?: { transport?: string } | n
   const rel = await store.writeOwnDoc(ctx.rel as string, (await bodyOf(ctx, opts)) ?? '');
   const body = await store.readOwnDoc(rel);
   const summary = await seed.writeBackSummary(rel, body);
+  // 落盘即登记：新文件可能正好是某宿主的约定主篇（repo/<key>/index.md 等），
+  // 绑定索引跟着重建一次，别等下次双链索引才出现（#183）。
+  await syncRefIndex().catch(() => null);
   return { docId: paths.ownDocId(rel), rel, bytes: Buffer.byteLength(body, 'utf8'), summary };
 }
 
@@ -213,6 +217,8 @@ export async function updateDoc(ctx: DocWriteCtx, opts?: { transport?: string } 
   const rel = await store.writeOwnDoc(parsed.rel, body);
   const saved = await store.readOwnDoc(rel);
   const summary = await seed.writeBackSummary(rel, saved);
+  // 保存语义是「不存在即创建」——新出现的约定主篇要立刻进绑定索引（#183）
+  await syncRefIndex().catch(() => null);
   return { docId: paths.ownDocId(rel), rel, bytes: Buffer.byteLength(saved, 'utf8'), summary };
 }
 
@@ -220,6 +226,8 @@ export async function removeDoc({ ref }: { ref?: unknown } = {}): Promise<{ docI
   const parsed = paths.parseDocId(ref);
   if (parsed.kind !== 'own') throw blocked('外部绑定是只读引用，不能在这里删除');
   const rel = await store.removeOwnDoc(parsed.rel);
+  // 文件没了 → 约定主篇可能整体消失，绑定要跟着重算（#183）
+  await syncRefIndex().catch(() => null);
   return { docId: paths.ownDocId(rel), rel };
 }
 

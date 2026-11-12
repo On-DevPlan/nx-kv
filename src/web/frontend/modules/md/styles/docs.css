@@ -103,24 +103,19 @@
   color:#9E4C00;background:#FBF3E4;
 }
 .docp-save{flex:none}
-/* 页头共用组件（DocHead，任务 #88）：面包屑 + 标题·路径 + 更多 · 保存 一条线。
-   .mdw-head 是 flex:1 的标题块，右侧动作组自成一块，不许换行挤压标题。 */
-.docp-top{gap:10px}
-.docp-top .mdw-head{display:flex;align-items:center;gap:8px;min-width:0}
-.docp-top .mdw-title{flex:0 1 auto}
-.docp-top .mdw-path{flex:0 1 auto;min-width:0}
-/* 全局 .grow 是 max-width:340px，推不到右边界——这里显式让位 */
-.docp-top .grow{flex:1 1 auto;max-width:none;min-width:0}
-.docp-actions{display:flex;align-items:center;gap:6px;flex:none}
-.docp-actions .btn{white-space:nowrap}
+/* 页头（DocHead）已改为与任务页逐字同构的 `.mdw-top` + `.mdw-toolbar` 两条
+   （#183）：标题/路径回到上下两行，动作组进工具行。原来的 `.docp-top`
+   单行压缩与 `.docp-actions` 一并删除，别再长回来。 */
 .docp-summary{
-  flex:none;padding:5px 12px;font-size:11px;color:var(--mid,#838A93);
-  border-bottom:1px solid var(--line,#E4E2DC);background:var(--soft,#F5F6F7);
+  flex:none;padding:4px 14px;font-size:11px;color:var(--mid,#838A93);
+  border-bottom:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+/* 文档页底部附件 dock（#183）：外壳复用任务页的 .mdw-dock，这里只补三处差异 */
+.docp-dock .mdw-dock-body{max-height:216px}
 .docp-hint{
-  flex:none;padding:5px 12px;border-top:1px solid var(--line,#E4E2DC);
-  font-size:10.5px;color:var(--faint,#A9AEB4);background:var(--paper,#fff);
+  flex:1;min-width:0;text-align:right;font-size:10.5px;color:var(--faint,#A9AEB4);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .docp-files{padding:10px 14px;display:flex;flex-direction:column;gap:2px;overflow:auto}
 .docp-file{

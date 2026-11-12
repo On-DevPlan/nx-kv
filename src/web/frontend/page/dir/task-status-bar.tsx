@@ -44,7 +44,8 @@ export function StatusBar({
       >
         <Icon name="overview" title={undefined} />
         <span className="mdw-sbar-lab">md</span>
-        <span className="mdw-sbar-num">{mdCount}</span>
+        {/* 没有 md 附件时不显示数字：避免空态出现「md 0」这种噪声 */}
+        {mdCount > 0 ? <span className="mdw-sbar-num">{mdCount}</span> : null}
       </button>
       {canShowGoalLog ? (
         <button

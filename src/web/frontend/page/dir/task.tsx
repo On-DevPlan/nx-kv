@@ -228,7 +228,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     setDirty,
     goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
   });
-  const { composeText, submit, importMd, delTask, canClosePending, closeTask, addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel } = actions;
+  const { composeText, submit, importMd, delTask, canComplete, canCancel, closeTask, addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel } = actions;
 
   const feedback = useFeedback({
     doc, isDraft, task, taskRow, topicKey, topic, isGlobal, dirKey,
@@ -434,8 +434,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           onImport={() => fileMdRef.current?.click()}
           onClone={isDraft ? null : cloneCur}
           onFork={isDraft ? null : forkCur}
-          onComplete={canClosePending ? () => closeTask('done') : null}
-          onCancelTask={canClosePending ? () => closeTask('cancel') : null}
+          onComplete={canComplete ? () => closeTask('done') : null}
+          onCancelTask={canCancel ? () => closeTask('cancel') : null}
           onMark={openCommentFromToolbar}
           onDraft={() => toast('草稿随页签保留（刷新后需从侧栏或页签重新打开）')}
           onDelete={isDraft ? null : delTask}

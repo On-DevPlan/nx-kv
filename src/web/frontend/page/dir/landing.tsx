@@ -90,7 +90,7 @@ interface LandingProps {
   onDeleteTasks?: (ids: number[]) => Promise<unknown>;
   /** (ids) 批量取消选中待领取任务 */
   onCancelTasks?: (ids: number[]) => Promise<unknown>;
-  /** (ids) 批量把选中待领取任务标为完成 */
+  /** (ids) 批量把选中的未结束任务（待领取 / 已领取）标为完成 */
   onCompleteTasks?: (ids: number[]) => Promise<unknown>;
   onReopenTask?: (t: LocalTask) => void;
   /** 模板菜单的锚点（click 与 Enter/Space 都会调；只有鼠标事件带坐标） */
@@ -131,7 +131,7 @@ export default function Landing({
   onDeleteTask,
   onDeleteTasks,     // (ids) 批量删除选中任务
   onCancelTasks,     // (ids) 批量取消选中待领取任务
-  onCompleteTasks,   // (ids) 批量把选中待领取任务标为完成
+  onCompleteTasks,   // (ids) 批量把选中的未结束任务（待领取 / 已领取）标为完成
   onReopenTask,
   onTplMenu,
   onImport,
@@ -164,8 +164,13 @@ export default function Landing({
   const pageIds = tasks.map((t) => Number(t.id));
   const allPicked = pageIds.length > 0 && pageIds.every((id) => picked.has(id));
   const pickedTasks = tasks.filter((t) => picked.has(Number(t.id)));
-  // 取消/标为完成只对待领取生效；已领取/已完成/已取消由后端跳过
-  const closableTasks = pickedTasks.filter(
+  // #184：标为完成对「未结束」的任务都开放（待领取 + 已领取/正在跑）；
+  // 取消仍只给待领取——取消是丢弃，误伤正在跑的会话代价更高，留给 agent 侧回执。
+  const doneTargets = pickedTasks.filter(
+    (t) => (t.status === 'pending' || t.status === 'claimed') && !t.migratedTo && !t.deletedAt
+  );
+  const claimedPicked = doneTargets.filter((t) => t.status === 'claimed').length;
+  const cancelTargets = pickedTasks.filter(
     (t) => t.status === 'pending' && !t.migratedTo && !t.deletedAt
   );
   const togglePick = (id: number | string) => {
@@ -239,30 +244,30 @@ export default function Landing({
             <button
               type="button"
               className="btn ghost sm"
-              disabled={!closableTasks.length}
+              disabled={!doneTargets.length}
               title={
-                closableTasks.length
-                  ? '把选中的待领取任务标为已完成（补一条完成记录，原文留档）'
-                  : '只有待领取任务可以直接标为完成'
+                doneTargets.length
+                  ? `把选中的未结束任务标为已完成（补一条完成记录，原文留档）${claimedPicked ? `；其中 ${claimedPicked} 条已被领取，会直接收口，agent 侧回执忽略` : ''}`
+                  : '选中的任务都已结束，没有可标为完成的'
               }
               onClick={() => runBatch('complete')}
             >
-              标为完成选中{closableTasks.length ? ` (${closableTasks.length})` : ''}
+              标为完成选中{doneTargets.length ? ` (${doneTargets.length})` : ''}
             </button>
           )}
           {onCancelTasks && (
             <button
               type="button"
               className="btn ghost sm"
-              disabled={!closableTasks.length}
+              disabled={!cancelTargets.length}
               title={
-                closableTasks.length
+                cancelTargets.length
                   ? '把选中的待领取任务标为已取消（终态，原文留档）'
-                  : '只有待领取任务可以取消'
+                  : '只有待领取任务可以取消（已领取的交给 agent 回执）'
               }
               onClick={() => runBatch('cancel')}
             >
-              取消选中{closableTasks.length ? ` (${closableTasks.length})` : ''}
+              取消选中{cancelTargets.length ? ` (${cancelTargets.length})` : ''}
             </button>
           )}
           {onDeleteTasks && (

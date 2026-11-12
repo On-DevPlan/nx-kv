@@ -369,15 +369,18 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     const list = (ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
     if (!list.length) return false;
     const ok = await dialog({
-      title: `把选中的 ${list.length} 条待领取任务标为完成`,
-      message: '只处理待领取任务；已领取/已完成/已取消会跳过。完成会补一条完成记录，原文留档。',
+      title: `把选中的 ${list.length} 条任务标为完成`,
+      message: '待领取与已领取（正在跑）都能收：已领取的直接收口，agent 侧回执会被忽略。已完成/已取消会跳过。完成会补一条完成记录，原文留档。',
       okText: '标为完成',
     });
     if (!ok) return false;
     return guard(async () => {
       const res = await closeManyTasks({ ...scopeBody(), ids: list, status: 'done' });
       const skipped = res?.skipped?.length || 0;
-      toast(`已标为完成 ${res?.count ?? 0} 条任务${skipped ? `，跳过 ${skipped} 条` : ''}`);
+      const claimed = res?.claimedClosed?.length || 0;
+      toast(
+        `已标为完成 ${res?.count ?? 0} 条任务${claimed ? `（含 ${claimed} 条已领取）` : ''}${skipped ? `，跳过 ${skipped} 条` : ''}`,
+      );
       refreshLocal?.();
       return true;
     });

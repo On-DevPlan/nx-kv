@@ -211,13 +211,14 @@ export async function cancelTasks({ cwd: rawCwd, key: rawKey, ids }: CancelClose
 }
 
 /**
- * 批量收口「待领取」任务（面板「标为完成 / 取消」用）：**不要求先领取**。
+ * 批量收口「还没结束」的任务（面板「标为完成 / 取消」用）：**不要求先领取**。
  *
- * 场景：有的任务在队列里等着被领，但其实用户已经自己干完了（或决定不做）。
- * 以前只有 agent 领取后走 completeTask 才能收口；这里补上用户侧的直接操作。
- * - status=done：写完成总结与完成时刻（总结缺省为「用户确认已完成（任务未领取，直接关闭）」）
+ * 场景一（原意）：有的任务在队列里等着被领，但其实用户已经自己干完了（或决定不做）。
+ * 场景二（#184）：任务已经被 agent 领走、正在跑，用户在面板上想自己拍板收掉——
+ *               以前 claimed 一律跳过，等于面板上「正在跑的任务」没有任何收口入口。
+ * - status=done：写完成总结与完成时刻
  * - status=cancelled：只改状态（与 cancelTasks 同口径，原文留档）
- * 已领取（可能有 agent 正在处理）、已完成、已取消、已删除都跳过。
+ * 已完成、已取消、已删除、已迁移都跳过（终态幂等：重复点不会改写历史）。
  */
 export async function closeTasks({ cwd: rawCwd, key: rawKey, ids, status = 'done', summary = '' }: CancelCloseTaskInput = {}): Promise<Record<string, any>> {
   const wantStatus = String(status ?? 'done');
@@ -235,12 +236,19 @@ export async function closeTasks({ cwd: rawCwd, key: rawKey, ids, status = 'done
   const t = topicsRepo.getTopic(key);
   const topicId: number | null = t ? t.id : null;
   const closed: Array<Record<string, any>> = [];
+  /** 本轮里「原本已被领取」的那几条（面板据此提示「其中 N 条正在跑」）。 */
+  const claimedClosed: number[] = [];
   const missing: number[] = [];
   const skipped: Array<Record<string, any>> = [];
-  const feedback =
-    wantStatus === 'done'
-      ? String(summary ?? '').trim() || '用户确认已完成（任务未领取，直接关闭）'
-      : '';
+  // 默认完成总结按「收口前的状态」区分：用户自己没写总结时，事后看反馈要能分清
+  // 是「队列里没人领就已经做完」还是「agent 正在跑、用户从面板直接拍板」。
+  const defaultFeedback = (wasClaimed: boolean, claimedByName: string): string => {
+    if (!wasClaimed) return '用户确认已完成（任务未领取，直接关闭）';
+    const who = String(claimedByName ?? '').trim();
+    return who
+      ? `用户确认已完成（面板直接收口；该任务由 ${who} 领取中，agent 侧回执会被忽略）`
+      : '用户确认已完成（面板直接收口；该任务已被领取，agent 侧回执会被忽略）';
+  };
   tx(() => {
     for (const want of wants) {
       const cur = topicId ? tasksRepo.getTaskRow(topicId, want) : null;
@@ -248,20 +256,28 @@ export async function closeTasks({ cwd: rawCwd, key: rawKey, ids, status = 'done
         missing.push(want);
         continue;
       }
-      if (cur.task.status !== 'pending' || cur.task.migratedTo || cur.task.deletedAt) {
+      const st = String(cur.task.status ?? '');
+      const open = !cur.task.migratedTo && !cur.task.deletedAt && (st === 'pending' || st === 'claimed');
+      if (!open) {
         skipped.push({
           id: want,
-          status: cur.task.status,
-          reason: cur.task.migratedTo ? 'migrated' : cur.task.deletedAt ? 'deleted' : 'not_pending',
+          status: st,
+          reason: cur.task.migratedTo ? 'migrated' : cur.task.deletedAt ? 'deleted' : 'already_closed',
         });
         continue;
       }
-      const ok = tasksRepo.closePendingTask(topicId!, want, { status: wantStatus, feedback });
+      const feedback =
+        wantStatus === 'done'
+          ? String(summary ?? '').trim() || defaultFeedback(st === 'claimed', cur.task.claimedByName)
+          : '';
+      const ok = tasksRepo.closeOpenTask(topicId!, want, { status: wantStatus, feedback });
       if (!ok) {
-        skipped.push({ id: want, status: cur.task.status, reason: 'not_pending' });
+        // 并发：本轮校验通过、写时状态已被别处改掉（守卫拦下）
+        skipped.push({ id: want, status: st, reason: 'raced' });
         continue;
       }
       closed.push(normalizeTask(tasksRepo.getTaskRow(topicId!, want)!.task));
+      if (st === 'claimed') claimedClosed.push(want);
     }
     if (closed.length) topicsRepo.updateTopic(key, { bumpRevision: true });
     return true;
@@ -273,6 +289,7 @@ export async function closeTasks({ cwd: rawCwd, key: rawKey, ids, status = 'done
     name: t ? t.name : key,
     closeStatus: wantStatus,
     closed,
+    claimedClosed,
     missing,
     skipped,
     count: closed.length,

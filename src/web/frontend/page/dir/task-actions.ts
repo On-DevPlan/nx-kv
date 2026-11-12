@@ -263,16 +263,27 @@ export function useTaskActions({
     });
   }, [doc, isDraft, task, isGlobal, topic, model, tabId, refreshLocal, guard, toast, dialog]);
 
-  const canClosePending = !isDraft && !!taskRow && taskRow.status === 'pending';
+  // #184：正在跑（claimed）的任务以前在面板上是死路——工具栏连「标为完成」都不渲染，
+  // 只能干等 agent 自己回执。现在 claimed 也能收：用户是最终验收方，agent 稍后的 done
+  // 会命中服务端的幂等分支，不会报错。
+  // 「取消」仍只给待领取：取消是丢弃，误伤正在跑的会话代价更高，留给 agent 侧回执。
+  const taskStatus = String(taskRow?.status ?? '');
+  const canComplete = !isDraft && !!taskRow && (taskStatus === 'pending' || taskStatus === 'claimed');
+  const canCancel = !isDraft && !!taskRow && taskStatus === 'pending';
+  const canCloseTask = canComplete || canCancel;
   const closeTask = useCallback((kind: string) => {
-    if (!canClosePending) return;
+    if (kind === 'done' ? !canComplete : !canCancel) return;
     guard(async () => {
       const title = doc?.title || `#${task}`;
       const scope = isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd };
       if (kind === 'done') {
+        const claimed = taskStatus === 'claimed';
+        const who = String(taskRow?.claimedByName || taskRow?.claimedBy || '').trim();
         const summary = await dialog({
           title: `标为完成「${title}」`,
-          message: '任务还没被领取。确认把当前正文视为已完成？可写一句完成总结。',
+          message: claimed
+            ? `该任务正被${who ? ` ${who} ` : ' agent '}领取中。你是最终验收方——确认它已经做完、直接标为完成？可写一句完成总结（agent 稍后的回执会被忽略，不算冲突）。`
+            : '任务还没被领取。确认把当前正文视为已完成？可写一句完成总结。',
           input: true,
           placeholder: '完成总结（可选；留空使用默认说明）',
           okText: '标为完成',
@@ -293,7 +304,7 @@ export function useTaskActions({
       }
       refreshLocal?.();
     });
-  }, [canClosePending, doc, task, isGlobal, topic, refreshLocal, guard, toast, dialog]);
+  }, [canComplete, canCancel, doc, task, isGlobal, topic, taskStatus, taskRow, refreshLocal, guard, toast, dialog]);
 
   const addFiles = useCallback(async (fileList: FileList | File[], opts: { mode?: string } = {}) => {
     if (!doc) return;
@@ -424,7 +435,8 @@ export function useTaskActions({
   }, [showDockTab, attachAreaRef]);
 
   return {
-    composeText, goalPatchOf, submit, importMd, delTask, canClosePending, closeTask,
+    composeText, goalPatchOf, submit, importMd, delTask,
+    canComplete, canCancel, canCloseTask, closeTask,
     addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel,
   };
 }

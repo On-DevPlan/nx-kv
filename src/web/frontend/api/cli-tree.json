@@ -1250,7 +1250,7 @@
           "action": {
             "id": "localtask.closeMany",
             "module": "localtask",
-            "summary": "批量收口待领取任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；已领取/已完成跳过",
+            "summary": "批量收口还没结束的任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；待领取与已领取都能收（已领取的 agent 侧回执会被忽略），已完成/已取消跳过",
             "usage": "localtask close-many",
             "http": "POST /api/localtasks/items/close"
           },

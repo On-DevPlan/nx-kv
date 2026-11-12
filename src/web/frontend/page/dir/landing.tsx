@@ -17,7 +17,6 @@ import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import TaskPanel from '../../components/task-panel/index.jsx';
 import TaskPanelLayoutRaw from '../../components/task-panel/layout.jsx';
 import TaskRow from '../../components/task-panel/task-row.jsx';
-import { taskLabel } from '../../components/sidebar/model.js';
 import type { LocalTask, LocalTopic, RepoRow } from '../../types.js';
 
 /** 拖动落点：行上半 = 之前，下半 = 之后。 */
@@ -346,42 +345,32 @@ export default function Landing({
               downs={downs}
               onOpen={(row: LocalTask) => onOpenTask(row.id)}
               ops={
-                <>
-                  {movableRow && (onOpenDag || onToggleGate) && (
-                    <RowMenu
-                      items={[
-                        { label: '编排依赖…', onPick: () => onOpenDag && onOpenDag(t) },
-                        {
+                /* 行尾操作合并进一个「⋯」菜单：编排 / 闸门 / 反馈 / 删除都从这里进，
+                   不再在行尾铺一排图标（反馈 + 删除原来占两个最右位，行尾过挤）。 */
+                <RowMenu
+                  items={[
+                    movableRow && onOpenDag
+                      ? { label: '编排依赖…', onPick: () => onOpenDag(t) }
+                      : null,
+                    movableRow && onToggleGate
+                      ? {
                           label: t.blocksFollowing ? '取消闸门（不再挡后续）' : '设为闸门（挡住后续）',
-                          onPick: () => onToggleGate && onToggleGate(t),
-                        },
-                      ]}
-                    />
-                  )}
-                  {/* #144 反馈只在链尖：已有派生子任务（后续轮次/评论派生）的任务
-                      不再给反馈入口——在旧轮次上反馈会把链分叉 */}
-                  {onReopenTask && t.status !== 'cancelled' && !t.childCount && (t.status === 'claimed' || t.status === 'done' || t.completedAt) && (
-                    <span
-                      className="op" role="button" tabIndex={-1}
-                      title={t.completedAt ? '反馈：新开一条任务（原任务不动）' : '反馈修改：回写本任务并记入任务链'}
-                      aria-label={`反馈 ${taskLabel(t)}`}
-                      onClick={() => onReopenTask(t)}
-                    >
-                      {/* icons.tsx 尚未类型化完（title 被推断为必填）：显式传 undefined 与不传等价 */}
-                      <Icon name="refresh" size={12} title={undefined} />
-                    </span>
-                  )}
-                  {onDeleteTask && (
-                    <span
-                      className="op danger" role="button" tabIndex={-1}
-                      title="删除此任务（软删除，CLI 可恢复）"
-                      aria-label={`删除 ${taskLabel(t)}`}
-                      onClick={() => onDeleteTask(t)}
-                    >
-                      <Icon name="x" size={12} title={undefined} />
-                    </span>
-                  )}
-                </>
+                          onPick: () => onToggleGate(t),
+                        }
+                      : null,
+                    /* #144 反馈只在链尖：已有派生子任务（后续轮次/评论派生）的任务
+                       不再给反馈入口——在旧轮次上反馈会把链分叉 */
+                    onReopenTask && t.status !== 'cancelled' && !t.childCount && (t.status === 'claimed' || t.status === 'done' || t.completedAt)
+                      ? {
+                          label: t.completedAt ? '反馈：新开一条任务（原任务不动）' : '反馈修改：回写本任务并记入任务链',
+                          onPick: () => onReopenTask(t),
+                        }
+                      : null,
+                    onDeleteTask
+                      ? { label: '删除此任务（软删除，CLI 可恢复）', danger: true, onPick: () => onDeleteTask(t) }
+                      : null,
+                  ]}
+                />
               }
             />
           );

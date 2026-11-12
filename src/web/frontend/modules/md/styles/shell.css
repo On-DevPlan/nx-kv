@@ -198,16 +198,7 @@
 .mdw-land-tr .mono{font:400 11px ui-monospace,Consolas,monospace}
 .mdw-land-tr .faint{color:var(--faint,#A9AEB4)}
 
-/* 已删除任务面板（目录页「更多 → 已删除任务」）：软删回收站，可恢复/彻底删 */
-.mdw-del-empty{padding:18px 4px;color:var(--mid,#838A93);font-size:12.5px;text-align:center}
-.mdw-del-list{width:100%;border-collapse:collapse;table-layout:fixed}
-.mdw-del-list td{padding:7px 8px;border-bottom:1px solid var(--line,#E4E2DC);font-size:12.5px;vertical-align:middle}
-.mdw-del-list tbody tr:last-child td{border-bottom:0}
-.mdw-del-id{width:44px;color:var(--mid,#838A93)}
-.mdw-del-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink,#16181C)}
-.mdw-del-time{width:86px;white-space:nowrap;color:var(--mid,#838A93);font-size:11px}
-.mdw-del-ops{width:132px;text-align:right;white-space:nowrap}
-.mdw-del-ops .btn + .btn{margin-left:6px}
+/* 已删除任务回收站在 web 端已下线（#180）：恢复/彻底删除改走 CLI localtask restore / remove */
 .mdw-land-tr .st{
   display:inline-block;font-size:10.5px;line-height:16px;padding:0 7px;border-radius:999px;
   background:var(--soft,#F1F0EC);color:var(--ink-2,#4B515A);

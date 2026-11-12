@@ -107,12 +107,8 @@ interface LandingProps {
   onToggleGate?: (t: LocalTask) => void;
   /** { [gateTaskId]: number[] } 闸门挡住的后续任务 id */
   downstreamOf?: Record<string, number[]>;
-  /** () 打开已删除任务面板（#139 工具编排） */
-  onDeleted?: () => void;
   /** () 打开文档列表右侧栏 */
   onRefs?: () => void;
-  /** 已软删任务数（「更多」角标提示） */
-  deletedCount?: number;
 }
 
 export default function Landing({
@@ -141,9 +137,7 @@ export default function Landing({
   onOpenFlow,      // () 打开可视化编排面板
   onToggleGate,    // (t) 闸门快捷开关
   downstreamOf,    // { [gateTaskId]: number[] } 闸门挡住的后续任务 id
-  onDeleted,       // () 打开已删除任务面板（#139 工具编排）
   onRefs,          // () 打开文档列表右侧栏
-  deletedCount = 0 // 已软删任务数（「更多」角标提示）
 }: LandingProps) {
   const name = isGlobal ? '全局池' : (topic?.name || '目录');
 
@@ -394,15 +388,13 @@ export default function Landing({
           <ToolActsBar
             kind="dir"
             labels={{
-              more: deletedCount > 0 ? `更多 (${deletedCount})` : '更多',
-              deleted: deletedCount > 0 ? `已删除任务（${deletedCount}）` : '已删除任务',
+              more: '更多',
             }}
             titles={{
               new: '按默认模板新建一页（▾ 选模板）',
               import: '把一个 .md 文件导入成任务',
               progress: '打开这个目录的进程面板',
-              more: deletedCount > 0 ? `更多操作（含 ${deletedCount} 条已删除任务）` : '更多操作',
-              deleted: '查看并恢复已删除任务',
+              more: '更多操作',
               refs: '查看文档 / reference 列表',
             }}
             renderers={{
@@ -447,7 +439,6 @@ export default function Landing({
               import: onImport,
               progress: onProg,
               orch: onOpenFlow,
-              deleted: onDeleted,
               refs: onRefs,
             }}
           />

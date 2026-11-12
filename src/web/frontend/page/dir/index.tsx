@@ -10,7 +10,6 @@ import {
   removeTaskItem,
   reorderTask,
   postReopen,
-  restoreTaskItem,
 } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog, PopMenu } from '../../components/popup/index.jsx';
@@ -24,7 +23,6 @@ import { usePager } from '../../components/pager.jsx';
 import { useApp } from '../../app-context.jsx';
 import Landing from './landing.jsx';
 import DagEditor from './dag-editor.jsx';
-import DeletedPanel from './deleted-panel.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
 import { openSettingsPanel, openTemplateEditor } from '../../panels.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
@@ -63,7 +61,6 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
 
   const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
   const [tplMenu, setTplMenu] = useState<{ x?: number; y?: number } | null>(null);
-  const [showDeleted, setShowDeleted] = useState(false); // 已删除任务面板开关
   const [dagTask, setDagTask] = useState<LocalTask | null>(null); // 正在编排依赖的任务（DAG 节点编辑器）
   const fileMdRef = useRef<HTMLInputElement | null>(null);
 
@@ -376,42 +373,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     });
   };
 
-  // ─── 已删除（软删回收站）──────────────────────────────────────────
-  // 软删的行仍在 topic.tasks 里（带 deletedAt），看板/列表把它们过滤掉了，
-  // 这里捞出来给「更多 → 已删除任务」面板。倒序：刚删的在上。
-  const deletedTasks = useMemo(
-    () => (topic?.tasks || []).filter((t) => t.deletedAt).slice().reverse(),
-    [topic]
-  );
-
-  const restoreDeleted = (t: LocalTask | null) => {
-    if (!t) return;
-    guard(async () => {
-      await restoreTaskItem(isGlobal ? { key: GLOBAL_KEY, id: t.id } : { cwd: topic?.cwd, id: t.id });
-      toast(`已恢复 #${t.id}「${(t.text || '').split('\n').find((l) => l.trim())?.replace(/^#\s*/, '') || ''}」`);
-      refreshLocal?.();
-    });
-  };
-
-  const purgeDeleted = async (t: LocalTask | null) => {
-    if (!t) return;
-    const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
-    const ok = await dialog({
-      title: `彻底删除「${title.replace(/^#\s*/, '')}」`,
-      message: '彻底删除后不可恢复（行从队列里真正摘除）。',
-      danger: true,
-      okText: '彻底删除',
-    });
-    if (!ok) return;
-    guard(async () => {
-      await removeTaskItem({ ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }), id: t.id, purge: true });
-      toast(`已彻底删除 #${t.id}`);
-      refreshLocal?.();
-    });
-  };
-
-  const openDeleted = () => setShowDeleted(true);
-
+  // ─── 文档列表（右侧栏）────────────────────────────────────────────
   const openRefs = () => {
     if (isGlobal || !repo) {
       toast('全局池没有项目文档列表');
@@ -492,9 +454,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
           onOpenFlow={() => model && openPanel(model, { component: 'dag', name: '编排', config: { dirKey } })}
           onToggleGate={toggleGate}
           downstreamOf={downstreamOf}
-          onDeleted={openDeleted}
           onRefs={openRefs}
-          deletedCount={deletedTasks.length}
         />
 
       {dagTask && (
@@ -503,15 +463,6 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
           tasks={dagCandidates}
           onClose={() => setDagTask(null)}
           onSave={saveDag}
-        />
-      )}
-
-      {showDeleted && (
-        <DeletedPanel
-          tasks={deletedTasks}
-          onClose={() => setShowDeleted(false)}
-          onRestore={restoreDeleted}
-          onPurge={purgeDeleted}
         />
       )}
 

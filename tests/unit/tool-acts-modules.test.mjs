@@ -10,24 +10,24 @@ import {
 } from '../../src/web/frontend/components/tool-acts/modules.js';
 import { moveModule, nudgeModule, setFlag } from '../../src/web/frontend/components/tool-acts/dnd.js';
 
-test('dir default: bar has new/import/progress/orch/more; deleted/refs in more (#161: tpl 并入新建钮箭头)', () => {
+test('dir default: bar has new/import/progress/orch/more; refs in more (#161: tpl 并入新建钮箭头)', () => {
   const layout = defaultLayout('dir');
   const bar = layout.filter((x) => onBarOf('dir', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('dir', x)).map((x) => x.id);
   assert.deepEqual(bar, ['new', 'import', 'progress', 'orch', 'more']);
-  assert.deepEqual(more, ['deleted', 'refs']);
+  assert.deepEqual(more, ['refs']);
   // 旧布局里存过的 tpl id 会被 normalizeLayout 丢掉（未知模块）
   const norm = normalizeLayout('dir', [...layout, { id: 'tpl', visible: true }]);
   assert.ok(!norm.some((x) => x.id === 'tpl'));
 });
 
-test('group default: bar has new/progress/addMember/orch/more; deleted+refs in more', () => {
+test('group default: bar has new/progress/addMember/orch/more; refs in more', () => {
   const layout = defaultLayout('group');
   const bar = layout.filter((x) => onBarOf('group', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('group', x)).map((x) => x.id);
   assert.deepEqual(bar, ['new', 'progress', 'addMember', 'orch', 'more']);
-  // #169：组页补「已删除任务」入口（与目录页同款）
-  assert.deepEqual(more, ['deleted', 'refs']);
+  // #180：两页都去掉了「已删除任务」入口，更多里只剩「查看列表」
+  assert.deepEqual(more, ['refs']);
 });
 
 test('task default: bar has new/submit/more; secondary actions in more', () => {
@@ -64,9 +64,9 @@ test('hide bar item → appears in more; show more item → appears on bar', () 
   assert.equal(onBarOf('dir', layout.find((x) => x.id === 'progress')), false);
   assert.equal(inMoreOf('dir', layout.find((x) => x.id === 'progress')), true);
 
-  layout = setVisible(layout, 'deleted', true, 'dir');
-  assert.equal(onBarOf('dir', layout.find((x) => x.id === 'deleted')), true);
-  assert.equal(inMoreOf('dir', layout.find((x) => x.id === 'deleted')), false);
+  layout = setVisible(layout, 'refs', true, 'dir');
+  assert.equal(onBarOf('dir', layout.find((x) => x.id === 'refs')), true);
+  assert.equal(inMoreOf('dir', layout.find((x) => x.id === 'refs')), false);
 });
 
 test('noHide cannot be hidden; normalize appends unknown-missing modules', () => {
@@ -86,11 +86,11 @@ test('moveItem swaps neighbors', () => {
 
 test('moveModule inserts before/after anchor and can promote from more', () => {
   let layout = defaultLayout('dir');
-  layout = setFlag(layout, 'deleted', { visible: false });
-  layout = moveModule('dir', layout, { id: 'deleted', anchorId: 'import', after: false, visible: true });
+  layout = setFlag(layout, 'refs', { visible: false });
+  layout = moveModule('dir', layout, { id: 'refs', anchorId: 'import', after: false, visible: true });
   const ids = layout.map((x) => x.id);
-  assert.ok(ids.indexOf('deleted') < ids.indexOf('import'));
-  assert.equal(onBarOf('dir', layout.find((x) => x.id === 'deleted')), true);
+  assert.ok(ids.indexOf('refs') < ids.indexOf('import'));
+  assert.equal(onBarOf('dir', layout.find((x) => x.id === 'refs')), true);
 });
 
 test('nudgeModule moves within bar segment', () => {

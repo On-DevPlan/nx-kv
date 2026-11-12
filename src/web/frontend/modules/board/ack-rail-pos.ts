@@ -6,6 +6,10 @@
 // 这层保持 node 单测可直接覆盖（localStorage 缺席时存取静默降级）。
 
 const POS_KEY = 'nx-kv-ack-rail-pos';
+/** 任务页 ack 轨的落点键（默认值，等价于不传 key） */
+export const ACK_RAIL_POS_KEY = POS_KEY;
+/** 文档 / 简介页右侧目录轨的落点键（同一套拖拽语义，落点各记各的） */
+export const DOC_RAIL_POS_KEY = 'nx-kv-doc-rail-pos';
 export const RAIL_MARGIN = 8; // 落点距容器边缘的最小间距
 
 /** 轨的落点（容器坐标系）。 */
@@ -47,11 +51,14 @@ export function clampRailPos(p: RailClampInput = {}): RailPos | null {
   };
 }
 
-/** 读取持久化落点；无记录 / 脏数据 / localStorage 不可用 → null（回落到 CSS 默认位） */
-export function loadRailPos(): RailPos | null {
+/**
+ * 读取持久化落点；无记录 / 脏数据 / localStorage 不可用 → null（回落到 CSS 默认位）
+ * @param key 存储键（不同轨各记各的；缺省 = 任务页 ack 轨）
+ */
+export function loadRailPos(key: string = POS_KEY): RailPos | null {
   try {
     // localStorage 是外部数据边界：解析结果按索引读，逐字段校验后才收窄
-    const raw = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+    const raw = JSON.parse(localStorage.getItem(key) || 'null');
     if (!raw || typeof raw !== 'object') return null;
     const x = Number(raw.x);
     const y = Number(raw.y);
@@ -62,11 +69,14 @@ export function loadRailPos(): RailPos | null {
   }
 }
 
-/** 持久化落点；传 null 清掉（回到 CSS 默认位）。localStorage 不可用时静默跳过。 */
-export function saveRailPos(pos: RailPos | null | undefined) {
+/**
+ * 持久化落点；传 null 清掉（回到 CSS 默认位）。localStorage 不可用时静默跳过。
+ * @param key 存储键（与 loadRailPos 成对）
+ */
+export function saveRailPos(pos: RailPos | null | undefined, key: string = POS_KEY) {
   try {
-    if (!pos) localStorage.removeItem(POS_KEY);
-    else localStorage.setItem(POS_KEY, JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }));
+    if (!pos) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }));
   } catch {
     /* 隐私模式等存不了就算了 */
   }

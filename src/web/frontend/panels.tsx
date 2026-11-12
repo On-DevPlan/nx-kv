@@ -5,13 +5,13 @@
 //
 // FlexLayout 的 factory 只认 node.getComponent() 这个字符串，其余参数（config）
 // 从 node.getConfig() 取。加一种面板 = 这里加一行。
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { Model, TabNode } from 'flexlayout-react';
 import { useApp } from './app-context.jsx';
 import { ErrorBoundary } from './components/ui.jsx';
 import SidebarPanel from './components/sidebar/panel.jsx';
-import { openFloatingPanel, openPanel } from './workspace.js';
+import { configSig, openFloatingPanel, openPanel } from './workspace.js';
 import type { PanelConfig, PanelCtx, TemplateEditorOpts } from './types.js';
 
 const DirPanel = lazy(() => import('./page/dir/index.jsx'));
@@ -230,6 +230,44 @@ export function openTemplateEditor(model: Model | null | undefined, opts: Templa
 /** 面板类型清单（总览页/文档里的固定顺序；旧「＋面板抽屉」已删，面板打开走侧栏树与路由） */
 export const PANEL_ORDER = ['overview', 'group', 'repos', 'cloud'];
 
+/** 某块页签**当前**的 config（节点可能已被删：给空对象） */
+function configOf(model: Model, tabId: string): PanelConfig {
+  // getNodeById 的静态类型是基类 Node（只有 tab/group 才有 config）：运行时窄一次
+  const node = model.getNodeById(tabId) as TabNode | undefined;
+  const cfg = node && typeof node.getConfig === 'function' ? node.getConfig() : null;
+  return cfg || {};
+}
+
+/**
+ * 面板内容宿主：**config 变了要重渲染**（#189）。
+ *
+ * FlexLayout 0.11 的 TabContentRenderer 是 React.memo，比较项只有 windowId /
+ * redrawRevision / tabNode 身份——**不看 config**（见 node_modules/flexlayout-react
+ * dist 的 arePropsEqual$1）。而 updateNodeAttributes 改 config 时 tabNode 还是同一个
+ * 对象，于是模型里已经是新值、界面停在旧内容：
+ *   · 右侧「文档列表」换仓库（config.repoKey）→ 列表还是上一个仓库的，点开还是上一篇；
+ *   · 进程面板跟着主区换目录（syncProgressPanel 也是 updateNodeAttributes）。
+ * 这里自己订阅一次模型，只在**本页签的 config 签名变了**时 bump 一次——
+ * 别的面板增删 / 拖动不会引起额外渲染。
+ */
+function PanelHost({ entry, model, tabId }: { entry: PanelEntry; model: Model; tabId: string }) {
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const sigRef = useRef<string | null>(null);
+  if (sigRef.current === null) sigRef.current = configSig(configOf(model, tabId));
+  useEffect(() => {
+    const onChange = () => {
+      const sig = configSig(configOf(model, tabId));
+      if (sig === sigRef.current) return;
+      sigRef.current = sig;
+      bump();
+    };
+    model.addChangeListener(onChange);
+    return () => { model.removeChangeListener(onChange); };
+  }, [model, tabId]);
+  // config 在渲染时**现读**：闭包里的 node 是 factory 那一次的，config 可能已经换过
+  return <>{entry.render(configOf(model, tabId), { tabId, model, node: model.getNodeById(tabId) })}</>;
+}
+
 /**
  * FlexLayout 的 factory：只认 component 字符串，参数从 config 取。
  * 额外把 model / tabId 传给面板——面板要改**自己**的 config 时需要它们。
@@ -239,12 +277,14 @@ export function factory(node: TabNode) {
   if (!p) {
     return <div className="muted" style={{ padding: 12 }}>未知面板：{node.getComponent()}</div>;
   }
+  const model = node.getModel();
+  const tabId = node.getId();
   // #185：每个面板自己兜一层错误边界。FlexLayout 自带的那层只画
   // 「Error rendering component」+ Retry，把真实报错和堆栈全吞了——用户只能报「白屏」，
   // 排查时得靠猜。换成自家边界：message 直接摊在面板里，单块面板重试，其它页签不受影响。
   return (
-    <ErrorBoundary key={node.getId()}>
-      {p.render(node.getConfig() || {}, { tabId: node.getId(), model: node.getModel(), node })}
+    <ErrorBoundary key={tabId}>
+      <PanelHost entry={p} model={model} tabId={tabId} />
     </ErrorBoundary>
   );
 }

@@ -60,6 +60,8 @@ export async function run(ctx) {
   const attList = await cliJson(['todo', 'attachments', '--ref', attached2.task.text]);
   check('todo attachments 列出 2 个附件且类型正确', attList.count === 2 && attList.attachments[0].kind === 'image', JSON.stringify(attList.attachments));
 
+
+
   const sync1 = await cliJson(['file', 'sync']);
   check('file sync 下载两个附件', sync1.downloaded === 2, JSON.stringify(sync1).slice(0, 200));
   check('落盘目录在 nx-kv 用户目录下（测试用 NX_KV_ATTACHMENTS 覆盖）', sync1.usedDir.startsWith(attHome), sync1.usedDir);

@@ -30,6 +30,22 @@
 .mdw-dock-body{flex:1;min-height:0;overflow:auto;padding:8px 14px 10px;box-sizing:border-box}
 .mdw-dock-body .att-area{border-top:0;padding-top:0}
 .mdw-dock-empty{padding:14px 0;font-size:12px;color:var(--mid,#838A93)}
+/* md 栏（#79）：左侧只列 kind='mdfile' 的附件，右侧按 md 渲染 */
+.mdw-md-tab{display:flex;gap:14px;height:100%;min-height:0}
+.mdw-md-list{
+  width:236px;flex:none;overflow:auto;display:flex;flex-direction:column;gap:2px;
+  padding-right:4px;border-right:1px solid var(--line,#E6E8EB);
+}
+.mdw-md-item{
+  display:flex;flex-direction:column;gap:2px;padding:6px 8px;border:0;border-radius:6px;
+  background:transparent;text-align:left;cursor:pointer;color:inherit;
+}
+.mdw-md-item:hover{background:var(--hover,#F2F4F6)}
+.mdw-md-item.is-on{background:var(--hover,#F2F4F6)}
+.mdw-md-item-name{font-size:12.5px;color:var(--ink,#22262B);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdw-md-item-path{font-size:10.5px;color:var(--faint,#A9AEB4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdw-md-view{flex:1;min-width:0;overflow:auto;padding:0 2px}
+.mdw-md-render article{font-size:13px;line-height:1.75}
 .mdw-dock-check{display:flex;flex-direction:column;min-height:0}
 .mdw-dock-meta{font-size:11px;color:var(--mid,#838A93);padding:2px 0 6px}
 
@@ -254,6 +270,15 @@
 .att-lightbox-head .pp-x{color:#fff}
 .att-lightbox-head .pp-x:hover{background:rgba(255,255,255,.15);color:#fff}
 .att-lightbox-img{max-width:94vw;max-height:calc(92vh - 44px);border-radius:6px;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+
+/* mdfile 预览：按 kind 走 md 渲染（外部文件现读，指纹不一致时提示） */
+.att-md-path{margin-left:10px;font:400 11px var(--mono,ui-monospace,Consolas,monospace);color:var(--faint,#A9AEB4)}
+.att-md-preview{max-height:70vh;overflow:auto;padding:4px 2px}
+.att-md-warn{
+  margin-bottom:10px;padding:6px 10px;border-radius:6px;
+  background:#FFF6E5;color:#9A6B00;font-size:12px;line-height:1.6;
+}
+.att-md-preview article{font-size:13.5px;line-height:1.75}
 
 @container mdwmain (max-width: 640px){
   .att-area{max-height:46vh}

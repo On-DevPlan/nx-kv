@@ -483,12 +483,14 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           attachAreaRef={attachAreaRef} reviewBarRef={reviewBarRef} reviewSumRef={reviewSumRef}
           taskRow={taskRow} ackOpen={ackOpen} setAckOpen={setAckOpen} ackOverflow={ackOverflow} ackLong={ackLong} ackHtml={ackHtml}
           isChainTip={isChainTip} latestChild={latestChild} openFeedback={openFeedback} openLatestRound={openLatestRound}
+          attachments={refAtts.length ? refAtts : doc.attachments}
         />
 
         <StatusBar
           dockOpen={dockOpen} dockTab={dockTab} showDockTab={showDockTab} setDockOpen={setDockOpen}
           canShowGoalLog={canShowGoalLog} goalLog={goalLog} openGoalLog={openGoalLog}
           isDraft={isDraft} taskRow={taskRow}
+          mdCount={(refAtts.length ? refAtts : doc.attachments).filter((a) => a.kind === 'mdfile').length}
         />
       </div>
 

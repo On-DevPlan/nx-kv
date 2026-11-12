@@ -43,7 +43,8 @@ export interface MentionAttachment {
 /**
  * 附件 → 正文引用语法（与 shared/attach.js 的 embedMarkdown 同一口径）：
  * 图片 ![名](fileId)、文件 [名](fileId)、URL [名](url)、
- * 任务/文档引用 [名](nxkv://task/<id> | nxkv://ref/<id>)。
+ * 任务/文档引用 [名](nxkv://task/<id> | nxkv://ref/<id>)、
+ * 本地 md 文件 [名](nxkv://mdfile/<attId>)。
  * @param a 归一化后的附件（attach-common.normAttachment）
  */
 export function embedForAttachment(a?: MentionAttachment | null): string {
@@ -65,6 +66,10 @@ export function embedForAttachment(a?: MentionAttachment | null): string {
   if (a.kind === 'ref') {
     const rid = a.refId || '';
     return rid ? `[${name}](nxkv://ref/${rid})` : (a.href ? `[${name}](${a.href})` : '');
+  }
+  if (a.kind === 'mdfile') {
+    const mid = a.id || '';
+    return mid ? `[${name}](nxkv://mdfile/${mid})` : '';
   }
   return '';
 }

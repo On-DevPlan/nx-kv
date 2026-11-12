@@ -5,6 +5,7 @@
 //   v2.sql  = 1 → 2 的跃迁脚本（建 attachments/task_attach/ref_attach、删两张空表）
 //   v3.sql  = 2 → 3 的跃迁脚本（templates 加 scope/origin_topic）
 //   v4.sql  = 3 → 4 的跃迁脚本（建 group_refs：参考仓库绑定升到组级）
+//   v5.sql  = 4 → 5 的跃迁脚本（重建 attachments：新增 mdfile / external / 路径列）
 //   index.js= 边映射表 + 路径规划（本文件）
 //
 // 规则（与 docs/decisions/versions 下的版本说明同一口径）：
@@ -50,6 +51,7 @@ export const DIRECT_EDGES: MigrationStep[] = [
   { from: 1, to: 2, file: 'v2.sql', title: '附件/资源统一模型', apply: migrateAttachments },
   { from: 2, to: 3, file: 'v3.sql', title: '模板可见域（scope/origin_topic）' },
   { from: 3, to: 4, file: 'v4.sql', title: '参考仓库绑定升到组级（group_refs）', apply: migrateGroupRefs },
+  { from: 4, to: 5, file: 'v5.sql', title: '附件新增 mdfile（本地 md 指针）' },
 ];
 
 // 人读版本说明（docs/decisions 是决策的唯一权威位置，里面对应一份 date 化的 .md）
@@ -58,6 +60,7 @@ export const VERSION_NOTES = {
   2: 'docs/decisions/versions/2026-11-08-v2.md',
   3: 'docs/decisions/versions/2026-11-09-v3.md',
   4: 'docs/decisions/versions/2026-11-09-v4.md',
+  5: 'docs/decisions/versions/2026-11-12-v5.md',
 };
 
 const keyOf = (from: number, to: number): string => `${from}->${to}`;

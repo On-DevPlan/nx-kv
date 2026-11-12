@@ -236,6 +236,28 @@ export function ensureRefAttachment(conn: any, { refId, atMs = Date.now(), name 
   });
 }
 
+/**
+ * mdfile 是「已登记的外部文件指针」：正文引用只能命中已有行，**不能凭 id 造行**
+ * （没有路径就无从读取）。未登记时返回 null，由调用方报「先 docs attach --mdfile」。
+ */
+export function ensureMdfileAttachment(conn: any, { id, name = '', atMs = Date.now() }: {
+  id?: string | null; name?: string; atMs?: number;
+} = {}): string | null {
+  const attId = String(id || '').trim();
+  if (!attId) return null;
+  const row = conn.get(
+    "SELECT id, name FROM attachments WHERE id = :id AND kind = 'mdfile' AND deleted_at IS NULL",
+    { id: attId }
+  );
+  if (!row) return null;
+  if (name && !row.name) {
+    conn.run('UPDATE attachments SET name = :name, updated_at = :at WHERE id = :id', {
+      id: attId, name: String(name), at: atMs,
+    });
+  }
+  return attId;
+}
+
 /** 一条正文引用 → 资源 id（无法解析到真实目标的返回 null）。 */
 export function ensureAttachment(conn: any, ref: AttachmentRef | null | undefined, { atMs = Date.now() }: {
   atMs?: number;
@@ -256,5 +278,6 @@ export function ensureAttachment(conn: any, ref: AttachmentRef | null | undefine
     return ensureTaskAttachment(conn, { taskId: ref.targetTaskId, name: ref.name, atMs });
   }
   if (ref.kind === 'ref') return ensureRefAttachment(conn, { refId: ref.targetRefId, name: ref.name, atMs });
+  if (ref.kind === 'mdfile') return ensureMdfileAttachment(conn, { id: ref.targetMdfileId, name: ref.name, atMs });
   return null;
 }

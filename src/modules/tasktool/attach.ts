@@ -38,12 +38,15 @@ import {
   ensureUrlAttachment,
   linkAttachment,
   listTaskAttachmentsBySeq,
+  readMdfile,
+  registerMdfile,
   resolveRefId,
   unlinkAttachment,
   updateAttachmentNote,
   upsertFileAttachment,
 } from '../../core/attachmentdb.js';
 import * as service from '../localtask/service.js';
+import { docsRoot } from '../docs/paths.js';
 import { inlineDocContent } from './doc-inline.js';
 import { fileStateOf, resourceOf, targetLookupsOf, type ResourceLookups } from './attach-resource.js';
 
@@ -103,6 +106,34 @@ async function annotateRefTitles(attachments: any[]): Promise<any[]> {
   return attachments;
 }
 
+/**
+ * mdfile 行的交付注入：读磁盘原文件（读时校验指纹），把正文挂到
+ * `mdContent/mdTruncated/mdStale/mdMissing`，模板侧按 mdfile 分支渲染。
+ * 读失败（文件没了）只标 missing，不拖垮交付（fail-open）。
+ */
+const MDFILE_INLINE_MAX = 20000;
+
+async function annotateMdfileContent(attachments: any[]): Promise<any[]> {
+  const rows = attachments.filter((a) => a.kind === 'mdfile');
+  if (!rows.length) return attachments;
+  const db = getDb();
+  for (const a of rows) {
+    try {
+      const r = readMdfile(db, a.id);
+      if (!r) continue;
+      a.absPath = r.absPath || a.absPath || '';
+      a.mdMissing = r.missing;
+      a.mdStale = r.stale;
+      a.mdContent = r.body.length > MDFILE_INLINE_MAX ? r.body.slice(0, MDFILE_INLINE_MAX) : r.body;
+      a.mdTruncated = r.body.length > MDFILE_INLINE_MAX;
+    } catch {
+      a.mdMissing = true;
+      a.mdContent = '';
+    }
+  }
+  return attachments;
+}
+
 export interface AnnotateTaskDeliveryOptions {
   /** 是否允许为未命中的附件跑一次云端同步（预览传 false：只读盘、不发网） */
   sync?: boolean;
@@ -150,6 +181,7 @@ export async function annotateTaskDelivery(
 
   const mirror = await cloudMirrorIndex(gid, cfg.attachmentsDir);
   const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store, mirror);
+  await annotateMdfileContent(attachments);
   await annotateRefTitles(attachments);
   if (inlineDocs) await inlineDocContent(attachments);
   return { task: { ...task, attachments }, sync };
@@ -167,6 +199,8 @@ export interface AttachToTaskOptions {
   url?: unknown;
   task?: unknown;
   ref?: unknown;
+  /** 本地 md 文件（kind=mdfile：只登记路径指针，不复制正文） */
+  mdfile?: unknown;
   note?: unknown;
   noEmbed?: unknown;
   inline?: unknown;
@@ -190,9 +224,10 @@ export interface AttachToTaskOptions {
  *   --url <链接>       外部 URL（kind=url）
  *   --task <seq>       同主题下的另一条任务（kind=task，nxkv://task/<id>）
  *   --ref <路径|id>    文档库里的 ref（kind=ref，nxkv://ref/<refId>）
+ *   --mdfile <路径>    本地 md 文件（kind=mdfile，nxkv://mdfile/<attId>；字节不入库）
  */
 export async function attachToTask({
-  id, cwd, key, path, fileId, name, kind, url, task, ref, note, noEmbed, inline,
+  id, cwd, key, path, fileId, name, kind, url, task, ref, mdfile, note, noEmbed, inline,
 }: AttachToTaskOptions = {}): Promise<Record<string, any>> {
   const cur = await service.getTask({ id, cwd, key }); // 存在性与参数校验都在队列本体
   const topicKey = cur.key || key || '';
@@ -294,11 +329,21 @@ export async function attachToTask({
     ) as string; // 同上：登记失败落空串，由下方 !attachmentId 统一报错
     resolvedKind = 'ref';
     markdown = `[${displayName || String(ref).split('/').pop()}](nxkv://ref/${refId})`;
+  } else if (mdfile) {
+    // 外部 md 文件：登记指针（kind=mdfile / storage=external），正文留在磁盘原地
+    const rec = tx(
+      (conn) => registerMdfile(conn, { path: mdfile, name: displayName, docsRoot: docsRoot() }),
+      { db, mode: 'IMMEDIATE' }
+    );
+    attachmentId = rec.id;
+    displayName = displayName || rec.name;
+    resolvedKind = 'mdfile';
+    markdown = `[${displayName}](nxkv://mdfile/${rec.id})`;
   }
 
   if (!attachmentId) {
     throw badInput(
-      '需要 --path <本机文件>、--fileId <已有附件>、--url <链接>、--task <编号> 或 --ref <文档> 之一'
+      '需要 --path <本机文件>、--fileId <已有附件>、--url <链接>、--task <编号>、--ref <文档> 或 --mdfile <本地 md> 之一'
     );
   }
   const wantInline = !!inline;

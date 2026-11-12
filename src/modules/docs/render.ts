@@ -61,7 +61,8 @@ export const renderAttachments = (d: any): string => {
   const areaOf = (role: unknown): string => (role === 'attach' ? '附件区' : '正文内嵌');
   const lines = [`「${d.locator}」的资源（${d.attachments.length}）`];
   for (const a of d.attachments) {
-    const where = a.localPath || a.url || (a.kind === 'task' ? `task ${a.targetKey}#${a.targetSeq}` : a.targetKey);
+    const where = a.localPath || a.url || (a.kind === 'mdfile' ? a.absPath
+      : a.kind === 'task' ? `task ${a.targetKey}#${a.targetSeq}` : a.targetKey);
     lines.push(`  ${a.id}  [${a.kind}/${a.role} · ${areaOf(a.role)}]  ${a.name || '-'}  ${where || ''}`);
   }
   return lines.join('\n');

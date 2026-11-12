@@ -262,6 +262,8 @@ export async function repoExportZip(options: RepoExportOptions = {}): Promise<Bu
     '  - 看板以 board/<名称> 为 key；关系与组内描述都在 layout.json 里',
     '  - docs/ 是自有文档树（项目/组介绍、组内描述），导入后原样恢复',
     '  - 外部绑定（如 Obsidian vault）只记引用，不在包里——路径缺失会标「待初始化」',
+    '  - 外部 md 文件（attachments.kind=mdfile）默认不打包：它们只是路径指针，字节不在库内',
+    '    （条目在本地 attachments 表里，换机后需按原路径重新登记）',
     '',
     `仓库 ${layout.repos.length} 个 / 看板 ${layout.boards.length} 个 / 关系 ${layout.links.length} 条 / 文档 ${docEntries.length} 份`,
   ].join('\n');

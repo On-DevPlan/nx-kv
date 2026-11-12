@@ -1,5 +1,5 @@
 // 冒烟分组 7：文档落盘（seed → set → knowledge → export/import zip）、任务工具 --duration 门禁。
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export async function run(ctx) {
@@ -34,6 +34,23 @@ export async function run(ctx) {
   check('docs add 补充说明（介绍目录内）', (await cli(['docs', 'add', 'repo/github.com/me/alpha/reference/qa.md', '--body', '# 问答\n\n常见问题'])).status === 0);
   const idx = await cliJson(['docs', 'index']);
   check('docs index 双链索引含 alpha', Array.isArray(idx.index) && idx.index.some((x) => x.name === 'alpha'), JSON.stringify(idx).slice(0, 160));
+
+  // 外部 md：登记为 mdfile（只挂附件区，正文逐字节不变）；文档树内文件必须拒绝（O9）
+  const extMd = join(tmp, '外部方案.md');
+  writeFileSync(extMd, '# 外部方案\n\n正文', 'utf8');
+  const linked = await cliJson(['docs', 'link-file', 'repo/github.com/me/alpha.md', '--path', extMd]);
+  check('docs link-file 登记外部 md', /^att_mdfile_[0-9a-f]{16}$/.test(linked.attachmentId || ''), JSON.stringify(linked));
+  const docAtts = await cliJson(['docs', 'attachments', 'repo/github.com/me/alpha.md']);
+  check(
+    '附件区出现 kind=mdfile，正文未被改写',
+    docAtts.attachments.some((a) => a.id === linked.attachmentId && a.kind === 'mdfile') &&
+      (await cliJson(['docs', 'get', 'repo/github.com/me/alpha.md'])).body === '# alpha\n\n改过的介绍',
+    JSON.stringify(docAtts.attachments).slice(0, 240)
+  );
+  check(
+    'docs link-file 拒绝文档树内的 md（O9）',
+    (await cli(['docs', 'link-file', 'notes/free.md', '--path', join(tmp, 'docs', 'notes', 'free.md')])).status === 1
+  );
 
   const know = await cliJson(['repo', 'knowledge', 'alpha']);
   check(
@@ -76,6 +93,27 @@ export async function run(ctx) {
   mkdirSync(ttDir, { recursive: true });
   const ttAdd = await cliJson(['localtask', 'add', '带时限的任务', '--cwd', ttDir, '--duration', '90m', '--goal-prompt', '重点看流程']);
   check('tasktool: add --duration 落声明', ttAdd.task && ttAdd.task.timegoal && ttAdd.task.timegoal.duration === '90m', JSON.stringify(ttAdd.task).slice(0, 120));
+
+  // mdfile 冒烟：localtask 挂外部 md → 附件清单 → docs mdfiles / mdfile 读正文
+  const mdPath = join(tmp, 'local-plan.md');
+  writeFileSync(mdPath, '# 本地计划\n\n正文', 'utf8');
+  const mdAtt = await cliJson(['localtask', 'attach', '--id', String(ttAdd.task.id), '--cwd', ttDir, '--mdfile', mdPath]);
+  check(
+    'localtask attach --mdfile 落 nxkv://mdfile 链接',
+    /^\[local-plan\.md\]\(nxkv:\/\/mdfile\/att_mdfile_[0-9a-f]{16}\)$/.test(mdAtt.markdown || ''),
+    JSON.stringify(mdAtt).slice(0, 200)
+  );
+  const mdList = await cliJson(['localtask', 'attachments', '--id', String(ttAdd.task.id), '--cwd', ttDir]);
+  const mdItem = (mdList.attachments || [])[0];
+  check(
+    'mdfile 进附件清单且带外部路径',
+    mdList.count === 1 && mdItem && mdItem.kind === 'mdfile' && mdItem.absPath === mdPath,
+    JSON.stringify(mdList.attachments).slice(0, 240)
+  );
+  const mdFiles = await cliJson(['docs', 'mdfiles']);
+  check('docs mdfiles 列出台账', (mdFiles || []).some((x) => x.absPath === mdPath), JSON.stringify(mdFiles).slice(0, 240));
+  const mdBody = await cliJson(['docs', 'mdfile', mdItem.id]);
+  check('docs mdfile 读到正文', mdBody.body === '# 本地计划\n\n正文' && mdBody.missing === false, JSON.stringify(mdBody).slice(0, 200));
   const ttGet = await cliJson(['localtask', 'get', '--cwd', ttDir, '--json']);
   check(
     'tasktool: get 领取交付带 check 指令',

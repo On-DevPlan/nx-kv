@@ -253,14 +253,18 @@
 }
 .rp-pending-acts { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-/* 组详情页头部动作（添加成员 → 跳仓库页对应分组）
-   动作行改为**静态流内右对齐**（原为 position:absolute 右上角）：绝对定位会压在
-   标题/简介文字上（任务 #87 截图：组简介被按钮盖住一半）。改成独立一行后，
-   名字再长、简介再长都不会被按钮遮挡。 */
-.rp-group-head { position: relative; }
+/* 组详情页头部：名字与动作**同一行**（名字左、动作右、垂直居中）。
+   旧版动作单独占一行右对齐——标题行右半 + 动作行左半全是空白，正文被往下推；
+   窄屏放不下时动作才折到下一行（仍靠右），不压标题。 */
+.rp-group-head {
+  position: relative;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 4px 12px; flex-wrap: wrap;
+}
+.rp-group-head h2 { margin: 0; min-width: 0; }
 .rp-group-acts {
   position: static; display: flex; justify-content: flex-end; gap: 6px;
-  margin: 8px 0 2px; flex-wrap: wrap;
+  margin: 0 0 0 auto; flex-wrap: wrap;
 }
 
 /* 组面板 · 本组任务面板（首屏）：只列 frontmatter 归属本组的任务，项目 tag 标归属 */

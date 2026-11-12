@@ -28,7 +28,9 @@ import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { openPanel } from '../../workspace.js';
 import { MdPanes } from '../../components/md/md-panes.jsx';
-import DocAttachDock from './attach-dock.js';
+import { DocAttachBody, DocDockPanel, DocStatusBar } from './doc-dock.js';
+import { useDocBindings } from './bindings.js';
+import { useDock } from '../dir/task-dock.js';
 import { docIdOfLocator } from '../../components/md/attach-common.js';
 import type { Attachment } from '../../components/md/attach-common.js';
 import type { FileDropCtx } from '../../components/md/md-panes-helpers.js';
@@ -94,8 +96,9 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [mode, setMode] = useState('split');
-  // 附件 dock 展开态（默认展开：文档页的附件是常用入口，#183 统一成任务页的 dock 外壳）
-  const [dockOpen, setDockOpen] = useState(true);
+  // 底部信息面板（附件 / 归属）：与任务页同一套 dock 状态，存储空间另用 'doc'；
+  // 文档页首次进入默认收起（编辑正文为主），入口常驻在底部状态栏
+  const dock = useDock('doc', false);
   const [introLinks, setIntroLinks] = useState<IntroLink[]>([]);
   const [scrollRoot, setScrollRoot] = useState<HTMLElement | null>(null);
   // 最新文档镜像：附件上传是异步的，await 期间用户可能还在敲字，
@@ -183,6 +186,8 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   }, []);
 
   const writable = !!(doc && doc.writable);
+  // 归属（ref 视角）：数据与写操作都在 hook 里，面板只拿节点——dock 收起时计数也要准
+  const bind = useDocBindings(docId, writable);
   // #168：ref 引用在预览/编辑器里显示**文档标题**——需要附件清单里的 ref 条目
   // （服务端读盘补的标题），渲染时按 refId 查表替换链接文字。
   const [attList, setAttList] = useState<Attachment[]>([]);
@@ -527,19 +532,26 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
           onUndo={writable ? undo : null}
           onRedo={writable ? redo : null}
         />
-        {/* 附件 dock（#183）：外壳、host 口径与折叠都在 attach-dock 里 */}
-        <DocAttachDock
-          refId={docId}
-          count={attList.length}
-          writable={writable}
-          open={dockOpen}
-          onToggle={() => setDockOpen((v) => !v)}
-          onChanged={() => setAttTick((n) => n + 1)}
-          onOpenDoc={(locator: unknown) => {
-            const id = docIdOfLocator(locator);
-            if (id) openByDocId(id, null, openExtra);
-          }}
+        {/* 信息面板（#183）：附件 / 归属两个 tab，外壳与任务页同构（可拖高 / 最大化 / 关闭） */}
+        <DocDockPanel
+          dock={dock}
+          attCount={attList.length}
+          bindCount={bind.count}
+          attachNode={(
+            <DocAttachBody
+              refId={docId}
+              writable={writable}
+              onChanged={() => setAttTick((n) => n + 1)}
+              onOpenDoc={(locator: unknown) => {
+                const id = docIdOfLocator(locator);
+                if (id) openByDocId(id, null, openExtra);
+              }}
+            />
+          )}
+          bindNode={bind.strip}
         />
+        {/* 状态栏：面板收起后入口仍常驻（附件 / 归属 + 展开箭头） */}
+        <DocStatusBar dock={dock} attCount={attList.length} bindCount={bind.count} />
       </div>
       <IntroRail
         headings={headings as unknown as never[]}
@@ -550,6 +562,8 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
         onAddRef={(ownerKey ? addRefDoc : null) as unknown as null}
       />
       {dialogNode}
+      {/* 加绑弹窗（归属 tab 里的「＋ 加绑宿主」唤起） */}
+      {bind.modal}
     </div>
   );
 }

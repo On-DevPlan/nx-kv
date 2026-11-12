@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { Copyable } from '../../components/ui.jsx';
 import { Button } from '../../components/button/index.jsx';
+import { BindTags, ClampRow, type BindTagItem } from '../../components/bindings/bind-tags.js';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import type { RepoRow, BoardRow } from '../../types.js';
 
@@ -198,13 +199,13 @@ function RepoPath({ path }: { path?: string }) {
   );
 }
 
-// 文档列入口（查看详情）：一行主篇标题 + 数量，点击在右侧栏打开——
-// 完整文档列表（主篇 / 补充 / reference / 组内）+ 管理动作（标签 / 摘除 / 补充）。
-// #165：主行显示**文档标题**（正文首个 # 行），摘要（desc）只在没有标题时兜底、
+// 文档列入口（查看详情）：**归属 tag 单行**（主篇 + 补充篇）+ 篇数，点击在右侧栏
+// 打开完整文档列表（主篇 / 补充 / reference / 组内）+ 管理动作（标签 / 摘除 / 补充）。
+// #165：名字用**文档标题**（正文首个 # 行），摘要（desc）只在没有标题时兜底、
 // 悬浮提示里看全文——此前 summary 优先，用户改了标题这行字永远不变（它显示的
 // 是回写 desc 的摘要），被当成「标题无法修改、标题区变成了 desc」。
-// 文档不再以 chip/tag 形式外显在行内（任务「简介文档优化」）；未写的主篇
-// 显示「＋ 写项目介绍」虚态，点开同样进弹窗创建。
+// #184 单行钳制：tag 多了不再换行把行撑高——放不下的收进「+N」，点 +N 同进详情；
+// 名字超宽省略号，悬停看全名。未写的主篇显示「＋ 写项目介绍」虚态，点开同样进弹窗创建。
 // 参考仓库面板的名单元格也复用它，所以具名导出。
 export function DocsEntry({ docs, onOpen }: { docs?: RepoDocs | null; onOpen: () => void }) {
   const main = docs && docs.main;
@@ -213,18 +214,36 @@ export function DocsEntry({ docs, onOpen }: { docs?: RepoDocs | null; onOpen: ()
   const tip = main && main.exists
     ? [main.title, main.summary && `摘要：${main.summary}`].filter(Boolean).join('\n')
     : '查看完整文档列表（主篇 / 补充 / reference / 组内），可就地编辑';
+  const labelOf = (d: DocBrief, i: number) => d.title || d.rel || d.path || `第 ${i + 1} 篇`;
+  const items: BindTagItem[] = [];
+  if (main && main.exists) {
+    items.push({ id: 'main', label: labelOf(main, 0), kind: 'repo', main: true, title: main.title || main.summary || '' });
+  }
+  links.forEach((l, i) => {
+    items.push({
+      id: (l.docId || l.rel || l.path || 'link') + ':' + i,
+      label: labelOf(l, i),
+      kind: 'repo',
+      note: l.note || '',
+      title: [l.title || l.rel || l.path, l.note && `备注：${l.note}`].filter(Boolean).join('\n'),
+    });
+  });
   return (
-    <button
-      type="button"
+    <div
       className="rp-docs-entry"
+      role="button"
+      tabIndex={0}
       title={tip}
       onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(); }}
     >
-      <span className={'rp-docs-entry-main' + (main && main.exists ? '' : ' ghost')}>
-        {main && main.exists ? (main.title || main.summary || '未命名') : '＋ 写项目介绍'}
-      </span>
+      {items.length ? (
+        <BindTags items={items} onMore={onOpen} />
+      ) : (
+        <span className="rp-docs-entry-main ghost">＋ 写项目介绍</span>
+      )}
       <span className="rp-docs-entry-n">{total > 0 ? `${total} 篇 · 查看详情` : '查看详情'}</span>
-    </button>
+    </div>
   );
 }
 
@@ -308,16 +327,20 @@ function RepoRow({ r, filterBoard, groupRefRepoCounts, refRepoChipsByRepo, acts 
         <Button small className="rp-ref-bind" title="管理这个仓库所属组的参考仓库" onClick={() => acts.bind(r)}>绑定</Button>
       </td>
       <td className="rp-cell-groups">
-        {(r.boards || []).length ? (r.boards || []).map((b) => (
-          <button
-            key={b.id}
-            className={'rp-group-chip' + (filterBoard?.id === b.id ? ' on' : '')}
-            title={`只看「${b.name}」${b.note ? `\n组内描述：${b.note}` : ''}`}
-            onClick={() => acts.filter(b.id)}
-          >
-            {b.name}
-          </button>
-        )) : <span className="muted rp-refs-none">—</span>}
+        {(r.boards || []).length ? (
+          <ClampRow moreTitle="展开本行全部所属分组">
+            {(r.boards || []).map((b) => (
+              <button
+                key={b.id}
+                className={'rp-group-chip' + (filterBoard?.id === b.id ? ' on' : '')}
+                title={`只看「${b.name}」${b.note ? `\n组内描述：${b.note}` : ''}`}
+                onClick={() => acts.filter(b.id)}
+              >
+                {b.name}
+              </button>
+            ))}
+          </ClampRow>
+        ) : <span className="muted rp-refs-none">—</span>}
       </td>
       <td className="rp-acts">
         {/* #148：行内动作编排化（kind=repos-row，同一套工具区组件）——默认与旧版

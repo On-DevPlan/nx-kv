@@ -23,6 +23,11 @@ export function listBoards(): Promise<any> {
   return api('/api/boards');
 }
 
+/** 仓库清单（GET /api/repos）——加绑弹窗选宿主用。 */
+export function listRepos(): Promise<any> {
+  return api('/api/repos');
+}
+
 /** 读 docs 索引（同 getDocsIndex；供引言链接加载用，保留独立命名以便区分用途）。 */
 export function loadDocsIndex(): Promise<any> {
   return api('/api/docs/index');
@@ -72,11 +77,38 @@ export function removeDocItem(body: { ref?: string }): Promise<any> {
 }
 
 /** 把文档登记进参考仓库的文档集（POST /api/repos/docs）。 */
-export function bindRepoDoc(body: { id: string; rel: string }): Promise<any> {
+export function bindRepoDoc(body: { id: string; rel?: string; path?: string; note?: string }): Promise<any> {
   return api('/api/repos/docs', { method: 'POST', body });
 }
 
+/** 从参考仓库文档集摘掉一篇（DELETE /api/repos/docs；index 从 1 起，1 = 主篇）。 */
+export function unbindRepoDoc(body: { id: string; index: number }): Promise<any> {
+  return api('/api/repos/docs', { method: 'DELETE', body });
+}
+
 /** 把文档挂到看板（POST /api/docs/link）。 */
-export function linkBoardDoc(body: { board: string; doc: string }): Promise<any> {
+export function linkBoardDoc(body: { board: string; doc: string; note?: string }): Promise<any> {
   return api('/api/docs/link', { method: 'POST', body });
+}
+
+/** 从看板附加文档列表摘掉第 N 条（POST /api/docs/link；remove 从 1 起）。 */
+export function unlinkBoardDoc(body: { board: string; remove: number }): Promise<any> {
+  return api('/api/docs/link', { method: 'POST', body });
+}
+
+/** 一条文档归属（GET /api/docs/bindings 的一行）。 */
+export interface DocBindingRow {
+  refId: string;
+  locator: string;
+  repoKey: string;
+  groupKey: string | null;
+  type: string;
+  position: number;
+  main: boolean;
+  note?: string;
+}
+
+/** 文档归属清单（GET /api/docs/bindings?ref=<docId>）。 */
+export function docBindings(ref: string): Promise<{ bindings?: DocBindingRow[] }> {
+  return api('/api/docs/bindings?ref=' + encodeURIComponent(ref));
 }

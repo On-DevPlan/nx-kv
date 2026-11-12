@@ -1,0 +1,75 @@
+/* 归属 tag（components/bindings/bind-tags.tsx）—— 文档页「归属」区块与仓库表格共用。
+   设计约束：单行钳制（不换行），超宽省略，放不下的收进「+N」。 */
+
+.nb-tags{display:flex;flex-wrap:nowrap;align-items:center;gap:5px;overflow:hidden;min-width:0}
+.nb-tags.open{flex-wrap:wrap}
+.nb-empty{font-size:11px;color:var(--mid)}
+
+.nb-tag{
+  display:inline-flex;align-items:center;flex:none;max-width:280px;
+  border:1px solid var(--soft-2,#e5e3de);border-radius:999px;overflow:hidden;
+  background:var(--paper,#fff);font-size:11px;line-height:1;color:var(--ink,#16181c);
+}
+.nb-tag .k{display:inline-flex;align-items:center;padding:5px 6px 5px 8px;background:var(--soft,#f2f1ed);align-self:stretch}
+.nb-tag .k .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.nb-tag.nb-repo .k .dot{background:var(--live,#1f7a4d)}
+.nb-tag.nb-group .k .dot{background:#3D6FA8}
+.nb-tag.nb-main{border-color:color-mix(in srgb,var(--mdw-accent,#2F6F5E) 35%,transparent)}
+.nb-tag .role{padding:5px 3px 5px 6px;color:var(--mid,#838a93);white-space:nowrap}
+.nb-tag .role.main{color:var(--mdw-accent,#2F6F5E);font-weight:650}
+.nb-tag .name{
+  padding:5px 7px;min-width:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:10.5px;
+}
+.nb-tag .x{border:0;background:transparent;padding:5px 8px 5px 4px;cursor:pointer;color:var(--mid,#838a93);font-size:11px;line-height:1;flex:none}
+.nb-tag .x:hover{color:var(--danger,#b3261e);background:#FBEDEC}
+.nb-tag.more,.nb-more{border:1px dashed var(--soft-2,#e5e3de);background:var(--soft,#f2f1ed);color:var(--ink-2,#4b515a);cursor:pointer;padding:6px 9px;border-radius:999px;font:inherit;font-size:10.5px;flex:none;line-height:1}
+.nb-tag.more:hover,.nb-more:hover{background:#E8F2EE;color:var(--mdw-accent,#2F6F5E);border-color:color-mix(in srgb,var(--mdw-accent,#2F6F5E) 35%,transparent)}
+.nb-tag.add{border:1px dashed var(--soft-2,#e5e3de);background:transparent;color:var(--ink-2,#4b515a);cursor:pointer;padding:6px 10px;font:inherit;font-size:10.5px;flex:none;line-height:1}
+.nb-tag.add b{font-weight:700;margin-right:3px}
+.nb-tag.add:hover{background:#E8F2EE;color:var(--mdw-accent,#2F6F5E);border-color:color-mix(in srgb,var(--mdw-accent,#2F6F5E) 35%,transparent)}
+
+/* 通用钳制包装（分组 chips 等既有 chip 族） */
+.nb-clamp{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;overflow:hidden;min-width:0}
+.nb-clamp.open{flex-wrap:wrap}
+
+/* 文档页「归属」——底部信息面板的一个 tab（不再占正文行高，头部那行已删） */
+.docp-bind-panel{display:flex;flex-direction:column;gap:6px;min-height:0}
+.docp-bind-panel .nb-tags{padding:0}
+.docp-bind-orphan{font-size:10.5px;color:var(--warn,#99690f)}
+
+/* 加绑弹窗（文档页 / 仓库页共用同一形态） */
+.nb-overlay{position:fixed;inset:0;background:rgba(22,24,28,.35);display:flex;align-items:center;justify-content:center;z-index:60}
+.nb-modal{width:420px;background:var(--paper,#fff);border-radius:10px;box-shadow:0 10px 28px -16px rgba(22,24,28,.3);overflow:hidden;font-size:12px}
+.nb-modal-head{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line,#e7e5e0)}
+.nb-modal-head .t{font-weight:700;font-size:12.5px}
+.nb-modal-head .sub{color:var(--mid,#838a93);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nb-modal-head .close{margin-left:auto;border:0;background:transparent;cursor:pointer;color:var(--mid,#838a93);font-size:13px;padding:2px 6px;border-radius:6px}
+.nb-modal-head .close:hover{background:var(--soft,#f2f1ed);color:var(--ink,#16181c)}
+.nb-modal-body{padding:11px 12px}
+.nb-frow{margin-bottom:10px}
+.nb-frow label{display:block;font-size:10.5px;color:var(--ink-2,#4b515a);margin-bottom:4px;font-weight:600}
+.nb-seg{display:flex;gap:6px}
+.nb-seg button{flex:1;border:1px solid var(--soft-2,#e5e3de);background:var(--paper,#fff);border-radius:7px;padding:6px 0;font:inherit;font-size:11.5px;color:var(--ink-2,#4b515a);cursor:pointer}
+.nb-seg button.on{border-color:var(--mdw-accent,#2F6F5E);background:#E8F2EE;color:var(--mdw-accent,#2F6F5E);font-weight:650}
+.nb-list{max-height:150px;overflow:auto;border:1px solid var(--soft-2,#e5e3de);border-radius:7px}
+.nb-list label{display:flex;align-items:center;gap:7px;padding:5px 9px;font-size:11.5px;font-weight:400;border-bottom:1px solid var(--line,#e7e5e0);cursor:pointer}
+.nb-list label:last-child{border-bottom:0}
+.nb-list label:hover{background:var(--soft,#f2f1ed)}
+.nb-list input{accent-color:var(--mdw-accent,#2F6F5E)}
+.nb-list .p{font-family:var(--mono,Consolas,monospace);font-size:10px;color:var(--mid,#838a93);margin-left:auto;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nb-input{width:100%;font:inherit;font-size:11.5px;padding:5px 8px;border:1px solid var(--soft-2,#e5e3de);border-radius:6px;background:var(--paper,#fff)}
+.nb-modal-foot{display:flex;justify-content:flex-end;gap:8px;padding:9px 12px;border-top:1px solid var(--line,#e7e5e0);background:#FBFAF8}
+.nb-modal-foot .note{margin-right:auto;font-size:10px;color:var(--mid,#838a93);align-self:center}
+.nb-btn{border:1px solid var(--soft-2,#e5e3de);background:var(--paper,#fff);padding:4px 11px;border-radius:6px;font:inherit;font-size:11.5px;color:var(--ink-2,#4b515a);cursor:pointer}
+.nb-btn:hover{background:var(--soft,#f2f1ed)}
+.nb-btn.primary{background:var(--mdw-accent,#2F6F5E);border-color:var(--mdw-accent,#2F6F5E);color:#fff;font-weight:600}
+.nb-btn.primary:hover{background:#275d4e}
+
+/* 仓库表格：文档列改成归属 tag（单行，行高恒定）
+   几何（横排 / 间距 / width）在 repos-admin.css 的 .rp-docs-entry 里定，
+   这里只补「tag 容器吃掉剩余宽度、篇数不许缩」这两条。 */
+.rp-docs-entry .nb-tags{flex:1 1 auto;min-width:0}
+.rp-docs-entry .rp-docs-entry-n{flex:none;white-space:nowrap}
+.rp-docs-entry .nb-tag{font-size:10.5px}
+.rp-docs-entry .nb-tag .name{max-width:110px}

@@ -28,10 +28,9 @@ import type {
   DocListAction,
   DocRemoveAction,
   DocUpdateAction,
-  DocsBindAction,
+  DocsBindingsAction,
   DocsIndexAction,
   DocsLinkAction,
-  DocsNotebindAction,
   DocsSeedAction,
 } from '../../../modules/docs/actions/_manifest.generated.js';
 import type {
@@ -302,14 +301,12 @@ export interface ApiClient {
   docRemove2(input: z.input<InstanceType<typeof DocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRemoveAction>['run']>>>;
 /** 写文档正文（面板保存走这里；自有走 own 树、外部走绑定闭包内原文件；写盘后摘要回写 desc / 组内 note） */
   docUpdate(input: z.input<InstanceType<typeof DocUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocUpdateAction>['run']>>>;
-/** 绑定项目/组介绍的文档覆盖（--repo 或 --board 二选一 + --rel <自有路径> | --path <外部文件/目录>；--reset 拆回约定路径） */
-  docsBind(input?: z.input<InstanceType<typeof DocsBindAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsBindAction>['run']>>>;
+/** 查文档归属（--ref <docId> 看这篇被谁引用；--host <key> 看这个宿主的文档集；position=0 为主篇） */
+  bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>>;
 /** 双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js） */
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
 /** 维护组的附加文档列表（--doc <自有路径|绝对路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 doc 重复添加 = 更新） */
   link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>>;
-/** 绑定组内仓库描述的文档覆盖（--board <看板> --repo <仓库> + --rel/--path/--reset；仓库须为该组成员） */
-  notebind(input: z.input<InstanceType<typeof DocsNotebindAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsNotebindAction>['run']>>>;
 /** 把仓库 desc / 看板 desc / 组内 note 字符串播种成约定路径的 md（缺省预览，--apply 执行；幂等） */
   seed(input?: z.input<InstanceType<typeof DocsSeedAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsSeedAction>['run']>>>;
 /** 向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝） */
@@ -913,12 +910,16 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "ref": inp["ref"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof DocUpdateAction>['run']>>;
     },
-    // action: docs.bind
-    async docsBind(input?: z.input<InstanceType<typeof DocsBindAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocsBindAction>['_input']>);
-      const path = `/api/docs/bind`;
-      const body = { "repo": inp["repo"], "board": inp["board"], "rel": inp["rel"], "path": inp["path"], "reset": inp["reset"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsBindAction>['run']>>;
+    // action: docs.bindings
+    async bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsBindingsAction>['_input']>);
+      let path = `/api/docs/bindings`;
+      const q = new URLSearchParams();
+      if (inp["ref"] !== undefined) q.set("ref", String(inp["ref"]));
+      if (inp["host"] !== undefined) q.set("host", String(inp["host"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>;
     },
     // action: docs.index
     async index() {
@@ -931,13 +932,6 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/docs/link`;
       const body = { "board": inp["board"], "doc": inp["doc"], "note": inp["note"], "tag": inp["tag"], "remove": inp["remove"], "before": inp["before"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>;
-    },
-    // action: docs.notebind
-    async notebind(input: z.input<InstanceType<typeof DocsNotebindAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocsNotebindAction>['_input']>);
-      const path = `/api/docs/note-bind`;
-      const body = { "board": inp["board"], "repo": inp["repo"], "rel": inp["rel"], "path": inp["path"], "reset": inp["reset"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsNotebindAction>['run']>>;
     },
     // action: docs.seed
     async seed(input?: z.input<InstanceType<typeof DocsSeedAction>['_input']>) {

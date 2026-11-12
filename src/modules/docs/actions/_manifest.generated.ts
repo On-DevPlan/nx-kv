@@ -16,6 +16,7 @@ import { DocListAction } from './doc-list.js';
 import { DocRemoveAction } from './doc-remove.js';
 import { DocUpdateAction } from './doc-update.js';
 import { DocsBindAction } from './docs-bind.js';
+import { DocsBindingsAction } from './docs-bindings.js';
 import { DocsIndexAction } from './docs-index.js';
 import { DocsLinkAction } from './docs-link.js';
 import { DocsNotebindAction } from './docs-notebind.js';
@@ -33,6 +34,7 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   DocRemoveAction,
   DocUpdateAction,
   DocsBindAction,
+  DocsBindingsAction,
   DocsIndexAction,
   DocsLinkAction,
   DocsNotebindAction,
@@ -50,6 +52,7 @@ export { DocListAction };
 export { DocRemoveAction };
 export { DocUpdateAction };
 export { DocsBindAction };
+export { DocsBindingsAction };
 export { DocsIndexAction };
 export { DocsLinkAction };
 export { DocsNotebindAction };

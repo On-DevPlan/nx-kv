@@ -22,7 +22,7 @@ export class DocsBindAction extends ActionBase<typeof input> {
   @action({
     id: 'docs.bind',
     cli: ['docs', 'bind'],
-    http: ['POST', '/api/docs/bind'],
+    // 仅 CLI：绑定由「文档落约定路径」推导（syncRefIndex），前端不提供直绑入口
     summary: '绑定项目/组介绍的文档覆盖（--repo 或 --board 二选一 + --rel <自有路径> | --path <外部文件/目录>；--reset 拆回约定路径）',
     input,
     render: renderRef,

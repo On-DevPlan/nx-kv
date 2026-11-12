@@ -672,22 +672,6 @@
               "children": []
             },
             {
-              "name": "backfill",
-              "path": [
-                "repo",
-                "ref",
-                "backfill"
-              ],
-              "action": {
-                "id": "repo.ref.backfill",
-                "module": "repos",
-                "summary": "从 v3 快照补录仓库级参考绑定（幂等、可重复；与组级绑定并存；--dry-run 只预览）",
-                "usage": "repo ref backfill",
-                "http": null
-              },
-              "children": []
-            },
-            {
               "name": "check",
               "path": [
                 "repo",
@@ -1033,7 +1017,22 @@
             "module": "docs",
             "summary": "绑定项目/组介绍的文档覆盖（--repo 或 --board 二选一 + --rel <自有路径> | --path <外部文件/目录>；--reset 拆回约定路径）",
             "usage": "docs bind",
-            "http": "POST /api/docs/bind"
+            "http": null
+          },
+          "children": []
+        },
+        {
+          "name": "bindings",
+          "path": [
+            "docs",
+            "bindings"
+          ],
+          "action": {
+            "id": "docs.bindings",
+            "module": "docs",
+            "summary": "查文档归属（--ref <docId> 看这篇被谁引用；--host <key> 看这个宿主的文档集；position=0 为主篇）",
+            "usage": "docs bindings",
+            "http": "GET /api/docs/bindings"
           },
           "children": []
         },
@@ -1078,7 +1077,7 @@
             "module": "docs",
             "summary": "绑定组内仓库描述的文档覆盖（--board <看板> --repo <仓库> + --rel/--path/--reset；仓库须为该组成员）",
             "usage": "docs note-bind",
-            "http": "POST /api/docs/note-bind"
+            "http": null
           },
           "children": []
         },

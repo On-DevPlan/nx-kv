@@ -22,7 +22,7 @@ export class DocsNotebindAction extends ActionBase<typeof input> {
   @action({
     id: 'docs.notebind',
     cli: ['docs', 'note-bind'],
-    http: ['POST', '/api/docs/note-bind'],
+    // 仅 CLI：成员描述覆盖同理，绑定走约定路径推导；前端加绑/解绑走宿主文档集接口
     summary: '绑定组内仓库描述的文档覆盖（--board <看板> --repo <仓库> + --rel/--path/--reset；仓库须为该组成员）',
     args: ['board'],
     input,

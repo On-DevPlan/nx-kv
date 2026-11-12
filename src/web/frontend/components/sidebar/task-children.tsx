@@ -7,8 +7,8 @@
 // 仓库还没有队列时只剩「＋ 新建页」一个子行——点它先建队列再进工作台（queue-nav.js）。
 //
 // 显示序：**未完成（待领取）优先**（sortTasksForDisplay——追加序会把新任务
-// 埋在历史底下）；长度：分页而不是硬截断（以前 limit=12 静默丢弃第 13 条起，
-// 用户既看不到也够不着）。
+// 埋在历史底下）；长度：**全量铺开**，靠侧栏自身滚动承接（#181：以前每页 12 条
+// 带翻页，用户在侧栏里翻页等于把树形导航变成两套分页，直接去掉）。
 import { useMemo } from 'react';
 import { Icon } from '../icons.jsx';
 import { useToast } from '../toast/index.jsx';
@@ -22,9 +22,6 @@ import type { LocalTask } from '../../types.js';
 // 任务行的单字状态徽标（侧栏太窄，只放一个字）：等=待领取 / 跑=进行中 / 完=已完成 / 档=收口。
 // 文案与配色的映射走 components/status-tag/model.js（#121 全应用唯一口径：
 // 等=浅灰、跑=蓝 --doing、完=绿 --live；t.from 只是来源标记，不参与状态判断）。
-import Pager, { usePager } from '../pager.jsx';
-
-const PAGE_SIZE = 12; // 每页条数（与旧 limit 同值，但不再截断——有翻页出口）
 
 // 兄弟模块类型桥：board-view 尚未类型化（`tasks = []` 默认值把形参推成 never[]），
 // 这里按实际契约声明一次——它毕业成强类型后此桥退化为恒等。
@@ -35,10 +32,9 @@ export interface TaskChildrenProps {
   row: SideRow;
   onNavigate?: (hash: string) => void;
   refreshLocal?: () => Promise<void>;
-  limit?: number;
 }
 
-export default function TaskChildren({ row, onNavigate, refreshLocal, limit = PAGE_SIZE }: TaskChildrenProps) {
+export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChildrenProps) {
   const toast = useToast();
   // 全局池：topic 直接带 tasks；仓库行：多个 topic 的 tasks 汇总
   const tasks = useMemo(() => {
@@ -49,15 +45,13 @@ export default function TaskChildren({ row, onNavigate, refreshLocal, limit = PA
         : (row.topics || []).flatMap((t) => (t.tasks || []).filter((x) => !x.deletedAt && !isGroupTask(x)));
     return sortTasksForDisplayBridge(list);
   }, [row]);
-  const pager = usePager(tasks, limit);
-  const shown = pager.items;
   // 导航基址用 **topicKey**（工作台按它找队列），不是仓库 key
   const base = row.type === 'global'
     ? '#/global'
     : `#/dir/${encodeURIComponent(row.topicKey || row.key)}`;
   return (
     <>
-      {shown.map((t) => (
+      {tasks.map((t) => (
         <button
           key={`${row.topicKey || row.key}:t:${t.id}`}
           type="button"
@@ -75,17 +69,6 @@ export default function TaskChildren({ row, onNavigate, refreshLocal, limit = PA
           </span>
         </button>
       ))}
-      {pager.pageCount > 1 && (
-        <div className="trow child task-pager">
-          <Pager
-            page={pager.page}
-            pageCount={pager.pageCount}
-            total={pager.total}
-            onPage={pager.setPage}
-            unit="条任务"
-          />
-        </div>
-      )}
       <button
         type="button"
         className="trow child task-new"

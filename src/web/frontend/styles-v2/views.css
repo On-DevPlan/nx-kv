@@ -321,6 +321,16 @@
 .rp-proj-pick input { width: 13px; height: 13px; cursor: pointer; accent-color: var(--doing, #2F6F5E); }
 .rp-proj-pickall { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 400; color: var(--mid); cursor: pointer; }
 .rp-proj-pickall input { width: 13px; height: 13px; cursor: pointer; accent-color: var(--doing, #2F6F5E); }
+/* #181：任务面板头搜索框（标题 + 正文模糊匹配）——与「全选本页」同一工具区，整体靠右 */
+.rp-tasks-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
+.rp-task-search {
+  width: 168px; height: 24px; box-sizing: border-box; padding: 0 8px;
+  border: 1px solid var(--soft-2, #E4E2DC); border-radius: 7px;
+  background: var(--paper, #fff); color: var(--ink, #16181C);
+  font: 400 11.5px/1.5 inherit; outline: 0; -webkit-appearance: none; appearance: none;
+}
+.rp-task-search::placeholder { color: var(--faint, #A9AEB4); }
+.rp-task-search:focus { border-color: var(--doing, #2F6F5E); box-shadow: 0 0 0 2px rgba(47, 111, 94, 0.12); }
 .rp-proj-times { flex: none; font-size: 10.5px; color: var(--mid); white-space: nowrap; }
 .rp-proj-ops { flex: none; display: inline-flex; align-items: center; gap: 4px; }
 .rp-proj-ops .op { cursor: pointer; color: var(--mid); display: inline-flex; align-items: center; }

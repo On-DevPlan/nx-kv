@@ -109,6 +109,10 @@ interface LandingProps {
   downstreamOf?: Record<string, number[]>;
   /** () 打开文档列表右侧栏 */
   onRefs?: () => void;
+  /** 搜索串（#181：标题 + 正文模糊匹配） */
+  q?: string;
+  /** (v) 改搜索串 */
+  onQuery?: (v: string) => void;
 }
 
 export default function Landing({
@@ -138,8 +142,11 @@ export default function Landing({
   onToggleGate,    // (t) 闸门快捷开关
   downstreamOf,    // { [gateTaskId]: number[] } 闸门挡住的后续任务 id
   onRefs,          // () 打开文档列表右侧栏
+  q = '',          // 搜索串（标题 + 正文模糊匹配）
+  onQuery,         // (v) 改搜索串
 }: LandingProps) {
   const name = isGlobal ? '全局池' : (topic?.name || '目录');
+  const searching = !!String(q).trim();
 
   // 拖动排序（HTML5 DnD）：只在待领取行之间换位，落点 = 上半行之前 / 下半行之后。
   // 拖拽态走 **ref**（同步可读）——dragstart/dragover 在真实拖拽里也只隔几毫秒，
@@ -273,19 +280,36 @@ export default function Landing({
         title={isGlobal ? '全局池任务' : '任务'}
         pendingCount={pendingCount}
         headerExtra={
-          tasks.length ? (
-            <label className="rp-proj-pickall" title="全选/取消全选当前页">
+          <>
+            {/* #181：搜索框——标题与正文一起搜（模糊串规则见 modules/board/task-search） */}
+            <span className="rp-tasks-tools">
               <input
-                type="checkbox"
-                checked={allPicked}
-                onChange={togglePickAll}
-                aria-label="全选当前页任务"
+                className="rp-task-search"
+                type="search"
+                value={q}
+                placeholder="搜索标题 / 内容"
+                aria-label="搜索任务"
+                onChange={(e) => onQuery && onQuery(e.target.value)}
               />
-              全选本页
-            </label>
-          ) : null
+              {tasks.length ? (
+                <label className="rp-proj-pickall" title="全选/取消全选当前页">
+                  <input
+                    type="checkbox"
+                    checked={allPicked}
+                    onChange={togglePickAll}
+                    aria-label="全选当前页任务"
+                  />
+                  全选本页
+                </label>
+              ) : null}
+            </span>
+          </>
         }
-        emptyText={`还没有页面：点「＋ 新建页」写第一篇，或让 agent 往${isGlobal ? '全局池' : '这个目录'}投递任务。`}
+        emptyText={
+          searching
+            ? `没有匹配「${q.trim()}」的任务（标题与正文都搜过了）`
+            : `还没有页面：点「＋ 新建页」写第一篇，或让 agent 往${isGlobal ? '全局池' : '这个目录'}投递任务。`
+        }
       >
         {tasks.map((t) => {
           const movableRow = movable(t);
@@ -377,7 +401,11 @@ export default function Landing({
     // #167 三轮：去面包屑（group 页没有，返回导航走左侧树）。
     <TaskPanelLayout
       name={name}
-      counts={[`${taskCount} 个任务`, ...(pendingCount > 0 ? [`待领取 ${pendingCount}`] : [])]}
+      counts={
+        searching
+          ? [`命中 ${taskCount} 个任务`, ...(pendingCount > 0 ? [`待领取 ${pendingCount}`] : [])]
+          : [`${taskCount} 个任务`, ...(pendingCount > 0 ? [`待领取 ${pendingCount}`] : [])]
+      }
       intro={!isGlobal && repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
       batch={batchBar}
       list={listPanel}

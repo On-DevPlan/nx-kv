@@ -18,8 +18,12 @@
  * v5（2026-11-12）：attachments 重建，新增 kind='mdfile'（本地 md 文件指针）与
  * storage='external'；新增 abs_path / anchor_dir / missing_at / last_seen_at 四列
  * 与路径部分唯一索引。纯 DDL 迁移，无数据搬运。
+ *
+ * v6（2026-11-12）：refs 升级为「文档本体」——新增 rel（逻辑名，唯一）/ origin /
+ * body_bytes；正文进 ref_bodies（1:1，CASCADE）；ref_attach 的 role 增 'source'
+ * （外部 md 文件同步来源）。盘上 docs 树正文一次性入库，逐篇 sha256 回读比对。
  */
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 6;
 
 /**
  * 运行时最低 Node 版本。

@@ -34,6 +34,7 @@ export {
 export {
   MDFILE_MIME,
   listMdfiles,
+  findMdfileByPath,
   readMdfile,
   registerMdfile,
 } from './attachmentdb/mdfile.js';
@@ -45,6 +46,17 @@ export {
   unlinkAttachment,
   updateAttachmentNote,
 } from './attachmentdb/relations.js';
+export {
+  getRefBody,
+  isShellRel,
+  listRefDocs,
+  noBodyReason,
+  refDocByRel,
+  refIdByRel,
+  relKindOf,
+  upsertRefBody,
+} from './attachmentdb/bodies.js';
+export type { RefBodyRow, RefDocRow, RelKind } from './attachmentdb/bodies.js';
 export {
   ensureDocRef,
   forgetDocRef,

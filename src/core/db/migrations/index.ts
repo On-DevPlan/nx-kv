@@ -6,6 +6,7 @@
 //   v3.sql  = 2 → 3 的跃迁脚本（templates 加 scope/origin_topic）
 //   v4.sql  = 3 → 4 的跃迁脚本（建 group_refs：参考仓库绑定升到组级）
 //   v5.sql  = 4 → 5 的跃迁脚本（重建 attachments：新增 mdfile / external / 路径列）
+//   v6.sql  = 5 → 6 的跃迁脚本（refs.rel/origin/body_bytes + ref_bodies + ref_attach 增 source）
 //   index.js= 边映射表 + 路径规划（本文件）
 //
 // 规则（与 docs/decisions/versions 下的版本说明同一口径）：
@@ -15,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { migrateAttachments } from './v2-data.js';
 import { migrateGroupRefs } from './v4-data.js';
+import { migrateRefsBodies } from './v6-data.js';
 import { CURRENT_SCHEMA_VERSION } from '../version.js';
 import type { DbApi } from '../driver.js';
 
@@ -52,6 +54,7 @@ export const DIRECT_EDGES: MigrationStep[] = [
   { from: 2, to: 3, file: 'v3.sql', title: '模板可见域（scope/origin_topic）' },
   { from: 3, to: 4, file: 'v4.sql', title: '参考仓库绑定升到组级（group_refs）', apply: migrateGroupRefs },
   { from: 4, to: 5, file: 'v5.sql', title: '附件新增 mdfile（本地 md 指针）' },
+  { from: 5, to: 6, file: 'v6.sql', title: 'refs 正文入库（rel / ref_bodies / source）', apply: migrateRefsBodies },
 ];
 
 // 人读版本说明（docs/decisions 是决策的唯一权威位置，里面对应一份 date 化的 .md）
@@ -61,6 +64,7 @@ export const VERSION_NOTES = {
   3: 'docs/decisions/versions/2026-11-09-v3.md',
   4: 'docs/decisions/versions/2026-11-09-v4.md',
   5: 'docs/decisions/versions/2026-11-12-v5.md',
+  6: 'docs/decisions/versions/2026-11-12-v6.md',
 };
 
 const keyOf = (from: number, to: number): string => `${from}->${to}`;

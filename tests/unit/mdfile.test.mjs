@@ -78,20 +78,21 @@ test('未登记的 mdfile 引用不会凭 id 造行（ensure 返回 null）', ()
   assert.equal(ensureMdfileAttachment(getDb(), { id: 'att_mdfile_0000000000000000' }), null);
 });
 
-test('registerMdfile：只收 .md、docsRoot 内拒登记（指路 ref）、文件必须存在', () => {
+test('registerMdfile：只收 .md、文件必须存在；默认目录内同样放行（只经 attach 访问）', () => {
   const db = getDb();
-  assert.throws(() => registerMdfile(db, { path: join(extDir, 'a.txt'), docsRoot }), /只接受 \.md/);
+  assert.throws(() => registerMdfile(db, { path: join(extDir, 'a.txt') }), /只接受 \.md/);
   const inside = join(docsRoot, 'notes', 'mine.md');
   mkdirSync(dirname(inside), { recursive: true });
-  writeFileSync(inside, '# 文档树内');
-  assert.throws(() => registerMdfile(db, { path: inside, docsRoot }), /文档树[\s\S]*ref/);
-  assert.throws(() => registerMdfile(db, { path: join(extDir, 'nope.md'), docsRoot }), /文件不存在/);
+  writeFileSync(inside, '# mdfile 默认目录内');
+  const r = registerMdfile(db, { path: inside });
+  assert.equal(r.id, mdfileAttachmentId(inside), '默认目录内的文件可以登记为 mdfile');
+  assert.throws(() => registerMdfile(db, { path: join(extDir, 'nope.md') }), /文件不存在/);
 });
 
 test('registerMdfile：落 external + 路径/锚点/指纹；重复登记幂等刷新', () => {
   const db = getDb();
   const p = makeMd('plan.md', '# 计划\n\n第一版');
-  const r = registerMdfile(db, { path: p, docsRoot });
+  const r = registerMdfile(db, { path: p });
   assert.equal(r.id, mdfileAttachmentId(p));
   assert.equal(r.name, 'plan.md');
   assert.equal(r.absPath, normalizeMdfilePath(p));
@@ -108,10 +109,10 @@ test('registerMdfile：落 external + 路径/锚点/指纹；重复登记幂等�
   assert.equal(row.missing_at, null);
 
   writeFileSync(p, '# 计划\n\n第二版', 'utf8');
-  const r2 = registerMdfile(db, { path: p, docsRoot });
+  const r2 = registerMdfile(db, { path: p });
   assert.equal(r2.id, r.id, '同一路径重登记必须同 id');
   assert.equal(r2.hash, sha256('# 计划\n\n第二版'));
-  assert.equal(db.get("SELECT count(*) AS c FROM attachments WHERE kind = 'mdfile'").c, 1);
+  assert.equal(db.get("SELECT count(*) AS c FROM attachments WHERE kind = 'mdfile' AND abs_path = :p COLLATE NOCASE", { p: normalizeMdfilePath(p) }).c, 1);
 });
 
 test('readMdfile：正常读到正文；内容漂移只报 stale 不改库；缺失标 missing_at 不删行', () => {
@@ -170,12 +171,14 @@ test('docs link-file：只登记并挂附件区，正文逐字节不变', async 
   assert.equal(a.absPath, normalizeMdfilePath(p));
 });
 
-test('O9：docs link-file 指向文档树内的 md → 报错并指路 ref', async () => {
-  await store.writeOwnDoc('notes/inside.md', '# 树内');
-  await assert.rejects(
-    () => action('doc.link-file').run({ ref: 'notes/a.md', path: join(docsRoot, 'notes', 'inside.md') }),
-    /文档树[\s\S]*ref/
-  );
+test('docs link-file 允许指向 mdfile 默认目录内的 md（只能经 attach 访问）', async () => {
+  await store.writeOwnDoc('notes/a.md', '# 宿主');
+  await store.writeOwnDoc('notes/inside.md', '# 默认目录内');
+  const inside = join(docsRoot, 'notes', 'inside.md');
+  mkdirSync(dirname(inside), { recursive: true });
+  writeFileSync(inside, '# 默认目录内的 md');
+  const r = await action('doc.link-file').run({ ref: 'notes/a.md', path: inside });
+  assert.match(r.attachmentId, /^att_mdfile_[0-9a-f]{16}$/);
 });
 
 test('docs mdfile / mdfiles：读正文、列台账、失效过滤', async () => {

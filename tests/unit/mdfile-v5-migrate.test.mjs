@@ -27,7 +27,7 @@ test('v5 重建 attachments：87 条关系逐行保留、旧字段不变、新�
     migrate(db, {
       from: 1,
       to: 4,
-      context: { attachmentsRoot: join(s.appDir, 'attachments'), docsRoot: join(s.appDir, 'docs'), atMs: AT },
+      context: { attachmentsRoot: join(s.appDir, 'attachments'), docsDir: join(s.appDir, 'docs'), atMs: AT },
     });
     assert.equal(db.get('PRAGMA user_version').user_version, 4, '前置：库必须停在 v4');
 

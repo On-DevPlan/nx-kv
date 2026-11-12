@@ -1,16 +1,17 @@
 // mdfile（本地 md 文件指针）的登记、读取与校验。
 //
-// 语义（docs/decisions/2026-11-12-refs-body-in-db.md §5 / O7-O9）：
+// 语义（docs/decisions/2026-11-12-refs-body-in-db.md §5 / O7 + 2026-11 收口）：
 //   · 字节留在用户磁盘原地：storage='external'，库里只存 abs_path + hash；
 //   · 登记时算 sha256 指纹；读取时现读并核对指纹，不一致只报 stale，**不自动改库**；
 //   · 文件不存在只标 missing_at，不软删、不删行、不碰外部文件；
-//   · 相对链接锚点 = 登记时文件所在目录（anchor_dir），不是 docsRoot()；
-//   · 禁止把 docsRoot() 内的文件登记成 mdfile（与 ref 正文入库冲突），直接报错并指路。
+//   · 相对链接锚点 = 登记时文件所在目录（anchor_dir），不是任何「文档根」；
+//   · `NX_KV_DOCS_DIR` 只是 mdfile 的默认附件目录，不承载文档正文——
+//     mdfile 是**唯一**允许直接读该目录（以及任意外部 md）的入口。
 //
 // 本模块只碰 attachments 一张表与文件系统，不做业务编排（宿主编排在各模块里）。
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname } from 'node:path';
 import { mdfileAttachmentId, normalizeMdfilePath } from './ids.js';
 import { badInput, conflict } from '../errors.js';
 
@@ -21,14 +22,6 @@ export const MDFILE_MIME = 'text/markdown; charset=utf-8';
 
 function sha256(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex');
-}
-
-/** p 是否落在 root 内（Windows 大小写不敏感；两端口径一致）。 */
-function within(root: string, p: string): boolean {
-  const norm = (v: string) => resolve(v).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-  const a = norm(root);
-  const b = norm(p);
-  return b === a || b.startsWith(a + '/');
 }
 
 export interface MdfileRecord {
@@ -47,28 +40,22 @@ export interface RegisterMdfileInput {
   path?: unknown;
   /** 显示名（默认取文件名） */
   name?: unknown;
-  /** 文档树根（O9：其内文件禁止登记为 mdfile） */
-  docsRoot?: string;
   atMs?: number;
 }
 
 /**
  * 登记一个本地 md 文件（幂等：同一路径重登记只刷新指纹与时间）。
- * @throws 路径非法 / 非 .md / 在文档树内 / 文件不存在
+ * 默认目录（NX_KV_DOCS_DIR）只约束「放哪」，不限制登记：
+ * 该目录下的文件同样只能经 attach 访问，所以登记一律放行。
+ * @throws 路径非法 / 非 .md / 文件不存在
  */
 export function registerMdfile(conn: any, {
-  path, name = '', docsRoot = '', atMs = Date.now(),
+  path, name = '', atMs = Date.now(),
 }: RegisterMdfileInput = {}): MdfileRecord {
   const absPath = normalizeMdfilePath(path);
   if (!absPath) throw badInput('mdfile 需要文件路径');
   if (!MD_EXT_RE.test(absPath)) {
     throw badInput(`mdfile 只接受 .md / .markdown 文件: ${absPath}`);
-  }
-  if (docsRoot && within(docsRoot, absPath)) {
-    throw badInput(
-      `该文件在文档树内（${docsRoot}），不能登记为 mdfile：文档树里的正文按 ref 管理。` +
-      '请用 `nx-kv docs get rel:<相对路径>` 读写，或先把文件移出文档树再登记。'
-    );
   }
   if (!existsSync(absPath)) throw badInput(`文件不存在: ${absPath}`);
   const st = statSync(absPath);
@@ -213,6 +200,29 @@ export function readMdfile(conn: any, id: unknown, { atMs = Date.now() }: { atMs
 export interface MdfileRow extends MdfileRecord {
   /** 台账上的失效时间（不代表此刻一定不存在；以 readMdfile 为准） */
   missing: boolean;
+}
+
+/** 按绝对路径找已登记的 mdfile（Windows 大小写不敏感）；没有则 null。 */
+export function findMdfileByPath(conn: any, absPath: unknown): MdfileRecord | null {
+  const abs = normalizeMdfilePath(absPath);
+  if (!abs) return null;
+  const row = conn.get(
+    `SELECT id, name, abs_path, anchor_dir, size, hash, missing_at, last_seen_at
+       FROM attachments
+      WHERE kind = 'mdfile' AND deleted_at IS NULL AND abs_path = :abs COLLATE NOCASE`,
+    { abs }
+  );
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    name: String(row.name || ''),
+    absPath: String(row.abs_path || ''),
+    anchorDir: String(row.anchor_dir || ''),
+    size: Number(row.size) || 0,
+    hash: String(row.hash || ''),
+    missingAt: row.missing_at === null || row.missing_at === undefined ? null : Number(row.missing_at),
+    lastSeenAt: row.last_seen_at === null || row.last_seen_at === undefined ? null : Number(row.last_seen_at),
+  };
 }
 
 /** 列出全部已登记的 mdfile（含已失标的，供巡检）。 */

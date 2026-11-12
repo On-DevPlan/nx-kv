@@ -30,7 +30,6 @@ import type {
   BoardRecord,
   BoardsPayload,
   GroupRefChip,
-  GroupRefCount,
   RefBackLink,
   RefCheckMap,
   RefCheckRow,
@@ -197,49 +196,23 @@ export default function ReposView() {
     return m;
   }, [boardList, refRepos]);
 
-  // 主表「参考」列的汇总：仓库在哪些组、每组绑了几个参考（组内共享，不展开明细）。
-  // 明细在组页的「组参考」区块里看——一行铺十几个 chip 会把表格撑爆。
-  const groupRefRepoCounts = useMemo<Map<string, GroupRefCount[]>>(() => {
-    const m = new Map<string, GroupRefCount[]>();
-    for (const b of boardList) {
-      const n = (b.refs || []).length;
-      if (!n) continue;
-      for (const x of b.repos || []) {
-        if (!x || !x.key) continue;
-        if (!m.has(x.key)) m.set(x.key, []);
-        const arr = m.get(x.key);
-        if (arr) arr.push({ id: b.id, name: b.name, count: n });
-      }
-    }
-    return m;
-  }, [boardList]);
-
-  // 组筛选视图（group = 命名空间）的行内参考仓库：
-  //   自 = 这个仓库自己直接绑的；组 = 本组共享、但这一行没有自己直接绑的。
-  // 两类合并去重（同一个参考仓库在组里和仓库上都绑了 → 只出一颗，按「自」算），
-  // 自在前——这一行最具体的信息先露出来，组共享的在折叠区里补全。
-  // 全局视图不建这张表（那里仍按组汇总）。
+  // 主表「参考仓库」列 = 这一行仓库**自己直接绑定**的参考仓库（仓库级 ext_linked）。
+  // 组共享的参考仓库不进这一列：组视图整列隐藏，统一在上方「组参考」区块看。
   const refRepoChipsByRepo = useMemo<Map<string, RepoChip[]>>(() => {
     const m = new Map<string, RepoChip[]>();
-    if (!filterBoard) return m;
     const byKey = new Map<string, RepoRecord>(refRepos.map((r): [string, RepoRecord] => [r.key, r]));
-    const sharedAll: RepoChip[] = (filterBoard.refs || []).map((l): RepoChip | null => {
-      const r = byKey.get(l.id);
-      return r ? { key: r.key, name: r.name, note: l.note || '', source: 'group', groupName: filterBoard.name } : null;
-    }).filter((c): c is RepoChip => c !== null);
     for (const d of devRepos) {
       const own = (d.linked || [])
         .filter((l) => l && l.kind === 'ref')
         .map((l): RepoChip | null => {
           const r = byKey.get(l.id);
-          return r ? { key: r.key, name: r.name, note: l.note || '', source: 'repo' } : null;
+          return r ? { key: r.key, name: r.name, note: l.note || '' } : null;
         })
         .filter((c): c is RepoChip => c !== null);
-      const ownKeys = new Set(own.map((c) => c.key));
-      m.set(d.key, [...own, ...sharedAll.filter((c) => !ownKeys.has(c.key))]);
+      m.set(d.key, own);
     }
     return m;
-  }, [filterBoard, devRepos, refRepos]);
+  }, [devRepos, refRepos]);
 
   // 仓库级直接绑定（反向索引）：参考仓库 key → 直接绑在它身上的开发仓库。
   // 与组级绑定并列展示，不用「组 + 成员数」去近似。
@@ -401,9 +374,7 @@ export default function ReposView() {
     },
     // 行内分组 chip = 快捷筛选（再点一次取消）
     filter: (id) => setFilter((f) => (f === id ? '' : id)),
-    // 组筛选视图里的「组」勋章：维持当前组筛选（不切换成取消）
-    keepFilter: (id) => setFilter(id),
-    // 组筛选视图的「自」勋章 = 跳到这个参考仓库（开参考仓库面板并定位到那一行）
+    // 参考仓库列的「自」chip = 跳到这个参考仓库（开参考仓库面板并定位到那一行）
     gotoRefRepo: (key) => { setRefRepoFocus(key); setRefOpen(true); },
     // 绑定管理：从开发仓库行进入 —— 勾选哪些参考绑到它所属的组（v4：组内共享）
     bind: (r) => setBindRepoFor(r),
@@ -478,7 +449,6 @@ export default function ReposView() {
         shown={shown}
         devRepos={devRepos}
         filterBoard={filterBoard}
-        groupRefRepoCounts={groupRefRepoCounts}
         refRepoChipsByRepo={refRepoChipsByRepo}
         acts={rowActs}
         onAddMember={setImpBoardId}

@@ -26,36 +26,6 @@
 }
 .nx-intro-btn:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
 
-/* ── 查看详情弹窗（DocsModal）────────────────────────────────────────────
-   #88：弹窗分两态——列表视图只列标题；文档视图与任务页同构（DocHead + MdPanes）。 */
-.nx-docs-modal-item-wrap{display:flex;align-items:stretch;gap:2px}
-.nx-docs-modal-item-acts{display:flex;align-items:center;gap:2px;flex:none}
-.nx-docs-modal-mini{
-  border:0;background:transparent;padding:2px 5px;border-radius:5px;
-  font:600 11px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4);cursor:pointer;
-}
-.nx-docs-modal-mini:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
-.nx-docs-modal-mini.danger:hover{background:#FBEDEC;color:#B4443C}
-.nx-docs-modal-acts{display:flex;justify-content:flex-end;gap:6px;padding:0 0 8px}
-
-/* 列表：只有标题，点一行在 maincontent 打开文档编辑页（#88 修正：编辑页不在弹窗里） */
-.nx-dl{display:flex;flex-direction:column;min-height:0}
-.nx-dl-head{display:flex;align-items:center;gap:8px;padding:0 0 8px}
-.nx-dl-count{font-size:11.5px;color:var(--ink-2,#4B515A)}
-.nx-dl-hint{font-size:11px;color:var(--faint,#A9AEB4)}
-.nx-dl-list{
-  display:flex;flex-direction:column;gap:1px;
-  max-height:min(62vh,520px);overflow:auto;
-  border:1px solid var(--line,#E4E2DC);border-radius:8px;padding:6px;background:#FBFAF8;
-}
-.nx-dl-row-wrap{display:flex;align-items:stretch;gap:2px}
-.nx-dl-row{
-  flex:1 1 auto;min-width:0;display:flex;align-items:baseline;gap:8px;
-  border:1px solid transparent;border-radius:6px;background:none;
-  padding:8px 10px;text-align:left;font:inherit;color:var(--ink,#16181C);cursor:pointer;
-}
-.nx-dl-row:hover{background:var(--paper,#fff);border-color:var(--line,#E4E2DC)}
-.nx-dl-row-title{
-  flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
+/* 查看详情 → 右侧栏文档列表（#186）。以前这里还有一套 .nx-dl* / .nx-docs-modal-*
+   —— 那是 DocsModal 弹窗的样式；弹窗已下线，同一份列表只剩 page/refs 的 .nx-refs-*，
+   别再往这里长一套。 */

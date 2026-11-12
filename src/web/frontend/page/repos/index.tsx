@@ -21,8 +21,8 @@ import { useDialog } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
 import GetLoopModal from '../../components/repos/get-loop-modal.jsx';
-import DocsModal from '../../components/Introduction/docs-modal.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
+import { openPanel } from '../../workspace.js';
 import { useApp } from '../../app-context.jsx';
 import { useWikiNav } from '../doc/index.jsx';
 import RepoTable from './repo-table.jsx';
@@ -51,11 +51,6 @@ import type { LinkNoteTarget } from './bind-modals.jsx';
 import RemoteModal from './remote-modal.jsx';
 
 /** /api/repos/ref/check 的出站形状。 */
-/** 「查看详情」弹窗的目标（行内入口）。 */
-interface DocsTarget {
-  kind: string;
-  owner: RepoRecord;
-}
 
 export default function ReposView() {
   const guard = useGuard();
@@ -107,8 +102,6 @@ export default function ReposView() {
   const [transferOpen, setTransferOpen] = useState(false);
   // 持续 get 配置弹窗（#145）：设置页「项目级设置」删除后，配置落到行内「更多」
   const [glFor, setGlFor] = useState<RepoRecord | null>(null);
-  // 查看详情（文档集弹窗）：{ kind:'repo', owner } —— 行内「查看详情」入口
-  const [docsFor, setDocsFor] = useState<DocsTarget | null>(null);
   const [remoteFor, setRemoteFor] = useState<RepoRecord | null>(null); // 对齐 remote 的目标仓库
   const [bindRepoFor, setBindRepoFor] = useState<RepoRecord | null>(null); // dev 侧绑定弹窗的目标仓库
   // 绑定描述编辑（组 ↔ 参考仓库这条关系）：{ ref, groupId, groupName, note } | null
@@ -392,9 +385,20 @@ export default function ReposView() {
     },
     // 持续 get（waitgoal）配置弹窗（#145）：保存后刷行数据（绿点/菜单态跟着变）
     getloop: (r) => setGlFor(r),
-    // 查看详情：完整文档集弹窗（主篇 / 补充 / reference / 组内，就地编辑）
-    // onChanged 回灌仓库数据（descDocs 摘要靠它）
-    docs: (r) => setDocsFor({ kind: 'repo', owner: r }),
+    // 查看详情：在**右侧栏**打开该仓库的文档列表（#186：不再弹 DocsModal）
+    docs: (r) => {
+      const m = app.model;
+      if (!m) {
+        toast('工作区不可用，无法打开文档列表');
+        return;
+      }
+      openPanel(m, {
+        component: 'refs',
+        name: '文档列表',
+        config: { repoKey: r.key || '' },
+        location: 'right',
+      });
+    },
     // 行内分组 chip = 快捷筛选（再点一次取消）
     filter: (id) => setFilter((f) => (f === id ? '' : id)),
     // 组筛选视图里的「组」勋章：维持当前组筛选（不切换成取消）
@@ -589,19 +593,6 @@ export default function ReposView() {
           repo={remoteFor}
           onClose={() => setRemoteFor(null)}
           onSaved={async () => { await Promise.all([loadRepos(), loadRefCheck()]); }}
-        />
-      ) : null}
-
-      {/* 查看详情（文档集弹窗）：完整列表 + 复用编辑器就地编辑；
-          增删改标签后回灌仓库数据（行内摘要同步更新）。
-          model 必须传：弹窗里「更多 → 文字列表」要在工作区开 refs 右侧栏。 */}
-      {docsFor ? (
-        <DocsModal
-          kind={docsFor.kind}
-          owner={docsFor.owner}
-          model={app.model}
-          onClose={() => setDocsFor(null)}
-          onChanged={loadRepos}
         />
       ) : null}
 

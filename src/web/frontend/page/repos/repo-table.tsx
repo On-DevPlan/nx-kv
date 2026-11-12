@@ -1,6 +1,6 @@
 // 开发仓库主表：一行一个开发仓库（RepoRow）+ 行内小组件。
 //
-// **文档列是这行的核心内容**：一个「查看详情」入口开 DocsModal——完整文档集
+// **文档列是这行的核心内容**：一个「查看详情」入口在右侧栏开文档列表——完整文档集
 // （主篇 + 补充 + reference + 组内描述）就地看、就地编辑；行内不再铺 chip 外显。
 // 所属分组 chips 点一下 = 筛到那个组（再点取消）；归属的增删走「成员管理」弹窗。
 // 主表只放开发仓库（type=dev）——参考仓库有自己的大面板，两份名单不混。
@@ -198,8 +198,8 @@ function RepoPath({ path }: { path?: string }) {
   );
 }
 
-// 文档列入口（查看详情）：一行主篇标题 + 数量，点击打开 DocsModal——
-// 完整文档列表（主篇 / 补充 / reference / 组内）+ 复用编辑器就地编辑。
+// 文档列入口（查看详情）：一行主篇标题 + 数量，点击在右侧栏打开——
+// 完整文档列表（主篇 / 补充 / reference / 组内）+ 管理动作（标签 / 摘除 / 补充）。
 // #165：主行显示**文档标题**（正文首个 # 行），摘要（desc）只在没有标题时兜底、
 // 悬浮提示里看全文——此前 summary 优先，用户改了标题这行字永远不变（它显示的
 // 是回写 desc 的摘要），被当成「标题无法修改、标题区变成了 desc」。
@@ -289,7 +289,7 @@ function RepoRow({ r, filterBoard, groupRefRepoCounts, refRepoChipsByRepo, acts 
         </strong>
         <span className="mono rp-name-path"><RepoPath path={r.path} /></span>
       </td>
-      {/* 文档列 = 这个仓库全部文档的入口：查看详情 → DocsModal（含组内描述） */}
+      {/* 文档列 = 这个仓库全部文档的入口：查看详情 → 右侧栏文档列表（含组内描述） */}
       <td className="rp-cell-docs">
         <DocsEntry docs={r.descDocs} onOpen={() => acts.docs(r)} />
       </td>

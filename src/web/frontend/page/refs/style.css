@@ -20,6 +20,24 @@
   padding:7px 8px;border-radius:7px;
 }
 .nx-refs-row:hover{background:var(--soft,#F1F0EC)}
+/* #186：行改成「按钮 + 右侧管理小动作」两栏，hover 底色交给外层 wrap，
+   否则两层各自上色会叠出一道深边。 */
+.nx-refs-row-wrap{display:flex;align-items:flex-start;gap:2px;border-radius:7px}
+.nx-refs-row-wrap:hover{background:var(--soft,#F1F0EC)}
+.nx-refs-row-wrap .nx-refs-row{flex:1;min-width:0}
+.nx-refs-row-wrap .nx-refs-row:hover{background:transparent}
+.nx-refs-row-acts{
+  display:flex;flex-direction:column;gap:1px;flex:none;
+  padding:6px 4px 0 0;opacity:0;transition:opacity .12s;
+}
+.nx-refs-row-wrap:hover .nx-refs-row-acts,.nx-refs-row-wrap:focus-within .nx-refs-row-acts{opacity:1}
+.nx-refs-mini{
+  border:0;background:transparent;padding:0 4px;border-radius:5px;cursor:pointer;
+  font-size:11px;line-height:1.5;color:var(--mid,#838A93);
+}
+.nx-refs-mini:hover{background:var(--paper,#fff);color:var(--ink,#16181C)}
+.nx-refs-mini.danger:hover{background:#FBEDEC;color:#B4443C}
+.nx-refs-h .nx-refs-count{flex:none;font-size:10.5px;color:var(--faint,#A9AEB4)}
 .nx-refs-row.main .nx-refs-row-label{font-weight:650;color:var(--mdw-accent,#2F6F5E)}
 .nx-refs-row-label{
   font-size:12px;color:var(--ink,#16181C);

@@ -37,7 +37,6 @@ import { RepoKnowledgeAction } from './repo-knowledge.js';
 import { RepoListAction } from './repo-list.js';
 import { RepoOpenAction } from './repo-open.js';
 import { RepoRefAddAction } from './repo-ref-add.js';
-import { RepoRefBackfillAction } from './repo-ref-backfill.js';
 import { RepoRefCheckAction } from './repo-ref-check.js';
 import { RepoRefCloneAction } from './repo-ref-clone.js';
 import { RepoRefNoteAction } from './repo-ref-note.js';
@@ -84,7 +83,6 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   RepoListAction,
   RepoOpenAction,
   RepoRefAddAction,
-  RepoRefBackfillAction,
   RepoRefCheckAction,
   RepoRefCloneAction,
   RepoRefNoteAction,
@@ -131,7 +129,6 @@ export { RepoKnowledgeAction };
 export { RepoListAction };
 export { RepoOpenAction };
 export { RepoRefAddAction };
-export { RepoRefBackfillAction };
 export { RepoRefCheckAction };
 export { RepoRefCloneAction };
 export { RepoRefNoteAction };

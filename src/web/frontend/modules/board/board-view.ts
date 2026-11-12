@@ -112,7 +112,7 @@ export function splitQueueTasks(tasks: LocalTask[] = []): QueueBuckets {
   const list = Array.isArray(tasks) ? tasks : [];
   return {
     // 四桶与任务状态词表一一对应（src/shared/task-status.js）：
-    // pending 待领取 / claimed 已领取（在干）/ done 已交付 / cancelled 已取消（终态留档）
+    // pending 待领取 / claimed 已领取（在干）/ done 已完成 / cancelled 已取消（终态留档）
     pending: list.filter((t) => t.status === 'pending' && !t.deletedAt && !t.migratedTo),
     claimed: list.filter((t) => t.status === 'claimed' && !t.deletedAt).slice().reverse(),
     done: list.filter((t) => t.status === 'done' && !t.deletedAt).slice().reverse(),
@@ -155,7 +155,7 @@ export function sortTasksForDisplay(tasks: LocalTask[] = []): LocalTask[] {
     else if (t.migratedTo) migrated.push(t);
     else pending.push(t);
   }
-  // 终态（已交付 / 已取消）沉在历史区（与迁出记录同层），删除记录垫底
+  // 终态（已完成 / 已取消）沉在历史区（与迁出记录同层），删除记录垫底
   return [
     ...pending,
     ...claimed.reverse(),

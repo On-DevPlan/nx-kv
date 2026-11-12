@@ -2,7 +2,14 @@
 // 组件侧（components/md/ack-rail.jsx）只做指针编排，落点语义全在这层验证。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clampRailPos, loadRailPos, saveRailPos, RAIL_MARGIN } from '../../src/web/frontend/modules/board/ack-rail-pos.js';
+import {
+  ACK_RAIL_POS_KEY,
+  DOC_RAIL_POS_KEY,
+  clampRailPos,
+  loadRailPos,
+  saveRailPos,
+  RAIL_MARGIN,
+} from '../../src/web/frontend/modules/board/ack-rail-pos.js';
 
 // node 没有 localStorage——桩一个内存版（模块在调用时才摸它，桩在 import 后也生效）
 const mem = new Map();
@@ -63,4 +70,19 @@ test('脏数据不炸：坏 JSON / 非数值 → null', () => {
   assert.equal(loadRailPos(), null);
   mem.set('nx-kv-ack-rail-pos', JSON.stringify([1, 2]));
   assert.equal(loadRailPos(), null);
+});
+
+// 2026-11-12：文档目录轨也要能拖 → 落点按轨分键，两条轨互不覆盖，
+// 且默认参数仍落在旧键上（任务页既有落点不丢）
+test('按 key 分轨：ack 轨与文档目录轨各存各的，缺省仍走旧键', () => {
+  mem.clear();
+  saveRailPos({ x: 10, y: 20 });
+  saveRailPos({ x: 300, y: 400 }, DOC_RAIL_POS_KEY);
+  assert.deepEqual(loadRailPos(), { x: 10, y: 20 }, '缺省 = ack 轨');
+  assert.deepEqual(loadRailPos(ACK_RAIL_POS_KEY), { x: 10, y: 20 });
+  assert.deepEqual(loadRailPos(DOC_RAIL_POS_KEY), { x: 300, y: 400 });
+  saveRailPos(null, DOC_RAIL_POS_KEY);
+  assert.equal(loadRailPos(DOC_RAIL_POS_KEY), null, '清一条不影响另一条');
+  assert.deepEqual(loadRailPos(), { x: 10, y: 20 });
+  mem.clear();
 });

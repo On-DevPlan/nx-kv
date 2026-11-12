@@ -346,12 +346,12 @@ export async function updateTask({
         const newProject = String(parseFrontmatter(afterText).project || '').trim();
         const explicitChange = !!newProject && newProject !== oldProject;
         const rel = queueRelationsOf(t, task);
-        // 正判定：只有「待领取」能改归属项目（已领取/已交付的落点在领取时定下，要改先 reopen）
+        // 正判定：只有「待领取」能改归属项目（已领取/已完成的落点在领取时定下，要改先 reopen）
         const movable = task.status === 'pending' && !rel.length;
         if (explicitChange && !movable) {
           if (task.status !== 'pending') {
             throw badInput(
-              `#${want} 已领取或已交付——这种任务不能改归属项目（落点是提交/领取时定下的，要改先 reopen）`,
+              `#${want} 已领取或已完成——这种任务不能改归属项目（落点是提交/领取时定下的，要改先 reopen）`,
             );
           }
           throw badInput(
@@ -384,11 +384,11 @@ export async function updateTask({
       // 时长与清除仍锁定（领取即计时，起表后声明是既成事实，要调先 reopen）。
       const locked = live.status !== 'pending';
       if (goal.clear) {
-        if (locked) throw badInput(`#${want} 已领取或已交付，时间目标不可清除——要调整先 reopen（附加要求可直接改）`);
+        if (locked) throw badInput(`#${want} 已领取或已完成，时间目标不可清除——要调整先 reopen（附加要求可直接改）`);
         tasksRepo.updateTask(host.id, live.id, { timegoal: null });
         goalChanged = 'cleared';
       } else if (goal.duration != null) {
-        if (locked) throw badInput(`#${want} 已领取或已交付，时长不可改——要调整先 reopen（附加要求可直接改）`);
+        if (locked) throw badInput(`#${want} 已领取或已完成，时长不可改——要调整先 reopen（附加要求可直接改）`);
         // 只改时长没带 prompt → 保留原附加要求；带了（含空串）→ 以传入为准
         const prev = sanitizeTaskGoal(live.timegoal);
         const prompt = goal.prompt != null ? String(goal.prompt).trim() : prev ? prev.prompt : '';

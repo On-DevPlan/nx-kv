@@ -19,7 +19,7 @@ export class LocaltaskCancelManyAction extends ActionBase<typeof input> {
     id: 'localtask.cancelMany',
     cli: ['localtask', 'cancel-many'],
     http: ['POST', '/api/localtasks/items/cancel'],
-    summary: '批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已交付/已取消跳过；取消为终态，原文留档',
+    summary: '批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已完成/已取消跳过；取消为终态，原文留档',
     input,
     render: (d: any) => {
       const done: any = d.cancelled.map((x: any) => `#${x.id}`).join(' ');

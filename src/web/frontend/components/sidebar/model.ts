@@ -38,6 +38,12 @@ export interface SideRow {
   pending: number;
   /** 有 agent 等待回填（每行都有） */
   waiting: boolean;
+  /**
+   * 等待窗口的截止时刻（epoch ms；#182 侧栏倒计时用）。
+   * 一行可能挂着多个队列的等待 —— 取**最早**结束的那个，它最先需要处理。
+   * 0 / 缺省 = 没有在等（或数据太旧拿不到截止时刻）。
+   */
+  waitingDeadlineMs?: number;
   /** 看板成员数 */
   count?: number;
   members?: string[];
@@ -57,6 +63,66 @@ export interface SideTree {
 // 兄弟模块类型桥：board-view 尚未类型化（`tasks = []` 默认值把形参推成 never[]），
 // 这里按实际契约声明一次——它毕业成强类型后此桥退化为恒等。
 const projectPendingBridge = projectPending as unknown as (tasks: LocalTask[] | undefined) => number;
+
+// ─── 等待窗口（#182：侧栏等待标记要显示时间）─────────────────────────
+//
+// 服务端 topic 上已经有两个真相：`waiting`（僵尸标志已抹平，见 task-view.ts 的
+// isLiveWaiting）与 `waitingUntilMs`（毫秒精度截止时刻；老数据只有 waitingUntil 字符串）。
+// 这里只做「取数 / 取最早 / 格式化」，**不自己判定等待是否还活着**——那是后端的事，
+// 前端再判一遍必然与它分叉。
+const STAMP_RE = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/;
+
+/** `"YYYY-MM-DD HH:mm:ss"`（本地时区）→ epoch ms；解析不了返回 0。 */
+function stampMs(v: unknown): number {
+  const m = STAMP_RE.exec(String(v ?? '').trim());
+  if (!m) return 0;
+  return new Date(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!).getTime();
+}
+
+/** 一个主题的等待截止时刻（epoch ms）；没在等 / 拿不到 → 0。 */
+function topicDeadlineMs(t: LocalTopic | null | undefined): number {
+  if (!t || !t.waiting) return 0;
+  const ms = Number(t.waitingUntilMs) || 0;
+  if (ms > 0) return ms;
+  return stampMs(t.waitingUntil);
+}
+
+/** 一组截止时刻里**最早**的那个（0 = 一个都没有）。 */
+function earliestDeadline(list: unknown[]): number {
+  let min = 0;
+  for (const v of list) {
+    const d = Number(v) || 0;
+    if (d > 0 && (!min || d < min)) min = d;
+  }
+  return min;
+}
+
+/**
+ * 等待倒计时的人读文本（侧栏等待标记）：`剩 4:32` / `剩 1:02:03`；
+ * 已过截止 → `已超时`（服务端通常已把 waiting 抹平，这里只是兜底一帧）。
+ *
+ * @param deadlineMs 截止时刻（epoch ms）
+ * @param nowMs      当前时刻（组件每秒推进）
+ */
+export function fmtWaitLeft(deadlineMs: unknown, nowMs: number = Date.now()): string {
+  const d = Number(deadlineMs) || 0;
+  if (!d) return '';
+  const left = d - nowMs;
+  if (left <= 0) return '已超时';
+  const s = Math.ceil(left / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `剩 ${h}:${String(m).padStart(2, '0')}:${ss}` : `剩 ${m}:${ss}`;
+}
+
+/** 截止时刻的钟点（tooltip 用）：`10:31:02`；拿不到 → ''。 */
+export function fmtDeadlineClock(deadlineMs: unknown): string {
+  const d = Number(deadlineMs) || 0;
+  if (!d) return '';
+  const t = new Date(d);
+  return [t.getHours(), t.getMinutes(), t.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
+}
 
 /**
  * 构建侧边栏行模型。
@@ -116,6 +182,8 @@ export function buildTree(
         // 计数。服务端 topic.pending 是队列真相、含组任务——面板侧按走向重数）
         pending: ts.reduce((n, t) => n + projectPendingBridge(t.tasks), 0),
         waiting: ts.some((t) => t.waiting),
+        // 等待标记的倒计时用它（多队列取最早结束的那个窗口）
+        waitingDeadlineMs: earliestDeadline(ts.map(topicDeadlineMs)),
         topics: ts,
       };
     });
@@ -168,6 +236,8 @@ export function buildTree(
         0
       ),
       waiting: members.some((m) => m.waiting),
+      // 组行的等待标记看成员的窗口（取最早结束的那个）
+      waitingDeadlineMs: earliestDeadline(members.map((m) => m.waitingDeadlineMs)),
       members: memberRepos.map((m) => m.key ?? ''),
     });
   }
@@ -226,6 +296,7 @@ export function buildTree(
       topic: globalRow,
       pending: globalRow.pending || 0,
       waiting: !!globalRow.waiting,
+      waitingDeadlineMs: topicDeadlineMs(globalRow),
       // 历史形态：全局池行把任务数组放在 topics 上（TaskChildren 读的是 tasks）——
       // 此处只做形状收口，不改数据落点，免得顺手改了侧栏的可见行为。
       topics: (globalRow.tasks || []).filter((t) => !t.deletedAt) as unknown as LocalTopic[],

@@ -291,7 +291,14 @@ export function renderMarkdownHtml(
   // `[名](fileId)` 已渲染成 a.md-att，整表再拼一份就是重复；且实时面板是逐块
   // 调本函数的，整表下发会让每个块都拖一份 chip 出来）。v1 老数据的文件附件
   // 没有内联表示，仍靠它可见。
-  const files = attachments.filter((a) => a.type !== 'image' && !html.includes(String(a.id)));
+  //
+  // #183：**只兜底真文件**。ref / task / url 三类是「绑定」，归属在附件区
+  // （role=attach|doc），正文里从来没有它们的占位符——此前它们也进了这个
+  // filter，于是每个块底部都挂一条同名 chip（文档页里一句话后面跟一条
+  // 「设计笔记」，看着像正文被污染），且「块编辑器与 ref 不同步」。
+  const isFileAttachment = (a: Attachment | null | undefined): boolean =>
+    !!a && a.type !== 'image' && a.kind !== 'ref' && a.kind !== 'task' && a.kind !== 'url';
+  const files = attachments.filter((a) => isFileAttachment(a) && !html.includes(String(a.id)));
   if (files.length) {
     html += files
       .map(

@@ -1,5 +1,5 @@
 // 目录面板 —— 简介（统一 Introduction）+ 子任务表。
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addTask,
   cancelManyTasks,
@@ -10,11 +10,11 @@ import {
   removeTaskItem,
   reorderTask,
   postReopen,
-  restoreTaskItem,
 } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog, PopMenu } from '../../components/popup/index.jsx';
 import { GLOBAL_KEY, isGroupTask } from '../../modules/board/board-view.js';
+import { filterTasks } from '../../modules/board/task-search.js';
 import {
   FEEDBACK_HEADING,
   PLAIN_FEEDBACK_HEADING,
@@ -24,7 +24,6 @@ import { usePager } from '../../components/pager.jsx';
 import { useApp } from '../../app-context.jsx';
 import Landing from './landing.jsx';
 import DagEditor from './dag-editor.jsx';
-import DeletedPanel from './deleted-panel.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
 import { openSettingsPanel, openTemplateEditor } from '../../panels.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
@@ -63,7 +62,6 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
 
   const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
   const [tplMenu, setTplMenu] = useState<{ x?: number; y?: number } | null>(null);
-  const [showDeleted, setShowDeleted] = useState(false); // 已删除任务面板开关
   const [dagTask, setDagTask] = useState<LocalTask | null>(null); // 正在编排依赖的任务（DAG 节点编辑器）
   const fileMdRef = useRef<HTMLInputElement | null>(null);
 
@@ -92,10 +90,19 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     () => sortTasksForDisplay((topic?.tasks || []).filter((t) => !t.deletedAt && !isGroupTask(t))),
     [topic]
   );
-  const pager = usePager(allTasks, PAGE_SIZE);
+  // #181：面板头搜索框——标题与正文都算命中目标（模糊串规则见 modules/board/task-search）；
+  // 先过滤再分页，翻页条报的是命中数。
+  const [q, setQ] = useState('');
+  const shownTasks = useMemo(() => filterTasks(allTasks, q), [allTasks, q]);
+  const pager = usePager(shownTasks, PAGE_SIZE);
+  // 改查询串就回到第一页（否则会停在「上一结果的第 3 页」上，看起来像没命中）
+  useEffect(() => {
+    pager.setPage(0);
+  }, [q]);
+  // 待领取计数跟着**筛后**的集合走：搜索时头部「待领取 N」要与屏幕上的行对得上
   const pendingCount = useMemo(
-    () => allTasks.filter((t) => t.status === 'pending' && !t.migratedTo).length,
-    [allTasks]
+    () => shownTasks.filter((t) => t.status === 'pending' && !t.migratedTo).length,
+    [shownTasks]
   );
   const guard = (fn: () => Promise<unknown>) => fn().catch((e) => toast(String((e as Error).message || e)));
 
@@ -345,7 +352,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     if (!list.length) return false;
     const ok = await dialog({
       title: `取消选中的 ${list.length} 条待领取任务`,
-      message: '只处理待领取任务；已领取/已交付/已取消会跳过。取消为终态，原文留档。',
+      message: '只处理待领取任务；已领取/已完成/已取消会跳过。取消为终态，原文留档。',
       okText: '取消任务',
     });
     if (!ok) return false;
@@ -362,56 +369,24 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     const list = (ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
     if (!list.length) return false;
     const ok = await dialog({
-      title: `把选中的 ${list.length} 条待领取任务标为完成`,
-      message: '只处理待领取任务；已领取/已交付/已取消会跳过。完成会补一条完成记录，原文留档。',
+      title: `把选中的 ${list.length} 条任务标为完成`,
+      message: '待领取与已领取（正在跑）都能收：已领取的直接收口，agent 侧回执会被忽略。已完成/已取消会跳过。完成会补一条完成记录，原文留档。',
       okText: '标为完成',
     });
     if (!ok) return false;
     return guard(async () => {
       const res = await closeManyTasks({ ...scopeBody(), ids: list, status: 'done' });
       const skipped = res?.skipped?.length || 0;
-      toast(`已标为完成 ${res?.count ?? 0} 条任务${skipped ? `，跳过 ${skipped} 条` : ''}`);
+      const claimed = res?.claimedClosed?.length || 0;
+      toast(
+        `已标为完成 ${res?.count ?? 0} 条任务${claimed ? `（含 ${claimed} 条已领取）` : ''}${skipped ? `，跳过 ${skipped} 条` : ''}`,
+      );
       refreshLocal?.();
       return true;
     });
   };
 
-  // ─── 已删除（软删回收站）──────────────────────────────────────────
-  // 软删的行仍在 topic.tasks 里（带 deletedAt），看板/列表把它们过滤掉了，
-  // 这里捞出来给「更多 → 已删除任务」面板。倒序：刚删的在上。
-  const deletedTasks = useMemo(
-    () => (topic?.tasks || []).filter((t) => t.deletedAt).slice().reverse(),
-    [topic]
-  );
-
-  const restoreDeleted = (t: LocalTask | null) => {
-    if (!t) return;
-    guard(async () => {
-      await restoreTaskItem(isGlobal ? { key: GLOBAL_KEY, id: t.id } : { cwd: topic?.cwd, id: t.id });
-      toast(`已恢复 #${t.id}「${(t.text || '').split('\n').find((l) => l.trim())?.replace(/^#\s*/, '') || ''}」`);
-      refreshLocal?.();
-    });
-  };
-
-  const purgeDeleted = async (t: LocalTask | null) => {
-    if (!t) return;
-    const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
-    const ok = await dialog({
-      title: `彻底删除「${title.replace(/^#\s*/, '')}」`,
-      message: '彻底删除后不可恢复（行从队列里真正摘除）。',
-      danger: true,
-      okText: '彻底删除',
-    });
-    if (!ok) return;
-    guard(async () => {
-      await removeTaskItem({ ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }), id: t.id, purge: true });
-      toast(`已彻底删除 #${t.id}`);
-      refreshLocal?.();
-    });
-  };
-
-  const openDeleted = () => setShowDeleted(true);
-
+  // ─── 文档列表（右侧栏）────────────────────────────────────────────
   const openRefs = () => {
     if (isGlobal || !repo) {
       toast('全局池没有项目文档列表');
@@ -473,6 +448,8 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
           model={model}
           tasks={pager.items}
           taskCount={pager.total}
+          q={q}
+          onQuery={setQ}
           pendingCount={pendingCount}
           page={pager.page}
           pageCount={pager.pageCount}
@@ -492,9 +469,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
           onOpenFlow={() => model && openPanel(model, { component: 'dag', name: '编排', config: { dirKey } })}
           onToggleGate={toggleGate}
           downstreamOf={downstreamOf}
-          onDeleted={openDeleted}
           onRefs={openRefs}
-          deletedCount={deletedTasks.length}
         />
 
       {dagTask && (
@@ -503,15 +478,6 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
           tasks={dagCandidates}
           onClose={() => setDagTask(null)}
           onSave={saveDag}
-        />
-      )}
-
-      {showDeleted && (
-        <DeletedPanel
-          tasks={deletedTasks}
-          onClose={() => setShowDeleted(false)}
-          onRestore={restoreDeleted}
-          onPurge={purgeDeleted}
         />
       )}
 

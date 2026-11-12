@@ -6,7 +6,6 @@ import {
   getLoopForCwd,
   getLoopInstruction,
   DEFAULT_GET_LOOP_TEMPLATE,
-  clampLoopTemplateList,
 } from './waitgoal-config.js';
 
 export {
@@ -15,7 +14,6 @@ export {
   getLoopForCwd,
   getLoopInstruction,
   DEFAULT_GET_LOOP_TEMPLATE,
-  clampLoopTemplateList,
 };
 
 class WaitGoalPlugin extends BasePlugin {

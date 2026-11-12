@@ -40,7 +40,7 @@ test('单字徽标：等 / 跑 / 完 / 档', () => {
 test('文案走同构词表（shared/task-status）；不认识的词原样显示', () => {
   assert.equal(statusLabel(row({ status: 'pending' })), '待领取');
   assert.equal(statusLabel(row({ status: 'claimed' })), '已领取');
-  assert.equal(statusLabel(row({ status: 'done' })), '已交付');
+  assert.equal(statusLabel(row({ status: 'done' })), '已完成');
   assert.equal(statusLabel(row({ status: 'cancelled' })), '已取消');
   assert.equal(statusLabel(row({ status: 'weird' })), 'weird');
 });

@@ -31,10 +31,9 @@ import type {
   DocMdfilesAction,
   DocRemoveAction,
   DocUpdateAction,
-  DocsBindAction,
+  DocsBindingsAction,
   DocsIndexAction,
   DocsLinkAction,
-  DocsNotebindAction,
   DocsSeedAction,
 } from '../../../modules/docs/actions/_manifest.generated.js';
 import type {
@@ -285,7 +284,7 @@ export interface ApiClient {
   repoRemove(input: z.input<InstanceType<typeof RepoRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRemoveAction>['run']>>>;
 /** 扫描目录发现 git 仓库；--dry-run 只列出（发现模式，不登记） */
   scan(input?: z.input<InstanceType<typeof RepoScanAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoScanAction>['run']>>>;
-/** 修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填 + 交付文本带继续 get 模板）。描述已改为文档，不再经这里改 */
+/** 修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填；指令文案在 设置 → 提示词模板 → 持续 get，仓库侧只有开关 + 分钟）。描述已改为文档，不再经这里改 */
   repoUpdate(input: z.input<InstanceType<typeof RepoUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>>;
 /** 新建自有文档（--body 给 Markdown 正文；--body-file <文件> / - 读管道；已存在则报冲突） */
   docAdd2(input: z.input<InstanceType<typeof DocAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocAddAction>['run']>>>;
@@ -311,14 +310,12 @@ export interface ApiClient {
   docRemove2(input: z.input<InstanceType<typeof DocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRemoveAction>['run']>>>;
 /** 写文档正文（面板保存走这里；自有走 own 树、外部走绑定闭包内原文件；写盘后摘要回写 desc / 组内 note） */
   docUpdate(input: z.input<InstanceType<typeof DocUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocUpdateAction>['run']>>>;
-/** 绑定项目/组介绍的文档覆盖（--repo 或 --board 二选一 + --rel <自有路径> | --path <外部文件/目录>；--reset 拆回约定路径） */
-  docsBind(input?: z.input<InstanceType<typeof DocsBindAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsBindAction>['run']>>>;
+/** 查文档归属（--ref <docId> 看这篇被谁引用；--host <key> 看这个宿主的文档集；position=0 为主篇） */
+  bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>>;
 /** 双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js） */
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
 /** 维护组的附加文档列表（--doc <自有路径|绝对路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 doc 重复添加 = 更新） */
   link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>>;
-/** 绑定组内仓库描述的文档覆盖（--board <看板> --repo <仓库> + --rel/--path/--reset；仓库须为该组成员） */
-  notebind(input: z.input<InstanceType<typeof DocsNotebindAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsNotebindAction>['run']>>>;
 /** 把仓库 desc / 看板 desc / 组内 note 字符串播种成约定路径的 md（缺省预览，--apply 执行；幂等） */
   seed(input?: z.input<InstanceType<typeof DocsSeedAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsSeedAction>['run']>>>;
 /** 向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝） */
@@ -331,7 +328,7 @@ export interface ApiClient {
   localtaskAttachments(input: z.input<InstanceType<typeof LocaltaskAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachmentsAction>['run']>>>;
 /** 关闭某主题的等待：阻塞中的 wait 立即收尾（与超时同一出口，带 cancelled 标记；不删主题与任务） */
   cancel(input?: z.input<InstanceType<typeof LocaltaskCancelAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCancelAction>['run']>>>;
-/** 批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已交付/已取消跳过；取消为终态，原文留档 */
+/** 批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已完成/已取消跳过；取消为终态，原文留档 */
   cancelMany(input: z.input<InstanceType<typeof LocaltaskCancelManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCancelManyAction>['run']>>>;
 /** 查一条任务的链：history 节点（origin/reopen/comment/current）+ 旧 forkOf 祖先/子任务；面板点节点可旁路查看正文 */
   chain(input: z.input<InstanceType<typeof LocaltaskChainAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskChainAction>['run']>>>;
@@ -339,7 +336,7 @@ export interface ApiClient {
   claim(input?: z.input<InstanceType<typeof LocaltaskClaimAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskClaimAction>['run']>>>;
 /** 克隆任务：复制正文内容为一条新任务（同主题；全局任务仍进全局池）。不带派生链、不继承时间目标与依赖——开新活用 */
   localtaskClone(input: z.input<InstanceType<typeof LocaltaskCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCloneAction>['run']>>>;
-/** 批量收口待领取任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；已领取/已交付跳过 */
+/** 批量收口还没结束的任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；待领取与已领取都能收（已领取的 agent 侧回执会被忽略），已完成/已取消跳过 */
   closeMany(input: z.input<InstanceType<typeof LocaltaskCloseManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCloseManyAction>['run']>>>;
 /** 配置等待超时（秒）/ ack 汇报要求（ack 区块，done 指令与收尾要求唯一出口）/ 每区块模板列表 */
   config(input?: z.input<InstanceType<typeof LocaltaskConfigAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskConfigAction>['run']>>>;
@@ -847,7 +844,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async repoUpdate(input: z.input<InstanceType<typeof RepoUpdateAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof RepoUpdateAction>['_input']>);
       const path = `/api/repos/${encodeURIComponent(String(inp["id"]))}`;
-      const body = { "path": inp["path"], "name": inp["name"], "icon": inp["icon"], "desc": inp["desc"], "notes": inp["notes"], "type": inp["type"], "remote": inp["remote"], "key": inp["key"], "key-custom": inp["key-custom"], "get-loop": inp["get-loop"], "get-loop-minutes": inp["get-loop-minutes"], "get-loop-template": inp["get-loop-template"] };
+      const body = { "path": inp["path"], "name": inp["name"], "icon": inp["icon"], "desc": inp["desc"], "notes": inp["notes"], "type": inp["type"], "remote": inp["remote"], "key": inp["key"], "key-custom": inp["key-custom"], "get-loop": inp["get-loop"], "get-loop-minutes": inp["get-loop-minutes"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>;
     },
     // action: doc.add
@@ -949,12 +946,16 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "ref": inp["ref"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof DocUpdateAction>['run']>>;
     },
-    // action: docs.bind
-    async docsBind(input?: z.input<InstanceType<typeof DocsBindAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocsBindAction>['_input']>);
-      const path = `/api/docs/bind`;
-      const body = { "repo": inp["repo"], "board": inp["board"], "rel": inp["rel"], "path": inp["path"], "reset": inp["reset"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsBindAction>['run']>>;
+    // action: docs.bindings
+    async bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsBindingsAction>['_input']>);
+      let path = `/api/docs/bindings`;
+      const q = new URLSearchParams();
+      if (inp["ref"] !== undefined) q.set("ref", String(inp["ref"]));
+      if (inp["host"] !== undefined) q.set("host", String(inp["host"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>;
     },
     // action: docs.index
     async index() {
@@ -967,13 +968,6 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/docs/link`;
       const body = { "board": inp["board"], "doc": inp["doc"], "note": inp["note"], "tag": inp["tag"], "remove": inp["remove"], "before": inp["before"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>;
-    },
-    // action: docs.notebind
-    async notebind(input: z.input<InstanceType<typeof DocsNotebindAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocsNotebindAction>['_input']>);
-      const path = `/api/docs/note-bind`;
-      const body = { "board": inp["board"], "repo": inp["repo"], "rel": inp["rel"], "path": inp["path"], "reset": inp["reset"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsNotebindAction>['run']>>;
     },
     // action: docs.seed
     async seed(input?: z.input<InstanceType<typeof DocsSeedAction>['_input']>) {

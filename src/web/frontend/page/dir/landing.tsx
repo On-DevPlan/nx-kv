@@ -90,7 +90,7 @@ interface LandingProps {
   onDeleteTasks?: (ids: number[]) => Promise<unknown>;
   /** (ids) 批量取消选中待领取任务 */
   onCancelTasks?: (ids: number[]) => Promise<unknown>;
-  /** (ids) 批量把选中待领取任务标为完成 */
+  /** (ids) 批量把选中的未结束任务（待领取 / 已领取）标为完成 */
   onCompleteTasks?: (ids: number[]) => Promise<unknown>;
   onReopenTask?: (t: LocalTask) => void;
   /** 模板菜单的锚点（click 与 Enter/Space 都会调；只有鼠标事件带坐标） */
@@ -107,12 +107,12 @@ interface LandingProps {
   onToggleGate?: (t: LocalTask) => void;
   /** { [gateTaskId]: number[] } 闸门挡住的后续任务 id */
   downstreamOf?: Record<string, number[]>;
-  /** () 打开已删除任务面板（#139 工具编排） */
-  onDeleted?: () => void;
   /** () 打开文档列表右侧栏 */
   onRefs?: () => void;
-  /** 已软删任务数（「更多」角标提示） */
-  deletedCount?: number;
+  /** 搜索串（#181：标题 + 正文模糊匹配） */
+  q?: string;
+  /** (v) 改搜索串 */
+  onQuery?: (v: string) => void;
 }
 
 export default function Landing({
@@ -131,7 +131,7 @@ export default function Landing({
   onDeleteTask,
   onDeleteTasks,     // (ids) 批量删除选中任务
   onCancelTasks,     // (ids) 批量取消选中待领取任务
-  onCompleteTasks,   // (ids) 批量把选中待领取任务标为完成
+  onCompleteTasks,   // (ids) 批量把选中的未结束任务（待领取 / 已领取）标为完成
   onReopenTask,
   onTplMenu,
   onImport,
@@ -141,11 +141,12 @@ export default function Landing({
   onOpenFlow,      // () 打开可视化编排面板
   onToggleGate,    // (t) 闸门快捷开关
   downstreamOf,    // { [gateTaskId]: number[] } 闸门挡住的后续任务 id
-  onDeleted,       // () 打开已删除任务面板（#139 工具编排）
   onRefs,          // () 打开文档列表右侧栏
-  deletedCount = 0 // 已软删任务数（「更多」角标提示）
+  q = '',          // 搜索串（标题 + 正文模糊匹配）
+  onQuery,         // (v) 改搜索串
 }: LandingProps) {
   const name = isGlobal ? '全局池' : (topic?.name || '目录');
+  const searching = !!String(q).trim();
 
   // 拖动排序（HTML5 DnD）：只在待领取行之间换位，落点 = 上半行之前 / 下半行之后。
   // 拖拽态走 **ref**（同步可读）——dragstart/dragover 在真实拖拽里也只隔几毫秒，
@@ -163,8 +164,13 @@ export default function Landing({
   const pageIds = tasks.map((t) => Number(t.id));
   const allPicked = pageIds.length > 0 && pageIds.every((id) => picked.has(id));
   const pickedTasks = tasks.filter((t) => picked.has(Number(t.id)));
-  // 取消/标为完成只对待领取生效；已领取/已交付/已取消由后端跳过
-  const closableTasks = pickedTasks.filter(
+  // #184：标为完成对「未结束」的任务都开放（待领取 + 已领取/正在跑）；
+  // 取消仍只给待领取——取消是丢弃，误伤正在跑的会话代价更高，留给 agent 侧回执。
+  const doneTargets = pickedTasks.filter(
+    (t) => (t.status === 'pending' || t.status === 'claimed') && !t.migratedTo && !t.deletedAt
+  );
+  const claimedPicked = doneTargets.filter((t) => t.status === 'claimed').length;
+  const cancelTargets = pickedTasks.filter(
     (t) => t.status === 'pending' && !t.migratedTo && !t.deletedAt
   );
   const togglePick = (id: number | string) => {
@@ -192,7 +198,7 @@ export default function Landing({
     const ok = await fn(ids);
     if (ok) setPicked(new Set());
   };
-  // 只有待领取行能拖动调序（已领取/已交付/已取消都是固定历史）
+  // 只有待领取行能拖动调序（已领取/已完成/已取消都是固定历史）
   const movable = (t: LocalTask) => t.status === 'pending' && !t.migratedTo && !t.deletedAt;
   const zoneOf = (e: ReactDragEvent<HTMLElement>, tr: HTMLElement): DropZone => {
     const r = tr.getBoundingClientRect();
@@ -238,30 +244,30 @@ export default function Landing({
             <button
               type="button"
               className="btn ghost sm"
-              disabled={!closableTasks.length}
+              disabled={!doneTargets.length}
               title={
-                closableTasks.length
-                  ? '把选中的待领取任务标为已完成（补一条完成记录，原文留档）'
-                  : '只有待领取任务可以直接标为完成'
+                doneTargets.length
+                  ? `把选中的未结束任务标为已完成（补一条完成记录，原文留档）${claimedPicked ? `；其中 ${claimedPicked} 条已被领取，会直接收口，agent 侧回执忽略` : ''}`
+                  : '选中的任务都已结束，没有可标为完成的'
               }
               onClick={() => runBatch('complete')}
             >
-              标为完成选中{closableTasks.length ? ` (${closableTasks.length})` : ''}
+              标为完成选中{doneTargets.length ? ` (${doneTargets.length})` : ''}
             </button>
           )}
           {onCancelTasks && (
             <button
               type="button"
               className="btn ghost sm"
-              disabled={!closableTasks.length}
+              disabled={!cancelTargets.length}
               title={
-                closableTasks.length
+                cancelTargets.length
                   ? '把选中的待领取任务标为已取消（终态，原文留档）'
-                  : '只有待领取任务可以取消'
+                  : '只有待领取任务可以取消（已领取的交给 agent 回执）'
               }
               onClick={() => runBatch('cancel')}
             >
-              取消选中{closableTasks.length ? ` (${closableTasks.length})` : ''}
+              取消选中{cancelTargets.length ? ` (${cancelTargets.length})` : ''}
             </button>
           )}
           {onDeleteTasks && (
@@ -279,19 +285,36 @@ export default function Landing({
         title={isGlobal ? '全局池任务' : '任务'}
         pendingCount={pendingCount}
         headerExtra={
-          tasks.length ? (
-            <label className="rp-proj-pickall" title="全选/取消全选当前页">
+          <>
+            {/* #181：搜索框——标题与正文一起搜（模糊串规则见 modules/board/task-search） */}
+            <span className="rp-tasks-tools">
               <input
-                type="checkbox"
-                checked={allPicked}
-                onChange={togglePickAll}
-                aria-label="全选当前页任务"
+                className="rp-task-search"
+                type="search"
+                value={q}
+                placeholder="搜索标题 / 内容"
+                aria-label="搜索任务"
+                onChange={(e) => onQuery && onQuery(e.target.value)}
               />
-              全选本页
-            </label>
-          ) : null
+              {tasks.length ? (
+                <label className="rp-proj-pickall" title="全选/取消全选当前页">
+                  <input
+                    type="checkbox"
+                    checked={allPicked}
+                    onChange={togglePickAll}
+                    aria-label="全选当前页任务"
+                  />
+                  全选本页
+                </label>
+              ) : null}
+            </span>
+          </>
         }
-        emptyText={`还没有页面：点「＋ 新建页」写第一篇，或让 agent 往${isGlobal ? '全局池' : '这个目录'}投递任务。`}
+        emptyText={
+          searching
+            ? `没有匹配「${q.trim()}」的任务（标题与正文都搜过了）`
+            : `还没有页面：点「＋ 新建页」写第一篇，或让 agent 往${isGlobal ? '全局池' : '这个目录'}投递任务。`
+        }
       >
         {tasks.map((t) => {
           const movableRow = movable(t);
@@ -383,7 +406,11 @@ export default function Landing({
     // #167 三轮：去面包屑（group 页没有，返回导航走左侧树）。
     <TaskPanelLayout
       name={name}
-      counts={[`${taskCount} 个任务`, ...(pendingCount > 0 ? [`待领取 ${pendingCount}`] : [])]}
+      counts={
+        searching
+          ? [`命中 ${taskCount} 个任务`, ...(pendingCount > 0 ? [`待领取 ${pendingCount}`] : [])]
+          : [`${taskCount} 个任务`, ...(pendingCount > 0 ? [`待领取 ${pendingCount}`] : [])]
+      }
       intro={!isGlobal && repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
       batch={batchBar}
       list={listPanel}
@@ -394,15 +421,13 @@ export default function Landing({
           <ToolActsBar
             kind="dir"
             labels={{
-              more: deletedCount > 0 ? `更多 (${deletedCount})` : '更多',
-              deleted: deletedCount > 0 ? `已删除任务（${deletedCount}）` : '已删除任务',
+              more: '更多',
             }}
             titles={{
               new: '按默认模板新建一页（▾ 选模板）',
               import: '把一个 .md 文件导入成任务',
               progress: '打开这个目录的进程面板',
-              more: deletedCount > 0 ? `更多操作（含 ${deletedCount} 条已删除任务）` : '更多操作',
-              deleted: '查看并恢复已删除任务',
+              more: '更多操作',
               refs: '查看文档 / reference 列表',
             }}
             renderers={{
@@ -447,7 +472,6 @@ export default function Landing({
               import: onImport,
               progress: onProg,
               orch: onOpenFlow,
-              deleted: onDeleted,
               refs: onRefs,
             }}
           />

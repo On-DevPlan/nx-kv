@@ -34,6 +34,9 @@ export default function TaskPanel({
   children = null,
   emptyText = '',
 }: TaskPanelProps) {
+  // 空态判定要看**行数**：调用方传的是 `tasks.map(...)`，没有行时那是个**空数组**
+  // （truthy），只用 `!children` 判会让空态永远不出现——搜索零命中时列表区一片空白。
+  const hasRows = Array.isArray(children) ? children.length > 0 : !!children;
   return (
     <div className="rp-tasks">
       <div className="rp-tasks-h">
@@ -42,7 +45,7 @@ export default function TaskPanel({
         {headerExtra}
       </div>
       {children}
-      {!children && emptyText ? <div className="rp-proj-none muted">{emptyText}</div> : null}
+      {!hasRows && emptyText ? <div className="rp-proj-none muted">{emptyText}</div> : null}
     </div>
   );
 }

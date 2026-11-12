@@ -21,7 +21,6 @@ const input = z.object({
   'key-custom': z.boolean().optional().describe("key 是否自定义（true=不跟随 remote）"),
   'get-loop': z.enum(["on", "off"]).optional().describe("持续 get 开关"),
   'get-loop-minutes': z.number().optional().describe("无任务时的阻塞窗口（分钟，默认 10，上限 600s 夹制）"),
-  'get-loop-template': z.string().optional().describe("领到任务时追加的「继续 get」模板——整体替换为这一条（多条在设置面板按条增删；占位符 {{task.id}}/{{task.text}} 等；置空 = 用默认模板）"),
 });
 
 export class RepoUpdateAction extends ActionBase<typeof input> {
@@ -29,7 +28,7 @@ export class RepoUpdateAction extends ActionBase<typeof input> {
     id: 'repo.update',
     cli: ['repo', 'update'],
     http: ['PATCH', '/api/repos/:id'],
-    summary: '修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填 + 交付文本带继续 get 模板）。描述已改为文档，不再经这里改',
+    summary: '修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填；指令文案在 设置 → 提示词模板 → 持续 get，仓库侧只有开关 + 分钟）。描述已改为文档，不再经这里改',
     args: ['id'],
     input,
     render: (r: any) => `已更新: ${r.name}（key: ${r.key}）`,
@@ -37,11 +36,10 @@ export class RepoUpdateAction extends ActionBase<typeof input> {
   override async run(ctx: ActionInput<this['_input']>) {
 
         const patch: any = { ...ctx, keyCustom: ctx['key-custom'] === undefined ? undefined : ctx['key-custom'] === true };
-        if (ctx['get-loop'] !== undefined || ctx['get-loop-minutes'] !== undefined || ctx['get-loop-template'] !== undefined) {
+        if (ctx['get-loop'] !== undefined || ctx['get-loop-minutes'] !== undefined) {
           patch.getLoop = {
             ...(ctx['get-loop'] !== undefined ? { enabled: ctx['get-loop'] === 'on' } : {}),
             ...(ctx['get-loop-minutes'] !== undefined ? { waitMinutes: ctx['get-loop-minutes'] } : {}),
-            ...(ctx['get-loop-template'] !== undefined ? { template: ctx['get-loop-template'] } : {}),
           };
         }
         return service.updateRepo(ctx.id, patch);

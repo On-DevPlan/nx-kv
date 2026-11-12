@@ -184,15 +184,7 @@
   text-align: right;
 }
 .rp-gl-min:focus { outline: 2px solid var(--soft-2); outline-offset: -1px; }
-.rp-gl-tpl { display: flex; flex-direction: column; gap: 6px; }
-.rp-gl-h { font-size: 12px; font-weight: 650; color: var(--ink); }
-.rp-gl-oneline { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.rp-gl-oneline-input {
-  flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 4px 8px;
-  border: 1px solid var(--line); border-radius: 6px;
-  background: var(--paper); color: var(--ink);
-}
-.rp-gl-oneline-input:focus { outline: none; border-color: var(--mdw-accent, #2F6F5E); }
+/* 文案归全局（#182）：弹窗里只留一句指路，不再有模板输入行 / 模板库选择器 */
 .rp-gl-note {
   font-size: 11px; color: var(--faint); line-height: 1.65;
   padding: 7px 9px;
@@ -200,30 +192,6 @@
   border-radius: 7px;
   background: var(--soft);
 }
-/* 「从设置中的提示词模板选」的选择器：按区块分组，条目是可直接点的小 chip */
-.rp-gl-lib {
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 8px 9px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--soft);
-}
-.rp-gl-lib-block { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.rp-gl-lib-label {
-  font-size: 11px; font-weight: 650; color: var(--ink);
-  min-width: 68px;
-}
-.rp-gl-lib-item {
-  font: inherit; font-size: 11px;
-  padding: 3px 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.rp-gl-lib-item:hover { border-color: var(--mdw-accent, #2F6F5E); }
 .rp-gl-acts {
   display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
   margin-top: 2px; padding-top: 10px; border-top: 1px solid var(--line);
@@ -321,6 +289,16 @@
 .rp-proj-pick input { width: 13px; height: 13px; cursor: pointer; accent-color: var(--doing, #2F6F5E); }
 .rp-proj-pickall { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 400; color: var(--mid); cursor: pointer; }
 .rp-proj-pickall input { width: 13px; height: 13px; cursor: pointer; accent-color: var(--doing, #2F6F5E); }
+/* #181：任务面板头搜索框（标题 + 正文模糊匹配）——与「全选本页」同一工具区，整体靠右 */
+.rp-tasks-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
+.rp-task-search {
+  width: 168px; height: 24px; box-sizing: border-box; padding: 0 8px;
+  border: 1px solid var(--soft-2, #E4E2DC); border-radius: 7px;
+  background: var(--paper, #fff); color: var(--ink, #16181C);
+  font: 400 11.5px/1.5 inherit; outline: 0; -webkit-appearance: none; appearance: none;
+}
+.rp-task-search::placeholder { color: var(--faint, #A9AEB4); }
+.rp-task-search:focus { border-color: var(--doing, #2F6F5E); box-shadow: 0 0 0 2px rgba(47, 111, 94, 0.12); }
 .rp-proj-times { flex: none; font-size: 10.5px; color: var(--mid); white-space: nowrap; }
 .rp-proj-ops { flex: none; display: inline-flex; align-items: center; gap: 4px; }
 .rp-proj-ops .op { cursor: pointer; color: var(--mid); display: inline-flex; align-items: center; }

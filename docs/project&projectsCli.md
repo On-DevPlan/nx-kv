@@ -291,9 +291,6 @@ nx-kv localtask done --id <id> --summary "<完成总结>"
 # 开启持续 get：该项目 get 无任务时自动唤起阻塞窗口等人回填
 nx-kv repo update nx-kv --get-loop on --get-loop-minutes 10
 
-# 自定义「继续 get」指令（整体替换这一条；多条在设置面板按条增删）
-nx-kv repo update nx-kv --get-loop-template "完成上面的任务后，继续调用 nx-kv localtask get 领下一条，直到 get 返回 timeout。"
-
 # 关闭
 nx-kv repo update nx-kv --get-loop off
 ```
@@ -301,10 +298,14 @@ nx-kv repo update nx-kv --get-loop off
 - `--get-loop`：`on|off`；`--get-loop-minutes`：阻塞窗口分钟数（默认 10）；
   **实际阻塞上限是 600 秒（10 分钟）**（`localtask` 的 `MAX_TIMEOUT_SEC` 夹制）——
   填大于 10 的分钟数不会延长窗口；
-- `--get-loop-template` 支持 `{{task.id}}` / `{{task.text}}` / `{{getloop.waitMinutes}}` 等占位符；
-- 落点：仓库登记的 `getLoop` 字段（`repos.ext.ext_getloop`）；
+- **仓库侧只有开关 + 分钟**（#182）：那段「继续 get 直到 timeout」的**文案**是全局的
+  —— 设置 → 提示词模板 → 持续 get 区块（唯一出处，默认内文见
+  `src/shared/prompt-blocks.ts` 的 `DEFAULT_GETLOOP_TEMPLATE`，可用
+  `{{task.id}}` / `{{getloop.waitMinutes}}` 等占位符）。此前的
+  `--get-loop-template` 已下线，仓库里残留的 `template` 字段读入即忽略；
+- 落点：仓库登记的 `getLoop` 字段（`repos.ext.ext_getloop`），形如 `{ enabled, waitMinutes }`；
 - 效果：**没任务不再立即空手而回**，而是唤起阻塞窗口（开页面 + 等人回填）；
-  领到任务时交付文本额外带「继续 get 直到超时」的项目模板。
+  领到任务时交付文本额外带「继续 get 直到超时」那段指令。
 
 ---
 

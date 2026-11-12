@@ -209,28 +209,28 @@ export const DEFAULT_EXT_TEMPLATE = [
 export const DEFAULT_ACK_PROMPT =
   '完成之后必须调用 nx-kv localtask done --id {{task.id}} --summary "<完成总结>" 汇报结果。';
 
-/** 默认「持续 get」段：项目开启时把 getloop 文本透出来。 */
-export const DEFAULT_GETLOOP_TEMPLATE = [
-  '{{#if getloop}}',
-  '{{getloop.text}}',
-  '{{/if}}',
-].join('\n');
-
 /**
- * 默认「持续 get」**内文**（持续 get 区块模板外壳里的那一句指令）。
+ * 「持续 get」**内文**（继续 get 直到 timeout 的那句指令）。
  *
- * 两层的分工，别混：
- *   - 外壳 = 区块模板（`DEFAULT_GETLOOP_TEMPLATE`，在设置 → 提示词模板 → 持续 get 区块里编辑），
- *     它只负责 `{{getloop.text}}` 的输出位置；
- *   - 内文 = 本模板（项目级的「继续 get 直到超时」指令，可按仓库覆写多条）。
+ * #182 起它是**唯一**出处：仓库级的「收尾模板」编辑已下线（仓库只留开关 + 阻塞分钟），
+ * 要改文案就到 设置 → 提示词模板 → 持续 get 区块里改——那里能改的就是这段文字本身
+ * （区块默认模板已把内文写进去，不再是 {{getloop.text}} 这种间接层）。
+ * 槽位口径：{{task.id}} = 任务编号；{{getloop.waitMinutes}} = 阻塞窗口分钟数。
  *
- * 放共享层是因为**前后端都要用同一份文案**：服务端渲染内文，前端「持续 get」配置弹窗
- * 把它当内置默认展示（此前前端另存了一份已经过期的副本，两边文案会悄悄分叉）。
- * 槽位口径：{{task.id}} = 任务编号（前端展示时转成 %s，保存时转回）；{{getloop.waitMinutes}}
- * = 阻塞窗口分钟数。
+ * 放共享层是因为前后端都要用同一份：服务端渲染，前端「持续 get」弹窗展示说明。
  */
 export const DEFAULT_GETLOOP_INSTRUCTION =
   '{{#if task}}不要直接结束本轮：完成上面的任务（{{task.id}}）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；没活时每次最多阻塞 {{getloop.waitMinutes}} 分钟，直到 get 返回 timeout 为止。{{/if}}';
+
+/**
+ * 默认「持续 get」段：项目开启时出现。
+ * 内文直接落在区块里（`{{getloop.text}}` 仍由渲染器提供，供旧配置兼容）。
+ */
+export const DEFAULT_GETLOOP_TEMPLATE = [
+  '{{#if getloop}}',
+  DEFAULT_GETLOOP_INSTRUCTION,
+  '{{/if}}',
+].join('\n');
 
 /** 单条区块模板条目。 */
 export interface PromptTemplateItem {
@@ -313,7 +313,7 @@ export const BLOCK_DEFS: readonly BlockDef[] = Object.freeze([
     id: 'getloop',
     tag: 'nx-kv.getloop',
     label: '持续 get',
-    desc: '项目开启「持续 get」时出现：完成本任务并回填后继续领取下一条',
+    desc: '项目开启「持续 get」时出现：完成本任务并回填后继续领取下一条（#182 起这里是文案的唯一出处，仓库侧只有开关 + 分钟）',
     defaultTemplate: DEFAULT_GETLOOP_TEMPLATE,
   },
 ]);

@@ -672,22 +672,6 @@
               "children": []
             },
             {
-              "name": "backfill",
-              "path": [
-                "repo",
-                "ref",
-                "backfill"
-              ],
-              "action": {
-                "id": "repo.ref.backfill",
-                "module": "repos",
-                "summary": "从 v3 快照补录仓库级参考绑定（幂等、可重复；与组级绑定并存；--dry-run 只预览）",
-                "usage": "repo ref backfill",
-                "http": null
-              },
-              "children": []
-            },
-            {
               "name": "check",
               "path": [
                 "repo",
@@ -872,7 +856,7 @@
           "action": {
             "id": "repo.update",
             "module": "repos",
-            "summary": "修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填 + 交付文本带继续 get 模板）。描述已改为文档，不再经这里改",
+            "summary": "修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填；指令文案在 设置 → 提示词模板 → 持续 get，仓库侧只有开关 + 分钟）。描述已改为文档，不再经这里改",
             "usage": "repo update",
             "http": "PATCH /api/repos/:id"
           },
@@ -1078,7 +1062,22 @@
             "module": "docs",
             "summary": "绑定项目/组介绍的文档覆盖（--repo 或 --board 二选一 + --rel <自有路径> | --path <外部文件/目录>；--reset 拆回约定路径）",
             "usage": "docs bind",
-            "http": "POST /api/docs/bind"
+            "http": null
+          },
+          "children": []
+        },
+        {
+          "name": "bindings",
+          "path": [
+            "docs",
+            "bindings"
+          ],
+          "action": {
+            "id": "docs.bindings",
+            "module": "docs",
+            "summary": "查文档归属（--ref <docId> 看这篇被谁引用；--host <key> 看这个宿主的文档集；position=0 为主篇）",
+            "usage": "docs bindings",
+            "http": "GET /api/docs/bindings"
           },
           "children": []
         },
@@ -1123,7 +1122,7 @@
             "module": "docs",
             "summary": "绑定组内仓库描述的文档覆盖（--board <看板> --repo <仓库> + --rel/--path/--reset；仓库须为该组成员）",
             "usage": "docs note-bind",
-            "http": "POST /api/docs/note-bind"
+            "http": null
           },
           "children": []
         },
@@ -1235,7 +1234,7 @@
           "action": {
             "id": "localtask.cancelMany",
             "module": "localtask",
-            "summary": "批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已交付/已取消跳过；取消为终态，原文留档",
+            "summary": "批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已完成/已取消跳过；取消为终态，原文留档",
             "usage": "localtask cancel-many",
             "http": "POST /api/localtasks/items/cancel"
           },
@@ -1295,7 +1294,7 @@
           "action": {
             "id": "localtask.closeMany",
             "module": "localtask",
-            "summary": "批量收口待领取任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；已领取/已交付跳过",
+            "summary": "批量收口还没结束的任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；待领取与已领取都能收（已领取的 agent 侧回执会被忽略），已完成/已取消跳过",
             "usage": "localtask close-many",
             "http": "POST /api/localtasks/items/close"
           },

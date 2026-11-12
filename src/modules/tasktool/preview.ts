@@ -45,7 +45,8 @@ export interface PreviewTaskDeliveryOptions {
 export async function previewTaskDelivery({ task, cwd, key, summary, params }: PreviewTaskDeliveryOptions = {}): Promise<Record<string, any>> {
   const settings: any = (await getSettings().catch(() => null)) || {};
   const segments: any[] = [];
-  // 项目级「持续 get」模板：与 tasktool/get.js 同口径（只在开启时传入）。
+  // 项目级「持续 get」：与 tasktool/get.js 同口径（只在开启时传入内文；#182 起
+  // 内文固定取全局区块默认值，仓库侧只有开关 + 分钟）。
   // 统一交给 buildTaskDelivery 编排成 getloop 区块，预览与真实领取不会各拼一份。
   const loop: GetLoopState = await getLoopForCwd(cwd).catch(() => ({ enabled: false }));
   const getLoopTpl = getLoopInstruction(loop);
@@ -79,7 +80,6 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params }: P
     getLoop: {
       enabled: !!loop.enabled,
       waitMinutes: loop.waitMinutes || 0,
-      customTemplate: !!(loop.template && loop.template.trim()),
     },
     switches: {
       ack: { on: ackList.length > 0, count: ackList.length },

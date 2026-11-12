@@ -195,7 +195,7 @@ export function normalizeTask(t: TaskInput, siblings?: any[] | null, readyOpts: 
     text: String(t.text ?? ''),
     // 状态词表：pending / claimed / done / cancelled（权威见 src/shared/task-status.js）。
     // **不认识的词原样透出**，不做「归一成 pending」的兜底 —— 兜底等于把没见过的状态
-    // 变成可领取任务（agent 会把已交付的活儿再干一遍）。旧词（consumed/archived）在
+    // 变成可领取任务（agent 会把已完成的活儿再干一遍）。旧词（consumed/archived）在
     // 过渡期会原样出现，跑一次 scripts/rewrite-json-status.mjs 即可消除。
     status: String(t.status ?? '') || 'pending',
     roundSummary: String(t.roundSummary ?? ''),
@@ -346,7 +346,7 @@ export function topicView(t: any, repoCtx: any = null, readyOpts: ReadyOpts = {}
     pending: tasks.filter(isPending).length,
     // 开/关两个计数分开给（Kanboard 的 nb_open_tasks / nb_closed_tasks）：
     // 面板上「N 待领 · M 已领」比一个总数有用得多——一眼看出还剩多少活、已经干完多少。
-    // 词表统一后「已领」与「已交付」是两个词，计数也分开（旧口径把两者算在一起）。
+    // 词表统一后「已领」与「已完成」是两个词，计数也分开（旧口径把两者算在一起）。
     claimed: tasks.filter((x: any) => x.status === 'claimed' && !x.deletedAt).length,
     done: tasks.filter((x: any) => x.status === 'done' && !x.deletedAt).length,
     // 软删除的条数（还在队列里，可恢复）

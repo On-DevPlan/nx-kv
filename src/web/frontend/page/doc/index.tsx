@@ -3,14 +3,12 @@
 // 双链 [[..]] 点击开目标文档页签（openPanel 去重）；解析规则与后端共用 core/wikilink.js。
 // 外部绑定（path:）登记在册 = 我的文档集；只有目录绑定（dir）仍是只读清单。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Actions } from 'flexlayout-react';
 import type { Model } from 'flexlayout-react';
 import {
   bindRepoDoc,
   createDocItem,
   docAttachments,
-  getDocsIndex,
   linkBoardDoc,
   listBoards,
   loadDocsIndex,
@@ -22,12 +20,13 @@ import {
 } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
-import { useApp } from '../../app-context.jsx';
 import { openPanel } from '../../workspace.js';
 import { MdPanes } from '../../components/md/md-panes.jsx';
-import AttachArea from '../../components/md/attach-area.jsx';
+import { DocAttachBody, DocDockPanel, DocStatusBar } from './doc-dock.js';
+import { useDocBindings } from './bindings.js';
+import { useDock } from '../dir/task-dock.js';
 import { docIdOfLocator } from '../../components/md/attach-common.js';
-import type { Attachment, AttachHostKind } from '../../components/md/attach-common.js';
+import type { Attachment } from '../../components/md/attach-common.js';
 import type { FileDropCtx } from '../../components/md/md-panes-helpers.js';
 import DocHead, { groupOf } from '../../components/doc/doc-head.jsx';
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
@@ -36,29 +35,12 @@ import { uploadMany, snippetsOf } from '../../components/cloud/upload.js';
 import { extractMdHeadings, insertAttachmentSnippet, renderMarkdownHtml, slugName } from '../../modules/md/md-parse.js';
 import { docTitleFromMd, setDocTitleInMd } from '../../../../shared/doc-title.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
-import { resolveWikiLink } from '../../../../shared/wikilink.js';
-import type { WikiIndexEntry } from '../../../../shared/wikilink.js';
+import { notifyDocsChanged } from '../../modules/md/doc-bus.js';
+import { useWikiNav } from './use-wiki-nav.js';
 
-/** 打开文档页签时携带的归属上下文（repo 与 board 二选一）。 */
-export interface DocOpenExtra {
-  repoKey?: string;
-  boardKey?: string;
-  boardName?: string;
-}
+export { useWikiNav };
+export type { DocOpenExtra, WikiNav } from './use-wiki-nav.js';
 
-/** useWikiNav 的返回面（DocPanel 与组详情共用）。 */
-export interface WikiNav {
-  nav: (target: string | null) => Promise<void>;
-  onClick: (e: ReactMouseEvent<HTMLElement>) => void;
-  ensureIndex: () => Promise<WikiIndexEntry[]>;
-  openByDocId: (
-    targetDocId: string | undefined | null,
-    index?: WikiIndexEntry[] | null,
-    extra?: DocOpenExtra,
-  ) => Promise<void>;
-}
-
-/** GET /api/docs/item 的返回：正文之外还有只读 / 目录 / 缺失几种形态。 */
 /** 介绍文档集的一行（右侧轨）。 */
 interface IntroLink {
   docId: string;
@@ -79,72 +61,6 @@ const renderDocHtml = renderMarkdownHtml as unknown as (
   attachments?: Attachment[],
   knownNames?: Set<string> | null,
 ) => string;
-
-/**
- * 双链导航（DocPanel 与组详情共用）：拉一次索引，解析目标 → 开 doc 页签。
- * 多同名候选不猜（列出 docId 让人挑）；未命中提示用 CLI 创建。
- */
-export function useWikiNav(model?: Model | null): WikiNav {
-  const app = useApp();
-  const toast = useToast();
-  const m = model || app.model;
-  const indexRef = useRef<WikiIndexEntry[] | null>(null);
-
-  const ensureIndex = useCallback(async () => {
-    if (!indexRef.current) {
-      try {
-        indexRef.current = (await getDocsIndex()).index || [];
-      } catch {
-        indexRef.current = [];
-      }
-    }
-    return indexRef.current ?? [];
-  }, []);
-
-  const openByDocId = useCallback(
-    async (targetDocId: string | undefined | null, index?: WikiIndexEntry[] | null, extra: DocOpenExtra = {}) => {
-      const idx = index || (await ensureIndex());
-      const entry = idx.find((x) => x.docId === targetDocId);
-      openPanel(m, {
-        component: 'doc',
-        name: entry ? entry.name : targetDocId,
-        config: {
-          docId: targetDocId,
-          ...(extra.repoKey ? { repoKey: extra.repoKey } : {}),
-          ...(extra.boardKey ? { boardKey: extra.boardKey, boardName: extra.boardName || '' } : {}),
-        },
-        location: 'center',
-      });
-    },
-    [m, ensureIndex]
-  );
-
-  const nav = useCallback(
-    async (target: string | null) => {
-      const index = await ensureIndex();
-      const hit = resolveWikiLink(target, index);
-      if (hit && 'docId' in hit) return openByDocId(hit.docId, index);
-      if (hit && 'candidates' in hit) return toast(`「${target}」同名文档多份：${hit.candidates.join('、')}`);
-      toast(`未找到「${target}」——可用 nx-kv docs add <rel> 创建`);
-    },
-    [ensureIndex, openByDocId, toast]
-  );
-
-  // 预览容器的事件委托：点 [data-wl] 即导航
-  const onClick = useCallback(
-    (e: ReactMouseEvent<HTMLElement>) => {
-      // DOM 事件边界：React 的 event.target 只声明为 EventTarget，这里要 Element 能力
-      const el = e.target as HTMLElement;
-      const a = el.closest('[data-wl]');
-      if (!a) return;
-      e.preventDefault();
-      nav(a.getAttribute('data-wl'));
-    },
-    [nav]
-  );
-
-  return { nav, onClick, ensureIndex, openByDocId };
-}
 
 export default function DocPanel({ docId, repoKey, boardKey, boardName, model, tabId }: {
   docId?: string;
@@ -174,6 +90,9 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [mode, setMode] = useState('split');
+  // 底部信息面板（附件 / 归属）：与任务页同一套 dock 状态，存储空间另用 'doc'；
+  // 文档页首次进入默认收起（编辑正文为主），入口常驻在底部状态栏
+  const dock = useDock('doc', false);
   const [introLinks, setIntroLinks] = useState<IntroLink[]>([]);
   const [scrollRoot, setScrollRoot] = useState<HTMLElement | null>(null);
   // 最新文档镜像：附件上传是异步的，await 期间用户可能还在敲字，
@@ -261,17 +180,24 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   }, []);
 
   const writable = !!(doc && doc.writable);
+  // 归属（ref 视角）：数据与写操作都在 hook 里，面板只拿节点——dock 收起时计数也要准
+  const bind = useDocBindings(docId, writable);
   // #168：ref 引用在预览/编辑器里显示**文档标题**——需要附件清单里的 ref 条目
   // （服务端读盘补的标题），渲染时按 refId 查表替换链接文字。
   const [attList, setAttList] = useState<Attachment[]>([]);
+  // dock 头要显示附件数，挂/摘完还要立刻可见 → 用 tick 驱动重拉
+  const [attTick, setAttTick] = useState(0);
   useEffect(() => {
     let alive = true;
-    if (!docId) return undefined;
+    if (!docId) {
+      setAttList([]);
+      return undefined;
+    }
     docAttachments(docId)
       .then((d) => { if (alive) setAttList((d && (d.attachments || d.data?.attachments)) || []); })
       .catch(() => { if (alive) setAttList([]); });
     return () => { alive = false; };
-  }, [docId]);
+  }, [docId, attTick]);
   const previewHtml = useMemo(
     // 外部/缺失文档不判未解析态（known=null = 全部普通样式）
     () => (doc ? renderDocHtml(doc.body, attList, writable ? known : null) : ''),
@@ -338,6 +264,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
         /* 已在集里 / 旧数据：文件已创建即可打开 */
       }
       toast(`已补充：${rel}`);
+      notifyDocsChanged();
       loadIntroLinks();
       openByDocId('rel:' + rel, null, openExtra);
     });
@@ -352,6 +279,9 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       setDoc((d) => (d ? { ...d, body: nextBody, summary: res.summary } : d));
       setDirty(false);
       clearHistory(histRef.current, docId);
+      // 标题可能变了（正文首行）→ 右轨与「文档列表」跟着刷（#183）
+      loadIntroLinks();
+      notifyDocsChanged();
       toast(res.summary ? '已保存，摘要已回写' : '已保存');
     });
 
@@ -445,6 +375,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       await removeDocItem({ ref: docId });
       clearHistory(histRef.current, docId);
       toast(`已重命名为：${rel}`);
+      notifyDocsChanged();
       openByDocId('rel:' + rel, null, openExtra);
     });
   };
@@ -464,6 +395,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       if (!ok) return;
       await removeDocItem({ ref: docId });
       toast(`已删除：${docRel || docId}`);
+      notifyDocsChanged();
       if (model && tabId) model.doAction(Actions.deleteTab(tabId));
     });
   };
@@ -480,6 +412,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       const name = rel.replace(/\.md$/i, '').split('/').pop() || '未命名文档';
       await createDocItem({ rel, body: `# ${name}\n\n（待补）\n` });
       toast(`已创建：${rel}`);
+      notifyDocsChanged();
       await load();
     });
 
@@ -600,21 +533,26 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
           onUndo={writable ? undo : null}
           onRedo={writable ? redo : null}
         />
-        {/* 附件区：ref_attach 的权威清单（正文只呈现 role=inline 的那部分）。
-            挂附件不改正文（no-embed），所以这里不重新 load 文档，避免冲掉未保存的编辑。 */}
-        {/* AttachHostKind 目前只声明 task/doc；文档页传 ref，服务端按 refId 走 ref_attach 分支 */}
-        <AttachArea
-          host={'ref' as AttachHostKind}
-          refId={docId}
-          allow={{ file: true, url: true, task: false, ref: true }}
-          disabled={!writable}
-          disabledText="只读文档不能添加附件。"
-          onOpenDoc={(locator: unknown) => {
-            const id = docIdOfLocator(locator);
-            if (id) openByDocId(id, null, openExtra);
-          }}
+        {/* 信息面板（#183）：附件 / 归属两个 tab，外壳与任务页同构（可拖高 / 最大化 / 关闭） */}
+        <DocDockPanel
+          dock={dock}
+          attCount={attList.length}
+          bindCount={bind.count}
+          attachNode={(
+            <DocAttachBody
+              refId={docId}
+              writable={writable}
+              onChanged={() => setAttTick((n) => n + 1)}
+              onOpenDoc={(locator: unknown) => {
+                const id = docIdOfLocator(locator);
+                if (id) openByDocId(id, null, openExtra);
+              }}
+            />
+          )}
+          bindNode={bind.strip}
         />
-        <div className="docp-hint">双链 [[]] 点击跳转 · Ctrl+S 保存 · 正文存库（v6 起不落盘）</div>
+        {/* 状态栏：面板收起后入口仍常驻（附件 / 归属 + 展开箭头） */}
+        <DocStatusBar dock={dock} attCount={attList.length} bindCount={bind.count} />
       </div>
       <IntroRail
         headings={headings as unknown as never[]}
@@ -625,6 +563,8 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
         onAddRef={(ownerKey ? addRefDoc : null) as unknown as null}
       />
       {dialogNode}
+      {/* 加绑弹窗（归属 tab 里的「＋ 加绑宿主」唤起） */}
+      {bind.modal}
     </div>
   );
 }

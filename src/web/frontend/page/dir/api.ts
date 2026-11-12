@@ -23,6 +23,8 @@ export interface TaskBulkResult {
   count?: number;
   skipped?: Array<number | string>;
   missing?: Array<number | string>;
+  /** closeMany 专用：本轮收口里「原本已被领取」的编号（#184 面板提示用）。 */
+  claimedClosed?: Array<number | string>;
 }
 
 /** 任务链（GET /api/localtasks/chain?<q>）。 */

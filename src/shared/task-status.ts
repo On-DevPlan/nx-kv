@@ -28,7 +28,7 @@ export const TASK_STATUS = Object.freeze({
   CANCELLED: 'cancelled',
 } as const);
 
-/** 全部合法状态（顺序即面板展示顺序：待领取 → 已领取 → 已交付 → 已取消）。 */
+/** 全部合法状态（顺序即面板展示顺序：待领取 → 已领取 → 已完成 → 已取消）。 */
 export const TASK_STATUSES: readonly string[] = Object.freeze([
   TASK_STATUS.PENDING,
   TASK_STATUS.CLAIMED,
@@ -40,7 +40,7 @@ export const TASK_STATUSES: readonly string[] = Object.freeze([
 export const STATUS_TAG: Record<string, string> = Object.freeze({
   pending: '待领取',
   claimed: '已领取',
-  done: '已交付',
+  done: '已完成',
   cancelled: '已取消',
 });
 
@@ -84,7 +84,7 @@ export function isClaimed(t?: TaskRowLike | null): boolean {
   return isLive(t) && t?.status === TASK_STATUS.CLAIMED;
 }
 
-/** 已交付（终态，不会再动）。 */
+/** 已完成（终态，不会再动）。 */
 export function isDone(t?: TaskRowLike | null): boolean {
   return isLive(t) && t?.status === TASK_STATUS.DONE;
 }

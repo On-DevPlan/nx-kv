@@ -63,12 +63,13 @@
    .mdw 本身是 position:relative，absolute 轨锚在它上面。 */
 .mdw > .ack-rail{top:96px;bottom:44px}
 .mdw > .ack-rail .doc-rail-ticks{gap:12px}
-/* 可拖动（任务 #55）：汉堡钮是拖把。touch-action:none 防触屏拖动被页面滚动劫持；
-   拖动态抬层 + grabbing 光标。落点落定后是 inline left/top（组件里写），right/bottom
-   置 auto 解除钉位——所以这里不写任何 top/right，默认位完全交给原规则。 */
-.mdw > .ack-rail .doc-rail-menu{cursor:grab;touch-action:none}
-.mdw > .ack-rail.dragging{z-index:80}
-.mdw > .ack-rail.dragging .doc-rail-menu{cursor:grabbing;background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+/* 可拖动（任务 #55，2026-11-12 推广到文档目录轨）：汉堡钮是拖把。
+   touch-action:none 防触屏拖动被页面滚动劫持；拖动态抬层 + grabbing 光标。
+   落点落定后是 inline left/top（组件里写），right/bottom 置 auto 解除钉位——
+   所以这里不写任何 top/right，默认位完全交给上面 .doc-rail / .mdw > .ack-rail 的规则。 */
+.doc-rail .doc-rail-menu{cursor:grab;touch-action:none}
+.doc-rail.dragging{z-index:80}
+.doc-rail.dragging .doc-rail-menu{cursor:grabbing;background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
 .doc-rail-sec{padding:4px 0 8px;border-bottom:1px solid var(--line,#E4E2DC)}
 .doc-rail-sec:last-child{border-bottom:0;padding-bottom:4px}
 .doc-rail-sec-lab{
@@ -103,24 +104,20 @@
   color:#9E4C00;background:#FBF3E4;
 }
 .docp-save{flex:none}
-/* 页头共用组件（DocHead，任务 #88）：面包屑 + 标题·路径 + 更多 · 保存 一条线。
-   .mdw-head 是 flex:1 的标题块，右侧动作组自成一块，不许换行挤压标题。 */
-.docp-top{gap:10px}
-.docp-top .mdw-head{display:flex;align-items:center;gap:8px;min-width:0}
-.docp-top .mdw-title{flex:0 1 auto}
-.docp-top .mdw-path{flex:0 1 auto;min-width:0}
-/* 全局 .grow 是 max-width:340px，推不到右边界——这里显式让位 */
-.docp-top .grow{flex:1 1 auto;max-width:none;min-width:0}
-.docp-actions{display:flex;align-items:center;gap:6px;flex:none}
-.docp-actions .btn{white-space:nowrap}
+/* 页头（DocHead）已改为与任务页逐字同构的 `.mdw-top` + `.mdw-toolbar` 两条
+   （#183）：标题/路径回到上下两行，动作组进工具行。原来的 `.docp-top`
+   单行压缩与 `.docp-actions` 一并删除，别再长回来。 */
 .docp-summary{
-  flex:none;padding:5px 12px;font-size:11px;color:var(--mid,#838A93);
-  border-bottom:1px solid var(--line,#E4E2DC);background:var(--soft,#F5F6F7);
+  flex:none;padding:4px 14px;font-size:11px;color:var(--mid,#838A93);
+  border-bottom:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-.docp-hint{
-  flex:none;padding:5px 12px;border-top:1px solid var(--line,#E4E2DC);
-  font-size:10.5px;color:var(--faint,#A9AEB4);background:var(--paper,#fff);
+/* 文档页底部信息面板（#183）：外壳复用任务页的 .mdw-dock（拖高 / 最大化 / 关闭），
+   这里只补两处——tab 面板的显隐（hidden 要压过后续可能加的 display）与状态栏右侧提示。 */
+.docp-dock-pane[hidden]{display:none}
+.docp-sbar-hint{
+  flex:0 1 auto;max-width:52%;font-size:10.5px;color:var(--faint,#A9AEB4);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 6px;
 }
 .docp-files{padding:10px 14px;display:flex;flex-direction:column;gap:2px;overflow:auto}
 .docp-file{

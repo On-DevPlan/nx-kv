@@ -58,8 +58,12 @@ export {
 } from './attachmentdb/bodies.js';
 export type { RefBodyRow, RefDocRow, RelKind } from './attachmentdb/bodies.js';
 export {
+  clearRefBindings,
   ensureDocRef,
   forgetDocRef,
+  markRefBound,
+  markUnboundRefsOrphan,
+  putRefBinding,
   resolveRefId,
   syncDocAttachmentIndex,
   syncTaskAttachmentIndex,

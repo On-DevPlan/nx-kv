@@ -70,10 +70,10 @@ export async function markTaskMigrated({ cwd: rawCwd, key: rawKey, id, migratedT
     const { notFound } = await import('../../core/errors.js');
     throw notFound(`主题「${t.name || key}」里没有 #${want} 任务`);
   }
-  // 只有「待领取」能迁出：已领取（在干）与已交付（终态）都不该被搬走
+  // 只有「待领取」能迁出：已领取（在干）与已完成（终态）都不该被搬走
   if (raw.status !== 'pending') {
     const { conflict } = await import('../../core/errors.js');
-    throw conflict(`主题「${t.name}」#${want} 不是待领取（已领取/已交付），不能再迁移`);
+    throw conflict(`主题「${t.name}」#${want} 不是待领取（已领取/已完成），不能再迁移`);
   }
   const next = tx(() => {
     const out = tasksRepo.updateTask(t.id, want, {

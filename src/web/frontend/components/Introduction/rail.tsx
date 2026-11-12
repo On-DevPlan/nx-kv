@@ -1,7 +1,14 @@
 // 简介 / 文档右侧滚动目录：竖轨 + 展开名单 + 补充文档。
 // links 形状统一：[{ docId, label, note?, main? }]
+//
+// 轨可拖动（2026-11-12 反馈「无法拖动」）：汉堡钮 = 拖把，与任务页 ack 轨
+// 共用 components/use-rail-drag.ts 的同一套语义（>4px 算拖、双击回默认位、
+// 落点按轨各存各的）。此前拖动只长在 ack 轨一边，同款 `.doc-rail` 视觉
+// 在文档页却拖不动——同一套视觉就该有同一套行为。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { useRailDrag } from '../use-rail-drag.js';
+import { DOC_RAIL_POS_KEY } from '../../modules/board/ack-rail-pos.js';
 import type { IntroLink } from './use-intro.js';
 
 /** 当前文档的一个标题（extractMdHeadings 的产出）。 */
@@ -43,6 +50,8 @@ export default function IntroRail({
 }: IntroRailProps) {
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState('');
+  // 拖动（汉堡钮 = 拖把）：与任务页 ack 轨同一份实现、不同落点键
+  const { railRef, pos, dragging, draggedRef, handleProps } = useRailDrag(DOC_RAIL_POS_KEY);
   const items = useMemo(() => headings || [], [headings]);
   const docEntries = useMemo(() => links || [], [links]);
 
@@ -95,13 +104,29 @@ export default function IntroRail({
   if (!items.length && !docEntries.length && !onAddRef) return null;
 
   return (
-    <aside className={'doc-rail' + (open ? ' open' : '')} aria-label="文档目录">
+    <aside
+      ref={railRef}
+      className={'doc-rail' + (open ? ' open' : '') + (dragging ? ' dragging' : '')}
+      style={pos ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : undefined}
+      aria-label="文档目录"
+    >
       <button
         type="button"
         className="doc-rail-menu"
-        title={open ? '收起目录' : '展开目录'}
+        title={
+          open
+            ? '收起目录（按住拖动 · 双击回默认位）'
+            : '展开目录 · 按住拖动 · 双击回默认位'
+        }
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (draggedRef.current) {
+            draggedRef.current = false; // 这下 click 是拖动结束带出来的，别当点击
+            return;
+          }
+          setOpen((v) => !v);
+        }}
+        {...handleProps}
       >
         <span /><span /><span />
       </button>

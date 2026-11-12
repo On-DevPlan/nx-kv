@@ -21,11 +21,22 @@ export interface DockState {
   toggleDockMax: () => void;
 }
 
-export function useDock(): DockState {
-  const [dockOpen, setDockOpen] = useState(() => localStorage.getItem('nxkv.taskDockOpen') !== '0');
-  const [dockTab, setDockTab] = useState(() => localStorage.getItem('nxkv.taskDockTab') || 'attach');
+/**
+ * @param ns 存储命名空间（默认 'task'）。文档页用 'doc'——两个页面的面板高度 /
+ *           开合 / 当前 tab 各记各的，不互相串（同一物理位置，不同宿主）。
+ * @param defaultOpen 首次进入（localStorage 里还没有记录）时的开合。任务页默认开
+ *            （附件是交付主路径）；文档页默认收（编辑正文为主，入口留在状态栏）。
+ */
+export function useDock(ns = 'task', defaultOpen = true): DockState {
+  // 键名拼装收进 useCallback：它进 effect / 拖拽回调的依赖表，不能在渲染里裸建
+  const k = useCallback((s: string) => `nxkv.${ns}Dock${s}`, [ns]);
+  const [dockOpen, setDockOpen] = useState(() => {
+    const v = localStorage.getItem(k('Open'));
+    return v === null ? defaultOpen : v !== '0';
+  });
+  const [dockTab, setDockTab] = useState(() => localStorage.getItem(k('Tab')) || 'attach');
   const [dockH, setDockH] = useState(() => {
-    const v = Number(localStorage.getItem('nxkv.taskDockH'));
+    const v = Number(localStorage.getItem(k('H')));
     return Number.isFinite(v) && v >= DOCK_MIN ? v : 176;
   });
   const dockHRef = useRef(dockH);
@@ -35,11 +46,11 @@ export function useDock(): DockState {
   const dockPrevHRef = useRef(176);
 
   useEffect(() => {
-    localStorage.setItem('nxkv.taskDockOpen', dockOpen ? '1' : '0');
-  }, [dockOpen]);
+    localStorage.setItem(k('Open'), dockOpen ? '1' : '0');
+  }, [dockOpen, k]);
   useEffect(() => {
-    localStorage.setItem('nxkv.taskDockTab', dockTab);
-  }, [dockTab]);
+    localStorage.setItem(k('Tab'), dockTab);
+  }, [dockTab, k]);
 
   const showDockTab = useCallback((tab: string) => {
     setDockTab(tab);
@@ -66,14 +77,14 @@ export function useDock(): DockState {
         window.removeEventListener('mouseup', up);
         document.body.style.userSelect = '';
         document.body.style.cursor = '';
-        localStorage.setItem('nxkv.taskDockH', String(dockHRef.current));
+        localStorage.setItem(k('H'), String(dockHRef.current));
       };
       document.body.style.userSelect = 'none';
       document.body.style.cursor = 'row-resize';
       window.addEventListener('mousemove', move);
       window.addEventListener('mouseup', up);
     },
-    [dockOpen]
+    [dockOpen, k]
   );
 
   const toggleDockMax = useCallback(() => {

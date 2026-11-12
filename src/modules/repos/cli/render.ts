@@ -3,7 +3,6 @@ import { badInput } from '../../../core/errors.js';
 import type { ListBoardsResult, GetBoardResult } from '../boards/core.js';
 import type { RepoListRow } from '../service/crud.js';
 import type { CloneRefResult, SyncAllRefsResult, CheckRefsResult, BindTargetResult, RefsOfRepoResult } from '../ref.js';
-import type { BackfillResult } from '../ref-backfill.js';
 
 // ---- 看板的 CLI 人读渲染 ----
 // 用户要的「快速判断看板里的 repo 和 desc」：按主题分组，一行 = 仓库名 + 一句话描述。
@@ -167,18 +166,4 @@ export function renderRefsOf(d: RefsOfRepoResult): string {
     out.push('  （该仓库不属于任何组 —— 没有组级参考）');
   }
   return out.join('\n');
-}
-
-export function renderBackfill(d: BackfillResult): string {
-  const lines = [
-    `${d.dryRun ? '预览（未落盘）' : '补录完成'}: 快照 v${d.sourceVersion} 里有 ${d.counts.source} 条仓库级绑定`,
-    `  仓库级绑定: ${d.counts.before} → ${d.counts.after}（新增 ${d.counts.added}，已存在 ${d.counts.already}）`,
-    `  组级绑定: ${d.groupRefs.before} → ${d.groupRefs.after}（本工具不写 group_refs）`,
-  ];
-  for (const p of d.perRepo) {
-    lines.push(`  ${p.name} (${p.repo})  ${p.before.length} → ${p.after.length}${p.added.length ? `（+${p.added.join('、')}）` : ''}`);
-  }
-  if (d.missing.repos.length) lines.push(`  快照里的仓库本地没有: ${d.missing.repos.join('、')}`);
-  if (d.missing.refs.length) lines.push(`  快照里的参考仓库本地没有: ${d.missing.refs.join('、')}`);
-  return lines.join('\n');
 }

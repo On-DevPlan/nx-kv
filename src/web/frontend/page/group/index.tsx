@@ -18,17 +18,16 @@ import Introduction from '../../components/Introduction/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TaskPanel from '../../components/task-panel/index.jsx';
 import TaskPanelLayout from '../../components/task-panel/layout.jsx';
-import DeletedPanel from '../dir/deleted-panel.jsx';
 import TaskRow from '../../components/task-panel/task-row.jsx';
 import Pager, { usePager } from '../../components/pager.jsx';
 import { useApp } from '../../app-context.jsx';
-import { removeTask, reorderTask, restoreTask } from './api.js';
+import { reorderTask } from './api.js';
 import { openPanel } from '../../workspace.js';
 import { openTemplateEditor } from '../../panels.jsx';
-import { useDialog } from '../../components/popup/index.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { NEW_TEMPLATE_VALUES, parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
+import { hitTaskQuery } from '../../modules/board/task-search.js';
 import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, LocalTopic, RepoData } from '../../types.js';
@@ -36,7 +35,7 @@ import type { Model } from 'flexlayout-react';
 import type { BoardRecord } from '../repos/repo-table.js';
 
 // TaskPanelLayout 尚未类型化：其 props 里没有 children（实现也不渲染），而调用处把
-// 成员弹窗 / 已删除面板挂成 children —— 按实际调用面放宽签名（属他人负责文件）。
+// 成员弹窗挂成 children —— 按实际调用面放宽签名（属他人负责文件）。
 const Layout = TaskPanelLayout as unknown as (p: {
   name?: string;
   counts?: string[];
@@ -100,9 +99,6 @@ interface GroupTaskRow {
   project: string;
 }
 
-/** 已删除任务（带它所在队列的定位信息）。 */
-type DeletedRow = TopicTask & { memberName?: string; memberCwd?: string };
-
 /** 模板下拉里的一项（flyTemplates 为接口数据，形状按用到的字段收窄）。 */
 interface TemplateItem {
   id: string;
@@ -127,7 +123,6 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   model?: Model | null;
 }) {
   const toast = useToast();
-  const { dialog, node: dialogNode } = useDialog();
   const app = useApp();
   const tpl = useTemplates();
   // repoData / rows 来自 /api 负载（外部边界）：到这里按本页真正读的字段收窄一次
@@ -137,8 +132,6 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   // 已领取历史折叠态：#167 三轮起被分页取代（列表进 usePager，历史行混排在页内）
   // 「添加成员」就地弹窗（不跳仓库管理页——组面板里就地改归属）
   const [addOpen, setAddOpen] = useState(false);
-  // #169：本组已删除任务（组任务跨多个成员队列）
-  const [showDeleted, setShowDeleted] = useState(false);
   // 「＋ 新增任务 ▾」（#131/#132）：点击开合；portal + fixed 防组页矮容器裁切出滚动条。
   const [tplFlyOpen, setTplFlyOpen] = useState(false);
   const [tplFlyPos, setTplFlyPos] = useState<{ top: number; right: number } | null>(null); // { top, right } 视口坐标
@@ -219,17 +212,6 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     });
   }, [board, repos, topics]);
 
-  if (!board) {
-    return (
-      <div className="rp-page">
-        <RouteBreadcrumb />
-        <div className="rp-empty">项目组不存在（看板可能被删了）</div>
-      </div>
-    );
-  }
-
-  const totalPending = items.reduce((n, it) => n + it.pending, 0);
-
   // 每个成员队列的编排素材：待领取任务（队列序）+ 闸门的下游映射（同 isReadyToClaim 口径）。
   // rows = /api/localtasks 的裸 topic（tasks 直挂其上）。
   const dagByTopic = useMemo<Map<string, { tasks: TopicTask[]; downstream: Record<string, number[]> }>>(() => {
@@ -267,7 +249,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     const done: GroupTaskRow[] = [];
     for (const it of items) {
       for (const t of it.tasks || []) {
-        if (t.deletedAt) continue; // 软删的进「已删除任务」面板，不进列表
+        if (t.deletedAt) continue; // 软删的不进列表（#180 起 web 不再提供回收站入口，恢复走 CLI）
         const fm = parseFrontmatter(t.text);
         if (!fm.board || !ids.includes(fm.board)) continue;
         (t.status === 'pending' ? pend : done).push({ member: it, task: t, project: fm.project || '' });
@@ -277,56 +259,28 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     return [...pend, ...done];
   }, [board, items]);
 
-  // #169：本组已删除任务（组任务跨多个成员队列——每条记着自己队列的 cwd，
-  // 恢复/彻底删除按各自队列定位）。
-  const deletedTasks = useMemo<DeletedRow[]>(() => {
-    const ids = board ? [board.id, board.key, board.name].filter(Boolean) : [];
-    const out: DeletedRow[] = [];
-    for (const it of items) {
-      for (const t of it.tasks || []) {
-        if (!t.deletedAt) continue;
-        const fm = parseFrontmatter(t.text);
-        if (!fm.board || !ids.includes(fm.board)) continue;
-        out.push({ ...t, memberName: it.name, memberCwd: it.cwd });
-      }
-    }
-    return out.reverse();
-  }, [board, items]);
-
-  const restoreDeleted = async (t: DeletedRow) => {
-    if (!t) return;
-    try {
-      await restoreTask({ cwd: t.memberCwd, id: t.id });
-      toast(`已恢复 #${t.id}`);
-      if (app.refreshLocal) await app.refreshLocal();
-    } catch (e) {
-      toast(`恢复失败：${(e as Error).message || e}`);
-    }
-  };
-
-  const purgeDeleted = async (t: DeletedRow) => {
-    if (!t) return;
-    const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
-    const ok = await dialog({
-      title: `彻底删除「${title.replace(/^#\s*/, '')}」`,
-      message: '彻底删除后不可恢复（行从队列里真正摘除）。',
-      danger: true,
-      okText: '彻底删除',
-    });
-    if (!ok) return;
-    try {
-      await removeTask({ cwd: t.memberCwd, id: t.id, purge: true });
-      toast(`已彻底删除 #${t.id}`);
-      if (app.refreshLocal) await app.refreshLocal();
-    } catch (e) {
-      toast(`删除失败：${(e as Error).message || e}`);
-    }
-  };
-  const groupPendingCount = useMemo(
-    () => groupTasks.filter((x) => x.task.status === 'pending').length,
-    [groupTasks]
+  // #188：与目录任务页同款搜索（标题 + 正文模糊匹配，规则收在 modules/board/task-search）。
+  // 组任务行是 {member, task} 的包装，没有扁平的 text/id——按 {id, text} 桥一下再交给同一个纯函数，
+  // 两页的匹配口径才不会各长一套。
+  const [q, setQ] = useState('');
+  const searching = !!String(q).trim();
+  const shownTasks = useMemo(
+    () =>
+      searching
+        ? groupTasks.filter((g) => hitTaskQuery({ id: g.task.id, text: g.task.text }, q))
+        : groupTasks,
+    [groupTasks, q, searching]
   );
-  const pager = usePager(groupTasks, PAGE_SIZE);
+  // 待领取计数跟着**筛后**集合走：搜索时头部「待领取 N」要与屏幕上的行对得上（同目录页口径）
+  const groupPendingCount = useMemo(
+    () => shownTasks.filter((x) => x.task.status === 'pending').length,
+    [shownTasks]
+  );
+  const pager = usePager(shownTasks, PAGE_SIZE);
+  // 改查询串回第一页：否则会停在「上一结果的第 3 页」上，看起来像没命中
+  useEffect(() => {
+    pager.setPage(0);
+  }, [q]);
 
   // 待领取拖动排序（同目录页 HTML5 DnD；落点须同 topic）
   const dragRef = useRef<DragInfo | null>(null); // { id, topicKey, cwd }
@@ -441,7 +395,24 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
       <TaskPanel
         title="本组任务"
         pendingCount={groupPendingCount}
-        emptyText="本组还没有任务——点「＋ 新增任务」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。"
+        headerExtra={
+          <span className="rp-tasks-tools">
+            {/* #188：组页此前没有搜索框（同一份任务列表，目录页能搜、组页不能） */}
+            <input
+              className="rp-task-search"
+              type="search"
+              value={q}
+              placeholder="搜索标题 / 内容"
+              aria-label="搜索本组任务"
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </span>
+        }
+        emptyText={
+          searching
+            ? `没有匹配「${q.trim()}」的任务（标题与正文都搜过了）`
+            : '本组还没有任务——点「＋ 新增任务」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。'
+        }
       >
         {(pager.items.map(({ member, task }) => {
           const isPending = task.status === 'pending';
@@ -473,7 +444,9 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
               downs={downs as unknown as never[]}
               onTogglePick={undefined}
               onOpen={() =>
+                // board 非空由下面的早退保证（这里只是 TS 收窄不到闭包里）
                 app.openPage &&
+                board &&
                 app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })
               }
             />
@@ -493,6 +466,22 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
       </div>
   );
 
+  // #185：这个早退**必须排在所有 hook 之后**。它原来在 usePager / useTemplatesFor 之前，
+  // 于是「首帧 boards 还没到（刷新中）」与「boards 到了」两次渲染的 hook 数量不同 →
+  // React 抛 "Rendered more hooks than during the previous render" → flexlayout 的错误
+  // 边界兜成「Error rendering component」，整块面板白屏、只能点 Retry。
+  // 看板被删（board 从有到无）时同样会撞上，只是方向相反。下面这些渲染结果都与 board 无关。
+  if (!board) {
+    return (
+      <div className="rp-page">
+        <RouteBreadcrumb />
+        <div className="rp-empty">项目组不存在（看板可能被删了）</div>
+      </div>
+    );
+  }
+
+  const totalPending = items.reduce((n, it) => n + it.pending, 0);
+
   return (
     <Layout
       name={board.name}
@@ -509,12 +498,10 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
               progress: '打开本组的任务进程面板',
               addMember: '挑项目加进这个组',
               orch: '打开可视化编排面板',
-              deleted: '查看本组已删除的任务（可恢复）',
               refs: '查看文档 / reference 列表',
             }}
             labels={{
-              more: deletedTasks.length ? `更多 (${deletedTasks.length})` : '更多',
-              deleted: deletedTasks.length ? `已删除任务（${deletedTasks.length}）` : '已删除任务',
+              more: '更多',
             }}
             disabled={{ new: !sel }}
             renderers={{
@@ -646,14 +633,11 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
                   location: 'right',
                 });
               },
-              deleted: () => setShowDeleted(true),
             }}
           />
         </>)
       }
     >
-      {dialogNode}
-
       {/* 组介绍（board/<组>.md，文字超链接打开 DocPanel）放在本组任务**上方**——
           先看这个组是干什么的，再看活儿 */}
 
@@ -674,16 +658,6 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
           onChanged={() => app.refreshRepos && app.refreshRepos()}
         />
       ) : null}
-
-      {/* #169：本组已删除任务（组任务跨多个成员队列，恢复按各自队列定位） */}
-      {showDeleted && (
-        <DeletedPanel
-          tasks={deletedTasks}
-          onClose={() => setShowDeleted(false)}
-          onRestore={restoreDeleted}
-          onPurge={purgeDeleted}
-        />
-      )}
     </Layout>
   );
 }

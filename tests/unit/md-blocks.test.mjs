@@ -221,3 +221,19 @@ test('renderMarkdownHtml：未内联引用的文件附件仍出 chip（v1 老数
   assert.match(html, /测试文档\.md/);
   assert.ok(!html.includes('md-att'), '正文没有链接');
 });
+
+// #183：绑定类附件（ref / task / url）不是正文里的东西，chip 兜底必须跳过它们。
+// 此前它们也进 filter，块编辑器逐块渲染 → 每个块底部都挂一条同名 chip。
+const REF_ATT = [{ kind: 'ref', id: 'att_ref_x', name: '设计笔记', role: 'attach', targetKey: 'ref_y' }];
+test('renderMarkdownHtml：ref 绑定不再吐 chip（块编辑器逐块渲染会变成满屏同名）', () => {
+  const html = renderMarkdownHtml('正文段', REF_ATT);
+  assert.doesNotMatch(html, /mdw-attach-chip/);
+  assert.equal(html, '<p>正文段</p>');
+});
+test('renderMarkdownHtml：task / url 绑定同样不吐 chip', () => {
+  const html = renderMarkdownHtml('正文段', [
+    { kind: 'task', id: 'att_task_x', name: '#183 任务', role: 'attach' },
+    { kind: 'url', id: 'att_url_x', name: 'https://example.com', role: 'attach' },
+  ]);
+  assert.doesNotMatch(html, /mdw-attach-chip/);
+});

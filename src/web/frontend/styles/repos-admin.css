@@ -46,13 +46,15 @@
 .rp-boards-unassigned { margin-top: 10px; color: var(--mid); font-size: 12px; }
 .rp-boards-unassigned b { font-family: var(--mono); }
 
-/* 文档列入口（DocsEntry）：主篇摘要 + 数量，点击打开查看详情弹窗（DocsModal）。
-   文档不再以 chip/tag 形式外显在行内——完整列表收进弹窗就地看、就地编辑。 */
+/* 文档列入口（DocsEntry）：归属 tag 单行 + 篇数，点击打开右侧「文档列表」。
+   #189：**必须横排**——原先是 column（tag 一行、篇数一行），仓库行会被撑成两行、
+   行高参差；而且 column 下 tag 容器按内容宽度收敛，单篇就会被钳成「+1」。 */
 .rp-docs-entry {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
   max-width: 100%;
   border: 0;
   background: transparent;

@@ -13,6 +13,7 @@ import { badInput, notFound, conflict } from '../../core/errors.js';
 import { withLinkMeta } from './docref.js';
 import type { DocRef } from './docref.js';
 import { readIntroSet } from './knowledge.js';
+import { syncRefIndex } from './ref-sync.js';
 
 // 看板定位（id / key / 名称）：boardKeyOf 由 bridge 注入（key 口径必须与 repos 完全一致）
 function findBoardIn(s: any, idOrKey: unknown, { normalizeKey: nk, boardKeyOf }: { normalizeKey: (k: unknown) => string; boardKeyOf: (v: any) => any }): any {
@@ -58,7 +59,7 @@ export async function setDocRef({ repo, board, rel, path, reset }: SetDocRefInpu
   const { mutateStore, deriveKey, boardKeyOf } = await reposBridge();
   const repoKeyIn = makeRepoKeyIn({ normalizeKey, deriveKey });
   const nk = { normalizeKey, boardKeyOf };
-  return mutateStore((s: any) => {
+  const res = await mutateStore((s: any) => {
     if (repo) {
       const rkey = repoKeyIn(s, repo);
       if (!rkey) throw notFound('repo 不存在: ' + repo);
@@ -73,6 +74,8 @@ export async function setDocRef({ repo, board, rel, path, reset }: SetDocRefInpu
     else delete b.doc;
     return { kind: 'board', key: boardKeyOf(b.name), name: b.name, ref: b.doc || null };
   });
+  await syncRefIndex();
+  return res;
 }
 
 /** setNoteDocRef 的入参。 */
@@ -96,7 +99,7 @@ export async function setNoteDocRef({ board, repo, rel, path, reset }: SetNoteDo
   const { mutateStore, deriveKey, boardKeyOf, boardRepoKeys } = await reposBridge();
   const repoKeyIn = makeRepoKeyIn({ normalizeKey, deriveKey });
   const nk = { normalizeKey, boardKeyOf };
-  return mutateStore((s: any) => {
+  const res = await mutateStore((s: any) => {
     const b = findBoardIn(s, board, nk);
     if (!b) throw notFound('看板不存在: ' + board);
     const rkey = repoKeyIn(s, locator) || normalizeKey(locator);
@@ -108,6 +111,8 @@ export async function setNoteDocRef({ board, repo, rel, path, reset }: SetNoteDo
     else delete b.repoDocs[rkey];
     return { board: b.id, boardName: b.name, boardKey: boardKeyOf(b.name), repoKey: rkey, ref: b.repoDocs[rkey] || null };
   });
+  await syncRefIndex();
+  return res;
 }
 
 // ─── 组级附加文档（有序列表，自有 rel 与外部 path 混排）────────────────
@@ -135,7 +140,7 @@ export interface SetDocLinkInput {
 export async function setDocLink({ board, doc, note, tag, remove, before }: SetDocLinkInput = {}): Promise<any> {
   if (!board) throw badInput('缺少看板（id / key / 名称）');
   const { mutateStore, boardKeyOf } = await reposBridge();
-  return mutateStore((s: any) => {
+  const res = await mutateStore((s: any) => {
     const b = findBoardIn(s, board, { normalizeKey, boardKeyOf });
     if (!b) throw notFound('看板不存在: ' + board);
     if (!Array.isArray(b.docLinks)) b.docLinks = [];
@@ -167,6 +172,8 @@ export async function setDocLink({ board, doc, note, tag, remove, before }: SetD
     else b.docLinks.push(entry);
     return { boardName: b.name, links: b.docLinks.slice(), count: b.docLinks.length };
   });
+  await syncRefIndex();
+  return res;
 }
 
 function describeLink(l: any): string {
@@ -239,7 +246,7 @@ export async function addRepoDoc(locator: string, raw: unknown): Promise<any> {
   const docRef = paths.assertDocRef(raw);
   const rawMeta = (raw && typeof raw === 'object' ? raw : {}) as { note?: unknown; tag?: unknown };
   const entry = withLinkMeta(docRef, { note: rawMeta.note, tag: rawMeta.tag });
-  return mutateStore((s: any) => {
+  const res = await mutateStore((s: any) => {
     const r = s.repos.find((x: any) => deriveKey(x) === deriveKey(repo));
     if (!r) throw notFound('repo 不存在: ' + locator);
     if (!Array.isArray(r.docLinks)) r.docLinks = [];
@@ -249,6 +256,8 @@ export async function addRepoDoc(locator: string, raw: unknown): Promise<any> {
     r.updatedAt = new Date().toISOString();
     return { key: deriveKey(r), name: r.name, added: entry, count: r.docLinks.length };
   });
+  await syncRefIndex();
+  return res;
 }
 
 /** 从项目的介绍文档集里摘掉一篇（--index 从 1 起；1 = 主篇） */
@@ -257,7 +266,7 @@ export async function removeRepoDoc(locator: string, index: unknown): Promise<an
   const repo = await getRepo(locator);
   const n = Number(index);
   if (!Number.isInteger(n) || n < 1) throw badInput('缺少参数 --index <序号>（1 = 主篇，其后依次）');
-  return mutateStore((s: any) => {
+  const res = await mutateStore((s: any) => {
     const r = s.repos.find((x: any) => deriveKey(x) === deriveKey(repo));
     if (!r) throw notFound('repo 不存在: ' + locator);
     if (n === 1) {
@@ -272,4 +281,6 @@ export async function removeRepoDoc(locator: string, index: unknown): Promise<an
     r.updatedAt = new Date().toISOString();
     return { key: deriveKey(r), name: r.name, removed: gone };
   });
+  await syncRefIndex();
+  return res;
 }

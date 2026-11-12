@@ -59,7 +59,7 @@ async function moveToCloud(p: MoveTaskInput = {}): Promise<MoveTaskResult> {
   if (t.migratedTo) {
     throw conflict(`#${t.id} 已迁移到云端「${t.migratedTo.topic}」（撤销请用 task move --undo）`);
   }
-  if (t.status !== 'pending') throw conflict(`#${t.id} 不是待领取（已领取/已交付），不能再迁移`);
+  if (t.status !== 'pending') throw conflict(`#${t.id} 不是待领取（已领取/已完成），不能再迁移`);
   if (t.deletedAt) throw conflict(`#${t.id} 已被删除，先恢复再迁移`);
 
   const cloudTopic = String(topic || '').trim() || loc.name; // 默认用目录名

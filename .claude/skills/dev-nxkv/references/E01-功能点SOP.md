@@ -19,7 +19,7 @@
 1. [[A01-数据模型]] → [[A02-关系模型]] → [[B01-架构分层]] → [[B03-action契约]]。
 2. 涉及提示词 → [[B04-提示词渲染链]]；涉及依赖/顺序/编排 → [[B05-依赖与工作流引擎]]。
 3. 涉及后端接口 → [[C01-serve端]]；涉及面板 UI → [[D01-组件结构]] → [[D02-页面与组件关系]]。
-4. 目标模块：`src/modules/<id>/index.js`（action 表）→ `service.js`（业务）→ `repo/*.js`（SQL）→ 相关 `core/*`。
+4. 目标模块：`src/modules/<id>/actions/<名>.ts`（action 声明 + zod 契约）→ `service.ts`（业务）→ `repo/*.ts`（SQL）→ 相关 `core/*`。
 5. 相关单测（`tests/unit/`）与 `tests/smoke.mjs`——**它们定义了既有契约**。
 
 现成命令：
@@ -42,7 +42,7 @@ node bin/kv.mjs db verify
 
 | 数据形态 | 放哪 | 规则 |
 |---|---|---|
-| 有查询条件、需要外键/事务/唯一约束 | SQLite 新表或新列 | 走新 migration（`vN+1.sql`）+ `migrations/index.js` 登记边；**已发布快照不改** |
+| 有查询条件、需要外键/事务/唯一约束 | SQLite 新表或新列 | 走新 migration（`vN+1.sql`）+ `migrations/index.ts` 登记边 + **`@decision` 决策注释与 `docs/decisions/` 文件**（门禁强制）；**已发布快照不改** |
 | 全局偏好 / 全局开关 | `settings` 表 | k/v，JSON 值；不要加宽表 |
 | 队列级 / 仓库级旋钮 | `topics.ext` / `repos.ext` | 随行走，不进 `settings` |
 | 附属、永远不进 WHERE 的展示信息 | `<table>.ext` | 键名 `ext_` 前缀 |
@@ -61,31 +61,31 @@ node bin/kv.mjs db verify
 
 ## 3. 后端实现（单一入口）
 
-1. **repo 层**：SQL 只写在 `modules/<id>/repo/*.js`；时间统一 `core/db/time.js` 的 `nowMs()`；JSON 列用现成 parse/stringify 辅助。
+1. **repo 层**：SQL 只写在 `modules/<id>/repo/*.ts`；时间统一 `core/db/time.ts` 的 `nowMs()`；JSON 列用现成 parse/stringify 辅助。
 2. **service 层**：业务规则、事务边界、错误语义（`core/errors.ts` 的 `badInput` 等）。不要从 action 直接拼 SQL。
-3. **action 层**：在 `modules/<id>/index.js` 增加 action：
-   - `id`：`<module>.<verb>`，全局唯一；
-   - `cli`：**必须有**，路径不得与现有命令重复；
-   - `http`：给面板用就写 `[METHOD, '/api/...']`，纯 CLI 写 `null`；
-   - `summary`：一句话说人话；
-   - `args` / `flags`：类型、hint、默认值；`rest` 字段当前未启用，不要依赖；
-   - `run`：只做编排与入参归一，不写业务；
-   - `render`：CLI 人读输出；HTTP 返回结构化数据。
-4. 需要动态 import 的重依赖 / 可选路径可以延迟 import，但不要制造循环依赖。
+3. **action 层**：在 `modules/<id>/actions/<名>.ts` 新建一个文件（一条 action 一个文件）：
+   - zod 契约内联在文件里，常量名 `input`（`.describe()` 是用法串与 help 的来源，认真写）；
+   - `@action({ id: '<module>.<verb>', cli: [...], http: [...] 或 null, summary, input })`；
+   - `override run(ctx: ActionInput<this['_input']>)`——注解是这个样板，不要 `any`、不要手写 `z.output`；
+   - `run` 只做编排与入参使用，业务在 service；需要区分传输通道时加第二参 `meta`（`meta.transport === 'http'`）。
+   - **跑 `pnpm gen`**：清单收进 `actions/_manifest.generated.ts`，前端 typed client 与 cli-tree 同步刷新。
+4. `cli` **必须有**，路径不得与现有命令重复；给面板用就写 `http`，纯 CLI 显式 `null`。
+5. 需要动态 import 的重依赖 / 可选路径可以延迟 import，但不要制造循环依赖。
 
-**自检**：`node bin/kv.mjs routes --module <id>` 能看到新命令；registry 启动自检通过（id/CLI/HTTP 不重复、`run` 存在）。
+**自检**：`node bin/kv.mjs routes --module <id>` 能看到新命令；registry 启动自检通过（id/CLI/HTTP 不重复、`run` 存在）；**serve 要重启**才看得到新 action。
 
 细节见 [[B02-action注册全表]] 与 [[B03-action契约]]。
 
 ## 4. 面板接入（需要 UI 时）
 
-1. 页面放 `src/web/frontend/page/<name>/`，在 `src/web/frontend/registry.js` 登记；面板在 `panels.jsx` 的 `PANELS` 登记；设置类页面在 `page/settings/`。
-2. 前端只调 `/api/*`；禁止 import 后端模块，只能用 `src/shared/` 的纯函数。
-3. 复用现有 section / 编辑器组件，不要为同一功能再写一套表单。
-4. 设置页保持分离：「任务模板」（`templates` 表）与「提示词区块模板」不要混在同一表单；提示词按区块各自一个模板列表，不要合成全局模板表单。
-5. 面板寻址要**逐字互逆**：`panelSpecOfRoute` 生成的 config 必须能从 `routeOfPanel` 写回的路由复现，否则会裂出重复页签。
+1. 页面放 `src/web/frontend/page/<name>/`，在 `src/web/frontend/registry.ts` 登记；面板在 `panels.tsx` 的 `PANELS` 登记；路由在 `routes/<名>.ts` 写 `definePage` 并在 `routes/index.ts` 加一行；设置类页面在 `page/settings/`。
+2. 前端只调 `/api/*`；**页面组件不裸调 `api()`**——调用收口到本页 `api.ts` 具名函数（eslint 强制）。
+3. 禁止 import 后端模块，只能用 `src/shared/` 的纯函数。
+4. 复用现有 section / 编辑器组件，不要为同一功能再写一套表单。
+5. 设置页保持分离：「任务模板」（`templates` 表）与「提示词区块模板」不要混在同一表单；提示词按区块各自一个模板列表，不要合成全局模板表单。
+6. 面板寻址要**逐字互逆**：`panelSpecOfRoute` 生成的 config 必须能从 `routeOfPanel` 写回的路由复现，否则会裂出重复页签（`tests/unit/route-table.test.mjs` 钉着）。
 
-**自检**：`frontend-refs.test.mjs` / `registry.test.mjs` 通过；`pnpm build` 通过；实际打开页面走一遍。
+**自检**：`frontend-refs.test.mjs` / `registry.test.mjs` 通过；`pnpm typecheck`、`pnpm build` 通过；实际打开页面走一遍。
 
 细节见 [[D01-组件结构]] 与 [[D02-页面与组件关系]]。
 
@@ -115,9 +115,8 @@ node bin/kv.mjs db verify
 
 - 提交信息用 **Conventional Commits**（`feat(scope): …` / `fix(scope): …` / `docs(scope): …`），正文用中文说明「为什么」。
 - 工作区可能有**并行会话**的改动：**只 `git add` 本次自己改的文件**，不要 `git add -A`。
-- 默认只做本地提交；用户明确要求发布时才 push，且不强推、不动主干策略。
+- 默认只做本地提交；用户明确要求发布时才 push，且不强推、不动主干策略；push 显式 `git push origin <branch>`。
 - 进度按需更新 `plan/todo.md`；对外行为变化进 `CHANGELOG.md`。
-- 远端注意：本机 `git config remote.pushDefault` 可能指向不存在的远端，裸 `git push` 会失败——显式 `git push origin <branch>`。
 
 ## 9. 汇报（Definition of Done）
 

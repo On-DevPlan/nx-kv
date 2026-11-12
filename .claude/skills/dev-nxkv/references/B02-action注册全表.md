@@ -1,4 +1,4 @@
-# B02 · action 注册全表：153 条入口在哪
+# B02 · action 注册全表：154 条入口在哪
 
 > B 序列 · 架构之二。回答「这个功能现在走哪条命令 / 哪个路由」「新增入口要登记到哪」。
 > action 的字段与校验见 [[B03-action契约]]；模块与分层见 [[B01-架构分层]]。
@@ -6,7 +6,10 @@
 ## 1. 注册机制：一份声明，三张表
 
 ```text
-src/modules/<id>/index.js  的 actions[]
+src/modules/<id>/actions/<名>.ts  （一条 action 一个文件，@action + zod 契约内联）
+            │  pnpm gen:actions 扫目录 → actions/_manifest.generated.ts
+            ▼
+   src/modules/<id>/index.ts  ModuleBase 子类装配（zodActionsOf + container.create）
             │
             ▼
    src/runtime/registry.ts   MODULES → ACTIONS，装载期自检
@@ -18,31 +21,32 @@ src/modules/<id>/index.js  的 actions[]
 
 「Web 上每个操作都有等价 CLI 命令」是**结构性保证**，不是口头约定：一条 action 同时声明 `cli` 与 `http`，二者写在同一处，不可能分叉。
 
-- `registry.js` 只汇合，不含任何前端路径——**前端怎么呈现，后端不知道也不该知道**。
-- `command-table.js` 这个「格子」存在的理由：`/api/bootstrap` 要给面板下发「每个操作对应的 CLI 命令」，而表由 runtime 装配；模块直接 import runtime 会成环。方向是单向的：`runtime → core`（写快照），`modules → core`（读快照）。没有快照时返回空数组（bootstrap 允许空表降级，面板仍能打开，只是没有 CLI 提示）。
-- `cli.js` 装配出的 `ALL_COMMANDS` 是 `ACTIONS` 的**超集**（多出平台命令），并在装配后覆盖一次快照。
+- **加一条 action 零登记**：新建 `actions/<名>.ts` → 跑 `pnpm gen` → 模块自动装配，`index.ts` 零改动。
+- `registry.ts` 只汇合，不含任何前端路径——**前端怎么呈现，后端不知道也不该知道**。
+- `command-table.ts` 这个「格子」存在的理由：`/api/bootstrap` 要给面板下发「每个操作对应的 CLI 命令」，而表由 runtime 装配；模块直接 import runtime 会成环。方向是单向的：`runtime → core`（写快照），`modules → core`（读快照）。没有快照时返回空数组（bootstrap 允许空表降级，面板仍能打开，只是没有 CLI 提示）。
+- `cli.ts` 装配出的 `ALL_COMMANDS` 是 `ACTIONS` 的**超集**（多出平台命令），并在装配后覆盖一次快照。
 
-## 2. 平台命令（4 条，不进 action 表）
+## 2. 平台命令（3 条，不进 action 表）
 
 | CLI | 归属 | HTTP | 说明 |
 |---|---|---|---|
 | `nx-kv serve` | platform | — | 启动 Web 面板（见 [[C01-serve端]]） |
 | `nx-kv help [topic]` | platform | — | 帮助；`--json` 输出可解析的命令表 |
-| `nx-kv routes` | system | — | 命令 ↔ 路由对照表（`--module` 过滤；`--http` 反查命令） |
 | `nx-kv version` | platform | — | 裸版本号（脚本里 `V=$(nx-kv version)`） |
 
-`routes` 的数据源是 `cli.js` 的 `ALL_COMMANDS`，所以它的**逻辑**放在 `src/modules/system/routes.js`（纯函数 `filterRoutes` / `renderRoutes`），**表**由 runtime 传入。模块不 import runtime。
+`routes`（命令 ↔ 路由对照表）**已是 action**（`system.routes`，见下表 §3.1）：它的数据源是 `cli.ts` 的 `ALL_COMMANDS`，逻辑是 `src/modules/system/actions/routes.ts` / `src/modules/system/routes.ts` 里的纯函数，**表**由 runtime 传入——模块不 import runtime，面板也从 `/api/bootstrap` 拿同一张表。
 
-## 3. 全量 action 表（按模块，共 153 条）
+## 3. 全量 action 表（按模块，共 154 条）
 
 「HTTP」列为 `—` = 显式 `http: null`（纯 CLI 命令）。
 
-### 3.1 `system`（2）
+### 3.1 `system`（3）
 
 | CLI | HTTP |
 |---|---|
 | `bootstrap` | `GET /api/bootstrap` |
 | `health` | `GET /api/health` |
+| `routes` | —（面板从 `/api/bootstrap` 拿同一张表） |
 
 ### 3.2 `setting`（2）
 
@@ -159,22 +163,22 @@ src/modules/<id>/index.js  的 actions[]
 
 任务本体：
 
-| CLI | HTTP |
-|---|---|
-| `localtask list` | `GET /api/localtasks` |
-| `localtask show` | `GET /api/localtasks/item` |
-| `localtask chain` | `GET /api/localtasks/chain` |
-| `localtask clone` | `POST /api/localtasks/clone` |
-| `localtask fork` | `POST /api/localtasks/fork` |
-| `localtask get` | — |
-| `localtask preview` | `POST /api/localtasks/preview` |
-| `localtask reopen` | `POST /api/localtasks/reopen` |
-| `localtask done` | `POST /api/localtasks/done` |
-| `localtask add` | `POST /api/localtasks` |
-| `localtask update` | `PATCH /api/localtasks/item` |
-| `localtask cancel` | `POST /api/localtasks/cancel` |
-| `localtask timegoal-log` | `GET /api/localtasks/timegoal-log` |
-| `localtask import-remote` | `POST /api/localtasks/import-remote` |
+| CLI | HTTP | 说明 |
+|---|---|---|
+| `localtask list` | `GET /api/localtasks` | |
+| `localtask show` | `GET /api/localtasks/item` | action id `localtask.get`（CLI 动词与 id 不同名） |
+| `localtask get` | `POST /api/localtasks/claim` | action id `localtask.claim`。**HTTP 不阻塞、不开浏览器**（面板/脚本调用不该挂住请求）；CLI 侧没任务默认立即返回，项目开启「持续 get」后可 `--timeout` 阻塞等人回填 |
+| `localtask chain` | `GET /api/localtasks/chain` | |
+| `localtask clone` | `POST /api/localtasks/clone` | |
+| `localtask fork` | `POST /api/localtasks/fork` | |
+| `localtask preview` | `POST /api/localtasks/preview` | |
+| `localtask reopen` | `POST /api/localtasks/reopen` | |
+| `localtask done` | `POST /api/localtasks/done` | |
+| `localtask add` | `POST /api/localtasks` | |
+| `localtask update` | `PATCH /api/localtasks/item` | |
+| `localtask cancel` | `POST /api/localtasks/cancel` | |
+| `localtask timegoal-log` | `GET /api/localtasks/timegoal-log` | |
+| `localtask import-remote` | `POST /api/localtasks/import-remote` | |
 
 批量：
 
@@ -211,7 +215,7 @@ src/modules/<id>/index.js  的 actions[]
 
 | CLI | HTTP |
 |---|---|
-| `localtask wait` | — |
+| `localtask wait` | —（纯 CLI：阻塞等人回填） |
 | `localtask presence` | `GET /api/localtasks/presence` |
 | `localtask events` | `GET /api/localtasks/events`（SSE 长连接，`stream: true`） |
 
@@ -238,7 +242,7 @@ src/modules/<id>/index.js  的 actions[]
 | `template remove` | `DELETE /api/templates/:id` |
 | `template default` | `PATCH /api/templates/default` |
 
-> ⚠️ `PATCH /api/templates/default` 是**字面量路由**，必须排在 `PATCH /api/templates/:id` 之前匹配（见 [[B03-action契约]] 的「字面量优先」与 [[C01-serve端]] 的路由排序）。
+> ⚠️ `PATCH /api/templates/default` 是**字面量路由**，与 `PATCH /api/templates/:id` 都能匹配同名路径。编译后按「字面量在前」排序，所以字面量总是赢——但静态路由必须**自己按载荷分派**（见 [[B03-action契约]] §4）。
 
 ### 3.9 `todo`（25）
 
@@ -315,7 +319,7 @@ src/modules/<id>/index.js  的 actions[]
 
 ## 4. 装载期自检（服务一起来就验）
 
-`src/runtime/registry.ts` 在 import 阶段逐条检查，**启动瞬间**暴露问题，而不是等某个用户敲到那条命令时才发现：
+`src/runtime/registry.ts` 的 `Registry.create` 在装配阶段逐条检查，**启动瞬间**暴露问题，而不是等某个用户敲到那条命令时才发现：
 
 1. `id` 重复；
 2. action 没有任何 CLI 路径（**每条 action 必须有 `cli`**——保证「Web 上能做的，CLI 都能做」）；
@@ -323,26 +327,27 @@ src/modules/<id>/index.js  的 actions[]
 4. HTTP 路由重复（`method + path`）；
 5. `http` 既不是路由数组也不是**显式** `null`；
 6. 缺少 `run`；
-7. `flags.rest` 不在 `flags` 的**最后一位**（rest flag 必须吃掉其后全部 token；后面还跟着别的 flag 就会被当成值的一部分静默吞掉——命令照跑，参数却没了）。
+7. `flags.rest` 不在 `flags` 的**最后一位**（仅 legacy flags 通道；zod 通道用 `restArg`，无此约束）。
 
 `http` 为 `null` 是合法声明（如 `db` 诊断命令），不是漏写；但**不允许**声明 `http` 却没有 `cli`。
 
 ## 5. 命令 ↔ 路由反查（核对用）
 
 ```powershell
-node bin/kv.mjs routes                      # 全量对照（157 行：153 action + 4 平台命令）
+node bin/kv.mjs routes                      # 全量对照（157 行：154 action + 3 平台命令）
 node bin/kv.mjs routes --module localtask   # 只看某模块
 node bin/kv.mjs routes --http "POST /api/localtasks/preview"
-node bin/kv.mjs help --json                 # 与 routes 同源同长
+node bin/kv.mjs help --json                 # 与 routes 同源同长（157 条）
 ```
 
 本表如与 `node bin/kv.mjs routes` 不一致，**以命令输出为准**（代码是唯一真相，本表只是快照）。
 
 ## 6. 新增一条 action 要落在哪
 
-1. `src/modules/<id>/index.js` 的 `actions[]` 加一条（字段见 [[B03-action契约]]）。
-2. 业务函数写进同模块 `service.js`（普通对象入参 / 返回；SQL 与事务不进 action）。
-3. 需要面板入口：前端写视图并在 `src/web/frontend/registry.js` 登记（见 [[D02-页面与组件关系]]）。
-4. 启动自检必须通过（id / CLI / HTTP 不重复、`run` 存在）。
-5. `node bin/kv.mjs routes --module <id>` 能看到新命令。
-6. 文档同步：`README.md`、`docs/project&projectsCli.md`、`CHANGELOG.md`；命令口径变了再同步 `assets/`。
+1. `src/modules/<id>/actions/<名>.ts` 新建一个文件：zod 契约内联（`input`）+ `@action` 元数据 + `override run`（字段与样板见 [[B03-action契约]]）。
+2. 业务函数写进同模块 `service.ts`（普通对象入参 / 返回；SQL 与事务不进 action）。
+3. 跑 `pnpm gen`（gen:actions 收清单 + gen:api 刷新前端 typed client 与 cli-tree）。
+4. 需要面板入口：前端页面在**本页 `api.ts`** 加调用函数并在组件里消费（见 [[D02-页面与组件关系]]）。
+5. 启动自检必须通过（id / CLI / HTTP 不重复、`run` 存在）。
+6. `node bin/kv.mjs routes --module <id>` 能看到新命令。
+7. 文档同步：`README.md`、`docs/project&projectsCli.md`、`CHANGELOG.md`；命令口径变了再同步 `assets/`。

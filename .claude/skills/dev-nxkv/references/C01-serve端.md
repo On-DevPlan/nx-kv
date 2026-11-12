@@ -13,8 +13,8 @@ bin/kv.mjs
        └─ resolveCommand(argv) → cmdServe(ctx)
             ├─ src/runtime/server.ts  startServer()
             ├─ src/core/serve-port.ts resolvePortConflict() / findFreePort() / probePanel()
-            ├─ src/core/open.js      openBrowser()
-            └─ src/modules/localtask/panel-guard.js  空闲自释放看门狗（仅 --auto-exit）
+            ├─ src/core/open.ts      openBrowser()
+            └─ src/modules/localtask/panel-guard.ts  空闲自释放看门狗（仅 --auto-exit）
 ```
 
 `serve` 的 flag：
@@ -129,7 +129,7 @@ ACTIONS.filter(a => a.http)
 
 ## 6. bootstrap 与命令表下发
 
-`GET /api/bootstrap`（`src/modules/system/index.js` 的 `system.bootstrap`）返回：
+`GET /api/bootstrap`（`src/modules/system/actions/bootstrap.ts` 的 `system.bootstrap`）返回：
 
 | 字段 | 内容 |
 |---|---|
@@ -143,7 +143,7 @@ ACTIONS.filter(a => a.http)
 
 ## 7. 空闲自释放（`--auto-exit`）
 
-`src/modules/localtask/panel-guard.js` 的 `startPanelIdleGuard({ server, idleSec })`。
+`src/modules/localtask/panel-guard.ts` 的 `startPanelIdleGuard({ server, idleSec })`。
 
 - 看门狗要等 server 起好才创建，所以 `onRequest` 回调通过一个可变 holder 始终指向当前的 `noteActivity`。
 - ⚠️ 这里以前是空函数——于是看门狗的 `noteActivity()` 从来没被调用过，空闲时长是从**进程启动**算起的，用户正用着面板也会被自动释放。
@@ -151,16 +151,16 @@ ACTIONS.filter(a => a.http)
 
 ## 8. 事件流（SSE）
 
-`localtask events`（`GET /api/localtasks/events`，`stream: true`）——实现见 `src/modules/localtask/events.js`。
+`localtask events`（`GET /api/localtasks/events`，`stream: true`）——实现见 `src/modules/localtask/events.ts`。
 
 - 事件流**不依赖进程内回调**（`wait` 与常驻面板通常是两个进程，内存 EventEmitter 跨不过进程），而是轮询 store，从 `waiting` / `waitingUntil` 与「已领取数」的变化里派生事件：`waiting` / `reminder`（剩余 30s、10s）/ `resolved`（delivered | timeout）。
 - SSE（HTTP）与 NDJSON（CLI）**共用同一个生成器** `watchEvents`。
-- HTTP 与 CLI 按传输方式分流：HTTP → SSE（`req/res` 透传，`api.js` 只在 HTTP 下注入 `ctx.__raw`）；CLI → NDJSON。
+- HTTP 与 CLI 按传输方式分流：HTTP → SSE（`req/res` 透传，`api.ts` 只在 HTTP 下注入 `ctx.__raw`）；CLI → NDJSON。
 - `cancelled` **不算** delivered：作废的任务没有交给任何领取方，算进去会在任务被取消时误报 resolved。
 
 ## 9. 改 serve 端时的检查清单
 
-1. 新接口 = **新 action**（`cli` 必有），不要在 `api.js` 手写路由（那会绕过 CLI 等价与注册期自检）。
+1. 新接口 = **新 action**（`cli` 必有），不要在 `api.ts` 手写路由（那会绕过 CLI 等价与注册期自检）。
 2. 改路由匹配 → 记住「字面量优先」的排序规则，不要靠声明顺序。
 3. 改 CORS → 别把「拒绝跨源写请求」加回来（见 §3 的事故说明）。
 4. 改端口 → `core/serve-port.ts` 是跨项目共享文件，改一处要全量同步。
@@ -178,9 +178,9 @@ ACTIONS.filter(a => a.http)
 | `src/runtime/spec.ts` | 参数强转（CLI/HTTP 共用）、路由正则、用法串 |
 | `src/core/serve-port.ts` | 端口协商、探测、自动开浏览器策略 |
 | `src/core/command-table.ts` | 命令表快照格子 |
-| `src/core/open.js` | 打开浏览器 |
-| `src/modules/system/index.js` | `bootstrap` / `health` |
-| `src/modules/system/routes.js` | `routes` 的纯逻辑 |
-| `src/modules/localtask/panel-guard.js` | 空闲自释放看门狗 |
-| `src/modules/localtask/events.js` | 等待事件流（SSE / NDJSON 共用生成器） |
-| `src/modules/localtask/panel-presence.js` | 面板登记与 presence |
+| `src/core/open.ts` | 打开浏览器 |
+| `src/modules/system/actions/` | `bootstrap` / `health` / `routes` |
+| `src/modules/system/routes.ts` | `routes` 的纯逻辑 |
+| `src/modules/localtask/panel-guard.ts` | 空闲自释放看门狗 |
+| `src/modules/localtask/events.ts` | 等待事件流（SSE / NDJSON 共用生成器） |
+| `src/modules/localtask/panel-presence.ts` | 面板登记与 presence |

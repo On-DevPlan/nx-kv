@@ -27,6 +27,7 @@ import { openTemplateEditor } from '../../panels.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { NEW_TEMPLATE_VALUES, parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
+import { hitTaskQuery } from '../../modules/board/task-search.js';
 import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, LocalTopic, RepoData } from '../../types.js';
@@ -258,11 +259,28 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     return [...pend, ...done];
   }, [board, items]);
 
-  const groupPendingCount = useMemo(
-    () => groupTasks.filter((x) => x.task.status === 'pending').length,
-    [groupTasks]
+  // #188：与目录任务页同款搜索（标题 + 正文模糊匹配，规则收在 modules/board/task-search）。
+  // 组任务行是 {member, task} 的包装，没有扁平的 text/id——按 {id, text} 桥一下再交给同一个纯函数，
+  // 两页的匹配口径才不会各长一套。
+  const [q, setQ] = useState('');
+  const searching = !!String(q).trim();
+  const shownTasks = useMemo(
+    () =>
+      searching
+        ? groupTasks.filter((g) => hitTaskQuery({ id: g.task.id, text: g.task.text }, q))
+        : groupTasks,
+    [groupTasks, q, searching]
   );
-  const pager = usePager(groupTasks, PAGE_SIZE);
+  // 待领取计数跟着**筛后**集合走：搜索时头部「待领取 N」要与屏幕上的行对得上（同目录页口径）
+  const groupPendingCount = useMemo(
+    () => shownTasks.filter((x) => x.task.status === 'pending').length,
+    [shownTasks]
+  );
+  const pager = usePager(shownTasks, PAGE_SIZE);
+  // 改查询串回第一页：否则会停在「上一结果的第 3 页」上，看起来像没命中
+  useEffect(() => {
+    pager.setPage(0);
+  }, [q]);
 
   // 待领取拖动排序（同目录页 HTML5 DnD；落点须同 topic）
   const dragRef = useRef<DragInfo | null>(null); // { id, topicKey, cwd }
@@ -377,7 +395,24 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
       <TaskPanel
         title="本组任务"
         pendingCount={groupPendingCount}
-        emptyText="本组还没有任务——点「＋ 新增任务」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。"
+        headerExtra={
+          <span className="rp-tasks-tools">
+            {/* #188：组页此前没有搜索框（同一份任务列表，目录页能搜、组页不能） */}
+            <input
+              className="rp-task-search"
+              type="search"
+              value={q}
+              placeholder="搜索标题 / 内容"
+              aria-label="搜索本组任务"
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </span>
+        }
+        emptyText={
+          searching
+            ? `没有匹配「${q.trim()}」的任务（标题与正文都搜过了）`
+            : '本组还没有任务——点「＋ 新增任务」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。'
+        }
       >
         {(pager.items.map(({ member, task }) => {
           const isPending = task.status === 'pending';

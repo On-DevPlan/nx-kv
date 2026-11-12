@@ -7,9 +7,11 @@
 // 仓库还没有队列时只剩「＋ 新建页」一个子行——点它先建队列再进工作台（queue-nav.js）。
 //
 // 显示序：**未完成（待领取）优先**（sortTasksForDisplay——追加序会把新任务
-// 埋在历史底下）；长度：**全量铺开**，靠侧栏自身滚动承接（#181：以前每页 12 条
-// 带翻页，用户在侧栏里翻页等于把树形导航变成两套分页，直接去掉）。
-import { useMemo } from 'react';
+// 埋在历史底下）；长度：**不分页**——#181 去掉翻页控件后是全量铺开，但队列一长
+// （实测 68 条）侧栏就被任务子行灌满，树形导航彻底失效。
+// #188 用户口径「不要分页，显示……即可」：默认只铺前 8 条，尾部一行「…」收口，
+// 点「…」就地展开全部（再点收起）——既没有分页控件，也不把默认视野撑爆。
+import { useMemo, useState } from 'react';
 import { Icon } from '../icons.jsx';
 import { useToast } from '../toast/index.jsx';
 import { taskLabel } from './model.js';
@@ -26,6 +28,9 @@ import type { LocalTask } from '../../types.js';
 // 兄弟模块类型桥：board-view 尚未类型化（`tasks = []` 默认值把形参推成 never[]），
 // 这里按实际契约声明一次——它毕业成强类型后此桥退化为恒等。
 const sortTasksForDisplayBridge = sortTasksForDisplay as unknown as (tasks: LocalTask[]) => LocalTask[];
+
+/** 侧栏默认铺开的任务子行条数（超出部分折成一行「…」，不分页）。 */
+const SIDE_TASK_LIMIT = 8;
 
 /** TaskChildren 入参。 */
 export interface TaskChildrenProps {
@@ -49,9 +54,13 @@ export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChil
   const base = row.type === 'global'
     ? '#/global'
     : `#/dir/${encodeURIComponent(row.topicKey || row.key)}`;
+  // #188：默认只铺前 N 条，其余折成一行「…」；点它就地展开（再点收起），全程没有翻页控件。
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? tasks : tasks.slice(0, SIDE_TASK_LIMIT);
+  const rest = tasks.length - shown.length;
   return (
     <>
-      {tasks.map((t) => (
+      {shown.map((t) => (
         <button
           key={`${row.topicKey || row.key}:t:${t.id}`}
           type="button"
@@ -69,6 +78,35 @@ export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChil
           </span>
         </button>
       ))}
+      {/* 「…」收口（#188）：不打分页，只表示「还有」。点它就地展开，展开后给「收起」还原 */}
+      {rest > 0 && (
+        <button
+          type="button"
+          className="trow child task-more"
+          title={`还有 ${rest} 条任务没铺开（点开看全部，不分页）`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowAll(true);
+          }}
+        >
+          <span className="gico"><Icon name="dots" size={12} /></span>
+          <span className="nm">…还有 {rest} 条</span>
+        </button>
+      )}
+      {showAll && tasks.length > SIDE_TASK_LIMIT && (
+        <button
+          type="button"
+          className="trow child task-more"
+          title="收起，只留前几条"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowAll(false);
+          }}
+        >
+          <span className="gico"><Icon name="chevron" size={12} /></span>
+          <span className="nm">收起</span>
+        </button>
+      )}
       <button
         type="button"
         className="trow child task-new"

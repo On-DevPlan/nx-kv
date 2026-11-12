@@ -21,7 +21,7 @@ export class LocaltaskCloseManyAction extends ActionBase<typeof input> {
     id: 'localtask.closeMany',
     cli: ['localtask', 'close-many'],
     http: ['POST', '/api/localtasks/items/close'],
-    summary: '批量收口待领取任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；已领取/已交付跳过',
+    summary: '批量收口待领取任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；已领取/已完成跳过',
     input,
     render: (d: any) => {
       const done: any = d.closed.map((x: any) => `#${x.id}`).join(' ');

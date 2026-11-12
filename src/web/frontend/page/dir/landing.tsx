@@ -163,7 +163,7 @@ export default function Landing({
   const pageIds = tasks.map((t) => Number(t.id));
   const allPicked = pageIds.length > 0 && pageIds.every((id) => picked.has(id));
   const pickedTasks = tasks.filter((t) => picked.has(Number(t.id)));
-  // 取消/标为完成只对待领取生效；已领取/已交付/已取消由后端跳过
+  // 取消/标为完成只对待领取生效；已领取/已完成/已取消由后端跳过
   const closableTasks = pickedTasks.filter(
     (t) => t.status === 'pending' && !t.migratedTo && !t.deletedAt
   );
@@ -192,7 +192,7 @@ export default function Landing({
     const ok = await fn(ids);
     if (ok) setPicked(new Set());
   };
-  // 只有待领取行能拖动调序（已领取/已交付/已取消都是固定历史）
+  // 只有待领取行能拖动调序（已领取/已完成/已取消都是固定历史）
   const movable = (t: LocalTask) => t.status === 'pending' && !t.migratedTo && !t.deletedAt;
   const zoneOf = (e: ReactDragEvent<HTMLElement>, tr: HTMLElement): DropZone => {
     const r = tr.getBoundingClientRect();

@@ -2,7 +2,7 @@
 //
 // 以组面板的行结构为准：拖把 →（多选框）→ #id →（项目 tag）→ 标题 →
 // 时间目标 / 闸门 / 锁定 →（创建/领取时间）→ 状态药丸 →（行尾操作）。
-// 状态一律走 StatusTag（#121 全应用唯一口径：蓝=进行中 / 绿=已交付 /
+// 状态一律走 StatusTag（#121 全应用唯一口径：蓝=进行中 / 绿=已完成 /
 // 浅灰=待领取 / 灰虚线=收口）——组页旧「已领取一律蓝」、dir 页单字徽标
 // （等/跑/完/档）都收口到这一个组件。
 //
@@ -214,7 +214,7 @@ export default function TaskRow({
             {t.consumedAt ? ` → ${shortTime(t.consumedAt)}` : ''}
           </span>
         )}
-        {/* 状态药丸：历史行也显示真实状态（已交付/已作废不再被吞成「已领取」） */}
+        {/* 状态药丸：历史行也显示真实状态（已完成/已作废不再被吞成「已领取」） */}
         <StatusTag t={t} />
         {ops ? (
           <span className="rp-proj-ops" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>

@@ -1190,7 +1190,7 @@
           "action": {
             "id": "localtask.cancelMany",
             "module": "localtask",
-            "summary": "批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已交付/已取消跳过；取消为终态，原文留档",
+            "summary": "批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已完成/已取消跳过；取消为终态，原文留档",
             "usage": "localtask cancel-many",
             "http": "POST /api/localtasks/items/cancel"
           },
@@ -1250,7 +1250,7 @@
           "action": {
             "id": "localtask.closeMany",
             "module": "localtask",
-            "summary": "批量收口待领取任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；已领取/已交付跳过",
+            "summary": "批量收口待领取任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；已领取/已完成跳过",
             "usage": "localtask close-many",
             "http": "POST /api/localtasks/items/close"
           },

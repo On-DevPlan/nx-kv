@@ -14,7 +14,7 @@ import { stripFrontmatter } from '../../shared/frontmatter.js';
 const KIND_LABEL: Record<string, string> = { file: '附件', url: '链接', task: '任务', ref: '文档' };
 const IMAGE_LABEL = '图片';
 export const ORIGIN_LABEL = { inline: '正文内嵌', area: '附件区' };
-export const STATUS_LABEL: Record<string, string> = { pending: '待领取', claimed: '进行中', done: '已交付', cancelled: '已作废' };
+export const STATUS_LABEL: Record<string, string> = { pending: '待领取', claimed: '进行中', done: '已完成', cancelled: '已作废' };
 // 「文档资料」绑定进原文的单篇上限（#162）：文档全文跟着每轮交付走，不能把整本书塞进提示词；
 // 截断后仍给 docs get 命令，agent 需要全文时自己取。
 export const MAX_INLINE_DOC_CHARS = 20000;

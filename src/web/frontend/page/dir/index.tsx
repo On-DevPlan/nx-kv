@@ -345,7 +345,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     if (!list.length) return false;
     const ok = await dialog({
       title: `取消选中的 ${list.length} 条待领取任务`,
-      message: '只处理待领取任务；已领取/已交付/已取消会跳过。取消为终态，原文留档。',
+      message: '只处理待领取任务；已领取/已完成/已取消会跳过。取消为终态，原文留档。',
       okText: '取消任务',
     });
     if (!ok) return false;
@@ -363,7 +363,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     if (!list.length) return false;
     const ok = await dialog({
       title: `把选中的 ${list.length} 条待领取任务标为完成`,
-      message: '只处理待领取任务；已领取/已交付/已取消会跳过。完成会补一条完成记录，原文留档。',
+      message: '只处理待领取任务；已领取/已完成/已取消会跳过。完成会补一条完成记录，原文留档。',
       okText: '标为完成',
     });
     if (!ok) return false;

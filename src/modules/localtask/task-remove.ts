@@ -160,7 +160,7 @@ export interface CancelCloseTaskInput {
 /**
  * 批量取消待领取任务（面板「取消选中 n」用）：一个事务处理多条。
  *
- * 只接受 pending 任务：已领取（可能有 agent 正在处理）、已交付、已取消都跳过，
+ * 只接受 pending 任务：已领取（可能有 agent 正在处理）、已完成、已取消都跳过，
  * 避免误伤正在跑的会话或已留档的交付记录。取消是终态，原文保留，不写 roundSummary。
  */
 export async function cancelTasks({ cwd: rawCwd, key: rawKey, ids }: CancelCloseTaskInput = {}): Promise<Record<string, any>> {
@@ -217,7 +217,7 @@ export async function cancelTasks({ cwd: rawCwd, key: rawKey, ids }: CancelClose
  * 以前只有 agent 领取后走 completeTask 才能收口；这里补上用户侧的直接操作。
  * - status=done：写完成总结与完成时刻（总结缺省为「用户确认已完成（任务未领取，直接关闭）」）
  * - status=cancelled：只改状态（与 cancelTasks 同口径，原文留档）
- * 已领取（可能有 agent 正在处理）、已交付、已取消、已删除都跳过。
+ * 已领取（可能有 agent 正在处理）、已完成、已取消、已删除都跳过。
  */
 export async function closeTasks({ cwd: rawCwd, key: rawKey, ids, status = 'done', summary = '' }: CancelCloseTaskInput = {}): Promise<Record<string, any>> {
   const wantStatus = String(status ?? 'done');
@@ -343,7 +343,7 @@ export async function reorderTasks({ cwd: rawCwd, key: rawKey, id, beforeId, aft
     throw notFoundImpl(`主题「${t.name}」里找不到任务 #${drag ? targetId : dragId}`);
   }
   if (drag.status !== 'pending' || target.status !== 'pending') {
-    throw badInput('只有「待领取」任务可以调整优先级（已领取/已交付的任务是固定历史）');
+    throw badInput('只有「待领取」任务可以调整优先级（已领取/已完成的任务是固定历史）');
   }
 
   tx(() => {

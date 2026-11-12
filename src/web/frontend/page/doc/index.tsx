@@ -435,7 +435,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
         title: '重命名文档',
         input: true,
         value: prevRel,
-        placeholder: '新路径（相对 docs 根，以 .md 结尾）',
+        placeholder: '新路径（逻辑 rel，以 .md 结尾）',
       });
       if (next === null) return;
       const rel = String(next).trim();
@@ -463,7 +463,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     guard(async () => {
       const ok = await dialog({
         title: `删除文档「${docTitle || docRel || docId}」`,
-        message: `磁盘上的 ${docRel || docId} 会被一并删除，不可恢复。`,
+        message: `库内文档 ${docRel || docId} 及其正文会被一并删除，不可恢复。`,
         danger: true,
         okText: '删除',
       });
@@ -523,15 +523,22 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   if (!doc) return <div className="mdw"><div className="pad muted">载入中…</div></div>;
 
   if (doc.missing) {
-    const creatable = String(docId || '').startsWith('rel:') || !String(docId || '').startsWith('path:');
+    // v6：legacy/<id> 与 external/<hash> 是「有身份、没有正文」的壳行，
+    // 必须显式说明原因，且不提供「创建骨架」（避免把壳行变成正常文档）。
+    const shell = !!doc.relKind;
+    const creatable = !shell && (String(docId || '').startsWith('rel:') || !String(docId || '').startsWith('path:'));
     return (
       <div className="mdw docp">
         <div className="docp-head">
           <span className="docp-path mono">{doc.rel || doc.path || docId}</span>
         </div>
         <div className="pad stack">
-          <div><strong>文档还没有落盘</strong></div>
-          <div className="hint">描述内容的权威是磁盘上的 .md 文件——对应的字符串字段会在读取时播种，也可以直接创建骨架。</div>
+          <div><strong>{shell ? '这条文档没有正文' : '文档还没有正文'}</strong></div>
+          <div className="hint">
+            {shell
+              ? String(doc.reason || '历史索引条目或外部文件镜像，正文不在库内。')
+              : '正文的唯一来源是库内 ref_bodies——创建骨架会直接写入库，不落盘。'}
+          </div>
           {creatable && (
             <div>
               <button className="btn sm" onClick={createDoc}>创建骨架</button>
@@ -613,7 +620,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
             if (id) openByDocId(id, null, openExtra);
           }}
         />
-        <div className="docp-hint">双链 [[]] 点击跳转 · Ctrl+S 保存 · 文档即磁盘文件（~/.nx-kv/docs/）</div>
+        <div className="docp-hint">双链 [[]] 点击跳转 · Ctrl+S 保存 · 正文存库（v6 起不落盘）</div>
       </div>
       <IntroRail
         headings={headings as unknown as never[]}

@@ -7,7 +7,7 @@
     不能回写已发布的 v5。
 - decision: `refs` 从「文档索引」升级为「文档本体」：正文进 `ref_bodies`，`refs` 只保留身份与元数据；`refs` 不再持有文件系统路径，`rel` 改为逻辑命名；外部 md 文件由**新增的独立 `attachments(kind='mdfile')`** 承载（不复用 `kind='file'` + MIME 判定），按路径按需加载、默认不复制。
 - tables: refs（改，v6）、ref_bodies（新，v6）、ref_bindings（不变）、ref_attach（改 CHECK，v6）、attachments（重建以扩 kind/storage CHECK + 新增列，v5 已落地）
-- drops: attachments, _v5_task_attach, _v5_ref_attach （attachments 是 12-step 重建；两个 _v5_* 是关系表快照临时表，回填后立即删除）
+- drops: attachments, _v5_task_attach, _v5_ref_attach, ref_attach, _v6_ref_attach （attachments 是 12-step 重建；两个 _v5_* 是 v5 关系表快照临时表，回填后立即删除；ref_attach 在 v6 为扩 role CHECK 按快照重建，_v6_ref_attach 是它的 TEMP 快照）
 - producers: `modules/docs/service.ts`（add/set/remove）、v5 迁移脚本、`core/attachmentdb.ts`（mdfile 登记与解析）
 - consumers: `modules/docs/{store,render,service}.ts`、`modules/repos/repo/rows.ts`（desc 摘要）、面板文档编辑器、`repo knowledge` / `board get`
 - 依据现状（2026-11-12 只读实测）: `refs` 133 行；`state=''` 67 / `orphan` 66；docs 树 31 个 `.md`；DB 有盘上没有 102 行；盘上有 DB 没有 0；`ref_bindings` 67 行（repo 44 / group_repo 19 / group 4）；`ref_attach` 0 行。
@@ -323,3 +323,84 @@ export function mdfileAttachmentId(absPath?: unknown): string {
 4. `attachments(kind='mdfile')` 与 `docs link-file`。
 5. `ext.ext_doc` 解析切换（按 O4 结论）。
 6. 清理 `docsRoot()` 旧文件与 102 行空洞（按 O2 结论）。
+
+## 11. 二轮评审确认（2026-11-12，v6 实施口径）
+
+| # | 确认项 | 结论 |
+|---|---|---|
+| D1 | 102 行盘上无文件的 refs | 按 **O2-A** 保持空壳：不软删、不删行、`body_bytes=0`；先出 CSV 清单存档取证 |
+| D2 | 外部绝对路径 locator | 文件仍在 → 登记 `attachments(kind='mdfile')` + `ref_attach(role='source')`；文件不在 → 只留空壳，不登记 |
+| D3 | `meta.locator` | 保留为历史取证列（冻结，不写新值）；同时增补 `meta.rel`（逻辑名） |
+| D4 | 迁移硬门禁 | 盘上每篇正文逐篇 `sha256` 落库后回读比对，任一不符 → 整步事务回滚 |
+| D5 | O1 / O3 / O4 | 仍未定；v6 按「只切解析、不改语义」处理：不引入 rename、不废弃外部闭包、不合并 `ext_doc` |
+
+**身份维持方案 A**：公式仍是 `ref_<sha1(...)>`，输入从 `locator` 换成 `rel`；存量 133 行 id 全部保留，不换 ULID。
+
+### 11.1 v6 新增验收项（读路径必须可区分）
+
+`legacy/<id>` 与 `external/<sha1>` 两类 `rel` 在任何读路径上都**不能看起来像正常文档**：
+
+1. `docs list`：每行带 `relKind`（`normal | legacy | external | empty`）；没有正文的行显式标注「无正文」，不得渲染成空文件。
+2. 文档页（知识聚合 / 面板文档编辑器）：同上，`legacy` / `external` / 无正文明示原因，不给「空白正文」。
+3. 交付清单（`doc-inline` / `repo knowledge` 等）：无正文条目标注 `missing: true` + `reason`，不输出空串冒充正文。
+4. `docs get`：对无正文 / `legacy` / `external` 返回 `missing` 语义并说明原因（哪一类、为什么没有正文），不返回空文档成功态。
+
+### 11.2 v6 迁移计数基线（2026-11-12 实测）
+
+| 项 | 数量 |
+|---|---|
+| 盘上 `.md`（docs 树） | 31 |
+| `refs` 总行数 | 133 |
+| 盘上无文件的 refs | 102（空壳，保留） |
+| `ref_attach` 现有行 | 0 |
+| `attachments` | 74 |
+| `task_attach` | 87 |
+
+迁移后期望：`ref_bodies` = 31 行（盘上每篇一条）；`refs.rel=''` 的活动行为 0；逐篇 sha256 与盘上文件一致。
+
+## 12. DOCS_DIR 收口（2026-11-12，硬约束落地）
+
+**约束原文**：`NX_KV_DOCS_DIR` 只是 mdfile 的默认附件目录，只能通过 attach 访问；严禁不经 attach 表直接读该目录下的文件。
+
+### 12.1 六条落地
+
+| # | 条款 | 落点 |
+|---|---|---|
+| C1 | 语义改名：`docsRoot()` → `mdfileDir()` / `mdfileDirFromEnv()`，注释不再叫「文档根」 | `src/core/paths.ts`、`src/modules/docs/paths.ts` |
+| C2 | 文档正文只从 `ref_bodies` 读；`docs list/get`、`repo knowledge`、交付注入、面板文档页全部 DB 来源，删磁盘扫描分支 | `modules/docs/*`、`modules/repos/*`、`modules/tasktool/*`、面板文档页 |
+| C3 | 唯一文件读入口收敛到 `readMdfile`；交付注入外部 md 也必须先经附件解析 | `core/attachmentdb/mdfile.ts`、`modules/tasktool/doc-inline.ts` |
+| C4 | 加自动违规检查：扫 `src/**` 的 `NX_KV_DOCS_DIR\|docsRoot\|mdfileDirFromEnv`，只允许 paths / attachmentdb / db 三处 | `tests/unit/docs-dir-policy.test.mjs` |
+| C5 | 31 个盘上文件导入 `ref_bodies` 后磁盘副本保留但不再读取，CSV 标注「已入库、盘上副本仅留档」 | `v6-data.ts`、`.tmp/refs-no-body.csv` |
+| C6 | `docs add` / `docs set` 只写 DB 不写盘；`--body-file` 仍可读任意用户输入路径（不经过 mdfile 默认目录） | `modules/docs/store.ts` |
+
+**环境变量名保留 `NX_KV_DOCS_DIR`**：只改函数语义，不动作废用户既有配置。
+
+### 12.2 O9 反转
+
+原 O9-A「文档树内禁止登记 mdfile」与新语义自相矛盾：默认目录本来就是 mdfile 的存放地。本轮一起删除：
+
+1. `registerMdfile` 的「文档树内禁止登记」守卫；
+2. `RegisterMdfileInput.docsRoot` 字段及其传递链；
+3. smoke 的 O9 断言（`validateRelPath` 的路径守卫仍然保留，它防的是 `..` / 绝对路径，不是目录归属）。
+
+### 12.3 外部绑定 md 不再自动内联
+
+外部绝对路径 md 若未登记为 mdfile 附件，交付/注入**不读盘**，且必须显式说明：
+
+- `docMissing = true`；
+- `docMissingReason = '该文档未登记为附件，无法内联'`；
+- `docRegisterCmd = 'nx-kv localtask attach --id <seq> --key <key> --mdfile "<abs>"'`。
+
+不允许静默不出现正文（否则用户会误以为文档是空的）。单测 `attach-doc-inline` 断言这三项存在。
+
+### 12.4 盘上副本处置
+
+31 份盘上 `.md` 迁移入库后**只留档，不自动登记 mdfile**：迁移脚本不调用 `registerMdfile` 处理 docs 树内文件，磁盘副本不被读取、不被删除，仅供人工回溯。
+
+### 12.5 违规检查的形状
+
+`tests/unit/docs-dir-policy.test.mjs` 递归扫 `src/**/*.ts(x)`，命中下列 token 且文件不在白名单 → 失败：
+
+- 白名单：`src/core/paths.ts`（定义处）、`src/core/attachmentdb/**`（唯一读入口）、`src/core/db/**`（迁移 / 索引重建）。
+- token：`NX_KV_DOCS_DIR`、`docsRoot`、`mdfileDirFromEnv`。
+- 注释里也不许出现（避免「文档根」语义以注释形式回流）。

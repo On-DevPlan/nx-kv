@@ -5,7 +5,7 @@
 // 「配了显示/不显示但仍然全部显示」。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTree } from '../../src/web/frontend/components/sidebar/model.js';
+import { buildTree, fmtWaitLeft, fmtDeadlineClock } from '../../src/web/frontend/components/sidebar/model.js';
 
 const REPOS = [
   { id: 'r1', key: 'github.com/me/ra', name: 'ra', path: 'D:/w/ra' },
@@ -89,4 +89,59 @@ test('组行徽标：consumed / 软删除的组任务不算', () => {
   const { rows } = buildTree(REPOS, BOARDS, topics, { hidden: [] });
   assert.equal(rows.find((r) => r.type === 'board').pending, 1);
   assert.equal(rows.find((r) => r.type === 'repo' && r.name === 'ra').pending, 0, '队列里全是组任务 → 项目侧徽标归零');
+});
+
+// ─── 等待标记的倒计时（#182）─────────────────────────────────────────
+//
+// 「wait 持续 get 期间侧栏要显示时间」：行的 waitingDeadlineMs 取该行所有队列里
+// **最早**结束的那个等待窗口（它最先需要处理），文本由组件每秒用 fmtWaitLeft 现算。
+const NOW = 1_700_000_000_000;
+
+test('仓库行等待截止：取 waitingUntilMs（毫秒精度）', () => {
+  const topics = [{ key: 'tk1', repo: { id: 'r1' }, waiting: true, waitingUntilMs: NOW + 272_000 }];
+  const row = buildTree(REPOS, BOARDS, topics, { hidden: [] }).rows.find((r) => r.name === 'ra');
+  assert.equal(row.waiting, true);
+  assert.equal(row.waitingDeadlineMs, NOW + 272_000);
+  assert.equal(fmtWaitLeft(row.waitingDeadlineMs, NOW), '剩 4:32');
+});
+
+test('多个队列都在等：取最早结束的那个窗口', () => {
+  const topics = [
+    { key: 'tk1', repo: { id: 'r1' }, waiting: true, waitingUntilMs: NOW + 600_000 },
+    { key: 'tk2', repo: { id: 'r1' }, waiting: true, waitingUntilMs: NOW + 60_000 },
+    { key: 'tk3', repo: { id: 'r1' }, waiting: false, waitingUntilMs: NOW + 1_000 },
+  ];
+  const row = buildTree(REPOS, BOARDS, topics, { hidden: [] }).rows.find((r) => r.name === 'ra');
+  assert.equal(row.waitingDeadlineMs, NOW + 60_000, '没在等的那条不算');
+});
+
+test('老数据没有 waitingUntilMs：回退解析 waitingUntil 字符串', () => {
+  const topics = [{ key: 'tk1', repo: { id: 'r1' }, waiting: true, waitingUntil: '2026-11-12 10:31:02' }];
+  const row = buildTree(REPOS, BOARDS, topics, { hidden: [] }).rows.find((r) => r.name === 'ra');
+  const want = new Date(2026, 10, 12, 10, 31, 2).getTime();
+  assert.equal(row.waitingDeadlineMs, want);
+  assert.equal(fmtDeadlineClock(row.waitingDeadlineMs), '10:31:02');
+});
+
+test('组行 / 全局行的等待截止：看成员与自身主题', () => {
+  const topics = [
+    { key: 'tk1', repo: { id: 'r1' }, waiting: true, waitingUntilMs: NOW + 120_000 },
+    { key: '__GLOBAL__', name: '全局任务', isGlobal: true, waiting: true, waitingUntilMs: NOW + 30_000 },
+  ];
+  const { rows } = buildTree(REPOS, BOARDS, topics, { hidden: [] });
+  assert.equal(rows.find((r) => r.type === 'board').waitingDeadlineMs, NOW + 120_000, '组行借成员的窗口');
+  assert.equal(rows.find((r) => r.type === 'global').waitingDeadlineMs, NOW + 30_000);
+});
+
+test('没有人在等：截止时刻为 0，文本为空（不占位）', () => {
+  const row = buildTree(REPOS, BOARDS, [{ key: 'tk1', repo: { id: 'r1' } }], { hidden: [] }).rows.find((r) => r.name === 'ra');
+  assert.equal(row.waiting, false);
+  assert.equal(row.waitingDeadlineMs, 0);
+  assert.equal(fmtWaitLeft(0, NOW), '');
+});
+
+test('fmtWaitLeft：跨小时带时分秒，过点显示已超时（向上取整，最后一秒不提前归零）', () => {
+  assert.equal(fmtWaitLeft(NOW + 3_723_000, NOW), '剩 1:02:03');
+  assert.equal(fmtWaitLeft(NOW + 500, NOW), '剩 0:01', '不足 1 秒按 1 秒算');
+  assert.equal(fmtWaitLeft(NOW - 1, NOW), '已超时');
 });

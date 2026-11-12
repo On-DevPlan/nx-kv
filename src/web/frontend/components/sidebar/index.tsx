@@ -13,7 +13,7 @@ import { PopMenu } from '../popup/index.jsx';
 import { useToast } from '../toast/index.jsx';
 import { useDialog } from '../popup/index.jsx';
 import type { PopMenuItem } from '../popup/index.js';
-import { buildTree } from './model.js';
+import { buildTree, fmtWaitLeft, fmtDeadlineClock } from './model.js';
 import type { SideRow } from './model.js';
 import { canDrop, zoneOf, applyDrop } from './drag.js';
 import type { DragRow, DropZone } from './drag.js';
@@ -87,6 +87,35 @@ export default function Sidebar({
     () => buildTree(repos, boards, topics, prefs, kw),
     [repos, boards, topics, prefs, kw]
   );
+
+  // ─── 等待倒计时（#182）───
+  // 等待标记要显示「还剩多久」，所以得有第二个时间源：只要有一行在等就每秒推进一次，
+  // 一行都没等就把定时器停掉（空闲时不跑无意义的 setState）。
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const anyWaiting = useMemo(() => rows.some((r) => r.waiting && r.waitingDeadlineMs), [rows]);
+  useEffect(() => {
+    if (!anyWaiting) return;
+    setNowMs(Date.now());
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [anyWaiting]);
+
+  /**
+   * 等待标记 = 圆点 + 倒计时（「剩 4:32」）。hover 给完整口径：
+   * 谁在等 + 剩多久 + 截止钟点（倒计时看趋势，钟点看绝对时间）。
+   * 放在 `.nm` **外面**——行名是 ellipsis 容器，塞进去窄栏会被截掉。
+   */
+  const waitTag = (row: SideRow, tip: string) => {
+    if (!row.waiting) return null;
+    const left = fmtWaitLeft(row.waitingDeadlineMs, nowMs);
+    const clock = fmtDeadlineClock(row.waitingDeadlineMs);
+    return (
+      <span className="wtimer" title={clock ? `${tip} · 剩至 ${clock}` : tip}>
+        <span className="wdot" aria-hidden />
+        {left ? <span className="wleft">{left}</span> : null}
+      </span>
+    );
+  };
 
   const isActive = (row: SideRow) => {
     if (row.type === 'global') return route.view === 'global';
@@ -321,8 +350,8 @@ export default function Sidebar({
               <span className="gico"><Icon name="folder" /></span>
               <span className="nm">
                 {row.name}
-                {row.waiting ? <span className="wdot" title="组内有 agent 等待回填" /> : null}
               </span>
+              {waitTag(row, '组内有 agent 等待回填')}
               <span className="cnt" title={`待领取 ${row.pending} · 成员 ${row.count} 个`}>
                 {row.pending > 0 ? row.pending : row.count}
               </span>
@@ -365,11 +394,9 @@ export default function Sidebar({
                 </span>
                 <span className="nm">
                   {row.name}
-                  {row.type === 'global' && row.waiting ? <span className="wdot" title="有等待中的主题" /> : null}
-
                 </span>
                 {row.pending > 0 && <span className="cnt">{row.pending}</span>}
-                {row.type === 'repo' && row.waiting && <span className="wdot" title="agent 等待回填中" />}
+                {waitTag(row, row.type === 'global' ? '有等待中的主题' : 'agent 等待回填中')}
                 <span
                   className="more" role="button" tabIndex={-1} aria-label="行菜单"
                   onClick={(e) => openRowMenu(e, row)}

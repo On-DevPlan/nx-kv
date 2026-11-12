@@ -79,6 +79,13 @@
   flex: none; width: 7px; height: 7px; border-radius: 50%;
   background: var(--doing); box-shadow: 0 0 0 3px var(--doing-bg);
 }
+/* #182 等待标记带倒计时：圆点 + 「剩 4:32」。等宽数字（tabular-nums）让每秒跳动
+   不左右抖动；放行名外面，窄栏里行名省略号截不到它。 */
+.trow .wtimer {
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  color: var(--doing); font-size: 10.5px; font-variant-numeric: tabular-nums;
+}
+.trow .wtimer .wleft { letter-spacing: -0.2px; }
 .trow .more {
   flex: none; opacity: 0; width: 20px; height: 20px; border-radius: 5px;
   display: inline-flex; align-items: center; justify-content: center; color: var(--faint);

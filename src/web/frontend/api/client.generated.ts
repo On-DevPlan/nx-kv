@@ -282,7 +282,7 @@ export interface ApiClient {
   repoRemove(input: z.input<InstanceType<typeof RepoRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRemoveAction>['run']>>>;
 /** 扫描目录发现 git 仓库；--dry-run 只列出（发现模式，不登记） */
   scan(input?: z.input<InstanceType<typeof RepoScanAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoScanAction>['run']>>>;
-/** 修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填 + 交付文本带继续 get 模板）。描述已改为文档，不再经这里改 */
+/** 修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填；指令文案在 设置 → 提示词模板 → 持续 get，仓库侧只有开关 + 分钟）。描述已改为文档，不再经这里改 */
   repoUpdate(input: z.input<InstanceType<typeof RepoUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>>;
 /** 新建自有文档（--body 给 Markdown 正文；--body-file <文件> / - 读管道；已存在则报冲突） */
   docAdd2(input: z.input<InstanceType<typeof DocAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocAddAction>['run']>>>;
@@ -838,7 +838,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async repoUpdate(input: z.input<InstanceType<typeof RepoUpdateAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof RepoUpdateAction>['_input']>);
       const path = `/api/repos/${encodeURIComponent(String(inp["id"]))}`;
-      const body = { "path": inp["path"], "name": inp["name"], "icon": inp["icon"], "desc": inp["desc"], "notes": inp["notes"], "type": inp["type"], "remote": inp["remote"], "key": inp["key"], "key-custom": inp["key-custom"], "get-loop": inp["get-loop"], "get-loop-minutes": inp["get-loop-minutes"], "get-loop-template": inp["get-loop-template"] };
+      const body = { "path": inp["path"], "name": inp["name"], "icon": inp["icon"], "desc": inp["desc"], "notes": inp["notes"], "type": inp["type"], "remote": inp["remote"], "key": inp["key"], "key-custom": inp["key-custom"], "get-loop": inp["get-loop"], "get-loop-minutes": inp["get-loop-minutes"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>;
     },
     // action: doc.add

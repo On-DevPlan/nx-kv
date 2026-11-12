@@ -284,7 +284,7 @@ export const BLOCK_PARAMS: BlockParamTable = {
     {
       label: '持续 get',
       items: [
-        ['getloop.text', '持续 get 指令正文'],
+        ['getloop.text', '持续 get 指令正文（默认模板已内联，仅旧配置需要）'],
         ['getloop.waitMinutes', '单轮等待分钟数'],
       ],
     },

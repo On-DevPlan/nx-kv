@@ -9,6 +9,7 @@ import { Suspense, lazy } from 'react';
 import type { ReactNode } from 'react';
 import type { Model, TabNode } from 'flexlayout-react';
 import { useApp } from './app-context.jsx';
+import { ErrorBoundary } from './components/ui.jsx';
 import SidebarPanel from './components/sidebar/panel.jsx';
 import { openFloatingPanel, openPanel } from './workspace.js';
 import type { PanelConfig, PanelCtx, TemplateEditorOpts } from './types.js';
@@ -238,7 +239,14 @@ export function factory(node: TabNode) {
   if (!p) {
     return <div className="muted" style={{ padding: 12 }}>未知面板：{node.getComponent()}</div>;
   }
-  return p.render(node.getConfig() || {}, { tabId: node.getId(), model: node.getModel(), node });
+  // #185：每个面板自己兜一层错误边界。FlexLayout 自带的那层只画
+  // 「Error rendering component」+ Retry，把真实报错和堆栈全吞了——用户只能报「白屏」，
+  // 排查时得靠猜。换成自家边界：message 直接摊在面板里，单块面板重试，其它页签不受影响。
+  return (
+    <ErrorBoundary key={node.getId()}>
+      {p.render(node.getConfig() || {}, { tabId: node.getId(), model: node.getModel(), node })}
+    </ErrorBoundary>
+  );
 }
 
 // ─── 路由 ↔ 面板 ────────────────────────────────────────────────

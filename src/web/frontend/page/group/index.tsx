@@ -211,17 +211,6 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     });
   }, [board, repos, topics]);
 
-  if (!board) {
-    return (
-      <div className="rp-page">
-        <RouteBreadcrumb />
-        <div className="rp-empty">项目组不存在（看板可能被删了）</div>
-      </div>
-    );
-  }
-
-  const totalPending = items.reduce((n, it) => n + it.pending, 0);
-
   // 每个成员队列的编排素材：待领取任务（队列序）+ 闸门的下游映射（同 isReadyToClaim 口径）。
   // rows = /api/localtasks 的裸 topic（tasks 直挂其上）。
   const dagByTopic = useMemo<Map<string, { tasks: TopicTask[]; downstream: Record<string, number[]> }>>(() => {
@@ -420,7 +409,9 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
               downs={downs as unknown as never[]}
               onTogglePick={undefined}
               onOpen={() =>
+                // board 非空由下面的早退保证（这里只是 TS 收窄不到闭包里）
                 app.openPage &&
+                board &&
                 app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })
               }
             />
@@ -439,6 +430,22 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
         />
       </div>
   );
+
+  // #185：这个早退**必须排在所有 hook 之后**。它原来在 usePager / useTemplatesFor 之前，
+  // 于是「首帧 boards 还没到（刷新中）」与「boards 到了」两次渲染的 hook 数量不同 →
+  // React 抛 "Rendered more hooks than during the previous render" → flexlayout 的错误
+  // 边界兜成「Error rendering component」，整块面板白屏、只能点 Retry。
+  // 看板被删（board 从有到无）时同样会撞上，只是方向相反。下面这些渲染结果都与 board 无关。
+  if (!board) {
+    return (
+      <div className="rp-page">
+        <RouteBreadcrumb />
+        <div className="rp-empty">项目组不存在（看板可能被删了）</div>
+      </div>
+    );
+  }
+
+  const totalPending = items.reduce((n, it) => n + it.pending, 0);
 
   return (
     <Layout

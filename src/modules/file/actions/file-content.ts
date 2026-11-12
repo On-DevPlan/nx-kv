@@ -10,7 +10,6 @@ const service: any = serviceNs;
 /** file.content 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   fileId: z.string(),
-  group: z.number().optional().describe("工作空间 id（默认取当前）"),
 });
 
 export class FileContentAction extends ActionBase<typeof input> {
@@ -18,10 +17,10 @@ export class FileContentAction extends ActionBase<typeof input> {
     id: 'file.content',
     cli: ['file', 'content'],
     http: ['GET', '/api/file/content/:fileId'],
-    summary: '取附件本体：面板内联预览；CLI 打印出图地址与本地路径',
+    summary: '取附件本体：面板内联预览；CLI 打印本机路径',
     args: ['fileId'],
     input,
-    render: (d: any) => service.renderContent(d),
+    render: (d: any) => service.renderFileInfo(d),
     stream: true,
   })
   override async run(ctx: ActionInput<this['_input']>) {
@@ -30,7 +29,7 @@ export class FileContentAction extends ActionBase<typeof input> {
     const raw = ctx as typeof ctx & { __raw?: unknown };
     return (raw.__raw
         ? service.serveContent(raw)
-        : service.getFileAction(ctx.fileId, { group: ctx.group }));
+        : service.getFileAction(ctx.fileId));
 
   }
 }

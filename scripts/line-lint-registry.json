@@ -3,7 +3,6 @@
     "src/web/frontend/page/group/index.tsx": 698,
     "src/modules/repos/ref.ts": 680,
     "src/modules/docs/knowledge.ts": 628,
-    "src/web/frontend/page/repos/index.tsx": 615,
     "tests/unit/repos-ref.test.mjs": 667
   }
 }

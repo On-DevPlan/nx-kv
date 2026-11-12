@@ -11,7 +11,7 @@ import type { ComponentType, DragEvent, ReactNode, Ref } from 'react';
 import { Modal, useDialog } from '../popup/index.jsx';
 import { useToast } from '../toast/index.jsx';
 import { api } from '../../api/client.js';
-import { uploadOne, droppedFiles } from '../cloud/upload.js';
+import { uploadOne, droppedFiles } from '../attach/upload.js';
 import AttachModal from './attach-modal.jsx';
 import {
   AREA_LABEL,
@@ -115,10 +115,10 @@ function renderItem(a: NormalizedAttachment, { onRemove, onPreview, onPreviewMd,
           <button
             type="button"
             className="att-link"
-            title={a.locator || a.targetRef || '打开文档'}
-            onClick={() => onOpenDoc?.(a.locator || a.targetRef)}
+            title={a.note || a.title || a.name || '打开文档'}
+            onClick={() => onOpenDoc?.(a.refId ? 'ref:' + a.refId : (a.locator || a.targetRef))}
           >
-            {a.name}
+            {a.title || a.name}
           </button>
         ) : a.kind === 'url' ? (
           <a className="att-link" href={a.url} target="_blank" rel="noreferrer" title={a.url}>{a.name}</a>
@@ -235,7 +235,7 @@ export default function AttachArea({
 
   const dropFiles = async (files: FileList | File[] | null, e: DragEvent<HTMLDivElement>) => {
     if (disabled) return;
-    // cloud/upload 仍是 JS 模块：droppedFiles 的返回被推成 unknown[]，约定就是 File[]
+    // attach/upload 仍是 JS 模块：droppedFiles 的返回被推成 unknown[]，约定就是 File[]
     const fs = droppedFiles(e) as File[];
     const picked = fs.length ? fs : [...(files || [])].filter((f) => f && f.size > 0);
     if (!picked.length) return;
@@ -244,7 +244,7 @@ export default function AttachArea({
     for (const f of picked) {
       try {
         // 拖进附件区 = 明确要挂到附件区：上传后走 no-embed（不写正文）
-        const r = await uploadOne(f, { local: true });
+        const r = await uploadOne(f);
         const fileId = r.fileId || r.id;
         if (!fileId) throw new Error('上传未返回 fileId');
         await ep.attach({ fileId, name: r.name });

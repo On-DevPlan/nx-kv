@@ -29,16 +29,16 @@ export const renderTask = (t: RenderInput): string =>
     t.consumedAt ? `  领取: ${t.consumedAt}` : '',
     // 附件清单（正文里的 ![名](fileId) 嵌入；本地已有 → 直接给绝对路径）
     ...(t.attachments || []).map(
-      (a: any) => `  附件:   ${a.localPath || a.name}${a.localPath ? '' : `（未同步；nx-kv file sync --ids ${a.id}）`}`
+      (a: any) => `  附件:   ${a.localPath || a.name}${a.localPath ? '' : '（本机附件仓缺失）'}`
     ),
   ]
     .filter(Boolean)
     .join('\n');
 
-// `localtask attachments` 的人读输出（与 todo attachments 同构）
+// `localtask attachments` 的人读输出（与面板附件区同构）
 export function renderTaskAttachments(d: RenderInput): string {
   const lines: string[] = [
-    `#${d.task.id}  附件 ${d.count} 个（正文内嵌 ${d.inlineCount ?? d.count} · 附件区 ${d.areaCount ?? 0}）· 本地目录: ${d.localDir}（自动下载 ${d.autoSync ? '开' : '关'}）`,
+    `#${d.task.id}  附件 ${d.count} 个（正文内嵌 ${d.inlineCount ?? d.count} · 附件区 ${d.areaCount ?? 0}）· 本地目录: ${d.localDir}`,
   ];
   if (!d.count) {
     lines.push('  （这条任务没有附件；localtask attach --no-embed 可只挂到附件区）');
@@ -56,7 +56,7 @@ export function renderTaskAttachments(d: RenderInput): string {
       const docMark = a.role === 'doc' ? '  〔进原文〕' : '';
       const noteMark = a.note ? `  # ${a.note}` : '';
       lines.push(`  ${a.kind === 'image' ? '图片' : a.kind === 'url' ? '链接' : a.kind === 'task' ? '任务' : a.kind === 'ref' ? '文档' : a.kind === 'mdfile' ? 'md' : '附件'}  ${a.name}  [${a.id}]${docMark}${noteMark}`);
-      lines.push(`      ${a.localPath || a.url || (a.kind === 'mdfile' ? a.absPath : '') || a.target || '（未同步；nx-kv file sync --ids ' + a.id + '）'}${a.kind === 'mdfile' && a.missing ? '  （源文件已不在）' : ''}`);
+      lines.push(`      ${a.localPath || a.url || (a.kind === 'mdfile' ? a.absPath : '') || a.target || '（本机附件仓缺失）'}${a.kind === 'mdfile' && a.missing ? '  （源文件已不在）' : ''}`);
     }
   }
   return lines.join('\n');

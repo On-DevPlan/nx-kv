@@ -7,7 +7,7 @@
 // 任务走（CLI / 其他机器认语法，本机仓按 id 给文件）。
 // 本机仓不可达（serve 没起来——面板本身也起不来）时退回 localStorage 老路：
 // 功能不中断，代价是这类附件只活在当前浏览器（界面会照常显示）。
-import { uploadMany } from '../cloud/upload.js';
+import { uploadMany } from '../attach/upload.js';
 import type { Attachment } from './attach-common.js';
 
 const ATT_KEY = 'nx-kv-md-attachments-v1';
@@ -90,12 +90,11 @@ async function legacyFilesToAttachments(fileList: FileList | File[]): Promise<Fi
  */
 export async function filesToAttachments(
   fileList: FileList | File[] | null | undefined,
-  opts: { group?: string } = {},
 ): Promise<FilesToAttachmentsResult> {
   const files = [...(fileList || [])];
   if (!files.length) return { items: [], imageInserts: [], fileInserts: [] };
   try {
-    const ups = await uploadMany(files, { ...(opts.group ? { group: opts.group } : {}), local: true });
+    const ups = await uploadMany(files);
     const items: Attachment[] = [];
     const imageInserts: string[] = [];
     const fileInserts: string[] = [];

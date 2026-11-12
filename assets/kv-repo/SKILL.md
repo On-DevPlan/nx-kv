@@ -118,4 +118,4 @@ nx-kv board note <仓库id|路径> --board <项目组 id> --note "这个仓库�
 - 本 skill 读项目组与描述、克隆参考仓库并强制读；**登记/扫描/增删仓库/项目组**走 nx-kv 主 skill（repo-registry）。
 - 参考仓库的**写入/同步**（pull、完整性检查）走 `nx-kv repo ref sync/check`。
 - 不碰 git：状态 / diff / pull / push 一律直接用 git 自己。
-- 仓库 / 项目组 / 参考仓库全部在本机 SQLite，与云端清单的工作空间无关。
+- 仓库 / 项目组 / 参考仓库全部在本机 SQLite，不依赖任何远程清单或登录。

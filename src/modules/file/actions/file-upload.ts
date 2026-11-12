@@ -13,9 +13,6 @@ const input = z.object({
   content: z.string().optional().describe("base64 内容（面板上传用，可为 data URL）"),
   name: z.string().optional().describe("文件名（content 上传时必填）"),
   contentType: z.string().optional().describe("覆盖 Content-Type（默认按扩展名猜）"),
-  local: z.boolean().optional().describe("存本机附件仓（~/.nx-kv/attachments/local/），不碰云端"),
-  accessLevel: z.enum(["public", "private", "protected"]).default('public').describe("出图权限；public 才能被 <img> 直接预览（--local 时无意义）"),
-  group: z.number().optional().describe("工作空间 id（默认取当前）"),
 });
 
 export class FileUploadAction extends ActionBase<typeof input> {
@@ -23,7 +20,7 @@ export class FileUploadAction extends ActionBase<typeof input> {
     id: 'file.upload',
     cli: ['file', 'upload'],
     http: ['POST', '/api/file'],
-    summary: '上传附件（--local 存本机附件仓，本地任务贴图用；默认传当前用户空间的云端图床）',
+    summary: '上传附件到本机附件仓（不碰网；本地任务/文档贴图用）',
     input,
     render: (d: any) => service.renderUpload(d),
   })

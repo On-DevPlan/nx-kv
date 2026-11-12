@@ -59,13 +59,14 @@ export const BUILTIN_TEMPLATE_NAME = '系统内置';
 export const DEFAULT_CONTEXT_TEMPLATE = [
   '{{#if repo}}',
   '{{#if repo.intro}}',
-  '〔项目介绍 · {{repo.name}}〕（{{repo.introPath}}）：',
+  '〔项目介绍 · {{repo.name}}〕',
   '{{repo.intro}}',
   '{{/if}}',
   '{{#if repo.docs}}',
-  '项目补充文档（可直接读取）：',
+  '〔项目文档〕按需取用：nx-kv docs get --ref <refId>',
   '{{#each repo.docs}}',
-  '  - {{path}}{{#if tag}}  [{{tag}}]{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '  - {{#if desc}}{{desc}}{{else}}{{#if title}}{{title}}{{else}}未命名文档{{/if}}{{/if}}{{#if hasBody}}{{else}}（无正文）{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '    取用：nx-kv docs get --ref {{refId}}',
   '{{/each}}',
   '{{/if}}',
   '{{/if}}',
@@ -74,12 +75,12 @@ export const DEFAULT_CONTEXT_TEMPLATE = [
   '{{#if group.desc}}',
   '组定位：{{group.desc}}',
   '{{/if}}',
-  '{{#if group.intro}}',
-  '组介绍（{{group.introPath}}）：',
-  '{{group.intro}}',
-  '{{/if}}',
   '{{#if group.note}}',
   '本项目在组里的位置：{{group.note}}',
+  '{{/if}}',
+  '{{#if group.introRefId}}',
+  '组介绍：{{#if group.introDesc}}{{group.introDesc}}{{else}}（无描述）{{/if}}',
+  '  取用：nx-kv docs get --ref {{group.introRefId}}',
   '{{/if}}',
   '{{#if group.peers}}',
   '组内成员：',
@@ -88,9 +89,10 @@ export const DEFAULT_CONTEXT_TEMPLATE = [
   '{{/each}}',
   '{{/if}}',
   '{{#if group.docs}}',
-  '组绑定参考文件（可直接读取）：',
+  '组文档（按需取用）：',
   '{{#each group.docs}}',
-  '  - {{path}}{{#if tag}}  [{{tag}}]{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '  - {{#if desc}}{{desc}}{{else}}{{#if title}}{{title}}{{else}}未命名文档{{/if}}{{/if}}{{#if hasBody}}{{else}}（无正文）{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '    取用：nx-kv docs get --ref {{refId}}',
   '{{/each}}',
   '{{/if}}',
   '{{/if}}',
@@ -110,12 +112,12 @@ export const DEFAULT_CONTEXT_TEMPLATE = [
  *   - file：{{file.localPath}} 或未同步时的 fileId（取用命令见 usage）
  *   - url：{{url.href}}
  *   - task：{{task.seq}} / {{task.title}} / {{task.address}}
- *   - ref：{{ref.title}} / {{ref.relPath}}；{{ref.content}} 只有「文档资料」绑定
+ *   - ref：{{ref.title}}；{{ref.content}} 只有「文档资料」绑定
  *     （role=doc，#162：交付带全文，减少反复访问 nx-kv）且真的读到时非空，
  *     此时文末追加〔文档原文〕段——没有内容的条目该段自动消失。
  * 清单行的 {{note}} 是绑定上的 desc（attach --note）：agent 看一行就知道里面
  * 大概是什么，再决定是否真的去读。
- * 同步汇总单列在 syncSummary，不再用全局同步结果驱动单条附件。
+ * 附件只在本机（本机附件仓），没有云端同步概念：可达性看 file.localPath / file.exists。
  */
 export const DEFAULT_ATTACH_TEMPLATE = [
   '{{#if attach}}',
@@ -123,22 +125,19 @@ export const DEFAULT_ATTACH_TEMPLATE = [
   '',
   '附件清单：',
   '{{#each attach.list}}',
-  '  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{#if ref.relPath}}（{{ref.relPath}}）{{/if}}{{/if}}{{#if mdfile}}{{mdfile.absPath}}{{#if mdfile.missing}}（源文件已不在）{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if mdfile}}{{mdfile.absPath}}{{#if mdfile.missing}}（源文件已不在）{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}',
   '{{/each}}',
   '',
   '取用方式：',
   '{{#each attach.list}}',
   '  - {{kindLabel}} 《{{name}}》：{{usage}}',
   '{{/each}}',
-  '{{#if attach.syncSummary}}',
-  '同步情况：{{attach.syncSummary.text}}',
-  '{{/if}}',
   '{{#each attach.list}}{{#if mdfile}}{{#if mdfile.content}}〔外部 md · {{name}}〕（{{mdfile.absPath}}{{#if mdfile.truncated}}，已截断{{/if}}{{#if mdfile.stale}}，内容有变化{{/if}}）：',
   '',
   '{{mdfile.content}}',
   '',
   '{{/if}}{{/if}}{{/each}}',
-  '{{#each attach.list}}{{#if ref}}{{#if ref.content}}〔文档原文 · {{ref.title}}〕（{{ref.relPath}}）：',
+  '{{#each attach.list}}{{#if ref}}{{#if ref.content}}〔文档原文 · {{ref.title}}〕：',
   '',
   '{{ref.content}}',
   '',

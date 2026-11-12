@@ -1,6 +1,6 @@
 // 弹层关闭的统一行为：Esc 关 + （可选）点弹层外关。
 //
-// 此前各弹窗手写同一套 document 监听（overlay PopMenu / cloud RowMenu /
+// 此前各弹窗手写同一套 document 监听（overlay PopMenu / RowMenu /
 // migrate 对话框 / 快捷键 sheet……），Esc 与点外的细节（捕获阶段、
 // stopPropagation、busy 时禁关）各抄各的，容易漂移。统一在这里：
 //

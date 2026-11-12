@@ -1,9 +1,8 @@
 // 浏览器侧的附件上传 —— 「选择文件 / 粘贴 / 拖入」三条路共用一个入口。
 //
-// 上传走本机服务 /api/file（base64），由服务端转 multipart 发给后端：
-// 于是浏览器不必知道后端地址，也不碰 CORS 与凭据。
+// 上传走本机服务 /api/file（base64），由服务端落本机附件仓；不碰云端、不需要登录。
 //
-// 独立成文件，是因为**不止一个地方要传附件**（任务编辑器、快速新增那一栏），
+// 独立成文件，是因为**不止一个地方要传附件**（任务编辑器、文档编辑器），
 // 而「截图粘贴过来往往没有文件名」「剪贴板里既有文件又有文本」这类坑只该踩一次。
 
 import { api } from '../../api/client.js';
@@ -94,51 +93,39 @@ function readAsDataURL(file: File): Promise<string> {
 
 /** 单次上传的选项。 */
 export interface UploadOptions {
-  /** 工作空间：清单页传 id（number），附件链路传 locator 字符串，服务端统一 resolve。 */
-  group?: number | string;
   /** 同一批里的序号（给粘贴图片起名 -2/-3）。 */
   index?: number;
-  /** true → 存本机附件仓（本地任务贴图，零云端依赖）。 */
-  local?: boolean;
 }
 
-/** 上传单个文件，返回后端元数据 + 可直接贴进正文的 markdown 片段。
- *  local: true → 存本机附件仓（本地任务贴图，零云端依赖）；默认传云端图床。 */
-export async function uploadOne(file: File | undefined, { group, index = 0, local = false }: UploadOptions = {}) {
-  // 待确认附件列表里的 file 是**可选**字段（ref 条目没有文件），调用点在 source=file
-  // 分支里传它。这里不新增校验：取不到文件就和旧 JS 一样在读取文件名时抛错。
+/** 上传单个文件到本机附件仓，返回元数据 + 可直接贴进正文的 markdown 片段。 */
+export async function uploadOne(file: File | undefined, { index = 0 }: UploadOptions = {}) {
   const picked = file as File;
   const name = readableName(picked, index);
   const content = await readAsDataURL(picked);
   const r = await api('/api/file', {
     method: 'POST',
-    body: { name, content, contentType: picked.type || '', group, local },
+    body: { name, content, contentType: picked.type || '' },
   });
   return { ...r, name };
 }
 
 /** 批量上传的选项：在单次上传的基础上多一个进度回调。 */
 export interface UploadManyOptions {
-  group?: number | string;
   /** 每开始传一个回调一次（done 从 1 起）。 */
   onProgress?: (done: number, total: number, file: File) => void;
-  local?: boolean;
 }
 
 /**
  * 批量上传。让调用方**一次拿到全部片段再插入**，而不是边传边插 ——
  * 后者在连续插入时会和光标位置打架（插入后 DOM 里光标还没更新，
  * 第二次插入会算错落点，几个附件就变成倒序）。
- *
- * 返回 /api/file 的 data 数组（外部数据边界，字段由后端决定，这里不逐字段建模）。
  */
-export async function uploadMany(files: File[], { group, onProgress, local = false }: UploadManyOptions = {}) {
+export async function uploadMany(files: File[], { onProgress }: UploadManyOptions = {}) {
   const out = [];
   for (let i = 0; i < files.length; i++) {
-    // i < files.length 已保证取得到；noUncheckedIndexedAccess 看不到这层
     const f = files[i]!;
     if (onProgress) onProgress(i + 1, files.length, f);
-    out.push(await uploadOne(f, { group, index: i, local }));
+    out.push(await uploadOne(f, { index: i }));
   }
   return out;
 }

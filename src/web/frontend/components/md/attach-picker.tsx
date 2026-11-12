@@ -214,7 +214,7 @@ export default function AttachPicker({
       return;
     }
     if (a.kind === 'ref') {
-      const docId = docIdOfLocator(a.locator || a.relPath || '');
+      const docId = a.refId ? 'ref:' + a.refId : docIdOfLocator(a.locator || a.relPath || '');
       if (!docId) return;
       openBesideMain(m, {
         component: 'doc',
@@ -267,7 +267,7 @@ export default function AttachPicker({
       ) : (
         <div className="mdw-atpick-list" ref={listRef}>
           {items.map((a, i) => {
-            const label = a.name || a.title || a.locator || '附件';
+            const label = (a.kind === 'ref' ? a.title || a.name : a.name || a.title) || a.locator || '附件';
             const canOpen = openable(a);
             return (
               <div key={a.id || a.url || a.refId || a.taskId || i} className="mdw-atpick-row">

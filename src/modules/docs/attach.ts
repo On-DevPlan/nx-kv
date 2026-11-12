@@ -22,7 +22,7 @@ import {
 import type { LinkedAttachmentView } from '../../core/attachmentdb/query.js';
 import type { DeleteAttachmentResult } from '../../core/attachmentdb/query.js';
 import { localUpload } from '../../core/localatt.js';
-import { contentTypeOf, isImageName } from '../../core/fileapi.js';
+import { contentTypeOf, isImageName } from '../../core/filekind.js';
 import { attachmentsRootFromEnv } from '../../core/paths.js';
 import { readFile } from 'node:fs/promises';
 import { basename, resolve as resolvePath } from 'node:path';
@@ -51,7 +51,7 @@ export async function listDocAttachments({ ref }: { ref?: unknown } = {}): Promi
   const d = await getDoc({ ref });
   const locator = String(d.rel || d.path || '').replace(/\\/g, '/');
   if (!locator) throw badInput('无法定位文档: ' + String(ref || ''));
-  const refId = refIdFor(locator);
+  const refId = String((d as any).refId || refIdFor(locator));
   const attachments: Array<LinkedAttachmentView & { docTitle?: string; title?: string }> = listRefAttachments(getDb(), refId);
   // #168：ref 条目补**文档标题**（正文首行的 # 标题）——面板与编辑器都显示它
   try {

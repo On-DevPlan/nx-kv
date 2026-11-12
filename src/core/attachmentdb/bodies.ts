@@ -31,6 +31,8 @@ export interface RefDocRow {
   id: string;
   rel: string;
   origin: string;
+  /** 短描述（v7）：列表 / 提示词模板的快速定位标签 */
+  desc: string;
   bodyBytes: number;
   hasBody: boolean;
   relKind: RelKind;
@@ -109,7 +111,7 @@ export function refIdByRel(conn: any, rel: unknown): string | null {
  */
 export function listRefDocs(conn: any, { includeEmpty = false }: { includeEmpty?: boolean } = {}): RefDocRow[] {
   const rows: any[] = conn.all(
-    `SELECT r.id, r.rel, r.origin, r.body_bytes,
+    `SELECT r.id, r.rel, r.origin, r."desc", r.body_bytes,
             CASE WHEN b.ref_id IS NULL THEN 0 ELSE 1 END AS has_body
        FROM refs r
        LEFT JOIN ref_bodies b ON b.ref_id = r.id
@@ -126,6 +128,7 @@ export function listRefDocs(conn: any, { includeEmpty = false }: { includeEmpty?
       id: String(row.id),
       rel,
       origin: String(row.origin || ''),
+      desc: String(row.desc || ''),
       bodyBytes: Number(row.body_bytes) || 0,
       hasBody,
       relKind,
@@ -139,7 +142,7 @@ export function refDocByRel(conn: any, rel: unknown): (RefDocRow & { body: strin
   const r = String(rel || '').trim();
   if (!r) return null;
   const row = conn.get(
-    `SELECT r.id, r.rel, r.origin, r.body_bytes,
+    `SELECT r.id, r.rel, r.origin, r."desc", r.body_bytes,
             CASE WHEN b.ref_id IS NULL THEN 0 ELSE 1 END AS has_body,
             b.body
        FROM refs r
@@ -153,6 +156,35 @@ export function refDocByRel(conn: any, rel: unknown): (RefDocRow & { body: strin
     id: String(row.id),
     rel: String(row.rel),
     origin: String(row.origin || ''),
+    desc: String(row.desc || ''),
+    bodyBytes: Number(row.body_bytes) || 0,
+    hasBody,
+    relKind: relKindOf(row.rel, hasBody),
+    body: hasBody ? String(row.body ?? '') : null,
+  };
+}
+
+/** 按 refs.id 取条目（docs get 的 refId 寻址 / 归属查询共用）。 */
+export function refDocById(conn: any, id: unknown): (RefDocRow & { body: string | null; locator: string }) | null {
+  const r = String(id || '').trim();
+  if (!r) return null;
+  const row = conn.get(
+    `SELECT r.id, r.rel, r.locator, r.origin, r."desc", r.body_bytes,
+            CASE WHEN b.ref_id IS NULL THEN 0 ELSE 1 END AS has_body,
+            b.body
+       FROM refs r
+       LEFT JOIN ref_bodies b ON b.ref_id = r.id
+      WHERE r.id = :id AND r.deleted_at IS NULL`,
+    { id: r }
+  );
+  if (!row) return null;
+  const hasBody = Number(row.has_body) === 1;
+  return {
+    id: String(row.id),
+    rel: String(row.rel),
+    locator: String(row.locator || ''),
+    origin: String(row.origin || ''),
+    desc: String(row.desc || ''),
     bodyBytes: Number(row.body_bytes) || 0,
     hasBody,
     relKind: relKindOf(row.rel, hasBody),

@@ -6,7 +6,7 @@
       "skills": [
         "nx-kv"
       ],
-      "summary": "KV 清单管理中枢主 skill（默认 install 装的就是这个）：todo / group / 工作空间（远程，需登录）"
+      "summary": "nx-kv 本机任务队列中枢主 skill：localtask 收单 / 等待 / 回填 / 附件 / 时间目标，外加本机仓库与文档库命令（纯本机，无需登录）"
     },
     "kv-get": {
       "skills": [

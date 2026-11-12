@@ -10,7 +10,7 @@
 // 收敛了什么（todo「设置面板统一收敛到侧边栏」的落点）：
 //   - 偏好：侧边栏/看板默认收起、隐藏仓库恢复——原在齿轮气泡里
 //   - 工作区：重置布局
-//   - 云端与存储：附件自动下载 / 附件目录 / 仓库存储根——原散在云端页与仓库页弹窗
+//   - 本机存储：附件根 / 仓库存储根——原散在云端页与仓库页弹窗
 //   - 模板分两块（不混在一起）：任务模板（任务正文骨架，纯字符串槽位）与
 //     提示词模板（每区块各自的模板列表 / 启用项；编辑区下方给只读参数速查，语法教程只在 skill / docs）
 //   - 任务工具：timegoal / waitgoal 的用法口径（时长在发布/编辑任务时显式给——CLI --duration 或编辑页「时间目标」栏，无全局默认）
@@ -43,7 +43,7 @@ interface SettingsSection {
 const SECTIONS: SettingsSection[] = [
   { id: 'pref', label: '偏好', icon: 'flow' },
   { id: 'work', label: '工作区', icon: 'sidebar' },
-  { id: 'cloud', label: '云端与存储', icon: 'cloud' },
+  { id: 'storage', label: '本机存储', icon: 'archive' },
   { id: 'taskTemplates', label: '任务模板', icon: 'list' },
   { id: 'prompts', label: '提示词模板', icon: 'flow' },
   { id: 'sidebar', label: '侧栏显示', icon: 'sidebar' },
@@ -140,32 +140,8 @@ export default function SettingsPanel() {
       </>
     ),
 
-    cloud: (
+    storage: (
       <>
-        <div className="setp-row">
-          <span>读任务时自动下载附件</span>
-          <button
-            className={'toggle' + (cfg && cfg.autoSyncAttachments ? ' on' : '')}
-            disabled={!cfg || busy}
-            onClick={() => cfg && saveSetting({ autoSyncAttachments: !cfg.autoSyncAttachments })}
-          >
-            <span className="dot" />
-            {cfg && cfg.autoSyncAttachments ? '开' : '关'}
-          </button>
-        </div>
-        <div className="setp-row">
-          <span>附件目录</span>
-          <span className="setp-input">
-            <input
-              value={cfg ? cfg.attachmentsDir || '' : ''}
-              placeholder="（默认 ~/.nx-kv/attachments/）"
-              onChange={(e) => setCfg((c) => ({ ...(c || {}), attachmentsDir: e.target.value }))}
-            />
-            <Button variant="secondary" disabled={!cfg || busy} onClick={() => cfg && saveSetting({ attachmentsDir: cfg.attachmentsDir })}>
-              保存
-            </Button>
-          </span>
-        </div>
         <div className="setp-row">
           <span>参考仓库存储根</span>
           <span className="setp-input">

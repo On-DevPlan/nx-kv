@@ -9,7 +9,7 @@
 // 后端也读不到它。
 //
 // v2（原型 plan/uiux-redesign.html §7.1）：
-//   dir/global/overview 归 localtask 域；cloud 即 todo 域（云端总览）。
+//   dir/global/overview 归 localtask 域；云端总览已随云端任务模块移除。
 //   经典看板（v1，#/localtask 与 dir-board）已下线——wait 深链改落 #/dir/<key>。
 import { lazy } from 'react';
 import type { ComponentType } from 'react';
@@ -29,7 +29,6 @@ export const VIEWS: ViewDef[] = [
   { id: 'dir', module: 'localtask', component: lazy(() => import('./page/dir/index.jsx')) },
   { id: 'global', module: 'localtask', component: lazy(() => import('./page/dir/index.jsx')) },
   { id: 'overview', module: 'localtask', component: lazy(() => import('./page/overview/index.jsx')) },
-  { id: 'cloud', module: 'todo', component: lazy(() => import('./page/cloud/index.jsx')) },
   { id: 'repos', module: 'repos', component: lazy(() => import('./page/repos/index.jsx')) },
   // 项目组详情：组里的子目录以表格呈现（点击侧栏的项目组行进来）
   { id: 'group', module: 'repos', component: lazy(() => import('./page/group/index.jsx')) },

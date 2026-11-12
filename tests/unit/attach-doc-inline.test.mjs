@@ -136,7 +136,7 @@ test('超 2 万字截断：docTruncated 标记 + usage 给完整版读取命令'
   assert.equal(a.docContent.length, 20000);
   const seg = attachmentInstruction(att.task.attachments, null);
   assert.match(seg, /内容有截断/);
-  assert.match(seg, /docs get rel:notes\/long\.md/);
+  assert.match(seg, /docs get --ref ref_/);
 });
 
 test('外部文档：登记为 mdfile → 读全文；未登记 → fail-open + 显式登记命令', async () => {
@@ -168,12 +168,12 @@ test('外部文档：登记为 mdfile → 读全文；未登记 → fail-open + 
 
 test('清单 note 渲染：默认模板透出 desc；模板坏了纯文本兜底仍带原文段', () => {
   const rows = [
-    { id: 'r1', kind: 'ref', name: '指南', role: 'doc', relPath: 'notes/guide.md', note: '项目结构说明', docContent: '指南正文' },
+    { id: 'r1', kind: 'ref', name: '指南', role: 'doc', refId: 'ref_guide', note: '项目结构说明', docContent: '指南正文' },
   ];
   const seg = attachmentInstruction(rows, null);
   assert.match(seg, /# 项目结构说明/, '清单行带 desc');
   assert.match(seg, /〔文档原文 · 指南〕/);
-  const out = attachInstructionOf('清单：{{attach.list}}', rows, null, { id: 1 });
+  const out = attachInstructionOf('清单：{{attach.list}}', rows, { id: 1 });
   assert.match(out, /〔文档原文 · 指南〕/, '回落渲染仍带原文段');
 });
 

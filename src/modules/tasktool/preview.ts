@@ -99,7 +99,6 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params }: P
           },
         ])
       ),
-      attachments: delivery.attachmentsSync ? { synced: delivery.attachmentsSync } : null,
     },
   };
 }

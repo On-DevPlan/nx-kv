@@ -14,7 +14,7 @@
 //
 // hash 路由：
 //   #/dir/<key>  目录详情    #/global  全局任务池   #/overview  全部目录总览
-//   #/group/<id> 项目组      #/cloud   云端总览      #/repos     仓库管理
+//   #/group/<id> 项目组      #/repos     仓库管理      #/overview  总览
 //   #/templates  任务模板（面板，不是弹窗）
 //   （经典看板 #/localtask 已下线；wait 深链改落 #/dir/<key>）
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -127,10 +127,10 @@ function routeFromHash(): AppRoute {
     }
     return { view: 'templates', key: '', task: '', mode: '', id: '', topic: '', scope: '' };
   }
-  const KNOWN = ['global', 'overview', 'cloud', 'todo', 'repos'];
+  const KNOWN = ['global', 'overview', 'repos'];
   if (KNOWN.includes(path)) {
     // 全局池的页：#/global?task=1 —— 全局池的子任务表与页都在同一路由下
-    return { view: path === 'todo' ? 'cloud' : path, key: path === 'global' ? '__GLOBAL__' : '', task: path === 'global' ? task : '' };
+    return { view: path, key: path === 'global' ? '__GLOBAL__' : '', task: path === 'global' ? task : '' };
   }
   // 旧深链（#/localtask?…）与未知路径统一落总览
   return { view: 'overview', key: '', task: '' };

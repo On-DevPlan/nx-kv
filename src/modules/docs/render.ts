@@ -2,14 +2,6 @@
 // 全是纯函数 —— 输入 action 的结构化结果，输出给人看的文本。
 // 入参是 action 产出的结构化结果（外部 JSON 形状），按 any 处理。
 
-// list/get 的人读渲染共用的标题行：rel 或 path，缺省标题来自正文首个 #
-function docHead(d: any): string {
-  const addr = d.rel ? d.rel : d.path || d.docId;
-  const head = d.title ? `「${d.title}」` : '';
-  const extra = d.summary && d.summary !== d.title ? ` · ${d.summary}` : '';
-  return `${addr}${head}${extra}`;
-}
-
 const KIND_NOTE: Record<string, string> = {
   legacy: '历史空壳',
   external: '外部文件镜像',
@@ -18,18 +10,19 @@ const KIND_NOTE: Record<string, string> = {
 
 export const renderList = (d: any): string => {
   const withBody = (d.docs || []).filter((x: any) => x.hasBody).length;
-  const lines = [`自有文档 ${d.count} 个（${withBody} 个有正文；正文只存库内，不落盘）`];
+  const lines = [`自有文档 ${d.count} 个（${withBody} 个有正文；正文只存库内）`];
   for (const x of d.docs) {
-    // v6：历史空壳 / 外部镜像 / 无正文行必须显式标注，不能看起来像正常文档
+    // ref 是 DB 实体：列表以 desc（缺省标题）为主标签，地址用 refId，不展示路径
+    const label = x.desc || x.title || x.name || '未命名文档';
     const tag = x.hasBody ? '' : `  （无正文 · ${KIND_NOTE[x.relKind] || '正文缺失'}）`;
-    lines.push(`  ${x.rel}  ${x.title || x.name}${tag}`);
+    lines.push(`  ${label}  [${x.refId || x.docId}]${tag}`);
   }
   if (d.external?.length) {
     lines.push(`外部文档 ${d.external.length} 个（只读引用）:`);
     for (const x of d.external) lines.push(`  ${x.path}`);
   }
   if (!d.count && !d.external?.length) {
-    lines.push('（还没有文档——描述字符串会在首次读取时播种为 md，或直接 docs seed --apply）');
+    lines.push('（还没有文档——直接新建即可，正文写入库内）');
   }
   return lines.join('\n');
 };
@@ -38,19 +31,24 @@ export const renderGet = (d: any): string => {
   if (d.missing) {
     // 有 relKind = 「条目存在但没有正文」（历史空壳 / 外部镜像 / 正文缺失）；
     // 没有 relKind = 外部路径本身不存在。
+    const who = d.desc || d.title || d.refId || d.docId || d.rel || d.path;
     if (d.relKind) {
       const kind = KIND_NOTE[d.relKind] ? ` · ${KIND_NOTE[d.relKind]}` : '';
-      return `（无正文${kind}: ${d.rel || d.path}${d.reason ? ` — ${d.reason}` : ''}）`;
+      return `（无正文${kind}: ${who}${d.reason ? ` — ${d.reason}` : ''}）`;
     }
-    return `（文档不存在: ${d.rel || d.path}）`;
+    return `（文档不存在: ${who}）`;
   }
   if (d.dir) return `（外部目录绑定: ${d.path}，${d.files.length} 个文档）\n  ${d.files.slice(0, 20).join('\n  ')}`;
-  const head = [`【${d.title || docHead(d)}】`, `  ${d.rel || d.path}${d.external ? '  （外部 · 可写回来源）' : ''}`, ''];
+  const title = d.desc || d.title || '未命名文档';
+  const head = [`【${title}】`, `  ${d.refId || d.docId}${d.external ? '  （外部 · 可写回来源）' : ''}`, ''];
   return head.join('\n') + d.body;
 };
 
-export const renderWritten = (d: any): string =>
-  `已写入 ${d.rel}（${d.bytes} 字节）${d.summary ? `\n摘要已回写: ${d.summary}` : ''}`;
+export const renderWritten = (d: any): string => {
+  const who = d.desc || d.refId || d.rel || d.path || d.docId;
+  const descLine = d.desc !== undefined ? `\n描述: ${d.desc || '（空）'}` : '';
+  return `已写入 ${who}（${d.bytes} 字节）${d.summary ? `\n摘要已回写: ${d.summary}` : ''}${descLine}`;
+};
 
 export const renderSeed = (d: any): string => {
   if (d.written !== undefined) return `已播种 ${d.written} 份文档:\n  ${(d.items || []).join('\n  ') || '（无）'}`;

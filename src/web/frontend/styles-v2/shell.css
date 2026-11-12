@@ -9,8 +9,6 @@
   --doing: #2f5fb5;        /* 语义：等待回填（蓝）——「等待=蓝、完成=绿」全局统一（2026-11-03） */
   --doing-bg: #edf2fc;
   --doing-line: #c9d6f0;
-  --cloud: #2b6a8f;       /* 语义：云端（青蓝） */
-  --cloud-bg: #eef5f8;
   --board: #6b5bb5;       /* 语义：项目组（#125 总览组任务 tag；紫=组，避开蓝绿橙的既有语义） */
   --board-bg: #f0eefa;
   --faint: #76736c;       /* 弱文字（对 --paper ≈4.7:1，WCAG AA） */

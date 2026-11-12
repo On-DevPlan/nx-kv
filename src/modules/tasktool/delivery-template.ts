@@ -41,12 +41,18 @@ import { DEFAULT_CONTEXT_TEMPLATE } from '../../shared/prompt-blocks.js';
  */
 export const DEFAULT_DELIVERY_TEMPLATE = DEFAULT_CONTEXT_TEMPLATE;
 
-/** 「补充文档 / 参考文件」→ 结构化数组（模板用 {{#each}} 组织行）。 */
-function docItems(links: any): { path: string; tag: string; note: string }[] {
+/**
+ * 「项目文档 / 组文档」→ 结构化数组（模板用 {{#each}} 组织行）。
+ * v7：ref 是 DB 实体，没有路径——只给 desc / title / refId / hasBody。
+ */
+function docItems(links: any): { refId: string; desc: string; title: string; hasBody: boolean; note: string; tag: string }[] {
   return (links || []).map((d: any) => ({
-    path: d.abs || d.rel || d.path || '',
-    tag: d.tag || '',
+    refId: d.refId || '',
+    desc: d.desc || '',
+    title: d.title || '',
+    hasBody: d.hasBody !== false,
     note: d.note || '',
+    tag: d.tag || '',
   }));
 }
 
@@ -129,6 +135,8 @@ export function deliveryCtxOf(groupCtx: any): Record<string, any> {
           key: repo.key || '',
           intro: (repo.intro && repo.intro.body) || '',
           introPath: (repo.intro && repo.intro.path) || '',
+          introRefId: (repo.intro && repo.intro.refId) || '',
+          introDesc: (repo.intro && (repo.intro.desc || repo.intro.title)) || '',
           docs: repoDocs,
           docCount: repoDocs.length,
           refRepos: repoRefRepos,
@@ -142,6 +150,8 @@ export function deliveryCtxOf(groupCtx: any): Record<string, any> {
           desc: g.desc || '',
           intro: (g.intro && g.intro.body) || '',
           introPath: (g.intro && g.intro.path) || '',
+          introRefId: (g.intro && g.intro.refId) || '',
+          introDesc: (g.intro && (g.intro.desc || g.intro.title)) || '',
           note: g.note || '',
           // position 是 note 的别名：模板里两个名字都认（「本项目在组里的位置」）。
           position: g.note || '',

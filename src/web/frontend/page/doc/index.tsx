@@ -6,17 +6,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import type { Model } from 'flexlayout-react';
 import {
-  bindRepoDoc,
   createDocItem,
+  createRefDoc,
   docAttachments,
-  linkBoardDoc,
+  docHostBindings,
   listBoards,
   loadDocsIndex,
   removeDocItem,
   getDocItem,
   updateDocItem,
   type DocItem,
-  repoDocs,
 } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
@@ -30,9 +29,9 @@ import type { Attachment } from '../../components/md/attach-common.js';
 import type { FileDropCtx } from '../../components/md/md-panes-helpers.js';
 import DocHead, { groupOf } from '../../components/doc/doc-head.jsx';
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
-import { IntroRail, introDirFromRef } from '../../components/Introduction/index.jsx';
-import { uploadMany, snippetsOf } from '../../components/cloud/upload.js';
-import { extractMdHeadings, insertAttachmentSnippet, renderMarkdownHtml, slugName } from '../../modules/md/md-parse.js';
+import { IntroRail } from '../../components/Introduction/index.jsx';
+import { uploadMany, snippetsOf } from '../../components/attach/upload.js';
+import { extractMdHeadings, insertAttachmentSnippet, renderMarkdownHtml } from '../../modules/md/md-parse.js';
 import { docTitleFromMd, setDocTitleInMd } from '../../../../shared/doc-title.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
 import { notifyDocsChanged } from '../../modules/md/doc-bus.js';
@@ -117,49 +116,41 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     load();
   }, [load]);
 
-  // 介绍文档集：项目 / 组统一列进右侧轨
+  // 介绍文档集：项目 / 组统一列进右侧轨（v7：按 ref 归属读，只显示 desc/标题）
   const loadIntroLinks = useCallback(() => {
     if (!ownerKey) {
       setIntroLinks([]);
       return;
     }
+    const current = docId
+      ? [{ docId, label: '当前', note: '', main: true }]
+      : [];
+    const toLinks = (rows: Array<{ refId?: string; desc?: string; title?: string; note?: string; main?: boolean }>) => {
+      const out: IntroLink[] = [];
+      for (const b of rows) {
+        if (!b.refId) continue;
+        const id = 'ref:' + b.refId;
+        if (out.some((x) => x.docId === id)) continue;
+        out.push({ docId: id, label: b.title || b.desc || '未命名文档', note: b.desc || b.note || '', main: !!b.main });
+      }
+      if (docId && !out.some((x) => x.docId === docId)) out.push(current[0]!);
+      return out;
+    };
     if (ownerKind === 'repo') {
-      repoDocs(ownerKey)
-        .then((d) => {
-          const out: IntroLink[] = [];
-          const push = (x: { rel?: string; path?: string; note?: string } | null | undefined, main: boolean) => {
-            if (!x) return;
-            const id = x.rel ? 'rel:' + x.rel : x.path ? 'path:' + x.path : '';
-            if (id) out.push({ docId: id, label: x.rel || x.path || (main ? '主篇' : '补充'), note: x.note || '', main });
-          };
-          // 主篇：登记表里的 main；没登记则回退**约定路径** repo/<key>.md
-          // （介绍文档的权威路径就是它 —— 登记与否只是「有没有显式挂载」）
-          push(d.main || { rel: `repo/${ownerKey}.md` }, true);
-          for (const l of d.links || []) push(l, false);
-          // 当前打开的文档不在集里（读的是某篇补充）→ 补一行「当前」
-          if (docId && !out.some((x) => x.docId === docId)) {
-            out.push({ docId, label: '当前', note: '', main: true });
-          }
-          setIntroLinks(out);
-        })
-        .catch(() => setIntroLinks(docId ? [{ docId, label: '当前', note: '', main: true }] : []));
+      docHostBindings({ host: ownerKey })
+        .then((d) => setIntroLinks(toLinks(d.bindings || [])))
+        .catch(() => setIntroLinks(current));
       return;
     }
-    // board：从看板数据里取 docLinks（看板在 /api/boards，不在 /api/repos）
+    // board：先把 id 解析成组 key（docs bindings 按 group key 查）
     listBoards()
-      .then((d) => {
+      .then(async (d) => {
         const boards = (d && d.boards) || (Array.isArray(d) ? d : []);
         const b = boards.find((x: { id?: string; key?: string }) => x.id === ownerKey || x.key === ownerKey);
-        const out: IntroLink[] = [];
-        if (docId) out.push({ docId, label: '当前', note: '', main: true });
-        for (const l of (b && b.docLinks) || []) {
-          const id = l.rel ? `rel:${l.rel}` : l.path ? `path:${l.path}` : '';
-          if (!id || out.some((x) => x.docId === id)) continue;
-          out.push({ docId: id, label: l.rel || l.path || '补充', note: l.note || '', main: false });
-        }
-        setIntroLinks(out);
+        const res = await docHostBindings({ group: String(b?.key || ownerKey) });
+        setIntroLinks(toLinks(res.bindings || []));
       })
-      .catch(() => setIntroLinks(docId ? [{ docId, label: '当前', note: '', main: true }] : []));
+      .catch(() => setIntroLinks(current));
   }, [ownerKey, ownerKind, docId]);
   useEffect(() => { loadIntroLinks(); }, [loadIntroLinks]);
 
@@ -238,45 +229,40 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     });
   }, [model, ownerKey, repoKey, boardKey, boardName]);
 
-  // 补充一篇 reference（项目 / 组同口径）
+  // 补充一篇文档（项目 / 组同口径）：直接建 ref（DB 实体 + 归属），
+  // 不创建 reference/<slug>.md 这类物理路径——ref 不是文件。
   const addRefDoc = () => {
     if (!ownerKey) return;
     guard(async () => {
       const name = await dialog({
         title: '补充介绍文档',
         input: true,
-        placeholder: '文档名（如 architecture / api-notes）',
+        placeholder: '文档描述（列表里显示这一行，便于快速定位）',
       });
       if (name === null) return;
-      const slug = slugName(String(name).trim() || 'note').replace(/\.md$/i, '');
-      const base = String(docId || '').startsWith('rel:')
-        ? introDirFromRef(docId)
-        : (ownerKind === 'repo' ? `repo/${ownerKey}` : `board/${boardName || ownerKey}`);
-      const rel = `${base}/reference/${slug}.md`;
-      await createDocItem({ rel, body: `# ${String(name).trim() || slug}\n\n（待补）\n` });
-      try {
-        if (ownerKind === 'repo') {
-          await bindRepoDoc({ id: ownerKey, rel });
-        } else {
-          await linkBoardDoc({ board: ownerKey, doc: rel });
-        }
-      } catch {
-        /* 已在集里 / 旧数据：文件已创建即可打开 */
-      }
-      toast(`已补充：${rel}`);
+      const desc = String(name).trim();
+      if (!desc) return;
+      const res = await createRefDoc(
+        ownerKind === 'repo'
+          ? { owner: 'repo', repo: ownerKey, desc }
+          : { owner: 'group', group: ownerKey, desc }
+      );
+      // 空正文直接可编辑；给一个标题骨架，打开后就是「待补」状态。
+      await updateDocItem({ ref: 'ref:' + res.refId, body: `# ${desc}\n\n（待补）\n` });
+      toast(`已补充：${desc}`);
       notifyDocsChanged();
       loadIntroLinks();
-      openByDocId('rel:' + rel, null, openExtra);
+      openByDocId('ref:' + res.refId, null, openExtra);
     });
   };
 
-  // ─── 保存（写盘 + 摘要回写 desc / 组内 note）───
+  // ─── 保存（正文进库；desc 由服务端按需回填 / 用户手写优先）───
   const save = () =>
     guard(async () => {
       if (!doc || !writable) return;
       const nextBody = doc.body;
       const res = await updateDocItem({ ref: docId, body: nextBody });
-      setDoc((d) => (d ? { ...d, body: nextBody, summary: res.summary } : d));
+      setDoc((d) => (d ? { ...d, body: nextBody, summary: res.summary, desc: res.desc ?? d.desc } : d));
       setDirty(false);
       clearHistory(histRef.current, docId);
       // 标题可能变了（正文首行）→ 右轨与「文档列表」跟着刷（#183）
@@ -329,9 +315,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     const files: File[] = [...(fileList || [])];
     if (!files.length) return;
     try {
-      // uploadMany 的实现已支持 onProgress，但其 options 类型尚未声明该字段
-      const upOpts: { local?: boolean; onProgress?: (i: number, total: number, f: File) => void } = {
-        local: true,
+      const upOpts: { onProgress?: (i: number, total: number, f: File) => void } = {
         onProgress: (i: number, total: number, f: File) => toast(`正在上传 ${i}/${total}：${f.name}`),
       };
       const results = await uploadMany(files, upOpts);
@@ -349,52 +333,39 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     }
   };
 
-  // ─── 重命名：自有文档 = 磁盘文件换路径 —— POST 新 rel（复制正文）→ DELETE 旧 ref → 开新页签 ───
+  // ─── 改描述：ref 是 DB 实体，没有路径可改；desc 是列表 / 提示词模板的快速定位标签 ───
   const renameDoc = () => {
-    if (!doc || !doc.rel) return;
-    const prevRel = doc.rel;
-    const prevBody = doc.body;
+    if (!doc) return;
     guard(async () => {
       const next = await dialog({
-        title: '重命名文档',
+        title: '改描述',
         input: true,
-        value: prevRel,
-        placeholder: '新路径（逻辑 rel，以 .md 结尾）',
+        value: doc.desc || '',
+        placeholder: '一句话描述（列表 / 提示词模板里显示）',
       });
       if (next === null) return;
-      const rel = String(next).trim();
-      if (!rel || rel === prevRel) return;
-      if (!/\.md$/i.test(rel)) return toast('文档路径必须以 .md 结尾');
-      try {
-        await createDocItem({ rel, body: prevBody });
-      } catch (e) {
-        // 目标已存在等冲突由后端报错，原样透出
-        toast(`重命名失败：${String((e as Error).message || e)}`);
-        return;
-      }
-      await removeDocItem({ ref: docId });
-      clearHistory(histRef.current, docId);
-      toast(`已重命名为：${rel}`);
+      const desc = String(next).trim();
+      const res = await updateDocItem({ ref: docId, desc });
+      setDoc((d) => (d ? { ...d, desc: res.desc ?? desc } : d));
+      toast('描述已更新');
       notifyDocsChanged();
-      openByDocId('rel:' + rel, null, openExtra);
     });
   };
 
   // ─── 删除：danger 确认 → DELETE 落盘 → 关掉当前页签 ───
   const delDoc = () => {
     if (!doc) return;
-    const docTitle = doc.title;
-    const docRel = doc.rel;
+    const label = doc.desc || doc.title || doc.refId || docId;
     guard(async () => {
       const ok = await dialog({
-        title: `删除文档「${docTitle || docRel || docId}」`,
-        message: `库内文档 ${docRel || docId} 及其正文会被一并删除，不可恢复。`,
+        title: `删除文档「${label}」`,
+        message: `库内文档 ${label} 及其正文会被一并删除，不可恢复。`,
         danger: true,
         okText: '删除',
       });
       if (!ok) return;
       await removeDocItem({ ref: docId });
-      toast(`已删除：${docRel || docId}`);
+      toast(`已删除：${label}`);
       notifyDocsChanged();
       if (model && tabId) model.doAction(Actions.deleteTab(tabId));
     });
@@ -457,7 +428,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     return (
       <div className="mdw docp">
         <div className="docp-head">
-          <span className="docp-path mono">{doc.rel || doc.path || docId}</span>
+          <span className="docp-path mono">{doc.path || doc.desc || doc.refId || docId}</span>
         </div>
         <div className="pad stack">
           <div><strong>{shell ? '这条文档没有正文' : '文档还没有正文'}</strong></div>
@@ -488,8 +459,8 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
             这里在调用边界上放宽，不改它们的实现（属他人负责文件） */}
         <DocHead
           crumb={<RouteBreadcrumb /> as unknown as null}
-          title={doc.title || doc.rel || doc.path || '文档'}
-          pathLabel={doc.rel || doc.path || ''}
+          title={doc.title || doc.desc || '未命名文档'}
+          pathLabel={doc.path || ''}
           dirty={dirty}
           writable={writable}
           external={!!doc.external}
@@ -503,7 +474,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
               },
             ]),
             groupOf('doc', '文档', [
-              { id: 'rename', label: '重命名', run: renameDoc },
+              { id: 'rename', label: '改描述', run: renameDoc },
               { id: 'delete', label: '删除', run: delDoc, danger: true },
             ]),
             groupOf('view', '查看', [
@@ -517,7 +488,14 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
           ]) as unknown as never[]}
           onSave={save as unknown as null}
         />
-        {doc.summary && writable && <div className="docp-summary">摘要（回写 desc）：{doc.summary}</div>}
+        {/* desc 是「快速定位」的一句话：标题下面是它自己的位置，可看可改 */}
+        <div className={'docp-desc' + (doc.desc ? '' : ' empty')}>
+          <span className="k">描述</span>
+          <span className="v">{doc.desc || '未填写——写一句这篇讲什么，列表与提示词里用它快速定位'}</span>
+          {writable && (
+            <button type="button" className="docp-desc-edit" onClick={renameDoc}>改</button>
+          )}
+        </div>
         <MdPanes
           mode={effMode}
           title={doc.title}

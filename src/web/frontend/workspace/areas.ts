@@ -28,7 +28,6 @@ export const PANEL_AREA: Record<string, AreaName> = {
   page: AREA.MAIN,
   group: AREA.MAIN,
   repos: AREA.MAIN,
-  cloud: AREA.MAIN,
   overview: AREA.MAIN,
   templates: AREA.MAIN,
   doc: AREA.MAIN,
@@ -43,7 +42,6 @@ export const PANEL_AREA: Record<string, AreaName> = {
 export const SINGLETON_PANELS = new Set([
   'sidebar',
   'repos',
-  'cloud',
   'overview',
   // templates 不再单例（#137）：new/edit 靠 config.mode 区分，空 config 是目录页
   'progress',

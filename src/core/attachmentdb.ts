@@ -52,6 +52,7 @@ export {
   listRefDocs,
   noBodyReason,
   refDocByRel,
+  refDocById,
   refIdByRel,
   relKindOf,
   upsertRefBody,

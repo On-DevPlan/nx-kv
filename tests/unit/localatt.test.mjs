@@ -72,12 +72,10 @@ test('localReadStream：按 resolve 出的绝对路径读出原字节', async ()
   assert.equal(Buffer.concat(chunks).toString('utf8'), 'stream-bytes');
 });
 
-test('file.upload --local：action 层返回 storage=local + 本地路径（零网络路径）', async () => {
+test('file.upload：action 层返回 storage=local + 本地路径（零网络路径）', async () => {
   const act = fileMod.actions.find((a) => a.id === 'file.upload');
-  // 迁移到模板形态后，action 的入参契约在 zod schema 里（不再是 legacy 的 flags 表）：
-  assert.ok(act.input.shape.local, 'file.upload 声明 --local');
   const content = Buffer.from('web-bytes').toString('base64');
-  const d = await fileService.uploadFileAction({ name: '面板贴图.png', content, contentType: 'image/png', local: true });
+  const d = await fileService.uploadFileAction({ name: '面板贴图.png', content, contentType: 'image/png' });
   assert.equal(d.storage, 'local');
   assert.match(d.fileId, /^[0-9a-f]{32}$/);
   assert.ok(existsSync(d.localPath));
@@ -86,9 +84,9 @@ test('file.upload --local：action 层返回 storage=local + 本地路径（零�
   assert.ok(act.render(d).includes('本机附件仓'), '人读输出交代落点');
 });
 
-test('file.get：本机仓命中不问云端（离线可查）', async () => {
+test('file.get：查本机附件记录', async () => {
   const rec = await localUpload({ name: '查询.png', buffer: Buffer.from('q'), contentType: 'image/png' });
-  const d = await fileService.getFileAction(rec.fileId, {});
+  const d = await fileService.getFileAction(rec.fileId);
   assert.equal(d.storage, 'local');
   assert.equal(d.localPath, rec.path);
   assert.equal(d.isImage, true);

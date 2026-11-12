@@ -22,8 +22,11 @@
  * v6（2026-11-12）：refs 升级为「文档本体」——新增 rel（逻辑名，唯一）/ origin /
  * body_bytes；正文进 ref_bodies（1:1，CASCADE）；ref_attach 的 role 增 'source'
  * （外部 md 文件同步来源）。盘上 docs 树正文一次性入库，逐篇 sha256 回读比对。
+ *
+ * v7（2026-11-12）：refs 增加 desc（短描述）。ref 不再当实体文件，列表与提示词
+ * 模板以 desc 作为快速定位标签；不新增任何路径 / 文件名字段。
  */
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 /**
  * 运行时最低 Node 版本。

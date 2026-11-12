@@ -222,12 +222,15 @@ export function ensureTaskAttachment(conn: any, { taskId, atMs = Date.now(), nam
 export function ensureRefAttachment(conn: any, { refId, atMs = Date.now(), name = '' }: {
   refId?: string | null; atMs?: number; name?: string;
 } = {}): string | null {
-  const row = conn.get('SELECT id, locator FROM refs WHERE id = :id', { id: String(refId || '') });
+  const row = conn.get('SELECT id, rel, locator, "desc" FROM refs WHERE id = :id', { id: String(refId || '') });
   if (!row) return null;
+  // v7：ref 是 DB 实体，附件名取用户填的名字 → desc → rel 末段（去掉 .md），不暴露路径。
+  const fallback = String(row.desc || '').trim()
+    || String(row.rel || row.locator || row.id).split('/').pop()!.replace(/\.md$/i, '');
   return upsertDeduped(conn, {
     id: refAttachmentId(row.id),
     kind: 'ref',
-    name: name || String(row.locator || row.id).split('/').pop(),
+    name: name || fallback,
     dedupeKey: `ref:${row.id}`,
     targetKind: 'ref',
     targetKey: String(row.id),

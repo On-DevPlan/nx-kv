@@ -43,7 +43,10 @@ export interface DocItem {
   body?: string;
   title?: string;
   summary?: string;
-  rel?: string;
+  /** 短描述（v7）：列表 / 页头主标签 */
+  desc?: string;
+  /** refs.id（ref 的稳定地址） */
+  refId?: string;
   path?: string;
   writable?: boolean;
   external?: boolean;
@@ -56,8 +59,8 @@ export function getDocItem(ref: string): Promise<DocItem> {
   return api('/api/docs/item?ref=' + encodeURIComponent(ref));
 }
 
-/** 改文档正文（PATCH /api/docs/item；返回带 summary 摘要）。 */
-export function updateDocItem(body: { ref?: string; body?: string }): Promise<any> {
+/** 改文档正文 / 描述（PATCH /api/docs/item；返回带 summary 摘要与 desc）。 */
+export function updateDocItem(body: { ref?: string; body?: string; desc?: string }): Promise<any> {
   return api('/api/docs/item', { method: 'PATCH', body });
 }
 
@@ -74,6 +77,16 @@ export function createDocItem(body: DocItemBody): Promise<any> {
 /** 删除文档（DELETE /api/docs/item；ref 是文档 id）。 */
 export function removeDocItem(body: { ref?: string }): Promise<any> {
   return api('/api/docs/item', { method: 'DELETE', body });
+}
+
+/** 新建直接 ref（POST /api/docs/ref；desc + 归属，不创建任何文件）。 */
+export function createRefDoc(body: {
+  owner: 'repo' | 'group' | 'group_repo';
+  repo?: string;
+  group?: string;
+  desc?: string;
+}): Promise<{ refId: string; docId: string; desc?: string }> {
+  return api('/api/docs/ref', { method: 'POST', body });
 }
 
 /** 把文档登记进参考仓库的文档集（POST /api/repos/docs）。 */
@@ -99,13 +112,34 @@ export function unlinkBoardDoc(body: { board: string; remove: number }): Promise
 /** 一条文档归属（GET /api/docs/bindings 的一行）。 */
 export interface DocBindingRow {
   refId: string;
-  locator: string;
+  desc?: string;
+  title?: string;
+  hasBody?: boolean;
   repoKey: string;
   groupKey: string | null;
   type: string;
   position: number;
   main: boolean;
   note?: string;
+  direct?: boolean;
+}
+
+/** 解绑直接 ref 的一条归属（不删文档）。 */
+export function unbindRef(body: {
+  ref: string;
+  type: 'repo' | 'group' | 'group_repo';
+  repo: string;
+  group?: string;
+}): Promise<{ refId: string; removed: number; orphan: boolean }> {
+  return api('/api/docs/unbind', { method: 'POST', body });
+}
+
+/** 宿主文档集（GET /api/docs/bindings?host=<repoKey> 或 ?group=<组 key>）。 */
+export function docHostBindings(params: { host?: string; group?: string }): Promise<{ bindings?: DocBindingRow[] }> {
+  const q = new URLSearchParams();
+  if (params.host) q.set('host', params.host);
+  if (params.group) q.set('group', params.group);
+  return api('/api/docs/bindings?' + q.toString());
 }
 
 /** 文档归属清单（GET /api/docs/bindings?ref=<docId>）。 */

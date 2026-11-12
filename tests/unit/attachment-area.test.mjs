@@ -60,7 +60,7 @@ test('attach --no-embed：--url / --task 也进附件区并被交付列出', asy
   const att = await annotateTaskDelivery(added.task);
   assert.ok(att, '附件区条目也必须出现在领取交付里');
   assert.ok(att.task.attachments.some((a) => a.area === 'area'));
-  const seg = attachmentInstruction(att.task.attachments, att.sync);
+  const seg = attachmentInstruction(att.task.attachments);
   assert.ok(seg.includes('[附件区'), 'instruction 必须区分正文内嵌与附件区');
   assert.ok(seg.includes('https://example.com/spec'));
 });

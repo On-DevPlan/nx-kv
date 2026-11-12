@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent, ComponentType, ReactNode } from 'react';
 import { Modal } from '../popup/index.jsx';
 import { api } from '../../api/client.js';
-import { clipboardFiles, droppedFiles, readableName, uploadOne } from '../cloud/upload.js';
+import { clipboardFiles, droppedFiles, readableName, uploadOne } from '../attach/upload.js';
 import StatusTag from '../status-tag/index.jsx';
 import {
   attachBodyOf,
@@ -54,7 +54,6 @@ interface PendingItem {
   url?: string;
   seq?: number;
   docRef?: string;
-  rel?: string;
   note?: string;
   inline?: boolean;
   status: 'pending' | 'uploading' | 'error';
@@ -137,13 +136,20 @@ export default function AttachModal({
   useEffect(() => {
     if (!open || docOptions || !allow.ref) return;
     let alive = true;
-    api<{ docs?: Array<DocOption & { docId?: string }> }>('/api/docs').then((r) => {
+    // v7：ref 是 DB 实体，列表只给 desc / 标题与 refId——不展示任何 .md 路径。
+    api<{ docs?: Array<DocOption & { docId?: string; refId?: string; desc?: string; rel?: string }> }>('/api/docs').then((r) => {
       if (!alive) return;
-      const list = (r.docs || []).map((d) => ({
-        ref: d.docId || `rel:${d.rel}`,
-        title: d.title || d.name || d.rel,
-        rel: d.rel,
-      }));
+      const list = (r.docs || []).map((d) => {
+        const ref = d.refId || d.docId || (d.rel ? `rel:${d.rel}` : '');
+        const desc = String(d.desc || '').trim();
+        const title = String(d.title || d.name || '').trim();
+        return {
+          ref,
+          title: desc || title || '未命名文档',
+          sub: desc && title && title !== desc ? title : '',
+          desc,
+        };
+      }).filter((d) => !!d.ref);
       setDocs(list);
     }).catch(() => { /* 拉不到就只用手动输入 */ });
     return () => { alive = false; };
@@ -208,8 +214,7 @@ export default function AttachModal({
         key: nextKey(),
         source: 'ref',
         docRef: d.ref,
-        name: d.title || d.name || d.rel || d.ref,
-        rel: d.rel || '',
+        name: d.title || d.desc || d.name || d.ref,
         size: 0,
         status: 'pending',
         // 文档绑定的两个可选属性（#162）：说明（desc，随边落库、交付清单透出）
@@ -232,7 +237,7 @@ export default function AttachModal({
     try {
       let fileId = it.fileId;
       if (it.source === 'file' && !fileId) {
-        const r = await uploadOne(it.file, { local: true });
+        const r = await uploadOne(it.file);
         fileId = r.fileId || r.id;
         if (!fileId) throw new Error('上传未返回 fileId');
       }
@@ -280,7 +285,7 @@ export default function AttachModal({
   const refList = useMemo(() => {
     const q = refSearch.trim().toLowerCase();
     return docs
-      .filter((d) => (q ? `${d.title || ''} ${d.rel || ''} ${d.ref}`.toLowerCase().includes(q) : true))
+      .filter((d) => (q ? `${d.title || ''} ${d.sub || ''} ${d.desc || ''} ${d.ref}`.toLowerCase().includes(q) : true))
       .slice(0, 12);
   }, [docs, refSearch]);
 
@@ -325,7 +330,7 @@ export default function AttachModal({
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          // cloud/upload 仍是 JS 模块：droppedFiles 的返回被推成 unknown[]，约定就是 File[]
+          // attach/upload 仍是 JS 模块：droppedFiles 的返回被推成 unknown[]，约定就是 File[]
           addFiles(droppedFiles(e) as File[]);
         }}
         onPaste={onPaste}
@@ -411,7 +416,7 @@ export default function AttachModal({
           <div className="att-pick-head">关联文档（ref）</div>
           <input
             className="pp-input"
-            placeholder="搜索标题或路径"
+            placeholder="搜索描述或标题"
             value={refSearch}
             onChange={(e) => setRefSearch(e.target.value)}
             onKeyDown={(e) => {
@@ -424,13 +429,13 @@ export default function AttachModal({
             <div className="att-pick-list">
               {refList.map((d) => (
                 <button key={d.ref} type="button" className="att-pick-item" onClick={() => addRef(d)}>
-                  <span className="att-pick-main">{d.title || d.rel || d.ref}</span>
-                  {d.rel ? <span className="att-pick-path">{d.rel}</span> : null}
+                  <span className="att-pick-main">{d.title || d.ref}</span>
+                  {d.sub ? <span className="att-pick-path">{d.sub}</span> : null}
                 </button>
               ))}
             </div>
           ) : (
-            <div className="att-empty-inline">{docs.length ? '没有匹配的文档' : '文档树为空'}</div>
+            <div className="att-empty-inline">{docs.length ? '没有匹配的文档' : '文档库为空'}</div>
           )}
         </div>
       )}

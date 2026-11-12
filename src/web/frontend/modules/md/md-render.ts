@@ -94,7 +94,7 @@ function inline(s: string, knownNames: Set<string> | null, refTitles: Map<string
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   // 图床附件嵌入（2026-11-03 任务 #8）：图片 `![说明](fileId)`、文件 `[名字](fileId)`。
-  // fileId 判定与 modules/todo/attach.js 同一套（looksLikeFileId）——普通 URL / 相对路径
+  // fileId 判定与 shared/attach 同一套（looksLikeFileId）——普通 URL / 相对路径
   // 原样保留，不误伤普通 markdown 链接。base 已 esc，捕获组直接用，不再二次转义。
   const withAtt = base
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, target) => {

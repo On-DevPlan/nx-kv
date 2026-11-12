@@ -53,7 +53,7 @@ function parseHttpQuery(input: string): { method: string | null; path: string } 
   const method = m ? m[1]!.toUpperCase() : null;
   const path = (m ? m[2]! : s).split('?')[0]!;
   if (!path.startsWith('/')) {
-    throw badInput(`HTTP 查询需形如 "/api/todo" 或 "GET /api/todo"，收到: ${input}`);
+    throw badInput(`HTTP 查询需形如 "/api/localtasks" 或 "GET /api/localtasks"，收到: ${input}`);
   }
   return { method, path };
 }

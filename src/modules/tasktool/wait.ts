@@ -150,8 +150,8 @@ async function readGoalCtx(cwd: unknown): Promise<Record<string, any> | null> {
 // 任何异常都降级为「只回任务」——wait 绝不能因渲染挂掉（与探针同一条 fail-open 纪律）。
 //
 // preview / trace（任务 #65「预览 get 提示词」）：
-//   preview=true → **零副作用**：不问附件云端同步（只读本机仓与镜像）、不启动
-//     任务级 timegoal 计时（用声明现算同一份 check 指令）。其余渲染路径与真实领取
+//   preview=true → **零副作用**：不启动任务级 timegoal 计时、不写库、不领取；
+//     timegoal 的 check 指令用声明现算（与真实领取同一份）。其余渲染路径与真实领取
 //     完全同一条代码，所以预览出来的字符串就是 agent 会拿到的那一份。
 //   trace=[]     → 按顺序记下每一段的来源（谁贡献的、开关是否开着），供面板展示
 //     「这段是哪来的」。真实领取不传 trace，行为与改造前逐字节一致。
@@ -174,17 +174,15 @@ export async function buildTaskDelivery(
 ): Promise<Record<string, any>> {
   // 附件标注（任务 #15：正文里的 ![名](fileId) 嵌入 → 附件清单 + 本地路径）。
   // fail-open：标注失败绝不拖垮交付；正文没有引用时 annotateTaskDelivery 返回
-  // null，载荷与改造前**逐字节一致**（与 todo 读任务的同一条纪律）。
+  // null，载荷与改造前**逐字节一致**（与 localtask 读任务的同一条纪律）。
   let att: any = null;
-  let attSync: any = null;
   try {
     // inlineDocs（#162）：文档资料绑定（role=doc）随交付带全文——只读盘（自有树 /
     // 绑定闭包），预览同样安全；读不到内容留空，不阻断交付。
-    const a = await annotateTaskDelivery(task, { sync: !preview, topicKey, inlineDocs: true });
+    const a = await annotateTaskDelivery(task, { topicKey, inlineDocs: true });
     if (a) {
       task = a.task;
       att = a;
-      attSync = a.sync;
     }
   } catch {
     /* 标注失败照常交付（agent 还能从正文里的嵌入自行处理） */
@@ -228,7 +226,7 @@ export async function buildTaskDelivery(
     const goalStatus = !taskGoalCtx && goal
       ? `〔时间目标「${goal.name || ''}」${goal.remainingHuman || ''}〕`
       : null;
-    const attachCtx = att ? attachTemplateCtx(att.task.attachments, att.sync) : { attach: null };
+    const attachCtx = att ? attachTemplateCtx(att.task.attachments) : { attach: null };
     const baseCtx: Record<string, any> = {
       ...deliveryCtx,
       // 共享 ctx 里的 goal 同时暴露 check / statusLine，模板不必区分两种来源。
@@ -307,7 +305,7 @@ export async function buildTaskDelivery(
     });
     const warnField = renderWarnings.length ? { renderWarnings } : {};
     if (!full) {
-      return { task, ...warnField, ...(attSync ? { attachmentsSync: attSync } : {}) };
+      return { task, ...warnField };
     }
     // coversBody = 启用区块的任一模板含 {{task.text}}（instruction 自包含任务正文）。
     // 由服务端判定，避免 CLI 端做子串猜测。
@@ -316,7 +314,6 @@ export async function buildTaskDelivery(
       instruction: full,
       coversBody: blocksCoverBody(blockTemplates),
       ...warnField,
-      ...(attSync ? { attachmentsSync: attSync } : {}),
     };
   } catch {
     return { task };

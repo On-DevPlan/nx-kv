@@ -4,7 +4,6 @@
 // 本文件是纯函数层：表由调用方（cli.ts）传入，不持有自己的状态，
 // 因此 help 文本不可能与实际命令脱节。
 import { APP_NAME } from '../core/paths.js';
-import { configPathFromEnv } from '../core/config.js';
 import { badInput } from '../core/errors.js';
 import { MODULES } from './registry.js';
 import { cliPathsOf, entryOf, usageOf, type AnyAction } from './spec.js';
@@ -36,8 +35,7 @@ export function renderHelp(entries: readonly HelpEntry[], topic: unknown, versio
   const lines: string[] = [];
   if (!topic) {
     lines.push(`${APP_NAME} · nx-kv v${version}`);
-    lines.push('KV 清单管理中枢：serve 驱动 CLI 与 Web，同源同构。');
-    lines.push(`配置: ${configPathFromEnv()}    （环境变量 NX_KV_CONFIG 或 --config 覆盖）`);
+    lines.push('本机任务队列 + 仓库/文档中枢：serve 驱动 CLI 与 Web，同源同构。');
     lines.push('');
   }
 
@@ -58,7 +56,6 @@ export function renderHelp(entries: readonly HelpEntry[], topic: unknown, versio
 
   lines.push('通用:');
   lines.push('  --json    机器可读输出（agent 模式）');
-  lines.push('  --config  本次运行覆盖配置文件路径');
   return lines.join('\n');
 }
 

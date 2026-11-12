@@ -10,18 +10,11 @@ const LS_KEY = 'nx-kv-ui';
 
 /** 会话级选择（存 localStorage 的那份）。视图私有字段（多选勾选等）按 key 挂着。 */
 export interface UiState {
-  view: string;   // 当前 tab
-  topic: string;  // 清单页的主题筛选（空 = 全部）
   [k: string]: any;
 }
 
 // 只持久化「选择」，不持久化「数据」——数据永远从 /api 拉，避免陈旧缓存。
-const DEFAULT_UI: UiState = {
-  view: 'todo',   // 当前 tab
-  topic: '',      // 清单页的主题筛选（空 = 全部）
-};
-// 刻意**不**在这里存当前工作空间：它的真相源是本机配置（~/.nx-kv/config.json），
-// 存两份就会出现「面板显示 A 组、实际写进 B 组」这类不一致。
+const DEFAULT_UI: UiState = {};
 
 function loadUi(): UiState {
   try {

@@ -2,10 +2,8 @@
 // **元数据唯一真相在 SQLite 的 attachments 表**（schema v2）。
 //
 // 口径（任务 #15 验收反馈 2026-11-04 起，2026-11-08 收口到 DB）：
-//   · 本地任务贴图走本地存储，与云端图床零关联——上传不碰网、预览不透传、
-//     agent 领取直接读本地路径；
-//   · 云端清单（todo）的附件仍走云端图床（core/fileapi.js + core/attachstore.js），
-//     但云端镜像的元数据同样进 attachments（storage='cloud'）；
+//   · 本地任务贴图走本地存储：上传不碰网、预览不透传、agent 领取直接读本地路径；
+//   · 云端任务/图床已移除，这里只服务本地附件；
 //   · 正文引用语法完全不变：`![名](fileId)` / `[名](fileId)`，fileId = attachments.id。
 //
 // 目录：~/.nx-kv/attachments/local/（NX_KV_ATTACHMENTS 可改根目录）。
@@ -17,10 +15,9 @@ import { existsSync } from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { dirname, join, parse as parsePath } from 'node:path';
 import { attachmentsRootFromEnv } from './paths.js';
-import { contentTypeOf } from './fileapi.js';
+import { contentTypeOf, localNameFor, safeFileName } from './filekind.js';
 import { getDb } from './db/index.js';
 import { getAttachment, upsertFileAttachment } from './attachmentdb.js';
-import { safeFileName, localNameFor } from './attachstore.js';
 import type { ReadStream } from 'node:fs';
 import type { DbApi, Row } from './db/driver.js';
 

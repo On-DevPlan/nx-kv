@@ -1,7 +1,7 @@
 {
   "name": "nx-kv",
-  "version": "0.49.0",
-  "description": "nx-kv — KV 清单管理中枢（远程）+ 本机本地任务队列（localtask）：serve 驱动 CLI 与 Web 面板，同源同构，附带可安装 skill 供 agent 提交 / 领取 / 阻塞接收任务",
+  "version": "0.50.0",
+  "description": "nx-kv — 本机任务队列（localtask）+ 文档库 + 仓库登记：serve 驱动 CLI 与 Web 面板，同源同构，附带可安装 skill 供 agent 提交 / 领取 / 阻塞接收任务",
   "type": "module",
   "bin": {
     "nx-kv": "bin/kv.mjs"
@@ -43,8 +43,7 @@
   "keywords": [
     "cli",
     "web-panel",
-    "kv",
-    "todo",
+    "task-queue",
     "agent-tools",
     "skills"
   ],

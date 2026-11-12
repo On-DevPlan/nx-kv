@@ -93,9 +93,14 @@ export interface TaskOption {
 
 /** 可关联的文档（ref）：弹窗自己拉一份，或由宿主传入。 */
 export interface DocOption {
+  /** 提交给 attach 的文档地址：refId / ref:<id> / rel:<路径>（旧数据） */
   ref: string;
+  /** 列表主标签：desc（缺省回落到文档标题） */
   title?: string;
-  rel?: string;
+  /** 次级说明：desc 与标题不同时给标题，便于区分同名文档 */
+  sub?: string;
+  /** 文档短描述（v7；提示词与列表的快速定位标签） */
+  desc?: string;
   name?: string;
 }
 

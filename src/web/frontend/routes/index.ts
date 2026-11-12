@@ -4,7 +4,7 @@
 // （面板 → hash）。反表按 `order` 升序尝试，**第一个给出非 undefined 的赢**：
 // `page` 这块面板同时被 dir 与 group 写回，组锚定页更具体，所以 order 更小。
 // 同 order 时按登记顺序，行为可预测（不要去造两个同 order 的规则）。
-import { cloudPage, overviewPage, reposPage } from './static.js';
+import { overviewPage, reposPage } from './static.js';
 import { dirPage } from './dir.js';
 import { docPage } from './doc.js';
 import { groupPage } from './group.js';
@@ -18,7 +18,6 @@ export const PAGES: readonly RoutePage[] = [
   docPage,
   templatesPage,
   reposPage,
-  cloudPage,
   overviewPage,
 ];
 

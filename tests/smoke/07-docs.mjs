@@ -64,7 +64,11 @@ export async function run(ctx) {
     JSON.stringify(docList).slice(0, 240)
   );
   const knowMd2 = await cliJson(['repo', 'knowledge', 'alpha', '--md']);
-  check('knowledge --md 列出其余介绍文档', String(knowMd2.md || '').includes('qa.md'), String(knowMd2.md || '').slice(-300));
+  check(
+    'knowledge --md 其余介绍文档给 docs get --ref 引导',
+    /其余介绍文档[\s\S]*docs get --ref ref_/.test(String(knowMd2.md || '')),
+    String(knowMd2.md || '').slice(-300)
+  );
 
   const zipPath = join(tmp, 'export.zip');
   check('repo export --zip', (await cli(['repo', 'export', '--zip', zipPath])).status === 0);

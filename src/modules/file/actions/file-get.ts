@@ -10,7 +10,6 @@ const service: any = serviceNs;
 /** file.get 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   fileId: z.string(),
-  group: z.number().optional().describe("工作空间 id（默认取当前）"),
 });
 
 export class FileGetAction extends ActionBase<typeof input> {
@@ -18,14 +17,14 @@ export class FileGetAction extends ActionBase<typeof input> {
     id: 'file.get',
     cli: ['file', 'get'],
     http: ['GET', '/api/file/item'],
-    summary: '查单个附件的元数据与本地路径',
+    summary: '查单个附件的元数据与本机路径',
     args: ['fileId'],
     input,
     render: (d: any) => service.renderFileInfo(d),
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-      return service.getFileAction(ctx.fileId, { group: ctx.group });
+      return service.getFileAction(ctx.fileId);
   
   }
 }

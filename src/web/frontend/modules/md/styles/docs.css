@@ -112,6 +112,20 @@
   border-bottom:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+/* 标题下面的描述行：desc 是列表 / 提示词里的快速定位标签，看和改在同一个位置 */
+.docp-desc{
+  flex:none;display:flex;align-items:center;gap:8px;padding:4px 14px;
+  border-bottom:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
+  font-size:11px;line-height:1.6;color:var(--mid,#838A93);
+}
+.docp-desc .k{flex:none;font-size:10px;color:var(--faint,#A9AEB4);letter-spacing:.04em}
+.docp-desc .v{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.docp-desc.empty .v{color:var(--faint,#A9AEB4)}
+.docp-desc-edit{
+  flex:none;border:0;background:transparent;padding:1px 6px;border-radius:5px;
+  font:inherit;font-size:10.5px;color:var(--mdw-accent,#2F6F5E);cursor:pointer;
+}
+.docp-desc-edit:hover{background:var(--soft,#F1F0EC)}
 /* 文档页底部信息面板（#183）：外壳复用任务页的 .mdw-dock（拖高 / 最大化 / 关闭），
    这里只补两处——tab 面板的显隐（hidden 要压过后续可能加的 display）与状态栏右侧提示。 */
 .docp-dock-pane[hidden]{display:none}

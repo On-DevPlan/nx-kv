@@ -40,7 +40,6 @@
   flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--paper);
   border: 1px solid var(--soft-2); border-radius: var(--r8); overflow: hidden;
 }
-.pane.cloud { background: linear-gradient(180deg, var(--cloud-bg), var(--paper) 120px); }
 .pane.solo .col { flex: 1; min-width: 200px; width: auto; }
 .pane-h { flex: none; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
 .pane-h .ico { display: inline-flex; align-items: center; color: var(--ink-2); }
@@ -57,15 +56,11 @@
   -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 18px), transparent 100%);
           mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 18px), transparent 100%);
 }
-/* ⚠ 看板列必须带 .pane 作用域：裸 .col 会泄漏进云端清单页（todo 视图同样用
-   .col 做三个桶），后加载的 v2 把它的 flex:1 覆盖成 width:216px，三列就不占满了 */
+/* 看板列必须带 .pane 作用域：裸 .col 会被别处同名的列规则覆盖 */
 .pane .col {
   width: 216px; flex: none; display: flex; flex-direction: column; background: var(--canvas);
   border: 1px solid var(--soft-2); border-radius: var(--r8); min-height: 0;
 }
-.pane .col.cloud-col { background: #f4f8fa; }
-.pane .col.drop-ok { outline: 2px dashed var(--cloud); outline-offset: -3px; background: var(--cloud-bg); }
-.pane .col.drop-ok.local-target { outline-color: var(--ink); background: var(--soft); }
 .col-h { flex: none; display: flex; align-items: center; gap: 6px; padding: 7px 10px; font-size: 12px; font-weight: 700; }
 .col-h .k { color: var(--faint); font-weight: 400; font-size: 11px; }
 .col-h .grow { flex: 1; }
@@ -108,8 +103,6 @@
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .card .rsum b { color: var(--ink); }
-.card.flash { animation: cardflash 1.6s ease; }
-@keyframes cardflash { 0%, 55% { box-shadow: 0 0 0 3px var(--cloud); } 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); } }
 .card.fail { animation: cardfail 1.8s ease; }
 @keyframes cardfail { 0%, 60% { box-shadow: 0 0 0 3px var(--danger); border-color: var(--danger); } 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); } }
 .card.tomb { background: transparent; border-style: dashed; color: var(--faint); }
@@ -187,7 +180,6 @@
 /* 行尾状态 tag：#121 起走统一组件 .tstat（配色在 style.css），这里只管行内不压缩。
    （.tag.t-pend/.t-done/.t-gone 已删——旧「已领取=绿」口径废弃。） */
 .ov-task .tag, .ov-task .tstat { flex: none; }
-.tag.t-cloud { color: var(--cloud); background: var(--cloud-bg); border-color: transparent; }
 /* 组任务 tag（#125）：总览行上的「组」角标——组板流转的任务在总览也可见 */
 .tag.t-board { color: var(--board); background: var(--board-bg); border-color: transparent; }
 /* 已领取历史折叠行：贴底的浅色展开条（计数用完成绿，与全局「完成=绿」统一） */

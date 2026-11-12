@@ -155,9 +155,14 @@ export function putRefBinding(conn: any, { repoKey, groupKey = null, refId, type
   );
 }
 
-/** 清空全部绑定（整表重建的第一步；只在重建事务内用）。 */
+/**
+ * 清空「派生绑定」（v7）：只清 rel ≠ id 的 ref 的绑定。
+ *
+ * rel = id 的行是 v7 新建的直接 ref（ref 是 DB 实体，没有路径）：
+ * 它的归属由用户直接写入 ref_bindings，不来自 ext，整表重建时不能抹掉。
+ */
 export function clearRefBindings(conn: any): void {
-  conn.run('DELETE FROM ref_bindings');
+  conn.run('DELETE FROM ref_bindings WHERE ref_id NOT IN (SELECT id FROM refs WHERE rel = id)');
 }
 
 /** 绑定命中的 ref → state 清空（不再是孤儿）。 */

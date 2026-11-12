@@ -44,12 +44,12 @@ globalThis.FileReader = class {
 
 const { filesToAttachments } = await import('../../src/web/frontend/components/md/attachments.js');
 
-test('filesToAttachments：本地任务贴图一律带 local:true（落本机仓，不碰云端）', async () => {
+test('filesToAttachments：本机贴图上传落本机附件仓（无云端开关）', async () => {
   calls.length = 0;
   const r = await filesToAttachments([{ name: '设计稿.png', type: 'image/png', size: 3 }]);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].path, '/api/file', '上传仍走同一条 action（多一个 local 开关）');
-  assert.equal(calls[0].body.local, true, '必须显式带 local——否则又回云端图床');
+  assert.equal(calls[0].path, '/api/file', '上传走同一条 action');
+  assert.equal(calls[0].body.local, undefined, '不再传云端/本地开关');
   assert.equal(calls[0].body.name, '设计稿.png');
   // 正文嵌入片段用后端给的 id
   assert.deepEqual(r.imageInserts, [`\n![设计稿.png](${LOCAL_ID})\n`]);
@@ -64,6 +64,6 @@ test('filesToAttachments：多张图按序各发一次，嵌入片段保序', as
     { name: 'b.png', type: 'image/png', size: 1 },
   ]);
   assert.equal(calls.length, 2);
-  assert.ok(calls.every((c) => c.body.local === true), '每张都带 local');
+  assert.ok(calls.every((c) => c.body.local === undefined));
   assert.equal(r.imageInserts.length, 2);
 });

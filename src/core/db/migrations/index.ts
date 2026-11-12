@@ -55,6 +55,7 @@ export const DIRECT_EDGES: MigrationStep[] = [
   { from: 3, to: 4, file: 'v4.sql', title: '参考仓库绑定升到组级（group_refs）', apply: migrateGroupRefs },
   { from: 4, to: 5, file: 'v5.sql', title: '附件新增 mdfile（本地 md 指针）' },
   { from: 5, to: 6, file: 'v6.sql', title: 'refs 正文入库（rel / ref_bodies / source）', apply: migrateRefsBodies },
+  { from: 6, to: 7, file: 'v7.sql', title: 'refs 描述字段（desc）' },
 ];
 
 // 人读版本说明（docs/decisions 是决策的唯一权威位置，里面对应一份 date 化的 .md）
@@ -65,6 +66,7 @@ export const VERSION_NOTES = {
   4: 'docs/decisions/versions/2026-11-09-v4.md',
   5: 'docs/decisions/versions/2026-11-12-v5.md',
   6: 'docs/decisions/versions/2026-11-12-v6.md',
+  7: 'docs/decisions/versions/2026-11-12-v7.md',
 };
 
 const keyOf = (from: number, to: number): string => `${from}->${to}`;

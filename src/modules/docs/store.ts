@@ -29,7 +29,11 @@ import type { RelKind } from '../../core/attachmentdb.js';
 
 /** 自有文档的一行（正文可能不在库内：历史空壳 / 外部镜像 / 无正文）。 */
 export interface OwnDocRow {
+  /** refs.id（ref 的稳定地址；v7 起列表/取文档以它为准） */
+  id: string;
   rel: string;
+  /** 短描述（v7）：列表 / 提示词模板的快速定位标签 */
+  desc: string;
   size: number;
   /** 正文 md5（列表默认口径需要；没有正文时缺省） */
   md5?: string;
@@ -46,6 +50,8 @@ export interface OwnDocRowIn extends OwnDocRow {
 
 /** 自有文档的读状态（docs get / 交付清单区分「无正文」用）。 */
 export interface OwnDocState {
+  /** refs.id（ref 的稳定地址） */
+  id: string;
   rel: string;
   exists: boolean;
   hasBody: boolean;
@@ -53,6 +59,8 @@ export interface OwnDocState {
   relKind: RelKind;
   origin: string;
   reason: string;
+  /** 短描述（v7） */
+  desc: string;
 }
 
 /** 外部绑定闭包条目（externalClosure 产出）。 */
@@ -77,7 +85,7 @@ const SKIP_DIRS = new Set(['node_modules', '.git', '.obsidian', '.trash', 'dist'
 export async function listOwnDocs({ includeEmpty = false }: { includeEmpty?: boolean } = {}): Promise<OwnDocRow[]> {
   const db = getDb();
   const rows: any[] = db.all(
-    `SELECT r.rel, r.origin, r.body_bytes,
+    `SELECT r.id, r.rel, r.origin, r."desc", r.body_bytes,
             CASE WHEN b.ref_id IS NULL THEN 0 ELSE 1 END AS has_body,
             b.body
        FROM refs r
@@ -93,7 +101,9 @@ export async function listOwnDocs({ includeEmpty = false }: { includeEmpty?: boo
     if (!includeEmpty && (!hasBody || relKind !== 'normal')) continue;
     const body = hasBody ? String(row.body ?? '') : undefined;
     out.push({
+      id: String(row.id),
       rel,
+      desc: String(row.desc || ''),
       size: Number(row.body_bytes) || 0,
       hasBody,
       origin: String(row.origin || ''),
@@ -123,11 +133,12 @@ export async function ownDocState(rel: string): Promise<OwnDocState> {
   const row = refDocByRel(getDb(), norm);
   if (!row) {
     return {
-      rel: norm, exists: false, hasBody: false, body: null,
-      relKind: 'empty', origin: '', reason: '文档不存在',
+      id: '', rel: norm, exists: false, hasBody: false, body: null,
+      relKind: 'empty', origin: '', reason: '文档不存在', desc: '',
     };
   }
   return {
+    id: row.id,
     rel: norm,
     exists: true,
     hasBody: row.hasBody,
@@ -135,6 +146,7 @@ export async function ownDocState(rel: string): Promise<OwnDocState> {
     relKind: row.relKind,
     origin: row.origin,
     reason: row.hasBody ? '' : noBodyReason(row.relKind),
+    desc: row.desc,
   };
 }
 
@@ -170,6 +182,21 @@ export async function writeOwnDoc(rel: string, body: unknown): Promise<string> {
     { db, mode: 'IMMEDIATE' }
   );
   return norm;
+}
+
+/**
+ * 改短描述（v7）：只动 refs."desc"，不碰正文。
+ * ref 是 DB 实体，desc 是列表 / 提示词模板的快速定位标签。
+ */
+export async function setOwnDocDesc(rel: string, desc: unknown): Promise<string> {
+  const norm = assertDocRel(rel);
+  const text = String(desc ?? '').trim();
+  const r = getDb().run(
+    'UPDATE refs SET "desc" = :desc, updated_at = :at WHERE rel = :rel AND deleted_at IS NULL',
+    { desc: text, at: Date.now(), rel: norm }
+  );
+  if (!Number(r.changes)) throw notFound('文档不存在: ' + norm);
+  return text;
 }
 
 /** 删自有文档（DB 行）。没有正文条目抛 notFound。 */

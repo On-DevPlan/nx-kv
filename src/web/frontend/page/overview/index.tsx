@@ -318,7 +318,6 @@ function TaskRow({ t, proj, waiting, checked, onToggle, onOpenTask, meta = '' }:
           {waiting ? <span className="wdot" /> : null}
         </span>
       ) : null}
-      {t.from === 'cloud' && <span className="tag t-cloud">云端</span>}
       {meta ? <span className="m mono">{meta}</span> : null}
       <StatusTag t={t} title={undefined} />
     </div>

@@ -21,14 +21,14 @@ test('迁移映射表：直接边 / 组合边 / 缺边与降级都要明确报�
   );
   assert.deepEqual(
     planMigrationPath(0, CURRENT_SCHEMA_VERSION).map((s) => `${s.from}->${s.to}`),
-    ['0->1', '1->2', '2->3', '3->4', '4->5', '5->6']
+    ['0->1', '1->2', '2->3', '3->4', '4->5', '5->6', '6->7']
   );
   const composed = describeEdges().find((e) => e.from === 0 && e.to === 2);
   assert.ok(composed, '0→2 组合边必须显式登记');
   assert.equal(composed.kind, 'composed');
   assert.deepEqual(composed.via, [0, 1, 2]);
   assert.throws(() => planMigrationPath(2, 1), /不支持降级/);
-  assert.throws(() => planMigrationPath(6, 7), /缺少迁移边/);
+  assert.throws(() => planMigrationPath(7, 8), /缺少迁移边/);
 });
 
 test('v1 样本库 → 当前版本：条数与关键字段正确、可重复', async () => {

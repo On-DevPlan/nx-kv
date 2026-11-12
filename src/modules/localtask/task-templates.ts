@@ -36,9 +36,8 @@ export function clampDeliveryTemplate(v: unknown): string {
 // tasktool/attach.js 的 attachmentInstruction。模板化后：
 //   - 空串 = 用内置默认（**不是关掉**——附件段带本地路径，关掉 agent 就找不到文件）；
 //   - 新语法：{{task.id}} {{task.text}} {{attach.count}}、
-//     `{{#each attach.list}}`（按 kind 分支的结构化清单 + 各类型子对象）、
-//     `{{#if attach.syncSummary}}`（本次跑过云端同步才出现）；
-//   - 旧占位符 / 旧闸门（{{attach.list}} / {{attach.sync}} / 旧 attachSync 区块）已废弃；
+//     `{{#each attach.list}}`（按 kind 分支的结构化清单 + 各类型子对象）；
+//   - 旧占位符 / 旧闸门（{{attach.list}} / {{attach.sync}} / {{attach.syncSummary}} / 旧 attachSync 区块）已废弃；
 //     渲染失败回退内置默认。
 export const MAX_ATTACH_TEMPLATE_LEN = 4000;
 

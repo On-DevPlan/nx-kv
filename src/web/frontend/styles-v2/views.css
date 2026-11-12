@@ -13,39 +13,7 @@
   color: #2F6F5E;
 }
 
-/* ---- 云端清单（todo 视图）---- */
-.cloud-page .cols { flex: none; align-items: stretch; min-width: 0; }
-.cloud-page .col { display: flex; flex-direction: column; min-width: 0; }
-.cloud-page .card.list { flex: 1; min-height: 0; }
-
-/* 筛选行：工作空间 / 主题在左，设置与刷新在右 */
-.cloud-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: none; }
-.cloud-toolbar .grow { flex: 1; }
-
-/* 投递条：一个整体的输入组（主题 | 内容 | 提交），不是三个孤零零的控件。
-   焦点环做在容器上，内部输入框不再各自发光。 */
-.cloud-compose {
-  display: flex; align-items: stretch; flex: none; min-width: 0;
-  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r8);
-  overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s;
-}
-.cloud-compose:focus-within {
-  border-color: #2F6F5E;
-  box-shadow: 0 0 0 3px color-mix(in srgb, #2F6F5E 10%, transparent);
-}
-.cloud-compose input {
-  border: 0; border-radius: 0; box-shadow: none; background: transparent;
-  padding: 8px 10px; font-size: 12.5px; min-height: 0;
-}
-.cloud-compose input:focus { box-shadow: none; }
-.cloud-compose-topic { flex: 0 0 150px; border-right: 1px solid var(--line); }
-.cloud-compose-text { flex: 1 1 auto; min-width: 120px; }
-.cloud-compose .btn { flex: none; align-self: center; margin: 4px; border-radius: var(--r5); }
-@media (max-width: 680px) {
-  .cloud-compose { flex-wrap: wrap; padding: 6px; gap: 6px; }
-  .cloud-compose-topic { flex: 1 1 100%; border-right: 0; border-bottom: 1px solid var(--line); }
-  .cloud-compose .btn { margin: 0; flex: 1 1 auto; }
-}
+/* ---- 云端清单（todo 视图）已随云端任务模块删除 ---- */
 
 /* 桶头：语义色点（待办=青绿 / 已完成=绿 --live / 冻结=琥珀）+ 计数徽章 */
 .colhead { align-items: center; }
@@ -54,26 +22,11 @@
 .col-open .colhead h3::before { background: #2F6F5E; }
 .col-done .colhead h3::before { background: var(--live); }
 .col-freeze .colhead h3::before { background: var(--wait); }
-.cloud-page .colhead .cnt {
-  min-width: 20px; text-align: center; padding: 0 6px; border-radius: 9px;
-  background: var(--soft-2); color: var(--ink-2); font-size: 10.5px; font-weight: 600; line-height: 16px;
-}
 .colhead .grow { flex: 1; }
 
 /* 行：单行主行（tid 主题 正文 时间 操作）+ 备注独立成层。
    操作钮常占布局位但 hover 才浮现 —— 行高不再被换行的按钮撑成两行，
    长正文也就不会再被挤成一字竖条。窄桶（<560px）先藏时间保操作。 */
-.cloud-page .cols .row { flex-wrap: nowrap; flex-direction: column; align-items: stretch; gap: 3px; padding: 6px 10px; }
-.cloud-page .cols .row .row-main { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; }
-.cloud-page .cols .row .note { flex-basis: auto; }
-.cloud-page .cols .row .acts { display: inline-flex; gap: 4px; opacity: 0; transition: opacity 0.12s; flex: none; }
-.cloud-page .cols .row:hover .acts, .cloud-page .cols .row:focus-within .acts { opacity: 1; }
-@media (hover: none) { .cloud-page .cols .row .acts { opacity: 1; } }
-.cloud-page .col { container-type: inline-size; }
-@container (max-width: 480px) {
-  .cloud-page .cols .row .time { display: none; }
-  .cloud-page .cols .row .note { padding-left: 0; }
-}
 
 /* 行尾 ⋯ 菜单：低频操作收纳（冻结/编辑/删除），弹层浮在行上 */
 .rowmenu { position: relative; flex: none; display: inline-flex; }
@@ -86,21 +39,6 @@
 /* 下拉弹层视觉走 popup 的 .pp-menu（RowMenu 渲染 .rowmenu-pop.pp-menu，
    这里只留锚定定位，z-index 让位于菜单内部规则） */
 .rowmenu-pop.pp-menu { position: absolute; right: 0; top: calc(100% + 4px); left: auto; }
-
-/* 空态：一句话 + 下一步，替代「（空）」 */
-.cloud-empty { padding: 22px 12px; text-align: center; color: var(--faint); font-size: 12px; line-height: 1.8; }
-.cloud-empty kbd {
-  font-family:inherit; font-size: 11px; background: var(--soft); border-radius: 4px; padding: 1px 5px;
-}
-
-/* 读取失败横条（琥珀，带重试）与首载占位 */
-.cloud-error {
-  flex: none; display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border: 1px solid var(--wait-line); border-radius: var(--r8);
-  background: var(--wait-bg); color: var(--wait); font-size: 12.5px;
-}
-.cloud-error .btn { margin-left: auto; }
-.cloud-loading { flex: none; text-align: center; padding: 28px 0; font-size: 12.5px; }
 
 /* ---- 仓库页（repos 视图）---- */
 /* 行操作 hover 浮现：26 行 × 3 钮常驻是纯噪音；占位不变，tr:focus-within 保键盘 */

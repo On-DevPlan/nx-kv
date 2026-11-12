@@ -23,6 +23,7 @@ import {
   linkBoardDoc,
   listBoards,
   listRepos,
+  unbindRef,
   unbindRepoDoc,
   unlinkBoardDoc,
   type DocBindingRow,
@@ -30,13 +31,17 @@ import {
 
 interface HostOpt { key: string; name: string; kind: 'repo' | 'group' }
 
-/** docId（rel:/path:）→ locator（接口里 `rel` / `path` 的取值）。 */
+/** docId（ref:/rel:/path:）→ 归属接口的定位串；ref: 直接给 refId。 */
 function locatorOf(docId: string): string {
   const s = String(docId || '');
+  if (s.startsWith('ref:')) return s.slice(4);
   if (s.startsWith('rel:')) return s.slice(4);
   if (s.startsWith('path:')) return s.slice(5);
   return s;
 }
+
+/** 直接 ref（v7）：归属直接写在 ref_bindings，解绑走 /api/docs/unbind。 */
+const isDirectDoc = (docId: string | undefined): boolean => String(docId || '').startsWith('ref:');
 
 /** useDocBindings 的返回面：面板要的两个节点 + 计数。 */
 export interface DocBindingsApi {
@@ -103,7 +108,15 @@ export function useDocBindings(docId: string | undefined, writable: boolean): Do
     if (!window.confirm(`解绑：${b.repoKey} 不再引用这篇文档？\n（文档本身不删除，只摘掉这条归属）`)) return;
     setBusy(true);
     try {
-      if (b.type === 'group') {
+      if (isDirectDoc(docId)) {
+        // 直接 ref：归属直接写在 ref_bindings，按行精确解绑
+        await unbindRef({
+          ref: b.refId,
+          type: b.type as 'repo' | 'group' | 'group_repo',
+          repo: b.repoKey,
+          group: b.groupKey || undefined,
+        });
+      } else if (b.type === 'group') {
         await unlinkBoardDoc({ board: b.repoKey, remove: b.position });
       } else if (b.type === 'group_repo') {
         toast('组内成员描述请在该组的成员管理里摘除');
@@ -149,14 +162,14 @@ export function useDocBindings(docId: string | undefined, writable: boolean): Do
 
   const items: BindTagItem[] = useMemo(() => rows.map((b) => {
     const group = b.type === 'group_repo' ? b.groupKey : null;
-    const canRemove = writable && !b.main;
+    const canRemove = writable && (isDirectDoc(docId) || !b.main);
     return {
       id: `${b.refId}:${b.repoKey}:${b.groupKey || ''}:${b.position}`,
       label: nameOf(b.repoKey),
       kind: b.type === 'group' ? 'group' : 'repo',
       main: b.main,
       note: b.note || (group ? `组 ${nameOf(group)}` : ''),
-      title: `${b.repoKey}${group ? ' @ ' + group : ''}\n${b.locator}`,
+      title: `${b.repoKey}${group ? ' @ ' + group : ''}\n${b.desc || b.refId}`,
       onRemove: canRemove ? () => doUnbind(b) : undefined,
     } satisfies BindTagItem;
   }), [rows, writable, nameOf]);
@@ -172,7 +185,7 @@ export function useDocBindings(docId: string | undefined, writable: boolean): Do
       <BindTags
         items={items}
         addLabel="加绑宿主"
-        onAdd={writable ? openAdd : undefined}
+        onAdd={writable && !isDirectDoc(docId) ? openAdd : undefined}
         empty="没有任何归属（孤儿文档）—— 不会被任何仓库 / 组面板列出"
       />
       {!rows.length && writable ? (

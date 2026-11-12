@@ -11,7 +11,7 @@
       "action": {
         "id": "system.bootstrap",
         "module": "system",
-        "summary": "聚合上下文：版本 / 登录态 / 工作空间 / 命令表",
+        "summary": "聚合上下文：版本 / 命令表",
         "usage": "bootstrap",
         "http": "GET /api/bootstrap"
       },
@@ -25,7 +25,7 @@
       "action": {
         "id": "system.health",
         "module": "system",
-        "summary": "健康检查（本机配置 + 后端可达性）",
+        "summary": "健康检查（纯本机）",
         "usage": "health",
         "http": "GET /api/health"
       },
@@ -79,75 +79,6 @@
             "summary": "改本机设置（只改传入项）",
             "usage": "setting set",
             "http": "POST /api/setting"
-          },
-          "children": []
-        }
-      ]
-    },
-    {
-      "name": "auth",
-      "path": [
-        "auth"
-      ],
-      "action": null,
-      "children": [
-        {
-          "name": "login",
-          "path": [
-            "auth",
-            "login"
-          ],
-          "action": {
-            "id": "auth.login",
-            "module": "auth",
-            "summary": "登录并保存 token 到本机配置",
-            "usage": "auth login",
-            "http": "POST /api/auth/login"
-          },
-          "children": []
-        },
-        {
-          "name": "logout",
-          "path": [
-            "auth",
-            "logout"
-          ],
-          "action": {
-            "id": "auth.logout",
-            "module": "auth",
-            "summary": "清除本机保存的 token",
-            "usage": "auth logout",
-            "http": "POST /api/auth/logout"
-          },
-          "children": []
-        },
-        {
-          "name": "me",
-          "path": [
-            "auth",
-            "me"
-          ],
-          "action": {
-            "id": "auth.me",
-            "module": "auth",
-            "summary": "向后端确认身份（验证 token 是否仍有效）",
-            "usage": "auth me",
-            "http": "GET /api/auth/me"
-          },
-          "children": []
-        },
-        {
-          "name": "status",
-          "path": [
-            "auth",
-            "status"
-          ],
-          "action": {
-            "id": "auth.status",
-            "module": "auth",
-            "summary": "查看本机登录态（不请求后端，离线可用）",
-            "usage": "auth status",
-            "http": "GET /api/auth"
           },
           "children": []
         }
@@ -1022,6 +953,48 @@
           "children": []
         },
         {
+          "name": "ref",
+          "path": [
+            "docs",
+            "ref"
+          ],
+          "action": null,
+          "children": [
+            {
+              "name": "add",
+              "path": [
+                "docs",
+                "ref",
+                "add"
+              ],
+              "action": {
+                "id": "doc.ref.add",
+                "module": "docs",
+                "summary": "新建文档条目（desc + 归属；正文为空、直接可编辑；不创建任何文件）",
+                "usage": "docs ref add",
+                "http": "POST /api/docs/ref"
+              },
+              "children": []
+            },
+            {
+              "name": "unbind",
+              "path": [
+                "docs",
+                "ref",
+                "unbind"
+              ],
+              "action": {
+                "id": "doc.ref.unbind",
+                "module": "docs",
+                "summary": "解绑直接 ref 的归属（不删文档；没有归属后回到 orphan）",
+                "usage": "docs ref unbind",
+                "http": "POST /api/docs/unbind"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
           "name": "remove",
           "path": [
             "docs",
@@ -1045,7 +1018,7 @@
           "action": {
             "id": "doc.update",
             "module": "docs",
-            "summary": "写文档正文（面板保存走这里；自有走 own 树、外部走绑定闭包内原文件；写盘后摘要回写 desc / 组内 note）",
+            "summary": "写文档正文 / 描述（面板保存走这里；ref 是 DB 实体，--ref 可给 refId；只给 --desc 时不动正文）",
             "usage": "docs set",
             "http": "PATCH /api/docs/item"
           },
@@ -1075,7 +1048,7 @@
           "action": {
             "id": "docs.bindings",
             "module": "docs",
-            "summary": "查文档归属（--ref <docId> 看这篇被谁引用；--host <key> 看这个宿主的文档集；position=0 为主篇）",
+            "summary": "查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> / --group <组> 看宿主文档集；position=0 为主篇）",
             "usage": "docs bindings",
             "http": "GET /api/docs/bindings"
           },
@@ -1391,21 +1364,6 @@
           "children": []
         },
         {
-          "name": "import-remote",
-          "path": [
-            "localtask",
-            "import-remote"
-          ],
-          "action": {
-            "id": "localtask.importRemote",
-            "module": "localtask",
-            "summary": "从远程清单（KV 后端）导入任务到本地队列：按内容定位远程那条 → 落进本地队列 → 远程那条标记为已完成（note 写明被哪个队列领走）",
-            "usage": "localtask import-remote",
-            "http": "POST /api/localtasks/import-remote"
-          },
-          "children": []
-        },
-        {
           "name": "list",
           "path": [
             "localtask",
@@ -1657,30 +1615,6 @@
       ]
     },
     {
-      "name": "task",
-      "path": [
-        "task"
-      ],
-      "action": null,
-      "children": [
-        {
-          "name": "move",
-          "path": [
-            "task",
-            "move"
-          ],
-          "action": {
-            "id": "task.move",
-            "module": "localtask",
-            "summary": "在本机队列与云端清单之间迁移任务（先写目标端、成功才改源端；--undo 按返回的 target-id 精确撤销）",
-            "usage": "task move",
-            "http": "POST /api/task/move"
-          },
-          "children": []
-        }
-      ]
-    },
-    {
       "name": "timegoal",
       "path": [
         "timegoal"
@@ -1894,432 +1828,6 @@
       ]
     },
     {
-      "name": "group",
-      "path": [
-        "group"
-      ],
-      "action": null,
-      "children": [
-        {
-          "name": "add",
-          "path": [
-            "group",
-            "add"
-          ],
-          "action": {
-            "id": "group.add",
-            "module": "todo",
-            "summary": "新建工作空间",
-            "usage": "group add",
-            "http": "POST /api/groups"
-          },
-          "children": []
-        },
-        {
-          "name": "current",
-          "path": [
-            "group",
-            "current"
-          ],
-          "action": {
-            "id": "group.current",
-            "module": "todo",
-            "summary": "查看当前工作空间",
-            "usage": "group current",
-            "http": "GET /api/group"
-          },
-          "children": []
-        },
-        {
-          "name": "get",
-          "path": [
-            "group",
-            "get"
-          ],
-          "action": {
-            "id": "group.get",
-            "module": "todo",
-            "summary": "查看单个工作空间",
-            "usage": "group get",
-            "http": "GET /api/groups/:id"
-          },
-          "children": []
-        },
-        {
-          "name": "list",
-          "path": [
-            "group",
-            "list"
-          ],
-          "action": {
-            "id": "group.list",
-            "module": "todo",
-            "summary": "列出我的工作空间（* 为当前）",
-            "usage": "group list",
-            "http": "GET /api/groups"
-          },
-          "children": []
-        },
-        {
-          "name": "members",
-          "path": [
-            "group",
-            "members"
-          ],
-          "action": {
-            "id": "group.members",
-            "module": "todo",
-            "summary": "查看工作空间成员",
-            "usage": "group members",
-            "http": "GET /api/groups/:id/members"
-          },
-          "children": []
-        },
-        {
-          "name": "remove",
-          "path": [
-            "group",
-            "remove"
-          ],
-          "action": {
-            "id": "group.remove",
-            "module": "todo",
-            "summary": "解散工作空间（后端要求组内已无 KV）",
-            "usage": "group remove",
-            "http": "DELETE /api/groups/:id"
-          },
-          "children": []
-        },
-        {
-          "name": "update",
-          "path": [
-            "group",
-            "update"
-          ],
-          "action": {
-            "id": "group.update",
-            "module": "todo",
-            "summary": "改名 / 改描述（只改传入的字段）",
-            "usage": "group update",
-            "http": "PATCH /api/groups/:id"
-          },
-          "children": []
-        },
-        {
-          "name": "use",
-          "path": [
-            "group",
-            "use"
-          ],
-          "action": {
-            "id": "group.use",
-            "module": "todo",
-            "summary": "切换当前工作空间（id 或名称；0 / default 回默认组）",
-            "usage": "group,use group,switch",
-            "http": "POST /api/group"
-          },
-          "children": []
-        },
-        {
-          "name": "switch",
-          "path": [
-            "group",
-            "switch"
-          ],
-          "action": {
-            "id": "group.use",
-            "module": "todo",
-            "summary": "切换当前工作空间（id 或名称；0 / default 回默认组）",
-            "usage": "group,use group,switch",
-            "http": "POST /api/group"
-          },
-          "children": []
-        }
-      ]
-    },
-    {
-      "name": "prompt",
-      "path": [
-        "prompt"
-      ],
-      "action": null,
-      "children": [
-        {
-          "name": "get",
-          "path": [
-            "prompt",
-            "get"
-          ],
-          "action": {
-            "id": "prompt.get",
-            "module": "todo",
-            "summary": "读取某主题的上下文提示词",
-            "usage": "prompt get",
-            "http": "GET /api/prompts/:topic"
-          },
-          "children": []
-        },
-        {
-          "name": "remove",
-          "path": [
-            "prompt",
-            "remove"
-          ],
-          "action": {
-            "id": "prompt.remove",
-            "module": "todo",
-            "summary": "删除某主题的提示词",
-            "usage": "prompt remove",
-            "http": "DELETE /api/prompts/:topic"
-          },
-          "children": []
-        },
-        {
-          "name": "set",
-          "path": [
-            "prompt",
-            "set"
-          ],
-          "action": {
-            "id": "prompt.set",
-            "module": "todo",
-            "summary": "写入某主题的上下文提示词（覆盖）",
-            "usage": "prompt set",
-            "http": "POST /api/prompts/:topic"
-          },
-          "children": []
-        }
-      ]
-    },
-    {
-      "name": "todo",
-      "path": [
-        "todo"
-      ],
-      "action": null,
-      "children": [
-        {
-          "name": "add",
-          "path": [
-            "todo",
-            "add"
-          ],
-          "action": {
-            "id": "todo.add",
-            "module": "todo",
-            "summary": "新增任务到待办（topic 不在快捷列表时自动补上）",
-            "usage": "todo add",
-            "http": "POST /api/todo"
-          },
-          "children": []
-        },
-        {
-          "name": "archive",
-          "path": [
-            "todo",
-            "archive"
-          ],
-          "action": {
-            "id": "todo.archive",
-            "module": "todo",
-            "summary": "把已完成里较旧的条目归档到冷 key（默认 30 天前）",
-            "usage": "todo archive",
-            "http": "POST /api/todo/archive"
-          },
-          "children": []
-        },
-        {
-          "name": "attach",
-          "path": [
-            "todo",
-            "attach"
-          ],
-          "action": {
-            "id": "todo.attach",
-            "module": "todo",
-            "summary": "给任务追加附件：--path 上传本机文件，或 --fileId 追加已上传附件，以 markdown 嵌入正文末尾",
-            "usage": "todo attach",
-            "http": "POST /api/todo/attach"
-          },
-          "children": []
-        },
-        {
-          "name": "attachments",
-          "path": [
-            "todo",
-            "attachments"
-          ],
-          "action": {
-            "id": "todo.attachments",
-            "module": "todo",
-            "summary": "列出某条任务引用的附件，以及本地是否已有（给 agent 直接读本地文件）",
-            "usage": "todo attachments",
-            "http": "GET /api/todo/attachments"
-          },
-          "children": []
-        },
-        {
-          "name": "done",
-          "path": [
-            "todo",
-            "done"
-          ],
-          "action": {
-            "id": "todo.done",
-            "module": "todo",
-            "summary": "标记完成（--ref 定位；--result 写进 note 作为完成结果）",
-            "usage": "todo done",
-            "http": "POST /api/todo/done"
-          },
-          "children": []
-        },
-        {
-          "name": "freeze",
-          "path": [
-            "todo",
-            "freeze"
-          ],
-          "action": {
-            "id": "todo.freeze",
-            "module": "todo",
-            "summary": "冻结任务（按内容定位；id 保留，解冻时校验冲突）",
-            "usage": "todo freeze",
-            "http": "POST /api/todo/freeze"
-          },
-          "children": []
-        },
-        {
-          "name": "get",
-          "path": [
-            "todo",
-            "get"
-          ],
-          "action": {
-            "id": "todo.get",
-            "module": "todo",
-            "summary": "查看单个任务（按内容定位；自动在待办/已完成/冻结里找）",
-            "usage": "todo get",
-            "http": "GET /api/todo/item"
-          },
-          "children": []
-        },
-        {
-          "name": "list",
-          "path": [
-            "todo",
-            "list"
-          ],
-          "action": {
-            "id": "todo.list",
-            "module": "todo",
-            "summary": "列出任务（--topic / --status 过滤；默认三个桶全列）",
-            "usage": "todo list",
-            "http": "GET /api/todo"
-          },
-          "children": []
-        },
-        {
-          "name": "remove",
-          "path": [
-            "todo",
-            "remove"
-          ],
-          "action": {
-            "id": "todo.remove",
-            "module": "todo",
-            "summary": "删除任务（按内容定位，只删命中的那一条）",
-            "usage": "todo remove",
-            "http": "DELETE /api/todo/item"
-          },
-          "children": []
-        },
-        {
-          "name": "unfreeze",
-          "path": [
-            "todo",
-            "unfreeze"
-          ],
-          "action": {
-            "id": "todo.unfreeze",
-            "module": "todo",
-            "summary": "解冻回待办（按内容定位；id 撞车时自动换新 id）",
-            "usage": "todo unfreeze",
-            "http": "POST /api/todo/unfreeze"
-          },
-          "children": []
-        },
-        {
-          "name": "update",
-          "path": [
-            "todo",
-            "update"
-          ],
-          "action": {
-            "id": "todo.update",
-            "module": "todo",
-            "summary": "编辑任务（按内容定位，只改传入的字段）",
-            "usage": "todo update",
-            "http": "PATCH /api/todo/item"
-          },
-          "children": []
-        }
-      ]
-    },
-    {
-      "name": "topic",
-      "path": [
-        "topic"
-      ],
-      "action": null,
-      "children": [
-        {
-          "name": "add",
-          "path": [
-            "topic",
-            "add"
-          ],
-          "action": {
-            "id": "topic.add",
-            "module": "todo",
-            "summary": "加入快捷主题",
-            "usage": "topic add",
-            "http": "POST /api/topics"
-          },
-          "children": []
-        },
-        {
-          "name": "list",
-          "path": [
-            "topic",
-            "list"
-          ],
-          "action": {
-            "id": "topic.list",
-            "module": "todo",
-            "summary": "快捷主题列表（含各状态任务数）",
-            "usage": "topic list",
-            "http": "GET /api/topics"
-          },
-          "children": []
-        },
-        {
-          "name": "remove",
-          "path": [
-            "topic",
-            "remove"
-          ],
-          "action": {
-            "id": "topic.remove",
-            "module": "todo",
-            "summary": "移出快捷主题（不动已有任务；仍被任务使用时会在结果里提示）",
-            "usage": "topic remove",
-            "http": "DELETE /api/topics"
-          },
-          "children": []
-        }
-      ]
-    },
-    {
       "name": "file",
       "path": [
         "file"
@@ -2335,7 +1843,7 @@
           "action": {
             "id": "file.content",
             "module": "file",
-            "summary": "取附件本体：面板内联预览；CLI 打印出图地址与本地路径",
+            "summary": "取附件本体：面板内联预览；CLI 打印本机路径",
             "usage": "file content",
             "http": "GET /api/file/content/:fileId"
           },
@@ -2350,24 +1858,9 @@
           "action": {
             "id": "file.get",
             "module": "file",
-            "summary": "查单个附件的元数据与本地路径",
+            "summary": "查单个附件的元数据与本机路径",
             "usage": "file get",
             "http": "GET /api/file/item"
-          },
-          "children": []
-        },
-        {
-          "name": "list",
-          "path": [
-            "file",
-            "list"
-          ],
-          "action": {
-            "id": "file.list",
-            "module": "file",
-            "summary": "列出当前用户空间的附件（含本地已同步路径）",
-            "usage": "file list",
-            "http": "GET /api/file"
           },
           "children": []
         },
@@ -2402,36 +1895,6 @@
           "children": []
         },
         {
-          "name": "remove",
-          "path": [
-            "file",
-            "remove"
-          ],
-          "action": {
-            "id": "file.remove",
-            "module": "file",
-            "summary": "删除附件（后端软删；本地副本要清用 file sync --prune）",
-            "usage": "file remove",
-            "http": "DELETE /api/file/item"
-          },
-          "children": []
-        },
-        {
-          "name": "sync",
-          "path": [
-            "file",
-            "sync"
-          ],
-          "action": {
-            "id": "file.sync",
-            "module": "file",
-            "summary": "把附件同步到本机（默认全部；--ids 只同步指定附件）——为了不再依赖网络读附件",
-            "usage": "file sync",
-            "http": "POST /api/file/sync"
-          },
-          "children": []
-        },
-        {
           "name": "upload",
           "path": [
             "file",
@@ -2440,7 +1903,7 @@
           "action": {
             "id": "file.upload",
             "module": "file",
-            "summary": "上传附件（--local 存本机附件仓，本地任务贴图用；默认传当前用户空间的云端图床）",
+            "summary": "上传附件到本机附件仓（不碰网；本地任务/文档贴图用）",
             "usage": "file upload",
             "http": "POST /api/file"
           },

@@ -56,7 +56,5 @@ export * from './task-lifecycle.js';
 export * from './topics.js';
 export * from './task-ops.js';
 export * from './task-remove.js';
-export * from './move-prims.js';
-export * from './remote-import.js';
 export * from './panel-presence.js';
 export * from './events.js';

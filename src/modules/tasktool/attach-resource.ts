@@ -4,12 +4,11 @@
 // 旧数据里 kind='image' 或没有 kind 的一律按 file 处理（向后兼容）。
 // mdfile = 本地 .md 文件的路径指针（字节在用户磁盘原地，storage='external'）。
 //
-// 视图模型只依赖 core 与 shared（纯函数 + 关系表查询），不碰同步与云端：
-// file 型资源的可达性（本机副本绝对路径 vs fileId + 同步命令）由 fileStateOf 给出，
-// 调用方（attach.js 的编排层）负责把本机仓 / 云端镜像的命中结果喂进来。
+// 视图模型只依赖 core 与 shared（纯函数 + 关系表查询），不碰网络：
+// file 型资源的可达性（本机副本绝对路径 vs 仅 fileId）由 fileStateOf 给出，
+// 调用方（attach.js 的编排层）负责把本机附件仓的命中结果喂进来。
 import { existsSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
-import { isImageName } from '../../core/fileapi.js';
+import { isImageName } from '../../core/filekind.js';
 import { stripFrontmatter } from '../../shared/frontmatter.js';
 
 const KIND_LABEL: Record<string, string> = { file: '附件', url: '链接', task: '任务', ref: '文档', mdfile: 'md' };
@@ -76,12 +75,9 @@ function taskTitleOf(body: unknown): string {
  *   - 两者都没有 → 地址仍合法（seq 不复用），只是正文不可读（已清理）。
  * 标题/状态是读任务时现算的展示字段，不落库（不存 body）。
  */
-export function targetLookupsOf(db: any, rows: any): {
-  tasks: Map<string, any>;
-  refs: Map<string, { refId: string; locator: string }>;
-} {
+export function targetLookupsOf(db: any, rows: any): ResourceLookups {
   const tasks = new Map<string, any>();
-  const refs = new Map<string, { refId: string; locator: string }>();
+  const refs = new Map<string, { refId: string; rel: string; desc: string }>();
   if (!db) return { tasks, refs };
   const taskSql = `SELECT t.id, t.seq, t.status, t.body, t.deleted_at,
                      k.key AS topicKey, k.name AS topicName
@@ -134,8 +130,8 @@ export function targetLookupsOf(db: any, rows: any): {
     if (baseKind(row) === 'ref') {
       const id = String(meta.refId || row.targetKey || '');
       if (!id || refs.has(id)) continue;
-      const r = db.get('SELECT id, locator FROM refs WHERE id = :id', { id });
-      if (r) refs.set(id, { refId: String(r.id), locator: String(r.locator || '') });
+      const r = db.get('SELECT id, rel, "desc" FROM refs WHERE id = :id', { id });
+      if (r) refs.set(id, { refId: String(r.id), rel: String(r.rel || ''), desc: String(r.desc || '') });
     }
   }
   return { tasks, refs };
@@ -148,12 +144,11 @@ export interface FileStateOpts {
   size?: unknown;
 }
 
-/** 文件型资源的可达性：本机有盘上副本 → 绝对路径；否则给 fileId + 同步命令。 */
+/** 文件型资源的可达性：本机有盘上副本 → 绝对路径；否则只留 fileId。 */
 export function fileStateOf(a: any, { localPath = '', storage = '', name = '', size }: FileStateOpts = {}): any {
   const fileId = String(a.fileId || a.id || '');
   const path = String(localPath || '');
   const exists = !!path && existsSync(path);
-  const syncCmd = `nx-kv file sync --ids ${fileId}`;
   const nextSize = size === undefined || size === null ? a.size : Number(size) || 0;
   return {
     ...a,
@@ -161,25 +156,25 @@ export function fileStateOf(a: any, { localPath = '', storage = '', name = '', s
     name: name || a.name,
     size: nextSize,
     sizeText: sizeTextOf(nextSize),
-    storage: storage || a.storage || 'cloud',
+    storage: storage || a.storage || 'local',
     localPath: exists ? path : '',
     exists,
     synced: exists,
-    // 未同步时才给同步命令（模板用 {{#if syncCmd}} / {{#if needsSync}} 判断）
-    syncCmd: exists ? '' : syncCmd,
-    needsSync: !exists,
-    cmd: exists ? '' : syncCmd,
-    locator: exists ? path : `未同步（fileId ${fileId}）`,
+    // 本地附件没有「同步」这一步；字段保留给旧模板判断（恒为空）
+    syncCmd: '',
+    needsSync: false,
+    cmd: '',
+    locator: exists ? path : `本机缺失（fileId ${fileId}）`,
     usage: exists
       ? `已在本机：直接读取 ${path}`
-      : `尚未同步到本地（fileId ${fileId}）：先运行 ${syncCmd}，再读取本机副本`,
+      : `本机附件仓没有这个文件（fileId ${fileId}）——请向提交方确认原始文件`,
   };
 }
 
 /** 附件视图模型的查找表（task / ref 的补充信息） */
 export interface ResourceLookups {
   tasks?: Map<string, any>;
-  refs?: Map<string, { refId: string; locator: string }>;
+  refs?: Map<string, { refId: string; rel: string; desc: string }>;
 }
 
 export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
@@ -315,30 +310,29 @@ export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
     };
   }
 
-  // ref：文档库里的 md（locator 是 docs 树相对路径，或外部 md 的绝对路径）
+  // ref：文档库里的文档（v7 起 ref 是 DB 实体，没有物理路径）。
   // 标题口径（#168）：**文档标题**（正文首行的 # 标题）优先 —— 服务端在标注层
-  // （tasktool/attach.js 的 annotateRefTitles）读盘补上并覆盖 title/name；
-  // 这里先给文件名占位，读不到标题时前端回落它。
+  // （tasktool/attach.js 的 annotateRefTitles）读库补上并覆盖 title/name；
+  // 这里先给 desc / 名字占位，读不到标题时前端回落它。
   const info = lookups.refs && lookups.refs.get(String(meta.refId || row.targetKey || ''));
   const refId = String(meta.refId || row.targetKey || (info && info.refId) || '');
-  const relPath = String((info && info.locator) || meta.locator || '');
-  const title = String(row.name || (relPath ? relPath.split('/').pop() : '') || refId).replace(/\.md$/i, '');
-  const readCmd = relPath
-    ? `nx-kv docs get ${isAbsolute(relPath) ? `path:${relPath}` : `rel:${relPath}`}`
-    : '';
-  const locator = `${title}${relPath ? `（${relPath}）` : ''}`;
+  const desc = String((info && info.desc) || '');
+  const rel = String((info && info.rel) || '');
+  const storedName = String(row.name || '').replace(/\.md$/i, '').trim();
+  const title = storedName || desc || (rel ? rel.split('/').pop() || '' : '') || refId || '未命名文档';
+  const readCmd = refId ? `nx-kv docs get --ref ${refId}` : '';
   return {
     ...base,
     refId,
-    relPath,
+    desc,
     title,
     readCmd,
-    target: locator,
+    target: title,
     needsSync: false,
     cmd: readCmd,
-    locator,
+    locator: title,
     usage: readCmd
-      ? `这是文档库里的 md 文件：用 ${readCmd} 读取`
-      : `这是文档库里的 md 文件（refId ${refId}）：先用 nx-kv docs list 定位路径，再 docs get 读取`,
+      ? `这是文档库里的文档（refId ${refId}）：用 ${readCmd} 读取正文`
+      : `这是文档库里的文档（refId 缺失）：先用 nx-kv docs list 定位`,
   };
 }

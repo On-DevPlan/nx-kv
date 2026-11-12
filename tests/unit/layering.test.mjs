@@ -1,7 +1,7 @@
 // 分层边界：把「前后端只通过 /api 通信」写成可执行断言。
 //
 // 背景（2026-11-04）：面板曾经直接 import 后端模块里的「纯函数文件」——
-// `modules/localtask/board.js`（前端视图模型）、`modules/todo/attach.js`、
+// `modules/localtask/board.js`（前端视图模型）、`modules/tasktool/attach.js`、
 // `modules/docs/wikilink.js`、`modules/localtask/frontmatter.js`。
 // 这些文件本身没问题，位置错了：它们让浏览器包直接依赖后端目录结构，
 // 于是「后端挪个文件」= 「前端白屏」，而且谁都能顺手在里面加一句

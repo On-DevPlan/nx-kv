@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clipboardFiles, droppedFiles, readableName, snippetsOf,
-} from '../../src/web/frontend/components/cloud/upload.js';
+} from '../../src/web/frontend/components/attach/upload.js';
 
 const ID_A = 'a'.repeat(32);
 const ID_B = 'b'.repeat(32);

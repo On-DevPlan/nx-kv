@@ -18,25 +18,31 @@ const GROUP_CTX = {
   repo: {
     name: 'alpha',
     key: 'local/alpha',
-    intro: { body: '# alpha\n\n管清单的', path: 'C:/docs/repo/alpha.md' },
+    intro: { body: '# alpha\n\n管清单的', path: 'C:/docs/repo/alpha.md', refId: 'ref_alpha', desc: '项目总览' },
     introSet: { count: 1, main: {}, extras: [] },
-    docLinks: [{ abs: 'D:/vault/qa.md', tag: 'qa', note: '问答集' }],
+    docLinks: [{ refId: 'ref_qa', desc: '问答集', title: 'QA', hasBody: true, note: '问答集' }],
   },
   groups: [
     {
       name: 'nx系列',
       key: 'board/nx',
       desc: 'nx 工具链组合',
-      intro: { body: '# nx系列\n\n本机 nx- 前缀工具链的组合', path: 'C:/docs/board/nx.md' },
+      intro: {
+        body: '# nx系列\n\n本机 nx- 前缀工具链的组合',
+        path: 'C:/docs/board/nx.md',
+        refId: 'ref_group',
+        desc: '组介绍描述',
+        title: 'nx系列',
+      },
       introSet: { count: 1, main: {}, extras: [] },
       note: '组里的任务出入口',
       peers: [{ name: 'beta', note: '仓库与技能登记', path: 'D:/repos/beta' }],
-      docLinks: [{ rel: 'notes/waitgoal.md', abs: 'C:/docs/notes/waitgoal.md', note: '阻塞窗口' }],
+      docLinks: [{ refId: 'ref_wait', desc: 'waitgoal 设计', title: 'waitgoal', hasBody: true, note: '阻塞窗口' }],
     },
   ],
 };
 
-test('默认模板：复现「项目介绍 + 组上下文」两段', () => {
+test('默认模板：只内嵌项目主篇；组介绍 / 其余文档只给 desc + 取用指令', () => {
   const ctx = buildDeliveryCtx({
     task: { id: 3, text: '# 改登录页' },
     goal: null,
@@ -47,15 +53,22 @@ test('默认模板：复现「项目介绍 + 组上下文」两段', () => {
     groupCtx: GROUP_CTX,
   });
   const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
-  assert.match(out, /〔项目介绍 · alpha〕（C:\/docs\/repo\/alpha\.md）：/);
-  assert.match(out, /管清单的/);
+  assert.match(out, /〔项目介绍 · alpha〕/);
+  assert.match(out, /管清单的/, '项目主篇正文内嵌');
+  assert.match(out, /- 问答集/);
+  assert.match(out, /nx-kv docs get --ref ref_qa/);
   assert.match(out, /〔项目组上下文 · nx系列〕/);
   assert.match(out, /组定位：nx 工具链组合/);
   assert.match(out, /本项目在组里的位置：组里的任务出入口/);
+  assert.match(out, /组介绍：组介绍描述/);
+  assert.match(out, /nx-kv docs get --ref ref_group/);
+  assert.match(out, /- waitgoal 设计/);
+  assert.match(out, /nx-kv docs get --ref ref_wait/);
   assert.match(out, /组内成员：/);
   assert.match(out, /- beta：仓库与技能登记/);
-  assert.match(out, /组绑定参考文件（可直接读取）：/);
-  assert.match(out, /waitgoal\.md/);
+  // 组介绍正文不再内嵌（只有项目主篇内嵌）；也不再出现任何路径
+  assert.doesNotMatch(out, /本机 nx- 前缀工具链的组合/);
+  assert.doesNotMatch(out, /C:\/docs\//);
 });
 
 test('没有组时：组段落整段不出现（项目介绍仍在）', () => {
@@ -102,13 +115,15 @@ test('渲染器不再接受旧段落名（{{#repo}} / {{#group}} 已废弃）', 
   assert.throws(() => renderInstruction('A{{#other}}B{{/other}}C', {}), /旧区块语法/);
 });
 
-test('deliveryCtxOf：补充文档 / 参考文件 / 成员是结构化数组（模板用循环）', () => {
+test('deliveryCtxOf：文档 / 参考文件 / 成员是结构化数组（模板用循环）', () => {
   const frag = deliveryCtxOf(GROUP_CTX);
   assert.equal(frag.repo.docCount, 1);
-  assert.equal(frag.repo.docs[0].path, 'D:/vault/qa.md');
-  assert.equal(frag.repo.docs[0].tag, 'qa');
+  assert.equal(frag.repo.docs[0].refId, 'ref_qa');
+  assert.equal(frag.repo.docs[0].desc, '问答集');
+  assert.equal(frag.repo.docs[0].hasBody, true);
   assert.equal(frag.group.docCount, 1);
-  assert.match(frag.group.docs[0].path, /waitgoal\.md/);
+  assert.equal(frag.group.docs[0].refId, 'ref_wait');
+  assert.equal(frag.group.docs[0].desc, 'waitgoal 设计');
   assert.equal(frag.group.peerCount, frag.group.peers.length);
   assert.ok(frag.group.peers.some((p) => p.name === 'beta'));
   // #163：成员带本机路径，默认模板渲染在括号说明之后，agent 直接定位兄弟仓库

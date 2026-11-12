@@ -54,8 +54,6 @@ export function crumbsOf(route: Partial<AppRoute> | null | undefined, ctx: SpecC
       return ctx.boardName ? [ctx.boardName] : ['项目组'];
     case 'repos':
       return ['仓库管理'];
-    case 'cloud':
-      return ['云端总览'];
     case 'overview':
       return ['全部目录总览'];
     case 'templates': {

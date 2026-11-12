@@ -282,9 +282,8 @@ test('CRUD 路由的形状对得上语义', () => {
   const segs = (p) => p.split('/').filter(Boolean);
   const hasParam = (p) => segs(p).some((s) => s.startsWith(':'));
 
-  // 定位单条的路径参数**允许**用 :param，也允许走固定尾段（todo 就是后者：
-  // 它按内容定位，而中文文本塞进路径段在编码与可读性上都不划算，
-  // 所以 ref 放在 body/query 里，路径用 /api/todo/item）。
+  // 定位单条的路径参数**允许**用 :param，也允许走固定尾段（localtask 就是后者：
+  // 它按 id 定位，路径用 /api/localtasks/item）。
   const LOCATOR = /^item$/;
 
   for (const { m, r } of MODULES.flatMap((m) => resourcesOf(m).map((x) => ({ m, r: x })))) {
@@ -348,10 +347,14 @@ test('routes 反查：每条 HTTP 路由都能定位回自己的命令', async (
 });
 
 test('routes 正查：--module 过滤，且纯 CLI 命令如实标注 http:null', async () => {
-  const todoRows = await routesAction.run({ module: 'todo' });
-  assert.ok(todoRows.length > 0);
-  assert.ok(todoRows.every((c) => c.module === 'todo'));
-  assert.ok(todoRows.every((c) => c.http && c.http.method && c.http.path));
+  const localRows = await routesAction.run({ module: 'localtask' });
+  assert.ok(localRows.length > 0);
+  assert.ok(localRows.every((c) => c.module === 'localtask'));
+  // localtask.wait 是纯 CLI（阻塞等待没有 HTTP 语义），其余都有端点
+  const withHttp = localRows.filter((c) => c.http);
+  assert.ok(withHttp.length > 0);
+  assert.ok(withHttp.every((c) => c.http.method && c.http.path));
+  assert.ok(localRows.some((c) => c.id === 'localtask.wait' && !c.http), '纯 CLI 命令如实标注 http:null');
 
   const all = await routesAction.run({});
   const { ALL_COMMANDS } = await import(
@@ -388,12 +391,12 @@ test('routes 正查：未知模块与无匹配端点都给出可行动的报错'
 });
 
 test('help 用法串能由声明完整生成（含参数与 flag）', () => {
-  const add = ACTIONS.find((a) => a.id === 'todo.add');
+  const add = ACTIONS.find((a) => a.id === 'localtask.add');
   const usage = usageOf(add);
-  assert.match(usage, /^nx-kv todo add <text>/);
-  assert.match(usage, /--topic </);   // hint 会替换占位符，只断言前缀
+  assert.match(usage, /^nx-kv localtask add <text>/);
+  assert.match(usage, /--board </);   // hint 会替换占位符，只断言前缀
 
-  // agent 失败分类依赖 help 里出现这条命令名（也见于 assets/repo-hub 的用法文档）
+  // agent 失败分类依赖 help 里出现这条命令名（也见于 assets 的用法文档）
   const allUsage = ACTIONS.map(usageOf).join('\n');
-  assert.ok(allUsage.includes('nx-kv todo add'), 'help 必须包含 todo add');
+  assert.ok(allUsage.includes('nx-kv localtask add'), 'help 必须包含 localtask add');
 });

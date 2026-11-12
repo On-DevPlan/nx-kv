@@ -1,7 +1,7 @@
 // 任务 #82：附件段提示词模板化 + goal 时间运算字段。
 //
-//   - attachInstructionOf：配置了模板按模板渲染（{{attach.*}} + {{#each attach.list}} +
-//     {{#if attach.syncSummary}}），空/未配置 = 内置默认三段模板；渲染失败回退内置默认。
+//   - attachInstructionOf：配置了模板按模板渲染（{{attach.*}} + {{#each attach.list}}），
+//     空/未配置 = 内置默认三段模板；渲染失败回退内置默认。
 //   - 附件 ctx 按类型分组：file / url / task / ref 各自有子对象与取用命令。
 //   - clampAttachTemplate：空 = ''（用内置默认，不是关掉——附件段带本地路径）。
 //   - enrichGoalTiming：goal ctx 缺的时间运算字段（remainingSec/remainingMin/
@@ -9,56 +9,51 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { attachmentInstruction, attachInstructionOf, attachTemplateCtx } from '../../src/modules/tasktool/attach.js';
+import { validateTemplate } from '../../src/core/instruction-template.js';
 import { clampAttachTemplate } from '../../src/modules/localtask/task-templates.js';
 import { enrichGoalTiming } from '../../src/modules/tasktool/wait.js';
 
 const ATT = [
   { id: 'att-1', kind: 'image', name: '截图.png', localPath: 'D:/att/截图.png', synced: true, storage: 'local' },
-  { id: 'att-2', kind: 'file', name: '报表.docx', localPath: '', synced: false, storage: 'cloud' },
+  { id: 'att-2', kind: 'file', name: '报表.docx', localPath: '', synced: false, storage: 'local' },
 ];
-const SYNC = { dir: 'D:/mirror', downloaded: 1, skipped: 0, failures: [] };
 
 test('内置默认：空模板 = 内置三段模板（数量 / 清单 / 取用方式）', () => {
-  assert.equal(attachInstructionOf('', ATT, SYNC, { id: 9 }), attachmentInstruction(ATT, SYNC));
-  assert.equal(attachInstructionOf(undefined, ATT, null, { id: 9 }), attachmentInstruction(ATT, null));
-  assert.equal(attachInstructionOf('  ', [], SYNC, { id: 9 }), '', '无附件 → 空串（整段消失）');
-  const out = attachInstructionOf('', ATT, SYNC, { id: 9 });
+  assert.equal(attachInstructionOf('', ATT, { id: 9 }), attachmentInstruction(ATT));
+  assert.equal(attachInstructionOf(undefined, ATT, { id: 9 }), attachmentInstruction(ATT));
+  assert.equal(attachInstructionOf('  ', [], { id: 9 }), '', '无附件 → 空串（整段消失）');
+  const out = attachInstructionOf('', ATT, { id: 9 });
   assert.match(out, /本任务包含 2 个附件（正文内嵌 2 · 附件区 0）/);
   assert.match(out, /附件清单：/);
   assert.match(out, /取用方式：/);
   assert.match(out, /已在本机：直接读取 D:\/att\/截图\.png/);
-  assert.match(out, /nx-kv file sync --ids att-2/);
-  assert.match(out, /同步情况：目录 D:\/mirror · 下载 1/);
+  assert.match(out, /本机附件仓没有这个文件/);
 });
 
-test('自定义模板：清单 / 个数 / 同步汇总如实渲染', () => {
+test('自定义模板：清单 / 个数如实渲染', () => {
   const out = attachInstructionOf(
     [
       '共 {{attach.count}} 个附件，逐个处理：',
       '{{#each attach.list}}',
-      '  - {{kindLabel}} {{name}}: {{#if file.localPath}}{{file.localPath}}{{else}}未同步到本地（图床 id {{file.fileId}}）{{/if}}',
+      '  - {{kindLabel}} {{name}}: {{#if file.localPath}}{{file.localPath}}{{else}}本机缺失（fileId {{file.fileId}}）{{/if}}',
       '{{/each}}',
-      '{{#if attach.syncSummary}}同步情况：目录 {{attach.syncSummary.dir}} / 下载 {{attach.syncSummary.downloaded}}{{/if}}',
     ].join('\n'),
     ATT,
-    SYNC,
     { id: 9, text: '# 正文' }
   );
   assert.match(out, /共 2 个附件/);
   assert.match(out, /- 图片 截图\.png: D:\/att\/截图\.png/);
-  assert.match(out, /- 附件 报表\.docx: 未同步到本地（图床 id att-2/);
-  assert.match(out, /同步情况：目录 D:\/mirror/);
+  assert.match(out, /- 附件 报表\.docx: 本机缺失（fileId att-2/);
 });
 
-test('自定义模板：{{#if attach.syncSummary}}——没跑同步整段消失', () => {
-  const tpl = [
-    '清单：',
-    '{{#each attach.list}}  - {{name}}{{/each}}',
-    '{{#if attach.syncSummary}}同步：{{attach.syncSummary.dir}}{{/if}}',
-  ].join('\n');
-  const out = attachInstructionOf(tpl, ATT, null, { id: 9 });
-  assert.match(out, /清单：/);
-  assert.doesNotMatch(out, /同步：/);
+test('自定义模板：旧同步占位符已被保存校验拒绝', () => {
+  for (const tpl of ['同步：{{attach.syncSummary.text}}', '{{attach.syncText}}']) {
+    const v = validateTemplate(tpl);
+    assert.equal(v.ok, false, `旧语法 ${tpl} 必须被拒绝`);
+    assert.match(v.error, /本机附件仓|已废弃/, `报错应指出去哪看：${v.error}`);
+  }
+  // 运行期遇到坏模板：回退内置默认（不静默吞掉附件）
+  assert.equal(attachInstructionOf('同步：{{attach.syncText}}', ATT, { id: 9 }), attachmentInstruction(ATT));
 });
 
 test('ctx 按类型分组：file / url / task / ref 各带专属子对象与取用方式', () => {
@@ -72,11 +67,11 @@ test('ctx 按类型分组：file / url / task / ref 各带专属子对象与取�
     },
     {
       id: 'r1', kind: 'ref', name: '附件规范', role: 'attach',
-      refId: 'ref_1', title: '附件规范', relPath: 'docs/attachment.md',
-      readCmd: 'nx-kv docs get rel:docs/attachment.md',
+      refId: 'ref_1', title: '附件规范', desc: '附件与文档的约定',
+      readCmd: 'nx-kv docs get --ref ref_1',
     },
   ];
-  const { attach } = attachTemplateCtx(four, null);
+  const { attach } = attachTemplateCtx(four);
   assert.equal(attach.count, 4);
   assert.equal(attach.areaCount, 4);
   assert.equal(attach.inlineCount, 0);
@@ -92,16 +87,18 @@ test('ctx 按类型分组：file / url / task / ref 各带专属子对象与取�
   assert.match(attach.list[2].task.showCmd, /localtask show --id 82 --key nx-kv/);
   assert.match(attach.list[2].usage, /引用而不是副本/);
   assert.equal(attach.list[3].kind, 'ref');
-  assert.equal(attach.list[3].ref.relPath, 'docs/attachment.md');
-  assert.match(attach.list[3].ref.readCmd, /docs get rel:docs\/attachment\.md/);
-  assert.equal(attach.list[3].usage.includes('文档库里的 md'), true);
+  assert.equal(attach.list[3].ref.refId, 'ref_1');
+  assert.equal(attach.list[3].ref.desc, '附件与文档的约定');
+  assert.equal('relPath' in attach.list[3].ref, false, 'ref 没有物理路径');
+  assert.match(attach.list[3].ref.readCmd, /docs get --ref ref_1/);
+  assert.equal(attach.list[3].usage.includes('文档库里的文档'), true);
 });
 
 test('旧数据没有 kind → 按 file 处理；image 也归并为 file', () => {
   const { attach } = attachTemplateCtx([
     { id: 'old-1', name: '老附件.docx', localPath: '' },
     { id: 'img-1', kind: 'image', name: '图.png', localPath: '/tmp/图.png' },
-  ], null);
+  ]);
   assert.equal(attach.list[0].kind, 'file');
   assert.equal(attach.list[1].kind, 'file');
   assert.equal(attach.list[1].isImage, true);
@@ -110,7 +107,7 @@ test('旧数据没有 kind → 按 file 处理；image 也归并为 file', () =>
 
 test('旧语法不再兼容：{{attach.list}} / {{#attachSync}} 回落内置默认', () => {
   for (const tpl of ['清单：{{attach.list}}', '{{#attachSync}}同步：{{attach.sync}}{{/attachSync}}']) {
-    assert.equal(attachInstructionOf(tpl, ATT, SYNC, { id: 9 }), attachmentInstruction(ATT, SYNC));
+    assert.equal(attachInstructionOf(tpl, ATT, { id: 9 }), attachmentInstruction(ATT));
   }
 });
 

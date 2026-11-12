@@ -51,7 +51,7 @@ export function backupsDirFromEnv(): string {
 
 export const DEFAULT_PORT = 7877;
 
-// 附件的本地镜像根目录。**刻意放在 nx-kv 的用户目录下**（~/.nx-kv/attachments/）：
+// 本机附件仓根目录。**刻意放在 nx-kv 的用户目录下**（~/.nx-kv/attachments/）：
 // agent 读附件只认本地路径，放在项目目录里会随 cwd 漂移，还会被 git 捡走。
 export const ATTACHMENTS_DIR = join(APP_DIR, 'attachments');
 

@@ -33,7 +33,7 @@ export class LocaltaskGetAction extends ActionBase<typeof input> {
         const { annotateTaskDelivery } = await (import('../../tasktool/attach.js') as any);
         const att: any = await annotateTaskDelivery(task).catch(() => null);
         return att
-          ? { ...task, attachments: att.task.attachments, ...(att.sync ? { attachmentsSync: att.sync } : {}) }
+          ? { ...task, attachments: att.task.attachments }
           : task;
     
   }

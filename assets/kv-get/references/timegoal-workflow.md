@@ -123,7 +123,7 @@ nx-kv timegoal log --cwd "$PWD" --json
 # 9. clear
 nx-kv timegoal clear --cwd "$PWD" --json
 
-# 全程不曾、也不需调过 localtask / todo / 等任何其它命令族
+# 全程不曾、也不需调过 localtask / 等任何其它命令族
 ```
 
 ## 常见问题
@@ -150,8 +150,8 @@ timegoal 循环里只有 timegoal 命令族——没有别的 nx-kv 命令参与
 
   · timegoal 只做两件事：算时间、回显提示词原文
   · 不阻塞任何东西——可以同时跑人机接力、派任务给别的 agent、外部 cron
-  · 不需要登录 KV 后端——纯本机
-  · 数据落在本机文件（timegoals.json），可由环境变量 NX_KV_TIMEGOAL_STORE 改路径
+  · 纯本机——不需要登录或远程后端
+  · 数据在本机 SQLite（与任务同一份 nxkv.db）
 ```
 
 **唯一的交互面**是 CLI 与 web 主题卡上的三个按钮（查看 / 编辑 / 清空），

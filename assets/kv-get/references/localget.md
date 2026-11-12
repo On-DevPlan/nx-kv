@@ -1,6 +1,6 @@
 ---
 name: kv-get
-description: 领取排给本工作目录的本地任务——别人通过 kv-submit 委托的、用户排队的，都落在按「完整 cwd + 项目组」派生的主题里；agent 在自己目录里用 nx-kv localtask list 查看待领取，用 wait（队列非空时立即返回、不阻塞）按序取走执行，附单条查看/编辑/删除/调序等队列管理。触发词：领取本地任务、看看有没有排给我的任务、本地队列、领取委托任务、拿任务、本目录的任务、排队任务、localtask list、kv-get。凡「主动获取排给本目录的任务」的场景都走本 skill。反例：干完活等用户回填下一条用 kv-get 的 wait；把需求提交/委托给别的目录用 kv-submit；操作远程 KV 清单（todo）用 nx-kv。
+description: 领取排给本工作目录的本地任务——别人通过 kv-submit 委托的、用户排队的，都落在按「完整 cwd + 项目组」派生的主题里；agent 在自己目录里用 nx-kv localtask list 查看待领取，用 wait（队列非空时立即返回、不阻塞）按序取走执行，附单条查看/编辑/删除/调序等队列管理。触发词：领取本地任务、看看有没有排给我的任务、本地队列、领取委托任务、拿任务、本目录的任务、排队任务、localtask list、kv-get。凡「主动获取排给本目录的任务」的场景都走本 skill。反例：干完活等用户回填下一条用 kv-get 的 wait；把需求提交/委托给别的目录用 kv-submit；查 nx-kv 底层命令手册用 nx-kv。
 ---
 # kv-localget — 领取本目录的本地任务（领取侧）
 
@@ -80,7 +80,7 @@ nx-kv localtask topic remove --cwd "<目录>"             # 删除整个主题�
 | -------------------------------------------------------- | ----------- |
 | 你干完活、**等用户回填**下一条（人机接力） | kv-waittask |
 | 把这个对话的需求**提交/委托**给别的目录的 agent    | kv-submit   |
-| 操作远程 KV 后端的 todo 清单（需登录、按 groupId 隔离）  | nx-kv       |
+| 查 nx-kv 本机命令手册（任务 / 附件 / 文档） | nx-kv（核心 skill） |
 
 wait / kv-localget 共用同一个队列与同一条取数命令（`wait`）：区别只在意图——
 kv-waittask 把 wait 当「本轮最后一步等人接力」，kv-localget 把 wait 当「领活」。

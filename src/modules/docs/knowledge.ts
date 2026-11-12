@@ -9,6 +9,10 @@ import * as paths from './paths.js';
 import * as store from './store.js';
 import { ensureSeedForRel } from './seed.js';
 import { reposBridge } from './repos-bridge.js';
+import { boundDocs } from './bound-docs.js';
+import type { BoundDoc } from './bound-docs.js';
+import { getDb } from '../../core/db/index.js';
+import { renderRepoKnowledgeMd } from './knowledge-md.js';
 import type { DocRef } from './docref.js';
 
 const MAX_DOC_BYTES = 256 * 1024;
@@ -57,6 +61,15 @@ export interface RefRepoItem {
   note: string;
   groups: string[];
   direct: boolean;
+}
+
+// ─── ref + 归属（v7）：读模型在 bound-docs.ts ──────────────────────────
+/** docId（rel:/ref:）→ refId；查不到返回空串（老数据回落用）。 */
+function refIdOfDocId(docId: unknown): string {
+  const s = String(docId || '');
+  if (s.startsWith('ref:')) return s.slice(4);
+  if (!s.startsWith('rel:')) return '';
+  return String(getDb().get('SELECT id FROM refs WHERE rel = :rel AND deleted_at IS NULL', { rel: s.slice(4) })?.id || '');
 }
 
 /** 仓库知识报告（repoKnowledge 的出参）。 */
@@ -271,37 +284,11 @@ export async function repoKnowledge(locator?: string, { md = false }: { md?: boo
     refRepos,
     warnings,
   };
-  if (md) out.md = renderMd(out);
+  if (md) out.md = renderRepoKnowledgeMd(out);
   return out;
 }
 
-// 单篇 markdown：项目介绍 → 各组（介绍/组内描述/绑定文档）→ 参考仓库
-function renderMd(k: RepoKnowledgeResult): string {
-  const lines: string[] = [];
-  const heading = (t: string) => (lines.length ? lines.push('', t) : lines.push(t));
-  heading(`# ${k.repo.name}`);
-  lines.push(...introMdLines(k.introSet, k.intro));
-  for (const b of k.boards) {
-    heading(`## 组：${b.name}`);
-    lines.push(...introMdLines(b.introSet, b.intro));
-    if (b.note && !b.note.missing) lines.push(b.note.body!.trim());
-    for (const d of b.docLinks) {
-      if (!d.missing && d.body) lines.push(d.body.trim());
-    }
-    for (const dir of b.externalDirs) {
-      lines.push('', `外部目录「${dir.path}」（${dir.files!.length} 个文档，按需读盘）:`);
-      for (const f of dir.files!) lines.push(`- ${f}`);
-    }
-  }
-  if (k.refRepos.length) {
-    heading('## 参考仓库');
-    for (const r of k.refRepos) {
-      const src = r.direct && !r.groups.length ? '［直接绑定］' : r.direct ? '［组 + 直接绑定］' : '';
-      lines.push(`- ${r.name}${r.remote ? `（${r.remote}）` : ''}${src}${r.note ? ` —— ${r.note.split('\n')[0] ?? ''}` : ''}`);
-    }
-  }
-  return lines.join('\n');
-}
+// 单篇 markdown 渲染在 knowledge-md.ts（保持本文件在行数门禁内）
 
 
 /**
@@ -323,22 +310,41 @@ export async function groupContextFor(cwd: unknown, { board = '' }: { board?: st
   if (!repo) return null; // 没登记的目录：没有项目，也没有组
   const rk = deriveKey(repo);
   const warnings: string[] = [];
-  const closure = await store.externalClosure(s);
   const groups: GroupContextGroup[] = [];
 
-  // 项目介绍（项目级任务也要带——它回答「这个项目是干什么的」）。
-  // 介绍是**文档集**（主篇 + 其余各篇），不是孤立的一篇——#58。
-  const repoIntroSet = await readIntroSet({
-    dirRel: paths.repoDocDirRel(rk),
-    legacyRel: paths.repoDocRel(rk),
-    ref: repo.doc,
-    links: repo.docLinks,
-    warnings,
-    label: '项目介绍',
-  });
-  const repoIntro = mainAsIntro(repoIntroSet);
-  // 项目自己登记的补充文档（外部 / ref 仓库里的文件）——交付时给可读路径
-  const repoDocLinks = linkEntries(repo.docLinks, closure);
+  // 项目主篇：只认 type=repo / position=0 的绑定（正文唯一自动内嵌的入口）。
+  // ref 是 DB 实体，没有路径；其余绑定只给 desc + 取用指令。
+  const repoBound = boundDocs({ repoKey: rk });
+  const repoMain = repoBound.find((d) => d.type === 'repo' && d.position === 0 && d.hasBody);
+  let repoIntro = repoMain
+    ? { body: repoMain.body, path: '', title: repoMain.title, refId: repoMain.refId, desc: repoMain.desc }
+    : { body: '', path: '', title: '', refId: '', desc: '' };
+  let repoDocLinks: BoundDoc[] = repoBound.filter((d) => !(d.type === 'repo' && d.position === 0));
+  // 绑定索引还没覆盖到的库（例如刚写入、尚未 syncRefIndex）：回落到 ext / 约定路径
+  if (!repoBound.length) {
+    const set = await readIntroSet({
+      dirRel: paths.repoDocDirRel(rk),
+      legacyRel: paths.repoDocRel(rk),
+      ref: repo.doc,
+      links: repo.docLinks,
+      warnings,
+      label: '项目介绍',
+    });
+    if (set.main && set.main.body) {
+      repoIntro = {
+        body: set.main.body,
+        path: set.main.abs || '',
+        title: set.main.title || '',
+        refId: refIdOfDocId(set.main.docId),
+        desc: '',
+      };
+    }
+    repoDocLinks = (Array.isArray(repo.docLinks) ? repo.docLinks : []).map((l: any) => ({
+      refId: refIdOfDocId(l.rel ? 'rel:' + l.rel : ''), desc: l.note || '', title: '',
+      hasBody: !!(l.rel || l.path), origin: '', type: 'repo' as const, repoKey: rk,
+      groupKey: null, position: 0, note: l.note || '', body: '',
+    }));
+  }
 
   // 参考仓库（repos 里 type=ref，不是文档库 refs）：本仓库直接绑定与组级绑定
   // 是两类并列来源，交付时要给「名称 + 本机路径 + 一句描述」。
@@ -361,17 +367,43 @@ export async function groupContextFor(cwd: unknown, { board = '' }: { board?: st
     if (!members.includes(rk)) continue;
     // 组任务只挂**它归属的那个组**（id / key / 名称都认，与 --board 的寻址口径一致）；
     // 归属值对不上任何组（陈旧数据）时同纯项目任务一样不挂，避免错挂别组。
-    if (![String(b.id || ''), boardKeyOf(b.name), String(b.name || '')].includes(wantBoard)) continue;
-    // 组介绍（绑定优先 → 介绍目录主篇 → 旧单文件；是文档集，不是一篇）
-    const introSet = await readIntroSet({
-      dirRel: paths.boardDocDirRel(b.name),
-      legacyRel: paths.boardDocRel(b.name),
-      ref: b.doc,
-      links: b.docLinks,
-      warnings,
-      label: `组介绍·${b.name}`,
-    });
-    const intro = mainAsIntro(introSet);
+    if (![String(b.id || ''), String(b.key || ''), boardKeyOf(b.name), String(b.name || '')].includes(wantBoard)) continue;
+    // 组主篇：type=group / position=0；正文不内嵌，只给 desc + 取用指令。
+    // 组的身份是冻结 key（group/xxx），不是按名字现算的 board/xxx。
+    const gkey = String(b.key || boardKeyOf(b.name));
+    const gBound = boundDocs({ repoKey: rk, groupKey: gkey });
+    const gMain = gBound.find((d) => d.type === 'group' && d.position === 0 && d.hasBody);
+    let intro = gMain
+      ? { body: gMain.body, path: '', title: gMain.title, refId: gMain.refId, desc: gMain.desc }
+      : { body: '', path: '', title: '', refId: '', desc: '' };
+    let docLinks: BoundDoc[] = gBound.filter(
+      (d) => d.type !== 'repo' && !(d.type === 'group' && d.position === 0)
+    );
+    // 绑定索引尚未覆盖时回落到 ext / 约定路径（只影响数据来源，模板仍不内嵌组正文）
+    if (!gBound.length) {
+      const set = await readIntroSet({
+        dirRel: paths.boardDocDirRel(b.name),
+        legacyRel: paths.boardDocRel(b.name),
+        ref: b.doc,
+        links: b.docLinks,
+        warnings,
+        label: `组介绍·${b.name}`,
+      });
+      if (set.main && set.main.body) {
+        intro = {
+          body: set.main.body,
+          path: set.main.abs || '',
+          title: set.main.title || '',
+          refId: refIdOfDocId(set.main.docId),
+          desc: '',
+        };
+      }
+      docLinks = (Array.isArray(b.docLinks) ? b.docLinks : []).map((l: any) => ({
+        refId: refIdOfDocId(l.rel ? 'rel:' + l.rel : ''), desc: l.note || '', title: '',
+        hasBody: !!(l.rel || l.path), origin: '', type: 'group' as const,
+        repoKey: gkey, groupKey: null, position: 0, note: l.note || '', body: '',
+      }));
+    }
     // 本项目在组里的位置
     const noteRef = (b.repoDocs || {})[rk];
     const noteOwn = await readRef(noteRef, paths.groupNoteRel(b.name, rk), { warnings, label: `组内描述·${b.name}` });
@@ -393,14 +425,12 @@ export async function groupContextFor(cwd: unknown, { board = '' }: { board?: st
         path: (mr && mr.path) || '',
       });
     }
-    // 组绑定参考文件（给可读路径——agent 直接读盘）；tag 随条目走（有才带）
-    const docLinks = linkEntries(b.docLinks, closure);
     groups.push({
       name: b.name,
-      key: boardKeyOf(b.name),
+      key: gkey,
       desc: b.desc || '',
       intro,
-      introSet,
+      introSet: { main: null, extras: [], count: 0 },
       note: noteOwn.body || (b.repoNotes || {})[rk] || '',
       peers,
       docLinks,
@@ -408,9 +438,18 @@ export async function groupContextFor(cwd: unknown, { board = '' }: { board?: st
     });
   }
   return {
-    repo: { name: repo.name, key: rk, intro: repoIntro, introSet: repoIntroSet, docLinks: repoDocLinks, refRepos: repoRefRepos },
+    repo: { name: repo.name, key: rk, intro: repoIntro, introSet: { main: null, extras: [], count: 0 }, docLinks: repoDocLinks, refRepos: repoRefRepos },
     groups,
   };
+}
+
+/** 介绍主篇（提示词用）：正文 + desc + refId；不再有路径。 */
+export interface ContextIntro {
+  body: string;
+  path: string;
+  title: string;
+  refId: string;
+  desc: string;
 }
 
 /** groupContextFor 的组条目。 */
@@ -418,11 +457,11 @@ export interface GroupContextGroup {
   name: string;
   key: string;
   desc: string;
-  intro: { body: string; path: string; title: string };
+  intro: ContextIntro;
   introSet: IntroSet;
   note: string;
   peers: Array<{ name: string; note: string; path: string }>;
-  docLinks: KnowledgeDoc[];
+  docLinks: BoundDoc[];
   refRepos: Array<{ key: string; name: string; path: string; note: string }>;
 }
 
@@ -431,9 +470,9 @@ export interface GroupContextResult {
   repo: {
     name: string;
     key: string;
-    intro: { body: string; path: string; title: string };
+    intro: ContextIntro;
     introSet: IntroSet;
-    docLinks: KnowledgeDoc[];
+    docLinks: BoundDoc[];
     refRepos: Array<{ key: string; name: string; path: string; note: string }>;
   };
   groups: GroupContextGroup[];
@@ -569,43 +608,6 @@ export async function readIntroSet({
     };
   }
   return emptyIntroSet();
-}
-
-/** 文档集的主篇 → 旧的单篇形状（{ body, path }），兼容既有消费方 */
-function mainAsIntro(set: IntroSet | null | undefined): { body: string; path: string; title: string } {
-  const m = set && set.main;
-  return m ? { body: m.body || '', path: m.abs || '', title: m.title || '' } : { body: '', path: '', title: '' };
-}
-
-/** 登记在 store 里的补充文档（rel 自有树 / path 外部）→ 可读绝对路径条目 */
-function linkEntries(links: unknown, closure: readonly store.ClosureEntry[]): KnowledgeDoc[] {
-  const out: KnowledgeDoc[] = [];
-  for (const l of Array.isArray(links) ? (links as Array<DocRef & { note?: string; tag?: string }>) : []) {
-    if (l.rel) {
-      out.push({ rel: l.rel, note: l.note || '', ...(l.tag ? { tag: l.tag } : {}) });
-      continue;
-    }
-    const abs = l.path && store.resolveExternal(l.path, closure);
-    if (!abs) continue;
-    out.push({ path: abs, abs, note: l.note || '', ...(l.tag ? { tag: l.tag } : {}) });
-  }
-  return out;
-}
-
-/** 文档集 → markdown 行（主篇正文 + 其余各篇的可读路径） */
-function introMdLines(set: IntroSet | null | undefined, fallback: KnowledgeDoc | null | undefined): string[] {
-  const out: string[] = [];
-  const main = (set && set.main) || (fallback && !fallback.missing ? fallback : null);
-  if (main && main.body) out.push(String(main.body).trim());
-  const extras = (set && set.extras) || [];
-  if (extras.length) {
-    out.push('', '其余介绍文档（可用命令读取）:');
-    for (const d of extras) {
-      // 自有文档正文在 DB，没有磁盘副本：给可直接执行的读取命令，别给假路径。
-      out.push(`- ${d.rel ? `nx-kv docs get rel:${d.rel}` : d.abs || d.docId || ''}`);
-    }
-  }
-  return out;
 }
 
 /** 空文档集（没有主篇、也没有其余） */

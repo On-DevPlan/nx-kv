@@ -21,7 +21,8 @@
 //   - `{{#repo}}…{{/repo}}` / `{{#group}}…{{/group}}` 等旧闸门——不再覆盖
 //     `blockHelperMissing`，也不再把它映射成「真值条件」；
 //   - `{{group.peers}}` / `{{repo.docs}}` / `{{attach.list}}` 这类旧纯文本占位符；
-//   - `{{attach.sync}}` / `{{attach.syncText}}` 旧别名、`{{block.content}}` 旧包装。
+//   - `{{attach.sync}}` / `{{attach.syncText}}` / `{{attach.syncSummary}}` 旧别名（云端同步已删除）、
+//     `{{block.content}}` 旧包装。
 //   这些写法在保存校验时直接拒绝，运行期遇到也按坏模板回落内置模板（见下），
 //   不会悄悄按旧语义生效。
 //
@@ -266,6 +267,7 @@ const LEGACY_PLACEHOLDERS = new Set([
   'groups',
   'attach.sync',
   'attach.syncText',
+  'attach.syncSummary',
   'block.content',
 ]);
 
@@ -286,10 +288,10 @@ function legacySyntaxError(template: unknown): string | null {
   while ((m = mustacheRe.exec(src))) {
     const name = (m[1] ?? '').trim();
     if (/^else\b/.test(name)) continue;
-    if (LEGACY_PLACEHOLDERS.has(name) || /^attach\.sync(?!Summary)(?:\.|\s*$)/.test(name)) {
-      const isSync = name === 'attach.sync' || name === 'attach.syncText' || /^attach\.sync\./.test(name);
+    if (LEGACY_PLACEHOLDERS.has(name) || /^attach\.sync/.test(name)) {
+      const isSync = name === 'attach.sync' || name === 'attach.syncText' || name === 'attach.syncSummary' || /^attach\.sync\./.test(name);
       const hint = isSync
-        ? '同步汇总请改用 {{attach.syncSummary.text}}（并用 {{#if attach.syncSummary}} 判断是否跑过同步）；单条附件可达性看 file.localPath / file.exists'
+        ? '附件只在本机（本机附件仓），不再有云端同步汇总；单条附件可达性看 file.localPath / file.exists'
         : '列表请改用 {{#each 列表}}…{{/each}}，对象请直接取子字段';
       return `旧占位符 {{${name}}} 已废弃；${hint}`;
     }

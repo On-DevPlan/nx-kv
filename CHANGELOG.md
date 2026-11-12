@@ -2,6 +2,45 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.50.0] - 2026-11-13 移除云端清单与登录，任务全面本机化（v7）
+
+### Breaking
+
+- **删除云端清单 / 登录 / 工作空间**：`modules/todo`、`modules/auth`、`core/kvapi`、
+  `core/fileapi`、`core/attachstore`、云端同步与自动下载设置全部移除；
+  CLI 不再有 `todo` / `auth` / `group` / `prompt` 命令族。
+- **附件只在本机**：`file sync` / `file list` / `file remove` 与「读任务时自动下载」
+  一并删除；上传即落 `~/.nx-kv/attachments/local/`，交付直接给 `localPath`。
+  `file` 只保留 upload / get / content / orphans / prune。
+- **配置只剩本机路径**：`~/.nx-kv/config.json` 不再读写凭据；
+  `setting get/set` 只剩 `gitRepoRoot` / `gitDevRoot`。
+
+### Added
+
+- **v7 schema：`refs.desc` + 直接 ref**。ref 是 DB 实体（`refs` + `ref_bodies` +
+  `ref_bindings`），没有物理路径；新建只给 desc 与归属，正文为空可立即编辑。
+  `docs ref add` / `docs ref unbind` 与 `POST /api/docs/ref` / `POST /api/docs/unbind` 同步提供。
+- **文档列表（refs）重做**：标题取正文首行（与 md 编辑器一致），desc 作为浅色小字；
+  归属改为彩色勋章（仓库=蓝 / 组=紫 / 组内=组+仓库两枚拼接）。
+- **文档页描述行**：标题下展示 desc 并可就地修改；`DocItem` 前端类型删除无用的 `rel`。
+- **提示词模板只内嵌仓库主篇**，其余文档给 `refId` + `desc` 与
+  `nx-kv docs get --ref <refId>` 引导；`ref.relPath` 移除，新增 `ref.desc`。
+
+### Changed
+
+- **skill 文档本机化**：`assets/nx-kv` 重写为本机任务知识
+  （新增 `references/localtask-commands.md`，删除 `todo-commands.md`）；
+  kv-get / kv-submit / kv-repo / groups.json 中的远程清单表述同步清理。
+- **仓库管理主表**：组筛选视图隐藏「参考仓库」与「分组」列（当前列表已限定在该组）。
+- **冒烟测试纯本机化**：删除假后端与 todo/topic/auth 分组；附件链路改为本机仓。
+
+### Notes
+
+- **数据库自动升级 v6 → v7**：`ALTER TABLE refs ADD COLUMN "desc" TEXT NOT NULL DEFAULT ''`，
+  迁移决策见 `docs/decisions/versions/2026-11-12-v7.md`。
+- 验证：lint 0 error / typecheck / **934 单测** / **98 冒烟** / build 全通过；
+  7878 隔离实例真机验证 refs 列表、文档页描述行、附件弹窗与组筛选列。
+
 ## [0.49.0] - 2026-11-12 ref 正文入库（v6）与 DOCS_DIR 收口
 
 ### Added

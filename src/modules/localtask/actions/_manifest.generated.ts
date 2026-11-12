@@ -22,7 +22,6 @@ import { LocaltaskDoneAction } from './localtask-done.js';
 import { LocaltaskEventsAction } from './localtask-events.js';
 import { LocaltaskForkAction } from './localtask-fork.js';
 import { LocaltaskGetAction } from './localtask-get.js';
-import { LocaltaskImportRemoteAction } from './localtask-importRemote.js';
 import { LocaltaskListAction } from './localtask-list.js';
 import { LocaltaskPresenceAction } from './localtask-presence.js';
 import { LocaltaskPreviewAction } from './localtask-preview.js';
@@ -38,7 +37,6 @@ import { LocaltaskTopicRemoveAction } from './localtask-topic-remove.js';
 import { LocaltaskTopicRemoveManyAction } from './localtask-topic-removeMany.js';
 import { LocaltaskUpdateAction } from './localtask-update.js';
 import { LocaltaskWaitAction } from './localtask-wait.js';
-import { TaskMoveAction } from './task-move.js';
 
 /** 本模块的全部 action 类（容器按这个顺序建实例）。 */
 export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
@@ -58,7 +56,6 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskEventsAction,
   LocaltaskForkAction,
   LocaltaskGetAction,
-  LocaltaskImportRemoteAction,
   LocaltaskListAction,
   LocaltaskPresenceAction,
   LocaltaskPreviewAction,
@@ -74,7 +71,6 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskTopicRemoveManyAction,
   LocaltaskUpdateAction,
   LocaltaskWaitAction,
-  TaskMoveAction,
 ];
 
 // 再导出类本身：前端 apiclient 的返回类型从这里 type-only 引用（实现即契约）。
@@ -94,7 +90,6 @@ export { LocaltaskDoneAction };
 export { LocaltaskEventsAction };
 export { LocaltaskForkAction };
 export { LocaltaskGetAction };
-export { LocaltaskImportRemoteAction };
 export { LocaltaskListAction };
 export { LocaltaskPresenceAction };
 export { LocaltaskPreviewAction };
@@ -110,4 +105,3 @@ export { LocaltaskTopicRemoveAction };
 export { LocaltaskTopicRemoveManyAction };
 export { LocaltaskUpdateAction };
 export { LocaltaskWaitAction };
-export { TaskMoveAction };

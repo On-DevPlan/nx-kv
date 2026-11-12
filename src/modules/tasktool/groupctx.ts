@@ -23,23 +23,29 @@ async function docsService(): Promise<any> {
   return docsMod;
 }
 
-/** 一篇介绍文档：正文 + 落盘路径 */
+/** 一篇介绍文档：正文 + 描述 + refId（ref 是 DB 实体，没有路径） */
 interface IntroDoc {
   body: string;
   path: string;
+  title?: string;
+  refId?: string;
+  desc?: string;
 }
 
-/** 描述文档集（主篇之外的其他 md） */
+/** 描述文档集（主篇之外的其他文档） */
 interface IntroSet {
   count?: number;
   extras?: { abs?: string; docId?: string; rel?: string }[];
 }
 
-/** 可直接读取的参考文件链接 */
+/** 带归属的文档（ref_bindings JOIN refs；提示词只给 desc + refId） */
 interface DocLink {
-  abs?: string;
-  rel?: string;
-  tag?: string;
+  refId?: string;
+  desc?: string;
+  title?: string;
+  hasBody?: boolean;
+  type?: string;
+  groupKey?: string | null;
   note?: string;
 }
 
@@ -133,11 +139,12 @@ export function renderGroupContext(ctx: GroupContext | null): string {
     lines.push(...introLines(`〔项目介绍 · ${repo.name || repo.key || ''}〕`, repo.intro, repo.introSet ?? null));
     lines.push('');
   }
-  // 项目自己登记的补充文档（外部 / ref 仓库里的文件）——给可读路径，agent 直接读盘
+  // 项目自己登记的补充文档（ref 实体：desc + refId 取用指令，不展示路径）
   if (repo.docLinks && repo.docLinks.length) {
-    lines.push('项目补充文档（可直接读取）：');
+    lines.push('项目文档（按需取用）：');
     for (const d of repo.docLinks) {
-      lines.push(`  - ${d.abs || d.rel}${d.tag ? `  [${d.tag}]` : ''}${d.note ? `  # ${d.note}` : ''}`);
+      const label = d.desc || d.title || '未命名文档';
+      lines.push(`  - ${label}${d.refId ? `（nx-kv docs get --ref ${d.refId}）` : ''}${d.note ? `  # ${d.note}` : ''}`);
     }
     lines.push('');
   }
@@ -156,9 +163,10 @@ export function renderGroupContext(ctx: GroupContext | null): string {
       }
     }
     if (g.docLinks && g.docLinks.length) {
-      lines.push('组绑定参考文件（可直接读取）：');
+      lines.push('组文档（按需取用）：');
       for (const d of g.docLinks) {
-        lines.push(`  - ${d.abs || d.rel}${d.tag ? `  [${d.tag}]` : ''}${d.note ? `  # ${d.note}` : ''}`);
+        const label = d.desc || d.title || '未命名文档';
+        lines.push(`  - ${label}${d.refId ? `（nx-kv docs get --ref ${d.refId}）` : ''}${d.note ? `  # ${d.note}` : ''}`);
       }
     }
     lines.push('');

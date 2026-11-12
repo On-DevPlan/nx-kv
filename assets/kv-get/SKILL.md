@@ -1,6 +1,6 @@
 ---
 name: kv-get
-description: 领取与完成排给本工作目录的本地任务（别人通过 kv-submit 委托的、用户排队的，都落在按「完整 cwd + 项目组」派生的主题里）——用 localtask get 取活（默认直接领；项目开启「持续 get」后自动阻塞等人回填）、localtask wait 挂着等人接力、localtask done 标记完成（带时间目标的任务未到点会被拒绝，提示派 sub agent 重提需求）、localtask reopen **就地重开原任务**（历史进 history 链，已完成则回到待领取）。触发词：领取本地任务、看看有没有排给我的任务、本地队列、领取委托任务、拿任务、本目录的任务、排队任务、localtask get、localtask wait、标记完成、任务完成、修改反馈、重新执行、kv-get。凡「主动获取排给本目录的任务」以及「把任务标记完成/按反馈重开」的场景都走本 skill。反例：把需求提交/委托给别的目录用 kv-submit；查本机仓库/项目组与参考仓库用 kv-repo；操作远程 KV 清单（todo）用 nx-kv。
+description: 领取与完成排给本工作目录的本地任务（别人通过 kv-submit 委托的、用户排队的，都落在按「完整 cwd + 项目组」派生的主题里）——用 localtask get 取活（默认直接领；项目开启「持续 get」后自动阻塞等人回填）、localtask wait 挂着等人接力、localtask done 标记完成（带时间目标的任务未到点会被拒绝，提示派 sub agent 重提需求）、localtask reopen **就地重开原任务**（历史进 history 链，已完成则回到待领取）。触发词：领取本地任务、看看有没有排给我的任务、本地队列、领取委托任务、拿任务、本目录的任务、排队任务、localtask get、localtask wait、标记完成、任务完成、修改反馈、重新执行、kv-get。凡「主动获取排给本目录的任务」以及「把任务标记完成/按反馈重开」的场景都走本 skill。反例：把需求提交/委托给别的目录用 kv-submit；查本机仓库/项目组与参考仓库用 kv-repo；查 nx-kv 的底层命令手册用 nx-kv。
 ---
 
 # kv-get — 领取、执行、完成（领取侧）

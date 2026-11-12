@@ -13,15 +13,11 @@
 // 容器是进程级单例（默认容器已注册 core 共享依赖）；测试可 new 一个自己的容器。
 import * as configModule from '../core/config.js';
 import type * as configTypes from '../core/config.js';
-import * as kvapiModule from '../core/kvapi.js';
-import type * as kvapiTypes from '../core/kvapi.js';
 
 /** 项目级依赖清单：key → 类型。新依赖在此加字段。 */
 export interface DependencyMap {
   /** 本机配置（core/config 的服务函数集；测试可注册临时实现）。 */
   config: typeof configTypes;
-  /** 远程 KV 客户端（core/kvapi；测试可注册假实现）。 */
-  kvapi: typeof kvapiTypes;
 }
 
 export class Container {
@@ -50,4 +46,4 @@ export class Container {
 }
 
 /** 进程级默认容器：共享依赖在这里注册一次，全项目可用。 */
-export const container = new Container().register('config', configModule).register('kvapi', kvapiModule);
+export const container = new Container().register('config', configModule);

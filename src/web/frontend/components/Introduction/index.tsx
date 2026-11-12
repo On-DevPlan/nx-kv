@@ -73,5 +73,5 @@ export default function Introduction({ kind, owner, model }: IntroductionProps) 
   );
 }
 
-export { useIntro, introRefOf, introDirFromRef } from './use-intro.js';
+export { useIntro, introRefOf } from './use-intro.js';
 export { default as IntroRail } from './rail.jsx';

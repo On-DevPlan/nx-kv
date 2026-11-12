@@ -21,7 +21,7 @@ const { annotateTaskDelivery, attachmentInstruction, attachToTask, listTaskAttac
 );
 const { getTask: claimTask } = await import('../../src/modules/tasktool/get.js');
 const { getDb } = await import('../../src/core/db/index.js');
-const { upsertFileAttachment, urlAttachmentId } = await import('../../src/core/attachmentdb.js');
+const { urlAttachmentId, upsertFileAttachment } = await import('../../src/core/attachmentdb.js');
 const { localIndex } = await import('../../src/core/localatt.js');
 const mod = (await import('../../src/modules/localtask/index.js')).default;
 
@@ -50,48 +50,35 @@ test('annotateTaskDelivery：正文引用附件（自动下载关）→ 清单�
       { id: urlAttachmentId(URL_ID), kind: 'url', name: '说明', image: false, synced: true },
     ]
   );
-  assert.equal(att.sync, null, '自动下载关 → 不跑同步');
+  assert.equal(att.sync, undefined, '没有云端同步这回事');
   // 相对路径没有被误判成附件；URL 以资源 id 表达，不再当正文里的裸链接
   const ids = att.task.attachments.map((a) => a.id);
   assert.ok(!ids.includes(URL_ID), '裸 URL 字符串不得直接作为附件 id');
   assert.equal(att.task.attachments[2].url, URL_ID);
 });
 
-test('attachmentInstruction：零附件 → 空串；有附件 → 给出 id 与拉取提示', () => {
+test('attachmentInstruction：零附件 → 空串；有附件 → 给出 id 与本地说明', () => {
   assert.equal(attachmentInstruction([], null), '');
   const seg = attachmentInstruction([{ id: IMG_ID, kind: 'image', name: '设计稿.png', localPath: '', synced: false }], null);
   assert.ok(seg.includes('〔附件〕'));
   assert.ok(seg.includes(IMG_ID));
-  assert.ok(seg.includes('file sync --ids'));
-  // 本地已同步 → 给绝对路径而不是提示
+  assert.ok(seg.includes('本机附件仓没有这个文件'));
+  // 本机已命中 → 给绝对路径而不是提示
   const seg2 = attachmentInstruction([{ id: IMG_ID, kind: 'image', name: '设计稿.png', localPath: 'D:\\x\\设计稿.png', synced: true }], null);
   assert.ok(seg2.includes('D:\\x\\设计稿.png'));
-  assert.ok(!seg2.includes('未同步'));
+  assert.ok(!seg2.includes('本机附件仓没有'));
 });
 
-test('annotateTaskDelivery：云端镜像已有副本 → synced + 绝对路径进标注与指令段', async () => {
-  // schema v2：云端镜像的元数据在 attachments（storage='cloud'），不再有 manifest.json
-  const dir = join(sb, 'att', 'default');
-  mkdirSync(dir, { recursive: true });
-  const fileName = '设计稿.png';
-  writeFileSync(join(dir, fileName), 'png');
-  upsertFileAttachment(getDb(), {
-    id: IMG_ID,
-    name: fileName,
-    localPath: join(dir, fileName),
-    mime: 'image/png',
-    size: 3,
-    storage: 'cloud',
-    groupId: 0,
-    meta: { syncedAt: 'x' },
-  });
-  const added = await service.addTask({ text: `# 再看一眼\n![设计稿.png](${IMG_ID})` });
+test('annotateTaskDelivery：本机附件仓已有副本 → synced + 绝对路径进标注与指令段', async () => {
+  const { localUpload } = await import('../../src/core/localatt.js');
+  const rec = await localUpload({ name: '设计稿.png', buffer: Buffer.from('png'), contentType: 'image/png' });
+  const added = await service.addTask({ text: `# 再看一眼\n![设计稿.png](${rec.fileId})` });
   const att = await annotateTaskDelivery(added.task);
   const a = att.task.attachments[0];
   assert.equal(a.synced, true);
-  assert.ok(a.localPath.endsWith(fileName), `localPath 应为台账绝对路径（实际 ${a.localPath}）`);
+  assert.equal(a.localPath, rec.path);
   assert.ok(existsSync(a.localPath));
-  const seg = attachmentInstruction(att.task.attachments, att.sync);
+  const seg = attachmentInstruction(att.task.attachments);
   assert.ok(seg.includes(a.localPath), '指令段应带本地绝对路径（agent 直接读文件）');
 });
 
@@ -143,8 +130,8 @@ test('annotateTaskDelivery：本机仓命中 → 零云端标注绝对路径；�
   assert.equal(a.synced, true);
   assert.equal(a.storage, 'local');
   assert.ok(a.localPath.endsWith('仓图.png'));
-  assert.equal(att.sync, null, '本机仓全命中 → 一次网都不碰（sync 为 null）');
-  const seg = attachmentInstruction(att.task.attachments, att.sync);
+  assert.equal(att.sync, undefined, '本机仓全命中 → 没有云端同步');
+  const seg = attachmentInstruction(att.task.attachments);
   assert.ok(seg.includes(a.localPath));
 });
 
@@ -155,11 +142,10 @@ test('attachToTask：参数校验——缺参 / id 不合法 / kind 非法 → �
   await assert.rejects(() => attachToTask({ id: added.task.id, fileId: IMG_ID, kind: 'video' }), /--kind/u);
 });
 
-test('listTaskAttachments：无引用 → count 0；台账目录与开关如实透出', async () => {
+test('listTaskAttachments：无引用 → count 0；本地目录如实透出', async () => {
   const added = await service.addTask({ text: '# 干净任务' });
   const d = await listTaskAttachments({ id: added.task.id });
   assert.equal(d.count, 0);
-  assert.equal(d.autoSync, false, '配置文件不存在 → 自动下载默认关');
   assert.ok(d.localDir.startsWith(join(sb, 'att')));
 });
 

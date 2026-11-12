@@ -145,7 +145,7 @@ test('交付文本：介绍按「列表」呈现——主篇 + 其余各篇', as
   assert.match(out, /reference\/qa\.md/);
 });
 
-test('交付文本：项目登记的补充文档也给出可读路径', async () => {
+test('交付文本：项目登记的补充文档按 desc + refId 给出取用指令', async () => {
   const { renderGroupContext } = await import('../../src/modules/tasktool/groupctx.js');
   const out = renderGroupContext({
     repo: {
@@ -153,11 +153,11 @@ test('交付文本：项目登记的补充文档也给出可读路径', async ()
       key: 'local/alpha',
       intro: { body: '正文', path: 'C:/docs/repo/alpha.md' },
       introSet: { count: 1, main: { body: '正文', abs: 'C:/docs/repo/alpha.md' }, extras: [] },
-      docLinks: [{ abs: 'D:/vault/nx.md', tag: 'qa', note: '问答集' }],
+      docLinks: [{ refId: 'ref_qa', desc: '问答集', hasBody: true, note: '问答集' }],
     },
     groups: [],
   });
-  assert.match(out, /项目补充文档（可直接读取）/);
-  assert.match(out, /D:\/vault\/nx\.md/);
-  assert.match(out, /\[qa\]/);
+  assert.match(out, /项目文档（按需取用）/);
+  assert.match(out, /问答集/);
+  assert.match(out, /nx-kv docs get --ref ref_qa/);
 });

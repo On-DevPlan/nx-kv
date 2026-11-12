@@ -1,4 +1,4 @@
-// tasktool/get.js —— 「领取任务」（todo.md 的 get / waitgoal 语义）。
+// tasktool/get.js —— 「领取任务」（localtask 的 get / waitgoal 语义）。
 //
 // 默认（项目未开启「持续 get」）：**直接 get**——队列有任务立即领；
 // 没有立即空手而回（instant，不阻塞），agent 按「暂时没活」收尾本轮。

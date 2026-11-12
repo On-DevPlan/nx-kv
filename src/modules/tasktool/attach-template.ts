@@ -3,10 +3,9 @@
 // 输出由模板渲染（内置 DEFAULT_ATTACH_TEMPLATE 或配置模板），保证「配置模板」与
 // 「内置默认」走同一份 ctx、同一套口径；渲染失败时用最朴素的逐条文本兜底
 // （fail-open：附件路径必须到达 agent，模板写错不许吞掉附件信息）。
-import { isAbsolute } from 'node:path';
 import { renderInstruction } from '../../core/instruction-template.js';
 import { DEFAULT_ATTACH_TEMPLATE } from '../../shared/prompt-blocks.js';
-import { isImageName } from '../../core/fileapi.js';
+import { isImageName } from '../../core/filekind.js';
 import { hostOfUrl, kindLabelOf, ORIGIN_LABEL, sizeTextOf, STATUS_LABEL } from './attach-resource.js';
 
 /**
@@ -19,13 +18,13 @@ import { hostOfUrl, kindLabelOf, ORIGIN_LABEL, sizeTextOf, STATUS_LABEL } from '
  *   url  → { href, host }
  *   task → { taskId, topicKey, topicName, seq, title, status, statusLabel,
  *            address, storedAddress, addressDrift, resolved, purged, deleted, showCmd }
- *   ref  → { refId, title, relPath, readCmd, content, truncated }
+ *   ref  → { refId, title, desc, readCmd, content, truncated }
  *     content 只在「文档资料」绑定（role='doc'，交付读全文）且真的读到时非空。
  *   mdfile → { absPath, anchorDir, content, truncated, stale, missing, readCmd }
  *     content 是读时从磁盘现取的正文（截断 2 万字）；missing 时为空、stale 表示指纹漂移。
  * 通用 note = 边上的说明（desc，#162）：attach --note 的落点，清单行透出。
  * 旧模板兼容：平铺别名 localPath / fileId / urlText / href / taskId / title /
- * seq / showCmd / refId / relPath / readCmd / target / area / areaLabel。
+ * seq / showCmd / refId / target / area / areaLabel。
  */
 function ctxItemOf(a: any): any {
   const kind = ['url', 'task', 'ref', 'mdfile'].includes(a.kind) ? a.kind : 'file';
@@ -68,12 +67,12 @@ function ctxItemOf(a: any): any {
     const fileId = String(a.fileId || a.id || '');
     const localPath = String(a.localPath || '');
     const exists = a.exists === undefined ? !!localPath : !!a.exists;
-    const syncCmd = String(a.syncCmd !== undefined ? a.syncCmd : exists ? '' : `nx-kv file sync --ids ${fileId}`);
+    const syncCmd = '';
     const file = { localPath, fileId, exists, syncCmd };
     const usage = String(a.usage || (exists
       ? `已在本机：直接读取 ${localPath}`
-      : `尚未同步到本地（fileId ${fileId}）：先运行 ${syncCmd}，再读取本机副本`));
-    const cmd = String(a.cmd !== undefined ? a.cmd : exists ? '' : syncCmd);
+      : `本机附件仓没有这个文件（fileId ${fileId}）——请向提交方确认原始文件`));
+    const cmd = String(a.cmd !== undefined ? a.cmd : '');
     return {
       ...item,
       ...file,
@@ -81,7 +80,7 @@ function ctxItemOf(a: any): any {
       file,
       usage,
       cmd,
-      locator: String(a.locator || (exists ? localPath : `未同步（fileId ${fileId}）`)),
+      locator: String(a.locator || (exists ? localPath : `本机缺失（fileId ${fileId}）`)),
       needsSync: a.needsSync === undefined ? !exists : !!a.needsSync,
     };
   }
@@ -164,15 +163,14 @@ function ctxItemOf(a: any): any {
   }
 
   const refId = String(a.refId || a.targetKey || '');
-  const relPath = String(a.relPath || a.locator || '');
-  // docTitle：文档资料绑定读到全文时提取的首行 # 标题（比文件名更说明内容，#162）
-  const title = String(a.docTitle || a.title || String(a.name || '').replace(/\.md$/i, ''));
-  const readCmd = String(a.readCmd || (relPath
-    ? `nx-kv docs get ${isAbsolute(relPath) ? `path:${relPath}` : `rel:${relPath}`}`
-    : ''));
+  // docTitle：文档资料绑定读到全文时提取的首行 # 标题（比 desc / 文件名更说明内容，#162）
+  const title = String(a.docTitle || a.title || a.name || '').replace(/\.md$/i, '') || '未命名文档';
+  const desc = String(a.desc || '');
+  // v7：ref 是 DB 实体，没有物理路径——取正文一律按 refId。
+  const readCmd = String(a.readCmd || (refId ? `nx-kv docs get --ref ${refId}` : ''));
   const content = String(a.docContent || '');
   const truncated = !!a.docTruncated;
-  const ref = { refId, title, relPath, readCmd, content, truncated };
+  const ref = { refId, title, desc, readCmd, content, truncated };
   // 文档资料绑定（role='doc'，#162）：读到了全文 → usage 指向「文档原文」段；
   // 没读到（fail-open）→ 退回普通取用命令，不假装内容存在。
   // 外部 md 未登记附件时必须说清楚「为什么没有正文」并给登记命令，
@@ -190,8 +188,8 @@ function ctxItemOf(a: any): any {
           : `这是文档资料绑定（进原文），但本次未能读到全文（refId ${refId}）：先用 nx-kv docs list 定位路径，再 docs get 读取`;
   } else {
     usage = usage || (readCmd
-      ? `这是文档库里的 md 文件：用 ${readCmd} 读取`
-      : `这是文档库里的 md 文件（refId ${refId}）：先用 nx-kv docs list 定位路径，再 docs get 读取`);
+      ? `这是文档库里的文档：用 ${readCmd} 读取`
+      : `这是文档库里的文档（refId ${refId}）：先用 nx-kv docs list 定位，再 docs get 读取`);
   }
   return {
     ...item,
@@ -199,33 +197,18 @@ function ctxItemOf(a: any): any {
     ref,
     usage,
     cmd: String(a.cmd !== undefined ? a.cmd : readCmd),
-    locator: String(a.locator || `${title}${relPath ? `（${relPath}）` : ''}`),
+    locator: String(a.locator || title),
     needsSync: false,
-  };
-}
-
-function syncSummaryOf(sync: any): any {
-  if (!sync) return null;
-  const failures = sync.failures || [];
-  return {
-    dir: sync.dir || '—',
-    downloaded: Number(sync.downloaded) || 0,
-    skipped: Number(sync.skipped) || 0,
-    failureCount: failures.length,
-    failures,
-    text:
-      `目录 ${sync.dir || '—'} · 下载 ${Number(sync.downloaded) || 0} · 跳过 ${Number(sync.skipped) || 0}` +
-      (failures.length ? ` · 失败 ${failures.length}` : ''),
   };
 }
 
 /**
  * 附件模板 ctx（附件段与系统区块共用）。
- * 新语法：{{attach.count}}、`{{#each attach.list}}`（按类型分支的结构化元素）、
- * `{{#if attach.syncSummary}}`（本次跑过云端同步才出现）。
+ * 新语法：{{attach.count}}、`{{#each attach.list}}`（按类型分支的结构化元素）。
+ * 附件只在本机（本机附件仓），没有云端同步概念；单条可达性看 file.localPath / file.exists。
  * 旧写法 `{{#attach}}` / `{{attach.sync}}` / `{{attach.syncText}}` 已废弃，不再提供别名。
  */
-export function attachTemplateCtx(attachments: unknown, sync: unknown): Record<string, any> {
+export function attachTemplateCtx(attachments: unknown): Record<string, any> {
   const list: any[] = Array.isArray(attachments) ? attachments : [];
   const items = list.map(ctxItemOf);
   return {
@@ -236,11 +219,8 @@ export function attachTemplateCtx(attachments: unknown, sync: unknown): Record<s
       areaCount: items.filter((a) => a.origin === 'area').length,
       hasInline: items.some((a) => a.origin !== 'area'),
       hasArea: items.some((a) => a.origin === 'area'),
-      needsSyncCount: items.filter((a) => a.needsSync).length,
       // 结构化数组：模板用循环组织清单，不再由服务端拼多行字符串。
       list: items,
-      // 同步汇总只描述「这一次批量同步」；单条附件可达性看它自己的 file.localPath / file.exists
-      syncSummary: syncSummaryOf(sync),
     },
   };
 }
@@ -254,13 +234,13 @@ export function attachTemplateCtx(attachments: unknown, sync: unknown): Record<s
  *
  * 没有附件 → ''（整段消失）。
  */
-export function attachmentInstruction(attachments: unknown, sync: unknown): string {
+export function attachmentInstruction(attachments: unknown): string {
   const list: any[] = Array.isArray(attachments) ? attachments : [];
   if (!list.length) return '';
   try {
-    return renderInstruction(DEFAULT_ATTACH_TEMPLATE, attachTemplateCtx(list, sync));
+    return renderInstruction(DEFAULT_ATTACH_TEMPLATE, attachTemplateCtx(list));
   } catch {
-    const ctx = attachTemplateCtx(list, sync).attach;
+    const ctx = attachTemplateCtx(list).attach;
     const lines: string[] = [
       `〔附件〕本任务包含 ${ctx.count} 个附件（正文内嵌 ${ctx.inlineCount} · 附件区 ${ctx.areaCount}）。`,
       '附件清单：',
@@ -268,11 +248,10 @@ export function attachmentInstruction(attachments: unknown, sync: unknown): stri
       '取用方式：',
       ...ctx.list.map((a: any) => `- ${a.name}：${a.usage}`),
     ];
-    if (ctx.syncSummary) lines.push(`同步情况：${ctx.syncSummary.text}`);
     // 文档原文段与默认模板同口径（#162）：模板挂了也不许把「进原文」的内容丢掉
     for (const a of ctx.list) {
       if (a.kind === 'ref' && a.ref && a.ref.content) {
-        lines.push(`〔文档原文 · ${a.ref.title}〕（${a.ref.relPath}）：`, '', a.ref.content, '');
+        lines.push(`〔文档原文 · ${a.ref.title}〕：`, '', a.ref.content, '');
       }
       if (a.kind === 'mdfile' && a.mdfile && a.mdfile.content) {
         lines.push(`〔外部 md · ${a.name}〕（${a.mdfile.absPath}${a.mdfile.truncated ? '，已截断' : ''}${a.mdfile.stale ? '，内容有变化' : ''}）：`, '', a.mdfile.content, '');
@@ -286,22 +265,21 @@ export function attachmentInstruction(attachments: unknown, sync: unknown): stri
  * 〔附件〕段渲染（任务 #82 模板化；v4 起走 Handlebars）：
  *   - 配置了模板（attachment 区块当前生效模板）→ 模板渲染。ctx：{{task.id}}/{{task.text}}、
  *     {{attach.count}} / {{attach.inlineCount}} / {{attach.areaCount}}、
- *     `{{#each attach.list}}`（按 kind 分支的结构化清单，含各类型子对象）、
- *     `{{#if attach.syncSummary}}`（本次批量同步汇总）；
+ *     `{{#each attach.list}}`（按 kind 分支的结构化清单，含各类型子对象）；
  *   - 旧占位符 / 旧闸门**不再兼容**（保存校验会拒绝旧语法，运行期回退内置默认）；
  *   - 空/未配置 → 内置默认（attachmentInstruction，与默认模板同一份 ctx）；
  *   - 渲染失败 → 回退内置默认（fail-open：附件路径必须到达 agent）。
  */
-export function attachInstructionOf(tpl: unknown, attachments: unknown, sync: unknown, task: any): string {
+export function attachInstructionOf(tpl: unknown, attachments: unknown, task: any): string {
   const list: any[] = Array.isArray(attachments) ? attachments : [];
   const t = String(tpl || '').trim();
-  if (!t || !list.length) return attachmentInstruction(list, sync);
+  if (!t || !list.length) return attachmentInstruction(list);
   try {
     return renderInstruction(t, {
       task: task ? { id: task.id, text: String(task.text || '') } : null,
-      ...attachTemplateCtx(list, sync),
+      ...attachTemplateCtx(list),
     });
   } catch {
-    return attachmentInstruction(list, sync);
+    return attachmentInstruction(list);
   }
 }

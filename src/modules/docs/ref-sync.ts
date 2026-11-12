@@ -108,6 +108,19 @@ export function desiredBindings(s: any, files: string[]): DesiredBinding[] {
     for (const [repoKey, ref] of Object.entries(b.repoDocs || {})) {
       push(String(repoKey), gk, 'group_repo', ref, 0, (ref as any) && (ref as any).note);
     }
+    // 组内成员描述：ext 没显式登记 repoDocs 时按**约定路径**回落——
+    // 与 boards/core.ts 的 noteDocRel、迁移导入器 import-json/refs.ts 同一口径。
+    // 漏了这一步，整表重建会把「盘上有、只是按约定放置」的组内说明清成孤儿
+    // （v6 后首次 buildIndex 就踩到：19 条 group_repo 全丢，正文还在 ref_bodies 里）。
+    for (const rawKey of Array.isArray(b.repoKeys) ? b.repoKeys : []) {
+      const rk = String(rawKey || '');
+      if (!rk || (b.repoDocs && b.repoDocs[rk])) continue;
+      const rel = pickExisting(
+        [paths.docMainRel(paths.groupNoteDirRel(b.name, rk)), paths.groupNoteRel(b.name, rk)],
+        fileSet
+      );
+      if (rel) push(rk, gk, 'group_repo', { rel }, 0);
+    }
   }
   return out;
 }

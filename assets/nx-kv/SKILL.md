@@ -1,140 +1,175 @@
 ---
 name: nx-kv
-description: KV 清单（todo）的收单与操作 —— 既用来**领取任务、确认意图、完成后回填**，也用来直接读写清单、维护主题提示词、在多个工作空间之间切换。触发词：领取任务、我的待办、看一下我的任务、某主题的任务（如「go 主题的任务」）、发布的任务、发布任务、收单、先确认再执行、把任务聚个类、任务队列、todo、清单、完成回填、给主题配上下文、切换工作空间/group。凡「提交方 → KV 清单 → agent 消费」这条任务流里 agent 一侧的收单动作，或任何要直接操作清单的命令，都走本 skill。
+description: nx-kv 本机任务队列（localtask）的收单与操作 —— 领取任务、确认意图、完成后回填、排队委托、挂起等待、任务附件、时间目标；也覆盖本机仓库登记与文档库（refs）的核心命令。触发词：领取任务、我的待办、看一下我的任务、某主题的任务、本地队列、排给我的任务、收单、先确认再执行、任务队列、localtask、完成回填、标记完成、改任务、任务附件、时间目标、本机仓库、项目组、文档库。凡「提交方 → 本机队列 → agent 消费」这条任务流里 agent 一侧的收单动作，或任何要直接操作本机任务队列 / 文档的命令，都走本 skill。
 ---
 
-# nx-kv — 收单流程 + 命令手册
+# nx-kv — 本机任务队列 + 命令手册
 
-KV 清单（todo）的操作入口——领任务、确认意图、完成后回填、直接读写清单。
-随包自带本 skill（`nx-kv skill install` 一条命令装到本地 skill 目录）。
+nx-kv 的清单是**纯本机**的：任务、主题、附件、文档、仓库登记全部在本机 SQLite
+（默认 `~/.nx-kv/nxkv.db`），**不需要登录、不访问任何后端**。
 
-> 术语：本 skill 里的「云端主题」指云端清单的 topic；本地任务那份叫「主题（topic）」。
-> 「项目组」的 CLI 命令名沿用 `board`；`refs` 是文档，参考仓库是 `refRepos`。完整词表见仓库 `docs/glossary.md`。
+> 术语：**主题（topic）**由「工作目录 + 项目组」派生，一个主题一个队列；
+> **任务（task）**在主题内用 `id` 寻址。项目组的 CLI 命令名沿用 `board`；
+> 文档库叫 `refs`，参考仓库是 `refRepos`。完整词表见仓库 `docs/glossary.md`。
 
 ## 先判断你要做哪件事
 
 | 你要做的事 | 读哪份 |
 | --- | --- |
-| **领任务 / 收单**：按主题拉待办 → 读上下文 → 与用户对齐意图 → 完成后回填 | [[agent-workflow]] |
-| **查命令**：要敲哪条、退出码、数据结构、避坑 | [[todo-commands]] |
-| **任务带附件**：正文里的图片 / docx 怎么读、怎么落到本地 | 本页「附件」一节 + [[todo-commands]] |
+| **领任务 / 收单**：get → 读 instruction → 与用户对齐意图 → 完成后 done / 继续 wait | [[agent-workflow]] |
+| **查命令**：要敲哪条、退出码、数据结构、避坑 | [[localtask-commands]] |
+| **任务带附件**：正文里的图片 / docx 怎么读、怎么落到本机 | 本页「附件」一节 + [[localtask-commands]] |
+| **本机仓库 / 项目组 / 参考仓库**：`nx-kv repo ...` / `nx-kv board ...` | [[repo-registry]] |
 
-两份都是按需加载，不要一开始就全读进来。
+按需加载，不要一开始就全读进来。提交任务到**另一个**工作目录用 `kv-submit` skill；
+守候接力（wait 循环）用 `kv-get` skill。
 
 ## 前置
 
 ```bash
-nx-kv auth login <email>     # 交互式隐藏输入密码；同时记住后端地址
-nx-kv auth status            # 看登录态（离线可读本机配置）
-nx-kv group current          # 当前工作空间
+nx-kv localtask list          # 本机有哪些主题、谁在等待、各有多少待领取
+nx-kv health                  # 服务与版本（纯本机）
 ```
 
-**所有清单操作都需要登录**，否则报「未登录」并 exit 1。
+没有登录、没有工作空间切换。主题归属由**当前目录**（或 `--cwd` / `--key`）决定；
+面板与 CLI 读的是同一份 SQLite。
 
-数据按 `groupId` 隔离。**先确认工作空间对不对**——在错的空间里会「什么都查不到」，
-而那不是「没有任务」，是「看错地方了」。工作空间操作走 `nx-kv group ...` 命令族。
-
-## 最常用的四条
+## 最常用的六条
 
 ```bash
-# 1. 取某主题的全部任务（三个桶一次拿全：待办 + 已完成 + 冻结）
-nx-kv todo list --topic <topic> --json
-# → { topic, status:'all', open:[...], done:[...], freeze:[...], topics:[...] }
+# 1. 领活：有任务立即领走；没有立即返回 timeout（不阻塞）
+nx-kv localtask get --json
+# → { status:"ok", task:{ id, text, attachments? }, instruction:"…" } 或 { status:"timeout" }
 
-# 2. 只取待办（收单首选；只读一把 key，不带已完成历史，省上下文）
-nx-kv todo list --status open --topic <topic> --json
-# → open:[...] 非空，done/freeze 为 null
+# 2. 等人：阻塞等到下一条任务（本轮最后一步；timeout 是业务结果，exit 0）
+nx-kv localtask wait --timeout 30 --json
 
-# 3. 顺带读走该主题的上下文提示词（这是理解任务的背景，不是可选项）
-nx-kv prompt get <topic> --json
+# 3. 派/排队：向本目录（或 --cwd/--global/--project/--board）投递任务
+nx-kv localtask add "正文（Markdown）" --json
+nx-kv localtask add "带时间目标的活" --duration 2h --json
 
-# 4. 完成后回填结果（--ref 是任务**内容**；结果写进该任务的 note，供人和后续 agent 追溯）
-nx-kv todo done --ref "<任务内容>" --result "改了什么 / 关键决策 / 遗留问题"
+# 4. 查看单条（get 是「领取」动词，查看一律用 show）
+nx-kv localtask show --id <n> --json
+
+# 5. 完成回填（summary 就是下一轮 agent 能看到的「上轮做了什么」）
+nx-kv localtask done --id <n> --summary "改了什么 / 关键决策 / 遗留问题" --json
+
+# 6. 按反馈重开原任务（同号回写，旧态压进 history）
+nx-kv localtask reopen --id <n> --text "<改后的正文>" --json
 ```
 
-**两条的区别**：`--topic` 不带 `--status` 是「全都要」（含历史），
-`--status open --topic` 是「只要待办」。收单用后者（省上下文），
-做统计/核对/回顾用前者。
+**`get` 与 `wait` 的区别**：`get` 立即返回；`wait` 阻塞等人回填，拿到任务或超时之前
+不要提前结束本轮。同一目录同一时刻只挂一个 wait。
 
-## 附件：正文里的图片与文档（读本地，不读网）
+## 领取到的东西必须读全
 
-任务**正文本身**就能带附件——用标准 markdown 写，不发明新语法：
+- `task.text` = 任务正文（Markdown），**永远读它**；
+- `instruction` = 服务端渲染的指令段，**有则必读**，与正文一起构成这一轮的根指令：
+  - 项目组上下文（组定位、组介绍、本项目位置、兄弟成员、绑定文档的 `refId`/desc）；
+  - ack 完成总结要求（默认「完成后 `localtask done --summary`」）；
+  - 附件清单与本地绝对路径；
+  - 任务级时间目标的 check 指令。
+
+## 附件：正文里的图片与文档（全本机，零网络）
+
+任务**正文本身**就能带附件——标准 markdown，不发明新语法：
 
 ```
 修一下首页 logo  ![设计稿](3f2a1b…9c)       ← 图片附件
-补充材料见 [需求说明.docx](b71e…04.docx)     ← 其他文件附件（docx/pdf/…）
+补充材料见 [需求说明.docx](b71e…04.docx)     ← 其他文件附件
 ```
 
-`( )` 里是**后端图床的 fileId**（32 位 hex，原文件名带后缀时结尾会接 `.<ext>`）。
-除此之外的 markdown 链接（`http(s)://`、`./x.md`）一律按普通链接处理，不会被当成附件。
+`( )` 里是**本机附件仓的 fileId**（32 位 hex，原文件名带后缀时结尾会接 `.<ext>`）。
+`http(s)://`、`./x.md` 等普通链接不会被当成附件。
 
 ```bash
-nx-kv todo attachments --ref "<任务内容>" --json   # 这条任务引用了哪些附件（含本地路径）
-nx-kv todo attach --ref "<任务内容>" --path <本机文件>       # 上传并追加到正文
-nx-kv todo attach --ref "<任务内容>" --fileId <fileId>       # 追加一个已上传的附件
+nx-kv file upload --path <本机文件> --json       # 落本机附件仓，返回 fileId + markdown 片段
+nx-kv localtask attach --id <n> --path <本机文件> # 上传并追加到正文
+nx-kv localtask attach --id <n> --fileId <fileId> # 追加一个已上传的附件
+nx-kv localtask attachments --id <n> --json       # 这条任务引用了哪些附件（含本地绝对路径）
 ```
 
-**给要读附件的 agent：先把附件落到本地，再读本地文件。**
+**没有「同步」这一步**：上传即落盘，命中即给 `localPath`。agent 直接 `Read` 那个路径，
+不必拼 URL、不受网络影响。未命中（文件不在本机仓）时清单会明确提示
+「本机附件仓没有这个文件」，不要猜。
+
+未被任何任务/文档引用的上传可用 `nx-kv file orphans` 查看、`nx-kv file prune` 回收。
+
+> ⚠️ 追加附件会**改写正文**：同一条任务连续操作时，用 `--id` 定位（不要用正文内容当 key）。
+
+## 定位与寻址
+
+- 主题内任务用 `id`（`localtask show/done/update/remove --id <n>`）；
+- 不带 `--cwd` / `--key` 时按**进程当前目录**定位；
+- 跨主题引用用 `"<topicKey>:<id>"`（DAG `--block-by`、任务引用附件等）。
+
+## 时间目标：领取即计时，未到点不许标完成
 
 ```bash
-nx-kv file sync --json      # 同步当前工作空间的附件 → ~/.nx-kv/attachments/<工作空间>/
+nx-kv localtask add "长任务" --duration 2h --goal-prompt "先写测试" --json
 ```
 
-**更省事的做法是打开「读任务时自动下载」**（一条命令）：
+这种任务被领取时**自动起表**，交付文本里带：
 
 ```bash
-nx-kv setting set --autoSyncAttachments        # 开
-nx-kv setting set --autoSyncAttachments=false  # 关（默认）
+nx-kv timegoal check --task task:<topicKey>:<taskId> --summary "<本轮现状>"
 ```
 
-开启后，`todo list` / `todo get` 的每个任务会多出 `attachments[]`，
-里面直接给出**本地绝对路径**（`localPath`），另有 `attachmentsSync` 汇报这一轮
-下载了什么、跳过什么、失败什么：
+每轮推进先跑一次 check（原文回显提示词，防长对话漂移）。**时间未到不能标完成**——
+`localtask done` 会返回业务结果：
 
 ```json
-{ "id": "3f2a…9c", "kind": "image", "name": "设计稿.png",
-  "localPath": "C:\\Users\\me\\.nx-kv\\attachments\\24\\设计稿.png", "synced": true }
+{ "status": "blocked", "reason": "goal_not_reached", "remainingSec": 1830,
+  "hint": "时间未到，不能标记完成——请派出 sub agent 重新提出新的需求；到点后…再来标完成" }
 ```
 
-于是 agent 只要 `Read` 那个路径就行——不必拼出图 URL、不受网络和跨域影响。
-下载失败**不会**让清单读不出来：附件拿不到与任务读不到是两件事，
-失败项如实出现在 `attachmentsSync.failures` 里。
+按提示派 sub agent 重提需求，到点（check 返回 `reached:true`）后再 `done`。
+目录级 timegoal（`timegoal set --cwd …`）是「这个目录整体跑多久」的预算，不是单条任务的。
 
-> ⚠️ 追加附件会**改写正文**，而定位是按正文内容（`--ref`）——
-> 同一条任务连续操作时，要用**新的** text 去 `--ref`。
+## 文档库（refs）：任务上下文的来源
 
-## ⚠️ 定位一律按内容，不按 id（最容易改错数据的地方）
+任务 instruction 里只会**内嵌仓库主篇**的正文；其余文档只给 `refId` + `desc`，
+需要时用命令取：
 
-待办的 id **非常容易重复**，两条独立的原因：
-
-1. 分配只扫「待办 + 冻结」，所以任务完成、待办清空后 **id 会被复用**——
-   `todo:done` 里因此会积累同 id 的多条（实测某账号 68 条里有 7 条 id=29）。
-2. 同一个主题下，内容重复本来就是常态——「修复登录页」这类任务会被反复投递。
-
-所以 `id` 只是**给人看的元数据**（继续分配、继续出现在输出里），
-**不是任何命令的入参**。单条操作一律用 `--ref <内容>`：
-
-```
-$ nx-kv todo get --ref "旧记录"
-错误: task「旧记录」命中 3 条，无法确定是哪一条。用 --pick <n> 选择：
-  [0] done   qus   2026-08-15T15:09:00.097123
-  [1] done   qus   2026-08-22T10:40:12.469526
-  [2] done   fr    2026-08-30T10:36:25.731238
-
-$ nx-kv todo get --ref "旧记录" --pick 2      # 按编号选
-$ nx-kv todo get --ref "旧记录" --topic fr    # 或按主题收窄
+```bash
+nx-kv docs get --ref <refId> --json      # 取文档正文（按 refId）
+nx-kv docs list --json                   # 文档列表
+nx-kv docs bindings --repo <key> --json  # 这篇仓库绑了哪些文档
 ```
 
-同一规则适用于 `get` / `update` / `remove` / `done` / `freeze` / `unfreeze`。
-`update` 用 `--match-topic` 消歧（`--topic` 在那里表示「改成这个主题」）。
-**内容含空格时要加引号**（`--ref "修复登录页 500"`）——`--ref` 是普通 flag，值不会自动吃掉后面的 token。
+ref 本身**不是附件、没有本地路径**：它是一篇库内文档 + 归属（仓库 / 组）与一行 desc。
+需要“读文件”的只有附件；需要“读文档”的一律走 `docs get --ref`。
+
+## 队列管理（需要时）
+
+```bash
+nx-kv localtask list --json                          # 全部主题：目录、现状、等待中、待领取数
+nx-kv localtask update --id <n> --text "<新内容>"     # 改正文（未领取时）
+nx-kv localtask reorder --id <n> --before-id <m>     # 调序
+nx-kv localtask remove --id <n>                      # 软删除（task restore 可恢复）
+nx-kv localtask reopen --id <n> --text "<新正文>"     # 就地重开（并记 history）
+nx-kv localtask chain --id <n> --json                # 任务链
+nx-kv localtask clone --id <n>                       # 复制一条新任务
+nx-kv localtask preview --id <n> --json              # 预览领取交付（零副作用）
+nx-kv localtask topic remove --cwd "<目录>" --force  # 删整个主题
+nx-kv localtask config --timeout 180                 # 目录级等待/交付设置
+```
+
+## 硬规则
+
+1. **同一个目录同一时刻只挂一个 wait**（waiters 是进程内注册表）。
+2. **timeout 是业务结果，不是错误**（exit 0）：按「暂时没活」收尾，不要当失败重试。
+3. **wait 是本轮最后一步**：拿到任务或超时之前，不要提前结束本轮。
+4. **instruction 有则必读**：组上下文 / 附件 / 时间目标 / 收尾要求都是硬约束。
+5. **带时间目标的任务不许提前标完成**——被拒绝就按提示派 sub agent 重提需求。
+6. **`get` 与 `wait` 不要并发跑**（都在同一队列上抢任务）。
 
 ## Ref 加载引导
 
 | ref | 何时读取 | 路径 |
 | --- | --- | --- |
-| [[agent-workflow]] | 要**领任务/收单**时——按主题拉待办、读上下文、与用户对齐意图、回填结果的完整 SOP | references/agent-workflow.md |
-| [[todo-commands]] | 要**敲具体命令**、查退出码/数据结构/避坑时 | references/todo-commands.md |
-| [[repo-registry]] | 要**登记本机仓库 / 查看项目组编排**时——`nx-kv repo ...` / `nx-kv board ...`（`board` 是项目组的命令别名；仓库上下文也用作本地任务的上下文） | references/repo-registry.md |
+| [[agent-workflow]] | 要**领任务/收单**时——get → instruction → 对齐 → 回填的完整 SOP | references/agent-workflow.md |
+| [[localtask-commands]] | 要**敲具体命令**、查退出码/数据结构/避坑时 | references/localtask-commands.md |
+| [[repo-registry]] | 要**登记本机仓库 / 查看项目组编排**时——`nx-kv repo ...` / `nx-kv board ...` | references/repo-registry.md |
 
 **不要预先全读**：收单才读前者，查命令才读后者；平时它们不进上下文。

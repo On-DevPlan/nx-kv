@@ -10,7 +10,6 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { APP_NAME, DEFAULT_PORT } from '../core/paths.js';
-import { configPathFromEnv } from '../core/config.js';
 import { toErrorPayload, exitCodeOf, badInput } from '../core/errors.js';
 import { ACTIONS, registry } from './registry.js';
 import type { Registry } from './registry.js';
@@ -97,27 +96,18 @@ function isZodAction(cmd: AnyAction): cmd is ZodBoundAction & AnyAction {
 }
 
 // 全局 flag 先摘掉：它们可以出现在 argv 任意位置，不属于任何 action 的声明。
-function splitGlobals(argv: string[]): { rest: string[]; json: boolean; cfgPath?: string } {
+function splitGlobals(argv: string[]): { rest: string[]; json: boolean } {
   const rest: string[] = [];
   let json = false;
-  let cfgPath: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--json') {
       json = true;
       continue;
     }
-    if (a === '--config') {
-      cfgPath = argv[++i];
-      continue;
-    }
-    if (a.startsWith('--config=')) {
-      cfgPath = a.slice('--config='.length);
-      continue;
-    }
     rest.push(a);
   }
-  return { rest, json, cfgPath };
+  return { rest, json };
 }
 
 // 匹配命令：把声明路径与 argv 前缀逐 token 比较，选最长匹配。
@@ -396,7 +386,6 @@ async function cmdServe(ctx: ServeCtx): Promise<void> {
 
   console.log('nx-kv · nx-kv v' + VERSION);
   console.log(`面板:   ${addr}`);
-  console.log(`配置:   ${configPathFromEnv()}`);
   console.log('CLI:    nx-kv help（每个按钮都有对应命令，agent 可加 --json）');
   if (autoExit) console.log('模式:   空闲自释放（面板关闭且无等待中的主题后自动退出）');
   console.log('按 Ctrl+C 停止');
@@ -431,8 +420,7 @@ export class CliApp {
 
   /** 唯一对外入口：bin/kv.mjs 与 dev（tsx 直跑）都从 run(argv) 进。 */
   async run(argv: string[]): Promise<void> {
-    const { rest, json, cfgPath } = splitGlobals(argv);
-    if (cfgPath) process.env.NX_KV_CONFIG = cfgPath;
+    const { rest, json } = splitGlobals(argv);
 
     const hit = resolveCommand(rest);
 

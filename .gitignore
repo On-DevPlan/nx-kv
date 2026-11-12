@@ -12,6 +12,8 @@ src/web/frontend/dist/
 # 工具隔离目录（scratch 工具不入库）
 .tool/
 .workbuddy/
+# Trae 本机会话计划 / 临时文档（agent 工作状态，不入库）
+.trae/
 
 # 临时目录（截图、一次性脚本等 scratch 产物，工作约定里就是可弃中间物）
 temp/

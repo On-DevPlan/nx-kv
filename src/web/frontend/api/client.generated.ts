@@ -7,12 +7,6 @@
 
 import type { z } from 'zod';
 import type {
-  AuthLoginAction,
-  AuthLogoutAction,
-  AuthMeAction,
-  AuthStatusAction,
-} from '../../../modules/auth/actions/_manifest.generated.js';
-import type {
   BundledGetAction,
   BundledGroupsAction,
   BundledInstallAction,
@@ -29,6 +23,8 @@ import type {
   DocListAction,
   DocMdfileAction,
   DocMdfilesAction,
+  DocRefAddAction,
+  DocRefUnbindAction,
   DocRemoveAction,
   DocUpdateAction,
   DocsBindingsAction,
@@ -39,11 +35,8 @@ import type {
 import type {
   FileContentAction,
   FileGetAction,
-  FileListAction,
   FileOrphansAction,
   FilePruneAction,
-  FileRemoveAction,
-  FileSyncAction,
   FileUploadAction,
 } from '../../../modules/file/actions/_manifest.generated.js';
 import type {
@@ -63,7 +56,6 @@ import type {
   LocaltaskEventsAction,
   LocaltaskForkAction,
   LocaltaskGetAction,
-  LocaltaskImportRemoteAction,
   LocaltaskListAction,
   LocaltaskPresenceAction,
   LocaltaskPreviewAction,
@@ -78,7 +70,6 @@ import type {
   LocaltaskTopicRemoveAction,
   LocaltaskTopicRemoveManyAction,
   LocaltaskUpdateAction,
-  TaskMoveAction,
 } from '../../../modules/localtask/actions/_manifest.generated.js';
 import type {
   BoardAddAction,
@@ -150,33 +141,6 @@ import type {
   TemplatesRemoveAction,
   TemplatesUpdateAction,
 } from '../../../modules/templates/actions/_manifest.generated.js';
-import type {
-  GroupAddAction,
-  GroupCurrentAction,
-  GroupGetAction,
-  GroupListAction,
-  GroupMembersAction,
-  GroupRemoveAction,
-  GroupUpdateAction,
-  GroupUseAction,
-  PromptGetAction,
-  PromptRemoveAction,
-  PromptSetAction,
-  TodoAddAction,
-  TodoArchiveAction,
-  TodoAttachAction,
-  TodoAttachmentsAction,
-  TodoDoneAction,
-  TodoFreezeAction,
-  TodoGetAction,
-  TodoListAction,
-  TodoRemoveAction,
-  TodoUnfreezeAction,
-  TodoUpdateAction,
-  TopicAddAction,
-  TopicListAction,
-  TopicRemoveAction,
-} from '../../../modules/todo/actions/_manifest.generated.js';
 
 /** 传输层契约（手写的那一半）：返回 data（错误信封由 api() 拆好，失败即 throw）。 */
 export interface Transport {
@@ -184,22 +148,14 @@ export interface Transport {
 }
 
 export interface ApiClient {
-/** 聚合上下文：版本 / 登录态 / 工作空间 / 命令表 */
+/** 聚合上下文：版本 / 命令表 */
   bootstrap(): Promise<Awaited<ReturnType<InstanceType<typeof BootstrapAction>['run']>>>;
-/** 健康检查（本机配置 + 后端可达性） */
+/** 健康检查（纯本机） */
   health(): Promise<Awaited<ReturnType<InstanceType<typeof HealthAction>['run']>>>;
 /** 读本机设置（附件自动下载、附件目录、参考仓库存储根） */
   get(): Promise<Awaited<ReturnType<InstanceType<typeof SettingGetAction>['run']>>>;
 /** 改本机设置（只改传入项） */
   set(input?: z.input<InstanceType<typeof SettingSetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof SettingSetAction>['run']>>>;
-/** 登录并保存 token 到本机配置 */
-  login(input: z.input<InstanceType<typeof AuthLoginAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof AuthLoginAction>['run']>>>;
-/** 清除本机保存的 token */
-  logout(): Promise<Awaited<ReturnType<InstanceType<typeof AuthLogoutAction>['run']>>>;
-/** 向后端确认身份（验证 token 是否仍有效） */
-  me(): Promise<Awaited<ReturnType<InstanceType<typeof AuthMeAction>['run']>>>;
-/** 查看本机登录态（不请求后端，离线可用） */
-  status(): Promise<Awaited<ReturnType<InstanceType<typeof AuthStatusAction>['run']>>>;
 /** 新建看板（主题容器） */
   add(input: z.input<InstanceType<typeof BoardAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof BoardAddAction>['run']>>>;
 /** 把仓库聚合进看板（可同时在多个看板；--remove 移出；--before 插位；仓库给 id / key / 路径） */
@@ -306,11 +262,15 @@ export interface ApiClient {
   mdfile(input: z.input<InstanceType<typeof DocMdfileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocMdfileAction>['run']>>>;
 /** 列出已登记的本地 md 文件（mdfile 附件；--missing 只看失效行） */
   mdfiles(input?: z.input<InstanceType<typeof DocMdfilesAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocMdfilesAction>['run']>>>;
+/** 新建文档条目（desc + 归属；正文为空、直接可编辑；不创建任何文件） */
+  refAdd2(input?: z.input<InstanceType<typeof DocRefAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRefAddAction>['run']>>>;
 /** 删除自有文档（外部绑定不可删） */
   docRemove2(input: z.input<InstanceType<typeof DocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRemoveAction>['run']>>>;
-/** 写文档正文（面板保存走这里；自有走 own 树、外部走绑定闭包内原文件；写盘后摘要回写 desc / 组内 note） */
+/** 解绑直接 ref 的归属（不删文档；没有归属后回到 orphan） */
+  unbind(input: z.input<InstanceType<typeof DocRefUnbindAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRefUnbindAction>['run']>>>;
+/** 写文档正文 / 描述（面板保存走这里；ref 是 DB 实体，--ref 可给 refId；只给 --desc 时不动正文） */
   docUpdate(input: z.input<InstanceType<typeof DocUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocUpdateAction>['run']>>>;
-/** 查文档归属（--ref <docId> 看这篇被谁引用；--host <key> 看这个宿主的文档集；position=0 为主篇） */
+/** 查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> / --group <组> 看宿主文档集；position=0 为主篇） */
   bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>>;
 /** 双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js） */
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
@@ -350,8 +310,6 @@ export interface ApiClient {
   fork(input: z.input<InstanceType<typeof LocaltaskForkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskForkAction>['run']>>>;
 /** 查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置） */
   localtaskGet(input: z.input<InstanceType<typeof LocaltaskGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskGetAction>['run']>>>;
-/** 从远程清单（KV 后端）导入任务到本地队列：按内容定位远程那条 → 落进本地队列 → 远程那条标记为已完成（note 写明被哪个队列领走） */
-  importRemote(input?: z.input<InstanceType<typeof LocaltaskImportRemoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskImportRemoteAction>['run']>>>;
 /** 总览全部主题（工作目录、现状、是否等待中、待领取数） */
   localtaskList(): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskListAction>['run']>>>;
 /** 探测主面板上当前打开的「实时任务」标签数（活动 SSE 连接数；用于 wait 不重复开页） */
@@ -380,8 +338,6 @@ export interface ApiClient {
   topicRemoveMany(input?: z.input<InstanceType<typeof LocaltaskTopicRemoveManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTopicRemoveManyAction>['run']>>>;
 /** 编辑任务内容（按 --id，定位到 --cwd 主题或 --key）；可同时改时间目标声明（--duration/--goal-prompt/--clear-goal，仅未领取时可改——领取即计时，起表后声明是既成事实） */
   localtaskUpdate(input: z.input<InstanceType<typeof LocaltaskUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskUpdateAction>['run']>>>;
-/** 在本机队列与云端清单之间迁移任务（先写目标端、成功才改源端；--undo 按返回的 target-id 精确撤销） */
-  move(input?: z.input<InstanceType<typeof TaskMoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TaskMoveAction>['run']>>>;
 /** 时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary */
   timegoalCheck(input: z.input<InstanceType<typeof TimegoalCheckAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalCheckAction>['run']>>>;
 /** 清空本目录 timegoal（无则 no_goal，不抛错） */
@@ -408,71 +364,15 @@ export interface ApiClient {
   templatesRemove(input: z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesRemoveAction>['run']>>>;
 /** 编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改） */
   templatesUpdate(input: z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesUpdateAction>['run']>>>;
-/** 新建工作空间 */
-  groupAdd(input: z.input<InstanceType<typeof GroupAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof GroupAddAction>['run']>>>;
-/** 查看当前工作空间 */
-  current(): Promise<Awaited<ReturnType<InstanceType<typeof GroupCurrentAction>['run']>>>;
-/** 查看单个工作空间 */
-  groupGet(input: z.input<InstanceType<typeof GroupGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof GroupGetAction>['run']>>>;
-/** 列出我的工作空间（* 为当前） */
-  groupList(): Promise<Awaited<ReturnType<InstanceType<typeof GroupListAction>['run']>>>;
-/** 查看工作空间成员 */
-  members(input: z.input<InstanceType<typeof GroupMembersAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof GroupMembersAction>['run']>>>;
-/** 解散工作空间（后端要求组内已无 KV） */
-  groupRemove(input: z.input<InstanceType<typeof GroupRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof GroupRemoveAction>['run']>>>;
-/** 改名 / 改描述（只改传入的字段） */
-  groupUpdate(input: z.input<InstanceType<typeof GroupUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof GroupUpdateAction>['run']>>>;
-/** 切换当前工作空间（id 或名称；0 / default 回默认组） */
-  use(input: z.input<InstanceType<typeof GroupUseAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof GroupUseAction>['run']>>>;
-/** 读取某主题的上下文提示词 */
-  promptGet(input: z.input<InstanceType<typeof PromptGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptGetAction>['run']>>>;
-/** 删除某主题的提示词 */
-  promptRemove(input: z.input<InstanceType<typeof PromptRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptRemoveAction>['run']>>>;
-/** 写入某主题的上下文提示词（覆盖） */
-  promptSet(input: z.input<InstanceType<typeof PromptSetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptSetAction>['run']>>>;
-/** 新增任务到待办（topic 不在快捷列表时自动补上） */
-  todoAdd(input: z.input<InstanceType<typeof TodoAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoAddAction>['run']>>>;
-/** 把已完成里较旧的条目归档到冷 key（默认 30 天前） */
-  archive(input?: z.input<InstanceType<typeof TodoArchiveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoArchiveAction>['run']>>>;
-/** 给任务追加附件：--path 上传本机文件，或 --fileId 追加已上传附件，以 markdown 嵌入正文末尾 */
-  todoAttach(input: z.input<InstanceType<typeof TodoAttachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoAttachAction>['run']>>>;
-/** 列出某条任务引用的附件，以及本地是否已有（给 agent 直接读本地文件） */
-  todoAttachments(input: z.input<InstanceType<typeof TodoAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoAttachmentsAction>['run']>>>;
-/** 标记完成（--ref 定位；--result 写进 note 作为完成结果） */
-  todoDone(input: z.input<InstanceType<typeof TodoDoneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoDoneAction>['run']>>>;
-/** 冻结任务（按内容定位；id 保留，解冻时校验冲突） */
-  freeze(input: z.input<InstanceType<typeof TodoFreezeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoFreezeAction>['run']>>>;
-/** 查看单个任务（按内容定位；自动在待办/已完成/冻结里找） */
-  todoGet(input: z.input<InstanceType<typeof TodoGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoGetAction>['run']>>>;
-/** 列出任务（--topic / --status 过滤；默认三个桶全列） */
-  todoList(input?: z.input<InstanceType<typeof TodoListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoListAction>['run']>>>;
-/** 删除任务（按内容定位，只删命中的那一条） */
-  todoRemove(input: z.input<InstanceType<typeof TodoRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoRemoveAction>['run']>>>;
-/** 解冻回待办（按内容定位；id 撞车时自动换新 id） */
-  unfreeze(input: z.input<InstanceType<typeof TodoUnfreezeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoUnfreezeAction>['run']>>>;
-/** 编辑任务（按内容定位，只改传入的字段） */
-  todoUpdate(input: z.input<InstanceType<typeof TodoUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TodoUpdateAction>['run']>>>;
-/** 加入快捷主题 */
-  topicAdd2(input: z.input<InstanceType<typeof TopicAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TopicAddAction>['run']>>>;
-/** 快捷主题列表（含各状态任务数） */
-  topicList(input?: z.input<InstanceType<typeof TopicListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TopicListAction>['run']>>>;
-/** 移出快捷主题（不动已有任务；仍被任务使用时会在结果里提示） */
-  topicRemove2(input: z.input<InstanceType<typeof TopicRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TopicRemoveAction>['run']>>>;
-/** 取附件本体：面板内联预览；CLI 打印出图地址与本地路径 */
+/** 取附件本体：面板内联预览；CLI 打印本机路径 */
   content(input: z.input<InstanceType<typeof FileContentAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FileContentAction>['run']>>>;
-/** 查单个附件的元数据与本地路径 */
+/** 查单个附件的元数据与本机路径 */
   fileGet(input: z.input<InstanceType<typeof FileGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FileGetAction>['run']>>>;
-/** 列出当前用户空间的附件（含本地已同步路径） */
-  fileList(input?: z.input<InstanceType<typeof FileListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FileListAction>['run']>>>;
 /** 列出无主资源（没有任何任务/文档关系边；删任务、删文档、删正文行之后用） */
   orphans(): Promise<Awaited<ReturnType<InstanceType<typeof FileOrphansAction>['run']>>>;
 /** 回收无主资源（DB 行 + 附件根目录内的本机/镜像字节；仍被引用的不删） */
   filePrune(input?: z.input<InstanceType<typeof FilePruneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FilePruneAction>['run']>>>;
-/** 删除附件（后端软删；本地副本要清用 file sync --prune） */
-  fileRemove(input: z.input<InstanceType<typeof FileRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FileRemoveAction>['run']>>>;
-/** 把附件同步到本机（默认全部；--ids 只同步指定附件）——为了不再依赖网络读附件 */
-  fileSync(input?: z.input<InstanceType<typeof FileSyncAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FileSyncAction>['run']>>>;
-/** 上传附件（--local 存本机附件仓，本地任务贴图用；默认传当前用户空间的云端图床） */
+/** 上传附件到本机附件仓（不碰网；本地任务/文档贴图用） */
   upload(input?: z.input<InstanceType<typeof FileUploadAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FileUploadAction>['run']>>>;
 /** 输出内置 skill 全文（prefix + sentinel + 正文 + install 状态），并顺手装到本机 */
   bundledGet(input?: z.input<InstanceType<typeof BundledGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof BundledGetAction>['run']>>>;
@@ -505,30 +405,8 @@ export function createApiClient(transport: Transport): ApiClient {
     async set(input?: z.input<InstanceType<typeof SettingSetAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof SettingSetAction>['_input']>);
       const path = `/api/setting`;
-      const body = { "autoSyncAttachments": inp["autoSyncAttachments"], "attachmentsDir": inp["attachmentsDir"], "gitRepoRoot": inp["gitRepoRoot"], "gitDevRoot": inp["gitDevRoot"] };
+      const body = { "gitRepoRoot": inp["gitRepoRoot"], "gitDevRoot": inp["gitDevRoot"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof SettingSetAction>['run']>>;
-    },
-    // action: auth.login
-    async login(input: z.input<InstanceType<typeof AuthLoginAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof AuthLoginAction>['_input']>);
-      const path = `/api/auth/login`;
-      const body = { "email": inp["email"], "password": inp["password"], "baseUrl": inp["baseUrl"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof AuthLoginAction>['run']>>;
-    },
-    // action: auth.logout
-    async logout() {
-      const path = `/api/auth/logout`;
-      return (await transport.request("POST", path, undefined)) as Awaited<ReturnType<InstanceType<typeof AuthLogoutAction>['run']>>;
-    },
-    // action: auth.me
-    async me() {
-      const path = `/api/auth/me`;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof AuthMeAction>['run']>>;
-    },
-    // action: auth.status
-    async status() {
-      const path = `/api/auth`;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof AuthStatusAction>['run']>>;
     },
     // action: board.add
     async add(input: z.input<InstanceType<typeof BoardAddAction>['_input']>) {
@@ -932,6 +810,13 @@ export function createApiClient(transport: Transport): ApiClient {
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocMdfilesAction>['run']>>;
     },
+    // action: doc.ref.add
+    async refAdd2(input?: z.input<InstanceType<typeof DocRefAddAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocRefAddAction>['_input']>);
+      const path = `/api/docs/ref`;
+      const body = { "desc": inp["desc"], "owner": inp["owner"], "repo": inp["repo"], "group": inp["group"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocRefAddAction>['run']>>;
+    },
     // action: doc.remove
     async docRemove2(input: z.input<InstanceType<typeof DocRemoveAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocRemoveAction>['_input']>);
@@ -939,11 +824,18 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "ref": inp["ref"] };
       return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof DocRemoveAction>['run']>>;
     },
+    // action: doc.ref.unbind
+    async unbind(input: z.input<InstanceType<typeof DocRefUnbindAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocRefUnbindAction>['_input']>);
+      const path = `/api/docs/unbind`;
+      const body = { "ref": inp["ref"], "type": inp["type"], "repo": inp["repo"], "group": inp["group"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocRefUnbindAction>['run']>>;
+    },
     // action: doc.update
     async docUpdate(input: z.input<InstanceType<typeof DocUpdateAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocUpdateAction>['_input']>);
       const path = `/api/docs/item`;
-      const body = { "ref": inp["ref"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"] };
+      const body = { "ref": inp["ref"], "body": inp["body"], "desc": inp["desc"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof DocUpdateAction>['run']>>;
     },
     // action: docs.bindings
@@ -953,6 +845,7 @@ export function createApiClient(transport: Transport): ApiClient {
       const q = new URLSearchParams();
       if (inp["ref"] !== undefined) q.set("ref", String(inp["ref"]));
       if (inp["host"] !== undefined) q.set("host", String(inp["host"]));
+      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>;
@@ -1109,13 +1002,6 @@ export function createApiClient(transport: Transport): ApiClient {
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskGetAction>['run']>>;
     },
-    // action: localtask.importRemote
-    async importRemote(input?: z.input<InstanceType<typeof LocaltaskImportRemoteAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskImportRemoteAction>['_input']>);
-      const path = `/api/localtasks/import-remote`;
-      const body = { "ref": inp["ref"], "cwd": inp["cwd"], "global": inp["global"], "topic": inp["topic"], "pick": inp["pick"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskImportRemoteAction>['run']>>;
-    },
     // action: localtask.list
     async localtaskList() {
       const path = `/api/localtasks`;
@@ -1214,13 +1100,6 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/localtasks/item`;
       const body = { "id": inp["id"], "text": inp["text"], "cwd": inp["cwd"], "key": inp["key"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "clear-goal": inp["clear-goal"], "clearGoal": inp["clearGoal"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "clear-block-by": inp["clear-block-by"], "clearBlockBy": inp["clearBlockBy"], "gate": inp["gate"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskUpdateAction>['run']>>;
-    },
-    // action: task.move
-    async move(input?: z.input<InstanceType<typeof TaskMoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TaskMoveAction>['_input']>);
-      const path = `/api/task/move`;
-      const body = { "from": inp["from"], "to": inp["to"], "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "topic": inp["topic"], "text": inp["text"], "pick": inp["pick"], "merge": inp["merge"], "group": inp["group"], "undo": inp["undo"], "target-id": inp["target-id"], "tombstone-id": inp["tombstone-id"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TaskMoveAction>['run']>>;
     },
     // action: timegoal.check
     async timegoalCheck(input: z.input<InstanceType<typeof TimegoalCheckAction>['_input']>) {
@@ -1325,205 +1204,10 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "scope": inp["scope"], "values": inp["values"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesUpdateAction>['run']>>;
     },
-    // action: group.add
-    async groupAdd(input: z.input<InstanceType<typeof GroupAddAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof GroupAddAction>['_input']>);
-      const path = `/api/groups`;
-      const body = { "name": inp["name"], "description": inp["description"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof GroupAddAction>['run']>>;
-    },
-    // action: group.current
-    async current() {
-      const path = `/api/group`;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof GroupCurrentAction>['run']>>;
-    },
-    // action: group.get
-    async groupGet(input: z.input<InstanceType<typeof GroupGetAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof GroupGetAction>['_input']>);
-      const path = `/api/groups/${encodeURIComponent(String(inp["id"]))}`;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof GroupGetAction>['run']>>;
-    },
-    // action: group.list
-    async groupList() {
-      const path = `/api/groups`;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof GroupListAction>['run']>>;
-    },
-    // action: group.members
-    async members(input: z.input<InstanceType<typeof GroupMembersAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof GroupMembersAction>['_input']>);
-      const path = `/api/groups/${encodeURIComponent(String(inp["id"]))}/members`;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof GroupMembersAction>['run']>>;
-    },
-    // action: group.remove
-    async groupRemove(input: z.input<InstanceType<typeof GroupRemoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof GroupRemoveAction>['_input']>);
-      const path = `/api/groups/${encodeURIComponent(String(inp["id"]))}`;
-      return (await transport.request("DELETE", path, undefined)) as Awaited<ReturnType<InstanceType<typeof GroupRemoveAction>['run']>>;
-    },
-    // action: group.update
-    async groupUpdate(input: z.input<InstanceType<typeof GroupUpdateAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof GroupUpdateAction>['_input']>);
-      const path = `/api/groups/${encodeURIComponent(String(inp["id"]))}`;
-      const body = { "name": inp["name"], "description": inp["description"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof GroupUpdateAction>['run']>>;
-    },
-    // action: group.use
-    async use(input: z.input<InstanceType<typeof GroupUseAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof GroupUseAction>['_input']>);
-      const path = `/api/group`;
-      const body = { "locator": inp["locator"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof GroupUseAction>['run']>>;
-    },
-    // action: prompt.get
-    async promptGet(input: z.input<InstanceType<typeof PromptGetAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof PromptGetAction>['_input']>);
-      let path = `/api/prompts/${encodeURIComponent(String(inp["topic"]))}`;
-      const q = new URLSearchParams();
-      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PromptGetAction>['run']>>;
-    },
-    // action: prompt.remove
-    async promptRemove(input: z.input<InstanceType<typeof PromptRemoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof PromptRemoveAction>['_input']>);
-      const path = `/api/prompts/${encodeURIComponent(String(inp["topic"]))}`;
-      const body = { "group": inp["group"] };
-      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof PromptRemoveAction>['run']>>;
-    },
-    // action: prompt.set
-    async promptSet(input: z.input<InstanceType<typeof PromptSetAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof PromptSetAction>['_input']>);
-      const path = `/api/prompts/${encodeURIComponent(String(inp["topic"]))}`;
-      const body = { "text": inp["text"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof PromptSetAction>['run']>>;
-    },
-    // action: todo.add
-    async todoAdd(input: z.input<InstanceType<typeof TodoAddAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoAddAction>['_input']>);
-      const path = `/api/todo`;
-      const body = { "text": inp["text"], "topic": inp["topic"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TodoAddAction>['run']>>;
-    },
-    // action: todo.archive
-    async archive(input?: z.input<InstanceType<typeof TodoArchiveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoArchiveAction>['_input']>);
-      const path = `/api/todo/archive`;
-      const body = { "before": inp["before"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TodoArchiveAction>['run']>>;
-    },
-    // action: todo.attach
-    async todoAttach(input: z.input<InstanceType<typeof TodoAttachAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoAttachAction>['_input']>);
-      const path = `/api/todo/attach`;
-      const body = { "ref": inp["ref"], "path": inp["path"], "fileId": inp["fileId"], "name": inp["name"], "kind": inp["kind"], "accessLevel": inp["accessLevel"], "topic": inp["topic"], "pick": inp["pick"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TodoAttachAction>['run']>>;
-    },
-    // action: todo.attachments
-    async todoAttachments(input: z.input<InstanceType<typeof TodoAttachmentsAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoAttachmentsAction>['_input']>);
-      let path = `/api/todo/attachments`;
-      const q = new URLSearchParams();
-      if (inp["ref"] !== undefined) q.set("ref", String(inp["ref"]));
-      if (inp["topic"] !== undefined) q.set("topic", String(inp["topic"]));
-      if (inp["pick"] !== undefined) q.set("pick", String(inp["pick"]));
-      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof TodoAttachmentsAction>['run']>>;
-    },
-    // action: todo.done
-    async todoDone(input: z.input<InstanceType<typeof TodoDoneAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoDoneAction>['_input']>);
-      const path = `/api/todo/done`;
-      const body = { "ref": inp["ref"], "result": inp["result"], "topic": inp["topic"], "pick": inp["pick"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TodoDoneAction>['run']>>;
-    },
-    // action: todo.freeze
-    async freeze(input: z.input<InstanceType<typeof TodoFreezeAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoFreezeAction>['_input']>);
-      const path = `/api/todo/freeze`;
-      const body = { "ref": inp["ref"], "topic": inp["topic"], "pick": inp["pick"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TodoFreezeAction>['run']>>;
-    },
-    // action: todo.get
-    async todoGet(input: z.input<InstanceType<typeof TodoGetAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoGetAction>['_input']>);
-      let path = `/api/todo/item`;
-      const q = new URLSearchParams();
-      if (inp["ref"] !== undefined) q.set("ref", String(inp["ref"]));
-      if (inp["topic"] !== undefined) q.set("topic", String(inp["topic"]));
-      if (inp["pick"] !== undefined) q.set("pick", String(inp["pick"]));
-      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof TodoGetAction>['run']>>;
-    },
-    // action: todo.list
-    async todoList(input?: z.input<InstanceType<typeof TodoListAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoListAction>['_input']>);
-      let path = `/api/todo`;
-      const q = new URLSearchParams();
-      if (inp["topic"] !== undefined) q.set("topic", String(inp["topic"]));
-      if (inp["status"] !== undefined) q.set("status", String(inp["status"]));
-      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof TodoListAction>['run']>>;
-    },
-    // action: todo.remove
-    async todoRemove(input: z.input<InstanceType<typeof TodoRemoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoRemoveAction>['_input']>);
-      const path = `/api/todo/item`;
-      const body = { "ref": inp["ref"], "topic": inp["topic"], "pick": inp["pick"], "group": inp["group"] };
-      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof TodoRemoveAction>['run']>>;
-    },
-    // action: todo.unfreeze
-    async unfreeze(input: z.input<InstanceType<typeof TodoUnfreezeAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoUnfreezeAction>['_input']>);
-      const path = `/api/todo/unfreeze`;
-      const body = { "ref": inp["ref"], "topic": inp["topic"], "pick": inp["pick"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TodoUnfreezeAction>['run']>>;
-    },
-    // action: todo.update
-    async todoUpdate(input: z.input<InstanceType<typeof TodoUpdateAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TodoUpdateAction>['_input']>);
-      const path = `/api/todo/item`;
-      const body = { "ref": inp["ref"], "topic": inp["topic"], "text": inp["text"], "note": inp["note"], "matchTopic": inp["matchTopic"], "pick": inp["pick"], "group": inp["group"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TodoUpdateAction>['run']>>;
-    },
-    // action: topic.add
-    async topicAdd2(input: z.input<InstanceType<typeof TopicAddAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TopicAddAction>['_input']>);
-      const path = `/api/topics`;
-      const body = { "name": inp["name"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TopicAddAction>['run']>>;
-    },
-    // action: topic.list
-    async topicList(input?: z.input<InstanceType<typeof TopicListAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TopicListAction>['_input']>);
-      let path = `/api/topics`;
-      const q = new URLSearchParams();
-      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof TopicListAction>['run']>>;
-    },
-    // action: topic.remove
-    async topicRemove2(input: z.input<InstanceType<typeof TopicRemoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TopicRemoveAction>['_input']>);
-      const path = `/api/topics`;
-      const body = { "name": inp["name"], "group": inp["group"] };
-      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof TopicRemoveAction>['run']>>;
-    },
     // action: file.content
     async content(input: z.input<InstanceType<typeof FileContentAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof FileContentAction>['_input']>);
-      let path = `/api/file/content/${encodeURIComponent(String(inp["fileId"]))}`;
-      const q = new URLSearchParams();
-      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      const path = `/api/file/content/${encodeURIComponent(String(inp["fileId"]))}`;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof FileContentAction>['run']>>;
     },
     // action: file.get
@@ -1532,22 +1216,9 @@ export function createApiClient(transport: Transport): ApiClient {
       let path = `/api/file/item`;
       const q = new URLSearchParams();
       if (inp["fileId"] !== undefined) q.set("fileId", String(inp["fileId"]));
-      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof FileGetAction>['run']>>;
-    },
-    // action: file.list
-    async fileList(input?: z.input<InstanceType<typeof FileListAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof FileListAction>['_input']>);
-      let path = `/api/file`;
-      const q = new URLSearchParams();
-      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
-      if (inp["limit"] !== undefined) q.set("limit", String(inp["limit"]));
-      if (inp["offset"] !== undefined) q.set("offset", String(inp["offset"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof FileListAction>['run']>>;
     },
     // action: file.orphans
     async orphans() {
@@ -1561,25 +1232,11 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "dry-run": inp["dry-run"], "dryRun": inp["dryRun"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof FilePruneAction>['run']>>;
     },
-    // action: file.remove
-    async fileRemove(input: z.input<InstanceType<typeof FileRemoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof FileRemoveAction>['_input']>);
-      const path = `/api/file/item`;
-      const body = { "fileId": inp["fileId"], "group": inp["group"] };
-      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof FileRemoveAction>['run']>>;
-    },
-    // action: file.sync
-    async fileSync(input?: z.input<InstanceType<typeof FileSyncAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof FileSyncAction>['_input']>);
-      const path = `/api/file/sync`;
-      const body = { "ids": inp["ids"], "dir": inp["dir"], "prune": inp["prune"], "dryRun": inp["dryRun"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof FileSyncAction>['run']>>;
-    },
     // action: file.upload
     async upload(input?: z.input<InstanceType<typeof FileUploadAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof FileUploadAction>['_input']>);
       const path = `/api/file`;
-      const body = { "path": inp["path"], "content": inp["content"], "name": inp["name"], "contentType": inp["contentType"], "local": inp["local"], "accessLevel": inp["accessLevel"], "group": inp["group"] };
+      const body = { "path": inp["path"], "content": inp["content"], "name": inp["name"], "contentType": inp["contentType"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof FileUploadAction>['run']>>;
     },
     // action: bundled.get

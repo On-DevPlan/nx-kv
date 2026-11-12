@@ -29,11 +29,14 @@ export type DocRefWithMeta = DocRef;
 // ─── 自有 rel 守卫 ─────────────────────────────────────────────────────
 
 /**
- * 自有树内相对路径：assertSafeRelPath（拒绝对路径与 .. 段，返回归一化 POSIX）
- * + 必须以 .md 结尾。返回归一化 rel，调用方应使用返回值。
+ * 自有 rel：assertSafeRelPath（拒绝对路径与 .. 段，返回归一化 POSIX）
+ * + 必须是 .md 结尾，或 v7 的直接 ref id（`ref_<16hex>`，ref 是 DB 实体，
+ *   没有文件路径——rel 只作内部唯一键，不做文件名）。
+ * 返回归一化 rel，调用方应使用返回值。
  */
 export function assertOwnedRel(rel: unknown, label = '文档路径'): string {
   const norm = assertSafeRelPath(rel, { label });
+  if (/^ref_[0-9a-f]{16}$/i.test(norm)) return norm;
   if (!/\.md$/i.test(norm)) throw badInput(label + '必须是 .md 文件: ' + String(rel));
   return norm;
 }

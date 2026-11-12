@@ -1,7 +1,6 @@
-// system.bootstrap —— 面板启动上下文：版本 / 登录态 / 工作空间 / 命令表。
+// system.bootstrap —— 面板启动上下文：版本 / 命令表。
 //
 // 「一条 action 一个文件」：声明（@action 元数据）、契约（zod）与实现同文件。
-// 依赖经 IoC 容器取（this.deps.get('config')）——测试可换一整个容器，不必改构造参数。
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { action } from '../../../runtime/action-decorator.js';
@@ -22,49 +21,21 @@ export class BootstrapAction extends ActionBase<typeof input> {
     id: 'system.bootstrap',
     cli: ['bootstrap'],
     http: ['GET', '/api/bootstrap'],
-    summary: '聚合上下文：版本 / 登录态 / 工作空间 / 命令表',
+    summary: '聚合上下文：版本 / 命令表',
     input,
   })
   override async run(_ctx: ActionInput<this['_input']>): Promise<{
     app: { name: string; version: string };
     version: string;
-    configPath: string;
-    baseUrl: string;
-    loggedIn: boolean;
-    email: string;
-    userId: number;
-    groupId: number;
-    groups: unknown[];
-    groupsError: string;
     defaultPort: number;
     projectRoot: string;
     commands: CommandEntry[];
   }> {
-    const config = this.deps.get('config');
-    const kvapi = this.deps.get('kvapi');
-    const cfg = await config.loadConfig();
-    let groups: unknown[] = [];
-    let groupsError = '';
-    if (cfg.token) {
-      try {
-        groups = await kvapi.listGroups();
-      } catch (e) {
-        groupsError = String((e as { message?: string }).message || e);
-      }
-    }
     return {
       // app 段是跨项目的认领签名：serve 端口被占时靠 app.name 判断
       // 「上面跑的是不是本项目的面板」——相同则复用，不同则顺延端口。
       app: { name: APP_NAME, version: VERSION },
       version: VERSION,
-      configPath: config.configPathFromEnv(),
-      baseUrl: cfg.baseUrl,
-      loggedIn: !!cfg.token,
-      email: cfg.email,
-      userId: cfg.userId,
-      groupId: cfg.groupId,
-      groups,
-      groupsError,
       defaultPort: DEFAULT_PORT,
       // serve 进程的工作目录：仓库页「扫描」的缺省根目录用它（面板进程 cwd 即宿主项目）
       projectRoot: process.cwd(),

@@ -1,33 +1,22 @@
 // 冒烟测试入口：CLI 全链路 + HTTP API + 静态页。
 //
-// **对着假后端跑**（tests/fake-backend.mjs），不碰生产服务器上的真实清单。
+// 全程纯本机：不依赖任何远程后端，也不碰生产数据。
 // 使用临时配置（NX_KV_CONFIG），不污染 ~/.nx-kv。
 // 运行：pnpm test（或 node tests/smoke.mjs）
 //
 // 用例按职责分组在 tests/smoke/ 下的兄弟文件里，这里只做装配：
-// 建台架 → 起假后端 → 按序执行各组（状态沿顺序流动）→ 收尾汇总。
+// 建台架 → 按序执行各组（状态沿顺序流动）→ 收尾汇总。
 // 退出码语义不变：有 FAIL 则 exit 1。
 import { rmSync } from 'node:fs';
-import { startFakeBackend } from './fake-backend.mjs';
 import { createCtx } from './smoke/harness.mjs';
-import { run as basic } from './smoke/01-basic.mjs';
-import { run as todo } from './smoke/02-todo.mjs';
-import { run as topic } from './smoke/03-topic.mjs';
 import { run as localtask } from './smoke/04-localtask.mjs';
 import { run as attachments } from './smoke/05-attachments.mjs';
 import { run as web } from './smoke/06-web.mjs';
 import { run as docs } from './smoke/07-docs.mjs';
 
 const ctx = createCtx();
-let backend;
 
 try {
-  backend = await startFakeBackend();
-  ctx.backend = backend;
-
-  await basic(ctx);
-  await todo(ctx);
-  await topic(ctx);
   await localtask(ctx);
   await attachments(ctx);
   await web(ctx);
@@ -35,7 +24,6 @@ try {
 
   if (ctx.server) await new Promise((r) => ctx.server.close(r));
 } finally {
-  if (backend) await backend.close();
   // T03：localtask 存储是 SQLite —— 先关本进程的连接再删临时目录
   //（子进程 CLI 各自持有的连接随进程退出释放）。
   try {

@@ -157,7 +157,7 @@ nx-kv timegoal log    --cwd <dir>                                    # 回看每
   直接照抄执行即可；`timegoal check --task <key> --summary …` 记日志，
   未到点 `localtask done` 会拒绝标记完成。
 - 不阻塞任何东西：可以同时跑人机接力、派任务给别的 agent、外部 cron
-- 不需要登录 KV 后端：纯本机
+- 纯本机：所有数据在 SQLite，不需要登录或远程后端
 
 **与 wait 的融合（只读，单向）**：这个目录挂着 timegoal 时，`localtask wait`
 返回的 `instruction` 字段会带上目标状态（默认模板：`〔时间目标「目录名」剩余 X〕`；

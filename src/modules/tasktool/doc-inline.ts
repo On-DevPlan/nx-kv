@@ -26,6 +26,14 @@ function locatorOfRel(db: any, rel: string): string {
   return String(row?.locator || '');
 }
 
+/** refId → rel（DB 实体的正文地址）；查不到返回 ''。 */
+function relOfRefId(db: any, refId: string): string {
+  const id = String(refId || '').trim();
+  if (!id) return '';
+  const row = db.get('SELECT rel FROM refs WHERE id = :id AND deleted_at IS NULL', { id });
+  return String(row?.rel || '');
+}
+
 /** 外部 md 正文：只认已登记的 mdfile（唯一文件读入口）。 */
 function readExternalViaMdfile(db: any, locator: string): string | null {
   const rec = findMdfileByPath(db, locator);
@@ -77,7 +85,8 @@ export async function inlineDocContent(items: any, task?: { id?: unknown; key?: 
   const key = String(task?.key || '');
   for (const a of Array.isArray(items) ? items : []) {
     if (a.kind !== 'ref' || a.role !== 'doc' || a.docContent) continue;
-    const raw = String(a.relPath || a.targetKey || a.locator || '');
+    // v7：ref 没有物理路径，正文按 refId 定位；relPath 只作为旧调用点的兜底。
+    const raw = String(a.relPath || relOfRefId(db, a.refId || a.targetKey) || '');
     let body: string | null = null;
     try {
       body = await readRefDocBody(raw);

@@ -4,7 +4,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Model } from 'flexlayout-react';
 import { api } from '../../api/client.js';
-import { slugName } from '../../modules/md/md-parse.js';
 import { useWikiNav } from '../../page/doc/index.jsx';
 import type { DocOpenExtra } from '../../page/doc/index.jsx';
 
@@ -60,13 +59,6 @@ export interface IntroOwner {
   [k: string]: any;
 }
 
-/** dialog() 的返回值：单输入回 string、双输入回 { value, tag }、取消回 null（外部原语）。 */
-export type DialogResult = string | { value?: string; tag?: string } | null | undefined;
-/** 输入型 dialog()（按调用点实际传的字段声明；返回值是外部原语，由调用处收口）。 */
-export type DialogFn = (opts: Record<string, unknown>) => Promise<DialogResult>;
-/** 轻提示出口。 */
-export type ToastFn = (msg: string) => void;
-
 /** useIntro 的入参。 */
 export interface UseIntroArgs {
   kind: IntroKind;
@@ -84,19 +76,8 @@ export interface IntroApi {
   links: IntroLink[];
   openMain: () => void;
   openDoc: (id: string) => void;
-  addRef: (dialog: DialogFn, toast?: ToastFn) => Promise<string | null>;
-  setLinkTag: (docId: string, tag: string, cur?: { note?: string } | null) => Promise<void>;
   reload: () => void;
   canEdit: boolean;
-}
-
-/** 主篇 docRef → 介绍目录（去掉 .md /index.md） */
-export function introDirFromRef(docRef: string | null | undefined): string {
-  const rel = String(docRef || '').startsWith('rel:') ? String(docRef).slice(4) : '';
-  if (!rel) return '';
-  if (/\/index\.md$/i.test(rel)) return rel.replace(/\/index\.md$/i, '');
-  if (/\.md$/i.test(rel)) return rel.replace(/\.md$/i, '');
-  return rel.replace(/\/+$/, '');
 }
 
 /** 仓库 / 看板 → 主篇 docId */
@@ -235,65 +216,6 @@ export function useIntro({ kind, owner, model }: UseIntroArgs): IntroApi {
     [openByDocId, openExtra]
   );
 
-  /** 追加一篇 reference（落盘 + 挂进介绍集；tag 可选，简介行渲染成小 chip） */
-  const addRef = useCallback(async (dialog: DialogFn, toast?: ToastFn) => {
-    if (!ownerKey || !docRef.startsWith('rel:')) {
-      if (toast) toast('当前简介无法补充（需要自有树路径）');
-      return null;
-    }
-    const res = await dialog({
-      title: '补充介绍文档',
-      input: true,
-      tagInput: true,
-      placeholder: '文档名（如 architecture / api-notes）',
-      tagPlaceholder: '标签（可选，如 qa）',
-    });
-    if (res === null) return null;
-    const name = typeof res === 'string' ? res : (res && res.value) || '';
-    const tag = typeof res === 'object' && res ? (res.tag || '') : '';
-    const slug = slugName(String(name).trim() || 'note').replace(/\.md$/i, '');
-    const dir = introDirFromRef(docRef) || (kind === 'repo' ? `repo/${ownerKey}` : `board/${ownerName || ownerKey}`);
-    const rel = `${dir}/reference/${slug}.md`;
-    await api('/api/docs/item', {
-      method: 'POST',
-      body: { rel, body: `# ${String(name).trim() || slug}\n\n（待补）\n` },
-    });
-    try {
-      if (kind === 'repo') {
-        await api('/api/repos/docs', { method: 'POST', body: { id: ownerKey, rel, tag: tag || undefined } });
-      } else {
-        await api('/api/docs/link', { method: 'POST', body: { board: ownerKey, doc: rel, tag: tag || undefined } });
-      }
-    } catch {
-      /* 集里已有 / 旧数据：文件已创建即可——同 doc 重复添加 = 更新（tag 以本次为准） */
-    }
-    if (toast) toast(`已补充：${rel}${tag ? ` [${tag}]` : ''}`);
-    reload();
-    openByDocId('rel:' + rel, null, openExtra);
-    return rel;
-  }, [ownerKey, docRef, kind, ownerName, openByDocId, openExtra, reload]);
-
-  /** 改 / 清一篇补充文档的标签（同 doc 重复添加 = 更新该条，note 原样保留） */
-  const setLinkTag = useCallback(async (docId: string, tag: string, cur?: { note?: string } | null) => {
-    if (!ownerKey) throw new Error('缺少归属');
-    const raw: { path?: string; rel?: string } = String(docId || '').startsWith('path:')
-      ? { path: String(docId).slice(5) }
-      : { rel: String(docId || '').startsWith('rel:') ? String(docId).slice(4) : String(docId || '') };
-    const note = (cur && cur.note) || '';
-    if (kind === 'repo') {
-      await api('/api/repos/docs', {
-        method: 'POST',
-        body: { id: ownerKey, ...raw, note: note || undefined, tag: tag || undefined },
-      });
-    } else {
-      await api('/api/docs/link', {
-        method: 'POST',
-        body: { board: ownerKey, doc: raw.path || raw.rel, note: note || undefined, tag: tag || undefined },
-      });
-    }
-    reload();
-  }, [ownerKey, kind, reload]);
-
   return {
     kind,
     label,
@@ -303,8 +225,6 @@ export function useIntro({ kind, owner, model }: UseIntroArgs): IntroApi {
     links,
     openMain,
     openDoc,
-    addRef,
-    setLinkTag,
     reload,
     canEdit: !!docRef,
   };

@@ -20,7 +20,6 @@ const ProgressPanel = lazy(() => import('./page/progress/index.jsx'));
 const RefsPanel = lazy(() => import('./page/refs/index.jsx'));
 const GroupView = lazy(() => import('./page/group/index.jsx'));
 const ReposView = lazy(() => import('./page/repos/index.jsx'));
-const TodoView = lazy(() => import('./page/cloud/index.jsx'));
 const OverviewView = lazy(() => import('./page/overview/index.jsx'));
 const TemplatePanel = lazy(() => import('./page/templates/index.jsx'));
 const DocPanel = lazy(() => import('./page/doc/index.jsx'));
@@ -157,7 +156,6 @@ export const PANELS: Record<string, PanelEntry> = {
   ) },
   group: { title: '项目组', render: (cfg, ctx) => <GroupPanel boardId={cfg && cfg.boardId} model={ctx && ctx.model} /> },
   repos: { title: '仓库管理', render: () => wrap(<ReposView />) },
-  cloud: { title: '云端总览', render: () => wrap(<TodoView />) },
   overview: { title: '全部目录总览', render: () => <OverviewPanel /> },
   // 任务模板：编辑宿主（#135）——列表在设置卡片；config 带 mode/id/scope
   templates: {
@@ -228,7 +226,7 @@ export function openTemplateEditor(model: Model | null | undefined, opts: Templa
 }
 
 /** 面板类型清单（总览页/文档里的固定顺序；旧「＋面板抽屉」已删，面板打开走侧栏树与路由） */
-export const PANEL_ORDER = ['overview', 'group', 'repos', 'cloud'];
+export const PANEL_ORDER = ['overview', 'group', 'repos'];
 
 /** 某块页签**当前**的 config（节点可能已被删：给空对象） */
 function configOf(model: Model, tabId: string): PanelConfig {

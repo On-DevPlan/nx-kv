@@ -59,7 +59,6 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M9 20h6M12 16.5V20" />
     </>
   ),
-  cloud: P('M7 18.5a4.2 4.2 0 0 1-.4-8.4 5.6 5.6 0 0 1 10.9 1.2 3.6 3.6 0 0 1-.6 7.2z'),
   archive: (
     <>
       <rect x="3.5" y="4.5" width="17" height="4.5" rx="1" />

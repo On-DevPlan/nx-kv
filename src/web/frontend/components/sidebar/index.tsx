@@ -417,7 +417,6 @@ export default function Sidebar({
 
       <div className="sfoot">
         {footEntry('#/overview', 'overview', '全部目录总览')}
-        {footEntry('#/cloud', 'cloud', '云端总览')}
         {footEntry('#/repos', 'repo', '仓库管理')}
         {waitingCount > 0 && (
           <button className="trow" onClick={() => onNavigate?.('#/overview')} title="有 agent 正在等待回填">

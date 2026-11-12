@@ -1,8 +1,8 @@
 // 冒烟测试共享台架：临时目录与环境变量、结果收集、CLI 调用助手。
 //
-// 用例按职责分组在 tests/smoke/ 下的兄弟文件里（01-basic、02-todo …），
-// 入口 tests/smoke.mjs 建好 ctx 后按序执行各组 —— 各组共享同一个假后端、
-// 同一份临时配置，状态（登录态、组切换、已种数据）沿执行顺序自然流动。
+// 用例按职责分组在 tests/smoke/ 下的兄弟文件里（04-localtask、05-attachments …），
+// 入口 tests/smoke.mjs 建好 ctx 后按序执行各组 —— 各组共享同一份临时配置，
+// 已种数据沿执行顺序自然流动。
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtempSync } from 'node:fs';
@@ -19,7 +19,7 @@ export function createCtx() {
   const cfgPath = join(tmp, 'config.json');
   // 进程内的 server.js 也要读这份配置 —— 只给子进程设 env 是不够的
   process.env.NX_KV_CONFIG = cfgPath;
-  // 附件本地镜像目录也指向临时目录：绝不在测试里往真实的 ~/.nx-kv/attachments/ 写东西
+  // 附件目录也指向临时目录：绝不在测试里往真实的 ~/.nx-kv/attachments/ 写东西
   process.env.NX_KV_ATTACHMENTS = join(tmp, 'attachments');
   // 仓库登记与文档树同样指向临时目录：docs 落盘绝不碰真实的 ~/.nx-kv/docs/
   process.env.NX_KV_REPOS_STORE = join(tmp, 'repos.json');
@@ -31,9 +31,8 @@ export function createCtx() {
     console.log((cond ? 'PASS' : 'FAIL') + '  ' + name + (extra ? '  -- ' + extra : ''));
   }
 
-  // ⚠️ 必须用**异步** execFile，不能用 spawnSync。
-  // 假后端就跑在本进程里；spawnSync 会阻塞本进程的事件循环，
-  // 子进程发的请求因此得不到响应，全部超时。
+  // ⚠️ 必须用**异步** execFile，不能用 spawnSync：spawnSync 会阻塞事件循环，
+  // 同进程里起的 HTTP 服务（06-web）就响应不了子进程的请求。
   const execFileAsync = promisify(execFile);
   async function cli(args) {
     try {
@@ -56,16 +55,5 @@ export function createCtx() {
     }
   }
 
-  const T = (id, topic, text, extra = {}) => ({
-    id,
-    topic,
-    text,
-    createdAt: '2026-08-01T00:00:00.000000',
-    doneAt: '',
-    note: '',
-    frozenAt: '',
-    ...extra,
-  });
-
-  return { tmp, cfgPath, results, check, cli, cliJson, T };
+  return { tmp, cfgPath, results, check, cli, cliJson };
 }

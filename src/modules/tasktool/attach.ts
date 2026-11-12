@@ -4,19 +4,17 @@
 // `![名](fileId)` 嵌进正文，但链路的 **agent 侧**对不上——get/wait 交付的
 // 正文里躺着一串 fileId，没有附件清单、没有本地路径；CLI 也没法给本机任务挂附件。
 //
-// 口径（任务 #15 验收反馈 2026-11-04）：**本地任务的贴图走本地存储，与云端
-// 零关联**——
+// 口径（任务 #15 验收反馈 2026-11-04）：**本地任务的附件走本机存储，零网络依赖**——
 //   - `localtask attach --path` 落**本机附件仓**（core/localatt.js，不发网）；
 //   - 领取标注先查本机仓：命中直接给绝对路径，agent 零网络读文件；
-//   - 未命中的 id（云端清单附件的引用、或 CLI --fileId 引的云端 id）才按本机
-//     设置 autoSyncAttachments 走云端镜像（core/attachstore.js），fail-open。
+//   - 未命中的 id 只保留资源 id（提示向提交方确认原始文件）。
 //   - 解析：附件语法只有一份实现（shared/attach.js——零依赖纯函数，
 //     面板与 Node 共用），这里只消费不重写；
 //   - 标注：交付载荷带 task.attachments（id/kind/name/localPath/synced/storage），
 //     instruction 追加〔附件〕段告诉 agent 去哪读文件。
 //
-// fail-open 纪律与 todo 相同：附件能不能拿到跟任务能不能交付是两件事——
-// 标注 / 同步的任何失败都不许拖垮 get/wait；正文没有引用时**载荷逐字节不变**。
+// fail-open 纪律：附件能不能拿到跟任务能不能交付是两件事——
+// 标注的任何失败都不许拖垮 get/wait；正文没有引用时**载荷逐字节不变**。
 //
 // 拆分：资源视图模型（行 → 展示/取用信息）在 attach-resource.js；
 // 〔附件〕段模板 ctx 与渲染在 attach-template.js（这里 re-export，import 路径不变）；
@@ -24,10 +22,8 @@
 import { readFile } from 'node:fs/promises';
 import { basename, resolve as resolvePath } from 'node:path';
 import { badInput } from '../../core/errors.js';
-import { loadConfig, resolveGroupId } from '../../core/config.js';
-import { contentTypeOf, isImageName } from '../../core/fileapi.js';
-import { localIndex as cloudMirrorIndex, syncAttachments } from '../../core/attachstore.js';
-import { localIndex as localStoreIndex, localUpload } from '../../core/localatt.js';
+import { contentTypeOf, isImageName } from '../../core/filekind.js';
+import { localIndex as localStoreIndex, localResolve, localUpload } from '../../core/localatt.js';
 import { getDb } from '../../core/db/index.js';
 import { tx } from '../../core/db/tx.js';
 import { attachmentsRootFromEnv } from '../../core/paths.js';
@@ -51,28 +47,22 @@ import { fileStateOf, resourceOf, targetLookupsOf, type ResourceLookups } from '
 
 export { attachmentInstruction, attachInstructionOf, attachTemplateCtx } from './attach-template.js';
 
-// 附件语法的唯一解析/生成实现（零依赖纯函数；todo 与面板共用同一份）。
-// todo 在模块互依禁列里 → 动态 import（与 getloop/add 的 reposStore 同一惯例）。
+// 附件语法的唯一解析/生成实现（零依赖纯函数；面板与 Node 共用同一份）。
+// shared 在模块互依禁列里 → 动态 import（与 getloop/add 的 reposStore 同一惯例）。
 let todoAttach: any = null;
 async function todoAttachMod(): Promise<any> {
   if (!todoAttach) todoAttach = await import('../../shared/attach.js');
   return todoAttach;
 }
 
-/** file 行逐个标注可达性：本机仓命中 → 本地绝对路径；否则看云端镜像。 */
-function annotateFileRows(rows: any[], lookups: ResourceLookups, store: any, mirror: any): any[] {
+/** file 行逐个标注可达性：本机仓命中 → 本地绝对路径；未命中只保留资源 id。 */
+function annotateFileRows(rows: any[], lookups: ResourceLookups, store: any): any[] {
   return rows.map((row) => {
     const a = resourceOf(row, lookups);
     if (a.kind !== 'file') return a;
     const s = store.index.get(row.id);
     if (s) return fileStateOf(a, { localPath: s.path, storage: 'local', name: a.name || s.name, size: s.size });
-    const m = mirror.index.get(row.id);
-    return fileStateOf(a, {
-      localPath: (m && m.path) || '',
-      storage: 'cloud',
-      name: a.name || (m && m.name) || row.id,
-      size: m && m.size,
-    });
+    return fileStateOf(a, { localPath: '', storage: 'local', name: a.name || row.id });
   });
 }
 
@@ -82,9 +72,14 @@ function annotateFileRows(rows: any[], lookups: ResourceLookups, store: any, mir
  * 里的引用名就该是那个标题，而不是文件名。读不到就留空（前端回落附件名）。
  */
 async function annotateRefTitles(attachments: any[]): Promise<any[]> {
+  const db = getDb();
   const refs = (attachments || [])
     .filter((a) => a.kind === 'ref')
-    .map((a) => ({ id: a.refId || a.targetKey || '', locator: a.relPath || a.targetKey || '' }));
+    .map((a) => {
+      const id = String(a.refId || a.targetKey || '');
+      const row = id ? db.get('SELECT rel FROM refs WHERE id = :id AND deleted_at IS NULL', { id }) : null;
+      return { id, locator: String(row?.rel || '') };
+    });
   if (!refs.length) return attachments;
   let titles = new Map<string, string>();
   try {
@@ -134,24 +129,21 @@ async function annotateMdfileContent(attachments: any[]): Promise<any[]> {
 }
 
 export interface AnnotateTaskDeliveryOptions {
-  /** 是否允许为未命中的附件跑一次云端同步（预览传 false：只读盘、不发网） */
-  sync?: boolean;
   topicKey?: unknown;
   /** 是否为「文档资料」绑定（role='doc' 的 kind=ref 附件）读全文并附进视图模型（#162） */
   inlineDocs?: boolean;
 }
 
 /**
- * 领取/查看时刻的附件标注：本机仓优先 → 云端镜像兜底 → 标注本地路径。
+ * 领取/查看时刻的附件标注：本机仓命中即绝对路径；未命中只保留资源 id。
  *
  * @param task 库存任务（normalizeTask 形状）
- * @returns null = 正文没有附件引用
- *   （调用方据此保持载荷原样）；sync 只在真的跑过云端同步时非 null。
+ * @returns null = 正文没有附件引用（调用方据此保持载荷原样）
  */
 export async function annotateTaskDelivery(
   task: any,
-  { sync: allowSync = true, topicKey = '', inlineDocs = false }: AnnotateTaskDeliveryOptions = {},
-): Promise<null | { task: any; sync: any | null }> {
+  { topicKey = '', inlineDocs = false }: AnnotateTaskDeliveryOptions = {},
+): Promise<null | { task: any }> {
   if (!task) return null;
   // schema v2：资源关系在任务入库时就写好了，交付侧只读 task_attach，不再解析正文。
   const rows = listTaskAttachmentsBySeq(getDb(), { topicKey: topicKey || task.key, seq: task.id });
@@ -159,31 +151,11 @@ export async function annotateTaskDelivery(
 
   // 本机附件仓：本地任务贴图的资源行（零云端依赖，命中即绝对路径）
   const store = await localStoreIndex();
-  const cfg = await loadConfig();
-  const gid = await resolveGroupId(undefined); // core/config 的 groupId 参数迁移时丢了可缺省标注
-
-  // 不在本机仓的 file 行才考虑云端镜像；自动下载关（或全命中）就一次网都不碰
-  const cloudIds = rows
-    .filter((r) => r.kind === 'file' && !store.index.has(r.id))
-    .map((r) => r.id);
-  let sync: any = null;
-  if (allowSync && cloudIds.length && cfg.autoSyncAttachments) {
-    // 说明文字 → 本地文件名：`![季度报表.docx](id)` 落盘就叫「季度报表.docx」
-    const names: Record<string, string> = {};
-    for (const r of rows) if (cloudIds.includes(r.id) && r.name) names[r.id] = r.name;
-    try {
-      sync = await syncAttachments({ groupId: gid, ids: cloudIds, names, dir: cfg.attachmentsDir });
-    } catch (e) {
-      sync = { dir: '', downloaded: 0, skipped: 0, failures: [{ id: '(整体)', error: String((e as Error).message || e) }] };
-    }
-  }
-
-  const mirror = await cloudMirrorIndex(gid, cfg.attachmentsDir);
-  const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store, mirror);
+  const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store);
   await annotateMdfileContent(attachments);
   await annotateRefTitles(attachments);
   if (inlineDocs) await inlineDocContent(attachments, { id: (task as any).id, key: (task as any).key || (task as any).topicKey });
-  return { task: { ...task, attachments }, sync };
+  return { task: { ...task, attachments } };
 }
 
 export interface AttachToTaskOptions {
@@ -218,8 +190,8 @@ export interface AttachToTaskOptions {
  *                    `--note` 作为该绑定的 desc 一并透出。
  *
  * 来源四选一：
- *   --path <本机文件>  落本机附件仓（零云端）
- *   --fileId <id>      引用已有资源（本机仓 / 云端 id 都认）
+ *   --path <本机文件>  落本机附件仓（零网络）
+ *   --fileId <id>      引用已有资源（本机附件仓）
  *   --url <链接>       外部 URL（kind=url）
  *   --task <seq>       同主题下的另一条任务（kind=task，nxkv://task/<id>）
  *   --ref <路径|id>    文档库里的 ref（kind=ref，nxkv://ref/<refId>）
@@ -282,14 +254,31 @@ export async function attachToTask({
     if (resolvedKind && resolvedKind !== 'image' && resolvedKind !== 'file') {
       throw badInput(`--kind 只能是 image 或 file，收到: ${resolvedKind}`);
     }
-    if (!resolvedKind) resolvedKind = isImageName(fid, '') ? 'image' : 'file';
+    // 本机仓已有这条资源：沿用原名 / MIME / 落盘路径，不要用 fileId 冒充文件名
+    const hit = await localResolve(fid);
+    if (hit) {
+      if (!displayName) displayName = hit.name;
+      if (!resolvedKind) resolvedKind = isImageName(hit.name, hit.contentType) ? 'image' : 'file';
+    } else if (!resolvedKind) {
+      resolvedKind = isImageName(fid, '') ? 'image' : 'file';
+    }
     tx(
       (conn) =>
-        upsertFileAttachment(conn, {
-          id: fid,
-          name: displayName || fid,
-          meta: { isImage: resolvedKind === 'image' },
-        }),
+        upsertFileAttachment(conn, hit
+          ? {
+              id: fid,
+              name: displayName,
+              localPath: hit.path,
+              mime: hit.contentType,
+              size: hit.size,
+              storage: 'local',
+              meta: { isImage: resolvedKind === 'image' },
+            }
+          : {
+              id: fid,
+              name: displayName || fid,
+              meta: { isImage: resolvedKind === 'image' },
+            }),
       { db, mode: 'IMMEDIATE' }
     );
     attachmentId = fid;
@@ -423,23 +412,18 @@ export interface ListTaskAttachmentsOptions {
 
 /**
  * 列出某条任务引用的附件（CLI `localtask attachments`）：不依赖自动下载开关，
- * 本机仓 → 云端镜像逐个标注（agent 据此决定直接读本地还是先 sync）。
+ * 本机仓 → 命中即给绝对路径；未命中给资源 id（agent 据此判断是否需要原始文件）。
  */
 export async function listTaskAttachments({ id, cwd, key }: ListTaskAttachmentsOptions = {}): Promise<Record<string, any>> {
   const cur = await service.getTask({ id, cwd, key });
-  const cfg = await loadConfig();
-  const gid = await resolveGroupId(undefined);
   const store = await localStoreIndex();
-  const mirror = await cloudMirrorIndex(gid, cfg.attachmentsDir);
   const rows = listTaskAttachmentsBySeq(getDb(), { topicKey: (cur.key || key) as string, seq: cur.id });
-  const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store, mirror);
+  const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store);
   await annotateRefTitles(attachments);
 
   return {
     task: { id: cur.id, key: cur.key || key },
     localDir: store.dir,
-    cloudDir: mirror.dir,
-    autoSync: !!cfg.autoSyncAttachments,
     count: attachments.length,
     inlineCount: attachments.filter((a) => a.origin !== 'area').length,
     areaCount: attachments.filter((a) => a.origin === 'area').length,
@@ -510,7 +494,6 @@ export async function detachTaskAttachment({ id, cwd, key, attachment, purge }: 
   const attId = String(attachment || '').trim();
   if (!attId) throw badInput('需要 --attachment <资源 id>（见 localtask attachments 输出）');
   const db = getDb();
-  const cfg = await loadConfig();
   const store = await localStoreIndex();
   let deleted = 0;
   let purgeResult: any = null;
@@ -521,7 +504,7 @@ export async function detachTaskAttachment({ id, cwd, key, attachment, purge }: 
       deleted = unlinkAttachment(conn, { host: 'task', hostId: gid, attachmentId: attId });
       if (purge && deleted) {
         purgeResult = deleteAttachment(conn, attId, {
-          attachmentsRoot: attachmentsRootFromEnv() || cfg.attachmentsDir || store.dir,
+          attachmentsRoot: attachmentsRootFromEnv() || store.dir,
         });
       }
     },

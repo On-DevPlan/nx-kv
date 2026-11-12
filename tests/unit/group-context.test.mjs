@@ -54,7 +54,7 @@ async function buildGroup() {
   return { cwd, alpha, beta, b };
 }
 
-test('组上下文封装：交付文本带组概念/组介绍/组内位置/兄弟成员/参考文件路径', async () => {
+test('组上下文封装：交付文本带组概念/组介绍引导/组内位置/兄弟成员/组文档 refId', async () => {
   const { cwd, b } = await buildGroup();
   const localtask = await import('../../src/modules/localtask/service.js');
   const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
@@ -67,10 +67,13 @@ test('组上下文封装：交付文本带组概念/组介绍/组内位置/兄�
   assert.match(ins, /项目组上下文/);
   assert.match(ins, /nx系列/);
   assert.match(ins, /nx 工具链组合/, '组描述');
-  assert.match(ins, /本机 nx- 前缀工具链的组合/, '组介绍正文');
+  // v7：只有项目主篇正文内嵌；组介绍改为 desc + 取用指令，不再内嵌正文
+  assert.match(ins, /组介绍：/, '组介绍引导行');
+  assert.match(ins, /nx-kv docs get --ref ref_/, '组介绍按 refId 取用');
+  assert.doesNotMatch(ins, /本机 nx- 前缀工具链的组合/, '组介绍正文不再内嵌');
   assert.match(ins, /组里的任务出入口/, '本项目在组里的位置');
   assert.match(ins, /仓库与技能登记/, '兄弟成员的组内描述');
-  assert.match(ins, /waitgoal-设计\.md/, '组绑定参考文件地址');
+  assert.match(ins, /阻塞窗口/, '组文档按 desc 展示');
   // 上下文只进 instruction：task.text 保持库存原文（含归属 frontmatter）
   assert.match(String(r.task.text || ''), /改登录页/);
 });

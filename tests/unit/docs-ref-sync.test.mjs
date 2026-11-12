@@ -75,6 +75,46 @@ test('desiredBindings：约定路径不在盘上就不绑（目录主篇 → 旧
   );
 });
 
+test('desiredBindings：组成员描述按约定路径回落（ext 未登记 repoDocs 也要绑）', () => {
+  const s = {
+    repos: [{ key: 'github.com/me/x', type: 'dev' }],
+    boards: [{ key: 'board/g', name: 'g', repoKeys: ['github.com/me/x', 'github.com/me/y'] }],
+  };
+  // x 用目录主篇（index.md），y 用旧单文件；y 没有 repoDocs 登记，靠约定路径
+  const files = ['group/g/github.com/me/x/index.md', 'group/g/github.com/me/y.md'];
+  assert.deepEqual(
+    desiredBindings(s, files).map((b) => [b.type, b.repoKey, b.groupKey, b.locator]),
+    [
+      ['group_repo', 'github.com/me/x', 'board/g', 'group/g/github.com/me/x/index.md'],
+      ['group_repo', 'github.com/me/y', 'board/g', 'group/g/github.com/me/y.md'],
+    ]
+  );
+  // ext 显式登记优先：已有 repoDocs 的不再按约定路径叠一条
+  const s2 = { ...s, boards: [{ ...s.boards[0], repoDocs: { 'github.com/me/x': { rel: 'notes/x.md' } } }] };
+  assert.deepEqual(
+    desiredBindings(s2, files).map((b) => [b.repoKey, b.locator]),
+    [['github.com/me/x', 'notes/x.md'], ['github.com/me/y', 'group/g/github.com/me/y.md']]
+  );
+});
+
+test('syncRefIndex：组内描述（约定路径）落成 group_repo 绑定，不再被误判孤儿', async () => {
+  await writeOwnDoc('group/g/github.com/me/x.md', '# 组内说明\n');
+  await addRepo({ path: join(dir, 'x'), name: 'x', key: 'github.com/me/x' });
+  await createBoard({ name: 'g', desc: '' });
+  await assignRepo({ board: 'g', key: 'github.com/me/x' });
+
+  const res = await syncRefIndex();
+  assert.equal(res.bindings, 1, '只有组内描述一条绑定（仓库/组主篇都不在盘上）');
+  const hit = rows(`SELECT b.type, b.repo_key, b.group_key FROM ref_bindings b
+     JOIN refs r ON r.id = b.ref_id WHERE r.locator = 'group/g/github.com/me/x.md'`);
+  assert.deepEqual(hit.map((x) => [x.type, x.repo_key, x.group_key]), [['group_repo', 'github.com/me/x', 'board/g']]);
+  assert.equal(
+    rows("SELECT state FROM refs WHERE locator = 'group/g/github.com/me/x.md'")[0].state,
+    '',
+    '绑定命中 → state 清空，不再显示孤儿'
+  );
+});
+
 test('syncRefIndex：绑定落库（repo / group / group_repo），命中的 ref 不再是 orphan', async () => {
   await writeOwnDoc('repo/github.com/me/x/index.md', '# x\n');
   await writeOwnDoc('board/g/index.md', '# g\n');

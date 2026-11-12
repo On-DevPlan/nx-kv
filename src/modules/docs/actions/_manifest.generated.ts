@@ -16,7 +16,9 @@ import { DocLinkFileAction } from './doc-link-file.js';
 import { DocListAction } from './doc-list.js';
 import { DocMdfileAction } from './doc-mdfile.js';
 import { DocMdfilesAction } from './doc-mdfiles.js';
+import { DocRefAddAction } from './doc-ref.js';
 import { DocRemoveAction } from './doc-remove.js';
+import { DocRefUnbindAction } from './doc-unbind.js';
 import { DocUpdateAction } from './doc-update.js';
 import { DocsBindAction } from './docs-bind.js';
 import { DocsBindingsAction } from './docs-bindings.js';
@@ -37,7 +39,9 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   DocListAction,
   DocMdfileAction,
   DocMdfilesAction,
+  DocRefAddAction,
   DocRemoveAction,
+  DocRefUnbindAction,
   DocUpdateAction,
   DocsBindAction,
   DocsBindingsAction,
@@ -58,7 +62,9 @@ export { DocLinkFileAction };
 export { DocListAction };
 export { DocMdfileAction };
 export { DocMdfilesAction };
+export { DocRefAddAction };
 export { DocRemoveAction };
+export { DocRefUnbindAction };
 export { DocUpdateAction };
 export { DocsBindAction };
 export { DocsBindingsAction };

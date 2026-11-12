@@ -9,8 +9,6 @@ const service: any = serviceNs;
 
 /** setting.set 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
-  autoSyncAttachments: z.boolean().optional().describe("读任务时自动把附件下载到本地"),
-  attachmentsDir: z.string().optional().describe("附件本地目录（空 = ~/.nx-kv/attachments/<工作空间>/）"),
   gitRepoRoot: z.string().optional().describe("参考仓库存储根目录（非 C 盘；空 = clone 参考仓库被拒绝）"),
   gitDevRoot: z.string().optional().describe("导入布局时开发仓库的默认克隆根（空 = 只登记不克隆）"),
 });

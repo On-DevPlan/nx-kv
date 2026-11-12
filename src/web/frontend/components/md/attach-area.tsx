@@ -20,6 +20,7 @@ import {
   endpointOf,
   normAttachment,
 } from './attach-common.js';
+import { renderMarkdownHtml } from '../../modules/md/md-render.js';
 import type {
   AttachAllow,
   AttachHostKind,
@@ -59,6 +60,8 @@ export interface AttachAreaHandle {
 interface ItemActions {
   onRemove: (a: NormalizedAttachment) => void;
   onPreview: (p: { src: string; name?: string }) => void;
+  /** mdfile：读磁盘正文并按 md 渲染（不看 MIME / 扩展名） */
+  onPreviewMd?: (a: NormalizedAttachment) => void;
   key?: Attachment['id'];
   onOpenTask?: (hit: { key?: string; seq?: number | null }) => void;
   onOpenDoc?: (locator: string) => void;
@@ -86,7 +89,7 @@ interface AttachAreaProps {
   onOpenDoc?: (locator: string) => void;
 }
 
-function renderItem(a: NormalizedAttachment, { onRemove, onPreview, onOpenTask, onOpenDoc, onEditNote, onReplace }: ItemActions) {
+function renderItem(a: NormalizedAttachment, { onRemove, onPreview, onPreviewMd, onOpenTask, onOpenDoc, onEditNote, onReplace }: ItemActions) {
   const src = a.kind === 'image' ? contentUrl(a.id) : '';
   return (
     <div className={`att-item att-kind-${a.kind}`} key={a.id}>
@@ -124,9 +127,20 @@ function renderItem(a: NormalizedAttachment, { onRemove, onPreview, onOpenTask, 
         )}
         <span className="att-item-meta">
           {a.sizeText ? <span>{a.sizeText}</span> : null}
+          {a.kind === 'mdfile' ? (
+            <span className="att-note" title={a.absPath || ''}>
+              {a.absPath || '（路径为空）'}{a.missing ? ' · 源文件已不在' : ''}
+            </span>
+          ) : null}
           {a.note ? <span className="att-note">{a.note}</span> : null}
         </span>
       </span>
+
+      {a.kind === 'mdfile' ? (
+        <span className="att-item-acts">
+          <button type="button" className="att-act" title="按 md 渲染磁盘当前内容（读时核对指纹）" onClick={() => onPreviewMd?.(a)}>预览</button>
+        </span>
+      ) : null}
 
       {a.kind === 'file' || a.kind === 'image' ? (
         <span className="att-item-acts">
@@ -177,6 +191,7 @@ export default function AttachArea({
   const [replaceOf, setReplaceOf] = useState<NormalizedAttachment | null>(null);
   const [removing, setRemoving] = useState(false);
   const [preview, setPreview] = useState<{ src: string; name?: string } | null>(null);
+  const [mdPreview, setMdPreview] = useState<{ name: string; html: string; path: string; stale: boolean; missing: boolean } | null>(null);
 
   const ep = useMemo(
     () => endpointOf(host, { hostId, hostKey, hostCwd, refId }),
@@ -299,6 +314,26 @@ export default function AttachArea({
     }
   };
 
+  // mdfile：按 kind 分支直接走 md 渲染（不看 MIME / 扩展名）。
+  const openMd = async (item: NormalizedAttachment | null) => {
+    if (!item) return;
+    try {
+      const r = await api<{ body?: string; absPath?: string; stale?: boolean; missing?: boolean }>(
+        `/api/docs/mdfile?attachment=${encodeURIComponent(String(item.id))}`
+      );
+      const body = String(r.body || '');
+      setMdPreview({
+        name: item.name || 'md',
+        html: renderMarkdownHtml(body),
+        path: String(r.absPath || item.absPath || ''),
+        stale: !!r.stale,
+        missing: !!r.missing,
+      });
+    } catch (e) {
+      toast(`读取失败：${(e as Error).message || e}`);
+    }
+  };
+
   const emptyAll = !loading && !error && !list.length;
 
   return (
@@ -360,14 +395,14 @@ export default function AttachArea({
       {inline.length ? (
         <div className="att-section">
           <div className="att-section-head">{AREA_LABEL.inline}<span className="att-section-hint">正文里的引用，删正文行会跟着消失</span></div>
-          {inline.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onOpenTask, onOpenDoc, onEditNote: editNote, onReplace: startReplace, key: a.id }))}
+          {inline.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onPreviewMd: openMd, onOpenTask, onOpenDoc, onEditNote: editNote, onReplace: startReplace, key: a.id }))}
         </div>
       ) : null}
 
       {area.length ? (
         <div className="att-section">
           <div className="att-section-head">{AREA_LABEL.area}<span className="att-section-hint">不依赖正文，删正文行也不会丢</span></div>
-          {area.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onOpenTask, onOpenDoc, onEditNote: editNote, onReplace: startReplace, key: a.id }))}
+          {area.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onPreviewMd: openMd, onOpenTask, onOpenDoc, onEditNote: editNote, onReplace: startReplace, key: a.id }))}
         </div>
       ) : null}
 
@@ -410,6 +445,26 @@ export default function AttachArea({
               连资源一起删：在本机没有其它任务/文档引用它时，删除资源行（本机文件同时删字节）；仍被引用时只解除关联。
             </div>
           </div>
+        </ModalBox>
+      ) : null}
+
+      {mdPreview ? (
+        <ModalBox
+          title={<span>{mdPreview.name}<span className="att-md-path">{mdPreview.path}</span></span>}
+          size="lg"
+          onClose={() => setMdPreview(null)}
+          footer={<button type="button" className="btn ghost" onClick={() => setMdPreview(null)}>关闭</button>}
+        >
+          {mdPreview.missing ? (
+            <div className="att-empty">源文件已不在：{mdPreview.path || '（路径为空）'}</div>
+          ) : (
+            <div className="att-md-preview">
+              {mdPreview.stale ? (
+                <div className="att-md-warn">内容已变化（与登记指纹不一致），以下为磁盘当前内容。</div>
+              ) : null}
+              <article dangerouslySetInnerHTML={{ __html: mdPreview.html }} />
+            </div>
+          )}
         </ModalBox>
       ) : null}
 

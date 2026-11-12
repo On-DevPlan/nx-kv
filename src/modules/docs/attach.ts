@@ -13,6 +13,7 @@ import {
   linkAttachment,
   listRefAttachments,
   refIdFor,
+  registerMdfile,
   resolveRefId,
   unlinkAttachment,
   updateAttachmentNote,
@@ -86,6 +87,8 @@ export interface AttachToDocCtx {
   url?: unknown;
   task?: unknown;
   doc?: unknown;
+  /** 本地 md 文件（登记为 kind=mdfile，不复制正文） */
+  mdfile?: unknown;
   noEmbed?: unknown;
   note?: unknown;
   [key: string]: unknown;
@@ -179,10 +182,20 @@ export async function attachToDoc(ctx: AttachToDocCtx): Promise<AttachToDocResul
     if (!attachmentId) throw badInput(`找不到文档: ${ctx.doc}`);
     kind = 'ref';
     markdown = `[${displayName || (target.locator.split('/').pop() ?? '')}](nxkv://ref/${refId})`;
+  } else if (ctx.mdfile) {
+    // 外部 md 文件：只登记指针（kind=mdfile, storage=external），正文仍在磁盘原地
+    const rec = tx(
+      (conn) => registerMdfile(conn, { path: ctx.mdfile, name: displayName }),
+      { db, mode: 'IMMEDIATE' }
+    );
+    attachmentId = rec.id;
+    displayName = displayName || rec.name;
+    kind = 'mdfile';
+    markdown = `[${displayName}](nxkv://mdfile/${rec.id})`;
   }
 
   if (!attachmentId) {
-    throw badInput('需要 --path / --fileId / --url / --task / --doc 之一');
+    throw badInput('需要 --path / --fileId / --url / --task / --doc / --mdfile 之一');
   }
 
   const noEmbed = !!(ctx.noEmbed ?? ctx['no-embed']);

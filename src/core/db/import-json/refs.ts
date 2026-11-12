@@ -3,7 +3,8 @@
 //   2. `docs/` 树扫描（未被任何 DocRef 指到的 → state='orphan'）
 // `ref_relations` 本轮留空。
 import { existsSync, readdirSync } from 'node:fs';
-import { join, sep } from 'node:path';
+import { createHash } from 'node:crypto';
+import { isAbsolute, join, resolve, sep } from 'node:path';
 import { groupKeyOf } from '../../keys.js';
 import { refIdOf } from './data.js';
 import type { ImportReport } from './data.js';
@@ -23,10 +24,17 @@ function toPosix(rel: string): string {
   return rel.split(sep).join('/');
 }
 
-/** 递归收集 docs 树里的 .md（返回 POSIX 相对路径）。 */
-export function listDocFiles(docsRoot: string): string[] {
+/** 外部绝对路径 / URL → v6 的逻辑 rel（与 v6-data 同一口径）。 */
+function externalRel(locator: string): string {
+  let seed = isAbsolute(locator) ? toPosix(resolve(locator)) : locator;
+  if (/^[A-Z]:/.test(seed)) seed = seed.charAt(0).toLowerCase() + seed.slice(1);
+  return 'external/' + createHash('sha1').update(seed, 'utf8').digest('hex').slice(0, 16);
+}
+
+/** 递归收集旧文档目录里的 .md（返回 POSIX 相对路径）。**仅 legacy JSON 导入用。** */
+export function listDocFiles(docsDir: string): string[] {
   const out: string[] = [];
-  if (!docsRoot || !existsSync(docsRoot)) return out;
+  if (!docsDir || !existsSync(docsDir)) return out;
   const walk = (dir: string, prefix: string): void => {
     let entries: Dirent[] = [];
     try {
@@ -40,7 +48,7 @@ export function listDocFiles(docsRoot: string): string[] {
       else if (/\.md$/i.test(e.name)) out.push(prefix ? `${prefix}/${e.name}` : e.name);
     }
   };
-  walk(docsRoot, '');
+  walk(docsDir, '');
   return out.map(toPosix).sort();
 }
 
@@ -53,18 +61,18 @@ export function listDocFiles(docsRoot: string): string[] {
 export function importRefs(
   db: DbApi,
   reposData: any,
-  docsRoot: string,
+  docsDir: string,
   atMs: number,
   report: ImportReport
 ): void {
-  const files = listDocFiles(docsRoot);
+  const files = listDocFiles(docsDir);
   const fileSet = new Set(files);
   for (const locator of files) {
     const r = db.run(
-      `INSERT INTO refs (id, type, locator, state, version, deleted_at, created_at, updated_at)
-       VALUES (:id, 'md', :locator, 'orphan', 0, NULL, :at, :at)
+      `INSERT INTO refs (id, type, rel, locator, state, version, deleted_at, created_at, updated_at)
+       VALUES (:id, 'md', :rel, :locator, 'orphan', 0, NULL, :at, :at)
        ON CONFLICT(id) DO NOTHING`,
-      { id: refIdOf(locator), locator, at: atMs }
+      { id: refIdOf(locator), rel: locator, locator, at: atMs }
     );
     if (Number(r.changes) > 0) report.imported.refs += 1;
   }
@@ -152,10 +160,16 @@ export function importRefs(
       if (d.extPath) {
         // 外部路径（Obsidian 等）：只在库里留地址，字节在库外
         db.run(
-          `INSERT INTO refs (id, type, locator, state, version, deleted_at, created_at, updated_at)
-           VALUES (:id, :type, :locator, '', 0, NULL, :at, :at)
+          `INSERT INTO refs (id, type, rel, locator, origin, state, version, deleted_at, created_at, updated_at)
+           VALUES (:id, :type, :rel, :locator, 'external', '', 0, NULL, :at, :at)
            ON CONFLICT(id) DO NOTHING`,
-          { id: refIdOf(d.locator), type: d.type, locator: d.locator, at: atMs }
+          {
+            id: refIdOf(d.locator),
+            type: d.type,
+            rel: externalRel(d.locator),
+            locator: d.locator,
+            at: atMs,
+          }
         );
         report.imported.refs += 1;
       } else if (!fileSet.has(d.locator)) {

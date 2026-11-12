@@ -15,6 +15,10 @@ interface DocRow {
   rel?: string;
   name?: string;
   title?: string;
+  /** v6：没有正文（历史空壳 / 外部镜像 / 正文缺失）——列表里必须显式标注 */
+  hasBody?: boolean;
+  relKind?: string;
+  reason?: string;
 }
 
 /** 文档 → 宿主的反推项（kind 用来筛「仓库 / 分组 / 组内」三档）。 */
@@ -233,6 +237,9 @@ export default function DocSearchModal({ repos, boardList, onClose, onFilter, re
                   {d.title || d.name || d.rel}
                 </button>
                 <code className="rp-doc-row-rel" title={d.rel}>{d.rel}</code>
+                {!d.hasBody && (
+                  <span className="rp-bind-chip none" title={d.reason || '条目没有正文'}>无正文</span>
+                )}
                 <span className="rp-doc-row-hosts">
                   {hosts.length ? hosts.map((h) => (
                     <button

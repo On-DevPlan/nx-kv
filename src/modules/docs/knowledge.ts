@@ -1,14 +1,10 @@
-// 复合知识查询：一个仓库的完整上下文，一次取齐。
+// 复合知识查询：一个仓库的完整上下文，一次取齐（agent 领取任务后的供料口）。
+// `repo knowledge --md` 给出项目介绍 + 组介绍 + 组内描述 + 组绑定文档 + 参考仓库文本；
+// 自有文档正文来自库内 `ref_bodies`，不读盘。
 //
-// 这是「get 时封装上下文」的供料口：agent 领到某个仓库的任务后，
-// `nx-kv repo knowledge --md` 给出项目介绍 + 所属组介绍 + 组内描述 + 组绑定文档 +
-// 参考仓库的单篇文本——文档全是磁盘真实路径，agent 拿到就能直接读盘。
-//
-// 读取规则：
-//   - 绑定优先（DocRef），缺省走约定路径；约定路径缺失时惰性播种（字符串字段非空）
-//   - 外部目录绑定只列文件清单，不进全文（agent 自己读盘——目录全文没有边界）
-//   - 单文件 256KB 截断：知识是给人/模型读的，不是备份通道
-import { join, sep } from 'node:path';
+// 读取规则：绑定优先（DocRef），缺省走约定路径并惰性播种；外部目录只列清单；
+// 单文件 256KB 截断：知识是给人/模型读的，不是备份通道。
+import { sep } from 'node:path';
 import * as paths from './paths.js';
 import * as store from './store.js';
 import { ensureSeedForRel } from './seed.js';
@@ -456,7 +452,7 @@ export interface GroupContextResult {
  *
  * 每篇都带两套坐标：
  *   docId  面板导航用（'rel:…' 自有树 / 'path:…' 外部绝对路径）
- *   abs    **磁盘绝对路径**——agent 拿到就能直接读盘（交付层用这个）
+ *   abs    仅外部文档有：磁盘绝对路径（自有文档正文在 DB，没有磁盘副本）
  *
  * 为什么描述是「列表」而不是一篇：介绍往往不止主篇——还有架构、问答、规范等补充
  * 说明。只给一篇，等于让 agent 拿着半张地图干活（#58）。
@@ -482,7 +478,7 @@ export async function readIntroSet({
       const one = await readOwn(ref.rel, { warnings, label });
       if (one.missing) return emptyIntroSet();
       return {
-        main: { docId: paths.ownDocId(ref.rel), title: one.title, body: one.body, abs: join(paths.docsRoot(), ref.rel) },
+        main: { docId: paths.ownDocId(ref.rel), title: one.title, body: one.body },
         extras: [],
         count: 1,
       };
@@ -537,14 +533,13 @@ export async function readIntroSet({
         docId: paths.ownDocId(d.rel),
         name: d.name,
         rel: d.rel,
-        abs: d.abs || join(paths.docsRoot(), d.rel),
         isReference: String(d.name || '').toLowerCase().startsWith(paths.DOC_REFERENCE_DIR + '/'),
       }));
   if (mainRel && (await store.ownDocExists(mainRel))) {
     const one = await readOwn(mainRel, { warnings, label });
     const extras = extrasOf(mainRel);
     return {
-      main: { docId: paths.ownDocId(mainRel), title: one.title, body: one.body, abs: join(paths.docsRoot(), mainRel) },
+      main: { docId: paths.ownDocId(mainRel), title: one.title, body: one.body },
       extras,
       count: 1 + extras.length,
     };
@@ -554,7 +549,7 @@ export async function readIntroSet({
     if (!one.missing) {
       const extras = extrasOf(legacyRel);
       return {
-        main: { docId: paths.ownDocId(legacyRel), title: one.title, body: one.body, abs: join(paths.docsRoot(), legacyRel) },
+        main: { docId: paths.ownDocId(legacyRel), title: one.title, body: one.body },
         extras,
         count: 1 + extras.length,
       };
@@ -568,7 +563,7 @@ export async function readIntroSet({
     return {
       main: first.missing
         ? null
-        : { docId: paths.ownDocId(head.rel), title: first.title, body: first.body, abs: head.abs || join(paths.docsRoot(), head.rel) },
+        : { docId: paths.ownDocId(head.rel), title: first.title, body: first.body },
       extras,
       count: 1 + extras.length,
     };
@@ -587,7 +582,7 @@ function linkEntries(links: unknown, closure: readonly store.ClosureEntry[]): Kn
   const out: KnowledgeDoc[] = [];
   for (const l of Array.isArray(links) ? (links as Array<DocRef & { note?: string; tag?: string }>) : []) {
     if (l.rel) {
-      out.push({ rel: l.rel, abs: join(paths.docsRoot(), l.rel), note: l.note || '', ...(l.tag ? { tag: l.tag } : {}) });
+      out.push({ rel: l.rel, note: l.note || '', ...(l.tag ? { tag: l.tag } : {}) });
       continue;
     }
     const abs = l.path && store.resolveExternal(l.path, closure);
@@ -604,8 +599,11 @@ function introMdLines(set: IntroSet | null | undefined, fallback: KnowledgeDoc |
   if (main && main.body) out.push(String(main.body).trim());
   const extras = (set && set.extras) || [];
   if (extras.length) {
-    out.push('', '其余介绍文档（可直接读取）:');
-    for (const d of extras) out.push(`- ${d.abs || d.docId || d.rel || ''}`);
+    out.push('', '其余介绍文档（可用命令读取）:');
+    for (const d of extras) {
+      // 自有文档正文在 DB，没有磁盘副本：给可直接执行的读取命令，别给假路径。
+      out.push(`- ${d.rel ? `nx-kv docs get rel:${d.rel}` : d.abs || d.docId || ''}`);
+    }
   }
   return out;
 }

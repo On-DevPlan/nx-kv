@@ -5,7 +5,9 @@ import { join, resolve } from 'node:path';
 import { metaOf } from './ids.js';
 
 const ATT_SELECT = `SELECT id, kind, name, local_path, url, mime, size, hash, storage, group_id,
-       target_kind, target_key, target_seq, meta, deleted_at, created_at, updated_at
+       target_kind, target_key, target_seq, meta,
+       abs_path, anchor_dir, missing_at, last_seen_at,
+       deleted_at, created_at, updated_at
   FROM attachments`;
 
 export interface AttachmentView {
@@ -24,6 +26,11 @@ export interface AttachmentView {
   /** 行值可能为 NULL（SQLite），消费方各自 Number() 归一，故这里不做窄化。 */
   targetSeq: any;
   meta: Record<string, unknown>;
+  /** mdfile 专用：规范化绝对路径 / 相对链接锚点（其它 kind 为空） */
+  absPath: string;
+  anchorDir: string;
+  missingAt: number | null;
+  lastSeenAt: number | null;
   deletedAt: string | null;
   createdAt: number;
   updatedAt: number;
@@ -51,6 +58,10 @@ function rowView(row: any): AttachmentView {
     targetKey: row.target_key,
     targetSeq: row.target_seq === null || row.target_seq === undefined ? null : Number(row.target_seq),
     meta: metaOf(row),
+    absPath: String(row.abs_path || ''),
+    anchorDir: String(row.anchor_dir || ''),
+    missingAt: row.missing_at === null || row.missing_at === undefined ? null : Number(row.missing_at),
+    lastSeenAt: row.last_seen_at === null || row.last_seen_at === undefined ? null : Number(row.last_seen_at),
     deletedAt: row.deleted_at,
     createdAt: Number(row.created_at) || 0,
     updatedAt: Number(row.updated_at) || 0,
@@ -67,6 +78,7 @@ export function listTaskAttachments(conn: any, taskId?: string | number): Linked
     .all(
       `SELECT a.id, a.kind, a.name, a.local_path, a.url, a.mime, a.size, a.hash, a.storage,
               a.group_id, a.target_kind, a.target_key, a.target_seq, a.meta,
+              a.abs_path, a.anchor_dir, a.missing_at, a.last_seen_at,
               a.deleted_at, a.created_at, a.updated_at, ta.role, ta.position, ta.note
          FROM task_attach ta JOIN attachments a ON a.id = ta.attachment_id
         WHERE ta.task_id = :id AND a.deleted_at IS NULL
@@ -93,6 +105,7 @@ export function listRefAttachments(conn: any, refId?: string | number): LinkedAt
     .all(
       `SELECT a.id, a.kind, a.name, a.local_path, a.url, a.mime, a.size, a.hash, a.storage,
               a.group_id, a.target_kind, a.target_key, a.target_seq, a.meta,
+              a.abs_path, a.anchor_dir, a.missing_at, a.last_seen_at,
               a.deleted_at, a.created_at, a.updated_at, ra.role, ra.position, ra.note
          FROM ref_attach ra JOIN attachments a ON a.id = ra.attachment_id
         WHERE ra.ref_id = :id AND a.deleted_at IS NULL

@@ -19,6 +19,11 @@ import { closeDb, getDb } from '../../src/core/db/index.js';
 let dir = '';
 
 beforeEach(() => {
+  // 换库必须先关连接：v6 起正文入库，库路径随 NX_KV_REPOS_STORE 的目录走，
+  // 不关的话 getDb() 还挂在**上一个用例**的库上——先写的文档留在旧库，
+  // 等 addRepo / loadStore 这类走 openStore 的调用一检测到换库就切成新的空库，
+  // 表现成「文档明明写了，syncRefIndex 却算出 0 条绑定」。
+  try { closeDb(); } catch { /* 尚未打开 */ }
   dir = mkdtempSync(join(tmpdir(), 'nx-kv-refsync-'));
   process.env.NX_KV_REPOS_STORE = join(dir, 'repos.json');
   process.env.NX_KV_DOCS_DIR = join(dir, 'docs');

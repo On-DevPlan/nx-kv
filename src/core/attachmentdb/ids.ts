@@ -1,6 +1,7 @@
 // 标识与正文解析：fileId / ref / url / task 四类资源的稳定 id 公式，
 // 以及 markdown 正文 → 资源引用清单的纯函数。本文件不碰数据库与文件系统。
 import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 
 // 不 import fileapi：它经 config → db/index → bootstrap → migrator 会绕回本模块。
 // 这里只需要「按扩展名补一个够用的 MIME」，真实 MIME 由上传/同步路径写入。
@@ -23,6 +24,7 @@ const FILE_ID_RE = /^[0-9a-fA-F]{16,}(\.[A-Za-z0-9]{1,8})?$/;
 const MD_LINK_RE = /!?\[([^\]]*)\]\(\s*([^)\s]+)\s*\)/g;
 const NXKV_TASK_RE = /^nxkv:\/\/task\/(\d+)$/i;
 const NXKV_REF_RE = /^nxkv:\/\/ref\/([A-Za-z0-9_-]+)$/i;
+const NXKV_MDFILE_RE = /^nxkv:\/\/mdfile\/([A-Za-z0-9_-]+)$/i;
 
 const sha1 = (s: unknown): string => createHash('sha1').update(String(s), 'utf8').digest('hex');
 
@@ -31,12 +33,13 @@ export type AttachmentRole = 'inline' | 'reference' | 'doc' | 'attach';
 
 /** 正文里解析出的一条引用；position / role 在入清单时补齐。 */
 export interface AttachmentRef {
-  kind: 'file' | 'url' | 'task' | 'ref';
+  kind: 'file' | 'url' | 'task' | 'ref' | 'mdfile';
   id?: string;
   name: string;
   isImage?: boolean;
   targetTaskId?: number;
   targetRefId?: string;
+  targetMdfileId?: string;
   url?: string;
   position?: number;
   role?: AttachmentRole;
@@ -61,6 +64,26 @@ export function taskAttachmentId(topicKey?: unknown, seq?: unknown): string {
 
 export function refAttachmentId(refId?: unknown): string {
   return 'att_ref_' + sha1(String(refId || '')).slice(0, 16);
+}
+
+/**
+ * 规范化 mdfile 的绝对路径：解析相对路径、压掉 `.`/`..`、统一分隔符语义
+ * （存储时保留本机原生分隔符；身份种子按 POSIX + 小写，Windows 大小写不敏感）。
+ */
+export function normalizeMdfilePath(input: unknown): string {
+  const raw = String(input ?? '').trim();
+  return raw ? resolve(raw) : '';
+}
+
+/**
+ * 本地 md 文件的稳定 id：`att_mdfile_<sha1(规范化绝对路径).slice(0,16)>`。
+ * 与 file/url/task/ref 共用 `att_<kind>_<hash>` 命名族；同一路径幂等。
+ */
+export function mdfileAttachmentId(path?: unknown): string {
+  let seed = normalizeMdfilePath(path).replace(/\\/g, '/');
+  // Windows 盘符统一小写（c:/...）；其余部分保留原大小写（不做 realpath）
+  if (/^[A-Z]:/.test(seed)) seed = seed.charAt(0).toLowerCase() + seed.slice(1);
+  return 'att_mdfile_' + sha1(seed).slice(0, 16);
 }
 
 export function metaOf(row?: any): Record<string, unknown> {
@@ -93,14 +116,17 @@ export function parseAttachmentRefs(text?: unknown): AttachmentRef[] {
     } else {
       const task = target.match(NXKV_TASK_RE);
       const doc = target.match(NXKV_REF_RE);
+      const md = target.match(NXKV_MDFILE_RE);
       if (task) ref = { kind: 'task', targetTaskId: Number(task[1]), name: name || `任务 ${task[1]}` };
       else if (doc) ref = { kind: 'ref', targetRefId: doc[1], name: name || (doc[1] ?? '') };
+      else if (md) ref = { kind: 'mdfile', targetMdfileId: md[1], name: name || (md[1] ?? '') };
       else if (/^https?:\/\//i.test(target)) ref = { kind: 'url', url: target, name: name || target };
     }
     if (!ref) continue;
     // 同一资源出现多次只保留第一条（关系表一资源一 role 一行，position 取首次出现）
     const key = ref.id || (ref.kind === 'task' ? `task:${ref.targetTaskId}` : '')
       || (ref.kind === 'ref' ? `ref:${ref.targetRefId}` : '')
+      || (ref.kind === 'mdfile' ? `mdfile:${ref.targetMdfileId}` : '')
       || (ref.kind === 'url' ? `url:${(ref.url ?? '').toLowerCase()}` : '');
     if (seen.has(key)) continue;
     seen.add(key);

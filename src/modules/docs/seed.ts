@@ -110,7 +110,7 @@ async function candidateOf(rel: string, field: unknown, owner: RelOwner): Promis
   return { rel, title, body: '# ' + title + '\n\n' + clean(field) + '\n' };
 }
 
-/** 种子计划（零副作用）：列出所有「字符串有值、文档还没落盘」的约定路径 */
+/** 种子计划（零副作用）：列出所有「字符串有值、文档还没有正文行」的约定路径 */
 export async function seedPlan(): Promise<{ items: SeedItem[]; count: number }> {
   const { loadStore, deriveKey, boardRepoKeys } = await reposBridge();
   const s = await loadStore();

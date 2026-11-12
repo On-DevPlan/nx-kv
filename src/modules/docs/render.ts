@@ -10,9 +10,20 @@ function docHead(d: any): string {
   return `${addr}${head}${extra}`;
 }
 
+const KIND_NOTE: Record<string, string> = {
+  legacy: '历史空壳',
+  external: '外部文件镜像',
+  empty: '正文缺失',
+};
+
 export const renderList = (d: any): string => {
-  const lines = [`自有文档 ${d.count} 个（~/.nx-kv/docs/，env NX_KV_DOCS_DIR 可覆盖）`];
-  for (const x of d.docs) lines.push(`  ${x.rel}  ${x.title || x.name}`);
+  const withBody = (d.docs || []).filter((x: any) => x.hasBody).length;
+  const lines = [`自有文档 ${d.count} 个（${withBody} 个有正文；正文只存库内，不落盘）`];
+  for (const x of d.docs) {
+    // v6：历史空壳 / 外部镜像 / 无正文行必须显式标注，不能看起来像正常文档
+    const tag = x.hasBody ? '' : `  （无正文 · ${KIND_NOTE[x.relKind] || '正文缺失'}）`;
+    lines.push(`  ${x.rel}  ${x.title || x.name}${tag}`);
+  }
   if (d.external?.length) {
     lines.push(`外部文档 ${d.external.length} 个（只读引用）:`);
     for (const x of d.external) lines.push(`  ${x.path}`);
@@ -24,7 +35,15 @@ export const renderList = (d: any): string => {
 };
 
 export const renderGet = (d: any): string => {
-  if (d.missing) return `（文档不存在: ${d.rel || d.path}）`;
+  if (d.missing) {
+    // 有 relKind = 「条目存在但没有正文」（历史空壳 / 外部镜像 / 正文缺失）；
+    // 没有 relKind = 外部路径本身不存在。
+    if (d.relKind) {
+      const kind = KIND_NOTE[d.relKind] ? ` · ${KIND_NOTE[d.relKind]}` : '';
+      return `（无正文${kind}: ${d.rel || d.path}${d.reason ? ` — ${d.reason}` : ''}）`;
+    }
+    return `（文档不存在: ${d.rel || d.path}）`;
+  }
   if (d.dir) return `（外部目录绑定: ${d.path}，${d.files.length} 个文档）\n  ${d.files.slice(0, 20).join('\n  ')}`;
   const head = [`【${d.title || docHead(d)}】`, `  ${d.rel || d.path}${d.external ? '  （外部 · 可写回来源）' : ''}`, ''];
   return head.join('\n') + d.body;
@@ -61,7 +80,8 @@ export const renderAttachments = (d: any): string => {
   const areaOf = (role: unknown): string => (role === 'attach' ? '附件区' : '正文内嵌');
   const lines = [`「${d.locator}」的资源（${d.attachments.length}）`];
   for (const a of d.attachments) {
-    const where = a.localPath || a.url || (a.kind === 'task' ? `task ${a.targetKey}#${a.targetSeq}` : a.targetKey);
+    const where = a.localPath || a.url || (a.kind === 'mdfile' ? a.absPath
+      : a.kind === 'task' ? `task ${a.targetKey}#${a.targetSeq}` : a.targetKey);
     lines.push(`  ${a.id}  [${a.kind}/${a.role} · ${areaOf(a.role)}]  ${a.name || '-'}  ${where || ''}`);
   }
   return lines.join('\n');

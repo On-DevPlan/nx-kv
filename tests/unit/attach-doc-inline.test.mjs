@@ -5,7 +5,7 @@
 //   - annotateTaskDelivery({inlineDocs:true}) 读文档全文（自有树 / 绑定闭包内），截断 2 万字；
 //   - 默认附件模板渲染清单 note + 〔文档原文〕段；读不到全文 fail-open（usage 退回取用命令）。
 import { test } from 'node:test';
-import { mkdtempSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
@@ -22,8 +22,7 @@ process.env.NX_KV_DB = join(sb, 'nxkv.db');
 const service = await import('../../src/modules/localtask/service.js');
 const { annotateTaskDelivery, attachmentInstruction, attachInstructionOf, attachToTask, listTaskAttachments } =
   await import('../../src/modules/tasktool/attach.js');
-const { saveStore } = await import('../../src/modules/repos/service/store.js');
-const { ensureDocRef } = await import('../../src/core/attachmentdb.js');
+const { ensureDocRef, registerMdfile } = await import('../../src/core/attachmentdb.js');
 const { getDb, closeDb } = await import('../../src/core/db/index.js');
 const store = await import('../../src/modules/docs/store.js');
 
@@ -116,12 +115,13 @@ test('fail-open：文档缺失 → 内容留空，usage 退回 docs get 命令',
   await store.writeOwnDoc('notes/gone.md', '# 会消失');
   const t = await addTask('# 缺文档');
   await attachToTask({ id: t.id, ref: 'notes/gone.md', inline: true });
-  unlinkSync(join(sb, 'docs', 'notes', 'gone.md')); // refs 行在、文件没了
+  // v6：正文在 ref_bodies，删镜像已无意义；条目也删掉才是「文档缺失」
+  getDb().run('DELETE FROM refs WHERE rel = :rel', { rel: 'notes/gone.md' });
   const att = await annotateTaskDelivery(await service.getTask({ id: t.id }), { inlineDocs: true });
   const a = att.task.attachments[0];
   assert.equal(a.docContent, undefined);
   const seg = attachmentInstruction(att.task.attachments, null);
-  assert.match(seg, /未能读到全文/);
+  assert.match(seg, /无法内联|正文缺失/);
   assert.doesNotMatch(seg, /文档原文 · /);
 });
 
@@ -139,28 +139,31 @@ test('超 2 万字截断：docTruncated 标记 + usage 给完整版读取命令'
   assert.match(seg, /docs get rel:notes\/long\.md/);
 });
 
-test('外部文档：绑定闭包内 → 读全文；闭包外 → fail-open 留空', async () => {
+test('外部文档：登记为 mdfile → 读全文；未登记 → fail-open + 显式登记命令', async () => {
   const extDir = mkdirSync(join(sb, 'ext'), { recursive: true });
   const extFile = join(extDir, 'outer.md');
-  writeFileSync(extFile, '# 外部文档\n\n闭包内的正文。');
-  // 登记一个 repo，doc 绑定到该文件（构成绑定闭包）
-  await saveStore({ version: 2, repos: [{ key: 'github.com/x/ext-repo', name: 'ext-repo', path: join(sb, 'ext-repo'), doc: { path: extFile } }], boards: [] });
+  writeFileSync(extFile, '# 外部文档\n\n登记后的正文。');
   ensureDocRef(getDb(), { locator: extFile.replace(/\\/g, '/') });
+  registerMdfile(getDb(), { path: extFile });
 
   const t = await addTask('# 外部内联');
   await attachToTask({ id: t.id, ref: extFile, inline: true });
   const att = await annotateTaskDelivery(await service.getTask({ id: t.id }), { inlineDocs: true });
-  assert.match(att.task.attachments[0].docContent, /闭包内的正文/);
+  assert.match(att.task.attachments[0].docContent, /登记后的正文/);
 
-  // 闭包外路径：refs 行在，但不在任何绑定里 → 内容留空，命令照给
+  // 未登记为 mdfile：不直读盘 → 显式说明「无法内联」并给可直接执行的登记命令
   const outside = join(sb, 'outside.md');
   writeFileSync(outside, '# 不给读');
   ensureDocRef(getDb(), { locator: outside.replace(/\\/g, '/') });
-  const t2 = await addTask('# 闭包外');
+  const t2 = await addTask('# 未登记');
   await attachToTask({ id: t2.id, ref: outside, inline: true });
   const att2 = await annotateTaskDelivery(await service.getTask({ id: t2.id }), { inlineDocs: true });
-  assert.equal(att2.task.attachments[0].docContent, undefined);
-  assert.match(attachmentInstruction(att2.task.attachments, null), /未能读到全文/);
+  const a2 = att2.task.attachments[0];
+  assert.equal(a2.docContent, undefined);
+  assert.equal(a2.docMissing, true);
+  const seg = attachmentInstruction(att2.task.attachments, null);
+  assert.match(seg, /未登记为附件，无法内联/);
+  assert.match(seg, /localtask attach .*--mdfile/u);
 });
 
 test('清单 note 渲染：默认模板透出 desc；模板坏了纯文本兜底仍带原文段', () => {

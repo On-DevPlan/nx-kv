@@ -15,6 +15,8 @@
 // 本文件只是对外入口：公共 API 全部 re-export，import 路径不变。
 export {
   isFileId,
+  mdfileAttachmentId,
+  normalizeMdfilePath,
   parseAttachmentRefs,
   refAttachmentId,
   refIdFor,
@@ -23,11 +25,20 @@ export {
 } from './attachmentdb/ids.js';
 export {
   ensureAttachment,
+  ensureMdfileAttachment,
   ensureRefAttachment,
   ensureTaskAttachment,
   ensureUrlAttachment,
   upsertFileAttachment,
 } from './attachmentdb/resources.js';
+export {
+  MDFILE_MIME,
+  listMdfiles,
+  findMdfileByPath,
+  readMdfile,
+  registerMdfile,
+} from './attachmentdb/mdfile.js';
+export type { MdfileRecord, MdfileRow, ReadMdfileResult } from './attachmentdb/mdfile.js';
 export {
   linkAttachment,
   syncRefAttachments,
@@ -35,6 +46,17 @@ export {
   unlinkAttachment,
   updateAttachmentNote,
 } from './attachmentdb/relations.js';
+export {
+  getRefBody,
+  isShellRel,
+  listRefDocs,
+  noBodyReason,
+  refDocByRel,
+  refIdByRel,
+  relKindOf,
+  upsertRefBody,
+} from './attachmentdb/bodies.js';
+export type { RefBodyRow, RefDocRow, RelKind } from './attachmentdb/bodies.js';
 export {
   clearRefBindings,
   ensureDocRef,

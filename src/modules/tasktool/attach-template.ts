@@ -21,12 +21,14 @@ import { hostOfUrl, kindLabelOf, ORIGIN_LABEL, sizeTextOf, STATUS_LABEL } from '
  *            address, storedAddress, addressDrift, resolved, purged, deleted, showCmd }
  *   ref  → { refId, title, relPath, readCmd, content, truncated }
  *     content 只在「文档资料」绑定（role='doc'，交付读全文）且真的读到时非空。
+ *   mdfile → { absPath, anchorDir, content, truncated, stale, missing, readCmd }
+ *     content 是读时从磁盘现取的正文（截断 2 万字）；missing 时为空、stale 表示指纹漂移。
  * 通用 note = 边上的说明（desc，#162）：attach --note 的落点，清单行透出。
  * 旧模板兼容：平铺别名 localPath / fileId / urlText / href / taskId / title /
  * seq / showCmd / refId / relPath / readCmd / target / area / areaLabel。
  */
 function ctxItemOf(a: any): any {
-  const kind = ['url', 'task', 'ref'].includes(a.kind) ? a.kind : 'file';
+  const kind = ['url', 'task', 'ref', 'mdfile'].includes(a.kind) ? a.kind : 'file';
   const isImage = kind === 'file' && (a.isImage === undefined ? isImageName(a.name, a.mime) : !!a.isImage);
   const role = String(a.role || '');
   const origin =
@@ -131,6 +133,36 @@ function ctxItemOf(a: any): any {
     };
   }
 
+  if (kind === 'mdfile') {
+    const absPath = String(a.absPath || a.localPath || '');
+    const anchorDir = String(a.anchorDir || '');
+    const content = String(a.mdContent || '');
+    const truncated = !!a.mdTruncated;
+    const stale = !!a.mdStale;
+    const missing = a.mdMissing === undefined ? !absPath : !!a.mdMissing;
+    const readCmd = String(a.readCmd || `nx-kv docs mdfile ${item.id}`);
+    const mdfile = { absPath, anchorDir, content, truncated, stale, missing, readCmd };
+    const usage = String(a.usage || (missing
+      ? `外部 md 文件当前不可读（${absPath || '路径为空'}）：用 ${readCmd} 查看状态`
+      : `这是外部 md 文件（源文件不在库里）：用 ${readCmd} 读取磁盘当前内容${stale ? '；内容已变化，与登记指纹不一致' : ''}`));
+    return {
+      ...item,
+      absPath,
+      anchorDir,
+      path: absPath,
+      mdPath: absPath,
+      content,
+      truncated,
+      stale,
+      missing,
+      mdfile,
+      usage,
+      cmd: String(a.cmd !== undefined ? a.cmd : readCmd),
+      locator: String(a.locator || absPath || item.name),
+      needsSync: false,
+    };
+  }
+
   const refId = String(a.refId || a.targetKey || '');
   const relPath = String(a.relPath || a.locator || '');
   // docTitle：文档资料绑定读到全文时提取的首行 # 标题（比文件名更说明内容，#162）
@@ -143,13 +175,19 @@ function ctxItemOf(a: any): any {
   const ref = { refId, title, relPath, readCmd, content, truncated };
   // 文档资料绑定（role='doc'，#162）：读到了全文 → usage 指向「文档原文」段；
   // 没读到（fail-open）→ 退回普通取用命令，不假装内容存在。
+  // 外部 md 未登记附件时必须说清楚「为什么没有正文」并给登记命令，
+  // 否则用户会以为文档本身是空的（2026-11 收口口径）。
   let usage = String(a.usage || '');
   if (a.role === 'doc') {
     usage = content
       ? `这是文档资料绑定（进原文）：全文已附在本清单末尾的「文档原文」段${truncated ? `，内容有截断——完整版用 ${readCmd} 读取` : ''}`
-      : readCmd
-        ? `这是文档资料绑定（进原文），但本次未能读到全文：用 ${readCmd} 读取`
-        : `这是文档资料绑定（进原文），但本次未能读到全文（refId ${refId}）：先用 nx-kv docs list 定位路径，再 docs get 读取`;
+      : a.docMissing
+        ? `这是文档资料绑定（进原文），但无法内联：${String(a.docMissingReason || '正文缺失')}` +
+          `${a.docRegisterCmd ? `。先登记为附件：${a.docRegisterCmd}` : ''}` +
+          `${readCmd ? `；登记后用 ${readCmd} 读取` : ''}`
+        : readCmd
+          ? `这是文档资料绑定（进原文），但本次未能读到全文：用 ${readCmd} 读取`
+          : `这是文档资料绑定（进原文），但本次未能读到全文（refId ${refId}）：先用 nx-kv docs list 定位路径，再 docs get 读取`;
   } else {
     usage = usage || (readCmd
       ? `这是文档库里的 md 文件：用 ${readCmd} 读取`
@@ -235,6 +273,9 @@ export function attachmentInstruction(attachments: unknown, sync: unknown): stri
     for (const a of ctx.list) {
       if (a.kind === 'ref' && a.ref && a.ref.content) {
         lines.push(`〔文档原文 · ${a.ref.title}〕（${a.ref.relPath}）：`, '', a.ref.content, '');
+      }
+      if (a.kind === 'mdfile' && a.mdfile && a.mdfile.content) {
+        lines.push(`〔外部 md · ${a.name}〕（${a.mdfile.absPath}${a.mdfile.truncated ? '，已截断' : ''}${a.mdfile.stale ? '，内容有变化' : ''}）：`, '', a.mdfile.content, '');
       }
     }
     return lines.join('\n');

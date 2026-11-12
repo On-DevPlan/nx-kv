@@ -15,12 +15,14 @@ interface StatusBarProps {
   openGoalLog: () => void;
   isDraft: boolean;
   taskRow: LocalTask | null;
+  /** 当前任务挂载的 kind='mdfile' 数量（状态栏入口） */
+  mdCount?: number;
 }
 
 export function StatusBar({
   dockOpen, dockTab, showDockTab, setDockOpen,
   canShowGoalLog, goalLog, openGoalLog,
-  isDraft, taskRow,
+  isDraft, taskRow, mdCount = 0,
 }: StatusBarProps) {
   return (
     <div className="mdw-sbar">
@@ -33,6 +35,17 @@ export function StatusBar({
         {/* icons.tsx 尚未类型化完（title 被推断为必填）：显式传 undefined 与不传等价 */}
         <Icon name="list" title={undefined} />
         <span className="mdw-sbar-lab">附件</span>
+      </button>
+      <button
+        type="button"
+        className={`mdw-sbar-item${dockOpen && dockTab === 'md' ? ' is-on' : ''}`}
+        onClick={() => showDockTab('md')}
+        title="md 附件预览（点击展开信息面板）"
+      >
+        <Icon name="overview" title={undefined} />
+        <span className="mdw-sbar-lab">md</span>
+        {/* 没有 md 附件时不显示数字：避免空态出现「md 0」这种噪声 */}
+        {mdCount > 0 ? <span className="mdw-sbar-num">{mdCount}</span> : null}
       </button>
       {canShowGoalLog ? (
         <button

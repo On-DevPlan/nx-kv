@@ -49,4 +49,4 @@ export {
   contextMap,
   findRepoByName,
 } from './service/context.js';
-export { docsIndexRoot, bindTopicsToRepos } from './service/bind-topics.js';
+export { bindTopicsToRepos } from './service/bind-topics.js';

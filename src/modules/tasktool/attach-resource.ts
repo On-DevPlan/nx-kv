@@ -1,7 +1,8 @@
 // tasktool/attach-resource.js —— 附件的「资源视图模型」：关系表行 → 展示/取用信息。
 //
-// 资源类型只有四种（用户口径）：file（含图片）/ url / task / ref。
+// 资源类型只有五种（用户口径）：file（含图片）/ url / task / ref / mdfile。
 // 旧数据里 kind='image' 或没有 kind 的一律按 file 处理（向后兼容）。
+// mdfile = 本地 .md 文件的路径指针（字节在用户磁盘原地，storage='external'）。
 //
 // 视图模型只依赖 core 与 shared（纯函数 + 关系表查询），不碰同步与云端：
 // file 型资源的可达性（本机副本绝对路径 vs fileId + 同步命令）由 fileStateOf 给出，
@@ -11,7 +12,7 @@ import { isAbsolute } from 'node:path';
 import { isImageName } from '../../core/fileapi.js';
 import { stripFrontmatter } from '../../shared/frontmatter.js';
 
-const KIND_LABEL: Record<string, string> = { file: '附件', url: '链接', task: '任务', ref: '文档' };
+const KIND_LABEL: Record<string, string> = { file: '附件', url: '链接', task: '任务', ref: '文档', mdfile: 'md' };
 const IMAGE_LABEL = '图片';
 export const ORIGIN_LABEL = { inline: '正文内嵌', area: '附件区' };
 export const STATUS_LABEL: Record<string, string> = { pending: '待领取', claimed: '进行中', done: '已完成', cancelled: '已作废' };
@@ -30,10 +31,10 @@ function metaOf(row: any): Record<string, any> {
   }
 }
 
-/** 资源类型归一：image / 空 / 其它未知值 → file；url/task/ref 原样。 */
+/** 资源类型归一：image / 空 / 其它未知值 → file；url/task/ref/mdfile 原样。 */
 function baseKind(row: any): string {
   const k = String((row && row.kind) || '');
-  return k === 'url' || k === 'task' || k === 'ref' ? k : 'file';
+  return k === 'url' || k === 'task' || k === 'ref' || k === 'mdfile' ? k : 'file';
 }
 
 export function kindLabelOf(kind: unknown, isImage: unknown): string {
@@ -207,7 +208,9 @@ export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
     // 兼容旧字段名（旧模板/旧 CLI 输出仍在读 area/areaLabel）
     area: origin,
     areaLabel: ORIGIN_LABEL[origin],
-    storage: kind === 'file' ? String(row.storage || '') : kind === 'url' ? 'url' : 'internal',
+    storage: kind === 'file' ? String(row.storage || '')
+      : kind === 'url' ? 'url'
+        : kind === 'mdfile' ? 'external' : 'internal',
     synced: kind !== 'file',
     localPath: '',
     targetKind: String(row.targetKind || ''),
@@ -280,6 +283,35 @@ export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
       usage: resolved
         ? `这是任务引用而不是副本（地址 ${address}）：用 ${showCmd} 读取最新正文；当前状态 ${statusLabel}${info && info.deleted ? '（已软删）' : ''}${addressDrift ? `；任务已移动到 ${address}，原地址 ${storedAddress}` : ''}。任务正文被修改后，读到的是最新内容。`
         : `这是任务引用（地址 ${address}），但目标任务已被清理：地址仍可核验，正文不可读。`,
+    };
+  }
+
+  if (kind === 'mdfile') {
+    // 外部 md 文件指针：字节在用户磁盘原地（storage='external'），库里只有 abs_path + hash。
+    // 渲染分支只看 kind，不看 MIME / 扩展名。
+    const absPath = String(row.absPath || row.abs_path || meta.absPath || '');
+    const anchorDir = String(row.anchorDir || row.anchor_dir || meta.anchorDir || '');
+    const exists = !!absPath && existsSync(absPath);
+    const missing = !exists || (row.missingAt !== null && row.missingAt !== undefined);
+    const title = String(row.name || (absPath ? absPath.split(/[\\/]/).pop() : '') || base.id);
+    const readCmd = `nx-kv docs mdfile ${base.id}`;
+    const locator = `${title}${absPath ? `（${absPath}）` : ''}`;
+    return {
+      ...base,
+      absPath,
+      anchorDir,
+      exists,
+      missing,
+      fileId: base.id,
+      title,
+      readCmd,
+      target: absPath || locator,
+      needsSync: false,
+      cmd: readCmd,
+      locator,
+      usage: missing
+        ? `外部 md 文件当前不可读（${absPath || '路径为空'}）：用 ${readCmd} 查看状态；文件恢复后自动可读（不软删、不删行）`
+        : `这是外部 md 文件的路径指针（源文件不在库里）：用 ${readCmd} 读取磁盘当前内容（读时核对指纹）`,
     };
   }
 

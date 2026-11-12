@@ -23,7 +23,7 @@ import type { DbApi } from '../driver.js';
 /** 迁移上下文（bootstrap 传入）。 */
 export interface V2Context {
   attachmentsRoot?: string;
-  docsRoot?: string;
+  docsDir?: string;
   atMs?: number;
 }
 
@@ -162,16 +162,16 @@ function normalizeRefs(conn: DbApi, atMs: number): void {
 }
 
 /**
- * step 002 的 apply。`ctx` 由 bootstrap 传入：{ attachmentsRoot, docsRoot, atMs }。
+ * step 002 的 apply。`ctx` 由 bootstrap 传入：{ attachmentsRoot, docsDir, atMs }。
  */
 export function migrateAttachments(
   conn: DbApi,
-  { attachmentsRoot, docsRoot, atMs = Date.now() }: V2Context = {}
+  { attachmentsRoot, docsDir, atMs = Date.now() }: V2Context = {}
 ): AttachmentsMigrationResult {
   const overrideDir = String(readSettingRaw(conn, 'app.attachmentsDir') || '');
   const manifestCount = migrateManifests(conn, { attachmentsRoot, overrideDir, atMs });
   normalizeRefs(conn, atMs);
   const taskEdges = syncTaskAttachmentIndex(conn, { atMs });
-  const docEdges = syncDocAttachmentIndex(conn, { docsRoot, atMs });
+  const docEdges = syncDocAttachmentIndex(conn, { docsDir, atMs });
   return { manifestCount, taskEdges, docEdges };
 }

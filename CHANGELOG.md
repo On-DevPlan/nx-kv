@@ -2,6 +2,41 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.49.0] - 2026-11-12 ref 正文入库（v6）与 DOCS_DIR 收口
+
+### Added
+
+- **`ref_bodies`：文档正文的唯一真相**。`refs` 增加 `rel/origin/body_bytes`，
+  `docs add/set` 只写库不落盘；`docs list/get`、`repo knowledge`、交付注入、
+  面板文档页全部改为读库，删掉磁盘扫描分支。
+- **读路径区分 `normal / legacy / external / empty`**：`legacy/<id>`、`external/<sha1>`
+  与无正文行在列表、文档页、交付清单里显式标「无正文」，`docs get` 返回 `missing`
+  并给出原因，不再渲染成空文件。
+- **`docs-dir-policy` 单测**：扫描 `src/**`，`NX_KV_DOCS_DIR` / `docsRoot` /
+  `mdfileDirFromEnv` 只允许出现在 paths、attachment 层与迁移脚本里。
+
+### Changed
+
+- **`NX_KV_DOCS_DIR` 语义收敛为 mdfile 的默认附件目录**（环境变量名不变，既有配置
+  继续生效）：`docsRoot()` → `mdfileDir()` / `mdfileDirFromEnv()`，唯一读入口为
+  `readMdfile`，任何模块不得直接扫盘。
+- **外部 md 交付不再自动内联**：未登记为附件时显式提示「该文档未登记为附件，
+  无法内联」，并给出可直接执行的 `nx-kv localtask attach --mdfile <abs>` 命令。
+- **删除 O9 守卫**「文档树内禁止登记 mdfile」及其 `RegisterMdfileInput.docsRoot`
+  参数——默认目录本就是 mdfile 的存放地，二者语义矛盾。
+
+### Notes
+
+- **数据库自动升级 v4 → v6**：新建 `ref_bodies`（PK `ref_id`，FK CASCADE），
+  `ref_attach` 重建（role 增加 `source`），外部文件仍在时登记 mdfile +
+  `ref_attach(role='source')`，不在则只留空壳；逐篇 sha256 硬门禁，任一不符整步回滚。
+  升级前自动备份为 `backups/nxkv-v4-<时间戳>.db`。
+- 存量 133 行 `refs.id` 全部保留（公式仍为 `ref_<sha1(rel)>`，输入从 locator 换成 rel）。
+- 31 份盘上 `.md` 入库后磁盘副本只留档，不再读取、不再自动登记 mdfile。
+- 验证：unit 921 / smoke 200 / lint 0 error；真实库副本 5 项端到端（迁移计数
+  133/31/67/87 + `foreign_key_check` 空、CLI 全链、面板走查、故意违规被拦、壳行 missing 回归）。
+
+
 ## [0.48.2] - 2026-11-12 zod 契约内联进 action 文件（#178 第 4 轮）
 
 ### Changed

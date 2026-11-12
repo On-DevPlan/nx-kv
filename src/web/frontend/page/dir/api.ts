@@ -131,6 +131,11 @@ export function getTaskAttachments(query: string): Promise<any> {
   return api(`/api/localtasks/attachments?${query}`);
 }
 
+/** mdfile 正文（GET /api/docs/mdfile?attachment=<id>；读时校验指纹）。 */
+export function getMdfileContent(id: string): Promise<{ body?: string; absPath?: string; stale?: boolean; missing?: boolean }> {
+  return api(`/api/docs/mdfile?attachment=${encodeURIComponent(id)}`);
+}
+
 /** 领取预览（POST /api/localtasks/preview；不落任何状态）。 */
 export function previewTask(body: Record<string, unknown>): Promise<any> {
   return api('/api/localtasks/preview', { method: 'POST', body });

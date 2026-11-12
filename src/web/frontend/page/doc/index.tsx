@@ -1,13 +1,7 @@
 // 文档页签面板 —— 一个文档 = 工作区里的一等页签（与任务页同构）。
-//
-// **真相在磁盘**：打开 GET /api/docs/item 拉正文，保存 PATCH /api/docs/item 写盘。
-// 不进 doc-store.js——那是任务草稿的会话内存，文档不需要会话副本（刷新即重新读盘，
-// 与 Obsidian 的心智一致）。
-//
-// 双链 [[..]] 点击 → 在工作区开目标文档的页签：openPanel 按 component+config 去重，
-// 同一文档反复点只会聚焦已开的页签。解析规则与后端共用 core/wikilink.js。
-// 外部绑定（path:）也可写：登记在册 = 我的文档集，保存直接写回来源文件
-// （后端再校验一次绑定闭包）；只有目录绑定（dir）仍是只读清单。
+// 正文真相在库内（v6 ref_bodies）：GET /api/docs/item 拉正文，PATCH 写库，不落盘。
+// 双链 [[..]] 点击开目标文档页签（openPanel 去重）；解析规则与后端共用 core/wikilink.js。
+// 外部绑定（path:）登记在册 = 我的文档集；只有目录绑定（dir）仍是只读清单。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import type { Model } from 'flexlayout-react';
@@ -365,7 +359,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
         title: '重命名文档',
         input: true,
         value: prevRel,
-        placeholder: '新路径（相对 docs 根，以 .md 结尾）',
+        placeholder: '新路径（逻辑 rel，以 .md 结尾）',
       });
       if (next === null) return;
       const rel = String(next).trim();
@@ -394,7 +388,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     guard(async () => {
       const ok = await dialog({
         title: `删除文档「${docTitle || docRel || docId}」`,
-        message: `磁盘上的 ${docRel || docId} 会被一并删除，不可恢复。`,
+        message: `库内文档 ${docRel || docId} 及其正文会被一并删除，不可恢复。`,
         danger: true,
         okText: '删除',
       });
@@ -456,15 +450,22 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   if (!doc) return <div className="mdw"><div className="pad muted">载入中…</div></div>;
 
   if (doc.missing) {
-    const creatable = String(docId || '').startsWith('rel:') || !String(docId || '').startsWith('path:');
+    // v6：legacy/<id> 与 external/<hash> 是「有身份、没有正文」的壳行，
+    // 必须显式说明原因，且不提供「创建骨架」（避免把壳行变成正常文档）。
+    const shell = !!doc.relKind;
+    const creatable = !shell && (String(docId || '').startsWith('rel:') || !String(docId || '').startsWith('path:'));
     return (
       <div className="mdw docp">
         <div className="docp-head">
           <span className="docp-path mono">{doc.rel || doc.path || docId}</span>
         </div>
         <div className="pad stack">
-          <div><strong>文档还没有落盘</strong></div>
-          <div className="hint">描述内容的权威是磁盘上的 .md 文件——对应的字符串字段会在读取时播种，也可以直接创建骨架。</div>
+          <div><strong>{shell ? '这条文档没有正文' : '文档还没有正文'}</strong></div>
+          <div className="hint">
+            {shell
+              ? String(doc.reason || '历史索引条目或外部文件镜像，正文不在库内。')
+              : '正文的唯一来源是库内 ref_bodies——创建骨架会直接写入库，不落盘。'}
+          </div>
           {creatable && (
             <div>
               <button className="btn sm" onClick={createDoc}>创建骨架</button>

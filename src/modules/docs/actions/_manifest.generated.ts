@@ -12,7 +12,10 @@ import { DocAttachAction } from './doc-attach.js';
 import { DocAttachmentsAction } from './doc-attachments.js';
 import { DocDetachAction } from './doc-detach.js';
 import { DocGetAction } from './doc-get.js';
+import { DocLinkFileAction } from './doc-link-file.js';
 import { DocListAction } from './doc-list.js';
+import { DocMdfileAction } from './doc-mdfile.js';
+import { DocMdfilesAction } from './doc-mdfiles.js';
 import { DocRemoveAction } from './doc-remove.js';
 import { DocUpdateAction } from './doc-update.js';
 import { DocsBindAction } from './docs-bind.js';
@@ -30,7 +33,10 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   DocAttachmentsAction,
   DocDetachAction,
   DocGetAction,
+  DocLinkFileAction,
   DocListAction,
+  DocMdfileAction,
+  DocMdfilesAction,
   DocRemoveAction,
   DocUpdateAction,
   DocsBindAction,
@@ -48,7 +54,10 @@ export { DocAttachAction };
 export { DocAttachmentsAction };
 export { DocDetachAction };
 export { DocGetAction };
+export { DocLinkFileAction };
 export { DocListAction };
+export { DocMdfileAction };
+export { DocMdfilesAction };
 export { DocRemoveAction };
 export { DocUpdateAction };
 export { DocsBindAction };

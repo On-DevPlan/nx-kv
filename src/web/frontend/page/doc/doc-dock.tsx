@@ -143,7 +143,7 @@ export function DocStatusBar({ dock, attCount = 0, bindCount = 0 }: {
         {bindCount ? <span className="mdw-sbar-num">{bindCount}</span> : null}
       </button>
       <span className="mdw-sbar-grow" />
-      <span className="docp-sbar-hint">双链 [[]] 点击跳转 · Ctrl+S 保存 · 文档即磁盘文件</span>
+      <span className="docp-sbar-hint">双链 [[]] 点击跳转 · Ctrl+S 保存 · 正文存库（v6 起不落盘）</span>
       <button
         type="button"
         className={`mdw-sbar-chev${dockOpen ? ' is-open' : ''}`}

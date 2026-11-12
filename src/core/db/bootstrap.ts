@@ -25,7 +25,7 @@
 //     **绝不自动建表** —— 那会把别人的库就地改成我们的结构。
 import { existsSync, rmSync, unlinkSync, writeFileSync, renameSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { attachmentsRootFromEnv, dbPathFromEnv, backupsDirFromEnv, defaultStoreTarget } from '../paths.js';
+import { attachmentsRootFromEnv, dbPathFromEnv, backupsDirFromEnv, defaultStoreTarget, mdfileDirFromEnv } from '../paths.js';
 import {
   archiveAttachmentManifests,
   syncDocAttachmentIndex,
@@ -185,10 +185,10 @@ export function bootstrap(
 ): BootstrapResult {
   const before = inspectStore(db);
   const legacy = scanLegacy(appDir);
-  // 迁移上下文：002 的 apply 需要把 manifest.json / docs 树 / 任务正文一起迁走。
+  // 迁移上下文：002 的 apply 需要把 manifest.json / docs 旧目录 / 任务正文一起迁走。
   const migrationContext = {
     attachmentsRoot: attachmentsRootFromEnv(),
-    docsRoot: process.env.NX_KV_DOCS_DIR || join(appDir, 'docs'),
+    docsDir: mdfileDirFromEnv(appDir),
     atMs,
   };
   const result: BootstrapResult = {
@@ -231,7 +231,7 @@ export function bootstrap(
         // 导入之后立刻把正文引用/文档资源落关系表（002 的 apply 在导入之前跑，
         // 这里补一次，保证「导入的历史任务」也不是只有正文里的 fileId 字符串）。
         syncTaskAttachmentIndex(conn, { atMs });
-        syncDocAttachmentIndex(conn, { docsRoot: migrationContext.docsRoot, atMs });
+        syncDocAttachmentIndex(conn, { docsDir: migrationContext.docsDir, atMs });
         // 内置模板 seed 放在导入**之后**：legacy templates.json 里用户改过的
         // builtin 行先落库，seed 的 INSERT OR IGNORE 就不会用出厂文本盖掉它。
         seedBuiltinTemplates(conn, atMs);
@@ -300,7 +300,7 @@ export function bootstrap(
         const out = importLegacy(conn, { appDir, atMs });
         // 导入的数据在本事务里落资源关系；失败则整段回滚，不会留下半套关系。
         syncTaskAttachmentIndex(conn, { atMs });
-        syncDocAttachmentIndex(conn, { docsRoot: migrationContext.docsRoot, atMs });
+        syncDocAttachmentIndex(conn, { docsDir: migrationContext.docsDir, atMs });
         return out;
       },
       { db, mode: 'IMMEDIATE', rollback: dryRun }

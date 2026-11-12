@@ -65,6 +65,16 @@ export function attachmentsRootFromEnv(): string {
   return process.env.NX_KV_ATTACHMENTS || ATTACHMENTS_DIR;
 }
 
+// mdfile 的默认附件目录。
+//
+// **语义（2026-11 硬约束）**：这个目录只用来存放 mdfile 的默认附件，
+// 只能通过 attach 访问；文档正文的唯一真相在 `ref_bodies`，这里不再承载文档。
+// 除 attachment 层与迁移脚本外，任何模块不得直接用 fs 打开这个目录下的文件。
+// 环境变量名 `NX_KV_DOCS_DIR` 保留（用户的既有配置不能因为改名作废）。
+export function mdfileDirFromEnv(appDir: string = APP_DIR): string {
+  return process.env.NX_KV_DOCS_DIR || join(appDir, 'docs');
+}
+
 // 名称安全校验：拒绝路径穿越（保留中文等合法命名）。
 //
 // 用于「这个字符串会被用作**目录名**」的场景：skill 名、内置包名、适配器 id。

@@ -157,7 +157,7 @@ export function normAttachment(a: Attachment): NormalizedAttachment {
     areaLabel: AREA_LABEL[AREA_OF(role)],
     kind: a.kind === 'file' && isImage ? 'image' : a.kind,
     sizeText: fmtSize(a.size),
-    href: a.kind === 'file' ? contentUrl(a.id) : a.href || urlText,
+    href: a.kind === 'file' ? contentUrl(a.id) : a.kind === 'mdfile' ? '' : a.href || urlText,
     targetSeq: a.targetSeq ?? (a.meta && a.meta.seq) ?? null,
     targetKey: a.targetKey || (a.meta && a.meta.topicKey) || '',
     targetRef: a.targetKey || (a.meta && a.meta.refId) || '',
@@ -165,7 +165,7 @@ export function normAttachment(a: Attachment): NormalizedAttachment {
   };
 }
 
-const KIND_BADGE: Record<string, string> = { image: '图片', file: '文件', url: '链接', task: '任务', ref: '文档' };
+const KIND_BADGE: Record<string, string> = { image: '图片', file: '文件', url: '链接', task: '任务', ref: '文档', mdfile: 'md' };
 export const badgeOf = (kind: string | undefined) => KIND_BADGE[kind || ''] || '附件';
 
 /** 任务侧/文档侧的列表与关系接口（同一套字段，只换 URL）。 */

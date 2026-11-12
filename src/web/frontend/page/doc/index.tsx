@@ -1,13 +1,7 @@
 // 文档页签面板 —— 一个文档 = 工作区里的一等页签（与任务页同构）。
-//
-// **真相在磁盘**：打开 GET /api/docs/item 拉正文，保存 PATCH /api/docs/item 写盘。
-// 不进 doc-store.js——那是任务草稿的会话内存，文档不需要会话副本（刷新即重新读盘，
-// 与 Obsidian 的心智一致）。
-//
-// 双链 [[..]] 点击 → 在工作区开目标文档的页签：openPanel 按 component+config 去重，
-// 同一文档反复点只会聚焦已开的页签。解析规则与后端共用 core/wikilink.js。
-// 外部绑定（path:）也可写：登记在册 = 我的文档集，保存直接写回来源文件
-// （后端再校验一次绑定闭包）；只有目录绑定（dir）仍是只读清单。
+// 正文真相在库内（v6 ref_bodies）：GET /api/docs/item 拉正文，PATCH 写库，不落盘。
+// 双链 [[..]] 点击开目标文档页签（openPanel 去重）；解析规则与后端共用 core/wikilink.js。
+// 外部绑定（path:）登记在册 = 我的文档集；只有目录绑定（dir）仍是只读清单。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Actions } from 'flexlayout-react';

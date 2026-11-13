@@ -43,6 +43,7 @@ import { useTemplates } from './modules/md/use-templates.js';
 import { findGroupTask } from './modules/board/board-view.js';
 import { installAttachmentPreview } from './modules/md/lightbox.js';
 import { loadPrefs, updatePrefs } from './prefs.js';
+import { nextRepoData } from './repo-data.js';
 import SidebarRescueFab from './components/sidebar/rescue-fab.jsx';
 import { pushRoute } from './components/layout/route-history.js';
 import type { AppRoute, BoardRow, LocaltasksData, LocalTask, LocalTopic, Prefs, RepoData, RepoRow, SpecCtx } from './types.js';
@@ -218,20 +219,22 @@ export default function App() {
   }, [refreshLocal]);
 
   // ─── 仓库与看板：侧栏的**唯一数据源** ───
+  //
+  // 两份清单**各自成败**（#194）：原先是 `Promise.all` + 一次 setState，任一份失败
+  // （某个仓库目录读盘报错让 /api/repos 500、慢盘上扫 31 个仓库的 git 超时……）
+  // 两半一起被丢弃，repoData 退回初始空值 → 侧栏树整块消失变空白；此后新建项目组
+  // 虽然建成功，刷新仍走这条注定失败的路径，树始终是空的。
+  // 现在成功的一半立刻生效，失败的一半保留旧值——树最少「不倒退」。
   const [repoData, setRepoData] = useState<RepoData>({ repos: [], boards: [] });
   const refreshRepos = useCallback(async () => {
-    try {
-      const [repos, boards] = await Promise.all([
-        api<RepoRow[]>('/api/repos'),
-        api<{ boards?: RepoData['boards'] }>('/api/boards'),
-      ]);
-      setRepoData({
-        repos: (repos || []).filter((r) => (r.type || 'dev') !== 'ref'), // 参考仓库不进侧栏
-        boards: (boards && boards.boards) || [],
-      });
-    } catch {
-      /* 读失败：保留旧数据，侧栏仍可用 */
-    }
+    const [rRes, bRes] = await Promise.allSettled([
+      api<RepoRow[]>('/api/repos'),
+      api<{ boards?: RepoData['boards'] }>('/api/boards'),
+    ]);
+    setRepoData((prev) => nextRepoData(prev, {
+      repos: rRes.status === 'fulfilled' ? rRes.value : undefined,
+      boards: bRes.status === 'fulfilled' ? bRes.value : undefined,
+    }));
   }, []);
   useEffect(() => {
     refreshRepos();

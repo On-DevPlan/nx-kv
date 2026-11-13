@@ -16,7 +16,7 @@ import type { PopMenuItem } from '../popup/index.js';
 import { api } from '../../api/client.js';
 import RepoFormModal from '../../page/repos/repo-form-modal.jsx';
 import { buildTree, fmtWaitLeft, fmtDeadlineClock } from './model.js';
-import type { SideRow } from './model.js';
+import type { SideRow, SideTree } from './model.js';
 import { canDrop, zoneOf, applyDrop } from './drag.js';
 import type { DragRow, DropZone } from './drag.js';
 import { rowMenuItems, addMenuItems } from './row-menu.jsx';
@@ -88,10 +88,19 @@ export default function Sidebar({
   const [dropHint, setDropHint] = useState<{ id: string; zone: DropZone } | null>(null); // {key|id, zone}
   const treeRef = useRef<HTMLDivElement | null>(null);
 
-  const { rows, matchCount } = useMemo(
-    () => buildTree(repos, boards, topics, prefs, kw),
-    [repos, boards, topics, prefs, kw]
-  );
+  // 树模型：算崩了也**不能**让侧栏整块变空白（#194）——退回上一版成功的行，
+  // 只在控制台留一条（不 toast：侧栏每秒都可能重算，刷屏比没提示更糟）。
+  const lastTree = useRef<SideTree>({ rows: [], matchCount: 0 });
+  const { rows, matchCount } = useMemo(() => {
+    try {
+      const t = buildTree(repos, boards, topics, prefs, kw);
+      lastTree.current = t;
+      return t;
+    } catch (e) {
+      console.error('[nx-kv] 侧栏树构建失败，沿用上一版行模型:', e);
+      return lastTree.current;
+    }
+  }, [repos, boards, topics, prefs, kw]);
 
   // ─── 等待倒计时（#182）───
   // 等待标记要显示「还剩多久」，所以得有第二个时间源：只要有一行在等就每秒推进一次，
@@ -283,6 +292,9 @@ export default function Sidebar({
     }
   };
 
+  // 一份清单都没读到（#194：这两份清单是侧栏树的全部原料，空 = 树只剩提示）
+  const noData = !(repos || []).length && !(boards || []).length;
+
   const footEntry = (hash: string, icon: string, label: string) => (
     <button
       className={'trow' + (route.view === hash.replace('#/', '') ? ' active' : '')}
@@ -432,7 +444,23 @@ export default function Sidebar({
             </div>
           )
         ))}
-        {!rows.length && <div className="tree-empty">{kw ? '没有匹配的仓库' : '还没有登记仓库：点右上 ＋ 登记，或去「仓库管理」'}</div>}
+        {!rows.length && (
+          <div className="tree-empty">
+            {kw
+              ? '没有匹配的仓库'
+              : noData ? (
+                // 行模型为空时的**唯一**线索：原先是句静态提示，数据读不到时用户只看到一片空白
+                // （#194）。给一个可点的重试——仓库/看板两份清单任一失败都还能自愈。
+                <button className="trow" title="重新读取仓库与看板清单" onClick={() => refreshRepos?.()}>
+                  <span className="gico"><Icon name="repo" /></span>
+                  <span className="nm">清单没读到 · 点这里重试</span>
+                </button>
+              ) : (
+                // 有数据但一行都出不来 = 全被「从侧边栏隐藏」勾掉了（#61），给出路而不是空白
+                '项目与项目组都被隐藏了：设置 → 侧栏显示 里勾回来'
+              )}
+          </div>
+        )}
         <div className="droptail" aria-hidden="true" />
       </div>
 

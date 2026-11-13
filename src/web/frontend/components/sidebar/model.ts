@@ -60,6 +60,17 @@ export interface SideTree {
   matchCount: number;
 }
 
+/**
+ * 入参归一：不是数组就当空清单（#194）。
+ *
+ * 侧栏是壳的唯一入口，宁肯「少一类行」也不能整块消失——原实现对 `boards` 直接
+ * `for…of`，一旦传进来的是 `{boards, unassigned}` 这种包络（或任何非数组），
+ * 整个面板抛错、树变空白。归一之后最坏情况只是少几行。
+ */
+function asList<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
 // 兄弟模块类型桥：board-view 尚未类型化（`tasks = []` 默认值把形参推成 never[]），
 // 这里按实际契约声明一次——它毕业成强类型后此桥退化为恒等。
 const projectPendingBridge = projectPending as unknown as (tasks: LocalTask[] | undefined) => number;
@@ -142,11 +153,15 @@ export function buildTree(
 ): SideTree {
   const q = String(kw || '').trim().toLowerCase();
   const hidden = new Set<string>(prefs.hidden || []);
+  // 三份入参都在这里归一（#194）：外部载荷形状不该让侧栏整块消失
+  const repoList = asList<RepoRow>(repos);
+  const boardList = asList<BoardRow>(boards);
+  const topicList = asList<LocalTopic>(topics);
 
   // 仓库 → 任务队列：按路径归位。topic.repo 由服务端按 cwd 匹配登记得到；
   // 没匹配上的（目录没登记）不单独成行——它不属于任何仓库，也不该有自己的入口。
   const topicsOf = new Map<string, LocalTopic[]>();
-  for (const t of topics || []) {
+  for (const t of topicList) {
     if (t.isGlobal) continue;
     const rid = t.repo && t.repo.id;
     if (!rid) continue;
@@ -161,7 +176,7 @@ export function buildTree(
   //   key      = 仓库身份（归一化远程地址派生）——排序、隐藏、看板归属都用它；
   //   topicKey = 任务队列主题的 key（sha1(目录名)）——工作台深链 #/dir/<topicKey> 用它。
   // 两者不是一回事：仓库 key 跨机稳定，topic key 是本机队列的身份。
-  const repoRows: SideRow[] = (repos || [])
+  const repoRows: SideRow[] = repoList
     .filter((r) => !hidden.has(r.key || r.id))
     .map((r) => {
       const ts = topicsOf.get(r.id) || [];
@@ -202,7 +217,6 @@ export function buildTree(
   const matched = repoRows.filter(hit);
 
   const rows: SideRow[] = [];
-  const boardList = boards || [];
 
   // 看板行（分组）：**组是叶子，不再铺成员子行**（2026-11-03 语义化改版）。
   // 侧栏操作的对象是「工作组」，不是组下的某个文件——成员清单与项目切换
@@ -286,7 +300,7 @@ export function buildTree(
     .map((x) => x.r);
 
   // 全局池恒顶（不受排序影响）
-  const globalRow = (topics || []).find((t) => t.isGlobal);
+  const globalRow = topicList.find((t) => t.isGlobal);
   const out: SideRow[] = [];
   if (globalRow) {
     out.push({

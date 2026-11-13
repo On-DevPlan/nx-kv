@@ -256,18 +256,26 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   };
 
   // ─── 保存（正文进库；desc 由服务端按需回填 / 用户手写优先）───
+  // savingRef：一次保存没落地前不再进第二次——Ctrl+S 连击与页头「保存」按钮
+  // 是两条入口，键盘侧的节流管不到按钮（#189）
+  const savingRef = useRef(false);
   const save = () =>
     guard(async () => {
-      if (!doc || !writable) return;
-      const nextBody = doc.body;
-      const res = await updateDocItem({ ref: docId, body: nextBody });
-      setDoc((d) => (d ? { ...d, body: nextBody, summary: res.summary, desc: res.desc ?? d.desc } : d));
-      setDirty(false);
-      clearHistory(histRef.current, docId);
-      // 标题可能变了（正文首行）→ 右轨与「文档列表」跟着刷（#183）
-      loadIntroLinks();
-      notifyDocsChanged();
-      toast(res.summary ? '已保存，摘要已回写' : '已保存');
+      if (!doc || !writable || savingRef.current) return;
+      savingRef.current = true;
+      try {
+        const nextBody = doc.body;
+        const res = await updateDocItem({ ref: docId, body: nextBody });
+        setDoc((d) => (d ? { ...d, body: nextBody, summary: res.summary, desc: res.desc ?? d.desc } : d));
+        setDirty(false);
+        clearHistory(histRef.current, docId);
+        // 标题可能变了（正文首行）→ 右轨与「文档列表」跟着刷（#183）
+        loadIntroLinks();
+        notifyDocsChanged();
+        toast(res.summary ? '已保存，摘要已回写' : '已保存');
+      } finally {
+        savingRef.current = false;
+      }
     });
 
   // ─── 编辑（#168：文档标题 = 正文**首行**的 `# 标题`；正文第一行不再顶替标题）───

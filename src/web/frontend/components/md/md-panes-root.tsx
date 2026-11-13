@@ -3,6 +3,7 @@
 import { forwardRef, useEffect, useRef } from 'react';
 import type { ForwardedRef, RefObject } from 'react';
 import { FMT_KEYS, bodyHasH1 } from './md-panes-helpers.js';
+import { createComboGate, docComboOf } from './doc-keys.js';
 import type { EditorApi, FileDropCtx } from './md-panes-helpers.js';
 import { LivePreview, SourceEditor } from './md-panes.jsx';
 import type { TextSel } from './md-panes.jsx';
@@ -68,13 +69,17 @@ export const MdPanes = forwardRef<HTMLElement, MdPanesProps>(function MdPanes(
   // 文档级快捷键集中接管（window 捕获阶段）：
   // 受控 textarea 的原生 undo 栈会被程序化改写冲掉，且原生撤销与我们的
   // 历史栈会互相打架——统一在这里拦截，编辑器区的按键行为才稳定可预期。
+  // 保存另设节流闸门：按住 Ctrl+S 的自动重复已在 docComboOf 里滤掉，
+  // 这里再兜一层连击（同一次按压可能被多个监听者转发）。
+  const saveGateRef = useRef(createComboGate());
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      // 只认「完整组合按击」：修饰键 + 单个字母，且非按住重复、非输入法组合（#189）
+      const k = docComboOf(e);
+      if (!k) return;
       // DOM 事件边界：target 声明为 EventTarget，closest 只在元素上才有
       const t = e.target as Element | null;
       if (!t || typeof t.closest !== 'function') return;
-      const k = e.key.toLowerCase();
       const inEditorText = t.closest('.mdw-editor,.mdw-lp-src,.mdw-lp-title,.mdw-title-input');
       if (k === 'f' && mode !== 'edit') {
         // 实时预览/阅读态的查找（源码态由编辑器自己接管）；只要焦点在工作台内即可
@@ -92,7 +97,9 @@ export const MdPanes = forwardRef<HTMLElement, MdPanesProps>(function MdPanes(
         return;
       }
       if (k === 's') {
+        // 无论是否放行都要 preventDefault：否则浏览器会弹出「另存网页」
         e.preventDefault();
+        if (!saveGateRef.current('save', Date.now())) return; // 窗口内连击只认第一次
         onSave?.();
         return;
       }

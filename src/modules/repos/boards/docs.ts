@@ -1,9 +1,11 @@
-// 组内描述（board note）：描述 = 文档，写 group/<组>/<key>.md；repoNotes 只是摘要影子。
+// 组内描述（board note）：描述 = 文档，绑定在 ref_bindings(type=group_repo)；
+// repoNotes 只是列表用的一句话摘要（保存时同步）。
 import {
   loadStore,
   storedBoardKey,
   boardRepoKeys,
   deriveKey,
+  mutateStore,
   normalizeKey,
 } from '../service.js';
 import { badInput, notFound, conflict } from '../../../core/errors.js';
@@ -18,28 +20,7 @@ export interface SetBoardRepoNoteResult {
   boardKey: string;
   boardName: string;
   note: string;
-}
-
-/** writeGroupNoteDoc 的定位信息。 */
-interface GroupNoteInfo {
-  key: string;
-  name: string;
-  board: string;
-  boardKey: string;
-  boardName: string;
-}
-
-/** 组内描述写进 group/<组>/<key>.md（覆盖正文；空文本 = 只留标题，摘要自然为空）。 */
-async function writeGroupNoteDoc(info: GroupNoteInfo, text: string): Promise<string> {
-  const { groupNoteRel } = await import('../../docs/paths.js');
-  const store = await import('../../docs/store.js');
-  const { writeBackSummary } = await import('../../docs/seed.js');
-  const rel = groupNoteRel(info.boardName, info.key);
-  const head = `# ${info.boardName} · ${info.name}`;
-  const body = text ? `${head}\n\n${text}\n` : `${head}\n`;
-  await store.writeOwnDoc(rel, body);
-  await writeBackSummary(rel, body); // 摘要回填 repoNotes（列表读的那份影子）
-  return rel;
+  refId: string;
 }
 
 /** setBoardRepoNote 的参数。 */
@@ -53,7 +34,7 @@ export interface SetBoardRepoNoteInput {
 /**
  * 设置组内描述：key = 仓库（id / key / 路径 / 名称 均可），board = 看板。
  * 只对**已在板内**的成员有意义——不是成员就显式报错，别静默挂到没人读的地方。
- * note 为空 = 清除。
+ * note 为空 = 清除（解绑文档）。
  */
 export async function setBoardRepoNote({ id, key, board, note }: SetBoardRepoNoteInput = {}): Promise<SetBoardRepoNoteResult> {
   const locator = key || id;
@@ -69,14 +50,43 @@ export async function setBoardRepoNote({ id, key, board, note }: SetBoardRepoNot
   }
   const text = String(note || '').trim();
   const found = s.repos.find((x) => deriveKey(x) === rkey);
-  const info: GroupNoteInfo = {
+  const name = (found && found.name) || rkey;
+  const info = {
     key: rkey,
-    name: (found && found.name) || rkey,
+    name,
     board: b.id,
     boardKey: storedBoardKey(b),
     boardName: b.name,
   };
-  // 描述 = 文档：写 group/<组>/<key>.md；repoNotes 只是摘要影子（由回写维护）
-  await writeGroupNoteDoc(info, text);
-  return { ...info, note: text };
+
+  const { createRef, updateDoc } = await import('../../docs/service.js');
+  const { unbindRef } = await import('../../docs/service.js');
+  const body = text ? `# ${b.name} · ${name}\n\n${text}\n` : '';
+  let refId = String((b.repoDocs || {})[rkey]?.ref || '');
+  if (!text) {
+    if (refId) {
+      await unbindRef({ ref: refId, type: 'group_repo', repo: rkey, group: storedBoardKey(b) });
+    }
+    await mutateStore((draft) => {
+      const target = findBoardIn(draft, board);
+      if (target) {
+        if (target.repoNotes) delete target.repoNotes[rkey];
+        if (target.repoDocs) delete target.repoDocs[rkey];
+      }
+    });
+    return { ...info, note: '', refId: '' };
+  }
+
+  if (!refId) {
+    const created = await createRef({ owner: 'group_repo', repo: rkey, group: b.id });
+    refId = created.refId;
+  }
+  await updateDoc({ ref: 'ref:' + refId, body });
+  await mutateStore((draft) => {
+    const target = findBoardIn(draft, board);
+    if (!target) return;
+    if (!target.repoNotes) target.repoNotes = {};
+    target.repoNotes[rkey] = text.slice(0, 120);
+  });
+  return { ...info, note: text, refId };
 }

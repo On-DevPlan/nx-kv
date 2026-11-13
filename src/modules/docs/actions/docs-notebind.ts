@@ -13,17 +13,17 @@ const renderNoteRef: any = _renderNoteRef;
 const input = z.object({
   board: z.string(),
   repo: z.string().describe("仓库（id / key / 路径 / 名称）"),
-  rel: z.string().optional().describe("自有树内路径"),
-  path: z.string().optional().describe("外部文件/目录绝对路径（只读）"),
-  reset: z.boolean().optional().describe("拆掉覆盖，回到约定路径"),
+  ref: z.string().optional().describe("文档 refId（ref_<16hex>）"),
+  path: z.string().optional().describe("外部文件/目录绝对路径（登记成 origin=external 的 ref）"),
+  reset: z.boolean().optional().describe("清空组内描述"),
 });
 
 export class DocsNotebindAction extends ActionBase<typeof input> {
   @action({
     id: 'docs.notebind',
     cli: ['docs', 'note-bind'],
-    // 仅 CLI：成员描述覆盖同理，绑定走约定路径推导；前端加绑/解绑走宿主文档集接口
-    summary: '绑定组内仓库描述的文档覆盖（--board <看板> --repo <仓库> + --rel/--path/--reset；仓库须为该组成员）',
+    // 仅 CLI：前端加绑/解绑走宿主文档集接口
+    summary: '绑定组内仓库描述（--board <看板> --repo <仓库> + --ref | --path；--reset 清空；仓库须为该组成员）',
     args: ['board'],
     input,
     render: renderNoteRef,

@@ -29,7 +29,6 @@ export class RepoBindTopicsAction extends ActionBase<typeof input> {
         lines.push(`留在哨兵（对不上任何仓库路径）: ${d.left.length} 条`);
         for (const t of d.left.slice(0, 10)) lines.push(`  ${t.topicKey}  ${t.cwd || '(全局池)'}`);
       }
-      if (d.refs) lines.push(`refs 索引: 新增 ${d.refs.refs} / 约定绑定 ${d.refs.bindings}`);
       if (!d.apply && d.bound.length) lines.push('', '落盘: nx-kv repo bind-topics --apply');
       return lines.join('\n');
     },

@@ -92,11 +92,12 @@ const STORE = {
       key: 'board/nx',
       desc: 'nx 工具链组合',
       memberKeys: ['local/nx-kv', 'local/nx-rh'],
+      doc: { ref: 'ref_aaaaaaaaaaaaaaa1' },
     },
     { id: 'b_todo', name: 'todo', key: 'board/todo', desc: '任务池组', memberKeys: ['local/sedoc'] },
   ],
   repos: [
-    { key: 'local/nx-kv', name: 'nx-kv', path: 'D:\\Dev\\nx-kv', desc: 'KV 清单管理中枢' },
+    { key: 'local/nx-kv', name: 'nx-kv', path: 'D:\\Dev\\nx-kv', desc: 'KV 清单管理中枢', doc: { ref: 'ref_bbbbbbbbbbbbbbb2' } },
     { key: 'local/nx-rh', name: 'nx-rh', path: 'D:\\Dev\\nx-rh', desc: '仓库登记与技能管理' },
     { key: 'local/sedoc', name: 'sedoc-fe-8.60', path: 'D:\\Dev\\sedoc', desc: '社保云柜前端' },
   ],
@@ -183,25 +184,26 @@ test('resolveGroupTarget：都不给 → 空目标（原样提交）', () => {
 
 // ─── 介绍引用（frontmatter 携带「介绍」）────────────────────────────
 
-test('resolveGroupTarget：frontmatter 带介绍引用（约定路径 + 一行摘要）', () => {
+test('resolveGroupTarget：frontmatter 带介绍引用（refId + 一行摘要）', () => {
   const t = resolveGroupTarget({ board: 'nx', project: 'nx-kv' }, STORE);
-  assert.equal(t.fields.boardIntro, 'board/nx.md', '组介绍 = 约定路径');
+  assert.equal(t.fields.boardIntro, 'ref:ref_aaaaaaaaaaaaaaa1', '组介绍 = ref:<refId>');
   assert.equal(t.fields.boardDesc, 'nx 工具链组合', '组的一句话摘要');
-  assert.equal(t.fields.projectIntro, 'repo/local/nx-kv.md', '项目介绍 = 约定路径');
+  assert.equal(t.fields.projectIntro, 'ref:ref_bbbbbbbbbbbbbbb2', '项目介绍 = ref:<refId>');
   assert.equal(t.fields.projectDesc, 'KV 清单管理中枢', '项目的一句话摘要');
 });
 
-test('resolveGroupTarget：介绍绑定优先于约定路径（外部 / 自有 rel 都认）', () => {
-  const ext = { ...STORE, boards: [{ ...STORE.boards[0], doc: { path: 'D:\\vault\\nx.md' } }] };
-  assert.equal(resolveGroupTarget({ board: 'nx', project: 'nx-kv' }, ext).fields.boardIntro, 'D:\\vault\\nx.md');
+test('resolveGroupTarget：没有介绍绑定 → 空串（不再有约定路径 / rel）', () => {
+  const bare = { ...STORE, boards: [{ ...STORE.boards[0], doc: undefined }] };
+  assert.equal(resolveGroupTarget({ board: 'nx', project: 'nx-kv' }, bare).fields.boardIntro, '');
 
-  const own = { ...STORE, repos: [{ ...STORE.repos[0], doc: { rel: 'notes/nx-kv.md' } }] };
-  assert.equal(resolveGroupTarget({ board: 'nx', project: 'nx-kv' }, own).fields.projectIntro, 'notes/nx-kv.md');
+  // 旧形状 { path } / { rel } 不再是合法绑定（v8 只认 ref）
+  const legacy = { ...STORE, repos: [{ ...STORE.repos[0], doc: { rel: 'notes/nx-kv.md' } }] };
+  assert.equal(resolveGroupTarget({ board: 'nx', project: 'nx-kv' }, legacy).fields.projectIntro, '');
 });
 
 test('resolveGroupTarget：只给项目 → 也带项目介绍引用（不标组）', () => {
   const t = resolveGroupTarget({ project: 'nx-kv' }, STORE);
-  assert.equal(t.fields.projectIntro, 'repo/local/nx-kv.md');
+  assert.equal(t.fields.projectIntro, 'ref:ref_bbbbbbbbbbbbbbb2');
   assert.equal(t.fields.projectDesc, 'KV 清单管理中枢');
   assert.equal(t.fields.boardIntro, undefined, '没给组就不标组介绍');
 });
@@ -248,6 +250,8 @@ test('localtask.add：正文自带 frontmatter（面板草稿口径）→ 补上
   const repo = await repos.addRepo({ path: cwd, name: 'fm-pan', desc: '面板口径项目', remote: 'https://github.com/me/fmpan' });
   const b = await boards.createBoard({ name: 'fm组', desc: '面板组' });
   await boards.assignRepo({ key: repo.key, board: b.id });
+  // v8：项目介绍是显式 ref（createBoard 的组描述已写成组介绍主篇）
+  await repos.writeRepoDocContent({ key: repo.key, name: repo.name }, '面板口径项目');
 
   const r = await action.run({
     text: `---\nboard: ${b.id}\nproject: ${repo.key}\n---\n# 面板草稿\n正文`,
@@ -257,9 +261,10 @@ test('localtask.add：正文自带 frontmatter（面板草稿口径）→ 补上
   const fm = parseFrontmatter(r.task.text);
   assert.equal(fm.board, b.id, '原 frontmatter 保留');
   assert.equal(fm.project, repo.key);
-  assert.equal(fm.projectIntro, `repo/${repo.key}.md`, '服务端补上项目介绍引用');
+  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, '服务端补上项目介绍引用（refId）');
   assert.equal(fm.projectDesc, '面板口径项目');
-  assert.equal(fm.boardIntro, 'board/fm组.md', '服务端补上组介绍引用');
+  assert.match(fm.boardIntro, /^ref:ref_[0-9a-f]{16}$/, '服务端补上组介绍引用（refId）');
+  assert.equal(fm.boardDesc, '面板组');
 
   // T03：先关库连接再删临时目录（Windows 连接开着必 EBUSY）
   try { svc.closeDb(); } catch { /* ignore */ }

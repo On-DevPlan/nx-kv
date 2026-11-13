@@ -23,8 +23,8 @@ export interface RepoBoardBrief {
   desc: string;
   key: string;
   note: string;
-  noteDocRel: string;
-  noteDocPath: string;
+  /** 组内描述文档（ref:<refId>）；没有绑定为空串 */
+  noteDocId: string;
 }
 
 /** listRepos 的一行：登记本体 + key 投影 + 看板与文档派生字段。 */
@@ -34,8 +34,6 @@ export interface RepoListRow extends RepoEntry {
   keyCustom: boolean;
   remotes: string[];
   linked: RepoLink[];
-  /** 文档路径（绑定优先，缺省约定路径）——纯字符串拼接，给前端零派生消费 */
-  docRel: string;
   boards: RepoBoardBrief[];
   /** 描述 = 绑定的文档集（主篇标题 + 补充篇），不再是 desc 字符串 */
   descDocs?: any;
@@ -51,7 +49,6 @@ export interface RepoGetBoardBrief {
 
 /** getRepo 的返回：登记本体（去掉已废除的 tags）+ 派生字段。 */
 export type RepoGetResult = Omit<RepoEntry, 'tags'> & {
-  docRel: string;
   boards: RepoGetBoardBrief[];
 };
 
@@ -88,21 +85,26 @@ export interface RepoPatch {
  */
 export async function listRepos(): Promise<RepoListRow[]> {
   const s = await loadStore();
-  // docs/paths 反过来依赖本文件的 normalizeKey（动态引入避免静态环）
-  const { repoDocRel, groupNoteRel } = await import('../../docs/paths.js');
   const boardsOf = new Map<string, RepoBoardBrief[]>(); // repoKey -> [看板投影]
+  // 组内描述文档：ref_bindings(type=group_repo) 是唯一来源
+  const noteDocOf = new Map<string, string>(); // `${groupKey}|${repoKey}` -> ref:<refId>
+  for (const b of repoLayer.db().all(
+    "SELECT group_key AS groupKey, repo_key AS repoKey, ref_id AS refId FROM ref_bindings WHERE type = 'group_repo'"
+  )) {
+    noteDocOf.set(`${String(b.groupKey)}|${String(b.repoKey)}`, 'ref:' + String(b.refId));
+  }
   for (const b of s.boards) {
+    const bkey = storedBoardKey(b);
     for (const rk of boardRepoKeys(b, s)) {
       if (!boardsOf.has(rk)) boardsOf.set(rk, []);
       boardsOf.get(rk)!.push({
         id: b.id,
         name: b.name,
         desc: b.desc || '',
-        key: storedBoardKey(b),
+        key: bkey,
         note: (b.repoNotes || {})[rk] || '',
-        // 组内描述也是文档：前端点「描述」直接开这篇（绑定优先，缺省约定路径）
-        noteDocRel: (b.repoDocs || {})[rk]?.rel || groupNoteRel(b.name, rk),
-        noteDocPath: (b.repoDocs || {})[rk]?.path || '',
+        // 组内描述也是文档：前端点「描述」直接开这篇（ref:<refId>）
+        noteDocId: noteDocOf.get(`${bkey}|${rk}`) || '',
       });
     }
   }
@@ -116,8 +118,6 @@ export async function listRepos(): Promise<RepoListRow[]> {
         keyCustom: !!r.keyCustom,
         remotes: Array.isArray(r.remotes) ? r.remotes : [],
         linked: Array.isArray(r.linked) ? r.linked : [],
-        // 文档路径（绑定优先，缺省约定路径）——纯字符串拼接，给前端零派生消费
-        docRel: r.doc?.rel || repoDocRel(rk),
         boards: boardsOf.get(rk) || [],
       };
     });
@@ -126,7 +126,7 @@ export async function listRepos(): Promise<RepoListRow[]> {
   return rows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
-export async function addRepo(input: RepoInputFields): Promise<RepoEntry> {
+export async function addRepo(input: RepoInputFields, opts: { seedDoc?: boolean } = {}): Promise<RepoEntry> {
   if (!input || !input.path) throw badInput('path 不能为空');
   const repo = normalizeRepoInput(input);
   await mutateStore((s) => {
@@ -142,38 +142,38 @@ export async function addRepo(input: RepoInputFields): Promise<RepoEntry> {
     }
     s.repos.push(repo);
   });
-  await seedRepoDoc(repo);
+  // 导入路径自带文档（zip 还原正文 + layout 的绑定），不能再按 desc 生成一篇。
+  if (opts.seedDoc !== false) await seedRepoDoc(repo);
   return repo;
 }
 
-/**
- * 描述是文档：add 时给的 desc 只是**初始正文**，落到主篇 md（repo/<key>/index.md 的旧单文件位），
- * 再按 md 回写摘要。文档已在就不动——老仓库重登记不该把写过的介绍冲掉。
- * 动态 import 同 listRepos：docs 是叶子，repos 反向依赖它（静态引会成环）。
- */
-async function seedRepoDoc(repo: RepoEntry): Promise<string | null> {
+/** 登记时给的 desc 只是初始正文：生成一条直接 ref 并绑成项目主篇。 */
+async function seedRepoDoc(repo: RepoEntry): Promise<void> {
   const desc = String((repo && repo.desc) || '').trim();
-  if (!desc) return null;
-  const { repoDocRel } = await import('../../docs/paths.js');
-  const store = await import('../../docs/store.js');
-  const rel = repoDocRel(repo.key);
-  if (await store.ownDocExists(rel)) return null;
-  return writeRepoDocContent(repo, desc);
+  if (!desc) return;
+  await writeRepoDocContent(repo, desc);
 }
 
 /**
- * 把一段文本写成仓库的主篇文档（覆盖正文，标题取仓库名）。
- * 导入覆盖（transfer 的 overwrite 策略）走这里——描述不能再经 updateRepo 的 desc 字段。
+ * 把一段文本写成仓库的主篇文档（导入覆盖策略走这里）。
+ * v8：新建一个直接 ref，写正文，再绑成仓库主篇。
  */
 export async function writeRepoDocContent(repo: { key: string; name?: string }, text: unknown): Promise<string> {
-  const { repoDocRel } = await import('../../docs/paths.js');
-  const store = await import('../../docs/store.js');
-  const { writeBackSummary } = await import('../../docs/seed.js');
-  const rel = repoDocRel(repo.key);
+  const { createRef, updateDoc } = await import('../../docs/service.js');
+  const { setDocRef } = await import('../../docs/refs.js');
+  const { summaryFromMd } = await import('../../docs/seed.js');
+  const s = await loadStore();
+  const existing = s.repos.find((x) => deriveKey(x) === repo.key)?.doc?.ref as string | undefined;
+  const refId = existing || (await createRef({ owner: 'repo', repo: repo.key })).refId;
   const body = `# ${repo.name || repo.key}\n\n${String(text || '').trim()}\n`;
-  await store.writeOwnDoc(rel, body);
-  await writeBackSummary(rel, body);
-  return rel;
+  await updateDoc({ ref: 'ref:' + refId, body });
+  if (!existing) await setDocRef({ repo: repo.key, ref: refId });
+  // 列表 / 搜索读的短摘要（文档正文仍是唯一权威）
+  await mutateStore((s2) => {
+    const r = s2.repos.find((x) => deriveKey(x) === repo.key);
+    if (r) r.desc = summaryFromMd(body);
+  });
+  return refId;
 }
 
 export async function updateRepo(id: unknown, patch: RepoPatch): Promise<RepoEntry> {
@@ -192,8 +192,8 @@ export async function updateRepo(id: unknown, patch: RepoPatch): Promise<RepoEnt
     if (patch.icon !== undefined) r.icon = sanitizeIcon(patch.icon);
     if (patch.desc !== undefined) {
       throw badInput(
-        '描述已改为文档（不再是字符串）：改正文用 `docs set <rel>`，换绑主篇用 ' +
-        '`docs bind --repo <仓库> --rel <路径>`，加补充篇用 `docs link --board <看板> --doc <路径>`'
+        '描述已改为文档（不再是字符串）：改正文用 `docs update --ref <refId> --body …`，' +
+        '换绑主篇用 `docs bind --repo <仓库> --ref <refId>`，加补充篇用 `repo doc add <仓库> --ref <refId>`'
       );
     }
     if (patch.notes !== undefined) r.notes = String(patch.notes);
@@ -342,7 +342,6 @@ export async function getRepo(idOrPathOrKey: unknown): Promise<RepoGetResult> {
   if (!r) throw notFound('repo 不存在: ' + raw);
   // 带上它所属的看板（中心清单的同一份数据，单条查询也别缺这一维）
   const rk = deriveKey(r);
-  const { repoDocRel } = await import('../../docs/paths.js');
   const boards = s.boards
     .filter((b) => boardRepoKeys(b, s).includes(rk))
     .map((b) => ({ id: b.id, name: b.name, desc: b.desc || '', key: storedBoardKey(b) }));
@@ -354,7 +353,6 @@ export async function getRepo(idOrPathOrKey: unknown): Promise<RepoGetResult> {
     keyCustom: !!base.keyCustom,
     remotes: Array.isArray(base.remotes) ? base.remotes : [],
     linked: Array.isArray(base.linked) ? base.linked : [],
-    docRel: base.doc?.rel || repoDocRel(rk),
     boards,
   };
 }

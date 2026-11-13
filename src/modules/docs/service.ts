@@ -1,33 +1,42 @@
-// 文档模块的业务逻辑：CRUD + 外部写回。
+// 文档模块的业务逻辑：CRUD + 外部写回 + 直接 ref 的归属。
 //
-// 「自有文档的正文权威在 DB」——v6 起正文只存 `ref_bodies`；mdfile 默认目录
-// 只是 mdfile 默认附件目录，不再是文档来源（面板编辑与组详情都从这里取数）。
-// `repo knowledge` 在 repos 模块（它属于 repo.* 命令族），聚合逻辑在 knowledge.js。
+// 「自有文档的正文权威在 DB」——v6 起正文只存 `ref_bodies`；v8 起 ref 没有 rel，
+// 身份就是 refs.id，界面与 API 一律用 `ref:<id>` 寻址。
+// `repo knowledge` 在 repos 模块（它属于 repo.* 命令族），聚合逻辑在 knowledge.ts。
 //
-// ─── 读写口径（2026-11 任务 #88「简介文档优化」）───────────────────────
-//   rel:  自有树（DB 里的逻辑 rel）——可读可写可删，不落盘
-//   path: 外部（Obsidian vault / 任意登记目录）——**登记在册即可写**：
-//         读侧要求路径在绑定闭包内；写侧再校验一次（闭包 + .md + 非目录），
-//         等于「文档集里的每一篇都能就地改」，同时不把 PATCH 变成任意文件写入口。
+// ─── 读写口径 ──────────────────────────────────────────────────────────
+//   ref:  文档库条目（自有 / 外部镜像）——可读可写可删，不落盘（外部写回来源文件）
+//   path: 外部（Obsidian vault / 任意登记目录）——登记在册即可写：
+//         读侧要求路径在绑定闭包内；写侧再校验一次（闭包 + .md + 非目录）。
 //         删除仍不给外部：删除是可恢复性最差的操作，让它回来源做。
-//         （外部路径不在 mdfile 默认目录下；后者只允许经 mdfile 附件访问。）
 import * as paths from './paths.js';
 import * as store from './store.js';
-import * as seed from './seed.js';
+import { summaryFromMd } from './seed.js';
+import { refTitleOf } from './brief.js';
 import { reposBridge } from './repos-bridge.js';
 import { badInput, blocked, notFound } from '../../core/errors.js';
 import { getDb } from '../../core/db/index.js';
 import { tx } from '../../core/db/tx.js';
-import { ensureDocRef, markRefBound, noBodyReason, putRefBinding, refDocById, syncRefAttachments, upsertRefBody } from '../../core/attachmentdb.js';
+import {
+  ensureDocRef,
+  noBodyReason,
+  refDocById,
+  syncRefAttachments,
+  upsertRefBody,
+} from '../../core/attachmentdb.js';
 import { refIdFor } from '../../core/attachmentdb/ids.js';
+import { normalizeKey } from '../../shared/repo-key.js';
 import { randomUUID } from 'node:crypto';
-import type { RelKind } from '../../core/attachmentdb.js';
+import type { DocKind } from '../../core/attachmentdb.js';
 import { syncRefIndex } from './ref-sync.js';
 import { docTitleFromMd } from '../../shared/doc-title.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 const clean = (v: unknown): string => String(v || '').trim();
+
+const baseNameOf = (p: unknown): string =>
+  String(p || '').replace(/\\/g, '/').split('/').pop()?.replace(/\.md$/i, '') ?? '';
 
 async function safeRead(abs: string): Promise<string> {
   try {
@@ -40,16 +49,18 @@ async function safeRead(abs: string): Promise<string> {
 /** docs list 条目。 */
 export interface DocSummary {
   docId: string;
-  /** refs.id（v7：ref 的稳定地址） */
+  /** refs.id（ref 的稳定地址） */
   refId: string;
-  rel: string;
   /** 短描述（v7）：列表主标签 */
   desc: string;
+  /** 正文首行摘要（没有 `# 标题` 时的显示名兜底） */
+  summary: string;
+  /** 正文标题 → desc → 摘要 → locator 末段 → refId（不展示任何路径） */
   name: string;
   title: string;
   size: number;
-  /** v6：normal | legacy | external | empty（后三类不是正常文档） */
-  relKind: RelKind;
+  /** normal | legacy | external | empty（后三类不是正常文档） */
+  kind: DocKind;
   hasBody: boolean;
   missing?: boolean;
   reason?: string;
@@ -63,34 +74,44 @@ export interface ListDocsResult {
   bound?: Array<{ path: string; owner?: string; exists: boolean; isDir: boolean }>;
 }
 
+/** 一条 ref 的归属。 */
+export interface RefBindingView {
+  type: string;
+  repoKey: string;
+  groupKey: string | null;
+  position: number;
+  note: string;
+  tag: string;
+  main: boolean;
+}
+
 /** docs get 的出参（自有/外部/missing/目录四种形态共用）。 */
 export interface DocGetResult {
   docId: string;
-  /** refs.id（v7：ref 的稳定地址；面板行与模板取用指令都用它） */
+  /** refs.id（ref 的稳定地址；面板行与模板取用指令都用它） */
   refId?: string;
-  rel?: string;
+  /** 外部镜像的实际位置（仅 origin=external） */
   path?: string;
   title?: string;
   summary?: string;
   /** 短描述（v7） */
   desc?: string;
   /** 这篇 ref 的归属（ref_bindings；一个 ref 可挂多处） */
-  bindings?: Array<{ type: string; repoKey: string; groupKey: string | null; position: number }>;
+  bindings?: RefBindingView[];
   body?: string;
   missing?: boolean;
   writable?: boolean;
   dir?: boolean;
   files?: string[];
   external?: boolean;
-  /** v6：条目类别；没有正文时与 reason 一起返回 missing 语义 */
-  relKind?: RelKind;
+  /** 条目类别；没有正文时与 reason 一起返回 missing 语义 */
+  kind?: DocKind;
   reason?: string;
 }
 
 /** doc add / update 的入参（body-file 只给 CLI）。 */
 export interface DocWriteCtx {
   ref?: unknown;
-  rel?: unknown;
   body?: unknown;
   bodyFile?: unknown;
   /** v7：短描述（可单独更新，不碰正文） */
@@ -101,46 +122,48 @@ export interface DocWriteCtx {
 export interface DocWriteResult {
   docId: string;
   refId?: string;
-  rel?: string;
   path?: string;
   /** 短描述（v7） */
   desc?: string;
   bytes: number;
-  /** 外部绑定写回不产生摘要（summary 只来自自有树 writeBackSummary） */
   summary?: string | null;
   external?: boolean;
 }
 
 // ─── 查 ────────────────────────────────────────────────────────────────
 
-// 树索引（零副作用，不播种——agent/前端拿它当双链解析的数据源）
+// 树索引（零副作用——agent/前端拿它当双链解析的数据源）
 export async function listDocs({ external }: { external?: boolean } = {}): Promise<ListDocsResult> {
   const docs: DocSummary[] = [];
-  // includeEmpty：历史空壳 / 外部镜像 / 无正文行也要出现在清单里，但必须显式标注，
-  // 不能让它们看起来像正常文档（v6 验收项）。
   for (const f of await store.listOwnDocs({ includeEmpty: true })) {
     // #168：标题口径 = 正文**首行**的 `# 标题`（与文档页/附件清单同一口径）
-    const title = f.hasBody ? docTitleFromMd(f.body ?? '') : '';
+    const body = f.hasBody ? String(f.body ?? '') : '';
+    const title = f.hasBody ? docTitleFromMd(body) : '';
+    const summary = body ? summaryFromMd(body) : '';
+    // 显示名一条链：正文标题 → desc → 摘要 → 外部文件名 → refId。
+    // v8 没有路径名了——没有摘要兜底，旧文档会全叫「未命名文档」。
+    const name = refTitleOf(
+      { body, desc: f.desc, locator: f.locator, origin: f.origin },
+      f.id
+    );
     docs.push({
-      docId: paths.ownDocId(f.rel),
+      docId: paths.ownDocId(f.id),
       refId: f.id,
-      rel: f.rel,
       desc: f.desc,
-      name: f.rel.replace(/\.md$/i, '').split('/').pop() ?? '',
+      summary,
+      name,
       title,
       size: f.size,
-      relKind: f.relKind,
+      kind: f.kind,
       hasBody: f.hasBody,
-      ...(f.hasBody ? {} : { missing: true, reason: noBodyReason(f.relKind) }),
+      ...(f.hasBody ? {} : { missing: true, reason: noBodyReason(f.kind) }),
     });
   }
   const out: ListDocsResult = { docs, count: docs.length };
   if (external) {
-    const { loadStore } = await reposBridge();
-    const s = await loadStore();
-    const closure = await store.externalClosure(s);
+    const closure = await store.externalClosure();
     const files = await store.listExternalDocs(closure);
-    out.external = files.map((abs) => ({ docId: paths.extDocId(abs), path: abs, name: abs.replace(/\\/g, '/').split('/').pop()?.replace(/\.md$/i, '') ?? '' }));
+    out.external = files.map((abs) => ({ docId: paths.extDocId(abs), path: abs, name: baseNameOf(abs) }));
     out.bound = closure.map((c) => ({ path: c.path, owner: c.owner, exists: c.exists, isDir: c.isDir }));
   }
   return out;
@@ -151,7 +174,8 @@ const REF_ID_INPUT = /^(?:ref:)?(ref_[0-9a-f]{16})$/i;
 
 interface RefIdInput {
   refId: string;
-  rel: string;
+  origin: string;
+  locator: string;
   externalPath: string;
   desc: string;
 }
@@ -165,15 +189,15 @@ function resolveRefIdInput(raw: unknown): RefIdInput | null {
   if (!row) throw notFound('文档不存在: ' + m[1]);
   // 外部镜像行：locator 是真实绝对路径，读取仍走闭包校验
   const externalPath = row.origin === 'external' && /^([A-Za-z]:[\\/]|[\\/])/.test(row.locator) ? row.locator : '';
-  return { refId: row.id, rel: row.rel, externalPath, desc: row.desc };
+  return { refId: row.id, origin: row.origin, locator: row.locator, externalPath, desc: row.desc };
 }
 
 /** 一个 ref 的归属清单（ref_bindings）。 */
-function bindingsOfRef(refId: string): NonNullable<DocGetResult['bindings']> {
+function bindingsOfRef(refId: string): RefBindingView[] {
   if (!clean(refId)) return [];
   return getDb()
     .all(
-      `SELECT type, repo_key AS repoKey, group_key AS groupKey, position
+      `SELECT type, repo_key AS repoKey, group_key AS groupKey, position, note, tag
          FROM ref_bindings WHERE ref_id = :id ORDER BY type, position`,
       { id: refId }
     )
@@ -182,64 +206,50 @@ function bindingsOfRef(refId: string): NonNullable<DocGetResult['bindings']> {
       repoKey: String(r.repoKey),
       groupKey: r.groupKey == null ? null : String(r.groupKey),
       position: Number(r.position) || 0,
+      note: String(r.note || ''),
+      tag: String(r.tag || ''),
+      main: (Number(r.position) || 0) === 0,
     }));
 }
 
-// 读全文：自有（惰性播种）/ 外部（闭包内才放行）；目录绑定返回文件清单
+// 读全文：ref 只按 refId；外部目录里的裸文件用 path:<绝对路径>（不是 ref，不进文档库）
 export async function getDoc({ ref }: { ref?: unknown } = {}): Promise<DocGetResult> {
-  if (!clean(ref)) throw badInput('请给文档标识：ref:<refId> / rel:<路径> / path:<绝对路径>');
+  if (!clean(ref)) throw badInput('请给文档标识：ref:<refId> / path:<外部绝对路径>');
   const hit = resolveRefIdInput(ref);
-  const parsed = hit
-    ? (hit.externalPath ? { kind: 'external' as const, path: hit.externalPath } : { kind: 'own' as const, rel: hit.rel })
-    : (paths.parseDocId(ref) as { kind: 'own'; rel: string } | { kind: 'external'; path: string });
-  const meta = hit ? { refId: hit.refId, desc: hit.desc, bindings: bindingsOfRef(hit.refId) } : {};
-  if (parsed.kind === 'own') {
-    const state = await store.ownDocState(parsed.rel);
-    if (state.exists && state.hasBody) {
+  const rawPath = hit
+    ? hit.externalPath
+    : (String(ref).startsWith('path:') ? String(ref).slice(5).trim() : '');
+  if (!hit && !rawPath) throw notFound('文档不存在: ' + clean(ref));
+  if (!rawPath) {
+    const state = await store.ownDocState(hit!.refId);
+    if (state.hasBody) {
       return {
-        ...outOwn(parsed.rel, state.body ?? '', state.relKind),
-        refId: state.id,
+        ...outOwn(hit!.refId, state.body ?? '', state.kind),
         desc: state.desc,
-        bindings: bindingsOfRef(state.id),
+        bindings: bindingsOfRef(hit!.refId),
       };
     }
-    // v6：有行但没有正文（历史空壳 / 外部镜像 / 正文缺失）→ 显式 missing + 原因，
-    // 不返回空文档成功态，也不把壳行播种成新文档。
-    if (state.exists) {
-      return {
-        docId: paths.ownDocId(parsed.rel),
-        refId: state.id,
-        rel: parsed.rel,
-        desc: state.desc,
-        bindings: bindingsOfRef(state.id),
-        missing: true,
-        writable: false,
-        title: '',
-        summary: '',
-        body: '',
-        relKind: state.relKind,
-        reason: state.reason,
-      };
-    }
-    const seeded = await seed.ensureSeedForRel(parsed.rel);
-    if (seeded === null) {
-      return {
-        docId: paths.ownDocId(parsed.rel), rel: parsed.rel, missing: true, writable: true,
-        title: '', summary: '', body: '', relKind: 'empty', reason: '文档不存在',
-      };
-    }
-    const after = await store.ownDocState(parsed.rel);
     return {
-      ...outOwn(parsed.rel, seeded, 'normal'),
-      ...(after.exists ? { refId: after.id, desc: after.desc, bindings: bindingsOfRef(after.id) } : {}),
+      docId: paths.ownDocId(hit!.refId),
+      refId: state.id,
+      desc: state.desc,
+      bindings: bindingsOfRef(hit!.refId),
+      missing: true,
+      writable: false,
+      title: '',
+      summary: '',
+      body: '',
+      kind: state.kind,
+      reason: state.reason,
     };
   }
-  // 外部：先过绑定闭包，闭包外一律拒绝——doc.get 不能变成任意文件读入口
-  const { loadStore } = await reposBridge();
-  const s = await loadStore();
-  const closure = await store.externalClosure(s);
-  const abs = store.resolveExternal(parsed.path, closure);
-  if (!abs) throw blocked(`外部路径不在绑定闭包内（先 docs bind 登记）: ${parsed.path}`);
+
+  // 外部：ref 的 locator 或外部目录里的裸文件，先过绑定闭包
+  const abs = store.resolveExternal(rawPath, await store.externalClosure());
+  if (!abs) throw blocked(`外部路径不在绑定闭包内（先 docs bind 登记）: ${rawPath}`);
+  const meta = hit
+    ? { refId: hit.refId, desc: hit.desc, bindings: bindingsOfRef(hit.refId), docId: paths.ownDocId(hit.refId) }
+    : { docId: paths.extDocId(abs) };
   let st: Awaited<ReturnType<typeof fsp.stat>> | null = null;
   try {
     st = await fsp.stat(abs);
@@ -247,11 +257,11 @@ export async function getDoc({ ref }: { ref?: unknown } = {}): Promise<DocGetRes
     /* 缺失：按 missing 返回 */
   }
   if (!st) {
-    return { docId: paths.extDocId(abs), ...meta, path: abs, missing: true, writable: true, title: '', summary: '', body: '' };
+    return { ...meta, path: abs, missing: true, writable: true, title: '', summary: '', body: '' };
   }
   if (st.isDirectory()) {
     const files = await store.listExternalDocs([{ path: abs, exists: true, isDir: true }], { maxDepth: 3, maxFiles: 200 });
-    return { docId: paths.extDocId(abs), ...meta, path: abs, dir: true, writable: false, files };
+    return { ...meta, path: abs, dir: true, writable: false, files };
   }
   return { ...outExternal(abs, await safeRead(abs)), ...meta };
 }
@@ -269,26 +279,15 @@ async function bodyOf({ body, bodyFile }: DocWriteCtx, opts?: { transport?: stri
   return null;
 }
 
+/** 写一篇已存在的 ref（新建走 createRef）。 */
 export async function addDoc(ctx: DocWriteCtx, opts?: { transport?: string } | null): Promise<DocWriteResult> {
-  const rel = await store.writeOwnDoc(ctx.rel as string, (await bodyOf(ctx, opts)) ?? '');
-  if (ctx.desc !== undefined) await store.setOwnDocDesc(rel, ctx.desc);
-  const body = await store.readOwnDoc(rel);
-  const summary = await seed.writeBackSummary(rel, body);
-  // 落盘即登记：新文件可能正好是某宿主的约定主篇（repo/<key>/index.md 等），
-  // 绑定索引跟着重建一次，别等下次双链索引才出现（#183）。
-  await syncRefIndex().catch(() => null);
-  const state = await store.ownDocState(rel);
-  return { docId: paths.ownDocId(rel), refId: state.id, rel, desc: state.desc, bytes: Buffer.byteLength(body, 'utf8'), summary };
+  return updateDoc(ctx, opts);
 }
 
 // 外部文档写回（面板/CLI 均可）：路径必须仍在**绑定闭包**内——闭包是唯一的授权来源，
 // 否则 PATCH 就成了任意文件写入口（与 getDoc 的读侧守卫同口径）。
-// 目录绑定只允许改写目录内的 .md；单文件绑定只允许那一个文件。
-async function writeExternalDoc(abs: string, body: string): Promise<DocWriteResult> {
-  const { loadStore } = await reposBridge();
-  const s = await loadStore();
-  const closure = await store.externalClosure(s);
-  const hit = store.resolveExternal(abs, closure);
+async function writeExternalDoc(abs: string, body: string, refId = ''): Promise<DocWriteResult> {
+  const hit = store.resolveExternal(abs, await store.externalClosure());
   if (!hit) throw blocked(`外部路径不在绑定闭包内（先 docs bind 登记）: ${abs}`);
   if (!/\.md$/i.test(abs)) throw badInput('只能写回 .md 文档: ' + abs);
   let st: Awaited<ReturnType<typeof fsp.stat>> | null = null;
@@ -302,73 +301,66 @@ async function writeExternalDoc(abs: string, body: string): Promise<DocWriteResu
   await fsp.writeFile(abs, body, 'utf8');
   const saved = await safeRead(abs);
   // 外部文档同样是「文档库的一行」：正文里的 fileId / nxkv 链接也落 ref_attach。
-  // 与自有树同一事务口径（ensureDocRef 幂等；refs 只装 .md）。
   const db = getDb();
   tx(
     (conn) => {
-      const refId = ensureDocRef(conn, { locator: abs });
-      syncRefAttachments(conn, { refId, text: saved });
+      const id = refId || ensureDocRef(conn, { locator: abs });
+      if (id) syncRefAttachments(conn, { refId: id, text: saved });
     },
     { db, mode: 'IMMEDIATE' }
   );
-  return { docId: paths.extDocId(abs), path: abs, bytes: Buffer.byteLength(saved, 'utf8'), external: true };
+  return { docId: refId ? paths.ownDocId(refId) : '', refId, path: abs, bytes: Buffer.byteLength(saved, 'utf8'), external: true };
 }
 
 export async function updateDoc(ctx: DocWriteCtx, opts?: { transport?: string } | null): Promise<DocWriteResult> {
   const hit = resolveRefIdInput(ctx.ref);
-  const parsed = hit
-    ? (hit.externalPath ? { kind: 'external' as const, path: hit.externalPath } : { kind: 'own' as const, rel: hit.rel })
-    : (paths.parseDocId(ctx.ref) as { kind: 'own'; rel: string } | { kind: 'external'; path: string });
+  if (!hit) throw badInput('请给 --ref <refId>');
   const body = await bodyOf(ctx, opts);
   const desc = ctx.desc === undefined ? null : String(ctx.desc ?? '').trim();
   if (body === null && desc === null) {
     throw badInput('请给 --body <正文>（多行用 --body-file <文件> 或 - 读管道）或 --desc <描述>');
   }
-  // 外部绑定：登记在册 = 我的文档集，允许就地写回来源文件（闭包内校验）
-  if (parsed.kind !== 'own') {
+  // 外部 ref：登记在册 = 我的文档集，允许就地写回 locator 指向的文件（闭包内校验）
+  if (hit.externalPath) {
     const out = body === null
-      ? { docId: paths.extDocId(parsed.path), path: parsed.path, bytes: 0, external: true }
-      : await writeExternalDoc(parsed.path, body);
-    if (desc !== null && hit) await store.setOwnDocDesc(hit.rel, desc);
-    return { ...out, ...(hit ? { refId: hit.refId, desc: desc ?? undefined } : {}) };
+      ? { docId: paths.ownDocId(hit.refId), path: hit.externalPath, bytes: 0, external: true }
+      : await writeExternalDoc(hit.externalPath, body, hit.refId);
+    if (desc !== null) {
+      await store.setOwnDocDesc(hit.refId, desc);
+      return { ...out, refId: hit.refId, desc };
+    }
+    return { ...out, refId: hit.refId };
   }
+  // 自有 ref
   if (body === null) {
-    // 只改描述：不读、不写正文
-    const saved = await store.setOwnDocDesc(parsed.rel, desc);
-    const state = await store.ownDocState(parsed.rel);
-    return { docId: paths.ownDocId(parsed.rel), refId: state.id, rel: parsed.rel, desc: saved, bytes: state.body ? Buffer.byteLength(state.body, 'utf8') : 0 };
+    const saved = await store.setOwnDocDesc(hit.refId, desc);
+    const state = await store.ownDocState(hit.refId);
+    return {
+      docId: paths.ownDocId(hit.refId),
+      refId: hit.refId,
+      desc: saved,
+      bytes: state.body ? Buffer.byteLength(state.body, 'utf8') : 0,
+    };
   }
-  // 不存在即创建（面板保存语义：脏页签保存不该因为别人先建了而失败，也不该在这里静默分叉出第二份）
-  const rel = await store.writeOwnDoc(parsed.rel, body);
-  const saved = await store.readOwnDoc(rel);
-  const summary = await seed.writeBackSummary(rel, saved);
-  const state = await store.ownDocState(rel);
-  // desc 的优先级：显式并入参 > 已有的手写值（为空时才用摘要补，避免覆盖用户描述）
-  if (desc !== null) await store.setOwnDocDesc(rel, desc);
-  else if (!state.desc && summary) await store.setOwnDocDesc(rel, summary);
-  const finalState = await store.ownDocState(rel);
-  // 保存语义是「不存在即创建」——新出现的约定主篇要立刻进绑定索引（#183）
-  await syncRefIndex().catch(() => null);
+  const refId = await store.writeOwnDoc(hit.refId, body);
+  const saved = await store.readOwnDoc(refId);
+  const finalDesc = desc !== null ? await store.setOwnDocDesc(refId, desc) : (await store.ownDocState(refId)).desc;
   return {
-    docId: paths.ownDocId(rel),
-    refId: finalState.id,
-    rel,
-    desc: finalState.desc,
+    docId: paths.ownDocId(refId),
+    refId,
+    desc: finalDesc,
     bytes: Buffer.byteLength(saved, 'utf8'),
-    summary,
+    summary: summaryFromMd(saved),
   };
 }
 
-export async function removeDoc({ ref }: { ref?: unknown } = {}): Promise<{ docId: string; rel: string }> {
+export async function removeDoc({ ref }: { ref?: unknown } = {}): Promise<{ docId: string; refId: string }> {
   const hit = resolveRefIdInput(ref);
-  const parsed = hit
-    ? (hit.externalPath ? { kind: 'external' as const, path: hit.externalPath } : { kind: 'own' as const, rel: hit.rel })
-    : (paths.parseDocId(ref) as { kind: 'own'; rel: string } | { kind: 'external'; path: string });
-  if (parsed.kind !== 'own') throw blocked('外部绑定是只读引用，不能在这里删除');
-  const rel = await store.removeOwnDoc(parsed.rel);
-  // 文件没了 → 约定主篇可能整体消失，绑定要跟着重算（#183）
+  if (!hit) throw badInput('请给 refId（ref_…）');
+  if (hit.externalPath) throw blocked('外部绑定是只读引用，不能在这里删除');
+  const refId = await store.removeOwnDoc(hit.refId);
   await syncRefIndex().catch(() => null);
-  return { docId: paths.ownDocId(rel), rel };
+  return { docId: paths.ownDocId(refId), refId };
 }
 
 // ─── 直接 ref（v7）：desc + 归属，不涉及任何文件 / 路径 ────────────────
@@ -391,37 +383,21 @@ export interface CreateRefResult {
   refId: string;
   docId: string;
   desc: string;
-  bindings: NonNullable<DocGetResult['bindings']>;
+  bindings: RefBindingView[];
 }
 
 /**
- * 新建一个直接 ref：`refs` 行 + 空正文 + 一条归属绑定。
+ * 新建一个直接 ref：`refs` 行 + 空正文 + 一条归属。
  *
- * 口径（v7 / 任务 #97）：ref 是 DB 实体，没有路径 / 文件名 / 扩展名；
- * 身份就是 `refs.id`，`rel = id` 只作唯一键，任何界面都不展示。
- * 默认归属由调用方按「在哪儿点的新建」决定：单 repo / 组 / 组下的 repo。
+ * 口径（v8）：ref 是 DB 实体，身份就是 refs.id；没有 rel / 路径 / 文件名。
+ * 归属同时写进宿主 ext（doc/docLinks/repoDocs）与 ref_bindings 索引。
  */
 export async function createRef({ desc, owner = 'repo', repo: repoLocator, group: groupLocator }: CreateRefInput = {}): Promise<CreateRefResult> {
   const type = String(owner || 'repo') as RefOwnerType;
   if (!['repo', 'group', 'group_repo'].includes(type)) {
     throw badInput('归属类型只能是 repo / group / group_repo: ' + String(owner));
   }
-  const { loadStore, deriveKey, boardKeyOf } = await reposBridge();
-  const s = await loadStore();
-  const board = groupLocator
-    ? s.boards.find((b: any) => b.id === clean(groupLocator) || boardKeyOf(b.name) === clean(groupLocator) || String(b.name).toLowerCase() === clean(groupLocator).toLowerCase())
-    : null;
-  if ((type === 'group' || type === 'group_repo') && !board) {
-    throw notFound('组不存在: ' + clean(groupLocator));
-  }
-  const repo = repoLocator
-    ? s.repos.find((r: any) => r.id === clean(repoLocator) || deriveKey(r) === clean(repoLocator) || String(r.name).toLowerCase() === clean(repoLocator).toLowerCase())
-    : null;
-  if ((type === 'repo' || type === 'group_repo') && !repo) {
-    throw notFound('仓库不存在: ' + clean(repoLocator));
-  }
-  const repoKey = type === 'group' ? String(boardKeyOf(board!.name)) : String(deriveKey(repo));
-  const groupKey = type === 'group_repo' ? String(boardKeyOf(board!.name)) : null;
+  const { mutateStore, deriveKey, boardKeyOf } = await reposBridge();
   const descText = clean(desc);
   const id = refIdFor(randomUUID());
   const at = Date.now();
@@ -429,31 +405,58 @@ export async function createRef({ desc, owner = 'repo', repo: repoLocator, group
   tx(
     (conn: any) => {
       conn.run(
-        `INSERT INTO refs (id, type, rel, locator, origin, state, version, deleted_at, created_at, updated_at, "desc")
-         VALUES (:id, 'md', :rel, '', 'own', '', 0, NULL, :at, :at, :desc)`,
-        { id, rel: id, at, desc: descText }
+        `INSERT INTO refs (id, type, locator, origin, state, version, deleted_at, created_at, updated_at, "desc")
+         VALUES (:id, 'md', '', 'own', '', 0, NULL, :at, :at, :desc)`,
+        { id, at, desc: descText }
       );
       // 空正文也落行：新建的是可编辑文档，不是「无正文」空壳。
       upsertRefBody(conn, { refId: id, body: '', atMs: at });
-      const gk = groupKey == null ? null : groupKey;
-      const pos = type === 'group_repo'
-        ? 0
-        : Number(
-            conn.get(
-              `SELECT COALESCE(MAX(position), -1) + 1 AS p FROM ref_bindings
-                WHERE repo_key = :repo AND group_key IS NULL AND type = :type`,
-              { repo: repoKey, type }
-            )?.p ?? 0
-          );
-      putRefBinding(conn, { repoKey, groupKey: gk, refId: id, type, position: pos, atMs: at });
-      markRefBound(conn, id);
     },
     { db, mode: 'IMMEDIATE' }
   );
+  await mutateStore((s: any) => {
+    if (type === 'group_repo') {
+      const board = s.boards.find((b: any) => b.id === clean(groupLocator)
+        || boardKeyOf(b.name) === clean(groupLocator)
+        || String(b.name).toLowerCase() === clean(groupLocator).toLowerCase());
+      if (!board) throw notFound('组不存在: ' + clean(groupLocator));
+      const repo = s.repos.find((r: any) => r.id === clean(repoLocator)
+        || deriveKey(r) === clean(repoLocator)
+        || String(r.name).toLowerCase() === clean(repoLocator).toLowerCase());
+      // 占位成员（本地未登记）也允许建组内描述：key 直接按输入归一
+      const repoKey = repo ? deriveKey(repo) : normalizeKey(repoLocator || '');
+      if (!repoKey) throw notFound('仓库不存在: ' + clean(repoLocator));
+      if (!board.repoDocs) board.repoDocs = {};
+      board.repoDocs[repoKey] = { ref: id };
+      return;
+    }
+    if (type === 'group') {
+      const board = s.boards.find((b: any) => b.id === clean(groupLocator)
+        || boardKeyOf(b.name) === clean(groupLocator)
+        || String(b.name).toLowerCase() === clean(groupLocator).toLowerCase());
+      if (!board) throw notFound('组不存在: ' + clean(groupLocator));
+      if (!board.doc) board.doc = { ref: id };
+      else {
+        if (!Array.isArray(board.docLinks)) board.docLinks = [];
+        board.docLinks.push({ ref: id });
+      }
+      return;
+    }
+    const repo = s.repos.find((r: any) => r.id === clean(repoLocator)
+      || deriveKey(r) === clean(repoLocator)
+      || String(r.name).toLowerCase() === clean(repoLocator).toLowerCase());
+    if (!repo) throw notFound('仓库不存在: ' + clean(repoLocator));
+    if (!repo.doc) repo.doc = { ref: id };
+    else {
+      if (!Array.isArray(repo.docLinks)) repo.docLinks = [];
+      repo.docLinks.push({ ref: id });
+    }
+  });
+  await syncRefIndex().catch(() => null);
   return { refId: id, docId: 'ref:' + id, desc: descText, bindings: bindingsOfRef(id) };
 }
 
-/** unbindRef 的入参：按行精确解绑（直接 ref 专用）。 */
+/** unbindRef 的入参：按行精确解绑。 */
 export interface UnbindRefInput {
   ref?: unknown;
   type?: unknown;
@@ -462,51 +465,62 @@ export interface UnbindRefInput {
 }
 
 /**
- * 解绑一条**直接 ref** 的归属（不删 ref、不删正文）。
- * 派生绑定（ext 推出的老文档）不在这里处理——摘除仍走宿主的文档集接口。
+ * 解绑一条 ref 的归属（不删 ref、不删正文）：同时摘宿主 ext 与索引。
  */
 export async function unbindRef({ ref, type, repo, group }: UnbindRefInput = {}): Promise<{ refId: string; removed: number; orphan: boolean }> {
   const hit = resolveRefIdInput(ref);
   if (!hit) throw badInput('请给 refId（ref_…）');
-  const row = getDb().get('SELECT id, rel FROM refs WHERE id = :id AND deleted_at IS NULL', { id: hit.refId });
-  if (!row || String(row.rel) !== String(row.id)) throw blocked('只能解绑直接 ref: ' + hit.refId);
   const t = String(type || '');
   if (!['repo', 'group', 'group_repo'].includes(t)) throw badInput('归属类型只能是 repo / group / group_repo');
   const repoKey = clean(repo);
   if (!repoKey) throw badInput('缺少归属宿主（repo 或 group key）');
-  const db = getDb();
-  const removed = tx(
-    (conn: any) => {
-      const r = conn.run(
-        `DELETE FROM ref_bindings
-          WHERE ref_id = :ref AND type = :type AND repo_key = :repo
-            AND COALESCE(group_key, '') = COALESCE(:group, '')`,
-        { ref: hit.refId, type: t, repo: repoKey, group: clean(group) || null }
-      );
-      return Number(r.changes) || 0;
-    },
-    { db, mode: 'IMMEDIATE' }
-  );
+  const { mutateStore } = await reposBridge();
+  const removed = await mutateStore((s: any) => {
+    if (t === 'group_repo') {
+      const board = s.boards.find((b: any) => b.key === clean(group));
+      const cur = board && board.repoDocs ? board.repoDocs[repoKey] : null;
+      if (!cur || cur.ref !== hit.refId) return 0;
+      delete board.repoDocs[repoKey];
+      return 1;
+    }
+    const host = t === 'group'
+      ? s.boards.find((b: any) => b.key === repoKey)
+      : s.repos.find((r: any) => r.key === repoKey);
+    if (!host) return 0;
+    let n = 0;
+    if (host.doc && host.doc.ref === hit.refId) {
+      if (t === 'repo' || t === 'group') {
+        const next = Array.isArray(host.docLinks) ? host.docLinks.shift() : null;
+        if (next) host.doc = next;
+        else delete host.doc;
+      }
+      n += 1;
+    }
+    if (Array.isArray(host.docLinks)) {
+      const at = host.docLinks.findIndex((x: any) => x && x.ref === hit.refId);
+      if (at >= 0) { host.docLinks.splice(at, 1); n += 1; }
+    }
+    return n;
+  });
+  await syncRefIndex().catch(() => null);
   const left = getDb().get('SELECT 1 AS x FROM ref_bindings WHERE ref_id = :id', { id: hit.refId });
-  if (!left) getDb().run("UPDATE refs SET state = 'orphan', updated_at = :at WHERE id = :id", { at: Date.now(), id: hit.refId });
   return { refId: hit.refId, removed, orphan: !left };
 }
 
 // ─── 出参整形 ──────────────────────────────────────────────────────────
 
-function outOwn(rel: string, body: string, relKind: RelKind = 'normal'): DocGetResult {
-  const { summaryFromMd } = seed;
+function outOwn(refId: string, body: string, kind: DocKind = 'normal'): DocGetResult {
   // #168：标题 = 正文**首行**的 `# 标题`（不是「任意位置的首个 # 行」——
   // 那样正文中间插一行 ## 就会改标题；也不是「首个非空行」——那会让正文
   // 第一行顶替标题）。与前端 shared/doc-title.js 同一口径。
   return {
-    docId: paths.ownDocId(rel),
-    rel,
+    docId: paths.ownDocId(refId),
+    refId,
     title: docTitleFromMd(body),
     summary: summaryFromMd(body),
     body,
     writable: true,
-    relKind,
+    kind,
   };
 }
 
@@ -514,12 +528,13 @@ function outExternal(abs: string, body: string): DocGetResult {
   return {
     docId: paths.extDocId(abs),
     path: abs,
-    // #168：与自有树同一口径——标题 = 正文首行的 `# 标题`
+    // #168：与自有文档同一口径——标题 = 正文首行的 `# 标题`
     title: docTitleFromMd(body),
-    summary: seed.summaryFromMd(body),
+    summary: summaryFromMd(body),
     body,
     // 登记在册的外部文档 = 用户的文档集，允许就地写回来源文件（写侧另过闭包校验）
     writable: true,
     external: true,
+    kind: 'external',
   };
 }

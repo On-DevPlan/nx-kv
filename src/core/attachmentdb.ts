@@ -47,17 +47,15 @@ export {
   updateAttachmentNote,
 } from './attachmentdb/relations.js';
 export {
+  docKindOf,
   getRefBody,
-  isShellRel,
   listRefDocs,
   noBodyReason,
-  refDocByRel,
   refDocById,
-  refIdByRel,
-  relKindOf,
+  refDocByLocator,
   upsertRefBody,
 } from './attachmentdb/bodies.js';
-export type { RefBodyRow, RefDocRow, RelKind } from './attachmentdb/bodies.js';
+export type { RefBodyRow, RefDocRow, DocKind } from './attachmentdb/bodies.js';
 export {
   clearRefBindings,
   ensureDocRef,

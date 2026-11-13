@@ -12,7 +12,8 @@ const renderLink: any = _renderLink;
 /** docs.link 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   board: z.string(),
-  doc: z.string().optional().describe("自有树路径 = 自有文档；盘符/绝对路径 = 外部只读引用"),
+  ref: z.string().optional().describe("文档 refId（ref_<16hex>）"),
+  path: z.string().optional().describe("外部文件/目录绝对路径（登记成 origin=external 的 ref）"),
   note: z.string().optional().describe("条目说明"),
   tag: z.string().optional().describe("分类标签（如 qa；简介行渲染成小 chip；空串 = 清掉）"),
   remove: z.number().optional().describe("移除第 N 条（1 起）"),
@@ -24,7 +25,7 @@ export class DocsLinkAction extends ActionBase<typeof input> {
     id: 'docs.link',
     cli: ['docs', 'link'],
     http: ['POST', '/api/docs/link'],
-    summary: '维护组的附加文档列表（--doc <自有路径|绝对路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 doc 重复添加 = 更新）',
+    summary: '维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新）',
     args: ['board'],
     input,
     render: renderLink,

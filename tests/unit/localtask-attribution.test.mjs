@@ -71,7 +71,7 @@ test('归属改了 → 任务迁到新项目队列，旧队列不再有它，介
   const inB = await svc.getTask({ cwd: dirB, id: upd.task.id });
   const fm = parseFrontmatter(inB.text);
   assert.equal(fm.project, repoB.key);
-  assert.equal(fm.projectIntro, `repo/${repoB.key}.md`, 'projectIntro 必须跟着换');
+  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, 'projectIntro 必须跟着换（refId）');
   assert.equal(fm.board, board.id, '组归属不变');
 });
 
@@ -222,7 +222,7 @@ test('历史脏数据自愈：归属字段与所在队列对不上 → 保存时
   const inB = await svc.getTask({ cwd: dirB, id: upd.task.id });
   const fm = parseFrontmatter(inB.text);
   assert.equal(fm.project, repoB.key);
-  assert.equal(fm.projectIntro, `repo/${repoB.key}.md`, '补齐介绍引用');
+  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, '补齐介绍引用（refId）');
 });
 
 test('历史脏数据但已领取 → 不搬也不拦普通编辑', async () => {

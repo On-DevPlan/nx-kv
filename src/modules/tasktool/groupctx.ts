@@ -35,7 +35,7 @@ interface IntroDoc {
 /** 描述文档集（主篇之外的其他文档） */
 interface IntroSet {
   count?: number;
-  extras?: { abs?: string; docId?: string; rel?: string }[];
+  extras?: { abs?: string; docId?: string; refId?: string }[];
 }
 
 /** 带归属的文档（ref_bindings JOIN refs；提示词只给 desc + refId） */
@@ -107,19 +107,19 @@ export async function readGroupContext(cwd: string, opts: { board?: string } = {
  */
 function introLines(header: string, intro: IntroDoc, set: IntroSet | null): string[] {
   const out: string[] = [];
-  const extras: { abs?: string; docId?: string; rel?: string }[] = (set && set.extras) || [];
+  const extras: { abs?: string; docId?: string; refId?: string }[] = (set && set.extras) || [];
   const count = (set && set.count) || (extras.length ? extras.length + 1 : 1);
-  const path = intro.path || 'docs';
+  const addr = intro.refId ? 'ref:' + intro.refId : 'docs';
   if (count > 1) {
     out.push(`${header}（${count} 篇）`);
-    out.push(`主篇（${path}）：`);
+    out.push(`主篇（${addr}）：`);
   } else {
-    out.push(`${header}（${path}）：`);
+    out.push(`${header}（${addr}）：`);
   }
-  out.push(clipIntro(intro.body, intro.path));
+  out.push(clipIntro(intro.body, addr));
   if (extras.length) {
     out.push('其余介绍文档（可直接读取）：');
-    for (const d of extras) out.push(`  - ${d.abs || d.docId || d.rel || ''}`);
+    for (const d of extras) out.push(`  - ${d.abs || d.docId || (d.refId ? 'ref:' + d.refId : '')}`);
   }
   return out;
 }

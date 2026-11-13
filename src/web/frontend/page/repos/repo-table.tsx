@@ -21,15 +21,16 @@ import type { RepoRow, BoardRow } from '../../types.js';
 // 这些字段是 /api/repos、/api/boards 的真实负载（外部数据边界），只在调用处
 // 显式声明一次；多声明一个字段不等于抄 schema，只声明本域真正读的那几个。
 
-/** 一篇文档的摘要（主篇 / 补充篇 / 组内描述）；exists=false 表示约定路径上还没落盘。 */
+/** 一篇文档的摘要（主篇 / 补充篇 / 组内描述）；exists=false 表示还没有正文。 */
 export interface DocBrief {
-  rel?: string;
-  path?: string;
   title?: string;
+  desc?: string;
   summary?: string;
   note?: string;
   tag?: string;
+  /** 面板导航地址 ref:<refId> */
   docId?: string;
+  refId?: string;
   exists?: boolean;
 }
 
@@ -39,13 +40,13 @@ export interface RepoDocs {
   links?: DocBrief[];
 }
 
-/** 仓库行上的分组引用（chip）：id = 看板 id；noteDocRel 是组内描述的文档路径。 */
+/** 仓库行上的分组引用（chip）：id = 看板 id；noteDocId 是组内描述文档的 docId。 */
 export interface RepoBoardRef {
   id: string;
   key?: string;
   name: string;
   note?: string;
-  noteDocRel?: string;
+  noteDocId?: string;
 }
 
 /** 仓库的绑定关系（linked）：kind='ref' 时 id = 参考仓库 key。 */
@@ -85,8 +86,8 @@ export interface BoardMember {
   note?: string;
   remote?: string;
   desc?: string;
-  noteDocPath?: string;
-  noteDocRel?: string;
+  /** 组内描述文档（ref:<refId>）；没有绑定为空串 */
+  noteDocId?: string;
   present?: boolean;
 }
 
@@ -99,10 +100,10 @@ export interface BoardRefLink {
 /** /api/boards 的一行（看板 / 项目组）。 */
 export interface BoardRecord extends BoardRow {
   desc?: string;
-  docRel?: string;
-  docPath?: string;
-  doc?: { rel?: string };
-  docLinks?: DocBrief[];
+  /** 组介绍主篇（ref:<refId>）；没有绑定为空串 */
+  docId?: string;
+  /** 组文档总篇数 */
+  docCount?: number;
   repos?: BoardMember[];
   refs?: BoardRefLink[];
 }
@@ -204,18 +205,18 @@ export function DocsEntry({ docs, onOpen }: { docs?: RepoDocs | null; onOpen: ()
   const tip = main && main.exists
     ? [main.title, main.summary && `摘要：${main.summary}`].filter(Boolean).join('\n')
     : '查看完整文档列表（主篇 / 补充 / reference / 组内），可就地编辑';
-  const labelOf = (d: DocBrief, i: number) => d.title || d.rel || d.path || `第 ${i + 1} 篇`;
+  const labelOf = (d: DocBrief, i: number) => d.title || d.desc || `第 ${i + 1} 篇`;
   const items: BindTagItem[] = [];
   if (main && main.exists) {
     items.push({ id: 'main', label: labelOf(main, 0), kind: 'repo', main: true, title: main.title || main.summary || '' });
   }
   links.forEach((l, i) => {
     items.push({
-      id: (l.docId || l.rel || l.path || 'link') + ':' + i,
+      id: (l.docId || l.refId || 'link') + ':' + i,
       label: labelOf(l, i),
       kind: 'repo',
       note: l.note || '',
-      title: [l.title || l.rel || l.path, l.note && `备注：${l.note}`].filter(Boolean).join('\n'),
+      title: [l.title || l.desc, l.note && `备注：${l.note}`].filter(Boolean).join('\n'),
     });
   });
   return (

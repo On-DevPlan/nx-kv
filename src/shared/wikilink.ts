@@ -16,7 +16,7 @@ export const WIKI_LINK_RE = /\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g;
 export interface WikiIndexEntry {
   docId: string;
   name: string;
-  rel?: string;
+  /** 外部文档的绝对路径（自有文档没有路径，只认名字） */
   path?: string;
 }
 
@@ -48,10 +48,10 @@ export function normalizeWikiTarget(t: unknown): string {
 
 /**
  * 解析一个双链目标。
- *   index: [{ docId, name, rel?, path? }]（name = normalizeWikiTarget 后的文件名）
+ *   index: [{ docId, name, path? }]（name = normalizeWikiTarget 后的文件名）
  *
  * 解析顺序（与产品语义对齐：先认地址，再认名字，猜是最后手段且不猜）：
- *   ① rel/path 精确命中（[[repo/github.com/me/x]] 这种完整写法）
+ *   ① 外部 path 精确命中
  *   ② 文件名唯一命中
  *   ③ 多命中 → 返回候选列表，调用方列出来让用户选（不猜）
  * 返回 { docId } | { candidates: [docId, ...] } | null（未命中 = 未解析）
@@ -63,9 +63,7 @@ export function resolveWikiLink(target: unknown, index: readonly WikiIndexEntry[
   if (!norm) return null;
   const normSlash = norm.replace(/\\/g, '/');
   const byAddr = list.find(
-    (d) =>
-      (d.rel && normalizeWikiTarget(d.rel) === normSlash) ||
-      (d.path && String(d.path).replace(/\\/g, '/').toLowerCase() === normSlash)
+    (d) => d.path && normalizeWikiTarget(String(d.path).replace(/\\/g, '/')) === normSlash
   );
   if (byAddr) return { docId: byAddr.docId };
   const lastName = normSlash.split('/').pop() ?? '';

@@ -15,6 +15,7 @@ export interface LayoutRepo {
   desc: string;
   type: string;
   doc?: any;
+  docLinks?: any[];
   remote?: string;
   remotes?: string[];
   notes?: string;
@@ -54,12 +55,21 @@ export interface LayoutLink {
   to: LayoutLinkTarget[];
 }
 
-/** 归一化布局（v2/v3/v4 兼容；其余原样字段透传）。 */
+/** 布局里被引用的 ref 元数据（v8：没有 rel / 路径，只有 id + locator + desc）。 */
+export interface LayoutRef {
+  refId: string;
+  origin: string;
+  locator: string;
+  desc: string;
+}
+
+/** 归一化布局（v5：refs 数组 + 文档绑定只认 refId；字段透传）。 */
 export interface Layout {
   version?: number;
   repos: LayoutRepo[];
   boards: LayoutBoard[];
   links: LayoutLink[];
+  refs?: LayoutRef[];
   warnings?: string[];
   [field: string]: unknown;
 }
@@ -107,6 +117,8 @@ function normalizeLayout(data: any): Layout {
     };
     const doc = refOf(r.doc);
     if (doc) out.doc = doc;
+    const repoLinks = (Array.isArray(r.docLinks) ? r.docLinks : []).map(refOf).filter(Boolean);
+    if (repoLinks.length) out.docLinks = repoLinks;
     if (remote) out.remote = remote;
     if (Array.isArray(r.remotes)) out.remotes = r.remotes.map(clean).filter(Boolean);
     if (r.notes) out.notes = clean(r.notes);
@@ -189,5 +201,24 @@ function normalizeLayout(data: any): Layout {
     return to.length ? { ref, to } : null;
   }).filter(Boolean) as LayoutLink[];
 
-  return { ...data, repos, boards: boardsIn, links };
+  return { ...data, repos, boards: boardsIn, links, refs: normalizeRefs(data.refs) };
+}
+
+/** refs 数组归一：只留 refId + origin / locator / desc。 */
+function normalizeRefs(raw: unknown): LayoutRef[] {
+  if (!Array.isArray(raw)) return [];
+  const out: LayoutRef[] = [];
+  const seen = new Set<string>();
+  for (const x of raw) {
+    const refId = clean(x && x.refId);
+    if (!refId || seen.has(refId)) continue;
+    seen.add(refId);
+    out.push({
+      refId,
+      origin: x && x.origin === 'external' ? 'external' : 'own',
+      locator: clean(x && x.locator),
+      desc: clean(x && x.desc),
+    });
+  }
+  return out;
 }

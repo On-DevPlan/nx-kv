@@ -72,14 +72,9 @@ function annotateFileRows(rows: any[], lookups: ResourceLookups, store: any): an
  * 里的引用名就该是那个标题，而不是文件名。读不到就留空（前端回落附件名）。
  */
 async function annotateRefTitles(attachments: any[]): Promise<any[]> {
-  const db = getDb();
   const refs = (attachments || [])
     .filter((a) => a.kind === 'ref')
-    .map((a) => {
-      const id = String(a.refId || a.targetKey || '');
-      const row = id ? db.get('SELECT rel FROM refs WHERE id = :id AND deleted_at IS NULL', { id }) : null;
-      return { id, locator: String(row?.rel || '') };
-    });
+    .map((a) => ({ id: String(a.refId || a.targetKey || '') }));
   if (!refs.length) return attachments;
   let titles = new Map<string, string>();
   try {
@@ -310,13 +305,13 @@ export async function attachToTask({
     markdown = `[${displayName || `任务 #${seq}`}](nxkv://task/${Number(row.id)})`;
   } else if (ref) {
     const refId = resolveRefId(db, ref as string);
-    if (!refId) throw badInput(`找不到文档: ${ref}（可先用 docs list 看已有路径）`);
+    if (!refId) throw badInput(`找不到文档: ${ref}（用 docs list 查 refId）`);
     attachmentId = tx(
       (conn) => ensureRefAttachment(conn, { refId, name: displayName }),
       { db, mode: 'IMMEDIATE' }
     ) as string; // 同上：登记失败落空串，由下方 !attachmentId 统一报错
     resolvedKind = 'ref';
-    markdown = `[${displayName || String(ref).split('/').pop()}](nxkv://ref/${refId})`;
+    markdown = `[${displayName || refId}](nxkv://ref/${refId})`;
   } else if (mdfile) {
     // 外部 md 文件：登记指针（kind=mdfile / storage=external），正文留在磁盘原地
     const rec = tx(

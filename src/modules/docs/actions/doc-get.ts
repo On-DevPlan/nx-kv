@@ -19,7 +19,7 @@ export class DocGetAction extends ActionBase<typeof input> {
     id: 'doc.get',
     cli: ['docs', 'get'],
     http: ['GET', '/api/docs/item'],
-    summary: '读文档全文：rel:<路径>（或裸相对路径）= 自有；path:<绝对路径> = 外部（须在绑定闭包内）；约定路径缺失时惰性播种',
+    summary: '读文档全文：ref:<refId>（或裸 refId）= 文档库条目；path:<绝对路径> = 外部（须在绑定闭包内）',
     args: ['ref'],
     input,
     render: renderGet,

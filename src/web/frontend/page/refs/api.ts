@@ -9,6 +9,8 @@ export interface BindingRow {
   refId: string;
   desc: string;
   title: string;
+  /** 正文首行摘要（没有 `# 标题` 时的显示名兜底） */
+  summary: string;
   hasBody: boolean;
   type: 'repo' | 'group' | 'group_repo';
   repoKey: string;
@@ -16,10 +18,7 @@ export interface BindingRow {
   position: number;
   main: boolean;
   note: string;
-  /** 直接 ref（v7 新建，归属直接写在 ref_bindings） */
-  direct: boolean;
-  /** 派生行的摘除序号（repo: 1=主篇、≥2=附加；group: 1-based 附加）；直接行为 null */
-  removeIndex: number | null;
+  tag: string;
 }
 
 /** 某个宿主的文档集（仓库 → host；组 → group）。 */

@@ -1,21 +1,19 @@
 // ref 正文（ref_bodies）的读写与条目分类。
 //
 // v6 起 `refs` 是文档身份 + 元数据，正文唯一真相在 `ref_bodies`（1:1，CASCADE）。
+// v8 起 ref 没有 rel：地址只有 `id`（DB 身份）与 `locator`（外部实际位置）。
 // 本模块只做三件事：
 //   1. 正文 CRUD（upsert / get）；
-//   2. rel ↔ id 的解析（rel 是逻辑名，id 是外键目标）；
+//   2. 按 id / locator 取条目；
 //   3. 条目分类：normal / legacy / external / empty —— 让调用方能区分
 //      「正常文档」与「历史空壳 / 外部文件镜像 / 无正文」。
 //
-// 分类口径（docs/decisions/2026-11-12-refs-body-in-db.md §11.1）：
-//   legacy/<id>       迁移时无 locator 的历史行，只有身份、没有正文；
-//   external/<hash>   外部绝对路径 / URL 的镜像行，正文在库外，不进 ref_bodies；
-//   empty             其它没有正文的活动行（如盘上文件已删的历史条目）；
-//   normal            有正文、且不是上面两类命名空间。
+// 分类口径：origin='external' 是外部镜像；没有正文的 import 行是历史索引；
+// 其余没有正文的活动行是 empty；有正文且非外部 = normal。
 import { createHash } from 'node:crypto';
 
 /** 一条 ref 条目的读路径类别。 */
-export type RelKind = 'normal' | 'legacy' | 'external' | 'empty';
+export type DocKind = 'normal' | 'legacy' | 'external' | 'empty';
 
 /** 一条正文记录。 */
 export interface RefBodyRow {
@@ -29,37 +27,31 @@ export interface RefBodyRow {
 /** 列表用的一条 ref 条目（带正文是否存在）。 */
 export interface RefDocRow {
   id: string;
-  rel: string;
+  /** 外部文件 / URL 的实际位置；自有直接 ref 为空串 */
+  locator: string;
   origin: string;
   /** 短描述（v7）：列表 / 提示词模板的快速定位标签 */
   desc: string;
   bodyBytes: number;
   hasBody: boolean;
-  relKind: RelKind;
+  kind: DocKind;
 }
 
 const sha256 = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
 
-/** rel + 是否有正文 → 读路径类别。 */
-export function relKindOf(rel: unknown, hasBody: boolean): RelKind {
-  const r = String(rel || '');
-  if (r.startsWith('legacy/')) return 'legacy';
-  if (r.startsWith('external/')) return 'external';
-  return hasBody ? 'normal' : 'empty';
+/** origin + 是否有正文 → 读路径类别。 */
+export function docKindOf(origin: unknown, hasBody: boolean): DocKind {
+  if (String(origin || '') === 'external') return 'external';
+  if (hasBody) return 'normal';
+  return String(origin || '') === 'import' ? 'legacy' : 'empty';
 }
 
 /** 无正文条目的原因（给人读；docs get / 交付清单共用）。 */
-export function noBodyReason(kind: RelKind): string {
-  if (kind === 'legacy') return '历史索引条目：只有身份与旧地址，没有正文';
+export function noBodyReason(kind: DocKind): string {
+  if (kind === 'legacy') return '历史索引条目：只有身份，没有正文';
   if (kind === 'external') return '外部文件镜像：正文在库外，未入库';
   if (kind === 'empty') return '条目存在但正文缺失（文件已删除或从未入库）';
   return '';
-}
-
-/** rel 是否属于「不允许当正常文档展示」的命名空间。 */
-export function isShellRel(rel: unknown): boolean {
-  const r = String(rel || '');
-  return r.startsWith('legacy/') || r.startsWith('external/');
 }
 
 /** 按 refs.id 取正文。 */
@@ -89,18 +81,10 @@ export function upsertRefBody(
        updated_at = excluded.updated_at`,
     { id: refId, body: text, n: bytes, hash, at: atMs }
   );
+  // refs.body_bytes 是**正文大小的缓存列**（列表页读它，免得拖着正文跑）。
+  // 它必须跟着正文一起改，否则「写完再列」看到的还是旧大小。
+  conn.run('UPDATE refs SET body_bytes = :n WHERE id = :id', { id: refId, n: bytes });
   return { bytes, hash };
-}
-
-/** 按 rel 找活动行的 id（rel 是逻辑名，唯一）。 */
-export function refIdByRel(conn: any, rel: unknown): string | null {
-  const r = String(rel || '').trim();
-  if (!r) return null;
-  const row = conn.get(
-    'SELECT id FROM refs WHERE rel = :rel AND deleted_at IS NULL',
-    { rel: r }
-  );
-  return row ? String(row.id) : null;
 }
 
 /**
@@ -111,65 +95,38 @@ export function refIdByRel(conn: any, rel: unknown): string | null {
  */
 export function listRefDocs(conn: any, { includeEmpty = false }: { includeEmpty?: boolean } = {}): RefDocRow[] {
   const rows: any[] = conn.all(
-    `SELECT r.id, r.rel, r.origin, r."desc", r.body_bytes,
+    `SELECT r.id, r.locator, r.origin, r."desc", r.body_bytes,
             CASE WHEN b.ref_id IS NULL THEN 0 ELSE 1 END AS has_body
        FROM refs r
        LEFT JOIN ref_bodies b ON b.ref_id = r.id
-      WHERE r.deleted_at IS NULL AND r.rel <> ''
-      ORDER BY r.rel`
+      WHERE r.deleted_at IS NULL
+      ORDER BY r.updated_at DESC, r.id`
   );
   const out: RefDocRow[] = [];
   for (const row of rows) {
-    const rel = String(row.rel || '');
+    const origin = String(row.origin || '');
     const hasBody = Number(row.has_body) === 1;
-    const relKind = relKindOf(rel, hasBody);
-    if (!includeEmpty && (!hasBody || relKind !== 'normal')) continue;
+    const kind = docKindOf(origin, hasBody);
+    if (!includeEmpty && (!hasBody || kind !== 'normal')) continue;
     out.push({
       id: String(row.id),
-      rel,
-      origin: String(row.origin || ''),
+      locator: String(row.locator || ''),
+      origin,
       desc: String(row.desc || ''),
       bodyBytes: Number(row.body_bytes) || 0,
       hasBody,
-      relKind,
+      kind,
     });
   }
   return out;
 }
 
-/** 按 rel 取条目状态（含正文）；不存在返回 null。 */
-export function refDocByRel(conn: any, rel: unknown): (RefDocRow & { body: string | null }) | null {
-  const r = String(rel || '').trim();
-  if (!r) return null;
-  const row = conn.get(
-    `SELECT r.id, r.rel, r.origin, r."desc", r.body_bytes,
-            CASE WHEN b.ref_id IS NULL THEN 0 ELSE 1 END AS has_body,
-            b.body
-       FROM refs r
-       LEFT JOIN ref_bodies b ON b.ref_id = r.id
-      WHERE r.rel = :rel AND r.deleted_at IS NULL`,
-    { rel: r }
-  );
-  if (!row) return null;
-  const hasBody = Number(row.has_body) === 1;
-  return {
-    id: String(row.id),
-    rel: String(row.rel),
-    origin: String(row.origin || ''),
-    desc: String(row.desc || ''),
-    bodyBytes: Number(row.body_bytes) || 0,
-    hasBody,
-    relKind: relKindOf(row.rel, hasBody),
-    body: hasBody ? String(row.body ?? '') : null,
-  };
-}
-
-/** 按 refs.id 取条目（docs get 的 refId 寻址 / 归属查询共用）。 */
-export function refDocById(conn: any, id: unknown): (RefDocRow & { body: string | null; locator: string }) | null {
+/** 按 refs.id 取条目状态（含正文）；不存在返回 null。 */
+export function refDocById(conn: any, id: unknown): (RefDocRow & { body: string | null }) | null {
   const r = String(id || '').trim();
   if (!r) return null;
   const row = conn.get(
-    `SELECT r.id, r.rel, r.locator, r.origin, r."desc", r.body_bytes,
+    `SELECT r.id, r.locator, r.origin, r."desc", r.body_bytes,
             CASE WHEN b.ref_id IS NULL THEN 0 ELSE 1 END AS has_body,
             b.body
        FROM refs r
@@ -179,15 +136,26 @@ export function refDocById(conn: any, id: unknown): (RefDocRow & { body: string 
   );
   if (!row) return null;
   const hasBody = Number(row.has_body) === 1;
+  const origin = String(row.origin || '');
   return {
     id: String(row.id),
-    rel: String(row.rel),
     locator: String(row.locator || ''),
-    origin: String(row.origin || ''),
+    origin,
     desc: String(row.desc || ''),
     bodyBytes: Number(row.body_bytes) || 0,
     hasBody,
-    relKind: relKindOf(row.rel, hasBody),
+    kind: docKindOf(origin, hasBody),
     body: hasBody ? String(row.body ?? '') : null,
   };
+}
+
+/** 按 locator（外部绝对路径 / URL）取条目；用于外部绑定闭包与导入核对。 */
+export function refDocByLocator(conn: any, locator: unknown): (RefDocRow & { body: string | null }) | null {
+  const loc = String(locator || '').trim().replace(/\\/g, '/');
+  if (!loc) return null;
+  const row = conn.get(
+    'SELECT id FROM refs WHERE locator = :loc AND deleted_at IS NULL ORDER BY id LIMIT 1',
+    { loc }
+  );
+  return row ? refDocById(conn, row.id) : null;
 }

@@ -26,8 +26,10 @@ export interface ExportRepoEntry {
   name: string;
   desc: string;
   type: string;
-  /** 文档绑定覆盖（v4）：显式导出（哪怕指向约定路径——导入端 diff 要看得见） */
+  /** 文档绑定（主篇 refId） */
   doc?: any;
+  /** 项目补充文档（refId + note/tag） */
+  docLinks?: any[];
   remote?: string;
   remotes?: string[];
   notes?: string;
@@ -53,7 +55,15 @@ export interface ExportBoardEntry {
   repoDocs?: Record<string, any>;
 }
 
-/** repoExport 的返回（v4 layout）。 */
+/** 导出布局里被引用的一条 ref（v8：id + locator + desc，没有 rel）。 */
+export interface ExportRefEntry {
+  refId: string;
+  origin: string;
+  locator: string;
+  desc: string;
+}
+
+/** repoExport 的返回（v8 layout）。 */
 export interface ExportLayout {
   version: number;
   exportedAt: string;
@@ -61,6 +71,8 @@ export interface ExportLayout {
   boards: ExportBoardEntry[];
   links: LayoutLink[];
   warnings: string[];
+  /** 被宿主文档集引用的 ref 元数据（import 端按 id 重建） */
+  refs?: ExportRefEntry[];
   /** zip 内文档清单（repoExportZip 填充） */
   docs?: { files: string[] };
 }
@@ -119,9 +131,17 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
       desc: r.desc || '',
       type: r.type || 'dev',
     };
-    // 文档绑定覆盖（v4）：显式导出（哪怕指向约定路径——导入端 diff 要看得见）
+    // 文档绑定（v8）：主篇 + 补充篇，都是 refId
     const doc = sanitizeDocRef(r.doc);
     if (doc) entry.doc = doc;
+    const repoLinks = (Array.isArray(r.docLinks) ? r.docLinks : [])
+      .map((l: any) => {
+        const d = sanitizeDocRef(l);
+        if (!d) return null;
+        return withLinkMeta(d, l);
+      })
+      .filter(Boolean);
+    if (repoLinks.length) entry.docLinks = repoLinks;
     if (r.remote) entry.remote = r.remote;
     if (Array.isArray(r.remotes) && r.remotes.length) entry.remotes = r.remotes.slice();
     if (r.notes) entry.notes = r.notes;
@@ -213,13 +233,51 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
     }
   }
 
+  // 被宿主文档集引用的 ref 元数据：id / origin / locator / desc。
+  // 导入端按 id 重建（外部 ref 只带 locator，不打包字节）。
+  const refIds = new Set<string>();
+  const collect = (raw: any): void => {
+    const d = sanitizeDocRef(raw);
+    if (d && d.ref) refIds.add(d.ref);
+  };
+  for (const r of repos) {
+    collect(r.doc);
+    for (const l of r.docLinks || []) collect(l);
+  }
+  for (const b of boardsOut) {
+    collect(b.doc);
+    for (const l of b.docLinks || []) collect(l);
+    for (const v of Object.values(b.repoDocs || {})) collect(v);
+  }
+  // 所有自有正文也进 refs 元数据：zip 里会打包它们（孤儿文档也要能还原 desc）
+  for (const f of await listOwnDocs()) refIds.add(f.id);
+  const refsOut: ExportRefEntry[] = [];
+  const { getDb } = await import('../../../core/db/index.js');
+  for (const id of refIds) {
+    const hit = getDb().get(
+      'SELECT id, origin, locator, "desc" FROM refs WHERE id = :id AND deleted_at IS NULL',
+      { id }
+    );
+    if (!hit) {
+      warnings.push(`文档 ${id} 不存在 —— 绑定会在导入端失效`);
+      continue;
+    }
+    refsOut.push({
+      refId: String(hit.id),
+      origin: String(hit.origin || ''),
+      locator: String(hit.locator || ''),
+      desc: String(hit.desc || ''),
+    });
+  }
+
   return {
-    version: 4,
+    version: 5,
     exportedAt: new Date().toISOString(),
     repos,
     boards: boardsOut,
     links,
     warnings,
+    refs: refsOut,
   };
 }
 
@@ -227,25 +285,25 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
 const MAX_DOC_ENTRY_BYTES = 2 * 1024 * 1024;
 const MAX_DOC_ENTRIES = 60000;
 
-/** 导出为 zip：layout.json(v4) + README.txt + docs/<自有树>。返回 Buffer。 */
+/** 导出为 zip：layout.json(v5) + README.txt + docs/<refId>.md。返回 Buffer。 */
 export async function repoExportZip(options: RepoExportOptions = {}): Promise<Buffer> {
   const layout = await repoExport(options);
   const docEntries: Array<{ name: string; data: Buffer }> = [];
   const own = await listOwnDocs();
   for (const f of own) {
     if (docEntries.length >= MAX_DOC_ENTRIES) {
-      layout.warnings.push(`文档条目超过 ${MAX_DOC_ENTRIES} 上限，未打包: ${f.rel}`);
+      layout.warnings.push(`文档条目超过 ${MAX_DOC_ENTRIES} 上限，未打包: ${f.id}`);
       continue;
     }
     if (f.size > MAX_DOC_ENTRY_BYTES) {
-      layout.warnings.push(`文档超过 2MB 未打包: ${f.rel}`);
+      layout.warnings.push(`文档超过 2MB 未打包: ${f.id}`);
       continue;
     }
-    // 正文只从 DB 取（v6 起不再有磁盘副本）
-    docEntries.push({ name: 'docs/' + f.rel, data: Buffer.from(f.body ?? '', 'utf8') });
+    // 正文只从 DB 取（v6 起不再有磁盘副本）；文件名 = refId（没有路径）
+    docEntries.push({ name: 'docs/' + f.id + '.md', data: Buffer.from(f.body ?? '', 'utf8') });
   }
-  // zip 内清单进 layout（diff 展示用；实际内容就是 zip 条目本身）
-  layout.docs = { files: docEntries.map((e) => e.name.slice('docs/'.length)) };
+  // zip 内清单进 layout（diff 展示用）
+  layout.docs = { files: docEntries.map((e) => e.name.slice('docs/'.length).replace(/\.md$/i, '')) };
 
   const readme = [
     'nx-kv 仓库布局导出',
@@ -261,10 +319,9 @@ export async function repoExportZip(options: RepoExportOptions = {}): Promise<Bu
     '  - 每个仓库以全局唯一 key 标识（来自远程地址或自定义）',
     '  - 不包含任何本地路径，换机导入后需 clone 或手工登记',
     '  - 看板以 board/<名称> 为 key；关系与组内描述都在 layout.json 里',
-    '  - docs/ 是自有文档树（项目/组介绍、组内描述），导入后原样恢复',
-    '  - 外部绑定（如 Obsidian vault）只记引用，不在包里——路径缺失会标「待初始化」',
+    '  - docs/ 是文档正文（文件名 = refId），layout.json 的 refs 记录每篇的 desc / locator',
+    '  - 外部文档（origin=external）只记 locator，字节不在包里——路径缺失会标「待初始化」',
     '  - 外部 md 文件（attachments.kind=mdfile）默认不打包：它们只是路径指针，字节不在库内',
-    '    （条目在本地 attachments 表里，换机后需按原路径重新登记）',
     '',
     `仓库 ${layout.repos.length} 个 / 看板 ${layout.boards.length} 个 / 关系 ${layout.links.length} 条 / 文档 ${docEntries.length} 份`,
   ].join('\n');

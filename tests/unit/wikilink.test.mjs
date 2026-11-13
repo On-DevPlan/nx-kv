@@ -18,25 +18,26 @@ test('normalizeWikiTarget：剥 .md 尾、压空白、小写', () => {
   assert.equal(normalizeWikiTarget(''), '');
 });
 
-test('resolveWikiLink：rel 精确命中优先于文件名', () => {
+test('resolveWikiLink：外部文档按 path 精确命中优先于文件名（path 与目标同口径）', () => {
+  // v8：WikiIndexEntry 没有 rel；外部文档只有 path（比较前统一正斜杠 + 小写）
   const index = [
-    { docId: 'rel:repo/a/b.md', name: 'b', rel: 'repo/a/b.md' },
-    { docId: 'rel:repo/c/b.md', name: 'b', rel: 'repo/c/b.md' },
+    { docId: 'ref:ref_1111111111111111', name: 'b', path: 'D:/Vault/a/b' },
+    { docId: 'ref:ref_2222222222222222', name: 'b', path: 'D:/Vault/c/b' },
   ];
-  assert.deepEqual(resolveWikiLink('repo/a/b.md', index), { docId: 'rel:repo/a/b.md' });
-  // 目标不带 .md 也能按路径命中（归一时剥尾缀）
-  assert.deepEqual(resolveWikiLink('repo/a/b', index), { docId: 'rel:repo/a/b.md' });
+  assert.deepEqual(resolveWikiLink('d:\\vault\\A\\b', index), { docId: 'ref:ref_1111111111111111' });
 });
 
 test('resolveWikiLink：文件名唯一命中；多命中返回候选不猜；未命中 null', () => {
-  const single = [{ docId: 'rel:repo/x.md', name: 'x', rel: 'repo/x.md' }];
-  assert.deepEqual(resolveWikiLink('X.md', single), { docId: 'rel:repo/x.md' });
+  const single = [{ docId: 'ref:ref_3333333333333333', name: 'x' }];
+  assert.deepEqual(resolveWikiLink('X.md', single), { docId: 'ref:ref_3333333333333333' });
 
   const multi = [
-    { docId: 'rel:repo/a/b.md', name: 'b', rel: 'repo/a/b.md' },
-    { docId: 'rel:repo/c/b.md', name: 'b', rel: 'repo/c/b.md' },
+    { docId: 'ref:ref_1111111111111111', name: 'b' },
+    { docId: 'ref:ref_2222222222222222', name: 'b' },
   ];
-  assert.deepEqual(resolveWikiLink('b', multi), { candidates: ['rel:repo/a/b.md', 'rel:repo/c/b.md'] });
+  assert.deepEqual(resolveWikiLink('b', multi), {
+    candidates: ['ref:ref_1111111111111111', 'ref:ref_2222222222222222'],
+  });
   assert.equal(resolveWikiLink('不存在', single), null);
   assert.equal(resolveWikiLink('x', []), null);
 });

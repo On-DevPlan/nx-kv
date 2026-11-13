@@ -6,9 +6,9 @@ import { clean, parseLayout } from './layout.js';
 import type { LayoutRepo, LayoutBoard, LayoutLink } from './layout.js';
 import type { RepoEntry, BoardEntry, Store } from '../repo/rows.js';
 
-/** zip 拆出的文档条目。 */
+/** zip 拆出的文档条目（v8：文件名就是 refId）。 */
 export interface DiffDocEntry {
-  rel: string;
+  refId: string;
   data: Buffer;
 }
 
@@ -55,9 +55,9 @@ export interface DiffBoardEntry {
   missingMembers: DiffMissingMember[];
 }
 
-/** 文档树差异条目。 */
+/** 文档差异条目。 */
 export interface DiffDocStatus {
-  rel: string;
+  refId: string;
   status: 'new' | 'changed' | 'same';
 }
 
@@ -94,7 +94,7 @@ const COMPARE_FIELDS = ['name', 'desc', 'notes', 'type', 'remote'];
  *   same           本地有且字段一致
  *   changed        本地有但字段有差异（fields 列出每一项）
  *   missing-local  文件里被看板/关系引用，但文件与本地都没有定义（断链）
- * docsFiles: zip 拆出的文档条目 [{rel, data}]（面板 JSON 粘贴导入没有这一段——
+ * docsFiles: zip 拆出的文档条目 [{refId, data}]（面板 JSON 粘贴导入没有这一段——
  * 差异里 docs 为空数组，summary 计数全 0）。
  */
 export async function diffImport(json: unknown, docsFiles: DiffDocEntry[] = []): Promise<DiffImportResult> {
@@ -171,15 +171,15 @@ export async function diffImport(json: unknown, docsFiles: DiffDocEntry[] = []):
     };
   });
 
-  // 文档树差异：zip 带来的 docs/** 与本地自有树逐文件 md5 比较
+  // 文档差异：zip 带来的 docs/<refId>.md 与本地 ref 正文逐篇 md5 比较
   const docsOut: DiffDocStatus[] = [];
   if (docsFiles.length) {
-    const local = new Map<string, string>((await listOwnDocs()).map((f: any): [string, string] => [f.rel, f.md5]));
+    const local = new Map<string, string>((await listOwnDocs()).map((f: any): [string, string] => [f.id, f.md5]));
     for (const f of docsFiles) {
-      const localMd5 = local.get(f.rel);
-      if (localMd5 === undefined) docsOut.push({ rel: f.rel, status: 'new' });
-      else if (localMd5 !== md5Of(f.data)) docsOut.push({ rel: f.rel, status: 'changed' });
-      else docsOut.push({ rel: f.rel, status: 'same' });
+      const localMd5 = local.get(f.refId);
+      if (localMd5 === undefined) docsOut.push({ refId: f.refId, status: 'new' });
+      else if (localMd5 !== md5Of(f.data)) docsOut.push({ refId: f.refId, status: 'changed' });
+      else docsOut.push({ refId: f.refId, status: 'same' });
     }
   }
 
@@ -196,7 +196,7 @@ export async function diffImport(json: unknown, docsFiles: DiffDocEntry[] = []):
   };
 
   return {
-    version: layout.version || 4,
+    version: layout.version || 5,
     repos,
     boards: boardsOut,
     links: layout.links,

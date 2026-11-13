@@ -186,9 +186,9 @@ export function listDocs(): Promise<any> {
   return api('/api/docs');
 }
 
-/** 新建 / 写入文档（POST /api/docs/item）。 */
-export function createDocItem(body: { rel?: string; body?: string }) {
-  return api('/api/docs/item', { method: 'POST', body });
+/** 全部文档归属（GET /api/docs/bindings，不带筛选参数）。 */
+export function listDocBindings(): Promise<any> {
+  return api('/api/docs/bindings');
 }
 
 /** 删除文档（DELETE /api/docs/item）。 */

@@ -15,7 +15,8 @@
 // 分组里；取消某份副本只摘那个分组的引用，仓库本体纹丝不动。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { bindRef, createDocItem, fetchRefCheck, listBoards, listRepos, openRepo, refSync, removeRepo, type RefCheckPayload } from './api.js';
+import { bindRef, fetchRefCheck, listBoards, listRepos, openRepo, refSync, removeRepo, type RefCheckPayload } from './api.js';
+import { createRefDoc, docHostBindings, updateDocItem } from '../doc/api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
@@ -82,7 +83,7 @@ export default function ReposView() {
     all: async () => { await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]); },
   }), [loadRepos, loadBoards, loadRefCheck]);
 
-  // ---- 视图状态：筛选 + 检索（一个输入同时搜仓库名/路径、分组名、文档标题/rel） ----
+  // ---- 视图状态：筛选 + 检索（一个输入同时搜仓库名/路径、分组名、文档标题/描述） ----
   const [filter, setFilter] = useState(''); // '' = 全部（中心清单）
   const [q, setQ] = useState('');
 
@@ -133,19 +134,19 @@ export default function ReposView() {
   const refRepos = useMemo<RepoRecord[]>(() => repos.filter((r) => r.type === 'ref'), [repos]);
 
   // 筛选后的开发仓库清单：选某个看板时只显示该看板的成员（去重）；
-  // 检索词命中仓库名/路径/分组名/文档标题（含 rel）时也收窄到命中的行。
+  // 检索词命中仓库名/路径/分组名/文档标题（含描述）时也收窄到命中的行。
   // 参考仓库不在主表 —— 它们有大面板（头部工具条的「参考仓库」入口）。
   const shown = useMemo<RepoRecord[]>(() => {
     let list = devRepos;
     if (filter) list = list.filter((r) => (r.boards || []).some((b) => b.id === filter));
     const kw = q.trim().toLowerCase();
     if (!kw) return list;
-    // 文档命中：主篇 / 补充篇的标题、rel、tag、note 任一含关键词
+    // 文档命中：主篇 / 补充篇的标题、描述、tag、note 任一含关键词
     const docHit = (r: RepoRecord) => {
       const main = r.descDocs && r.descDocs.main;
-      if (main && [main.title, main.summary, main.rel].some((s) => s && String(s).toLowerCase().includes(kw))) return true;
+      if (main && [main.title, main.summary, main.desc].some((s) => s && String(s).toLowerCase().includes(kw))) return true;
       return ((r.descDocs && r.descDocs.links) || []).some((l) =>
-        [l.title, l.tag, l.note, l.rel].some((s) => s && String(s).toLowerCase().includes(kw)));
+        [l.title, l.desc, l.tag, l.note].some((s) => s && String(s).toLowerCase().includes(kw)));
     };
     return list.filter((r) =>
       [r.name, r.key, r.path, r.desc].some((s) => s && String(s).toLowerCase().includes(kw))
@@ -286,22 +287,26 @@ export default function ReposView() {
     }
   });
 
-  // 描述 = 文档：点开主篇/组内描述。还没写过（约定路径上没有文件）就先建一个空文档，
-  // 打开即写——否则「未写」是个死链，人得先去命令行 docs add 才能写描述。
-  // create 失败（已存在 / 并发）一律当成功：下一步是打开，存在与否由文档页自己判断。
-  const openDescDoc = (rel?: string, title?: string) => guard(async () => {
-    if (!rel) return;
-    await createDocItem({ rel, body: `# ${title || rel}\n\n` }).catch(() => {});
-    openByDocId('rel:' + rel);
-    loadRepos();
+  // 组介绍入口：组上的主篇文档（ref:<refId>），没有就新建一个直接 ref。
+  // 全程不推导路径 / 扩展名，归属直接写组。
+  const openBoardDoc = (b: BoardRecord) => guard(async () => {
+    if (b.docId) {
+      openByDocId(b.docId);
+      return;
+    }
+    if (b.key) {
+      const set = await docHostBindings({ group: b.key }).catch(() => null);
+      const main = ((set && set.bindings) || []).find((x) => x.type === 'group' && x.main);
+      if (main) {
+        openByDocId('ref:' + main.refId);
+        return;
+      }
+    }
+    const created = await createRefDoc({ owner: 'group', group: b.id, desc: `${b.name} · 组介绍` });
+    await updateDocItem({ ref: 'ref:' + created.refId, body: `# ${b.name} · 组介绍\n\n` });
+    openByDocId('ref:' + created.refId);
+    await reload.all();
   });
-
-  // 组介绍文档入口：docPath（绝对路径落盘的）直接开；
-  // 否则按约定 rel（board/<组>.md）先建空文档再开——点开即写，不让「未写」成死链。
-  const openBoardDoc = (b: BoardRecord) => {
-    if (b.docPath) return openByDocId('path:' + b.docPath);
-    return openDescDoc(b.docRel, `${b.name} · 组介绍`);
-  };
 
   // 区块跳转：面板内容挂在 FlexLayout 的 tab 里（.flexlayout__tab_moveable 才是
   // 真正的滚动容器），scrollIntoView 在这条链上实测无效，必须手动算 scrollTop。

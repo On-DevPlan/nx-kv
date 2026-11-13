@@ -137,10 +137,10 @@ export default function AttachModal({
     if (!open || docOptions || !allow.ref) return;
     let alive = true;
     // v7：ref 是 DB 实体，列表只给 desc / 标题与 refId——不展示任何 .md 路径。
-    api<{ docs?: Array<DocOption & { docId?: string; refId?: string; desc?: string; rel?: string }> }>('/api/docs').then((r) => {
+    api<{ docs?: Array<DocOption & { docId?: string; refId?: string; desc?: string }> }>('/api/docs').then((r) => {
       if (!alive) return;
       const list = (r.docs || []).map((d) => {
-        const ref = d.refId || d.docId || (d.rel ? `rel:${d.rel}` : '');
+        const ref = d.refId ? 'ref:' + d.refId : (d.docId || '');
         const desc = String(d.desc || '').trim();
         const title = String(d.title || d.name || '').trim();
         return {

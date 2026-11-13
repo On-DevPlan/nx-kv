@@ -88,13 +88,13 @@ flowchart TD
 
 | # | 规范名 | 代码标识（表 / 字段 / 函数） | 定义 | 判定依据 | 常见误用 |
 |---|--------|------------------------------|------|----------|----------|
-| N18 | **文档**（ref） | `refs`；`refs.locator`；`type='md'`；`refIdFor()` | nx-kv 文档库中的一篇 Markdown：自有 docs 树里的 `.md`，或已登记的外部绑定文件。 | `v1.sql` `refs`；`src/core/attachmentdb.js` `refIdFor()`；`src/modules/docs/*` | 把 `refs` 当「参考仓库」；把任意附件文件叫文档；把任务正文当文档。 |
-| N19 | **文档 id** | `refs.id = 'ref_' + sha1(locator).slice(0,16)` | 文档行的稳定主键，由 locator 派生。 | `src/core/attachmentdb.js` `refIdFor()` | 手工拼 `ref_...`；用路径当 `refs.id`。 |
-| N20 | **文档地址**（docId） | `rel:<相对路径>` / `path:<绝对路径>`；`ownDocId()` / `extDocId()` / `parseDocId()` | 自有树用 `rel:`（裸相对路径等价），外部绑定用 `path:`。 | `src/modules/docs/docref.js` | 把 `path:` 传给 `docs add`（`add` 只写自有树）；外部路径未登记就读取（会被拒绝）。 |
-| N21 | **文档绑定** | `ref_bindings(repo_key, group_key, ref_id, type, position)`；`type IN ('repo','group','group_repo')` | 仓库 / 项目组 / 组内仓库的「介绍文档列表」中的一项；`position` 最小的是首项。 | `v1.sql` `ref_bindings` 与注释 | 以为有「主引用」单值字段（没有，首项即主篇）；把 `group_repo` 当成组级绑定（它是「仓库在某组内」的独立列表）。 |
-| N22 | **文档覆盖**（DocRef） | `repos.ext.doc` / 项目组 `ext.doc`；`{rel}` 或 `{path}`；`docs bind` | 覆盖某仓库/项目组默认介绍路径的「主篇」绑定。 | `src/modules/docs/docref.js`；`src/modules/docs/refs.js`；`src/modules/docs/index.js` `doc.bind` | 把 DocRef 当 `refs` 行（它是绑定字段）；同时给 `rel` 和 `path`（二选一）。 |
-| N23 | **文档集 / 介绍目录** | `repo/<key>/index.md`；`reference/*.md`；`DOC_MAIN = 'index.md'` | 一个仓库/项目组的介绍不再只有一篇：`index.md` 为主篇，`reference/` 与同级 `.md` 为补充说明。 | `src/modules/docs/paths.js`；`src/modules/docs/knowledge.js` `readIntroSet()` | 只写 `repo/<key>.md`（旧单文件仍可读，但新内容应进目录）；把 `reference/` 当普通附件目录。 |
-| N24 | **附加文档列表** | `repos.ext.docLinks`；`docLinks[]`；`docs link` | 主篇之外的额外文档条目（DocRef + note/tag），在交付提示词里是 `repo.docs` / `group.docs`。 | `src/modules/docs/refs.js` `withLinkMeta()`；`src/modules/tasktool/delivery-template.js` | 把 `docLinks` 当参考仓库列表（参考仓库在 `refRepos`）。 |
+| N18 | **文档**（ref） | `refs`；`refs.locator`；`type='md'`；`refIdFor()` | nx-kv 文档库中的一篇 Markdown：库内自有文档（正文在 `ref_bodies`），或已登记的外部文件 / URL（`origin='external'`）。 | `v1.sql` `refs`；`src/core/attachmentdb.js` `refIdFor()`；`src/modules/docs/*` | 把 `refs` 当「参考仓库」；把任意附件文件叫文档；把任务正文当文档。 |
+| N19 | **文档 id** | `refs.id = 'ref_' + sha1(...).slice(0,16)` | 文档行的稳定主键。**唯一地址**——库内文档一律按它寻址。 | `src/core/attachmentdb.js` `refIdFor()` | 手工拼 `ref_...`；用路径当 `refs.id`。 |
+| N20 | **文档地址**（docId） | `ref:<refId>` / `path:<绝对路径>`；`ownDocId()` / `extDocId()` | 库内文档用 `ref:`（裸 refId 等价）；外部目录里的裸文件用 `path:`（不是 ref，不进文档库）。 | `src/modules/docs/docref.js` | 把 `path:` 当文档库条目；给 `path:` 找一个不存在的 ref。 |
+| N21 | **文档绑定** | `ref_bindings(repo_key, group_key, ref_id, type, position, note, tag)`；`type IN ('repo','group','group_repo')` | 仓库 / 项目组 / 组内仓库的「介绍文档列表」中的一项；`position` 最小的是首项（主篇）。 | `v1.sql` `ref_bindings` 与注释；`v8.sql`（加 `tag`） | 以为有「主引用」单值字段（没有，首项即主篇）；把 `group_repo` 当成组级绑定（它是「仓库在某组内」的独立列表）。 |
+| N22 | **文档覆盖**（DocRef） | `repos.ext.doc` / 项目组 `ext.doc`；`{ref}`（可带 `note` / `tag`）；`docs bind` | 覆盖某仓库/项目组默认介绍的「主篇」绑定。**只有 `{ref}`**——外部路径先登记成 `origin='external'` 的 ref 再引用。 | `src/modules/docs/docref.js`；`src/modules/docs/refs.js` | 把 DocRef 当 `refs` 行（它是绑定字段）；再塞 `rel` / `path` 字段。 |
+| N23 | **文档集** | `ref_bindings` 按 `position` 排；`docSetOf()`；`repo doc list` | 一个仓库/项目组的介绍文档集：首项是主篇，其余是补充说明。**没有约定路径**，也没有目录主篇。 | `src/modules/docs/brief.js` `docSetOf()` | 还按 `repo/<key>/index.md` 之类的约定路径找主篇；把文档集当文件系统目录。 |
+| N24 | **附加文档列表** | `ref_bindings` 中 `position > 0` 的行（带 `note` / `tag`）；`docs link` | 主篇之外的额外文档条目，在交付提示词里是 `repo.docs` / `group.docs`。 | `src/modules/docs/refs.js` `withLinkMeta()`；`src/modules/tasktool/delivery-template.js` | 把附加文档当参考仓库列表（参考仓库在 `refRepos`）。 |
 
 ### 2.4 附件
 
@@ -219,7 +219,7 @@ flowchart TD
 | Q01 | `tasks.type` 是否仍在使用 | 列存在；本次检索未见业务读写 | 词表暂不定义「任务类型」 |
 | Q02 | `refs.type` 是否还要保留多类型 | v1 注释列 6 种；v2 起业务只写 `md` | 词表只把 refs 定义为文档 |
 | Q03 | 队列级时间目标（`settings.tg.cwd.<topicKey>`）是否仍是正式能力 | v1 注释称「只保留任务级」，但 tasktool 仍有队列级实现 | 词表只定义任务级目标，队列级标为兼容 |
-| Q04 | 文档库是否存在「全局主文档」概念 | 只有仓库/项目组级主篇（`ext.doc`、`index.md`、`binding position=0`），没有全局单值 | 见文末「主文档」说明 |
+| Q04 | 文档库是否存在「全局主文档」概念 | 只有仓库/项目组级主篇（`ext.doc`、`binding position=0`），没有全局单值 | 见文末「主文档」说明 |
 
 ---
 
@@ -228,14 +228,14 @@ flowchart TD
 本文件是编辑源；发布到 nx-kv 自己的文档库用 CLI（不要手改数据库）：
 
 ```bash
-# 1) 首次发布（已执行）：rel = repo/<仓库 key>/glossary.md
-nx-kv docs add repo/github.com/on-devplan/nx-kv/glossary.md --body-file docs/glossary.md
+# 1) 首次发布：建条目（正文为空，直接可编辑）+ 绑成该仓库主篇
+nx-kv docs ref add --owner repo --repo github.com/on-devplan/nx-kv --desc "nx-kv 术语与概念规范"
 
 # 2) 后续更新（只改本文件，再发布）
-nx-kv docs set repo/github.com/on-devplan/nx-kv/glossary.md --body-file docs/glossary.md
+nx-kv docs set --ref <refId> --body-file docs/glossary.md
 
-# 3) 设为 nx-kv 项目主文档（宿主级 DocRef）
-nx-kv docs bind --repo github.com/on-devplan/nx-kv --rel repo/github.com/on-devplan/nx-kv/glossary.md
+# 3) 换主篇（把已有 ref 绑成主篇）
+nx-kv docs bind --repo github.com/on-devplan/nx-kv --ref <refId>
 ```
 
-说明：`refs` 数据模型没有「全局主文档」字段；「主文档」是宿主级概念——仓库/项目组的 `ext.doc`（DocRef）指向 `index.md` 或 `docs bind` 指定的 rel。本文已绑定为 `github.com/on-devplan/nx-kv` 仓库的主文档；原项目总览 `repo/github.com/on-devplan/nx-kv.md` 保留为该仓库的补充文档（docLinks），未删除。
+说明：`refs` 数据模型没有「全局主文档」字段；「主文档」是宿主级概念——仓库/项目组的 `ext.doc`（DocRef）指向一篇 ref，对应 `ref_bindings` 里 `position=0` 的那一行。没有约定路径，也没有目录主篇。

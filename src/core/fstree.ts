@@ -42,14 +42,14 @@ export interface WalkedFile {
   size: number;
 }
 
-/** 递归收集目录下所有文件：rel 路径 -> { abs, md5, size } */
+/** 递归收集目录下所有文件：相对子路径 -> { abs, md5, size } */
 export async function walkFiles(root: string): Promise<Map<string, WalkedFile>> {
   const files = new Map<string, WalkedFile>();
-  async function walk(dir: string, rel: string): Promise<void> {
+  async function walk(dir: string, sub: string): Promise<void> {
     const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => []);
     for (const e of entries) {
       const abs = join(dir, e.name);
-      const r = rel ? `${rel}/${e.name}` : e.name;
+      const r = sub ? `${sub}/${e.name}` : e.name;
       if (e.isDirectory()) await walk(abs, r);
       else if (e.isFile()) {
         const buf = await fsp.readFile(abs).catch(() => null);
@@ -75,13 +75,13 @@ export interface TreeDiffEntry {
 export async function diffTrees(aRoot: string, bRoot: string): Promise<TreeDiffEntry[]> {
   const [a, b] = await Promise.all([walkFiles(aRoot), walkFiles(bRoot)]);
   const out: TreeDiffEntry[] = [];
-  for (const [rel, fa] of a) {
-    const fb = b.get(rel);
-    if (!fb) out.push({ file: rel, side: 'only-central' });
-    else if (fa.md5 !== fb.md5) out.push({ file: rel, side: 'both-differ' });
+  for (const [sub, fa] of a) {
+    const fb = b.get(sub);
+    if (!fb) out.push({ file: sub, side: 'only-central' });
+    else if (fa.md5 !== fb.md5) out.push({ file: sub, side: 'both-differ' });
   }
-  for (const [rel] of b) {
-    if (!a.has(rel)) out.push({ file: rel, side: 'only-project' });
+  for (const [sub] of b) {
+    if (!a.has(sub)) out.push({ file: sub, side: 'only-project' });
   }
   return out;
 }

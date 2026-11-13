@@ -20,7 +20,7 @@ export class DocRemoveAction extends ActionBase<typeof input> {
     summary: '删除自有文档（外部绑定不可删）',
     args: ['ref'],
     input,
-    render: (d: any) => `已删除: ${d.rel}`,
+    render: (d: any) => `已删除: ${d.refId}`,
   })
   override async run(ctx: ActionInput<this['_input']>) {
 

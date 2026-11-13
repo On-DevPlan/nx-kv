@@ -28,15 +28,25 @@ const store = await import('../../src/modules/docs/store.js');
 
 const GUIDE = '# 使用指南\n\n这是指南的正文，供内联测试使用。';
 
+// v8：自有文档的地址只有 refId（没有 rel / 路径）；正文进 ref_bodies。
+let seq = 0;
+async function makeDoc(md) {
+  seq += 1;
+  const id = 'ref_' + String(seq).padStart(16, '0');
+  ensureDocRef(getDb(), { ref: id });
+  await store.writeOwnDoc(id, md);
+  return id;
+}
+const guideId = await makeDoc(GUIDE);
+
 async function addTask(text) {
   const r = await service.addTask({ text });
   return r.task;
 }
 
 test('--ref --inline：落 role=doc 边，--note 随边落库（desc）', async () => {
-  await store.writeOwnDoc('notes/guide.md', GUIDE);
   const t = await addTask('# 文档绑定');
-  const r = await attachToTask({ id: t.id, ref: 'notes/guide.md', inline: true, note: '项目结构说明' });
+  const r = await attachToTask({ id: t.id, ref: guideId, inline: true, note: '项目结构说明' });
   assert.equal(r.role, 'doc', '内联绑定应落 doc 边（文档资料）');
   const listed = await listTaskAttachments({ id: t.id });
   assert.equal(listed.count, 1);
@@ -46,7 +56,7 @@ test('--ref --inline：落 role=doc 边，--note 随边落库（desc）', async 
 
 test('--ref embed 路径的 --note 不再丢（此前只落正文、说明丢失）', async () => {
   const t = await addTask('# 普通文档引用');
-  await attachToTask({ id: t.id, ref: 'notes/guide.md', note: '一行简介' });
+  await attachToTask({ id: t.id, ref: guideId, note: '一行简介' });
   const listed = await listTaskAttachments({ id: t.id });
   assert.equal(listed.attachments[0].role, 'inline');
   assert.equal(listed.attachments[0].note, '一行简介');
@@ -54,7 +64,7 @@ test('--ref embed 路径的 --note 不再丢（此前只落正文、说明丢失
 
 test('正文同步整组重写 inline 边时不冲掉边上说明', async () => {
   const t = await addTask('# 改正文');
-  await attachToTask({ id: t.id, ref: 'notes/guide.md', note: '同步后仍在' });
+  await attachToTask({ id: t.id, ref: guideId, note: '同步后仍在' });
   const cur = await service.getTask({ id: t.id }); // 取最新正文（含嵌入链接）再改
   await service.updateTask({ id: t.id, text: `${cur.text}\n\n追加一段正文` });
   const listed = await listTaskAttachments({ id: t.id });
@@ -71,7 +81,7 @@ test('--inline 只支持 --ref：其他来源报参数错', async () => {
 test('inline + no-embed 叠加：仍落 doc 边，正文不动', async () => {
   const t = await addTask('# 区域内文档');
   const before = t.text;
-  const r = await attachToTask({ id: t.id, ref: 'notes/guide.md', inline: true, noEmbed: true });
+  const r = await attachToTask({ id: t.id, ref: guideId, inline: true, noEmbed: true });
   assert.equal(r.role, 'doc');
   assert.equal(r.area, 'area');
   const shown = await service.getTask({ id: t.id });
@@ -80,9 +90,9 @@ test('inline + no-embed 叠加：仍落 doc 边，正文不动', async () => {
 
 test('先 attach（附件区）再 --inline：换成 doc 边（最新显式意图获胜）', async () => {
   const t = await addTask('# 换边');
-  await attachToTask({ id: t.id, ref: 'notes/guide.md', noEmbed: true, note: '旧说明' });
+  await attachToTask({ id: t.id, ref: guideId, noEmbed: true, note: '旧说明' });
   assert.equal((await listTaskAttachments({ id: t.id })).attachments[0].role, 'attach');
-  await attachToTask({ id: t.id, ref: 'notes/guide.md', inline: true, note: '新说明' });
+  await attachToTask({ id: t.id, ref: guideId, inline: true, note: '新说明' });
   const a = (await listTaskAttachments({ id: t.id })).attachments[0];
   assert.equal(a.role, 'doc');
   assert.equal(a.note, '新说明');
@@ -90,7 +100,7 @@ test('先 attach（附件区）再 --inline：换成 doc 边（最新显式意�
 
 test('交付内联：inlineDocs=true 读自有树全文，指令段出现〔文档原文〕', async () => {
   const t = await addTask('# 内联交付');
-  await attachToTask({ id: t.id, ref: 'notes/guide.md', inline: true });
+  await attachToTask({ id: t.id, ref: guideId, inline: true });
   const att = await annotateTaskDelivery(await service.getTask({ id: t.id }), { inlineDocs: true });
   const a = att.task.attachments[0];
   assert.equal(a.role, 'doc');
@@ -104,7 +114,7 @@ test('交付内联：inlineDocs=true 读自有树全文，指令段出现〔文�
 
 test('不传 inlineDocs：载荷不带内容、指令段无〔文档原文〕（旧行为不变）', async () => {
   const t = await addTask('# 不内联');
-  await attachToTask({ id: t.id, ref: 'notes/guide.md', inline: true });
+  await attachToTask({ id: t.id, ref: guideId, inline: true });
   const att = await annotateTaskDelivery(await service.getTask({ id: t.id }));
   const a = att.task.attachments[0];
   assert.equal(a.docContent, undefined, '未开内联 → 不读全文');
@@ -112,11 +122,11 @@ test('不传 inlineDocs：载荷不带内容、指令段无〔文档原文〕（
 });
 
 test('fail-open：文档缺失 → 内容留空，usage 退回 docs get 命令', async () => {
-  await store.writeOwnDoc('notes/gone.md', '# 会消失');
+  const goneId = await makeDoc('# 会消失');
   const t = await addTask('# 缺文档');
-  await attachToTask({ id: t.id, ref: 'notes/gone.md', inline: true });
-  // v6：正文在 ref_bodies，删镜像已无意义；条目也删掉才是「文档缺失」
-  getDb().run('DELETE FROM refs WHERE rel = :rel', { rel: 'notes/gone.md' });
+  await attachToTask({ id: t.id, ref: goneId, inline: true });
+  // v8：正文在 ref_bodies，删镜像已无意义；refs 行也删掉才是「文档缺失」
+  getDb().run('DELETE FROM refs WHERE id = :id', { id: goneId });
   const att = await annotateTaskDelivery(await service.getTask({ id: t.id }), { inlineDocs: true });
   const a = att.task.attachments[0];
   assert.equal(a.docContent, undefined);
@@ -127,9 +137,9 @@ test('fail-open：文档缺失 → 内容留空，usage 退回 docs get 命令',
 
 test('超 2 万字截断：docTruncated 标记 + usage 给完整版读取命令', async () => {
   const long = '# 长文档\n\n' + '字'.repeat(21000);
-  await store.writeOwnDoc('notes/long.md', long);
+  const longId = await makeDoc(long);
   const t = await addTask('# 长文');
-  await attachToTask({ id: t.id, ref: 'notes/long.md', inline: true });
+  await attachToTask({ id: t.id, ref: longId, inline: true });
   const att = await annotateTaskDelivery(await service.getTask({ id: t.id }), { inlineDocs: true });
   const a = att.task.attachments[0];
   assert.equal(a.docTruncated, true);
@@ -143,20 +153,20 @@ test('外部文档：登记为 mdfile → 读全文；未登记 → fail-open + 
   const extDir = mkdirSync(join(sb, 'ext'), { recursive: true });
   const extFile = join(extDir, 'outer.md');
   writeFileSync(extFile, '# 外部文档\n\n登记后的正文。');
-  ensureDocRef(getDb(), { locator: extFile.replace(/\\/g, '/') });
+  const extRefId = ensureDocRef(getDb(), { locator: extFile.replace(/\\/g, '/') });
   registerMdfile(getDb(), { path: extFile });
 
   const t = await addTask('# 外部内联');
-  await attachToTask({ id: t.id, ref: extFile, inline: true });
+  await attachToTask({ id: t.id, ref: extRefId, inline: true });
   const att = await annotateTaskDelivery(await service.getTask({ id: t.id }), { inlineDocs: true });
   assert.match(att.task.attachments[0].docContent, /登记后的正文/);
 
   // 未登记为 mdfile：不直读盘 → 显式说明「无法内联」并给可直接执行的登记命令
   const outside = join(sb, 'outside.md');
   writeFileSync(outside, '# 不给读');
-  ensureDocRef(getDb(), { locator: outside.replace(/\\/g, '/') });
+  const outsideRefId = ensureDocRef(getDb(), { locator: outside.replace(/\\/g, '/') });
   const t2 = await addTask('# 未登记');
-  await attachToTask({ id: t2.id, ref: outside, inline: true });
+  await attachToTask({ id: t2.id, ref: outsideRefId, inline: true });
   const att2 = await annotateTaskDelivery(await service.getTask({ id: t2.id }), { inlineDocs: true });
   const a2 = att2.task.attachments[0];
   assert.equal(a2.docContent, undefined);

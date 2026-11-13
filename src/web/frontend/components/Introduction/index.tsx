@@ -16,7 +16,7 @@ import './style.css';
 
 export interface IntroductionProps {
   kind: IntroKind;
-  /** 仓库或看板对象（含 doc / docRel / docLinks / key|id）；没加载到就传 null。 */
+  /** 仓库或看板对象（含 doc / docId / key|id）；没加载到就传 null。 */
   owner: IntroOwner | null;
   model?: Model | null;
 }
@@ -27,10 +27,9 @@ export default function Introduction({ kind, owner, model }: IntroductionProps) 
 
   if (!owner || !docRef) return null;
 
-  // 主篇以「介绍文档集」为准（目录 index.md 优先 → 旧单文件回落）
+  // 主篇以「介绍文档集」为准
   const mainEntry = links.find((l) => l.main);
-  const mainRef = mainEntry ? mainEntry.docId : docRef;
-  const pathLabel = mainRef.startsWith('rel:') ? mainRef.slice(4) : mainRef;
+  const pathLabel = mainEntry?.label || '文档库';
   const extrasCount = links.filter((l) => !l.main).length;
 
   // 「查看详情」= 打开右侧栏文档列表（同一块面板在任意宿主复用；config 可序列化 → 按 config 去重）

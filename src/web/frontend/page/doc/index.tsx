@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import type { Model } from 'flexlayout-react';
 import {
-  createDocItem,
   createRefDoc,
   docAttachments,
   docHostBindings,
@@ -125,13 +124,14 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     const current = docId
       ? [{ docId, label: '当前', note: '', main: true }]
       : [];
-    const toLinks = (rows: Array<{ refId?: string; desc?: string; title?: string; note?: string; main?: boolean }>) => {
+    const toLinks = (rows: Array<{ refId?: string; desc?: string; title?: string; summary?: string; note?: string; main?: boolean }>) => {
       const out: IntroLink[] = [];
       for (const b of rows) {
         if (!b.refId) continue;
         const id = 'ref:' + b.refId;
         if (out.some((x) => x.docId === id)) continue;
-        out.push({ docId: id, label: b.title || b.desc || '未命名文档', note: b.desc || b.note || '', main: !!b.main });
+        // 显示名：正文标题 → desc → 正文首行摘要（v8 没有路径名了，摘要是兜底）
+        out.push({ docId: id, label: b.title || b.desc || b.summary || '未命名文档', note: b.desc || b.note || '', main: !!b.main });
       }
       if (docId && !out.some((x) => x.docId === docId)) out.push(current[0]!);
       return out;
@@ -162,7 +162,6 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
         const set = new Set<string>();
         for (const x of d.index || []) {
           set.add(x.name);
-          if (x.rel) set.add(String(x.rel).toLowerCase());
           if (x.path) set.add(String(x.path).replace(/\\/g, '/').toLowerCase());
         }
         setKnown(set);
@@ -172,7 +171,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
 
   const writable = !!(doc && doc.writable);
   // 归属（ref 视角）：数据与写操作都在 hook 里，面板只拿节点——dock 收起时计数也要准
-  const bind = useDocBindings(docId, writable);
+  const bind = useDocBindings(docId, writable, doc ? (doc.title || doc.desc || doc.summary || '未命名文档') : '');
   // #168：ref 引用在预览/编辑器里显示**文档标题**——需要附件清单里的 ref 条目
   // （服务端读盘补的标题），渲染时按 refId 查表替换链接文字。
   const [attList, setAttList] = useState<Attachment[]>([]);
@@ -371,22 +370,6 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     });
   };
 
-  // 缺失的自有文档：给一个「创建骨架」的出口（约定路径/自选路径都走 POST）
-  const createDoc = () =>
-    guard(async () => {
-      const rel = String(docId || '').startsWith('rel:')
-        ? String(docId || '').slice(4)
-        : String(docId || '').startsWith('path:')
-          ? ''
-          : String(docId || '');
-      if (!rel) return;
-      const name = rel.replace(/\.md$/i, '').split('/').pop() || '未命名文档';
-      await createDocItem({ rel, body: `# ${name}\n\n（待补）\n` });
-      toast(`已创建：${rel}`);
-      notifyDocsChanged();
-      await load();
-    });
-
   // ─── 特殊形态：目录绑定（外部目录 → 文件清单）───
   if (doc && doc.dir) {
     return (
@@ -420,28 +403,22 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
 
   if (!doc) return <div className="mdw"><div className="pad muted">载入中…</div></div>;
 
+  // 缺失的条目：历史空壳 / 外部镜像 / 正文缺失——只解释原因，不提供「创建骨架」
+  // （v8 新建文档走宿主面板的 ＋，创建的是空正文的直接 ref）。
   if (doc.missing) {
-    // v6：legacy/<id> 与 external/<hash> 是「有身份、没有正文」的壳行，
-    // 必须显式说明原因，且不提供「创建骨架」（避免把壳行变成正常文档）。
-    const shell = !!doc.relKind;
-    const creatable = !shell && (String(docId || '').startsWith('rel:') || !String(docId || '').startsWith('path:'));
+    const shell = !!doc.kind;
     return (
       <div className="mdw docp">
         <div className="docp-head">
-          <span className="docp-path mono">{doc.path || doc.desc || doc.refId || docId}</span>
+          <span className="docp-path mono">{doc.path || doc.desc || doc.title || '未命名文档'}</span>
         </div>
         <div className="pad stack">
           <div><strong>{shell ? '这条文档没有正文' : '文档还没有正文'}</strong></div>
           <div className="hint">
             {shell
               ? String(doc.reason || '历史索引条目或外部文件镜像，正文不在库内。')
-              : '正文的唯一来源是库内 ref_bodies——创建骨架会直接写入库，不落盘。'}
+              : '正文的唯一来源是库内 ref_bodies。'}
           </div>
-          {creatable && (
-            <div>
-              <button className="btn sm" onClick={createDoc}>创建骨架</button>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -459,7 +436,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
             这里在调用边界上放宽，不改它们的实现（属他人负责文件） */}
         <DocHead
           crumb={<RouteBreadcrumb /> as unknown as null}
-          title={doc.title || doc.desc || '未命名文档'}
+          title={doc.title || doc.desc || doc.summary || '未命名文档'}
           pathLabel={doc.path || ''}
           dirty={dirty}
           writable={writable}

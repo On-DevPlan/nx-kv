@@ -12,9 +12,7 @@ import {
   ensureUrlAttachment,
   linkAttachment,
   listRefAttachments,
-  refIdFor,
   registerMdfile,
-  resolveRefId,
   unlinkAttachment,
   updateAttachmentNote,
   upsertFileAttachment,
@@ -29,29 +27,26 @@ import { basename, resolve as resolvePath } from 'node:path';
 
 const clean = (v: unknown): string => String(v || '').trim();
 
-/** 取文档的 locator（refs 的稳定键）：自有 = rel，外部 = 绝对路径（POSIX）。 */
-async function docLocatorOf(ref: unknown): Promise<{ d: DocGetResult; locator: string }> {
+/** 取文档的 refId（refs 的稳定键）：自有直接给 id；外部 path 先登记成 external ref。 */
+async function docRefOf(ref: unknown): Promise<{ d: DocGetResult; refId: string }> {
   const d = await getDoc({ ref });
   if (!d || d.missing) throw badInput('文档不存在: ' + String(ref || ''));
   if (d.dir) throw badInput('目录绑定不能挂附件（请指定单个文档）');
-  const locator = String(d.rel || d.path || '').replace(/\\/g, '/');
-  if (!locator) throw badInput('无法定位文档: ' + String(ref || ''));
-  return { d, locator };
+  let refId = String(d.refId || '');
+  if (!refId && d.path) refId = ensureDocRef(getDb(), { locator: d.path }) || '';
+  if (!refId) throw badInput('无法定位文档: ' + String(ref || ''));
+  return { d, refId };
 }
 
 /** docs attachments 的出参。 */
 export interface DocAttachmentsResult {
   refId: string;
-  locator: string;
   attachments: Array<LinkedAttachmentView & { docTitle?: string; title?: string }>;
 }
 
 /** 这篇文档用了哪些资源（ref_attach：图片/文件/URL/内部 task、ref 引用）。 */
 export async function listDocAttachments({ ref }: { ref?: unknown } = {}): Promise<DocAttachmentsResult> {
-  const d = await getDoc({ ref });
-  const locator = String(d.rel || d.path || '').replace(/\\/g, '/');
-  if (!locator) throw badInput('无法定位文档: ' + String(ref || ''));
-  const refId = String((d as any).refId || refIdFor(locator));
+  const { refId } = await docRefOf(ref);
   const attachments: Array<LinkedAttachmentView & { docTitle?: string; title?: string }> = listRefAttachments(getDb(), refId);
   // #168：ref 条目补**文档标题**（正文首行的 # 标题）——面板与编辑器都显示它
   try {
@@ -75,7 +70,7 @@ export async function listDocAttachments({ ref }: { ref?: unknown } = {}): Promi
   } catch {
     /* 读不到标题 → 不补（前端回落文件名） */
   }
-  return { refId, locator, attachments };
+  return { refId, attachments };
 }
 
 /** docs attach 的入参（CLI flag 透传，含 'no-embed' 连字符形态）。 */
@@ -111,7 +106,7 @@ export interface AttachToDocResult {
  *   默认把 markdown 追加进正文，`--no-embed` 只挂附件区。
  */
 export async function attachToDoc(ctx: AttachToDocCtx): Promise<AttachToDocResult> {
-  const { d, locator } = await docLocatorOf(ctx.ref);
+  const { d, refId: hostRefId } = await docRefOf(ctx.ref);
   const db = getDb();
   const displayName0 = clean(ctx.name);
   let attachmentId = '';
@@ -173,15 +168,13 @@ export async function attachToDoc(ctx: AttachToDocCtx): Promise<AttachToDocResul
     kind = 'task';
     markdown = `[${displayName || `任务 #${tid}`}](nxkv://task/${tid})`;
   } else if (ctx.doc) {
-    const target = await docLocatorOf(ctx.doc);
-    const refId =
-      resolveRefId(db, target.locator) ||
-      tx((conn) => ensureDocRef(conn, { locator: target.locator }), { db, mode: 'IMMEDIATE' });
-    if (!refId) throw badInput(`找不到文档: ${ctx.doc}`);
+    const target = await docRefOf(ctx.doc);
+    const refId = target.refId;
     attachmentId = tx((conn) => ensureRefAttachment(conn, { refId, name: displayName }), { db, mode: 'IMMEDIATE' }) || '';
     if (!attachmentId) throw badInput(`找不到文档: ${ctx.doc}`);
     kind = 'ref';
-    markdown = `[${displayName || (target.locator.split('/').pop() ?? '')}](nxkv://ref/${refId})`;
+    const label = target.d.title || target.d.desc || refId;
+    markdown = `[${displayName || label}](nxkv://ref/${refId})`;
   } else if (ctx.mdfile) {
     // 外部 md 文件：只登记指针（kind=mdfile, storage=external），正文仍在磁盘原地
     const rec = tx(
@@ -203,9 +196,7 @@ export async function attachToDoc(ctx: AttachToDocCtx): Promise<AttachToDocResul
   if (noEmbed) {
     tx(
       (conn) => {
-        const refId = ensureDocRef(conn, { locator });
-        // locator 已由 docLocatorOf 校验非空，ensureDocRef 只在空 locator 时返回 null → 这里必为 string
-        linkAttachment(conn, { host: 'ref', hostId: refId as string, attachmentId, role: 'attach', note: ctx.note as string | undefined });
+        linkAttachment(conn, { host: 'ref', hostId: hostRefId, attachmentId, role: 'attach', note: ctx.note as string | undefined });
       },
       { db, mode: 'IMMEDIATE' }
     );
@@ -217,7 +208,7 @@ export async function attachToDoc(ctx: AttachToDocCtx): Promise<AttachToDocResul
 
   return {
     status: 'ok',
-    ref: locator,
+    ref: hostRefId,
     attachmentId,
     kind,
     area: noEmbed ? 'area' : 'inline',
@@ -236,7 +227,6 @@ export interface NoteOnDocInput {
 /** docs attach --note 的出参。 */
 export interface NoteOnDocResult {
   refId: string;
-  locator: string;
   attachment: string;
   note: string;
 }
@@ -245,21 +235,19 @@ export interface NoteOnDocResult {
  * 改一条文档侧绑定上的说明（desc，#168）：与任务侧同一口径——只动 note。
  */
 export async function noteOnDoc({ ref, attachment, note = '' }: NoteOnDocInput = {}): Promise<NoteOnDocResult> {
-  const { locator } = await docLocatorOf(ref);
+  const { refId } = await docRefOf(ref);
   const attId = String(attachment || '').trim();
   if (!attId) throw badInput('需要 --attachment <资源 id>（见 docs attachments 输出）');
   const db = getDb();
   let changed = 0;
   tx(
     (conn) => {
-      const refId = ensureDocRef(conn, { locator });
-      // 同上：locator 非空 → ensureDocRef 必返回 id（null 分支只在空 locator）
-      changed = updateAttachmentNote(conn, { host: 'ref', hostId: refId as string, attachmentId: attId, note: note as string | undefined });
+      changed = updateAttachmentNote(conn, { host: 'ref', hostId: refId, attachmentId: attId, note: note as string | undefined });
     },
     { db, mode: 'IMMEDIATE' }
   );
   if (!changed) throw badInput(`这篇文档上没有附件 ${attId}`);
-  return { refId: refIdFor(locator), locator, attachment: attId, note: String(note || '') };
+  return { refId, attachment: attId, note: String(note || '') };
 }
 
 /** docs detach 的入参。 */
@@ -282,7 +270,7 @@ export interface DetachFromDocResult {
 
 /** 解除文档与资源的关系；--purge 在无人引用时连资源行与本机字节一起删。 */
 export async function detachFromDoc({ ref, attachment, purge }: DetachFromDocInput = {}): Promise<DetachFromDocResult> {
-  const { locator } = await docLocatorOf(ref);
+  const { refId } = await docRefOf(ref);
   const attId = String(attachment || '').trim();
   if (!attId) throw badInput('需要 --attachment <资源 id>（见 docs attachments 输出）');
   const db = getDb();
@@ -290,9 +278,7 @@ export async function detachFromDoc({ ref, attachment, purge }: DetachFromDocInp
   const purgeHolder: { result: DeleteAttachmentResult | null } = { result: null };
   tx(
     (conn) => {
-      const refId = ensureDocRef(conn, { locator });
-      // 同上：locator 非空 → ensureDocRef 必返回 id（null 分支只在空 locator）
-      unlinked = unlinkAttachment(conn, { host: 'ref', hostId: refId as string, attachmentId: attId });
+      unlinked = unlinkAttachment(conn, { host: 'ref', hostId: refId, attachmentId: attId });
       if (purge && unlinked) {
         purgeHolder.result = deleteAttachment(conn, attId, { attachmentsRoot: attachmentsRootFromEnv() });
       }
@@ -302,7 +288,7 @@ export async function detachFromDoc({ ref, attachment, purge }: DetachFromDocInp
   const purgeResult = purgeHolder.result;
   return {
     status: 'ok',
-    ref: locator,
+    ref: refId,
     attachment: attId,
     unlinked,
     purged: !!(purgeResult && purgeResult.removed),

@@ -1,11 +1,10 @@
-// v6：refs 正文入库（rel 归位 / ref_bodies / 外部 mdfile / 壳行语义）。
+// v6 迁移（正文入库 / 外部 mdfile / 壳行语义）→ v8（去 rel）的连续性测试。
 //
-// 覆盖 2026-11-12 二轮确认的五点口径：
-//   ① 盘上无文件的 102 行保持空壳（不软删、body_bytes=0）；
-//   ② 外部绝对路径文件仍在 → mdfile + ref_attach(role='source')；不在 → 只留空壳；
-//   ③ 存量 id 保留（方案 A：ref_<sha1(rel)> 只用于新行）；
-//   ④ 盘上正文逐篇 sha256 落库（回读比对硬门禁由迁移内部执行）；
-//   ⑤ 读路径区分 normal / legacy / external / empty，docs get 返回 missing + 原因。
+// 覆盖口径：
+//   ① v6：存量 id 保留、正文逐篇入库、盘上无文件的行保持空壳；
+//   ② v6：外部绝对路径文件仍在 → mdfile + ref_attach(role='source')；不在 → 只留空壳；
+//   ③ v8：refs.rel 被删除，地址只剩 id 与 locator（历史路径就是 locator）；
+//   ④ v8：约定路径在迁移期解析成显式 ref 绑定（repo 主篇），运行时按 refId 读正文。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -14,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { createTestStore } from '../support/test-store.mjs';
 import { buildV1Sample, SAMPLE } from '../fixtures/db-samples.mjs';
 import { CURRENT_SCHEMA_VERSION } from '../../src/core/db/version.js';
+import { migrate } from '../../src/core/db/migrator.js';
 import { resolveRefId } from '../../src/core/attachmentdb.js';
 import * as store from '../../src/modules/docs/store.js';
 import { getDoc, listDocs } from '../../src/modules/docs/service.js';
@@ -21,12 +21,19 @@ import { getDoc, listDocs } from '../../src/modules/docs/service.js';
 const sha1 = (s) => createHash('sha1').update(String(s), 'utf8').digest('hex');
 const sha256 = (s) => createHash('sha256').update(String(s), 'utf8').digest('hex');
 
-test('v6 迁移：rel 归位 / 正文入库 / 外部 mdfile / 壳行语义 / 级联', async () => {
+// ref 的地址在 v8 只认 ref_<16hex>（运行时按 id 解析）
+const GHOST = 'ref_1111111111111111';
+const SHELL = 'ref_0000000000000000';
+const EXT_OK = 'ref_2222222222222222';
+const EXT_GONE = 'ref_3333333333333333';
+
+test('v6 正文入库与壳行语义 → v8 去 rel 后按 refId 读取', async () => {
   const s = await createTestStore({ open: false, importLegacy: false });
   const oldAtt = process.env.NX_KV_ATTACHMENTS;
   const oldDocs = process.env.NX_KV_DOCS_DIR;
   process.env.NX_KV_ATTACHMENTS = join(s.appDir, 'attachments');
   process.env.NX_KV_DOCS_DIR = join(s.appDir, 'docs');
+  let raw = null;
   try {
     buildV1Sample(s);
 
@@ -39,124 +46,140 @@ test('v6 迁移：rel 归位 / 正文入库 / 外部 mdfile / 壳行语义 / 级
 
     // v6 之前的 4 类历史行：相对缺文件 / 空 locator / 外部仍在 / 外部已丢
     const at = Date.now();
-    const raw = s.core.openRaw(s.dbPath);
+    raw = s.core.openRaw(s.dbPath);
     const add = (id, locator) =>
       raw.run(
         `INSERT INTO refs (id, type, locator, state, version, deleted_at, created_at, updated_at)
          VALUES (:id, 'md', :locator, '', 0, NULL, :at, :at)`,
         { id, locator, at }
       );
-    add('ref_ghost', 'repo/acme/ghost.md');
-    add('ref_empty', '');
-    add('ref_ext_ok', extOk);
-    add('ref_ext_gone', extGone);
-    s.core.closeDb();
+    add(GHOST, 'repo/acme/ghost.md');
+    add(SHELL, '');
+    add(EXT_OK, extOk);
+    add(EXT_GONE, extGone);
 
-    s.db = s.core.openStore({ path: s.dbPath, appDir: s.appDir, importLegacyData: false });
-    assert.equal(s.db.get('PRAGMA user_version').user_version, CURRENT_SCHEMA_VERSION);
+    // ── 显式迁移到 v6：此时 rel 还在，断言历史归位结果 ──
+    const context = {
+      attachmentsRoot: process.env.NX_KV_ATTACHMENTS,
+      docsDir: process.env.NX_KV_DOCS_DIR,
+      atMs: at,
+    };
+    migrate(raw, { to: 6, context });
 
-    // ① 存量 id 保留 + rel 归位 + 正文入库
-    const sample = s.db.get('SELECT id, rel, origin, body_bytes FROM refs WHERE locator = :loc', {
+    const sample = raw.get('SELECT id, rel, origin, body_bytes FROM refs WHERE locator = :loc', {
       loc: SAMPLE.docRel,
     });
     assert.equal(sample.id, 'ref_' + sha1(SAMPLE.docRel).slice(0, 16), '存量 id 不许被新公式改写');
     assert.equal(sample.rel, SAMPLE.docRel);
     assert.equal(sample.origin, 'import');
     const sampleBody = '# sample\n\n[链接](https://example.com/spec)\n';
-    const body = s.db.get('SELECT body, body_bytes, body_hash FROM ref_bodies WHERE ref_id = :id', {
+    const body = raw.get('SELECT body, body_bytes, body_hash FROM ref_bodies WHERE ref_id = :id', {
       id: sample.id,
     });
     assert.equal(body.body, sampleBody);
     assert.equal(body.body_bytes, Buffer.byteLength(sampleBody, 'utf8'));
     assert.equal(body.body_hash, sha256(sampleBody));
 
-    // ② 盘上无文件的行保持空壳（不软删、不删行）
-    const ghost = s.db.get('SELECT rel, origin, body_bytes, deleted_at FROM refs WHERE id = :id', {
-      id: 'ref_ghost',
+    // 盘上无文件的行保持空壳（不软删、不删行）
+    const ghost = raw.get('SELECT rel, origin, body_bytes, deleted_at FROM refs WHERE id = :id', {
+      id: GHOST,
     });
     assert.equal(ghost.rel, 'repo/acme/ghost.md');
     assert.equal(ghost.body_bytes, 0);
     assert.equal(ghost.deleted_at, null);
-    assert.equal(
-      s.db.get('SELECT count(*) AS c FROM ref_bodies WHERE ref_id = :id', { id: 'ref_ghost' }).c,
-      0
-    );
+    assert.equal(raw.get('SELECT count(*) AS c FROM ref_bodies WHERE ref_id = :id', { id: GHOST }).c, 0);
 
-    // ③ 空 locator → legacy/<id>
-    const empty = s.db.get('SELECT rel FROM refs WHERE id = :id', { id: 'ref_empty' });
-    assert.equal(empty.rel, 'legacy/ref_empty');
+    // 空 locator → legacy/<id>
+    assert.equal(raw.get('SELECT rel FROM refs WHERE id = :id', { id: SHELL }).rel, 'legacy/' + SHELL);
 
-    // ④ 外部文件仍在 → mdfile + source 边；不在 → 只留空壳
-    const okRel = s.db.get('SELECT rel, origin FROM refs WHERE id = :id', { id: 'ref_ext_ok' });
+    // 外部文件仍在 → mdfile + source 边；不在 → 只留空壳
+    const okRel = raw.get('SELECT rel, origin FROM refs WHERE id = :id', { id: EXT_OK });
     assert.match(okRel.rel, /^external\//);
     assert.equal(okRel.origin, 'external');
-    const att = s.db.get("SELECT id, kind, abs_path, storage FROM attachments WHERE kind = 'mdfile'");
+    const att = raw.get("SELECT id, kind, abs_path, storage FROM attachments WHERE kind = 'mdfile'");
     assert.ok(att, '外部文件仍在必须登记 mdfile');
-    assert.equal(att.kind, 'mdfile');
     assert.equal(att.storage, 'external');
-    // Windows 盘符大小写不敏感：按小写比对
     assert.equal(att.abs_path.toLowerCase(), resolve(extOk).toLowerCase());
-    assert.equal(
-      s.db.get("SELECT count(*) AS c FROM ref_attach WHERE ref_id = 'ref_ext_ok' AND role = 'source'").c,
-      1
-    );
-    const gone = s.db.get('SELECT rel, origin FROM refs WHERE id = :id', { id: 'ref_ext_gone' });
+    assert.equal(raw.get("SELECT count(*) AS c FROM ref_attach WHERE ref_id = :id AND role = 'source'", { id: EXT_OK }).c, 1);
+    const gone = raw.get('SELECT rel, origin FROM refs WHERE id = :id', { id: EXT_GONE });
     assert.match(gone.rel, /^external\//);
-    assert.equal(
-      s.db.get("SELECT count(*) AS c FROM ref_attach WHERE ref_id = 'ref_ext_gone'").c,
-      0,
-      '文件不在 → 不登记 source 边'
-    );
-    assert.equal(s.db.get("SELECT count(*) AS c FROM attachments WHERE kind = 'mdfile'").c, 1);
-
-    // ⑤ 迁移证据落 meta
-    const meta = JSON.parse(s.db.get("SELECT value FROM meta WHERE key = 'refs_v6'").value);
+    // 迁移证据落 meta
+    const meta = JSON.parse(raw.get("SELECT value FROM meta WHERE key = 'refs_v6'").value);
     assert.equal(meta.files, 1);
     assert.equal(meta.bodies, 1);
     assert.equal(meta.relEmpty, 0);
-    assert.equal(meta.emptyBody, 4, 'ghost / empty / ext_ok / ext_gone 都没有正文');
 
-    // ⑥ 身份解析：rel 优先、id 直查都成立
-    assert.equal(resolveRefId(s.db, 'rel:' + SAMPLE.docRel), sample.id);
-    assert.equal(resolveRefId(s.db, SAMPLE.docRel), sample.id);
-    assert.equal(resolveRefId(s.db, 'legacy/ref_empty'), 'ref_empty');
+    // ── 继续迁移到 v8：rel 列删除，地址只剩 id / locator ──
+    migrate(raw, { to: CURRENT_SCHEMA_VERSION, context: { atMs: at } });
 
-    // ⑦ 读路径：正常文档走 DB；壳行显式「无正文」
-    const saved = await store.writeOwnDoc('notes/new.md', '# 新文档\n\n正文\n');
-    assert.equal(saved, 'notes/new.md');
-    assert.equal(await store.readOwnDoc('notes/new.md'), '# 新文档\n\n正文\n');
-    assert.ok(!existsSync(join(s.appDir, 'docs', 'notes', 'new.md')), '不再落盘：正文只存 DB');
-    const normal = await store.ownDocState('notes/new.md');
-    assert.equal(normal.relKind, 'normal');
+    const cols = raw.all("SELECT name FROM pragma_table_info('refs')");
+    assert.ok(!cols.some((c) => c.name === 'rel'), 'v8 起 refs 不再有 rel 列');
+
+    const v8Sample = raw.get('SELECT id, locator, origin FROM refs WHERE id = :id', { id: sample.id });
+    assert.equal(v8Sample.locator, SAMPLE.docRel, '历史路径只保留在 locator（不丢）');
+    assert.equal(v8Sample.origin, 'import');
+    assert.equal(raw.get('SELECT body FROM ref_bodies WHERE ref_id = :id', { id: sample.id }).body, sampleBody);
+    assert.equal(raw.get('SELECT locator FROM refs WHERE id = :id', { id: GHOST }).locator, 'repo/acme/ghost.md');
+    assert.equal(raw.get('SELECT locator FROM refs WHERE id = :id', { id: SHELL }).locator, '');
+    assert.equal(raw.get('SELECT locator FROM refs WHERE id = :id', { id: EXT_OK }).locator, extOk);
+
+    // 约定路径（repo/<key>/…）在迁移期解析成显式绑定
+    const bind = raw.get('SELECT type, repo_key, ref_id FROM ref_bindings WHERE ref_id = :id', { id: sample.id });
+    assert.deepEqual(bind && [bind.type, bind.repo_key], ['repo', SAMPLE.repoKey]);
+
+    // 身份解析：只认 id（不再按 rel: 前缀 / 路径猜）
+    assert.equal(resolveRefId(raw, 'ref:' + sample.id), sample.id);
+    assert.equal(resolveRefId(raw, sample.id), sample.id);
+    assert.equal(resolveRefId(raw, 'rel:' + SAMPLE.docRel), null);
+
+    raw.close();
+    raw = null;
+
+    // ── 运行时读路径：按 refId 读正文 / 区分壳行 ──
+    s.db = s.core.openStore({ path: s.dbPath, appDir: s.appDir, importLegacyData: false });
+
+    assert.equal(await store.readOwnDoc(sample.id), sampleBody);
+    assert.ok(!existsSync(join(s.appDir, 'docs', 'notes', 'new.md')), '正文只存 DB，不落盘');
+
+    const normal = await store.ownDocState(sample.id);
+    assert.equal(normal.kind, 'normal');
     assert.equal(normal.hasBody, true);
 
-    const shell = await store.ownDocState('legacy/ref_empty');
+    const shell = await store.ownDocState(SHELL);
     assert.equal(shell.exists, true);
     assert.equal(shell.hasBody, false);
-    assert.equal(shell.relKind, 'legacy');
+    assert.equal(shell.kind, 'legacy');
     assert.ok(shell.reason.includes('历史'));
 
-    await assert.rejects(() => store.readOwnDoc('legacy/ref_empty'), /文档不存在/);
+    await assert.rejects(() => store.readOwnDoc(SHELL), /文档不存在/);
 
-    const got = await getDoc({ ref: 'rel:legacy/ref_empty' });
+    const got = await getDoc({ ref: 'ref:' + SHELL });
     assert.equal(got.missing, true);
-    assert.equal(got.relKind, 'legacy');
+    assert.equal(got.kind, 'legacy');
     assert.ok(String(got.reason || '').length > 0, 'docs get 必须说明为什么没有正文');
 
+    const ext = await getDoc({ ref: 'ref:' + EXT_OK });
+    assert.equal(ext.external, true);
+    assert.match(ext.body, /外部正文/);
+
     const listed = await listDocs({});
-    const shellItem = listed.docs.find((x) => x.rel === 'legacy/ref_empty');
+    const shellItem = listed.docs.find((x) => x.refId === SHELL);
     assert.ok(shellItem, 'docs list 必须包含壳行（显式标注）');
     assert.equal(shellItem.hasBody, false);
     assert.equal(shellItem.missing, true);
-    const extItem = listed.docs.find((x) => x.rel === okRel.rel);
-    assert.equal(extItem.relKind, 'external');
+    assert.equal(shellItem.docId, 'ref:' + SHELL);
+    const extItem = listed.docs.find((x) => x.refId === EXT_OK);
+    assert.equal(extItem.kind, 'external');
     assert.equal(extItem.hasBody, false);
 
-    // ⑧ 级联：删 refs 行 → 正文与关系一起消失
+    // 级联：删 refs 行 → 正文与关系一起消失
     s.db.run('DELETE FROM refs WHERE id = :id', { id: sample.id });
     assert.equal(s.db.get('SELECT count(*) AS c FROM ref_bodies WHERE ref_id = :id', { id: sample.id }).c, 0);
     assert.equal(s.db.get('SELECT count(*) AS c FROM ref_attach WHERE ref_id = :id', { id: sample.id }).c, 0);
   } finally {
+    if (raw && !raw.closed) {
+      try { raw.close(); } catch { /* 已经关了 */ }
+    }
     s.reset();
     if (oldAtt === undefined) delete process.env.NX_KV_ATTACHMENTS;
     else process.env.NX_KV_ATTACHMENTS = oldAtt;

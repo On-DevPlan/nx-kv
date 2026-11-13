@@ -147,10 +147,10 @@ nx-kv localtask config --timeout 180      # 等待超时与交付模板（目录
 
 ```bash
 nx-kv docs list --json
-nx-kv docs get --ref <refId> --json       # 取正文（也认 rel:<相对路径>）
-nx-kv docs bindings --repo <key> --json   # 仓库绑了哪些文档
-nx-kv docs ref add <path-or-…> --desc "<一行简介>"   # 建直接 ref（无本地路径）
-nx-kv docs ref unbind --ref <refId>       # 解绑（不删文档）
+nx-kv docs get --ref <refId> --json       # 取正文（docId 形如 ref:ref_xxx）
+nx-kv docs bindings --host <repoKey> --json   # 这个仓库的文档集
+nx-kv docs ref add --owner repo --repo <仓库> --desc "<一行简介>"   # 建直接 ref（无路径）
+nx-kv docs ref unbind --ref <refId> --type repo --repo <repoKey>   # 解绑（不删文档）
 ```
 
 ref 是**库内文档 + 归属**，不是附件、没有本地路径；读取一律 `docs get --ref`。

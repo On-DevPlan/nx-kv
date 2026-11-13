@@ -12,8 +12,6 @@ import type { Model } from 'flexlayout-react';
 import {
   createRef,
   docsBindings,
-  removeBoardDoc,
-  removeRepoDoc,
   unbindRef,
   type BindingRow,
 } from './api.js';
@@ -29,7 +27,8 @@ import './style.css';
 
 function labelOf(b: BindingRow): string {
   // 标题 = 用户在 md 编辑器里起的标题（正文首行），没有正文才回落到 desc。
-  return b.title || b.desc || '未命名文档';
+  // v8 没有路径名了，再落一层正文摘要——否则旧文档全叫「未命名文档」。
+  return b.title || b.desc || b.summary || '未命名文档';
 }
 
 function descOf(b: BindingRow): string {
@@ -136,21 +135,13 @@ export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
     openDoc(res.refId);
   });
 
-  // ×：直接 ref → 解绑归属；派生行 → 沿用宿主文档集接口（用接口算好的 removeIndex）
+  // ×：解绑归属（文档不删）
   const removeRow = (b: BindingRow) => guard(async () => {
     const label = labelOf(b);
-    if (b.direct) {
-      const ok = await dialog({ message: `从「${label}」摘除？只解除归属，文档不删。`, danger: true });
-      if (!ok) return;
-      await unbindRef({ ref: b.refId, type: b.type, repo: b.repoKey, group: b.groupKey || undefined });
-      toast('已摘除归属');
-    } else if (b.removeIndex != null) {
-      const ok = await dialog({ message: `摘除「${label}」？（文档不删，仅移出列表）`, danger: true });
-      if (!ok) return;
-      if (b.type === 'repo') await removeRepoDoc(b.repoKey, b.removeIndex);
-      else if (b.type === 'group') await removeBoardDoc(b.repoKey, b.removeIndex);
-      toast('已摘除');
-    }
+    const ok = await dialog({ message: `从「${label}」摘除？只解除归属，文档不删。`, danger: true });
+    if (!ok) return;
+    await unbindRef({ ref: b.refId, type: b.type, repo: b.repoKey, group: b.groupKey || undefined });
+    toast('已摘除归属');
     notifyDocsChanged();
     reload();
   });
@@ -220,16 +211,14 @@ export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
                 {b.note && <span className="nx-refs-row-sub">备注：{b.note}</span>}
               </button>
               <span className="nx-refs-row-acts">
-                {(b.direct || b.removeIndex != null) && (
-                  <button
-                    type="button"
-                    className="nx-refs-mini danger"
-                    title={b.direct ? '解绑归属（文档不删）' : '摘除（文档不删）'}
-                    onClick={() => removeRow(b)}
-                  >
-                    ×
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="nx-refs-mini danger"
+                  title="解绑归属（文档不删）"
+                  onClick={() => removeRow(b)}
+                >
+                  ×
+                </button>
               </span>
             </div>
           );

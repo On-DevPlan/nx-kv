@@ -1,5 +1,7 @@
-// 知识聚合（modules/docs/knowledge.js）的单元测试：
-// 聚合形状、惰性播种触发、组绑定混排（自有全文 / 外部目录清单）、--md 拼装、参考仓库。
+// 知识聚合（modules/docs/knowledge.js）的单元测试（v8）。
+//
+// v8 读取规则：宿主 ext 里的 DocRef 只有 refId；自有正文来自 ref_bodies，
+// 外部 ref 按 refs.locator 读盘（目录会展开成一页页文档）；没有约定路径 / 惰性播种。
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -9,15 +11,19 @@ import * as repos from '../../src/modules/repos/service.js';
 import * as boards from '../../src/modules/repos/boards.js';
 import * as refService from '../../src/modules/repos/ref.js';
 import * as store from '../../src/modules/docs/store.js';
-import * as paths from '../../src/modules/docs/paths.js';
+import * as refs from '../../src/modules/docs/refs.js';
+import { createRef, updateDoc } from '../../src/modules/docs/service.js';
 import { repoKnowledge } from '../../src/modules/docs/knowledge.js';
-import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
+import { ensureDocRef } from '../../src/core/attachmentdb.js';
+import { getDb, closeDb } from '../../src/core/db/index.js';
 
 let dir = '';
 
 beforeEach(() => {
+  try { closeDb(); } catch { /* 尚未打开 */ }
   dir = mkdtempSync(join(tmpdir(), 'nx-kv-docknow-'));
   process.env.NX_KV_REPOS_STORE = join(dir, 'repos.json');
+  process.env.NX_KV_DB = join(dir, 'nxkv.db');
   process.env.NX_KV_DOCS_DIR = join(dir, 'docs');
 });
 
@@ -30,26 +36,38 @@ test.after?.(() => {
   }
 });
 
+async function writeRef(refId, body) {
+  await updateDoc({ ref: 'ref:' + refId, body });
+  return refId;
+}
+
 async function build() {
-  const a = await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', desc: '管清单的', remote: 'https://github.com/me/alpha' });
+  const a = await repos.addRepo({ path: join(dir, 'alpha'), name: 'alpha', remote: 'https://github.com/me/alpha' });
   const ref = await repos.addRepo({ path: join(dir, 'reflib'), name: 'reflib', type: 'ref', remote: 'https://github.com/me/reflib' });
-  const b = await boards.createBoard({ name: 'nx系列', desc: 'nx 工具链' });
+  // createBoard 的 desc 会直接落成组介绍主篇（描述 = 文档）
+  const b = await boards.createBoard({ name: 'nx系列', desc: '本机工具链组合' });
   await boards.assignRepo({ key: a.key, board: b.id });
   await boards.setBoardRepoNote({ key: a.key, board: b.id, note: '组里的任务出入口' });
   // v4：参考仓库绑在组上（组内共享），note 是组级描述
   await refService.bindTarget({ id: ref.id, board: [{ id: b.id, note: '契约来源' }] });
-  // 组介绍 + 组绑定（自有一份 + 外部目录一份）
-  await store.writeOwnDoc(paths.boardDocRel('nx系列'), '# nx系列\n\n本机工具链组合');
+
+  // 项目介绍（主篇）：直接 ref + 正文
+  const repoDoc = await createRef({ owner: 'repo', repo: a.key, desc: 'alpha' });
+  await writeRef(repoDoc.refId, '# alpha\n\n项目介绍正文');
+
   const vault = join(dir, 'vault');
   mkdirSync(vault, { recursive: true });
   writeFileSync(join(vault, '命名法.md'), '# 命名法');
-  await boards.updateBoard(b.id, {});
-  return { a, ref, b, vault };
+  return { a, ref, b, vault, repoDoc };
 }
 
-test('聚合形状：介绍（惰性播种）+ 组（介绍/组内描述/绑定混排）+ 参考', async () => {
-  const { a, vault } = await build();
-  await store.writeOwnDoc(paths.repoDocRel(a.key), '# alpha\n\n项目介绍正文');
+const asExternal = (refId) => {
+  getDb().run("UPDATE refs SET origin = 'external' WHERE id = :id", { id: refId });
+  return refId;
+};
+
+test('聚合形状：项目介绍 + 组（介绍/组内描述） + 参考仓库', async () => {
+  const { a } = await build();
 
   const k = await repoKnowledge(a.id);
   assert.equal(k.repo.key, a.key);
@@ -62,12 +80,12 @@ test('聚合形状：介绍（惰性播种）+ 组（介绍/组内描述/绑定�
   assert.equal(bd.name, 'nx系列');
   assert.equal(bd.intro.missing, undefined);
   assert.match(bd.intro.body, /本机工具链组合/);
-  assert.ok(bd.note && !bd.note.missing, '组内描述：约定路径缺失 + note 字符串非空 → 惰性播种');
+  assert.ok(bd.note && !bd.note.missing, '组内描述来自 group_repo ref 的正文');
   assert.match(bd.note.body, /任务出入口/);
-  // 播种真实落盘（幂等的证据）
-  assert.ok(await store.ownDocExists(paths.groupNoteRel('nx系列', a.key)));
+  assert.ok(await store.ownDocExists(bd.note.refId), '组内描述正文真实落库');
 
-  // 外部目录绑定只列清单不进全文
+  // 没有登记额外文档 → 绑定与外部目录都为空
+  assert.deepEqual(bd.docLinks, []);
   assert.equal(bd.externalDirs.length, 0);
   const k2 = await repoKnowledge(a.id);
   assert.deepEqual(k2.boards[0].docLinks, []);
@@ -75,29 +93,38 @@ test('聚合形状：介绍（惰性播种）+ 组（介绍/组内描述/绑定�
   assert.equal(k.refRepos.length, 1);
   assert.equal(k.refRepos[0].name, 'reflib');
   assert.equal(k.refRepos[0].note, '契约来源');
-  assert.ok(join(vault, '命名法.md'));
 });
 
-test('组绑定：自有 rel 进全文，外部目录进 externalDirs 清单，缺失标 missing', async () => {
+test('组绑定：自有 ref 进全文，外部目录里的 .md 逐篇展开，缺失标 missing', async () => {
   const { a, b, vault } = await build();
-  await store.writeOwnDoc('notes/waitgoal-设计.md', '# waitgoal 设计\n\n正文');
-  await repos.mutateStore((s) => {
-    const bd = s.boards.find((x) => x.id === b.id);
-    bd.docLinks = [
-      { rel: 'notes/waitgoal-设计.md', note: '自有' },
-      { path: vault, note: 'Obsidian' },
-      { path: join(dir, 'gone.md'), note: '缺失' },
-    ];
-  });
+
+  // 自有补充篇（组级 docLinks）
+  const own = await createRef({ owner: 'group', group: b.id, desc: 'waitgoal 设计' });
+  await writeRef(own.refId, '# waitgoal 设计\n\n正文');
+  await refs.setDocLink({ board: b.id, ref: own.refId, note: '自有' });
+
+  // 外部目录 ref（origin=external，locator 是目录）
+  const dirRef = asExternal(ensureDocRef(getDb(), { locator: vault }));
+  await refs.setDocLink({ board: b.id, ref: dirRef, note: 'Obsidian' });
+
+  // 外部文件缺失（locator 指向不存在的 .md）
+  const goneRef = asExternal(ensureDocRef(getDb(), { locator: join(dir, 'gone.md') }));
+  await refs.setDocLink({ board: b.id, ref: goneRef, note: '缺失' });
 
   const k = await repoKnowledge(a.id);
   const links = k.boards[0].docLinks;
-  assert.equal(links.length, 2);
+  assert.equal(links.length, 3);
   assert.match(links[0].body, /waitgoal 设计/);
-  assert.equal(links[1].missing, true);
-  const dirs = k.boards[0].externalDirs;
-  assert.equal(dirs.length, 1);
-  assert.deepEqual(dirs[0].files.map((f) => f.replace(/\\/g, '/')), [join(vault, '命名法.md').replace(/\\/g, '/')]);
+
+  const vaultDoc = links.find((d) => d.name === '命名法.md');
+  assert.ok(vaultDoc, '外部目录里的 .md 要逐篇展开成文档条目');
+  assert.match(vaultDoc.body, /# 命名法/);
+
+  const missing = links.find((d) => d.missing);
+  assert.ok(missing, '不存在的 locator 标 missing');
+
+  // v8：目录 ref 不再单独进 externalDirs（直接按文件展开）
+  assert.equal(k.boards[0].externalDirs.length, 0);
 });
 
 test('--md：拼成单篇 markdown（介绍 → 组 → 绑定 → 参考）', async () => {

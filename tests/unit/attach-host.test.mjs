@@ -8,14 +8,14 @@ import assert from 'node:assert/strict';
 import { attachBodyOf, endpointOf } from '../../src/web/frontend/components/md/attach-common.js';
 
 test('attachBodyOf：文档宿主挂文档用 doc 键（任务宿主才用 ref）', () => {
-  const item = { source: 'ref', docRef: 'rel:notes/design.md', name: '设计笔记', note: '说明', inline: true };
+  const item = { source: 'ref', docRef: 'ref:ref_0123456789abcdef', name: '设计笔记', note: '说明', inline: true };
   assert.deepEqual(attachBodyOf(item, 'doc'), {
-    doc: 'rel:notes/design.md',
+    doc: 'ref:ref_0123456789abcdef',
     name: '设计笔记',
     note: '说明',
   });
   assert.deepEqual(attachBodyOf(item, 'task'), {
-    ref: 'rel:notes/design.md',
+    ref: 'ref:ref_0123456789abcdef',
     name: '设计笔记',
     note: '说明',
     inline: true,
@@ -39,14 +39,14 @@ test('endpointOf：文档宿主三件套走 /api/docs/*，请求体按 ref 定�
     });
   };
   try {
-    const ep = endpointOf('doc', { refId: 'rel:notes/design.md' });
+    const ep = endpointOf('doc', { refId: 'ref:ref_0123456789abcdef' });
     await ep.list();
-    await ep.attach({ doc: 'rel:y.md', name: 'y' });
+    await ep.attach({ doc: 'ref:ref_fedcba9876543210', name: 'y' });
     await ep.detach('att_1', false);
   } finally {
     globalThis.fetch = orig;
   }
-  assert.equal(calls[0][0], '/api/docs/attachments?ref=rel%3Anotes%2Fdesign.md');
-  assert.deepEqual(JSON.parse(calls[1][1]), { ref: 'rel:notes/design.md', doc: 'rel:y.md', name: 'y', noEmbed: true });
-  assert.deepEqual(JSON.parse(calls[2][1]), { ref: 'rel:notes/design.md', attachment: 'att_1', purge: false });
+  assert.equal(calls[0][0], '/api/docs/attachments?ref=ref%3Aref_0123456789abcdef');
+  assert.deepEqual(JSON.parse(calls[1][1]), { ref: 'ref:ref_0123456789abcdef', doc: 'ref:ref_fedcba9876543210', name: 'y', noEmbed: true });
+  assert.deepEqual(JSON.parse(calls[2][1]), { ref: 'ref:ref_0123456789abcdef', attachment: 'att_1', purge: false });
 });

@@ -46,50 +46,33 @@ nx-kv board assign nx-kv --board nx
 
 # 1.4 写「组内描述」：这个项目在组里占什么位置（可多行）
 nx-kv board note nx-kv --board nx --note "CLI / 面板 / skill 的宿主仓"
-
-# 1.5 把 desc / note 播种成 md 文档（缺省预览，--apply 才落盘；幂等）
-nx-kv docs seed --apply
 ```
 
-播种产物（`~/.nx-kv/docs/`，`NX_KV_DOCS_DIR` 可改根）：
-
-| 文件 | 内容 | 来源 |
-|---|---|---|
-| `repo/<key>.md` | **项目介绍** | `repo add --desc` |
-| `board/<组 slug>.md` | **项目组介绍** | `board add --desc` |
-| `group/<组 slug>/<key>.md` | 组内描述 | `board note --note` |
-
-介绍**不止一篇**：每个项目 / 组都有一棵「介绍目录」，主篇是 `index.md`，其余是补充说明：
-
-```
-repo/<key>/index.md            项目介绍主篇（目录主篇优先于旧单文件 repo/<key>.md）
-repo/<key>/*.md                其余补充说明（都进「描述列表」）
-repo/<key>/reference/*.md      reference 补充说明（列表里单独标记）
-board/<组 slug>/index.md       组介绍主篇
-```
-
-交付与面板都按**列表**呈现：主篇给正文，其余各篇给可读路径。
-
-正文也可以手写或换成外部文件（外部只读、不进导出包）：
+介绍文档**按 ref 寻址**，不落约定路径：文档是 `refs` 行（正文在 `ref_bodies`），
+归属是 `ref_bindings` 行（仓库 / 组 / 组内仓库三类），主篇 = `position=0` 那一条。
 
 ```bash
-# 手写介绍正文（ref 必须带 .md；写完自动把摘要回写到 desc / 组内 note）
-nx-kv docs set board/nx.md --body "# nx 系列
-共享 CLI / 面板 / skill 体系。"
-nx-kv docs set repo/local/nx-kv.md --body "# nx-kv
+# 建一篇文档（正文为空，直接可编辑）并绑成项目主篇
+nx-kv docs ref add --owner repo --repo nx-kv --desc "KV 清单管理中枢"
+
+# 写正文
+nx-kv docs set --ref <refId> --body "# nx-kv
 KV 清单管理中枢。"
 
-# 把介绍指到外部文件（Obsidian vault 等）
+# 把介绍指到外部文件（Obsidian vault 等；登记成 origin=external 的 ref）
 nx-kv docs bind --board nx --path "D:\vault\nx\nx.md"
 nx-kv docs bind --repo nx-kv --path "D:\vault\nx-kv.md"
 
 # 给项目追加「其余介绍文档」（主篇之外；--tag 分类标签，简介行渲染成小 chip）
-nx-kv repo doc add <repoId> --rel repo/local/nx-kv/reference/arch.md --note "架构说明" --tag 规范
-nx-kv repo doc list <repoId>
+nx-kv repo doc add nx-kv --ref <refId> --note "架构说明" --tag 规范
+nx-kv repo doc list nx-kv
 
-# 给组追加「附加文档」（自有 rel / 外部绝对路径皆可；同 doc 重复添加 = 更新该条）
-nx-kv docs link nx --doc board/nx/reference/qa.md --note "问答集" --tag qa
+# 给组追加「附加文档」（--ref <refId> | --path <外部绝对路径>；同 ref 重复添加 = 更新该条）
+nx-kv docs link nx --ref <refId> --note "问答集" --tag qa
 ```
+
+交付与面板都按**列表**呈现：主篇给正文，其余各篇给 `refId` + desc（agent 用
+`nx-kv docs get --ref <refId>` 取全文）。
 
 ### 提示词模板（设置面板「提示词模板」一栏，CLI 同口径）
 
@@ -108,7 +91,8 @@ nx-kv localtask config --block-templates '{"ack":{"active":"t1","list":[{"id":"t
 nx-kv template update default --values '{"背景":"把简介文档支持 tag"}'
 ```
 
-> 介绍**懒播种**：即使没跑 `docs seed`，读取时也会按 desc/note 现场补种。
+> 登记时给的 `--desc` **直接生成一篇主篇文档**（ref，正文就是 desc）——文档没有路径，
+> 只有 `refId`；之后用 `docs set --ref <refId>` 改正文，或 `docs bind --ref` 换主篇。
 
 ---
 
@@ -144,10 +128,10 @@ nx-kv localtask add "组级任务" --board nx
 ```markdown
 ---
 board: b_mw0cjlcm2idd6
-boardIntro: board/nx.md
+boardIntro: ref:ref_f3bf70258169fb02
 boardDesc: nx 系列工具：共用 CLI / 面板 / skill 体系
 project: local/nx-kv
-projectIntro: repo/local/nx-kv.md
+projectIntro: ref:ref_f87d8fd8d7d1831e
 projectDesc: KV 清单管理中枢：远程清单 + 本机任务队列
 ---
 # 重构本地任务队列
@@ -157,19 +141,19 @@ projectDesc: KV 清单管理中枢：远程清单 + 本机任务队列
 | 字段 | 含义 | 取值 |
 |---|---|---|
 | `board` | 归属组 | 组 id |
-| `boardIntro` | **项目组介绍**的文档路径 | 绑定优先，缺省约定路径 `board/<组 slug>.md` |
+| `boardIntro` | **项目组介绍**文档 | `ref:<refId>`（绑定的主篇） |
 | `boardDesc` | 项目组的一句话摘要 | 组 desc |
 | `project` | 归属项目 | 项目 key |
-| `projectIntro` | **项目介绍**的文档路径 | 绑定优先，缺省约定路径 `repo/<key 分段>.md` |
+| `projectIntro` | **项目介绍**文档 | `ref:<refId>`（绑定的主篇） |
 | `projectDesc` | 项目的一句话摘要 | 项目 desc |
 
 - 提交口径 → 携带：
   - **项目组口径**（`--board` + `--project`）→ `board` + `boardIntro` + `boardDesc` + `project` + `projectIntro` + `projectDesc`；
   - **项目口径**（只给 `--project`）→ `project` + `projectIntro` + `projectDesc`（不标组）。
-- **引用式**：介绍给的是**路径**而不是正文——正文是 md 文件，路径即地址，
-  agent 拿到就能读盘（`nx-kv docs get rel:<路径>`）。内联正文既撑爆 frontmatter，
+- **引用式**：介绍给的是 **refId** 而不是正文——正文在文档库，refId 即地址，
+  agent 拿到就能取（`nx-kv docs get --ref <refId>`）。内联正文既撑爆 frontmatter，
   又会在介绍更新后留下过期副本。
-- 自有路径相对 `~/.nx-kv/docs/`（`NX_KV_DOCS_DIR` 可改根）；绑定到外部文件时给绝对路径。
+- 宿主没绑主篇时，这两个字段为空；不再有约定路径兜底。
 - 正文里已有的其它字段**原样保留**；`--board/--project` 的值**覆盖**正文里同名键
   （CLI 的显式意图是最新的决定）。
 - **改文案不丢 frontmatter**：`localtask update --text` / `localtask reopen --text`
@@ -378,10 +362,10 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
 已取得下一条任务（本目录队列 · 排队任务 · 主题「…\nx-kv」现状「我在这儿待命」）: #1
   ---
   board: b_mw0cjlcm2idd6
-  boardIntro: board/nx.md
+  boardIntro: ref:ref_f3bf70258169fb02
   boardDesc: nx 系列工具：共用 CLI / 面板 / skill 体系
   project: local/nx-kv
-  projectIntro: repo/local/nx-kv.md
+  projectIntro: ref:ref_f87d8fd8d7d1831e
   projectDesc: KV 清单管理中枢：远程清单 + 本机任务队列
   ---
   # 修 bug
@@ -419,7 +403,7 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
 | 环节 | 命令 | 状态 |
 |---|---|---|
 | 项目 / 组登记 | `repo add` `board add` `board assign` `board note` | 通 |
-| 介绍落盘 | `docs seed --apply` / `docs set` / `docs bind` | 通（缺约定路径时**懒播种**） |
+| 介绍落盘 | `docs ref add` / `docs set --ref` / `docs bind --ref` | 通（`repo add --desc` 会直接建主篇） |
 | 项目级提交 | `localtask add --project K` | 通：frontmatter 带 `project` + `projectIntro` + `projectDesc`，落进该项目队列 |
 | 组 + 项目级提交 | `localtask add --board B --project K` | 通：frontmatter 再加 `board` + `boardIntro` + `boardDesc` |
 | 组级提交不给项目 | `localtask add --board B` | **报错**（归属必须明确，并列出本组成员） |
@@ -469,7 +453,7 @@ nx-kv board add nx --desc "nx 系列工具"
 nx-kv repo add D:\DevProjects\my\github\nx-kv --name nx-kv --key local/nx-kv --desc "KV 清单管理中枢"
 nx-kv board assign nx-kv --board nx
 nx-kv board note nx-kv --board nx --note "CLI / 面板宿主仓"
-nx-kv docs seed --apply
+nx-kv docs ref add --owner repo --repo nx-kv --desc "KV 清单管理中枢"
 
 # ── waitgoal（项目级持续 get）───────────────────────────
 nx-kv repo update nx-kv --get-loop on --get-loop-minutes 10
@@ -501,7 +485,7 @@ nx-kv localtask get --cwd "D:\DevProjects\my\github\nx-kv"
 ```bash
 # ── 准备 ────────────────────────────────────────────────
 nx-kv repo add D:\DevProjects\my\github\nx-kv --name nx-kv --key local/nx-kv --desc "KV 清单管理中枢"
-nx-kv docs seed --apply
+nx-kv docs ref add --owner repo --repo nx-kv --desc "KV 清单管理中枢"
 
 # ── waitgoal ───────────────────────────────────────────
 nx-kv repo update nx-kv --get-loop on --get-loop-minutes 10

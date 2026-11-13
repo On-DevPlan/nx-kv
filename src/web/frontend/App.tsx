@@ -81,7 +81,7 @@ function routeFromHash(): AppRoute {
     return { view: 'group', key: decodeURIComponent(path.slice(6)), task };
   }
   // 文档页（#88）：#/doc?ref=<docId>[&repo=<repoKey>|&board=<boardId>&name=<组名>]
-  // docId 是 `rel:` / `path:` 前缀寻址，**不要**整体 encodeURIComponent——
+  // docId 是 `ref:` / `path:` 前缀寻址，**不要**整体 encodeURIComponent——
   // 面板 config 要能逐字复现（openPanel 按 component+config 去重），
   // 编码方式一变就裂成两个面板。只编码冒号后的路径段。
   if (path === 'doc') {
@@ -364,7 +364,7 @@ export default function App() {
     // 注意 route.key 是 parse 过的原文（可能是「某 个库」「前端组/a b.md」）：
     // hash 把 ref 剥出来时 URLSearchParams 已经做过一次解码，这里只管切段。
     if (route.view === 'doc') {
-      const seg = String(route.key || '').replace(/^(rel|path):/, '').split(/[\\/]/).filter(Boolean).pop() || '';
+      const seg = String(route.key || '').replace(/^(ref|path):/, '').split(/[\\/]/).filter(Boolean).pop() || '';
       // `x || []` 在联合数组上会把 find 的回调解成 never，先落到显式类型再查
       const repos: RepoRow[] = repoData.repos || [];
       const boards: RepoData['boards'] = repoData.boards || [];

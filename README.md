@@ -3,7 +3,7 @@
 本机任务队列 + 文档库 + 仓库登记的一体化工具。一个 `npx` 命令起一个 Web 面板，同时提供同构 CLI——
 **面板上的每个按钮，底层都是同一条 CLI 命令**，输出 `--json` 即可被任何 agent 直接消费。
 
-所有数据都在本机 SQLite（`~/.nx-kv/nxkv.db`，schema v7），**不需要登录、不访问任何后端**。
+所有数据都在本机 SQLite（`~/.nx-kv/nxkv.db`，schema v8），**不需要登录、不访问任何后端**。
 附件同样只落本机附件仓；没有云端图床、没有同步开关。
 
 任务正文可以直接**嵌图片与文档**（标准 markdown：`![说明](fileId)` / `[文件名](fileId)`）：
@@ -153,13 +153,14 @@ nx-kv file prune              # 回收（DB 行 + 附件根内的字节）
 
 ## 文档库（refs）
 
-ref 是 DB 实体：`refs`（id / rel / desc / 归属）+ `ref_bodies`（正文）+ `ref_bindings`（挂在哪）。
-**没有文件路径**；读取一律按 refId：
+ref 是 DB 实体：`refs`（id / locator / desc / 归属）+ `ref_bodies`（正文）+ `ref_bindings`（挂在哪）。
+**没有文件路径，也没有逻辑名**：地址只有 `refs.id`（`ref_<16hex>`）与 `refs.locator`
+（外部文件 / URL 的实际位置）；读取一律按 refId：
 
 ```bash
 nx-kv docs list --json
-nx-kv docs get --ref <refId> --json       # 取正文（旧数据也认 rel:<路径>）
-nx-kv docs bindings --repo <key> --json   # 这个仓库挂了哪些文档
+nx-kv docs get --ref <refId> --json       # 取正文（只认 refId）
+nx-kv docs bindings --host <repoKey> --json   # 这个仓库挂了哪些文档
 nx-kv docs bindings --group <组> --json   # 这个组挂了哪些文档
 nx-kv docs ref add --desc "一句话描述" --owner repo --repo <key>   # 新建直接 ref
 nx-kv docs ref unbind --ref <refId>       # 解绑（不删文档）

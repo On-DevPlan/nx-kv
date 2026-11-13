@@ -3,14 +3,7 @@
 // 迁移裁决（D3）：legacy 队列全部挂哨兵仓库 `__unbound__`（旧 key 是目录名
 // sha1，对不上任何真实仓库），**不做自动猜绑**——猜错比不猜糟。真实绑定
 // 只有一个写入口：用户显式跑本命令（按登记的仓库路径前缀匹配，最长前缀赢）。
-//
-// **顺序：先建 refs 再绑 topic**（裁决原文）。绑定落库前先跑
-// repo/refs.js 的 rebuildRefIndex 把文档索引（约定路径绑定 + 孤儿清单）
-// 补齐 —— 队列绑到仓库后，面板立刻要展示「这个仓库有哪些文档」，索引
-// 不能等到那时才现建。文档清单与正文从 DB 取（v6 起正文只存 ref_bodies），
-// 事务体内只有写库。
 import { nowMs } from '../../../core/db/time.js';
-import { listOwnDocs } from '../../docs/store.js';
 import repoLayer from '../repo/index.js';
 import { loadStore } from './store.js';
 import { deriveKey } from './identity.js';
@@ -43,7 +36,6 @@ export type BindTopicsResult =
       bound: TopicBindHit[];
       left: TopicBindLeft[];
       changed: number;
-      refs: { refs: number; bindings: number };
     };
 
 /**
@@ -67,16 +59,6 @@ export async function bindTopicsToRepos({ repo: repoLocator = '', apply = false 
   const prefixes = targets
     .map((r) => ({ key: deriveKey(r), name: r.name, prefix: normalizePathKey(r.path) }))
     .filter((x) => x.prefix);
-
-  // 文档清单与正文都从 DB 取（v6 起正文只存 ref_bodies，不再扫盘）。
-  const docsFiles: string[] = [];
-  const docsBodies = new Map<string, string>();
-  if (apply) {
-    for (const d of await listOwnDocs()) {
-      docsFiles.push(d.rel);
-      if (d.body !== undefined) docsBodies.set(d.rel, d.body);
-    }
-  }
 
   const planFor = (conn: DbApi): { scanned: number; bound: TopicBindHit[]; left: TopicBindLeft[] } => {
     const topics = repo.repos.listUnboundTopics(conn);
@@ -102,13 +84,12 @@ export async function bindTopicsToRepos({ repo: repoLocator = '', apply = false 
     return { apply: false, ...plan };
   }
   return repo.txw((conn: DbApi) => {
-    const refs = repo.refs.rebuildRefIndex(conn, { docsFiles, docsBodies, atMs: nowMs() });
     const plan = planFor(conn);
     let changed = 0;
     for (const b of plan.bound) {
       const row = conn.get('SELECT id FROM topics WHERE key = :k', { k: b.topicKey });
       if (row && repo.repos.bindTopicToRepo(conn, row.id, b.repoKey, nowMs())) changed += 1;
     }
-    return { apply: true, refs, bound: plan.bound, left: plan.left, scanned: plan.scanned, changed };
+    return { apply: true, bound: plan.bound, left: plan.left, scanned: plan.scanned, changed };
   });
 }

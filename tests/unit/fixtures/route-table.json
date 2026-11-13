@@ -13,7 +13,7 @@
     "templates-edit": "#/templates/edit/t1",
     "templates-new-full": "#/templates/new?topic=k%201&scope=topic%3Ak%201%2Crepo%3Ar",
     "templates-new-bare": "#/templates/new",
-    "doc-repo": "#/doc?ref=rel:a%2Fb.md&repo=r1",
+    "doc-repo": "#/doc?ref=ref:ref_0123456789abcdef&repo=r1",
     "doc-board": "#/doc?ref=path:x%2Fy.md&board=b1&name=%E7%BB%84%20%E4%B8%80",
     "doc-bare": null,
     "sidebar": null,
@@ -215,9 +215,9 @@
     "doc-repo": {
       "empty": {
         "component": "doc",
-        "name": "b",
+        "name": "ref_0123456789abcdef",
         "config": {
-          "docId": "rel:a/b.md",
+          "docId": "ref:ref_0123456789abcdef",
           "repoKey": "r1"
         }
       },
@@ -225,7 +225,7 @@
         "component": "doc",
         "name": "文档标题",
         "config": {
-          "docId": "rel:a/b.md",
+          "docId": "ref:ref_0123456789abcdef",
           "repoKey": "r1"
         }
       }

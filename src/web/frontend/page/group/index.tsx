@@ -206,8 +206,8 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
         summary: topic ? topic.summary || '' : '',
         tasks: topic ? (topic.tasks || []) : [],
         present: m.present !== false,
-        // 组内描述文档：绑定优先（外部 path 只读），缺省约定路径
-        noteDocId: m.noteDocPath ? 'path:' + m.noteDocPath : 'rel:' + (m.noteDocRel || ''),
+        // 组内描述文档：后端直接给 ref:<refId>
+        noteDocId: m.noteDocId || '',
       };
     });
   }, [board, repos, topics]);

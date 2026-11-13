@@ -245,6 +245,15 @@ const CRUD_OPS = {
 // 约定：资源 `X` 的五个操作 id 为 X.list / X.get / X.add / X.update / X.remove
 const CRUD_VERB = { list: 'list', get: 'get', create: 'add', update: 'update', remove: 'remove' };
 
+/**
+ * v8：docs 的「增」是新建一条直接 ref（doc.ref.add），不再有 doc.add——
+ * 资源名仍是 doc（list/get/update/remove 都不变），只把 create 的 id 映射过去。
+ */
+function crudIdOf(moduleId, resource, op) {
+  if (moduleId === 'docs' && resource === 'doc' && op === 'create') return 'doc.ref.add';
+  return `${resource}.${CRUD_VERB[op]}`;
+}
+
 // 一个模块可以管理**多个**资源：`resource` 是单个（向后兼容的老写法），
 // `resources` 是数组。清单模块就同时管着 `todo`（任务）与 `group`（工作空间
 // ——它本质是清单的设置，已于 2026-10-23 从独立模块并进来）。
@@ -260,8 +269,8 @@ test('声明了 CRUD 资源的模块，五个操作齐备且两端可调用', ()
 
   const problems = [];
   for (const { m, r } of resources) {
-    for (const [op, verb] of Object.entries(CRUD_VERB)) {
-      const id = `${r}.${verb}`;
+    for (const op of Object.keys(CRUD_VERB)) {
+      const id = crudIdOf(m.id, r, op);
       const action = ACTIONS.find((a) => a.id === id);
 
       if (!action) {
@@ -287,7 +296,7 @@ test('CRUD 路由的形状对得上语义', () => {
   const LOCATOR = /^item$/;
 
   for (const { m, r } of MODULES.flatMap((m) => resourcesOf(m).map((x) => ({ m, r: x })))) {
-    const httpOf = (op) => ACTIONS.find((a) => a.id === `${r}.${CRUD_VERB[op]}`).http;
+    const httpOf = (op) => ACTIONS.find((a) => a.id === crudIdOf(m.id, r, op)).http;
 
     assert.equal(hasParam(httpOf('list')[1]), false, `${m.id}: list 路由不应含 :param`);
     for (const op of ['get', 'update', 'remove']) {
@@ -306,9 +315,9 @@ test('CRUD 路由的形状对得上语义', () => {
 test('CRUD 的 HTTP 方法符合语义', () => {
   // 方法用错不会让功能失效，但会让 API 语义混乱、也让 agent 难以推断。
   const expected = { list: 'GET', get: 'GET', create: 'POST', update: 'PATCH', remove: 'DELETE' };
-  for (const { m: _m, r } of MODULES.flatMap((m) => resourcesOf(m).map((x) => ({ m, r: x })))) {
+  for (const { m: mod, r } of MODULES.flatMap((m) => resourcesOf(m).map((x) => ({ m, r: x })))) {
     for (const [op, method] of Object.entries(expected)) {
-      const action = ACTIONS.find((a) => a.id === `${r}.${CRUD_VERB[op]}`);
+      const action = ACTIONS.find((a) => a.id === crudIdOf(mod.id, r, op));
       if (!action || !action.http) continue;
       assert.equal(
         action.http[0],

@@ -9,22 +9,20 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { getDb } from '../../../core/db/index.js';
-import { refIdOf } from '../../../core/db/import-json.js';
-import { docTitleFromMd } from '../../../shared/doc-title.js';
+import { refTitleOf } from '../brief.js';
+import { summaryFromMd } from '../seed.js';
 
-/** 入参 docId（ref:/rel:/path: 或无前缀 locator）→ ref id。 */
+/** 入参 docId（ref:<refId> / 裸 refId）→ ref id；不做任何按路径/ locator 的猜测。 */
 function toRefId(v: string): string {
   const s = String(v || '').trim();
   if (!s) return '';
-  if (/^ref_[0-9a-f]{16}$/i.test(s)) return s;
-  if (s.startsWith('ref:')) return s.slice(4);
-  const locator = s.startsWith('rel:') ? s.slice(4) : s.startsWith('path:') ? s.slice(5) : s;
-  if (/^ref_[0-9a-f]{16}$/i.test(locator)) return locator;
-  return refIdOf(locator.replace(/\\/g, '/'));
+  const id = s.replace(/^ref:/i, '');
+  const byId = getDb().get('SELECT id FROM refs WHERE id = :id AND deleted_at IS NULL', { id });
+  return byId ? String(byId.id) : '';
 }
 
 const input = z.object({
-  ref: z.string().optional().describe('refId / docId（ref:/rel:/path: 或裸 locator）——只看这篇文档的归属'),
+  ref: z.string().optional().describe('refId / docId（ref:/path: 或裸 refId）——只看这篇文档的归属'),
   host: z.string().optional().describe('宿主 repo_key —— 只看这个仓库的文档集（含它的组内文档）'),
   group: z.string().optional().describe('宿主组 key —— 只看这个组的文档集（含组内各仓库）'),
 });
@@ -62,8 +60,8 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
       params.group = group;
     }
     const rows = db.all(
-      `SELECT b.repo_key AS repoKey, b.group_key AS groupKey, b.type, b.position, b.note,
-              r.id AS refId, r.rel, r."desc", r.origin, r.locator,
+      `SELECT b.repo_key AS repoKey, b.group_key AS groupKey, b.type, b.position, b.note, b.tag,
+              r.id AS refId, r."desc", r.origin, r.locator,
               CASE WHEN rb.ref_id IS NULL THEN 0 ELSE 1 END AS has_body,
               rb.body
          FROM ref_bindings b JOIN refs r ON r.id = b.ref_id
@@ -78,29 +76,25 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
         const refId = String(r.refId);
         const type = String(r.type);
         const position = Number(r.position) || 0;
-        const direct = String(r.rel) === refId;
-        // 摘除序号只对派生行有意义（直接行走 unbind）；主篇的摘除语义见宿主侧。
-        const removeIndex = direct || position === 0
-          ? null
-          : type === 'repo'
-            ? position + 1
-            : type === 'group'
-              ? position
-              : null;
-        const body = Number(r.has_body) === 1 ? String(r.body ?? '') : '';
+        const hasBody = Number(r.has_body) === 1;
+        const body = hasBody ? String(r.body ?? '') : '';
+        const desc = String(r.desc || '');
         return {
           refId,
-          desc: String(r.desc || ''),
-          title: body ? docTitleFromMd(body) : '',
-          hasBody: Number(r.has_body) === 1,
+          desc,
+          // 显示名：正文标题 → desc → 正文首行摘要 → 外部文件名 → refId。
+          // v8 没有路径名了，没有这条链旧文档会全叫「未命名文档」。
+          title: refTitleOf({ body, desc, locator: String(r.locator || ''), origin: String(r.origin || '') }, refId),
+          summary: body ? summaryFromMd(body) : '',
+          hasBody,
           repoKey: String(r.repoKey),
           groupKey: r.groupKey == null ? null : String(r.groupKey),
           type,
           position,
           main: position === 0,
           note: String(r.note || ''),
-          direct,
-          removeIndex,
+          tag: String(r.tag || ''),
+          removeIndex: null,
         };
       }),
     };

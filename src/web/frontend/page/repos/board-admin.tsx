@@ -9,7 +9,6 @@ import { createBoard, deleteBoard, exportBoards, importBoards, updateBoard } fro
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog, Modal } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
-import { useWikiNav } from '../doc/index.jsx';
 import type { BoardMember, BoardRecord, ReposReload } from './repo-table.js';
 
 /** 新建 / 编辑看板的表单（id=null 表示新建）。 */
@@ -31,7 +30,6 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
   const guard = useGuard();
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
-  const { openByDocId } = useWikiNav();
   const [boardForm, setBoardForm] = useState<BoardForm | null>(null); // null | { id?, name, desc }
   const [impOpen, setImpOpen] = useState(false);
   const [impText, setImpText] = useState('');
@@ -43,7 +41,7 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
     const body: { name: string; desc?: string } = { name: boardForm.name.trim() };
     if (!body.name) return;
     // 描述是文档：编辑时不再提交 desc（领域描述在组介绍文档里写）；
-    // 新建时给的那段仍是「初始正文」，后端落成 board/<组>.md
+    // 新建时给的那段仍是「初始正文」，之后在组介绍文档里继续维护
     if (!boardForm.id) body.desc = boardForm.desc.trim() || undefined;
     if (boardForm.id) await updateBoard(encodeURIComponent(boardForm.id), body);
     else await createBoard(body);
@@ -123,7 +121,7 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
                 <span className="rp-board-admin-doc">
                   <Button small title="打开组介绍文档"
                     onClick={() => onOpenDoc(b)}>组介绍 ✎</Button>
-                  {b.docLinks && b.docLinks.length ? <span className="muted">+{b.docLinks.length}</span> : null}
+                  {b.docCount && b.docCount > 1 ? <span className="muted">+{b.docCount - 1}</span> : null}
                 </span>
                 <span className="rp-board-admin-acts">
                   <a className="btn small ghost" href={'#/group/' + encodeURIComponent(b.id)} title="组页：成员与任务">组页 ↗</a>
@@ -170,8 +168,7 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
                     onClick={() => {
                       const b = boardList.find((x) => x.id === boardForm?.id);
                       setBoardForm(null);
-                      const rel = b && (b.docRel || (b.doc && b.doc.rel));
-                      if (b && rel) openByDocId('rel:' + rel);
+                      if (b) onOpenDoc(b);
                     }}
                   >
                     {boardForm.desc || '未写'}
@@ -185,7 +182,7 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
                   id="bd-desc"
                   rows={3}
                   spellCheck="false"
-                  placeholder={'新建时给的介绍正文（之后以 board/<组>.md 文档为准）。\n如：这组仓库在这个环境里的侧重、配合关系、关键路径与搜索关键词。'}
+                  placeholder={'新建时给的介绍正文（之后在组介绍文档里继续维护）。\n如：这组仓库在这个环境里的侧重、配合关系、关键路径与搜索关键词。'}
                   value={boardForm.desc}
                   onChange={(e) => setBoardForm((f) => (f ? { ...f, desc: e.target.value } : f))}
                 />

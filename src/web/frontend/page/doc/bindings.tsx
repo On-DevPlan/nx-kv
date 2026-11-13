@@ -24,24 +24,18 @@ import {
   listBoards,
   listRepos,
   unbindRef,
-  unbindRepoDoc,
-  unlinkBoardDoc,
   type DocBindingRow,
 } from './api.js';
 
 interface HostOpt { key: string; name: string; kind: 'repo' | 'group' }
 
-/** docId（ref:/rel:/path:）→ 归属接口的定位串；ref: 直接给 refId。 */
-function locatorOf(docId: string): string {
+/** docId（ref:<refId> / 裸 refId）→ refId；外部 path 没有 refId，返回空串。 */
+function refIdOf(docId: string): string {
   const s = String(docId || '');
   if (s.startsWith('ref:')) return s.slice(4);
-  if (s.startsWith('rel:')) return s.slice(4);
-  if (s.startsWith('path:')) return s.slice(5);
-  return s;
+  if (/^ref_[0-9a-f]{16}$/i.test(s)) return s;
+  return '';
 }
-
-/** 直接 ref（v7）：归属直接写在 ref_bindings，解绑走 /api/docs/unbind。 */
-const isDirectDoc = (docId: string | undefined): boolean => String(docId || '').startsWith('ref:');
 
 /** useDocBindings 的返回面：面板要的两个节点 + 计数。 */
 export interface DocBindingsApi {
@@ -52,7 +46,7 @@ export interface DocBindingsApi {
   modal: ReactNode;
 }
 
-export function useDocBindings(docId: string | undefined, writable: boolean): DocBindingsApi {
+export function useDocBindings(docId: string | undefined, writable: boolean, docLabel = ''): DocBindingsApi {
   const toast = useToast();
   const [rows, setRows] = useState<DocBindingRow[]>([]);
   const [tick, setTick] = useState(0);
@@ -108,23 +102,12 @@ export function useDocBindings(docId: string | undefined, writable: boolean): Do
     if (!window.confirm(`解绑：${b.repoKey} 不再引用这篇文档？\n（文档本身不删除，只摘掉这条归属）`)) return;
     setBusy(true);
     try {
-      if (isDirectDoc(docId)) {
-        // 直接 ref：归属直接写在 ref_bindings，按行精确解绑
-        await unbindRef({
-          ref: b.refId,
-          type: b.type as 'repo' | 'group' | 'group_repo',
-          repo: b.repoKey,
-          group: b.groupKey || undefined,
-        });
-      } else if (b.type === 'group') {
-        await unlinkBoardDoc({ board: b.repoKey, remove: b.position });
-      } else if (b.type === 'group_repo') {
-        toast('组内成员描述请在该组的成员管理里摘除');
-        setBusy(false);
-        return;
-      } else {
-        await unbindRepoDoc({ id: b.repoKey, index: b.main ? 1 : b.position + 1 });
-      }
+      await unbindRef({
+        ref: b.refId,
+        type: b.type as 'repo' | 'group' | 'group_repo',
+        repo: b.repoKey,
+        group: b.groupKey || undefined,
+      });
       toast('已解绑');
       reload();
     } catch (e: any) {
@@ -140,16 +123,12 @@ export function useDocBindings(docId: string | undefined, writable: boolean): Do
 
   async function confirmAdd() {
     if (!hostKey) { toast('先选一个宿主'); return; }
-    const loc = locatorOf(docId || '');
-    if (!loc) { toast('当前文档没有可登记的路径'); return; }
+    const ref = refIdOf(docId || '');
+    if (!ref) { toast('这篇文档还没有 refId（外部目录不能加绑）'); return; }
     setBusy(true);
     try {
-      if (kind === 'repo') {
-        const isPath = String(docId).startsWith('path:');
-        await bindRepoDoc(isPath ? { id: hostKey, path: loc, note } : { id: hostKey, rel: loc, note });
-      } else {
-        await linkBoardDoc({ board: hostKey, doc: loc, note });
-      }
+      if (kind === 'repo') await bindRepoDoc({ id: hostKey, ref, note });
+      else await linkBoardDoc({ board: hostKey, ref, note });
       setAddOpen(false);
       toast(kind === 'repo' ? '已加绑到仓库文档集' : '已加绑到组附加文档');
       reload();
@@ -162,7 +141,6 @@ export function useDocBindings(docId: string | undefined, writable: boolean): Do
 
   const items: BindTagItem[] = useMemo(() => rows.map((b) => {
     const group = b.type === 'group_repo' ? b.groupKey : null;
-    const canRemove = writable && (isDirectDoc(docId) || !b.main);
     return {
       id: `${b.refId}:${b.repoKey}:${b.groupKey || ''}:${b.position}`,
       label: nameOf(b.repoKey),
@@ -170,7 +148,7 @@ export function useDocBindings(docId: string | undefined, writable: boolean): Do
       main: b.main,
       note: b.note || (group ? `组 ${nameOf(group)}` : ''),
       title: `${b.repoKey}${group ? ' @ ' + group : ''}\n${b.desc || b.refId}`,
-      onRemove: canRemove ? () => doUnbind(b) : undefined,
+      onRemove: writable ? () => doUnbind(b) : undefined,
     } satisfies BindTagItem;
   }), [rows, writable, nameOf]);
 
@@ -185,7 +163,7 @@ export function useDocBindings(docId: string | undefined, writable: boolean): Do
       <BindTags
         items={items}
         addLabel="加绑宿主"
-        onAdd={writable && !isDirectDoc(docId) ? openAdd : undefined}
+        onAdd={writable && refIdOf(docId || '') ? openAdd : undefined}
         empty="没有任何归属（孤儿文档）—— 不会被任何仓库 / 组面板列出"
       />
       {!rows.length && writable ? (
@@ -199,7 +177,7 @@ export function useDocBindings(docId: string | undefined, writable: boolean): Do
       <div className="nb-modal">
         <div className="nb-modal-head">
           <span className="t">加绑宿主</span>
-          <span className="sub">{locatorOf(docId || '')}</span>
+          <span className="sub">{docLabel || '当前文档'}</span>
           <button type="button" className="close" onClick={() => setAddOpen(false)}>✕</button>
         </div>
         <div className="nb-modal-body">

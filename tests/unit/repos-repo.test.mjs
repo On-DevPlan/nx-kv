@@ -1,7 +1,7 @@
 // repos 域仓储层的单元测试（T05）：
 // 行↔JSON 形态适配 / 哨兵仓库规则（隐藏 / 拒绝入组 / 导出排除）/ 队列绑定
-// （先建 refs 再绑 topic）/ 组冻结 key / zip 往返四项相等（仓库清单 / 组成员 /
-// ref 绑定 / 队列绑定）。
+// （按路径前缀绑 topic）/ 组冻结 key / zip 往返四项相等（仓库清单 / 组成员 /
+// 文档绑定 / 参考关系与队列绑定）。
 //
 // 存储走 NX_KV_REPOS_STORE 指到的临时目录（映射为 <dir>/nxkv.db，测试内自设）；
 // 队列行经 localtask/repo/topics 直接落在同一个库（两者本就共用一条连接）。
@@ -80,15 +80,10 @@ test('组 key 冻结：改 name 后 key 不变；ext_legacy_id 保留 b_xxx', as
 
 // ─── 队列绑定（先建 refs 再绑 topic）──────────────────────────────────
 
-test('bindTopicsToRepos：预览零副作用；apply 按**最长路径前缀**绑队列，先建 refs 索引', async () => {
+test('bindTopicsToRepos：预览零副作用；apply 按**最长路径前缀**绑队列', async () => {
   // 两个嵌套登记的仓库：长前缀的接管子目录队列
   const parent = await repos.addRepo({ path: join(dir, 'proj'), name: 'proj', remote: 'git@github.com:o/proj.git' });
   const child = await repos.addRepo({ path: join(dir, 'proj', 'sub'), name: 'sub', remote: 'git@github.com:o/sub.git' });
-
-  // 文档只存 DB（v6 起不落盘）：一份命中 alpha 约定路径，一份自由文档（孤儿）
-  const docsStore = await import('../../src/modules/docs/store.js');
-  await docsStore.writeOwnDoc(`repo/${child.key}/index.md`, '# sub 介绍\n');
-  await docsStore.writeOwnDoc('free/note.md', '# 自由文档\n');
 
   // 队列：proj 下一条、proj/sub 下一条、无关目录一条、全局池一条
   const mk = (cwd) => repo.txw((conn) => {
@@ -125,20 +120,14 @@ test('bindTopicsToRepos：预览零副作用；apply 按**最长路径前缀**�
   assert.equal(plan.bound.some((x) => x.cwd === join(dir, 'other')), false, '无关目录不绑');
   assert.equal(plan.bound.some((x) => x.topicKey === GLOBAL_TOPIC_KEY), false, '全局池永远留哨兵');
 
-  // apply 前：预览零副作用（没有绑定、也没有 ref_bindings）
+  // apply 前：预览零副作用（没有绑定）
   const before = repo.txw((conn) => ({
     bound: conn.all("SELECT key FROM topics WHERE repo_key != '__unbound__'"),
-    bindings: conn.get('SELECT count(*) AS c FROM ref_bindings').c,
   }));
   assert.deepEqual(before.bound, []);
-  assert.equal(before.bindings, 0);
 
   const done = await repos.bindTopicsToRepos({ apply: true });
   assert.equal(done.changed, 2);
-  // v6 起写文档就会建 refs 行，rebuild 的 refs 计数只算「新增」，这里看总数更有意义
-  const refTotal = repo.txw((conn) => conn.get('SELECT count(*) AS c FROM refs WHERE deleted_at IS NULL').c);
-  assert.equal(refTotal, 2, 'refs 索引先建：约定主篇 + 自由文档');
-  assert.equal(done.refs.bindings, 1, '约定路径绑定 1 条（sub 的 index.md）');
 
   // 库面：绑定生效（ix_topics_repo 可查）
   const rows = repo.txw((conn) => ({
@@ -152,21 +141,27 @@ test('bindTopicsToRepos：预览零副作用；apply 按**最长路径前缀**�
     '留哨兵的只有无关目录与全局池（proj/app 已绑父仓库）'
   );
   assert.equal(rows.left.length, 2);
-
-  // 孤儿清单：自由文档可见，约定主篇已绑定
-  const orphans = repo.txw((conn) => repo.refs.listOrphans(conn).map((o) => o.locator));
-  assert.deepEqual(orphans, ['free/note.md']);
 });
 
 // ─── zip 往返四项相等 ─────────────────────────────────────────────────
 
-test('zip 往返：仓库清单 / 组成员 / ref 绑定 / 队列绑定 四项相等', async () => {
+test('zip 往返：仓库清单 / 组成员 / 文档绑定 / 队列绑定 四项相等', async () => {
   const { a, b, r } = await seedRepos();
   // 组 + 成员（含组内描述）
   const board = await boards.createBoard({ name: '常用' });
   await boards.assignRepo({ id: a.id, board: board.id });
   await boards.assignRepo({ id: b.id, board: board.id });
   await boards.setBoardRepoNote({ id: a.id, board: board.id, note: '主力' });
+
+  // v8：文档绑定只存 refId；项目主篇 + 补充篇 + 组介绍各建一条 ref
+  const docs = await import('../../src/modules/docs/service.js');
+  const docStore = await import('../../src/modules/docs/store.js');
+  const projectId = await repos.writeRepoDocContent({ key: a.key, name: a.name }, '项目介绍');
+  const extra = await docs.createRef({ owner: 'repo', repo: a.key, desc: '补充篇' });
+  await docs.updateDoc({ ref: 'ref:' + extra.refId, body: '# alpha 补充\n\n补充正文\n' });
+  const groupDoc = await docs.createRef({ owner: 'group', group: board.id });
+  await docs.updateDoc({ ref: 'ref:' + groupDoc.refId, body: '# 常用\n\n组介绍\n' });
+
   // ref 绑定：组级 + 仓库级两类并存
   await (await import('../../src/modules/repos/ref.js')).bindTarget({ id: r.id, repo: a.id, board: board.id });
   // 队列绑定
@@ -182,30 +177,47 @@ test('zip 往返：仓库清单 / 组成员 / ref 绑定 / 队列绑定 四项�
   });
   await repos.bindTopicsToRepos({ repo: a.id, apply: true });
 
-  // 导出 zip
+  // 导出 zip（v5：docs/<refId>.md + layout.refs）
   const buf = await transfer.repoExportZip({});
   const { readZip } = await import('../../src/core/zip.js');
   let json = '';
   const docsFiles = [];
   for (const e of readZip(buf)) {
     if (e.name === 'layout.json') json = e.data.toString('utf8');
-    else if (e.name.startsWith('docs/') && /\.md$/i.test(e.name)) docsFiles.push({ rel: e.name.slice('docs/'.length), data: e.data });
+    else if (e.name.startsWith('docs/') && /\.md$/i.test(e.name)) {
+      docsFiles.push({ refId: e.name.slice('docs/'.length).replace(/\.md$/i, ''), data: e.data });
+    }
   }
   assert.ok(json, 'zip 里有 layout.json');
+  const layout = JSON.parse(json);
+  assert.equal(layout.version, 5, '导出物是 v5 布局');
+  assert.ok(
+    (layout.refs || []).some((x) => x.refId === projectId),
+    'layout.refs 带项目主篇的 refId'
+  );
+  assert.equal(docsFiles.length, 4, '四篇文档正文按 refId 打包');
 
-  // 清空后回灌（simulate 换机空库）
+  // 记录导出前的绑定形状（按 refId）
+  const before = await repos.loadStore();
+  const beforeRepo = before.repos.find((x) => x.key === a.key);
+  const beforeBoard = before.boards.find((x) => x.name === '常用');
+  const beforeRepoDocs = { doc: beforeRepo.doc, links: beforeRepo.docLinks };
+  const beforeBoardDocs = { doc: beforeBoard.doc, links: beforeBoard.docLinks, repoDocs: beforeBoard.repoDocs };
+
+  // 清空后回灌（simulate 换机空库：登记与正文都不在）
   await repos.mutateStore((s) => {
     s.repos = [];
     s.boards = [];
   });
+  for (const f of await docStore.listOwnDocs()) await docStore.removeOwnDoc(f.id);
+
   const result = await transfer.repoImport({ json, docsFiles, clone: 'none' });
   assert.equal(result.created.length, 3, '三个仓库重建');
   assert.equal(result.boardsCreated, 1, '组重建');
   assert.equal(result.links, 2, 'ref 绑定重建（组级 + 仓库级）');
+  assert.equal(result.docs.written.length, 4, '四篇文档正文全部还原');
 
   // 四项相等
-  const before = await repos.loadStore();
-  const layout = JSON.parse(json);
   const after = await repos.loadStore();
 
   // ① 仓库清单（key 集合 + 名称 + remote + 类型）
@@ -230,7 +242,16 @@ test('zip 往返：仓库清单 / 组成员 / ref 绑定 / 队列绑定 四项�
   );
   assert.equal(boardAfter.key, board.key, '组冻结 key 往返一致');
 
-  // ③④ ref 绑定 / 队列绑定与 layout 对账
+  // ③ 文档绑定按 refId 往返（项目主篇 / 补充篇 / 组介绍 / 组内描述）
+  const afterRepo = after.repos.find((x) => x.key === a.key);
+  assert.deepEqual({ doc: afterRepo.doc, links: afterRepo.docLinks }, beforeRepoDocs, '项目文档绑定按 refId 往返');
+  assert.deepEqual(
+    { doc: boardAfter.doc, links: boardAfter.docLinks, repoDocs: boardAfter.repoDocs },
+    beforeBoardDocs,
+    '组文档绑定按 refId 往返'
+  );
+
+  // ④ 参考关系 / 队列绑定与 layout 对账
   assert.deepEqual(layout.links, [
     {
       ref: 'github.com/o/ref1',

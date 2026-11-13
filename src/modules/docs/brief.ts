@@ -1,142 +1,119 @@
 // 「描述即文档」：把一个所有者（repo / board）的绑定文档集整理成短视图。
 //
-// 为什么单开一个文件：列表接口（repos list / board 投影）要给前端「这个项目的描述
-// 是哪几篇 md」——主篇标题 + 补充篇数量。这活儿既要读盘（取标题）、又要按约定路径
-// 推导（没绑过 doc 的项目也要能显示默认主篇），但**不能**把整棵树读一遍：
-// 列表里只有主篇需要标题，补充篇给 rel 名就够（点开才读正文）。
-//
-// 依赖方向：docs 是叶子，repos/service 反向依赖它（它已经 import 了 docs/paths）。
-// 这里要 deriveKey 所以走 reposBridge 动态拿，静态 import 会成环。
-import * as paths from './paths.js';
-import * as store from './store.js';
-import { summaryFromMd } from './seed.js';
+// v8 口径：宿主 ext 只存 DocRef{ref}（refId），文档标题/描述从 refs/ref_bodies 读；
+// 不再有约定路径、文件是否存在、rel。列表接口给前端「这个项目/组挂了哪几篇文档」。
+import { refDocById } from '../../core/attachmentdb.js';
 import { docTitleFromMd } from '../../shared/doc-title.js';
-import type { DocRef } from './docref.js';
+import { summaryFromMd } from './seed.js';
 
 const baseNameOf = (p: unknown): string =>
   String(p || '').replace(/\\/g, '/').split('/').pop()?.replace(/\.md$/i, '') ?? '';
 
-/** DocRef → docId（与前端 openByDocId 同一口径：rel: / path: 前缀） */
-export function refToDocId(ref: DocRef | null | undefined): string {
-  if (!ref) return '';
-  if (ref.rel) return 'rel:' + ref.rel;
-  if (ref.path) return 'path:' + ref.path;
-  return '';
+/**
+ * 文档的**显示名**（人看的名字）。
+ *
+ * v8 起文档没有路径名了（rel 概念整个删掉），名字只能从内容里来：
+ *   正文首行 `# 标题` → desc（v7 短描述）→ 正文首行摘要 → locator 末段（只是文件名，不是路径）→ 兜底。
+ * 没有这条链的话，一篇**没有 `# 标题`**的旧文档在界面上会全叫「未命名文档」
+ * ——路径删除之前，路径本身就是它的名字。
+ */
+export function refTitleOf(
+  row: { body?: string | null; desc?: string; locator?: string; origin?: string },
+  fallback = ''
+): string {
+  const body = String(row.body ?? '');
+  const title = docTitleFromMd(body);
+  if (title) return title;
+  const desc = String(row.desc || '').trim();
+  if (desc) return desc;
+  const summary = summaryFromMd(body);
+  if (summary) return summary;
+  const stem = baseNameOf(row.locator);
+  if (stem) return stem;
+  return fallback;
 }
 
-/** 约定主篇路径（没显式绑 doc 时的默认位置） */
-export function defaultMainRel(owner: any, kind: 'repo' | 'board'): string {
-  if (kind === 'board') return paths.boardDocRel(owner.name);
-  const key = owner.key || owner.repoKey || '';
-  return key ? paths.repoDocRel(key) : '';
-}
-
-/** 主篇的展示元信息。 */
-export interface DocMainMeta {
+/** 一篇文档的短视图（前端 DocBrief 的数据面）。 */
+export interface DocBriefView {
+  /** refs.id */
+  refId: string;
+  /** 面板导航地址：ref:<refId> */
+  docId: string;
+  /** 正文首行标题 → desc → 所有者名 */
   title: string;
+  /** 短描述（v7） */
+  desc: string;
+  /** 正文摘要（首个非标题行）；没有正文时为空 */
   summary: string;
-}
-
-/**
- * 主篇的展示元信息：标题 + 摘要（正文首个非标题行，与 seed 同一口径）。
- * 文件还没写过时标题退回**仓库/看板名**（key 末段往往是 remote 的仓库名，
- * 跟用户认知里的项目名对不上），摘要空着，由前端显示「未写」。
- */
-async function mainMeta(ref: DocRef | null, fallbackRel: string, ownerName: string): Promise<DocMainMeta> {
-  // 没显式绑 doc 的项目只有约定路径——那种情况**也要读**，
-  // 否则迁过来的主篇永远显示不出摘要（doc 字段为空 ≠ 文档不存在）。
-  const rel = (ref && ref.rel) || fallbackRel;
-  if (rel) {
-    try {
-      const body = await store.readOwnDoc(rel);
-      // #168：标题 = 正文**首行**的 `# 标题`（与文档页/附件清单同一口径）
-      return {
-        title: docTitleFromMd(body) || ownerName || baseNameOf(rel),
-        summary: summaryFromMd(body),
-      };
-    } catch { /* 还没落盘 */ }
-    return { title: ownerName || baseNameOf(rel), summary: '' };
-  }
-  if (ref && ref.path) return { title: baseNameOf(ref.path), summary: '' };
-  return { title: ownerName || '', summary: '' };
-}
-
-/**
- * 批量取 ref 的**文档标题**（#168）：标题 = 正文首行的 `# 标题`。
- *
- * 用途：面板里的 ref 条目（任务/文档附件区、md 编辑器的引用名）此前只能显示
- * 文件名——用户「填写了标题」后编辑器里看到的仍是文件名。附件清单在服务端补
- * 上真实标题，前端直接用。
- *
- * 只读自有树（外部路径读盘在闭包外不给——与 docs get 读侧同纪律）；读不到就
- * 不给（前端回落附件名/文件名）。
- *
- * @param {Array<{id?:string, locator?:string}>} refs
- * @returns {Promise<Map<string,string>>} refId → 标题
- */
-export async function refTitlesOf(
-  refs?: Array<{ id?: string; refId?: string; locator?: string }> | null
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  for (const r of refs || []) {
-    const id = String((r && (r.id || r.refId)) || '');
-    const loc = String((r && r.locator) || '');
-    if (!id || !loc || out.has(id)) continue;
-    // 只认自有树相对路径（外部绝对路径需要闭包校验，附件清单场景不落外部 ref）
-    if (/^[a-zA-Z]:[\\/]/.test(loc) || loc.startsWith('/')) continue;
-    try {
-      const body = await store.readOwnDoc(loc);
-      const title = docTitleFromMd(body);
-      if (title) out.set(id, title);
-    } catch {
-      /* 读不到（缺失/被删）→ 不给标题，前端回落 */
-    }
-  }
-  return out;
+  note: string;
+  tag: string;
+  /** 有正文（外部镜像也算存在：正文在库外） */
+  exists: boolean;
+  missing?: boolean;
 }
 
 /** 文档集短视图。 */
 export interface DocSetView {
-  main: { docId: string; title: string; summary: string; rel?: string; path: string; exists: boolean } | null;
-  links: Array<{ docId: string; title: string; note: string; tag: string }>;
+  main: DocBriefView | null;
+  links: DocBriefView[];
   count: number;
 }
 
 /**
- * 文档集短视图。
- * @param {object} owner repo 或 board 记录
- * @param {'repo'|'board'} kind
- * @returns {Promise<{main:{docId,title,rel,path,exists},links:Array<{docId,title,note,tag}>,count:number}>}
+ * 批量取 ref 的**文档标题**（#168）：标题 = 正文首行的 `# 标题`。
+ * 用途：面板/交付清单里的 ref 条目按标题显示；读不到就不给（调用方回落 desc / refId）。
  */
-export async function docSetOf(owner: any, kind: 'repo' | 'board'): Promise<DocSetView> {
-  if (!owner) return { main: null, links: [], count: 0 };
-  const mainRef: DocRef | null = owner.doc && (owner.doc.rel || owner.doc.path) ? owner.doc : null;
-  const legacyRel = (mainRef && mainRef.rel) || defaultMainRel(owner, kind);
-  // 主篇落点与「介绍文档集」同一口径：目录 index.md 优先 → 旧单文件回落。
-  // 只看旧单文件路径的话，主篇写在目录 index.md 上的项目会永远显示「未写」
-  // （repos 行的文档入口虚态错——2026-11-07 任务「简介文档优化」实测踩到）。
-  let rel = legacyRel;
-  if (!mainRef && legacyRel) {
-    const dirRel = kind === 'board'
-      ? paths.boardDocDirRel(owner.name)
-      : paths.repoDocDirRel(owner.key || owner.repoKey || '');
-    if (dirRel && (await store.ownDocExists(`${dirRel}/index.md`))) rel = `${dirRel}/index.md`;
+export async function refTitlesOf(
+  refs?: Array<{ id?: string; refId?: string; locator?: string }> | null
+): Promise<Map<string, string>> {
+  const { getDb } = await import('../../core/db/index.js');
+  const out = new Map<string, string>();
+  for (const r of refs || []) {
+    const id = String((r && (r.id || r.refId)) || '');
+    if (!id || out.has(id)) continue;
+    const row = refDocById(getDb(), id);
+    if (!row || !row.hasBody) continue;
+    const title = docTitleFromMd(String(row.body ?? ''));
+    if (title) out.set(id, title);
   }
-  const exists = !!(rel && (await store.ownDocExists(rel))) || !!(mainRef && mainRef.path);
-  const meta = await mainMeta(mainRef, rel, owner.name || '');
-  const main = {
-    docId: mainRef ? refToDocId(mainRef) : rel ? 'rel:' + rel : '',
-    title: meta.title,
-    summary: meta.summary,
-    rel: (mainRef && mainRef.rel) || rel,
-    path: (mainRef && mainRef.path) || '',
-    exists,
+  return out;
+}
+
+/**
+ * 文档集短视图。
+ * @param owner repo 或 board 记录
+ * @param _kind 兼容旧签名（repo / board），当前读取口径一致
+ */
+export async function docSetOf(owner: any, _kind: 'repo' | 'board' = 'repo'): Promise<DocSetView> {
+  if (!owner) return { main: null, links: [], count: 0 };
+  const { getDb } = await import('../../core/db/index.js');
+  const db = getDb();
+  const viewOf = (raw: any): DocBriefView | null => {
+    const refId = String((raw && raw.ref) || '').trim();
+    if (!refId) return null;
+    const row = refDocById(db, refId);
+    if (!row) return null;
+    const body = row.hasBody ? String(row.body ?? '') : '';
+    const title = refTitleOf(
+      { body, desc: row.desc, locator: row.locator, origin: row.origin },
+      String(owner.name || '')
+    );
+    return {
+      refId: row.id,
+      docId: 'ref:' + row.id,
+      title,
+      desc: row.desc,
+      summary: body ? summaryFromMd(body) : '',
+      note: String((raw && raw.note) || ''),
+      tag: String((raw && raw.tag) || ''),
+      exists: row.hasBody || row.origin === 'external',
+      ...(row.hasBody || row.origin === 'external' ? {} : { missing: true }),
+    };
   };
-  const links = (Array.isArray(owner.docLinks) ? owner.docLinks : []).map((l: any) => ({
-    docId: refToDocId(l),
-    title: baseNameOf(l.rel || l.path),
-    note: l.note || '',
-    tag: l.tag || '',
-  }));
-  return { main, links, count: (main.title ? 1 : 0) + links.length };
+
+  const main = viewOf(owner.doc);
+  const links = (Array.isArray(owner.docLinks) ? owner.docLinks : [])
+    .map(viewOf)
+    .filter((x: DocBriefView | null): x is DocBriefView => !!x);
+  return { main, links, count: (main ? 1 : 0) + links.length };
 }

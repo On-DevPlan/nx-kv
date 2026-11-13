@@ -10,11 +10,11 @@ const KIND_NOTE: Record<string, string> = {
 
 export const renderList = (d: any): string => {
   const withBody = (d.docs || []).filter((x: any) => x.hasBody).length;
-  const lines = [`自有文档 ${d.count} 个（${withBody} 个有正文；正文只存库内）`];
+  const lines = [`文档 ${d.count} 个（${withBody} 个有正文；正文只存库内）`];
   for (const x of d.docs) {
     // ref 是 DB 实体：列表以 desc（缺省标题）为主标签，地址用 refId，不展示路径
     const label = x.desc || x.title || x.name || '未命名文档';
-    const tag = x.hasBody ? '' : `  （无正文 · ${KIND_NOTE[x.relKind] || '正文缺失'}）`;
+    const tag = x.hasBody ? '' : `  （无正文 · ${KIND_NOTE[x.kind] || '正文缺失'}）`;
     lines.push(`  ${label}  [${x.refId || x.docId}]${tag}`);
   }
   if (d.external?.length) {
@@ -22,18 +22,18 @@ export const renderList = (d: any): string => {
     for (const x of d.external) lines.push(`  ${x.path}`);
   }
   if (!d.count && !d.external?.length) {
-    lines.push('（还没有文档——直接新建即可，正文写入库内）');
+    lines.push('（还没有文档——在宿主面板点 ＋ 新建，正文写入库内）');
   }
   return lines.join('\n');
 };
 
 export const renderGet = (d: any): string => {
   if (d.missing) {
-    // 有 relKind = 「条目存在但没有正文」（历史空壳 / 外部镜像 / 正文缺失）；
-    // 没有 relKind = 外部路径本身不存在。
-    const who = d.desc || d.title || d.refId || d.docId || d.rel || d.path;
-    if (d.relKind) {
-      const kind = KIND_NOTE[d.relKind] ? ` · ${KIND_NOTE[d.relKind]}` : '';
+    // 有 kind = 「条目存在但没有正文」（历史空壳 / 外部镜像 / 正文缺失）；
+    // 没有 kind = 外部路径本身不存在。
+    const who = d.desc || d.title || d.refId || d.docId || d.path;
+    if (d.kind) {
+      const kind = KIND_NOTE[d.kind] ? ` · ${KIND_NOTE[d.kind]}` : '';
       return `（无正文${kind}: ${who}${d.reason ? ` — ${d.reason}` : ''}）`;
     }
     return `（文档不存在: ${who}）`;
@@ -45,38 +45,32 @@ export const renderGet = (d: any): string => {
 };
 
 export const renderWritten = (d: any): string => {
-  const who = d.desc || d.refId || d.rel || d.path || d.docId;
+  const who = d.desc || d.refId || d.path || d.docId;
   const descLine = d.desc !== undefined ? `\n描述: ${d.desc || '（空）'}` : '';
-  return `已写入 ${who}（${d.bytes} 字节）${d.summary ? `\n摘要已回写: ${d.summary}` : ''}${descLine}`;
-};
-
-export const renderSeed = (d: any): string => {
-  if (d.written !== undefined) return `已播种 ${d.written} 份文档:\n  ${(d.items || []).join('\n  ') || '（无）'}`;
-  if (!d.count) return '没有需要播种的文档（字符串字段都为空，或约定路径已有 md）';
-  return `待播种 ${d.count} 份（--apply 执行）:\n  ${d.items.map((x: any) => `${x.rel}  ←「${x.title}」`).join('\n  ')}`;
+  return `已写入 ${who}（${d.bytes} 字节）${d.summary ? `\n摘要: ${d.summary}` : ''}${descLine}`;
 };
 
 export const renderRef = (d: any): string =>
-  `${d.ref ? '已绑定' : '已拆绑定（回到约定路径）'}: ${d.kind} ${d.name} → ${d.ref ? (d.ref.rel ? 'rel:' + d.ref.rel : 'path:' + d.ref.path) : '约定路径'}`;
+  `${d.ref ? '已绑定' : '已解绑'}: ${d.kind} ${d.name} → ${d.ref ? 'ref:' + d.ref.ref : '（空）'}`;
 
 export const renderNoteRef = (d: any): string =>
-  `${d.ref ? '已绑定' : '已拆绑定'}: 「${d.boardName}」× ${d.repoKey} → ${d.ref ? (d.ref.rel ? 'rel:' + d.ref.rel : 'path:' + d.ref.path) : '约定路径'}`;
+  `${d.ref ? '已绑定' : '已解绑'}: 「${d.boardName}」× ${d.repoKey} → ${d.ref ? 'ref:' + d.ref.ref : '（空）'}`;
 
 export const renderLink = (d: any): string => {
   if (d.removed !== undefined) return `已移除组绑定: ${d.removed}（剩 ${d.count} 条）`;
   const lines = [`「${d.boardName}」的组绑定（${d.count} 条）:`];
   for (const l of d.links) {
-    lines.push(`  ${l.rel ? 'rel:' + l.rel : 'path:' + l.path}${l.tag ? `  [${l.tag}]` : ''}${l.note ? `  · ${l.note}` : ''}`);
+    lines.push(`  ref:${l.ref}${l.tag ? `  [${l.tag}]` : ''}${l.note ? `  · ${l.note}` : ''}`);
   }
   return lines.join('\n');
 };
 
 export const renderAttachments = (d: any): string => {
   if (!d.attachments.length) {
-    return `「${d.locator}」没有登记资源（docs attach --no-embed 可只挂到附件区）`;
+    return `「${d.refId}」没有登记资源（docs attach --no-embed 可只挂到附件区）`;
   }
   const areaOf = (role: unknown): string => (role === 'attach' ? '附件区' : '正文内嵌');
-  const lines = [`「${d.locator}」的资源（${d.attachments.length}）`];
+  const lines = [`「${d.refId}」的资源（${d.attachments.length}）`];
   for (const a of d.attachments) {
     const where = a.localPath || a.url || (a.kind === 'mdfile' ? a.absPath
       : a.kind === 'task' ? `task ${a.targetKey}#${a.targetSeq}` : a.targetKey);

@@ -17,14 +17,13 @@
 //
 // frontmatter 字段（正文头部，写给 agent 读）：
 //   board / project          归属（组 id / 项目 key）
-//   boardIntro / projectIntro 介绍文档的**可寻址路径**（绑定优先，缺省约定路径）
+//   boardIntro / projectIntro 介绍文档的 docId（ref:<refId>，用 docs get --ref 读）
 //   boardDesc / projectDesc  一句话摘要（组 desc / 项目 desc）
 //
 // 为什么不能从 cwd 反推项目：--cwd 是「队列地址」，--project 是「归属」——
 // 两件事。反推等于让地址决定归属，用户以为在挂项目，实际被目录牵着走。
 // 组内任务必须显式指明组内项目：归属不明就不该静默落在某个目录。
 import { badInput } from '../../core/errors.js';
-import { boardDocRel, repoDocRel } from '../docs/paths.js';
 
 /** 归一化后的看板形状（外部 JSON → any）。 */
 export type BoardLike = any;
@@ -34,16 +33,12 @@ export type RepoLike = any;
 const normPath = (p: unknown): string => String(p || '').replace(/[\\/]+/g, '/').replace(/\/$/, '').toLowerCase();
 
 /**
- * 介绍文档的**可寻址位置**（引用式：frontmatter 给路径，agent 拿到就能读盘）。
- * 绑定优先（DocRef：自有 rel / 外部绝对路径），缺省走约定路径。
+ * 介绍文档的地址：ref:<refId>（绑定存在时）；没有绑定给空串。
+ * agent 拿到后用 `nx-kv docs get --ref <refId>` 读正文。
  */
-function introPath(ref: unknown, conventionRel: string): string {
-  const r = ref as { rel?: string; path?: string } | null | undefined;
-  if (r && typeof r === 'object') {
-    if (r.rel) return r.rel;
-    if (r.path) return r.path;
-  }
-  return conventionRel;
+function introDocId(ref: unknown): string {
+  const r = ref as { ref?: string } | null | undefined;
+  return r && typeof r === 'object' && r.ref ? 'ref:' + r.ref : '';
 }
 
 /** 看板按 id / key / 名称匹配（组名最像人话，agent 上下文里只有组名） */
@@ -163,18 +158,18 @@ export function resolveGroupTarget(want: GroupTargetWant, store: GroupTargetStor
     );
   }
 
-  // frontmatter 字段：**归属**（board id / project key）+ **介绍引用**（路径 + 一行摘要）。
-  // 介绍用引用式而不是内联正文：正文是 md 文件、路径即地址，agent 拿到就能读盘；
+  // frontmatter 字段：**归属**（board id / project key）+ **介绍引用**（docId + 一行摘要）。
+  // 介绍用引用式而不是内联正文：agent 拿到 refId 就能用 docs get 读；
   // 内联既撑爆 frontmatter，又会在介绍更新后留下过期副本。
   const fields: Record<string, unknown> = {};
   if (board) {
     fields.board = board.id;
-    fields.boardIntro = introPath(board.doc, boardDocRel(board.name));
+    fields.boardIntro = introDocId(board.doc);
     fields.boardDesc = String(board.desc || '').trim();
   }
   if (repo) {
     fields.project = repo.key;
-    fields.projectIntro = introPath(repo.doc, repoDocRel(repo.key));
+    fields.projectIntro = introDocId(repo.doc);
     fields.projectDesc = String(repo.desc || '').trim();
   }
 

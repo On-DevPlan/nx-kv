@@ -5,7 +5,7 @@ import { join } from 'node:path';
 export async function run(ctx) {
   const { check, cli, cliJson, tmp, base } = ctx;
 
-  // ─── 13. 文档落盘：seed → set → knowledge → export/import zip（仓库登记不触网）───
+  // ─── 13. 文档：repo/board 描述 → 直接 ref → knowledge → export/import zip ───
   const repoDir = join(tmp, 'proj-alpha');
   mkdirSync(repoDir, { recursive: true });
   check(
@@ -15,37 +15,37 @@ export async function run(ctx) {
       (await cli(['board', 'assign', 'alpha', '--board', 'nx系列'])).status === 0
   );
   check('board note', (await cli(['board', 'note', 'alpha', '--board', 'nx系列', '--note', '组里的任务出入口'])).status === 0);
-  // repo add 的 --desc 现在是「初始描述 → 写进主篇文档」，不再只存字符串（正文存 DB）
-  const seeded = await cliJson(['docs', 'get', 'rel:repo/github.com/me/alpha.md']);
-  check('repo add 直接把 --desc 播种成主篇正文', String(seeded.body || '').includes('管清单的'), JSON.stringify(seeded).slice(0, 160));
+  // repo add 的 --desc 直接落成项目主篇（直接 ref，没有路径）
+  const docList0 = await cliJson(['repo', 'doc', 'list', 'alpha']);
+  const mainDocId = String((docList0.main && docList0.main.docId) || '');
+  check('repo add 把 --desc 落成主篇 ref', /^ref:ref_[0-9a-f]{16}$/.test(mainDocId), JSON.stringify(docList0).slice(0, 200));
+  const seeded = await cliJson(['docs', 'get', mainDocId]);
+  check('主篇正文包含初始描述', String(seeded.body || '').includes('管清单的'), JSON.stringify(seeded).slice(0, 200));
 
-  const seedPrev = await cliJson(['docs', 'seed']);
-  check('docs seed 预览 0 份（add / board add / board note 都已直接落文档）', seedPrev.count === 0, JSON.stringify(seedPrev.items || seedPrev).slice(0, 160));
-  check('docs seed --apply', (await cli(['docs', 'seed', '--apply'])).status === 0);
   const list1 = await cliJson(['docs', 'list']);
-  check('docs list 落盘 3 份', list1.count === 3, JSON.stringify(list1.docs.map((d) => d.rel)));
-  check('约定路径就位（key 分段即 rel）', seeded.rel === 'repo/github.com/me/alpha.md');
+  check('docs list 已含项目/组/组内描述 3 份', list1.count === 3, JSON.stringify(list1.docs.map((d) => d.refId)));
 
-  check('docs set 写正文', (await cli(['docs', 'set', 'repo/github.com/me/alpha.md', '--body', '# alpha\n\n改过的介绍'])).status === 0);
-  const repoShow = await cliJson(['repo', 'get', 'alpha']);
-  check('保存后摘要回写 desc', repoShow.desc === '改过的介绍', repoShow.desc);
+  check('docs set 写正文', (await cli(['docs', 'set', mainDocId, '--body', '# alpha\n\n改过的介绍'])).status === 0);
+  const got1 = await cliJson(['docs', 'get', mainDocId]);
+  check('docs get 读回正文', got1.body === '# alpha\n\n改过的介绍');
 
-  check('docs add 自由文档', (await cli(['docs', 'add', 'notes/free.md', '--body', '# 自由\n\n链接 [[alpha]]'])).status === 0);
-  // 介绍是**md 列表**（#58）：介绍目录里的补充说明进介绍集
-  check('docs add 补充说明（介绍目录内）', (await cli(['docs', 'add', 'repo/github.com/me/alpha/reference/qa.md', '--body', '# 问答\n\n常见问题'])).status === 0);
+  // 项目补充篇：新建直接 ref + 写正文
+  const qa = await cliJson(['docs', 'ref', 'add', '--owner', 'repo', '--repo', 'alpha', '--desc', 'qa']);
+  check('docs ref add 新建补充篇', /^ref_/.test(qa.refId || ''), JSON.stringify(qa).slice(0, 200));
+  check('docs set 写补充篇', (await cli(['docs', 'set', 'ref:' + qa.refId, '--body', '# 问答\n\n常见问题'])).status === 0);
   const idx = await cliJson(['docs', 'index']);
-  check('docs index 双链索引含 alpha', Array.isArray(idx.index) && idx.index.some((x) => x.name === 'alpha'), JSON.stringify(idx).slice(0, 160));
+  check('docs index 双链索引含 qa', Array.isArray(idx.index) && idx.index.some((x) => x.name === 'qa'), JSON.stringify(idx).slice(0, 160));
 
-  // 外部 md：登记为 mdfile（只挂附件区，正文逐字节不变）；文档树内文件必须拒绝（O9）
+  // 外部 md：登记为 mdfile（只挂附件区，正文逐字节不变）
   const extMd = join(tmp, '外部方案.md');
   writeFileSync(extMd, '# 外部方案\n\n正文', 'utf8');
-  const linked = await cliJson(['docs', 'link-file', 'repo/github.com/me/alpha.md', '--path', extMd]);
+  const linked = await cliJson(['docs', 'link-file', mainDocId, '--path', extMd]);
   check('docs link-file 登记外部 md', /^att_mdfile_[0-9a-f]{16}$/.test(linked.attachmentId || ''), JSON.stringify(linked));
-  const docAtts = await cliJson(['docs', 'attachments', 'repo/github.com/me/alpha.md']);
+  const docAtts = await cliJson(['docs', 'attachments', mainDocId]);
   check(
     '附件区出现 kind=mdfile，正文未被改写',
     docAtts.attachments.some((a) => a.id === linked.attachmentId && a.kind === 'mdfile') &&
-      (await cliJson(['docs', 'get', 'repo/github.com/me/alpha.md'])).body === '# alpha\n\n改过的介绍',
+      (await cliJson(['docs', 'get', mainDocId])).body === '# alpha\n\n改过的介绍',
     JSON.stringify(docAtts.attachments).slice(0, 240)
   );
   const know = await cliJson(['repo', 'knowledge', 'alpha']);
@@ -54,13 +54,13 @@ export async function run(ctx) {
     know.repo.key === 'github.com/me/alpha' && Array.isArray(know.boards) && know.boards.length === 1 && know.boards[0].name === 'nx系列',
     JSON.stringify(know).slice(0, 200)
   );
-  check('knowledge 组内描述已播种', know.boards[0].note && !know.boards[0].note.missing);
+  check('knowledge 组内描述已落文档', know.boards[0].note && !know.boards[0].note.missing);
   const knowMd = await cliJson(['repo', 'knowledge', 'alpha', '--md']);
   check('knowledge --md 单篇以仓库标题开头', typeof knowMd.md === 'string' && knowMd.md.startsWith('# alpha'));
   const docList = await cliJson(['repo', 'doc', 'list', 'alpha']);
   check(
-    'repo doc list：主篇 + 介绍目录里的补充篇',
-    !!(docList.main && (docList.extras || []).some((x) => String(x.rel || '').endsWith('qa.md'))),
+    'repo doc list：主篇 + 补充篇',
+    !!(docList.main && (docList.links || []).some((x) => x.ref === qa.refId)),
     JSON.stringify(docList).slice(0, 240)
   );
   const knowMd2 = await cliJson(['repo', 'knowledge', 'alpha', '--md']);
@@ -72,23 +72,21 @@ export async function run(ctx) {
 
   const zipPath = join(tmp, 'export.zip');
   check('repo export --zip', (await cli(['repo', 'export', '--zip', zipPath])).status === 0);
-  // 换环境导入：登记、库、文档树都指向新的空目录（模拟换机），zip 直接吃
-  // v6 起正文的真相在 DB：只换文档目录不换库，diff 仍读旧库 → 全判「一致」而跳过。
+  // 换环境导入：登记与库都指向新的空目录（模拟换机），zip 直接吃
   process.env.NX_KV_REPOS_STORE = join(tmp, 'repos2.json');
-  process.env.NX_KV_DOCS_DIR = join(tmp, 'docs2');
   process.env.NX_KV_DB = join(tmp, 'nxkv2.db');
   const imp = await cliJson(['repo', 'import', zipPath]);
   check('import zip 执行成功', imp && !imp.__error, JSON.stringify(imp).slice(0, 200));
-  check('import 还原文档树（5 份全写入）', imp.docs && imp.docs.written.length === 5, JSON.stringify(imp.docs).slice(0, 200));
+  check('import 还原文档 4 份', imp.docs && imp.docs.written.length === 4, JSON.stringify(imp.docs).slice(0, 200));
   const list2 = await cliJson(['docs', 'list']);
-  check('导入后 docs list 5 份', list2.count === 5, JSON.stringify(list2.docs.map((d) => d.rel)));
-  const got = await cliJson(['docs', 'get', 'repo/github.com/me/alpha.md']);
+  check('导入后 docs list 4 份', list2.count === 4, JSON.stringify(list2.docs.map((d) => d.refId)));
+  const got = await cliJson(['docs', 'get', mainDocId]);
   check('导入还原正文', got.body === '# alpha\n\n改过的介绍');
   const boardAfter = await cliJson(['board', 'get', 'nx系列']);
   check('导入还原成员与组内描述', boardAfter.repos.length === 1 && boardAfter.repos[0].note === '组里的任务出入口');
 
   const docsHttp = await (await fetch(base + '/api/docs')).json();
-  check('api docs 列表可达', docsHttp.ok && Array.isArray(docsHttp.data.docs) && docsHttp.data.docs.length === 5);
+  check('api docs 列表可达', docsHttp.ok && Array.isArray(docsHttp.data.docs) && docsHttp.data.docs.length === 4);
 
   // ─── 14. 任务工具：--duration → get 领取带 check 指令 → done 门禁 ───
   const ttDir = join(tmp, 'tt-proj');

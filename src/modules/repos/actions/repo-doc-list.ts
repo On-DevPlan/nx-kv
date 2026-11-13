@@ -17,16 +17,15 @@ export class RepoDocListAction extends ActionBase<typeof input> {
     id: 'repo.doc.list',
     cli: ['repo', 'doc', 'list'],
     http: ['GET', '/api/repos/docs'],
-    summary: '列出项目的介绍文档集（主篇 + 其余各篇，含来源形态：自有树 / 外部 / ref 仓库）',
+    summary: '列出项目的介绍文档集（主篇 + 其余各篇，refId + desc）',
     args: ['id'],
     input,
     render: (d: any) => {
-      const one: any = (x: any, i: any) => `  ${i}. ${x.rel ? '自有 ' + x.rel : x.ref ? 'ref  ' + x.ref + '/' + x.rel : '外部 ' + x.path}${x.tag ? `  [${x.tag}]` : ''}${x.note ? `  # ${x.note}` : ''}`;
+      const one: any = (x: any, i: any) => `  ${i}. ${x.title || x.desc || x.ref}${x.tag ? `  [${x.tag}]` : ''}${x.note ? `  # ${x.note}` : ''}${x.missing ? '  (缺正文)' : ''}`;
       const lines: any = [`【${d.repo.name}】介绍文档 ${d.count} 篇`];
-      // 描述是**列表**：主篇 + 介绍目录里的其余 + 登记的补充（#58）
+      // 描述是**列表**：主篇 + 登记的补充（#58）
       let n: any = 0;
       if (d.main) lines.push(one(d.main, ++n));
-      for (const x of d.extras || []) lines.push(one(x, ++n));
       for (const x of d.links || []) lines.push(one(x, ++n));
       return lines.join('\n');
     },

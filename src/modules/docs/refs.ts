@@ -1,19 +1,32 @@
-// 绑定管理：DocRef（项目/组/组内描述的文档覆盖）与组级附加文档列表。
+// 绑定管理：宿主 ext 里 DocRef{ref}（refId）的维护。
 //
-// **绑定与约定的关系**：默认全部走约定路径（repoDocRel / boardDocRel / groupNoteRel），
-// 绑定只是覆盖——最典型的场景是把组内描述绑到 Obsidian vault 里的一个文件（外部、只读）。
-// `--reset` 拆掉覆盖回到约定路径；拆绑定不动文档文件本身。
-//
-// 全部写路径走 mutateStore（与登记/看板同一把锁）。repos 的 store 事务经
-// repos-bridge 动态加载（模块分层规则，见 repos-bridge.js 文件头）。
-import * as paths from './paths.js';
+// v8 口径：宿主字段只存 refId；外部文件/目录先落一条 origin='external' 的 ref
+// （实际位置在 refs.locator），宿主只认 ref。所有写路径走 mutateStore，
+// 写完调用 syncRefIndex 重建索引。
 import { normalizeKey } from '../../shared/repo-key.js';
 import { reposBridge } from './repos-bridge.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
+import { ensureDocRef, refDocById } from '../../core/attachmentdb.js';
+import { getDb } from '../../core/db/index.js';
 import { withLinkMeta } from './docref.js';
 import type { DocRef } from './docref.js';
-import { readIntroSet } from './knowledge.js';
 import { syncRefIndex } from './ref-sync.js';
+
+/** ref / path 二选一 → DocRef{ref}；path 先登记成外部 ref。 */
+async function docRefOf({ ref, path }: { ref?: unknown; path?: unknown }): Promise<DocRef> {
+  const refId = String(ref || '').trim();
+  if (refId) {
+    if (!refDocById(getDb(), refId)) throw notFound('文档不存在: ' + refId);
+    return { ref: refId };
+  }
+  const abs = String(path || '').trim();
+  if (abs) {
+    const id = ensureDocRef(getDb(), { locator: abs });
+    if (!id) throw badInput('外部路径不能为空');
+    return { ref: id };
+  }
+  throw badInput('缺少文档：--ref <refId> 或 --path <外部绝对路径>');
+}
 
 // 看板定位（id / key / 名称）：boardKeyOf 由 bridge 注入（key 口径必须与 repos 完全一致）
 function findBoardIn(s: any, idOrKey: unknown, { normalizeKey: nk, boardKeyOf }: { normalizeKey: (k: unknown) => string; boardKeyOf: (v: any) => any }): any {
@@ -39,23 +52,23 @@ function makeRepoKeyIn({ normalizeKey: nk, deriveKey }: { normalizeKey: (k: unkn
   };
 }
 
-/** setDocRef / setNoteDocRef 的入参。 */
+/** setDocRef 的入参。 */
 export interface SetDocRefInput {
   repo?: string;
   board?: string;
-  rel?: string;
+  ref?: string;
   path?: string;
   reset?: boolean;
 }
 
 /**
- * 设置项目/组介绍的 DocRef 覆盖。
+ * 设置项目/组介绍的主篇。
  *   target: { repo: locator } 或 { board: locator }（二选一）
- *   ref:    { rel } | { path }；reset=true 拆覆盖回约定路径
+ *   doc:    refId 或外部路径；reset=true 清空主篇
  */
-export async function setDocRef({ repo, board, rel, path, reset }: SetDocRefInput = {}): Promise<any> {
+export async function setDocRef({ repo, board, ref, path, reset }: SetDocRefInput = {}): Promise<any> {
   if (!!repo === !!board) throw badInput('请给 --repo <仓库> 或 --board <看板>（二选一）');
-  const ref: DocRef | null = reset ? null : paths.assertDocRef({ rel, path });
+  const docRef: DocRef | null = reset ? null : await docRefOf({ ref, path });
   const { mutateStore, deriveKey, boardKeyOf } = await reposBridge();
   const repoKeyIn = makeRepoKeyIn({ normalizeKey, deriveKey });
   const nk = { normalizeKey, boardKeyOf };
@@ -64,13 +77,13 @@ export async function setDocRef({ repo, board, rel, path, reset }: SetDocRefInpu
       const rkey = repoKeyIn(s, repo);
       if (!rkey) throw notFound('repo 不存在: ' + repo);
       const r = s.repos.find((x: any) => deriveKey(x) === rkey);
-      if (ref) r.doc = ref;
+      if (docRef) r.doc = docRef;
       else delete r.doc;
       return { kind: 'repo', key: rkey, name: r.name, ref: r.doc || null };
     }
     const b = findBoardIn(s, board, nk);
     if (!b) throw notFound('看板不存在: ' + board);
-    if (ref) b.doc = ref;
+    if (docRef) b.doc = docRef;
     else delete b.doc;
     return { kind: 'board', key: boardKeyOf(b.name), name: b.name, ref: b.doc || null };
   });
@@ -82,20 +95,20 @@ export async function setDocRef({ repo, board, rel, path, reset }: SetDocRefInpu
 export interface SetNoteDocRefInput {
   board?: string;
   repo?: string;
-  rel?: string;
+  ref?: string;
   path?: string;
   reset?: boolean;
 }
 
 /**
- * 设置组内仓库描述的 DocRef 覆盖（repo 必须是该 board 的成员——含占位成员）。
- * reset=true 拆覆盖；拆掉后组内描述读约定路径（组内 note 字符串仍是摘要）。
+ * 设置组内仓库描述（repo 必须是该 board 的成员——含占位成员）。
+ * reset=true 清空；清空后该成员没有组内描述文档。
  */
-export async function setNoteDocRef({ board, repo, rel, path, reset }: SetNoteDocRefInput = {}): Promise<any> {
+export async function setNoteDocRef({ board, repo, ref, path, reset }: SetNoteDocRefInput = {}): Promise<any> {
   if (!board) throw badInput('缺少看板（id / key / 名称）');
   const locator = String(repo || '').trim();
   if (!locator) throw badInput('缺少仓库（id / key / 路径 / 名称）');
-  const ref: DocRef | null = reset ? null : paths.assertDocRef({ rel, path });
+  const docRef: DocRef | null = reset ? null : await docRefOf({ ref, path });
   const { mutateStore, deriveKey, boardKeyOf, boardRepoKeys } = await reposBridge();
   const repoKeyIn = makeRepoKeyIn({ normalizeKey, deriveKey });
   const nk = { normalizeKey, boardKeyOf };
@@ -107,7 +120,7 @@ export async function setNoteDocRef({ board, repo, rel, path, reset }: SetNoteDo
       throw conflict(`仓库「${rkey}」不在看板「${b.name}」里——组内描述只对成员有意义`);
     }
     if (!b.repoDocs) b.repoDocs = {};
-    if (ref) b.repoDocs[rkey] = ref;
+    if (docRef) b.repoDocs[rkey] = docRef;
     else delete b.repoDocs[rkey];
     return { board: b.id, boardName: b.name, boardKey: boardKeyOf(b.name), repoKey: rkey, ref: b.repoDocs[rkey] || null };
   });
@@ -115,12 +128,13 @@ export async function setNoteDocRef({ board, repo, rel, path, reset }: SetNoteDo
   return res;
 }
 
-// ─── 组级附加文档（有序列表，自有 rel 与外部 path 混排）────────────────
+// ─── 组级附加文档（有序列表）────────────────────────────────────────────
 
 /** setDocLink 的入参。 */
 export interface SetDocLinkInput {
   board?: string;
-  doc?: string;
+  ref?: string;
+  path?: string;
   note?: string;
   tag?: string;
   remove?: number;
@@ -129,17 +143,17 @@ export interface SetDocLinkInput {
 
 /**
  * 维护组的 docLinks。
- *   doc    --doc <rel|绝对路径>（盘符/绝对 → 外部，否则自有）
- *   note   条目说明
- *   tag    分类标签（如 qa——简介行的补充链接会渲染成小 chip；传空串=清掉）
+ *   --ref <refId> 或 --path <绝对路径>（外部只读）
+ *   note / tag  条目注解
  *   remove --remove <序号>（1 起）
  *   before --before <序号>（插到该条之前；缺省追加）
  *
- * 同 rel/path 重复添加 = 更新该条（note/tag 以本次为准）——改标签就是重加一遍。
+ * 同 ref 重复添加 = 更新该条（note/tag 以本次为准）。
  */
-export async function setDocLink({ board, doc, note, tag, remove, before }: SetDocLinkInput = {}): Promise<any> {
+export async function setDocLink({ board, ref, path, note, tag, remove, before }: SetDocLinkInput = {}): Promise<any> {
   if (!board) throw badInput('缺少看板（id / key / 名称）');
   const { mutateStore, boardKeyOf } = await reposBridge();
+  const docRef = remove === undefined ? await docRefOf({ ref, path }) : null;
   const res = await mutateStore((s: any) => {
     const b = findBoardIn(s, board, { normalizeKey, boardKeyOf });
     if (!b) throw notFound('看板不存在: ' + board);
@@ -158,14 +172,9 @@ export async function setDocLink({ board, doc, note, tag, remove, before }: SetD
       return { boardName: b.name, removed: describeLink(gone), count: b.docLinks.length };
     }
 
-    const ref = paths.assertDocRef(
-      /^[a-zA-Z]:[\\/]/.test(String(doc || '')) || String(doc || '').startsWith('/')
-        ? { path: String(doc).trim() }
-        : { rel: String(doc || '') }
-    );
     // 条目 = DocRef + 注解（note/tag）；合成逻辑收在 docref.withLinkMeta
-    const entry = withLinkMeta(ref, { note, tag });
-    const at = b.docLinks.findIndex((x: any) => (x.rel || '') === (entry.rel || '') && (x.path || '') === (entry.path || ''));
+    const entry = withLinkMeta(docRef!, { note, tag });
+    const at = b.docLinks.findIndex((x: any) => (x && x.ref) === entry.ref);
     if (at >= 0) b.docLinks.splice(at, 1);
     const want = before !== undefined ? idxOf(before) : -1;
     if (want >= 0) b.docLinks.splice(want, 0, entry);
@@ -178,15 +187,12 @@ export async function setDocLink({ board, doc, note, tag, remove, before }: SetD
 
 function describeLink(l: any): string {
   if (!l) return '(空)';
-  if (l.rel) return 'rel:' + l.rel;
-  return 'path:' + l.path;
+  return 'ref:' + String(l.ref || '');
 }
 
 // ─── 项目介绍文档集（多篇）────────────────────────────────────────────
 //
-// 主篇 repo.doc + 其余 repo.docLinks。为什么不止一篇：项目介绍往往分几块
-// （README 式总览 + 若干专题）；每一篇可以来自 自有树(rel) / 外部(path) /
-// **参考仓库内的文件**(ref + rel)——后者身份跟着仓库走，仓库没了引用自动失效。
+// 主篇 repo.doc + 其余 repo.docLinks；每篇都是 refId。
 
 /** 列项目的介绍文档集 */
 export async function listRepoDocs(locator: string): Promise<any> {
@@ -195,62 +201,39 @@ export async function listRepoDocs(locator: string): Promise<any> {
   const s = await loadStore();
   const r = s.repos.find((x: any) => deriveKey(x) === deriveKey(repo));
   const key = deriveKey(repo);
-  const links = r && Array.isArray(r.docLinks) ? r.docLinks : [];
-  // 介绍文档集：**主篇 + 其余各篇**（目录主篇优先 → 旧单文件回落）——#58
-  const set = await readIntroSet({
-    dirRel: paths.repoDocDirRel(key),
-    legacyRel: paths.repoDocRel(key),
-    ref: r && r.doc ? r.doc : null,
-    links,
-    warnings: [],
-    label: '项目介绍',
-  });
-  const main = set.main ? docRefOut(set.main) : null;
-  const extras = (set.extras || []).map((d) => ({ ...docRefOut(d), name: d.name || '', isReference: !!d.isReference }));
+  const { docSetOf } = await import('./brief.js');
+  const set = await docSetOf(r || {}, 'repo');
+  // 补 ref 别名：老调用方按 `ref` 取 refId（面板的简介轨只认 docId/refId）。
+  const withRef = (v: any): any => (v ? { ...v, ref: v.refId } : v);
   return {
     repo: { key, name: repo.name },
-    main,
-    extras,
-    links,
-    count: (main ? 1 : 0) + extras.length + links.length,
+    main: withRef(set.main),
+    extras: set.links.map(withRef),
+    links: set.links.map(withRef),
+    count: set.count,
   };
 }
 
-/** 文档集条目 → DocRef 形状（自有树给 rel，外部给 path） */
-function docRefOut(d: any): DocRef | null {
-  if (!d) return null;
-  if (d.rel) return { rel: d.rel };
-  if (d.docId && String(d.docId).startsWith('rel:')) return { rel: String(d.docId).slice(4) };
-  if (d.path) return { path: d.path };
-  if (d.abs) return { path: d.abs };
-  return null;
-}
-
-/** addRepoDoc 的入参（DocRef 形状 + 可选注解）。 */
+/** addRepoDoc 的入参（refId 或外部路径 + 可选注解）。 */
 export interface AddRepoDocInput {
-  rel?: string;
+  ref?: string;
   path?: string;
   note?: string;
   tag?: string;
 }
 
-/** 往项目的介绍文档集里加一篇（rel / path / ref+rel 三选一；note/tag 可选注解）。
- *
- * 同 rel/path 重复添加 = 更新该条（与组级 setDocLink 同一语义）——
- * 此前是盲目 push：改个说明就得先 remove 再 add，还顺手丢掉 note
- * （assertDocRef 只认 rel/path，注解要在这里显式贴回去）。
- */
+/** 往项目的介绍文档集里加一篇（同 ref 重复添加 = 更新注解）。 */
 export async function addRepoDoc(locator: string, raw: unknown): Promise<any> {
   const { getRepo, deriveKey, mutateStore } = await reposBridge();
   const repo = await getRepo(locator);
-  const docRef = paths.assertDocRef(raw);
-  const rawMeta = (raw && typeof raw === 'object' ? raw : {}) as { note?: unknown; tag?: unknown };
-  const entry = withLinkMeta(docRef, { note: rawMeta.note, tag: rawMeta.tag });
+  const input = (raw && typeof raw === 'object' ? raw : {}) as AddRepoDocInput;
+  const docRef = await docRefOf({ ref: input.ref, path: input.path });
+  const entry = withLinkMeta(docRef, { note: input.note, tag: input.tag });
   const res = await mutateStore((s: any) => {
     const r = s.repos.find((x: any) => deriveKey(x) === deriveKey(repo));
     if (!r) throw notFound('repo 不存在: ' + locator);
     if (!Array.isArray(r.docLinks)) r.docLinks = [];
-    const at = r.docLinks.findIndex((x: any) => (x.rel || '') === (entry.rel || '') && (x.path || '') === (entry.path || ''));
+    const at = r.docLinks.findIndex((x: any) => (x && x.ref) === entry.ref);
     if (at >= 0) r.docLinks.splice(at, 1);
     r.docLinks.push(entry);
     r.updatedAt = new Date().toISOString();
@@ -271,7 +254,9 @@ export async function removeRepoDoc(locator: string, index: unknown): Promise<an
     if (!r) throw notFound('repo 不存在: ' + locator);
     if (n === 1) {
       const gone = r.doc || null;
-      delete r.doc;
+      const next = Array.isArray(r.docLinks) ? r.docLinks.shift() : null;
+      if (next) r.doc = next;
+      else delete r.doc;
       r.updatedAt = new Date().toISOString();
       return { key: deriveKey(r), name: r.name, removed: gone };
     }

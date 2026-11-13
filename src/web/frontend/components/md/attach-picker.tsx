@@ -214,7 +214,7 @@ export default function AttachPicker({
       return;
     }
     if (a.kind === 'ref') {
-      const docId = a.refId ? 'ref:' + a.refId : docIdOfLocator(a.locator || a.relPath || '');
+      const docId = a.refId ? 'ref:' + a.refId : docIdOfLocator(a.locator || '');
       if (!docId) return;
       openBesideMain(m, {
         component: 'doc',
@@ -226,7 +226,7 @@ export default function AttachPicker({
 
   const openable = (a: Attachment) => {
     if (a.kind === 'task') return !!(a.topicKey && a.seq);
-    if (a.kind === 'ref') return !!(a.refId || a.locator || a.relPath);
+    if (a.kind === 'ref') return !!(a.refId || a.locator);
     return false;
   };
 

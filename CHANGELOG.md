@@ -2,6 +2,46 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.51.0] - 2026-11-13 ref 只按 id / locator 寻址，rel 概念彻底删除（v8）
+
+### Breaking
+
+- **删除 `refs.rel` 列与 `ux_refs_rel` 索引**：ref 的地址只剩两种——
+  `refs.id`（`ref_<16hex>`，DB 身份）与 `refs.locator`（外部文件 / URL 的实际位置）。
+  界面、CLI、模板、docId 一律不再出现文档路径，也不再有「约定路径」这层隐式寻址。
+- **不做运行时兼容**：旧程序读不了 v8 库，也不给旧形状留回退分支；
+  升级走**存储版本号 + 迁移脚本**（`db migrate`），升级前自动 `VACUUM INTO` 备份。
+- **导入导出格式升 v5**：`layout.refs` 带 `refId / origin / locator / desc`，
+  zip 内文档改按 `docs/<refId>.md` 落盘（不再按路径树）。
+- **CLI 契约**：`docs add` 删除（建 ref 走 `docs ref add`）；`docs bind` / `docs link` /
+  `docs notebind` / `repo doc add` 改成 `--ref <refId>` 或 `--path <外部绝对路径>`。
+- **`docs get` 只认 refId**（`ref:<id>` / 裸 id）；`path:<绝对路径>` 只用于外部目录里的裸文件。
+- **`ref_bindings` 新增 `tag` 列**：组内附加文档的分类标签从 `ext_doc_links.tag` 搬进绑定表。
+
+### Changed
+
+- **归属成为绑定表唯一语义**：宿主 `ext` 里旧的 `doc` / `docLinks` / `repoDocs`
+  全部迁成 `DocRef{ref}`，docId 统一 `ref:<refId>`；`ref_bindings` 是唯一的绑定真源。
+- **仓库 / 组的描述改为读文档集**：不再有「描述字符串」，一律是绑定文档的标题 + desc。
+- **显示名补齐摘要兜底**：正文标题 → desc → 正文首行摘要 → locator 末段 → refId。
+  路径删除后，没有 `# 标题` 的旧文档不再一律显示「未命名文档」。
+- **`refs.body_bytes` 跟正文同步**（原来只在迁移时写一次，列表页大小长期失真）。
+
+### Fixed
+
+- **`repo doc list` 的 `exists` 与其它视图口径一致**：统一为「有正文（或外部镜像）」，
+  并补 `title` / `missing` 字段；面板简介轨的标签不再退化成「主篇」。
+- **双链索引的外部 path 精确匹配**：比较时同样走 `normalizeWikiTarget`（剥 `.md`），
+  修掉「有目标文件却解析不到」的问题。
+
+### Notes
+
+- **数据库自动升级 v7 → v8**：迁移决策见 `docs/decisions/versions/2026-11-13-v8.md`；
+  升级前自动备份到 `~/.nx-kv/backups/`。
+- 验证：lint 0 error / typecheck / **919 单测** / 冒烟 / build 全通过；
+  真实库迁移后回归（`docs list` / `repo doc list` / `repo knowledge` / `docs bindings` /
+  导出导入往返）+ 浏览器实机验证：仓库页、文档检索、文档页均无路径与 `rel:` 文案。
+
 ## [0.50.0] - 2026-11-13 移除云端清单与登录，任务全面本机化（v7）
 
 ### Breaking

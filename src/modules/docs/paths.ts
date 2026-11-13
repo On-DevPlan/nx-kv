@@ -1,101 +1,16 @@
-// docs 自有树的路径权威：约定路径与段级 slug。
-// （DocRef / docId 校验在 docref.js——那里刻意不依赖 repos/service，见其文件头。）
+// docs 域的地址权威：docId 前缀与 DocRef 校验。
 //
-// 目录树承载语义（键位约定，导出 zip 原样带走）：
-//   repo/<key 按 / 分段>.md           项目介绍   repo/github.com/me/x.md
-//   board/<组 slug>.md                组介绍     board/nx系列.md
-//   group/<组 slug>/<key 分段>.md      组内描述   group/nx系列/github.com/me/x.md
-//   其余任意 .md                      自由文档（同样可索引/双链/绑定）
-//
-// **磁盘不再是文档来源**（v6 + DOCS_DIR 收口）：自有文档正文只从 `ref_bodies` 读，
-// mdfile 默认附件目录定义在 core/paths（环境变量名保持不变）。
-// 这里保留的是 **rel 的命名规则**，与文件系统无关。
-//
-// key 全局唯一（repos 模块保证）→ 约定路径不可能互相撞，不需要指纹后缀。
-// 段级 slug 只兜 Windows 的两个坑：段尾点（资源管理器拒绝创建）与保留设备名。
-import { normalizeKey } from '../../shared/repo-key.js';
-import { localKeyOf } from '../../core/keys.js';
+// v8 起不再有「自有树相对路径」：ref 的地址就是 refs.id（`ref_<16hex>`），
+// 外部文件/目录用 `path:<绝对路径>`（须在绑定闭包内）。
+// 历史文档树路径只存在于 refs.locator（迁移/核对用），运行时不按路径找文档。
+export {
+  assertRefId,
+  assertDocRef,
+  sanitizeDocRef,
+  ownDocId,
+  extDocId,
+} from './docref.js';
+export type { DocRef, DocRefWithMeta } from './docref.js';
 
-// Windows 保留设备名（不分大小写）：命中即追加下划线
-const RESERVED = new Set([
-  'con', 'prn', 'aux', 'nul',
-  'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
-  'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9',
-]);
-
-// 单段的 Windows 兜底：压尾点（尾点段无法创建）、保留名加 _、空段给占位名
-function fixWinSeg(seg: unknown): string {
-  const s = String(seg || '').replace(/\.+$/g, '');
-  if (!s) return 'x';
-  return RESERVED.has(s.toLowerCase()) ? s + '_' : s;
-}
-
-/** key/name 的一个分段 → 安全目录段（normalizeKey 已小写、已压非法字符） */
-export function docSeg(s: unknown): string {
-  return fixWinSeg(normalizeKey(s));
-}
-
-/** 组名的 slug（与 boardKeyOf 的派生同一套：localKeyOf，`/` 已压成 -） */
-export function boardSeg(boardName: unknown): string {
-  return fixWinSeg(localKeyOf(boardName).slice('local/'.length));
-}
-
-// ─── 约定路径（POSIX 相对路径，正斜杠）────────────────────────────────
-
-export function repoDocRel(repoKey: unknown): string {
-  return 'repo/' + String(repoKey || '').split('/').map(docSeg).join('/') + '.md';
-}
-
-export function boardDocRel(boardName: unknown): string {
-  return 'board/' + boardSeg(boardName) + '.md';
-}
-
-export function groupNoteRel(boardName: unknown, repoKey: unknown): string {
-  return (
-    'group/' + boardSeg(boardName) + '/' +
-    String(repoKey || '').split('/').map(docSeg).join('/') + '.md'
-  );
-}
-
-// DocRef / docId 校验（docref.js）：这里转发导出，调用方统一从 paths 拿
-export { assertOwnedRel, assertDocRel, assertDocRef, sanitizeDocRef, parseDocId, ownDocId, extDocId } from './docref.js';
-export type { DocRef, DocRefWithMeta, ParsedDocId } from './docref.js';
-
-// ─── 介绍目录（多篇）──────────────────────────────────────────────────
-//
-// 项目的介绍、组的介绍、组内成员的描述，都不再只是**一篇**文件，而是一个
-// **目录**：
-//
-//   repo/<key>/index.md          主介绍
-//   repo/<key>/reference/*.md    reference 补充说明
-//   repo/<key>/*.md              其余补充说明
-//
-// 目录里的文档彼此可以用 [[双链]] 互指（双链索引覆盖自有树全部 .md，
-// 按文件名唯一命中即解析）。旧的单文件路径（repo/<key>.md）仍然可读——
-// 读的时候先找目录主篇，找不到回落旧单文件。
-
-/** 介绍目录内的主篇文件名 */
-export const DOC_MAIN = 'index.md';
-
-/** 介绍目录里的 reference 补充说明子目录 */
+/** 外部目录里被视为「参考说明」的子目录名（读取时打 isReference 标记）。 */
 export const DOC_REFERENCE_DIR = 'reference';
-
-/** 项目介绍目录：repo/<key 分段> */
-export function repoDocDirRel(repoKey: unknown): string {
-  return 'repo/' + String(repoKey || '').split('/').map(docSeg).join('/');
-}
-
-/** 组介绍目录：board/<组 slug> */
-export function boardDocDirRel(boardName: unknown): string {
-  return 'board/' + boardSeg(boardName);
-}
-
-/** 组内成员描述目录：group/<组 slug>/<key 分段> */
-export function groupNoteDirRel(boardName: unknown, repoKey: unknown): string {
-  return 'group/' + boardSeg(boardName) + '/' + String(repoKey || '').split('/').map(docSeg).join('/');
-}
-
-/** 目录主篇的 rel */
-export function docMainRel(dirRel: string): string {
-  return dirRel + '/' + DOC_MAIN;
-}

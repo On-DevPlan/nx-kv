@@ -77,7 +77,7 @@ function taskTitleOf(body: unknown): string {
  */
 export function targetLookupsOf(db: any, rows: any): ResourceLookups {
   const tasks = new Map<string, any>();
-  const refs = new Map<string, { refId: string; rel: string; desc: string }>();
+  const refs = new Map<string, { refId: string; desc: string; locator: string }>();
   if (!db) return { tasks, refs };
   const taskSql = `SELECT t.id, t.seq, t.status, t.body, t.deleted_at,
                      k.key AS topicKey, k.name AS topicName
@@ -130,8 +130,8 @@ export function targetLookupsOf(db: any, rows: any): ResourceLookups {
     if (baseKind(row) === 'ref') {
       const id = String(meta.refId || row.targetKey || '');
       if (!id || refs.has(id)) continue;
-      const r = db.get('SELECT id, rel, "desc" FROM refs WHERE id = :id', { id });
-      if (r) refs.set(id, { refId: String(r.id), rel: String(r.rel || ''), desc: String(r.desc || '') });
+      const r = db.get('SELECT id, locator, "desc" FROM refs WHERE id = :id', { id });
+      if (r) refs.set(id, { refId: String(r.id), desc: String(r.desc || ''), locator: String(r.locator || '') });
     }
   }
   return { tasks, refs };
@@ -174,7 +174,7 @@ export function fileStateOf(a: any, { localPath = '', storage = '', name = '', s
 /** 附件视图模型的查找表（task / ref 的补充信息） */
 export interface ResourceLookups {
   tasks?: Map<string, any>;
-  refs?: Map<string, { refId: string; rel: string; desc: string }>;
+  refs?: Map<string, { refId: string; desc: string; locator: string }>;
 }
 
 export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
@@ -317,9 +317,10 @@ export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
   const info = lookups.refs && lookups.refs.get(String(meta.refId || row.targetKey || ''));
   const refId = String(meta.refId || row.targetKey || (info && info.refId) || '');
   const desc = String((info && info.desc) || '');
-  const rel = String((info && info.rel) || '');
+  const locator = String((info && info.locator) || '');
   const storedName = String(row.name || '').replace(/\.md$/i, '').trim();
-  const title = storedName || desc || (rel ? rel.split('/').pop() || '' : '') || refId || '未命名文档';
+  const locName = locator.replace(/\\/g, '/').split('/').pop()?.replace(/\.md$/i, '') || '';
+  const title = storedName || desc || locName || refId || '未命名文档';
   const readCmd = refId ? `nx-kv docs get --ref ${refId}` : '';
   return {
     ...base,

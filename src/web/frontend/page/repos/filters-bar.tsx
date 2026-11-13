@@ -1,6 +1,6 @@
 // 分组筛选器行：主表 = 开发仓库；点 chip 只看那个组的成员（再点取消）。
 // 行内的分组 chips 也会落到同一个 filter 上。
-// 检索框一个输入同时搜仓库名/路径、分组名、文档标题/rel —— 管理页不该靠长列表找人。
+// 检索框一个输入同时搜仓库名/路径、分组名、文档标题/描述 —— 管理页不该靠长列表找人。
 import { Button } from '../../components/button/index.jsx';
 import type { BoardRecord } from './repo-table.js';
 

@@ -25,8 +25,12 @@
  *
  * v7（2026-11-12）：refs 增加 desc（短描述）。ref 不再当实体文件，列表与提示词
  * 模板以 desc 作为快速定位标签；不新增任何路径 / 文件名字段。
+ *
+ * v8（2026-11-13）：删除 refs.rel。ref 的地址只有 id（DB 身份）与 locator（外部
+ * 实际位置）；历史文档树路径在迁移时解析成显式 ref 绑定，运行时不再按路径找文档。
+ * ref_bindings 增加 tag（原 docLinks 的分类标签）。
  */
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 /**
  * 运行时最低 Node 版本。

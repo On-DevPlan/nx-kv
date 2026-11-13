@@ -126,7 +126,7 @@ function inline(s: string, knownNames: Set<string> | null, refTitles: Map<string
 /**
  * @param src
  * @param attachments 附件清单（图片按名字内嵌、ref 条目提供标题映射）
- * @param knownNames 双链已解析名集合（normalizeWikiTarget 口径，含 rel/path 与文件名）
+ * @param knownNames 双链已解析名集合（normalizeWikiTarget 口径，含 path 与文件名）
  */
 export function renderMarkdownHtml(
   src: string,

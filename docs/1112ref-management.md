@@ -1,6 +1,13 @@
 # ref 管理体系
 
-> 事实来源：`src/core/db/migrations/*.sql`、`src/modules/docs/*`、`src/modules/repos/*` 与当前真实库（`~/.nx-kv/nxkv.db`，只读快照）。
+> ⚠️ **历史快照（2026-11-12 写于 v6 之前）**：本文描述的是「正文在文件、DB 只存索引、
+> 有约定路径（`repo/<key>/index.md` 等）」那一代模型，**已经不是当前实现**。
+> 当前模型：ref 的地址只有 `refs.id` 与 `refs.locator`（没有逻辑名、没有约定路径），
+> 正文在 `ref_bodies`，归属以 `ref_bindings` 为唯一真源。
+> 见 [decisions/versions/2026-11-13-v8.md](decisions/versions/2026-11-13-v8.md)
+> 与 [glossary.md](glossary.md)。下文保留原文，供追溯当时的问题与结论。
+
+> 事实来源：`src/core/db/migrations/*.sql`、`src/modules/docs/*`、`src/modules/repos/*` 与当时的真实库（`~/.nx-kv/nxkv.db`，只读快照）。
 
 ## 0. 一句话模型
 

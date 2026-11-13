@@ -79,7 +79,7 @@ export function useWikiNav(model?: Model | null): WikiNav {
       if (hit && 'candidates' in hit) {
         return toast(`「${target}」同名文档多份：${hit.candidates.join('、')}`);
       }
-      toast(`未找到「${target}」——可用 nx-kv docs add <rel> 创建`);
+      toast(`未找到「${target}」——在仓库/组面板点 ＋ 新建文档后再引用`);
     },
     [ensureIndex, openByDocId, toast]
   );

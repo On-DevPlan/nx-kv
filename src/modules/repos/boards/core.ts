@@ -11,8 +11,6 @@ import {
   normalizeKey,
 } from '../service.js';
 import { badInput, notFound, conflict } from '../../../core/errors.js';
-import { boardDocDirRel, boardDocRel, groupNoteRel } from '../../docs/paths.js';
-import { readIntroSet } from '../../docs/knowledge.js';
 import repoLayer from '../repo/index.js';
 import type { BoardEntry, RepoHint, BoardRefEntry, Store } from '../repo/rows.js';
 
@@ -20,20 +18,14 @@ const repo = repoLayer;
 
 export const cleanText = (v: unknown): string => String(v || '').trim();
 
-/** introRefOut 的返回：自有树给 rel，外部给 path。 */
-export interface IntroRefOut {
-  rel?: string;
-  path?: string;
-}
-
-/** 介绍文档集条目 → DocRef 形状（自有树给 rel，外部给 path） */
-function introRefOut(d: any): IntroRefOut | null {
-  if (!d) return null;
-  if (d.rel) return { rel: d.rel };
-  if (d.docId && String(d.docId).startsWith('rel:')) return { rel: String(d.docId).slice(4) };
-  if (d.path) return { path: d.path };
-  if (d.abs) return { path: d.abs };
-  return null;
+/** 组介绍的主篇（面板入口用）。 */
+export interface IntroMainOut {
+  refId: string;
+  docId: string;
+  title: string;
+  desc: string;
+  note: string;
+  tag: string;
 }
 
 // 组内描述：同一个仓库在不同看板里的角色可以各不相同（「fr 组里它是 API 契约方」，
@@ -51,9 +43,8 @@ export interface BoardMemberView {
   remote: string;
   type: string;
   note: string;
-  /** 组内描述文档（绑定优先，缺省约定路径）——前端点开 doc 页签用 */
-  noteDocRel: string;
-  noteDocPath: string;
+  /** 组内描述文档（ref:<refId>）；没有绑定为空串 */
+  noteDocId: string;
   /** 本地有没有这条登记 */
   present: boolean;
   /** 有远程地址 → 可以一键 clone 补齐 */
@@ -78,9 +69,8 @@ function memberView(s: Store, b: BoardEntry, rkey: string, fallback: RepoHint | 
     remote: local ? local.remote || '' : (fallback && fallback.remote) || '',
     type: local ? local.type || 'dev' : (fallback && fallback.type) || 'dev',
     note,
-    // 组内描述文档（绑定优先，缺省约定路径）——前端点开 doc 页签用
-    noteDocRel: (b.repoDocs || {})[rkey]?.rel || groupNoteRel(b.name, rkey),
-    noteDocPath: (b.repoDocs || {})[rkey]?.path || '',
+    // 组内描述文档（ref:<refId>）——前端点开 doc 页签用
+    noteDocId: (b.repoDocs || {})[rkey]?.ref ? 'ref:' + (b.repoDocs || {})[rkey].ref : '',
     present: !!local,
     clonable: !!(local ? local.remote : fallback && fallback.remote),
     id: local ? local.id : '',
@@ -104,11 +94,10 @@ export interface BoardListEntry {
   name: string;
   desc: string;
   key: string;
-  /** 组介绍文档绑定（docRel）与外部绑定路径（docPath） */
-  docRel: string;
-  docPath: string;
-  /** 组级附加文档列表 */
-  docLinks: any[];
+  /** 组介绍主篇（ref:<refId>）；没有绑定为空串 */
+  docId: string;
+  /** 组文档总篇数（主篇 + 补充篇） */
+  docCount: number;
   /** 组级参考仓库（v4）：组内所有仓库共享 */
   refs: BoardRefEntry[];
   repos: BoardMemberView[];
@@ -133,20 +122,24 @@ export async function listBoards(): Promise<ListBoardsResult> {
   const s = await loadStore();
   const inBoard = new Set(s.boards.flatMap((b) => boardRepoKeys(b, s)));
   const reposOf = (b: BoardEntry) => membersOf(s, b);
-  return {
-    boards: s.boards.map((b) => ({
+  const { docSetOf } = await import('../../docs/brief.js');
+  const boards: BoardListEntry[] = [];
+  for (const b of s.boards) {
+    const docs = await docSetOf(b, 'board');
+    boards.push({
       id: b.id,
       name: b.name,
       desc: b.desc,
       key: storedBoardKey(b),
-      // 组介绍文档与组级附加文档列表（绑定优先；前端渲染介绍 md 与 docLinks chips）
-      docRel: b.doc?.rel || boardDocRel(b.name),
-      docPath: b.doc?.path || '',
-      docLinks: Array.isArray(b.docLinks) ? b.docLinks : [],
+      docId: docs.main ? docs.main.docId : '',
+      docCount: docs.count,
       // 组级参考仓库（v4）：组内所有仓库共享
       refs: Array.isArray(b.refs) ? b.refs : [],
       repos: reposOf(b),
-    })),
+    });
+  }
+  return {
+    boards,
     // 未分组 = 有登记但不在任何看板里（占位成员不算——它们在组里）
     unassigned: s.repos.filter((r) => !inBoard.has(deriveKey(r))).map((r) => ({
       id: r.id,
@@ -164,13 +157,12 @@ export interface GetBoardResult {
   name: string;
   desc: string;
   key: string;
-  docRel: string;
-  docPath: string;
-  /** 介绍文档集：主篇（目录 index.md 优先）+ 其余各篇 */
-  introMain: IntroRefOut | null;
-  introExtras: Array<IntroRefOut & { name: string }>;
+  /** 组介绍主篇（ref:<refId>）；没有绑定为空串 */
+  docId: string;
+  /** 介绍文档集：主篇 + 其余各篇 */
+  introMain: IntroMainOut | null;
+  introExtras: Array<IntroMainOut & { name: string }>;
   introCount: number;
-  docLinks: any[];
   refs: BoardRefEntry[];
   repos: BoardMemberView[];
 }
@@ -182,27 +174,33 @@ export async function getBoard(idOrKey: unknown): Promise<GetBoardResult> {
   if (!b) b = s.boards.find((x) => storedBoardKey(x) === normalizeKey(raw));
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!b) throw notFound('看板不存在: ' + raw);
-  // 组介绍是**文档集**（主篇 + 其余各篇），不是孤立的一篇——#58
-  const set = await readIntroSet({
-    dirRel: boardDocDirRel(b.name),
-    legacyRel: boardDocRel(b.name),
-    ref: b.doc || null,
-    links: b.docLinks,
-    warnings: [],
-    label: `组介绍·${b.name}`,
-  });
+  // 组介绍是**文档集**（主篇 + 其余各篇）——#58
+  const { docSetOf } = await import('../../docs/brief.js');
+  const set = await docSetOf(b, 'board');
   return {
     id: b.id,
     name: b.name,
     desc: b.desc,
     key: storedBoardKey(b),
-    docRel: b.doc?.rel || boardDocRel(b.name),
-    docPath: b.doc?.path || '',
-    // 介绍文档集：主篇（目录 index.md 优先）+ 其余各篇
-    introMain: set.main ? introRefOut(set.main) : null,
-    introExtras: (set.extras || []).map((d: any) => ({ ...introRefOut(d), name: d.name || '' })),
+    docId: set.main ? set.main.docId : '',
+    introMain: set.main ? {
+      refId: set.main.refId,
+      docId: set.main.docId,
+      title: set.main.title,
+      desc: set.main.desc,
+      note: set.main.note,
+      tag: set.main.tag,
+    } : null,
+    introExtras: set.links.map((d) => ({
+      refId: d.refId,
+      docId: d.docId,
+      title: d.title,
+      desc: d.desc,
+      note: d.note,
+      tag: d.tag,
+      name: d.title,
+    })),
     introCount: set.count,
-    docLinks: Array.isArray(b.docLinks) ? b.docLinks : [],
     refs: Array.isArray(b.refs) ? b.refs : [],
     repos: membersOf(s, b),
   };
@@ -224,7 +222,7 @@ export interface CreateBoardInput {
   key?: unknown;
 }
 
-export async function createBoard({ name, desc, key }: CreateBoardInput = {}): Promise<CreateBoardResult> {
+export async function createBoard({ name, desc, key }: CreateBoardInput = {}, opts: { seedDoc?: boolean } = {}): Promise<CreateBoardResult> {
   const nm = cleanText(name);
   if (!nm) throw badInput('看板名称不能为空');
   const b = await mutateStore((s) => {
@@ -245,7 +243,8 @@ export async function createBoard({ name, desc, key }: CreateBoardInput = {}): P
     return { id: board.id, name: board.name, desc: board.desc, key: fk, repos: [] as BoardMemberView[] };
   });
   // 描述是文档：初始描述写成组介绍的主篇（已有就不动），摘要由回写刷新
-  if (cleanText(desc)) await writeBoardDocContent({ name: nm }, desc);
+  // 导入路径自带文档（zip 还原正文 + layout 的绑定），不能再按 desc 生成一篇。
+  if (cleanText(desc) && opts.seedDoc !== false) await writeBoardDocContent({ name: nm }, desc);
   return b;
 }
 
@@ -275,11 +274,11 @@ export async function updateBoard(idOrKey: unknown, { name, desc }: UpdateBoardI
     if (nm !== undefined) b.name = nm;
     // 改名只动显示名：冻结 key 不变（成员边 / ref 绑定 / topics.group_key 都指它）。
     // （updateBoard 不接受 key 参数 —— key 是身份，改身份没有入口。）
-    // 领域描述同样是文档：写正文用 docs set，换绑主篇用 docs bind --board
+    // 领域描述同样是文档：改正文用 docs update --ref，换绑主篇用 docs bind --board
     if (desc !== undefined) {
       throw badInput(
-        '描述已改为文档（不再是字符串）：改正文用 `docs set board/<组>.md`，' +
-        '换绑主篇用 `docs bind --board <看板> --rel <路径>`'
+        '描述已改为文档（不再是字符串）：改正文用 `docs update --ref <refId> --body …`，' +
+        '换绑主篇用 `docs bind --board <看板> --ref <refId>`'
       );
     }
     return { id: b.id, name: b.name, desc: b.desc, key: storedBoardKey(b) };
@@ -350,17 +349,20 @@ export async function removeBoard(idOrKey: unknown): Promise<RemoveBoardResult> 
 }
 
 /**
- * 看板的领域描述写进 board/<组>.md（文档是权威）。已有文档就不动——
+ * 看板的领域描述写成组介绍主篇（文档是权威）。已有主篇就不动——
  * 重复 createBoard（导入/补建）不该把写过的组介绍冲掉。
  */
 async function writeBoardDocContent(board: { name: string }, text: unknown): Promise<string> {
-  const { boardDocRel } = await import('../../docs/paths.js');
-  const store = await import('../../docs/store.js');
-  const { writeBackSummary } = await import('../../docs/seed.js');
-  const rel = boardDocRel(board.name);
-  if (await store.ownDocExists(rel)) return rel;
+  const { createRef, updateDoc } = await import('../../docs/service.js');
+  const { setDocRef } = await import('../../docs/refs.js');
+  const { summaryFromMd } = await import('../../docs/seed.js');
+  const created = await createRef({ owner: 'group', group: board.name });
   const body = `# ${board.name}\n\n${String(text || '').trim()}\n`;
-  await store.writeOwnDoc(rel, body);
-  await writeBackSummary(rel, body);
-  return rel;
+  await updateDoc({ ref: 'ref:' + created.refId, body });
+  await setDocRef({ board: board.name, ref: created.refId });
+  await mutateStore((s) => {
+    const b = s.boards.find((x) => String(x.name) === board.name);
+    if (b) b.desc = summaryFromMd(body);
+  });
+  return created.refId;
 }

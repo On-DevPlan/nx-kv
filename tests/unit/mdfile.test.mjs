@@ -29,6 +29,7 @@ const { annotateTaskDelivery, attachToTask, attachmentInstruction, listTaskAttac
   '../../src/modules/tasktool/attach.js'
 );
 const {
+  ensureDocRef,
   ensureMdfileAttachment,
   listMdfiles,
   mdfileAttachmentId,
@@ -40,6 +41,17 @@ const {
 const { getDb, closeDb } = await import('../../src/core/db/index.js');
 const store = await import('../../src/modules/docs/store.js');
 const docsMod = (await import('../../src/modules/docs/index.js')).default;
+
+// v8：宿主文档只按 refId 寻址（没有 rel / 路径）；正文进 ref_bodies。
+let hostSeq = 0;
+async function makeHostDoc(md) {
+  hostSeq += 1;
+  const id = 'ref_' + String(hostSeq).padStart(16, '0');
+  ensureDocRef(getDb(), { ref: id });
+  await store.writeOwnDoc(id, md);
+  return id;
+}
+const hostId = await makeHostDoc('# A\n\n原文');
 
 const action = (id) => {
   const a = docsMod.actions.find((x) => x.id === id);
@@ -156,14 +168,13 @@ test('readMdfile：正常读到正文；内容漂移只报 stale 不改库；缺
 });
 
 test('docs link-file：只登记并挂附件区，正文逐字节不变', async () => {
-  await store.writeOwnDoc('notes/a.md', '# A\n\n原文');
-  const before = await store.readOwnDoc('notes/a.md');
+  const before = await store.readOwnDoc(hostId);
   const p = makeMd('linked.md', '# 外部方案');
-  const r = await action('doc.link-file').run({ ref: 'notes/a.md', path: p, note: '方案原文' });
+  const r = await action('doc.link-file').run({ ref: hostId, path: p, note: '方案原文' });
   assert.equal(r.attachmentId, mdfileAttachmentId(p));
-  assert.equal(await store.readOwnDoc('notes/a.md'), before, '正文必须逐字节不变');
+  assert.equal(await store.readOwnDoc(hostId), before, '正文必须逐字节不变');
 
-  const listed = await action('doc.attachments').run({ ref: 'notes/a.md' });
+  const listed = await action('doc.attachments').run({ ref: hostId });
   const a = listed.attachments.find((x) => x.id === r.attachmentId);
   assert.ok(a, '附件区必须能查到');
   assert.equal(a.kind, 'mdfile');
@@ -172,18 +183,16 @@ test('docs link-file：只登记并挂附件区，正文逐字节不变', async 
 });
 
 test('docs link-file 允许指向 mdfile 默认目录内的 md（只能经 attach 访问）', async () => {
-  await store.writeOwnDoc('notes/a.md', '# 宿主');
-  await store.writeOwnDoc('notes/inside.md', '# 默认目录内');
   const inside = join(docsRoot, 'notes', 'inside.md');
   mkdirSync(dirname(inside), { recursive: true });
   writeFileSync(inside, '# 默认目录内的 md');
-  const r = await action('doc.link-file').run({ ref: 'notes/a.md', path: inside });
+  const r = await action('doc.link-file').run({ ref: hostId, path: inside });
   assert.match(r.attachmentId, /^att_mdfile_[0-9a-f]{16}$/);
 });
 
 test('docs mdfile / mdfiles：读正文、列台账、失效过滤', async () => {
   const p = makeMd('list.md', '# 台账');
-  const r = await action('doc.link-file').run({ ref: 'notes/a.md', path: p });
+  const r = await action('doc.link-file').run({ ref: hostId, path: p });
 
   const read = await action('doc.mdfile').run({ attachment: r.attachmentId });
   assert.equal(read.body, '# 台账');

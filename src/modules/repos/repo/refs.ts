@@ -10,8 +10,6 @@
 // 绑定命令（repo bind-topics）落库前先跑 rebuildRefIndex 把索引补齐。
 import { db } from './open.js';
 import { refIdOf } from '../../../core/db/import-json.js';
-import { syncRefAttachments } from '../../../core/attachmentdb.js';
-import { SENTINEL_REPO_KEY } from './rows.js';
 import type { DbApi, Row } from '../../../core/db/driver.js';
 
 /** 稳定 ref id：locator 的纯函数（同一份文档换台机器也是同一个 id）。 */
@@ -117,70 +115,4 @@ export function listBindingsOfHost(conn: DbApi, { repoKey, groupKey = null }: { 
   );
 }
 
-// ─── 索引重建（绑定命令的「先建 refs」一步）────────────────────────────
-
-/**
- * 把 docs 树与约定路径补进索引（幂等；在**外层事务内**跑 —— docsFiles 由
- * 调用方在事务外扫好，同步 fs 不进事务体）。
- *
- *   1. docs 树每个 .md → refs 一行（默认 state='orphan'）；
- *   2. 每个登记仓库 → 约定主篇（`repo/<key>/index.md`，旧单文件回落 `repo/<key>.md`）；
- *   3. 每个组 → `board/<seg>/index.md`（回落 `board/<seg>.md`）；
- *      组内每个成员 → `group/<seg>/<repoKey>/index.md`（回落 `.md`）。
- *   4. 命中约定路径的 ref：state 清空 + 绑定落表。
- *
- * 与 import-json.importRefs 同一口径（docs 模块读文档时的回落顺序）。
- * @returns {{refs: number, bindings: number}}
- */
-export function rebuildRefIndex(
-  conn: DbApi,
-  { docsFiles = [], docsBodies = null, atMs }: { docsFiles?: string[]; docsBodies?: Map<string, string> | null; atMs: number }
-): { refs: number; bindings: number } {
-  let refCount = 0;
-  let bindCount = 0;
-  const fileSet = new Set(docsFiles.map(String));
-
-  for (const locator of fileSet) {
-    const before = conn.get('SELECT id FROM refs WHERE id = :id', { id: refIdOf(locator) });
-    if (!before) refCount += 1;
-    upsertRef(conn, { id: refIdOf(locator), type: 'md', locator, state: 'orphan', atMs });
-    // 索引重建顺带重扫正文：外部改动（手工丢进 docs 树）也能把资源关系补齐。
-    if (docsBodies && docsBodies.has(locator)) {
-      syncRefAttachments(conn, { refId: refIdOf(locator), text: docsBodies.get(locator), atMs });
-    }
-  }
-
-  const bind = (repoKey: string, groupKey: string | null, locator: string, type: string, position = 0, note = ''): boolean => {
-    if (!fileSet.has(locator)) return false;
-    const id = refIdOf(locator);
-    conn.run("UPDATE refs SET state = '' WHERE id = :id", { id });
-    putBinding(conn, { repoKey, groupKey, refId: id, type, position, note, atMs });
-    bindCount += 1;
-    return true;
-  };
-
-  const repos = conn.all("SELECT key FROM repos WHERE type <> 'group' AND deleted_at IS NULL AND key <> :s", {
-    s: SENTINEL_REPO_KEY,
-  });
-  for (const r of repos) {
-    const key = String(r.key);
-    if (bind(key, null, `repo/${key}/index.md`, 'repo')) continue;
-    bind(key, null, `repo/${key}.md`, 'repo');
-  }
-
-  const groups = conn.all("SELECT key, name FROM repos WHERE type = 'group' AND deleted_at IS NULL");
-  const segOf = (groupKey: unknown): string => String(groupKey || '').slice('group/'.length);
-  for (const g of groups) {
-    const gk = String(g.key);
-    const seg = segOf(gk);
-    if (bind(gk, null, `board/${seg}/index.md`, 'group')) continue;
-    bind(gk, null, `board/${seg}.md`, 'group');
-    for (const m of conn.all('SELECT repo_key FROM repo_group_members WHERE group_key = :g ORDER BY position, rowid', { g: gk })) {
-      const rk = String(m.repo_key);
-      if (bind(rk, gk, `group/${seg}/${rk}/index.md`, 'group_repo')) continue;
-      bind(rk, gk, `group/${seg}/${rk}.md`, 'group_repo');
-    }
-  }
-
-  return { refs: refCount, bindings: bindCount };
-}
+// ─── ref_bindings ─────────────────────────────────────────────────────

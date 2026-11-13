@@ -36,7 +36,6 @@ export interface Attachment {
   mime?: string;
   isImage?: boolean;
   locator?: string;
-  relPath?: string;
   refId?: string;
   taskId?: string | number;
   topicKey?: string;
@@ -93,7 +92,7 @@ export interface TaskOption {
 
 /** 可关联的文档（ref）：弹窗自己拉一份，或由宿主传入。 */
 export interface DocOption {
-  /** 提交给 attach 的文档地址：refId / ref:<id> / rel:<路径>（旧数据） */
+  /** 提交给 attach 的文档地址：refId / ref:<id> */
   ref: string;
   /** 列表主标签：desc（缺省回落到文档标题） */
   title?: string;
@@ -140,12 +139,12 @@ export function contentUrl(id: unknown) {
   return `/api/file/content/${encodeURIComponent(String(id))}`;
 }
 
-/** 决策文档 locator（后端存的是裸路径）→ 面板 docId（rel: / path:）。 */
+/** 文档地址 → 面板 docId（ref: / path:）。ref 条目请直接用 refId，不走这里。 */
 export function docIdOfLocator(locator: unknown) {
   const s = String(locator || '').replace(/\\/g, '/');
-  if (/^(rel|path):/.test(s)) return s;
+  if (/^(ref|path):/.test(s)) return s;
   if (/^\/|[A-Za-z]:\//.test(s)) return `path:${s}`;
-  return s ? `rel:${s}` : '';
+  return '';
 }
 
 /** 统一展示形状：服务端两类清单字段不同，这里收口成一套。 */
@@ -166,7 +165,7 @@ export function normAttachment(a: Attachment): NormalizedAttachment {
     targetSeq: a.targetSeq ?? (a.meta && a.meta.seq) ?? null,
     targetKey: a.targetKey || (a.meta && a.meta.topicKey) || '',
     targetRef: a.targetKey || (a.meta && a.meta.refId) || '',
-    locator: a.locator || a.relPath || (a.meta && a.meta.locator) || '',
+    locator: a.locator || (a.meta && a.meta.locator) || '',
   };
 }
 

@@ -1,7 +1,7 @@
-// v7 直接 ref：desc + 归属（refs + ref_bodies + ref_bindings）。
+// 直接 ref：desc + 归属（refs + ref_bodies + ref_bindings）。
 //
-// 口径（任务 #97）：ref 是 DB 实体，没有路径 / 文件名 / 扩展名；新建只给
-// desc 与宿主，正文为空、可立即编辑；归属直接写 ref_bindings，整表重建不丢。
+// 口径（v8）：ref 是 DB 实体，地址只有 id；没有 rel / 路径 / 文件名 / 扩展名。
+// 新建只给 desc 与宿主，正文为空、可立即编辑；归属同时写宿主 ext 与 ref_bindings。
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -31,21 +31,22 @@ after(() => {
 const one = (sql, params) => getDb().get(sql, params);
 const all = (sql, params) => getDb().all(sql, params);
 
-test('v7：refs 有 desc 列且默认空串', () => {
+test('v8：refs 有 desc 列且没有 rel 列', () => {
   const cols = all('SELECT name, dflt_value, "notnull" AS nn FROM pragma_table_info(\'refs\')');
   const desc = cols.find((c) => c.name === 'desc');
   assert.ok(desc, 'refs.desc 必须存在');
   assert.equal(Number(desc.nn), 1);
   assert.equal(String(desc.dflt_value), "''");
+  assert.ok(!cols.some((c) => c.name === 'rel'), 'v8 起 refs 不再有 rel');
 });
 
-test('createRef(repo)：rel=id、locator 为空、空正文落行、归属落 ref_bindings', async () => {
+test('createRef(repo)：地址就是 id、locator 为空、空正文落行、归属落 ref_bindings', async () => {
   await addRepo({ path: join(dir, 'r1'), name: 'r1', key: 'github.com/me/r1' });
   const r = await createRef({ owner: 'repo', repo: 'github.com/me/r1', desc: '需求说明' });
   assert.match(r.refId, /^ref_[0-9a-f]{16}$/);
 
-  const row = one('SELECT id, rel, locator, origin, state, "desc" FROM refs WHERE id = :id', { id: r.refId });
-  assert.equal(row.rel, row.id, 'rel 只作内部唯一键，等于 id');
+  const row = one('SELECT id, locator, origin, state, "desc" FROM refs WHERE id = :id', { id: r.refId });
+  assert.equal(row.id, r.refId, 'ref 的地址只有 id');
   assert.equal(row.locator, '', '不写任何路径');
   assert.equal(row.origin, 'own');
   assert.equal(row.state, '', '有归属 → 不是 orphan');

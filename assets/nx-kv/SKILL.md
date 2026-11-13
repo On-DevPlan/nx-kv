@@ -134,7 +134,7 @@ nx-kv timegoal check --task task:<topicKey>:<taskId> --summary "<本轮现状>"
 ```bash
 nx-kv docs get --ref <refId> --json      # 取文档正文（按 refId）
 nx-kv docs list --json                   # 文档列表
-nx-kv docs bindings --repo <key> --json  # 这篇仓库绑了哪些文档
+nx-kv docs bindings --host <repoKey> --json  # 这个仓库的文档集
 ```
 
 ref 本身**不是附件、没有本地路径**：它是一篇库内文档 + 归属（仓库 / 组）与一行 desc。

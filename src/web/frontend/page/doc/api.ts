@@ -59,22 +59,17 @@ export function getDocItem(ref: string): Promise<DocItem> {
   return api('/api/docs/item?ref=' + encodeURIComponent(ref));
 }
 
-/** 改文档正文 / 描述（PATCH /api/docs/item；返回带 summary 摘要与 desc）。 */
+export interface DocItemBody {
+  ref: string;
+  body?: string;
+}
+
+/** 写文档正文 / 描述（PATCH /api/docs/item）。 */
 export function updateDocItem(body: { ref?: string; body?: string; desc?: string }): Promise<any> {
   return api('/api/docs/item', { method: 'PATCH', body });
 }
 
-export interface DocItemBody {
-  rel: string;
-  body?: string;
-}
-
-/** 新建 / 写入自有文档（POST /api/docs/item）。 */
-export function createDocItem(body: DocItemBody): Promise<any> {
-  return api('/api/docs/item', { method: 'POST', body });
-}
-
-/** 删除文档（DELETE /api/docs/item；ref 是文档 id）。 */
+/** 删除文档（DELETE /api/docs/item；ref 是 docId）。 */
 export function removeDocItem(body: { ref?: string }): Promise<any> {
   return api('/api/docs/item', { method: 'DELETE', body });
 }
@@ -90,7 +85,7 @@ export function createRefDoc(body: {
 }
 
 /** 把文档登记进参考仓库的文档集（POST /api/repos/docs）。 */
-export function bindRepoDoc(body: { id: string; rel?: string; path?: string; note?: string }): Promise<any> {
+export function bindRepoDoc(body: { id: string; ref?: string; path?: string; note?: string; tag?: string }): Promise<any> {
   return api('/api/repos/docs', { method: 'POST', body });
 }
 
@@ -99,21 +94,13 @@ export function unbindRepoDoc(body: { id: string; index: number }): Promise<any>
   return api('/api/repos/docs', { method: 'DELETE', body });
 }
 
-/** 把文档挂到看板（POST /api/docs/link）。 */
-export function linkBoardDoc(body: { board: string; doc: string; note?: string }): Promise<any> {
-  return api('/api/docs/link', { method: 'POST', body });
-}
-
-/** 从看板附加文档列表摘掉第 N 条（POST /api/docs/link；remove 从 1 起）。 */
-export function unlinkBoardDoc(body: { board: string; remove: number }): Promise<any> {
-  return api('/api/docs/link', { method: 'POST', body });
-}
-
 /** 一条文档归属（GET /api/docs/bindings 的一行）。 */
 export interface DocBindingRow {
   refId: string;
   desc?: string;
   title?: string;
+  /** 正文首行摘要（没有 `# 标题` 时的显示名兜底） */
+  summary?: string;
   hasBody?: boolean;
   repoKey: string;
   groupKey: string | null;
@@ -121,10 +108,10 @@ export interface DocBindingRow {
   position: number;
   main: boolean;
   note?: string;
-  direct?: boolean;
+  tag?: string;
 }
 
-/** 解绑直接 ref 的一条归属（不删文档）。 */
+/** 解绑一条 ref 的归属（不删文档）。 */
 export function unbindRef(body: {
   ref: string;
   type: 'repo' | 'group' | 'group_repo';
@@ -132,6 +119,16 @@ export function unbindRef(body: {
   group?: string;
 }): Promise<{ refId: string; removed: number; orphan: boolean }> {
   return api('/api/docs/unbind', { method: 'POST', body });
+}
+
+/** 把文档挂到看板附加列表（POST /api/docs/link）。 */
+export function linkBoardDoc(body: { board: string; ref?: string; path?: string; note?: string; tag?: string }): Promise<any> {
+  return api('/api/docs/link', { method: 'POST', body });
+}
+
+/** 从看板附加文档列表摘掉第 N 条（POST /api/docs/link；remove 从 1 起）。 */
+export function unlinkBoardDoc(body: { board: string; remove: number }): Promise<any> {
+  return api('/api/docs/link', { method: 'POST', body });
 }
 
 /** 宿主文档集（GET /api/docs/bindings?host=<repoKey> 或 ?group=<组 key>）。 */

@@ -1,37 +1,40 @@
 // 文档存储原语：自有文档 CRUD（DB 唯一真相）+ 外部绑定闭包。
 //
-// **自有文档**（v6 + DOCS_DIR 收口）：正文唯一真相在 `ref_bodies`，`refs.rel` 是逻辑名。
-// `~/.nx-kv/docs/`（见 core/paths 的 mdfile 默认目录函数）**不再是文档镜像**，只是 mdfile 默认附件目录；
-// 读入口只认 DB，写入口只写 DB。
-// **外部绑定**：repos.json 里登记的外部绝对路径（文件或目录），只读引用——
-// 「绑定闭包」= 全部外部路径的集合，外部读取只允许落在闭包内：
+// **自有文档**（v6 + DOCS_DIR 收口）：正文唯一真相在 `ref_bodies`，身份是 `refs.id`。
+// v8 起没有 rel / 路径：读写入口一律按 refId。
+// `~/.nx-kv/docs/` 不再是文档镜像，只是 mdfile 默认附件目录。
+// **外部绑定**：refs.locator 是绝对路径 / URL（origin='external'），只读引用——
+// 「绑定闭包」= 全部外部 locator 的集合，外部读取只允许落在闭包内：
 // 少了这道闸，`docs get path:D:\任意文件` 就成了任意文件读入口。
 //
-// 本文件不含业务语义（不认识 DocRef 之外的绑定模型，也不认识 action）。
+// 本文件不含业务语义（不认识宿主绑定模型，也不认识 action）。
 import { join } from 'node:path';
 import fsp from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { assertOwnedRel, assertDocRel, ownDocId, extDocId } from './paths.js';
+import { extDocId, ownDocId } from './paths.js';
 import { notFound } from '../../core/errors.js';
 import { getDb } from '../../core/db/index.js';
 import { tx } from '../../core/db/tx.js';
 import {
+  docKindOf,
   ensureDocRef,
   forgetDocRef,
+  getRefBody,
+  listRefDocs,
   noBodyReason,
-  refDocByRel,
-  relKindOf,
+  refDocById,
   syncRefAttachments,
   upsertRefBody,
 } from '../../core/attachmentdb.js';
-import type { RelKind } from '../../core/attachmentdb.js';
+import type { DocKind } from '../../core/attachmentdb.js';
 
 /** 自有文档的一行（正文可能不在库内：历史空壳 / 外部镜像 / 无正文）。 */
 export interface OwnDocRow {
-  /** refs.id（ref 的稳定地址；v7 起列表/取文档以它为准） */
+  /** refs.id（ref 的稳定地址） */
   id: string;
-  rel: string;
+  /** 外部文件/URL 的实际位置；自有直接 ref 为空串 */
+  locator: string;
   /** 短描述（v7）：列表 / 提示词模板的快速定位标签 */
   desc: string;
   size: number;
@@ -40,23 +43,18 @@ export interface OwnDocRow {
   body?: string;
   hasBody: boolean;
   origin: string;
-  relKind: RelKind;
-}
-
-/** 介绍目录内的文档（listOwnDocsIn 产出，rel 相对自有树根）。 */
-export interface OwnDocRowIn extends OwnDocRow {
-  name: string;
+  kind: DocKind;
 }
 
 /** 自有文档的读状态（docs get / 交付清单区分「无正文」用）。 */
 export interface OwnDocState {
   /** refs.id（ref 的稳定地址） */
   id: string;
-  rel: string;
+  locator: string;
   exists: boolean;
   hasBody: boolean;
   body: string | null;
-  relKind: RelKind;
+  kind: DocKind;
   origin: string;
   reason: string;
   /** 短描述（v7） */
@@ -66,7 +64,7 @@ export interface OwnDocState {
 /** 外部绑定闭包条目（externalClosure 产出）。 */
 export interface ClosureEntry {
   path: string;
-  /** 登记来源（'repo/<name>' / 'board/<name>[/<repoKey>]'） */
+  /** 登记来源（refId） */
   owner?: string;
   exists: boolean;
   isDir: boolean;
@@ -83,158 +81,129 @@ const SKIP_DIRS = new Set(['node_modules', '.git', '.obsidian', '.trash', 'dist'
  * 外部镜像、无正文行一起给（`docs list` 用，调用方必须显式标注）。
  */
 export async function listOwnDocs({ includeEmpty = false }: { includeEmpty?: boolean } = {}): Promise<OwnDocRow[]> {
-  const db = getDb();
-  const rows: any[] = db.all(
-    `SELECT r.id, r.rel, r.origin, r."desc", r.body_bytes,
-            CASE WHEN b.ref_id IS NULL THEN 0 ELSE 1 END AS has_body,
-            b.body
-       FROM refs r
-       LEFT JOIN ref_bodies b ON b.ref_id = r.id
-      WHERE r.deleted_at IS NULL AND r.rel <> ''
-      ORDER BY r.rel`
-  );
-  const out: OwnDocRow[] = [];
-  for (const row of rows) {
-    const rel = String(row.rel || '');
-    const hasBody = Number(row.has_body) === 1;
-    const relKind = relKindOf(rel, hasBody);
-    if (!includeEmpty && (!hasBody || relKind !== 'normal')) continue;
-    const body = hasBody ? String(row.body ?? '') : undefined;
-    out.push({
-      id: String(row.id),
-      rel,
-      desc: String(row.desc || ''),
-      size: Number(row.body_bytes) || 0,
-      hasBody,
-      origin: String(row.origin || ''),
-      relKind,
+  const rows = listRefDocs(getDb(), { includeEmpty });
+  return rows.map((r) => {
+    const body = r.hasBody ? String(getRefBody(getDb(), r.id)?.body ?? '') : undefined;
+    return {
+      id: r.id,
+      locator: r.locator,
+      desc: r.desc,
+      size: r.bodyBytes,
+      hasBody: r.hasBody,
+      origin: r.origin,
+      kind: r.kind,
       ...(body === undefined
         ? {}
         : { body, md5: createHash('md5').update(body, 'utf8').digest('hex') }),
-    });
-  }
-  return out;
+    };
+  });
 }
 
 /** 自有文档是否有正文（v6 起存在性 = ref_bodies 有行）。 */
-export async function ownDocExists(rel: string): Promise<boolean> {
-  const norm = assertDocRel(rel);
-  const row = getDb().get(
+export async function ownDocExists(refId: string): Promise<boolean> {
+  return !!getDb().get(
     `SELECT 1 AS x FROM refs r JOIN ref_bodies b ON b.ref_id = r.id
-      WHERE r.rel = :rel AND r.deleted_at IS NULL`,
-    { rel: norm }
+      WHERE r.id = :id AND r.deleted_at IS NULL`,
+    { id: String(refId || '') }
   );
-  return !!row;
 }
 
 /** 自有文档的完整读状态（区分 normal / legacy / external / empty）。 */
-export async function ownDocState(rel: string): Promise<OwnDocState> {
-  const norm = assertDocRel(rel);
-  const row = refDocByRel(getDb(), norm);
+export async function ownDocState(refId: string): Promise<OwnDocState> {
+  const row = refDocById(getDb(), refId);
   if (!row) {
     return {
-      id: '', rel: norm, exists: false, hasBody: false, body: null,
-      relKind: 'empty', origin: '', reason: '文档不存在', desc: '',
+      id: String(refId || ''), locator: '', exists: false, hasBody: false, body: null,
+      kind: 'empty', origin: '', reason: '文档不存在', desc: '',
     };
   }
   return {
     id: row.id,
-    rel: norm,
+    locator: row.locator,
     exists: true,
     hasBody: row.hasBody,
     body: row.body,
-    relKind: row.relKind,
+    kind: row.kind,
     origin: row.origin,
-    reason: row.hasBody ? '' : noBodyReason(row.relKind),
+    reason: row.hasBody ? '' : noBodyReason(row.kind),
     desc: row.desc,
   };
 }
 
 /** 读自有文档正文（utf8）。没有正文 / 不存在抛 notFound。 */
-export async function readOwnDoc(rel: string): Promise<string> {
-  const norm = assertDocRel(rel);
-  const row = getDb().get(
-    `SELECT b.body AS body FROM refs r JOIN ref_bodies b ON b.ref_id = r.id
-      WHERE r.rel = :rel AND r.deleted_at IS NULL`,
-    { rel: norm }
-  );
-  if (!row) throw notFound('文档不存在: ' + norm);
+export async function readOwnDoc(refId: string): Promise<string> {
+  const row = refDocById(getDb(), refId);
+  if (!row || !row.hasBody) throw notFound('文档不存在或没有正文: ' + String(refId || ''));
   return String(row.body ?? '');
 }
 
 /**
  * 写自有文档：正文进 ref_bodies（唯一真相）。磁盘不落任何副本。
- * 返回归一化 rel，调用方应使用返回值。
+ * refId 必须已存在（新建直接 ref 走 docs/ref 的 createRef）。
  */
-export async function writeOwnDoc(rel: string, body: unknown): Promise<string> {
-  const norm = assertOwnedRel(rel);
+export async function writeOwnDoc(refId: string, body: unknown): Promise<string> {
+  const id = String(refId || '').trim();
+  if (!refDocById(getDb(), id)) throw notFound('文档不存在: ' + id);
   const text = String(body ?? '');
   const db = getDb();
   tx(
     (conn) => {
-      const refId = ensureDocRef(conn, { rel: norm });
-      if (!refId) return;
-      upsertRefBody(conn, { refId, body: text });
+      upsertRefBody(conn, { refId: id, body: text });
       // 正文里用到的资源立刻进 ref_attach：不论从 CLI、面板还是别的模块写入，
       // 都在这个唯一入口同步，避免「有的入口写了关系、有的没写」。
-      syncRefAttachments(conn, { refId, text });
+      syncRefAttachments(conn, { refId: id, text });
     },
     { db, mode: 'IMMEDIATE' }
   );
-  return norm;
+  return id;
 }
 
 /**
  * 改短描述（v7）：只动 refs."desc"，不碰正文。
  * ref 是 DB 实体，desc 是列表 / 提示词模板的快速定位标签。
  */
-export async function setOwnDocDesc(rel: string, desc: unknown): Promise<string> {
-  const norm = assertDocRel(rel);
+export async function setOwnDocDesc(refId: string, desc: unknown): Promise<string> {
+  const id = String(refId || '').trim();
   const text = String(desc ?? '').trim();
   const r = getDb().run(
-    'UPDATE refs SET "desc" = :desc, updated_at = :at WHERE rel = :rel AND deleted_at IS NULL',
-    { desc: text, at: Date.now(), rel: norm }
+    'UPDATE refs SET "desc" = :desc, updated_at = :at WHERE id = :id AND deleted_at IS NULL',
+    { desc: text, at: Date.now(), id }
   );
-  if (!Number(r.changes)) throw notFound('文档不存在: ' + norm);
+  if (!Number(r.changes)) throw notFound('文档不存在: ' + id);
   return text;
 }
 
 /** 删自有文档（DB 行）。没有正文条目抛 notFound。 */
-export async function removeOwnDoc(rel: string): Promise<string> {
-  const norm = assertOwnedRel(rel);
+export async function removeOwnDoc(refId: string): Promise<string> {
+  const id = String(refId || '').trim();
   const db = getDb();
   // 文档删除 = refs 行删除（ref_bodies / ref_bindings / ref_attach 由 FK CASCADE 跟着走），
   // 它引用过的资源因此变成可列出的孤儿，交给 file orphans / prune 回收。
-  const removed = tx((conn) => forgetDocRef(conn, norm), { db, mode: 'IMMEDIATE' });
-  if (!removed) throw notFound('文档不存在: ' + norm);
-  return norm;
+  const removed = tx((conn) => forgetDocRef(conn, id), { db, mode: 'IMMEDIATE' });
+  if (!removed) throw notFound('文档不存在: ' + id);
+  return id;
 }
 
 // ─── 外部绑定闭包 ──────────────────────────────────────────────────────
 
 /**
- * 全部已登记的外部路径（repos.json 里能扫到的每一处 DocRef）。
+ * 全部已登记的外部位置：refs 里 origin='external'（且 locator 非空）的行。
  * 返回 [{ path, owner, exists, isDir }]——isDir/exists 现场探测，
- * 不存在的路径保留在列表里（读取侧动态标 missing，导入侧标待初始化）。
+ * 不存在的路径保留在列表里（读取侧动态标 missing）。
  */
-export async function externalClosure(store: any): Promise<ClosureEntry[]> {
+export async function externalClosure(_store?: unknown): Promise<ClosureEntry[]> {
+  const rows: any[] = getDb().all(
+    "SELECT id, locator FROM refs WHERE origin = 'external' AND locator <> '' AND deleted_at IS NULL ORDER BY locator"
+  );
   const list: ClosureEntry[] = [];
   const seen = new Set<string>();
-  const addRef = (ref: unknown, owner: string): void => {
-    const p = ref && typeof ref === 'object' ? String((ref as { path?: unknown }).path || '').trim() : '';
-    if (!p) return;
+  for (const row of rows) {
+    const p = String(row.locator || '').trim();
+    if (!p) continue;
     const k = p.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '');
-    if (seen.has(k)) return;
+    if (seen.has(k)) continue;
     seen.add(k);
-    // exists/isDir 稍后统一现场探测，这里先占位
-    list.push({ path: p, owner, exists: false, isDir: false });
-  };
-  for (const r of store.repos || []) addRef(r.doc, 'repo/' + (r.name || r.id));
-  for (const r of store.repos || []) for (const l of Array.isArray(r.docLinks) ? r.docLinks : []) addRef(l, 'repo/' + (r.name || r.id));
-  for (const b of store.boards || []) {
-    addRef(b.doc, 'board/' + b.name);
-    for (const l of Array.isArray(b.docLinks) ? b.docLinks : []) addRef(l, 'board/' + b.name);
-    for (const [rkey, ref] of Object.entries(b.repoDocs || {})) addRef(ref, 'board/' + b.name + '/' + rkey);
+    list.push({ path: p, owner: String(row.id || ''), exists: false, isDir: false });
   }
   for (const item of list) {
     let st: Stats | null = null;
@@ -318,18 +287,4 @@ export function externalDocId(abs: string): string {
   return extDocId(abs);
 }
 
-export { ownDocId };
-
-/**
- * 某个目录下的文档（介绍目录用）：[{ rel, abs, size }]，rel 相对**自有树根**。
- * 只取该目录直属与其子目录（reference/ 等）的 .md。
- */
-export async function listOwnDocsIn(dirRel: string): Promise<OwnDocRowIn[]> {
-  const prefix = String(dirRel || '').split('\\').join('/').replace(/\/+$/, '') + '/';
-  const out: OwnDocRowIn[] = [];
-  for (const d of await listOwnDocs()) {
-    if (!d.rel.startsWith(prefix)) continue;
-    out.push({ ...d, name: d.rel.slice(prefix.length) });
-  }
-  return out;
-}
+export { ownDocId, docKindOf, ensureDocRef };

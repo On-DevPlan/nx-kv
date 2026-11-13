@@ -48,7 +48,7 @@ test('submitTask：正文自带 frontmatter（fail-open）→ 落点跟到项目
   assert.ok(samePath(r.cwd, repoPath), `落点应为项目登记路径（实际 ${r.cwd}）`);
   const fm = parseFrontmatter(r.task.text);
   assert.equal(fm.project, repo.key, 'frontmatter.project 归一为登记 key');
-  assert.equal(fm.projectIntro, `repo/${repo.key}.md`, '补上项目介绍引用');
+  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, '补上项目介绍引用（refId）');
   assert.equal(fm.projectDesc, '落点路由项目');
 });
 
@@ -56,7 +56,7 @@ test('submitTask：--global + 正文 frontmatter → 字段补齐，落点仍是
   const r = await submitTask({ text: `---\nproject: ${repo.key}\n---\n# 全局任务\n正文`, global: true });
   assert.equal(r.isGlobal, true, '落点不被 frontmatter 挪走（--global 优先）');
   const fm = parseFrontmatter(r.task.text);
-  assert.equal(fm.projectIntro, `repo/${repo.key}.md`, 'fail-open 字段照常补齐');
+  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, 'fail-open 字段照常补齐（refId）');
 });
 
 test('submitTask：显式给过 cwd 时 fail-open 不挪窝（只补字段）', async () => {
@@ -69,7 +69,7 @@ test('submitTask：显式给过 cwd 时 fail-open 不挪窝（只补字段）', 
   assert.ok(samePath(r.cwd, elsewhere), `显式 cwd 优先，落点不被 frontmatter 挪走（实际 ${r.cwd}）`);
   const fm = parseFrontmatter(r.task.text);
   assert.equal(fm.project, repo.key);
-  assert.equal(fm.projectIntro, `repo/${repo.key}.md`, '字段仍补齐');
+  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, '字段仍补齐（refId）');
 });
 
 test('submitTask：认不出归属（项目未登记）→ 原样落调用方目录，不拦任务', async () => {
@@ -95,7 +95,7 @@ test('submitTask：显式 --board/--project（严格口径）→ 落点=项目�
   const fm = parseFrontmatter(r.task.text);
   assert.equal(fm.board, board.id);
   assert.equal(fm.project, strictRepo.key);
-  assert.equal(fm.boardIntro, 'board/严格组.md');
+  assert.match(fm.boardIntro, /^ref:ref_[0-9a-f]{16}$/);
 });
 
 test('submitTask：严格口径 --cwd 与 --project 冲突 → 报错（不静默取一个）', async () => {
@@ -117,7 +117,7 @@ test('localtask.add action：一行委托 submitTask——CLI/HTTP/面板同走�
   // frontmatter 补齐与落点跟到项目队列与直调 submitTask 一致。
   const r = await addAction.run({ text: `---\nproject: ${repo.key}\n---\n# 经 action 提交\n正文` });
   assert.ok(samePath(r.cwd, repoPath), `落点应跟到 fm-route 项目队列（实际 ${r.cwd}）`);
-  assert.equal(parseFrontmatter(r.task.text).projectIntro, `repo/${repo.key}.md`);
+  assert.match(parseFrontmatter(r.task.text).projectIntro, /^ref:ref_[0-9a-f]{16}$/);
 });
 
 test('localtask.add action：goalPrompt 驼峰写法（HTTP body）照常归一进 timegoal', async () => {

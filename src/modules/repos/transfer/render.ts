@@ -28,9 +28,9 @@ export function renderDiff(d: DiffImportResult): string {
   }
   if (d.docs && d.docs.length) {
     const docLabel: Record<string, string> = { new: '新增', changed: '有差异', same: '一致' };
-    lines.push(`  文档树（${d.docs.length} 份）: 新增 ${d.summary.docsNew} · 有差异 ${d.summary.docsChanged} · 一致 ${d.summary.docsSame}`);
+    lines.push(`  文档（${d.docs.length} 份）: 新增 ${d.summary.docsNew} · 有差异 ${d.summary.docsChanged} · 一致 ${d.summary.docsSame}`);
     for (const x of d.docs.filter((x) => x.status !== 'same')) {
-      lines.push(`    [文档${docLabel[x.status] || x.status}] ${x.rel}`);
+      lines.push(`    [文档${docLabel[x.status] || x.status}] ${x.refId}`);
     }
   }
   if (d.missing.length) lines.push(`  本地未拥有: ${d.missing.join('、')}`);
@@ -48,7 +48,7 @@ export function renderResult(d: RepoImportResult): string {
   if (d.docs && (d.docs.written.length || d.docs.skipped.length)) {
     lines.push(`文档: 写入 ${d.docs.written.length} · 跳过 ${d.docs.skipped.length}`);
     for (const w of d.docs.written.slice(0, 10)) lines.push(`  + ${w}`);
-    for (const s of d.docs.skipped.slice(0, 10)) lines.push(`  = ${s.rel}（${s.why}）`);
+    for (const s of d.docs.skipped.slice(0, 10)) lines.push(`  = ${s.refId}（${s.why}）`);
   }
   if (d.pendingExternal && d.pendingExternal.length) {
     lines.push('待初始化（外部绑定路径缺失，接上后自动生效）:');

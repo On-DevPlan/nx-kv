@@ -103,7 +103,7 @@
   color: var(--live);
 }
 
-/* 文档区块：一行一个文档（标题 + rel + 绑定宿主 chips + 操作） */
+/* 文档区块：一行一个文档（标题 + 描述 + 绑定宿主 chips + 操作） */
 .rp-doc-rows { display: flex; flex-direction: column; }
 .rp-doc-row {
   display: flex;
@@ -130,15 +130,6 @@
   text-align: left;
 }
 .rp-doc-row-title:hover { text-decoration: underline; }
-.rp-doc-row-rel {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--mid);
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .rp-doc-row-hosts { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; min-width: 0; }
 /* 绑定 chip：可点（跳到宿主），三档配色区分「仓库 / 组内 / 分组」 */
 .rp-bind-chip {

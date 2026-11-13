@@ -13,7 +13,6 @@ import type {
   BundledListAction,
 } from '../../../modules/bundled/actions/_manifest.generated.js';
 import type {
-  DocAddAction,
   DocAttachAction,
   DocAttachNoteAction,
   DocAttachmentsAction,
@@ -30,7 +29,6 @@ import type {
   DocsBindingsAction,
   DocsIndexAction,
   DocsLinkAction,
-  DocsSeedAction,
 } from '../../../modules/docs/actions/_manifest.generated.js';
 import type {
   FileContentAction,
@@ -190,9 +188,9 @@ export interface ApiClient {
   clone(input: z.input<InstanceType<typeof RepoCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoCloneAction>['run']>>>;
 /** 探测目录的 git remote（添加仓库前自动填充远程地址；只读） */
   detect(input: z.input<InstanceType<typeof RepoDetectAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDetectAction>['run']>>>;
-/** 给项目加一篇介绍文档：--rel 自有树路径 / --path 外部绝对路径 / --ref <参考仓库key> --file <仓库内相对路径>（同 rel/path 重复添加 = 更新） */
+/** 给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 更新注解） */
   docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>>;
-/** 列出项目的介绍文档集（主篇 + 其余各篇，含来源形态：自有树 / 外部 / ref 仓库） */
+/** 列出项目的介绍文档集（主篇 + 其余各篇，refId + desc） */
   docList(input: z.input<InstanceType<typeof RepoDocListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocListAction>['run']>>>;
 /** 从项目的介绍文档集里摘掉一篇（--index 从 1 起，1 = 主篇） */
   docRemove(input: z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocRemoveAction>['run']>>>;
@@ -242,8 +240,6 @@ export interface ApiClient {
   scan(input?: z.input<InstanceType<typeof RepoScanAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoScanAction>['run']>>>;
 /** 修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填；指令文案在 设置 → 提示词模板 → 持续 get，仓库侧只有开关 + 分钟）。描述已改为文档，不再经这里改 */
   repoUpdate(input: z.input<InstanceType<typeof RepoUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>>;
-/** 新建自有文档（--body 给 Markdown 正文；--body-file <文件> / - 读管道；已存在则报冲突） */
-  docAdd2(input: z.input<InstanceType<typeof DocAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocAddAction>['run']>>>;
 /** 改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变） */
   attachNote(input: z.input<InstanceType<typeof DocAttachNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocAttachNoteAction>['run']>>>;
 /** 给文档挂资源：--path / --fileId / --url / --task / --doc / --mdfile 之一；默认追加进正文，--no-embed 只挂附件区（不写正文） */
@@ -252,7 +248,7 @@ export interface ApiClient {
   attachments(input: z.input<InstanceType<typeof DocAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocAttachmentsAction>['run']>>>;
 /** 解除文档与附件的关系（默认只解除关系）；--purge 无人引用时连资源行与本机字节一起删 */
   detach(input: z.input<InstanceType<typeof DocDetachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocDetachAction>['run']>>>;
-/** 读文档全文：rel:<路径>（或裸相对路径）= 自有；path:<绝对路径> = 外部（须在绑定闭包内）；约定路径缺失时惰性播种 */
+/** 读文档全文：ref:<refId>（或裸 refId）= 文档库条目；path:<绝对路径> = 外部（须在绑定闭包内） */
   docGet(input: z.input<InstanceType<typeof DocGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocGetAction>['run']>>>;
 /** 把本地 md 文件登记为 mdfile 附件并挂到文档附件区：只存路径指针，不复制正文，不改文档正文 */
   linkFile(input: z.input<InstanceType<typeof DocLinkFileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocLinkFileAction>['run']>>>;
@@ -274,10 +270,8 @@ export interface ApiClient {
   bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>>;
 /** 双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js） */
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
-/** 维护组的附加文档列表（--doc <自有路径|绝对路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 doc 重复添加 = 更新） */
+/** 维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新） */
   link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>>;
-/** 把仓库 desc / 看板 desc / 组内 note 字符串播种成约定路径的 md（缺省预览，--apply 执行；幂等） */
-  seed(input?: z.input<InstanceType<typeof DocsSeedAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsSeedAction>['run']>>>;
 /** 向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝） */
   localtaskAdd(input: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>>;
 /** 改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变） */
@@ -525,7 +519,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocAddAction>['_input']>);
       const path = `/api/repos/docs`;
-      const body = { "id": inp["id"], "rel": inp["rel"], "path": inp["path"], "ref": inp["ref"], "file": inp["file"], "note": inp["note"], "tag": inp["tag"] };
+      const body = { "id": inp["id"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"], "tag": inp["tag"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>;
     },
     // action: repo.doc.list
@@ -725,13 +719,6 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "path": inp["path"], "name": inp["name"], "icon": inp["icon"], "desc": inp["desc"], "notes": inp["notes"], "type": inp["type"], "remote": inp["remote"], "key": inp["key"], "key-custom": inp["key-custom"], "get-loop": inp["get-loop"], "get-loop-minutes": inp["get-loop-minutes"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>;
     },
-    // action: doc.add
-    async docAdd2(input: z.input<InstanceType<typeof DocAddAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocAddAction>['_input']>);
-      const path = `/api/docs/item`;
-      const body = { "rel": inp["rel"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocAddAction>['run']>>;
-    },
     // action: doc.attach-note
     async attachNote(input: z.input<InstanceType<typeof DocAttachNoteAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocAttachNoteAction>['_input']>);
@@ -859,15 +846,8 @@ export function createApiClient(transport: Transport): ApiClient {
     async link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocsLinkAction>['_input']>);
       const path = `/api/docs/link`;
-      const body = { "board": inp["board"], "doc": inp["doc"], "note": inp["note"], "tag": inp["tag"], "remove": inp["remove"], "before": inp["before"] };
+      const body = { "board": inp["board"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"], "tag": inp["tag"], "remove": inp["remove"], "before": inp["before"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>;
-    },
-    // action: docs.seed
-    async seed(input?: z.input<InstanceType<typeof DocsSeedAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocsSeedAction>['_input']>);
-      const path = `/api/docs/seed`;
-      const body = { "apply": inp["apply"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsSeedAction>['run']>>;
     },
     // action: localtask.add
     async localtaskAdd(input: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>) {

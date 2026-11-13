@@ -149,10 +149,10 @@ export default function RepoFormModal({ editing, repos, onClose, onSaved }: {
         body.key = '';
         body.keyCustom = false;
       } else if (keyManual && nextKey !== origKey) {
-        // 改 key 是改身份：关系表会级联，但磁盘上的文档目录不会自己搬家。
+        // 改 key 是改身份：关系表会级联，但文档归属不会自己改地址。
         const ok = await dialog({
           title: '修改仓库 key',
-          message: `key 是仓库身份，改掉会连锁影响：\n\n「${origKey || '(空)'}」→「${nextKey}」\n\n队列/看板/参考关系会跟随新 key 级联更新；docs/ 下按旧 key 生成的文档路径不会自动迁移，需要手动处理。确认修改？`,
+          message: `key 是仓库身份，改掉会连锁影响：\n\n「${origKey || '(空)'}」→「${nextKey}」\n\n队列/看板/参考关系会跟随新 key 级联更新；旧 key 上的文档归属不会自动迁移，需要在文档列表里重新绑定。确认修改？`,
           danger: true,
         });
         if (!ok) return;

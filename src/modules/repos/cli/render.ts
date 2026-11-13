@@ -37,7 +37,7 @@ export const lastSeg = (p: unknown): string => String(p || '').replace(/\\/g, '/
 /** readLayout 的返回：布局 JSON 串 + zip 拆出的文档条目。 */
 export interface ReadLayoutResult {
   json: string;
-  docsFiles: Array<{ rel: string; data: Buffer }>;
+  docsFiles: Array<{ refId: string; data: Buffer }>;
 }
 
 /** readLayout 的输入（CLI 传 file，面板传 json）。 */
@@ -48,11 +48,11 @@ export interface ReadLayoutCtx {
 
 // import / import --diff 两个 action 共用的取布局逻辑：
 // CLI 给文件路径（- = stdin），面板直接 POST {json}。
-// v4 起文件可以是导出的 zip 本体（PK 魔数）→ 拆包取 layout.json + docs/**，
+// v5 起文件可以是导出的 zip 本体（PK 魔数）→ 拆包取 layout.json + docs/<refId>.md，
 // 文档条目随布局一起走完 diff 与导入两条链路。
 export async function readLayout(ctx: ReadLayoutCtx): Promise<ReadLayoutResult> {
   let json = typeof ctx.json === 'string' ? ctx.json : '';
-  const docsFiles: Array<{ rel: string; data: Buffer }> = [];
+  const docsFiles: Array<{ refId: string; data: Buffer }> = [];
   if (!json && ctx.file) {
     const { readFileSync } = await import('node:fs');
     const buf = readFileSync(ctx.file === '-' ? 0 : (ctx.file as string));
@@ -62,7 +62,7 @@ export async function readLayout(ctx: ReadLayoutCtx): Promise<ReadLayoutResult> 
       for (const e of readZip(buf)) {
         if (e.name === 'layout.json') json = e.data.toString('utf8');
         else if (e.name.startsWith('docs/') && /\.md$/i.test(e.name)) {
-          docsFiles.push({ rel: e.name.slice('docs/'.length), data: e.data });
+          docsFiles.push({ refId: e.name.slice('docs/'.length).replace(/\.md$/i, ''), data: e.data });
         }
       }
       if (!json) throw badInput('zip 里没有 layout.json —— 认 repo export 的导出包');

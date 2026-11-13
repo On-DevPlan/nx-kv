@@ -3,8 +3,7 @@
 //   2. `docs/` 树扫描（未被任何 DocRef 指到的 → state='orphan'）
 // `ref_relations` 本轮留空。
 import { existsSync, readdirSync } from 'node:fs';
-import { createHash } from 'node:crypto';
-import { isAbsolute, join, resolve, sep } from 'node:path';
+import { join, sep } from 'node:path';
 import { groupKeyOf } from '../../keys.js';
 import { refIdOf } from './data.js';
 import type { ImportReport } from './data.js';
@@ -20,15 +19,8 @@ interface DocRefEntry {
 }
 
 /** docs 树的相对路径 → POSIX（库里的地址永远是正斜杠）。 */
-function toPosix(rel: string): string {
-  return rel.split(sep).join('/');
-}
-
-/** 外部绝对路径 / URL → v6 的逻辑 rel（与 v6-data 同一口径）。 */
-function externalRel(locator: string): string {
-  let seed = isAbsolute(locator) ? toPosix(resolve(locator)) : locator;
-  if (/^[A-Z]:/.test(seed)) seed = seed.charAt(0).toLowerCase() + seed.slice(1);
-  return 'external/' + createHash('sha1').update(seed, 'utf8').digest('hex').slice(0, 16);
+function toPosix(legacyPath: string): string {
+  return legacyPath.split(sep).join('/');
 }
 
 /** 递归收集旧文档目录里的 .md（返回 POSIX 相对路径）。**仅 legacy JSON 导入用。** */
@@ -67,12 +59,15 @@ export function importRefs(
 ): void {
   const files = listDocFiles(docsDir);
   const fileSet = new Set(files);
+  const idOfLocator = (locator: string): string => {
+    const hit = db.get('SELECT id FROM refs WHERE locator = :loc AND deleted_at IS NULL ORDER BY id LIMIT 1', { loc: locator });
+    return hit ? String(hit.id) : refIdOf(locator);
+  };
   for (const locator of files) {
     const r = db.run(
-      `INSERT INTO refs (id, type, rel, locator, state, version, deleted_at, created_at, updated_at)
-       VALUES (:id, 'md', :rel, :locator, 'orphan', 0, NULL, :at, :at)
-       ON CONFLICT(id) DO NOTHING`,
-      { id: refIdOf(locator), rel: locator, locator, at: atMs }
+      `INSERT OR IGNORE INTO refs (id, type, locator, state, version, deleted_at, created_at, updated_at)
+       VALUES (:id, 'md', :locator, 'orphan', 0, NULL, :at, :at)`,
+      { id: refIdOf(locator), locator, at: atMs }
     );
     if (Number(r.changes) > 0) report.imported.refs += 1;
   }
@@ -107,7 +102,7 @@ export function importRefs(
     note: string
   ): boolean => {
     if (!fileSet.has(locator)) return false;
-    const id = refIdOf(locator);
+    const id = idOfLocator(locator);
     db.run(`UPDATE refs SET state = '' WHERE id = :id`, { id });
     // ON CONFLICT 的冲突目标带表达式（COALESCE）在 SQLite 里要写成一模一样的表达式，
     // 这里用 INSERT OR IGNORE：绑定边重复插是幂等的正常情况，不该报错。
@@ -128,9 +123,10 @@ export function importRefs(
     const out: DocRefEntry[] = [];
     const pushRef = (ref: any, note: string = ''): void => {
       if (!ref || typeof ref !== 'object') return;
-      const rel = String(ref.rel || '').trim();
+      // 旧 JSON 里的键名就叫 rel（v6 之前的字段名）；读出来一律当 **locator** 用。
+      const legacyPath = String(ref.rel || '').trim();
       const path = String(ref.path || '').trim();
-      if (rel) out.push({ locator: rel, type: 'md', note: String(ref.tag || note || ''), extPath: '' });
+      if (legacyPath) out.push({ locator: legacyPath, type: 'md', note: String(ref.tag || note || ''), extPath: '' });
       // v2 起 refs 只装文档：外部 .md 绝对路径也是文档，type 统一为 md。
       else if (path) out.push({ locator: path, type: 'md', note: String(ref.tag || note || ''), extPath: path });
     };
@@ -160,13 +156,11 @@ export function importRefs(
       if (d.extPath) {
         // 外部路径（Obsidian 等）：只在库里留地址，字节在库外
         db.run(
-          `INSERT INTO refs (id, type, rel, locator, origin, state, version, deleted_at, created_at, updated_at)
-           VALUES (:id, :type, :rel, :locator, 'external', '', 0, NULL, :at, :at)
-           ON CONFLICT(id) DO NOTHING`,
+          `INSERT OR IGNORE INTO refs (id, type, locator, origin, state, version, deleted_at, created_at, updated_at)
+           VALUES (:id, :type, :locator, 'external', '', 0, NULL, :at, :at)`,
           {
             id: refIdOf(d.locator),
             type: d.type,
-            rel: externalRel(d.locator),
             locator: d.locator,
             at: atMs,
           }
@@ -180,7 +174,7 @@ export function importRefs(
       const br = db.run(
         `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, created_at)
          VALUES (:repo, NULL, :ref, 'repo', :pos, :note, :at)`,
-        { repo: key, ref: refIdOf(d.locator), pos: position, note: d.note, at: atMs }
+        { repo: key, ref: idOfLocator(d.locator), pos: position, note: d.note, at: atMs }
       );
       if (Number(br.changes) > 0) report.imported.refBindings += 1;
       position += 1;

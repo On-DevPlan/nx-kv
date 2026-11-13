@@ -36,14 +36,14 @@ export interface RepoImportResult {
   boardsCreated: number;
   boardsMerged: number;
   links: number;
-  docs: { written: string[]; skipped: Array<{ rel: string; why: string }> };
+  docs: { written: string[]; skipped: Array<{ refId: string; why: string }> };
   pendingExternal: Array<{ owner: string; path: string }>;
 }
 
 /** repoImport 的参数。 */
 export interface RepoImportInput {
   json?: unknown;
-  /** zip 拆出的文档条目 [{rel, data}]（先还原文档树，再还原绑定） */
+  /** zip 拆出的文档条目 [{refId, data}]（先还原正文，再还原绑定） */
   docsFiles?: DiffDocEntry[];
   /** 要处理的 key（空 = 全部） */
   selection?: string | string[];
@@ -71,7 +71,7 @@ function cloneModeFor(type: string, clone: unknown): boolean {
  *   strategy        ours=保留本地 / overwrite=用导入覆盖 / duplicate=另存 key-import-N
  *   boardSelection  要处理的看板 key（空 = 全部）
  *   clone           all | dev | ref | none
- *   docsFiles       zip 拆出的文档条目 [{rel, data}]（先还原文档树，再还原绑定）
+ *   docsFiles       zip 拆出的文档条目 [{refId, data}]（先还原正文，再还原绑定）
  */
 export async function repoImport({
   json,
@@ -104,20 +104,39 @@ export async function repoImport({
   const skipped: RepoImportResult['skipped'] = [];
   const keyMap = new Map<string, string>(); // 导入 key -> 本地 repo id
 
-  // ① 文档树还原（先于一切绑定——绑定可能指向即将恢复的文档）。
+  // ① 文档还原（先于一切绑定——绑定可能指向即将恢复的文档）。
   //    ours（缺省）= 本地已有且内容不同 → 跳过保本地；overwrite = 全部覆盖；
   //    duplicate 对文档不适用（描述没有「另存一份」的意义）→ 按 ours。
-  const docs = { written: [] as string[], skipped: [] as Array<{ rel: string; why: string }> };
+  //    先按 layout.refs 建 ref 行（id / origin / locator / desc），再写正文。
+  const docs = { written: [] as string[], skipped: [] as Array<{ refId: string; why: string }> };
+  const { getDb } = await import('../../../core/db/index.js');
+  const { ensureDocRef } = await import('../../../core/attachmentdb.js');
+  const db = getDb();
+  for (const r of layout.refs || []) {
+    const exists = db.get('SELECT 1 AS x FROM refs WHERE id = :id AND deleted_at IS NULL', { id: r.refId });
+    if (exists) {
+      if (strategy === 'overwrite' && r.desc) {
+        db.run('UPDATE refs SET "desc" = :desc, updated_at = :at WHERE id = :id', { desc: r.desc, at: Date.now(), id: r.refId });
+      }
+      continue;
+    }
+    ensureDocRef(db, { ref: r.refId, locator: r.locator });
+    if (r.origin === 'external') {
+      db.run("UPDATE refs SET origin = 'external' WHERE id = :id", { id: r.refId });
+    }
+    if (r.desc) db.run('UPDATE refs SET "desc" = :desc WHERE id = :id', { desc: r.desc, id: r.refId });
+  }
   if (docsFiles.length) {
     for (const item of diff.docs) {
-      const f = docsFiles.find((x) => x.rel === item.rel);
+      const f = docsFiles.find((x) => x.refId === item.refId);
       if (!f) continue;
       if (strategy !== 'overwrite' && item.status !== 'new') {
-        docs.skipped.push({ rel: item.rel, why: item.status === 'same' ? '一致' : '本地已有不同内容（保留本地）' });
+        docs.skipped.push({ refId: item.refId, why: item.status === 'same' ? '一致' : '本地已有不同内容（保留本地）' });
         continue;
       }
-      await writeOwnDoc(f.rel, f.data.toString('utf8'));
-      docs.written.push(item.rel);
+      ensureDocRef(db, { ref: f.refId });
+      await writeOwnDoc(f.refId, f.data.toString('utf8'));
+      docs.written.push(item.refId);
     }
   }
 
@@ -169,7 +188,7 @@ export async function repoImport({
           key: newKey,
           keyCustom: true,
           remotes: inc.remotes || [],
-        });
+        }, { seedDoc: false });
         duplicated.push({ key: item.key, newKey, id: r.id });
         keyMap.set(newKey, newKey);
         continue;
@@ -197,7 +216,7 @@ export async function repoImport({
         const r: RepoEntry = await service.addRepo({
           path: dest, name: inc.name, desc: inc.desc, notes: inc.notes,
           type, remote: used, key: inc.key, keyCustom: inc.keyCustom, remotes: inc.remotes || [],
-        });
+        }, { seedDoc: false });
         created.push({ key: item.key, id: r.id, cloned: true });
         keyMap.set(item.key, item.key);
         continue;
@@ -213,7 +232,7 @@ export async function repoImport({
         key: inc.key,
         keyCustom: inc.keyCustom,
         remotes: inc.remotes || [],
-      });
+      }, { seedDoc: false });
       created.push({ key: item.key, id: r.id, cloned: !!dest });
       keyMap.set(item.key, item.key);
     } catch (err) {
@@ -233,7 +252,7 @@ export async function repoImport({
     let b = (await service.loadStore()).boards.find((x) => service.storedBoardKey(x) === bd.key);
     try {
       if (!b) {
-        await boards.createBoard({ name: inc.name, desc: inc.desc, key: bd.key });
+        await boards.createBoard({ name: inc.name, desc: inc.desc, key: bd.key }, { seedDoc: false });
         boardsCreated += 1;
         b = (await service.loadStore()).boards.find((x) => service.storedBoardKey(x) === bd.key);
       } else {
@@ -294,7 +313,10 @@ export async function repoImport({
       (bd.incoming.doc || (bd.incoming.docLinks && bd.incoming.docLinks.length) || (bd.incoming.repoDocs && Object.keys(bd.incoming.repoDocs).length))
   );
   const bindingRepos = diff.repos.filter(
-    (item) => want(item.key) && item.incoming.doc && (item.status === 'new' || strategy === 'overwrite')
+    (item) =>
+      want(item.key) &&
+      (item.incoming.doc || (item.incoming.docLinks && item.incoming.docLinks.length)) &&
+      (item.status === 'new' || strategy === 'overwrite')
   );
   if (bindingBoards.length || bindingRepos.length) {
     await service.mutateStore((s2: Store) => {
@@ -313,7 +335,12 @@ export async function repoImport({
       }
       for (const item of bindingRepos) {
         const r = s2.repos.find((x) => deriveKeyOf(x) === item.key);
-        if (r) r.doc = { ...item.incoming.doc };
+        if (!r) continue;
+        if (item.incoming.doc) r.doc = { ...item.incoming.doc };
+        else delete r.doc;
+        if (item.incoming.docLinks && item.incoming.docLinks.length) {
+          r.docLinks = item.incoming.docLinks.map((x: any) => ({ ...x }));
+        } else delete r.docLinks;
       }
       return true;
     });

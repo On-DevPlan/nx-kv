@@ -30,8 +30,7 @@ test.after?.(() => {
 async function buildGroup() {
   const repos = await import('../../src/modules/repos/service.js');
   const boards = await import('../../src/modules/repos/boards.js');
-  const store = await import('../../src/modules/docs/store.js');
-  const paths = await import('../../src/modules/docs/paths.js');
+  const docs = await import('../../src/modules/docs/service.js');
 
   const cwd = join(dir, 'grp-alpha');
   const betaDir = join(dir, 'grp-beta');
@@ -40,16 +39,24 @@ async function buildGroup() {
 
   const alpha = await repos.addRepo({ path: cwd, name: 'alpha', desc: '管清单的', remote: 'https://github.com/me/alpha' });
   const beta = await repos.addRepo({ path: betaDir, name: 'beta', desc: '仓库登记', remote: 'https://github.com/me/beta' });
+  // 组介绍主篇由 createBoard 的 desc 写成文档（v8：描述即文档）
   const b = await boards.createBoard({ name: 'nx系列', desc: 'nx 工具链组合' });
   await boards.assignRepo({ key: alpha.key, board: b.id });
   await boards.assignRepo({ key: beta.key, board: b.id });
   await boards.setBoardRepoNote({ key: alpha.key, board: b.id, note: '组里的任务出入口' });
   await boards.setBoardRepoNote({ key: beta.key, board: b.id, note: '仓库与技能登记' });
-  await store.writeOwnDoc(paths.boardDocRel('nx系列'), '# nx系列\n\n本机 nx- 前缀工具链的组合：仓库、知识、技能各占一层。');
-  await store.writeOwnDoc('notes/waitgoal-设计.md', '# waitgoal 设计\n\n阻塞窗口与收尾指令。');
+
+  // 项目介绍主篇：只通过 refId 绑定（没有约定路径）
+  const alphaIntro = await docs.createRef({ owner: 'repo', repo: alpha.key });
+  await docs.updateDoc({ ref: 'ref:' + alphaIntro.refId, body: '# alpha\n\n管清单的：这是 alpha 的项目介绍。' });
+
+  // 组级补充文档（走 docLinks），note 是列表注解
+  const extra = await docs.createRef({ owner: 'group', group: b.id });
+  await docs.updateDoc({ ref: 'ref:' + extra.refId, body: '# waitgoal 设计\n\n阻塞窗口与收尾指令。' });
   await repos.mutateStore((s) => {
     const bb = s.boards.find((x) => x.id === b.id);
-    bb.docLinks = [{ rel: 'notes/waitgoal-设计.md', note: '阻塞窗口' }];
+    const link = (bb.docLinks || []).find((x) => x.ref === extra.refId);
+    if (link) link.note = '阻塞窗口';
   });
   return { cwd, alpha, beta, b };
 }
@@ -67,10 +74,10 @@ test('组上下文封装：交付文本带组概念/组介绍引导/组内位置
   assert.match(ins, /项目组上下文/);
   assert.match(ins, /nx系列/);
   assert.match(ins, /nx 工具链组合/, '组描述');
-  // v7：只有项目主篇正文内嵌；组介绍改为 desc + 取用指令，不再内嵌正文
-  assert.match(ins, /组介绍：/, '组介绍引导行');
-  assert.match(ins, /nx-kv docs get --ref ref_/, '组介绍按 refId 取用');
-  assert.doesNotMatch(ins, /本机 nx- 前缀工具链的组合/, '组介绍正文不再内嵌');
+  // v8：组介绍按 refId 定位（取用指令），组级补充文档按 desc + refId 取用
+  assert.match(ins, /组介绍：nx系列/, '组介绍引导行');
+  assert.match(ins, /nx 工具链组合/, '组定位');
+  assert.match(ins, /nx-kv docs get --ref ref_/, '组介绍 / 组文档按 refId 取用');
   assert.match(ins, /组里的任务出入口/, '本项目在组里的位置');
   assert.match(ins, /仓库与技能登记/, '兄弟成员的组内描述');
   assert.match(ins, /阻塞窗口/, '组文档按 desc 展示');
@@ -108,7 +115,9 @@ test('交付带项目介绍：已登记的项目即使不在任何组里也知�
   const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
   const solo = join(dir, 'solo-proj');
   mkdirSync(solo, { recursive: true });
-  await repos.addRepo({ path: solo, name: 'solo', desc: '独自负责的那个项目', remote: 'https://github.com/me/solo' });
+  const added = await repos.addRepo({ path: solo, name: 'solo', desc: '独自负责的那个项目', remote: 'https://github.com/me/solo' });
+  // v8：项目介绍是显式 ref（没有约定路径/播种）
+  await repos.writeRepoDocContent({ key: added.key, name: added.name }, '独自负责的那个项目');
 
   await localtask.addTask({ text: '独立项目任务', cwd: solo });
   const r = await waitForTask({ cwd: solo, summary: '开干', timeoutSec: 1, open: false });

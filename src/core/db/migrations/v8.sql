@@ -1,0 +1,12 @@
+-- schema v8：去掉 refs.rel，归属条目补 tag
+--
+-- 口径（2026-11-13）：
+--   · ref 的地址只有两种：id（DB 实体身份）与 locator（外部文件/URL 的实际位置）。
+--     rel（旧文档树相对路径）不再存在——历史路径只保留在 locator 里，供外部绑定
+--     与迁移核对；界面、模板、docId 一律不再出现路径。
+--   · ref_bindings 是宿主文档列表的唯一语义（repo / group / group_repo），
+--     每条可有 tag（原 docLinks 的分类标签）。
+--
+-- rel 列与唯一索引由 v8-data 在数据搬运完成后删除（DDL 先于 apply 执行，
+-- 所以不能在 SQL 里先删——apply 还要读 rel 做迁移）。
+ALTER TABLE ref_bindings ADD COLUMN tag TEXT NOT NULL DEFAULT '';

@@ -13,17 +13,17 @@ const renderRef: any = _renderRef;
 const input = z.object({
   repo: z.string().optional().describe("仓库（id / key / 路径 / 名称）"),
   board: z.string().optional().describe("看板（id / key / 名称）"),
-  rel: z.string().optional().describe("自有树内路径（如 repo/github.com/me/x.md）"),
-  path: z.string().optional().describe("外部文件/目录绝对路径（如 Obsidian vault；只读，不进 zip）"),
-  reset: z.boolean().optional().describe("拆掉覆盖，回到约定路径"),
+  ref: z.string().optional().describe("文档 refId（ref_<16hex>）"),
+  path: z.string().optional().describe("外部文件/目录绝对路径（会登记成 origin=external 的 ref）"),
+  reset: z.boolean().optional().describe("清空主篇"),
 });
 
 export class DocsBindAction extends ActionBase<typeof input> {
   @action({
     id: 'docs.bind',
     cli: ['docs', 'bind'],
-    // 仅 CLI：绑定由「文档落约定路径」推导（syncRefIndex），前端不提供直绑入口
-    summary: '绑定项目/组介绍的文档覆盖（--repo 或 --board 二选一 + --rel <自有路径> | --path <外部文件/目录>；--reset 拆回约定路径）',
+    // 仅 CLI：绑定写宿主 ext，前端走宿主文档集接口
+    summary: '绑定项目/组介绍的主篇（--repo 或 --board 二选一 + --ref <refId> | --path <外部文件/目录>；--reset 清空）',
     input,
     render: renderRef,
   })

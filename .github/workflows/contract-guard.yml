@@ -1,0 +1,110 @@
+name: contract guard
+
+# 守「契约生成物」这份对外契约的四条底线（设计见 docs 里《nx-kv 契约派发：设计方案 v1》§12.6）：
+#   1. 声明改了却没重新生成 → 红
+#   2. 生成包必须自包含可解析（pubspec 缺 environment 会被 pub 判成 legacy 包，
+#      报「doesn't support null safety」——错误信息完全不指向真因，所以必须用 CI 兜住）
+#   3. .dart_tool / pubspec.lock 不许入库
+#   4. 契约变了 → 提醒在 PR 描述里点名让 fr bump
+#
+# 为什么要门控：生成器（P1）与 contract/ 目录还没落地，这个 workflow 现在就该能合进来，
+# 合进来之后不能因为「文件还不存在」把所有人的 PR 拦红。所以先探一次「地基是否就绪」，
+# 没就绪就打 notice 跳过重活；等 contract/contract.json、gen:dart、contract/dart 三样齐了自动生效。
+# 只跑契约相关的路径，平时不占 CI 时间。
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'contract/**'
+      - 'scripts/**'
+      - 'package.json'
+  push:
+    branches: [main]
+    paths:
+      - 'contract/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 第 4 条要跟 base 分支比对 contract.json，需要完整历史
+          fetch-depth: 0
+
+      - name: 探地基是否就绪
+        id: gate
+        run: |
+          set -euo pipefail
+          ready=true
+          reason=""
+          if [ ! -f contract/contract.json ]; then ready=false; reason="contract/contract.json 不存在"; fi
+          if ! node -e 'process.exit(require("./package.json").scripts["gen:dart"] ? 0 : 1)'; then
+            ready=false; reason="${reason:+$reason；}package.json 里没有 gen:dart 脚本"
+          fi
+          if [ ! -d contract/dart ]; then ready=false; reason="${reason:+$reason；}contract/dart 目录不存在"; fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          if [ "$ready" = "false" ]; then
+            echo "::notice::契约生成物尚未落地（$reason），本次跳过生成物校验。P1 落地后自动生效。"
+          fi
+
+      - name: 生成包里不许有 .dart_tool / pubspec.lock
+        run: |
+          set -euo pipefail
+          bad=$(git ls-files contract/dart | grep -E '(^|/)\.dart_tool/|^contract/dart/pubspec\.lock$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::以下文件不该入库（.dart_tool 是绝对路径缓存，pubspec.lock 属于消费者不属于库）："
+            echo "$bad"
+            exit 1
+          fi
+
+      - name: Setup pnpm
+        if: steps.gate.outputs.ready == 'true'
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        if: steps.gate.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: 生成物与声明一致
+        if: steps.gate.outputs.ready == 'true'
+        # --check 只比对不写入：仓库里的 contract/ 必须等于「现在重新生成一遍」的结果。
+        # 注意别写成 `pnpm run gen:dart -- --check`：pnpm 会把字面量 "--" 也传给脚本（实测）。
+        run: pnpm run gen:dart --check
+
+      - name: Setup Dart
+        if: steps.gate.outputs.ready == 'true'
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: 生成包自包含可解析
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: contract/dart
+        run: |
+          # 这一步专门守「包在仓库里被人 clone 出来能不能独立 pub get」
+          # —— fr 以 git 依赖消费的就是这个目录，它不自包含，fr 那边必然装不上。
+          dart pub get
+          dart analyze --fatal-infos
+
+      - name: 契约变了就提醒 bump fr
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          if git diff --quiet "origin/${{ github.base_ref }}" -- contract/contract.json 2>/dev/null; then
+            exit 0
+          fi
+          echo "::warning::contract/contract.json 已变化。请在 PR 描述里写明：fr: bump nx_kv_client to <本次合并后的 sha>"

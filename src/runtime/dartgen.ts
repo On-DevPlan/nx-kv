@@ -283,9 +283,16 @@ export function emitDartPackage(snapshot: ContractSnapshot): Record<string, stri
   ].join('\n');
 
   return {
+    // pubspec 的 description 只能是 ASCII —— 不是洁癖，是踩出来的：
+    // pub 读 **git 源**的 pubspec 时按系统 ANSI 码页解码（Windows 中文 = GBK），
+    // UTF-8 的多字节尾巴会把行尾 `\n` 一起吃进残缺的 GBK 字符里，于是
+    // description 与 version 被拼成一行，报「Mapping values are not allowed here」，
+    // 而错误信息指向的是 version 的冒号 —— 看着像缩进问题。
+    // 同一个包用 path 引入却完全正常（path 源走 UTF-8 读），所以这个坑只在
+    // 「锁 sha 的 git 依赖」这条真实消费路径上出现。
     'pubspec.yaml': [
       `name: ${pkg}`,
-      `description: nx-kv 契约（${snapshot.hash}）生成的 Dart 客户端，零依赖。`,
+      `description: nx-kv contract client (${snapshot.hash}) - generated, zero deps.`,
       `version: ${snapshot.version}`,
       'publish_to: none',
       'environment:',

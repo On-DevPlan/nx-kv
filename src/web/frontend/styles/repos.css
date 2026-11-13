@@ -184,12 +184,19 @@
   display: inline-flex; align-items: center; gap: 5px;
 }
 .rp-newtask-caret {
-  display: inline-block;
+  /* #192：命中区做成 17px 方块、图标加大一号（11→12），hover 背景加深一档
+     （比按钮 ghost hover 的 --soft-2 再深一点）体现「箭头是独立点击区」的层次 */
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; margin-right: -2px;
+  border-radius: 5px;
   transform: rotate(90deg);
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, background-color 0.12s ease, opacity 0.12s ease;
   opacity: 0.75;
 }
+.rp-newtask-caret .ic { width: 12px; height: 12px; }
+.rp-newtask-caret:hover { background: rgba(22, 24, 28, 0.08); opacity: 1; }
 .rp-newtask-caret.rot { transform: rotate(-90deg); }
+.rp-newtask-caret.rot:hover { background: rgba(22, 24, 28, 0.12); }
 .rp-newtask > .btn.is-open { border-color: var(--mid); }
 .rp-tpl-fly {
   box-sizing: border-box;

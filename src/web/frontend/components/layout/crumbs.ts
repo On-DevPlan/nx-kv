@@ -72,6 +72,66 @@ export function crumbsOf(route: Partial<AppRoute> | null | undefined, ctx: SpecC
   }
 }
 
+/** 面包屑的一段：label 显示文案；hash = 点它去的层级路由，'' = 当前层（纯文本）。 */
+export interface CrumbStep {
+  label: string;
+  hash: string;
+}
+
+/**
+ * 路由 → **可导航**的面包屑层级（#190）。
+ *
+ * #97 曾把整段路径做成一个返回钮——结果 md 编辑器（DocPanel）里的面包屑
+ * 「是返回而不是面包屑」：看着是路径，点哪都是返回，层级点不进去。
+ * 现在语义拆开：每段路径独立可点、去它自己的层级（父段 hash 非空），
+ * 最后一段是当前位置（hash 空 = 纯文本）；「返回」交给独立的 ← 钮。
+ * crumbsOf 保留展示语义（纯 label 数组），两者不要互相取代。
+ */
+export function crumbTrailOf(route: Partial<AppRoute> | null | undefined, ctx: SpecCtx = {}): CrumbStep[] {
+  if (!route || !route.view) return [];
+  switch (route.view) {
+    case 'dir': {
+      if (!ctx.dirName) return [];
+      const out: CrumbStep[] = [];
+      // 任务页才有上一级（目录页自己就是这层的家）；草稿也归属目录页
+      out.push({ label: ctx.dirName, hash: route.task ? `#/dir/${encodeURIComponent(route.key || '')}` : '' });
+      if (route.task) {
+        const label = /^draft/i.test(String(route.task)) ? 'draft' : (ctx.pageTitle || `#${route.task}`);
+        out.push({ label, hash: '' });
+      }
+      return out;
+    }
+    case 'group': {
+      if (route.task) {
+        const label = /^draft/i.test(String(route.task)) ? 'draft' : (ctx.pageTitle || `#${route.task}`);
+        return [
+          { label: ctx.boardName || '项目组', hash: `#/group/${encodeURIComponent(route.key || '')}` },
+          { label, hash: '' },
+        ];
+      }
+      return [{ label: ctx.boardName || '项目组', hash: '' }];
+    }
+    case 'repos':
+      return [{ label: '仓库管理', hash: '' }];
+    case 'overview':
+      return [{ label: '全部目录总览', hash: '' }];
+    case 'templates': {
+      if (route.mode === 'new') return [{ label: '任务模板', hash: '#/templates' }, { label: '新建模板', hash: '' }];
+      if (route.mode === 'edit') return [{ label: '任务模板', hash: '#/templates' }, { label: '编辑模板', hash: '' }];
+      return [{ label: '任务模板', hash: '' }];
+    }
+    // 文档页：归属段可点（仓库 → 仓库管理；项目组 → 组页），文档自身是当前层
+    case 'doc': {
+      const owner = ctx.repoName || ctx.boardName || '';
+      const parent = parentRouteOf(route, ctx);
+      if (!owner) return [{ label: '文档', hash: '' }];
+      return [{ label: owner, hash: parent }, { label: '文档', hash: '' }];
+    }
+    default:
+      return [];
+  }
+}
+
 /**
  * 上一级路由（面包屑条上的「← 返回」用）。
  *   任务页 → 该目录/组的任务表面；目录页 → 总览（仓库是顶层模块，上面没有组）；

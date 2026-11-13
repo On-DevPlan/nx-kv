@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { crumbsOf, parentRouteOf, crumbCtxOf } from '../../src/web/frontend/components/layout/crumbs.js';
+import { crumbsOf, crumbTrailOf, parentRouteOf, crumbCtxOf } from '../../src/web/frontend/components/layout/crumbs.js';
 
 // #84：侧栏里仓库是平铺的独立模块（组只是指针），面包屑却还按旧容器语义
 // 拼组名（[ nx/nx-kv/#81 ]）——这里钉死新语义：仓库路由不带组名。
@@ -93,4 +93,76 @@ test('crumbCtxOf group+task：成员队列里搜任务（组路由 key 不是队
   const plain = crumbCtxOf({ view: 'group', key: 'b_1' }, rows, repoData);
   assert.equal(plain.dirName, '');
   assert.equal(plain.pageTitle, '');
+});
+
+// ─── #190：crumbTrailOf——每段路径带自己的路由（真正的面包屑，层级点得进去）───
+
+test('crumbTrailOf：任务页 [ 目录(可点→目录页) / #N(当前) ]', () => {
+  assert.deepEqual(
+    crumbTrailOf({ view: 'dir', key: 'abc', task: '28' }, { dirName: 'nx-kv', pageTitle: '#28' }),
+    [
+      { label: 'nx-kv', hash: '#/dir/abc' },
+      { label: '#28', hash: '' },
+    ]
+  );
+  // 草稿也归属目录页
+  assert.deepEqual(
+    crumbTrailOf({ view: 'dir', key: 'abc', task: 'draft-3' }, { dirName: 'nx-kv' }),
+    [
+      { label: 'nx-kv', hash: '#/dir/abc' },
+      { label: 'draft', hash: '' },
+    ]
+  );
+});
+
+test('crumbTrailOf：目录页自身是当前层（单段纯文本，无可点段）', () => {
+  assert.deepEqual(
+    crumbTrailOf({ view: 'dir', key: 'abc' }, { dirName: 'nx-kv' }),
+    [{ label: 'nx-kv', hash: '' }]
+  );
+});
+
+test('crumbTrailOf：组任务页 [ 组名(可点→组页) / #N(当前) ]；组页单段当前层', () => {
+  assert.deepEqual(
+    crumbTrailOf({ view: 'group', key: 'b_1', task: '86' }, { boardName: 'nx', pageTitle: '#86' }),
+    [
+      { label: 'nx', hash: '#/group/b_1' },
+      { label: '#86', hash: '' },
+    ]
+  );
+  assert.deepEqual(
+    crumbTrailOf({ view: 'group', key: 'b_1' }, { boardName: 'nx' }),
+    [{ label: 'nx', hash: '' }]
+  );
+});
+
+test('crumbTrailOf：doc 归属段可点（仓库→仓库管理 / 组→组页），文档是当前层', () => {
+  assert.deepEqual(
+    crumbTrailOf({ view: 'doc', repoKey: 'k_r' }, { repoName: 'nx-kv' }),
+    [
+      { label: 'nx-kv', hash: '#/repos' },
+      { label: '文档', hash: '' },
+    ]
+  );
+  assert.deepEqual(
+    crumbTrailOf({ view: 'doc', boardKey: 'b_1', boardName: 'nx' }, { boardName: 'nx' }),
+    [
+      { label: 'nx', hash: '#/group/b_1' },
+      { label: '文档', hash: '' },
+    ]
+  );
+  // 归属未知：只剩当前层
+  assert.deepEqual(crumbTrailOf({ view: 'doc' }, {}), [{ label: '文档', hash: '' }]);
+});
+
+test('crumbTrailOf：模板新建/编辑有上一级（回任务模板列表）；顶层页无可点段', () => {
+  assert.deepEqual(
+    crumbTrailOf({ view: 'templates', mode: 'new' }, {}),
+    [
+      { label: '任务模板', hash: '#/templates' },
+      { label: '新建模板', hash: '' },
+    ]
+  );
+  assert.deepEqual(crumbTrailOf({ view: 'overview' }, {}), [{ label: '全部目录总览', hash: '' }]);
+  assert.deepEqual(crumbTrailOf(null, {}), []);
 });

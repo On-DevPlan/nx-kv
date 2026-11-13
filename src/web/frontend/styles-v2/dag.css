@@ -265,13 +265,20 @@
   padding: 1px 9px; font: inherit; font-size: 11px; color: var(--ink-2, #4B515A); cursor: pointer;
 }
 .dagp-reset:hover { background: var(--soft, #F1F0EC); }
-/* 面包屑返回钮（#97：独立「←」删掉，整段路径本身就是返回钮） */
-.nx-crumb-path {
-  border: 0; background: none; cursor: pointer;
-  font: inherit; color: inherit; padding: 0; margin: 0; text-align: left;
+/* 面包屑（#190）：独立「←」返回钮回归 + 每段路径独立可点——
+   #97 的「整段路径=返回钮」口径废除：md 编辑器里它表现为只会返回、层级点不进去 */
+.nx-crumb-back {
+  flex: none; border: 0; background: none; cursor: pointer;
+  font: inherit; color: inherit; padding: 0 4px 0 0; margin: 0 2px 0 0; line-height: 1;
 }
-.nx-crumb-path:hover .nx-crumb-t { color: var(--ink, #16181C); text-decoration: underline; }
-.nx-crumb-path:focus-visible { outline: 1px solid var(--mdw-accent, #2F6F5E); border-radius: 4px; }
+.nx-crumb-back:hover { color: var(--ink, #16181C); }
+.nx-crumb-back:focus-visible { outline: 1px solid var(--mdw-accent, #2F6F5E); border-radius: 4px; }
+.nx-crumb-link {
+  border: 0; background: none; cursor: pointer;
+  font: inherit; color: inherit; padding: 0; margin: 0;
+}
+.nx-crumb-link:hover { color: var(--ink, #16181C); text-decoration: underline; }
+.nx-crumb-link:focus-visible { outline: 1px solid var(--mdw-accent, #2F6F5E); border-radius: 4px; }
 
 /* 面板内的路径条形态（#44）：贴在主面板顶部的一枚小药丸，不是窗口通栏 */
 .nx-crumb-inline {

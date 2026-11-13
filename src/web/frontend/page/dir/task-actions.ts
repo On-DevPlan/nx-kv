@@ -258,10 +258,28 @@ export function useTaskActions({
     guard(async () => {
       await removeTaskItem(isGlobal ? { key: GLOBAL_KEY, id: Number(task) } : { cwd: topic?.cwd, id: Number(task) });
       toast(`已删除「${title}」`);
-      if (model && tabId) model.doAction(Actions.deleteTab(tabId));
+      // #191：删除后**不拆面板**——maincontent 永远不会被删除。主布局里的任务页
+      // 就地导航回父级（组页 / 目录页 / 全局），路由 effect 会用 openPanel 换内容，
+      // 面板壳一直活着（原来 deleteTab 会把整块面板删掉，主区直接空掉）；
+      // 浮窗与旁路原文是辅助视图，维持原行为：直接关掉。
+      const node = (tabId && (model || app.model || null)?.getNodeById?.(tabId)) as
+        | { getConfig?: () => Record<string, unknown>; getWindowId?: () => string }
+        | undefined;
+      const cfg = (node && node.getConfig && node.getConfig()) || {};
+      const auxiliary =
+        (typeof node?.getWindowId === 'function' && node.getWindowId() === 'float') || !!cfg.beside;
+      if (auxiliary || !app.onNavigate) {
+        if (model && tabId) model.doAction(Actions.deleteTab(tabId));
+      } else if (groupAnchored) {
+        app.onNavigate('#/group/' + encodeURIComponent(groupId || ''));
+      } else if (isGlobal) {
+        app.onNavigate('#/global');
+      } else {
+        app.onNavigate('#/dir/' + encodeURIComponent(topicKey || ''));
+      }
       refreshLocal?.();
     });
-  }, [doc, isDraft, task, isGlobal, topic, model, tabId, refreshLocal, guard, toast, dialog]);
+  }, [doc, isDraft, task, isGlobal, topic, model, tabId, app, groupAnchored, groupId, topicKey, refreshLocal, guard, toast, dialog]);
 
   // #184：正在跑（claimed）的任务以前在面板上是死路——工具栏连「标为完成」都不渲染，
   // 只能干等 agent 自己回执。现在 claimed 也能收：用户是最终验收方，agent 稍后的 done

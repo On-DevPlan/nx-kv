@@ -18,6 +18,7 @@ import {
 } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
+import { useApp } from '../../app-context.jsx';
 import { openPanel } from '../../workspace.js';
 import { MdPanes } from '../../components/md/md-panes.jsx';
 import { DocAttachBody, DocDockPanel, DocStatusBar } from './doc-dock.js';
@@ -69,6 +70,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   tabId?: string;
 }) {
   const toast = useToast();
+  const app = useApp();
   const { dialog, node: dialogNode } = useDialog();
   const histRef = useRef<Map<string, unknown>>(new Map());
   const editorApiRef = useRef<EditorApi | null>(null);
@@ -359,7 +361,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
     });
   };
 
-  // ─── 删除：danger 确认 → DELETE 落盘 → 关掉当前页签 ───
+  // ─── 删除：danger 确认 → DELETE 落盘 → 主布局就地回归属页（不拆面板，#191 同规）───
   const delDoc = () => {
     if (!doc) return;
     const label = doc.desc || doc.title || doc.refId || docId;
@@ -374,7 +376,21 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       await removeDocItem({ ref: docId });
       toast(`已删除：${label}`);
       notifyDocsChanged();
-      if (model && tabId) model.doAction(Actions.deleteTab(tabId));
+      // #191 同规：maincontent 永远不会被删除——主布局里的文档页就地回归属页
+      // （仓库 → 仓库管理，项目组 → 组页）；浮窗 / 旁路是辅助视图，直接关掉。
+      const node = (tabId && (model || app.model || null)?.getNodeById?.(tabId)) as
+        | { getConfig?: () => Record<string, unknown>; getWindowId?: () => string }
+        | undefined;
+      const cfg = (node && node.getConfig && node.getConfig()) || {};
+      const auxiliary =
+        (typeof node?.getWindowId === 'function' && node.getWindowId() === 'float') || !!cfg.beside;
+      if (auxiliary || !app.onNavigate || (!repoKey && !boardKey)) {
+        if (model && tabId) model.doAction(Actions.deleteTab(tabId));
+      } else if (repoKey) {
+        app.onNavigate('#/repos');
+      } else {
+        app.onNavigate('#/group/' + encodeURIComponent(boardKey || ''));
+      }
     });
   };
 

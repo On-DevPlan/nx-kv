@@ -1,0 +1,3 @@
+# 生成器不产这两样；它们属于消费者，入库只会打架
+.dart_tool/
+pubspec.lock

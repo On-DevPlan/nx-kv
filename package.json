@@ -13,6 +13,7 @@
   "scripts": {
     "gen:actions": "node --import tsx scripts/gen-actions.mjs",
     "gen:api": "node --import tsx scripts/gen-api-client.mjs",
+    "gen:dart": "node --import tsx scripts/gen-dart-client.mjs",
     "gen": "pnpm run gen:actions && pnpm run gen:api",
     "typecheck": "pnpm run gen && tsc -b tsconfig.node.json tsconfig.web.json",
     "build": "pnpm run gen && tsc -b tsconfig.node.json && vite build && node scripts/link-local.mjs --auto",

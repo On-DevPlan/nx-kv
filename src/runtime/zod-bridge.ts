@@ -21,25 +21,15 @@
 // 「用法:」前缀是**对外契约**：assets 文档教 agent 用错误文本里的「用法:」判定
 // 参数错误，不得丢。
 import { badInput } from '../core/errors.js';
+import type { FieldDesc, ModelField, TypeNode } from '../core/contract-types.js';
 import type { ZodType } from 'zod';
 
-export type FieldKind = 'string' | 'number' | 'boolean' | 'enum' | 'array' | 'kv' | 'raw';
+// 契约的数据形状统一由 core 定义（模块要读快照，而模块够不着 runtime）；
+// 这里只负责「zod → 那些形状」的转换，并把类型再导出一次给 runtime 内部用。
+export type { FieldDesc, ModelField, TypeNode };
 
-export interface FieldDesc {
-  name: string;
-  kind: FieldKind;
-  /** 位置参数（按 args 顺序消费 argv），其余是 --flag */
-  positional: boolean;
-  /** 没有 default 且非 optional → 必填 */
-  required: boolean;
-  default?: unknown;
-  enumValues?: string[];
-  /**
-   * 字段说明（zod 的 .describe()，迁移自 legacy flags 的 hint）。
-   * 用法串里拿它当值占位符——help 因此仍然说人话，而不是 `--module <string>`。
-   */
-  hint?: string;
-}
+/** 入参字段的 kind（形状定义在 core/contract-types.ts，这里只取别名）。 */
+export type FieldKind = FieldDesc['kind'];
 
 interface Unwrapped {
   inner: unknown;
@@ -209,4 +199,98 @@ export function parseZodInput(input: ZodType, values: Record<string, unknown>, u
     .map((i) => `${i.path.join('.') || '(根)'} ${i.message}`)
     .join('；');
   throw badInput(`用法: ${usage} —— 参数不合法: ${issues}`);
+}
+
+// ─────────────────────────── 出参（跨语言契约） ───────────────────────────
+//
+// 入参只需要「字段 + kind」这张扁平的说明（CLI/HTTP 归一化够用）；出参要生成别的
+// 语言的**类型**，所以必须是**递归结构**：模型里嵌模型、数组里有模型。
+//
+// 这份 IR 是 JSON 安全的（就是 contract.json 里 output 字段的形状），
+// 生成器只认它、不再碰 zod——契约快照因此可以入库对账、可以给端侧当版本号。
+
+const pascal = (s: string): string => {
+  const camel = s.replace(/[-_](\w)/g, (_m, c: string) => c.toUpperCase());
+  return camel.charAt(0).toUpperCase() + camel.slice(1);
+};
+
+/** topics → Topic（数组元素命名用；短词不动，避免 'as' → 'a' 这种自伤） */
+const singular = (s: string): string => (s.length > 3 && s.endsWith('s') ? s.slice(0, -1) : s);
+
+/**
+ * 把出参 schema 拆成递归类型树。
+ *
+ * 命名规则（固化成规则表，不做「智能猜测」）：
+ *   - 根模型 = 调用方给的 rootName（如 `LocaltaskListOutput`）
+ *   - 子模型 = 根名去掉 `Output` 后缀 + 字段名的 Pascal 形式
+ *     （`LocaltaskListOutput` 的 `settings` → `LocaltaskListSettings`）
+ *   - 数组元素 = 同上，但字段名取单数（`topics` → `LocaltaskListTopic`）
+ *   - **同名不同形直接抛错**：生成器不猜、也不加数字后缀糊过去——
+ *     真发生了说明命名该改，静默改名只会让端侧类型漂移得莫名其妙。
+ */
+export function describeOutput(output: ZodType, rootName: string): TypeNode {
+  const seen = new Map<string, string>();
+  const claim = (name: string, node: TypeNode): TypeNode => {
+    const sig = JSON.stringify(node);
+    const prev = seen.get(name);
+    if (prev !== undefined && prev !== sig) {
+      throw new Error(
+        `出参模型名冲突：${name} 有两种不同形状。改字段名或显式拆模型，别让生成器猜。`,
+      );
+    }
+    seen.set(name, sig);
+    return node;
+  };
+
+  const walk = (schema: unknown, name: string): TypeNode => {
+    const { inner } = unwrap(schema);
+    const def = (inner as { _zod?: { def?: Record<string, unknown> } })?._zod?.def;
+    const tag = def?.type as string | undefined;
+    switch (tag) {
+      case 'string':
+        return { k: 'string' };
+      case 'number':
+        // z.int() 与 z.number() 在 zod v4 里同 tag，靠 format 区分
+        return def?.format === 'safeint' ? { k: 'int' } : { k: 'number' };
+      case 'boolean':
+        return { k: 'bool' };
+      case 'enum': {
+        const values = Object.values((def?.entries ?? {}) as Record<string, string>);
+        return claim(name, { k: 'enum', name, values });
+      }
+      case 'literal': {
+        const values = ((def?.values ?? []) as unknown[]).map((v) => String(v));
+        return claim(name, { k: 'enum', name, values });
+      }
+      case 'array':
+        // 名字由调用方按「字段名单数化」算好（topics → LocaltaskListTopic），这里原样往下传
+        return { k: 'list', of: walk(def?.element, name) };
+      case 'record':
+        return { k: 'map', of: walk(def?.valueType, name + 'Value') };
+      case 'object': {
+        const base = name.replace(/Output$/, '');
+        const shape = (def?.shape ?? {}) as Record<string, unknown>;
+        const fields: ModelField[] = Object.entries(shape).map(([fname, fs]) => {
+          const u = unwrap(fs);
+          const required = !u.optional && u.defaultValue === undefined;
+          const hint = hintOf(fs) || hintOf(u.inner);
+          // 数组字段的元素名取单数：topics → LocaltaskListTopic（而不是 …TopicsItem）
+          const isList =
+            (u.inner as { _zod?: { def?: { type?: string } } })?._zod?.def?.type === 'array';
+          const childName = base + pascal(isList ? singular(fname) : fname);
+          return { name: fname, required, type: walk(fs, childName), ...(hint ? { hint } : {}) };
+        });
+        return claim(name, { k: 'model', name, fields });
+      }
+      default:
+        // date / union / unknown / any …：Dart 侧给 dynamic，不装作知道形状
+        return { k: 'unknown' };
+    }
+  };
+
+  const node = walk(output, rootName);
+  if (node.k !== 'model') {
+    throw new Error(`出参必须是 z.object({...}) 收口（收到 ${node.k}）——端侧根类型得是个模型`);
+  }
+  return node;
 }

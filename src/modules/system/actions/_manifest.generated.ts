@@ -7,17 +7,20 @@
 import type { ActionBase } from '../../../runtime/action-base.js';
 import type { Container } from '../../../runtime/container.js';
 import { BootstrapAction } from './bootstrap.js';
+import { ContractAction } from './contract.js';
 import { HealthAction } from './health.js';
 import { RoutesAction } from './routes.js';
 
 /** 本模块的全部 action 类（容器按这个顺序建实例）。 */
 export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   BootstrapAction,
+  ContractAction,
   HealthAction,
   RoutesAction,
 ];
 
 // 再导出类本身：前端 apiclient 的返回类型从这里 type-only 引用（实现即契约）。
 export { BootstrapAction };
+export { ContractAction };
 export { HealthAction };
 export { RoutesAction };

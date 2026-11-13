@@ -21,6 +21,10 @@
 import { ModuleBase, type AnyModule } from './types/module.js';
 import { cliPathsOf, entryOf, type AnyAction } from './spec.js';
 import { publishCommandTable } from '../core/command-table.js';
+import { publishContractSnapshot } from '../core/contract-snapshot.js';
+import { buildContractSnapshot } from './contract.js';
+import type { ZodBoundAction } from './action-decorator.js';
+import { readFileSync } from 'node:fs';
 import systemModule from '../modules/system/index.js';
 import setting from '../modules/setting/index.js';
 import localtask from '../modules/localtask/index.js';
@@ -128,6 +132,19 @@ export const ACTIONS = registry.actions;
 // cli.ts 在装配出 ALL_COMMANDS 后会再覆盖一次（含 serve / help / version
 // 这类平台命令），所以「从 CLI 跑」拿到的是完整表，纯 HTTP 场景拿到的是 action 表。
 publishCommandTable(ACTIONS.map(entryOf));
+
+// 契约快照：只在启动期算一次，模块侧（system.contract）只读这份。
+// 与命令表同理——registry → modules → 想读契约的 action → registry 会成环，
+// 快照把环断开；契约在装配后不再变化，所以「读快照」没有时效问题。
+const VERSION: string = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+).version;
+publishContractSnapshot(
+  buildContractSnapshot(
+    ACTIONS.filter((a) => Array.isArray((a as Partial<ZodBoundAction>).fields)) as unknown as ZodBoundAction[],
+    { app: 'nx-kv', version: VERSION },
+  ),
+);
 
 // ModuleBase 仅为类型连贯在此重导出：模块作者从 types/module.js 拿基类，
 // runtime 侧不主动扩散它。

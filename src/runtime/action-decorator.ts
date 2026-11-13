@@ -23,8 +23,12 @@
 //     z.input（调用方形状，.default 字段可选）与 z.output（解析后形状，
 //     .default 字段必填）别混：handler 拿的是 z.output。
 //
-// (c) 出参没有 schema——**实现即契约**：apiclient 的返回类型从 action 类的方法签名
-//     直接推断（codegen type-only 引类），同一信息只声明一次。
+// (c) 出参默认没有 schema——**实现即契约**：TS 前端 apiclient 的返回类型从 action 类
+//     的方法签名直接推断（codegen type-only 引类），同一信息只声明一次。
+//     但**跨语言客户端（Dart）拿不到 TS 类型**，所以需要跨语言的 action 额外声明
+//     `output`：它是**视图**（只列要对端侧暴露的字段，未声明的字段不进生成物），
+//     不是 service 的返回结构。声明了 output 的 action 会被 tests/unit/contract.test.mjs
+//     用 output.safeParse(真实返回) 对账——声明写错，测试当场红。
 import { describeInput, type FieldDesc } from './zod-bridge.js';
 import type { ActionRunMeta } from './action-base.js';
 import type { ZodType } from 'zod';
@@ -64,6 +68,17 @@ export interface ActionMeta {
   restArg?: string;
   /** 输入 schema：CLI 与 HTTP 共用的真相源（运行时校验 + 归一化的依据）。 */
   input: ZodType;
+  /**
+   * 出参 schema（可选）：**只为跨语言客户端存在**。
+   *
+   * 不声明它，TS 侧一切照旧（返回类型从方法签名推断）；声明了它，这个 action 才会
+   * 进 contract 快照、才会被生成 Dart 客户端。三条纪律（违反会在生成/测试期报错）：
+   *   1. 它是**视图**：只列要对端侧暴露的字段；service 多返回的字段不会被生成
+   *   2. 必须是 `z.object({...})` 收口：端侧根类型得是个模型
+   *   3. 可选性 / 整数 / 枚举即契约：`z.int()` 与 `z.number()` 在 Dart 是 int 与 num，
+   *      改一个字符端侧就换个类型（这正是我们想要的编译期信号）
+   */
+  output?: ZodType;
   /** CLI 人读渲染（面板不用——面板拿 data 走 JSON）。 */
   // 参数用 any：渲染函数普遍要读结果字段，给 unknown 会让属性访问整片红。
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 见上；eslint 对 any 仅警告
@@ -128,6 +143,8 @@ export interface ZodBoundAction extends BoundAction {
   /** 逐字段说明（收集时用 describeInput 算好一次，CLI/HTTP/usage/codegen 共用） */
   fields: FieldDesc[];
   input: ZodType;
+  /** 出参视图（只有跨语言客户端需要的 action 才有；见 ActionMeta.output） */
+  output?: ZodType;
   render?: (result: any, ctx?: any) => string | Promise<string>;
   stream?: boolean;
   channel: 'zod';
@@ -189,6 +206,7 @@ export function zodActionsOf(instance: object): ZodBoundAction[] {
       restArg: meta.restArg,
       fields,
       input: meta.input,
+      output: meta.output,
       render: meta.render,
       stream: meta.stream,
       channel: 'zod',

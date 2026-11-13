@@ -120,6 +120,7 @@ import type {
 } from '../../../modules/setting/actions/_manifest.generated.js';
 import type {
   BootstrapAction,
+  ContractAction,
   HealthAction,
 } from '../../../modules/system/actions/_manifest.generated.js';
 import type {
@@ -148,6 +149,8 @@ export interface Transport {
 export interface ApiClient {
 /** 聚合上下文：版本 / 命令表 */
   bootstrap(): Promise<Awaited<ReturnType<InstanceType<typeof BootstrapAction>['run']>>>;
+/** 契约快照：带 output 的 action + 指纹（端侧据此对账自己是不是旧契约） */
+  contract(): Promise<Awaited<ReturnType<InstanceType<typeof ContractAction>['run']>>>;
 /** 健康检查（纯本机） */
   health(): Promise<Awaited<ReturnType<InstanceType<typeof HealthAction>['run']>>>;
 /** 读本机设置（附件自动下载、附件目录、参考仓库存储根） */
@@ -384,6 +387,11 @@ export function createApiClient(transport: Transport): ApiClient {
     async bootstrap() {
       const path = `/api/bootstrap`;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof BootstrapAction>['run']>>;
+    },
+    // action: system.contract
+    async contract() {
+      const path = `/api/contract`;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof ContractAction>['run']>>;
     },
     // action: system.health
     async health() {

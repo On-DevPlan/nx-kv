@@ -1,0 +1,415 @@
+{
+  "app": "nx-kv",
+  "version": "0.51.0",
+  "hash": "3c7947633f3421be",
+  "actions": [
+    {
+      "id": "localtask.list",
+      "cli": [
+        [
+          "localtask",
+          "list"
+        ]
+      ],
+      "http": "GET /api/localtasks",
+      "input": [],
+      "output": {
+        "k": "model",
+        "name": "LocaltaskListOutput",
+        "fields": [
+          {
+            "name": "topics",
+            "required": true,
+            "type": {
+              "k": "list",
+              "of": {
+                "k": "model",
+                "name": "LocaltaskListTopic",
+                "fields": [
+                  {
+                    "name": "key",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "主题键（board/xxx 或 group/xxx）"
+                  },
+                  {
+                    "name": "name",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "主题名"
+                  },
+                  {
+                    "name": "cwd",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "主题绑定的工作目录"
+                  },
+                  {
+                    "name": "summary",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "一句话现状"
+                  },
+                  {
+                    "name": "waiting",
+                    "required": true,
+                    "type": {
+                      "k": "bool"
+                    },
+                    "hint": "是否处于等待中"
+                  },
+                  {
+                    "name": "pending",
+                    "required": true,
+                    "type": {
+                      "k": "int"
+                    },
+                    "hint": "待领取数"
+                  },
+                  {
+                    "name": "claimed",
+                    "required": true,
+                    "type": {
+                      "k": "int"
+                    },
+                    "hint": "进行中数"
+                  },
+                  {
+                    "name": "done",
+                    "required": true,
+                    "type": {
+                      "k": "int"
+                    },
+                    "hint": "已完成数"
+                  },
+                  {
+                    "name": "total",
+                    "required": true,
+                    "type": {
+                      "k": "int"
+                    },
+                    "hint": "任务总数"
+                  },
+                  {
+                    "name": "repo",
+                    "required": false,
+                    "type": {
+                      "k": "model",
+                      "name": "LocaltaskListTopicRepo",
+                      "fields": [
+                        {
+                          "name": "name",
+                          "required": true,
+                          "type": {
+                            "k": "string"
+                          }
+                        },
+                        {
+                          "name": "key",
+                          "required": true,
+                          "type": {
+                            "k": "string"
+                          },
+                          "hint": "仓库键（github.com/owner/name）"
+                        },
+                        {
+                          "name": "desc",
+                          "required": false,
+                          "type": {
+                            "k": "string"
+                          }
+                        }
+                      ]
+                    },
+                    "hint": "所属仓库；纯本地目录的主题为 null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "waiting",
+            "required": true,
+            "type": {
+              "k": "int"
+            },
+            "hint": "正在等待中的主题数"
+          },
+          {
+            "name": "settings",
+            "required": true,
+            "type": {
+              "k": "model",
+              "name": "LocaltaskListSettings",
+              "fields": [
+                {
+                  "name": "timeoutSec",
+                  "required": true,
+                  "type": {
+                    "k": "int"
+                  },
+                  "hint": "wait 的默认超时（秒）"
+                },
+                {
+                  "name": "recommendedSec",
+                  "required": true,
+                  "type": {
+                    "k": "int"
+                  }
+                },
+                {
+                  "name": "maxSec",
+                  "required": true,
+                  "type": {
+                    "k": "int"
+                  }
+                },
+                {
+                  "name": "ackPromptList",
+                  "required": true,
+                  "type": {
+                    "k": "list",
+                    "of": {
+                      "k": "string"
+                    }
+                  },
+                  "hint": "交付文本里的收尾要求"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": "总览全部主题（工作目录、现状、是否等待中、待领取数）"
+    },
+    {
+      "id": "system.bootstrap",
+      "cli": [
+        [
+          "bootstrap"
+        ]
+      ],
+      "http": "GET /api/bootstrap",
+      "input": [],
+      "output": {
+        "k": "model",
+        "name": "BootstrapOutput",
+        "fields": [
+          {
+            "name": "app",
+            "required": true,
+            "type": {
+              "k": "model",
+              "name": "BootstrapApp",
+              "fields": [
+                {
+                  "name": "name",
+                  "required": true,
+                  "type": {
+                    "k": "string"
+                  },
+                  "hint": "应用标识（面板端口占用时靠它认领）"
+                },
+                {
+                  "name": "version",
+                  "required": true,
+                  "type": {
+                    "k": "string"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "version",
+            "required": true,
+            "type": {
+              "k": "string"
+            }
+          },
+          {
+            "name": "defaultPort",
+            "required": true,
+            "type": {
+              "k": "int"
+            },
+            "hint": "面板默认端口"
+          },
+          {
+            "name": "projectRoot",
+            "required": true,
+            "type": {
+              "k": "string"
+            },
+            "hint": "面板进程的工作目录"
+          },
+          {
+            "name": "commands",
+            "required": true,
+            "type": {
+              "k": "list",
+              "of": {
+                "k": "model",
+                "name": "BootstrapCommand",
+                "fields": [
+                  {
+                    "name": "id",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    }
+                  },
+                  {
+                    "name": "module",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    }
+                  },
+                  {
+                    "name": "command",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "CLI 命令（如 `nx-kv localtask list`）"
+                  },
+                  {
+                    "name": "usage",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "完整用法串"
+                  },
+                  {
+                    "name": "http",
+                    "required": false,
+                    "type": {
+                      "k": "model",
+                      "name": "BootstrapCommandHttp",
+                      "fields": [
+                        {
+                          "name": "method",
+                          "required": true,
+                          "type": {
+                            "k": "string"
+                          }
+                        },
+                        {
+                          "name": "path",
+                          "required": true,
+                          "type": {
+                            "k": "string"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "summary",
+                    "required": false,
+                    "type": {
+                      "k": "string"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "summary": "聚合上下文：版本 / 命令表"
+    },
+    {
+      "id": "system.contract",
+      "cli": [
+        [
+          "contract"
+        ]
+      ],
+      "http": "GET /api/contract",
+      "input": [],
+      "output": {
+        "k": "model",
+        "name": "ContractOutput",
+        "fields": [
+          {
+            "name": "app",
+            "required": true,
+            "type": {
+              "k": "string"
+            }
+          },
+          {
+            "name": "version",
+            "required": true,
+            "type": {
+              "k": "string"
+            }
+          },
+          {
+            "name": "hash",
+            "required": true,
+            "type": {
+              "k": "string"
+            },
+            "hint": "契约指纹（stableStringify 的 sha256 前 16 位）"
+          },
+          {
+            "name": "actions",
+            "required": true,
+            "type": {
+              "k": "list",
+              "of": {
+                "k": "model",
+                "name": "ContractAction",
+                "fields": [
+                  {
+                    "name": "id",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    }
+                  },
+                  {
+                    "name": "http",
+                    "required": false,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "`METHOD /path`；纯 CLI 命令为 null"
+                  },
+                  {
+                    "name": "summary",
+                    "required": false,
+                    "type": {
+                      "k": "string"
+                    }
+                  },
+                  {
+                    "name": "output",
+                    "required": true,
+                    "type": {
+                      "k": "unknown"
+                    },
+                    "hint": "出参类型树（IR 原样透传，端侧通常不解析）"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "summary": "契约快照：带 output 的 action + 指纹（端侧据此对账自己是不是旧契约）"
+    }
+  ]
+}

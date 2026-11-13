@@ -18,6 +18,20 @@
       "children": []
     },
     {
+      "name": "contract",
+      "path": [
+        "contract"
+      ],
+      "action": {
+        "id": "system.contract",
+        "module": "system",
+        "summary": "契约快照：带 output 的 action + 指纹（端侧据此对账自己是不是旧契约）",
+        "usage": "contract",
+        "http": "GET /api/contract"
+      },
+      "children": []
+    },
+    {
       "name": "health",
       "path": [
         "health"

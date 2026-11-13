@@ -1,0 +1,6 @@
+name: nx_kv_client
+description: nx-kv 契约（3c7947633f3421be）生成的 Dart 客户端，零依赖。
+version: 0.51.0
+publish_to: none
+environment:
+  sdk: '>=3.0.0 <4.0.0'

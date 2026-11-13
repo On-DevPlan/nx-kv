@@ -9,10 +9,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { Icon } from '../icons.jsx';
-import { PopMenu } from '../popup/index.jsx';
+import { PopMenu, Modal } from '../popup/index.jsx';
 import { useToast } from '../toast/index.jsx';
 import { useDialog } from '../popup/index.jsx';
 import type { PopMenuItem } from '../popup/index.js';
+import { api } from '../../api/client.js';
+import RepoFormModal from '../../page/repos/repo-form-modal.jsx';
 import { buildTree, fmtWaitLeft, fmtDeadlineClock } from './model.js';
 import type { SideRow } from './model.js';
 import { canDrop, zoneOf, applyDrop } from './drag.js';
@@ -77,6 +79,9 @@ export default function Sidebar({
   const { dialog, node: dialogNode } = useDialog();
   const [kw, setKw] = useState('');
   const [menu, setMenu] = useState<MenuState | null>(null);      // {x,y,items}
+  // #193：「＋」菜单的两个入口各自的表单弹窗（对齐 repos 页，替代单输入对话框）
+  const [repoFormOpen, setRepoFormOpen] = useState(false);
+  const [boardForm, setBoardForm] = useState<{ name: string; desc: string } | null>(null);
   const [kbIndex, setKbIndex] = useState(-1);  // 键盘焦点行
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set()); // 展开子行的仓库 key
   const dragRef = useRef<DragRow | null>(null);                // {type,key|id,name}
@@ -257,9 +262,25 @@ export default function Sidebar({
     });
   };
 
-  // ─── 登记仓库 / 新建看板 ───
+  // ─── 登记仓库 / 新建看板（#193：对齐 repos 页——仓库走同款表单弹窗，看板带初始描述）───
   const addMenu = (e: ReactMouseEvent<HTMLButtonElement>) => {
-    setMenu({ x: e.clientX, y: e.clientY, items: addMenuItems({ dialog, toast, onDataChanged: refreshRepos }) });
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: addMenuItems({ onAddRepo: () => setRepoFormOpen(true), onNewBoard: () => setBoardForm({ name: '', desc: '' }) }),
+    });
+  };
+
+  const saveBoard = async () => {
+    if (!boardForm || !boardForm.name.trim()) return;
+    try {
+      await api('/api/boards', { method: 'POST', body: { name: boardForm.name.trim(), desc: boardForm.desc.trim() } });
+      toast('已新建看板 ' + boardForm.name.trim());
+      setBoardForm(null);
+      await refreshRepos?.();
+    } catch (err) {
+      toast('新建失败: ' + (err as Error).message);
+    }
   };
 
   const footEntry = (hash: string, icon: string, label: string) => (
@@ -427,6 +448,47 @@ export default function Sidebar({
       </div>
 
       {menu && <PopMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {/* #193：登记仓库 = repos 页同款表单（路径探测 / key 归一 / 名称与描述齐备） */}
+      {repoFormOpen ? (
+        <RepoFormModal
+          editing={null}
+          repos={(repos || []) as unknown as Parameters<typeof RepoFormModal>[0]['repos']}
+          onClose={() => setRepoFormOpen(false)}
+          onSaved={() => refreshRepos?.()}
+        />
+      ) : null}
+      {/* #193：新建看板 = 分组管理同款字段（名称 + 初始描述） */}
+      {boardForm ? (
+        <Modal title="新建看板（项目组）" onClose={() => setBoardForm(null)}>
+          <div className="form-grid">
+            <div className="form-field">
+              <label htmlFor="sb-board-name">名称</label>
+              <input
+                id="sb-board-name"
+                value={boardForm.name}
+                spellCheck="false"
+                placeholder="看板名，如 前端 / nx 家族"
+                onChange={(e) => setBoardForm((f) => (f ? { ...f, name: e.target.value } : f))}
+              />
+            </div>
+            <div className="form-field">
+              <label htmlFor="sb-board-desc">初始描述</label>
+              <textarea
+                id="sb-board-desc"
+                rows={3}
+                spellCheck="false"
+                placeholder={'新建时给的介绍正文（之后在组介绍文档里继续维护）。'}
+                value={boardForm.desc}
+                onChange={(e) => setBoardForm((f) => (f ? { ...f, desc: e.target.value } : f))}
+              />
+            </div>
+            <div className="form-acts">
+              <button type="button" className="btn ghost" onClick={() => setBoardForm(null)}>取消</button>
+              <button type="button" className="btn" disabled={!boardForm.name.trim()} onClick={saveBoard}>新建看板</button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
       {dialogNode}
     </aside>
   );

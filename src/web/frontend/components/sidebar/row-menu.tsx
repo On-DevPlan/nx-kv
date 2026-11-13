@@ -88,49 +88,18 @@ export function rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDat
   return [{ label: '打开全局任务池', icon: 'globe', onClick: () => onNavigate?.('#/global') }];
 }
 
-/** addMenuItems 的入参。 */
+/** addMenuItems 的入参：两个入口都交给调用方弹自己的表单（#193 对齐 repos 页）。 */
 export interface AddMenuArgs {
-  dialog: DialogFn;
-  toast: (msg: string) => void;
-  onDataChanged?: () => void;
+  /** 登记仓库：打开 repos 页同款的添加仓库表单弹窗（path 探测 / key 归一 / 名称描述） */
+  onAddRepo?: () => void;
+  /** 新建看板：打开带「名称 + 初始描述」的表单弹窗 */
+  onNewBoard?: () => void;
 }
 
-/** 搜索框右侧「＋」的菜单项 */
-export function addMenuItems({ dialog, toast, onDataChanged }: AddMenuArgs): PopMenuItem[] {
+/** 搜索框右侧「＋」的菜单项（#193：不再用单输入对话框——登记仓库少 key 必挂） */
+export function addMenuItems({ onAddRepo, onNewBoard }: AddMenuArgs): PopMenuItem[] {
   return [
-    {
-      label: '登记仓库…', icon: 'folder', onClick: async () => {
-        // dialog 的单输入分支回 string（见 useDialog.collect）
-        const path = await dialog({
-          title: '登记仓库',
-          input: true,
-          placeholder: '仓库绝对路径，如 D:/a_js/js_proj/nx-kv',
-        }) as string | null;
-        if (!path) return;
-        try {
-          await api('/api/repos', { method: 'POST', body: { path: path.trim() } });
-          toast('已登记仓库 ' + path.trim());
-          if (onDataChanged) onDataChanged();
-        } catch (err) {
-          // catch 变量是 unknown：只取 message
-          toast('登记失败: ' + (err as Error).message);
-        }
-      },
-    },
-    {
-      label: '新建看板（项目组）…', icon: 'plus', onClick: async () => {
-        // 同上：单输入回 string
-        const name = await dialog({ title: '新建看板', input: true, placeholder: '看板名，如 前端 / nx 家族' }) as string | null;
-        if (!name) return;
-        try {
-          await api('/api/boards', { method: 'POST', body: { name: name.trim() } });
-          toast('已新建看板 ' + name.trim());
-          if (onDataChanged) onDataChanged();
-        } catch (err) {
-          // catch 变量是 unknown：只取 message
-          toast('新建失败: ' + (err as Error).message);
-        }
-      },
-    },
+    { label: '登记仓库…', icon: 'folder', onClick: () => onAddRepo?.() },
+    { label: '新建看板（项目组）…', icon: 'plus', onClick: () => onNewBoard?.() },
   ];
 }

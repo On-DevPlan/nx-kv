@@ -2,6 +2,35 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.52.0] - 2026-11-13 契约派发：出参也进契约，Dart 客户端由生成器产出
+
+### Added
+
+- **`@action` 新增可选 `output`（zod）**：跨语言客户端凭它在**编译期**知道字段类型，
+  而不是靠人猜。首批三个只读 action 已声明：`localtask.list`（视图刻意不含 `tasks`）、
+  `system.bootstrap`、`system.contract`。
+- **契约快照 + 指纹**：`contract/contract.json` 入库，指纹 = `sha256({app, actions})` 前 16 位。
+  算法**刻意不含版本号** —— 版本升级不该让端侧报「契约漂移」。
+- **`GET /api/contract` 与 `nx-kv contract`**：端侧 / CI 据此对账自己是不是跑在旧契约上。
+- **Dart 客户端生成器**：`pnpm run gen:dart`（`--check` 只比对不写），产出零依赖包
+  `contract/dart`。方法名用**整条 action id** 驼峰（`localtask.list → localtaskList`），
+  信封 `{ok,data}` 的拆解只写一份。
+- **`contract guard` workflow**：快照与源码一致 / 生成物新鲜 / 生成包能被 pub 解析并
+  `dart analyze` / 禁入库项（`.dart_tool`、`pubspec.lock`）。带 bootstrap 门控，缺件时跳过而不报红。
+
+### Changed
+
+- **分层**：`buildContractSnapshot` 会碰 zod，模块不能依赖 runtime 装配层 → 新增
+  `core/contract-snapshot.ts` 发布格子，registry 装配期 publish，`system.contract` 只读
+  （与 command-table 同款）。
+
+### Fixed
+
+- **生成的 `pubspec.yaml` 描述改为 ASCII**：pub 读 **git 源**的 pubspec 时按系统 ANSI 码页
+  解码（Windows 中文 = GBK），UTF-8 中文尾巴会吞掉行尾换行，于是 `description` 与 `version`
+  被拼成一行，报「Mapping values are not allowed here」——错误指向 `version` 的冒号，看着像缩进。
+  `path` 源按 UTF-8 读，所以本机联调永远复现不出来。
+
 ## [0.51.0] - 2026-11-13 ref 只按 id / locator 寻址，rel 概念彻底删除（v8）
 
 ### Breaking

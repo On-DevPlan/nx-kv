@@ -2,6 +2,24 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.54.6] - 2026-11-14 修两处会在 CI 上偶发红的用例（#130 后续）
+
+### Fixed
+
+- **mdfile 台账用例不再依赖行顺序**：`listMdfiles` 按 `updated_at DESC, id` 排序，而
+  `updated_at` 是毫秒级——两条登记落在同一毫秒时排序退化成按 id 哈希，「第一行」是谁
+  就不确定了（CI 机器快 → 偶发红）。断言改成按 id 查自己那行；失效过滤用例从
+  「恰好一行」改成「含自己那行且都标 missing」，前一条用例失败不再连坐后一条。
+- **SSE 用例改成等条件而不是等时长**：`watchEvents` 那条原本「睡 200ms 就喂任务」——
+  满载时 `waitForTask` 的准备超过 200ms，任务先落地 → 等待被直接回填 → 永远看不到
+  `waiting` 事件。现在先等到 `waiting` 快照真的出现再喂任务，等待预算也从 5s 放宽到 30s
+  （正常路径不等预算，不影响耗时）。
+
+### 验证
+
+- 全量单测连跑 3 轮（默认并发，与 CI 同）：稳定只剩 1 条 Windows 侧 `node:sqlite`
+  ExperimentalWarning 噪音（Linux CI 不受影响）。
+
 ## [0.54.5] - 2026-11-14 读交付内容用默认输出，别拿 JSON 解析器读（#130）
 
 ### Changed

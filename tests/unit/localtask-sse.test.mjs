@@ -58,13 +58,22 @@ test('watchEvents：等待开始 → 立即 deliver（delivered）', async () =>
     }
   })();
 
-  // 进入等待（无 pending → 阻塞）→ 100ms 后另一个进程 addTask 喂任务 → delivered
-  const waitP = waitForTask({ cwd: dirA, summary: 's', timeoutSec: 5, open: false });
-  await new Promise((r) => setTimeout(r, 200));
+  // 进入等待（无 pending → 阻塞）→ 等 waiting 事件真的出现 → addTask 喂任务 → delivered
+  //
+  // 两处不能写死：
+  //   ① 喂任务前要**等 waiting 快照出现**（固定睡 200ms 在满载时不够——waitForTask
+  //      的准备超过 200ms 时，任务先落地 → 等待直接被回填 → 永远看不到 waiting 事件）；
+  //   ② 等待预算给宽（30s）：机器满载时 5s 预算会先到期 → outcome 变 timeout → 偶发红。
+  //      正常路径不等预算（任务一喂到就 resolve），加预算不影响耗时。
+  const waitP = waitForTask({ cwd: dirA, summary: 's', timeoutSec: 30, open: false });
+  const seenAt = Date.now();
+  while (!evs.some((e) => e.type === 'waiting') && Date.now() - seenAt < 15000) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
   await svc.addTask({ cwd: dirA, text: '回填任务' });
 
   // 限时等待 resolved
-  await Promise.race([p, new Promise((r) => setTimeout(r, 5000))]);
+  await Promise.race([p, new Promise((r) => setTimeout(r, 30000))]);
   ac.abort();
   await p.catch(() => {});
   const w = await waitP.catch(() => ({}));

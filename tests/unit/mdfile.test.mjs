@@ -159,7 +159,9 @@ test('readMdfile：正常读到正文；内容漂移只报 stale 不改库；缺
   assert.equal(row.missing_at, gone.missingAt);
 
   assert.deepEqual(listMdfiles(db, { missingOnly: true }).map((x) => x.id), [r.id]);
-  assert.equal(listMdfiles(db)[0].missing, true);
+  // 按 id 查自己那行，别断言「第一行」：updated_at 是毫秒级，两条登记落在同一毫秒时
+  // 排序退化成按 id 哈希，CI 机器快就会偶发红（本地慢，碰不上）。
+  assert.equal(listMdfiles(db).find((x) => x.id === r.id).missing, true);
 
   writeFileSync(p, '# 回来了', 'utf8');
   const back = readMdfile(db, r.id);
@@ -205,7 +207,9 @@ test('docs mdfile / mdfiles：读正文、列台账、失效过滤', async () =>
   const gone = await action('doc.mdfile').run({ attachment: r.attachmentId });
   assert.equal(gone.missing, true);
   const miss = await action('doc.mdfiles').run({ missing: true });
-  assert.deepEqual(miss.map((x) => x.id), [r.attachmentId]);
+  // 不断言「恰好一行」：台账里别的用例也可能留有失效行，这里只验证过滤语义
+  assert.ok(miss.map((x) => x.id).includes(r.attachmentId), '自己这行必须在失效清单里');
+  assert.ok(miss.every((x) => x.missing === true), '失效清单里的行都该标 missing');
   assert.equal(existsSync(p), false);
 });
 

@@ -351,3 +351,19 @@ test('#112 窗口 0：get 不阻塞，没任务立刻 timeout（不等默认超�
   assert.equal(r.status, 'timeout');
   assert.ok(Date.now() - t0 < 2000, '窗口 0 = 不阻塞（不是睡一觉再返回）');
 });
+
+// #123：阻塞等待只剩一条路——get 加 --timeout。显式给上限时，即使项目没开「持续 get」
+// 也要真的阻塞（旧 localtask wait 的能力并入 get）；不给参数则维持「立即返回 timeout」。
+test('#123 get --timeout 在未开启持续 get 时也阻塞（wait 能力并入 get）', async () => {
+  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const cwd = join(dir, 'wait-by-timeout');
+  const t0 = Date.now();
+  const r = await getTask({ cwd, timeoutSec: 1 });
+  assert.equal(r.status, 'timeout');
+  assert.ok(Date.now() - t0 >= 900, '显式 timeout 必须真的阻塞到这个上限');
+
+  const t1 = Date.now();
+  const r2 = await getTask({ cwd });
+  assert.equal(r2.status, 'timeout');
+  assert.ok(Date.now() - t1 < 2000, '不给参数仍是立即返回（默认直接领）');
+});

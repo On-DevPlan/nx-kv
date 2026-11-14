@@ -2,6 +2,28 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.53.1] - 2026-11-14 内置 skill 合并为一个：A 序列（SOP）+ B 序列（知识）
+
+### Changed
+
+- **`nx-kv` 成为唯一内置 skill**：原 `kv-get` / `kv-submit` / `kv-repo` 三个分身合并进来，
+  `assets/groups.json` 收敛为一组。skill 只讲**怎么用**，不讲怎么开发。
+- **重排为两个序列**：A（A01 领取 / A02 提交 / A03 完成与重开 / A04 阻塞与时间目标 /
+  A05 附件 / A06 仓库与项目组 / A07 参考仓库克隆）是可照抄的 SOP；B（B01 概念与寻址 /
+  B02 CLI 速查）是只在 A 覆盖不到时才查的知识表。主文档只做路由。
+- **领活口径写死**：标准动作是 `localtask get`（自带上下文封装），不要先 `list`/`show` 翻队列；
+  领指定编号 = `show` → `reorder` 提到队首 → `get`。
+
+### Changed（CLI）
+
+- **`localtask get --timeout N` 独立具备阻塞能力**：显式给上限时，即使项目没开「持续 get」
+  也会阻塞到 N 秒（旧 `localtask wait` 的能力并入 get）；`wait` 降级为兼容别名，新流程不再使用。
+
+### Added
+
+- **skill 结构守卫单测**：只有一个 skill、A 序列每篇有编号步骤与「偏差」小节、B 序列必须是
+  知识表、主文档 `[[ref]]` 不断链——改文案随便改，删步骤/删参考会红。
+
 ## [0.53.0] - 2026-11-14 文档列表回到「直觉」：右栏一处、归属可筛、口径统一
 
 ### Added

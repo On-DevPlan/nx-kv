@@ -31,6 +31,9 @@ export async function getTask({ cwd, timeoutSec, open = true, params, instant }:
   // #112（用户口径）：「阻塞 N 分钟」是 **get 命令自己**没任务时阻塞多久（服务端挂住
   // 请求，到点返回 timeout），不是让 agent 睡。窗口配 0 = 不阻塞，没活立即 timeout。
   const minutes = loop.enabled ? Number(loop.waitMinutes) || 0 : 0;
+  // #123：显式 --timeout 就是「阻塞等这个上限」——不再要求项目先开「持续 get」。
+  // 这样阻塞等待只有一条路（get + 参数），旧 localtask wait 收缩成兼容别名。
+  const explicitWait = timeoutSec !== undefined && timeoutSec !== null && Number(timeoutSec) > 0;
   const r = await waitForTask({
     cwd,
     // 未开启持续 get → instant（waitForTask 内部忽略 timeout 直接快路径）；
@@ -39,7 +42,7 @@ export async function getTask({ cwd, timeoutSec, open = true, params, instant }:
     // （HTTP 领取不允许挂住请求，见 action-lifecycle 的 claim 路由）。
     timeoutSec: timeoutSec ?? (minutes > 0 ? minutes * 60 : undefined),
     open,
-    instant: instant === undefined ? !loop.enabled || minutes <= 0 : !!instant,
+    instant: instant === undefined ? (explicitWait ? false : !loop.enabled || minutes <= 0) : !!instant,
     params: params || {}, // 外部参数（平面扩展）进交付模板
     getLoopTpl: getLoopInstruction(loop),
     getLoopWaitMinutes: minutes,

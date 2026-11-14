@@ -10,7 +10,7 @@ const renderWait: any = _renderWait;
 /** localtask.claim 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   cwd: z.string().optional(),
-  timeout: z.number().optional().describe("阻塞上限（秒）；仅项目开启「持续 get」时有意义"),
+  timeout: z.number().optional().describe("阻塞上限（秒）：显式给定时，即使项目没开「持续 get」也会阻塞这么久（= 旧的 localtask wait）"),
   'no-open': z.boolean().optional().describe("不自动打开浏览器（测试用）"),
   param: z.array(z.string()).optional().describe("外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取"),
 });

@@ -1,30 +1,12 @@
 {
-  "version": 1,
-  "$comment": "group 名 → skill 名列表的别名表。当前 group 名 ≡ skill 名（一对一）；skills 是数组，为「一个 group 含多个 skill」预留。路径恒由 assets/<skills[i]>/ 推导——本文件只做聚合，不是第二条事实源。",
+  "version": 2,
+  "$comment": "#123 起合并为一个 skill：任务队列 / 提交委托 / 仓库上下文全在 assets/nx-kv（A 序列=常见 case 的 SOP，B 序列=概念与 CLI 知识）。groups 仍是别名表，路径恒由 assets/<skills[i]>/ 推导——本文件不是第二条事实源。",
   "groups": {
     "nx-kv": {
       "skills": [
         "nx-kv"
       ],
-      "summary": "nx-kv 本机任务队列中枢主 skill：localtask 收单 / 等待 / 回填 / 附件 / 时间目标，外加本机仓库与文档库命令（纯本机，无需登录）"
-    },
-    "kv-get": {
-      "skills": [
-        "kv-get"
-      ],
-      "summary": "领取与完成本机任务：get 领活 / wait 等人回填 / 时间目标 check 门禁 / done 完成 / reopen 按反馈重开"
-    },
-    "kv-submit": {
-      "skills": [
-        "kv-submit"
-      ],
-      "summary": "总结上下文、提炼用户需求，提交到别的目录队列委托其它 agent（提交侧）；可带 --duration 时间目标"
-    },
-    "kv-repo": {
-      "skills": [
-        "kv-repo"
-      ],
-      "summary": "项目组识别与关系报告；克隆外源参考仓库并强制读（读参考实现不许只凭搜索摘要）"
+      "summary": "nx-kv 本机任务队列与仓库上下文的唯一 skill：领活 / 领指定编号 / 提交委托 / 完成与重开 / 阻塞等待 / 时间目标 / 附件 / 项目组与参考仓库（纯本机，无需登录）"
     }
   }
 }

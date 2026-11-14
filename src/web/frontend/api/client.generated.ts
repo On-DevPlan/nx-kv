@@ -322,7 +322,7 @@ export interface ApiClient {
   localtaskRemove(input: z.input<InstanceType<typeof LocaltaskRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskRemoveAction>['run']>>>;
 /** 批量删除任务（按 --ids，定位到 --cwd 主题或 --key）：一次落盘，逐条软删除（可 restore 恢复）；缺失的编号不阻断其余删除 */
   removeMany(input: z.input<InstanceType<typeof LocaltaskRemoveManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskRemoveManyAction>['run']>>>;
-/** 重开任务（验收反馈 / 重做 / 评论）：回写原任务正文，旧态压进 history；已完成则回到 pending 待再领 */
+/** 按反馈派生下一轮（验收反馈 / 重做 / 评论）：新任务新编号、pending 立即可领；旧任务 done 保持 done（claimed/pending → cancelled），链记在 task_links */
   reopen(input: z.input<InstanceType<typeof LocaltaskReopenAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskReopenAction>['run']>>>;
 /** 调整待领取任务优先级（--id <编号> 移到 --before-id <编号> 前或 --after-id <编号> 后） */
   reorder(input: z.input<InstanceType<typeof LocaltaskReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskReorderAction>['run']>>>;

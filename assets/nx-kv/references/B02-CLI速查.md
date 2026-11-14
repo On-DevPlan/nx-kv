@@ -13,7 +13,7 @@
 | `localtask show` | `--id N` | 看单条（只读，**不领取**） |
 | `localtask list` | — | 全部主题概览（目录、现状、等待中、待领取数） |
 | `localtask done` | `--id N` `--summary "…"` | 标完成；summary 记为本轮终态 + timegoal 日志 |
-| `localtask reopen` | `--id N` `--text` `--kind reopen\|comment` `--quote` `--feedback` | 就地重开；只给 `--feedback` 时把反馈追加到正文末尾 |
+| `localtask reopen` | `--id N` `--text` `--kind reopen\|comment` `--quote` `--feedback` | **按反馈派生新任务**（新编号、pending）；旧 done 保持 done，链记在 task_links。只给 `--feedback` 时新正文 = 旧正文 + 完成总结 callout + 反馈段 |
 | `localtask chain` | `--id N` | 任务链（origin / reopen / comment / current） |
 | `localtask update` | `--id` `--text` `--duration` `--goal-prompt` `--clear-goal` `--block-by` `--clear-block-by` `--gate true\|false` | 改正文 / 时间目标 / DAG 依赖 / 闸门（`--text` 仅未领取时） |
 | `localtask reorder` | `--id N` `--before-id M` / `--after-id M` | 调序（领指定编号时用） |

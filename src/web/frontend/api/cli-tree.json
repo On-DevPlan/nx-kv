@@ -1461,7 +1461,7 @@
           "action": {
             "id": "localtask.reopen",
             "module": "localtask",
-            "summary": "重开任务（验收反馈 / 重做 / 评论）：回写原任务正文，旧态压进 history；已完成则回到 pending 待再领",
+            "summary": "按反馈派生下一轮（验收反馈 / 重做 / 评论）：新任务新编号、pending 立即可领；旧任务 done 保持 done（claimed/pending → cancelled），链记在 task_links",
             "usage": "localtask reopen",
             "http": "POST /api/localtasks/reopen"
           },

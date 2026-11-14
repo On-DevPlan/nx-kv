@@ -2,6 +2,23 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.53.4] - 2026-11-14 修掉 reopen 的「名实不符」
+
+### Fixed
+
+- **`localtask reopen` 的 CLI 帮助/输出文案与源码对齐**：源码是 T04 派生模型——按反馈
+  **派生一条新编号的 pending 任务**（round+1），旧任务 `done` 保持 done、claimed/pending
+  变 `cancelled + supersededBy`，链记在 `task_links`；旧文案却说「回写原任务正文、旧态压进
+  history、已完成回到 pending 待再领」，与实现相反。`render` 改成「已派生 #新 ← #旧」。
+- **skill A02 / A03 / B02 与插件主文档同步改正**：写明「不要自己 add 新任务，用 reopen
+  派生下一轮」「后续动作都用新编号」「`chain` 读 task_links」；A03 补了旧/新任务状态表、
+  反馈段与完成总结 callout、顺链走到当前尖、时间目标重新计时等细节。
+
+### Added
+
+- 语义守卫单测：文档与 CLI 帮助必须出现「派生」、不得再出现「就地重开/同号回写/已完成→
+  pending」，A03 必须写明「done 保持 done」——防止旧模型再被写回来。
+
 ## [0.53.3] - 2026-11-14 skill 按源码校准：命令与参数逐条对齐 action 表
 
 ### Fixed

@@ -81,3 +81,21 @@ test('#123 主文档引用的 ref 必须存在（断链会让 agent 照着做时
     assert.ok(have.includes(r), `[[${r}]] 在 references/ 里不存在（现有：${have.join(', ')}）`);
   }
 });
+
+// reopen 的名实之辨（T04 派生模型）：名字叫「重开」，源码里其实是**派生一条新编号任务**，
+// 旧 done 保持 done。文档和 CLI 帮助都曾写成「就地回写 / 已完成→pending」，属于误导。
+test('#123 reopen 文案必须与源码的派生模型一致（旧任务定格，不复活）', async () => {
+  const a03 = read(join(refDir, 'A03-完成与重开.md'));
+  const b02 = read(join(refDir, 'B02-CLI速查.md'));
+  const main = read(join(ASSETS, SKILL, 'SKILL.md'));
+  for (const [name, body] of [['A03', a03], ['B02', b02], ['主文档', main]]) {
+    assert.match(body, /派生/, `${name}: 必须讲清是派生新任务`);
+    assert.doesNotMatch(body, /就地重开|同号回写|已完成→pending|回到 pending 待再领/, `${name}: 还在说旧模型`);
+  }
+  assert.match(a03, /done.*保持 done/, 'A03: 必须写明旧 done 保持终态');
+
+  const { ACTIONS } = await import('../../src/runtime/registry.js');
+  const reopen = ACTIONS.find((a) => a.id === 'localtask.reopen');
+  assert.match(reopen.summary, /派生/, 'CLI 帮助也必须与源码一致');
+  assert.doesNotMatch(reopen.summary, /history|回到 pending/, 'CLI 帮助不应再提 history / 复活');
+});

@@ -184,19 +184,23 @@
   display: inline-flex; align-items: center; gap: 5px;
 }
 .rp-newtask-caret {
-  /* #192：命中区做成 17px 方块、图标加大一号（11→12），hover 背景加深一档
-     （比按钮 ghost hover 的 --soft-2 再深一点）体现「箭头是独立点击区」的层次 */
+  /* #204 第 2 轮：分割要一眼可见（验收反馈，参考 Notion「New ▾」）。
+     按钮本体深底（--ink）白字，箭头区不再是浮在文字旁的小方块，而是
+     贴满右侧整段高度的独立色块：左缘一条半透明白竖线做分割，
+     hover 用浅白叠加（深底上原来的深色 hover 完全不可见）。
+     注意：rotate 只作用在图标上——整段如果带 transform 会把布局转歪。 */
   display: inline-flex; align-items: center; justify-content: center;
-  width: 17px; height: 17px; margin-right: -2px;
-  border-radius: 5px;
-  transform: rotate(90deg);
-  transition: transform 0.15s ease, background-color 0.12s ease, opacity 0.12s ease;
-  opacity: 0.75;
+  align-self: stretch;
+  width: 22px;
+  margin: 0 -9px 0 1px; /* 吃掉 .btn.small 的右 padding，贴到按钮右缘 */
+  border-left: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  transition: background-color 0.12s ease;
 }
-.rp-newtask-caret .ic { width: 12px; height: 12px; }
-.rp-newtask-caret:hover { background: rgba(22, 24, 28, 0.08); opacity: 1; }
-.rp-newtask-caret.rot { transform: rotate(-90deg); }
-.rp-newtask-caret.rot:hover { background: rgba(22, 24, 28, 0.12); }
+.rp-newtask-caret .ic { width: 12px; height: 12px; transform: rotate(90deg); }
+.rp-newtask-caret:hover { background: rgba(255, 255, 255, 0.14); }
+.rp-newtask-caret.rot .ic { transform: rotate(-90deg); }
+.rp-newtask-caret.rot:hover { background: rgba(255, 255, 255, 0.2); }
 .rp-newtask > .btn.is-open { border-color: var(--mid); }
 .rp-tpl-fly {
   box-sizing: border-box;

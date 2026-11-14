@@ -5,7 +5,7 @@
 // 删之前先清宿主 ext 里的引用（repo.doc / docLinks、board.doc / docLinks / repoDocs）——
 // ext 是语义权威，留着悬空 refId 会让「项目介绍」看着有、实际读不到正文。
 import { getDb } from '../../core/db/index.js';
-import { reposBridge } from './repos-bridge.js';
+import { scrubHosts } from './host-scrub.js';
 import { removeOwnDoc } from './store.js';
 import { syncRefIndex } from './ref-sync.js';
 
@@ -39,38 +39,8 @@ export async function gcEmptyDocs({ apply = false }: { apply?: unknown } = {}): 
   if (!ids.length) return { status: 'ok', dryRun: false, count: 0, ids: [] };
 
   const doomed = new Set(ids);
-  const { mutateStore } = await reposBridge();
-  let touchedHosts = 0;
-  await mutateStore((s: any) => {
-    const scrubDoc = (host: any): void => {
-      if (host.doc && doomed.has(String(host.doc.ref))) {
-        host.doc = null;
-        touchedHosts++;
-      }
-      if (Array.isArray(host.docLinks)) {
-        const kept = host.docLinks.filter((l: any) => !doomed.has(String(l && l.ref)));
-        if (kept.length !== host.docLinks.length) {
-          host.docLinks = kept;
-          touchedHosts++;
-        }
-      }
-    };
-    for (const r of s.repos || []) {
-      if (r.type === 'group') continue;
-      scrubDoc(r);
-    }
-    for (const b of s.boards || []) {
-      scrubDoc(b);
-      if (b.repoDocs && typeof b.repoDocs === 'object') {
-        for (const [k, v] of Object.entries(b.repoDocs)) {
-          if (doomed.has(String((v as any) && (v as any).ref))) {
-            delete b.repoDocs[k];
-            touchedHosts++;
-          }
-        }
-      }
-    }
-  });
+  // 宿主 ext 的清理口径与「删单篇文档」共用一份（#132 抽到 host-scrub.ts）
+  const touchedHosts = await scrubHosts(doomed);
 
   let count = 0;
   const failed: string[] = [];

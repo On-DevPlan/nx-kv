@@ -19,6 +19,9 @@ export interface BindingRow {
   main: boolean;
   note: string;
   tag: string;
+  /** 宿主 kind（#132）：dev 开发仓库 / ref 参考仓库 / group 组。
+   *  参考仓库与开发仓库在底层只有这一个差异，列表上要标得出来。 */
+  hostKind?: 'dev' | 'ref' | 'group' | string;
 }
 
 /** 某个宿主的文档集（仓库 → host；组 → group）。 */

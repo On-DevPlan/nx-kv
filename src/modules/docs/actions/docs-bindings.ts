@@ -23,20 +23,54 @@ function toRefId(v: string): string {
 }
 
 /**
- * 组的成员仓库 key 列表（#105 组视图要带上组内仓库自己的 ref）。
+ * 组域范围（#132）：成员仓库 + **组内参考仓库**。
+ *
+ * 组视图以前只带「成员仓库自己的 ref」，组里绑着的**参考仓库**（group_refs）
+ * 自己的文档整段看不见——参考仓库在底层和开发仓库只有 kind 的差异，文档宿主
+ * 也该一视同仁（它一样可以提交文档）。
+ *
  * 走 repos 桥动态 import——docs 不静态依赖 repos（eslint 分层），且失败即返回空表：
  * 文档列表少几行是降级，不该让整个查询报错。
  */
-async function memberRepoKeysOf(groupKey: string): Promise<string[]> {
+async function groupScopeOf(groupKey: string): Promise<{
+  memberKeys: string[];
+  refKeys: string[];
+  kindOf: Map<string, string>;
+}> {
+  const kindOf = new Map<string, string>();
   try {
     const { loadStore, boardRepoKeys, storedBoardKey, findBoard } = await reposBridge();
     const s = await loadStore();
+    // 宿主 kind：开发仓库 dev / 参考仓库 ref / 组 group
+    for (const r of s.repos || []) {
+      const k = String(r.key || '');
+      if (k) kindOf.set(k, String(r.type || 'dev') === 'ref' ? 'ref' : 'dev');
+    }
+    for (const b of s.boards || []) {
+      const k = String(b.key || '');
+      if (k) kindOf.set(k, 'group');
+    }
     const b =
       findBoard(s, groupKey) ||
       (s.boards || []).find((x: any) => storedBoardKey(x) === groupKey);
-    return b ? boardRepoKeys(b, s) : [];
+    if (!b) return { memberKeys: [], refKeys: [], kindOf };
+    const refKeys = ((b.refs || []) as any[]).map((l) => String(l.id || '')).filter(Boolean);
+    return { memberKeys: boardRepoKeys(b, s), refKeys, kindOf };
   } catch {
-    return [];
+    return { memberKeys: [], refKeys: [], kindOf };
+  }
+}
+
+/**
+ * 宿主仓库的 kind（dev / ref / group）——读 ext.ext_legacy_type。
+ * 只在拿不到 store 时兜底用；正常路径走 groupScopeOf 顺带带回来的 kindOf。
+ */
+function kindFromExt(ext: unknown): string {
+  try {
+    const v = JSON.parse(String(ext || '{}'));
+    return String(v && v.ext_legacy_type) === 'ref' ? 'ref' : 'dev';
+  } catch {
+    return 'dev';
   }
 }
 
@@ -51,7 +85,7 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
     id: 'docs.bindings',
     cli: ['docs', 'bindings'],
     http: ['GET', '/api/docs/bindings'],
-    summary: '查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> 只看仓库自己的文档；--group <组> 看组域文档集：组 → 组内仓库 → 仓库自己；position=0 为主篇）',
+    summary: '查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> 只看仓库自己的文档；--group <组> 看组域文档集：组 → 组内仓库 → 成员仓库自己 → 组内参考仓库自己；hostKind 标宿主是开发仓库/参考仓库/组；position=0 为主篇）',
     input,
     // 备注（只有附加篇有：主篇 push 时不带 note）跟着 main 一起打，和前端 tag 上的
     // 「附加 · 备注」保持同一口径——否则 CLI 里看不出自己刚填的备注有没有落库。
@@ -81,22 +115,43 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
     // #105：组视图还要带上**组内各仓库自己的 ref**（type=repo）——组员的知识都在这个
     // 组域里，切到组却只看见组级两篇是反直觉的。成员 key 从看板关系取（boardRepoKeys
     // 兼容 repoKeys / 老 repoIds 两种存量结构）。
+    let kindOf = new Map<string, string>();
+    let refKeys: string[] = [];
     if (group) {
-      const members = await memberRepoKeysOf(group);
+      const scope = await groupScopeOf(group);
+      kindOf = scope.kindOf;
+      refKeys = scope.refKeys;
+      const members = scope.memberKeys;
       const memberMarks = members.map((_, i) => `:m${i}`);
       members.forEach((k, i) => { params[`m${i}`] = k; });
+      const refMarks = refKeys.map((_, i) => `:rf${i}`);
+      refKeys.forEach((k, i) => { params[`rf${i}`] = k; });
       where.push(
         `(b.group_key = :group OR (b.type = 'group' AND b.repo_key = :group)` +
           (memberMarks.length ? ` OR (b.type = 'repo' AND b.repo_key IN (${memberMarks.join(',')}))` : '') +
+          // #132：组内**参考仓库**自己的文档也要进组视图（参考仓库一样能提交文档）
+          (refMarks.length ? ` OR (b.type = 'repo' AND b.repo_key IN (${refMarks.join(',')}))` : '') +
           ')'
       );
       params.group = group;
     }
     // 排序（#105）：组视图按「组本身 → 组内仓库 → 仓库自己」的重要度排；
     // 单仓库视图维持原口径（repo → group → group_repo）不动。
+    // 组视图排序：组本身 → 组内仓库 → 成员仓库自己 → **组内参考仓库自己**（#132）
+    const refInList = refKeys.length
+      ? `WHEN b.type = 'repo' AND b.repo_key IN (${refKeys.map((_, i) => `:rf${i}`).join(',')}) THEN 3 `
+      : '';
     const orderBy = group
-      ? "ORDER BY CASE b.type WHEN 'group' THEN 0 WHEN 'group_repo' THEN 1 ELSE 2 END, b.position, b.rowid"
+      ? `ORDER BY CASE ${refInList}WHEN b.type = 'group' THEN 0 WHEN b.type = 'group_repo' THEN 1 ELSE 2 END, b.position, b.rowid`
       : "ORDER BY CASE b.type WHEN 'repo' THEN 0 WHEN 'group' THEN 1 ELSE 2 END, b.position, b.rowid";
+    // 单仓库视图（--host）也要标宿主 kind：这里没有组上下文，直接读行。
+    if (host && !kindOf.size) {
+      const row = db.get('SELECT type, ext FROM repos WHERE key = :k', { k: host });
+      if (row) {
+        kindOf.set(host, String(row.type) === 'group' ? 'group' : kindFromExt(row.ext));
+      }
+    }
+
     const rows = db.all(
       `SELECT b.repo_key AS repoKey, b.group_key AS groupKey, b.type, b.position, b.note, b.tag,
               r.id AS refId, r."desc", r.origin, r.locator,
@@ -131,6 +186,9 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
           main: position === 0,
           note: String(r.note || ''),
           tag: String(r.tag || ''),
+          // 宿主 kind（#132）：dev 开发仓库 / ref 参考仓库 / group 组。
+          // 参考仓库与开发仓库在底层只有这一个差异，列表上标出来才不会看不懂。
+          hostKind: kindOf.get(String(r.repoKey)) || 'dev',
           removeIndex: null,
         };
       }),

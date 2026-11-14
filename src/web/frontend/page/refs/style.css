@@ -74,6 +74,8 @@
 }
 .nx-refs-scope.repo{color:#2F5FA8;background:#EDF3FC;border-color:#D9E5F6}
 .nx-refs-scope.group{color:#6B3FA0;background:#F5EFFB;border-color:#E7DCF5}
+/* #132 参考仓库：与开发仓库同构的另一种 kind，单独一档颜色 */
+.nx-refs-scope.ref{color:#9A5B12;background:#FDF3E7;border-color:#F3DFC6}
 .nx-refs-chip.none{
   flex:none;font-size:10px;line-height:1.7;border-radius:6px;padding:0 5px;
   color:var(--faint,#A9AEB4);background:var(--soft,#F1F0EC);

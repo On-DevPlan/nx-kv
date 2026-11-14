@@ -29,6 +29,7 @@ import { normalizeKey } from '../../shared/repo-key.js';
 import { randomUUID } from 'node:crypto';
 import type { DocKind } from '../../core/attachmentdb.js';
 import { syncRefIndex } from './ref-sync.js';
+import { scrubHosts } from './host-scrub.js';
 import { docTitleFromMd } from '../../shared/doc-title.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -359,6 +360,9 @@ export async function removeDoc({ ref }: { ref?: unknown } = {}): Promise<{ docI
   if (!hit) throw badInput('请给 refId（ref_…）');
   if (hit.externalPath) throw blocked('外部绑定是只读引用，不能在这里删除');
   const refId = await store.removeOwnDoc(hit.refId);
+  // #132：删了文档就把宿主 ext 里指着它的引用摘掉——否则「项目介绍」看着有、
+  // 实际读不到正文（参考仓库尤其明显：它们的主篇/补充篇也走同一套 ext）。
+  await scrubHosts(new Set([refId]));
   await syncRefIndex().catch(() => null);
   return { docId: paths.ownDocId(refId), refId };
 }

@@ -32,14 +32,19 @@ import { onDocsChanged } from '../../modules/md/doc-bus.js';
 import { resolveFollowedHost, type FollowedHost, type FollowResolution } from '../../refs/index.js';
 import './style.css';
 
-type ScopeBadge = { cls: 'repo' | 'group'; text: string };
+type ScopeBadge = { cls: 'repo' | 'group' | 'ref'; text: string };
 
 function scopeBadgesOf(
   b: BindingRow,
   repoNameOf: (key: string) => string,
   groupNameOf: (key: string) => string
 ): ScopeBadge[] {
-  if (b.type === 'repo') return [{ cls: 'repo', text: `仓库 · ${repoNameOf(b.repoKey)}` }];
+  // #132：参考仓库的文档在底层和开发仓库同构（只有 kind 差异），列表上标「参考」
+  if (b.type === 'repo') {
+    return b.hostKind === 'ref'
+      ? [{ cls: 'ref', text: `参考 · ${repoNameOf(b.repoKey)}` }]
+      : [{ cls: 'repo', text: `仓库 · ${repoNameOf(b.repoKey)}` }];
+  }
   if (b.type === 'group') return [{ cls: 'group', text: `组 · ${groupNameOf(b.repoKey)}` }];
   // group_repo：组领域下的这个 repo —— 两个勋章拼在一起，颜色区分层级
   return [

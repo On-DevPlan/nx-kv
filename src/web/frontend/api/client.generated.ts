@@ -280,8 +280,8 @@ export interface ApiClient {
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
 /** 维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新） */
   link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>>;
-/** 向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝） */
-  localtaskAdd(input: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>>;
+/** 向某主题（工作目录）的队列回填一条任务（正文可多行；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝） */
+  localtaskAdd(input?: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>>;
 /** 改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变） */
   localtaskAttachNote(input: z.input<InstanceType<typeof LocaltaskAttachNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachNoteAction>['run']>>>;
 /** 给任务挂附件：--path 存本机附件仓 / --fileId 引用已有附件 / --url / --task（同主题任务）/ --ref（文档）/ --mdfile（本地 md 指针）/ --folder（本地文件夹路径）；默认嵌进正文，--no-embed 只挂到附件区（不写正文），--ref 加 --inline 文档进原文（交付带全文） */
@@ -874,10 +874,10 @@ export function createApiClient(transport: Transport): ApiClient {
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>;
     },
     // action: localtask.add
-    async localtaskAdd(input: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>) {
+    async localtaskAdd(input?: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskAddAction>['_input']>);
       const path = `/api/localtasks`;
-      const body = { "text": inp["text"], "cwd": inp["cwd"], "summary": inp["summary"], "global": inp["global"], "board": inp["board"], "project": inp["project"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "gate": inp["gate"], "fork-of": inp["fork-of"], "forkOf": inp["forkOf"], "fork-kind": inp["fork-kind"], "forkKind": inp["forkKind"] };
+      const body = { "text": inp["text"], "file": inp["file"], "cwd": inp["cwd"], "summary": inp["summary"], "global": inp["global"], "board": inp["board"], "project": inp["project"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "gate": inp["gate"], "fork-of": inp["fork-of"], "forkOf": inp["forkOf"], "fork-kind": inp["fork-kind"], "forkKind": inp["forkKind"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>;
     },
     // action: localtask.attach-note

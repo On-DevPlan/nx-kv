@@ -33,7 +33,7 @@ for (const a of ACTIONS) {
 }
 
 /** 全局开关：不绑定到单个 action 的通用位 */
-const GLOBAL_FLAGS = new Set(['json', 'help', 'version']);
+const GLOBAL_FLAGS = new Set(['json', 'xml', 'help', 'version']);
 
 function mdFiles(dir) {
   const out = [];

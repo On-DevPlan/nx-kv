@@ -96,18 +96,32 @@ function isZodAction(cmd: AnyAction): cmd is ZodBoundAction & AnyAction {
 }
 
 // 全局 flag 先摘掉：它们可以出现在 argv 任意位置，不属于任何 action 的声明。
-function splitGlobals(argv: string[]): { rest: string[]; json: boolean } {
+export function splitGlobals(argv: string[]): { rest: string[]; json: boolean; xml: boolean } {
   const rest: string[] = [];
   let json = false;
+  let xml = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--json') {
       json = true;
       continue;
     }
+    // #128：交付里的类 XML 区块在 JSON 字符串里换行会被写成 \n；
+    // --xml 让 instruction 原样打印（真实换行、标签不转义），给按文本/XML 读 stdout 的消费方。
+    if (a === '--xml') {
+      xml = true;
+      continue;
+    }
     rest.push(a);
   }
-  return { rest, json };
+  return { rest, json, xml };
+}
+
+/** 从交付数据里取出原样 instruction（类 XML 区块）；没有就返回 null。 */
+export function xmlInstructionOf(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+  const v = (data as Record<string, unknown>).instruction;
+  return typeof v === 'string' && v.trim() ? v : null;
 }
 
 // 匹配命令：把声明路径与 argv 前缀逐 token 比较，选最长匹配。
@@ -262,10 +276,22 @@ function parseZodChannel(cmd: ZodBoundAction, tail: readonly string[]): Record<s
 
 // render 拿到 (data, ctx)，可以是 async——有些渲染需要补一点上下文才能标注
 // （例如候选清单要标出哪一项是「当前」），而 `--json` 必须保持纯数据的旧形状。
-async function emit(cmd: AnyAction, data: unknown, json: boolean, ctx: unknown): Promise<void> {
+async function emit(cmd: AnyAction, data: unknown, json: boolean, ctx: unknown, xml = false): Promise<void> {
   // 无返回值的命令（help / serve 这类）不该打印任何东西：落进 JSON.stringify(undefined)
   // 会打出字面量 "undefined"，让 `help --json` 的 stdout 不再是合法 JSON。
   if (data === undefined && !cmd.render) return;
+
+  // #128：--json 与 --xml 二选一。JSON 会把 instruction 里的换行编码成 \n，
+  // 严格按文本/XML 解析 stdout 的下游会失效；--xml 给的是逐字原样区块。
+  if (xml) {
+    if (json) throw badInput('--json 与 --xml 不能同时用：前者会转义区块里的换行，后者要逐字原样输出');
+    const text = xmlInstructionOf(data);
+    if (text !== null) {
+      console.log(text);
+      return;
+    }
+    // 命令没有 instruction 字段（普通 action）→ 回落到常规渲染，别静默打印空行
+  }
 
   if (json) {
     if (data === undefined) return;
@@ -420,7 +446,7 @@ export class CliApp {
 
   /** 唯一对外入口：bin/kv.mjs 与 dev（tsx 直跑）都从 run(argv) 进。 */
   async run(argv: string[]): Promise<void> {
-    const { rest, json } = splitGlobals(argv);
+    const { rest, json, xml } = splitGlobals(argv);
 
     const hit = resolveCommand(rest);
 
@@ -451,7 +477,7 @@ export class CliApp {
         : parseLegacyChannel(cmd, tail);
 
       const data = await cmd.run!(input, { transport: 'cli' });
-      await emit(cmd, data, json, input);
+      await emit(cmd, data, json, input, xml);
     } catch (err) {
       fail(err, json);
     }

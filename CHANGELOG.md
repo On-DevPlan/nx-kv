@@ -2,6 +2,21 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.54.3] - 2026-11-14 交付 XML 区块与 --json 的关系（#128）
+
+### Fixed / Added
+
+- **结论**：`--json` 不会丢 XML 区块（`<nx-kv>` 等标签不做实体转义），但会把整段
+  `instruction` 序列化成一个 JSON 字符串，换行写成 `\n`；下游若把 stdout 当文本或严格 XML
+  解析，区块结构就会退化成一行。
+- **新增全局 flag `--xml`**：把交付的 `instruction` **逐字原样**打印（真实换行、标签不变），
+  给按文本/XML 读 stdout 的消费方；与 `--json` 互斥（同时给会报明确错误）。
+  普通（不带 flag）渲染本来就是原样区块，`--xml` 只是给脚本一个干净的输出通道。
+- `nx-kv help` 补上两个全局 flag 的说明；skill A01/B02 写清「用 JSON 解析器读 --json，
+  按文本读区块就用 --xml」，准确性守卫把 `--xml` 列为全局 flag。
+- 单测覆盖全局 flag 摘取、原样 instruction、JSON 转义对照；实机
+  `localtask preview --xml` 输出逐行 XML 区块。
+
 ## [0.54.2] - 2026-11-14 附件支持本地文件夹（#127）
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "nx-kv",
-  "version": "0.54.2",
+  "version": "0.54.3",
   "description": "nx-kv — 本机任务队列（localtask）+ 文档库 + 仓库登记：serve 驱动 CLI 与 Web 面板，同源同构，附带可安装 skill 供 agent 提交 / 领取 / 阻塞接收任务",
   "type": "module",
   "bin": {

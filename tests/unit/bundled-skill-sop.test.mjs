@@ -54,7 +54,12 @@ test('#123 主文档：frontmatter + A/B 双序列路由', () => {
 
 test('#123 A 序列的每个 ref 都是可执行 SOP（步骤 + 偏差/陷阱）', () => {
   const a = refFiles().filter((f) => f.startsWith('A'));
-  assert.ok(a.length >= 5, 'A 序列至少 5 篇（领取/提交/完成/等待/附件…），实际：' + a.join(','));
+  // #132：A 序列重排为 5 个专项场景（领取 / 提交 / 文档 / 仓库组 / 任务链回写）
+  assert.deepEqual(
+    a,
+    ['A01-领取任务.md', 'A02-提交任务.md', 'A03-文档与归属.md', 'A04-仓库与项目组.md', 'A05-任务链与反馈汇总.md'],
+    'A 序列应是这 5 篇专项场景（顺序即路由顺序）',
+  );
   for (const f of a) {
     const body = read(join(refDir, f));
     assert.match(body, /^\s*\d+[.、)]\s+\S/m, `${f}: 缺少编号步骤`);
@@ -85,14 +90,15 @@ test('#123 主文档引用的 ref 必须存在（断链会让 agent 照着做时
 // reopen 的名实之辨（T04 派生模型）：名字叫「重开」，源码里其实是**派生一条新编号任务**，
 // 旧 done 保持 done。文档和 CLI 帮助都曾写成「就地回写 / 已完成→pending」，属于误导。
 test('#123 reopen 文案必须与源码的派生模型一致（旧任务定格，不复活）', async () => {
-  const a03 = read(join(refDir, 'A03-完成与重开.md'));
+  // #132：A 序列重排为 5 个专项场景，「完成与重开」并进 A01（领取闭环）
+  const a03 = read(join(refDir, 'A01-领取任务.md'));
   const b02 = read(join(refDir, 'B02-CLI速查.md'));
   const main = read(join(ASSETS, SKILL, 'SKILL.md'));
-  for (const [name, body] of [['A03', a03], ['B02', b02], ['主文档', main]]) {
+  for (const [name, body] of [['A01', a03], ['B02', b02], ['主文档', main]]) {
     assert.match(body, /派生/, `${name}: 必须讲清是派生新任务`);
     assert.doesNotMatch(body, /就地重开|同号回写|已完成→pending|回到 pending 待再领/, `${name}: 还在说旧模型`);
   }
-  assert.match(a03, /done.*保持 done/, 'A03: 必须写明旧 done 保持终态');
+  assert.match(a03, /done.*保持 done/, 'A01: 必须写明旧 done 保持终态');
 
   const { ACTIONS } = await import('../../src/runtime/registry.js');
   const reopen = ACTIONS.find((a) => a.id === 'localtask.reopen');

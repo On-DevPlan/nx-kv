@@ -35,6 +35,54 @@ for (const a of ACTIONS) {
 /** 全局开关：不绑定到单个 action 的通用位 */
 const GLOBAL_FLAGS = new Set(['json', 'xml', 'help', 'version']);
 
+/**
+ * 带 flag 的 CLI 变体（如 `repo import --diff`）：词与 flag 的**完整序列**。
+ *
+ * 少数 action 的 cli 声明本身带 flag（`repo import --diff` 是独立 action）。
+ * 只按词匹配时它会撞上 `repo import`，于是 `--diff` 被当成不存在的参数。
+ * 这里保留完整 token 序列：判参数时先按最长变体前缀匹配，命中则用它的入参表，
+ * 并把变体里已经用掉的 flag 从待检查列表里去掉。
+ */
+const VARIANTS = [];
+for (const a of ACTIONS) {
+  const raw = Array.isArray(a.cli) ? a.cli.join(' ') : String(a.cli || '');
+  const variants = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  const keys = new Set(Object.keys((a.input && a.input.shape) || {}));
+  for (const v of variants) {
+    const tokens = v.split(/\s+/).filter(Boolean);
+    if (tokens.length) VARIANTS.push({ tokens, keys });
+  }
+}
+
+/** 从一行里取 `nx-kv …` 的完整 token 序列（词 + flag），遇占位符/引号即止。 */
+function commandTokens(line) {
+  const i = line.indexOf('nx-kv ');
+  if (i < 0) return [];
+  const rest = line.slice(i + 'nx-kv '.length);
+  const out = [];
+  for (const chunk of rest.split(/\s+/)) {
+    if (!chunk) continue;
+    if (chunk.startsWith('--')) { out.push(chunk); continue; }
+    if (chunk.startsWith('-')) break;
+    if (/^[<"'(]/.test(chunk)) break;
+    if (!/^[a-zA-Z][\w-]*$/.test(chunk)) break;
+    out.push(chunk);
+  }
+  return out;
+}
+
+/** 最长的变体前缀匹配；命中返回 { keys, used }（used = 变体用掉的 flag）。 */
+function resolveVariant(tokens) {
+  let best = null;
+  for (const v of VARIANTS) {
+    if (v.tokens.length > tokens.length) continue;
+    if (!v.tokens.every((t, i) => t === tokens[i])) continue;
+    if (!best || v.tokens.length > best.tokens.length) best = v;
+  }
+  if (!best) return null;
+  return { keys: best.keys, used: best.tokens.filter((t) => t.startsWith('--')) };
+}
+
 function mdFiles(dir) {
   const out = [];
   for (const name of readdirSync(dir)) {
@@ -114,10 +162,15 @@ test('#123 文档里写的命令参数必须在该 action 的入参里', () => {
       const key = resolve(words);
       if (!key) return; // 上一条用例负责报「命令不存在」
       if ((line.match(/nx-kv /g) || []).length > 1) return; // 一行多个命令时不猜参数归属
-      const keys = CLI.get(key);
+      // 先按「带 flag 的完整变体」匹配（repo import --diff 这类），匹配不到再按词匹配
+      const tokens = commandTokens(line);
+      const variant = resolveVariant(tokens);
+      const keys = variant ? variant.keys : CLI.get(key);
+      const used = new Set(variant ? variant.used.map((f) => f.slice(2)) : []);
       const flags = [...line.matchAll(/--([a-zA-Z][\w-]*)/g)].map((m) => m[1]);
       for (const f of flags) {
         if (GLOBAL_FLAGS.has(f)) continue;
+        if (used.has(f)) continue;
         const ok = keys.has(f) || keys.has(f.replace(/-([a-z])/g, (_, c) => c.toUpperCase()));
         if (!ok) bad.push(`${file}:${idx + 1}  ${key} 不认识 --${f}`);
       }

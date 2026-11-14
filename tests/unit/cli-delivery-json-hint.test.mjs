@@ -42,7 +42,8 @@ test('#130 skill 不得教「用 --json 读交付」——标准动作是默认�
   const files = {
     'SKILL.md': join(ASSETS, 'SKILL.md'),
     'A01': join(ASSETS, 'references', 'A01-领取任务.md'),
-    'A04': join(ASSETS, 'references', 'A04-阻塞等待与时间目标.md'),
+    'A02': join(ASSETS, 'references', 'A02-提交任务.md'),
+    'A04': join(ASSETS, 'references', 'A04-仓库与项目组.md'),
     'B02': join(ASSETS, 'references', 'B02-CLI速查.md'),
   };
   for (const [name, path] of Object.entries(files)) {

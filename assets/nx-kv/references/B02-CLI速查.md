@@ -1,4 +1,4 @@
-# B02 · CLI 速查（按源码 action 表核对，nx-kv 0.53.x）
+# B02 · CLI 速查（按源码 action 表核对，nx-kv 0.55.x）
 
 约定：查询类命令（list / show / status 等）要结构化字段时加 `--json`；
 **交付类命令（localtask get / preview）用默认输出**——stdout 就是引擎封装的 context 原文，
@@ -12,7 +12,7 @@
 | 命令 | 关键参数 | 说明 |
 | --- | --- | --- |
 | `localtask get` | `--cwd` `--timeout N` `--no-open` `--param k=v` | **领活**。有活立即领；`--timeout` 显式给定时阻塞到上限（等不到返回 `timeout`） |
-| `localtask add` | `--cwd` `--global` `--summary` `--project` `--board` `--duration 2h` `--goal-prompt` `--block-by 12,13` `--gate` `--fork-of` `--fork-kind` | 提交任务。`--project` 决定归属项目并推导落点目录；`--board` 给组（任务才出现在组面板）；`--global` 进共享池（忽略 `--cwd`） |
+| `localtask add` | `--cwd` `--global` `--summary` `--project` `--board` `--duration 2h` `--goal-prompt` `--block-by 12,13` `--gate` `--fork-of` `--fork-kind` `--file <文件|->` | 提交任务。`--project` 决定归属项目并推导落点目录；`--board` 给组（任务才出现在组面板）；`--global` 进共享池（忽略 `--cwd`）；**`--file` 从文件/标准输入读正文**（多行长文本不必靠引号硬拼，`-` = stdin） |
 | `localtask show` | `--id N` | 看单条（只读，**不领取**） |
 | `localtask list` | — | 全部主题概览（目录、现状、等待中、待领取数） |
 | `localtask done` | `--id N` `--summary "…"` | 标完成；summary 记为本轮终态 + timegoal 日志 |
@@ -67,7 +67,7 @@
 | `docs ref add` | `--owner repo\|group\|group_repo` `--repo` `--group` `--desc` | 新建一篇库内文档 |
 | `docs ref unbind` | `--ref` `--type` `--repo` `--group` | 摘归属（文档与正文保留） |
 | `docs remove` | `--ref` | 删整篇 |
-| `docs bindings` | `--ref` \| `--host <repoKey>` \| `--group <groupKey>` | 归属查询：`--host` 只给仓库自己的；`--group` 给组域（组 → 组内 → 仓库） |
+| `docs bindings` | `--ref` \| `--host <repoKey>` \| `--group <groupKey>` | 归属查询：`--host` 只给仓库自己的（含参考仓库）；`--group` 给组域（组 → 组内 → 成员仓库自己 → **组内参考仓库自己**）。每行带 `hostKind`（`dev` / `ref` / `group`） |
 | `docs bind` / `docs link` / `docs note-bind` | `--repo`/`--board` `--ref` `--path` `--note` `--tag` `--remove` `--before` `--reset` | 宿主文档集的增删改（`bind` 主篇，`link` 目录补充，`note-bind` 组内描述） |
 | `docs attach` / `detach` / `attachments` / `attach-note` | `--ref` + 附件参数 | 文档附件（用法同 `localtask attach`） |
 | `docs mdfile` / `mdfiles` / `link-file` | `--attachment` / `--missing` / `--path` | md 文件指针相关 |
@@ -110,6 +110,9 @@
 ```bash
 nx-kv skill list           # 内置 skill 清单（现在只有 nx-kv）
 nx-kv skill install nx-kv  # 装到 skills 目录（--to 指定目标）
+nx-kv setting get          # 本机设置（附件目录、参考仓库存储根…）
+nx-kv setting set --gitRepoRoot "D:\repos\ref"   # 参考仓库落点（不设则克隆时报错）
+nx-kv setting set --gitDevRoot "D:\repos\dev"    # 开发仓库落点
 nx-kv health               # 服务与版本（纯本机）
 ```
 
@@ -140,3 +143,6 @@ nx-kv health               # 服务与版本（纯本机）
 5. 追加附件会改写正文，连续操作一律用 `--id` 定位。
 6. `docs` 的 ref 没有路径；读文件只有附件。
 7. `repo bind` 不收 `--note`，写说明要用 `repo ref note`。
+8. 克隆参考仓库前先设 `gitRepoRoot`（不设直接报错，不会落进 homedir）。
+9. `docs remove` 会顺手清掉宿主 ext 里指向它的悬空引用——别手改库。
+10. 读交付内容别用 `--json`（instruction 会被转义成一行）：默认输出即逐字原文。

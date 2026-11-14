@@ -402,8 +402,10 @@ test('routes 正查：未知模块与无匹配端点都给出可行动的报错'
 test('help 用法串能由声明完整生成（含参数与 flag）', () => {
   const add = ACTIONS.find((a) => a.id === 'localtask.add');
   const usage = usageOf(add);
-  assert.match(usage, /^nx-kv localtask add <text>/);
-  assert.match(usage, /--board </);   // hint 会替换占位符，只断言前缀
+  // #132：正文可以是位置参数，也可以走 --file（文件 / 标准输入）→ text 变可选
+  assert.match(usage, /^nx-kv localtask add \[text\]/);
+  assert.match(usage, /--file </);    // hint 会替换占位符，只断言前缀
+  assert.match(usage, /--board </);
 
   // agent 失败分类依赖 help 里出现这条命令名（也见于 assets 的用法文档）
   const allUsage = ACTIONS.map(usageOf).join('\n');

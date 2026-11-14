@@ -107,7 +107,7 @@ node bin/kv.mjs db verify
 ## 7. 文档与内置资产
 
 - CLI/面板行为变了：更新 `README.md` 与 `docs/project&projectsCli.md` 的对应段落。
-- 安装后的 agent 用法变了：同步 `assets/`（`nx-kv/`、`kv-get/`、`kv-submit/`、`kv-repo/`）与 `assets/groups.json`。
+- 安装后的 agent 用法变了：同步 `assets/nx-kv/`（SKILL.md + `references/`，原 kv-get / kv-submit / kv-repo 已并入）与 `assets/groups.json`。
 - 用户可见的变更：按仓库习惯记入 `CHANGELOG.md`。
 - 改本开发 skill 时：同步 `.claude/skills/dev-nxkv/` 自己，别只改代码。
 

@@ -1,7 +1,10 @@
-# B02 · action 注册全表：154 条入口在哪
+# B02 · action 注册全表：126 条入口在哪
 
 > B 序列 · 架构之二。回答「这个功能现在走哪条命令 / 哪个路由」「新增入口要登记到哪」。
 > action 的字段与校验见 [[B03-action契约]]；模块与分层见 [[B01-架构分层]]。
+>
+> **本表是快照（2026-11-14 校准）。权威源永远是代码**：`node bin/kv.mjs routes` / `help --json`
+> 与 `src/modules/*/actions/`。下表与命令输出不一致时，以命令为准，并顺手修本表。
 
 ## 1. 注册机制：一份声明，三张表
 
@@ -36,7 +39,12 @@ src/modules/<id>/actions/<名>.ts  （一条 action 一个文件，@action + zod
 
 `routes`（命令 ↔ 路由对照表）**已是 action**（`system.routes`，见下表 §3.1）：它的数据源是 `cli.ts` 的 `ALL_COMMANDS`，逻辑是 `src/modules/system/actions/routes.ts` / `src/modules/system/routes.ts` 里的纯函数，**表**由 runtime 传入——模块不 import runtime，面板也从 `/api/bootstrap` 拿同一张表。
 
-## 3. 全量 action 表（按模块，共 154 条）
+## 3. 全量 action 表（按模块，共 126 条）
+
+> **⚠ 本节部分小节已失效，勿照抄调用**：`§3.3 auth`（4 条）与 `§3.9 todo`（25 条）是 v7 本机化时
+> **已删除的模块**（身份体系取消、待办迁入 `localtask`）。当前 `src/modules/` 只有 10 个模块：
+> `bundled / db / docs / file / localtask / repos / setting / system / tasktool / templates`。
+> 调用任何命令前先 `node bin/kv.mjs routes --module <id>` 核对；不存在就说明本表过期。
 
 「HTTP」列为 `—` = 显式 `http: null`（纯 CLI 命令）。
 
@@ -334,10 +342,10 @@ src/modules/<id>/actions/<名>.ts  （一条 action 一个文件，@action + zod
 ## 5. 命令 ↔ 路由反查（核对用）
 
 ```powershell
-node bin/kv.mjs routes                      # 全量对照（157 行：154 action + 3 平台命令）
+node bin/kv.mjs routes                      # 全量对照（129 行：126 action + 3 平台命令）
 node bin/kv.mjs routes --module localtask   # 只看某模块
 node bin/kv.mjs routes --http "POST /api/localtasks/preview"
-node bin/kv.mjs help --json                 # 与 routes 同源同长（157 条）
+node bin/kv.mjs help --json                 # 与 routes 同源同长（129 条）
 ```
 
 本表如与 `node bin/kv.mjs routes` 不一致，**以命令输出为准**（代码是唯一真相，本表只是快照）。

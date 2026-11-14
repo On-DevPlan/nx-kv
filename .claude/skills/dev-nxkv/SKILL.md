@@ -1,102 +1,81 @@
 ---
 name: "dev-nxkv"
-description: "nx-kv 仓库开发指引（按层路由）：A 数据结构与关系 / B 架构与 action 注册 / C serve 端 / D web 端 / E 交付流程。改 nx-kv 代码、加 action/CLI/面板/表、改提示词渲染或依赖判定时使用；仅使用 nx-kv 领任务/提交任务时不要用。"
+description: "nx-kv 仓库的按层动作手册。A 表结构（迁移/表/列/设置键/查库）、B server（action/service/提示词/工作流/assets）、C 前端（页面/面板/组件/样式）、D 跨层（定位/交付/排障）。触发词：改 nx-kv、加一条命令、加 action、加接口、加 CLI、加表、加字段、加迁移、加设置项、改业务逻辑、改 service、改事务、改提示词、改模板、改依赖、改编排、加面板、加页面、改前端、改交互、改样式、跑测试、交付验证、报错排查、找不到代码、查数据库、dev-nxkv。仅用 nx-kv 领任务/提交任务时不要用本 skill。"
 ---
 
-# nx-kv 开发指引（路由表）
+# dev-nxkv — 按层分的 SOP 集
 
-本文件**只做路由**。所有实现在 `references/`，按「层」分序列。先用下面的序列总览定位到层，再用 ref-map 找到具体文件。
+本文件**只做路由**。每条 SOP 都是可执行的动作序列，没有「供阅读的背景知识」。
 
-## 什么时候触发
+## 第 0 步：判层（一次判定，别跳）
 
-- 修改 `nx-kv` 仓库源码：新增 / 修改 action、CLI、HTTP、面板、数据库表、设置项、提示词渲染、依赖 / 闸门。
-- 需要判断改动该落在 `core` / `shared` / `modules/<id>` / `runtime` / `web/frontend` 哪一层。
-- 需要交付验收证据（lint、typecheck、单测、smoke、build、真实渲染输出）。
-- **不适用**：只是用 `nx-kv` 领取 / 提交任务、查询清单、安装该 CLI 的用户侧操作（看 `README.md` 与 `docs/`）。
+| 改动落在 | 序列 | 典型信号 |
+|---|---|---|
+| 库表/列/索引/约束/迁移/设置键 | **A · 表结构** | 要存一个新东西、要按它查 |
+| action/service/repo/runtime/提示词/工作流/`assets/` | **B · server** | 要一个入口、改判定、改交付文本 |
+| 页面/面板/组件/样式/交互 | **C · 前端** | 要一个界面、点了没反应 |
+| 定位、交付、故障 | **D · 跨层** | 只有现象没有位置 |
 
-## 序列总览（先读这里）
+A/B/C 是三层；跨层改动按 **A → B → C** 的顺序做（先定数据形状，再定接口，最后接界面）。D 不参与分层，任何时候都能用。
 
-| 代号 | 类别 | 回答什么问题 | 成员 |
-|---|---|---|---|
-| **A** | 底层数据结构 | 数据存在哪张表、是什么、彼此怎么连、键位在哪 | A01 表与字段 / A02 关系模型 / A03 键与扩展位 |
-| **B** | 架构与 action | 代码分几层、入口在哪、action 怎么声明与注册、领域子系统怎么运转 | B01 分层与目录 / B02 action 全表 / B03 action 契约 / B04 提示词渲染链 / B05 依赖与工作流引擎 |
-| **C** | serve 端 | 面板后端怎么起、请求怎么进来、跨域与端口冲突怎么办 | C01 serve 端 |
-| **D** | web 端 | 前端有哪些组件、页面怎么组、对应哪个 API | D01 组件结构 / D02 页面与组件关系 |
-| **E** | 交付 | 一个功能点怎么从需求走到验收，证据怎么给 | E01 功能点 SOP / E02 验证与证据 / E03 坑库 |
+## 场景表
 
-## 不可省略的硬约束（跨层，任何改动都适用）
+### A · 表结构（数据层）
 
-1. **全仓 TS**：源码只有 `.ts` / `.tsx`（唯一的 `.js` 是 `src/index.js` —— 面向包外消费方的 tsx 垫片）。**import 路径保留 `.js` / `.jsx` 后缀**，由 tsx loader / vite 解析到同名 `.ts` / `.tsx`——写 import 时不要「顺手改成 .ts」。
-2. 功能入口只走模板形态 action：`src/modules/<id>/actions/<名>.ts`，**一条 action 一个文件**——`@action` 装饰器 + `ActionBase<typeof input>` 泛型基类 + **zod 契约内联在该文件**（名为 `input`，方法名固定 `run`）；清单由 `pnpm gen`（gen:actions）扫目录收进 `actions/_manifest.generated.ts`，**模块 index.ts 不手工列举 action**。`http` 可显式为 `null`，**每条 action 必须有 `cli`**。legacy flags 表契约只剩 runtime 内建命令（serve / help / version）在用，业务模块不扩张。
-3. 模块间只通过对方 `service.ts` / 导出面协作；禁止 import 别的模块内部实现，也禁止 import runtime 的**装配层**（cli / registry / server / api / spec / help / codegen）——模板的公共契约层（types/module、action-base、action-decorator、container）例外。模块互依禁列是**枚举式**的，新增模块要手动补 `eslint.config.js`。
-4. 跨模块、无副作用的纯函数才放 `src/shared/`；`src/core/` 只放原语（db、错误、模板引擎等），不放业务。
-5. SQLite 是唯一业务数据源。schema 只加新 migration：`src/core/db/migrations/vN+1.sql`（已发布快照**不可变**）+ `migrations/index.ts` 登记边 + **`@decision docs/decisions/<文件>.md` 决策注释**（`check-schema-decisions` 门禁强制）；**禁止改已发布版本文件**。
-6. 提示词只走「一份共享 ctx + Handlebars 模板字符串 + 薄编排」。禁止自研解析器、区块对象、每块独立变量域、服务端预拼列表文本。
-7. 测试必须用临时库 / 临时目录（`tests/support/test-store.mjs`）；禁止写用户真实库。真实库操作前先 `nx-kv db backup`。
-8. 前端页面组件**不许裸调 `api()`**：页面私有调用收口到本页 `page/<name>/api.ts`（模板约定，eslint 强制，`api.ts` 自身豁免）。
-9. 单文件行数门禁：≤500 干净；601–1000 必须登记 `scripts/line-lint-registry.json`（只许降不许升）；>1000 禁止。
-10. 改 CLI、面板、内置技能行为时，同步 `README.md`、`docs/`、`assets/` 与 `.claude/skills/`，不要只改一处。改了 action 声明要跑 `pnpm gen`，并**重启 serve** 才生效。
-
-## ref-map（按需加载）
-
-### A · 底层数据结构
-
-| 场景 | 代号 | 文件 | 何时读 |
-|---|---|---|---|
-| 表有哪些、每列是什么、身份与软删语义 | A01 | [A01-数据模型.md](references/A01-数据模型.md) | 动 schema / 写 SQL / 拿不准某列含义时 |
-| 谁连谁、这条边是什么语义、约束与陷阱 | A02 | [A02-关系模型.md](references/A02-关系模型.md) | 加外键 / 加关系表 / 依赖与附件挂错时 |
-| 这个值该落到哪个键位、谁是权威、哪些键已废弃 | A03 | [A03-键与扩展位.md](references/A03-键与扩展位.md) | 加设置项 / 读 `ext` / 迁移旧键时 |
-
-### B · 架构与 action
-
-| 场景 | 代号 | 文件 | 何时读 |
-|---|---|---|---|
-| 代码分几层、依赖方向、模块骨架、新增模块步骤 | B01 | [B01-架构分层.md](references/B01-架构分层.md) | 决定改哪一层、新建模块或目录时 |
-| 这个功能现在走哪条命令 / 哪个路由；全量入口清单 | B02 | [B02-action注册全表.md](references/B02-action注册全表.md) | 找现有入口、核对命令与路由、登记新入口时 |
-| action 的 zod 契约、CLI/HTTP 一致性、CRUD 与注册自检 | B03 | [B03-action契约.md](references/B03-action契约.md) | 新增 / 修改 action、动参数校验时 |
-| 交付提示词怎么拼出来；改模板要动哪 | B04 | [B04-提示词渲染链.md](references/B04-提示词渲染链.md) | 动提示词、模板、交付上下文、设置页时 |
-| 依赖、闸门、DAG、工作流引擎与编排面板 | B05 | [B05-依赖与工作流引擎.md](references/B05-依赖与工作流引擎.md) | 动依赖 / 顺序 / 工作流 / 编排面板时 |
-
-### C · serve 端
-
-| 场景 | 代号 | 文件 | 何时读 |
-|---|---|---|---|
-| 进程、请求分派、路由编译、CORS、端口协商、SSE | C01 | [C01-serve端.md](references/C01-serve端.md) | 动 HTTP 接口 / serve 启动 / 跨域 / 端口 / 事件流时 |
-
-### D · web 端
-
-| 场景 | 代号 | 文件 | 何时读 |
-|---|---|---|---|
-| 前端组件树与各自职责、布局与面板模型、样式约定 | D01 | [D01-组件结构.md](references/D01-组件结构.md) | 改 UI、找组件落点、理清前端骨架时 |
-| 页面 ↔ 组件 ↔ API 的对应关系与改动的落点 | D02 | [D02-页面与组件关系.md](references/D02-页面与组件关系.md) | 改某个页面 / 接线某个接口 / 排查「按钮点了没反应」时 |
-
-### E · 交付
-
-| 场景 | 代号 | 文件 | 何时读 |
-|---|---|---|---|
-| 一个功能点从需求到验收的标准动作清单 | E01 | [E01-功能点SOP.md](references/E01-功能点SOP.md) | 接到功能需求后照着做 |
-| 固定检查项、两层渲染校验、测试隔离、DB 验证、汇报格式 | E02 | [E02-验证与证据.md](references/E02-验证与证据.md) | 编码完成、准备汇报前 |
-| 本项目已踩过的坑与反模式（症状 → 根因 → 做法） | E03 | [E03-坑库.md](references/E03-坑库.md) | 设计评审与提交前自检 |
-
-## 典型起手路径
-
-| 你要做的事 | 读 |
+| 你要做的事 | SOP |
 |---|---|
-| 加一张表 / 改字段 | A01 → A02 → A03 → E01 |
-| 加一条命令或接口 | B01 → B02 → B03 → E01 → D02（若要面板） |
-| 改交付提示词 | B04 → A03 → E02 |
-| 改依赖 / 闸门 / 编排 | A02 → B05 → D02 |
-| 改 HTTP 接口行为 | B03 → C01 → D02 → E02 |
-| 改面板某个页面 | D01 → D02 → B03（对应 action）→ E02 |
-| 只想快速定位一段逻辑 | B02（全表）→ 对应层的 ref |
+| 加表、加列、加索引、改约束、加设置键、写迁移 | `A01-加表或字段.md` |
+| 查库里的真实数据、修本机数据、备份与恢复 | `A02-查库与改数据.md` |
 
-## 仓库事实入口（需要核对时先看这些）
+### B · server
 
-- 命令与路由：`node bin/kv.mjs routes --module <id>`、`node bin/kv.mjs help --json`（二者同源同长；**条数一律现读命令输出，不要记数字**——2026-11-14 一天内该数字变了两次）
-- 表结构：`src/core/db/migrations/`（`v4.sql` 是最新跃迁；`v1.sql` 是初始快照，永不修改）；决策注释门禁见 `scripts/check-schema-decisions.mjs`
-- 决策依据：`docs/decisions/`（含 `versions/` 下逐版说明）
-- 使用者文档与变更记录：`README.md`、`docs/project&projectsCli.md`、`CHANGELOG.md`
-- 术语规范：`docs/glossary.md`
-- 类型与门禁：`tsconfig.base/node/web.json`（strict 三配置）、`eslint.config.js`（分层约束）、`scripts/check-lines.mjs`（行数门禁）
+| 你要做的事 | SOP |
+|---|---|
+| 加/改一条命令或 HTTP 接口（action 声明） | `B01-加一条命令.md` |
+| 改已有业务规则、事务边界、错误语义、派生字段 | `B02-改业务逻辑.md` |
+| 改交付提示词、区块模板、渲染链 | `B03-改提示词渲染.md` |
+| 改任务依赖、闸门、工作流编排 | `B04-改依赖与编排.md` |
+| 改内置技能（`assets/`）、README/docs、CHANGELOG | `B05-改内置技能.md` |
 
-> 本 skill 记的是**快照**，代码是唯一真相。发现两者不一致时以代码为准，并顺手修本 skill。
+### C · 前端
+
+| 你要做的事 | SOP |
+|---|---|
+| 加面板页面、登记路由与面板、接新接口 | `C01-加面板页面.md` |
+| 改既有页面的交互、共享组件、样式、快捷键 | `C02-改交互与组件.md` |
+
+### D · 跨层
+
+| 你要做的事 | SOP |
+|---|---|
+| 不知道改哪个文件、这块逻辑在哪 | `D01-定位代码.md` |
+| 提交前跑门禁、准备验收证据、推送 | `D02-交付验证.md` |
+| 报错、白屏、接口 404、端口冲突、测试翻车 | `D03-排障.md` |
+
+## 五条全局门禁（每条 SOP 收尾都过）
+
+1. **全仓 TS**：源码只有 `.ts` / `.tsx`；import 路径**保留 `.js` / `.jsx` 后缀**，loader 解析到同名 TS 文件。
+2. **一条 action 一个文件**：`src/modules/<id>/actions/<cli首词>-<动词>.ts`，`@action` + zod 契约内联 + 方法名 `run`；`cli` 必须有，`http` 可为 `null`。改完 `pnpm gen`，并**重启 serve**。
+3. **schema 只加不改**：新迁移 `vN+1.sql`（已发布快照不可变）+ `DIRECT_EDGES` 登记边 + 每张 `CREATE/DROP TABLE` 前一行 `-- @decision docs/decisions/<文件>.md` 且该文件真实存在。
+4. **前端只走 HTTP**：禁止 import `modules/` `runtime/` `core/`，只能用 `src/shared/`；页面不裸调 `api()`，收口到 `page/<name>/api.ts`。
+5. **测试不碰真实库**：一律 `tests/support/test-store.mjs` 的临时库；动真实库前先 `node bin/kv.mjs db backup`。
+
+## 事实现查（不要记数字、不要信旧文档）
+
+```powershell
+node bin/kv.mjs routes                      # 全部命令 ↔ 路由（条数以输出为准）
+node bin/kv.mjs routes --module <id>        # 某模块有哪些入口
+node bin/kv.mjs help --json                 # 可解析的命令表
+grep -n CURRENT_SCHEMA_VERSION src/core/db/version.ts   # schema 版本
+ls src/core/db/migrations/*.sql             # 迁移到尾号
+ls src/modules/                             # 现存模块（历史模块会被删）
+pnpm run                                     # 全部脚本（lint/typecheck/build/test…）
+```
+
+## 序列约定（`pnpm lint` 强制）
+
+- 文件名固定 `<序列><两位序号>-<动作>.md`，序列只能是 `A`（表结构）/ `B`（server）/ `C`（前端）/ `D`（跨层）。
+- 新增 SOP 必须挂到某个序列下并被本文件路由；**A/B/C 每个序列至少一条**，否则门禁失败。
+- SOP 里的路径与 `node bin/kv.mjs <cmd>` 都会被逐条核对——写错路径、写不存在的命令，lint 直接拦。
+
+> 本 skill 记的是**动作**，代码是唯一真相。步骤里的路径不存在时，先跑 `D01-定位代码` 重新定位，再回来修这条 SOP。

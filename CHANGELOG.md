@@ -2,7 +2,7 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [0.53.2] - 2026-11-14 skill 按源码校准：命令与参数逐条对齐 action 表
+## [0.53.3] - 2026-11-14 skill 按源码校准：命令与参数逐条对齐 action 表
 
 ### Fixed
 

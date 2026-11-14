@@ -2,6 +2,28 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.53.2] - 2026-11-14 skill 按源码校准：命令与参数逐条对齐 action 表
+
+### Fixed
+
+- **skill 里的过时命令全部改正**（对照运行时 action 表逐条核）：`localtask clone` → `fork`、
+  `localtask restore` → `localtask task restore`、`repo bind --note` 不存在（改用 `repo ref note`）、
+  `file prune --dry-run`、`timegoal set --cwd --duration --prompt` 等。
+- **补全被漏掉的命令**：`localtask events / presence / prune / fork / remove-many / detach /
+  timegoal-log / topic add | remove-many`、`repo detect / doc add|list|remove / knowledge /
+  key * / remote * / bind-topics`、`board assign / prefix / rekey / prune`、
+  `docs set / ref add / ref unbind / remove / attach | detach / mdfile`、
+  `timegoal show / log / update / prune`。
+- **参数补全**：`add` 的 `--project / --board / --block-by / --gate / --fork-of`、`attach` 的
+  `--url / --task / --ref --inline / --mdfile / --noEmbed`、`update` 的 DAG 与闸门开关、
+  `reopen` 的 `--feedback / --quote`、`repo ref clone` 的 `--board / --bind / --no-bind / --depth`。
+
+### Added
+
+- **skill ↔ 源码准确性守卫单测**（`skill-cli-accurate`）：把文档里每条 `nx-kv …` 解析成 CLI
+  路径去 registry 里查，`--flag` 也要在该 action 的入参 schema 里——写错子命令或参数名直接变红，
+  不再靠人眼对源码。
+
 ## [0.53.1] - 2026-11-14 内置 skill 合并为一个：A 序列（SOP）+ B 序列（知识）
 
 ### Changed

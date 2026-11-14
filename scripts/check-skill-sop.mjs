@@ -6,8 +6,10 @@
 // 「每一条都必须是动作 SOP」。光靠一次重写守不住：下一个人加一篇纯知识文档，
 // 三周后又回到原点。所以把「形态」写成机器检查。
 //
-// 检查三件事：
-//   1. SKILL.md 的路由表 ↔ references/ 里的文件一一对应（不许有孤儿，也不许指向不存在的文件）
+// 检查四件事：
+//   1. SKILL.md 的路由表 ↔ references/ 里的文件一一对应（不许有孤儿，也不许指向不存在的文件）；
+//      文件名必须是「<序列><两位序号>-<动作>.md」，序列 ∈ A 表结构 / B server / C 前端 / D 跨层，
+//      且 A/B/C 三层各至少一条——分类是需求，不是装饰
 //   2. 每条 reference 必须含四段骨架：① 前置 / ② 动作 / ③ 自检 / ④ 失败分支
 //   3. 正文里出现的 src|tests|scripts|assets|docs|bin 路径必须存在；
 //      `node bin/kv.mjs <cmd>` 必须能在真实命令表里解析到
@@ -32,12 +34,22 @@ const skillPath = path.join(ROOT, 'SKILL.md');
 const skill = readFileSync(skillPath, 'utf8');
 
 // 1. 路由 ↔ 文件
-const routed = [...skill.matchAll(/`(T\d+-[^`]+\.md)`/g)].map((m) => m[1]);
+//    文件名固定「<序列><两位序号>-<动作>.md」：A 表结构 / B server / C 前端 / D 跨层。
+const NAME_RE = /^([ABCD])(\d{2})-([^/\\]+)\.md$/;
+const routed = [...skill.matchAll(/`([ABCD]\d{2}-[^`]+\.md)`/g)].map((m) => m[1]);
 for (const r of routed) {
   if (!refFiles.includes(r)) errors.push(`SKILL.md 路由指向不存在的文件：${r}`);
 }
 for (const f of refFiles) {
   if (!routed.includes(f)) errors.push(`references/${f} 未被 SKILL.md 路由（孤儿文件）`);
+  if (!NAME_RE.test(f)) errors.push(`references/${f} 命名不合序列约定（应为 <A|B|C|D><两位序号>-<动作>.md）`);
+}
+
+// 序列不能是装饰：A/B/C 三层各至少一条，否则「按层分类」名存实亡。
+for (const seq of ['A', 'B', 'C']) {
+  if (!refFiles.some((f) => f.startsWith(seq))) {
+    errors.push(`序列 ${seq} 一条 SOP 都没有（A 表结构 / B server / C 前端 必须各有覆盖）`);
+  }
 }
 
 // 2. 每条 SOP 的四段骨架

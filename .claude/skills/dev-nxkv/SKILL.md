@@ -92,7 +92,7 @@ description: "nx-kv 仓库开发指引（按层路由）：A 数据结构与关�
 
 ## 仓库事实入口（需要核对时先看这些）
 
-- 命令与路由：`node bin/kv.mjs routes --module <id>`、`node bin/kv.mjs help --json`（二者同源同长；2026-11-14 校准为 129 条 = 126 action + 3 平台命令，**数字以命令输出为准**）
+- 命令与路由：`node bin/kv.mjs routes --module <id>`、`node bin/kv.mjs help --json`（二者同源同长；**条数一律现读命令输出，不要记数字**——2026-11-14 一天内该数字变了两次）
 - 表结构：`src/core/db/migrations/`（`v4.sql` 是最新跃迁；`v1.sql` 是初始快照，永不修改）；决策注释门禁见 `scripts/check-schema-decisions.mjs`
 - 决策依据：`docs/decisions/`（含 `versions/` 下逐版说明）
 - 使用者文档与变更记录：`README.md`、`docs/project&projectsCli.md`、`CHANGELOG.md`

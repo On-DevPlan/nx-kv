@@ -272,7 +272,7 @@ export interface ApiClient {
   unbind(input: z.input<InstanceType<typeof DocRefUnbindAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRefUnbindAction>['run']>>>;
 /** 写文档正文 / 描述（面板保存走这里；ref 是 DB 实体，--ref 可给 refId；只给 --desc 时不动正文） */
   docUpdate(input: z.input<InstanceType<typeof DocUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocUpdateAction>['run']>>>;
-/** 查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> 只看仓库自己的文档；--group <组> 看组域文档集：组 → 组内仓库 → 仓库自己；position=0 为主篇） */
+/** 查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> 只看仓库自己的文档；--group <组> 看组域文档集：组 → 组内仓库 → 成员仓库自己 → 组内参考仓库自己；hostKind 标宿主是开发仓库/参考仓库/组；position=0 为主篇） */
   bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>>;
 /** GC 没有正文的文档（默认只报数；--apply 真删，并清掉宿主里指向它们的主篇/文档集引用） */
   gc(input?: z.input<InstanceType<typeof DocsGcAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsGcAction>['run']>>>;

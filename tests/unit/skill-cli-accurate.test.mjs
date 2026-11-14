@@ -45,18 +45,40 @@ function mdFiles(dir) {
   return out;
 }
 
-/** 从一行里取 `nx-kv ...` 的命令词（遇到 --flag 或占位符即止） */
+/**
+ * 从一行里取 `nx-kv ...` 的命令词（遇到 --flag / 占位符 / 引号 / 反引号 / 中文即止）。
+ *
+ * 按**字符**走而不是按空白切词：文档里常见 `nx-kv localtask get`（默认输出…） 这种
+ * 「命令后面紧跟反引号/中文说明」的行，按空白切会把 `get`（说明）粘成一个词，
+ * 于是命令词被截短、误报「命令不存在」。这里只收 [a-zA-Z0-9_-]，其余一律停。
+ */
 function commandWords(line) {
   const i = line.indexOf('nx-kv ');
   if (i < 0) return null;
   const rest = line.slice(i + 'nx-kv '.length);
   const words = [];
-  for (const chunk of rest.split(/\s+/)) {
-    if (!chunk || chunk.startsWith('--') || chunk.startsWith('-')) break;
-    if (/^[<"'(]/.test(chunk)) break; // 占位符 / 引号开的正文
-    if (!/^[a-zA-Z][\w-]*$/.test(chunk)) break;
-    words.push(chunk);
+  let cur = '';
+  for (const ch of rest) {
+    if (/[a-zA-Z0-9_-]/.test(ch)) {
+      cur += ch;
+      continue;
+    }
+    if (ch === ' ' || ch === '\t') {
+      if (cur) {
+        // 命令词必须以字母开头（版本号「nx-kv 0.54」之类不是命令）
+        if (!/^[a-zA-Z]/.test(cur)) break;
+        words.push(cur);
+        cur = '';
+        continue;
+      }
+      if (words.length) break; // 连续空白 → 后面不是命令词了
+      continue;
+    }
+    break; // 反引号 / 引号 / 括号 / 中文 / '-' → 停
   }
+  if (cur && /^[a-zA-Z]/.test(cur)) words.push(cur);
+  // 尾部若是 flag（--json 之类）不算命令词
+  while (words.length && words[words.length - 1].startsWith('-')) words.pop();
   return words;
 }
 

@@ -55,8 +55,9 @@ export function renderHelp(entries: readonly HelpEntry[], topic: unknown, versio
   }
 
   lines.push('通用:');
-  lines.push('  --json    机器可读输出（agent 模式；instruction 里的换行会转成 \\n）');
+  lines.push('  --json    机器可读输出（给需要结构化字段的查询用；交付的 instruction 会转义成 \\n 一行）');
   lines.push('  --xml     把交付的 instruction 区块逐字原样打印（与 --json 二选一）');
+  lines.push('          读交付内容用默认输出（不加 --json）：它就是引擎封装的 context 原文');
   return lines.join('\n');
 }
 

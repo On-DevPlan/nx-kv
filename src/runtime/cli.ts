@@ -124,6 +124,22 @@ export function xmlInstructionOf(data: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v : null;
 }
 
+/**
+ * #130：交付类命令（get / preview）用 --json 时，给 stderr 的提醒语。
+ *
+ * 交付的 instruction 是引擎**封装好的 context 原文**（提示词块 + 类 XML 区块 + 回执位），
+ * 不是给程序解析的数据。JSON 会把换行转义成 \n，agent 再拿 JSON 解析器去"读"它，
+ * 看到的只是一坨转义串——精心封装的上下文等于丢了。所以提醒：按原文读用默认输出 / --xml。
+ * 只对**有 instruction 字段**的交付数据说；普通查询命令不该多嘴。
+ */
+export function deliveryJsonHint(data: unknown): string | null {
+  if (xmlInstructionOf(data) === null) return null;
+  return (
+    '[nx-kv] 提示：本次输出的 instruction 是引擎封装的 context 原文（JSON 里换行已转义成 \\n）。\n' +
+    '         要按原文读，用不带 --json 的默认输出，或加 --xml；不要用 JSON 解析器去解析它。\n'
+  );
+}
+
 // 匹配命令：把声明路径与 argv 前缀逐 token 比较，选最长匹配。
 //
 // 逐 token 比较（而非只取「开头连续的非 flag token」）是必需的——有些命令路径
@@ -295,6 +311,11 @@ async function emit(cmd: AnyAction, data: unknown, json: boolean, ctx: unknown, 
 
   if (json) {
     if (data === undefined) return;
+    // #130：交付类命令（get / preview）的 instruction 是**引擎封装的 context 原文**——
+    // JSON 会把换行转义成 \n，agent 若再拿 JSON 解析器去"读"它，看到的是一坨转义串，
+    // 精心封装的提示词/上下文就等于丢了。这里往 stderr 给一句提醒（stdout 仍是纯 JSON）。
+    const hint = deliveryJsonHint(data);
+    if (hint) process.stderr.write(hint);
     console.log(JSON.stringify(data, null, 2));
     return;
   }

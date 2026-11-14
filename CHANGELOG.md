@@ -2,6 +2,34 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.54.5] - 2026-11-14 读交付内容用默认输出，别拿 JSON 解析器读（#130）
+
+### Changed
+
+- **口径写死：交付类命令（`localtask get` / `preview`）的标准动作是默认输出**——
+  stdout 就是引擎封装好的 context 原文（提示词块 + 类 XML 区块 + 回执位），原样喂给模型。
+  `--json` 只留给**需要结构化字段的查询命令**；用在交付命令上时，instruction 会被转义成一行，
+  再套 JSON 解析器读 = 精心封装的上下文全丢。
+- **CLI 主动提醒**：交付类命令带 `--json` 时，往 **stderr** 打一句提示（stdout 仍是纯 JSON，
+  不影响程序消费）：「instruction 是引擎封装的 context 原文……按原文读用默认输出或 `--xml`」。
+  新增 `deliveryJsonHint()` 便于测试。
+- **skill 同步改口径**：主文档路由表、A01 领取、A04 阻塞等待都不再用 `--json` 领活；
+  B02 的全局约定改成「查询类加 `--json`，交付类用默认输出」；`--xml` 保留给脚本单独取原文。
+- `nx-kv help` 的全局 flag 说明补上这句口径。
+
+### Fixed
+
+- **skill 命令守卫的解析器加固**（`skill-cli-accurate`）：改成按字符走，命令后面紧跟
+  反引号 / 中文说明（`` `nx-kv localtask get`（默认输出…） ``）时不再把词粘坏误报
+  「命令不存在」；命令词仍必须以字母开头（`nx-kv 0.54` 这类版本号不算命令）。
+
+### 验证
+
+- 实机：`preview --json` 的 stdout 仍是合法 JSON、stderr 出现提醒；`--xml` 逐字输出区块；
+  `--json --xml` 仍报互斥错误。
+- 新增 `cli-delivery-json-hint` 单测 3 条（提示语只对交付数据说 / JSON 确实转义成一行 /
+  skill 的标准动作不得带 `--json`）；全量单测 1000/1001（唯一失败仍是 node:sqlite 警告环境噪音）。
+
 ## [0.54.4] - 2026-11-14 任务页也能切 plan 态（#131）
 
 ### Fixed

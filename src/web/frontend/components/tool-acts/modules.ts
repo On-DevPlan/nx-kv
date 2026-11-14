@@ -33,7 +33,7 @@ export const DIR_MODULES: ToolModule[] = [
   { id: 'progress', label: '进程', section: 'bar' },
   { id: 'orch', label: '编排', section: 'bar' },
   // #126：草稿开关作用于选中的任务（没选中时给提示），默认在工具栏可见
-  { id: 'plan', label: '草稿', section: 'bar' },
+  { id: 'plan', label: '草稿态', section: 'bar' },
   { id: 'more', label: '更多', section: 'bar', noHide: true },
   { id: 'refs', label: '查看列表', section: 'more' },
 ];
@@ -61,6 +61,9 @@ export const TASK_MODULES: ToolModule[] = [
   { id: 'chain', label: '任务链', section: 'more', menuGroup: 'task' },
   { id: 'clone', label: '克隆任务', section: 'more', menuGroup: 'task' },
   { id: 'fork', label: 'Fork 任务', section: 'more', menuGroup: 'task' },
+  // #131：plan 态开关放在任务页「更多」里（与「标为完成」同组）——
+  // 用户在任务详情页就能把这条任务转成草稿态 / 转回待领取，不用回目录页。
+  { id: 'plan', label: '转为草稿', section: 'more', menuGroup: 'task' },
   { id: 'complete', label: '标为完成', section: 'more', menuGroup: 'task' },
   { id: 'cancel-task', label: '取消任务', section: 'more', menuGroup: 'task', danger: true },
   { id: 'mark', label: '评论', section: 'more', menuGroup: 'task' },

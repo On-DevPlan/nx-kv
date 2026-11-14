@@ -444,7 +444,7 @@ export default function Landing({
               more: '更多',
               plan: pickedRows.length
                 ? planTo === 'plan' ? `转草稿 (${toPlan.length})` : `转回待领取 (${toPending.length})`
-                : '草稿',
+                : '草稿态',
             }}
             titles={{
               new: '按默认模板新建一页（▾ 选模板）',

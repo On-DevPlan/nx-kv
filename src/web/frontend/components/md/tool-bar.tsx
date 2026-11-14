@@ -118,6 +118,10 @@ interface ToolBarProps {
   onClone?: (() => void) | null;
   onFork?: (() => void) | null;
   onComplete?: (() => void) | null;
+  /** #131：plan 态开关（草稿 ⇄ 待领取）；未给 handler 就不渲染 */
+  onPlan?: (() => void) | null;
+  /** plan 项的动态文案（转成草稿 / 转回待领取） */
+  planLabel?: string;
   onCancelTask?: (() => void) | null;
   onMark?: (() => void) | null;
   onDraft?: (() => void) | null;
@@ -145,6 +149,8 @@ export default function ToolBar({
   onClone,
   onFork,
   onComplete,
+  onPlan,
+  planLabel,
   onCancelTask,
   onMark,
   onDraft,
@@ -181,6 +187,7 @@ export default function ToolBar({
     clone: onClone && { label: '克隆任务', run: onClone },
     fork: onFork && { label: 'Fork 任务', run: onFork },
     complete: onComplete && { label: '标为完成', run: onComplete },
+    plan: onPlan && { label: planLabel || '转为草稿（plan）', run: onPlan, hint: '不进队列' },
     'cancel-task': onCancelTask && { label: '取消任务', run: onCancelTask, danger: true },
     mark: showMark && onMark ? { label: '评论', run: onMark } : null,
     delete: onDelete && { label: '删除', run: onDelete, danger: true },

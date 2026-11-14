@@ -10,6 +10,7 @@ import {
   forkTask,
   patchTaskItem,
   removeTaskItem,
+  setPlanStatus,
 } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { openPanel } from '../../workspace.js';
@@ -324,6 +325,20 @@ export function useTaskActions({
     });
   }, [canComplete, canCancel, doc, task, isGlobal, topic, taskStatus, taskRow, refreshLocal, guard, toast, dialog]);
 
+  // #131：plan（草稿）态开关。任务页「更多」里直接切——
+  // 草稿态不进队列（get/wait 领不到），转回待领取才重新排队。
+  const canPlan = !isDraft && !!taskRow && (taskStatus === 'pending' || taskStatus === 'plan');
+  const togglePlan = useCallback(() => {
+    if (!canPlan) return;
+    const to = taskStatus === 'plan' ? 'pending' : 'plan';
+    guard(async () => {
+      const scope = isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd };
+      await setPlanStatus({ ...scope, id: Number(task), to });
+      toast(to === 'plan' ? `已把 #${task} 转成草稿态（不进队列）` : `已把 #${task} 转回待领取`);
+      refreshLocal?.();
+    });
+  }, [canPlan, taskStatus, task, isGlobal, topic, guard, toast, refreshLocal]);
+
   const addFiles = useCallback(async (fileList: FileList | File[], opts: { mode?: string } = {}) => {
     if (!doc) return;
     const { items, imageInserts, fileInserts } = await filesToAttachments(fileList);
@@ -454,7 +469,7 @@ export function useTaskActions({
 
   return {
     composeText, goalPatchOf, submit, importMd, delTask,
-    canComplete, canCancel, canCloseTask, closeTask,
+    canComplete, canCancel, canCloseTask, closeTask, canPlan, togglePlan,
     addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel,
   };
 }

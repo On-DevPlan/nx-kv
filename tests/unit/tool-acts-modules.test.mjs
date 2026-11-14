@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   defaultLayout,
   inMoreOf,
+  modulesOf,
   normalizeLayout,
   onBarOf,
   setVisible,
@@ -128,4 +129,24 @@ test('repos: hide transfer → it lands in more menu; restore puts it back on ba
   assert.equal(inMoreOf('repos', layout.find((x) => x.id === 'transfer')), true);
   layout = setVisible(layout, 'transfer', true, 'repos');
   assert.equal(onBarOf('repos', layout.find((x) => x.id === 'transfer')), true);
+});
+
+// #131：任务页「更多」里必须能切 plan 态——用户在任务详情页就该有入口，
+// 不必回目录页去勾选。（dir 页的「草稿」批量入口是另一条路。）
+test('task 更多里有 plan 项（转草稿 / 转回待领取）', () => {
+  const layout = defaultLayout('task');
+  const more = layout.filter((x) => inMoreOf('task', x)).map((x) => x.id);
+  assert.ok(more.includes('plan'), 'plan 必须默认进「更多」菜单');
+  assert.ok(!onBarOf('task', { id: 'plan' }), 'plan 不占工具栏主位');
+
+  // 老布局里没有 plan → normalizeLayout 要补上（否则老用户看不到入口）
+  const norm = normalizeLayout('task', layout.filter((x) => x.id !== 'plan'));
+  assert.ok(norm.some((x) => x.id === 'plan'), '老布局要自动补出 plan 项');
+  assert.equal(norm.filter((x) => x.id === 'plan').length, 1, '只补一项，不重复');
+
+  // 与「标为完成」同组（task 组），排在 fork 之后
+  const mods = modulesOf('task');
+  const plan = mods.find((m) => m.id === 'plan');
+  assert.equal(plan.menuGroup, 'task');
+  assert.equal(plan.section, 'more');
 });

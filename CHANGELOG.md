@@ -2,7 +2,26 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [0.56.0] - 2026-11-15 新建按钮的两级命中区补上明显分割（#204 第 2 轮）
+## [0.56.0] - 2026-11-15 新建按钮的两级命中区补上明显分割（#204 第 2 轮）+ dev skill 新增「加一种附件类型」SOP
+
+### Added
+
+- **`.claude/skills/dev-nxkv/references/A03-加附件类型.md`**（dev skill 的 A 序列新增第 3 条 SOP，
+  `SKILL.md` 的 A 场景表与 frontmatter 触发词同步登记）：
+  - 把手写「加一种附件类型」的完整链路沉淀成可照做的动作序列：
+    **A 库（迁移）→ B 资源登记 + 提示词模板（序列化 + 知识化）→ C 附件区（前端）→ 说明书与测试**；
+  - 库层：决策文件固定字段（`date/status/decision/tables/drops/producers/consumers/migration`）、
+    `v<N+1>.sql` 的 12-step 重建（扩 CHECK 必须重建）、`DIRECT_EDGES` / `VERSION_NOTES` 登记、
+    `CURRENT_SCHEMA_VERSION` 与版本注释、版本说明文件；
+  - 模板层：登记函数（规范化 / 稳定 id / 幂等 / `ensure`）、正文引用解析（`nxkv://<kind>/<id>`）
+    与分派、视图模型（`KIND_LABEL` / `usage` / `cmd`）、模板 ctx 序列化（专属子对象）、
+    默认模板 `{{#if <kind>}}` 分支、**知识化**（设置面板模板变量表新增分组）；
+  - 附件区：`AttachAllow` 来源档、徽标显示名、请求体字段名、`normAttachment` 的 href
+    （路径指针类留空）、弹窗入口、条目展示与徽标样式；
+  - 自检清单按层给判据（迁移不丢数据 / 登记幂等 / 提示词给到关键值 / 变量表可查 /
+    附件区无假链接 / 老类型没回归）、失败分支表、反模式、**总结反思**；
+  - 判层表先分清「新类型要不要迁移」：只是字节→`file`、库内实体→`task`/`ref`、
+    链接→`url`，这些**不必动 schema**。
 
 ### Changed
 

@@ -53,8 +53,10 @@ function scopeBadgesOf(
   ];
 }
 
-export default function RefsPanel({ repoKey, boardKey, boardName, scope, model }: {
+export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scope, model }: {
   repoKey?: string;
+  /** #132：打开方给的名字（参考仓库不在侧栏数据里，名字得由打开方带过来） */
+  repoName?: string;
   boardKey?: string;
   boardName?: string;
   /** 打开时指定的归属筛选（#117）：repo / group / group_repo；缺省 all */
@@ -125,11 +127,13 @@ export default function RefsPanel({ repoKey, boardKey, boardName, scope, model }
   const ownerName = useMemo(() => {
     if (effRepoKey) {
       const r = (app.repoData?.repos || []).find((x: any) => x.key === effRepoKey) as any;
-      return r?.name || effRepoKey;
+      // 侧栏数据里只有开发仓库（参考仓库不在其中）→ 打开方给的名字优先；
+      // 都没有就用 key 的末段（github.com/owner/powertoys → powertoys），别甩一整串 key。
+      return r?.name || repoName || String(effRepoKey).split('/').pop() || effRepoKey;
     }
     if (effHost?.groupKey && effHost.name) return effHost.name;
     return boardName || groupKey.replace(/^group\//, '') || '项目组';
-  }, [app.repoData, effRepoKey, boardName, groupKey, effHost]);
+  }, [app.repoData, effRepoKey, repoName, boardName, groupKey, effHost]);
 
   const repoNameOf = useCallback((key: string) => {
     const r = (app.repoData?.repos || []).find((x: any) => x.key === key) as any;

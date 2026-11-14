@@ -265,9 +265,25 @@ export default function ReposView() {
     await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
 
-  // 绑定描述 = 组 ↔ 参考仓库这条关系上的描述
+  // 绑定描述 = 组 ↔ 参考仓库这条关系上的描述（组级描述是**关系**的说明，不是文档）
   const openLinkNote = (ref: RepoRecord, groupId: string, groupName: string, note?: string) => {
     setLinkNoteFor({ ref, groupId, groupName, note: note || '' });
+  };
+
+  // #132：参考仓库的**文档**和开发仓库完全同构——点它的文档入口就在右侧栏开
+  // 「<参考仓库名> · 文档列表」（同一个面板、同一套筛选器、同一个 ＋ 新建）。
+  const openRefDocs = (ref: RepoRecord) => {
+    const m = app.model;
+    if (!m) {
+      toast('工作区不可用，无法打开文档列表');
+      return;
+    }
+    openPanel(m, {
+      component: 'refs',
+      name: '文档列表',
+      config: { repoKey: ref.key || '', repoName: ref.name || '', scope: 'repo' },
+      location: 'right',
+    });
   };
 
   const rowAct = (act: string, r: RepoRecord) => guard(async () => {
@@ -370,7 +386,7 @@ export default function ReposView() {
         component: 'refs',
         name: '文档列表',
         // #117：仓库管理的「查看详情」= 只看这一行的精确归属（repo），不掺组域文档
-        config: { repoKey: r.key || '', scope: 'repo' },
+        config: { repoKey: r.key || '', repoName: r.name || '', scope: 'repo' },
         location: 'right',
       });
     },
@@ -440,6 +456,7 @@ export default function ReposView() {
         refRepos={refRepos}
         checkOf={checkOf}
         onOpenDoc={openBoardDoc}
+              onOpenRefDocs={openRefDocs}
         onAddMember={setImpBoardId}
         onSync={syncOne}
         onOpen={(r) => rowAct('open', r)}

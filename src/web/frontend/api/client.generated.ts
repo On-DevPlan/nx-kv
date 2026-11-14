@@ -228,7 +228,7 @@ export interface ApiClient {
   refClone(input: z.input<InstanceType<typeof RepoRefCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefCloneAction>['run']>>>;
 /** 写/清绑定描述：这个参考在该组/该仓库里参考什么（--note 留空 = 清除） */
   refNote(input: z.input<InstanceType<typeof RepoRefNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefNoteAction>['run']>>>;
-/** 查某仓库（缺省当前目录）的参考仓库：直接绑定到本仓库的 + 所属组绑定的，两类并列 */
+/** 查参考仓库：--id 某仓库（缺省当前目录）看它直接绑的 + 所属组绑的，两类并列；--board 某组 看这个组绑定的（带绑定描述） */
   of(input?: z.input<InstanceType<typeof RepoRefOfAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefOfAction>['run']>>>;
 /** 同步参考仓库（git pull --ff-only；--all 同步全部） */
   sync(input?: z.input<InstanceType<typeof RepoRefSyncAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefSyncAction>['run']>>>;
@@ -670,6 +670,7 @@ export function createApiClient(transport: Transport): ApiClient {
       let path = `/api/repos/ref/of`;
       const q = new URLSearchParams();
       if (inp["id"] !== undefined) q.set("id", String(inp["id"]));
+      if (inp["board"] !== undefined) q.set("board", String(inp["board"]));
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof RepoRefOfAction>['run']>>;

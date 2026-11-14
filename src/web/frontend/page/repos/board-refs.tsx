@@ -8,14 +8,17 @@
 // 关系引用一律按 key（看板 key = board/<名称>，仓库 key = 归一化远程地址）。
 import { useEffect, useMemo, useState } from 'react';
 import { Copyable } from '../../components/ui.jsx';
+import { DocsEntry } from './repo-table.jsx';
 import { Button } from '../../components/button/index.jsx';
 import type { BoardRecord, RefCheckMap, RepoRecord } from './repo-table.js';
 
-export default function BoardRefs({ filterBoard, refRepos, checkOf, onOpenDoc, onAddMember, onSync, onOpen, onLinkNote, onUnbind }: {
+export default function BoardRefs({ filterBoard, refRepos, checkOf, onOpenDoc, onOpenRefDocs, onAddMember, onSync, onOpen, onLinkNote, onUnbind }: {
   filterBoard: BoardRecord | null;
   refRepos: RepoRecord[];
   checkOf: RefCheckMap;
   onOpenDoc: (b: BoardRecord) => void;
+  /** #132：打开某个参考仓库自己的文档列表（右侧栏，和开发仓库同构） */
+  onOpenRefDocs: (r: RepoRecord) => void;
   onAddMember: (boardId: string) => void;
   onSync: (r: RepoRecord) => void;
   onOpen: (r: RepoRecord) => void;
@@ -83,6 +86,9 @@ export default function BoardRefs({ filterBoard, refRepos, checkOf, onOpenDoc, o
               <span className={'rp-ref-dot' + (c ? (c.ok ? ' ok' : ' bad') : '')}
                 title={c ? (c.ok ? '检查通过' : (c.issues || []).join('\n')) : '尚未检查'} />
               <Copyable text={r.remote || r.name} title="点击复制远程地址" className="rp-ref-mounted-name">{r.name}</Copyable>
+              {/* #132：参考仓库也是文档宿主——和开发仓库一样，点开就是
+                  「<参考仓库名> · 文档列表」（右侧栏，同一套筛选器与新建）。 */}
+              <DocsEntry docs={r.descDocs} onOpen={() => onOpenRefDocs(r)} />
               {r.desc ? <span className="muted rp-ref-mounted-desc" title={r.desc}>{r.desc}</span> : null}
               {r.boardNote ? (
                 <button className="rp-ref-note-chip" title={`${r.boardNote}\n点击编辑这条组级描述`}

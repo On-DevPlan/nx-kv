@@ -12,6 +12,7 @@ const renderRefsOf: any = _renderRefsOf;
 /** repo.ref.of 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   id: z.string().optional(),
+  board: z.string().optional().describe('查这个组（id / key / 名称）绑定的参考仓库（含绑定描述）——右侧栏组视图用'),
 });
 
 export class RepoRefOfAction extends ActionBase<typeof input> {
@@ -19,13 +20,16 @@ export class RepoRefOfAction extends ActionBase<typeof input> {
     id: 'repo.ref.of',
     cli: ['repo', 'ref', 'of'],
     http: ['GET', '/api/repos/ref/of'],
-    summary: '查某仓库（缺省当前目录）的参考仓库：直接绑定到本仓库的 + 所属组绑定的，两类并列',
+    summary: '查参考仓库：--id 某仓库（缺省当前目录）看它直接绑的 + 所属组绑的，两类并列；--board 某组 看这个组绑定的（带绑定描述）',
     args: ['id'],
     input,
     render: renderRefsOf,
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
+      // #132：组视图也要能问「这个组绑了哪些参考仓库、说明写的什么」——
+      // 右侧栏文档列表要就地编辑绑定描述，就靠这条。
+      if (ctx.board) return ref.refReposOfBoard(ctx.board);
       return ref.refReposOfRepo(ctx.id || process.cwd());
   
   }

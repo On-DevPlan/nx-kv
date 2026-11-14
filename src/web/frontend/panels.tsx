@@ -149,8 +149,10 @@ export const PANELS: Record<string, PanelEntry> = {
   refs: { title: '文档列表', render: (cfg, ctx) => wrap(
     <RefsPanel
       repoKey={cfg && cfg.repoKey}
+      repoName={cfg && cfg.repoName}
       boardKey={cfg && cfg.boardKey}
       boardName={cfg && cfg.boardName}
+      scope={cfg && cfg.scope}
       model={ctx && ctx.model}
     />
   ) },

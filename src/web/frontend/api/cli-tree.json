@@ -674,7 +674,7 @@
               "action": {
                 "id": "repo.ref.of",
                 "module": "repos",
-                "summary": "查某仓库（缺省当前目录）的参考仓库：直接绑定到本仓库的 + 所属组绑定的，两类并列",
+                "summary": "查参考仓库：--id 某仓库（缺省当前目录）看它直接绑的 + 所属组绑的，两类并列；--board 某组 看这个组绑定的（带绑定描述）",
                 "usage": "repo ref of",
                 "http": "GET /api/repos/ref/of"
               },

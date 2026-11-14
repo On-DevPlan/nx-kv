@@ -66,3 +66,42 @@ export function updateDocItem(body: { ref?: string; body?: string; desc?: string
 export function removeDocItem(body: { ref?: string }): Promise<any> {
   return api('/api/docs/item', { method: 'DELETE', body });
 }
+
+/**
+ * 组 / 仓库绑定的参考仓库（含绑定描述）。
+ * #132：右侧栏文档列表要能就地看 / 改「这个参考在本组里参考什么」——
+ * 过去这件事散在中心弹窗里，文档面被切成了两半。
+ */
+export interface RefRepoBinding {
+  id?: string;
+  key: string;
+  name: string;
+  desc?: string;
+  remote?: string;
+  path?: string;
+  note: string;
+}
+
+export interface RefReposOf {
+  repo?: { id?: string; key?: string; name?: string; path?: string; desc?: string };
+  board?: { id?: string; key?: string; name?: string };
+  /** 直接绑定到本仓库的（仅 --id 视图） */
+  direct?: RefRepoBinding[];
+  /** 本组绑定的（--board 视图） */
+  refRepos?: RefRepoBinding[];
+}
+
+/** 某仓库直接绑定的参考仓库 + 所属组绑定的（--id 视图）。 */
+export function repoRefRepos(id: string): Promise<RefReposOf> {
+  return api('/api/repos/ref/of?id=' + encodeURIComponent(id));
+}
+
+/** 某组绑定的参考仓库（--board 视图，带绑定描述）。 */
+export function boardRefRepos(board: string): Promise<RefReposOf> {
+  return api('/api/repos/ref/of?board=' + encodeURIComponent(board));
+}
+
+/** 写 / 清绑定描述（这个参考在该组 / 该仓库里参考什么）。 */
+export function setRefNote(body: { id: string; board?: string; repo?: string; note?: string }): Promise<any> {
+  return api('/api/repos/ref/note', { method: 'POST', body });
+}

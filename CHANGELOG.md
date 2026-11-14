@@ -2,6 +2,39 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.55.3] - 2026-11-14 「添加附件」面板补上文件夹支持（#133）
+
+### Added
+
+- **面板能挂文件夹了**（后端早就有 `kind=folder`，缺的是面板入口）：
+  - 任务页 / 文档页 →「添加附件」弹窗 → 新增一行「**添加文件夹（本机绝对路径，如 D:\repos\ref）**」
+    输入框 + 「添加」按钮，填完进待确认清单 →「确认添加」即登记一个文件夹附件；
+  - 浏览器拿不到目录的**绝对路径**（File API 只给相对路径），所以面板用**路径输入框**
+    而不是目录选择器：填相对路径会提示「会按服务端工作目录解析，建议写绝对路径」；
+  - 附件区里文件夹条目显示「**文件夹**」徽标 + 目录名 + **绝对路径**（mdfile 的同款口径），
+    目录已不在时标「· 目录已不在」；
+  - 任务页 / 文档页两侧都通（`allow.folder`），`@` 附件选择器复用同一个弹窗。
+
+### Changed
+
+- **前端附件口径**：`AttachAllow` 增 `folder` 档；`attachBodyOf` 对 `source=folder`
+  发 `{ folder, name }`（**不是** `fileId`/`path`——那会被当成文件上传）；
+  `badgeOf('folder')` = 「文件夹」；`normAttachment` 给文件夹留空 `href`
+  （路径指针没有可打开的 URL，别编一条会 404 的链接）。
+- **skill**：A02「随任务带附件」补面板口径（路径输入框，不是目录选择器），
+  B02 `localtask attach` 行标注「面板同款」。
+
+### 验证
+
+- 真实 Chrome（CDP）实测：打开任务页 →「添加附件」→ 弹窗里出现文件夹输入框 →
+  填 `D:\a_js\js_proj\nx-kv\docs` → 点「添加」→ 待确认清单出现「本地文件夹 … 文件夹」→
+  「确认添加」→ 附件区出现「文件夹 docs D:\a_js\js_proj\nx-kv\docs」。
+- HTTP 实测：`POST /api/localtasks/attach` 带 `folder` → 返回 `kind=folder`、
+  `id=att_folder_*`、`area=area`（noEmbed 不写正文）；清单里带 `absPath`。
+- 徽标「文件夹」三字曾在 38px 宽的徽标里折行 → 徽标改 `min-width` + `nowrap`。
+- 单测：新增 `tests/unit/attach-folder-panel.test.mjs`（面板请求体字段名 / 徽标 / 不给内容链接）；
+  全量单测与 lint / typecheck / build / 冒烟全过。
+
 ## [0.55.2] - 2026-11-14 A03 补齐「参考仓库也能构建文档列表」
 
 ### Changed

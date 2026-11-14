@@ -242,7 +242,7 @@ export function DockPanel({
               hostId={Number(task)}
               hostKey={isGlobal ? GLOBAL_KEY : undefined}
               hostCwd={isGlobal ? undefined : topic.cwd}
-              allow={{ file: true, url: true, task: true, ref: true }}
+              allow={{ file: true, url: true, folder: true, task: true, ref: true }}
               taskOptions={(topic.tasks || []).map((t: LocalTask) => ({ id: t.id, text: t.text, status: t.status }))}
               onChanged={refreshLocal}
               onOpenTask={(hit: { key?: string; seq?: number | null }) => {

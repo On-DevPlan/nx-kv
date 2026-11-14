@@ -27,7 +27,7 @@ export function DocAttachBody({ refId, writable, onChanged, onOpenDoc }: {
     <AttachArea
       host="doc"
       refId={refId}
-      allow={{ file: true, url: true, task: false, ref: true }}
+      allow={{ file: true, url: true, folder: true, task: false, ref: true }}
       disabled={!writable}
       disabledText="只读文档不能添加附件。"
       onChanged={onChanged}

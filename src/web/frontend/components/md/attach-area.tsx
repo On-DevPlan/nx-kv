@@ -132,6 +132,12 @@ function renderItem(a: NormalizedAttachment, { onRemove, onPreview, onPreviewMd,
               {a.absPath || '（路径为空）'}{a.missing ? ' · 源文件已不在' : ''}
             </span>
           ) : null}
+          {/* 文件夹（#133）：目录内容不在库里，只有绝对路径 —— 显示出来才知道挂的是哪个目录 */}
+          {a.kind === 'folder' ? (
+            <span className="att-note" title={a.absPath || ''}>
+              {a.absPath || '（路径为空）'}{a.missing ? ' · 目录已不在' : ''}
+            </span>
+          ) : null}
           {a.note ? <span className="att-note">{a.note}</span> : null}
         </span>
       </span>
@@ -167,7 +173,7 @@ export default function AttachArea({
   hostKey,
   hostCwd,
   refId,
-  allow = { file: true, url: true, task: false, ref: false },
+  allow = { file: true, url: true, folder: true, task: false, ref: false },
   taskOptions = [],
   docOptions,
   disabled = false,

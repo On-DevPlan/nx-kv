@@ -164,8 +164,8 @@
 }
 .att-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .att-kind-badge{
-  flex:none;width:38px;height:26px;border:1px solid var(--line,#E4E2DC);border-radius:5px;
-  display:flex;align-items:center;justify-content:center;
+  flex:none;min-width:38px;height:26px;padding:0 6px;border:1px solid var(--line,#E4E2DC);border-radius:5px;
+  display:flex;align-items:center;justify-content:center;white-space:nowrap;
   font:600 10px inherit;color:var(--mid,#838A93);background:var(--canvas,#F5F4F1);
 }
 .att-item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}

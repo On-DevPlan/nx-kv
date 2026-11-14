@@ -78,6 +78,8 @@ export interface AttachHostRef {
 export interface AttachAllow {
   file: boolean;
   url: boolean;
+  /** 本地文件夹（kind=folder）：只登记目录路径指针，不复制目录内容（#133） */
+  folder: boolean;
   task: boolean;
   ref: boolean;
 }
@@ -116,6 +118,8 @@ export interface AttachDraftItem {
   fileId?: string | null;
   name?: string;
   url?: string;
+  /** 本地文件夹的绝对路径（kind=folder；服务端按它登记路径指针，#133） */
+  folder?: string;
   seq?: number | string;
   docRef?: string;
   note?: string;
@@ -161,7 +165,9 @@ export function normAttachment(a: Attachment): NormalizedAttachment {
     areaLabel: AREA_LABEL[AREA_OF(role)],
     kind: a.kind === 'file' && isImage ? 'image' : a.kind,
     sizeText: fmtSize(a.size),
-    href: a.kind === 'file' ? contentUrl(a.id) : a.kind === 'mdfile' ? '' : a.href || urlText,
+    // 文件走内容接口；mdfile / folder 是**路径指针**（目录/文件都在用户磁盘原地），
+    // 没有可打开的 URL —— 别给它们编一条会 404 的链接。
+    href: a.kind === 'file' ? contentUrl(a.id) : (a.kind === 'mdfile' || a.kind === 'folder') ? '' : a.href || urlText,
     targetSeq: a.targetSeq ?? (a.meta && a.meta.seq) ?? null,
     targetKey: a.targetKey || (a.meta && a.meta.topicKey) || '',
     targetRef: a.targetKey || (a.meta && a.meta.refId) || '',
@@ -169,7 +175,7 @@ export function normAttachment(a: Attachment): NormalizedAttachment {
   };
 }
 
-const KIND_BADGE: Record<string, string> = { image: '图片', file: '文件', url: '链接', task: '任务', ref: '文档', mdfile: 'md' };
+const KIND_BADGE: Record<string, string> = { image: '图片', file: '文件', url: '链接', task: '任务', ref: '文档', mdfile: 'md', folder: '文件夹' };
 export const badgeOf = (kind: string | undefined) => KIND_BADGE[kind || ''] || '附件';
 
 /** 任务侧/文档侧的列表与关系接口（同一套字段，只换 URL）。 */
@@ -213,6 +219,8 @@ export function endpointOf(host: AttachHostKind | undefined, { hostId, hostKey, 
 export function attachBodyOf(item: AttachDraftItem, host: AttachHostKind = 'task'): Record<string, any> {
   if (item.source === 'file') return { fileId: item.fileId, name: item.name };
   if (item.source === 'url') return { url: item.url, name: item.name };
+  // 本地文件夹（#133）：只把**路径**交给服务端（kind=folder），目录内容不入库。
+  if (item.source === 'folder') return { folder: item.folder, name: item.name };
   if (item.source === 'task') return { task: String(item.seq), name: item.name };
   if (item.source === 'ref') {
     const body: Record<string, any> = host === 'doc'

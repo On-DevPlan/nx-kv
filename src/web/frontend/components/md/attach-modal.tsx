@@ -39,19 +39,21 @@ const ModalBox = Modal as unknown as ComponentType<{
 }>;
 
 const SOURCE_LABEL: Record<PendingItem['source'], string> = {
-  file: '本机文件', url: '外部链接', task: '任务引用', ref: '文档引用',
+  file: '本机文件', folder: '本地文件夹', url: '外部链接', task: '任务引用', ref: '文档引用',
 };
 
 /** 待确认清单的一条（本地态，不是服务端形状）。 */
 interface PendingItem {
   key: string;
-  source: 'file' | 'url' | 'task' | 'ref';
+  source: 'file' | 'folder' | 'url' | 'task' | 'ref';
   file?: File;
   fileId?: string;
   name: string;
   mime?: string;
   size?: number;
   url?: string;
+  /** 本地文件夹的绝对路径（#133）：提交时原样发给服务端登记路径指针 */
+  folder?: string;
   seq?: number;
   docRef?: string;
   note?: string;
@@ -59,6 +61,9 @@ interface PendingItem {
   status: 'pending' | 'uploading' | 'error';
   error?: string;
 }
+
+/** 路径是不是「绝对」的：Windows 盘符 / UNC / POSIX 根目录。 */
+const isAbsPath = (p: string) => /^[A-Za-z]:[\\/]/.test(p) || /^\\\\/.test(p) || /^[/\\]/.test(p);
 
 interface AttachModalProps {
   open?: boolean;
@@ -95,7 +100,7 @@ export default function AttachModal({
   hostKey,
   hostCwd,
   refId,
-  allow = { file: true, url: true, task: false, ref: false },
+  allow = { file: true, url: true, folder: true, task: false, ref: false },
   taskOptions = [],
   docOptions = null,
   replaceAttachment = null,
@@ -108,6 +113,8 @@ export default function AttachModal({
   const [busy, setBusy] = useState(false);
   const [urlVal, setUrlVal] = useState('');
   const [urlErr, setUrlErr] = useState('');
+  const [folderVal, setFolderVal] = useState('');
+  const [folderErr, setFolderErr] = useState('');
   const [taskSearch, setTaskSearch] = useState('');
   const [refSearch, setRefSearch] = useState('');
   const [docs, setDocs] = useState<DocOption[]>(docOptions || []);
@@ -126,6 +133,8 @@ export default function AttachModal({
     setBusy(false);
     setUrlVal('');
     setUrlErr('');
+    setFolderVal('');
+    setFolderErr('');
     setTaskSearch('');
     setRefSearch('');
     // 焦点落在拖拽区：不点任何地方直接 Ctrl/⌘+V 也能接住剪贴板里的截图
@@ -187,6 +196,31 @@ export default function AttachModal({
     setItems((prev) => [
       ...prev,
       { key: nextKey(), source: 'url', url: u, name: u, size: 0, status: 'pending' },
+    ]);
+  };
+
+  /**
+   * 本地文件夹（#133）：浏览器拿不到目录的**绝对路径**（File API 只给相对路径），
+   * 所以这里让用户直接填路径——服务端按它登记一个路径指针（kind=folder），
+   * 目录内容不入库，交付时把绝对路径给 agent 去列目录。
+   */
+  const addFolder = () => {
+    const raw = String(folderVal || '').trim().replace(/^["']+|["']+$/g, '');
+    if (!raw) {
+      setFolderErr('需要文件夹的路径');
+      return;
+    }
+    if (!isAbsPath(raw)) {
+      setFolderErr('相对路径会按服务端工作目录解析，建议写绝对路径（如 D:\\repos\\ref）');
+      return;
+    }
+    setFolderErr('');
+    setFolderVal('');
+    const abs = raw.replace(/[\\/]+$/, '') || raw;
+    const name = abs.split(/[\\/]/).filter(Boolean).pop() || abs;
+    setItems((prev) => [
+      ...prev,
+      { key: nextKey(), source: 'folder', folder: abs, name, size: 0, status: 'pending' },
     ]);
   };
 
@@ -348,7 +382,7 @@ export default function AttachModal({
         <button type="button" className="btn ghost" onClick={() => fileRef.current?.click()}>
           选择文件（可多选）
         </button>
-        <div className="att-drop-sub">支持截图直接粘贴（Ctrl/⌘ + V）</div>
+        <div className="att-drop-sub">支持截图直接粘贴（Ctrl/⌘ + V）；文件夹请用下面的路径输入框</div>
         <input
           ref={fileRef}
           type="file"
@@ -377,6 +411,23 @@ export default function AttachModal({
           />
           <button type="button" className="btn ghost" onClick={addUrl}>添加</button>
           {urlErr ? <span className="att-err-text">{urlErr}</span> : null}
+        </div>
+      )}
+
+      {allow.folder && (
+        <div className="att-row att-url-row">
+          <input
+            className="pp-input"
+            placeholder="添加文件夹（本机绝对路径，如 D:\\repos\\ref）"
+            value={folderVal}
+            onChange={(e) => { setFolderVal(e.target.value); setFolderErr(''); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); addFolder(); }
+            }}
+            spellCheck="false"
+          />
+          <button type="button" className="btn ghost" onClick={addFolder}>添加</button>
+          {folderErr ? <span className="att-err-text">{folderErr}</span> : null}
         </div>
       )}
 
@@ -446,7 +497,9 @@ export default function AttachModal({
           {items.map((it) => (
             <div key={it.key} className={'att-pending-item' + (it.status === 'error' ? ' is-error' : '')}>
               <span className="att-badge">{SOURCE_LABEL[it.source]}</span>
-              <span className="att-pending-name" title={it.name}>{it.name}</span>
+              <span className="att-pending-name" title={it.folder || it.name}>
+                {it.source === 'folder' ? (it.folder || it.name) : it.name}
+              </span>
               <span className="att-pending-type">
                 {badgeOf(it.source === 'file' ? (/^image\//i.test(it.mime || '') ? 'image' : 'file') : it.source)}
               </span>

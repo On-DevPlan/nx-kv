@@ -26,13 +26,16 @@ description: nx-kv 本机任务队列与仓库上下文的**唯一 skill**（原
 | --- | --- | --- |
 | **① 领取任务**（领 → 读 → 干 → 回填 → 按反馈派生下一轮） | `nx-kv localtask get`（默认输出即逐字 context） | [[A01-领取任务]] |
 | **② 提交任务**（把上下文 + 工程知识 + 关键路径写成自包含任务） | 提炼 → 写文件 → `localtask add --file … --cwd …` | [[A02-提交任务]] |
-| **③ 文档（ref）管理**（三层宿主、可绑定列表、写一篇能照做的安装文档） | `docs ref add` / `docs bind` / `docs link` | [[A03-文档与归属]] |
+| **③ 文档（ref）管理**（四类宿主：开发仓库 / **参考仓库** / 组 / 组内仓库；可绑定列表；写一篇能照做的安装文档） | `docs ref add` / `docs bind` / `docs link` | [[A03-文档与归属]] |
 | **④ 仓库与项目组管理**（远程仓库 git 到指定位置、绑定关系） | `setting set --gitRepoRoot` → `repo clone` / `repo ref clone` → `board assign` / `repo bind` | [[A04-仓库与项目组]] |
 | **⑤ 任务链成块 + 反馈识别 + 回写 topic 的 ref** | `localtask chain` 认链尖 → 合成现状 → `docs set` / `docs bind` | [[A05-任务链与反馈汇总]] |
 
 > A 序列内部还有常用分支：领指定编号（`show` → `reorder` → `get`）、阻塞等人回填
 > （`get --timeout 60`）、时间目标（`timegoal check`）、完成回填（`done --summary`）、
 > 用户提意见（`reopen` 派生下一轮）都在 [[A01-领取任务]] 里。
+>
+> **参考仓库也能构建文档列表**（右侧栏「<参考仓库名> · 文档列表」，与开发仓库同构）：
+> 建篇 / 挂宿主 / 查列表的命令在 [[A03-文档与归属]] §四。
 
 ## B 序列：A 覆盖不到才查
 

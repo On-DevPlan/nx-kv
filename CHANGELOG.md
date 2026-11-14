@@ -2,6 +2,43 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.55.2] - 2026-11-14 A03 补齐「参考仓库也能构建文档列表」
+
+### Changed
+
+- **内置 skill 的 A03（文档与归属）把参考仓库写成文档列表的一等主题**：
+  - 宿主表从「三层」改成「**四类**」：开发仓库 / **参考仓库**（kind=ref）/ 项目组 / 组内仓库，
+    并写明参考仓库与开发仓库**只有 kind 差异**（`ext_legacy_type` = `dev` / `ref`）——
+    文档宿主、绑定表、宿主 ext 结构全都一样；
+  - 新增 **§四「参考仓库也能构建文档列表」**，两条路都写全：
+    - 面板侧：仓库管理页 → 顶部筛选选中某个组 → 「『<组名>』的参考仓库」区块 →
+      参考仓库行的文档入口 → **右侧栏「<参考仓库名> · 文档列表」**
+      （同一套归属筛选器、打开时落在「仓库」档、同一个「＋ 新建」、标题用名字不甩 key、
+      新建文档的徽标是「参考 · <名>」）；
+    - CLI 侧：`docs ref add --owner repo --repo <参考仓库key>` → `docs bind --repo` /
+      `repo doc add --id` → `docs bindings --host <参考仓库key>` → `repo doc list --id`
+      → `docs bindings --group <组key>`；
+  - 口径要点四条：只有 kind 差异 / `--host` 精确到宿主（不掺组域文档）/ 组视图里参考仓库排在
+    最后（组 → 组内仓库 → 成员仓库自己 → 组内参考仓库自己）/ 「组级描述」是**关系**说明不是文档；
+  - 陷阱表补 5 条：以为参考仓库只能读不能建列表、把组级描述当文档、用 `docs list` 找某宿主的
+    文档、组视图里找不到参考仓库的文档、看不出宿主是 dev 还是 ref（看 `hostKind`）。
+- **SKILL.md 路由**：③ 的说明改成「四类宿主（含参考仓库）」，A 序列后加一行指路
+  （参考仓库的文档列表 → A03 §四）；A04 里 kind 差异那行也加了指路。
+
+### Fixed
+
+- **skill 准确性守卫认得平台命令**：`nx-kv serve` / `help` / `version` 属于
+  `src/runtime/cli.ts` 的 BUILTINS，**不在 ACTIONS 注册表里**——守卫只查注册表，
+  于是 skill 里写一句 `nx-kv serve` 就会被误判成「命令不存在」。现在按同样的形状登记这三个
+  平台命令（含各自的合法参数），口径与 `scripts/check-skill-sop.mjs` 的 PLATFORM 名单一致。
+
+### 验证
+
+- 现场核对（0.55.1 实机）：`nx-kv docs bindings --host github.com/ccch1mneyyy/dsh-go --json`
+  返回该**参考仓库自己**的文档且 `hostKind=ref`；`nx-kv repo doc list --id <同 key>`
+  返回主篇（1 篇）——参考仓库的文档列表确实可建可查。
+- 单测：`skill-cli-accurate` / `bundled-skill-sop` 全绿；lint（含 check-skill-sop、check-lines）全绿。
+
 ## [0.55.1] - 2026-11-14 参考仓库成为文档列表的一等主题（#132 收尾）
 
 ### Changed

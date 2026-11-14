@@ -21,6 +21,17 @@ const { ACTIONS } = await import('../../src/runtime/registry.js');
 
 /** cli 路径（按词数组）→ 该 action 的合法参数集合 */
 const CLI = new Map();
+
+// 平台命令（serve / help / version）不在 ACTIONS 注册表里，但它们是真命令
+// （src/runtime/cli.ts 的 BUILTINS）。skill 里写了 `nx-kv serve` 不能被判成
+// 「命令不存在」——所以这里按同样的形状登记它们，连同各自的合法参数。
+const PLATFORM = new Map([
+  ['serve', new Set(['port', 'no-open', 'auto-exit', 'idle', 'allow-origin'])],
+  ['help', new Set(['topic'])],
+  ['version', new Set()],
+]);
+for (const [name, keys] of PLATFORM) CLI.set(name, keys);
+
 for (const a of ACTIONS) {
   const raw = Array.isArray(a.cli) ? a.cli.join(' ') : String(a.cli || '');
   // 少数 action 的 cli 声明里带逗号别名（如 skill,list / skill,install,--list），拆开各自登记
@@ -44,6 +55,7 @@ const GLOBAL_FLAGS = new Set(['json', 'xml', 'help', 'version']);
  * 并把变体里已经用掉的 flag 从待检查列表里去掉。
  */
 const VARIANTS = [];
+for (const [name, keys] of PLATFORM) VARIANTS.push({ tokens: [name], keys });
 for (const a of ACTIONS) {
   const raw = Array.isArray(a.cli) ? a.cli.join(' ') : String(a.cli || '');
   const variants = raw.split(',').map((s) => s.trim()).filter(Boolean);

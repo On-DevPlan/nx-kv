@@ -18,6 +18,8 @@
 .tstat.tstat-doing { color: var(--doing, #2f5fb5); background: var(--doing-bg, #edf2fc); border-color: var(--doing-line, #c9d6f0); }
 .tstat.tstat-done { color: var(--live); background: rgba(31, 122, 77, 0.08); border-color: rgba(31, 122, 77, 0.28); }
 .tstat.tstat-gone { color: var(--faint); border-style: dashed; }
+/* #126 草稿：与待领取区分开，金褐色文字 + 虚线边框，不占「进行中/已完成」语义色 */
+.tstat.tstat-plan { color: var(--warn); background: var(--soft); border-color: var(--soft-2); border-style: dashed; }
 
 /* ---------- 表格：细线分隔，不画网格 ---------- */
 table { width: 100%; border-collapse: collapse; }

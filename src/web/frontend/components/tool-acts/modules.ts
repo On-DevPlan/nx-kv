@@ -32,6 +32,8 @@ export const DIR_MODULES: ToolModule[] = [
   { id: 'import', label: '导入', section: 'bar' },
   { id: 'progress', label: '进程', section: 'bar' },
   { id: 'orch', label: '编排', section: 'bar' },
+  // #126：草稿开关作用于选中的任务（没选中时给提示），默认在工具栏可见
+  { id: 'plan', label: '草稿', section: 'bar' },
   { id: 'more', label: '更多', section: 'bar', noHide: true },
   { id: 'refs', label: '查看列表', section: 'more' },
 ];

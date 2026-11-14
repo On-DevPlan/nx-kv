@@ -84,6 +84,14 @@ export function addTask(body: AddTaskBody): Promise<any> {
   return api('/api/localtasks', { method: 'POST', body });
 }
 
+/**
+ * #126：在 pending ↔ plan 之间切换一条任务（PATCH /api/localtasks/plan）。
+ * plan 是不进队列的临时草稿，get/wait 都领不到；转回 pending 才重新排队。
+ */
+export function setPlanStatus(body: TaskScope & { id: number; to: 'plan' | 'pending' }): Promise<any> {
+  return api('/api/localtasks/plan', { method: 'PATCH', body });
+}
+
 /** 重开 / 追加反馈（POST /api/localtasks/reopen；kind=reopen|comment）。 */
 export function postReopen(body: Record<string, unknown>): Promise<TaskMutationResult> {
   return api('/api/localtasks/reopen', { method: 'POST', body });

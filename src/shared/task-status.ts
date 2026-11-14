@@ -26,6 +26,8 @@ export const TASK_STATUS = Object.freeze({
   CLAIMED: 'claimed',
   DONE: 'done',
   CANCELLED: 'cancelled',
+  /** #126：临时草稿态——存在库里，但绝不进队列、不被 get/wait 领取 */
+  PLAN: 'plan',
 } as const);
 
 /** 全部合法状态（顺序即面板展示顺序：待领取 → 已领取 → 已完成 → 已取消）。 */
@@ -34,6 +36,7 @@ export const TASK_STATUSES: readonly string[] = Object.freeze([
   TASK_STATUS.CLAIMED,
   TASK_STATUS.DONE,
   TASK_STATUS.CANCELLED,
+  TASK_STATUS.PLAN,
 ]);
 
 /** 状态的中文标签（CLI / 面板共用一份，避免两处措辞不同）。 */
@@ -42,6 +45,7 @@ export const STATUS_TAG: Record<string, string> = Object.freeze({
   claimed: '已领取',
   done: '已完成',
   cancelled: '已取消',
+  plan: '草稿',
 });
 
 /** 状态是否合法。 */
@@ -92,6 +96,14 @@ export function isDone(t?: TaskRowLike | null): boolean {
 /** 已取消（终态，不会再动）。 */
 export function isCancelled(t?: TaskRowLike | null): boolean {
   return isLive(t) && t?.status === TASK_STATUS.CANCELLED;
+}
+
+/**
+ * 草稿（#126）：临时态，不是 pending、不是 open、不是终态。
+ * 所有 `status='pending'` 的取任务路径天然排除它——不需要在每条 SQL 里补条件。
+ */
+export function isPlan(t?: TaskRowLike | null): boolean {
+  return isLive(t) && t?.status === TASK_STATUS.PLAN;
 }
 
 /**

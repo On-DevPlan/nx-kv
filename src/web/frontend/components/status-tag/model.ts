@@ -14,6 +14,7 @@ import {
   isClaimed,
   isDone,
   isCancelled,
+  isPlan,
   STATUS_TAG,
 } from '../../../../shared/task-status.js';
 import type { TaskRowLike } from '../../../../shared/task-status.js';
@@ -22,7 +23,7 @@ import type { TaskRowLike } from '../../../../shared/task-status.js';
 export type StatusRow = TaskRowLike;
 
 /** 四种语义色调（CSS 类后缀 tstat-<tone> 同名）。 */
-export type StatusTone = 'gone' | 'done' | 'doing' | 'pending';
+export type StatusTone = 'gone' | 'done' | 'doing' | 'pending' | 'plan';
 
 /**
  * 四种语义色调。不认识的 status 给中性灰（pending 色），文案由 statusLabel
@@ -34,6 +35,7 @@ export function statusTone(t: StatusRow | null | undefined): StatusTone {
   if (isDone(t)) return 'done';
   if (isClaimed(t)) return 'doing';
   if (isCancelled(t)) return 'gone';
+  if (isPlan(t)) return 'plan';
   return 'pending';
 }
 
@@ -50,7 +52,7 @@ export function statusLabel(t: StatusRow | null | undefined): string {
 }
 
 /** 单字徽标（侧栏 / 队列表等窄处）：等 / 跑 / 完 / 档——随色调一起统一。 */
-const TONE_SHORT: Record<StatusTone, string> = { pending: '等', doing: '跑', done: '完', gone: '档' };
+const TONE_SHORT: Record<StatusTone, string> = { pending: '等', doing: '跑', done: '完', gone: '档', plan: '草' };
 
 /**
  * 单字徽标文案（窄处显示不下全称时用）。

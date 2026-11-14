@@ -23,6 +23,7 @@ import { LocaltaskEventsAction } from './localtask-events.js';
 import { LocaltaskForkAction } from './localtask-fork.js';
 import { LocaltaskGetAction } from './localtask-get.js';
 import { LocaltaskListAction } from './localtask-list.js';
+import { LocaltaskPlanAction } from './localtask-plan.js';
 import { LocaltaskPresenceAction } from './localtask-presence.js';
 import { LocaltaskPreviewAction } from './localtask-preview.js';
 import { LocaltaskPruneAction } from './localtask-prune.js';
@@ -58,6 +59,7 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskForkAction,
   LocaltaskGetAction,
   LocaltaskListAction,
+  LocaltaskPlanAction,
   LocaltaskPresenceAction,
   LocaltaskPreviewAction,
   LocaltaskPruneAction,
@@ -93,6 +95,7 @@ export { LocaltaskEventsAction };
 export { LocaltaskForkAction };
 export { LocaltaskGetAction };
 export { LocaltaskListAction };
+export { LocaltaskPlanAction };
 export { LocaltaskPresenceAction };
 export { LocaltaskPreviewAction };
 export { LocaltaskPruneAction };

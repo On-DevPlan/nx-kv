@@ -10,11 +10,11 @@ import {
 } from '../../src/web/frontend/components/tool-acts/modules.js';
 import { moveModule, nudgeModule, setFlag } from '../../src/web/frontend/components/tool-acts/dnd.js';
 
-test('dir default: bar has new/import/progress/orch/more; refs in more (#161: tpl 并入新建钮箭头)', () => {
+test('dir default: bar has new/import/progress/orch/plan/more; refs in more (#126 草稿 + #161 tpl 并入新建钮箭头)', () => {
   const layout = defaultLayout('dir');
   const bar = layout.filter((x) => onBarOf('dir', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('dir', x)).map((x) => x.id);
-  assert.deepEqual(bar, ['new', 'import', 'progress', 'orch', 'more']);
+  assert.deepEqual(bar, ['new', 'import', 'progress', 'orch', 'plan', 'more']);
   assert.deepEqual(more, ['refs']);
   // 旧布局里存过的 tpl id 会被 normalizeLayout 丢掉（未知模块）
   const norm = normalizeLayout('dir', [...layout, { id: 'tpl', visible: true }]);

@@ -56,6 +56,7 @@ import type {
   LocaltaskForkAction,
   LocaltaskGetAction,
   LocaltaskListAction,
+  LocaltaskPlanAction,
   LocaltaskPresenceAction,
   LocaltaskPreviewAction,
   LocaltaskPruneAction,
@@ -313,6 +314,8 @@ export interface ApiClient {
   localtaskGet(input: z.input<InstanceType<typeof LocaltaskGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskGetAction>['run']>>>;
 /** 总览全部主题（工作目录、现状、是否等待中、待领取数） */
   localtaskList(): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskListAction>['run']>>>;
+/** 临时草稿态：plan 不进队列（get/wait 都领不到），pending 转回正常待领取；只允许 pending ↔ plan 双向切换 */
+  plan(input: z.input<InstanceType<typeof LocaltaskPlanAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPlanAction>['run']>>>;
 /** 探测主面板上当前打开的「实时任务」标签数（活动 SSE 连接数；用于 wait 不重复开页） */
   presence(): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPresenceAction>['run']>>>;
 /** 预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览 */
@@ -1007,6 +1010,13 @@ export function createApiClient(transport: Transport): ApiClient {
     async localtaskList() {
       const path = `/api/localtasks`;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskListAction>['run']>>;
+    },
+    // action: localtask.plan
+    async plan(input: z.input<InstanceType<typeof LocaltaskPlanAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskPlanAction>['_input']>);
+      const path = `/api/localtasks/plan`;
+      const body = { "id": inp["id"], "to": inp["to"], "cwd": inp["cwd"], "key": inp["key"] };
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPlanAction>['run']>>;
     },
     // action: localtask.presence
     async presence() {

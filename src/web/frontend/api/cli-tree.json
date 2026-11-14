@@ -1378,6 +1378,21 @@
           "children": []
         },
         {
+          "name": "plan",
+          "path": [
+            "localtask",
+            "plan"
+          ],
+          "action": {
+            "id": "localtask.plan",
+            "module": "localtask",
+            "summary": "临时草稿态：plan 不进队列（get/wait 都领不到），pending 转回正常待领取；只允许 pending ↔ plan 双向切换",
+            "usage": "localtask plan",
+            "http": "PATCH /api/localtasks/plan"
+          },
+          "children": []
+        },
+        {
           "name": "presence",
           "path": [
             "localtask",

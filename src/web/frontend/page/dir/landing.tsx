@@ -18,6 +18,9 @@ import TaskPanel from '../../components/task-panel/index.jsx';
 import TaskPanelLayoutRaw from '../../components/task-panel/layout.jsx';
 import TaskRow from '../../components/task-panel/task-row.jsx';
 import type { LocalTask, LocalTopic, RepoRow } from '../../types.js';
+import { useApp } from '../../app-context.jsx';
+import { useToast } from '../../components/toast/index.jsx';
+import { setPlanStatus } from './api.js';
 
 /** 拖动落点：行上半 = 之前，下半 = 之后。 */
 type DropZone = 'before' | 'after';
@@ -197,6 +200,28 @@ export default function Landing({
     const ok = await fn(ids);
     if (ok) setPicked(new Set());
   };
+
+  // #126：草稿态切换。plan 的任务照样存在库里，但因为不是 pending，
+  // get/wait/队列/闸门都看不到它；转回 pending 才重新进入待领取队列。
+  const app = useApp();
+  const toast = useToast();
+  const scope = topic?.key ? { key: topic.key } : {};
+  const pickedRows = pickedTasks;
+  const toPlan = pickedRows.filter((t) => t.status === 'pending');
+  const toPending = pickedRows.filter((t) => t.status === 'plan');
+  const switchPlan = async (rows: LocalTask[], to: 'plan' | 'pending') => {
+    if (!rows.length) return;
+    try {
+      for (const t of rows) await setPlanStatus({ ...scope, id: Number(t.id), to });
+      toast(to === 'plan' ? `已把 ${rows.length} 条任务转为草稿（不进队列）` : `已把 ${rows.length} 条草稿转回待领取`);
+      setPicked(new Set());
+      app.refreshLocal?.();
+    } catch (e) {
+      toast(String((e as Error).message || e));
+    }
+  };
+  const planTargets = toPlan.length ? toPlan : toPending;
+  const planTo: 'plan' | 'pending' = toPlan.length ? 'plan' : 'pending';
   // 只有待领取行能拖动调序（已领取/已完成/已取消都是固定历史）
   const movable = (t: LocalTask) => t.status === 'pending' && !t.migratedTo && !t.deletedAt;
   const zoneOf = (e: ReactDragEvent<HTMLElement>, tr: HTMLElement): DropZone => {
@@ -349,6 +374,12 @@ export default function Landing({
                    不再在行尾铺一排图标（反馈 + 删除原来占两个最右位，行尾过挤）。 */
                 <RowMenu
                   items={[
+                    t.status === 'pending' || t.status === 'plan'
+                      ? {
+                          label: t.status === 'pending' ? '转为草稿（不进队列）' : '转回待领取',
+                          onPick: () => void switchPlan([t], t.status === 'pending' ? 'plan' : 'pending'),
+                        }
+                      : null,
                     movableRow && onOpenDag
                       ? { label: '编排依赖…', onPick: () => onOpenDag(t) }
                       : null,
@@ -411,6 +442,9 @@ export default function Landing({
             kind="dir"
             labels={{
               more: '更多',
+              plan: pickedRows.length
+                ? planTo === 'plan' ? `转草稿 (${toPlan.length})` : `转回待领取 (${toPending.length})`
+                : '草稿',
             }}
             titles={{
               new: '按默认模板新建一页（▾ 选模板）',
@@ -418,6 +452,7 @@ export default function Landing({
               progress: '打开这个目录的进程面板',
               more: '更多操作',
               refs: '查看文档 / reference 列表',
+              plan: '选中任务后：待领取 ↔ 草稿（草稿不进 get/wait 队列；行尾 ⋯ 菜单也能单条切换）',
             }}
             renderers={{
               // #161 新建按钮拆两级（视觉一颗按钮、命中区两层）：
@@ -462,6 +497,13 @@ export default function Landing({
               progress: onProg,
               orch: onOpenFlow,
               refs: onRefs,
+              plan: () => {
+                if (!planTargets.length) {
+                  toast('先勾选任务：待领取可转草稿，草稿可转回待领取（行尾 ⋯ 菜单也能单条切换）');
+                  return;
+                }
+                void switchPlan(planTargets, planTo);
+              },
             }}
           />
         </>

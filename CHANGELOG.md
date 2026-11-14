@@ -2,6 +2,26 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.54.1] - 2026-11-14 任务新增 plan 临时草稿态（#126）
+
+### Added
+
+- **第五个任务状态 `plan`**：头脑风暴时把想法写成任务存进库，但完全不参加
+  `localtask get` / `wait` / 主题队列 / 全局池 / 闸门扫描。因为全链路待领取判据是
+  `status === 'pending'` 的正判定，新状态天然被排除，不用逐条改 SQL。
+- **`localtask plan --id N --to plan|pending`**：双向切换（只允许 pending ↔ plan），
+  另有 HTTP `PATCH /api/localtasks/plan`。
+- **面板工具区新增「草稿」选项**：勾选任务后批量转草稿 / 转回待领取；行尾 ⋯ 菜单
+  也能单条切换；状态药丸新增「草稿」金色虚线样式。
+- **schema v9**：SQLite 不能 ALTER CHECK，按 v5 成熟模式 12-step 重建 `tasks`（关系表
+  `task_links/task_deps/goals/task_attach` 快照 → 回填），旧库启动时自动 8→9 升级。
+  决策见 `docs/decisions/2026-11-14-plan-status.md`。
+
+### 验证
+
+- 真实库已升到 v9（200 任务 / 23 链 / 2 目标全部保留）；
+  新增单测覆盖迁移数据不丢、CHECK 生效、plan 不被领走、转回 pending 后重新可领。
+
 ## [0.54.0] - 2026-11-14 契约铺到写操作：领 / 改 / 完成 / 重开都能被端侧强类型调用
 
 ### Added

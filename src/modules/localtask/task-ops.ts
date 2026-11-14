@@ -492,3 +492,52 @@ export async function forkTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = {
   });
   return { ...res, forked: true, from: { key, id: want } };
 }
+
+/**
+ * #126：在 `pending ↔ plan` 之间切换一条任务的状态。
+ *
+ * plan 是**不进队列的临时草稿**：脑子里的想法照样写成任务存进库，但因为不是 pending，
+ * 所有 `status='pending'` 的取任务路径（get / wait / 全局池 / 闸门扫描）天然看不到它。
+ * 只允许双向切换 pending↔plan，其余状态（claimed/done/cancelled）不许直接转，
+ * 免得把正在跑或已定格的活悄悄改掉。
+ */
+export async function setPlanStatus({
+  cwd: rawCwd,
+  key: rawKey,
+  id,
+  to = 'plan',
+} = {} as any): Promise<Record<string, any>> {
+  const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
+  const want = Number(id);
+  if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
+  const target = String(to || '').trim();
+  if (target !== 'plan' && target !== 'pending') throw badInput('--to 只能是 plan 或 pending');
+
+  openStore();
+  const t = topicsRepo.getTopic(key);
+  const task = t && (t.tasks || []).find((x: any) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
+  if (!task) throw notFound(`主题「${t ? t.name : key}」里没有 #${want} 任务`);
+  const from = String(task.status || 'pending');
+  if (from === target) {
+    return { status: 'ok', changed: false, id: want, key, name: t!.name, from, to: target };
+  }
+  if (target === 'plan' && from !== 'pending') {
+    throw badInput(`只有待领取任务能转成草稿（#${want} 现在是 ${from}）`);
+  }
+  if (target === 'pending' && from !== 'plan') {
+    throw badInput(`只有草稿能转回待领取（#${want} 现在是 ${from}）`);
+  }
+  const updated = tasksRepo.updateTaskByKey(key, want, { status: target });
+  if (!updated) throw notFound(`任务不存在: #${want}`);
+  topicsRepo.updateTopic(key, { bumpRevision: true });
+  return {
+    status: 'ok',
+    changed: true,
+    id: want,
+    key,
+    name: t!.name,
+    from,
+    to: target,
+    task: updated,
+  };
+}

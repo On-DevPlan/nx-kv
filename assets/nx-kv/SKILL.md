@@ -24,9 +24,9 @@ description: nx-kv 本机任务队列与仓库上下文的**唯一 skill**（原
 
 | 你要做的事 | 动作 | ref |
 | --- | --- | --- |
-| 领活（不知道有什么，直接领） | `nx-kv localtask get --json` | [[A01-领取任务]] |
+| 领活（不知道有什么，直接领） | `nx-kv localtask get`（默认输出就是逐字 context） | [[A01-领取任务]] |
 | **领取指定编号**的任务 | `show --id N` 确认 → `reorder` 提到队首 → `get` 领走 | [[A01-领取任务]] |
-| 阻塞等人回填（本轮最后一步） | `nx-kv localtask get --timeout 60 --json`（项目开了「持续 get」可省参数） | [[A04-阻塞等待与时间目标]] |
+| 阻塞等人回填（本轮最后一步） | `nx-kv localtask get --timeout 60`（项目开了「持续 get」可省参数） | [[A04-阻塞等待与时间目标]] |
 | 干完标完成 | `nx-kv localtask done --id N --summary "…"` | [[A03-完成与重开]] |
 | 用户提修改意见 | `nx-kv localtask reopen --id N …` 派生下一轮（生成新编号，别自己 add） | [[A03-完成与重开]] |
 | 把本对话的需求交给别的目录 | 提炼 → 自包含任务文本 → `localtask add --cwd …` | [[A02-提交任务]] |

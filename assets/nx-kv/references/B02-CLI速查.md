@@ -1,6 +1,9 @@
 # B02 · CLI 速查（按源码 action 表核对，nx-kv 0.53.x）
 
-约定：全部命令支持 `--json`；`timeout` / `blocked` 是**业务结果**（exit 0）。
+约定：查询类命令（list / show / status 等）要结构化字段时加 `--json`；
+**交付类命令（localtask get / preview）用默认输出**——stdout 就是引擎封装的 context 原文，
+不要用 JSON 解析器去读它（`--json` 时 instruction 会被转义成一行；`--xml` 可逐字取该段）。
+`timeout` / `blocked` 都是**业务结果**（exit 0）。
 不带 `--cwd` 时按进程当前目录定位主题；`--key` 可直接指主题 key。
 驼峰别名（`--goalPrompt` 等）只给 HTTP body 用，CLI 一律用连字符写法。
 

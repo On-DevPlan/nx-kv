@@ -64,26 +64,6 @@ export interface DocItemBody {
   body?: string;
 }
 
-/** 写文档正文 / 描述（PATCH /api/docs/item）。 */
-export function updateDocItem(body: { ref?: string; body?: string; desc?: string }): Promise<any> {
-  return api('/api/docs/item', { method: 'PATCH', body });
-}
-
-/** 删除文档（DELETE /api/docs/item；ref 是 docId）。 */
-export function removeDocItem(body: { ref?: string }): Promise<any> {
-  return api('/api/docs/item', { method: 'DELETE', body });
-}
-
-/** 新建直接 ref（POST /api/docs/ref；desc + 归属，不创建任何文件）。 */
-export function createRefDoc(body: {
-  owner: 'repo' | 'group' | 'group_repo';
-  repo?: string;
-  group?: string;
-  desc?: string;
-}): Promise<{ refId: string; docId: string; desc?: string }> {
-  return api('/api/docs/ref', { method: 'POST', body });
-}
-
 /** 把文档登记进参考仓库的文档集（POST /api/repos/docs）。 */
 export function bindRepoDoc(body: { id: string; ref?: string; path?: string; note?: string; tag?: string }): Promise<any> {
   return api('/api/repos/docs', { method: 'POST', body });

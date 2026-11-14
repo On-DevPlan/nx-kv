@@ -18,8 +18,18 @@ export function getLocaltaskSettings(): Promise<any> {
   return api('/api/localtasks');
 }
 
+/** localtask 设置的 patch 形状（驼峰；与 PATCH /api/localtasks/setting 的契约一致）。
+    收窄成具体字段而不是 Record<string,unknown>：#104 的 bug 就是调用方把
+    { method:'PATCH', body:{…} } 整个当 patch 传进来，宽类型查不出来。 */
+export interface LocaltaskSettingPatch {
+  timeoutSec?: number;
+  ackPrompt?: string | string[];
+  appendMode?: 'xml' | 'plain';
+  blockTemplates?: unknown;
+}
+
 /** 改 localtask 设置（PATCH /api/localtasks/setting；blockTemplates / appendMode 等）。 */
-export function saveLocaltaskSettings(patch: Record<string, unknown>): Promise<any> {
+export function saveLocaltaskSettings(patch: LocaltaskSettingPatch): Promise<any> {
   return api('/api/localtasks/setting', { method: 'PATCH', body: patch });
 }
 

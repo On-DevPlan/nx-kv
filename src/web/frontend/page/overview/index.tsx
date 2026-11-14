@@ -14,12 +14,13 @@
 //   1. **每行任务带状态 tag**（待领取 / 已领取，口径与 splitQueueTasks 一致；
 //      #121 起渲染走统一组件 components/status-tag——蓝=进行中、绿=已完成、浅灰=待领取）；
 //      行可点：直接进该任务的工作台详情（#/dir/<key>?task=<id>）。
-//   2. **批量删除的落点在底部操作条**：勾选任意行后出现（position:sticky），
-//      跨目录一次删完（按目录分组逐个调 DELETE /api/localtasks/items）；
-//      仍是软删除（CLI localtask task restore 可恢复）。
+//   2. **批量操作的落点在底部操作条**：勾选任意行后出现（position:sticky），
+//      跨目录一次处理完（按目录分组逐个调批量接口）：标为完成（#103，POST
+//      /api/localtasks/items/close，与目录页「标为完成选中」同口径）+ 批量删除
+//（DELETE /api/localtasks/items）；删除仍是软删除（CLI localtask task restore 可恢复）。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useMemo, useState } from 'react';
-import { removeTasks } from './api.js';
+import { closeTasks, removeTasks } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import StatusTag from '../../components/status-tag/index.jsx';
@@ -130,8 +131,8 @@ export default function Overview({ rows, onNavigate, refreshLocal }: OverviewPro
   };
   const allOn = shown.length > 0 && picked.length === shown.length;
 
-  /** 底部操作条的删除：把选中项按目录分组，逐组调批量删除接口。 */
-  const dropAll = async () => {
+  /** 选中项按目录分组（批量删除 / 批量收口共用：接口都按单主题寻址）。 */
+  const pickGroups = () => {
     const pickedSet = new Set(picked);
     const groups: { key: string; name: string; ids: number[] }[] = [];
     for (const f of flat) {
@@ -143,6 +144,12 @@ export default function Overview({ rows, onNavigate, refreshLocal }: OverviewPro
       }
       g.ids.push(Number(f.t.id));
     }
+    return groups;
+  };
+
+  /** 底部操作条的删除：把选中项按目录分组，逐组调批量删除接口。 */
+  const dropAll = async () => {
+    const groups = pickGroups();
     const total = groups.reduce((n, g) => n + g.ids.length, 0);
     if (!total) return;
     const scope = groups.length > 1 ? `（跨 ${groups.length} 个目录）` : '';
@@ -175,6 +182,49 @@ export default function Overview({ rows, onNavigate, refreshLocal }: OverviewPro
       toast(`已删除 ${n} 条；${errs.length} 个目录失败：${errs[0]}${errs.length > 1 ? ` 等 ${errs.length} 项` : ''}`);
     } else {
       toast(`已删除 ${n} 条${miss ? `（${miss} 条未找到，可能已被删除）` : ''}`);
+    }
+    setSel(new Set());
+    refreshLocal?.();
+  };
+
+  /** 底部操作条的批量收口（#103 总览补齐，与目录页「标为完成选中」同口径）：
+      待领取与已领取（正在跑）都收，已完成/已取消/已删除跳过，agent 回执被忽略。 */
+  const finishAll = async () => {
+    const groups = pickGroups();
+    const total = groups.reduce((n, g) => n + g.ids.length, 0);
+    if (!total) return;
+    const scope = groups.length > 1 ? `（跨 ${groups.length} 个目录）` : '';
+    const ok = await dialog({
+      title: `把 ${total} 条任务标为完成${scope}`,
+      message: '待领取与已领取（正在跑）都能收：已领取的直接收口，agent 侧回执会被忽略。已完成/已取消会跳过。完成会补一条完成记录，原文留档。',
+      okText: '标为完成',
+    });
+    if (!ok) return;
+    let n = 0;
+    let claimed = 0;
+    let skip = 0;
+    const errs = [];
+    for (const g of groups) {
+      try {
+        const r = await closeTasks({ key: g.key, ids: g.ids, status: 'done' });
+        n += Number(r?.count ?? 0);
+        claimed += (r?.claimedClosed || []).length;
+        skip += (r?.skipped || []).length;
+      } catch (e) {
+        const msg = String((e as Error).message || e);
+        if (/接口不存在/.test(msg)) {
+          toast('本机面板服务较旧，重启面板后再试（批量收口接口未上线）');
+          return;
+        }
+        errs.push(`${g.name}: ${msg}`);
+      }
+    }
+    if (errs.length) {
+      toast(`已标为完成 ${n} 条；${errs.length} 个目录失败：${errs[0]}${errs.length > 1 ? ` 等 ${errs.length} 项` : ''}`);
+    } else {
+      toast(
+        `已标为完成 ${n} 条${claimed ? `（含 ${claimed} 条已领取）` : ''}${skip ? `，跳过 ${skip} 条` : ''}`,
+      );
     }
     setSel(new Set());
     refreshLocal?.();
@@ -260,13 +310,16 @@ export default function Overview({ rows, onNavigate, refreshLocal }: OverviewPro
       )}
 
       {selCount > 0 && (
-        <div className="ov-bar" role="toolbar" aria-label="批量删除操作条">
+        <div className="ov-bar" role="toolbar" aria-label="批量操作条">
           <span className="ov-bar-n">
             已选 <b>{selCount}</b> 条任务
           </span>
           <span className="grow" />
           <button type="button" className="mini" onClick={() => setSel(new Set())}>
             取消选择
+          </button>
+          <button type="button" className="btn small" onClick={finishAll}>
+            标为完成 {selCount}
           </button>
           <button type="button" className="btn small danger" onClick={dropAll}>
             删除选中 {selCount}

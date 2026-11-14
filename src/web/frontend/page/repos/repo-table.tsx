@@ -287,7 +287,7 @@ function RepoRow({ r, showRef, showGroups, filterBoard, refRepoChipsByRepo, acts
           {r.getLoop && r.getLoop.enabled ? (
             <span
               className="rp-gl-dot"
-              title={`持续 get 已开启（${Number(r.getLoop.waitMinutes) || 10} 分钟阻塞窗口）`}
+              title={`持续 get 已开启（${Number(r.getLoop.waitMinutes) > 0 ? `${Number(r.getLoop.waitMinutes)} 分钟阻塞窗口` : '不阻塞，没活立即返回'}）`}
               aria-label="持续 get 已开启"
             />
           ) : null}

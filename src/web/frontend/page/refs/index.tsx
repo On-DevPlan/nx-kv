@@ -4,17 +4,23 @@
 // 不是实体文件。列表只展示「desc（缺省标题）+ 归属」：
 //   · 列表数据来自 GET /api/docs/bindings（host=仓库 / group=组）；
 //   · 归属分色：repo（蓝）/ group（紫）/ group_repo（橙）；
-//   · 没有正文的行灰化并标「无正文」；
+//   · #114：不再有「无正文」这种兼容态——空文档要么补正文，要么被 docs gc 清掉；
 //   · 点击行按 refId 打开（ref:<id>），不再用任何路径寻址；
 //   · 「＋」直接建一个空正文的 ref 并按当前面板位置默认归属，建完立即编辑。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Model } from 'flexlayout-react';
 import {
-  createRef,
+  createDoc,
+  detach,
+  descOf,
   docsBindings,
-  unbindRef,
+  filterByScope,
+  labelOf,
+  normalizeScope,
+  scopeCounts,
   type BindingRow,
-} from './api.js';
+  type ScopeKey,
+} from '../../refs/index.js';
 import { Icon } from '../../components/icons.jsx';
 import { useWikiNav } from '../doc/index.jsx';
 import type { DocOpenExtra } from '../doc/index.jsx';
@@ -22,20 +28,9 @@ import { closeRightPanelOf } from '../../workspace.js';
 import { useApp } from '../../app-context.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { useToast } from '../../components/toast/index.jsx';
-import { notifyDocsChanged, onDocsChanged } from '../../modules/md/doc-bus.js';
+import { onDocsChanged } from '../../modules/md/doc-bus.js';
+import { resolveFollowedHost, type FollowedHost, type FollowResolution } from '../../refs/index.js';
 import './style.css';
-
-function labelOf(b: BindingRow): string {
-  // 标题 = 用户在 md 编辑器里起的标题（正文首行），没有正文才回落到 desc。
-  // v8 没有路径名了，再落一层正文摘要——否则旧文档全叫「未命名文档」。
-  return b.title || b.desc || b.summary || '未命名文档';
-}
-
-function descOf(b: BindingRow): string {
-  // desc 是「快速定位」的一句话；与标题相同就不重复占一行。
-  const desc = String(b.desc || '').trim();
-  return desc && desc !== labelOf(b) ? desc : '';
-}
 
 type ScopeBadge = { cls: 'repo' | 'group'; text: string };
 
@@ -53,10 +48,12 @@ function scopeBadgesOf(
   ];
 }
 
-export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
+export default function RefsPanel({ repoKey, boardKey, boardName, scope, model }: {
   repoKey?: string;
   boardKey?: string;
   boardName?: string;
+  /** 打开时指定的归属筛选（#117）：repo / group / group_repo；缺省 all */
+  scope?: string;
   model?: Model | null;
 }) {
   const app = useApp();
@@ -64,22 +61,70 @@ export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
   const { dialog, node: dialogNode } = useDialog();
   const { openByDocId } = useWikiNav(model);
 
+  // #105 跟随左侧打开的目录 / #109 只在「换目录」时更新。
+  //   host  → 换到路由指向的仓库 / 组，并记住（点开列表里的某一行后仍停在这里）；
+  //   none  → 当前目录没登记仓库：显示未登记提示，不能拿旧宿主冒充；
+  //   idle  → 打开文档页 / 总览 / 仓库页等：**完全不动**，不刷新列表也不改标题。
+  // 解析规则见 follow.ts（三态是 #109 的修复点：此前 doc 视图回落 config，
+  // 于是点一行就把列表刷回最初打开时的项目）。
+  const followedRes = useMemo<FollowResolution>(() => resolveFollowedHost(
+    app.route,
+    app.rows,
+    (app.repoData?.repos || []) as any[],
+    (app.repoData?.boards || []) as any[]
+  ), [app.route, app.rows, app.repoData]);
+
+  // 记住最后一次「跟随到的」宿主：只被 dir/group/doc 的有效路由改写，idle 时保持不动。
+  const [latched, setLatched] = useState<FollowedHost | null>(() => {
+    if (repoKey) return { repoKey };
+    if (boardKey) return { groupKey: boardKey, name: boardName };
+    return null;
+  });
+  useEffect(() => {
+    if (followedRes.kind === 'host') {
+      setLatched({ repoKey: followedRes.repoKey, groupKey: followedRes.groupKey, name: followedRes.name });
+    } else if (followedRes.kind === 'none') {
+      setLatched(null);
+    }
+    // idle：保持上一次的宿主，避免「看一眼文档就换列表」
+  }, [followedRes]);
+
+  // #117：路由和文档宿主无关（仓库管理 / 总览等）时，**config 是显式意图**——
+  // 仓库管理页点「查看详情」必须切到那一行，不能被上一次的宿主钉住（此前就是这样点了没反应）。
+  useEffect(() => {
+    if (followedRes.kind !== 'idle') return;
+    if (repoKey) setLatched({ repoKey });
+    else if (boardKey) setLatched({ groupKey: boardKey, name: boardName });
+  }, [repoKey, boardKey, boardName, followedRes.kind]);
+
+  // 生效宿主 = 路由三态的即时结果（none 立刻清空），idle 才用记住的那一份；
+  // 走到这里 config 只作为**初始值**，不再作为回退——回退正是 #109 的 bug。
+  const effHost: FollowedHost | null =
+    followedRes.kind === 'host'
+      ? followedRes
+      : followedRes.kind === 'none'
+        ? null
+        : latched;
+  const effRepoKey = effHost?.repoKey;
+  const effBoardKey = effHost?.groupKey;
+
   // boardKey 可能传的是 id（组页面）——统一收成组 key（group/xxx）再去查归属
   const groupKey = useMemo(() => {
-    const raw = String(boardKey || '');
+    const raw = String(effBoardKey || '');
     const b = (app.repoData?.boards || []).find(
       (x: any) => x.id === raw || x.key === raw || String(x.name || '').toLowerCase() === raw.toLowerCase()
     ) as any;
     return b?.key || raw;
-  }, [app.repoData, boardKey]);
+  }, [app.repoData, effBoardKey]);
 
   const ownerName = useMemo(() => {
-    if (repoKey) {
-      const r = (app.repoData?.repos || []).find((x: any) => x.key === repoKey) as any;
-      return r?.name || repoKey;
+    if (effRepoKey) {
+      const r = (app.repoData?.repos || []).find((x: any) => x.key === effRepoKey) as any;
+      return r?.name || effRepoKey;
     }
+    if (effHost?.groupKey && effHost.name) return effHost.name;
     return boardName || groupKey.replace(/^group\//, '') || '项目组';
-  }, [app.repoData, repoKey, boardName, groupKey]);
+  }, [app.repoData, effRepoKey, boardName, groupKey, effHost]);
 
   const repoNameOf = useCallback((key: string) => {
     const r = (app.repoData?.repos || []).find((x: any) => x.key === key) as any;
@@ -99,6 +144,10 @@ export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
   const [rows, setRows] = useState<BindingRow[] | null>(null);
   const [err, setErr] = useState('');
   const [tick, setTick] = useState(0);
+  // #117：归属（scope）是**筛选器**，不是装饰。仓库管理页点「查看详情」= 只看这一行的
+  // 精确归属（repo）；组视图里可以切 全部 / 组 / 组内 / 仓库。
+  const [scopeFilter, setScopeFilter] = useState<ScopeKey>(() => normalizeScope(scope));
+  useEffect(() => { setScopeFilter(normalizeScope(scope)); }, [scope]);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
 
@@ -107,32 +156,33 @@ export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
     setErr('');
     (async () => {
       try {
-        const d = repoKey ? await docsBindings({ host: repoKey }) : await docsBindings({ group: groupKey });
+        const d = effRepoKey ? await docsBindings({ host: effRepoKey }) : await docsBindings({ group: groupKey });
         if (alive) setRows(d.bindings || []);
       } catch (e) {
         if (alive) { setRows([]); setErr(String((e as Error).message || e)); }
       }
     })();
     return () => { alive = false; };
-  }, [repoKey, groupKey, tick]);
+  }, [effRepoKey, groupKey, tick]);
 
   // 文档页保存 / 新建 / 删除后自动刷新
   useEffect(() => onDocsChanged(reload), [reload]);
 
-  const openExtra: DocOpenExtra = repoKey ? { repoKey } : { boardKey: groupKey, boardName };
+  const openExtra: DocOpenExtra = effRepoKey
+    ? { repoKey: effRepoKey }
+    : { boardKey: groupKey, boardName: ownerName };
   const openDoc = (refId: string) => openByDocId('ref:' + refId, null, openExtra);
 
   const guard = (fn: () => Promise<unknown>) => fn().catch((e) => toast(String((e as Error).message || e)));
 
   // ＋：直接建 ref（desc 空 + 当前宿主归属），建完立即打开编辑；不再弹窗、不拼任何文件名。
   const addDoc = () => guard(async () => {
-    if (!repoKey && !groupKey) return;
-    const owner = repoKey && groupKey ? 'group_repo' : repoKey ? 'repo' : 'group';
-    const res = await createRef({ owner, repo: repoKey, group: owner === 'repo' ? undefined : groupKey, desc: '' });
+    if (!effRepoKey && !groupKey) return;
+    const owner = effRepoKey && groupKey ? 'group_repo' : effRepoKey ? 'repo' : 'group';
+    const refId = await createDoc({ owner, repo: effRepoKey, group: owner === 'repo' ? undefined : groupKey, desc: '' });
     toast('已新建文档');
-    notifyDocsChanged();
     reload();
-    openDoc(res.refId);
+    openDoc(refId);
   });
 
   // ×：解绑归属（文档不删）
@@ -140,14 +190,15 @@ export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
     const label = labelOf(b);
     const ok = await dialog({ message: `从「${label}」摘除？只解除归属，文档不删。`, danger: true });
     if (!ok) return;
-    await unbindRef({ ref: b.refId, type: b.type, repo: b.repoKey, group: b.groupKey || undefined });
+    await detach(b);
     toast('已摘除归属');
-    notifyDocsChanged();
     reload();
   });
 
-  const canAdd = !!(repoKey || groupKey);
-  const count = rows ? rows.length : 0;
+  const canAdd = !!(effRepoKey || groupKey);
+  const counts = useMemo(() => scopeCounts(rows), [rows]);
+  const shownRows = useMemo(() => filterByScope(rows, scopeFilter), [rows, scopeFilter]);
+  const count = shownRows.length;
 
   return (
     <div className="nx-refs">
@@ -174,23 +225,52 @@ export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
           </button>
         )}
       </div>
+      {/* #117：归属筛选器——仓库管理页「查看详情」直接落在 repo 这一档；
+          组视图里能切 全部 / 组 / 组内 / 仓库，scope 不再是只能看的勋章。 */}
+      {rows && (counts.repo + counts.group + counts.group_repo > 1 || scopeFilter !== 'all') ? (
+        <div className="nx-refs-scopes" role="tablist" aria-label="按归属筛选文档">
+          {([
+            ['all', '全部', counts.all],
+            ['repo', '仓库', counts.repo],
+            ['group', '组', counts.group],
+            ['group_repo', '组内', counts.group_repo],
+          ] as Array<[string, string, number]>).map(([k, label, n]) =>
+            n > 0 || k === 'all' ? (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={scopeFilter === k}
+                className={'nx-refs-scope-filter' + (scopeFilter === k ? ' on' : '')}
+                onClick={() => setScopeFilter(k as ScopeKey)}
+              >
+                {label} <b>{n}</b>
+              </button>
+            ) : null
+          )}
+        </div>
+      ) : null}
       <div className="nx-refs-list">
         {err ? <div className="nx-refs-empty">{err}</div> : null}
         {!err && !rows ? <div className="nx-refs-empty">读取中…</div> : null}
-        {!err && rows && !rows.length ? (
+        {!err && rows && !shownRows.length ? (
           <div className="nx-refs-empty">
             还没有文档<br />
-            {canAdd ? '点右上角「＋」新建，建完直接编辑' : '这个宿主还没有可挂的文档'}
+            {canAdd
+              ? '点右上角「＋」新建，建完直接编辑'
+              : followedRes.kind === 'none'
+                ? '当前打开的目录还没登记为本机仓库：nx-kv repo add "<目录>" --key <key> 之后才有文档列表'
+                : '这个宿主还没有可挂的文档'}
           </div>
         ) : null}
-        {(rows || []).map((b) => {
+        {shownRows.map((b) => {
           const title = labelOf(b);
           const desc = descOf(b);
           const badges = scopeBadgesOf(b, repoNameOf, groupNameOf);
           return (
             <div
               key={`${b.type}:${b.repoKey}:${b.groupKey || ''}:${b.refId}`}
-              className={'nx-refs-row-wrap' + (b.hasBody ? '' : ' no-body') + (b.main ? ' main' : '')}
+              className={'nx-refs-row-wrap' + (b.main ? ' main' : '')}
             >
               <button
                 type="button"
@@ -203,7 +283,6 @@ export default function RefsPanel({ repoKey, boardKey, boardName, model }: {
                     {badges.map((x, i) => (
                       <span key={`${x.cls}:${i}`} className={`nx-refs-scope ${x.cls}`}>{x.text}</span>
                     ))}
-                    {!b.hasBody && <span className="nx-refs-chip none">无正文</span>}
                   </span>
                   <span className="nx-refs-row-text">{title}</span>
                 </span>

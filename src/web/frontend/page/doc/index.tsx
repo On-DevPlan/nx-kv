@@ -6,16 +6,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
 import type { Model } from 'flexlayout-react';
 import {
-  createRefDoc,
   docAttachments,
-  docHostBindings,
   listBoards,
   loadDocsIndex,
-  removeDocItem,
   getDocItem,
-  updateDocItem,
   type DocItem,
 } from './api.js';
+// #120：文档条目的读写统一走 refs 模块（列表 CRUD 的唯一入口）
+import { docsBindings, removeDocItem, updateDocItem } from '../../refs/api.js';
+import { createDoc, saveDesc as saveDocDesc } from '../../refs/ops.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { useApp } from '../../app-context.jsx';
@@ -90,6 +89,9 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [mode, setMode] = useState('split');
+  // #107：描述行直接可编辑（不再点「改」弹窗）——草稿 + 保存态
+  const [descDraft, setDescDraft] = useState('');
+  const [descBusy, setDescBusy] = useState(false);
   // 底部信息面板（附件 / 归属）：与任务页同一套 dock 状态，存储空间另用 'doc'；
   // 文档页首次进入默认收起（编辑正文为主），入口常驻在底部状态栏
   const dock = useDock('doc', false);
@@ -99,6 +101,12 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   // 插入片段得基于最新正文（同任务页 peekDoc 的考量），不能拿闭包里的旧 doc 覆盖
   const docRef = useRef<DocItem | null>(null);
   useEffect(() => { docRef.current = doc; }, [doc]);
+
+  // #107：描述草稿跟随文档（换文档、保存回来都会重置）。用 desc 而不是 refId 作依赖，
+  // 保存成功后服务端回填的 desc 立即反映到输入框，不会和用户正在敲的内容打架。
+  useEffect(() => {
+    setDescDraft(doc?.desc || '');
+  }, [doc?.refId, doc?.desc]);
 
   const load = useCallback(async () => {
     setError('');
@@ -139,7 +147,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       return out;
     };
     if (ownerKind === 'repo') {
-      docHostBindings({ host: ownerKey })
+      docsBindings({ host: ownerKey })
         .then((d) => setIntroLinks(toLinks(d.bindings || [])))
         .catch(() => setIntroLinks(current));
       return;
@@ -149,7 +157,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       .then(async (d) => {
         const boards = (d && d.boards) || (Array.isArray(d) ? d : []);
         const b = boards.find((x: { id?: string; key?: string }) => x.id === ownerKey || x.key === ownerKey);
-        const res = await docHostBindings({ group: String(b?.key || ownerKey) });
+        const res = await docsBindings({ group: String(b?.key || ownerKey) });
         setIntroLinks(toLinks(res.bindings || []));
       })
       .catch(() => setIntroLinks(current));
@@ -243,17 +251,15 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       if (name === null) return;
       const desc = String(name).trim();
       if (!desc) return;
-      const res = await createRefDoc(
+      // 建文档 + 起标题骨架 + 广播刷新，都在 refs.ops 里（列表 CRUD 唯一入口）
+      const refId = await createDoc(
         ownerKind === 'repo'
-          ? { owner: 'repo', repo: ownerKey, desc }
-          : { owner: 'group', group: ownerKey, desc }
+          ? { owner: 'repo', repo: ownerKey, desc, title: desc }
+          : { owner: 'group', group: ownerKey, desc, title: desc }
       );
-      // 空正文直接可编辑；给一个标题骨架，打开后就是「待补」状态。
-      await updateDocItem({ ref: 'ref:' + res.refId, body: `# ${desc}\n\n（待补）\n` });
       toast(`已补充：${desc}`);
-      notifyDocsChanged();
       loadIntroLinks();
-      openByDocId('ref:' + res.refId, null, openExtra);
+      openByDocId('ref:' + refId, null, openExtra);
     });
   };
 
@@ -343,6 +349,8 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
   };
 
   // ─── 改描述：ref 是 DB 实体，没有路径可改；desc 是列表 / 提示词模板的快速定位标签 ───
+  // #107 起主入口是标题下面那一行**直接输入**（见 renderDescRow），菜单里的「改描述」
+  // 保留给习惯弹窗的人；两条路走同一个 PATCH。
   const renameDoc = () => {
     if (!doc) return;
     guard(async () => {
@@ -359,6 +367,25 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       toast('描述已更新');
       notifyDocsChanged();
     });
+  };
+
+  /** #107：行内描述保存（失焦 / 回车触发；Esc 放弃）。空串合法 = 清掉描述。 */
+  const saveDesc = async () => {
+    if (!doc || !writable || descBusy || !docId) return;
+    const next = descDraft.trim();
+    if (next === String(doc.desc || '').trim()) return;
+    setDescBusy(true);
+    try {
+      // #120：写入 + 广播统一走 refs 模块，不在页面里另拼一次
+      const saved = await saveDocDesc(docId, next);
+      setDoc((d) => (d ? { ...d, desc: saved } : d));
+      toast('描述已更新');
+    } catch (e) {
+      toast(String((e as Error).message || e));
+      setDescDraft(doc.desc || '');
+    } finally {
+      setDescBusy(false);
+    }
   };
 
   // ─── 删除：danger 确认 → DELETE 落盘 → 主布局就地回归属页（不拆面板，#191 同规）───
@@ -489,12 +516,32 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
           ]) as unknown as never[]}
           onSave={save as unknown as null}
         />
-        {/* desc 是「快速定位」的一句话：标题下面是它自己的位置，可看可改 */}
+        {/* desc 是「快速定位」的一句话：标题下面直接可编辑（#107：不再点「改」），
+            失焦 / 回车保存，Esc 放弃；只读文档照旧显示成文字。 */}
         <div className={'docp-desc' + (doc.desc ? '' : ' empty')}>
           <span className="k">描述</span>
-          <span className="v">{doc.desc || '未填写——写一句这篇讲什么，列表与提示词里用它快速定位'}</span>
-          {writable && (
-            <button type="button" className="docp-desc-edit" onClick={renameDoc}>改</button>
+          {writable ? (
+            <input
+              className="docp-desc-input"
+              value={descDraft}
+              disabled={descBusy}
+              spellCheck={false}
+              placeholder="未填写——写一句这篇讲什么，列表与提示词里用它快速定位"
+              aria-label="文档描述（失焦或回车保存）"
+              onChange={(e) => setDescDraft(e.target.value)}
+              onBlur={() => { void saveDesc(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  setDescDraft(doc.desc || '');
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          ) : (
+            <span className="v">{doc.desc || '未填写——写一句这篇讲什么，列表与提示词里用它快速定位'}</span>
           )}
         </div>
         <MdPanes

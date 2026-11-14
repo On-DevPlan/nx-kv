@@ -236,9 +236,7 @@ export default function DocSearchModal({ repos, boardList, onClose, onFilter, re
                 {d.desc && d.title && d.desc !== d.title ? (
                   <span className="rp-doc-row-desc">{d.desc}</span>
                 ) : null}
-                {!d.hasBody && (
-                  <span className="rp-bind-chip none" title={d.reason || '条目没有正文'}>无正文</span>
-                )}
+                {/* #114：「无正文」徽标已去掉——空文档不再当作可展示状态 */}
                 <span className="rp-doc-row-hosts">
                   {hosts.length ? hosts.map((h) => (
                     <button

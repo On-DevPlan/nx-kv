@@ -174,7 +174,7 @@ export function renderPreview(d: RenderInput): string {
     `── 开关 ── ack 提示词 ${sw.ack?.on ? `开（${sw.ack.count} 条）` : '关'}` +
       ` · 交付上下文 ${sw.deliveryTemplate?.custom ? '自定义' : '内置默认'}` +
       ` · 附件段 ${sw.attachTemplate?.custom ? '自定义' : '内置默认'}` +
-      ` · 持续 get ${d.getLoop?.enabled ? `开（${d.getLoop.waitMinutes} 分钟）` : '关'}`,
+      ` · 持续 get ${d.getLoop?.enabled ? `开（${Number(d.getLoop.waitMinutes) > 0 ? `${Number(d.getLoop.waitMinutes)} 分钟` : '不阻塞'}）` : '关'}`,
   );
   return lines.join('\n');
 }

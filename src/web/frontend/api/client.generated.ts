@@ -27,6 +27,7 @@ import type {
   DocRemoveAction,
   DocUpdateAction,
   DocsBindingsAction,
+  DocsGcAction,
   DocsIndexAction,
   DocsLinkAction,
 } from '../../../modules/docs/actions/_manifest.generated.js';
@@ -269,8 +270,10 @@ export interface ApiClient {
   unbind(input: z.input<InstanceType<typeof DocRefUnbindAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRefUnbindAction>['run']>>>;
 /** 写文档正文 / 描述（面板保存走这里；ref 是 DB 实体，--ref 可给 refId；只给 --desc 时不动正文） */
   docUpdate(input: z.input<InstanceType<typeof DocUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocUpdateAction>['run']>>>;
-/** 查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> / --group <组> 看宿主文档集；position=0 为主篇） */
+/** 查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> 只看仓库自己的文档；--group <组> 看组域文档集：组 → 组内仓库 → 仓库自己；position=0 为主篇） */
   bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>>;
+/** GC 没有正文的文档（默认只报数；--apply 真删，并清掉宿主里指向它们的主篇/文档集引用） */
+  gc(input?: z.input<InstanceType<typeof DocsGcAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsGcAction>['run']>>>;
 /** 双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js） */
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
 /** 维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新） */
@@ -845,6 +848,13 @@ export function createApiClient(transport: Transport): ApiClient {
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>;
     },
+    // action: docs.gc
+    async gc(input?: z.input<InstanceType<typeof DocsGcAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsGcAction>['_input']>);
+      const path = `/api/docs/gc`;
+      const body = { "apply": inp["apply"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsGcAction>['run']>>;
+    },
     // action: docs.index
     async index() {
       const path = `/api/docs/index`;
@@ -941,7 +951,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async config(input?: z.input<InstanceType<typeof LocaltaskConfigAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskConfigAction>['_input']>);
       const path = `/api/localtasks/setting`;
-      const body = { "timeout": inp["timeout"], "ack": inp["ack"], "ack-list": inp["ack-list"], "ackList": inp["ackList"], "delivery-template": inp["delivery-template"], "reset-delivery-template": inp["reset-delivery-template"], "attach-template": inp["attach-template"], "attachTemplate": inp["attachTemplate"], "reset-attach-template": inp["reset-attach-template"], "append-mode": inp["append-mode"], "block-templates": inp["block-templates"] };
+      const body = { "timeout": inp["timeout"], "ack": inp["ack"], "ack-list": inp["ack-list"], "ackList": inp["ackList"], "delivery-template": inp["delivery-template"], "reset-delivery-template": inp["reset-delivery-template"], "attach-template": inp["attach-template"], "attachTemplate": inp["attachTemplate"], "reset-attach-template": inp["reset-attach-template"], "append-mode": inp["append-mode"], "appendMode": inp["appendMode"], "block-templates": inp["block-templates"], "blockTemplates": inp["blockTemplates"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskConfigAction>['run']>>;
     },
     // action: localtask.detach

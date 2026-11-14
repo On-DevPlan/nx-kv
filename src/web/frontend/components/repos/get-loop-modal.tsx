@@ -33,8 +33,19 @@ export default function GetLoopModal({ repo, onClose, onSaved }: GetLoopModalPro
   const toast = useToast();
   const loop = repo.getLoop && typeof repo.getLoop === 'object' ? repo.getLoop : null;
   const [on, setOn] = useState(!!(loop && loop.enabled));
-  const [minutes, setMinutes] = useState(String((loop && loop.waitMinutes) || DEFAULT_MINUTES));
+  // #112：0 是合法值（= 不设项目级窗口，沿用 get 的默认阻塞），不能被 `|| 默认值` 吞掉
+  const [minutes, setMinutes] = useState(
+    loop && loop.waitMinutes !== undefined && loop.waitMinutes !== null ? String(loop.waitMinutes) : String(DEFAULT_MINUTES)
+  );
   const [busy, setBusy] = useState(false);
+
+  /** 输入框 → 落库值：空/非法回落默认；0 原样保留（#112）。 */
+  const minutesOf = (raw: string): number => {
+    const s = String(raw ?? '').trim();
+    if (s === '') return DEFAULT_MINUTES;
+    const n = Number(s);
+    return Number.isFinite(n) && n >= 0 ? Math.min(Math.floor(n), 600) : DEFAULT_MINUTES;
+  };
 
   const save = async (override?: { enabled?: boolean }) => {
     setBusy(true);
@@ -46,9 +57,14 @@ export default function GetLoopModal({ repo, onClose, onSaved }: GetLoopModalPro
       // 于是「保存成功」但落库纹丝不动（#182 探针抓个正着）。
       await updateRepo(repo.id, {
         'get-loop': enabled ? 'on' : 'off',
-        ...(enabled ? { 'get-loop-minutes': Number(minutes) || DEFAULT_MINUTES } : {}),
+        ...(enabled ? { 'get-loop-minutes': minutesOf(minutes) } : {}),
       });
-      toast(enabled ? `已保存「${repo.name}」的持续 get 设置（${Number(minutes) || DEFAULT_MINUTES} 分钟）` : `已关闭「${repo.name}」的持续 get`);
+      const mm = minutesOf(minutes);
+      toast(
+        enabled
+          ? `已保存「${repo.name}」的持续 get 设置（${mm > 0 ? `${mm} 分钟阻塞窗口` : '不阻塞，没活立即返回'}）`
+          : `已关闭「${repo.name}」的持续 get`
+      );
       if (app.refreshRepos) app.refreshRepos();
       if (onSaved) onSaved();
     } catch (e) {
@@ -86,12 +102,18 @@ export default function GetLoopModal({ repo, onClose, onSaved }: GetLoopModalPro
             <div className="rp-gl-row">
               <span>阻塞窗口</span>
               <span className="rp-gl-unit">
-                <input className="rp-gl-min" value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" />
+                <input
+                  className="rp-gl-min"
+                  value={minutes}
+                  onChange={(e) => setMinutes(e.target.value)}
+                  inputMode="numeric"
+                  title="0 = 不阻塞：没任务时 get 立即返回 timeout"
+                />
                 分钟
               </span>
             </div>
             <div className="rp-gl-note">
-              {'领到任务后那段「继续 get 直到 timeout」的提示词是全局的，只有一份：要改文案去 设置 → 提示词模板 → 持续 get。这里只决定这个仓库开不开、每轮最多等多久。'}
+              {'这里只决定没有任务时 get 最多阻塞多久（0 = 不阻塞，立即返回 timeout）。领到任务后那段「继续 get 直到 timeout」的提示词是全局的，只有一份：要改文案去 设置 → 提示词模板 → 持续 get。'}
             </div>
             <div className="rp-gl-acts">
               <span className="spacer" />

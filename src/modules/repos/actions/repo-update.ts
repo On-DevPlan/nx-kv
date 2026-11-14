@@ -20,7 +20,7 @@ const input = z.object({
   key: z.string().optional().describe("自定义 key（给了就视为 keyCustom）"),
   'key-custom': z.boolean().optional().describe("key 是否自定义（true=不跟随 remote）"),
   'get-loop': z.enum(["on", "off"]).optional().describe("持续 get 开关"),
-  'get-loop-minutes': z.number().optional().describe("无任务时的阻塞窗口（分钟，默认 10，上限 600s 夹制）"),
+  'get-loop-minutes': z.number().optional().describe("无任务时 get 阻塞多久（分钟，默认 10；0 = 不阻塞，没活立即返回 timeout；上限 600s 夹制）"),
 });
 
 export class RepoUpdateAction extends ActionBase<typeof input> {

@@ -14,3 +14,16 @@ export interface RemoveManyResult {
 export function removeTasks(input: { key: string; ids: number[] }): Promise<any> {
   return api('/api/localtasks/items', { method: 'DELETE', body: input });
 }
+
+/** 批量收口返回：count=收口数；claimedClosed=其中原本已领取的；skipped=终态跳过明细。 */
+export interface CloseManyResult {
+  count?: number;
+  claimedClosed?: number[];
+  skipped?: Array<{ id: number; status?: string; reason?: string }>;
+  missing?: number[];
+}
+
+/** 批量收口任务（POST /api/localtasks/items/close；status=done|cancelled）。 */
+export function closeTasks(input: { key: string; ids: number[]; status: string; summary?: string }): Promise<CloseManyResult> {
+  return api('/api/localtasks/items/close', { method: 'POST', body: input });
+}

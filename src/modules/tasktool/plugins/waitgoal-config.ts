@@ -65,7 +65,10 @@ export function sanitizeGetLoop(raw: unknown): Record<string, unknown> | null {
   const out: Record<string, unknown> = {};
   if (decl.enabled !== undefined) out.enabled = decl.enabled === true || decl.enabled === 'on' || decl.enabled === 'true';
   const n = Number(decl.waitMinutes);
-  if (Number.isFinite(n) && n > 0) out.waitMinutes = Math.min(Math.floor(n), 600);
+  // #112：0 是合法值（= get 没任务时不阻塞，立即返回 timeout）；只挡负数与非数字
+  if (decl.waitMinutes !== undefined && decl.waitMinutes !== null && decl.waitMinutes !== '' && Number.isFinite(n) && n >= 0) {
+    out.waitMinutes = Math.min(Math.floor(n), 600);
+  }
   if (!Object.keys(out).length) return null;
   return out;
 }
@@ -79,7 +82,11 @@ export async function getLoopForCwd(cwd: unknown): Promise<GetLoopState> {
     const repo = k ? s.repos.find((r: any) => normalizePathKey(r.path) === k) : null;
     const loop = repo && repo.getLoop && typeof repo.getLoop === 'object' ? repo.getLoop : null;
     if (!loop || !loop.enabled) return { enabled: false };
-    const minutes = Number(loop.waitMinutes) > 0 ? Math.min(Math.floor(Number(loop.waitMinutes)), 600) : GET_LOOP_DEFAULT_MINUTES;
+    // #112：显式 0 是合法值（= get 没任务时不阻塞，立即 timeout）；只有字段缺失 /
+    // 非数字时才回落到默认 10 分钟（老数据兼容）。
+    const rawMinutes = loop.waitMinutes;
+    const n = rawMinutes === undefined || rawMinutes === null ? NaN : Number(rawMinutes);
+    const minutes = Number.isFinite(n) && n >= 0 ? Math.min(Math.floor(n), 600) : GET_LOOP_DEFAULT_MINUTES;
     return { enabled: true, waitMinutes: minutes };
   } catch {
     return { enabled: false }; // 仓库登记坏了绝不拖垮 get

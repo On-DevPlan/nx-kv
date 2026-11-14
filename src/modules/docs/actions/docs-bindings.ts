@@ -11,6 +11,7 @@ import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { getDb } from '../../../core/db/index.js';
 import { refTitleOf } from '../brief.js';
 import { summaryFromMd } from '../seed.js';
+import { reposBridge } from '../repos-bridge.js';
 
 /** 入参 docId（ref:<refId> / 裸 refId）→ ref id；不做任何按路径/ locator 的猜测。 */
 function toRefId(v: string): string {
@@ -21,10 +22,28 @@ function toRefId(v: string): string {
   return byId ? String(byId.id) : '';
 }
 
+/**
+ * 组的成员仓库 key 列表（#105 组视图要带上组内仓库自己的 ref）。
+ * 走 repos 桥动态 import——docs 不静态依赖 repos（eslint 分层），且失败即返回空表：
+ * 文档列表少几行是降级，不该让整个查询报错。
+ */
+async function memberRepoKeysOf(groupKey: string): Promise<string[]> {
+  try {
+    const { loadStore, boardRepoKeys, storedBoardKey, findBoard } = await reposBridge();
+    const s = await loadStore();
+    const b =
+      findBoard(s, groupKey) ||
+      (s.boards || []).find((x: any) => storedBoardKey(x) === groupKey);
+    return b ? boardRepoKeys(b, s) : [];
+  } catch {
+    return [];
+  }
+}
+
 const input = z.object({
   ref: z.string().optional().describe('refId / docId（ref:/path: 或裸 refId）——只看这篇文档的归属'),
-  host: z.string().optional().describe('宿主 repo_key —— 只看这个仓库的文档集（含它的组内文档）'),
-  group: z.string().optional().describe('宿主组 key —— 只看这个组的文档集（含组内各仓库）'),
+  host: z.string().optional().describe('宿主 repo_key —— 只看这个仓库自己的文档（组级 / 组内仓库文档归组视图，不混进来）'),
+  group: z.string().optional().describe('宿主组 key —— 看这个组的文档集：组本身 → 组内各仓库的组内文档 → 组内仓库自己的文档（#105）'),
 });
 
 export class DocsBindingsAction extends ActionBase<typeof input> {
@@ -32,7 +51,7 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
     id: 'docs.bindings',
     cli: ['docs', 'bindings'],
     http: ['GET', '/api/docs/bindings'],
-    summary: '查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> / --group <组> 看宿主文档集；position=0 为主篇）',
+    summary: '查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> 只看仓库自己的文档；--group <组> 看组域文档集：组 → 组内仓库 → 仓库自己；position=0 为主篇）',
     input,
     // 备注（只有附加篇有：主篇 push 时不带 note）跟着 main 一起打，和前端 tag 上的
     // 「附加 · 备注」保持同一口径——否则 CLI 里看不出自己刚填的备注有没有落库。
@@ -40,7 +59,7 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
       .map((b: any) => {
         const role = b.main ? '主篇' : b.note ? `附加 · ${b.note}` : '附加';
         const label = b.desc || b.title || b.refId;
-        return `  ${b.type}  ${b.repoKey}${b.groupKey ? ' @' + b.groupKey : ''}  ${role}  ${label}  [${b.refId}]${b.hasBody ? '' : '（无正文）'}`;
+        return `  ${b.type}  ${b.repoKey}${b.groupKey ? ' @' + b.groupKey : ''}  ${role}  ${label}  [${b.refId}]`;
       })
       .join('\n') || '（无归属）',
   })
@@ -52,13 +71,32 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
     const where: string[] = ['r.deleted_at IS NULL'];
     const params: Record<string, unknown> = {};
     if (refId) { where.push('b.ref_id = :ref'); params.ref = refId; }
-    if (host) { where.push('b.repo_key = :host'); params.host = host; }
+    // #116：**repo 级视图只给这个仓库自己的文档**（type=repo）。
+    // 组级文档与「组内仓库文档」(group_repo) 属于组域，只在看组的时候才有意义——
+    // 以前 host 只按 repo_key 过滤，组内文档会混进仓库的列表里（截图里那条「组 · nx」）。
+    if (host) { where.push("b.repo_key = :host AND b.type = 'repo'"); params.host = host; }
     // 组级绑定：repo_key = 组 key、group_key = NULL（type=group）；
     // 组内仓库绑定：group_key = 组 key（type=group_repo）。两种都要算进组文档集。
+    //
+    // #105：组视图还要带上**组内各仓库自己的 ref**（type=repo）——组员的知识都在这个
+    // 组域里，切到组却只看见组级两篇是反直觉的。成员 key 从看板关系取（boardRepoKeys
+    // 兼容 repoKeys / 老 repoIds 两种存量结构）。
     if (group) {
-      where.push("(b.group_key = :group OR (b.type = 'group' AND b.repo_key = :group))");
+      const members = await memberRepoKeysOf(group);
+      const memberMarks = members.map((_, i) => `:m${i}`);
+      members.forEach((k, i) => { params[`m${i}`] = k; });
+      where.push(
+        `(b.group_key = :group OR (b.type = 'group' AND b.repo_key = :group)` +
+          (memberMarks.length ? ` OR (b.type = 'repo' AND b.repo_key IN (${memberMarks.join(',')}))` : '') +
+          ')'
+      );
       params.group = group;
     }
+    // 排序（#105）：组视图按「组本身 → 组内仓库 → 仓库自己」的重要度排；
+    // 单仓库视图维持原口径（repo → group → group_repo）不动。
+    const orderBy = group
+      ? "ORDER BY CASE b.type WHEN 'group' THEN 0 WHEN 'group_repo' THEN 1 ELSE 2 END, b.position, b.rowid"
+      : "ORDER BY CASE b.type WHEN 'repo' THEN 0 WHEN 'group' THEN 1 ELSE 2 END, b.position, b.rowid";
     const rows = db.all(
       `SELECT b.repo_key AS repoKey, b.group_key AS groupKey, b.type, b.position, b.note, b.tag,
               r.id AS refId, r."desc", r.origin, r.locator,
@@ -67,8 +105,7 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
          FROM ref_bindings b JOIN refs r ON r.id = b.ref_id
          LEFT JOIN ref_bodies rb ON rb.ref_id = r.id
         WHERE ${where.join(' AND ')}
-        ORDER BY CASE b.type WHEN 'repo' THEN 0 WHEN 'group' THEN 1 ELSE 2 END,
-                 b.position, b.rowid`,
+        ${orderBy}`,
       params
     );
     return {

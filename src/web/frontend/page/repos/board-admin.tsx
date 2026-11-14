@@ -119,8 +119,8 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
                   {!(b.repos || []).length ? <span className="muted">—</span> : null}
                 </span>
                 <span className="rp-board-admin-doc">
-                  <Button small title="打开组介绍文档"
-                    onClick={() => onOpenDoc(b)}>组介绍 ✎</Button>
+                  <Button small title="在右侧栏列出这个组的文档"
+                    onClick={() => onOpenDoc(b)}>文档</Button>
                   {b.docCount && b.docCount > 1 ? <span className="muted">+{b.docCount - 1}</span> : null}
                 </span>
                 <span className="rp-board-admin-acts">
@@ -164,7 +164,7 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
                   <button
                     type="button"
                     className={'rp-doc' + (boardForm.desc ? '' : ' ghost')}
-                    title="打开组介绍文档"
+                    title="打开右侧栏文档列表（组介绍在里面维护）"
                     onClick={() => {
                       const b = boardList.find((x) => x.id === boardForm?.id);
                       setBoardForm(null);

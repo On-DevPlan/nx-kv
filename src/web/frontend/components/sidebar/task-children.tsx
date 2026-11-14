@@ -71,7 +71,9 @@ export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChil
             onNavigate?.(`${base}?task=${encodeURIComponent(String(t.id))}`);
           }}
         >
-          <span className="gico"><Icon name="list" size={12} /></span>
+          {/* #106：这里原本是统一的 list 图标——子行按类型只有 task 一种，图标没有
+              信息量；换成任务编号（序列号）能一眼看出队列规模与位置。 */}
+          <span className="gico num" aria-hidden="true">#{t.id}</span>
           <span className="nm">{taskLabel(t)}</span>
           <span className={`cnt ${statusTone(t)}`}>
             {statusShort(t)}

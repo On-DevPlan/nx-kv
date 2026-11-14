@@ -129,7 +129,11 @@ export function deliveryCtxOf(groupCtx: any): Record<string, any> {
     path: (x.intro && x.intro.path) || '',
   }));
   return {
-    repo: repo && ((repo.intro && repo.intro.body) || repoRefRepos.length)
+    // #104：只要目录**已登记**，repo 就进 ctx（哪怕没写介绍、没绑文档）。
+    // 以前要求「有介绍正文或参考仓库」才暴露 → 已登记但没写介绍的仓库（如 nx-kn）
+    // 在交付里整段 context 静默消失，用户无法区分「没登记」和「登记了没内容」。
+    // 空壳组（group）仍按 #81 过滤，那是另一条口径（组标签刷屏）。
+    repo: repo
       ? {
           name: repo.name || repo.key || '',
           key: repo.key || '',

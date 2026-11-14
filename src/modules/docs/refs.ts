@@ -28,11 +28,14 @@ async function docRefOf({ ref, path }: { ref?: unknown; path?: unknown }): Promi
   throw badInput('缺少文档：--ref <refId> 或 --path <外部绝对路径>');
 }
 
-// 看板定位（id / key / 名称）：boardKeyOf 由 bridge 注入（key 口径必须与 repos 完全一致）
+// 看板定位（id / 冻结 key / 派生 key / 名称）：boardKeyOf 由 bridge 注入（key 口径必须与 repos 完全一致）
+// #119：先认**冻结 key**——历史组的 key 可能是 `group/<name>`，而 boardKeyOf 只给 `board/<name>`。
 function findBoardIn(s: any, idOrKey: unknown, { normalizeKey: nk, boardKeyOf }: { normalizeKey: (k: unknown) => string; boardKeyOf: (v: any) => any }): any {
   const raw = String(idOrKey || '').trim();
   return (
     s.boards.find((x: any) => x.id === raw) ||
+    s.boards.find((x: any) => String(x.key || '') === raw) ||
+    s.boards.find((x: any) => String(x.key || '') !== '' && nk(x.key) === nk(raw)) ||
     s.boards.find((x: any) => boardKeyOf(x.name) === nk(raw)) ||
     s.boards.find((x: any) => String(x.name).toLowerCase() === raw.toLowerCase()) ||
     null

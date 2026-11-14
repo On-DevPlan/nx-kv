@@ -312,3 +312,42 @@ test('修改反馈 / 编辑任务：换正文不丢 frontmatter（归组信息�
   assert.match(re.task.text, /project: local\/x/);
   assert.match(re.task.text, /再改的正文/);
 });
+
+// #112：「持续 get」的阻塞窗口允许配 0（用户口径：这是 **get 命令自己**没任务时阻塞
+// 多久，不是让 agent 睡）。0 = 不阻塞、没活立即 timeout；提示词里那句「最多阻塞 N 分钟」
+// 在 0 时整句不出现（不给 0 另造说法）。
+test('#112 阻塞窗口 0：契约接受并落库，不再被归一成默认 10 分钟', async () => {
+  const { sanitizeGetLoop } = await import('../../src/modules/tasktool/plugins/waitgoal-config.js');
+  const decl = sanitizeGetLoop({ enabled: true, waitMinutes: 0 });
+  assert.equal(decl.waitMinutes, 0, '0 必须原样保留');
+  const on = sanitizeGetLoop({ enabled: true });
+  assert.equal(on.waitMinutes, undefined, '没给分钟数 → 不写字段（读时回落默认）');
+  const neg = sanitizeGetLoop({ enabled: true, waitMinutes: -3 });
+  assert.equal(neg.waitMinutes, undefined, '负数不是合法窗口');
+});
+
+test('#112 getloop 模板：窗口 0 时整句不出现；>0 才报分钟数', async () => {
+  const { renderInstruction } = await import('../../src/core/instruction-template.js');
+  const { DEFAULT_GETLOOP_TEMPLATE } = await import('../../src/shared/prompt-blocks.js');
+
+  const zero = renderInstruction(DEFAULT_GETLOOP_TEMPLATE, { task: { id: 7 }, getloop: { text: '', waitMinutes: 0 } });
+  assert.match(zero, /继续调用 nx-kv localtask get/, '「完成后再 get」这层意思保留');
+  assert.doesNotMatch(zero, /最多阻塞/, '0 时不能出现阻塞时长那句');
+  assert.doesNotMatch(zero, /0 分钟/, '更不能渲染成「最多阻塞 0 分钟」');
+
+  const five = renderInstruction(DEFAULT_GETLOOP_TEMPLATE, { task: { id: 7 }, getloop: { text: '', waitMinutes: 5 } });
+  assert.match(five, /最多阻塞 5 分钟/);
+});
+
+test('#112 窗口 0：get 不阻塞，没任务立刻 timeout（不等默认超时）', async () => {
+  const repos = await import('../../src/modules/repos/service.js');
+  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const cwd = join(dir, 'loop-zero');
+  const repo = await repos.addRepo({ path: cwd, name: 'loop-zero', remote: 'https://github.com/me/loop-zero' });
+  await repos.updateRepo(repo.id, { getLoop: { enabled: true, waitMinutes: 0 } });
+
+  const t0 = Date.now();
+  const r = await getTask({ cwd, summary: '领活' });
+  assert.equal(r.status, 'timeout');
+  assert.ok(Date.now() - t0 < 2000, '窗口 0 = 不阻塞（不是睡一觉再返回）');
+});

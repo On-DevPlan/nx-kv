@@ -68,6 +68,12 @@
 .trow .tw[role="button"]:hover { color: var(--ink-2); }
 .trow.open .tw { transform: rotate(90deg); }
 .trow .gico { flex: none; color: var(--ink-2); width: 16px; display: inline-flex; justify-content: center; }
+/* #106：任务子行的槽位放的是任务编号而不是图标（类型只有 task，图标没信息量）。
+   编号右对齐、等宽数字，位数增加时不会左右抖动，一眼能看出队列规模。 */
+.trow .gico.num {
+  width: auto; min-width: 28px; justify-content: flex-end;
+  font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+}
 .trow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 逻辑组标签：项目行标出它属于哪些组（一个项目可属于多个组，#61） */
 .trow .gtag { margin-left: 6px; font-size: 10.5px; color: var(--faint); opacity: .85; }

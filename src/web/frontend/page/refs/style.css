@@ -13,6 +13,19 @@
   color:var(--mid,#838A93);display:inline-flex;align-items:center;
 }
 .nx-refs-h .iconbtn:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+/* #117：归属筛选器（全部 / 仓库 / 组 / 组内）——窄栏里一行药丸，可点切换 */
+.nx-refs-scopes{
+  flex:none;display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px;
+  border-bottom:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
+}
+.nx-refs-scope-filter{
+  border:1px solid transparent;background:var(--soft,#F1F0EC);color:var(--mid,#838A93);
+  font:inherit;font-size:10.5px;line-height:16px;padding:1px 8px;border-radius:999px;cursor:pointer;
+}
+.nx-refs-scope-filter b{margin-left:2px;font-weight:600;color:var(--ink-2,#5C646C)}
+.nx-refs-scope-filter:hover{background:var(--soft-2,#E9E7E1)}
+.nx-refs-scope-filter.on{background:#2F6F5E1A;border-color:#2F6F5E4D;color:#2F6F5E}
+.nx-refs-scope-filter.on b{color:#2F6F5E}
 .nx-refs-list{flex:1;min-height:0;overflow:auto;padding:6px}
 .nx-refs-row{
   display:flex;flex-direction:column;align-items:stretch;gap:1px;width:100%;
@@ -66,8 +79,6 @@
   color:var(--faint,#A9AEB4);background:var(--soft,#F1F0EC);
 }
 /* 没有正文的条目：显式灰化，不隐藏（归属仍在，点开能看到原因） */
-.nx-refs-row-wrap.no-body{opacity:.58}
-.nx-refs-row-wrap.no-body:hover{opacity:.8}
 .nx-refs-row-tag{
   align-self:flex-start;
   font-size:10px;color:#9E4C00;background:#FBF3E4;border-radius:6px;padding:0 5px;

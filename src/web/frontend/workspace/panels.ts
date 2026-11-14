@@ -133,6 +133,13 @@ export function mainTabsetId(model: Model | null | undefined): string | null {
 export const RIGHT_AREA_COMPONENTS = ['progress', 'refs'];
 
 /**
+ * 主内容区的面板组件（#115）。用来把「混进主区的右栏面板」认出来：
+ * 老布局里 refs 可能被存进 ts_main，那时它所在 tabset 同时含 dir/group 这类主区面板——
+ * 这绝不该被当成右侧栏（否则 setRightSidebarVisible 会把主区压成 16% 宽）。
+ */
+export const MAIN_AREA_COMPONENTS = ['dir', 'page', 'group', 'repos', 'overview', 'doc', 'dag', 'compose', 'templates'];
+
+/**
  * 右侧栏（并发进程面板）的 tabset。
  *
  * 不只认 id=ts_right：FlexLayout 的 fromJson 会丢**空 tabset**——全新会话
@@ -145,13 +152,19 @@ export function rightTabsetId(model: Model | null | undefined): string | null {
   let hit: string | null = null;
   model.visitNodes((node) => {
     if (hit) return;
+    // #115：浮窗里的 tabset 也装着 refs/progress，但它不是「右侧栏」——
+    // 把它当成 rightTabset 会让 openPanel 认为面板已经在右栏而什么都不做。
+    if (String(node.getId()).startsWith('float')) return;
     if (node.getType() === 'tabset' && node.getId() === 'ts_right') {
       hit = node.getId();
       return;
     }
     if (node.getType() === 'tabset' && typeof (node as TabSetNode).getTabNodes === 'function') {
       const kids = (node as TabSetNode).getTabNodes() || [];
-      if (kids.some((t) => RIGHT_AREA_COMPONENTS.includes(t.getComponent() || ''))) hit = node.getId();
+      const comps = kids.map((t) => t.getComponent() || '');
+      // 含主区面板的 tabset 是主内容区，哪怕它里面混着一块 refs（#115 的老布局残留）
+      if (comps.some((c) => MAIN_AREA_COMPONENTS.includes(c))) return;
+      if (comps.some((c) => RIGHT_AREA_COMPONENTS.includes(c))) hit = node.getId();
     }
   });
   return hit;
@@ -304,6 +317,34 @@ export function dockPanel(model: Model | null | undefined, tabId: string, locati
   if (!target) return false;
   model.doAction(Actions.moveNode(tabId, target, dockOf(location), -1, true));
   return true;
+}
+
+/**
+ * 确保某块面板**停在右侧栏**（#115）。
+ *
+ * 为什么需要：面板位置是 localStorage 里记住的——老布局可能把文档列表（refs）存成
+ * 主内容区的一块，于是「查看详情」只会 selectTab，它就继续占着正文区域（用户看到的
+ * 「列表取代了 landing 页」）。这里做一次**自愈**：发现它不在右侧 tabset 就搬过去；
+ * 右侧 tabset 还没有（老布局）就先 dock 到根行右缘，让 FlexLayout 现建一个。
+ * @returns 是否真的搬了
+ */
+export function ensureInRightArea(model: Model | null | undefined, tabId: string | null | undefined): boolean {
+  if (!model || !tabId) return false;
+  const node = model.getNodeById(tabId) as TabNode | undefined;
+  if (!node) return false;
+  const right = rightTabsetId(model);
+  const parentId = node.getParent && node.getParent() ? node.getParent()!.getId() : '';
+  if (right && parentId === right) return false; // 已经在右栏，什么都不用做
+  if (right) {
+    model.doAction(Actions.moveNode(tabId, right, dockOf('center'), -1, true));
+    return true;
+  }
+  const root = model.getRootRow ? model.getRootRow() : null;
+  if (root) {
+    model.doAction(Actions.moveNode(tabId, root.getId(), dockOf('right'), -1, true));
+    return true;
+  }
+  return false;
 }
 
 /** 关闭某个面板 */

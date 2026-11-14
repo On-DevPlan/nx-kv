@@ -365,6 +365,29 @@ export async function removeDoc({ ref }: { ref?: unknown } = {}): Promise<{ docI
 
 // ─── 直接 ref（v7）：desc + 归属，不涉及任何文件 / 路径 ────────────────
 
+/**
+ * 组定位（id / 冻结 key / 派生 key / 名称）——#119。
+ *
+ * 组的身份是**冻结 key**（新建时按当时的名字算，之后改名不漂）。历史数据的 key
+ * 有的是 `group/<name>`、有的是 `board/<name>`；而 boardKeyOf(name) 永远给
+ * `board/<name>`。createRef 以前只比 id / 派生 key / 名字，于是拿 `group/nx` 这种
+ * 冻结 key 来建组文档就会「组不存在」——先比 b.key 再比派生值。
+ */
+function findBoardLoose(s: any, locator: unknown, keyOf: (name: unknown) => string): any {
+  const raw = String(locator || '').trim();
+  if (!raw) return null;
+  const low = raw.toLowerCase();
+  return (
+    s.boards.find((b: any) => String(b.id || '') === raw) ||
+    s.boards.find((b: any) => String(b.key || '') === raw) ||
+    s.boards.find((b: any) => String(b.key || '').toLowerCase() === low) ||
+    // 没有冻结 key 的旧看板才回落到派生 key（board/<name>）
+    s.boards.find((b: any) => String(b.key || '') === '' && keyOf(b.name) === raw) ||
+    s.boards.find((b: any) => String(b.name || '').toLowerCase() === low) ||
+    null
+  );
+}
+
 /** ref 的宿主类型（ref_bindings.type）。 */
 export type RefOwnerType = 'repo' | 'group' | 'group_repo';
 
@@ -416,9 +439,7 @@ export async function createRef({ desc, owner = 'repo', repo: repoLocator, group
   );
   await mutateStore((s: any) => {
     if (type === 'group_repo') {
-      const board = s.boards.find((b: any) => b.id === clean(groupLocator)
-        || boardKeyOf(b.name) === clean(groupLocator)
-        || String(b.name).toLowerCase() === clean(groupLocator).toLowerCase());
+      const board = findBoardLoose(s, groupLocator, boardKeyOf);
       if (!board) throw notFound('组不存在: ' + clean(groupLocator));
       const repo = s.repos.find((r: any) => r.id === clean(repoLocator)
         || deriveKey(r) === clean(repoLocator)
@@ -431,9 +452,7 @@ export async function createRef({ desc, owner = 'repo', repo: repoLocator, group
       return;
     }
     if (type === 'group') {
-      const board = s.boards.find((b: any) => b.id === clean(groupLocator)
-        || boardKeyOf(b.name) === clean(groupLocator)
-        || String(b.name).toLowerCase() === clean(groupLocator).toLowerCase());
+      const board = findBoardLoose(s, groupLocator, boardKeyOf);
       if (!board) throw notFound('组不存在: ' + clean(groupLocator));
       if (!board.doc) board.doc = { ref: id };
       else {

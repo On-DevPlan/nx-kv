@@ -194,6 +194,36 @@ test('组只要有一项真内容就照给：仅成员带描述也算', () => {
   assert.match(renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx), /- p：干活的/);
 });
 
+// #104：context 段不能静默消失。两种「没有上下文」都必须在交付文本里说清原因，
+// 并给可执行的修复命令——否则用户只看到「这条任务没有 nx-kv.context」，无从判断
+// 是目录没登记、还是登记了没写介绍（旧实现两种都是空串，整块消失）。
+test('#104 目录未登记：context 段给出原因 + repo add 命令（不需要 .git）', () => {
+  const ctx = buildDeliveryCtx({ task: { id: 9, text: 'x' }, cwd: 'D:/work/unregistered', groupCtx: null });
+  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+  assert.match(out, /未登记为本机仓库/);
+  assert.match(out, /D:\/work\/unregistered/);
+  assert.match(out, /nx-kv repo add "D:\/work\/unregistered" --key <key>/);
+  assert.match(out, /不需要 \.git/);
+});
+
+test('#104 已登记但没写项目介绍：repo 进 ctx，context 段给 repo doc add 提示', () => {
+  const groupCtx = { repo: { name: 'nx-kn', key: 'github.com/on-devplan/nx-kn', intro: null, docLinks: [] }, groups: [] };
+  const ctx = buildDeliveryCtx({ task: { id: 10, text: 'x' }, cwd: 'D:/a_js/js_proj/nx-kn', groupCtx });
+  assert.notEqual(ctx.repo, null, '已登记的仓库必须进 ctx（不再要求有介绍正文）');
+  assert.equal(ctx.repo.name, 'nx-kn');
+  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+  assert.match(out, /〔项目上下文 · nx-kn〕已登记为本机仓库/);
+  assert.match(out, /nx-kv repo doc add github\.com\/on-devplan\/nx-kn --ref <refId>/);
+  assert.doesNotMatch(out, /未登记为本机仓库/);
+});
+
+test('#104 全局池（cwd 为空）不出「未登记」噪音', () => {
+  const ctx = buildDeliveryCtx({ task: { id: 11, text: 'x' }, cwd: '', groupCtx: null });
+  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+  assert.doesNotMatch(out, /项目上下文/);
+  assert.doesNotMatch(out, /未登记/);
+});
+
 // #86：参考仓库（repos 里 type=ref，不是文档库 refs）——交付只给
 // 「本仓库直接绑定 ∪ 本次任务所属组」的去重并集，不给无关组；一条都没有时整段不出现。
 const REF_REPO_CTX = {

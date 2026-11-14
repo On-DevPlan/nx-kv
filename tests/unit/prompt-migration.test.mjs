@@ -162,3 +162,35 @@ test('旧语法模板保存被拒绝（不再维护新旧两套语法）', async
     /已废弃/
   );
 });
+
+// #104 探针：设置面板「提示词模板」PATCH 发的是驼峰 `blockTemplates` / `appendMode`，
+// 而 localtask.config 的契约只声明了 kebab（`block-templates` / `append-mode`）——
+// zod 默认丢弃未声明键，patch 落空 → 服务端报「请至少指定一项」，web 端模板完全存不进去。
+// 这里把 HTTP 线缆口径钉住：驼峰键必须在契约里、真的落库。
+test('#104 HTTP 驼峰键 blockTemplates / appendMode 不被剥掉，真的落库', async () => {
+  const { ACTIONS } = await import('../../src/runtime/registry.js');
+  const { parseZodInput } = await import('../../src/runtime/zod-bridge.js');
+  const act = ACTIONS.find((a) => a.id === 'localtask.config');
+  assert.ok(act, 'localtask.config 已注册');
+
+  seedLegacySettings();
+  const lists = {
+    context: {
+      active: 'bt_web',
+      list: [
+        { id: BUILTIN_TEMPLATE_ID, name: '系统内置', template: 'X', builtin: true },
+        { id: 'bt_web', name: '面板里改的', template: '〔面板 {{repo.name}}〕', builtin: false },
+      ],
+    },
+  };
+  const parsed = parseZodInput(act.input, { blockTemplates: lists, appendMode: 'plain' }, 'usage');
+  assert.ok(parsed.blockTemplates, '驼峰 blockTemplates 必须在契约里（否则被 zod 丢掉）');
+  assert.equal(parsed.appendMode, 'plain');
+
+  const out = await act.run(parsed, { transport: 'http' });
+  assert.equal(out.appendMode, 'plain', 'appendMode 落库');
+  const s = await svc.getSettings();
+  assert.equal(s.appendMode, 'plain');
+  assert.equal(s.blockTemplates.context.active, 'bt_web', 'blockTemplates 落库');
+  assert.equal(s.blockTemplates.context.list.find((t) => t.id === 'bt_web').template, '〔面板 {{repo.name}}〕');
+});

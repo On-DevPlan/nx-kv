@@ -24,7 +24,11 @@ const input = z.object({
   attachTemplate: z.string().optional().describe("同 --attach-template（驼峰写法，HTTP body 用）"),
   'reset-attach-template': z.boolean().optional().describe("恢复 attachment 区块内置模板"),
   'append-mode': z.string().optional().describe("系统上下文追加模式（全局）：xml（默认，每段包独立标签）/ plain（按空行直接拼正文）。HTTP body 用 appendMode"),
+  appendMode: z.string().optional().describe("同 --append-mode（驼峰写法，HTTP body 用）"),
   'block-templates': z.string().optional().describe("每区块模板列表（JSON 对象）：{\"context\":{\"active\":\"builtin\",\"list\":[…]},…}。HTTP body 用 blockTemplates（对象）"),
+  // #104：HTTP 驼峰别名此前漏声明——设置面板 PATCH 的 blockTemplates/appendMode 被
+  // zod 静默剥离，patch 落空报「请至少指定一项」，web 端提示词模板完全无法保存。
+  blockTemplates: z.unknown().optional().describe("同 --block-templates（HTTP body 直接传对象，不走 JSON 字符串）"),
 });
 
 export class LocaltaskConfigAction extends ActionBase<typeof input> {
@@ -58,11 +62,12 @@ export class LocaltaskConfigAction extends ActionBase<typeof input> {
         const attachTpl: any = ctx.attachTemplate ?? ctx['attach-template'];
         if (attachTpl !== undefined) patch.attachTemplate = attachTpl;
         if (ctx['reset-attach-template']) patch.attachTemplate = '';
-        // 系统上下文追加模式（全局）
-        const appendMode: any = ctx['append-mode'];
+        // 系统上下文追加模式（全局）——HTTP body 用驼峰别名 appendMode（#104）
+        const appendMode: any = ctx.appendMode ?? ctx['append-mode'];
         if (appendMode !== undefined) patch.appendMode = appendMode;
-        // 每区块模板列表（设置面板「提示词模板」模块）：支持 JSON 字符串 / HTTP body 对象
-        let blockTemplates: any = ctx['block-templates'];
+        // 每区块模板列表（设置面板「提示词模板」模块）：HTTP body 传对象（blockTemplates）、
+        // CLI 传 JSON 字符串（--block-templates）；对象是 zod 'raw' 原样透传（#104）
+        let blockTemplates: any = ctx.blockTemplates ?? ctx['block-templates'];
         if (typeof blockTemplates === 'string') {
           try {
             blockTemplates = JSON.parse(blockTemplates);

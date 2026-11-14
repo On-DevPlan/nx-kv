@@ -1047,9 +1047,24 @@
           "action": {
             "id": "docs.bindings",
             "module": "docs",
-            "summary": "查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> / --group <组> 看宿主文档集；position=0 为主篇）",
+            "summary": "查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> 只看仓库自己的文档；--group <组> 看组域文档集：组 → 组内仓库 → 仓库自己；position=0 为主篇）",
             "usage": "docs bindings",
             "http": "GET /api/docs/bindings"
+          },
+          "children": []
+        },
+        {
+          "name": "gc",
+          "path": [
+            "docs",
+            "gc"
+          ],
+          "action": {
+            "id": "docs.gc",
+            "module": "docs",
+            "summary": "GC 没有正文的文档（默认只报数；--apply 真删，并清掉宿主里指向它们的主篇/文档集引用）",
+            "usage": "docs gc",
+            "http": "POST /api/docs/gc"
           },
           "children": []
         },

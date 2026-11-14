@@ -142,10 +142,10 @@ export default function PromptTemplatesSection() {
     if (busy) return;
     setBusy(true);
     try {
-      const d = await saveLocaltaskSettings({
-        method: 'PATCH',
-        body: { blockTemplates: nextLists },
-      });
+      // #104 真凶：这里曾写成 { method:'PATCH', body:{…} }——api 客户端本就把整对象当 body，
+      // 于是真正发出去的是 {method:'PATCH', body:{blockTemplates}}，服务端 zod 把两层未知键
+      // 全部剥掉 → patch 为空 → 报「请至少指定一项」。直接传 patch 本身。
+      const d = await saveLocaltaskSettings({ blockTemplates: nextLists });
       applyLists(normalizeBlockTemplateLists(d?.blockTemplates), keep);
       toast(message);
     } catch (e) {
@@ -271,10 +271,8 @@ export default function PromptTemplatesSection() {
     if (busy || mode === state.appendMode) return;
     setBusy(true);
     try {
-      const d = await saveLocaltaskSettings({
-        method: 'PATCH',
-        body: { appendMode: mode },
-      });
+      // 同 persist：直接传 patch，不要套 { method, body }（#104）
+      const d = await saveLocaltaskSettings({ appendMode: mode === 'plain' ? 'plain' : 'xml' });
       // state 为 null 只可能发生在首轮加载前（那时没有按钮可点）：保持 null 即可
       setState((cur) => (cur ? { ...cur, appendMode: d?.appendMode === 'plain' ? 'plain' : 'xml' } : cur));
       toast('已保存追加模式（全局生效）');

@@ -370,6 +370,43 @@ export function healMainTabset(json: LayoutJson | null): boolean {
   return true;
 }
 
+/**
+ * #115：老布局可能把右栏面板（refs / progress）存进了主内容区 ts_main——
+ * 用户看到的是「点查看详情，文档列表把 landing 页整块顶掉」。
+ *
+ * 读盘时把它们从 ts_main 摘出来，补一个右栏 tabset 收进去（weight 16、无页签条），
+ * 主区被压扁的 weight 修回 68。纯 JSON 层愈合，不动模型。
+ * @returns 是否改过
+ */
+export function healRightPanelsInMain(json: any): boolean {
+  const root = json && json.layout;
+  if (!root || !Array.isArray(root.children)) return false;
+  const main = root.children.find((c: any) => c && c.id === 'ts_main');
+  if (!main || !Array.isArray(main.children)) return false;
+  const isRightTab = (t: any) => !!t && t.type === 'tab' && ['refs', 'progress'].includes(String(t.component || ''));
+  let changed = false;
+  const rightTabs = main.children.filter(isRightTab);
+  if (rightTabs.length) {
+    main.children = main.children.filter((t: any) => !isRightTab(t));
+    if (!main.children.length) {
+      main.children.push({ type: 'tab', id: 't_welcome', name: '开始', component: 'welcome' });
+    }
+    let right = root.children.find((c: any) => c && c.id === 'ts_right');
+    if (!right) {
+      right = { type: 'tabset', id: 'ts_right', weight: 16, enableTabStrip: false, children: [] };
+      root.children.push(right);
+    }
+    right.children = [...(right.children || []), ...rightTabs];
+    changed = true;
+  }
+  const mw = Number(main.weight);
+  if (!Number.isFinite(mw) || mw < 30) {
+    main.weight = 68;
+    changed = true;
+  }
+  return changed;
+}
+
 /** 读盘 → 模型；坏数据不吞掉整台应用，退回初始布局 */
 export function loadModel(): Model {
   try {
@@ -383,6 +420,7 @@ export function loadModel(): Model {
     healSidebarLayout(json);
     healNoTabs(json); // 新面板模型：没有页签条、补右侧栏
     healMainTabset(json); // 主区 tabset 被存丢的布局：补回带「开始」页的 ts_main（否则主区永远白板）
+    healRightPanelsInMain(json); // #115：refs/progress 被存进主区的老布局 → 搬回右栏
     return applyGlobalAttrs(Model.fromJson(json));
   } catch {
     return applyGlobalAttrs(Model.fromJson(initialLayoutJson()));

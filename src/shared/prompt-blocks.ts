@@ -55,6 +55,14 @@ export const BUILTIN_TEMPLATE_NAME = '系统内置';
 /**
  * 默认交付上下文模板（Handlebars 语法）：
  * 项目介绍 / 补充文档 / 组上下文 / 成员 / 参考文件，全部由同一条 ctx 用 #if + #each 组织。
+ *
+ * #104：**缺失必须可见**。此前两种「没有上下文」的情形都是静默的——context 段渲染成
+ * 空串、整块消失，用户只看到「这条任务怎么没有 nx-kv.context」，无从判断是没登记、
+ * 还是登记了没写介绍。现在各补一句显式说明（含可执行的修复命令），agent 与用户都能
+ * 一眼看出原因：
+ *   - 目录未登记为本机仓库 → 说明 + `repo add`（**不需要 .git，给 key 即可**）；
+ *   - 已登记但没有项目介绍主篇 → 说明 + `repo doc add`。
+ * 全局池（cwd 为空）不触发，避免噪音。
  */
 export const DEFAULT_CONTEXT_TEMPLATE = [
   '{{#if repo}}',
@@ -65,11 +73,19 @@ export const DEFAULT_CONTEXT_TEMPLATE = [
   '{{#if repo.docs}}',
   '〔项目文档〕按需取用：nx-kv docs get --ref <refId>',
   '{{#each repo.docs}}',
-  '  - {{#if desc}}{{desc}}{{else}}{{#if title}}{{title}}{{else}}未命名文档{{/if}}{{/if}}{{#if hasBody}}{{else}}（无正文）{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '  - {{#if desc}}{{desc}}{{else}}{{#if title}}{{title}}{{else}}未命名文档{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}',
   '    取用：nx-kv docs get --ref {{refId}}',
   '{{/each}}',
   '{{/if}}',
+  // 已登记但没有任何材料：别让整块消失（#104）
+  '{{#if repo.intro}}{{else}}{{#if repo.docs}}{{else}}',
+  '〔项目上下文 · {{repo.name}}〕已登记为本机仓库（{{repo.key}}），但没有项目介绍文档：nx-kv repo doc add {{repo.key}} --ref <refId>',
+  '{{/if}}{{/if}}',
   '{{/if}}',
+  // 目录根本没登记：说清原因 + 给登记命令（key 必填，不需要 .git）（#104）
+  '{{#if repo}}{{else}}{{#if cwd}}',
+  '〔项目上下文〕工作目录 {{cwd}} 未登记为本机仓库，本次交付没有项目介绍 / 组上下文。登记（不需要 .git，给 key 即可）：nx-kv repo add "{{cwd}}" --key <key>',
+  '{{/if}}{{/if}}',
   '{{#if group}}',
   '〔项目组上下文 · {{group.name}}〕',
   '{{#if group.desc}}',
@@ -91,7 +107,7 @@ export const DEFAULT_CONTEXT_TEMPLATE = [
   '{{#if group.docs}}',
   '组文档（按需取用）：',
   '{{#each group.docs}}',
-  '  - {{#if desc}}{{desc}}{{else}}{{#if title}}{{title}}{{else}}未命名文档{{/if}}{{/if}}{{#if hasBody}}{{else}}（无正文）{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '  - {{#if desc}}{{desc}}{{else}}{{#if title}}{{title}}{{else}}未命名文档{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}',
   '    取用：nx-kv docs get --ref {{refId}}',
   '{{/each}}',
   '{{/if}}',
@@ -216,10 +232,16 @@ export const DEFAULT_ACK_PROMPT =
  * （区块默认模板已把内文写进去，不再是 {{getloop.text}} 这种间接层）。
  * 槽位口径：{{task.id}} = 任务编号；{{getloop.waitMinutes}} = 阻塞窗口分钟数。
  *
+ * #112（用户口径）：这里的「阻塞 N 分钟」说的是 **nx-kv 的 get 命令自己会阻塞多久**
+ * （没任务时服务端挂住请求、到点返回 timeout），**不是**让 agent 去 sleep——agent 没有
+ * 感受时间的器官。所以窗口配 0（= get 不阻塞，没活立刻 timeout）时，这句话整段不该出现：
+ * 只留「完成之后再调一次 get」这层意思。用 `{{#if (gt getloop.waitMinutes 0)}}` 闸住即可，
+ * 不要给 0 造别的说法。
+ *
  * 放共享层是因为前后端都要用同一份：服务端渲染，前端「持续 get」弹窗展示说明。
  */
 export const DEFAULT_GETLOOP_INSTRUCTION =
-  '{{#if task}}不要直接结束本轮：完成上面的任务（{{task.id}}）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；没活时每次最多阻塞 {{getloop.waitMinutes}} 分钟，直到 get 返回 timeout 为止。{{/if}}';
+  '{{#if task}}不要直接结束本轮：完成上面的任务（{{task.id}}）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；{{#if (gt getloop.waitMinutes 0)}}没活时每次最多阻塞 {{getloop.waitMinutes}} 分钟，直到 get 返回 timeout 为止。{{/if}}{{/if}}';
 
 /**
  * 默认「持续 get」段：项目开启时出现。

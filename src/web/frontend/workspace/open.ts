@@ -12,6 +12,7 @@ import {
   clearMainPanels,
   clearRightPanels,
   closeBesidePanels,
+  ensureInRightArea,
   findComponentPanel,
   findOpenPanel,
   mainTabsetId,
@@ -113,7 +114,12 @@ export function openPanel(model: Model | null | undefined, spec: OpenPanelSpec):
     if (name && existing.getName() !== name) {
       model.doAction(Actions.renameTab(existing.getId(), name));
     }
-    if (area === AREA.RIGHT) setRightSidebarVisible(model, true);
+    if (area === AREA.RIGHT) {
+      // #115：老布局可能把这块面板存进了主内容区——只 selectTab 它就会继续占着正文，
+      // 用户看到的是「列表取代了页面」。搬回右栏（已在右栏则无操作）。
+      ensureInRightArea(model, existing.getId());
+      setRightSidebarVisible(model, true);
+    }
     if (area === AREA.MAIN && (component === 'page' || component === 'dir')) {
       syncProgressPanel(model, { dirKey: config.dirKey, groupId: config.groupId, task: config.task });
     }
@@ -132,6 +138,7 @@ export function openPanel(model: Model | null | undefined, spec: OpenPanelSpec):
       if (name && any.getName() !== name) {
         model.doAction(Actions.renameTab(any.getId(), name));
       }
+      ensureInRightArea(model, any.getId()); // #115：换宿主也要停在右栏
       setRightSidebarVisible(model, true);
       return { tabId: any.getId(), reused: true };
     }

@@ -121,6 +121,14 @@
 .docp-desc .k{flex:none;font-size:10px;color:var(--faint,#A9AEB4);letter-spacing:.04em}
 .docp-desc .v{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .docp-desc.empty .v{color:var(--faint,#A9AEB4)}
+/* #107：描述行直接输入——看起来是文字，聚焦时才显出输入框（无边框、无弹窗） */
+.docp-desc-input{
+  flex:1;min-width:0;border:0;background:transparent;padding:1px 4px;border-radius:5px;
+  font:inherit;font-size:11px;line-height:1.6;color:inherit;outline:none;
+}
+.docp-desc-input::placeholder{color:var(--faint,#A9AEB4)}
+.docp-desc-input:hover{background:var(--soft,#F1F0EC)}
+.docp-desc-input:focus{background:var(--paper,#fff);box-shadow:0 0 0 1px var(--mdw-accent,#2F6F5E) inset}
 .docp-desc-edit{
   flex:none;border:0;background:transparent;padding:1px 6px;border-radius:5px;
   font:inherit;font-size:10.5px;color:var(--mdw-accent,#2F6F5E);cursor:pointer;

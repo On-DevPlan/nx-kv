@@ -50,12 +50,12 @@ export default function BoardRefs({ filterBoard, refRepos, checkOf, onOpenDoc, o
           <span className="rp-context-desc" title={filterBoard.desc}>{filterBoard.desc}</span>
         ) : (
           <span className="muted rp-context-desc">
-            还没有领域描述 —— 点「组介绍文档」补一段：侧重什么、谁配合谁、关键路径与搜索关键词在哪。
+            还没有领域描述 —— 点「文档列表」新建一篇组介绍：侧重什么、谁配合谁、关键路径与搜索关键词在哪。
           </span>
         )}
         <span className="acts">
-          <Button small title="打开这个分组的组介绍文档"
-            onClick={() => onOpenDoc(filterBoard)}>组介绍文档 ✎</Button>
+          <Button small title="在右侧栏列出这个组的文档（组 → 组内仓库 → 仓库自己）"
+            onClick={() => onOpenDoc(filterBoard)}>文档列表</Button>
           <a className="btn small ghost" href={'#/group/' + encodeURIComponent(filterBoard.id)}
             title="组页里看这个组的成员与任务">组页 ↗</a>
           <Button small onClick={() => onAddMember(filterBoard.id)}>添加成员</Button>

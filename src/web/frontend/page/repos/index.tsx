@@ -16,7 +16,6 @@
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { bindRef, fetchRefCheck, listBoards, listRepos, openRepo, refSync, removeRepo, type RefCheckPayload } from './api.js';
-import { createRefDoc, docHostBindings, updateDocItem } from '../doc/api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
@@ -25,7 +24,6 @@ import GetLoopModal from '../../components/repos/get-loop-modal.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { openPanel } from '../../workspace.js';
 import { useApp } from '../../app-context.jsx';
-import { useWikiNav } from '../doc/index.jsx';
 import RepoTable from './repo-table.jsx';
 import type {
   BoardRecord,
@@ -57,8 +55,7 @@ export default function ReposView() {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
   const app = useApp();
-  // 描述是文档 → 行内点标题要能开文档页签（useWikiNav 内部拿 app.model + 文档索引）
-  const { openByDocId } = useWikiNav();
+  // 描述是文档 → 行内点标题要能开文档页签（#118：入口统一改成右侧栏文档列表）
 
   // ---- 数据面：仓库中心清单（扁平；每条带 boards）+ 看板 + 参考检查 ----
   const [repos, setRepos] = useState<RepoRecord[]>([]);
@@ -289,24 +286,22 @@ export default function ReposView() {
 
   // 组介绍入口：组上的主篇文档（ref:<refId>），没有就新建一个直接 ref。
   // 全程不推导路径 / 扩展名，归属直接写组。
-  const openBoardDoc = (b: BoardRecord) => guard(async () => {
-    if (b.docId) {
-      openByDocId(b.docId);
+  // #118：组的「文档列表」入口与仓库行的「查看详情」保持同一套直觉——
+  // 在**右侧栏**开出这个组的文档列表（组 → 组内仓库 → 仓库自己），
+  // 不再把某一篇组介绍文档顶到中间正文区（那会把人从当前页面踢走）。
+  const openBoardDoc = (b: BoardRecord) => {
+    const m = app.model;
+    if (!m) {
+      toast('工作区不可用，无法打开文档列表');
       return;
     }
-    if (b.key) {
-      const set = await docHostBindings({ group: b.key }).catch(() => null);
-      const main = ((set && set.bindings) || []).find((x) => x.type === 'group' && x.main);
-      if (main) {
-        openByDocId('ref:' + main.refId);
-        return;
-      }
-    }
-    const created = await createRefDoc({ owner: 'group', group: b.id, desc: `${b.name} · 组介绍` });
-    await updateDocItem({ ref: 'ref:' + created.refId, body: `# ${b.name} · 组介绍\n\n` });
-    openByDocId('ref:' + created.refId);
-    await reload.all();
-  });
+    openPanel(m, {
+      component: 'refs',
+      name: '文档列表',
+      config: { boardKey: b.key || b.id || '', boardName: b.name || '', scope: 'all' },
+      location: 'right',
+    });
+  };
 
   // 区块跳转：面板内容挂在 FlexLayout 的 tab 里（.flexlayout__tab_moveable 才是
   // 真正的滚动容器），scrollIntoView 在这条链上实测无效，必须手动算 scrollTop。
@@ -363,7 +358,8 @@ export default function ReposView() {
     },
     // 持续 get（waitgoal）配置弹窗（#145）：保存后刷行数据（绿点/菜单态跟着变）
     getloop: (r) => setGlFor(r),
-    // 查看详情：在**右侧栏**打开该仓库的文档列表（#186：不再弹 DocsModal）
+    // 查看详情：在**右侧栏**打开该仓库的文档列表（#186：不再弹 DocsModal）；
+    // #117 起带 scope='repo'，落到精确归属档
     docs: (r) => {
       const m = app.model;
       if (!m) {
@@ -373,7 +369,8 @@ export default function ReposView() {
       openPanel(m, {
         component: 'refs',
         name: '文档列表',
-        config: { repoKey: r.key || '' },
+        // #117：仓库管理的「查看详情」= 只看这一行的精确归属（repo），不掺组域文档
+        config: { repoKey: r.key || '', scope: 'repo' },
         location: 'right',
       });
     },

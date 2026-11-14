@@ -28,17 +28,21 @@ export async function getTask({ cwd, timeoutSec, open = true, params, instant }:
   // 项目开启「持续 get」时，循环指令作为 getloop 区块随其余系统段一起由
   // buildTaskDelivery 统一编排（不再在 get 层后置拼接，避免同一份 instruction
   // 有两个拼装入口）。
+  // #112（用户口径）：「阻塞 N 分钟」是 **get 命令自己**没任务时阻塞多久（服务端挂住
+  // 请求，到点返回 timeout），不是让 agent 睡。窗口配 0 = 不阻塞，没活立即 timeout。
+  const minutes = loop.enabled ? Number(loop.waitMinutes) || 0 : 0;
   const r = await waitForTask({
     cwd,
     // 未开启持续 get → instant（waitForTask 内部忽略 timeout 直接快路径）；
-    // 开启 → 阻塞窗口 = 项目配置分钟数（显式 --timeout 仍最高优先）。
-    // instant 显式给定时最高优先：HTTP 领取不允许挂住请求（见 action-lifecycle 的 claim 路由）。
-    timeoutSec: timeoutSec ?? (loop.enabled ? (loop.waitMinutes as number) * 60 : undefined),
+    // 开启且窗口 >0 → 阻塞这么秒；窗口 = 0 → 同样走 instant（不阻塞）。
+    // 显式 --timeout 仍最高优先；instant 显式给定时也最高优先
+    // （HTTP 领取不允许挂住请求，见 action-lifecycle 的 claim 路由）。
+    timeoutSec: timeoutSec ?? (minutes > 0 ? minutes * 60 : undefined),
     open,
-    instant: instant === undefined ? !loop.enabled : !!instant,
+    instant: instant === undefined ? !loop.enabled || minutes <= 0 : !!instant,
     params: params || {}, // 外部参数（平面扩展）进交付模板
     getLoopTpl: getLoopInstruction(loop),
-    getLoopWaitMinutes: loop.enabled ? loop.waitMinutes || 0 : 0,
+    getLoopWaitMinutes: minutes,
   });
   if (r.status !== 'ok' || !r.task) return r;
   if (loop.enabled) r.getLoop = true; // 交付里带了持续 get 指令（调试/文档可辨）

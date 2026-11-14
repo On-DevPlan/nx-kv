@@ -31,6 +31,7 @@ import { LocaltaskRemoveManyAction } from './localtask-removeMany.js';
 import { LocaltaskReopenAction } from './localtask-reopen.js';
 import { LocaltaskReorderAction } from './localtask-reorder.js';
 import { LocaltaskTaskRestoreAction } from './localtask-task-restore.js';
+import { LocaltaskTasksAction } from './localtask-tasks.js';
 import { LocaltaskTimegoalLogAction } from './localtask-timegoalLog.js';
 import { LocaltaskTopicAddAction } from './localtask-topic-add.js';
 import { LocaltaskTopicRemoveAction } from './localtask-topic-remove.js';
@@ -65,6 +66,7 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskReopenAction,
   LocaltaskReorderAction,
   LocaltaskTaskRestoreAction,
+  LocaltaskTasksAction,
   LocaltaskTimegoalLogAction,
   LocaltaskTopicAddAction,
   LocaltaskTopicRemoveAction,
@@ -99,6 +101,7 @@ export { LocaltaskRemoveManyAction };
 export { LocaltaskReopenAction };
 export { LocaltaskReorderAction };
 export { LocaltaskTaskRestoreAction };
+export { LocaltaskTasksAction };
 export { LocaltaskTimegoalLogAction };
 export { LocaltaskTopicAddAction };
 export { LocaltaskTopicRemoveAction };

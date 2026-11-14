@@ -5,6 +5,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { renderAdd as _renderAdd } from '../action-render.js';
+import { addView } from '../contract-views.js';
 const renderAdd: any = _renderAdd;
 
 /** localtask.add 的入参契约（CLI 与 HTTP 共用同一份）。 */
@@ -35,6 +36,7 @@ export class LocaltaskAddAction extends ActionBase<typeof input> {
     summary: '向某主题（工作目录）的队列回填一条任务（有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝）',
     args: ['text'],
     input,
+    output: addView,
     render: renderAdd,
   })
   override async run(ctx: ActionInput<this['_input']>) {
@@ -49,7 +51,7 @@ export class LocaltaskAddAction extends ActionBase<typeof input> {
         const blockBy: any = rawBlock != null && String(rawBlock).trim()
           ? normalizeBlockBy(String(rawBlock), 0)
           : [];
-        return submitTask({
+        const r: any = await submitTask({
           text: ctx.text,
           cwd: ctx.cwd,
           summary: ctx.summary,
@@ -63,6 +65,9 @@ export class LocaltaskAddAction extends ActionBase<typeof input> {
           forkOf: ctx.forkOf ?? ctx['fork-of'],
           forkKind: ctx.forkKind ?? ctx['fork-kind'],
         });
+        // 出参契约（addView）只回编号：把 task.id 提到顶层（纯附加，原有键不变）
+        if (r && r.task && r.task.id != null) r.id = r.task.id;
+        return r;
     
   }
 }

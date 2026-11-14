@@ -64,6 +64,7 @@ import type {
   LocaltaskReopenAction,
   LocaltaskReorderAction,
   LocaltaskTaskRestoreAction,
+  LocaltaskTasksAction,
   LocaltaskTimegoalLogAction,
   LocaltaskTopicAddAction,
   LocaltaskTopicRemoveAction,
@@ -328,6 +329,8 @@ export interface ApiClient {
   reorder(input: z.input<InstanceType<typeof LocaltaskReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskReorderAction>['run']>>>;
 /** 恢复一条被删除（软删除）的任务（撤销删除） */
   restore(input: z.input<InstanceType<typeof LocaltaskTaskRestoreAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTaskRestoreAction>['run']>>>;
+/** 看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领），不含正文 */
+  tasks(input?: z.input<InstanceType<typeof LocaltaskTasksAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTasksAction>['run']>>>;
 /** 查看任务级时间目标的每轮 check 记录（时间、已用/剩余、是否到点、当轮总结） */
   timegoalLog(input: z.input<InstanceType<typeof LocaltaskTimegoalLogAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTimegoalLogAction>['run']>>>;
 /** 登记一个工作目录：空目录也常驻（prune 不清）；--summary 顺带写「现状摘要」（面板顶栏摘要的编辑入口） */
@@ -1058,6 +1061,18 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/localtasks/tasks/restore`;
       const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskTaskRestoreAction>['run']>>;
+    },
+    // action: localtask.tasks
+    async tasks(input?: z.input<InstanceType<typeof LocaltaskTasksAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskTasksAction>['_input']>);
+      let path = `/api/localtasks/tasks`;
+      const q = new URLSearchParams();
+      if (inp["key"] !== undefined) q.set("key", String(inp["key"]));
+      if (inp["cwd"] !== undefined) q.set("cwd", String(inp["cwd"]));
+      if (inp["status"] !== undefined) q.set("status", String(inp["status"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskTasksAction>['run']>>;
     },
     // action: localtask.timegoalLog
     async timegoalLog(input: z.input<InstanceType<typeof LocaltaskTimegoalLogAction>['_input']>) {

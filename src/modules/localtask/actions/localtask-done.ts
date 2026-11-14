@@ -5,6 +5,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
+import { doneView } from '../contract-views.js';
 const service: any = serviceNs;
 
 /** localtask.done 的入参契约（CLI 与 HTTP 共用同一份）。 */
@@ -22,6 +23,7 @@ export class LocaltaskDoneAction extends ActionBase<typeof input> {
     http: ['POST', '/api/localtasks/done'],
     summary: '标记任务完成：--summary 完成总结必填；带时间目标的任务未到点会被拒绝（blocked），到点自动记录最终 check',
     input,
+    output: doneView,
     render: (d: any) => {
       if (d.status === 'blocked') {
         // #90：未到点的拦截文案来自可配置的 doneguard 模板（d.guard）；模板空/渲染失败

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
 import { renderTask as _renderTask } from '../action-render.js';
+import { taskView } from '../contract-views.js';
 const service: any = serviceNs;
 const renderTask: any = _renderTask;
 
@@ -23,6 +24,7 @@ export class LocaltaskGetAction extends ActionBase<typeof input> {
     http: ['GET', '/api/localtasks/item'],
     summary: '查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置）',
     input,
+    output: taskView,
     render: renderTask,
   })
   override async run(ctx: ActionInput<this['_input']>) {

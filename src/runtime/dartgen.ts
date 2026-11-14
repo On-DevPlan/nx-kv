@@ -53,6 +53,25 @@ function collect(output: TypeNode, models: Map<string, TypeNode & { k: 'model' }
   }
 }
 
+/**
+ * 入参去重：同一个 Dart 形参只能出现一次。
+ *
+ * 为什么会重名：action 的 input 允许「两种写法指向同一个字段」的别名
+ * （`--goal-prompt` 与驼峰 `goalPrompt`，CLI 与 HTTP body 各用各的）。
+ * 生成器按 camelCase 取形参名，两个别名就撞成同一个 `goalPrompt` ——
+ * Dart 侧直接编译不过（duplicate parameter name）。这里按「优先没有连字符的写法」
+ * 只留一个：发出去的 body 键名仍然是 action 声明过的，语义不变。
+ */
+function dedupeInput(input: FieldDesc[]): FieldDesc[] {
+  const byName = new Map<string, FieldDesc>();
+  for (const f of input) {
+    const n = dartName(f.name);
+    const prev = byName.get(n);
+    if (!prev || (prev.name.includes('-') && !f.name.includes('-'))) byName.set(n, f);
+  }
+  return [...byName.values()];
+}
+
 /** Dart 类型名 */
 function dartType(t: TypeNode): string {
   switch (t.k) {
@@ -155,7 +174,9 @@ function paramOf(f: FieldDesc): string {
             : f.kind === 'enum'
               ? 'String'
               : 'String';
-  return `${f.required ? 'required ' : ''}${type}${f.required ? '' : '?'} ${dartName(f.name)}`;
+  // 位置参数上写 `required` 是语法错误（Dart 只允许命名参数带它）：
+  // 必填与否已经由「非空类型 + 没有默认值」表达，这里不能再加修饰符。
+  return `${type}${f.required ? '' : '?'} ${dartName(f.name)}`;
 }
 
 function methodNameOf(id: string, used: Set<string>): string {
@@ -203,10 +224,11 @@ export function emitDartPackage(snapshot: ContractSnapshot): Record<string, stri
     const root = rootModels.get(a.id)!;
     if (root.k !== 'model') throw new Error(`action ${a.id} 的出参不是模型`);
     const [method, path] = (a.http ?? 'GET ').split(' ') as [string, string];
-    const params = a.input.map(paramOf).join(', ');
+    const fields = dedupeInput(a.input);
+    const params = fields.map(paramOf).join(', ');
     const isGet = method === 'GET' || method === 'HEAD';
-    const body = isGet ? 'null' : bodyMap(a.input);
-    const query = isGet ? queryMap(a.input) : 'const <String, String>{}';
+    const body = isGet ? 'null' : bodyMap(fields);
+    const query = isGet ? queryMap(fields) : 'const <String, String>{}';
     methodLines.push(
       [
         ...docComment(a.summary, '  '),
@@ -315,14 +337,17 @@ function queryMap(input: FieldDesc[]): string {
   if (!input.length) return 'const <String, String>{}';
   const lines = input.map((f) => {
     const v = dartName(f.name);
+    // 必填字段没有「没给」这种状态：它的 Dart 类型就是非空，写 `if (x != null)` 只会
+    // 让 analyzer 报 unnecessary_null_comparison（其余 action 里全是要判空的，所以分开写）
+    const guard = f.required ? '' : `if (${v} != null) `;
     if (f.kind === 'array') {
-      return `    if (${v} != null) '${f.name}': (${v} as List).join(','),`;
+      return `    ${guard}'${f.name}': (${v} as List).join(','),`;
     }
     if (f.kind === 'kv' || f.kind === 'raw') {
-      return `    if (${v} != null) '${f.name}': jsonEncode(${v}),`;
+      return `    ${guard}'${f.name}': jsonEncode(${v}),`;
     }
     // 生成 Dart 的 '${x}' 插值：这里用拼接写，避免在模板串里嵌套插值把自己绕晕
-    return '    if (' + v + " != null) '" + f.name + "': '${" + v + "}',";
+    return '    ' + guard + "'" + f.name + "': '${" + v + "}',";
   });
   return ['<String, String>{', ...lines, '  }'].join('\n');
 }

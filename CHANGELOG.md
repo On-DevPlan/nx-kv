@@ -2,6 +2,32 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.54.0] - 2026-11-14 契约铺到写操作：领 / 改 / 完成 / 重开都能被端侧强类型调用
+
+### Added
+
+- **`localtask` 六条 action 出参进契约**：`get`（任务详情 + 附件清单）、`claim`、`add`、
+  `update`、`done`、`reopen`。端侧不再为「领一条任务」手写 HTTP。
+- **一份共享出参视图 `src/modules/localtask/contract-views.ts`**：任务/附件的字段只写一次，
+  六条 action 引用同一份 —— 写成六份的话，字段迟早分叉成「同一个东西两个名字」。
+- **写操作只回编号**：`claim` / `add` / `update` 的视图只给 `id`（`claim` 给 `taskId`），
+  正文与附件一律留给 `localtask.get` —— 领一条不必顺带解码 200KB 正文。
+  实现方式是在返回值上**附加**一个顶层字段，CLI 的 `--json` 与 HTTP 的原有键一个不少：
+  契约只描述视图，不裁剪运行时响应。
+- **新增 `localtask.tasks`（`GET /api/localtasks/tasks`）**：看**一个主题**的任务清单，
+  只回列表需要的字段（标题/状态/轮次/可领），正文留给 `localtask.get`。
+  为什么不给 `localtask.list` 加 `tasks`：那会让首页每次刷新都吞几 MB（某主题 194 条），
+  而首页真正要的只是「几个主题、各几条待领」。
+
+### Fixed
+
+- **生成器两处真实缺陷**（铺到写操作才暴露）：① 同一字段的驼峰/连字符别名
+  （`goalPrompt` / `goal-prompt`）会撞成同一个 Dart 形参名 → 编译不过，现在按「留驼峰」去重；
+  ② 位置参数上不该写 `required`（Dart 只允许命名参数带它），必填字段的 query 也不再生成
+  `if (x != null)`。
+- **T2 保真测试会先造任务**：写操作的 action 在空库里没有返回可校验，现在按 action 打各自的
+  夹具（待领 / 已完成 / 可改 / 可完成），并断言 `claim` 真的把 `taskId` 提到了顶层。
+
 ## [0.53.4] - 2026-11-14 修掉 reopen 的「名实不符」
 
 ### Fixed

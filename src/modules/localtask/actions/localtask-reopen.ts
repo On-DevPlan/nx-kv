@@ -4,6 +4,7 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
+import { reopenView } from '../contract-views.js';
 
 /** localtask.reopen 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
@@ -25,6 +26,7 @@ export class LocaltaskReopenAction extends ActionBase<typeof input> {
     http: ['POST', '/api/localtasks/reopen'],
     summary: '按反馈派生下一轮（验收反馈 / 重做 / 评论）：新任务新编号、pending 立即可领；旧任务 done 保持 done（claimed/pending → cancelled），链记在 task_links',
     input,
+    output: reopenView,
     render: (d: any) =>
       `已派生 #${d.id} @ ${d.name}（← #${d.parentId}${d.before?.completedAt ? ' 已完成' : ''}）` +
       (d.moved && d.movedFrom ? `；已改归属项目，原 ${d.movedFrom.name} #${d.movedFrom.id}` : ''),

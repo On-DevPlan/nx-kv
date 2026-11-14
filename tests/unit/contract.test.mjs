@@ -59,8 +59,36 @@ test('T1 · 快照只收声明了 output 的 action（不对外就不在契约�
 test('T2 · 每条带 output 的 action，真实返回都能被自己的 schema 解析', async () => {
   // 依赖注入的 action 在临时 NX_KV_HOME 下也能跑：list 会给出空 topics + 真实 settings，
   // bootstrap 给出 100+ 条命令，contract 给出完整快照 —— 三种形状（数组/嵌套/动态）都覆盖到。
+  //
+  // 写操作的 action（get / update / done / reopen）在空库里没有返回可校验，
+  // 所以先在临时库里造任务；每条 action 都打在自己的那条上，互不干扰顺序。
+  const svc = await import(pathToFileURL(join(ROOT, 'src', 'modules', 'localtask', 'service.ts')).href);
+  const here = process.cwd();
+  const mk = async (title) => (await svc.addTask({ cwd: here, text: `# ${title}\n\n正文` })).task;
+  const 甲 = await mk('T2 甲');            // claim 会把它领走
+  const 乙 = await mk('T2 乙');            // 先标完成，reopen 才有东西可重开
+  await svc.completeTask({ id: 乙.id, cwd: here, summary: 'T2 乙已做完' });
+  const 丙 = await mk('T2 丙');            // get / update
+  const 丁 = await mk('T2 丁');            // done
+  const FIXTURES = {
+    'localtask.get': { id: 丙.id, cwd: here },
+    'localtask.update': { id: 丙.id, cwd: here, text: '# T2 丙改\n\n改过的正文' },
+    'localtask.done': { id: 丁.id, cwd: here, summary: 'T2 丁已做完' },
+    'localtask.reopen': { id: 乙.id, cwd: here, kind: 'comment', quote: '正文', feedback: '再改一下' },
+    'localtask.add': { cwd: here, text: '# T2 戊\n\n新增的正文' },
+    'localtask.tasks': { cwd: here },
+  };
+
+  // claim 先单独跑一次：它必须真的领到「甲」，且把编号提到顶层
+  // （出参契约只回 Number 不回整条任务 —— 这一行就是那条约定的回归测试）
+  const claimAct = zodActions.find((a) => a.id === 'localtask.claim');
+  const claimed = await claimAct.run({ cwd: here }, { transport: 'http' });
+  assert.equal(claimed.status, 'ok', '队列里明明有「甲」，claim 必须领到');
+  assert.equal(claimed.taskId, 甲.id, 'claim 的 taskId 必须是被领走那条的编号');
+  assert.ok(claimAct.output.safeParse(claimed).success, 'claim 的真实返回必须能被 claimView 解析');
+
   for (const a of zodActions.filter((x) => x.output)) {
-    const result = await a.run({}, { transport: 'http' });
+    const result = await a.run(FIXTURES[a.id] ?? {}, { transport: 'http' });
     const parsed = a.output.safeParse(result);
     assert.ok(
       parsed.success,

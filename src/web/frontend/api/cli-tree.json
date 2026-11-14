@@ -1509,6 +1509,21 @@
           ]
         },
         {
+          "name": "tasks",
+          "path": [
+            "localtask",
+            "tasks"
+          ],
+          "action": {
+            "id": "localtask.tasks",
+            "module": "localtask",
+            "summary": "看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领），不含正文",
+            "usage": "localtask tasks",
+            "http": "GET /api/localtasks/tasks"
+          },
+          "children": []
+        },
+        {
           "name": "timegoal-log",
           "path": [
             "localtask",

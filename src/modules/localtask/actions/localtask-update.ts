@@ -4,6 +4,7 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
+import { updateView } from '../contract-views.js';
 
 /** localtask.update 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
@@ -30,6 +31,7 @@ export class LocaltaskUpdateAction extends ActionBase<typeof input> {
     http: ['PATCH', '/api/localtasks/item'],
     summary: '编辑任务内容（按 --id，定位到 --cwd 主题或 --key）；可同时改时间目标声明（--duration/--goal-prompt/--clear-goal，仅未领取时可改——领取即计时，起表后声明是既成事实）',
     input,
+    output: updateView,
     render: (d: any) =>
       (d.moved
         ? `已改归属项目：迁到主题「${d.name}」#${d.task.id}` +
@@ -63,7 +65,7 @@ export class LocaltaskUpdateAction extends ActionBase<typeof input> {
         // 改归属即搬家（任务 #43）：正文 effective project 变了 → 任务迁到新项目的队列。
         // 编排在 tasktool/update.js，与派任务（tasktool/add.js）同一套落点判定。
         const { updateTask: editTask } = await (import('../../tasktool/update.js') as any);
-        return editTask({
+        const r: any = await editTask({
           id: ctx.id,
           text: ctx.text,
           cwd: ctx.cwd,
@@ -73,6 +75,9 @@ export class LocaltaskUpdateAction extends ActionBase<typeof input> {
           clearBlockBy,
           blocksFollowing: ctx.gate,
         });
+        // 出参契约（updateView）只回编号：把 task.id 提到顶层（纯附加，原有键不变）
+        if (r && r.task && r.task.id != null) r.id = r.task.id;
+        return r;
     
   }
 }

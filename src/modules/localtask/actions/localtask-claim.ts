@@ -5,6 +5,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput, type ActionRunMeta } from '../../../runtime/action-base.js';
 import { renderWait as _renderWait } from '../action-render.js';
+import { claimView } from '../contract-views.js';
 const renderWait: any = _renderWait;
 
 /** localtask.claim 的入参契约（CLI 与 HTTP 共用同一份）。 */
@@ -22,6 +23,7 @@ export class LocaltaskClaimAction extends ActionBase<typeof input> {
     http: ['POST', '/api/localtasks/claim'],
     summary: '领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填',
     input,
+    output: claimView,
     render: renderWait,
   })
   override async run(ctx: ActionInput<this['_input']>, meta: ActionRunMeta = {}) {
@@ -30,13 +32,17 @@ export class LocaltaskClaimAction extends ActionBase<typeof input> {
         const { parseParams } = await (import('../../tasktool/params.js') as any);
         // HTTP：不阻塞、不开浏览器（面板/脚本调用不该挂住请求，也不该弹窗）
         const viaHttp: any = !!(meta && meta.transport === 'http');
-        return getTask({
+        const r: any = await getTask({
           cwd: ctx.cwd,
           timeoutSec: viaHttp ? undefined : ctx.timeout,
           open: viaHttp ? false : !ctx['no-open'],
           instant: viaHttp ? true : undefined,
           params: parseParams(ctx.param),
         });
+        // 出参契约（contract-views.ts 的 claimView）只回编号：把 task.id 提到顶层。
+        // 纯附加字段 —— CLI 的 --json 与 HTTP 响应原有键一个不少，只是多了 taskId。
+        if (r && r.task && r.task.id != null) r.taskId = r.task.id;
+        return r;
     
   }
 }

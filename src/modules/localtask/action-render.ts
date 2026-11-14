@@ -55,8 +55,8 @@ export function renderTaskAttachments(d: RenderInput): string {
     for (const a of rows) {
       const docMark = a.role === 'doc' ? '  〔进原文〕' : '';
       const noteMark = a.note ? `  # ${a.note}` : '';
-      lines.push(`  ${a.kind === 'image' ? '图片' : a.kind === 'url' ? '链接' : a.kind === 'task' ? '任务' : a.kind === 'ref' ? '文档' : a.kind === 'mdfile' ? 'md' : '附件'}  ${a.name}  [${a.id}]${docMark}${noteMark}`);
-      lines.push(`      ${a.localPath || a.url || (a.kind === 'mdfile' ? a.absPath : '') || a.target || '（本机附件仓缺失）'}${a.kind === 'mdfile' && a.missing ? '  （源文件已不在）' : ''}`);
+      lines.push(`  ${a.kind === 'image' ? '图片' : a.kind === 'url' ? '链接' : a.kind === 'task' ? '任务' : a.kind === 'ref' ? '文档' : a.kind === 'mdfile' ? 'md' : a.kind === 'folder' ? '文件夹' : '附件'}  ${a.name}  [${a.id}]${docMark}${noteMark}`);
+      lines.push(`      ${a.localPath || a.url || (a.kind === 'mdfile' || a.kind === 'folder' ? a.absPath : '') || a.target || '（本机附件仓缺失）'}${a.kind === 'mdfile' && a.missing ? '  （源文件已不在）' : ''}`);
     }
   }
   return lines.join('\n');

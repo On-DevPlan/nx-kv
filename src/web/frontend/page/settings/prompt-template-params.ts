@@ -73,8 +73,8 @@ export const BLOCK_PARAMS: BlockParamTable = {
     {
       label: '附件条目（通用，attach.list 内循环）',
       items: [
-        ['kind', '类型：file / url / task / ref'],
-        ['kindLabel', '类型显示名：附件/图片/链接/任务/文档'],
+        ['kind', '类型：file / url / task / ref / mdfile / folder'],
+        ['kindLabel', '类型显示名：附件/图片/链接/任务/文档/md/文件夹'],
         ['name', '展示名（任务型为实时标题，不是正文）'],
         ['size', '字节数'],
         ['sizeText', '可读大小（1.2 MB）'],
@@ -98,6 +98,16 @@ export const BLOCK_PARAMS: BlockParamTable = {
         ['file.exists', '本机盘上是否已有副本'],
         ['localPath', 'file.localPath 的平铺别名（旧模板兼容）'],
         ['fileId', 'file.fileId 的平铺别名'],
+      ],
+    },
+    {
+      label: '文件夹型（kind=folder）· folder 子对象（#127）',
+      items: [
+        ['folder.absPath', '本地文件夹绝对路径（目录内容不入库）'],
+        ['folder.exists', '目录当前是否可访问'],
+        ['folder.missing', '目录是否已不在本机'],
+        ['folder.readCmd', '查看该附件登记信息的命令'],
+        ['usage', '取用说明：先列目录看结构，再用 Read 读需要的文件'],
       ],
     },
     {

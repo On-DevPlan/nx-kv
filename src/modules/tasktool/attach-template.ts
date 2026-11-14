@@ -21,13 +21,14 @@ import { hostOfUrl, kindLabelOf, ORIGIN_LABEL, sizeTextOf, STATUS_LABEL } from '
  *   ref  → { refId, title, desc, readCmd, content, truncated }
  *     content 只在「文档资料」绑定（role='doc'，交付读全文）且真的读到时非空。
  *   mdfile → { absPath, anchorDir, content, truncated, stale, missing, readCmd }
+ *   folder → { absPath, exists, missing, readCmd }（#127：目录内容不入库，只给路径）
  *     content 是读时从磁盘现取的正文（截断 2 万字）；missing 时为空、stale 表示指纹漂移。
  * 通用 note = 边上的说明（desc，#162）：attach --note 的落点，清单行透出。
  * 旧模板兼容：平铺别名 localPath / fileId / urlText / href / taskId / title /
  * seq / showCmd / refId / target / area / areaLabel。
  */
 function ctxItemOf(a: any): any {
-  const kind = ['url', 'task', 'ref', 'mdfile'].includes(a.kind) ? a.kind : 'file';
+  const kind = ['url', 'task', 'ref', 'mdfile', 'folder'].includes(a.kind) ? a.kind : 'file';
   const isImage = kind === 'file' && (a.isImage === undefined ? isImageName(a.name, a.mime) : !!a.isImage);
   const role = String(a.role || '');
   const origin =
@@ -128,6 +129,29 @@ function ctxItemOf(a: any): any {
       usage: String(a.usage || `这是任务引用而不是副本（地址 ${task.address}）：用 ${showCmd} 读取最新正文`),
       cmd: String(a.cmd !== undefined ? a.cmd : showCmd),
       locator: String(a.locator || `#${seq} ${title}${task.topicName || topicKey ? ` · ${task.topicName || topicKey}` : ''}`),
+      needsSync: false,
+    };
+  }
+
+  if (kind === 'folder') {
+    const absPath = String(a.absPath || a.localPath || '');
+    const exists = a.exists === undefined ? !!absPath : !!a.exists;
+    const missing = a.missing === undefined ? !exists : !!a.missing;
+    const readCmd = String(a.readCmd || `nx-kv file content ${item.id}`);
+    const folder = { absPath, exists, missing, readCmd };
+    const usage = String(a.usage || (missing
+      ? `文件夹当前不可访问（${absPath || '路径为空'}）：请确认目录是否还在本机`
+      : `这是本地文件夹的路径指针：先列目录 ${absPath} 看结构，再用 Read 读需要的文件`));
+    return {
+      ...item,
+      absPath,
+      path: absPath,
+      exists,
+      missing,
+      folder,
+      usage,
+      cmd: String(a.cmd !== undefined ? a.cmd : readCmd),
+      locator: String(a.locator || absPath || item.name),
       needsSync: false,
     };
   }

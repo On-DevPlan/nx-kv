@@ -9,6 +9,7 @@ import {
   urlAttachmentId,
 } from './ids.js';
 import type { AttachmentRef } from './ids.js';
+import { ensureFolderAttachment } from './folder.js';
 
 export interface UpsertFileAttachmentInput {
   id?: string;
@@ -282,5 +283,6 @@ export function ensureAttachment(conn: any, ref: AttachmentRef | null | undefine
   }
   if (ref.kind === 'ref') return ensureRefAttachment(conn, { refId: ref.targetRefId, name: ref.name, atMs });
   if (ref.kind === 'mdfile') return ensureMdfileAttachment(conn, { id: ref.targetMdfileId, name: ref.name, atMs });
+  if (ref.kind === 'folder') return ensureFolderAttachment(conn, { id: ref.targetFolderId, name: ref.name, atMs });
   return null;
 }

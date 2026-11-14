@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { isImageName } from '../../core/filekind.js';
 import { stripFrontmatter } from '../../shared/frontmatter.js';
 
-const KIND_LABEL: Record<string, string> = { file: '附件', url: '链接', task: '任务', ref: '文档', mdfile: 'md' };
+const KIND_LABEL: Record<string, string> = { file: '附件', url: '链接', task: '任务', ref: '文档', mdfile: 'md', folder: '文件夹' };
 const IMAGE_LABEL = '图片';
 export const ORIGIN_LABEL = { inline: '正文内嵌', area: '附件区' };
 export const STATUS_LABEL: Record<string, string> = { pending: '待领取', claimed: '进行中', done: '已完成', cancelled: '已作废' };
@@ -33,7 +33,7 @@ function metaOf(row: any): Record<string, any> {
 /** 资源类型归一：image / 空 / 其它未知值 → file；url/task/ref/mdfile 原样。 */
 function baseKind(row: any): string {
   const k = String((row && row.kind) || '');
-  return k === 'url' || k === 'task' || k === 'ref' || k === 'mdfile' ? k : 'file';
+  return k === 'url' || k === 'task' || k === 'ref' || k === 'mdfile' || k === 'folder' ? k : 'file';
 }
 
 export function kindLabelOf(kind: unknown, isImage: unknown): string {
@@ -205,7 +205,7 @@ export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
     areaLabel: ORIGIN_LABEL[origin],
     storage: kind === 'file' ? String(row.storage || '')
       : kind === 'url' ? 'url'
-        : kind === 'mdfile' ? 'external' : 'internal',
+        : kind === 'mdfile' || kind === 'folder' ? 'external' : 'internal',
     synced: kind !== 'file',
     localPath: '',
     targetKind: String(row.targetKind || ''),
@@ -278,6 +278,32 @@ export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
       usage: resolved
         ? `这是任务引用而不是副本（地址 ${address}）：用 ${showCmd} 读取最新正文；当前状态 ${statusLabel}${info && info.deleted ? '（已软删）' : ''}${addressDrift ? `；任务已移动到 ${address}，原地址 ${storedAddress}` : ''}。任务正文被修改后，读到的是最新内容。`
         : `这是任务引用（地址 ${address}），但目标任务已被清理：地址仍可核验，正文不可读。`,
+    };
+  }
+
+  if (kind === 'folder') {
+    // 本地文件夹指针：库里只有 abs_path，目录内容不入库；交付只给路径让 agent 自己列目录。
+    const absPath = String(row.absPath || row.abs_path || meta.absPath || '');
+    const exists = !!absPath && existsSync(absPath);
+    const missing = !exists || (row.missingAt !== null && row.missingAt !== undefined);
+    const title = String(row.name || (absPath ? absPath.split(/[\\/]/).pop() : '') || base.id);
+    const readCmd = `nx-kv file content ${base.id}`;
+    const locator = `${title}${absPath ? `（${absPath}）` : ''}`;
+    return {
+      ...base,
+      absPath,
+      exists,
+      missing,
+      fileId: base.id,
+      title,
+      readCmd,
+      target: absPath || locator,
+      needsSync: false,
+      cmd: readCmd,
+      locator,
+      usage: missing
+        ? `文件夹当前不可访问（${absPath || '路径为空'}）：请确认目录是否还在本机`
+        : `这是本地文件夹的路径指针（目录内容不在库里）：先列目录 ${absPath} 看结构，再用 Read 读需要的文件`,
     };
   }
 

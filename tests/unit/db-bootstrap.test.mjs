@@ -44,12 +44,12 @@ test(`全新目录：建 19 张表 / user_version=${CURRENT_SCHEMA_VERSION} / me
     assert.match(meta.created_by, /^nx-kv\//);
     assert.equal(meta.migrated_from_json_at, undefined, '全新库不该有"从 JSON 迁来"的标志');
 
-    // 索引与触发器数量（26 索引 / 1 触发器；v5 新增 ux_attachments_mdfile_path，
+    // 索引与触发器数量（27 索引 / 1 触发器；v5 新增 ux_attachments_mdfile_path，v10 新增 ux_attachments_folder_path，
     // v6 新增 ux_refs_rel）
     const idx = s.db.get(
       "SELECT count(*) AS c FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'"
     );
-    assert.equal(idx.c, 26);
+    assert.equal(idx.c, 27);
     const trg = s.db.get("SELECT count(*) AS c FROM sqlite_master WHERE type = 'trigger'");
     assert.equal(trg.c, 1);
   } finally {

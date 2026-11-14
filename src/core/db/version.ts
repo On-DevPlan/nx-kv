@@ -32,7 +32,9 @@
  */
 // v9（2026-11-14）：tasks.status 新增 `plan`（不进队列的临时草稿态）；
 //   SQLite 不能 ALTER CHECK，按 v5 的 12-step 模式重建 tasks 并快照/回填所有关系表。
-export const CURRENT_SCHEMA_VERSION = 9;
+// v10（2026-11-14）：attachments.kind 新增 `folder`（本地文件夹路径指针，
+//   不复制目录内容）；同样按 v5 的 12-step 模式重建以扩 CHECK。
+export const CURRENT_SCHEMA_VERSION = 10;
 
 /**
  * 运行时最低 Node 版本。

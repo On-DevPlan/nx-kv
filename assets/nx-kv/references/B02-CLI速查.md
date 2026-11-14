@@ -23,7 +23,7 @@
 | `localtask remove` | `--id N` `--purge` | 软删除；`--purge` 连附件一起删 |
 | `localtask remove-many` | `--ids 1,2,3` `--purge` | 批量删 |
 | `localtask task restore` | `--id N` | 恢复软删的任务 |
-| `localtask attach` | `--id N` + `--path F` \| `--fileId X` \| `--url U` \| `--task N` \| `--ref R` \| `--mdfile F`；`--note` `--inline` `--noEmbed` | 加附件/引用。`--noEmbed` 只登记不改正文 |
+| `localtask attach` | `--id N` + `--path F` \| `--fileId X` \| `--url U` \| `--task N` \| `--ref R` \| `--mdfile F` \| `--folder D`；`--note` `--inline` `--noEmbed` | 加附件/引用。`--folder` 登记目录路径指针（kind=folder，不复制内容）；`--noEmbed` 只登记不改正文 |
 | `localtask detach` | `--id N` `--attachment <id>` `--purge` | 摘掉一条附件（`--purge` 连文件） |
 | `localtask attachments` | `--id N` | 附件清单（含本地绝对路径） |
 | `localtask events` | `--timeout` `--limit` | 事件流（长轮询，面板用） |

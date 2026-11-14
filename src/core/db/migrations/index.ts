@@ -59,6 +59,7 @@ export const DIRECT_EDGES: MigrationStep[] = [
   { from: 6, to: 7, file: 'v7.sql', title: 'refs 描述字段（desc）' },
   { from: 7, to: 8, file: 'v8.sql', title: '去 rel：ref 只按 id / locator 寻址（bindings 补 tag）', apply: migrateRefsRel },
   { from: 8, to: 9, file: 'v9.sql', title: '任务新增 plan 状态（不进队列的临时草稿；重建 tasks 扩 CHECK）' },
+  { from: 9, to: 10, file: 'v10.sql', title: '附件新增 folder 类型（本地文件夹路径指针；重建 attachments 扩 CHECK）' },
 ];
 
 // 人读版本说明（docs/decisions 是决策的唯一权威位置，里面对应一份 date 化的 .md）
@@ -72,6 +73,7 @@ export const VERSION_NOTES = {
   7: 'docs/decisions/versions/2026-11-12-v7.md',
   8: 'docs/decisions/versions/2026-11-13-v8.md',
   9: 'docs/decisions/versions/2026-11-14-v9.md',
+  10: 'docs/decisions/versions/2026-11-14-v10.md',
 };
 
 const keyOf = (from: number, to: number): string => `${from}->${to}`;

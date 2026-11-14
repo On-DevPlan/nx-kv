@@ -13,6 +13,7 @@ import {
   linkAttachment,
   listRefAttachments,
   registerMdfile,
+  registerFolder,
   unlinkAttachment,
   updateAttachmentNote,
   upsertFileAttachment,
@@ -84,6 +85,8 @@ export interface AttachToDocCtx {
   doc?: unknown;
   /** 本地 md 文件（登记为 kind=mdfile，不复制正文） */
   mdfile?: unknown;
+  /** 本地文件夹（登记为 kind=folder，只存路径） */
+  folder?: unknown;
   noEmbed?: unknown;
   note?: unknown;
   [key: string]: unknown;
@@ -185,10 +188,20 @@ export async function attachToDoc(ctx: AttachToDocCtx): Promise<AttachToDocResul
     displayName = displayName || rec.name;
     kind = 'mdfile';
     markdown = `[${displayName}](nxkv://mdfile/${rec.id})`;
+  } else if (ctx.folder) {
+    // 本地文件夹：只登记路径指针（kind=folder, storage=external），目录内容不入库
+    const rec = tx(
+      (conn) => registerFolder(conn, { path: ctx.folder, name: displayName }),
+      { db, mode: 'IMMEDIATE' }
+    );
+    attachmentId = rec.id;
+    displayName = displayName || rec.name;
+    kind = 'folder';
+    markdown = `[${displayName}](nxkv://folder/${rec.id})`;
   }
 
   if (!attachmentId) {
-    throw badInput('需要 --path / --fileId / --url / --task / --doc / --mdfile 之一');
+    throw badInput('需要 --path / --fileId / --url / --task / --doc / --mdfile / --folder 之一');
   }
 
   const noEmbed = !!(ctx.noEmbed ?? ctx['no-embed']);

@@ -2,6 +2,31 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.54.2] - 2026-11-14 附件支持本地文件夹（#127）
+
+### Added
+
+- **第六种附件类型 `folder`**：把本机文件夹路径当作附件登记。库里只存规范化绝对路径 +
+  展示名（`storage=external`、`size=0`、`hash=''`），目录内容**不入库、不复制、不打包**；
+  交付给 agent 的是路径 + 「先列目录看结构，再用 Read 读需要的文件」的取用说明。
+- **CLI / HTTP**：`localtask attach --folder <目录>`、`docs attach --folder <目录>`；
+  正文里写 `nxkv://folder/<attId>`，同一路径重复登记幂等（大小写不敏感唯一索引）。
+- **提示词模板变量**（用户明确要求）：`attach.list[]` 新增 `folder` 子对象
+  `{absPath, exists, missing, readCmd}`，内置附件模板清单行加 `{{#if folder}}` 分支，
+  设置面板的模板变量表新增「文件夹型」分组；`kindLabel` 为「文件夹」。
+
+### Changed
+
+- **schema v10**：SQLite 不能 ALTER CHECK，按 v5 的 12-step 模式重建 `attachments`
+  （`task_attach` / `ref_attach` 快照 → DROP 前清空 → 回填），5 个既有索引原样重建，
+  新增 `ux_attachments_folder_path`。真实库已自动 9→10 升级（106 条附件全部保留）。
+- 附件资源视图 / 模板 ctx / CLI render / skill A05·B02 同步支持 folder。
+
+### 验证
+
+- 单测覆盖 v9→v10 数据不丢、CHECK 生效、目录登记幂等、正文 `nxkv://folder/…` 可解析、
+  模板 ctx 有 `folder.*` 且把绝对路径交给 agent；实机 `localtask attach --folder` 通过。
+
 ## [0.54.1] - 2026-11-14 任务新增 plan 临时草稿态（#126）
 
 ### Added

@@ -40,6 +40,12 @@ export {
 } from './attachmentdb/mdfile.js';
 export type { MdfileRecord, MdfileRow, ReadMdfileResult } from './attachmentdb/mdfile.js';
 export {
+  ensureFolderAttachment,
+  folderAttachmentId,
+  normalizeFolderPath,
+  registerFolder,
+} from './attachmentdb/folder.js';
+export {
   linkAttachment,
   syncRefAttachments,
   syncTaskAttachments,

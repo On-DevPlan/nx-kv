@@ -25,6 +25,7 @@ const MD_LINK_RE = /!?\[([^\]]*)\]\(\s*([^)\s]+)\s*\)/g;
 const NXKV_TASK_RE = /^nxkv:\/\/task\/(\d+)$/i;
 const NXKV_REF_RE = /^nxkv:\/\/ref\/([A-Za-z0-9_-]+)$/i;
 const NXKV_MDFILE_RE = /^nxkv:\/\/mdfile\/([A-Za-z0-9_-]+)$/i;
+const NXKV_FOLDER_RE = /^nxkv:\/\/folder\/([A-Za-z0-9_-]+)$/i;
 
 const sha1 = (s: unknown): string => createHash('sha1').update(String(s), 'utf8').digest('hex');
 
@@ -33,13 +34,14 @@ export type AttachmentRole = 'inline' | 'reference' | 'doc' | 'attach';
 
 /** 正文里解析出的一条引用；position / role 在入清单时补齐。 */
 export interface AttachmentRef {
-  kind: 'file' | 'url' | 'task' | 'ref' | 'mdfile';
+  kind: 'file' | 'url' | 'task' | 'ref' | 'mdfile' | 'folder';
   id?: string;
   name: string;
   isImage?: boolean;
   targetTaskId?: number;
   targetRefId?: string;
   targetMdfileId?: string;
+  targetFolderId?: string;
   url?: string;
   position?: number;
   role?: AttachmentRole;
@@ -117,9 +119,11 @@ export function parseAttachmentRefs(text?: unknown): AttachmentRef[] {
       const task = target.match(NXKV_TASK_RE);
       const doc = target.match(NXKV_REF_RE);
       const md = target.match(NXKV_MDFILE_RE);
+      const dir = target.match(NXKV_FOLDER_RE);
       if (task) ref = { kind: 'task', targetTaskId: Number(task[1]), name: name || `任务 ${task[1]}` };
       else if (doc) ref = { kind: 'ref', targetRefId: doc[1], name: name || (doc[1] ?? '') };
       else if (md) ref = { kind: 'mdfile', targetMdfileId: md[1], name: name || (md[1] ?? '') };
+      else if (dir) ref = { kind: 'folder', targetFolderId: dir[1], name: name || (dir[1] ?? '') };
       else if (/^https?:\/\//i.test(target)) ref = { kind: 'url', url: target, name: name || target };
     }
     if (!ref) continue;
@@ -127,6 +131,7 @@ export function parseAttachmentRefs(text?: unknown): AttachmentRef[] {
     const key = ref.id || (ref.kind === 'task' ? `task:${ref.targetTaskId}` : '')
       || (ref.kind === 'ref' ? `ref:${ref.targetRefId}` : '')
       || (ref.kind === 'mdfile' ? `mdfile:${ref.targetMdfileId}` : '')
+      || (ref.kind === 'folder' ? `folder:${ref.targetFolderId}` : '')
       || (ref.kind === 'url' ? `url:${(ref.url ?? '').toLowerCase()}` : '');
     if (seen.has(key)) continue;
     seen.add(key);

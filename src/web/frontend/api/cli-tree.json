@@ -840,7 +840,7 @@
           "action": {
             "id": "doc.attach",
             "module": "docs",
-            "summary": "给文档挂资源：--path / --fileId / --url / --task / --doc / --mdfile 之一；默认追加进正文，--no-embed 只挂附件区（不写正文）",
+            "summary": "给文档挂资源：--path / --fileId / --url / --task / --doc / --mdfile / --folder 之一；默认追加进正文，--no-embed 只挂附件区（不写正文）",
             "usage": "docs attach",
             "http": "POST /api/docs/attach"
           },
@@ -1161,7 +1161,7 @@
           "action": {
             "id": "localtask.attach",
             "module": "localtask",
-            "summary": "给任务挂附件：--path 存本机附件仓 / --fileId 引用已有附件 / --url / --task（同主题任务）/ --ref（文档）/ --mdfile（本地 md 指针）；默认嵌进正文，--no-embed 只挂到附件区（不写正文），--ref 加 --inline 文档进原文（交付带全文）",
+            "summary": "给任务挂附件：--path 存本机附件仓 / --fileId 引用已有附件 / --url / --task（同主题任务）/ --ref（文档）/ --mdfile（本地 md 指针）/ --folder（本地文件夹路径）；默认嵌进正文，--no-embed 只挂到附件区（不写正文），--ref 加 --inline 文档进原文（交付带全文）",
             "usage": "localtask attach",
             "http": "POST /api/localtasks/attach"
           },

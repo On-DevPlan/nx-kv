@@ -8,8 +8,10 @@
 //
 // 检查四件事：
 //   1. SKILL.md 的路由表 ↔ references/ 里的文件一一对应（不许有孤儿，也不许指向不存在的文件）；
-//      文件名必须是「<序列><两位序号>-<动作>.md」，序列 ∈ A 表结构 / B server / C 前端 / D 跨层，
-//      且 A/B/C 三层各至少一条——分类是需求，不是装饰
+//      文件名必须是「<序列><两位序号>-<动作>.md」，序列 ∈ R 需求原型 / P 原语，
+//      且 R、P 各至少一条——R 是任务的第一跳，P 是被引用的原语，分类是路由，不是装饰。
+//      （历史：曾按架构层 A 表结构 / B server / C 前端 / D 跨层拆分，但需求天然跨层，
+//      一张任务单要拼 3~4 条 SOP，命中率低——#203 之后改为按需求原型 R + 原语 P。）
 //   2. 每条 reference 必须含四段骨架：① 前置 / ② 动作 / ③ 自检 / ④ 失败分支
 //   3. 正文里出现的 src|tests|scripts|assets|docs|bin 路径必须存在；
 //      `node bin/kv.mjs <cmd>` 必须能在真实命令表里解析到
@@ -34,9 +36,9 @@ const skillPath = path.join(ROOT, 'SKILL.md');
 const skill = readFileSync(skillPath, 'utf8');
 
 // 1. 路由 ↔ 文件
-//    文件名固定「<序列><两位序号>-<动作>.md」：A 表结构 / B server / C 前端 / D 跨层。
-const NAME_RE = /^([ABCD])(\d{2})-([^/\\]+)\.md$/;
-const routed = [...skill.matchAll(/`([ABCD]\d{2}-[^`]+\.md)`/g)].map((m) => m[1]);
+//    文件名固定「<序列><两位序号>-<动作>.md」：R 需求原型 / P 原语。
+const NAME_RE = /^([RP])(\d{2})-([^/\\]+)\.md$/;
+const routed = [...skill.matchAll(/`([RP]\d{2}-[^`]+\.md)`/g)].map((m) => m[1]);
 for (const r of routed) {
   if (!refFiles.includes(r)) errors.push(`SKILL.md 路由指向不存在的文件：${r}`);
 }
@@ -45,10 +47,10 @@ for (const f of refFiles) {
   if (!NAME_RE.test(f)) errors.push(`references/${f} 命名不合序列约定（应为 <A|B|C|D><两位序号>-<动作>.md）`);
 }
 
-// 序列不能是装饰：A/B/C 三层各至少一条，否则「按层分类」名存实亡。
-for (const seq of ['A', 'B', 'C']) {
+// 序列不能是装饰：R（需求入口）与 P（原语）各至少一条。
+for (const seq of ['R', 'P']) {
   if (!refFiles.some((f) => f.startsWith(seq))) {
-    errors.push(`序列 ${seq} 一条 SOP 都没有（A 表结构 / B server / C 前端 必须各有覆盖）`);
+    errors.push(`序列 ${seq} 一条 SOP 都没有（R 需求原型 / P 原语 必须各有覆盖）`);
   }
 }
 

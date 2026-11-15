@@ -2,6 +2,40 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.57.0] - 2026-11-15 绑定描述完全归档到文档列表；面板去掉描述弹窗与「写描述」按钮（#134）
+
+### Changed
+
+- **绑定描述（组 ↔ 参考仓库 / 开发仓库 ↔ 参考仓库）= 参考仓库上的一篇文档**：
+  - 描述**完全归档**到右侧栏的「<参考仓库名> · 文档列表」，定位靠
+    `ref_bindings.tag = link-note:<关系 key>`——同一组 / 同一仓库重复写 = 改同一篇，
+    不新增；`--note ""` = 清除（删掉那篇文档）；
+  - `repo ref note` 的返回多出 `refId` / `docId`，CLI 会告诉你「文档在它的文档列表里」；
+  - 面板上**没有**「组级绑定描述」弹窗，也没有「写描述」按钮：组页参考仓库行与
+    参考仓库面板里的描述入口整块删除，写描述就在文档列表里写；
+  - 关系边上留一份**冗余副本**（导出/导入要带走描述，备份不能丢），真身是文档；
+    只读展示（面板 chip、交付上下文的 `group.refRepos[].note`）取自文档。
+- **前端清理**：删掉 `LinkNoteModal` 组件与两个入口、`page/repos/api.ts` 的 `refNote`
+  与 `refs/api.ts` 的 `setRefNote` 包装、失效的 `.rp-ref-note-chip` /
+  `.rp-link-chip-note-btn` 样式。
+- **模块拆分**：`repos/ref.ts`（绑定描述的校验 + 落库）独立到 `repos/link-note.ts`
+  （docs 域的落点实现独立到 `docs/link-note.ts`）；`repos/ref.ts` 649 行，
+  仍在行数门禁之下。
+
+### Added
+
+- 单测 `tests/unit/link-note-doc.test.mjs`：写描述 → 参考仓库文档列表多一篇（tag 定位、
+  desc 写明是哪条关系）／重复写改同一篇／留空清除／组级与仓库级各一篇／未绑定显式报错。
+
+### 验证
+
+- 全量单测与 lint / typecheck / build / 冒烟全过；`check-skill-sop` 与
+  `skill-cli-accurate` 全绿（内置 skill 的 A03 / A04 / B02 已同步新口径）。
+- 实机（隔离库）：`repo ref note --id <参考仓库key> --board <组id> --note "…"` →
+  `docs bindings --host <参考仓库key>` 立刻能看到那篇（`hostKind=ref`、
+  `tag=link-note:board/<组>`、desc=「在组「<组名>」里参考什么」）；再写一次同一篇；
+  留空清除后条目消失。
+
 ## [0.56.2] - 2026-11-15 dev skill 按需求原型重排（R 需求 10 条 + P 原语 5 条）
 
 ### Changed

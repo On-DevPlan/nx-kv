@@ -85,11 +85,6 @@ export function bindRef(body: { id?: string; board?: string[]; repo?: string[]; 
   return api('/api/repos/bind', { method: 'POST', body });
 }
 
-/** 给参考仓库写备注（POST /api/repos/ref/note）。 */
-export function refNote(body: { id?: string; board?: string; note?: string }): Promise<any> {
-  return api('/api/repos/ref/note', { method: 'POST', body });
-}
-
 /** 同步参考仓库（POST /api/repos/ref/sync；{id} 单个或 {all:true} 全量）。 */
 export function refSync(body: { id?: string; all?: boolean }): Promise<any> {
   return api('/api/repos/ref/sync', { method: 'POST', body });

@@ -227,7 +227,7 @@ export interface ApiClient {
   check(): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefCheckAction>['run']>>>;
 /** 克隆远程仓库为参考仓库（落到 gitRepoRoot，登记 + 可选绑定当前目录的开发仓库） */
   refClone(input: z.input<InstanceType<typeof RepoRefCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefCloneAction>['run']>>>;
-/** 写/清绑定描述：这个参考在该组/该仓库里参考什么（--note 留空 = 清除） */
+/** 写/清绑定描述：这个参考在该组/该仓库里参考什么（#134：描述归档成该参考仓库的一篇文档，在「<参考仓库名> · 文档列表」里可见可编辑；--note 留空 = 清除） */
   refNote(input: z.input<InstanceType<typeof RepoRefNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefNoteAction>['run']>>>;
 /** 查参考仓库：--id 某仓库（缺省当前目录）看它直接绑的 + 所属组绑的，两类并列；--board 某组 看这个组绑定的（带绑定描述） */
   of(input?: z.input<InstanceType<typeof RepoRefOfAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefOfAction>['run']>>>;

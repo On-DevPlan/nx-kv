@@ -259,21 +259,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rp-link-chip-note-btn {
-  font-family: inherit;
-  font-size: 10.5px;
-  cursor: pointer;
-  border: 0;
-  border-left: 1px solid var(--line);
-  background: transparent;
-  color: var(--mid);
-  padding: 0 7px;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rp-link-chip-note-btn:hover { color: var(--ink); }
 .rp-bind-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 3px; }
 .rp-bind-label { flex: 0 0 44px; font-size: 10px; color: var(--mid); }
 .rp-bind-more,
@@ -371,21 +356,6 @@
   white-space: nowrap;
   font-size: 11px;
 }
-.rp-ref-note-chip {
-  font-family:inherit;
-  font-size: 11px;
-  cursor: pointer;
-  padding: 1px 8px;
-  border: 1px dashed var(--mid);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink-2);
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rp-ref-note-chip:hover { color: var(--ink); border-color: var(--ink); }
 .rp-ref-mounted-item .acts { margin-left: auto; display: flex; gap: 4px; flex: 0 0 auto; }
 
 .rp-layout-warn { color: #b3261e; font-size: 11.5px; }

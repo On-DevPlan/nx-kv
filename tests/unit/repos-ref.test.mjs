@@ -12,6 +12,8 @@ import { join } from 'node:path';
 import * as repos from '../../src/modules/repos/service.js';
 import * as boards from '../../src/modules/repos/boards.js';
 import * as ref from '../../src/modules/repos/ref.js';
+import * as link from '../../src/modules/repos/link-note.js';
+import * as docs from '../../src/modules/docs/service.js';
 import * as transfer from '../../src/modules/repos/transfer.js';
 import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
 
@@ -457,8 +459,14 @@ test('绑定两类互不覆盖：--repo 只写仓库级、--board 只写组级�
   assert.deepEqual((await boards.getBoard(b.id)).refs, [{ id: refKey, note: '组级描述' }]);
   assert.equal((await repos.getRepo(dev.id)).linked.length, 1, '组级绑定不动仓库级');
 
-  await ref.setLinkNote({ id: r.id, board: b.id, note: '改过的组级描述' });
-  await ref.setLinkNote({ id: r.id, repo: dev.id, note: '改过的仓库级描述' });
+  // #134：描述落成文档（不再写在关系边上）
+  const gNote = await link.setLinkNote({ id: r.id, board: b.id, note: '改过的组级描述' });
+  const dNote = await link.setLinkNote({ id: r.id, repo: dev.id, note: '改过的仓库级描述' });
+  assert.ok(gNote.refId && dNote.refId, '描述各自落成一篇文档');
+  assert.notEqual(gNote.refId, dNote.refId, '组级 / 仓库级各一篇');
+  assert.match(String((await docs.getDoc({ ref: gNote.refId })).body || ''), /改过的组级描述/);
+  assert.match(String((await docs.getDoc({ ref: dNote.refId })).body || ''), /改过的仓库级描述/);
+  // 关系边上留一份副本（导出/导入要带走它），真身是文档
   assert.equal((await boards.getBoard(b.id)).refs[0].note, '改过的组级描述');
   assert.equal((await repos.getRepo(dev.id)).linked[0].note, '改过的仓库级描述');
 
@@ -500,24 +508,29 @@ test('setLinkNote：组级/仓库级描述各写各的；未绑定显式报错�
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   await ref.bindTarget({ id: r.id, repo: dev.id, board: b1.id });
 
-  // 仓库级描述
-  await ref.setLinkNote({ id: r.id, repo: dev.id, note: '画布交互参考\n搜 registerExtension' });
-  assert.equal((await repos.getRepo(dev.id)).linked[0].note, '画布交互参考\n搜 registerExtension');
-  // 组级描述
-  await ref.setLinkNote({ id: r.id, board: b1.id, note: '组级契约' });
-  assert.equal((await boards.getBoard(b1.id)).refs[0].note, '组级契约');
+  // 仓库级描述 → 参考仓库上的一篇文档
+  const repoNote = await link.setLinkNote({ id: r.id, repo: dev.id, note: '画布交互参考\n搜 registerExtension' });
+  const repoDoc = await docs.getDoc({ ref: repoNote.refId });
+  assert.match(String(repoDoc.body || ''), /画布交互参考/);
+  assert.equal(repoDoc.desc, '在仓库「d1」里参考什么', '文档短标签写明是哪条关系');
+  // 组级描述 → 另一篇文档（关系不同 → 文档不同）
+  const boardNote = await link.setLinkNote({ id: r.id, board: b1.id, note: '组级契约' });
+  const boardDoc = await docs.getDoc({ ref: boardNote.refId });
+  assert.match(String(boardDoc.body || ''), /组级契约/);
+  assert.notEqual(repoNote.refId, boardNote.refId);
 
   // 同 repo + board 一起给 = 报错（一条绑定一条描述）
-  await assert.rejects(() => ref.setLinkNote({ id: r.id, repo: dev.id, board: b1.id, note: 'x' }), /只能选一/);
+  await assert.rejects(() => link.setLinkNote({ id: r.id, repo: dev.id, board: b1.id, note: 'x' }), /只能选一/);
   // 未绑定的组/仓库 = 显式报错，不静默挂空
   const b2 = await boards.createBoard({ name: 'grp2' });
-  await assert.rejects(() => ref.setLinkNote({ id: r.id, board: b2.id, note: 'x' }), /未绑定/);
+  await assert.rejects(() => link.setLinkNote({ id: r.id, board: b2.id, note: 'x' }), /未绑定/);
   const d2 = await repos.addRepo({ path: join(dir, 'd2'), name: 'd2', key: 'local/d2' });
-  await assert.rejects(() => ref.setLinkNote({ id: r.id, repo: d2.id, note: 'x' }), /未直接绑定/);
+  await assert.rejects(() => link.setLinkNote({ id: r.id, repo: d2.id, note: 'x' }), /未直接绑定/);
 
-  // note 留空 = 清除；摘绑 = 描述一起消失
-  await ref.setLinkNote({ id: r.id, board: b1.id, note: '' });
-  assert.equal((await boards.getBoard(b1.id)).refs[0].note, undefined);
+  // note 留空 = 清除（删掉那篇描述文档）
+  await link.setLinkNote({ id: r.id, board: b1.id, note: '' });
+  await assert.rejects(() => docs.getDoc({ ref: boardNote.refId }), /不存在/, '描述文档被删掉了');
+  assert.equal((await boards.getBoard(b1.id)).refs[0].note, undefined, '关系边上的副本也清了');
   await ref.bindTarget({ id: r.id, remove: true, repo: dev.id });
   assert.deepEqual((await repos.getRepo(dev.id)).linked, []);
   assert.equal((await boards.getBoard(b1.id)).refs.length, 1, '组级那条还在');
@@ -550,8 +563,8 @@ test('refReposOfRepo：仓库级直接绑定 + 所属组的组级绑定，两类
   const groupRef = await repos.addRepo({ path: join(dir, 'rg'), name: 'rg', type: 'ref', remote: 'https://github.com/x/rg.git' });
   const stranger = await repos.addRepo({ path: join(dir, 'rs'), name: 'rs', type: 'ref', remote: 'https://github.com/x/rs.git' });
   await ref.bindTarget({ id: groupRef.id, board: b1.id, repo: dev.id });
-  await ref.setLinkNote({ id: groupRef.id, board: b1.id, note: '组级参考' });
-  await ref.setLinkNote({ id: groupRef.id, repo: dev.id, note: '仓库级参考' });
+  await link.setLinkNote({ id: groupRef.id, board: b1.id, note: '组级参考' });
+  await link.setLinkNote({ id: groupRef.id, repo: dev.id, note: '仓库级参考' });
   await ref.bindTarget({ id: stranger.id, board: b2.id });
 
   // 按 id / 名称 / 路径都能查
@@ -590,7 +603,7 @@ test('refReposOfBoard：只读组上的绑定（带组级描述）', async () =>
   await boards.assignRepo({ id: dev.id, board: b1.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   await ref.bindTarget({ id: r.id, board: b1.id });
-  await ref.setLinkNote({ id: r.id, board: b1.id, note: '组级描述' });
+  await link.setLinkNote({ id: r.id, board: b1.id, note: '组级描述' });
 
   const d = await ref.refReposOfBoard(b1.id);
   assert.equal(d.refRepos.length, 1);

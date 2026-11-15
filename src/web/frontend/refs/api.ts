@@ -100,8 +100,3 @@ export function repoRefRepos(id: string): Promise<RefReposOf> {
 export function boardRefRepos(board: string): Promise<RefReposOf> {
   return api('/api/repos/ref/of?board=' + encodeURIComponent(board));
 }
-
-/** 写 / 清绑定描述（这个参考在该组 / 该仓库里参考什么）。 */
-export function setRefNote(body: { id: string; board?: string; repo?: string; note?: string }): Promise<any> {
-  return api('/api/repos/ref/note', { method: 'POST', body });
-}

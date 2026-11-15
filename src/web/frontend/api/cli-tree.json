@@ -658,7 +658,7 @@
               "action": {
                 "id": "repo.ref.note",
                 "module": "repos",
-                "summary": "写/清绑定描述：这个参考在该组/该仓库里参考什么（--note 留空 = 清除）",
+                "summary": "写/清绑定描述：这个参考在该组/该仓库里参考什么（#134：描述归档成该参考仓库的一篇文档，在「<参考仓库名> · 文档列表」里可见可编辑；--note 留空 = 清除）",
                 "usage": "repo ref note",
                 "http": "POST /api/repos/ref/note"
               },

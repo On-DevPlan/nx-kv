@@ -70,7 +70,7 @@ async function findRef(idOrNameOrUrl: unknown): Promise<RepoEntry> {
   return r;
 }
 
-async function loadRef(id: unknown): Promise<RepoEntry> {
+export async function loadRef(id: unknown): Promise<RepoEntry> {
   const r = await findRef(id);
   if ((r.type || 'dev') !== 'ref') throw conflict(`「${r.name}」不是参考仓库（type=dev）——绑定/同步只对 ref 有意义`);
   return r;
@@ -184,7 +184,7 @@ export async function registerRef({ path, remote, name, desc, notes }: RegisterR
 
 // mutateStore 的 fn 是同步的——所以绑定里的目标解析用同步变体（store 已在手）。
 // 目标一律解析成 **key**（身份），不再用随机 id。
-function repoKeyInside(s: Store, idOrKey: unknown): string | null {
+export function repoKeyInside(s: Store, idOrKey: unknown): string | null {
   const raw = String(idOrKey || '').trim();
   if (!raw) return null;
   let r = s.repos.find((x) => x.id === raw);
@@ -200,7 +200,7 @@ function repoKeyInside(s: Store, idOrKey: unknown): string | null {
   return r ? service.deriveKey(r) : null;
 }
 
-function boardKeyInside(s: Store, idOrKey: unknown): string | null {
+export function boardKeyInside(s: Store, idOrKey: unknown): string | null {
   const raw = String(idOrKey || '').trim();
   if (!raw) return null;
   let b = s.boards.find((x) => x.id === raw);
@@ -418,66 +418,6 @@ export async function bindTarget({ id, key, repo, board, remove }: BindTargetInp
   });
 }
 
-/** setLinkNote 的返回：写组级带 group、写仓库级带 repo。 */
-export interface SetLinkNoteResult {
-  key: string;
-  name: string;
-  group?: string;
-  repo?: string;
-  note: string;
-}
-
-/** setLinkNote 的参数。 */
-export interface SetLinkNoteInput {
-  id?: unknown;
-  key?: unknown;
-  repo?: unknown;
-  board?: unknown;
-  note?: unknown;
-}
-
-/**
- * 绑定描述：这条绑定「参考什么」。note 留空 = 清除。
- *   --board b  写组级绑定（group_refs）的描述
- *   --repo x   写仓库级绑定（dev.ext.ext_linked）的描述
- * 两者只能选一个（一条绑定一条描述）；目标关系不存在时显式报错。
- */
-export async function setLinkNote({ id, key, repo, board, note }: SetLinkNoteInput = {}): Promise<SetLinkNoteResult> {
-  const ref = await loadRef(id || key);
-  if (!repo && !board) throw badInput('请给 --repo <开发仓库> 或 --board <看板>');
-  if (repo && board) throw badInput('--repo 与 --board 只能选一个（一条绑定一条描述）');
-  const text = String(note || '').trim();
-  return service.mutateStore((s) => {
-    const r = s.repos.find((x) => x.id === ref.id)!;
-    const refKey = service.deriveKey(r);
-    if (board) {
-      const bkey = boardKeyInside(s, board);
-      if (!bkey) throw notFound('看板不存在: ' + board);
-      const b = s.boards.find((x) => service.storedBoardKey(x) === bkey)!;
-      const link = (b.refs || []).find((l) => l.id === refKey);
-      if (!link) {
-        throw conflict(`「${ref.name}」未绑定到组「${b.name}」—— 先 repo bind ${ref.id} --board ${bkey}`);
-      }
-      if (text) link.note = text;
-      else delete link.note;
-      return { key: refKey, name: r.name, group: b.name, note: text };
-    }
-    const rkey = repoKeyInside(s, repo);
-    if (!rkey) throw notFound('绑定的开发仓库不存在: ' + repo);
-    const dev = s.repos.find((x) => service.deriveKey(x) === rkey)!;
-    if ((dev.type || 'dev') === 'ref') {
-      throw badInput(`「${dev.name}」是参考仓库 —— 仓库级绑定描述只挂在开发仓库上`);
-    }
-    const link = (dev.linked || []).find((l) => l && l.kind === 'ref' && String(l.id) === refKey);
-    if (!link) {
-      throw conflict(`「${ref.name}」未直接绑定到仓库「${dev.name}」—— 先 repo bind ${ref.id} --repo ${rkey}`);
-    }
-    if (text) link.note = text;
-    else delete link.note;
-    return { key: refKey, name: r.name, repo: dev.name, note: text };
-  });
-}
-
 /** refReposOfRepo 的返回：direct（仓库级）与 boards（组级）两类并列。 */
 export interface RefsOfRepoResult {
   repo: { id: string; key: string; name: string; path: string; desc: string };
@@ -516,22 +456,46 @@ export async function refReposOfRepo(idOrPathOrName: unknown): Promise<RefsOfRep
 
   const repoKey = service.deriveKey(repo);
   const groups = groupsOfRepo(s, repoKey);
-  const boardsOut = groups.map((b) => ({
-    id: b.id,
-    key: service.storedBoardKey(b),
-    name: b.name,
-    desc: b.desc || '',
-    refRepos: linksOfBoard(s, b).map(({ ref, note }) => ({ ...projectRef(ref), note })),
+  // #134：描述已经不在关系边上了（在文档里）——只读展示从文档取，缺省回落旧 note。
+  const boardsOut = await Promise.all(groups.map(async (b) => {
+    const bkey = service.storedBoardKey(b);
+    const bodies = await linkNoteBodiesOf({ kind: 'board', key: bkey, name: b.name });
+    return {
+      id: b.id,
+      key: bkey,
+      name: b.name,
+      desc: b.desc || '',
+      refRepos: linksOfBoard(s, b).map(({ ref, note }) => ({
+        ...projectRef(ref),
+        note: bodies.get(service.deriveKey(ref)) || note,
+      })),
+    };
   }));
 
   // 仓库级直接绑定：与组无关，永远原样回显（组级结果不覆盖它）
-  const direct = directLinksOfRepo(s, repo).map(({ ref, note }) => ({ ...projectRef(ref), note }));
+  const repoBodies = await linkNoteBodiesOf({ kind: 'repo', key: repoKey, name: repo.name });
+  const direct = directLinksOfRepo(s, repo).map(({ ref, note }) => ({
+    ...projectRef(ref),
+    note: repoBodies.get(service.deriveKey(ref)) || note,
+  }));
 
   return {
     repo: { id: repo.id, key: repoKey, name: repo.name, path: repo.path, desc: repo.desc || '' },
     direct,
     boards: boardsOut,
   };
+}
+
+/**
+ * #134：这条关系下各参考仓库的**描述正文**（refKey → 正文）。
+ *
+ * 描述已经不在关系边上了（归档成文档），但只读展示（面板 chip、交付上下文）
+ * 仍要给出「这个参考在本组里参考什么」——出处是文档。docs 域用**动态 import**
+ * （模块之间不静态互依，见 docs/repos-bridge 的同款约定）。
+ */
+async function linkNoteBodiesOf(scope: { kind: 'board' | 'repo'; key: string; name: string }): Promise<Map<string, string>> {
+  const { linkNoteBodiesOf: f } = await import('../docs/link-note.js');
+  return f(scope);
 }
 
 /** syncRef 的结果（status: missing/upToDate/updated/conflict；syncAllRefs 里还有 error）。 */
@@ -673,8 +637,13 @@ export async function refReposOfBoard(boardIdOrKey: unknown): Promise<RefsOfBoar
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!b) throw notFound('看板不存在: ' + raw);
   const bkey = service.storedBoardKey(b);
+  // #134：描述正文从文档取（关系边上已经没有它了）
+  const bodies = await linkNoteBodiesOf({ kind: 'board', key: bkey, name: b.name });
   return {
     board: { id: b.id, key: bkey, name: b.name },
-    refRepos: linksOfBoard(s, b).map(({ ref, note }) => ({ ...projectRef(ref), note })),
+    refRepos: linksOfBoard(s, b).map(({ ref, note }) => ({
+      ...projectRef(ref),
+      note: bodies.get(service.deriveKey(ref)) || note,
+    })),
   };
 }

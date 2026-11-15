@@ -5,6 +5,7 @@ import { useLayoutEffect, useRef } from 'react';
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
+  ReactNode,
 } from 'react';
 import { filesFromDataTransfer, runFormat } from '../../modules/md/md-edit-ops.js';
 import { isEmptyBlock, isFrontmatterBlock, normalizeBlockText } from '../../modules/md/md-parse.js';
@@ -28,6 +29,10 @@ interface LiveBlockProps {
   attachments?: Attachment[] | null;
   pendingSelRef?: { current: PendingSel | null } | null;
   pendingFormatRef?: { current: string | null } | null;
+  /** 块侧栏（把手/插入钮），由父组件建好传进来——本组件只管挂到块容器里 */
+  rail?: ReactNode;
+  /** 拖拽落点指示：插到本块之前还是之后（null = 不是落点） */
+  dropEdge?: 'before' | 'after' | null;
 }
 
 export default function LiveBlock({
@@ -46,6 +51,8 @@ export default function LiveBlock({
   attachments,
   pendingSelRef,
   pendingFormatRef,
+  rail = null,
+  dropEdge = null,
 }: LiveBlockProps) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const display = normalizeBlockText(text);
@@ -90,9 +97,13 @@ export default function LiveBlock({
 
   if (isFm) return null;
 
+  // 拖拽落点指示（拖拽排序时由父组件的列表级 dragover 算出）
+  const dropCls = dropEdge ? ` is-drop-${dropEdge}` : '';
+
   if (focused) {
     return (
-      <div className={`mdw-lp-block is-edit kind-${kind}`} data-i={index}>
+      <div className={`mdw-lp-block is-edit kind-${kind}${dropCls}`} data-i={index}>
+        {rail}
         <textarea
           ref={taRef}
           className="mdw-lp-src"
@@ -131,7 +142,7 @@ export default function LiveBlock({
 
   return (
     <div
-      className={`mdw-lp-block is-view kind-${kind}${isEmptyBlock(text) ? ' is-empty' : ''}${hit ? ' is-hit' : ''}`}
+      className={`mdw-lp-block is-view kind-${kind}${isEmptyBlock(text) ? ' is-empty' : ''}${hit ? ' is-hit' : ''}${dropCls}`}
       data-i={index}
       role="button"
       tabIndex={0}
@@ -143,6 +154,7 @@ export default function LiveBlock({
         }
       }}
     >
+      {rail}
       {html ? (
         <div className="mdw-lp-view" dangerouslySetInnerHTML={{ __html: html }} />
       ) : (

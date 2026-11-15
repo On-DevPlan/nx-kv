@@ -32,10 +32,12 @@ import type {
 import { createPortal } from 'react-dom';
 import AttachPicker from './attach-picker.jsx';
 import type { AttachHost } from './attach-picker.jsx';
+import BlockRail from './block-rail.jsx';
 import LiveBlock from './live-block.jsx';
 import { EditorFindBar } from './find-bar.jsx';
 import { handleSlashKey, SlashMenu } from './slash-menu.jsx';
 import { StatusBar } from './status-bar.jsx';
+import { useBlockDrag } from './use-block-drag.js';
 import { useLivePreview } from './use-live-preview.js';
 import { useSourceEditor } from './use-source-editor.js';
 import { FMT_KEYS } from './md-panes-helpers.js';
@@ -160,12 +162,15 @@ function LivePreview({
   const {
     blocks, focus, setFocus, pendingSelRef, pendingFormatRef, liveTaRef,
     commit, updateAt, applyBlockOp,
+    moveBlock, insertBlockAfter, duplicateBlock, deleteBlockAt, turnAt,
     slash, slashRef, setSlashBoth, moveSlash, pickSlash, hoverSlash,
     findOpen, setFindOpen, findQuery, setLiveQuery, findIdx, liveMatches, jumpLive,
     hitBlock, findInputRef,
     picker, onDraftAddFiles, apiBase, rootProps, emptyDoc,
     ingestFiles, onBlockFocus, onTaReady, onBlockChange, onBlockBlur,
   } = useLivePreview({ body, onBody, articleRef, attachments, docKey, onFiles, onCloseSelMenu, attachHost });
+  // 拖拽排序：落点判定在列表级（一个 dragover 管整张列表），把手在块侧栏里
+  const drag = useBlockDrag(moveBlock);
 
   // ── 跨块选区（#124）：块粒度的「统一删除」────────────────────────────
   // 视图块是渲染好的 HTML，选区字符偏移无法精确映射回各块源码（markdown
@@ -348,6 +353,19 @@ function LivePreview({
     handleArrowNav(ctx);
   };
 
+  // Alt+↑/↓：移动整块（与侧栏「上移/下移」同一实现）。
+  // 挂在块列表容器上而不是每块的 textarea 里：视图态的块也能用，且块内
+  // handleArrowNav 在 altKey 时本就 return（不会重复消费）。
+  const onBlocksKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!e.altKey || e.shiftKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    const el = (e.target as Element).closest?.('.mdw-lp-block');
+    if (!el || !articleRef.current?.contains(el)) return;
+    const i = Number(el.getAttribute('data-i'));
+    if (!Number.isInteger(i) || i < 0 || i >= blocks.length) return;
+    e.preventDefault();
+    moveBlock(i, i + (e.key === 'ArrowUp' ? -1 : 1));
+  };
+
   return (
     <div {...rootProps}>
       {/* 同一个滚动根节点：React 的 ref 类型按标签收窄（传入的是 HTMLElement 视角） */}
@@ -375,7 +393,11 @@ function LivePreview({
             onEnter={() => { if (blocks.length) setFocus(0); }}
           />
         )}
-        <div className={`mdw-lp-blocks${emptyDoc ? ' is-empty-doc' : ''}`}>
+        <div
+          className={`mdw-lp-blocks${emptyDoc ? ' is-empty-doc' : ''}`}
+          {...drag.listProps}
+          onKeyDown={onBlocksKeyDown}
+        >
           {blocks.map((b, i) => (
             <LiveBlock
               key={`${docKey}-${i}`}
@@ -386,6 +408,19 @@ function LivePreview({
               attachments={attachments}
               pendingSelRef={pendingSelRef}
               pendingFormatRef={pendingFormatRef}
+              dropEdge={drag.dropAt && drag.dropAt.index === i ? drag.dropAt.edge : null}
+              rail={(
+                <BlockRail
+                  index={i}
+                  total={blocks.length}
+                  dragIndexRef={drag.dragIndexRef}
+                  onInsertAfter={insertBlockAfter}
+                  onMove={moveBlock}
+                  onTurn={turnAt}
+                  onDuplicate={duplicateBlock}
+                  onDelete={deleteBlockAt}
+                />
+              )}
               onFocus={onBlockFocus}
               onViewClick={onViewClick}
               onTaReady={onTaReady}

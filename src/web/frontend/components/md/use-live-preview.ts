@@ -6,7 +6,7 @@ import type { RefObject } from 'react';
 import { useAttachPicker } from './attach-picker.jsx';
 import type { AttachHost } from './attach-picker.jsx';
 import { atTriggerAt, padEmbed } from '../../modules/md/attach-mention.js';
-import { diffIndex, runFormat, turnBlock } from '../../modules/md/md-edit-ops.js';
+import { diffIndex, moveBlockInList, reindexAfterMove, runFormat, turnBlock } from '../../modules/md/md-edit-ops.js';
 import { joinMdBlocks, normalizeBlockText } from '../../modules/md/md-parse.js';
 import { bodyBlocksOnly, useDropFiles } from './md-panes-helpers.js';
 import type { EditOpResult, EditorApi, FileDropCtx, PendingSel } from './md-panes-helpers.js';
@@ -178,6 +178,50 @@ export function useLivePreview({
     }
   };
 
+  // ── 块级结构操作（侧栏菜单 / 拖拽排序 / Alt+↑↓ 共用一套）──
+  const moveBlock = useCallback((from: number, to: number) => {
+    const next = moveBlockInList(blocks, from, to);
+    const same = next.length === blocks.length && next.every((b, i) => b === blocks[i]);
+    if (same) return;
+    commit(next);
+    // 焦点跟着块走：被移动的那块保持编辑态，被它跨过的块整体让位一格
+    setFocus((f) => (f == null ? null : reindexAfterMove(f, from, to)));
+  }, [blocks, commit]);
+
+  const insertBlockAfter = useCallback((i: number) => {
+    const next = blocks.slice();
+    next.splice(i + 1, 0, '');
+    commit(next);
+    pendingSelRef.current = { index: i + 1, start: 0, end: 0 };
+    setFocus(i + 1);
+  }, [blocks, commit]);
+
+  const duplicateBlock = useCallback((i: number) => {
+    const next = blocks.slice();
+    next.splice(i + 1, 0, blocks[i] ?? '');
+    commit(next);
+    pendingSelRef.current = { index: i + 1, start: 0, end: 0 };
+    setFocus(i + 1);
+  }, [blocks, commit]);
+
+  const deleteBlockAt = useCallback((i: number) => {
+    // 只剩一块时清空正文而不是把块删没：块列表要留一行承接光标
+    if (blocks.length <= 1) {
+      onBody?.('', 'op');
+      return;
+    }
+    const next = blocks.slice();
+    next.splice(i, 1);
+    commit(next);
+    setFocus(null);
+  }, [blocks, commit, onBody]);
+
+  const turnAt = useCallback((i: number, turnId: string) => {
+    const raw = normalizeBlockText(blocks[i] ?? '');
+    const res = turnBlock({ value: raw, selectionStart: 0, selectionEnd: 0 }, turnId);
+    if (res) updateAt(i, res.value);
+  }, [blocks]);
+
   const ingestFiles = (files: File[] | null | undefined, ta: HTMLTextAreaElement | null) => {
     if (!files?.length || !onFiles) return;
     // 实时预览的光标是**块内**偏移，绝不能当全文 insertAt——否则会插进
@@ -295,6 +339,7 @@ export function useLivePreview({
   return {
     blocks, focus, setFocus, pendingSelRef, pendingFormatRef, liveTaRef,
     commit, updateAt, applyBlockOp,
+    moveBlock, insertBlockAfter, duplicateBlock, deleteBlockAt, turnAt,
     slash, slashRef, setSlashBoth, moveSlash, pickSlash, hoverSlash,
     findOpen, setFindOpen, findQuery, setLiveQuery, findIdx, liveMatches, jumpLive,
     hitBlock, findInputRef,

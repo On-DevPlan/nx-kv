@@ -158,6 +158,38 @@ export function runFormat(ta: TextSelLike | null | undefined, op: string): TextE
 }
 
 /**
+ * 块列表重排：把 from 位置的块移到 to（两侧都夹回合法区间）。
+ *
+ * 拖拽把手与 Alt+↑/↓ 共用这一条纯逻辑——落点语义是「移动后它占 to 位」，
+ * 调用方负责把「插到某块之前/之后」换算成 to（见 use-block-drag 的 drop 计算）。
+ * from === to 或下标越界到同一位置时返回**等值新数组**，调用方可据此跳过提交。
+ */
+export function moveBlockInList<T>(list: T[], from: number, to: number): T[] {
+  const n = list.length;
+  if (n < 2) return list.slice();
+  const f = Math.max(0, Math.min(Math.trunc(from), n - 1));
+  const t = Math.max(0, Math.min(Math.trunc(to), n - 1));
+  if (f === t) return list.slice();
+  const next = list.slice();
+  const [item] = next.splice(f, 1);
+  if (item === undefined) return list.slice();
+  next.splice(t, 0, item);
+  return next;
+}
+
+/**
+ * 块被移动后，某个下标的新位置（焦点/选区跟着块走）。
+ *
+ * 三段落：自己是移动块 → 落到 to；被它跨过的块整体让位一格；其余不动。
+ */
+export function reindexAfterMove(i: number, from: number, to: number): number {
+  if (i === from) return to;
+  if (from < to && i > from && i <= to) return i - 1;
+  if (to < from && i >= to && i < from) return i + 1;
+  return i;
+}
+
+/**
  * 整行只是列表/待办/有序前缀（`- `、`- [ ] `、`1. `、`-` 等），没有任何内容。
  * #100：空列表项行上按 Backspace = 剥前缀逃出列表（落空白行），不顶回上一行。
  */

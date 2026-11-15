@@ -306,3 +306,38 @@
 }
 .mdw-attach-chip .sz{margin-left:auto;font:400 11px ui-monospace,Consolas,monospace;color:var(--faint,#A9AEB4)}
 
+
+/* ─── 块侧栏（BlockNote 口径）：悬停/聚焦露出「⋮⋮ 把手 + ＋ 插入」 ───
+   绝对定位挂在块容器里，不参与排版——块的盒高与点进编辑态的度量都不受影响
+   （#31 的「点块不跳行高」约束仍然成立）。 */
+.mdw-block-rail{
+  position:absolute;left:-34px;top:0;
+  display:flex;align-items:center;gap:2px;
+  opacity:0;pointer-events:none;
+  transition:opacity .12s ease;
+}
+.mdw-lp-block:hover > .mdw-block-rail,
+.mdw-lp-block:focus-within > .mdw-block-rail{opacity:1;pointer-events:auto}
+.mdw-rail-btn{
+  width:18px;height:22px;display:flex;align-items:center;justify-content:center;
+  padding:0;border:0;border-radius:5px;background:none;cursor:pointer;
+  color:var(--mid,#838A93);font:400 12px/1 inherit;
+}
+.mdw-rail-btn:hover{background:var(--soft,#F1F0EC);color:var(--mdw-accent,#2F6F5E)}
+.mdw-rail-btn.grip{cursor:grab;letter-spacing:-1px}
+.mdw-rail-btn.grip:active{cursor:grabbing}
+/* 拖拽落点：块的上/下沿画一条强调色细线（插到这块之前 / 之后） */
+.mdw-lp-block.is-drop-before::before,
+.mdw-lp-block.is-drop-after::after{
+  content:'';position:absolute;left:0;right:0;height:2px;border-radius:1px;
+  background:var(--mdw-accent,#2F6F5E);pointer-events:none;
+}
+.mdw-lp-block.is-drop-before::before{top:-1px}
+.mdw-lp-block.is-drop-after::after{bottom:0}
+.mdw-block-menu{min-width:158px}
+.mdw-fmt-menu-item:disabled{opacity:.4;cursor:default}
+.mdw-fmt-menu-item:disabled:hover{background:none}
+/* 窄面板：左侧没有留白可借，侧栏改挂块的右上角 */
+@media (max-width:720px){
+  .mdw-block-rail{left:auto;right:0;top:-10px}
+}

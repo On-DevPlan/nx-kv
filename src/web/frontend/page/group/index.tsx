@@ -26,7 +26,7 @@ import { openPanel } from '../../workspace.js';
 import { openTemplateEditor } from '../../panels.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { NEW_TEMPLATE_VALUES, parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
+import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
 import { hitTaskQuery } from '../../modules/board/task-search.js';
 import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
@@ -579,7 +579,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
                                 createTask(
                                   t.fallback
                                     ? ''
-                                    : renderTemplateBody(t.body, { ...NEW_TEMPLATE_VALUES, ...(t.values || {}) })
+                                    : renderTemplateBody(t.body, t.values || {})
                                 );
                               }}
                             >

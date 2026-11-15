@@ -40,30 +40,10 @@ export function slugName(title?: string | null): string {
   return base.endsWith('.md') ? base : `${base}.md`;
 }
 
-// 与后端出厂文本（core/db/seed-templates.js 的 BUILTIN_BODY） / BUILTIN_VALUES 同构。
-// 出厂骨架是**文字**（任务 #87：「直接文字就是模板」——不再用 {{槽位名}} 骨架）。
-// 老模板（库里还留着 {{背景}} 这类标记）仍按 NEW_TEMPLATE_VALUES 渲染后再进任务正文——
-// **禁止**把标记原样塞进任务正文（验收反馈：用户不知何意）。
-export const NEW_TEMPLATE = `## 背景
-
-（一句话说清要改什么）
-
-## 验收
-- [ ] …
-
-## 约束
-- …
-
-## 附件
-`;
-
-/** 内置槽位默认值（与后端出厂值（core/db/seed-templates.js 的 BUILTIN_VALUES）同构） */
-export const NEW_TEMPLATE_VALUES = {
-  背景: '（一句话说清要改什么）',
-  验收: '…',
-  约束: '…',
-  附件: '',
-};
+// #137：这里曾经有一份「新建任务骨架」的出厂文本（NEW_TEMPLATE / NEW_TEMPLATE_VALUES），
+// 与后端 seed 的出厂骨架同构。现在**只有一份内置**：新建任务模板「ref 生成」
+// （后端 core/db/seed-templates.js 的 NEWTASK_REF_BODY）——前端不再自带第二份副本，
+// 否则两处出厂文本迟早漂移。面板没有可用模板时从空稿开始（用户自己写问题）。
 
 /**
  * 把 localtask 状态映射到并发进程卡。

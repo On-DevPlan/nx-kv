@@ -2,6 +2,38 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.58.0] - 2026-11-16 新建任务模板只留一条内置「ref 生成」；旧内置下线（#137）
+
+### Changed
+
+- **新建任务的内置模板只剩一条「ref 生成」**（用户原话：「现在的内置的任务模板真是毫无价值
+  删除当前内置 编写一个新的内置 ref生成」）——它的正文是一份**零知识起步的 SOP**，
+  agent 照着走就能把「一轮问答」归档进仓库的文档列表：
+  1. 先摸清仓库（`repo list` / `docs list` / `docs get` / `localtask show`，只读）；
+  2. 初始化：建一篇 ref（`docs ref add --owner repo --repo <key> --desc "<一句话短描述>"`），
+     **desc 与标题都要给**（desc = 列表里的定位标签；标题 = 正文第一行的 `# <标题>`）；
+  3. 回答问题，再把问答写进那篇 ref（`docs set --ref <refId> --body-file <文件>`——
+     **长文本走文件**，不受命令行长度限制）；
+  4. 收尾（`localtask done --id <id> --cwd "<项目目录>" --summary "<… + refId>"`），
+     必须报告 refId：用户能在「<仓库名> · 文档列表」里看到这一轮。
+- **旧的五条内置空骨架（默认模板 / 缺陷修复 / 功能开发 / 调研任务 / 文档修订）下线**：
+  改 seed 清单 + 开库时对 builtin 行**软删**（`deleted_at`）——用户自己复制/新建的条目
+  （`builtin=0`）一律不动；先下线再插入，新内置才拿得到「新建任务」的默认位。
+- **出厂正文只有一份**：删掉 `NEWTASK_BODY` / `NEWTASK_VARS`（后端）与
+  `NEW_TEMPLATE` / `NEW_TEMPLATE_VALUES`（前端 md-parse）——前端不再自带第二份副本，
+  模板正文直接按模板自己声明的 `values` 渲染（旧模板的 `{{槽位}}` 仍渲染成文字，不留标记）。
+- 内置 skill：A03 补「把一轮问答归档成一篇」流程（含 desc/标题要求与「别重复挂」提醒）。
+
+### Verified
+
+- 端到端实跑（隔离库）：用「ref 生成」模板正文建任务 → 领取（交付里带 SOP 正文）→
+  `docs list` 确认零知识起点 → `docs ref add` → `docs set --body-file` 写入 10KB 正文 →
+  `localtask done` → 仓库文档列表里出现这一轮（`docs bindings --host` / `repo doc list` 可见）。
+- 面板实测（真实 Chrome/CDP）：设置 → 任务模板只剩「ref 生成（内置）」+ 用户自己的「main（默认）」，
+  旧五条内置已消失（截图 temp/nxkv-137-templates.png）。
+- 单测新增 `tests/unit/seed-templates-ref.test.mjs`（新库只剩一条且是默认 / 内置正文含四步与关键命令 /
+  老库旧内置被软删而用户条目不动）；`template-render.test.mjs` 改成断言唯一的出厂文本。
+
 ## [0.57.2] - 2026-11-15 A02 讲透整个提示词模板体系 + 规范扩展方法与检查点（#136 第 1 轮）
 
 ### Changed

@@ -1183,6 +1183,21 @@
           "children": []
         },
         {
+          "name": "boardtasks",
+          "path": [
+            "localtask",
+            "boardtasks"
+          ],
+          "action": {
+            "id": "localtask.boardtasks",
+            "module": "localtask",
+            "summary": "全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按 frontmatter 的 board 归属聚合，带归属项目",
+            "usage": "localtask boardtasks",
+            "http": "GET /api/localtasks/boardtasks"
+          },
+          "children": []
+        },
+        {
           "name": "cancel",
           "path": [
             "localtask",

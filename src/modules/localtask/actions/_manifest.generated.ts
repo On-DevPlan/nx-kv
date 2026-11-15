@@ -10,6 +10,7 @@ import { LocaltaskAddAction } from './localtask-add.js';
 import { LocaltaskAttachNoteAction } from './localtask-attach-note.js';
 import { LocaltaskAttachAction } from './localtask-attach.js';
 import { LocaltaskAttachmentsAction } from './localtask-attachments.js';
+import { LocaltaskBoardTasksAction } from './localtask-boardtasks.js';
 import { LocaltaskCancelAction } from './localtask-cancel.js';
 import { LocaltaskCancelManyAction } from './localtask-cancelMany.js';
 import { LocaltaskChainAction } from './localtask-chain.js';
@@ -46,6 +47,7 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskAttachNoteAction,
   LocaltaskAttachAction,
   LocaltaskAttachmentsAction,
+  LocaltaskBoardTasksAction,
   LocaltaskCancelAction,
   LocaltaskCancelManyAction,
   LocaltaskChainAction,
@@ -82,6 +84,7 @@ export { LocaltaskAddAction };
 export { LocaltaskAttachNoteAction };
 export { LocaltaskAttachAction };
 export { LocaltaskAttachmentsAction };
+export { LocaltaskBoardTasksAction };
 export { LocaltaskCancelAction };
 export { LocaltaskCancelManyAction };
 export { LocaltaskChainAction };

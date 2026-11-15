@@ -43,6 +43,7 @@ import type {
   LocaltaskAttachAction,
   LocaltaskAttachNoteAction,
   LocaltaskAttachmentsAction,
+  LocaltaskBoardTasksAction,
   LocaltaskCancelAction,
   LocaltaskCancelManyAction,
   LocaltaskChainAction,
@@ -288,6 +289,8 @@ export interface ApiClient {
   localtaskAttach(input: z.input<InstanceType<typeof LocaltaskAttachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachAction>['run']>>>;
 /** 列出某条任务引用的附件（正文里的 ![名](fileId) 嵌入），以及本地是否已有（给 agent 直接读本地文件） */
   localtaskAttachments(input: z.input<InstanceType<typeof LocaltaskAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachmentsAction>['run']>>>;
+/** 全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按 frontmatter 的 board 归属聚合，带归属项目 */
+  boardtasks(input?: z.input<InstanceType<typeof LocaltaskBoardTasksAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskBoardTasksAction>['run']>>>;
 /** 关闭某主题的等待：阻塞中的 wait 立即收尾（与超时同一出口，带 cancelled 标记；不删主题与任务） */
   cancel(input?: z.input<InstanceType<typeof LocaltaskCancelAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCancelAction>['run']>>>;
 /** 批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已完成/已取消跳过；取消为终态，原文留档 */
@@ -906,6 +909,16 @@ export function createApiClient(transport: Transport): ApiClient {
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskAttachmentsAction>['run']>>;
+    },
+    // action: localtask.boardtasks
+    async boardtasks(input?: z.input<InstanceType<typeof LocaltaskBoardTasksAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskBoardTasksAction>['_input']>);
+      let path = `/api/localtasks/boardtasks`;
+      const q = new URLSearchParams();
+      if (inp["board"] !== undefined) q.set("board", String(inp["board"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskBoardTasksAction>['run']>>;
     },
     // action: localtask.cancel
     async cancel(input?: z.input<InstanceType<typeof LocaltaskCancelAction>['_input']>) {

@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.56.2",
-  "hash": "548dc16cdb0feaf8",
+  "hash": "f132179e14f836c8",
   "actions": [
     {
       "id": "localtask.add",
@@ -186,6 +186,191 @@
         ]
       },
       "summary": "向某主题（工作目录）的队列回填一条任务（正文可多行；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝）"
+    },
+    {
+      "id": "localtask.boardtasks",
+      "cli": [
+        [
+          "localtask",
+          "boardtasks"
+        ]
+      ],
+      "http": "GET /api/localtasks/boardtasks",
+      "input": [
+        {
+          "name": "board",
+          "kind": "string",
+          "positional": false,
+          "required": false,
+          "hint": "只看一个组（id / key / 名称）；不给 = 全部组"
+        }
+      ],
+      "output": {
+        "k": "model",
+        "name": "LocaltaskBoardTasksOutput",
+        "fields": [
+          {
+            "name": "boards",
+            "required": true,
+            "type": {
+              "k": "list",
+              "of": {
+                "k": "model",
+                "name": "LocaltaskBoardTasksBoard",
+                "fields": [
+                  {
+                    "name": "id",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "看板 id（面板创建任务时写进 frontmatter 的就是它）"
+                  },
+                  {
+                    "name": "key",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "看板键（board/xxx）"
+                  },
+                  {
+                    "name": "name",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "看板名称"
+                  },
+                  {
+                    "name": "pending",
+                    "required": true,
+                    "type": {
+                      "k": "int"
+                    },
+                    "hint": "本组待领取数（= side bar 徽标口径）"
+                  },
+                  {
+                    "name": "total",
+                    "required": true,
+                    "type": {
+                      "k": "int"
+                    },
+                    "hint": "本组任务总数"
+                  },
+                  {
+                    "name": "tasks",
+                    "required": true,
+                    "type": {
+                      "k": "list",
+                      "of": {
+                        "k": "model",
+                        "name": "LocaltaskBoardTasksBoardTask",
+                        "fields": [
+                          {
+                            "name": "id",
+                            "required": true,
+                            "type": {
+                              "k": "int"
+                            },
+                            "hint": "任务编号"
+                          },
+                          {
+                            "name": "status",
+                            "required": true,
+                            "type": {
+                              "k": "string"
+                            },
+                            "hint": "pending / claimed / done / cancelled"
+                          },
+                          {
+                            "name": "title",
+                            "required": true,
+                            "type": {
+                              "k": "string"
+                            },
+                            "hint": "正文首个标题行（没有标题就取首行，已截断）"
+                          },
+                          {
+                            "name": "round",
+                            "required": true,
+                            "type": {
+                              "k": "int"
+                            },
+                            "hint": "第几轮"
+                          },
+                          {
+                            "name": "ready",
+                            "required": true,
+                            "type": {
+                              "k": "bool"
+                            },
+                            "hint": "当前是否可领取"
+                          },
+                          {
+                            "name": "project",
+                            "required": true,
+                            "type": {
+                              "k": "string"
+                            },
+                            "hint": "归属项目（任务所在队列的仓库名；未登记目录取队列名）"
+                          },
+                          {
+                            "name": "topicKey",
+                            "required": true,
+                            "type": {
+                              "k": "string"
+                            },
+                            "hint": "物理落点：任务所在队列的主题键（领取按它定位）"
+                          },
+                          {
+                            "name": "createdAt",
+                            "required": true,
+                            "type": {
+                              "k": "string"
+                            }
+                          },
+                          {
+                            "name": "consumedAt",
+                            "required": true,
+                            "type": {
+                              "k": "string"
+                            },
+                            "hint": "被领取的时间；未领取为空串"
+                          },
+                          {
+                            "name": "completedAt",
+                            "required": true,
+                            "type": {
+                              "k": "string"
+                            }
+                          },
+                          {
+                            "name": "claimedByName",
+                            "required": true,
+                            "type": {
+                              "k": "string"
+                            }
+                          },
+                          {
+                            "name": "roundSummary",
+                            "required": true,
+                            "type": {
+                              "k": "string"
+                            },
+                            "hint": "本轮完成总结；未完成时为空串"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "summary": "全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按 frontmatter 的 board 归属聚合，带归属项目"
     },
     {
       "id": "localtask.claim",

@@ -59,7 +59,9 @@ export interface TemplateListResult {
   repo?: string;
 }
 
-export const BUILTIN_ID = 'default';
+// #137：新建任务的内置模板只剩一条「ref 生成」（id=newtask.ref）。
+// 旧的 'default'（默认模板）已下线（软删），不再作为内置默认的落点。
+export const BUILTIN_ID = 'newtask.ref';
 const NEWTASK_CATEGORY = 'newtask';
 
 const repo = repoLayer;

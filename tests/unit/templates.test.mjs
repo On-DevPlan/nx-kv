@@ -39,13 +39,16 @@ test.after?.(() => {
 test('空库 → 内置模板不留空（bootstrap seed 一批可选）', async () => {
   const d = await listTemplates();
   assert.equal(d.defaultId, BUILTIN_ID);
-  assert.ok(d.templates.length >= 5, '内置模板应有一批可直接选，而不是只留一个空壳');
+  assert.ok(d.templates.length >= 1, '新建任务的内置在列表里');
   assert.ok(d.templates.every((t) => t.builtin), '首次建库列出的应全是内置模板');
   const def = d.templates.find((t) => t.id === BUILTIN_ID);
-  assert.ok(def.body.includes('## 背景'), '内置正文应带骨架');
-  assert.equal(def.values['背景'], '（一句话说清要改什么）', '槽位有默认文字');
-  assert.ok(d.templates.some((t) => t.name === '缺陷修复'), '应内置缺陷修复模板');
-  assert.ok(d.templates.some((t) => t.name === '功能开发'), '应内置功能开发模板');
+  assert.equal(def.name, 'ref 生成', '#137：新建任务的内置只剩「ref 生成」');
+  assert.ok(def.body.includes('## 本轮问题'), '内置正文是零知识起步的 SOP');
+  assert.ok(def.body.includes('docs ref add'), 'SOP 里带着建 ref 的命令');
+  // #137：旧的五条内置空骨架下线了
+  for (const gone of ['默认模板', '缺陷修复', '功能开发', '调研任务', '文档修订']) {
+    assert.ok(!d.templates.some((t) => t.name === gone), `旧内置应已下线：${gone}`);
+  }
 });
 
 test('新增模板 + 设默认', async () => {
@@ -63,7 +66,7 @@ test('新增模板 + 设默认', async () => {
 
 test('空正文新增 → 落内置骨架，不存空页', async () => {
   const a = await addTemplate({ name: '空骨架', body: '' });
-  assert.ok(a.template.body.includes('## 验收'), '空正文应回退到内置骨架');
+  assert.ok(a.template.body.includes('## 本轮问题'), '空正文应回退到内置正文（#137：唯一那份 SOP）');
 });
 
 test('新增缺名字 → INVALID_INPUT', async () => {
@@ -115,12 +118,12 @@ test('模板正文：出厂是文字；老模板的槽位值仍跟自己存', as
   const def = builtin.templates.find((t) => t.id === BUILTIN_ID);
   assert.ok(def, '内置模板在场');
   assert.equal(def.body.includes('{{'), false, '内置正文是文字，不含槽位标记');
-  assert.match(def.body, /一句话说清要改什么/, '默认提示语直接写进正文');
-  assert.equal(def.values['背景'], '（一句话说清要改什么）', '出厂槽位值仍在（兼容老模板）');
+  assert.match(def.body, /## 本轮问题/, '出厂正文 = 零知识 SOP');
+  // #137：出厂正文里没有槽位，出厂槽位值也一并没了（老模板的槽位仍跟自己存）
+  assert.equal(def.values['背景'], undefined, '出厂槽位默认值已退役');
 
   const upd = await updateTemplate({ id: BUILTIN_ID, values: { 背景: '本轮要做的事' } });
   assert.equal(upd.template.values['背景'], '本轮要做的事');
-  assert.equal(upd.template.values['验收'], '…', '没给的槽位保留默认文字');
   assert.equal(upd.template.body, def.body, '只给 values 时不改正文');
 
   // 用户模板：槽位值跟着自己的模板存
@@ -171,7 +174,7 @@ test('builtin 的用户编辑在重启后保留（seed 不覆盖用户编辑 —
   assert.ok(back.body.includes('用户改过的骨架'), 'builtin 编辑原样保留');
   assert.equal(back.builtin, true, 'builtin 标记不变（不可删）');
   // 出厂文本没有被 seed 回写
-  assert.ok(!back.body.includes('## 背景'));
+  assert.ok(!back.body.includes('## 本轮问题'));
 });
 
 test('builtin 永远在场：四个类目的内置都在（seed 于 bootstrap）', async () => {
@@ -183,9 +186,10 @@ test('builtin 永远在场：四个类目的内置都在（seed 于 bootstrap）
   const categories = [...new Set(rows.map((r) => r.category))].sort();
   assert.deepEqual(categories, ['context', 'delivery', 'enhance', 'newtask'], '四个 tab 的内置模板都在');
   assert.ok(rows.some((r) => r.id === BUILTIN_ID));
-  assert.ok(
-    rows.filter((r) => r.category === 'newtask').length >= 5,
-    '任务模板内置一批可选骨架，不是单一空壳'
+  assert.equal(
+    rows.filter((r) => r.category === 'newtask').length,
+    1,
+    '#137：任务模板内置只留一条「ref 生成」'
   );
 });
 

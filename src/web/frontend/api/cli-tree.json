@@ -1112,6 +1112,38 @@
             "http": null
           },
           "children": []
+        },
+        {
+          "name": "orphans",
+          "path": [
+            "docs",
+            "orphans"
+          ],
+          "action": {
+            "id": "docs.orphans",
+            "module": "docs",
+            "summary": "列出无归属的孤儿文档（失绑时间 / 剩余天数 / 是否有正文；只读）",
+            "usage": "docs orphans",
+            "http": "GET /api/docs/orphans"
+          },
+          "children": [
+            {
+              "name": "purge",
+              "path": [
+                "docs",
+                "orphans",
+                "purge"
+              ],
+              "action": {
+                "id": "docs.orphans.purge",
+                "module": "docs",
+                "summary": "孤儿到期清理（默认只预演；--apply 软删空正文到期孤儿，有正文的只列清单）",
+                "usage": "docs orphans purge",
+                "http": "POST /api/docs/orphans/purge"
+              },
+              "children": []
+            }
+          ]
         }
       ]
     },

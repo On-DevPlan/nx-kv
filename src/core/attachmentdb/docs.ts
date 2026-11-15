@@ -55,17 +55,36 @@ export function ensureDocRef(conn: any, { ref, locator, atMs = Date.now() }: Ens
     if (byLoc) return String(byLoc.id);
   }
   const external = input ? isExternal(input) : false;
+  const hasOrigin = !!conn.get("SELECT name FROM pragma_table_info('refs') WHERE name = 'origin'");
+  const hasOrphanSince = !!conn.get("SELECT name FROM pragma_table_info('refs') WHERE name = 'orphan_since'");
   let id = refId || (external ? refIdFor(input) : 'ref_' + sha1(randomUUID()).slice(0, 16));
-  if (conn.get('SELECT 1 AS x FROM refs WHERE id = :id', { id })) {
+  const occupied = conn.get('SELECT deleted_at FROM refs WHERE id = :id', { id });
+  if (occupied) {
     // id 被占用：直接 ref 换一个；locator 场景理论上不会撞（已按 locator 查过）
-    if (refId) return id;
+    if (refId) {
+      // v11 软删过的 ref 被显式重新登记 = 恢复，重新从当前时刻开始失绑计时
+      if (hasOrphanSince && occupied.deleted_at != null) {
+        conn.run(
+          `UPDATE refs SET deleted_at = NULL, state = 'orphan', orphan_since = :at, updated_at = :at
+            WHERE id = :id`,
+          { id, at: atMs }
+        );
+      }
+      return id;
+    }
     id = 'ref_' + sha1(randomUUID()).slice(0, 16);
   }
-  const hasOrigin = !!conn.get("SELECT name FROM pragma_table_info('refs') WHERE name = 'origin'");
   if (hasOrigin) {
+    // v11 起新建即无归属的 ref 立刻开始失绑计时；迁移链里 v2/v6 阶段还没有这一列，
+    // 所以列清单按 pragma 现取（与 origin 的兼容原因相同）。
+    const cols = ['id', 'type', 'locator', 'origin', 'state', 'version', 'deleted_at', 'created_at', 'updated_at'];
+    const vals = [':id', "'md'", ':locator', ':origin', "'orphan'", '0', 'NULL', ':at', ':at'];
+    if (hasOrphanSince) {
+      cols.push('orphan_since');
+      vals.push(':at');
+    }
     conn.run(
-      `INSERT INTO refs (id, type, locator, origin, state, version, deleted_at, created_at, updated_at)
-       VALUES (:id, 'md', :locator, :origin, 'orphan', 0, NULL, :at, :at)
+      `INSERT INTO refs (${cols.join(', ')}) VALUES (${vals.join(', ')})
        ON CONFLICT(id) DO NOTHING`,
       { id, locator: input, origin: external ? 'external' : 'own', at: atMs }
     );
@@ -141,14 +160,20 @@ export function clearRefBindings(conn: any): void {
 export function markRefBound(conn: any, refId?: string): void {
   const id = String(refId || '');
   if (!id) return;
-  conn.run("UPDATE refs SET state = '', updated_at = :at WHERE id = :id", { id, at: Date.now() });
+  conn.run(
+    "UPDATE refs SET state = '', orphan_since = 0, updated_at = :at WHERE id = :id",
+    { id, at: Date.now() }
+  );
 }
 
 /** 没有任何绑定的 ref → 回到 orphan（重建收尾，防止摘绑定后状态残留）。 */
 export function markUnboundRefsOrphan(conn: any): number {
   const r = conn.run(
-    `UPDATE refs SET state = 'orphan', updated_at = :at
-      WHERE deleted_at IS NULL AND state <> 'orphan'
+    `UPDATE refs SET state = 'orphan',
+            orphan_since = CASE WHEN orphan_since > 0 THEN orphan_since ELSE :at END,
+            updated_at = :at
+      WHERE deleted_at IS NULL
+        AND (state <> 'orphan' OR orphan_since = 0)
         AND id NOT IN (SELECT ref_id FROM ref_bindings)`,
     { at: Date.now() }
   );

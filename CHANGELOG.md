@@ -2,6 +2,28 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.59.0] - 2026-11-16 孤儿 ref 到期清理（3 天 TTL）+ 软删留痕
+
+> 这一版的 schema v11 与孤儿清理由**并行会话**完成（同一工作树），本会话代为校准门禁并发布。
+
+### Added
+
+- **孤儿 ref 自动回收**（用户要求：「孤儿满 3 天后自动删除，删除前可看清单、删除后可审计」）：
+  - **孤儿定义**：`deleted_at IS NULL` 且 `ref_bindings` 里没有任何一行的 ref（不看 `state`）；
+  - `refs.orphan_since`：失绑起算时间（毫秒，0 = 未计时）——由「有归属」变「无归属」时写入，
+    **重建索引不刷新已在计时的孤儿**（否则每次 `syncRefIndex` 都把倒计时重置，永远到期不了）；
+  - `ref_gc_log`：清理的**不可变留痕**（ref_id / desc / origin / body_bytes / unbound_at /
+    deleted_at / ttl_days / reason / source / snapshot）；
+  - 到期清理为**软删**（`refs.deleted_at`，`ref_bodies` 保留），可回滚；
+    **只清空正文的孤儿**，有正文的到期孤儿只列清单、不自动删；
+  - 新增设置项 `app.orphanTtlDays`（默认 3 天）、CLI / HTTP `docs orphans`（看清单）、
+    `docs orphans purge`（执行清理）、serve 每小时例行维护、设置面板「文档清理」分区。
+- **存储版本 11**：`src/core/db/migrations/v11.sql`（纯 DDL）+ `v11-data.ts`（存量孤儿起算时间回填）；
+  存量孤儿在升级时统一从迁移时刻起算，保证升级后仍有完整 TTL 缓冲；回填不改 `updated_at`
+  （避免打乱文档列表的最近更新排序）。
+- 决策见 `docs/decisions/2026-11-15-orphan-ref-gc.md`，版本说明见
+  `docs/decisions/versions/2026-11-15-v11.md`。
+
 ## [0.58.0] - 2026-11-16 新建任务模板只留一条内置「ref 生成」；旧内置下线（#137）
 
 ### Changed

@@ -431,6 +431,15 @@ async function cmdServe(ctx: ServeCtx): Promise<void> {
   };
   process.on('exit', unregister);
 
+  // 孤儿文档例行维护：启动后延迟跑一次，此后每小时一次。
+  // 只软删空正文且到期的孤儿；有正文的只列清单（不静默删）。失败不影响面板。
+  try {
+    const { startOrphanGcTimer } = await import('../modules/docs/orphan.js');
+    startOrphanGcTimer();
+  } catch {
+    /* 计时器启动失败不影响 serve 本体 */
+  }
+
   console.log('nx-kv · nx-kv v' + VERSION);
   console.log(`面板:   ${addr}`);
   console.log('CLI:    nx-kv help（每个按钮都有对应命令，agent 可加 --json）');

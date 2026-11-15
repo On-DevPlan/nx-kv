@@ -13,6 +13,16 @@ export function saveSettings(patch: Record<string, unknown>): Promise<any> {
   return api('/api/setting', { method: 'POST', body: patch });
 }
 
+/** 读孤儿文档清单（GET /api/docs/orphans；CLI docs orphans 等价）。 */
+export function getOrphans(): Promise<any> {
+  return api('/api/docs/orphans');
+}
+
+/** 预演 / 执行孤儿到期清理（POST /api/docs/orphans/purge；缺省只预演）。 */
+export function purgeOrphans(patch: { apply?: boolean; ttlDays?: number } = {}): Promise<any> {
+  return api('/api/docs/orphans/purge', { method: 'POST', body: patch });
+}
+
 /** 读 localtask 全量（GET /api/localtasks；settings 段带提示词模板与追加模式）。 */
 export function getLocaltaskSettings(): Promise<any> {
   return api('/api/localtasks');

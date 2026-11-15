@@ -8,19 +8,12 @@
 //      「摸清仓库 → 建 ref → 写问答 → 挂文档列表 → done」。
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { createTestStore } from '../support/test-store.mjs';
 import { getDb } from '../../src/core/db/index.js';
 import { seedBuiltinTemplates, RETIRED_BUILTIN_TEMPLATE_IDS } from '../../src/core/db/seed-templates.js';
 
-let store = null;
-let dir = '';
-
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'nx-kv-seedtpl-'));
-  store = await createTestStore();
+  await createTestStore();   // 临时库夹具：库路径必须在系统临时目录里
 });
 
 test('#137 新库：newtask 只有一条内置「ref 生成」，且它是默认', () => {

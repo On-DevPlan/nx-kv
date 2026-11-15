@@ -332,7 +332,7 @@ export interface ApiClient {
   reorder(input: z.input<InstanceType<typeof LocaltaskReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskReorderAction>['run']>>>;
 /** 恢复一条被删除（软删除）的任务（撤销删除） */
   restore(input: z.input<InstanceType<typeof LocaltaskTaskRestoreAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTaskRestoreAction>['run']>>>;
-/** 看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领），不含正文 */
+/** 看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领/组标注），不含正文 */
   tasks(input?: z.input<InstanceType<typeof LocaltaskTasksAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTasksAction>['run']>>>;
 /** 查看任务级时间目标的每轮 check 记录（时间、已用/剩余、是否到点、当轮总结） */
   timegoalLog(input: z.input<InstanceType<typeof LocaltaskTimegoalLogAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTimegoalLogAction>['run']>>>;

@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.56.2",
-  "hash": "e44a2fb53cbb7752",
+  "hash": "548dc16cdb0feaf8",
   "actions": [
     {
       "id": "localtask.add",
@@ -1167,6 +1167,14 @@
                     "hint": "第几轮"
                   },
                   {
+                    "name": "board",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "组任务标注：正文 frontmatter 的 board 值（组 id/key/名）；纯项目任务为空串"
+                  },
+                  {
                     "name": "ready",
                     "required": true,
                     "type": {
@@ -1224,7 +1232,7 @@
           }
         ]
       },
-      "summary": "看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领），不含正文"
+      "summary": "看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领/组标注），不含正文"
     },
     {
       "id": "localtask.update",

@@ -25,12 +25,18 @@ const input = z.object({
 
 /**
  * 清单里的一行：够 UI 画出一个列表 + 点进详情，**不含正文**。
+ *
+ * `board` 是**组任务标注**（与面板 `boardMark` 同一份数据）：组页要按它把任务从
+ * 成员队列里筛出来，项目页要按它把组任务剔除（两种走向，见 task-view.ts）。
+ * 端侧（fr）的组页就是靠这一格才画得出「本组任务」—— 没有它只能把组做成
+ * 「成员的导航」，那正是 11-03 改掉的形态。
  */
 const row = z.object({
   id: z.int().describe('任务编号'),
   status: z.string().describe('pending / claimed / done / cancelled'),
   title: z.string().describe('正文首个标题行（没有标题就取首行，已截断）'),
   round: z.int().describe('第几轮'),
+  board: z.string().describe('组任务标注：正文 frontmatter 的 board 值（组 id/key/名）；纯项目任务为空串'),
   ready: z.boolean().describe('当前是否可领取'),
   reopenCount: z.int(),
   createdAt: z.string(),
@@ -68,13 +74,14 @@ export class LocaltaskTasksAction extends ActionBase<typeof input> {
     id: 'localtask.tasks',
     cli: ['localtask', 'tasks'],
     http: ['GET', '/api/localtasks/tasks'],
-    summary: '看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领），不含正文',
+    summary: '看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领/组标注），不含正文',
     input,
     output,
     render: (d: any) => {
       const head = `${d.name}（${d.key}）· ${d.tasks.length}/${d.total} 条`;
       const rows = d.tasks.map(
-        (t: any) => `  #${t.id} [${t.status}] 第${t.round}轮 ${t.title}`,
+        // 组任务在 CLI 上也标出来：同一条队列里混着项目任务与组任务，不标就分不清
+        (t: any) => `  #${t.id} [${t.status}] 第${t.round}轮${t.board ? `（组 ${t.board}）` : ''} ${t.title}`,
       );
       return [head, ...rows].join('\n');
     },
@@ -100,6 +107,9 @@ export class LocaltaskTasksAction extends ActionBase<typeof input> {
         status: t.status,
         title: titleOf(t.text),
         round: t.round ?? 1,
+        // 组任务标注：normalizeTask 已经把 frontmatter.board 解析成 boardMark，
+        // 这里只做「缺省为空串」的形状收口 —— 别在这层再解析一遍正文。
+        board: t.boardMark ?? '',
         ready: !!t.ready,
         reopenCount: t.reopenCount ?? 0,
         createdAt: t.createdAt ?? '',

@@ -87,12 +87,12 @@ export function parseLayout(json: unknown): Layout {
 }
 
 // v2 → v3：没有 key 的条目用 remote/name 现算，让老导出文件也能导入。
-// v3 → v4：文档绑定字段做形状归一（非法形状丢弃；note/tag 注解原样保留）。
+// v3 → v4：文档绑定字段做形状归一（非法形状丢弃；note 注解原样保留）。
 const refOf = (raw: unknown): any => {
   const d = sanitizeDocRef(raw);
   if (!d) return null;
-  // sanitizeDocRef 通过即说明 raw 是 DocRef 形状对象（note/tag 注解原样带出）
-  return withLinkMeta(d, raw as { note?: unknown; tag?: unknown });
+  // sanitizeDocRef 通过即说明 raw 是 DocRef 形状对象（note 注解原样带出）
+  return withLinkMeta(d, raw as { note?: unknown });
 };
 
 function normalizeLayout(data: any): Layout {

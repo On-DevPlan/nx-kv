@@ -120,7 +120,6 @@ export interface RefBindingRow {
   type?: string;
   position?: number;
   note?: string;
-  tag?: string;
   atMs?: number;
 }
 
@@ -132,12 +131,12 @@ export function putRefBinding(conn: any, {
   type = 'repo',
   position = 0,
   note = '',
-  tag = '',
   atMs = Date.now(),
 }: RefBindingRow = {}): void {
+  // tag 列已在 schema v12 删除（分类标签概念整个去掉）
   conn.run(
-    `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, tag, created_at)
-     VALUES (:repo, :group, :ref, :type, :pos, :note, :tag, :at)`,
+    `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, created_at)
+     VALUES (:repo, :group, :ref, :type, :pos, :note, :at)`,
     {
       repo: String(repoKey || ''),
       group: groupKey == null ? null : String(groupKey),
@@ -145,7 +144,6 @@ export function putRefBinding(conn: any, {
       type: String(type || 'repo'),
       pos: Number(position) || 0,
       note: String(note || ''),
-      tag: String(tag || ''),
       at: atMs,
     }
   );

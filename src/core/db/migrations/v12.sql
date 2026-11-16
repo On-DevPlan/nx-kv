@@ -1,0 +1,14 @@
+-- schema v12：去掉「分类标签」这个概念
+--
+-- 口径（2026-11-16 用户拍板）：文档绑定的「分类标签」（`--tag qa` 那一套）
+-- **在整个应用里没有落点**——面板里没有编辑入口、检索里也几乎不用，
+-- 却让宿主 ext、ref_bindings 索引、API 形状、CLI 输出到处都背着一个字段。
+-- 无效概念就该从根上删掉，而不是留着假装有用。
+--
+-- 本次动作：`ref_bindings.tag` 列直接删（DROP COLUMN）。
+-- 这一列只是分类标签的索引投影，没有别的用途：
+-- 关系描述文档的定位不走它——**desc 就在 ref 上**
+-- （同一条关系的描述 = 该参考仓库文档列表里 desc 等于「在组「X」里参考什么」的那一篇）。
+--
+-- @decision docs/decisions/2026-11-16-drop-tag-concept.md
+ALTER TABLE ref_bindings DROP COLUMN tag;

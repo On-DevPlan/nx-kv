@@ -21,7 +21,7 @@ export class RepoDocListAction extends ActionBase<typeof input> {
     args: ['id'],
     input,
     render: (d: any) => {
-      const one: any = (x: any, i: any) => `  ${i}. ${x.title || x.desc || x.ref}${x.tag ? `  [${x.tag}]` : ''}${x.note ? `  # ${x.note}` : ''}${x.missing ? '  (缺正文)' : ''}`;
+      const one: any = (x: any, i: any) => `  ${i}. ${x.title || x.desc || x.ref}${x.note ? `  # ${x.note}` : ''}${x.missing ? '  (缺正文)' : ''}`;
       const lines: any = [`【${d.repo.name}】介绍文档 ${d.count} 篇`];
       // 描述是**列表**：主篇 + 登记的补充（#58）
       let n: any = 0;

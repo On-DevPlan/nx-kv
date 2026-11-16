@@ -457,45 +457,22 @@ export async function refReposOfRepo(idOrPathOrName: unknown): Promise<RefsOfRep
   const repoKey = service.deriveKey(repo);
   const groups = groupsOfRepo(s, repoKey);
   // #134：描述已经不在关系边上了（在文档里）——只读展示从文档取，缺省回落旧 note。
-  const boardsOut = await Promise.all(groups.map(async (b) => {
-    const bkey = service.storedBoardKey(b);
-    const bodies = await linkNoteBodiesOf({ kind: 'board', key: bkey, name: b.name });
-    return {
-      id: b.id,
-      key: bkey,
-      name: b.name,
-      desc: b.desc || '',
-      refRepos: linksOfBoard(s, b).map(({ ref, note }) => ({
-        ...projectRef(ref),
-        note: bodies.get(service.deriveKey(ref)) || note,
-      })),
-    };
+  const boardsOut = groups.map((b) => ({
+    id: b.id,
+    key: service.storedBoardKey(b),
+    name: b.name,
+    desc: b.desc || '',
+    refRepos: linksOfBoard(s, b).map(({ ref, note }) => ({ ...projectRef(ref), note })),
   }));
 
   // 仓库级直接绑定：与组无关，永远原样回显（组级结果不覆盖它）
-  const repoBodies = await linkNoteBodiesOf({ kind: 'repo', key: repoKey, name: repo.name });
-  const direct = directLinksOfRepo(s, repo).map(({ ref, note }) => ({
-    ...projectRef(ref),
-    note: repoBodies.get(service.deriveKey(ref)) || note,
-  }));
+  const direct = directLinksOfRepo(s, repo).map(({ ref, note }) => ({ ...projectRef(ref), note }));
 
   return {
     repo: { id: repo.id, key: repoKey, name: repo.name, path: repo.path, desc: repo.desc || '' },
     direct,
     boards: boardsOut,
   };
-}
-
-/**
- * #134：这条关系下各参考仓库的**描述正文**（refKey → 正文）。
- *
- * 描述已经不在关系边上了（归档成文档），但只读展示（面板 chip、交付上下文）
- * 仍要给出「这个参考在本组里参考什么」——出处是文档。docs 域用**动态 import**
- * （模块之间不静态互依，见 docs/repos-bridge 的同款约定）。
- */
-async function linkNoteBodiesOf(scope: { kind: 'board' | 'repo'; key: string; name: string }): Promise<Map<string, string>> {
-  const { linkNoteBodiesOf: f } = await import('../docs/link-note.js');
-  return f(scope);
 }
 
 /** syncRef 的结果（status: missing/upToDate/updated/conflict；syncAllRefs 里还有 error）。 */
@@ -637,13 +614,8 @@ export async function refReposOfBoard(boardIdOrKey: unknown): Promise<RefsOfBoar
   if (!b) b = s.boards.find((x) => String(x.name).toLowerCase() === raw.toLowerCase());
   if (!b) throw notFound('看板不存在: ' + raw);
   const bkey = service.storedBoardKey(b);
-  // #134：描述正文从文档取（关系边上已经没有它了）
-  const bodies = await linkNoteBodiesOf({ kind: 'board', key: bkey, name: b.name });
   return {
     board: { id: b.id, key: bkey, name: b.name },
-    refRepos: linksOfBoard(s, b).map(({ ref, note }) => ({
-      ...projectRef(ref),
-      note: bodies.get(service.deriveKey(ref)) || note,
-    })),
+    refRepos: linksOfBoard(s, b).map(({ ref, note }) => ({ ...projectRef(ref), note })),
   };
 }

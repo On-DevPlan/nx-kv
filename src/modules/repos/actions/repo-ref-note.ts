@@ -4,8 +4,8 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import * as linkNote from '../link-note.js';
-const link: any = linkNote;
+import * as refNoteDoc from '../ref-note-doc.js';
+const link: any = refNoteDoc;
 
 /** repo.ref.note 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
@@ -21,8 +21,8 @@ export class RepoRefNoteAction extends ActionBase<typeof input> {
     cli: ['repo', 'ref', 'note'],
     http: ['POST', '/api/repos/ref/note'],
     summary:
-      '写/清绑定描述：这个参考在该组/该仓库里参考什么（#134：描述归档成该参考仓库的一篇文档，' +
-      '在「<参考仓库名> · 文档列表」里可见可编辑；--note 留空 = 清除）',
+      '写/清绑定描述：这个参考在该组/该仓库里参考什么（描述落成该参考仓库文档列表里的一篇文档，' +
+      'desc 由系统生成；--note 留空 = 清除那篇）',
     args: ['id'],
     input,
     render: (d: any) =>

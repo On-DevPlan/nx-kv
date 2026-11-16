@@ -192,8 +192,8 @@ test('v10→v11：存量孤儿按升级时刻起算，有归属的清零', async
          VALUES ('ref_bound_v10', 'md', '', 'own', '', 0, NULL, 1, 1)`
       );
       raw.run(
-        `INSERT INTO ref_bindings (type, repo_key, group_key, ref_id, position, note, tag, created_at)
-         VALUES ('repo', 'github.com/me/x', NULL, 'ref_bound_v10', 0, '', '', 1)`
+        `INSERT INTO ref_bindings (type, repo_key, group_key, ref_id, position, note, created_at)
+         VALUES ('repo', 'github.com/me/x', NULL, 'ref_bound_v10', 0, '', 1)`
       );
     } finally {
       raw.close();
@@ -206,7 +206,7 @@ test('v10→v11：存量孤儿按升级时刻起算，有归属的清零', async
       importLegacyData: false,
       atMs: at,
     });
-    assert.equal(Number(db.get('PRAGMA user_version').user_version), 11);
+    assert.equal(Number(db.get('PRAGMA user_version').user_version), 12);
     assert.ok(db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='ref_gc_log'"));
 
     const orphan = db.get("SELECT state, orphan_since FROM refs WHERE id = 'ref_orphan_v10'");

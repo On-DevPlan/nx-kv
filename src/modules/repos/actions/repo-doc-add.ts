@@ -13,7 +13,6 @@ const input = z.object({
   ref: z.string().optional().describe("文档 refId（ref_<16hex>）"),
   path: z.string().optional().describe("外部绝对路径（登记成 origin=external 的 ref）"),
   note: z.string().optional().describe("这篇的说明"),
-  tag: z.string().optional().describe("分类标签（如 qa；简介行渲染成小 chip；空串 = 清掉）"),
 });
 
 export class RepoDocAddAction extends ActionBase<typeof input> {
@@ -28,7 +27,7 @@ export class RepoDocAddAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-      return addRepoDoc(ctx.id, { ref: ctx.ref, path: ctx.path, note: ctx.note, tag: ctx.tag });
+      return addRepoDoc(ctx.id, { ref: ctx.ref, path: ctx.path, note: ctx.note });
   
   }
 }

@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import * as repos from '../../src/modules/repos/service.js';
 import * as boards from '../../src/modules/repos/boards.js';
 import * as ref from '../../src/modules/repos/ref.js';
-import * as link from '../../src/modules/repos/link-note.js';
+import * as link from '../../src/modules/repos/ref-note-doc.js';
 import * as docs from '../../src/modules/docs/service.js';
 import * as transfer from '../../src/modules/repos/transfer.js';
 import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
@@ -466,9 +466,9 @@ test('绑定两类互不覆盖：--repo 只写仓库级、--board 只写组级�
   assert.notEqual(gNote.refId, dNote.refId, '组级 / 仓库级各一篇');
   assert.match(String((await docs.getDoc({ ref: gNote.refId })).body || ''), /改过的组级描述/);
   assert.match(String((await docs.getDoc({ ref: dNote.refId })).body || ''), /改过的仓库级描述/);
-  // 关系边上留一份副本（导出/导入要带走它），真身是文档
-  assert.equal((await boards.getBoard(b.id)).refs[0].note, '改过的组级描述');
-  assert.equal((await repos.getRepo(dev.id)).linked[0].note, '改过的仓库级描述');
+  // #137：关系边上**不再**写描述（真身是文档，定位靠 desc）
+  assert.equal((await boards.getBoard(b.id)).refs[0].note, '组级描述', '关系边上保留的是绑定时那句');
+  assert.equal((await repos.getRepo(dev.id)).linked[0].note, '仓库级描述');
 
   await ref.bindTarget({ id: r.id, remove: true, repo: dev.id });
   assert.deepEqual((await repos.getRepo(dev.id)).linked, []);
@@ -572,11 +572,12 @@ test('refReposOfRepo：仓库级直接绑定 + 所属组的组级绑定，两类
     const d = await ref.refReposOfRepo(key);
     assert.equal(d.repo.id, dev.id);
     assert.deepEqual(d.direct.map((x) => x.name), ['rg']);
-    assert.equal(d.direct[0].note, '仓库级参考');
+    // #137：描述在文档里，关系边上的 note 不再被写 → 这里是空
+    assert.equal(d.direct[0].note, '');
     assert.deepEqual(d.boards.map((x) => x.name).sort(), ['grp', 'grp2']);
     const g1 = d.boards.find((x) => x.name === 'grp');
     assert.deepEqual(g1.refRepos.map((x) => x.name), ['rg']);
-    assert.equal(g1.refRepos[0].note, '组级参考');
+    assert.equal(g1.refRepos[0].note, '');
     const g2 = d.boards.find((x) => x.name === 'grp2');
     assert.deepEqual(g2.refRepos.map((x) => x.name), ['rs']);
   }
@@ -607,7 +608,8 @@ test('refReposOfBoard：只读组上的绑定（带组级描述）', async () =>
 
   const d = await ref.refReposOfBoard(b1.id);
   assert.equal(d.refRepos.length, 1);
-  assert.equal(d.refRepos[0].note, '组级描述');
+  // #137：描述在文档里（desc 就是定位键），关系边上的 note 不再被写
+  assert.equal(d.refRepos[0].note, '');
   assert.equal(d.refRepos[0].via, undefined, '没有继承/多路径概念');
 });
 

@@ -140,7 +140,7 @@ export default function ReposView() {
       const main = r.descDocs && r.descDocs.main;
       if (main && [main.title, main.summary, main.desc].some((s) => s && String(s).toLowerCase().includes(kw))) return true;
       return ((r.descDocs && r.descDocs.links) || []).some((l) =>
-        [l.title, l.desc, l.tag, l.note].some((s) => s && String(s).toLowerCase().includes(kw)));
+        [l.title, l.desc, l.note].some((s) => s && String(s).toLowerCase().includes(kw)));
     };
     return list.filter((r) =>
       [r.name, r.key, r.path, r.desc].some((s) => s && String(s).toLowerCase().includes(kw))

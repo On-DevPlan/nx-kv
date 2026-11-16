@@ -14,10 +14,10 @@
 //   {{task.text}}              原始提示词（任务正文，逐字）
 //   {{task.id}}                任务编号
 //   {{repo.name}} {{repo.intro}} {{repo.introPath}}   项目介绍（正文 + 可读路径）
-//   {{#each repo.docs}}…{{/each}}     项目补充文档（数组：path / tag / note）
+//   {{#each repo.docs}}…{{/each}}     项目补充文档（数组：path / note）
 //   {{group.name}} {{group.desc}} {{group.intro}} {{group.introPath}} {{group.note}}
 //   {{#each group.peers}}…{{/each}}   组内成员（数组：name / note）
-//   {{#each group.docs}}…{{/each}}    组绑定参考文件（数组：path / tag / note）
+//   {{#each group.docs}}…{{/each}}    组绑定参考文件（数组：path / note）
 //   {{#each repo.refRepos}}…{{/each}} 本仓库直接绑定的参考仓库（name / path / note）
 //   {{#each group.refRepos}}…{{/each}} 本组绑定的参考仓库（name / path / note）
 //   {{#each refRepos.list}}…{{/each}} 两者去重并集（{{refRepos.count}} 总数）
@@ -45,14 +45,13 @@ export const DEFAULT_DELIVERY_TEMPLATE = DEFAULT_CONTEXT_TEMPLATE;
  * 「项目文档 / 组文档」→ 结构化数组（模板用 {{#each}} 组织行）。
  * v7：ref 是 DB 实体，没有路径——只给 desc / title / refId / hasBody。
  */
-function docItems(links: any): { refId: string; desc: string; title: string; hasBody: boolean; note: string; tag: string }[] {
+function docItems(links: any): { refId: string; desc: string; title: string; hasBody: boolean; note: string }[] {
   return (links || []).map((d: any) => ({
     refId: d.refId || '',
     desc: d.desc || '',
     title: d.title || '',
     hasBody: d.hasBody !== false,
     note: d.note || '',
-    tag: d.tag || '',
   }));
 }
 

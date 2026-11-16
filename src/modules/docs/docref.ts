@@ -9,12 +9,15 @@
 // 实际位置在 refs.locator；宿主只认 refId。
 import { badInput } from '../../core/errors.js';
 
-/** DocRef：{ ref } 指向文档库条目；note/tag 是列表条目的注解（docLinks 用）。 */
+/**
+ * DocRef：{ ref } 指向文档库条目；note 是列表条目的注解（docLinks 用）。
+ *
+ * #137 之前还有 `tag`（分类标签）——面板没有入口、无处可用，已在 v12 整个删掉。
+ */
 export interface DocRef {
   ref?: string;
-  /** 链接级注解（note/tag，docLinks 条目用） */
+  /** 链接级注解（note，docLinks 条目用） */
   note?: string;
-  tag?: string;
 }
 
 /** DocRef + 链接级注解（withLinkMeta 的产出形状）。 */
@@ -50,18 +53,16 @@ export function sanitizeDocRef(raw: unknown): DocRef | null {
 }
 
 /**
- * DocRef + 链接级注解（note/tag）合成列表条目。
+ * DocRef + 链接级注解（note）合成列表条目。
  *
  * 注解要过三道关（写入口合并 / 读归一化回贴 / 导出保留），三处口径必须一致——
  * 实现只此一份，docs/refs 与 repos/service、transfer 都从这里拿。
  * 空串/缺省 = 不落字段（对已有条目即「清掉」）。
  */
-export function withLinkMeta(ref: DocRef, raw: { note?: unknown; tag?: unknown } = {}): DocRefWithMeta {
+export function withLinkMeta(ref: DocRef, raw: { note?: unknown } = {}): DocRefWithMeta {
   const note = typeof raw.note === 'string' ? raw.note.trim() : '';
-  const tag = typeof raw.tag === 'string' ? raw.tag.trim() : '';
   const entry: DocRefWithMeta = { ...ref };
   if (note) entry.note = note;
-  if (tag) entry.tag = tag;
   return entry;
 }
 

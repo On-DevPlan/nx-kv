@@ -139,7 +139,6 @@ export interface SetDocLinkInput {
   ref?: string;
   path?: string;
   note?: string;
-  tag?: string;
   remove?: number;
   before?: number;
 }
@@ -147,13 +146,13 @@ export interface SetDocLinkInput {
 /**
  * 维护组的 docLinks。
  *   --ref <refId> 或 --path <绝对路径>（外部只读）
- *   note / tag  条目注解
+ *   note  条目注解
  *   remove --remove <序号>（1 起）
  *   before --before <序号>（插到该条之前；缺省追加）
  *
- * 同 ref 重复添加 = 更新该条（note/tag 以本次为准）。
+ * 同 ref 重复添加 = 更新该条（note 以本次为准）。
  */
-export async function setDocLink({ board, ref, path, note, tag, remove, before }: SetDocLinkInput = {}): Promise<any> {
+export async function setDocLink({ board, ref, path, note, remove, before }: SetDocLinkInput = {}): Promise<any> {
   if (!board) throw badInput('缺少看板（id / key / 名称）');
   const { mutateStore, boardKeyOf } = await reposBridge();
   const docRef = remove === undefined ? await docRefOf({ ref, path }) : null;
@@ -175,8 +174,8 @@ export async function setDocLink({ board, ref, path, note, tag, remove, before }
       return { boardName: b.name, removed: describeLink(gone), count: b.docLinks.length };
     }
 
-    // 条目 = DocRef + 注解（note/tag）；合成逻辑收在 docref.withLinkMeta
-    const entry = withLinkMeta(docRef!, { note, tag });
+    // 条目 = DocRef + 注解（note）；合成逻辑收在 docref.withLinkMeta
+    const entry = withLinkMeta(docRef!, { note });
     const at = b.docLinks.findIndex((x: any) => (x && x.ref) === entry.ref);
     if (at >= 0) b.docLinks.splice(at, 1);
     const want = before !== undefined ? idxOf(before) : -1;
@@ -222,7 +221,6 @@ export interface AddRepoDocInput {
   ref?: string;
   path?: string;
   note?: string;
-  tag?: string;
 }
 
 /** 往项目的介绍文档集里加一篇（同 ref 重复添加 = 更新注解）。 */
@@ -231,7 +229,7 @@ export async function addRepoDoc(locator: string, raw: unknown): Promise<any> {
   const repo = await getRepo(locator);
   const input = (raw && typeof raw === 'object' ? raw : {}) as AddRepoDocInput;
   const docRef = await docRefOf({ ref: input.ref, path: input.path });
-  const entry = withLinkMeta(docRef, { note: input.note, tag: input.tag });
+  const entry = withLinkMeta(docRef, { note: input.note });
   const res = await mutateStore((s: any) => {
     const r = s.repos.find((x: any) => deriveKey(x) === deriveKey(repo));
     if (!r) throw notFound('repo 不存在: ' + locator);
@@ -244,6 +242,66 @@ export async function addRepoDoc(locator: string, raw: unknown): Promise<any> {
   });
   await syncRefIndex();
   return res;
+}
+
+/**
+ * 「建一篇文档并挂到某个仓库上」——关系描述的落点（#137）。
+ *
+ * 定位口径：**desc 就在 ref 上**——同一个 desc 的那篇就是它；
+ * 找到了就改（正文 + desc），没找到就新建一篇并挂到该仓库的文档列表。
+ */
+export async function setDocLinkDoc({ repoKey, desc, body }: {
+  repoKey: string;
+  desc: string;
+  body?: string;
+}): Promise<{ refId: string; desc: string; created: boolean }> {
+  const { getRepo, deriveKey, mutateStore } = await reposBridge();
+  const repo = await getRepo(repoKey);
+  const key = deriveKey(repo);
+  const label = String(desc || '').trim();
+  const text = String(body ?? '');
+
+  // ① 找同 desc 的那篇（该仓库的文档集里）
+  const s = await (await reposBridge()).loadStore();
+  const r = s.repos.find((x: any) => deriveKey(x) === key);
+  const ids: string[] = [];
+  if (r && r.doc && r.doc.ref) ids.push(String(r.doc.ref));
+  for (const l of (r && Array.isArray(r.docLinks) ? r.docLinks : [])) {
+    if (l && l.ref) ids.push(String(l.ref));
+  }
+  let hit = '';
+  for (const id of ids) {
+    const row = getDb().get(`SELECT "desc" AS desc FROM refs WHERE id = :id AND deleted_at IS NULL`, { id });
+    if (row && String(row.desc || '') === label) { hit = id; break; }
+  }
+
+  if (hit) {
+    // ② 改：正文 + desc（同一篇，不新增）
+    const { writeOwnDoc, setOwnDocDesc } = await import('./store.js');
+    await writeOwnDoc(hit, text);
+    await setOwnDocDesc(hit, label);
+    return { refId: hit, desc: label, created: false };
+  }
+
+  // ③ 建：新建一篇自有文档（空正文也落行）+ 挂到仓库文档集
+  const { createRef } = await import('./service.js');
+  const made = await createRef({ desc: label, owner: 'repo', repo: key });
+  const { writeOwnDoc } = await import('./store.js');
+  await writeOwnDoc(made.refId, text);
+  // createRef 会把它挂成**主篇**（仓库没有主篇时）；关系描述是「又一篇」，
+  // 应当是附加篇 —— 把主篇位还回去（本来就是空的），改挂 docLinks。
+  await mutateStore((draft: any) => {
+    const dr = draft.repos.find((x: any) => deriveKey(x) === key);
+    if (!dr) return;
+    if (dr.doc && dr.doc.ref === made.refId) {
+      delete dr.doc;
+      if (!Array.isArray(dr.docLinks)) dr.docLinks = [];
+      dr.docLinks.push({ ref: made.refId });
+    }
+    dr.updatedAt = new Date().toISOString();
+  });
+  await syncRefIndex();
+  return { refId: made.refId, desc: label, created: true };
 }
 
 /** 从项目的介绍文档集里摘掉一篇（--index 从 1 起；1 = 主篇） */

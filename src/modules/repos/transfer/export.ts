@@ -28,7 +28,7 @@ export interface ExportRepoEntry {
   type: string;
   /** 文档绑定（主篇 refId） */
   doc?: any;
-  /** 项目补充文档（refId + note/tag） */
+  /** 项目补充文档（refId + note） */
   docLinks?: any[];
   remote?: string;
   remotes?: string[];
@@ -49,7 +49,7 @@ export interface ExportBoardEntry {
   repos: ExportBoardRepoEntry[];
   /** 文档绑定（v4）：组介绍覆盖 */
   doc?: any;
-  /** 组级附加文档列表（note/tag 注解跟条目一起走） */
+  /** 组级附加文档列表（note 注解跟条目一起走） */
   docLinks?: any[];
   /** 组内描述覆盖（v4） */
   repoDocs?: Record<string, any>;
@@ -166,7 +166,7 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
     // 文档绑定（v4）：组介绍覆盖 / 组级附加列表 / 组内描述覆盖
     const bdoc = sanitizeDocRef(b.doc);
     if (bdoc) entry.doc = bdoc;
-    // docLinks 条目 = DocRef + 注解（note/tag），注解跟条目一起走（withLinkMeta 统一口径）
+    // docLinks 条目 = DocRef + 注解（note），注解跟条目一起走（withLinkMeta 统一口径）
     const links = (Array.isArray(b.docLinks) ? b.docLinks : [])
       .map((l: any) => {
         const d = sanitizeDocRef(l);

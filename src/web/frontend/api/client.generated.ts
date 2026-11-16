@@ -229,7 +229,7 @@ export interface ApiClient {
   check(): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefCheckAction>['run']>>>;
 /** 克隆远程仓库为参考仓库（落到 gitRepoRoot，登记 + 可选绑定当前目录的开发仓库） */
   refClone(input: z.input<InstanceType<typeof RepoRefCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefCloneAction>['run']>>>;
-/** 写/清绑定描述：这个参考在该组/该仓库里参考什么（#134：描述归档成该参考仓库的一篇文档，在「<参考仓库名> · 文档列表」里可见可编辑；--note 留空 = 清除） */
+/** 写/清绑定描述：这个参考在该组/该仓库里参考什么（描述落成该参考仓库文档列表里的一篇文档，desc 由系统生成；--note 留空 = 清除那篇） */
   refNote(input: z.input<InstanceType<typeof RepoRefNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefNoteAction>['run']>>>;
 /** 查参考仓库：--id 某仓库（缺省当前目录）看它直接绑的 + 所属组绑的，两类并列；--board 某组 看这个组绑定的（带绑定描述） */
   of(input?: z.input<InstanceType<typeof RepoRefOfAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefOfAction>['run']>>>;
@@ -281,7 +281,7 @@ export interface ApiClient {
   gc(input?: z.input<InstanceType<typeof DocsGcAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsGcAction>['run']>>>;
 /** 双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js） */
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
-/** 维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新） */
+/** 维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新） */
   link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>>;
 /** 孤儿到期清理（默认只预演；--apply 软删空正文到期孤儿，有正文的只列清单） */
   purge(input?: z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsOrphansPurgeAction>['run']>>>;
@@ -545,7 +545,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocAddAction>['_input']>);
       const path = `/api/repos/docs`;
-      const body = { "id": inp["id"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"], "tag": inp["tag"] };
+      const body = { "id": inp["id"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>;
     },
     // action: repo.doc.list
@@ -880,7 +880,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocsLinkAction>['_input']>);
       const path = `/api/docs/link`;
-      const body = { "board": inp["board"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"], "tag": inp["tag"], "remove": inp["remove"], "before": inp["before"] };
+      const body = { "board": inp["board"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"], "remove": inp["remove"], "before": inp["before"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>;
     },
     // action: docs.orphans.purge

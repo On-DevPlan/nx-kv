@@ -39,6 +39,10 @@
 .nx-refs-row-wrap:hover{background:var(--soft,#F1F0EC)}
 .nx-refs-row-wrap .nx-refs-row{flex:1;min-width:0}
 .nx-refs-row-wrap .nx-refs-row:hover{background:transparent}
+/* 主篇标签（#144）：原来只有标题变绿，看不出「这是主篇」——补一枚明确的章 */
+.nx-refs-scope.main-tag{
+  border-color:#2F6F5E66;background:#2F6F5E14;color:#2F6F5E;font-weight:600;
+}
 .nx-refs-row-acts{
   display:flex;flex-direction:column;gap:1px;flex:none;
   padding:6px 4px 0 0;opacity:0;transition:opacity .12s;

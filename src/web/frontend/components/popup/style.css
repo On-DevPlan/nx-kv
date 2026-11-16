@@ -61,4 +61,8 @@
 }
 .pp-menu-item:hover { background: var(--soft); }
 .pp-menu-item.danger { color: var(--danger); }
+/* 菜单项图标（#144 起 RowMenuItem 支持 icon）：图标说类别、文字说动作 */
+.pp-menu-item-ico { display: inline-flex; flex: none; color: var(--mid); }
+.pp-menu-item:hover .pp-menu-item-ico,
+.pp-menu-item.danger:hover .pp-menu-item-ico { color: currentColor; }
 .pp-sep { height: 1px; background: var(--line); margin: 4px 6px; }

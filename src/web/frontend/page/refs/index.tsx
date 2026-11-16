@@ -12,6 +12,7 @@ import type { Model } from 'flexlayout-react';
 import {
   createDoc,
   detach,
+  promoteToMain,
   descOf,
   docsBindings,
   filterByScope,
@@ -26,7 +27,7 @@ import { useWikiNav } from '../doc/index.jsx';
 import type { DocOpenExtra } from '../doc/index.jsx';
 import { closeRightPanelOf } from '../../workspace.js';
 import { useApp } from '../../app-context.jsx';
-import { useDialog } from '../../components/popup/index.jsx';
+import { RowMenu, useDialog } from '../../components/popup/index.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { onDocsChanged } from '../../modules/md/doc-bus.js';
 import { resolveFollowedHost, type FollowedHost, type FollowResolution } from '../../refs/index.js';
@@ -194,6 +195,25 @@ export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scop
     openDoc(refId);
   });
 
+  // ⋯ → 设为主篇（#144）：服务端**换位**——目标从附加篇摘出、原主篇退回附加篇，
+  // 两边都不丢归属（老的 `docs bind` 会把原主篇甩成孤儿，面板不走那条）。
+  const setMain = (b: BindingRow) => guard(async () => {
+    if (b.main) return;
+    await promoteToMain(b);
+    const host = b.type === 'group' ? groupNameOf(b.repoKey) : repoNameOf(b.repoKey);
+    toast(`已设为「${host}」的主篇`);
+    reload();
+  });
+
+  const copyRefId = async (b: BindingRow) => {
+    try {
+      await navigator.clipboard.writeText(b.refId);
+      toast('已复制 refId');
+    } catch {
+      toast(b.refId);
+    }
+  };
+
   // ×：解绑归属（文档不删）
   const removeRow = (b: BindingRow) => guard(async () => {
     const label = labelOf(b);
@@ -292,6 +312,7 @@ export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scop
                     {badges.map((x, i) => (
                       <span key={`${x.cls}:${i}`} className={`nx-refs-scope ${x.cls}`}>{x.text}</span>
                     ))}
+                    {b.main ? <span className="nx-refs-scope main-tag" title="主篇：这个宿主的介绍文档">主篇</span> : null}
                   </span>
                   <span className="nx-refs-row-text">{title}</span>
                 </span>
@@ -299,6 +320,24 @@ export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scop
                 {b.note && <span className="nx-refs-row-sub">备注：{b.note}</span>}
               </button>
               <span className="nx-refs-row-acts">
+                {/* ⋯：设为主篇 / 复制 refId（#144）。主篇行不给「设为主篇」，
+                    组内仓库描述（group_repo）没有主篇概念，也不给。 */}
+                <RowMenu
+                  items={[
+                    b.main || b.type === 'group_repo' ? null : {
+                      label: '设为主篇',
+                      icon: <Icon name="star" size={13} title={undefined} />,
+                      hint: '把它挪到主篇位；原主篇退回附加篇（不丢归属）',
+                      onPick: () => setMain(b),
+                    },
+                    {
+                      label: '复制 refId',
+                      icon: <Icon name="link" size={13} title={undefined} />,
+                      hint: b.refId,
+                      onPick: () => copyRefId(b),
+                    },
+                  ]}
+                />
                 <button
                   type="button"
                   className="nx-refs-mini danger"

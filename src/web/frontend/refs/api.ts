@@ -56,6 +56,16 @@ export function setDocDesc(ref: string, desc: string): Promise<any> {
   return api('/api/docs/item', { method: 'PATCH', body: { ref, desc } });
 }
 
+/**
+ * 把某一篇设为主篇（POST /api/docs/main，#144）。
+ *
+ * 服务端做的是**换位**：目标从附加篇摘出、原主篇退回附加篇（不丢归属）——
+ * 前端只传「宿主 + 目标 ref」，顺序不用自己算。
+ */
+export function setMainDoc(body: { ref: string; repo?: string; board?: string }): Promise<any> {
+  return api('/api/docs/main', { method: 'POST', body });
+}
+
 /** 写文档正文 / 描述（PATCH /api/docs/item）——列表的「改 desc」与编辑页保存共用。 */
 export function updateDocItem(body: { ref?: string; body?: string; desc?: string }): Promise<any> {
   return api('/api/docs/item', { method: 'PATCH', body });

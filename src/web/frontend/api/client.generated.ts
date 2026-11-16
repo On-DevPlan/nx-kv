@@ -30,6 +30,7 @@ import type {
   DocsGcAction,
   DocsIndexAction,
   DocsLinkAction,
+  DocsMainAction,
   DocsOrphansAction,
   DocsOrphansPurgeAction,
 } from '../../../modules/docs/actions/_manifest.generated.js';
@@ -287,6 +288,8 @@ export interface ApiClient {
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
 /** 维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新） */
   link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>>;
+/** 把某一篇设为主篇：原主篇退回附加篇（不丢归属），目标从附加篇摘出（不会出现两份） */
+  main(input?: z.input<InstanceType<typeof DocsMainAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsMainAction>['run']>>>;
 /** 孤儿到期清理（默认只预演；--apply 软删空正文到期孤儿，有正文的只列清单） */
   purge(input?: z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsOrphansPurgeAction>['run']>>>;
 /** 列出无归属的孤儿文档（失绑时间 / 剩余天数 / 是否有正文；只读） */
@@ -890,6 +893,13 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/docs/link`;
       const body = { "board": inp["board"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"], "remove": inp["remove"], "before": inp["before"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>;
+    },
+    // action: docs.main
+    async main(input?: z.input<InstanceType<typeof DocsMainAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsMainAction>['_input']>);
+      const path = `/api/docs/main`;
+      const body = { "repo": inp["repo"], "board": inp["board"], "ref": inp["ref"], "path": inp["path"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsMainAction>['run']>>;
     },
     // action: docs.orphans.purge
     async purge(input?: z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>) {

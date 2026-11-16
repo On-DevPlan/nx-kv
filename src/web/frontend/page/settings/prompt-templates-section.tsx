@@ -9,7 +9,8 @@
 // UI 边界：这里只做模板编辑与启用。编辑区下方给**只读参数清单**（参数名 + 一句含义）；
 // 引擎名称、选型理由、语法教程、示例模板与成段说明仍然只写在 skill / docs，不放到设置页。
 import { useEffect, useState } from 'react';
-import { getLocaltaskSettings, getPromptRegistry, saveLocaltaskSettings } from './api.js';
+import { getLocaltaskSettings, getPromptRegistry, saveLocaltaskSettings, savePromptOrder, previewDelivery } from './api.js';
+import { PluginOrderCard, type PluginDesc } from './prompt-order-card.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -20,17 +21,6 @@ import {
   MAX_PROMPT_TEMPLATE_NAME,
 } from '../../../../shared/prompt-blocks.js';
 import type { BlockTemplateList, PromptTemplateItem } from '../../../../shared/prompt-blocks.js';
-
-/** 注册表里的一段插件描述（GET /api/prompt/registry 的 plugins[]）。 */
-interface PluginDesc {
-  id: string;
-  order: number;
-  tag: string;
-  label: string;
-  template: string;
-  fields: { key: string; kind: string; label: string; desc?: string }[];
-  writableKeys: string[];
-}
 
 interface BlockParamsProps {
   plugin: PluginDesc | null;
@@ -100,6 +90,7 @@ export default function PromptTemplatesSection() {
   const { dialog, node: dialogNode } = useDialog();
   const [state, setState] = useState<PromptListsState | null>(null); // { lists, appendMode }
   const [registry, setRegistry] = useState<PluginDesc[] | null>(null); // 注册表（声明派生）
+  const [preview, setPreview] = useState<{ instruction: string; segments: any[] } | null>(null);
   const [blockId, setBlockId] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null); // { blockId, id, name, template }
   const [busy, setBusy] = useState(false);
@@ -298,6 +289,42 @@ export default function PromptTemplatesSection() {
     }
   };
 
+  // 拖动排序：先乐观更新本地，PUT 成功后用服务端返回的顺序位回填；失败回滚重读。
+  const reorderPlugins = async (next: PluginDesc[]) => {
+    const order = next.map((p) => p.id);
+    setRegistry(next);
+    setBusy(true);
+    try {
+      const d = await savePromptOrder(order);
+      // 服务端回填 order（数组下标 × 10）
+      const returned: PluginDesc[] = d?.plugins || next;
+      const byId = new Map(returned.map((p: PluginDesc) => [p.id, p]));
+      setRegistry(order.map((id) => byId.get(id)!).filter(Boolean));
+      toast('顺序已保存（CLI 渲染顺序同步变化）');
+    } catch (e) {
+      toast(String((e as Error).message || e));
+      getPromptRegistry()
+        .then((r) => setRegistry(r?.plugins || []))
+        .catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 实时预览：compose 同一链路（localtask preview 的草稿模式）——预览的是
+  // **已保存**的生效模板与当前顺序；编辑中未保存的文本先保存再看。
+  const runPreview = async () => {
+    setBusy(true);
+    try {
+      const d = await previewDelivery({ id: 0, text: '（预览草稿）这是一条用于查看提示词渲染效果的任务', summary: '' });
+      setPreview({ instruction: String(d?.instruction || ''), segments: Array.isArray(d?.segments) ? d.segments : [] });
+    } catch (e) {
+      toast(String((e as Error).message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="setp-tpl-editor">
       <div className="setp-tpl-head">
@@ -319,6 +346,8 @@ export default function PromptTemplatesSection() {
         </div>
         <span className="setp-note">{activeMode.desc}</span>
       </div>
+
+      {plugins.length > 0 && <PluginOrderCard plugins={plugins} busy={busy} onChange={reorderPlugins} />}
 
       <nav className="setp-block-tabs" aria-label="提示词区块">
         {plugins.map((p) => {
@@ -475,8 +504,23 @@ export default function PromptTemplatesSection() {
                   )}
                 </>
               )}
+              <Button variant="secondary" disabled={busy} onClick={runPreview} title="用一条草稿任务渲染当前已保存的生效模板">
+                预览交付
+              </Button>
               <span className="spacer" />
             </div>
+
+            {preview && (
+              <div className="ppt-preview">
+                <div className="setp-params-head">交付预览（已保存的生效模板 · 当前顺序）</div>
+                <pre className="ppt-preview-body">{preview.instruction || '（本次领取没有可输出的段落）'}</pre>
+                {preview.segments.length > 0 && (
+                  <div className="setp-note">
+                    命中段落：{preview.segments.map((s: any) => `${s.id ?? s.tag}${s.source ? `（${s.source}）` : ''}`).join('、')}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

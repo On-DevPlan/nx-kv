@@ -307,3 +307,34 @@
   background:var(--soft,#F1F0EC);border-radius:4px;padding:1px 4px;color:var(--ink,#16181C);
 }
 .setp-vars h4{margin:10px 0 2px;font-size:12px;color:var(--ink,#16181C)}
+
+/* 提示词插件顺序（S4）：拖动重排（复用 use-block-drag 手法） */
+.ppt-order-card{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line,#E4E2DC);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.ppt-order-head{display:flex;align-items:baseline;gap:8px}
+.ppt-order-head b{font-size:12.5px}
+.ppt-order-list{display:flex;flex-direction:column}
+.ppt-order-row{
+  display:flex;align-items:center;gap:8px;padding:5px 6px;font-size:12px;
+  border-top:1px solid transparent;border-bottom:1px solid transparent;
+}
+.ppt-order-row:first-child{border-top-color:var(--line,#E4E2DC)}
+.ppt-order-row:last-child{border-bottom-color:var(--line,#E4E2DC)}
+.ppt-order-row.is-drop-before{border-top:2px solid var(--accent,#3E63DD)}
+.ppt-order-row.is-drop-after{border-bottom:2px solid var(--accent,#3E63DD)}
+.ppt-order-row.is-dragging{opacity:.45}
+.ppt-order-handle{cursor:grab;color:var(--mid,#8A8578);user-select:none}
+.ppt-order-row.is-dragging .ppt-order-handle{cursor:grabbing}
+.ppt-order-pos{
+  min-width:26px;text-align:center;font:600 11px ui-monospace,Consolas,monospace;
+  color:var(--ink-2,#4B515A);background:var(--soft,#F1F0EC);border-radius:4px;padding:1px 4px;
+}
+.ppt-order-label{font-weight:600}
+.ppt-order-tag{font:400 11px ui-monospace,Consolas,monospace;color:var(--ink-2,#4B515A)}
+
+/* 交付预览（S4）：compose 同一链路的草稿渲染 */
+.ppt-preview{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.ppt-preview-body{
+  margin:0;max-height:280px;overflow:auto;padding:8px 10px;
+  border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--soft,#F7F6F3);
+  font:400 11.5px/1.7 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word;
+}

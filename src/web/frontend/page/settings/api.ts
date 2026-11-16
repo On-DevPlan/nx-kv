@@ -42,6 +42,26 @@ export function getPromptRegistry(): Promise<any> {
   return api('/api/prompt/registry');
 }
 
+/**
+ * 写提示词插件顺序数组（PUT /api/prompt/order，方案 §5.1）。
+ * 唯一真相是数组：必须恰好包含全部插件 id 各一次；顺序位 = 数组下标 × 10。
+ */
+export function savePromptOrder(order: string[]): Promise<any> {
+  return api('/api/prompt/order', { method: 'PUT', body: { order } });
+}
+
+/** 预览一条任务的交付（POST /api/localtasks/preview；与 CLI localtask preview 同一链路）。 */
+export function previewDelivery(input: {
+  id?: number;
+  text?: string;
+  cwd?: string;
+  key?: string;
+  summary?: string;
+  params?: Record<string, string>;
+}): Promise<any> {
+  return api('/api/localtasks/preview', { method: 'POST', body: input });
+}
+
 /** 并发拉仓库清单与看板清单（侧栏分组用）。 */
 export function loadReposAndBoards(): Promise<any> {
   return Promise.all([api('/api/repos'), api('/api/boards')]);

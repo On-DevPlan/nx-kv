@@ -346,6 +346,8 @@ settings['prompt.pluginOrder'] = ["context","attachment","timecheck","goalhint",
 | `nx-kv prompt order` | `PUT /api/prompt/order`：写数组 |
 | `nx-kv prompt reset --block <id>` | 把某区块 builtin 恢复为 bundle 文本（S3 再加，接口位先留） |
 
+**落地补记（S4 实测补缺口）**：S1 改造 wait.ts 时 compose 调用**漏传 orderIds**——顺序数组只被 prompt.order 写、prompt.registry 读，渲染链仍在按插件 order 位跑。S4 接设置页拖动时发现：wait.ts 现读 `settings['prompt.pluginOrder']` 传给 compose（读失败 / 缺失 → undefined，由 resolveOrderIds 播种），并由 tests/unit/prompt-order-render.test.mjs 钉住「拖动后 CLI 渲染顺序同步变化」。
+
 ---
 
 ## 6. 编排 `compose()`

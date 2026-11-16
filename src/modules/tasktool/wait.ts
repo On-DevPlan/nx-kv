@@ -42,10 +42,23 @@ import { readGroupContext } from './groupctx.js';
 import { annotateTaskDelivery, attachTemplateCtx } from './attach.js';
 import { compose, type RenderTraceEntry, type SegmentMeta } from '../promptplug/compose.js';
 import { buildDeliveryPlugins } from '../promptplug/index.js';
+import { PROMPT_ORDER_KEY } from '../promptplug/keys.js';
+import { getDb } from '../../core/db/index.js';
+import { readSettingRaw } from '../../core/db/settings.js';
 import * as timegoal from './timegoal.js';
 
 // 跨进程兜底轮询间隔（只定这里的读取节奏；队列写入节奏与它无关）
 const POLL_MS = 500;
+
+/** 顺序数组（prompt.pluginOrder）的运行期读取：库没开 / 读失败 → undefined（compose 播种）。 */
+function storedPromptOrder(): readonly string[] | undefined {
+  try {
+    const v = readSettingRaw(getDb(), PROMPT_ORDER_KEY);
+    return Array.isArray(v) ? (v as string[]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 // 「YYYY-MM-DD HH:mm:ss」→ epoch ms（任务级 goal 的起点 = consumedAt）；解析不了返回 NaN
 function parseStampMs(v: unknown): number {
@@ -305,6 +318,10 @@ export async function buildTaskDelivery(
     ];
     const full = await compose({
       plugins,
+      // 顺序数组唯一真相（方案 §5.1）：settings['prompt.pluginOrder'] 存在且合法
+      // → 按它渲染（拖动排序后 CLI 渲染顺序同步变化）；缺失/坏值由 compose 的
+      // resolveOrderIds 按插件 order 播种一次（加载期单点修复）。
+      orderIds: storedPromptOrder(),
       seed: seedCtx,
       mode,
       trace,

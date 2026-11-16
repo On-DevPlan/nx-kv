@@ -89,6 +89,58 @@ function refTitleOf(target: string, text: string, refTitles: Map<string, string>
   return t ? esc(t) : text;
 }
 
+/**
+ * 外链锚点（#142）：`http(s)` 一律**新标签打开**，带 noopener。
+ *
+ * 以前这里什么都不做——markdown 的 `[文本](https://…)` 与裸 URL 都被 esc 成纯文本，
+ * 用户看到的是一条裸地址，点不动。
+ */
+function externalAnchor(href: string, label: string): string {
+  return `<a class="md-link" href="${href}" target="_blank" rel="noopener noreferrer" title="${href}">${label}</a>`;
+}
+
+// 裸 URL 的边界：遇空白 / 引号 / 尖括号 / 中英文标点 / 右括号即止。
+// 句末的 `. , ; : ! ?` 与右括号由 URL_TAIL 再剥一层（`见 https://x.com/a.` 的句号不算地址）。
+const BARE_URL_RE = /https?:\/\/[^\s<>"'`，。；：！？、）)】\]]+/g;
+const URL_TAIL = /[.,;:!?]+$/;
+
+/** 把一段**纯文本**（已 HTML 转义）里的裸 URL 变成可点链接。 */
+function linkifyText(text: string): string {
+  return text.replace(BARE_URL_RE, (raw) => {
+    const href = raw.replace(URL_TAIL, '');
+    if (!href) return raw;
+    const tail = raw.slice(href.length);
+    return externalAnchor(href, href) + tail;
+  });
+}
+
+/**
+ * 只处理**文本节点**的自动链接（#142）。
+ *
+ * 直接对整段 HTML 跑正则会把 `href="https://…"` 再包一层链接、也会把
+ * fenced code / 行内 code 里的 URL 变成链接——所以按标签切分，跳过标签本身
+ * 与 `<a>` / `<code>` 内部。返回值仍是 HTML 串（同渲染器的其它分支）。
+ */
+function autolinkHtml(html: string): string {
+  const parts = html.split(/(<[^>]*>)/);
+  const out: string[] = [];
+  let skip = 0; // >0 = 在 <a> / <code> 内部，文本不处理
+  for (const p of parts) {
+    if (p.startsWith('<')) {
+      const tag = /^<(\/?)\s*([a-zA-Z][\w-]*)/.exec(p);
+      const name = (tag && tag[2] ? tag[2] : '').toLowerCase();
+      if (name === 'a' || name === 'code') {
+        if (tag && tag[1] === '/') skip = Math.max(0, skip - 1);
+        else if (!p.endsWith('/>')) skip += 1;
+      }
+      out.push(p);
+      continue;
+    }
+    out.push(skip > 0 ? p : linkifyText(p));
+  }
+  return out.join('');
+}
+
 function inline(s: string, knownNames: Set<string> | null, refTitles: Map<string, string>): string {
   const base = esc(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -115,12 +167,20 @@ function inline(s: string, knownNames: Set<string> | null, refTitles: Map<string
     const label = refTitleOf(target, text, refTitles);
     return `<a class="md-wl" data-nxkv="${target}" title="内部资源：${target}">${label}</a>`;
   });
-  return withInternal.replace(/\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g, (_, target, label) => {
+  // 外链：markdown 语法 `[文本](https://…)`（#142）。必须排在裸 URL 自动识别之前——
+  // 否则 URL 先被包成 <a>，这条 markdown 链接就再也匹配不上了。
+  const withExternal = withInternal.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+    (_m, text: string, href: string) => externalAnchor(href, text)
+  );
+  const withWiki = withExternal.replace(/\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g, (_, target, label) => {
     const t = target.trim();
     const text = (label || target).trim();
     const miss = knownNames && !wikiKnown(t, knownNames);
     return `<a class="md-wl${miss ? ' md-wl-miss' : ''}" data-wl="${esc(t)}" title="${miss ? '未解析：' : '双链：'}${esc(t)}">${esc(text)}</a>`;
   });
+  // 最后一遍：剩下的**裸 URL**（`见 https://…`）也变成可点链接（#142）
+  return autolinkHtml(withWiki);
 }
 
 /**

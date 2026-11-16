@@ -322,6 +322,7 @@ export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scop
               <span className="nx-refs-row-acts">
                 {/* ⋯：设为主篇 / 复制 refId（#144）。主篇行不给「设为主篇」，
                     组内仓库描述（group_repo）没有主篇概念，也不给。 */}
+                {/* #147：解绑也收进 ⋯（行尾只留一个入口，少一个红色的 × 更清爽） */}
                 <RowMenu
                   items={[
                     b.main || b.type === 'group_repo' ? null : {
@@ -336,22 +337,21 @@ export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scop
                       hint: b.refId,
                       onPick: () => copyRefId(b),
                     },
+                    {
+                      label: b.type === 'group_repo' ? '摘除组内描述' : '移出列表',
+                      icon: <Icon name="back" size={13} title={undefined} />,
+                      hint: '只解除归属，文档本身不删',
+                      danger: true,
+                      onPick: () => removeRow(b),
+                    },
                   ]}
                 />
-                <button
-                  type="button"
-                  className="nx-refs-mini danger"
-                  title="解绑归属（文档不删）"
-                  onClick={() => removeRow(b)}
-                >
-                  ×
-                </button>
               </span>
             </div>
           );
         })}
       </div>
-      <div className="nx-refs-note">点一行打开文档（编辑 / 保存在那一页）；× 摘除归属，不删文档。</div>
+      <div className="nx-refs-note">点一行打开文档（编辑 / 保存在那一页）；行尾 ⋯ 里可以设为主篇 / 移出列表（不删文档）。</div>
       {dialogNode}
     </div>
   );

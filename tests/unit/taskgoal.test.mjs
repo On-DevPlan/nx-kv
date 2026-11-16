@@ -328,7 +328,8 @@ test('#112 阻塞窗口 0：契约接受并落库，不再被归一成默认 10 
 
 test('#112 getloop 模板：窗口 0 时整句不出现；>0 才报分钟数', async () => {
   const { renderInstruction } = await import('../../src/core/instruction-template.js');
-  const { DEFAULT_GETLOOP_TEMPLATE } = await import('../../src/shared/prompt-blocks.js');
+  const { templateBundle } = await import('../../src/modules/promptplug/template-bundle.js');
+  const DEFAULT_GETLOOP_TEMPLATE = templateBundle().getloop.list[0].template;
 
   const zero = renderInstruction(DEFAULT_GETLOOP_TEMPLATE, { task: { id: 7 }, getloop: { text: '', waitMinutes: 0 } });
   assert.match(zero, /继续调用 nx-kv localtask get/, '「完成后再 get」这层意思保留');

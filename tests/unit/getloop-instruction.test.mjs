@@ -16,7 +16,7 @@ import {
   getLoopInstruction,
   DEFAULT_GET_LOOP_TEMPLATE,
 } from '../../src/modules/tasktool/getloop.js';
-import { DEFAULT_GETLOOP_INSTRUCTION } from '../../src/shared/prompt-blocks.js';
+import { DEFAULT_GETLOOP_INSTRUCTION } from '../../src/modules/tasktool/plugins/waitgoal-config.js';
 
 test('默认内文与共享层是同一份（前后端单一真相源）', () => {
   assert.equal(DEFAULT_GET_LOOP_TEMPLATE, DEFAULT_GETLOOP_INSTRUCTION);

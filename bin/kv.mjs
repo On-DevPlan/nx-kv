@@ -18,6 +18,16 @@
 // 所以先查版本、给出人话错误，再**动态** import 业务入口（动态 import 保证
 // 检查发生在求值之前）。version.ts 自身不碰 node:sqlite，import 它是安全的。
 //
+// 已知取舍：node:sqlite 是实验特性，import 链上（registry → modules → repo →
+// core/db）一加载就往 stderr 打 ExperimentalWarning。仓库已锁定 Node >= 22.13
+// 并接受该状态（db-bootstrap.test 钉住「CLI stderr 必须干净」），所以在这里
+// 过滤这一条警告——只这一条，其它实验警告照常透出。
+const origEmitWarning = process.emitWarning.bind(process);
+process.emitWarning = (warning, ...args) => {
+  if (String(warning).includes('SQLite is an experimental feature')) return;
+  return origEmitWarning(warning, ...args);
+};
+//
 // 源码毕业为 TS 后，源码里的 `xxx.js` 路径要靠 tsx loader 解析到同名 `.ts`——
 // 注册 loader 本身不导入任何业务代码，所以「先注册、再查版本」仍满足上面这条铁律。
 import { register } from 'tsx/esm/api';

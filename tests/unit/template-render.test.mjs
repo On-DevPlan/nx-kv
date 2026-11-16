@@ -8,7 +8,7 @@ import {
   NEW_TEMPLATE,
   NEW_TEMPLATE_VALUES,
 } from '../../src/web/frontend/modules/md/md-parse.js';
-import { renderTemplateBody } from '../../src/web/frontend/modules/prompts/placeholders.js';
+import { renderTemplateBody } from '../../src/web/frontend/modules/prompts/render-template-body.js';
 
 test('出厂骨架是文字：不含 {{槽位}} 标记', () => {
   assert.equal(NEW_TEMPLATE.includes('{{'), false, '出厂骨架不应再有槽位标记');

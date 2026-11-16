@@ -151,7 +151,7 @@ export function undeclaredTemplateVars(
   allowedSegments: readonly string[],
   fieldKeys: readonly string[],
 ): string[] {
-  const dynamicSegments = new Set(allowedSegments.filter((s) => s === 'params'));
+  const dynamicSegments = new Set<string>(allowedSegments.filter((s) => s === 'params'));
   const fields = new Set(fieldKeys);
   const bad = new Set<string>();
   const check = (text: string): void => {

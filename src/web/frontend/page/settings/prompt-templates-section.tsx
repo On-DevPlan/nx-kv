@@ -1,51 +1,27 @@
-// 设置面板「提示词模板」：每个区块各自一份模板列表，各自指定生效项。
+// 设置面板「提示词模板」（S5 UI 重设计后的容器层）。
 //
-// 结构（v5）：
-//   - 顶部区块切换（context / attachment / timecheck / ack / getloop）；
-//   - 每个区块内：模板列表（新建 / 编辑 / 复制 / 删除 / 启用 / 恢复内置）；
-//   - 系统内置模板固定存在、不可删除、不可编辑；用户模板可复制内置来改；
-//   - 保存即落库：启用项立即参与领取任务时的系统提示词渲染。
+// 结构：顶部一行「追加方式」→ 左轨（顺序 = 段落导航，拖动排序）+ 右编辑区。
+// 本文件只做**数据与状态**：读设置 / 读注册表 / 拼 patch 落库 / 草稿(dirty) / 预览；
+// 左轨渲染在 prompt-rail.tsx，编辑区渲染在 prompt-editor.tsx（行数门禁 ≤500）。
 //
-// UI 边界：这里只做模板编辑与启用。编辑区下方给**只读参数清单**（参数名 + 一句含义）；
-// 引擎名称、选型理由、语法教程、示例模板与成段说明仍然只写在 skill / docs，不放到设置页。
+// 三条不变量：
+//   - 顺序真相是数组：拖完即 PUT /api/prompt/order，序号只做位次展示；
+//   - 模板正文/变量目录单一真相：blockTemplates（正文）+ 注册表 fields（变量）；
+//   - 草稿按「段 + 模板」缓存：切段不丢未保存文本，dirty = 草稿 ≠ 已保存。
 import { useEffect, useState } from 'react';
-import { getLocaltaskSettings, getPromptRegistry, saveLocaltaskSettings, savePromptOrder, previewDelivery } from './api.js';
-import { PluginOrderCard, type PluginDesc } from './prompt-order-card.js';
+import {
+  getLocaltaskSettings,
+  getPromptRegistry,
+  previewDelivery,
+  saveLocaltaskSettings,
+  savePromptOrder,
+} from './api.js';
+import { PromptRail, type PluginDesc, type RailSlot } from './prompt-rail.js';
+import { PromptEditor, type PreviewResult } from './prompt-editor.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
-import { Button } from '../../components/button/index.jsx';
-import {
-  APPEND_MODES,
-  BUILTIN_TEMPLATE_ID,
-  BUILTIN_TEMPLATE_NAME,
-  MAX_PROMPT_TEMPLATE_NAME,
-} from '../../../../shared/prompt-blocks.js';
+import { APPEND_MODES, BUILTIN_TEMPLATE_ID, MAX_PROMPT_TEMPLATE_NAME } from '../../../../shared/prompt-blocks.js';
 import type { BlockTemplateList, PromptTemplateItem } from '../../../../shared/prompt-blocks.js';
-
-interface BlockParamsProps {
-  plugin: PluginDesc | null;
-}
-
-// 只读参数速查：来自注册表的 fields（声明派生，不写第二份）。
-function BlockParams({ plugin }: BlockParamsProps) {
-  if (!plugin || !plugin.fields.length) return null;
-  return (
-    <div className="setp-params" aria-label="可使用参数">
-      <div className="setp-params-head">可使用参数</div>
-      <div className="setp-params-row">
-        <span className="setp-params-label">变量</span>
-        <div className="setp-params-items">
-          {plugin.fields.map((f) => (
-            <span className="setp-param" key={f.key}>
-              <code>{f.key}</code>
-              <span>{f.desc || f.label}</span>
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** 当前面板状态：每个区块的模板列表 + 全局追加模式。 */
 interface PromptListsState {
@@ -53,18 +29,10 @@ interface PromptListsState {
   appendMode: string;
 }
 
-/** 正在编辑的模板（blockId + 条目字段的草稿副本）。 */
-interface EditingState {
-  blockId: string;
-  id: string;
+/** 一份未保存的草稿（按「段|模板」缓存，切段不丢）。 */
+interface Draft {
   name: string;
   template: string;
-}
-
-/** persist / applyLists 之后要选中的条目（不传则沿用当前选择）。 */
-interface KeepTarget {
-  blockId: string;
-  id: string;
 }
 
 function genId() {
@@ -73,37 +41,23 @@ function genId() {
 
 /**
  * 取某区块的模板列表。响应里的 blockTemplates 是后端 normalize 过的合法数据
- * （8 段齐、builtin 常驻），这里的下标记号是收口 noUncheckedIndexedAccess，
- * 不是真的会落空。
+ * （8 段齐、builtin 常驻），这里的断言是收口 noUncheckedIndexedAccess，不是真的会落空。
  */
 function listOf(lists: Record<string, BlockTemplateList>, id: string): BlockTemplateList {
   return lists[id]!;
 }
 
-function templateOf(lists: Record<string, BlockTemplateList>, blockId: string, id: string): PromptTemplateItem {
-  const b = listOf(lists, blockId);
-  return b.list.find((t) => t.id === id) || b.list.find((t) => t.id === b.active) || b.list[0]!;
-}
-
 export default function PromptTemplatesSection() {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
-  const [state, setState] = useState<PromptListsState | null>(null); // { lists, appendMode }
-  const [registry, setRegistry] = useState<PluginDesc[] | null>(null); // 注册表（声明派生）
-  const [preview, setPreview] = useState<{ instruction: string; segments: any[] } | null>(null);
+  const [state, setState] = useState<PromptListsState | null>(null);
+  const [registry, setRegistry] = useState<PluginDesc[] | null>(null);
   const [blockId, setBlockId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<EditingState | null>(null); // { blockId, id, name, template }
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  const applyLists = (lists: Record<string, BlockTemplateList>, keep: KeepTarget | null = null) => {
-    // state 缺省时按 xml 起步（= APPEND_MODES[0]，与旧实现里「读不到就回落首项」等价）
-    setState((cur) => ({ lists, appendMode: cur?.appendMode ?? 'xml' }));
-    const target = keep || (editing && blockId && editing.blockId === blockId ? editing : null);
-    const bid = target?.blockId || blockId;
-    if (!bid) return;
-    const tpl = templateOf(lists, bid, target?.id || listOf(lists, bid).active);
-    setEditing({ blockId: bid, id: tpl.id, name: tpl.name, template: tpl.template });
-  };
 
   const load = () => {
     getLocaltaskSettings()
@@ -118,9 +72,8 @@ export default function PromptTemplatesSection() {
           setRegistry(plugins);
           const first = plugins[0]?.id;
           if (!first) return;
-          const tpl = templateOf(lists, first, listOf(lists, first).active);
           setBlockId(first);
-          setEditing({ blockId: first, id: tpl.id, name: tpl.name, template: tpl.template });
+          setSelectedId(listOf(lists, first).active);
         });
       })
       .catch((e) => toast('读取失败：' + ((e as Error).message || e)));
@@ -128,89 +81,131 @@ export default function PromptTemplatesSection() {
 
   useEffect(load, []);
 
-  const currentLists = state?.lists ?? null;
+  const lists = state?.lists ?? null;
   const plugins = registry || [];
-  const activeBlockId = blockId || plugins[0]?.id;
-  const activePlugin = plugins.find((p) => p.id === activeBlockId) || null;
-  // APPEND_MODES 是冻结的非空常量表：找不到（异常值）时回落首项
-  const activeMode = state ? APPEND_MODES.find((m) => m.id === state.appendMode) || APPEND_MODES[0]! : APPEND_MODES[0]!;
-  const currentBlock = currentLists && activeBlockId ? listOf(currentLists, activeBlockId) : null;
+  const block = blockId || plugins[0]?.id || null;
+  const list = lists && block ? listOf(lists, block) : null;
+  const plugin = plugins.find((p) => p.id === block) || null;
 
-  if (!state) return <div className="setp-note">读取提示词模板…</div>;
-  if (!activeBlockId || !currentBlock) {
-    return <div className="setp-note">读取提示词插件注册表…</div>;
+  if (!state || !lists || !list || !block || !plugin) {
+    return <div className="setp-note">{state ? '读取提示词插件注册表…' : '读取提示词模板…'}</div>;
   }
-  const block = activeBlockId; // 注册表已加载后恒为 string（下面全部函数只用它）
+  const activeBlockId: string = block; // 上面 guard 之后恒为 string（下面只用它）
 
-  const isBuiltin = editing?.id === BUILTIN_TEMPLATE_ID;
+  const selected =
+    list.list.find((t) => t.id === selectedId) ||
+    list.list.find((t) => t.id === list.active) ||
+    list.list[0]!;
+  const builtin = selected.id === BUILTIN_TEMPLATE_ID;
+  const dkey = `${activeBlockId}|${selected.id}`;
+  const draft: Draft = drafts[dkey] ?? { name: selected.name, template: selected.template };
+  const dirty = builtin ? false : draft.name !== selected.name || draft.template !== selected.template;
 
-  const persist = async (nextLists: Record<string, BlockTemplateList>, message: string, keep: KeepTarget | null = null) => {
-    if (busy) return;
+  // APPEND_MODES 是冻结的非空常量表：找不到（异常值）时回落首项
+  const activeMode =
+    APPEND_MODES.find((m) => m.id === state.appendMode) || APPEND_MODES[0]!;
+
+  const slots: RailSlot[] = plugins.map((p) => {
+    const b = listOf(lists, p.id);
+    const act = b.list.find((t) => t.id === b.active) || b.list[0]!;
+    return { plugin: p, activeName: act.name, builtin: !!act.builtin };
+  });
+
+  /** 深拷贝：JSON 往返只搬数据（归一化后的 lists 是纯 JSON），避免改到 state 里的同一份引用 */
+  const cloneLists = () => JSON.parse(JSON.stringify(lists)) as Record<string, BlockTemplateList>;
+
+  const clearDraft = (key: string) =>
+    setDrafts((cur) => {
+      const c = { ...cur };
+      delete c[key];
+      return c;
+    });
+
+  const persist = async (
+    next: Record<string, BlockTemplateList>,
+    message: string,
+    opts: { select?: string; clearDraftKey?: string } = {},
+  ): Promise<boolean> => {
+    if (busy) return false;
     setBusy(true);
     try {
       // #104 真凶：这里曾写成 { method:'PATCH', body:{…} }——api 客户端本就把整对象当 body，
       // 于是真正发出去的是 {method:'PATCH', body:{blockTemplates}}，服务端 zod 把两层未知键
       // 全部剥掉 → patch 为空 → 报「请至少指定一项」。直接传 patch 本身。
-      const d = await saveLocaltaskSettings({ blockTemplates: nextLists });
-      applyLists(d?.blockTemplates, keep);
+      const d = await saveLocaltaskSettings({ blockTemplates: next });
+      const saved = (d?.blockTemplates as Record<string, BlockTemplateList>) || next;
+      setState((cur) => (cur ? { ...cur, lists: saved } : cur));
+      if (opts.select) setSelectedId(opts.select);
+      if (opts.clearDraftKey) clearDraft(opts.clearDraftKey);
       toast(message);
+      return true;
     } catch (e) {
       toast(String((e as Error).message || e));
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
-  // 深拷贝：JSON 往返只搬数据（归一化后的 lists 是纯 JSON），避免改到 state 里的同一份引用
-  const cloneLists = () => JSON.parse(JSON.stringify(state.lists)) as Record<string, BlockTemplateList>;
-
   const openBlock = (id: string) => {
     if (busy) return;
     setBlockId(id);
-    const tpl = templateOf(state.lists, id, listOf(state.lists, id).active);
-    setEditing({ blockId: id, id: tpl.id, name: tpl.name, template: tpl.template });
+    setSelectedId(listOf(lists, id).active);
   };
 
-  const pick = (id: string) => {
-    const tpl = templateOf(state.lists, block, id);
-    setEditing({ blockId: block, id: tpl.id, name: tpl.name, template: tpl.template });
+  const patchDraft = (patch: Partial<Draft>) => {
+    setDrafts((cur) => ({ ...cur, [dkey]: { ...draft, ...patch } }));
   };
 
-  const patchEditing = (patch: Partial<EditingState>) => setEditing((cur) => (cur ? { ...cur, ...patch } : cur));
-
-  const saveTemplate = () => {
-    if (!editing) return;
-    if (isBuiltin) {
-      toast('系统内置模板不可编辑；请先「复制」一份再改');
-      return;
+  /** 保存当前选中模板；activate=true 时同时设为该段生效项。 */
+  const saveSelected = async (activate: boolean): Promise<boolean> => {
+    if (!dirty) {
+      if (!activate) return false;
+      return activateSelected();
     }
-    const name = String(editing.name || '').trim().slice(0, MAX_PROMPT_TEMPLATE_NAME) || '未命名模板';
-    const template = String(editing.template ?? '');
+    const name = String(draft.name || '').trim().slice(0, MAX_PROMPT_TEMPLATE_NAME) || '未命名模板';
+    const entry: PromptTemplateItem = { id: selected.id, name, template: String(draft.template ?? ''), builtin: false };
     const next = cloneLists();
-    const b = listOf(next, block);
-    const idx = b.list.findIndex((t) => t.id === editing.id);
-    const entry: PromptTemplateItem = { id: editing.id, name, template, builtin: false };
+    const b = listOf(next, activeBlockId);
+    const idx = b.list.findIndex((t) => t.id === selected.id);
     if (idx >= 0) b.list[idx] = entry;
     else b.list.push(entry);
-    persist(next, '已保存模板（当前生效项保存后立即生效）', { blockId: block, id: editing.id });
+    if (activate) b.active = entry.id;
+    return persist(next, activate ? `已保存并启用「${name}」` : '已保存模板', {
+      select: entry.id,
+      clearDraftKey: dkey,
+    });
   };
 
-  const create = () => {
-    if (busy) return;
+  const activateSelected = async (): Promise<boolean> => {
+    if (list.active === selected.id) return true;
     const next = cloneLists();
-    const entry: PromptTemplateItem = { id: genId(), name: '新模板', template: '', builtin: false };
-    listOf(next, block).list.push(entry);
-    // 先落库再选中；是否启用由用户点「启用」决定
-    persist(next, '已新建模板，填写后保存，再点「启用」', { blockId: block, id: entry.id });
+    listOf(next, activeBlockId).active = selected.id;
+    return persist(next, `已启用「${selected.builtin ? '系统内置模板' : selected.name}」`, { select: selected.id });
   };
 
-  // 入参既可能是模板 id（列表行的「复制」），也可能是一个点击事件
-  // （「复制为我的模板」按钮直接挂 onClick）——后者按“未指定”处理：
-  // 原实现拿事件对象去匹配 id 也匹配不上，最终取到的是当前生效项，行为一致。
-  const duplicate = (idOrEvent?: unknown) => {
+  const resetBuiltin = async () => {
+    if (busy || list.active === BUILTIN_TEMPLATE_ID) return;
+    const next = cloneLists();
+    listOf(next, activeBlockId).active = BUILTIN_TEMPLATE_ID;
+    await persist(next, '已恢复系统内置模板', { select: BUILTIN_TEMPLATE_ID });
+  };
+
+  const create = async () => {
+    if (busy) return;
+    const entry: PromptTemplateItem = { id: genId(), name: '新模板', template: '', builtin: false };
+    const next = cloneLists();
+    listOf(next, activeBlockId).list.push(entry);
+    // 先落库再选中；是否启用由用户点「启用」决定
+    await persist(next, '已新建模板，填写后保存，再点「启用」', { select: entry.id });
+  };
+
+  // 入参既可能是模板 id（chip 上的复制），也可能是一个点击事件
+  // （按钮直接挂 onClick）——后者按“未指定”处理：取当前选中项。
+  const duplicate = async (idOrEvent?: unknown) => {
     if (busy) return;
     const id = typeof idOrEvent === 'string' ? idOrEvent : '';
-    const src = templateOf(state.lists, block, id);
+    const src = id ? list.list.find((t) => t.id === id) || selected : selected;
     const next = cloneLists();
     const entry: PromptTemplateItem = {
       id: genId(),
@@ -218,30 +213,8 @@ export default function PromptTemplatesSection() {
       template: src.template || '',
       builtin: false,
     };
-    listOf(next, block).list.push(entry);
-    persist(next, '已复制模板', { blockId: block, id: entry.id });
-  };
-
-  const saveAndActivate = () => {
-    if (busy || isBuiltin) return;
-    if (!editing) return;
-    const name = String(editing.name || '').trim().slice(0, MAX_PROMPT_TEMPLATE_NAME) || '未命名模板';
-    const next = cloneLists();
-    const b = listOf(next, block);
-    const idx = b.list.findIndex((t) => t.id === editing.id);
-    const entry: PromptTemplateItem = { id: editing.id, name, template: String(editing.template ?? ''), builtin: false };
-    if (idx >= 0) b.list[idx] = entry;
-    else b.list.push(entry);
-    b.active = editing.id;
-    persist(next, `已保存并启用「${name}」`, { blockId: block, id: editing.id });
-  };
-
-  const activate = (id: string) => {
-    if (busy) return;
-    if (id === currentBlock.active) return;
-    const next = cloneLists();
-    listOf(next, block).active = id;
-    persist(next, `已启用「${templateOf(state.lists, block, id).name}」`, { blockId: block, id });
+    listOf(next, activeBlockId).list.push(entry);
+    await persist(next, '已复制模板', { select: entry.id });
   };
 
   const remove = async (id: string) => {
@@ -250,27 +223,22 @@ export default function PromptTemplatesSection() {
       toast('系统内置模板不可删除');
       return;
     }
-    const tpl = templateOf(state.lists, block, id);
+    const tpl = list.list.find((t) => t.id === id) || selected;
     const ok = await dialog({
       title: '删除模板？',
-      message: `将删除「${tpl.name}」，保存后不可恢复。该区块的系统内置模板会保留。`,
+      message: `将删除「${tpl.name}」，保存后不可恢复。该段的系统内置模板会保留。`,
       okText: '删除',
       danger: true,
     });
     if (!ok) return;
     const next = cloneLists();
-    const b = listOf(next, block);
+    const b = listOf(next, activeBlockId);
     b.list = b.list.filter((t) => t.id !== id);
     if (b.active === id) b.active = BUILTIN_TEMPLATE_ID;
-    persist(next, '已删除模板，当前生效项已回落到系统内置');
-  };
-
-  const resetBuiltin = () => {
-    if (busy) return;
-    if (currentBlock.active === BUILTIN_TEMPLATE_ID) return;
-    const next = cloneLists();
-    listOf(next, block).active = BUILTIN_TEMPLATE_ID;
-    persist(next, '已恢复系统内置模板', { blockId: block, id: BUILTIN_TEMPLATE_ID });
+    await persist(next, '已删除模板，当前生效项已回落到系统内置', {
+      select: b.active,
+      clearDraftKey: `${activeBlockId}|${id}`,
+    });
   };
 
   const setAppendMode = async (mode: string) => {
@@ -279,8 +247,8 @@ export default function PromptTemplatesSection() {
     try {
       // 同 persist：直接传 patch，不要套 { method, body }（#104）
       const d = await saveLocaltaskSettings({ appendMode: mode === 'plain' ? 'plain' : 'xml' });
-      // state 为 null 只可能发生在首轮加载前（那时没有按钮可点）：保持 null 即可
       setState((cur) => (cur ? { ...cur, appendMode: d?.appendMode === 'plain' ? 'plain' : 'xml' } : cur));
+      setPreview(null); // 追加方式变了，旧预览已不代表当前输出
       toast('已保存追加模式（全局生效）');
     } catch (e) {
       toast(String((e as Error).message || e));
@@ -293,6 +261,7 @@ export default function PromptTemplatesSection() {
   const reorderPlugins = async (next: PluginDesc[]) => {
     const order = next.map((p) => p.id);
     setRegistry(next);
+    setPreview(null); // 顺序变了，旧预览的段序已失效
     setBusy(true);
     try {
       const d = await savePromptOrder(order);
@@ -311,13 +280,23 @@ export default function PromptTemplatesSection() {
     }
   };
 
-  // 实时预览：compose 同一链路（localtask preview 的草稿模式）——预览的是
-  // **已保存**的生效模板与当前顺序；编辑中未保存的文本先保存再看。
+  // 实时预览：compose 同一链路（localtask preview 的草稿模式）。链路读的是**已保存**
+  // 设置——有未保存改动时先落库再预览，避免「看到的不是正在写的」。
   const runPreview = async () => {
+    if (busy) return;
+    if (dirty && !builtin) {
+      const ok = await saveSelected(false);
+      if (!ok) return;
+    }
     setBusy(true);
     try {
       const d = await previewDelivery({ id: 0, text: '（预览草稿）这是一条用于查看提示词渲染效果的任务', summary: '' });
-      setPreview({ instruction: String(d?.instruction || ''), segments: Array.isArray(d?.segments) ? d.segments : [] });
+      setPreview({
+        instruction: String(d?.instruction || ''),
+        segments: Array.isArray(d?.segments) ? d.segments : [],
+        at: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+      });
+      setPreviewOpen(true);
     } catch (e) {
       toast(String((e as Error).message || e));
     } finally {
@@ -347,182 +326,39 @@ export default function PromptTemplatesSection() {
         <span className="setp-note">{activeMode.desc}</span>
       </div>
 
-      {plugins.length > 0 && <PluginOrderCard plugins={plugins} busy={busy} onChange={reorderPlugins} />}
-
-      <nav className="setp-block-tabs" aria-label="提示词区块">
-        {plugins.map((p) => {
-          const act = templateOf(state.lists, p.id, listOf(state.lists, p.id).active);
-          return (
-            <button
-              key={p.id}
-              type="button"
-              className={'setp-block-tab' + (p.id === block ? ' is-on' : '')}
-              disabled={busy}
-              onClick={() => openBlock(p.id)}
-            >
-              <span>{p.label}</span>
-              <small>{act.builtin ? '系统内置' : act.name}</small>
-            </button>
-          );
-        })}
-      </nav>
-
-      <div className="setp-block-card">
-        <div className="setp-block-card-head">
-          <div className="setp-block-card-title">
-            <b>{activePlugin?.label}</b>
-            <span className="setp-note">{activePlugin?.tag}</span>
-          </div>
-          <div className="setp-block-card-actions">
-            <Button variant="secondary" disabled={busy} onClick={create}>
-              新建模板
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={busy || currentBlock.active === BUILTIN_TEMPLATE_ID}
-              onClick={resetBuiltin}
-            >
-              恢复内置
-            </Button>
-          </div>
-        </div>
-
-        <div className="setp-tpl-list" role="listbox" aria-label={`${activePlugin?.label}模板列表`}>
-          {currentBlock.list.map((t) => {
-            const on = t.id === currentBlock.active;
-            const selected = t.id === editing?.id;
-            return (
-              <div
-                key={t.id}
-                className={`setp-tpl-pick${on ? ' is-on' : ''}${selected ? ' is-sel' : ''}`}
-              >
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={on}
-                  className="setp-tpl-name"
-                  title={t.name}
-                  onClick={() => pick(t.id)}
-                >
-                  <span className="setp-tpl-name-text">{t.name}</span>
-                  {t.builtin && <span className="setp-badge">内置</span>}
-                  {on && <span className="setp-badge">启用中</span>}
-                </button>
-                <Button
-                  variant="secondary"
-                  className="setp-tpl-act"
-                  disabled={busy}
-                  title={t.builtin ? '复制系统内置模板' : '复制该模板'}
-                  onClick={() => duplicate(t.id)}
-                >
-                  复制
-                </Button>
-                <Button
-                  variant="secondary"
-                  className="setp-tpl-act"
-                  disabled={busy || on}
-                  title="设为该区块当前生效模板"
-                  onClick={() => activate(t.id)}
-                >
-                  启用
-                </Button>
-                <Button
-                  variant="secondary"
-                  danger
-                  className="setp-tpl-act"
-                  disabled={busy || t.builtin}
-                  title={t.builtin ? '系统内置模板不可删除' : '删除该模板'}
-                  onClick={() => remove(t.id)}
-                >
-                  删除
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-
-        {editing && (
-          <div className="setp-tpl-editor-box">
-            <div className="setp-tpl-editor-head">
-              <span>
-                {isBuiltin ? BUILTIN_TEMPLATE_NAME : `编辑 · ${editing.name || '未命名模板'}`}
-              </span>
-              <span className="setp-note">
-                {editing.id === currentBlock.active
-                  ? '当前生效，保存后立即参与领取'
-                  : '未启用；保存后可点「启用」'}
-              </span>
-            </div>
-
-            {!isBuiltin && (
-              <div className="setp-row">
-                <span>模板名</span>
-                <div className="setp-input">
-                  <input
-                    value={editing.name}
-                    maxLength={MAX_PROMPT_TEMPLATE_NAME}
-                    disabled={busy}
-                    onChange={(e) => patchEditing({ name: e.target.value })}
-                  />
-                </div>
-              </div>
-            )}
-
-            <textarea
-              className="setp-area setp-tpl-textarea"
-              value={editing.template}
-              readOnly={isBuiltin}
-              spellCheck={false}
-              disabled={busy}
-              placeholder={isBuiltin ? '' : '在这里写该区块的模板'}
-              onChange={(e) => patchEditing({ template: e.target.value })}
-            />
-
-            <BlockParams plugin={activePlugin} />
-
-            <div className="setp-proj-a">
-              {isBuiltin ? (
-                <Button variant="secondary" disabled={busy} onClick={duplicate}>
-                  复制为我的模板
-                </Button>
-              ) : (
-                <>
-                  <Button variant="primary" disabled={busy} onClick={saveTemplate}>
-                    保存
-                  </Button>
-                  <Button variant="secondary" disabled={busy} onClick={load}>
-                    撤销改动
-                  </Button>
-                  {editing.id !== currentBlock.active && (
-                    <Button
-                      variant="secondary"
-                      disabled={busy}
-                      onClick={saveAndActivate}
-                    >
-                      保存并启用
-                    </Button>
-                  )}
-                </>
-              )}
-              <Button variant="secondary" disabled={busy} onClick={runPreview} title="用一条草稿任务渲染当前已保存的生效模板">
-                预览交付
-              </Button>
-              <span className="spacer" />
-            </div>
-
-            {preview && (
-              <div className="ppt-preview">
-                <div className="setp-params-head">交付预览（已保存的生效模板 · 当前顺序）</div>
-                <pre className="ppt-preview-body">{preview.instruction || '（本次领取没有可输出的段落）'}</pre>
-                {preview.segments.length > 0 && (
-                  <div className="setp-note">
-                    命中段落：{preview.segments.map((s: any) => `${s.id ?? s.tag}${s.source ? `（${s.source}）` : ''}`).join('、')}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+      <div className="ppt-split">
+        <PromptRail
+          slots={slots}
+          activeId={activeBlockId}
+          busy={busy}
+          onSelect={openBlock}
+          onReorder={reorderPlugins}
+        />
+        <PromptEditor
+          plugin={plugin}
+          list={list}
+          selectedId={selected.id}
+          draft={draft}
+          dirty={dirty}
+          busy={busy}
+          preview={preview}
+          previewOpen={previewOpen}
+          total={plugins.length}
+          actions={{
+            onDraft: patchDraft,
+            onPick: (id) => !busy && setSelectedId(id),
+            onNew: create,
+            onDuplicate: duplicate,
+            onRemove: remove,
+            onSave: () => void saveSelected(false),
+            onSaveAndActivate: () => void saveSelected(true),
+            onActivate: () => void activateSelected(),
+            onUndo: () => clearDraft(dkey),
+            onResetBuiltin: () => void resetBuiltin(),
+            onPreview: () => void runPreview(),
+            onTogglePreview: () => setPreviewOpen((v) => !v),
+          }}
+        />
       </div>
       {dialogNode}
     </div>

@@ -227,57 +227,181 @@
 .setp-scope-pick-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .setp-scope-pick-done{flex:none;font-size:10.5px;color:var(--faint,#8A8578)}
 
-/* 提示词模板：区块切换 + 每块模板列表 / 编辑器 */
+/* 提示词模板（S5 重设计）：左轨（顺序 = 段落导航）+ 右编辑区。
+   两栏用 flex-wrap 而不是 grid：设置浮窗宽度可变，窄了就自动折成上下，
+   不需要 container query。 */
 .setp-tpl-editor{display:flex;flex-direction:column;gap:10px;min-width:0}
-.setp-block-tabs{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
-.setp-block-tab{
-  display:flex;flex-direction:column;gap:1px;align-items:flex-start;min-width:0;max-width:100%;
-  font:inherit;font-size:12px;padding:5px 9px;border-radius:8px;cursor:pointer;
-  border:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);color:var(--ink,#16181C);
+.setp-prompts-pane > .setp-tpl-editor{max-width:880px}
+.ppt-split{display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px;min-width:0}
+
+/* 左轨：一行 = 一段（拖动柄 + 位次 + 段名/生效模板 + 只读标记） */
+.ppt-rail{
+  flex:0 1 190px;min-width:150px;display:flex;flex-direction:column;
+  border:1px solid var(--line,#E4E2DC);border-radius:10px;background:var(--paper,#fff);overflow:hidden;
 }
-.setp-block-tab small{
-  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+.ppt-rail-head{
+  display:flex;align-items:baseline;gap:6px;padding:7px 10px;
+  background:var(--soft,#F1F0EC);border-bottom:1px solid var(--line,#E4E2DC);
+}
+.ppt-rail-head b{font-size:11.5px}
+.ppt-rail-list{display:flex;flex-direction:column;min-width:0}
+.ppt-rail-row{
+  display:flex;align-items:center;gap:7px;padding:6px 9px;min-width:0;cursor:pointer;
+  border-top:2px solid transparent;border-bottom:1px solid transparent;
+}
+.ppt-rail-row + .ppt-rail-row{border-top-color:var(--soft-2,#E4E2DC)}
+.ppt-rail-row:hover{background:var(--soft,#F1F0EC)}
+.ppt-rail-row.is-on{background:var(--mdw-accent-soft,#E8F2EE)}
+.ppt-rail-row.is-drop-before{border-top-color:var(--mdw-accent,#2F6F5E)}
+.ppt-rail-row.is-drop-after{border-bottom-color:var(--mdw-accent,#2F6F5E)}
+.ppt-rail-row.is-dragging{opacity:.45}
+.ppt-rail-row:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);outline-offset:-2px}
+.ppt-rail-handle{
+  flex:none;cursor:grab;color:var(--mid,#8A8578);user-select:none;
+  font-size:12px;line-height:1;
+}
+.ppt-rail-row.is-dragging .ppt-rail-handle{cursor:grabbing}
+.ppt-rail-pos{
+  flex:none;width:12px;text-align:right;
+  font:600 10.5px/1.5 ui-monospace,Consolas,monospace;color:var(--mid,#8A8578);
+}
+.ppt-rail-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.ppt-rail-label{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ppt-rail-row.is-on .ppt-rail-label{color:var(--mdw-accent,#2F6F5E);font-weight:600}
+.ppt-rail-active{
   font-size:10.5px;color:var(--faint,#8A8578);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.setp-block-tab.is-on{
-  border-color:var(--mdw-accent-line,#B7D4C8);background:var(--mdw-accent-soft,#E8F2EE);
-  color:var(--mdw-accent,#2F6F5E);
+.ppt-rail-ro{
+  flex:none;font-size:10px;color:var(--mid,#8A8578);padding:0 4px;
+  border:1px solid var(--line,#E4E2DC);border-radius:4px;background:var(--paper,#fff);
 }
-.setp-block-card{
-  display:flex;flex-direction:column;gap:8px;min-width:0;padding:10px;
-  border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--paper,#fff);
+
+/* 右编辑区 */
+.ppt-ed{flex:1 1 300px;min-width:0;display:flex;flex-direction:column;gap:9px}
+.ppt-ed-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.ppt-ed-title{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;min-width:0}
+.ppt-ed-title b{font-size:13px}
+.ppt-ed-tag{
+  font:400 11px ui-monospace,Consolas,monospace;color:var(--ink-2,#4B515A);
+  background:var(--soft,#F1F0EC);border-radius:4px;padding:1px 5px;
 }
-.setp-block-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.setp-block-card-title{display:flex;flex-direction:column;gap:2px;min-width:0}
-.setp-block-card-title b{font-size:12.5px}
-.setp-block-card-actions{display:flex;gap:6px;flex-wrap:wrap}
-.setp-tpl-editor-box{display:flex;flex-direction:column;gap:8px;min-width:0;padding-top:8px;border-top:1px solid var(--line,#E4E2DC)}
-.setp-tpl-editor-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.setp-tpl-textarea{
-  width:100%;min-height:150px;padding:8px 10px;resize:vertical;
+.ppt-pill{
+  font-size:10.5px;padding:0 5px;border-radius:4px;
+  border:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);color:var(--mid,#8A8578);
+}
+.ppt-pill.is-write{
+  color:var(--mdw-accent,#2F6F5E);border-color:var(--mdw-accent-line,#B7D4C8);
+  background:var(--mdw-accent-soft,#E8F2EE);
+}
+.ppt-pill.is-on{color:var(--mdw-accent,#2F6F5E);border-color:var(--mdw-accent-line,#B7D4C8)}
+.ppt-ed-sub{flex:1 1 100%;font-size:11px;color:var(--faint,#8A8578)}
+.ppt-ed-reset{flex:none;margin-left:auto}
+
+/* 候选模板：chips（当前生效打勾、内置带锁、删除收进 ×） */
+.ppt-chips{
+  display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 9px;
+  border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--soft,#F1F0EC);
+}
+.ppt-chips-cap{font-size:10.5px;color:var(--faint,#8A8578)}
+.ppt-chip-wrap{
+  display:inline-flex;align-items:center;overflow:hidden;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);
+}
+.ppt-chip-wrap.is-sel{border-color:var(--mdw-accent-line,#B7D4C8);box-shadow:inset 0 0 0 1px var(--mdw-accent-line,#B7D4C8)}
+.ppt-chip{
+  display:inline-flex;align-items:center;gap:4px;max-width:220px;padding:2px 7px;
+  border:0;background:transparent;font:inherit;font-size:11.5px;
+  color:var(--ink,#16181C);cursor:pointer;
+}
+.ppt-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ppt-chip-wrap.is-on .ppt-chip{color:var(--mdw-accent,#2F6F5E);font-weight:600}
+.ppt-chip-lock{
+  font-size:9.5px;color:var(--mid,#8A8578);padding:0 3px;
+  border:1px solid var(--line,#E4E2DC);border-radius:3px;
+}
+.ppt-chip-tick{font-size:10px}
+.ppt-chip-x{
+  border:0;border-left:1px solid var(--line,#E4E2DC);background:transparent;
+  color:#C9C6BE;font:inherit;font-size:12px;line-height:1;padding:2px 6px;cursor:pointer;
+}
+.ppt-chip-x:hover:not(:disabled){color:#A32D2D;background:var(--soft,#F1F0EC)}
+.ppt-chip-new{
+  padding:2px 8px;border:1px dashed var(--mdw-accent-line,#B7D4C8);border-radius:6px;
+  background:transparent;color:var(--mdw-accent,#2F6F5E);font:inherit;font-size:11.5px;cursor:pointer;
+}
+
+/* 名称 + dirty 指示 */
+.ppt-name-row{display:flex;align-items:center;gap:8px}
+.ppt-name-label{flex:none;font-size:11.5px;color:var(--ink-2,#4B515A)}
+.ppt-name-input{
+  flex:1;min-width:0;height:26px;padding:0 8px;border:1px solid var(--line,#E4E2DC);
+  border-radius:6px;background:var(--paper,#fff);color:var(--ink,#16181C);
+  font:400 11.5px ui-monospace,Consolas,monospace;
+}
+.ppt-name-input[readonly]{background:var(--soft,#F1F0EC);color:var(--mid,#8A8578)}
+.ppt-name-input:focus{outline:2px solid var(--soft-2,#E4E2DC);outline-offset:-1px}
+.ppt-dirty{flex:none;font-size:10.5px;color:#BA7517;opacity:0;transition:opacity .12s}
+.ppt-dirty.is-on{opacity:1}
+
+.ppt-tpl-area{
+  width:100%;min-height:170px;padding:8px 10px;resize:vertical;
   border:1px solid var(--line,#E4E2DC);border-radius:8px;
   background:var(--paper,#fff);color:var(--ink,#16181C);
-  font:400 11.5px/1.7 ui-monospace,Consolas,monospace;
+  font:400 11.5px/1.75 ui-monospace,Consolas,monospace;
 }
-.setp-tpl-textarea:focus{outline:2px solid var(--soft-2,#E4E2DC);outline-offset:-1px}
-.setp-tpl-textarea[readonly]{background:var(--soft,#F1F0EC);color:var(--ink-2,#4B515A)}
-/* 编辑区下方的只读「可使用参数」速查（#63）：紧凑分组，不挤压编辑区 */
-.setp-params{
-  display:flex;flex-direction:column;gap:4px;min-width:0;
-  padding:7px 9px;border:1px dashed var(--line,#E4E2DC);border-radius:8px;
-  background:var(--soft,#F1F0EC);
+.ppt-tpl-area:focus{outline:2px solid var(--soft-2,#E4E2DC);outline-offset:-1px}
+.ppt-tpl-area[readonly]{background:var(--soft,#F1F0EC);color:var(--ink-2,#4B515A)}
+
+/* 变量：可点击插入（目录来自注册表 fields） */
+.ppt-vars{
+  display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;padding:6px 9px;
+  border:1px dashed var(--line,#E4E2DC);border-radius:8px;background:var(--soft,#F1F0EC);
 }
-.setp-params-head{font-size:11px;font-weight:600;color:var(--ink-2,#4B515A)}
-.setp-params-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;min-width:0}
-.setp-params-label{flex:none;width:52px;font-size:11px;color:var(--mid,#8A8578)}
-.setp-params-items{display:flex;flex-wrap:wrap;gap:3px 12px;min-width:0}
-.setp-param{display:inline-flex;align-items:baseline;gap:4px;font-size:11.5px;line-height:1.6;white-space:normal}
-.setp-param code{
-  flex:none;font:400 11px/1.5 ui-monospace,Consolas,monospace;white-space:nowrap;
-  padding:0 4px;border:1px solid var(--line,#E4E2DC);border-radius:4px;
-  background:var(--paper,#fff);color:var(--ink,#16181C);
+.ppt-vars-cap{font-size:10.5px;color:var(--faint,#8A8578)}
+.ppt-var{
+  font:400 11px/1.5 ui-monospace,Consolas,monospace;padding:1px 5px;
+  border:1px solid var(--line,#E4E2DC);border-radius:4px;
+  background:var(--paper,#fff);color:var(--ink,#16181C);cursor:pointer;
 }
-.setp-param span{color:var(--ink-2,#4B515A)}
+.ppt-var:hover{border-color:var(--mdw-accent-line,#B7D4C8);color:var(--mdw-accent,#2F6F5E)}
+.ppt-var[aria-disabled="true"]{cursor:default;opacity:.6}
+
+.ppt-actions{
+  display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+  padding-top:9px;border-top:1px solid var(--line,#E4E2DC);
+}
+.ppt-actions .spacer{flex:1}
+.ppt-preview-btn{
+  color:var(--mdw-accent,#2F6F5E);border-color:var(--mdw-accent-line,#B7D4C8);
+  background:var(--mdw-accent-soft,#E8F2EE);
+}
+
+/* 交付预览：折叠抽屉（常驻说明「命中几段 / 几点渲染」） */
+.ppt-pv{border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--soft,#F1F0EC);overflow:hidden}
+.ppt-pv-head{
+  display:flex;align-items:baseline;gap:8px;width:100%;padding:7px 10px;
+  border:0;background:transparent;font:inherit;text-align:left;color:inherit;cursor:pointer;
+}
+.ppt-pv-head b{flex:none;font-size:11.5px}
+.ppt-pv-head .setp-note{flex:1;min-width:0}
+.ppt-pv-toggle{flex:none;font-size:10.5px;color:var(--mdw-accent,#2F6F5E)}
+.ppt-pv-body{
+  display:flex;flex-direction:column;gap:6px;padding:8px 10px;
+  border-top:1px solid var(--line,#E4E2DC);background:var(--paper,#fff);
+}
+.ppt-pv-pre{
+  margin:0;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  font:400 11.5px/1.7 ui-monospace,Consolas,monospace;color:var(--ink,#16181C);
+}
+.ppt-pv-segs{display:flex;flex-wrap:wrap;gap:4px 10px}
+.ppt-pv-seg{display:inline-flex;align-items:baseline;gap:5px;font-size:11px}
+.ppt-pv-seg-label{color:var(--ink-2,#4B515A)}
+.ppt-pv-seg code{
+  font:400 10.5px ui-monospace,Consolas,monospace;padding:0 4px;
+  border-radius:4px;background:var(--soft,#F1F0EC);color:var(--mid,#8A8578);
+}
+.ppt-pv-empty{font-size:11.5px;color:var(--faint,#8A8578)}
 
 /* 提示词模板 → 系统区块：追加模式 + 每个区块的模板编辑 */
 .setp-blocks{display:flex;flex-direction:column;gap:10px}
@@ -333,34 +457,3 @@
   background:var(--soft,#F1F0EC);border-radius:4px;padding:1px 4px;color:var(--ink,#16181C);
 }
 .setp-vars h4{margin:10px 0 2px;font-size:12px;color:var(--ink,#16181C)}
-
-/* 提示词插件顺序（S4）：拖动重排（复用 use-block-drag 手法） */
-.ppt-order-card{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line,#E4E2DC);border-radius:10px;padding:10px 12px;margin-bottom:10px}
-.ppt-order-head{display:flex;align-items:baseline;gap:8px}
-.ppt-order-head b{font-size:12.5px}
-.ppt-order-list{display:flex;flex-direction:column}
-.ppt-order-row{
-  display:flex;align-items:center;gap:8px;padding:5px 6px;font-size:12px;
-  border-top:1px solid transparent;border-bottom:1px solid transparent;
-}
-.ppt-order-row:first-child{border-top-color:var(--line,#E4E2DC)}
-.ppt-order-row:last-child{border-bottom-color:var(--line,#E4E2DC)}
-.ppt-order-row.is-drop-before{border-top:2px solid var(--accent,#3E63DD)}
-.ppt-order-row.is-drop-after{border-bottom:2px solid var(--accent,#3E63DD)}
-.ppt-order-row.is-dragging{opacity:.45}
-.ppt-order-handle{cursor:grab;color:var(--mid,#8A8578);user-select:none}
-.ppt-order-row.is-dragging .ppt-order-handle{cursor:grabbing}
-.ppt-order-pos{
-  min-width:26px;text-align:center;font:600 11px ui-monospace,Consolas,monospace;
-  color:var(--ink-2,#4B515A);background:var(--soft,#F1F0EC);border-radius:4px;padding:1px 4px;
-}
-.ppt-order-label{font-weight:600}
-.ppt-order-tag{font:400 11px ui-monospace,Consolas,monospace;color:var(--ink-2,#4B515A)}
-
-/* 交付预览（S4）：compose 同一链路的草稿渲染 */
-.ppt-preview{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.ppt-preview-body{
-  margin:0;max-height:280px;overflow:auto;padding:8px 10px;
-  border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--soft,#F7F6F3);
-  font:400 11.5px/1.7 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word;
-}

@@ -153,6 +153,13 @@ interface LivePreviewProps {
   onCloseSelMenu?: (() => void) | null;
   hideTitle?: boolean;
   attachHost?: AttachHost | null;
+  /**
+   * 调用方直接声明的插槽块下标（模板编辑器用，#218）。
+   * 任务编辑器的插槽来自正文 frontmatter 的模板身份（locks.slots）；
+   * 模板编辑器编辑的就是模板本身、没有身份可言，所以由调用方按
+   * 「哪块含 {{content}}」算好递进来 —— 只加插槽徽标，不产生只读块。
+   */
+  tplSlotBlocks?: Set<number> | null;
 }
 
 /**
@@ -161,7 +168,7 @@ interface LivePreviewProps {
  */
 function LivePreview({
   title, body, onTitle, onBody, articleRef, attachments, docKey, onFiles, editorApiRef, onTextSel,
-  onCloseSelMenu, hideTitle = false, attachHost = null,
+  onCloseSelMenu, hideTitle = false, attachHost = null, tplSlotBlocks = null,
 }: LivePreviewProps) {
   const {
     blocks, focus, setFocus, pendingSelRef, pendingFormatRef, liveTaRef,
@@ -423,7 +430,7 @@ function LivePreview({
               focused={focus === i}
               hit={hitBlock === i}
               locked={!!locks?.locked.has(i)}
-              slot={!!locks?.slots.has(i)}
+              slot={!!(locks?.slots.has(i) || tplSlotBlocks?.has(i))}
               attachments={attachments}
               pendingSelRef={pendingSelRef}
               pendingFormatRef={pendingFormatRef}

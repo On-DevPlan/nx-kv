@@ -12,6 +12,7 @@ import { useApp } from '../../app-context.jsx';
 import { MdPanes } from '../../components/md/md-panes.jsx';
 import type { EditorApi } from '../../components/md/md-panes-helpers.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
+import { liveBodyBlocks } from '../../modules/md/md-blocks.js';
 import { popRoute } from '../../components/layout/route-history.js';
 import TemplateListPanel from './template-list.jsx';
 import '../../modules/md/style.css';
@@ -24,6 +25,22 @@ interface TemplateDraft {
 }
 
 const HIST_KEY = (id?: string | null) => `tpl:${id || 'new'}`;
+
+/** 块级插槽正则：与 templateSlots / 渲染层同一套 `{{名字}}` 口径。 */
+const SLOT_RE = /\{\{\s*[^}{\s][^{}]*?\s*\}\}/;
+
+/**
+ * 哪些块是插槽块（#218）：编辑器里给这些块挂「插槽」徽标（绿线 + 徽标，
+ * 与任务编辑器同一套视觉语言）。编辑的是模板本身，全部块都可编辑 ——
+ * 徽标只回答「任务里哪段可填」，不产生只读。
+ */
+function slotBlocksOf(body: string): Set<number> {
+  const out = new Set<number>();
+  liveBodyBlocks(body).forEach((b, i) => {
+    if (SLOT_RE.test(b)) out.add(i);
+  });
+  return out;
+}
 
 /**
  * 新建模板的默认正文（#218）：给一段**含 `{{content}}` 的骨架**。
@@ -81,6 +98,10 @@ function TemplateEditorView({
     () => renderMarkdownHtml(renderTemplatePreview(body || '', initialValues)),
     [body, initialValues],
   );
+
+  // 插槽块标记（#218）：随正文实时更新，编辑器里一眼看到「任务里哪段可填」
+  const slotBlocks = useMemo(() => slotBlocksOf(body || ''), [body]);
+  const slotCount = slotBlocks.size;
 
   const mark = (nextName: string, nextBody: string, kind = 'typing') => {
     pushHistory(histRef.current, histId, { title: name, body }, kind);
@@ -150,8 +171,13 @@ function TemplateEditorView({
                 </button>
               ))}
             </div>
-            <span className="tpl-slot-hint muted" title="插槽只有这一个名字；可以出现多次，共用同一个值">
-              插槽写 <code>{'{{content}}'}</code> · 其余为只读骨架
+            <span
+              className={'tpl-slot-hint' + (slotCount ? '' : ' is-none')}
+              title="插槽只有这一个名字；可以出现多次，共用同一个值"
+            >
+              {slotCount
+                ? <>插槽 <b>{slotCount}</b> 处 · <code>{'{{content}}'}</code> 可填，其余只读</>
+                : <>还没有插槽 —— 正文里写 <code>{'{{content}}'}</code>，那段在任务里就可填</>}
             </span>
           </div>
           <div className="mdw-actions" role="group" aria-label="模板操作">
@@ -169,6 +195,7 @@ function TemplateEditorView({
           title={name}
           body={body}
           previewHtml={previewHtml}
+          tplSlotBlocks={slotBlocks}
           onTitle={onTitle}
           onBody={onBody}
           docKey={histId}

@@ -17,11 +17,20 @@ import type { PromptTemplate, TemplatesApi } from '../../types.js';
 import ScopeChips from './scope-chips.jsx';
 import './style.css';
 
-/** 正文摘要：前两行非空内容（列表里只用来认模板，不替代预览）。 */
+/** 正文摘要：前两行可读内容（剥掉 markdown 标记，插槽显示成〔content〕）。 */
 function summaryOf(body: string): string {
   const lines = String(body || '')
     .split('\n')
-    .map((l) => l.trim())
+    .map((l) =>
+      l
+        .trim()
+        // 标题 / 列表 / 引用标记对「认模板」没帮助，摘要是给人扫一眼的
+        .replace(/^#{1,6}\s+/, '')
+        .replace(/^[-*+]\s+\[[ x]\]\s*/i, '')
+        .replace(/^[-*+]\s+/, '')
+        .replace(/^>\s?/, '')
+        .replace(/\{\{\s*([^}{\s][^{}]*?)\s*\}\}/g, '〔$1〕'),
+    )
     .filter(Boolean)
     .slice(0, 2);
   return lines.join(' · ');
@@ -171,7 +180,7 @@ export default function TemplateListPanel() {
               {previewOpen && (
                 <div className="tpl-preview">
                   <div className="tpl-preview-note">
-                    预览（插槽按当前值渲染，未填的显示〔content〕；保存后任务里看到的就是这段骨架）
+                    预览 · 插槽按当前值渲染，未填的显示〔content〕
                   </div>
                   <div
                     className="tpl-preview-body mdw-lp-view"

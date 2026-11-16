@@ -34,6 +34,8 @@ export interface MdPanesProps {
   onCloseSelMenu?: (() => void) | null;
   hideTitle?: boolean;
   attachHost?: AttachHost | null;
+  /** 模板编辑器的插槽块下标（#218）：只加「插槽」徽标，不产生只读块。 */
+  tplSlotBlocks?: Set<number> | null;
 }
 
 /** 实时预览 / 源码 / 阅读 */
@@ -56,6 +58,7 @@ export const MdPanes = forwardRef<HTMLElement, MdPanesProps>(function MdPanes(
     onCloseSelMenu = null,
     hideTitle = false,
     attachHost = null,
+    tplSlotBlocks = null,
   },
   articleRef
 ) {
@@ -175,6 +178,7 @@ export const MdPanes = forwardRef<HTMLElement, MdPanesProps>(function MdPanes(
         onCloseSelMenu={onCloseSelMenu}
         hideTitle={hideTitle}
         attachHost={attachHost}
+        tplSlotBlocks={tplSlotBlocks}
       />
     </div>
   );

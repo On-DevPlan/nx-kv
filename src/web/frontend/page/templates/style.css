@@ -7,10 +7,17 @@
   font:400 11.5px ui-monospace,Consolas,monospace;padding:0 4px;border-radius:4px;
   background:var(--soft,#F1F0EC);border:1px solid var(--line,#E4E2DC);
 }
-/* 模板编辑器工具栏里的语法提示（#218）：插槽只有 content 一个名字 */
+/* 模板编辑器工具栏里的插槽提示（#218）：有插槽=绿色强调，没有=灰提示 */
 .tpl-slot-hint{
   font-size:11px;margin-left:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  color:var(--mdw-accent,#2F6F5E);
 }
+.tpl-slot-hint b{font-weight:600}
+.tpl-slot-hint.is-none{color:var(--mid,#8A8578)}
+/* 模板编辑器里插槽徽标常显：任务编辑器 hover 才显示（那边插槽是少数），
+   模板里「哪里是插槽」恰恰是主角——徽标与绿条一直可见 */
+.mdw-tpl-edpage .mdw-lp-slot{opacity:1}
+.mdw-tpl-edpage .mdw-lp-block.is-slot{box-shadow:inset 3px 0 0 var(--mdw-accent-line,#B7D4C8)}
 .tpl-list{display:flex;flex-direction:column;gap:8px;min-width:0}
 .tpl-card{
   display:flex;flex-direction:column;gap:6px;min-width:0;
@@ -26,9 +33,12 @@
   border:1px solid var(--mdw-accent-line,#B7D4C8);
 }
 .tpl-badge.soft{background:var(--soft,#F1F0EC);color:var(--mid,#8A8578);border-color:var(--line,#E4E2DC)}
+/* 槽位徽标（#218）：与「默认/内置」徽章同一套 chip 语言，绿色 = 可填插槽 */
 .tpl-card-slots{
-  font-size:11px;color:var(--mid,#8A8578);max-width:340px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:10.5px;padding:0 6px;border-radius:999px;line-height:1.7;
+  background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E);
+  border:1px solid var(--mdw-accent-line,#B7D4C8);
+  max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 /* 全局 .grow 有 max-width:340px（推右会停在半路）——卡片里要真推到右缘 */
 .tpl-card-grow{flex:1 1 auto;min-width:0;max-width:none}

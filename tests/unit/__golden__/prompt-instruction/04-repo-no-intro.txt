@@ -1,0 +1,11 @@
+<nx-kv>
+<nx-kv.context>
+〔项目上下文 · nx-kn〕已登记为本机仓库（github.com/on-devplan/nx-kn），但没有项目介绍文档：nx-kv repo doc add github.com/on-devplan/nx-kn --ref <refId>
+</nx-kv.context>
+<nx-kv.ack>
+完成之后必须调用 nx-kv localtask done --id 9 --summary "<完成总结>" 汇报结果。
+</nx-kv.ack>
+<nx-kv.getloop>
+不要直接结束本轮：完成上面的任务（9）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；
+</nx-kv.getloop>
+</nx-kv>

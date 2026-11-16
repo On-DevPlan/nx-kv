@@ -1,0 +1,14 @@
+<nx-kv>
+<nx-kv.context>
+〔项目介绍 · nx-cd〕
+# nx-cd
+
+移动端工具。
+</nx-kv.context>
+<nx-kv.ack>
+完成之后必须调用 nx-kv localtask done --id 81 --summary "<完成总结>" 汇报结果。
+</nx-kv.ack>
+<nx-kv.getloop>
+不要直接结束本轮：完成上面的任务（81）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；
+</nx-kv.getloop>
+</nx-kv>

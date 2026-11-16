@@ -1,0 +1,36 @@
+{
+  "source": "local",
+  "summary": "S0 golden 夹具现状",
+  "name": "nx-kv",
+  "params": {},
+  "cwd": "D:/DevProjects/my/github/nx-cd",
+  "task": {
+    "id": 81,
+    "text": "空壳组的交付"
+  },
+  "goal": null,
+  "repo": {
+    "name": "nx-cd",
+    "key": "github.com/on-devplan/nx-bt",
+    "intro": "# nx-cd\n\n移动端工具。",
+    "introPath": "",
+    "introRefId": "",
+    "introDesc": "",
+    "docs": [],
+    "docCount": 0,
+    "refRepos": [],
+    "refRepoCount": 0
+  },
+  "group": null,
+  "refRepos": {
+    "list": [],
+    "count": 0
+  },
+  "groups": [],
+  "attach": null,
+  "ext": null,
+  "getloop": {
+    "text": "不要直接结束本轮：完成上面的任务之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；",
+    "waitMinutes": 0
+  }
+}

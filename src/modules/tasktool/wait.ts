@@ -10,13 +10,10 @@
 //     同模块的 timegoal.js（探针只读 + 交付时刻的目标上下文）。
 import { DEFAULT_PORT } from '../../core/paths.js';
 import { formatGoalTiming, renderInstruction } from '../../core/instruction-template.js';
-import { buildDeliveryCtx } from './delivery-template.js';
 import { parseFrontmatter } from '../../shared/frontmatter.js';
 import { reorderRoundsForDelivery } from '../../shared/feedback-text.js';
 import {
-  BLOCK_DEFS,
   resolveBlockTemplates,
-  type BlockDef,
   type ResolvedBlockTemplate,
 } from '../../shared/prompt-blocks.js';
 import {
@@ -43,7 +40,8 @@ import { ensureTaskGoal, previewTaskGoal } from './taskgoal.js';
 import { formatDuration } from '../../core/instruction-template.js';
 import { readGroupContext } from './groupctx.js';
 import { annotateTaskDelivery, attachTemplateCtx } from './attach.js';
-import { composeSystemBlocks, type RenderTraceEntry, type RenderWarning } from './system-blocks.js';
+import { compose, type RenderTraceEntry, type SegmentMeta } from '../promptplug/compose.js';
+import { buildDeliveryPlugins } from '../promptplug/index.js';
 import * as timegoal from './timegoal.js';
 
 // 跨进程兜底轮询间隔（只定这里的读取节奏；队列写入节奏与它无关）
@@ -218,43 +216,50 @@ export async function buildTaskDelivery(
     const boardMark = String(parseFrontmatter(String((task && task.text) || '')).board || '').trim();
     const groupCtx = await readGroupContext(cwd as string, { board: boardMark });
     const settings: any = (await getSettings().catch(() => null)) || {};
-    const deliveryCtx = buildDeliveryCtx({ task, goal, source, summary, cwd, name, groupCtx, params });
 
-    // ── 区块 v3：先备好**一份共享 ctx**，所有区块模板都从这份数据取值 ──
-    // 任务级 goal → 完整 check 指令；目录级 goal → 状态行（二者都进 timecheck 区块）。
+    // ── 插件化组装（promptplug）：宿主完成领域取数，插件 data() 做同步变换 ──
+    // 任务级 goal → 完整 check 指令；目录级 goal → 状态行（二者都进 timecheck 段）。
     const goalCheck = taskGoalCtx ? taskGoalCtx.prompt : null;
     const goalStatus = !taskGoalCtx && goal
       ? `〔时间目标「${goal.name || ''}」${goal.remainingHuman || ''}〕`
       : null;
-    const attachCtx = att ? attachTemplateCtx(att.task.attachments) : { attach: null };
-    const baseCtx: Record<string, any> = {
-      ...deliveryCtx,
-      // 共享 ctx 里的 goal 同时暴露 check / statusLine，模板不必区分两种来源。
-      goal: goal
-        ? {
-            ...goal,
-            // 任务 #87：goal.extra（附加要求，领取后可动态改）与 goalKey 供模板直接引用
-            extra: taskGoalCtx ? taskGoalCtx.extra || '' : '',
-            goalKey: taskGoalCtx ? taskGoalCtx.goalKey || '' : '',
-            check: goalCheck || '',
-            statusLine: goalStatus || '',
-          }
-        : null,
-      ...attachCtx,
-      // task.text 交给模板前做「倒序聚焦 + 历史精简」重排（#157）：最新轮反馈
-      // 与总结置顶、历史轮次一行摘要——无轮次段的正文原样返回，零影响。
+    const goalCtx = goal
+      ? {
+          ...goal,
+          // 任务 #87：goal.extra（附加要求，领取后可动态改）与 goalKey 供模板直接引用
+          extra: taskGoalCtx ? taskGoalCtx.extra || '' : '',
+          goalKey: taskGoalCtx ? taskGoalCtx.goalKey || '' : '',
+          check: goalCheck || '',
+          statusLine: goalStatus || '',
+        }
+      : null;
+    const attach = att ? attachTemplateCtx(att.task.attachments).attach : null;
+
+    // 「持续 get」指令模板自身也是模板（可含 {{task.id}} 等）：先渲染成文本，
+    // 再由 getloop 插件放进 ctx。渲染失败记告警（不静默）。
+    // 注：渲染上下文用 seed（task / goal / cwd…）——默认指令只引用 task.id /
+    // getloop.waitMinutes；历史 baseCtx 里的 repo/attach 变量不进入项目级收尾指令。
+    const renderWarnings: { block: string; label: string; message: string }[] = [];
+    // 平面扩展（原 buildDeliveryCtx 语义）：外部参数 {{k}} 顶层直接取，内建键不被覆盖
+    const flat: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(params || {})) {
+      if (['task', 'goal', 'cwd', 'source', 'summary', 'name', 'repo', 'group', 'refRepos', 'groups'].includes(k)) continue;
+      flat[k] = v;
+    }
+    const seedCtx: Record<string, any> = {
       task: task ? { id: task.id, text: reorderRoundsForDelivery(String(task.text || '')) } : null,
-      // 「持续 get」指令模板自身也能用 {{getloop.waitMinutes}}：先把阻塞窗口放进
-      // 同一份 ctx，外层 getloop 区块再补 text（同一个对象口径，前后不分裂）。
-      getloop: { text: '', waitMinutes: Number(getLoopWaitMinutes) || 0 },
+      goal: goalCtx,
+      source: source || '',
+      summary: summary || '',
+      cwd: cwd || '',
+      name: name || '',
+      params: { ...(params || {}) },
+      ...flat,
     };
-    // 持续 get 模板本身也是模板（可含 {{task.id}} 等），先在变量上下文里渲染成文本，
-    // 再由 getloop 区块的 `{{getloop.text}}` 输出。渲染失败同样记告警（不静默）。
-    const renderWarnings: RenderWarning[] = [];
     let loopText = '';
     if (getLoopTpl) {
       try {
-        loopText = renderInstruction(getLoopTpl, baseCtx) || '';
+        loopText = renderInstruction(getLoopTpl, seedCtx) || '';
       } catch (e) {
         renderWarnings.push({
           block: 'getloop',
@@ -263,13 +268,13 @@ export async function buildTaskDelivery(
         });
       }
     }
-    // ext（队列余量）：同主题还有多少待领取任务 + 标题，提示优先级。
-    // 现算（同主题一次读取），不做缓存；空队列 → null，整段不渲染。
+
+    // ext（队列余量）：同主题还有多少待领取任务 + 标题。现算（同主题一次读取）；
     // 读取失败不阻断领取：按缺失处理，并把原因记进 renderWarnings。
-    let extCtx: any = null;
+    let queueInfo: { topic: string; count: number; list: { id: number; title: string }[] } | null = null;
     try {
       const q = await pendingQueueInfo(topicKey as string, task && task.id);
-      if (q && q.count > 0) extCtx = { topic: q.topic, count: q.count, list: q.list };
+      if (q && q.count > 0) queueInfo = { topic: q.topic, count: q.count, list: q.list };
     } catch (e) {
       renderWarnings.push({
         block: 'ext',
@@ -277,31 +282,33 @@ export async function buildTaskDelivery(
         message: String((e as Error).message || e).replace(/\s+/g, ' ').trim(),
       });
     }
-    const blockCtx: Record<string, any> = {
-      ...baseCtx,
-      getloop: loopText
-        ? { text: loopText, waitMinutes: Number(getLoopWaitMinutes) || 0 }
-        : null,
-      ext: extCtx,
-    };
 
     const mode: 'xml' | 'plain' = settings.appendMode === 'plain' ? 'plain' : 'xml';
     // 每个区块按各自列表中选中的生效模板渲染（内置常驻，找不到就回落内置）
     const blockTemplates = resolveBlockTemplates(settings.blockTemplates);
-    const segments = [
-      { id: 'context', label: '组 / 项目上下文（模板）', traceId: 'delivery' },
-      { id: 'attachment', label: '附件段（清单 / 本地路径）', traceId: 'attach' },
-      { id: 'timecheck', label: '时间目标（状态 / check 指令）', traceId: 'goal' },
-      { id: 'ext', label: '待领取队列（ext）', traceId: 'ext' },
-      { id: 'ack', label: 'ack 完成总结提示词', traceId: 'ack' },
-      { id: 'getloop', label: '持续 get 指令（项目级）', traceId: 'getloop' },
+    const plugins = buildDeliveryPlugins(blockTemplates, {
+      groupCtx,
+      attach,
+      queueInfo,
+      loopText,
+      waitMinutes: Number(getLoopWaitMinutes) || 0,
+    });
+    const segments: SegmentMeta[] = [
+      { id: 'context', label: '组 / 项目上下文（模板）', traceId: 'delivery', templateName: blockTemplates['context']?.name },
+      { id: 'attachment', label: '附件段（清单 / 本地路径）', traceId: 'attach', templateName: blockTemplates['attachment']?.name },
+      { id: 'timecheck', label: '时间目标（状态 / check 指令）', traceId: 'goal', templateName: blockTemplates['timecheck']?.name },
+      { id: 'goalhint', label: '特殊功能提示（timegoal）', templateName: blockTemplates['goalhint']?.name },
+      { id: 'doneguard', label: '完成门禁提示（timegoal）', templateName: blockTemplates['doneguard']?.name },
+      { id: 'ext', label: '待领取队列（ext）', traceId: 'ext', templateName: blockTemplates['ext']?.name },
+      { id: 'ack', label: 'ack 完成总结提示词', traceId: 'ack', templateName: blockTemplates['ack']?.name },
+      { id: 'getloop', label: '持续 get 指令（项目级）', traceId: 'getloop', templateName: blockTemplates['getloop']?.name },
     ];
-    const full = composeSystemBlocks(segments, {
+    const full = await compose({
+      plugins,
+      seed: seedCtx,
       mode,
-      templates: blockTemplates,
-      ctx: blockCtx,
       trace,
-      warnings: renderWarnings,
+      segments,
     });
     const warnField = renderWarnings.length ? { renderWarnings } : {};
     if (!full) {
@@ -322,7 +329,7 @@ export async function buildTaskDelivery(
 
 /** 当前生效模板里是否有模板写了 {{task.text}}（instruction 自包含任务正文）。 */
 function blocksCoverBody(templates: Record<string, ResolvedBlockTemplate>): boolean {
-  return (BLOCK_DEFS as readonly BlockDef[]).some((d) => /\{\{\s*task\.text\s*\}\}/.test(String(templates?.[d.id]?.template || '')));
+  return Object.values(templates).some((t) => /\{\{\s*task\.text\s*\}\}/.test(String(t?.template || '')));
 }
 
 export interface WaitForTaskOptions {

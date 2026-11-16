@@ -1,0 +1,22 @@
+{
+  "source": "local",
+  "summary": "S0 golden 夹具现状",
+  "name": "nx-kv",
+  "params": {},
+  "cwd": "",
+  "task": {
+    "id": 7,
+    "text": "最小交付：只有任务与 ack"
+  },
+  "goal": null,
+  "repo": null,
+  "group": null,
+  "refRepos": {
+    "list": [],
+    "count": 0
+  },
+  "groups": [],
+  "attach": null,
+  "ext": null,
+  "getloop": null
+}

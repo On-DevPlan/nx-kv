@@ -1,0 +1,261 @@
+{
+  "source": "local",
+  "summary": "S0 golden 夹具现状",
+  "name": "nx-kv",
+  "params": {},
+  "cwd": "D:/DevProjects/my/github/nx-kv",
+  "task": {
+    "id": 216,
+    "text": "# 调研\n\n把提示词模板做成完全插件注册中心。\n\n## 验收\n\n- [x] 出方案"
+  },
+  "goal": {
+    "name": "交付时限",
+    "durationHuman": "2小时",
+    "elapsedHuman": "48分钟",
+    "remainingHuman": "1小时12分钟",
+    "elapsedSec": 2880,
+    "durationSec": 7200,
+    "remainingSec": 4320,
+    "overtimeSec": 0,
+    "reached": false,
+    "blocked": false,
+    "goalKey": "tg_216",
+    "extra": "golden 阶段先不做 UI",
+    "check": "〔时间目标〕每轮推进先跑 nx-kv timegoal check --task tg_216 --summary \"<本轮现状>\"；到点后再 localtask done。",
+    "statusLine": ""
+  },
+  "repo": {
+    "name": "nx-kv",
+    "key": "github.com/on-devplan/nx-kv",
+    "intro": "# nx-kv · 本机任务队列与文档中枢\n\n一条 npx 命令起 Web 面板。",
+    "introPath": "D:/repos/nx-kv.md",
+    "introRefId": "ref_f8051715c0df3f1c",
+    "introDesc": "nx-kv 介绍",
+    "docs": [
+      {
+        "refId": "ref_4986517d09fbba23",
+        "desc": "测试约定",
+        "title": "测试约定",
+        "hasBody": true,
+        "note": "跑全量前先读",
+        "tag": "test"
+      },
+      {
+        "refId": "ref_c0143b35cfa7e857",
+        "desc": "",
+        "title": "",
+        "hasBody": true,
+        "note": "",
+        "tag": ""
+      }
+    ],
+    "docCount": 2,
+    "refRepos": [
+      {
+        "key": "github.com/milkdown",
+        "name": "milkdown",
+        "path": "D:/DevProjects/git-repo/milkdown",
+        "note": ""
+      }
+    ],
+    "refRepoCount": 1
+  },
+  "group": {
+    "name": "nx",
+    "key": "group/nx",
+    "desc": "nx 组按仓库名前缀「nx」自动归组。",
+    "intro": "# nx 组\n\n自研 nx 系列工具链仓库。",
+    "introPath": "D:/repos/nx.md",
+    "introRefId": "ref_nxgroup01",
+    "introDesc": "nx 组介绍",
+    "note": "工作流层：本机 SQLite 队列 + refs 文档库",
+    "position": "工作流层：本机 SQLite 队列 + refs 文档库",
+    "peers": [
+      {
+        "name": "nx-as",
+        "note": "",
+        "path": "D:/DevProjects/my/github/nx-as",
+        "hasNote": false
+      },
+      {
+        "name": "nx-rp",
+        "note": "渲染引擎",
+        "path": "D:/DevProjects/my/github/nx-rp",
+        "hasNote": true
+      }
+    ],
+    "peerCount": 2,
+    "docs": [
+      {
+        "refId": "ref_nxgroup01",
+        "desc": "nx 组介绍",
+        "title": "nx 组",
+        "hasBody": true,
+        "note": "",
+        "tag": ""
+      }
+    ],
+    "docCount": 1,
+    "refRepos": [
+      {
+        "key": "github.com/blocknote",
+        "name": "blocknote",
+        "path": "D:/DevProjects/git-repo/blocknote",
+        "note": "编辑器参考"
+      }
+    ],
+    "refRepoCount": 1
+  },
+  "refRepos": {
+    "list": [
+      {
+        "key": "github.com/milkdown",
+        "name": "milkdown",
+        "path": "D:/DevProjects/git-repo/milkdown",
+        "note": ""
+      },
+      {
+        "key": "github.com/blocknote",
+        "name": "blocknote",
+        "path": "D:/DevProjects/git-repo/blocknote",
+        "note": "编辑器参考"
+      }
+    ],
+    "count": 2
+  },
+  "groups": [],
+  "attach": {
+    "count": 3,
+    "inlineCount": 1,
+    "areaCount": 2,
+    "hasInline": true,
+    "hasArea": true,
+    "list": [
+      {
+        "id": "att_file_1",
+        "kind": "file",
+        "kindLabel": "图片",
+        "isImage": true,
+        "name": "设计稿.png",
+        "size": 102400,
+        "sizeText": "100.0 KB",
+        "mime": "image/png",
+        "storage": "",
+        "role": "",
+        "origin": "inline",
+        "originLabel": "正文内嵌",
+        "usage": "已在本机：直接读取 D:/att/设计稿.png",
+        "cmd": "",
+        "locator": "D:/att/设计稿.png",
+        "needsSync": false,
+        "note": "",
+        "area": "inline",
+        "areaLabel": "正文内嵌",
+        "target": "",
+        "targetKind": "",
+        "targetKey": "",
+        "targetSeq": null,
+        "localPath": "D:/att/设计稿.png",
+        "fileId": "ae6263b6b5e0f4b1c82663b674b94330",
+        "exists": true,
+        "syncCmd": "",
+        "path": "D:/att/设计稿.png",
+        "file": {
+          "localPath": "D:/att/设计稿.png",
+          "fileId": "ae6263b6b5e0f4b1c82663b674b94330",
+          "exists": true,
+          "syncCmd": ""
+        }
+      },
+      {
+        "id": "att_url_1",
+        "kind": "url",
+        "kindLabel": "链接",
+        "isImage": false,
+        "name": "需求说明.html",
+        "size": 0,
+        "sizeText": "",
+        "mime": "",
+        "storage": "",
+        "role": "",
+        "origin": "area",
+        "originLabel": "附件区",
+        "usage": "外部链接，可直接抓取：https://example.com/spec",
+        "cmd": "",
+        "locator": "https://example.com/spec",
+        "needsSync": false,
+        "note": "网页存档",
+        "area": "area",
+        "areaLabel": "附件区",
+        "target": "",
+        "targetKind": "",
+        "targetKey": "",
+        "targetSeq": null,
+        "href": "https://example.com/spec",
+        "host": "example.com",
+        "urlText": "https://example.com/spec",
+        "url": {
+          "href": "https://example.com/spec",
+          "host": "example.com"
+        }
+      },
+      {
+        "id": "att_ref_1",
+        "kind": "ref",
+        "kindLabel": "文档",
+        "isImage": false,
+        "name": "nx-kv · 本机任务队列与文档中枢.md",
+        "size": 0,
+        "sizeText": "",
+        "mime": "",
+        "storage": "",
+        "role": "doc",
+        "origin": "area",
+        "originLabel": "附件区",
+        "usage": "这是文档资料绑定（进原文）：全文已附在本清单末尾的「文档原文」段",
+        "cmd": "nx-kv docs get --ref ref_f8051715c0df3f1c",
+        "locator": "nx-kv · 本机任务队列与文档中枢",
+        "needsSync": false,
+        "note": "组介绍主篇",
+        "area": "area",
+        "areaLabel": "附件区",
+        "target": "",
+        "targetKind": "",
+        "targetKey": "",
+        "targetSeq": null,
+        "refId": "ref_f8051715c0df3f1c",
+        "title": "nx-kv · 本机任务队列与文档中枢",
+        "desc": "一句话描述",
+        "readCmd": "nx-kv docs get --ref ref_f8051715c0df3f1c",
+        "content": "# nx-kv · 本机任务队列与文档中枢\n\n本机任务队列 + 文档库 + 仓库登记的一体化工具。",
+        "truncated": false,
+        "ref": {
+          "refId": "ref_f8051715c0df3f1c",
+          "title": "nx-kv · 本机任务队列与文档中枢",
+          "desc": "一句话描述",
+          "readCmd": "nx-kv docs get --ref ref_f8051715c0df3f1c",
+          "content": "# nx-kv · 本机任务队列与文档中枢\n\n本机任务队列 + 文档库 + 仓库登记的一体化工具。",
+          "truncated": false
+        }
+      }
+    ]
+  },
+  "ext": {
+    "topic": "D:/DevProjects/my/github/nx-kv",
+    "count": 2,
+    "list": [
+      {
+        "id": 217,
+        "title": "实现 S2 模板资产化"
+      },
+      {
+        "id": 218,
+        "title": "S3 注册表外露"
+      }
+    ]
+  },
+  "getloop": {
+    "text": "不要直接结束本轮：完成上面的任务之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；没活时每次最多阻塞 30 分钟，直到 get 返回 timeout 为止。",
+    "waitMinutes": 30
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "source": "local",
+  "summary": "S0 golden 夹具现状",
+  "name": "nx-kv",
+  "params": {},
+  "cwd": "D:/DevProjects/my/github/nx-kv",
+  "task": {
+    "id": 205,
+    "text": "到点前的 done 尝试"
+  },
+  "goal": {
+    "name": "交付时限",
+    "durationHuman": "2小时",
+    "elapsedHuman": "1小时23分钟",
+    "remainingHuman": "37分钟",
+    "elapsedSec": 4980,
+    "durationSec": 7200,
+    "remainingSec": 2220,
+    "overtimeSec": 0,
+    "reached": false,
+    "blocked": true,
+    "goalKey": "tg_216",
+    "extra": "",
+    "check": "〔时间目标〕每轮推进先跑 nx-kv timegoal check --task tg_216 --summary \"<本轮现状>\"。",
+    "statusLine": ""
+  },
+  "repo": null,
+  "group": null,
+  "refRepos": {
+    "list": [],
+    "count": 0
+  },
+  "groups": [],
+  "attach": null,
+  "ext": null,
+  "getloop": {
+    "text": "不要直接结束本轮：完成上面的任务之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；",
+    "waitMinutes": 0
+  }
+}

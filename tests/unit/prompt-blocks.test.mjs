@@ -1,4 +1,4 @@
-// 系统上下文渲染单元测试（v5 模型：一份共享 ctx + 每区块独立模板列表 + 薄编排）。
+// 系统上下文渲染单元测试（S1 插件化后：compose + 8 插件；归一化/列表逻辑不变）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -10,7 +10,8 @@ const {
   resolveBlockTemplates,
   wrapXmlBlocks,
 } = await import('../../src/shared/prompt-blocks.js');
-const { composeSystemBlocks } = await import('../../src/modules/tasktool/system-blocks.js');
+const { compose } = await import('../../src/modules/promptplug/compose.js');
+const { buildDeliveryPlugins } = await import('../../src/modules/promptplug/index.js');
 const { renderInstruction, validateTemplate } = await import('../../src/core/instruction-template.js');
 
 const defOf = (id) => BLOCK_DEFS.find((d) => d.id === id);
@@ -24,6 +25,18 @@ const withActive = (lists, blockId, template, id = 'custom', name = '自定义')
     ],
   };
   return next;
+};
+
+/** 与 wait.ts 同构的插件组装：resolved 模板 + 宿主取数结果。 */
+const makeCompose = (lists, deps = {}, seed = {}) => {
+  const plugins = buildDeliveryPlugins(resolveBlockTemplates(lists), {
+    groupCtx: deps.groupCtx ?? null,
+    attach: deps.attach ?? null,
+    queueInfo: deps.queueInfo ?? null,
+    loopText: deps.loopText ?? '',
+    waitMinutes: deps.waitMinutes ?? 0,
+  });
+  return compose({ plugins, seed, mode: deps.mode ?? 'xml' });
 };
 
 test('默认每区块列表：8 个区块，各只含系统内置模板，active=builtin', () => {
@@ -86,7 +99,7 @@ test('resolveBlockTemplates：取每个区块当前生效的那一条', () => {
   assert.equal(broken.context.builtin, true);
 });
 
-test('共享 ctx：一个对象同时喂给所有区块的各自生效模板，按固定顺序包标签', () => {
+test('共享 ctx：一个对象同时喂给所有区块的各自生效模板，按插件顺序包标签', async () => {
   let lists = defaultBlockTemplateLists();
   lists = withActive(lists, 'context', '项目 {{repo.name}} · 组 {{group.name}}');
   lists = withActive(
@@ -95,16 +108,10 @@ test('共享 ctx：一个对象同时喂给所有区块的各自生效模板，�
     '附件 {{attach.count}} 个：{{#each attach.list}}\n- {{name}}: {{localPath}}{{/each}}'
   );
   lists = withActive(lists, 'ack', '完成之后继续 wait（任务 {{task.id}}）');
-  const text = composeSystemBlocks([], {
-    mode: 'xml',
-    templates: resolveBlockTemplates(lists),
-    ctx: {
-      repo: { name: 'nx-kv' },
-      group: { name: 'nx' },
-      attach: { count: 1, list: [{ name: 'a.png', localPath: '/tmp/a.png' }] },
-      task: { id: 42 },
-    },
-  });
+  const text = await makeCompose(lists, {
+    groupCtx: { repo: { name: 'nx-kv' }, groups: [{ name: 'nx', desc: '组定位' }] },
+    attach: { count: 1, list: [{ name: 'a.png', localPath: '/tmp/a.png' }] },
+  }, { task: { id: 42 } });
   assert.match(text, /^<nx-kv>\n/);
   assert.match(text, /\n<\/nx-kv>$/);
   assert.match(text, /<nx-kv\.context>\n项目 nx-kv · 组 nx\n<\/nx-kv\.context>/);
@@ -115,11 +122,11 @@ test('共享 ctx：一个对象同时喂给所有区块的各自生效模板，�
   assert.match(text, /<nx-kv\.ack>\n完成之后继续 wait（任务 42）\n<\/nx-kv\.ack>/);
   assert.ok(
     text.indexOf('nx-kv.context') < text.indexOf('nx-kv.attachment'),
-    '输出顺序由区块 def 固定'
+    '输出顺序由插件 order 固定'
   );
 });
 
-test('ext 默认模板：列同主题余量与标题并给优先级；空队列整段省略', () => {
+test('ext 默认模板：列同主题余量与标题并给优先级；空队列整段省略', async () => {
   const tpl = defOf('ext').defaultTemplate;
   const withQueue = renderInstruction(tpl, {
     ext: { topic: 'nx-kv', count: 2, list: [{ id: 65, title: '第一条' }, { id: 66, title: '第二条' }] },
@@ -129,12 +136,8 @@ test('ext 默认模板：列同主题余量与标题并给优先级；空队列�
   assert.match(withQueue, /- #65 第一条/);
   assert.match(withQueue, /- #66 第二条/);
   assert.match(withQueue, /先完成当前任务，再领取下一条/);
-  for (const ext of [null, { topic: 'nx-kv', count: 0, list: [] }]) {
-    const text = composeSystemBlocks([], {
-      mode: 'xml',
-      templates: resolveBlockTemplates(defaultBlockTemplateLists()),
-      ctx: { ext },
-    });
+  for (const queueInfo of [null, { topic: 'nx-kv', count: 0, list: [] }]) {
+    const text = await makeCompose(defaultBlockTemplateLists(), { queueInfo }, { task: { id: 64 } });
     assert.doesNotMatch(text, /nx-kv\.ext/, '空队列不输出 ext 区块');
   }
 });
@@ -162,62 +165,36 @@ test('旧语法已废弃：保存校验拒绝，运行期不被当作条件/占�
   );
 });
 
-test('模板渲染失败：该块回落内置模板 + 告警（不静默、不阻断其它块）', () => {
+test('坏模板：运行期不回落——compose 直接抛错（保存期校验是唯一防线，S1 起运行期一条直线）', async () => {
   let lists = defaultBlockTemplateLists();
-  lists = withActive(lists, 'context', '正文 {{repo.name}}');
   lists = withActive(lists, 'attachment', '{{#if}}坏模板'); // 语法错误
-  const warnings = [];
-  const text = composeSystemBlocks([], {
-    mode: 'xml',
-    templates: resolveBlockTemplates(lists),
-    ctx: { repo: { name: 'nx-kv' }, attach: null },
-    warnings,
-  });
-  assert.equal(warnings.length, 1, '必须留下告警');
-  assert.equal(warnings[0].block, 'attachment');
-  assert.match(warnings[0].message, /Parse error/i);
-  assert.match(text, /<nx-kv\.context>\n正文 nx-kv\n<\/nx-kv\.context>/, '好块照常输出');
-  assert.doesNotMatch(text, /<nx-kv\.attachment>/, '坏块回落内置后无附件 → 不出现');
+  await assert.rejects(
+    () => makeCompose(lists, {}, { task: { id: 1 } }),
+    /Parse error/i,
+    '坏模板在渲染时抛出，不再回落内置'
+  );
 });
 
-test('旧语法模板在运行期同样回落内置（保存校验之外的兜底）', () => {
-  let lists = defaultBlockTemplateLists();
-  lists = withActive(lists, 'ack', '{{#task}}旧闸门{{/task}}');
-  const warnings = [];
-  const text = composeSystemBlocks([], {
-    mode: 'xml',
-    templates: resolveBlockTemplates(lists),
-    ctx: { task: { id: 7 } },
-    warnings,
-  });
-  assert.equal(warnings.length, 1);
-  assert.equal(warnings[0].block, 'ack');
-  assert.match(warnings[0].message, /已废弃/);
-  assert.match(text, /<nx-kv\.ack>[\s\S]*localtask done --id 7/, 'ack 回落内置模板');
-});
-
-test('当前模板为空 → 该块不输出；全空 → 空串', () => {
-  const lists = defaultBlockTemplateLists();
-  const templates = resolveBlockTemplates(lists);
-  templates.context = { template: '', builtin: false, id: 'empty', name: '空' };
-  templates.attachment = { template: '', builtin: false, id: 'empty', name: '空' };
-  templates.timecheck = { template: '', builtin: false, id: 'empty', name: '空' };
+test('空模板：构造插件清单即被启动期校验拦下（空段 = 配置错误，不静默消失）', async () => {
+  const templates = resolveBlockTemplates(defaultBlockTemplateLists());
   templates.ack = { template: '', builtin: false, id: 'empty', name: '空' };
-  templates.getloop = { template: '', builtin: false, id: 'empty', name: '空' };
-  assert.equal(composeSystemBlocks([], { mode: 'xml', templates, ctx: {} }), '');
-  assert.equal(composeSystemBlocks([], { mode: 'plain', templates, ctx: {} }), '');
+  const plugins = buildDeliveryPlugins(templates, {
+    groupCtx: null, attach: null, queueInfo: null, loopText: '', waitMinutes: 0,
+  });
+  await assert.rejects(
+    () => compose({ plugins, seed: {}, mode: 'xml' }),
+    /模板不能为空/,
+    '空模板在 assertPluginList 抛出'
+  );
 });
 
-test('plain 模式：渲染后按空行直拼、不再包标签', () => {
+test('plain 模式：渲染后按空行直拼、不再包标签', async () => {
   let lists = defaultBlockTemplateLists();
   lists = withActive(lists, 'context', '组上下文');
   lists = withActive(lists, 'timecheck', 'check 指令');
   lists = withActive(lists, 'ack', 'ack 指令');
-  const templates = resolveBlockTemplates(lists);
-  const empty = { template: '', builtin: false, id: 'empty', name: '空' };
-  templates.attachment = empty;
-  const text = composeSystemBlocks([], { mode: 'plain', templates, ctx: {} });
-  assert.equal(text, '组上下文\n\ncheck 指令\n\nack 指令', '顺序 = 区块 def 顺序');
+  const text = await makeCompose(lists, { mode: 'plain' }, {});
+  assert.equal(text, '组上下文\n\ncheck 指令\n\nack 指令', '顺序 = 插件 order 顺序');
   assert.doesNotMatch(text, /<nx-kv/);
 });
 

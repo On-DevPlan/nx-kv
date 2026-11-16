@@ -1,0 +1,25 @@
+{
+  "source": "local",
+  "summary": "S0 golden 夹具现状",
+  "name": "nx-kv",
+  "params": {},
+  "cwd": "D:/somewhere/未登记目录",
+  "task": {
+    "id": 42,
+    "text": "在未登记目录里干活"
+  },
+  "goal": null,
+  "repo": null,
+  "group": null,
+  "refRepos": {
+    "list": [],
+    "count": 0
+  },
+  "groups": [],
+  "attach": null,
+  "ext": null,
+  "getloop": {
+    "text": "不要直接结束本轮：完成上面的任务之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；",
+    "waitMinutes": 0
+  }
+}

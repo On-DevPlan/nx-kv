@@ -1,0 +1,5 @@
+<nx-kv>
+<nx-kv.ack>
+完成之后必须调用 nx-kv localtask done --id 7 --summary "<完成总结>" 汇报结果。
+</nx-kv.ack>
+</nx-kv>

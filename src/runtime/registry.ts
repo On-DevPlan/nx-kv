@@ -35,6 +35,7 @@ import file from '../modules/file/index.js';
 import templates from '../modules/templates/index.js';
 import bundled from '../modules/bundled/index.js';
 import db from '../modules/db/index.js';
+import { PromptplugModule } from '../modules/promptplug/index.js';
 
 const MODULE_LIST: readonly AnyModule[] = [
   systemModule,
@@ -47,6 +48,7 @@ const MODULE_LIST: readonly AnyModule[] = [
   templates,
   bundled,
   db,
+  new PromptplugModule(),
 ];
 
 /** 模块元组：全部业务域（tests/unit/registry.test.mjs 对账模块目录一一对应）。 */

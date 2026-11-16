@@ -1,18 +1,25 @@
-// **交付提示词模板化 + 外部参数平面扩展**（任务 #62）：
+// **交付上下文插件化**（原 delivery-template.test，S1 起 deliveryCtxOf 住
+// promptplug/plugins/context.ts，经 ContextPlugin.data() 变换）：
 //
 //   交付提示词 = 原始提示词（task.text 原文）+ 组 / 项目的关键路径（本地 md 路径）
-//   ——这段封装是一份**模板 + 占位符**，可在设置里改（面板可见），
-//   领取引擎支持**平面扩展**（--param k=v → ctx 顶层与 {{params.*}}）。
+//   ——这段封装是一份**模板 + 占位符**，可在设置里改（面板可见）。
+//   本文件钉住 context 插件的 ctx 变换口径（#81 / #104 / #163 / #86 各裁决不变）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  DEFAULT_DELIVERY_TEMPLATE,
-  buildDeliveryCtx,
-  deliveryCtxOf,
-  renderDelivery,
-} from '../../src/modules/tasktool/delivery-template.js';
+import { ContextPlugin } from '../../src/modules/promptplug/plugins/context.js';
 import { parseParams } from '../../src/modules/tasktool/params.js';
 import { renderInstruction } from '../../src/core/instruction-template.js';
+import { DEFAULT_CONTEXT_TEMPLATE } from '../../src/shared/prompt-blocks.js';
+
+const TPL = DEFAULT_CONTEXT_TEMPLATE;
+
+/** 与 wait.ts 同构的最小组装：seed + context 插件写回段。 */
+async function ctxOf(groupCtx, extra = {}) {
+  const p = new ContextPlugin(TPL, { groupCtx });
+  const data = await p.get('data');
+  return { task: null, cwd: '', source: '', summary: '', name: '', params: {}, ...data, ...extra };
+}
+const renderCtx = (ctx) => renderInstruction(TPL, ctx);
 
 const GROUP_CTX = {
   repo: {
@@ -42,17 +49,9 @@ const GROUP_CTX = {
   ],
 };
 
-test('默认模板：只内嵌项目主篇；组介绍 / 其余文档只给 desc + 取用指令', () => {
-  const ctx = buildDeliveryCtx({
-    task: { id: 3, text: '# 改登录页' },
-    goal: null,
-    source: 'local',
-    summary: '开干',
-    cwd: 'D:/work/alpha',
-    name: 'alpha',
-    groupCtx: GROUP_CTX,
-  });
-  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+test('context 默认模板：只内嵌项目主篇；组介绍 / 其余文档只给 desc + 取用指令', async () => {
+  const ctx = await ctxOf(GROUP_CTX, { task: { id: 3, text: '# 改登录页' }, cwd: 'D:/work/alpha' });
+  const out = renderCtx(ctx);
   assert.match(out, /〔项目介绍 · alpha〕/);
   assert.match(out, /管清单的/, '项目主篇正文内嵌');
   assert.match(out, /- 问答集/);
@@ -71,35 +70,20 @@ test('默认模板：只内嵌项目主篇；组介绍 / 其余文档只给 desc
   assert.doesNotMatch(out, /C:\/docs\//);
 });
 
-test('没有组时：组段落整段不出现（项目介绍仍在）', () => {
-  const ctx = buildDeliveryCtx({
-    task: { id: 1, text: 'x' },
-    groupCtx: { repo: GROUP_CTX.repo, groups: [] },
-  });
-  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+test('没有组时：组段落整段不出现（项目介绍仍在）', async () => {
+  const ctx = await ctxOf({ repo: GROUP_CTX.repo, groups: [] });
+  const out = renderCtx(ctx);
   assert.match(out, /〔项目介绍 · alpha〕/);
   assert.doesNotMatch(out, /项目组上下文/);
   assert.doesNotMatch(out, /组内成员/);
 });
 
-test('原始提示词可以进交付（{{task.text}}）', () => {
-  const ctx = buildDeliveryCtx({ task: { id: 7, text: '# 原始提示词\n\n照这做' }, groupCtx: GROUP_CTX });
-  const out = renderDelivery('原文：{{task.text}}\n组：{{group.name}}', ctx);
+test('原始提示词可以进交付（{{task.text}}）——模板层变量，ctx.task 由 seed 提供', async () => {
+  const ctx = await ctxOf(GROUP_CTX, { task: { id: 7, text: '# 原始提示词\n\n照这做' } });
+  const out = renderInstruction('原文：{{task.text}}\n组：{{group.name}}', ctx);
   assert.match(out, /原文：# 原始提示词/);
   assert.match(out, /照这做/);
   assert.match(out, /组：nx系列/);
-});
-
-test('外部参数：顶层平铺 + params 归拢，内建键不被覆盖', () => {
-  const ctx = buildDeliveryCtx({
-    task: { id: 1, text: 'x' },
-    groupCtx: GROUP_CTX,
-    params: { lane: 'payment', task: 'hijack' },
-  });
-  assert.equal(ctx.lane, 'payment', '顶层平铺');
-  assert.equal(ctx.params.lane, 'payment', 'params 归拢');
-  assert.notEqual(ctx.task, 'hijack', '内建键不被外部参数覆盖');
-  assert.equal(ctx.task.id, 1);
 });
 
 test('parseParams：k=v 可重复 / 逗号分隔，坏项忽略', () => {
@@ -115,8 +99,8 @@ test('渲染器不再接受旧段落名（{{#repo}} / {{#group}} 已废弃）', 
   assert.throws(() => renderInstruction('A{{#other}}B{{/other}}C', {}), /旧区块语法/);
 });
 
-test('deliveryCtxOf：文档 / 参考文件 / 成员是结构化数组（模板用循环）', () => {
-  const frag = deliveryCtxOf(GROUP_CTX);
+test('deliveryCtxOf：文档 / 参考文件 / 成员是结构化数组（模板用循环）', async () => {
+  const frag = await ctxOf(GROUP_CTX);
   assert.equal(frag.repo.docCount, 1);
   assert.equal(frag.repo.docs[0].refId, 'ref_qa');
   assert.equal(frag.repo.docs[0].desc, '问答集');
@@ -128,10 +112,7 @@ test('deliveryCtxOf：文档 / 参考文件 / 成员是结构化数组（模板�
   assert.ok(frag.group.peers.some((p) => p.name === 'beta'));
   // #163：成员带本机路径，默认模板渲染在括号说明之后，agent 直接定位兄弟仓库
   assert.equal(frag.group.peers[0].path, 'D:/repos/beta');
-  const peersOut = renderDelivery(
-    DEFAULT_DELIVERY_TEMPLATE,
-    buildDeliveryCtx({ task: { id: 3, text: 'x' }, groupCtx: GROUP_CTX })
-  );
+  const peersOut = renderCtx(await ctxOf(GROUP_CTX, { task: { id: 3, text: 'x' } }));
   assert.match(peersOut, /- beta：仓库与技能登记（D:\/repos\/beta）/);
   // 旧闸门键（repoDocs / groupPeers）已删除，不再作为变量提供
   assert.equal(frag.repoDocs, undefined);
@@ -141,7 +122,7 @@ test('deliveryCtxOf：文档 / 参考文件 / 成员是结构化数组（模板�
 // #81：空壳组（只有成员名单、全员无描述）不该渲染——喷一排空标签还让
 // 「单独仓库」看着像被归了组。内置模板的 {{#if group}} 是「键在不在」，
 // 所以在 deliveryCtxOf 里把空壳组过滤成 null。
-test('空壳组不渲染：无定位/介绍/位置、成员全无描述 → ctx.group 为 null（#81）', () => {
+test('空壳组不渲染：无定位/介绍/位置、成员全无描述 → ctx.group 为 null（#81）', async () => {
   // fr/mobile 形态：唯一「内容」是成员名单，且全员（无组内描述）
   const shell = {
     repo: { name: 'fr', key: 'local/fr' },
@@ -149,9 +130,9 @@ test('空壳组不渲染：无定位/介绍/位置、成员全无描述 → ctx.
       { name: 'mobile', key: 'board/mobile', desc: '', intro: null, note: '', peers: [{ name: 'mn-rt', note: '' }] },
     ],
   };
-  const ctx = buildDeliveryCtx({ task: { id: 1, text: 'x' }, groupCtx: shell });
+  const ctx = await ctxOf(shell, { task: { id: 1, text: 'x' } });
   assert.equal(ctx.group, null);
-  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+  const out = renderCtx(ctx);
   assert.doesNotMatch(out, /项目组上下文/);
   assert.doesNotMatch(out, /组定位：/);
   assert.doesNotMatch(out, /组内成员/);
@@ -161,12 +142,12 @@ test('空壳组不渲染：无定位/介绍/位置、成员全无描述 → ctx.
     repo: { name: 've', key: 'local/ve' },
     groups: [{ name: 'workspace', key: 'board/workspace', desc: '', intro: null, note: '' }],
   };
-  const ctx2 = buildDeliveryCtx({ task: { id: 2, text: 'x' }, groupCtx: bare });
+  const ctx2 = await ctxOf(bare, { task: { id: 2, text: 'x' } });
   assert.equal(ctx2.group, null);
-  assert.doesNotMatch(renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx2), /项目组上下文/);
+  assert.doesNotMatch(renderCtx(ctx2), /项目组上下文/);
 });
 
-test('多组：空壳组被跳过，第一个有料的当主组', () => {
+test('多组：空壳组被跳过，第一个有料的当主组', async () => {
   const multi = {
     repo: { name: 'x', key: 'local/x' },
     groups: [
@@ -174,52 +155,52 @@ test('多组：空壳组被跳过，第一个有料的当主组', () => {
       { name: 'real', desc: '真有料', note: '占个位', peers: [] },
     ],
   };
-  const ctx = buildDeliveryCtx({ task: { id: 3, text: 'x' }, groupCtx: multi });
+  const ctx = await ctxOf(multi, { task: { id: 3, text: 'x' } });
   assert.equal(ctx.group.name, 'real');
-  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+  const out = renderCtx(ctx);
   assert.doesNotMatch(out, /shell/);
   assert.match(out, /组定位：真有料/);
   assert.match(out, /本项目在组里的位置：占个位/);
 });
 
-test('组只要有一项真内容就照给：仅成员带描述也算', () => {
+test('组只要有一项真内容就照给：仅成员带描述也算', async () => {
   const g = {
     repo: { name: 'x', key: 'local/x' },
     groups: [
       { name: 'g1', desc: '', intro: null, note: '', peers: [{ name: 'p', note: '干活的' }] },
     ],
   };
-  const ctx = buildDeliveryCtx({ task: { id: 4, text: 'x' }, groupCtx: g });
+  const ctx = await ctxOf(g, { task: { id: 4, text: 'x' } });
   assert.notEqual(ctx.group, null);
-  assert.match(renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx), /- p：干活的/);
+  assert.match(renderCtx(ctx), /- p：干活的/);
 });
 
 // #104：context 段不能静默消失。两种「没有上下文」都必须在交付文本里说清原因，
 // 并给可执行的修复命令——否则用户只看到「这条任务没有 nx-kv.context」，无从判断
 // 是目录没登记、还是登记了没写介绍（旧实现两种都是空串，整块消失）。
-test('#104 目录未登记：context 段给出原因 + repo add 命令（不需要 .git）', () => {
-  const ctx = buildDeliveryCtx({ task: { id: 9, text: 'x' }, cwd: 'D:/work/unregistered', groupCtx: null });
-  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+test('#104 目录未登记：context 段给出原因 + repo add 命令（不需要 .git）', async () => {
+  const ctx = await ctxOf(null, { task: { id: 9, text: 'x' }, cwd: 'D:/work/unregistered' });
+  const out = renderCtx(ctx);
   assert.match(out, /未登记为本机仓库/);
   assert.match(out, /D:\/work\/unregistered/);
   assert.match(out, /nx-kv repo add "D:\/work\/unregistered" --key <key>/);
   assert.match(out, /不需要 \.git/);
 });
 
-test('#104 已登记但没写项目介绍：repo 进 ctx，context 段给 repo doc add 提示', () => {
+test('#104 已登记但没写项目介绍：repo 进 ctx，context 段给 repo doc add 提示', async () => {
   const groupCtx = { repo: { name: 'nx-kn', key: 'github.com/on-devplan/nx-kn', intro: null, docLinks: [] }, groups: [] };
-  const ctx = buildDeliveryCtx({ task: { id: 10, text: 'x' }, cwd: 'D:/a_js/js_proj/nx-kn', groupCtx });
+  const ctx = await ctxOf(groupCtx, { task: { id: 10, text: 'x' }, cwd: 'D:/a_js/js_proj/nx-kn' });
   assert.notEqual(ctx.repo, null, '已登记的仓库必须进 ctx（不再要求有介绍正文）');
   assert.equal(ctx.repo.name, 'nx-kn');
-  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+  const out = renderCtx(ctx);
   assert.match(out, /〔项目上下文 · nx-kn〕已登记为本机仓库/);
   assert.match(out, /nx-kv repo doc add github\.com\/on-devplan\/nx-kn --ref <refId>/);
   assert.doesNotMatch(out, /未登记为本机仓库/);
 });
 
-test('#104 全局池（cwd 为空）不出「未登记」噪音', () => {
-  const ctx = buildDeliveryCtx({ task: { id: 11, text: 'x' }, cwd: '', groupCtx: null });
-  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, ctx);
+test('#104 全局池（cwd 为空）不出「未登记」噪音', async () => {
+  const ctx = await ctxOf(null, { task: { id: 11, text: 'x' }, cwd: '' });
+  const out = renderCtx(ctx);
   assert.doesNotMatch(out, /项目上下文/);
   assert.doesNotMatch(out, /未登记/);
 });
@@ -264,14 +245,14 @@ const REF_REPO_CTX = {
   ],
 };
 
-test('参考仓库段：直接绑定 ∪ 组级绑定（去重、不含无关组、名字与路径齐全）', () => {
-  const frag = deliveryCtxOf(REF_REPO_CTX);
+test('参考仓库段：直接绑定 ∪ 组级绑定（去重、不含无关组、名字与路径齐全）', async () => {
+  const frag = await ctxOf(REF_REPO_CTX);
   assert.equal(frag.repo.refRepos.length, 2);
   assert.equal(frag.group.refRepos.length, 2);
   assert.deepEqual(frag.refRepos.list.map((x) => x.name), ['shared', 'own', 'grouped'], '去重并集，本仓库在前');
   assert.equal(frag.refRepos.count, 3);
 
-  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, buildDeliveryCtx({ task: { id: 9, text: 'x' }, groupCtx: REF_REPO_CTX }));
+  const out = renderCtx(await ctxOf(REF_REPO_CTX, { task: { id: 9, text: 'x' } }));
   assert.match(out, /参考仓库（可直接读取，共 3 个）：/);
   const refLines = out.split('\n').filter((l) => /^ {2}- .*（D:\/refs\//.test(l));
   assert.deepEqual(refLines.map((l) => l.match(/^ {2}- ([^（]+)/)[1]), ['shared', 'own', 'grouped']);
@@ -280,18 +261,18 @@ test('参考仓库段：直接绑定 ∪ 组级绑定（去重、不含无关组
   assert.doesNotMatch(out, /unrelated/, '无关组的参考仓库不出现');
 });
 
-test('参考仓库段：没有任何绑定时整段不出现', () => {
-  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, buildDeliveryCtx({ task: { id: 10, text: 'x' }, groupCtx: GROUP_CTX }));
+test('参考仓库段：没有任何绑定时整段不出现', async () => {
+  const out = renderCtx(await ctxOf(GROUP_CTX, { task: { id: 10, text: 'x' } }));
   assert.doesNotMatch(out, /参考仓库（可直接读取/);
-  assert.equal(deliveryCtxOf(GROUP_CTX).refRepos.count, 0);
+  assert.equal((await ctxOf(GROUP_CTX)).refRepos.count, 0);
 });
 
-test('参考仓库段：仓库没有项目介绍也照给（repo 主段仍按 intro 收敛）', () => {
-  const ctx = {
+test('参考仓库段：仓库没有项目介绍也照给（repo 主段仍按 intro 收敛）', async () => {
+  const groupCtx = {
     repo: { name: 'bare', key: 'local/bare', refRepos: [{ key: 'k', name: 'r1', path: 'D:/refs/r1', note: '' }] },
     groups: [],
   };
-  const out = renderDelivery(DEFAULT_DELIVERY_TEMPLATE, buildDeliveryCtx({ task: { id: 11, text: 'x' }, groupCtx: ctx }));
+  const out = renderCtx(await ctxOf(groupCtx, { task: { id: 11, text: 'x' } }));
   assert.doesNotMatch(out, /〔项目介绍/, '没有 intro 不渲染项目介绍段');
   assert.match(out, /参考仓库（可直接读取，共 1 个）：/);
   assert.match(out, /- r1（D:\/refs\/r1）/);

@@ -1,0 +1,69 @@
+{
+  "source": "local",
+  "summary": "S0 golden 夹具现状",
+  "name": "nx-kv",
+  "params": {},
+  "cwd": "D:/DevProjects/my/github/nx-kv",
+  "task": {
+    "id": 205,
+    "text": "md 编辑器块侧栏"
+  },
+  "goal": null,
+  "repo": null,
+  "group": null,
+  "refRepos": {
+    "list": [],
+    "count": 0
+  },
+  "groups": [],
+  "attach": {
+    "count": 1,
+    "inlineCount": 1,
+    "areaCount": 0,
+    "hasInline": true,
+    "hasArea": false,
+    "list": [
+      {
+        "id": "att_file_1",
+        "kind": "file",
+        "kindLabel": "图片",
+        "isImage": true,
+        "name": "设计稿.png",
+        "size": 102400,
+        "sizeText": "100.0 KB",
+        "mime": "image/png",
+        "storage": "",
+        "role": "",
+        "origin": "inline",
+        "originLabel": "正文内嵌",
+        "usage": "已在本机：直接读取 D:/att/设计稿.png",
+        "cmd": "",
+        "locator": "D:/att/设计稿.png",
+        "needsSync": false,
+        "note": "",
+        "area": "inline",
+        "areaLabel": "正文内嵌",
+        "target": "",
+        "targetKind": "",
+        "targetKey": "",
+        "targetSeq": null,
+        "localPath": "D:/att/设计稿.png",
+        "fileId": "ae6263b6b5e0f4b1c82663b674b94330",
+        "exists": true,
+        "syncCmd": "",
+        "path": "D:/att/设计稿.png",
+        "file": {
+          "localPath": "D:/att/设计稿.png",
+          "fileId": "ae6263b6b5e0f4b1c82663b674b94330",
+          "exists": true,
+          "syncCmd": ""
+        }
+      }
+    ]
+  },
+  "ext": null,
+  "getloop": {
+    "text": "不要直接结束本轮：完成上面的任务之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；",
+    "waitMinutes": 0
+  }
+}

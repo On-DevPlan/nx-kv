@@ -1,0 +1,14 @@
+<nx-kv>
+<nx-kv.context>
+〔项目上下文〕工作目录 D:/DevProjects/my/github/nx-kv 未登记为本机仓库，本次交付没有项目介绍 / 组上下文。登记（不需要 .git，给 key 即可）：nx-kv repo add "D:/DevProjects/my/github/nx-kv" --key <key>
+</nx-kv.context>
+<nx-kv.timecheck>
+〔时间目标「验收窗口」剩余 12 分钟〕
+</nx-kv.timecheck>
+<nx-kv.ack>
+完成之后必须调用 nx-kv localtask done --id 100 --summary "<完成总结>" 汇报结果。
+</nx-kv.ack>
+<nx-kv.getloop>
+不要直接结束本轮：完成上面的任务（100）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；
+</nx-kv.getloop>
+</nx-kv>

@@ -1,0 +1,40 @@
+{
+  "source": "local",
+  "summary": "S0 golden 夹具现状",
+  "name": "nx-kv",
+  "params": {},
+  "cwd": "D:/DevProjects/my/github/nx-kv",
+  "task": {
+    "id": 100,
+    "text": "列表逃逸"
+  },
+  "goal": {
+    "name": "验收窗口",
+    "durationHuman": "30分钟",
+    "elapsedHuman": "18分钟",
+    "remainingHuman": "12分钟",
+    "elapsedSec": 1080,
+    "durationSec": 1800,
+    "remainingSec": 720,
+    "overtimeSec": 0,
+    "reached": false,
+    "blocked": false,
+    "goalKey": "",
+    "extra": "",
+    "check": "",
+    "statusLine": "〔时间目标「验收窗口」剩余 12 分钟〕"
+  },
+  "repo": null,
+  "group": null,
+  "refRepos": {
+    "list": [],
+    "count": 0
+  },
+  "groups": [],
+  "attach": null,
+  "ext": null,
+  "getloop": {
+    "text": "不要直接结束本轮：完成上面的任务之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；",
+    "waitMinutes": 0
+  }
+}

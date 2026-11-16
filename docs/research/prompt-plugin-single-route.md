@@ -82,27 +82,32 @@ export abstract class PromptPlugin<S extends z.ZodObject<z.ZodRawShape>>
   abstract readonly id: string;
   /** ★ 父类强制：子类漏写编译不过（TS2515）。值只是播种默认位，运行期由数组派生 */
   abstract readonly order: number;
+  /** 类 XML 输出标签（落地补充：tag 是输出段结构的一半，归插件契约） */
+  abstract readonly tag: string;
   abstract readonly label: string;
-  /** ★ data 形状用 zod strictObject 声明一次，TData 由它推导，不双写（§1.4） */
-  abstract readonly schema: S;
+  /** ★ data 形状用 zod strictObject 声明一次，TData 由它推导，不双写（§1.4）。
+   *   名字是 dataSchema 不是 schema——schema 这个名字让给注册面（见下） */
+  abstract readonly dataSchema: S;
   /** 默认只读：只读段不写 ctx（timecheck / goalhint / doneguard / ack） */
   readonly writes: readonly string[] = [];
 
-  /** 子类只写这两处 */
-  protected abstract template(): string;
-  protected abstract data(): Promise<z.infer<S>> | z.infer<S>;
+  /** 模板正文不进代码：构造注入（模板唯一真相是 DB 的 lt.blockTemplates） */
+  constructor(private readonly tpl: string) {}
 
-  /** 唯一出口：无参 = 文本态；传 'data' = 结构态（校验只在这里发生一次） */
+  /** 注册面 schema：schema-bridge 从 zod shape 派生一次的纯数据（惰性，构造期子类字段未初始化） */
+  get schema(): PluginSchema<unknown> { /* 惰性派生缓存 */ }
+
+  /** 子类只写这一处（同步即可；见 §8 取数分工） */
+  protected abstract data(): z.infer<S> | Promise<z.infer<S>>;
+
+  /** 唯一出口：无参 = 文本态（构造注入的模板）；传 'data' = 结构态（校验只在这里发生一次） */
   get<T extends z.infer<S> = z.infer<S>>(as: 'data'): Promise<T>;
   get(): string;
   get(as?: 'data'): string | Promise<z.infer<S>> {
-    if (as !== 'data') return this.template();
+    if (as !== 'data') return this.tpl;
     return Promise.resolve(this.data()).then((raw) => {
-      const r = this.schema.safeParse(raw);
-      if (!r.success) {
-        const issues = r.error.issues.map((i) => `${i.path.join('.') || '(根)'} ${i.message}`).join('；');
-        throw new Error(`${this.id}: data() 返回与 schema 不符——${issues}`);
-      }
+      const r = this.dataSchema.safeParse(raw);
+      if (!r.success) throw new Error(`${this.id}: data() 返回与 schema 不符——…`);
       return r.data;
     });
   }
@@ -164,7 +169,9 @@ export function assertPluginList(list: readonly AnyPromptPlugin[]): void {
 }
 ```
 
-四条断言各自挡掉一个真实事故：id 重复（后者覆盖前者）、order 相等（排序退化成数组位置，等于隐式第二条路）、空模板（段静默消失）、ctx 段撞车（谁覆盖谁取决于执行顺序）。`assertPluginList` 收的仍是**纯数据**注册面（`AnyPromptPlugin`），zod 在它之前已被 schema-bridge 折算完（§1.4）。
+四条断言各自挡掉一个真实事故：id 重复（后者覆盖前者）、order 相等（排序退化成数组位置，等于隐式第二条路）、空模板（段静默消失，属配置错误）、ctx 段撞车（谁覆盖谁取决于执行顺序）。`assertPluginList` 收的仍是**纯数据**注册面（`AnyPromptPlugin`），zod 在它之前已被 schema-bridge 折算完（§1.4）。
+
+> **落地补记（S1 实施后）**：①插件契约增加 `tag` 字段（类 XML 标签是输出段结构的一半，归插件）；②子类声明的 zod 字段命名 `dataSchema`，注册面 `schema` 由基类惰性派生（构造体内子类字段尚未初始化，不能在 super 里算）；③schema 校验强度分两层——顶层段 strict（data() 多写段显式报错）+ 内层 loose 且字段 optional（内层形状是变量目录，不是数据闸门）；④空模板校验在 assertPluginList，存量 DB 里若有 active 指向空模板的条目，由 S2 的 ensure 版本合并自愈回 builtin。
 
 ### 1.4 schema 书写层：靠 zod 做映射（第 11 轮裁决）
 
@@ -448,6 +455,8 @@ src/web/frontend/page/settings/prompt-templates-section.tsx   改写：拖动列
 ```
 
 分层依据（都是既有规则，不是新约定）：`shared` 零依赖 → 只放纯类型与纯函数；`modules` 做 I/O 与编排；`core` 只提供 `renderInstruction` / `writeSettingRaw` 这类基础设施；`web` 只通过 `/api` 取数据。
+
+**取数与变换的分工（落地裁决）**：模块互依禁（eslint 枚举禁列）意味着 promptplug 不能 import tasktool 的领域取数（readGroupContext / annotateTaskDelivery / pendingQueueInfo / getloop 指令渲染）——这些 I/O 由宿主（tasktool/wait.ts）完成后**构造注入**给插件，插件 `data()` 只做同步变换（context 插件的 `deliveryCtxOf`、ext 插件的 `count>0 → null` 收敛、getloop 插件的 `{text,waitMinutes} | null` 均已搬入）。依赖方向 tasktool → promptplug 是设计内消费（同 localtask 的既有现实），eslint 禁列不收 `'../promptplug/*'`；registry.test 的模块对账由 `PromptplugModule`（S1 无 action，S3 挂 prompt 三个 action）满足。
 
 ---
 

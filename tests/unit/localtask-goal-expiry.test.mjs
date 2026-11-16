@@ -82,7 +82,11 @@ async function setDeadlineIn(k, inSec) {
 test('目标在等待期间到点：wait 立刻收尾（cancelled + reason=goal_expired）', async () => {
   await reset();
   await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
-  await setDeadlineIn(key, 2); // 等待开始时还在跑，2 秒后到点
+  // 窗口 6 秒：全量并发跑时（CPU 竞争），waitForTask 启动路径（建表 / ensure /
+  // setWaiting）实测可能超过 2 秒——窗口太小会让 wait 开始读 goal 时已经到点
+  // （reached=true → 不参与自动取消），用例退化成挂满 60s 超时（2026-11-16 实锤）。
+  // 6s 到点 + 15s 上限仍能把「到点收尾」与「60s 超时」清楚区分开。
+  await setDeadlineIn(key, 6);
 
   const t0 = Date.now();
   const r = await waitForTask({
@@ -96,7 +100,7 @@ test('目标在等待期间到点：wait 立刻收尾（cancelled + reason=goal_
   assert.equal(r.status, 'timeout', '与超时同一条出口，agent 侧不必认识新状态');
   assert.equal(r.cancelled, true);
   assert.equal(r.reason, 'goal_expired');
-  assert.ok(cost < 8000, `到点应立即收尾，实际 ${cost}ms`);
+  assert.ok(cost < 15000, `到点应立即收尾（6s 窗口 + 轮询余量），实际 ${cost}ms`);
 
   // 等待态复位（到点立即收尾时主题可能还没建出来）
   const d = await svc.listTasks();

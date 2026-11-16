@@ -22,7 +22,6 @@ interface DesiredBinding {
   refId: string;
   position: number;
   note: string;
-  tag: string;
 }
 
 export interface SyncRefIndexInput {
@@ -45,8 +44,7 @@ export function desiredBindings(s: any): DesiredBinding[] {
     type: DesiredBinding['type'],
     raw: any,
     position: number,
-    note = '',
-    tag = ''
+    note = ''
   ): void => {
     const refId = String((raw && raw.ref) || '').trim();
     if (!refId) return;
@@ -57,7 +55,6 @@ export function desiredBindings(s: any): DesiredBinding[] {
       refId,
       position: Number(position) || 0,
       note: String((raw && raw.note) ?? note ?? ''),
-      tag: String((raw && raw.tag) ?? tag ?? ''),
     });
   };
 
@@ -115,7 +112,6 @@ export async function syncRefIndex({ store: s }: SyncRefIndexInput = {}): Promis
           type: b.type,
           position: b.position,
           note: b.note,
-          tag: b.tag,
         });
         markRefBound(conn, b.refId);
         n += 1;

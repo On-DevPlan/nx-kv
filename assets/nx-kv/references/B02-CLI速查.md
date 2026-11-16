@@ -68,7 +68,7 @@
 | `docs ref unbind` | `--ref` `--type` `--repo` `--group` | 摘归属（文档与正文保留） |
 | `docs remove` | `--ref` | 删整篇 |
 | `docs bindings` | `--ref` \| `--host <repoKey>` \| `--group <groupKey>` | 归属查询：`--host` 只给仓库自己的（含参考仓库）；`--group` 给组域（组 → 组内 → 成员仓库自己 → **组内参考仓库自己**）。每行带 `hostKind`（`dev` / `ref` / `group`） |
-| `docs bind` / `docs link` / `docs note-bind` | `--repo`/`--board` `--ref` `--path` `--note` `--tag` `--remove` `--before` `--reset` | 宿主文档集的增删改（`bind` 主篇，`link` 目录补充，`note-bind` 组内描述） |
+| `docs bind` / `docs link` / `docs note-bind` | `--repo`/`--board` `--ref` `--path` `--note` `--remove` `--before` `--reset` | 宿主文档集的增删改（`bind` 主篇，`link` 目录补充，`note-bind` 组内描述） |
 | `docs attach` / `detach` / `attachments` / `attach-note` | `--ref` + 附件参数 | 文档附件（用法同 `localtask attach`） |
 | `docs mdfile` / `mdfiles` / `link-file` | `--attachment` / `--missing` / `--path` | md 文件指针相关 |
 | `docs gc` | `--apply` | 清没有正文的 ref（默认只报数） |
@@ -86,10 +86,10 @@
 | `repo clone` | `--remote` `--key` `--name` `--depth` | clone 并登记（普通仓库） |
 | `repo ref add` / `repo ref clone` | `--path` / `--url` `--name` `--desc` `--board` `--bind` `--no-bind` `--depth` | 登记 / 克隆参考仓库（`--board` 顺手挂组，`--bind` 绑开发仓库） |
 | `repo ref sync` / `check` / `of` | `--id` `--all` / — / `--id` | 更新 / 完整性检查 / 这个仓库的参考 |
-| `repo ref note` | `--id` \| `--repo` \| `--board` `--note "…"` | 写参考绑定说明（`repo bind` 本身不收 note） |
+| `repo ref note` | `--id` \| `--repo` \| `--board` `--note "…"` | 写参考绑定说明（`repo bind` 本身不收 note）。#134：说明落成该**参考仓库的一篇文档**（右侧栏「<名字> · 文档列表」可见可编辑），desc 由系统生成、**desc 就是定位键**（同一关系重复写 = 改同一篇），`--note ""` = 清除 |
 | `repo bind` | `--id <ref>` `--repo` \| `--board` `--remove` | 绑参考到仓库/组（`--remove` 解绑） |
 | `repo bind-topics` | `--repo` `--apply` | 按主题回填绑定（维护用） |
-| `repo doc add` / `list` / `remove` | `--id` `--ref` \| `--path` `--note` `--tag` / `--index` | 仓库文档集（主篇 + 附加） |
+| `repo doc add` / `list` / `remove` | `--id` `--ref` \| `--path` `--note` / `--index` | 仓库文档集（主篇 + 附加） |
 | `repo knowledge` | `--id` `--md` | 仓库上下文知识（给 agent 读） |
 | `repo key set` / `migrate` / `refresh` | `--id` `--key` `--apply` `--all` `--follow` | key 维护 |
 | `repo remote` / `remote list` / `remote pick` / `remote check` | `--id` `--url` `--refresh` | remote 相关 |
@@ -142,7 +142,7 @@ nx-kv health               # 服务与版本（纯本机）
 4. `add --cwd` 是**接收方**目录；`--global` 会忽略它。
 5. 追加附件会改写正文，连续操作一律用 `--id` 定位。
 6. `docs` 的 ref 没有路径；读文件只有附件。
-7. `repo bind` 不收 `--note`，写说明要用 `repo ref note`。
+7. `repo bind` 不收 `--note`，写说明要用 `repo ref note`（落成该参考仓库的一篇文档）。
 8. 克隆参考仓库前先设 `gitRepoRoot`（不设直接报错，不会落进 homedir）。
 9. `docs remove` 会顺手清掉宿主 ext 里指向它的悬空引用——别手改库。
 10. 读交付内容别用 `--json`（instruction 会被转义成一行）：默认输出即逐字原文。

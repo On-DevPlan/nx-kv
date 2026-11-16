@@ -2,12 +2,11 @@
 //
 // 模板数据在本机服务（~/.nx-kv/templates.json），与队列同源同构——不落浏览器存储，
 // 换浏览器/刷新都一致。拉取失败不阻塞工作台：templates 置 null，新建页退回
-// md-parse 的 NEW_TEMPLATE（与后端内置模板同构），行为与旧版一致。
+// #137：模板正文直接渲染（槽位值取模板自己声明的 values）；出厂文本只有后端那一份。
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useApp } from '../../app-context.jsx';
 import type { PromptTemplate, TemplatesApi } from '../../types.js';
-import { NEW_TEMPLATE, NEW_TEMPLATE_VALUES } from './md-parse.js';
 import { renderTemplateBody } from '../prompts/render-template-body.js';
 
 /** /api/templates 的出站形状（服务端字段按 index 放行，这里只声明读到的）。 */
@@ -58,9 +57,9 @@ export function useTemplates(): TemplatesApi {
    *  永远返回**已渲染**正文——任务里不能出现裸 `{{槽位}}`。 */
   const defaultBody = useCallback(() => {
     const t = (state.templates || []).find((x) => x.id === state.defaultId);
-    if (!t) return renderTemplateBody(NEW_TEMPLATE, NEW_TEMPLATE_VALUES);
+    if (!t) return ''; // #137：没有可用模板 → 从空稿开始（出厂文本只有后端那一份）
     // 缺的键用内置默认值补；用户显式留空（''）仍是空——不把标记露回正文。
-    return renderTemplateBody(t.body, { ...NEW_TEMPLATE_VALUES, ...(t.values || {}) });
+    return renderTemplateBody(t.body, t.values || {});
   }, [state]);
 
   const add = useCallback(async (

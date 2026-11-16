@@ -4,8 +4,8 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import * as refNs from '../ref.js';
-const ref: any = refNs;
+import * as refNoteDoc from '../ref-note-doc.js';
+const link: any = refNoteDoc;
 
 /** repo.ref.note 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
@@ -20,14 +20,18 @@ export class RepoRefNoteAction extends ActionBase<typeof input> {
     id: 'repo.ref.note',
     cli: ['repo', 'ref', 'note'],
     http: ['POST', '/api/repos/ref/note'],
-    summary: '写/清绑定描述：这个参考在该组/该仓库里参考什么（--note 留空 = 清除）',
+    summary:
+      '写/清绑定描述：这个参考在该组/该仓库里参考什么（描述落成该参考仓库文档列表里的一篇文档，' +
+      'desc 由系统生成；--note 留空 = 清除那篇）',
     args: ['id'],
     input,
-    render: (d: any) => `${d.note ? '已写' : '已清除'}绑定描述: ${d.name} @ ${d.group ? `组「${d.group}」` : `仓库「${d.repo}」`}`,
+    render: (d: any) =>
+      `${d.note ? '已写' : '已清除'}绑定描述: ${d.name} @ ${d.group ? `组「${d.group}」` : `仓库「${d.repo}」`}` +
+      (d.refId ? `\n文档: ${d.docId || d.refId}（在它的文档列表里）` : ''),
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-      return ref.setLinkNote(ctx);
+      return link.setLinkNote(ctx);
   
   }
 }

@@ -16,7 +16,7 @@ import {
 const row = (o = {}) => ({
   refId: 'r1', desc: '', title: '', summary: '', hasBody: true,
   type: 'repo', repoKey: 'github.com/me/x', groupKey: null,
-  position: 0, main: false, note: '', tag: '', ...o,
+  position: 0, main: false, note: '', ...o,
 });
 
 test('labelOf：正文标题 → 首行摘要 → desc → 未命名', () => {

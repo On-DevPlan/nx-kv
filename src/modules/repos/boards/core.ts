@@ -25,7 +25,6 @@ export interface IntroMainOut {
   title: string;
   desc: string;
   note: string;
-  tag: string;
 }
 
 // 组内描述：同一个仓库在不同看板里的角色可以各不相同（「fr 组里它是 API 契约方」，
@@ -189,7 +188,6 @@ export async function getBoard(idOrKey: unknown): Promise<GetBoardResult> {
       title: set.main.title,
       desc: set.main.desc,
       note: set.main.note,
-      tag: set.main.tag,
     } : null,
     introExtras: set.links.map((d) => ({
       refId: d.refId,
@@ -197,7 +195,6 @@ export async function getBoard(idOrKey: unknown): Promise<GetBoardResult> {
       title: d.title,
       desc: d.desc,
       note: d.note,
-      tag: d.tag,
       name: d.title,
     })),
     introCount: set.count,

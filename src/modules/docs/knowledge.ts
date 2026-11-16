@@ -23,7 +23,6 @@ export interface KnowledgeDoc {
   name?: string;
   path?: string;
   note?: string;
-  tag?: string;
   missing?: boolean;
   dir?: boolean;
   files?: string[];
@@ -146,7 +145,7 @@ async function readRefDocs(raw: DocRef | null | undefined, opts: ReadOpts): Prom
       }
       return docs;
     }
-    return [{ ...one, refId, note: String((raw && raw.note) || ''), tag: String((raw && raw.tag) || '') }];
+    return [{ ...one, refId, note: String((raw && raw.note) || '') }];
   }
   if (!row.hasBody) {
     return [{
@@ -155,14 +154,12 @@ async function readRefDocs(raw: DocRef | null | undefined, opts: ReadOpts): Prom
       docId: 'ref:' + refId,
       title: row.desc,
       note: String((raw && raw.note) || ''),
-      tag: String((raw && raw.tag) || ''),
     }];
   }
   return [{
     ...docOut('ref:' + refId, row.body ?? '', opts),
     refId,
     note: String((raw && raw.note) || ''),
-    tag: String((raw && raw.tag) || ''),
   }];
 }
 

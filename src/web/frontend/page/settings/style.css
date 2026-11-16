@@ -83,6 +83,32 @@
 
 .setp-note { font-size: 11px; color: var(--faint); line-height: 1.65; }
 
+/* 文档清理：孤儿清单（失绑时间 / 剩余天数 / 空壳或有正文） */
+.setp-gc-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.setp-gc-list { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.setp-gc-item {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--paper);
+}
+.setp-gc-item.is-due { border-color: var(--mdw-accent-line, #B7D4C8); background: var(--mdw-accent-soft, #E8F2EE); }
+.setp-gc-main { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.setp-gc-main b {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; font-weight: 600;
+}
+.setp-gc-meta {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  font-size: 11px; color: var(--ink-2);
+}
+.setp-gc-meta code { font: 400 10.5px ui-monospace, Consolas, monospace; color: var(--mid); }
+.setp-gc-path {
+  min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--faint);
+}
+.setp-gc-log { font-size: 11px; color: var(--ink-2); line-height: 1.6; }
+.setp-gc-log code { font: 400 10.5px ui-monospace, Consolas, monospace; color: var(--mid); }
+
 /* （#145：「项目级设置」tab 删除——项目卡 / 持续 get 内嵌编辑器的样式
    （setp-proj / setp-gl-off / setp-loop / setp-icon / setp-min / setp-oneline）
    一并移除；配置入口统一收进仓库管理页。）

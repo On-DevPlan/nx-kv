@@ -68,6 +68,16 @@ export async function createTestStore({ open = true, bootstrap = true, importLeg
   const prevDocsDir = process.env.NX_KV_DOCS_DIR;
   process.env.NX_KV_DOCS_DIR = docsDir;
 
+  // 硬保险 #3：NX_KV_HOME / NX_KV_DB 必须在 import core **之前**指到临时目录。
+  // 否则 core/paths.ts 的 APP_DIR 会把真实 ~/.nx-kv 记成模块常量，后续任何
+  // 「无 path 的 openStore()」（repos/docs 的懒打开）都会拿真实 appDir 去
+  // bootstrap —— 表现为临时库里凭空多出本机文档的 refs（2026-11-16 实锤：
+  // addRepo 一次就灌进 11 条孤儿，docs-orphan-gc 的计数断言全红）。
+  const prevHome = process.env.NX_KV_HOME;
+  const prevDb = process.env.NX_KV_DB;
+  process.env.NX_KV_HOME = appDir;
+  process.env.NX_KV_DB = dbPath;
+
   // 动态 import：这些模块在 import 时读环境算 APP_DIR，而测试要在 import 之前
   // 把路径指到临时目录。生产代码不该为了测试改结构，所以这里用动态 import。
   const core = await import('../../src/core/db/index.js');
@@ -120,6 +130,10 @@ export async function createTestStore({ open = true, bootstrap = true, importLeg
       // 还原进程级 docs 根，防止同进程后续测试拿到已删除的临时路径
       if (prevDocsDir === undefined) delete process.env.NX_KV_DOCS_DIR;
       else process.env.NX_KV_DOCS_DIR = prevDocsDir;
+      if (prevHome === undefined) delete process.env.NX_KV_HOME;
+      else process.env.NX_KV_HOME = prevHome;
+      if (prevDb === undefined) delete process.env.NX_KV_DB;
+      else process.env.NX_KV_DB = prevDb;
       try {
         core.closeDb();
       } catch {

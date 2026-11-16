@@ -30,7 +30,7 @@ export class RepoKnowledgeAction extends ActionBase<typeof input> {
         lines.push(`  ◇ 组「${b.name}」`);
         if (b.intro && !b.intro.missing) lines.push(`    组介绍: ${b.intro.docId}`);
         if (b.note && !b.note.missing) lines.push(`    组内描述: ${b.note.docId}`);
-        for (const l of b.docLinks) lines.push(`    绑定: ${l.docId}${l.tag ? `  [${l.tag}]` : ''}${l.note ? `  · ${l.note}` : ''}${l.missing ? '（缺失）' : ''}`);
+        for (const l of b.docLinks) lines.push(`    绑定: ${l.docId}${l.note ? `  · ${l.note}` : ''}${l.missing ? '（缺失）' : ''}`);
         for (const x of b.externalDirs) lines.push(`    外部目录: ${x.path}（${x.files.length} 个文档，按需读盘）`);
       }
       if (d.refRepos.length) {

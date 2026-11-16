@@ -12,7 +12,7 @@ import { DocsEntry } from './repo-table.jsx';
 import { Button } from '../../components/button/index.jsx';
 import type { BoardRecord, RefCheckMap, RepoRecord } from './repo-table.js';
 
-export default function BoardRefs({ filterBoard, refRepos, checkOf, onOpenDoc, onOpenRefDocs, onAddMember, onSync, onOpen, onLinkNote, onUnbind }: {
+export default function BoardRefs({ filterBoard, refRepos, checkOf, onOpenDoc, onOpenRefDocs, onAddMember, onSync, onOpen, onUnbind }: {
   filterBoard: BoardRecord | null;
   refRepos: RepoRecord[];
   checkOf: RefCheckMap;
@@ -22,19 +22,16 @@ export default function BoardRefs({ filterBoard, refRepos, checkOf, onOpenDoc, o
   onAddMember: (boardId: string) => void;
   onSync: (r: RepoRecord) => void;
   onOpen: (r: RepoRecord) => void;
-  onLinkNote: (r: RepoRecord, groupId: string, groupName: string, note: string) => void;
   onUnbind: (r: RepoRecord, groupId: string) => void;
 }) {
   // 组上绑定的参考仓库（组内共享；不再有「经由成员仓库」）
+  // #134：组级描述不再挂在这条边上（那是文档列表里的一篇文档），这里只取参考本身。
   const boardRefRepos = useMemo(() => {
-    if (!filterBoard) return [] as (RepoRecord & { boardNote: string })[];
+    if (!filterBoard) return [] as RepoRecord[];
     const byKey = new Map<string, RepoRecord>(refRepos.map((r): [string, RepoRecord] => [r.key, r]));
     return (filterBoard.refs || [])
-      .map((l) => {
-        const r = byKey.get(l.id);
-        return r ? { ...r, boardNote: l.note || '' } : null;
-      })
-      .filter((r): r is RepoRecord & { boardNote: string } => r !== null);
+      .map((l) => byKey.get(l.id) || null)
+      .filter((r): r is RepoRecord => r !== null);
   }, [refRepos, filterBoard]);
 
   // 组参考区块的折叠：条目多（>8）默认收起，别让一屏全是参考仓库；
@@ -87,18 +84,11 @@ export default function BoardRefs({ filterBoard, refRepos, checkOf, onOpenDoc, o
                 title={c ? (c.ok ? '检查通过' : (c.issues || []).join('\n')) : '尚未检查'} />
               <Copyable text={r.remote || r.name} title="点击复制远程地址" className="rp-ref-mounted-name">{r.name}</Copyable>
               {/* #132：参考仓库也是文档宿主——和开发仓库一样，点开就是
-                  「<参考仓库名> · 文档列表」（右侧栏，同一套筛选器与新建）。 */}
+                  「<参考仓库名> · 文档列表」（右侧栏，同一套筛选器与新建）。
+                  #134：这个入口也是「它在本组里参考什么」的落点——描述归档成
+                  它的一篇文档，没有单独的弹窗与「写描述」按钮。 */}
               <DocsEntry docs={r.descDocs} onOpen={() => onOpenRefDocs(r)} />
               {r.desc ? <span className="muted rp-ref-mounted-desc" title={r.desc}>{r.desc}</span> : null}
-              {r.boardNote ? (
-                <button className="rp-ref-note-chip" title={`${r.boardNote}\n点击编辑这条组级描述`}
-                  onClick={() => onLinkNote(r, filterBoard.id, filterBoard.name, r.boardNote)}>
-                  {r.boardNote.split('\n')[0]}
-                </button>
-              ) : (
-                <Button small title={`写「${r.name}」在这个组里参考什么（组级描述）`}
-                  onClick={() => onLinkNote(r, filterBoard.id, filterBoard.name, '')}>写描述</Button>
-              )}
               <span className="acts">
                 <Button small onClick={() => onSync(r)}>同步</Button>
                 <Button small onClick={() => onOpen(r)}>打开</Button>

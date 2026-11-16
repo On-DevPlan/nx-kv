@@ -28,7 +28,7 @@ interface CloneBody {
 
 export default function RefPanel({
   refRepos, devRepos, boardList, checkOf, refRepoBackLinks, refBindOpen, onRefBindOpen,
-  onClose, onSyncOne, onUnbind, onUnbindRepo, onLinkNote, onGoBind, onDocs, onRowAct, reload,
+  onClose, onSyncOne, onUnbind, onUnbindRepo, onGoBind, onDocs, onRowAct, reload,
 }: {
   refRepos: RepoRecord[];
   devRepos: RepoRecord[];
@@ -41,7 +41,6 @@ export default function RefPanel({
   onSyncOne: (r: RepoRecord) => void;
   onUnbind: (r: RepoRecord, groupId: string) => void;
   onUnbindRepo: (r: RepoRecord, repoKey: string) => void;
-  onLinkNote: (r: RepoRecord, groupId: string, groupName: string, note: string) => void;
   onGoBind: (kind: string, target: string) => void;
   onDocs: (r: RepoRecord) => void;
   onRowAct: (act: string, r: RepoRecord) => void;
@@ -230,16 +229,13 @@ export default function RefPanel({
                               {shownGroups.map((l) => (
                                 <span className="rp-link-chip rp-link-chip-group" key={'board:' + l.board.id}>
                                   <button className="rp-link-chip-main"
-                                    title={[l.note || '点击跳到这个组', '组级绑定（组内共享）'].join('\n')}
+                                    title={['点击跳到这个组', '组级绑定（组内共享）'].join('\n')}
                                     onClick={() => onGoBind('board', l.board.id)}>
                                     <b>组</b>
                                     <span className="rp-link-chip-name">{l.board.name}</span>
                                   </button>
-                                  <button className="rp-link-chip-note-btn"
-                                    title={l.note ? `编辑组级描述：${l.note}` : '写这条组级描述（这个组里参考什么）'}
-                                    onClick={() => onLinkNote(r, l.board.id, l.board.name, l.note)}>
-                                    {l.note ? l.note.split('\n')[0] : '＋'}
-                                  </button>
+                                  {/* #134：组级描述的编辑入口整块删除——描述是这篇参考
+                                      在文档列表里的一篇文档（见「文档列表」入口）。 */}
                                   <button className="rp-link-chip-x" title="从本组摘除（不影响其它组、也不动仓库级绑定）"
                                     onClick={() => onUnbind(r, l.board.id)}>×</button>
                                 </span>

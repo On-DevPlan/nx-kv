@@ -30,6 +30,8 @@ import type {
   DocsGcAction,
   DocsIndexAction,
   DocsLinkAction,
+  DocsOrphansAction,
+  DocsOrphansPurgeAction,
 } from '../../../modules/docs/actions/_manifest.generated.js';
 import type {
   FileContentAction,
@@ -231,7 +233,7 @@ export interface ApiClient {
   check(): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefCheckAction>['run']>>>;
 /** 克隆远程仓库为参考仓库（落到 gitRepoRoot，登记 + 可选绑定当前目录的开发仓库） */
   refClone(input: z.input<InstanceType<typeof RepoRefCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefCloneAction>['run']>>>;
-/** 写/清绑定描述：这个参考在该组/该仓库里参考什么（--note 留空 = 清除） */
+/** 写/清绑定描述：这个参考在该组/该仓库里参考什么（描述落成该参考仓库文档列表里的一篇文档，desc 由系统生成；--note 留空 = 清除那篇） */
   refNote(input: z.input<InstanceType<typeof RepoRefNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefNoteAction>['run']>>>;
 /** 查参考仓库：--id 某仓库（缺省当前目录）看它直接绑的 + 所属组绑的，两类并列；--board 某组 看这个组绑定的（带绑定描述） */
   of(input?: z.input<InstanceType<typeof RepoRefOfAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoRefOfAction>['run']>>>;
@@ -283,8 +285,12 @@ export interface ApiClient {
   gc(input?: z.input<InstanceType<typeof DocsGcAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsGcAction>['run']>>>;
 /** 双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js） */
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
-/** 维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note/--tag；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新） */
+/** 维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新） */
   link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>>;
+/** 孤儿到期清理（默认只预演；--apply 软删空正文到期孤儿，有正文的只列清单） */
+  purge(input?: z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsOrphansPurgeAction>['run']>>>;
+/** 列出无归属的孤儿文档（失绑时间 / 剩余天数 / 是否有正文；只读） */
+  orphans(input?: z.input<InstanceType<typeof DocsOrphansAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsOrphansAction>['run']>>>;
 /** 向某主题（工作目录）的队列回填一条任务（正文可多行；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝） */
   localtaskAdd(input?: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>>;
 /** 改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变） */
@@ -382,7 +388,7 @@ export interface ApiClient {
 /** 查单个附件的元数据与本机路径 */
   fileGet(input: z.input<InstanceType<typeof FileGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FileGetAction>['run']>>>;
 /** 列出无主资源（没有任何任务/文档关系边；删任务、删文档、删正文行之后用） */
-  orphans(): Promise<Awaited<ReturnType<InstanceType<typeof FileOrphansAction>['run']>>>;
+  fileOrphans(): Promise<Awaited<ReturnType<InstanceType<typeof FileOrphansAction>['run']>>>;
 /** 回收无主资源（DB 行 + 附件根目录内的本机/镜像字节；仍被引用的不删） */
   filePrune(input?: z.input<InstanceType<typeof FilePruneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FilePruneAction>['run']>>>;
 /** 上传附件到本机附件仓（不碰网；本地任务/文档贴图用） */
@@ -427,7 +433,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async set(input?: z.input<InstanceType<typeof SettingSetAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof SettingSetAction>['_input']>);
       const path = `/api/setting`;
-      const body = { "gitRepoRoot": inp["gitRepoRoot"], "gitDevRoot": inp["gitDevRoot"] };
+      const body = { "gitRepoRoot": inp["gitRepoRoot"], "gitDevRoot": inp["gitDevRoot"], "orphanTtlDays": inp["orphanTtlDays"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof SettingSetAction>['run']>>;
     },
     // action: board.add
@@ -547,7 +553,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocAddAction>['_input']>);
       const path = `/api/repos/docs`;
-      const body = { "id": inp["id"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"], "tag": inp["tag"] };
+      const body = { "id": inp["id"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>;
     },
     // action: repo.doc.list
@@ -882,8 +888,25 @@ export function createApiClient(transport: Transport): ApiClient {
     async link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocsLinkAction>['_input']>);
       const path = `/api/docs/link`;
-      const body = { "board": inp["board"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"], "tag": inp["tag"], "remove": inp["remove"], "before": inp["before"] };
+      const body = { "board": inp["board"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"], "remove": inp["remove"], "before": inp["before"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>;
+    },
+    // action: docs.orphans.purge
+    async purge(input?: z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>);
+      const path = `/api/docs/orphans/purge`;
+      const body = { "apply": inp["apply"], "ttlDays": inp["ttlDays"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsOrphansPurgeAction>['run']>>;
+    },
+    // action: docs.orphans
+    async orphans(input?: z.input<InstanceType<typeof DocsOrphansAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsOrphansAction>['_input']>);
+      let path = `/api/docs/orphans`;
+      const q = new URLSearchParams();
+      if (inp["ttlDays"] !== undefined) q.set("ttlDays", String(inp["ttlDays"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsOrphansAction>['run']>>;
     },
     // action: localtask.add
     async localtaskAdd(input?: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>) {
@@ -1266,7 +1289,7 @@ export function createApiClient(transport: Transport): ApiClient {
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof FileGetAction>['run']>>;
     },
     // action: file.orphans
-    async orphans() {
+    async fileOrphans() {
       const path = `/api/file/orphans`;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof FileOrphansAction>['run']>>;
     },

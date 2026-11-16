@@ -126,9 +126,9 @@ export function importRefs(
       // 旧 JSON 里的键名就叫 rel（v6 之前的字段名）；读出来一律当 **locator** 用。
       const legacyPath = String(ref.rel || '').trim();
       const path = String(ref.path || '').trim();
-      if (legacyPath) out.push({ locator: legacyPath, type: 'md', note: String(ref.tag || note || ''), extPath: '' });
+      if (legacyPath) out.push({ locator: legacyPath, type: 'md', note: String(note || ''), extPath: '' });
       // v2 起 refs 只装文档：外部 .md 绝对路径也是文档，type 统一为 md。
-      else if (path) out.push({ locator: path, type: 'md', note: String(ref.tag || note || ''), extPath: path });
+      else if (path) out.push({ locator: path, type: 'md', note: String(note || ''), extPath: path });
     };
     pushRef(host && host.doc);
     for (const l of Array.isArray(host && host.docLinks) ? host.docLinks : []) pushRef(l);

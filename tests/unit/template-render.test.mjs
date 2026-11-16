@@ -4,25 +4,20 @@
 // 老模板（库里还留着 {{槽位}} 的正文）仍按 values 渲染成文字——兼容路径不能塌。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  NEW_TEMPLATE,
-  NEW_TEMPLATE_VALUES,
-} from '../../src/web/frontend/modules/md/md-parse.js';
+import { NEWTASK_REF_BODY } from '../../src/core/db/seed-templates.js';
 import { renderTemplateBody } from '../../src/web/frontend/modules/prompts/render-template-body.js';
 
-test('出厂骨架是文字：不含 {{槽位}} 标记', () => {
-  assert.equal(NEW_TEMPLATE.includes('{{'), false, '出厂骨架不应再有槽位标记');
-  assert.match(NEW_TEMPLATE, /## 背景/);
-  assert.match(NEW_TEMPLATE, /一句话说清要改什么/);
-  assert.match(NEW_TEMPLATE, /## 验收/);
+test('#137 唯一的出厂文本是「ref 生成」的零知识 SOP：不含 {{槽位}} 标记', () => {
+  assert.equal(NEWTASK_REF_BODY.includes('{{'), false, '出厂文本不应再有槽位标记');
+  assert.match(NEWTASK_REF_BODY, /## 本轮问题/);
+  assert.match(NEWTASK_REF_BODY, /零知识起步的 SOP/);
 });
 
-test('renderTemplateBody：用默认值渲染后没有 {{', () => {
-  const body = renderTemplateBody(NEW_TEMPLATE, NEW_TEMPLATE_VALUES);
+test('renderTemplateBody：出厂文本原样渲染后没有 {{', () => {
+  const body = renderTemplateBody(NEWTASK_REF_BODY, {});
   assert.equal(body.includes('{{'), false, '不应再含 mustache 标记');
-  assert.match(body, /一句话说清要改什么/);
-  assert.match(body, /## 背景/);
-  assert.match(body, /## 验收/);
+  assert.match(body, /## 本轮问题/);
+  assert.match(body, /docs ref add/);
 });
 
 test('renderTemplateBody：老模板（{{槽位}}）仍渲染成文字', () => {

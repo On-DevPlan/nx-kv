@@ -37,16 +37,14 @@
         "desc": "测试约定",
         "title": "测试约定",
         "hasBody": true,
-        "note": "跑全量前先读",
-        "tag": "test"
+        "note": "跑全量前先读"
       },
       {
         "refId": "ref_c0143b35cfa7e857",
         "desc": "",
         "title": "",
         "hasBody": true,
-        "note": "",
-        "tag": ""
+        "note": ""
       }
     ],
     "docCount": 2,
@@ -91,8 +89,7 @@
         "desc": "nx 组介绍",
         "title": "nx 组",
         "hasBody": true,
-        "note": "",
-        "tag": ""
+        "note": ""
       }
     ],
     "docCount": 1,

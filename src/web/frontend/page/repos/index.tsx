@@ -44,8 +44,7 @@ import RefPanel from './ref-panel.jsx';
 import DocSearchModal from './doc-search-modal.jsx';
 import BoardAdminModal from './board-admin.jsx';
 import RepoFormModal from './repo-form-modal.jsx';
-import BindRepoModal, { LinkNoteModal } from './bind-modals.jsx';
-import type { LinkNoteTarget } from './bind-modals.jsx';
+import BindRepoModal from './bind-modals.jsx';
 import RemoteModal from './remote-modal.jsx';
 
 /** /api/repos/ref/check 的出站形状。 */
@@ -101,8 +100,6 @@ export default function ReposView() {
   const [glFor, setGlFor] = useState<RepoRecord | null>(null);
   const [remoteFor, setRemoteFor] = useState<RepoRecord | null>(null); // 对齐 remote 的目标仓库
   const [bindRepoFor, setBindRepoFor] = useState<RepoRecord | null>(null); // dev 侧绑定弹窗的目标仓库
-  // 绑定描述编辑（组 ↔ 参考仓库这条关系）：{ ref, groupId, groupName, note } | null
-  const [linkNoteFor, setLinkNoteFor] = useState<LinkNoteTarget | null>(null);
 
   // 从别处跳进来的定位：#/repos?board=<组id>&add=1
   // （组详情页的「添加成员」走这条：不在组页内嵌弹窗，直接落到仓库页对应分组的成员管理）
@@ -143,7 +140,7 @@ export default function ReposView() {
       const main = r.descDocs && r.descDocs.main;
       if (main && [main.title, main.summary, main.desc].some((s) => s && String(s).toLowerCase().includes(kw))) return true;
       return ((r.descDocs && r.descDocs.links) || []).some((l) =>
-        [l.title, l.desc, l.tag, l.note].some((s) => s && String(s).toLowerCase().includes(kw)));
+        [l.title, l.desc, l.note].some((s) => s && String(s).toLowerCase().includes(kw)));
     };
     return list.filter((r) =>
       [r.name, r.key, r.path, r.desc].some((s) => s && String(s).toLowerCase().includes(kw))
@@ -264,11 +261,6 @@ export default function ReposView() {
     await bindRef({ id: ref.key, repo: [repoKey], remove: true });
     await Promise.all([loadRepos(), loadBoards(), loadRefCheck()]);
   });
-
-  // 绑定描述 = 组 ↔ 参考仓库这条关系上的描述（组级描述是**关系**的说明，不是文档）
-  const openLinkNote = (ref: RepoRecord, groupId: string, groupName: string, note?: string) => {
-    setLinkNoteFor({ ref, groupId, groupName, note: note || '' });
-  };
 
   // #132：参考仓库的**文档**和开发仓库完全同构——点它的文档入口就在右侧栏开
   // 「<参考仓库名> · 文档列表」（同一个面板、同一套筛选器、同一个 ＋ 新建）。
@@ -460,7 +452,6 @@ export default function ReposView() {
         onAddMember={setImpBoardId}
         onSync={syncOne}
         onOpen={(r) => rowAct('open', r)}
-        onLinkNote={openLinkNote}
         onUnbind={unbindOne}
       />
 
@@ -486,8 +477,7 @@ export default function ReposView() {
           onSyncOne={syncOne}
           onUnbind={unbindOne}
           onUnbindRepo={unbindRepo}
-          onLinkNote={openLinkNote}
-          onGoBind={goBindTarget}
+            onGoBind={goBindTarget}
           onDocs={rowActs.docs}
           onRowAct={rowAct}
           reload={reload}
@@ -544,14 +534,6 @@ export default function ReposView() {
           boardList={boardList}
           currentRefs={groupRefReposByRepo.get(bindRepoFor.key) || []}
           onClose={() => setBindRepoFor(null)}
-          onSaved={reload.all}
-        />
-      ) : null}
-
-      {linkNoteFor ? (
-        <LinkNoteModal
-          linkNoteFor={linkNoteFor}
-          onClose={() => setLinkNoteFor(null)}
           onSaved={reload.all}
         />
       ) : null}

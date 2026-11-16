@@ -7,8 +7,8 @@
 // 内置模板（`builtin=1`，由 core/db/seed-templates 在开库时 INSERT OR IGNORE
 // seed，永远在场）：**不可删，可编辑**。T06 起骨架也可改 —— 用户改了
 // builtin 的 body / 槽位后重启原样保留（seed 是 OR IGNORE，绝不覆盖用户编辑）。
-// 内置正文出厂态仍与前端 md-parse 的 NEW_TEMPLATE 保持同构 —— 那是 API
-// 不可达时（版本偏差）前端的兜底，两边谁先改都不破坏行为。
+// #137：出厂正文只有**一份**（core/db/seed-templates 的 NEWTASK_REF_BODY，
+// 即新建任务模板「ref 生成」）；前端不再自带第二份副本（漂移的根源）。
 //
 // ── 与 schema 列的映射 ────────────────────────────────────────────────
 //   旧 JSON 字段            → 列
@@ -31,7 +31,7 @@ import fsp from 'node:fs/promises'; // 仅用于读用户 --body-file（存储�
 import { readFileSync } from 'node:fs';
 import { badInput, notFound } from '../../core/errors.js';
 import { nowMs } from '../../core/db/time.js';
-import { NEWTASK_BODY, NEWTASK_VARS } from '../../core/db/seed-templates.js';
+import { NEWTASK_REF_BODY } from '../../core/db/seed-templates.js';
 import { normalizeScope, topicCtx, canUse, canEdit } from './scope.js';
 import repoLayer from './repo/index.js';
 
@@ -59,13 +59,17 @@ export interface TemplateListResult {
   repo?: string;
 }
 
-export const BUILTIN_ID = 'default';
+// #137：新建任务的内置模板只剩一条「ref 生成」（id=newtask.ref）。
+// 旧的 'default'（默认模板）已下线（软删），不再作为内置默认的落点。
+export const BUILTIN_ID = 'newtask.ref';
 const NEWTASK_CATEGORY = 'newtask';
 
 const repo = repoLayer;
 
-export const BUILTIN_BODY = NEWTASK_BODY;
-export const BUILTIN_VALUES = { ...NEWTASK_VARS };
+// #137：内置只有一份出厂文本（新建任务模板「ref 生成」）。空正文兜底用它，
+// 槽位默认值不再需要（出厂文本里没有 {{槽位}} 标记）。
+export const BUILTIN_BODY = NEWTASK_REF_BODY;
+export const BUILTIN_VALUES: Record<string, string> = {};
 
 // ─── 视图：行 ⇄ 旧 JSON 形状（调用方消费的是 values/builtin 这些旧字段）──
 

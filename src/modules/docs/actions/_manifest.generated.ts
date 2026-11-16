@@ -25,6 +25,8 @@ import { DocsGcAction } from './docs-gc.js';
 import { DocsIndexAction } from './docs-index.js';
 import { DocsLinkAction } from './docs-link.js';
 import { DocsNotebindAction } from './docs-notebind.js';
+import { DocsOrphansPurgeAction } from './docs-orphans-purge.js';
+import { DocsOrphansAction } from './docs-orphans.js';
 
 /** 本模块的全部 action 类（容器按这个顺序建实例）。 */
 export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
@@ -47,6 +49,8 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   DocsIndexAction,
   DocsLinkAction,
   DocsNotebindAction,
+  DocsOrphansPurgeAction,
+  DocsOrphansAction,
 ];
 
 // 再导出类本身：前端 apiclient 的返回类型从这里 type-only 引用（实现即契约）。
@@ -69,3 +73,5 @@ export { DocsGcAction };
 export { DocsIndexAction };
 export { DocsLinkAction };
 export { DocsNotebindAction };
+export { DocsOrphansPurgeAction };
+export { DocsOrphansAction };

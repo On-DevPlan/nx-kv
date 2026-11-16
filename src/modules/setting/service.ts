@@ -16,6 +16,8 @@ export interface SettingsView {
   resolvedDir: string;
   gitRepoRoot: string;
   gitDevRoot: string;
+  /** 无归属 ref 的保留天数（到期清理；默认 3） */
+  orphanTtlDays: number;
 }
 
 export async function getSettings(): Promise<SettingsView> {
@@ -27,19 +29,28 @@ export async function getSettings(): Promise<SettingsView> {
     // 参考仓库（type=ref）的存储根；空 = clone 会被拒绝，直到用户显式设置
     gitRepoRoot: cfg.gitRepoRoot,
     gitDevRoot: cfg.gitDevRoot,
+    orphanTtlDays: cfg.orphanTtlDays,
   };
 }
 
 export async function setSettings(patch: {
   gitRepoRoot?: unknown;
   gitDevRoot?: unknown;
+  orphanTtlDays?: unknown;
 } = {}): Promise<SettingsView> {
   const body: Record<string, unknown> = {};
   if (patch.gitRepoRoot !== undefined) body.gitRepoRoot = String(patch.gitRepoRoot || '').trim();
   if (patch.gitDevRoot !== undefined) body.gitDevRoot = String(patch.gitDevRoot || '').trim();
+  if (patch.orphanTtlDays !== undefined) {
+    const n = Math.trunc(Number(patch.orphanTtlDays));
+    if (!Number.isFinite(n) || n < 1 || n > 3650) {
+      throw badInput('孤儿文档保留天数必须是 1–3650 的整数');
+    }
+    body.orphanTtlDays = n;
+  }
   if (!Object.keys(body).length) {
     throw badInput(
-      '没有要改的设置：--gitRepoRoot <参考仓库根目录> / --gitDevRoot <开发仓库克隆根>'
+      '没有要改的设置：--gitRepoRoot <参考仓库根目录> / --gitDevRoot <开发仓库克隆根> / --orphanTtlDays <天数>'
     );
   }
   await saveConfig({ ...(await loadConfig()), ...body });
@@ -52,5 +63,6 @@ export function renderSettings(d: SettingsView): string {
     `（附件根目录 ${d.attachmentsRoot}）`,
     `参考仓库存储根:     ${d.gitRepoRoot || '（未设置 —— clone 参考仓库前先 nx-kv setting set --gitRepoRoot <非C盘目录>）'}`,
     `开发仓库克隆根:     ${d.gitDevRoot || '（未设置 —— 导入布局时开发仓库只登记不克隆）'}`,
+    `孤儿文档保留:       ${d.orphanTtlDays} 天（无归属 ref 到期后软删；有正文的不自动删）`,
   ].filter(Boolean).join('\n');
 }

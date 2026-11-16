@@ -2,6 +2,181 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.60.0] - 2026-11-16 去掉「分类标签」这个无效概念（tag 整个退役）
+
+### Removed
+
+- **「分类标签」（`--tag qa` 那一套）从整个应用里删掉**——用户判断：「tag 又是什么参数呀
+  是不是压根 web 里面没有这个」「在整个应用里把 tag 这个概念去掉 移除无效概念」。
+  它在整个应用里**没有落点**：面板没有编辑入口、检索几乎不用，却让宿主 ext、
+  `ref_bindings` 索引、API 形状、CLI 输出到处背着一个字段。
+  - **存储版本 12**：`ALTER TABLE ref_bindings DROP COLUMN tag`（纯 DDL）；
+    宿主 ext 的 `docLinks[].tag` 不再被读写（盘上旧数据保留但忽略）；
+  - **接口**：`docs link` / `repo doc add` 的 `--tag` 入参删除；附件注解只剩 `note`
+    （一句话说明——那是有用的，不在删除范围）；
+  - **视图与输出**：文档绑定视图、知识索引、仓库文档列表、组文档集、`docs link` /
+    `repo doc list` / `repo knowledge` 的 CLI 输出里的 `[tag]` chip 全部去掉；
+  - **前端**：API 形状去掉 `tag` 字段，仓库页检索不再按 tag 匹配；
+  - **导出/导入**：附件注解只带 `note`；旧 JSON 里的 `tag` 按 note 读入（不引入新概念）。
+
+### Changed
+
+- **关系描述文档的定位改回「desc 就在 ref 上」**（用户追问：「link_notes？ desc 不是直接在
+  ref 上吗 描述关系干什么」——原来的 `link-note:<关系 key>` 定位器其实就是把分类标签
+  当成了索引，属于绕远路）：
+  - 同一组 / 同一仓库与参考仓库的关系 → 该参考仓库文档列表里 **desc 等于
+    「在组「X」里参考什么」/「在仓库「Y」里参考什么」**的那一篇；
+  - 重复写只是改内容，不新增；留空 = 删掉那篇；
+  - 定位实现落在 `src/modules/repos/ref-note-doc.ts`（desc 由系统生成，用户可在面板改）；
+  - 因此**不需要**任何「关系 → 文档」的索引表——关系本身在 `group_refs` / `ext_linked` 上，
+    描述在文档里，两者靠「宿主 + desc」对上。
+
+### Fixed
+
+- 历史迁移 `v8-data.ts`（v7 → v8 的数据搬运）在**当前** schema 上跑（legacy JSON 导入会这样）
+  时不再撞上已删除的 `tag` 列：按列是否存在裁剪，真升级路径行为一字不变。
+- `localtask` / `docs` 等模块的迁移映射表与孤儿 GC 用例随新版本号更新。
+
+## [0.59.0] - 2026-11-16 孤儿 ref 到期清理（3 天 TTL）+ 软删留痕
+
+> 这一版的 schema v11 与孤儿清理由**并行会话**完成（同一工作树），本会话代为校准门禁并发布。
+
+### Added
+
+- **孤儿 ref 自动回收**（用户要求：「孤儿满 3 天后自动删除，删除前可看清单、删除后可审计」）：
+  - **孤儿定义**：`deleted_at IS NULL` 且 `ref_bindings` 里没有任何一行的 ref（不看 `state`）；
+  - `refs.orphan_since`：失绑起算时间（毫秒，0 = 未计时）——由「有归属」变「无归属」时写入，
+    **重建索引不刷新已在计时的孤儿**（否则每次 `syncRefIndex` 都把倒计时重置，永远到期不了）；
+  - `ref_gc_log`：清理的**不可变留痕**（ref_id / desc / origin / body_bytes / unbound_at /
+    deleted_at / ttl_days / reason / source / snapshot）；
+  - 到期清理为**软删**（`refs.deleted_at`，`ref_bodies` 保留），可回滚；
+    **只清空正文的孤儿**，有正文的到期孤儿只列清单、不自动删；
+  - 新增设置项 `app.orphanTtlDays`（默认 3 天）、CLI / HTTP `docs orphans`（看清单）、
+    `docs orphans purge`（执行清理）、serve 每小时例行维护、设置面板「文档清理」分区。
+- **存储版本 11**：`src/core/db/migrations/v11.sql`（纯 DDL）+ `v11-data.ts`（存量孤儿起算时间回填）；
+  存量孤儿在升级时统一从迁移时刻起算，保证升级后仍有完整 TTL 缓冲；回填不改 `updated_at`
+  （避免打乱文档列表的最近更新排序）。
+- 决策见 `docs/decisions/2026-11-15-orphan-ref-gc.md`，版本说明见
+  `docs/decisions/versions/2026-11-15-v11.md`。
+
+## [0.58.0] - 2026-11-16 新建任务模板只留一条内置「ref 生成」；旧内置下线（#137）
+
+### Changed
+
+- **新建任务的内置模板只剩一条「ref 生成」**（用户原话：「现在的内置的任务模板真是毫无价值
+  删除当前内置 编写一个新的内置 ref生成」）——它的正文是一份**零知识起步的 SOP**，
+  agent 照着走就能把「一轮问答」归档进仓库的文档列表：
+  1. 先摸清仓库（`repo list` / `docs list` / `docs get` / `localtask show`，只读）；
+  2. 初始化：建一篇 ref（`docs ref add --owner repo --repo <key> --desc "<一句话短描述>"`），
+     **desc 与标题都要给**（desc = 列表里的定位标签；标题 = 正文第一行的 `# <标题>`）；
+  3. 回答问题，再把问答写进那篇 ref（`docs set --ref <refId> --body-file <文件>`——
+     **长文本走文件**，不受命令行长度限制）；
+  4. 收尾（`localtask done --id <id> --cwd "<项目目录>" --summary "<… + refId>"`），
+     必须报告 refId：用户能在「<仓库名> · 文档列表」里看到这一轮。
+- **旧的五条内置空骨架（默认模板 / 缺陷修复 / 功能开发 / 调研任务 / 文档修订）下线**：
+  改 seed 清单 + 开库时对 builtin 行**软删**（`deleted_at`）——用户自己复制/新建的条目
+  （`builtin=0`）一律不动；先下线再插入，新内置才拿得到「新建任务」的默认位。
+- **出厂正文只有一份**：删掉 `NEWTASK_BODY` / `NEWTASK_VARS`（后端）与
+  `NEW_TEMPLATE` / `NEW_TEMPLATE_VALUES`（前端 md-parse）——前端不再自带第二份副本，
+  模板正文直接按模板自己声明的 `values` 渲染（旧模板的 `{{槽位}}` 仍渲染成文字，不留标记）。
+- 内置 skill：A03 补「把一轮问答归档成一篇」流程（含 desc/标题要求与「别重复挂」提醒）。
+
+### Verified
+
+- 端到端实跑（隔离库）：用「ref 生成」模板正文建任务 → 领取（交付里带 SOP 正文）→
+  `docs list` 确认零知识起点 → `docs ref add` → `docs set --body-file` 写入 10KB 正文 →
+  `localtask done` → 仓库文档列表里出现这一轮（`docs bindings --host` / `repo doc list` 可见）。
+- 面板实测（真实 Chrome/CDP）：设置 → 任务模板只剩「ref 生成（内置）」+ 用户自己的「main（默认）」，
+  旧五条内置已消失（截图 temp/nxkv-137-templates.png）。
+- 单测新增 `tests/unit/seed-templates-ref.test.mjs`（新库只剩一条且是默认 / 内置正文含四步与关键命令 /
+  老库旧内置被软删而用户条目不动）；`template-render.test.mjs` 改成断言唯一的出厂文本。
+
+## [0.57.2] - 2026-11-15 A02 讲透整个提示词模板体系 + 规范扩展方法与检查点（#136 第 1 轮）
+
+### Changed
+
+- **`A02-提示词模板与扩展.md` 重写**（验收反馈：「A02 讲解整个提示词模板模板体系和扩展方法呀」）：
+  - **讲透整套体系**（原来只覆盖了「怎么加一条上下文知识」）：
+    交付提示词的五个环节（取数 → 投影 ctx → 选生效模板 → 渲染 → 包标签）、
+    **七个部件各管一段**（区块定义 `BLOCK_DEFS` / 模板条目 `lt.blockTemplates` / 生效条目解析 /
+    ctx / 渲染 `composeSystemBlocks` / 引擎 `instruction-template` / 设置面板），
+    以及八个交付段各自的含义与出现条件；
+  - **规范的扩展方法**：三种动作（给已有区块加变量 / 加新区块 / 加一条模板条目），
+    每种都有「落点表 + 步骤 + 该步的检查点」；
+  - **检查点清单**（8 条，逐条带判据与验证命令）：模板语法、变量解析、空数据闸门、
+    老交付逐字对比、坏模板回落不炸队列、参数表同步、门禁、说明书；
+  - 现状体检保留并补上「区块定义与 ctx 装配分离」「变量写错静默变空」两条的处置建议。
+
+### Added
+
+- **自动检查点** `tests/unit/prompt-block-params.test.mjs`：拿共享层的 `BLOCK_DEFS` 对前端的
+  变量速查表 `BLOCK_PARAMS` 逐项核对——**每个区块都要有变量表**（漏同步会被拦）、
+  **表里不能有已删区块**（删块要清表）、变量名必须是点号路径形态（便于与 ctx 契约对账）。
+  A02 的检查点第 6 条与 `A06-改提示词交付.md` 都指向它。
+
+## [0.57.1] - 2026-11-15 dev skill 重排：A 序列 = 标准 SOP，B 序列 = 相关知识（#135）
+
+### Changed
+
+- **dev-nxkv 的两个序列按新口径重排**（此前是 R 需求原型 + P 原语）：
+  - **A 序列 = 标准 SOP**（照着做）：`A01-加一种附件类型` / `A02-领取任务与扩展上下文`（新写）/
+    `A03-加或改命令与业务规则` / `A04-改面板交互` / `A05-加面板页面` / `A06-改提示词交付` /
+    `A07-发版` / `A08-排障与定位` / `A09-查库与改数据` / `A10-改编排闸门` / `A11-校准skill`；
+  - **B 序列 = 相关知识与特殊规则**（可查的表 + grep 关键字，不贴无意义的代码量）：
+    `B01-概念与寻址`（新写）/ `B02-命令与接口契约` / `B03-提示词模板与上下文`（新写）/
+    `B04-存储与迁移` / `B05-前端面板地图` / `B06-测试与夹具`（新写）/ `B07-契约与生成` /
+    `B08-交付门禁与红线`；
+  - SKILL.md 改为「A 序列照着做，B 序列查知识」的路由，frontmatter 触发词同步。
+- **A02 是新写的核心 SOP**：领一条并读懂交付（`get` 的关键指令：`--timeout` 是**秒**、
+  `--param` 进 ctx、默认输出即交付原文），以及**如何规范扩展一条任务的上下文知识**：
+  先判定「事实 → 文档 / 规则 → 区块 / 运行时状态 → 插件 / 一次性要求 → 任务正文」，
+  再按落点走 B1（写文档）/ B2（加区块：ctx 字段 + 模板 + 变量表两处同步）/ B3（插件）。
+- **A02 内含一次项目现状体检**（写它之前查的）：交付 ctx 的装配分散在 4 处
+  （`wait.ts` / `delivery-template.ts` / `attach-template.ts` / `plugins/`）、变量知识化两处手写
+  （模板 `vars_schema` + 前端 `BLOCK_PARAMS`）、区块定义与 ctx 装配分离、模板变量写错**静默渲染成空**。
+  据此定了四条可优化项与「新的上下文代码集中在 `src/modules/tasktool/` 下的 context 目录」这条约定。
+
+### Fixed
+
+- **skill 门禁按新口径收紧**（`scripts/check-skill-sop.mjs`）：文件名约定改 `<A|B><两位序号>-<动作>.md`；
+  **A 序列**必须四段骨架（前置 / 动作 / 自检 / 失败分支）+ 至少一条可执行命令；
+  **B 序列**必须至少一张表 + 至少一条 grep / 命令线索（否则判「这不是知识，是散文」）。
+  门禁输出：19 条骨架完整、68 处路径存在、23 条命令可解析。
+
+## [0.57.0] - 2026-11-15 绑定描述完全归档到文档列表；面板去掉描述弹窗与「写描述」按钮（#134）
+
+### Changed
+
+- **绑定描述（组 ↔ 参考仓库 / 开发仓库 ↔ 参考仓库）= 参考仓库上的一篇文档**：
+  - 描述**完全归档**到右侧栏的「<参考仓库名> · 文档列表」，定位靠
+    `ref_bindings.tag = link-note:<关系 key>`——同一组 / 同一仓库重复写 = 改同一篇，
+    不新增；`--note ""` = 清除（删掉那篇文档）；
+  - `repo ref note` 的返回多出 `refId` / `docId`，CLI 会告诉你「文档在它的文档列表里」；
+  - 面板上**没有**「组级绑定描述」弹窗，也没有「写描述」按钮：组页参考仓库行与
+    参考仓库面板里的描述入口整块删除，写描述就在文档列表里写；
+  - 关系边上留一份**冗余副本**（导出/导入要带走描述，备份不能丢），真身是文档；
+    只读展示（面板 chip、交付上下文的 `group.refRepos[].note`）取自文档。
+- **前端清理**：删掉 `LinkNoteModal` 组件与两个入口、`page/repos/api.ts` 的 `refNote`
+  与 `refs/api.ts` 的 `setRefNote` 包装、失效的 `.rp-ref-note-chip` /
+  `.rp-link-chip-note-btn` 样式。
+- **模块拆分**：`repos/ref.ts`（绑定描述的校验 + 落库）独立到 `repos/link-note.ts`
+  （docs 域的落点实现独立到 `docs/link-note.ts`）；`repos/ref.ts` 649 行，
+  仍在行数门禁之下。
+
+### Added
+
+- 单测 `tests/unit/link-note-doc.test.mjs`：写描述 → 参考仓库文档列表多一篇（tag 定位、
+  desc 写明是哪条关系）／重复写改同一篇／留空清除／组级与仓库级各一篇／未绑定显式报错。
+
+### 验证
+
+- 全量单测与 lint / typecheck / build / 冒烟全过；`check-skill-sop` 与
+  `skill-cli-accurate` 全绿（内置 skill 的 A03 / A04 / B02 已同步新口径）。
+- 实机（隔离库）：`repo ref note --id <参考仓库key> --board <组id> --note "…"` →
+  `docs bindings --host <参考仓库key>` 立刻能看到那篇（`hostKind=ref`、
+  `tag=link-note:board/<组>`、desc=「在组「<组名>」里参考什么」）；再写一次同一篇；
+  留空清除后条目消失。
+
 ## [0.56.2] - 2026-11-15 dev skill 按需求原型重排（R 需求 10 条 + P 原语 5 条）
 
 ### Changed

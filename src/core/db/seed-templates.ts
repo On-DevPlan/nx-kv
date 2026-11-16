@@ -17,170 +17,96 @@
 import type { DbApi } from './driver.js';
 
 /**
- * 新建任务骨架（与前端 md-parse.js 的 NEW_TEMPLATE 保持同构 —— 见 templates/service.js 头注释）。
+ * 内置「ref 生成」任务模板的正文（#137）。
  *
- * 骨架里**不再留 {{槽位}} 标记**（任务 #87：「直接文字就是模板」）：出厂正文就是
- * 可读的文字，用户在设置里直接改这段文字即可。渲染结果与旧版逐字一致
- * （旧版 {{背景}} 渲染出来也是这句默认文字）。
+ * 它是**新任务正文骨架**：用户在这个仓库里提一个问题 → agent 按正文里的
+ * 「零知识起步 SOP」走一遍 → 这轮问答被归档成一篇 ref，挂进该仓库的文档列表。
+ *
+ * 为什么是这段文字而不是一段模板占位符：#87 之后「直接文字就是模板」——
+ * 出厂正文要能被 agent **直接照着执行**（命令、顺序、检查点都在里面）。
  */
-export const NEWTASK_BODY = `## 背景
+export const NEWTASK_REF_BODY = `## 本轮问题
 
-（一句话说清要改什么）
+（把你要问这个仓库的问题写在这里）
 
-## 验收
-- [ ] …
+---
 
-## 约束
-- …
+## 怎么干（零知识起步的 SOP）
 
-## 附件
-`;
+你没有这个仓库的既有知识，**不要凭空回答**。按四步走：
 
-/** 内置模板各槽位的默认文字（渲染时的兜底：没填就显示这些）。 */
-export const NEWTASK_VARS = {
-  背景: '（一句话说清要改什么）',
-  验收: '…',
-  约束: '…',
-  附件: '',
-};
+### 1. 先摸清仓库（只读）
+
+\`\`\`bash
+nx-kv repo list --json                              # 仓库清单（key / 名称 / 路径）
+nx-kv docs list --json                              # 这个仓库已有的文档（refs）
+nx-kv docs get --ref <refId>                        # 读某篇文档的正文
+nx-kv localtask show --id <id> --cwd "<项目目录>"   # 任务本体 + 附件清单
+\`\`\`
+
+### 2. 初始化：给这轮问答建一篇 ref
+
+ref 是**文档库里的一篇文档**（正文进 ref_bodies，身份是 \`ref:<16位hex>\`），
+不是附件；它能挂到仓库 / 组 / 组内仓库，挂上就出现在那个宿主的「文档列表」里。
+
+**标题与 desc 都要给**（缺一个，列表里就只是一行没头没尾的条目）：
+
+- **desc** = 一句话短描述（列表 / 提示词模板里的定位标签，如「面板扩展附件类型的九个改动点」）；
+- **标题（title）** = 正文第一行的 \`# <标题>\`（文档标题，取用与列表里显示的就是它）。
+
+\`\`\`bash
+nx-kv docs ref add --owner repo --repo <仓库key> --desc "<一句话短描述>" --json
+\`\`\`
+
+这一步就**把 ref 挂进仓库了**：仓库有主篇 → 它是附加篇；没有主篇 → 它就是主篇。
+**不要再挂一次**（同一篇挂两次，列表里会出现两条）。
+
+### 3. 回答问题，再把这轮问答写进那篇 ref
+
+正文**第一行必须是 \`# <标题>\`**（就是上面说的标题），长文本**写进文件**再传
+（不受命令行长度限制）：
+
+\`\`\`bash
+nx-kv docs set --ref <refId> --body-file <本轮问答.md> --json
+\`\`\`
+
+### 4. 收尾
+
+\`\`\`bash
+nx-kv localtask done --id <id> --cwd "<项目目录>" --summary "<回答了什么 + 这篇文档的标题>"
+\`\`\`
+
+**收尾报告这篇文档的标题**（如「面板如何扩展附件类型」）——用户看的是标题，
+\`refId\` 是内部地址，不用报给用户；但它要写进交付正文里，方便以后取用。`;
+
+/**
+ * 下线的内置模板 id（#137）。
+ *
+ * 新建任务模板只保留一条「ref 生成」——其余几条（缺陷修复 / 功能开发 / 调研任务 /
+ * 文档修订）是**空骨架**，用户新建任务时只会拿到一堆占位小节，没有任何价值。
+ *
+ * 下线 = 软删（deleted_at）：只动 builtin 行，用户自己复制/新建的条目（builtin=0）不受影响。
+ * 老库里这些行已经存在（seed 是 INSERT OR IGNORE），所以要在 seed 里显式下线。
+ */
+export const RETIRED_BUILTIN_TEMPLATE_IDS = Object.freeze([
+  'default',
+  'newtask.bugfix',
+  'newtask.feature',
+  'newtask.research',
+  'newtask.doc',
+]);
 
 /** 内置模板清单（顺序即 sort_order）。id 稳定：升级不改 id，用户配置跟着 id 走。 */
 export const BUILTIN_TEMPLATES = Object.freeze([
   {
-    id: 'default',
+    id: 'newtask.ref',
     category: 'newtask',
-    name: '默认模板',
+    name: 'ref 生成',
     slot: 'suffix',
-    body: NEWTASK_BODY,
+    body: NEWTASK_REF_BODY,
     varsSchema: [],
-    vars: NEWTASK_VARS,
+    vars: {},
     isDefault: 1,
-  },
-  {
-    id: 'newtask.bugfix',
-    category: 'newtask',
-    name: '缺陷修复',
-    slot: 'suffix',
-    body: [
-      '## 现象',
-      '',
-      '{{现象}}',
-      '',
-      '## 复现步骤',
-      '',
-      '{{复现}}',
-      '',
-      '## 期望结果',
-      '',
-      '{{期望}}',
-      '',
-      '## 验收',
-      '- [ ] {{验收}}',
-      '',
-      '## 约束',
-      '- {{约束}}',
-      '',
-      '## 附件',
-    ].join('\n'),
-    varsSchema: [],
-    vars: {
-      现象: '（描述实际看到的错误 / 异常表现）',
-      复现: '1. …\n2. …\n3. …',
-      期望: '（描述正确行为应该是什么）',
-      验收: '修复后回归通过，且不引入新的同类错误',
-      约束: '（不能动的模块 / 兼容性要求）',
-    },
-    isDefault: 0,
-  },
-  {
-    id: 'newtask.feature',
-    category: 'newtask',
-    name: '功能开发',
-    slot: 'suffix',
-    body: [
-      '## 目标',
-      '',
-      '{{目标}}',
-      '',
-      '## 背景',
-      '',
-      '{{背景}}',
-      '',
-      '## 验收',
-      '- [ ] {{验收}}',
-      '',
-      '## 约束',
-      '- {{约束}}',
-      '',
-      '## 附件',
-    ].join('\n'),
-    varsSchema: [],
-    vars: {
-      目标: '（一句话说清要交付什么能力）',
-      背景: '（为什么要做、当前痛点）',
-      验收: '（可观察的完成标准）',
-      约束: '（技术栈 / 接口 / 兼容性要求）',
-    },
-    isDefault: 0,
-  },
-  {
-    id: 'newtask.research',
-    category: 'newtask',
-    name: '调研任务',
-    slot: 'suffix',
-    body: [
-      '## 问题',
-      '',
-      '{{问题}}',
-      '',
-      '## 范围',
-      '',
-      '- {{范围}}',
-      '',
-      '## 交付物',
-      '',
-      '- [ ] {{交付物}}',
-      '',
-      '## 判断标准',
-      '',
-      '{{判断}}',
-    ].join('\n'),
-    varsSchema: [],
-    vars: {
-      问题: '（要回答的核心问题）',
-      范围: '（需要覆盖的代码 / 文档 / 外部资料）',
-      交付物: '结论 + 依据 + 后续建议',
-      判断: '（什么样的结论算可信、可落地）',
-    },
-    isDefault: 0,
-  },
-  {
-    id: 'newtask.doc',
-    category: 'newtask',
-    name: '文档修订',
-    slot: 'suffix',
-    body: [
-      '## 要改的文档',
-      '',
-      '{{文档}}',
-      '',
-      '## 本次修订',
-      '',
-      '{{修订}}',
-      '',
-      '## 验收',
-      '- [ ] {{验收}}',
-      '',
-      '## 约束',
-      '- 保持既有结构与术语一致',
-    ].join('\n'),
-    varsSchema: [],
-    vars: {
-      文档: '（文档路径，例如 docs/xxx.md）',
-      修订: '（改哪几节、补什么内容）',
-      验收: '（读者能按新文档完成什么操作）',
-    },
-    isDefault: 0,
   },
   {
     id: 'delivery.main',
@@ -236,8 +162,22 @@ export const BUILTIN_TEMPLATES = Object.freeze([
  * is_default 的取值带守卫：某个 category 已经有默认模板（比如 legacy 导入时
  * defaultId 指到别的模板）时，内置不再抢默认 —— 否则 ux_templates_default 唯一索引
  * 会让 bootstrap 直接失败（seed 在 import 之后跑）。
+ *
+ * #137：**先下线、再插入**。下线走软删（deleted_at）：被下线的内置条目
+ * （新建任务模板只留「ref 生成」一条）从面板消失，但用户自己复制/新建的条目
+ * （builtin=0）一律不动。先下线再插入，是为了让 is_default 的守卫看不到
+ * 旧的内置默认位——否则新内置拿不到默认，用户的「新建任务」仍然用旧骨架。
  */
 export function seedBuiltinTemplates(conn: DbApi, atMs: number): number {
+  // ① 下线旧内置（只动 builtin 行）
+  for (const id of RETIRED_BUILTIN_TEMPLATE_IDS) {
+    conn.run(
+      `UPDATE templates SET deleted_at = :at, updated_at = :at
+        WHERE id = :id AND builtin = 1 AND deleted_at IS NULL`,
+      { id, at: atMs },
+    );
+  }
+  // ② 插入（内置永远在场）
   for (const [index, t] of BUILTIN_TEMPLATES.entries()) {
     conn.run(
       `INSERT INTO templates (id, category, name, slot, body, vars_schema, vars, is_default,

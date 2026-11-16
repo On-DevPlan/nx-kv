@@ -34,7 +34,11 @@
 //   SQLite 不能 ALTER CHECK，按 v5 的 12-step 模式重建 tasks 并快照/回填所有关系表。
 // v10（2026-11-14）：attachments.kind 新增 `folder`（本地文件夹路径指针，
 //   不复制目录内容）；同样按 v5 的 12-step 模式重建以扩 CHECK。
-export const CURRENT_SCHEMA_VERSION = 10;
+// v11（2026-11-15）：refs 增加 orphan_since（无任何 ref_bindings 的失绑起算时间）；
+//   新增 ref_gc_log（孤儿到期清理的不可变留痕）。存量孤儿按升级时刻起算。
+// v12（2026-11-16）：去掉「分类标签」概念——删 ref_bindings.tag 列。
+//   关系描述文档的定位不走 tag：desc 就在 ref 上。
+export const CURRENT_SCHEMA_VERSION = 12;
 
 /**
  * 运行时最低 Node 版本。

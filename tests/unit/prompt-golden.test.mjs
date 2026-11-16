@@ -30,8 +30,9 @@ const WRITE = process.env.NX_KV_GOLDEN_WRITE === '1';
 
 // ── 夹具零件（源形状） ─────────────────────────────────────────────────────
 
-const docLink = (refId, desc, title, note = '', tag = '') => ({
-  refId, desc, title, hasBody: true, note, tag,
+// schema v12 起 ref 的「分类标签」tag 已退役：夹具不再喂它，插件也不再搬它。
+const docLink = (refId, desc, title, note = '') => ({
+  refId, desc, title, hasBody: true, note,
 });
 const refRepoSrc = (key, name, path, note = '') => ({ key, name, path, note });
 const peerSrc = (name, note, path) => ({ name, note, path });
@@ -98,7 +99,7 @@ const scenarios = {
       repo: {
         name: 'nx-kv', key: 'github.com/on-devplan/nx-kv',
         intro: { body: '# nx-kv · 本机任务队列与文档中枢\n\n一条 npx 命令起 Web 面板。', path: 'D:/repos/nx-kv.md', refId: 'ref_f8051715c0df3f1c', desc: 'nx-kv 介绍' },
-        docLinks: [docLink('ref_4986517d09fbba23', '测试约定', '测试约定', '跑全量前先读', 'test'), docLink('ref_c0143b35cfa7e857', '', '')],
+        docLinks: [docLink('ref_4986517d09fbba23', '测试约定', '测试约定', '跑全量前先读'), docLink('ref_c0143b35cfa7e857', '', '')],
         refRepos: [refRepoSrc('github.com/milkdown', 'milkdown', 'D:/DevProjects/git-repo/milkdown')],
       },
       groups: [{

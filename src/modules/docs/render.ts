@@ -60,7 +60,7 @@ export const renderLink = (d: any): string => {
   if (d.removed !== undefined) return `已移除组绑定: ${d.removed}（剩 ${d.count} 条）`;
   const lines = [`「${d.boardName}」的组绑定（${d.count} 条）:`];
   for (const l of d.links) {
-    lines.push(`  ref:${l.ref}${l.tag ? `  [${l.tag}]` : ''}${l.note ? `  · ${l.note}` : ''}`);
+    lines.push(`  ref:${l.ref}${l.note ? `  · ${l.note}` : ''}`);
   }
   return lines.join('\n');
 };

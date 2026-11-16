@@ -1,19 +1,15 @@
-// 绑定关系弹窗：dev 侧绑定（一个开发仓库所属组挂哪些参考）+ 组级绑定描述编辑。
+// 绑定关系弹窗：dev 侧绑定（一个开发仓库所属组挂哪些参考）。
 // v4 语义：参考仓库绑定在「组」上，组内所有仓库共享；仓库不属于任何组时无处可挂。
+//
+// #134：**组级绑定描述的弹窗整块删掉**——描述不再是关系边上的一个字符串，
+// 而是归档成这个参考仓库的一篇文档（见仓库管理页的「文档列表」入口）。
+// 这里只保留「绑定」这件事本身。
 import { useState } from 'react';
-import { bindRef, refNote } from './api.js';
+import { bindRef } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { Modal } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
 import type { BoardRecord, RepoRecord } from './repo-table.js';
-
-/** 组级绑定描述的目标：组 ↔ 参考仓库这条关系（note 为空 = 清除）。 */
-export interface LinkNoteTarget {
-  ref: RepoRecord;
-  groupId: string;
-  groupName: string;
-  note: string;
-}
 
 // dev 侧绑定弹窗：某个开发仓库 → 勾选绑到它所属组的参考（组内共享）
 export default function BindRepoModal({ repo, refRepos, boardList, currentRefs, onClose, onSaved }: {
@@ -83,51 +79,6 @@ export default function BindRepoModal({ repo, refRepos, boardList, currentRefs, 
         <div className="form-acts">
           <Button  onClick={onClose}>取消</Button>
           <Button  onClick={save}>保存绑定</Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// 组级绑定描述弹窗：组 ↔ 参考仓库这条关系上「参考什么」（摘绑即清）。
-// 从 dev 行的参考 chip、看板参考区块或参考面板的绑定 chip 进入。
-export function LinkNoteModal({ linkNoteFor, onClose, onSaved }: {
-  linkNoteFor: LinkNoteTarget;
-  onClose: () => void;
-  onSaved: () => void | Promise<void>;
-}) {
-  const guard = useGuard();
-  const toast = useToast();
-  const { ref, groupId, groupName, note } = linkNoteFor;
-  const [text, setText] = useState(() => note || '');
-
-  const save = () => guard(async () => {
-    await refNote({ id: ref.key, board: groupId, note: text });
-    onClose();
-    await onSaved();
-    toast('已保存组级绑定描述');
-  });
-
-  return (
-    <Modal
-      title={`组级绑定描述 · ${ref.name} @ 「${groupName}」`}
-      onClose={onClose}
-    >
-      <div className="form-grid">
-        <div className="form-field">
-          <label htmlFor="link-note">
-            「{ref.name}」在这个组里参考什么
-          </label>
-          <div className="form-hint">
-            写这条参考在此处的角色与用法（可多行、可含关键路径/搜索词）。留空保存 = 清除。
-          </div>
-          <textarea id="link-note" rows={5} spellCheck="false"
-            placeholder={'如：project-graph 画布交互的实现参考；\n看 src/extensions/ 的注册方式，搜 registerExtension。'}
-            value={text} onChange={(e) => setText(e.target.value)} />
-        </div>
-        <div className="form-acts">
-          <Button  onClick={onClose}>取消</Button>
-          <Button  onClick={save}>保存</Button>
         </div>
       </div>
     </Modal>

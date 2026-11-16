@@ -19,7 +19,7 @@
 //   （#150：「任务工具」tab 删除——正文早已不在 bodies 里，点开只剩空白标题页。）
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getSettings, saveSettings } from './api.js';
+import { getSettings, saveSettings, getOrphans, purgeOrphans } from './api.js';
 import { useApp } from '../../app-context.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
@@ -44,10 +44,55 @@ const SECTIONS: SettingsSection[] = [
   { id: 'pref', label: '偏好', icon: 'flow' },
   { id: 'work', label: '工作区', icon: 'sidebar' },
   { id: 'storage', label: '本机存储', icon: 'archive' },
+  { id: 'docsCleanup', label: '文档清理', icon: 'archive' },
   { id: 'taskTemplates', label: '任务模板', icon: 'list' },
   { id: 'prompts', label: '提示词模板', icon: 'flow' },
   { id: 'sidebar', label: '侧栏显示', icon: 'sidebar' },
 ];
+
+/** 孤儿清单的一行（/api/docs/orphans 的响应形状）。 */
+interface OrphanRowView {
+  refId: string;
+  desc: string;
+  origin: string;
+  locator: string;
+  unboundAt: number | null;
+  remainingDays: number;
+  due: boolean;
+  hasBody: boolean;
+  bodyBytes: number;
+}
+
+/** 清理留痕的一行。 */
+interface OrphanLogView {
+  refId: string;
+  desc: string;
+  deletedAt: number;
+  ttlDays: number;
+  reason: string;
+}
+
+interface OrphanData {
+  ttlDays: number;
+  total: number;
+  due: number;
+  dueEmpty: number;
+  dueWithBody: number;
+  dueSoon: number;
+  untimed: number;
+  orphans: OrphanRowView[];
+  recentDeletions: OrphanLogView[];
+  eligible?: string[];
+  deleted?: OrphanLogView[];
+}
+
+/** 毫秒 → 本地「YYYY-MM-DD HH:mm」；空值给破折号。 */
+function fmtAt(ms?: number | null): string {
+  if (!ms) return '—';
+  const d = new Date(ms);
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 export default function SettingsPanel() {
   const app = useApp();
@@ -61,6 +106,9 @@ export default function SettingsPanel() {
   // /api/setting 的响应（外部数据边界）：字段按后端 schema 读
   const [cfg, setCfg] = useState<Record<string, any> | null>(null);
   const [busy, setBusy] = useState(false);
+  // 孤儿文档清单（/api/docs/orphans）：失绑时间 / 剩余天数 / 是否有正文
+  const [orphans, setOrphans] = useState<OrphanData | null>(null);
+  const [orphanBusy, setOrphanBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -70,11 +118,48 @@ export default function SettingsPanel() {
     }
   }, [toast]);
 
+  const loadOrphans = useCallback(async () => {
+    try {
+      setOrphans((await getOrphans()) as OrphanData);
+    } catch (e) {
+      toast('读取孤儿文档失败：' + ((e as Error).message || e));
+    }
+  }, [toast]);
+
   useEffect(() => {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (tab === 'docsCleanup') void loadOrphans();
+  }, [tab, loadOrphans]);
+
   const guard = (fn: () => Promise<unknown>) => fn().catch((e: Error) => toast(String(e.message || e)));
+
+  // 预演 / 立即清理：立即清理前必须确认；有正文的到期孤儿后端不会删
+  const runOrphanGc = (apply: boolean) =>
+    guard(async () => {
+      if (apply) {
+        const ok = await dialog({
+          title: '立即清理孤儿文档',
+          message: '软删所有「到期 + 没有正文」的孤儿文档；有正文的只列清单，不会自动删。继续？',
+          okText: '清理',
+        });
+        if (!ok) return;
+      }
+      setOrphanBusy(true);
+      try {
+        const r = (await purgeOrphans({ apply })) as OrphanData;
+        setOrphans(r);
+        toast(
+          apply
+            ? `已清理 ${r.deleted?.length ?? 0} 篇孤儿文档`
+            : `预演：将清理 ${r.eligible?.length ?? 0} 篇孤儿文档（未删除）`
+        );
+      } finally {
+        setOrphanBusy(false);
+      }
+    });
 
   const saveSetting = (patch: Record<string, unknown>) =>
     guard(async () => {
@@ -168,6 +253,83 @@ export default function SettingsPanel() {
             </Button>
           </span>
         </div>
+      </>
+    ),
+
+    docsCleanup: (
+      <>
+        <div className="setp-row">
+          <span>孤儿保留天数</span>
+          <span className="setp-input">
+            <input
+              type="number"
+              min={1}
+              max={3650}
+              value={cfg ? cfg.orphanTtlDays ?? 3 : 3}
+              onChange={(e) =>
+                setCfg((c) => ({ ...(c || {}), orphanTtlDays: Number(e.target.value) }))
+              }
+            />
+            <Button
+              variant="secondary"
+              disabled={!cfg || busy}
+              onClick={() => cfg && saveSetting({ orphanTtlDays: cfg.orphanTtlDays })}
+            >
+              保存
+            </Button>
+          </span>
+        </div>
+        <div className="setp-note">
+          孤儿 = 没有任何 ref_bindings 归属的 ref。到期后软删（ref_bodies 保留）；有正文的到期孤儿不自动删，需人工处置。
+        </div>
+        <div className="setp-row">
+          <span>
+            {orphans
+              ? `孤儿 ${orphans.total} 篇 · 到期 ${orphans.due}（空壳 ${orphans.dueEmpty} / 有正文 ${orphans.dueWithBody}）` +
+                (orphans.dueSoon ? ` · 24h 内到期 ${orphans.dueSoon}` : '') +
+                (orphans.untimed ? ` · 未计时 ${orphans.untimed}` : '')
+              : '孤儿清单：读取中…'}
+          </span>
+          <span className="setp-gc-actions">
+            <Button variant="secondary" onClick={() => void loadOrphans()}>刷新</Button>
+            <Button variant="secondary" disabled={orphanBusy} onClick={() => void runOrphanGc(false)}>预演清理</Button>
+            <Button variant="secondary" disabled={orphanBusy} onClick={() => void runOrphanGc(true)}>立即清理</Button>
+          </span>
+        </div>
+        <div className="setp-gc-list">
+          {(orphans?.orphans || []).map((o) => (
+            <div key={o.refId} className={'setp-gc-item' + (o.due ? ' is-due' : '')}>
+              <div className="setp-gc-main">
+                <b>{o.desc || o.refId}</b>
+                <span className={'setp-badge' + (o.hasBody ? ' soft' : '')}>
+                  {o.hasBody ? `有正文 ${o.bodyBytes}B` : '空壳'}
+                </span>
+                {o.due && <span className="setp-badge is-due">已到期</span>}
+              </div>
+              <div className="setp-gc-meta">
+                <code>{o.refId}</code>
+                <span>失绑 {fmtAt(o.unboundAt)}</span>
+                <span>{o.unboundAt ? `剩余 ${o.remainingDays} 天` : '未计时（维护时起算）'}</span>
+                {o.origin === 'external' && o.locator && <span className="setp-gc-path">{o.locator}</span>}
+              </div>
+            </div>
+          ))}
+          {orphans && orphans.orphans.length === 0 && <div className="setp-note">（当前没有孤儿文档）</div>}
+          {!orphans && <div className="setp-note">（点「刷新」读取）</div>}
+        </div>
+        {(orphans?.recentDeletions || []).length > 0 && (
+          <>
+            <div className="setp-h">最近清理</div>
+            <div className="setp-gc-list">
+              {(orphans?.recentDeletions || []).map((r) => (
+                <div key={r.refId + '@' + r.deletedAt} className="setp-gc-log">
+                  {fmtAt(r.deletedAt)} · <code>{r.refId}</code> · {r.reason} · TTL {r.ttlDays} 天
+                  {r.desc ? ` · ${r.desc}` : ''}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </>
     ),
 

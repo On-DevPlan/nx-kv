@@ -82,7 +82,6 @@ export interface RefBindingView {
   groupKey: string | null;
   position: number;
   note: string;
-  tag: string;
   main: boolean;
 }
 
@@ -198,7 +197,7 @@ function bindingsOfRef(refId: string): RefBindingView[] {
   if (!clean(refId)) return [];
   return getDb()
     .all(
-      `SELECT type, repo_key AS repoKey, group_key AS groupKey, position, note, tag
+      `SELECT type, repo_key AS repoKey, group_key AS groupKey, position, note
          FROM ref_bindings WHERE ref_id = :id ORDER BY type, position`,
       { id: refId }
     )
@@ -208,7 +207,6 @@ function bindingsOfRef(refId: string): RefBindingView[] {
       groupKey: r.groupKey == null ? null : String(r.groupKey),
       position: Number(r.position) || 0,
       note: String(r.note || ''),
-      tag: String(r.tag || ''),
       main: (Number(r.position) || 0) === 0,
     }));
 }

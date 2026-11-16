@@ -27,7 +27,6 @@ import DagEditor from './dag-editor.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
 import { openSettingsPanel, openTemplateEditor } from '../../panels.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { NEW_TEMPLATE_VALUES } from '../../modules/md/md-parse.js';
 import { renderTemplateBody } from '../../modules/prompts/render-template-body.js';
 import { useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, PromptTemplate, RepoRow } from '../../types.js';
@@ -208,7 +207,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
           label: (t.id === tpl?.defaultId ? '✓ ' : '') + t.name,
           icon: 'list',
           // 正文按模板取值渲染（老模板可能带 {{槽位}}，任务里不能出现裸标记）
-          onClick: () => newDraft(renderTemplateBody(t.body, { ...NEW_TEMPLATE_VALUES, ...(t.values || {}) })),
+          onClick: () => newDraft(renderTemplateBody(t.body, t.values || {})),
         }))
       : [{ label: '按默认模板新建一页', icon: 'list', onClick: () => newDraft(tpl ? tpl.defaultBody() : '') }]),
     'sep',

@@ -10,7 +10,6 @@ const docItemShape = z.looseObject({
   title: z.string(),
   hasBody: z.boolean(),
   note: z.string(),
-  tag: z.string(),
 });
 const refRepoShape = z.looseObject({ key: z.string(), name: z.string(), path: z.string(), note: z.string() });
 const peerShape = z.looseObject({ name: z.string(), note: z.string(), path: z.string(), hasNote: z.boolean() });
@@ -40,6 +39,7 @@ const schema = z.strictObject({
 });
 
 /** 「项目文档 / 组文档」→ 结构化数组（模板用 {{#each}} 组织行）。 */
+// #216 合并远端 schema v12：ref 的「分类标签」tag 已整个退役，这里不再搬它。
 function docItems(links: any) {
   return (links || []).map((d: any) => ({
     refId: d.refId || '',
@@ -47,7 +47,6 @@ function docItems(links: any) {
     title: d.title || '',
     hasBody: d.hasBody !== false,
     note: d.note || '',
-    tag: d.tag || '',
   }));
 }
 

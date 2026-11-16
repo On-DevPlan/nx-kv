@@ -15,7 +15,6 @@ export interface IntroLink {
   docId: string;
   label: string;
   note?: string;
-  tag?: string;
   main?: boolean;
 }
 
@@ -29,7 +28,6 @@ export interface IntroDocEntry {
   title?: string;
   desc?: string;
   note?: string;
-  tag?: string;
   [k: string]: any;
 }
 
@@ -129,11 +127,11 @@ export function useIntro({ kind, owner, model }: UseIntroArgs): IntroApi {
       const mid = linkDocId(main);
       setMainDocId(mid || docRef);
       if (mid && main) {
-        out.push({ docId: mid, label: labelOf(main, '主篇'), note: main.note || '', tag: main.tag || '', main: true });
+        out.push({ docId: mid, label: labelOf(main, '主篇'), note: main.note || '', main: true });
       }
       for (const l of extras) {
         const id = linkDocId(l);
-        if (id) out.push({ docId: id, label: labelOf(l, '补充'), note: l.note || '', tag: l.tag || '', main: false });
+        if (id) out.push({ docId: id, label: labelOf(l, '补充'), note: l.note || '', main: false });
       }
       setLinks(out);
     };

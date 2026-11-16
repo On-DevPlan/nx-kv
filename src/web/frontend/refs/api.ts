@@ -18,7 +18,6 @@ export interface BindingRow {
   position: number;
   main: boolean;
   note: string;
-  tag: string;
   /** 宿主 kind（#132）：dev 开发仓库 / ref 参考仓库 / group 组。
    *  参考仓库与开发仓库在底层只有这一个差异，列表上要标得出来。 */
   hostKind?: 'dev' | 'ref' | 'group' | string;
@@ -99,9 +98,4 @@ export function repoRefRepos(id: string): Promise<RefReposOf> {
 /** 某组绑定的参考仓库（--board 视图，带绑定描述）。 */
 export function boardRefRepos(board: string): Promise<RefReposOf> {
   return api('/api/repos/ref/of?board=' + encodeURIComponent(board));
-}
-
-/** 写 / 清绑定描述（这个参考在该组 / 该仓库里参考什么）。 */
-export function setRefNote(body: { id: string; board?: string; repo?: string; note?: string }): Promise<any> {
-  return api('/api/repos/ref/note', { method: 'POST', body });
 }

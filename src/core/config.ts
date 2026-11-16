@@ -17,7 +17,13 @@ import { nowMs } from './db/time.js';
 export const PREF_KEYS = Object.freeze([
   'gitRepoRoot',
   'gitDevRoot',
+  'orphanTtlDays',
 ] as const);
+
+/** 孤儿 ref 的默认保留天数（可配置；0 或非法值回落为它）。 */
+export const DEFAULT_ORPHAN_TTL_DAYS = 3;
+const ORPHAN_TTL_MIN_DAYS = 1;
+const ORPHAN_TTL_MAX_DAYS = 3650;
 
 /** settings 表里偏好字段的键名。 */
 export const APP_SETTING_KEYS = Object.freeze(PREF_KEYS.map((k) => 'app.' + k));
@@ -26,6 +32,8 @@ export const APP_SETTING_KEYS = Object.freeze(PREF_KEYS.map((k) => 'app.' + k));
 export interface AppConfig {
   gitRepoRoot: string;
   gitDevRoot: string;
+  /** 孤儿 ref 到期天数（默认 3；范围 1–3650）。 */
+  orphanTtlDays: number;
 }
 
 const EMPTY = (): AppConfig => ({
@@ -34,7 +42,18 @@ const EMPTY = (): AppConfig => ({
   gitRepoRoot: '',
   // 导入布局时开发仓库（type=dev）的默认克隆根；空 = 导入时 dev 只登记不克隆。
   gitDevRoot: '',
+  // 无任何归属的 ref 保留天数；到期由 serve 例行维护 / docs orphans purge 清理。
+  orphanTtlDays: DEFAULT_ORPHAN_TTL_DAYS,
 });
+
+/** TTL 天数归一：非数字 / 越界一律回落默认值。 */
+function normalizeTtlDays(v: unknown): number {
+  const n = Math.trunc(Number(v));
+  if (!Number.isFinite(n) || n < ORPHAN_TTL_MIN_DAYS || n > ORPHAN_TTL_MAX_DAYS) {
+    return DEFAULT_ORPHAN_TTL_DAYS;
+  }
+  return n;
+}
 
 let cache: AppConfig | null = null;
 
@@ -46,6 +65,7 @@ function normalize(data: unknown): AppConfig {
   return {
     gitRepoRoot: String(d.gitRepoRoot || ''),
     gitDevRoot: String(d.gitDevRoot || ''),
+    orphanTtlDays: normalizeTtlDays(d.orphanTtlDays),
   };
 }
 

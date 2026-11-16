@@ -54,18 +54,18 @@ test('desiredBindings：仓库（主篇 + 补充篇）与组（介绍 + 组内�
       key: 'board/g',
       name: 'g',
       doc: { ref: R.groupMain },
-      docLinks: [{ ref: R.groupLink, tag: 'qa' }],
+      docLinks: [{ ref: R.groupLink }],
       repoDocs: { 'github.com/me/x': { ref: R.groupNote, note: '组内说明' } },
     }],
   };
   assert.deepEqual(
-    desiredBindings(s).map((b) => [b.type, b.repoKey, b.groupKey, b.refId, b.position, b.note, b.tag]),
+    desiredBindings(s).map((b) => [b.type, b.repoKey, b.groupKey, b.refId, b.position, b.note]),
     [
-      ['repo', 'github.com/me/x', null, R.repoMain, 0, '', ''],
-      ['repo', 'github.com/me/x', null, R.repoLink, 1, 'A', ''],
-      ['group', 'board/g', null, R.groupMain, 0, '', ''],
-      ['group', 'board/g', null, R.groupLink, 1, '', 'qa'],
-      ['group_repo', 'github.com/me/x', 'board/g', R.groupNote, 0, '组内说明', ''],
+      ['repo', 'github.com/me/x', null, R.repoMain, 0, ''],
+      ['repo', 'github.com/me/x', null, R.repoLink, 1, 'A'],
+      ['group', 'board/g', null, R.groupMain, 0, ''],
+      ['group', 'board/g', null, R.groupLink, 1, ''],
+      ['group_repo', 'github.com/me/x', 'board/g', R.groupNote, 0, '组内说明'],
     ]
   );
 });

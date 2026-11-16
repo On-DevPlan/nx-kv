@@ -243,6 +243,16 @@ function normalizeDocs(doc: RefDocRef | null, links: RefDocRef[]): { doc: RefDoc
 
 // ─── 主流程 ────────────────────────────────────────────────────────────
 
+/** 表里有没有这一列（历史迁移要兼容「列后来被删了」的当前 schema）。 */
+function hasColumn(conn: any, table: string, column: string): boolean {
+  try {
+    const rows = conn.all(`PRAGMA table_info(${table})`);
+    return rows.some((r: any) => String(r.name || '') === column);
+  } catch {
+    return false;
+  }
+}
+
 export function migrateRefsRel(conn: any, { atMs = Date.now() }: V8Context = {}): RefsRelRemovalResult {
   const warnings: string[] = [];
   const rows: any[] = conn.all(
@@ -351,8 +361,14 @@ export function migrateRefsRel(conn: any, { atMs = Date.now() }: V8Context = {})
   }
 
   // 已有直接 ref 归属（v7 只写 ref_bindings）反向补进宿主 ext
+  //
+  // #137：tag 列（分类标签）已在 schema v12 删除。这段是**历史迁移**——真升级
+  // （v7 → v8）时该列还在（v8.sql 才加的），行为一字不变；但 legacy JSON 导入
+  // 会把这段跑在**当前** schema 上（没有 tag 列）→ 按列是否存在裁剪，两种情形都对。
+  const hasTagCol = hasColumn(conn, 'ref_bindings', 'tag');
   const existingBindings: any[] = conn.all(
-    'SELECT repo_key, group_key, ref_id, type, position, note, tag FROM ref_bindings ORDER BY type, position, rowid'
+    `SELECT repo_key, group_key, ref_id, type, position, note${hasTagCol ? ', tag' : ''}
+       FROM ref_bindings ORDER BY type, position, rowid`
   );
   for (const b of existingBindings) {
     const refId = String(b.ref_id || '');
@@ -413,8 +429,8 @@ export function migrateRefsRel(conn: any, { atMs = Date.now() }: V8Context = {})
         return;
       }
       const r = conn.run(
-        `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, tag, created_at)
-         VALUES (:repo, :group, :ref, :type, :pos, :note, :tag, :at)`,
+        `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note${hasTagCol ? ', tag' : ''}, created_at)
+         VALUES (:repo, :group, :ref, :type, :pos, :note${hasTagCol ? ', :tag' : ''}, :at)`,
         {
           repo: repoKey,
           group: groupKey,
@@ -422,7 +438,7 @@ export function migrateRefsRel(conn: any, { atMs = Date.now() }: V8Context = {})
           type,
           pos,
           note: clean(d.note),
-          tag: clean(d.tag),
+          ...(hasTagCol ? { tag: clean(d.tag) } : {}),
           at: atMs,
         }
       );

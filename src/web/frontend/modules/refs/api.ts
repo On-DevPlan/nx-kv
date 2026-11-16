@@ -18,7 +18,6 @@ export interface BindingRow {
   position: number;
   main: boolean;
   note: string;
-  tag: string;
 }
 
 /** 某个宿主的文档集（仓库 → host；组 → group）。 */

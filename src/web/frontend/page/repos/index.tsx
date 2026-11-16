@@ -41,9 +41,10 @@ import type {
   ReposReload,
 } from './repo-table.js';
 import BranchPicker, { BRANCH_DEFAULT, BRANCH_MAIN } from './branch-picker.jsx';
-import BlockTabs, { type BlockTab } from './block-tabs.jsx';
+import BlockTabs, { RpSearch, type BlockTab } from './block-tabs.jsx';
 import RefBlock from './ref-block.jsx';
 import DocBlock from './doc-block.jsx';
+import SearchResults from './search-results.jsx';
 import PendingSection from './pending-section.jsx';
 import RefPanel from './ref-panel.jsx';
 import BoardAdminModal from './board-admin.jsx';
@@ -65,6 +66,8 @@ export default function ReposView() {
   // 文档总数（分支下拉 / 文档区块按钮都读它）与「外部写了文档」的刷新计数——
   // 特意放在数据面之前：loadDocCount 的 effect 依赖 docTick，声明顺序反了会 TDZ。
   const [docCount, setDocCount] = useState<number | null>(null);
+  /** 当前关键词命中的文档数（检索结果头与检索框上的数字） */
+  const [docShown, setDocShown] = useState(0);
   const [docTick, setDocTick] = useState(0);
 
   // ---- 数据面：仓库中心清单（扁平；每条带 boards）+ 看板 + 参考检查 ----
@@ -342,12 +345,6 @@ export default function ReposView() {
   // 切到组 / default 分支时，文档区块不存在 → 落回「仓库」区块
   const currentBlock: BlockId = branch !== BRANCH_MAIN && block === 'docs' ? 'repos' : block;
 
-  const searchHint = currentBlock === 'docs'
-    ? '按标题 / 描述 / 摘要筛选…'
-    : currentBlock === 'refs'
-      ? '按名称 / 远程地址筛选…'
-      : '按名称 / 路径 / 文档筛选…';
-
   if (boards === null) {
     return (
       <div className="rp-page rp-v2">
@@ -396,6 +393,7 @@ export default function ReposView() {
         <span className="rp-branchbar-name">{branchBoard ? branchBoard.name : branch === BRANCH_DEFAULT ? 'default' : 'main'}</span>
         {/* 右侧：一个主操作 + ⋯ 菜单（#143 第 2 轮：按钮收拢）。
             计数不在这里重复——区块按钮上已经各报一次，两边都写会让人以为数字不一致。 */}
+        <RpSearch value={q} onChange={setQ} count={kw ? repoRows.length + refRows.length + docShown : undefined} />
         <span className="rp-branchbar-acts">
           {branchBoard ? (
             <>
@@ -425,14 +423,7 @@ export default function ReposView() {
         </span>
       </div>
 
-      <BlockTabs
-        tabs={tabs}
-        value={currentBlock}
-        onChange={(id) => setBlock(id as BlockId)}
-        q={q}
-        onQ={setQ}
-        placeholder={searchHint}
-      />
+      {kw ? null : <BlockTabs tabs={tabs} value={currentBlock} onChange={(id) => setBlock(id as BlockId)} />}
 
       {/* 待初始化占位：只在具体分组里出现（导入布局带进来的空位） */}
       {branchBoard ? (
@@ -444,7 +435,39 @@ export default function ReposView() {
         />
       ) : null}
 
-      {currentBlock === 'docs' ? (
+      {kw ? (
+        // #146：有关键词 = 全局检索结果，三块同屏分段（组件在 search-results.tsx）
+        <SearchResults
+          kw={kw}
+          q={q}
+          repoRows={repoRows}
+          refRows={refRows}
+          docShown={docShown}
+          mode={branchBoard ? 'group' : branch === BRANCH_DEFAULT ? 'default' : 'main'}
+          branchBoard={branchBoard}
+          boardList={boardList}
+          repos={repos}
+          devRepos={devRepos}
+          refRepoChipsByRepo={refRepoChipsByRepo}
+          refRepoBackLinks={refRepoBackLinks}
+          checkOf={checkOf}
+          docTick={docTick}
+          acts={rowActs}
+          onClear={() => setQ('')}
+          onDocShown={setDocShown}
+          onDocCount={setDocCount}
+          onSync={syncOne}
+          onOpenRepo={(r) => rowAct('open', r)}
+          onOpenDocs={openRepoDocs}
+          onBindRef={(r) => { setRefRepoFocus(r.key); setRefOpen(true); }}
+          onUnbindGroup={unbindOne}
+          onUnbindRepo={unbindRepo}
+          onGoBind={(kind, target) => goHost(kind === 'board' ? 'group' : 'repo', target)}
+          onManageRefs={() => setRefOpen(true)}
+          onAddMember={setImpBoardId}
+          onGoHost={goHost}
+        />
+      ) : currentBlock === 'docs' ? (
         <DocBlock
           repos={repos}
           boardList={boardList}

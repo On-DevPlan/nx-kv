@@ -460,3 +460,56 @@
 }
 .rp-branch-new:hover { background: var(--soft); color: #2F6F5E; }
 .rp-branch-new svg { flex: none; }
+
+/* ─── 全局检索（#146）：检索框在分组信息条上，结果三块同屏分段 ─────── */
+.rp-branchbar .rp-q {
+  flex: 1 1 auto;
+  margin-left: 6px;
+  min-width: 200px;
+  max-width: 380px;
+}
+.rp-q-n {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--mid);
+  padding: 0 2px;
+}
+.rp-sr { display: flex; flex-direction: column; gap: 10px; }
+.rp-sr-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow-sm);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.rp-sr-head > span:first-child { font-weight: 650; }
+.rp-sr-counts { font-family: var(--mono); font-size: 11px; color: var(--mid); }
+.rp-sr-clear {
+  margin-left: auto;
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-2);
+}
+.rp-sr-clear:hover { border-color: var(--mid); color: var(--ink); }
+.rp-sr-sec {
+  flex: none;
+  font-family: var(--label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mid);
+  padding: 2px 0 0 2px;
+}

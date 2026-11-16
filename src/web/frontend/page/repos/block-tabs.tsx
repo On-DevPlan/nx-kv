@@ -1,8 +1,10 @@
 // 区块切换条（#143）：仓库 / 参考仓库 / 文档 三块是**独立区块**，用横向按钮切换。
 //
 // 为什么不做同屏三段：一段一张表会拉出三倍高度，用户在「找某个仓库」时反而要多滚一屏；
-// 横向按钮把三块压成同一块屏幕，计数就在按钮上（当前分支下各有多少条），
-// 右侧统一放搜索框——切区块时搜索词保留（同一个分支内的检索不该被切块清掉）。
+// 横向按钮把三块压成同一块屏幕，计数就在按钮上（当前分组下各有多少条）。
+//
+// #146：搜索框搬到上面那一行（分组信息条）——它是**全局检索**（三块一起搜、结果同屏
+// 分段列出），不该跟着区块按钮走；这里只留切换。
 import type { ReactNode } from 'react';
 import { IconSearch } from './icons.jsx';
 
@@ -17,15 +19,35 @@ export interface BlockTab {
   disabled?: boolean;
 }
 
-export default function BlockTabs({ tabs, value, onChange, q, onQ, placeholder, hint, right }: {
+/** 全局检索框（#146）：放在分组信息条上，三块一起搜。 */
+export function RpSearch({ value, onChange, placeholder, count }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  /** 命中总数（有关键词时显示） */
+  count?: number;
+}) {
+  return (
+    <label className="rp-q" title="全局检索：仓库 / 参考仓库 / 文档 一起搜">
+      <IconSearch size={13} />
+      <input
+        value={value}
+        placeholder={placeholder || '搜索仓库 / 参考仓库 / 文档…'}
+        aria-label="全局检索"
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {value ? <span className="rp-q-n">{count === undefined ? '' : count}</span> : null}
+      {value ? (
+        <button type="button" className="rp-q-x" title="清空检索" onClick={() => onChange('')}>×</button>
+      ) : null}
+    </label>
+  );
+}
+
+export default function BlockTabs({ tabs, value, onChange }: {
   tabs: BlockTab[];
   value: string;
   onChange: (id: string) => void;
-  q: string;
-  onQ: (v: string) => void;
-  placeholder?: string;
-  hint?: string;
-  right?: ReactNode;
 }) {
   return (
     <div className="rp-blocks">
@@ -46,22 +68,6 @@ export default function BlockTabs({ tabs, value, onChange, q, onQ, placeholder, 
             <span className="rp-block-tab-n">{t.count}</span>
           </button>
         ))}
-      </div>
-      <div className="rp-block-side">
-        {hint ? <span className="rp-block-hint">{hint}</span> : null}
-        {right}
-        <label className="rp-q">
-          <IconSearch size={13} />
-          <input
-            value={q}
-            placeholder={placeholder || '按名称 / 路径 / 描述筛选…'}
-            aria-label="筛选当前区块"
-            onChange={(e) => onQ(e.target.value)}
-          />
-          {q ? (
-            <button type="button" className="rp-q-x" title="清空筛选" onClick={() => onQ('')}>×</button>
-          ) : null}
-        </label>
       </div>
     </div>
   );

@@ -48,14 +48,17 @@ interface HostBadge {
   title: string;
 }
 
-export default function DocBlock({ repos, boardList, q, onGoHost, tick, onCount }: {
+export default function DocBlock({ repos, boardList, q, onGoHost, tick, onCount, onShown }: {
   repos: RepoRecord[];
   boardList: BoardRecord[];
   q: string;
   onGoHost: (kind: 'repo' | 'group', target: string) => void;
   /** 外部写入（新建 / 删除文档）后 +1，用来重拉 */
   tick: number;
+  /** 全部文档篇数（分支下拉 / 区块按钮上的数） */
   onCount?: (n: number) => void;
+  /** 当前关键词**命中**的篇数（#146 全局检索结果头） */
+  onShown?: (n: number) => void;
 }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
@@ -133,6 +136,10 @@ export default function DocBlock({ repos, boardList, q, onGoHost, tick, onCount 
     if (!k) return list;
     return list.filter((d) => [d.name, d.title, d.desc, d.summary].some((x) => x && String(x).toLowerCase().includes(k)));
   }, [docs, q]);
+
+  useEffect(() => {
+    if (docs && onShown) onShown(shown.length);
+  }, [shown, docs, onShown]);
 
   if (!docs) return <div className="rp-block-empty"><div className="rp-block-empty-t">读取中…</div></div>;
 

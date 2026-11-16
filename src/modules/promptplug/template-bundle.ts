@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BLOCK_DEFS,
+  PROMPT_BLOCK_IDS,
   BUILTIN_TEMPLATE_ID,
   BUILTIN_TEMPLATE_NAME,
 } from '../../shared/prompt-blocks.js';
@@ -39,17 +39,17 @@ export function templateBundle(): BlockLists {
   const src = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null) as Record<string, unknown> | null;
   if (!src) throw new Error(`出厂模板快照形状错误（非对象）：${BUNDLE_PATH}`);
   const lists = {} as BlockLists;
-  for (const def of BLOCK_DEFS) {
-    const br = src[def.id];
+  for (const blockId of PROMPT_BLOCK_IDS) {
+    const br = src[blockId];
     const rec = (br && typeof br === 'object' && !Array.isArray(br) ? br : null) as Record<string, unknown> | null;
     const list = (rec?.list ?? null) as unknown;
-    if (!Array.isArray(list)) throw new Error(`出厂模板快照缺区块 ${def.id} 的 list`);
+    if (!Array.isArray(list)) throw new Error(`出厂模板快照缺区块 ${blockId} 的 list`);
     const items = list as Record<string, unknown>[];
     const builtin = items.find((x) => x && x.id === BUILTIN_TEMPLATE_ID && x.builtin === true);
     if (!builtin || typeof builtin.template !== 'string' || !builtin.template.trim()) {
-      throw new Error(`出厂模板快照区块 ${def.id} 缺内置条目或内置模板为空`);
+      throw new Error(`出厂模板快照区块 ${blockId} 缺内置条目或内置模板为空`);
     }
-    lists[def.id] = {
+    lists[blockId] = {
       active: BUILTIN_TEMPLATE_ID,
       list: [{ id: BUILTIN_TEMPLATE_ID, name: BUILTIN_TEMPLATE_NAME, template: builtin.template, builtin: true }],
     };

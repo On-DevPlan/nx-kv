@@ -4,9 +4,39 @@
 // 「内置默认」走同一份 ctx、同一套口径；渲染失败时用最朴素的逐条文本兜底
 // （fail-open：附件路径必须到达 agent，模板写错不许吞掉附件信息）。
 import { renderInstruction } from '../../core/instruction-template.js';
-import { DEFAULT_ATTACH_TEMPLATE } from '../../shared/prompt-blocks.js';
 import { isImageName } from '../../core/filekind.js';
 import { hostOfUrl, kindLabelOf, ORIGIN_LABEL, sizeTextOf, STATUS_LABEL } from './attach-resource.js';
+
+/**
+ * 内置附件段模板（v6 起唯一归属在本文件——shared/prompt-blocks 不再持有任何模板正文，
+ * 模板真相在出厂快照 blockTemplates.json）。这里的文本 ≡ 快照 attachment 段内置文本，
+ * 一致性由 tests/unit/prompt-ensure.test.mjs 对账；改任何一处都要同步另一处并跑单测。
+ */
+export const DEFAULT_ATTACH_TEMPLATE = [
+  '{{#if attach}}',
+  '〔附件〕本任务包含 {{attach.count}} 个附件（正文内嵌 {{attach.inlineCount}} · 附件区 {{attach.areaCount}}）。请先识别附件内容（图片先看图、文档先读内容、文件夹先列目录）再开始处理，不要跳过附件。',
+  '',
+  '附件清单：',
+  '{{#each attach.list}}',
+  '  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if mdfile}}{{mdfile.absPath}}{{#if mdfile.missing}}（源文件已不在）{{/if}}{{/if}}{{#if folder}}{{folder.absPath}}{{#if folder.missing}}（目录已不在）{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '{{/each}}',
+  '',
+  '取用方式：',
+  '{{#each attach.list}}',
+  '  - {{kindLabel}} 《{{name}}》：{{usage}}',
+  '{{/each}}',
+  '{{#each attach.list}}{{#if mdfile}}{{#if mdfile.content}}〔外部 md · {{name}}〕（{{mdfile.absPath}}{{#if mdfile.truncated}}，已截断{{/if}}{{#if mdfile.stale}}，内容有变化{{/if}}）：',
+  '',
+  '{{mdfile.content}}',
+  '',
+  '{{/if}}{{/if}}{{/each}}',
+  '{{#each attach.list}}{{#if ref}}{{#if ref.content}}〔文档原文 · {{ref.title}}〕：',
+  '',
+  '{{ref.content}}',
+  '',
+  '{{/if}}{{/if}}{{/each}}',
+  '{{/if}}',
+].join('\n');
 
 /**
  * 单条附件的模板 ctx。

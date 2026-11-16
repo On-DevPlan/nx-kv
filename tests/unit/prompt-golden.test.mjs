@@ -20,9 +20,9 @@ import { attachTemplateCtx } from '../../src/modules/tasktool/attach-template.js
 import { compose } from '../../src/modules/promptplug/compose.js';
 import { buildDeliveryPlugins } from '../../src/modules/promptplug/index.js';
 import {
-  defaultBlockTemplateLists,
   resolveBlockTemplates,
 } from '../../src/shared/prompt-blocks.js';
+import { templateBundle } from '../../src/modules/promptplug/template-bundle.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const GOLDEN_DIR = join(root, 'tests', 'unit', '__golden__', 'prompt-instruction');
@@ -259,7 +259,7 @@ const scenarios = {
 
 // ── 测试本体 ───────────────────────────────────────────────────────────────
 
-const templates = () => resolveBlockTemplates(defaultBlockTemplateLists());
+const templates = () => resolveBlockTemplates(JSON.parse(JSON.stringify(templateBundle())));
 
 /** 源夹具 → 合并后的 ctx（与 compose 内部同一条插件路径）。 */
 async function ctxOf(sc) {

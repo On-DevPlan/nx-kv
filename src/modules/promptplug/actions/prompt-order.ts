@@ -6,7 +6,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { getDb } from '../../../core/db/index.js';
-import { readSettingRaw, writeSettingRaw } from '../../../core/db/settings.js';
+import { writeSettingRaw } from '../../../core/db/settings.js';
 import { assertOrder } from '../../../shared/prompt-plugin.js';
 import { buildDeliveryPlugins } from '../factory.js';
 import { PROMPT_ORDER_KEY } from '../keys.js';

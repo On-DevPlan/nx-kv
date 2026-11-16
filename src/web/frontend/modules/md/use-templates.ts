@@ -8,7 +8,7 @@ import { api } from '../../api/client.js';
 import { useApp } from '../../app-context.jsx';
 import type { PromptTemplate, TemplatesApi } from '../../types.js';
 import { NEW_TEMPLATE, NEW_TEMPLATE_VALUES } from './md-parse.js';
-import { renderTemplateBody } from '../prompts/placeholders.js';
+import { renderTemplateBody } from '../prompts/render-template-body.js';
 
 /** /api/templates 的出站形状（服务端字段按 index 放行，这里只声明读到的）。 */
 interface TemplatesPayload {

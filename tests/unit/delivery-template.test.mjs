@@ -9,9 +9,9 @@ import assert from 'node:assert/strict';
 import { ContextPlugin } from '../../src/modules/promptplug/plugins/context.js';
 import { parseParams } from '../../src/modules/tasktool/params.js';
 import { renderInstruction } from '../../src/core/instruction-template.js';
-import { DEFAULT_CONTEXT_TEMPLATE } from '../../src/shared/prompt-blocks.js';
+import { templateBundle } from '../../src/modules/promptplug/template-bundle.js';
 
-const TPL = DEFAULT_CONTEXT_TEMPLATE;
+const TPL = templateBundle().context.list[0].template;
 
 /** 与 wait.ts 同构的最小组装：seed + context 插件写回段。 */
 async function ctxOf(groupCtx, extra = {}) {

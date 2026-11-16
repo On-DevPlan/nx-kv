@@ -2081,6 +2081,45 @@
       ]
     },
     {
+      "name": "prompt",
+      "path": [
+        "prompt"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "order",
+          "path": [
+            "prompt",
+            "order"
+          ],
+          "action": {
+            "id": "prompt.order",
+            "module": "promptplug",
+            "summary": "写提示词插件顺序数组（唯一真相；必须恰好包含全部 8 个插件 id 各一次）",
+            "usage": "prompt order",
+            "http": "PUT /api/prompt/order"
+          },
+          "children": []
+        },
+        {
+          "name": "registry",
+          "path": [
+            "prompt",
+            "registry"
+          ],
+          "action": {
+            "id": "prompt.registry",
+            "module": "promptplug",
+            "summary": "提示词插件注册表：8 段的生效模板 / 变量目录 / 顺序位（三端同源，uiDescriptor 派生）",
+            "usage": "prompt registry",
+            "http": "GET /api/prompt/registry"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
       "name": "db",
       "path": [
         "db"

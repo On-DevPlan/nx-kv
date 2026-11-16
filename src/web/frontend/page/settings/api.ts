@@ -33,6 +33,15 @@ export function saveLocaltaskSettings(patch: LocaltaskSettingPatch): Promise<any
   return api('/api/localtasks/setting', { method: 'PATCH', body: patch });
 }
 
+/**
+ * 提示词插件注册表（GET /api/prompt/registry）：8 段的生效模板 / 变量目录 / 顺序位。
+ * 区块 tab、标签、每段「可使用参数」清单全部从这里派生——不再手写第二份
+ * （prompt-template-params.ts 已删除，方案 §7：声明是 UI 的唯一数据源）。
+ */
+export function getPromptRegistry(): Promise<any> {
+  return api('/api/prompt/registry');
+}
+
 /** 并发拉仓库清单与看板清单（侧栏分组用）。 */
 export function loadReposAndBoards(): Promise<any> {
   return Promise.all([api('/api/repos'), api('/api/boards')]);

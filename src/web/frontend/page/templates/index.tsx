@@ -1,7 +1,7 @@
 // 任务模板编辑宿主（#135）：不再做列表页——管理在设置卡片；这里只承载全屏 MdPanes。
 // config: { mode:'edit'|'new', id?, name?, scope?, topic? }
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
-import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
+import { renderTemplateBody } from '../../modules/prompts/render-template-body.js';
 import { renderMarkdownHtml } from '../../modules/md/md-parse.js';
 import { useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';

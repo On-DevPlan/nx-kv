@@ -17,10 +17,18 @@
 //
 // repos 在模块互依禁列里 → 动态 import（与 localtask→timegoal 探针同一惯例）。
 import { badInput } from '../../../core/errors.js';
-import { DEFAULT_GETLOOP_INSTRUCTION } from '../../../shared/prompt-blocks.js';
 
-// 持续 get 内文的默认文案：**唯一来源在共享层**（src/shared/prompt-blocks.js），
-// 全局「提示词模板 → 持续 get」区块的内置模板用的就是同一份。
+/**
+ * 持续 get 内文的默认文案（v6 起唯一归属在本文件——shared/prompt-blocks 不再持有
+ * 任何模板正文，模板真相在出厂快照 blockTemplates.json）。这里的文本是快照 getloop
+ * 段内置模板的**内文**（快照模板 = `{{#if getloop}}\n<本段>\n{{/if}}`），一致性由
+ * tests/unit/prompt-ensure.test.mjs 对账；改任何一处都要同步另一处并跑单测。
+ */
+export const DEFAULT_GETLOOP_INSTRUCTION =
+  '{{#if task}}不要直接结束本轮：完成上面的任务（{{task.id}}）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；{{#if (gt getloop.waitMinutes 0)}}没活时每次最多阻塞 {{getloop.waitMinutes}} 分钟，直到 get 返回 timeout 为止。{{/if}}{{/if}}';
+
+// 持续 get 内文的默认文案：**唯一来源在本文件**（hook 侧注入 getloop 插件的 loopText），
+// 全局「提示词模板 → 持续 get」区块的内置模板与它逐字同源（单测钉住）。
 export const DEFAULT_GET_LOOP_TEMPLATE = DEFAULT_GETLOOP_INSTRUCTION;
 
 export const GET_LOOP_DEFAULT_MINUTES = 10; // 阻塞窗口默认 10 分钟（上限仍受 wait 的 600s 夹制）

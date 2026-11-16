@@ -2,22 +2,20 @@
 // settings.ackPrompt 的存储形态、条数/长度上限与缺省值，以及交付模板的钳制都在这里。
 // 完成后的汇报要求与收尾要求统一落在 ack 区块（DEFAULT_ACK_PROMPT，设置页可见可改）；
 // 旧 rule 区块已删除，其内容迁移时并入 ack。
+
+/**
+ * 默认 ack：完成任务就调用 localtask done 回填结果（任务 51 的职责合并决定）。
+ * v6 起唯一归属在本文件——shared/prompt-blocks 不再持有任何模板正文，模板真相在
+ * 出厂快照 blockTemplates.json；这里的文本 ≡ 快照 ack 段内置文本，一致性由
+ * tests/unit/prompt-ensure.test.mjs 对账；改任何一处都要同步另一处并跑单测。
+ */
+export const DEFAULT_ACK_PROMPT =
+  '完成之后必须调用 nx-kv localtask done --id {{task.id}} --summary "<完成总结>" 汇报结果。';
+
 import {
   DEFAULT_APPEND_MODE,
-  DEFAULT_ACK_PROMPT,
   APPEND_MODES,
 } from '../../shared/prompt-blocks.js';
-
-export { DEFAULT_ACK_PROMPT };
-
-// ─── ack 完成总结提示词（settings.ackPrompt）─────────────────────────
-//
-// agent 完成任务时写的**完成总结（ack）**该按什么格式——收进 ack 区块的模板列表，
-// 多条按空行拼成一段，随领取交付的 instruction 一起给到 agent。
-// **缺省就是默认汇报要求**（可见、可改；显式 '' / [] 恢复内置而不是关掉）。
-// done 指令只存在于 ack 区块（旧 rule 已删除，其内容迁移时并入这里）。
-/** 默认 ack：完成任务就调用 localtask done 回填结果（任务 51 的职责合并决定）。
- *  文案与区块默认模板同源（shared/prompt-blocks.js），上面已重导出。 */
 
 /** 交付上下文模板（任务 #62）的长度上限——防把整本书塞进设置。 */
 export const MAX_DELIVERY_TEMPLATE_LEN = 8000;

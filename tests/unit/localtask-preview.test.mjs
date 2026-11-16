@@ -92,15 +92,15 @@ test('带时间目标的任务：预览会给出 check 指令，但不启动计�
   assert.ok(seg, '段落来源里应有一段「任务级 check 指令」');
 });
 
-test('开关状态如实：每个区块按自己的生效模板渲染', async () => {
+test('开关状态如实：每个区块按自己的生效模板渲染（空生效模板已不可保存，S1 起）', async () => {
   const added = await svc.addTask({ cwd: dir, text: '# 任务丁\n\n干净交付' });
 
-  // 给 ack 区块新建一个「空白」模板并启用 → 该块不输出（其它块不受影响）
+  // 新建一个空白模板但**不启用** → 该块仍按内置渲染（空条目只是存档，不参与生效）
   const s = await svc.getSettings();
   await svc.updateSettings({
     blockTemplates: {
       ack: {
-        active: 'empty',
+        active: s.blockTemplates.ack.active,
         list: [
           ...s.blockTemplates.ack.list,
           { id: 'empty', name: '空白', template: '' },
@@ -109,10 +109,21 @@ test('开关状态如实：每个区块按自己的生效模板渲染', async ()
     },
   });
   const off = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
-  assert.equal(off.switches.ack.on, false);
-  assert.equal(off.switches.blockTemplates.ack.custom, true, 'ack 当前用的是自定义空白模板');
-  assert.equal(off.segments.some((s) => s.id === 'ack'), false, '空白模板不输出 ack 段');
+  assert.equal(off.switches.ack.on, true, '空白条目未启用 → 内置仍生效，ack 段照常输出');
+  assert.equal(off.switches.blockTemplates.ack.custom, false, '生效项仍是内置');
+  assert.equal(off.segments.some((s) => s.id === 'ack'), true);
 
+  // 空生效模板在写路径被拒（S1 裁决：空段 = 配置错误，不再「保存成功、渲染消失」）
+  await assert.rejects(
+    () => svc.updateSettings({
+      blockTemplates: {
+        ack: { active: 'empty', list: [...s.blockTemplates.ack.list, { id: 'empty', name: '空白', template: '' }] },
+      },
+    }),
+    /是空的/,
+  );
+
+  // 启用自定义模板 → custom=true、段输出（开关如实）
   await svc.updateSettings({ ackPrompt: ['完成总结写「改了什么 / 怎么验证」'] });
   const on = await previewTaskDelivery({ task: added.task, cwd: dir, key: keyOf(), summary: '' });
   assert.equal(on.switches.ack.on, true);

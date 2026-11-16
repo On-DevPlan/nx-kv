@@ -74,6 +74,10 @@ import type {
   LocaltaskUpdateAction,
 } from '../../../modules/localtask/actions/_manifest.generated.js';
 import type {
+  PromptOrderAction,
+  PromptRegistryAction,
+} from '../../../modules/promptplug/actions/_manifest.generated.js';
+import type {
   BoardAddAction,
   BoardAssignAction,
   BoardExportAction,
@@ -391,6 +395,10 @@ export interface ApiClient {
   install(input?: z.input<InstanceType<typeof BundledInstallAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof BundledInstallAction>['run']>>>;
 /** 列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group */
   bundledList(): Promise<Awaited<ReturnType<InstanceType<typeof BundledListAction>['run']>>>;
+/** 写提示词插件顺序数组（唯一真相；必须恰好包含全部 8 个插件 id 各一次） */
+  order(input: z.input<InstanceType<typeof PromptOrderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptOrderAction>['run']>>>;
+/** 提示词插件注册表：8 段的生效模板 / 变量目录 / 顺序位（三端同源，uiDescriptor 派生） */
+  registry(): Promise<Awaited<ReturnType<InstanceType<typeof PromptRegistryAction>['run']>>>;
 }
 
 export function createApiClient(transport: Transport): ApiClient {
@@ -1305,6 +1313,18 @@ export function createApiClient(transport: Transport): ApiClient {
     async bundledList() {
       const path = `/api/bundled`;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof BundledListAction>['run']>>;
+    },
+    // action: prompt.order
+    async order(input: z.input<InstanceType<typeof PromptOrderAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PromptOrderAction>['_input']>);
+      const path = `/api/prompt/order`;
+      const body = { "order": inp["order"] };
+      return (await transport.request("PUT", path, body)) as Awaited<ReturnType<InstanceType<typeof PromptOrderAction>['run']>>;
+    },
+    // action: prompt.registry
+    async registry() {
+      const path = `/api/prompt/registry`;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PromptRegistryAction>['run']>>;
     },
   };
 }

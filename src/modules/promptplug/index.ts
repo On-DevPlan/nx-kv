@@ -11,6 +11,7 @@ import { ACTIONS } from './actions/_manifest.generated.js';
 
 // 装配无关的公开面（历史 import 路径保持不变：tasktool / settings.ts 从这里拿）
 export {
+  blockLabelOf,
   buildDeliveryPlugins,
   deliveryCtxOf,
   fieldCatalogOf,

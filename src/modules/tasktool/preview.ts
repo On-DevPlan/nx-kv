@@ -15,9 +15,8 @@
 //      想关该关哪个开关」。
 import { getSettings } from '../localtask/service.js';
 import {
-  BLOCK_DEFS,
+  PROMPT_BLOCK_IDS,
   resolveBlockTemplates,
-  type BlockDef,
   type ResolvedBlockTemplate,
 } from '../../shared/prompt-blocks.js';
 import { deliveryPlainText } from './delivery-text.js';
@@ -89,13 +88,13 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params }: P
       appendMode: settings.appendMode || 'xml',
       // 每个区块各自选中的生效模板（内置 / 自定义）
       blockTemplates: Object.fromEntries(
-        (BLOCK_DEFS as readonly BlockDef[]).map((d) => [
-          d.id,
+        PROMPT_BLOCK_IDS.map((id) => [
+          id,
           {
-            id: (active[d.id] as ResolvedBlockTemplate).id,
-            name: (active[d.id] as ResolvedBlockTemplate).name,
-            custom: !(active[d.id] as ResolvedBlockTemplate).builtin,
-            builtin: (active[d.id] as ResolvedBlockTemplate).builtin,
+            id: (active[id] as ResolvedBlockTemplate).id,
+            name: (active[id] as ResolvedBlockTemplate).name,
+            custom: !(active[id] as ResolvedBlockTemplate).builtin,
+            builtin: (active[id] as ResolvedBlockTemplate).builtin,
           },
         ])
       ),

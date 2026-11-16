@@ -96,3 +96,10 @@ export function globalTemplateVarScope(): { allowedSegments: string[]; fieldKeys
 export const PLUGIN_IDS: readonly string[] = [
   'context', 'attachment', 'timecheck', 'goalhint', 'doneguard', 'ext', 'ack', 'getloop',
 ];
+
+/** 区块显示名（错误消息 / 设置页 tab 用）——从插件 label 派生，不写第二份。 */
+export function blockLabelOf(id: string): string {
+  const p = pluginById(id);
+  if (!p) throw new Error(`未知提示词插件：${id}`);
+  return p.label;
+}

@@ -28,7 +28,7 @@ import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { NEW_TEMPLATE_VALUES, parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
 import { hitTaskQuery } from '../../modules/board/task-search.js';
-import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
+import { renderTemplateBody } from '../../modules/prompts/render-template-body.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, LocalTopic, RepoData } from '../../types.js';
 import type { Model } from 'flexlayout-react';

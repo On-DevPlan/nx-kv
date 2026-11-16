@@ -28,7 +28,7 @@ import { findOpenPanel, openPanel } from '../../workspace.js';
 import { openSettingsPanel, openTemplateEditor } from '../../panels.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { NEW_TEMPLATE_VALUES } from '../../modules/md/md-parse.js';
-import { renderTemplateBody } from '../../modules/prompts/placeholders.js';
+import { renderTemplateBody } from '../../modules/prompts/render-template-body.js';
 import { useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, PromptTemplate, RepoRow } from '../../types.js';
 import { sortTasksForDisplay } from './task-utils.js';

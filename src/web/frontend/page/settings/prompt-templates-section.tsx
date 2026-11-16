@@ -9,45 +9,50 @@
 // UI 边界：这里只做模板编辑与启用。编辑区下方给**只读参数清单**（参数名 + 一句含义）；
 // 引擎名称、选型理由、语法教程、示例模板与成段说明仍然只写在 skill / docs，不放到设置页。
 import { useEffect, useState } from 'react';
-import { getLocaltaskSettings, saveLocaltaskSettings } from './api.js';
+import { getLocaltaskSettings, getPromptRegistry, saveLocaltaskSettings } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
 import {
   APPEND_MODES,
-  BLOCK_DEFS,
   BUILTIN_TEMPLATE_ID,
   BUILTIN_TEMPLATE_NAME,
   MAX_PROMPT_TEMPLATE_NAME,
-  normalizeBlockTemplateLists,
 } from '../../../../shared/prompt-blocks.js';
-import type { BlockDef, BlockTemplateList, PromptTemplateItem } from '../../../../shared/prompt-blocks.js';
-import { BLOCK_PARAMS } from './prompt-template-params.js';
+import type { BlockTemplateList, PromptTemplateItem } from '../../../../shared/prompt-blocks.js';
 
-interface BlockParamsProps {
-  blockId: string;
+/** 注册表里的一段插件描述（GET /api/prompt/registry 的 plugins[]）。 */
+interface PluginDesc {
+  id: string;
+  order: number;
+  tag: string;
+  label: string;
+  template: string;
+  fields: { key: string; kind: string; label: string; desc?: string }[];
+  writableKeys: string[];
 }
 
-// 只读参数速查：分组紧凑、参数名等宽、含义一行内说完。
-function BlockParams({ blockId }: BlockParamsProps) {
-  const groups = BLOCK_PARAMS[blockId] || [];
-  if (!groups.length) return null;
+interface BlockParamsProps {
+  plugin: PluginDesc | null;
+}
+
+// 只读参数速查：来自注册表的 fields（声明派生，不写第二份）。
+function BlockParams({ plugin }: BlockParamsProps) {
+  if (!plugin || !plugin.fields.length) return null;
   return (
     <div className="setp-params" aria-label="可使用参数">
       <div className="setp-params-head">可使用参数</div>
-      {groups.map((g) => (
-        <div className="setp-params-row" key={g.label}>
-          <span className="setp-params-label">{g.label}</span>
-          <div className="setp-params-items">
-            {g.items.map(([name, desc]) => (
-              <span className="setp-param" key={name}>
-                <code>{name}</code>
-                <span>{desc}</span>
-              </span>
-            ))}
-          </div>
+      <div className="setp-params-row">
+        <span className="setp-params-label">变量</span>
+        <div className="setp-params-items">
+          {plugin.fields.map((f) => (
+            <span className="setp-param" key={f.key}>
+              <code>{f.key}</code>
+              <span>{f.desc || f.label}</span>
+            </span>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
@@ -76,14 +81,9 @@ function genId() {
   return `bt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function blockOf(id: string): BlockDef {
-  // BLOCK_DEFS 是冻结的非空常量表：find 落空时才回落到首项
-  return (BLOCK_DEFS.find((d) => d.id === id) || BLOCK_DEFS[0])!;
-}
-
 /**
- * 取某区块的模板列表。normalizeBlockTemplateLists 的契约是「每个区块都有列表，
- * 且列表首项恒为系统内置条目」，所以这里的下标记号是收口 noUncheckedIndexedAccess，
+ * 取某区块的模板列表。响应里的 blockTemplates 是后端 normalize 过的合法数据
+ * （8 段齐、builtin 常驻），这里的下标记号是收口 noUncheckedIndexedAccess，
  * 不是真的会落空。
  */
 function listOf(lists: Record<string, BlockTemplateList>, id: string): BlockTemplateList {
@@ -99,15 +99,17 @@ export default function PromptTemplatesSection() {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
   const [state, setState] = useState<PromptListsState | null>(null); // { lists, appendMode }
-  const [blockId, setBlockId] = useState(BLOCK_DEFS[0]!.id);
+  const [registry, setRegistry] = useState<PluginDesc[] | null>(null); // 注册表（声明派生）
+  const [blockId, setBlockId] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null); // { blockId, id, name, template }
   const [busy, setBusy] = useState(false);
 
   const applyLists = (lists: Record<string, BlockTemplateList>, keep: KeepTarget | null = null) => {
     // state 缺省时按 xml 起步（= APPEND_MODES[0]，与旧实现里「读不到就回落首项」等价）
     setState((cur) => ({ lists, appendMode: cur?.appendMode ?? 'xml' }));
-    const target = keep || (editing && editing.blockId === blockId ? editing : null);
+    const target = keep || (editing && blockId && editing.blockId === blockId ? editing : null);
     const bid = target?.blockId || blockId;
+    if (!bid) return;
     const tpl = templateOf(lists, bid, target?.id || listOf(lists, bid).active);
     setEditing({ blockId: bid, id: tpl.id, name: tpl.name, template: tpl.template });
   };
@@ -117,25 +119,38 @@ export default function PromptTemplatesSection() {
       .then((d) => {
         // 响应是外部数据（/api/localtasks）：settings 形状按后端 schema 读
         const s = d?.settings || {};
-        const lists = normalizeBlockTemplateLists(s.blockTemplates);
+        const lists = s.blockTemplates as Record<string, BlockTemplateList>;
         const appendMode = s.appendMode === 'plain' ? 'plain' : 'xml';
         setState({ lists, appendMode });
-        const first = BLOCK_DEFS[0]!;
-        const tpl = templateOf(lists, first.id, listOf(lists, first.id).active);
-        setBlockId(first.id);
-        setEditing({ blockId: first.id, id: tpl.id, name: tpl.name, template: tpl.template });
+        return getPromptRegistry().then((r) => {
+          const plugins: PluginDesc[] = r?.plugins || [];
+          setRegistry(plugins);
+          const first = plugins[0]?.id;
+          if (!first) return;
+          const tpl = templateOf(lists, first, listOf(lists, first).active);
+          setBlockId(first);
+          setEditing({ blockId: first, id: tpl.id, name: tpl.name, template: tpl.template });
+        });
       })
       .catch((e) => toast('读取失败：' + ((e as Error).message || e)));
   };
 
   useEffect(load, []);
 
-  if (!state) return <div className="setp-note">读取提示词模板…</div>;
-
-  const activeBlock = blockOf(blockId);
+  const currentLists = state?.lists ?? null;
+  const plugins = registry || [];
+  const activeBlockId = blockId || plugins[0]?.id;
+  const activePlugin = plugins.find((p) => p.id === activeBlockId) || null;
   // APPEND_MODES 是冻结的非空常量表：找不到（异常值）时回落首项
-  const activeMode = APPEND_MODES.find((m) => m.id === state.appendMode) || APPEND_MODES[0]!;
-  const currentBlock = listOf(state.lists, blockId);
+  const activeMode = state ? APPEND_MODES.find((m) => m.id === state.appendMode) || APPEND_MODES[0]! : APPEND_MODES[0]!;
+  const currentBlock = currentLists && activeBlockId ? listOf(currentLists, activeBlockId) : null;
+
+  if (!state) return <div className="setp-note">读取提示词模板…</div>;
+  if (!activeBlockId || !currentBlock) {
+    return <div className="setp-note">读取提示词插件注册表…</div>;
+  }
+  const block = activeBlockId; // 注册表已加载后恒为 string（下面全部函数只用它）
+
   const isBuiltin = editing?.id === BUILTIN_TEMPLATE_ID;
 
   const persist = async (nextLists: Record<string, BlockTemplateList>, message: string, keep: KeepTarget | null = null) => {
@@ -146,7 +161,7 @@ export default function PromptTemplatesSection() {
       // 于是真正发出去的是 {method:'PATCH', body:{blockTemplates}}，服务端 zod 把两层未知键
       // 全部剥掉 → patch 为空 → 报「请至少指定一项」。直接传 patch 本身。
       const d = await saveLocaltaskSettings({ blockTemplates: nextLists });
-      applyLists(normalizeBlockTemplateLists(d?.blockTemplates), keep);
+      applyLists(d?.blockTemplates, keep);
       toast(message);
     } catch (e) {
       toast(String((e as Error).message || e));
@@ -166,8 +181,8 @@ export default function PromptTemplatesSection() {
   };
 
   const pick = (id: string) => {
-    const tpl = templateOf(state.lists, blockId, id);
-    setEditing({ blockId, id: tpl.id, name: tpl.name, template: tpl.template });
+    const tpl = templateOf(state.lists, block, id);
+    setEditing({ blockId: block, id: tpl.id, name: tpl.name, template: tpl.template });
   };
 
   const patchEditing = (patch: Partial<EditingState>) => setEditing((cur) => (cur ? { ...cur, ...patch } : cur));
@@ -181,21 +196,21 @@ export default function PromptTemplatesSection() {
     const name = String(editing.name || '').trim().slice(0, MAX_PROMPT_TEMPLATE_NAME) || '未命名模板';
     const template = String(editing.template ?? '');
     const next = cloneLists();
-    const b = listOf(next, blockId);
+    const b = listOf(next, block);
     const idx = b.list.findIndex((t) => t.id === editing.id);
     const entry: PromptTemplateItem = { id: editing.id, name, template, builtin: false };
     if (idx >= 0) b.list[idx] = entry;
     else b.list.push(entry);
-    persist(next, '已保存模板（当前生效项保存后立即生效）', { blockId, id: editing.id });
+    persist(next, '已保存模板（当前生效项保存后立即生效）', { blockId: block, id: editing.id });
   };
 
   const create = () => {
     if (busy) return;
     const next = cloneLists();
     const entry: PromptTemplateItem = { id: genId(), name: '新模板', template: '', builtin: false };
-    listOf(next, blockId).list.push(entry);
+    listOf(next, block).list.push(entry);
     // 先落库再选中；是否启用由用户点「启用」决定
-    persist(next, '已新建模板，填写后保存，再点「启用」', { blockId, id: entry.id });
+    persist(next, '已新建模板，填写后保存，再点「启用」', { blockId: block, id: entry.id });
   };
 
   // 入参既可能是模板 id（列表行的「复制」），也可能是一个点击事件
@@ -204,7 +219,7 @@ export default function PromptTemplatesSection() {
   const duplicate = (idOrEvent?: unknown) => {
     if (busy) return;
     const id = typeof idOrEvent === 'string' ? idOrEvent : '';
-    const src = templateOf(state.lists, blockId, id);
+    const src = templateOf(state.lists, block, id);
     const next = cloneLists();
     const entry: PromptTemplateItem = {
       id: genId(),
@@ -212,8 +227,8 @@ export default function PromptTemplatesSection() {
       template: src.template || '',
       builtin: false,
     };
-    listOf(next, blockId).list.push(entry);
-    persist(next, '已复制模板', { blockId, id: entry.id });
+    listOf(next, block).list.push(entry);
+    persist(next, '已复制模板', { blockId: block, id: entry.id });
   };
 
   const saveAndActivate = () => {
@@ -221,21 +236,21 @@ export default function PromptTemplatesSection() {
     if (!editing) return;
     const name = String(editing.name || '').trim().slice(0, MAX_PROMPT_TEMPLATE_NAME) || '未命名模板';
     const next = cloneLists();
-    const b = listOf(next, blockId);
+    const b = listOf(next, block);
     const idx = b.list.findIndex((t) => t.id === editing.id);
     const entry: PromptTemplateItem = { id: editing.id, name, template: String(editing.template ?? ''), builtin: false };
     if (idx >= 0) b.list[idx] = entry;
     else b.list.push(entry);
     b.active = editing.id;
-    persist(next, `已保存并启用「${name}」`, { blockId, id: editing.id });
+    persist(next, `已保存并启用「${name}」`, { blockId: block, id: editing.id });
   };
 
   const activate = (id: string) => {
     if (busy) return;
     if (id === currentBlock.active) return;
     const next = cloneLists();
-    listOf(next, blockId).active = id;
-    persist(next, `已启用「${templateOf(state.lists, blockId, id).name}」`, { blockId, id });
+    listOf(next, block).active = id;
+    persist(next, `已启用「${templateOf(state.lists, block, id).name}」`, { blockId: block, id });
   };
 
   const remove = async (id: string) => {
@@ -244,7 +259,7 @@ export default function PromptTemplatesSection() {
       toast('系统内置模板不可删除');
       return;
     }
-    const tpl = templateOf(state.lists, blockId, id);
+    const tpl = templateOf(state.lists, block, id);
     const ok = await dialog({
       title: '删除模板？',
       message: `将删除「${tpl.name}」，保存后不可恢复。该区块的系统内置模板会保留。`,
@@ -253,7 +268,7 @@ export default function PromptTemplatesSection() {
     });
     if (!ok) return;
     const next = cloneLists();
-    const b = listOf(next, blockId);
+    const b = listOf(next, block);
     b.list = b.list.filter((t) => t.id !== id);
     if (b.active === id) b.active = BUILTIN_TEMPLATE_ID;
     persist(next, '已删除模板，当前生效项已回落到系统内置');
@@ -263,8 +278,8 @@ export default function PromptTemplatesSection() {
     if (busy) return;
     if (currentBlock.active === BUILTIN_TEMPLATE_ID) return;
     const next = cloneLists();
-    listOf(next, blockId).active = BUILTIN_TEMPLATE_ID;
-    persist(next, '已恢复系统内置模板', { blockId, id: BUILTIN_TEMPLATE_ID });
+    listOf(next, block).active = BUILTIN_TEMPLATE_ID;
+    persist(next, '已恢复系统内置模板', { blockId: block, id: BUILTIN_TEMPLATE_ID });
   };
 
   const setAppendMode = async (mode: string) => {
@@ -306,17 +321,17 @@ export default function PromptTemplatesSection() {
       </div>
 
       <nav className="setp-block-tabs" aria-label="提示词区块">
-        {BLOCK_DEFS.map((d) => {
-          const act = templateOf(state.lists, d.id, listOf(state.lists, d.id).active);
+        {plugins.map((p) => {
+          const act = templateOf(state.lists, p.id, listOf(state.lists, p.id).active);
           return (
             <button
-              key={d.id}
+              key={p.id}
               type="button"
-              className={'setp-block-tab' + (d.id === blockId ? ' is-on' : '')}
+              className={'setp-block-tab' + (p.id === block ? ' is-on' : '')}
               disabled={busy}
-              onClick={() => openBlock(d.id)}
+              onClick={() => openBlock(p.id)}
             >
-              <span>{d.label}</span>
+              <span>{p.label}</span>
               <small>{act.builtin ? '系统内置' : act.name}</small>
             </button>
           );
@@ -326,8 +341,8 @@ export default function PromptTemplatesSection() {
       <div className="setp-block-card">
         <div className="setp-block-card-head">
           <div className="setp-block-card-title">
-            <b>{activeBlock.label}</b>
-            <span className="setp-note">{activeBlock.desc}</span>
+            <b>{activePlugin?.label}</b>
+            <span className="setp-note">{activePlugin?.tag}</span>
           </div>
           <div className="setp-block-card-actions">
             <Button variant="secondary" disabled={busy} onClick={create}>
@@ -343,7 +358,7 @@ export default function PromptTemplatesSection() {
           </div>
         </div>
 
-        <div className="setp-tpl-list" role="listbox" aria-label={`${activeBlock.label}模板列表`}>
+        <div className="setp-tpl-list" role="listbox" aria-label={`${activePlugin?.label}模板列表`}>
           {currentBlock.list.map((t) => {
             const on = t.id === currentBlock.active;
             const selected = t.id === editing?.id;
@@ -434,7 +449,7 @@ export default function PromptTemplatesSection() {
               onChange={(e) => patchEditing({ template: e.target.value })}
             />
 
-            <BlockParams blockId={blockId} />
+            <BlockParams plugin={activePlugin} />
 
             <div className="setp-proj-a">
               {isBuiltin ? (

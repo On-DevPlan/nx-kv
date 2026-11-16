@@ -14,6 +14,8 @@ import { readSettingRaw } from '../../../core/db/settings.js';
 import { resolveBlockTemplates } from '../../../shared/prompt-blocks.js';
 import { uiDescriptor } from '../../../shared/prompt-plugin.js';
 import { buildDeliveryPlugins, PLUGIN_IDS } from '../factory.js';
+import { templateBundle } from '../template-bundle.js';
+import { ensurePromptTemplates } from '../ensure.js';
 import { LT_BLOCK_TEMPLATES, PROMPT_ORDER_KEY } from '../keys.js';
 
 /** prompt.registry 的入参契约（无参）。 */
@@ -31,7 +33,14 @@ export class PromptRegistryAction extends ActionBase<typeof input> {
   })
   override async run(_ctx: ActionInput<this['_input']>) {
     const conn = getDb();
-    const resolved = resolveBlockTemplates(readSettingRaw(conn, LT_BLOCK_TEMPLATES));
+    // 自举兜底（幂等，版本相同零写）：注册表出口不依赖 localtask 的 open 链——
+    // 纯 core store 上也必须能出注册表（方案的「全仓唯一落库调用点」仍是 open.ts）。
+    let raw = readSettingRaw(conn, LT_BLOCK_TEMPLATES);
+    if (raw === undefined) {
+      ensurePromptTemplates(conn);
+      raw = readSettingRaw(conn, LT_BLOCK_TEMPLATES);
+    }
+    const resolved = resolveBlockTemplates(raw ?? templateBundle());
     const plugins = buildDeliveryPlugins(resolved as any, {
       groupCtx: null, attach: null, queueInfo: null, loopText: '', waitMinutes: 0,
     });

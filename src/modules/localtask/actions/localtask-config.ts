@@ -5,10 +5,10 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
-import { BLOCK_DEFS as _BLOCK_DEFS, resolveBlockTemplates as _resolveBlockTemplates } from '../../../shared/prompt-blocks.js';
+import { resolveBlockTemplates as _resolveBlockTemplates, PROMPT_BLOCK_IDS as _PROMPT_BLOCK_IDS } from '../../../shared/prompt-blocks.js';
 import { badInput as _badInput } from '../../../core/errors.js';
 const service: any = serviceNs;
-const BLOCK_DEFS: any = _BLOCK_DEFS;
+const PROMPT_BLOCK_IDS: any = _PROMPT_BLOCK_IDS;
 const resolveBlockTemplates: any = _resolveBlockTemplates;
 const badInput: any = _badInput;
 
@@ -42,7 +42,7 @@ export class LocaltaskConfigAction extends ActionBase<typeof input> {
       const ack: any = s.ackPromptList && s.ackPromptList.length ? `ack 提示词 ${s.ackPromptList.length} 条` : 'ack 提示词已清空';
       const mode: any = s.appendMode === 'plain' ? '正文直追加' : 'XML 区块';
       const active: any = resolveBlockTemplates(s.blockTemplates);
-      const blocks: any = BLOCK_DEFS.map((d: any) => `${d.id}=${active[d.id].builtin ? '内置' : `「${active[d.id].name}」`}`).join('，');
+      const blocks: any = PROMPT_BLOCK_IDS.map((id: any) => `${id}=${active[id].builtin ? '内置' : `「${active[id].name}」`}`).join('，');
       return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· ${ack} · 追加模式：${mode} · 区块模板：${blocks}`;
     },
   })

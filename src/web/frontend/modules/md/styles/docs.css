@@ -19,6 +19,17 @@
 }
 .mdw .md-wl-miss:hover, .rp-page .md-wl-miss:hover{background:color-mix(in srgb, var(--bad,#B3261E) 8%, transparent)}
 
+/* 外链（#142）：markdown 的 [文本](https://…) 与裸 URL 都渲染成它，新标签打开 */
+.mdw .md-link, .rp-page .md-link{
+  color:var(--mdw-accent,#2F6F5E);text-decoration:underline;
+  text-decoration-color:color-mix(in srgb, var(--mdw-accent,#2F6F5E) 40%, transparent);
+  text-underline-offset:2px;cursor:pointer;word-break:break-all;
+}
+.mdw .md-link:hover, .rp-page .md-link:hover{
+  background:var(--mdw-accent-soft,#E8F2EE);
+  text-decoration-color:var(--mdw-accent,#2F6F5E);
+}
+
 /* 文档页签（DocPanel）：与任务页同构的头 + 模式切换 */
 .docp{display:flex;flex-direction:column;height:100%;position:relative}
 .docp .mdw-main{display:flex;flex-direction:column;min-height:0;flex:1}

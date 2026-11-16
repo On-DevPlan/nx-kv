@@ -15,7 +15,7 @@ import { closeDb } from '../../src/core/db/index.js';
 import * as svc from '../../src/modules/localtask/service.js';
 import { BUILTIN_TEMPLATE_ID, PROMPT_BLOCK_IDS } from '../../src/shared/prompt-blocks.js';
 import { readSettingRaw, writeSettingRaw } from '../../src/core/db/settings.js';
-import { LT_PROMPT_TEMPLATES_VERSION, LT_BLOCK_TEMPLATES } from '../../src/modules/promptplug/keys.js';
+import { LT_BLOCK_TEMPLATES } from '../../src/modules/promptplug/keys.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-migrate-'));
 const dbFile = join(tmp, 'nxkv.db');

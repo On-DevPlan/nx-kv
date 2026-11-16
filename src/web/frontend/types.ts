@@ -135,6 +135,8 @@ export interface TemplatesApi {
   templates: PromptTemplate[] | null;
   unsupported: boolean;
   defaultBody: () => string;
+  /** 默认模板的正文 + 模板身份（id 写进任务正文 frontmatter，编辑器据此锁骨架）。 */
+  defaultPick: () => { body: string; id: string };
   refetch: () => Promise<void>;
   add: (name: string, body: string, setDefault?: boolean, opts?: { topic?: string; scope?: string[] }) => Promise<any>;
   remove: (id: string) => Promise<any>;

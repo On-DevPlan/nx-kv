@@ -25,6 +25,7 @@ import {
   stripPhantomEmptyLines,
   withFrontmatter,
 } from '../../modules/md/md-parse.js';
+import { templateDraftBody } from '../../modules/prompts/template-preview.js';
 import {
   docIdOf,
   nextDraftId,
@@ -401,7 +402,7 @@ export function useTaskActions({
     if (docFm.project) fm.project = docFm.project;
     saveDoc(docId, {
       title: '',
-      body: withFrontmatter(tpl ? tpl.defaultBody() : '', fm),
+      body: tpl ? templateDraftBody(tpl.defaultPick(), fm) : withFrontmatter('', fm),
     });
     if (app.openPage) {
       app.openPage(

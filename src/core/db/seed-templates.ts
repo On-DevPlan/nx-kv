@@ -27,7 +27,7 @@ import type { DbApi } from './driver.js';
  */
 export const NEWTASK_REF_BODY = `## 本轮问题
 
-（把你要问这个仓库的问题写在这里）
+{{问题}}
 
 ---
 
@@ -105,7 +105,10 @@ export const BUILTIN_TEMPLATES = Object.freeze([
     slot: 'suffix',
     body: NEWTASK_REF_BODY,
     varsSchema: [],
-    vars: {},
+    // 槽位默认值 = 用户看到的「填这里」提示：渲染后任务里不是空块，点进去改成自己的问题即可。
+    // 默认值是**提示文字**而不是空串，是因为 #217 之后这块在编辑器里是「可编辑插槽」——
+    // 空块看不出该写什么。
+    vars: { 问题: '（把你要问这个仓库的问题写在这里）' },
     isDefault: 1,
   },
   {

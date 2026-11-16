@@ -7,8 +7,8 @@ import assert from 'node:assert/strict';
 import { NEWTASK_REF_BODY } from '../../src/core/db/seed-templates.js';
 import { renderTemplateBody } from '../../src/web/frontend/modules/prompts/render-template-body.js';
 
-test('#137 唯一的出厂文本是「ref 生成」的零知识 SOP：不含 {{槽位}} 标记', () => {
-  assert.equal(NEWTASK_REF_BODY.includes('{{'), false, '出厂文本不应再有槽位标记');
+test('#217 出厂文本声明「问题」槽位：骨架只读、槽位可编辑（默认值是可改的提示文字）', () => {
+  assert.match(NEWTASK_REF_BODY, /\{\{\s*问题\s*\}\}/, '出厂文本要有可填插槽，否则整篇骨架只读、任务没法写');
   assert.match(NEWTASK_REF_BODY, /## 本轮问题/);
   assert.match(NEWTASK_REF_BODY, /零知识起步的 SOP/);
 });

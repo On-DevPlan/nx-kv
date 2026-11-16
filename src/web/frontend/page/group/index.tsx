@@ -26,9 +26,9 @@ import { openPanel } from '../../workspace.js';
 import { openTemplateEditor } from '../../panels.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
+import { parseFrontmatter } from '../../modules/md/md-parse.js';
 import { hitTaskQuery } from '../../modules/board/task-search.js';
-import { renderTemplateBody } from '../../modules/prompts/render-template-body.js';
+import { templateDraftBody } from '../../modules/prompts/template-preview.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, LocalTopic, RepoData } from '../../types.js';
 import type { Model } from 'flexlayout-react';
@@ -352,7 +352,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   // 可改归属项目（限本组成员），按它路由进对应项目的队列。
   // 落种用 PagePanel 同一套复合键（scope::draft-N）——裸 draft 号会种不到正文上。
   // body 可选（#128）：hover 面板里选了模板就带模板正文；不带 = 默认模板（旧行为）。
-  const createTask = (body?: string) => {
+  const createTask = (pick?: { id?: string; body?: unknown; values?: Record<string, unknown> | null } | null) => {
     if (!board) return;
     if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
     const id = nextDraftId();
@@ -360,10 +360,11 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     // #/group/<id>?task=draft-N 打开寻得回同一份（#86）。以前种在成员 scope、
     // 打开走 dir 路由——组语义在建任务这步就断了。
     const docId = docIdOf(scopeOf(board.id), id);
-    // 与目录任务页同一条 defaultBody：已按槽位值渲染，不出现裸 {{背景}}
+    // 与目录任务页同一条口径：槽位已渲染、模板身份写进 frontmatter（编辑器据此锁骨架，#217）
+    const extra = { board: board.id, project: sel.key };
     saveDoc(docId, {
       title: '',
-      body: withFrontmatter(body || tpl.defaultBody(), { board: board.id, project: sel.key }),
+      body: pick ? templateDraftBody(pick, extra) : templateDraftBody(tpl.defaultPick(), extra),
     });
     app.openPage?.({ groupId: board.id, task: id, name: '新任务' });
   };
@@ -514,7 +515,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
                     className={'btn small' + (tplFlyOpen ? ' is-open' : '')}
                     title="按默认模板新建任务（▾ 选模板；携带本组语义）"
                     disabled={!sel}
-                    onClick={() => createTask('')}
+                    onClick={() => createTask()}
                   >
                     ＋ 新增任务
                     <span
@@ -576,11 +577,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
                               role="menuitem"
                               onClick={() => {
                                 setTplFlyOpen(false);
-                                createTask(
-                                  t.fallback
-                                    ? ''
-                                    : renderTemplateBody(t.body, t.values || {})
-                                );
+                                createTask(t.fallback ? null : t);
                               }}
                             >
                               {(t.id === tpl.defaultId && !t.fallback ? '✓ ' : '') + t.name}

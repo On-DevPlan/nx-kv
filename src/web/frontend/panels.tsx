@@ -159,7 +159,7 @@ export const PANELS: Record<string, PanelEntry> = {
   group: { title: '项目组', render: (cfg, ctx) => <GroupPanel boardId={cfg && cfg.boardId} model={ctx && ctx.model} /> },
   repos: { title: '仓库管理', render: () => wrap(<ReposView />) },
   overview: { title: '全部目录总览', render: () => <OverviewPanel /> },
-  // 任务模板：编辑宿主（#135）——列表在设置卡片；config 带 mode/id/scope
+  // 任务模板（#217）：#/templates 是列表页，config 带 mode/id/scope 时是编辑宿主
   templates: {
     title: '任务模板',
     render: (cfg, ctx) => wrap(
@@ -211,7 +211,7 @@ export function openSettingsPanel(model: Model | null | undefined) {
 }
 
 /**
- * 打开模板全屏编辑（#135）。管理列表在设置；这里只承载 MdPanes。
+ * 打开模板全屏编辑（#135）。列表在 #/templates 主内容区（#217）；这里只承载 MdPanes。
  */
 export function openTemplateEditor(model: Model | null | undefined, opts: TemplateEditorOpts = {}) {
   if (!model) return null;

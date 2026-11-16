@@ -25,9 +25,9 @@ import { useApp } from '../../app-context.jsx';
 import Landing from './landing.jsx';
 import DagEditor from './dag-editor.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
-import { openSettingsPanel, openTemplateEditor } from '../../panels.jsx';
+import { openTemplateEditor } from '../../panels.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { renderTemplateBody } from '../../modules/prompts/render-template-body.js';
+import { templateDraftBody } from '../../modules/prompts/template-preview.js';
 import { useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, PromptTemplate, RepoRow } from '../../types.js';
 import { sortTasksForDisplay } from './task-utils.js';
@@ -167,8 +167,9 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     if (app.openPage) app.openPage({ dirKey, task, name: '新任务' });
   };
 
-  const openTplSettings = () => {
-    if (model) openSettingsPanel(model);
+  // #217：模板列表从设置搬到侧边栏入口 + 主内容区——「管理模板…」直接去那一页
+  const openTplList = () => {
+    app.onNavigate?.('#/templates');
   };
 
   const openProgress = () => {
@@ -206,13 +207,21 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
       ? menuTemplates.map((t: PromptTemplate) => ({
           label: (t.id === tpl?.defaultId ? '✓ ' : '') + t.name,
           icon: 'list',
-          // 正文按模板取值渲染（老模板可能带 {{槽位}}，任务里不能出现裸标记）
-          onClick: () => newDraft(renderTemplateBody(t.body, t.values || {})),
+          // 正文按模板取值渲染（老模板可能带 {{槽位}}，任务里不能出现裸标记）；
+          // 模板身份写进 frontmatter，编辑器据此把骨架块标只读（#217）
+          onClick: () => newDraft(templateDraftBody(t)),
         }))
-      : [{ label: '按默认模板新建一页', icon: 'list', onClick: () => newDraft(tpl ? tpl.defaultBody() : '') }]),
+      : [{
+          label: '按默认模板新建一页',
+          icon: 'list',
+          onClick: () => {
+            const p = tpl ? tpl.defaultPick() : null;
+            newDraft(p && p.id ? templateDraftBody(p) : (p ? p.body : ''));
+          },
+        }]),
     'sep',
     { label: `为本${isGlobal ? '全局池' : '目录'}新建模板…`, icon: 'plus', onClick: newTemplateForHere },
-    { label: '管理模板…', icon: 'gear', onClick: openTplSettings },
+    { label: '管理模板…', icon: 'gear', onClick: openTplList },
   ];
 
   // #79：反馈的 base 以**服务端当前正文**为准——列表行的 t.text 是 rows 快照，
@@ -453,7 +462,10 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
           page={pager.page}
           pageCount={pager.pageCount}
           onPage={pager.setPage}
-          onNew={() => newDraft(tpl ? tpl.defaultBody() : '')}
+          onNew={() => {
+            const p = tpl ? tpl.defaultPick() : null;
+            newDraft(p && p.id ? templateDraftBody(p) : (p ? p.body : ''));
+          }}
           onOpenTask={openTask}
           onDeleteTask={delTask}
           onDeleteTasks={batchDeleteTasks}

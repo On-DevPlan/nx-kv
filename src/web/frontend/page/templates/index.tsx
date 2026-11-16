@@ -1,4 +1,5 @@
-// 任务模板编辑宿主（#135）：不再做列表页——管理在设置卡片；这里只承载全屏 MdPanes。
+// 任务模板宿主（#217）：#/templates = 列表页（主内容区，侧边栏 sfoot 进入）；
+// #/templates/new、#/templates/edit/<id> = 全屏模板编辑器（MdPanes）。
 // config: { mode:'edit'|'new', id?, name?, scope?, topic? }
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { renderTemplateBody } from '../../modules/prompts/render-template-body.js';
@@ -12,7 +13,7 @@ import { MdPanes } from '../../components/md/md-panes.jsx';
 import type { EditorApi } from '../../components/md/md-panes-helpers.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
 import { popRoute } from '../../components/layout/route-history.js';
-import { openFloatingPanel } from '../../workspace.js';
+import TemplateListPanel from './template-list.jsx';
 import '../../modules/md/style.css';
 
 /** 模板编辑器里「保存」回传的内容。 */
@@ -199,30 +200,10 @@ export default function TemplatePanel({ config, model, tabId }: TemplatePanelPro
     );
   }
 
-  // 无编辑意图（深链 #/templates）：不再提供列表，引导去设置。
+  // 列表态（#/templates）：模板列表已经在主内容区里了（#217——从设置搬出来，
+  // 侧边栏 sfoot 直接进这一页），不再是「引导去设置」的空占位。
   if (!isNew && !templateId) {
-    return (
-      <div className="mdw-tpl-panel">
-        <RouteBreadcrumb />
-        <div className="pad stack">
-          <div>模板在「设置 → 任务模板」管理；这里只承载全屏编辑。</div>
-          <div>
-            <button
-              type="button"
-              className="btn primary"
-              onClick={() => {
-                if (model) {
-                  openFloatingPanel(model, { component: 'settings', name: '设置', config: {} });
-                }
-                leaveEditor();
-              }}
-            >
-              打开设置
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    return <TemplateListPanel />;
   }
 
   const existing = !isNew

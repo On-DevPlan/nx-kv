@@ -111,16 +111,16 @@ test('编辑模板：只改传入字段；builtin 骨架也可改（T06 裁决�
   await assert.rejects(() => updateTemplate({ id: a.template.id, name: '   ' }), /模板名/);
 });
 
-// 槽位（values）：出厂正文已是**文字**（任务 #87：「直接文字就是模板」），
-// values 只服务老模板（正文里还留着 {{槽位}} 的那些）。
-test('模板正文：出厂是文字；老模板的槽位值仍跟自己存', async () => {
+// 槽位（values）：#217 起出厂正文声明 {{问题}} 插槽（骨架只读 + 槽位可编辑），
+// values 里的「问题」是**默认提示文字**；其余槽位仍只服务用户自己的模板。
+test('模板正文：出厂声明问题槽位；老模板的槽位值仍跟自己存', async () => {
   const builtin = await listTemplates();
   const def = builtin.templates.find((t) => t.id === BUILTIN_ID);
   assert.ok(def, '内置模板在场');
-  assert.equal(def.body.includes('{{'), false, '内置正文是文字，不含槽位标记');
+  assert.match(def.body, /\{\{\s*问题\s*\}\}/, '内置正文要有插槽（否则整篇骨架只读、任务没法写）');
   assert.match(def.body, /## 本轮问题/, '出厂正文 = 零知识 SOP');
-  // #137：出厂正文里没有槽位，出厂槽位值也一并没了（老模板的槽位仍跟自己存）
-  assert.equal(def.values['背景'], undefined, '出厂槽位默认值已退役');
+  assert.equal(def.values['问题'], '（把你要问这个仓库的问题写在这里）', '槽位默认值 = 可改的提示文字');
+  assert.equal(def.values['背景'], undefined, '其它槽位不凭空出现');
 
   const upd = await updateTemplate({ id: BUILTIN_ID, values: { 背景: '本轮要做的事' } });
   assert.equal(upd.template.values['背景'], '本轮要做的事');

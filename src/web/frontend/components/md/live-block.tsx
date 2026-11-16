@@ -33,6 +33,10 @@ interface LiveBlockProps {
   rail?: ReactNode;
   /** 拖拽落点指示：插到本块之前还是之后（null = 不是落点） */
   dropEdge?: 'before' | 'after' | null;
+  /** 模板骨架块：只读（点击不进编辑、不渲染把手）。由 template-locks 派生。 */
+  locked?: boolean;
+  /** 模板插槽块：可编辑，但加视觉标记（这里是要填内容的地方）。 */
+  slot?: boolean;
 }
 
 export default function LiveBlock({
@@ -53,6 +57,8 @@ export default function LiveBlock({
   pendingFormatRef,
   rail = null,
   dropEdge = null,
+  locked = false,
+  slot = false,
 }: LiveBlockProps) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const display = normalizeBlockText(text);
@@ -100,7 +106,7 @@ export default function LiveBlock({
   // 拖拽落点指示（拖拽排序时由父组件的列表级 dragover 算出）
   const dropCls = dropEdge ? ` is-drop-${dropEdge}` : '';
 
-  if (focused) {
+  if (focused && !locked) {
     return (
       <div className={`mdw-lp-block is-edit kind-${kind}${dropCls}`} data-i={index}>
         {rail}
@@ -142,19 +148,28 @@ export default function LiveBlock({
 
   return (
     <div
-      className={`mdw-lp-block is-view kind-${kind}${isEmptyBlock(text) ? ' is-empty' : ''}${hit ? ' is-hit' : ''}${dropCls}`}
+      className={`mdw-lp-block is-view kind-${kind}${isEmptyBlock(text) ? ' is-empty' : ''}${hit ? ' is-hit' : ''}${dropCls}${locked ? ' is-locked' : ''}${slot ? ' is-slot' : ''}`}
       data-i={index}
       role="button"
-      tabIndex={0}
-      onClick={(e) => onViewClick(e, index)}
+      tabIndex={locked ? -1 : 0}
+      aria-readonly={locked || undefined}
+      title={locked ? '模板骨架：只读（要改这段，请去任务模板里改）' : undefined}
+      onClick={(e) => {
+        // 模板骨架块不可进编辑态：点击不再冒泡到「聚焦」逻辑（勾选框也不响应）
+        if (locked) return;
+        onViewClick(e, index);
+      }}
       onKeyDown={(e) => {
+        if (locked) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onFocus(index);
         }
       }}
     >
-      {rail}
+      {locked ? null : rail}
+      {locked && <span className="mdw-lp-lock" aria-hidden>模板</span>}
+      {slot && <span className="mdw-lp-slot" aria-hidden>插槽</span>}
       {html ? (
         <div className="mdw-lp-view" dangerouslySetInnerHTML={{ __html: html }} />
       ) : (

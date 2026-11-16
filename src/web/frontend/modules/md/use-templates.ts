@@ -53,14 +53,24 @@ export function useTemplates(): TemplatesApi {
     refetch();
   }, [refetch]);
 
-  /** 默认模板正文（未加载/拉取失败 → 内置骨架 + 默认槽位值兜底）。
-   *  永远返回**已渲染**正文——任务里不能出现裸 `{{槽位}}`。 */
-  const defaultBody = useCallback(() => {
+  /**
+   * 默认模板的「正文 + 模板身份」。
+   *
+   * 为什么要把 id 一起给出来：由模板生成的任务，编辑器要按模板骨架把
+   * 「骨架块」标成只读（#217）。身份落在正文 frontmatter 的 `template:` 上，
+   * 刷新 / 换设备 / CLI 侧改过之后仍然成立——只存前端内存的话一刷新就丢。
+   *
+   * 正文永远**已渲染**：任务里不能出现裸 `{{槽位}}`。
+   */
+  const defaultPick = useCallback(() => {
     const t = (state.templates || []).find((x) => x.id === state.defaultId);
-    if (!t) return ''; // #137：没有可用模板 → 从空稿开始（出厂文本只有后端那一份）
+    if (!t) return { body: '', id: '' }; // #137：没有可用模板 → 从空稿开始（出厂文本只有后端那一份）
     // 缺的键用内置默认值补；用户显式留空（''）仍是空——不把标记露回正文。
-    return renderTemplateBody(t.body, t.values || {});
+    return { body: renderTemplateBody(t.body, t.values || {}), id: String(t.id || '') };
   }, [state]);
+
+  /** 默认模板正文（未加载/拉取失败 → 空稿）。 */
+  const defaultBody = useCallback(() => defaultPick().body, [defaultPick]);
 
   const add = useCallback(async (
     name: string,
@@ -109,6 +119,7 @@ export function useTemplates(): TemplatesApi {
     templates: state.templates,
     unsupported: state.unsupported,
     defaultBody,
+    defaultPick,
     refetch,
     add,
     remove,

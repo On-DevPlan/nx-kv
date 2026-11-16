@@ -465,6 +465,7 @@ export default function Sidebar({
       </div>
 
       <div className="sfoot">
+        {footEntry('#/templates', 'list', '任务模板')}
         {footEntry('#/overview', 'overview', '全部目录总览')}
         {footEntry('#/repos', 'repo', '仓库管理')}
         {waitingCount > 0 && (

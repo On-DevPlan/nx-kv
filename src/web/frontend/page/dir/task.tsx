@@ -33,8 +33,8 @@ import {
   liveBodyBlocks,
   titleFromMd,
   stripTitleHeading,
-  withFrontmatter,
 } from '../../modules/md/md-parse.js';
+import { templateDraftBody } from '../../modules/prompts/template-preview.js';
 import {
   docIdOf,
   getDoc,
@@ -214,7 +214,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       getDoc(id, {
         title: '',
         body: tpl
-          ? (groupAnchored ? withFrontmatter(tpl.defaultBody(), { board: groupId }) : tpl.defaultBody())
+          ? templateDraftBody(tpl.defaultPick(), groupAnchored ? { board: groupId } : {})
           : '',
       });
     } else if (taskRow) getDoc(id, { title: titleFromMd(taskRow.text), body: taskRow.text });

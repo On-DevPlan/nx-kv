@@ -26,10 +26,7 @@ import { useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
 import { Button } from '../../components/button/index.jsx';
 import PromptTemplatesSection from './prompt-templates-section.jsx';
-import TaskTemplatesSection from './task-templates-section.jsx';
-import type { TemplateEditorOpts } from './task-templates-section.jsx';
 import SidebarSection from './sidebar-section.jsx';
-import { openTemplateEditor } from '../../panels.jsx';
 import './style.css';
 
 /** 一个设置分区 = 左侧导航的一项 = tab。 */
@@ -45,7 +42,6 @@ const SECTIONS: SettingsSection[] = [
   { id: 'work', label: '工作区', icon: 'sidebar' },
   { id: 'storage', label: '本机存储', icon: 'archive' },
   { id: 'docsCleanup', label: '文档清理', icon: 'archive' },
-  { id: 'taskTemplates', label: '任务模板', icon: 'list' },
   { id: 'prompts', label: '提示词模板', icon: 'flow' },
   { id: 'sidebar', label: '侧栏显示', icon: 'sidebar' },
 ];
@@ -100,7 +96,6 @@ export default function SettingsPanel() {
   const { dialog, node: dialogNode } = useDialog();
   const prefs = app.prefs;
   const patchPrefs = app.patchPrefs || (() => {});
-  const model = app.model;
 
   const [tab, setTab] = useState('pref');
   // /api/setting 的响应（外部数据边界）：字段按后端 schema 读
@@ -174,11 +169,6 @@ export default function SettingsPanel() {
 
   // （#145：「项目级设置」tab 删除——介绍/图标/持续 get 统一收进仓库管理页，
   //   这里不再保留 docStateOf / openDoc / bindExternal / unbind。）
-
-  const openTplEditor = (opts: TemplateEditorOpts) => {
-    if (!model) return;
-    openTemplateEditor(model, opts || {});
-  };
 
   // ─── 各分区内容 ──────────────────────────────────────────────────────
   const bodies: Record<string, ReactNode> = {
@@ -331,10 +321,6 @@ export default function SettingsPanel() {
           </>
         )}
       </>
-    ),
-
-    taskTemplates: (
-      <TaskTemplatesSection openTemplateEditor={openTplEditor} />
     ),
 
     prompts: (

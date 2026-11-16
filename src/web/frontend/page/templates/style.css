@@ -1,0 +1,47 @@
+/* 任务模板列表页（#217）：从设置搬到侧边栏入口后的主内容区。
+   外壳复用 .rp-page / .page-head（与仓库管理页同一套头部口径），这里只补卡片与预览。 */
+.tpl-page{display:flex;flex-direction:column;gap:12px}
+.tpl-head-note{margin:2px 0 0;font-size:12px}
+.tpl-head-note code{
+  font:400 11.5px ui-monospace,Consolas,monospace;padding:0 4px;border-radius:4px;
+  background:var(--soft,#F1F0EC);border:1px solid var(--line,#E4E2DC);
+}
+.tpl-list{display:flex;flex-direction:column;gap:8px;min-width:0}
+.tpl-card{
+  display:flex;flex-direction:column;gap:6px;min-width:0;
+  padding:10px 12px;border:1px solid var(--line,#E4E2DC);border-radius:10px;
+  background:var(--paper,#fff);
+}
+.tpl-card.is-default{border-color:var(--mdw-accent-line,#B7D4C8)}
+.tpl-card-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.tpl-card-name{font-weight:600;font-size:13px}
+.tpl-badge{
+  font-size:10.5px;padding:0 6px;border-radius:999px;line-height:1.7;
+  background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E);
+  border:1px solid var(--mdw-accent-line,#B7D4C8);
+}
+.tpl-badge.soft{background:var(--soft,#F1F0EC);color:var(--mid,#8A8578);border-color:var(--line,#E4E2DC)}
+.tpl-card-slots{
+  font-size:11px;color:var(--mid,#8A8578);max-width:340px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* 全局 .grow 有 max-width:340px（推右会停在半路）——卡片里要真推到右缘 */
+.tpl-card-grow{flex:1 1 auto;min-width:0;max-width:none}
+.tpl-card-acts{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tpl-card-sum{
+  font-size:11.5px;color:var(--ink-2,#4B515A);line-height:1.6;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+}
+.tpl-card-scope{padding-top:6px;border-top:1px dashed var(--line,#E4E2DC)}
+.tpl-preview{
+  display:flex;flex-direction:column;gap:6px;margin-top:2px;
+  padding:9px 11px;border:1px dashed var(--line,#E4E2DC);border-radius:8px;
+  background:var(--soft,#F7F6F3);
+}
+.tpl-preview-note{font-size:10.5px;color:var(--mid,#8A8578)}
+.tpl-preview-body{min-width:0;max-height:300px;overflow:auto}
+.tpl-card-hint{font-size:11px;line-height:1.6;color:var(--mid,#8A8578)}
+.tpl-card-hint code{
+  font:400 10.5px ui-monospace,Consolas,monospace;padding:0 3px;border-radius:3px;
+  background:var(--soft,#F1F0EC);border:1px solid var(--line,#E4E2DC);
+}

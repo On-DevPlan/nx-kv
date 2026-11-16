@@ -341,3 +341,27 @@
 @media (max-width:720px){
   .mdw-block-rail{left:auto;right:0;top:-10px}
 }
+
+/* ─── 模板生成的任务：骨架只读 / 插槽可编辑（#217）──────────────────────
+   判定来自 modules/md/template-locks.ts（纯派生），这里只负责「看得出区别」：
+   骨架块左侧一道实线 + 极淡底，鼠标不是文本光标；插槽块左侧虚线（这里才是要填的）。
+   徽标默认不显示，悬停才出——常驻角标会让整页像调试视图。 */
+.mdw-lp-block.is-locked{
+  padding-left:10px;
+  cursor:default;
+  box-shadow:inset 3px 0 0 var(--line-strong,#C9C6BE);
+  background:linear-gradient(90deg, rgba(22,24,28,.05), transparent 40%);
+}
+.mdw-lp-block.is-slot{
+  padding-left:10px;
+  box-shadow:inset 2px 0 0 var(--mdw-accent-line,#B7D4C8);
+}
+.mdw-lp-lock,.mdw-lp-slot{
+  position:absolute;right:0;top:0;
+  font:500 9.5px/1.6 system-ui,-apple-system,sans-serif;
+  padding:0 6px;border-radius:999px;
+  border:1px solid var(--line,#E4E2DC);background:var(--soft,#F1F0EC);color:var(--mid,#8A8578);
+  opacity:0;transition:opacity .12s;pointer-events:none;user-select:none;
+}
+.mdw-lp-slot{color:var(--mdw-accent,#2F6F5E);border-color:var(--mdw-accent-line,#B7D4C8);background:var(--mdw-accent-soft,#E8F2EE)}
+.mdw-lp-block:hover .mdw-lp-lock,.mdw-lp-block:hover .mdw-lp-slot{opacity:1}

@@ -19,6 +19,10 @@ export function createCtx() {
   const cfgPath = join(tmp, 'config.json');
   // 进程内的 server.js 也要读这份配置 —— 只给子进程设 env 是不够的
   process.env.NX_KV_CONFIG = cfgPath;
+  // NX_KV_HOME 是 APP_DIR（库 / legacy JSON 导入扫描根 / backups 的公共根）。
+  // 不设的话：07-docs 换库（NX_KV_DB=tmp/nxkv2.db）后 appDir 仍是真实的 ~/.nx-kv，
+  // legacy JSON 导入会把**本机真实 refs**灌进测试库（实测实锤，2026-11-16）。
+  process.env.NX_KV_HOME = tmp;
   // 附件目录也指向临时目录：绝不在测试里往真实的 ~/.nx-kv/attachments/ 写东西
   process.env.NX_KV_ATTACHMENTS = join(tmp, 'attachments');
   // 仓库登记与文档树同样指向临时目录：docs 落盘绝不碰真实的 ~/.nx-kv/docs/

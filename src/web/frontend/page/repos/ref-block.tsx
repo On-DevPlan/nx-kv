@@ -7,7 +7,7 @@
 //
 // 两个视角：
 //   · main / default：全部参考仓库，绑定对象一列并列显示「组级」与「仓库级」（互不折算）
-//   · 组分支：只有这一支绑的参考仓库，第三列换成这一支的组内描述
+//   · 分组视图：只有这一组绑的参考仓库，第三列换成这一支的组内描述
 import { useState } from 'react';
 import { Copyable } from '../../components/ui.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -18,7 +18,7 @@ import { IconLink, IconOpen, IconSync, IconUnlink } from './icons.jsx';
 export default function RefBlock({ rows, mode, group, boardList, refRepoBackLinks, checkOf, onSync, onOpen, onDocs, onBind, onUnbindGroup, onUnbindRepo, onGoBind, onManage }: {
   rows: RepoRecord[];
   mode: 'main' | 'group' | 'default';
-  /** 组分支：当前分支（组）本身 */
+  /** 分组视图：当前分组（组）本身 */
   group?: BoardRecord | null;
   boardList: BoardRecord[];
   refRepoBackLinks: Map<string, RefBackLink[]>;
@@ -39,7 +39,7 @@ export default function RefBlock({ rows, mode, group, boardList, refRepoBackLink
   if (!rows.length) {
     return (
       <div className="rp-block-empty">
-        <div className="rp-block-empty-t">{isGroup ? '这个分支还没有参考仓库' : '还没有登记参考仓库'}</div>
+        <div className="rp-block-empty-t">{isGroup ? '这个分组还没有参考仓库' : '还没有登记参考仓库'}</div>
         <div className="rp-block-empty-d">
           参考仓库是「拿来看的本机代码」——登记进来之后可以和开发仓库并列出现在任务上下文里。
         </div>
@@ -100,12 +100,12 @@ export default function RefBlock({ rows, mode, group, boardList, refRepoBackLink
                           {(open ? groups : groups.slice(0, LIMIT)).map((l) => (
                             <span className="rp-link-chip rp-link-chip-group" key={'board:' + l.board.id}>
                               <button className="rp-link-chip-main"
-                                title={['点击跳到这个分支', '组级绑定（分支内共享）'].join('\n')}
+                                title={['点击跳到这个分组', '组级绑定（组内共享）'].join('\n')}
                                 onClick={() => onGoBind('board', l.board.id)}>
                                 <b>组</b>
                                 <span className="rp-link-chip-name">{l.board.name}</span>
                               </button>
-                              <button className="rp-link-chip-x" title="从这一支摘除（不影响其它分支与仓库级绑定）"
+                              <button className="rp-link-chip-x" title="从这个分组摘除（不影响其它分组与仓库级绑定）"
                                 onClick={() => onUnbindGroup(r, l.board.id)}>×</button>
                             </span>
                           ))}
@@ -151,7 +151,7 @@ export default function RefBlock({ rows, mode, group, boardList, refRepoBackLink
                   </Button>
                   <Button small title="管理它绑在哪些组 / 仓库" onClick={() => onBind(r)}><span className="rp-btn-ico"><IconLink size={12} /></span>绑定…</Button>
                   {isGroup && group ? (
-                    <Button small danger title="只从这一支摘除（不影响其它分支）" onClick={() => onUnbindGroup(r, group.id)}>
+                    <Button small danger title="只从这个分组摘除（不影响其它分组）" onClick={() => onUnbindGroup(r, group.id)}>
                       <span className="rp-btn-ico"><IconUnlink size={12} /></span>移出本组
                     </Button>
                   ) : null}

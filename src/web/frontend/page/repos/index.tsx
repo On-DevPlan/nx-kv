@@ -20,7 +20,7 @@
 //   bind-modals（绑定）/ remote-modal（对齐 remote）。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { bindRef, fetchRefCheck, listBoards, listDocs, listRepos, openRepo, refSync, removeRepo, type RefCheckPayload } from './api.js';
+import { bindRef, createBoard, fetchRefCheck, listBoards, listDocs, listRepos, openRepo, refSync, removeRepo, type RefCheckPayload } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { RowMenu, useDialog } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
@@ -235,7 +235,7 @@ export default function ReposView() {
       await openRepo({ id: r.id });
     } else if (act === 'del') {
       const ok = await dialog({
-        message: `删除仓库登记「${r.name}」？（仅移除登记，磁盘文件不受影响；各分支里的归属同步摘除）`,
+        message: `删除仓库登记「${r.name}」？（仅移除登记，磁盘文件不受影响；各分组里的归属同步摘除）`,
         danger: true,
       });
       if (!ok) return;
@@ -243,6 +243,21 @@ export default function ReposView() {
       await reload.all();
       setDocTick((n) => n + 1);
     }
+  });
+
+  /** 快速新建分组（#145）：不用跑去「分组管理」弹窗，选择器底部直接建一个并切过去。 */
+  const createGroup = () => guard(async () => {
+    const name = await dialog({
+      title: '新建分组',
+      input: true,
+      placeholder: '分组名（例如 远程控制）',
+    });
+    const nm = String(name || '').trim();
+    if (!nm) return;
+    const res = await createBoard({ name: nm });
+    await loadBoards();
+    if (res && res.id) { setBranch(res.id); setBlock('repos'); setQ(''); }
+    toast(`已建分组「${nm}」——把仓库加进来就是这一组的成员`);
   });
 
   // 区块跳转：面板内容挂在 FlexLayout 的 tab 里（.flexlayout__tab_moveable 才是
@@ -345,13 +360,14 @@ export default function ReposView() {
 
   return (
     <div className="rp-page rp-v2">
-      {/* 头部：标题 + 分支下拉 + 工具动作条。
-          分支摆在标题右侧（不是筛选条里）——它是「我在哪个分支看东西」这个全局维度。 */}
+      {/* 头部：标题 + 分组选择器 + 工具动作条。
+          分组选择器摆在标题右侧（不是筛选条里）——它是「我在看哪一组」这个全局维度。 */}
       <div className="page-head rp-head">
         <div className="title-block">
           <h2>仓库管理</h2>
           <BranchPicker branches={branches} value={branch}
-            onChange={(id) => { setBranch(id); setQ(''); }} />
+            onChange={(id) => { setBranch(id); setQ(''); }}
+            onCreate={createGroup} />
         </div>
         <div className="acts">
           <ToolActsBar
@@ -372,19 +388,12 @@ export default function ReposView() {
         </div>
       </div>
 
-      {/* 分支信息条：这一支是什么、有多少东西；组分支额外给「文档在右侧」的出口 */}
+      {/* 分组信息条：当前分组 + 主操作；组里额外给「文档在右侧」的出口 */}
       <div className={'rp-branchbar' + (branchBoard ? ' is-group' : '')}>
         <span className="rp-branchbar-ico">
           {branchBoard ? <IconBranch size={14} /> : <IconRepo size={14} />}
         </span>
         <span className="rp-branchbar-name">{branchBoard ? branchBoard.name : branch === BRANCH_DEFAULT ? 'default' : 'main'}</span>
-        <span className="rp-branchbar-desc">
-          {branchBoard
-            ? '项目组 = 命名空间：这一支里的仓库同时也在 main 里'
-            : branch === BRANCH_DEFAULT
-              ? '没有归组的仓库都落在这里（虚拟分支，不落库）'
-              : '全部仓库 / 参考仓库 / 文档'}
-        </span>
         {/* 右侧：一个主操作 + ⋯ 菜单（#143 第 2 轮：按钮收拢）。
             计数不在这里重复——区块按钮上已经各报一次，两边都写会让人以为数字不一致。 */}
         <span className="rp-branchbar-acts">
@@ -395,7 +404,7 @@ export default function ReposView() {
                 <IconDoc size={13} /> 文档 {Number(branchBoard.docCount) || 0} →
               </button>
               <RowMenu items={[
-                { label: '添加成员', icon: <IconUsers size={13} />, hint: '往这个分支里加仓库', onPick: () => setImpBoardId(branchBoard.id) },
+                { label: '添加成员', icon: <IconUsers size={13} />, hint: '往这个分组里加仓库', onPick: () => setImpBoardId(branchBoard.id) },
                 { label: '刷新状态', icon: <IconSync size={13} />, hint: '重新检查参考仓库', onPick: () => { loadRefCheck(); toast('已刷新检查结果'); } },
                 { label: '分组管理', icon: <IconBranch size={13} />, hint: '建组 / 成员 / 组介绍文档', onPick: () => setBoardAdminOpen(true) },
               ]} />
@@ -425,7 +434,7 @@ export default function ReposView() {
         placeholder={searchHint}
       />
 
-      {/* 待初始化占位：只在组分支里出现（导入布局带进来的空位） */}
+      {/* 待初始化占位：只在具体分组里出现（导入布局带进来的空位） */}
       {branchBoard ? (
         <PendingSection
           boards={{ boards: [branchBoard], unassigned: [] }}

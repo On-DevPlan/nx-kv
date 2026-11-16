@@ -1,27 +1,29 @@
-// 分支选择器（#143）：把「组」当分支——本地开发仓库是 `main`，每个组是一个分支。
+// 分组选择器（#143/#145）：本地开发仓库是 `main`，每个项目组是一「支」来看——
+// 但界面上一律叫**分组**（用户口径：「分支只是我用来比喻的」）。
 //
-// 交互照 GitHub / GitLab 的 branch 下拉：点标题右侧的「⑂ main ▾」展开一个浮层，
-// 顶部是过滤框（输入即筛分支名），下面是分支清单（main → 各组 → default），
-// 每行右侧报这一支里的仓库数，当前分支打勾。Esc / 点外部关闭。
+// 交互照 GitHub / GitLab 的 branch 下拉：点标题右侧的「◈ main ▾」展开浮层，
+// 顶部是过滤框（输入即筛分组名），下面是分组清单（main → 各组 → default），
+// 每行右侧报这一组里的仓库数，当前项打勾。底部一个「＋ 新建分组」。
+// Esc / 点外部关闭。
 //
-// 为什么不是左侧树：分支是**全局的维度**（同一批仓库会出现在多个分支里），
-// 放在标题旁让人一眼看出「我现在在哪个分支看东西」，也不会把表格挤窄。
+// 为什么不是左侧树：分组是**全局的维度**（同一批仓库会出现在多个分组里），
+// 放在标题旁让人一眼看出「我现在在看哪个分组」，也不会把表格挤窄。
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { IconBranch, IconCheck, IconChevron, IconGrid, IconSearch } from './icons.jsx';
+import { IconBranch, IconCheck, IconChevron, IconGrid, IconPlus, IconSearch } from './icons.jsx';
 
-/** 一个分支（= 一个组；main / default 是两个虚拟分支）。 */
+/** 一个分组（= 一个组；main / default 是两个虚拟项）。 */
 export interface BranchOption {
   /** 'main' | 'default' | 组的 id */
   id: string;
   /** 展示名：main / default / 组名 */
   name: string;
-  /** 这一支里的开发仓库数 */
+  /** 这个分组里的开发仓库数 */
   repoCount: number;
-  /** 这一支里的参考仓库数（main 才有意义；组也有） */
+  /** 这个分组里的参考仓库数 */
   refCount: number;
-  /** 这一支里的文档数（main 才有意义） */
+  /** 这个分组里的文档数（main 才有意义） */
   docCount: number;
-  /** 虚拟分支（main / default）——不能删不能改名 */
+  /** 虚拟项（main / default）——不能删不能改名 */
   virtual?: boolean;
   /** 组的 key（`board/<名>`），深链接与面板 config 用得到 */
   key?: string;
@@ -31,10 +33,12 @@ export interface BranchOption {
 export const BRANCH_MAIN = 'main';
 export const BRANCH_DEFAULT = 'default';
 
-export default function BranchPicker({ branches, value, onChange }: {
+export default function BranchPicker({ branches, value, onChange, onCreate }: {
   branches: BranchOption[];
   value: string;
   onChange: (id: string) => void;
+  /** 「＋ 新建分组」：由页面实现（弹窗问名字 → 建组 → 切过去） */
+  onCreate?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [kw, setKw] = useState('');
@@ -80,7 +84,7 @@ export default function BranchPicker({ branches, value, onChange }: {
       <button
         type="button"
         className={'rp-branch-btn' + (open ? ' open' : '')}
-        title="切换分支：main = 全部仓库；各分支 = 项目组（命名空间）"
+        title="切换分组：main = 全部仓库；其余项 = 项目组"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
@@ -93,14 +97,14 @@ export default function BranchPicker({ branches, value, onChange }: {
       </button>
 
       {open ? (
-        <div className="rp-branch-pop" role="listbox" aria-label="分支">
+        <div className="rp-branch-pop" role="listbox" aria-label="分组">
           <div className="rp-branch-filter">
             <IconSearch size={13} />
             <input
               ref={inputRef}
               value={kw}
-              placeholder="筛选分支…"
-              aria-label="筛选分支"
+              placeholder="筛选分组…"
+              aria-label="筛选分组"
               onChange={(e) => setKw(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && shown[0]) pick(shown[0].id);
@@ -117,7 +121,7 @@ export default function BranchPicker({ branches, value, onChange }: {
                 className={'rp-branch-item' + (b.id === value ? ' on' : '')}
                 title={b.virtual
                   ? (b.id === BRANCH_MAIN ? '全部：所有仓库 / 参考仓库 / 文档' : '没有归组的仓库都落在这里')
-                  : `项目组「${b.name}」——只是命名空间，仓库本身仍在 main 里`}
+                  : `项目组「${b.name}」`}
                 onClick={() => pick(b.id)}
               >
                 <span className="rp-branch-item-ico">
@@ -128,9 +132,14 @@ export default function BranchPicker({ branches, value, onChange }: {
                 <span className="rp-branch-item-check">{b.id === value ? <IconCheck size={13} /> : null}</span>
               </button>
             ))}
-            {!shown.length ? <div className="rp-branch-empty">没有匹配的分支</div> : null}
+            {!shown.length ? <div className="rp-branch-empty">没有匹配的分组</div> : null}
           </div>
-          <div className="rp-branch-tip">分支 = 项目组（命名空间）；跟着 main 的仓库在哪个分支下都能找到它</div>
+          {onCreate ? (
+            <button type="button" className="rp-branch-new" onClick={() => { setOpen(false); setKw(''); onCreate(); }}>
+              <IconPlus size={13} />
+              <span>新建分组</span>
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

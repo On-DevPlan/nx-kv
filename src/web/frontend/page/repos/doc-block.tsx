@@ -4,7 +4,7 @@
 // 没有主篇、也没绑到任何宿主的 ref 在那边无处可见。main 作为「全部」视角，
 // 正好承接这批「全局文档」——顺带把每一篇的归属（仓库 / 组 / 组内 / 参考）列清楚。
 //
-// 组分支里没有这一块：组的文档收敛在右侧「<组名> · 文档列表」里，切过去看更顺手
+// 具体分组里没有这一块：组的文档收敛在右侧「<组名> · 文档列表」里，切过去看更顺手
 // （按钮在区块条右侧，点了就开右侧栏并提示）。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '../../components/toast/index.jsx';

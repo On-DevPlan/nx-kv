@@ -1,0 +1,90 @@
+{
+  "context": {
+    "active": "builtin",
+    "list": [
+      {
+        "id": "builtin",
+        "name": "系统内置",
+        "template": "{{#if repo}}\n{{#if repo.intro}}\n〔项目介绍 · {{repo.name}}〕\n{{repo.intro}}\n{{/if}}\n{{#if repo.docs}}\n〔项目文档〕按需取用：nx-kv docs get --ref <refId>\n{{#each repo.docs}}\n  - {{#if desc}}{{desc}}{{else}}{{#if title}}{{title}}{{else}}未命名文档{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}\n    取用：nx-kv docs get --ref {{refId}}\n{{/each}}\n{{/if}}\n{{#if repo.intro}}{{else}}{{#if repo.docs}}{{else}}\n〔项目上下文 · {{repo.name}}〕已登记为本机仓库（{{repo.key}}），但没有项目介绍文档：nx-kv repo doc add {{repo.key}} --ref <refId>\n{{/if}}{{/if}}\n{{/if}}\n{{#if repo}}{{else}}{{#if cwd}}\n〔项目上下文〕工作目录 {{cwd}} 未登记为本机仓库，本次交付没有项目介绍 / 组上下文。登记（不需要 .git，给 key 即可）：nx-kv repo add \"{{cwd}}\" --key <key>\n{{/if}}{{/if}}\n{{#if group}}\n〔项目组上下文 · {{group.name}}〕\n{{#if group.desc}}\n组定位：{{group.desc}}\n{{/if}}\n{{#if group.note}}\n本项目在组里的位置：{{group.note}}\n{{/if}}\n{{#if group.introRefId}}\n组介绍：{{#if group.introDesc}}{{group.introDesc}}{{else}}（无描述）{{/if}}\n  取用：nx-kv docs get --ref {{group.introRefId}}\n{{/if}}\n{{#if group.peers}}\n组内成员：\n{{#each group.peers}}\n  - {{name}}：{{#if note}}{{note}}{{else}}（无组内描述）{{/if}}{{#if path}}（{{path}}）{{/if}}\n{{/each}}\n{{/if}}\n{{#if group.docs}}\n组文档（按需取用）：\n{{#each group.docs}}\n  - {{#if desc}}{{desc}}{{else}}{{#if title}}{{title}}{{else}}未命名文档{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}\n    取用：nx-kv docs get --ref {{refId}}\n{{/each}}\n{{/if}}\n{{/if}}\n{{#if refRepos.count}}\n参考仓库（可直接读取，共 {{refRepos.count}} 个）：\n{{#each refRepos.list}}\n  - {{name}}{{#if path}}（{{path}}）{{/if}}{{#if note}}  # {{note}}{{/if}}\n{{/each}}\n{{/if}}",
+        "builtin": true
+      }
+    ]
+  },
+  "attachment": {
+    "active": "builtin",
+    "list": [
+      {
+        "id": "builtin",
+        "name": "系统内置",
+        "template": "{{#if attach}}\n〔附件〕本任务包含 {{attach.count}} 个附件（正文内嵌 {{attach.inlineCount}} · 附件区 {{attach.areaCount}}）。请先识别附件内容（图片先看图、文档先读内容、文件夹先列目录）再开始处理，不要跳过附件。\n\n附件清单：\n{{#each attach.list}}\n  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if mdfile}}{{mdfile.absPath}}{{#if mdfile.missing}}（源文件已不在）{{/if}}{{/if}}{{#if folder}}{{folder.absPath}}{{#if folder.missing}}（目录已不在）{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}\n{{/each}}\n\n取用方式：\n{{#each attach.list}}\n  - {{kindLabel}} 《{{name}}》：{{usage}}\n{{/each}}\n{{#each attach.list}}{{#if mdfile}}{{#if mdfile.content}}〔外部 md · {{name}}〕（{{mdfile.absPath}}{{#if mdfile.truncated}}，已截断{{/if}}{{#if mdfile.stale}}，内容有变化{{/if}}）：\n\n{{mdfile.content}}\n\n{{/if}}{{/if}}{{/each}}\n{{#each attach.list}}{{#if ref}}{{#if ref.content}}〔文档原文 · {{ref.title}}〕：\n\n{{ref.content}}\n\n{{/if}}{{/if}}{{/each}}\n{{/if}}",
+        "builtin": true
+      }
+    ]
+  },
+  "timecheck": {
+    "active": "builtin",
+    "list": [
+      {
+        "id": "builtin",
+        "name": "系统内置",
+        "template": "{{#if goal.check}}\n{{goal.check}}\n{{/if}}\n{{#if goal.statusLine}}\n{{goal.statusLine}}\n{{/if}}",
+        "builtin": true
+      }
+    ]
+  },
+  "goalhint": {
+    "active": "builtin",
+    "list": [
+      {
+        "id": "builtin",
+        "name": "系统内置",
+        "template": "{{#if goal.check}}\n〔特殊功能提示 · 时间目标〕任务 #{{task.id}} 正在计时：持续 {{goal.durationHuman}}，已过 {{goal.elapsedHuman}}（{{percent goal.elapsedSec goal.durationSec}}%），{{#if goal.reached}}已到点（超时 {{formatDuration goal.overtimeSec}}）{{else}}剩余 {{goal.remainingHuman}}{{/if}}。\n{{#if goal.reached}}——时间已到：可以收口，把改动收敛成可交付状态，补验证与说明后按 ack 段 done。\n{{else}}{{#if (gte (percent goal.elapsedSec goal.durationSec) 67)}}——已过 2/3：进入收尾整理（收敛改动 / 补验证 / 写清遗留），别开新战线。\n{{else}}{{#if (gte (percent goal.elapsedSec goal.durationSec) 50)}}——已过半：先确认主线走到哪，剩余时间只做收尾必需项。\n{{else}}——时间尚足：先做主线，再补细节。{{/if}}{{/if}}{{/if}}\n{{/if}}",
+        "builtin": true
+      }
+    ]
+  },
+  "doneguard": {
+    "active": "builtin",
+    "list": [
+      {
+        "id": "builtin",
+        "name": "系统内置",
+        "template": "{{#if goal.blocked}}\n〔完成门禁 · 时间未到〕任务 #{{task.id}} 还不能 done：持续 {{goal.durationHuman}}，已过 {{goal.elapsedHuman}}（{{percent goal.elapsedSec goal.durationSec}}%），剩余 {{goal.remainingHuman}}。\n- 现在可做：{{#if (gte (percent goal.elapsedSec goal.durationSec) 67)}}收尾整理（收敛改动 / 补验证 / 写清遗留），或派 sub agent 提出新的需求继续推进{{else}}继续推进主线，并派 sub agent 重新提出新的需求{{/if}}。\n- 每轮推进先跑：nx-kv timegoal check --task {{goal.goalKey}} --summary \"<本轮现状>\"\n- 到点后再：nx-kv localtask done --id {{task.id}} --summary \"<完成总结>\"\n{{/if}}",
+        "builtin": true
+      }
+    ]
+  },
+  "ext": {
+    "active": "builtin",
+    "list": [
+      {
+        "id": "builtin",
+        "name": "系统内置",
+        "template": "{{#if ext.count}}\n本队列（{{ext.topic}}）还有 {{ext.count}} 条待领取任务：\n{{#each ext.list}}\n  - #{{id}} {{title}}\n{{/each}}\n先完成当前任务，再领取下一条；不要因为后面还有活就提前收尾或分心。\n{{/if}}",
+        "builtin": true
+      }
+    ]
+  },
+  "ack": {
+    "active": "builtin",
+    "list": [
+      {
+        "id": "builtin",
+        "name": "系统内置",
+        "template": "完成之后必须调用 nx-kv localtask done --id {{task.id}} --summary \"<完成总结>\" 汇报结果。",
+        "builtin": true
+      }
+    ]
+  },
+  "getloop": {
+    "active": "builtin",
+    "list": [
+      {
+        "id": "builtin",
+        "name": "系统内置",
+        "template": "{{#if getloop}}\n{{#if task}}不要直接结束本轮：完成上面的任务（{{task.id}}）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；{{#if (gt getloop.waitMinutes 0)}}没活时每次最多阻塞 {{getloop.waitMinutes}} 分钟，直到 get 返回 timeout 为止。{{/if}}{{/if}}\n{{/if}}",
+        "builtin": true
+      }
+    ]
+  }
+}

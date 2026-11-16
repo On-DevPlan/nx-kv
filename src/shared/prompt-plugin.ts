@@ -135,3 +135,48 @@ export function uiDescriptor(plugins: readonly AnyPromptPlugin[], orderIds: read
     };
   });
 }
+
+/**
+ * 模板变量白名单（写路径校验，方案 §4.2 第 3 道）：
+ * 点路径 `{{x.y}}` 必须在字段目录里**全路径**声明过（拦拼错的段名 / 字段名）；
+ * 例外是 `params` 段——外部参数键是动态的，整段放行；裸 `{{k}}`（平铺参数 / 段名直取）放行。
+ *
+ * `{{#each X}}` 块内是列表元素的相对域（`{{file.localPath}}` = 元素的 file 子对象），
+ * 不在声明粒度内——放行 each 块内部，但 each 的**目标路径**（X）必须已声明。
+ * helper 调用里的路径 token 同样受检（`{{percent goal.elapsedSec goal.durationSec}}`）。
+ * 返回未声明变量列表（空 = 合法）。
+ */
+export function undeclaredTemplateVars(
+  template: string,
+  allowedSegments: readonly string[],
+  fieldKeys: readonly string[],
+): string[] {
+  const dynamicSegments = new Set(allowedSegments.filter((s) => s === 'params'));
+  const fields = new Set(fieldKeys);
+  const bad = new Set<string>();
+  const check = (text: string): void => {
+    for (const block of text.match(/\{\{[^}]*\}\}/g) || []) {
+      for (const m of block.matchAll(/\b[A-Za-z_$][\w$]*\.[\w$]+\b/g)) {
+        const path = m[0];
+        if (fields.has(path)) continue;
+        const seg = path.split('.')[0]!;
+        if (dynamicSegments.has(seg)) continue;
+        bad.add(path);
+      }
+    }
+  };
+  // 1. each 目标必须已声明
+  for (const m of String(template || '').matchAll(/\{\{#each\s+([A-Za-z_$][\w$.]*)\s*\}\}/g)) {
+    const target = m[1]!;
+    if (!fields.has(target) && !dynamicSegments.has(target)) bad.add(target);
+  }
+  // 2. 剥掉 each 块（迭代剥最内层；each 不嵌套是现状模板的形态）后校验其余路径
+  let rest = String(template || '');
+  for (;;) {
+    const next = rest.replace(/\{\{#each[^}]*\}\}[\s\S]*?\{\{\/each\}\}/g, '');
+    if (next === rest) break;
+    rest = next;
+  }
+  check(rest);
+  return [...bad];
+}

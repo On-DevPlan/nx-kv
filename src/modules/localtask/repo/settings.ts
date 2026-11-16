@@ -41,6 +41,8 @@ import {
 } from '../../../shared/prompt-blocks.js';
 import type { BlockTemplateList } from '../../../shared/prompt-blocks.js';
 import type { DbApi } from '../../../core/db/driver.js';
+import { undeclaredTemplateVars } from '../../../shared/prompt-plugin.js';
+import { globalTemplateVarScope } from '../../promptplug/index.js';
 
 /** 归一化后的「每区块模板列表」集合（normalize/defaultBlockTemplateLists 恒产出全部 BLOCK_DEFS 区块）。 */
 type BlockLists = Record<string, BlockTemplateList>;
@@ -275,19 +277,36 @@ export function getLtSettings(): Record<string, any> {
 }
 
 /**
- * 保存前的模板语法校验：
- * 语法错误 / 旧语法**拒绝保存**并指出模板 / 区块 / 出错位置。理由：渲染期回落到
- * 内置模板是兜底（老数据 / 手改库），不该成为正常入口的静默出口。旧语法同样拒绝，
- * 避免「保存成功、领取时被悄悄换回内置」的半兼容状态。
+ * 保存前的模板校验（方案 §4.2，三道）：
+ *   1. 语法错误 / 旧语法**拒绝保存**并指出模板 / 区块 / 出错位置（渲染期不再回落）；
+ *   2. 当前生效（active）模板为空 → 拒绝——空模板在运行期是配置错误（S1 起
+ *      compose 的 assertPluginList 直接抛），不许「保存成功、领取时整次失败」；
+ *   3. 变量白名单：`{{x.y}}` 的段必须在该插件 writes ∪ seed ∪ fields 顶层，
+ *      全路径必须在该插件 schema.fields 声明过（schema-bridge 从 zod 派生）。
  */
 function assertBlockTemplatesValid(lists: BlockLists): void {
   for (const def of BLOCK_DEFS) {
-    for (const item of lists[def.id]!.list) {
-      if (!item.template) continue; // 空模板合法（rule / 用户主动清空）
+    const b = lists[def.id]!;
+    for (const item of b.list) {
+      if (!item.template) continue; // 非 active 的空条目合法（不渲染，仅存档）
       const r = validateTemplate(item.template);
       if (!r.ok) {
         throw badInput(
           `提示词模板「${item.name}」的「${def.label}」区块语法错误：${r.error}`
+        );
+      }
+    }
+    // 生效模板的空 / 变量白名单
+    const active = b.list.find((x) => x.id === b.active);
+    if (active && !active.template.trim()) {
+      throw badInput(`「${def.label}」区块当前生效的模板「${active.name}」是空的：换回内置或改成有内容的模板后再保存`);
+    }
+    if (active && active.template) {
+      const scope = globalTemplateVarScope();
+      const undeclared = undeclaredTemplateVars(active.template, scope.allowedSegments, scope.fieldKeys);
+      if (undeclared.length) {
+        throw badInput(
+          `「${def.label}」区块的生效模板「${active.name}」引用了未声明的变量：${undeclared.join('、')}。可用变量见设置页「插入变量」目录`
         );
       }
     }

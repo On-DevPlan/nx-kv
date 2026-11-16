@@ -43,6 +43,57 @@ export function buildDeliveryPlugins(
 
 export { deliveryCtxOf } from './plugins/context.js';
 
+// ── 写路径校验的数据源（方案 §4.2）───────────────────────────────────────
+
+/** seed 段（compose 的种子数据；无输出段，因此没有 order 位）。 */
+export const SEED_SEGMENTS: readonly string[] = ['task', 'cwd', 'goal', 'source', 'summary', 'name', 'params'];
+
+const fieldCache = new Map<string, { fields: string[]; top: string[] }>();
+
+/** 某插件的字段目录：fields 全键 + 顶层段（从 dataSchema 派生，缓存）。 */
+export function fieldCatalogOf(id: string): { fields: string[]; top: string[] } {
+  const hit = fieldCache.get(id);
+  if (hit) return hit;
+  const p = pluginById(id);
+  if (!p) throw new Error(`未知提示词插件：${id}`);
+  const fields = p.schema.fields.map((f) => f.key);
+  const top = [...new Set(fields.map((f) => f.split('.')[0]!))];
+  const out = { fields, top };
+  fieldCache.set(id, out);
+  return out;
+}
+
+/** 按模板注入构造单个插件（fields / writes 与模板正文无关，空串即可）。 */
+function pluginById(id: string): AnyPromptPlugin | undefined {
+  const t = '';
+  const deps = { groupCtx: null, attach: null, queueInfo: null, loopText: '', waitMinutes: 0 };
+  return buildDeliveryPlugins({ [id]: { template: t } }, deps).find((x) => x.id === id);
+}
+
+/**
+ * 白名单校验入参（**全局段集**，落地裁决——见方案 §4.2 补记）：
+ * ctx 全共享是既有语义（「不存在某模块自带一套变量域」），per-block 硬隔离会误伤
+ * 旧 CLI 入口与跨段引用；白名单的目标收敛为「拦拼错的段名 / 变量名」——
+ * 段集合 = 全部插件 writes ∪ seed ∪ 全部 fields 顶层；字段键 = 全部 fields 并集。
+ */
+export function globalTemplateVarScope(): { allowedSegments: string[]; fieldKeys: string[] } {
+  const segments = new Set<string>(SEED_SEGMENTS);
+  const keys = new Set<string>();
+  for (const id of PLUGIN_IDS) {
+    const p = pluginById(id)!;
+    for (const w of p.writes) segments.add(w);
+    const { fields, top } = fieldCatalogOf(id);
+    for (const t of top) segments.add(t);
+    for (const f of fields) keys.add(f);
+  }
+  return { allowedSegments: [...segments], fieldKeys: [...keys] };
+}
+
+/** 全部交付插件 id（8 段）。 */
+export const PLUGIN_IDS: readonly string[] = [
+  'context', 'attachment', 'timecheck', 'goalhint', 'doneguard', 'ext', 'ack', 'getloop',
+];
+
 /**
  * 提示词插件模块（S1：机制库，无 action；S3 起挂 prompt registry/order 三个 action）。
  * 业务面（compose / buildDeliveryPlugins）由 tasktool 直接消费——这是设计内依赖

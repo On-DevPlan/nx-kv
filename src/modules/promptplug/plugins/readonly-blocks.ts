@@ -7,6 +7,8 @@ import { PromptPlugin } from '../base.js';
 
 const goalShape = z.looseObject({
   name: z.string().optional(),
+  deadline: z.string().optional(),
+  prompt: z.string().optional(),
   durationHuman: z.string().optional(),
   elapsedHuman: z.string().optional(),
   remainingHuman: z.string().optional(),

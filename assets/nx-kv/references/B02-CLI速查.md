@@ -68,7 +68,8 @@
 | `docs ref unbind` | `--ref` `--type` `--repo` `--group` | 摘归属（文档与正文保留） |
 | `docs remove` | `--ref` | 删整篇 |
 | `docs bindings` | `--ref` \| `--host <repoKey>` \| `--group <groupKey>` | 归属查询：`--host` 只给仓库自己的（含参考仓库）；`--group` 给组域（组 → 组内 → 成员仓库自己 → **组内参考仓库自己**）。每行带 `hostKind`（`dev` / `ref` / `group`） |
-| `docs bind` / `docs link` / `docs note-bind` | `--repo`/`--board` `--ref` `--path` `--note` `--remove` `--before` `--reset` | 宿主文档集的增删改（`bind` 主篇，`link` 目录补充，`note-bind` 组内描述） |
+| `docs bind` / `docs link` / `docs note-bind` | `--repo`/`--board` `--ref` `--path` `--note` `--remove` `--before` `--reset` | 宿主文档集的增删改（`bind` 主篇指针，`link` 目录补充，`note-bind` 组内描述） |
+| `docs main` | `--repo`/`--board`（二选一）`--ref` \| `--path` | **把某一篇设为主篇**（换位）：目标从附加篇摘出、原主篇退回附加篇，两边都不丢归属。面板「文档列表 → 行尾 ⋯ → 设为主篇」走这条；`docs bind` 只换指针、会把原主篇甩成孤儿 |
 | `docs attach` / `detach` / `attachments` / `attach-note` | `--ref` + 附件参数 | 文档附件（用法同 `localtask attach`） |
 | `docs mdfile` / `mdfiles` / `link-file` | `--attachment` / `--missing` / `--path` | md 文件指针相关 |
 | `docs gc` | `--apply` | 清没有正文的 ref（默认只报数） |

@@ -94,6 +94,81 @@ export async function setDocRef({ repo, board, ref, path, reset }: SetDocRefInpu
   return res;
 }
 
+/** setDocMain 的入参：宿主（repo / board 二选一）+ 目标文档（ref / path）。 */
+export interface SetDocMainInput {
+  repo?: unknown;
+  board?: unknown;
+  ref?: unknown;
+  path?: unknown;
+}
+
+/**
+ * 把某一篇设成宿主的**主篇**（#144）。
+ *
+ * 与 `docs bind` 的差别（用户视角正是这一点）：这是**换位**，不是覆盖——
+ *   · 目标那篇如果已经在附加篇（docLinks）里，先把它摘出来，避免同一篇出现两次；
+ *   · 原主篇还在、且不是目标 → 挪到 docLinks 头部，**保住它的归属**
+ *     （`docs bind` 会直接把原主篇甩成孤儿，3 天后被清理）；
+ *   · 目标没绑在这个宿主上 → 显式报错，先加进列表（不做「顺手加一篇」的隐式行为）。
+ *
+ * 宿主 = 仓库（repo.doc/docLinks）或组（board.doc/docLinks）；组内仓库描述
+ * （board.repoDocs）不在这个语义里。
+ */
+export async function setDocMain({ repo, board, ref, path }: SetDocMainInput = {}): Promise<any> {
+  if (!!repo === !!board) throw badInput('请给 --repo <仓库> 或 --board <看板>（二选一）');
+  const docRef = await docRefOf({ ref, path });
+  const { mutateStore, deriveKey, boardKeyOf } = await reposBridge();
+  const nk = { normalizeKey, boardKeyOf };
+  const repoKeyIn = makeRepoKeyIn({ normalizeKey, deriveKey });
+  const res = await mutateStore((s: any) => {
+    const host = repo
+      ? (() => {
+          const rkey = repoKeyIn(s, repo);
+          if (!rkey) throw notFound('repo 不存在: ' + String(repo));
+          const r = s.repos.find((x: any) => deriveKey(x) === rkey);
+          if (!r) throw notFound('repo 不存在: ' + String(repo));
+          return r;
+        })()
+      : (() => {
+          const b = findBoardIn(s, board, nk);
+          if (!b) throw notFound('看板不存在: ' + String(board));
+          return b;
+        })();
+    const links: any[] = Array.isArray(host.docLinks) ? host.docLinks : [];
+    const inLinks = links.findIndex((x: any) => x && x.ref === docRef.ref);
+    const isMain = !!(host.doc && host.doc.ref === docRef.ref);
+    if (isMain && inLinks < 0) {
+      return { changed: false, alreadyMain: true, name: host.name, key: deriveKey(host), ref: docRef.ref };
+    }
+    // 目标必须已经在这个宿主的文档列表里（主篇或附加篇）。不在这里就显式报错——
+    // 「顺手把它加成主篇」是隐式行为，会让列表凭空多一篇。
+    if (!isMain && inLinks < 0) {
+      throw conflict('这篇不在这个宿主的文档列表里：先加进去（repo doc add / docs link）再设主篇');
+    }
+    // ① 目标从附加篇里摘出来（同一篇不能既是主篇又在附加篇里）
+    if (inLinks >= 0) links.splice(inLinks, 1);
+    // ② 原主篇退回附加篇头部（保住归属；只有它还在、且不是目标时才动）
+    const prev = host.doc;
+    if (prev && prev.ref && prev.ref !== docRef.ref) links.unshift(prev);
+    // ③ 目标上位
+    host.doc = docRef;
+    if (links.length) host.docLinks = links;
+    else delete host.docLinks;
+    host.updatedAt = new Date().toISOString();
+    return {
+      changed: true,
+      alreadyMain: false,
+      name: host.name,
+      key: deriveKey(host),
+      ref: docRef.ref,
+      previous: prev && prev.ref ? prev.ref : '',
+      count: links.length + 1,
+    };
+  });
+  await syncRefIndex();
+  return res;
+}
+
 /** setNoteDocRef 的入参。 */
 export interface SetNoteDocRefInput {
   board?: string;

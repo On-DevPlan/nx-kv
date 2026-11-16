@@ -295,9 +295,17 @@ export function PopMenu({ x, y, items, onClose }: PopMenuProps) {
 // ---- 锚定下拉菜单（行尾「⋯」按钮旁边弹出的那种） ----
 // 点外 / Esc 关；菜单项 { label, danger?, onPick }。与 PopMenu 同一套视觉。
 
-/** 锚定下拉菜单的一项。 */
+/**
+ * 锚定下拉菜单的一项。
+ *
+ * #143：`icon` / `hint` 是后加的（仓库页分支条要「图标 + 文字」的 ⋯ 菜单）。
+ * 图标只表类别、文字说清动作——两条都留着，别只给一个图标让人猜。
+ */
 export interface RowMenuItem {
   label: string;
+  icon?: ReactNode;
+  /** 悬浮提示（比 label 更细的说明） */
+  hint?: string;
   danger?: boolean;
   onPick: () => void;
 }
@@ -338,8 +346,10 @@ export function RowMenu({ items = [] }: RowMenuProps) {
               type="button"
               role="menuitem"
               className={'pp-menu-item' + (it.danger ? ' danger' : '')}
+              title={it.hint || it.label}
               onClick={() => { setOpen(false); it.onPick(); }}
             >
+              {it.icon ? <span className="pp-menu-item-ico">{it.icon}</span> : null}
               {it.label}
             </button>
           ))}

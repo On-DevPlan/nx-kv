@@ -1099,6 +1099,21 @@
           "children": []
         },
         {
+          "name": "main",
+          "path": [
+            "docs",
+            "main"
+          ],
+          "action": {
+            "id": "docs.main",
+            "module": "docs",
+            "summary": "把某一篇设为主篇：原主篇退回附加篇（不丢归属），目标从附加篇摘出（不会出现两份）",
+            "usage": "docs main",
+            "http": "POST /api/docs/main"
+          },
+          "children": []
+        },
+        {
           "name": "note-bind",
           "path": [
             "docs",

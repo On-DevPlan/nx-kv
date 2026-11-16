@@ -24,6 +24,7 @@ import { DocsBindingsAction } from './docs-bindings.js';
 import { DocsGcAction } from './docs-gc.js';
 import { DocsIndexAction } from './docs-index.js';
 import { DocsLinkAction } from './docs-link.js';
+import { DocsMainAction } from './docs-main.js';
 import { DocsNotebindAction } from './docs-notebind.js';
 import { DocsOrphansPurgeAction } from './docs-orphans-purge.js';
 import { DocsOrphansAction } from './docs-orphans.js';
@@ -48,6 +49,7 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   DocsGcAction,
   DocsIndexAction,
   DocsLinkAction,
+  DocsMainAction,
   DocsNotebindAction,
   DocsOrphansPurgeAction,
   DocsOrphansAction,
@@ -72,6 +74,7 @@ export { DocsBindingsAction };
 export { DocsGcAction };
 export { DocsIndexAction };
 export { DocsLinkAction };
+export { DocsMainAction };
 export { DocsNotebindAction };
 export { DocsOrphansPurgeAction };
 export { DocsOrphansAction };

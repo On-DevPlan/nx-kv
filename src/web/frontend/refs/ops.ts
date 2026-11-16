@@ -10,6 +10,7 @@ import {
   createRef,
   removeDocItem,
   setDocDesc,
+  setMainDoc,
   unbindRef,
   updateDocItem,
   type BindingRow,
@@ -48,6 +49,20 @@ export async function saveDesc(refId: string, desc: string): Promise<string> {
 /** 摘除一条归属（文档与正文都保留）。 */
 export async function detach(b: Pick<BindingRow, 'refId' | 'type' | 'repoKey' | 'groupKey'>): Promise<void> {
   await unbindRef({ ref: b.refId, type: b.type, repo: b.repoKey, group: b.groupKey || undefined });
+  notifyDocsChanged();
+}
+
+/**
+ * 把这一条归属对应的文档设为**主篇**（#144）。
+ *
+ * 只对「仓库 / 组」的归属有意义——组内仓库描述（group_repo）是命名空间里的另一篇，
+ * 不参与主篇语义（调用方也不该给它这个入口）。
+ */
+export async function promoteToMain(b: Pick<BindingRow, 'refId' | 'type' | 'repoKey' | 'groupKey'>): Promise<void> {
+  if (b.type === 'group_repo') throw new Error('组内仓库描述没有主篇概念');
+  await setMainDoc(b.type === 'group'
+    ? { ref: b.refId, board: b.repoKey }
+    : { ref: b.refId, repo: b.repoKey });
   notifyDocsChanged();
 }
 

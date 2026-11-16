@@ -10,9 +10,10 @@
 import { useState } from 'react';
 import { Copyable } from '../../components/ui.jsx';
 import { Button } from '../../components/button/index.jsx';
-import { BindTags, ClampRow, type BindTagItem } from '../../components/bindings/bind-tags.js';
+import { BindTags, type BindTagItem } from '../../components/bindings/bind-tags.js';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import type { RepoRow, BoardRow } from '../../types.js';
+import { IconEdit, IconOpen, IconTrash, IconUnlink } from './icons.jsx';
 
 // ─── repos 域的共享形状 ───────────────────────────────────────────────
 //
@@ -167,6 +168,8 @@ export interface RepoActs {
   filter: (id: string) => void;
   gotoRefRepo: (key: string) => void;
   bind: (r: RepoRecord) => void;
+  /** 组分组专用：只从这个分组摘除（不影响仓库本体与其它分组） */
+  unbindBoard?: (r: RepoRecord, groupId: string) => void;
 }
 
 /** 待初始化占位：组成员 + 所属组 + 自动匹配到的本机仓库。 */
@@ -267,11 +270,16 @@ function RefRepoChips({ chips, acts }: { chips: RepoChip[]; acts: RepoActs }) {
   );
 }
 
-// 仓库行 = 仓库信息（名称 + 路径）+ 文档入口（核心）+ 参考仓库（仅全局视图）+ 所属分组（仅全局视图）+ 操作。
-function RepoRow({ r, showRef, showGroups, filterBoard, refRepoChipsByRepo, acts }: {
+// 仓库行（#143）：一个仓库一行。
+//
+// 列随分组形态变化——`main` / `default` 显示**这一行自己直接绑定**的参考仓库，
+// 具体分组不显示（组内参考仓库共享，统一在「参考仓库」区块里看）。
+// **没有「分组」列**：组已经是「分支」这个全局维度，再摆一列只是重复当前上下文。
+function RepoRow({ r, mode, note, filterBoard, refRepoChipsByRepo, acts }: {
   r: RepoRecord;
-  showRef: boolean;
-  showGroups: boolean;
+  mode: 'main' | 'group' | 'default';
+  /** 分组里这一行的组内描述（board.repoDocs[repoKey].note） */
+  note?: string;
   filterBoard: BoardRecord | null;
   refRepoChipsByRepo: Map<string, RepoChip[]>;
   acts: RepoActs;
@@ -293,48 +301,34 @@ function RepoRow({ r, showRef, showGroups, filterBoard, refRepoChipsByRepo, acts
           ) : null}
         </strong>
         <span className="mono rp-name-path"><RepoPath path={r.path} /></span>
+        {mode === 'group' && note ? (
+          <span className="rp-group-note" title={`组内描述（只在这个组里有）：\n${note}`}>
+            组内描述：{note.split('\n')[0]}
+          </span>
+        ) : null}
       </td>
       {/* 文档列 = 这个仓库全部文档的入口：查看详情 → 右侧栏文档列表（含组内描述） */}
       <td className="rp-cell-docs">
         <DocsEntry docs={r.descDocs} onOpen={() => acts.docs(r)} />
       </td>
-      {/* 参考仓库列只在全局视图出现：只放本仓库自己直接绑定的参考仓库 */}
-      {showRef ? (
+      {/* 参考仓库列只在 main / default 出现：只放本仓库自己直接绑定的参考仓库 */}
+      {mode === 'group' ? null : (
         <td className="rp-refs">
           {chips.length
             ? <RefRepoChips chips={chips} acts={acts} />
             : <span className="muted rp-refs-none">—</span>}
-          <Button small className="rp-ref-bind" title="管理这个仓库所属组的参考仓库" onClick={() => acts.bind(r)}>绑定</Button>
+          <Button small className="rp-ref-bind" title="管理这个仓库绑定的参考仓库" onClick={() => acts.bind(r)}>绑定</Button>
         </td>
-      ) : null}
-      {showGroups ? (
-        <td className="rp-cell-groups">
-          {(r.boards || []).length ? (
-            <ClampRow moreTitle="展开本行全部所属分组">
-              {(r.boards || []).map((b) => (
-                <button
-                  key={b.id}
-                  className={'rp-group-chip' + (filterBoard?.id === b.id ? ' on' : '')}
-                  title={`只看「${b.name}」${b.note ? `\n组内描述：${b.note}` : ''}`}
-                  onClick={() => acts.filter(b.id)}
-                >
-                  {b.name}
-                </button>
-              ))}
-            </ClampRow>
-          ) : <span className="muted rp-refs-none">—</span>}
-        </td>
-      ) : null}
-      <td className="rp-acts">
-        {/* #148：行内动作编排化（kind=repos-row，同一套工具区组件）——默认与旧版
-            同构（编辑/打开/删除上栏，更多收纳 持续 get/对齐 remote）；每个动作都
-            可在「更多 → 自定义工具栏…」里调顺序 / 上栏 / 收纳。 */}
+      )}
+      <td className={'rp-acts' + (mode === 'group' ? ' rp-acts-wrap' : '')}>
+        {/* #148：行内动作编排化（kind=repos-row，同一套工具区组件）。
+            分组视图多一枚「移出本组」——只摘这一组的归属，仓库本体与其它分组不受影响。 */}
         <ToolActsBar
           kind="repos-row"
           renderers={{
-            edit: () => <Button small onClick={() => acts.edit(r)}>编辑</Button>,
-            open: () => <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</Button>,
-            del: () => <Button small danger onClick={() => acts.del(r)}>删除</Button>,
+            edit: () => <Button small onClick={() => acts.edit(r)}><span className="rp-btn-ico"><IconEdit size={12} /></span>编辑</Button>,
+            open: () => <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}><span className="rp-btn-ico"><IconOpen size={12} /></span>打开</Button>,
+            del: () => <Button small danger onClick={() => acts.del(r)}><span className="rp-btn-ico"><IconTrash size={12} /></span>删除</Button>,
             getloop: () => (
               <Button small title="持续 get（waitgoal）配置" onClick={() => acts.getloop(r)}>
                 <span className="rp-gl-menu-it">
@@ -358,55 +352,65 @@ function RepoRow({ r, showRef, showGroups, filterBoard, refRepoChipsByRepo, acts
             del: '删除仓库登记（磁盘文件不受影响）',
           }}
         />
+        {mode === 'group' && filterBoard ? (
+          <Button small danger title="只从这个分组摘除（不影响仓库本体与其它分组）"
+            onClick={() => acts.unbindBoard?.(r, filterBoard.id)}>
+            <span className="rp-btn-ico"><IconUnlink size={12} /></span>移出本组
+          </Button>
+        ) : null}
       </td>
     </tr>
   );
 }
 
-export default function RepoTable({ shown, devRepos, filterBoard, refRepoChipsByRepo, acts, onAddMember }: {
+export default function RepoTable({ shown, devRepos, mode, filterBoard, refRepoChipsByRepo, acts, onAddMember }: {
   shown: RepoRecord[];
   devRepos: RepoRecord[];
+  mode: 'main' | 'group' | 'default';
   filterBoard: BoardRecord | null;
   refRepoChipsByRepo: Map<string, RepoChip[]>;
   acts: RepoActs;
   onAddMember: (boardId: string) => void;
 }) {
-  // 组筛选视图不显示参考仓库列：组内参考仓库共享，统一在上方「组参考」区块看。
-  const showRef = !filterBoard;
-  // 组筛选视图也不显示「分组」列：当前列表已经限定在这个组，再显示仓库还属于哪些组只是噪音。
-  const showGroups = !filterBoard;
+  const isGroup = mode === 'group';
   return (
     <div className="rp-table-wrap" id="rp-repos">
-      <table className="rp-table">
+      <table className={'rp-table' + (isGroup ? ' rp-table-group' : '')}>
         <thead>
           <tr>
-            {/* #152/#154：列宽重排——操作列钉在 250px（其余列百分比合计 ≈ 100%-250px，
-                让余量进文档列而不是把操作列撑宽）。 */}
-            <th scope="col" style={{ width: '16%' }}>仓库</th>
-            <th scope="col" style={{ width: '36%' }}>
+            <th scope="col" style={{ width: isGroup ? '30%' : '22%' }}>仓库</th>
+            <th scope="col" style={{ width: isGroup ? '46%' : '34%' }}>
               文档
               <span className="rp-th-hint">主篇标题 · 查看详情打开完整文档列表</span>
             </th>
-            {showRef ? <th scope="col" style={{ width: '18%' }}>参考仓库</th> : null}
-            {showGroups ? <th scope="col" style={{ width: '14%' }}>分组</th> : null}
-            <th scope="col" style={{ width: '250px' }}>操作</th>
+            {isGroup ? null : <th scope="col" style={{ width: '18%' }}>参考仓库</th>}
+            <th scope="col" style={{ width: '322px' }}>操作</th>
           </tr>
         </thead>
         <tbody>
           {shown.map((r) => (
-            <RepoRow key={r.id} r={r} showRef={showRef} showGroups={showGroups} filterBoard={filterBoard}
-              refRepoChipsByRepo={refRepoChipsByRepo} acts={acts} />
+            <RepoRow
+              key={r.id}
+              r={r}
+              mode={mode}
+              note={isGroup ? (siteNoteOf(r, filterBoard) || '') : ''}
+              filterBoard={filterBoard}
+              refRepoChipsByRepo={refRepoChipsByRepo}
+              acts={acts}
+            />
           ))}
           {!shown.length ? (
             <tr>
-              <td colSpan={3 + (showRef ? 1 : 0) + (showGroups ? 1 : 0)} className="muted rp-empty">
-                {devRepos.length ? (
+              <td colSpan={isGroup ? 3 : 4} className="muted rp-empty">
+                {isGroup ? (
                   <>
-                    这个分组还没有成员{' '}
-                    {filterBoard ? (
-                      <Button small onClick={() => onAddMember(filterBoard.id)}>添加成员</Button>
-                    ) : null}
+                    这个分组里还没有仓库{' '}
+                    {filterBoard ? <Button small onClick={() => onAddMember(filterBoard.id)}>添加成员</Button> : null}
                   </>
+                ) : mode === 'default' ? (
+                  '没有未归组的仓库 —— 所有仓库都至少在一个分组里。'
+                ) : devRepos.length ? (
+                  '没有匹配的仓库：换个关键字，或切换分组看看。'
                 ) : (
                   '还没有登记开发仓库 —— 点右上「登记仓库」加一条。'
                 )}
@@ -417,4 +421,11 @@ export default function RepoTable({ shown, devRepos, filterBoard, refRepoChipsBy
       </table>
     </div>
   );
+}
+
+/** 分组里这一行的组内描述文本（board.repoDocs[key].note；没绑就是空串）。 */
+function siteNoteOf(r: RepoRecord, board: BoardRecord | null): string {
+  if (!board) return '';
+  const hit = (board.repos || []).find((m) => m.key === r.key);
+  return String((hit && hit.note) || '');
 }

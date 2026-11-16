@@ -22,7 +22,7 @@ import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { bindRef, fetchRefCheck, listBoards, listDocs, listRepos, openRepo, refSync, removeRepo, type RefCheckPayload } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
-import { useDialog } from '../../components/popup/index.jsx';
+import { RowMenu, useDialog } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
 import GetLoopModal from '../../components/repos/get-loop-modal.jsx';
@@ -50,7 +50,8 @@ import BoardAdminModal from './board-admin.jsx';
 import RepoFormModal from './repo-form-modal.jsx';
 import BindRepoModal from './bind-modals.jsx';
 import RemoteModal from './remote-modal.jsx';
-import { IconBranch, IconDoc, IconDocs, IconRefRepo, IconRepo, IconSync } from './icons.jsx';
+import { IconBranch, IconDoc, IconDocs, IconOpen, IconRefRepo, IconRepo, IconSync, IconUsers } from './icons.jsx';
+
 
 /** 一块的内容：仓库 / 参考仓库 / 文档（组分支里没有 docs）。 */
 type BlockId = 'repos' | 'refs' | 'docs';
@@ -384,27 +385,33 @@ export default function ReposView() {
               ? '没有归组的仓库都落在这里（虚拟分支，不落库）'
               : '全部仓库 / 参考仓库 / 文档'}
         </span>
-        <span className="rp-branchbar-nums">
-          <span>{repoRows.length} 仓库</span>
-          <span className="rp-dot-sep" />
-          <span>{refRows.length} 参考</span>
-          {branch === BRANCH_MAIN ? <><span className="rp-dot-sep" /><span>{docCount === null ? '…' : docCount} 文档</span></> : null}
-        </span>
+        {/* 右侧：一个主操作 + ⋯ 菜单（#143 第 2 轮：按钮收拢）。
+            计数不在这里重复——区块按钮上已经各报一次，两边都写会让人以为数字不一致。 */}
         <span className="rp-branchbar-acts">
           {branchBoard ? (
             <>
-              <button type="button" className="rp-branchbar-btn" title="往这个分支里加仓库"
-                onClick={() => setImpBoardId(branchBoard.id)}>添加成员</button>
               <button type="button" className="rp-branchbar-btn accent" title="组的文档收敛在右侧栏的文档列表里"
                 onClick={() => openBoardDoc(branchBoard)}>
                 <IconDoc size={13} /> 文档 {Number(branchBoard.docCount) || 0} →
               </button>
+              <RowMenu items={[
+                { label: '添加成员', icon: <IconUsers size={13} />, hint: '往这个分支里加仓库', onPick: () => setImpBoardId(branchBoard.id) },
+                { label: '刷新状态', icon: <IconSync size={13} />, hint: '重新检查参考仓库', onPick: () => { loadRefCheck(); toast('已刷新检查结果'); } },
+                { label: '分组管理', icon: <IconBranch size={13} />, hint: '建组 / 成员 / 组介绍文档', onPick: () => setBoardAdminOpen(true) },
+              ]} />
             </>
           ) : (
-            <button type="button" className="rp-branchbar-btn" title="重新检查参考仓库的状态"
-              onClick={() => { loadRefCheck(); toast('已刷新检查结果'); }}>
-              <IconSync size={13} /> 刷新状态
-            </button>
+            <>
+              <button type="button" className="rp-branchbar-btn" title="重新检查参考仓库的状态"
+                onClick={() => { loadRefCheck(); toast('已刷新检查结果'); }}>
+                <IconSync size={13} /> 刷新状态
+              </button>
+              <RowMenu items={[
+                { label: '分组管理', icon: <IconBranch size={13} />, hint: '建组 / 成员 / 组介绍文档', onPick: () => setBoardAdminOpen(true) },
+                { label: '参考仓库管理', icon: <IconRefRepo size={13} />, hint: '克隆 / 绑定 / 存储根 / 批量检查', onPick: () => setRefOpen(true) },
+                { label: '导入导出', icon: <IconOpen size={13} />, hint: '布局与仓库的导入导出', onPick: () => setTransferOpen(true) },
+              ]} />
+            </>
           )}
         </span>
       </div>
@@ -416,12 +423,6 @@ export default function ReposView() {
         q={q}
         onQ={setQ}
         placeholder={searchHint}
-        right={branchBoard ? (
-          <button type="button" className="rp-block-doclink" title="组的文档在右侧「文档列表」里"
-            onClick={() => openBoardDoc(branchBoard)}>
-            <IconDoc size={13} /> 组文档在右侧
-          </button>
-        ) : null}
       />
 
       {/* 待初始化占位：只在组分支里出现（导入布局带进来的空位） */}

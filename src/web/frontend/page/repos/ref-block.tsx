@@ -13,7 +13,7 @@ import { Copyable } from '../../components/ui.jsx';
 import { Button } from '../../components/button/index.jsx';
 import { DocsEntry } from './repo-table.js';
 import type { BoardRecord, RefBackLink, RefCheckMap, RepoRecord } from './repo-table.js';
-import { IconOpen, IconSync, IconUnlink } from './icons.jsx';
+import { IconLink, IconOpen, IconSync, IconUnlink } from './icons.jsx';
 
 export default function RefBlock({ rows, mode, group, boardList, refRepoBackLinks, checkOf, onSync, onOpen, onDocs, onBind, onUnbindGroup, onUnbindRepo, onGoBind, onManage }: {
   rows: RepoRecord[];
@@ -56,7 +56,7 @@ export default function RefBlock({ rows, mode, group, boardList, refRepoBackLink
             <th scope="col" style={{ width: '26%' }}>参考仓库</th>
             <th scope="col" style={{ width: '24%' }}>远程地址</th>
             <th scope="col">{isGroup ? '组内描述' : '绑定对象'}</th>
-            <th scope="col" style={{ width: '268px' }}>操作</th>
+            <th scope="col" style={{ width: '322px' }}>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -149,7 +149,7 @@ export default function RefBlock({ rows, mode, group, boardList, refRepoBackLink
                   <Button small title="在文件管理器中打开" onClick={() => onOpen(r)}>
                     <span className="rp-btn-ico"><IconOpen size={12} /></span>打开
                   </Button>
-                  <Button small title="管理它绑在哪些组 / 仓库" onClick={() => onBind(r)}>绑定…</Button>
+                  <Button small title="管理它绑在哪些组 / 仓库" onClick={() => onBind(r)}><span className="rp-btn-ico"><IconLink size={12} /></span>绑定…</Button>
                   {isGroup && group ? (
                     <Button small danger title="只从这一支摘除（不影响其它分支）" onClick={() => onUnbindGroup(r, group.id)}>
                       <span className="rp-btn-ico"><IconUnlink size={12} /></span>移出本组

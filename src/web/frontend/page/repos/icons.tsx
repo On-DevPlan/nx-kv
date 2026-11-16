@@ -196,3 +196,35 @@ export function IconGrid(p: IconProps) {
     </Svg>
   );
 }
+
+/** 编辑（铅笔）。 */
+export function IconEdit(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4.5 19.5h3.2l9.6-9.6a2.1 2.1 0 0 0 0-3l-1.7-1.7a2.1 2.1 0 0 0-3 0L3 14.8z" />
+      <path d="m13.4 6.6 4 4" />
+    </Svg>
+  );
+}
+
+/** 删除（垃圾桶）。 */
+export function IconTrash(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4.5 7h15" />
+      <path d="M9.5 7V4.8h5V7" />
+      <path d="M6.4 7l1 12.2h9.2L17.6 7" />
+      <path d="M10.2 10.6v6M13.8 10.6v6" />
+    </Svg>
+  );
+}
+
+/** 绑定 / 链接。 */
+export function IconLink(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M10.2 13.8a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1L11.6 7.3" />
+      <path d="M13.8 10.2a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2" />
+    </Svg>
+  );
+}

@@ -13,6 +13,7 @@ import { Button } from '../../components/button/index.jsx';
 import { BindTags, type BindTagItem } from '../../components/bindings/bind-tags.js';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import type { RepoRow, BoardRow } from '../../types.js';
+import { IconEdit, IconOpen, IconTrash, IconUnlink } from './icons.jsx';
 
 // ─── repos 域的共享形状 ───────────────────────────────────────────────
 //
@@ -325,9 +326,9 @@ function RepoRow({ r, mode, note, filterBoard, refRepoChipsByRepo, acts }: {
         <ToolActsBar
           kind="repos-row"
           renderers={{
-            edit: () => <Button small onClick={() => acts.edit(r)}>编辑</Button>,
-            open: () => <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}>打开</Button>,
-            del: () => <Button small danger onClick={() => acts.del(r)}>删除</Button>,
+            edit: () => <Button small onClick={() => acts.edit(r)}><span className="rp-btn-ico"><IconEdit size={12} /></span>编辑</Button>,
+            open: () => <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}><span className="rp-btn-ico"><IconOpen size={12} /></span>打开</Button>,
+            del: () => <Button small danger onClick={() => acts.del(r)}><span className="rp-btn-ico"><IconTrash size={12} /></span>删除</Button>,
             getloop: () => (
               <Button small title="持续 get（waitgoal）配置" onClick={() => acts.getloop(r)}>
                 <span className="rp-gl-menu-it">
@@ -353,7 +354,9 @@ function RepoRow({ r, mode, note, filterBoard, refRepoChipsByRepo, acts }: {
         />
         {mode === 'group' && filterBoard ? (
           <Button small danger title="只从这个分支摘除（不影响仓库本体与其它分支）"
-            onClick={() => acts.unbindBoard?.(r, filterBoard.id)}>移出本组</Button>
+            onClick={() => acts.unbindBoard?.(r, filterBoard.id)}>
+            <span className="rp-btn-ico"><IconUnlink size={12} /></span>移出本组
+          </Button>
         ) : null}
       </td>
     </tr>
@@ -381,7 +384,7 @@ export default function RepoTable({ shown, devRepos, mode, filterBoard, refRepoC
               <span className="rp-th-hint">主篇标题 · 查看详情打开完整文档列表</span>
             </th>
             {isGroup ? null : <th scope="col" style={{ width: '18%' }}>参考仓库</th>}
-            <th scope="col" style={{ width: isGroup ? '272px' : '250px' }}>操作</th>
+            <th scope="col" style={{ width: '322px' }}>操作</th>
           </tr>
         </thead>
         <tbody>

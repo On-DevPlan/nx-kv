@@ -340,13 +340,25 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
 }
 /* 工具栏/纸面自适应走容器查询：随编辑列实际宽度分级折叠——
    640 纸面紧凑（#78 后动作区只剩 新任务/提交/更多，无需再按宽收动作）。
-   此前用视口媒体查询，进程 rail 一开窄列就静默裁掉按钮（ overflow:hidden 兜底） */
+   此前用视口媒体查询，进程 rail 一开窄列就静默裁掉按钮（ overflow:hidden 兜底）。
+   2026-11-16「太挤了」：窄列只收纸面 padding 不够——大标题、标题字号、块距、
+   代码块都要跟着收，整页节奏才回来；全部写在块容器/纸面层，不破坏 #31 的
+   视图↔编辑等高约束 */
 @container mdwmain (max-width: 960px){
   .mdw-lp-sheet,.mdw-reader{padding:20px 22px 56px}
+  .mdw-lp input.mdw-lp-title,.mdw-lp textarea.mdw-lp-title,.mdw-reader-title{font-size:24px;margin-bottom:22px}
 }
 @container mdwmain (max-width: 640px){
   .mdw-lp-sheet,.mdw-reader{padding:16px 16px 48px}
-  .mdw-lp input.mdw-lp-title,.mdw-lp textarea.mdw-lp-title,.mdw-reader-title{font-size:24px}
+  .mdw-lp input.mdw-lp-title,.mdw-lp textarea.mdw-lp-title,.mdw-reader-title{font-size:20px;margin-bottom:14px}
+  .mdw-lp-view h1,.mdw-preview h1{font-size:18px}
+  .mdw-lp-view h2,.mdw-preview h2{font-size:15px}
+  .mdw-lp-view pre,.mdw-preview pre{margin:6px 0;padding:8px 10px;font-size:11.5px;line-height:1.5}
+  /* 块距收一档（块容器承担，视图↔编辑仍等高） */
+  .mdw-lp-block.kind-h1{padding-top:6px;padding-bottom:10px}
+  .mdw-lp-block.kind-h2{padding-top:10px;padding-bottom:8px}
+  .mdw-lp-block.kind-h3{padding-top:8px;padding-bottom:8px}
+  .mdw-lp-gap{min-height:1.2em}
 }
 
 /* 快捷键速查面板：外壳走 popup/Modal（pp-card pp-lg + .mdw-sheet 追加类），

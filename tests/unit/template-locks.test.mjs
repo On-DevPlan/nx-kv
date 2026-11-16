@@ -7,7 +7,7 @@ import { liveBodyBlocks } from '../../src/web/frontend/modules/md/md-blocks.js';
 
 const TPL = [
   '## 本轮问题',
-  '{{问题}}',
+  '{{content}}',
   '---',
   '## 怎么干',
   '按四步走。',
@@ -67,7 +67,7 @@ test('没有槽位的模板不锁定（只读的前提是有可编辑出口）',
 });
 
 test('槽位块被删后，该位置仍按骨架对齐（不把分隔线误判成插槽）', () => {
-  const tpl = '## 问题\n\n{{问题}}\n\n---\n\n## 做法';
+  const tpl = '## 问题\n\n{{content}}\n\n---\n\n## 做法';
   const task = taskOf('## 问题\n\n---\n\n## 做法'); // 用户把槽位那块删了
   const { locked, slots } = computeTemplateLocks(task, tpl);
   assert.equal(slots.size, 0);
@@ -76,7 +76,7 @@ test('槽位块被删后，该位置仍按骨架对齐（不把分隔线误判�
 });
 
 test('槽位块有内容时就是可编辑插槽', () => {
-  const tpl = '## 问题\n\n{{问题}}\n\n---\n\n## 做法';
+  const tpl = '## 问题\n\n{{content}}\n\n---\n\n## 做法';
   const task = taskOf('## 问题\n\n我要问的是这个\n\n---\n\n## 做法');
   const { locked, slots } = computeTemplateLocks(task, tpl);
   assert.ok(slots.has(2));

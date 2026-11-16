@@ -77,7 +77,7 @@ export default function TemplateListPanel() {
         <div className="title-block">
           <h2>任务模板</h2>
           <p className="muted tpl-head-note">
-            新建任务时的正文骨架。带 <code>{'{{槽位}}'}</code> 的段落可在任务里填写，其余骨架在任务中只读。
+            新建任务时的正文骨架。带 <code>{'{{content}}'}</code> 的段落可在任务里填写，其余骨架在任务中只读。
           </p>
         </div>
         <div className="acts">
@@ -153,8 +153,8 @@ export default function TemplateListPanel() {
 
               {slots.length === 0 && (
                 <div className="tpl-card-hint">
-                  未声明槽位：这条模板生成的任务整篇可编辑。在正文里写 <code>{'{{槽位名}}'}</code>
-                  （并给它一个默认值）就能把那段变成任务里可填的插槽，其余骨架随之只读。
+                  未声明插槽：这条模板生成的任务整篇可编辑。在正文里写 <code>{'{{content}}'}</code>
+                  就能把那段变成任务里可填的插槽（可写多次，共用同一个值），其余骨架随之只读。
                 </div>
               )}
 
@@ -171,7 +171,7 @@ export default function TemplateListPanel() {
               {previewOpen && (
                 <div className="tpl-preview">
                   <div className="tpl-preview-note">
-                    预览（槽位按当前值渲染，未填的显示〔槽位名〕；保存后任务里看到的就是这段骨架）
+                    预览（插槽按当前值渲染，未填的显示〔content〕；保存后任务里看到的就是这段骨架）
                   </div>
                   <div
                     className="tpl-preview-body mdw-lp-view"

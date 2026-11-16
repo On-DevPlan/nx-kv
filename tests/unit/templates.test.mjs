@@ -111,15 +111,16 @@ test('编辑模板：只改传入字段；builtin 骨架也可改（T06 裁决�
   await assert.rejects(() => updateTemplate({ id: a.template.id, name: '   ' }), /模板名/);
 });
 
-// 槽位（values）：#217 起出厂正文声明 {{问题}} 插槽（骨架只读 + 槽位可编辑），
-// values 里的「问题」是**默认提示文字**；其余槽位仍只服务用户自己的模板。
-test('模板正文：出厂声明问题槽位；老模板的槽位值仍跟自己存', async () => {
+// 槽位（values）：#217 起出厂正文声明插槽（骨架只读 + 插槽可编辑），
+// #218 起插槽名**统一为 content**（`{{content}}`），values.content 是默认提示文字；
+// 其它名字仍可由用户模板自己用（渲染层通用，不认名字）。
+test('模板正文：出厂声明 content 插槽；老模板的槽位值仍跟自己存', async () => {
   const builtin = await listTemplates();
   const def = builtin.templates.find((t) => t.id === BUILTIN_ID);
   assert.ok(def, '内置模板在场');
-  assert.match(def.body, /\{\{\s*问题\s*\}\}/, '内置正文要有插槽（否则整篇骨架只读、任务没法写）');
+  assert.match(def.body, /\{\{\s*content\s*\}\}/, '内置正文要有插槽（否则整篇骨架只读、任务没法写）');
   assert.match(def.body, /## 本轮问题/, '出厂正文 = 零知识 SOP');
-  assert.equal(def.values['问题'], '（把你要问这个仓库的问题写在这里）', '槽位默认值 = 可改的提示文字');
+  assert.equal(def.values.content, '（把你要问这个仓库的问题写在这里）', '槽位默认值 = 可改的提示文字');
   assert.equal(def.values['背景'], undefined, '其它槽位不凭空出现');
 
   const upd = await updateTemplate({ id: BUILTIN_ID, values: { 背景: '本轮要做的事' } });
@@ -127,10 +128,10 @@ test('模板正文：出厂声明问题槽位；老模板的槽位值仍跟自�
   assert.equal(upd.template.body, def.body, '只给 values 时不改正文');
 
   // 用户模板：槽位值跟着自己的模板存
-  const t = await addTemplate({ name: '带槽位', body: '# 标题\n\n{{目标}}\n' });
-  const t2 = await updateTemplate({ id: t.template.id, values: { 目标: '把事做完' } });
-  assert.equal(t2.template.values['目标'], '把事做完');
-  assert.equal(t2.template.body, '# 标题\n\n{{目标}}\n', '正文不动');
+  const t = await addTemplate({ name: '带槽位', body: '# 标题\n\n{{content}}\n' });
+  const t2 = await updateTemplate({ id: t.template.id, values: { content: '把事做完' } });
+  assert.equal(t2.template.values.content, '把事做完');
+  assert.equal(t2.template.body, '# 标题\n\n{{content}}\n', '正文不动');
 });
 
 test('正文可来自文件（--body-file）：多行 Markdown 的实用姿势', async () => {

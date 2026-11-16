@@ -7,8 +7,9 @@ import assert from 'node:assert/strict';
 import { NEWTASK_REF_BODY } from '../../src/core/db/seed-templates.js';
 import { renderTemplateBody } from '../../src/web/frontend/modules/prompts/render-template-body.js';
 
-test('#217 出厂文本声明「问题」槽位：骨架只读、槽位可编辑（默认值是可改的提示文字）', () => {
-  assert.match(NEWTASK_REF_BODY, /\{\{\s*问题\s*\}\}/, '出厂文本要有可填插槽，否则整篇骨架只读、任务没法写');
+test('#218 出厂文本声明 content 插槽：骨架只读、插槽可编辑（默认值是可改的提示文字）', () => {
+  assert.match(NEWTASK_REF_BODY, /\{\{\s*content\s*\}\}/, '出厂文本要有可填插槽，否则整篇骨架只读、任务没法写');
+  assert.ok(!NEWTASK_REF_BODY.includes('{{问题}}'), '#218：插槽名统一 content，旧名不再出现');
   assert.match(NEWTASK_REF_BODY, /## 本轮问题/);
   assert.match(NEWTASK_REF_BODY, /零知识起步的 SOP/);
 });

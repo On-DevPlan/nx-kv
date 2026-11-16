@@ -2,9 +2,14 @@
    外壳复用 .rp-page / .page-head（与仓库管理页同一套头部口径），这里只补卡片与预览。 */
 .tpl-page{display:flex;flex-direction:column;gap:12px}
 .tpl-head-note{margin:2px 0 0;font-size:12px}
-.tpl-head-note code{
+.tpl-head-note code,
+.tpl-slot-hint code{
   font:400 11.5px ui-monospace,Consolas,monospace;padding:0 4px;border-radius:4px;
   background:var(--soft,#F1F0EC);border:1px solid var(--line,#E4E2DC);
+}
+/* 模板编辑器工具栏里的语法提示（#218）：插槽只有 content 一个名字 */
+.tpl-slot-hint{
+  font-size:11px;margin-left:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .tpl-list{display:flex;flex-direction:column;gap:8px;min-width:0}
 .tpl-card{

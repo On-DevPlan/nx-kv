@@ -2,7 +2,7 @@
 // #/templates/new、#/templates/edit/<id> = 全屏模板编辑器（MdPanes）。
 // config: { mode:'edit'|'new', id?, name?, scope?, topic? }
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
-import { renderTemplateBody } from '../../modules/prompts/render-template-body.js';
+import { renderTemplatePreview } from '../../modules/prompts/template-preview.js';
 import { renderMarkdownHtml } from '../../modules/md/md-parse.js';
 import { useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
@@ -15,6 +15,7 @@ import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modul
 import { popRoute } from '../../components/layout/route-history.js';
 import TemplateListPanel from './template-list.jsx';
 import '../../modules/md/style.css';
+import './style.css';
 
 /** 模板编辑器里「保存」回传的内容。 */
 interface TemplateDraft {
@@ -24,10 +25,28 @@ interface TemplateDraft {
 
 const HIST_KEY = (id?: string | null) => `tpl:${id || 'new'}`;
 
+/**
+ * 新建模板的默认正文（#218）：给一段**含 `{{content}}` 的骨架**。
+ *
+ * 空白的编辑器会逼用户自己猜插槽语法，猜出来的名字五花八门（`{{问题}}` /
+ * `{{需求}}`）—— 而插槽只有 `content` 这一个名字，默认骨架直接把它摆出来。
+ */
+const NEW_TEMPLATE_BODY = `## 背景
+
+{{content}}
+
+## 验收
+- [ ] …
+
+## 约束
+- …`;
+
 interface TemplateEditorViewProps {
   templateId: string;
   initialName: string;
   initialBody: string;
+  /** 槽位默认值：只用于右侧预览，**不进输入框**（输入框里必须是 `{{content}}` 源码）。 */
+  initialValues?: Record<string, unknown> | null;
   isNew: boolean;
   onSave: (v: TemplateDraft) => void | Promise<void>;
   onClose: () => void;
@@ -38,6 +57,7 @@ function TemplateEditorView({
   templateId,
   initialName,
   initialBody,
+  initialValues,
   isNew,
   onSave,
   onClose,
@@ -53,7 +73,14 @@ function TemplateEditorView({
   const histRef = useRef<Map<string, unknown>>(new Map());
   const histId = HIST_KEY(isNew ? 'new' : templateId);
 
-  const previewHtml = useMemo(() => renderMarkdownHtml(body || ''), [body]);
+  // 预览 = **渲染后**的样子（空插槽显示〔content〕）。
+  // 左边输入框里是模板源码（`{{content}}` 原样可见），两栏各司其职：
+  // 编辑的是模板，不是一篇填好的任务正文 —— 旧行为（输入框也渲染）会让保存把
+  // `{{content}}` 写成提示文字，插槽就此消失（#218）。
+  const previewHtml = useMemo(
+    () => renderMarkdownHtml(renderTemplatePreview(body || '', initialValues)),
+    [body, initialValues],
+  );
 
   const mark = (nextName: string, nextBody: string, kind = 'typing') => {
     pushHistory(histRef.current, histId, { title: name, body }, kind);
@@ -123,6 +150,9 @@ function TemplateEditorView({
                 </button>
               ))}
             </div>
+            <span className="tpl-slot-hint muted" title="插槽只有这一个名字；可以出现多次，共用同一个值">
+              插槽写 <code>{'{{content}}'}</code> · 其余为只读骨架
+            </span>
           </div>
           <div className="mdw-actions" role="group" aria-label="模板操作">
             <button type="button" className="btn ghost sm" disabled={busy} onClick={onClose}>
@@ -242,9 +272,10 @@ export default function TemplatePanel({ config, model, tabId }: TemplatePanelPro
 
   // 走到这里 existing 必定存在（上面的守卫已排除「编辑态但找不到」）
   const initialName = isNew ? (cfg.name || '') : existing?.name ?? '';
-  const initialBody = isNew
-    ? ''
-    : renderTemplateBody(existing?.body || '', existing?.values || {});
+  // **原文**而不是渲染结果（#218）：模板编辑的是骨架，`{{content}}` 必须原样可见，
+  // 否则保存一次就把插槽写成提示文字。渲染只发生在右侧预览。
+  const initialBody = isNew ? NEW_TEMPLATE_BODY : existing?.body ?? '';
+  const initialValues = isNew ? null : existing?.values ?? null;
 
   return (
     <TemplateEditorView
@@ -252,6 +283,7 @@ export default function TemplatePanel({ config, model, tabId }: TemplatePanelPro
       templateId={templateId}
       initialName={initialName}
       initialBody={initialBody}
+      initialValues={initialValues}
       isNew={isNew}
       busy={busy}
       onSave={saveEditing}

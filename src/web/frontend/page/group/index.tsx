@@ -380,7 +380,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
           onClick: () => createTask(t.fallback ? null : t),
         }))
       : [{
-          label: '按默认模板新建',
+          label: '按默认模板新建一页',
           icon: 'list',
           onClick: () => createTask(),
         }]),
@@ -414,7 +414,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
         emptyText={
           searching
             ? `没有匹配「${q.trim()}」的任务（标题与正文都搜过了）`
-            : '本组还没有任务——点「＋ 新增任务」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。'
+            : '本组还没有任务——点「＋ 新建页」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。'
         }
       >
         {(pager.items.map(({ member, task }) => {
@@ -513,20 +513,20 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
                   {/* #151：与目录页同款两级命中区 + PopMenu 模板下拉 */}
                   <button
                     type="button"
-                    className={'btn small' + (tplMenu ? ' is-open' : '')}
-                    title="按默认模板新建任务（▾ 选模板；携带本组语义）"
+                    className={'btn small primary' + (tplMenu ? ' is-open' : '')}
+                    title="按默认模板新建一页（▾ 选模板；携带本组语义）"
                     disabled={!sel}
                     onClick={() => createTask()}
                   >
-                    ＋ 新增任务
+                    ＋ 新建页
                     <span
                       role="button"
                       tabIndex={sel ? 0 : undefined}
-                      aria-label="选择模板新建任务"
+                      aria-label="选择模板新建一页"
                       aria-haspopup="menu"
                       aria-expanded={!!tplMenu}
                       className={'rp-newtask-caret' + (tplMenu ? ' rot' : '')}
-                      title="选择模板新建任务"
+                      title="选择模板新建一页"
                       onClick={(e) => {
                         e.stopPropagation();
                         const r = e.currentTarget.getBoundingClientRect();

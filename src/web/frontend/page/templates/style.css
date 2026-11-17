@@ -18,6 +18,8 @@
    模板里「哪里是插槽」恰恰是主角——徽标与绿条一直可见 */
 .mdw-tpl-edpage .mdw-lp-slot{opacity:1}
 .mdw-tpl-edpage .mdw-lp-block.is-slot{box-shadow:inset 3px 0 0 var(--mdw-accent-line,#B7D4C8)}
+/* #149：模板列表关键词过滤框 */
+.tpl-search{padding:2px 0 8px}
 .tpl-list{display:flex;flex-direction:column;gap:8px;min-width:0}
 .tpl-card{
   display:flex;flex-direction:column;gap:6px;min-width:0;

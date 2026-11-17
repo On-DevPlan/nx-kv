@@ -17,6 +17,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useToast } from '../../components/toast/index.jsx';
 import { BindTags, type BindTagItem } from '../../components/bindings/bind-tags.js';
+import { ListSearch } from '../../components/list-search.jsx';
+import { filterByKeyword } from '../../modules/list-filter.js';
 import {
   bindRepoDoc,
   docBindings,
@@ -57,6 +59,9 @@ export function useDocBindings(docId: string | undefined, writable: boolean, doc
   const [addOpen, setAddOpen] = useState(false);
   const [kind, setKind] = useState<'repo' | 'group'>('repo');
   const [hostKey, setHostKey] = useState('');
+  // #149：归属 tag 过滤 + 加绑宿主候选过滤（全站同一套关键词口径）
+  const [tagQ, setTagQ] = useState('');
+  const [hostQ, setHostQ] = useState('');
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
 
@@ -117,7 +122,7 @@ export function useDocBindings(docId: string | undefined, writable: boolean, doc
   }
 
   function openAdd() {
-    setKind('repo'); setHostKey(''); setAddOpen(true);
+    setKind('repo'); setHostKey(''); setHostQ(''); setAddOpen(true);
   }
 
   async function confirmAdd() {
@@ -138,7 +143,7 @@ export function useDocBindings(docId: string | undefined, writable: boolean, doc
     }
   }
 
-  const items: BindTagItem[] = useMemo(() => rows.map((b) => {
+  const allItems: BindTagItem[] = useMemo(() => rows.map((b) => {
     const group = b.type === 'group_repo' ? b.groupKey : null;
     return {
       id: `${b.refId}:${b.repoKey}:${b.groupKey || ''}:${b.position}`,
@@ -149,15 +154,36 @@ export function useDocBindings(docId: string | undefined, writable: boolean, doc
       onRemove: writable ? () => doUnbind(b) : undefined,
     } satisfies BindTagItem;
   }), [rows, writable, nameOf]);
+  const items = useMemo(
+    () => filterByKeyword(allItems, tagQ, (x) => [x.label, x.title]),
+    [allItems, tagQ]
+  );
 
   const candidates = kind === 'repo' ? repos : groups;
   // 已绑的宿主不再出现在候选里（group_repo 是「组内成员描述」，不占组/仓的文档集席位）
-  const bound = new Set(rows.filter((b) => b.type !== 'group_repo').map((b) => b.repoKey));
-  const free = candidates.filter((h) => !bound.has(h.key));
+  const bound = useMemo(
+    () => new Set(rows.filter((b) => b.type !== 'group_repo').map((b) => b.repoKey)),
+    [rows]
+  );
+  const freeBase = useMemo(() => candidates.filter((h) => !bound.has(h.key)), [candidates, bound]);
+  const free = useMemo(
+    () => filterByKeyword(freeBase, hostQ, (h) => [h.name, h.key]),
+    [freeBase, hostQ]
+  );
 
   // 面板体：没有标题行——计数在 dock tab / 状态栏上，说明在 title 里
   const strip = docId ? (
     <div className="docp-bind-panel" title="这篇文档被谁引用 —— tag 上的 ✕ 解绑（不删文档）">
+      {rows.length > 1 ? (
+        <ListSearch
+          value={tagQ}
+          onChange={setTagQ}
+          placeholder="搜索归属…"
+          title="过滤归属"
+          count={items.length}
+          className="wide"
+        />
+      ) : null}
       <BindTags
         items={items}
         addLabel="加绑宿主"
@@ -182,12 +208,22 @@ export function useDocBindings(docId: string | undefined, writable: boolean, doc
           <div className="nb-frow">
             <label>宿主类型</label>
             <div className="nb-seg">
-              <button type="button" className={kind === 'repo' ? 'on' : ''} onClick={() => { setKind('repo'); setHostKey(''); }}>仓库</button>
-              <button type="button" className={kind === 'group' ? 'on' : ''} onClick={() => { setKind('group'); setHostKey(''); }}>项目组</button>
+              <button type="button" className={kind === 'repo' ? 'on' : ''} onClick={() => { setKind('repo'); setHostKey(''); setHostQ(''); }}>仓库</button>
+              <button type="button" className={kind === 'group' ? 'on' : ''} onClick={() => { setKind('group'); setHostKey(''); setHostQ(''); }}>项目组</button>
             </div>
           </div>
           <div className="nb-frow">
             <label>{kind === 'repo' ? '选择仓库' : '选择项目组'}</label>
+            {candidates.length > 1 ? (
+              <ListSearch
+                value={hostQ}
+                onChange={setHostQ}
+                placeholder={kind === 'repo' ? '搜索仓库…' : '搜索项目组…'}
+                title="过滤可加绑的宿主"
+                count={free.length}
+                className="wide"
+              />
+            ) : null}
             <div className="nb-list">
               {free.length ? free.map((h) => (
                 <label key={h.key} style={{ fontWeight: 400 }}>

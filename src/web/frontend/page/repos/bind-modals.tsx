@@ -9,6 +9,8 @@ import { bindRef } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { Modal } from '../../components/popup/index.jsx';
 import { Button } from '../../components/button/index.jsx';
+import { ListSearch } from '../../components/list-search.jsx';
+import { filterByKeyword } from '../../modules/list-filter.js';
 import type { BoardRecord, RepoRecord } from './repo-table.js';
 
 // dev 侧绑定弹窗：某个开发仓库 → 勾选绑到它所属组的参考（组内共享）
@@ -28,6 +30,9 @@ export default function BindRepoModal({ repo, refRepos, boardList, currentRefs, 
     for (const x of currentRefs || []) init[x.key] = true;
     return init;
   });
+  // #149：参考仓库勾选列表的关键词过滤
+  const [q, setQ] = useState('');
+  const shownRefRepos = filterByKeyword(refRepos, q, (r) => [r.name, r.key, r.desc]);
 
   // 保存 = 对比该仓库所属组当前挂的参考，加/摘各一批（逐组打）
   const save = () => guard(async () => {
@@ -59,7 +64,17 @@ export default function BindRepoModal({ repo, refRepos, boardList, currentRefs, 
           <div className="rp-pick-list">
             <div className="rp-pick-group">
               <span className="rp-pick-group-label">参考仓库</span>
-              {refRepos.map((r) => (
+              {refRepos.length > 1 ? (
+                <ListSearch
+                  value={q}
+                  onChange={setQ}
+                  placeholder="搜索参考仓库…"
+                  title="过滤参考仓库"
+                  count={shownRefRepos.length}
+                  className="wide"
+                />
+              ) : null}
+              {shownRefRepos.map((r) => (
                 <label className="rp-pick-item" key={r.key}>
                   <input type="checkbox" checked={!!sel[r.key]}
                     onChange={(e) => setSel((m) => ({ ...m, [r.key]: e.target.checked }))} />
@@ -67,7 +82,8 @@ export default function BindRepoModal({ repo, refRepos, boardList, currentRefs, 
                   {r.desc ? <span className="muted rp-pick-desc">{r.desc}</span> : null}
                 </label>
               ))}
-              {!refRepos.length ? <span className="muted">（还没有参考仓库 —— 先在参考面板里克隆）</span> : null}
+              {!refRepos.length ? <span className="muted">（还没有参考仓库 —— 先在参考面板里克隆）</span>
+                : !shownRefRepos.length ? <span className="muted">（没有匹配的参考仓库）</span> : null}
             </div>
           </div>
           {!groups.length ? (

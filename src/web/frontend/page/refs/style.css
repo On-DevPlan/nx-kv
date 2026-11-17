@@ -13,6 +13,9 @@
   color:var(--mid,#838A93);display:inline-flex;align-items:center;
 }
 .nx-refs-h .iconbtn:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
+/* #149：关键词过滤框（全站列表搜索同形态） */
+.nx-refs-search{flex:none;padding:7px 10px 0}
+.nx-refs-search .nx-list-search{width:100%}
 /* #117：归属筛选器（全部 / 仓库 / 组 / 组内）——窄栏里一行药丸，可点切换 */
 .nx-refs-scopes{
   flex:none;display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px;

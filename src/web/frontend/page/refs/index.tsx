@@ -23,6 +23,8 @@ import {
   type ScopeKey,
 } from '../../refs/index.js';
 import { Icon } from '../../components/icons.jsx';
+import { ListSearch } from '../../components/list-search.jsx';
+import { filterByKeyword } from '../../modules/list-filter.js';
 import { useWikiNav } from '../doc/index.jsx';
 import type { DocOpenExtra } from '../doc/index.jsx';
 import { closeRightPanelOf } from '../../workspace.js';
@@ -154,6 +156,8 @@ export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scop
   const [rows, setRows] = useState<BindingRow[] | null>(null);
   const [err, setErr] = useState('');
   const [tick, setTick] = useState(0);
+  // #149：关键词过滤（与归属 scope 叠加，全站同一套匹配口径）
+  const [q, setQ] = useState('');
   // #117：归属（scope）是**筛选器**，不是装饰。仓库管理页点「查看详情」= 只看这一行的
   // 精确归属（repo）；组视图里可以切 全部 / 组 / 组内 / 仓库。
   const [scopeFilter, setScopeFilter] = useState<ScopeKey>(() => normalizeScope(scope));
@@ -226,7 +230,16 @@ export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scop
 
   const canAdd = !!(effRepoKey || groupKey);
   const counts = useMemo(() => scopeCounts(rows), [rows]);
-  const shownRows = useMemo(() => filterByScope(rows, scopeFilter), [rows, scopeFilter]);
+  const scopedRows = useMemo(() => filterByScope(rows, scopeFilter), [rows, scopeFilter]);
+  const shownRows = useMemo(
+    () => filterByKeyword(scopedRows, q, (b) => [
+      labelOf(b),
+      descOf(b),
+      b.refId,
+      scopeBadgesOf(b, repoNameOf, groupNameOf).map((x) => x.text).join(' '),
+    ]),
+    [scopedRows, q, repoNameOf, groupNameOf]
+  );
   const count = shownRows.length;
 
   return (
@@ -254,6 +267,18 @@ export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scop
           </button>
         )}
       </div>
+      {/* #149：关键词过滤——标题 / 描述 / refId / 归属，与 scope 筛选叠加 */}
+      {rows && rows.length ? (
+        <div className="nx-refs-search">
+          <ListSearch
+            value={q}
+            onChange={setQ}
+            placeholder="搜索标题 / 描述 / refId / 归属…"
+            title="过滤文档列表"
+            count={shownRows.length}
+          />
+        </div>
+      ) : null}
       {/* #117：归属筛选器——仓库管理页「查看详情」直接落在 repo 这一档；
           组视图里能切 全部 / 组 / 组内 / 仓库，scope 不再是只能看的勋章。 */}
       {rows && (counts.repo + counts.group + counts.group_repo > 1 || scopeFilter !== 'all') ? (

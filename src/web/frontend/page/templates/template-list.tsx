@@ -12,6 +12,8 @@ import { Button } from '../../components/button/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { renderMarkdownHtml } from '../../modules/md/md-parse.js';
+import { ListSearch } from '../../components/list-search.jsx';
+import { filterByKeyword } from '../../modules/list-filter.js';
 import { renderTemplatePreview, templateSlots } from '../../modules/prompts/template-preview.js';
 import type { PromptTemplate, TemplatesApi } from '../../types.js';
 import ScopeChips from './scope-chips.jsx';
@@ -44,6 +46,8 @@ export default function TemplateListPanel() {
   const [scopeOpenId, setScopeOpenId] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // #149：模板列表关键词过滤（名称 / 正文摘要 / 可见范围）
+  const [q, setQ] = useState('');
 
   const go = (hash: string) => app.onNavigate?.(hash);
 
@@ -59,6 +63,7 @@ export default function TemplateListPanel() {
   }
 
   const templates = tpl.templates || [];
+  const shownTemplates = filterByKeyword(templates, q, (t) => [t.name, summaryOf(t.body), (t.scope || []).join(' ')]);
 
   const act = async (fn: () => Promise<unknown>, ok?: string) => {
     if (busy) return;
@@ -97,9 +102,21 @@ export default function TemplateListPanel() {
       </div>
 
       {!templates.length && <div className="muted" style={{ padding: '8px 2px' }}>还没有模板（内置默认模板加载中…）。</div>}
+      {templates.length > 1 ? (
+        <div className="tpl-search">
+          <ListSearch
+            value={q}
+            onChange={setQ}
+            placeholder="搜索模板名称 / 正文 / 可见范围…"
+            title="过滤任务模板"
+            count={shownTemplates.length}
+            className="wide"
+          />
+        </div>
+      ) : null}
 
       <div className="tpl-list">
-        {templates.map((t) => {
+        {shownTemplates.map((t) => {
           const isDefault = t.id === tpl.defaultId;
           const scopeOpen = scopeOpenId === t.id;
           const previewOpen = previewId === t.id;
@@ -192,6 +209,9 @@ export default function TemplateListPanel() {
             </div>
           );
         })}
+        {templates.length && !shownTemplates.length ? (
+          <div className="muted" style={{ padding: '8px 2px' }}>（没有匹配的模板）</div>
+        ) : null}
       </div>
     </div>
   );

@@ -1,0 +1,44 @@
+/* 列表搜索框（#149）：全站列表统一的过滤输入形态。 */
+.nx-list-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--mid);
+  min-width: 0;
+  max-width: 100%;
+}
+.nx-list-search:focus-within { border-color: var(--mid); }
+.nx-list-search.wide { width: 100%; }
+.nx-list-search input {
+  flex: 1 1 auto;
+  min-width: 60px;
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  border: 0;
+  background: transparent;
+  outline: none;
+}
+.nx-list-search input::placeholder { color: var(--mid); }
+.nx-list-search-n {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ink);
+  font-family: ui-monospace, Consolas, monospace;
+}
+.nx-list-search-x {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--mid);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.nx-list-search-x:hover { color: var(--ink); }

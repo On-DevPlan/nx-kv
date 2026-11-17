@@ -51,7 +51,7 @@ import BoardAdminModal from './board-admin.jsx';
 import RepoFormModal from './repo-form-modal.jsx';
 import BindRepoModal from './bind-modals.jsx';
 import RemoteModal from './remote-modal.jsx';
-import { IconBranch, IconDoc, IconDocs, IconOpen, IconRefRepo, IconRepo, IconSync, IconUsers } from './icons.jsx';
+import { IconBranch, IconDoc, IconDocs, IconRefRepo, IconRepo, IconSync, IconUsers } from './icons.jsx';
 
 
 /** 一块的内容：仓库 / 参考仓库 / 文档（组分支里没有 docs）。 */
@@ -391,7 +391,8 @@ export default function ReposView() {
           {branchBoard ? <IconBranch size={14} /> : <IconRepo size={14} />}
         </span>
         <span className="rp-branchbar-name">{branchBoard ? branchBoard.name : branch === BRANCH_DEFAULT ? 'default' : 'main'}</span>
-        {/* 右侧：一个主操作 + ⋯ 菜单（#143 第 2 轮：按钮收拢）。
+        {/* 右侧：一个主操作（+ 分组专属 ⋯）。#150：非分组视图原来还有一组 ⋯，
+            三项与头部「更多 ▾」完全相同，已收敛到头部，这里只留「刷新状态」。
             计数不在这里重复——区块按钮上已经各报一次，两边都写会让人以为数字不一致。 */}
         <RpSearch value={q} onChange={setQ} count={kw ? repoRows.length + refRows.length + docShown : undefined} />
         <span className="rp-branchbar-acts">
@@ -401,10 +402,10 @@ export default function ReposView() {
                 onClick={() => openBoardDoc(branchBoard)}>
                 <IconDoc size={13} /> 文档 {Number(branchBoard.docCount) || 0} →
               </button>
+              {/* #150：只留分组专属动作；「分组管理」已由头部「更多 ▾」承担 */}
               <RowMenu items={[
                 { label: '添加成员', icon: <IconUsers size={13} />, hint: '往这个分组里加仓库', onPick: () => setImpBoardId(branchBoard.id) },
                 { label: '刷新状态', icon: <IconSync size={13} />, hint: '重新检查参考仓库', onPick: () => { loadRefCheck(); toast('已刷新检查结果'); } },
-                { label: '分组管理', icon: <IconBranch size={13} />, hint: '建组 / 成员 / 组介绍文档', onPick: () => setBoardAdminOpen(true) },
               ]} />
             </>
           ) : (
@@ -413,11 +414,6 @@ export default function ReposView() {
                 onClick={() => { loadRefCheck(); toast('已刷新检查结果'); }}>
                 <IconSync size={13} /> 刷新状态
               </button>
-              <RowMenu items={[
-                { label: '分组管理', icon: <IconBranch size={13} />, hint: '建组 / 成员 / 组介绍文档', onPick: () => setBoardAdminOpen(true) },
-                { label: '参考仓库管理', icon: <IconRefRepo size={13} />, hint: '克隆 / 绑定 / 存储根 / 批量检查', onPick: () => setRefOpen(true) },
-                { label: '导入导出', icon: <IconOpen size={13} />, hint: '布局与仓库的导入导出', onPick: () => setTransferOpen(true) },
-              ]} />
             </>
           )}
         </span>

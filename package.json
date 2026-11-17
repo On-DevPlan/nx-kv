@@ -23,7 +23,7 @@
     "start": "pnpm run build && node --import tsx src/runtime/cli.ts serve",
     "link:local": "node scripts/link-local.mjs",
     "unlink:local": "node scripts/link-local.mjs --unlink",
-    "lint": "eslint . && node scripts/check-tdz.mjs --all && node scripts/check-schema-decisions.mjs && node scripts/check-lines.mjs && node scripts/check-skill-sop.mjs",
+    "lint": "eslint . && node scripts/check-tdz.mjs --all && node scripts/check-schema-decisions.mjs && node scripts/check-lines.mjs && node scripts/check-skill-sop.mjs && node scripts/check-test-isolation.mjs",
     "check:schema": "node scripts/check-schema-decisions.mjs",
     "check:skill": "node scripts/check-skill-sop.mjs",
     "test": "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:smoke && pnpm run test:unit",

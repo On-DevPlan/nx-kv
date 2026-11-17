@@ -11,6 +11,7 @@ const service: any = serviceNs;
 const input = z.object({
   'all-finished': z.boolean().optional().describe("连同已全部领取、无待领的主题一起清"),
   'dry-run': z.boolean().optional().describe("只报告将清理哪些，不实际删除"),
+  'missing-dir': z.boolean().optional().describe("连同「工作目录已不存在且没有待领任务」的主题一起清（删掉的临时目录 / 测试残留；外接盘未挂载也会命中，默认关闭）"),
 });
 
 export class LocaltaskPruneAction extends ActionBase<typeof input> {
@@ -18,7 +19,7 @@ export class LocaltaskPruneAction extends ActionBase<typeof input> {
     id: 'localtask.prune',
     cli: ['localtask', 'prune'],
     http: ['POST', '/api/localtasks/prune'],
-    summary: '清理旧脏数据（旧模型无目录主题、空主题；等待中一律保留）',
+    summary: '清理旧脏数据（旧模型无目录主题、空主题；--missing-dir 连目录已不存在的主题一起清；等待中一律保留）',
     input,
     render: (d: any) => {
       const head: any = d.dryRun ? '（预演）将清理' : '已清理';
@@ -28,7 +29,11 @@ export class LocaltaskPruneAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-      return service.pruneTopics({ allFinished: ctx['all-finished'], dryRun: ctx['dry-run'] });
+      return service.pruneTopics({
+        allFinished: ctx['all-finished'],
+        dryRun: ctx['dry-run'],
+        missingDir: ctx['missing-dir'],
+      });
   
   }
 }

@@ -43,6 +43,10 @@
 .mdw-head{flex:1;min-width:0}
 .mdw-title{font-weight:650;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mdw-path{font:400 11px ui-monospace,Consolas,monospace;color:var(--mid,#838A93);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 目录已不存在（临时目录被删 / 盘未挂载）：任务还在，只是没有对应目录 */
+.mdw-path-warn{color:#BA7517}
+/* 目录已不存在（临时目录被删 / 盘未挂载）：任务还在，只是没有对应目录 */
+.mdw-path-warn{color:#BA7517}
 .mdw-pill{
   display:inline-flex;align-items:center;gap:5px;flex:none;
   font-size:11px;padding:3px 9px;border-radius:999px;

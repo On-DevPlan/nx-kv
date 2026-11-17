@@ -71,6 +71,8 @@ export interface LocalTask {
 export interface LocalTopic {
   key: string;
   name: string;
+  /** 工作目录当前是否还在（false = 临时目录被删 / 外接盘未挂载 / 测试残留） */
+  cwdExists?: boolean;
   tasks?: LocalTask[];
   [k: string]: any;
 }

@@ -333,7 +333,7 @@ export interface ApiClient {
   presence(): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPresenceAction>['run']>>>;
 /** 预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览 */
   preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>>;
-/** 清理旧脏数据（旧模型无目录主题、空主题；等待中一律保留） */
+/** 清理旧脏数据（旧模型无目录主题、空主题；--missing-dir 连目录已不存在的主题一起清；等待中一律保留） */
   localtaskPrune(input?: z.input<InstanceType<typeof LocaltaskPruneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPruneAction>['run']>>>;
 /** 删除一条任务（按 --id，定位到 --cwd 主题或 --key）；删除是**可恢复**的（软删除），加 --purge 彻底清除 */
   localtaskRemove(input: z.input<InstanceType<typeof LocaltaskRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskRemoveAction>['run']>>>;
@@ -1079,7 +1079,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async localtaskPrune(input?: z.input<InstanceType<typeof LocaltaskPruneAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskPruneAction>['_input']>);
       const path = `/api/localtasks/prune`;
-      const body = { "all-finished": inp["all-finished"], "dry-run": inp["dry-run"] };
+      const body = { "all-finished": inp["all-finished"], "dry-run": inp["dry-run"], "missing-dir": inp["missing-dir"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPruneAction>['run']>>;
     },
     // action: localtask.remove

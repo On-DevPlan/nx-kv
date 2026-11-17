@@ -1478,7 +1478,7 @@
           "action": {
             "id": "localtask.prune",
             "module": "localtask",
-            "summary": "清理旧脏数据（旧模型无目录主题、空主题；等待中一律保留）",
+            "summary": "清理旧脏数据（旧模型无目录主题、空主题；--missing-dir 连目录已不存在的主题一起清；等待中一律保留）",
             "usage": "localtask prune",
             "http": "POST /api/localtasks/prune"
           },

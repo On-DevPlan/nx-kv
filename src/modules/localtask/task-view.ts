@@ -1,6 +1,7 @@
 // （#54 自 service.js 拆出）任务行/主题的只读视图与队列内关系原语：
 // normalizeTask（含 ready 徽标）、topicView、跨队列依赖解析器（foreignResolver）、
 // 队列内关系清单（queueRelationsOf）与搬家（relocateTask）。
+import { existsSync } from 'node:fs';
 import { badInput, notFound } from '../../core/errors.js';
 import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from './dag.js';
@@ -319,6 +320,9 @@ export function topicView(t: any, repoCtx: any = null, readyOpts: ReadyOpts = {}
   return {
     key: t.key,
     cwd: t.cwd || '',
+    // 目录还在不在：临时目录被删 / 外接盘未挂载 / 测试残留都会让 cwd 失效。
+    // UI 与 prune --missing-dir 都靠它判断「这条主题是幽灵还是真的」。
+    cwdExists: t.isGlobal ? true : !!t.cwd && existsSync(String(t.cwd)),
     name: t.name || '',
     summary: t.summary || '',
     // 提交方（add --summary）留下的补充说明：与 agent 的「当前现状」分开存，

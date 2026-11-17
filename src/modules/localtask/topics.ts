@@ -3,6 +3,7 @@
 //
 // T03：存储切到 repo/（SQLite）。本文件不再直接读写任何存储形状 ——
 // 读走 repo.topics 的 JSON 形态投影，写走窄方法（一个动作一个事务）。
+import { existsSync } from 'node:fs';
 import { badInput } from '../../core/errors.js';
 import { normalizeCwd } from './paths.js';
 import { normalizeSummary } from './store-io.js';
@@ -86,13 +87,19 @@ export async function getSettings(): Promise<Record<string, any>> {
 // 清理旧脏数据：只动「非等待中」的主题——
 //   1) 旧模型迁移来的无 cwd 主题（“旧数据，无目录”）；
 //   2) 空主题（没有任何任务）；
-//   3) allFinished 时，连同「已全部领取、无待领」的主题一起清。
+//   3) allFinished 时，连同「已全部领取、无待领」的主题一起清；
+//   4) missingDir 时，清「cwd 已不存在且没有待领任务」的主题
+//      （删掉的临时目录 / 测试残留；外接盘没挂载也会命中，所以必须显式开）。
 // 等待中的主题与全局主题一律保留；dryRun 只报告不改动。
 //
 // **僵尸等待标志不算"等待中"**：wait 被强杀后残留的 waiting:true 会让主题
 // 永远躲过清理（gs-ac 就这么卡住的）。用 isLiveWaiting 判定——截止已过 = 没人
 // 在等 = 可以清。
-export async function pruneTopics({ allFinished = false, dryRun = false }: { allFinished?: boolean; dryRun?: boolean } = {}): Promise<Record<string, any>> {
+export async function pruneTopics({
+  allFinished = false,
+  dryRun = false,
+  missingDir = false,
+}: { allFinished?: boolean; dryRun?: boolean; missingDir?: boolean } = {}): Promise<Record<string, any>> {
   openStore();
   const removed: Array<{ key: string; name: string; cwd: string; reason: string }> = [];
   for (const t of topicsRepo.listTopics()) {
@@ -104,8 +111,15 @@ export async function pruneTopics({ allFinished = false, dryRun = false }: { all
     const isLegacy = !t.cwd;
     const isEmpty = tasks.length === 0;
     const isFinished = allFinished && tasks.length > 0 && !hasPending;
-    if (isLegacy || isEmpty || isFinished) {
-      const reason = isLegacy ? '旧模型无目录' : isEmpty ? '空主题' : '已完成无待领';
+    const cwdGone = missingDir && !!t.cwd && !hasPending && !existsSync(String(t.cwd));
+    if (isLegacy || isEmpty || isFinished || cwdGone) {
+      const reason = isLegacy
+        ? '旧模型无目录'
+        : isEmpty
+          ? '空主题'
+          : cwdGone
+            ? '目录已不存在'
+            : '已完成无待领';
       removed.push({ key: t.key, name: t.name || t.key, cwd: t.cwd || '', reason });
     }
   }

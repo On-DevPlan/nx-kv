@@ -426,6 +426,11 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
             <div className="mdw-title">{isDraft ? (doc.title || '新 MD 任务') : (doc.title || '任务')}</div>
             <div className="mdw-path">
               {isGlobal ? '全局任务池' : (topic?.cwd || topic?.name || '—')}
+              {!isGlobal && topic?.cwdExists === false && (
+                <span className="mdw-path-warn" title="工作目录已不存在：目录被删除或磁盘未挂载。任务本身还在，只是不再有对应目录。">
+                  {' '}· 目录已不存在
+                </span>
+              )}
               {isDraft ? ` / (${task})` : ` / #${task}`}
               {dirty ? ' · 未保存' : ''}
             </div>

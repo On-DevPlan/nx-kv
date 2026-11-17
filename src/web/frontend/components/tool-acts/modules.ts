@@ -34,6 +34,8 @@ export const DIR_MODULES: ToolModule[] = [
   { id: 'orch', label: '编排', section: 'bar' },
   // #126：草稿开关作用于选中的任务（没选中时给提示），默认在工具栏可见
   { id: 'plan', label: '草稿态', section: 'bar' },
+  // SVG 资产库：一处存放全部图标资产，目录页工具区给常驻入口
+  { id: 'svghub', label: 'SVG 资产', section: 'bar' },
   { id: 'more', label: '更多', section: 'bar', noHide: true },
   { id: 'refs', label: '查看列表', section: 'more' },
 ];
@@ -43,6 +45,7 @@ export const GROUP_MODULES: ToolModule[] = [
   { id: 'progress', label: '进程', section: 'bar' },
   { id: 'addMember', label: '添加成员', section: 'bar' },
   { id: 'orch', label: '编排', section: 'bar' },
+  { id: 'svghub', label: 'SVG 资产', section: 'bar' },
   { id: 'more', label: '更多', section: 'bar', noHide: true },
   { id: 'refs', label: '查看列表', section: 'more' },
 ];
@@ -90,6 +93,7 @@ export const DOC_MODULES: ToolModule[] = [
 // 次级动作默认收进更多，可在编排里拖上工具栏/调顺序）。
 export const REPOS_MODULES: ToolModule[] = [
   { id: 'add', label: '登记仓库', section: 'primary', noHide: true },
+  { id: 'svghub', label: 'SVG 资产', section: 'bar' },
   { id: 'more', label: '更多', section: 'bar', noHide: true },
   { id: 'boards', label: '分组管理', section: 'more', menuGroup: 'manage' },
   { id: 'refs', label: '参考仓库管理', section: 'more', menuGroup: 'manage' },

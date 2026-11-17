@@ -1,0 +1,239 @@
+/* SVG 资产库页 —— 视觉沿用 nx-kv 的纸面口径（--paper / --canvas / --line），
+   不引第三方图标库也不上大面积色块：这一页的主角是图标本身，界面元素只做底。 */
+
+.shub {
+  padding: 16px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100%;
+  background: var(--canvas);
+  color: var(--ink);
+  /* 容器查询：面板被侧栏挤窄时按**面板宽度**降级，而不是按窗口宽度 */
+  container-type: inline-size;
+}
+
+/* ---- 头部：标题 + 统计 / 搜索 + 复制清单 ---- */
+.shub-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.shub-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.shub-title > svg { color: var(--ink-2); flex: none; }
+.shub-title h2 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: .2px; }
+.shub-sub { margin: 3px 0 0; font-size: 12px; color: var(--faint); }
+
+.shub-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.shub-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: 30px;
+  min-width: 280px;
+  border: 1px solid var(--line);
+  border-radius: var(--r8);
+  background: var(--paper);
+  color: var(--mid);
+}
+.shub-search:focus-within { border-color: var(--ink-2); }
+.shub-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+}
+.shub-clear {
+  border: 0;
+  background: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--mid);
+  display: inline-flex;
+}
+.shub-clear:hover { color: var(--ink); }
+
+/* ---- 分类条 ---- */
+.shub-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.shub-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.shub-chip:hover { border-color: var(--ink-2); color: var(--ink); }
+.shub-chip.is-on { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.shub-chip-n { font-size: 11px; opacity: .72; font-variant-numeric: tabular-nums; }
+
+/* ---- 主体：图标墙 + 详情 ---- */
+.shub-body { display: flex; align-items: flex-start; gap: 16px; min-height: 0; }
+
+.shub-wall {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+
+.shub-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r8);
+  background: var(--paper);
+  color: var(--ink-2);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color .12s, box-shadow .12s, color .12s;
+}
+.shub-card:hover { border-color: var(--ink-2); color: var(--ink); }
+.shub-card.is-on {
+  border-color: var(--ink);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink) inset;
+}
+.shub-glyph { display: grid; place-items: center; height: 36px; }
+.shub-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shub-label { font-size: 12px; color: var(--mid); }
+.shub-fresh {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 999px;
+  color: var(--wait);
+  border: 1px solid var(--wait-line);
+  background: var(--wait-bg);
+}
+
+.shub-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 44px 16px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r8);
+  color: var(--mid);
+  text-align: center;
+}
+.shub-empty p { margin: 0; font-size: 13px; }
+
+/* ---- 详情卡 ---- */
+.shub-detail {
+  position: sticky;
+  top: 0;
+  width: 306px;
+  min-width: 0;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r8);
+  background: var(--paper);
+}
+.shub-preview {
+  height: 132px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r8);
+  color: var(--ink);
+  background:
+    linear-gradient(var(--soft) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(90deg, var(--soft) 1px, transparent 1px) 0 0 / 16px 16px,
+    var(--paper);
+}
+.shub-detail-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.shub-detail-h h3 { margin: 0; font-size: 14px; font-weight: 700; }
+.shub-detail-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--mid);
+  background: var(--soft);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.shub-meta {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.shub-meta dt { color: var(--mid); }
+.shub-meta dd { margin: 0; color: var(--ink-2); word-break: break-word; }
+
+.shub-sizes { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--mid); }
+.shub-size-row { display: inline-flex; align-items: flex-end; gap: 10px; }
+.shub-size { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; color: var(--ink-2); }
+.shub-size em { font-style: normal; font-size: 10px; color: var(--faint); }
+
+.shub-acts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.shub-acts .btn { display: inline-flex; align-items: center; gap: 5px; }
+
+.shub-code {
+  margin: 0;
+  max-width: 100%;
+  max-height: 190px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--ink-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+  tab-size: 2;
+}
+.shub-note { margin: 0; font-size: 11px; line-height: 1.55; color: var(--faint); }
+.shub-note code { color: var(--ink-2); }
+
+/* 窄面板（侧栏拖窄 / 小窗）：详情落到下方，图标墙一行至少两个 */
+@container (max-width: 640px) {
+  .shub-body { flex-direction: column; }
+  .shub-detail { position: static; width: 100%; }
+  .shub-wall { width: 100%; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
+  .shub-search { min-width: 0; flex: 1 1 220px; }
+}

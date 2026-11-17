@@ -374,11 +374,13 @@ export default function ReposView() {
               boards: '分组管理：建组 / 成员 / 组介绍文档',
               refs: '参考仓库面板：克隆 / 绑定 / 同步 / 检查 / 存储根',
               transfer: '布局与仓库的导入导出（逐条选择 / 冲突方案 / 差异检查）',
+              svghub: '打开 SVG 资产库（界面图标的唯一来源，可复制 / 导出）',
             }}
             actions={{
               add: () => setFormFor(null),
               boards: () => setBoardAdminOpen(true),
               refs: () => setRefOpen(true),
+              svghub: () => app.onNavigate?.('#/svghub'),
               transfer: () => setTransferOpen(true),
             }}
           />

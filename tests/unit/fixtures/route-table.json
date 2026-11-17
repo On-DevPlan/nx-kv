@@ -21,7 +21,8 @@
     "progress": null,
     "compose": null,
     "settings": null,
-    "dag": null
+    "dag": null,
+    "svghub": "#/svghub"
   },
   "routes": {
     "dir-page": {
@@ -257,6 +258,18 @@
     "unknown": {
       "empty": null,
       "named": null
+    },
+    "svghub": {
+      "empty": {
+        "component": "svghub",
+        "name": "SVG 资产库",
+        "config": {}
+      },
+      "named": {
+        "component": "svghub",
+        "name": "SVG 资产库",
+        "config": {}
+      }
     }
   }
 }

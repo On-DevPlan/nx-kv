@@ -24,6 +24,17 @@ import TaskChildren from './task-children.jsx';
 import { ensureQueueAndGo } from './queue-nav.js';
 import type { AppRoute, BoardRow, LocalTopic, Prefs, RepoRow, ShellApi } from '../../types.js';
 
+/**
+ * 行图标：按**行语义**取资产名（全库见 svghub 资产库）。
+ * 以前组 / 仓库 / 参考仓库统统画文件夹，扫一眼分不出「这是哪类东西」；
+ * 现在组=分支、开发仓库=盒子、参考仓库=带箭头的盒子，全局池=地球。
+ */
+function rowIcon(row: SideRow): string {
+  if (row.type === 'board') return 'board';
+  if (row.type === 'global') return 'globe';
+  return row.repoType === 'ref' ? 'repo-ref' : 'repo';
+}
+
 /** Sidebar 入参（顶栏删除后这里是壳层唯一的数据入口）。 */
 interface SidebarProps {
   /** 开发仓库（type != ref） */
@@ -380,7 +391,7 @@ export default function Sidebar({
             >
               {/* 组是叶子：占位只为了与其它行对齐，不给可展开的假提示 */}
               <span className="tw" aria-hidden />
-              <span className="gico"><Icon name="folder" /></span>
+              <span className="gico"><Icon name="board" /></span>
               <span className="nm">
                 {row.name}
               </span>
@@ -423,7 +434,7 @@ export default function Sidebar({
                   <Icon name="chevron" size={10} />
                 </span>
                 <span className="gico">
-                  {row.icon ? <span className="trow-icon" aria-hidden>{row.icon}</span> : <Icon name={row.type === 'global' ? 'globe' : 'folder'} />}
+                  {row.icon ? <span className="trow-icon" aria-hidden>{row.icon}</span> : <Icon name={rowIcon(row)} />}
                 </span>
                 <span className="nm">
                   {row.name}
@@ -468,6 +479,7 @@ export default function Sidebar({
         {footEntry('#/templates', 'list', '任务模板')}
         {footEntry('#/overview', 'overview', '全部目录总览')}
         {footEntry('#/repos', 'repo', '仓库管理')}
+        {footEntry('#/svghub', 'shapes', 'SVG 资产库')}
         {waitingCount > 0 && (
           <button className="trow" onClick={() => onNavigate?.('#/overview')} title="有 agent 正在等待回填">
             <span className="gico"><Icon name="warn" /></span>

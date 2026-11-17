@@ -502,6 +502,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
               addMember: '挑项目加进这个组',
               orch: '打开可视化编排面板',
               refs: '查看文档 / reference 列表',
+              svghub: '打开 SVG 资产库（界面图标的唯一来源，可复制 / 导出）',
             }}
             labels={{
               more: '更多',
@@ -578,6 +579,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
                   location: 'right',
                 });
               },
+              svghub: () => app.onNavigate?.('#/svghub'),
             }}
           />
         </>)

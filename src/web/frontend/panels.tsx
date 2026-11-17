@@ -21,6 +21,8 @@ const RefsPanel = lazy(() => import('./page/refs/index.jsx'));
 const GroupView = lazy(() => import('./page/group/index.jsx'));
 const ReposView = lazy(() => import('./page/repos/index.jsx'));
 const OverviewView = lazy(() => import('./page/overview/index.jsx'));
+/** SVG 资产库（#/svghub）：全库图标的可视化目录 + 导出。 */
+const SvgHubView = lazy(() => import('./svghub/hub.jsx'));
 const TemplatePanel = lazy(() => import('./page/templates/index.jsx'));
 const DocPanel = lazy(() => import('./page/doc/index.jsx'));
 const SettingsPanel = lazy(() => import('./page/settings/index.jsx'));
@@ -159,6 +161,8 @@ export const PANELS: Record<string, PanelEntry> = {
   group: { title: '项目组', render: (cfg, ctx) => <GroupPanel boardId={cfg && cfg.boardId} model={ctx && ctx.model} /> },
   repos: { title: '仓库管理', render: () => wrap(<ReposView />) },
   overview: { title: '全部目录总览', render: () => <OverviewPanel /> },
+  // SVG 资产库：单例主区面板（资产是全局的，不需要参数）
+  svghub: { title: 'SVG 资产库', render: () => wrap(<SvgHubView />) },
   // 任务模板（#217）：#/templates 是列表页，config 带 mode/id/scope 时是编辑宿主
   templates: {
     title: '任务模板',

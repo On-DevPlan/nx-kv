@@ -153,7 +153,7 @@ function routeFromHash(): AppRoute {
     }
     return { view: 'templates', key: '', task: '', mode: '', id: '', topic: '', scope: '' };
   }
-  const KNOWN = ['global', 'overview', 'repos'];
+  const KNOWN = ['global', 'overview', 'repos', 'svghub'];
   if (KNOWN.includes(path)) {
     // 全局池的页：#/global?task=1 —— 全局池的子任务表与页都在同一路由下
     return { view: path, key: path === 'global' ? '__GLOBAL__' : '', task: path === 'global' ? task : '' };

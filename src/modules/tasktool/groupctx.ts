@@ -46,7 +46,6 @@ interface DocLink {
   hasBody?: boolean;
   type?: string;
   groupKey?: string | null;
-  note?: string;
 }
 
 /** 单个项目组的一段上下文 */
@@ -143,8 +142,8 @@ export function renderGroupContext(ctx: GroupContext | null): string {
   if (repo.docLinks && repo.docLinks.length) {
     lines.push('项目文档（按需取用）：');
     for (const d of repo.docLinks) {
-      const label = d.desc || d.title || '未命名文档';
-      lines.push(`  - ${label}${d.refId ? `（nx-kv docs get --ref ${d.refId}）` : ''}${d.note ? `  # ${d.note}` : ''}`);
+      const label = d.title || d.desc || '未命名文档';
+      lines.push(`  - ${label}${d.refId ? `（nx-kv docs get --ref ${d.refId}）` : ''}`);
     }
     lines.push('');
   }
@@ -165,8 +164,8 @@ export function renderGroupContext(ctx: GroupContext | null): string {
     if (g.docLinks && g.docLinks.length) {
       lines.push('组文档（按需取用）：');
       for (const d of g.docLinks) {
-        const label = d.desc || d.title || '未命名文档';
-        lines.push(`  - ${label}${d.refId ? `（nx-kv docs get --ref ${d.refId}）` : ''}${d.note ? `  # ${d.note}` : ''}`);
+        const label = d.title || d.desc || '未命名文档';
+        lines.push(`  - ${label}${d.refId ? `（nx-kv docs get --ref ${d.refId}）` : ''}`);
       }
     }
     lines.push('');

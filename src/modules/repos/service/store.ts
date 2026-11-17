@@ -131,17 +131,16 @@ function groupToRow(b: BoardEntry, atMs: number, knownRepoKeys: Set<string>): Gr
   if (!key) throw badInput('看板 key 不能为空');
   if (key === SENTINEL_REPO_KEY) throw badInput('哨兵仓库不能入组: ' + SENTINEL_REPO_KEY);
   const repoKeys = Array.isArray(b.repoKeys) ? b.repoKeys.map((k) => String(k || '').trim()).filter(Boolean) : [];
-  const notes = b.repoNotes && typeof b.repoNotes === 'object' ? b.repoNotes : {};
   const members: MemberUpsert[] = [];
-  // 占位成员（本地未拥有，进 ext.ext_placeholders）：key/note/pos 落库形状
-  const placeholders: Array<{ key: string; note: string; pos: number }> = [];
+  // 占位成员（本地未拥有，进 ext.ext_placeholders）：key/pos 落库形状
+  const placeholders: Array<{ key: string; pos: number }> = [];
   const seen = new Set<string>();
   repoKeys.forEach((rk, position) => {
     if (seen.has(rk)) return; // 重复成员去重（位次取首次出现）
     seen.add(rk);
     if (rk === SENTINEL_REPO_KEY) throw badInput('哨兵仓库不能入组: ' + SENTINEL_REPO_KEY);
-    if (knownRepoKeys.has(rk)) members.push({ repoKey: rk, position, note: String(notes[rk] ?? '') });
-    else placeholders.push({ key: rk, note: String(notes[rk] ?? ''), pos: position });
+    if (knownRepoKeys.has(rk)) members.push({ repoKey: rk, position });
+    else placeholders.push({ key: rk, pos: position });
   });
   const hints = b.repoHints && typeof b.repoHints === 'object' ? b.repoHints : null;
   const repoDocs = b.repoDocs && typeof b.repoDocs === 'object' && Object.keys(b.repoDocs).length ? b.repoDocs : null;

@@ -45,7 +45,6 @@ export interface DocBriefView {
   desc: string;
   /** 正文摘要（首个非标题行）；没有正文时为空 */
   summary: string;
-  note: string;
   /** 有正文（外部镜像也算存在：正文在库外） */
   exists: boolean;
   missing?: boolean;
@@ -103,7 +102,6 @@ export async function docSetOf(owner: any, _kind: 'repo' | 'board' = 'repo'): Pr
       title,
       desc: row.desc,
       summary: body ? summaryFromMd(body) : '',
-      note: String((raw && raw.note) || ''),
       exists: row.hasBody || row.origin === 'external',
       ...(row.hasBody || row.origin === 'external' ? {} : { missing: true }),
     };

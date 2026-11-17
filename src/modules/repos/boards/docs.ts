@@ -1,5 +1,4 @@
-// 组内描述（board note）：描述 = 文档，绑定在 ref_bindings(type=group_repo)；
-// repoNotes 只是列表用的一句话摘要（保存时同步）。
+// 组内描述（board note）：描述 = 文档，绑定在 ref_bindings(type=group_repo)。
 import {
   loadStore,
   storedBoardKey,
@@ -69,10 +68,7 @@ export async function setBoardRepoNote({ id, key, board, note }: SetBoardRepoNot
     }
     await mutateStore((draft) => {
       const target = findBoardIn(draft, board);
-      if (target) {
-        if (target.repoNotes) delete target.repoNotes[rkey];
-        if (target.repoDocs) delete target.repoDocs[rkey];
-      }
+      if (target && target.repoDocs) delete target.repoDocs[rkey];
     });
     return { ...info, note: '', refId: '' };
   }
@@ -82,11 +78,5 @@ export async function setBoardRepoNote({ id, key, board, note }: SetBoardRepoNot
     refId = created.refId;
   }
   await updateDoc({ ref: 'ref:' + refId, body });
-  await mutateStore((draft) => {
-    const target = findBoardIn(draft, board);
-    if (!target) return;
-    if (!target.repoNotes) target.repoNotes = {};
-    target.repoNotes[rkey] = text.slice(0, 120);
-  });
   return { ...info, note: text, refId };
 }

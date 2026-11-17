@@ -11,7 +11,7 @@ import {
   findBoard,
 } from '../service.js';
 import { badInput } from '../../../core/errors.js';
-import { cleanText, hintOf, noteOf } from './core.js';
+import { cleanText, hintOf } from './core.js';
 import type { RepoHint, Store } from '../repo/rows.js';
 
 /** importBoards 的单条未匹配记录。 */
@@ -87,11 +87,6 @@ export async function importBoards({ json }: { json?: unknown } = {}): Promise<I
           if (!b.repoHints) b.repoHints = {};
           b.repoHints[k] = Object.fromEntries(Object.entries(hint).filter(([, v]) => v));
         }
-        const note = cleanText(e.note);
-        if (note) {
-          if (!b.repoNotes) b.repoNotes = {};
-          b.repoNotes[k] = note;
-        }
       }
     }
     return { created, merged, matched, unmatched };
@@ -104,8 +99,6 @@ export interface ExportBoardsRepoEntry {
   name: string;
   desc: string;
   remote: string;
-  /** 组内描述（有才带） */
-  note?: string;
 }
 
 /** exportBoards 的一条看板。 */
@@ -122,7 +115,7 @@ export interface ExportBoardsResult {
   boards: ExportBoardsBoard[];
 }
 
-// 导出：看板 + 仓库的 key/name/desc + 组内描述 note（可回灌给 import 的同一结构）
+// 导出：看板 + 仓库的 key/name/desc（可回灌给 import 的同一结构）
 export async function exportBoards(): Promise<ExportBoardsResult> {
   const s: Store = await loadStore();
   return {
@@ -137,14 +130,12 @@ export async function exportBoards(): Promise<ExportBoardsResult> {
       repos: boardRepoKeys(b, s).map((rkey): ExportBoardsRepoEntry => {
         const r = s.repos.find((x) => deriveKey(x) === rkey);
         const hint: RepoHint = hintOf(b, rkey) || {};
-        const note = noteOf(b, rkey);
         const entry: ExportBoardsRepoEntry = {
           key: rkey,
           name: r ? r.name : (hint.name || rkey),
           desc: r ? r.desc || '' : (hint.desc || ''),
           remote: r ? r.remote || '' : (hint.remote || ''),
         };
-        if (note) entry.note = note;
         return entry;
       }),
     })),

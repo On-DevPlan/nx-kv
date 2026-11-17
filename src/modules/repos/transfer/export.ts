@@ -38,7 +38,6 @@ export interface ExportRepoEntry {
 /** 导出布局里看板的成员条目。 */
 export interface ExportBoardRepoEntry {
   key: string;
-  note?: string;
 }
 
 /** 导出布局里的看板条目。 */
@@ -157,11 +156,7 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
       name: b.name,
       desc: b.desc || '',
       // 成员按 key 引用（占位成员也在——本地没有的仓库照样导出，导入端会标「本地未拥有」）
-      repos: service.boardRepoKeys(b, s)
-        .map((k) => {
-          const note = (b.repoNotes || {})[k] || '';
-          return note ? { key: k, note } : { key: k };
-        }),
+      repos: service.boardRepoKeys(b, s).map((k) => ({ key: k })),
     };
     // 文档绑定（v4）：组介绍覆盖 / 组级附加列表 / 组内描述覆盖
     const bdoc = sanitizeDocRef(b.doc);

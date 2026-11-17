@@ -55,7 +55,7 @@ export default function RefBlock({ rows, mode, group, boardList, refRepoBackLink
           <tr>
             <th scope="col" style={{ width: '26%' }}>参考仓库</th>
             <th scope="col" style={{ width: '24%' }}>远程地址</th>
-            <th scope="col">{isGroup ? '组内描述' : '绑定对象'}</th>
+            <th scope="col">绑定对象</th>
             <th scope="col" style={{ width: '322px' }}>操作</th>
           </tr>
         </thead>
@@ -65,15 +65,12 @@ export default function RefBlock({ rows, mode, group, boardList, refRepoBackLink
             const groups = boardList
               .map((b) => {
                 const l = (b.refs || []).find((x) => x.id === r.key);
-                return l ? { board: b, note: l.note || '' } : null;
+                return l ? { board: b } : null;
               })
-              .filter((l): l is { board: BoardRecord; note: string } => l !== null);
+              .filter((l): l is { board: BoardRecord } => l !== null);
             const direct = refRepoBackLinks.get(r.key) || [];
             const open = !!expand[r.id];
             const LIMIT = 3;
-            const noteInGroup = isGroup && group
-              ? String((group.refs || []).find((x) => x.id === r.key)?.note || '')
-              : '';
             return (
               <tr key={r.id} id={'rp-refrepo-row-' + r.key}>
                 <td className="rp-ref-cell-name">
@@ -88,11 +85,7 @@ export default function RefBlock({ rows, mode, group, boardList, refRepoBackLink
                   <Copyable text={r.remote || ''} title="点击复制远程地址">{r.remote || '（无）'}</Copyable>
                 </td>
                 <td className="rp-ref-cell-links">
-                  {isGroup ? (
-                    noteInGroup
-                      ? <span className="rp-group-note" title={`组内描述：\n${noteInGroup}`}>{noteInGroup.split('\n')[0]}</span>
-                      : <span className="muted rp-refs-none">—</span>
-                  ) : (groups.length || direct.length) ? (
+                  {(groups.length || direct.length) ? (
                     <>
                       {groups.length ? (
                         <div className="rp-bind-row">
@@ -117,7 +110,7 @@ export default function RefBlock({ rows, mode, group, boardList, refRepoBackLink
                           {(open ? direct : direct.slice(0, LIMIT)).map((d) => (
                             <span className="rp-link-chip rp-link-chip-repo" key={'repo:' + d.repo.key}>
                               <button className="rp-link-chip-main"
-                                title={[d.note || '直接绑定到这个仓库（不经过组）', `仓库 key: ${d.repo.key}`, '点击定位到仓库行'].join('\n')}
+                                title={['直接绑定到这个仓库（不经过组）', `仓库 key: ${d.repo.key}`, '点击定位到仓库行'].join('\n')}
                                 onClick={() => onGoBind('repo', d.repo.key)}>
                                 <b>仓</b>
                                 <span className="rp-link-chip-name">{d.repo.name}</span>

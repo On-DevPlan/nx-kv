@@ -9,6 +9,7 @@ import { reposBridge } from './repos-bridge.js';
 import { getDb } from '../../core/db/index.js';
 import { refDocById } from '../../core/attachmentdb.js';
 import { renderRepoKnowledgeMd } from './knowledge-md.js';
+import { docTitleFromMd } from '../../shared/doc-title.js';
 import type { DocRef } from './docref.js';
 
 const MAX_DOC_BYTES = 256 * 1024;
@@ -53,7 +54,6 @@ export interface RefRepoItem {
   name: string;
   path: string;
   remote: string;
-  note: string;
   groups: string[];
   direct: boolean;
 }
@@ -145,7 +145,7 @@ async function readRefDocs(raw: DocRef | null | undefined, opts: ReadOpts): Prom
       }
       return docs;
     }
-    return [{ ...one, refId, note: String((raw && raw.note) || '') }];
+    return [{ ...one, refId }];
   }
   if (!row.hasBody) {
     return [{
@@ -153,13 +153,11 @@ async function readRefDocs(raw: DocRef | null | undefined, opts: ReadOpts): Prom
       refId,
       docId: 'ref:' + refId,
       title: row.desc,
-      note: String((raw && raw.note) || ''),
     }];
   }
   return [{
     ...docOut('ref:' + refId, row.body ?? '', opts),
     refId,
-    note: String((raw && raw.note) || ''),
   }];
 }
 
@@ -230,10 +228,9 @@ export async function repoKnowledge(locator?: string, { md = false }: { md?: boo
       const hit = seenRefRepos.get(l.id);
       if (hit) {
         if (!hit.groups.includes(b.name)) hit.groups.push(b.name);
-        if (l.note && !hit.note) hit.note = l.note;
         continue;
       }
-      const item: RefRepoItem = { name: r.name, path: r.path || '', remote: r.remote || '', note: l.note || '', groups: [b.name], direct: false };
+      const item: RefRepoItem = { name: r.name, path: r.path || '', remote: r.remote || '', groups: [b.name], direct: false };
       seenRefRepos.set(l.id, item);
       refRepos.push(item);
     }
@@ -246,10 +243,9 @@ export async function repoKnowledge(locator?: string, { md = false }: { md?: boo
     const hit = seenRefRepos.get(id);
     if (hit) {
       hit.direct = true;
-      if (l.note && !hit.note) hit.note = l.note;
       continue;
     }
-    const item: RefRepoItem = { name: r.name, path: r.path || '', remote: r.remote || '', note: l.note || '', groups: [], direct: true };
+    const item: RefRepoItem = { name: r.name, path: r.path || '', remote: r.remote || '', groups: [], direct: true };
     seenRefRepos.set(id, item);
     refRepos.push(item);
   }
@@ -295,31 +291,36 @@ export async function groupContextFor(cwd: unknown, { board = '' }: { board?: st
     refId: (repoMain && repoMain.refId) || '',
     desc: '',
   };
-  const repoDocLinks: BoundDoc[] = (Array.isArray(repo.docLinks) ? repo.docLinks : []).map((l: any) => ({
-    refId: String(l.ref || ''),
-    desc: String(l.note || ''),
-    title: '',
-    hasBody: true,
-    origin: '',
-    type: 'repo' as const,
-    repoKey: rk,
-    groupKey: null,
-    position: 0,
-    note: String(l.note || ''),
-    body: '',
-  }));
+  // #148：补充篇的 title/desc 必须从 refs 查真实值——原来写死 title:''、desc:note，
+  // 模板里 {{title}} 永远空、{{desc}} 拿到的是 note。DB 查不到时留空由模板回落。
+  const repoDocLinks: BoundDoc[] = (Array.isArray(repo.docLinks) ? repo.docLinks : []).map((l: any) => {
+    const refId = String(l.ref || '');
+    const d = refDocById(getDb(), refId);
+    return {
+      refId,
+      desc: String((d && d.desc) || ''),
+      title: d && d.hasBody ? docTitleFromMd(String(d.body ?? '')) : '',
+      hasBody: !!(d && (d.hasBody || d.origin === 'external')),
+      origin: '',
+      type: 'repo' as const,
+      repoKey: rk,
+      groupKey: null,
+      position: 0,
+      body: '',
+    };
+  });
 
   // 参考仓库（repos 里 type=ref，不是文档库 refs）：本仓库直接绑定与组级绑定
-  // 是两类并列来源，交付时要给「名称 + 本机路径 + 一句描述」。
-  const refRepoItemOf = (id: unknown, note?: string): { key: string; name: string; path: string; note: string } | null => {
+  // 是两类并列来源，交付时给「名称 + 本机路径」；说明走绑定 ref 的文档列表（v13）。
+  const refRepoItemOf = (id: unknown): { key: string; name: string; path: string } | null => {
     const rr = s.repos.find((x: any) => x.type === 'ref' && deriveKey(x) === String(id));
     if (!rr) return null;
-    return { key: String(id), name: rr.name, path: rr.path || '', note: note || '' };
+    return { key: String(id), name: rr.name, path: rr.path || '' };
   };
   const repoRefRepos = (Array.isArray(repo.linked) ? repo.linked : [])
     .filter((l: any) => l && l.kind === 'ref')
-    .map((l: any) => refRepoItemOf(l.id, l.note))
-    .filter(Boolean) as Array<{ key: string; name: string; path: string; note: string }>;
+    .map((l: any) => refRepoItemOf(l.id))
+    .filter(Boolean) as Array<{ key: string; name: string; path: string }>;
 
   // #64 作用域：只有组任务（正文 frontmatter 带 board）才挂组上下文。
   const wantBoard = String(board || '').trim();
@@ -338,19 +339,22 @@ export async function groupContextFor(cwd: unknown, { board = '' }: { board?: st
       refId: (gMain && gMain.refId) || '',
       desc: '',
     };
-    const docLinks: BoundDoc[] = (Array.isArray(b.docLinks) ? b.docLinks : []).map((l: any) => ({
-      refId: String(l.ref || ''),
-      desc: String(l.note || ''),
-      title: '',
-      hasBody: true,
-      origin: '',
-      type: 'group' as const,
-      repoKey: gkey,
-      groupKey: null,
-      position: 0,
-      note: String(l.note || ''),
-      body: '',
-    }));
+    const docLinks: BoundDoc[] = (Array.isArray(b.docLinks) ? b.docLinks : []).map((l: any) => {
+      const refId = String(l.ref || '');
+      const d = refDocById(getDb(), refId);
+      return {
+        refId,
+        desc: String((d && d.desc) || ''),
+        title: d && d.hasBody ? docTitleFromMd(String(d.body ?? '')) : '',
+        hasBody: !!(d && (d.hasBody || d.origin === 'external')),
+        origin: '',
+        type: 'group' as const,
+        repoKey: gkey,
+        groupKey: null,
+        position: 0,
+        body: '',
+      };
+    });
     // 本项目在组里的位置
     const noteDocs = await readRefDocs((b.repoDocs || {})[rk], { warnings, label: `组内描述·${b.name}` });
     const noteOwn = noteDocs[0] || null;
@@ -364,7 +368,7 @@ export async function groupContextFor(cwd: unknown, { board = '' }: { board?: st
       const peer = peerDocs[0];
       peers.push({
         name: mname,
-        note: (peer && peer.body) || (b.repoNotes || {})[mkey] || '',
+        note: (peer && peer.body) || '',
         path: (mr && mr.path) || '',
       });
     }
@@ -374,10 +378,10 @@ export async function groupContextFor(cwd: unknown, { board = '' }: { board?: st
       desc: b.desc || '',
       intro,
       introSet: { main: null, extras: [], count: 0 },
-      note: ((noteOwn && noteOwn.body) || (b.repoNotes || {})[rk] || ''),
+      note: (noteOwn && noteOwn.body) || '',
       peers,
       docLinks,
-      refRepos: (Array.isArray(b.refs) ? b.refs : []).map((l: any) => refRepoItemOf(l.id, l.note)).filter(Boolean) as Array<{ key: string; name: string; path: string; note: string }>,
+      refRepos: (Array.isArray(b.refs) ? b.refs : []).map((l: any) => refRepoItemOf(l.id)).filter(Boolean) as Array<{ key: string; name: string; path: string }>,
     });
   }
   return {
@@ -405,7 +409,7 @@ export interface GroupContextGroup {
   note: string;
   peers: Array<{ name: string; path: string; note: string }>;
   docLinks: BoundDoc[];
-  refRepos: Array<{ key: string; name: string; path: string; note: string }>;
+  refRepos: Array<{ key: string; name: string; path: string }>;
 }
 
 /** groupContextFor 的出参。 */
@@ -416,7 +420,7 @@ export interface GroupContextResult {
     intro: ContextIntro;
     introSet: IntroSet;
     docLinks: BoundDoc[];
-    refRepos: Array<{ key: string; name: string; path: string; note: string }>;
+    refRepos: Array<{ key: string; name: string; path: string }>;
   };
   groups: GroupContextGroup[];
 }
@@ -432,6 +436,5 @@ interface BoundDoc {
   repoKey: string;
   groupKey: string | null;
   position: number;
-  note: string;
   body: string;
 }

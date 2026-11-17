@@ -11,6 +11,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as repos from '../../src/modules/repos/service.js';
 import * as boards from '../../src/modules/repos/boards.js';
+import * as transfer from '../../src/modules/repos/transfer.js';
+import * as store from '../../src/modules/docs/store.js';
+import { getDoc } from '../../src/modules/docs/service.js';
 import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
 
 let dir = '';
@@ -180,13 +183,18 @@ test('组内描述：挂在成员关系上，非成员报错，摘出成员时�
   await boards.assignRepo({ id: a, board: board.id });
   await boards.assignRepo({ id: a, board: other.id });
 
-  // 写入：同一仓库在不同看板里的组内描述互不相干
-  await boards.setBoardRepoNote({ id: a, board: board.id, note: '主力开发仓库' });
-  await boards.setBoardRepoNote({ id: a, board: other.id, note: '只是参考实现' });
-  let d = await boards.listBoards();
-  const reposOf = (name) => d.boards.find((x) => x.name === name).repos;
-  assert.equal(reposOf('常用').find((r) => r.name === 'alpha').note, '主力开发仓库');
-  assert.equal(reposOf('远程打字').find((r) => r.name === 'alpha').note, '只是参考实现');
+  // 写入：同一仓库在不同看板里的组内描述互不相干——各自一篇 group_repo ref 文档，
+  // 绑定挂在 board.repoDocs[仓库 key] 上（v13 起不再有文本摘要字段）。
+  const n1 = await boards.setBoardRepoNote({ id: a, board: board.id, note: '主力开发仓库' });
+  const n2 = await boards.setBoardRepoNote({ id: a, board: other.id, note: '只是参考实现' });
+  assert.notEqual(n1.refId, n2.refId, '不同看板各自一篇描述文档');
+  let stored = await repos.loadStore();
+  const docRefOf = (name) => stored.boards.find((x) => x.name === name).repoDocs[ak];
+  assert.equal(docRefOf('常用').ref, n1.refId);
+  assert.equal(docRefOf('远程打字').ref, n2.refId);
+  assert.equal((await getDoc({ ref: 'ref:' + n1.refId })).body, '# 常用 · alpha\n\n主力开发仓库\n');
+  assert.equal((await getDoc({ ref: 'ref:' + n2.refId })).body, '# 远程打字 · alpha\n\n只是参考实现\n');
+  assert.equal((await boards.getBoard(board.id)).repos.find((r) => r.key === ak).noteDocId, 'ref:' + n1.refId);
 
   // 仓库支持按绝对路径定位（与 repo get 同款）；返回的是 key（仓库身份）
   const byPath = await boards.setBoardRepoNote({ id: join(dir, 'alpha'), board: board.id, note: '按路径写入' });
@@ -198,36 +206,48 @@ test('组内描述：挂在成员关系上，非成员报错，摘出成员时�
     /不在看板/
   );
 
-  // 清除：note 留空 = 删键
+  // 清除：note 留空 = 解绑文档（repoDocs[key] 删掉，投影的 noteDocId 也清空）
   await boards.setBoardRepoNote({ id: a, board: other.id, note: '' });
-  d = await boards.listBoards();
-  assert.equal(d.boards.find((x) => x.name === '远程打字').repos.find((r) => r.name === 'alpha').note, '');
+  stored = await repos.loadStore();
+  assert.equal(stored.boards.find((x) => x.name === '远程打字').repoDocs?.[ak], undefined);
+  assert.equal((await boards.getBoard(other.id)).repos.find((r) => r.key === ak).noteDocId, '');
 
-  // 摘出成员：组内描述一起消失，不留孤儿
+  // 摘出成员：描述随成员关系一起从组里消失（组里不再有该成员，也就读不到它的描述）
   await boards.setBoardRepoNote({ id: a, board: board.id, note: '临时' });
   await boards.assignRepo({ id: a, board: board.id, remove: true });
-  d = await boards.listBoards();
+  const d = await boards.listBoards();
   assert.ok(!d.boards.find((x) => x.name === '常用').repos.some((r) => r.name === 'alpha'));
-  // 存储已库化（T05）：读「已摘成员不留孤儿键」改从 loadStore 断言
-  // （repo_group_members.note 随成员边重建，占位/真实成员都不留已摘成员的键）。
-  const stored = (await repos.loadStore()).boards.find((x) => x.name === '常用');
-  assert.ok(!stored.repoNotes || !stored.repoNotes[a], 'repoNotes 里不留已摘成员的键');
+  assert.ok(
+    !(await boards.getBoard(board.id)).repos.some((r) => r.key === ak),
+    '摘出成员后组内不再呈现该成员，描述也随之消失'
+  );
 });
 
-test('导入导出：组内描述随 repos[].note 往返', async () => {
-  const { a } = await seed();
+test('导入导出：组内描述随绑定的 ref 文档往返', async () => {
+  const { a, ak } = await seed();
   const board = await boards.createBoard({ name: '回灌板' });
   await boards.assignRepo({ id: a, board: board.id });
-  await boards.setBoardRepoNote({ id: a, board: board.id, note: '角色说明' });
-  const exported = await boards.exportBoards();
-  assert.equal(exported.boards[0].repos[0].note, '角色说明');
+  const written = await boards.setBoardRepoNote({ id: a, board: board.id, note: '角色说明' });
 
-  // 清空后用导出 JSON 回灌，note 一并还原
-  await boards.removeBoard(board.id);
-  const back = await boards.importBoards({ json: JSON.stringify(exported) });
-  assert.equal(back.created, 1);
-  const d = await boards.listBoards();
-  assert.equal(d.boards[0].repos.find((r) => r.name === 'alpha').note, '角色说明');
+  // 导出布局带 repoDocs 绑定（不再有文本摘要 repos[].note）；正文随 docsFiles 走
+  const layout = await transfer.repoExport({ boardKeys: [board.key] });
+  const bd = layout.boards.find((x) => x.name === '回灌板');
+  assert.deepEqual(bd.repos, [{ key: ak }]);
+  assert.deepEqual(bd.repoDocs, { [ak]: { ref: written.refId } });
+  const noteBody = '# 回灌板 · alpha\n\n角色说明\n';
+  const docsFiles = [{ refId: written.refId, data: Buffer.from(noteBody, 'utf8') }];
+  assert.equal(await store.readOwnDoc(written.refId), noteBody, '导出方正文就是这篇 ref 文档');
+
+  // 清空后用导出的布局回灌，组内描述绑定与正文一并还原
+  await repos.mutateStore((s) => { s.repos = []; s.boards = []; });
+  for (const f of await store.listOwnDocs()) await store.removeOwnDoc(f.id);
+  const back = await transfer.repoImport({ json: JSON.stringify(layout), docsFiles, clone: 'none' });
+  assert.ok(back.created.length >= 1);
+  const stored = await repos.loadStore();
+  assert.equal(stored.boards.find((x) => x.name === '回灌板').repoDocs[ak].ref, written.refId);
+  assert.equal((await getDoc({ ref: 'ref:' + written.refId })).body, noteBody);
+  const d = await boards.getBoard('回灌板');
+  assert.equal(d.repos.find((r) => r.key === ak).noteDocId, 'ref:' + written.refId);
 });
 
 test('中心清单：listRepos 返回扁平列表（按名排序），每条带所属看板', async () => {
@@ -294,22 +314,27 @@ test('占位成员带线索：导入的脚步能显示名字、知道该 clone �
 });
 
 test('重绑占位 → 本机 key：原位替换、组内描述跟着走、登记不动', async () => {
-  const { a } = await seed(); // 无 remote → key = local/alpha
+  const { a, ak } = await seed(); // 无 remote → key = local/alpha
   const board = await boards.createBoard({ name: 'nx' });
   await boards.assignRepo({ key: 'local/ghost', board: board.id });
   await boards.assignRepo({ key: 'local/other', board: board.id });
-  await boards.setBoardRepoNote({ key: 'local/ghost', board: board.id, note: '导入方留下的位置描述' });
+  const noted = await boards.setBoardRepoNote({ key: 'local/ghost', board: board.id, note: '导入方留下的位置描述' });
   await boards.setMemberHint({ board: board.id, key: 'local/ghost', name: 'ghost' });
   const before = (await repos.listRepos()).find((r) => r.id === a);
 
   const r = await boards.rekeyMember({ from: 'local/ghost', to: a, board: board.id });
   assert.equal(r.merged, false);
-  assert.equal(r.movedNote, true);
+  assert.equal(r.movedDoc, true, '组内描述文档绑定跟着 key 搬走');
 
   const d = await boards.getBoard(board.id);
   assert.deepEqual(d.repos.map((m) => m.key), [before.key, 'local/other'], '原位替换，顺序不变');
   assert.equal(d.repos[0].name, 'alpha');
-  assert.equal(d.repos[0].note, '导入方留下的位置描述', '描述挂在关系上，关系换了要跟着搬');
+  // 描述不再是文本字段：repoDocs 的绑定从占位 key 搬到本机 key，正文不变
+  assert.equal(d.repos[0].noteDocId, 'ref:' + noted.refId);
+  const stored = (await repos.loadStore()).boards.find((x) => x.id === board.id);
+  assert.equal(stored.repoDocs[ak].ref, noted.refId);
+  assert.equal(stored.repoDocs['local/ghost'], undefined);
+  assert.match((await getDoc({ ref: 'ref:' + noted.refId })).body, /导入方留下的位置描述/);
 
   const after = (await repos.listRepos()).find((x) => x.id === a);
   assert.equal(after.key, before.key, '登记（身份）不能被占位 key 改写');

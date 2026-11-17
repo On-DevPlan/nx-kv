@@ -92,7 +92,9 @@ test('聚合形状：项目介绍 + 组（介绍/组内描述） + 参考仓库'
 
   assert.equal(k.refRepos.length, 1);
   assert.equal(k.refRepos[0].name, 'reflib');
-  assert.equal(k.refRepos[0].note, '契约来源');
+  // v13：ref 绑定上的 note 不再持久化——参考仓库条目已无 note 字段；
+  // 组级描述走绑定 ref 文档（build() 里 setBoardRepoNote 落成的 group_repo ref），见上面 bd.note 断言。
+  assert.equal(k.refRepos[0].note, undefined);
 });
 
 test('组绑定：自有 ref 进全文，外部目录里的 .md 逐篇展开，缺失标 missing', async () => {

@@ -58,8 +58,6 @@ export async function assignRepo({ id, key, board, before, remove }: AssignRepoI
         const at = b.repoKeys.indexOf(rkey);
         if (at < 0) return;
         b.repoKeys.splice(at, 1);
-        // 摘出成员时组内描述一起带走（它只对这个成员关系有意义）
-        if (b.repoNotes) delete b.repoNotes[rkey];
         n += 1;
       };
       if (target) drop(target);
@@ -130,7 +128,6 @@ export interface RekeyMemberResult {
   from: string;
   to: string;
   merged: boolean;
-  movedNote: boolean;
   movedDoc: boolean;
   relinked: number;
 }
@@ -154,8 +151,7 @@ export interface RekeyMemberInput {
  * {key: 占位 key}）——方向反了：真实身份被降级成 local/xxx，再导出就把这个假
  * key 传播给所有人。正确的动作是改关系：把组里的 from 换成 to。
  *
- * 组内描述（repoNotes）与组内文档绑定（repoDocs）都挂在 key 上，必须跟着搬，
- * 否则描述留在原地变成孤儿。
+ * 组内文档绑定（repoDocs）挂在 key 上，必须跟着搬，否则文档绑定留在原地变成孤儿。
  */
 export async function rekeyMember({ board, from, to }: RekeyMemberInput = {}): Promise<RekeyMemberResult> {
   const src = normalizeKey(from);
@@ -173,7 +169,6 @@ export async function rekeyMember({ board, from, to }: RekeyMemberInput = {}): P
     // 不给 board = 全组重绑：假 key 是**身份**问题，同一个占位在几个组里都是假的，
     // 只改一个组会留下一半仍然「待初始化」的残局。给了 board 就只动那一个组。
     const targets: BoardEntry[] = board ? [b] : s.boards.filter((x) => boardRepoKeys(x, s).includes(src));
-    let movedNote = false;
     let movedDoc = false;
     let mergedAny = false;
     let touched = 0;
@@ -186,12 +181,7 @@ export async function rekeyMember({ board, from, to }: RekeyMemberInput = {}): P
       if (dup) keys.splice(at, 1); // 目标已在组里 → 合并：只把占位摘掉
       else keys[at] = dst;         // 原位替换，成员顺序不变
       mergedAny = mergedAny || dup;
-      // 描述与文档绑定跟着 key 走（目标已有则保留目标自己的——它属于真实成员关系）
-      if (t.repoNotes && t.repoNotes[src] !== undefined) {
-        if ((!dup || t.repoNotes[dst] === undefined) && t.repoNotes[src]) t.repoNotes[dst] = t.repoNotes[src];
-        delete t.repoNotes[src];
-        movedNote = true;
-      }
+      // 文档绑定跟着 key 走（目标已有则保留目标自己的——它属于真实成员关系）
       if (t.repoDocs && t.repoDocs[src] !== undefined) {
         if (!dup || t.repoDocs[dst] === undefined) t.repoDocs[dst] = t.repoDocs[src];
         delete t.repoDocs[src];
@@ -224,7 +214,6 @@ export async function rekeyMember({ board, from, to }: RekeyMemberInput = {}): P
       from: src,
       to: dst,
       merged: mergedAny,
-      movedNote,
       movedDoc,
       relinked,
     };
@@ -288,7 +277,6 @@ export async function prunePlaceholders({ board, all = false, apply = false }: P
         if (!b) continue;
         if (!Array.isArray(b.repoKeys)) b.repoKeys = boardRepoKeys(b, cur);
         b.repoKeys = b.repoKeys.filter((k) => k !== it.key);
-        if (b.repoNotes) delete b.repoNotes[it.key];
         if (b.repoDocs) delete b.repoDocs[it.key];
         if (b.repoHints) delete b.repoHints[it.key];
       }

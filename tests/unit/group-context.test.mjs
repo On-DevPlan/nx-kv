@@ -78,9 +78,15 @@ test('组上下文封装：交付文本带组概念/组介绍引导/组内位置
   assert.match(ins, /组介绍：nx系列/, '组介绍引导行');
   assert.match(ins, /nx 工具链组合/, '组定位');
   assert.match(ins, /nx-kv docs get --ref ref_/, '组介绍 / 组文档按 refId 取用');
-  assert.match(ins, /组里的任务出入口/, '本项目在组里的位置');
-  assert.match(ins, /仓库与技能登记/, '兄弟成员的组内描述');
-  assert.match(ins, /阻塞窗口/, '组文档按 desc 展示');
+  // v13：组内描述走绑定 ref 文档（noteDocId），正文首行是「# 组名 · 仓库名」，
+  // 接一个空行再是描述文本；note 不再作为文本列持久化在 repo_group_members / docLinks 上。
+  assert.match(ins, /本项目在组里的位置：# nx系列 · alpha/, '本项目在组里的位置取绑定 ref 文档标题');
+  assert.match(ins, /组里的任务出入口/, '本项目在组里的位置取绑定 ref 文档正文');
+  assert.match(ins, /- beta：# nx系列 · beta/, '兄弟成员描述取绑定 ref 文档标题');
+  assert.match(ins, /仓库与技能登记/, '兄弟成员描述取绑定 ref 文档正文');
+  // 组文档标题取绑定 ref 文档正文首行；原 docLinks note「阻塞窗口」不再展示
+  assert.match(ins, /- waitgoal 设计/, '组文档标题取正文首行');
+  assert.doesNotMatch(ins, /阻塞窗口/, '组文档绑定 note 不再展示');
   // 上下文只进 instruction：task.text 保持库存原文（含归属 frontmatter）
   assert.match(String(r.task.text || ''), /改登录页/);
 });

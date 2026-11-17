@@ -54,14 +54,17 @@ test('context 默认模板：只内嵌项目主篇；组介绍 / 其余文档只
   const out = renderCtx(ctx);
   assert.match(out, /〔项目介绍 · alpha〕/);
   assert.match(out, /管清单的/, '项目主篇正文内嵌');
-  assert.match(out, /- 问答集/);
+  // v13：文档列表 title 优先、desc 作副行（note 不再持久化到 ref 绑定上）
+  assert.match(out, /- QA/, '项目文档按 title 展示');
+  assert.match(out, /问答集/, '项目文档副行是 desc');
   assert.match(out, /nx-kv docs get --ref ref_qa/);
   assert.match(out, /〔项目组上下文 · nx系列〕/);
   assert.match(out, /组定位：nx 工具链组合/);
   assert.match(out, /本项目在组里的位置：组里的任务出入口/);
   assert.match(out, /组介绍：组介绍描述/);
   assert.match(out, /nx-kv docs get --ref ref_group/);
-  assert.match(out, /- waitgoal 设计/);
+  assert.match(out, /- waitgoal\n/, '组文档按 title 展示');
+  assert.match(out, /waitgoal 设计/, '组文档副行是 desc');
   assert.match(out, /nx-kv docs get --ref ref_wait/);
   assert.match(out, /组内成员：/);
   assert.match(out, /- beta：仓库与技能登记/);
@@ -257,7 +260,8 @@ test('参考仓库段：直接绑定 ∪ 组级绑定（去重、不含无关组
   const refLines = out.split('\n').filter((l) => /^ {2}- .*（D:\/refs\//.test(l));
   assert.deepEqual(refLines.map((l) => l.match(/^ {2}- ([^（]+)/)[1]), ['shared', 'own', 'grouped']);
   assert.match(out, /- own（D:\/refs\/own）/);
-  assert.match(out, /组级也绑了|本仓库专用/, '去重后保留一条描述');
+  // v13：参考仓库绑定上的 note 不再持久化，渲染只给「名字 + 本机路径」
+  assert.doesNotMatch(out, /组级也绑了|本仓库专用/, '去重后只留名字与路径，绑定 note 不再出现');
   assert.doesNotMatch(out, /unrelated/, '无关组的参考仓库不出现');
 });
 

@@ -24,16 +24,9 @@ export interface IntroMainOut {
   docId: string;
   title: string;
   desc: string;
-  note: string;
 }
 
-// 组内描述：同一个仓库在不同看板里的角色可以各不相同（「fr 组里它是 API 契约方」，
-// 「nx 组里它只是同族工具」），所以描述挂在**看板的成员关系**上（repoNotes，按 key），
-// 而不是仓库登记上。登记里的 desc 回答「这个仓库是干什么的」，
-// 组内描述回答「它在这个组里占什么位置、怎么配合」。
-export const noteOf = (b: BoardEntry, rkey: string): string => (b.repoNotes || {})[rkey] || '';
-
-/** 看板成员投影（memberView 的形状）。 */
+/** 看板成员投影（memberView 的形状）。组内描述走绑定文档（noteDocId），不再有文本 note。 */
 export interface BoardMemberView {
   key: string;
   name: string;
@@ -41,7 +34,6 @@ export interface BoardMemberView {
   path: string;
   remote: string;
   type: string;
-  note: string;
   /** 组内描述文档（ref:<refId>）；没有绑定为空串 */
   noteDocId: string;
   /** 本地有没有这条登记 */
@@ -58,7 +50,6 @@ export interface BoardMemberView {
  *   clonable  = 有远程地址 → 可以一键 clone 补齐
  */
 function memberView(s: Store, b: BoardEntry, rkey: string, fallback: RepoHint | null): BoardMemberView {
-  const note = noteOf(b, rkey);
   const local = s.repos.find((r) => deriveKey(r) === rkey);
   const base: BoardMemberView = {
     key: rkey,
@@ -67,7 +58,6 @@ function memberView(s: Store, b: BoardEntry, rkey: string, fallback: RepoHint | 
     path: local ? local.path : '',
     remote: local ? local.remote || '' : (fallback && fallback.remote) || '',
     type: local ? local.type || 'dev' : (fallback && fallback.type) || 'dev',
-    note,
     // 组内描述文档（ref:<refId>）——前端点开 doc 页签用
     noteDocId: (b.repoDocs || {})[rkey]?.ref ? 'ref:' + (b.repoDocs || {})[rkey].ref : '',
     present: !!local,
@@ -187,14 +177,12 @@ export async function getBoard(idOrKey: unknown): Promise<GetBoardResult> {
       docId: set.main.docId,
       title: set.main.title,
       desc: set.main.desc,
-      note: set.main.note,
     } : null,
     introExtras: set.links.map((d) => ({
       refId: d.refId,
       docId: d.docId,
       title: d.title,
       desc: d.desc,
-      note: d.note,
       name: d.title,
     })),
     introCount: set.count,

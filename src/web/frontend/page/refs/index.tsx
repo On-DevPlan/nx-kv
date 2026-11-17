@@ -304,7 +304,7 @@ export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scop
               <button
                 type="button"
                 className="nx-refs-row"
-                title={`${[title, desc, b.note].filter(Boolean).join('\n')}\n点击打开（可编辑）`}
+                title={`${[title, desc].filter(Boolean).join('\n')}\n点击打开（可编辑）`}
                 onClick={() => openDoc(b.refId)}
               >
                 <span className="nx-refs-row-label">
@@ -317,7 +317,6 @@ export default function RefsPanel({ repoKey, repoName, boardKey, boardName, scop
                   <span className="nx-refs-row-text">{title}</span>
                 </span>
                 {desc && <span className="nx-refs-row-desc">{desc}</span>}
-                {b.note && <span className="nx-refs-row-sub">备注：{b.note}</span>}
               </button>
               <span className="nx-refs-row-acts">
                 {/* ⋯：设为主篇 / 复制 refId（#144）。主篇行不给「设为主篇」，

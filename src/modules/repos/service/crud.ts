@@ -16,13 +16,12 @@ import {
 import type { RepoEntry, RepoLink } from '../repo/rows.js';
 import type { RepoInputFields } from './identity.js';
 
-/** 中心清单里的看板投影（仓库属于哪些看板 + 组内描述）。 */
+/** 中心清单里的看板投影（仓库属于哪些看板 + 组内描述文档）。 */
 export interface RepoBoardBrief {
   id: string;
   name: string;
   desc: string;
   key: string;
-  note: string;
   /** 组内描述文档（ref:<refId>）；没有绑定为空串 */
   noteDocId: string;
 }
@@ -102,7 +101,6 @@ export async function listRepos(): Promise<RepoListRow[]> {
         name: b.name,
         desc: b.desc || '',
         key: bkey,
-        note: (b.repoNotes || {})[rk] || '',
         // 组内描述也是文档：前端点「描述」直接开这篇（ref:<refId>）
         noteDocId: noteDocOf.get(`${bkey}|${rk}`) || '',
       });
@@ -310,7 +308,6 @@ export async function removeRepo(id: unknown): Promise<RepoEntry> {
     // 看板里同步摘引用（看板成员存 key，登记没了就是死引用）
     for (const b of s.boards) {
       if (Array.isArray(b.repoKeys)) b.repoKeys = b.repoKeys.filter((k) => k !== deadKey);
-      if (b.repoNotes && b.repoNotes[deadKey]) delete b.repoNotes[deadKey];
       // 组级参考绑定：删掉的是参考仓库 → 它从所有组里消失
       if (Array.isArray(b.refs)) b.refs = b.refs.filter((r) => r.id !== deadKey);
     }

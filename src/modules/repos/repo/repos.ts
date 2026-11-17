@@ -31,7 +31,6 @@ export interface RepoRowUpsert {
 export interface MemberUpsert {
   repoKey: string;
   position: number;
-  note: string;
 }
 
 /** 组行的行形状（在 RepoRowUpsert 之上多一个 members）。 */
@@ -59,26 +58,26 @@ export function getRowByKey(key: unknown, conn: DbApi = db()): Row | null {
 
 /** 全部成员行（跨组；组装配/投影用）。 */
 export function listAllMembers(conn: DbApi = db()): Row[] {
-  return conn.all('SELECT group_key, repo_key, position, note FROM repo_group_members ORDER BY group_key, position, rowid');
+  return conn.all('SELECT group_key, repo_key, position FROM repo_group_members ORDER BY group_key, position, rowid');
 }
 
 // ─── 组级参考仓库绑定（v4）────────────────────────────────────────────
 
 /** 全部组级参考绑定（跨组；store 装配用）。 */
 export function listAllGroupRefs(conn: DbApi = db()): Row[] {
-  return conn.all('SELECT group_key, ref_key, note, position FROM group_refs ORDER BY group_key, position, rowid');
+  return conn.all('SELECT group_key, ref_key, position FROM group_refs ORDER BY group_key, position, rowid');
 }
 
 /** 一个组的参考绑定（有序）。 */
 export function listGroupRefs(groupKey: unknown, conn: DbApi = db()): Row[] {
   return conn.all(
-    'SELECT ref_key, note, position FROM group_refs WHERE group_key = :g ORDER BY position, rowid',
+    'SELECT ref_key, position FROM group_refs WHERE group_key = :g ORDER BY position, rowid',
     { g: String(groupKey || '') }
   );
 }
 
 /** 整组重建参考绑定（组内共享；ref/组不存在由外键拒绝）。 */
-export function replaceGroupRefs(conn: DbApi, groupKey: unknown, refs: Array<{ id?: unknown; note?: unknown }>, atMs: number): void {
+export function replaceGroupRefs(conn: DbApi, groupKey: unknown, refs: Array<{ id?: unknown }>, atMs: number): void {
   conn.run('DELETE FROM group_refs WHERE group_key = :g', { g: String(groupKey || '') });
   const seen = new Set<string>();
   refs.forEach((ref, position) => {
@@ -86,9 +85,9 @@ export function replaceGroupRefs(conn: DbApi, groupKey: unknown, refs: Array<{ i
     if (!key || seen.has(key)) return;
     seen.add(key);
     conn.run(
-      `INSERT OR IGNORE INTO group_refs (group_key, ref_key, note, position, created_at)
-       VALUES (:g, :r, :n, :p, :at)`,
-      { g: String(groupKey || ''), r: key, n: String((ref && ref.note) || ''), p: position, at: atMs }
+      `INSERT OR IGNORE INTO group_refs (group_key, ref_key, position, created_at)
+       VALUES (:g, :r, :p, :at)`,
+      { g: String(groupKey || ''), r: key, p: position, at: atMs }
     );
   });
 }
@@ -101,14 +100,14 @@ export function clearGroupRefs(conn: DbApi, groupKey: unknown): void {
 /** 一个组的成员行（有序）。 */
 export function listMembers(groupKey: unknown, conn: DbApi = db()): Row[] {
   return conn.all(
-    'SELECT group_key, repo_key, position, note FROM repo_group_members WHERE group_key = :g ORDER BY position, rowid',
+    'SELECT group_key, repo_key, position FROM repo_group_members WHERE group_key = :g ORDER BY position, rowid',
     { g: String(groupKey || '') }
   );
 }
 
 /** 这个仓库被哪些组包含（反查，走 ix_members_repo）。 */
 export function listGroupsOfRepo(repoKey: unknown, conn: DbApi = db()): Row[] {
-  return conn.all('SELECT group_key, position, note FROM repo_group_members WHERE repo_key = :r ORDER BY group_key, position', {
+  return conn.all('SELECT group_key, position FROM repo_group_members WHERE repo_key = :r ORDER BY group_key, position', {
     r: String(repoKey || ''),
   });
 }
@@ -188,9 +187,9 @@ export function replaceMembers(conn: DbApi, groupKey: unknown, members: MemberUp
   conn.run('DELETE FROM repo_group_members WHERE group_key = :g', { g: String(groupKey || '') });
   for (const m of members) {
     conn.run(
-      `INSERT OR IGNORE INTO repo_group_members (group_key, repo_key, position, note, created_at)
-       VALUES (:g, :r, :p, :n, :at)`,
-      { g: String(groupKey || ''), r: String(m.repoKey || ''), p: Number(m.position) || 0, n: String(m.note || ''), at: atMs }
+      `INSERT OR IGNORE INTO repo_group_members (group_key, repo_key, position, created_at)
+       VALUES (:g, :r, :p, :at)`,
+      { g: String(groupKey || ''), r: String(m.repoKey || ''), p: Number(m.position) || 0, at: atMs }
     );
   }
 }

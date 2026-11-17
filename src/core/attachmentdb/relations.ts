@@ -42,15 +42,18 @@ export interface LinkAttachmentInput {
 /**
  * 写一条宿主 ↔ 资源的关系（upsert，带 role 优先级）。
  *
- * note 是**边上的说明**（desc）：只在与现存 role 同级且调用方**显式给了** note
+ * note 是**任务附件边上的说明**（desc）：只在与现存 role 同级且调用方**显式给了** note
  * （!== undefined）时才更新——正文同步等不关心 note 的调用方不传，就不会把
- * 用户写的说明冲掉（#162：attach --ref --note 走 embed 路径时说明不再丢）。
+ * 用户写的说明冲掉（#162）。#148 起 ref_attach 的 note 列已删（关系表不挂业务字段），
+ * 所以只有 host==='task' 才写 note；ref 侧传入的 note 一律忽略。
  * @returns {string} 实际落库的 role
  */
 export function linkAttachment(conn: any, {
   host, hostId, attachmentId, role = 'attach', position, note, atMs = Date.now(),
 }: LinkAttachmentInput = {}): AttachmentRole {
   const h = hostOf(host);
+  const withNote = host === 'task'; // v13：只有 task_attach 还有 note 列
+  const effNote = withNote ? note : undefined;
   const hostVal = host === 'task' ? Number(hostId) : String(hostId || '');
   const att = String(attachmentId || '');
   if (!att) throw new Error('linkAttachment 需要 attachmentId');
@@ -68,7 +71,7 @@ export function linkAttachment(conn: any, {
     if (curRank > newRank) return cur.role; // 显式边不被正文降级
     if (curRank === newRank) {
       const pos = position === undefined ? cur.position : position;
-      if (note === undefined) {
+      if (effNote === undefined) {
         conn.run(
           `UPDATE ${h.table} SET position = :pos WHERE ${h.col} = :host AND attachment_id = :att`,
           { pos: Number(pos) || 0, host: hostVal, att }
@@ -77,16 +80,24 @@ export function linkAttachment(conn: any, {
         conn.run(
           `UPDATE ${h.table} SET position = :pos, note = :note
             WHERE ${h.col} = :host AND attachment_id = :att`,
-          { pos: Number(pos) || 0, note: String(note || ''), host: hostVal, att }
+          { pos: Number(pos) || 0, note: String(effNote || ''), host: hostVal, att }
         );
       }
       return cur.role;
     }
-    conn.run(
-      `UPDATE ${h.table} SET role = :role, position = :pos, note = :note
-        WHERE ${h.col} = :host AND attachment_id = :att`,
-      { role, pos: Number(position) || 0, note: String(note || ''), host: hostVal, att }
-    );
+    if (effNote === undefined) {
+      conn.run(
+        `UPDATE ${h.table} SET role = :role, position = :pos
+          WHERE ${h.col} = :host AND attachment_id = :att`,
+        { role, pos: Number(position) || 0, host: hostVal, att }
+      );
+    } else {
+      conn.run(
+        `UPDATE ${h.table} SET role = :role, position = :pos, note = :note
+          WHERE ${h.col} = :host AND attachment_id = :att`,
+        { role, pos: Number(position) || 0, note: String(effNote || ''), host: hostVal, att }
+      );
+    }
     return role;
   }
   let pos = position;
@@ -99,11 +110,19 @@ export function linkAttachment(conn: any, {
     );
     pos = Number((row && row.next) || 0);
   }
-  conn.run(
-    `INSERT INTO ${h.table} (${h.col}, attachment_id, role, position, note, created_at)
-     VALUES (:host, :att, :role, :pos, :note, :at)`,
-    { host: hostVal, att, role, pos: Number(pos) || 0, note: String(note || ''), at: atMs }
-  );
+  if (effNote === undefined) {
+    conn.run(
+      `INSERT INTO ${h.table} (${h.col}, attachment_id, role, position, created_at)
+       VALUES (:host, :att, :role, :pos, :at)`,
+      { host: hostVal, att, role, pos: Number(pos) || 0, at: atMs }
+    );
+  } else {
+    conn.run(
+      `INSERT INTO ${h.table} (${h.col}, attachment_id, role, position, note, created_at)
+       VALUES (:host, :att, :role, :pos, :note, :at)`,
+      { host: hostVal, att, role, pos: Number(pos) || 0, note: String(effNote || ''), at: atMs }
+    );
+  }
   return role;
 }
 
@@ -123,6 +142,7 @@ export function updateAttachmentNote(conn: any, {
   host, hostId, attachmentId, note = '',
 }: UpdateAttachmentNoteInput = {}): number {
   const h = hostOf(host);
+  if (host !== 'task') return 0; // v13：ref_attach 无 note 列，任务侧才有说明
   const hostVal = host === 'task' ? Number(hostId) : String(hostId || '');
   const att = String(attachmentId || '');
   if (!att) return 0;
@@ -205,16 +225,11 @@ export function syncRefAttachments(conn: any, {
     const att = ensureAttachment(conn, r, { atMs });
     if (att && !rows.some((x) => x.id === att)) rows.push({ id: att, role: r.role });
   }
-  // 同任务侧：整组重写保留边上的说明（note）。
-  const notes = new Map(
-    (conn.all("SELECT attachment_id, note FROM ref_attach WHERE ref_id = :id AND role IN ('inline', 'reference')", { id }) as Array<{ attachment_id: string; note: string }>)
-      .map((r): [string, string] => [r.attachment_id, r.note])
-  );
+  // v13：ref_attach 的 note 列已删，整组重写不再有「保留边上说明」这一步
   conn.run("DELETE FROM ref_attach WHERE ref_id = :id AND role IN ('inline', 'reference')", { id });
   rows.forEach((x, pos) => {
     linkAttachment(conn, {
-      host: 'ref', hostId: id, attachmentId: x.id, role: x.role, position: pos,
-      note: notes.has(x.id) ? notes.get(x.id) : undefined, atMs,
+      host: 'ref', hostId: id, attachmentId: x.id, role: x.role, position: pos, atMs,
     });
   });
   return rows.length;

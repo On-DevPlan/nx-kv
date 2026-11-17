@@ -15,7 +15,6 @@ import {
   registerMdfile,
   registerFolder,
   unlinkAttachment,
-  updateAttachmentNote,
   upsertFileAttachment,
 } from '../../core/attachmentdb.js';
 import type { LinkedAttachmentView } from '../../core/attachmentdb/query.js';
@@ -88,7 +87,6 @@ export interface AttachToDocCtx {
   /** 本地文件夹（登记为 kind=folder，只存路径） */
   folder?: unknown;
   noEmbed?: unknown;
-  note?: unknown;
   [key: string]: unknown;
 }
 
@@ -209,7 +207,7 @@ export async function attachToDoc(ctx: AttachToDocCtx): Promise<AttachToDocResul
   if (noEmbed) {
     tx(
       (conn) => {
-        linkAttachment(conn, { host: 'ref', hostId: hostRefId, attachmentId, role: 'attach', note: ctx.note as string | undefined });
+        linkAttachment(conn, { host: 'ref', hostId: hostRefId, attachmentId, role: 'attach' });
       },
       { db, mode: 'IMMEDIATE' }
     );
@@ -228,39 +226,6 @@ export async function attachToDoc(ctx: AttachToDocCtx): Promise<AttachToDocResul
     role,
     markdown,
   };
-}
-
-/** docs attach --note 的入参。 */
-export interface NoteOnDocInput {
-  ref?: unknown;
-  attachment?: unknown;
-  note?: unknown;
-}
-
-/** docs attach --note 的出参。 */
-export interface NoteOnDocResult {
-  refId: string;
-  attachment: string;
-  note: string;
-}
-
-/**
- * 改一条文档侧绑定上的说明（desc，#168）：与任务侧同一口径——只动 note。
- */
-export async function noteOnDoc({ ref, attachment, note = '' }: NoteOnDocInput = {}): Promise<NoteOnDocResult> {
-  const { refId } = await docRefOf(ref);
-  const attId = String(attachment || '').trim();
-  if (!attId) throw badInput('需要 --attachment <资源 id>（见 docs attachments 输出）');
-  const db = getDb();
-  let changed = 0;
-  tx(
-    (conn) => {
-      changed = updateAttachmentNote(conn, { host: 'ref', hostId: refId, attachmentId: attId, note: note as string | undefined });
-    },
-    { db, mode: 'IMMEDIATE' }
-  );
-  if (!changed) throw badInput(`这篇文档上没有附件 ${attId}`);
-  return { refId, attachment: attId, note: String(note || '') };
 }
 
 /** docs detach 的入参。 */

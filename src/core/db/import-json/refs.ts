@@ -14,7 +14,6 @@ import type { Dirent } from 'node:fs';
 interface DocRefEntry {
   locator: string;
   type: string;
-  note: string;
   extPath: string;
 }
 
@@ -98,8 +97,7 @@ export function importRefs(
     groupKey: string | null,
     locator: string,
     type: string,
-    position: number,
-    note: string
+    position: number
   ): boolean => {
     if (!fileSet.has(locator)) return false;
     const id = idOfLocator(locator);
@@ -107,9 +105,9 @@ export function importRefs(
     // ON CONFLICT 的冲突目标带表达式（COALESCE）在 SQLite 里要写成一模一样的表达式，
     // 这里用 INSERT OR IGNORE：绑定边重复插是幂等的正常情况，不该报错。
     const r = db.run(
-      `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, created_at)
-       VALUES (:repo, :group, :ref, :type, :pos, :note, :at)`,
-      { repo: repoKey, group: groupKey, ref: id, type, pos: position, note, at: atMs }
+      `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, created_at)
+       VALUES (:repo, :group, :ref, :type, :pos, :at)`,
+      { repo: repoKey, group: groupKey, ref: id, type, pos: position, at: atMs }
     );
     if (Number(r.changes) > 0) report.imported.refBindings += 1;
     return true;
@@ -121,19 +119,19 @@ export function importRefs(
   // DocRef（本机 repos.json 没有这些字段，代码保留给别的机器）
   const docRefsOf = (host: any): DocRefEntry[] => {
     const out: DocRefEntry[] = [];
-    const pushRef = (ref: any, note: string = ''): void => {
+    const pushRef = (ref: any): void => {
       if (!ref || typeof ref !== 'object') return;
       // 旧 JSON 里的键名就叫 rel（v6 之前的字段名）；读出来一律当 **locator** 用。
       const legacyPath = String(ref.rel || '').trim();
       const path = String(ref.path || '').trim();
-      if (legacyPath) out.push({ locator: legacyPath, type: 'md', note: String(note || ''), extPath: '' });
+      if (legacyPath) out.push({ locator: legacyPath, type: 'md', extPath: '' });
       // v2 起 refs 只装文档：外部 .md 绝对路径也是文档，type 统一为 md。
-      else if (path) out.push({ locator: path, type: 'md', note: String(note || ''), extPath: path });
+      else if (path) out.push({ locator: path, type: 'md', extPath: path });
     };
     pushRef(host && host.doc);
     for (const l of Array.isArray(host && host.docLinks) ? host.docLinks : []) pushRef(l);
     if (host && host.repoDocs && typeof host.repoDocs === 'object') {
-      for (const [k, v] of Object.entries(host.repoDocs)) pushRef(v, k);
+      for (const [, v] of Object.entries(host.repoDocs)) pushRef(v);
     }
     return out;
   };
@@ -149,8 +147,8 @@ export function importRefs(
     }
     // 约定路径：目录主篇优先，其次旧单文件（与 docs 模块的读回落顺序一致）
     position = 0;
-    const boundMain = bind(key, null, `repo/${key}/index.md`, 'repo', position, '');
-    if (!boundMain) bind(key, null, `repo/${key}.md`, 'repo', position, '');
+    const boundMain = bind(key, null, `repo/${key}/index.md`, 'repo', position);
+    if (!boundMain) bind(key, null, `repo/${key}.md`, 'repo', position);
     position += 1;
     for (const d of docRefsOf(r)) {
       if (d.extPath) {
@@ -172,9 +170,9 @@ export function importRefs(
         continue;
       }
       const br = db.run(
-        `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, created_at)
-         VALUES (:repo, NULL, :ref, 'repo', :pos, :note, :at)`,
-        { repo: key, ref: idOfLocator(d.locator), pos: position, note: d.note, at: atMs }
+        `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, created_at)
+         VALUES (:repo, NULL, :ref, 'repo', :pos, :at)`,
+        { repo: key, ref: idOfLocator(d.locator), pos: position, at: atMs }
       );
       if (Number(br.changes) > 0) report.imported.refBindings += 1;
       position += 1;
@@ -193,8 +191,8 @@ export function importRefs(
       continue;
     }
     const seg = base.slice('group/'.length);
-    const boundGroup = bind(gk, null, `board/${seg}/index.md`, 'group', 0, '');
-    if (!boundGroup) bind(gk, null, `board/${seg}.md`, 'group', 0, '');
+    const boundGroup = bind(gk, null, `board/${seg}/index.md`, 'group', 0);
+    if (!boundGroup) bind(gk, null, `board/${seg}.md`, 'group', 0);
     for (const repoKeyRaw of Array.isArray(b.repoKeys) ? b.repoKeys : []) {
       const repoKey = repoKeyById.get(String(repoKeyRaw || '').trim()) || String(repoKeyRaw || '').trim();
       if (!repoKey) continue;
@@ -202,8 +200,8 @@ export function importRefs(
         report.warnings.push({ what: 'docRef', why: '组成员不存在，已跳过成员文档绑定', group: gk, repo: repoKey });
         continue;
       }
-      const boundMember = bind(repoKey, gk, `group/${seg}/${repoKey}/index.md`, 'group_repo', 0, '');
-      if (!boundMember) bind(repoKey, gk, `group/${seg}/${repoKey}.md`, 'group_repo', 0, '');
+      const boundMember = bind(repoKey, gk, `group/${seg}/${repoKey}/index.md`, 'group_repo', 0);
+      if (!boundMember) bind(repoKey, gk, `group/${seg}/${repoKey}.md`, 'group_repo', 0);
     }
   }
 

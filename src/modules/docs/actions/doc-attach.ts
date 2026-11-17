@@ -20,7 +20,6 @@ const input = z.object({
   mdfile: z.string().optional().describe("本地 .md 文件路径（kind=mdfile：只登记指针，不复制正文）"),
   folder: z.string().optional().describe("本地文件夹路径（kind=folder：只登记目录路径，不复制内容）"),
   name: z.string().optional().describe("显示名（默认取文件名/原名）"),
-  note: z.string().optional().describe("附件区备注"),
   noEmbed: z.boolean().optional().describe("只写 ref_attach（role=attach），不改正文"),
   'no-embed': z.boolean().optional().describe("同 --noEmbed"),
 });

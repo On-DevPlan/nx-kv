@@ -232,14 +232,14 @@ test('zip 往返：仓库清单 / 组成员 / 文档绑定 / 队列绑定 四项
     'ref 绑定相等（组级 + 仓库级，仓库行 linked 应一致）'
   );
 
-  // ② 组成员（key 序列 + 组内描述）
+  // ② 组成员（key 序列 + 组内描述走绑定 ref 文档，不再有文本摘要字段）
   const boardAfter = after.boards.find((x) => x.name === '常用');
   assert.deepEqual(boardAfter.repoKeys, ['github.com/o/alpha', 'github.com/o/beta'], '组成员相等');
-  assert.deepEqual(
-    boardAfter.repoNotes,
-    { 'github.com/o/alpha': '主力' },
-    '组内描述相等'
+  assert.ok(
+    boardAfter.repoDocs && boardAfter.repoDocs['github.com/o/alpha'] && boardAfter.repoDocs['github.com/o/alpha'].ref,
+    '组内描述以绑定 ref 文档往返'
   );
+  assert.equal(boardAfter.repoNotes, undefined, '组内描述不再有 repoNotes 文本摘要');
   assert.equal(boardAfter.key, board.key, '组冻结 key 往返一致');
 
   // ③ 文档绑定按 refId 往返（项目主篇 / 补充篇 / 组介绍 / 组内描述）

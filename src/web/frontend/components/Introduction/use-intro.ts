@@ -14,7 +14,6 @@ export type IntroKind = 'repo' | 'board';
 export interface IntroLink {
   docId: string;
   label: string;
-  note?: string;
   main?: boolean;
 }
 
@@ -27,14 +26,12 @@ export interface IntroDocEntry {
   docId?: string;
   title?: string;
   desc?: string;
-  note?: string;
   [k: string]: any;
 }
 
 /** 仓库所属组的一行（owner.boards[]：组内描述文档的定位来源）。 */
 export interface IntroScopedBoard {
   name?: string;
-  note?: string;
   /** 组内描述文档（ref:<refId>） */
   noteDocId?: string;
   [k: string]: any;
@@ -127,11 +124,11 @@ export function useIntro({ kind, owner, model }: UseIntroArgs): IntroApi {
       const mid = linkDocId(main);
       setMainDocId(mid || docRef);
       if (mid && main) {
-        out.push({ docId: mid, label: labelOf(main, '主篇'), note: main.note || '', main: true });
+        out.push({ docId: mid, label: labelOf(main, '主篇'), main: true });
       }
       for (const l of extras) {
         const id = linkDocId(l);
-        if (id) out.push({ docId: id, label: labelOf(l, '补充'), note: l.note || '', main: false });
+        if (id) out.push({ docId: id, label: labelOf(l, '补充'), main: false });
       }
       setLinks(out);
     };

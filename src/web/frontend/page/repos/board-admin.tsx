@@ -112,7 +112,7 @@ export default function BoardAdminModal({ boardList, unassigned, onClose, onFilt
                 </span>
                 <span className="rp-board-admin-members">
                   {members.slice(0, 4).map((m) => (
-                    <span className="rp-board-mchip" key={m.key} title={m.note || m.key}>{m.name || m.key}</span>
+                    <span className="rp-board-mchip" key={m.key} title={m.key}>{m.name || m.key}</span>
                   ))}
                   {members.length > 4 ? <span className="rp-board-more">+{members.length - 4}</span> : null}
                   {missing.length ? <span className="rp-board-missing">{missing.length} 待初始化</span> : null}

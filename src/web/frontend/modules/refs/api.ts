@@ -17,7 +17,6 @@ export interface BindingRow {
   groupKey: string | null;
   position: number;
   main: boolean;
-  note: string;
 }
 
 /** 某个宿主的文档集（仓库 → host；组 → group）。 */

@@ -274,19 +274,6 @@ export async function repoImport({
             .setMemberHint({ board: b.id, key: m.key, name: m.name, remote: m.remote, desc: m.desc, type: m.type })
             .catch(() => {});
         }
-        if (m.note) {
-          // 组内描述挂在 key 上：占位成员也保留描述，等仓库补齐后自动生效。
-          // **直接写摘要字段**，不走 setBoardRepoNote —— 后者会把这句话写进
-          // group 文档，覆盖刚从 zip 还原的正文（描述以文档为准，文字只是影子）。
-          await service
-            .mutateStore((s) => {
-              const bb = s.boards.find((x) => x.id === b!.id);
-              if (!bb) return;
-              if (!bb.repoNotes) bb.repoNotes = {};
-              bb.repoNotes[m.key] = m.note;
-            })
-            .catch(() => {});
-        }
         if (!known) {
           unmatched.push({
             board: inc.name,

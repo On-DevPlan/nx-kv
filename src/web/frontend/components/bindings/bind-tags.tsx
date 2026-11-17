@@ -17,8 +17,6 @@ export interface BindTagItem {
   kind: 'repo' | 'group';
   /** position=0 的主篇（不可解绑） */
   main?: boolean;
-  /** 附加项的备注（渲染成「附加 · note」） */
-  note?: string;
   /** 完整名字（悬停） */
   title?: string;
   /** 有则渲染 ×（解绑不删文档） */
@@ -26,7 +24,7 @@ export interface BindTagItem {
 }
 
 export function BindTag({ t }: { t: BindTagItem }) {
-  const role = t.main ? '主篇' : t.note ? `附加 · ${t.note}` : '附加';
+  const role = t.main ? '主篇' : '附加';
   return (
     <span
       className={'nb-tag nb-' + t.kind + (t.main ? ' nb-main' : '')}

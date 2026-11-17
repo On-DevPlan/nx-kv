@@ -53,11 +53,10 @@ export function useDocBindings(docId: string | undefined, writable: boolean, doc
   const [repos, setRepos] = useState<HostOpt[]>([]);
   const [groups, setGroups] = useState<HostOpt[]>([]);
   const [busy, setBusy] = useState(false);
-  // 加绑弹窗：kind + 选中宿主 + 备注
+  // 加绑弹窗：kind + 选中宿主
   const [addOpen, setAddOpen] = useState(false);
   const [kind, setKind] = useState<'repo' | 'group'>('repo');
   const [hostKey, setHostKey] = useState('');
-  const [note, setNote] = useState('');
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
 
@@ -118,7 +117,7 @@ export function useDocBindings(docId: string | undefined, writable: boolean, doc
   }
 
   function openAdd() {
-    setKind('repo'); setHostKey(''); setNote(''); setAddOpen(true);
+    setKind('repo'); setHostKey(''); setAddOpen(true);
   }
 
   async function confirmAdd() {
@@ -127,8 +126,8 @@ export function useDocBindings(docId: string | undefined, writable: boolean, doc
     if (!ref) { toast('这篇文档还没有 refId（外部目录不能加绑）'); return; }
     setBusy(true);
     try {
-      if (kind === 'repo') await bindRepoDoc({ id: hostKey, ref, note });
-      else await linkBoardDoc({ board: hostKey, ref, note });
+      if (kind === 'repo') await bindRepoDoc({ id: hostKey, ref });
+      else await linkBoardDoc({ board: hostKey, ref });
       setAddOpen(false);
       toast(kind === 'repo' ? '已加绑到仓库文档集' : '已加绑到组附加文档');
       reload();
@@ -143,10 +142,9 @@ export function useDocBindings(docId: string | undefined, writable: boolean, doc
     const group = b.type === 'group_repo' ? b.groupKey : null;
     return {
       id: `${b.refId}:${b.repoKey}:${b.groupKey || ''}:${b.position}`,
-      label: nameOf(b.repoKey),
+      label: group ? `${nameOf(b.repoKey)} · 组 ${nameOf(group)}` : nameOf(b.repoKey),
       kind: b.type === 'group' ? 'group' : 'repo',
       main: b.main,
-      note: b.note || (group ? `组 ${nameOf(group)}` : ''),
       title: `${b.repoKey}${group ? ' @ ' + group : ''}\n${b.desc || b.refId}`,
       onRemove: writable ? () => doUnbind(b) : undefined,
     } satisfies BindTagItem;
@@ -199,10 +197,6 @@ export function useDocBindings(docId: string | undefined, writable: boolean, doc
                 </label>
               )) : <label>（没有可加绑的{kind === 'repo' ? '仓库' : '项目组'}）</label>}
             </div>
-          </div>
-          <div className="nb-frow">
-            <label>备注（可选）</label>
-            <input className="nb-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="如：契约参考 / 旧版说明…" />
           </div>
         </div>
         <div className="nb-modal-foot">

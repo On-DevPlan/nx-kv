@@ -149,7 +149,6 @@ export interface ContextBoardBrief {
   name: string;
   desc: string;
   key: string;
-  note: string;
 }
 
 /** contextMap 的一行：仓库本体投影 + 它所在的看板。 */
@@ -197,7 +196,6 @@ export async function contextMap(): Promise<Map<string, ContextEntry>> {
         name: b.name,
         desc: b.desc || '',
         key: storedBoardKey(b),
-        note: (b.repoNotes || {})[rk] || '',
       });
     }
   }

@@ -65,7 +65,7 @@ export interface DocItemBody {
 }
 
 /** 把文档登记进参考仓库的文档集（POST /api/repos/docs）。 */
-export function bindRepoDoc(body: { id: string; ref?: string; path?: string; note?: string; tag?: string }): Promise<any> {
+export function bindRepoDoc(body: { id: string; ref?: string; path?: string; tag?: string }): Promise<any> {
   return api('/api/repos/docs', { method: 'POST', body });
 }
 
@@ -87,7 +87,6 @@ export interface DocBindingRow {
   type: string;
   position: number;
   main: boolean;
-  note?: string;
   tag?: string;
 }
 
@@ -102,7 +101,7 @@ export function unbindRef(body: {
 }
 
 /** 把文档挂到看板附加列表（POST /api/docs/link）。 */
-export function linkBoardDoc(body: { board: string; ref?: string; path?: string; note?: string; tag?: string }): Promise<any> {
+export function linkBoardDoc(body: { board: string; ref?: string; path?: string; tag?: string }): Promise<any> {
   return api('/api/docs/link', { method: 'POST', body });
 }
 

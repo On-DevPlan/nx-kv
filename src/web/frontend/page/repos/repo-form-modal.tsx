@@ -18,7 +18,7 @@ import { useWikiNav } from '../doc/index.jsx';
 import { keyFromRemote, normalizeKey } from '../../../../shared/repo-key.js';
 import type { RepoRecord } from './repo-table.js';
 
-const EMPTY_FORM = { path: '', name: '', desc: '', notes: '', type: 'dev', remote: '', key: '', icon: '' };
+const EMPTY_FORM = { path: '', name: '', desc: '', type: 'dev', remote: '', key: '', icon: '' };
 
 /** 表单字段（与 EMPTY_FORM 同形）。 */
 type RepoForm = typeof EMPTY_FORM;
@@ -38,7 +38,6 @@ interface DetectState {
 interface RepoBody {
   path: string;
   name?: string;
-  notes: string;
   type: string;
   remote?: string;
   icon: string;
@@ -66,7 +65,6 @@ export default function RepoFormModal({ editing, repos, onClose, onSaved }: {
     desc: editingRepo.desc || '',
     type: editingRepo.type || 'dev',
     remote: editingRepo.remote || '',
-    notes: editingRepo.notes || '',
     key: editingRepo.key || '',
     icon: editingRepo.icon || '',
   } : EMPTY_FORM));
@@ -131,7 +129,6 @@ export default function RepoFormModal({ editing, repos, onClose, onSaved }: {
     const body: RepoBody = {
       path: form.path.trim(),
       name: form.name.trim() || undefined,
-      notes: form.notes,
       type: form.type === 'ref' ? 'ref' : 'dev',
       remote: remote || undefined,
       // 图标（emoji / 单字符；清空 = 回默认文件夹图标）——原设置页「项目级设置」
@@ -234,10 +231,6 @@ export default function RepoFormModal({ editing, repos, onClose, onSaved }: {
           <div className="form-hint">
             没有远程地址时必须手工填写；已有仓库可查看，改 key 会波及引用它的队列 / 看板 / 关系。
           </div>
-        </div>
-        <div className="form-field">
-          <label htmlFor="repo-notes">备注</label>
-          <textarea id="repo-notes" placeholder="补充信息（可选）" value={form.notes} onChange={set('notes')} />
         </div>
         <div className="form-acts">
           <Button  onClick={onClose}>取消</Button>

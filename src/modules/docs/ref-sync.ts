@@ -21,7 +21,6 @@ interface DesiredBinding {
   type: 'repo' | 'group' | 'group_repo';
   refId: string;
   position: number;
-  note: string;
 }
 
 export interface SyncRefIndexInput {
@@ -43,8 +42,7 @@ export function desiredBindings(s: any): DesiredBinding[] {
     groupKey: string | null,
     type: DesiredBinding['type'],
     raw: any,
-    position: number,
-    note = ''
+    position: number
   ): void => {
     const refId = String((raw && raw.ref) || '').trim();
     if (!refId) return;
@@ -54,7 +52,6 @@ export function desiredBindings(s: any): DesiredBinding[] {
       type,
       refId,
       position: Number(position) || 0,
-      note: String((raw && raw.note) ?? note ?? ''),
     });
   };
 
@@ -111,7 +108,6 @@ export async function syncRefIndex({ store: s }: SyncRefIndexInput = {}): Promis
           refId: b.refId,
           type: b.type,
           position: b.position,
-          note: b.note,
         });
         markRefBound(conn, b.refId);
         n += 1;

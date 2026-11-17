@@ -83,7 +83,14 @@ export async function run(ctx) {
   const got = await cliJson(['docs', 'get', mainDocId]);
   check('导入还原正文', got.body === '# alpha\n\n改过的介绍');
   const boardAfter = await cliJson(['board', 'get', 'nx系列']);
-  check('导入还原成员与组内描述', boardAfter.repos.length === 1 && boardAfter.repos[0].note === '组里的任务出入口');
+  // v13：组内描述走绑定 ref 文档（noteDocId），不再是成员行上的 note 文本
+  const noteDocId = String((boardAfter.repos[0] && boardAfter.repos[0].noteDocId) || '');
+  const noteBody = noteDocId ? String((await cliJson(['docs', 'get', noteDocId])).body || '') : '';
+  check(
+    '导入还原成员与组内描述',
+    boardAfter.repos.length === 1 && /^ref:ref_/.test(noteDocId) && noteBody.includes('组里的任务出入口'),
+    JSON.stringify(boardAfter.repos).slice(0, 240)
+  );
 
   const docsHttp = await (await fetch(base + '/api/docs')).json();
   check('api docs 列表可达', docsHttp.ok && Array.isArray(docsHttp.data.docs) && docsHttp.data.docs.length === 4);

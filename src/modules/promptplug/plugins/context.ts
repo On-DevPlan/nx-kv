@@ -9,9 +9,8 @@ const docItemShape = z.looseObject({
   desc: z.string(),
   title: z.string(),
   hasBody: z.boolean(),
-  note: z.string(),
 });
-const refRepoShape = z.looseObject({ key: z.string(), name: z.string(), path: z.string(), note: z.string() });
+const refRepoShape = z.looseObject({ key: z.string(), name: z.string(), path: z.string() });
 const peerShape = z.looseObject({ name: z.string(), note: z.string(), path: z.string(), hasNote: z.boolean() });
 
 const repoShape = z.looseObject({
@@ -46,7 +45,6 @@ function docItems(links: any) {
     desc: d.desc || '',
     title: d.title || '',
     hasBody: d.hasBody !== false,
-    note: d.note || '',
   }));
 }
 
@@ -66,7 +64,6 @@ function refRepoItems(list: any) {
     key: r.key || '',
     name: r.name || '',
     path: r.path || '',
-    note: r.note || '',
   }));
 }
 

@@ -817,21 +817,6 @@
       "action": null,
       "children": [
         {
-          "name": "attach-note",
-          "path": [
-            "docs",
-            "attach-note"
-          ],
-          "action": {
-            "id": "doc.attach-note",
-            "module": "docs",
-            "summary": "改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变）",
-            "usage": "docs attach-note",
-            "http": "PATCH /api/docs/attach-note"
-          },
-          "children": []
-        },
-        {
           "name": "attach",
           "path": [
             "docs",

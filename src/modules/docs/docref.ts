@@ -10,17 +10,16 @@
 import { badInput } from '../../core/errors.js';
 
 /**
- * DocRef：{ ref } 指向文档库条目；note 是列表条目的注解（docLinks 用）。
+ * DocRef：{ ref } 指向文档库条目。
  *
- * #137 之前还有 `tag`（分类标签）——面板没有入口、无处可用，已在 v12 整个删掉。
+ * #137 的 `tag` 已在 v12 删掉；#148 的 `note`（列表条目注解）在 v13 删掉——
+ * 描述走 ref 自己的 desc + 正文标题，关系表不再挂业务字段。
  */
 export interface DocRef {
   ref?: string;
-  /** 链接级注解（note，docLinks 条目用） */
-  note?: string;
 }
 
-/** DocRef + 链接级注解（withLinkMeta 的产出形状）。 */
+/** 兼容旧调用方的类型别名（现在与 DocRef 同形）。 */
 export type DocRefWithMeta = DocRef;
 
 const REF_ID_RE = /^ref_[0-9a-f]{16}$/i;
@@ -53,17 +52,12 @@ export function sanitizeDocRef(raw: unknown): DocRef | null {
 }
 
 /**
- * DocRef + 链接级注解（note）合成列表条目。
- *
- * 注解要过三道关（写入口合并 / 读归一化回贴 / 导出保留），三处口径必须一致——
- * 实现只此一份，docs/refs 与 repos/service、transfer 都从这里拿。
- * 空串/缺省 = 不落字段（对已有条目即「清掉」）。
+ * 兼容 shim：note 在 v13 删除后这里变成恒等函数，保留是为了让调用方
+ * 不必为「去 note」一次性改几十处——它们继续传 { note } 进来会被忽略。
+ * 新代码不该再依赖它携带任何元数据。
  */
-export function withLinkMeta(ref: DocRef, raw: { note?: unknown } = {}): DocRefWithMeta {
-  const note = typeof raw.note === 'string' ? raw.note.trim() : '';
-  const entry: DocRefWithMeta = { ...ref };
-  if (note) entry.note = note;
-  return entry;
+export function withLinkMeta(ref: DocRef, _raw: { note?: unknown } = {}): DocRefWithMeta {
+  return { ...ref };
 }
 
 // ─── docId（前后端统一寻址）────────────────────────────────────────────

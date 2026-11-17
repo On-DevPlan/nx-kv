@@ -27,7 +27,6 @@ export interface DocBrief {
   title?: string;
   desc?: string;
   summary?: string;
-  note?: string;
   tag?: string;
   /** 面板导航地址 ref:<refId> */
   docId?: string;
@@ -46,7 +45,6 @@ export interface RepoBoardRef {
   id: string;
   key?: string;
   name: string;
-  note?: string;
   noteDocId?: string;
 }
 
@@ -54,7 +52,6 @@ export interface RepoBoardRef {
 export interface RepoLink {
   id: string;
   kind?: string;
-  note?: string;
 }
 
 /** 持续 get（waitgoal）配置：行名绿点与菜单态都读它。 */
@@ -68,7 +65,6 @@ export interface RepoRecord extends RepoRow {
   id: string;
   path?: string;
   desc?: string;
-  notes?: string;
   remote?: string;
   icon?: string;
   keyCustom?: boolean;
@@ -84,7 +80,6 @@ export interface BoardMember {
   id?: string;
   name?: string;
   path?: string;
-  note?: string;
   remote?: string;
   desc?: string;
   /** 组内描述文档（ref:<refId>）；没有绑定为空串 */
@@ -95,7 +90,6 @@ export interface BoardMember {
 /** 看板上的参考绑定（board.refs[]）：id = 参考仓库 key。 */
 export interface BoardRefLink {
   id: string;
-  note?: string;
 }
 
 /** /api/boards 的一行（看板 / 项目组）。 */
@@ -131,7 +125,6 @@ export interface GroupRefChip {
   id: string;
   name: string;
   remote: string;
-  note: string;
   group: { id: string; key: string; name: string };
   alsoIn?: string[];
 }
@@ -140,13 +133,11 @@ export interface GroupRefChip {
 export interface RepoChip {
   key: string;
   name: string;
-  note: string;
 }
 
 /** 仓库级反查：参考仓库 key → 直接绑在它身上的开发仓库。 */
 export interface RefBackLink {
   repo: RepoRecord;
-  note: string;
 }
 
 /** 各区块共享的刷新入口（index 组装，子组件按动作语义各取所需）。 */
@@ -218,8 +209,7 @@ export function DocsEntry({ docs, onOpen }: { docs?: RepoDocs | null; onOpen: ()
       id: (l.docId || l.refId || 'link') + ':' + i,
       label: labelOf(l, i),
       kind: 'repo',
-      note: l.note || '',
-      title: [l.title || l.desc, l.note && `备注：${l.note}`].filter(Boolean).join('\n'),
+      title: String(l.title || l.desc || ''),
     });
   });
   return (
@@ -253,7 +243,7 @@ function RefRepoChips({ chips, acts }: { chips: RepoChip[]; acts: RepoActs }) {
         <span key={c.key} className="rp-link-chip rp-link-chip-repo">
           <button
             className="rp-link-chip-main"
-            title={['本仓库直接绑定的参考仓库', c.note, '点击跳到这个参考仓库'].filter(Boolean).join('\n')}
+            title={['本仓库直接绑定的参考仓库', '点击跳到这个参考仓库'].join('\n')}
             onClick={() => acts.gotoRefRepo(c.key)}
           >
             <b>自</b>
@@ -275,11 +265,9 @@ function RefRepoChips({ chips, acts }: { chips: RepoChip[]; acts: RepoActs }) {
 // 列随分组形态变化——`main` / `default` 显示**这一行自己直接绑定**的参考仓库，
 // 具体分组不显示（组内参考仓库共享，统一在「参考仓库」区块里看）。
 // **没有「分组」列**：组已经是「分支」这个全局维度，再摆一列只是重复当前上下文。
-function RepoRow({ r, mode, note, filterBoard, refRepoChipsByRepo, acts }: {
+function RepoRow({ r, mode, filterBoard, refRepoChipsByRepo, acts }: {
   r: RepoRecord;
   mode: 'main' | 'group' | 'default';
-  /** 分组里这一行的组内描述（board.repoDocs[repoKey].note） */
-  note?: string;
   filterBoard: BoardRecord | null;
   refRepoChipsByRepo: Map<string, RepoChip[]>;
   acts: RepoActs;
@@ -301,13 +289,8 @@ function RepoRow({ r, mode, note, filterBoard, refRepoChipsByRepo, acts }: {
           ) : null}
         </strong>
         <span className="mono rp-name-path"><RepoPath path={r.path} /></span>
-        {mode === 'group' && note ? (
-          <span className="rp-group-note" title={`组内描述（只在这个组里有）：\n${note}`}>
-            组内描述：{note.split('\n')[0]}
-          </span>
-        ) : null}
       </td>
-      {/* 文档列 = 这个仓库全部文档的入口：查看详情 → 右侧栏文档列表（含组内描述） */}
+      {/* 文档列 = 这个仓库全部文档的入口：查看详情 → 右侧栏文档列表 */}
       <td className="rp-cell-docs">
         <DocsEntry docs={r.descDocs} onOpen={() => acts.docs(r)} />
       </td>
@@ -393,7 +376,6 @@ export default function RepoTable({ shown, devRepos, mode, filterBoard, refRepoC
               key={r.id}
               r={r}
               mode={mode}
-              note={isGroup ? (siteNoteOf(r, filterBoard) || '') : ''}
               filterBoard={filterBoard}
               refRepoChipsByRepo={refRepoChipsByRepo}
               acts={acts}
@@ -421,11 +403,4 @@ export default function RepoTable({ shown, devRepos, mode, filterBoard, refRepoC
       </table>
     </div>
   );
-}
-
-/** 分组里这一行的组内描述文本（board.repoDocs[key].note；没绑就是空串）。 */
-function siteNoteOf(r: RepoRecord, board: BoardRecord | null): string {
-  if (!board) return '';
-  const hit = (board.repos || []).find((m) => m.key === r.key);
-  return String((hit && hit.note) || '');
 }

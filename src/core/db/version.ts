@@ -38,7 +38,9 @@
 //   新增 ref_gc_log（孤儿到期清理的不可变留痕）。存量孤儿按升级时刻起算。
 // v12（2026-11-16）：去掉「分类标签」概念——删 ref_bindings.tag 列。
 //   关系描述文档的定位不走 tag：desc 就在 ref 上。
-export const CURRENT_SCHEMA_VERSION = 12;
+// v13（2026-11-17）：彻底删除「关系表上的业务 note」概念——4 张关系表 drop note 列。
+//   关系表本身就表达多对多；文档描述走 ref.desc + 正文标题，参考仓库描述走绑定 ref 的文档。
+export const CURRENT_SCHEMA_VERSION = 13;
 
 /**
  * 运行时最低 Node 版本。

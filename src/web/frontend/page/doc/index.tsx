@@ -43,7 +43,6 @@ export type { DocOpenExtra, WikiNav } from './use-wiki-nav.js';
 interface IntroLink {
   docId: string;
   label: string;
-  note: string;
   main: boolean;
 }
 
@@ -132,16 +131,16 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
       return;
     }
     const current = docId
-      ? [{ docId, label: '当前', note: '', main: true }]
+      ? [{ docId, label: '当前', main: true }]
       : [];
-    const toLinks = (rows: Array<{ refId?: string; desc?: string; title?: string; summary?: string; note?: string; main?: boolean }>) => {
+    const toLinks = (rows: Array<{ refId?: string; desc?: string; title?: string; summary?: string; main?: boolean }>) => {
       const out: IntroLink[] = [];
       for (const b of rows) {
         if (!b.refId) continue;
         const id = 'ref:' + b.refId;
         if (out.some((x) => x.docId === id)) continue;
         // 显示名：正文标题 → desc → 正文首行摘要（v8 没有路径名了，摘要是兜底）
-        out.push({ docId: id, label: b.title || b.desc || b.summary || '未命名文档', note: b.desc || b.note || '', main: !!b.main });
+        out.push({ docId: id, label: b.title || b.desc || b.summary || '未命名文档', main: !!b.main });
       }
       if (docId && !out.some((x) => x.docId === docId)) out.push(current[0]!);
       return out;

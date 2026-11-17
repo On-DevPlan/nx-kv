@@ -14,7 +14,6 @@ import type {
 } from '../../../modules/bundled/actions/_manifest.generated.js';
 import type {
   DocAttachAction,
-  DocAttachNoteAction,
   DocAttachmentsAction,
   DocDetachAction,
   DocGetAction,
@@ -254,8 +253,6 @@ export interface ApiClient {
   scan(input?: z.input<InstanceType<typeof RepoScanAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoScanAction>['run']>>>;
 /** 修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填；指令文案在 设置 → 提示词模板 → 持续 get，仓库侧只有开关 + 分钟）。描述已改为文档，不再经这里改 */
   repoUpdate(input: z.input<InstanceType<typeof RepoUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>>;
-/** 改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变） */
-  attachNote(input: z.input<InstanceType<typeof DocAttachNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocAttachNoteAction>['run']>>>;
 /** 给文档挂资源：--path / --fileId / --url / --task / --doc / --mdfile / --folder 之一；默认追加进正文，--no-embed 只挂附件区（不写正文） */
   attach(input: z.input<InstanceType<typeof DocAttachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocAttachAction>['run']>>>;
 /** 这篇文档用了哪些资源（ref_attach：图片/文件/URL/内部 task、ref 引用） */
@@ -297,7 +294,7 @@ export interface ApiClient {
 /** 向某主题（工作目录）的队列回填一条任务（正文可多行；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝） */
   localtaskAdd(input?: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>>;
 /** 改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变） */
-  localtaskAttachNote(input: z.input<InstanceType<typeof LocaltaskAttachNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachNoteAction>['run']>>>;
+  attachNote(input: z.input<InstanceType<typeof LocaltaskAttachNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachNoteAction>['run']>>>;
 /** 给任务挂附件：--path 存本机附件仓 / --fileId 引用已有附件 / --url / --task（同主题任务）/ --ref（文档）/ --mdfile（本地 md 指针）/ --folder（本地文件夹路径）；默认嵌进正文，--no-embed 只挂到附件区（不写正文），--ref 加 --inline 文档进原文（交付带全文） */
   localtaskAttach(input: z.input<InstanceType<typeof LocaltaskAttachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachAction>['run']>>>;
 /** 列出某条任务引用的附件（正文里的 ![名](fileId) 嵌入），以及本地是否已有（给 agent 直接读本地文件） */
@@ -757,18 +754,11 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "path": inp["path"], "name": inp["name"], "icon": inp["icon"], "desc": inp["desc"], "notes": inp["notes"], "type": inp["type"], "remote": inp["remote"], "key": inp["key"], "key-custom": inp["key-custom"], "get-loop": inp["get-loop"], "get-loop-minutes": inp["get-loop-minutes"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>;
     },
-    // action: doc.attach-note
-    async attachNote(input: z.input<InstanceType<typeof DocAttachNoteAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocAttachNoteAction>['_input']>);
-      const path = `/api/docs/attach-note`;
-      const body = { "ref": inp["ref"], "attachment": inp["attachment"], "note": inp["note"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof DocAttachNoteAction>['run']>>;
-    },
     // action: doc.attach
     async attach(input: z.input<InstanceType<typeof DocAttachAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocAttachAction>['_input']>);
       const path = `/api/docs/attach`;
-      const body = { "ref": inp["ref"], "path": inp["path"], "fileId": inp["fileId"], "url": inp["url"], "task": inp["task"], "doc": inp["doc"], "mdfile": inp["mdfile"], "folder": inp["folder"], "name": inp["name"], "note": inp["note"], "noEmbed": inp["noEmbed"], "no-embed": inp["no-embed"] };
+      const body = { "ref": inp["ref"], "path": inp["path"], "fileId": inp["fileId"], "url": inp["url"], "task": inp["task"], "doc": inp["doc"], "mdfile": inp["mdfile"], "folder": inp["folder"], "name": inp["name"], "noEmbed": inp["noEmbed"], "no-embed": inp["no-embed"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocAttachAction>['run']>>;
     },
     // action: doc.attachments
@@ -926,7 +916,7 @@ export function createApiClient(transport: Transport): ApiClient {
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>;
     },
     // action: localtask.attach-note
-    async localtaskAttachNote(input: z.input<InstanceType<typeof LocaltaskAttachNoteAction>['_input']>) {
+    async attachNote(input: z.input<InstanceType<typeof LocaltaskAttachNoteAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskAttachNoteAction>['_input']>);
       const path = `/api/localtasks/attach-note`;
       const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "attachment": inp["attachment"], "note": inp["note"] };

@@ -199,7 +199,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
         name: m.name || (repo && repo.name) || m.key,
         path: m.path || (repo && repo.path) || '',
         cwd: (topic && topic.cwd) || m.path || (repo && repo.path) || '',
-        desc: m.note || (repo && repo.desc) || '',
+        desc: (repo && repo.desc) || '',
         pending: topic ? topic.pending || 0 : 0,
         waiting: !!(topic && topic.waiting),
         topicKey: topic ? topic.key : '',

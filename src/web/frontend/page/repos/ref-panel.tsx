@@ -190,9 +190,9 @@ export default function RefPanel({
               const links = boardList
                 .map((b) => {
                   const l = (b.refs || []).find((x) => x.id === r.key);
-                  return l ? { board: b, note: l.note || '' } : null;
+                  return l ? { board: b } : null;
                 })
-                .filter((l): l is { board: BoardRecord; note: string } => l !== null);
+                .filter((l): l is { board: BoardRecord } => l !== null);
               return (
                 <tr key={r.id} id={'rp-refrepo-row-' + r.key}>
                   <td><span className={'rp-ref-dot' + (c ? (c.ok ? ' ok' : ' bad') : '')}
@@ -254,13 +254,12 @@ export default function RefPanel({
                               {shownDirect.map((d) => (
                                 <span className="rp-link-chip rp-link-chip-repo" key={'repo:' + d.repo.key}>
                                   <button className="rp-link-chip-main"
-                                    title={[d.note || '直接绑定到这个仓库（不经过组）', `仓库 key: ${d.repo.key}`, '点击定位到仓库行'].join('\n')}
+                                    title={['直接绑定到这个仓库（不经过组）', `仓库 key: ${d.repo.key}`, '点击定位到仓库行'].join('\n')}
                                     onClick={() => onGoBind('repo', d.repo.key)}>
                                     <b>仓</b>
                                     <span className="rp-link-chip-name">{d.repo.name}</span>
                                     <span className="mono rp-link-chip-key">{d.repo.key}</span>
                                   </button>
-                                  {d.note ? <i className="rp-link-chip-note" title={d.note}>{d.note.split('\n')[0]}</i> : null}
                                   <button className="rp-link-chip-x" title="从这个仓库摘除（不影响组级绑定）"
                                     onClick={() => onUnbindRepo(r, d.repo.key)}>×</button>
                                 </span>

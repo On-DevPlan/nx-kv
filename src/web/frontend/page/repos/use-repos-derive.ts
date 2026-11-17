@@ -12,12 +12,12 @@ import { useMemo } from 'react';
 import type { BoardRecord, GroupRefChip, RefBackLink, RepoChip, RepoRecord } from './repo-table.js';
 import { BRANCH_DEFAULT, BRANCH_MAIN, type BranchOption } from './branch-picker.js';
 
-/** 关键词是否命中这篇文档（标题 / 描述 / 备注）。 */
+/** 关键词是否命中这篇文档（标题 / 描述）。 */
 function docHit(docs: RepoRecord['descDocs'], kw: string): boolean {
   if (!kw || !docs) return false;
   const main = docs.main;
   if (main && [main.title, main.summary, main.desc].some((s) => s && String(s).toLowerCase().includes(kw))) return true;
-  return (docs.links || []).some((l) => [l.title, l.desc, l.note].some((s) => s && String(s).toLowerCase().includes(kw)));
+  return (docs.links || []).some((l) => [l.title, l.desc].some((s) => s && String(s).toLowerCase().includes(kw)));
 }
 
 /**
@@ -169,7 +169,6 @@ export function useReposDerive({ repos, boardList, branch, kw, docCount }: Repos
             id: r.id,
             name: r.name,
             remote: r.remote || '',
-            note: l.note || '',
             group: { id: b.id, key: bkey, name: b.name },
           });
         }
@@ -187,7 +186,7 @@ export function useReposDerive({ repos, boardList, branch, kw, docCount }: Repos
         .filter((l) => l && l.kind === 'ref')
         .map((l): RepoChip | null => {
           const r = byKey.get(l.id);
-          return r ? { key: r.key, name: r.name, note: l.note || '' } : null;
+          return r ? { key: r.key, name: r.name } : null;
         })
         .filter((c): c is RepoChip => c !== null);
       m.set(d.key, own);
@@ -203,7 +202,7 @@ export function useReposDerive({ repos, boardList, branch, kw, docCount }: Repos
         if (!l || l.kind !== 'ref') continue;
         if (!m.has(l.id)) m.set(l.id, []);
         const arr = m.get(l.id);
-        if (arr) arr.push({ repo: d, note: l.note || '' });
+        if (arr) arr.push({ repo: d });
       }
     }
     return m;

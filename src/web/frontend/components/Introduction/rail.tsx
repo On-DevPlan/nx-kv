@@ -1,5 +1,5 @@
 // 简介 / 文档右侧滚动目录：竖轨 + 展开名单 + 补充文档。
-// links 形状统一：[{ docId, label, note?, main? }]
+// links 形状统一：[{ docId, label, main? }]
 //
 // 轨可拖动（2026-11-12 反馈「无法拖动」）：汉堡钮 = 拖把，与任务页 ack 轨
 // 共用 components/use-rail-drag.ts 的同一套语义（>4px 算拖、双击回默认位、
@@ -172,7 +172,7 @@ export default function IntroRail({
                   key={d.docId}
                   type="button"
                   className={'doc-rail-row' + (d.docId === activeDocId ? ' on' : '')}
-                  title={d.note || d.label}
+                  title={d.label}
                   disabled={!onOpenDoc}
                   onClick={() => onOpenDoc && onOpenDoc(d.docId)}
                 >

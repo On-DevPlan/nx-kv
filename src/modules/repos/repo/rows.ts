@@ -21,7 +21,6 @@
 //   repo.addedAt/.updatedAt（ISO UTC）→ created_at / updated_at（epoch ms）
 //   board.id         → ext.ext_legacy_id           （b_xxx）
 //   board.repoKeys[] → repo_group_members 行（真实成员）+ ext.ext_placeholders（占位）
-//   board.repoNotes  → repo_group_members.note / 占位条目的 note
 //   board.repoHints  → ext.ext_repo_hints
 //   board.doc/.docLinks/.repoDocs → ext.ext_doc / ext_doc_links / ext_repo_docs
 //   board 的 key      → repos.key（冻结的 group/<slug>；JSON 形态多带一个 key 字段）
@@ -95,7 +94,6 @@ export interface BoardEntry {
   createdAt: string;
   /** 成员按 key 存（有序） */
   repoKeys: string[];
-  repoNotes?: Record<string, string>;
   repoHints?: Record<string, RepoHint>;
   repoDocs?: Record<string, any>;
   doc?: any;
@@ -219,18 +217,15 @@ export function groupRowToStore(row: Row, allMembers: Row[], allGroupRefs: Row[]
   const ext = parseExt(row.ext);
   const real = allMembers
     .filter((m: Row) => m.group_key === row.key)
-    .map((m: Row, i: number) => ({ key: String(m.repo_key || ''), note: String(m.note || ''), pos: Number(m.position) || 0, ord: i }));
+    .map((m: Row, i: number) => ({ key: String(m.repo_key || ''), pos: Number(m.position) || 0, ord: i }));
   const phRaw = Array.isArray(ext[GROUP_EXT.PLACEHOLDERS]) ? ext[GROUP_EXT.PLACEHOLDERS] : [];
   const ph = phRaw.map((p: any, i: number) => ({
     key: String((p && p.key) || ''),
-    note: String((p && p.note) || ''),
     pos: Number.isFinite(Number(p && p.pos)) ? Number(p.pos) : Number.MAX_SAFE_INTEGER,
     ord: real.length + i,
   }));
   const merged = [...real, ...ph].sort((a, b) => a.pos - b.pos || a.ord - b.ord);
   const repoKeys = merged.map((m) => m.key);
-  const repoNotes: Record<string, string> = {};
-  for (const m of merged) if (m.note) repoNotes[m.key] = m.note;
 
   const out: BoardEntry = {
     id: String(ext[GROUP_EXT.LEGACY_ID] || ''),
@@ -243,9 +238,8 @@ export function groupRowToStore(row: Row, allMembers: Row[], allGroupRefs: Row[]
     repoKeys,
     refs: allGroupRefs
       .filter((l: Row) => l.group_key === row.key)
-      .map((l: Row) => (l.note ? { id: String(l.ref_key || ''), note: String(l.note) } : { id: String(l.ref_key || '') })),
+      .map((l: Row) => ({ id: String(l.ref_key || '') })),
   };
-  if (Object.keys(repoNotes).length) out.repoNotes = repoNotes;
   if (ext[GROUP_EXT.REPO_HINTS] && typeof ext[GROUP_EXT.REPO_HINTS] === 'object') {
     out.repoHints = ext[GROUP_EXT.REPO_HINTS];
   }

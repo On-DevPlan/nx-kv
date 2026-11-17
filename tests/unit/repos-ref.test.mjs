@@ -337,7 +337,9 @@ test('repoExport：以 key 为身份、不含本地路径；dev 无 remote 进 w
 
   const bOut = d.boards.find((x) => x.name === 'fr');
   assert.equal(bOut.key, 'board/fr');
-  assert.deepEqual(bOut.repos[0], { key: 'github.com/me/dev-app', note: '契约方' });
+  // v13：成员关系只带 key，组内描述走 board.repoDocs[key] 绑定的 ref 文档，不再有文本 note
+  assert.deepEqual(bOut.repos[0], { key: 'github.com/me/dev-app' });
+  assert.ok(bOut.repoDocs['github.com/me/dev-app'].ref, '组内描述以 repoDocs 绑定导出');
 
   const link = d.links.find((x) => x.ref === 'github.com/lib/ref1');
   assert.ok(link);
@@ -372,7 +374,7 @@ test('repoImport：diff 零副作用；执行后登记/克隆/看板/关系按 k
       key: 'board/grp',
       name: 'grp',
       desc: '新领域描述',
-      repos: [{ key: 'github.com/me/my-dev', note: '中心' }, { key: repos.keyFromRemote(srcUrl) }],
+      repos: [{ key: 'github.com/me/my-dev' }, { key: repos.keyFromRemote(srcUrl) }],
     }],
     links: [{ ref: repos.keyFromRemote(srcUrl), to: [{ repo: 'github.com/me/my-dev' }, { board: 'board/grp' }] }],
   };
@@ -409,11 +411,11 @@ test('repoImport：diff 零副作用；执行后登记/克隆/看板/关系按 k
   const importedRef = all.find((x) => x.name === 'imp-ref');
   assert.equal(importedRef.type, 'ref');
   assert.ok(existsSync(join(importedRef.path, '.git')));
-  // 看板成员与组内描述重建（成员按 key 关联）
+  // 看板成员按 key 重建（note 不再随成员关系持久化）
   const g = await boards.getBoard(existingBoard.id);
   assert.equal(g.desc, '新领域描述');
   assert.equal(g.repos.length, 2);
-  assert.equal(g.repos.find((x) => x.key === dev.key).note, '中心');
+  assert.ok(g.repos.find((x) => x.key === dev.key));
   assert.ok(g.repos.find((x) => x.key === repos.keyFromRemote(srcUrl)));
   // 关系重建：to.board → 组级；to.repo → 该仓库的仓库级直接绑定（两类并存）
   assert.deepEqual(g.refs.map((x) => x.id), [repos.keyFromRemote(srcUrl)]);
@@ -450,13 +452,13 @@ test('绑定两类互不覆盖：--repo 只写仓库级、--board 只写组级�
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
   const refKey = repos.deriveKey(r);
 
-  await ref.bindTarget({ id: r.id, repo: [{ id: dev.name, note: '仓库级描述' }] });
-  assert.deepEqual((await repos.getRepo(dev.id)).linked, [{ kind: 'ref', id: refKey, note: '仓库级描述' }]);
+  await ref.bindTarget({ id: r.id, repo: [{ id: dev.name }] }); // 绑定只需 id；note 入参即便给了也不落库（见后用例）
+  assert.deepEqual((await repos.getRepo(dev.id)).linked, [{ kind: 'ref', id: refKey }]);
   assert.deepEqual((await boards.getBoard(b.id)).refs, [], '仓库级绑定不写组');
   assert.deepEqual((await repos.getRepo(r.id)).linked, [], '参考仓库自身不写 linked');
 
   await ref.bindTarget({ id: r.id, board: [{ id: b.name, note: '组级描述' }] });
-  assert.deepEqual((await boards.getBoard(b.id)).refs, [{ id: refKey, note: '组级描述' }]);
+  assert.deepEqual((await boards.getBoard(b.id)).refs, [{ id: refKey }], '组级绑定不再持久化 note');
   assert.equal((await repos.getRepo(dev.id)).linked.length, 1, '组级绑定不动仓库级');
 
   // #134：描述落成文档（不再写在关系边上）
@@ -466,9 +468,9 @@ test('绑定两类互不覆盖：--repo 只写仓库级、--board 只写组级�
   assert.notEqual(gNote.refId, dNote.refId, '组级 / 仓库级各一篇');
   assert.match(String((await docs.getDoc({ ref: gNote.refId })).body || ''), /改过的组级描述/);
   assert.match(String((await docs.getDoc({ ref: dNote.refId })).body || ''), /改过的仓库级描述/);
-  // #137：关系边上**不再**写描述（真身是文档，定位靠 desc）
-  assert.equal((await boards.getBoard(b.id)).refs[0].note, '组级描述', '关系边上保留的是绑定时那句');
-  assert.equal((await repos.getRepo(dev.id)).linked[0].note, '仓库级描述');
+  // v13：关系边上不再写描述（真身是文档，组级/仓库级各一篇，见上）
+  assert.equal((await boards.getBoard(b.id)).refs[0].note, undefined, '组级关系边不再写 note');
+  assert.equal((await repos.getRepo(dev.id)).linked[0].note, undefined, '仓库级关系边不再写 note');
 
   await ref.bindTarget({ id: r.id, remove: true, repo: dev.id });
   assert.deepEqual((await repos.getRepo(dev.id)).linked, []);
@@ -536,19 +538,24 @@ test('setLinkNote：组级/仓库级描述各写各的；未绑定显式报错�
   assert.equal((await boards.getBoard(b1.id)).refs.length, 1, '组级那条还在');
 });
 
-test('bindTarget 带 note：绑定时一并写描述；重复绑定时补写描述', async () => {
+test('bindTarget 带 note：note 入参仍接受但不再落库；描述改走 setLinkNote 文档', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', key: 'local/d1' });
   const b = await boards.createBoard({ name: 'g1' });
   await boards.assignRepo({ id: dev.id, board: b.id });
   const r = await repos.addRepo({ path: join(dir, 'r1'), name: 'r1', type: 'ref', remote: 'https://github.com/x/r1.git' });
+  const refKey = repos.deriveKey(r);
   await ref.bindTarget({ id: r.id, board: [{ id: b.name, note: '首次绑定的描述' }] });
   let got = await boards.getBoard(b.id);
-  assert.equal(got.refs[0].note, '首次绑定的描述');
-  // 已绑定：再给 note = 补写
+  assert.deepEqual(got.refs, [{ id: refKey }], 'v13：绑定 note 不再落库');
+  // 已绑定：再给 note 也只是一处绑定，幂等不重复
   await ref.bindTarget({ id: r.id, board: [{ id: b.name, note: '补充后的描述' }] });
   got = await boards.getBoard(b.id);
   assert.equal(got.refs.length, 1, '幂等不重复');
-  assert.equal(got.refs[0].note, '补充后的描述');
+  assert.equal(got.refs[0].note, undefined, '重复绑定也不写 note');
+  // 描述真身走绑定 ref 文档（按 desc 定位）
+  const noted = await link.setLinkNote({ id: r.id, board: b.id, note: '首次绑定的描述' });
+  assert.ok(noted.refId, '描述落成一篇绑定 ref 文档');
+  assert.match(String((await docs.getDoc({ ref: noted.refId })).body || ''), /首次绑定的描述/);
 });
 
 test('refReposOfRepo：仓库级直接绑定 + 所属组的组级绑定，两类并列', async () => {
@@ -613,7 +620,7 @@ test('refReposOfBoard：只读组上的绑定（带组级描述）', async () =>
   assert.equal(d.refRepos[0].via, undefined, '没有继承/多路径概念');
 });
 
-test('导出/导入携带绑定描述（link note）', async () => {
+test('导出/导入：绑定关系按 key 往返（note 不再随关系持久化）', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'dev'), name: 'dev', remote: 'git@github.com:me/dev.git' });
   const b = await boards.createBoard({ name: 'g1' });
   await boards.assignRepo({ id: dev.id, board: b.id });
@@ -621,13 +628,18 @@ test('导出/导入携带绑定描述（link note）', async () => {
   await ref.bindTarget({ id: r.id, board: [{ id: b.id, note: '契约参考' }] });
 
   const d = await transfer.repoExport();
+  const refKey = repos.deriveKey(r);
+  assert.equal(d.links[0].ref, refKey);
   assert.equal(d.links[0].to[0].board, 'board/g1');
-  assert.equal(d.links[0].to[0].note, '契约参考');
+  assert.equal(d.links[0].to[0].note, undefined, '导出 link 不再带 note');
 
-  // 清空重导：描述随组级关系重建
+  // 清空重导：组级关系按 key 重建（描述真身在绑定 ref 文档，不随关系边往返）
   await ref.bindTarget({ id: r.id, remove: true });
+  assert.deepEqual((await boards.getBoard(b.id)).refs, []);
   const result = await transfer.repoImport({ json: JSON.stringify(d), clone: 'none' });
   assert.equal(result.links, 1);
   const got = await boards.getBoard(b.id);
-  assert.equal(got.refs.find((x) => x.id === repos.deriveKey(r)).note, '契约参考');
+  const restored = got.refs.find((x) => x.id === refKey);
+  assert.ok(restored, '组级关系按 key 重建');
+  assert.equal(restored.note, undefined, '导入后关系上也没有 note');
 });

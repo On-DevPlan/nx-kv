@@ -79,10 +79,15 @@ test('repos：2 repo + 1 组 + 哨兵；组 key 冻结为 group/<slug>；旧 id 
     assert.equal(web.created_at, Date.parse('2026-09-01T02:00:00.000Z'));
 
     // 成员边：ghost 不存在 → 报告丢弃，边只有 2 条
-    const members = s.db.all('SELECT group_key, repo_key, position, note FROM repo_group_members ORDER BY position');
+    // v13：repo_group_members.note 已 DROP（主体是成员关系本身，无显示位），
+    // 只校验组成员 key 集合 / 条数 / 顺序，不再 SELECT 或断言 note 列。
+    const members = s.db.all('SELECT group_key, repo_key, position FROM repo_group_members ORDER BY position');
     assert.equal(members.length, 2);
-    assert.equal(members[0].repo_key, 'github.com/acme/web');
-    assert.equal(members[0].note, '主站', 'repoNotes → repo_group_members.note');
+    assert.deepEqual(
+      members.map((m) => m.repo_key),
+      ['github.com/acme/web', 'github.com/acme/api']
+    );
+    assert.ok(members.every((m) => m.group_key === 'group/前端组'));
     assert.equal(members[1].position, 1);
   } finally {
     s.reset();

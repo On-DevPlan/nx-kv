@@ -17,7 +17,6 @@ export interface BindingRow {
   groupKey: string | null;
   position: number;
   main: boolean;
-  note: string;
   /** 宿主 kind（#132）：dev 开发仓库 / ref 参考仓库 / group 组。
    *  参考仓库与开发仓库在底层只有这一个差异，列表上要标得出来。 */
   hostKind?: 'dev' | 'ref' | 'group' | string;
@@ -88,7 +87,6 @@ export interface RefRepoBinding {
   desc?: string;
   remote?: string;
   path?: string;
-  note: string;
 }
 
 export interface RefReposOf {

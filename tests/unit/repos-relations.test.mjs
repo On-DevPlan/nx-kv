@@ -13,6 +13,7 @@ import * as ref from '../../src/modules/repos/ref.js';
 import * as keys from '../../src/modules/repos/keys.js';
 import * as remote from '../../src/modules/repos/remote.js';
 import * as transfer from '../../src/modules/repos/transfer.js';
+import { getDoc } from '../../src/modules/docs/service.js';
 import { closeDb } from '../../src/core/db/index.js';  // T05：库化后测试清理要先关连接（Windows rmSync 否则 EBUSY）
 
 let dir = '';
@@ -63,21 +64,22 @@ test('看板成员存 key：assign 后 repoKeys 是 key 不是随机 id', async 
   const got = await boards.getBoard(b.id);
   assert.equal(got.repos[0].key, 'github.com/o/d1');
   assert.equal(got.repos[0].present, true);
-  assert.equal(got.repos[0].note, '');
+  assert.equal(got.repos[0].noteDocId, '', '没有绑定组内描述文档');
 });
 
-test('组内描述按 key：note 落在 repoNotes[key] 上', async () => {
+test('组内描述按 key：落在 repoDocs[key] 绑定的 ref 文档上', async () => {
   const dev = await repos.addRepo({ path: join(dir, 'd1'), name: 'd1', remote: 'git@github.com:o/d1.git' });
   const b = await boards.createBoard({ name: 'grp' });
   await boards.assignRepo({ id: dev.key, board: b.key });
-  await boards.setBoardRepoNote({ id: dev.key, board: b.key, note: '契约方' });
+  const noted = await boards.setBoardRepoNote({ id: dev.key, board: b.key, note: '契约方' });
 
-  // 存储已库化（T05）：repo_group_members.note 承载组内描述，按 key 读回
+  // 组内描述 = 一篇 group_repo ref 文档，绑定挂在 board.repoDocs[仓库 key]
   const board = (await repos.loadStore()).boards.find((x) => x.name === 'grp');
-  assert.equal(board.repoNotes['github.com/o/d1'], '契约方');
+  assert.equal(board.repoDocs[dev.key].ref, noted.refId);
+  assert.equal((await getDoc({ ref: 'ref:' + noted.refId })).body, '# grp · d1\n\n契约方\n');
 
   const got = await boards.getBoard(b.key);
-  assert.equal(got.repos[0].note, '契约方');
+  assert.equal(got.repos[0].noteDocId, 'ref:' + noted.refId);
 });
 
 test('绑定关系按 key：参考仓库可绑组（group_refs）也可绑单个仓库（ext.linked）', async () => {
@@ -105,8 +107,9 @@ test('绑定到看板也按 key（board/<名称>）', async () => {
 // ─── 导入占位 ───────────────────────────────────────────────────────────
 
 test('导入：本地未拥有的成员在组里保留位置（占位），组内描述也保留', async () => {
+  const noteRef = 'ref_' + '1'.repeat(16);
   const layout = {
-    version: 3,
+    version: 5,
     repos: [{ key: 'github.com/have/it', name: 'have-it', type: 'dev', remote: 'https://github.com/have/it.git' }],
     boards: [{
       key: 'board/g',
@@ -114,15 +117,19 @@ test('导入：本地未拥有的成员在组里保留位置（占位），组�
       desc: '',
       repos: [
         { key: 'github.com/have/it' },
-        { key: 'github.com/miss/ing', note: '还没 clone 的参考' },
+        { key: 'github.com/miss/ing' },
       ],
+      // 组内描述走 repoDocs 绑定 + ref 正文（v13 起没有文本摘要字段）
+      repoDocs: { 'github.com/miss/ing': { ref: noteRef } },
     }],
     links: [],
+    refs: [{ refId: noteRef, origin: 'own', locator: '', desc: '' }],
   };
+  const docsFiles = [{ refId: noteRef, data: Buffer.from('# g · 还没 clone 的参考\n\n还没 clone 的参考\n', 'utf8') }];
   const { saveConfig } = await import('../../src/core/config.js');
   await saveConfig({ gitRepoRoot: join(dir, 'root'), gitDevRoot: join(dir, 'root') });
 
-  const r = await transfer.repoImport({ json: JSON.stringify(layout), clone: 'none' });
+  const r = await transfer.repoImport({ json: JSON.stringify(layout), docsFiles, clone: 'none' });
   assert.equal(r.created.length, 1);
   assert.equal(r.unmatched.length, 1);
   assert.equal(r.unmatched[0].entry, 'github.com/miss/ing');
@@ -132,7 +139,11 @@ test('导入：本地未拥有的成员在组里保留位置（占位），组�
   assert.equal(b.repos.length, 2, '占位成员也占位');
   const miss = b.repos.find((x) => x.key === 'github.com/miss/ing');
   assert.equal(miss.present, false, '本地未拥有');
-  assert.equal(miss.note, '还没 clone 的参考', '组内描述按 key 保留，等补齐后生效');
+  // 组内描述按 key 挂在 repoDocs 上，等补齐后仍生效
+  assert.equal(miss.noteDocId, 'ref:' + noteRef);
+  const stored = (await repos.loadStore()).boards.find((x) => x.name === 'g');
+  assert.equal(stored.repoDocs['github.com/miss/ing'].ref, noteRef);
+  assert.match((await getDoc({ ref: 'ref:' + noteRef })).body, /还没 clone 的参考/);
 });
 
 test('clone 补齐占位：用占位的 key 登记 → 占位自动转正、位置不动', async () => {
@@ -152,20 +163,29 @@ test('clone 补齐占位：用占位的 key 登记 → 占位自动转正、位�
   // 导入一个布局：成员只在看板里被引用、repos 里没有定义
   // —— 这是「本地未拥有」的真占位：位置照抄进组里，仓库本身不登记。
   // （自定义 key 的占位才能测出「用占位的 key 登记」——remote 派生不出来的那种）
+  // 组内描述走 repoDocs 绑定 + ref 正文，clone 补齐后仍按 key 生效。
+  const noteRef = 'ref_' + '2'.repeat(16);
   const layout = {
-    version: 3,
+    version: 5,
     repos: [],
-    boards: [{ key: 'board/g', name: 'g', desc: '', repos: [{ key: 'my/custom-ing', note: '组内描述' }] }],
+    boards: [{
+      key: 'board/g', name: 'g', desc: '',
+      repos: [{ key: 'my/custom-ing' }],
+      repoDocs: { 'my/custom-ing': { ref: noteRef } },
+    }],
     links: [],
+    refs: [{ refId: noteRef, origin: 'own', locator: '', desc: '' }],
   };
-  const r = await transfer.repoImport({ json: JSON.stringify(layout), clone: 'none' });
+  const docsFiles = [{ refId: noteRef, data: Buffer.from('# g · 组内描述\n\n组内描述\n', 'utf8') }];
+  const r = await transfer.repoImport({ json: JSON.stringify(layout), docsFiles, clone: 'none' });
   assert.equal(r.unmatched.length, 1, '占位成员如实报告');
 
-  // 占位在组里
+  // 占位在组里，描述挂在 repoDocs[key] 上
   let b = (await boards.listBoards()).boards.find((x) => x.name === 'g');
   assert.equal(b.repos.length, 1);
   assert.equal(b.repos[0].present, false);
-  assert.equal(b.repos[0].note, '组内描述');
+  assert.equal(b.repos[0].noteDocId, 'ref:' + noteRef);
+  assert.match((await getDoc({ ref: 'ref:' + noteRef })).body, /组内描述/);
 
   // clone 补齐（用占位的 key 登记）
   const c = await remote.cloneRepo({ remote: srcUrl, key: 'my/custom-ing', type: 'ref' });
@@ -175,7 +195,8 @@ test('clone 补齐占位：用占位的 key 登记 → 占位自动转正、位�
   b = (await boards.listBoards()).boards.find((x) => x.name === 'g');
   assert.equal(b.repos.length, 1);
   assert.equal(b.repos[0].present, true, 'clone 后占位转正');
-  assert.equal(b.repos[0].note, '组内描述');
+  assert.equal(b.repos[0].noteDocId, 'ref:' + noteRef, '组内描述绑定仍按 key 生效');
+  assert.match((await getDoc({ ref: 'ref:' + noteRef })).body, /组内描述/);
   const got = await repos.getRepo('my/custom-ing');
   assert.equal(got.key, 'my/custom-ing');
   assert.equal(got.keyCustom, true, '显式指定的 key 是自定义 key');

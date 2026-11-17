@@ -106,13 +106,13 @@ export function listRefAttachments(conn: any, refId?: string | number): LinkedAt
       `SELECT a.id, a.kind, a.name, a.local_path, a.url, a.mime, a.size, a.hash, a.storage,
               a.group_id, a.target_kind, a.target_key, a.target_seq, a.meta,
               a.abs_path, a.anchor_dir, a.missing_at, a.last_seen_at,
-              a.deleted_at, a.created_at, a.updated_at, ra.role, ra.position, ra.note
+              a.deleted_at, a.created_at, a.updated_at, ra.role, ra.position
          FROM ref_attach ra JOIN attachments a ON a.id = ra.attachment_id
         WHERE ra.ref_id = :id AND a.deleted_at IS NULL
         ORDER BY ra.position, a.id`,
       { id: String(refId || '') }
     )
-    .map((r: any) => ({ ...rowView(r), role: r.role, position: Number(r.position) || 0, note: r.note }));
+    .map((r: any) => ({ ...rowView(r), role: r.role, position: Number(r.position) || 0, note: '' }));
 }
 
 /**

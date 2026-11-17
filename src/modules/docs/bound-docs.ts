@@ -35,7 +35,7 @@ export function boundDocs({ repoKey = '', groupKey = '' }: { repoKey?: string; g
   const group = String(groupKey || '').trim();
   if (!repo && !group) return [];
   const rows: any[] = getDb().all(
-    `SELECT b.type, b.repo_key, b.group_key, b.position, b.note,
+    `SELECT b.type, b.repo_key, b.group_key, b.position,
             r.id AS ref_id, r."desc", r.origin,
             CASE WHEN rb.ref_id IS NULL THEN 0 ELSE 1 END AS has_body,
             rb.body
@@ -67,7 +67,7 @@ export function boundDocs({ repoKey = '', groupKey = '' }: { repoKey?: string; g
       repoKey: String(x.repo_key || ''),
       groupKey: x.group_key == null ? null : String(x.group_key),
       position,
-      note: String(x.note || ''),
+      note: '', // v13 起 ref_bindings 无 note 列；字段保留仅为兼容旧调用方
       body,
     };
   });

@@ -162,7 +162,7 @@ export function renderRefresh(d: RefreshResult): string {
 
 // ─── 关系迁移：随机 id → key ────────────────────────────────────────────
 //
-// 存量数据里：board.repoIds 存随机 id、board.repoNotes 按 id、linked[].id 也是 id。
+// 存量数据里：board.repoIds 存随机 id、linked[].id 也是 id。
 // 迁移把它们全部改成 key（仓库身份）。**幂等**：已经是 key 的不动，跑第二次无变化。
 //
 // 无法解析的（目标登记已不存在）不丢弃 —— 保留成占位 key，
@@ -182,18 +182,11 @@ export async function migrateRelations({ apply = false }: { apply?: boolean } = 
     const keys: string[] = oldIds
       ? (oldIds.map((id) => idToKey.get(id)).filter(Boolean) as string[])
       : (Array.isArray(b.repoKeys) ? b.repoKeys.slice() : []);
-    // repoNotes：按 id 存的改成按 key
-    const notes: Record<string, string> = {};
-    const oldNotes = b.repoNotes || {};
-    for (const [k, v] of Object.entries(oldNotes)) {
-      const nk = idToKey.get(k) || k; // id → key；已是 key 的原样
-      notes[nk] = v;
-    }
     // 被删仓库的成员（id 解析不到）→ 保留成占位 key（用 id 派生一个 local/ 前缀）
     const orphans = oldIds ? oldIds.filter((id) => !idToKey.has(id)) : [];
-    const out: BoardEntry & { repoIds?: string[] } = { ...b, repoKeys: keys, repoNotes: notes };
+    const out: BoardEntry & { repoIds?: string[] } = { ...b, repoKeys: keys };
     delete out.repoIds;
-    if (oldIds && (oldIds.length !== keys.length || Object.keys(oldNotes).length !== Object.keys(notes).length)) {
+    if (oldIds && oldIds.length !== keys.length) {
       changes.push({ board: b.name, key: bkey, members: keys.length, orphans: orphans.length });
     }
     return out;
@@ -230,7 +223,7 @@ export async function migrateRelations({ apply = false }: { apply?: boolean } = 
     await service.mutateStore((cur: Store) => {
       cur.boards = boardsOut.map((b) => {
         const found: BoardEntry = cur.boards.find((x) => x.id === b.id) || ({} as BoardEntry);
-        const next: BoardEntry & { repoIds?: string[] } = { ...found, repoKeys: b.repoKeys, repoNotes: b.repoNotes };
+        const next: BoardEntry & { repoIds?: string[] } = { ...found, repoKeys: b.repoKeys };
         delete next.repoIds;
         return next;
       });

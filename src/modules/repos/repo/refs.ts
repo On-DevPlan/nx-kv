@@ -22,7 +22,6 @@ interface BindingInput {
   refId?: unknown;
   type?: unknown;
   position?: number;
-  note?: string;
   atMs: number;
 }
 
@@ -79,18 +78,17 @@ export function listOrphans(conn: DbApi = db()): Row[] {
  */
 export function putBinding(
   conn: DbApi,
-  { repoKey, groupKey = null, refId, type, position = 0, note = '', atMs }: BindingInput
+  { repoKey, groupKey = null, refId, type, position = 0, atMs }: BindingInput
 ): void {
   conn.run(
-    `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, created_at)
-     VALUES (:repo, :group, :ref, :type, :pos, :note, :at)`,
+    `INSERT OR IGNORE INTO ref_bindings (repo_key, group_key, ref_id, type, position, created_at)
+     VALUES (:repo, :group, :ref, :type, :pos, :at)`,
     {
       repo: String(repoKey || ''),
       group: groupKey == null ? null : String(groupKey),
       ref: String(refId || ''),
       type: String(type || 'repo'),
       pos: Number(position) || 0,
-      note: String(note || ''),
       at: atMs,
     }
   );

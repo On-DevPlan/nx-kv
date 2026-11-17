@@ -40,7 +40,7 @@ export function renderRepoKnowledgeMd(k: RepoKnowledgeResult): string {
     heading('## 参考仓库');
     for (const r of k.refRepos) {
       const src = r.direct && !r.groups.length ? '［直接绑定］' : r.direct ? '［组 + 直接绑定］' : '';
-      lines.push(`- ${r.name}${r.remote ? `（${r.remote}）` : ''}${src}${r.note ? ` —— ${r.note.split('\n')[0] ?? ''}` : ''}`);
+      lines.push(`- ${r.name}${r.remote ? `（${r.remote}）` : ''}${src}`);
     }
   }
   return lines.join('\n');

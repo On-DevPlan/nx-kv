@@ -87,11 +87,9 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
     http: ['GET', '/api/docs/bindings'],
     summary: '查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> 只看仓库自己的文档；--group <组> 看组域文档集：组 → 组内仓库 → 成员仓库自己 → 组内参考仓库自己；hostKind 标宿主是开发仓库/参考仓库/组；position=0 为主篇）',
     input,
-    // 备注（只有附加篇有：主篇 push 时不带 note）跟着 main 一起打，和前端注解上的
-    // 「附加 · 备注」保持同一口径——否则 CLI 里看不出自己刚填的备注有没有落库。
     render: (d: any) => (d.bindings || [])
       .map((b: any) => {
-        const role = b.main ? '主篇' : b.note ? `附加 · ${b.note}` : '附加';
+        const role = b.main ? '主篇' : '附加';
         const label = b.desc || b.title || b.refId;
         return `  ${b.type}  ${b.repoKey}${b.groupKey ? ' @' + b.groupKey : ''}  ${role}  ${label}  [${b.refId}]`;
       })
@@ -153,7 +151,7 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
     }
 
     const rows = db.all(
-      `SELECT b.repo_key AS repoKey, b.group_key AS groupKey, b.type, b.position, b.note,
+      `SELECT b.repo_key AS repoKey, b.group_key AS groupKey, b.type, b.position,
               r.id AS refId, r."desc", r.origin, r.locator,
               CASE WHEN rb.ref_id IS NULL THEN 0 ELSE 1 END AS has_body,
               rb.body
@@ -184,7 +182,6 @@ export class DocsBindingsAction extends ActionBase<typeof input> {
           type,
           position,
           main: position === 0,
-          note: String(r.note || ''),
           // 宿主 kind（#132）：dev 开发仓库 / ref 参考仓库 / group 组。
           // 参考仓库与开发仓库在底层只有这一个差异，列表上标出来才不会看不懂。
           hostKind: kindOf.get(String(r.repoKey)) || 'dev',

@@ -36,15 +36,13 @@
         "refId": "ref_4986517d09fbba23",
         "desc": "测试约定",
         "title": "测试约定",
-        "hasBody": true,
-        "note": "跑全量前先读"
+        "hasBody": true
       },
       {
         "refId": "ref_c0143b35cfa7e857",
         "desc": "",
         "title": "",
-        "hasBody": true,
-        "note": ""
+        "hasBody": true
       }
     ],
     "docCount": 2,
@@ -52,8 +50,7 @@
       {
         "key": "github.com/milkdown",
         "name": "milkdown",
-        "path": "D:/DevProjects/git-repo/milkdown",
-        "note": ""
+        "path": "D:/DevProjects/git-repo/milkdown"
       }
     ],
     "refRepoCount": 1
@@ -88,8 +85,7 @@
         "refId": "ref_nxgroup01",
         "desc": "nx 组介绍",
         "title": "nx 组",
-        "hasBody": true,
-        "note": ""
+        "hasBody": true
       }
     ],
     "docCount": 1,
@@ -97,8 +93,7 @@
       {
         "key": "github.com/blocknote",
         "name": "blocknote",
-        "path": "D:/DevProjects/git-repo/blocknote",
-        "note": "编辑器参考"
+        "path": "D:/DevProjects/git-repo/blocknote"
       }
     ],
     "refRepoCount": 1
@@ -108,14 +103,12 @@
       {
         "key": "github.com/milkdown",
         "name": "milkdown",
-        "path": "D:/DevProjects/git-repo/milkdown",
-        "note": ""
+        "path": "D:/DevProjects/git-repo/milkdown"
       },
       {
         "key": "github.com/blocknote",
         "name": "blocknote",
-        "path": "D:/DevProjects/git-repo/blocknote",
-        "note": "编辑器参考"
+        "path": "D:/DevProjects/git-repo/blocknote"
       }
     ],
     "count": 2

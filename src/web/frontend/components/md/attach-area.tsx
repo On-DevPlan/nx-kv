@@ -157,7 +157,7 @@ function renderItem(a: NormalizedAttachment, { onRemove, onPreview, onPreviewMd,
 
       {a.kind === 'ref' ? (
         <span className="att-item-acts">
-          <button type="button" className="att-act" title="改这条绑定的一行说明（交付清单会透出）" onClick={() => onEditNote?.(a)}>✎ 说明</button>
+          {onEditNote ? <button type="button" className="att-act" title="改这条绑定的一行说明（交付清单会透出）" onClick={() => onEditNote(a)}>✎ 说明</button> : null}
           <button type="button" className="att-act" title="换成另一篇文档（替换这条绑定）" onClick={() => onReplace?.(a)}>⇄ 更换</button>
         </span>
       ) : null}
@@ -267,27 +267,22 @@ export default function AttachArea({
     }
   };
 
-  // #168：改一条绑定的说明（desc）——面板直改，不必重挂
+  // 改一条任务绑定的说明（仅任务侧；文档侧 note 已随 v13 删除）
   const editNote = async (item: NormalizedAttachment | null) => {
-    if (!item) return;
+    if (!item || host === 'doc') return;
     try {
-      // useDialog 仍是 JS 模块：dialog 返回 Promise<unknown>，约定是 string（单输入）或 { value, note }
+      // useDialog 仍是 JS 模块：dialog 返回 Promise<unknown>，约定是 string（单输入）或 { value }
       const res = await dialog({
         title: `说明 · ${item.name}`,
         input: true,
         placeholder: '这一行里大概是什么（交付清单会透出给 agent）',
         value: item.note || '',
         okText: '保存说明',
-      }) as string | { value?: string; note?: string } | null;
+      }) as string | { value?: string } | null;
       if (res === null) return;
-      const note = typeof res === 'string' ? res : (res && (res.value || res.note)) || '';
-      const path = host === 'doc'
-        ? `/api/docs/attach-note?ref=${encodeURIComponent(String(refId || ''))}`
-        : '/api/localtasks/attach-note';
-      const body = host === 'doc'
-        ? { attachment: item.id, note }
-        : { id: Number(hostId), ...(hostKey ? { key: hostKey } : hostCwd ? { cwd: hostCwd } : {}), attachment: item.id, note };
-      await api(path, { method: 'PATCH', body });
+      const note = typeof res === 'string' ? res : (res && res.value) || '';
+      const body = { id: Number(hostId), ...(hostKey ? { key: hostKey } : hostCwd ? { cwd: hostCwd } : {}), attachment: item.id, note };
+      await api('/api/localtasks/attach-note', { method: 'PATCH', body });
       toast(note ? `已保存说明：${note}` : '已清空说明');
       await load();
       onChanged?.();
@@ -401,14 +396,14 @@ export default function AttachArea({
       {inline.length ? (
         <div className="att-section">
           <div className="att-section-head">{AREA_LABEL.inline}<span className="att-section-hint">正文里的引用，删正文行会跟着消失</span></div>
-          {inline.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onPreviewMd: openMd, onOpenTask, onOpenDoc, onEditNote: editNote, onReplace: startReplace, key: a.id }))}
+          {inline.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onPreviewMd: openMd, onOpenTask, onOpenDoc, onEditNote: host === 'task' ? editNote : undefined, onReplace: startReplace, key: a.id }))}
         </div>
       ) : null}
 
       {area.length ? (
         <div className="att-section">
           <div className="att-section-head">{AREA_LABEL.area}<span className="att-section-hint">不依赖正文，删正文行也不会丢</span></div>
-          {area.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onPreviewMd: openMd, onOpenTask, onOpenDoc, onEditNote: editNote, onReplace: startReplace, key: a.id }))}
+          {area.map((a) => renderItem(a, { onRemove: setRemoveOf, onPreview: setPreview, onPreviewMd: openMd, onOpenTask, onOpenDoc, onEditNote: host === 'task' ? editNote : undefined, onReplace: startReplace, key: a.id }))}
         </div>
       ) : null}
 

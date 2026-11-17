@@ -80,9 +80,11 @@ export async function compose(opts: ComposeOptions): Promise<string> {
   for (const p of chain) {
     const template = p.get();
     if (!String(template ?? '').trim()) continue;
-    // 每段的数据域 = seed + 本段产出；不向后传、也不接受别人传进来
+    // 每段的数据域 = seed + 本段产出；不向后传、也不接受别人传进来。
+    // seed 放在后面：任务本体 / 时间目标这些「宿主权威数据」不许被某段的 buildData 覆盖
+    // （段只能补充自己的段，不能改写 task.id 这类身份字段）。
     const data = (await p.get('data')) as Record<string, unknown> | null | undefined;
-    const scope: Record<string, unknown> = { ...seed, ...(data || {}) };
+    const scope: Record<string, unknown> = { ...(data || {}), ...seed };
     const text = renderInstruction(template, scope).trim();
     if (!text) continue;
     parts.push({ id: p.id, tag: p.tag, text });

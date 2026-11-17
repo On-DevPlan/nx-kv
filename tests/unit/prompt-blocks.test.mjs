@@ -90,6 +90,27 @@ test('#153 跨段引用在启动期就报错（模板只能用自己的变量 + 
   );
 });
 
+test('#153 seed 优先：段的 buildData 不许覆盖任务本体 / 时间目标', async () => {
+  // 造一个「想改写 task.id」的段：它的 data 里塞了 task.id = 999
+  const stub = {
+    id: 'stub',
+    order: 5,
+    group: 'get',
+    tag: 'nx-kv.stub',
+    label: '占位',
+    templates: [{ id: 'builtin', name: '内置', text: 'TASK={{task.id}}' }],
+    schema: {
+      fields: [{ key: 'task.id', kind: 'number', label: '任务号' }],
+      blank: {},
+    },
+    get(as) {
+      return as === 'data' ? Promise.resolve({ task: { id: 999 } }) : 'TASK={{task.id}}';
+    },
+  };
+  const text = await compose({ plugins: [stub], group: 'get', seed: { task: { id: 7 } } });
+  assert.equal(text, '<nx-kv>\n<nx-kv.stub>\nTASK=7\n</nx-kv.stub>\n</nx-kv>', 'seed 里的 task 赢了');
+});
+
 test('#153 运行期也不共享：context 的 repo 不会漏给后面的段', async () => {
   // 用合法模板验证「同一次 compose 里，前一段的数据不会出现在后一段的渲染里」：
   // ack 段只认 task，渲染结果里不该出现 repo 的名字

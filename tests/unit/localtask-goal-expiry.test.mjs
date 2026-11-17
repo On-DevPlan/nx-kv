@@ -189,21 +189,25 @@ test('goal 存活时 wait 的 instruction 携带目标状态（默认模板）�
   assert.equal(after, before, 'wait 渲染不许写库（showTimegoal 只读契约）');
 });
 
-test('自定义模板含 {{goal.prompt}}：prompt 原文逐字嵌入（防漂移契约的字符串学保证）', async () => {
+test('check 指令带 {{goal.prompt}}：prompt 原文逐字嵌入（防漂移契约的字符串学保证）', async () => {
   await reset();
-  await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: '根指令：含 {{字面}} 与 {{goal.name}} 的原文' });
-  await svc.updateSettings({ ackPrompt: '{{#if goal}}PROMPT>>{{goal.prompt}}<<{{/if}}' });
-  await svc.addTask({ cwd: dir, text: 'BODY' });
+  // 任务级时间目标才带 check 指令（目录级 goal 只出行状态行）
+  await svc.addTask({
+    cwd: dir,
+    text: 'BODY',
+    timegoal: { duration: '1h', prompt: '根指令：含 {{字面}} 与 {{goal.name}} 的原文' },
+  });
 
   const r = await waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
 
-  // 系统上下文默认包进 <nx-kv.ack> 区块；核心契约不变——prompt 原文逐字进交付，
-  // 且只渲染一遍（prompt 里的 {{字面}} / {{goal.name}} 不会被二次展开）。
+  // #152 起模板正文固定在插件类里（timecheck 段的 goal.check 就是这份 check 指令）；
+  // 核心契约不变——prompt 原文逐字进交付，且只渲染一遍
+  // （prompt 里的 {{字面}} / {{goal.name}} 不会被二次展开）。
   assert.ok(
-    r.instruction.includes('PROMPT>>根指令：含 {{字面}} 与 {{goal.name}} 的原文<<'),
+    r.instruction.includes('根指令：含 {{字面}} 与 {{goal.name}} 的原文'),
     '单遍渲染：prompt 里的 {{...}} 与段落标记逐字原样，不再展开'
   );
-  assert.match(r.instruction, /<nx-kv\.ack>/, '默认 XML 模式：ack 指令进独立区块');
+  assert.match(r.instruction, /<nx-kv\.timecheck>/, '默认 XML 模式：check 指令进独立区块');
 });
 
 test('goal 已到点：instruction 显示已到点（信息性），领取不受影响', async () => {

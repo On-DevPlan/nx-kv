@@ -1,22 +1,17 @@
-// prompt.registry —— 注册表外露（方案 §5.3 / §7）：三端同源的唯一出口。
+// prompt.registry —— 注册表外露：三端同源的唯一出口（#152 起**只读派生**）。
 //
-// CLI（nx-kv prompt registry）、HTTP（GET /api/prompt/registry）与设置页
-// 消费同一份 uiDescriptor()：字段目录、生效模板、顺序位全部从插件声明 +
-// DB 生效项派生，前端不再有手工副本（placeholders.ts / prompt-template-params.ts）。
+// 真相是插件类本身（registry.ts 的 PLUGIN_CLASSES）：id / 时机链 / 顺序 / 内置模板 /
+// 变量目录全部从类声明派生。没有 JSON 注册表、没有 DB seed、也没有「顺序数组」——
+// 顺序 = 链内 order。
 //
-// deps 全空：uiDescriptor 只读文本态（get()）与 schema 派生面（fields/writes），
-// 结构态 data() 永不被调用——不需要宿主取数。
+// deps 全空：uiDescriptor 只读文本态（get()）与声明面（fields/writes/templates），
+// 结构态 buildData() 永不被调用——不需要宿主取数。
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import { getDb } from '../../../core/db/index.js';
-import { readSettingRaw } from '../../../core/db/settings.js';
-import { resolveBlockTemplates } from '../../../shared/prompt-blocks.js';
 import { uiDescriptor } from '../../../shared/prompt-plugin.js';
-import { buildDeliveryPlugins, PLUGIN_IDS } from '../factory.js';
-import { templateBundle } from '../template-bundle.js';
-import { ensurePromptTemplates } from '../ensure.js';
-import { LT_BLOCK_TEMPLATES, PROMPT_ORDER_KEY } from '../keys.js';
+import { buildAllPlugins } from '../factory.js';
+import { allPluginIds, assertRegistry, groupIndex } from '../registry.js';
 
 /** prompt.registry 的入参契约（无参）。 */
 const input = z.object({});
@@ -26,26 +21,20 @@ export class PromptRegistryAction extends ActionBase<typeof input> {
     id: 'prompt.registry',
     cli: ['prompt', 'registry'],
     http: ['GET', '/api/prompt/registry'],
-    summary: '提示词插件注册表：8 段的生效模板 / 变量目录 / 顺序位（三端同源，uiDescriptor 派生）',
+    summary: '提示词插件注册表：按时机链（get / check / done）列出插件的内置模板 / 变量目录 / 链内顺序',
     input,
     render: (d: any) =>
-      d.plugins.map((p: any) => `${p.order} ${p.id}（${p.label}，标签 ${p.tag}）`).join('；'),
+      d.plugins.map((p: any) => `[${p.group}] ${p.order} ${p.id}（${p.label}）`).join('；'),
   })
   override async run(_ctx: ActionInput<this['_input']>) {
-    const conn = getDb();
-    // 自举兜底（幂等，版本相同零写）：注册表出口不依赖 localtask 的 open 链——
-    // 纯 core store 上也必须能出注册表（方案的「全仓唯一落库调用点」仍是 open.ts）。
-    let raw = readSettingRaw(conn, LT_BLOCK_TEMPLATES);
-    if (raw === undefined) {
-      ensurePromptTemplates(conn);
-      raw = readSettingRaw(conn, LT_BLOCK_TEMPLATES);
-    }
-    const resolved = resolveBlockTemplates(raw ?? templateBundle());
-    const plugins = buildDeliveryPlugins(resolved as any, {
-      groupCtx: null, attach: null, queueInfo: null, loopText: '', waitMinutes: 0,
-    });
-    const orderIds = readSettingRaw(conn, PROMPT_ORDER_KEY);
-    const pluginsDesc = uiDescriptor(plugins, Array.isArray(orderIds) ? orderIds : PLUGIN_IDS);
-    return { plugins: pluginsDesc };
+    assertRegistry();
+    // uiDescriptor 会按 group 名字母序排（check / done / get）；对外的 plugins 数组
+    // 统一改用「时机声明序 + 链内 order」——与 groups 索引、CLI 渲染顺序逐项同序，
+    // 前端左轨直接按它铺开就不会出现「导航顺序 ≠ 实际输出顺序」。
+    const order = allPluginIds();
+    const plugins = uiDescriptor(buildAllPlugins()).sort(
+      (a, b) => order.indexOf(a.id) - order.indexOf(b.id),
+    );
+    return { groups: groupIndex(), plugins };
   }
 }

@@ -14,11 +14,7 @@
 //      持续 get），并附带各项开关的当前状态——用户要能看出「这段是哪来的、
 //      想关该关哪个开关」。
 import { getSettings } from '../localtask/service.js';
-import {
-  PROMPT_BLOCK_IDS,
-  resolveBlockTemplates,
-  type ResolvedBlockTemplate,
-} from '../../shared/prompt-blocks.js';
+import { PLUGIN_IDS, groupIndex, pluginMeta } from '../promptplug/index.js';
 import { deliveryPlainText } from './delivery-text.js';
 import { getLoopForCwd, getLoopInstruction, type GetLoopState } from './getloop.js';
 import { buildTaskDelivery } from './wait.js';
@@ -65,10 +61,18 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params }: P
   const previewTask = delivery.task || task;
   const instruction = delivery.instruction || '';
 
+  // #152：模板正文全部内置在插件类里，DB 不再存模板 —— 这里的 switches 只是
+  // 「当前生效的是哪段正文」的只读回显，形状保持旧版以便预览面板不必改读法。
   const ackList: any[] = settings.ackPromptList || [];
-  const active: Record<string, ResolvedBlockTemplate> = resolveBlockTemplates(settings.blockTemplates);
-  const contextTpl = active['context'] as ResolvedBlockTemplate;
-  const attachTpl = active['attachment'] as ResolvedBlockTemplate;
+  const builtinBlock = (id: string) => {
+    const meta = pluginMeta(id);
+    return {
+      id: 'builtin',
+      name: meta ? meta.label : id,
+      custom: false,
+      builtin: true,
+    };
+  };
   return {
     task: previewTask,
     instruction,
@@ -82,22 +86,15 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params }: P
     },
     switches: {
       ack: { on: ackList.length > 0, count: ackList.length },
-      // 兼容旧预览面板：这两个开关表示对应区块当前是否用了自定义模板
-      deliveryTemplate: { custom: !contextTpl.builtin, name: contextTpl.name },
-      attachTemplate: { custom: !attachTpl.builtin, name: attachTpl.name },
+      // 两个旧开关保留：模板已全部内置，custom 恒为 false
+      deliveryTemplate: builtinBlock('context'),
+      attachTemplate: builtinBlock('attachment'),
       appendMode: settings.appendMode || 'xml',
-      // 每个区块各自选中的生效模板（内置 / 自定义）
-      blockTemplates: Object.fromEntries(
-        PROMPT_BLOCK_IDS.map((id) => [
-          id,
-          {
-            id: (active[id] as ResolvedBlockTemplate).id,
-            name: (active[id] as ResolvedBlockTemplate).name,
-            custom: !(active[id] as ResolvedBlockTemplate).builtin,
-            builtin: (active[id] as ResolvedBlockTemplate).builtin,
-          },
-        ])
-      ),
+      // 每个区块当前生效的模板（全部内置）
+      blockTemplates: Object.fromEntries(PLUGIN_IDS.map((id) => [id, builtinBlock(id)])),
+      // 时机链（#152）：get / check / done 各自的插件顺序
+      groups: groupIndex(),
+      plugins: [...PLUGIN_IDS],
     },
   };
 }

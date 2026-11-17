@@ -16,7 +16,6 @@ import { openStore, getDb, closeDb, isStoreOpen, tx } from '../../../core/db/ind
 import { checkNodeVersion } from '../../../core/db/version.js';
 import type { DbApi } from '../../../core/db/driver.js';
 import type { TxOptions } from '../../../core/db/tx.js';
-import { ensurePromptTemplates } from '../../promptplug/ensure.js';
 
 /** 当前连接是按哪个库路径打开的（env 变了要关旧开新；null = 尚未打开）。 */
 let openedFor: string | null | undefined = null;
@@ -40,9 +39,6 @@ export function openLocaltaskStore(): DbApi {
   if (isStoreOpen()) closeDb();
   openStore({ path: target.path, appDir: target.appDir, importLegacyData: true });
   openedFor = target.path;
-  // 出厂提示词模板：首启落库 / 版本落后时只刷 builtin（幂等；已最新 → 零写）。
-  // 放这里而非 runtime 启动行：db() 是全仓唯一的库打开入口，任何命令先经它。
-  ensurePromptTemplates(getDb());
   return getDb();
 }
 

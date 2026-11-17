@@ -18,11 +18,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attachTemplateCtx } from '../../src/modules/tasktool/attach-template.js';
 import { compose } from '../../src/modules/promptplug/compose.js';
-import { buildDeliveryPlugins } from '../../src/modules/promptplug/index.js';
-import {
-  resolveBlockTemplates,
-} from '../../src/shared/prompt-blocks.js';
-import { templateBundle } from '../../src/modules/promptplug/template-bundle.js';
+import { buildPlugins } from '../../src/modules/promptplug/index.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const GOLDEN_DIR = join(root, 'tests', 'unit', '__golden__', 'prompt-instruction');
@@ -260,31 +256,32 @@ const scenarios = {
 
 // ── 测试本体 ───────────────────────────────────────────────────────────────
 
-const templates = () => resolveBlockTemplates(JSON.parse(JSON.stringify(templateBundle())));
-
-/** 源夹具 → 合并后的 ctx（与 compose 内部同一条插件路径）。 */
-async function ctxOf(sc) {
-  const plugins = buildDeliveryPlugins(templates(), {
+/**
+ * 交付链 + 宿主取数（#152 起模板正文在插件类里，不再有「解析出的模板」这一层）。
+ * 与 tasktool/wait.ts 同构：交付 = 三条链一起给（get / check / done，合并后按声明 order 排序）。
+ */
+const pluginsOf = (sc) => [
+  ...buildPlugins('get', {
     groupCtx: sc.groupCtx,
     attach: sc.attachments.length ? attachTemplateCtx(sc.attachments).attach : null,
     queueInfo: sc.queueInfo,
     loopText: sc.loopText,
     waitMinutes: sc.waitMinutes,
-  });
+  }),
+  ...buildPlugins('check'),
+  ...buildPlugins('done'),
+];
+
+/** 源夹具 → 合并后的 ctx（与 compose 内部同一条插件路径）。 */
+async function ctxOf(sc) {
+  const plugins = pluginsOf(sc);
   const ctx = { ...sc.seed };
   for (const p of plugins) Object.assign(ctx, await p.get('data'));
   return ctx;
 }
 
 function renderViaPlugins(sc) {
-  const plugins = buildDeliveryPlugins(templates(), {
-    groupCtx: sc.groupCtx,
-    attach: sc.attachments.length ? attachTemplateCtx(sc.attachments).attach : null,
-    queueInfo: sc.queueInfo,
-    loopText: sc.loopText,
-    waitMinutes: sc.waitMinutes,
-  });
-  return compose({ plugins, seed: sc.seed, mode: 'xml' });
+  return compose({ plugins: pluginsOf(sc), groups: ['get', 'check', 'done'], seed: sc.seed, mode: 'xml' });
 }
 
 for (const [name, sc] of Object.entries(scenarios)) {

@@ -5,9 +5,9 @@
 
 /**
  * 默认 ack：完成任务就调用 localtask done 回填结果（任务 51 的职责合并决定）。
- * v6 起唯一归属在本文件——shared/prompt-blocks 不再持有任何模板正文，模板真相在
- * 出厂快照 blockTemplates.json；这里的文本 ≡ 快照 ack 段内置文本，一致性由
- * tests/unit/prompt-ensure.test.mjs 对账；改任何一处都要同步另一处并跑单测。
+ * #152 起模板正文的唯一真相是插件类——ack 段的正文在
+ * modules/promptplug/plugins/readonly-blocks.ts 的 ACK_BUILTIN；这里保留一份同文常量
+ * 只为兼容旧引用（设置视图的「多条」形态回显）。改文案请改插件类。
  */
 export const DEFAULT_ACK_PROMPT =
   '完成之后必须调用 nx-kv localtask done --id {{task.id}} --summary "<完成总结>" 汇报结果。';
@@ -71,7 +71,7 @@ export function joinAckPrompt(v: unknown): string {
 // ─── 系统上下文追加模式 + XML 区块配置（settings 两键）───────────────
 //
 // appendMode：'xml'（默认，每段包独立标签）| 'plain'（改造前按空行直拼）。
-// 每个区块的模板列表与生效项在 shared/prompt-blocks.js 的 blockTemplates 模型里。
+// 每个区块的模板正文在插件类里（modules/promptplug/plugins/*.ts），不再有落库模型。
 export const APPEND_MODE_IDS = Object.freeze(APPEND_MODES.map((m) => m.id));
 
 /** 归一化追加模式：缺省/非法 → xml（默认足够清晰）。 */

@@ -30,34 +30,26 @@ export function getLocaltaskSettings(): Promise<any> {
 
 /** localtask 设置的 patch 形状（驼峰；与 PATCH /api/localtasks/setting 的契约一致）。
     收窄成具体字段而不是 Record<string,unknown>：#104 的 bug 就是调用方把
-    { method:'PATCH', body:{…} } 整个当 patch 传进来，宽类型查不出来。 */
+    { method:'PATCH', body:{…} } 整个当 patch 传进来，宽类型查不出来。
+    #152 起提示词模板不可写（正文在插件类里），只剩超时与追加模式两个键。 */
 export interface LocaltaskSettingPatch {
   timeoutSec?: number;
-  ackPrompt?: string | string[];
   appendMode?: 'xml' | 'plain';
-  blockTemplates?: unknown;
 }
 
-/** 改 localtask 设置（PATCH /api/localtasks/setting；blockTemplates / appendMode 等）。 */
+/** 改 localtask 设置（PATCH /api/localtasks/setting；timeoutSec / appendMode）。 */
 export function saveLocaltaskSettings(patch: LocaltaskSettingPatch): Promise<any> {
   return api('/api/localtasks/setting', { method: 'PATCH', body: patch });
 }
 
 /**
- * 提示词插件注册表（GET /api/prompt/registry）：8 段的生效模板 / 变量目录 / 顺序位。
- * 区块 tab、标签、每段「可使用参数」清单全部从这里派生——不再手写第二份
- * （prompt-template-params.ts 已删除，方案 §7：声明是 UI 的唯一数据源）。
+ * 提示词插件注册表（GET /api/prompt/registry）：
+ * `{ groups: { get: [...], check: [...], done: [...] }, plugins: [...] }`——
+ * 时机链 + 每段内置模板正文 + 变量目录，全部从插件类派生（#152）。
+ * 设置页的段落导航、正文、变量清单都只读自这里，不写第二份。
  */
 export function getPromptRegistry(): Promise<any> {
   return api('/api/prompt/registry');
-}
-
-/**
- * 写提示词插件顺序数组（PUT /api/prompt/order，方案 §5.1）。
- * 唯一真相是数组：必须恰好包含全部插件 id 各一次；顺序位 = 数组下标 × 10。
- */
-export function savePromptOrder(order: string[]): Promise<any> {
-  return api('/api/prompt/order', { method: 'PUT', body: { order } });
 }
 
 /** 预览一条任务的交付（POST /api/localtasks/preview；与 CLI localtask preview 同一链路）。 */

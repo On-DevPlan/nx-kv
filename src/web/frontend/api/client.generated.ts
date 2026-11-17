@@ -76,7 +76,6 @@ import type {
   LocaltaskUpdateAction,
 } from '../../../modules/localtask/actions/_manifest.generated.js';
 import type {
-  PromptOrderAction,
   PromptRegistryAction,
 } from '../../../modules/promptplug/actions/_manifest.generated.js';
 import type {
@@ -314,7 +313,7 @@ export interface ApiClient {
   localtaskClone(input: z.input<InstanceType<typeof LocaltaskCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCloneAction>['run']>>>;
 /** 批量收口还没结束的任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；待领取与已领取都能收（已领取的 agent 侧回执会被忽略），已完成/已取消跳过 */
   closeMany(input: z.input<InstanceType<typeof LocaltaskCloseManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCloseManyAction>['run']>>>;
-/** 配置等待超时（秒）/ ack 汇报要求（ack 区块，done 指令与收尾要求唯一出口）/ 每区块模板列表 */
+/** 配置等待超时（秒）/ 系统上下文追加模式（提示词模板正文固定在插件类里，不再可配） */
   config(input?: z.input<InstanceType<typeof LocaltaskConfigAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskConfigAction>['run']>>>;
 /** 解除任务与附件的关系（默认只解除关系，资源进孤儿池）；--purge 在无人引用时连资源行与本机字节一起删 */
   localtaskDetach(input: z.input<InstanceType<typeof LocaltaskDetachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskDetachAction>['run']>>>;
@@ -404,9 +403,7 @@ export interface ApiClient {
   install(input?: z.input<InstanceType<typeof BundledInstallAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof BundledInstallAction>['run']>>>;
 /** 列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group */
   bundledList(): Promise<Awaited<ReturnType<InstanceType<typeof BundledListAction>['run']>>>;
-/** 写提示词插件顺序数组（唯一真相；必须恰好包含全部 8 个插件 id 各一次） */
-  order(input: z.input<InstanceType<typeof PromptOrderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptOrderAction>['run']>>>;
-/** 提示词插件注册表：8 段的生效模板 / 变量目录 / 顺序位（三端同源，uiDescriptor 派生） */
+/** 提示词插件注册表：按时机链（get / check / done）列出插件的内置模板 / 变量目录 / 链内顺序 */
   registry(): Promise<Awaited<ReturnType<InstanceType<typeof PromptRegistryAction>['run']>>>;
 }
 
@@ -1005,7 +1002,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async config(input?: z.input<InstanceType<typeof LocaltaskConfigAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskConfigAction>['_input']>);
       const path = `/api/localtasks/setting`;
-      const body = { "timeout": inp["timeout"], "ack": inp["ack"], "ack-list": inp["ack-list"], "ackList": inp["ackList"], "delivery-template": inp["delivery-template"], "reset-delivery-template": inp["reset-delivery-template"], "attach-template": inp["attach-template"], "attachTemplate": inp["attachTemplate"], "reset-attach-template": inp["reset-attach-template"], "append-mode": inp["append-mode"], "appendMode": inp["appendMode"], "block-templates": inp["block-templates"], "blockTemplates": inp["blockTemplates"] };
+      const body = { "timeout": inp["timeout"], "append-mode": inp["append-mode"], "appendMode": inp["appendMode"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskConfigAction>['run']>>;
     },
     // action: localtask.detach
@@ -1346,13 +1343,6 @@ export function createApiClient(transport: Transport): ApiClient {
     async bundledList() {
       const path = `/api/bundled`;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof BundledListAction>['run']>>;
-    },
-    // action: prompt.order
-    async order(input: z.input<InstanceType<typeof PromptOrderAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof PromptOrderAction>['_input']>);
-      const path = `/api/prompt/order`;
-      const body = { "order": inp["order"] };
-      return (await transport.request("PUT", path, body)) as Awaited<ReturnType<InstanceType<typeof PromptOrderAction>['run']>>;
     },
     // action: prompt.registry
     async registry() {

@@ -60,32 +60,32 @@ export async function run(ctx) {
   const stCfg = await cliJson(['localtask', 'config', '--timeout', '300']);
   check('localtask config 设置超时（推荐 180、最大 600）', stCfg.timeoutSec === 300 && stCfg.maxSec === 600, JSON.stringify(stCfg));
 
-  // ack 汇报要求：默认（内置 done 指令）/ 自定义 / 恢复内置
-  const stAckDefault = await cliJson(['localtask', 'config', '--ack', '']);
+  // #152：ack / 交付模板的正文固定在插件类里，旧的写入通道一律下线
+  const ackGone = await cli(['localtask', 'config', '--ack', 'SMOKE_ACK']);
   check(
-    'config 恢复内置 ack（仍带 done 指令）',
-    /localtask done/.test(stAckDefault.ackPromptList.join('\n')),
-    JSON.stringify(stAckDefault)
+    'config --ack 已下线（模板正文固定在插件类）',
+    ackGone.status === 1 && /未知参数/.test(String(ackGone.stderr || '')),
+    String(ackGone.stderr || '').slice(0, 160)
+  );
+  const tplGone = await cli(['localtask', 'config', '--delivery-template', 'X']);
+  check('config --delivery-template 已下线', tplGone.status === 1 && /未知参数/.test(String(tplGone.stderr || '')), String(tplGone.stderr || '').slice(0, 160));
+
+  const stAck = await cliJson(['localtask', 'config', '--append-mode', 'xml']);
+  check(
+    'config 仍可改追加模式（ack 正文只读回显）',
+    /localtask done/.test(stAck.ackPromptList.join('\n')),
+    JSON.stringify(stAck)
   );
 
-  const stAckOn = await cliJson([
-    'localtask', 'config', '--ack', 'SMOKE_ACK 计划最后再次 nx-kv localtask wait',
-  ]);
-  check(
-    'config 自定义 ack 已开启',
-    /SMOKE_ACK/.test(stAckOn.ackPromptList.join('\n')),
-    JSON.stringify(stAckOn)
-  );
-
-  // 加一条任务 → wait 拿到的 instruction（ack 段）应包含自定义 ack；正文保持原文
+  // 加一条任务 → wait 拿到的 instruction 应带内置 ack 段；正文保持原文
   await cliJson(['localtask', 'add', '任务本体', '--cwd', topicA]);
   const waitWithAck = await cliJson(['localtask', 'wait', '--cwd', topicA]);
   check(
-    'wait 返回 instruction 带自定义 ack（task.text 保持原文）',
+    'wait 返回 instruction 带内置 ack 段（task.text 保持原文）',
     waitWithAck.status === 'ok' &&
       waitWithAck.task.text === '任务本体' &&
-      /SMOKE_ACK/.test(waitWithAck.instruction || ''),
-    JSON.stringify(waitWithAck)
+      /localtask done --id \d+/.test(waitWithAck.instruction || ''),
+    JSON.stringify(waitWithAck).slice(0, 300)
   );
 
   // 库存原文不应被改写
@@ -93,34 +93,21 @@ export async function run(ctx) {
   const consumed = listAfter.topics.find((t) => t.key === waitWithAck.key).tasks.find((x) => x.id === waitWithAck.task.id);
   check('库存原文不含 ack 痕迹', consumed && consumed.text === '任务本体', JSON.stringify(consumed));
 
-  // ack **模板**（含 {{ 占位符）：渲染进 instruction 字段，task.text 保持库存原文
-  const stTpl = await cliJson([
-    'localtask', 'config', '--ack',
-    '{{task.text}} TPL_ACK {{#if goal}}〔{{goal.remainingHuman}}〕{{/if}}',
-  ]);
-  check(
-    'config 设置 ack 模板',
-    /\{\{task\.text\}\}/.test(stTpl.ackPromptList.join('\n')),
-    JSON.stringify(stTpl)
-  );
-  await cliJson(['localtask', 'add', '模板任务本体', '--cwd', topicA]);
+  // 正文里的 {{...}} 是用户原文：库存逐字保留，也不被当成模板二次展开
+  await cliJson(['localtask', 'add', '模板任务本体 {{task.id}}', '--cwd', topicA]);
   const waitTpl = await cliJson(['localtask', 'wait', '--cwd', topicA]);
   check(
-    'wait ack 模板渲染：instruction 含正文与 TPL_ACK，task.text 保持原文',
+    'wait 正文里的 {{...}} 原样保留且不二次展开',
     waitTpl.status === 'ok' &&
-      waitTpl.task.text === '模板任务本体' &&
-      /模板任务本体[\s\S]*TPL_ACK/.test(waitTpl.instruction || ''),
-    JSON.stringify(waitTpl)
+      waitTpl.task.text === '模板任务本体 {{task.id}}' &&
+      !/模板任务本体 1/.test(waitTpl.instruction || ''),
+    JSON.stringify(waitTpl).slice(0, 300)
   );
-  // 模板模式同样不回写库存
   const listAfterTpl = await cliJson(['localtask', 'list']);
   const consumedTpl = listAfterTpl.topics
     .find((t) => t.key === waitTpl.key)
     .tasks.find((x) => x.id === waitTpl.task.id);
-  check('模板模式库存原文不含模板痕迹', consumedTpl && consumedTpl.text === '模板任务本体', JSON.stringify(consumedTpl));
-
-  // 恢复内置 ack，让主题清理不受影响
-  await cliJson(['localtask', 'config', '--ack', '']);
+  check('模板模式库存原文不含模板痕迹', consumedTpl && consumedTpl.text === '模板任务本体 {{task.id}}', JSON.stringify(consumedTpl));
 
   // ack 冒烟主题用完即清（避免影响后续用例）
   await cliJson(['localtask', 'topic', 'remove', '--key', waitWithAck.key, '--force']);

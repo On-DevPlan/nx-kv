@@ -234,7 +234,8 @@
 .setp-prompts-pane > .setp-tpl-editor{max-width:880px}
 .ppt-split{display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px;min-width:0}
 
-/* 左轨：一行 = 一段（拖动柄 + 位次 + 段名/生效模板 + 只读标记） */
+/* 左轨：按时机分组，一行 = 一段（位次 + 段名/id + 只读标记）。
+   #152 起顺序由插件类的 order 声明决定，不再支持拖动排序。 */
 .ppt-rail{
   flex:0 1 190px;min-width:150px;display:flex;flex-direction:column;
   border:1px solid var(--line,#E4E2DC);border-radius:10px;background:var(--paper,#fff);overflow:hidden;
@@ -245,22 +246,21 @@
 }
 .ppt-rail-head b{font-size:11.5px}
 .ppt-rail-list{display:flex;flex-direction:column;min-width:0}
+.ppt-grp{display:flex;flex-direction:column;min-width:0}
+.ppt-grp + .ppt-grp{border-top:1px solid var(--soft-2,#E4E2DC)}
+.ppt-grp-head{
+  padding:4px 9px;background:var(--soft,#F1F0EC);
+  font:600 10.5px/1.5 ui-monospace,Consolas,monospace;color:var(--mid,#8A8578);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
 .ppt-rail-row{
   display:flex;align-items:center;gap:7px;padding:6px 9px;min-width:0;cursor:pointer;
-  border-top:2px solid transparent;border-bottom:1px solid transparent;
+  border-top:1px solid transparent;border-bottom:1px solid transparent;
 }
 .ppt-rail-row + .ppt-rail-row{border-top-color:var(--soft-2,#E4E2DC)}
 .ppt-rail-row:hover{background:var(--soft,#F1F0EC)}
 .ppt-rail-row.is-on{background:var(--mdw-accent-soft,#E8F2EE)}
-.ppt-rail-row.is-drop-before{border-top-color:var(--mdw-accent,#2F6F5E)}
-.ppt-rail-row.is-drop-after{border-bottom-color:var(--mdw-accent,#2F6F5E)}
-.ppt-rail-row.is-dragging{opacity:.45}
 .ppt-rail-row:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);outline-offset:-2px}
-.ppt-rail-handle{
-  flex:none;cursor:grab;color:var(--mid,#8A8578);user-select:none;
-  font-size:12px;line-height:1;
-}
-.ppt-rail-row.is-dragging .ppt-rail-handle{cursor:grabbing}
 .ppt-rail-pos{
   flex:none;width:12px;text-align:right;
   font:600 10.5px/1.5 ui-monospace,Consolas,monospace;color:var(--mid,#8A8578);
@@ -296,53 +296,13 @@
 }
 .ppt-pill.is-on{color:var(--mdw-accent,#2F6F5E);border-color:var(--mdw-accent-line,#B7D4C8)}
 .ppt-ed-sub{flex:1 1 100%;font-size:11px;color:var(--faint,#8A8578)}
-.ppt-ed-reset{flex:none;margin-left:auto}
 
-/* 候选模板：chips（当前生效打勾、内置带锁、删除收进 ×） */
-.ppt-chips{
-  display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 9px;
-  border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--soft,#F1F0EC);
+/* 只读说明条（#152：模板正文在插件类里，本页不可编辑） */
+.ppt-ro-note{
+  font-size:11px;line-height:1.6;color:var(--faint,#8A8578);
+  padding:6px 9px;border:1px dashed var(--line,#E4E2DC);border-radius:8px;background:var(--soft,#F1F0EC);
 }
-.ppt-chips-cap{font-size:10.5px;color:var(--faint,#8A8578)}
-.ppt-chip-wrap{
-  display:inline-flex;align-items:center;overflow:hidden;
-  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);
-}
-.ppt-chip-wrap.is-sel{border-color:var(--mdw-accent-line,#B7D4C8);box-shadow:inset 0 0 0 1px var(--mdw-accent-line,#B7D4C8)}
-.ppt-chip{
-  display:inline-flex;align-items:center;gap:4px;max-width:220px;padding:2px 7px;
-  border:0;background:transparent;font:inherit;font-size:11.5px;
-  color:var(--ink,#16181C);cursor:pointer;
-}
-.ppt-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ppt-chip-wrap.is-on .ppt-chip{color:var(--mdw-accent,#2F6F5E);font-weight:600}
-.ppt-chip-lock{
-  font-size:9.5px;color:var(--mid,#8A8578);padding:0 3px;
-  border:1px solid var(--line,#E4E2DC);border-radius:3px;
-}
-.ppt-chip-tick{font-size:10px}
-.ppt-chip-x{
-  border:0;border-left:1px solid var(--line,#E4E2DC);background:transparent;
-  color:#C9C6BE;font:inherit;font-size:12px;line-height:1;padding:2px 6px;cursor:pointer;
-}
-.ppt-chip-x:hover:not(:disabled){color:#A32D2D;background:var(--soft,#F1F0EC)}
-.ppt-chip-new{
-  padding:2px 8px;border:1px dashed var(--mdw-accent-line,#B7D4C8);border-radius:6px;
-  background:transparent;color:var(--mdw-accent,#2F6F5E);font:inherit;font-size:11.5px;cursor:pointer;
-}
-
-/* 名称 + dirty 指示 */
-.ppt-name-row{display:flex;align-items:center;gap:8px}
-.ppt-name-label{flex:none;font-size:11.5px;color:var(--ink-2,#4B515A)}
-.ppt-name-input{
-  flex:1;min-width:0;height:26px;padding:0 8px;border:1px solid var(--line,#E4E2DC);
-  border-radius:6px;background:var(--paper,#fff);color:var(--ink,#16181C);
-  font:400 11.5px ui-monospace,Consolas,monospace;
-}
-.ppt-name-input[readonly]{background:var(--soft,#F1F0EC);color:var(--mid,#8A8578)}
-.ppt-name-input:focus{outline:2px solid var(--soft-2,#E4E2DC);outline-offset:-1px}
-.ppt-dirty{flex:none;font-size:10.5px;color:#BA7517;opacity:0;transition:opacity .12s}
-.ppt-dirty.is-on{opacity:1}
+.ppt-ro-note code{font:400 10.5px ui-monospace,Consolas,monospace;color:var(--ink-2,#4B515A)}
 
 .ppt-tpl-area{
   width:100%;min-height:170px;padding:8px 10px;resize:vertical;
@@ -354,11 +314,30 @@
 .ppt-tpl-area[readonly]{background:var(--soft,#F1F0EC);color:var(--ink-2,#4B515A)}
 
 /* 变量：可点击插入（目录来自注册表 fields） */
+/* 变量目录：头部（计数 + 过滤）+ 可滚动体（按 [] 分组）。
+   附件段有近百个变量（6 种 kind 各有子对象），平铺就是一堵墙。 */
 .ppt-vars{
-  display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;padding:6px 9px;
+  display:flex;flex-direction:column;gap:5px;padding:6px 9px;
   border:1px dashed var(--line,#E4E2DC);border-radius:8px;background:var(--soft,#F1F0EC);
 }
-.ppt-vars-cap{font-size:10.5px;color:var(--faint,#8A8578)}
+.ppt-vars-head{display:flex;align-items:center;gap:8px;min-width:0}
+.ppt-vars-cap{font-size:10.5px;color:var(--faint,#8A8578);white-space:nowrap}
+.ppt-vars-q{
+  flex:1;min-width:0;height:22px;padding:0 7px;
+  border:1px solid var(--line,#E4E2DC);border-radius:5px;background:var(--paper,#fff);
+  color:var(--ink,#16181C);font:inherit;font-size:11px;
+}
+.ppt-vars-q:focus{outline:2px solid var(--soft-2,#E4E2DC);outline-offset:-1px}
+.ppt-vars-body{
+  display:flex;flex-direction:column;gap:6px;max-height:200px;overflow:auto;min-width:0;
+}
+.ppt-vars-grp{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ppt-vars-grp + .ppt-vars-grp{padding-top:5px;border-top:1px solid var(--soft-2,#E4E2DC)}
+.ppt-vars-grp-head{
+  font:600 10.5px/1.5 ui-monospace,Consolas,monospace;color:var(--mid,#8A8578);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.ppt-vars-chips{display:flex;flex-wrap:wrap;gap:3px 6px;min-width:0}
 .ppt-var{
   font:400 11px/1.5 ui-monospace,Consolas,monospace;padding:1px 5px;
   border:1px solid var(--line,#E4E2DC);border-radius:4px;

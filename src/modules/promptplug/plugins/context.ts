@@ -2,7 +2,7 @@
 // data() 搬自 tasktool/delivery-template.ts 的 deliveryCtxOf（原文件随 S1 删除），
 // 口径注释一并迁入——#81 空壳组过滤、#104 已登记无介绍可见、参考仓库去重并集。
 import { z } from 'zod';
-import { PromptPlugin } from '../base.js';
+import { PromptPlugin, supplied, type Supply, type TemplateText } from '../base.js';
 
 const docItemShape = z.looseObject({
   refId: z.string(),
@@ -146,19 +146,80 @@ export function deliveryCtxOf(groupCtx: any) {
   };
 }
 
+/** 内置模板（#152：正文进代码，不再有 JSON 注册表 / DB seed）。 */
+const BUILTIN: TemplateText = {
+  id: 'builtin',
+  name: '系统内置',
+  text: `{{#if repo}}
+{{#if repo.intro}}
+〔项目介绍 · {{repo.name}}〕
+{{repo.intro}}
+{{/if}}
+{{#if repo.docs}}
+〔项目文档〕按需取用：nx-kv docs get --ref <refId>
+{{#each repo.docs}}
+  - {{#if title}}{{title}}{{else}}未命名文档{{/if}}{{#if desc}}
+      {{desc}}{{/if}}
+    取用：nx-kv docs get --ref {{refId}}
+{{/each}}
+{{/if}}
+{{#if repo.intro}}{{else}}{{#if repo.docs}}{{else}}
+〔项目上下文 · {{repo.name}}〕已登记为本机仓库（{{repo.key}}），但没有项目介绍文档：nx-kv repo doc add {{repo.key}} --ref <refId>
+{{/if}}{{/if}}
+{{/if}}
+{{#if repo}}{{else}}{{#if cwd}}
+〔项目上下文〕工作目录 {{cwd}} 未登记为本机仓库，本次交付没有项目介绍 / 组上下文。登记（不需要 .git，给 key 即可）：nx-kv repo add "{{cwd}}" --key <key>
+{{/if}}{{/if}}
+{{#if group}}
+〔项目组上下文 · {{group.name}}〕
+{{#if group.desc}}
+组定位：{{group.desc}}
+{{/if}}
+{{#if group.note}}
+本项目在组里的位置：{{group.note}}
+{{/if}}
+{{#if group.introRefId}}
+组介绍：{{#if group.introDesc}}{{group.introDesc}}{{else}}（无描述）{{/if}}
+  取用：nx-kv docs get --ref {{group.introRefId}}
+{{/if}}
+{{#if group.peers}}
+组内成员：
+{{#each group.peers}}
+  - {{name}}：{{#if note}}{{note}}{{else}}（无组内描述）{{/if}}{{#if path}}（{{path}}）{{/if}}
+{{/each}}
+{{/if}}
+{{#if group.docs}}
+组文档（按需取用）：
+{{#each group.docs}}
+  - {{#if title}}{{title}}{{else}}未命名文档{{/if}}{{#if desc}}
+      {{desc}}{{/if}}
+    取用：nx-kv docs get --ref {{refId}}
+{{/each}}
+{{/if}}
+{{/if}}
+{{#if refRepos.count}}
+参考仓库（可直接读取，共 {{refRepos.count}} 个）：
+{{#each refRepos.list}}
+  - {{name}}{{#if path}}（{{path}}）{{/if}}
+{{/each}}
+{{/if}}`,
+};
+
 export class ContextPlugin extends PromptPlugin<typeof schema> {
   readonly id = 'context';
   readonly order = 10;
+  readonly group = 'get' as const;
   readonly tag = 'nx-kv.context';
   readonly label = '组 / 项目上下文';
   override readonly writes = ['repo', 'group', 'refRepos', 'groups'];
   readonly dataSchema = schema;
+  readonly templates = [BUILTIN];
 
-  constructor(template: string, private readonly deps: { groupCtx: unknown }) {
+  constructor(template: string, private readonly deps: { groupCtx: Supply<unknown> }) {
     super(template);
   }
 
-  protected data() {
-    return deliveryCtxOf(this.deps.groupCtx);
+  protected async buildData() {
+    return deliveryCtxOf(await supplied(this.deps.groupCtx));
   }
 }

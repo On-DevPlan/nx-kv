@@ -1328,7 +1328,7 @@
           "action": {
             "id": "localtask.config",
             "module": "localtask",
-            "summary": "配置等待超时（秒）/ ack 汇报要求（ack 区块，done 指令与收尾要求唯一出口）/ 每区块模板列表",
+            "summary": "配置等待超时（秒）/ 系统上下文追加模式（提示词模板正文固定在插件类里，不再可配）",
             "usage": "localtask config",
             "http": "PATCH /api/localtasks/setting"
           },
@@ -2135,21 +2135,6 @@
       "action": null,
       "children": [
         {
-          "name": "order",
-          "path": [
-            "prompt",
-            "order"
-          ],
-          "action": {
-            "id": "prompt.order",
-            "module": "promptplug",
-            "summary": "写提示词插件顺序数组（唯一真相；必须恰好包含全部 8 个插件 id 各一次）",
-            "usage": "prompt order",
-            "http": "PUT /api/prompt/order"
-          },
-          "children": []
-        },
-        {
           "name": "registry",
           "path": [
             "prompt",
@@ -2158,7 +2143,7 @@
           "action": {
             "id": "prompt.registry",
             "module": "promptplug",
-            "summary": "提示词插件注册表：8 段的生效模板 / 变量目录 / 顺序位（三端同源，uiDescriptor 派生）",
+            "summary": "提示词插件注册表：按时机链（get / check / done）列出插件的内置模板 / 变量目录 / 链内顺序",
             "usage": "prompt registry",
             "http": "GET /api/prompt/registry"
           },

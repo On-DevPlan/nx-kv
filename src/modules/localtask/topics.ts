@@ -115,33 +115,25 @@ export async function pruneTopics({ allFinished = false, dryRun = false }: { all
   return { status: 'ok', dryRun: !!dryRun, count: removed.length, removed };
 }
 
-/** updateSettings 的入参（全部可选）。 */
+/**
+ * updateSettings 的入参（全部可选）。
+ *
+ * #152 起只剩两个真正可写的键：提示词模板正文的唯一真相搬到了插件类
+ * （modules/promptplug/plugins/*.ts 的 `templates`），DB 不再存模板，
+ * 因此 ackPrompt / deliveryTemplate / attachTemplate / blockTemplates 四个
+ * 写入通道一并删除（旧值也不再读取）。
+ */
 export interface UpdateSettingsInput {
   timeoutSec?: unknown;
-  ackPrompt?: unknown;
-  deliveryTemplate?: unknown;
-  attachTemplate?: unknown;
   appendMode?: unknown;
-  blockTemplates?: unknown;
 }
 
-// 配置等待超时 / ack 汇报要求（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟；
-// ackPrompt 写入 ack 区块的「命令行」模板并启用（done 指令与收尾要求只有这一个出口），
-// 传 '' / [] 恢复内置、不传保持不变。
-//
-// blockTemplates：每区块独立模板列表 `{ [blockId]: { active, list } }`
-// （结构见 shared/prompt-blocks.js 的 normalizeBlockTemplateLists）。
-export async function updateSettings({ timeoutSec, ackPrompt, deliveryTemplate, attachTemplate, appendMode, blockTemplates }: UpdateSettingsInput = {}): Promise<Record<string, any>> {
+// 配置等待超时（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟。
+export async function updateSettings({ timeoutSec, appendMode }: UpdateSettingsInput = {}): Promise<Record<string, any>> {
   const hasTimeout = timeoutSec !== undefined && timeoutSec !== null;
-  const hasAck = ackPrompt !== undefined;
-  const hasDelivery = deliveryTemplate !== undefined;
-  const hasAttach = attachTemplate !== undefined;
   const hasAppend = appendMode !== undefined;
-  const hasBlocks = blockTemplates !== undefined;
-  if (!hasTimeout && !hasAck && !hasDelivery && !hasAttach && !hasAppend && !hasBlocks) {
-    throw badInput(
-      '请至少指定一项：--timeout <秒>，或 --ack "<ack 提示词>"，或 --append-mode，或 --block-templates "JSON 对象"'
-    );
+  if (!hasTimeout && !hasAppend) {
+    throw badInput('请至少指定一项：--timeout <秒>，或 --append-mode <xml|plain>');
   }
   if (hasTimeout) {
     const n = Number(timeoutSec);
@@ -152,11 +144,7 @@ export async function updateSettings({ timeoutSec, ackPrompt, deliveryTemplate, 
   openStore();
   settingsRepo.setLtSettings({
     timeoutSec: hasTimeout ? timeoutSec : undefined,
-    ackPrompt: hasAck ? ackPrompt : undefined,
-    deliveryTemplate: hasDelivery ? deliveryTemplate : undefined,
-    attachTemplate: hasAttach ? attachTemplate : undefined,
     appendMode: hasAppend ? appendMode : undefined,
-    blockTemplates: hasBlocks ? blockTemplates : undefined,
   });
   return settingsRepo.settingsView();
 }

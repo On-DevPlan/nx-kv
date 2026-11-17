@@ -8,9 +8,9 @@ import { isImageName } from '../../core/filekind.js';
 import { hostOfUrl, kindLabelOf, ORIGIN_LABEL, sizeTextOf, STATUS_LABEL } from './attach-resource.js';
 
 /**
- * 内置附件段模板（v6 起唯一归属在本文件——shared/prompt-blocks 不再持有任何模板正文，
- * 模板真相在出厂快照 blockTemplates.json）。这里的文本 ≡ 快照 attachment 段内置文本，
- * 一致性由 tests/unit/prompt-ensure.test.mjs 对账；改任何一处都要同步另一处并跑单测。
+ * 内置附件段模板（#152 起模板正文的唯一真相是插件类：attachment 插件的内置模板
+ * 包了 `{{#if attach}}`，这里是不带外壳的内文，供「不走插件链」的直渲染入口用）。
+ * 两处文本必须逐字一致（tests/unit/attach-template.test.mjs 钉住渲染结果）。
  */
 export const DEFAULT_ATTACH_TEMPLATE = [
   '{{#if attach}}',

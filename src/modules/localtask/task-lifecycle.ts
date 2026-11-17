@@ -3,8 +3,7 @@
 // 业务值而不是抛错）、reopenTask（用户修改反馈 → **就地重开原任务**，历史进 history 链）。
 import { badInput, notFound } from '../../core/errors.js';
 import { formatDuration, renderInstruction } from '../../core/instruction-template.js';
-import { resolveBlockTemplates } from '../../shared/prompt-blocks.js';
-import { getLtSettings } from './repo/settings.js';
+import { activeTemplateOf } from '../promptplug/index.js';
 import { taskGoalTemplateCtx } from '../tasktool/plugins/goal-template.js';
 import { preserveFrontmatter } from '../../shared/frontmatter.js';
 import {
@@ -33,14 +32,13 @@ interface SupersederRef {
 }
 
 /**
- * 「未到点就想 done」的拦截提示（#90）：模板来自设置 lt.blockTemplates.doneguard，
- * 与其余系统段同一套 Handlebars 引擎与 ctx；渲染失败退回 ''，调用方仍用内置 hint，
- * 门禁本身的业务结果不受模板影响。
+ * 「未到点就想 done」的拦截提示（#90）：模板是 doneguard 插件类的内置正文
+ * （#152 起不再从 settings 解析；与其余系统段同一套 Handlebars 引擎与 ctx）。
+ * 渲染失败退回 ''，调用方仍用内置 hint，门禁本身的业务结果不受模板影响。
  */
 function renderDoneGuard({ taskId, taskText, goalKey, st }: { taskId: number; taskText: string; goalKey: string; st: any }): string {
   try {
-    const s = getLtSettings();
-    const tpl = resolveBlockTemplates(s && s.blockTemplates).doneguard!.template;
+    const tpl = activeTemplateOf('doneguard');
     const goal = st.goal || {};
     const ctx = taskGoalTemplateCtx({
       taskId,
@@ -355,8 +353,8 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
     const { taskGoalState, recordTaskCheck } = await import('../tasktool/taskgoal.js');
     const st = await taskGoalState({ topicKey: key, taskId: want });
     if (st.hasGoal && !st.reached) {
-      // 「未到点就想 done」的拦截提示可配（#90）：模板与其它区块同源，落
-      // lt.blockTemplates.doneguard；渲染失败退回内置 hint，不挡业务结果。
+      // 「未到点就想 done」的拦截提示（#90）：模板与其它区块同源，是 doneguard
+      // 插件类的内置正文（#152）；渲染失败退回内置 hint，不挡业务结果。
       const guard = renderDoneGuard({
         taskId: want,
         taskText: task.text,

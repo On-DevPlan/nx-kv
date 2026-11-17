@@ -2,8 +2,8 @@
 //
 // 落点：repos.json 的 repo 记录字段 getLoop = { enabled, waitMinutes }。
 // **#182 起仓库级配置只剩「开关 + 阻塞分钟」**：交付里那段「继续 get」的**文案**
-// 统一由 设置 → 提示词模板 → 持续 get 区块提供（默认值即 src/shared/prompt-blocks.ts
-// 的 DEFAULT_GETLOOP_TEMPLATE）。此前这里还存一份 repo 级 template（v0.14 起 string[]），
+// 统一由 getloop 插件类的内置模板提供（#152 起正文进代码，不再有「全局模板区块」可配）。
+// 此前这里还存一份 repo 级 template（v0.14 起 string[]），
 // 与全局模板两处各写一遍必然漂移——那个口子已下线；老数据里的 template 字段
 // 读入时一律忽略，下次写回 getLoop 时自然被 sanitizeGetLoop 丢掉。
 //
@@ -19,10 +19,9 @@
 import { badInput } from '../../../core/errors.js';
 
 /**
- * 持续 get 内文的默认文案（v6 起唯一归属在本文件——shared/prompt-blocks 不再持有
- * 任何模板正文，模板真相在出厂快照 blockTemplates.json）。这里的文本是快照 getloop
- * 段内置模板的**内文**（快照模板 = `{{#if getloop}}\n<本段>\n{{/if}}`），一致性由
- * tests/unit/prompt-ensure.test.mjs 对账；改任何一处都要同步另一处并跑单测。
+ * 持续 get 内文的默认文案（#152 起模板正文的唯一真相是插件类：getloop 插件的内置
+ * 模板 = `{{#if getloop}}\n<本段>\n{{/if}}`，这里是其中的**内文**，由
+ * getLoopInstruction() 渲染后作为 loopText 供给插件）。改文案请改插件类。
  */
 export const DEFAULT_GETLOOP_INSTRUCTION =
   '{{#if task}}不要直接结束本轮：完成上面的任务（{{task.id}}）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；{{#if (gt getloop.waitMinutes 0)}}没活时每次最多阻塞 {{getloop.waitMinutes}} 分钟，直到 get 返回 timeout 为止。{{/if}}{{/if}}';

@@ -13,10 +13,6 @@ import { formatGoalTiming, renderInstruction } from '../../core/instruction-temp
 import { parseFrontmatter } from '../../shared/frontmatter.js';
 import { reorderRoundsForDelivery } from '../../shared/feedback-text.js';
 import {
-  resolveBlockTemplates,
-  type ResolvedBlockTemplate,
-} from '../../shared/prompt-blocks.js';
-import {
   clampTimeoutSec,
   clearWaiting,
   consumeCancelRequest,
@@ -41,24 +37,11 @@ import { formatDuration } from '../../core/instruction-template.js';
 import { readGroupContext } from './groupctx.js';
 import { annotateTaskDelivery, attachTemplateCtx } from './attach.js';
 import { compose, type RenderTraceEntry, type SegmentMeta } from '../promptplug/compose.js';
-import { buildDeliveryPlugins } from '../promptplug/index.js';
-import { PROMPT_ORDER_KEY } from '../promptplug/keys.js';
-import { getDb } from '../../core/db/index.js';
-import { readSettingRaw } from '../../core/db/settings.js';
+import { buildPlugins } from '../promptplug/index.js';
 import * as timegoal from './timegoal.js';
 
 // 跨进程兜底轮询间隔（只定这里的读取节奏；队列写入节奏与它无关）
 const POLL_MS = 500;
-
-/** 顺序数组（prompt.pluginOrder）的运行期读取：库没开 / 读失败 → undefined（compose 播种）。 */
-function storedPromptOrder(): readonly string[] | undefined {
-  try {
-    const v = readSettingRaw(getDb(), PROMPT_ORDER_KEY);
-    return Array.isArray(v) ? (v as string[]) : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 // 「YYYY-MM-DD HH:mm:ss」→ epoch ms（任务级 goal 的起点 = consumedAt）；解析不了返回 NaN
 function parseStampMs(v: unknown): number {
@@ -297,31 +280,31 @@ export async function buildTaskDelivery(
     }
 
     const mode: 'xml' | 'plain' = settings.appendMode === 'plain' ? 'plain' : 'xml';
-    // 每个区块按各自列表中选中的生效模板渲染（内置常驻，找不到就回落内置）
-    const blockTemplates = resolveBlockTemplates(settings.blockTemplates);
-    const plugins = buildDeliveryPlugins(blockTemplates, {
-      groupCtx,
-      attach,
-      queueInfo,
-      loopText,
-      waitMinutes: Number(getLoopWaitMinutes) || 0,
-    });
+    // #152：模板是插件类的内置正文（不再从 settings 解析）。
+    // 交付一次给全三条链（get → check → done，合并后按类声明的 order 全局排序）：
+    //   - check（时间目标 / 进度提示）与 done（完成门禁）没有独立的注入点——
+    //     它们本来就是「领取时告诉 agent 每轮怎么检查、什么时候才能收口」，
+    //     等 agent 真去 done 再给已经晚了；三者链内都是条件渲染，无数据即不出段。
+    const plugins = [...buildPlugins('get', {
+      groupCtx: () => groupCtx,
+      attach: () => attach,
+      queueInfo: () => queueInfo,
+      loopText: () => loopText,
+      waitMinutes: () => Number(getLoopWaitMinutes) || 0,
+    }), ...buildPlugins('check'), ...buildPlugins('done')];
     const segments: SegmentMeta[] = [
-      { id: 'context', label: '组 / 项目上下文（模板）', traceId: 'delivery', templateName: blockTemplates['context']?.name },
-      { id: 'attachment', label: '附件段（清单 / 本地路径）', traceId: 'attach', templateName: blockTemplates['attachment']?.name },
-      { id: 'timecheck', label: '时间目标（状态 / check 指令）', traceId: 'goal', templateName: blockTemplates['timecheck']?.name },
-      { id: 'goalhint', label: '特殊功能提示（timegoal）', templateName: blockTemplates['goalhint']?.name },
-      { id: 'doneguard', label: '完成门禁提示（timegoal）', templateName: blockTemplates['doneguard']?.name },
-      { id: 'ext', label: '待领取队列（ext）', traceId: 'ext', templateName: blockTemplates['ext']?.name },
-      { id: 'ack', label: 'ack 完成总结提示词', traceId: 'ack', templateName: blockTemplates['ack']?.name },
-      { id: 'getloop', label: '持续 get 指令（项目级）', traceId: 'getloop', templateName: blockTemplates['getloop']?.name },
+      { id: 'context', label: '组 / 项目上下文（模板）', traceId: 'delivery' },
+      { id: 'attachment', label: '附件段（清单 / 本地路径）', traceId: 'attach' },
+      { id: 'timecheck', label: '时间目标（状态 / check 指令）', traceId: 'goal' },
+      { id: 'goalhint', label: '特殊功能提示（timegoal）', traceId: 'goalhint' },
+      { id: 'doneguard', label: '完成门禁提示（timegoal）', traceId: 'doneguard' },
+      { id: 'ext', label: '待领取队列（ext）', traceId: 'ext' },
+      { id: 'ack', label: 'ack 完成总结提示词', traceId: 'ack' },
+      { id: 'getloop', label: '持续 get 指令（项目级）', traceId: 'getloop' },
     ];
     const full = await compose({
       plugins,
-      // 顺序数组唯一真相（方案 §5.1）：settings['prompt.pluginOrder'] 存在且合法
-      // → 按它渲染（拖动排序后 CLI 渲染顺序同步变化）；缺失/坏值由 compose 的
-      // resolveOrderIds 按插件 order 播种一次（加载期单点修复）。
-      orderIds: storedPromptOrder(),
+      groups: ['get', 'check', 'done'],
       seed: seedCtx,
       mode,
       trace,
@@ -331,22 +314,17 @@ export async function buildTaskDelivery(
     if (!full) {
       return { task, ...warnField };
     }
-    // coversBody = 启用区块的任一模板含 {{task.text}}（instruction 自包含任务正文）。
+    // coversBody = 本次交付链的任一模板含 {{task.text}}（instruction 自包含任务正文）。
     // 由服务端判定，避免 CLI 端做子串猜测。
     return {
       task,
       instruction: full,
-      coversBody: blocksCoverBody(blockTemplates),
+      coversBody: plugins.some((p) => /\{\{\s*task\.text\s*\}\}/.test(p.get())),
       ...warnField,
     };
   } catch {
     return { task };
   }
-}
-
-/** 当前生效模板里是否有模板写了 {{task.text}}（instruction 自包含任务正文）。 */
-function blocksCoverBody(templates: Record<string, ResolvedBlockTemplate>): boolean {
-  return Object.values(templates).some((t) => /\{\{\s*task\.text\s*\}\}/.test(String(t?.template || '')));
 }
 
 export interface WaitForTaskOptions {

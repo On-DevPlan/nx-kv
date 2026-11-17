@@ -39,6 +39,33 @@ test('出厂正文统一用 {{content}}', () => {
   assert.ok(!NEWTASK_REF_BODY.includes('{{问题}}'), '旧槽位名不该再出现在出厂文本里');
 });
 
+test('跨版本老行（没有插槽，但还留着出厂提示文字）→ 同样恢复出厂文本', () => {
+  const db = openStore();
+  // 模拟历史版本的出厂正文被渲染后落库：内容与当前出厂文本完全不同，且一个插槽都没有
+  const OLD = `## 本轮问题\n\n${HINT}\n\n---\n\n## 怎么干\n\n旧版 SOP 已经改过很多轮了。`;
+  db.run('UPDATE templates SET body = :b, vars = :v WHERE id = :id', { id: BUILTIN_ID, b: OLD, v: '{}' });
+  assert.ok(!bodyOf(db).includes('{{content}}'), '前提：库里没有插槽');
+
+  const healed = healRenderedBuiltinBodies(db, Date.now());
+  assert.deepEqual(healed, [BUILTIN_ID], '认得出这是内置模板的渲染残留，而不是用户手写的正文');
+  assert.match(bodyOf(db), /\{\{\s*content\s*\}\}/, '插槽回来了');
+});
+
+test('用户自建模板（builtin=0）没有插槽时不动', () => {
+  const db = openStore();
+  db.run(
+    `INSERT INTO templates (id, category, name, slot, body, vars_schema, vars, is_default,
+                            enabled, sort_order, builtin, state, version, deleted_at,
+                            created_at, updated_at)
+     VALUES ('t_heal_keep', 'newtask', '我的模板', 'suffix', '没有插槽的正文', '[]', '{}', 0,
+             1, 99, 0, '', 0, NULL, :at, :at)`,
+    { at: Date.now() },
+  );
+  healRenderedBuiltinBodies(db, Date.now());
+  const body = String(db.get('SELECT body FROM templates WHERE id = :id', { id: 't_heal_keep' }).body);
+  assert.equal(body, '没有插槽的正文', '用户模板原样保留');
+});
+
 test('被渲染过的内置正文 → 下次开库恢复成带插槽的出厂文本', () => {
   const db = openStore();
   assert.match(bodyOf(db), /\{\{\s*content\s*\}\}/, '新库直接是插槽版');

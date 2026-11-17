@@ -46,6 +46,7 @@ import { loadPrefs, updatePrefs } from './prefs.js';
 import { nextRepoData } from './repo-data.js';
 import SidebarRescueFab from './components/sidebar/rescue-fab.jsx';
 import { pushRoute } from './components/layout/route-history.js';
+import { sameRoute } from './routes/route-eq.js';
 import type { AppRoute, BoardRow, LocaltasksData, LocalTask, LocalTopic, Prefs, RepoData, RepoRow, SpecCtx } from './types.js';
 import type { AppValue } from './app-context.jsx';
 
@@ -224,7 +225,8 @@ export default function App() {
     // 队列建好了、hash 也写了，两拍后又被弹回 #/group/…。
     setRoute((prev) => {
       const next = routeFromHash();
-      return prev.view === next.view && prev.key === next.key && prev.task === next.task ? prev : next;
+      // 全字段比较（见 route-eq.ts）：少比 mode/id 会让模板视图内的跳转被判成「没变」
+      return sameRoute(prev, next) ? prev : next;
     });
   }, []);
 

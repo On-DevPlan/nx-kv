@@ -252,9 +252,16 @@ export function seedBuiltinTemplates(conn: DbApi, atMs: number): number {
 /**
  * 出厂正文自愈（#218；seedBuiltinTemplates 的第 ③ 步，独立导出以便单测）。
  *
- * 命中条件只有一个：内置行的 body **等于**「出厂文本按默认值渲染后的样子」。
- * 那正是旧编辑器「先渲染再编辑、保存回库」留下的产物 —— 插槽变成了提示文字。
- * 用户只要动过任何一个字（改写骨架、换掉提示、加一段），body 就对不上，一律不动。
+ * 两条判据，都只碰 `builtin = 1` 的行（用户自建模板 builtin=0，一律不动）：
+ *
+ *   ① **逐字相等**：body === 「出厂文本按默认值渲染后的样子」。
+ *      旧编辑器「先渲染再编辑、保存回库」的产物，插槽变了提示文字。
+ *   ② **渲染残留**：库里这行一个插槽都没有，**但还留着出厂的提示文字**
+ *      （`{{content}}` 被替换成的「（把你要问这个仓库的问题写在这里）」）。
+ *      跨了几个版本之后 ① 对不上（出厂文本本身改过），但症状一样：正文里再也
+ *      检不出槽位，「新建任务」永远进不了参数填写页（#153 验收反馈）。
+ *      只认「提示文字还在」这一种残留——用户手写的正文里没有这句提示，
+ *      照旧按 T06 不动。
  *
  * 返回被恢复的模板 id（正常库上是空数组，幂等）。
  */
@@ -268,7 +275,11 @@ export function healRenderedBuiltinBodies(conn: DbApi, atMs: number): string[] {
       | { body?: string; builtin?: number }
       | undefined;
     if (!row || !Number(row.builtin)) continue;
-    if (String(row.body || '') !== eaten) continue;
+    const cur = String(row.body || '');
+    const rendered = cur === eaten;
+    // 跨版本的渲染残留：没有插槽，但出厂提示文字还在（= 旧编辑器把插槽渲染成了提示）
+    const staleRender = !hasSlot(cur) && cur.includes(CONTENT_HINT);
+    if (!rendered && !staleRender) continue;
     conn.run(
       `UPDATE templates SET body = :body, vars = :vars, updated_at = :at
         WHERE id = :id AND builtin = 1`,

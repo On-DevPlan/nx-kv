@@ -218,12 +218,24 @@ export default function PromptTemplatesSection() {
             <div className='ppt-ed-title'>
               <b>{selected.label}</b>
               <code className='ppt-ed-tag'>{selected.tag}</code>
-              <span className={'ppt-pill' + (readOnlySegment ? '' : ' is-write')}>
+              <span
+                className={'ppt-pill' + (readOnlySegment ? '' : ' is-write')}
+                title={
+                  readOnlySegment
+                    ? '只读段：只读取共享上下文（task / goal / cwd…）来渲染本段，不产出新数据供别的段引用'
+                    : `可写段：产出 ${selected.writableKeys.join(' / ')} 写进共享上下文，后续段与模板都能引用`
+                }
+              >
                 {readOnlySegment ? '只读段' : '可写段'}
               </span>
               <span className='ppt-pill'>{groupLabel(selected.group)} · 第 {selected.order} 位</span>
             </div>
-            <span className='ppt-ed-sub'>{GROUP_HINT[selected.group] || ''}</span>
+            <span className='ppt-ed-sub'>
+              {GROUP_HINT[selected.group] || ''}
+              {readOnlySegment
+                ? ' · 本段不产数据，只是把已有数据渲染成一句话'
+                : ` · 本段产数据：${selected.writableKeys.join(' / ')}`}
+            </span>
           </div>
 
           <div className='ppt-ro-note'>

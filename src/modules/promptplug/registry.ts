@@ -17,7 +17,10 @@ import { AttachmentPlugin } from './plugins/attachment.js';
 import { ContextPlugin } from './plugins/context.js';
 import { ExtPlugin } from './plugins/ext.js';
 import { GetloopPlugin } from './plugins/getloop.js';
-import { AckPlugin, DoneguardPlugin, GoalhintPlugin, TimecheckPlugin } from './plugins/readonly-blocks.js';
+import { AckPlugin } from './plugins/ack.js';
+import { DoneguardPlugin } from './plugins/doneguard.js';
+import { GoalhintPlugin } from './plugins/goalhint.js';
+import { TimecheckPlugin } from './plugins/timecheck.js';
 
 /** 插件类（构造签名不统一：有的只吃模板，有的还要宿主 deps）。 */
 type PluginCtor = new (template: string, deps?: any) => AnyPromptPlugin;

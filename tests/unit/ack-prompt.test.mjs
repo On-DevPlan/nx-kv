@@ -1,7 +1,7 @@
 // ack 完成总结段测试（#152 后：正文来自 ack 插件类的内置模板，**不可配置**）。
 //
 // 历史（任务 #32 / S3）里 ack 是「设置里可增删的多条模板」，随 #152 的「模板唯一真相
-// = 插件类」一起下线：现在 ack 段就是 readonly-blocks.ts 的 ACK_BUILTIN，
+// = 插件类」一起下线：现在 ack 段就是 plugins/ack.ts 的 BUILTIN，
 // localtask.config 也不再接受 --ack / --ack-list。
 //
 // 仍要钉住的两件事：

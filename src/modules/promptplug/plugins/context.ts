@@ -4,37 +4,74 @@
 import { z } from 'zod';
 import { PromptPlugin, supplied, type Supply, type TemplateText } from '../base.js';
 
+// ── schema = 变量目录的唯一真相 ─────────────────────────────────────────
+// 每个字段的 .describe() 就是设置页「可使用变量」里显示的含义（schema-bridge 把
+// describe 读成 FieldDecl.label）。写清楚「这个变量是什么」，模板作者不用翻代码。
 const docItemShape = z.looseObject({
-  refId: z.string(),
-  desc: z.string(),
-  title: z.string(),
-  hasBody: z.boolean(),
+  refId: z.string().describe('文档 id（nx-kv docs get --ref 用）'),
+  desc: z.string().describe('一句话描述（列表里的定位标签）'),
+  title: z.string().describe('文档标题（正文首行 # 标题）'),
+  hasBody: z.boolean().describe('是否已写正文（false = 只有条目，没有内容）'),
 });
-const refRepoShape = z.looseObject({ key: z.string(), name: z.string(), path: z.string() });
-const peerShape = z.looseObject({ name: z.string(), note: z.string(), path: z.string(), hasNote: z.boolean() });
+
+const refRepoShape = z.looseObject({
+  key: z.string().describe('参考仓库 key（仓库清单里的唯一标识）'),
+  name: z.string().describe('参考仓库名'),
+  path: z.string().describe('本地绝对路径（可直接读）'),
+});
+
+const peerShape = z.looseObject({
+  name: z.string().describe('成员仓库名'),
+  note: z.string().describe('组内描述：它在组里的角色与配合关系'),
+  path: z.string().describe('本地绝对路径'),
+  hasNote: z.boolean().describe('是否写了组内描述'),
+});
 
 const repoShape = z.looseObject({
-  name: z.string(), key: z.string(),
-  intro: z.string(), introPath: z.string(), introRefId: z.string(), introDesc: z.string(),
-  docs: z.array(docItemShape), docCount: z.number(),
-  refRepos: z.array(refRepoShape), refRepoCount: z.number(),
+  name: z.string().describe('项目名（登记名；未填时回落 key）'),
+  key: z.string().describe('项目 key（本机组内唯一标识）'),
+  intro: z.string().describe('项目介绍正文（主篇全文）'),
+  introPath: z.string().describe('项目介绍文档路径（本地 md；没有为空串）'),
+  introRefId: z.string().describe('项目介绍文档 id（docs get --ref 用）'),
+  introDesc: z.string().describe('项目介绍的一句话描述'),
+  docs: z.array(docItemShape).describe('项目文档清单（refId / desc / title）'),
+  docCount: z.number().describe('项目文档数'),
+  refRepos: z.array(refRepoShape).describe('绑定到本项目的参考仓库清单'),
+  refRepoCount: z.number().describe('参考仓库数'),
 });
+
 const groupShape = z.looseObject({
-  name: z.string(), key: z.string(), desc: z.string(),
-  intro: z.string(), introPath: z.string(), introRefId: z.string(), introDesc: z.string(),
-  note: z.string(), position: z.string(),
-  peers: z.array(peerShape), peerCount: z.number(),
-  docs: z.array(docItemShape), docCount: z.number(),
-  refRepos: z.array(refRepoShape), refRepoCount: z.number(),
+  name: z.string().describe('项目组名'),
+  key: z.string().describe('项目组 key（组内唯一标识）'),
+  desc: z.string().describe('组定位：这个组是干什么的（一句话）'),
+  intro: z.string().describe('组介绍正文（主篇全文）'),
+  introPath: z.string().describe('组介绍文档路径（本地 md；没有为空串）'),
+  introRefId: z.string().describe('组介绍文档 id（docs get --ref 用）'),
+  introDesc: z.string().describe('组介绍的一句话描述'),
+  note: z.string().describe('组内描述：本项目在组里的位置（角色 / 协作关系）'),
+  position: z.string().describe('= note（旧字段名，新模板用 note）'),
+  peers: z.array(peerShape).describe('组内成员（name / note / path）'),
+  peerCount: z.number().describe('组内成员数'),
+  docs: z.array(docItemShape).describe('组文档清单'),
+  docCount: z.number().describe('组文档数'),
+  refRepos: z.array(refRepoShape).describe('组级绑定的参考仓库清单'),
+  refRepoCount: z.number().describe('组级参考仓库数'),
 });
 
 const schema = z.strictObject({
-  repo: repoShape.nullable(),
-  group: groupShape.nullable(),
-  refRepos: z.looseObject({ list: z.array(refRepoShape), count: z.number() }),
-  groups: z.array(z.looseObject({ name: z.string(), desc: z.string(), path: z.string() })),
+  repo: repoShape.nullable().describe('本项目（工作目录对应的登记仓库）；未登记 → null，整段换「未登记」提示'),
+  group: groupShape.nullable().describe('本次任务所属的项目组；没有组 / 空壳组 → null'),
+  refRepos: z
+    .looseObject({
+      list: z.array(refRepoShape).describe('项目绑定 ∪ 组级绑定（去重，项目在前）'),
+      count: z.number().describe('去重后的总数'),
+    })
+    .describe('可直接读取的参考仓库（交付里单列一段）'),
+  groups: z
+    .array(z.looseObject({ name: z.string(), desc: z.string(), path: z.string() }))
+    .describe('其它有内容的项目组概览（主组之外）'),
   // 可见 seed 变量（{{cwd}}），data() 不返回它
-  cwd: z.string().optional(),
+  cwd: z.string().optional().describe('工作目录绝对路径（seed，宿主传入）'),
 });
 
 /** 「项目文档 / 组文档」→ 结构化数组（模板用 {{#each}} 组织行）。 */
@@ -94,7 +131,7 @@ export function deliveryCtxOf(groupCtx: any) {
   const groupRefRepos = g ? refRepoItems(g.refRepos) : [];
   // 交付口径：本仓库直接绑定 ∪ 本次任务所属组的组级绑定，去重后按本仓库在前排序。
   const seenRefRepoKeys = new Set<string>();
-  const refRepoList: { key: string; name: string; path: string; note: string }[] = [];
+  const refRepoList: { key: string; name: string; path: string }[] = [];
   for (const r of [...repoRefRepos, ...groupRefRepos]) {
     const k = r.key || r.name;
     if (seenRefRepoKeys.has(k)) continue;

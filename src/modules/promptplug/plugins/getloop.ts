@@ -5,9 +5,19 @@ import { z } from 'zod';
 import { PromptPlugin, supplied, type Supply, type TemplateText } from '../base.js';
 
 const schema = z.strictObject({
-  getloop: z.looseObject({ text: z.string(), waitMinutes: z.number() }).nullable(),
+  getloop: z
+    .looseObject({
+      text: z.string().describe('「继续 get」的整段指令（宿主已渲染好的文本）'),
+      waitMinutes: z.number().describe('没活时每次阻塞的分钟数（0 = 不阻塞）'),
+    })
+    .nullable()
+    .describe('项目级持续 get；未开启 → null（整段不输出）'),
   // 可见 seed 变量（{{task.id}}），data() 不返回它
-  task: z.looseObject({ id: z.number(), text: z.string() }).optional().nullable(),
+  task: z
+    .looseObject({ id: z.number().describe('任务号'), text: z.string().describe('任务正文原文') })
+    .optional()
+    .nullable()
+    .describe('当前任务（seed，宿主传入）'),
 });
 
 /** 内置模板（#152：正文进代码）。 */

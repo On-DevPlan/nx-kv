@@ -334,13 +334,20 @@
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .ppt-vars-chips{display:flex;flex-wrap:wrap;gap:3px 6px;min-width:0}
+/* 变量：key + 含义（含义来自插件 schema 的 .describe()，不再是手写表） */
 .ppt-var{
+  display:inline-flex;align-items:baseline;gap:5px;max-width:100%;
   font:400 11px/1.5 ui-monospace,Consolas,monospace;padding:1px 5px;
   border:1px solid var(--line,#E4E2DC);border-radius:4px;
-  background:var(--paper,#fff);color:var(--ink,#16181C);cursor:pointer;
+  background:var(--paper,#fff);color:var(--ink,#16181C);cursor:default;
 }
-.ppt-var:hover{border-color:var(--mdw-accent-line,#B7D4C8);color:var(--mdw-accent,#2F6F5E)}
-.ppt-var[aria-disabled="true"]{cursor:default;opacity:.6}
+.ppt-var-key{flex:none}
+.ppt-var-desc{
+  font-family:system-ui,sans-serif;font-size:10.5px;color:var(--faint,#8A8578);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;
+}
+/* 只读展示：不跟随点击改色（它已经不是按钮） */
+.ppt-var[aria-disabled="true"]{cursor:default}
 
 .ppt-actions{
   display:flex;flex-wrap:wrap;align-items:center;gap:6px;

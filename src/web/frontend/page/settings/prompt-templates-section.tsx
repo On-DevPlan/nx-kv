@@ -272,7 +272,10 @@ export default function PromptTemplatesSection() {
                           aria-disabled='true'
                           title={`${r.full}${r.desc ? ` —— ${r.desc}` : ''}`}
                         >
-                          {r.rel}
+                          <span className='ppt-var-key'>{r.rel}</span>
+                          {r.label && r.label !== r.full && r.label !== r.rel && (
+                            <span className='ppt-var-desc'>{r.label}</span>
+                          )}
                         </code>
                       ))}
                     </div>

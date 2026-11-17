@@ -6,7 +6,7 @@
 /**
  * 默认 ack：完成任务就调用 localtask done 回填结果（任务 51 的职责合并决定）。
  * #152 起模板正文的唯一真相是插件类——ack 段的正文在
- * modules/promptplug/plugins/readonly-blocks.ts 的 ACK_BUILTIN；这里保留一份同文常量
+ * modules/promptplug/plugins/ack.ts 的 BUILTIN；这里保留一份同文常量
  * 只为兼容旧引用（设置视图的「多条」形态回显）。改文案请改插件类。
  */
 export const DEFAULT_ACK_PROMPT =

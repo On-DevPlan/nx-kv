@@ -3,13 +3,22 @@
 import { z } from 'zod';
 import { PromptPlugin, supplied, type Supply, type TemplateText } from '../base.js';
 
+// 内层字段全 optional：queueInfo 由宿主（pendingQueueInfo）构造，校验职责收敛在顶层段键。
+// .describe() 是设置页变量目录显示的含义（schema-bridge 读它当 label）。
+const queueItemShape = z.looseObject({
+  id: z.number().optional().describe('任务号（localtask show --id）'),
+  title: z.string().optional().describe('任务标题（正文首个非空行）'),
+});
+
 const schema = z.strictObject({
-  // 内层字段全 optional：queueInfo 由宿主（pendingQueueInfo）构造，校验职责收敛在顶层段键
-  ext: z.looseObject({
-    topic: z.string().optional(),
-    count: z.number().optional(),
-    list: z.array(z.looseObject({ id: z.number().optional(), title: z.string().optional() })).optional(),
-  }).nullable(),
+  ext: z
+    .looseObject({
+      topic: z.string().optional().describe('队列所属主题（工作目录名）'),
+      count: z.number().optional().describe('还有多少条待领取任务'),
+      list: z.array(queueItemShape).optional().describe('待领取任务清单（最多前几条）'),
+    })
+    .nullable()
+    .describe('同主题剩余队列；空队列 → null（整段不输出）'),
 });
 
 /** 内置模板（#152：正文进代码）。 */

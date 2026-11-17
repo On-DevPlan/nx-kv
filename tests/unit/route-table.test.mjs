@@ -29,8 +29,6 @@ const PANEL_CASES = [
   ['group', 'group', { boardId: 'B' }],
   ['repos', 'repos', {}],
   ['overview', 'overview', {}],
-  // svghub 是表化之后新增的视图（#svghub）：基线是**新增**的，不是重生成的
-  ['svghub', 'svghub', {}],
   ['templates-plain', 'templates', {}],
   ['templates-edit', 'templates', { mode: 'edit', id: 't1' }],
   ['templates-new-full', 'templates', { mode: 'new', topic: 'k 1', scope: ['topic:k 1', 'repo:r'] }],
@@ -54,7 +52,6 @@ const ROUTE_CASES = [
   ['group-plain', { view: 'group', key: 'B', task: '' }],
   ['repos', { view: 'repos', key: '', task: '' }],
   ['overview', { view: 'overview', key: '', task: '' }],
-  ['svghub', { view: 'svghub', key: '', task: '' }],
   ['templates-plain', { view: 'templates', key: '', task: '' }],
   ['templates-edit', { view: 'templates', key: '', task: '', mode: 'edit', id: 't1' }],
   ['templates-new', { view: 'templates', key: '', task: '', mode: 'new', topic: 'k 1', scope: 'topic:k 1, repo:r' }],

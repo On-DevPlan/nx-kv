@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { inMoreOf, metaOf, onBarOf } from './modules.js';
 import { useToolActsLayout } from './use-layout.js';
 import ToolActsLayoutPanel from './layout-panel.jsx';
+import { Icon } from '../icons.jsx';
 import './style.css';
 
 /** ToolActsBar 入参：kind 决定模块表，其余是按 id 覆盖的渲染/动作/文案。 */
@@ -68,18 +69,22 @@ export default function ToolActsBar({
 
   const labelOf = (id: string) => labels[id] || metaOf(kind, id).label || id;
 
-  const renderDefaultBtn = (id: string, opts: { primary?: boolean } = {}) => (
-    <button
-      key={id}
-      type="button"
-      className={opts.primary ? 'btn small primary' : 'btn small ghost'}
-      title={titles[id] || labelOf(id)}
-      disabled={!!disabled[id]}
-      onClick={() => actions[id] && actions[id]()}
-    >
-      {labelOf(id)}
-    </button>
-  );
+  const renderDefaultBtn = (id: string, opts: { primary?: boolean } = {}) => {
+    const m = metaOf(kind, id);
+    return (
+      <button
+        key={id}
+        type="button"
+        className={opts.primary ? 'btn small primary' : 'btn small ghost'}
+        title={titles[id] || labelOf(id)}
+        disabled={!!disabled[id]}
+        onClick={() => actions[id] && actions[id]()}
+      >
+        {m.icon ? <Icon name={m.icon} /> : null}
+        {labelOf(id)}
+      </button>
+    );
+  };
 
   const renderOne = (id: string) => {
     if (id === 'more') {
@@ -98,6 +103,7 @@ export default function ToolActsBar({
             setMoreOpen((v) => !v);
           }}
         >
+          <Icon name="dots" />
           {labelOf('more')} ▾
         </button>
       );
@@ -123,23 +129,27 @@ export default function ToolActsBar({
           {moreItems.length === 0 && (
             <div className="ta-more-empty">没有收纳的工具——可在编排里把按钮收入更多</div>
           )}
-          {moreItems.map((x) => (
-            <button
-              key={x.id}
-              type="button"
-              role="menuitem"
-              className="ta-more-it"
-              disabled={!!disabled[x.id]}
-              title={titles[x.id] || labelOf(x.id)}
-              onClick={() => {
-                setMoreOpen(false);
-                const act = actions[x.id];
-                if (act) act();
-              }}
-            >
-              {labelOf(x.id)}
-            </button>
-          ))}
+          {moreItems.map((x) => {
+            const m = metaOf(kind, x.id);
+            return (
+              <button
+                key={x.id}
+                type="button"
+                role="menuitem"
+                className="ta-more-it"
+                disabled={!!disabled[x.id]}
+                title={titles[x.id] || labelOf(x.id)}
+                onClick={() => {
+                  setMoreOpen(false);
+                  const act = actions[x.id];
+                  if (act) act();
+                }}
+              >
+                {m.icon ? <Icon name={m.icon} /> : null}
+                {labelOf(x.id)}
+              </button>
+            );
+          })}
           <div className="ta-more-sep" />
           <button
             type="button"
@@ -150,6 +160,7 @@ export default function ToolActsBar({
               setPanelOpen(true);
             }}
           >
+            <Icon name="gear" />
             自定义工具栏…
           </button>
         </div>,

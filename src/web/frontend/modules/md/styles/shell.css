@@ -137,6 +137,9 @@
   font-weight:650;font-size:12px;font-family:inherit;color:var(--ink,#16181C);
 }
 .mdw-fmt-menu-item .hint{margin-left:auto;font-weight:400;font-size:10.5px;font-family:inherit;color:var(--faint,#A9AEB4)}
+.mdw-fmt-menu-item .ic{flex:none;color:var(--mid,#838A93)}
+.mdw-fmt-menu-item:hover .ic{color:currentColor}
+.mdw-fmt-menu-item.danger .ic{color:currentColor}
 .mdw-fmt-menu-item:hover{background:var(--mdw-accent-soft);color:var(--mdw-accent)}
 .mdw-fmt-menu-item.danger{color:var(--danger,#b3261e)}
 .mdw-fmt-menu-item.danger:hover{background:rgba(179,38,30,.07);color:var(--danger,#b3261e)}

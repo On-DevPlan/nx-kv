@@ -479,7 +479,6 @@ export default function Sidebar({
         {footEntry('#/templates', 'list', '任务模板')}
         {footEntry('#/overview', 'overview', '全部目录总览')}
         {footEntry('#/repos', 'repo', '仓库管理')}
-        {footEntry('#/svghub', 'shapes', 'SVG 资产库')}
         {waitingCount > 0 && (
           <button className="trow" onClick={() => onNavigate?.('#/overview')} title="有 agent 正在等待回填">
             <span className="gico"><Icon name="warn" /></span>

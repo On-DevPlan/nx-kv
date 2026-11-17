@@ -452,7 +452,6 @@ export default function Landing({
               progress: '打开这个目录的进程面板',
               more: '更多操作',
               refs: '查看文档 / reference 列表',
-              svghub: '打开 SVG 资产库（界面图标的唯一来源，可复制 / 导出）',
               plan: '选中任务后：待领取 ↔ 草稿（草稿不进 get/wait 队列；行尾 ⋯ 菜单也能单条切换）',
             }}
             renderers={{
@@ -498,7 +497,6 @@ export default function Landing({
               progress: onProg,
               orch: onOpenFlow,
               refs: onRefs,
-              svghub: () => app.onNavigate?.('#/svghub'),
               plan: () => {
                 if (!planTargets.length) {
                   toast('先勾选任务：待领取可转草稿，草稿可转回待领取（行尾 ⋯ 菜单也能单条切换）');

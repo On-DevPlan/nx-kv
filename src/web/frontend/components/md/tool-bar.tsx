@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import { inMoreOf, metaOf, onBarOf } from '../tool-acts/modules.js';
 import { useToolActsLayout } from '../tool-acts/use-layout.js';
 import ToolActsLayoutPanel from '../tool-acts/layout-panel.jsx';
+import { Icon } from '../icons.jsx';
 import '../tool-acts/style.css';
 
 const KIND = 'task';
@@ -220,6 +221,7 @@ export default function ToolBar({
             aria-haspopup="menu"
             onClick={(e) => openMenuAt(actMore, e, 'right')}
           >
+            <Icon name="dots" />
             更多
           </button>
         </div>
@@ -227,6 +229,7 @@ export default function ToolBar({
     }
     const s = specs[id];
     if (!s) return null;
+    const m = metaOf(KIND, id);
     return (
       <button
         key={id}
@@ -234,6 +237,7 @@ export default function ToolBar({
         className={s.primary ? 'btn sm primary' : 'btn ghost sm'}
         onClick={() => runItem(id)}
       >
+        {m.icon ? <Icon name={m.icon} /> : null}
         {s.label}
       </button>
     );
@@ -276,6 +280,7 @@ export default function ToolBar({
               {g.items.map((x: { id: string }) => {
                 const s = specs[x.id];
                 const danger = s?.danger || metaOf(KIND, x.id).danger;
+                const m = metaOf(KIND, x.id);
                 return (
                   <button
                     key={x.id}
@@ -284,6 +289,7 @@ export default function ToolBar({
                     className={'mdw-fmt-menu-item' + (danger ? ' danger' : '')}
                     onClick={() => runItem(x.id)}
                   >
+                    {m.icon ? <Icon name={m.icon} /> : null}
                     {s?.label || metaOf(KIND, x.id).label || x.id}
                     {s?.hint ? <span className="hint">{s.hint}</span> : null}
                   </button>
@@ -293,6 +299,7 @@ export default function ToolBar({
           ))}
           {ungroupedMore.map((x: { id: string }) => {
             const s = specs[x.id];
+            const m = metaOf(KIND, x.id);
             return (
               <button
                 key={x.id}
@@ -301,6 +308,7 @@ export default function ToolBar({
                 className={'mdw-fmt-menu-item' + (s?.danger || metaOf(KIND, x.id).danger ? ' danger' : '')}
                 onClick={() => runItem(x.id)}
               >
+                {m.icon ? <Icon name={m.icon} /> : null}
                 {s?.label || metaOf(KIND, x.id).label || x.id}
               </button>
             );
@@ -315,6 +323,7 @@ export default function ToolBar({
               setPanelOpen(true);
             }}
           >
+            <Icon name="gear" />
             自定义工具栏…
           </button>
         </MenuPortal>

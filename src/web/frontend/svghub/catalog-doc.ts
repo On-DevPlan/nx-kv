@@ -91,4 +91,12 @@ export const DOC_ASSETS: SvgAsset[] = [
     where: '工具区「编排」入口',
     els: [p('M4 7h6M14 7h6M4 17h6M14 17h6M10 7a4 4 0 0 0 4 4M14 13a4 4 0 0 0-4 4')],
   },
+  {
+    name: 'fork',
+    label: '派生',
+    group: 'doc',
+    keys: ['fork', '派生', '分叉', 'fork-of'],
+    where: '任务页「Fork 任务」',
+    els: [p('M6 18.4v-7.4h5'), p('M11 11l3.4-3.4'), p('M11 11l3.4 3.4'), c(6, 20, 1.6), c(17.6, 6.4, 1.8), c(17.6, 15.6, 1.8)],
+  },
 ];

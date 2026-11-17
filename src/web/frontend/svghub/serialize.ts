@@ -1,10 +1,10 @@
 // SVG 资产库 · 序列化：把目录里的图元写成真正的 SVG 文本。
 //
 // 用途有两个，缺一不可：
-//   1) 资产库页「复制 SVG / 下载 .svg」——资产要能离开这个仓库被别处使用；
+//   1) `scripts/export-icons.mjs` 把全库落成 .svg 文件，别的项目/工具直接拿去用；
 //   2) 单测可以只看文本，钉住「资产没写坏」（路径语法、坐标越界）。
 //
-// 导出文本与界面渲染共用同一份 els，不会出现「预览是这个、导出是另一个」。
+// 导出文本与界面渲染共用同一份 els，不会出现「界面是这个、导出是另一个」。
 import type { SvgAsset, SvgEl } from './types.js';
 
 const num = (n: number): string => (Number.isInteger(n) ? String(n) : String(n));
@@ -36,18 +36,4 @@ export function svgMarkup(asset: SvgAsset): string {
     '</svg>',
     '',
   ].join('\n');
-}
-
-/** 触发浏览器下载一份 .svg（资产库页「下载」按钮用）。 */
-export function downloadSvg(name: string, text: string): void {
-  const blob = new Blob([text], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}.svg`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  // 立刻 revoke 会让部分浏览器来不及读 URL，挪到下一帧
-  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

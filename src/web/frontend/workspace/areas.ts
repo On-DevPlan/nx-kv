@@ -29,7 +29,6 @@ export const PANEL_AREA: Record<string, AreaName> = {
   group: AREA.MAIN,
   repos: AREA.MAIN,
   overview: AREA.MAIN,
-  svghub: AREA.MAIN,
   templates: AREA.MAIN,
   doc: AREA.MAIN,
   dag: AREA.MAIN,
@@ -44,7 +43,6 @@ export const SINGLETON_PANELS = new Set([
   'sidebar',
   'repos',
   'overview',
-  'svghub',
   // templates 不再单例（#137）：new/edit 靠 config.mode 区分，空 config 是目录页
   'progress',
   'refs',

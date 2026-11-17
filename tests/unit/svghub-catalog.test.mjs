@@ -1,10 +1,13 @@
-// SVG 资产库的守门测试：把「资产没写坏」与「挂载点没悬空」钉成断言。
+// 图标资产目录（svghub/）的守门测试：把「资产没写坏」与「挂载点没悬空」钉成断言。
+// 目录只服务开发期（统一管理 + 多路复用），界面上没有独立页面，所以这里的挂载
+// 断言比任何截图都重要：名字写错只会静默变白，测试负责让它变红。
 //
-// 三类断言：
+// 四类断言：
 //   1) 目录本身：名字唯一、分类合法、图元非空、路径语法与坐标在 24 网格内；
 //   2) 序列化：独立 .svg 文本可被解析（有 xmlns / viewBox / 成对标签）；
-//   3) 挂载：源码里出现的字面量 <Icon name="…"> / <SvgIcon name="…"> / glyph('…')
-//      必须在目录里有登记——名字写错会静默变白，这层负责让它变红。
+//   3) 检索口径；
+//   4) 挂载：源码里的 <Icon name="…"> / <SvgIcon name="…"> / glyph('…') / 工具区
+//      模块表里的 icon: '…' 必须在目录里有登记。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -67,7 +70,7 @@ test('序列化：每份资产都能导出独立 .svg', () => {
   }
 });
 
-/** 检索与统计：资产库页依赖的口径。 */
+/** 检索与统计：检索口径的守门。 */
 test('检索：名字 / 中文名 / 别名都能命中，空串返回全库', () => {
   assert.equal(searchAssets('').length, SVG_ASSETS.length);
   assert.equal(searchAssets('repo').some((a) => a.name === 'repo'), true);
@@ -101,6 +104,8 @@ test('挂载：源码里引用的图标名都在资产库里', () => {
     const src = readFileSync(file, 'utf8');
     for (const m of src.matchAll(/<(?:Icon|SvgIcon)\s+name="([a-z][a-z0-9-]*)"/g)) check(m[1], file);
     for (const m of src.matchAll(/glyph\('([a-z][a-z0-9-]*)'\)/g)) check(m[1], file);
+    // 工具区模块表的 icon 字段（按钮/菜单项的图标走这条通道，不是 JSX 字面量）
+    for (const m of src.matchAll(/\bicon: '([a-z][a-z0-9-]*)'/g)) check(m[1], file);
   }
   assert.deepEqual(missing, [], `以下图标名没有登记：\n${missing.join('\n')}`);
 });

@@ -10,6 +10,7 @@ import type {
 import { defaultLayout, inMoreOf, metaOf, onBarOf } from './modules.js';
 import type { LayoutItem } from './modules.js';
 import { isLocked, moveModule, nudgeModule, setFlag } from './dnd.js';
+import { Icon } from '../icons.jsx';
 
 /** 编排面板入参（layout 是当前生效布局，保存才回写）。 */
 export interface ToolActsLayoutPanelProps {
@@ -188,6 +189,7 @@ export default function ToolActsLayoutPanel({ kind, layout, setLayout, onClose }
           <div className="tlp-section-label">预览（可直接拖动这里的按钮排序）</div>
           <div className="tlp-preview" role="list" data-testid="tlp-preview">
             {barRows.map((x) => {
+              const m = metaOf(kind, x.id);
               const chipHint = dropKey === `chip:${x.id}:before` ? ' drop-before'
                 : dropKey === `chip:${x.id}:after` ? ' drop-after' : '';
               return (
@@ -195,7 +197,7 @@ export default function ToolActsLayoutPanel({ kind, layout, setLayout, onClose }
                   key={x.id}
                   className={[
                     'tlp-chip',
-                    metaOf(kind, x.id).section === 'primary' ? 'primary' : '',
+                    m.section === 'primary' ? 'primary' : '',
                     srcId === x.id ? 'dragging' : '',
                     chipHint,
                   ].filter(Boolean).join(' ')}
@@ -206,7 +208,8 @@ export default function ToolActsLayoutPanel({ kind, layout, setLayout, onClose }
                   onDragOver={(e) => overChip(x, e)}
                   onDrop={(e) => dropChip(x, e)}
                 >
-                  {metaOf(kind, x.id).label || x.id}
+                  {m.icon ? <Icon name={m.icon} size={12} /> : null}
+                  {m.label || x.id}
                 </span>
               );
             })}
@@ -252,6 +255,7 @@ export default function ToolActsLayoutPanel({ kind, layout, setLayout, onClose }
                     title={m.noHide ? '不可隐藏' : '收入「更多」'}
                   />
                   <span className="tlp-nm">
+                    <span className="tlp-nm-ico">{m.icon ? <Icon name={m.icon} size={13} /> : null}</span>
                     {m.label || item.id}
                     {m.noHide ? <span className="tlp-sub">固定显示</span> : null}
                   </span>
@@ -294,7 +298,7 @@ export default function ToolActsLayoutPanel({ kind, layout, setLayout, onClose }
                     onChange={() => toggleVis(item.id)}
                     title="显示到工具栏"
                   />
-                  <span className="tlp-nm">{m.label || item.id}</span>
+                  <span className="tlp-nm">{m.icon ? <span className="tlp-nm-ico"><Icon name={m.icon} size={13} /></span> : null}{m.label || item.id}</span>
                 </div>
               );
             })}

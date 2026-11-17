@@ -11,22 +11,22 @@ import {
 } from '../../src/web/frontend/components/tool-acts/modules.js';
 import { moveModule, nudgeModule, setFlag } from '../../src/web/frontend/components/tool-acts/dnd.js';
 
-test('dir default: bar has new/import/progress/orch/plan/svghub/more; refs in more (#126 草稿 + #161 tpl 并入新建钮箭头)', () => {
+test('dir default: bar has new/import/progress/orch/plan/more; refs in more (#126 草稿 + #161 tpl 并入新建钮箭头)', () => {
   const layout = defaultLayout('dir');
   const bar = layout.filter((x) => onBarOf('dir', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('dir', x)).map((x) => x.id);
-  assert.deepEqual(bar, ['new', 'import', 'progress', 'orch', 'plan', 'svghub', 'more']);
+  assert.deepEqual(bar, ['new', 'import', 'progress', 'orch', 'plan', 'more']);
   assert.deepEqual(more, ['refs']);
   // 旧布局里存过的 tpl id 会被 normalizeLayout 丢掉（未知模块）
   const norm = normalizeLayout('dir', [...layout, { id: 'tpl', visible: true }]);
   assert.ok(!norm.some((x) => x.id === 'tpl'));
 });
 
-test('group default: bar has new/progress/addMember/orch/svghub/more; refs in more', () => {
+test('group default: bar has new/progress/addMember/orch/more; refs in more', () => {
   const layout = defaultLayout('group');
   const bar = layout.filter((x) => onBarOf('group', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('group', x)).map((x) => x.id);
-  assert.deepEqual(bar, ['new', 'progress', 'addMember', 'orch', 'svghub', 'more']);
+  assert.deepEqual(bar, ['new', 'progress', 'addMember', 'orch', 'more']);
   // #180：两页都去掉了「已删除任务」入口，更多里只剩「查看列表」
   assert.deepEqual(more, ['refs']);
 });
@@ -102,11 +102,11 @@ test('nudgeModule moves within bar segment', () => {
   assert.equal(bar[i - 1], 'addMember');
 });
 
-test('repos default (#147): bar has add/svghub/more; boards/refs/transfer in more', () => {
+test('repos default (#147): bar has add/more only; boards/refs/transfer in more', () => {
   const layout = defaultLayout('repos');
   const bar = layout.filter((x) => onBarOf('repos', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('repos', x)).map((x) => x.id);
-  assert.deepEqual(bar, ['add', 'svghub', 'more']);
+  assert.deepEqual(bar, ['add', 'more']);
   assert.deepEqual(more, ['boards', 'refs', 'transfer']);
   // 主按钮不可收起（noHide），显式藏也藏不掉
   const forced = setVisible(layout, 'add', false, 'repos');

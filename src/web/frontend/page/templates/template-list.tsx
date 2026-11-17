@@ -1,14 +1,12 @@
 // 任务模板列表（#217：从「设置 → 任务模板」搬到侧边栏入口，在主内容区显示）。
 //
-// 与设置页那份的差别：
-//   · 页面级布局（.rp-page 外壳，与仓库管理页同款头部），不是设置里的卡片堆；
-//   · 每张卡带**预览**——按当前正文渲染成本来的样子，没填的槽位显示〔槽位名〕；
-//   · 编辑仍走全屏模板编辑器（#/templates/edit/<id>），这里只做列表与轻动作。
-//
-// 数据面零新增：/api/templates（App 层 useTemplates 已持有一份）+ 已有的 scope。
+// #151 重做：图标优先、文字收敛。操作从五个纯文字按钮改成图标按钮，头部去掉
+// 大段插槽说明，卡片只留「名称 / 一行摘要 / 徽标 / 图标操作」，预览与可见域
+// 按需展开。数据面不变：/api/templates（App 层 useTemplates 已持有一份）+ scope。
 import { useState } from 'react';
 import { useApp } from '../../app-context.jsx';
 import { Button } from '../../components/button/index.jsx';
+import { Icon } from '../../components/icons.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { renderMarkdownHtml } from '../../modules/md/md-parse.js';
@@ -24,9 +22,7 @@ function summaryOf(body: string): string {
   const lines = String(body || '')
     .split('\n')
     .map((l) =>
-      l
-        .trim()
-        // 标题 / 列表 / 引用标记对「认模板」没帮助，摘要是给人扫一眼的
+      l.trim()
         .replace(/^#{1,6}\s+/, '')
         .replace(/^[-*+]\s+\[[ x]\]\s*/i, '')
         .replace(/^[-*+]\s+/, '')
@@ -46,7 +42,6 @@ export default function TemplateListPanel() {
   const [scopeOpenId, setScopeOpenId] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // #149：模板列表关键词过滤（名称 / 正文摘要 / 可见范围）
   const [q, setQ] = useState('');
 
   const go = (hash: string) => app.onNavigate?.(hash);
@@ -89,14 +84,12 @@ export default function TemplateListPanel() {
       {dialogNode}
       <div className="page-head">
         <div className="title-block">
-          <h2>任务模板</h2>
-          <p className="muted tpl-head-note">
-            新建任务时的正文骨架。带 <code>{'{{content}}'}</code> 的段落可在任务里填写，其余骨架在任务中只读。
-          </p>
+          <h2><Icon name="list" size={16} /> 任务模板</h2>
+          <p className="muted tpl-head-note">新建任务时的正文骨架；带 <code>{'{{content}}'}</code> 的段落可在填写页填值。</p>
         </div>
         <div className="acts">
-          <Button variant="primary" disabled={busy} onClick={() => go('#/templates/new')}>
-            ＋ 新建模板
+          <Button variant="primary" small disabled={busy} onClick={() => go('#/templates/new')}>
+            <Icon name="plus" size={13} /> 新建
           </Button>
         </div>
       </div>
@@ -107,7 +100,7 @@ export default function TemplateListPanel() {
           <ListSearch
             value={q}
             onChange={setQ}
-            placeholder="搜索模板名称 / 正文 / 可见范围…"
+            placeholder="搜索名称 / 正文 / 可见范围…"
             title="过滤任务模板"
             count={shownTemplates.length}
             className="wide"
@@ -128,61 +121,57 @@ export default function TemplateListPanel() {
                 {isDefault && <span className="tpl-badge">默认</span>}
                 {t.builtin && <span className="tpl-badge soft">内置</span>}
                 {slots.length > 0 && (
-                  <span className="tpl-card-slots" title={slots.join('、')}>
-                    槽位 {slots.length}：{slots.slice(0, 3).join(' / ')}{slots.length > 3 ? ' …' : ''}
+                  <span className="tpl-badge slot" title={slots.join('、')}>
+                    <Icon name="list" size={11} /> {slots.length}
                   </span>
                 )}
                 <span className="grow tpl-card-grow" />
                 <div className="tpl-card-acts">
-                  <Button
-                    variant="secondary"
-                    small
+                  <button
+                    type="button"
+                    className="iconbtn"
+                    title={previewOpen ? '收起预览' : '预览'}
                     onClick={() => setPreviewId(previewOpen ? null : t.id)}
                   >
-                    {previewOpen ? '收起预览' : '预览'}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    small
+                    <Icon name="monitor" size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className={'iconbtn' + (scopeOpen ? ' is-on' : '')}
+                    title="可见范围"
                     disabled={busy}
                     onClick={() => setScopeOpenId(scopeOpen ? null : t.id)}
                   >
-                    可见绑定
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    small
+                    <Icon name="globe" size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="iconbtn"
+                    title="编辑"
                     disabled={busy}
                     onClick={() => go(`#/templates/edit/${encodeURIComponent(t.id)}`)}
                   >
-                    编辑
-                  </Button>
+                    <Icon name="edit" size={14} />
+                  </button>
                   {!isDefault && (
-                    <Button
-                      variant="secondary"
-                      small
+                    <button
+                      type="button"
+                      className="iconbtn"
+                      title="设为默认"
                       disabled={busy}
                       onClick={() => act(() => tpl.setDefault(t.id), `默认模板已设为「${t.name}」`)}
                     >
-                      设为默认
-                    </Button>
+                      <Icon name="star" size={14} />
+                    </button>
                   )}
                   {!t.builtin && (
-                    <Button variant="secondary" small disabled={busy} onClick={() => removeTpl(t)}>
-                      删除
-                    </Button>
+                    <button type="button" className="iconbtn" title="删除" disabled={busy} onClick={() => removeTpl(t)}>
+                      <Icon name="trash" size={14} />
+                    </button>
                   )}
                 </div>
               </div>
-
               <div className="tpl-card-sum">{summaryOf(t.body) || '（空模板）'}</div>
-
-              {slots.length === 0 && (
-                <div className="tpl-card-hint">
-                  未声明插槽：这条模板生成的任务整篇可编辑。在正文里写 <code>{'{{content}}'}</code>
-                  就能把那段变成任务里可填的插槽（可写多次，共用同一个值），其余骨架随之只读。
-                </div>
-              )}
 
               {scopeOpen && (
                 <div className="tpl-card-scope">
@@ -193,15 +182,10 @@ export default function TemplateListPanel() {
                   />
                 </div>
               )}
-
               {previewOpen && (
                 <div className="tpl-preview">
-                  <div className="tpl-preview-note">
-                    预览 · 插槽按当前值渲染，未填的显示〔content〕
-                  </div>
                   <div
                     className="tpl-preview-body mdw-lp-view"
-                    // 预览只渲染模板自身正文，不含任务上下文——纯只读展示
                     dangerouslySetInnerHTML={{ __html: renderMarkdownHtml(renderTemplatePreview(t.body, t.values)) }}
                   />
                 </div>

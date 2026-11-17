@@ -29,6 +29,7 @@ import { persistAtt } from '../../components/md/attachments.js';
 import type { Attachment } from '../../components/md/attach-common.js';
 import type { AttachAreaHandle } from '../../components/md/attach-area.jsx';
 import { pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
+import { takeTaskIntent } from '../../modules/md/task-intent.js';
 import {
   liveBodyBlocks,
   titleFromMd,
@@ -229,6 +230,19 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
   });
   const { composeText, submit, importMd, delTask, canComplete, canCancel, closeTask, canPlan, togglePlan, addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel } = actions;
+
+  // #151「直接提交」：参数填写页在 doc-store 里种好正文、开到这一页并留下一次性
+  // intent；这里 mount 时取走并等 doc 就绪后自动 submit 一次（落库为待领取任务）。
+  // StrictMode / 重挂载只会消费一次，避免双提交。
+  const autoSubmitRef = useRef(false);
+  useEffect(() => {
+    if (takeTaskIntent(id)?.submit) autoSubmitRef.current = true;
+  }, [id]);
+  useEffect(() => {
+    if (!autoSubmitRef.current || !doc || !isDraft) return;
+    autoSubmitRef.current = false;
+    void submit();
+  }, [doc, isDraft, submit]);
 
   const feedback = useFeedback({
     doc, isDraft, task, taskRow, topicKey, topic, isGlobal, dirKey,

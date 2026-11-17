@@ -96,7 +96,7 @@ test('导出 zip：layout v5 + docs/<refId>.md；layout.docs.files 是 zip 内�
   const bd = layout.boards.find((x) => x.name === 'nx系列');
   assert.deepEqual(bd.doc, { ref: ids.boardId });
   assert.deepEqual(bd.repoDocs, { 'github.com/me/alpha': { ref: ids.noteId } });
-  assert.deepEqual(bd.repos, [{ key: 'github.com/me/alpha', note: '组里的任务出入口' }]);
+  assert.deepEqual(bd.repos, [{ key: 'github.com/me/alpha' }]);
   const rp = layout.repos.find((x) => x.name === 'alpha');
   assert.deepEqual(rp.doc, { ref: ids.projectId });
 });
@@ -119,10 +119,12 @@ test('导入 round-trip：换一个空环境，文档正文与 ref 绑定全部�
   assert.equal(await store.readOwnDoc(ids.noteId), EXPECTED.note);
   assert.equal(await store.readOwnDoc(ids.freeId), EXPECTED.free);
 
-  // 成员与组内摘要也还原了（layout.repos[].note → repoNotes）
+  // 成员与组内描述文档都还原了（组内描述 = 绑定 ref 文档，不再是文本字段）
   const bd = await boards.getBoard('nx系列');
   assert.equal(bd.repos.length, 1);
-  assert.equal(bd.repos[0].note, '组里的任务出入口');
+  assert.equal(String(bd.repos[0].key), 'github.com/me/alpha');
+  assert.equal(bd.repos[0].note, undefined, 'v13 后成员行不再有 note');
+  assert.equal(String(bd.repos[0].noteDocId), 'ref:' + ids.noteId, '组内描述文档按 refId 还原');
   assert.equal(bd.introMain.refId, ids.boardId, '组介绍主篇按 refId 还原');
   assert.equal(bd.introMain.docId, 'ref:' + ids.boardId);
 
@@ -177,9 +179,9 @@ test('外部绑定导入：路径缺失标 pendingExternal + 待初始化 warnin
   assert.ok(result.pendingExternal.some((p) => p.path === expectedPath));
   assert.ok(result.warnings.some((w) => /待初始化/.test(w)));
 
-  // 外部路径不打包字节，只保留 refId + note
+  // 外部路径不打包字节，只保留 refId（v13 后不再有 note 注解）
   const bd = (await repos.loadStore()).boards.find((x) => x.name === 'nx系列');
-  assert.deepEqual(bd.docLinks, [{ ref: extRef, note: 'Obsidian' }]);
+  assert.deepEqual(bd.docLinks, [{ ref: extRef }]);
 });
 
 test('v3 老布局（无 docs 段）照常导入', async () => {
@@ -193,7 +195,8 @@ test('v3 老布局（无 docs 段）照常导入', async () => {
   assert.equal(result.created.length, 1);
   assert.equal(result.docs.written.length, 0);
   const bd = await boards.getBoard('旧组');
-  assert.equal(bd.repos[0].note, '老描述');
+  assert.equal(bd.repos[0].key, 'github.com/me/old');
+  assert.equal(bd.repos[0].note, undefined, '老布局里的 note 文本字段不再被读回');
 });
 
 test('writeExportZip 落盘后文件可再拆（CLI --zip 链路）', async () => {

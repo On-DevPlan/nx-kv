@@ -91,8 +91,8 @@ export function parseLayout(json: unknown): Layout {
 const refOf = (raw: unknown): any => {
   const d = sanitizeDocRef(raw);
   if (!d) return null;
-  // sanitizeDocRef 通过即说明 raw 是 DocRef 形状对象（note 注解原样带出）
-  return withLinkMeta(d, raw as { note?: unknown });
+  // sanitizeDocRef 通过即说明 raw 是 DocRef 形状对象
+  return withLinkMeta(d);
 };
 
 function normalizeLayout(data: any): Layout {

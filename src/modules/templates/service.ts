@@ -346,6 +346,51 @@ export async function updateTemplate({ id, name: rawName, body: rawBody, bodyFil
   });
 }
 
+/**
+ * 重排任务模板顺序（#151）：ids 是「期望的完整顺序」（只含 newtask 类目）。
+ * 前端 topic 管理页拖完序把可见行 id 按新序传进来；这里按数组下标写 sort_order。
+ * 不在 ids 里的同类目行被挪到末尾（保持相对顺序），避免排序与展示不一致。
+ */
+export async function reorderTemplates({ ids }: { ids?: unknown } = {}): Promise<{
+  status: string;
+  templates: TemplateView[];
+  defaultId: string;
+}> {
+  const ordered = Array.isArray(ids) ? ids.map((x) => String(x || '').trim()).filter(Boolean) : [];
+  if (!ordered.length) throw badInput('需要 ids（模板 id 的有序数组）');
+  return repo.txw((conn) => {
+    // 校验：全部存在且属于 newtask 类目
+    const known = new Map<string, any>();
+    for (const r of repo.templates.listRows(conn)) {
+      if (r.category === NEWTASK_CATEGORY) known.set(String(r.id), r);
+    }
+    for (const id of ordered) {
+      if (!known.has(id)) throw notFound(`没有 id 为 ${id} 的任务模板`);
+    }
+    // 只重排传入的这些行：拿它们**自己原来的 sort_order 槽位**（升序）按新顺序
+    // 回填。未列出的行（本主题不可见、管理页没显示）保持原位，不被挪到末尾。
+    //
+    // 槽位去重后仍可能有并列（历史数据：老 nextSortOrder 的 bug 让新模板全是 0），
+    // 所以按「严格递增」归一化一遍——否则两条 0 交换等于没换。
+    const raw = ordered
+      .map((id) => Number(known.get(id)!.sort_order) || 0)
+      .sort((a, b) => a - b);
+    const slots: number[] = [];
+    let prev = Number.NEGATIVE_INFINITY;
+    for (const s of raw) {
+      const v = s > prev ? s : prev + 1;
+      slots.push(v);
+      prev = v;
+    }
+    repo.templates.reorderRows(conn, ordered, nowMs(), slots);
+    const templates = repo.templates
+      .listRows(conn)
+      .filter((r) => r.category === NEWTASK_CATEGORY)
+      .map(rowToView);
+    return { status: 'ok', templates, defaultId: defaultIdOf(conn) };
+  });
+}
+
 /** 设默认模板：新建页的起始正文换成它。 */
 export async function setDefaultTemplate({ id }: { id?: unknown } = {}): Promise<{
   status: string;

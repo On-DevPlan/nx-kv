@@ -5,7 +5,7 @@
 //
 // 两套语义分开，是因为它们的消费者不同：前者进交付正文，后者进设置页的预览框。
 // 预览**不写任何存储**、不改变真相——模板正文（templates.json / sqlite）仍是唯一真源。
-import { parseFrontmatter, withFrontmatter } from '../../../../shared/frontmatter.js';
+import { withFrontmatter } from '../../../../shared/frontmatter.js';
 import { renderTemplateBody } from './render-template-body.js';
 
 const SLOT_RE = /\{\{\s*([^}{\s][^{}]*?)\s*\}\}/g;
@@ -35,23 +35,14 @@ export function renderTemplatePreview(
 }
 
 /**
- * 从任务正文的 frontmatter 读「这条任务由哪个模板生成」（键 `template`）。
+ * 由模板生成的**任务正文**（#151）：槽位按「没值留空」渲染成**纯文本**，
+ * 不再把模板身份写进 frontmatter —— 槽位概念的生命周期只到「任务内容生成前」，
+ * 下落到文本层（编辑器里的「模板/插槽」只读块）已被移除。
  *
- * 没有该键 = 不是模板生成的任务（用户直接写的），编辑器不加任何只读区。
- * 为什么要落进 frontmatter：编辑器的只读判定需要**模板身份**才能拿到骨架正文；
- * 模板 id 存在正文头里，刷新 / 换设备 / CLI 侧编辑后都还在，不依赖前端内存。
- */
-export function templateIdOf(body: unknown): string {
-  const fm = parseFrontmatter(body);
-  return String(fm.template || '').trim();
-}
-
-/**
- * 由模板生成的**任务正文**：槽位按「没值留空」渲染，并把模板身份写进 frontmatter。
+ * 这是「模板 → 任务」的唯一入口（新建任务 / 参数页填写后 / 组页新建都走它）：
+ * extra 是归属字段（board / project…），不传就是纯正文。
  *
- * 这是「模板 → 任务」的唯一入口（新建任务 / 新建草稿 / 组页新建都走它）：
- * 身份只在这一步写入，之后正文怎么改都还带着它——编辑器据此把骨架块标成只读。
- * 模板 id 为空（没有可用模板）→ 原样返回，不凭空造 frontmatter。
+ * 参数页填好的值可经 valuesOverride 传入（覆盖模板自带默认值）。
  */
 export function templateDraftBody(
   tpl: {
@@ -59,12 +50,13 @@ export function templateDraftBody(
     body?: unknown;
     values?: Record<string, unknown> | null;
   },
-  /** 同时要写的其它归属字段（board / project…）——一次成型，避免二次 withFrontmatter 把 template 冲掉 */
+  /** 同时要写的其它归属字段（board / project…） */
   extra: Record<string, unknown> = {},
+  /** 参数页填写后的槽位值（覆盖 tpl.values）；不传用模板默认值 */
+  valuesOverride?: Record<string, unknown> | null,
 ): string {
-  const body = renderTemplateBody(tpl.body, tpl.values);
-  const id = String(tpl.id || '').trim();
+  const values = valuesOverride !== undefined ? valuesOverride : tpl.values;
+  const body = renderTemplateBody(tpl.body, values);
   const fields: Record<string, unknown> = { ...extra };
-  if (id) fields.template = id;
   return Object.keys(fields).length ? withFrontmatter(body, fields) : body;
 }

@@ -12,7 +12,6 @@ const input = z.object({
   id: z.string(),
   ref: z.string().optional().describe("文档 refId（ref_<16hex>）"),
   path: z.string().optional().describe("外部绝对路径（登记成 origin=external 的 ref）"),
-  note: z.string().optional().describe("这篇的说明"),
 });
 
 export class RepoDocAddAction extends ActionBase<typeof input> {
@@ -20,14 +19,14 @@ export class RepoDocAddAction extends ActionBase<typeof input> {
     id: 'repo.doc.add',
     cli: ['repo', 'doc', 'add'],
     http: ['POST', '/api/repos/docs'],
-    summary: '给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 更新注解）',
+    summary: '给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 移到末尾）',
     args: ['id'],
     input,
     render: (d: any) => `已加一篇介绍文档（共 ${d.count} 篇）`,
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-      return addRepoDoc(ctx.id, { ref: ctx.ref, path: ctx.path, note: ctx.note });
+      return addRepoDoc(ctx.id, { ref: ctx.ref, path: ctx.path });
   
   }
 }

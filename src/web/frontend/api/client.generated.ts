@@ -148,6 +148,7 @@ import type {
   TemplatesDefaultAction,
   TemplatesListAction,
   TemplatesRemoveAction,
+  TemplatesReorderAction,
   TemplatesUpdateAction,
 } from '../../../modules/templates/actions/_manifest.generated.js';
 
@@ -201,7 +202,7 @@ export interface ApiClient {
   clone(input: z.input<InstanceType<typeof RepoCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoCloneAction>['run']>>>;
 /** 探测目录的 git remote（添加仓库前自动填充远程地址；只读） */
   detect(input: z.input<InstanceType<typeof RepoDetectAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDetectAction>['run']>>>;
-/** 给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 更新注解） */
+/** 给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 移到末尾） */
   docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>>;
 /** 列出项目的介绍文档集（主篇 + 其余各篇，refId + desc） */
   docList(input: z.input<InstanceType<typeof RepoDocListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocListAction>['run']>>>;
@@ -283,7 +284,7 @@ export interface ApiClient {
   gc(input?: z.input<InstanceType<typeof DocsGcAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsGcAction>['run']>>>;
 /** 双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js） */
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
-/** 维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新） */
+/** 维护组的附加文档列表（--ref <refId> | --path <外部路径>；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 移位） */
   link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>>;
 /** 把某一篇设为主篇：原主篇退回附加篇（不丢归属），目标从附加篇摘出（不会出现两份） */
   main(input?: z.input<InstanceType<typeof DocsMainAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsMainAction>['run']>>>;
@@ -381,6 +382,8 @@ export interface ApiClient {
   templatesList(input?: z.input<InstanceType<typeof TemplatesListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesListAction>['run']>>>;
 /** 删除任务模板（内置默认模板不可删；删的是默认模板则默认回落到内置） */
   templatesRemove(input: z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesRemoveAction>['run']>>>;
+/** 调整任务模板顺序（--ids a,b,c 按新序落库 sort_order；未列出的模板保持原位） */
+  templatesReorder(input: z.input<InstanceType<typeof TemplatesReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesReorderAction>['run']>>>;
 /** 编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改） */
   templatesUpdate(input: z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesUpdateAction>['run']>>>;
 /** 取附件本体：面板内联预览；CLI 打印本机路径 */
@@ -553,7 +556,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocAddAction>['_input']>);
       const path = `/api/repos/docs`;
-      const body = { "id": inp["id"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"] };
+      const body = { "id": inp["id"], "ref": inp["ref"], "path": inp["path"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>;
     },
     // action: repo.doc.list
@@ -881,7 +884,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocsLinkAction>['_input']>);
       const path = `/api/docs/link`;
-      const body = { "board": inp["board"], "ref": inp["ref"], "path": inp["path"], "note": inp["note"], "remove": inp["remove"], "before": inp["before"] };
+      const body = { "board": inp["board"], "ref": inp["ref"], "path": inp["path"], "remove": inp["remove"], "before": inp["before"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>;
     },
     // action: docs.main
@@ -1264,6 +1267,13 @@ export function createApiClient(transport: Transport): ApiClient {
       const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>);
       const path = `/api/templates/${encodeURIComponent(String(inp["id"]))}`;
       return (await transport.request("DELETE", path, undefined)) as Awaited<ReturnType<InstanceType<typeof TemplatesRemoveAction>['run']>>;
+    },
+    // action: templates.reorder
+    async templatesReorder(input: z.input<InstanceType<typeof TemplatesReorderAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesReorderAction>['_input']>);
+      const path = `/api/templates/reorder`;
+      const body = { "ids": inp["ids"] };
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesReorderAction>['run']>>;
     },
     // action: templates.update
     async templatesUpdate(input: z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>) {

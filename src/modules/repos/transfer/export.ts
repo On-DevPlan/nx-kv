@@ -137,7 +137,7 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
       .map((l: any) => {
         const d = sanitizeDocRef(l);
         if (!d) return null;
-        return withLinkMeta(d, l);
+        return withLinkMeta(d);
       })
       .filter(Boolean);
     if (repoLinks.length) entry.docLinks = repoLinks;
@@ -166,7 +166,7 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
       .map((l: any) => {
         const d = sanitizeDocRef(l);
         if (!d) return null;
-        return withLinkMeta(d, l);
+        return withLinkMeta(d);
       })
       .filter(Boolean);
     if (links.length) entry.docLinks = links;

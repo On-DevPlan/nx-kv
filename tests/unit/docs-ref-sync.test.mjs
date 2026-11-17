@@ -48,24 +48,24 @@ test('desiredBindings：仓库（主篇 + 补充篇）与组（介绍 + 组内�
       key: 'github.com/me/x',
       type: 'dev',
       doc: { ref: R.repoMain },
-      docLinks: [{ ref: R.repoLink, note: 'A' }],
+      docLinks: [{ ref: R.repoLink }],
     }],
     boards: [{
       key: 'board/g',
       name: 'g',
       doc: { ref: R.groupMain },
       docLinks: [{ ref: R.groupLink }],
-      repoDocs: { 'github.com/me/x': { ref: R.groupNote, note: '组内说明' } },
+      repoDocs: { 'github.com/me/x': { ref: R.groupNote } },
     }],
   };
   assert.deepEqual(
-    desiredBindings(s).map((b) => [b.type, b.repoKey, b.groupKey, b.refId, b.position, b.note]),
+    desiredBindings(s).map((b) => [b.type, b.repoKey, b.groupKey, b.refId, b.position]),
     [
-      ['repo', 'github.com/me/x', null, R.repoMain, 0, ''],
-      ['repo', 'github.com/me/x', null, R.repoLink, 1, 'A'],
-      ['group', 'board/g', null, R.groupMain, 0, ''],
-      ['group', 'board/g', null, R.groupLink, 1, ''],
-      ['group_repo', 'github.com/me/x', 'board/g', R.groupNote, 0, '组内说明'],
+      ['repo', 'github.com/me/x', null, R.repoMain, 0],
+      ['repo', 'github.com/me/x', null, R.repoLink, 1],
+      ['group', 'board/g', null, R.groupMain, 0],
+      ['group', 'board/g', null, R.groupLink, 1],
+      ['group_repo', 'github.com/me/x', 'board/g', R.groupNote, 0],
     ]
   );
 });
@@ -137,11 +137,11 @@ test('addRepoDoc / setDocLink 写完即登记，摘掉即退回只剩仓库绑�
   });
   await syncRefIndex();
 
-  await addRepoDoc('github.com/me/x', { ref: R.repoLink, note: '接口说明' });
-  let hit = rows('SELECT type, position, note, ref_id FROM ref_bindings WHERE ref_id = :id', { id: R.repoLink });
-  assert.deepEqual(hit.map((x) => [x.type, Number(x.position), x.note]), [['repo', 1, '接口说明']]);
+  await addRepoDoc('github.com/me/x', { ref: R.repoLink });
+  let hit = rows('SELECT type, position, ref_id FROM ref_bindings WHERE ref_id = :id', { id: R.repoLink });
+  assert.deepEqual(hit.map((x) => [x.type, Number(x.position)]), [['repo', 1]]);
 
-  await setDocLink({ board: 'g', ref: R.repoLink, note: '组共享' });
+  await setDocLink({ board: 'g', ref: R.repoLink });
   hit = rows('SELECT type, group_key, ref_id FROM ref_bindings WHERE ref_id = :id ORDER BY type', { id: R.repoLink });
   assert.deepEqual(hit.map((x) => [x.type, x.group_key]), [['group', null], ['repo', null]], '同一篇可同时挂在仓库与组上');
 

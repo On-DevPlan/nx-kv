@@ -10,6 +10,7 @@ import { TemplatesAddAction } from './templates-add.js';
 import { TemplatesDefaultAction } from './templates-default.js';
 import { TemplatesListAction } from './templates-list.js';
 import { TemplatesRemoveAction } from './templates-remove.js';
+import { TemplatesReorderAction } from './templates-reorder.js';
 import { TemplatesUpdateAction } from './templates-update.js';
 
 /** 本模块的全部 action 类（容器按这个顺序建实例）。 */
@@ -18,6 +19,7 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   TemplatesDefaultAction,
   TemplatesListAction,
   TemplatesRemoveAction,
+  TemplatesReorderAction,
   TemplatesUpdateAction,
 ];
 
@@ -26,4 +28,5 @@ export { TemplatesAddAction };
 export { TemplatesDefaultAction };
 export { TemplatesListAction };
 export { TemplatesRemoveAction };
+export { TemplatesReorderAction };
 export { TemplatesUpdateAction };

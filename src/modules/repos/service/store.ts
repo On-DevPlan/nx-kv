@@ -247,7 +247,7 @@ function normalizeDocRefs(store: Store): void {
       .map((l: any) => {
         const d = sanitizeDocRef(l);
         if (!d) return null;
-        return withLinkMeta(d, l);
+        return withLinkMeta(d);
       })
       .filter(Boolean);
     if (links.length) r.docLinks = links;
@@ -261,7 +261,7 @@ function normalizeDocRefs(store: Store): void {
       .map((l: any) => {
         const d = sanitizeDocRef(l);
         if (!d) return null;
-        return withLinkMeta(d, l);
+        return withLinkMeta(d);
       })
       .filter(Boolean);
     if (links.length) b.docLinks = links;

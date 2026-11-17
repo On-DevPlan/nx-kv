@@ -14,7 +14,6 @@ const input = z.object({
   board: z.string(),
   ref: z.string().optional().describe("文档 refId（ref_<16hex>）"),
   path: z.string().optional().describe("外部文件/目录绝对路径（登记成 origin=external 的 ref）"),
-  note: z.string().optional().describe("条目说明"),
   remove: z.number().optional().describe("移除第 N 条（1 起）"),
   before: z.number().optional().describe("插到第 N 条之前（缺省追加到末尾）"),
 });
@@ -24,7 +23,7 @@ export class DocsLinkAction extends ActionBase<typeof input> {
     id: 'docs.link',
     cli: ['docs', 'link'],
     http: ['POST', '/api/docs/link'],
-    summary: '维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新）',
+    summary: '维护组的附加文档列表（--ref <refId> | --path <外部路径>；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 移位）',
     args: ['board'],
     input,
     render: renderLink,

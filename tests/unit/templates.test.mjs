@@ -16,7 +16,7 @@ process.env.NX_KV_DB = dbFile;
 process.env.NX_KV_CONFIG = join(tmp, 'config.json');
 
 const { closeDb } = await import('../../src/core/db/index.js');
-const { BUILTIN_ID, listTemplates, addTemplate, removeTemplate, setDefaultTemplate, updateTemplate } = await import(
+const { BUILTIN_ID, listTemplates, addTemplate, removeTemplate, setDefaultTemplate, updateTemplate, reorderTemplates } = await import(
   '../../src/modules/templates/service.js'
 );
 
@@ -241,4 +241,28 @@ test('list 可按 group 过滤（项目组是独立可见主体）', async () =>
   assert.ok(!hit.templates.some((t) => t.id === other.template.id), '不应看到别的组');
   // 全局模板对任何上下文仍可见
   assert.ok(hit.templates.some((t) => Array.isArray(t.scope) && t.scope.includes('*')));
+});
+
+// #151：拖拽排序——只重排传入的 id，未列出的行保持原位（管理页只显示本主题可见模板）
+test('reorder：按 ids 重排，未列出的行不被挪到末尾', async () => {
+  const a = await addTemplate({ name: '排A', body: '# A' });
+  const b = await addTemplate({ name: '排B', body: '# B' });
+  const c = await addTemplate({ name: '排C', body: '# C' });
+  const ids = [a.template.id, b.template.id, c.template.id];
+
+  // 倒序：C B A
+  await reorderTemplates({ ids: [c.template.id, b.template.id, a.template.id] });
+  let d = await listTemplates();
+  let seen = d.templates.map((t) => t.id).filter((id) => ids.includes(id));
+  assert.deepEqual(seen, [c.template.id, b.template.id, a.template.id]);
+
+  // 只传两条（模拟「本主题只看得见两行」）：第三条 c 必须留在原位
+  await reorderTemplates({ ids: [a.template.id, b.template.id] });
+  d = await listTemplates();
+  seen = d.templates.map((t) => t.id).filter((id) => ids.includes(id));
+  assert.equal(seen[0], c.template.id, 'c 原本最靠前，没被列出就不该被挤到末尾');
+  assert.deepEqual(seen.slice(1), [a.template.id, b.template.id]);
+
+  await assert.rejects(() => reorderTemplates({ ids: ['t_不存在'] }), /没有 id/);
+  await assert.rejects(() => reorderTemplates({ ids: [] }), /需要 ids/);
 });

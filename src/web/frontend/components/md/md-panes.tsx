@@ -21,7 +21,6 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
-  useMemo,
   useRef,
 } from 'react';
 import type {
@@ -58,9 +57,8 @@ import {
   toggleNthTodo,
 } from '../../modules/md/md-edit-ops.js';
 import { isFrontmatterBlock, normalizeBlockText } from '../../modules/md/md-parse.js';
-import { computeTemplateLocks } from '../../modules/md/template-locks.js';
-import { templateIdOf } from '../../modules/prompts/template-preview.js';
-import { useApp } from '../../app-context.jsx';
+// #151：槽位/模板骨架只读已从任务编辑器移除——模板生成的正文是纯文本，
+// 编辑页不再派生任何「模板/插槽」概念（tplSlotBlocks 仅供模板**编辑**页用）。
 import type { Attachment } from './attach-common.js';
 
 export { MdPanes, ModeSeg } from './md-panes-root.jsx';
@@ -182,19 +180,6 @@ function LivePreview({
   } = useLivePreview({ body, onBody, articleRef, attachments, docKey, onFiles, onCloseSelMenu, attachHost });
   // 拖拽排序：落点判定在列表级（一个 dragover 管整张列表），把手在块侧栏里
   const drag = useBlockDrag(moveBlock);
-
-  // 模板生成的任务（正文 frontmatter 的 `template: <id>`）：骨架块只读、插槽块可编辑。
-  // 纯派生——锁定范围由「模板当下的正文 + 这条任务的正文」算出来，模板改了自动跟随；
-  // 不是模板任务（没有该键）就完全不锁，编辑器行为与以前一致。
-  const app = useApp();
-  const locks = useMemo(() => {
-    const id = templateIdOf(body);
-    if (!id) return null;
-    const tplBody = (app.tpl?.templates || []).find((t) => t.id === id)?.body || '';
-    if (!String(tplBody).trim()) return null;
-    const r = computeTemplateLocks(body, tplBody);
-    return r.locked.size || r.slots.size ? r : null;
-  }, [body, app.tpl?.templates]);
 
   // ── 跨块选区（#124）：块粒度的「统一删除」────────────────────────────
   // 视图块是渲染好的 HTML，选区字符偏移无法精确映射回各块源码（markdown
@@ -429,8 +414,7 @@ function LivePreview({
               text={b}
               focused={focus === i}
               hit={hitBlock === i}
-              locked={!!locks?.locked.has(i)}
-              slot={!!(locks?.slots.has(i) || tplSlotBlocks?.has(i))}
+              slot={!!tplSlotBlocks?.has(i)}
               attachments={attachments}
               pendingSelRef={pendingSelRef}
               pendingFormatRef={pendingFormatRef}

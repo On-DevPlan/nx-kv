@@ -131,10 +131,40 @@ export function deleteRow(conn: any, id: any): boolean {
 
 /** 该类目下一个可用的 sort_order（追加到末尾）。 */
 export function nextSortOrder(conn: any, category: any): number {
-  const row = conn.get('SELECT COALESCE(MAX(sort_order), -1) AS m FROM templates WHERE category = :c', {
+  const row = conn.get('SELECT MAX(sort_order) AS m FROM templates WHERE category = :c', {
     c: String(category || ''),
   });
-  return Number((row && row.m) || -1) + 1;
+  // ⚠️ 不能写 `(row && row.m) || -1`：m 为 0（第一条模板）时会被当成假值，
+  // 于是新模板全落 sort_order=0、排序永远无效（#151 拖拽排序踩到）。
+  const max = row && row.m !== null && row.m !== undefined ? Number(row.m) : -1;
+  return (Number.isFinite(max) ? max : -1) + 1;
+}
+
+/**
+ * 按给定 id 顺序重排 sort_order（#151）：ids 里的行依次得 0..n-1；
+ * 不在 ids 里的同类目行顺序不变，但为避免唯一/并列歧义，整体从 0 重排：
+ * 先写传入的 orderedIds，再把剩余行按原 sort_order 追加在后。
+ * 返回受影响行数。
+ */
+export function reorderRows(conn: any, orderedIds: string[], atMs: number, slots?: number[]): number {
+  const seen = new Set<string>();
+  const clean: string[] = [];
+  for (const raw of orderedIds) {
+    const id = String(raw || '').trim();
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      clean.push(id);
+    }
+  }
+  let changed = 0;
+  clean.forEach((id, i) => {
+    const r = conn.run(
+      'UPDATE templates SET sort_order = :sort, updated_at = :at WHERE id = :id AND deleted_at IS NULL',
+      { id, sort: slots && slots[i] !== undefined ? slots[i] : i, at: atMs }
+    );
+    changed += Number(r.changes) > 0 ? 1 : 0;
+  });
+  return changed;
 }
 
 /**

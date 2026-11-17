@@ -15,6 +15,8 @@ import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modul
 import { liveBodyBlocks } from '../../modules/md/md-blocks.js';
 import { popRoute } from '../../components/layout/route-history.js';
 import TemplateListPanel from './template-list.jsx';
+import TemplateFillPanel from './fill.jsx';
+import TemplateManagePanel from './manage.jsx';
 import '../../modules/md/style.css';
 import './style.css';
 
@@ -227,6 +229,15 @@ export default function TemplatePanel({ config, model, tabId }: TemplatePanelPro
   const mode = cfg.mode || (cfg.id ? 'edit' : '');
   const isNew = mode === 'new';
   const templateId = cfg.id || '';
+
+  // #151：参数填写中间页（带槽位模板 → 新建任务前的参数页）
+  if (mode === 'fill') {
+    return <TemplateFillPanel config={cfg} />;
+  }
+  // #151：主题级模板管理页（从「新建任务」下拉的「管理模板…」进入）
+  if (mode === 'manage') {
+    return <TemplateManagePanel config={cfg} />;
+  }
 
   // #142：关闭/创建后回到来处面板，不要 deleteTab 把 maincontent 拆空。
   const leaveEditor = () => {

@@ -51,12 +51,8 @@ export function sanitizeDocRef(raw: unknown): DocRef | null {
   }
 }
 
-/**
- * 兼容 shim：note 在 v13 删除后这里变成恒等函数，保留是为了让调用方
- * 不必为「去 note」一次性改几十处——它们继续传 { note } 进来会被忽略。
- * 新代码不该再依赖它携带任何元数据。
- */
-export function withLinkMeta(ref: DocRef, _raw: { note?: unknown } = {}): DocRefWithMeta {
+/** 归一化一条文档条目（v13 去 note 后就是浅拷贝，保留名字让调用方语义统一）。 */
+export function withLinkMeta(ref: DocRef): DocRefWithMeta {
   return { ...ref };
 }
 

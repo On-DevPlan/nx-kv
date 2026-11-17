@@ -135,13 +135,15 @@ export interface TemplatesApi {
   templates: PromptTemplate[] | null;
   unsupported: boolean;
   defaultBody: () => string;
-  /** 默认模板的正文 + 模板身份（id 写进任务正文 frontmatter，编辑器据此锁骨架）。 */
+  /** 默认模板的正文 + 模板身份（#151 起 id 不再写进任务正文，纯文本渲染）。 */
   defaultPick: () => { body: string; id: string };
   refetch: () => Promise<void>;
   add: (name: string, body: string, setDefault?: boolean, opts?: { topic?: string; scope?: string[] }) => Promise<any>;
   remove: (id: string) => Promise<any>;
   update: (id: string, patch: Record<string, any>) => Promise<any>;
   setDefault: (id: string) => Promise<any>;
+  /** #151：拖拽排序后按新序落库（ids = newtask 类目模板 id 的完整有序数组）。 */
+  reorder: (ids: string[]) => Promise<any>;
 }
 
 /** 开一个 MD 页签的规格（App.openPage；groupId 与 dirKey 二选一，组锚定页用前者）。 */

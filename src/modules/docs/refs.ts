@@ -213,7 +213,6 @@ export interface SetDocLinkInput {
   board?: string;
   ref?: string;
   path?: string;
-  note?: string;
   remove?: number;
   before?: number;
 }
@@ -221,13 +220,12 @@ export interface SetDocLinkInput {
 /**
  * 维护组的 docLinks。
  *   --ref <refId> 或 --path <绝对路径>（外部只读）
- *   note  条目注解
  *   remove --remove <序号>（1 起）
  *   before --before <序号>（插到该条之前；缺省追加）
  *
- * 同 ref 重复添加 = 更新该条（note 以本次为准）。
+ * 同 ref 重复添加 = 把该条移到新位置。
  */
-export async function setDocLink({ board, ref, path, note, remove, before }: SetDocLinkInput = {}): Promise<any> {
+export async function setDocLink({ board, ref, path, remove, before }: SetDocLinkInput = {}): Promise<any> {
   if (!board) throw badInput('缺少看板（id / key / 名称）');
   const { mutateStore, boardKeyOf } = await reposBridge();
   const docRef = remove === undefined ? await docRefOf({ ref, path }) : null;
@@ -249,8 +247,8 @@ export async function setDocLink({ board, ref, path, note, remove, before }: Set
       return { boardName: b.name, removed: describeLink(gone), count: b.docLinks.length };
     }
 
-    // 条目 = DocRef + 注解（note）；合成逻辑收在 docref.withLinkMeta
-    const entry = withLinkMeta(docRef!, { note });
+    // 条目 = DocRef（去 note 后只剩 ref 本体）
+    const entry = withLinkMeta(docRef!);
     const at = b.docLinks.findIndex((x: any) => (x && x.ref) === entry.ref);
     if (at >= 0) b.docLinks.splice(at, 1);
     const want = before !== undefined ? idxOf(before) : -1;
@@ -291,20 +289,19 @@ export async function listRepoDocs(locator: string): Promise<any> {
   };
 }
 
-/** addRepoDoc 的入参（refId 或外部路径 + 可选注解）。 */
+/** addRepoDoc 的入参（refId 或外部路径）。 */
 export interface AddRepoDocInput {
   ref?: string;
   path?: string;
-  note?: string;
 }
 
-/** 往项目的介绍文档集里加一篇（同 ref 重复添加 = 更新注解）。 */
+/** 往项目的介绍文档集里加一篇（同 ref 重复添加 = 移到末尾）。 */
 export async function addRepoDoc(locator: string, raw: unknown): Promise<any> {
   const { getRepo, deriveKey, mutateStore } = await reposBridge();
   const repo = await getRepo(locator);
   const input = (raw && typeof raw === 'object' ? raw : {}) as AddRepoDocInput;
   const docRef = await docRefOf({ ref: input.ref, path: input.path });
-  const entry = withLinkMeta(docRef, { note: input.note });
+  const entry = withLinkMeta(docRef);
   const res = await mutateStore((s: any) => {
     const r = s.repos.find((x: any) => deriveKey(x) === deriveKey(repo));
     if (!r) throw notFound('repo 不存在: ' + locator);

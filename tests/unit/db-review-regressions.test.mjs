@@ -103,8 +103,8 @@ test('看板保存：组行不删后重建，ref_bindings 不被级联清掉', a
      VALUES ('ref_review', 'md', 'repo/alpha/index.md', '', 0, NULL, 1, 1)`
   );
   conn.run(
-    `INSERT INTO ref_bindings (repo_key, group_key, ref_id, type, position, note, created_at)
-     VALUES (:repo, :group, 'ref_review', 'group_repo', 0, '', 1)`,
+    `INSERT INTO ref_bindings (repo_key, group_key, ref_id, type, position, created_at)
+     VALUES (:repo, :group, 'ref_review', 'group_repo', 0, 1)`,
     { repo: r.key, group: group.key }
   );
 

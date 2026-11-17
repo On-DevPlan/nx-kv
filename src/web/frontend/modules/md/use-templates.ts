@@ -114,6 +114,13 @@ export function useTemplates(): TemplatesApi {
     return d;
   }, [refetch]);
 
+  // #151：拖拽排序落库（PATCH /api/templates/reorder，ids 为完整有序数组）
+  const reorder = useCallback(async (ids: string[]) => {
+    const d = await api('/api/templates/reorder', { method: 'PATCH', body: { ids } });
+    await refetch();
+    return d;
+  }, [refetch]);
+
   return {
     defaultId: state.defaultId,
     templates: state.templates,
@@ -125,6 +132,7 @@ export function useTemplates(): TemplatesApi {
     remove,
     update,
     setDefault,
+    reorder,
   };
 }
 

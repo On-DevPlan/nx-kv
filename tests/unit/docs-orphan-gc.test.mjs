@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTestStore } from '../support/test-store.mjs';
+import { CURRENT_SCHEMA_VERSION } from '../../src/core/db/version.js';
 
 // **必须在 import 任何 src 模块之前**把 home 指到临时目录：
 // core/paths.ts 的 APP_DIR 是 import 期算的模块常量，一旦它记成真实 ~/.nx-kv，
@@ -220,7 +221,7 @@ test('v10→v11：存量孤儿按升级时刻起算，有归属的清零', async
       importLegacyData: false,
       atMs: at,
     });
-    assert.equal(Number(db.get('PRAGMA user_version').user_version), 12);
+    assert.equal(Number(db.get('PRAGMA user_version').user_version), CURRENT_SCHEMA_VERSION);
     assert.ok(db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='ref_gc_log'"));
 
     const orphan = db.get("SELECT state, orphan_since FROM refs WHERE id = 'ref_orphan_v10'");

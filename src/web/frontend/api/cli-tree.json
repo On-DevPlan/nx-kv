@@ -387,7 +387,7 @@
               "action": {
                 "id": "repo.doc.add",
                 "module": "repos",
-                "summary": "给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 更新注解）",
+                "summary": "给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 移到末尾）",
                 "usage": "repo doc add",
                 "http": "POST /api/repos/docs"
               },
@@ -1077,7 +1077,7 @@
           "action": {
             "id": "docs.link",
             "module": "docs",
-            "summary": "维护组的附加文档列表（--ref <refId> | --path <外部路径> + --note；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 更新）",
+            "summary": "维护组的附加文档列表（--ref <refId> | --path <外部路径>；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 移位）",
             "usage": "docs link",
             "http": "POST /api/docs/link"
           },
@@ -1883,6 +1883,21 @@
             "summary": "删除任务模板（内置默认模板不可删；删的是默认模板则默认回落到内置）",
             "usage": "template remove",
             "http": "DELETE /api/templates/:id"
+          },
+          "children": []
+        },
+        {
+          "name": "reorder",
+          "path": [
+            "template",
+            "reorder"
+          ],
+          "action": {
+            "id": "templates.reorder",
+            "module": "templates",
+            "summary": "调整任务模板顺序（--ids a,b,c 按新序落库 sort_order；未列出的模板保持原位）",
+            "usage": "template reorder",
+            "http": "PATCH /api/templates/reorder"
           },
           "children": []
         },

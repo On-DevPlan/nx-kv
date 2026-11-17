@@ -340,7 +340,8 @@ test('兼容 v2 导出：没有 key 时用 remote/name 派生，照样能导入'
   assert.equal(thing.key, 'github.com/old/thing');
   const g = all[0] ? (await boards.listBoards()).boards.find((b) => b.name === '组') : null;
   assert.ok(g);
-  assert.equal(g.repos[0].note, '组内');
+  assert.equal(String(g.repos[0].key || ''), 'github.com/old/thing');
+  assert.equal(g.repos[0].note, undefined, 'v13 后成员行不再有 note');
 });
 
 test('导入布局：只有名字、没有 key 也没有远程地址 → 差异检查就明确拒绝', async () => {

@@ -11,7 +11,7 @@
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, ReactElement, ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { PopMenu } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
@@ -29,6 +29,8 @@ import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-sto
 import { parseFrontmatter } from '../../modules/md/md-parse.js';
 import { hitTaskQuery } from '../../modules/board/task-search.js';
 import { templateDraftBody } from '../../modules/prompts/template-preview.js';
+import { startFillIfSlotted } from '../../modules/md/new-task-from-template.js';
+import { putManageSession } from '../../modules/md/manage-session.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, LocalTopic, RepoData } from '../../types.js';
 import type { Model } from 'flexlayout-react';
@@ -132,50 +134,8 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   // 已领取历史折叠态：#167 三轮起被分页取代（列表进 usePager，历史行混排在页内）
   // 「添加成员」就地弹窗（不跳仓库管理页——组面板里就地改归属）
   const [addOpen, setAddOpen] = useState(false);
-  // 「＋ 新增任务 ▾」（#131/#132）：点击开合；portal + fixed 防组页矮容器裁切出滚动条。
-  const [tplFlyOpen, setTplFlyOpen] = useState(false);
-  const [tplFlyPos, setTplFlyPos] = useState<{ top: number; right: number } | null>(null); // { top, right } 视口坐标
-  const newtaskRef = useRef<HTMLDivElement | null>(null);
-  const tplFlyRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!tplFlyOpen) return undefined;
-    const onDoc = (e: MouseEvent) => {
-      if (newtaskRef.current?.contains(e.target as Node) || tplFlyRef.current?.contains(e.target as Node)) return;
-      setTplFlyOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setTplFlyOpen(false);
-    };
-    const onReposition = () => {
-      const btn = newtaskRef.current?.querySelector('button');
-      if (!btn) return;
-      const r = btn.getBoundingClientRect();
-      const menuH = tplFlyRef.current?.offsetHeight || 240;
-      const gap = 6;
-      const spaceBelow = window.innerHeight - r.bottom - gap;
-      const top = spaceBelow >= menuH || spaceBelow >= r.top
-        ? r.bottom + gap
-        : Math.max(8, r.top - gap - menuH);
-      setTplFlyPos({
-        top,
-        right: Math.max(8, window.innerWidth - r.right),
-      });
-    };
-    onReposition();
-    // 下一帧再量一次（菜单已挂到 body，高度准）
-    const t = requestAnimationFrame(onReposition);
-    document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
-    window.addEventListener('resize', onReposition);
-    window.addEventListener('scroll', onReposition, true);
-    return () => {
-      cancelAnimationFrame(t);
-      document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', onReposition);
-      window.removeEventListener('scroll', onReposition, true);
-    };
-  }, [tplFlyOpen]);
+  // #151：组页「新增任务」下拉改为与目录页同款 PopMenu（对齐 repo 版口径）
+  const [tplMenu, setTplMenu] = useState<{ x: number; y: number } | null>(null);
 
   const board = useMemo(
     () => boards.find((b) => b.id === dirKey) || boards.find((b) => b.key === dirKey) || null,
@@ -355,6 +315,20 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   const createTask = (pick?: { id?: string; body?: unknown; values?: Record<string, unknown> | null } | null) => {
     if (!board) return;
     if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
+    // #151：带 {{槽位}} 的模板先去参数页（携带组 + 项目上下文）
+    const chosen = pick || (tpl?.templates || []).find((t) => t.id === tpl.defaultId) || null;
+    if (chosen && startFillIfSlotted(
+      chosen,
+      {
+        topic: sel.topicKey || '',
+        group: board.key || '',
+        repo: sel.key || '',
+        groupId: board.id,
+        board: board.id,
+        project: sel.key,
+      },
+      app,
+    )) return;
     const id = nextDraftId();
     // 草稿 doc 种在**组 scope**（docIdOf(scopeOf(board.id), id)）：从组路由
     // #/group/<id>?task=draft-N 打开寻得回同一份（#86）。以前种在成员 scope、
@@ -386,6 +360,34 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
       name: '',
     });
   };
+
+  // #151：与目录页同款下拉（模板项 / 新建 / 管理本主题模板），以 repo 版为准
+  const openTplManage = () => {
+    if (!board) return;
+    const id = putManageSession({
+      topic: sel ? sel.topicKey : '',
+      group: board.key || '',
+      repo: sel ? sel.key : '',
+      label: board.name || board.key,
+    });
+    app.onNavigate?.(`#/templates/manage/${id}`);
+  };
+  const tplMenuItems = [
+    ...(flyTemplates.length
+      ? flyTemplates.map((t: TemplateItem) => ({
+          label: (t.id === tpl.defaultId ? '✓ ' : '') + t.name,
+          icon: 'list',
+          onClick: () => createTask(t.fallback ? null : t),
+        }))
+      : [{
+          label: '按默认模板新建',
+          icon: 'list',
+          onClick: () => createTask(),
+        }]),
+    'sep',
+    { label: '为本组新建模板…', icon: 'plus', onClick: () => { setTplMenu(null); newTemplateHere(); } },
+    { label: '管理模板…', icon: 'gear', onClick: () => { setTplMenu(null); openTplManage(); } },
+  ] as any[];
 
   const introSlot = (
       <Introduction kind="board" owner={board} model={model} />
@@ -507,12 +509,11 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
             disabled={{ new: !sel }}
             renderers={{
               new: () => (
-                <div className="rp-newtask" ref={newtaskRef}>
-                  {/* #161 拆两级命中区（视觉一颗按钮）：主区点击 = 按默认模板直接
-                      新建；内嵌箭头 = 模板下拉（选择模板新建） */}
+                <div className="rp-newtask">
+                  {/* #151：与目录页同款两级命中区 + PopMenu 模板下拉 */}
                   <button
                     type="button"
-                    className={'btn small' + (tplFlyOpen ? ' is-open' : '')}
+                    className={'btn small' + (tplMenu ? ' is-open' : '')}
                     title="按默认模板新建任务（▾ 选模板；携带本组语义）"
                     disabled={!sel}
                     onClick={() => createTask()}
@@ -523,82 +524,29 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
                       tabIndex={sel ? 0 : undefined}
                       aria-label="选择模板新建任务"
                       aria-haspopup="menu"
-                      aria-expanded={tplFlyOpen}
-                      className={'rp-newtask-caret' + (tplFlyOpen ? ' rot' : '')}
+                      aria-expanded={!!tplMenu}
+                      className={'rp-newtask-caret' + (tplMenu ? ' rot' : '')}
                       title="选择模板新建任务"
                       onClick={(e) => {
                         e.stopPropagation();
-                        const host = e.currentTarget.closest('.rp-newtask');
-                        const r = (host || e.currentTarget).getBoundingClientRect();
-                        setTplFlyPos({
-                          top: r.bottom + 6,
-                          right: Math.max(8, window.innerWidth - r.right),
-                        });
-                        setTplFlyOpen((v) => !v);
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setTplMenu(tplMenu ? null : { x: r.right, y: r.bottom + 4 });
                       }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
                           e.stopPropagation();
-                          const host = e.currentTarget.closest('.rp-newtask');
-                          const r = (host || e.currentTarget).getBoundingClientRect();
-                          setTplFlyPos({
-                            top: r.bottom + 6,
-                            right: Math.max(8, window.innerWidth - r.right),
-                          });
-                          setTplFlyOpen((v) => !v);
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setTplMenu(tplMenu ? null : { x: r.right, y: r.bottom + 4 });
                         }
                       }}
                     >
                       <Icon name="chevron" size={11} title={undefined} />
                     </span>
                   </button>
-                  {tplFlyOpen &&
-                    sel &&
-                    tplFlyPos &&
-                    createPortal(
-                      <div
-                        ref={tplFlyRef}
-                        className="rp-tpl-fly rp-tpl-fly-portal"
-                        role="menu"
-                        aria-label="选择模板新建任务"
-                        style={{ top: tplFlyPos.top, right: tplFlyPos.right }}
-                      >
-                        <div className="rp-tpl-fly-h">{board.name} · 可用模板</div>
-                        <div className="rp-tpl-fly-list">
-                          {(flyTemplates.length
-                            ? flyTemplates
-                            : [{ id: '__fallback__', name: '按默认模板新建', fallback: true }]
-                          ).map((t: TemplateItem) => (
-                            <button
-                              key={t.id}
-                              type="button"
-                              className="rp-tpl-fly-it"
-                              role="menuitem"
-                              onClick={() => {
-                                setTplFlyOpen(false);
-                                createTask(t.fallback ? null : t);
-                              }}
-                            >
-                              {(t.id === tpl.defaultId && !t.fallback ? '✓ ' : '') + t.name}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="rp-tpl-fly-foot">
-                          <button
-                            type="button"
-                            className="rp-tpl-fly-new"
-                            onClick={() => {
-                              setTplFlyOpen(false);
-                              newTemplateHere();
-                            }}
-                          >
-                            ＋ 新增模板…
-                          </button>
-                        </div>
-                      </div>,
-                      document.body
-                    )}
+                  {tplMenu && (
+                    <PopMenu x={tplMenu.x} y={tplMenu.y} items={tplMenuItems} onClose={() => setTplMenu(null)} />
+                  )}
                 </div>
               ),
             }}

@@ -115,9 +115,11 @@ svghub/
 
 - `tsc -b tsconfig.web.json` 通过；
 - `node --import tsx --test tests/unit/svghub-catalog.test.mjs` 5/5 通过；
-- `node --import tsx --test tests/unit/*.test.mjs` 全量 **1095/1095**：其中
-  `route-table.test.mjs` 补了 `svghub` 两条基线（新增视图是「加基线」，不是重生成夹具），
-  `tool-acts-modules.test.mjs` 三张表的按钮序列随之更新（`dir`/`group`/`repos` 各多一颗 `svghub`）；
+- `node --import tsx --test tests/unit/*.test.mjs` 全量：**本分支改到的三份测试全绿**
+  （`svghub-catalog` / `route-table` 新增 `svghub` 基线 / `tool-acts-modules` 三张表各多一颗 `svghub`）；
+  其中 `route-table.test.mjs` 补 `svghub` 两条基线（新增视图是「加基线」，不是重生成夹具）。
+  注意：本分支 rebase 到了 `main@83732c4`（v13 收尾进行中），该提交自身有 10 条 docs/import/
+  迁移类用例红着（已在 pristine `main@83732c4` 上复核，与本分支无关）；本分支没有新增任何失败。
 - `eslint`（改动目录）0 error；`node scripts/check-lines.mjs` 全部合规；
 - `vite build` 通过（`src/web/public` 产物）；
 - 真实浏览器核过（隔离库 + 本地 `serve`）：`#/svghub` 页、侧栏三类行图标、仓库页与目录页工具区的

@@ -272,10 +272,6 @@
   font-size:10.5px;color:var(--faint,#8A8578);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.ppt-rail-ro{
-  flex:none;font-size:10px;color:var(--mid,#8A8578);padding:0 4px;
-  border:1px solid var(--line,#E4E2DC);border-radius:4px;background:var(--paper,#fff);
-}
 
 /* 右编辑区 */
 .ppt-ed{flex:1 1 300px;min-width:0;display:flex;flex-direction:column;gap:9px}

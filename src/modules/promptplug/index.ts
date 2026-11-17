@@ -17,10 +17,10 @@ export {
   buildPlugins,
   deliveryCtxOf,
   fieldCatalogOf,
-  globalTemplateVarScope,
   groupPluginIds,
   PLUGIN_IDS,
   SEED_SEGMENTS,
+  varScopeOf,
 } from './factory.js';
 export type { DeliveryPluginDeps, TemplateOverrides } from './factory.js';
 export {

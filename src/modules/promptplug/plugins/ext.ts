@@ -31,7 +31,6 @@ export class ExtPlugin extends PromptPlugin<typeof schema> {
   readonly group = 'get' as const;
   readonly tag = 'nx-kv.ext';
   readonly label = '待领取队列（ext）';
-  override readonly writes = ['ext'];
   readonly dataSchema = schema;
   readonly templates = [BUILTIN];
 

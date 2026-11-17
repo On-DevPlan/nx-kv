@@ -1,6 +1,6 @@
 // PromptPlugin 基类（#152 重构版）。
 //
-// 子类只写：id / order / group / tag / label / dataSchema / writes / templates / buildData()。
+// 子类只写：id / order / group / tag / label / dataSchema / templates / buildData()。
 //
 // #152 的三条变化（用户口径）：
 //   1. **模板进类**：每个实现必须给出 `templates` —— 内置模板列表。正文唯一真相
@@ -66,9 +66,6 @@ export abstract class PromptPlugin<S extends z.ZodObject<z.ZodRawShape>>
    * 正文进代码后，「模板从哪来」这件事只剩一个答案，不会再出现常量 ≡ JSON ≡ DB 的三角漂移。
    */
   abstract readonly templates: readonly TemplateText[];
-  /** 默认只读：只读段不写 ctx（timecheck / goalhint / doneguard / ack） */
-  readonly writes: readonly string[] = [];
-
   /** 显式覆盖正文（预览 / 测试用；正常流程走 templates[0]）。 */
   private readonly overrideText: string;
 

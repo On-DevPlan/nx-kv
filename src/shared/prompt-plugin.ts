@@ -39,6 +39,14 @@ export interface TemplateText {
   text: string;
 }
 
+/**
+ * 交付时的种子数据（宿主在 run 时传进来的那一份）：任务本体 / 工作目录 / 时间目标 /
+ * 来源 / 现状 / 名字 / 外部参数。**这不是「共享 ctx」**——它每段都有一份，只读。
+ */
+export const SEED_SEGMENTS: readonly string[] = Object.freeze([
+  'task', 'cwd', 'goal', 'source', 'summary', 'name', 'params',
+]);
+
 /** 注册面：注册表 / compose / uiDescriptor 只认这一层。 */
 export interface AnyPromptPlugin {
   readonly id: string;
@@ -50,8 +58,6 @@ export interface AnyPromptPlugin {
   readonly label: string;
   /** 内置模板列表（至少一条，第一条 = 出厂默认） */
   readonly templates: readonly TemplateText[];
-  /** 写回的 ctx 顶层段（[] = 只读段）；不变量：writes ⊆ schema 顶层段 */
-  readonly writes: readonly string[];
   readonly schema: PluginSchema<unknown>;
   /** 唯一出口：无参 = 文本态（模板原文）；'data' = 结构态（数据对象） */
   get(): string;
@@ -61,11 +67,14 @@ export interface AnyPromptPlugin {
 /**
  * 启动期校验（唯一一道）：每条断言挡掉一个真实事故。
  * #152 起顺序只在**链内**要求唯一（跨组同号无意义），链内顺序由 order 决定。
+ *
+ * #153：**每段只看自己的数据**——模板引用的每个 `a.b` 必须落在
+ * 「seed 段 ∪ 本段 dataSchema 声明」里。跨段偷数据（ack 用 repo.name）在启动期
+ * 就报错，而不是渲染成空串等你去 preview 里找。
  */
 export function assertPluginList(list: readonly AnyPromptPlugin[]): void {
   const ids = new Set<string>();
   const orders = new Set<string>();
-  const keys = new Map<string, string>();
   for (const p of list) {
     if (ids.has(p.id)) throw new Error(`插件 id 重复：${p.id}`);
     if (!p.group) throw new Error(`${p.id}: 必须声明 group（get / check / done）`);
@@ -74,16 +83,35 @@ export function assertPluginList(list: readonly AnyPromptPlugin[]): void {
     if (orders.has(slot)) throw new Error(`order 冲突：${p.id} 与同链插件在 ${p.group} 链上都是 ${p.order}`);
     if (!String(p.get() ?? '').trim()) throw new Error(`${p.id}: 模板不能为空（空模板 = 该段永不输出，属配置错误）`);
     if (!p.tag || !/^[A-Za-z][\w.-]*$/.test(p.tag)) throw new Error(`${p.id}: tag 非法：${p.tag}`);
-    const own = new Set(p.schema.fields.map((f) => f.key.split('.')[0]!));
-    for (const w of p.writes) {
-      if (!own.has(w)) throw new Error(`${p.id}: writes 含未在 schema 声明的段 ${w}`);
-      const holder = keys.get(w);
-      if (holder) throw new Error(`ctx 段 ${w} 被 ${holder} 与 ${p.id} 同时写回`);
-      keys.set(w, p.id);
+    const { allowedSegments, fieldKeys } = varScopeOf(p.id, p.schema.fields);
+    const stray = undeclaredTemplateVars(p.get(), allowedSegments, fieldKeys);
+    if (stray.length) {
+      throw new Error(
+        `${p.id}: 模板引用了本段没有的变量 ${stray.join(', ')}` +
+          `（每段只能引用 seed（${SEED_SEGMENTS.join(' / ')}）与自己的 dataSchema 字段）`,
+      );
     }
     ids.add(p.id);
     orders.add(slot);
   }
+}
+
+/**
+ * 一段的「可见变量域」：seed 段 + 本段 dataSchema 的顶层段；字段键只有本段自己的。
+ *
+ * 这就是「每段自己提供数据」的机器化表达——不再有全局共享 ctx，
+ * 因此也没有「只读段 / 可写段」这回事。
+ */
+export function varScopeOf(
+  id: string,
+  fields: readonly FieldDecl[],
+): { allowedSegments: string[]; fieldKeys: string[] } {
+  // `attach.list[].kind` 的顶层段是 attach（`[]` 属于目录里的元素记法，不是段名）
+  const own = fields.map((f) => f.key.split('.')[0]!.replace(/\[\]$/, ''));
+  return {
+    allowedSegments: [...new Set([...SEED_SEGMENTS, ...own])],
+    fieldKeys: fields.map((f) => f.key),
+  };
 }
 
 /** 链内顺序：按 order 升序（顺序不再落库，#152 起由类声明决定）。 */
@@ -104,10 +132,10 @@ export interface PluginUIDescriptor {
   template: string;
   /** 该插件的全部内置模板（#152：正文进代码，UI 只读展示） */
   templates: readonly TemplateText[];
-  /** 插入变量目录 */
+  /** 插入变量目录（本段可见的全部字段） */
   fields: readonly FieldDecl[];
-  /** 参数表单只为这些段生成控件 */
-  writableKeys: readonly string[];
+  /** 本段可见的顶层段 = seed ∪ 自己的 dataSchema 顶层（不再有「可写段」概念） */
+  varScope: readonly string[];
 }
 
 /** 声明是 UI 的唯一数据源：不写第二份字段目录 / 不读顺序数组。 */
@@ -124,7 +152,7 @@ export function uiDescriptor(plugins: readonly AnyPromptPlugin[]): PluginUIDescr
       template: p.get(),
       templates: p.templates,
       fields: p.schema.fields,
-      writableKeys: p.writes,
+      varScope: varScopeOf(p.id, p.schema.fields).allowedSegments,
     }));
 }
 

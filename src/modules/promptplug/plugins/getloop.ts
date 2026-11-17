@@ -25,7 +25,6 @@ export class GetloopPlugin extends PromptPlugin<typeof schema> {
   readonly group = 'get' as const;
   readonly tag = 'nx-kv.getloop';
   readonly label = '持续 get';
-  override readonly writes = ['getloop'];
   readonly dataSchema = schema;
   readonly templates = [BUILTIN];
 

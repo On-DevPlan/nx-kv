@@ -4,7 +4,7 @@
 // 变量目录全部从类声明派生。没有 JSON 注册表、没有 DB seed、也没有「顺序数组」——
 // 顺序 = 链内 order。
 //
-// deps 全空：uiDescriptor 只读文本态（get()）与声明面（fields/writes/templates），
+// deps 全空：uiDescriptor 只读文本态（get()）与声明面（fields/varScope/templates），
 // 结构态 buildData() 永不被调用——不需要宿主取数。
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';

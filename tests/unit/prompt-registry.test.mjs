@@ -45,11 +45,21 @@ test('prompt.registry：按时机分组、链内按 order 升序、fields 由 sc
   assert.equal(context.tag, 'nx-kv.context');
   assert.ok(context.fields.some((f) => f.key === 'repo.name'), 'fields 由 zod schema 派生');
   assert.ok(context.template.includes('{{repo.name}}'), 'template = 类里的内置模板正文');
-  assert.deepEqual(context.writableKeys, ['repo', 'group', 'refRepos', 'groups']);
+  assert.deepEqual(
+    context.varScope.filter((s) => !['task', 'cwd', 'goal', 'source', 'summary', 'name', 'params'].includes(s)),
+    ['repo', 'group', 'refRepos', 'groups'],
+    'varScope = seed ∪ 自己的 dataSchema 顶层',
+  );
+  assert.ok(context.varScope.includes('task'), 'seed 段每段都能用');
 
   const timecheck = d.plugins.find((p) => p.id === 'timecheck');
   assert.equal(timecheck.group, 'check');
-  assert.deepEqual(timecheck.writableKeys, [], '只读段 writes=[]');
+  // goal 本来就是 seed 段（宿主传的），所以它不额外引入任何非 seed 段
+  assert.deepEqual(
+    timecheck.varScope.filter((s) => !['task', 'cwd', 'goal', 'source', 'summary', 'name', 'params'].includes(s)),
+    [],
+    '只消费 seed，不暴露别的段',
+  );
 });
 
 test('registry 的 templates 非空且第一条就是生效正文（#152：正文进代码）', async () => {

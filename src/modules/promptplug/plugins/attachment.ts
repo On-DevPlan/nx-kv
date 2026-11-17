@@ -192,7 +192,7 @@ const attachItem = z
   .describe('附件条目：file / url / task / ref / mdfile / folder，各有自己的子对象与取用命令');
 
 const schema = z.strictObject({
-  // strictObject 只钉顶层段键（attach ∈ writes）；attach 由宿主构造，段内形状见上。
+  // strictObject 只钉顶层段键（attach）；attach 由宿主构造，段内形状见上。
   attach: z
     .looseObject({
       count: z.number().describe('附件总数'),
@@ -240,7 +240,6 @@ export class AttachmentPlugin extends PromptPlugin<typeof schema> {
   readonly group = 'get' as const;
   readonly tag = 'nx-kv.attachment';
   readonly label = '附件识别';
-  override readonly writes = ['attach'];
   readonly dataSchema = schema;
   readonly templates = [BUILTIN];
 

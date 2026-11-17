@@ -211,7 +211,6 @@ export class ContextPlugin extends PromptPlugin<typeof schema> {
   readonly group = 'get' as const;
   readonly tag = 'nx-kv.context';
   readonly label = '组 / 项目上下文';
-  override readonly writes = ['repo', 'group', 'refRepos', 'groups'];
   readonly dataSchema = schema;
   readonly templates = [BUILTIN];
 

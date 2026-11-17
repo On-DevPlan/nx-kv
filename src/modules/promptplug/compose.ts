@@ -1,8 +1,12 @@
-// 编排 compose（#152：按时机链渲染）——四种语义各只有一处答案：
+// 编排 compose（#152 按时机链；#153 取消共享 ctx）——四种语义各只有一处答案：
 //   顺序 → 链内按插件 order 升序（chainOf；顺序不再落库）
-//   ctx 合并 → 按序 Object.assign，段级命名互斥由 assertPluginList 保证
+//   数据 → **每段一份自己的 ctx**：seed + 本段 buildData() 的产出，用完即弃
 //   是否出段 → 渲染结果 trim() 为空即不出
 //   失败 → buildData()/渲染抛错 = 整次交付失败，不吞、不回落（运行期不兜底）
+//
+// 为什么不再 Object.assign 出一个大 ctx：那样每段的模板就能偷偷引用别的段的变量
+// （渲染顺序变成隐式依赖），白名单也被迫用「全局段集」放行跨段耦合。
+// 现在「谁的数据给谁用」是硬边界，跨段引用在启动期就被 assertPluginList 拒。
 //
 // group 是硬闸门：传 'get' 就只跑 get 链，'check'/'done' 同理——
 // 一个时机 = 一条链，链内顺序 = 插件类声明的 order。
@@ -66,20 +70,20 @@ export async function compose(opts: ComposeOptions): Promise<string> {
     wanted.length === 1
       ? chainOf(plugins, wanted[0]!)
       : wanted.flatMap((g) => chainOf(plugins, g)).sort((a, b) => a.order - b.order);
-  // 全量不变量（id / 链内 order / 模板非空 / 写回段撞车）只校验一次；
+  // 全量不变量（id / 链内 order / 模板非空 / 模板只引用自己的变量）只校验一次；
   // 链内只保留本次要渲染的段。
   assertRegistry();
   assertPluginList(chain);
   const segOf = new Map<string, SegmentMeta>((segments || []).map((s) => [s.id, s]));
 
-  const ctx: Record<string, unknown> = { ...seed };
-  for (const p of chain) Object.assign(ctx, await p.get('data'));
-
   const parts: XmlBlockPart[] = [];
   for (const p of chain) {
     const template = p.get();
     if (!String(template ?? '').trim()) continue;
-    const text = renderInstruction(template, ctx).trim();
+    // 每段的数据域 = seed + 本段产出；不向后传、也不接受别人传进来
+    const data = (await p.get('data')) as Record<string, unknown> | null | undefined;
+    const scope: Record<string, unknown> = { ...seed, ...(data || {}) };
+    const text = renderInstruction(template, scope).trim();
     if (!text) continue;
     parts.push({ id: p.id, tag: p.tag, text });
     if (trace) {

@@ -33,7 +33,8 @@ export interface PluginDesc {
   template: string;
   templates: { id: string; name: string; text: string }[];
   fields: { key: string; kind: string; label: string; desc?: string }[];
-  writableKeys: string[];
+  /** 本段可见的顶层段 = seed ∪ 自己的 dataSchema 顶层（每段只看自己的数据） */
+  varScope: string[];
 }
 
 /** 时机链（后端给的是稳定序；这里只补一句中文说明）。 */
@@ -97,7 +98,6 @@ export default function PromptTemplatesSection() {
 
   const order = Object.keys(groups).length ? Object.keys(groups) : [...new Set(plugins.map((p) => p.group))];
   const byId = new Map(plugins.map((p) => [p.id, p]));
-  const readOnlySegment = selected.writableKeys.length === 0;
   const varGroups = varGroupsOf(selected.fields, varQuery);
   const activeMode = APPEND_MODES.find((m) => m.id === appendMode) || APPEND_MODES[0]!;
 
@@ -202,7 +202,6 @@ export default function PromptTemplatesSection() {
                           <span className='ppt-rail-label'>{p.label}</span>
                           <span className='ppt-rail-active'>{p.id}</span>
                         </span>
-                        {p.writableKeys.length === 0 && <span className='ppt-rail-ro'>只读</span>}
                       </div>
                     );
                   })}
@@ -212,29 +211,23 @@ export default function PromptTemplatesSection() {
           </div>
         </div>
 
-        {/* 右区：只读正文 + 变量目录 + 交付预览 */}
+        {/* 右区：内置正文（只读）+ 变量目录 + 交付预览 */}
         <div className='ppt-ed'>
           <div className='ppt-ed-head'>
             <div className='ppt-ed-title'>
               <b>{selected.label}</b>
               <code className='ppt-ed-tag'>{selected.tag}</code>
               <span
-                className={'ppt-pill' + (readOnlySegment ? '' : ' is-write')}
-                title={
-                  readOnlySegment
-                    ? '只读段：只读取共享上下文（task / goal / cwd…）来渲染本段，不产出新数据供别的段引用'
-                    : `可写段：产出 ${selected.writableKeys.join(' / ')} 写进共享上下文，后续段与模板都能引用`
-                }
+                className='ppt-pill is-write'
+                title={`本段渲染时的数据域：${selected.varScope.join(' / ')}（seed + 本段自己产的数据；不含别的段）`}
               >
-                {readOnlySegment ? '只读段' : '可写段'}
+                数据域 {selected.varScope.filter((s) => !['task', 'cwd', 'goal', 'source', 'summary', 'name', 'params'].includes(s)).join(' · ') || '仅任务上下文'}
               </span>
               <span className='ppt-pill'>{groupLabel(selected.group)} · 第 {selected.order} 位</span>
             </div>
             <span className='ppt-ed-sub'>
               {GROUP_HINT[selected.group] || ''}
-              {readOnlySegment
-                ? ' · 本段不产数据，只是把已有数据渲染成一句话'
-                : ` · 本段产数据：${selected.writableKeys.join(' / ')}`}
+              {' · 本段的模板只能引用自己的变量与任务上下文，别的段的数据引用不到'}
             </span>
           </div>
 

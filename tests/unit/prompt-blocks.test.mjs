@@ -49,7 +49,7 @@ test('get 链：五个段（context / attachment / ext / ack / getloop），链�
   assert.equal(new Set(PLUGIN_IDS).size, PLUGIN_IDS.length, '插件 id 全局唯一');
 });
 
-test('共享 ctx：一个对象同时喂给链上所有段的模板，按 order 包标签', async () => {
+test('#153 每段只吃自己的数据 + seed：不再有共享 ctx，按 order 包标签', async () => {
   const text = await makeCompose(
     {
       context: '项目 {{repo.name}} · 组 {{group.name}}',
@@ -73,6 +73,36 @@ test('共享 ctx：一个对象同时喂给链上所有段的模板，按 order 
     text.indexOf('nx-kv.context') < text.indexOf('nx-kv.attachment'),
     '输出顺序由插件 order 固定',
   );
+});
+
+test('#153 跨段引用在启动期就报错（模板只能用自己的变量 + seed）', () => {
+  // ack 段没有 repo（那是 context 段产的），写进模板必须被拦——不是渲染成空串
+  assert.throws(
+    () => assertPluginList(buildPlugins('get', {}, { ack: 'ACK {{repo.name}}' })),
+    /ack: 模板引用了本段没有的变量 repo\.name/,
+  );
+  // seed 段（task）每段都有
+  assert.doesNotThrow(() => assertPluginList(buildPlugins('get', {}, { ack: 'ACK {{task.id}}' })));
+  // 拼错的段名同样拦
+  assert.throws(
+    () => assertPluginList(buildPlugins('get', {}, { ack: 'ACK {{tsak.id}}' })),
+    /tsak\.id/,
+  );
+});
+
+test('#153 运行期也不共享：context 的 repo 不会漏给后面的段', async () => {
+  // 用合法模板验证「同一次 compose 里，前一段的数据不会出现在后一段的渲染里」：
+  // ack 段只认 task，渲染结果里不该出现 repo 的名字
+  const text = await makeCompose(
+    { ack: 'ACK {{task.id}}' },
+    { groupCtx: { repo: { name: 'SECRET_REPO' }, groups: [] } },
+    { task: { id: 7 } },
+  );
+  assert.match(text, /ACK 7/);
+  const ctxBlock = text.split('<nx-kv.context>')[1]?.split('</nx-kv.context>')[0] ?? '';
+  const ackBlock = text.split('<nx-kv.ack>')[1]?.split('</nx-kv.ack>')[0] ?? '';
+  assert.match(ctxBlock, /SECRET_REPO/, 'repo 是 context 段自己的数据');
+  assert.doesNotMatch(ackBlock, /SECRET_REPO/, 'repo 不会漏到 ack 段');
 });
 
 test('ext 默认模板：列同主题余量与标题并给优先级；空队列整段省略', async () => {

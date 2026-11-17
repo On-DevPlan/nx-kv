@@ -17,6 +17,7 @@ import { AttachmentPlugin } from './plugins/attachment.js';
 import { ExtPlugin } from './plugins/ext.js';
 import { GetloopPlugin } from './plugins/getloop.js';
 import { AckPlugin, DoneguardPlugin, GoalhintPlugin, TimecheckPlugin } from './plugins/readonly-blocks.js';
+import { varScopeOf as varScopeOfFields } from '../../shared/prompt-plugin.js';
 import { allPluginIds, groupPluginIds, pluginMeta } from './registry.js';
 
 /** 交付插件构造所需的宿主取数（值或惰性函数；异步留给 HTTP 类取数）。 */
@@ -77,10 +78,10 @@ export function buildAllPlugins(overrides: TemplateOverrides = {}): AnyPromptPlu
 
 export { deliveryCtxOf } from './plugins/context.js';
 
-// ── 写路径校验的数据源 ─────────────────────────────────────────────────
+// ── 校验用的数据源 ─────────────────────────────────────────────────────
 
-/** seed 段（compose 的种子数据；无输出段，因此没有 order 位）。 */
-export const SEED_SEGMENTS: readonly string[] = ['task', 'cwd', 'goal', 'source', 'summary', 'name', 'params'];
+/** seed 段（宿主在 run 时传入的那份数据；每段都有一份，只读）。唯一真相在 shared。 */
+export { SEED_SEGMENTS } from '../../shared/prompt-plugin.js';
 
 /** 全部交付插件 id（按时机链 + 链内 order 的稳定序）。 */
 export const PLUGIN_IDS: readonly string[] = Object.freeze(allPluginIds());
@@ -97,29 +98,26 @@ export function fieldCatalogOf(id: string): { fields: string[]; top: string[] } 
   const p = pluginMeta(id);
   if (!p) throw new Error(`未知提示词插件：${id}`);
   const fields = p.schema.fields.map((f) => f.key);
-  const top = [...new Set(fields.map((k) => k.split('.')[0]!))];
+  const top = [...new Set(fields.map((k) => k.split('.')[0]!.replace(/\[\]$/, '')))];
   const out = { fields, top };
   fieldCache.set(id, out);
   return out;
 }
 
 /**
- * 白名单校验入参（**全局段集**）：ctx 全共享是既有语义，per-block 硬隔离会误伤
- * 旧 CLI 入口与跨段引用；白名单的目标收敛为「拦拼错的段名 / 变量名」——
- * 段集合 = 全部插件 writes ∪ seed ∪ 全部 fields 顶层；字段键 = 全部 fields 并集。
+ * 某一段可见的变量域（**不再有全局段集**）：seed ∪ 本段 dataSchema 顶层。
+ *
+ * 旧实现是「全局段集 + 全部字段并集」——那等于允许 a 段引用 b 段的变量，
+ * 跨段耦合被白名单亲手放行。#153 起每段只看自己的数据，白名单与运行期同域。
  */
-export function globalTemplateVarScope(): { allowedSegments: string[]; fieldKeys: string[] } {
-  const segments = new Set<string>(SEED_SEGMENTS);
-  const keys = new Set<string>();
-  for (const id of PLUGIN_IDS) {
-    const p = pluginMeta(id)!;
-    for (const w of p.writes) segments.add(w);
-    const { fields, top } = fieldCatalogOf(id);
-    for (const t of top) segments.add(t);
-    for (const f of fields) keys.add(f);
-  }
-  return { allowedSegments: [...segments], fieldKeys: [...keys] };
+export function varScopeOf(id: string): { allowedSegments: string[]; fieldKeys: string[] } {
+  const p = pluginMeta(id);
+  if (!p) throw new Error(`未知提示词插件：${id}`);
+  return varScopeOfFields(id, p.schema.fields);
 }
+
+/** shared 的实现（assertPluginList 直接吃 fields，省一次查表）。 */
+export { varScopeOf as varScopeOfFields };
 
 /** 某插件当前生效的模板正文（#152：就是类里 templates[0]）。 */
 export function activeTemplateOf(id: string): string {

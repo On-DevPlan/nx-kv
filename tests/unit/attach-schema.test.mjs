@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { attachTemplateCtx } = await import('../../src/modules/tasktool/attach.js');
-const { buildPlugins, fieldCatalogOf, globalTemplateVarScope } = await import(
+const { buildPlugins, fieldCatalogOf, varScopeOf } = await import(
   '../../src/modules/promptplug/index.js'
 );
 const { undeclaredTemplateVars } = await import('../../src/shared/prompt-plugin.js');
@@ -109,7 +109,7 @@ test('变量目录：6 种 kind 的关键字段都在（这是设置页「可使
 });
 
 test('目录的 [] 记法 ↔ 模板实写：each 内部用相对路径不被误判为未声明', () => {
-  const { allowedSegments, fieldKeys } = globalTemplateVarScope();
+  const { allowedSegments, fieldKeys } = varScopeOf('attachment');
   const tpl = [
     '{{#each attach.list}}',
     '- {{kindLabel}} {{name}}',

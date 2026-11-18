@@ -1,8 +1,8 @@
 // 任务模板列表（#217：从「设置 → 任务模板」搬到侧边栏入口，在主内容区显示）。
 //
-// #151 重做：图标优先、文字收敛。操作从五个纯文字按钮改成图标按钮，头部去掉
-// 大段插槽说明，卡片只留「名称 / 一行摘要 / 徽标 / 图标操作」，预览与可见域
-// 按需展开。数据面不变：/api/templates（App 层 useTemplates 已持有一份）+ scope。
+// #151 重做：图标优先、文字收敛。操作从五个纯文字按钮改成图标按钮，卡片只留
+// 「名称 / 一行摘要 / 徽标 / 图标操作」，预览与可见域按需展开。数据面不变：
+// /api/templates（App 层 useTemplates 已持有一份）+ scope。
 import { useState } from 'react';
 import { useApp } from '../../app-context.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -12,12 +12,11 @@ import { useToast } from '../../components/toast/index.jsx';
 import { renderMarkdownHtml } from '../../modules/md/md-parse.js';
 import { ListSearch } from '../../components/list-search.jsx';
 import { filterByKeyword } from '../../modules/list-filter.js';
-import { renderTemplatePreview, templateSlots } from '../../modules/prompts/template-preview.js';
 import type { PromptTemplate, TemplatesApi } from '../../types.js';
 import ScopeChips from './scope-chips.jsx';
 import './style.css';
 
-/** 正文摘要：前两行可读内容（剥掉 markdown 标记，插槽显示成〔content〕）。 */
+/** 正文摘要：前两行可读内容（剥掉 markdown 标记）。 */
 function summaryOf(body: string): string {
   const lines = String(body || '')
     .split('\n')
@@ -26,8 +25,7 @@ function summaryOf(body: string): string {
         .replace(/^#{1,6}\s+/, '')
         .replace(/^[-*+]\s+\[[ x]\]\s*/i, '')
         .replace(/^[-*+]\s+/, '')
-        .replace(/^>\s?/, '')
-        .replace(/\{\{\s*([^}{\s][^{}]*?)\s*\}\}/g, '〔$1〕'),
+        .replace(/^>\s?/, ''),
     )
     .filter(Boolean)
     .slice(0, 2);
@@ -85,7 +83,7 @@ export default function TemplateListPanel() {
       <div className="page-head">
         <div className="title-block">
           <h2><Icon name="list" size={16} /> 任务模板</h2>
-          <p className="muted tpl-head-note">新建任务时的正文骨架；带 <code>{'{{content}}'}</code> 的段落可在填写页填值。</p>
+          <p className="muted tpl-head-note">新建任务时的正文骨架；正式内容在编辑页自行填写。</p>
         </div>
         <div className="acts">
           <Button variant="primary" small disabled={busy} onClick={() => go('#/templates/new')}>
@@ -113,18 +111,12 @@ export default function TemplateListPanel() {
           const isDefault = t.id === tpl.defaultId;
           const scopeOpen = scopeOpenId === t.id;
           const previewOpen = previewId === t.id;
-          const slots = templateSlots(t.body);
           return (
             <div key={t.id} className={'tpl-card' + (isDefault ? ' is-default' : '')}>
               <div className="tpl-card-head">
                 <span className="tpl-card-name">{t.name}</span>
                 {isDefault && <span className="tpl-badge">默认</span>}
                 {t.builtin && <span className="tpl-badge soft">内置</span>}
-                {slots.length > 0 && (
-                  <span className="tpl-badge slot" title={slots.join('、')}>
-                    <Icon name="list" size={11} /> {slots.length}
-                  </span>
-                )}
                 <span className="grow tpl-card-grow" />
                 <div className="tpl-card-acts">
                   <button
@@ -186,7 +178,7 @@ export default function TemplateListPanel() {
                 <div className="tpl-preview">
                   <div
                     className="tpl-preview-body mdw-lp-view"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdownHtml(renderTemplatePreview(t.body, t.values)) }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdownHtml(t.body) }}
                   />
                 </div>
               )}

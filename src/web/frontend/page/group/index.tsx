@@ -26,10 +26,8 @@ import { openPanel } from '../../workspace.js';
 import { openTemplateEditor } from '../../panels.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { parseFrontmatter } from '../../modules/md/md-parse.js';
+import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
 import { hitTaskQuery } from '../../modules/board/task-search.js';
-import { templateDraftBody } from '../../modules/prompts/template-preview.js';
-import { startFillIfSlotted } from '../../modules/md/new-task-from-template.js';
 import { putManageSession } from '../../modules/md/manage-session.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, LocalTopic, RepoData } from '../../types.js';
@@ -315,30 +313,19 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   const createTask = (pick?: { id?: string; body?: unknown; values?: Record<string, unknown> | null } | null) => {
     if (!board) return;
     if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
-    // #151：带 {{槽位}} 的模板先去参数页（携带组 + 项目上下文）
-    const chosen = pick || (tpl?.templates || []).find((t) => t.id === tpl.defaultId) || null;
-    if (chosen && startFillIfSlotted(
-      chosen,
-      {
-        topic: sel.topicKey || '',
-        group: board.key || '',
-        repo: sel.key || '',
-        groupId: board.id,
-        board: board.id,
-        project: sel.key,
-      },
-      app,
-    )) return;
     const id = nextDraftId();
     // 草稿 doc 种在**组 scope**（docIdOf(scopeOf(board.id), id)）：从组路由
     // #/group/<id>?task=draft-N 打开寻得回同一份（#86）。以前种在成员 scope、
     // 打开走 dir 路由——组语义在建任务这步就断了。
     const docId = docIdOf(scopeOf(board.id), id);
-    // 与目录任务页同一条口径：槽位已渲染、模板身份写进 frontmatter（编辑器据此锁骨架，#217）
+    // 与目录任务页同一条口径：正文取模板原文，归属字段写进 frontmatter。
     const extra = { board: board.id, project: sel.key };
     saveDoc(docId, {
       title: '',
-      body: pick ? templateDraftBody(pick, extra) : templateDraftBody(tpl.defaultPick(), extra),
+      body: withFrontmatter(
+        pick ? String(pick.body || '') : tpl.defaultPick().body,
+        extra,
+      ),
     });
     app.openPage?.({ groupId: board.id, task: id, name: '新任务' });
   };

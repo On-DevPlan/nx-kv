@@ -111,27 +111,18 @@ test('编辑模板：只改传入字段；builtin 骨架也可改（T06 裁决�
   await assert.rejects(() => updateTemplate({ id: a.template.id, name: '   ' }), /模板名/);
 });
 
-// 槽位（values）：#217 起出厂正文声明插槽（骨架只读 + 插槽可编辑），
-// #218 起插槽名**统一为 content**（`{{content}}`），values.content 是默认提示文字；
-// 其它名字仍可由用户模板自己用（渲染层通用，不认名字）。
-test('模板正文：出厂声明 content 插槽；老模板的槽位值仍跟自己存', async () => {
+// 模板 = 纯正文骨架，无插槽机制；vars 列只是 DB 兼容位（恒空）。
+test('内置模板：出厂正文是纯文字骨架，无 {{content}} 插槽、vars 为空', async () => {
   const builtin = await listTemplates();
   const def = builtin.templates.find((t) => t.id === BUILTIN_ID);
   assert.ok(def, '内置模板在场');
-  assert.match(def.body, /\{\{\s*content\s*\}\}/, '内置正文要有插槽（否则整篇骨架只读、任务没法写）');
+  assert.equal(def.body.includes('{{'), false, '出厂正文不含任何 mustache 标记');
   assert.match(def.body, /## 本轮问题/, '出厂正文 = 零知识 SOP');
-  assert.equal(def.values.content, '（把你要问这个仓库的问题写在这里）', '槽位默认值 = 可改的提示文字');
-  assert.equal(def.values['背景'], undefined, '其它槽位不凭空出现');
+  assert.deepEqual(def.values, {}, 'DB vars 兼容位为空对象');
 
-  const upd = await updateTemplate({ id: BUILTIN_ID, values: { 背景: '本轮要做的事' } });
-  assert.equal(upd.template.values['背景'], '本轮要做的事');
-  assert.equal(upd.template.body, def.body, '只给 values 时不改正文');
-
-  // 用户模板：槽位值跟着自己的模板存
-  const t = await addTemplate({ name: '带槽位', body: '# 标题\n\n{{content}}\n' });
-  const t2 = await updateTemplate({ id: t.template.id, values: { content: '把事做完' } });
-  assert.equal(t2.template.values.content, '把事做完');
-  assert.equal(t2.template.body, '# 标题\n\n{{content}}\n', '正文不动');
+  // 用户模板正文原样存取，不做任何渲染替换
+  const t = await addTemplate({ name: '纯正文', body: '# 标题\n\n正文写在这里\n' });
+  assert.equal(t.template.body, '# 标题\n\n正文写在这里\n', '正文原样');
 });
 
 test('正文可来自文件（--body-file）：多行 Markdown 的实用姿势', async () => {
@@ -166,7 +157,7 @@ test('设默认 + 落库持久（关连接重开仍在 —— 模拟新进程）
 });
 
 test('builtin 的用户编辑在重启后保留（seed 不覆盖用户编辑 —— T06 裁决）', async () => {
-  const u = await updateTemplate({ id: BUILTIN_ID, body: '# 用户改过的骨架\n\n{{目标}}' });
+  const u = await updateTemplate({ id: BUILTIN_ID, body: '# 用户改过的骨架\n\n自己写的正文' });
   assert.ok(u.template.body.includes('用户改过的骨架'));
 
   closeDb(); // 模拟重启

@@ -128,18 +128,6 @@ function routeFromHash(): AppRoute {
         scope: '',
       };
     }
-    // #151：参数填写中间页（#/templates/fill/<sessionId>，会话在内存里）
-    if (rest.startsWith('fill/')) {
-      return {
-        view: 'templates',
-        key: '',
-        task: '',
-        mode: 'fill',
-        id: decodeURIComponent(rest.slice(5)),
-        topic: '',
-        scope: '',
-      };
-    }
     if (rest === 'new') {
       return {
         view: 'templates',

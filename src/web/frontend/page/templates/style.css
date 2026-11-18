@@ -2,22 +2,6 @@
    外壳复用 .rp-page / .page-head（与仓库管理页同一套头部口径），这里只补卡片与预览。 */
 .tpl-page{display:flex;flex-direction:column;gap:12px}
 .tpl-head-note{margin:2px 0 0;font-size:12px}
-.tpl-head-note code,
-.tpl-slot-hint code{
-  font:400 11.5px ui-monospace,Consolas,monospace;padding:0 4px;border-radius:4px;
-  background:var(--soft,#F1F0EC);border:1px solid var(--line,#E4E2DC);
-}
-/* 模板编辑器工具栏里的插槽提示（#218）：有插槽=绿色强调，没有=灰提示 */
-.tpl-slot-hint{
-  font-size:11px;margin-left:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  color:var(--mdw-accent,#2F6F5E);
-}
-.tpl-slot-hint b{font-weight:600}
-.tpl-slot-hint.is-none{color:var(--mid,#8A8578)}
-/* 模板编辑器里插槽徽标常显：任务编辑器 hover 才显示（那边插槽是少数），
-   模板里「哪里是插槽」恰恰是主角——徽标与绿条一直可见 */
-.mdw-tpl-edpage .mdw-lp-slot{opacity:1}
-.mdw-tpl-edpage .mdw-lp-block.is-slot{box-shadow:inset 3px 0 0 var(--mdw-accent-line,#B7D4C8)}
 /* #149：模板列表关键词过滤框 */
 .tpl-search{padding:2px 0 8px}
 .tpl-list{display:flex;flex-direction:column;gap:8px;min-width:0}
@@ -35,13 +19,6 @@
   border:1px solid var(--mdw-accent-line,#B7D4C8);
 }
 .tpl-badge.soft{background:var(--soft,#F1F0EC);color:var(--mid,#8A8578);border-color:var(--line,#E4E2DC)}
-/* 槽位徽标（#218）：与「默认/内置」徽章同一套 chip 语言，绿色 = 可填插槽 */
-.tpl-card-slots{
-  font-size:10.5px;padding:0 6px;border-radius:999px;line-height:1.7;
-  background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E);
-  border:1px solid var(--mdw-accent-line,#B7D4C8);
-  max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
 /* 全局 .grow 有 max-width:340px（推右会停在半路）——卡片里要真推到右缘 */
 .tpl-card-grow{flex:1 1 auto;min-width:0;max-width:none}
 .tpl-card-acts{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
@@ -63,24 +40,6 @@
   background:var(--soft,#F1F0EC);border:1px solid var(--line,#E4E2DC);
 }
 
-/* ── #151 参数填写中间页 ───────────────────────────────────────────── */
-.tpl-fill-page{gap:12px}
-.tpl-fill-page .page-head h2{display:flex;align-items:center;gap:7px}
-.tpl-fill-body{
-  display:flex;flex-direction:column;gap:14px;min-width:0;max-width:720px;
-  padding:14px;border:1px solid var(--line,#E4E2DC);border-radius:10px;background:var(--paper,#fff);
-}
-.tpl-fill-field{display:flex;flex-direction:column;gap:6px;min-width:0}
-.tpl-fill-label{font-size:12px;font-weight:600;color:var(--ink-2,#4B515A)}
-.tpl-fill-input{
-  width:100%;resize:vertical;min-height:84px;padding:8px 10px;box-sizing:border-box;
-  font:400 12.5px/1.6 inherit;color:var(--ink,#222);background:var(--paper,#fff);
-  border:1px solid var(--line,#E4E2DC);border-radius:8px;
-}
-.tpl-fill-input:focus{outline:none;border-color:var(--mdw-accent-line,#B7D4C8)}
-.tpl-fill-empty{padding:8px 0}
-.tpl-fill-foot{display:flex;gap:8px;justify-content:flex-end;max-width:720px}
-
 /* ── #151 主题级模板管理页 ─────────────────────────────────────────── */
 .tpl-mng-page{gap:12px}
 .tpl-mng-page .page-head h2{display:flex;align-items:center;gap:7px}
@@ -101,8 +60,7 @@
 .tpl-mng-acts{display:flex;align-items:center;gap:2px}
 .tpl-mng-scope{grid-column:1/-1;padding-top:8px;border-top:1px dashed var(--line,#E4E2DC)}
 
-/* #151 图标化：徽标/图标按钮的轻状态 */
-.tpl-badge.slot{display:inline-flex;align-items:center;gap:3px}
+/* #151 图标化：图标按钮的轻状态 */
 .tpl-card .iconbtn.is-on{background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E)}
 .tpl-page .page-head h2,
 .tpl-mng-page .page-head h2{display:flex;align-items:center;gap:7px}

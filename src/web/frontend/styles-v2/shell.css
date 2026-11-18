@@ -204,6 +204,13 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
   --flexlayout-color-mini-scroll-indicator: var(--soft-2);
   --flexlayout-color-mini-scroll-indicator-hovered: var(--mid);
   --flexlayout-color-shadow: rgba(20, 22, 26, .16);
+  /* 拖拽分隔条：可视线条收窄到 2px（horz=宽 / vert=高）；命中区沿用 active-size
+     （默认 8px，库用 ::before 居中覆盖细线）不动，保证细线仍好抓。
+     hover / 拖拽用浅一档的青绿（#2F6F5E 提亮：HSL 165°/36%/45%）——
+     验收反馈深墨绿偏闷，同色相提亮后更清爽；只作用分隔条，不动全局强调色。 */
+  --flexlayout-splitter-size: 2px;
+  --flexlayout-color-splitter-hover: #4A9B83;
+  --flexlayout-color-splitter-drag: #4A9B83;
 }
 /* 页签条：让选中页签跟面板内容有一条清晰的分界 */
 .flexlayout__tab { font-weight: 600; }

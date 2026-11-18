@@ -25,8 +25,6 @@ import {
   stripPhantomEmptyLines,
   withFrontmatter,
 } from '../../modules/md/md-parse.js';
-import { templateDraftBody } from '../../modules/prompts/template-preview.js';
-import { startFillIfSlotted } from '../../modules/md/new-task-from-template.js';
 import {
   docIdOf,
   nextDraftId,
@@ -396,19 +394,6 @@ export function useTaskActions({
 
   /** 「更多 → 新任务」：新草稿**带着当前上下文**（工作组 + 归属项目）。 */
   const newTask = useCallback(() => {
-    // #151：默认模板带槽位 → 先去参数页（带上当前组/项目上下文）
-    const full = (tpl?.templates || []).find((t) => t.id === tpl?.defaultId);
-    if (full && startFillIfSlotted(
-      full,
-      {
-        topic: topicKey,
-        dirKey: groupAnchored ? '' : topicKey,
-        groupId: groupAnchored ? groupId : '',
-        board: boardCtx?.board?.id || '',
-        project: docFm.project || '',
-      },
-      app,
-    )) return;
     const draftId = nextDraftId();
     const docId = docIdOf(groupAnchored ? scopeOf(groupId) : scopeOf(topicKey), draftId);
     const fm: DocFm = {};
@@ -416,7 +401,7 @@ export function useTaskActions({
     if (docFm.project) fm.project = docFm.project;
     saveDoc(docId, {
       title: '',
-      body: tpl ? templateDraftBody(tpl.defaultPick(), fm) : withFrontmatter('', fm),
+      body: withFrontmatter(tpl ? tpl.defaultPick().body : '', fm),
     });
     if (app.openPage) {
       app.openPage(

@@ -33,8 +33,6 @@ interface LiveBlockProps {
   rail?: ReactNode;
   /** 拖拽落点指示：插到本块之前还是之后（null = 不是落点） */
   dropEdge?: 'before' | 'after' | null;
-  /** 模板插槽块：可编辑，但加视觉标记（这里是要填内容的地方）。仅模板编辑页会传。 */
-  slot?: boolean;
 }
 
 export default function LiveBlock({
@@ -55,7 +53,6 @@ export default function LiveBlock({
   pendingFormatRef,
   rail = null,
   dropEdge = null,
-  slot = false,
 }: LiveBlockProps) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const display = normalizeBlockText(text);
@@ -145,7 +142,7 @@ export default function LiveBlock({
 
   return (
     <div
-      className={`mdw-lp-block is-view kind-${kind}${isEmptyBlock(text) ? ' is-empty' : ''}${hit ? ' is-hit' : ''}${dropCls}${slot ? ' is-slot' : ''}`}
+      className={`mdw-lp-block is-view kind-${kind}${isEmptyBlock(text) ? ' is-empty' : ''}${hit ? ' is-hit' : ''}${dropCls}`}
       data-i={index}
       role="button"
       tabIndex={0}
@@ -160,7 +157,6 @@ export default function LiveBlock({
       }}
     >
       {rail}
-      {slot && <span className="mdw-lp-slot" aria-hidden>插槽</span>}
       {html ? (
         <div className="mdw-lp-view" dangerouslySetInnerHTML={{ __html: html }} />
       ) : (

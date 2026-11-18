@@ -6,15 +6,14 @@
 //
 // 内置模板（`builtin=1`，由 core/db/seed-templates 在开库时 INSERT OR IGNORE
 // seed，永远在场）：**不可删，可编辑**。T06 起骨架也可改 —— 用户改了
-// builtin 的 body / 槽位后重启原样保留（seed 是 OR IGNORE，绝不覆盖用户编辑）。
+// builtin 的 body 改后重启原样保留（seed 是 OR IGNORE，绝不覆盖用户编辑）。
 // #137：出厂正文只有**一份**（core/db/seed-templates 的 NEWTASK_REF_BODY，
 // 即新建任务模板「ref 生成」）；前端不再自带第二份副本（漂移的根源）。
 //
 // ── 与 schema 列的映射 ────────────────────────────────────────────────
 //   旧 JSON 字段            → 列
-//   values（槽位值对象）     → vars（JSON；**列名换了**，对外视图仍叫 values ——
-//                              调用方与测试一行不改；vars_schema 声明「有哪些变量」，
-//                              vars 填值，声明里不放默认值）
+//   values（旧数据对象）     → vars（JSON；**列名换了**，对外视图仍叫 values ——
+//                              DB 兼容列，插槽机制移除后恒为空对象）
 //   builtin                 → builtin 列
 //   defaultId               → 同类目 `is_default=1` 的那行（ux_templates_default
 //                              保证每类目最多一个默认；**没有**另落 settings 键 ——
@@ -66,9 +65,9 @@ const NEWTASK_CATEGORY = 'newtask';
 
 const repo = repoLayer;
 
-// #137：内置只有一份出厂文本（新建任务模板「ref 生成」）。空正文兜底用它，
-// 槽位默认值不再需要（出厂文本里没有 {{槽位}} 标记）。
+// #137：内置只有一份出厂文本（新建任务模板「ref 生成」）。空正文兜底用它。
 export const BUILTIN_BODY = NEWTASK_REF_BODY;
+/** DB vars 列兼容位：始终空对象（模板已无插槽机制）。 */
 export const BUILTIN_VALUES: Record<string, string> = {};
 
 // ─── 视图：行 ⇄ 旧 JSON 形状（调用方消费的是 values/builtin 这些旧字段）──
@@ -178,9 +177,8 @@ function normalizeBody(raw: unknown): string {
 }
 
 /**
- * 归一化模板的槽位值（values）：{ 槽位名: 文字 }。
- * 只留字符串值、逐条截断（单槽 ≤2000 字）、槽位名限长 40——槽位名要出现在
- * 正文里当 {{名字}}，名字太长就没法当占位符用了。
+ * 归一化模板的 vars（DB 兼容字段，对外仍叫 values）；仅留字符串、逐条截断。
+ * 插槽机制已移除，调用方不再传值，此处只保证写库形状合法。
  */
 export function normalizeValues(raw: unknown, base: any = {}): Record<string, string> {
   const out: Record<string, string> = { ...base };
@@ -261,7 +259,7 @@ export async function addTemplate({
       id: 't_' + crypto.randomBytes(5).toString('hex'),
       name,
       body,
-      // 槽位值：正文里 {{名字}} 处填的文字；未给的槽位按正文里的原样渲染
+      // DB vars 列兼容：无调用方传值，写空对象
       values: normalizeValues(values),
     };
     repo.templates.insertIfAbsent(conn, {
@@ -318,7 +316,7 @@ export async function removeTemplate({ id }: { id?: unknown } = {}): Promise<{
   });
 }
 
-/** 编辑模板（改名 / 改正文 / 改槽位 / 改可见域；只改传入的字段）。 */
+/** 编辑模板（改名 / 改正文 / 改可见域；只改传入的字段）。 */
 export async function updateTemplate({ id, name: rawName, body: rawBody, bodyFile, values, scope: rawScope }: {
   id?: unknown;
   name?: unknown;
@@ -338,8 +336,8 @@ export async function updateTemplate({ id, name: rawName, body: rawBody, bodyFil
     if (bodyIn !== undefined) patch.body = normalizeBody(bodyIn);
     if (rawScope !== undefined) patch.scope = normalizeScope(rawScope, { strict: true });
     if (values !== undefined) {
-      // 内置模板：槽位未给的项回落出厂默认（渲染时的兜底语义与 JSON 时代一致）
-      patch.vars = normalizeValues(values, row.builtin ? BUILTIN_VALUES : rowToView(row).values);
+      // DB vars 列兼容写入；插槽机制已移除，无调用方传值
+      patch.vars = normalizeValues(values, BUILTIN_VALUES);
     }
     repo.templates.updateRow(conn, want, patch, nowMs());
     return { status: 'ok', template: rowToView(repo.templates.getRow(want, conn)) };

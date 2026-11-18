@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { ActionBase, type ActionInput, type ActionRunMeta } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
 import {  } from 'node:path';
-import { parseScope, parseValues } from '../support.js';
+import { parseScope } from '../support.js';
 const service: any = serviceNs;
 
 /** templates.update 的入参契约（CLI 与 HTTP 共用同一份）。 */
@@ -17,7 +17,6 @@ const input = z.object({
   bodyFile: z.string().optional().describe("从文件读新正文（--body 优先）；`-` = 读标准输入"),
   'body-file': z.string().optional().describe("同 --bodyFile（连字符写法）"),
   scope: z.unknown().optional().describe("可见域（#128）：* / topic:<key> / repo:<key> / group:<key>，JSON 数组或逗号短写（不传保持不变）"),
-  values: z.string().optional().describe("槽位值 JSON（形如 {\"背景\":\"要做的事\"}）——老模板正文里的 {{槽位名}} 处填这段文字（新模板直接写正文即可）"),
 });
 
 export class TemplatesUpdateAction extends ActionBase<typeof input> {
@@ -38,7 +37,6 @@ export class TemplatesUpdateAction extends ActionBase<typeof input> {
             body: ctx.body,
             bodyFile: opts && opts.transport === 'http' ? undefined : (ctx.bodyFile ?? ctx['body-file']),
             scope: parseScope(ctx.scope),
-            values: parseValues(ctx.values),
           });
   
   }

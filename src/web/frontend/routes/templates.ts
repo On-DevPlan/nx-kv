@@ -26,13 +26,6 @@ export const templatesPage = definePage({
         name: '管理模板',
       };
     }
-    // #151：参数填写中间页（sessionId 只在内存里，config 只需 id）
-    if (route.mode === 'fill' && route.id) {
-      return {
-        panel: { component: 'templates', config: { mode: 'fill', id: String(route.id) } },
-        name: '填写模板参数',
-      };
-    }
     if (route.mode === 'new') {
       const scope = String(route.scope || '')
         .split(',')
@@ -66,9 +59,6 @@ export const templatesPage = definePage({
         }
         if (mode === 'manage' && cfg.id) {
           return `#/templates/manage/${encodeURIComponent(cfg.id)}`;
-        }
-        if (mode === 'fill' && cfg.id) {
-          return `#/templates/fill/${encodeURIComponent(cfg.id)}`;
         }
         if (mode === 'new') {
           const parts: string[] = [];

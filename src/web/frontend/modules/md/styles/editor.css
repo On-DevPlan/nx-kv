@@ -341,20 +341,3 @@
 @media (max-width:720px){
   .mdw-block-rail{left:auto;right:0;top:-10px}
 }
-
-/* ─── 模板编辑页的插槽标记 ──────────────────────────────────────────────
-   #151 起任务编辑器不再有「骨架只读 / 插槽」概念——模板只在**生成任务正文之前**
-   存在，生成后就是纯文本。这里只剩模板编辑页给自己用的插槽左线 + 角标。 */
-.mdw-lp-block.is-slot{
-  padding-left:10px;
-  box-shadow:inset 2px 0 0 var(--mdw-accent-line,#B7D4C8);
-}
-.mdw-lp-slot{
-  position:absolute;right:0;top:0;
-  font:500 9.5px/1.6 system-ui,-apple-system,sans-serif;
-  padding:0 6px;border-radius:999px;
-  border:1px solid var(--line,#E4E2DC);background:var(--soft,#F1F0EC);color:var(--mid,#8A8578);
-  opacity:0;transition:opacity .12s;pointer-events:none;user-select:none;
-}
-.mdw-lp-slot{color:var(--mdw-accent,#2F6F5E);border-color:var(--mdw-accent-line,#B7D4C8);background:var(--mdw-accent-soft,#E8F2EE)}
-.mdw-lp-block:hover .mdw-lp-slot{opacity:1}

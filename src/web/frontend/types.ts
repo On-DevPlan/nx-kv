@@ -125,6 +125,7 @@ export interface PromptTemplate {
   id: string;
   name: string;
   body: string;
+  /** DB vars 列的兼容视图（插槽机制已移除，恒为空对象）。 */
   values?: Record<string, string>;
   scope?: string[];
   builtin?: boolean;
@@ -137,7 +138,7 @@ export interface TemplatesApi {
   templates: PromptTemplate[] | null;
   unsupported: boolean;
   defaultBody: () => string;
-  /** 默认模板的正文 + 模板身份（#151 起 id 不再写进任务正文，纯文本渲染）。 */
+  /** 默认模板的正文（原样）+ 模板 id。 */
   defaultPick: () => { body: string; id: string };
   refetch: () => Promise<void>;
   add: (name: string, body: string, setDefault?: boolean, opts?: { topic?: string; scope?: string[] }) => Promise<any>;

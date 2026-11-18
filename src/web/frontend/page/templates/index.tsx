@@ -2,7 +2,6 @@
 // #/templates/new、#/templates/edit/<id> = 全屏模板编辑器（MdPanes）。
 // config: { mode:'edit'|'new', id?, name?, scope?, topic? }
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
-import { renderTemplatePreview } from '../../modules/prompts/template-preview.js';
 import { renderMarkdownHtml } from '../../modules/md/md-parse.js';
 import { useMemo, useRef, useState } from 'react';
 import { Actions } from 'flexlayout-react';
@@ -12,10 +11,8 @@ import { useApp } from '../../app-context.jsx';
 import { MdPanes } from '../../components/md/md-panes.jsx';
 import type { EditorApi } from '../../components/md/md-panes-helpers.js';
 import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
-import { liveBodyBlocks } from '../../modules/md/md-blocks.js';
 import { popRoute } from '../../components/layout/route-history.js';
 import TemplateListPanel from './template-list.jsx';
-import TemplateFillPanel from './fill.jsx';
 import TemplateManagePanel from './manage.jsx';
 import '../../modules/md/style.css';
 import './style.css';
@@ -28,31 +25,12 @@ interface TemplateDraft {
 
 const HIST_KEY = (id?: string | null) => `tpl:${id || 'new'}`;
 
-/** 块级插槽正则：与 templateSlots / 渲染层同一套 `{{名字}}` 口径。 */
-const SLOT_RE = /\{\{\s*[^}{\s][^{}]*?\s*\}\}/;
-
 /**
- * 哪些块是插槽块（#218）：编辑器里给这些块挂「插槽」徽标（绿线 + 徽标，
- * 与任务编辑器同一套视觉语言）。编辑的是模板本身，全部块都可编辑 ——
- * 徽标只回答「任务里哪段可填」，不产生只读。
- */
-function slotBlocksOf(body: string): Set<number> {
-  const out = new Set<number>();
-  liveBodyBlocks(body).forEach((b, i) => {
-    if (SLOT_RE.test(b)) out.add(i);
-  });
-  return out;
-}
-
-/**
- * 新建模板的默认正文（#218）：给一段**含 `{{content}}` 的骨架**。
- *
- * 空白的编辑器会逼用户自己猜插槽语法，猜出来的名字五花八门（`{{问题}}` /
- * `{{需求}}`）—— 而插槽只有 `content` 这一个名字，默认骨架直接把它摆出来。
+ * 新建模板的默认正文：一段可直接改写的 Markdown 骨架。
+ * 模板只负责内容与样式，正式内容在任务编辑页自行填写；留白不够就在模板里多留空行。
  */
 const NEW_TEMPLATE_BODY = `## 背景
 
-{{content}}
 
 ## 验收
 - [ ] …
@@ -64,8 +42,6 @@ interface TemplateEditorViewProps {
   templateId: string;
   initialName: string;
   initialBody: string;
-  /** 槽位默认值：只用于右侧预览，**不进输入框**（输入框里必须是 `{{content}}` 源码）。 */
-  initialValues?: Record<string, unknown> | null;
   isNew: boolean;
   onSave: (v: TemplateDraft) => void | Promise<void>;
   onClose: () => void;
@@ -76,7 +52,6 @@ function TemplateEditorView({
   templateId,
   initialName,
   initialBody,
-  initialValues,
   isNew,
   onSave,
   onClose,
@@ -92,18 +67,11 @@ function TemplateEditorView({
   const histRef = useRef<Map<string, unknown>>(new Map());
   const histId = HIST_KEY(isNew ? 'new' : templateId);
 
-  // 预览 = **渲染后**的样子（空插槽显示〔content〕）。
-  // 左边输入框里是模板源码（`{{content}}` 原样可见），两栏各司其职：
-  // 编辑的是模板，不是一篇填好的任务正文 —— 旧行为（输入框也渲染）会让保存把
-  // `{{content}}` 写成提示文字，插槽就此消失（#218）。
+  // 预览 = 正文的 Markdown 渲染；模板就是内容本身，没有插槽/渲染替换层。
   const previewHtml = useMemo(
-    () => renderMarkdownHtml(renderTemplatePreview(body || '', initialValues)),
-    [body, initialValues],
+    () => renderMarkdownHtml(body || ''),
+    [body],
   );
-
-  // 插槽块标记（#218）：随正文实时更新，编辑器里一眼看到「任务里哪段可填」
-  const slotBlocks = useMemo(() => slotBlocksOf(body || ''), [body]);
-  const slotCount = slotBlocks.size;
 
   const mark = (nextName: string, nextBody: string, kind = 'typing') => {
     pushHistory(histRef.current, histId, { title: name, body }, kind);
@@ -173,14 +141,6 @@ function TemplateEditorView({
                 </button>
               ))}
             </div>
-            <span
-              className={'tpl-slot-hint' + (slotCount ? '' : ' is-none')}
-              title="插槽只有这一个名字；可以出现多次，共用同一个值"
-            >
-              {slotCount
-                ? <>插槽 <b>{slotCount}</b> 处 · <code>{'{{content}}'}</code> 可填，其余只读</>
-                : <>还没有插槽 —— 正文里写 <code>{'{{content}}'}</code>，那段在任务里就可填</>}
-            </span>
           </div>
           <div className="mdw-actions" role="group" aria-label="模板操作">
             <button type="button" className="btn ghost sm" disabled={busy} onClick={onClose}>
@@ -197,7 +157,6 @@ function TemplateEditorView({
           title={name}
           body={body}
           previewHtml={previewHtml}
-          tplSlotBlocks={slotBlocks}
           onTitle={onTitle}
           onBody={onBody}
           docKey={histId}
@@ -230,10 +189,6 @@ export default function TemplatePanel({ config, model, tabId }: TemplatePanelPro
   const isNew = mode === 'new';
   const templateId = cfg.id || '';
 
-  // #151：参数填写中间页（带槽位模板 → 新建任务前的参数页）
-  if (mode === 'fill') {
-    return <TemplateFillPanel config={cfg} />;
-  }
   // #151：主题级模板管理页（从「新建任务」下拉的「管理模板…」进入）
   if (mode === 'manage') {
     return <TemplateManagePanel config={cfg} />;
@@ -310,10 +265,7 @@ export default function TemplatePanel({ config, model, tabId }: TemplatePanelPro
 
   // 走到这里 existing 必定存在（上面的守卫已排除「编辑态但找不到」）
   const initialName = isNew ? (cfg.name || '') : existing?.name ?? '';
-  // **原文**而不是渲染结果（#218）：模板编辑的是骨架，`{{content}}` 必须原样可见，
-  // 否则保存一次就把插槽写成提示文字。渲染只发生在右侧预览。
   const initialBody = isNew ? NEW_TEMPLATE_BODY : existing?.body ?? '';
-  const initialValues = isNew ? null : existing?.values ?? null;
 
   return (
     <TemplateEditorView
@@ -321,7 +273,6 @@ export default function TemplatePanel({ config, model, tabId }: TemplatePanelPro
       templateId={templateId}
       initialName={initialName}
       initialBody={initialBody}
-      initialValues={initialValues}
       isNew={isNew}
       busy={busy}
       onSave={saveEditing}

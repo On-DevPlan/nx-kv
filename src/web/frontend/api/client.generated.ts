@@ -1244,7 +1244,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async default(input: z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>);
       const path = `/api/templates/default`;
-      const body = { "id": inp["id"], "name": inp["name"], "body": inp["body"], "values": inp["values"], "scope": inp["scope"] };
+      const body = { "id": inp["id"], "name": inp["name"], "body": inp["body"], "scope": inp["scope"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesDefaultAction>['run']>>;
     },
     // action: templates.list
@@ -1276,7 +1276,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async templatesUpdate(input: z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>);
       const path = `/api/templates/${encodeURIComponent(String(inp["id"]))}`;
-      const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "scope": inp["scope"], "values": inp["values"] };
+      const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "scope": inp["scope"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesUpdateAction>['run']>>;
     },
     // action: file.content

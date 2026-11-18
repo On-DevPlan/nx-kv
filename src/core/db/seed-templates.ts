@@ -17,44 +17,7 @@
 import type { DbApi } from './driver.js';
 
 /**
- * 插槽的**统一写法**（#218）：`{{content}}`。
- *
- * 为什么不许自定义名字：#217 的锁定判定靠「模板里有槽位就把它当可编辑出口」，
- * 名字各写各的（`{{问题}}` / `{{任务}}` / `{{需求}}`）时，一眼看不出哪段是插槽，
- * 也没法在文案里给用户一个固定说法。所以对用户只认一个名字 —— 一个模板可以有
- * 多个 `{{content}}`，它们共享同一个值（模板正文里重复出现同一段内容时用得上）。
- *
- * 渲染层仍按 `{{名字}}` 通用解析（老模板不至于一升级就失效），但出厂文本、
- * 新建骨架、面板文案一律只出现 `content`。
- */
-export const SLOT_NAME = 'content';
-
-/** 内置模板的槽位默认值：提示文字，不是空串（空块看不出该写什么）。 */
-const CONTENT_HINT = '（把你要问这个仓库的问题写在这里）';
-
-/** 模板正文里有没有插槽（含 `{{content}}` 或任何 `{{名字}}`）。 */
-function hasSlot(body: string): boolean {
-  return /\{\{\s*[^}{\s][^{}]*?\s*\}\}/.test(String(body || ''));
-}
-
-/**
- * 出厂正文「被当成普通正文保存过一次」的样子：插槽已经渲染成默认值。
- *
- * #217 的模板编辑器曾经把正文渲染后再给用户编辑（保存即把 `{{content}}`
- * 写成提示文字），库里因此留下一批「没有插槽的内置模板」。#218 修了编辑器，
- * 同时用这个形态做**自愈判据**：body 与它逐字相同 = 用户没改过内容，可以安全
- * 恢复成带插槽的出厂文本；差一个字都不动（T06：内置不被代码覆盖用户编辑）。
- */
-function renderedFactoryBody(t: { body: string; vars?: Readonly<Record<string, unknown>> }): string {
-  const vals = t.vars || {};
-  return String(t.body || '').replace(/\{\{\s*([^}{\s][^{}]*?)\s*\}\}/g, (_all, name) => {
-    const v = vals[String(name).trim()];
-    return v === undefined || v === null ? '' : String(v);
-  });
-}
-
-/**
- * 内置「ref 生成」任务模板的正文（#137；#218 起插槽统一 `{{content}}`）。
+ * 内置「ref 生成」任务模板的正文（#137）。
  *
  * 它是**新任务正文骨架**：用户在这个仓库里提一个问题 → agent 按正文里的
  * 「零知识起步 SOP」走一遍 → 这轮问答被归档成一篇 ref，挂进该仓库的文档列表。
@@ -64,7 +27,6 @@ function renderedFactoryBody(t: { body: string; vars?: Readonly<Record<string, u
  */
 export const NEWTASK_REF_BODY = `## 本轮问题
 
-{{content}}
 
 ---
 
@@ -142,10 +104,7 @@ export const BUILTIN_TEMPLATES = Object.freeze([
     slot: 'suffix',
     body: NEWTASK_REF_BODY,
     varsSchema: [],
-    // 槽位默认值 = 用户看到的「填这里」提示：渲染后任务里不是空块，点进去改成自己的问题即可。
-    // 默认值是**提示文字**而不是空串，是因为 #217 之后这块在编辑器里是「可编辑插槽」——
-    // 空块看不出该写什么。
-    vars: { [SLOT_NAME]: CONTENT_HINT },
+    vars: {},
     isDefault: 1,
   },
   {
@@ -244,48 +203,5 @@ export function seedBuiltinTemplates(conn: DbApi, atMs: number): number {
       }
     );
   }
-  // ③ 出厂正文自愈（#218）：插槽被旧编辑器吃掉的 builtin 行恢复成带 {{content}} 的出厂文本
-  healRenderedBuiltinBodies(conn, atMs);
   return BUILTIN_TEMPLATES.length;
-}
-
-/**
- * 出厂正文自愈（#218；seedBuiltinTemplates 的第 ③ 步，独立导出以便单测）。
- *
- * 两条判据，都只碰 `builtin = 1` 的行（用户自建模板 builtin=0，一律不动）：
- *
- *   ① **逐字相等**：body === 「出厂文本按默认值渲染后的样子」。
- *      旧编辑器「先渲染再编辑、保存回库」的产物，插槽变了提示文字。
- *   ② **渲染残留**：库里这行一个插槽都没有，**但还留着出厂的提示文字**
- *      （`{{content}}` 被替换成的「（把你要问这个仓库的问题写在这里）」）。
- *      跨了几个版本之后 ① 对不上（出厂文本本身改过），但症状一样：正文里再也
- *      检不出槽位，「新建任务」永远进不了参数填写页（#153 验收反馈）。
- *      只认「提示文字还在」这一种残留——用户手写的正文里没有这句提示，
- *      照旧按 T06 不动。
- *
- * 返回被恢复的模板 id（正常库上是空数组，幂等）。
- */
-export function healRenderedBuiltinBodies(conn: DbApi, atMs: number): string[] {
-  const healed: string[] = [];
-  for (const t of BUILTIN_TEMPLATES) {
-    if (!hasSlot(t.body)) continue;
-    const eaten = renderedFactoryBody(t);
-    if (eaten === t.body) continue;
-    const row = conn.get('SELECT body, builtin FROM templates WHERE id = :id', { id: t.id }) as
-      | { body?: string; builtin?: number }
-      | undefined;
-    if (!row || !Number(row.builtin)) continue;
-    const cur = String(row.body || '');
-    const rendered = cur === eaten;
-    // 跨版本的渲染残留：没有插槽，但出厂提示文字还在（= 旧编辑器把插槽渲染成了提示）
-    const staleRender = !hasSlot(cur) && cur.includes(CONTENT_HINT);
-    if (!rendered && !staleRender) continue;
-    conn.run(
-      `UPDATE templates SET body = :body, vars = :vars, updated_at = :at
-        WHERE id = :id AND builtin = 1`,
-      { id: t.id, body: t.body, vars: JSON.stringify(t.vars || {}), at: atMs },
-    );
-    healed.push(t.id);
-  }
-  return healed;
 }

@@ -27,8 +27,6 @@ import DagEditor from './dag-editor.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
 import { openTemplateEditor } from '../../panels.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { templateDraftBody } from '../../modules/prompts/template-preview.js';
-import { startFillIfSlotted } from '../../modules/md/new-task-from-template.js';
 import { putManageSession } from '../../modules/md/manage-session.js';
 import { useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, PromptTemplate, RepoRow } from '../../types.js';
@@ -214,21 +212,14 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
       ? menuTemplates.map((t: PromptTemplate) => ({
           label: (t.id === tpl?.defaultId ? '✓ ' : '') + t.name,
           icon: 'list',
-          // #151：有 {{槽位}} → 先去参数填写页；无槽位 → 纯文本草稿直进编辑器
-          onClick: () => {
-            if (startFillIfSlotted(t, { topic: topicKeyHere, dirKey: dirKey || '' }, app)) return;
-            newDraft(templateDraftBody(t));
-          },
+          onClick: () => newDraft(String(t.body || '')),
         }))
       : [{
           label: '按默认模板新建一页',
           icon: 'list',
           onClick: () => {
             const p = tpl ? tpl.defaultPick() : null;
-            // #151：默认模板同样先过槽位检查
-            const full = (tpl?.templates || []).find((t) => t.id === (p?.id || tpl?.defaultId));
-            if (full && startFillIfSlotted(full as any, { topic: topicKeyHere, dirKey: dirKey || '' }, app)) return;
-            newDraft(p && p.id ? templateDraftBody(p) : (p ? p.body : ''));
+            newDraft(p ? p.body : '');
           },
         }]),
     'sep',
@@ -476,10 +467,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
           onPage={pager.setPage}
           onNew={() => {
             const p = tpl ? tpl.defaultPick() : null;
-            const full = (tpl?.templates || []).find((t) => t.id === (p?.id || tpl?.defaultId));
-            // #151：默认模板也带 {{content}} 槽位 → 先进参数页
-            if (full && startFillIfSlotted(full, { topic: topicKeyHere, dirKey: dirKey || '' }, app)) return;
-            newDraft(p && p.id ? templateDraftBody(p) : (p ? p.body : ''));
+            newDraft(p ? p.body : '');
           }}
           onOpenTask={openTask}
           onDeleteTask={delTask}

@@ -2,12 +2,11 @@
 //
 // 模板数据在本机服务（~/.nx-kv/templates.json），与队列同源同构——不落浏览器存储，
 // 换浏览器/刷新都一致。拉取失败不阻塞工作台：templates 置 null，新建页退回
-// #137：模板正文直接渲染（槽位值取模板自己声明的 values）；出厂文本只有后端那一份。
+// #137：模板正文原样使用，无渲染替换层；出厂文本只有后端那一份。
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { useApp } from '../../app-context.jsx';
 import type { PromptTemplate, TemplatesApi } from '../../types.js';
-import { renderTemplateBody } from '../prompts/render-template-body.js';
 
 /** /api/templates 的出站形状（服务端字段按 index 放行，这里只声明读到的）。 */
 interface TemplatesPayload {
@@ -53,20 +52,11 @@ export function useTemplates(): TemplatesApi {
     refetch();
   }, [refetch]);
 
-  /**
-   * 默认模板的「正文 + 模板身份」。
-   *
-   * 为什么要把 id 一起给出来：由模板生成的任务，编辑器要按模板骨架把
-   * 「骨架块」标成只读（#217）。身份落在正文 frontmatter 的 `template:` 上，
-   * 刷新 / 换设备 / CLI 侧改过之后仍然成立——只存前端内存的话一刷新就丢。
-   *
-   * 正文永远**已渲染**：任务里不能出现裸 `{{槽位}}`。
-   */
+  /** 默认模板的正文（原样，无渲染层）。id 一并给出，供调用方判断是否选中了模板。 */
   const defaultPick = useCallback(() => {
     const t = (state.templates || []).find((x) => x.id === state.defaultId);
     if (!t) return { body: '', id: '' }; // #137：没有可用模板 → 从空稿开始（出厂文本只有后端那一份）
-    // 缺的键用内置默认值补；用户显式留空（''）仍是空——不把标记露回正文。
-    return { body: renderTemplateBody(t.body, t.values || {}), id: String(t.id || '') };
+    return { body: String(t.body || ''), id: String(t.id || '') };
   }, [state]);
 
   /** 默认模板正文（未加载/拉取失败 → 空稿）。 */

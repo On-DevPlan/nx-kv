@@ -12,7 +12,6 @@ import { ListSearch } from '../../components/list-search.jsx';
 import { filterByKeyword } from '../../modules/list-filter.js';
 import { useTemplatesFor } from '../../modules/md/use-templates.js';
 import { getManageSession } from '../../modules/md/manage-session.js';
-import { templateSlots } from '../../modules/prompts/template-preview.js';
 import type { PromptTemplate, TemplatesApi } from '../../types.js';
 import ScopeChips from './scope-chips.jsx';
 import './style.css';
@@ -42,7 +41,6 @@ export default function TemplateManagePanel({ config }: ManagePanelProps) {
     t.name,
     t.body,
     (t.scope || []).join(' '),
-    templateSlots(t.body).join(' '),
   ]);
 
   const act = async (fn: () => Promise<unknown>, ok?: string) => {
@@ -107,7 +105,7 @@ export default function TemplateManagePanel({ config }: ManagePanelProps) {
         <ListSearch
           value={q}
           onChange={setQ}
-          placeholder="搜索名称 / 正文 / 槽位 / 可见范围…"
+          placeholder="搜索名称 / 正文 / 可见范围…"
           title="过滤本主题模板"
           count={shown.length}
           className="wide"
@@ -120,7 +118,6 @@ export default function TemplateManagePanel({ config }: ManagePanelProps) {
         <div className="tpl-mng-list">
           {shown.map((t: PromptTemplate) => {
             const isDefault = t.id === tpl?.defaultId;
-            const slots = templateSlots(t.body);
             return (
               <div
                 key={t.id}
@@ -153,7 +150,6 @@ export default function TemplateManagePanel({ config }: ManagePanelProps) {
                     <span className="tpl-mng-name">{t.name}</span>
                     {isDefault && <span className="tpl-badge">默认</span>}
                     {t.builtin && <span className="tpl-badge soft">内置</span>}
-                    {slots.length > 0 && <span className="tpl-badge soft">槽位 {slots.length}</span>}
                   </div>
                   {(t.scope || []).length > 0 && !scopeOpenId && (
                     <div className="tpl-mng-scope-sum muted">可见：{(t.scope || []).join(' / ')}</div>

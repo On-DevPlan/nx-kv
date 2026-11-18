@@ -1,0 +1,26 @@
+<nx-kv>
+<nx-kv.context>
+〔项目上下文〕工作目录 D:/DevProjects/my/github/nx-kv 未登记为本机仓库，本次交付没有项目介绍 / 组上下文。登记（不需要 .git，给 key 即可）：nx-kv repo add "D:/DevProjects/my/github/nx-kv" --key <key>
+</nx-kv.context>
+<nx-kv.timecheck>
+〔时间目标〕任务 #301 正在计时：持续 2小时，已过 5分钟（4%），剩余 1小时55分钟。
+——时间尚足：先做主线，再补细节。
+- 每轮检查照旧执行：nx-kv timegoal check --task task:nx-kv:301 --summary "<本轮现状>"
+附加要求（发布方）：
+golden 覆盖出厂正文
+</nx-kv.timecheck>
+<nx-kv.timegoal>
+〔时间目标 · 启动〕本任务领取即计时，持续 2小时（截止 ）。
+- 每轮推进先执行：nx-kv timegoal check --task task:nx-kv:301 --summary "<本轮现状>"
+- 时间未到不得标记完成——应派出 sub agent 重新提出新的需求，再继续推进。
+- check 返回 reached:true 后才允许：nx-kv localtask done --id 301 --summary "<完成总结>"
+附加要求（发布方）：
+golden 覆盖出厂正文
+</nx-kv.timegoal>
+<nx-kv.ack>
+完成之后必须调用 nx-kv localtask done --id 301 --summary "<完成总结>" 汇报结果。
+</nx-kv.ack>
+<nx-kv.getloop>
+不要直接结束本轮：完成上面的任务（301）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；
+</nx-kv.getloop>
+</nx-kv>

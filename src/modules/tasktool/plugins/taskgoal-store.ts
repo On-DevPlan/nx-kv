@@ -17,10 +17,13 @@
 import { badInput } from '../../../core/errors.js';
 import {
   TASK_GOAL_PROMPT_TEMPLATE,
+  customGoalPromptOf,
+  renderCustomGoalPrompt,
   renderTaskGoalPrompt,
   taskGoalTemplateCtx,
 } from './goal-template.js';
 import { MAX_PROMPT, parseDuration, startTaskGoal, taskGoalState, taskGoalKey, recordTaskCheck } from './timegoal-store.js';
+import { checkHistoryOfTask } from './timegoal-task-store.js';
 
 export interface TaskGoalDeclaration {
   duration?: unknown;
@@ -73,8 +76,10 @@ export async function ensureTaskGoal(p: EnsureTaskGoalParams = {}): Promise<Reco
     return null;
   }
   const goalKey = taskGoalKey(topicKey, taskId);
-  // 落库的是**模板**（占位符保留），交付时用领取那一刻的 ctx 渲染。
-  const promptTemplate = TASK_GOAL_PROMPT_TEMPLATE;
+  // #161：出厂指令正文搬进 timecheck 段模板（所见即所得，设置页可编辑）。
+  // goals.prompt 只存**用户自定义**（timegoal set/update --prompt）——落库出厂
+  // 原文会让「段模板编辑」对这些行永远失效（段模板被 goal.check 双层遮住）。
+  const promptTemplate = '';
   const r = await startTaskGoal({
     topicKey,
     taskId,
@@ -100,9 +105,10 @@ export async function ensureTaskGoal(p: EnsureTaskGoalParams = {}): Promise<Reco
   return {
     name: g.name,
     deadline: g.deadline,
-    // check 指令用同一套模板渲染：之后每轮 check 会按当下 ctx 重新渲染（任务 #87）
-    prompt: renderTaskGoalPrompt(ctx, g.prompt || promptTemplate),
-    promptTemplate: g.prompt || promptTemplate,
+    // #161：只有**用户自定义**的 prompt 才进 goal.check（出厂正文在 timecheck 段模板里，
+    // 设置页编辑即生效）；每轮 check 会按当下 ctx 重新渲染（任务 #87）。
+    prompt: renderCustomGoalPrompt(ctx, g.prompt),
+    promptTemplate: customGoalPromptOf(g.prompt),
     goalKey: g.key || goalKey,
     durationSec: g.durationSec || durationSec,
     extra: extra || '',
@@ -150,8 +156,8 @@ export async function previewTaskGoal({ topicKey, taskId, name, timegoal, text }
     return {
       name: g.name || name || `任务 #${taskId}`,
       deadline: g.deadline || '',
-      prompt: renderTaskGoalPrompt(ctx, g.prompt),
-      promptTemplate: g.prompt || '',
+      prompt: renderCustomGoalPrompt(ctx, g.prompt),
+      promptTemplate: customGoalPromptOf(g.prompt),
       goalKey: g.key || goalKey,
       durationSec: g.durationSec || durationSec,
       extra: timegoal.prompt || '',
@@ -171,8 +177,8 @@ export async function previewTaskGoal({ topicKey, taskId, name, timegoal, text }
   return {
     name: name || `任务 #${taskId}`,
     deadline: '',
-    prompt: renderTaskGoalPrompt(ctx),
-    promptTemplate: TASK_GOAL_PROMPT_TEMPLATE,
+    prompt: '',
+    promptTemplate: '',
     goalKey,
     durationSec,
     extra: timegoal.prompt || '',

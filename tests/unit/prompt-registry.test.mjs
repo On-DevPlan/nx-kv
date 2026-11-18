@@ -71,9 +71,13 @@ test('registry 的 templates 非空且第一条就是生效正文（#152：正�
   }
 });
 
-test('prompt.order 已下线（顺序 = 类声明，不再落库）', async () => {
+test('promptplug 的 action 面：registry（只读）+ 段模板管理三条（#161）', async () => {
   const { ACTIONS } = await import('../../src/modules/promptplug/actions/_manifest.generated.js');
   const { zodActionsOf } = await import('../../src/runtime/action-decorator.js');
   const ids = ACTIONS.flatMap((C) => zodActionsOf(new C(container))).map((a) => a.id);
-  assert.deepEqual(ids, ['prompt.registry'], 'promptplug 模块只剩注册表一条 action');
+  assert.deepEqual(
+    [...ids].sort(),
+    ['prompt.registry', 'prompt.template.save', 'prompt.template.activate', 'prompt.template.delete'].sort(),
+    'promptplug 模块 = 注册表 + 段模板管理（save/activate/delete）',
+  );
 });

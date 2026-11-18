@@ -64,6 +64,14 @@ const taskGoal = {
   check: '〔时间目标〕每轮推进先跑 nx-kv timegoal check --task tg_216 --summary "<本轮现状>"；到点后再 localtask done。',
   statusLine: '',
 };
+// #161：任务级 goal **无自定义 prompt**（goals.prompt 收敛后出厂场景）——
+// timecheck 段的出厂正文（else 分支）就靠这条夹具钉住。
+const factoryGoal = {
+  name: '交付时限', durationHuman: '2小时', elapsedHuman: '5分钟', remainingHuman: '1小时55分钟',
+  elapsedSec: 300, durationSec: 7200, remainingSec: 6900, overtimeSec: 0,
+  reached: false, blocked: false, goalKey: 'task:nx-kv:301', extra: 'golden 覆盖出厂正文',
+  check: '', statusLine: '',
+};
 const dirGoal = {
   name: '验收窗口', durationHuman: '30分钟', elapsedHuman: '18分钟', remainingHuman: '12分钟',
   elapsedSec: 1080, durationSec: 1800, remainingSec: 720, overtimeSec: 0,
@@ -214,6 +222,18 @@ const scenarios = {
       cwd: 'D:/DevProjects/my/github/nx-kv',
       task: { id: 205, text: '到点前的 done 尝试' },
       goal: blockedGoal,
+    },
+    groupCtx: null,
+    attachments: [],
+    queueInfo: null,
+    loopText: loop0, waitMinutes: 0,
+  },
+  '11-goal-factory-body': {
+    seed: {
+      ...baseSeed,
+      cwd: 'D:/DevProjects/my/github/nx-kv',
+      task: { id: 301, text: '带时间目标但没有自定义提示词的任务' },
+      goal: factoryGoal,
     },
     groupCtx: null,
     attachments: [],

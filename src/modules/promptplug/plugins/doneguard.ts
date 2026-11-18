@@ -14,6 +14,9 @@ const BUILTIN: TemplateText = {
   text: `{{#if goal.blocked}}
 〔完成门禁 · 时间未到〕任务 #{{task.id}} 还不能 done：持续 {{goal.durationHuman}}，已过 {{goal.elapsedHuman}}（{{percent goal.elapsedSec goal.durationSec}}%），剩余 {{goal.remainingHuman}}。
 - 现在可做：{{#if (gte (percent goal.elapsedSec goal.durationSec) 67)}}收尾整理（收敛改动 / 补验证 / 写清遗留），或派 sub agent 提出新的需求继续推进{{else}}继续推进主线，并派 sub agent 重新提出新的需求{{/if}}。
+{{#if (and goal.checks (lte goal.sinceLastCheckSec 600))}}
+⚠️ 严重警告：距上次检查不到 10 分钟就想 done——这轮几乎没有新进展。禁止 sleep / 空转等待：派一个 sub agent 找一个**全新的切入角度**（换模块 / 换验证方式 / 补测试 / 收尾整理），拿新产出再来。
+{{/if}}
 - 每轮推进先跑：nx-kv timegoal check --task {{goal.goalKey}} --summary "<本轮现状>"
 - 到点后再：nx-kv localtask done --id {{task.id}} --summary "<完成总结>"
 {{/if}}`,

@@ -3,18 +3,20 @@
 〔项目上下文〕工作目录 D:/DevProjects/my/github/nx-kv 未登记为本机仓库，本次交付没有项目介绍 / 组上下文。登记（不需要 .git，给 key 即可）：nx-kv repo add "D:/DevProjects/my/github/nx-kv" --key <key>
 </nx-kv.context>
 <nx-kv.timecheck>
-〔时间目标〕每轮推进先跑 nx-kv timegoal check --task tg_216 --summary "<本轮现状>"。
-</nx-kv.timecheck>
-<nx-kv.goalhint>
-〔特殊功能提示 · 时间目标〕任务 #205 正在计时：持续 2小时，已过 1小时23分钟（69%），剩余 37分钟。
+〔时间目标〕任务 #205 正在计时：持续 2小时，已过 1小时23分钟（69%），剩余 37分钟。
 ——已过 2/3：进入收尾整理（收敛改动 / 补验证 / 写清遗留），别开新战线。
-</nx-kv.goalhint>
+
+- 每轮检查照旧执行：nx-kv timegoal check --task tg_216 --summary "<本轮现状>"
+</nx-kv.timecheck>
 <nx-kv.doneguard>
 〔完成门禁 · 时间未到〕任务 #205 还不能 done：持续 2小时，已过 1小时23分钟（69%），剩余 37分钟。
 - 现在可做：收尾整理（收敛改动 / 补验证 / 写清遗留），或派 sub agent 提出新的需求继续推进。
 - 每轮推进先跑：nx-kv timegoal check --task tg_216 --summary "<本轮现状>"
 - 到点后再：nx-kv localtask done --id 205 --summary "<完成总结>"
 </nx-kv.doneguard>
+<nx-kv.timegoal>
+〔时间目标〕每轮推进先跑 nx-kv timegoal check --task tg_216 --summary "<本轮现状>"。
+</nx-kv.timegoal>
 <nx-kv.ack>
 完成之后必须调用 nx-kv localtask done --id 205 --summary "<完成总结>" 汇报结果。
 </nx-kv.ack>

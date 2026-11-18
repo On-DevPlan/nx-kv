@@ -52,6 +52,26 @@ export function getPromptRegistry(): Promise<any> {
   return api('/api/prompt/registry');
 }
 
+/** 保存段模板（新建/编辑用户条目；POST /api/prompt/template/save）。 */
+export function savePromptTemplate(input: {
+  segment: string;
+  id?: string;
+  name?: string;
+  text: string;
+}): Promise<any> {
+  return api('/api/prompt/template/save', { method: 'POST', body: input });
+}
+
+/** 切换段启用的模板（POST /api/prompt/template/activate；id=builtin 回出厂）。 */
+export function activatePromptTemplate(segment: string, id: string): Promise<any> {
+  return api('/api/prompt/template/activate', { method: 'POST', body: { segment, id } });
+}
+
+/** 删除段的一条用户模板（POST /api/prompt/template/delete）。 */
+export function deletePromptTemplate(segment: string, id: string): Promise<any> {
+  return api('/api/prompt/template/delete', { method: 'POST', body: { segment, id } });
+}
+
 /** 预览一条任务的交付（POST /api/localtasks/preview；与 CLI localtask preview 同一链路）。 */
 export function previewDelivery(input: {
   id?: number;

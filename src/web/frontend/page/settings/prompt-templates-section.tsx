@@ -1,16 +1,14 @@
-// 设置面板「提示词模板」（#152 重做：从「可编辑模板库」变成「只读注册表」）。
+// 设置面板「提示词模板」（#161：只读注册表 + 用户层模板管理）。
 //
-// 为什么要改：模板正文的唯一真相搬进了插件类
-// （modules/promptplug/plugins/*.ts 的 `templates`）——DB 不再存模板、没有 JSON
-// 注册表、没有 ensure seed。于是「新增 / 复制 / 改名 / 删除 / 拖拽排序 / 保存」
-// 这一整套编辑动作全部失去意义：它们改的是一个已经不存在的存储层。
+// 结构（#152 定型）：出厂正文 = 插件类里的 `templates`（代码即出厂真相）；
+// #161 在其上叠加**用户层**（template-store，JSON）：每段可复制出多条模板、
+// 启用哪条自己挑、编辑保存走后端变量白名单校验。编辑器在 prompt-template-editor.tsx。
 //
-// 现在这一页回答三个问题（且只回答这三个）：
-//   1. 有哪些时机（get / check / done）、每个时机依次有哪些段 —— 来自注册表 groups；
-//   2. 每一段现在用的正文是什么 —— 类里 templates[0]，只读展示 + 一键复制；
-//   3. 这一段能吃哪些变量 —— 注册表 fields（声明即文档，不写第二份）。
-//
-// 唯一还能写的全局开关是「系统提示词追加方式」（appendMode，xml / plain）。
+// 这一页回答四个问题：
+//   1. 有哪些时机（get / check / done）、每个时机依次有哪些段 —— 注册表 groups；
+//   2. 每一段当前用的正文 —— 启用模板（builtin 或用户条目），可编辑可复制；
+//   3. 这一段能吃哪些变量 —— 注册表 fields（声明即文档，不写第二份）；
+//   4. 真实领取的输出长什么样 —— 交付预览（含 timegoal check 链的同源效果）。
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/button/index.js';
 import { useToast } from '../../components/toast/index.jsx';
@@ -22,6 +20,7 @@ import {
 } from './api.js';
 import { APPEND_MODES } from '../../../../shared/prompt-blocks.js';
 import { varGroupsOf } from './prompt-vars.js';
+import PromptTemplateEditor, { type SegmentTemplates } from './prompt-template-editor.js';
 
 /** 注册表里的一段（= 一个插件的声明面；/api/prompt/registry 的 plugins 项）。 */
 export interface PluginDesc {
@@ -71,6 +70,23 @@ export default function PromptTemplatesSection() {
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [varQuery, setVarQuery] = useState('');
+  const [segTemplates, setSegTemplates] = useState<Record<string, SegmentTemplates>>({});
+
+  const loadRegistry = (onReady: (r: any) => void) => {
+    getPromptRegistry()
+      .then((r) => {
+        const list: PluginDesc[] = Array.isArray(r?.plugins) ? r.plugins : [];
+        setPlugins(list);
+        setGroups((r?.groups as Record<string, string[]>) || {});
+        setSegTemplates(
+          (r?.segmentTemplates && typeof r.segmentTemplates === 'object'
+            ? (r.segmentTemplates as Record<string, SegmentTemplates>)
+            : {}) || {},
+        );
+        onReady(r);
+      })
+      .catch((e) => toast('读取失败：' + ((e as Error).message || e)));
+  };
 
   useEffect(() => {
     let alive = true;
@@ -80,6 +96,11 @@ export default function PromptTemplatesSection() {
         const list: PluginDesc[] = Array.isArray(r?.plugins) ? r.plugins : [];
         setPlugins(list);
         setGroups((r?.groups as Record<string, string[]>) || {});
+        setSegTemplates(
+          (r?.segmentTemplates && typeof r.segmentTemplates === 'object'
+            ? (r.segmentTemplates as Record<string, SegmentTemplates>)
+            : {}) || {},
+        );
         const mode = s?.settings?.appendMode === 'plain' ? 'plain' : 'xml';
         setAppendMode(mode);
         // 默认选中 get 链首段（agent 最常看到的那一段）
@@ -113,15 +134,6 @@ export default function PromptTemplatesSection() {
       toast(String((e as Error).message || e));
     } finally {
       setBusy(false);
-    }
-  };
-
-  const copyText = async (text: string, what: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast(`已复制${what}`);
-    } catch {
-      toast('复制失败（剪贴板不可用）');
     }
   };
 
@@ -231,17 +243,12 @@ export default function PromptTemplatesSection() {
             </span>
           </div>
 
-          <div className='ppt-ro-note'>
-            正文是插件类里的内置模板（<code>modules/promptplug/plugins</code>），不再存库、不可在此编辑；
-            改文案请改代码。
-          </div>
-
-          <textarea
-            className='ppt-tpl-area'
-            value={selected.template}
-            readOnly
-            spellCheck={false}
-            aria-label={`${selected.label} 的内置模板`}
+          <PromptTemplateEditor
+            segment={selected.id}
+            label={selected.label}
+            builtinText={selected.template}
+            seg={segTemplates[selected.id]}
+            onChanged={() => loadRegistry(() => toast('注册表已刷新'))}
           />
 
           {selected.fields.length > 0 && (
@@ -287,9 +294,7 @@ export default function PromptTemplatesSection() {
           )}
 
           <div className='ppt-actions'>
-            <Button variant='secondary' disabled={busy} onClick={() => void copyText(selected.template, '模板正文')}>
-              复制正文
-            </Button>
+            <span className='setp-note'>模板改动即时生效（交付与 timegoal check 同源）。</span>
             <span className='spacer' />
             <Button
               variant='secondary'

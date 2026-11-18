@@ -19,8 +19,8 @@ import { ExtPlugin } from './plugins/ext.js';
 import { GetloopPlugin } from './plugins/getloop.js';
 import { AckPlugin } from './plugins/ack.js';
 import { DoneguardPlugin } from './plugins/doneguard.js';
-import { GoalhintPlugin } from './plugins/goalhint.js';
-import { TimecheckPlugin } from './plugins/timecheck.js';
+import { TimecheckPlugin } from './plugins/goalhint.js';
+import { TimegoalPlugin } from './plugins/timecheck.js';
 
 /** 插件类（构造签名不统一：有的只吃模板，有的还要宿主 deps）。 */
 type PluginCtor = new (template: string, deps?: any) => AnyPromptPlugin;
@@ -32,8 +32,8 @@ type PluginCtor = new (template: string, deps?: any) => AnyPromptPlugin;
 export const PLUGIN_CLASSES: readonly PluginCtor[] = [
   ContextPlugin,
   AttachmentPlugin,
+  TimegoalPlugin,
   TimecheckPlugin,
-  GoalhintPlugin,
   DoneguardPlugin,
   ExtPlugin,
   AckPlugin,

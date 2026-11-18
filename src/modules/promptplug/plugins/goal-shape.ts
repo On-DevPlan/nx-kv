@@ -22,6 +22,23 @@ export const goalShape = z
     extra: z.string().optional().describe('领取后追加的要求（可动态改）'),
     check: z.string().optional().describe('本轮检查指令整段文本（有任务级目标时才有）'),
     statusLine: z.string().optional().describe('目录级目标的状态行（「剩余 12 分钟」）'),
+    checks: z
+      .array(
+        z.looseObject({
+          at: z.string().describe('检查时刻（YYYY-MM-DD HH:mm:ss）'),
+          elapsedSec: z.number().describe('那一刻已过秒数'),
+          remainingSec: z.number().describe('那一刻剩余秒数'),
+          overtimeSec: z.number().describe('那一刻超时秒数'),
+          reached: z.boolean().describe('那一刻是否已到点'),
+          summary: z.string().describe('那一轮汇报的现状'),
+        }),
+      )
+      .optional()
+      .describe('本轮之前的检查流水（旧→新，最后一条 = 最近一次；用 {{#each goal.checks}} 遍历）'),
+    sinceLastCheckSec: z
+      .number()
+      .optional()
+      .describe('距上次检查的秒数（首次检查时没有此值；小于 600 = 10 分钟内重复检查，该严重警告）'),
   })
   .optional()
   .nullable()

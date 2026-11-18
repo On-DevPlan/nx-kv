@@ -55,10 +55,22 @@ export interface TaskGoalTemplateCtxInput {
   deadline: unknown;
   nowMs?: unknown;
   check?: unknown;
+  /** 本轮**之前**的检查流水（旧→新，不含本次；check 路径查 goal_checks 传入） */
+  history?: GoalCheckRecord[];
+}
+
+/** 单条检查流水的仓库层形状（goal_checks 行的最小集）。 */
+export interface GoalCheckRecord {
+  atMs: number;
+  elapsedSec: number;
+  remainingSec: number;
+  overtimeSec: number;
+  reached: boolean;
+  summary: string;
 }
 
 /** goal 模板渲染的 ctx（领取 / check 共用同一构造，保证两处变量口径一致）。 */
-export function taskGoalTemplateCtx({ taskId, taskText, goalKey, durationSec, extra, startedAt, deadline, nowMs, check }: TaskGoalTemplateCtxInput): Record<string, any> {
+export function taskGoalTemplateCtx({ taskId, taskText, goalKey, durationSec, extra, startedAt, deadline, nowMs, check, history }: TaskGoalTemplateCtxInput): Record<string, any> {
   const dur = Number(durationSec) || 0;
   const startMs = typeof startedAt === 'number' ? startedAt : stampMsOf(startedAt);
   const endMs = typeof deadline === 'number' ? deadline : stampMsOf(deadline);
@@ -67,9 +79,27 @@ export function taskGoalTemplateCtx({ taskId, taskText, goalKey, durationSec, ex
   const overtimeSec = Number.isFinite(endMs) ? Math.max(0, Math.round((now - endMs) / 1000)) : 0;
   const elapsedSec = Number.isFinite(startMs) ? Math.max(0, Math.round((now - startMs) / 1000)) : 0;
   const reached = Number.isFinite(endMs) ? now >= endMs : false;
+  // #161：check 历史（本轮**之前**的流水，旧→新）+ 距上次检查秒数——
+  // 模板据此做「重复检查太频繁 → 严重警告（防 AI 死胡同空转 sleep）」的分支。
+  const hist = Array.isArray(history) ? history : [];
+  const lastMs = hist.length ? Number(hist[hist.length - 1]?.atMs) : NaN;
+  const sinceLastCheckSec = hist.length && Number.isFinite(lastMs) && Number.isFinite(now)
+    ? Math.max(0, Math.round((now - lastMs) / 1000))
+    : undefined;
   return {
     task: { id: taskId, text: String(taskText || '') },
     goal: {
+      checks: hist.length
+        ? hist.map((c) => ({
+            at: stampOfMs(Number(c.atMs)),
+            elapsedSec: Number(c.elapsedSec) || 0,
+            remainingSec: Number(c.remainingSec) || 0,
+            overtimeSec: Number(c.overtimeSec) || 0,
+            reached: !!c.reached,
+            summary: String(c.summary || ''),
+          }))
+        : undefined,
+      ...(sinceLastCheckSec !== undefined ? { sinceLastCheckSec } : {}),
       goalKey: String(goalKey || ''),
       durationHuman: formatDuration(dur),
       durationSec: dur,
@@ -94,5 +124,27 @@ export function renderTaskGoalPrompt(ctx: unknown, template: unknown = TASK_GOAL
     return renderInstruction(src, ctx);
   } catch {
     return src as string;
+  }
+}
+
+// ── #161：出厂正文已搬进 timecheck 段模板（promptplug），goals.prompt 只存「用户自定义」──
+//
+// 旧 goal 行落库里存的出厂原文（TASK_GOAL_PROMPT_TEMPLATE）不再视为自定义——
+// 否则段模板编辑会被 goal.check 双层遮住、对旧行永远失效。出厂原文 → 走段模板。
+
+/** 落库的 goals.prompt 里「用户自定义」的部分：空 / 出厂原文 → ''（正文走 timecheck 段模板）。 */
+export function customGoalPromptOf(v: unknown): string {
+  const s = String(v ?? '').trim();
+  return s && s !== TASK_GOAL_PROMPT_TEMPLATE.trim() ? String(v) : '';
+}
+
+/** 只渲染用户自定义 prompt（没有 → ''；渲染失败退回原文——自定义是发布方的硬要求，宁可原文也不吞）。 */
+export function renderCustomGoalPrompt(ctx: unknown, template: unknown): string {
+  const src = customGoalPromptOf(template);
+  if (!src) return '';
+  try {
+    return renderInstruction(src, ctx);
+  } catch {
+    return src;
   }
 }

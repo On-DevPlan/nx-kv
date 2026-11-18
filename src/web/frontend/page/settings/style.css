@@ -342,6 +342,36 @@
   background:var(--paper,#fff);color:var(--ink,#16181C);cursor:default;
 }
 .ppt-var-key{flex:none}
+/* #161 段模板管理条：模板选择 / 名称 / 动作按钮 */
+.ppt-tpl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.ppt-tpl-select{
+  font:400 12px/1.6 system-ui,sans-serif;padding:4px 8px;max-width:220px;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);color:var(--ink,#16181C);
+}
+.ppt-tpl-name{
+  font:400 12px/1.6 system-ui,sans-serif;padding:4px 8px;width:150px;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);color:var(--ink,#16181C);
+}
+/* #161 段模板管理条：模板选择 / 名称 / 动作按钮 */
+.ppt-tpl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.ppt-tpl-select{
+  font:400 12px/1.6 system-ui,sans-serif;padding:4px 8px;max-width:220px;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);color:var(--ink,#16181C);
+}
+.ppt-tpl-name{
+  font:400 12px/1.6 system-ui,sans-serif;padding:4px 8px;width:150px;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);color:var(--ink,#16181C);
+}
+/* #161 段模板管理条：模板选择 / 名称 / 动作按钮 */
+.ppt-tpl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.ppt-tpl-select{
+  font:400 12px/1.6 system-ui,sans-serif;padding:4px 8px;max-width:220px;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);color:var(--ink,#16181C);
+}
+.ppt-tpl-name{
+  font:400 12px/1.6 system-ui,sans-serif;padding:4px 8px;width:150px;
+  border:1px solid var(--line,#E4E2DC);border-radius:6px;background:var(--paper,#fff);color:var(--ink,#16181C);
+}
 .ppt-var-desc{
   font-family:system-ui,sans-serif;font-size:10.5px;color:var(--faint,#8A8578);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;

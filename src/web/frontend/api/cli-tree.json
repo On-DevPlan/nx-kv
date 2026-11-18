@@ -2148,6 +2148,64 @@
             "http": "GET /api/prompt/registry"
           },
           "children": []
+        },
+        {
+          "name": "template",
+          "path": [
+            "prompt",
+            "template"
+          ],
+          "action": null,
+          "children": [
+            {
+              "name": "activate",
+              "path": [
+                "prompt",
+                "template",
+                "activate"
+              ],
+              "action": {
+                "id": "prompt.template.activate",
+                "module": "promptplug",
+                "summary": "切换提示词段启用的模板（builtin 或用户条目）",
+                "usage": "prompt template activate",
+                "http": "POST /api/prompt/template/activate"
+              },
+              "children": []
+            },
+            {
+              "name": "delete",
+              "path": [
+                "prompt",
+                "template",
+                "delete"
+              ],
+              "action": {
+                "id": "prompt.template.delete",
+                "module": "promptplug",
+                "summary": "删除提示词段的用户模板（启用中的删除后回落 builtin）",
+                "usage": "prompt template delete",
+                "http": "POST /api/prompt/template/delete"
+              },
+              "children": []
+            },
+            {
+              "name": "save",
+              "path": [
+                "prompt",
+                "template",
+                "save"
+              ],
+              "action": {
+                "id": "prompt.template.save",
+                "module": "promptplug",
+                "summary": "保存提示词段模板（新建/编辑用户条目；保存前按该段变量白名单校验）",
+                "usage": "prompt template save",
+                "http": "POST /api/prompt/template/save"
+              },
+              "children": []
+            }
+          ]
         }
       ]
     },

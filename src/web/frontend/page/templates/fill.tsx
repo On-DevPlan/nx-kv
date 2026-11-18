@@ -62,7 +62,9 @@ export default function TemplateFillPanel({ config }: FillPanelProps) {
     const rootKey = session.groupId || session.dirKey || '';
     const docId = docIdOf(scopeOf(rootKey), task);
     saveDoc(docId, { title: '', body });
-    if (submit) setTaskIntent(task, { submit: true });
+    // intent 的 key 必须与任务页取用侧一致：task.tsx 用 docIdOf(scope, task) 取，
+    // 这里若存裸 task id 就永远取不到——「直接提交」的自动落库从未触发过（#156）。
+    if (submit) setTaskIntent(docId, { submit: true });
     dropFillSession(config?.id);
     const spec = session.groupId
       ? { groupId: session.groupId, task, name: '新任务' }

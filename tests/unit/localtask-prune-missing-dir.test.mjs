@@ -54,7 +54,7 @@ test('有待领任务的幽灵目录：默认与 --missing-dir 都不清（保�
 
 test('任务领走并完成后：默认不清，--missing-dir 才报告「目录已不存在」', async () => {
   const gone = await findTopic(GONE);
-  const id = gone.tasks[0].id;
+  assert.ok(gone && gone.tasks.length > 0, '前置：幽灵目录里有一任务');
   // 真正领走（tasktool.get）→ 标记完成：不再 pending，但任务仍在，
   // 所以不会被「空主题」命中，只有 --missing-dir 能认出来
   const got = await getTask({ cwd: GONE, instant: true, open: false });

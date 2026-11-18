@@ -16,10 +16,8 @@
 // 本文件不依赖 localtask（纯 timegoal 存储 + core），localtask 反过来引用这里。
 import { badInput } from '../../../core/errors.js';
 import {
-  TASK_GOAL_PROMPT_TEMPLATE,
   customGoalPromptOf,
   renderCustomGoalPrompt,
-  renderTaskGoalPrompt,
   taskGoalTemplateCtx,
 } from './goal-template.js';
 import { MAX_PROMPT, parseDuration, startTaskGoal, taskGoalState, taskGoalKey, recordTaskCheck } from './timegoal-store.js';
@@ -164,16 +162,7 @@ export async function previewTaskGoal({ topicKey, taskId, name, timegoal, text }
       started: true,
     };
   }
-  const ctx = taskGoalTemplateCtx({
-    taskId,
-    taskText: text,
-    goalKey,
-    durationSec,
-    extra: timegoal.prompt,
-    startedAt: Date.now(),
-    deadline: Date.now() + durationSec * 1000,
-    nowMs: Date.now(),
-  });
+  // #161：出厂正文在 timecheck 段模板里——未起表的预览不需要 ctx（prompt 恒空）
   return {
     name: name || `任务 #${taskId}`,
     deadline: '',

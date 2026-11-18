@@ -58,7 +58,7 @@ export default function PromptTemplateEditor({ segment, label, builtinText, seg,
       setEditName(hit?.name || '');
       setEditText(hit?.text || '');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- seg 引用即 items 快照
+    // seg 引用即 items 快照（只在刷新后变，不打断打字）
   }, [editId, segment, builtinText, seg]);
 
   const isBuiltin = editId === 'builtin';

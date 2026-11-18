@@ -228,7 +228,8 @@ async function renderGoalChainPrompt(payload: Record<string, any>): Promise<stri
   try {
     return (await compose({ plugins: buildPlugins('check'), group: 'check', seed })).trim();
   } catch {
-    return renderTaskGoalPrompt({ task: seed.task, goal: seed.goal });
+    // 段模板被改坏时退回出厂指令文本（TASK_GOAL_PROMPT_TEMPLATE 显式引用）
+    return renderTaskGoalPrompt({ task: seed.task, goal: seed.goal }, TASK_GOAL_PROMPT_TEMPLATE);
   }
 }
 

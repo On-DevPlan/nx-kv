@@ -14,7 +14,6 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const fillSrc = readFileSync(join(root, 'src/web/frontend/page/templates/fill.tsx'), 'utf8');
 const taskSrc = readFileSync(join(root, 'src/web/frontend/page/dir/task.tsx'), 'utf8');
-const intentSrc = readFileSync(join(root, 'src/web/frontend/modules/md/task-intent.ts'), 'utf8');
 
 test('契约：fill 页存 intent 用的 key 是 docId（与任务页 docIdOf(scope, task) 同形）', () => {
   // 不许再出现 setTaskIntent(task, ...) —— 那是裸草稿 id，任务页按 docId 取永远 miss

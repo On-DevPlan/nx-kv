@@ -99,6 +99,7 @@ export async function ensureTaskGoal(p: EnsureTaskGoalParams = {}): Promise<Reco
     startedAt: g.startedAt || g.started_at,
     deadline: g.deadline,
     nowMs: Date.now(),
+    history: checkHistoryOfTask(taskId),
   });
   return {
     name: g.name,
@@ -109,6 +110,11 @@ export async function ensureTaskGoal(p: EnsureTaskGoalParams = {}): Promise<Reco
     promptTemplate: customGoalPromptOf(g.prompt),
     goalKey: g.key || goalKey,
     durationSec: g.durationSec || durationSec,
+    // check 段（进度行）与 doneguard 段在 get 交付里也渲染——时间量 / check 历史按领取当下补齐
+    elapsedSec: ctx.goal.elapsedSec,
+    remainingSec: ctx.goal.remainingSec,
+    sinceLastCheckSec: ctx.goal.sinceLastCheckSec,
+    checks: ctx.goal.checks,
     extra: extra || '',
   };
 }
@@ -150,6 +156,7 @@ export async function previewTaskGoal({ topicKey, taskId, name, timegoal, text }
       startedAt: g.startedAt || g.started_at,
       deadline: g.deadline,
       nowMs: Date.now(),
+      history: checkHistoryOfTask(taskId),
     });
     return {
       name: g.name || name || `任务 #${taskId}`,
@@ -158,6 +165,10 @@ export async function previewTaskGoal({ topicKey, taskId, name, timegoal, text }
       promptTemplate: customGoalPromptOf(g.prompt),
       goalKey: g.key || goalKey,
       durationSec: g.durationSec || durationSec,
+      elapsedSec: ctx.goal.elapsedSec,
+      remainingSec: ctx.goal.remainingSec,
+      sinceLastCheckSec: ctx.goal.sinceLastCheckSec,
+      checks: ctx.goal.checks,
       extra: timegoal.prompt || '',
       started: true,
     };

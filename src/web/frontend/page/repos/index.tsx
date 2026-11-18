@@ -41,6 +41,7 @@ import type {
   ReposReload,
 } from './repo-table.js';
 import BranchPicker, { BRANCH_DEFAULT, BRANCH_MAIN } from './branch-picker.jsx';
+import { loadBranchPref, saveBranchPref } from './branch-persist.js';
 import BlockTabs, { RpSearch, type BlockTab } from './block-tabs.jsx';
 import RefBlock from './ref-block.jsx';
 import DocBlock from './doc-block.jsx';
@@ -101,7 +102,10 @@ export default function ReposView() {
 
   // ---- 视图状态：分支 + 区块 + 检索 ----
   // branch：'main'（全部）/ 'default'（未分组）/ 组的 id。组是分支，不再是筛选条件。
-  const [branch, setBranch] = useState<string>(BRANCH_MAIN);
+  // #158：记住上次选的分支——重开面板不再回落 main；组已删时 branches 对齐逻辑会回落并写回。
+  const [branch, setBranch] = useState<string>(() => loadBranchPref() || BRANCH_MAIN);
+  /** 所有切分支都走这里：切换即持久化（#158）。 */
+  const changeBranch = useCallback((id: string) => { setBranch(id); saveBranchPref(id); }, []);
   const [block, setBlock] = useState<BlockId>('repos');
   const [q, setQ] = useState('');
 
@@ -125,7 +129,7 @@ export default function ReposView() {
       const params = new URLSearchParams(s);
       const bid = params.get('board');
       if (!bid) return;
-      setBranch(bid);
+      changeBranch(bid);
       setBlock('repos');
       if (params.get('add')) setImpBoardId(bid);
     };
@@ -259,7 +263,7 @@ export default function ReposView() {
     if (!nm) return;
     const res = await createBoard({ name: nm });
     await loadBoards();
-    if (res && res.id) { setBranch(res.id); setBlock('repos'); setQ(''); }
+    if (res && res.id) { changeBranch(res.id); setBlock('repos'); setQ(''); }
     toast(`已建分组「${nm}」——把仓库加进来就是这一组的成员`);
   });
 
@@ -285,7 +289,7 @@ export default function ReposView() {
     if (kind === 'group') {
       const b = boardList.find((x) => x.key === target || x.id === target);
       if (!b) { toast('这个组已经不存在了'); return; }
-      setBranch(b.id);
+      changeBranch(b.id);
       setBlock('repos');
       setQ('');
       return;
@@ -295,7 +299,7 @@ export default function ReposView() {
     const inBranch = branchBoard ? (branchBoard.repos || []).some((m) => m.key === target) : true;
     if (!inBranch) {
       const first = (row.boards || [])[0];
-      setBranch(first ? first.id : BRANCH_MAIN);
+      changeBranch(first ? first.id : BRANCH_MAIN);
     }
     setBlock(row.type === 'ref' ? 'refs' : 'repos');
     setQ('');
@@ -321,7 +325,7 @@ export default function ReposView() {
     },
     getloop: (r) => setGlFor(r),
     docs: (r) => openRepoDocs(r),
-    filter: (id) => setBranch(id),
+    filter: (id) => changeBranch(id),
     gotoRefRepo: (key) => { setRefRepoFocus(key); setRefOpen(true); },
     bind: (r) => setBindRepoFor(r),
     unbindBoard: unbindBoardOfRepo,
@@ -363,7 +367,7 @@ export default function ReposView() {
         <div className="title-block">
           <h2>仓库管理</h2>
           <BranchPicker branches={branches} value={branch}
-            onChange={(id) => { setBranch(id); setQ(''); }}
+            onChange={(id) => { changeBranch(id); setQ(''); }}
             onCreate={createGroup} />
         </div>
         <div className="acts">
@@ -526,7 +530,7 @@ export default function ReposView() {
           boardList={boardList}
           unassigned={boards.unassigned}
           onClose={() => setBoardAdminOpen(false)}
-          onFilter={(id) => { setBranch(id); setBlock('repos'); }}
+          onFilter={(id) => { changeBranch(id); setBlock('repos'); }}
           onMembers={setImpBoardId}
           onOpenDoc={openBoardDoc}
           reload={reload}

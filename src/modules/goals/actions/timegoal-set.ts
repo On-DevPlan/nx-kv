@@ -5,7 +5,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../timegoal.js';
-import { renderSet } from '../../localtask/support.js';
+import { renderSet } from '../support.js';
 const service: any = serviceNs;
 
 /** timegoal.set 的入参契约（CLI 与 HTTP 共用同一份）。 */

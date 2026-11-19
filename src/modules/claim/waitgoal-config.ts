@@ -16,7 +16,7 @@
 //   且交付文本带「不断调用 get，直到 get 超时」那段指令（提示词增强，文案见全局区块）。
 //
 // repos 在模块互依禁列里 → 动态 import（与 localtask→timegoal 探针同一惯例）。
-import { badInput } from '../../core/errors.js';
+// sanitizeGetLoop 已下沉 core/config.ts（repos 与 claim 共用），本文件只留读取。
 
 /** 阻塞窗口默认 10 分钟（上限仍受 wait 的 600s 夹制）。#230 起循环文案唯一真相在 getloop 插件类。 */
 export const GET_LOOP_DEFAULT_MINUTES = 10; // 阻塞窗口默认 10 分钟（上限仍受 wait 的 600s 夹制）
@@ -34,27 +34,6 @@ async function reposStore(): Promise<any> {
   return reposMod;
 }
 
-/**
- * repo update --get-loop* 的落库校验：null/false = 关闭清除；true = 开（默认分钟）。
- *
- * 只认 `{ enabled, waitMinutes }`：#182 起 `template` 不在契约里，传了也忽略
- * （老数据带着它进来时同样被剥掉，等于顺手做了一次清理）。
- */
-export function sanitizeGetLoop(raw: unknown): Record<string, unknown> | null {
-  if (raw === undefined || raw === null || raw === false) return null;
-  if (raw === true) return { enabled: true };
-  if (typeof raw !== 'object') throw badInput('getLoop 必须是 { enabled, waitMinutes? }');
-  const decl = raw as Record<string, any>;
-  const out: Record<string, unknown> = {};
-  if (decl.enabled !== undefined) out.enabled = decl.enabled === true || decl.enabled === 'on' || decl.enabled === 'true';
-  const n = Number(decl.waitMinutes);
-  // #112：0 是合法值（= get 没任务时不阻塞，立即返回 timeout）；只挡负数与非数字
-  if (decl.waitMinutes !== undefined && decl.waitMinutes !== null && decl.waitMinutes !== '' && Number.isFinite(n) && n >= 0) {
-    out.waitMinutes = Math.min(Math.floor(n), 600);
-  }
-  if (!Object.keys(out).length) return null;
-  return out;
-}
 
 /** 按工作目录读项目级 getLoop；目录未登记 / 未开启 → { enabled:false }。读取失败同样降级。 */
 export async function getLoopForCwd(cwd: unknown): Promise<GetLoopState> {

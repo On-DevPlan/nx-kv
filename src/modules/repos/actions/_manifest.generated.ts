@@ -23,9 +23,6 @@ import { RepoBindTopicsAction } from './repo-bind-topics.js';
 import { RepoBindAction } from './repo-bind.js';
 import { RepoCloneAction } from './repo-clone.js';
 import { RepoDetectAction } from './repo-detect.js';
-import { RepoDocAddAction } from './repo-doc-add.js';
-import { RepoDocListAction } from './repo-doc-list.js';
-import { RepoDocRemoveAction } from './repo-doc-remove.js';
 import { RepoExportAction } from './repo-export.js';
 import { RepoGetAction } from './repo-get.js';
 import { RepoImportDiffAction } from './repo-import-diff.js';
@@ -33,7 +30,6 @@ import { RepoImportAction } from './repo-import.js';
 import { RepoKeyMigrateAction } from './repo-key-migrate.js';
 import { RepoKeyRefreshAction } from './repo-key-refresh.js';
 import { RepoKeySetAction } from './repo-key-set.js';
-import { RepoKnowledgeAction } from './repo-knowledge.js';
 import { RepoListAction } from './repo-list.js';
 import { RepoOpenAction } from './repo-open.js';
 import { RepoRefAddAction } from './repo-ref-add.js';
@@ -69,9 +65,6 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   RepoBindAction,
   RepoCloneAction,
   RepoDetectAction,
-  RepoDocAddAction,
-  RepoDocListAction,
-  RepoDocRemoveAction,
   RepoExportAction,
   RepoGetAction,
   RepoImportDiffAction,
@@ -79,7 +72,6 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   RepoKeyMigrateAction,
   RepoKeyRefreshAction,
   RepoKeySetAction,
-  RepoKnowledgeAction,
   RepoListAction,
   RepoOpenAction,
   RepoRefAddAction,
@@ -115,9 +107,6 @@ export { RepoBindTopicsAction };
 export { RepoBindAction };
 export { RepoCloneAction };
 export { RepoDetectAction };
-export { RepoDocAddAction };
-export { RepoDocListAction };
-export { RepoDocRemoveAction };
 export { RepoExportAction };
 export { RepoGetAction };
 export { RepoImportDiffAction };
@@ -125,7 +114,6 @@ export { RepoImportAction };
 export { RepoKeyMigrateAction };
 export { RepoKeyRefreshAction };
 export { RepoKeySetAction };
-export { RepoKnowledgeAction };
 export { RepoListAction };
 export { RepoOpenAction };
 export { RepoRefAddAction };

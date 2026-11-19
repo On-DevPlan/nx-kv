@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../timegoal.js';
 import { badInput as _badInput } from '../../../core/errors.js';
-import { renderCheck } from '../../localtask/support.js';
+import { renderCheck } from '../support.js';
 const service: any = serviceNs;
 const badInput: any = _badInput;
 

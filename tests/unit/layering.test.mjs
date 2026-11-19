@@ -159,3 +159,65 @@ test('后端模块目录里不允许出现 .jsx/.tsx（视图归前端）', () =
   ).map(rel);
   assert.deepEqual(strays, [], `这些视图文件长在后端模块目录里: ${strays}`);
 });
+
+// ── 模块域间依赖边基线（棘轮）───────────────────────────────────────────
+//
+// 背景（2026-11-19 收敛）：模块互依的 eslint 禁列是枚举式白名单，核心六域
+// （claim/goals/localtask/docs/repos/promptplug）之间的相互 import 长期不在
+// 禁列里——「现状允许」不等于「设计确认」，错配依赖就这样静默长大。
+// 本测试把收敛后的边快照下来：
+//   * 新增一条边（新 key）        → fail：跨了新域，必须评审或消除；
+//   * 某条边变重（import 变多）   → fail：耦合加深，必须评审；
+//   * 边减少或归零                → 通过：棘轮只许拧紧不许放松。
+// 判定口径与上面 specifiersOf 一致（剥注释、排除 type import）。
+// 将来把某条边改造成 bridge / 下沉 core 后，记得同步调低这里的数字。
+
+const EDGE_BASELINE = {
+  'repos→docs': 19,
+  'claim→localtask': 9,
+  'localtask→goals': 8,
+  'claim→promptplug': 5,
+  'goals→localtask': 5,
+  'goals→promptplug': 4,
+  'claim→goals': 3,
+  'localtask→repos': 3,
+  'docs→repos': 2,
+  'localtask→promptplug': 2,
+  'claim→docs': 1,
+  'claim→repos': 1,
+  'localtask→docs': 1,
+};
+
+test('模块域间依赖边基线（棘轮）：只许减不许增', () => {
+  const modulesDir = join(SRC, 'modules');
+  const domains = readdirSync(modulesDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name);
+  const edges = {};
+  for (const file of FILES) {
+    const r = rel(file);
+    if (!r.startsWith('modules/')) continue;
+    const from = r.split('/')[1];
+    for (const spec of specifiersOf(readFileSync(file, 'utf8'))) {
+      if (!spec.startsWith('.')) continue;
+      const targetRel = rel(join(dirname(file), spec));
+      // 目标必须仍在 modules/ 内才是域间边——`../db/` 出 modules 到 core/db
+      // 的情况第二段恰好是域名 `db`，不先判层会把 core 依赖误记成域依赖。
+      if (!targetRel.startsWith('modules/')) continue;
+      const target = targetRel.split('/')[1];
+      if (!domains.includes(target) || target === from) continue;
+      const key = `${from}→${target}`;
+      edges[key] = (edges[key] || 0) + 1;
+    }
+  }
+  const problems = [];
+  for (const [key, count] of Object.entries(edges)) {
+    const base = EDGE_BASELINE[key];
+    if (base === undefined) {
+      problems.push(`新增跨域边 ${key}（${count} 次 import）——跨新域必须评审：说明理由加白名单，或消除依赖`);
+    } else if (count > base) {
+      problems.push(`${key} 从基线 ${base} 涨到 ${count}——耦合加深必须评审`);
+    }
+  }
+  assert.deepEqual(problems, [], `模块域间依赖超出基线:\n${problems.join('\n')}`);
+});

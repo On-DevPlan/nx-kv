@@ -15,7 +15,7 @@
 //      想关该关哪个开关」。
 import { getSettings } from '../localtask/service.js';
 import { PLUGIN_IDS, groupIndex, pluginMeta } from '../promptplug/index.js';
-import { deliveryPlainText } from './delivery-text.js';
+import { deliveryPlainText } from '../../shared/delivery-text.js';
 import { getLoopForCwd, type GetLoopState } from './waitgoal-config.js';
 import { buildTaskDelivery } from './host.js';
 

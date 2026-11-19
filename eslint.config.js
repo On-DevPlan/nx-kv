@@ -174,8 +174,22 @@ export default defineConfig([
         {
           patterns: [
             {
-              // 枚举式互依禁列：新增模块必须在此补 '../<新模块>/*'，漏补是静默的
-              group: ['../repos/*', '../skills/*', '../github/*', '../bundled/*', '../system/*', '../todo/*', '../sessiontask/*'],
+              // 枚举式互依禁列：新增模块必须在此补 '../<新模块>/*'，漏补是静默的。
+              // 2026-11-19：孤岛域（templates/file/db/setting）实测零入边，一并禁入——
+              // 它们功能自足，被业务域反向依赖就是设计腐化的第一信号。
+              group: [
+                '../repos/*',
+                '../skills/*',
+                '../github/*',
+                '../bundled/*',
+                '../system/*',
+                '../todo/*',
+                '../sessiontask/*',
+                '../templates/*',
+                '../file/*',
+                '../db/*',
+                '../setting/*',
+              ],
               message: '模块之间不得互相依赖；共享逻辑请下沉到 core/。唯一例外是 ../settings/service.js。',
             },
             {

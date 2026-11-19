@@ -1,4 +1,5 @@
-// claim/delivery-text.ts —— 交付载荷的人读正文（**唯一出处**）。
+// shared/delivery-text.ts —— 交付载荷的人读正文（**唯一出处**）。
+// 同构纯函数：CLI 与面板、claim 与 localtask 共用同一份排版——所见即所得。
 //
 // 谁会用到：
 //   - CLI `localtask get` 的人读输出（localtask/action-render.ts 的 renderWait）
@@ -10,7 +11,7 @@
 // 排版口径：instruction 自包含正文（模板含 {{task.text}}，服务端给出 coversBody）
 // 时直接替掉正文块（否则正文会出现两遍）；否则「正文 + ── 收尾指令 ──」两段。
 // 正文交给阅读方前统一做「倒序聚焦 + 历史精简」重排（#157，shared/feedback-text.js）。
-import { reorderRoundsForDelivery } from '../../shared/feedback-text.js';
+import { reorderRoundsForDelivery } from './feedback-text.js';
 
 /** 交付载荷（取任务/等待返回值里与人读排版相关的部分） */
 export interface DeliveryPayload {

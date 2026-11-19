@@ -370,64 +370,6 @@
           "children": []
         },
         {
-          "name": "doc",
-          "path": [
-            "repo",
-            "doc"
-          ],
-          "action": null,
-          "children": [
-            {
-              "name": "add",
-              "path": [
-                "repo",
-                "doc",
-                "add"
-              ],
-              "action": {
-                "id": "repo.doc.add",
-                "module": "repos",
-                "summary": "给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 移到末尾）",
-                "usage": "repo doc add",
-                "http": "POST /api/repos/docs"
-              },
-              "children": []
-            },
-            {
-              "name": "list",
-              "path": [
-                "repo",
-                "doc",
-                "list"
-              ],
-              "action": {
-                "id": "repo.doc.list",
-                "module": "repos",
-                "summary": "列出项目的介绍文档集（主篇 + 其余各篇，refId + desc）",
-                "usage": "repo doc list",
-                "http": "GET /api/repos/docs"
-              },
-              "children": []
-            },
-            {
-              "name": "remove",
-              "path": [
-                "repo",
-                "doc",
-                "remove"
-              ],
-              "action": {
-                "id": "repo.doc.remove",
-                "module": "repos",
-                "summary": "从项目的介绍文档集里摘掉一篇（--index 从 1 起，1 = 主篇）",
-                "usage": "repo doc remove",
-                "http": "DELETE /api/repos/docs"
-              },
-              "children": []
-            }
-          ]
-        },
-        {
           "name": "export",
           "path": [
             "repo",
@@ -546,21 +488,6 @@
               "children": []
             }
           ]
-        },
-        {
-          "name": "knowledge",
-          "path": [
-            "repo",
-            "knowledge"
-          ],
-          "action": {
-            "id": "repo.knowledge",
-            "module": "repos",
-            "summary": "取仓库完整知识：项目介绍 + 所属组（介绍/组内描述/绑定文档）+ 参考仓库（--md 拼成单篇 markdown；缺省当前目录）",
-            "usage": "repo knowledge",
-            "http": "GET /api/repos/knowledge"
-          },
-          "children": []
         },
         {
           "name": "list",
@@ -804,6 +731,79 @@
             "summary": "修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填；指令文案在 设置 → 提示词模板 → 持续 get，仓库侧只有开关 + 分钟）。描述已改为文档，不再经这里改",
             "usage": "repo update",
             "http": "PATCH /api/repos/:id"
+          },
+          "children": []
+        },
+        {
+          "name": "doc",
+          "path": [
+            "repo",
+            "doc"
+          ],
+          "action": null,
+          "children": [
+            {
+              "name": "add",
+              "path": [
+                "repo",
+                "doc",
+                "add"
+              ],
+              "action": {
+                "id": "repo.doc.add",
+                "module": "docs",
+                "summary": "给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 移到末尾）",
+                "usage": "repo doc add",
+                "http": "POST /api/repos/docs"
+              },
+              "children": []
+            },
+            {
+              "name": "list",
+              "path": [
+                "repo",
+                "doc",
+                "list"
+              ],
+              "action": {
+                "id": "repo.doc.list",
+                "module": "docs",
+                "summary": "列出项目的介绍文档集（主篇 + 其余各篇，refId + desc）",
+                "usage": "repo doc list",
+                "http": "GET /api/repos/docs"
+              },
+              "children": []
+            },
+            {
+              "name": "remove",
+              "path": [
+                "repo",
+                "doc",
+                "remove"
+              ],
+              "action": {
+                "id": "repo.doc.remove",
+                "module": "docs",
+                "summary": "从项目的介绍文档集里摘掉一篇（--index 从 1 起，1 = 主篇）",
+                "usage": "repo doc remove",
+                "http": "DELETE /api/repos/docs"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "knowledge",
+          "path": [
+            "repo",
+            "knowledge"
+          ],
+          "action": {
+            "id": "repo.knowledge",
+            "module": "docs",
+            "summary": "取仓库完整知识：项目介绍 + 所属组（介绍/组内描述/绑定文档）+ 参考仓库（--md 拼成单篇 markdown；缺省当前目录）",
+            "usage": "repo knowledge",
+            "http": "GET /api/repos/knowledge"
           },
           "children": []
         }

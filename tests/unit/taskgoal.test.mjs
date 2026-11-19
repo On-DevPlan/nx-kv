@@ -319,7 +319,7 @@ test('修改反馈 / 编辑任务：换正文不丢 frontmatter（归组信息�
 // 多久，不是让 agent 睡）。0 = 不阻塞、没活立即 timeout；提示词里那句「最多阻塞 N 分钟」
 // 在 0 时整句不出现（不给 0 另造说法）。
 test('#112 阻塞窗口 0：契约接受并落库，不再被归一成默认 10 分钟', async () => {
-  const { sanitizeGetLoop } = await import('../../src/modules/claim/waitgoal-config.js');
+  const { sanitizeGetLoop } = await import('../../src/core/config.js');
   const decl = sanitizeGetLoop({ enabled: true, waitMinutes: 0 });
   assert.equal(decl.waitMinutes, 0, '0 必须原样保留');
   const on = sanitizeGetLoop({ enabled: true });

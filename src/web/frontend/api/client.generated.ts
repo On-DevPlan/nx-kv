@@ -36,6 +36,10 @@ import type {
   DocsMainAction,
   DocsOrphansAction,
   DocsOrphansPurgeAction,
+  RepoDocAddAction,
+  RepoDocListAction,
+  RepoDocRemoveAction,
+  RepoKnowledgeAction,
 } from '../../../modules/docs/actions/_manifest.generated.js';
 import type {
   FileContentAction,
@@ -111,9 +115,6 @@ import type {
   RepoBindTopicsAction,
   RepoCloneAction,
   RepoDetectAction,
-  RepoDocAddAction,
-  RepoDocListAction,
-  RepoDocRemoveAction,
   RepoExportAction,
   RepoGetAction,
   RepoImportAction,
@@ -121,7 +122,6 @@ import type {
   RepoKeyMigrateAction,
   RepoKeyRefreshAction,
   RepoKeySetAction,
-  RepoKnowledgeAction,
   RepoListAction,
   RepoOpenAction,
   RepoRefAddAction,
@@ -206,12 +206,6 @@ export interface ApiClient {
   clone(input: z.input<InstanceType<typeof RepoCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoCloneAction>['run']>>>;
 /** 探测目录的 git remote（添加仓库前自动填充远程地址；只读） */
   detect(input: z.input<InstanceType<typeof RepoDetectAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDetectAction>['run']>>>;
-/** 给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 移到末尾） */
-  docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>>;
-/** 列出项目的介绍文档集（主篇 + 其余各篇，refId + desc） */
-  docList(input: z.input<InstanceType<typeof RepoDocListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocListAction>['run']>>>;
-/** 从项目的介绍文档集里摘掉一篇（--index 从 1 起，1 = 主篇） */
-  docRemove(input: z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocRemoveAction>['run']>>>;
 /** 导出仓库布局 JSON（全局 key + 分组 + 参考关系；不含本地路径）；--zip 打包成 zip */
   repoExport(input?: z.input<InstanceType<typeof RepoExportAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoExportAction>['run']>>>;
 /** 查看单个仓库的登记信息 */
@@ -226,8 +220,6 @@ export interface ApiClient {
   refresh(input?: z.input<InstanceType<typeof RepoKeyRefreshAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoKeyRefreshAction>['run']>>>;
 /** 设置自定义 key（全局唯一，不跟随远程地址自动变）；--follow 恢复为跟随 remote */
   keySet(input: z.input<InstanceType<typeof RepoKeySetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoKeySetAction>['run']>>>;
-/** 取仓库完整知识：项目介绍 + 所属组（介绍/组内描述/绑定文档）+ 参考仓库（--md 拼成单篇 markdown；缺省当前目录） */
-  knowledge(input?: z.input<InstanceType<typeof RepoKnowledgeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoKnowledgeAction>['run']>>>;
 /** 仓库清单（本地任务的主题会按路径匹配到这里，取它的上下文） */
   repoList(input?: z.input<InstanceType<typeof RepoListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoListAction>['run']>>>;
 /** 在系统文件管理器中打开 */
@@ -269,7 +261,7 @@ export interface ApiClient {
 /** 把本地 md 文件登记为 mdfile 附件并挂到文档附件区：只存路径指针，不复制正文，不改文档正文 */
   linkFile(input: z.input<InstanceType<typeof DocLinkFileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocLinkFileAction>['run']>>>;
 /** 文档树索引（自有 + 可选外部；零副作用，双链解析的数据源） */
-  docList2(input?: z.input<InstanceType<typeof DocListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocListAction>['run']>>>;
+  docList(input?: z.input<InstanceType<typeof DocListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocListAction>['run']>>>;
 /** 读本地 md 文件的正文（只读原文件，核对指纹；文件缺失时返回空正文并标 missing） */
   mdfile(input: z.input<InstanceType<typeof DocMdfileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocMdfileAction>['run']>>>;
 /** 列出已登记的本地 md 文件（mdfile 附件；--missing 只看失效行） */
@@ -277,7 +269,7 @@ export interface ApiClient {
 /** 新建文档条目（desc + 归属；正文为空、直接可编辑；不创建任何文件） */
   refAdd2(input?: z.input<InstanceType<typeof DocRefAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRefAddAction>['run']>>>;
 /** 删除自有文档（外部绑定不可删） */
-  docRemove2(input: z.input<InstanceType<typeof DocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRemoveAction>['run']>>>;
+  docRemove(input: z.input<InstanceType<typeof DocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRemoveAction>['run']>>>;
 /** 解绑直接 ref 的归属（不删文档；没有归属后回到 orphan） */
   unbind(input: z.input<InstanceType<typeof DocRefUnbindAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRefUnbindAction>['run']>>>;
 /** 写文档正文 / 描述（面板保存走这里；ref 是 DB 实体，--ref 可给 refId；只给 --desc 时不动正文） */
@@ -296,6 +288,14 @@ export interface ApiClient {
   purge(input?: z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsOrphansPurgeAction>['run']>>>;
 /** 列出无归属的孤儿文档（失绑时间 / 剩余天数 / 是否有正文；只读） */
   orphans(input?: z.input<InstanceType<typeof DocsOrphansAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsOrphansAction>['run']>>>;
+/** 给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 移到末尾） */
+  docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>>;
+/** 列出项目的介绍文档集（主篇 + 其余各篇，refId + desc） */
+  docList2(input: z.input<InstanceType<typeof RepoDocListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocListAction>['run']>>>;
+/** 从项目的介绍文档集里摘掉一篇（--index 从 1 起，1 = 主篇） */
+  docRemove2(input: z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocRemoveAction>['run']>>>;
+/** 取仓库完整知识：项目介绍 + 所属组（介绍/组内描述/绑定文档）+ 参考仓库（--md 拼成单篇 markdown；缺省当前目录） */
+  knowledge(input?: z.input<InstanceType<typeof RepoKnowledgeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoKnowledgeAction>['run']>>>;
 /** 向某主题（工作目录）的队列回填一条任务（正文可多行；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝） */
   localtaskAdd(input?: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>>;
 /** 改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变） */
@@ -560,30 +560,6 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "path": inp["path"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDetectAction>['run']>>;
     },
-    // action: repo.doc.add
-    async docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocAddAction>['_input']>);
-      const path = `/api/repos/docs`;
-      const body = { "id": inp["id"], "ref": inp["ref"], "path": inp["path"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>;
-    },
-    // action: repo.doc.list
-    async docList(input: z.input<InstanceType<typeof RepoDocListAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocListAction>['_input']>);
-      let path = `/api/repos/docs`;
-      const q = new URLSearchParams();
-      if (inp["id"] !== undefined) q.set("id", String(inp["id"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof RepoDocListAction>['run']>>;
-    },
-    // action: repo.doc.remove
-    async docRemove(input: z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>);
-      const path = `/api/repos/docs`;
-      const body = { "id": inp["id"], "index": inp["index"] };
-      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDocRemoveAction>['run']>>;
-    },
     // action: repo.export
     async repoExport(input?: z.input<InstanceType<typeof RepoExportAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof RepoExportAction>['_input']>);
@@ -637,17 +613,6 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/repos/key`;
       const body = { "id": inp["id"], "key": inp["key"], "follow": inp["follow"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoKeySetAction>['run']>>;
-    },
-    // action: repo.knowledge
-    async knowledge(input?: z.input<InstanceType<typeof RepoKnowledgeAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof RepoKnowledgeAction>['_input']>);
-      let path = `/api/repos/knowledge`;
-      const q = new URLSearchParams();
-      if (inp["id"] !== undefined) q.set("id", String(inp["id"]));
-      if (inp["md"] !== undefined) q.set("md", String(inp["md"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof RepoKnowledgeAction>['run']>>;
     },
     // action: repo.list
     async repoList(input?: z.input<InstanceType<typeof RepoListAction>['_input']>) {
@@ -807,7 +772,7 @@ export function createApiClient(transport: Transport): ApiClient {
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocLinkFileAction>['run']>>;
     },
     // action: doc.list
-    async docList2(input?: z.input<InstanceType<typeof DocListAction>['_input']>) {
+    async docList(input?: z.input<InstanceType<typeof DocListAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocListAction>['_input']>);
       let path = `/api/docs`;
       const q = new URLSearchParams();
@@ -844,7 +809,7 @@ export function createApiClient(transport: Transport): ApiClient {
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocRefAddAction>['run']>>;
     },
     // action: doc.remove
-    async docRemove2(input: z.input<InstanceType<typeof DocRemoveAction>['_input']>) {
+    async docRemove(input: z.input<InstanceType<typeof DocRemoveAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocRemoveAction>['_input']>);
       const path = `/api/docs/item`;
       const body = { "ref": inp["ref"] };
@@ -918,6 +883,41 @@ export function createApiClient(transport: Transport): ApiClient {
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsOrphansAction>['run']>>;
+    },
+    // action: repo.doc.add
+    async docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocAddAction>['_input']>);
+      const path = `/api/repos/docs`;
+      const body = { "id": inp["id"], "ref": inp["ref"], "path": inp["path"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>;
+    },
+    // action: repo.doc.list
+    async docList2(input: z.input<InstanceType<typeof RepoDocListAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocListAction>['_input']>);
+      let path = `/api/repos/docs`;
+      const q = new URLSearchParams();
+      if (inp["id"] !== undefined) q.set("id", String(inp["id"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof RepoDocListAction>['run']>>;
+    },
+    // action: repo.doc.remove
+    async docRemove2(input: z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>);
+      const path = `/api/repos/docs`;
+      const body = { "id": inp["id"], "index": inp["index"] };
+      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDocRemoveAction>['run']>>;
+    },
+    // action: repo.knowledge
+    async knowledge(input?: z.input<InstanceType<typeof RepoKnowledgeAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof RepoKnowledgeAction>['_input']>);
+      let path = `/api/repos/knowledge`;
+      const q = new URLSearchParams();
+      if (inp["id"] !== undefined) q.set("id", String(inp["id"]));
+      if (inp["md"] !== undefined) q.set("md", String(inp["md"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof RepoKnowledgeAction>['run']>>;
     },
     // action: localtask.add
     async localtaskAdd(input?: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>) {

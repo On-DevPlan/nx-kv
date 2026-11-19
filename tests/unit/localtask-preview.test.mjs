@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import * as svc from '../../src/modules/localtask/service.js';
 import { getTask } from '../../src/modules/claim/get.js';
 import { previewTaskDelivery } from '../../src/modules/claim/preview.js';
-import { deliveryPlainText } from '../../src/modules/claim/delivery-text.js';
+import { deliveryPlainText } from '../../src/shared/delivery-text.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-prev-'));
 const storeFile = join(tmp, 'localtasks.json');

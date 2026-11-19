@@ -12,6 +12,7 @@ import { readSettingRaw, writeSettingRaw } from './db/settings.js';
 import { tx } from './db/tx.js';
 import { openStore } from './db/index.js';
 import { nowMs } from './db/time.js';
+import { badInput } from './errors.js';
 
 /** 进 settings 表（`app.*` 前缀）的偏好字段。 */
 export const PREF_KEYS = Object.freeze([
@@ -92,6 +93,28 @@ function writePrefs(next: AppConfig): void {
     },
     { db: openStore(), mode: 'IMMEDIATE' },
   );
+}
+
+/**
+ * 项目级「持续 get」的落库校验（claim/waitgoal-config 与 repos 登记共用）。
+ * null/false = 关闭清除；true = 开（默认分钟）。
+ * 只认 `{ enabled, waitMinutes }`：#182 起 `template` 不在契约里，传了也忽略
+ * （老数据带着它进来时自然被剥掉，等于顺手做了一次清理）。
+ */
+export function sanitizeGetLoop(raw: unknown): Record<string, unknown> | null {
+  if (raw === undefined || raw === null || raw === false) return null;
+  if (raw === true) return { enabled: true };
+  if (typeof raw !== 'object') throw badInput('getLoop 必须是 { enabled, waitMinutes? }');
+  const decl = raw as Record<string, any>;
+  const out: Record<string, unknown> = {};
+  if (decl.enabled !== undefined) out.enabled = decl.enabled === true || decl.enabled === 'on' || decl.enabled === 'true';
+  const n = Number(decl.waitMinutes);
+  // #112：0 是合法值（= get 没任务时不阻塞，立即返回 timeout）；只挡负数与非数字
+  if (decl.waitMinutes !== undefined && decl.waitMinutes !== null && decl.waitMinutes !== '' && Number.isFinite(n) && n >= 0) {
+    out.waitMinutes = Math.min(Math.floor(n), 600);
+  }
+  if (!Object.keys(out).length) return null;
+  return out;
 }
 
 export async function loadConfig(): Promise<AppConfig> {

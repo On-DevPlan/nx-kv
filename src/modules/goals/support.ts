@@ -1,4 +1,6 @@
-// localtask 模块的辅助函数/常量（legacy 形态里与 action 表同文件，迁来时一并搬到这里）。
+// goals 模块的辅助函数/常量：timegoal 各 action 的人读渲染函数。
+// 原在 localtask/support.ts（legacy 迁移时顺手放在那里），但 7 个导出只被 goals 用——
+// 2026-11-19 归位到本域，消掉 goals→localtask 的 7 条静态依赖。
 //
 // 参数与返回值暂用宽松类型（迁移期），服务层类型化推进时逐个收紧。
 export function renderSet(d: any) {

@@ -27,6 +27,10 @@ import { DocsMainAction } from './docs-main.js';
 import { DocsNotebindAction } from './docs-notebind.js';
 import { DocsOrphansPurgeAction } from './docs-orphans-purge.js';
 import { DocsOrphansAction } from './docs-orphans.js';
+import { RepoDocAddAction } from './repo-doc-add.js';
+import { RepoDocListAction } from './repo-doc-list.js';
+import { RepoDocRemoveAction } from './repo-doc-remove.js';
+import { RepoKnowledgeAction } from './repo-knowledge.js';
 
 /** 本模块的全部 action 类（容器按这个顺序建实例）。 */
 export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
@@ -51,6 +55,10 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   DocsNotebindAction,
   DocsOrphansPurgeAction,
   DocsOrphansAction,
+  RepoDocAddAction,
+  RepoDocListAction,
+  RepoDocRemoveAction,
+  RepoKnowledgeAction,
 ];
 
 // 再导出类本身：前端 apiclient 的返回类型从这里 type-only 引用（实现即契约）。
@@ -75,3 +83,7 @@ export { DocsMainAction };
 export { DocsNotebindAction };
 export { DocsOrphansPurgeAction };
 export { DocsOrphansAction };
+export { RepoDocAddAction };
+export { RepoDocListAction };
+export { RepoDocRemoveAction };
+export { RepoKnowledgeAction };

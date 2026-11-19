@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 
 import { buildPlugins, templatesOf } from '../../src/modules/promptplug/index.js';
 import { renderInstruction } from '../../src/core/instruction-template.js';
-import { sanitizeGetLoop } from '../../src/modules/claim/waitgoal-config.js';
+import { sanitizeGetLoop } from '../../src/core/config.js';
 
 const TPL = templatesOf('getloop')[0].text;
 

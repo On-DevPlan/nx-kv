@@ -28,6 +28,18 @@
 
 ## 快速开始
 
+**给 agent（全自动安装）**：把下面这段原文丢给任何 agent，它会自己配环境、装包、装 skill、
+启动面板并自检——参考现代 agent 产品的一键入场做法：
+
+> 「读取 https://raw.githubusercontent.com/On-DevPlan/nx-kv/main/assets/nx-kv/QUICKSTART.md ，
+> 按 SOP 安装 nx-kv（没有 node/npm 就先配环境），安装 nx-kv skill 到你的用户 skills 目录，
+> 启动面板并告诉我它能做什么。」
+
+SOP 全文见 [assets/nx-kv/QUICKSTART.md](assets/nx-kv/QUICKSTART.md)
+（npm 包内同路径；安装后位于 `$(npm root -g)/nx-kv/assets/nx-kv/`）。
+
+**给人类（本机开发）**：
+
 ```bash
 pnpm install
 
@@ -44,40 +56,6 @@ pnpm start            # 构建 + 起面板
 # 校验：lint + 类型检查 + 构建 + 98 项端到端冒烟 + 934 项单元/一致性测试
 pnpm test
 ```
-
-> 代码是 TypeScript（strict）：`pnpm typecheck` 跑 `tsc -b`，
-> `pnpm gen` 重新生成 action 清单与前端 typed client（改了 action 声明就要跑）。
-
-冒烟测试全程纯本机（临时目录 + 隔离 DB），不会碰真实用户数据。
-
-`nx-kv serve` 默认会打开浏览器；**端口被占时不会报错退出**：
-
-- 占用者**就是本项目的面板** → 直接复用它（不重复起进程），并打开它；
-- 占用者是别的服务 → 顺延到**下一个空闲端口**起自己的面板，并打开它。
-
-`--no-open` 只关这一次；`NX_SERVE_NO_OPEN=1`（`true` / `yes` / `on` 同义）则是**所有 nx-xx 项目共用**的全局开关，设为真值后 `serve` 完全不开浏览器。
-
-### 跨域（内网穿透 / 移动端访问）
-
-面板的写请求**不再按 `Origin` 判定「跨站」并拒绝**。原先那道校验比对 `Origin` 的
-主机名是不是 `127.0.0.1`，但浏览器对 POST/PUT/DELETE **一律带 `Origin`**——经内网穿透
-（frp / cloudflared / ngrok）从手机访问时 `Origin` 是隧道域名，**自己面板的同源写请求**
-也被判成跨站而 403，任务提交不了。
-
-现在的口径：
-
-- 同源请求（含隧道同源）**不预检**，直接放行；
-- 跨源请求走标准 CORS：先 `OPTIONS` 预检，服务端回 `access-control-allow-origin` 才放行；
-- 非浏览器客户端（curl / 原生 App）不带 `Origin`，本来就不受限。
-
-要收紧来源时用 `--allow-origin`（逗号分隔，支持 `https://*.example.com` 通配；缺省放行全部）：
-
-```bash
-nx-kv serve --allow-origin https://panel.example.com
-```
-
-> 面板只绑 `127.0.0.1`，是本机工具。**经内网穿透暴露到公网后，真正的边界是隧道自身的
-> 访问控制**（访问密码 / basic auth / IP 白名单）——非浏览器客户端从不经过 `Origin` 校验。
 
 ## 常用命令
 

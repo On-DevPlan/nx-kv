@@ -1672,21 +1672,6 @@
             "http": "POST /api/localtasks/preview"
           },
           "children": []
-        },
-        {
-          "name": "wait",
-          "path": [
-            "localtask",
-            "wait"
-          ],
-          "action": {
-            "id": "localtask.wait",
-            "module": "claim",
-            "summary": "针对某主题（按 cwd 目录名识别）阻塞等待用户回填（默认 3 分钟，最大 10 分钟）；本地空时自动领取全局共享池的任务",
-            "usage": "localtask wait",
-            "http": null
-          },
-          "children": []
         }
       ]
     },

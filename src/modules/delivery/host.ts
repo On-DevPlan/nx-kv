@@ -82,7 +82,7 @@ export function enrichGoalTiming(g: any): any {
   return g;
 }
 
-// wait/get **返回时刻**的目标上下文（渲染 instruction 用）。fail-open：加载失败 /
+// get **返回时刻**的目标上下文（渲染 instruction 用）。fail-open：加载失败 /
 // 读不到 / 没目标 / 出错 → null，instruction 照常渲染（goal 段被整段丢弃）。
 // 绝不写盘：showTimegoal 走 loadRecycledStore({persist:false})——timegoals.json
 // 字节数不变，goal-expiry 单测字节比对钉着。
@@ -110,7 +110,7 @@ async function readGoalCtx(cwd: unknown): Promise<Record<string, any> | null> {
   }
 }
 
-// 组装 wait/get 返回的任务载荷 + 指令。**单一路径**：
+// 组装 get 返回的任务载荷 + 指令。**单一路径**：
 //   所有段落（上下文 / 附件 / 时间目标 / ack / 持续 get）一律进返回载荷的
 //   instruction 字段；task.text 始终是库存原文，绝不把系统提示词拼进正文。
 //   旧 rule 区块已删除：done 指令与收尾要求统一由 ack 区块承载。

@@ -104,5 +104,5 @@ function syncTaskFromNode(task: any, node: WfNode): void {
     // 词表见 src/shared/task-status.js：claimed = 已领取、还没交付
     task.status = 'claimed';
   }
-  // pending/ready：不改 status（领取态由 wait/get 管；ready 由 isReadyToClaim 现算）
+  // pending/ready：不改 status（领取态由 get 管；ready 由 isReadyToClaim 现算）
 }

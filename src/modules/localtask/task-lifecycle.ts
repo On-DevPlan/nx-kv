@@ -344,7 +344,7 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
       id: want,
       key,
       name: t.name,
-      hint: '任务还没被领取——先 wait/get 领取，干完再标完成',
+      hint: '任务还没被领取——先 get 领取，干完再标完成',
     };
   }
   let goal: Record<string, any> | null = null;
@@ -455,5 +455,5 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
 // 那不是"到点自动取消"，那是把目录焊死了。这种情况该由 agent 自己的
 // `timegoal check`（reached:true）去处理。
 //
-// （goal 探针与目标上下文已随 wait 编排迁往 claim/wait.ts——任务工具语义归
+// （goal 探针与目标上下文已随阻塞编排迁往 claim/wait.ts——任务工具语义归
 // goals 域，队列本体不再依赖 timegoal 模块。）

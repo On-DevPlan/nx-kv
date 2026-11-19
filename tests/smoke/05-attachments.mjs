@@ -88,20 +88,20 @@ export async function run(ctx) {
     JSON.stringify(attList.attachments.map((a) => a.localPath))
   );
 
-  const wait = await cliJson(['localtask', 'wait', '--cwd', topic]);
+  const got = await cliJson(['localtask', 'get', '--cwd', topic]);
   check(
     '领取交付带附件清单（2 个，全部本机可读）',
-    wait.status === 'ok' &&
-      Array.isArray(wait.task.attachments) &&
-      wait.task.attachments.length === 2 &&
-      wait.task.attachments.every((a) => a.storage === 'local' && existsSync(a.localPath)),
-    JSON.stringify(wait.task.attachments || null).slice(0, 300)
+    got.status === 'ok' &&
+      Array.isArray(got.task.attachments) &&
+      got.task.attachments.length === 2 &&
+      got.task.attachments.every((a) => a.storage === 'local' && existsSync(a.localPath)),
+    JSON.stringify(got.task.attachments || null).slice(0, 300)
   );
   check(
     'instruction 的附件段给出本地绝对路径',
-    (wait.instruction || '').includes(wait.task.attachments[0].localPath) &&
-      (wait.instruction || '').includes('本任务包含 2 个附件'),
-    JSON.stringify(wait.instruction || '').slice(0, 300)
+    (got.instruction || '').includes(got.task.attachments[0].localPath) &&
+      (got.instruction || '').includes('本任务包含 2 个附件'),
+    JSON.stringify(got.instruction || '').slice(0, 300)
   );
 
   check(

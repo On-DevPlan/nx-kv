@@ -25,7 +25,7 @@
 // 模块边界：
 //   - 本族只 import core（db / errors / topic-key）与 localtask/repo/goals.js
 //     （叶子仓储，不构成环）；localtask 反向引用本模块的出口在 taskgoal.js。
-//   - 与 localtask wait 互不感知：timegoal 不阻塞、不依赖面板是否存在，
+//   - 与领取流程互不感知：timegoal 不阻塞、不依赖面板是否存在，
 //     agent 按 `reached` 自行决定下一轮动作。
 //
 // 本文件是**对外入口**：实现按职责拆进同目录三个 *-store 文件，这里 re-export

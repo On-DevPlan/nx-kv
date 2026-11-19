@@ -21,7 +21,7 @@
 | `localtask update` | `--id` `--text` `--duration` `--goal-prompt` `--clear-goal` `--block-by` `--clear-block-by` `--gate true\|false` | 改正文 / 时间目标 / DAG 依赖 / 闸门（`--text` 仅未领取时） |
 | `localtask reorder` | `--id N` `--before-id M` / `--after-id M` | 调序（领指定编号时用） |
 | `localtask fork` | `--id N` | 派生一条新任务（原任务的副本 + forkOf 链） |
-| `localtask plan` | `--id N` `--to plan\|pending` | 草稿态：`plan` 不进队列（get/wait 领不到），`pending` 转回待领取；只允许 pending ↔ plan 双向切换 |
+| `localtask plan` | `--id N` `--to plan\|pending` | 草稿态：`plan` 不进队列（get 领不到），`pending` 转回待领取；只允许 pending ↔ plan 双向切换 |
 | `localtask preview` | `--id N` `--text` `--param` | 预览领取交付（零副作用，调模板用） |
 | `localtask remove` | `--id N` `--purge` | 软删除；`--purge` 连附件一起删 |
 | `localtask remove-many` | `--ids 1,2,3` `--purge` | 批量删 |
@@ -37,7 +37,6 @@
 | `localtask topic remove` | `--cwd` / `--key` `--force` | 删主题（等待中需 `--force`） |
 | `localtask topic remove-many` | `--keys` `--cwds` `--all` `--force` | 批量删主题 |
 | `localtask config` | `--timeout 180` | 目录级等待/交付设置 |
-| `localtask wait` | `--cwd` `--timeout` | **兼容别名**，等价 `get --timeout`；新流程不要用 |
 
 ## timegoal（时间目标）
 

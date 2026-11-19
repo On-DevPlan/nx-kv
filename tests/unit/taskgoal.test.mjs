@@ -355,9 +355,9 @@ test('#112 窗口 0：get 不阻塞，没任务立刻 timeout（不等默认超�
   assert.ok(Date.now() - t0 < 2000, '窗口 0 = 不阻塞（不是睡一觉再返回）');
 });
 
-// #123：阻塞等待只剩一条路——get 加 --timeout。显式给上限时，即使项目没开「持续 get」
-// 也要真的阻塞（旧 localtask wait 的能力并入 get）；不给参数则维持「立即返回 timeout」。
-test('#123 get --timeout 在未开启持续 get 时也阻塞（wait 能力并入 get）', async () => {
+// #123：阻塞等待只有一条路——get 加 --timeout。显式给上限时，即使项目没开「持续 get」
+// 也要真的阻塞；不给参数则维持「立即返回 timeout」。
+test('#123 get --timeout 在未开启持续 get 时也阻塞', async () => {
   const { getTask } = await import('../../src/modules/claim/get.js');
   const cwd = join(dir, 'wait-by-timeout');
   const t0 = Date.now();

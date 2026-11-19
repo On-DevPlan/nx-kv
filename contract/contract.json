@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.65.3",
-  "hash": "f132179e14f836c8",
+  "hash": "09c3f5e9af8df5e3",
   "actions": [
     {
       "id": "localtask.add",
@@ -393,7 +393,7 @@
           "kind": "number",
           "positional": false,
           "required": false,
-          "hint": "阻塞上限（秒）：显式给定时，即使项目没开「持续 get」也会阻塞这么久（= 旧的 localtask wait）"
+          "hint": "阻塞上限（秒）：显式给定时，即使项目没开「持续 get」也会阻塞这么久；缺省则立即返回 timeout"
         },
         {
           "name": "no-open",

@@ -193,7 +193,7 @@ async function fetchPanelPresence(timeoutMs: number = 900, port: number = DEFAUL
  *
  * SSE 活标签（用户停在「本地任务」页）**或** 面板最近有请求（用户停在任意页，
  * App 壳每 15s 打 /api/ping 兜底）都算「面板开着」→ 1；都没有 → 0。
- * 旧口径只数 SSE：用户一切到别的页（SSE 单视图挂载，切页即断）wait 就误判
+ * 旧口径只数 SSE：用户一切到别的页（SSE 单视图挂载，切页即断）等待就误判
  * 「没开」，于是重复开标签——这正是本次修复的根因。
  *
  * 任何探测失败都按 0 处理（保守地开一次页），绝不因探测失败而阻塞 wait。
@@ -321,7 +321,7 @@ export function readPanelRegistry(): PanelRegistryEntry[] {
   return readAllPanels();
 }
 
-// 复查节奏与重开上限（REVIEW_MS 已随 wait 编排迁往 claim/wait.ts）。
+// 复查节奏与重开上限（REVIEW_MS 已随阻塞编排迁往 claim/wait.ts）。
 const REOPEN_COOLDOWN_MS = 20_000;
 // 一次 wait 最多开 3 个窗口：够救「手滑关掉」，又不至于在浏览器拦截脚本时刷屏。
 const MAX_WINDOW_OPENS = 3;

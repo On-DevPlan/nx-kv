@@ -1,7 +1,7 @@
 // 指令模板渲染 —— Handlebars 4.x 的薄封装（core 层）。
 //
 // 选型（为什么是 Handlebars）：
-//   - 同步渲染：`compile()` 返回的模板函数是纯同步的，wait/get 的交付链路不需要
+//   - 同步渲染：`compile()` 返回的模板函数是纯同步的，get 的交付链路不需要
 //     async 渲染（Nunjucks 的 API 偏异步、要包一层 Promise，EJS 干脆是「模板即
 //     JS」，安全与可读性都差）；
 //   - 原生 `{{#if}}` / `{{#each}}`（含 `{{else}}`、`{{@first}}`），成员 / 文档 /

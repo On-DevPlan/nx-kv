@@ -9,9 +9,8 @@
 //   - 领到任务的交付文本追加「不要结束，反复调用 get 直到超时」的项目模板
 //     （提示词增强，基于项目；占位符见 core/instruction-template.js）。
 //
-// 与 wait 的分工：wait = 「本轮最后一步，等人接力」（kv-waittask 的循环契约，
-// 唯一合法出口是 timeout）；get = 「领活」（kv-localget 的语义，项目开启持续
-// get 后由系统负责把循环指令带进交付文本，agent 不用自己记）。
+// 语义：get = 「领活」（kv-localget 的语义，项目开启持续 get 后由系统负责把
+// 循环指令带进交付文本，agent 不用自己记）；阻塞等待统一走 `get --timeout`。
 import { waitForTask } from './wait.js';
 import { getLoopForCwd, type GetLoopState } from './waitgoal-config.js';
 
@@ -32,7 +31,7 @@ export async function getTask({ cwd, timeoutSec, open = true, params, instant }:
   // 请求，到点返回 timeout），不是让 agent 睡。窗口配 0 = 不阻塞，没活立即 timeout。
   const minutes = loop.enabled ? Number(loop.waitMinutes) || 0 : 0;
   // #123：显式 --timeout 就是「阻塞等这个上限」——不再要求项目先开「持续 get」。
-  // 这样阻塞等待只有一条路（get + 参数），旧 localtask wait 收缩成兼容别名。
+  // 阻塞等待只有一条路（get + 参数）；不再保留任何别名入口。
   const explicitWait = timeoutSec !== undefined && timeoutSec !== null && Number(timeoutSec) > 0;
   const r = await waitForTask({
     cwd,

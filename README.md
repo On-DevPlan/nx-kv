@@ -65,7 +65,7 @@ nx-kv localtask get --json
 # → { status:"ok", task:{ id, text, attachments? }, instruction:"…" } 或 { status:"timeout" }
 
 # 等人：阻塞等到下一条任务（本轮最后一步；timeout 是业务结果，exit 0）
-nx-kv localtask wait --timeout 180 --json
+nx-kv localtask get --timeout 180 --json
 
 # 查看 / 投递 / 完成 / 重开
 nx-kv localtask show --id <n> --json
@@ -170,7 +170,7 @@ nx-kv timegoal check --task task:<topicKey>:<taskId> --summary "<本轮现状>" 
 
 - 主题内任务用 `--id <n>`；跨主题引用写 `"<topicKey>:<id>"`。
 - 不带 `--cwd` / `--key` 时按进程当前目录定位；先 `localtask list` 确认主题。
-- `localtask wait` 的 `timeout` 是业务结果（exit 0），不是错误；不要当失败重试。
+- `localtask get --timeout N` 的 `timeout` 是业务结果（exit 0），不是错误；不要当失败重试。
 - 带时间目标的任务未到点 `done` 返回 `{status:"blocked"}`（exit 0），按 hint 处理。
 - 详细命令、返回结构、避坑见 [assets/nx-kv/references/localtask-commands.md](assets/nx-kv/references/localtask-commands.md)。
 
@@ -236,7 +236,7 @@ nx-kv skill get [name] [ref]      # 输出 skill 全文，外部 agent 一键拿
 ```
 
 装好后 agent 就能按 skill 里的 SOP 领任务、读 instruction、完成后回填结果；
-或在一个对话里靠 `localtask wait` 阻塞等待、连续接收用户任务，
+或在一个对话里靠 `localtask get --timeout N` 阻塞等待、连续接收用户任务，
 把需求提炼成任务 `add` 到别的目录委托其它 agent。
 
 ## License

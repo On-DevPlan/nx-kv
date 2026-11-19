@@ -1,4 +1,4 @@
-// claim/wait.ts —— wait/get 的阻塞编排（从 localtask/service.js 整体迁入）。
+// claim/wait.ts —— get 的阻塞编排（从 localtask/service.js 整体迁入）。
 //
 // 边界（claim = 领取域，localtask = 队列本体）：
 //   - 队列读写、唤醒注册表、presence/面板注册表都在 localtask（serve 路由与
@@ -38,7 +38,7 @@ const POLL_MS = 500;
 
 // ─── 时间目标探针（阻塞期间到点自动收尾本轮） ────────────────────────
 //
-// 与 localtask wait 的融合（fail-open：timegoal 坏了绝不拖垮 wait）：
+// 与时间目标的融合（fail-open：timegoal 坏了绝不拖垮阻塞等待）：
 //   - 阻塞期间到点 → 本轮立刻收尾（goalPoll，见 waitForTask）；
 //   - 返回时刻把目标状态渲染进 instruction（goal 段）——那半边在 delivery.ts。
 // 探针按 key 服务于 500ms 轮询。读取时机是**阻塞开始**不是返回时刻：
@@ -76,7 +76,7 @@ export interface WaitForTaskOptions {
   params?: Record<string, string>;
   /** get 的「直接领」形态：没有 pending 立即空手而回，不开窗不阻塞 */
   instant?: boolean;
-  /** 项目级「持续 get」开关（仅 get/preview 传；wait 不传 → 不出现该区块） */
+  /** 项目级「持续 get」开关（仅 get/preview 传；关闭 → 不出现该区块） */
   getLoopEnabled?: boolean;
   /** 项目级阻塞窗口（分钟）：进 getloop 模板 ctx，让 agent 知道每轮会等多久 */
   getLoopWaitMinutes?: number;
@@ -102,7 +102,7 @@ export async function waitForTask({
   onReady,
   params = {}, // 外部参数（平面扩展）：进交付模板的 ctx（--param k=v）
   instant = false, // get 的「直接领」形态：没有 pending 立即空手而回，不开窗不阻塞
-  getLoopEnabled = false, // 项目级「持续 get」开关（仅 get/preview 传；wait 不传 → 不出现该区块）
+  getLoopEnabled = false, // 项目级「持续 get」开关（仅 get/preview 传；关闭 → 不出现该区块）
   getLoopWaitMinutes = 0, // 项目级阻塞窗口（分钟）：进 getloop 模板 ctx，让 agent 知道每轮会等多久
 }: WaitForTaskOptions = {}): Promise<Record<string, any>> {
   // paths.normalizeCwd 的 @returns 标注漏了 name（运行时恒返回 {cwd, name, key}）
@@ -111,7 +111,7 @@ export async function waitForTask({
   // 领取方身份：记进 task.claimedBy（事后能看出"这条被谁领的"）
   const by = { key, cwd, name };
   // 仓库上下文：这个目录属于哪个已登记仓库、周围关联哪些看板。
-  // 跟着 wait 的结果一起给出去 —— agent 领到任务就知道自己的" surroundings"。
+  // 跟着领取结果一起给出去 —— agent 领到任务就知道自己的" surroundings"。
   const repoIndex = await repoContextIndex();
   const repoCtx = repoCtxOf(repoIndex, cwd);
 
@@ -131,7 +131,7 @@ export async function waitForTask({
     return { status: 'ok', key, cwd, name, summary, ...delivery, queued: true, source: 'local', repo: repoCtx };
   }
 
-  // 1b. 本地空 → 去全局主题（共享池）领。这是所有 wait 的**无条件默认兜底**：
+  // 1b. 本地空 → 去全局主题（共享池）领。这是所有领取的**无条件默认兜底**：
   //     与是否显式传 --cwd 无关——本地取不到就一定来全局扫一眼，全局也没有才阻塞。
   //     （防止调用方习惯性传 cwd 导致共享池永远无人领取。）
   // instant（localtask get 默认形态）：两处快路径都没货 → 立即返回，不进阻塞窗口。
@@ -161,21 +161,21 @@ export async function waitForTask({
   // 1c. 这个目录的时间目标**还在跑** → 记下它的截止时刻。
   //     等待期间一旦越过这个时刻，本轮立刻收尾（见下方 goalPoll）。
   //     目标早就过期的（reached）不记：那是"这一局已经结束了"，
-  //     该由 agent 自己的 `timegoal check` 去处理，不该把 wait 焊死在这个目录上。
+  //     该由 agent 自己的 `timegoal check` 去处理，不该把阻塞等待焊死在这个目录上。
   const goalDeadlineMs = await readGoalDeadlineMs(key);
 
   // 2. 没有 pending → 复用常驻主面板（不再起随机端口临时弹窗）：
   //    a) 确保主面板在跑（不存在就 detached 拉起 serve --no-open --auto-exit）；
   //    b) 探测活动 SSE 连接：有活标签就不开新页（避免 Edge 重复开标签）；
   //                没活标签就 openBrowser 深链到当前主题。
-  //    失败只降级为纯阻塞——绝不抛错中断 wait。
+  //    失败只降级为纯阻塞——绝不抛错中断等待。
   //    --no-open 模式（冒烟/CI）不发起任何面板相关动作：不开浏览器、不拉起 serve、不开 SSE。
   //    这样可避免在测试里 spawn 出一堆孤儿进程占着 7877 端口。
   const panelInfo = open
     ? await ensureMainPanel()
     : { running: false, started: false, port: 0, url: '' };
   // 活性判据：「本地任务」页的活动 SSE 标签，或面板停在任意页（App 壳 ping 兜底）。
-  // 只认 SSE 的旧口径在用户切到别的页时会误判「没开」，于是每次 wait 都重开一个标签。
+  // 只认 SSE 的旧口径在用户切到别的页时会误判「没开」，于是每次等待都重开一个标签。
   const presence = panelInfo.running ? await probeEffectivePresence() : 0;
   const deepLink = deepLinkUrl(key, panelInfo.port || DEFAULT_PORT);
 
@@ -187,7 +187,7 @@ export async function waitForTask({
   registerTopicWaiter(key, {
     resolve: (task: any) => resolveOutcome({ kind: 'task', task, delivered: true }),
   });
-  // 全局兜底：同进程有人 addTask({global:true}) 时按 FIFO 唤醒本 wait
+  // 全局兜底：同进程有人 addTask({global:true}) 时按 FIFO 唤醒本轮等待
   const unregisterGlobal = registerGlobalWaiter(
     (task: any) => resolveOutcome({ kind: 'task', task, delivered: true, source: 'global' }),
     summary,
@@ -249,7 +249,7 @@ export async function waitForTask({
     try {
       await onReady({ addr: deepLink, key, cwd, name, summary });
     } catch {
-      /* 钩子异常不得影响 wait */
+      /* 钩子异常不得影响本次等待 */
     }
   }
 

@@ -1,7 +1,7 @@
 // claim/params.ts —— **外部参数（平面扩展）**的解析（任务 #62）。
 //
-// 领取任务的引擎（get / wait）支持往交付模板的 ctx 里塞**任意**外部参数：
-//   nx-kv localtask wait --cwd "<dir>" --param lane=payment --param retry=2
+// 领取任务的引擎（get）支持往交付模板的 ctx 里塞**任意**外部参数：
+//   nx-kv localtask get --cwd "<dir>" --param lane=payment --param retry=2
 //
 // 模板里两种取法都能用：
 //   {{lane}}        平铺（顶层）——外部参数直接占一个键

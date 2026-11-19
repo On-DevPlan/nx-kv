@@ -73,6 +73,52 @@
 /* 分隔线 */
 .md-divider{border:0;border-top:1px solid var(--line,#E4E2DC);margin:12px 0}
 
+/* ─── 扩展 md 语法（任务 #243）：标题 4–6 / 高亮 / 脚注 / 代码语言 / 嵌套块 ── */
+
+/* h4–h6：正文里再出现标题时靠字号与色阶区分，不再依赖更大的上下留白 */
+.mdw h4,.rp-page h4{font-size:13.5px;font-weight:650;line-height:1.45;margin:12px 0 4px;color:var(--ink-2,#4B515A)}
+.mdw h5,.rp-page h5{font-size:13px;font-weight:650;line-height:1.45;margin:10px 0 4px;color:var(--ink-2,#4B515A)}
+.mdw h6,.rp-page h6{font-size:12.5px;font-weight:650;line-height:1.45;margin:10px 0 4px;color:var(--faint,#6B7178)}
+
+/* 高亮 ==重点== */
+.mdw mark,.rp-page mark{
+  background:color-mix(in srgb, #F2C94C 34%, transparent);
+  color:inherit;padding:0 2px;border-radius:2px;
+}
+
+/* 脚注：引用点上标不撑行高，文末列表小字、分隔线之上 */
+.mdw .md-fn-ref a,.rp-page .md-fn-ref a{
+  color:var(--mdw-accent,#2F6F5E);text-decoration:none;font-size:.78em;
+  padding:0 1px;vertical-align:super;line-height:0;
+}
+.mdw .md-fn-ref a:hover,.rp-page .md-fn-ref a:hover{text-decoration:underline}
+.mdw .md-fn-list,.rp-page .md-fn-list{
+  margin:14px 0 0;padding:8px 0 0 18px;border-top:1px solid var(--line,#E4E2DC);
+  font-size:11.5px;line-height:1.6;color:var(--ink-2,#4B515A);
+}
+.mdw .md-fn-list li,.rp-page .md-fn-list li{margin:2px 0}
+.mdw .md-fn-back,.rp-page .md-fn-back{
+  margin-left:6px;color:var(--faint,#A9AEB4);text-decoration:none;font-size:11px;
+}
+.mdw .md-fn-back:hover,.rp-page .md-fn-back:hover{color:var(--mdw-accent,#2F6F5E)}
+
+/* 代码块语言角标：```js → pre[data-lang="js"]，右上角小字，不挡代码 */
+.mdw-code{position:relative}
+.mdw-code[data-lang]::before{
+  content:attr(data-lang);position:absolute;top:4px;right:8px;
+  font:500 10px/1 ui-monospace,Consolas,monospace;letter-spacing:.04em;
+  color:var(--faint,#A9AEB4);pointer-events:none;text-transform:lowercase;
+}
+
+/* 引用内的块级内容：段落不再继承外层 margin，相邻段落才留一点缝 */
+.mdw blockquote>p,.rp-page blockquote>p{margin:0}
+.mdw blockquote>p+p,.rp-page blockquote>p+p{margin-top:6px}
+.mdw blockquote>.md-divider,.rp-page blockquote>.md-divider{margin:8px 0}
+
+/* 嵌套列表：子层缩进收紧，层间不额外撑高（顶层的 ul/ol 样式沿用正文） */
+.mdw li>ul,.mdw li>ol,.rp-page li>ul,.rp-page li>ol{margin:2px 0 0;padding-left:1.15em}
+.mdw li>p,.rp-page li>p{margin:0}
+
 /* 文档页签（DocPanel）：与任务页同构的头 + 模式切换 */
 .docp{display:flex;flex-direction:column;height:100%;position:relative}
 .docp .mdw-main{display:flex;flex-direction:column;min-height:0;flex:1}

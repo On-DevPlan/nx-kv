@@ -10,8 +10,42 @@
 // 一段 HTML 与「消费到第几行」，多行语法（表格 / 公式块 / 代码块 / 列表）因此能
 // 在不依赖跨行状态机的前提下表达。
 
+/**
+ * 文档级定义表（脚注正文、引用式链接目标）。
+ *
+ * 这两类语法的定义行（`[^1]: 说明` / `[标签]: https://…`）**不就地渲染**，而是被
+ * 抽走登记在这里，由引用点（`[^1]` / `[文字][标签]`）查表——所以需要一次全文扫描，
+ * 单独一层 DocRule（见下），不能塞进逐行的 BlockRule。
+ */
+export interface DocCtx {
+  /** 脚注：标签 → 正文（多行按 `\n` 存）。 */
+  footnotes: Map<string, string[]>;
+  /** 引用式链接：标签（小写归一） → 目标 URL。 */
+  refLinks: Map<string, string>;
+  /** HTML 转义（collect 里生成提示串时用）。 */
+  esc: (value: unknown) => string;
+}
+
+/**
+ * 文档级预处理规则：**抽取定义行**，把可查表登记进 DocCtx，返回剩下的行。
+ *
+ * 与 BlockRule 的区别：它不产出 HTML，只做「把定义从正文里拿走并记账」。
+ * 顺序敏感（先注册的先扫描），因此脚注与链接定义互不干扰即可。
+ */
+export interface DocRule {
+  id: string;
+  collect: (lines: string[], ctx: DocCtx) => string[];
+}
+
 /** 规则渲染时可用的上下文（由 md-render 构造一次，逐个规则传入）。 */
 export interface BlockCtx {
+  /**
+   * 子块渲染（列表嵌套、引用内的块级内容）：把一段行交给完整渲染流程。
+   * 传入的行已经是「去掉外层前缀」的干净行，递归不会回到同一处。
+   */
+  block: (lines: string[]) => string;
+  /** 文档级定义表（脚注 / 引用式链接）。 */
+  doc: DocCtx;
   /** 行内渲染（链接 / 双链 / 附件 / 强调 / 行内公式；规则内对单元格/标题文本复用）。 */
   inline: (text: string) => string;
   /** HTML 转义（& < > " '）。 */
@@ -41,3 +75,18 @@ export interface BlockRule {
 
 /** 行内语法规则：输入是**已转义**的 HTML 串，返回替换后的串（链式套用）。 */
 export type InlineRule = (html: string) => string;
+
+/** 行内预处理的环境（还没转义，只有定义表可查）。 */
+export interface InlineEnv {
+  footnotes: Map<string, string[]>;
+  refLinks: Map<string, string>;
+}
+
+/**
+ * 行内**预处理**规则：吃原始文本、吐原始文本（或占位符），在 HTML 转义之前跑。
+ *
+ * 为什么需要这一层：转义（反斜杠转义、脚注引用标记、引用式链接）必须在 `esc()`
+ * 之前改写原文；一旦 `*` 被转成 `&ast;` 或标签已生成，就再也改不动了。
+ * 需要产出 HTML 的规则（尖括号自动链接）不走这里——它在转义之后按实体匹配。
+ */
+export type InlinePreRule = (text: string, env: InlineEnv) => string;

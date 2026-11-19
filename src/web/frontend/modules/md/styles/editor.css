@@ -117,6 +117,10 @@
 .mdw-lp-block.kind-h1{padding-top:8px;padding-bottom:14px}
 .mdw-lp-block.kind-h2{padding-top:14px;padding-bottom:10px}
 .mdw-lp-block.kind-h3{padding-top:10px;padding-bottom:10px}
+/* h4–h6：更深的层级主要靠字号区分，留白逐级收窄（与视图态 margin 对齐） */
+.mdw-lp-block.kind-h4{padding-top:8px;padding-bottom:6px}
+.mdw-lp-block.kind-h5{padding-top:6px;padding-bottom:4px}
+.mdw-lp-block.kind-h6{padding-top:6px;padding-bottom:4px}
 .mdw-lp-block.kind-quote{padding-top:8px}
 .mdw-lp-block.is-view{cursor:text}
 /* 待办复选框（视图态可点击切换，#99）：光标提示可点，悬停给一点强调反馈 */
@@ -162,6 +166,16 @@
 .mdw-lp-block.kind-h3 textarea.mdw-lp-src{
   font-size:14px;font-weight:650;line-height:1.4;
   color:var(--ink-2,#4B515A);
+}
+/* h4–h6 编辑态字号与视图态一致，逐级递减（视图态见 docs.css 的 h4–h6） */
+.mdw-lp-block.kind-h4 textarea.mdw-lp-src{
+  font-size:13.5px;font-weight:650;line-height:1.45;color:var(--ink-2,#4B515A);
+}
+.mdw-lp-block.kind-h5 textarea.mdw-lp-src{
+  font-size:13px;font-weight:650;line-height:1.45;color:var(--ink-2,#4B515A);
+}
+.mdw-lp-block.kind-h6 textarea.mdw-lp-src{
+  font-size:12.5px;font-weight:650;line-height:1.45;color:var(--faint,#6B7178);
 }
 .mdw-lp-block.kind-li textarea.mdw-lp-src{color:var(--mdw-lp-body-color)}
 .mdw-lp-block.kind-quote textarea.mdw-lp-src{

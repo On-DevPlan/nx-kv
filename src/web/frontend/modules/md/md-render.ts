@@ -1,8 +1,14 @@
-// Markdown 渲染器（编排层）：按**语法注册表**遍历块级规则、套用行内规则。
+// Markdown 渲染器（编排层）：按**语法注册表**跑四个阶段，不认识任何具体语法。
 //
-// 架构（任务 #239 重构）：具体语法住在 components/md/model/<syntax>/，各导出一条
-// BlockRule / InlineRule；本文件只负责「取数据 + 建上下文 + 遍历规则 + 拼 HTML」，
-// 不认识任何具体语法。新增语法 = 加一个 model 目录 + 在 registry 注册一次。
+// 架构（任务 #239 重构 / #243 补语法）：具体语法住在 components/md/model/<syntax>/，
+// 各导出一条规则；本文件只负责「取数据 + 建上下文 + 按表执行 + 拼 HTML」。
+// 新增语法 = 加一个 model 目录 + 在 registry 注册一次。
+//
+// 四个阶段（见 registry 的表）：
+//   1. DOC_RULES       抽走定义行（脚注 / 引用式链接），登记查表
+//   2. INLINE_PRE_RULES 改原始文本（转义、脚注标记、引用式链接展开）
+//   3. BLOCK_RULES     逐行块级匹配；未命中的连续行合成**一个**段落
+//   4. INLINE_RULES    作用在已转义 HTML 上（强调 / 高亮 / 公式 / 尖括号链接）
 //
 // 不引入 marked 等依赖，面板包体保持轻量（零第三方 markdown/数学库）。
 // 双链 [[目标|显示]] 与 shared/wikilink.js 同一套正则与归一（收在同构层防两端漂移）。
@@ -10,8 +16,16 @@ import { normalizeWikiTarget } from '../../../../shared/wikilink.js';
 import { looksLikeFileId } from '../../../../shared/attach.js';
 import { stripFrontmatter } from '../../../../shared/frontmatter.js';
 import type { Attachment } from '../../components/md/attach-common.js';
-import { BLOCK_RULES, INLINE_RULES } from '../../components/md/model/registry.js';
-import type { BlockCtx } from '../../components/md/model/types.js';
+import {
+  BLOCK_RULES,
+  DOC_RULES,
+  INLINE_PRE_RULES,
+  INLINE_RULES,
+} from '../../components/md/model/registry.js';
+import { paragraphHtml } from '../../components/md/model/paragraph/index.js';
+import { restoreEscapes } from '../../components/md/model/escape/index.js';
+import { restoreFootnotes } from '../../components/md/model/footnote/index.js';
+import type { BlockCtx, DocCtx, InlineEnv } from '../../components/md/model/types.js';
 
 /** 一个可跳转的标题（extractMdHeadings 的产出）。 */
 export interface MdHeading {
@@ -40,6 +54,9 @@ export function headingAnchorId(text: string, used?: Set<string> | null): string
 
 /**
  * 从 markdown 抽 h1–h3（跳过 fenced code），供右侧滚动目录。
+ *
+ * 渲染支持 h1–h6（见 model/heading），但**目录只收 1–3**：长文里 4 级以下会淹没
+ * 导航，这是目录的取舍，不是渲染能力的限制。
  * @returns {{ level:number, text:string, id:string }[]}
  */
 export function extractMdHeadings(src: string | null | undefined): MdHeading[] {
@@ -138,9 +155,18 @@ function autolinkHtml(html: string): string {
   return out.join('');
 }
 
-/** 行内渲染：转义 → 代码/粗体 → 附件/内部链接/外链/双链 → 语法规则（强调/公式）→ 自动链接。 */
-function inline(s: string, knownNames: Set<string> | null, refTitles: Map<string, string>): string {
-  const base = esc(s)
+/**
+ * 行内渲染：预处理（转义/脚注/引用式链接）→ 转义 → 代码/粗体 →
+ * 附件/内部链接/外链/双链 → 语法规则（强调/高亮/公式/尖括号链接）→ 自动链接。
+ */
+function inline(
+  s: string,
+  knownNames: Set<string> | null,
+  refTitles: Map<string, string>,
+  env: InlineEnv,
+): string {
+  const pre = INLINE_PRE_RULES.reduce((acc, rule) => rule(acc, env), s);
+  const base = esc(pre)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   const withAtt = base
@@ -169,10 +195,48 @@ function inline(s: string, knownNames: Set<string> | null, refTitles: Map<string
     const miss = knownNames && !wikiKnown(t, knownNames);
     return `<a class="md-wl${miss ? ' md-wl-miss' : ''}" data-wl="${esc(t)}" title="${miss ? '未解析：' : '双链：'}${esc(t)}">${esc(text)}</a>`;
   });
-  // 语法规则（强调 / 行内公式）作用在链接与代码已就位的 HTML 上（公式跳过 <a>/<code> 内部）
+  // 语法规则（强调 / 高亮 / 行内公式 / 尖括号链接）作用在链接与代码已就位的 HTML 上
   const withSyntax = INLINE_RULES.reduce((acc, rule) => rule(acc), withWiki);
-  // 最后一遍：剩下的**裸 URL** 也变成可点链接（#142）
-  return autolinkHtml(withSyntax);
+  // 最后一遍：剩下的**裸 URL** 也变成可点链接（#142）；再还原 `\x` 转义的字面字符
+  return restoreEscapes(autolinkHtml(withSyntax), esc);
+}
+
+/**
+ * 逐行块级渲染；**未命中任何规则的连续行合成一个段落**（行间 `<br>`）。
+ *
+ * 段落合并修的是「每行一个 <p>」的老毛病：块模型里同一块的多行是用户在一个块内
+ * 打的换行，渲染成多个独立段落会让段间距突然变大。
+ */
+function renderBlocks(lines: string[], ctx: BlockCtx): string {
+  let html = '';
+  let para: string[] = [];
+  const flush = (): void => {
+    if (para.length) {
+      html += paragraphHtml(para, ctx);
+      para = [];
+    }
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (!line.trim()) {
+      flush();
+      continue;
+    }
+    let matched = false;
+    for (const rule of BLOCK_RULES) {
+      const hit = rule.match(lines, i, ctx);
+      if (!hit) continue;
+      flush();
+      html += hit.html;
+      // 规则必须前进（next > i）；写错时兜底 +1，避免死循环
+      i = Math.max(hit.next, i + 1) - 1;
+      matched = true;
+      break;
+    }
+    if (!matched) para.push(line);
+  }
+  flush();
+  return html;
 }
 
 /**
@@ -197,32 +261,26 @@ export function renderMarkdownHtml(
       if (id && title) refTitles.set(id, title);
     }
   }
-  const lines = stripFrontmatter(src).split('\n');
+  const doc: DocCtx = { footnotes: new Map(), refLinks: new Map(), esc };
+  // 1) 定义行先抽走（脚注正文、引用式链接目标），剩下的正文才逐行渲染
+  const lines = DOC_RULES.reduce(
+    (acc, rule) => rule.collect(acc, doc),
+    stripFrontmatter(src).split('\n'),
+  );
+  const env: InlineEnv = { footnotes: doc.footnotes, refLinks: doc.refLinks };
   const usedIds = new Set<string>();
+  const inlineFn = (t: string): string => inline(t, knownNames, refTitles, env);
   const ctx: BlockCtx = {
-    inline: (t) => inline(t, knownNames, refTitles),
+    block: (ls) => renderBlocks(ls, ctx),
+    doc,
+    inline: inlineFn,
     esc,
     headingId: (t, used) => headingAnchorId(t, used),
     imgMap,
     usedIds,
   };
 
-  let html = '';
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? '';
-    if (!line.trim()) continue; // 空行只是分隔符
-    let matched = false;
-    for (const rule of BLOCK_RULES) {
-      const hit = rule.match(lines, i, ctx);
-      if (hit) {
-        html += hit.html;
-        i = hit.next - 1; // 外层再 ++
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) html += `<p>${ctx.inline(line)}</p>`;
-  }
+  let html = renderBlocks(lines, ctx);
 
   // 文件附件 chip 只作兜底（#118 / #183）：正文未内联引用的真文件才挂。
   const isFileAttachment = (a: Attachment | null | undefined): boolean =>
@@ -236,5 +294,7 @@ export function renderMarkdownHtml(
       )
       .join('');
   }
+  // 2) 脚注：引用点上标 + 文末列表（没有脚注时原样返回）
+  html = restoreFootnotes(html, doc, inlineFn);
   return html || '<p class="mdw-empty">（空文档）</p>';
 }

@@ -127,7 +127,8 @@ export function splitMdBlocks(src: unknown): string[] {
     // 标题**自成一块**（markdown/Obsidian 语义）：标题行后紧跟的正文、列表都是
     // 独立块，不并进标题。此前只「遇到标题才开新块」，标题后的行仍留在标题块里——
     // 于是「# 标题\n正文」渲染成一个标题（标题与正文融合），点正文也整块进编辑态。
-    const isHeading = /^#{1,3}\s/.test(line);
+    // 1–6 级全认（渲染层支持到 h6，块切分不能只到 h3，否则 h4 会和上一块粘住）。
+    const isHeading = /^#{1,6}\s/.test(line);
     if (isHeading && cur.length) flushCur();
     cur.push(line);
     if (isHeading) flushCur();

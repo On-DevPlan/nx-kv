@@ -1,6 +1,7 @@
-// 标题语法：`#` / `##` / `###` 行 → h1–h3（带滚动目录用的锚点 id）。
+// 标题语法：`#` … `######` 行 → h1–h6（带滚动目录用的锚点 id）。
 //
-// 只认 1–3 级（与右侧目录 extractMdHeadings 一致）；4 级以上按段落处理。
+// 渲染支持全部 6 级（CommonMark）；右侧滚动目录仍只抽 1–3 级（extractMdHeadings），
+// 更深的层级在长文里会淹没导航，那是**目录**的取舍，不该限制渲染能力。
 import type { BlockMatch, BlockRule } from '../types.js';
 
 export const headingSyntax: BlockRule = {
@@ -8,7 +9,7 @@ export const headingSyntax: BlockRule = {
   priority: 30,
   match(lines, i, ctx): BlockMatch | null {
     const line = lines[i] ?? '';
-    const m = /^(#{1,3})\s+(.*)$/.exec(line);
+    const m = /^(#{1,6})\s+(.*)$/.exec(line);
     if (!m) return null;
     const level = (m[1] ?? '#').length;
     const text = m[2] ?? '';

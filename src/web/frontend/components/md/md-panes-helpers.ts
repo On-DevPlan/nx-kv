@@ -112,7 +112,13 @@ export function blockKind(text: string) {
   if (/^#\s/m.test(t) && !/^##/m.test(t)) return 'h1';
   if (/^##\s/m.test(t) && !/^###/m.test(t)) return 'h2';
   if (/^###\s/m.test(t)) return 'h3';
-  if (/^[-*]\s/m.test(t)) return 'li';
+  // h4–h6：渲染层支持到 h6（model/heading），编辑态字号逐级递减（editor.css）。
+  // 判定放在 h3 之后：`####` 不匹配 `^###\s`（第四个字符是 #），互不干扰。
+  if (/^####\s/m.test(t)) return 'h4';
+  if (/^#####\s/m.test(t)) return 'h5';
+  if (/^######\s/m.test(t)) return 'h6';
+  // 列表项：无序 `- ` / `* ` / `+ `，有序 `1. ` / `1) `
+  if (/^(?:[-*+]|\d+[.)])\s/m.test(t)) return 'li';
   if (/^>\s/m.test(t)) return 'quote';
   return 'p';
 }

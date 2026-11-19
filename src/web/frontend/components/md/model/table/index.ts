@@ -5,12 +5,34 @@
 // 链接都能生效。对齐由分隔行的冒号决定（:-- 左 / :-: 中 / --: 右）。
 import type { BlockMatch, BlockRule } from '../types.js';
 
-/** 拆分一行管道表：去掉首尾竖线后按 `|` 切、逐格 trim。 */
+/**
+ * 拆分一行管道表：去掉首尾竖线后按**未转义**的 `|` 切、逐格 trim。
+ *
+ * `\|` 是单元格内的字面竖线（GFM 规定），必须在切分前区分开，否则「a \| b」会被
+ * 切成两格。切完把 `\|` 还原成 `|`——转义符是**切分**用的，不该留在单元格文本里。
+ */
 function splitCells(line: string): string[] {
   let s = line.trim();
   if (s.startsWith('|')) s = s.slice(1);
-  if (s.endsWith('|')) s = s.slice(0, -1);
-  return s.split('|').map((c) => c.trim());
+  if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
+  const cells: string[] = [];
+  let cur = '';
+  for (let k = 0; k < s.length; k++) {
+    const ch = s[k];
+    if (ch === '\\' && s[k + 1] === '|') {
+      cur += '|';
+      k += 1;
+      continue;
+    }
+    if (ch === '|') {
+      cells.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  cells.push(cur.trim());
+  return cells;
 }
 
 /** 分隔行判定：由 `---` / `:--` / `--:` / `:-:` 之类格子组成，至少一个 `|`。 */

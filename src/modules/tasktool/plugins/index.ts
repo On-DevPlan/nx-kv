@@ -11,10 +11,8 @@ export {
   listPluginIds,
   registerPlugin,
 } from './container.js';
-export { runScheduleHooks, runGetHooks } from './runtime.js';
 export { discoverPlugins } from './discover.js';
 export { isBarrierOpen } from './blockgoal.js';
 export { default as blockgoal } from './blockgoal.js';
-export { default as waitgoal } from './waitgoal.js';
 export { default as timegoal } from './timegoal.js';
 export { default as taskgoal } from './taskgoal.js';

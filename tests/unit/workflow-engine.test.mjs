@@ -5,7 +5,6 @@ import { createSnapshotStore, createMemoryAdapter } from '../../src/modules/loca
 import { createEventBus, EVENTS } from '../../src/modules/localtask/bus/index.js';
 import { createDagMutator } from '../../src/modules/localtask/mutator/index.js';
 import { createScheduler } from '../../src/modules/localtask/scheduler/index.js';
-import { runGetHooks } from '../../src/modules/tasktool/plugins/runtime.js';
 import { listPluginIds, getPlugin } from '../../src/modules/tasktool/plugins/container.js';
 import { BasePlugin } from '../../src/modules/tasktool/plugins/base.js';
 import { HOOK_CHAINS, PLUGIN_HOOKS } from '../../src/core/workflow/lifecycle.js';
@@ -87,44 +86,12 @@ test('EventBus：dag:mutated 会触发', async () => {
   assert.ok(hit >= 1);
 });
 
-test('IoC：四插件自注册且均为 BasePlugin', () => {
-  for (const id of ['blockgoal', 'waitgoal', 'timegoal', 'taskgoal']) {
+test('IoC：三个目标插件自注册且均为 BasePlugin', () => {
+  for (const id of ['blockgoal', 'timegoal', 'taskgoal']) {
     assert.ok(listPluginIds().includes(id), id);
     assert.ok(getPlugin(id) instanceof BasePlugin, id);
   }
   assert.deepEqual(PLUGIN_HOOKS, ['onBind', 'onSchedule', 'onGet', 'onUnbind']);
   assert.ok(HOOK_CHAINS.schedule.includes('onSchedule'));
   assert.ok(HOOK_CHAINS.get.includes('onGet'));
-});
-
-test('runGetHooks：waitgoal 拉到一条即结束', async () => {
-  const snap = {
-    workflowId: 'w',
-    state: 'active',
-    revision: 1,
-    nodes: [
-      {
-        id: 'n1',
-        kind: 'task',
-        state: 'ready',
-        plugins: [{ name: 'waitgoal', scope: 'node', config: { waitMinutes: 0.05 } }],
-      },
-    ],
-    edges: [],
-    workflowPlugins: [],
-  };
-  let pulls = 0;
-  const items = [];
-  for await (const x of runGetHooks(
-    { snapshot: snap, nodeId: 'n1' },
-    {
-      pull: async () => {
-        pulls += 1;
-        return pulls >= 2 ? { id: 9 } : null;
-      },
-    },
-  )) {
-    items.push(x);
-  }
-  assert.deepEqual(items, [{ id: 9 }]);
 });

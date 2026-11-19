@@ -48,18 +48,21 @@
 本机任务队列 + 文档库 + 仓库登记的一体化工具。
 </nx-kv.attachment>
 <nx-kv.timecheck>
-〔时间目标〕每轮推进先跑 nx-kv timegoal check --task tg_216 --summary "<本轮现状>"；到点后再 localtask done。
-</nx-kv.timecheck>
-<nx-kv.goalhint>
-〔特殊功能提示 · 时间目标〕任务 #216 正在计时：持续 2小时，已过 48分钟（40%），剩余 1小时12分钟。
+〔时间目标〕任务 #216 正在计时：持续 2小时，已过 48分钟（40%），剩余 1小时12分钟。
 ——时间尚足：先做主线，再补细节。
-</nx-kv.goalhint>
+- 每轮检查照旧执行：nx-kv timegoal check --task tg_216 --summary "<本轮现状>"
+附加要求（发布方）：
+golden 阶段先不做 UI
+</nx-kv.timecheck>
 <nx-kv.ext>
 本队列（D:/DevProjects/my/github/nx-kv）还有 2 条待领取任务：
   - #217 实现 S2 模板资产化
   - #218 S3 注册表外露
 先完成当前任务，再领取下一条；不要因为后面还有活就提前收尾或分心。
 </nx-kv.ext>
+<nx-kv.timegoal>
+〔时间目标〕每轮推进先跑 nx-kv timegoal check --task tg_216 --summary "<本轮现状>"；到点后再 localtask done。
+</nx-kv.timegoal>
 <nx-kv.ack>
 完成之后必须调用 nx-kv localtask done --id 216 --summary "<完成总结>" 汇报结果。
 </nx-kv.ack>

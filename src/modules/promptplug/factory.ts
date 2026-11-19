@@ -9,7 +9,10 @@
 // 形式交给插件；插件在自己的 buildData() 里 await supplied() 后只做变换。
 // promptplug 不 import 其他模块。
 //
-// #152 起模板不再注入：每个插件类的 `templates` 就是它的正文，构造只传 overrides（预览/测试用）。
+// #152 起模板不再注入：每个插件类的 `templates` 就是它的出厂正文。
+// #161：出厂正文之外允许**用户层模板**（template-store：每段多条 + 启用哪条）——
+// 装配时把「启用中的用户正文」作为 override 传进构造；'builtin' / 未设置 → ''（用类内默认）。
+// 优先级：显式 overrides（预览/测试）> 用户启用模板 > 类内出厂。
 import type { AnyPromptPlugin } from '../../shared/prompt-plugin.js';
 import type { PluginGroup, Supply } from './base.js';
 import { ContextPlugin } from './plugins/context.js';
@@ -18,10 +21,11 @@ import { ExtPlugin } from './plugins/ext.js';
 import { GetloopPlugin } from './plugins/getloop.js';
 import { AckPlugin } from './plugins/ack.js';
 import { DoneguardPlugin } from './plugins/doneguard.js';
-import { GoalhintPlugin } from './plugins/goalhint.js';
-import { TimecheckPlugin } from './plugins/timecheck.js';
+import { TimecheckPlugin } from './plugins/goalhint.js';
+import { TimegoalPlugin } from './plugins/timecheck.js';
 import { varScopeOf as varScopeOfFields } from '../../shared/prompt-plugin.js';
 import { allPluginIds, groupPluginIds, pluginMeta } from './registry.js';
+import { activeTemplateTextOf } from './template-store.js';
 
 /** 交付插件构造所需的宿主取数（值或惰性函数；异步留给 HTTP 类取数）。 */
 export interface DeliveryPluginDeps {
@@ -51,7 +55,9 @@ export function buildPlugins(
   overrides: TemplateOverrides = {},
 ): AnyPromptPlugin[] {
   const d = { ...EMPTY_DEPS, ...deps };
-  const text = (id: string): string => String(overrides[id] ?? '');
+  // 显式 overrides（预览/测试）> 用户启用模板（template-store）> 类内出厂（''）
+  const text = (id: string): string =>
+    overrides[id] != null ? String(overrides[id]) : activeTemplateTextOf(id);
   switch (group) {
     case 'get':
       return [
@@ -59,10 +65,12 @@ export function buildPlugins(
         new AttachmentPlugin(text('attachment'), { attach: d.attach }),
         new ExtPlugin(text('ext'), { queueInfo: d.queueInfo }),
         new AckPlugin(text('ack')),
+        new TimegoalPlugin(text('timegoal')),
         new GetloopPlugin(text('getloop'), { loopText: d.loopText, waitMinutes: d.waitMinutes }),
       ];
     case 'check':
-      return [new TimecheckPlugin(text('timecheck')), new GoalhintPlugin(text('goalhint'))];
+      // #161 三段化：check 链只有这一个段（进度 + 每轮检查提醒）
+      return [new TimecheckPlugin(text('timecheck'))];
     case 'done':
       return [new DoneguardPlugin(text('doneguard'))];
     default:

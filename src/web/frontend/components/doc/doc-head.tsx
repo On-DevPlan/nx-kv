@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { MenuPortal, openMenuAt, useMenu } from '../md/tool-bar.jsx';
 import { inMoreOf, metaOf, onBarOf } from '../tool-acts/modules.js';
+import { Icon } from '../icons.jsx';
 import { useToolActsLayout } from '../tool-acts/use-layout.js';
 import ToolActsLayoutPanel from '../tool-acts/layout-panel.jsx';
 import '../tool-acts/style.css';
@@ -132,6 +133,7 @@ export default function DocHead({
             aria-expanded={more.open}
             onClick={(e) => openMenuAt(more, e, 'right')}
           >
+            <Icon name="dots" />
             更多
           </button>
         </div>
@@ -139,6 +141,7 @@ export default function DocHead({
     }
     const s = specs[id];
     if (!s) return null;
+    const m = metaOf(KIND, id);
     return (
       <button
         key={id}
@@ -147,6 +150,7 @@ export default function DocHead({
         disabled={!!s.disabled}
         onClick={() => runItem(id)}
       >
+        {m.icon ? <Icon name={m.icon} /> : null}
         {s.label || metaOf(KIND, id).label || id}
       </button>
     );
@@ -203,7 +207,8 @@ export default function DocHead({
                 <div className="mdw-fmt-menu-cap">{g.label}</div>
                 {g.items.map((x) => {
                   const s = specs[x.id];
-                  const danger = s?.danger || metaOf(KIND, x.id).danger;
+                  const m = metaOf(KIND, x.id);
+                  const danger = s?.danger || m.danger;
                   return (
                     <button
                       key={x.id}
@@ -212,7 +217,8 @@ export default function DocHead({
                       className={'mdw-fmt-menu-item' + (danger ? ' danger' : '')}
                       onClick={() => runItem(x.id)}
                     >
-                      {s?.label || metaOf(KIND, x.id).label || x.id}
+                      {m.icon ? <Icon name={m.icon} /> : null}
+                      {s?.label || m.label || x.id}
                       {s?.hint ? <span className="hint">{s.hint}</span> : null}
                     </button>
                   );
@@ -221,15 +227,17 @@ export default function DocHead({
             ))}
             {ungroupedMore.map((x) => {
               const s = specs[x.id];
+              const m = metaOf(KIND, x.id);
               return (
                 <button
                   key={x.id}
                   type="button"
                   role="menuitem"
-                  className={'mdw-fmt-menu-item' + (s?.danger || metaOf(KIND, x.id).danger ? ' danger' : '')}
+                  className={'mdw-fmt-menu-item' + (s?.danger || m.danger ? ' danger' : '')}
                   onClick={() => runItem(x.id)}
                 >
-                  {s?.label || metaOf(KIND, x.id).label || x.id}
+                  {m.icon ? <Icon name={m.icon} /> : null}
+                  {s?.label || m.label || x.id}
                 </button>
               );
             })}
@@ -243,6 +251,7 @@ export default function DocHead({
                 setPanelOpen(true);
               }}
             >
+              <Icon name="gear" />
               自定义工具栏…
             </button>
           </MenuPortal>

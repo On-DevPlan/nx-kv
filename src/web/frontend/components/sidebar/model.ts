@@ -30,6 +30,8 @@ export interface SideRow {
   topicKey?: string;
   name: string;
   icon?: string;
+  /** 仓库行的登记类型（repo = 本地开发仓库 / ref = 参考仓库）——侧栏按它区分图标 */
+  repoType?: string;
   cwd?: string;
   desc?: string;
   boards?: Array<{ key?: string; id?: string }>;
@@ -189,6 +191,7 @@ export function buildTree(
         topicKey: first ? first.key : '',
         name: r.name,
         icon: r.icon || '',        // 项目图标（emoji/单字符；空 = 默认文件夹图标）
+        repoType: r.type || 'repo', // 侧栏图标按「开发仓库 / 参考仓库」分开画
         cwd: r.path || '',
         desc: r.desc || '',
         boards: r.boards || [],

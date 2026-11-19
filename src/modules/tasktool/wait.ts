@@ -295,8 +295,7 @@ export async function buildTaskDelivery(
     const segments: SegmentMeta[] = [
       { id: 'context', label: '组 / 项目上下文（模板）', traceId: 'delivery' },
       { id: 'attachment', label: '附件段（清单 / 本地路径）', traceId: 'attach' },
-      { id: 'timecheck', label: '时间目标（状态 / check 指令）', traceId: 'goal' },
-      { id: 'goalhint', label: '特殊功能提示（timegoal）', traceId: 'goalhint' },
+      { id: 'timegoal', label: '时间目标启动（介绍 / 每轮怎么做）', traceId: 'goal' },
       { id: 'doneguard', label: '完成门禁提示（timegoal）', traceId: 'doneguard' },
       { id: 'ext', label: '待领取队列（ext）', traceId: 'ext' },
       { id: 'ack', label: 'ack 完成总结提示词', traceId: 'ack' },

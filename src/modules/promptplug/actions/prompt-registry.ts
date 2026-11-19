@@ -12,6 +12,7 @@ import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { uiDescriptor } from '../../../shared/prompt-plugin.js';
 import { buildAllPlugins } from '../factory.js';
 import { allPluginIds, assertRegistry, groupIndex } from '../registry.js';
+import { allSegmentTemplates } from '../template-store.js';
 
 /** prompt.registry 的入参契约（无参）。 */
 const input = z.object({});
@@ -35,6 +36,8 @@ export class PromptRegistryAction extends ActionBase<typeof input> {
     const plugins = uiDescriptor(buildAllPlugins()).sort(
       (a, b) => order.indexOf(a.id) - order.indexOf(b.id),
     );
-    return { groups: groupIndex(), plugins };
+    // #161：用户层模板数据随注册表一起外露（每段的条目 + 启用 id）——
+    // 出厂 builtin 在 descriptors 的 templates 里，用户条目在 segmentTemplates 里。
+    return { groups: groupIndex(), plugins, segmentTemplates: allSegmentTemplates() };
   }
 }

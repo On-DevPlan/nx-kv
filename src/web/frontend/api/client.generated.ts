@@ -77,6 +77,9 @@ import type {
 } from '../../../modules/localtask/actions/_manifest.generated.js';
 import type {
   PromptRegistryAction,
+  PromptTemplateActivateAction,
+  PromptTemplateDeleteAction,
+  PromptTemplateSaveAction,
 } from '../../../modules/promptplug/actions/_manifest.generated.js';
 import type {
   BoardAddAction,
@@ -405,6 +408,12 @@ export interface ApiClient {
   bundledList(): Promise<Awaited<ReturnType<InstanceType<typeof BundledListAction>['run']>>>;
 /** 提示词插件注册表：按时机链（get / check / done）列出插件的内置模板 / 变量目录 / 链内顺序 */
   registry(): Promise<Awaited<ReturnType<InstanceType<typeof PromptRegistryAction>['run']>>>;
+/** 切换提示词段启用的模板（builtin 或用户条目） */
+  activate(input: z.input<InstanceType<typeof PromptTemplateActivateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptTemplateActivateAction>['run']>>>;
+/** 删除提示词段的用户模板（启用中的删除后回落 builtin） */
+  delete(input: z.input<InstanceType<typeof PromptTemplateDeleteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptTemplateDeleteAction>['run']>>>;
+/** 保存提示词段模板（新建/编辑用户条目；保存前按该段变量白名单校验） */
+  save(input: z.input<InstanceType<typeof PromptTemplateSaveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptTemplateSaveAction>['run']>>>;
 }
 
 export function createApiClient(transport: Transport): ApiClient {
@@ -1348,6 +1357,27 @@ export function createApiClient(transport: Transport): ApiClient {
     async registry() {
       const path = `/api/prompt/registry`;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PromptRegistryAction>['run']>>;
+    },
+    // action: prompt.template.activate
+    async activate(input: z.input<InstanceType<typeof PromptTemplateActivateAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PromptTemplateActivateAction>['_input']>);
+      const path = `/api/prompt/template/activate`;
+      const body = { "segment": inp["segment"], "id": inp["id"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof PromptTemplateActivateAction>['run']>>;
+    },
+    // action: prompt.template.delete
+    async delete(input: z.input<InstanceType<typeof PromptTemplateDeleteAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PromptTemplateDeleteAction>['_input']>);
+      const path = `/api/prompt/template/delete`;
+      const body = { "segment": inp["segment"], "id": inp["id"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof PromptTemplateDeleteAction>['run']>>;
+    },
+    // action: prompt.template.save
+    async save(input: z.input<InstanceType<typeof PromptTemplateSaveAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PromptTemplateSaveAction>['_input']>);
+      const path = `/api/prompt/template/save`;
+      const body = { "segment": inp["segment"], "id": inp["id"], "name": inp["name"], "text": inp["text"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof PromptTemplateSaveAction>['run']>>;
     },
   };
 }

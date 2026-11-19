@@ -37,14 +37,14 @@ const makeCompose = (overrides = {}, deps = {}, seed = {}) => {
   return compose({ plugins, group: 'get', seed, mode: deps.mode ?? 'xml' });
 };
 
-test('get 链：五个段（context / attachment / ext / ack / getloop），链内按 order 升序', () => {
+test('get 链：六段（context / attachment / ext / ack / timegoal / getloop），链内按 order 升序', () => {
   const ids = buildPlugins('get').map((p) => p.id);
-  assert.deepEqual(ids, ['context', 'attachment', 'ext', 'ack', 'getloop']);
+  assert.deepEqual(ids, ['context', 'attachment', 'ext', 'ack', 'timegoal', 'getloop']);
   for (const id of ids) {
     assert.ok(builtinTpl(id).trim(), `${id} 的内置模板不能为空`);
   }
-  // check / done 是另外两条链，不混进来
-  assert.deepEqual(buildPlugins('check').map((p) => p.id), ['timecheck', 'goalhint']);
+  // #161 三段化：timegoal 启动介绍在 get 链；check / done 各只有一段
+  assert.deepEqual(buildPlugins('check').map((p) => p.id), ['timecheck']);
   assert.deepEqual(buildPlugins('done').map((p) => p.id), ['doneguard']);
   assert.equal(new Set(PLUGIN_IDS).size, PLUGIN_IDS.length, '插件 id 全局唯一');
 });

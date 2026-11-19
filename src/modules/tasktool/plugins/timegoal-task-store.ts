@@ -11,9 +11,15 @@ import { db as ltDb } from '../../localtask/repo/open.js';
 import { nowMs } from '../../../core/db/time.js';
 import * as goalsRepo from '../../localtask/repo/goals.js';
 import {
+  TASK_GOAL_PROMPT_TEMPLATE,
+  customGoalPromptOf,
+  renderCustomGoalPrompt,
   renderTaskGoalPrompt,
   taskGoalTemplateCtx,
 } from './goal-template.js';
+import type { GoalCheckRecord } from './goal-template.js';
+import { compose } from '../../promptplug/compose.js';
+import { buildPlugins } from '../../promptplug/factory.js';
 import {
   clampDuration,
   durationLabel,
@@ -178,7 +184,7 @@ export async function checkGoalByKey(rawKey: unknown, { summary: rawSummary }: C
   const summary = normalizeLogField(rawSummary, 'summary', 2000);
   const parsed = parseTaskGoalKey(key);
   if (!parsed) throw badInput('goal key 不合法（应为 task:<topicKey>:<seq>）: ' + key);
-  return tx(
+  const payload = await tx(
     (conn) => {
       const row = goalsRepo.getGoalRowByTaskKey(parsed.topicKey, parsed.seq, conn);
       if (!row) {
@@ -200,6 +206,52 @@ export async function checkGoalByKey(rawKey: unknown, { summary: rawSummary }: C
     },
     { db: ltDb(), mode: 'IMMEDIATE' }
   );
+  // #161：CLI 的「本轮提示词」与 get 交付**同源**——走 promptplug check 链
+  // （timecheck / goalhint 段模板）实时渲染；设置页编辑这些段模板后立即生效。
+  // 自定义 prompt 作为 goal.check 进 seed（timecheck 段的 if 分支输出）。
+  if (payload && payload.hasGoal !== false && payload.goal) {
+    payload.promptRendered = await renderGoalChainPrompt(payload);
+  }
+  return payload;
+}
+
+/**
+ * check 链渲染（#161）：timecheck / goalhint 段模板按当下 ctx 合并渲染。
+ * 链渲染失败（段模板被改坏等）退回出厂指令文本——check 绝不能因为渲染
+ * 失败拿不到提示词。
+ */
+async function renderGoalChainPrompt(payload: Record<string, any>): Promise<string> {
+  const seed = {
+    task: payload.task || null,
+    goal: { ...(payload.goal || {}), check: payload.promptRendered || '', statusLine: '' },
+  };
+  try {
+    return (await compose({ plugins: buildPlugins('check'), group: 'check', seed })).trim();
+  } catch {
+    // 段模板被改坏时退回出厂指令文本（TASK_GOAL_PROMPT_TEMPLATE 显式引用）
+    return renderTaskGoalPrompt({ task: seed.task, goal: seed.goal }, TASK_GOAL_PROMPT_TEMPLATE);
+  }
+}
+
+/**
+ * 某任务 goal 的**已有**检查流水（旧→新；#161）：get 交付 / 预览渲染 goal ctx 时
+ * 喂给模板（goal.checks / goal.sinceLastCheckSec）。没起表 → 空数组。
+ */
+export function checkHistoryOfTask(taskId: unknown): GoalCheckRecord[] {
+  try {
+    const row = goalsRepo.getGoalByTask(Number(taskId), ltDb());
+    if (!row) return [];
+    return (goalsRepo.listChecks(Number(row.id), ltDb()) || []).map((c: any) => ({
+      atMs: Number(c.at),
+      elapsedSec: Number(c.elapsed_sec) || 0,
+      remainingSec: Number(c.remaining_sec) || 0,
+      overtimeSec: Number(c.overtime_sec) || 0,
+      reached: Number(c.reached) === 1,
+      summary: String(c.summary || ''),
+    }));
+  } catch {
+    return []; // 历史读不到不拖垮交付
+  }
 }
 
 /** 任务级 check 的共同实现：写一条 goal_checks 流水 + 组装返回（summary 由 normalizeLogField 归一为 string）。 */
@@ -213,6 +265,16 @@ function applyGoalCheck(conn: any, row: any, parsed: { topicKey: string; seq: nu
     row.state = 'archived';
     row.updated_at = at;
   }
+  // #161：本轮**之前**的检查流水（append 之前查 = 天然不含本次）——进模板变量域
+  // （goal.checks 列表 + goal.sinceLastCheckSec），供「检查太频繁 → 严重警告」分支。
+  const history = (goalsRepo.listChecks(Number(row.id), conn) || []).map((c: any) => ({
+    atMs: Number(c.at),
+    elapsedSec: Number(c.elapsed_sec) || 0,
+    remainingSec: Number(c.remaining_sec) || 0,
+    overtimeSec: Number(c.overtime_sec) || 0,
+    reached: Number(c.reached) === 1,
+    summary: String(c.summary || ''),
+  }));
   goalsRepo.appendCheck(conn, {
     goalId: Number(row.id),
     atMs: at,
@@ -251,12 +313,15 @@ function applyGoalCheck(conn: any, row: any, parsed: { topicKey: string; seq: nu
     deadline: row.deadline,
     nowMs: at,
     check: { summary, at: checkedAt, count: totalChecks },
+    history,
   });
-  const promptTemplate = String(row.prompt || '');
+  // #161：出厂正文已搬进 timecheck 段模板——goals.prompt 只存用户自定义；
+  // 自定义的实时渲染先算好（会作为 goal.check 进链渲染的 seed）。
+  const promptTemplate = customGoalPromptOf(row.prompt);
   return {
     ...result,
-    prompt: promptTemplate, // 模板原文（占位符保留）
-    promptRendered: renderTaskGoalPrompt(ctx, promptTemplate), // 本轮实时渲染（CLI 展示用）
+    prompt: promptTemplate, // 自定义模板原文（占位符保留；未自定义 = ''）
+    promptRendered: renderCustomGoalPrompt(ctx, promptTemplate), // 自定义部分的实时渲染
     task: { id: taskSeq, text: String((taskRow && taskRow.body) || '') },
     goal: ctx.goal,
     summary,

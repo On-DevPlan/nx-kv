@@ -82,7 +82,9 @@ test('add --duration：任务记录带 timegoal 声明；领取交付带 check �
   // #87：check 返回对象带任务实时原文，prompt 按当下 ctx 同源渲染（占位符不残留）
   assert.equal(chk.task.id, 1);
   assert.match(chk.task.text, /改登录页/);
-  assert.match(chk.promptRendered, /本任务带时间目标/);
+  // #161 三段化：check 链唯一段 = 进度行 + 每轮检查提醒（出厂正文搬进段模板）
+  assert.match(chk.promptRendered, /正在计时/);
+  assert.match(chk.promptRendered, /每轮检查照旧执行/);
   assert.match(chk.promptRendered, /重点看表单/, '附加要求参与每轮渲染');
   assert.doesNotMatch(chk.promptRendered, /\{\{/, '渲染后不应残留占位符');
   assert.ok(Number.isFinite(chk.goal.remainingSec), 'goal.remainingSec 是渲染期实时值');

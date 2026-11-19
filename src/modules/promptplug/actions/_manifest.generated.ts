@@ -7,11 +7,20 @@
 import type { ActionBase } from '../../../runtime/action-base.js';
 import type { Container } from '../../../runtime/container.js';
 import { PromptRegistryAction } from './prompt-registry.js';
+import { PromptTemplateActivateAction } from './prompt-template-activate.js';
+import { PromptTemplateDeleteAction } from './prompt-template-delete.js';
+import { PromptTemplateSaveAction } from './prompt-template-save.js';
 
 /** 本模块的全部 action 类（容器按这个顺序建实例）。 */
 export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   PromptRegistryAction,
+  PromptTemplateActivateAction,
+  PromptTemplateDeleteAction,
+  PromptTemplateSaveAction,
 ];
 
 // 再导出类本身：前端 apiclient 的返回类型从这里 type-only 引用（实现即契约）。
 export { PromptRegistryAction };
+export { PromptTemplateActivateAction };
+export { PromptTemplateDeleteAction };
+export { PromptTemplateSaveAction };

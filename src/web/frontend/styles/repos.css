@@ -317,6 +317,28 @@
 .rp-ref-cell-name strong { font-size: 14px; }
 .rp-ref-cell-remote { font-size: 12px; }
 .rp-refs-none { font-size: 12px; }
+/* #162 所在组列（main / default 视图）：组 chip，点击跳到该组分支 */
+.rp-boards { white-space: normal; }
+.rp-board-chip {
+  display: inline-flex; align-items: center;
+  margin: 1px 4px 1px 0; padding: 1px 8px;
+  border: 1px solid var(--line, #E4E2DC); border-radius: 999px;
+  background: var(--soft-2, #F1F0EC);
+  font: 600 11px/1.6 system-ui, sans-serif; color: var(--ink-2, #454A52);
+  cursor: pointer;
+}
+.rp-board-chip:hover { border-color: var(--mdw-accent-line, #B7D4C8); color: var(--mdw-accent, #2F6F5E); }
+/* #162 所在组列（main / default 视图）：组 chip，点击跳到该组分支 */
+.rp-boards { white-space: normal; }
+.rp-board-chip {
+  display: inline-flex; align-items: center;
+  margin: 1px 4px 1px 0; padding: 1px 8px;
+  border: 1px solid var(--line, #E4E2DC); border-radius: 999px;
+  background: var(--soft-2, #F1F0EC);
+  font: 600 11px/1.6 system-ui, sans-serif; color: var(--ink-2, #454A52);
+  cursor: pointer;
+}
+.rp-board-chip:hover { border-color: var(--mdw-accent-line, #B7D4C8); color: var(--mdw-accent, #2F6F5E); }
 .rp-context { font-size: 13px; padding: 10px 14px; }
 .rp-context-desc { font-size: 12.5px; }
 .rp-ref-mounted { font-size: 13px; padding: 12px 14px; }

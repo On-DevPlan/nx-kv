@@ -14,7 +14,7 @@
 import { badInput } from '../../../core/errors.js';
 import { readSettingRaw, writeSettingRaw, deleteSettingRaw, listSettingsByPrefix } from '../../../core/db/settings.js';
 import { tx } from '../../../core/db/index.js';
-import { db as ltDb } from '../../localtask/repo/open.js';
+import { db as ltDb } from '../../localtask/infra/repo/open.js';
 import { nowMs } from '../../../core/db/time.js';
 import {
   archiveRetentionSec,

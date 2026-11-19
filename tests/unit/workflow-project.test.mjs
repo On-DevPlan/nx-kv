@@ -5,10 +5,10 @@ import { applySnapshotToTopic, topicToSnapshot } from '../../src/core/workflow/p
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createTopicAdapter } from '../../src/modules/localtask/store/topic-adapter.js';
-import { createSnapshotStore } from '../../src/modules/localtask/store/index.js';
-import { createDagMutator } from '../../src/modules/localtask/mutator/index.js';
-import { createEventBus } from '../../src/modules/localtask/bus/index.js';
+import { createTopicAdapter } from '../../src/modules/localtask/infra/store/topic-adapter.js';
+import { createSnapshotStore } from '../../src/modules/localtask/infra/store/index.js';
+import { createDagMutator } from '../../src/modules/localtask/infra/mutator/index.js';
+import { createEventBus } from '../../src/modules/localtask/infra/bus/index.js';
 
 test('topicToSnapshot：闸门任务 → control + blockgoal + 边', () => {
   const topic = {
@@ -31,7 +31,7 @@ test('adapter set：bind blockgoal → blocksFollowing（DB 版 topic-adapter）
   const prev = process.env.NX_KV_LOCALTASK_STORE;
   process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
   try {
-    const repo = (await import('../../src/modules/localtask/repo/index.js')).default;
+    const repo = (await import('../../src/modules/localtask/infra/repo/index.js')).default;
     repo.open();
     const t = repo.topics.ensureTopic('t1', { cwd: join(sb, 't1'), name: 't1' });
     repo.tasks.insertTask(t.id, { id: 10, text: 'a', status: 'pending' });
@@ -51,7 +51,7 @@ test('adapter set：bind blockgoal → blocksFollowing（DB 版 topic-adapter）
   } finally {
     if (prev === undefined) delete process.env.NX_KV_LOCALTASK_STORE;
     else process.env.NX_KV_LOCALTASK_STORE = prev;
-    const { closeDb } = await import('../../src/modules/localtask/repo/index.js');
+    const { closeDb } = await import('../../src/modules/localtask/infra/repo/index.js');
     closeDb();
     rmSync(sb, { recursive: true, force: true, maxRetries: 3 });
   }
@@ -116,7 +116,7 @@ test('topic-adapter：外部写 bump revision → 过期快照 saveAtomic CAS �
   const prev = process.env.NX_KV_LOCALTASK_STORE;
   process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
   try {
-    const repo = (await import('../../src/modules/localtask/repo/index.js')).default;
+    const repo = (await import('../../src/modules/localtask/infra/repo/index.js')).default;
     repo.open();
     const t = repo.topics.ensureTopic('t1', { cwd: join(sb, 't1'), name: 't1' });
     repo.tasks.insertTask(t.id, { id: 1, text: 'a', status: 'pending' });
@@ -139,7 +139,7 @@ test('topic-adapter：外部写 bump revision → 过期快照 saveAtomic CAS �
   } finally {
     if (prev === undefined) delete process.env.NX_KV_LOCALTASK_STORE;
     else process.env.NX_KV_LOCALTASK_STORE = prev;
-    const { closeDb } = await import('../../src/modules/localtask/repo/index.js');
+    const { closeDb } = await import('../../src/modules/localtask/infra/repo/index.js');
     closeDb();
     rmSync(sb, { recursive: true, force: true, maxRetries: 3 });
   }

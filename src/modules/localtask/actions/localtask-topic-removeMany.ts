@@ -5,7 +5,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
-import { renderRemoveMany as _renderRemoveMany } from '../action-render.js';
+import { renderRemoveMany as _renderRemoveMany } from '../ui/action-render.js';
 const service: any = serviceNs;
 const renderRemoveMany: any = _renderRemoveMany;
 

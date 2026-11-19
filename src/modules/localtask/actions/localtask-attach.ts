@@ -37,7 +37,7 @@ export class LocaltaskAttachAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-        const { attachToTask } = await (import('../attach.js') as any);
+        const { attachToTask } = await (import('../ops/attach.js') as any);
         return attachToTask({
           id: ctx.id,
           cwd: ctx.cwd,

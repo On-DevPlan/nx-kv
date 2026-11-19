@@ -4,8 +4,8 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput, type ActionRunMeta } from '../../../runtime/action-base.js';
-import { renderWait as _renderWait } from '../../localtask/action-render.js';
-import { claimView } from '../../localtask/contract-views.js';
+import { renderWait as _renderWait } from '../../localtask/ui/action-render.js';
+import { claimView } from '../../localtask/ui/contract-views.js';
 const renderWait: any = _renderWait;
 
 /** localtask.claim 的入参契约（CLI 与 HTTP 共用同一份）。 */

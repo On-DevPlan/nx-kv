@@ -16,7 +16,7 @@ import {
   findBoard,
   findRepo,
   memberKeysOf,
-} from '../../src/modules/localtask/board-target.js';
+} from '../../src/modules/localtask/ops/board-target.js';
 import * as svc from '../../src/modules/localtask/service.js';
 
 // ─── frontmatter ────────────────────────────────────────────────

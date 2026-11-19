@@ -4,7 +4,7 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import { reopenView } from '../contract-views.js';
+import { reopenView } from '../ui/contract-views.js';
 
 /** localtask.reopen 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
@@ -34,7 +34,7 @@ export class LocaltaskReopenAction extends ActionBase<typeof input> {
   override async run(ctx: ActionInput<this['_input']>) {
 
         // 重开也可能带着改过的归属（--text 的 frontmatter.project 变了）→ 同样搬家
-        const { reopenTask } = await (import('../update.js') as any);
+        const { reopenTask } = await (import('../lifecycle/update.js') as any);
         return reopenTask({
           id: ctx.id,
           cwd: ctx.cwd,

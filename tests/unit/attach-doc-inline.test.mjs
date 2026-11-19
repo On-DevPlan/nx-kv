@@ -21,7 +21,7 @@ process.env.NX_KV_DB = join(sb, 'nxkv.db');
 
 const service = await import('../../src/modules/localtask/service.js');
 const { annotateTaskDelivery, attachmentInstruction, attachInstructionOf, attachToTask, listTaskAttachments } =
-  await import('../../src/modules/localtask/attach.js');
+  await import('../../src/modules/localtask/ops/attach.js');
 const { ensureDocRef, registerMdfile } = await import('../../src/core/attachmentdb.js');
 const { getDb, closeDb } = await import('../../src/core/db/index.js');
 const store = await import('../../src/modules/docs/store.js');

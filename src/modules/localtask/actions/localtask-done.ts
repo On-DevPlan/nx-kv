@@ -5,7 +5,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
-import { doneView } from '../contract-views.js';
+import { doneView } from '../ui/contract-views.js';
 const service: any = serviceNs;
 
 /** localtask.done 的入参契约（CLI 与 HTTP 共用同一份）。 */

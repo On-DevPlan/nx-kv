@@ -4,7 +4,7 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import { renderDetach as _renderDetach } from '../action-render.js';
+import { renderDetach as _renderDetach } from '../ui/action-render.js';
 const renderDetach: any = _renderDetach;
 
 /** localtask.detach 的入参契约（CLI 与 HTTP 共用同一份）。 */
@@ -27,7 +27,7 @@ export class LocaltaskDetachAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-        const { detachTaskAttachment } = await (import('../attach.js') as any);
+        const { detachTaskAttachment } = await (import('../ops/attach.js') as any);
         return detachTaskAttachment({
           id: ctx.id,
           cwd: ctx.cwd,

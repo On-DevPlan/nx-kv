@@ -4,7 +4,7 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import { renderAdd as _renderAdd } from '../action-render.js';
+import { renderAdd as _renderAdd } from '../ui/action-render.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { badInput } from '../../../core/errors.js';
@@ -33,7 +33,7 @@ async function readTaskBody(
   if (!existsSync(abs)) throw badInput('任务正文文件不存在: ' + abs);
   return readFileSync(abs, 'utf8');
 }
-import { addView } from '../contract-views.js';
+import { addView } from '../ui/contract-views.js';
 const renderAdd: any = _renderAdd;
 
 /** localtask.add 的入参契约（CLI 与 HTTP 共用同一份）。 */
@@ -79,7 +79,7 @@ export class LocaltaskAddAction extends ActionBase<typeof input> {
         // 派任务编排已迁 localtask/add.ts（派任务编排归 localtask 域；命令名不变）。
         // 落点判定（--board/--project 严格口径 / 正文 frontmatter fail-open）只此一份实现，
         // CLI、HTTP、面板提交同走这一条链路。
-        const { submitTask } = await (import('../add.js') as any);
+        const { submitTask } = await (import('../lifecycle/add.js') as any);
         const rawBlock: any = ctx.blockBy ?? ctx['block-by'];
         // 支持本地 id 与跨队列 "topicKey:id"（组编排边）；空 → undefined
         const { normalizeBlockBy } = await (import('../dag.js') as any);

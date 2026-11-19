@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { attachTemplateCtx } from '../../src/modules/localtask/attach-template.js';
+import { attachTemplateCtx } from '../../src/modules/localtask/ops/attach-template.js';
 import { compose } from '../../src/modules/promptplug/compose.js';
 import { buildPlugins } from '../../src/modules/promptplug/index.js';
 

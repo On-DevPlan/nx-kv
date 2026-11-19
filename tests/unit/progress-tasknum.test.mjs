@@ -4,7 +4,7 @@
 // 面板：卡片右侧显示 #id，搜索「N / #N」等值匹配编号 + 标题模糊。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeTask } from '../../src/modules/localtask/task-view.js';
+import { normalizeTask } from '../../src/modules/localtask/lifecycle/task-view.js';
 import { taskToProgress } from '../../src/web/frontend/modules/md/md-parse.js';
 
 test('normalizeTask：round = reopenCount + 1（数据口径不变，#127 只改 UI 语义）', () => {

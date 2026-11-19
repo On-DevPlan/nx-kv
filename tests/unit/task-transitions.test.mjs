@@ -16,8 +16,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TASK_STATUSES, TASK_TRANSITIONS, canTransition } from '../../src/shared/task-status.js';
 import * as svc from '../../src/modules/localtask/service.js';
-import * as tasksRepo from '../../src/modules/localtask/repo/tasks.js';
-import * as topicsRepo from '../../src/modules/localtask/repo/topics.js';
+import * as tasksRepo from '../../src/modules/localtask/infra/repo/tasks.js';
+import * as topicsRepo from '../../src/modules/localtask/infra/repo/topics.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-transitions-'));
 const storeFile = join(tmp, 'localtasks.json');

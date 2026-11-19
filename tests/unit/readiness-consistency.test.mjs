@@ -146,7 +146,7 @@ test('快照内核驱动器（driveReadyStates）与任务行入口对同一 sto
     assertModelsAgree('service-store', rows);
   } finally {
     // T03：先关库连接再删临时目录（svc 是 try 块内的局部 import，finally 里够不着）
-    const { closeDb } = await import('../../src/modules/localtask/repo/index.js');
+    const { closeDb } = await import('../../src/modules/localtask/infra/repo/index.js');
     try { closeDb(); } catch { /* ignore */ }
     rmSync(sb, { recursive: true, force: true, maxRetries: 3 });
   }

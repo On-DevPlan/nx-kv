@@ -347,7 +347,7 @@ function fail(err: unknown, json: boolean): void {
 
 async function cmdServe(ctx: ServeCtx): Promise<void> {
   const { startServer } = await import('./server.js');
-  const { startPanelIdleGuard } = await import('../modules/localtask/panel-guard.js');
+  const { startPanelIdleGuard } = await import('../modules/localtask/ui/panel-guard.js');
   const { registerPanel, unregisterPanel, notePanelRequest } = await import(
     '../modules/localtask/service.js'
   );

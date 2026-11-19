@@ -3,7 +3,7 @@
 - date: 2026-11-10
 - status: accepted
 - schema: 无变更（只动模板与渲染层）
-- producers: `src/core/instruction-template.js`（helper 注册）；`src/shared/prompt-blocks.js`（goalhint / doneguard 默认模板）；`src/modules/localtask/task-lifecycle.js`（`renderDoneGuard`）
+- producers: `src/core/instruction-template.js`（helper 注册）；`src/shared/prompt-blocks.js`（goalhint / doneguard 默认模板）；`src/modules/localtask/lifecycle/task-lifecycle.js`（`renderDoneGuard`）
 - consumers: `src/modules/promptplug/Template/blockTemplates.json`（goalhint / doneguard 内置模板，S3 起出厂快照是模板唯一真相）；`src/modules/localtask/action-lifecycle.js`（done 的 blocked 展示）；设置页「可使用参数」清单（S3 起由 GET /api/prompt/registry 的 fields 派生，原 prompt-template-params.ts 手写速查表已删除）
 
 ## 背景

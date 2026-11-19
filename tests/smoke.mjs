@@ -27,7 +27,7 @@ try {
   // T03：localtask 存储是 SQLite —— 先关本进程的连接再删临时目录
   //（子进程 CLI 各自持有的连接随进程退出释放）。
   try {
-    const { closeDb: closeTaskDb } = await import('../src/modules/localtask/repo/index.js');
+    const { closeDb: closeTaskDb } = await import('../src/modules/localtask/infra/repo/index.js');
     closeTaskDb();
   } catch { /* ignore */ }
   try {

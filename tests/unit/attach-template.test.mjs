@@ -8,9 +8,9 @@
 //     overtimeSec/reached）从 deadline 戳补算；已有的不覆盖。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { attachmentInstruction, attachInstructionOf, attachTemplateCtx } from '../../src/modules/localtask/attach.js';
+import { attachmentInstruction, attachInstructionOf, attachTemplateCtx } from '../../src/modules/localtask/ops/attach.js';
 import { validateTemplate } from '../../src/core/instruction-template.js';
-import { clampAttachTemplate } from '../../src/modules/localtask/task-templates.js';
+import { clampAttachTemplate } from '../../src/modules/localtask/lifecycle/task-templates.js';
 import { enrichGoalTiming } from '../../src/modules/claim/host.js';
 
 const ATT = [

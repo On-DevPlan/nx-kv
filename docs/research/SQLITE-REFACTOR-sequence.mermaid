@@ -58,9 +58,9 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     participant CLI as nx-kv localtask wait
-    participant SV as localtask/task-ops.js
-    participant TR as localtask/repo/tasks.js
-    participant PR as localtask/repo/presence.js
+    participant SV as localtask/lifecycle/task-ops.js
+    participant TR as localtask/infra/repo/tasks.js
+    participant PR as localtask/infra/repo/presence.js
     participant TX as core/db/tx.js
     participant DB as SQLite
 
@@ -86,9 +86,9 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     participant CLI as nx-kv localtask reopen
-    participant SV as localtask/task-lifecycle.js
-    participant LR as localtask/repo/links.js
-    participant TR as localtask/repo/tasks.js
+    participant SV as localtask/lifecycle/task-lifecycle.js
+    participant LR as localtask/infra/repo/links.js
+    participant TR as localtask/infra/repo/tasks.js
     participant TX as core/db/tx.js
     participant DB as SQLite
 

@@ -51,8 +51,8 @@ test('外部写逐次顶 workflowRevision（引擎过期快照的 CAS 依据）'
 
 test('过期快照落盘被 CAS 拦下，外部 blockBy 存活（端到端）', async () => {
   const { topicToSnapshot, applySnapshotToTopic } = await import('../../src/core/workflow/project.js');
-  const { createTopicAdapter } = await import('../../src/modules/localtask/store/topic-adapter.js');
-  const { createSnapshotStore } = await import('../../src/modules/localtask/store/index.js');
+  const { createTopicAdapter } = await import('../../src/modules/localtask/infra/store/topic-adapter.js');
+  const { createSnapshotStore } = await import('../../src/modules/localtask/infra/store/index.js');
 
   const dirB = join(sb, 'proj-b');
   const bKey = svc.normalizeCwd(dirB).key;

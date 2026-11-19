@@ -421,8 +421,8 @@ nx-kv localtask attachments --id 3                       # 附件清单 + 本地
 
 | 断点 | 症状 | 修法 | 落点 |
 |---|---|---|---|
-| **A. frontmatter 不带「介绍」** | 提交时只写 `board` id / `project` key，组介绍与项目介绍都没带 | frontmatter 增加 `boardIntro` / `boardDesc` / `projectIntro` / `projectDesc`（**引用式**：路径 + 一行摘要） | `src/modules/localtask/board-target.js` |
-| **B. 组级任务没有落点** | 只给 `--board` 时任务落进提交者的当前目录，别的目录领不到 | 组口径**必须**带 `--project`（归属不明就报错）；`--cwd` 退化为纯校验，不参与归属推断 | `src/modules/localtask/board-target.js`、`src/modules/localtask/index.js` |
+| **A. frontmatter 不带「介绍」** | 提交时只写 `board` id / `project` key，组介绍与项目介绍都没带 | frontmatter 增加 `boardIntro` / `boardDesc` / `projectIntro` / `projectDesc`（**引用式**：路径 + 一行摘要） | `src/modules/localtask/ops/board-target.js` |
+| **B. 组级任务没有落点** | 只给 `--board` 时任务落进提交者的当前目录，别的目录领不到 | 组口径**必须**带 `--project`（归属不明就报错）；`--cwd` 退化为纯校验，不参与归属推断 | `src/modules/localtask/ops/board-target.js`、`src/modules/localtask/index.js` |
 | **C. 「持续 get」模板无条件投递** | 没开持续 get 的项目，交付里也带「继续调用 localtask get 直到超时」，与 instant 语义自相矛盾 | 只在 `loop.enabled` 时叠加模板 | `src/modules/tasktool/get.js` |
 | **D. 交付里没有「项目介绍」** | agent 知道组是干什么的，却不知道这个项目是干什么的 | 组上下文前补 `〔项目介绍 · X〕` 段；**不在任何组里的项目也带** | `src/modules/docs/knowledge.js`、`src/modules/tasktool/groupctx.js` |
 | **E. 改文案抹掉 frontmatter** | `reopen --text` / `update --text` 整段替换正文 → 归组信息没了 → 任务从组面板掉出去 | 换正文时保留原 frontmatter（新正文自带的键优先，旧值补缺） | `src/modules/localtask/frontmatter.js`、`src/modules/localtask/service.js` |

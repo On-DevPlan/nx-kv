@@ -17,7 +17,7 @@ process.env.NX_KV_REPOS_STORE = join(sb, 'repos.json');
 
 const service = await import('../../src/modules/localtask/service.js');
 const { annotateTaskDelivery, attachmentInstruction, attachToTask, listTaskAttachments } = await import(
-  '../../src/modules/localtask/attach.js'
+  '../../src/modules/localtask/ops/attach.js'
 );
 const { getTask: claimTask } = await import('../../src/modules/claim/get.js');
 const { getDb } = await import('../../src/core/db/index.js');

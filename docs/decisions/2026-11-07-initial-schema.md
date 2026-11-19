@@ -6,7 +6,7 @@
 - producers: 逐表见下表「生产」（「有生产者 + 有消费者」是进 schema 的前提）
 - consumers: 逐表见下表「消费」
 - 逐表生产/消费:
-  - topics — 生产: `modules/localtask/repo/topics.js`、`import-json`；消费: tasks 外键、主题总览、等待超时。
+  - topics — 生产: `modules/localtask/infra/repo/topics.js`、`import-json`；消费: tasks 外键、主题总览、等待超时。
   - topic_presence — 生产: `localtask wait/ack`；消费: 总览、wait 超时兜底。
   - tasks — 生产: `tasktool/add`、`localtask repo`、`import-json`；消费: wait/get/list、交付附件、goals、task_links。
   - task_links — 生产: 评论派生 / reopen / feedback 派生；消费: `localtask chain`。

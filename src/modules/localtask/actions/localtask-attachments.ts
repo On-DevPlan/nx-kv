@@ -4,7 +4,7 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import { renderTaskAttachments as _renderTaskAttachments } from '../action-render.js';
+import { renderTaskAttachments as _renderTaskAttachments } from '../ui/action-render.js';
 const renderTaskAttachments: any = _renderTaskAttachments;
 
 /** localtask.attachments 的入参契约（CLI 与 HTTP 共用同一份）。 */
@@ -25,7 +25,7 @@ export class LocaltaskAttachmentsAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-        const { listTaskAttachments } = await (import('../attach.js') as any);
+        const { listTaskAttachments } = await (import('../ops/attach.js') as any);
         return listTaskAttachments({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
     
   }

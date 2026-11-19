@@ -5,8 +5,8 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
-import { renderTask as _renderTask } from '../action-render.js';
-import { taskView } from '../contract-views.js';
+import { renderTask as _renderTask } from '../ui/action-render.js';
+import { taskView } from '../ui/contract-views.js';
 const service: any = serviceNs;
 const renderTask: any = _renderTask;
 
@@ -32,7 +32,7 @@ export class LocaltaskGetAction extends ActionBase<typeof input> {
         const task: any = await service.getTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
         // 附件标注（任务 #15）：解析正文嵌入 + 按设置自动下载 + 标本地路径。
         // fail-open：标注坏了照常返回任务本体。
-        const { annotateTaskDelivery } = await (import('../attach.js') as any);
+        const { annotateTaskDelivery } = await (import('../ops/attach.js') as any);
         const att: any = await annotateTaskDelivery(task).catch(() => null);
         return att
           ? { ...task, attachments: att.task.attachments }

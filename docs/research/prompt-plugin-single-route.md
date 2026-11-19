@@ -304,7 +304,7 @@ bin/kv.mjs                       ← tsx 直接跑 src 源码（不是 dist）
 
 ### 4.2 写：内置不可改在这里挡
 
-`setLtSettings`（`src/modules/localtask/repo/settings.ts:332`）保存时：
+`setLtSettings`（`src/modules/localtask/infra/repo/settings.ts:332`）保存时：
 
 1. 忽略对 `builtin` 条目的任何改动（列表里那条恒等于库内现值）；
 2. 每个区块至少一条可用模板；
@@ -479,7 +479,7 @@ src/web/frontend/page/settings/prompt-templates-section.tsx   改写：拖动列
 | `builtinItemOf` 的「按代码重建 builtin」 | `:397` | 落库后 builtin 即真数据 |
 | `buildDeliveryCtx` / `deliveryCtxOf`（约 80 行硬编码聚合） | `tasktool/delivery-template.ts:203` / `:101` | 拆进各插件 `data()` |
 | `composeSystemBlocks` 的双层 try/catch | `tasktool/system-blocks.ts:82` / `:92` | 运行期不兜底 |
-| 旧 settings 键折算、`rule` 并入 ack、`{blockId:[...]}` 简写、稀疏补齐 | `localtask/repo/settings.ts:178`（`migrateLegacy`）/ `:128`（`mergeRuleIntoAck`）/ `:154`（`absorbStoredRule`） | 落库后无兼容对象 |
+| 旧 settings 键折算、`rule` 并入 ack、`{blockId:[...]}` 简写、稀疏补齐 | `localtask/infra/repo/settings.ts:178`（`migrateLegacy`）/ `:128`（`mergeRuleIntoAck`）/ `:154`（`absorbStoredRule`） | 落库后无兼容对象 |
 | 前端 `placeholders.ts`、`prompt-template-params.ts` | 前端 modules / page | 由 `uiDescriptor()` 派生 |
 
 ### 9.2 改写
@@ -538,7 +538,7 @@ src/web/frontend/page/settings/prompt-templates-section.tsx   改写：拖动列
 | ctx 由约 80 行硬编码聚合 | `tasktool/delivery-template.ts:101`（`deliveryCtxOf`）、`:203`（`buildDeliveryCtx`） |
 | 渲染出块靠「渲染成空串 + continue」 | `tasktool/system-blocks.ts:77` 一带 |
 | 坏模板双层回落（内置 → 空串） | `tasktool/system-blocks.ts:82` / `:92` |
-| 用户覆盖存 settings 一行 JSON | `localtask/repo/settings.ts:51`（key）、`:241`（读）、`:332`（写） |
+| 用户覆盖存 settings 一行 JSON | `localtask/infra/repo/settings.ts:51`（key）、`:241`（读）、`:332`（写） |
 | 内置条目按代码重建、输入里的 builtin 被丢弃 | `shared/prompt-blocks.ts:389` / `:397` |
 | `core` 不得 import modules/shared | `eslint.config.js:149-166` |
 | 模块之间不得互相依赖 | `eslint.config.js:167-207` |

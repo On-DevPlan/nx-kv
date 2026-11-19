@@ -15,7 +15,7 @@ process.env.NX_KV_DOCS_DIR = join(sb, 'docs');
 
 const repos = await import('../../src/modules/repos/service.js');
 const boards = await import('../../src/modules/repos/boards.js');
-const { submitTask } = await import('../../src/modules/localtask/add.js');
+const { submitTask } = await import('../../src/modules/localtask/lifecycle/add.js');
 const mod = (await import('../../src/modules/localtask/index.js')).default;
 const addAction = mod.actions.find((a) => a.id === 'localtask.add');
 

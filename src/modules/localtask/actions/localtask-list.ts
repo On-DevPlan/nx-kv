@@ -5,7 +5,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
-import { renderOverview as _renderOverview } from '../action-render.js';
+import { renderOverview as _renderOverview } from '../ui/action-render.js';
 const service: any = serviceNs;
 const renderOverview: any = _renderOverview;
 

@@ -33,8 +33,8 @@
 import { tx } from '../../../core/db/index.js';
 import { deleteSettingRaw, listSettingsByPrefix } from '../../../core/db/settings.js';
 import { nowMs } from '../../../core/db/time.js';
-import { db as ltDb } from '../../localtask/repo/open.js';
-import * as goalsRepo from '../../localtask/repo/goals.js';
+import { db as ltDb } from '../../localtask/infra/repo/open.js';
+import * as goalsRepo from '../../localtask/infra/repo/goals.js';
 import { evalTimegoal } from './timegoal-core-store.js';
 import { CWD_GOAL_PREFIX, blobToGoalView } from './timegoal-cwd-store.js';
 import { goalRowToGoal, goalRowToView } from './timegoal-task-store.js';

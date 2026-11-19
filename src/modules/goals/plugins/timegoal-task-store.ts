@@ -7,9 +7,9 @@
 // goal_checks 行的 summary 存当轮总结（纯文本；旧库 JSON 编码在读取侧兼容，见 goals.js）。
 import { badInput } from '../../../core/errors.js';
 import { tx } from '../../../core/db/index.js';
-import { db as ltDb } from '../../localtask/repo/open.js';
+import { db as ltDb } from '../../localtask/infra/repo/open.js';
 import { nowMs } from '../../../core/db/time.js';
-import * as goalsRepo from '../../localtask/repo/goals.js';
+import * as goalsRepo from '../../localtask/infra/repo/goals.js';
 import {
   TASK_GOAL_PROMPT_TEMPLATE,
   customGoalPromptOf,

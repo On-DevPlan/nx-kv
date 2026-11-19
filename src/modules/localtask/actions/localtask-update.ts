@@ -4,7 +4,7 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import { updateView } from '../contract-views.js';
+import { updateView } from '../ui/contract-views.js';
 
 /** localtask.update 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
@@ -64,7 +64,7 @@ export class LocaltaskUpdateAction extends ActionBase<typeof input> {
         }
         // 改归属即搬家（任务 #43）：正文 effective project 变了 → 任务迁到新项目的队列。
         // 编排在 localtask/update.ts，与派任务（localtask/add.ts）同一套落点判定。
-        const { updateTask: editTask } = await (import('../update.js') as any);
+        const { updateTask: editTask } = await (import('../lifecycle/update.js') as any);
         const r: any = await editTask({
           id: ctx.id,
           text: ctx.text,

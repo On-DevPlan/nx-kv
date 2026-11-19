@@ -29,11 +29,11 @@
 // 本文件曾是 2400+ 行的 god-file，已按分节拆成本目录的兄弟文件；这里只做
 // **门面再导出**——对外 API 路径（'./service.js' 静态引用与动态 import）全部
 // 不变；模块内部依赖方向（单向无环）见各文件头注释。
-export * from './task-templates.js';
+export * from './lifecycle/task-templates.js';
 export * from './paths.js';
-export * from './store-io.js';
+export * from './infra/store-io.js';
 // 存储仓储（T03）：reset 仅测试用（清空库）；repo 是窄方法的命名空间聚合。
-export { resetLocaltaskStore, closeDb, default as repo } from './repo/index.js';
+export { resetLocaltaskStore, closeDb, default as repo } from './infra/repo/index.js';
 
 /**
  * 只读快照：把库投成旧 JSON store 的形状（{ version, settings, topics: {key: topic} }）。
@@ -41,20 +41,20 @@ export { resetLocaltaskStore, closeDb, default as repo } from './repo/index.js';
  * **没有 saveStore**：写路径必须走 repo 窄方法，「读全表→改→整表重写」被禁止。
  */
 export async function loadStore(): Promise<Record<string, any>> {
-  const repo = await import('./repo/index.js');
+  const repo = await import('./infra/repo/index.js');
   repo.openLocaltaskStore();
   const map: Record<string, any> = {};
   for (const t of repo.topics.listTopics()) map[t.key] = t;
   return { version: 4, settings: repo.settings.getLtSettings(), topics: map };
 }
-export * from './repo-ctx.js';
-export * from './task-view.js';
+export * from './infra/repo-ctx.js';
+export * from './lifecycle/task-view.js';
 export * from './waiters.js';
 export * from './waiting.js';
-export * from './deletion.js';
-export * from './task-lifecycle.js';
-export * from './topics.js';
-export * from './task-ops.js';
-export * from './task-remove.js';
-export * from './panel-presence.js';
-export * from './events.js';
+export * from './lifecycle/deletion.js';
+export * from './lifecycle/task-lifecycle.js';
+export * from './lifecycle/topics.js';
+export * from './lifecycle/task-ops.js';
+export * from './lifecycle/task-remove.js';
+export * from './ui/panel-presence.js';
+export * from './infra/events.js';

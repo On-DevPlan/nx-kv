@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { attachTemplateCtx } = await import('../../src/modules/localtask/attach.js');
+const { attachTemplateCtx } = await import('../../src/modules/localtask/ops/attach.js');
 const { buildPlugins, fieldCatalogOf, varScopeOf } = await import(
   '../../src/modules/promptplug/index.js'
 );

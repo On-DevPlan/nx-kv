@@ -6,7 +6,7 @@
 // finally 不会执行，waiting:true 会永久残留；独立成表后残留只污染这张小表，
 // 整表清空即可，不会让队列本身看起来像有人在等。
 import { isGlobalKey, GLOBAL_NAME, resolveTopicKey } from './paths.js';
-import { openLocaltaskStore as openStore, presence as presenceRepo, topics as topicsRepo, txw as tx } from './repo/index.js';
+import { openLocaltaskStore as openStore, presence as presenceRepo, topics as topicsRepo, txw as tx } from './infra/repo/index.js';
 
 // 在库里把某主题置为等待/结束，并刷新现状。
 // waitingSince 是「等待起点」，面板据此显示「已等多久」——waitingUntil（截止时刻）

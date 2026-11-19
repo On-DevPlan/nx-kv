@@ -27,7 +27,7 @@ process.env.NX_KV_DOCS_DIR = join(tmp, 'docs');
 process.env.NX_KV_DB = join(tmp, 'nxkv.db');
 
 const localtask = await import('../../src/modules/localtask/service.js');
-const repo = await import('../../src/modules/localtask/repo/index.js');
+const repo = await import('../../src/modules/localtask/infra/repo/index.js');
 const { legacyDurationSec } = await import('../../src/core/db/import-json.js');
 const reposService = await import('../../src/modules/repos/service.js');
 const boards = await import('../../src/modules/repos/boards.js');

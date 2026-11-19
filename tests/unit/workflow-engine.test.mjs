@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../../src/modules/goals/plugins/index.js'; // IoC 自注册
-import { createSnapshotStore, createMemoryAdapter } from '../../src/modules/localtask/store/index.js';
-import { createEventBus, EVENTS } from '../../src/modules/localtask/bus/index.js';
-import { createDagMutator } from '../../src/modules/localtask/mutator/index.js';
-import { createScheduler } from '../../src/modules/localtask/scheduler/index.js';
+import { createSnapshotStore, createMemoryAdapter } from '../../src/modules/localtask/infra/store/index.js';
+import { createEventBus, EVENTS } from '../../src/modules/localtask/infra/bus/index.js';
+import { createDagMutator } from '../../src/modules/localtask/infra/mutator/index.js';
+import { createScheduler } from '../../src/modules/localtask/infra/scheduler/index.js';
 import { listPluginIds, getPlugin } from '../../src/modules/goals/plugins/container.js';
 import { BasePlugin } from '../../src/modules/goals/plugins/base.js';
 import { HOOK_CHAINS, PLUGIN_HOOKS } from '../../src/core/workflow/lifecycle.js';

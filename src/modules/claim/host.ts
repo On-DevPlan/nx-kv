@@ -21,7 +21,7 @@ import { formatDuration, formatGoalTiming } from '../../core/instruction-templat
 import { parseFrontmatter } from '../../shared/frontmatter.js';
 import { getSettings, isGlobalKey, pendingQueueInfo } from '../localtask/service.js';
 import { assembleDelivery, type AssembledDelivery } from './assemble.js';
-import { annotateTaskDelivery, attachTemplateCtx } from '../localtask/attach.js';
+import { annotateTaskDelivery, attachTemplateCtx } from '../localtask/ops/attach.js';
 import { readGroupContext } from './groupctx.js';
 import { ensureTaskGoal, previewTaskGoal } from '../goals/taskgoal.js';
 import * as timegoal from '../goals/timegoal.js';

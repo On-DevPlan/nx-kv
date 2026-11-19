@@ -361,7 +361,7 @@ export function tx(fn, { mode = 'IMMEDIATE', retries = 3 } = {})
 命名：`list*/get*/insert*/update*/set*/remove*/count*`；参数对象字面量；返回纯对象（`{...row}`）；`null` = 不存在（`notFound` 由 service 抛，文案不变）。
 
 ```js
-// localtask/repo/topics.js
+// localtask/infra/repo/topics.js
 listTopics({ includeDeleted = false, includeSentinel = true } = {})
 getTopicByKey(key) / getTopicById(id) / getTopicByCwd(cwd, groupKey)
 ensureTopic({ cwd, groupKey, repoKey = '__unbound__', name })   // key 由 topicKeyOf 派生
@@ -372,7 +372,7 @@ allocateSeq(topicId)                                             // UPDATE ... R
 setNextSeq(topicId, seq)                                         // 仅迁移用
 listTopicsWaiting({ nowMs })                                     // waiting=1 AND until_ms > now
 
-// localtask/repo/tasks.js
+// localtask/infra/repo/tasks.js
 listByTopic(topicId, { status, includeDeleted = false, limit, withChainStats = false } = {})
 getBySeq(topicId, seq) / getById(id)
 insertTask({ topicId, seq, body, status, from, round, blocksFollowing, createdAtMs, ext })
@@ -385,7 +385,7 @@ countByStatus({ topicId })
 addDep(taskId, depId, atMs) / removeDep / listDeps / listDependents
 withChainStats(rows)                             // 单条聚合补 chainCount / lastChildAt / parentType（禁 N+1）
 
-// localtask/repo/links.js
+// localtask/infra/repo/links.js
 addLink({ srcId, dstId, type, note, atMs })      // ux_task_links_parent 保证「一个来源」
 getParentLink(taskId)                            // → { dstId, type, note } | null
 listChildren(taskId)                             // 走 ix_task_links_children
@@ -393,11 +393,11 @@ walkUp(taskId, { limit = 32 })                   // 递归 CTE 追根（entities
 walkDown(taskId)                                 // 叶子方向，用于「最新一轮」
 getChain(taskId)                                 // 祖先 → 自身 → 尖端，一条递归查询
 
-// localtask/repo/presence.js
+// localtask/infra/repo/presence.js
 getPresence(topicId) / setWaiting({ topicId, untilMs, sinceMs }) / clearWaiting(topicId)
 requestCancel(topicId) / consumeCancelRequest(topicId)   // UPDATE ... RETURNING 保证只生效一次
 
-// localtask/repo/goals.js
+// localtask/infra/repo/goals.js
 getGoalByTask(taskId) / insertGoal({...}) / appendCheck({...}) / listGoalChecks(goalId, {limit:200})
 listExpiredGoals({ nowMs })                      // ix_goals_deadline
 
@@ -743,9 +743,9 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     participant CLI as nx-kv localtask wait
-    participant SV as localtask/task-ops.js
-    participant TR as localtask/repo/tasks.js
-    participant PR as localtask/repo/presence.js
+    participant SV as localtask/lifecycle/task-ops.js
+    participant TR as localtask/infra/repo/tasks.js
+    participant PR as localtask/infra/repo/presence.js
     participant TX as core/db/tx.js
     participant DB as SQLite
 
@@ -776,9 +776,9 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     participant CLI as nx-kv localtask reopen
-    participant SV as localtask/task-lifecycle.js
-    participant LR as localtask/repo/links.js
-    participant TR as localtask/repo/tasks.js
+    participant SV as localtask/lifecycle/task-lifecycle.js
+    participant LR as localtask/infra/repo/links.js
+    participant TR as localtask/infra/repo/tasks.js
     participant TX as core/db/tx.js
 
     CLI->>SV: reopenTask({cwd, id, feedback})
@@ -826,7 +826,7 @@ src/core/db/errors.js             SQLITE_* → 业务错误（BUSY/UNIQUE/FK/触
 src/core/db/time.js               parseStampMs(本地) / parseIsoMs(UTC) / msToStamp(本地) / nowMs
 src/core/db/schema/001_init.sql   entities.sql 逐字 + §4.2 补充
 
-src/modules/localtask/repo/{topics,tasks,presence,goals,links}.js
+src/modules/localtask/infra/repo/{topics,tasks,presence,goals,links}.js
 src/modules/repos/repo/{repos,refs}.js
 src/modules/templates/repo/templates.js
 src/modules/setting/repo/settings.js
@@ -856,14 +856,14 @@ T02  localtask/{task-view,task-lifecycle,task-ops,waiters,deletion,index}.js   '
      web/frontend/**（10 文件 33 处）
      tests/unit/*（9 文件 46 处）+ tests/smoke.mjs（4 处）
 
-T03  localtask/store-io.js         重写：只留 normalize/时间工具
+T03  localtask/infra/store-io.js         重写：只留 normalize/时间工具
      localtask/{topics,task-ops,task-remove,deletion,task-view,move-prims,waiting,events,waiters}.js
-     localtask/store/topic-adapter.js / engine.js / scheduler/*
-     localtask/panel-presence.js
+     localtask/infra/store/topic-adapter.js / engine.js / scheduler/*
+     localtask/ui/panel-presence.js
 
-T04  localtask/task-lifecycle.js   reopen 改派生
+T04  localtask/lifecycle/task-lifecycle.js   reopen 改派生
      localtask/move-prims.js       搬队列改派生
-     localtask/task-view.js        taskChain → links.getChain；reopenCount 走聚合
+     localtask/lifecycle/task-view.js        taskChain → links.getChain；reopenCount 走聚合
      localtask/index.js            renderChain 改版
      web/frontend/components/md/task-chain.jsx / page/dir/task.jsx / modules/md/md-parse.js
      tests/unit/localtask-{fork,chain,reopen-compose,reopen-text,cross-dag}.test.mjs
@@ -877,7 +877,7 @@ T06  templates/service.js；tasktool/plugins/{timegoal-store,taskgoal-store,wait
 
 T07  src/core/json-store.js       **删除**
      localtask/paths.js / repos/service.js / templates/service.js / timegoal-store.js  删旧 env
-     localtask/store/file-adapter.js  删或降为测试替身
+     localtask/infra/store/file-adapter.js  删或降为测试替身
      tests/**（约 60 文件）夹具换 createTestStore()
      README.md / CHANGELOG.md / .github/workflows/ci.yml
 ```
@@ -886,7 +886,7 @@ T07  src/core/json-store.js       **删除**
 
 ```
 src/core/json-store.js                        （T07）
-src/modules/localtask/store/file-adapter.js   （T07，若无测试依赖）
+src/modules/localtask/infra/store/file-adapter.js   （T07，若无测试依赖）
 ```
 
 ---
@@ -1119,7 +1119,7 @@ engines: ">=18.17" → ">=22.13.0"
 ### T07 · 下线 JSON 层 + 夹具收口 + 发布验证
 
 - **目标**：删 `json-store.js` 与全部旧 env；60 个测试文件夹具统一；**首次对真实库执行迁移**并演练回退；README / CHANGELOG。
-- **涉及文件**：`src/core/json-store.js`（删）、`localtask/paths.js`、`repos/service.js`、`templates/service.js`、`timegoal-store.js`、`localtask/store/file-adapter.js`、`tests/**`（约 60）、`README.md`、`CHANGELOG.md`、`.github/workflows/ci.yml`
+- **涉及文件**：`src/core/json-store.js`（删）、`localtask/paths.js`、`repos/service.js`、`templates/service.js`、`timegoal-store.js`、`localtask/infra/store/file-adapter.js`、`tests/**`（约 60）、`README.md`、`CHANGELOG.md`、`.github/workflows/ci.yml`
 - **依赖**：T02–T06
 - **验收标准**：
   1. `json-store.js` 不存在；全仓 `grep createJsonStore` == 0；7 个旧 env 在 src + tests + scripts 中 0 引用。

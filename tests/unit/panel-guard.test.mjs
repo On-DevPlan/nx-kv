@@ -17,7 +17,7 @@ import {
   PANEL_IDLE_DEFAULTS,
   shouldAutoExit,
   startPanelIdleGuard,
-} from '../../src/modules/localtask/panel-guard.js';
+} from '../../src/modules/localtask/ui/panel-guard.js';
 import * as svc from '../../src/modules/localtask/service.js';
 const { countWaitingTopics } = svc;
 

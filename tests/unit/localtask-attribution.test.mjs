@@ -24,7 +24,7 @@ const svc = await import('../../src/modules/localtask/service.js');
 const mod = (await import('../../src/modules/localtask/index.js')).default;
 const updateAction = mod.actions.find((a) => a.id === 'localtask.update');
 const reopenAction = mod.actions.find((a) => a.id === 'localtask.reopen');
-const { submitTask } = await import('../../src/modules/localtask/add.js');
+const { submitTask } = await import('../../src/modules/localtask/lifecycle/add.js');
 
 // 两个项目 + 一个组（顶层 setup，测试间共用登记）
 const dirA = join(sb, 'proj-a');

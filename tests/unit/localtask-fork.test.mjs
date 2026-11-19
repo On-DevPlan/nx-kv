@@ -60,7 +60,7 @@ test('重开派生新任务：新编号接着做，父保持 done，task_links �
   assert.equal(re.parentId, first.task.id);
 
   // 链：task_links(src=新, dst=旧, type=reopen)
-  const { links: linksRepo } = await import('../../src/modules/localtask/repo/index.js');
+  const { links: linksRepo } = await import('../../src/modules/localtask/infra/repo/index.js');
   const topicId = localtask.repo.topics.getTopic(localtask.normalizeCwd(cwd).key).id;
   const parentRow = localtask.repo.tasks.getTaskRow(topicId, first.task.id);
   assert.equal(linksRepo.hasParent(parentRow.row.id), false, '父没有来源');
@@ -168,7 +168,7 @@ test('comment kind 也派生新任务（type=comment），反馈段跟正文走'
   assert.match(re.task.text, /这里不对/, '反馈段跟正文走');
 
   // 链上的 type=comment
-  const { links: linksRepo } = await import('../../src/modules/localtask/repo/index.js');
+  const { links: linksRepo } = await import('../../src/modules/localtask/infra/repo/index.js');
   const topicId = localtask.repo.topics.getTopic(localtask.normalizeCwd(cwd).key).id;
   const parentRow = localtask.repo.tasks.getTaskRow(topicId, added.task.id);
   const kids = linksRepo.childLinks(parentRow.row.id);
@@ -193,7 +193,7 @@ test('搬队列：带链任务（R1→R2）搬后链完整，全局 id 不变', 
   assert.equal(upd.moved, true);
 
   // 链完整性：全局 id 不变（单条 UPDATE 保留 id，task_links/task_deps 自动跟随）
-  const { db: dbFn } = await import('../../src/modules/localtask/repo/index.js');
+  const { db: dbFn } = await import('../../src/modules/localtask/infra/repo/index.js');
   const bid = localtask.repo.topics.ensureTopic(localtask.normalizeCwd(cwdB).key, { cwd: cwdB }).id;
   // 搬队列的链：type='reopen'，src = B 里的新任务
   const moveLink = dbFn().get(

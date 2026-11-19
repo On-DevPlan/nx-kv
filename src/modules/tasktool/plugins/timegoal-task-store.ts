@@ -16,8 +16,8 @@ import {
   renderCustomGoalPrompt,
   renderTaskGoalPrompt,
   taskGoalTemplateCtx,
-} from './goal-template.js';
-import type { GoalCheckRecord } from './goal-template.js';
+} from '../../promptplug/plugins/goal-prompt.js';
+import type { GoalCheckRecord } from '../../promptplug/plugins/goal-prompt.js';
 import { compose } from '../../promptplug/compose.js';
 import { buildPlugins } from '../../promptplug/factory.js';
 import {

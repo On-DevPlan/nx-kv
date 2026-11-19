@@ -19,7 +19,7 @@ import {
   customGoalPromptOf,
   renderCustomGoalPrompt,
   taskGoalTemplateCtx,
-} from './goal-template.js';
+} from '../../promptplug/plugins/goal-prompt.js';
 import { MAX_PROMPT, parseDuration, startTaskGoal, taskGoalState, taskGoalKey, recordTaskCheck } from './timegoal-store.js';
 import { checkHistoryOfTask } from './timegoal-task-store.js';
 

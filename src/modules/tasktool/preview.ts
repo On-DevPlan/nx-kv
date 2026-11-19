@@ -17,7 +17,7 @@ import { getSettings } from '../localtask/service.js';
 import { PLUGIN_IDS, groupIndex, pluginMeta } from '../promptplug/index.js';
 import { deliveryPlainText } from './delivery-text.js';
 import { getLoopForCwd, getLoopInstruction, type GetLoopState } from './getloop.js';
-import { buildTaskDelivery } from './wait.js';
+import { buildTaskDelivery } from './delivery.js';
 
 export interface PreviewTaskDeliveryOptions {
   /** 任务行（库存形状；草稿由调用方合成 { id:0, text }） */

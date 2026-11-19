@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { attachmentInstruction, attachInstructionOf, attachTemplateCtx } from '../../src/modules/tasktool/attach.js';
 import { validateTemplate } from '../../src/core/instruction-template.js';
 import { clampAttachTemplate } from '../../src/modules/localtask/task-templates.js';
-import { enrichGoalTiming } from '../../src/modules/tasktool/wait.js';
+import { enrichGoalTiming } from '../../src/modules/tasktool/delivery.js';
 
 const ATT = [
   { id: 'att-1', kind: 'image', name: '截图.png', localPath: 'D:/att/截图.png', synced: true, storage: 'local' },

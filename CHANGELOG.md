@@ -2,6 +2,23 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.65.1] - 2026-11-19 交付组装收编 promptplug（#227 重构）
+
+### Changed
+
+- **交付组装收编 promptplug**（#227）：`buildTaskDelivery` 的组装下半段（seed 构造 /
+  平面扩展键保护 / getloop 预渲染 / get+check+done 三链合并 / coversBody 判定）从
+  `tasktool/wait.ts` 收编为 `promptplug/delivery.ts` 的 `assembleDelivery()`；宿主取数
+  （附件标注 / timegoal 起表 / 组上下文 / 队列余量）留在新文件 `tasktool/delivery.ts`，
+  `wait.ts` 只剩阻塞编排（跨进程轮询 / goal 到点收尾 / 面板随行）。边界从此可查：
+  **promptplug 管模板正文 + 变量 + 组装 + 渲染，tasktool 管取数 + 阻塞**。
+  交付输出**逐字节不变**（prompt-golden 等 1106 项单测 + smoke 96/96 全绿钉住）。
+- **任务级 timegoal 提示词模板归位**（#227）：`goal-template.ts` 从 `tasktool/plugins/`
+  迁为 `promptplug/plugins/goal-prompt.ts`——模板正文归提示词模板体系；领取路径
+  （taskgoal-store）与 check 路径（timegoal-task-store）改从 promptplug 取用，
+  依赖方向单一（tasktool → promptplug），不再依赖「模板夹在两个互相 import 的
+  store 之间」来防环。
+
 ## [0.65.0] - 2026-11-19 提示词三段化 / 段模板管理 / check 历史警告
 
 ### Added

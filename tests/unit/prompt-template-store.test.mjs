@@ -14,7 +14,7 @@ process.env.NX_KV_HOME = join(root, 'home');
 const { segmentTemplatesOf, upsertTemplate, activateTemplate, deleteTemplate, activeTemplateTextOf } =
   await import('../../src/modules/promptplug/template-store.js');
 const { TASK_GOAL_PROMPT_TEMPLATE, customGoalPromptOf, renderCustomGoalPrompt } = await import(
-  '../../src/modules/tasktool/plugins/goal-template.js'
+  '../../src/modules/promptplug/plugins/goal-prompt.js'
 );
 
 test('默认：无记录 → 启用 builtin、无条目、生效正文为空（用类内出厂）', () => {

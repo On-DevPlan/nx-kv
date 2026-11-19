@@ -1,8 +1,9 @@
 // 任务级 timegoal 的提示词模板（任务 #87）——**领取交付**与**每轮 check** 的同源代码。
 //
-// 为什么单独一个文件：领取路径（taskgoal-store）与 check 路径（timegoal-task-store）
-// 都要渲染同一份模板；而这两个模块在 timegoal-store 里已经互相 import，把模板
-// 放在这里可以避免循环依赖，也保证两边变量口径永远一致。
+// 为什么在 promptplug（#227 重构）：模板正文归提示词模板体系（出厂正文 / 兜底文案
+// 都在 promptplug/plugins/ 下）；taskgoal-store（领取路径）与 timegoal-task-store
+// （check 路径）作为 tasktool 宿主从这里取用——依赖方向单一（tasktool → promptplug），
+// 两边变量口径永远一致，也不再依赖「模板夹在两个互相 import 的 store 之间」来防环。
 //
 // goals.prompt 落库的是**模板原文**（占位符保留），渲染发生在：
 //   - 领取交付：用「领取那一刻」的 ctx（输出与改造前逐字一致）；

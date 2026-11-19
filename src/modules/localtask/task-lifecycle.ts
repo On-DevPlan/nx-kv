@@ -4,7 +4,7 @@
 import { badInput, notFound } from '../../core/errors.js';
 import { formatDuration, renderInstruction } from '../../core/instruction-template.js';
 import { activeTemplateOf } from '../promptplug/index.js';
-import { taskGoalTemplateCtx } from '../tasktool/plugins/goal-template.js';
+import { taskGoalTemplateCtx } from '../promptplug/plugins/goal-prompt.js';
 import { preserveFrontmatter } from '../../shared/frontmatter.js';
 import {
   FEEDBACK_HEADING,

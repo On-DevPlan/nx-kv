@@ -2,6 +2,25 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.65.2] - 2026-11-19 getloop 残留预渲染链清理（#230 审计）
+
+### Changed
+
+- **getloop 段模板清理**（#230，审计裁决「没删干净的残留」）：#182 下线仓库级 template
+  口子时，`getLoopInstruction → getLoopTpl → loopText Supply → data.getloop.text` 这条
+  预渲染管道没拆——预渲染上下文缺 `getloop` 键，产出的 `text` 是残缺副本（分钟子句被
+  丢），插件内置模板也从不消费它；同一段文案存在三份（两个别名常量 + BUILTIN）。
+  已整条删除：getloop 插件改收 `enabled` 开关 Supply，`dataSchema` 去掉 `text` 字段
+  （变量目录与 `prompt.registry` 同步收窄），文案唯一真相 = 插件内置模板。
+  **交付渲染输出逐字节不变**（golden 仅 ctx 基线重生成，`.txt` 正文基线零变化）。
+- 契约与 Dart 包按流程重新生成（`pnpm gen:dart`，变量目录变化同步）。
+
+### Removed
+
+- `tasktool/plugins/waitgoal-config.ts` 的 `DEFAULT_GETLOOP_INSTRUCTION` /
+  `DEFAULT_GET_LOOP_TEMPLATE` 常量与 `getLoopInstruction()`（随预渲染链一并删除；
+  外部取文案请读 getloop 插件类内置模板）。
+
 ## [0.65.1] - 2026-11-19 交付组装收编 promptplug（#227 重构）
 
 ### Changed

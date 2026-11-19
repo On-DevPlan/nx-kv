@@ -1,5 +1,5 @@
 // prompt golden（S0 基线，S1 起走插件路径）：**源数据夹具**（groupCtx / attachments /
-// queueInfo / loopText / seed）经 promptplug 插件 data() 真实变换 + compose 真实渲染，
+// queueInfo / enabled / seed）经 promptplug 插件 data() 真实变换 + compose 真实渲染，
 // 输出存 tests/unit/__golden__/prompt-instruction/*.txt。
 //
 // 对账两层：
@@ -86,8 +86,6 @@ const blockedGoal = {
   statusLine: '',
 };
 
-const loop30 = '不要直接结束本轮：完成上面的任务之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；没活时每次最多阻塞 30 分钟，直到 get 返回 timeout 为止。';
-const loop0 = '不要直接结束本轮：完成上面的任务之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；';
 
 // ── 10 个场景（源数据夹具） ─────────────────────────────────────────────────
 
@@ -124,7 +122,7 @@ const scenarios = {
         { id: 218, title: 'S3 注册表外露' },
       ],
     },
-    loopText: loop30, waitMinutes: 30,
+    enabled: true, waitMinutes: 30,
   },
   '02-repo-only': {
     seed: {
@@ -139,7 +137,7 @@ const scenarios = {
     },
     attachments: [],
     queueInfo: null,
-    loopText: loop0, waitMinutes: 0,
+    enabled: true, waitMinutes: 0,
   },
   '03-cwd-unregistered': {
     seed: {
@@ -151,7 +149,7 @@ const scenarios = {
     groupCtx: null,
     attachments: [],
     queueInfo: null,
-    loopText: loop0, waitMinutes: 0,
+    enabled: true, waitMinutes: 0,
   },
   '04-repo-no-intro': {
     seed: {
@@ -166,7 +164,7 @@ const scenarios = {
     },
     attachments: [],
     queueInfo: null,
-    loopText: loop0, waitMinutes: 0,
+    enabled: true, waitMinutes: 0,
   },
   '05-group-empty-shell': {
     seed: {
@@ -190,7 +188,7 @@ const scenarios = {
     },
     attachments: [],
     queueInfo: null,
-    loopText: loop0, waitMinutes: 0,
+    enabled: true, waitMinutes: 0,
   },
   '06-attach-file-only': {
     seed: {
@@ -202,7 +200,7 @@ const scenarios = {
     groupCtx: null,
     attachments: [fileAttachSrc],
     queueInfo: null,
-    loopText: loop0, waitMinutes: 0,
+    enabled: true, waitMinutes: 0,
   },
   '07-goal-directory-status': {
     seed: {
@@ -214,7 +212,7 @@ const scenarios = {
     groupCtx: null,
     attachments: [],
     queueInfo: null,
-    loopText: loop0, waitMinutes: 0,
+    enabled: true, waitMinutes: 0,
   },
   '08-goal-blocked-guard': {
     seed: {
@@ -226,7 +224,7 @@ const scenarios = {
     groupCtx: null,
     attachments: [],
     queueInfo: null,
-    loopText: loop0, waitMinutes: 0,
+    enabled: true, waitMinutes: 0,
   },
   '11-goal-factory-body': {
     seed: {
@@ -238,7 +236,7 @@ const scenarios = {
     groupCtx: null,
     attachments: [],
     queueInfo: null,
-    loopText: loop0, waitMinutes: 0,
+    enabled: true, waitMinutes: 0,
   },
   '09-ext-queue': {
     seed: {
@@ -258,7 +256,7 @@ const scenarios = {
         { id: 217, title: '这是一条特别特别长的标题——超过四十个字也会原样出现在模板清单行里不做截断处理' },
       ],
     },
-    loopText: loop0, waitMinutes: 0,
+    enabled: true, waitMinutes: 0,
   },
   '10-minimal': {
     seed: {
@@ -270,7 +268,7 @@ const scenarios = {
     groupCtx: null,
     attachments: [],
     queueInfo: null,
-    loopText: '', waitMinutes: 0,
+    enabled: false, waitMinutes: 0,
   },
 };
 
@@ -285,7 +283,7 @@ const pluginsOf = (sc) => [
     groupCtx: sc.groupCtx,
     attach: sc.attachments.length ? attachTemplateCtx(sc.attachments).attach : null,
     queueInfo: sc.queueInfo,
-    loopText: sc.loopText,
+    enabled: sc.enabled,
     waitMinutes: sc.waitMinutes,
   }),
   ...buildPlugins('check'),

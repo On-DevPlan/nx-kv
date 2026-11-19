@@ -32,7 +32,7 @@ export interface DeliveryPluginDeps {
   groupCtx: Supply<unknown>;
   attach: Supply<unknown>;
   queueInfo: Supply<{ topic: string; count: number; list: { id: number; title: string }[] } | null>;
-  loopText: Supply<string>;
+  enabled: Supply<boolean>;
   waitMinutes: Supply<number>;
 }
 
@@ -41,7 +41,7 @@ export const EMPTY_DEPS: DeliveryPluginDeps = {
   groupCtx: null,
   attach: null,
   queueInfo: null,
-  loopText: '',
+  enabled: false,
   waitMinutes: 0,
 };
 
@@ -66,7 +66,7 @@ export function buildPlugins(
         new ExtPlugin(text('ext'), { queueInfo: d.queueInfo }),
         new AckPlugin(text('ack')),
         new TimegoalPlugin(text('timegoal')),
-        new GetloopPlugin(text('getloop'), { loopText: d.loopText, waitMinutes: d.waitMinutes }),
+        new GetloopPlugin(text('getloop'), { enabled: d.enabled, waitMinutes: d.waitMinutes }),
       ];
     case 'check':
       // #161 三段化：check 链只有这一个段（进度 + 每轮检查提醒）

@@ -18,18 +18,7 @@
 // repos 在模块互依禁列里 → 动态 import（与 localtask→timegoal 探针同一惯例）。
 import { badInput } from '../../../core/errors.js';
 
-/**
- * 持续 get 内文的默认文案（#152 起模板正文的唯一真相是插件类：getloop 插件的内置
- * 模板 = `{{#if getloop}}\n<本段>\n{{/if}}`，这里是其中的**内文**，由
- * getLoopInstruction() 渲染后作为 loopText 供给插件）。改文案请改插件类。
- */
-export const DEFAULT_GETLOOP_INSTRUCTION =
-  '{{#if task}}不要直接结束本轮：完成上面的任务（{{task.id}}）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；{{#if (gt getloop.waitMinutes 0)}}没活时每次最多阻塞 {{getloop.waitMinutes}} 分钟，直到 get 返回 timeout 为止。{{/if}}{{/if}}';
-
-// 持续 get 内文的默认文案：**唯一来源在本文件**（hook 侧注入 getloop 插件的 loopText），
-// 全局「提示词模板 → 持续 get」区块的内置模板与它逐字同源（单测钉住）。
-export const DEFAULT_GET_LOOP_TEMPLATE = DEFAULT_GETLOOP_INSTRUCTION;
-
+/** 阻塞窗口默认 10 分钟（上限仍受 wait 的 600s 夹制）。#230 起循环文案唯一真相在 getloop 插件类。 */
 export const GET_LOOP_DEFAULT_MINUTES = 10; // 阻塞窗口默认 10 分钟（上限仍受 wait 的 600s 夹制）
 
 /** getLoopForCwd 返回的项目级配置形态（#182 起没有 template：文案归全局区块）。 */
@@ -38,19 +27,6 @@ export interface GetLoopState {
   waitMinutes?: number;
 }
 
-/**
- * 项目开启「持续 get」→ 交出那段循环指令（交给交付编排当 getloop 区块的内文）。
- *
- * #182 起**不再读仓库里的自定义模板**：文案只有共享层那一份，用户要改就到
- * 设置 → 提示词模板 → 持续 get 区块改（那里是唯一出口）。
- *
- * @param loop 项目级 getLoop 配置
- * @returns 可渲染的模板文本；未开启时返回空串（该区块整段不出现）
- */
-export function getLoopInstruction(loop: { enabled?: unknown } | null | undefined): string {
-  if (!loop || !loop.enabled) return '';
-  return DEFAULT_GET_LOOP_TEMPLATE;
-}
 
 let reposMod: any = null;
 async function reposStore(): Promise<any> {

@@ -29,7 +29,7 @@ const makeCompose = (overrides = {}, deps = {}, seed = {}) => {
       groupCtx: deps.groupCtx ?? null,
       attach: deps.attach ?? null,
       queueInfo: deps.queueInfo ?? null,
-      loopText: deps.loopText ?? '',
+      enabled: deps.enabled ?? false,
       waitMinutes: deps.waitMinutes ?? 0,
     },
     overrides,

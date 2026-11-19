@@ -76,8 +76,8 @@ export interface WaitForTaskOptions {
   params?: Record<string, string>;
   /** get 的「直接领」形态：没有 pending 立即空手而回，不开窗不阻塞 */
   instant?: boolean;
-  /** 项目级「持续 get」模板（仅 get/preview 传；wait 不传 → 不出现该区块） */
-  getLoopTpl?: string;
+  /** 项目级「持续 get」开关（仅 get/preview 传；wait 不传 → 不出现该区块） */
+  getLoopEnabled?: boolean;
   /** 项目级阻塞窗口（分钟）：进 getloop 模板 ctx，让 agent 知道每轮会等多久 */
   getLoopWaitMinutes?: number;
 }
@@ -102,7 +102,7 @@ export async function waitForTask({
   onReady,
   params = {}, // 外部参数（平面扩展）：进交付模板的 ctx（--param k=v）
   instant = false, // get 的「直接领」形态：没有 pending 立即空手而回，不开窗不阻塞
-  getLoopTpl = '', // 项目级「持续 get」模板（仅 get/preview 传；wait 不传 → 不出现该区块）
+  getLoopEnabled = false, // 项目级「持续 get」开关（仅 get/preview 传；wait 不传 → 不出现该区块）
   getLoopWaitMinutes = 0, // 项目级阻塞窗口（分钟）：进 getloop 模板 ctx，让 agent 知道每轮会等多久
 }: WaitForTaskOptions = {}): Promise<Record<string, any>> {
   // paths.normalizeCwd 的 @returns 标注漏了 name（运行时恒返回 {cwd, name, key}）
@@ -127,7 +127,7 @@ export async function waitForTask({
   // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
   const queued = await consumeFirstPending(key, summary, by);
   if (queued) {
-    const delivery = await buildTaskDelivery(queued, { source: 'local', summary, cwd, name, topicKey: key, params, getLoopTpl, getLoopWaitMinutes });
+    const delivery = await buildTaskDelivery(queued, { source: 'local', summary, cwd, name, topicKey: key, params, getLoopEnabled, getLoopWaitMinutes });
     return { status: 'ok', key, cwd, name, summary, ...delivery, queued: true, source: 'local', repo: repoCtx };
   }
 
@@ -144,7 +144,7 @@ export async function waitForTask({
   if (fromGlobal) {
     // 全局池投递渲染的仍是**等待方目录**的 goal——目标绑定在等待中的 agent 目录上，
     // 与任务来自哪个队列无关。
-    const delivery = await buildTaskDelivery(fromGlobal, { source: 'global', summary, cwd, name, topicKey: key, params, getLoopTpl, getLoopWaitMinutes });
+    const delivery = await buildTaskDelivery(fromGlobal, { source: 'global', summary, cwd, name, topicKey: key, params, getLoopEnabled, getLoopWaitMinutes });
     return {
       status: 'ok',
       key,
@@ -264,7 +264,7 @@ export async function waitForTask({
     // 只对拿到任务的结果生效——timeout/goal_expired/cancelled 的返回形状是钉死的契约，不动。
     const delivery =
       r.kind === 'task'
-        ? await buildTaskDelivery(r.task, { source: r.source || 'local', summary, cwd, name, topicKey: key, params, getLoopTpl, getLoopWaitMinutes })
+        ? await buildTaskDelivery(r.task, { source: r.source || 'local', summary, cwd, name, topicKey: key, params, getLoopEnabled, getLoopWaitMinutes })
         : null;
     result =
       r.kind === 'timeout'

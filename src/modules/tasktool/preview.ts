@@ -16,7 +16,7 @@
 import { getSettings } from '../localtask/service.js';
 import { PLUGIN_IDS, groupIndex, pluginMeta } from '../promptplug/index.js';
 import { deliveryPlainText } from './delivery-text.js';
-import { getLoopForCwd, getLoopInstruction, type GetLoopState } from './getloop.js';
+import { getLoopForCwd, type GetLoopState } from './getloop.js';
 import { buildTaskDelivery } from './delivery.js';
 
 export interface PreviewTaskDeliveryOptions {
@@ -44,7 +44,6 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params }: P
   // 内文固定取全局区块默认值，仓库侧只有开关 + 分钟）。
   // 统一交给 buildTaskDelivery 编排成 getloop 区块，预览与真实领取不会各拼一份。
   const loop: GetLoopState = await getLoopForCwd(cwd).catch(() => ({ enabled: false }));
-  const getLoopTpl = getLoopInstruction(loop);
   const delivery: any = await buildTaskDelivery(task, {
     source: 'local',
     summary: summary || '',
@@ -54,7 +53,7 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params }: P
     params: params || {},
     preview: true,
     trace: segments,
-    getLoopTpl,
+    getLoopEnabled: !!loop.enabled,
     getLoopWaitMinutes: loop.enabled ? loop.waitMinutes || 0 : 0,
   });
 

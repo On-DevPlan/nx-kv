@@ -35,7 +35,7 @@ export interface DeliveryOptions {
   params?: Record<string, string>;
   preview?: boolean;
   trace?: import('../promptplug/compose.js').RenderTraceEntry[];
-  getLoopTpl?: string;
+  getLoopEnabled?: boolean;
   getLoopWaitMinutes?: number;
 }
 
@@ -116,7 +116,7 @@ async function readGoalCtx(cwd: unknown): Promise<Record<string, any> | null> {
 //   旧 rule 区块已删除：done 指令与收尾要求统一由 ack 区块承载。
 export async function buildTaskDelivery(
   task: any,
-  { source, summary, cwd, name, topicKey, params, preview = false, trace, getLoopTpl = '', getLoopWaitMinutes = 0 }: DeliveryOptions = {},
+  { source, summary, cwd, name, topicKey, params, preview = false, trace, getLoopEnabled = false, getLoopWaitMinutes = 0 }: DeliveryOptions = {},
 ): Promise<Record<string, any>> {
   // 附件标注（任务 #15：正文里的 ![名](fileId) 嵌入 → 附件清单 + 本地路径）。
   // fail-open：标注失败绝不拖垮交付；正文没有引用时 annotateTaskDelivery 返回
@@ -204,7 +204,7 @@ export async function buildTaskDelivery(
       goalCtx,
       groupCtx,
       queueInfo,
-      getLoopTpl,
+      getLoopEnabled,
       getLoopWaitMinutes,
       params,
       appendMode: settings.appendMode,

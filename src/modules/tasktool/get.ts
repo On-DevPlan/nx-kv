@@ -13,7 +13,7 @@
 // 唯一合法出口是 timeout）；get = 「领活」（kv-localget 的语义，项目开启持续
 // get 后由系统负责把循环指令带进交付文本，agent 不用自己记）。
 import { waitForTask } from './wait.js';
-import { getLoopForCwd, getLoopInstruction, type GetLoopState } from './getloop.js';
+import { getLoopForCwd, type GetLoopState } from './getloop.js';
 
 export interface GetTaskOptions {
   cwd?: string;
@@ -44,7 +44,7 @@ export async function getTask({ cwd, timeoutSec, open = true, params, instant }:
     open,
     instant: instant === undefined ? (explicitWait ? false : !loop.enabled || minutes <= 0) : !!instant,
     params: params || {}, // 外部参数（平面扩展）进交付模板
-    getLoopTpl: getLoopInstruction(loop),
+    getLoopEnabled: !!loop.enabled,
     getLoopWaitMinutes: minutes,
   });
   if (r.status !== 'ok' || !r.task) return r;

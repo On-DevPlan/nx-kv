@@ -6,12 +6,13 @@
 // DeliveryHostData 交到这里；本文件不再碰任何业务模块——promptplug 不 import
 // 其他模块的边界保持不变。
 //
-// 之所以收进 promptplug：组装配方（平面扩展的键保护 / getloop 预渲染 / get+check+done
-// 三链按 order 全局排序 / coversBody 判定）是提示词域的语义，不是队列域的。
+// #230 清理：原「getLoopTpl 预渲染 → data.getloop.text」残留链路已删——#182 起项目级
+// template 口子下线，getloop 文案唯一真相是插件内置模板，本文件只给 enabled 开关与分钟数。
+// 之所以收进 promptplug：组装配方（平面扩展的键保护 / 三链合并 / coversBody 判定）
+// 是提示词域的语义，不是队列域的。
 // 之前它埋在 wait.ts（阻塞编排文件）里，测试只能各自手工复刻（prompt-golden /
 // delivery-template 两个测试都有「与 wait.ts 同构」的最小组装）——现在它们可以
 // 直接调 assembleDelivery。
-import { renderInstruction } from '../../core/instruction-template.js';
 import { reorderRoundsForDelivery } from '../../shared/feedback-text.js';
 import { compose, type RenderTraceEntry, type RenderWarning, type SegmentMeta } from './compose.js';
 import { buildPlugins } from './factory.js';
@@ -53,8 +54,8 @@ export interface DeliveryHostData {
   groupCtx: any | null;
   /** 队列余量（pendingQueueInfo 产物，count>0 才给）；null → ext 段不出 */
   queueInfo: { topic: string; count: number; list: { id: number; title: string }[] } | null;
-  /** 项目级「持续 get」指令模板原文（宿主从 waitgoal 配置读出）；空 = 段不出 */
-  getLoopTpl?: string;
+  /** 项目级「持续 get」开关（宿主从 waitgoal 配置读出）；false = 段不出 */
+  getLoopEnabled?: boolean;
   /** 项目级阻塞窗口（分钟）：进 getloop 模板 ctx */
   getLoopWaitMinutes?: number;
   /** 外部参数（--param k=v 解析产物）：{{params.k}} + 平面扩展 {{k}} */
@@ -98,7 +99,7 @@ export async function assembleDelivery(host: DeliveryHostData): Promise<Assemble
     goalCtx: goal,
     groupCtx,
     queueInfo,
-    getLoopTpl = '',
+    getLoopEnabled = false,
     getLoopWaitMinutes = 0,
     params,
     appendMode,
@@ -106,10 +107,6 @@ export async function assembleDelivery(host: DeliveryHostData): Promise<Assemble
   } = host;
   const renderWarnings: RenderWarning[] = [];
 
-  // 「持续 get」指令模板自身也是模板（可含 {{task.id}} 等）：先渲染成文本，
-  // 再由 getloop 插件放进 ctx。渲染失败记告警（不静默）。
-  // 注：渲染上下文用 seed（task / goal / cwd…）——默认指令只引用 task.id /
-  // getloop.waitMinutes；历史 baseCtx 里的 repo/attach 变量不进入项目级收尾指令。
   const flat = flatParamsOf(params);
   const seedCtx: Record<string, any> = {
     task: task ? { id: task.id, text: reorderRoundsForDelivery(String(task.text || '')) } : null,
@@ -121,18 +118,6 @@ export async function assembleDelivery(host: DeliveryHostData): Promise<Assemble
     params: { ...(params || {}) },
     ...flat,
   };
-  let loopText = '';
-  if (getLoopTpl) {
-    try {
-      loopText = renderInstruction(getLoopTpl, seedCtx) || '';
-    } catch (e) {
-      renderWarnings.push({
-        block: 'getloop',
-        label: '持续 get 指令（项目级）',
-        message: String((e as Error).message || e).replace(/\s+/g, ' ').trim(),
-      });
-    }
-  }
 
   const mode: 'xml' | 'plain' = appendMode === 'plain' ? 'plain' : 'xml';
   // #152：模板是插件类的内置正文（不再从 settings 解析）。
@@ -142,7 +127,7 @@ export async function assembleDelivery(host: DeliveryHostData): Promise<Assemble
       groupCtx: () => groupCtx,
       attach: () => attach,
       queueInfo: () => queueInfo,
-      loopText: () => loopText,
+      enabled: () => !!getLoopEnabled,
       waitMinutes: () => Number(getLoopWaitMinutes) || 0,
     }),
     ...buildPlugins('check'),

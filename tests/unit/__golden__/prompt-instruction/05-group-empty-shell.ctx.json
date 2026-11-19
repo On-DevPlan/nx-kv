@@ -30,7 +30,6 @@
   "attach": null,
   "ext": null,
   "getloop": {
-    "text": "不要直接结束本轮：完成上面的任务之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；",
     "waitMinutes": 0
   }
 }

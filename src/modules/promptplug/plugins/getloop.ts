@@ -1,13 +1,14 @@
 // getloop 插件（order 80）：持续 get。
-// deps.loopText 是宿主先把「项目级收尾指令模板」渲染好的文本（wait.ts 保留这一步
-// 与其 renderWarnings 告警口径）；waitMinutes=0 时模板闸门 {{#if (gt …)}} 收口。
+// deps.enabled 是宿主从 waitgoal 配置（repos.json repo.getLoop）读出的开关；
+// 关 → 整段不出。#230 清理：原「宿主预渲染 loopText → data.getloop.text」链路
+// 已删——#182 起项目级 template 口子下线，文案唯一真相就是本类的内置模板
+// （预渲染上下文缺 getloop 键，产出的 text 是残缺副本，BUILTIN 也从不消费它）。
 import { z } from 'zod';
 import { PromptPlugin, supplied, type Supply, type TemplateText } from '../base.js';
 
 const schema = z.strictObject({
   getloop: z
     .looseObject({
-      text: z.string().describe('「继续 get」的整段指令（宿主已渲染好的文本）'),
       waitMinutes: z.number().describe('没活时每次阻塞的分钟数（0 = 不阻塞）'),
     })
     .nullable()
@@ -20,7 +21,7 @@ const schema = z.strictObject({
     .describe('当前任务（seed，宿主传入）'),
 });
 
-/** 内置模板（#152：正文进代码）。 */
+/** 内置模板（#152：正文进代码；#230 起它就是「继续 get」文案的唯一真相）。 */
 const BUILTIN: TemplateText = {
   id: 'builtin',
   name: '系统内置',
@@ -38,13 +39,13 @@ export class GetloopPlugin extends PromptPlugin<typeof schema> {
   readonly dataSchema = schema;
   readonly templates = [BUILTIN];
 
-  constructor(template: string, private readonly deps: { loopText: Supply<string>; waitMinutes: Supply<number> }) {
+  constructor(template: string, private readonly deps: { enabled: Supply<boolean>; waitMinutes: Supply<number> }) {
     super(template);
   }
 
   protected async buildData() {
-    const text = String(await supplied(this.deps.loopText) || '').trim();
+    const enabled = !!(await supplied(this.deps.enabled));
     const waitMinutes = Number(await supplied(this.deps.waitMinutes)) || 0;
-    return { getloop: text ? { text, waitMinutes } : null };
+    return { getloop: enabled ? { waitMinutes } : null };
   }
 }

@@ -1,6 +1,6 @@
 name: nx_kv_client
 description: nx-kv contract client (f132179e14f836c8) - generated, zero deps.
-version: 0.64.0
+version: 0.65.0
 publish_to: none
 environment:
   sdk: '>=3.0.0 <4.0.0'

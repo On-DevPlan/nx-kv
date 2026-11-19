@@ -294,6 +294,26 @@ function RepoRow({ r, mode, filterBoard, refRepoChipsByRepo, acts }: {
       <td className="rp-cell-docs">
         <DocsEntry docs={r.descDocs} onOpen={() => acts.docs(r)} />
       </td>
+      {/* #162 所在组列只在 main / default 出现：本仓库属于哪些组；chip 点击跳到该组分支 */}
+      {mode === 'group' ? null : (
+        <td className="rp-boards">
+          {(r.boards || []).length ? (
+            (r.boards || []).map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                className="rp-board-chip"
+                title={`跳到分组「${b.name}」`}
+                onClick={() => acts.filter?.(b.id)}
+              >
+                {b.name}
+              </button>
+            ))
+          ) : (
+            <span className="muted rp-refs-none">—</span>
+          )}
+        </td>
+      )}
       {/* 参考仓库列只在 main / default 出现：只放本仓库自己直接绑定的参考仓库 */}
       {mode === 'group' ? null : (
         <td className="rp-refs">
@@ -362,11 +382,12 @@ export default function RepoTable({ shown, devRepos, mode, filterBoard, refRepoC
         <thead>
           <tr>
             <th scope="col" style={{ width: isGroup ? '30%' : '22%' }}>仓库</th>
-            <th scope="col" style={{ width: isGroup ? '46%' : '34%' }}>
+            <th scope="col" style={{ width: isGroup ? '46%' : '30%' }}>
               文档
               <span className="rp-th-hint">主篇标题 · 查看详情打开完整文档列表</span>
             </th>
-            {isGroup ? null : <th scope="col" style={{ width: '18%' }}>参考仓库</th>}
+            {isGroup ? null : <th scope="col" style={{ width: '14%' }}>所在组</th>}
+            {isGroup ? null : <th scope="col" style={{ width: '16%' }}>参考仓库</th>}
             <th scope="col" style={{ width: '322px' }}>操作</th>
           </tr>
         </thead>
@@ -383,7 +404,7 @@ export default function RepoTable({ shown, devRepos, mode, filterBoard, refRepoC
           ))}
           {!shown.length ? (
             <tr>
-              <td colSpan={isGroup ? 3 : 4} className="muted rp-empty">
+              <td colSpan={isGroup ? 3 : 5} className="muted rp-empty">
                 {isGroup ? (
                   <>
                     这个分组里还没有仓库{' '}

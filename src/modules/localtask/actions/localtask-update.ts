@@ -63,8 +63,8 @@ export class LocaltaskUpdateAction extends ActionBase<typeof input> {
           );
         }
         // 改归属即搬家（任务 #43）：正文 effective project 变了 → 任务迁到新项目的队列。
-        // 编排在 tasktool/update.js，与派任务（tasktool/add.js）同一套落点判定。
-        const { updateTask: editTask } = await (import('../../tasktool/update.js') as any);
+        // 编排在 localtask/update.ts，与派任务（localtask/add.ts）同一套落点判定。
+        const { updateTask: editTask } = await (import('../update.js') as any);
         const r: any = await editTask({
           id: ctx.id,
           text: ctx.text,

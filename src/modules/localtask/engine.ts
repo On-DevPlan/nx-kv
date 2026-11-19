@@ -1,5 +1,5 @@
 // 主题队列上的引擎装配：SnapshotStore(topic) + bus + mutator + scheduler
-import '../tasktool/plugins/index.js'; // IoC：加载即注册全部 goal
+import '../goals/plugins/index.js'; // IoC：加载即注册全部 goal
 import { createEventBus } from './bus/index.js';
 import { createDagMutator } from './mutator/index.js';
 import type { DagMutator } from './mutator/index.js';

@@ -1,7 +1,7 @@
 // 仓库登记 CRUD：清单、登记、更新、删除、单条查询、key 定位。
 import { resolve } from 'node:path';
 import { badInput, notFound, conflict } from '../../../core/errors.js';
-import { sanitizeGetLoop } from '../../tasktool/getloop.js';
+import { sanitizeGetLoop } from '../../claim/waitgoal-config.js';
 import repoLayer from '../repo/index.js';
 import { loadStore, mutateStore } from './store.js';
 import {

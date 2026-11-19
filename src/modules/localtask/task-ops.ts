@@ -2,7 +2,7 @@
 // 全局池 FIFO 投递 + ignoredCwd 如实回带）、updateTask（正文/时间目标/DAG 依赖/改归属搬家）。
 import { badInput, notFound } from '../../core/errors.js';
 import { parseFrontmatter, preserveFrontmatter } from '../../shared/frontmatter.js';
-import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
+import { sanitizeTaskGoal } from '../goals/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from './dag.js';
 import { MAX_TEXT, normalizeSummary, normalizeText } from './store-io.js';
 import { openLocaltaskStore as openStore, topics as topicsRepo, tasks as tasksRepo, links as linksRepo, txw as tx, db } from './repo/index.js';

@@ -98,7 +98,7 @@ export function createDagMutator({ store, bus }: DagMutatorDeps): DagMutator {
     async bindPlugin(workflowId: string, target: DagMutatorTargetInput, spec: any): Promise<WorkflowSnapshot> {
       // target: { workflow: true } | { nodeId }
       // 动态加载 plugins 桶 → IoC 自注册；再调 onBind 规范化 config
-      const { getPlugin } = await import('../../tasktool/plugins/index.js');
+      const { getPlugin } = await import('../../goals/plugins/index.js');
       return mutate(workflowId, (draft) => {
         const ctx = { snapshot: Object.freeze(structuredClone(draft)) };
         if (target?.workflow) {

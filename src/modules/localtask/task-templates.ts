@@ -31,7 +31,7 @@ export function clampDeliveryTemplate(v: unknown): string {
 // ─── 附件段提示词（settings.attachTemplate，任务 #82）──────────────────
 //
 // 交付里的〔附件〕段（附件清单 + 本地路径 + 拉取 SOP）原先硬编码在
-// tasktool/attach.js 的 attachmentInstruction。模板化后：
+// delivery/attach.ts 的 attachmentInstruction。模板化后：
 //   - 空串 = 用内置默认（**不是关掉**——附件段带本地路径，关掉 agent 就找不到文件）；
 //   - 新语法：{{task.id}} {{task.text}} {{attach.count}}、
 //     `{{#each attach.list}}`（按 kind 分支的结构化清单 + 各类型子对象）；

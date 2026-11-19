@@ -13,6 +13,10 @@ import type {
   BundledListAction,
 } from '../../../modules/bundled/actions/_manifest.generated.js';
 import type {
+  LocaltaskClaimAction,
+  LocaltaskPreviewAction,
+} from '../../../modules/claim/actions/_manifest.generated.js';
+import type {
   DocAttachAction,
   DocAttachmentsAction,
   DocDetachAction,
@@ -41,6 +45,16 @@ import type {
   FileUploadAction,
 } from '../../../modules/file/actions/_manifest.generated.js';
 import type {
+  TimegoalCheckAction,
+  TimegoalClearAction,
+  TimegoalListAction,
+  TimegoalLogAction,
+  TimegoalPruneAction,
+  TimegoalSetAction,
+  TimegoalShowAction,
+  TimegoalUpdateAction,
+} from '../../../modules/goals/actions/_manifest.generated.js';
+import type {
   LocaltaskAddAction,
   LocaltaskAttachAction,
   LocaltaskAttachNoteAction,
@@ -49,7 +63,6 @@ import type {
   LocaltaskCancelAction,
   LocaltaskCancelManyAction,
   LocaltaskChainAction,
-  LocaltaskClaimAction,
   LocaltaskCloneAction,
   LocaltaskCloseManyAction,
   LocaltaskConfigAction,
@@ -61,7 +74,6 @@ import type {
   LocaltaskListAction,
   LocaltaskPlanAction,
   LocaltaskPresenceAction,
-  LocaltaskPreviewAction,
   LocaltaskPruneAction,
   LocaltaskRemoveAction,
   LocaltaskRemoveManyAction,
@@ -135,16 +147,6 @@ import type {
   ContractAction,
   HealthAction,
 } from '../../../modules/system/actions/_manifest.generated.js';
-import type {
-  TimegoalCheckAction,
-  TimegoalClearAction,
-  TimegoalListAction,
-  TimegoalLogAction,
-  TimegoalPruneAction,
-  TimegoalSetAction,
-  TimegoalShowAction,
-  TimegoalUpdateAction,
-} from '../../../modules/tasktool/actions/_manifest.generated.js';
 import type {
   TemplatesAddAction,
   TemplatesDefaultAction,
@@ -310,8 +312,6 @@ export interface ApiClient {
   cancelMany(input: z.input<InstanceType<typeof LocaltaskCancelManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCancelManyAction>['run']>>>;
 /** 查一条任务的链：history 节点（origin/reopen/comment/current）+ 旧 forkOf 祖先/子任务；面板点节点可旁路查看正文 */
   chain(input: z.input<InstanceType<typeof LocaltaskChainAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskChainAction>['run']>>>;
-/** 领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填 */
-  claim(input?: z.input<InstanceType<typeof LocaltaskClaimAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskClaimAction>['run']>>>;
 /** 克隆任务：复制正文内容为一条新任务（同主题；全局任务仍进全局池）。不带派生链、不继承时间目标与依赖——开新活用 */
   localtaskClone(input: z.input<InstanceType<typeof LocaltaskCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCloneAction>['run']>>>;
 /** 批量收口还没结束的任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；待领取与已领取都能收（已领取的 agent 侧回执会被忽略），已完成/已取消跳过 */
@@ -334,8 +334,6 @@ export interface ApiClient {
   plan(input: z.input<InstanceType<typeof LocaltaskPlanAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPlanAction>['run']>>>;
 /** 探测主面板上当前打开的「实时任务」标签数（活动 SSE 连接数；用于 wait 不重复开页） */
   presence(): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPresenceAction>['run']>>>;
-/** 预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览 */
-  preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>>;
 /** 清理旧脏数据（旧模型无目录主题、空主题；--missing-dir 连目录已不存在的主题一起清；等待中一律保留） */
   localtaskPrune(input?: z.input<InstanceType<typeof LocaltaskPruneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPruneAction>['run']>>>;
 /** 删除一条任务（按 --id，定位到 --cwd 主题或 --key）；删除是**可恢复**的（软删除），加 --purge 彻底清除 */
@@ -360,6 +358,22 @@ export interface ApiClient {
   topicRemoveMany(input?: z.input<InstanceType<typeof LocaltaskTopicRemoveManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTopicRemoveManyAction>['run']>>>;
 /** 编辑任务内容（按 --id，定位到 --cwd 主题或 --key）；可同时改时间目标声明（--duration/--goal-prompt/--clear-goal，仅未领取时可改——领取即计时，起表后声明是既成事实） */
   localtaskUpdate(input: z.input<InstanceType<typeof LocaltaskUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskUpdateAction>['run']>>>;
+/** 领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填 */
+  claim(input?: z.input<InstanceType<typeof LocaltaskClaimAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskClaimAction>['run']>>>;
+/** 预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览 */
+  preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>>;
+/** 新增任务模板（--body 给 Markdown 正文；多行正文用 --body-file <文件> 或 --body - 读管道；--setDefault 同时设为默认；--scope 设可见域、--topic 记创建主题并默认仅该主题可见） */
+  templatesAdd(input: z.input<InstanceType<typeof TemplatesAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesAddAction>['run']>>>;
+/** 设置默认模板（新建页的起始正文换成它）；带 --body/--name/--scope 则改默认模板本身 */
+  default(input: z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesDefaultAction>['run']>>>;
+/** 列出任务模板（含默认模板 id；新建页的起始正文按默认模板取） */
+  templatesList(input?: z.input<InstanceType<typeof TemplatesListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesListAction>['run']>>>;
+/** 删除任务模板（内置默认模板不可删；删的是默认模板则默认回落到内置） */
+  templatesRemove(input: z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesRemoveAction>['run']>>>;
+/** 调整任务模板顺序（--ids a,b,c 按新序落库 sort_order；未列出的模板保持原位） */
+  templatesReorder(input: z.input<InstanceType<typeof TemplatesReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesReorderAction>['run']>>>;
+/** 编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改） */
+  templatesUpdate(input: z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesUpdateAction>['run']>>>;
 /** 时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary */
   timegoalCheck(input: z.input<InstanceType<typeof TimegoalCheckAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalCheckAction>['run']>>>;
 /** 清空本目录 timegoal（无则 no_goal，不抛错） */
@@ -376,18 +390,6 @@ export interface ApiClient {
   show(input?: z.input<InstanceType<typeof TimegoalShowAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalShowAction>['run']>>>;
 /** 更新本目录 timegoal 的提示词（可选同时改时长，--duration；保留起点，不重置计时） */
   timegoalUpdate(input: z.input<InstanceType<typeof TimegoalUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalUpdateAction>['run']>>>;
-/** 新增任务模板（--body 给 Markdown 正文；多行正文用 --body-file <文件> 或 --body - 读管道；--setDefault 同时设为默认；--scope 设可见域、--topic 记创建主题并默认仅该主题可见） */
-  templatesAdd(input: z.input<InstanceType<typeof TemplatesAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesAddAction>['run']>>>;
-/** 设置默认模板（新建页的起始正文换成它）；带 --body/--name/--scope 则改默认模板本身 */
-  default(input: z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesDefaultAction>['run']>>>;
-/** 列出任务模板（含默认模板 id；新建页的起始正文按默认模板取） */
-  templatesList(input?: z.input<InstanceType<typeof TemplatesListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesListAction>['run']>>>;
-/** 删除任务模板（内置默认模板不可删；删的是默认模板则默认回落到内置） */
-  templatesRemove(input: z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesRemoveAction>['run']>>>;
-/** 调整任务模板顺序（--ids a,b,c 按新序落库 sort_order；未列出的模板保持原位） */
-  templatesReorder(input: z.input<InstanceType<typeof TemplatesReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesReorderAction>['run']>>>;
-/** 编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改） */
-  templatesUpdate(input: z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesUpdateAction>['run']>>>;
 /** 取附件本体：面板内联预览；CLI 打印本机路径 */
   content(input: z.input<InstanceType<typeof FileContentAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FileContentAction>['run']>>>;
 /** 查单个附件的元数据与本机路径 */
@@ -986,13 +988,6 @@ export function createApiClient(transport: Transport): ApiClient {
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskChainAction>['run']>>;
     },
-    // action: localtask.claim
-    async claim(input?: z.input<InstanceType<typeof LocaltaskClaimAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskClaimAction>['_input']>);
-      const path = `/api/localtasks/claim`;
-      const body = { "cwd": inp["cwd"], "timeout": inp["timeout"], "no-open": inp["no-open"], "param": inp["param"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskClaimAction>['run']>>;
-    },
     // action: localtask.clone
     async localtaskClone(input: z.input<InstanceType<typeof LocaltaskCloneAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskCloneAction>['_input']>);
@@ -1076,13 +1071,6 @@ export function createApiClient(transport: Transport): ApiClient {
     async presence() {
       const path = `/api/localtasks/presence`;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPresenceAction>['run']>>;
-    },
-    // action: localtask.preview
-    async preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>);
-      const path = `/api/localtasks/preview`;
-      const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "text": inp["text"], "param": inp["param"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>;
     },
     // action: localtask.prune
     async localtaskPrune(input?: z.input<InstanceType<typeof LocaltaskPruneAction>['_input']>) {
@@ -1178,6 +1166,66 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "id": inp["id"], "text": inp["text"], "cwd": inp["cwd"], "key": inp["key"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "clear-goal": inp["clear-goal"], "clearGoal": inp["clearGoal"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "clear-block-by": inp["clear-block-by"], "clearBlockBy": inp["clearBlockBy"], "gate": inp["gate"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskUpdateAction>['run']>>;
     },
+    // action: localtask.claim
+    async claim(input?: z.input<InstanceType<typeof LocaltaskClaimAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskClaimAction>['_input']>);
+      const path = `/api/localtasks/claim`;
+      const body = { "cwd": inp["cwd"], "timeout": inp["timeout"], "no-open": inp["no-open"], "param": inp["param"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskClaimAction>['run']>>;
+    },
+    // action: localtask.preview
+    async preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>);
+      const path = `/api/localtasks/preview`;
+      const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "text": inp["text"], "param": inp["param"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>;
+    },
+    // action: templates.add
+    async templatesAdd(input: z.input<InstanceType<typeof TemplatesAddAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesAddAction>['_input']>);
+      const path = `/api/templates`;
+      const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "setDefault": inp["setDefault"], "set-default": inp["set-default"], "scope": inp["scope"], "topic": inp["topic"], "cwd": inp["cwd"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesAddAction>['run']>>;
+    },
+    // action: templates.default
+    async default(input: z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>);
+      const path = `/api/templates/default`;
+      const body = { "id": inp["id"], "name": inp["name"], "body": inp["body"], "scope": inp["scope"] };
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesDefaultAction>['run']>>;
+    },
+    // action: templates.list
+    async templatesList(input?: z.input<InstanceType<typeof TemplatesListAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesListAction>['_input']>);
+      let path = `/api/templates`;
+      const q = new URLSearchParams();
+      if (inp["topic"] !== undefined) q.set("topic", String(inp["topic"]));
+      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
+      if (inp["repo"] !== undefined) q.set("repo", String(inp["repo"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof TemplatesListAction>['run']>>;
+    },
+    // action: templates.remove
+    async templatesRemove(input: z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>);
+      const path = `/api/templates/${encodeURIComponent(String(inp["id"]))}`;
+      return (await transport.request("DELETE", path, undefined)) as Awaited<ReturnType<InstanceType<typeof TemplatesRemoveAction>['run']>>;
+    },
+    // action: templates.reorder
+    async templatesReorder(input: z.input<InstanceType<typeof TemplatesReorderAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesReorderAction>['_input']>);
+      const path = `/api/templates/reorder`;
+      const body = { "ids": inp["ids"] };
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesReorderAction>['run']>>;
+    },
+    // action: templates.update
+    async templatesUpdate(input: z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>);
+      const path = `/api/templates/${encodeURIComponent(String(inp["id"]))}`;
+      const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "scope": inp["scope"] };
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesUpdateAction>['run']>>;
+    },
     // action: timegoal.check
     async timegoalCheck(input: z.input<InstanceType<typeof TimegoalCheckAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof TimegoalCheckAction>['_input']>);
@@ -1241,52 +1289,6 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/timegoals`;
       const body = { "cwd": inp["cwd"], "prompt": inp["prompt"], "duration": inp["duration"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TimegoalUpdateAction>['run']>>;
-    },
-    // action: templates.add
-    async templatesAdd(input: z.input<InstanceType<typeof TemplatesAddAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesAddAction>['_input']>);
-      const path = `/api/templates`;
-      const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "setDefault": inp["setDefault"], "set-default": inp["set-default"], "scope": inp["scope"], "topic": inp["topic"], "cwd": inp["cwd"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesAddAction>['run']>>;
-    },
-    // action: templates.default
-    async default(input: z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>);
-      const path = `/api/templates/default`;
-      const body = { "id": inp["id"], "name": inp["name"], "body": inp["body"], "scope": inp["scope"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesDefaultAction>['run']>>;
-    },
-    // action: templates.list
-    async templatesList(input?: z.input<InstanceType<typeof TemplatesListAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesListAction>['_input']>);
-      let path = `/api/templates`;
-      const q = new URLSearchParams();
-      if (inp["topic"] !== undefined) q.set("topic", String(inp["topic"]));
-      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
-      if (inp["repo"] !== undefined) q.set("repo", String(inp["repo"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof TemplatesListAction>['run']>>;
-    },
-    // action: templates.remove
-    async templatesRemove(input: z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>);
-      const path = `/api/templates/${encodeURIComponent(String(inp["id"]))}`;
-      return (await transport.request("DELETE", path, undefined)) as Awaited<ReturnType<InstanceType<typeof TemplatesRemoveAction>['run']>>;
-    },
-    // action: templates.reorder
-    async templatesReorder(input: z.input<InstanceType<typeof TemplatesReorderAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesReorderAction>['_input']>);
-      const path = `/api/templates/reorder`;
-      const body = { "ids": inp["ids"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesReorderAction>['run']>>;
-    },
-    // action: templates.update
-    async templatesUpdate(input: z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>);
-      const path = `/api/templates/${encodeURIComponent(String(inp["id"]))}`;
-      const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "scope": inp["scope"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesUpdateAction>['run']>>;
     },
     // action: file.content
     async content(input: z.input<InstanceType<typeof FileContentAction>['_input']>) {

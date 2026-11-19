@@ -30,7 +30,7 @@
 //   - 保存模板时先 `validateTemplate()` 编译校验，语法错误**拒绝保存**（见
 //     localtask/repo/settings），让用户当场看到错在哪；
 //   - 渲染时若仍遇到坏模板（老版本存进去的 / 直接改库的），由调用方回落该区块
-//     的**内置模板**并把告警写进 `renderWarnings`（见 tasktool/system-blocks）。
+//     的**内置模板**并把告警写进 `renderWarnings`（见 promptplug/compose.ts）。
 //     选择回落而不是阻断领取：一条坏模板不该让整个队列停摆，但问题必须在
 //     CLI 返回载荷 / 面板预览里可见。
 //

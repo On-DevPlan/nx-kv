@@ -2,6 +2,29 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.65.3] - 2026-11-19 五域制目录重组：删除引擎门，领取/交付/目标各归其位（#237）
+
+### Changed
+
+- **五域制目录重组**（#237，承接 #236 的方案）：`tasktool` 目录消失，内容按动词域归位——
+  - **claim**（新域）：领取域——`localtask.claim` / `localtask.wait` / `localtask.preview`
+    三个 action + `get.ts` / `wait.ts`（阻塞窗口）/ `params.ts` / `panel-escort.ts` /
+    `waitgoal-config.ts`（持续 get 配置）
+  - **delivery**（新域）：交付域——`host.ts`（宿主取数）/ `assemble.ts`（组装核，原
+    `promptplug/delivery.ts`）/ 附件四件 / 组上下文 / 人读排版 / 预览
+  - **goals**（新域）：目标域——三族目标插件（timegoal / taskgoal / blockgoal）+ 存储与
+    运行时 + `timegoal` CLI 命令族
+  - **localtask**：保持队列本体语义，吸收派任务编排（`add.ts` / `update.ts` /
+    `group-store.ts` / `support.ts`）；**claim / wait / preview 三个 action 迁出**
+  - **promptplug**：回归纯引擎（八段插件 / 注册表 / 模板存储 / 渲染），不再 import 其他模块
+- **引擎门删除**（#237）：`tasktool/facade/`（submit / get / wait 三门）+ 消费钩子
+  （`plugins/runtime.ts` 的 `runGetHooks` / `plugins/waitgoal.ts` 的 pull-poll）一并删除——
+  它们无 CLI 无 HTTP、只有测试在用；**领取的唯一入口收敛为 `localtask.claim`**。
+  冻结布局治理文档（`core/workflow/layout.ts` / `edges.ts`）同步删除。
+- **对外零感知**：CLI 路径、HTTP 路由、action id、交付渲染字节（golden）四样全部未变——
+  契约指纹 `f132179e14f836c8` 不变，golden 基线零改动；本次只动「文件住在哪」。
+- 手册校准：dev-nxkv 的 A02 / A03 / A08 / B01 / B03 路径与模块名同步到新结构。
+
 ## [0.65.2] - 2026-11-19 getloop 残留预渲染链清理（#230 审计）
 
 ### Changed

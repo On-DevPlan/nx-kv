@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import * as svc from '../../src/modules/tasktool/timegoal.js';
+import * as svc from '../../src/modules/goals/timegoal.js';
 import { closeDb, getDb } from '../../src/core/db/index.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-timegoal-'));

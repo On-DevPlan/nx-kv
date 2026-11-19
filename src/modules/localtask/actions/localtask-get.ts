@@ -32,7 +32,7 @@ export class LocaltaskGetAction extends ActionBase<typeof input> {
         const task: any = await service.getTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
         // 附件标注（任务 #15）：解析正文嵌入 + 按设置自动下载 + 标本地路径。
         // fail-open：标注坏了照常返回任务本体。
-        const { annotateTaskDelivery } = await (import('../../tasktool/attach.js') as any);
+        const { annotateTaskDelivery } = await (import('../../delivery/attach.js') as any);
         const att: any = await annotateTaskDelivery(task).catch(() => null);
         return att
           ? { ...task, attachments: att.task.attachments }

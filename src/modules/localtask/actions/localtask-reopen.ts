@@ -34,7 +34,7 @@ export class LocaltaskReopenAction extends ActionBase<typeof input> {
   override async run(ctx: ActionInput<this['_input']>) {
 
         // 重开也可能带着改过的归属（--text 的 frontmatter.project 变了）→ 同样搬家
-        const { reopenTask } = await (import('../../tasktool/update.js') as any);
+        const { reopenTask } = await (import('../update.js') as any);
         return reopenTask({
           id: ctx.id,
           cwd: ctx.cwd,

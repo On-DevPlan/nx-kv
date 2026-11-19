@@ -4,7 +4,7 @@
 // 带不同 mode/id 的跳转被判成「没变」→ setRoute 把新路由丢掉 → 目标页不出现。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sameRoute } from '../../src/web/frontend/routes/route-eq.ts';
+import { sameRoute } from '../../src/web/frontend/routes/route-eq.js';
 
 const base = { view: 'templates', key: '', task: '', mode: '', id: '' };
 

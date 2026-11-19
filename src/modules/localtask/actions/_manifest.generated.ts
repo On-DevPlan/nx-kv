@@ -14,7 +14,6 @@ import { LocaltaskBoardTasksAction } from './localtask-boardtasks.js';
 import { LocaltaskCancelAction } from './localtask-cancel.js';
 import { LocaltaskCancelManyAction } from './localtask-cancelMany.js';
 import { LocaltaskChainAction } from './localtask-chain.js';
-import { LocaltaskClaimAction } from './localtask-claim.js';
 import { LocaltaskCloneAction } from './localtask-clone.js';
 import { LocaltaskCloseManyAction } from './localtask-closeMany.js';
 import { LocaltaskConfigAction } from './localtask-config.js';
@@ -26,7 +25,6 @@ import { LocaltaskGetAction } from './localtask-get.js';
 import { LocaltaskListAction } from './localtask-list.js';
 import { LocaltaskPlanAction } from './localtask-plan.js';
 import { LocaltaskPresenceAction } from './localtask-presence.js';
-import { LocaltaskPreviewAction } from './localtask-preview.js';
 import { LocaltaskPruneAction } from './localtask-prune.js';
 import { LocaltaskRemoveAction } from './localtask-remove.js';
 import { LocaltaskRemoveManyAction } from './localtask-removeMany.js';
@@ -39,7 +37,6 @@ import { LocaltaskTopicAddAction } from './localtask-topic-add.js';
 import { LocaltaskTopicRemoveAction } from './localtask-topic-remove.js';
 import { LocaltaskTopicRemoveManyAction } from './localtask-topic-removeMany.js';
 import { LocaltaskUpdateAction } from './localtask-update.js';
-import { LocaltaskWaitAction } from './localtask-wait.js';
 
 /** 本模块的全部 action 类（容器按这个顺序建实例）。 */
 export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
@@ -51,7 +48,6 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskCancelAction,
   LocaltaskCancelManyAction,
   LocaltaskChainAction,
-  LocaltaskClaimAction,
   LocaltaskCloneAction,
   LocaltaskCloseManyAction,
   LocaltaskConfigAction,
@@ -63,7 +59,6 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskListAction,
   LocaltaskPlanAction,
   LocaltaskPresenceAction,
-  LocaltaskPreviewAction,
   LocaltaskPruneAction,
   LocaltaskRemoveAction,
   LocaltaskRemoveManyAction,
@@ -76,7 +71,6 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskTopicRemoveAction,
   LocaltaskTopicRemoveManyAction,
   LocaltaskUpdateAction,
-  LocaltaskWaitAction,
 ];
 
 // 再导出类本身：前端 apiclient 的返回类型从这里 type-only 引用（实现即契约）。
@@ -88,7 +82,6 @@ export { LocaltaskBoardTasksAction };
 export { LocaltaskCancelAction };
 export { LocaltaskCancelManyAction };
 export { LocaltaskChainAction };
-export { LocaltaskClaimAction };
 export { LocaltaskCloneAction };
 export { LocaltaskCloseManyAction };
 export { LocaltaskConfigAction };
@@ -100,7 +93,6 @@ export { LocaltaskGetAction };
 export { LocaltaskListAction };
 export { LocaltaskPlanAction };
 export { LocaltaskPresenceAction };
-export { LocaltaskPreviewAction };
 export { LocaltaskPruneAction };
 export { LocaltaskRemoveAction };
 export { LocaltaskRemoveManyAction };
@@ -113,4 +105,3 @@ export { LocaltaskTopicAddAction };
 export { LocaltaskTopicRemoveAction };
 export { LocaltaskTopicRemoveManyAction };
 export { LocaltaskUpdateAction };
-export { LocaltaskWaitAction };

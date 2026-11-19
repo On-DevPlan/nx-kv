@@ -6,7 +6,7 @@
 //   2. 近百个变量必须能按关键词收窄（附件的 6 种 kind 全列出来会很长）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { varGroupsOf } from '../../src/web/frontend/page/settings/prompt-vars.ts';
+import { varGroupsOf } from '../../src/web/frontend/page/settings/prompt-vars.js';
 
 const FIELDS = [
   { key: 'attach.count', kind: 'number', label: '附件总数' },

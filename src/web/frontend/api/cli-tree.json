@@ -1275,21 +1275,6 @@
           "children": []
         },
         {
-          "name": "get",
-          "path": [
-            "localtask",
-            "get"
-          ],
-          "action": {
-            "id": "localtask.claim",
-            "module": "localtask",
-            "summary": "领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填",
-            "usage": "localtask get",
-            "http": "POST /api/localtasks/claim"
-          },
-          "children": []
-        },
-        {
           "name": "clone",
           "path": [
             "localtask",
@@ -1451,21 +1436,6 @@
             "summary": "探测主面板上当前打开的「实时任务」标签数（活动 SSE 连接数；用于 wait 不重复开页）",
             "usage": "localtask presence",
             "http": "GET /api/localtasks/presence"
-          },
-          "children": []
-        },
-        {
-          "name": "preview",
-          "path": [
-            "localtask",
-            "preview"
-          ],
-          "action": {
-            "id": "localtask.preview",
-            "module": "localtask",
-            "summary": "预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览",
-            "usage": "localtask preview",
-            "http": "POST /api/localtasks/preview"
           },
           "children": []
         },
@@ -1674,6 +1644,36 @@
           "children": []
         },
         {
+          "name": "get",
+          "path": [
+            "localtask",
+            "get"
+          ],
+          "action": {
+            "id": "localtask.claim",
+            "module": "claim",
+            "summary": "领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填",
+            "usage": "localtask get",
+            "http": "POST /api/localtasks/claim"
+          },
+          "children": []
+        },
+        {
+          "name": "preview",
+          "path": [
+            "localtask",
+            "preview"
+          ],
+          "action": {
+            "id": "localtask.preview",
+            "module": "claim",
+            "summary": "预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览",
+            "usage": "localtask preview",
+            "http": "POST /api/localtasks/preview"
+          },
+          "children": []
+        },
+        {
           "name": "wait",
           "path": [
             "localtask",
@@ -1681,139 +1681,10 @@
           ],
           "action": {
             "id": "localtask.wait",
-            "module": "localtask",
+            "module": "claim",
             "summary": "针对某主题（按 cwd 目录名识别）阻塞等待用户回填（默认 3 分钟，最大 10 分钟）；本地空时自动领取全局共享池的任务",
             "usage": "localtask wait",
             "http": null
-          },
-          "children": []
-        }
-      ]
-    },
-    {
-      "name": "timegoal",
-      "path": [
-        "timegoal"
-      ],
-      "action": null,
-      "children": [
-        {
-          "name": "check",
-          "path": [
-            "timegoal",
-            "check"
-          ],
-          "action": {
-            "id": "timegoal.check",
-            "module": "tasktool",
-            "summary": "时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary",
-            "usage": "timegoal check",
-            "http": "GET /api/timegoals/check"
-          },
-          "children": []
-        },
-        {
-          "name": "clear",
-          "path": [
-            "timegoal",
-            "clear"
-          ],
-          "action": {
-            "id": "timegoal.clear",
-            "module": "tasktool",
-            "summary": "清空本目录 timegoal（无则 no_goal，不抛错）",
-            "usage": "timegoal clear",
-            "http": "DELETE /api/timegoals"
-          },
-          "children": []
-        },
-        {
-          "name": "list",
-          "path": [
-            "timegoal",
-            "list"
-          ],
-          "action": {
-            "id": "timegoal.list",
-            "module": "tasktool",
-            "summary": "列出所有有 timegoal 的目录（按截止升序；已到点的单列在归档区）",
-            "usage": "timegoal list",
-            "http": "GET /api/timegoals/all"
-          },
-          "children": []
-        },
-        {
-          "name": "log",
-          "path": [
-            "timegoal",
-            "log"
-          ],
-          "action": {
-            "id": "timegoal.log",
-            "module": "tasktool",
-            "summary": "查看本目录 timegoal 的检查日志（每轮 check 的现状）",
-            "usage": "timegoal log",
-            "http": "GET /api/timegoals/log"
-          },
-          "children": []
-        },
-        {
-          "name": "prune",
-          "path": [
-            "timegoal",
-            "prune"
-          ],
-          "action": {
-            "id": "timegoal.prune",
-            "module": "tasktool",
-            "summary": "彻底清除已到点 / 已归档的时间目标（到点本身已自动归档，这里是连归档区一起清）",
-            "usage": "timegoal prune",
-            "http": "POST /api/timegoals/prune"
-          },
-          "children": []
-        },
-        {
-          "name": "set",
-          "path": [
-            "timegoal",
-            "set"
-          ],
-          "action": {
-            "id": "timegoal.set",
-            "module": "tasktool",
-            "summary": "为本目录设置/替换 timegoal：duration + 完整全局提示词（原文固化到 store）",
-            "usage": "timegoal set",
-            "http": "POST /api/timegoals"
-          },
-          "children": []
-        },
-        {
-          "name": "show",
-          "path": [
-            "timegoal",
-            "show"
-          ],
-          "action": {
-            "id": "timegoal.show",
-            "module": "tasktool",
-            "summary": "查看当前 timegoal（不算时间）：--cwd 目录级，--task 任务级（key 在领取交付里自带）",
-            "usage": "timegoal show",
-            "http": "GET /api/timegoals"
-          },
-          "children": []
-        },
-        {
-          "name": "update",
-          "path": [
-            "timegoal",
-            "update"
-          ],
-          "action": {
-            "id": "timegoal.update",
-            "module": "tasktool",
-            "summary": "更新本目录 timegoal 的提示词（可选同时改时长，--duration；保留起点，不重置计时）",
-            "usage": "timegoal update",
-            "http": "PATCH /api/timegoals"
           },
           "children": []
         }
@@ -1913,6 +1784,135 @@
             "summary": "编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改）",
             "usage": "template update",
             "http": "PATCH /api/templates/:id"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "timegoal",
+      "path": [
+        "timegoal"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "check",
+          "path": [
+            "timegoal",
+            "check"
+          ],
+          "action": {
+            "id": "timegoal.check",
+            "module": "goals",
+            "summary": "时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary",
+            "usage": "timegoal check",
+            "http": "GET /api/timegoals/check"
+          },
+          "children": []
+        },
+        {
+          "name": "clear",
+          "path": [
+            "timegoal",
+            "clear"
+          ],
+          "action": {
+            "id": "timegoal.clear",
+            "module": "goals",
+            "summary": "清空本目录 timegoal（无则 no_goal，不抛错）",
+            "usage": "timegoal clear",
+            "http": "DELETE /api/timegoals"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "timegoal",
+            "list"
+          ],
+          "action": {
+            "id": "timegoal.list",
+            "module": "goals",
+            "summary": "列出所有有 timegoal 的目录（按截止升序；已到点的单列在归档区）",
+            "usage": "timegoal list",
+            "http": "GET /api/timegoals/all"
+          },
+          "children": []
+        },
+        {
+          "name": "log",
+          "path": [
+            "timegoal",
+            "log"
+          ],
+          "action": {
+            "id": "timegoal.log",
+            "module": "goals",
+            "summary": "查看本目录 timegoal 的检查日志（每轮 check 的现状）",
+            "usage": "timegoal log",
+            "http": "GET /api/timegoals/log"
+          },
+          "children": []
+        },
+        {
+          "name": "prune",
+          "path": [
+            "timegoal",
+            "prune"
+          ],
+          "action": {
+            "id": "timegoal.prune",
+            "module": "goals",
+            "summary": "彻底清除已到点 / 已归档的时间目标（到点本身已自动归档，这里是连归档区一起清）",
+            "usage": "timegoal prune",
+            "http": "POST /api/timegoals/prune"
+          },
+          "children": []
+        },
+        {
+          "name": "set",
+          "path": [
+            "timegoal",
+            "set"
+          ],
+          "action": {
+            "id": "timegoal.set",
+            "module": "goals",
+            "summary": "为本目录设置/替换 timegoal：duration + 完整全局提示词（原文固化到 store）",
+            "usage": "timegoal set",
+            "http": "POST /api/timegoals"
+          },
+          "children": []
+        },
+        {
+          "name": "show",
+          "path": [
+            "timegoal",
+            "show"
+          ],
+          "action": {
+            "id": "timegoal.show",
+            "module": "goals",
+            "summary": "查看当前 timegoal（不算时间）：--cwd 目录级，--task 任务级（key 在领取交付里自带）",
+            "usage": "timegoal show",
+            "http": "GET /api/timegoals"
+          },
+          "children": []
+        },
+        {
+          "name": "update",
+          "path": [
+            "timegoal",
+            "update"
+          ],
+          "action": {
+            "id": "timegoal.update",
+            "module": "goals",
+            "summary": "更新本目录 timegoal 的提示词（可选同时改时长，--duration；保留起点，不重置计时）",
+            "usage": "timegoal update",
+            "http": "PATCH /api/timegoals"
           },
           "children": []
         }

@@ -11,7 +11,7 @@ process.env.NX_KV_LOCALTASK_STORE = join(sb, 'localtasks.json');
 process.env.NX_KV_WORKFLOW_STORE = join(sb, 'workflows');
 
 const svc = await import('../../src/modules/localtask/service.js');
-const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+const { waitForTask } = await import('../../src/modules/claim/wait.js');
 const { normalizeCwd } = svc;
 
 const dirA = join(sb, 'proj-a');

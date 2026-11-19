@@ -349,8 +349,8 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
   }
   let goal: Record<string, any> | null = null;
   if (task.timegoal) {
-    // 门禁：查任务级 goal。动态 import——tasktool/wait.js 静态引用本模块，这里走动态避免环。
-    const { taskGoalState, recordTaskCheck } = await import('../tasktool/taskgoal.js');
+    // 门禁：查任务级 goal。动态 import——claim/wait.ts 静态引用本模块，这里走动态避免环。
+    const { taskGoalState, recordTaskCheck } = await import('../goals/taskgoal.js');
     const st = await taskGoalState({ topicKey: key, taskId: want });
     if (st.hasGoal && !st.reached) {
       // 「未到点就想 done」的拦截提示（#90）：模板与其它区块同源，是 doneguard
@@ -455,5 +455,5 @@ export async function completeTask({ cwd: rawCwd, key: rawKey, id, summary: rawS
 // 那不是"到点自动取消"，那是把目录焊死了。这种情况该由 agent 自己的
 // `timegoal check`（reached:true）去处理。
 //
-// （goal 探针与目标上下文已随 wait 编排迁往 tasktool/wait.js——任务工具语义归
-// tasktool，队列本体不再依赖 timegoal 模块。）
+// （goal 探针与目标上下文已随 wait 编排迁往 claim/wait.ts——任务工具语义归
+// goals 域，队列本体不再依赖 timegoal 模块。）

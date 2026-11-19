@@ -1,6 +1,6 @@
 // （#54 自 service.js 拆出）面板 presence 观测与注册表：SSE 连接计数（含心跳剔除）、
 // 常驻主面板发现（APP_DIR/panels.json 登记）、逐端口活性探测、窗口重开节流判据
-// shouldReopenWindow（panel-guard 与 tasktool/panel-escort 用）。
+// shouldReopenWindow（panel-guard 与 claim/panel-escort 用）。
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -321,7 +321,7 @@ export function readPanelRegistry(): PanelRegistryEntry[] {
   return readAllPanels();
 }
 
-// 复查节奏与重开上限（REVIEW_MS 已随 wait 编排迁往 tasktool/wait.js）。
+// 复查节奏与重开上限（REVIEW_MS 已随 wait 编排迁往 claim/wait.ts）。
 const REOPEN_COOLDOWN_MS = 20_000;
 // 一次 wait 最多开 3 个窗口：够救「手滑关掉」，又不至于在浏览器拦截脚本时刷屏。
 const MAX_WINDOW_OPENS = 3;

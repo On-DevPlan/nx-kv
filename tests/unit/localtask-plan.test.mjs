@@ -115,7 +115,7 @@ test('#126 plan 不进队列：get 领不到，pending 转回后又能领', asyn
     assert.equal(planned.status, 'plan', '视图里这条任务已经是草稿');
 
     // 队列里没有 pending → 领活返回 timeout（plan 不被领走）
-    const { getTask } = await import('../../src/modules/tasktool/get.js');
+    const { getTask } = await import('../../src/modules/claim/get.js');
     const r = await getTask({ cwd, open: false, instant: true });
     assert.equal(r.status, 'timeout', '草稿绝不能进入 get/wait 的队列');
 

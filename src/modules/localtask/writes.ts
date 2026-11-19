@@ -1,6 +1,6 @@
 // 日常 DAG 写路径 —— 一律经 Mutator（单一写入口），再投影回主题任务行。
 // 跨队列依赖（"topicKey:id"）只落在任务行 blockBy，不进本 topic 引擎节点图。
-import '../tasktool/plugins/index.js';
+import '../goals/plugins/index.js';
 import { createTopicEngine } from './engine.js';
 import { normalizeBlockBy, parseDepRef } from '../../core/workflow/readiness.js';
 import { isGateNode } from '../../core/workflow/types.js';

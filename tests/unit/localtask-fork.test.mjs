@@ -30,7 +30,7 @@ test.after?.(() => {
 
 async function seed(cwd) {
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
   mkdirSync(cwd, { recursive: true });
   await localtask.addTask({ text: '改登录页', cwd });
   const first = await waitForTask({ cwd, summary: '开干', timeoutSec: 1, open: false });
@@ -177,7 +177,7 @@ test('comment kind 也派生新任务（type=comment），反馈段跟正文走'
 
 test('搬队列：带链任务（R1→R2）搬后链完整，全局 id 不变', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
   const cwdA = join(dir, 'mv-a');
   const cwdB = join(dir, 'mv-b');
   mkdirSync(cwdA, { recursive: true });

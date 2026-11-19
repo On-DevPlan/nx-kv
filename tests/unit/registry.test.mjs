@@ -363,7 +363,9 @@ test('routes 正查：--module 过滤，且纯 CLI 命令如实标注 http:null'
   const withHttp = localRows.filter((c) => c.http);
   assert.ok(withHttp.length > 0);
   assert.ok(withHttp.every((c) => c.http.method && c.http.path));
-  assert.ok(localRows.some((c) => c.id === 'localtask.wait' && !c.http), '纯 CLI 命令如实标注 http:null');
+  // localtask.wait 是纯 CLI（阻塞等待没有 HTTP 语义）；#237 起它的宿主模块是 claim
+  const claimRows = await routesAction.run({ module: 'claim' });
+  assert.ok(claimRows.some((c) => c.id === 'localtask.wait' && !c.http), '纯 CLI 命令如实标注 http:null');
 
   const all = await routesAction.run({});
   const { ALL_COMMANDS } = await import(

@@ -1,9 +1,9 @@
-// workflow 契约（#34 阶段 0）—— 冻结类型，尚未接线到 localtask / tasktool。
+// workflow 契约（#34 阶段 0）—— 冻结类型；#237 引擎门（facade）已删除，仅剩写路径底座在用。
 //
 // 对照参考方案（Node+TS DAG 动态工作流）在 nx-kv 上的映射：
 //   workflowId     → 主题 key（cwd 归一化 / repos key；全局 '__GLOBAL__'）
-//   submit(init)   → localtask add / tasktool submitTask（只入队，不构造全图）
-//   get(id,node?)  → tasktool get / wait（AsyncIterable ≈ 单次或 waitgoal 长轮询）
+//   submit(init)   → localtask add（只入队，不构造全图）
+//   get(id,node?)  → 引擎门（#237 已删除；现役领取走 localtask.claim）
 //   Node           → localtask 一条任务（id 数字；状态用 status+completedAt）
 //   Edge / blockBy → task.blockBy[] + task.blocksFollowing（闸门）
 //   blockgoal      → scope=control；onSchedule 决定后继是否 ready（见 localtask/dag.js）
@@ -20,7 +20,7 @@
 //
 // 工程约束（相对参考方案的刻意偏离）：
 //   - 仓库保持 JS ESM + JSDoc，不上平行 TypeScript 引擎
-//   - 契约落在 core/；业务仍在 modules/localtask + modules/tasktool
+//   - 契约落在 core/；业务仍在 modules/localtask + modules/claim + modules/delivery + modules/goals（四域分工）
 //   - 存储沿用本机 JSON 主题快照；RedisAdapter 属阶段 6，不挡主线
 //   - 目标目录规范见同目录 layout.js（禁止平行 src/{facade,store,mutator,…}）
 

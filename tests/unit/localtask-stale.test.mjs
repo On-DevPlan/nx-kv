@@ -10,7 +10,7 @@
 // 修法：判据统一走 isLiveWaiting——waiting 为真**且**截止时刻还没过。
 // 截止已过 = 那个 wait 本来也该收尾了 = 没人真在等。
 import { test } from 'node:test';
-import { waitForTask } from '../../src/modules/tasktool/wait.js';
+import { waitForTask } from '../../src/modules/claim/wait.js';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

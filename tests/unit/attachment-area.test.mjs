@@ -16,7 +16,7 @@ process.env.NX_KV_REPOS_STORE = join(sb, 'repos.json');
 
 const service = await import('../../src/modules/localtask/service.js');
 const { attachToTask, detachTaskAttachment, listTaskAttachments, annotateTaskDelivery, attachmentInstruction } =
-  await import('../../src/modules/tasktool/attach.js');
+  await import('../../src/modules/delivery/attach.js');
 const { getDb } = await import('../../src/core/db/index.js');
 
 const areaOf = (d, id) => d.attachments.find((a) => a.id === id);

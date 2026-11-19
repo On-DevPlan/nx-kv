@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { attachTemplateCtx } from '../../src/modules/tasktool/attach-template.js';
+import { attachTemplateCtx } from '../../src/modules/delivery/attach-template.js';
 import { compose } from '../../src/modules/promptplug/compose.js';
 import { buildPlugins } from '../../src/modules/promptplug/index.js';
 
@@ -276,7 +276,7 @@ const scenarios = {
 
 /**
  * 交付链 + 宿主取数（#152 起模板正文在插件类里，不再有「解析出的模板」这一层）。
- * 与 tasktool/wait.ts 同构：交付 = 三条链一起给（get / check / done，合并后按声明 order 排序）。
+ * 与 claim/wait.ts 同构：交付 = 三条链一起给（get / check / done，合并后按声明 order 排序）。
  */
 const pluginsOf = (sc) => [
   ...buildPlugins('get', {

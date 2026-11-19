@@ -76,10 +76,10 @@ export class LocaltaskAddAction extends ActionBase<typeof input> {
         const body = await readTaskBody(ctx, meta);
         if (!body.trim()) throw badInput('任务正文为空：给 "<正文>" 或 --file <文件>');
 
-        // 派任务编排已迁 tasktool/add.js（任务工具语义归 tasktool；命令名不变）。
+        // 派任务编排已迁 localtask/add.ts（派任务编排归 localtask 域；命令名不变）。
         // 落点判定（--board/--project 严格口径 / 正文 frontmatter fail-open）只此一份实现，
         // CLI、HTTP、面板提交同走这一条链路。
-        const { submitTask } = await (import('../../tasktool/add.js') as any);
+        const { submitTask } = await (import('../add.js') as any);
         const rawBlock: any = ctx.blockBy ?? ctx['block-by'];
         // 支持本地 id 与跨队列 "topicKey:id"（组编排边）；空 → undefined
         const { normalizeBlockBy } = await (import('../dag.js') as any);

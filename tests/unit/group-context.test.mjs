@@ -64,7 +64,7 @@ async function buildGroup() {
 test('组上下文封装：交付文本带组概念/组介绍引导/组内位置/兄弟成员/组文档 refId', async () => {
   const { cwd, b } = await buildGroup();
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
 
   // #64 作用域：组任务 = 正文 frontmatter 带 board（组面板/CLI --board 提交的形态）
   await localtask.addTask({ text: `---\nboard: ${b.id}\n---\n\n改登录页`, cwd });
@@ -94,7 +94,7 @@ test('组上下文封装：交付文本带组概念/组介绍引导/组内位置
 test('单 repo 主题：成员仓库的纯项目任务不挂组上下文（#64）', async () => {
   const { cwd } = await buildGroup();
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
 
   // 没有 board frontmatter = 仓库自己的活：成员身份不等于这条任务属于组
   await localtask.addTask({ text: '仓库自己的活', cwd });
@@ -106,7 +106,7 @@ test('单 repo 主题：成员仓库的纯项目任务不挂组上下文（#64�
 
 test('不在项目组里的目录：不拼组上下文段', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
   const lonely = join(dir, 'lonely');
   mkdirSync(lonely, { recursive: true });
   await localtask.addTask({ text: '独立任务', cwd: lonely });
@@ -118,7 +118,7 @@ test('不在项目组里的目录：不拼组上下文段', async () => {
 test('交付带项目介绍：已登记的项目即使不在任何组里也知道自己是谁', async () => {
   const repos = await import('../../src/modules/repos/service.js');
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
   const solo = join(dir, 'solo-proj');
   mkdirSync(solo, { recursive: true });
   const added = await repos.addRepo({ path: solo, name: 'solo', desc: '独自负责的那个项目', remote: 'https://github.com/me/solo' });
@@ -136,7 +136,7 @@ test('交付带项目介绍：已登记的项目即使不在任何组里也知�
 test('交付带项目介绍 + 组介绍：组内项目的介绍两样都在', async () => {
   const { cwd, b } = await buildGroup();
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
 
   await localtask.addTask({ text: `---\nboard: ${b.id}\n---\n\n组内任务`, cwd });
   const r = await waitForTask({ cwd, summary: '开干', timeoutSec: 1, open: false });
@@ -152,7 +152,7 @@ test('组任务只挂它归属的那个组：同仓库多组时不串组', async
   const other = await boards.createBoard({ name: '别的组', desc: '与本任务无关' });
   await boards.assignRepo({ key: alpha.key, board: other.id });
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
 
   await localtask.addTask({ text: `---\nboard: ${b.id}\n---\n\n归属 nx系列`, cwd });
   const r = await waitForTask({ cwd, summary: '开干', timeoutSec: 1, open: false });

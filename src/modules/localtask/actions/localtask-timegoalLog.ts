@@ -37,7 +37,7 @@ export class LocaltaskTimegoalLogAction extends ActionBase<typeof input> {
   override async run(ctx: ActionInput<this['_input']>) {
 
         const topicKey: any = ctx.key || service.normalizeCwd(ctx.cwd).key;
-        const { getTaskGoalLog } = await (import('../../tasktool/timegoal.js') as any);
+        const { getTaskGoalLog } = await (import('../../goals/timegoal.js') as any);
         return getTaskGoalLog({ topicKey, taskId: ctx.id });
     
   }

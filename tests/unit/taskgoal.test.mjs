@@ -48,7 +48,7 @@ const retime = async (pastMin = 5) => {
 
 test('add --duration：任务记录带 timegoal 声明；领取交付带 check 指令', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
   const cwd = join(dir, 'proj');
   const added = await localtask.addTask({ text: '改登录页', cwd, timegoal: { duration: '1m', prompt: '重点看表单' } });
   assert.ok(added.task.timegoal, '任务记录带 timegoal 声明');
@@ -73,7 +73,7 @@ test('add --duration：任务记录带 timegoal 声明；领取交付带 check �
   assert.doesNotMatch(done.guard, /\{\{/, '渲染后不应残留占位符');
 
   // timegoal check --task：任务维度 check 可用（日志落 timegoal 存储）
-  const tg = await import('../../src/modules/tasktool/timegoal.js');
+  const tg = await import('../../src/modules/goals/timegoal.js');
   // T03：key 由完整 cwd 派生（topicKeyOf），与领取时 ensureTaskGoal 的 key 同源
   const key = tg.taskGoalKey(localtask.normalizeCwd(cwd).key, 1);
   const chk = await tg.checkGoalByKey(key, { summary: '推进中' });
@@ -114,7 +114,7 @@ test('add --duration：任务记录带 timegoal 声明；领取交付带 check �
 
 test('done：未领取 blocked；无 timegoal 直接放行；重复 done 幂等', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
   const cwd = join(dir, 'proj2');
   const plain = await localtask.addTask({ text: '普通任务', cwd });
   const notClaimed = await localtask.completeTask({ cwd, id: plain.task.id, summary: 'x' });
@@ -132,7 +132,7 @@ test('done：未领取 blocked；无 timegoal 直接放行；重复 done 幂等'
 });
 
 test('get：默认直接领（无任务立即 instant timeout，不阻塞）', async () => {
-  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const { getTask } = await import('../../src/modules/claim/get.js');
   const cwd = join(dir, 'empty-proj');
   const t0 = Date.now();
   const r = await getTask({ cwd, summary: '领活' });
@@ -144,7 +144,7 @@ test('get：默认直接领（无任务立即 instant timeout，不阻塞）', a
 test('get：项目开启持续 get → 交付文本带「继续 get」模板；done 指令不变', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
   const repos = await import('../../src/modules/repos/service.js');
-  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const { getTask } = await import('../../src/modules/claim/get.js');
   const cwd = join(dir, 'loop-proj');
   const repo = await repos.addRepo({ path: cwd, name: 'loop-proj', remote: 'https://github.com/me/loop' });
   await repos.updateRepo(repo.id, { getLoop: { enabled: true, waitMinutes: 1 } });
@@ -169,7 +169,7 @@ test('HTTP 领取：claim 路由存在，且 instant 强制立即返回（持续
   assert.deepEqual(claim.http, ['POST', '/api/localtasks/claim'], '领取补上了 POST 路由');
 
   const repos = await import('../../src/modules/repos/service.js');
-  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const { getTask } = await import('../../src/modules/claim/get.js');
   const cwd = join(dir, 'claim-http');
   const repo = await repos.addRepo({ path: cwd, name: 'claim-http', remote: 'https://github.com/me/ch' });
   await repos.updateRepo(repo.id, { getLoop: { enabled: true, waitMinutes: 5 } });
@@ -225,7 +225,7 @@ test('HTTP 线缆口径：repo.update 只认 kebab 键（camelCase getLoop 被 z
 test('get：#182 起仓库传 template 不再影响交付（文案归全局 getloop 区块）', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
   const repos = await import('../../src/modules/repos/service.js');
-  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const { getTask } = await import('../../src/modules/claim/get.js');
   const cwd = join(dir, 'loop-multi');
   const repo = await repos.addRepo({ path: cwd, name: 'loop-multi', remote: 'https://github.com/me/lm' });
   await repos.updateRepo(repo.id, { getLoop: { enabled: true, waitMinutes: 1, template: ['GO_ON_1', '等{{getloop.waitMinutes}}分'] } });
@@ -239,7 +239,7 @@ test('get：#182 起仓库传 template 不再影响交付（文案归全局 getl
 
 test('修改反馈 → 重开：派生新任务，旧任务 done 定格（#74 派生口径）', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
-  const { waitForTask } = await import('../../src/modules/tasktool/wait.js');
+  const { waitForTask } = await import('../../src/modules/claim/wait.js');
   const cwd = join(dir, 'reopen-proj');
   await localtask.addTask({ text: '改登录页', cwd });
 
@@ -287,7 +287,7 @@ test('项目图标：写入后读回（≤8 字）', async () => {
 test('get：未开启持续 get → 交付**不带**「继续 get」指令（默认就是直接领）', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
   const repos = await import('../../src/modules/repos/service.js');
-  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const { getTask } = await import('../../src/modules/claim/get.js');
   const cwd = join(dir, 'plain-proj');
   await repos.addRepo({ path: cwd, name: 'plain-proj', remote: 'https://github.com/me/plain' });
 
@@ -319,7 +319,7 @@ test('修改反馈 / 编辑任务：换正文不丢 frontmatter（归组信息�
 // 多久，不是让 agent 睡）。0 = 不阻塞、没活立即 timeout；提示词里那句「最多阻塞 N 分钟」
 // 在 0 时整句不出现（不给 0 另造说法）。
 test('#112 阻塞窗口 0：契约接受并落库，不再被归一成默认 10 分钟', async () => {
-  const { sanitizeGetLoop } = await import('../../src/modules/tasktool/plugins/waitgoal-config.js');
+  const { sanitizeGetLoop } = await import('../../src/modules/claim/waitgoal-config.js');
   const decl = sanitizeGetLoop({ enabled: true, waitMinutes: 0 });
   assert.equal(decl.waitMinutes, 0, '0 必须原样保留');
   const on = sanitizeGetLoop({ enabled: true });
@@ -344,7 +344,7 @@ test('#112 getloop 模板：窗口 0 时整句不出现；>0 才报分钟数', a
 
 test('#112 窗口 0：get 不阻塞，没任务立刻 timeout（不等默认超时）', async () => {
   const repos = await import('../../src/modules/repos/service.js');
-  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const { getTask } = await import('../../src/modules/claim/get.js');
   const cwd = join(dir, 'loop-zero');
   const repo = await repos.addRepo({ path: cwd, name: 'loop-zero', remote: 'https://github.com/me/loop-zero' });
   await repos.updateRepo(repo.id, { getLoop: { enabled: true, waitMinutes: 0 } });
@@ -358,7 +358,7 @@ test('#112 窗口 0：get 不阻塞，没任务立刻 timeout（不等默认超�
 // #123：阻塞等待只剩一条路——get 加 --timeout。显式给上限时，即使项目没开「持续 get」
 // 也要真的阻塞（旧 localtask wait 的能力并入 get）；不给参数则维持「立即返回 timeout」。
 test('#123 get --timeout 在未开启持续 get 时也阻塞（wait 能力并入 get）', async () => {
-  const { getTask } = await import('../../src/modules/tasktool/get.js');
+  const { getTask } = await import('../../src/modules/claim/get.js');
   const cwd = join(dir, 'wait-by-timeout');
   const t0 = Date.now();
   const r = await getTask({ cwd, timeoutSec: 1 });

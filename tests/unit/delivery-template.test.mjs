@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ContextPlugin } from '../../src/modules/promptplug/plugins/context.js';
-import { parseParams } from '../../src/modules/tasktool/params.js';
+import { parseParams } from '../../src/modules/claim/params.js';
 import { renderInstruction } from '../../src/core/instruction-template.js';
 import { templatesOf } from '../../src/modules/promptplug/index.js';
 

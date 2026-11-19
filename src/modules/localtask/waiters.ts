@@ -8,7 +8,7 @@
 // ─── 进程内 waiter：key -> { resolve(task), summary, by } ───────────────
 //
 // 注册表**留在 localtask**（addTask 的唤醒路径要认领它），但注册/取走以 API 导出——
-// wait/get 的阻塞编排住在 tasktool/wait.js，通过这组 API 挂钩，不碰队列内部。
+// wait/get 的阻塞编排住在 claim/wait.ts，通过这组 API 挂钩，不碰队列内部。
 
 /** 主题级 waiter 条目（resolve 回调收 JSON 形态任务）。 */
 export interface TopicWaiterEntry {

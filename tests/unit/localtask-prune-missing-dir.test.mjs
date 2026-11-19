@@ -19,7 +19,7 @@ process.env.NX_KV_DOCS_DIR = join(root, 'docs');
 process.env.NX_KV_CONFIG = join(root, 'config.json');
 
 const svc = await import('../../src/modules/localtask/service.js');
-const { getTask } = await import('../../src/modules/tasktool/get.js');
+const { getTask } = await import('../../src/modules/claim/get.js');
 const { closeDb } = await import('../../src/core/db/index.js');
 
 after(() => {

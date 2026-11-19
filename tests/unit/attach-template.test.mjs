@@ -8,10 +8,10 @@
 //     overtimeSec/reached）从 deadline 戳补算；已有的不覆盖。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { attachmentInstruction, attachInstructionOf, attachTemplateCtx } from '../../src/modules/tasktool/attach.js';
+import { attachmentInstruction, attachInstructionOf, attachTemplateCtx } from '../../src/modules/delivery/attach.js';
 import { validateTemplate } from '../../src/core/instruction-template.js';
 import { clampAttachTemplate } from '../../src/modules/localtask/task-templates.js';
-import { enrichGoalTiming } from '../../src/modules/tasktool/delivery.js';
+import { enrichGoalTiming } from '../../src/modules/delivery/host.js';
 
 const ATT = [
   { id: 'att-1', kind: 'image', name: '截图.png', localPath: 'D:/att/截图.png', synced: true, storage: 'local' },

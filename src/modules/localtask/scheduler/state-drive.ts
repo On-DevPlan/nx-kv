@@ -1,6 +1,6 @@
 import { isNodeReady } from '../../../core/workflow/readiness.js';
 import type { WfGraph } from '../../../core/workflow/readiness.js';
-import { isBarrierOpen } from '../../tasktool/plugins/blockgoal.js';
+import { isBarrierOpen } from '../../goals/plugins/blockgoal.js';
 import type { WorkflowSnapshot } from '../../../core/workflow/types.js';
 
 /** driveReadyStates 的出站形状。 */

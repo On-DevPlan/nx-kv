@@ -15,13 +15,13 @@
 // 任务级 = goals/goal_checks 表），与 localtask 同一份 nxkv.db —— 隔离由
 // NX_KV_LOCALTASK_STORE 的目录决定，不再有独立的 NX_KV_TIMEGOAL_STORE。
 import { test } from 'node:test';
-import { waitForTask } from '../../src/modules/tasktool/wait.js';
+import { waitForTask } from '../../src/modules/claim/wait.js';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as svc from '../../src/modules/localtask/service.js';
-import * as tgsvc from '../../src/modules/tasktool/timegoal.js';
+import * as tgsvc from '../../src/modules/goals/timegoal.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-goalexp-'));
 const storeFile = join(tmp, 'localtasks.json');

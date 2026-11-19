@@ -15,7 +15,7 @@ process.env.NX_KV_DOCS_DIR = join(sb, 'docs');
 
 const repos = await import('../../src/modules/repos/service.js');
 const boards = await import('../../src/modules/repos/boards.js');
-const { submitTask } = await import('../../src/modules/tasktool/add.js');
+const { submitTask } = await import('../../src/modules/localtask/add.js');
 const mod = (await import('../../src/modules/localtask/index.js')).default;
 const addAction = mod.actions.find((a) => a.id === 'localtask.add');
 
@@ -123,11 +123,11 @@ test('localtask.add action：一行委托 submitTask——CLI/HTTP/面板同走�
 test('localtask.add action：goalPrompt 驼峰写法（HTTP body）照常归一进 timegoal', async () => {
   const r = await addAction.run({
     text: '# 带时长',
-    goalPrompt: '先看 tasktool/add.js 再动手',
+    goalPrompt: '先看 localtask/add.ts 再动手',
     duration: '2h',
   });
   assert.equal(r.task.timegoal.duration, '2h');
-  assert.equal(r.task.timegoal.prompt, '先看 tasktool/add.js 再动手');
+  assert.equal(r.task.timegoal.prompt, '先看 localtask/add.ts 再动手');
 });
 
 test('清理', () => {

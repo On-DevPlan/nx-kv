@@ -9,7 +9,7 @@
 //
 // 存储一律指向临时文件（NX_KV_LOCALTASK_STORE），绝不写脏用户目录。
 import { test } from 'node:test';
-import { waitForTask } from '../../src/modules/tasktool/wait.js';
+import { waitForTask } from '../../src/modules/claim/wait.js';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

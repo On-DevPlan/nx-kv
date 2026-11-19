@@ -3,7 +3,7 @@
 // 队列内关系清单（queueRelationsOf）与搬家（relocateTask）。
 import { existsSync } from 'node:fs';
 import { badInput, notFound } from '../../core/errors.js';
-import { sanitizeTaskGoal } from '../tasktool/taskgoal.js';
+import { sanitizeTaskGoal } from '../goals/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from './dag.js';
 import { isGlobalKey, topicKeyFor, resolveTaskKey } from './paths.js';
 import { parseStampMs, stampNow } from './store-io.js';

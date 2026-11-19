@@ -25,7 +25,7 @@ export class LocaltaskAttachNoteAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-        const { noteTaskAttachment } = await (import('../../tasktool/attach.js') as any);
+        const { noteTaskAttachment } = await (import('../../delivery/attach.js') as any);
         return noteTaskAttachment({
           id: ctx.id,
           cwd: ctx.cwd,

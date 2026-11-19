@@ -1,5 +1,5 @@
 // context 插件（order 10）：组 / 项目上下文。
-// data() 搬自 tasktool/delivery-template.ts 的 deliveryCtxOf（原文件随 S1 删除），
+// data() 搬自 delivery/assemble.ts 的 deliveryCtxOf（原文件随 S1 删除），
 // 口径注释一并迁入——#81 空壳组过滤、#104 已登记无介绍可见、参考仓库去重并集。
 import { z } from 'zod';
 import { PromptPlugin, supplied, type Supply, type TemplateText } from '../base.js';

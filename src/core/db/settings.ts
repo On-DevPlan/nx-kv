@@ -1,7 +1,7 @@
 // settings 表的裸 k/v 读写（value 一律 JSON 文本）。
 //
 // 为什么在 core：settings 表的消费方横跨多个域 —— core/config.js（偏好 4 项，
-// 凭据绝不进库）与 tasktool 的队列级 timegoal（goal 是"按键取值"的运行时状态，
+// 凭据绝不进库）与 goals 域的队列级 timegoal（goal 是"按键取值"的运行时状态，
 // 不参与任何关系查询）都要经这里读写。core 不得 import modules（分层规则），
 // 所以裸访问器落在 core，域语义（clamp / 白名单 / 键名）留在各自的模块里。
 //

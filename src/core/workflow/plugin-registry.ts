@@ -43,7 +43,7 @@ export function assertPluginSpec(spec: PluginSpec | null | undefined): PluginSpe
   return { name, scope, config: spec.config && typeof spec.config === 'object' ? spec.config : {} };
 }
 
-// 内置登记（实现落在 tasktool/plugins；此处只登记元数据）
+// 内置登记（实现落在 goals/plugins；此处只登记元数据）
 registerPluginMeta(BUILTIN_GOALS.blockgoal, 'control');
 registerPluginMeta(BUILTIN_GOALS.waitgoal, 'node');
 registerPluginMeta(BUILTIN_GOALS.timegoal, 'workflow');

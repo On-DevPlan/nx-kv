@@ -28,7 +28,9 @@ import { readFileSync } from 'node:fs';
 import systemModule from '../modules/system/index.js';
 import setting from '../modules/setting/index.js';
 import localtask from '../modules/localtask/index.js';
-import tasktool from '../modules/tasktool/index.js';
+import claim from '../modules/claim/index.js';
+import delivery from '../modules/delivery/index.js';
+import goals from '../modules/goals/index.js';
 import repos from '../modules/repos/index.js';
 import docs from '../modules/docs/index.js';
 import file from '../modules/file/index.js';
@@ -41,7 +43,9 @@ const MODULE_LIST: readonly AnyModule[] = [
   systemModule,
   setting,
   localtask,
-  tasktool,
+  claim,
+  delivery,
+  goals,
   repos,
   docs,
   file,

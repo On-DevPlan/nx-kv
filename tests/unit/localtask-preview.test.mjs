@@ -13,9 +13,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as svc from '../../src/modules/localtask/service.js';
-import { getTask } from '../../src/modules/tasktool/get.js';
-import { previewTaskDelivery } from '../../src/modules/tasktool/preview.js';
-import { deliveryPlainText } from '../../src/modules/tasktool/delivery-text.js';
+import { getTask } from '../../src/modules/claim/get.js';
+import { previewTaskDelivery } from '../../src/modules/delivery/preview.js';
+import { deliveryPlainText } from '../../src/modules/delivery/delivery-text.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-prev-'));
 const storeFile = join(tmp, 'localtasks.json');

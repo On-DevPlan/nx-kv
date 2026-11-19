@@ -13,7 +13,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as svc from '../../src/modules/localtask/service.js';
-import { getTask } from '../../src/modules/tasktool/get.js';
+import { getTask } from '../../src/modules/claim/get.js';
 import { templatesOf } from '../../src/modules/promptplug/index.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-kv-ackp-'));

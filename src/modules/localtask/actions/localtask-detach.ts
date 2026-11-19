@@ -27,7 +27,7 @@ export class LocaltaskDetachAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-        const { detachTaskAttachment } = await (import('../../tasktool/attach.js') as any);
+        const { detachTaskAttachment } = await (import('../../delivery/attach.js') as any);
         return detachTaskAttachment({
           id: ctx.id,
           cwd: ctx.cwd,

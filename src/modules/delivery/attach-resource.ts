@@ -1,0 +1,365 @@
+// delivery/attach-resource.ts —— 附件的「资源视图模型」：关系表行 → 展示/取用信息。
+//
+// 资源类型只有五种（用户口径）：file（含图片）/ url / task / ref / mdfile。
+// 旧数据里 kind='image' 或没有 kind 的一律按 file 处理（向后兼容）。
+// mdfile = 本地 .md 文件的路径指针（字节在用户磁盘原地，storage='external'）。
+//
+// 视图模型只依赖 core 与 shared（纯函数 + 关系表查询），不碰网络：
+// file 型资源的可达性（本机副本绝对路径 vs 仅 fileId）由 fileStateOf 给出，
+// 调用方（attach.js 的编排层）负责把本机附件仓的命中结果喂进来。
+import { existsSync } from 'node:fs';
+import { isImageName } from '../../core/filekind.js';
+import { stripFrontmatter } from '../../shared/frontmatter.js';
+
+const KIND_LABEL: Record<string, string> = { file: '附件', url: '链接', task: '任务', ref: '文档', mdfile: 'md', folder: '文件夹' };
+const IMAGE_LABEL = '图片';
+export const ORIGIN_LABEL = { inline: '正文内嵌', area: '附件区' };
+export const STATUS_LABEL: Record<string, string> = { pending: '待领取', claimed: '进行中', done: '已完成', cancelled: '已作废' };
+// 「文档资料」绑定进原文的单篇上限（#162）：文档全文跟着每轮交付走，不能把整本书塞进提示词；
+// 截断后仍给 docs get 命令，agent 需要全文时自己取。
+export const MAX_INLINE_DOC_CHARS = 20000;
+
+function metaOf(row: any): Record<string, any> {
+  const m = row && row.meta;
+  if (m && typeof m === 'object') return m;
+  try {
+    const v = JSON.parse(String(m || '{}'));
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 资源类型归一：image / 空 / 其它未知值 → file；url/task/ref/mdfile 原样。 */
+function baseKind(row: any): string {
+  const k = String((row && row.kind) || '');
+  return k === 'url' || k === 'task' || k === 'ref' || k === 'mdfile' || k === 'folder' ? k : 'file';
+}
+
+export function kindLabelOf(kind: unknown, isImage: unknown): string {
+  if (kind === 'file') return isImage ? IMAGE_LABEL : KIND_LABEL.file!; // 'file' 必在 KIND_LABEL 中
+  return KIND_LABEL[kind as string] || KIND_LABEL.file!;
+}
+
+export function sizeTextOf(n: unknown): string {
+  const v = Math.max(0, Number(n) || 0);
+  if (!v) return '';
+  if (v >= 1024 ** 3) return `${(v / 1024 ** 3).toFixed(1)} GB`;
+  if (v >= 1024 ** 2) return `${(v / 1024 ** 2).toFixed(1)} MB`;
+  if (v >= 1024) return `${(v / 1024).toFixed(1)} KB`;
+  return `${v} B`;
+}
+
+export function hostOfUrl(href: unknown): string {
+  try {
+    return new URL(String(href || '')).host;
+  } catch {
+    return '';
+  }
+}
+
+/** 任务标题 = 正文（去 frontmatter）首个非空行，去 # 前缀，截 80 字。 */
+function taskTitleOf(body: unknown): string {
+  const text = String(stripFrontmatter(String(body || ''))).trim();
+  const first = text.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || '';
+  return first.replace(/^#+\s*/, '').trim().slice(0, 80);
+}
+
+/**
+ * task / ref 类资源的补充信息（标题、状态、topic、locator）。
+ *
+ * task 型附件存的是**地址**（target_key=topic_key + target_seq），不复制正文：
+ *   - 先按 meta.taskId 这条本地外键 join（任务跨 topic 搬家后 task_id 不变，
+ *     topic_key/seq 会变，这里据此发现地址漂移）；
+ *   - task_id 指向的行已被 purge 时，退回按存储地址 (target_key, target_seq) 查；
+ *   - 两者都没有 → 地址仍合法（seq 不复用），只是正文不可读（已清理）。
+ * 标题/状态是读任务时现算的展示字段，不落库（不存 body）。
+ */
+export function targetLookupsOf(db: any, rows: any): ResourceLookups {
+  const tasks = new Map<string, any>();
+  const refs = new Map<string, { refId: string; desc: string; locator: string }>();
+  if (!db) return { tasks, refs };
+  const taskSql = `SELECT t.id, t.seq, t.status, t.body, t.deleted_at,
+                     k.key AS topicKey, k.name AS topicName
+                 FROM tasks t JOIN topics k ON k.id = t.topic_id`;
+  for (const row of rows) {
+    const meta = metaOf(row);
+    if (baseKind(row) === 'task') {
+      const taskId = Number(meta.taskId) || 0;
+      const storedKey = String(row.targetKey || meta.topicKey || '');
+      const storedSeq = Number(row.targetSeq ?? meta.seq) || 0;
+      let info: any = null;
+      if (taskId) info = db.get(`${taskSql} WHERE t.id = :id`, { id: taskId });
+      if (!info && storedKey && storedSeq) {
+        info = db.get(`${taskSql} WHERE k.key = :key AND t.seq = :seq`, { key: storedKey, seq: storedSeq });
+      }
+      if (info) {
+        const topicKey = String(info.topicKey || '');
+        const seq = Number(info.seq) || 0;
+        tasks.set(row.id, {
+          taskId: Number(info.id),
+          seq,
+          status: String(info.status || ''),
+          deleted: !!info.deleted_at,
+          topicKey,
+          topicName: String(info.topicName || ''),
+          title: taskTitleOf(info.body),
+          address: `${topicKey}:${seq}`,
+          storedAddress: `${storedKey}:${storedSeq}`,
+          addressDrift: topicKey !== storedKey || seq !== storedSeq,
+          purged: false,
+          resolved: true,
+        });
+      } else {
+        tasks.set(row.id, {
+          taskId: 0,
+          seq: storedSeq,
+          status: '',
+          deleted: false,
+          topicKey: storedKey,
+          topicName: '',
+          title: '',
+          address: `${storedKey}:${storedSeq}`,
+          storedAddress: `${storedKey}:${storedSeq}`,
+          addressDrift: false,
+          purged: true,
+          resolved: false,
+        });
+      }
+    }
+    if (baseKind(row) === 'ref') {
+      const id = String(meta.refId || row.targetKey || '');
+      if (!id || refs.has(id)) continue;
+      const r = db.get('SELECT id, locator, "desc" FROM refs WHERE id = :id', { id });
+      if (r) refs.set(id, { refId: String(r.id), desc: String(r.desc || ''), locator: String(r.locator || '') });
+    }
+  }
+  return { tasks, refs };
+}
+
+export interface FileStateOpts {
+  localPath?: string;
+  storage?: string;
+  name?: string;
+  size?: unknown;
+}
+
+/** 文件型资源的可达性：本机有盘上副本 → 绝对路径；否则只留 fileId。 */
+export function fileStateOf(a: any, { localPath = '', storage = '', name = '', size }: FileStateOpts = {}): any {
+  const fileId = String(a.fileId || a.id || '');
+  const path = String(localPath || '');
+  const exists = !!path && existsSync(path);
+  const nextSize = size === undefined || size === null ? a.size : Number(size) || 0;
+  return {
+    ...a,
+    fileId,
+    name: name || a.name,
+    size: nextSize,
+    sizeText: sizeTextOf(nextSize),
+    storage: storage || a.storage || 'local',
+    localPath: exists ? path : '',
+    exists,
+    synced: exists,
+    // 本地附件没有「同步」这一步；字段保留给旧模板判断（恒为空）
+    syncCmd: '',
+    needsSync: false,
+    cmd: '',
+    locator: exists ? path : `本机缺失（fileId ${fileId}）`,
+    usage: exists
+      ? `已在本机：直接读取 ${path}`
+      : `本机附件仓没有这个文件（fileId ${fileId}）——请向提交方确认原始文件`,
+  };
+}
+
+/** 附件视图模型的查找表（task / ref 的补充信息） */
+export interface ResourceLookups {
+  tasks?: Map<string, any>;
+  refs?: Map<string, { refId: string; desc: string; locator: string }>;
+}
+
+export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
+  const kind = baseKind(row);
+  const meta = metaOf(row);
+  const role = String(row.role || 'inline');
+  // attach/doc = 附件区；inline/reference = 正文（reference 是正文里的内部资源链接）
+  const origin = role === 'attach' || role === 'doc' ? 'area' : 'inline';
+  const isImage = kind === 'file' && !!(meta.isImage || isImageName(row.name, row.mime));
+  const size = Number(row.size) || 0;
+  const base: any = {
+    id: String(row.id || ''),
+    kind,
+    kindLabel: kindLabelOf(kind, isImage),
+    isImage,
+    name: String(row.name || row.id || ''),
+    size,
+    sizeText: sizeTextOf(size),
+    mime: String(row.mime || ''),
+    role,
+    position: Number(row.position) || 0,
+    // 边上的说明（desc，#162）：attach --note 的落点；交付清单按它渲染
+    note: String(row.note || ''),
+    origin,
+    originLabel: ORIGIN_LABEL[origin],
+    // 兼容旧字段名（旧模板/旧 CLI 输出仍在读 area/areaLabel）
+    area: origin,
+    areaLabel: ORIGIN_LABEL[origin],
+    storage: kind === 'file' ? String(row.storage || '')
+      : kind === 'url' ? 'url'
+        : kind === 'mdfile' || kind === 'folder' ? 'external' : 'internal',
+    synced: kind !== 'file',
+    localPath: '',
+    targetKind: String(row.targetKind || ''),
+    targetKey: String(row.targetKey || ''),
+    targetSeq: row.targetSeq === null || row.targetSeq === undefined ? null : Number(row.targetSeq),
+  };
+
+  if (kind === 'file') {
+    return fileStateOf({ ...base, fileId: base.id, target: '' }, { localPath: '', storage: row.storage });
+  }
+
+  if (kind === 'url') {
+    const href = String(row.url || meta.url || '');
+    return {
+      ...base,
+      url: href,
+      href,
+      host: hostOfUrl(href),
+      target: '',
+      needsSync: false,
+      cmd: '',
+      locator: href,
+      usage: `外部链接，可直接抓取：${href}`,
+    };
+  }
+
+  if (kind === 'task') {
+    // task 型附件只存地址（target_key + target_seq）与本地 join 用的 taskId，
+    // 正文/标题都在读取时从 tasks 表现算——任务改过内容，这里会跟着变。
+    const info = (lookups.tasks && lookups.tasks.get(base.id)) || null;
+    const storedKey = String(row.targetKey || meta.topicKey || '');
+    const storedSeq = Number(row.targetSeq ?? meta.seq) || 0;
+    const resolved = !!(info && info.resolved);
+    const taskId = resolved ? Number(info.taskId) || 0 : 0;
+    const seq = info && info.seq ? info.seq : storedSeq;
+    const topicKey = info && info.topicKey ? info.topicKey : storedKey;
+    const topicName = String((info && info.topicName) || '');
+    const title = resolved ? String(info.title || `任务 #${seq}`) : '';
+    const status = resolved ? String(info.status || '') : '';
+    const statusLabel = resolved ? STATUS_LABEL[status] || status || '未知' : '已清理';
+    const address = `${topicKey}:${seq}`;
+    const storedAddress = `${storedKey}:${storedSeq}`;
+    const addressDrift = !!(info && info.addressDrift);
+    const showCmd = `nx-kv localtask show --id ${seq}${topicKey ? ` --key ${topicKey}` : ''}`;
+    const place = topicName || topicKey;
+    const name = resolved ? `#${seq} ${title}` : `#${storedSeq} 已清理任务`;
+    const locator = `${name}${place ? ` · ${place}` : ''}`;
+    return {
+      ...base,
+      // name 只作插入时的兜底；展示优先用实时标题（见 name 覆盖）
+      name,
+      taskId,
+      topicKey,
+      topicName,
+      seq,
+      title,
+      status,
+      statusLabel,
+      deleted: !!(info && info.deleted),
+      resolved,
+      purged: !resolved,
+      address,
+      storedAddress,
+      addressDrift,
+      showCmd,
+      target: locator,
+      needsSync: false,
+      cmd: resolved ? showCmd : '',
+      locator,
+      usage: resolved
+        ? `这是任务引用而不是副本（地址 ${address}）：用 ${showCmd} 读取最新正文；当前状态 ${statusLabel}${info && info.deleted ? '（已软删）' : ''}${addressDrift ? `；任务已移动到 ${address}，原地址 ${storedAddress}` : ''}。任务正文被修改后，读到的是最新内容。`
+        : `这是任务引用（地址 ${address}），但目标任务已被清理：地址仍可核验，正文不可读。`,
+    };
+  }
+
+  if (kind === 'folder') {
+    // 本地文件夹指针：库里只有 abs_path，目录内容不入库；交付只给路径让 agent 自己列目录。
+    const absPath = String(row.absPath || row.abs_path || meta.absPath || '');
+    const exists = !!absPath && existsSync(absPath);
+    const missing = !exists || (row.missingAt !== null && row.missingAt !== undefined);
+    const title = String(row.name || (absPath ? absPath.split(/[\\/]/).pop() : '') || base.id);
+    const readCmd = `nx-kv file content ${base.id}`;
+    const locator = `${title}${absPath ? `（${absPath}）` : ''}`;
+    return {
+      ...base,
+      absPath,
+      exists,
+      missing,
+      fileId: base.id,
+      title,
+      readCmd,
+      target: absPath || locator,
+      needsSync: false,
+      cmd: readCmd,
+      locator,
+      usage: missing
+        ? `文件夹当前不可访问（${absPath || '路径为空'}）：请确认目录是否还在本机`
+        : `这是本地文件夹的路径指针（目录内容不在库里）：先列目录 ${absPath} 看结构，再用 Read 读需要的文件`,
+    };
+  }
+
+  if (kind === 'mdfile') {
+    // 外部 md 文件指针：字节在用户磁盘原地（storage='external'），库里只有 abs_path + hash。
+    // 渲染分支只看 kind，不看 MIME / 扩展名。
+    const absPath = String(row.absPath || row.abs_path || meta.absPath || '');
+    const anchorDir = String(row.anchorDir || row.anchor_dir || meta.anchorDir || '');
+    const exists = !!absPath && existsSync(absPath);
+    const missing = !exists || (row.missingAt !== null && row.missingAt !== undefined);
+    const title = String(row.name || (absPath ? absPath.split(/[\\/]/).pop() : '') || base.id);
+    const readCmd = `nx-kv docs mdfile ${base.id}`;
+    const locator = `${title}${absPath ? `（${absPath}）` : ''}`;
+    return {
+      ...base,
+      absPath,
+      anchorDir,
+      exists,
+      missing,
+      fileId: base.id,
+      title,
+      readCmd,
+      target: absPath || locator,
+      needsSync: false,
+      cmd: readCmd,
+      locator,
+      usage: missing
+        ? `外部 md 文件当前不可读（${absPath || '路径为空'}）：用 ${readCmd} 查看状态；文件恢复后自动可读（不软删、不删行）`
+        : `这是外部 md 文件的路径指针（源文件不在库里）：用 ${readCmd} 读取磁盘当前内容（读时核对指纹）`,
+    };
+  }
+
+  // ref：文档库里的文档（v7 起 ref 是 DB 实体，没有物理路径）。
+  // 标题口径（#168）：**文档标题**（正文首行的 # 标题）优先 —— 服务端在标注层
+  // （delivery/attach.ts 的 annotateRefTitles）读库补上并覆盖 title/name；
+  // 这里先给 desc / 名字占位，读不到标题时前端回落它。
+  const info = lookups.refs && lookups.refs.get(String(meta.refId || row.targetKey || ''));
+  const refId = String(meta.refId || row.targetKey || (info && info.refId) || '');
+  const desc = String((info && info.desc) || '');
+  const locator = String((info && info.locator) || '');
+  const storedName = String(row.name || '').replace(/\.md$/i, '').trim();
+  const locName = locator.replace(/\\/g, '/').split('/').pop()?.replace(/\.md$/i, '') || '';
+  const title = storedName || desc || locName || refId || '未命名文档';
+  const readCmd = refId ? `nx-kv docs get --ref ${refId}` : '';
+  return {
+    ...base,
+    refId,
+    desc,
+    title,
+    readCmd,
+    target: title,
+    needsSync: false,
+    cmd: readCmd,
+    locator: title,
+    usage: readCmd
+      ? `这是文档库里的文档（refId ${refId}）：用 ${readCmd} 读取正文`
+      : `这是文档库里的文档（refId 缺失）：先用 nx-kv docs list 定位`,
+  };
+}

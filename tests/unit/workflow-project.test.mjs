@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import '../../src/modules/tasktool/plugins/index.js';
+import '../../src/modules/goals/plugins/index.js';
 import { applySnapshotToTopic, topicToSnapshot } from '../../src/core/workflow/project.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

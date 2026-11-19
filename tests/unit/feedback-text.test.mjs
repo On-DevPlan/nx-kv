@@ -17,6 +17,11 @@ import {
   bodyHasAck,
   appendAckFeedback,
   reorderRoundsForDelivery,
+  ACK_CALLOUT_TYPE,
+  FEEDBACK_CALLOUT_TYPE,
+  parseCalloutHead,
+  calloutRoleOf,
+  calloutTypeTitleConflict,
 } from '../../src/shared/feedback-text.js';
 
 test('quoteBlock：划选原文 → 锚定引用块，多行逐行加 >', () => {
@@ -72,6 +77,46 @@ test('段名常量与前端 reopen-text.js 的 re-export 一致（两处不许�
   // #144 轮次 callout 原语也走同一份 re-export
   assert.equal(fe.appendAckFeedback, appendAckFeedback);
   assert.equal(fe.nextRoundOf, nextRoundOf);
+});
+
+// ─── 语义判据统一：类型优先、标题回退（warning/note 混用治理）────────────
+
+test('parseCalloutHead：抽出 类型/标题/轮次；非 callout 返回 null', () => {
+  assert.deepEqual(parseCalloutHead('> [!NOTE] 第 3 轮 · 完成总结'), {
+    type: 'NOTE', title: '第 3 轮 · 完成总结', round: 3,
+  });
+  assert.equal(parseCalloutHead('> [!WARNING] 第 12 轮 · 验收反馈').round, 12);
+  assert.equal(parseCalloutHead('> 普通引用'), null);
+  assert.equal(parseCalloutHead('## 上一轮完成总结'), null);
+  assert.equal(parseCalloutHead('> [!note] 第 2 轮 · 完成总结').type, 'NOTE', '类型归一为大写');
+  assert.equal(parseCalloutHead('> [!NOTE] 完成总结').round, 0, '无轮次号 → 0');
+});
+
+test('calloutRoleOf：NOTE=完成总结 / WARNING=验收反馈；未知类型回退标题', () => {
+  assert.equal(calloutRoleOf(parseCalloutHead('> [!NOTE] 第 1 轮 · 完成总结')), 'summary');
+  assert.equal(calloutRoleOf(parseCalloutHead('> [!WARNING] 第 1 轮 · 验收反馈')), 'feedback');
+  assert.equal(calloutRoleOf(parseCalloutHead('> [!TIP] 第 1 轮 · 完成总结')), 'summary', '未知类型按标题回退');
+  assert.equal(calloutRoleOf(parseCalloutHead('> [!CAUTION] 第 1 轮 · 验收反馈')), 'feedback');
+  assert.equal(calloutRoleOf(null), null);
+});
+
+test('calloutTypeTitleConflict：类型与标题语义写反时报警（正常正文恒 false）', () => {
+  assert.equal(calloutTypeTitleConflict(parseCalloutHead(`> [!${ACK_CALLOUT_TYPE}] 第 1 轮 · 完成总结`)), false);
+  assert.equal(calloutTypeTitleConflict(parseCalloutHead(`> [!${FEEDBACK_CALLOUT_TYPE}] 第 1 轮 · 验收反馈`)), false);
+  assert.equal(calloutTypeTitleConflict(parseCalloutHead(`> [!${ACK_CALLOUT_TYPE}] 第 1 轮 · 验收反馈`)), true);
+  assert.equal(calloutTypeTitleConflict(parseCalloutHead(`> [!${FEEDBACK_CALLOUT_TYPE}] 第 1 轮 · 完成总结`)), true);
+  assert.equal(calloutTypeTitleConflict(parseCalloutHead('> [!TIP] 第 1 轮 · 完成总结')), false, '未知类型不报冲突');
+});
+
+test('类型优先于标题：写反的 callout 不再被当成完成总结（轮次/去重同口径）', () => {
+  // 琥珀警告块，标题却写「完成总结」——旧实现靠标题把它当 ack，新实现按 WARNING 当反馈
+  const mislabeled = '> [!WARNING] 第 2 轮 · 完成总结\n> 这是要改的地方';
+  assert.equal(countAckRounds(mislabeled), 0, 'WARNING 块不算 ack 轮');
+  assert.equal(bodyHasAck(mislabeled, '这是要改的地方'), false, 'WARNING 块不算 ack 总结');
+  // 反向写反也算对：NOTE 挂「验收反馈」标题 → 仍按 NOTE 当完成总结
+  const mislabeledAck = '> [!NOTE] 第 5 轮 · 验收反馈\n> 上轮结论';
+  assert.equal(countAckRounds(mislabeledAck), 5, 'NOTE 块算 ack 轮，轮次取标题号');
+  assert.equal(bodyHasAck(mislabeledAck, '上轮结论'), true);
 });
 
 // ─── 轮次 callout（#144）────────────────────────────────────────────
@@ -172,6 +217,27 @@ const roundBody = (n, ack, fb) => [
 test('reorderRoundsForDelivery：无轮次段 → 原样返回', () => {
   assert.equal(reorderRoundsForDelivery('# 任务\n\n正文'), '# 任务\n\n正文');
   assert.equal(reorderRoundsForDelivery(''), '');
+});
+
+test('reorderRoundsForDelivery：写反的 callout 按类型归类（feedback 置顶、不当总结）', () => {
+  // 类型 WARNING、标题写「完成总结」：应按反馈置顶，而非当成上轮总结
+  const body = [
+    '# T', '', '原始需求。', '',
+    '> [!NOTE] 第 1 轮 · 完成总结',
+    '> 第一轮总结',
+    '',
+    '> [!WARNING] 第 2 轮 · 完成总结',
+    '> 这里要改A',
+    '',
+    '> [!NOTE] 第 2 轮 · 验收反馈',
+    '> 这里要改B',
+  ].join('\n');
+  const out = reorderRoundsForDelivery(body);
+  const warn = out.indexOf('> [!WARNING] 第 2 轮 · 完成总结');
+  const noteFb = out.indexOf('> [!NOTE] 第 2 轮 · 验收反馈');
+  assert.ok(warn > 0 && noteFb > 0, '两个写反的块都保留');
+  assert.ok(warn < noteFb, 'WARNING 块先置顶（feedback 在前），NOTE 块随后（summary 在后）');
+  assert.ok(out.includes('> 这里要改A') && out.includes('> 这里要改B'), '正文未被截断');
 });
 
 test('reorderRoundsForDelivery：骨架置顶 + 最新轮完整 + 历史一行摘要', () => {

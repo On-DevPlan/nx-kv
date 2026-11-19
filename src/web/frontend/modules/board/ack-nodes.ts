@@ -18,6 +18,7 @@
 // 纯函数、零依赖（只 import 同为纯前端的 md-parse.js）：前端取节点、单测都能用。
 
 import { liveBodyBlocks } from '../md/md-parse.js';
+import { parseCalloutHead, calloutRoleOf, type CalloutHead } from '../../../../shared/feedback-text.js';
 
 /** 一轮 ack 节点（extractAckNodes 的出站形状）。 */
 export interface AckNode {
@@ -34,23 +35,19 @@ export const ACK_NODE_HEADING = '## 上一轮完成总结';
 export const ACK_NODE_FEEDBACK_HEADING = '## 验收反馈';
 
 // callout 形态（#144）：`> [!NOTE] 第 1 轮 · 完成总结` / `> [!WARNING] 第 1 轮 · 验收反馈`
-const CALLOUT_TITLE_RE = /^>\s*\[![A-Za-z][\w-]*\][ \t]*(.*)$/;
-const ACK_TITLE_RE = /完成总结/;
-const FB_TITLE_RE = /反馈/;
-const ROUND_NUM_RE = /第\s*(\d+)\s*轮/;
+// 语义角色判据与 reorderRounds / countAckRounds 共用 feedback-text 的「类型优先」口径。
 
-/** callout 块 → { title, body }（body 为剥掉 `> ` 的正文行）；不是 callout 返回 null */
-function calloutOf(block: unknown): { title: string; body: string } | null {
+/** callout 块 → { head, body }（body 为剥掉 `> ` 的正文行）；不是 callout 返回 null */
+function calloutOf(block: unknown): { head: CalloutHead; body: string } | null {
   const lines = String(block ?? '').split('\n');
-  const firstLine = lines[0];
-  const m = firstLine ? firstLine.match(CALLOUT_TITLE_RE) : null;
-  if (!m) return null;
+  const head = parseCalloutHead(lines[0]);
+  if (!head) return null;
   const body = lines
     .slice(1)
     .map((l) => l.replace(/^>[ \t]?/, ''))
     .filter((l) => l.trim() !== '')
     .join('\n');
-  return { title: String(m[1] ?? '').trim(), body };
+  return { head, body };
 }
 
 /**
@@ -79,9 +76,9 @@ export function extractAckNodes(body: unknown): AckNode[] {
   blocks.forEach((raw, i) => {
     const b = String(raw || '').trim();
     const co = calloutOf(b);
-    if (co && ACK_TITLE_RE.test(co.title)) {
+    if (co && calloutRoleOf(co.head) === 'summary') {
       // callout 完成总结块：轮次号优先取标题里的「第 N 轮」
-      const rNum = Number((co.title.match(ROUND_NUM_RE) || [])[1]);
+      const rNum = co.head.round;
       cur = {
         round: Number.isFinite(rNum) && rNum > 0 ? rNum : out.length + 1,
         blockIndex: i,
@@ -105,7 +102,7 @@ export function extractAckNodes(body: unknown): AckNode[] {
       phase = 'ack';
       return;
     }
-    if (co && FB_TITLE_RE.test(co.title)) {
+    if (co && calloutRoleOf(co.head) === 'feedback') {
       // callout 反馈块归属**当前正在填的 ack 段**（孤儿反馈块不算节点）
       if (cur && phase === 'ack') {
         cur.feedbackBlockIndex = i;

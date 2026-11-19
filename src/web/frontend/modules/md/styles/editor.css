@@ -287,6 +287,14 @@
 .md-callout .md-callout-b{font-size:13px;line-height:1.55;color:var(--ink-2,#4B515A)}
 .md-callout .md-callout-b>:first-child{margin-top:0}
 .md-callout .md-callout-b>:last-child{margin-bottom:0}
+/* NOTE 显式选择器：与 WARNING/TIP/IMPORTANT/CAUTION 对齐，避免调基础 .md-callout 时
+   连带改动完成总结块；值与基础样式一致（绿 accent）。 */
+.md-callout-note{
+  border-color:var(--mdw-accent-line,#B7D4C8);
+  border-left-color:var(--mdw-accent,#2F6F5E);
+  background:var(--mdw-accent-soft,#E8F2EE);
+}
+.md-callout-note .md-callout-t{color:var(--mdw-accent,#2F6F5E)}
 .md-callout-warning{
   border-color:#E8D9B5;border-left-color:#C08A2D;background:#FBF3E1;
 }

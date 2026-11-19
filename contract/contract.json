@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
-  "version": "0.65.3",
-  "hash": "09c3f5e9af8df5e3",
+  "version": "0.65.4",
+  "hash": "cfca3960fe798c82",
   "actions": [
     {
       "id": "localtask.add",
@@ -1136,7 +1136,7 @@
           "kind": "string",
           "positional": false,
           "required": false,
-          "hint": "下一轮任务正文（Markdown；保住 frontmatter）；不给则继承旧正文，只带 --feedback 时追加完成总结+反馈段"
+          "hint": "下一轮任务正文（Markdown；保住 frontmatter）；不给则继承旧正文，只带 --feedback 时追加轮次 callout（[!NOTE] 完成总结 + [!WARNING] 验收反馈）"
         },
         {
           "name": "kind",
@@ -1157,14 +1157,14 @@
           "kind": "string",
           "positional": false,
           "required": false,
-          "hint": "用户反馈原文；派生出的新任务正文会追加反馈段（base = 服务端最新正文，防连续评论丢内容）"
+          "hint": "用户反馈原文；派生出的新任务正文会追加 [!WARNING] 验收反馈 callout（base = 服务端最新正文，防连续评论丢内容）"
         },
         {
           "name": "feedbackHeading",
           "kind": "string",
           "positional": false,
           "required": false,
-          "hint": "追加反馈段的段名（缺省 comment=## 反馈修改 / reopen=## 验收反馈）"
+          "hint": "反馈段形态：comment=旧段名 ## 反馈修改（不进轮次）；reopen=轮次 callout（[!NOTE] 完成总结 + [!WARNING] 验收反馈，标题含轮次号）"
         },
         {
           "name": "feedbackBold",

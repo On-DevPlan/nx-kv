@@ -138,6 +138,12 @@ flowchart TD
 | N44 | **schema 版本** | `meta.schema_version`；`src/core/db/migrations/v*.sql` | 数据库结构版本，当前 **v4**；迁移只允许低版本向高版本追加。 | `src/core/db/migrations/*`；`src/core/db/*` | 直接改已发布的迁移文件；跳过版本直接建表。 |
 | N45 | **看板**（board，历史别名） | CLI `board`；frontmatter `board`；store `boards[]`；docs 根 `board/` | 「项目组」的历史叫法；CLI/字段保留。另有「目录看板」指面板里的目录视图，不是实体。 | `v1.sql` `repos.type` 注释；`src/modules/repos/repo/rows.js`；`src/modules/docs/paths.js` | 把「看板」当独立实体；把「目录看板」当项目组。 |
 
+### 2.8 反馈与轮次 callout
+
+| # | 规范名 | 代码标识（表 / 字段 / 函数） | 定义 | 判定依据 | 常见误用 |
+|---|--------|------------------------------|------|----------|----------|
+| N46 | **轮次 callout** | `> [!NOTE] 第 N 轮 · 完成总结` / `> [!WARNING] 第 N 轮 · 验收反馈`；`ACK_CALLOUT_TYPE` / `FEEDBACK_CALLOUT_TYPE`；`feedback-text.ts` | 追加在任务正文末尾、标识一轮 ack 的醒目块：NOTE 绿＝上轮 agent 的完成总结，WARNING 琥珀＝用户验收反馈。**语义判据以 callout 类型为准**（标题文本仅在类型不认识时回退）；轮次号取标题里的「第 N 轮」。历史正文的 `## 上一轮完成总结` / `## 验收反馈` 段名只做兼容读取，不再新写。 | `src/shared/feedback-text.ts` `parseCalloutHead()` / `calloutRoleOf()`；`src/web/frontend/modules/board/ack-nodes.ts`；`md/styles/editor.css` | 靠标题文本猜角色（写反的 callout 会被当成另一种）；把 `[!NOTE]` 当文档备注（`note` 在词表里另有 N14/N21/N24 的「注解」义）；把交付重排用的 `[!WARNING]` 与 `readRefDocs` 的 `warnings[]` 告警数组混为一谈。 |
+
 ---
 
 ## 3. 易混词对照
@@ -159,6 +165,8 @@ flowchart TD
 | C13 | 看板（项目组别名） | 目录看板（面板视图） | 前者是实体别名；后者是 UI 视图名。 | 「项目组」指实体；「目录看板」指视图。 | 用「看板」既指实体又指视图。 |
 | C14 | 文档（`refs`） | 文件（附件 `kind=file`） | 文档是 md 索引行；文件是附件资源（图片/二进制）。 | 文档走 `docs`；文件走 `docs attach` / `file`。 | 把图片叫文档；把 md 叫附件文件。 |
 | C15 | 主题 key（`topics.key`） | 主题行 id（`topics.id`） | `key` 是派生标识；`id` 是数据库自增主键。 | 对外用 `key`；内部关联用 `id`。 | 用 `topics.id` 当 CLI 主题 key。 |
+| C16 | 轮次 callout `[!NOTE]`（完成总结） | 轮次 callout `[!WARNING]`（验收反馈） | 同为正文里的轮次块，类型决定语义：NOTE＝上轮总结（绿），WARNING＝用户要改的反馈（琥珀）；判定以类型为准，标题回退。 | 写正文用 `feedback-text.ts` 的两个常量；读正文靠 `calloutRoleOf()`。 | 按标题文本猜角色；把两者写反（`calloutTypeTitleConflict()` 可检出）。 |
+| C17 | `[!NOTE]`（callout 类型） | `note` 注解字段（N14/N21/N24）/ `warnings[]`（读取告警） | callout 的大写 NOTE 只是醒目块类型；小写 `note` 字段是组内/文档绑定的注解文本；`warnings[]` 是迁移/读取的告警数组，三者互不相干。 | callout 写 `[!NOTE]` 大写；注解写 `note` 字段；告警走 `warnings[]`。 | 把 `[!WARNING]` 反馈块与 `warnings[]` 告警当一回事；把组内描述 `note` 塞进轮次块。 |
 
 ---
 

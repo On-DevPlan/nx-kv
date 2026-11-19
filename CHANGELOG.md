@@ -2,6 +2,26 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.65.4] - 2026-11-19 反馈轮次 callout 语义治理：类型为主判据，写反可检出
+
+### Changed
+
+- **callout 类型承担语义**（warning/note 混用审计）：此前重排 / 定位轨 / 去重都靠**标题
+  文本**（完成总结 / 验收反馈）判定语义，`[!NOTE]` / `[!WARNING]` 只是给渲染器看的
+  装饰——「琥珀色警告块在结构上被当成上轮总结」这类分叉无人能拦。现收口到
+  `feedback-text.ts` 三个统一原语：`parseCalloutHead()`（解析类型/标题/轮次号）、
+  `calloutRoleOf()`（**类型为主判据**，NOTE=完成总结 / WARNING=验收反馈；标题仅在
+  类型不认识时回退）、`calloutTypeTitleConflict()`（写反守卫）。下游四处
+  （`countAckRounds` / `bodyHasAck` / `reorderRoundsForDelivery` / `extractAckNodes`）
+  全部改走这套，各文件本地正则删除。
+- `.md-callout-note` 显式样式选择器补齐（editor.css），与 WARNING/TIP/IMPORTANT/CAUTION
+  四类对齐，避免调基础 `.md-callout` 时连带改动完成总结块。
+- `localtask.reopen` 契约 hint 校准为 callout 口径（zod `.describe()` 源上修改，契约与
+  Dart 包按流程重新生成，指纹 `cfca3960fe798c82`）；术语表新增「轮次 callout」条目与
+  NOTE/WARNING/`note` 注解字段/`warnings[]` 告警数组三组易混词对照；A05 措辞统一。
+- 守卫测试：写反的 callout（`[!WARNING]` 标完成总结）按类型归类、冲突检测恒可检出，
+  锁死正反两种情形。
+
 ## [0.65.3] - 2026-11-19 五域制目录重组：删除引擎门，领取/交付/目标各归其位（#237）
 
 ### Changed

@@ -85,9 +85,73 @@ export const ACK_CALLOUT_TYPE = 'NOTE';
 /** 验收反馈 callout 类型 */
 export const FEEDBACK_CALLOUT_TYPE = 'WARNING';
 
-const ACK_TITLE_RE = /完成总结/;
+// ─── 语义判据统一（#混用治理）─────────────────────────────────────────
+//
+// 此前重排 / 定位轨 / 去重都靠**标题文本**（完成总结 / 验收反馈）判定语义，
+// callout 的 `[!NOTE]` / `[!WARNING]` 只是给渲染器看的装饰。于是「琥珀色警告
+// 块在结构上被当成上轮总结」这类分叉无人能拦。现在收口到一处：
+//   类型为主判据（NOTE=完成总结 / WARNING=验收反馈），标题文本只在类型不认识
+//   时回退（兼容自定义类型与历史手工正文）。视觉色块与结构语义由同一常量决定。
+
+/** 一轮 callout 的语义角色：summary=上轮完成总结 / feedback=验收反馈 */
+export type CalloutRole = 'summary' | 'feedback';
+
+/** callout 首行的解析结果 */
+export interface CalloutHead {
+  /** 类型标记（大写归一，如 NOTE / WARNING / TIP） */
+  type: string;
+  /** 类型标记后的标题文本 */
+  title: string;
+  /** 标题里的「第 N 轮」，没有为 0 */
+  round: number;
+}
+
 const ROUND_NUM_RE = /第\s*(\d+)\s*轮/;
-const CALLOUT_TITLE_RE = /^>\s*\[![A-Za-z][\w-]*\][ \t]*(.*)$/;
+const CALLOUT_HEAD_RE = /^>\s*\[!([A-Za-z][\w-]*)\][ \t]*(.*)$/;
+const SUMMARY_TITLE_RE = /完成总结/;
+const FEEDBACK_TITLE_RE = /反馈/;
+
+const ROLE_OF_TYPE: Record<string, CalloutRole> = {
+  [ACK_CALLOUT_TYPE.toUpperCase()]: 'summary',
+  [FEEDBACK_CALLOUT_TYPE.toUpperCase()]: 'feedback',
+};
+
+/** 解析 callout 首行 → { type, title, round }；不是 callout 返回 null */
+export function parseCalloutHead(line: unknown): CalloutHead | null {
+  const m = String(line ?? '').match(CALLOUT_HEAD_RE);
+  if (!m) return null;
+  const title = String(m[2] ?? '').trim();
+  const r = title.match(ROUND_NUM_RE);
+  return {
+    type: String(m[1] ?? '').toUpperCase(),
+    title,
+    round: r ? (Number(r[1]) || 0) : 0,
+  };
+}
+
+function roleOfTitle(title: string): CalloutRole | null {
+  if (SUMMARY_TITLE_RE.test(title)) return 'summary';
+  if (FEEDBACK_TITLE_RE.test(title)) return 'feedback';
+  return null;
+}
+
+/** 语义角色：类型为主判据，标题文本为回退（类型不认识时才看标题） */
+export function calloutRoleOf(head: CalloutHead | null | undefined): CalloutRole | null {
+  if (!head) return null;
+  return ROLE_OF_TYPE[head.type] ?? roleOfTitle(head.title);
+}
+
+/**
+ * 类型与标题语义是否冲突（守卫用）：正常正文恒为 false。
+ * 冲突时 calloutRoleOf 以类型为准——渲染色块与结构语义保持一致，
+ * 不会被「写着 WARNING 却是完成总结」这类正文悄悄带偏。
+ */
+export function calloutTypeTitleConflict(head: CalloutHead | null | undefined): boolean {
+  if (!head) return false;
+  const byType = ROLE_OF_TYPE[head.type];
+  const byTitle = roleOfTitle(head.title);
+  return !!byType && !!byTitle && byType !== byTitle;
+}
 
 /** ack callout 标题：`第 N 轮 · 完成总结` */
 export function ackCalloutTitle(round: unknown): string {
@@ -124,19 +188,18 @@ export function feedbackCalloutSection({ round, quote, feedback, bold = false }:
   return `> [!${FEEDBACK_CALLOUT_TYPE}] ${feedbackCalloutTitle(round)}\n${calloutBody(inner)}`;
 }
 
-/** 正文里已有多少轮 ack：旧段名各算一轮；callout 标题带轮次号时取最大号（防手工删段后编号回退） */
+/** 正文里已有多少轮 ack：旧段名各算一轮；callout 以类型判角色，标题带轮次号时取最大号（防手工删段后编号回退） */
 export function countAckRounds(base: unknown): number {
   const text = String(base ?? '');
   let n = 0;
   let max = 0;
   const legacy = text.match(/^## 上一轮完成总结\s*$/gm);
   n += legacy ? legacy.length : 0;
-  for (const m of text.matchAll(/^>\s*\[![A-Za-z][\w-]*\][ \t]*(.*)$/gm)) {
-    const title = String(m[1] ?? '');
-    if (!ACK_TITLE_RE.test(title)) continue;
+  for (const line of text.split('\n')) {
+    const head = parseCalloutHead(line);
+    if (!head || calloutRoleOf(head) !== 'summary') continue;
     n += 1;
-    const r = title.match(ROUND_NUM_RE);
-    if (r) max = Math.max(max, Number(r[1]));
+    if (head.round) max = Math.max(max, head.round);
   }
   return Math.max(n, max);
 }
@@ -154,9 +217,8 @@ export function bodyHasAck(base: unknown, ack: unknown): boolean {
   if (b.includes(`${ACK_SUMMARY_HEADING}\n\n${a}`)) return true;
   const lines = b.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? '';
-    const m = line.match(CALLOUT_TITLE_RE);
-    if (!m || !ACK_TITLE_RE.test(String(m[1] ?? ''))) continue;
+    const head = parseCalloutHead(lines[i] ?? '');
+    if (!head || calloutRoleOf(head) !== 'summary') continue;
     const body: string[] = [];
     for (let j = i + 1; j < lines.length && (lines[j] ?? '').startsWith('>'); j++) {
       body.push((lines[j] ?? '').replace(/^>[ \t]?/, ''));
@@ -196,8 +258,6 @@ export function appendAckFeedback({ base, ack, quote, feedback, bold = true, rou
 //
 // 纯函数、零依赖；无轮次段时原样返回（老任务 / 单轮任务零影响）。
 
-const DELIVERY_ROUND_RE = /^>\s*\[![A-Za-z][\w-]*\][^\n]*第\s*(\d+)\s*轮[^\n]*(完成总结|验收反馈)/;
-
 const truncLine = (s: unknown, n = 60): string => {
   const t = String(s || '').trim();
   return t.length > n ? `${t.slice(0, n)}…` : t;
@@ -207,7 +267,7 @@ const truncLine = (s: unknown, n = 60): string => {
 function firstContentLine(block: unknown): string {
   const line = String(block || '')
     .split('\n')
-    .filter((l) => l.trim() && !CALLOUT_TITLE_RE.test(l))
+    .filter((l) => l.trim() && !parseCalloutHead(l))
     .map((l) => l.replace(/^>\s?/, '').replace(/\*\*/g, '').trim())
     .find((l) => l);
   return line || '';
@@ -225,13 +285,13 @@ export function reorderRoundsForDelivery(body: unknown): string {
   const rounds = new Map<number, RoundBlocks>(); // n → { ack, fb }
   const plain: string[] = [];
   for (const b of blocks) {
-    const m = b.match(DELIVERY_ROUND_RE);
-    if (m) {
-      const n = Number(m[1]);
-      const r: RoundBlocks = rounds.get(n) || {};
-      if (m[2] === '完成总结') r.ack = b;
+    const head = parseCalloutHead(String(b).split('\n')[0]);
+    const role = calloutRoleOf(head);
+    if (head && head.round && role) {
+      const r: RoundBlocks = rounds.get(head.round) || {};
+      if (role === 'summary') r.ack = b;
       else r.fb = b;
-      rounds.set(n, r);
+      rounds.set(head.round, r);
       continue;
     }
     plain.push(b);

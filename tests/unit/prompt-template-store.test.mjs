@@ -1,18 +1,21 @@
-// 段模板用户层存储（#161）：多模板 / 启用切换 / 删除回落 / 脏数据守卫；
+// 段模板用户层存储（#161 / #238）：多模板 / 启用切换 / 删除回落 / 脏数据守卫；
 // 以及 goals.prompt 的「出厂原文视为未自定义」收敛（customGoalPromptOf）。
+//
+// #238 起用户层落 settings 表的 `prompt.tplStore`（不再是 ~/.nx-kv/promptplug-templates.json），
+// 所以隔离靠 NX_KV_HOME（APP_DIR 在模块加载时固化）——必须在动态 import 之前设置。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// template-store 的落盘路径在模块加载时固化（APP_DIR）——先把 NX_KV_HOME 指到
-// 临时目录再动态 import（测试隔离惯例，绝不碰真实 ~/.nx-kv）。
 const root = mkdtempSync(join(tmpdir(), 'nx-kv-prompttpl-'));
 process.env.NX_KV_HOME = join(root, 'home');
+const home = process.env.NX_KV_HOME;
 
-const { segmentTemplatesOf, upsertTemplate, activateTemplate, deleteTemplate, activeTemplateTextOf } =
+const { segmentTemplatesOf, upsertTemplate, activateTemplate, deleteTemplate, activeTemplateTextOf, segmentKey, WHOLE_STORE_KEY } =
   await import('../../src/modules/promptplug/template-store.js');
+const { openStore, closeDb } = await import('../../src/core/db/index.js');
 const { TASK_GOAL_PROMPT_TEMPLATE, customGoalPromptOf, renderCustomGoalPrompt } = await import(
   '../../src/modules/promptplug/plugins/goal-prompt.js'
 );
@@ -32,6 +35,27 @@ test('新建用户模板 → 即启用；生效正文返回新建正文', () => 
   assert.equal(seg.activeId, hit.id);
   assert.equal(activeTemplateTextOf('timecheck'), '严格指令 {{task.id}}');
   assert.deepEqual(segmentTemplatesOf('timecheck').activeId, seg.activeId, '落盘可见');
+});
+
+test('落库实证：一段一个键 prompt.tpl.<segment>，不再写 legacy JSON、也不留整份键（#238）', () => {
+  const db = openStore();
+  const row = db.get('SELECT value FROM settings WHERE key = :k', { k: segmentKey('timecheck') });
+  assert.ok(row, 'settings 里应有 prompt.tpl.timecheck 行');
+  const stored = JSON.parse(row.value);
+  assert.equal(stored.items[0].text, '严格指令 {{task.id}}', '库值就是刚存的正文');
+  assert.equal(db.get('SELECT value FROM settings WHERE key = :k', { k: WHOLE_STORE_KEY }), null, '不该再有整份键');
+  assert.equal(existsSync(join(home, 'promptplug-templates.json')), false, '不该再生成裸 JSON');
+});
+
+test('按段拆键：改 ack 不会覆盖 timecheck（整份键时代的 lost update）', () => {
+  upsertTemplate({ segment: 'ack', name: 'ack 版', text: 'ack 正文' });
+  const db = openStore();
+  assert.equal(JSON.parse(db.get('SELECT value FROM settings WHERE key = :k', { k: segmentKey('ack') }).value).items[0].text, 'ack 正文');
+  assert.equal(
+    JSON.parse(db.get('SELECT value FROM settings WHERE key = :k', { k: segmentKey('timecheck') }).value).items[0].text,
+    '严格指令 {{task.id}}',
+    '另一段原样保留',
+  );
 });
 
 test('更新启用中的条目（带 id）→ 名字/正文变化，activeId 不变', () => {
@@ -61,12 +85,19 @@ test('删除启用中的条目 → 回落 builtin；items 摘除', () => {
   assert.equal(seg.items.length, 0);
 });
 
-test('guard：builtin 不落盘为用户条目；脏 text 不收', () => {
+test('guard：builtin 不落盘为用户条目；删空不建键', () => {
   const seg = segmentTemplatesOf('doneguard');
   assert.equal(seg.activeId, 'builtin');
   // upsert 不会创建 id=builtin 的条目（id 非 u_ 前缀且非 builtin 才改写既有……
   // builtin 是禁改的出厂正文，这里验「activate 只认已存在条目」即可）
   assert.equal(activateTemplate('doneguard', 'builtin').activeId, 'builtin');
+  // 从没写过的段删一条：返回默认且不为「删空」凭空建键
+  assert.deepEqual(deleteTemplate('context', 'u_不存在').items, []);
+  assert.equal(
+    openStore().get('SELECT value FROM settings WHERE key = :k', { k: segmentKey('context') }),
+    null,
+    'delete 不该给未写过的段建键',
+  );
 });
 
 test('customGoalPromptOf：出厂原文 / 空 → 未自定义；自定义原样保留', () => {
@@ -86,7 +117,8 @@ test('renderCustomGoalPrompt：未自定义 → 空串（渲染让位给段模�
   assert.equal(renderCustomGoalPrompt(ctx, '额外要求：{{goal.extra}}'), '额外要求：E');
 });
 
-test('清理临时目录', () => {
+test('清理临时目录（先关连接，Windows 上句柄不释放会 EBUSY）', () => {
+  closeDb();
   rmSync(root, { recursive: true, force: true });
   assert.ok(true);
 });

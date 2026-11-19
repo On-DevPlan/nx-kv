@@ -6,8 +6,11 @@
 //
 // 提示词模板模型（#152 重构）：
 //   - **模板正文的唯一真相是插件类**（modules/promptplug/plugins/*.ts 的 `templates`）。
-//     没有 JSON 注册表、没有 DB seed、没有「每区块 active + list」这套落库模型，
+//     没有 JSON 注册表、没有 DB seed、也没有「每区块 active + list」这套落库模型，
 //     也没有从库里派生出来的镜像——要用正文就读插件类（activeTemplateOf）。
+//   - #238 补上了**用户层**的落库（用户在设置页加/改/启用的那几条）：那是 promptplug
+//     自己的键（settings 表，一段一个 `prompt.tpl.<段>`），由 template-store.ts 读写，
+//     与本文件的 lt.* 无关。
 //   - 因此本文件只剩两个真正可写的键：`lt.timeoutSec` 与 `lt.appendMode`。
 import { db, txw } from './open.js';
 import { nowMs } from '../../../../core/db/time.js';

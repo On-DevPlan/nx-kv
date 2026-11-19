@@ -1,20 +1,48 @@
-// 段模板的用户数据（#161）：每段可有多条模板，启用哪条自己挑。
+// 段模板的用户数据（#161 / #238）：每段可有多条模板，启用哪条自己挑。
 //
 // 真相仍是插件类里的 `templates`（出厂内置，代码即真相）；这里只存**用户层**：
 //   - items：用户添加/复制的模板条目（builtin 永远在插件类里，不落盘）
 //   - activeId：该段当前启用的模板（'builtin' 或用户条目 id）
 //
-// 为什么 JSON 而不是 DB：段模板是**显示态偏好**（跟侧边栏 prefs 同级），不是
-// 业务数据——换库不迁移、跨机器不同步都可接受；JSON 一个文件看得见摸得着。
-// localStorage 缺席的是浏览器端；这是宿主端文件，用 APP_DIR 落盘。
+// 落点（#238 起）：settings 表，**一段一个键** `prompt.tpl.<segment>`，值是
+// `{ activeId, items[] }` 的 JSON。为什么按段拆而不是整份 Store 一个键：
+//   - 写一段只碰一个键。整份键的「读全量 → 改一段 → 写全量」在并发下是典型
+//     lost update：A 改 ack、B 改 timecheck，后提交的把前一个抹掉。
+//   - 读也小：装配时 `activeTemplateTextOf(id)` 每轮会被调十几次，按段取只解析
+//     这一小段，不再解析全量。
 //
-// 并发：单进程 serve 读写足够；写入走临时文件 + rename 原子替换。
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+// 为什么不再细到「一条模板一个键」：settings 的硬规则（schema G2）是「凡需要
+// 出现在 WHERE 里的东西不许进 settings」，前缀列举只给整表导出/清理用。按条目
+// 拆键后「列某段的条目」只能靠前缀扫，等于把 k/v 当表查；且 activeId 与条目会
+// 散在多键，删除/启用要跨键维护一致。**段**正好是「按键精确取值」的粒度。
+//
+// 迁移（两条来源，都只跑一次，按库路径记账）：
+//   1. `prompt.tplStore`（本方案第一版写的整份键）→ 拆成按段键后删掉旧键；
+//   2. `~/.nx-kv/promptplug-templates.json`（#238 之前的裸文件）→ 写成按段键，
+//      文件改名 `.migrated`（不删，留档）。
+import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { APP_DIR } from '../../core/paths.js';
+import { dbPath, openStore } from '../../core/db/index.js';
+import { deleteSettingRaw, readSettingRaw, writeSettingRaw } from '../../core/db/settings.js';
+import { tx } from '../../core/db/tx.js';
+import type { DbApi } from '../../core/db/driver.js';
+import { allPluginIds } from './registry.js';
 import type { TemplateText } from './base.js';
 
-const FILE = join(APP_DIR, 'promptplug-templates.json');
+/** 按段键的前缀（导出/清理可据此列举；读取只用精确键）。 */
+export const SEGMENT_KEY_PREFIX = 'prompt.tpl.';
+
+/** 某段在 settings 里的键。 */
+export function segmentKey(segment: string): string {
+  return `${SEGMENT_KEY_PREFIX}${segment}`;
+}
+
+/** 第一版方案用的「整份 Store」键；只作迁移源，不再写入。 */
+export const WHOLE_STORE_KEY = 'prompt.tplStore';
+
+/** #238 之前的老落点；只作迁移源，不再写入。 */
+const LEGACY_FILE = join(APP_DIR, 'promptplug-templates.json');
 
 export interface UserTemplate extends TemplateText {
   /** 创建时间（epoch ms；排序/展示用） */
@@ -33,51 +61,135 @@ const DEFAULT_SEGMENT: SegmentTemplates = { activeId: 'builtin', items: [] };
 
 type Store = Record<string, SegmentTemplates>;
 
-function readStore(): Store {
+function emptySegment(): SegmentTemplates {
+  return { ...DEFAULT_SEGMENT, items: [] };
+}
+
+function cloneSegment(seg: SegmentTemplates): SegmentTemplates {
+  return { ...seg, items: [...seg.items] };
+}
+
+/** 外部数据边界：单段逐项校验（脏条目丢掉，缺 activeId 按 builtin）。 */
+function normalizeSegment(raw: unknown): SegmentTemplates {
+  const seg = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
+  const items = Array.isArray(seg.items)
+    ? (seg.items.filter(
+        (t: any) => t && typeof t.text === 'string' && typeof t.id === 'string' && t.id !== 'builtin',
+      ) as UserTemplate[])
+    : [];
+  return { activeId: typeof seg.activeId === 'string' ? seg.activeId : 'builtin', items };
+}
+
+/** 整份 Store（迁移源用）：逐段走同一套校验。 */
+function normalizeStore(raw: unknown): Store {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Store = {};
+  for (const [id, seg] of Object.entries(raw as Record<string, any>)) {
+    if (!seg || typeof seg !== 'object') continue;
+    out[id] = normalizeSegment(seg);
+  }
+  return out;
+}
+
+/** 写一段（单事务、IMMEDIATE —— 与 core/config.ts 的偏好写入同款）。 */
+function writeSegment(segment: string, seg: SegmentTemplates, conn?: DbApi): void {
+  const write = (c: DbApi) => writeSettingRaw(c, segmentKey(segment), seg);
+  if (conn) {
+    write(conn);
+    return;
+  }
+  tx((c) => write(c), { db: openStore(), mode: 'IMMEDIATE' });
+}
+
+// 迁移做过一次的库路径（env 换库时要重跑；迁移本身幂等）。
+let migratedFor: string | null = null;
+
+/** 把一个整份 Store 摊成按段键（同事务删旧键）。返回是否真处理过。 */
+function splitWholeStoreKey(db: DbApi): boolean {
+  const old = readSettingRaw(db, WHOLE_STORE_KEY);
+  if (old === undefined) return false;
+  const store = normalizeStore(old);
+  const entries = Object.entries(store);
+  tx(
+    (conn) => {
+      for (const [seg, data] of entries) writeSegment(seg, data, conn);
+      deleteSettingRaw(conn, WHOLE_STORE_KEY);
+    },
+    { db, mode: 'IMMEDIATE' },
+  );
+  return true;
+}
+
+/** legacy JSON → 按段键，成功后改名 `.migrated`。 */
+function importLegacyFile(db: DbApi): void {
+  if (!existsSync(LEGACY_FILE)) return;
+  let store: Store;
   try {
-    if (!existsSync(FILE)) return {};
-    const raw = JSON.parse(readFileSync(FILE, 'utf8')) as Store;
-    if (!raw || typeof raw !== 'object') return {};
-    // 外部数据边界：逐段校验后才收（脏段丢掉用默认）
-    const out: Store = {};
-    for (const [id, seg] of Object.entries(raw)) {
-      if (!seg || typeof seg !== 'object') continue;
-      const items = Array.isArray((seg as SegmentTemplates).items)
-        ? (seg as SegmentTemplates).items.filter(
-            (t) => t && typeof t.text === 'string' && typeof t.id === 'string' && t.id !== 'builtin',
-          )
-        : [];
-      out[id] = {
-        activeId: typeof (seg as SegmentTemplates).activeId === 'string' ? (seg as SegmentTemplates).activeId : 'builtin',
-        items,
-      };
-    }
-    return out;
+    store = normalizeStore(JSON.parse(readFileSync(LEGACY_FILE, 'utf8')));
   } catch {
-    return {}; // 损坏不炸宿主：全部回落 builtin
+    return; // 老文件坏了：不迁移，等人工处理
+  }
+  const entries = Object.entries(store);
+  tx(
+    (conn) => {
+      for (const [seg, data] of entries) writeSegment(seg, data, conn);
+    },
+    { db, mode: 'IMMEDIATE' },
+  );
+  try {
+    renameSync(LEGACY_FILE, `${LEGACY_FILE}.migrated`);
+  } catch {
+    // 改名失败不影响正确性：数据已在库，下次读到非空键就不会再导
   }
 }
 
-function writeStore(store: Store): void {
+/** 首次读写某段之前跑一次迁移（按库路径记账，失败不记账）。 */
+function ensureMigrated(db: DbApi): void {
+  const path = dbPath();
+  if (migratedFor === path) return;
+  // 整份键比裸文件新：先摊它；摊到了就不再碰裸文件（避免用旧数据盖掉新数据）。
+  if (!splitWholeStoreKey(db)) importLegacyFile(db);
+  migratedFor = path;
+}
+
+/** 读一段的原始数据（undefined = 这个段从来没被写过）。 */
+function readSegmentRaw(segment: string): SegmentTemplates | undefined {
+  const db = openStore();
+  ensureMigrated(db);
+  const raw = readSettingRaw(db, segmentKey(segment));
+  return raw === undefined ? undefined : normalizeSegment(raw);
+}
+
+/**
+ * 读一段。**每次现读，不缓存**（设置页改完，下一次装配立即生效）。
+ * 读失败（库打不开 / 值损坏）回落默认段 —— 装配永远拿得到可用数据。
+ */
+function readSegment(segment: string): SegmentTemplates {
   try {
-    mkdirSync(APP_DIR, { recursive: true });
-    const tmp = `${FILE}.tmp`;
-    writeFileSync(tmp, JSON.stringify(store, null, 2), 'utf8');
-    renameSync(tmp, FILE);
+    const seg = readSegmentRaw(segment);
+    return seg ? cloneSegment(seg) : emptySegment();
   } catch {
-    // 落盘失败不炸宿主（只读盘 / 隐私目录等）：本次修改内存可见，重启即失
+    return emptySegment();
   }
 }
 
 /** 某段的用户层模板数据（无记录 → 默认：启用 builtin、无条目）。 */
 export function segmentTemplatesOf(id: string): SegmentTemplates {
-  const seg = readStore()[id];
-  return seg ? { ...seg, items: [...seg.items] } : { ...DEFAULT_SEGMENT, items: [] };
+  return readSegment(id);
 }
 
-/** 全部段的用户层模板数据（设置页一次拉全）。 */
+/** 全部段的用户层模板数据（设置页一次拉全；只列注册表里的段，不扫前缀）。 */
 export function allSegmentTemplates(): Record<string, SegmentTemplates> {
-  return readStore();
+  const out: Record<string, SegmentTemplates> = {};
+  try {
+    for (const id of allPluginIds()) {
+      const seg = readSegmentRaw(id);
+      if (seg) out[id] = seg;
+    }
+  } catch {
+    return out;
+  }
+  return out;
 }
 
 export interface UpsertTemplateInput {
@@ -91,8 +203,7 @@ export interface UpsertTemplateInput {
 
 /** 添加 / 更新一条用户模板；返回该段最新数据。 */
 export function upsertTemplate({ segment, id, name, text }: UpsertTemplateInput): SegmentTemplates {
-  const store = readStore();
-  const seg = store[segment] || { ...DEFAULT_SEGMENT, items: [] };
+  const seg = readSegment(segment);
   const body = String(text ?? '');
   const title = String(name ?? '').trim() || '未命名模板';
   const now = Date.now();
@@ -107,39 +218,33 @@ export function upsertTemplate({ segment, id, name, text }: UpsertTemplateInput)
     seg.items.push({ id: nid, name: title, text: body, createdAt: now });
     seg.activeId = nid; // 新建即启用（复制后修改的直感）
   }
-  store[segment] = seg;
-  writeStore(store);
-  return { ...seg, items: [...seg.items] };
+  writeSegment(segment, seg);
+  return cloneSegment(seg);
 }
 
 /** 删除一条用户模板；删的是启用条目时回落 builtin。 */
 export function deleteTemplate(segment: string, id: string): SegmentTemplates {
-  const store = readStore();
-  const seg = store[segment];
-  if (seg) {
-    seg.items = seg.items.filter((t) => t.id !== id);
-    if (seg.activeId === id) seg.activeId = 'builtin';
-    store[segment] = seg;
-    writeStore(store);
-  }
-  return segmentTemplatesOf(segment);
+  const seg = readSegmentRaw(segment);
+  if (!seg) return emptySegment(); // 从没写过这个段：不为了「删空」去建键
+  seg.items = seg.items.filter((t) => t.id !== id);
+  if (seg.activeId === id) seg.activeId = 'builtin';
+  writeSegment(segment, seg);
+  return cloneSegment(seg);
 }
 
 /** 切换某段启用的模板（'builtin' 或用户条目 id；非法 id 静默回落 builtin）。 */
 export function activateTemplate(segment: string, id: string): SegmentTemplates {
-  const store = readStore();
-  const seg = store[segment] || { ...DEFAULT_SEGMENT, items: [] };
+  const seg = readSegment(segment);
   const key = String(id ?? '') || 'builtin';
   seg.activeId = key === 'builtin' || seg.items.some((t) => t.id === key) ? key : 'builtin';
-  store[segment] = seg;
-  writeStore(store);
-  return { ...seg, items: [...seg.items] };
+  writeSegment(segment, seg);
+  return cloneSegment(seg);
 }
 
 /** 某段当前**启用模板的正文**（装配时传给插件构造；builtin → '' 用类内默认）。 */
 export function activeTemplateTextOf(id: string): string {
-  const seg = readStore()[id];
-  if (!seg || seg.activeId === 'builtin') return '';
+  const seg = readSegment(id);
+  if (seg.activeId === 'builtin') return '';
   const hit = seg.items.find((t) => t.id === seg.activeId);
   return hit ? String(hit.text ?? '') : '';
 }

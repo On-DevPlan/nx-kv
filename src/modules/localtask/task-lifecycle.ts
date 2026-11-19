@@ -233,8 +233,7 @@ export async function reopenTask({
     } else {
       // supersededBy 必须带上绝对地址：搬到别的队列后，光写目标队列的 seq 会被
       // 顺链逻辑按源主题解析到一条完全无关的任务上。
-      tasksRepo.updateTask(curTopic.id, want, {
-        status: 'cancelled',
+      tasksRepo.tombstoneAsCancelled(curTopic.id, want, {
         supersededBy: hostKey === srcKey ? inserted.id : `${hostKey}:${inserted.id}`,
       });
     }

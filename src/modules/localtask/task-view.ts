@@ -111,10 +111,11 @@ export function relocateTask(fromTopic: any, seq: number | string, moveTo: any):
   });
   const newId = inserted.id;
 
-  // 2. 源任务软删 + cancelled（tombstone：留一行"搬去哪了"的记录）
+  // 2. 源任务定格：status 走 tombstone 语义函数（原子守卫，done 保持 done）；
+  //    软删与"搬去哪了"审计字段照旧走通用 patch——它们不是状态。
+  tasksRepo.tombstoneAsCancelled(fromTopic.id, oldSeq);
   tasksRepo.updateTask(fromTopic.id, oldSeq, {
     deletedAt: stampNow(),
-    status: 'cancelled',
     moveFrom: { key: toKey, seq: newId, at: stampNow() },
   });
 

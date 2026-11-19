@@ -19,7 +19,7 @@ import { db, txw } from './open.js';
 import { nowMs } from '../../../core/db/time.js';
 import { parseExt, TOPIC_EXT } from './rows.js';
 import { ensureTopic, updateTopic, getTopicRow } from './topics.js';
-import { listTaskRowsByTopic, insertTask, updateTask } from './tasks.js';
+import { listTaskRowsByTopic, insertTask, updateTask, alignClaimedFromSnapshot as repoAlignClaimedFromSnapshot } from './tasks.js';
 import { topicToSnapshot } from '../../../core/workflow/project.js';
 import type { DbApi } from '../../../core/db/driver.js';
 import type { WorkflowSnapshot } from '../../../core/workflow/types.js';
@@ -128,7 +128,7 @@ export function createDbTopicAdapter(): DbTopicAdapter {
           }
         }
 
-        // ② 闸门 / 节点状态 → 行字段
+        // ② 闸门 / 节点状态 → 行字段（status 对齐走语义函数，其余字段走通用 patch）
         for (const node of snapshot.nodes || []) {
           const task = byId.get(String(node.id));
           if (!task) continue;
@@ -136,7 +136,9 @@ export function createDbTopicAdapter(): DbTopicAdapter {
           if (node.state === 'success') {
             if (!task.completedAt) patch.completedAt = nowStamp();
           } else if (node.state === 'running') {
-            if (task.status !== 'claimed' && task.status !== 'done') patch.status = 'claimed';
+            // 外部 DAG 说在跑 → 本地对齐成 claimed（原子守卫；done/cancelled 不动）。
+            // 这是「对齐外部事实」不是「推进任务」，所以不走 claimTask。
+            repoAlignClaimedFromSnapshot(topic.id, Number(task.id));
           }
           const next = updateTask(topic.id, task.id, patch);
           if (next) byId.set(String(node.id), next);

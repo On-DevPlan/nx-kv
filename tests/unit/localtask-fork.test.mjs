@@ -96,9 +96,10 @@ test('cancelled 不能重开；done 可多次重开成链 R1→R2→R3', async (
   const cwd2 = join(dir, 'p2b');
   const seed2 = await seed(cwd2);
   const rr = await localtask.reopenTask({ cwd: cwd2, id: seed2.first.task.id, text: '# 先取消' });
-  await localtask.repo.tasks.updateTaskByKey(
-    localtask.normalizeCwd(cwd2).key, rr.id, { status: 'cancelled' }
-  );
+  // 用 tombstone 语义函数定格（status 已从 updateTask 通用 patch 移出——
+  // 测试不能再借通用口子直写状态，否则守卫护栏测的是假前提）
+  const tid2 = localtask.repo.topics.getTopic(localtask.normalizeCwd(cwd2).key).id;
+  localtask.repo.tasks.tombstoneAsCancelled(tid2, rr.id);
   await assert.rejects(
     () => localtask.reopenTask({ cwd: cwd2, id: rr.id, text: '# 不行' }),
     /已取消/,

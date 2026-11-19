@@ -527,7 +527,7 @@ export async function setPlanStatus({
   if (target === 'pending' && from !== 'plan') {
     throw badInput(`只有草稿能转回待领取（#${want} 现在是 ${from}）`);
   }
-  const updated = tasksRepo.updateTaskByKey(key, want, { status: target });
+  const updated = tasksRepo.switchPlanStatus(t!.id, want, target as 'plan' | 'pending');
   if (!updated) throw notFound(`任务不存在: #${want}`);
   topicsRepo.updateTopic(key, { bumpRevision: true });
   return {

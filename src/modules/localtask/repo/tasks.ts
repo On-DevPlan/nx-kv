@@ -311,8 +311,85 @@ export function closeOpenTask(topicId: number, seq: number, { status = 'done', f
 }
 
 /**
+ * 定格为 cancelled（重开派生 / 搬家 tombstone / 批量取消共用）。
+ *
+ * 语义：**非终态一律定格**（pending / claimed / plan → cancelled；done 保持 done——
+ * 上一轮的交付事实不因重开而消失）。状态写入是带守卫的原子 UPDATE
+ * （`WHERE status NOT IN ('done','cancelled')`），并发下重复定格第二次拿 null。
+ * `extra` 是 tombstone 的审计字段（supersededBy / moveFrom），走 ext 合并——
+ * 它们不是状态，即使行已是 cancelled 也照写（重开一条已取消的任务要留派生标记）。
+ */
+export function tombstoneAsCancelled(
+  topicId: number,
+  seq: number,
+  extra: { supersededBy?: unknown; moveFrom?: unknown; deletedAtMs?: number } = {},
+): TaskObject | null {
+  return txw((conn) => {
+    const cur = getTaskRow(topicId, seq, conn);
+    if (!cur) return null;
+    if (cur.task.status !== 'cancelled') {
+      const at = nowMs();
+      const r = conn.run(
+        `UPDATE tasks SET status = 'cancelled',
+                deleted_at = COALESCE(:del, deleted_at),
+                version = version + 1, updated_at = :at
+          WHERE topic_id = :t AND seq = :s AND status NOT IN ('done', 'cancelled')`,
+        { t: topicId, s: seq, del: extra.deletedAtMs ?? null, at }
+      );
+      if (Number(r.changes) !== 1) return null;
+    }
+    const extPatch: Record<string, unknown> = {};
+    if (extra.supersededBy !== undefined) extPatch[EXT.SUPERSEDED_BY] = extra.supersededBy;
+    if (extra.moveFrom !== undefined) extPatch[EXT.MOVE_FROM] = extra.moveFrom;
+    if (Object.keys(extPatch).length) mergeExt(conn, topicId, seq, extPatch);
+    return getTaskRow(topicId, seq, conn)!.task;
+  });
+}
+
+/**
+ * #126 草稿双向切换：pending ↔ plan，其余状态一律拒绝。
+ * 调用方（task-ops.setPlanStatus）负责产出友好的错误文案；这里的 WHERE 守卫
+ * 是并发层的最后防线——两个进程同时切同一条，只有一个 UPDATE 生效。
+ */
+export function switchPlanStatus(topicId: number, seq: number, to: 'plan' | 'pending'): TaskObject | null {
+  const from = to === 'plan' ? 'pending' : 'plan';
+  return txw((conn) => {
+    const r = conn.run(
+      `UPDATE tasks SET status = :to, version = version + 1, updated_at = :at
+        WHERE topic_id = :t AND seq = :s AND status = :from AND deleted_at IS NULL`,
+      { t: topicId, s: seq, to, from, at: nowMs() }
+    );
+    if (Number(r.changes) !== 1) return null;
+    return getTaskRow(topicId, seq, conn)!.task;
+  });
+}
+
+/**
+ * 引擎快照对齐：外部 DAG 说节点在跑（node.state === 'running'），本地还没对齐
+ * 就单向推成 claimed。这是「对齐外部事实」不是「推进任务」——不走 claimTask，
+ * 因为没有领取人 / 摘要可写（见 tests/unit 的 snapshot 对齐用例）。
+ * 守卫与跃迁表一致：done / cancelled 不许被对齐改写，已是 claimed 幂等跳过。
+ */
+export function alignClaimedFromSnapshot(topicId: number, seq: number): boolean {
+  return txw((conn) => {
+    const r = conn.run(
+      `UPDATE tasks SET status = 'claimed', claimed_at = :at, version = version + 1, updated_at = :at
+        WHERE topic_id = :t AND seq = :s AND status NOT IN ('claimed', 'done')`,
+      { t: topicId, s: seq, at: nowMs() }
+    );
+    return Number(r.changes) === 1;
+  });
+}
+
+/**
  * 字段级更新（reopen / update / 软删 / 恢复都用它）。
  * `patch` 是 JSON 形态的字段子集；写不进任何列的低频字段进 ext。
+ *
+ * **status 不在可更新列里**（2026-11-19 收敛）：状态流转只能走上面的语义函数
+ * （tombstoneAsCancelled / switchPlanStatus / alignClaimedFromSnapshot）或
+ * claimTask / completeTask / closeOpenTask 的带守卫 UPDATE。这样「所有状态
+ * 修改必然经过守卫」成为结构约束，不再依赖调用方自觉。
+ *
  * @returns {object|null} 更新后的 JSON 形态任务
  */
 export function updateTask(topicId: number, seq: number, patch: TaskPatch = {}): TaskObject | null {
@@ -325,7 +402,8 @@ export function updateTask(topicId: number, seq: number, patch: TaskPatch = {}):
     const params: Record<string, any> = { t: topicId, s: seq, at: nowMs() };
     const colMap: Record<string, string> = {
       body: 'body',
-      status: 'status',
+      // status 刻意不在列：状态流转只能走本文件的语义函数（见上方 updateTask 注释），
+      // 通用 patch 若能直写 status，「带守卫 UPDATE」就成了可绕过的摆设。
       feedback: 'feedback',
       claimedAtMs: 'claimed_at',
       doneAtMs: 'done_at',

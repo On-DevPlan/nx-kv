@@ -192,7 +192,7 @@ export async function cancelTasks({ cwd: rawCwd, key: rawKey, ids }: CancelClose
         });
         continue;
       }
-      const next = tasksRepo.updateTask(topicId!, want, { status: 'cancelled' });
+      const next = tasksRepo.tombstoneAsCancelled(topicId!, want);
       cancelled.push(normalizeTask(next));
     }
     if (cancelled.length) topicsRepo.updateTopic(key, { bumpRevision: true });

@@ -118,3 +118,45 @@ export function isTerminal(t?: TaskRowLike | null): boolean {
 export function isOpenTask(t?: TaskRowLike | null): boolean {
   return isLive(t) && (t?.status === TASK_STATUS.PENDING || t?.status === TASK_STATUS.CLAIMED);
 }
+
+// ─── 跃迁表（声明式状态机）─────────────────────────────────────────────
+//
+// 上面的词表回答「是什么」，这张表回答「**能从哪到哪**」。每条边都对应一个
+// 实际写入口的守卫（2026-11-19 收敛时逐条从代码反推）：
+//
+//   pending → claimed    repo.claimTask（原子 WHERE）+ repo.alignClaimedFromSnapshot
+//   pending → done       repo.closeOpenTask（用户面板收口，done 分支）
+//   pending → cancelled  repo.tombstoneAsCancelled / closeOpenTask（cancel 分支）
+//   pending → plan       repo.switchPlanStatus（#126 双向之一）
+//   plan    → pending    repo.switchPlanStatus（#126 双向之一）
+//   plan    → claimed    repo.alignClaimedFromSnapshot（外部 DAG 说在跑；罕见但口径允许）
+//   plan    → cancelled  repo.tombstoneAsCancelled（非终态一律定格）
+//   claimed → done       repo.completeTask / closeOpenTask（done 分支）
+//   claimed → cancelled  repo.tombstoneAsCancelled / closeOpenTask（cancel 分支）
+//   done / cancelled     终态，无出边。reopen / 搬家是「派生新号」，不改旧行状态。
+//
+// 性质：**只声明不强制**。真正的并发安全由 repo/tasks.ts 里带 WHERE 守卫的
+// 原子 UPDATE 保证——状态机在业务层替代不了 SQL 的原子性，做成运行时强制
+// 只会变成第二道守卫、第二真值源。这张表的用途：
+//   1. 新增状态时一眼看到影响面（要补哪些边、改哪些守卫）；
+//   2. 作单测靶子（终态无出边、每条边都有归属入口、未知状态一律挡）；
+//   3. 读代码时它是「合法流转」的单一出处，不用再翻五个函数拼全景。
+
+export const TASK_TRANSITIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  [TASK_STATUS.PENDING]: Object.freeze([
+    TASK_STATUS.CLAIMED,
+    TASK_STATUS.DONE,
+    TASK_STATUS.CANCELLED,
+    TASK_STATUS.PLAN,
+  ]),
+  [TASK_STATUS.PLAN]: Object.freeze([TASK_STATUS.PENDING, TASK_STATUS.CLAIMED, TASK_STATUS.CANCELLED]),
+  [TASK_STATUS.CLAIMED]: Object.freeze([TASK_STATUS.DONE, TASK_STATUS.CANCELLED]),
+  [TASK_STATUS.DONE]: Object.freeze([]),
+  [TASK_STATUS.CANCELLED]: Object.freeze([]),
+});
+
+/** from 能否一步转到 to。未知状态一律 false（宁可挡住也不放行——同正判定哲学）。 */
+export function canTransition(from: unknown, to: unknown): boolean {
+  const edges = TASK_TRANSITIONS[String(from)];
+  return !!edges && edges.includes(String(to));
+}

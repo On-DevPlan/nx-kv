@@ -108,6 +108,22 @@ export function splitMdBlocks(src: unknown): string[] {
         continue;
       }
     }
+    // 数学公式块 `$$ … $$` 自成一块（可跨空行）：预览态逐块渲染时不能被空行切散，
+    // 否则公式只剩半截。单行 `$$x$$` 与「开 `$$` 到闭 `$$`」都按整块处理。
+    const mathStart = /^\s*\$\$/.exec(line);
+    if (mathStart && !(line.trim().length > 4 && line.trim().endsWith('$$'))) {
+      if (cur.length) flushCur();
+      const chunk: string[] = [line];
+      let j = i + 1;
+      while (j < lines.length && (lines[j] ?? '').trim() !== '$$') {
+        chunk.push(lines[j] ?? '');
+        j += 1;
+      }
+      if (j < lines.length) chunk.push(lines[j] ?? '');
+      blocks.push(normalizeBlockText(chunk.join('\n')));
+      i = j;
+      continue;
+    }
     // 标题**自成一块**（markdown/Obsidian 语义）：标题行后紧跟的正文、列表都是
     // 独立块，不并进标题。此前只「遇到标题才开新块」，标题后的行仍留在标题块里——
     // 于是「# 标题\n正文」渲染成一个标题（标题与正文融合），点正文也整块进编辑态。

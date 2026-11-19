@@ -30,6 +30,49 @@
   text-decoration-color:var(--mdw-accent,#2F6F5E);
 }
 
+/* ─── 扩展 md 语法（任务 #239）：表格 / 数学公式 / 矩阵 / 分隔线 ─────────── */
+
+/* GFM 管道表：横向可滚，斑马纹，表头强调 */
+.md-table{
+  width:100%;border-collapse:collapse;margin:0 0 10px;font-size:12.5px;line-height:1.55;
+  display:table;
+}
+.md-table th,.md-table td{
+  border:1px solid var(--line,#E4E2DC);padding:6px 10px;text-align:left;vertical-align:top;
+}
+.md-table thead th{background:var(--soft,#F1F0EC);font-weight:650;color:var(--ink,#16181C)}
+.md-table tbody tr:nth-child(even){background:color-mix(in srgb,var(--soft,#F1F0EC) 45%,transparent)}
+.md-table code{font:400 11.5px ui-monospace,Consolas,monospace;background:var(--soft,#F1F0EC);border-radius:4px;padding:1px 4px}
+
+/* 数学公式：块级居中、行内与文字基线一致；零依赖渲染，按等宽/斜体近似 */
+.md-math-block{
+  margin:8px 0;padding:8px 12px;overflow-x:auto;text-align:center;
+  background:var(--soft,#F1F0EC);border:1px solid var(--line,#E4E2DC);border-radius:6px;
+  font-family:'Cambria Math',Cambria,Georgia,serif;font-size:14px;color:var(--ink,#16181C);
+}
+.md-math-inline{font-family:'Cambria Math',Cambria,Georgia,serif;font-style:italic;padding:0 1px}
+.md-frac{display:inline-flex;flex-direction:column;vertical-align:middle;text-align:center;margin:0 2px;line-height:1.1}
+.md-frac-num{border-bottom:1px solid currentColor;padding:0 3px}
+.md-frac-den{padding:0 3px}
+.md-sqrt-x{border-top:1px solid currentColor;padding:0 2px}
+/* 矩阵：行 × 列网格；pmatrix/bmatrix/vmatrix 用不同括号 */
+.md-matrix{display:inline-grid;gap:2px 10px;vertical-align:middle;margin:0 3px;position:relative}
+.md-mrow{display:flex;justify-content:center;gap:10px}
+.md-mcell{min-width:1em;text-align:center}
+.md-matrix-pmatrix{padding:0 8px}
+.md-matrix-pmatrix::before,.md-matrix-pmatrix::after,
+.md-matrix-bmatrix::before,.md-matrix-bmatrix::after,
+.md-matrix-vmatrix::before,.md-matrix-vmatrix::after{
+  content:'';position:absolute;top:0;bottom:0;width:2px;background:currentColor;opacity:.7;
+}
+.md-matrix-pmatrix::before,.md-matrix-bmatrix::before,.md-matrix-vmatrix::before{left:0}
+.md-matrix-pmatrix::after,.md-matrix-bmatrix::after,.md-matrix-vmatrix::after{right:0}
+.md-matrix-bmatrix::before,.md-matrix-bmatrix::after{border-radius:0}
+.md-matrix-vmatrix::before,.md-matrix-vmatrix::after{width:1.5px}
+
+/* 分隔线 */
+.md-divider{border:0;border-top:1px solid var(--line,#E4E2DC);margin:12px 0}
+
 /* 文档页签（DocPanel）：与任务页同构的头 + 模式切换 */
 .docp{display:flex;flex-direction:column;height:100%;position:relative}
 .docp .mdw-main{display:flex;flex-direction:column;min-height:0;flex:1}

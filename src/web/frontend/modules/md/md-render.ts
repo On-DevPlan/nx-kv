@@ -1,13 +1,17 @@
-// Markdown 渲染器（原型落地）：标题 / 列表 / 引用 / 代码 / 图片 / fenced code / 双链。
-// 不引入 marked 等依赖，面板包体保持轻量。
+// Markdown 渲染器（编排层）：按**语法注册表**遍历块级规则、套用行内规则。
 //
-// 双链 [[目标|显示文本]] 与 shared/wikilink.js 同一套正则与归一（后端解析、这里渲染，
-// 收在同构层防两端漂移）。knownNames 是双链索引里的名字/路径集合（docs/index），
-// 不在其中 → 未解析态（虚线红）；不传 knownNames → 全部按已解析渲染（模板预览等场景）。
+// 架构（任务 #239 重构）：具体语法住在 components/md/model/<syntax>/，各导出一条
+// BlockRule / InlineRule；本文件只负责「取数据 + 建上下文 + 遍历规则 + 拼 HTML」，
+// 不认识任何具体语法。新增语法 = 加一个 model 目录 + 在 registry 注册一次。
+//
+// 不引入 marked 等依赖，面板包体保持轻量（零第三方 markdown/数学库）。
+// 双链 [[目标|显示]] 与 shared/wikilink.js 同一套正则与归一（收在同构层防两端漂移）。
 import { normalizeWikiTarget } from '../../../../shared/wikilink.js';
 import { looksLikeFileId } from '../../../../shared/attach.js';
 import { stripFrontmatter } from '../../../../shared/frontmatter.js';
 import type { Attachment } from '../../components/md/attach-common.js';
+import { BLOCK_RULES, INLINE_RULES } from '../../components/md/model/registry.js';
+import type { BlockCtx } from '../../components/md/model/types.js';
 
 /** 一个可跳转的标题（extractMdHeadings 的产出）。 */
 export interface MdHeading {
@@ -91,16 +95,12 @@ function refTitleOf(target: string, text: string, refTitles: Map<string, string>
 
 /**
  * 外链锚点（#142）：`http(s)` 一律**新标签打开**，带 noopener。
- *
- * 以前这里什么都不做——markdown 的 `[文本](https://…)` 与裸 URL 都被 esc 成纯文本，
- * 用户看到的是一条裸地址，点不动。
  */
 function externalAnchor(href: string, label: string): string {
   return `<a class="md-link" href="${href}" target="_blank" rel="noopener noreferrer" title="${href}">${label}</a>`;
 }
 
 // 裸 URL 的边界：遇空白 / 引号 / 尖括号 / 中英文标点 / 右括号即止。
-// 句末的 `. , ; : ! ?` 与右括号由 URL_TAIL 再剥一层（`见 https://x.com/a.` 的句号不算地址）。
 const BARE_URL_RE = /https?:\/\/[^\s<>"'`，。；：！？、）)】\]]+/g;
 const URL_TAIL = /[.,;:!?]+$/;
 
@@ -115,11 +115,8 @@ function linkifyText(text: string): string {
 }
 
 /**
- * 只处理**文本节点**的自动链接（#142）。
- *
- * 直接对整段 HTML 跑正则会把 `href="https://…"` 再包一层链接、也会把
- * fenced code / 行内 code 里的 URL 变成链接——所以按标签切分，跳过标签本身
- * 与 `<a>` / `<code>` 内部。返回值仍是 HTML 串（同渲染器的其它分支）。
+ * 只处理**文本节点**的自动链接（#142）——按标签切分，跳过标签本身与
+ * `<a>` / `<code>` 内部。
  */
 function autolinkHtml(html: string): string {
   const parts = html.split(/(<[^>]*>)/);
@@ -141,13 +138,11 @@ function autolinkHtml(html: string): string {
   return out.join('');
 }
 
+/** 行内渲染：转义 → 代码/粗体 → 附件/内部链接/外链/双链 → 语法规则（强调/公式）→ 自动链接。 */
 function inline(s: string, knownNames: Set<string> | null, refTitles: Map<string, string>): string {
   const base = esc(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
-  // 图床附件嵌入（2026-11-03 任务 #8）：图片 `![说明](fileId)`、文件 `[名字](fileId)`。
-  // fileId 判定与 shared/attach 同一套（looksLikeFileId）——普通 URL / 相对路径
-  // 原样保留，不误伤普通 markdown 链接。base 已 esc，捕获组直接用，不再二次转义。
   const withAtt = base
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, target) => {
       const t = String(target ?? '').trim();
@@ -159,19 +154,14 @@ function inline(s: string, knownNames: Set<string> | null, refTitles: Map<string
       if (!looksLikeFileId(t)) return m;
       return `<a class="md-att" href="/api/file/content/${t}" download="${text}" title="附件：${text}">${text}</a>`;
     });
-  // 内部资源链接（attachments 表里的 task / ref）：保持可点，但明确标成内部资源，
-  // 不让它落到「普通 markdown 链接」而被当外链。
   const withInternal = withAtt.replace(/\[([^\]]+)\]\((nxkv:\/\/[^)\s]+)\)/g, (m, text, target) => {
     if (!/^nxkv:\/\/(?:task|ref)\//i.test(target)) return m;
-    // #168：ref 引用显示**文档标题**（用户在文档里填的那行 # 标题），没有标题才用原文
     const label = refTitleOf(target, text, refTitles);
     return `<a class="md-wl" data-nxkv="${target}" title="内部资源：${target}">${label}</a>`;
   });
-  // 外链：markdown 语法 `[文本](https://…)`（#142）。必须排在裸 URL 自动识别之前——
-  // 否则 URL 先被包成 <a>，这条 markdown 链接就再也匹配不上了。
   const withExternal = withInternal.replace(
     /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
-    (_m, text: string, href: string) => externalAnchor(href, text)
+    (_m, text: string, href: string) => externalAnchor(href, text),
   );
   const withWiki = withExternal.replace(/\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]/g, (_, target, label) => {
     const t = target.trim();
@@ -179,8 +169,10 @@ function inline(s: string, knownNames: Set<string> | null, refTitles: Map<string
     const miss = knownNames && !wikiKnown(t, knownNames);
     return `<a class="md-wl${miss ? ' md-wl-miss' : ''}" data-wl="${esc(t)}" title="${miss ? '未解析：' : '双链：'}${esc(t)}">${esc(text)}</a>`;
   });
-  // 最后一遍：剩下的**裸 URL**（`见 https://…`）也变成可点链接（#142）
-  return autolinkHtml(withWiki);
+  // 语法规则（强调 / 行内公式）作用在链接与代码已就位的 HTML 上（公式跳过 <a>/<code> 内部）
+  const withSyntax = INLINE_RULES.reduce((acc, rule) => rule(acc), withWiki);
+  // 最后一遍：剩下的**裸 URL** 也变成可点链接（#142）
+  return autolinkHtml(withSyntax);
 }
 
 /**
@@ -194,8 +186,7 @@ export function renderMarkdownHtml(
   knownNames: Set<string> | null = null,
 ): string {
   const imgMap: Record<string, string> = {};
-  // ref 标题映射（#168）：附件清单里 kind=ref 的条目 → refId → 文档标题，
-  // 渲染 ref 链接时用标题当显示名（用户填了标题，编辑器里就该看到标题）。
+  // ref 标题映射（#168）：附件清单里 kind=ref 的条目 → refId → 文档标题。
   const refTitles = new Map<string, string>();
   for (const a of attachments) {
     if (!a) continue;
@@ -206,156 +197,34 @@ export function renderMarkdownHtml(
       if (id && title) refTitles.set(id, title);
     }
   }
-  // frontmatter **不再渲染成属性卡**（#113）：board/project 这些是投递元数据，
-  // 摆在一堆任务正文上方纯属噪音——正文里剥掉即可（编辑态仍能点开原 YAML 看）。
   const lines = stripFrontmatter(src).split('\n');
-  let html = '';
-  let inUl = false;
-  let inCode = false;
   const usedIds = new Set<string>();
-  const flush = () => {
-    if (inUl) {
-      html += '</ul>';
-      inUl = false;
-    }
+  const ctx: BlockCtx = {
+    inline: (t) => inline(t, knownNames, refTitles),
+    esc,
+    headingId: (t, used) => headingAnchorId(t, used),
+    imgMap,
+    usedIds,
   };
+
+  let html = '';
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
-    // fenced code：整块原样输出（不跑 inline/双链——代码里的 [[示例]] 不是链接）
-    if (line.startsWith('```')) {
-      if (inCode) {
-        html += '</code></pre>';
-        inCode = false;
-      } else {
-        flush();
-        html += '<pre class="mdw-code"><code>';
-        inCode = true;
+    if (!line.trim()) continue; // 空行只是分隔符
+    let matched = false;
+    for (const rule of BLOCK_RULES) {
+      const hit = rule.match(lines, i, ctx);
+      if (hit) {
+        html += hit.html;
+        i = hit.next - 1; // 外层再 ++
+        matched = true;
+        break;
       }
-      continue;
     }
-    if (inCode) {
-      html += `${esc(line)}\n`;
-      continue;
-    }
-    const img = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
-    if (img) {
-      flush();
-      const target = (img[2] ?? '').trim();
-      // 整行图片嵌入走图床时（![说明](fileId)）直接用面板内容端点直出——
-      // 不依赖 attachments 列表（localStorage 时代的 name→dataURL 映射）。
-      if (looksLikeFileId(target)) {
-        html += `<p><img class="md-att-img" src="/api/file/content/${target}" alt="${esc(img[1])}"></p>`;
-        continue;
-      }
-      const raw = imgMap[img[2] ?? ''] || img[2] || '';
-      const safe = /^(data:|blob:|https?:|#)/.test(raw) ? raw : '';
-      html += safe
-        ? `<p><img src="${safe}" alt="${esc(img[1])}"></p>`
-        : `<p><code>![${esc(img[1])}](${esc(img[2])})</code></p>`;
-      continue;
-    }
-    // 引用 / callout（#144）：连续的 `>` 行合成**一个块**——callout 块必须整体渲染。
-    // 首行带 `[!TYPE] 标题` 标记（GFM/Obsidian 口径）→ 渲染成醒目色块；
-    // 无标记 → 普通 blockquote（多行合并，锚定引用不再拆成 N 个散框）。
-    if (line.startsWith('>')) {
-      flush();
-      const q: string[] = [];
-      let j = i;
-      while (j < lines.length && (lines[j] ?? '').startsWith('>')) {
-        q.push((lines[j] ?? '').replace(/^>[ \t]?/, ''));
-        j += 1;
-      }
-      i = j - 1; // 外层循环再 ++，回到最后一条被消费的引用行
-      const firstQ = q[0];
-      const cm = firstQ ? firstQ.match(/^\[!([A-Za-z][\w-]*)\][ \t]*(.*)$/) : null;
-      if (cm) {
-        // callout：正文按空行分段（段间 <br><br> 有段落间隔）、段内 <br> 连行
-        // （反馈以短行为主，够用且轻）
-        const type = String(cm[1] || '').toLowerCase();
-        const title = String(cm[2] || '').trim();
-        const paras: string[][] = [];
-        let curPara: string[] = [];
-        for (const l of q.slice(1)) {
-          if (!l.trim()) {
-            if (curPara.length) {
-              paras.push(curPara);
-              curPara = [];
-            }
-            continue;
-          }
-          curPara.push(l);
-        }
-        if (curPara.length) paras.push(curPara);
-        const bodyHtml = paras
-          .map((p) => p.map((l) => inline(l, knownNames, refTitles)).join('<br>'))
-          .join('<br><br>');
-        html += `<div class="md-callout md-callout-${esc(type)}">`
-          + (title ? `<div class="md-callout-t">${inline(title, knownNames, refTitles)}</div>` : '')
-          + `<div class="md-callout-b">${bodyHtml}</div></div>`;
-        continue;
-      }
-      html += `<blockquote>${q.map((l) => inline(l, knownNames, refTitles)).join('<br>')}</blockquote>`;
-      continue;
-    }
-    if (line.startsWith('### ')) {
-      flush();
-      {
-        const text = line.slice(4);
-        const id = headingAnchorId(text.trim(), usedIds);
-        html += `<h3 id="${esc(id)}">${inline(text, knownNames, refTitles)}</h3>`;
-      }
-      continue;
-    }
-    if (line.startsWith('## ')) {
-      flush();
-      {
-        const text = line.slice(3);
-        const id = headingAnchorId(text.trim(), usedIds);
-        html += `<h2 id="${esc(id)}">${inline(text, knownNames, refTitles)}</h2>`;
-      }
-      continue;
-    }
-    if (line.startsWith('# ')) {
-      flush();
-      {
-        const text = line.slice(2);
-        const id = headingAnchorId(text.trim(), usedIds);
-        html += `<h1 id="${esc(id)}">${inline(text, knownNames, refTitles)}</h1>`;
-      }
-      continue;
-    }
-    const m = line.match(/^-\s+(\[[ xX]\])?\s*(.*)$/);
-    if (m) {
-      if (!inUl) {
-        html += '<ul>';
-        inUl = true;
-      }
-      const box = m[1];
-      const done = !!box && /x/i.test(box);
-      const body = m[2] ?? '';
-      if (box) {
-        const mark = done ? '☑' : '☐';
-        html += `<li class="${done ? 'done' : 'todo'}"><span class="mdw-cb" aria-hidden="true">${mark}</span>${inline(body, knownNames, refTitles)}</li>`;
-      } else {
-        html += `<li>${inline(body, knownNames, refTitles)}</li>`;
-      }
-      continue;
-    }
-    flush();
-    if (!line.trim()) continue;
-    html += `<p>${inline(line, knownNames, refTitles)}</p>`;
+    if (!matched) html += `<p>${ctx.inline(line)}</p>`;
   }
-  if (inCode) html += '</code></pre>';
-  flush();
-  // 文件附件 chip 只作**兜底**：列正文里没有内联引用的那些（#118——内联
-  // `[名](fileId)` 已渲染成 a.md-att，整表再拼一份就是重复；且实时面板是逐块
-  // 调本函数的，整表下发会让每个块都拖一份 chip 出来）。v1 老数据的文件附件
-  // 没有内联表示，仍靠它可见。
-  //
-  // #183：**只兜底真文件**。ref / task / url 三类是「绑定」，归属在附件区
-  // （role=attach|doc），正文里从来没有它们的占位符——此前它们也进了这个
-  // filter，于是每个块底部都挂一条同名 chip（文档页里一句话后面跟一条
-  // 「设计笔记」，看着像正文被污染），且「块编辑器与 ref 不同步」。
+
+  // 文件附件 chip 只作兜底（#118 / #183）：正文未内联引用的真文件才挂。
   const isFileAttachment = (a: Attachment | null | undefined): boolean =>
     !!a && a.type !== 'image' && a.kind !== 'ref' && a.kind !== 'task' && a.kind !== 'url';
   const files = attachments.filter((a) => isFileAttachment(a) && !html.includes(String(a.id)));
@@ -363,7 +232,7 @@ export function renderMarkdownHtml(
     html += files
       .map(
         (a) =>
-          `<div class="mdw-attach-chip">${esc(a.name)}<span class="sz">${esc(a.size || '')}</span></div>`
+          `<div class="mdw-attach-chip">${esc(a.name)}<span class="sz">${esc(a.size || '')}</span></div>`,
       )
       .join('');
   }

@@ -104,6 +104,11 @@ export function blockKind(text: string) {
   const t = String(text || '');
   // frontmatter 块：预览态渲染成属性卡（renderMarkdownHtml），编辑态等宽小字
   if (/^---\s*$/.test(t.split('\n', 1)[0] || '') && t.includes('\n')) return 'fm';
+  // 数学公式块（$$ 起头）：编辑态用衬线/等宽近似公式观感
+  if (/^\s*\$\$/.test(t)) return 'math';
+  // 表格块：首行含管道且第二行是分隔行
+  const lines = t.split('\n');
+  if (lines[0] && lines[0].includes('|') && /^\s*\|?\s*:?-{1,}:?/.test(lines[1] || '')) return 'table';
   if (/^#\s/m.test(t) && !/^##/m.test(t)) return 'h1';
   if (/^##\s/m.test(t) && !/^###/m.test(t)) return 'h2';
   if (/^###\s/m.test(t)) return 'h3';

@@ -265,7 +265,7 @@ export function findAllMatches(
   return out;
 }
 
-/** 一条斜杠命令：turn（块转变）与 format（行内格式）二选一。 */
+/** 一条斜杠命令：turn（块转变）/ format（行内格式）/ insert（插入骨架）三选一。 */
 export interface SlashCmd {
   id: string;
   ops: string[];
@@ -273,6 +273,8 @@ export interface SlashCmd {
   hint: string;
   turn?: string;
   format?: string;
+  /** 插入一段多行 markdown 骨架（表格 / 公式 / 分隔线等结构语法） */
+  insert?: string;
 }
 
 /** 一条「工具条转变」（1–6 键）。 */
@@ -293,8 +295,13 @@ export const SLASH_CMDS: SlashCmd[] = [
   { id: 'todo', ops: ['todo', 'task', '待办'], label: '待办', hint: '- [ ]', turn: 'todo' },
   { id: 'quote', ops: ['quote', '引用'], label: '引用', hint: '> ', turn: 'quote' },
   { id: 'bold', ops: ['bold', 'b', '粗体'], label: '粗体', hint: '**', format: 'bold' },
+  { id: 'italic', ops: ['italic', 'i', '斜体'], label: '斜体', hint: '*', format: 'italic' },
+  { id: 'strike', ops: ['strike', 'del', '删除线'], label: '删除线', hint: '~~', format: 'strike' },
   { id: 'code', ops: ['code', '代码'], label: '行内代码', hint: '`', format: 'code' },
   { id: 'link', ops: ['link', '链接'], label: '链接', hint: '[]()', format: 'link' },
+  { id: 'table', ops: ['table', '表格'], label: '表格', hint: '| a | b |', insert: '| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |' },
+  { id: 'math', ops: ['math', 'latex', '公式'], label: '数学公式', hint: '$$', insert: '$$\n\\begin{pmatrix}\na & b \\\\\nc & d\n\\end{pmatrix}\n$$' },
+  { id: 'hr', ops: ['hr', 'divider', '分隔线'], label: '分隔线', hint: '---', insert: '---' },
 ];
 
 /** 工具条 1–6 转变（与斜杠块类型对齐） */
@@ -375,15 +382,16 @@ export function filterSlashCmds(query: unknown): SlashCmd[] {
   return SLASH_CMDS.filter((c) => c.ops.some((k) => k.startsWith(q) || k.includes(q)));
 }
 
-/** applySlashCommand 只读的两个分支字段（SlashItem / SlashCmd 都满足）。 */
+/** applySlashCommand 只读的分支字段（SlashItem / SlashCmd 都满足）。 */
 export interface SlashCommandLike {
   turn?: string;
   format?: string;
+  insert?: string;
   /** 调用方传的是斜杠菜单项（SlashItem，自带索引签名），只读上面两字段 */
   [k: string]: unknown;
 }
 
-/** 吃掉行首 `/query`，再 turn / format */
+/** 吃掉行首 `/query`，再 turn / format / insert。 */
 export function applySlashCommand(
   ta: TextSelLike | null | undefined,
   cmd: SlashCommandLike | null | undefined,
@@ -397,6 +405,13 @@ export function applySlashCommand(
     selectionStart: hit.start,
     selectionEnd: hit.start,
   };
+  // 插入结构骨架（表格 / 公式 / 分隔线）：在吃掉 /query 的位置整段插入，光标落到末尾
+  if (typeof cmd.insert === 'string') {
+    const snippet = cmd.insert;
+    const next = cleared.slice(0, hit.start) + snippet + cleared.slice(hit.start);
+    const caret = hit.start + snippet.length;
+    return result(next, caret, caret);
+  }
   if (cmd.turn) return turnLine(fake, cmd.turn);
   return runFormat(fake, cmd.format || '');
 }

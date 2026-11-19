@@ -1,7 +1,7 @@
 // **项目组上下文封装**（交付层）的端到端测试：
 // agent 领到「组内某个仓库」的任务时，交付文本里必须带组概念、组介绍、
-// 本项目在组里的位置、兄弟成员的组内描述、组绑定参考文件的可读路径——
-// 而 task.text 保持库存原文。
+// 兄弟成员、组绑定参考文件的可读路径——而 task.text 保持库存原文。
+// （组内描述 note 已随模板上下文清理移除，不再出现在交付文本里。）
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
@@ -43,8 +43,6 @@ async function buildGroup() {
   const b = await boards.createBoard({ name: 'nx系列', desc: 'nx 工具链组合' });
   await boards.assignRepo({ key: alpha.key, board: b.id });
   await boards.assignRepo({ key: beta.key, board: b.id });
-  await boards.setBoardRepoNote({ key: alpha.key, board: b.id, note: '组里的任务出入口' });
-  await boards.setBoardRepoNote({ key: beta.key, board: b.id, note: '仓库与技能登记' });
 
   // 项目介绍主篇：只通过 refId 绑定（没有约定路径）
   const alphaIntro = await docs.createRef({ owner: 'repo', repo: alpha.key });
@@ -61,7 +59,7 @@ async function buildGroup() {
   return { cwd, alpha, beta, b };
 }
 
-test('组上下文封装：交付文本带组概念/组介绍引导/组内位置/兄弟成员/组文档 refId', async () => {
+test('组上下文封装：交付文本带组概念/组介绍引导/兄弟成员/组文档 refId', async () => {
   const { cwd, b } = await buildGroup();
   const localtask = await import('../../src/modules/localtask/service.js');
   const { waitForTask } = await import('../../src/modules/claim/wait.js');
@@ -78,12 +76,10 @@ test('组上下文封装：交付文本带组概念/组介绍引导/组内位置
   assert.match(ins, /组介绍：nx系列/, '组介绍引导行');
   assert.match(ins, /nx 工具链组合/, '组定位');
   assert.match(ins, /nx-kv docs get --ref ref_/, '组介绍 / 组文档按 refId 取用');
-  // v13：组内描述走绑定 ref 文档（noteDocId），正文首行是「# 组名 · 仓库名」，
-  // 接一个空行再是描述文本；note 不再作为文本列持久化在 repo_group_members / docLinks 上。
-  assert.match(ins, /本项目在组里的位置：# nx系列 · alpha/, '本项目在组里的位置取绑定 ref 文档标题');
-  assert.match(ins, /组里的任务出入口/, '本项目在组里的位置取绑定 ref 文档正文');
-  assert.match(ins, /- beta：# nx系列 · beta/, '兄弟成员描述取绑定 ref 文档标题');
-  assert.match(ins, /仓库与技能登记/, '兄弟成员描述取绑定 ref 文档正文');
+  // 组内描述 note 已随模板上下文清理移除：位置行与成员描述不再出现
+  assert.doesNotMatch(ins, /在组里的位置/, '组内位置行已移除');
+  assert.doesNotMatch(ins, /组里的任务出入口/, 'note 不再进交付文本');
+  assert.match(ins, /- beta（/, '兄弟成员行只剩名字与路径');
   // 组文档标题取绑定 ref 文档正文首行；原 docLinks note「阻塞窗口」不再展示
   assert.match(ins, /- waitgoal 设计/, '组文档标题取正文首行');
   assert.doesNotMatch(ins, /阻塞窗口/, '组文档绑定 note 不再展示');

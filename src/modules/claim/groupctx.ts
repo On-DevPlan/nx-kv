@@ -8,8 +8,7 @@
 // 也就是说：agent 领到「组内某个仓库」的任务时，除了任务本身，还要知道
 //   - 这个项目是干什么的（项目介绍）
 //   - 这个组是干什么的（组介绍 md / 组描述）
-//   - 本项目在组里占什么位置（组内描述）
-//   - 组里还有谁、各自什么角色（兄弟仓库的组内描述）
+//   - 组里还有谁（兄弟成员；组内描述 note 已随模板上下文清理移除）
 //   - 组的参考文件在哪（自有树路径 / 外部绝对路径——agent 可直接读盘）
 //
 // 任务原文（task.text）**不被改写**：上下文一律进 instruction 字段（与收尾指令、
@@ -54,8 +53,7 @@ interface GroupCtxGroup {
   desc?: string;
   intro?: IntroDoc;
   introSet?: IntroSet | null;
-  note?: string;
-  peers?: { name: string; note?: string; path?: string }[];
+  peers?: { name: string; path?: string }[];
   docLinks?: DocLink[];
 }
 
@@ -154,11 +152,10 @@ export function renderGroupContext(ctx: GroupContext | null): string {
     if (g.intro && g.intro.body) {
       lines.push(...introLines('组介绍', g.intro, g.introSet ?? null));
     }
-    if (g.note) lines.push(`本项目在组里的位置：${g.note}`);
     if (g.peers && g.peers.length) {
       lines.push('组内成员：');
       for (const p of g.peers) {
-        lines.push(`  - ${p.name}：${p.note || '（无组内描述）'}${p.path ? `（${p.path}）` : ''}`);
+        lines.push(`  - ${p.name}${p.path ? `（${p.path}）` : ''}`);
       }
     }
     if (g.docLinks && g.docLinks.length) {

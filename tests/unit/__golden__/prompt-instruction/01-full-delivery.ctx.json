@@ -63,20 +63,14 @@
     "introPath": "D:/repos/nx.md",
     "introRefId": "ref_nxgroup01",
     "introDesc": "nx 组介绍",
-    "note": "工作流层：本机 SQLite 队列 + refs 文档库",
-    "position": "工作流层：本机 SQLite 队列 + refs 文档库",
     "peers": [
       {
         "name": "nx-as",
-        "note": "",
-        "path": "D:/DevProjects/my/github/nx-as",
-        "hasNote": false
+        "path": "D:/DevProjects/my/github/nx-as"
       },
       {
         "name": "nx-rp",
-        "note": "渲染引擎",
-        "path": "D:/DevProjects/my/github/nx-rp",
-        "hasNote": true
+        "path": "D:/DevProjects/my/github/nx-rp"
       }
     ],
     "peerCount": 2,

@@ -14,12 +14,11 @@
 
 〔项目组上下文 · nx〕
 组定位：nx 组按仓库名前缀「nx」自动归组。
-本项目在组里的位置：工作流层：本机 SQLite 队列 + refs 文档库
 组介绍：nx 组介绍
   取用：nx-kv docs get --ref ref_nxgroup01
 组内成员：
-  - nx-as：（无组内描述）（D:/DevProjects/my/github/nx-as）
-  - nx-rp：渲染引擎（D:/DevProjects/my/github/nx-rp）
+  - nx-as（D:/DevProjects/my/github/nx-as）
+  - nx-rp（D:/DevProjects/my/github/nx-rp）
 组文档（按需取用）：
   - nx 组
       nx 组介绍

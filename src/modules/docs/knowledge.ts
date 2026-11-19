@@ -267,8 +267,9 @@ export async function repoKnowledge(locator?: string, { md = false }: { md?: boo
 /**
  * **项目组上下文**（交付层用）：某个工作目录所属仓库所在的项目组材料。
  *
- * 只取交付时必须带上的部分——项目介绍、组定位、组介绍、本项目在组里的位置、
- * 兄弟成员的组内描述、组绑定参考文件的可读路径。
+ * 只取交付时必须带上的部分——项目介绍、组定位、组介绍、兄弟成员、
+ * 组绑定参考文件的可读路径。（组内描述 note 已随模板上下文清理移除，
+ * 不再读绑定文档。）
  */
 export async function groupContextFor(cwd: unknown, { board = '' }: { board?: string } = {}): Promise<GroupContextResult | null> {
   const { loadStore, deriveKey, boardKeyOf, boardRepoKeys, normalizePathKey } = await reposBridge();
@@ -355,20 +356,13 @@ export async function groupContextFor(cwd: unknown, { board = '' }: { board?: st
         body: '',
       };
     });
-    // 本项目在组里的位置
-    const noteDocs = await readRefDocs((b.repoDocs || {})[rk], { warnings, label: `组内描述·${b.name}` });
-    const noteOwn = noteDocs[0] || null;
-    // 兄弟成员（组内各仓库的组内描述）
-    const peers: Array<{ name: string; note: string; path: string }> = [];
+    // 兄弟成员（组内各仓库；组内描述 note 已移除，不再逐成员读绑定文档）
+    const peers: Array<{ name: string; path: string }> = [];
     for (const mkey of members) {
-      const mr = s.repos.find((x: any) => deriveKey(x) === mkey);
-      const mname = mr ? mr.name : mkey;
       if (mkey === rk) continue;
-      const peerDocs = await readRefDocs((b.repoDocs || {})[mkey], { warnings, label: `组内描述·${b.name}/${mkey}` });
-      const peer = peerDocs[0];
+      const mr = s.repos.find((x: any) => deriveKey(x) === mkey);
       peers.push({
-        name: mname,
-        note: (peer && peer.body) || '',
+        name: mr ? mr.name : mkey,
         path: (mr && mr.path) || '',
       });
     }
@@ -378,7 +372,6 @@ export async function groupContextFor(cwd: unknown, { board = '' }: { board?: st
       desc: b.desc || '',
       intro,
       introSet: { main: null, extras: [], count: 0 },
-      note: (noteOwn && noteOwn.body) || '',
       peers,
       docLinks,
       refRepos: (Array.isArray(b.refs) ? b.refs : []).map((l: any) => refRepoItemOf(l.id)).filter(Boolean) as Array<{ key: string; name: string; path: string }>,
@@ -406,8 +399,7 @@ export interface GroupContextGroup {
   desc: string;
   intro: ContextIntro;
   introSet: IntroSet;
-  note: string;
-  peers: Array<{ name: string; path: string; note: string }>;
+  peers: Array<{ name: string; path: string }>;
   docLinks: BoundDoc[];
   refRepos: Array<{ key: string; name: string; path: string }>;
 }

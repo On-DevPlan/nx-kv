@@ -22,9 +22,7 @@ const refRepoShape = z.looseObject({
 
 const peerShape = z.looseObject({
   name: z.string().describe('成员仓库名'),
-  note: z.string().describe('组内描述：它在组里的角色与配合关系'),
   path: z.string().describe('本地绝对路径'),
-  hasNote: z.boolean().describe('是否写了组内描述'),
 });
 
 const repoShape = z.looseObject({
@@ -48,9 +46,7 @@ const groupShape = z.looseObject({
   introPath: z.string().describe('组介绍文档路径（本地 md；没有为空串）'),
   introRefId: z.string().describe('组介绍文档 id（docs get --ref 用）'),
   introDesc: z.string().describe('组介绍的一句话描述'),
-  note: z.string().describe('组内描述：本项目在组里的位置（角色 / 协作关系）'),
-  position: z.string().describe('= note（旧字段名，新模板用 note）'),
-  peers: z.array(peerShape).describe('组内成员（name / note / path）'),
+  peers: z.array(peerShape).describe('组内成员（name / path）'),
   peerCount: z.number().describe('组内成员数'),
   docs: z.array(docItemShape).describe('组文档清单'),
   docCount: z.number().describe('组文档数'),
@@ -85,13 +81,11 @@ function docItems(links: any) {
   }));
 }
 
-/** 组内成员 → 结构化数组（{{name}} / {{note}} / {{path}}——#163：路径方便直接访问）。 */
+/** 组内成员 → 结构化数组（{{name}} / {{path}}——#163：路径方便直接访问）。 */
 function peerItems(peers: any) {
   return (peers || []).map((p: any) => ({
     name: p.name || '',
-    note: p.note || '',
     path: p.path || '',
-    hasNote: !!p.note,
   }));
 }
 
@@ -105,16 +99,16 @@ function refRepoItems(list: any) {
 }
 
 /**
- * 组有没有值得交付的内容：定位 / 介绍 / 位置 / 参考文件 / 有描述的成员，任一即可。
- * 纯「成员名单（全员无描述）」不算——那只会喷出一排空标签（#81）。
+ * 组有没有值得交付的内容：定位 / 介绍 / 组文档 / 参考仓库，任一即可。
+ * 纯「成员名单」不算——那只会喷出一排空标签（#81）。
+ * （组内描述 note 已随模板上下文清理移除，不再参与判定。）
  */
 function groupHasContent(g: any): boolean {
   if (!g) return false;
-  if (g.desc || g.note) return true;
+  if (g.desc) return true;
   if (g.intro && g.intro.body) return true;
   if (g.docLinks && g.docLinks.length) return true;
-  if (g.refRepos && g.refRepos.length) return true;
-  return (g.peers || []).some((p: any) => p.note);
+  return !!(g.refRepos && g.refRepos.length);
 }
 
 export function deliveryCtxOf(groupCtx: any) {
@@ -168,8 +162,6 @@ export function deliveryCtxOf(groupCtx: any) {
           introPath: (g.intro && g.intro.path) || '',
           introRefId: (g.intro && g.intro.refId) || '',
           introDesc: (g.intro && (g.intro.desc || g.intro.title)) || '',
-          note: g.note || '',
-          position: g.note || '',
           peers,
           peerCount: peers.length,
           docs: gdocs,
@@ -212,9 +204,6 @@ const BUILTIN: TemplateText = {
 {{#if group.desc}}
 组定位：{{group.desc}}
 {{/if}}
-{{#if group.note}}
-本项目在组里的位置：{{group.note}}
-{{/if}}
 {{#if group.introRefId}}
 组介绍：{{#if group.introDesc}}{{group.introDesc}}{{else}}（无描述）{{/if}}
   取用：nx-kv docs get --ref {{group.introRefId}}
@@ -222,7 +211,7 @@ const BUILTIN: TemplateText = {
 {{#if group.peers}}
 组内成员：
 {{#each group.peers}}
-  - {{name}}：{{#if note}}{{note}}{{else}}（无组内描述）{{/if}}{{#if path}}（{{path}}）{{/if}}
+  - {{name}}{{#if path}}（{{path}}）{{/if}}
 {{/each}}
 {{/if}}
 {{#if group.docs}}

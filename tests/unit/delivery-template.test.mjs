@@ -43,8 +43,7 @@ const GROUP_CTX = {
         title: 'nx系列',
       },
       introSet: { count: 1, main: {}, extras: [] },
-      note: '组里的任务出入口',
-      peers: [{ name: 'beta', note: '仓库与技能登记', path: 'D:/repos/beta' }],
+      peers: [{ name: 'beta', path: 'D:/repos/beta' }],
       docLinks: [{ refId: 'ref_wait', desc: 'waitgoal 设计', title: 'waitgoal', hasBody: true, note: '阻塞窗口' }],
     },
   ],
@@ -61,14 +60,13 @@ test('context 默认模板：只内嵌项目主篇；组介绍 / 其余文档只
   assert.match(out, /nx-kv docs get --ref ref_qa/);
   assert.match(out, /〔项目组上下文 · nx系列〕/);
   assert.match(out, /组定位：nx 工具链组合/);
-  assert.match(out, /本项目在组里的位置：组里的任务出入口/);
   assert.match(out, /组介绍：组介绍描述/);
   assert.match(out, /nx-kv docs get --ref ref_group/);
   assert.match(out, /- waitgoal\n/, '组文档按 title 展示');
   assert.match(out, /waitgoal 设计/, '组文档副行是 desc');
   assert.match(out, /nx-kv docs get --ref ref_wait/);
   assert.match(out, /组内成员：/);
-  assert.match(out, /- beta：仓库与技能登记/);
+  assert.match(out, /- beta（D:\/repos\/beta）/, '成员行只剩名字与路径（组内描述已移除）');
   // 组介绍正文不再内嵌（只有项目主篇内嵌）；也不再出现任何路径
   assert.doesNotMatch(out, /本机 nx- 前缀工具链的组合/);
   assert.doesNotMatch(out, /C:\/docs\//);
@@ -117,7 +115,7 @@ test('deliveryCtxOf：文档 / 参考文件 / 成员是结构化数组（模板�
   // #163：成员带本机路径，默认模板渲染在括号说明之后，agent 直接定位兄弟仓库
   assert.equal(frag.group.peers[0].path, 'D:/repos/beta');
   const peersOut = renderCtx(await ctxOf(GROUP_CTX, { task: { id: 3, text: 'x' } }));
-  assert.match(peersOut, /- beta：仓库与技能登记（D:\/repos\/beta）/);
+  assert.match(peersOut, /- beta（D:\/repos\/beta）/);
   // 旧闸门键（repoDocs / groupPeers）已删除，不再作为变量提供
   assert.equal(frag.repoDocs, undefined);
   assert.equal(frag.groupPeers, undefined);
@@ -126,12 +124,12 @@ test('deliveryCtxOf：文档 / 参考文件 / 成员是结构化数组（模板�
 // #81：空壳组（只有成员名单、全员无描述）不该渲染——喷一排空标签还让
 // 「单独仓库」看着像被归了组。内置模板的 {{#if group}} 是「键在不在」，
 // 所以在 deliveryCtxOf 里把空壳组过滤成 null。
-test('空壳组不渲染：无定位/介绍/位置、成员全无描述 → ctx.group 为 null（#81）', async () => {
+test('空壳组不渲染：无定位/介绍、成员全无描述 → ctx.group 为 null（#81）', async () => {
   // fr/mobile 形态：唯一「内容」是成员名单，且全员（无组内描述）
   const shell = {
     repo: { name: 'fr', key: 'local/fr' },
     groups: [
-      { name: 'mobile', key: 'board/mobile', desc: '', intro: null, note: '', peers: [{ name: 'mn-rt', note: '' }] },
+      { name: 'mobile', key: 'board/mobile', desc: '', intro: null, peers: [{ name: 'mn-rt' }] },
     ],
   };
   const ctx = await ctxOf(shell, { task: { id: 1, text: 'x' } });
@@ -144,7 +142,7 @@ test('空壳组不渲染：无定位/介绍/位置、成员全无描述 → ctx.
   // ve/workspace 形态：独苗成员，连 peers 都没有
   const bare = {
     repo: { name: 've', key: 'local/ve' },
-    groups: [{ name: 'workspace', key: 'board/workspace', desc: '', intro: null, note: '' }],
+    groups: [{ name: 'workspace', key: 'board/workspace', desc: '', intro: null }],
   };
   const ctx2 = await ctxOf(bare, { task: { id: 2, text: 'x' } });
   assert.equal(ctx2.group, null);
@@ -155,8 +153,8 @@ test('多组：空壳组被跳过，第一个有料的当主组', async () => {
   const multi = {
     repo: { name: 'x', key: 'local/x' },
     groups: [
-      { name: 'shell', desc: '', intro: null, note: '', peers: [{ name: 'p', note: '' }] },
-      { name: 'real', desc: '真有料', note: '占个位', peers: [] },
+      { name: 'shell', desc: '', intro: null, peers: [{ name: 'p' }] },
+      { name: 'real', desc: '真有料', peers: [] },
     ],
   };
   const ctx = await ctxOf(multi, { task: { id: 3, text: 'x' } });
@@ -164,19 +162,18 @@ test('多组：空壳组被跳过，第一个有料的当主组', async () => {
   const out = renderCtx(ctx);
   assert.doesNotMatch(out, /shell/);
   assert.match(out, /组定位：真有料/);
-  assert.match(out, /本项目在组里的位置：占个位/);
 });
 
-test('组只要有一项真内容就照给：仅成员带描述也算', async () => {
+test('组内描述 note 已移除：仅成员带 note 不再算内容 → 空壳过滤（清理回归）', async () => {
   const g = {
     repo: { name: 'x', key: 'local/x' },
     groups: [
-      { name: 'g1', desc: '', intro: null, note: '', peers: [{ name: 'p', note: '干活的' }] },
+      { name: 'g1', desc: '', intro: null, peers: [{ name: 'p', note: '干活的' }] },
     ],
   };
   const ctx = await ctxOf(g, { task: { id: 4, text: 'x' } });
-  assert.notEqual(ctx.group, null);
-  assert.match(renderCtx(ctx), /- p：干活的/);
+  assert.equal(ctx.group, null, 'note 不再参与空壳判定');
+  assert.doesNotMatch(renderCtx(ctx), /干活的/);
 });
 
 // #104：context 段不能静默消失。两种「没有上下文」都必须在交付文本里说清原因，

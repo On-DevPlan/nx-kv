@@ -1,8 +1,8 @@
-// delivery/delivery-text.ts —— 交付载荷的人读正文（**唯一出处**）。
+// claim/delivery-text.ts —— 交付载荷的人读正文（**唯一出处**）。
 //
 // 谁会用到：
 //   - CLI `localtask get` 的人读输出（localtask/action-render.ts 的 renderWait）
-//   - CLI `localtask preview` 与面板「预览提示词」（delivery/preview.ts）
+//   - CLI `localtask preview` 与面板「预览提示词」（claim/preview.ts）
 //
 // 为什么单独抽出来：预览的全部价值在于「所见即所得」——如果面板自己拼一遍排版，
 // 迟早与 CLI 漂移，用户看到的就不是 agent 收到的那一份。同一份代码 = 同一份文本。

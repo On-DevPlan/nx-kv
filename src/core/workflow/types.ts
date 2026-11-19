@@ -20,7 +20,7 @@
 //
 // 工程约束（相对参考方案的刻意偏离）：
 //   - 仓库保持 JS ESM + JSDoc，不上平行 TypeScript 引擎
-//   - 契约落在 core/；业务仍在 modules/localtask + modules/claim + modules/delivery + modules/goals（四域分工）
+//   - 契约落在 core/；业务仍在 modules/localtask + modules/claim + modules/goals（三域分工）
 //   - 存储沿用本机 JSON 主题快照；RedisAdapter 属阶段 6，不挡主线
 //   - 目标目录规范见同目录 layout.js（禁止平行 src/{facade,store,mutator,…}）
 

@@ -1,7 +1,7 @@
-// promptplug/delivery.ts —— 交付组装（assembleDelivery）：seed 构造 + 三链合并 + compose。
+// claim/assemble.ts —— 交付组装（assembleDelivery）：seed 构造 + 三链合并 + compose。
 //
 // 这是「一条交付提示词怎么拼出来」的**唯一实现**（#227 重构：原样从 claim/wait.ts
-// 的 buildTaskDelivery 下半段收编进来）。宿主（delivery/host.ts）完成领域取数
+// 的 buildTaskDelivery 下半段收编进来）。宿主（claim/host.ts）完成领域取数
 // （附件标注 / 时间目标起表 / 组上下文 / 队列余量）后，把取好的数据装进
 // DeliveryHostData 交到这里；本文件不再碰任何业务模块——promptplug 不 import
 // 其他模块的边界保持不变。
@@ -42,7 +42,7 @@ export function flatParamsOf(params?: Record<string, string>): Record<string, un
   return flat;
 }
 
-/** 宿主取好的领域数据（取数细节见 delivery/host.ts——本文件不做任何 IO）。 */
+/** 宿主取好的领域数据（取数细节见 claim/host.ts——本文件不做任何 IO）。 */
 export interface DeliveryHostData {
   /** 标注后的任务行（id / text）；无任务 → null（指令段也照常渲染） */
   task: any | null;

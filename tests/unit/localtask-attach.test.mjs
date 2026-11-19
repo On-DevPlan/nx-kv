@@ -17,7 +17,7 @@ process.env.NX_KV_REPOS_STORE = join(sb, 'repos.json');
 
 const service = await import('../../src/modules/localtask/service.js');
 const { annotateTaskDelivery, attachmentInstruction, attachToTask, listTaskAttachments } = await import(
-  '../../src/modules/delivery/attach.js'
+  '../../src/modules/localtask/attach.js'
 );
 const { getTask: claimTask } = await import('../../src/modules/claim/get.js');
 const { getDb } = await import('../../src/core/db/index.js');
@@ -166,7 +166,7 @@ test('claim 交付（tasktool/get）：task.attachments 进载荷、附件区块
   assert.ok(!shown.attachments, '库存任务本体不带运行时标注字段');
 });
 
-test('localtask.attachments / localtask.attach 动作齐备且委托 delivery/attach.ts', async () => {
+test('localtask.attachments / localtask.attach 动作齐备且委托 localtask/attach.ts', async () => {
   const ids = mod.actions.map((a) => a.id);
   assert.ok(ids.includes('localtask.attach'));
   assert.ok(ids.includes('localtask.attachments'));

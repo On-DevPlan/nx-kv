@@ -27,7 +27,7 @@ export function deepLinkUrl(key: unknown, port: unknown): string {
   return `${panelOrigin(port)}/${page}`;
 }
 
-// 本仓库/已安装包的 CLI 入口（src/modules/delivery/ 上三级到包根）。
+// 本仓库/已安装包的 CLI 入口（src/modules/<域>/ 上三级到包根）。
 function binCliPath(): string {
   return fileURLToPath(new URL('../../../bin/kv.mjs', import.meta.url));
 }

@@ -93,7 +93,7 @@ test('#127 文件夹登记：只存路径、不复制内容，正文可解析，
     assert.equal(refs[0].kind, 'folder');
 
     // 模板 ctx：kindLabel / folder 子对象 / usage
-    const { attachmentInstruction, attachTemplateCtx } = await import('../../src/modules/delivery/attach-template.js');
+    const { attachmentInstruction, attachTemplateCtx } = await import('../../src/modules/localtask/attach-template.js');
     const item = {
       id: rec.id, kind: 'folder', kindLabel: '文件夹', name: '设计稿目录',
       absPath: dir, exists: true, missing: false, role: 'inline', note: '',

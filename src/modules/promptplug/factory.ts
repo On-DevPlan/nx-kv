@@ -2,9 +2,9 @@
 //
 // 单独成文件的原因：actions/ 下的 action 经 _manifest.generated.ts 被 index.ts
 // 装配，若 action 反向 import index.js 就形成 TDZ 回环——工厂是 actions 与
-// delivery 共同的依赖终点，不含任何装配代码。
+// claim 共同的依赖终点，不含任何装配代码。
 //
-// 依赖方向（设计内）：delivery 是唯一消费方——领域取数（readGroupContext /
+// 依赖方向（设计内）：claim 是唯一消费方——领域取数（readGroupContext /
 // attachTemplateCtx / pendingQueueInfo / getloop 指令渲染）由宿主完成，以 `Supply`
 // 形式交给插件；插件在自己的 buildData() 里 await supplied() 后只做变换。
 // promptplug 不 import 其他模块。

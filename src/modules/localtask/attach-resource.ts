@@ -1,4 +1,4 @@
-// delivery/attach-resource.ts —— 附件的「资源视图模型」：关系表行 → 展示/取用信息。
+// localtask/attach-resource.ts —— 附件的「资源视图模型」：关系表行 → 展示/取用信息。
 //
 // 资源类型只有五种（用户口径）：file（含图片）/ url / task / ref / mdfile。
 // 旧数据里 kind='image' 或没有 kind 的一律按 file 处理（向后兼容）。
@@ -338,7 +338,7 @@ export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
 
   // ref：文档库里的文档（v7 起 ref 是 DB 实体，没有物理路径）。
   // 标题口径（#168）：**文档标题**（正文首行的 # 标题）优先 —— 服务端在标注层
-  // （delivery/attach.ts 的 annotateRefTitles）读库补上并覆盖 title/name；
+  // （attach.ts 的 annotateRefTitles）读库补上并覆盖 title/name；
   // 这里先给 desc / 名字占位，读不到标题时前端回落它。
   const info = lookups.refs && lookups.refs.get(String(meta.refId || row.targetKey || ''));
   const refId = String(meta.refId || row.targetKey || (info && info.refId) || '');

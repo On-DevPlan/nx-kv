@@ -10,7 +10,7 @@ const { compose } = await import('../../src/modules/promptplug/compose.js');
 const { buildPlugins, templatesOf, PLUGIN_IDS } = await import('../../src/modules/promptplug/index.js');
 const { assertPluginList } = await import('../../src/shared/prompt-plugin.js');
 const { renderInstruction, validateTemplate } = await import('../../src/core/instruction-template.js');
-const { attachTemplateCtx } = await import('../../src/modules/delivery/attach.js');
+const { attachTemplateCtx } = await import('../../src/modules/localtask/attach.js');
 
 /** 附件 ctx 走真实变换（schema 严格到 kind 级别，手写简化对象已不合法）。 */
 const attachOf = (rows) => attachTemplateCtx(rows).attach;

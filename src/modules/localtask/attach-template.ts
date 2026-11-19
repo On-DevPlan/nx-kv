@@ -1,4 +1,4 @@
-// delivery/attach-template.ts —— 交付 instruction〔附件〕段的模板 ctx 与渲染。
+// localtask/attach-template.ts —— 交付 instruction〔附件〕段的模板 ctx 与渲染。
 //
 // 输出由模板渲染（内置 DEFAULT_ATTACH_TEMPLATE 或配置模板），保证「配置模板」与
 // 「内置默认」走同一份 ctx、同一套口径；渲染失败时用最朴素的逐条文本兜底

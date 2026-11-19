@@ -1,4 +1,4 @@
-// delivery/doc-inline.ts —— 任务级文档绑定的「进原文」（#162）。
+// localtask/doc-inline.ts —— 任务级文档绑定的「进原文」（#162）。
 //
 // role='doc' 的 kind=ref 附件 = **文档资料绑定**：交付时把文档全文附进 instruction，
 // 而不是只给一条 `docs get` 命令——agent 少跑一轮 nx-kv（任务原文口径：

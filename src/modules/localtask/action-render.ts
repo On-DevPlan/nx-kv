@@ -1,7 +1,7 @@
 // action 的人读输出（render）函数（自 index.js 拆出）：CLI 与 HTTP 共用同一份措辞。
 // STATUS_TAG 来自同构词表（src/shared/task-status.js）：CLI 与面板共用一份措辞。
 import { STATUS_TAG } from '../../shared/task-status.js';
-import { deliveryBodyText } from '../delivery/delivery-text.js';
+import { deliveryBodyText } from '../claim/delivery-text.js';
 
 // 渲染入参都是 action 结果对象（HTTP/CLI body 透传）→ any。
 export type RenderInput = any;

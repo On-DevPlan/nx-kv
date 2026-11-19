@@ -4,7 +4,7 @@
 //   - 队列读写、唤醒注册表、presence/面板注册表都在 localtask（serve 路由与
 //     panel-guard 的一半也长在那边），这里只做**队列编排**：快路径领取 → 阻塞窗口
 //     （跨进程轮询 / goal 到点收尾 / 用户关闭）。
-//   - 交付组装已拆到 delivery.ts（宿主取数 → promptplug 的 assembleDelivery）——
+//   - 交付组装在本域 host.ts（宿主取数 → promptplug 的 assembleDelivery）——
 //     本文件在拿到任务的那一刻调 buildTaskDelivery，不碰模板与渲染。
 //   - 面板随行（确保主面板 / 深链 / 窗口重开防风暴）已拆到 panel-escort.js——
 //     这里只经 escortPanel({ stop() }) 一点相接。
@@ -30,7 +30,7 @@ import {
   unregisterTopicWaiter,
 } from '../localtask/service.js';
 import { ensureMainPanel, deepLinkUrl, escortPanel } from './panel-escort.js';
-import { buildTaskDelivery } from '../delivery/host.js';
+import { buildTaskDelivery } from './host.js';
 import * as timegoal from '../goals/timegoal.js';
 
 // 跨进程兜底轮询间隔（只定这里的读取节奏；队列写入节奏与它无关）
@@ -40,7 +40,7 @@ const POLL_MS = 500;
 //
 // 与时间目标的融合（fail-open：timegoal 坏了绝不拖垮阻塞等待）：
 //   - 阻塞期间到点 → 本轮立刻收尾（goalPoll，见 waitForTask）；
-//   - 返回时刻把目标状态渲染进 instruction（goal 段）——那半边在 delivery.ts。
+//   - 返回时刻把目标状态渲染进 instruction（goal 段）——那半边在本域 host.ts。
 // 探针按 key 服务于 500ms 轮询。读取时机是**阻塞开始**不是返回时刻：
 // 只认「等待开始时还在跑」的目标，已到点的不参与自动取消。
 

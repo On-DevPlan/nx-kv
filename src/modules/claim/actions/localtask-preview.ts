@@ -31,7 +31,7 @@ export class LocaltaskPreviewAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-        const { previewTaskDelivery } = await (import('../../delivery/preview.js') as any);
+        const { previewTaskDelivery } = await (import('../preview.js') as any);
         const { parseParams } = await (import('../params.js') as any);
         const draftText: any = ctx.text === undefined || ctx.text === null ? '' : String(ctx.text);
         if (!draftText.trim() && (ctx.id === undefined || ctx.id === null)) {

@@ -1,4 +1,4 @@
-// delivery/attach.ts —— 本地任务链路的附件编排（标注 / 追加 / 清单）。
+// localtask/attach.ts —— 本地任务链路的附件编排（标注 / 追加 / 清单）。
 //
 // 背景（任务 #15「localtask 附件功能未实现」）：web 编辑器已把附件以
 // `![名](fileId)` 嵌进正文，但链路的 **agent 侧**对不上——get/wait 交付的

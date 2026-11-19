@@ -1,4 +1,4 @@
-// delivery/preview.ts —— 「预览 get 提示词」（任务 #65）。
+// claim/preview.ts —— 「预览 get 提示词」（任务 #65）。
 //
 // 用户的诉求是**可观测**：「当前具体会获得怎么样的字符串？」——
 // 编辑页「更多 → 预览 get 提示词」点开就应该看到 agent 领取时会拿到的**那一份原文**，
@@ -16,7 +16,7 @@
 import { getSettings } from '../localtask/service.js';
 import { PLUGIN_IDS, groupIndex, pluginMeta } from '../promptplug/index.js';
 import { deliveryPlainText } from './delivery-text.js';
-import { getLoopForCwd, type GetLoopState } from '../claim/waitgoal-config.js';
+import { getLoopForCwd, type GetLoopState } from './waitgoal-config.js';
 import { buildTaskDelivery } from './host.js';
 
 export interface PreviewTaskDeliveryOptions {

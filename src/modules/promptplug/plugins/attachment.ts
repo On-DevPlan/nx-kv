@@ -1,6 +1,6 @@
 // attachment 插件（order 20）：附件识别。
 //
-// 数据变换（attachTemplateCtx）留在 delivery/attach-template.ts —— 它依赖
+// 数据变换（attachTemplateCtx）留在 localtask/attach-template.ts —— 它依赖
 // attach-resource 的标注工具链（kind 归一 / 可读性探测 / 取用命令），随插件搬会
 // 牵动三处引用。插件消费宿主标注后的 attach 对象，**schema 逐字对齐它的真实形状**。
 //

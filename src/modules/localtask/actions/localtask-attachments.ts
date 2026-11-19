@@ -25,7 +25,7 @@ export class LocaltaskAttachmentsAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-        const { listTaskAttachments } = await (import('../../delivery/attach.js') as any);
+        const { listTaskAttachments } = await (import('../attach.js') as any);
         return listTaskAttachments({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
     
   }

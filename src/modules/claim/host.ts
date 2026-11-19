@@ -1,4 +1,4 @@
-// delivery/host.ts —— 交付宿主：领域取数 → Supply → promptplug 的 assembleDelivery。
+// claim/host.ts —— 交付宿主：领域取数 → Supply → promptplug 的 assembleDelivery。
 //
 // #227 重构：从 wait.ts 拆出。wait.ts 只剩阻塞编排（跨进程轮询 / goal 到点收尾 /
 // 面板随行），本文件专管「交付一条任务时要把哪些领域数据取齐」：
@@ -21,7 +21,7 @@ import { formatDuration, formatGoalTiming } from '../../core/instruction-templat
 import { parseFrontmatter } from '../../shared/frontmatter.js';
 import { getSettings, isGlobalKey, pendingQueueInfo } from '../localtask/service.js';
 import { assembleDelivery, type AssembledDelivery } from './assemble.js';
-import { annotateTaskDelivery, attachTemplateCtx } from './attach.js';
+import { annotateTaskDelivery, attachTemplateCtx } from '../localtask/attach.js';
 import { readGroupContext } from './groupctx.js';
 import { ensureTaskGoal, previewTaskGoal } from '../goals/taskgoal.js';
 import * as timegoal from '../goals/timegoal.js';

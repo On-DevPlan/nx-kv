@@ -2,9 +2,9 @@
 // 纯展示层逻辑：不持状态（useDropFiles 除外——它是拖放态的最小封装）。
 import { useState } from 'react';
 import type { DragEvent } from 'react';
-import { filesFromDataTransfer } from '../../modules/md/md-edit-ops.js';
-import { liveBodyBlocks, normalizeBlockText, renderMarkdownHtml } from '../../modules/md/md-parse.js';
-import type { Attachment } from './attach-common.js';
+import { filesFromDataTransfer } from '../../../modules/md/md-edit-ops.js';
+import { liveBodyBlocks, normalizeBlockText, renderMarkdownHtml } from '../../../modules/md/md-parse.js';
+import type { Attachment } from '../attachments/attach-common.js';
 
 // 格式快捷键 → 编辑操作（预览态划选后直接套用）
 export const FMT_KEYS: Record<string, string> = { b: 'bold', i: 'italic', e: 'code', k: 'link' };

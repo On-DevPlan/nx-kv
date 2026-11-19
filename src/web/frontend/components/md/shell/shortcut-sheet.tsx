@@ -1,7 +1,7 @@
 // MD 工作台快捷键速查：专业编辑器的必备「键盘地图」。
 // Ctrl/⌘ / 唤起（Notion 习惯），工具栏问号按钮也可打开；Esc / 点遮罩关闭。
 // 外壳走 popup/Modal（全站统一模态），本文件只管快捷键内容。
-import { Modal } from '../popup/index.jsx';
+import { Modal } from '../../popup/index.jsx';
 
 /** 一组快捷键：[按键, 说明]。 */
 interface ShortcutGroup {

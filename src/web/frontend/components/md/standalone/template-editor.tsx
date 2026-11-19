@@ -6,8 +6,8 @@
 // 附件、查找、slash 菜单），侧边栏入口不该为它背上整包体积。
 import { useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { runFormat } from '../../modules/md/md-edit-ops.js';
-import { renderMarkdownHtml } from '../../modules/md/md-parse.js';
+import { runFormat } from '../../../modules/md/md-edit-ops.js';
+import { renderMarkdownHtml } from '../../../modules/md/md-parse.js';
 
 const TOOLS = [
   { op: 'bold', label: 'B', title: '粗体 Ctrl/⌘B', cls: 'b' },

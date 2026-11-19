@@ -7,11 +7,11 @@ import type {
   MouseEvent as ReactMouseEvent,
   ReactNode,
 } from 'react';
-import { filesFromDataTransfer, runFormat } from '../../modules/md/md-edit-ops.js';
-import { isEmptyBlock, isFrontmatterBlock, normalizeBlockText } from '../../modules/md/md-parse.js';
+import { filesFromDataTransfer, runFormat } from '../../../modules/md/md-edit-ops.js';
+import { isEmptyBlock, isFrontmatterBlock, normalizeBlockText } from '../../../modules/md/md-parse.js';
 import { autoSize, blockHtml, blockKind } from './md-panes-helpers.js';
 import type { PendingSel } from './md-panes-helpers.js';
-import type { Attachment } from './attach-common.js';
+import type { Attachment } from '../attachments/attach-common.js';
 
 interface LiveBlockProps {
   index: number;

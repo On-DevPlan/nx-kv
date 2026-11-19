@@ -3,7 +3,7 @@
  *
  * #104：原先这里还带一套「撰写中」形态（浮层里直接展开一个 textarea 写评论
  * 或反馈）——用户口径是「评论和反馈不该是输入框弹窗，要新开一个 md 编辑
- * 页面」，所以撰写态整体移走（见 components/md/composer-panel.jsx）。这里只
+ * 页面」，所以撰写态整体移走（见 components/md/composer/composer-panel.jsx）。这里只
  * 留**动作条**：格式按钮 / 复制 / 评论（点评论 → 打开那块 md 编辑面板）。
  */
 

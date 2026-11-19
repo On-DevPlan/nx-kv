@@ -6,7 +6,7 @@
 //   · 双击回默认钉位（清记录 = 回 CSS 的 right/top/bottom）。
 //
 // 为什么抽出来：文档页的目录轨（components/Introduction/rail.tsx）此前没有拖动，
-// 用户点了汉堡钮「无法拖动」——它和任务页 ack 轨（components/md/ack-rail.tsx）
+// 用户点了汉堡钮「无法拖动」——它和任务页 ack 轨（components/md/rails/ack-rail.tsx）
 // 是同一套 `.doc-rail` 视觉，拖动行为不该只长在一边。两处共用这一份，
 // 语义漂移就无从发生。
 import { useCallback, useEffect, useRef, useState } from 'react';

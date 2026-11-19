@@ -30,16 +30,16 @@ import type {
   RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
-import AttachPicker from './attach-picker.jsx';
-import type { AttachHost } from './attach-picker.jsx';
-import BlockRail from './block-rail.jsx';
+import AttachPicker from '../attachments/attach-picker.jsx';
+import type { AttachHost } from '../attachments/attach-picker.jsx';
+import BlockRail from '../rails/block-rail.jsx';
 import LiveBlock from './live-block.jsx';
-import { EditorFindBar } from './find-bar.jsx';
-import { handleSlashKey, SlashMenu } from './slash-menu.jsx';
-import { StatusBar } from './status-bar.jsx';
-import { useBlockDrag } from './use-block-drag.js';
-import { useLivePreview } from './use-live-preview.js';
-import { useSourceEditor } from './use-source-editor.js';
+import { EditorFindBar } from '../shell/find-bar.jsx';
+import { handleSlashKey, SlashMenu } from '../menus/slash-menu.jsx';
+import { StatusBar } from '../shell/status-bar.jsx';
+import { useBlockDrag } from '../hooks/use-block-drag.js';
+import { useLivePreview } from '../hooks/use-live-preview.js';
+import { useSourceEditor } from '../hooks/use-source-editor.js';
 import { FMT_KEYS } from './md-panes-helpers.js';
 import type { EditorApi, FileDropCtx } from './md-panes-helpers.js';
 import type { LiveKeyCtx } from './md-panes-keys.js';
@@ -55,9 +55,9 @@ import {
   indentLines,
   runFormat,
   toggleNthTodo,
-} from '../../modules/md/md-edit-ops.js';
-import { isFrontmatterBlock, normalizeBlockText } from '../../modules/md/md-parse.js';
-import type { Attachment } from './attach-common.js';
+} from '../../../modules/md/md-edit-ops.js';
+import { isFrontmatterBlock, normalizeBlockText } from '../../../modules/md/md-parse.js';
+import type { Attachment } from '../attachments/attach-common.js';
 
 export { MdPanes, ModeSeg } from './md-panes-root.jsx';
 

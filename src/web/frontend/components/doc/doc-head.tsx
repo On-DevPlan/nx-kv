@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { MenuPortal, openMenuAt, useMenu } from '../md/tool-bar.jsx';
+import { MenuPortal, openMenuAt, useMenu } from '../md/shell/tool-bar.jsx';
 import { inMoreOf, metaOf, onBarOf } from '../tool-acts/modules.js';
 import { Icon } from '../icons.jsx';
 import { useToolActsLayout } from '../tool-acts/use-layout.js';

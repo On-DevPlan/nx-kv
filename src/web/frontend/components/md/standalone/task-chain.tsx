@@ -1,5 +1,5 @@
 /** 任务链可视化（#77）：弹窗内展示；history 或 fork 祖先/子任务，点节点旁路查看。 */
-import { Modal } from '../popup/index.jsx';
+import { Modal } from '../../popup/index.jsx';
 
 const KIND_LAB: Record<string, string> = {
   origin: '起点',

@@ -8,10 +8,10 @@
 // 移除时二选一：只解除关联 / 连资源与字节一起删。
 import { useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import type { ComponentType, DragEvent, ReactNode, Ref } from 'react';
-import { Modal, useDialog } from '../popup/index.jsx';
-import { useToast } from '../toast/index.jsx';
-import { api } from '../../api/client.js';
-import { uploadOne, droppedFiles } from '../attach/upload.js';
+import { Modal, useDialog } from '../../popup/index.jsx';
+import { useToast } from '../../toast/index.jsx';
+import { api } from '../../../api/client.js';
+import { uploadOne, droppedFiles } from '../../attach/upload.js';
 import AttachModal from './attach-modal.jsx';
 import {
   AREA_LABEL,
@@ -20,7 +20,7 @@ import {
   endpointOf,
   normAttachment,
 } from './attach-common.js';
-import { renderMarkdownHtml } from '../../modules/md/md-render.js';
+import { renderMarkdownHtml } from '../../../modules/md/md-render.js';
 import type {
   AttachAllow,
   AttachHostKind,

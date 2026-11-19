@@ -1,5 +1,5 @@
 // ack 定位轨拖动落点的纯逻辑（任务 #55）：钳制 + localStorage 存取。
-// 组件侧（components/md/ack-rail.jsx）只做指针编排，落点语义全在这层验证。
+// 组件侧（components/md/rails/ack-rail.jsx）只做指针编排，落点语义全在这层验证。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {

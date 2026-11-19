@@ -13,7 +13,7 @@
 // 键（docs.attach 只认 `doc`）、「改说明」打任务端点，文档侧两个动作全废。
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/icons.jsx';
-import AttachArea from '../../components/md/attach-area.jsx';
+import AttachArea from '../../components/md/attachments/attach-area.jsx';
 import type { DockState } from '../dir/task-dock.js';
 
 /** 附件 tab 的内容（AttachArea 常用参数收在这里，页面只传业务回调）。 */

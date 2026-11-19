@@ -25,7 +25,7 @@ const TemplatePanel = lazy(() => import('./page/templates/index.jsx'));
 const DocPanel = lazy(() => import('./page/doc/index.jsx'));
 const SettingsPanel = lazy(() => import('./page/settings/index.jsx'));
 const DagPanel = lazy(() => import('./page/dag/index.jsx'));
-const ComposePanel = lazy(() => import('./components/md/composer-panel.jsx'));
+const ComposePanel = lazy(() => import('./components/md/composer/composer-panel.jsx'));
 
 /** 给懒加载的视图套上 Suspense（传的是**元素**，不是组件） */
 const wrap = (el: ReactNode) => (

@@ -5,7 +5,7 @@
 // 这条用例把两个宿主的线缆形状钉住。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { attachBodyOf, endpointOf } from '../../src/web/frontend/components/md/attach-common.js';
+import { attachBodyOf, endpointOf } from '../../src/web/frontend/components/md/attachments/attach-common.js';
 
 test('attachBodyOf：文档宿主挂文档用 doc 键（任务宿主才用 ref）', () => {
   const item = { source: 'ref', docRef: 'ref:ref_0123456789abcdef', name: '设计笔记', note: '说明', inline: true };

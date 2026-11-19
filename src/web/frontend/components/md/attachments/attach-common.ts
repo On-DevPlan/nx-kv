@@ -2,7 +2,7 @@
 //
 // 前端**不拼正文**：所有写入都走 `localtask attach` / `docs attach` 的
 // `--no-embed` 路径（attachments + task_attach/ref_attach），正文由编辑器自己管。
-import { api } from '../../api/client.js';
+import { api } from '../../../api/client.js';
 
 /** 附件分区：正文内嵌（role=inline）/ 附件区（role=attach|doc）。 */
 export type AttachAreaKind = 'area' | 'inline';

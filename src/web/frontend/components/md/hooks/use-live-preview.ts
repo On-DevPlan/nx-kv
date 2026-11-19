@@ -3,15 +3,15 @@
 // 与 JSX 装配。返回值即组件所需的全部上下文。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { useAttachPicker } from './attach-picker.jsx';
-import type { AttachHost } from './attach-picker.jsx';
-import { atTriggerAt, padEmbed } from '../../modules/md/attach-mention.js';
-import { diffIndex, moveBlockInList, reindexAfterMove, runFormat, turnBlock } from '../../modules/md/md-edit-ops.js';
-import { joinMdBlocks, normalizeBlockText } from '../../modules/md/md-parse.js';
-import { bodyBlocksOnly, useDropFiles } from './md-panes-helpers.js';
-import type { EditOpResult, EditorApi, FileDropCtx, PendingSel } from './md-panes-helpers.js';
+import { useAttachPicker } from '../attachments/attach-picker.jsx';
+import type { AttachHost } from '../attachments/attach-picker.jsx';
+import { atTriggerAt, padEmbed } from '../../../modules/md/attach-mention.js';
+import { diffIndex, moveBlockInList, reindexAfterMove, runFormat, turnBlock } from '../../../modules/md/md-edit-ops.js';
+import { joinMdBlocks, normalizeBlockText } from '../../../modules/md/md-parse.js';
+import { bodyBlocksOnly, useDropFiles } from '../panes/md-panes-helpers.js';
+import type { EditOpResult, EditorApi, FileDropCtx, PendingSel } from '../panes/md-panes-helpers.js';
 import { useSlashMenu } from './use-slash-menu.js';
-import type { Attachment } from './attach-common.js';
+import type { Attachment } from '../attachments/attach-common.js';
 
 /** 查找命中：块序号 + 块内起始偏移。 */
 export interface LiveMatch {

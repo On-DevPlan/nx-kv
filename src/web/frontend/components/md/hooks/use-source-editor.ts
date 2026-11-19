@@ -21,14 +21,14 @@ import {
   scrollTextareaToIndex,
   slashQueryAt,
   turnLine,
-} from '../../modules/md/md-edit-ops.js';
-import { FMT_KEYS, useDropFiles } from './md-panes-helpers.js';
-import type { DropRootProps, EditOpResult, EditorApi, FileDropCtx } from './md-panes-helpers.js';
-import { handleSlashKey } from './slash-menu.jsx';
-import type { SlashMenuProps } from './slash-menu.jsx';
+} from '../../../modules/md/md-edit-ops.js';
+import { FMT_KEYS, useDropFiles } from '../panes/md-panes-helpers.js';
+import type { DropRootProps, EditOpResult, EditorApi, FileDropCtx } from '../panes/md-panes-helpers.js';
+import { handleSlashKey } from '../menus/slash-menu.jsx';
+import type { SlashMenuProps } from '../menus/slash-menu.jsx';
 import { useSlashMenu } from './use-slash-menu.js';
-import type { EditorFindBarProps } from './find-bar.jsx';
-import type { StatusBarProps } from './status-bar.jsx';
+import type { EditorFindBarProps } from '../shell/find-bar.jsx';
+import type { StatusBarProps } from '../shell/status-bar.jsx';
 
 export interface UseSourceEditorArgs {
   body: string;

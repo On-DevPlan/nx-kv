@@ -16,18 +16,18 @@ import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import { extractAckNodes } from '../../modules/board/ack-nodes.js';
-import ToolBar from '../../components/md/tool-bar.jsx';
-import { MdPanes } from '../../components/md/md-panes.jsx';
-import AckRail from '../../components/md/ack-rail.jsx';
-import SelMenu from '../../components/md/sel-menu.jsx';
-import { openComposer } from '../../components/md/composer-launch.js';
-import ShortcutSheet from '../../components/md/shortcut-sheet.jsx';
-import { TaskChainModal as TaskChainModalRaw } from '../../components/md/task-chain.jsx';
+import ToolBar from '../../components/md/shell/tool-bar.jsx';
+import { MdPanes } from '../../components/md/panes/md-panes.jsx';
+import AckRail from '../../components/md/rails/ack-rail.jsx';
+import SelMenu from '../../components/md/menus/sel-menu.jsx';
+import { openComposer } from '../../components/md/composer/composer-launch.js';
+import ShortcutSheet from '../../components/md/shell/shortcut-sheet.jsx';
+import { TaskChainModal as TaskChainModalRaw } from '../../components/md/standalone/task-chain.jsx';
 import { useApp } from '../../app-context.jsx';
 import { openBesideMain } from '../../workspace.js';
-import { persistAtt } from '../../components/md/attachments.js';
-import type { Attachment } from '../../components/md/attach-common.js';
-import type { AttachAreaHandle } from '../../components/md/attach-area.jsx';
+import { persistAtt } from '../../components/md/attachments/attachments.js';
+import type { Attachment } from '../../components/md/attachments/attach-common.js';
+import type { AttachAreaHandle } from '../../components/md/attachments/attach-area.jsx';
 import { pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
 import {
   liveBodyBlocks,
@@ -76,7 +76,7 @@ interface PagePanelProps {
 }
 
 /**
- * 链弹窗的节点类型（components/md/task-chain.tsx）与本页展示态同形但字段全可选：
+ * 链弹窗的节点类型（components/md/standalone/task-chain.tsx）与本页展示态同形但字段全可选：
  * 入参方向不兼容，按实际契约桥接一次，运行期仍是同一批节点对象。
  */
 const TaskChainModal = TaskChainModalRaw as unknown as (props: {

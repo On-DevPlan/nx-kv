@@ -9,9 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { moveBlockInList, reindexAfterMove } from '../../src/web/frontend/modules/md/md-edit-ops.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const panes = readFileSync(join(root, 'src/web/frontend/components/md/md-panes.tsx'), 'utf-8');
-const rail = readFileSync(join(root, 'src/web/frontend/components/md/block-rail.tsx'), 'utf-8');
-const drag = readFileSync(join(root, 'src/web/frontend/components/md/use-block-drag.ts'), 'utf-8');
+const panes = readFileSync(join(root, 'src/web/frontend/components/md/panes/md-panes.tsx'), 'utf-8');
+const rail = readFileSync(join(root, 'src/web/frontend/components/md/rails/block-rail.tsx'), 'utf-8');
+const drag = readFileSync(join(root, 'src/web/frontend/components/md/hooks/use-block-drag.ts'), 'utf-8');
 
 test('moveBlockInList：移动后源块占 to 位（前移/后移对称）', () => {
   assert.deepEqual(moveBlockInList(['a', 'b', 'c'], 0, 2), ['b', 'c', 'a']);

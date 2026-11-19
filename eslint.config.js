@@ -296,6 +296,34 @@ export default defineConfig([
   },
 
   {
+    // components/md 的分组目录（md/attachments、md/panes …）比原先多一层，
+    // 于是它们引前端自己的 md 模块写出来是 `../../../modules/md/xxx`——它落在
+    // `src/web/frontend/modules/`，不是后端。上面那条深度规则分不清「第几层」，
+    // 只会按 specifier 文本拦，所以在这里按目录精确豁免，并把真正要防的
+    // 「越过 web 到 src/modules」的更深一层（../../../../../modules）补进黑名单。
+    // 与上面同口径：最终兜底仍是 tests/unit/layering.test.mjs（解析真实路径）。
+    files: ['src/web/frontend/components/md/**/*.{js,jsx,ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['node:*'],
+              message: '前端不能引用 Node 内置模块。',
+            },
+            {
+              group: ['**/modules/*/index.js', '**/modules/*/service.js', '../../../../modules/**', '../../../../../modules/**'],
+              message:
+                '前端只通过 /api 拿数据（跨端纯函数在 src/shared/）。拖进后端模块会把 node: 内置模块带进浏览器包。',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
     // 生成的 typed client 例外：它 type-only 引后端 schema 与 action 类
     // （类型契约的单一来源），`import type` 在编译期被擦除——浏览器包里
     // 不会有任何后端代码，node: 内置模块也就进不去。

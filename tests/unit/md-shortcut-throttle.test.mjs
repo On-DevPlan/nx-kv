@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { COMBO_GAP_MS, createComboGate, docComboOf } from '../../src/web/frontend/components/md/doc-keys.js';
+import { COMBO_GAP_MS, createComboGate, docComboOf } from '../../src/web/frontend/components/md/panes/doc-keys.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(join(root, p), 'utf-8');
@@ -49,7 +49,7 @@ test('节流闸门：窗口内只放行第一次，窗口外放行，按键之�
 });
 
 test('结构钉：文档级快捷键走判定函数 + 保存节流', () => {
-  const src = read('src/web/frontend/components/md/md-panes-root.tsx');
+  const src = read('src/web/frontend/components/md/panes/md-panes-root.tsx');
   assert.match(src, /const k = docComboOf\(e\)/, '按键先过 docComboOf 归一');
   assert.match(src, /if \(!saveGateRef\.current\('save', Date\.now\(\)\)\) return;/, '保存前过闸门');
   assert.match(src, /e\.preventDefault\(\);\s*\n\s*if \(!saveGateRef/, '被节流掉也要 preventDefault，别让浏览器弹另存');

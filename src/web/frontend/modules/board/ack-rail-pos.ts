@@ -2,7 +2,7 @@
 //
 // 轨默认钉在任务正文区右上（.mdw > .ack-rail 的 CSS 顶/底）；用户按住汉堡钮可把
 // 整条轨拖到容器内任意位置，落点存 localStorage，重开面板还在。纯函数与存取都在
-// 这一层，不依赖 DOM——指针事件编排在组件（components/md/ack-rail.jsx）里，
+// 这一层，不依赖 DOM——指针事件编排在组件（components/md/rails/ack-rail.jsx）里，
 // 这层保持 node 单测可直接覆盖（localStorage 缺席时存取静默降级）。
 
 const POS_KEY = 'nx-kv-ack-rail-pos';

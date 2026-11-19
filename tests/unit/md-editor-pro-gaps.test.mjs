@@ -11,7 +11,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const src = readFileSync(join(root, 'src/web/frontend/components/md/md-panes.tsx'), 'utf-8');
+const src = readFileSync(join(root, 'src/web/frontend/components/md/panes/md-panes.tsx'), 'utf-8');
 
 test('IME 守卫：块编辑器与源码态都在按键分发前拦组合输入', () => {
   const hits = src.match(/e\.nativeEvent\?\.isComposing \|\| e\.keyCode === 229/g) || [];

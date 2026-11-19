@@ -7,7 +7,7 @@
 //   · 文件夹是**路径指针**（目录内容不在库里），不能给它编一条会 404 的内容链接。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { attachBodyOf, badgeOf, normAttachment } from '../../src/web/frontend/components/md/attach-common.js';
+import { attachBodyOf, badgeOf, normAttachment } from '../../src/web/frontend/components/md/attachments/attach-common.js';
 
 test('#133 attachBodyOf：文件夹条目发 folder 字段（路径指针，不走文件上传）', () => {
   const item = { source: 'folder', folder: 'D:\\repos\\ref', name: 'ref' };

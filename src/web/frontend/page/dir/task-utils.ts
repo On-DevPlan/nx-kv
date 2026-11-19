@@ -4,9 +4,9 @@
 // 这条链路（task.tsx 及其协作者）内部交换的会话态形状——文档、时间目标、
 // 划选浮条、任务链节点。集中一处，避免 8 个文件各写一份「差不多」的接口。
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import type { Attachment } from '../../components/md/attach-common.js';
-import type { AttachAreaHandle } from '../../components/md/attach-area.jsx';
-import type { EditorApi } from '../../components/md/md-panes-helpers.js';
+import type { Attachment } from '../../components/md/attachments/attach-common.js';
+import type { AttachAreaHandle } from '../../components/md/attachments/attach-area.jsx';
+import type { EditorApi } from '../../components/md/panes/md-panes-helpers.js';
 import type { Model } from 'flexlayout-react';
 import type { AppValue } from '../../app-context.jsx';
 import type { BoardRow, LocalTask, LocalTopic, TemplatesApi } from '../../types.js';

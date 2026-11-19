@@ -15,7 +15,7 @@
 import { normalizeWikiTarget } from '../../../../shared/wikilink.js';
 import { looksLikeFileId } from '../../../../shared/attach.js';
 import { stripFrontmatter } from '../../../../shared/frontmatter.js';
-import type { Attachment } from '../../components/md/attach-common.js';
+import type { Attachment } from '../../components/md/attachments/attach-common.js';
 import {
   BLOCK_RULES,
   DOC_RULES,

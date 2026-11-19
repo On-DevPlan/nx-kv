@@ -7,14 +7,14 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   continueListOnEnter,
   isBareListItemLine,
-} from '../../modules/md/md-edit-ops.js';
+} from '../../../modules/md/md-edit-ops.js';
 import {
   isEmptyBlock,
   isFrontmatterBlock,
   normalizeBlockText,
-} from '../../modules/md/md-parse.js';
+} from '../../../modules/md/md-parse.js';
 import type { EditOpResult, PendingSel } from './md-panes-helpers.js';
-import type { SlashState } from './slash-menu.jsx';
+import type { SlashState } from '../menus/slash-menu.jsx';
 
 /** 块编辑器按键处理器的公共上下文（由 md-panes.tsx 装配）。 */
 export interface LiveKeyCtx {

@@ -7,8 +7,8 @@ import { createComboGate, docComboOf } from './doc-keys.js';
 import type { EditorApi, FileDropCtx } from './md-panes-helpers.js';
 import { LivePreview, SourceEditor } from './md-panes.jsx';
 import type { TextSel } from './md-panes.jsx';
-import type { AttachHost } from './attach-picker.jsx';
-import type { Attachment } from './attach-common.js';
+import type { AttachHost } from '../attachments/attach-picker.jsx';
+import type { Attachment } from '../attachments/attach-common.js';
 
 /** forwardRef 的 ref 实参 → 可读 .current 的对象 ref（回调 ref 走不到这条路）。 */
 function asRefObject<T>(ref: ForwardedRef<T>): RefObject<T | null> | null {

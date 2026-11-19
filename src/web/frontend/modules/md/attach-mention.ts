@@ -1,7 +1,7 @@
 // @ 附件引用的纯逻辑（#108）——触发点判定 + 引用语法生成。
 //
 // 放 .js 而不是 .jsx：node 单测能直接 import（.jsx 加载不了）。
-// 面板组件（components/md/attach-picker.jsx）只做交互。
+// 面板组件（components/md/attachments/attach-picker.jsx）只做交互。
 import { embedMarkdown } from '../../../../shared/attach.js';
 import type { TextSelLike } from './md-edit-ops.js';
 
@@ -23,7 +23,7 @@ export function atTriggerAt(ta: TextSelLike | null | undefined): { at: number; c
 }
 
 /**
- * @ 引用用到的附件字段（归一化后的附件，见 components/md/attach-common 的
+ * @ 引用用到的附件字段（归一化后的附件，见 components/md/attachments/attach-common 的
  * normAttachment；字段来自服务端清单，按索引放行）。
  */
 export interface MentionAttachment {

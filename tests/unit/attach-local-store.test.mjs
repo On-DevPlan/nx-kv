@@ -1,4 +1,4 @@
-// 本地任务贴图的**前端**链路（components/md/attachments.js → cloud/upload.js）。
+// 本地任务贴图的**前端**链路（components/md/attachments/attachments.js → cloud/upload.js）。
 //
 // 口径（任务 #15）：本地任务贴图走本机附件仓——请求体必须带 local: true，
 // 后端才落 ~/.nx-kv/attachments/local/ 而不是云端图床。这条断言的价值：
@@ -42,7 +42,7 @@ globalThis.FileReader = class {
   }
 };
 
-const { filesToAttachments } = await import('../../src/web/frontend/components/md/attachments.js');
+const { filesToAttachments } = await import('../../src/web/frontend/components/md/attachments/attachments.js');
 
 test('filesToAttachments：本机贴图上传落本机附件仓（无云端开关）', async () => {
   calls.length = 0;

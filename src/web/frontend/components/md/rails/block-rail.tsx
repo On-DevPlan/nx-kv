@@ -10,8 +10,8 @@
 // 而容器本身是 role=button（点它进编辑态）——所有交互事件都要就地 stop，
 // 否则点一下把手会连带把块切成编辑态。
 import type { MouseEvent as ReactMouseEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { TURN_INTO } from '../../modules/md/md-edit-ops.js';
-import { MenuPortal, openMenuAt, useMenu } from './tool-bar.jsx';
+import { TURN_INTO } from '../../../modules/md/md-edit-ops.js';
+import { MenuPortal, openMenuAt, useMenu } from '../shell/tool-bar.jsx';
 
 export interface BlockRailProps {
   index: number;

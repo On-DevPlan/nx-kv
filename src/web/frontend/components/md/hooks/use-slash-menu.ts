@@ -3,10 +3,10 @@
 // （预览按块矩形、源码按行列推算行高）、onApply 把选中的命令结果写回
 // （预览走块级 applyBlockOp，源码走全文 applyOp）。
 import { useEffect, useRef, useState } from 'react';
-import { applySlashCommand, filterSlashCmds, slashQueryAt } from '../../modules/md/md-edit-ops.js';
-import { handleSlashKey, slashActiveIndex } from './slash-menu.jsx';
-import type { SlashItem, SlashState } from './slash-menu.jsx';
-import type { EditOpResult } from './md-panes-helpers.js';
+import { applySlashCommand, filterSlashCmds, slashQueryAt } from '../../../modules/md/md-edit-ops.js';
+import { handleSlashKey, slashActiveIndex } from '../menus/slash-menu.jsx';
+import type { SlashItem, SlashState } from '../menus/slash-menu.jsx';
+import type { EditOpResult } from '../panes/md-panes-helpers.js';
 
 /** 调用方注入的三个差异点（见文件头注释）。 */
 export interface UseSlashMenuArgs {

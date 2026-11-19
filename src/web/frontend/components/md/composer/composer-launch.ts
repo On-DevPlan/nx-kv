@@ -8,10 +8,10 @@
 // 但那套逻辑带着会话状态（doc / topic / taskRow / 草稿判定），搬不动，也不该
 // 复制一份——于是用**模块级登记表**：启动时登记 token → 回调，面板按 token
 // 取回；面板提交或关闭后销号（否则登记表随开关面板无限增长）。
-import { openPanel, currentMainPanel } from '../../workspace.js';
+import { openPanel, currentMainPanel } from '../../../workspace.js';
 import type { Model } from 'flexlayout-react';
-import type { PanelSpec } from '../../types.js';
-import type { Attachment } from './attach-common.js';
+import type { PanelSpec } from '../../../types.js';
+import type { Attachment } from '../attachments/attach-common.js';
 
 /** 原文定位（点引用区在右侧并排打开原文时用）。 */
 export interface ComposerSrc {

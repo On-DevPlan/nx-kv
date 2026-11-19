@@ -7,20 +7,20 @@
 // 提交逻辑在任务页那边（带会话状态），这里按 token 取回回调——见 composer-launch.js。
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { MdPanes } from './md-panes.jsx';
-import AttachBar from './attach-bar.jsx';
-import { Icon } from '../icons.jsx';
-import { filesToAttachments } from './attachments.js';
-import { insertAttachmentSnippet } from '../../modules/md/md-parse.js';
+import { MdPanes } from '../panes/md-panes.jsx';
+import AttachBar from '../attachments/attach-bar.jsx';
+import { Icon } from '../../icons.jsx';
+import { filesToAttachments } from '../attachments/attachments.js';
+import { insertAttachmentSnippet } from '../../../modules/md/md-parse.js';
 import { composerOf, restoreComposerSource } from './composer-launch.js';
 import type { ComposerSrc } from './composer-launch.js';
-import { pushHistory, undoHistory, redoHistory, clearHistory } from '../../modules/md/md-history.js';
-import { useApp } from '../../app-context.jsx';
-import { useToast } from '../toast/index.jsx';
-import { openBesideMain } from '../../workspace.js';
-import type { Attachment } from './attach-common.js';
-import type { EditorApi } from './md-panes-helpers.js';
-import '../../modules/md/style.css';
+import { pushHistory, undoHistory, redoHistory, clearHistory } from '../../../modules/md/md-history.js';
+import { useApp } from '../../../app-context.jsx';
+import { useToast } from '../../toast/index.jsx';
+import { openBesideMain } from '../../../workspace.js';
+import type { Attachment } from '../attachments/attach-common.js';
+import type { EditorApi } from '../panes/md-panes-helpers.js';
+import '../../../modules/md/style.css';
 
 // 底部附件 dock（#155）：与任务页 mdw-dock 同一套视觉；高度/开关单独存
 // （nxkv.cmpDock*，不与任务页的 nxkv.taskDock* 串台）。

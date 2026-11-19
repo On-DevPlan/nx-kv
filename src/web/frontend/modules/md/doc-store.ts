@@ -5,12 +5,12 @@
 // 面板关掉再打开，内容还在（会话内）；刷新即空（草稿本就只在会话有效）。
 import { useSyncExternalStore } from 'react';
 import { GLOBAL_KEY } from '../board/board-view.js';
-import type { Attachment } from '../../components/md/attach-common.js';
+import type { Attachment } from '../../components/md/attachments/attach-common.js';
 
 /**
  * 会话里的一份文档（doc-store 的唯一数据形状）。
  *
- * 附件沿用 components/md/attach-common 的 Attachment（type-only import，
+ * 附件沿用 components/md/attachments/attach-common 的 Attachment（type-only import，
  * 编译期擦除，不会把组件层带进模块层）。
  */
 export interface DocRecord {

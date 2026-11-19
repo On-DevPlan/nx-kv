@@ -1,4 +1,4 @@
-import { Icon } from '../icons.jsx';
+import { Icon } from '../../icons.jsx';
 import type { Attachment } from './attach-common.js';
 
 /** 附件列表（添加入口在工具区，此处只展示/移除） */

@@ -9,10 +9,10 @@
 //     前端不拼正文（关系表是附件清单的权威）。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ClipboardEvent, ComponentType, ReactNode } from 'react';
-import { Modal } from '../popup/index.jsx';
-import { api } from '../../api/client.js';
-import { clipboardFiles, droppedFiles, readableName, uploadOne } from '../attach/upload.js';
-import StatusTag from '../status-tag/index.jsx';
+import { Modal } from '../../popup/index.jsx';
+import { api } from '../../../api/client.js';
+import { clipboardFiles, droppedFiles, readableName, uploadOne } from '../../attach/upload.js';
+import StatusTag from '../../status-tag/index.jsx';
 import {
   attachBodyOf,
   badgeOf,

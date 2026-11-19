@@ -22,11 +22,11 @@ import type {
   DocOption,
   TaskOption,
 } from './attach-common.js';
-import { caretLineCol } from '../../modules/md/md-edit-ops.js';
-import { embedForAttachment } from '../../modules/md/attach-mention.js';
+import { caretLineCol } from '../../../modules/md/md-edit-ops.js';
+import { embedForAttachment } from '../../../modules/md/attach-mention.js';
 import AttachModal from './attach-modal.jsx';
-import { useApp } from '../../app-context.jsx';
-import { openBesideMain } from '../../workspace.js';
+import { useApp } from '../../../app-context.jsx';
+import { openBesideMain } from '../../../workspace.js';
 
 /** 附件清单的取数描述（可带 allow/taskOptions 供「添加附件」弹窗用）。 */
 export interface AttachHost extends AttachHostRef {

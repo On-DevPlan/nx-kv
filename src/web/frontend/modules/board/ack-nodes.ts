@@ -131,7 +131,7 @@ export function extractAckNodes(body: unknown): AckNode[] {
  * 给节点起一个短标题（轨上显示用）：取 ack 首行（去掉 markdown 记号），
  * 空则退到「第 N 轮」。过长截断。
  *
- * 入参按「本轨用到的字段」收窄（components/md/ack-rail 的 AckRailNode 只有
+ * 入参按「本轨用到的字段」收窄（components/md/rails/ack-rail 的 AckRailNode 只有
  * round / ackText）——别把整个 AckNode 当必需。
  * @param node {round, ackText}
  * @returns 节点标题

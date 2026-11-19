@@ -9,11 +9,11 @@ import type {
   SetStateAction,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { inMoreOf, metaOf, onBarOf } from '../tool-acts/modules.js';
-import { useToolActsLayout } from '../tool-acts/use-layout.js';
-import ToolActsLayoutPanel from '../tool-acts/layout-panel.jsx';
-import { Icon } from '../icons.jsx';
-import '../tool-acts/style.css';
+import { inMoreOf, metaOf, onBarOf } from '../../tool-acts/modules.js';
+import { useToolActsLayout } from '../../tool-acts/use-layout.js';
+import ToolActsLayoutPanel from '../../tool-acts/layout-panel.jsx';
+import { Icon } from '../../icons.jsx';
+import '../../tool-acts/style.css';
 
 const KIND = 'task';
 

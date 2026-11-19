@@ -14,7 +14,7 @@ import {
 } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { openPanel } from '../../workspace.js';
-import { filesToAttachments, persistAtt } from '../../components/md/attachments.js';
+import { filesToAttachments, persistAtt } from '../../components/md/attachments/attachments.js';
 import { clearHistory } from '../../modules/md/md-history.js';
 import {
   insertAttachmentSnippet,
@@ -34,7 +34,7 @@ import {
   scopeOf,
 } from '../../modules/md/doc-store.js';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
-import type { AttachAreaHandle } from '../../components/md/attach-area.jsx';
+import type { AttachAreaHandle } from '../../components/md/attachments/attach-area.jsx';
 import type { LocalTask, LocalTopic, TemplatesApi } from '../../types.js';
 import type {
   AppSlice,

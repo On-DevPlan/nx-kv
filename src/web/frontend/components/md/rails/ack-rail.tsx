@@ -15,8 +15,8 @@
 // 文档页的目录轨共用同一份（同一套 `.doc-rail` 视觉，行为不该分叉）。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { ackNodeTitle } from '../../modules/board/ack-nodes.js';
-import { useRailDrag } from '../use-rail-drag.js';
+import { ackNodeTitle } from '../../../modules/board/ack-nodes.js';
+import { useRailDrag } from '../../use-rail-drag.js';
 
 /** 一轮 ack 节点（extractAckNodes 的出站形状里本轨用到的字段）。 */
 export interface AckRailNode {

@@ -175,6 +175,22 @@ export interface ChainApiItem {
 export interface ChainApi {
   ancestors?: ChainApiItem[];
   children?: ChainApiItem[];
+  /** #245：树状链（祖先路径 + 后代子树，children 递归）。链的真相是树不是链。 */
+  tree?: ChainTreeNode;
+}
+
+/** 链树节点（tree 字段的形状；missing = 来源任务已被软删/迁出）。 */
+export interface ChainTreeNode {
+  id: number | string;
+  key?: string;
+  name?: string;
+  status?: string;
+  forkKind?: string;
+  createdAt?: string;
+  excerpt?: string;
+  current?: boolean;
+  missing?: boolean;
+  children?: ChainTreeNode[];
 }
 
 /** 一条 history 快照（taskRow.history[] 的元素）。 */

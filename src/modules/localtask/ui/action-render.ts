@@ -102,7 +102,21 @@ export function renderChain(d: RenderInput): string {
   ];
   if (d.derivedFrom) lines.push(`  派生自: ${d.derivedFrom}`);
   const nodes = Array.isArray(d.nodes) ? d.nodes : [];
-  if (nodes.length > 1) {
+  // #245：链是树不是链——优先按 tree（祖先路径 + 后代子树）缩进渲染；
+  // 没有 tree（旧数据/旧调用方）再退回平铺 nodes。
+  const tree = d.tree;
+  if (tree && (nodes.length > 1 || (tree.children || []).length)) {
+    const kindOf = (n: any) => (n.forkKind ? `（${KIND_TAG[n.forkKind] || n.forkKind}）` : '');
+    const walk = (n: any, depth: number) => {
+      const mark = n.current ? '●' : n.missing ? '×' : '○';
+      const tag = `[${STATUS_TAG[n.status] || n.status || '?'}]`;
+      const cross = n.key && n.key !== d.key ? `  @ ${n.name || n.key}` : '';
+      lines.push(`    ${'│ '.repeat(depth)}${mark} #${n.id} ${tag}${kindOf(n)} ${n.excerpt || '—'}${cross}`);
+      for (const c of n.children || []) walk(c, depth + 1);
+    };
+    lines.push(`  任务链（树状，共 ${nodes.length} 条）:`);
+    walk(tree, 0);
+  } else if (nodes.length > 1) {
     lines.push(`  任务链（R1 → R${nodes.length}，共 ${nodes.length} 条）:`);
     for (const n of nodes) {
       const mark = n.current ? '●' : '○';

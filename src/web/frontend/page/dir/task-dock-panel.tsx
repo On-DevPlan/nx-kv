@@ -332,30 +332,21 @@ export function DockPanel({
                 ) : null}
               </div>
               <div className="mdw-review-acts">
-                {isChainTip ? (
-                  <button type="button" className="ghost" onClick={openFeedback} title="新开一条任务携带反馈（原任务不动）">
-                    反馈
+                {/* #245：每个任务节点都支持反馈——在旧轮次上反馈不再是「分叉错误」，
+                    而是任务链树的正常分叉（链的真相是树，taskChain.tree）。 */}
+                <button type="button" className="ghost" onClick={openFeedback} title="新开一条任务携带反馈（原任务不动；链在此分叉成树）">
+                  反馈
+                </button>
+                {(!isChainTip && latestChild) ? (
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={openLatestRound}
+                    title={`这条任务已有后续轮次——去最新一轮 #${latestChild.id}（反馈也可以留在这里，会从本节点分叉）`}
+                  >
+                    去最新一轮 #{latestChild.id}
                   </button>
-                ) : (
-                  <>
-                    <span
-                      className="mdw-review-later"
-                      title="这条任务已有后续轮次——在旧轮次上反馈会把链分叉，请到最新一轮反馈"
-                    >
-                      已进入后续轮次
-                    </span>
-                    {latestChild ? (
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={openLatestRound}
-                        title={`到最新一轮 #${latestChild.id} 反馈`}
-                      >
-                        去最新一轮 #{latestChild.id}
-                      </button>
-                    ) : null}
-                  </>
-                )}
+                ) : null}
               </div>
             </div>
           ) : (

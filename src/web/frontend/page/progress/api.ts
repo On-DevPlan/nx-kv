@@ -18,3 +18,8 @@ export function removeTasks(input: {
 }): Promise<any> {
   return api('/api/localtasks/items', { method: 'DELETE', body: input });
 }
+
+/** 任务链（GET /api/localtasks/chain?<q>；#245 进程面板「只展示当前任务的任务链」）。 */
+export function getTaskChain(query: string): Promise<any> {
+  return api(`/api/localtasks/chain?${query}`);
+}

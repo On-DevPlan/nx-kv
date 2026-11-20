@@ -460,6 +460,30 @@ export async function taskChain({ id, cwd, key }: TaskChainInput = {}): Promise<
   const ancestors = upNodes.map((n) => ({ key: n.key, name: n.name, id: n.id, status: n.status, forkKind: n.forkKind || '', forkOf: '', createdAt: n.createdAt, excerpt: n.excerpt }));
   const children = downNodes.map((n) => ({ key: n.key, name: n.name, id: n.id, status: n.status, forkKind: n.forkKind || '', forkOf: '', createdAt: n.createdAt, excerpt: n.excerpt }));
 
+  // #245 任务链是树不是链：task_links 的一父约束（每个任务至多一个来源）只保证
+  // 「祖先路径是线」，后代随时分叉（在旧轮次上反馈 / 评论派生各开旁支）——
+  // 树 = 祖先路径 + 自己 + 后代子树（递归展开）。nodes 平铺清单保留给 CLI 与旧消费方，
+  // tree 是面板「只看这条链」视图的结构真相。seen 防环（手工脏数据可造 A→B→A）。
+  const buildSubtree = (taskId: number, linkType: string, seen: Set<number>): Record<string, any> => {
+    const w = tasksRepo.getTaskRowById(taskId);
+    if (!w) return { id: taskId, missing: true, forkKind: linkType, children: [] as Record<string, any>[] };
+    seen.add(Number(taskId));
+    const kids = linksRepo.childLinks(taskId).filter((c) => !seen.has(Number(c.srcId)));
+    return {
+      ...nodeOf(w, linkType),
+      children: kids.map((c) => buildSubtree(Number(c.srcId), c.type, seen)),
+    };
+  };
+  let tree: Record<string, any> = buildSubtree(selfRow.row.id, '', new Set([Number(selfRow.row.id)]));
+  // 祖先从最深（根）往回包：root → … → parent → selfSubtree
+  for (let i = ancestorLinks.length - 1; i >= 0; i--) {
+    const l = ancestorLinks[i]!;
+    const w = tasksRepo.getTaskRowById(l.id);
+    tree = w
+      ? { ...nodeOf(w, l.type), children: [tree] }
+      : { id: l.id, missing: true, forkKind: l.type, children: [tree] };
+  }
+
   return {
     status: 'ok',
     key: k,
@@ -467,6 +491,7 @@ export async function taskChain({ id, cwd, key }: TaskChainInput = {}): Promise<
     id: want,
     task: normalizeTask(self, t.tasks),
     nodes,
+    tree,
     ancestors,
     children,
     // T04：轮次与派生来源（CLI localtask chain 输出用）

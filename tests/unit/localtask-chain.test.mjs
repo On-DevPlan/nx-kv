@@ -171,3 +171,31 @@ test('chain 节点带链边类型（#172：面板链上区分「反馈」轮次�
   assert.equal(chain.children[0].id, side.task.id);
   assert.equal(chain.children[0].forkKind, 'comment', '评论旁支 = comment 边');
 });
+
+test('#245：chain.tree 树状结构——祖先路径 + 后代子树，分叉成树（不是链）', async () => {
+  const root = await svc.addTask({ cwd: dirA, text: '# 树根' });
+  const r2 = await svc.reopenTask({ cwd: dirA, id: root.task.id, text: '# 树根\n\n+二轮' });
+  const sideA = await svc.addTask({ cwd: dirA, text: '# 旁支A', forkOf: `${keyA}:${r2.id}` });
+  const sideB = await svc.addTask({ cwd: dirA, text: '# 旁支B', forkOf: `${keyA}:${r2.id}` });
+  // 旁支A 再开一轮：树深 +1
+  const deep = await svc.addTask({ cwd: dirA, text: '# 旁支A的二轮', forkOf: `${keyA}:${sideA.task.id}`, forkKind: 'reopen' });
+
+  const chain = await svc.taskChain({ cwd: dirA, id: r2.id });
+  const tree = chain.tree;
+  assert.ok(tree, 'tree 字段存在');
+  assert.equal(tree.id, root.task.id, '根 = 最深祖先');
+  assert.equal(tree.children.length, 1, '祖先路径线性');
+  const self = tree.children[0];
+  assert.equal(self.id, r2.id);
+  assert.equal(self.current, true, '查询的那条是当前尖');
+  assert.equal(self.children.length, 2, '同一父下两个旁支 = 分叉');
+  const kidIds = self.children.map((c) => c.id).sort((a, b) => a - b);
+  assert.deepEqual(kidIds, [sideA.task.id, sideB.task.id].sort((a, b) => a - b));
+  const kidA = self.children.find((c) => c.id === sideA.task.id);
+  assert.equal(kidA.children.length, 1, '旁支的下一轮挂在旁支下');
+  assert.equal(kidA.children[0].id, deep.task.id);
+  assert.equal(kidA.children[0].forkKind, 'reopen');
+  // 树节点总数 = 平铺 nodes 总数（5 条），两种形状不漂
+  const countTree = (n) => 1 + (n.children || []).reduce((s, c) => s + countTree(c), 0);
+  assert.equal(countTree(tree), chain.nodes.length);
+});

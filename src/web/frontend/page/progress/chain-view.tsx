@@ -12,8 +12,8 @@ import { getTaskChain } from './api.js';
 import type { ChainTreeNode } from '../dir/task-utils.js';
 
 // 状态点沿用进程卡三色词表（pending→wait / claimed→run / done→done）；
-// cancelled 单列。树形连线（│ └─）由 CSS 画在嵌套结构上（#246：缩进行改真树形）；
-// 边类型 tag 区分「反馈」轮次与「评论」旁支。
+// cancelled 单列。每节点一张小卡片（#247：首行 状态点+#id+tag，次行节选）；
+// 树形连线（│ └─）由 CSS 伪元素拼在嵌套结构上；边类型 tag 区分「反馈」与「评论」。
 const CHAIN_STATUS: Record<string, string> = { pending: 'wait', claimed: 'run', done: 'done', cancelled: 'cancel' };
 const CHAIN_KIND: Record<string, string> = { reopen: '反馈', comment: '评论', feedback: '反馈' };
 
@@ -32,11 +32,13 @@ function ChainTreeItem({ node, onOpen }: {
         title={node.excerpt || `任务 #${node.id}`}
         onClick={() => onOpen(node.id, node.key || undefined)}
       >
-        <span className={`st ${st}`} />
-        <span className="n">#{node.id}</span>
-        {kind && <span className={`rp-ptag mdw-prog-tkind${kind === '评论' ? ' cmt' : ''}`}>{kind}</span>}
-        {node.missing && <span className="mdw-prog-tmiss">已不在队列</span>}
-        <span className="tx">{node.excerpt || '—'}</span>
+        <span className="hd">
+          <span className={`st ${st}`} />
+          <span className="n">#{node.id}</span>
+          {kind && <span className={`rp-ptag mdw-prog-tkind${kind === '评论' ? ' cmt' : ''}`}>{kind}</span>}
+          {node.missing && <span className="mdw-prog-tmiss">已不在队列</span>}
+        </span>
+        {node.excerpt ? <span className="tx">{node.excerpt}</span> : null}
       </button>
       {kids.length > 0 && (
         <ul className="mdw-prog-tkids">

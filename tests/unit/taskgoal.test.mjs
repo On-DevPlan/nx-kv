@@ -165,8 +165,8 @@ test('get：项目开启持续 get → 交付文本带「继续 get」模板；d
 
 test('HTTP 领取：claim 路由存在，且 instant 强制立即返回（持续 get 也不挂住请求）', async () => {
   const { ACTIONS } = await import('../../src/runtime/registry.js');
-  const claim = ACTIONS.find((a) => a.id === 'localtask.claim');
-  assert.deepEqual(claim.http, ['POST', '/api/localtasks/claim'], '领取补上了 POST 路由');
+  const claim = ACTIONS.find((a) => a.id === 'localtask.get');
+  assert.deepEqual(claim.http, ['POST', '/api/localtasks/get'], '领取补上了 POST 路由');
 
   const repos = await import('../../src/modules/repos/service.js');
   const { getTask } = await import('../../src/modules/claim/get.js');

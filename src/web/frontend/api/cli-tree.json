@@ -1380,21 +1380,6 @@
           "children": []
         },
         {
-          "name": "show",
-          "path": [
-            "localtask",
-            "show"
-          ],
-          "action": {
-            "id": "localtask.get",
-            "module": "localtask",
-            "summary": "查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置）",
-            "usage": "localtask show",
-            "http": "GET /api/localtasks/item"
-          },
-          "children": []
-        },
-        {
           "name": "list",
           "path": [
             "localtask",
@@ -1511,6 +1496,21 @@
             "summary": "调整待领取任务优先级（--id <编号> 移到 --before-id <编号> 前或 --after-id <编号> 后）",
             "usage": "localtask reorder",
             "http": "PATCH /api/localtasks/reorder"
+          },
+          "children": []
+        },
+        {
+          "name": "show",
+          "path": [
+            "localtask",
+            "show"
+          ],
+          "action": {
+            "id": "localtask.show",
+            "module": "localtask",
+            "summary": "查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置）",
+            "usage": "localtask show",
+            "http": "GET /api/localtasks/show"
           },
           "children": []
         },
@@ -1650,11 +1650,11 @@
             "get"
           ],
           "action": {
-            "id": "localtask.claim",
+            "id": "localtask.get",
             "module": "claim",
             "summary": "领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填",
             "usage": "localtask get",
-            "http": "POST /api/localtasks/claim"
+            "http": "POST /api/localtasks/get"
           },
           "children": []
         },

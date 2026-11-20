@@ -101,7 +101,7 @@ test('reopen 不带 text：#144 起写轮次 callout（反馈逐行加粗；无�
 
 test('reopen done 任务不带 text：顺带补本轮完成总结 callout（与面板同一份口径）', async () => {
   const { svc, id } = await seedTask('# 原任务\n\n正文。');
-  await svc.consumeFirstPending(topicKeyFor(CWD), '测试领取'); // done 门禁要求先领取
+  await svc.claimFirstPending(topicKeyFor(CWD), '测试领取'); // done 门禁要求先领取
   await svc.completeTask({ cwd: CWD, id, summary: '已把平滑滚动改成瞬时定位' });
   const res = await svc.reopenTask({ cwd: CWD, id, kind: 'reopen', feedback: '还是卡顿' });
   assert.ok(res.task.text.includes('> [!NOTE] 第 1 轮 · 完成总结'), 'done 的总结落进 callout');

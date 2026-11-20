@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.65.4",
-  "hash": "cfca3960fe798c82",
+  "hash": "5a15281c9535b799",
   "actions": [
     {
       "id": "localtask.add",
@@ -373,106 +373,6 @@
       "summary": "全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按 frontmatter 的 board 归属聚合，带归属项目"
     },
     {
-      "id": "localtask.claim",
-      "cli": [
-        [
-          "localtask",
-          "get"
-        ]
-      ],
-      "http": "POST /api/localtasks/claim",
-      "input": [
-        {
-          "name": "cwd",
-          "kind": "string",
-          "positional": false,
-          "required": false
-        },
-        {
-          "name": "timeout",
-          "kind": "number",
-          "positional": false,
-          "required": false,
-          "hint": "阻塞上限（秒）：显式给定时，即使项目没开「持续 get」也会阻塞这么久；缺省则立即返回 timeout"
-        },
-        {
-          "name": "no-open",
-          "kind": "boolean",
-          "positional": false,
-          "required": false,
-          "hint": "不自动打开浏览器（测试用）"
-        },
-        {
-          "name": "param",
-          "kind": "array",
-          "positional": false,
-          "required": false,
-          "hint": "外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取"
-        }
-      ],
-      "output": {
-        "k": "model",
-        "name": "LocaltaskClaimOutput",
-        "fields": [
-          {
-            "name": "status",
-            "required": true,
-            "type": {
-              "k": "enum",
-              "name": "LocaltaskClaimStatus",
-              "values": [
-                "ok",
-                "timeout",
-                "blocked"
-              ]
-            },
-            "hint": "领取结果：ok / timeout / blocked"
-          },
-          {
-            "name": "taskId",
-            "required": false,
-            "type": {
-              "k": "int"
-            },
-            "hint": "领到的任务编号（status=ok 时有）"
-          },
-          {
-            "name": "name",
-            "required": false,
-            "type": {
-              "k": "string"
-            },
-            "hint": "主题名"
-          },
-          {
-            "name": "summary",
-            "required": false,
-            "type": {
-              "k": "string"
-            },
-            "hint": "主题现状"
-          },
-          {
-            "name": "timeoutMs",
-            "required": false,
-            "type": {
-              "k": "int"
-            },
-            "hint": "timeout 时的等待上限（毫秒）"
-          },
-          {
-            "name": "instant",
-            "required": false,
-            "type": {
-              "k": "bool"
-            },
-            "hint": "是否为「没活就立刻回」的即时模式"
-          }
-        ]
-      },
-      "summary": "领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填"
-    },
-    {
       "id": "localtask.done",
       "cli": [
         [
@@ -585,18 +485,11 @@
       "cli": [
         [
           "localtask",
-          "show"
+          "get"
         ]
       ],
-      "http": "GET /api/localtasks/item",
+      "http": "POST /api/localtasks/get",
       "input": [
-        {
-          "name": "id",
-          "kind": "number",
-          "positional": false,
-          "required": true,
-          "hint": "任务编号"
-        },
         {
           "name": "cwd",
           "kind": "string",
@@ -604,10 +497,25 @@
           "required": false
         },
         {
-          "name": "key",
-          "kind": "string",
+          "name": "timeout",
+          "kind": "number",
           "positional": false,
-          "required": false
+          "required": false,
+          "hint": "阻塞上限（秒）：显式给定时，即使项目没开「持续 get」也会阻塞这么久；缺省则立即返回 timeout"
+        },
+        {
+          "name": "no-open",
+          "kind": "boolean",
+          "positional": false,
+          "required": false,
+          "hint": "不自动打开浏览器（测试用）"
+        },
+        {
+          "name": "param",
+          "kind": "array",
+          "positional": false,
+          "required": false,
+          "hint": "外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取"
         }
       ],
       "output": {
@@ -615,305 +523,62 @@
         "name": "LocaltaskGetOutput",
         "fields": [
           {
-            "name": "id",
-            "required": true,
-            "type": {
-              "k": "int"
-            },
-            "hint": "任务编号（主题内自增，跨主题不唯一）"
-          },
-          {
-            "name": "text",
-            "required": true,
-            "type": {
-              "k": "string"
-            },
-            "hint": "正文（Markdown，可能带 frontmatter）"
-          },
-          {
             "name": "status",
             "required": true,
             "type": {
-              "k": "string"
+              "k": "enum",
+              "name": "LocaltaskGetStatus",
+              "values": [
+                "ok",
+                "timeout",
+                "blocked"
+              ]
             },
-            "hint": "pending / claimed / done / cancelled"
+            "hint": "领取结果：ok / timeout / blocked"
           },
           {
-            "name": "round",
-            "required": true,
-            "type": {
-              "k": "int"
-            },
-            "hint": "第几轮（每次重开 +1）"
-          },
-          {
-            "name": "roundSummary",
-            "required": true,
-            "type": {
-              "k": "string"
-            },
-            "hint": "本轮完成总结；未完成时为空串"
-          },
-          {
-            "name": "reopenCount",
-            "required": true,
-            "type": {
-              "k": "int"
-            }
-          },
-          {
-            "name": "childCount",
-            "required": true,
-            "type": {
-              "k": "int"
-            }
-          },
-          {
-            "name": "childRoundCount",
-            "required": true,
-            "type": {
-              "k": "int"
-            }
-          },
-          {
-            "name": "createdAt",
-            "required": true,
-            "type": {
-              "k": "string"
-            }
-          },
-          {
-            "name": "consumedAt",
-            "required": true,
-            "type": {
-              "k": "string"
-            },
-            "hint": "被领取的时间；未领取为空串"
-          },
-          {
-            "name": "pickupSec",
+            "name": "taskId",
             "required": false,
             "type": {
               "k": "int"
             },
-            "hint": "入队到领取的秒数；未领取为 null"
+            "hint": "领到的任务编号（status=ok 时有）"
           },
           {
-            "name": "completedAt",
-            "required": true,
-            "type": {
-              "k": "string"
-            }
-          },
-          {
-            "name": "doneAt",
-            "required": true,
-            "type": {
-              "k": "string"
-            }
-          },
-          {
-            "name": "feedback",
-            "required": true,
-            "type": {
-              "k": "string"
-            },
-            "hint": "完成总结原文（与服务端历史同一份）"
-          },
-          {
-            "name": "claimedBy",
-            "required": true,
-            "type": {
-              "k": "string"
-            },
-            "hint": "领取方标识（agent / 端侧）"
-          },
-          {
-            "name": "claimedByName",
-            "required": true,
-            "type": {
-              "k": "string"
-            }
-          },
-          {
-            "name": "claimedFrom",
-            "required": true,
-            "type": {
-              "k": "string"
-            },
-            "hint": "local / global"
-          },
-          {
-            "name": "ready",
-            "required": true,
-            "type": {
-              "k": "bool"
-            },
-            "hint": "当前是否「可领取」"
-          },
-          {
-            "name": "blocksFollowing",
-            "required": true,
-            "type": {
-              "k": "bool"
-            },
-            "hint": "是否为闸门任务"
-          },
-          {
-            "name": "blockBy",
-            "required": true,
-            "type": {
-              "k": "list",
-              "of": {
-                "k": "string"
-              }
-            },
-            "hint": "依赖的任务 id（全部完成后本条才可领）"
-          },
-          {
-            "name": "deletedAt",
-            "required": true,
-            "type": {
-              "k": "string"
-            }
-          },
-          {
-            "name": "archivedAt",
-            "required": true,
-            "type": {
-              "k": "string"
-            }
-          },
-          {
-            "name": "archivedReason",
-            "required": true,
-            "type": {
-              "k": "string"
-            }
-          },
-          {
-            "name": "attachments",
+            "name": "name",
             "required": false,
             "type": {
-              "k": "list",
-              "of": {
-                "k": "model",
-                "name": "LocaltaskGetAttachment",
-                "fields": [
-                  {
-                    "name": "id",
-                    "required": true,
-                    "type": {
-                      "k": "string"
-                    }
-                  },
-                  {
-                    "name": "kind",
-                    "required": true,
-                    "type": {
-                      "k": "string"
-                    },
-                    "hint": "file / url / task / ref …"
-                  },
-                  {
-                    "name": "kindLabel",
-                    "required": true,
-                    "type": {
-                      "k": "string"
-                    },
-                    "hint": "给人看的种类名"
-                  },
-                  {
-                    "name": "name",
-                    "required": true,
-                    "type": {
-                      "k": "string"
-                    }
-                  },
-                  {
-                    "name": "sizeText",
-                    "required": true,
-                    "type": {
-                      "k": "string"
-                    },
-                    "hint": "已格式化的大小（65.8 KB）；url 类可能为空串"
-                  },
-                  {
-                    "name": "isImage",
-                    "required": true,
-                    "type": {
-                      "k": "bool"
-                    }
-                  },
-                  {
-                    "name": "size",
-                    "required": false,
-                    "type": {
-                      "k": "int"
-                    }
-                  },
-                  {
-                    "name": "mime",
-                    "required": false,
-                    "type": {
-                      "k": "string"
-                    }
-                  },
-                  {
-                    "name": "note",
-                    "required": false,
-                    "type": {
-                      "k": "string"
-                    },
-                    "hint": "附件上的备注（原型图、日志…）"
-                  },
-                  {
-                    "name": "localPath",
-                    "required": false,
-                    "type": {
-                      "k": "string"
-                    },
-                    "hint": "本机绝对路径；未落盘时为空"
-                  },
-                  {
-                    "name": "exists",
-                    "required": false,
-                    "type": {
-                      "k": "bool"
-                    },
-                    "hint": "本地文件是否还在"
-                  },
-                  {
-                    "name": "needsSync",
-                    "required": false,
-                    "type": {
-                      "k": "bool"
-                    }
-                  },
-                  {
-                    "name": "cmd",
-                    "required": false,
-                    "type": {
-                      "k": "string"
-                    },
-                    "hint": "需要同步时给用户的一条命令"
-                  },
-                  {
-                    "name": "usage",
-                    "required": false,
-                    "type": {
-                      "k": "string"
-                    },
-                    "hint": "agent/端侧该怎么用它（已在本机就直接读）"
-                  }
-                ]
-              }
+              "k": "string"
             },
-            "hint": "正文引用到的附件；标注失败时整个字段缺失（fail-open）"
+            "hint": "主题名"
+          },
+          {
+            "name": "summary",
+            "required": false,
+            "type": {
+              "k": "string"
+            },
+            "hint": "主题现状"
+          },
+          {
+            "name": "timeoutMs",
+            "required": false,
+            "type": {
+              "k": "int"
+            },
+            "hint": "timeout 时的等待上限（毫秒）"
+          },
+          {
+            "name": "instant",
+            "required": false,
+            "type": {
+              "k": "bool"
+            },
+            "hint": "是否为「没活就立刻回」的即时模式"
           }
         ]
       },
-      "summary": "查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置）"
+      "summary": "领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填"
     },
     {
       "id": "localtask.list",
@@ -1241,6 +906,341 @@
         ]
       },
       "summary": "按反馈派生下一轮（验收反馈 / 重做 / 评论）：新任务新编号、pending 立即可领；旧任务 done 保持 done（claimed/pending → cancelled），链记在 task_links"
+    },
+    {
+      "id": "localtask.show",
+      "cli": [
+        [
+          "localtask",
+          "show"
+        ]
+      ],
+      "http": "GET /api/localtasks/show",
+      "input": [
+        {
+          "name": "id",
+          "kind": "number",
+          "positional": false,
+          "required": true,
+          "hint": "任务编号"
+        },
+        {
+          "name": "cwd",
+          "kind": "string",
+          "positional": false,
+          "required": false
+        },
+        {
+          "name": "key",
+          "kind": "string",
+          "positional": false,
+          "required": false
+        }
+      ],
+      "output": {
+        "k": "model",
+        "name": "LocaltaskShowOutput",
+        "fields": [
+          {
+            "name": "id",
+            "required": true,
+            "type": {
+              "k": "int"
+            },
+            "hint": "任务编号（主题内自增，跨主题不唯一）"
+          },
+          {
+            "name": "text",
+            "required": true,
+            "type": {
+              "k": "string"
+            },
+            "hint": "正文（Markdown，可能带 frontmatter）"
+          },
+          {
+            "name": "status",
+            "required": true,
+            "type": {
+              "k": "string"
+            },
+            "hint": "pending / claimed / done / cancelled"
+          },
+          {
+            "name": "round",
+            "required": true,
+            "type": {
+              "k": "int"
+            },
+            "hint": "第几轮（每次重开 +1）"
+          },
+          {
+            "name": "roundSummary",
+            "required": true,
+            "type": {
+              "k": "string"
+            },
+            "hint": "本轮完成总结；未完成时为空串"
+          },
+          {
+            "name": "reopenCount",
+            "required": true,
+            "type": {
+              "k": "int"
+            }
+          },
+          {
+            "name": "childCount",
+            "required": true,
+            "type": {
+              "k": "int"
+            }
+          },
+          {
+            "name": "childRoundCount",
+            "required": true,
+            "type": {
+              "k": "int"
+            }
+          },
+          {
+            "name": "createdAt",
+            "required": true,
+            "type": {
+              "k": "string"
+            }
+          },
+          {
+            "name": "consumedAt",
+            "required": true,
+            "type": {
+              "k": "string"
+            },
+            "hint": "被领取的时间；未领取为空串"
+          },
+          {
+            "name": "pickupSec",
+            "required": false,
+            "type": {
+              "k": "int"
+            },
+            "hint": "入队到领取的秒数；未领取为 null"
+          },
+          {
+            "name": "completedAt",
+            "required": true,
+            "type": {
+              "k": "string"
+            }
+          },
+          {
+            "name": "doneAt",
+            "required": true,
+            "type": {
+              "k": "string"
+            }
+          },
+          {
+            "name": "feedback",
+            "required": true,
+            "type": {
+              "k": "string"
+            },
+            "hint": "完成总结原文（与服务端历史同一份）"
+          },
+          {
+            "name": "claimedBy",
+            "required": true,
+            "type": {
+              "k": "string"
+            },
+            "hint": "领取方标识（agent / 端侧）"
+          },
+          {
+            "name": "claimedByName",
+            "required": true,
+            "type": {
+              "k": "string"
+            }
+          },
+          {
+            "name": "claimedFrom",
+            "required": true,
+            "type": {
+              "k": "string"
+            },
+            "hint": "local / global"
+          },
+          {
+            "name": "ready",
+            "required": true,
+            "type": {
+              "k": "bool"
+            },
+            "hint": "当前是否「可领取」"
+          },
+          {
+            "name": "blocksFollowing",
+            "required": true,
+            "type": {
+              "k": "bool"
+            },
+            "hint": "是否为闸门任务"
+          },
+          {
+            "name": "blockBy",
+            "required": true,
+            "type": {
+              "k": "list",
+              "of": {
+                "k": "string"
+              }
+            },
+            "hint": "依赖的任务 id（全部完成后本条才可领）"
+          },
+          {
+            "name": "deletedAt",
+            "required": true,
+            "type": {
+              "k": "string"
+            }
+          },
+          {
+            "name": "archivedAt",
+            "required": true,
+            "type": {
+              "k": "string"
+            }
+          },
+          {
+            "name": "archivedReason",
+            "required": true,
+            "type": {
+              "k": "string"
+            }
+          },
+          {
+            "name": "attachments",
+            "required": false,
+            "type": {
+              "k": "list",
+              "of": {
+                "k": "model",
+                "name": "LocaltaskShowAttachment",
+                "fields": [
+                  {
+                    "name": "id",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    }
+                  },
+                  {
+                    "name": "kind",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "file / url / task / ref …"
+                  },
+                  {
+                    "name": "kindLabel",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "给人看的种类名"
+                  },
+                  {
+                    "name": "name",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    }
+                  },
+                  {
+                    "name": "sizeText",
+                    "required": true,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "已格式化的大小（65.8 KB）；url 类可能为空串"
+                  },
+                  {
+                    "name": "isImage",
+                    "required": true,
+                    "type": {
+                      "k": "bool"
+                    }
+                  },
+                  {
+                    "name": "size",
+                    "required": false,
+                    "type": {
+                      "k": "int"
+                    }
+                  },
+                  {
+                    "name": "mime",
+                    "required": false,
+                    "type": {
+                      "k": "string"
+                    }
+                  },
+                  {
+                    "name": "note",
+                    "required": false,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "附件上的备注（原型图、日志…）"
+                  },
+                  {
+                    "name": "localPath",
+                    "required": false,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "本机绝对路径；未落盘时为空"
+                  },
+                  {
+                    "name": "exists",
+                    "required": false,
+                    "type": {
+                      "k": "bool"
+                    },
+                    "hint": "本地文件是否还在"
+                  },
+                  {
+                    "name": "needsSync",
+                    "required": false,
+                    "type": {
+                      "k": "bool"
+                    }
+                  },
+                  {
+                    "name": "cmd",
+                    "required": false,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "需要同步时给用户的一条命令"
+                  },
+                  {
+                    "name": "usage",
+                    "required": false,
+                    "type": {
+                      "k": "string"
+                    },
+                    "hint": "agent/端侧该怎么用它（已在本机就直接读）"
+                  }
+                ]
+              }
+            },
+            "hint": "正文引用到的附件；标注失败时整个字段缺失（fail-open）"
+          }
+        ]
+      },
+      "summary": "查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置）"
     },
     {
       "id": "localtask.tasks",

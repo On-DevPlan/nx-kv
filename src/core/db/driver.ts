@@ -245,7 +245,7 @@ function decorateOpenError(err: any, dbPath: string): AppError {
   const raw = String((err && err.message) || err || '未知错误');
   const hint = /unable to open database file/i.test(raw)
     ? '目录不可写 / 文件被占用 / 盘符不存在都会报这句'
-    : '若是「另一个进程正在用这个库」，先停掉那个 serve 或改用 HTTP 领取（POST /api/localtasks/claim）';
+    : '若是「另一个进程正在用这个库」，先停掉那个 serve 或改用 HTTP 领取（POST /api/localtasks/get）';
   const e = new AppError(
     CODES.INTERNAL,
     `打开库失败: ${dbPath}（errcode=${Number.isFinite(code) ? code : '?'}）：${raw}\n${hint}。` +

@@ -1,4 +1,4 @@
-// （#54 自 service.js 拆出）队列出口的任务生命周期：consumeFirstPending（D-first 领取，
+// （#54 自 service.js 拆出）队列出口的任务生命周期：claimFirstPending（D-first 领取，
 // 跳过被依赖/闸门挡住的 pending）、completeTask（完成门禁：timegoal 未到点返回 blocked
 // 业务值而不是抛错）、reopenTask（用户修改反馈 → **就地重开原任务**，历史进 history 链）。
 import { badInput, notFound } from '../../../core/errors.js';
@@ -268,7 +268,7 @@ export async function reopenTask({
   };
 }
 
-/** consumeFirstPending 的领取方身份（wait 传入，用于记领取审计）。 */
+/** claimFirstPending 的领取方身份（wait 传入，用于记领取审计）。 */
 export interface ClaimedBy {
   key?: string;
   name?: string;
@@ -278,7 +278,7 @@ export interface ClaimedBy {
 // 取走该主题第一条 pending；没有则返回 null。roundSummary 显式指定本轮完成总结，
 // 缺省回落到主题当前 summary（等待中即本轮现状）。
 // by = 领取方身份 {key,name,cwd}（wait 传入），用于记领取审计。
-export async function consumeFirstPending(key: string, roundSummary?: string, by?: ClaimedBy | null): Promise<Record<string, any> | null> {
+export async function claimFirstPending(key: string, roundSummary?: string, by?: ClaimedBy | null): Promise<Record<string, any> | null> {
   openStore();
   const t = topicsRepo.getTopic(key);
   if (!t) return null;

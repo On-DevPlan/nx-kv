@@ -1,13 +1,18 @@
 // localtask 的**跨语言出参视图**（契约用，见 ActionMeta.output）。
 //
-// 为什么单独一个文件：`localtask.get` / `claim` / `done` / `reopen` / `add` / `update`
+// 为什么单独一个文件：`localtask.get`（领取）/ `show` / `done` / `reopen` / `add` / `update`
 // 六条 action 都要往外说话，其中「一条任务长什么样」必须**只写一次**——写成六份，
 // 字段迟早分叉，端侧就会看到「同一个东西，两个名字」。
+//
+// id ↔ CLI 对照（id / cli / http 三层同词表，都以 CLI 动词为基准）：
+//   `localtask.get` = 领取（CLI `localtask get`）；`localtask.show` = 查单条
+//   （CLI `localtask show`）。CRUD 词表的「查（单条）」位（X.get）对本资源由
+//   registry.test.mjs 的 crudIdOf 覆盖映射到 localtask.show。
 //
 // 一条纪律：**这里是视图，不是 service 的返回结构**。
 //   · `localtask.list` 刻意不声明 `tasks`（每个主题挂着全部任务，某主题实测 194 条）；
 //   · `claim` / `done` / `reopen` 刻意不声明 `task` 整体，只给 `taskId`——
-//     端侧要看详情就调 `localtask.get`，别让「领一条」变成「解码一份长正文」；
+//     端侧要看详情就调 `localtask.show`，别让「领一条」变成「解码一份长正文」；
 //   · 声明少了不影响服务端返回（契约不裁剪运行时响应，见设计 §4.3），
 //     CLI 与 HTTP 的完整返回一个字都不变。
 import { z } from 'zod';
@@ -68,7 +73,7 @@ export const taskView = z.object({
  * 端侧据此决定「进详情」「停在队列」「解释为什么领不了」，不必解析错误文本。
  *
  * 只回**编号**不回整条任务：领到手的那一刻端侧要跳详情，但详情页的正文、
- * 附件、轮次是 `localtask.get` 的活 —— 让「领一条」顺手多解码一份长正文，
+ * 附件、轮次是 `localtask.show` 的活 —— 让「领一条」顺手多解码一份长正文，
  * 是端侧最容易被拖慢的地方（历史某主题一条正文 200KB）。
  */
 export const claimView = z.object({
@@ -80,7 +85,7 @@ export const claimView = z.object({
   instant: z.boolean().optional().describe('是否为「没活就立刻回」的即时模式'),
 });
 
-/** 「新建一条」的结果视图（只回编号：详情交给 `localtask.get`）。 */
+/** 「新建一条」的结果视图（只回编号：详情交给 `localtask.show`）。 */
 export const addView = z.object({
   status: z.string(),
   id: z.int().describe('新任务编号'),

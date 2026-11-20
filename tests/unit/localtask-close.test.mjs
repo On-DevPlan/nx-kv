@@ -59,7 +59,7 @@ test('closeTasks：已领取（正在跑）的任务也能标完成 —— #184 
   await svc.resetLocaltaskStore();
   const added = await svc.addTask({ cwd: dir, text: 'agent 正在跑的任务' });
   const id = added.task.id;
-  const claimed = await svc.consumeFirstPending(key, '正在改 ref 同步', { key: 'k1', name: 'agent-A' });
+  const claimed = await svc.claimFirstPending(key, '正在改 ref 同步', { key: 'k1', name: 'agent-A' });
   assert.equal(claimed.status, 'claimed');
 
   const res = await svc.closeTasks({ cwd: dir, ids: [id], status: 'done', summary: '用户在面板验收通过' });
@@ -77,7 +77,7 @@ test('closeTasks：已领取且不写总结时，默认总结点明「面板直�
   await svc.resetLocaltaskStore();
   const added = await svc.addTask({ cwd: dir, text: '有领取方的任务' });
   const id = added.task.id;
-  await svc.consumeFirstPending(key, '现状', { name: 'agent-B' });
+  await svc.claimFirstPending(key, '现状', { name: 'agent-B' });
 
   await svc.closeTasks({ cwd: dir, ids: [id], status: 'done' });
   const r = await row(id);
@@ -89,7 +89,7 @@ test('closeTasks：已被 agent 收口的任务再点一次 = 跳过，历史不
   await svc.resetLocaltaskStore();
   const added = await svc.addTask({ cwd: dir, text: 'agent 已经交付的任务' });
   const id = added.task.id;
-  await svc.consumeFirstPending(key, '开始', { name: 'agent-C' });
+  await svc.claimFirstPending(key, '开始', { name: 'agent-C' });
   await svc.completeTask({ cwd: dir, id, summary: 'agent 的交付结论' });
 
   const res = await svc.closeTasks({ cwd: dir, ids: [id], status: 'done', summary: '用户手滑又点了一次' });
@@ -120,7 +120,7 @@ test('closeTasks：--status cancelled 对已领取的任务也生效（CLI 侧�
   await svc.resetLocaltaskStore();
   const added = await svc.addTask({ cwd: dir, text: '决定不做了的任务' });
   const id = added.task.id;
-  await svc.consumeFirstPending(key, '现状', { name: 'agent-D' });
+  await svc.claimFirstPending(key, '现状', { name: 'agent-D' });
 
   const res = await svc.closeTasks({ cwd: dir, ids: [id], status: 'cancelled' });
   assert.equal(res.count, 1);

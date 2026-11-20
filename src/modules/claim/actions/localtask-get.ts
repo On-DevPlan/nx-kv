@@ -1,4 +1,13 @@
-// localtask.claim —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
+// localtask.get —— 领取任务（CLI `localtask get` / HTTP POST /api/localtasks/get）。
+//
+// id / cli / http 三层同词表，都以 CLI 动词 **get** 为基准。
+// 注：CRUD 词表的「查（单条）」位（X.get）对本资源由 registry.test.mjs 的
+// crudIdOf 覆盖映射到 localtask.show（查看，CLI `localtask show`）——
+// localtask 的 get id 让位给「领取」，是刻意约定，不是漏配。
+//
+// 领取编排（阻塞窗口 / getLoop / 交付组装）在本模块 claim/，队列原语在
+// localtask/lifecycle 的 claimFirstPending。
+// 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
 // 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
@@ -8,7 +17,7 @@ import { renderWait as _renderWait } from '../../localtask/ui/action-render.js';
 import { claimView } from '../../localtask/ui/contract-views.js';
 const renderWait: any = _renderWait;
 
-/** localtask.claim 的入参契约（CLI 与 HTTP 共用同一份）。 */
+/** localtask.get（领取）的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   cwd: z.string().optional(),
   timeout: z.number().optional().describe("阻塞上限（秒）：显式给定时，即使项目没开「持续 get」也会阻塞这么久；缺省则立即返回 timeout"),
@@ -16,11 +25,11 @@ const input = z.object({
   param: z.array(z.string()).optional().describe("外部参数（平面扩展）：k=v，可重复或逗号分隔；进交付模板 ctx，模板里 {{k}} / {{params.k}} 取"),
 });
 
-export class LocaltaskClaimAction extends ActionBase<typeof input> {
+export class LocaltaskGetAction extends ActionBase<typeof input> {
   @action({
-    id: 'localtask.claim',
+    id: 'localtask.get',
     cli: ['localtask', 'get'],
-    http: ['POST', '/api/localtasks/claim'],
+    http: ['POST', '/api/localtasks/get'],
     summary: '领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填',
     input,
     output: claimView,
@@ -43,6 +52,6 @@ export class LocaltaskClaimAction extends ActionBase<typeof input> {
         // 纯附加字段 —— CLI 的 --json 与 HTTP 响应原有键一个不少，只是多了 taskId。
         if (r && r.task && r.task.id != null) r.taskId = r.task.id;
         return r;
-    
+
   }
 }

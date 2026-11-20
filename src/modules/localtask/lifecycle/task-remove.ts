@@ -328,7 +328,7 @@ export interface ReorderTasksInput {
 }
 
 // 调整**待领取**任务的优先级：把 #id 移动到 #beforeId 之前或 #afterId 之后。
-// 领取顺序 = ext_task_order 里 pending 子序列的先后（consumeFirstPending 取第一条可领），
+// 领取顺序 = ext_task_order 里 pending 子序列的先后（claimFirstPending 取第一条可领），
 // 故只在 pending 之间换位；已领取（历史）任务固定、不可移动。
 // **seq 不动**：它是对外编号（trg_tasks_identity 锁死）；这里只改顺序单子。
 export async function reorderTasks({ cwd: rawCwd, key: rawKey, id, beforeId, afterId }: ReorderTasksInput = {}): Promise<Record<string, any>> {

@@ -55,7 +55,7 @@ test('cancelWait：主题不在等待中时是无操作（cancelled:false，不�
 test('cancelWait：阻塞中的 wait 立即收尾（timeout + cancelled），等待态复位、任务保留', async () => {
   await reset();
   await svc.addTask({ cwd: dir, text: '历史任务' });
-  await svc.consumeFirstPending(key); // 领走，让队列空出来 → wait 才会真阻塞
+  await svc.claimFirstPending(key); // 领走，让队列空出来 → wait 才会真阻塞
 
   let during = null;
   const t0 = Date.now();
@@ -106,7 +106,7 @@ test('关闭标记只生效一次：正常超时不带 cancelled，且不会瞬�
 test('setWaiting 清掉残留关闭标记：新一轮 wait 不会被上一轮的关闭请求误杀', async () => {
   await reset();
   await svc.addTask({ cwd: dir, text: '占位' });
-  await svc.consumeFirstPending(key); // 队列必须空，否则 wait 会立刻取走任务而不是阻塞
+  await svc.claimFirstPending(key); // 队列必须空，否则 wait 会立刻取走任务而不是阻塞
   // 模拟「用户点关闭」与「上一轮 wait 收尾」撞在一起：残留标记落在 presence 表里但已无 wait 在跑
   svc.repo.presence.setPresence(key, { waiting: false, untilMs: 0, sinceMs: 0, cancelRequested: true });
 

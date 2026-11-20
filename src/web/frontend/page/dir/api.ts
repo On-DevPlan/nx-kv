@@ -62,11 +62,11 @@ export function patchTaskItem(body: PatchTaskItemBody): Promise<TaskMutationResu
 }
 
 /**
- * 按查询串查单条任务（GET /api/localtasks/item?<q>）。
+ * 按查询串查单条任务（GET /api/localtasks/show?<q>）。
  * 找不到或出错返回 null（调用方以 null 判「没有这条」）。
  */
 export function findTaskItem(query: string): Promise<any> {
-  return api(`/api/localtasks/item?${query}`).catch(() => null);
+  return api(`/api/localtasks/show?${query}`).catch(() => null);
 }
 
 export interface AddTaskBody extends TaskScope {

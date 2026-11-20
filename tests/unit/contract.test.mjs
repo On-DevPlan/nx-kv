@@ -71,7 +71,7 @@ test('T2 · 每条带 output 的 action，真实返回都能被自己的 schema 
   const 丙 = await mk('T2 丙');            // get / update
   const 丁 = await mk('T2 丁');            // done
   const FIXTURES = {
-    'localtask.get': { id: 丙.id, cwd: here },
+    'localtask.show': { id: 丙.id, cwd: here },
     'localtask.update': { id: 丙.id, cwd: here, text: '# T2 丙改\n\n改过的正文' },
     'localtask.done': { id: 丁.id, cwd: here, summary: 'T2 丁已做完' },
     'localtask.reopen': { id: 乙.id, cwd: here, kind: 'comment', quote: '正文', feedback: '再改一下' },
@@ -81,7 +81,7 @@ test('T2 · 每条带 output 的 action，真实返回都能被自己的 schema 
 
   // claim 先单独跑一次：它必须真的领到「甲」，且把编号提到顶层
   // （出参契约只回 Number 不回整条任务 —— 这一行就是那条约定的回归测试）
-  const claimAct = zodActions.find((a) => a.id === 'localtask.claim');
+  const claimAct = zodActions.find((a) => a.id === 'localtask.get');
   const claimed = await claimAct.run({ cwd: here }, { transport: 'http' });
   assert.equal(claimed.status, 'ok', '队列里明明有「甲」，claim 必须领到');
   assert.equal(claimed.taskId, 甲.id, 'claim 的 taskId 必须是被领走那条的编号');

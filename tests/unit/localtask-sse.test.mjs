@@ -124,7 +124,7 @@ test('streamEventsSSE：连接即推 waiting 快照帧，断开干净结束', as
   // 这里换一种方式：开一个 wait，把 store 写入
   // 构造一个 waiting 主题
   await svc.addTask({ cwd: dirC, text: 'T' });
-  await svc.consumeFirstPending(svc.topicKeyFor(dirC), ''); // 队列清空（key 由完整 cwd 派生）
+  await svc.claimFirstPending(svc.topicKeyFor(dirC), ''); // 队列清空（key 由完整 cwd 派生）
   // 直接写库设置 waiting=true + waitingUntil（presence 表）
   svc.repo.presence.setPresence(svc.topicKeyFor(dirC), {
     waiting: true,

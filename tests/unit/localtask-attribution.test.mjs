@@ -158,7 +158,7 @@ test('闸门 → 拒绝搬家', async () => {
 /** 队列里积了前面测试的任务，逐条领到目标那条为止（被挡的会被 findFirstReadyPending 跳过） */
 async function claimUntil(key, taskId) {
   for (let i = 0; i < 50; i++) {
-    const got = await svc.consumeFirstPending(key, '测试领取');
+    const got = await svc.claimFirstPending(key, '测试领取');
     if (!got) break;
     if (Number(got.id) === Number(taskId)) return got;
   }

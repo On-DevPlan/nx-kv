@@ -40,7 +40,7 @@ test('外部写逐次顶 workflowRevision（引擎过期快照的 CAS 依据）'
   const afterDag = await revisionOf();
   assert.ok(afterDag > afterUpdate, `改依赖后 revision 必须上涨（${afterUpdate} → ${afterDag}）`);
 
-  await svc.consumeFirstPending(svc.normalizeCwd(dirA).key, '领取');
+  await svc.claimFirstPending(svc.normalizeCwd(dirA).key, '领取');
   const afterClaim = await revisionOf();
   assert.ok(afterClaim > afterDag, `领取后 revision 必须上涨（${afterDag} → ${afterClaim}）`);
 

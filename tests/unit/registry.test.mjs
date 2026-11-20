@@ -248,9 +248,14 @@ const CRUD_VERB = { list: 'list', get: 'get', create: 'add', update: 'update', r
 /**
  * v8：docs 的「增」是新建一条直接 ref（doc.ref.add），不再有 doc.add——
  * 资源名仍是 doc（list/get/update/remove 都不变），只把 create 的 id 映射过去。
+ *
+ * v9：localtask 的「查（单条）」是 localtask.show——CLI `localtask get` 已被
+ * 「领取」占据（id/cli/http 三层都以 CLI 动词 get 为基准），查单条的用户动词
+ * 是 show。localtask 是「id 跟 CLI 词表走」的资源，CRUD get 位在此让位。
  */
 function crudIdOf(moduleId, resource, op) {
   if (moduleId === 'docs' && resource === 'doc' && op === 'create') return 'doc.ref.add';
+  if (moduleId === 'localtask' && resource === 'localtask' && op === 'get') return 'localtask.show';
   return `${resource}.${CRUD_VERB[op]}`;
 }
 
@@ -291,9 +296,9 @@ test('CRUD 路由的形状对得上语义', () => {
   const segs = (p) => p.split('/').filter(Boolean);
   const hasParam = (p) => segs(p).some((s) => s.startsWith(':'));
 
-  // 定位单条的路径参数**允许**用 :param，也允许走固定尾段（localtask 就是后者：
-  // 它按 id 定位，路径用 /api/localtasks/item）。
-  const LOCATOR = /^item$/;
+  // 定位单条的路径参数**允许**用 :param，也允许走固定尾段（doc/file 按 id 走
+  // /item；localtask 的查单条按 CLI 词表走 /show）。
+  const LOCATOR = /^(item|show)$/;
 
   for (const { m, r } of MODULES.flatMap((m) => resourcesOf(m).map((x) => ({ m, r: x })))) {
     const httpOf = (op) => ACTIONS.find((a) => a.id === crudIdOf(m.id, r, op)).http;

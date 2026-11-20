@@ -13,7 +13,7 @@ import type {
   BundledListAction,
 } from '../../../modules/bundled/actions/_manifest.generated.js';
 import type {
-  LocaltaskClaimAction,
+  LocaltaskGetAction,
   LocaltaskPreviewAction,
 } from '../../../modules/claim/actions/_manifest.generated.js';
 import type {
@@ -74,7 +74,6 @@ import type {
   LocaltaskDoneAction,
   LocaltaskEventsAction,
   LocaltaskForkAction,
-  LocaltaskGetAction,
   LocaltaskListAction,
   LocaltaskPlanAction,
   LocaltaskPresenceAction,
@@ -83,6 +82,7 @@ import type {
   LocaltaskRemoveManyAction,
   LocaltaskReopenAction,
   LocaltaskReorderAction,
+  LocaltaskShowAction,
   LocaltaskTaskRestoreAction,
   LocaltaskTasksAction,
   LocaltaskTimegoalLogAction,
@@ -326,8 +326,6 @@ export interface ApiClient {
   events(input?: z.input<InstanceType<typeof LocaltaskEventsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskEventsAction>['run']>>>;
 /** Fork 任务：复制正文内容为新任务，并把它挂到源任务的任务链下（保留评论/反馈链）；不继承时间目标与依赖 */
   fork(input: z.input<InstanceType<typeof LocaltaskForkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskForkAction>['run']>>>;
-/** 查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置） */
-  localtaskGet(input: z.input<InstanceType<typeof LocaltaskGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskGetAction>['run']>>>;
 /** 总览全部主题（工作目录、现状、是否等待中、待领取数） */
   localtaskList(): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskListAction>['run']>>>;
 /** 临时草稿态：plan 不进队列（get/wait 都领不到），pending 转回正常待领取；只允许 pending ↔ plan 双向切换 */
@@ -344,6 +342,8 @@ export interface ApiClient {
   reopen(input: z.input<InstanceType<typeof LocaltaskReopenAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskReopenAction>['run']>>>;
 /** 调整待领取任务优先级（--id <编号> 移到 --before-id <编号> 前或 --after-id <编号> 后） */
   reorder(input: z.input<InstanceType<typeof LocaltaskReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskReorderAction>['run']>>>;
+/** 查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置） */
+  show(input: z.input<InstanceType<typeof LocaltaskShowAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskShowAction>['run']>>>;
 /** 恢复一条被删除（软删除）的任务（撤销删除） */
   restore(input: z.input<InstanceType<typeof LocaltaskTaskRestoreAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTaskRestoreAction>['run']>>>;
 /** 看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领/组标注），不含正文 */
@@ -359,7 +359,7 @@ export interface ApiClient {
 /** 编辑任务内容（按 --id，定位到 --cwd 主题或 --key）；可同时改时间目标声明（--duration/--goal-prompt/--clear-goal，仅未领取时可改——领取即计时，起表后声明是既成事实） */
   localtaskUpdate(input: z.input<InstanceType<typeof LocaltaskUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskUpdateAction>['run']>>>;
 /** 领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填 */
-  claim(input?: z.input<InstanceType<typeof LocaltaskClaimAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskClaimAction>['run']>>>;
+  localtaskGet(input?: z.input<InstanceType<typeof LocaltaskGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskGetAction>['run']>>>;
 /** 预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览 */
   preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>>;
 /** 新增任务模板（--body 给 Markdown 正文；多行正文用 --body-file <文件> 或 --body - 读管道；--setDefault 同时设为默认；--scope 设可见域、--topic 记创建主题并默认仅该主题可见） */
@@ -387,7 +387,7 @@ export interface ApiClient {
 /** 为本目录设置/替换 timegoal：duration + 完整全局提示词（原文固化到 store） */
   timegoalSet(input: z.input<InstanceType<typeof TimegoalSetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalSetAction>['run']>>>;
 /** 查看当前 timegoal（不算时间）：--cwd 目录级，--task 任务级（key 在领取交付里自带） */
-  show(input?: z.input<InstanceType<typeof TimegoalShowAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalShowAction>['run']>>>;
+  timegoalShow(input?: z.input<InstanceType<typeof TimegoalShowAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalShowAction>['run']>>>;
 /** 更新本目录 timegoal 的提示词（可选同时改时长，--duration；保留起点，不重置计时） */
   timegoalUpdate(input: z.input<InstanceType<typeof TimegoalUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalUpdateAction>['run']>>>;
 /** 取附件本体：面板内联预览；CLI 打印本机路径 */
@@ -1043,18 +1043,6 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskForkAction>['run']>>;
     },
-    // action: localtask.get
-    async localtaskGet(input: z.input<InstanceType<typeof LocaltaskGetAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskGetAction>['_input']>);
-      let path = `/api/localtasks/item`;
-      const q = new URLSearchParams();
-      if (inp["id"] !== undefined) q.set("id", String(inp["id"]));
-      if (inp["cwd"] !== undefined) q.set("cwd", String(inp["cwd"]));
-      if (inp["key"] !== undefined) q.set("key", String(inp["key"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskGetAction>['run']>>;
-    },
     // action: localtask.list
     async localtaskList() {
       const path = `/api/localtasks`;
@@ -1106,6 +1094,18 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/localtasks/reorder`;
       const body = { "id": inp["id"], "beforeId": inp["beforeId"], "afterId": inp["afterId"], "before-id": inp["before-id"], "after-id": inp["after-id"], "cwd": inp["cwd"], "key": inp["key"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskReorderAction>['run']>>;
+    },
+    // action: localtask.show
+    async show(input: z.input<InstanceType<typeof LocaltaskShowAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskShowAction>['_input']>);
+      let path = `/api/localtasks/show`;
+      const q = new URLSearchParams();
+      if (inp["id"] !== undefined) q.set("id", String(inp["id"]));
+      if (inp["cwd"] !== undefined) q.set("cwd", String(inp["cwd"]));
+      if (inp["key"] !== undefined) q.set("key", String(inp["key"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskShowAction>['run']>>;
     },
     // action: localtask.task.restore
     async restore(input: z.input<InstanceType<typeof LocaltaskTaskRestoreAction>['_input']>) {
@@ -1166,12 +1166,12 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "id": inp["id"], "text": inp["text"], "cwd": inp["cwd"], "key": inp["key"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "clear-goal": inp["clear-goal"], "clearGoal": inp["clearGoal"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "clear-block-by": inp["clear-block-by"], "clearBlockBy": inp["clearBlockBy"], "gate": inp["gate"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskUpdateAction>['run']>>;
     },
-    // action: localtask.claim
-    async claim(input?: z.input<InstanceType<typeof LocaltaskClaimAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskClaimAction>['_input']>);
-      const path = `/api/localtasks/claim`;
+    // action: localtask.get
+    async localtaskGet(input?: z.input<InstanceType<typeof LocaltaskGetAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskGetAction>['_input']>);
+      const path = `/api/localtasks/get`;
       const body = { "cwd": inp["cwd"], "timeout": inp["timeout"], "no-open": inp["no-open"], "param": inp["param"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskClaimAction>['run']>>;
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskGetAction>['run']>>;
     },
     // action: localtask.preview
     async preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>) {
@@ -1273,7 +1273,7 @@ export function createApiClient(transport: Transport): ApiClient {
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TimegoalSetAction>['run']>>;
     },
     // action: timegoal.show
-    async show(input?: z.input<InstanceType<typeof TimegoalShowAction>['_input']>) {
+    async timegoalShow(input?: z.input<InstanceType<typeof TimegoalShowAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof TimegoalShowAction>['_input']>);
       let path = `/api/timegoals`;
       const q = new URLSearchParams();

@@ -3,7 +3,7 @@
 // 对照参考方案（Node+TS DAG 动态工作流）在 nx-kv 上的映射：
 //   workflowId     → 主题 key（cwd 归一化 / repos key；全局 '__GLOBAL__'）
 //   submit(init)   → localtask add（只入队，不构造全图）
-//   get(id,node?)  → 引擎门（#237 已删除；现役领取走 localtask.claim）
+//   get(id,node?)  → 引擎门（#237 已删除；现役领取走 localtask.get，即 claim 域）
 //   Node           → localtask 一条任务（id 数字；状态用 status+completedAt）
 //   Edge / blockBy → task.blockBy[] + task.blocksFollowing（闸门）
 //   blockgoal      → scope=control；onSchedule 决定后继是否 ready（见 localtask/dag.js）

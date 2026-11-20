@@ -21,7 +21,6 @@ import { LocaltaskDetachAction } from './localtask-detach.js';
 import { LocaltaskDoneAction } from './localtask-done.js';
 import { LocaltaskEventsAction } from './localtask-events.js';
 import { LocaltaskForkAction } from './localtask-fork.js';
-import { LocaltaskGetAction } from './localtask-get.js';
 import { LocaltaskListAction } from './localtask-list.js';
 import { LocaltaskPlanAction } from './localtask-plan.js';
 import { LocaltaskPresenceAction } from './localtask-presence.js';
@@ -30,6 +29,7 @@ import { LocaltaskRemoveAction } from './localtask-remove.js';
 import { LocaltaskRemoveManyAction } from './localtask-removeMany.js';
 import { LocaltaskReopenAction } from './localtask-reopen.js';
 import { LocaltaskReorderAction } from './localtask-reorder.js';
+import { LocaltaskShowAction } from './localtask-show.js';
 import { LocaltaskTaskRestoreAction } from './localtask-task-restore.js';
 import { LocaltaskTasksAction } from './localtask-tasks.js';
 import { LocaltaskTimegoalLogAction } from './localtask-timegoalLog.js';
@@ -55,7 +55,6 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskDoneAction,
   LocaltaskEventsAction,
   LocaltaskForkAction,
-  LocaltaskGetAction,
   LocaltaskListAction,
   LocaltaskPlanAction,
   LocaltaskPresenceAction,
@@ -64,6 +63,7 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskRemoveManyAction,
   LocaltaskReopenAction,
   LocaltaskReorderAction,
+  LocaltaskShowAction,
   LocaltaskTaskRestoreAction,
   LocaltaskTasksAction,
   LocaltaskTimegoalLogAction,
@@ -89,7 +89,6 @@ export { LocaltaskDetachAction };
 export { LocaltaskDoneAction };
 export { LocaltaskEventsAction };
 export { LocaltaskForkAction };
-export { LocaltaskGetAction };
 export { LocaltaskListAction };
 export { LocaltaskPlanAction };
 export { LocaltaskPresenceAction };
@@ -98,6 +97,7 @@ export { LocaltaskRemoveAction };
 export { LocaltaskRemoveManyAction };
 export { LocaltaskReopenAction };
 export { LocaltaskReorderAction };
+export { LocaltaskShowAction };
 export { LocaltaskTaskRestoreAction };
 export { LocaltaskTasksAction };
 export { LocaltaskTimegoalLogAction };

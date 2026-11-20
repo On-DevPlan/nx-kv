@@ -15,7 +15,7 @@ import {
   clampTimeoutSec,
   clearWaiting,
   consumeCancelRequest,
-  consumeFirstPending,
+  claimFirstPending,
   getSettings,
   GLOBAL_KEY,
   isGlobalKey,
@@ -125,7 +125,7 @@ export async function waitForTask({
   const tmo = clampTimeoutSec(sec) * 1000;
 
   // 1. 主题队列已有 pending → 立即取走，不开窗、不阻塞；记录本轮完成总结
-  const queued = await consumeFirstPending(key, summary, by);
+  const queued = await claimFirstPending(key, summary, by);
   if (queued) {
     const delivery = await buildTaskDelivery(queued, { source: 'local', summary, cwd, name, topicKey: key, params, getLoopEnabled, getLoopWaitMinutes });
     return { status: 'ok', key, cwd, name, summary, ...delivery, queued: true, source: 'local', repo: repoCtx };
@@ -140,7 +140,7 @@ export async function waitForTask({
     return { status: 'timeout', key, cwd, name, summary, timeoutMs: 0, instant: true };
   }
 
-  const fromGlobal = await consumeFirstPending(GLOBAL_KEY, summary, by);
+  const fromGlobal = await claimFirstPending(GLOBAL_KEY, summary, by);
   if (fromGlobal) {
     // 全局池投递渲染的仍是**等待方目录**的 goal——目标绑定在等待中的 agent 目录上，
     // 与任务来自哪个队列无关。
@@ -213,13 +213,13 @@ export async function waitForTask({
     if (goalDeadlineMs && Date.now() >= goalDeadlineMs) {
       resolveOutcome({ kind: 'cancelled', reason: 'goal_expired' });
     }
-    consumeFirstPending(key, undefined, by)
+    claimFirstPending(key, undefined, by)
       .then((task: any) => {
         if (task) {
           resolveOutcome({ kind: 'task', task, delivered: false, source: 'local' });
           return null;
         }
-        return consumeFirstPending(GLOBAL_KEY, undefined, by);
+        return claimFirstPending(GLOBAL_KEY, undefined, by);
       })
       .then((task: any) => {
         if (task) resolveOutcome({ kind: 'task', task, delivered: false, source: 'global' });

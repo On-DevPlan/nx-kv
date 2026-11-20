@@ -1,9 +1,11 @@
-// localtask.show —— 查看单条任务（CLI `localtask show` / HTTP GET /api/localtasks/show）。
+// localtask.show —— 查看单条任务（CLI `localtask show` / HTTP GET /api/localtasks/item）。
 //
-// id / cli / http 三层同词表，都以 CLI 动词 **show** 为基准（按 --id，只读不领）。
+// id / cli 以 CLI 动词 **show** 为基准；http 走 REST 定位尾段 /item
+// （与 doc.get / file.get 的查单条形态一致：方法承载动词、路径承载资源）。
 // CRUD 词表的「查（单条）」位（X.get）对本资源由 registry.test.mjs 的 crudIdOf
 // 覆盖映射到本条——因为 `localtask get` 在 CLI 语义里是「领取」，查单条的
-// 用户动词是 show。要「领活」调 claim 模块的 localtask.get。
+// 用户动词是 show。要「领活」调 claim 模块的 localtask.get（POST /api/localtasks/get，
+// 业务动作端点，全仓 custom method 风格）。
 //
 // 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
@@ -28,7 +30,7 @@ export class LocaltaskShowAction extends ActionBase<typeof input> {
   @action({
     id: 'localtask.show',
     cli: ['localtask', 'show'],
-    http: ['GET', '/api/localtasks/show'],
+    http: ['GET', '/api/localtasks/item'],
     summary: '查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置）',
     input,
     output: taskView,

@@ -299,9 +299,9 @@ test('CRUD 路由的形状对得上语义', () => {
   const segs = (p) => p.split('/').filter(Boolean);
   const hasParam = (p) => segs(p).some((s) => s.startsWith(':'));
 
-  // 定位单条的路径参数**允许**用 :param，也允许走固定尾段（doc/file 按 id 走
-  // /item；localtask 的查单条按 CLI 词表走 /show）。
-  const LOCATOR = /^(item|show)$/;
+  // 定位单条的路径参数**允许**用 :param，也允许走固定尾段（doc/file/localtask
+  // 的查单条都按 REST 定位尾段走 /item）。
+  const LOCATOR = /^item$/;
 
   for (const { m, r } of MODULES.flatMap((m) => resourcesOf(m).map((x) => ({ m, r: x })))) {
     const httpOf = (op) => ACTIONS.find((a) => a.id === crudIdOf(m.id, r, op)).http;

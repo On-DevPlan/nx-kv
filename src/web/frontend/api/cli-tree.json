@@ -1510,7 +1510,7 @@
             "module": "localtask",
             "summary": "查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置）",
             "usage": "localtask show",
-            "http": "GET /api/localtasks/show"
+            "http": "GET /api/localtasks/item"
           },
           "children": []
         },

@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.65.4",
-  "hash": "5a15281c9535b799",
+  "hash": "e34a218bfcbcdedd",
   "actions": [
     {
       "id": "localtask.add",
@@ -915,7 +915,7 @@
           "show"
         ]
       ],
-      "http": "GET /api/localtasks/show",
+      "http": "GET /api/localtasks/item",
       "input": [
         {
           "name": "id",

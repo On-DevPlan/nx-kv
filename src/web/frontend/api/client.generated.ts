@@ -1098,7 +1098,7 @@ export function createApiClient(transport: Transport): ApiClient {
     // action: localtask.show
     async show(input: z.input<InstanceType<typeof LocaltaskShowAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskShowAction>['_input']>);
-      let path = `/api/localtasks/show`;
+      let path = `/api/localtasks/item`;
       const q = new URLSearchParams();
       if (inp["id"] !== undefined) q.set("id", String(inp["id"]));
       if (inp["cwd"] !== undefined) q.set("cwd", String(inp["cwd"]));

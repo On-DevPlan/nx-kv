@@ -12,36 +12,40 @@ import { getTaskChain } from './api.js';
 import type { ChainTreeNode } from '../dir/task-utils.js';
 
 // 状态点沿用进程卡三色词表（pending→wait / claimed→run / done→done）；
-// cancelled 单列。缩进 = 树深；边类型 tag 区分「反馈」轮次与「评论」旁支。
+// cancelled 单列。树形连线（│ └─）由 CSS 画在嵌套结构上（#246：缩进行改真树形）；
+// 边类型 tag 区分「反馈」轮次与「评论」旁支。
 const CHAIN_STATUS: Record<string, string> = { pending: 'wait', claimed: 'run', done: 'done', cancelled: 'cancel' };
 const CHAIN_KIND: Record<string, string> = { reopen: '反馈', comment: '评论', feedback: '反馈' };
 
-function ChainTreeItem({ node, depth, onOpen }: {
+function ChainTreeItem({ node, onOpen }: {
   node: ChainTreeNode;
-  depth: number;
   onOpen: (id: number | string, dirKey?: string) => void;
 }) {
   const st = CHAIN_STATUS[String(node.status || '')] || '';
   const kind = node.forkKind ? (CHAIN_KIND[node.forkKind] || node.forkKind) : '';
+  const kids = node.children || [];
   return (
-    <>
+    <li className="mdw-prog-tbranch">
       <button
         type="button"
         className={`mdw-prog-tnode${node.current ? ' current' : ''}`}
-        style={{ paddingLeft: 10 + depth * 18 }}
         title={node.excerpt || `任务 #${node.id}`}
         onClick={() => onOpen(node.id, node.key || undefined)}
       >
         <span className={`st ${st}`} />
         <span className="n">#{node.id}</span>
-        {kind && <span className="rp-ptag mdw-prog-tkind">{kind}</span>}
+        {kind && <span className={`rp-ptag mdw-prog-tkind${kind === '评论' ? ' cmt' : ''}`}>{kind}</span>}
         {node.missing && <span className="mdw-prog-tmiss">已不在队列</span>}
         <span className="tx">{node.excerpt || '—'}</span>
       </button>
-      {(node.children || []).map((c) => (
-        <ChainTreeItem key={`${node.id}:${c.id}`} node={c} depth={depth + 1} onOpen={onOpen} />
-      ))}
-    </>
+      {kids.length > 0 && (
+        <ul className="mdw-prog-tkids">
+          {kids.map((c) => (
+            <ChainTreeItem key={`${node.id}:${c.id}`} node={c} onOpen={onOpen} />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -91,7 +95,9 @@ export function ChainView({ target, onBack, onOpen }: {
       {!err && !tree ? <div className="mdw-prog-empty">载入中…</div> : null}
       {tree ? (
         <div className="mdw-prog-tree">
-          <ChainTreeItem node={tree} depth={0} onOpen={(id, dk) => onOpen(Number(id), dk)} />
+          <ul className="mdw-prog-troot">
+            <ChainTreeItem node={tree} onOpen={(id, dk) => onOpen(Number(id), dk)} />
+          </ul>
         </div>
       ) : null}
       <div className="mdw-prog-note">链是树：每个节点都可以反馈分叉。点节点打开任务页。</div>

@@ -413,19 +413,34 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
   font:inherit;font-size:11px;color:var(--mid,#838A93);padding:3px 6px;border-radius:6px;
 }
 .mdw-prog-chain-back:hover{background:var(--soft,#F1F0EC);color:var(--ink,#16181C)}
-/* 树状节点：缩进即树深；行 = 状态点 + #id + 边类型 tag + 节选 */
-.mdw-prog-tree{flex:1;min-height:0;overflow:auto;padding:6px 4px}
+/* 树状节点（#246）：嵌套 ul/li + CSS 连线（│ 祖先线 / └─ 分支线），缩进由嵌套 padding 产生 */
+.mdw-prog-tree{flex:1;min-height:0;overflow:auto;padding:8px 6px}
+.mdw-prog-tree ul{list-style:none;margin:0;padding:0;min-width:0}
+.mdw-prog-tbranch{position:relative;min-width:0}
+.mdw-prog-tree ul.mdw-prog-tkids{padding-left:20px}
+/* 祖先竖线：沿每支 li 左侧贯穿；最后一支只画到本节点行中线为止 */
+.mdw-prog-tkids>.mdw-prog-tbranch::before{
+  content:'';position:absolute;left:5px;top:0;bottom:0;width:1px;
+  background:var(--line,#E4E2DC);
+}
+.mdw-prog-tkids>.mdw-prog-tbranch:last-child::before{bottom:auto;height:13px}
+/* 分支横线：从竖线接到节点行左缘 */
+.mdw-prog-tkids>.mdw-prog-tbranch::after{
+  content:'';position:absolute;left:6px;top:13px;width:9px;height:1px;
+  background:var(--line,#E4E2DC);
+}
 .mdw-prog-tnode{
-  display:flex;align-items:center;gap:6px;width:100%;text-align:left;
-  border:0;border-radius:6px;background:none;cursor:pointer;font:inherit;
-  padding:4px 8px 4px 10px;color:var(--ink,#16181C);
+  display:flex;align-items:center;gap:7px;width:100%;text-align:left;
+  border:1px solid transparent;border-radius:7px;background:none;cursor:pointer;font:inherit;
+  padding:4px 8px;color:var(--ink,#16181C);
+  transition:background .12s ease,border-color .12s ease;
 }
 .mdw-prog-tnode:hover{background:var(--soft,#F1F0EC)}
 .mdw-prog-tnode.current{
   background:var(--mdw-accent-soft);color:var(--mdw-accent);
-  box-shadow:inset 2px 0 0 var(--mdw-accent);
+  border-color:var(--mdw-accent-line);
 }
-.mdw-prog-tnode .st{width:7px;height:7px;border-radius:50%;flex:none}
+.mdw-prog-tnode .st{width:8px;height:8px;border-radius:50%;flex:none}
 .mdw-prog-tnode .st.wait{background:var(--soft-2,#DDD9D2)}
 .mdw-prog-tnode .st.run{background:var(--doing,#2f5fb5);box-shadow:0 0 0 2px rgba(47,95,181,.14)}
 .mdw-prog-tnode .st.done{background:var(--live,#1f7a4d);box-shadow:0 0 0 2px rgba(31,122,77,.14)}
@@ -435,7 +450,7 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
   color:var(--ink-2,#4B515A);background:var(--soft,#F1F0EC);
   border-radius:4px;padding:1px 5px;
 }
-.mdw-prog-tnode.current .n{color:inherit;background:none}
+.mdw-prog-tnode.current .n{color:inherit;background:rgba(255,255,255,.55)}
 .mdw-prog-tnode .tx{
   font-size:11px;color:var(--mid,#838A93);overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;
@@ -445,6 +460,7 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
   flex:none;font-size:9.5px;color:var(--mdw-accent);
   border:1px solid var(--mdw-accent-line);border-radius:3px;padding:0 4px;
 }
+.mdw-prog-tkind.cmt{color:var(--mid,#838A93);border-color:var(--line,#E4E2DC)}
 .mdw-prog-tmiss{
   flex:none;font-size:9.5px;color:var(--danger,#b3261e);
   border:1px dashed rgba(179,38,30,.4);border-radius:3px;padding:0 4px;

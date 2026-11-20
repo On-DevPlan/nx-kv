@@ -35,7 +35,7 @@ description: nx-kv 本机任务队列与仓库上下文的**唯一 skill**（原
 | **③ 文档（ref）管理**（四类宿主：开发仓库 / **参考仓库** / 组 / 组内仓库；可绑定列表；写一篇能照做的安装文档） | `docs ref add` / `docs bind` / `docs link` | [[A03-文档与归属]] |
 | **④ 仓库与项目组管理**（远程仓库 git 到指定位置、绑定关系、**克隆后的读+分析收尾**） | `setting set --gitRepoRoot` → `repo clone` / `repo ref clone` → `board assign` / `repo bind` → **概念/关键代码分析写进唯一主篇** | [[A04-仓库与项目组]] |
 | **⑤ 任务链成块 + 反馈识别 + 回写 topic 的 ref** | `localtask chain` 认链尖 → 合成现状 → `docs set` / `docs bind` | [[A05-任务链与反馈汇总]] |
-| **⑥ 参考仓库驱动的开发**（用户说「参考 / 照着 / 借鉴 XX 仓库」时：先组主篇 → 再具体参考仓库 → 落进自己源码 → **补全组内定位**） | 读交付 context 的组主篇与 refRepos → `docs get --ref` / 实读源码 → 改自己源码 → `board note` / `docs set` 回写定位 | [[A06-参考仓库驱动的开发]] |
+| **⑥ 参考仓库驱动的开发**（用户说「参考 / 照着 / 借鉴 XX 仓库」时：先组主篇 → 再具体参考仓库 → **动手前先搜组内现成案例** → 落进自己源码 → **补全组内定位**） | 读交付 context 的组主篇与 refRepos → `docs get --ref` / 实读源码 → `rg` 搜组内其他仓库与参考仓库的现成实现 → 改自己源码 → `board note` / `docs set` 回写定位 | [[A06-参考仓库驱动的开发]] |
 
 > A 序列内部还有常用分支：领指定编号（`show` → `reorder` → `get`）、阻塞等人回填
 > （`get --timeout 60`）、时间目标（`timegoal check`）、完成回填（`done --summary`）、

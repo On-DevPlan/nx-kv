@@ -27,8 +27,8 @@ export class TemplateListAction extends ActionBase<typeof input> {
   override async run(ctx: ActionInput<this['_input']>) {
 
       return ctx.topic || ctx.group || ctx.repo
-            ? service.listTemplateForTopic({ topic: ctx.topic, group: ctx.group, repo: ctx.repo })
-            : service.listTemplate();
+            ? service.listTemplatesForTopic({ topic: ctx.topic, group: ctx.group, repo: ctx.repo })
+            : service.listTemplates();
   
   }
 }

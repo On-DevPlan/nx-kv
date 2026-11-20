@@ -23,6 +23,6 @@ export class TemplateReorderAction extends ActionBase<typeof input> {
     render: (d: any) => `模板顺序已更新（共 ${(d.templates || []).length} 条）`,
   })
   override async run(ctx: ActionInput<this['_input']>) {
-    return service.reorderTemplate({ ids: ctx.ids });
+    return service.reorderTemplates({ ids: ctx.ids });
   }
 }

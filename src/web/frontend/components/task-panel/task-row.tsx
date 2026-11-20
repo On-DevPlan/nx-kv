@@ -13,6 +13,7 @@ import type { DragEvent as ReactDragEvent, ReactNode } from 'react';
 import { Icon } from '../icons.jsx';
 import StatusTag from '../status-tag/index.jsx';
 import { taskLabel } from '../sidebar/model.js';
+import type { SearchContext } from '../../modules/board/task-search.js';
 import type { LocalTask } from '../../types.js';
 
 /**
@@ -65,6 +66,8 @@ export interface TaskRowProps {
   history?: boolean;
   /** 行尾操作（菜单 / 反馈 / 删除；容器已 stopPropagation） */
   ops?: ReactNode;
+  /** 搜索命中上下文（#248：命中行前后各 10 行；搜索未激活或无正文命中时为 null） */
+  searchCtx?: SearchContext | null;
 }
 
 /** 短时间戳：MM-DD HH:MM（放不下原样截 16 字）。 */
@@ -111,6 +114,7 @@ export default function TaskRow({
   downs = [],
   history = false,
   ops = null,
+  searchCtx = null,
 }: TaskRowProps) {
   const rowCls =
     'rp-proj-row'
@@ -222,6 +226,28 @@ export default function TaskRow({
           </span>
         ) : null}
       </div>
+      {searchCtx ? (
+        <div
+          className="rp-proj-task-ctx"
+          role="button"
+          tabIndex={0}
+          title="打开这条任务"
+          onClick={() => onOpen?.(t)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onOpen?.(t);
+            }
+          }}
+        >
+          {searchCtx.lines.map((l, i) => (
+            <div key={i} className={'ctx-line' + (i === searchCtx.hitIndex ? ' hit' : '')}>
+              <span className="ctx-no">{searchCtx.hitLineNo - searchCtx.hitIndex + i}</span>
+              <span className="ctx-tx">{l || '\u00a0'}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -121,8 +121,9 @@
 .mdw-dag-hint { color: var(--faint, #A9AEB4); font-size: 11px; font-weight: 400; }
 .mdw-dag-note { margin-top: 8px; font-size: 11.5px; color: var(--faint, #A9AEB4); }
 
-/* 组任务行（#40）：左侧抓手拖排序；闸门/锁定徽章与目录页同语义 */
-.rp-proj-row { display: flex; align-items: center; gap: 4px; }
+/* 组任务行（#40）：左侧抓手拖排序；闸门/锁定徽章与目录页同语义。
+   #248 搜索命中上下文块占满第二行 → 行容器允许 wrap */
+.rp-proj-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .rp-proj-row.dragging { opacity: .45; }
 .rp-proj-row.drop-before { box-shadow: inset 0 2px 0 0 var(--doing, #2F6F5E); }
 .rp-proj-row.drop-after { box-shadow: inset 0 -2px 0 0 var(--doing, #2F6F5E); }
@@ -140,6 +141,20 @@
 .rp-drag-handle.off { visibility: hidden; pointer-events: none; cursor: default; opacity: 0; }
 .rp-proj-row .rp-proj-task { flex: 1; min-width: 0; cursor: pointer; }
 .rp-proj-row .rowmenu-btn { width: 22px; height: 22px; }
+/* #248 搜索命中上下文：命中行前后各 10 行，占满行容器第二行 */
+.rp-proj-task-ctx {
+  flex-basis: 100%; min-width: 0; cursor: pointer;
+  margin: 0 0 4px 22px; padding: 4px 6px;
+  background: var(--paper, #fff); border: 1px solid var(--soft-2, #DDD9D2);
+  border-radius: var(--r5, 6px);
+  font: 10.5px/1.45 ui-monospace, Consolas, monospace;
+  overflow: hidden;
+}
+.rp-proj-task-ctx .ctx-line { display: flex; gap: 6px; min-width: 0; color: var(--mid, #838A93); white-space: pre-wrap; word-break: break-all; }
+.rp-proj-task-ctx .ctx-line.hit { color: var(--ink, #16181C); background: var(--mdw-accent-soft); border-radius: 3px; }
+.rp-proj-task-ctx .ctx-no { flex: none; width: 3ch; text-align: right; color: var(--faint, #A9AEB4); user-select: none; }
+.rp-proj-task-ctx .ctx-line.hit .ctx-no { color: var(--mdw-accent, #2F6F5E); font-weight: 700; }
+.rp-proj-task-ctx .ctx-tx { flex: 1; min-width: 0; }
 .rp-tgate {
   flex: none; font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 9px;
   background: var(--wait-bg, #fbf3e4); color: var(--wait, #a86a12); font-weight: 600;

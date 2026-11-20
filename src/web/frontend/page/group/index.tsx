@@ -27,7 +27,7 @@ import { openTemplateEditor } from '../../panels.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
-import { hitTaskQuery } from '../../modules/board/task-search.js';
+import { hitTaskQuery, contextOf } from '../../modules/board/task-search.js';
 import { putManageSession } from '../../modules/md/manage-session.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, LocalTopic, RepoData } from '../../types.js';
@@ -413,6 +413,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
             <TaskRow
               key={rk}
               t={task}
+              searchCtx={searching ? contextOf(task, q) : null}
               projectTag={member.name}
               history={!isPending}
               draggable={isPending && !!member.topicKey}

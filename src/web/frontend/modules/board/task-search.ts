@@ -78,4 +78,47 @@ export function filterTasks<T extends SearchableTask>(tasks: T[] | null | undefi
   return list.filter((t) => hitTaskQuery(t, raw));
 }
 
+/** 命中上下文（#248）：命中行 + 前后各 radius 行（用户口径「上下 10 行共 20 行」）。 */
+export interface SearchContext {
+  /** 上下文行（原文，含命中行） */
+  lines: string[];
+  /** 命中行在 lines 里的下标 */
+  hitIndex: number;
+  /** 命中行的正文行号（1 起，给行号槽展示） */
+  hitLineNo: number;
+}
+
+const NUM_TOKEN = /^\d+$/;
+
+/**
+ * 取搜索命中的上下文窗口：首个命中词出现的行，往上 radius 行、往下 radius 行。
+ * - 编号 token（#12 / 12）没有正文位置，不产生上下文（点名任务本身就该被看到）；
+ * - 通配 token 按行内段序命中判定——跨行通配不展开（上下文只是辅助展示，漏了宁缺毋滥）；
+ * - 多词 AND 命中在不同行时，取最早出现的命中行做中心。
+ * 不命中（或命中全来自编号）返回 null。
+ */
+export function contextOf(task: SearchableTask | null | undefined, q: unknown, radius = 10): SearchContext | null {
+  const raw = String(q ?? '').trim().toLowerCase();
+  if (!raw || !task) return null;
+  const tokens = raw
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((tok) => {
+      const bare = tok.startsWith('#') ? tok.slice(1) : tok;
+      return !!bare && !NUM_TOKEN.test(bare);
+    });
+  if (!tokens.length) return null;
+  const lines = bodyOf(task.text).split('\n');
+  let hit = -1;
+  for (let i = 0; i < lines.length && hit < 0; i++) {
+    // noUncheckedIndexedAccess：按 index 取行需要非空守卫
+    const line = (lines[i] ?? '').toLowerCase();
+    if (tokens.some((tok) => hitToken(tok, line, ''))) hit = i;
+  }
+  if (hit < 0) return null;
+  const start = Math.max(0, hit - radius);
+  const end = Math.min(lines.length, hit + radius + 1);
+  return { lines: lines.slice(start, end), hitIndex: hit - start, hitLineNo: hit + 1 };
+}
+
 export default hitTaskQuery;

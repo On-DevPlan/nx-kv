@@ -17,6 +17,8 @@ import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import TaskPanel from '../../components/task-panel/index.jsx';
 import TaskPanelLayoutRaw from '../../components/task-panel/layout.jsx';
 import TaskRow from '../../components/task-panel/task-row.jsx';
+import type { SearchContext } from '../../modules/board/task-search.js';
+import { contextOf } from '../../modules/board/task-search.js';
 import type { LocalTask, LocalTopic, RepoRow } from '../../types.js';
 import { useApp } from '../../app-context.jsx';
 import { useToast } from '../../components/toast/index.jsx';
@@ -71,6 +73,8 @@ interface TaskRowProps {
   downs?: number[];
   history?: boolean;
   ops?: ReactNode;
+  /** 搜索命中上下文（#248：命中行前后各 10 行） */
+  searchCtx?: SearchContext | null;
 }
 const TaskRowBox = TaskRow as unknown as (props: TaskRowProps) => ReactNode;
 
@@ -347,6 +351,7 @@ export default function Landing({
             <TaskRowBox
               key={t.id}
               t={t}
+              searchCtx={searching ? contextOf(t, q) : null}
               selectable
               picked={picked.has(Number(t.id))}
               onTogglePick={togglePick}

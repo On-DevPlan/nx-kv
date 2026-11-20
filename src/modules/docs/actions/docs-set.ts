@@ -1,4 +1,4 @@
-// doc.update —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
+// docs.set —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
 // 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
@@ -9,7 +9,7 @@ import { renderWritten as _renderWritten } from '../render.js';
 const updateDoc: any = _updateDoc;
 const renderWritten: any = _renderWritten;
 
-/** doc.update 的入参契约（CLI 与 HTTP 共用同一份）。 */
+/** docs.set 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   ref: z.string(),
   body: z.string().optional().describe("Markdown 全文"),
@@ -18,9 +18,9 @@ const input = z.object({
   'body-file': z.string().optional().describe("同 --bodyFile（连字符写法）"),
 });
 
-export class DocUpdateAction extends ActionBase<typeof input> {
+export class DocsSetAction extends ActionBase<typeof input> {
   @action({
-    id: 'doc.update',
+    id: 'docs.set',
     cli: ['docs', 'set'],
     http: ['PATCH', '/api/docs/item'],
     summary: '写文档正文 / 描述（面板保存走这里；ref 是 DB 实体，--ref 可给 refId；只给 --desc 时不动正文）',

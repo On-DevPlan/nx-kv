@@ -193,8 +193,8 @@ test('builtin 永远在场：四个类目的内置都在（seed 于 bootstrap）
 test('action 层：scope 传数组不被强转吞掉（清空可见域要真的写进去）', async () => {
   const { applySpec } = await import('../../src/runtime/spec.js');
   const mod = await import('../../src/modules/templates/index.js');
-  const updateAction = mod.default.actions.find((a) => a.id === 'templates.update');
-  const addAction = mod.default.actions.find((a) => a.id === 'templates.add');
+  const updateAction = mod.default.actions.find((a) => a.id === 'template.update');
+  const addAction = mod.default.actions.find((a) => a.id === 'template.add');
 
   const a = await addAction.run(applySpec(addAction, { name: '域测试', body: '# 域测试' }));
   assert.deepEqual(a.template.scope, [], '新建无 topic/scope 时不默认全局（#131）');

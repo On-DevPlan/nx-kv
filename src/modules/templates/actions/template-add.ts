@@ -1,4 +1,4 @@
-// templates.add —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
+// template.add —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
 // 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
@@ -9,7 +9,7 @@ import {  } from 'node:path';
 import { parseScope, topicFromCwd } from '../support.js';
 const service: any = serviceNs;
 
-/** templates.add 的入参契约（CLI 与 HTTP 共用同一份）。 */
+/** template.add 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   name: z.string(),
   body: z.string().optional().describe("模板正文（Markdown；首行写 `# 标题` 则提交时作为任务标题）"),
@@ -22,9 +22,9 @@ const input = z.object({
   cwd: z.string().optional().describe("同 --topic，但给工作目录（按目录派生主题 key）"),
 });
 
-export class TemplatesAddAction extends ActionBase<typeof input> {
+export class TemplateAddAction extends ActionBase<typeof input> {
   @action({
-    id: 'templates.add',
+    id: 'template.add',
     cli: ['template', 'add'],
     http: ['POST', '/api/templates'],
     summary: '新增任务模板（--body 给 Markdown 正文；多行正文用 --body-file <文件> 或 --body - 读管道；--setDefault 同时设为默认；--scope 设可见域、--topic 记创建主题并默认仅该主题可见）',

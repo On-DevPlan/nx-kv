@@ -1,6 +1,6 @@
 // 主题级任务模板管理（#151）：从「新建任务」下拉的「管理模板…」进来，只管这个
 // topic 下可见的模板。filter 绑定可见行（不匹配即隐藏）、ScopeChips 改可见范围、
-// 拖拽改顺序（落库走 templates.reorder）。参考自定义工具栏的编排面板，但更贴
+// 拖拽改顺序（落库走 template.reorder）。参考自定义工具栏的编排面板，但更贴
 // 数据列表：一行一条，信息密度优先。
 import { useMemo, useState } from 'react';
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';

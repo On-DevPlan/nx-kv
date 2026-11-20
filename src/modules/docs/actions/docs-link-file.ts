@@ -1,4 +1,4 @@
-// doc.link-file —— 登记一个本地 md 文件并挂到文档附件区（不复制正文）。
+// docs.link-file —— 登记一个本地 md 文件并挂到文档附件区（不复制正文）。
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
@@ -11,9 +11,9 @@ const input = z.object({
   note: z.string().optional().describe('附件区备注'),
 });
 
-export class DocLinkFileAction extends ActionBase<typeof input> {
+export class DocsLinkFileAction extends ActionBase<typeof input> {
   @action({
-    id: 'doc.link-file',
+    id: 'docs.link-file',
     cli: ['docs', 'link-file'],
     http: ['POST', '/api/docs/link-file'],
     summary: '把本地 md 文件登记为 mdfile 附件并挂到文档附件区：只存路径指针，不复制正文，不改文档正文',

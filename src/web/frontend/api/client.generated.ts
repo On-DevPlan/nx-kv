@@ -7,35 +7,35 @@
 
 import type { z } from 'zod';
 import type {
-  BundledGetAction,
-  BundledGroupsAction,
-  BundledInstallAction,
-  BundledListAction,
+  SkillGetAction,
+  SkillGroupsAction,
+  SkillInstallAction,
+  SkillListAction,
 } from '../../../modules/bundled/actions/_manifest.generated.js';
 import type {
   LocaltaskGetAction,
   LocaltaskPreviewAction,
 } from '../../../modules/claim/actions/_manifest.generated.js';
 import type {
-  DocAttachAction,
-  DocAttachmentsAction,
-  DocDetachAction,
-  DocGetAction,
-  DocLinkFileAction,
-  DocListAction,
-  DocMdfileAction,
-  DocMdfilesAction,
-  DocRefAddAction,
-  DocRefUnbindAction,
-  DocRemoveAction,
-  DocUpdateAction,
+  DocsAttachAction,
+  DocsAttachmentsAction,
   DocsBindingsAction,
+  DocsDetachAction,
   DocsGcAction,
+  DocsGetAction,
   DocsIndexAction,
   DocsLinkAction,
+  DocsLinkFileAction,
+  DocsListAction,
   DocsMainAction,
+  DocsMdfileAction,
+  DocsMdfilesAction,
   DocsOrphansAction,
   DocsOrphansPurgeAction,
+  DocsRefAddAction,
+  DocsRefUnbindAction,
+  DocsRemoveAction,
+  DocsSetAction,
   RepoDocAddAction,
   RepoDocListAction,
   RepoDocRemoveAction,
@@ -148,12 +148,12 @@ import type {
   HealthAction,
 } from '../../../modules/system/actions/_manifest.generated.js';
 import type {
-  TemplatesAddAction,
-  TemplatesDefaultAction,
-  TemplatesListAction,
-  TemplatesRemoveAction,
-  TemplatesReorderAction,
-  TemplatesUpdateAction,
+  TemplateAddAction,
+  TemplateDefaultAction,
+  TemplateListAction,
+  TemplateRemoveAction,
+  TemplateReorderAction,
+  TemplateUpdateAction,
 } from '../../../modules/templates/actions/_manifest.generated.js';
 
 /** 传输层契约（手写的那一半）：返回 data（错误信封由 api() 拆好，失败即 throw）。 */
@@ -251,49 +251,49 @@ export interface ApiClient {
 /** 修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填；指令文案在 设置 → 提示词模板 → 持续 get，仓库侧只有开关 + 分钟）。描述已改为文档，不再经这里改 */
   repoUpdate(input: z.input<InstanceType<typeof RepoUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>>;
 /** 给文档挂资源：--path / --fileId / --url / --task / --doc / --mdfile / --folder 之一；默认追加进正文，--no-embed 只挂附件区（不写正文） */
-  attach(input: z.input<InstanceType<typeof DocAttachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocAttachAction>['run']>>>;
+  attach(input: z.input<InstanceType<typeof DocsAttachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsAttachAction>['run']>>>;
 /** 这篇文档用了哪些资源（ref_attach：图片/文件/URL/内部 task、ref 引用） */
-  attachments(input: z.input<InstanceType<typeof DocAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocAttachmentsAction>['run']>>>;
-/** 解除文档与附件的关系（默认只解除关系）；--purge 无人引用时连资源行与本机字节一起删 */
-  detach(input: z.input<InstanceType<typeof DocDetachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocDetachAction>['run']>>>;
-/** 读文档全文：ref:<refId>（或裸 refId）= 文档库条目；path:<绝对路径> = 外部（须在绑定闭包内） */
-  docGet(input: z.input<InstanceType<typeof DocGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocGetAction>['run']>>>;
-/** 把本地 md 文件登记为 mdfile 附件并挂到文档附件区：只存路径指针，不复制正文，不改文档正文 */
-  linkFile(input: z.input<InstanceType<typeof DocLinkFileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocLinkFileAction>['run']>>>;
-/** 文档树索引（自有 + 可选外部；零副作用，双链解析的数据源） */
-  docList(input?: z.input<InstanceType<typeof DocListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocListAction>['run']>>>;
-/** 读本地 md 文件的正文（只读原文件，核对指纹；文件缺失时返回空正文并标 missing） */
-  mdfile(input: z.input<InstanceType<typeof DocMdfileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocMdfileAction>['run']>>>;
-/** 列出已登记的本地 md 文件（mdfile 附件；--missing 只看失效行） */
-  mdfiles(input?: z.input<InstanceType<typeof DocMdfilesAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocMdfilesAction>['run']>>>;
-/** 新建文档条目（desc + 归属；正文为空、直接可编辑；不创建任何文件） */
-  refAdd2(input?: z.input<InstanceType<typeof DocRefAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRefAddAction>['run']>>>;
-/** 删除自有文档（外部绑定不可删） */
-  docRemove(input: z.input<InstanceType<typeof DocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRemoveAction>['run']>>>;
-/** 解绑直接 ref 的归属（不删文档；没有归属后回到 orphan） */
-  unbind(input: z.input<InstanceType<typeof DocRefUnbindAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocRefUnbindAction>['run']>>>;
-/** 写文档正文 / 描述（面板保存走这里；ref 是 DB 实体，--ref 可给 refId；只给 --desc 时不动正文） */
-  docUpdate(input: z.input<InstanceType<typeof DocUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocUpdateAction>['run']>>>;
+  attachments(input: z.input<InstanceType<typeof DocsAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsAttachmentsAction>['run']>>>;
 /** 查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> 只看仓库自己的文档；--group <组> 看组域文档集：组 → 组内仓库 → 成员仓库自己 → 组内参考仓库自己；hostKind 标宿主是开发仓库/参考仓库/组；position=0 为主篇） */
   bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>>;
+/** 解除文档与附件的关系（默认只解除关系）；--purge 无人引用时连资源行与本机字节一起删 */
+  detach(input: z.input<InstanceType<typeof DocsDetachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsDetachAction>['run']>>>;
 /** GC 没有正文的文档（默认只报数；--apply 真删，并清掉宿主里指向它们的主篇/文档集引用） */
   gc(input?: z.input<InstanceType<typeof DocsGcAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsGcAction>['run']>>>;
+/** 读文档全文：ref:<refId>（或裸 refId）= 文档库条目；path:<绝对路径> = 外部（须在绑定闭包内） */
+  docsGet(input: z.input<InstanceType<typeof DocsGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsGetAction>['run']>>>;
 /** 双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js） */
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
+/** 把本地 md 文件登记为 mdfile 附件并挂到文档附件区：只存路径指针，不复制正文，不改文档正文 */
+  linkFile(input: z.input<InstanceType<typeof DocsLinkFileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkFileAction>['run']>>>;
 /** 维护组的附加文档列表（--ref <refId> | --path <外部路径>；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 移位） */
   link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>>;
+/** 文档树索引（自有 + 可选外部；零副作用，双链解析的数据源） */
+  docsList(input?: z.input<InstanceType<typeof DocsListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsListAction>['run']>>>;
 /** 把某一篇设为主篇：原主篇退回附加篇（不丢归属），目标从附加篇摘出（不会出现两份） */
   main(input?: z.input<InstanceType<typeof DocsMainAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsMainAction>['run']>>>;
+/** 读本地 md 文件的正文（只读原文件，核对指纹；文件缺失时返回空正文并标 missing） */
+  mdfile(input: z.input<InstanceType<typeof DocsMdfileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsMdfileAction>['run']>>>;
+/** 列出已登记的本地 md 文件（mdfile 附件；--missing 只看失效行） */
+  mdfiles(input?: z.input<InstanceType<typeof DocsMdfilesAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsMdfilesAction>['run']>>>;
 /** 孤儿到期清理（默认只预演；--apply 软删空正文到期孤儿，有正文的只列清单） */
   purge(input?: z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsOrphansPurgeAction>['run']>>>;
 /** 列出无归属的孤儿文档（失绑时间 / 剩余天数 / 是否有正文；只读） */
   orphans(input?: z.input<InstanceType<typeof DocsOrphansAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsOrphansAction>['run']>>>;
+/** 新建文档条目（desc + 归属；正文为空、直接可编辑；不创建任何文件） */
+  refAdd2(input?: z.input<InstanceType<typeof DocsRefAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsRefAddAction>['run']>>>;
+/** 删除自有文档（外部绑定不可删） */
+  docsRemove(input: z.input<InstanceType<typeof DocsRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsRemoveAction>['run']>>>;
+/** 写文档正文 / 描述（面板保存走这里；ref 是 DB 实体，--ref 可给 refId；只给 --desc 时不动正文） */
+  docsSet(input: z.input<InstanceType<typeof DocsSetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsSetAction>['run']>>>;
+/** 解绑直接 ref 的归属（不删文档；没有归属后回到 orphan） */
+  unbind(input: z.input<InstanceType<typeof DocsRefUnbindAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsRefUnbindAction>['run']>>>;
 /** 给项目加一篇介绍文档：--ref <refId> | --path <外部绝对路径>（同 ref 重复添加 = 移到末尾） */
   docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>>;
 /** 列出项目的介绍文档集（主篇 + 其余各篇，refId + desc） */
-  docList2(input: z.input<InstanceType<typeof RepoDocListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocListAction>['run']>>>;
+  docList(input: z.input<InstanceType<typeof RepoDocListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocListAction>['run']>>>;
 /** 从项目的介绍文档集里摘掉一篇（--index 从 1 起，1 = 主篇） */
-  docRemove2(input: z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocRemoveAction>['run']>>>;
+  docRemove(input: z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocRemoveAction>['run']>>>;
 /** 取仓库完整知识：项目介绍 + 所属组（介绍/组内描述/绑定文档）+ 参考仓库（--md 拼成单篇 markdown；缺省当前目录） */
   knowledge(input?: z.input<InstanceType<typeof RepoKnowledgeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoKnowledgeAction>['run']>>>;
 /** 向某主题（工作目录）的队列回填一条任务（正文可多行；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--global 推到全局共享池；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝） */
@@ -306,10 +306,10 @@ export interface ApiClient {
   localtaskAttachments(input: z.input<InstanceType<typeof LocaltaskAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachmentsAction>['run']>>>;
 /** 全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按 frontmatter 的 board 归属聚合，带归属项目 */
   boardtasks(input?: z.input<InstanceType<typeof LocaltaskBoardTasksAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskBoardTasksAction>['run']>>>;
-/** 关闭某主题的等待：阻塞中的 wait 立即收尾（与超时同一出口，带 cancelled 标记；不删主题与任务） */
-  cancel(input?: z.input<InstanceType<typeof LocaltaskCancelAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCancelAction>['run']>>>;
 /** 批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已完成/已取消跳过；取消为终态，原文留档 */
   cancelMany(input: z.input<InstanceType<typeof LocaltaskCancelManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCancelManyAction>['run']>>>;
+/** 关闭某主题的等待：阻塞中的 wait 立即收尾（与超时同一出口，带 cancelled 标记；不删主题与任务） */
+  cancel(input?: z.input<InstanceType<typeof LocaltaskCancelAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCancelAction>['run']>>>;
 /** 查一条任务的链：history 节点（origin/reopen/comment/current）+ 旧 forkOf 祖先/子任务；面板点节点可旁路查看正文 */
   chain(input: z.input<InstanceType<typeof LocaltaskChainAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskChainAction>['run']>>>;
 /** 克隆任务：复制正文内容为一条新任务（同主题；全局任务仍进全局池）。不带派生链、不继承时间目标与依赖——开新活用 */
@@ -334,10 +334,10 @@ export interface ApiClient {
   presence(): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPresenceAction>['run']>>>;
 /** 清理旧脏数据（旧模型无目录主题、空主题；--missing-dir 连目录已不存在的主题一起清；等待中一律保留） */
   localtaskPrune(input?: z.input<InstanceType<typeof LocaltaskPruneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPruneAction>['run']>>>;
-/** 删除一条任务（按 --id，定位到 --cwd 主题或 --key）；删除是**可恢复**的（软删除），加 --purge 彻底清除 */
-  localtaskRemove(input: z.input<InstanceType<typeof LocaltaskRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskRemoveAction>['run']>>>;
 /** 批量删除任务（按 --ids，定位到 --cwd 主题或 --key）：一次落盘，逐条软删除（可 restore 恢复）；缺失的编号不阻断其余删除 */
   removeMany(input: z.input<InstanceType<typeof LocaltaskRemoveManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskRemoveManyAction>['run']>>>;
+/** 删除一条任务（按 --id，定位到 --cwd 主题或 --key）；删除是**可恢复**的（软删除），加 --purge 彻底清除 */
+  localtaskRemove(input: z.input<InstanceType<typeof LocaltaskRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskRemoveAction>['run']>>>;
 /** 按反馈派生下一轮（验收反馈 / 重做 / 评论）：新任务新编号、pending 立即可领；旧任务 done 保持 done（claimed/pending → cancelled），链记在 task_links */
   reopen(input: z.input<InstanceType<typeof LocaltaskReopenAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskReopenAction>['run']>>>;
 /** 调整待领取任务优先级（--id <编号> 移到 --before-id <编号> 前或 --after-id <编号> 后） */
@@ -352,10 +352,10 @@ export interface ApiClient {
   timegoalLog(input: z.input<InstanceType<typeof LocaltaskTimegoalLogAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTimegoalLogAction>['run']>>>;
 /** 登记一个工作目录：空目录也常驻（prune 不清）；--summary 顺带写「现状摘要」（面板顶栏摘要的编辑入口） */
   topicAdd(input: z.input<InstanceType<typeof LocaltaskTopicAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTopicAddAction>['run']>>>;
-/** 删除整个主题（含全部任务；按 --cwd 或 --key，等待中需 --force） */
-  topicRemove(input?: z.input<InstanceType<typeof LocaltaskTopicRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTopicRemoveAction>['run']>>>;
 /** 批量删除主题（--keys/--cwds 逗号分隔，或 --all；等待中默认跳过，--force 连等待中删） */
   topicRemoveMany(input?: z.input<InstanceType<typeof LocaltaskTopicRemoveManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTopicRemoveManyAction>['run']>>>;
+/** 删除整个主题（含全部任务；按 --cwd 或 --key，等待中需 --force） */
+  topicRemove(input?: z.input<InstanceType<typeof LocaltaskTopicRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTopicRemoveAction>['run']>>>;
 /** 编辑任务内容（按 --id，定位到 --cwd 主题或 --key）；可同时改时间目标声明（--duration/--goal-prompt/--clear-goal，仅未领取时可改——领取即计时，起表后声明是既成事实） */
   localtaskUpdate(input: z.input<InstanceType<typeof LocaltaskUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskUpdateAction>['run']>>>;
 /** 领取任务：有任务立即领（含任务级 timegoal 的 check 指令）；没任务默认立即返回 timeout，项目开启「持续 get」后自动唤起阻塞窗口等人回填 */
@@ -363,17 +363,17 @@ export interface ApiClient {
 /** 预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览 */
   preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>>;
 /** 新增任务模板（--body 给 Markdown 正文；多行正文用 --body-file <文件> 或 --body - 读管道；--setDefault 同时设为默认；--scope 设可见域、--topic 记创建主题并默认仅该主题可见） */
-  templatesAdd(input: z.input<InstanceType<typeof TemplatesAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesAddAction>['run']>>>;
+  templateAdd(input: z.input<InstanceType<typeof TemplateAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateAddAction>['run']>>>;
 /** 设置默认模板（新建页的起始正文换成它）；带 --body/--name/--scope 则改默认模板本身 */
-  default(input: z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesDefaultAction>['run']>>>;
+  default(input: z.input<InstanceType<typeof TemplateDefaultAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateDefaultAction>['run']>>>;
 /** 列出任务模板（含默认模板 id；新建页的起始正文按默认模板取） */
-  templatesList(input?: z.input<InstanceType<typeof TemplatesListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesListAction>['run']>>>;
+  templateList(input?: z.input<InstanceType<typeof TemplateListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateListAction>['run']>>>;
 /** 删除任务模板（内置默认模板不可删；删的是默认模板则默认回落到内置） */
-  templatesRemove(input: z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesRemoveAction>['run']>>>;
+  templateRemove(input: z.input<InstanceType<typeof TemplateRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateRemoveAction>['run']>>>;
 /** 调整任务模板顺序（--ids a,b,c 按新序落库 sort_order；未列出的模板保持原位） */
-  templatesReorder(input: z.input<InstanceType<typeof TemplatesReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesReorderAction>['run']>>>;
+  templateReorder(input: z.input<InstanceType<typeof TemplateReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateReorderAction>['run']>>>;
 /** 编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改） */
-  templatesUpdate(input: z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplatesUpdateAction>['run']>>>;
+  templateUpdate(input: z.input<InstanceType<typeof TemplateUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateUpdateAction>['run']>>>;
 /** 时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary */
   timegoalCheck(input: z.input<InstanceType<typeof TimegoalCheckAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalCheckAction>['run']>>>;
 /** 清空本目录 timegoal（无则 no_goal，不抛错） */
@@ -401,13 +401,13 @@ export interface ApiClient {
 /** 上传附件到本机附件仓（不碰网；本地任务/文档贴图用） */
   upload(input?: z.input<InstanceType<typeof FileUploadAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof FileUploadAction>['run']>>>;
 /** 输出内置 skill 全文（prefix + sentinel + 正文 + install 状态），并顺手装到本机 */
-  bundledGet(input?: z.input<InstanceType<typeof BundledGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof BundledGetAction>['run']>>>;
+  skillGet(input?: z.input<InstanceType<typeof SkillGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof SkillGetAction>['run']>>>;
 /** 列出可装的 group（groups.json 的组名 → 它包含哪些 skill） */
-  groups(): Promise<Awaited<ReturnType<InstanceType<typeof BundledGroupsAction>['run']>>>;
+  groups(): Promise<Awaited<ReturnType<InstanceType<typeof SkillGroupsAction>['run']>>>;
 /** 安装内置 skill 到 skills 目录（默认 nx-kv → ~/.claude/skills；--group <key> 一键装一组；--all 装全部并直接覆盖） */
-  install(input?: z.input<InstanceType<typeof BundledInstallAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof BundledInstallAction>['run']>>>;
+  install(input?: z.input<InstanceType<typeof SkillInstallAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof SkillInstallAction>['run']>>>;
 /** 列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group */
-  bundledList(): Promise<Awaited<ReturnType<InstanceType<typeof BundledListAction>['run']>>>;
+  skillList(): Promise<Awaited<ReturnType<InstanceType<typeof SkillListAction>['run']>>>;
 /** 提示词插件注册表：按时机链（get / check / done）列出插件的内置模板 / 变量目录 / 链内顺序 */
   registry(): Promise<Awaited<ReturnType<InstanceType<typeof PromptRegistryAction>['run']>>>;
 /** 切换提示词段启用的模板（builtin 或用户条目） */
@@ -730,104 +730,22 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "path": inp["path"], "name": inp["name"], "icon": inp["icon"], "desc": inp["desc"], "notes": inp["notes"], "type": inp["type"], "remote": inp["remote"], "key": inp["key"], "key-custom": inp["key-custom"], "get-loop": inp["get-loop"], "get-loop-minutes": inp["get-loop-minutes"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>;
     },
-    // action: doc.attach
-    async attach(input: z.input<InstanceType<typeof DocAttachAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocAttachAction>['_input']>);
+    // action: docs.attach
+    async attach(input: z.input<InstanceType<typeof DocsAttachAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsAttachAction>['_input']>);
       const path = `/api/docs/attach`;
       const body = { "ref": inp["ref"], "path": inp["path"], "fileId": inp["fileId"], "url": inp["url"], "task": inp["task"], "doc": inp["doc"], "mdfile": inp["mdfile"], "folder": inp["folder"], "name": inp["name"], "noEmbed": inp["noEmbed"], "no-embed": inp["no-embed"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocAttachAction>['run']>>;
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsAttachAction>['run']>>;
     },
-    // action: doc.attachments
-    async attachments(input: z.input<InstanceType<typeof DocAttachmentsAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocAttachmentsAction>['_input']>);
+    // action: docs.attachments
+    async attachments(input: z.input<InstanceType<typeof DocsAttachmentsAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsAttachmentsAction>['_input']>);
       let path = `/api/docs/attachments`;
       const q = new URLSearchParams();
       if (inp["ref"] !== undefined) q.set("ref", String(inp["ref"]));
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocAttachmentsAction>['run']>>;
-    },
-    // action: doc.detach
-    async detach(input: z.input<InstanceType<typeof DocDetachAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocDetachAction>['_input']>);
-      const path = `/api/docs/attach`;
-      const body = { "ref": inp["ref"], "attachment": inp["attachment"], "purge": inp["purge"] };
-      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof DocDetachAction>['run']>>;
-    },
-    // action: doc.get
-    async docGet(input: z.input<InstanceType<typeof DocGetAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocGetAction>['_input']>);
-      let path = `/api/docs/item`;
-      const q = new URLSearchParams();
-      if (inp["ref"] !== undefined) q.set("ref", String(inp["ref"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocGetAction>['run']>>;
-    },
-    // action: doc.link-file
-    async linkFile(input: z.input<InstanceType<typeof DocLinkFileAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocLinkFileAction>['_input']>);
-      const path = `/api/docs/link-file`;
-      const body = { "ref": inp["ref"], "path": inp["path"], "name": inp["name"], "note": inp["note"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocLinkFileAction>['run']>>;
-    },
-    // action: doc.list
-    async docList(input?: z.input<InstanceType<typeof DocListAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocListAction>['_input']>);
-      let path = `/api/docs`;
-      const q = new URLSearchParams();
-      if (inp["external"] !== undefined) q.set("external", String(inp["external"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocListAction>['run']>>;
-    },
-    // action: doc.mdfile
-    async mdfile(input: z.input<InstanceType<typeof DocMdfileAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocMdfileAction>['_input']>);
-      let path = `/api/docs/mdfile`;
-      const q = new URLSearchParams();
-      if (inp["attachment"] !== undefined) q.set("attachment", String(inp["attachment"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocMdfileAction>['run']>>;
-    },
-    // action: doc.mdfiles
-    async mdfiles(input?: z.input<InstanceType<typeof DocMdfilesAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocMdfilesAction>['_input']>);
-      let path = `/api/docs/mdfiles`;
-      const q = new URLSearchParams();
-      if (inp["missing"] !== undefined) q.set("missing", String(inp["missing"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocMdfilesAction>['run']>>;
-    },
-    // action: doc.ref.add
-    async refAdd2(input?: z.input<InstanceType<typeof DocRefAddAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocRefAddAction>['_input']>);
-      const path = `/api/docs/ref`;
-      const body = { "desc": inp["desc"], "owner": inp["owner"], "repo": inp["repo"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocRefAddAction>['run']>>;
-    },
-    // action: doc.remove
-    async docRemove(input: z.input<InstanceType<typeof DocRemoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocRemoveAction>['_input']>);
-      const path = `/api/docs/item`;
-      const body = { "ref": inp["ref"] };
-      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof DocRemoveAction>['run']>>;
-    },
-    // action: doc.ref.unbind
-    async unbind(input: z.input<InstanceType<typeof DocRefUnbindAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocRefUnbindAction>['_input']>);
-      const path = `/api/docs/unbind`;
-      const body = { "ref": inp["ref"], "type": inp["type"], "repo": inp["repo"], "group": inp["group"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocRefUnbindAction>['run']>>;
-    },
-    // action: doc.update
-    async docUpdate(input: z.input<InstanceType<typeof DocUpdateAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocUpdateAction>['_input']>);
-      const path = `/api/docs/item`;
-      const body = { "ref": inp["ref"], "body": inp["body"], "desc": inp["desc"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof DocUpdateAction>['run']>>;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsAttachmentsAction>['run']>>;
     },
     // action: docs.bindings
     async bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>) {
@@ -841,6 +759,13 @@ export function createApiClient(transport: Transport): ApiClient {
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>;
     },
+    // action: docs.detach
+    async detach(input: z.input<InstanceType<typeof DocsDetachAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsDetachAction>['_input']>);
+      const path = `/api/docs/attach`;
+      const body = { "ref": inp["ref"], "attachment": inp["attachment"], "purge": inp["purge"] };
+      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsDetachAction>['run']>>;
+    },
     // action: docs.gc
     async gc(input?: z.input<InstanceType<typeof DocsGcAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocsGcAction>['_input']>);
@@ -848,10 +773,27 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "apply": inp["apply"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsGcAction>['run']>>;
     },
+    // action: docs.get
+    async docsGet(input: z.input<InstanceType<typeof DocsGetAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsGetAction>['_input']>);
+      let path = `/api/docs/item`;
+      const q = new URLSearchParams();
+      if (inp["ref"] !== undefined) q.set("ref", String(inp["ref"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsGetAction>['run']>>;
+    },
     // action: docs.index
     async index() {
       const path = `/api/docs/index`;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>;
+    },
+    // action: docs.link-file
+    async linkFile(input: z.input<InstanceType<typeof DocsLinkFileAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsLinkFileAction>['_input']>);
+      const path = `/api/docs/link-file`;
+      const body = { "ref": inp["ref"], "path": inp["path"], "name": inp["name"], "note": inp["note"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkFileAction>['run']>>;
     },
     // action: docs.link
     async link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>) {
@@ -860,12 +802,42 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "board": inp["board"], "ref": inp["ref"], "path": inp["path"], "remove": inp["remove"], "before": inp["before"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>;
     },
+    // action: docs.list
+    async docsList(input?: z.input<InstanceType<typeof DocsListAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsListAction>['_input']>);
+      let path = `/api/docs`;
+      const q = new URLSearchParams();
+      if (inp["external"] !== undefined) q.set("external", String(inp["external"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsListAction>['run']>>;
+    },
     // action: docs.main
     async main(input?: z.input<InstanceType<typeof DocsMainAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocsMainAction>['_input']>);
       const path = `/api/docs/main`;
       const body = { "repo": inp["repo"], "board": inp["board"], "ref": inp["ref"], "path": inp["path"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsMainAction>['run']>>;
+    },
+    // action: docs.mdfile
+    async mdfile(input: z.input<InstanceType<typeof DocsMdfileAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsMdfileAction>['_input']>);
+      let path = `/api/docs/mdfile`;
+      const q = new URLSearchParams();
+      if (inp["attachment"] !== undefined) q.set("attachment", String(inp["attachment"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsMdfileAction>['run']>>;
+    },
+    // action: docs.mdfiles
+    async mdfiles(input?: z.input<InstanceType<typeof DocsMdfilesAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsMdfilesAction>['_input']>);
+      let path = `/api/docs/mdfiles`;
+      const q = new URLSearchParams();
+      if (inp["missing"] !== undefined) q.set("missing", String(inp["missing"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsMdfilesAction>['run']>>;
     },
     // action: docs.orphans.purge
     async purge(input?: z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>) {
@@ -884,6 +856,34 @@ export function createApiClient(transport: Transport): ApiClient {
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsOrphansAction>['run']>>;
     },
+    // action: docs.ref.add
+    async refAdd2(input?: z.input<InstanceType<typeof DocsRefAddAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsRefAddAction>['_input']>);
+      const path = `/api/docs/ref`;
+      const body = { "desc": inp["desc"], "owner": inp["owner"], "repo": inp["repo"], "group": inp["group"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsRefAddAction>['run']>>;
+    },
+    // action: docs.remove
+    async docsRemove(input: z.input<InstanceType<typeof DocsRemoveAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsRemoveAction>['_input']>);
+      const path = `/api/docs/item`;
+      const body = { "ref": inp["ref"] };
+      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsRemoveAction>['run']>>;
+    },
+    // action: docs.set
+    async docsSet(input: z.input<InstanceType<typeof DocsSetAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsSetAction>['_input']>);
+      const path = `/api/docs/item`;
+      const body = { "ref": inp["ref"], "body": inp["body"], "desc": inp["desc"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"] };
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsSetAction>['run']>>;
+    },
+    // action: docs.ref.unbind
+    async unbind(input: z.input<InstanceType<typeof DocsRefUnbindAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DocsRefUnbindAction>['_input']>);
+      const path = `/api/docs/unbind`;
+      const body = { "ref": inp["ref"], "type": inp["type"], "repo": inp["repo"], "group": inp["group"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsRefUnbindAction>['run']>>;
+    },
     // action: repo.doc.add
     async docAdd(input: z.input<InstanceType<typeof RepoDocAddAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocAddAction>['_input']>);
@@ -892,7 +892,7 @@ export function createApiClient(transport: Transport): ApiClient {
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDocAddAction>['run']>>;
     },
     // action: repo.doc.list
-    async docList2(input: z.input<InstanceType<typeof RepoDocListAction>['_input']>) {
+    async docList(input: z.input<InstanceType<typeof RepoDocListAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocListAction>['_input']>);
       let path = `/api/repos/docs`;
       const q = new URLSearchParams();
@@ -902,7 +902,7 @@ export function createApiClient(transport: Transport): ApiClient {
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof RepoDocListAction>['run']>>;
     },
     // action: repo.doc.remove
-    async docRemove2(input: z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>) {
+    async docRemove(input: z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>);
       const path = `/api/repos/docs`;
       const body = { "id": inp["id"], "index": inp["index"] };
@@ -962,19 +962,19 @@ export function createApiClient(transport: Transport): ApiClient {
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskBoardTasksAction>['run']>>;
     },
+    // action: localtask.cancel-many
+    async cancelMany(input: z.input<InstanceType<typeof LocaltaskCancelManyAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskCancelManyAction>['_input']>);
+      const path = `/api/localtasks/items/cancel`;
+      const body = { "ids": inp["ids"], "cwd": inp["cwd"], "key": inp["key"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskCancelManyAction>['run']>>;
+    },
     // action: localtask.cancel
     async cancel(input?: z.input<InstanceType<typeof LocaltaskCancelAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskCancelAction>['_input']>);
       const path = `/api/localtasks/cancel`;
       const body = { "cwd": inp["cwd"], "key": inp["key"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskCancelAction>['run']>>;
-    },
-    // action: localtask.cancelMany
-    async cancelMany(input: z.input<InstanceType<typeof LocaltaskCancelManyAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskCancelManyAction>['_input']>);
-      const path = `/api/localtasks/items/cancel`;
-      const body = { "ids": inp["ids"], "cwd": inp["cwd"], "key": inp["key"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskCancelManyAction>['run']>>;
     },
     // action: localtask.chain
     async chain(input: z.input<InstanceType<typeof LocaltaskChainAction>['_input']>) {
@@ -995,7 +995,7 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskCloneAction>['run']>>;
     },
-    // action: localtask.closeMany
+    // action: localtask.close-many
     async closeMany(input: z.input<InstanceType<typeof LocaltaskCloseManyAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskCloseManyAction>['_input']>);
       const path = `/api/localtasks/items/close`;
@@ -1067,19 +1067,19 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "all-finished": inp["all-finished"], "dry-run": inp["dry-run"], "missing-dir": inp["missing-dir"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPruneAction>['run']>>;
     },
+    // action: localtask.remove-many
+    async removeMany(input: z.input<InstanceType<typeof LocaltaskRemoveManyAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskRemoveManyAction>['_input']>);
+      const path = `/api/localtasks/items`;
+      const body = { "ids": inp["ids"], "cwd": inp["cwd"], "key": inp["key"], "purge": inp["purge"] };
+      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskRemoveManyAction>['run']>>;
+    },
     // action: localtask.remove
     async localtaskRemove(input: z.input<InstanceType<typeof LocaltaskRemoveAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskRemoveAction>['_input']>);
       const path = `/api/localtasks/item`;
       const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "purge": inp["purge"] };
       return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskRemoveAction>['run']>>;
-    },
-    // action: localtask.removeMany
-    async removeMany(input: z.input<InstanceType<typeof LocaltaskRemoveManyAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskRemoveManyAction>['_input']>);
-      const path = `/api/localtasks/items`;
-      const body = { "ids": inp["ids"], "cwd": inp["cwd"], "key": inp["key"], "purge": inp["purge"] };
-      return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskRemoveManyAction>['run']>>;
     },
     // action: localtask.reopen
     async reopen(input: z.input<InstanceType<typeof LocaltaskReopenAction>['_input']>) {
@@ -1126,7 +1126,7 @@ export function createApiClient(transport: Transport): ApiClient {
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskTasksAction>['run']>>;
     },
-    // action: localtask.timegoalLog
+    // action: localtask.timegoal-log
     async timegoalLog(input: z.input<InstanceType<typeof LocaltaskTimegoalLogAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskTimegoalLogAction>['_input']>);
       let path = `/api/localtasks/timegoal-log`;
@@ -1145,19 +1145,19 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "cwd": inp["cwd"], "summary": inp["summary"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskTopicAddAction>['run']>>;
     },
+    // action: localtask.topic.remove-many
+    async topicRemoveMany(input?: z.input<InstanceType<typeof LocaltaskTopicRemoveManyAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskTopicRemoveManyAction>['_input']>);
+      const path = `/api/localtasks/topics/remove`;
+      const body = { "keys": inp["keys"], "cwds": inp["cwds"], "all": inp["all"], "force": inp["force"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskTopicRemoveManyAction>['run']>>;
+    },
     // action: localtask.topic.remove
     async topicRemove(input?: z.input<InstanceType<typeof LocaltaskTopicRemoveAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskTopicRemoveAction>['_input']>);
       const path = `/api/localtasks/topic`;
       const body = { "cwd": inp["cwd"], "key": inp["key"], "force": inp["force"] };
       return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskTopicRemoveAction>['run']>>;
-    },
-    // action: localtask.topic.removeMany
-    async topicRemoveMany(input?: z.input<InstanceType<typeof LocaltaskTopicRemoveManyAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskTopicRemoveManyAction>['_input']>);
-      const path = `/api/localtasks/topics/remove`;
-      const body = { "keys": inp["keys"], "cwds": inp["cwds"], "all": inp["all"], "force": inp["force"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskTopicRemoveManyAction>['run']>>;
     },
     // action: localtask.update
     async localtaskUpdate(input: z.input<InstanceType<typeof LocaltaskUpdateAction>['_input']>) {
@@ -1180,23 +1180,23 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "text": inp["text"], "param": inp["param"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>;
     },
-    // action: templates.add
-    async templatesAdd(input: z.input<InstanceType<typeof TemplatesAddAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesAddAction>['_input']>);
+    // action: template.add
+    async templateAdd(input: z.input<InstanceType<typeof TemplateAddAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateAddAction>['_input']>);
       const path = `/api/templates`;
       const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "setDefault": inp["setDefault"], "set-default": inp["set-default"], "scope": inp["scope"], "topic": inp["topic"], "cwd": inp["cwd"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesAddAction>['run']>>;
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplateAddAction>['run']>>;
     },
-    // action: templates.default
-    async default(input: z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesDefaultAction>['_input']>);
+    // action: template.default
+    async default(input: z.input<InstanceType<typeof TemplateDefaultAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateDefaultAction>['_input']>);
       const path = `/api/templates/default`;
       const body = { "id": inp["id"], "name": inp["name"], "body": inp["body"], "scope": inp["scope"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesDefaultAction>['run']>>;
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplateDefaultAction>['run']>>;
     },
-    // action: templates.list
-    async templatesList(input?: z.input<InstanceType<typeof TemplatesListAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesListAction>['_input']>);
+    // action: template.list
+    async templateList(input?: z.input<InstanceType<typeof TemplateListAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateListAction>['_input']>);
       let path = `/api/templates`;
       const q = new URLSearchParams();
       if (inp["topic"] !== undefined) q.set("topic", String(inp["topic"]));
@@ -1204,27 +1204,27 @@ export function createApiClient(transport: Transport): ApiClient {
       if (inp["repo"] !== undefined) q.set("repo", String(inp["repo"]));
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof TemplatesListAction>['run']>>;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof TemplateListAction>['run']>>;
     },
-    // action: templates.remove
-    async templatesRemove(input: z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesRemoveAction>['_input']>);
+    // action: template.remove
+    async templateRemove(input: z.input<InstanceType<typeof TemplateRemoveAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateRemoveAction>['_input']>);
       const path = `/api/templates/${encodeURIComponent(String(inp["id"]))}`;
-      return (await transport.request("DELETE", path, undefined)) as Awaited<ReturnType<InstanceType<typeof TemplatesRemoveAction>['run']>>;
+      return (await transport.request("DELETE", path, undefined)) as Awaited<ReturnType<InstanceType<typeof TemplateRemoveAction>['run']>>;
     },
-    // action: templates.reorder
-    async templatesReorder(input: z.input<InstanceType<typeof TemplatesReorderAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesReorderAction>['_input']>);
+    // action: template.reorder
+    async templateReorder(input: z.input<InstanceType<typeof TemplateReorderAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateReorderAction>['_input']>);
       const path = `/api/templates/reorder`;
       const body = { "ids": inp["ids"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesReorderAction>['run']>>;
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplateReorderAction>['run']>>;
     },
-    // action: templates.update
-    async templatesUpdate(input: z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplatesUpdateAction>['_input']>);
+    // action: template.update
+    async templateUpdate(input: z.input<InstanceType<typeof TemplateUpdateAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateUpdateAction>['_input']>);
       const path = `/api/templates/${encodeURIComponent(String(inp["id"]))}`;
       const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "scope": inp["scope"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplatesUpdateAction>['run']>>;
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplateUpdateAction>['run']>>;
     },
     // action: timegoal.check
     async timegoalCheck(input: z.input<InstanceType<typeof TimegoalCheckAction>['_input']>) {
@@ -1325,9 +1325,9 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "path": inp["path"], "content": inp["content"], "name": inp["name"], "contentType": inp["contentType"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof FileUploadAction>['run']>>;
     },
-    // action: bundled.get
-    async bundledGet(input?: z.input<InstanceType<typeof BundledGetAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof BundledGetAction>['_input']>);
+    // action: skill.get
+    async skillGet(input?: z.input<InstanceType<typeof SkillGetAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof SkillGetAction>['_input']>);
       let path = `/api/bundled/content`;
       const q = new URLSearchParams();
       if (inp["name"] !== undefined) q.set("name", String(inp["name"]));
@@ -1336,24 +1336,24 @@ export function createApiClient(transport: Transport): ApiClient {
       if (inp["to"] !== undefined) q.set("to", String(inp["to"]));
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof BundledGetAction>['run']>>;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof SkillGetAction>['run']>>;
     },
-    // action: bundled.groups
+    // action: skill.groups
     async groups() {
       const path = `/api/bundled/groups`;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof BundledGroupsAction>['run']>>;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof SkillGroupsAction>['run']>>;
     },
-    // action: bundled.install
-    async install(input?: z.input<InstanceType<typeof BundledInstallAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof BundledInstallAction>['_input']>);
+    // action: skill.install
+    async install(input?: z.input<InstanceType<typeof SkillInstallAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof SkillInstallAction>['_input']>);
       const path = `/api/bundled/install`;
       const body = { "name": inp["name"], "group": inp["group"], "to": inp["to"], "force": inp["force"], "all": inp["all"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof BundledInstallAction>['run']>>;
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof SkillInstallAction>['run']>>;
     },
-    // action: bundled.list
-    async bundledList() {
+    // action: skill.list
+    async skillList() {
       const path = `/api/bundled`;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof BundledListAction>['run']>>;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof SkillListAction>['run']>>;
     },
     // action: prompt.registry
     async registry() {

@@ -823,7 +823,7 @@
             "attach"
           ],
           "action": {
-            "id": "doc.attach",
+            "id": "docs.attach",
             "module": "docs",
             "summary": "给文档挂资源：--path / --fileId / --url / --task / --doc / --mdfile / --folder 之一；默认追加进正文，--no-embed 只挂附件区（不写正文）",
             "usage": "docs attach",
@@ -838,173 +838,11 @@
             "attachments"
           ],
           "action": {
-            "id": "doc.attachments",
+            "id": "docs.attachments",
             "module": "docs",
             "summary": "这篇文档用了哪些资源（ref_attach：图片/文件/URL/内部 task、ref 引用）",
             "usage": "docs attachments",
             "http": "GET /api/docs/attachments"
-          },
-          "children": []
-        },
-        {
-          "name": "detach",
-          "path": [
-            "docs",
-            "detach"
-          ],
-          "action": {
-            "id": "doc.detach",
-            "module": "docs",
-            "summary": "解除文档与附件的关系（默认只解除关系）；--purge 无人引用时连资源行与本机字节一起删",
-            "usage": "docs detach",
-            "http": "DELETE /api/docs/attach"
-          },
-          "children": []
-        },
-        {
-          "name": "get",
-          "path": [
-            "docs",
-            "get"
-          ],
-          "action": {
-            "id": "doc.get",
-            "module": "docs",
-            "summary": "读文档全文：ref:<refId>（或裸 refId）= 文档库条目；path:<绝对路径> = 外部（须在绑定闭包内）",
-            "usage": "docs get",
-            "http": "GET /api/docs/item"
-          },
-          "children": []
-        },
-        {
-          "name": "link-file",
-          "path": [
-            "docs",
-            "link-file"
-          ],
-          "action": {
-            "id": "doc.link-file",
-            "module": "docs",
-            "summary": "把本地 md 文件登记为 mdfile 附件并挂到文档附件区：只存路径指针，不复制正文，不改文档正文",
-            "usage": "docs link-file",
-            "http": "POST /api/docs/link-file"
-          },
-          "children": []
-        },
-        {
-          "name": "list",
-          "path": [
-            "docs",
-            "list"
-          ],
-          "action": {
-            "id": "doc.list",
-            "module": "docs",
-            "summary": "文档树索引（自有 + 可选外部；零副作用，双链解析的数据源）",
-            "usage": "docs list",
-            "http": "GET /api/docs"
-          },
-          "children": []
-        },
-        {
-          "name": "mdfile",
-          "path": [
-            "docs",
-            "mdfile"
-          ],
-          "action": {
-            "id": "doc.mdfile",
-            "module": "docs",
-            "summary": "读本地 md 文件的正文（只读原文件，核对指纹；文件缺失时返回空正文并标 missing）",
-            "usage": "docs mdfile",
-            "http": "GET /api/docs/mdfile"
-          },
-          "children": []
-        },
-        {
-          "name": "mdfiles",
-          "path": [
-            "docs",
-            "mdfiles"
-          ],
-          "action": {
-            "id": "doc.mdfiles",
-            "module": "docs",
-            "summary": "列出已登记的本地 md 文件（mdfile 附件；--missing 只看失效行）",
-            "usage": "docs mdfiles",
-            "http": "GET /api/docs/mdfiles"
-          },
-          "children": []
-        },
-        {
-          "name": "ref",
-          "path": [
-            "docs",
-            "ref"
-          ],
-          "action": null,
-          "children": [
-            {
-              "name": "add",
-              "path": [
-                "docs",
-                "ref",
-                "add"
-              ],
-              "action": {
-                "id": "doc.ref.add",
-                "module": "docs",
-                "summary": "新建文档条目（desc + 归属；正文为空、直接可编辑；不创建任何文件）",
-                "usage": "docs ref add",
-                "http": "POST /api/docs/ref"
-              },
-              "children": []
-            },
-            {
-              "name": "unbind",
-              "path": [
-                "docs",
-                "ref",
-                "unbind"
-              ],
-              "action": {
-                "id": "doc.ref.unbind",
-                "module": "docs",
-                "summary": "解绑直接 ref 的归属（不删文档；没有归属后回到 orphan）",
-                "usage": "docs ref unbind",
-                "http": "POST /api/docs/unbind"
-              },
-              "children": []
-            }
-          ]
-        },
-        {
-          "name": "remove",
-          "path": [
-            "docs",
-            "remove"
-          ],
-          "action": {
-            "id": "doc.remove",
-            "module": "docs",
-            "summary": "删除自有文档（外部绑定不可删）",
-            "usage": "docs remove",
-            "http": "DELETE /api/docs/item"
-          },
-          "children": []
-        },
-        {
-          "name": "set",
-          "path": [
-            "docs",
-            "set"
-          ],
-          "action": {
-            "id": "doc.update",
-            "module": "docs",
-            "summary": "写文档正文 / 描述（面板保存走这里；ref 是 DB 实体，--ref 可给 refId；只给 --desc 时不动正文）",
-            "usage": "docs set",
-            "http": "PATCH /api/docs/item"
           },
           "children": []
         },
@@ -1039,6 +877,21 @@
           "children": []
         },
         {
+          "name": "detach",
+          "path": [
+            "docs",
+            "detach"
+          ],
+          "action": {
+            "id": "docs.detach",
+            "module": "docs",
+            "summary": "解除文档与附件的关系（默认只解除关系）；--purge 无人引用时连资源行与本机字节一起删",
+            "usage": "docs detach",
+            "http": "DELETE /api/docs/attach"
+          },
+          "children": []
+        },
+        {
           "name": "gc",
           "path": [
             "docs",
@@ -1050,6 +903,21 @@
             "summary": "GC 没有正文的文档（默认只报数；--apply 真删，并清掉宿主里指向它们的主篇/文档集引用）",
             "usage": "docs gc",
             "http": "POST /api/docs/gc"
+          },
+          "children": []
+        },
+        {
+          "name": "get",
+          "path": [
+            "docs",
+            "get"
+          ],
+          "action": {
+            "id": "docs.get",
+            "module": "docs",
+            "summary": "读文档全文：ref:<refId>（或裸 refId）= 文档库条目；path:<绝对路径> = 外部（须在绑定闭包内）",
+            "usage": "docs get",
+            "http": "GET /api/docs/item"
           },
           "children": []
         },
@@ -1069,6 +937,21 @@
           "children": []
         },
         {
+          "name": "link-file",
+          "path": [
+            "docs",
+            "link-file"
+          ],
+          "action": {
+            "id": "docs.link-file",
+            "module": "docs",
+            "summary": "把本地 md 文件登记为 mdfile 附件并挂到文档附件区：只存路径指针，不复制正文，不改文档正文",
+            "usage": "docs link-file",
+            "http": "POST /api/docs/link-file"
+          },
+          "children": []
+        },
+        {
           "name": "link",
           "path": [
             "docs",
@@ -1080,6 +963,21 @@
             "summary": "维护组的附加文档列表（--ref <refId> | --path <外部路径>；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 移位）",
             "usage": "docs link",
             "http": "POST /api/docs/link"
+          },
+          "children": []
+        },
+        {
+          "name": "list",
+          "path": [
+            "docs",
+            "list"
+          ],
+          "action": {
+            "id": "docs.list",
+            "module": "docs",
+            "summary": "文档树索引（自有 + 可选外部；零副作用，双链解析的数据源）",
+            "usage": "docs list",
+            "http": "GET /api/docs"
           },
           "children": []
         },
@@ -1099,13 +997,43 @@
           "children": []
         },
         {
+          "name": "mdfile",
+          "path": [
+            "docs",
+            "mdfile"
+          ],
+          "action": {
+            "id": "docs.mdfile",
+            "module": "docs",
+            "summary": "读本地 md 文件的正文（只读原文件，核对指纹；文件缺失时返回空正文并标 missing）",
+            "usage": "docs mdfile",
+            "http": "GET /api/docs/mdfile"
+          },
+          "children": []
+        },
+        {
+          "name": "mdfiles",
+          "path": [
+            "docs",
+            "mdfiles"
+          ],
+          "action": {
+            "id": "docs.mdfiles",
+            "module": "docs",
+            "summary": "列出已登记的本地 md 文件（mdfile 附件；--missing 只看失效行）",
+            "usage": "docs mdfiles",
+            "http": "GET /api/docs/mdfiles"
+          },
+          "children": []
+        },
+        {
           "name": "note-bind",
           "path": [
             "docs",
             "note-bind"
           ],
           "action": {
-            "id": "docs.notebind",
+            "id": "docs.note-bind",
             "module": "docs",
             "summary": "绑定组内仓库描述（--board <看板> --repo <仓库> + --ref | --path；--reset 清空；仓库须为该组成员）",
             "usage": "docs note-bind",
@@ -1144,6 +1072,78 @@
               "children": []
             }
           ]
+        },
+        {
+          "name": "ref",
+          "path": [
+            "docs",
+            "ref"
+          ],
+          "action": null,
+          "children": [
+            {
+              "name": "add",
+              "path": [
+                "docs",
+                "ref",
+                "add"
+              ],
+              "action": {
+                "id": "docs.ref.add",
+                "module": "docs",
+                "summary": "新建文档条目（desc + 归属；正文为空、直接可编辑；不创建任何文件）",
+                "usage": "docs ref add",
+                "http": "POST /api/docs/ref"
+              },
+              "children": []
+            },
+            {
+              "name": "unbind",
+              "path": [
+                "docs",
+                "ref",
+                "unbind"
+              ],
+              "action": {
+                "id": "docs.ref.unbind",
+                "module": "docs",
+                "summary": "解绑直接 ref 的归属（不删文档；没有归属后回到 orphan）",
+                "usage": "docs ref unbind",
+                "http": "POST /api/docs/unbind"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "remove",
+          "path": [
+            "docs",
+            "remove"
+          ],
+          "action": {
+            "id": "docs.remove",
+            "module": "docs",
+            "summary": "删除自有文档（外部绑定不可删）",
+            "usage": "docs remove",
+            "http": "DELETE /api/docs/item"
+          },
+          "children": []
+        },
+        {
+          "name": "set",
+          "path": [
+            "docs",
+            "set"
+          ],
+          "action": {
+            "id": "docs.set",
+            "module": "docs",
+            "summary": "写文档正文 / 描述（面板保存走这里；ref 是 DB 实体，--ref 可给 refId；只给 --desc 时不动正文）",
+            "usage": "docs set",
+            "http": "PATCH /api/docs/item"
+          },
+          "children": []
         }
       ]
     },
@@ -1230,6 +1230,21 @@
           "children": []
         },
         {
+          "name": "cancel-many",
+          "path": [
+            "localtask",
+            "cancel-many"
+          ],
+          "action": {
+            "id": "localtask.cancel-many",
+            "module": "localtask",
+            "summary": "批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已完成/已取消跳过；取消为终态，原文留档",
+            "usage": "localtask cancel-many",
+            "http": "POST /api/localtasks/items/cancel"
+          },
+          "children": []
+        },
+        {
           "name": "cancel",
           "path": [
             "localtask",
@@ -1241,21 +1256,6 @@
             "summary": "关闭某主题的等待：阻塞中的 wait 立即收尾（与超时同一出口，带 cancelled 标记；不删主题与任务）",
             "usage": "localtask cancel",
             "http": "POST /api/localtasks/cancel"
-          },
-          "children": []
-        },
-        {
-          "name": "cancel-many",
-          "path": [
-            "localtask",
-            "cancel-many"
-          ],
-          "action": {
-            "id": "localtask.cancelMany",
-            "module": "localtask",
-            "summary": "批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已完成/已取消跳过；取消为终态，原文留档",
-            "usage": "localtask cancel-many",
-            "http": "POST /api/localtasks/items/cancel"
           },
           "children": []
         },
@@ -1296,7 +1296,7 @@
             "close-many"
           ],
           "action": {
-            "id": "localtask.closeMany",
+            "id": "localtask.close-many",
             "module": "localtask",
             "summary": "批量收口还没结束的任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；待领取与已领取都能收（已领取的 agent 侧回执会被忽略），已完成/已取消跳过",
             "usage": "localtask close-many",
@@ -1440,6 +1440,21 @@
           "children": []
         },
         {
+          "name": "remove-many",
+          "path": [
+            "localtask",
+            "remove-many"
+          ],
+          "action": {
+            "id": "localtask.remove-many",
+            "module": "localtask",
+            "summary": "批量删除任务（按 --ids，定位到 --cwd 主题或 --key）：一次落盘，逐条软删除（可 restore 恢复）；缺失的编号不阻断其余删除",
+            "usage": "localtask remove-many",
+            "http": "DELETE /api/localtasks/items"
+          },
+          "children": []
+        },
+        {
           "name": "remove",
           "path": [
             "localtask",
@@ -1451,21 +1466,6 @@
             "summary": "删除一条任务（按 --id，定位到 --cwd 主题或 --key）；删除是**可恢复**的（软删除），加 --purge 彻底清除",
             "usage": "localtask remove",
             "http": "DELETE /api/localtasks/item"
-          },
-          "children": []
-        },
-        {
-          "name": "remove-many",
-          "path": [
-            "localtask",
-            "remove-many"
-          ],
-          "action": {
-            "id": "localtask.removeMany",
-            "module": "localtask",
-            "summary": "批量删除任务（按 --ids，定位到 --cwd 主题或 --key）：一次落盘，逐条软删除（可 restore 恢复）；缺失的编号不阻断其余删除",
-            "usage": "localtask remove-many",
-            "http": "DELETE /api/localtasks/items"
           },
           "children": []
         },
@@ -1562,7 +1562,7 @@
             "timegoal-log"
           ],
           "action": {
-            "id": "localtask.timegoalLog",
+            "id": "localtask.timegoal-log",
             "module": "localtask",
             "summary": "查看任务级时间目标的每轮 check 记录（时间、已用/剩余、是否到点、当轮总结）",
             "usage": "localtask timegoal-log",
@@ -1595,6 +1595,22 @@
               "children": []
             },
             {
+              "name": "remove-many",
+              "path": [
+                "localtask",
+                "topic",
+                "remove-many"
+              ],
+              "action": {
+                "id": "localtask.topic.remove-many",
+                "module": "localtask",
+                "summary": "批量删除主题（--keys/--cwds 逗号分隔，或 --all；等待中默认跳过，--force 连等待中删）",
+                "usage": "localtask topic remove-many",
+                "http": "POST /api/localtasks/topics/remove"
+              },
+              "children": []
+            },
+            {
               "name": "remove",
               "path": [
                 "localtask",
@@ -1607,22 +1623,6 @@
                 "summary": "删除整个主题（含全部任务；按 --cwd 或 --key，等待中需 --force）",
                 "usage": "localtask topic remove",
                 "http": "DELETE /api/localtasks/topic"
-              },
-              "children": []
-            },
-            {
-              "name": "remove-many",
-              "path": [
-                "localtask",
-                "topic",
-                "remove-many"
-              ],
-              "action": {
-                "id": "localtask.topic.removeMany",
-                "module": "localtask",
-                "summary": "批量删除主题（--keys/--cwds 逗号分隔，或 --all；等待中默认跳过，--force 连等待中删）",
-                "usage": "localtask topic remove-many",
-                "http": "POST /api/localtasks/topics/remove"
               },
               "children": []
             }
@@ -1689,7 +1689,7 @@
             "add"
           ],
           "action": {
-            "id": "templates.add",
+            "id": "template.add",
             "module": "templates",
             "summary": "新增任务模板（--body 给 Markdown 正文；多行正文用 --body-file <文件> 或 --body - 读管道；--setDefault 同时设为默认；--scope 设可见域、--topic 记创建主题并默认仅该主题可见）",
             "usage": "template add",
@@ -1704,7 +1704,7 @@
             "default"
           ],
           "action": {
-            "id": "templates.default",
+            "id": "template.default",
             "module": "templates",
             "summary": "设置默认模板（新建页的起始正文换成它）；带 --body/--name/--scope 则改默认模板本身",
             "usage": "template default",
@@ -1719,7 +1719,7 @@
             "list"
           ],
           "action": {
-            "id": "templates.list",
+            "id": "template.list",
             "module": "templates",
             "summary": "列出任务模板（含默认模板 id；新建页的起始正文按默认模板取）",
             "usage": "template list",
@@ -1734,7 +1734,7 @@
             "remove"
           ],
           "action": {
-            "id": "templates.remove",
+            "id": "template.remove",
             "module": "templates",
             "summary": "删除任务模板（内置默认模板不可删；删的是默认模板则默认回落到内置）",
             "usage": "template remove",
@@ -1749,7 +1749,7 @@
             "reorder"
           ],
           "action": {
-            "id": "templates.reorder",
+            "id": "template.reorder",
             "module": "templates",
             "summary": "调整任务模板顺序（--ids a,b,c 按新序落库 sort_order；未列出的模板保持原位）",
             "usage": "template reorder",
@@ -1764,7 +1764,7 @@
             "update"
           ],
           "action": {
-            "id": "templates.update",
+            "id": "template.update",
             "module": "templates",
             "summary": "编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改）",
             "usage": "template update",
@@ -2001,7 +2001,7 @@
             "get"
           ],
           "action": {
-            "id": "bundled.get",
+            "id": "skill.get",
             "module": "bundled",
             "summary": "输出内置 skill 全文（prefix + sentinel + 正文 + install 状态），并顺手装到本机",
             "usage": "skill get",
@@ -2016,7 +2016,7 @@
             "groups"
           ],
           "action": {
-            "id": "bundled.groups",
+            "id": "skill.groups",
             "module": "bundled",
             "summary": "列出可装的 group（groups.json 的组名 → 它包含哪些 skill）",
             "usage": "skill,groups bundled,groups",
@@ -2031,7 +2031,7 @@
             "install"
           ],
           "action": {
-            "id": "bundled.install",
+            "id": "skill.install",
             "module": "bundled",
             "summary": "安装内置 skill 到 skills 目录（默认 nx-kv → ~/.claude/skills；--group <key> 一键装一组；--all 装全部并直接覆盖）",
             "usage": "skill install",
@@ -2046,7 +2046,7 @@
                 "--list"
               ],
               "action": {
-                "id": "bundled.list",
+                "id": "skill.list",
                 "module": "bundled",
                 "summary": "列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group",
                 "usage": "skill,list skill,install,--list bundled,list",
@@ -2063,7 +2063,7 @@
             "list"
           ],
           "action": {
-            "id": "bundled.list",
+            "id": "skill.list",
             "module": "bundled",
             "summary": "列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group",
             "usage": "skill,list skill,install,--list bundled,list",
@@ -2087,7 +2087,7 @@
             "groups"
           ],
           "action": {
-            "id": "bundled.groups",
+            "id": "skill.groups",
             "module": "bundled",
             "summary": "列出可装的 group（groups.json 的组名 → 它包含哪些 skill）",
             "usage": "skill,groups bundled,groups",
@@ -2102,7 +2102,7 @@
             "list"
           ],
           "action": {
-            "id": "bundled.list",
+            "id": "skill.list",
             "module": "bundled",
             "summary": "列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group",
             "usage": "skill,list skill,install,--list bundled,list",

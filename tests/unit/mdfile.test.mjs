@@ -172,11 +172,11 @@ test('readMdfile：正常读到正文；内容漂移只报 stale 不改库；缺
 test('docs link-file：只登记并挂附件区，正文逐字节不变', async () => {
   const before = await store.readOwnDoc(hostId);
   const p = makeMd('linked.md', '# 外部方案');
-  const r = await action('doc.link-file').run({ ref: hostId, path: p, note: '方案原文' });
+  const r = await action('docs.link-file').run({ ref: hostId, path: p, note: '方案原文' });
   assert.equal(r.attachmentId, mdfileAttachmentId(p));
   assert.equal(await store.readOwnDoc(hostId), before, '正文必须逐字节不变');
 
-  const listed = await action('doc.attachments').run({ ref: hostId });
+  const listed = await action('docs.attachments').run({ ref: hostId });
   const a = listed.attachments.find((x) => x.id === r.attachmentId);
   assert.ok(a, '附件区必须能查到');
   assert.equal(a.kind, 'mdfile');
@@ -188,25 +188,25 @@ test('docs link-file 允许指向 mdfile 默认目录内的 md（只能经 attac
   const inside = join(docsRoot, 'notes', 'inside.md');
   mkdirSync(dirname(inside), { recursive: true });
   writeFileSync(inside, '# 默认目录内的 md');
-  const r = await action('doc.link-file').run({ ref: hostId, path: inside });
+  const r = await action('docs.link-file').run({ ref: hostId, path: inside });
   assert.match(r.attachmentId, /^att_mdfile_[0-9a-f]{16}$/);
 });
 
 test('docs mdfile / mdfiles：读正文、列台账、失效过滤', async () => {
   const p = makeMd('list.md', '# 台账');
-  const r = await action('doc.link-file').run({ ref: hostId, path: p });
+  const r = await action('docs.link-file').run({ ref: hostId, path: p });
 
-  const read = await action('doc.mdfile').run({ attachment: r.attachmentId });
+  const read = await action('docs.mdfile').run({ attachment: r.attachmentId });
   assert.equal(read.body, '# 台账');
   assert.equal(read.missing, false);
 
-  const all = await action('doc.mdfiles').run({});
+  const all = await action('docs.mdfiles').run({});
   assert.ok(all.some((x) => x.id === r.attachmentId));
 
   unlinkSync(p);
-  const gone = await action('doc.mdfile').run({ attachment: r.attachmentId });
+  const gone = await action('docs.mdfile').run({ attachment: r.attachmentId });
   assert.equal(gone.missing, true);
-  const miss = await action('doc.mdfiles').run({ missing: true });
+  const miss = await action('docs.mdfiles').run({ missing: true });
   // 不断言「恰好一行」：台账里别的用例也可能留有失效行，这里只验证过滤语义
   assert.ok(miss.map((x) => x.id).includes(r.attachmentId), '自己这行必须在失效清单里');
   assert.ok(miss.every((x) => x.missing === true), '失效清单里的行都该标 missing');

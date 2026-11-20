@@ -1,4 +1,4 @@
-// localtask.closeMany —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
+// localtask.close-many —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
 // 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
@@ -7,7 +7,7 @@ import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-/** localtask.closeMany 的入参契约（CLI 与 HTTP 共用同一份）。 */
+/** localtask.close-many 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   ids: z.array(z.string()).describe("任务编号，逗号分隔或给多次"),
   cwd: z.string().optional(),
@@ -18,7 +18,7 @@ const input = z.object({
 
 export class LocaltaskCloseManyAction extends ActionBase<typeof input> {
   @action({
-    id: 'localtask.closeMany',
+    id: 'localtask.close-many',
     cli: ['localtask', 'close-many'],
     http: ['POST', '/api/localtasks/items/close'],
     summary: '批量收口还没结束的任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；待领取与已领取都能收（已领取的 agent 侧回执会被忽略），已完成/已取消跳过',

@@ -1,4 +1,4 @@
-// bundled.get —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
+// skill.get —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
 // 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
@@ -8,7 +8,7 @@ import * as serviceNs from '../service.js';
 import { exclusive, renderContent } from '../support.js';
 const service: any = serviceNs;
 
-/** bundled.get 的入参契约（CLI 与 HTTP 共用同一份）。 */
+/** skill.get 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   name: z.string().optional(),
   ref: z.string().optional(),
@@ -16,9 +16,9 @@ const input = z.object({
   to: z.string().optional(),
 });
 
-export class BundledGetAction extends ActionBase<typeof input> {
+export class SkillGetAction extends ActionBase<typeof input> {
   @action({
-    id: 'bundled.get',
+    id: 'skill.get',
     cli: ['skill', 'get'],
     http: ['GET', '/api/bundled/content'],
     summary: '输出内置 skill 全文（prefix + sentinel + 正文 + install 状态），并顺手装到本机',

@@ -1,4 +1,4 @@
-// localtask.timegoalLog —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
+// localtask.timegoal-log —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
 // 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
@@ -7,7 +7,7 @@ import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
 const service: any = serviceNs;
 
-/** localtask.timegoalLog 的入参契约（CLI 与 HTTP 共用同一份）。 */
+/** localtask.timegoal-log 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   id: z.number().describe("任务编号"),
   cwd: z.string().optional(),
@@ -16,7 +16,7 @@ const input = z.object({
 
 export class LocaltaskTimegoalLogAction extends ActionBase<typeof input> {
   @action({
-    id: 'localtask.timegoalLog',
+    id: 'localtask.timegoal-log',
     cli: ['localtask', 'timegoal-log'],
     http: ['GET', '/api/localtasks/timegoal-log'],
     summary: '查看任务级时间目标的每轮 check 记录（时间、已用/剩余、是否到点、当轮总结）',

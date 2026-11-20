@@ -11,11 +11,11 @@ import { LocaltaskAttachNoteAction } from './localtask-attach-note.js';
 import { LocaltaskAttachAction } from './localtask-attach.js';
 import { LocaltaskAttachmentsAction } from './localtask-attachments.js';
 import { LocaltaskBoardTasksAction } from './localtask-boardtasks.js';
+import { LocaltaskCancelManyAction } from './localtask-cancel-many.js';
 import { LocaltaskCancelAction } from './localtask-cancel.js';
-import { LocaltaskCancelManyAction } from './localtask-cancelMany.js';
 import { LocaltaskChainAction } from './localtask-chain.js';
 import { LocaltaskCloneAction } from './localtask-clone.js';
-import { LocaltaskCloseManyAction } from './localtask-closeMany.js';
+import { LocaltaskCloseManyAction } from './localtask-close-many.js';
 import { LocaltaskConfigAction } from './localtask-config.js';
 import { LocaltaskDetachAction } from './localtask-detach.js';
 import { LocaltaskDoneAction } from './localtask-done.js';
@@ -25,17 +25,17 @@ import { LocaltaskListAction } from './localtask-list.js';
 import { LocaltaskPlanAction } from './localtask-plan.js';
 import { LocaltaskPresenceAction } from './localtask-presence.js';
 import { LocaltaskPruneAction } from './localtask-prune.js';
+import { LocaltaskRemoveManyAction } from './localtask-remove-many.js';
 import { LocaltaskRemoveAction } from './localtask-remove.js';
-import { LocaltaskRemoveManyAction } from './localtask-removeMany.js';
 import { LocaltaskReopenAction } from './localtask-reopen.js';
 import { LocaltaskReorderAction } from './localtask-reorder.js';
 import { LocaltaskShowAction } from './localtask-show.js';
 import { LocaltaskTaskRestoreAction } from './localtask-task-restore.js';
 import { LocaltaskTasksAction } from './localtask-tasks.js';
-import { LocaltaskTimegoalLogAction } from './localtask-timegoalLog.js';
+import { LocaltaskTimegoalLogAction } from './localtask-timegoal-log.js';
 import { LocaltaskTopicAddAction } from './localtask-topic-add.js';
+import { LocaltaskTopicRemoveManyAction } from './localtask-topic-remove-many.js';
 import { LocaltaskTopicRemoveAction } from './localtask-topic-remove.js';
-import { LocaltaskTopicRemoveManyAction } from './localtask-topic-removeMany.js';
 import { LocaltaskUpdateAction } from './localtask-update.js';
 
 /** 本模块的全部 action 类（容器按这个顺序建实例）。 */
@@ -45,8 +45,8 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskAttachAction,
   LocaltaskAttachmentsAction,
   LocaltaskBoardTasksAction,
-  LocaltaskCancelAction,
   LocaltaskCancelManyAction,
+  LocaltaskCancelAction,
   LocaltaskChainAction,
   LocaltaskCloneAction,
   LocaltaskCloseManyAction,
@@ -59,8 +59,8 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskPlanAction,
   LocaltaskPresenceAction,
   LocaltaskPruneAction,
-  LocaltaskRemoveAction,
   LocaltaskRemoveManyAction,
+  LocaltaskRemoveAction,
   LocaltaskReopenAction,
   LocaltaskReorderAction,
   LocaltaskShowAction,
@@ -68,8 +68,8 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   LocaltaskTasksAction,
   LocaltaskTimegoalLogAction,
   LocaltaskTopicAddAction,
-  LocaltaskTopicRemoveAction,
   LocaltaskTopicRemoveManyAction,
+  LocaltaskTopicRemoveAction,
   LocaltaskUpdateAction,
 ];
 
@@ -79,8 +79,8 @@ export { LocaltaskAttachNoteAction };
 export { LocaltaskAttachAction };
 export { LocaltaskAttachmentsAction };
 export { LocaltaskBoardTasksAction };
-export { LocaltaskCancelAction };
 export { LocaltaskCancelManyAction };
+export { LocaltaskCancelAction };
 export { LocaltaskChainAction };
 export { LocaltaskCloneAction };
 export { LocaltaskCloseManyAction };
@@ -93,8 +93,8 @@ export { LocaltaskListAction };
 export { LocaltaskPlanAction };
 export { LocaltaskPresenceAction };
 export { LocaltaskPruneAction };
-export { LocaltaskRemoveAction };
 export { LocaltaskRemoveManyAction };
+export { LocaltaskRemoveAction };
 export { LocaltaskReopenAction };
 export { LocaltaskReorderAction };
 export { LocaltaskShowAction };
@@ -102,6 +102,6 @@ export { LocaltaskTaskRestoreAction };
 export { LocaltaskTasksAction };
 export { LocaltaskTimegoalLogAction };
 export { LocaltaskTopicAddAction };
-export { LocaltaskTopicRemoveAction };
 export { LocaltaskTopicRemoveManyAction };
+export { LocaltaskTopicRemoveAction };
 export { LocaltaskUpdateAction };

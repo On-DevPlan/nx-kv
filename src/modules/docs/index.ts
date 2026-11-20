@@ -11,7 +11,7 @@ export class DocsModule extends ModuleBase {
   override readonly id = 'docs';
   override readonly title = "文档（自有 md 树：项目/组介绍、组内描述、双链、外部只读绑定）";
   override readonly order = 12;
-  override readonly resource = 'doc';
+  override readonly resource = 'docs';
 
   override readonly actions: readonly ZodBoundAction[];
 

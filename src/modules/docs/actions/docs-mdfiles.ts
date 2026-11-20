@@ -1,4 +1,4 @@
-// doc.mdfiles —— 列出已登记的本地 md 文件（kind=mdfile）。
+// docs.mdfiles —— 列出已登记的本地 md 文件（kind=mdfile）。
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
@@ -8,9 +8,9 @@ const input = z.object({
   missing: z.boolean().optional().describe('只看已失效（missing_at 非空）的行'),
 });
 
-export class DocMdfilesAction extends ActionBase<typeof input> {
+export class DocsMdfilesAction extends ActionBase<typeof input> {
   @action({
-    id: 'doc.mdfiles',
+    id: 'docs.mdfiles',
     cli: ['docs', 'mdfiles'],
     http: ['GET', '/api/docs/mdfiles'],
     summary: '列出已登记的本地 md 文件（mdfile 附件；--missing 只看失效行）',

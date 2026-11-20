@@ -1,4 +1,4 @@
-// doc.get —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
+// docs.get —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
 // 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
@@ -9,14 +9,14 @@ import { renderGet as _renderGet } from '../render.js';
 const getDoc: any = _getDoc;
 const renderGet: any = _renderGet;
 
-/** doc.get 的入参契约（CLI 与 HTTP 共用同一份）。 */
+/** docs.get 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   ref: z.string(),
 });
 
-export class DocGetAction extends ActionBase<typeof input> {
+export class DocsGetAction extends ActionBase<typeof input> {
   @action({
-    id: 'doc.get',
+    id: 'docs.get',
     cli: ['docs', 'get'],
     http: ['GET', '/api/docs/item'],
     summary: '读文档全文：ref:<refId>（或裸 refId）= 文档库条目；path:<绝对路径> = 外部（须在绑定闭包内）',

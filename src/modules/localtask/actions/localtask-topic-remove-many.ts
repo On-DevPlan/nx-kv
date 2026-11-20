@@ -1,4 +1,4 @@
-// localtask.topic.removeMany —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
+// localtask.topic.remove-many —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
 // 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
@@ -9,7 +9,7 @@ import { renderRemoveMany as _renderRemoveMany } from '../ui/action-render.js';
 const service: any = serviceNs;
 const renderRemoveMany: any = _renderRemoveMany;
 
-/** localtask.topic.removeMany 的入参契约（CLI 与 HTTP 共用同一份）。 */
+/** localtask.topic.remove-many 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   keys: z.array(z.string()).optional().describe("主题 key，逗号分隔"),
   cwds: z.array(z.string()).optional().describe("工作目录，逗号分隔"),
@@ -19,7 +19,7 @@ const input = z.object({
 
 export class LocaltaskTopicRemoveManyAction extends ActionBase<typeof input> {
   @action({
-    id: 'localtask.topic.removeMany',
+    id: 'localtask.topic.remove-many',
     cli: ['localtask', 'topic', 'remove-many'],
     http: ['POST', '/api/localtasks/topics/remove'],
     summary: '批量删除主题（--keys/--cwds 逗号分隔，或 --all；等待中默认跳过，--force 连等待中删）',

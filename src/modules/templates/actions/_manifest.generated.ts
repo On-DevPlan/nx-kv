@@ -6,27 +6,27 @@
 
 import type { ActionBase } from '../../../runtime/action-base.js';
 import type { Container } from '../../../runtime/container.js';
-import { TemplatesAddAction } from './templates-add.js';
-import { TemplatesDefaultAction } from './templates-default.js';
-import { TemplatesListAction } from './templates-list.js';
-import { TemplatesRemoveAction } from './templates-remove.js';
-import { TemplatesReorderAction } from './templates-reorder.js';
-import { TemplatesUpdateAction } from './templates-update.js';
+import { TemplateAddAction } from './template-add.js';
+import { TemplateDefaultAction } from './template-default.js';
+import { TemplateListAction } from './template-list.js';
+import { TemplateRemoveAction } from './template-remove.js';
+import { TemplateReorderAction } from './template-reorder.js';
+import { TemplateUpdateAction } from './template-update.js';
 
 /** 本模块的全部 action 类（容器按这个顺序建实例）。 */
 export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
-  TemplatesAddAction,
-  TemplatesDefaultAction,
-  TemplatesListAction,
-  TemplatesRemoveAction,
-  TemplatesReorderAction,
-  TemplatesUpdateAction,
+  TemplateAddAction,
+  TemplateDefaultAction,
+  TemplateListAction,
+  TemplateRemoveAction,
+  TemplateReorderAction,
+  TemplateUpdateAction,
 ];
 
 // 再导出类本身：前端 apiclient 的返回类型从这里 type-only 引用（实现即契约）。
-export { TemplatesAddAction };
-export { TemplatesDefaultAction };
-export { TemplatesListAction };
-export { TemplatesRemoveAction };
-export { TemplatesReorderAction };
-export { TemplatesUpdateAction };
+export { TemplateAddAction };
+export { TemplateDefaultAction };
+export { TemplateListAction };
+export { TemplateRemoveAction };
+export { TemplateReorderAction };
+export { TemplateUpdateAction };

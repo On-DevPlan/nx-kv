@@ -1,4 +1,4 @@
-// templates.update —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
+// template.update —— 由 .tool/migrate-module.mjs 从 legacy 形态迁来（模板形态：一条 action 一个文件）。
 //
 // 契约（zod schema）就声明在本文件里——入参类型由基类泛型模板封装；本文件只做「声明 + 实现」，业务在服务层。
 import { action } from '../../../runtime/action-decorator.js';
@@ -9,7 +9,7 @@ import {  } from 'node:path';
 import { parseScope } from '../support.js';
 const service: any = serviceNs;
 
-/** templates.update 的入参契约（CLI 与 HTTP 共用同一份）。 */
+/** template.update 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   id: z.string(),
   name: z.string().optional().describe("新名字（不传保持不变）"),
@@ -19,9 +19,9 @@ const input = z.object({
   scope: z.unknown().optional().describe("可见域（#128）：* / topic:<key> / repo:<key> / group:<key>，JSON 数组或逗号短写（不传保持不变）"),
 });
 
-export class TemplatesUpdateAction extends ActionBase<typeof input> {
+export class TemplateUpdateAction extends ActionBase<typeof input> {
   @action({
-    id: 'templates.update',
+    id: 'template.update',
     cli: ['template', 'update'],
     http: ['PATCH', '/api/templates/:id'],
     summary: '编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改）',

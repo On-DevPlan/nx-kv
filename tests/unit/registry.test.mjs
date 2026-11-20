@@ -246,15 +246,18 @@ const CRUD_OPS = {
 const CRUD_VERB = { list: 'list', get: 'get', create: 'add', update: 'update', remove: 'remove' };
 
 /**
- * v8：docs 的「增」是新建一条直接 ref（doc.ref.add），不再有 doc.add——
- * 资源名仍是 doc（list/get/update/remove 都不变），只把 create 的 id 映射过去。
+ * v8：docs 的「增」是新建一条直接 ref（docs.ref.add），不再有 docs.add——
+ * 资源名仍是 docs（list/get/set/remove 都不变），只把 create 的 id 映射过去。
  *
- * v9：localtask 的「查（单条）」是 localtask.show——CLI `localtask get` 已被
- * 「领取」占据（id/cli/http 三层都以 CLI 动词 get 为基准），查单条的用户动词
- * 是 show。localtask 是「id 跟 CLI 词表走」的资源，CRUD get 位在此让位。
+ * v9：id / cli / http 三层同词表，都以 CLI 动词为基准（用户拍板）：
+ *  - localtask 的「查（单条）」是 localtask.show——CLI `localtask get` 已被
+ *    「领取」占据，查单条的用户动词是 show；
+ *  - docs 的「改」是 docs.set——CLI 是 `docs set`（不是 update）。
+ *  两处都是「CRUD get/update 位在此让位给 CLI 动词」的刻意覆盖。
  */
 function crudIdOf(moduleId, resource, op) {
-  if (moduleId === 'docs' && resource === 'doc' && op === 'create') return 'doc.ref.add';
+  if (moduleId === 'docs' && resource === 'docs' && op === 'create') return 'docs.ref.add';
+  if (moduleId === 'docs' && resource === 'docs' && op === 'update') return 'docs.set';
   if (moduleId === 'localtask' && resource === 'localtask' && op === 'get') return 'localtask.show';
   return `${resource}.${CRUD_VERB[op]}`;
 }

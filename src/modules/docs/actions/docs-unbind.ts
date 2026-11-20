@@ -1,4 +1,4 @@
-// doc.ref.unbind —— 解绑一条直接 ref 的归属（不删 ref、不删正文）。
+// docs.ref.unbind —— 解绑一条直接 ref 的归属（不删 ref、不删正文）。
 //
 // 派生绑定（既有文档由 ext 推导）不在这里处理：摘除仍走宿主的文档集接口。
 import { action } from '../../../runtime/action-decorator.js';
@@ -8,7 +8,7 @@ import { unbindRef as _unbindRef } from '../service.js';
 
 const unbindRef: any = _unbindRef;
 
-/** doc.ref.unbind 的入参契约（CLI 与 HTTP 共用同一份）。 */
+/** docs.ref.unbind 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   ref: z.string().describe('refId（ref_…）'),
   type: z.enum(['repo', 'group', 'group_repo']).describe('归属类型'),
@@ -16,9 +16,9 @@ const input = z.object({
   group: z.string().optional().describe('组 key（type=group_repo 时必填）'),
 });
 
-export class DocRefUnbindAction extends ActionBase<typeof input> {
+export class DocsRefUnbindAction extends ActionBase<typeof input> {
   @action({
-    id: 'doc.ref.unbind',
+    id: 'docs.ref.unbind',
     cli: ['docs', 'ref', 'unbind'],
     http: ['POST', '/api/docs/unbind'],
     summary: '解绑直接 ref 的归属（不删文档；没有归属后回到 orphan）',

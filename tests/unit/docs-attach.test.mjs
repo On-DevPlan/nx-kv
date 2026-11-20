@@ -33,12 +33,12 @@ async function seedDoc(refId, body) {
 test('docs attach --no-embed：URL 进附件区，正文不变', async () => {
   const refId = await seedDoc('ref_aaaaaaaaaaaaaaaa', '# A\n\n原文');
   const before = await store.readOwnDoc(refId);
-  const r = await action('doc.attach').run({ ref: docId(refId), url: 'https://example.com/x', noEmbed: true });
+  const r = await action('docs.attach').run({ ref: docId(refId), url: 'https://example.com/x', noEmbed: true });
   assert.equal(r.area, 'area');
   assert.equal(r.role, 'attach');
   assert.equal(r.ref, refId, '返回的宿主是 refId');
   assert.equal(await store.readOwnDoc(refId), before, '正文必须逐字节不变');
-  const listed = await action('doc.attachments').run({ ref: docId(refId) });
+  const listed = await action('docs.attachments').run({ ref: docId(refId) });
   assert.equal(listed.refId, refId);
   assert.equal(listed.attachments.length, 1);
   assert.equal(listed.attachments[0].kind, 'url');
@@ -49,8 +49,8 @@ test('docs attach --no-embed：本机图片落附件区，可查本地路径', a
   const refId = 'ref_aaaaaaaaaaaaaaaa';
   const src = join(sb, '图.png');
   writeFileSync(src, 'png');
-  const r = await action('doc.attach').run({ ref: docId(refId), path: src, noEmbed: true, note: '截图' });
-  const listed = await action('doc.attachments').run({ ref: docId(refId) });
+  const r = await action('docs.attach').run({ ref: docId(refId), path: src, noEmbed: true, note: '截图' });
+  const listed = await action('docs.attachments').run({ ref: docId(refId) });
   const a = listed.attachments.find((x) => x.id === r.attachmentId);
   assert.ok(a, '附件区条目必须能查到');
   assert.equal(a.kind, 'file');
@@ -62,18 +62,18 @@ test('docs detach：只解除关系；--purge 无人引用时删行与字节', a
   const refId = 'ref_aaaaaaaaaaaaaaaa';
   const src = join(sb, '回收.pdf');
   writeFileSync(src, '%PDF');
-  const r = await action('doc.attach').run({ ref: docId(refId), path: src, noEmbed: true });
-  const listed = await action('doc.attachments').run({ ref: docId(refId) });
+  const r = await action('docs.attach').run({ ref: docId(refId), path: src, noEmbed: true });
+  const listed = await action('docs.attachments').run({ ref: docId(refId) });
   const bytes = listed.attachments.find((x) => x.id === r.attachmentId).localPath;
 
-  const d1 = await action('doc.detach').run({ ref: docId(refId), attachment: r.attachmentId });
+  const d1 = await action('docs.detach').run({ ref: docId(refId), attachment: r.attachmentId });
   assert.equal(d1.unlinked, 1);
   assert.equal(d1.purged, false);
   assert.ok(getDb().get('SELECT id FROM attachments WHERE id = :id', { id: r.attachmentId }));
   assert.ok(existsSync(bytes), '默认不删字节');
 
-  await action('doc.attach').run({ ref: docId(refId), fileId: r.attachmentId, noEmbed: true });
-  const d2 = await action('doc.detach').run({ ref: docId(refId), attachment: r.attachmentId, purge: true });
+  await action('docs.attach').run({ ref: docId(refId), fileId: r.attachmentId, noEmbed: true });
+  const d2 = await action('docs.detach').run({ ref: docId(refId), attachment: r.attachmentId, purge: true });
   assert.equal(d2.purged, true);
   assert.ok(!getDb().get('SELECT id FROM attachments WHERE id = :id', { id: r.attachmentId }));
   assert.ok(!existsSync(bytes), 'purge 删除本机字节');
@@ -81,11 +81,11 @@ test('docs detach：只解除关系；--purge 无人引用时删行与字节', a
 
 test('docs attach（默认嵌入）：追加正文并落 inline 关系', async () => {
   const refId = await seedDoc('ref_bbbbbbbbbbbbbbbb', '# B');
-  const r = await action('doc.attach').run({ ref: docId(refId), url: 'https://example.com/y' });
+  const r = await action('docs.attach').run({ ref: docId(refId), url: 'https://example.com/y' });
   assert.equal(r.area, 'inline');
   const body = await store.readOwnDoc(refId);
   assert.ok(body.endsWith('[https://example.com/y](https://example.com/y)'), `正文应追加链接（实际 ${body}`);
-  const listed = await action('doc.attachments').run({ ref: docId(refId) });
+  const listed = await action('docs.attachments').run({ ref: docId(refId) });
   assert.equal(listed.attachments[0].kind, 'url');
   assert.notEqual(listed.attachments[0].role, 'attach');
 });

@@ -347,11 +347,15 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
    代码块都要跟着收，整页节奏才回来；全部写在块容器/纸面层，不破坏 #31 的
    视图↔编辑等高约束 */
 @container mdwmain (max-width: 960px){
-  .mdw-lp-sheet,.mdw-reader{padding:20px 22px 56px}
+  /* 窄列压的是右 padding；左 padding 固定 52px——那是块侧栏（宽 38px）的悬停区，
+     压掉它侧栏就会贴/压输入框（反馈 #249）。阅读视图无侧栏，照常压缩。 */
+  .mdw-lp-sheet{padding:20px 22px 56px 52px}
+  .mdw-reader{padding:20px 22px 56px}
   .mdw-lp input.mdw-lp-title,.mdw-lp textarea.mdw-lp-title,.mdw-reader-title{font-size:24px;margin-bottom:22px}
 }
 @container mdwmain (max-width: 640px){
-  .mdw-lp-sheet,.mdw-reader{padding:16px 16px 48px}
+  .mdw-lp-sheet{padding:16px 16px 48px 52px}
+  .mdw-reader{padding:16px 16px 48px}
   .mdw-lp input.mdw-lp-title,.mdw-lp textarea.mdw-lp-title,.mdw-reader-title{font-size:20px;margin-bottom:14px}
   .mdw-lp-view h1,.mdw-preview h1{font-size:18px}
   .mdw-lp-view h2,.mdw-preview h2{font-size:15px}

@@ -66,7 +66,10 @@
 }
 .mdw-lp{flex:1;min-height:0;overflow:auto;background:var(--paper,#fff)}
 .mdw-lp-sheet{
-  max-width:720px;margin:0 auto;padding:28px 36px 72px;min-height:100%;box-sizing:border-box;
+  /* 左留白 52px 是给块侧栏（mdw-block-rail，宽 38px）留的悬停区：
+     反馈 #249「侧栏按钮离输入框太近」——36px 连侧栏本身都装不下（右缘压进正文 4px），
+     52 = 38(侧栏) + 8(与正文的间隙) + 6(不被 .mdw-lp overflow:auto 裁掉的余量) */
+  max-width:720px;margin:0 auto;padding:28px 36px 72px 52px;min-height:100%;box-sizing:border-box;
 }
 /* 彻底盖过全局 input/textarea:focus 的边框+光晕（编辑行零 chrome） */
 .mdw-lp input.mdw-lp-title,
@@ -331,9 +334,12 @@
 
 /* ─── 块侧栏（BlockNote 口径）：悬停/聚焦露出「⋮⋮ 把手 + ＋ 插入」 ───
    绝对定位挂在块容器里，不参与排版——块的盒高与点进编辑态的度量都不受影响
-   （#31 的「点块不跳行高」约束仍然成立）。 */
+   （#31 的「点块不跳行高」约束仍然成立）。
+   水平几何契约（反馈 #249：不得贴着/压住输入框）：
+   侧栏总宽 38px（18+2+18），left:-46px → 右缘距正文 8px 真实间隙；
+   sheet 左留白 52px（见 .mdw-lp-sheet）→ 左缘还有 6px 余量，不会被裁。 */
 .mdw-block-rail{
-  position:absolute;left:-34px;top:0;
+  position:absolute;left:-46px;top:0;
   display:flex;align-items:center;gap:2px;
   opacity:0;pointer-events:none;
   transition:opacity .12s ease;
@@ -359,7 +365,5 @@
 .mdw-block-menu{min-width:158px}
 .mdw-fmt-menu-item:disabled{opacity:.4;cursor:default}
 .mdw-fmt-menu-item:disabled:hover{background:none}
-/* 窄面板：左侧没有留白可借，侧栏改挂块的右上角 */
-@media (max-width:720px){
-  .mdw-block-rail{left:auto;right:0;top:-10px}
-}
+/* 旧版窄屏会把侧栏改挂块右上角（压着输入框，反馈 #249 拿掉）：
+   现在左留白全断点保 52px（见 .mdw-lp-sheet 与 panels.css 容器查询），侧栏恒挂左侧。 */

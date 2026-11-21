@@ -38,6 +38,8 @@ export const DIR_MODULES: ToolModule[] = [
   { id: 'plan', label: '草稿态', icon: 'pin', section: 'bar' },
   { id: 'more', label: '更多', icon: 'dots', section: 'bar', noHide: true },
   { id: 'refs', label: '查看列表', icon: 'list', section: 'more' },
+  // #165：持续 get（waitgoal）配置收进 topic 主页「更多」——按主题粒度控制，不再放仓库管理页
+  { id: 'getloop', label: '持续 get', icon: 'refresh', section: 'more' },
 ];
 
 export const GROUP_MODULES: ToolModule[] = [

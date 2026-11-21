@@ -21,6 +21,7 @@ import type { SearchContext } from '../../modules/board/task-search.js';
 import { contextOf } from '../../modules/board/task-search.js';
 import type { LocalTask, LocalTopic, RepoRow } from '../../types.js';
 import { useApp } from '../../app-context.jsx';
+import GetLoopModal from '../../components/repos/get-loop-modal.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { setPlanStatus } from './api.js';
 
@@ -158,6 +159,12 @@ export default function Landing({
   // 拖拽态走 **ref**（同步可读）——dragstart/dragover 在真实拖拽里也只隔几毫秒，
   // state 那一拍渲染延迟会让 onDragOver 读到旧值直接 return（与侧栏 drag.js 同一教训）。
   const dragRef = useRef<{ id: number } | null>(null);   // { id }
+
+  // #165：持续 get（waitgoal）配置——收进本页「更多」，按主题（仓库）粒度控制
+  const [glOpen, setGlOpen] = useState(false);
+  const glOn = !!(repo && repo.getLoop && repo.getLoop.enabled);
+  const glMinutes = repo && repo.getLoop && repo.getLoop.waitMinutes !== undefined && repo.getLoop.waitMinutes !== null
+    ? Number(repo.getLoop.waitMinutes) : null;
   const [dragId, setDragId] = useState<number | null>(null); // 仅视觉：正在拖的行
   const [dropAt, setDropAt] = useState<{ id: number; zone: DropZone } | null>(null); // 仅视觉：{ id, zone }
   const [picked, setPicked] = useState<Set<number>>(() => new Set()); // 多选：任务 id 集合
@@ -457,6 +464,7 @@ export default function Landing({
               progress: '打开这个目录的进程面板',
               more: '更多操作',
               refs: '查看文档 / reference 列表',
+              getloop: glOn ? `持续 get：开（每轮阻塞 ${glMinutes ?? 10} 分钟）` : '持续 get：关（点了开起阻塞等待）',
               plan: '选中任务后：待领取 ↔ 草稿（草稿不进 get/wait 队列；行尾 ⋯ 菜单也能单条切换）',
             }}
             renderers={{
@@ -495,6 +503,19 @@ export default function Landing({
                   </button>
                 </span>
               ),
+              // #165：持续 get 开/关状态直读（配置弹窗点开改）
+              getloop: () => (
+                <button
+                  type="button"
+                  className="btn small ghost"
+                  title={glOn
+                    ? `持续 get 已开启：agent 领完任务没活时会阻塞等待（每轮 ${glMinutes ?? 10} 分钟）——点这里去配置/关闭`
+                    : '持续 get 未开启：开启后 agent 领完任务没活会自动唤起阻塞等待——点这里配置'}
+                  onClick={() => setGlOpen(true)}
+                >
+                  {glOn ? `持续 get：开（${glMinutes ?? 10} 分钟）` : '持续 get：关'}
+                </button>
+              ),
             }}
             actions={{
               new: onNew,
@@ -502,6 +523,7 @@ export default function Landing({
               progress: onProg,
               orch: onOpenFlow,
               refs: onRefs,
+              getloop: () => setGlOpen(true),
               plan: () => {
                 if (!planTargets.length) {
                   toast('先勾选任务：待领取可转草稿，草稿可转回待领取（行尾 ⋯ 菜单也能单条切换）');
@@ -511,6 +533,14 @@ export default function Landing({
               },
             }}
           />
+
+          {glOpen && repo ? (
+            <GetLoopModal
+              repo={repo}
+              onClose={() => setGlOpen(false)}
+              onSaved={() => app.refreshRepos?.()}
+            />
+          ) : null}
         </>
       }
     >

@@ -154,7 +154,6 @@ export interface RepoActs {
   edit: (r: RepoRecord) => void;
   del: (r: RepoRecord) => void;
   remote: (r: RepoRecord) => void;
-  getloop: (r: RepoRecord) => void;
   docs: (r: RepoRecord) => void;
   filter: (id: string) => void;
   gotoRefRepo: (key: string) => void;
@@ -279,15 +278,7 @@ function RepoRow({ r, mode, filterBoard, refRepoChipsByRepo, acts }: {
         <strong>
           {r.icon ? <span className="rp-icon" aria-hidden>{r.icon}</span> : null}
           {r.name}
-          {/* #145：持续 get 已开启 → 行名绿点（一眼可见；配置在行内「更多 → 持续 get」） */}
-          {r.getLoop && r.getLoop.enabled ? (
-            <span
-              className="rp-gl-dot"
-              title={`持续 get 已开启（${Number(r.getLoop.waitMinutes) > 0 ? `${Number(r.getLoop.waitMinutes)} 分钟阻塞窗口` : '不阻塞，没活立即返回'}）`}
-              aria-label="持续 get 已开启"
-            />
-          ) : null}
-        </strong>
+          </strong>
         <span className="mono rp-name-path"><RepoPath path={r.path} /></span>
       </td>
       {/* 文档列 = 这个仓库全部文档的入口：查看详情 → 右侧栏文档列表 */}
@@ -332,25 +323,15 @@ function RepoRow({ r, mode, filterBoard, refRepoChipsByRepo, acts }: {
             edit: () => <Button small onClick={() => acts.edit(r)}><span className="rp-btn-ico"><IconEdit size={12} /></span>编辑</Button>,
             open: () => <Button small title="在文件管理器中打开" onClick={() => acts.open(r)}><span className="rp-btn-ico"><IconOpen size={12} /></span>打开</Button>,
             del: () => <Button small danger onClick={() => acts.del(r)}><span className="rp-btn-ico"><IconTrash size={12} /></span>删除</Button>,
-            getloop: () => (
-              <Button small title="持续 get（waitgoal）配置" onClick={() => acts.getloop(r)}>
-                <span className="rp-gl-menu-it">
-                  {r.getLoop && r.getLoop.enabled ? <span className="rp-gl-dot" aria-hidden /> : null}
-                  持续 get…
-                </span>
-              </Button>
-            ),
             remote: () => <Button small onClick={() => acts.remote(r)}>对齐 remote</Button>,
           }}
           actions={{
             edit: () => acts.edit(r),
             open: () => acts.open(r),
             del: () => acts.del(r),
-            getloop: () => acts.getloop(r),
             remote: () => acts.remote(r),
           }}
           titles={{
-            getloop: '持续 get（waitgoal）配置',
             remote: 'key 与远程 git 地址对齐',
             del: '删除仓库登记（磁盘文件不受影响）',
           }}

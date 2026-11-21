@@ -14,14 +14,14 @@ import { useApp } from '../../app-context.jsx';
 import { Button } from '../../components/button/index.jsx';
 import { Modal } from '../../components/popup/index.jsx';
 import { updateRepo } from '../../page/repos/api.js';
-import type { RepoRecord } from '../../page/repos/repo-table.js';
+import type { RepoRow } from '../../types.js';
 
 /** 阻塞窗口的兜底值（与服务端 GET_LOOP_DEFAULT_MINUTES 同口径）。 */
 const DEFAULT_MINUTES = 10;
 
 export interface GetLoopModalProps {
-  /** 仓库记录（含 getLoop） */
-  repo: RepoRecord;
+  /** 仓库记录（含 getLoop；#165 起 topic 主页也开这个弹窗——id 缺失时只读提示，不可保存） */
+  repo: RepoRow & { id?: string };
   /** 关闭弹窗 */
   onClose: () => void;
   /** 保存成功后的回灌（刷仓库列表） */
@@ -48,6 +48,8 @@ export default function GetLoopModal({ repo, onClose, onSaved }: GetLoopModalPro
   };
 
   const save = async (override?: { enabled?: boolean }) => {
+    // #165：topic 主页（全局池 / 未登记目录）没有仓库 id——只读提示，不给保存
+    const repoId = String((repo as RepoRow & { id?: string }).id ?? '');
     setBusy(true);
     try {
       const enabled = override && override.enabled !== undefined ? override.enabled : on;
@@ -55,7 +57,7 @@ export default function GetLoopModal({ repo, onClose, onSaved }: GetLoopModalPro
       // （`get-loop` / `get-loop-minutes`，与生成客户端 client.generated.ts 同款）。
       // camelCase 的 getLoop 不在契约里，zod 会**静默剥掉**——#145 起弹窗一直这么发，
       // 于是「保存成功」但落库纹丝不动（#182 探针抓个正着）。
-      await updateRepo(repo.id, {
+      await updateRepo(repoId, {
         'get-loop': enabled ? 'on' : 'off',
         ...(enabled ? { 'get-loop-minutes': minutesOf(minutes) } : {}),
       });

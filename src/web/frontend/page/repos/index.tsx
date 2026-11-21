@@ -25,7 +25,6 @@ import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { RowMenu, useDialog } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
 import TransferPanel from '../../components/repos/transfer-panel.jsx';
-import GetLoopModal from '../../components/repos/get-loop-modal.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import { openPanel } from '../../workspace.js';
 import { useApp } from '../../app-context.jsx';
@@ -117,7 +116,6 @@ export default function ReposView() {
   const [refBindOpen, setRefBindOpen] = useState<Record<string, boolean>>({});
   const [impBoardId, setImpBoardId] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
-  const [glFor, setGlFor] = useState<RepoRecord | null>(null);
   const [remoteFor, setRemoteFor] = useState<RepoRecord | null>(null);
   const [bindRepoFor, setBindRepoFor] = useState<RepoRecord | null>(null);
 
@@ -323,7 +321,6 @@ export default function ReposView() {
       }
       setRemoteFor(r);
     },
-    getloop: (r) => setGlFor(r),
     docs: (r) => openRepoDocs(r),
     filter: (id) => changeBranch(id),
     gotoRefRepo: (key) => { setRefRepoFocus(key); setRefOpen(true); },
@@ -573,14 +570,6 @@ export default function ReposView() {
           onChanged={reload.all}
           repos={repos}
           boards={boardList}
-        />
-      ) : null}
-
-      {glFor ? (
-        <GetLoopModal
-          repo={repos.find((x) => x.id === glFor.id) || glFor}
-          onClose={() => setGlFor(null)}
-          onSaved={loadRepos}
         />
       ) : null}
 

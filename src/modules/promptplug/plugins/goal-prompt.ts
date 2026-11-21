@@ -22,7 +22,7 @@ import { formatDuration, renderInstruction } from '../../../core/instruction-tem
 export const TASK_GOAL_PROMPT_TEMPLATE = [
   '本任务带时间目标（领取即计时，持续 {{goal.durationHuman}}）。',
   '- 每轮推进先执行：nx-kv timegoal check --task {{goal.goalKey}} --summary "<本轮现状>"',
-  '- 时间未到不得标记完成——应派出 sub agent 重新提出新的需求，再继续推进。',
+  '- 时间未到不得标记完成——应派出 sub agent 重新提出新的需求，再继续推进。不允许 进行sleep空转, 不允许放弃问题',
   '- check 返回 reached:true 后才允许：nx-kv localtask done --id {{task.id}} --summary "<完成总结>"',
   '{{#if goal.extra}}',
   '附加要求（发布方）：',

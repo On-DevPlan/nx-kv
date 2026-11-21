@@ -113,12 +113,12 @@ test('repos default (#147): bar has add/more only; boards/refs/transfer in more'
   assert.equal(onBarOf('repos', forced.find((x) => x.id === 'add')), true);
 });
 
-test('repos-row default (#148): bar has edit/open/del/more; getloop/remote in more', () => {
+test('repos-row default (#148 + #165): bar has edit/open/del/more; remote in more（getloop 迁 topic 主页）', () => {
   const layout = defaultLayout('repos-row');
   const bar = layout.filter((x) => onBarOf('repos-row', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('repos-row', x)).map((x) => x.id);
   assert.deepEqual(bar, ['edit', 'open', 'del', 'more']);
-  assert.deepEqual(more, ['getloop', 'remote']);
+  assert.deepEqual(more, ['remote']);
   // 更多本身不可收纳；del 可收进更多（编排自由）
   const hidden = setVisible(layout, 'del', false, 'repos-row');
   assert.equal(inMoreOf('repos-row', hidden.find((x) => x.id === 'del')), true);

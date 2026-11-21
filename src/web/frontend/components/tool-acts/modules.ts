@@ -100,14 +100,13 @@ export const REPOS_MODULES: ToolModule[] = [
   { id: 'transfer', label: '导入导出', icon: 'transfer', section: 'more', menuGroup: 'manage' },
 ];
 
-// 仓库表**行内**动作（#148）：默认布局与旧版一致（编辑/打开/删除上栏 + 更多收纳
-// 持续 get / 对齐 remote），五个动作全部可编排（kind=repos-row）。
+// 仓库表**行内**动作（#148）：默认布局与旧版一致（编辑/打开/删除上栏 + 更多收纳对齐 remote）。
+// #165：getloop 条目删除——持续 get 配置收进 topic 主页「更多」，仓库行不再提供入口。
 export const REPOS_ROW_MODULES: ToolModule[] = [
   { id: 'edit', label: '编辑', icon: 'edit', section: 'bar' },
   { id: 'open', label: '打开', icon: 'open', section: 'bar' },
   { id: 'del', label: '删除', icon: 'trash', section: 'bar', danger: true },
   { id: 'more', label: '更多', icon: 'dots', section: 'bar', noHide: true },
-  { id: 'getloop', label: '持续 get…', icon: 'refresh', section: 'more', menuGroup: 'repo' },
   { id: 'remote', label: '对齐 remote', icon: 'remote', section: 'more', menuGroup: 'repo' },
 ];
 

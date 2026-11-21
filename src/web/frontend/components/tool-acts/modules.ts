@@ -49,6 +49,9 @@ export const GROUP_MODULES: ToolModule[] = [
   { id: 'orch', label: '编排', icon: 'flow', section: 'bar' },
   { id: 'more', label: '更多', icon: 'dots', section: 'bar', noHide: true },
   { id: 'refs', label: '查看列表', icon: 'list', section: 'more' },
+  // #250：与 dir 页对齐——持续 get 进组页「更多」。组横跨多个成员仓库，
+  // 落地形态是「先选成员项目、再开同一颗 GetLoopModal」（getLoop 是仓库级配置）。
+  { id: 'getloop', label: '持续 get', icon: 'refresh', section: 'more' },
 ];
 
 // MD 任务编辑器工具区（#143）：默认头栏只留 新任务 / 提交 / 更多；

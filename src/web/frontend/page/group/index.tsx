@@ -25,12 +25,14 @@ import { reorderTask } from './api.js';
 import { openPanel } from '../../workspace.js';
 import { openTemplateEditor } from '../../panels.jsx';
 import ToolActsBar from '../../components/tool-acts/bar.jsx';
+import GetLoopMembersMenu from '../../components/repos/get-loop-members.js';
+import GetLoopModal from '../../components/repos/get-loop-modal.js';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
 import { hitTaskQuery, contextOf } from '../../modules/board/task-search.js';
 import { putManageSession } from '../../modules/md/manage-session.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
-import type { LocalTask, LocalTopic, RepoData } from '../../types.js';
+import type { LocalTask, LocalTopic, RepoData, RepoRow } from '../../types.js';
 import type { Model } from 'flexlayout-react';
 import type { BoardRecord } from '../repos/repo-table.js';
 
@@ -134,6 +136,11 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   const [addOpen, setAddOpen] = useState(false);
   // #151：组页「新增任务」下拉改为与目录页同款 PopMenu（对齐 repo 版口径）
   const [tplMenu, setTplMenu] = useState<{ x: number; y: number } | null>(null);
+  // #250：组页「持续 get」（与 dir 对齐）——先在点击处弹成员子菜单（组横跨多仓库，
+  // getLoop 是仓库级配置），选中成员再开配置弹窗。两个状态都在**页面层**：
+  // PopMenu 条目点击是「先 onClose 再 onClick」，选中状态放组件内部会随卸载丢掉。
+  const [glMenu, setGlMenu] = useState<{ x: number; y: number } | null>(null);
+  const [glRepo, setGlRepo] = useState<RepoRow | null>(null);
 
   const board = useMemo(
     () => boards.find((b) => b.id === dirKey) || boards.find((b) => b.key === dirKey) || null,
@@ -490,6 +497,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
               addMember: '挑项目加进这个组',
               orch: '打开可视化编排面板',
               refs: '查看文档 / reference 列表',
+              getloop: '按成员项目配置持续 get（选一个项目去开/关）',
             }}
             labels={{
               more: '更多',
@@ -566,8 +574,44 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
                   location: 'right',
                 });
               },
+              // #250：持续 get 与 dir 页对齐。组没有单一仓库可言——在点击处弹
+              // 成员子菜单（每行带开/关状态），选中成员才开配置弹窗。
+              getloop: (e) => {
+                const hasTarget = items.some((it) => {
+                  const r = repos.find((x) => x.key === it.key);
+                  return !!(r && r.id);
+                });
+                if (!hasTarget) {
+                  toast('这个组还没有已登记本机的成员项目——先「添加成员」，持续 get 按项目配置');
+                  return;
+                }
+                if (!e) return;
+                setGlMenu({ x: e.clientX, y: e.clientY });
+              },
             }}
           />
+
+          {/* #250：持续 get 的成员子菜单 + 配置弹窗（与 dir 页同一颗 GetLoopModal） */}
+          {glMenu && !glRepo && (
+            <GetLoopMembersMenu
+              x={glMenu.x}
+              y={glMenu.y}
+              members={items}
+              repos={repos}
+              onPick={(r) => {
+                setGlMenu(null);
+                setGlRepo(r);
+              }}
+              onClose={() => setGlMenu(null)}
+            />
+          )}
+          {glRepo && (
+            <GetLoopModal
+              repo={glRepo as RepoRow & { id?: string }}
+              onClose={() => setGlRepo(null)}
+              onSaved={() => app.refreshRepos && app.refreshRepos()}
+            />
+          )}
         </>)
       }
     >

@@ -22,13 +22,17 @@ test('dir default: bar has new/import/progress/orch/plan/more; refs + getloop in
   assert.ok(!norm.some((x) => x.id === 'tpl'));
 });
 
-test('group default: bar has new/progress/addMember/orch/more; refs in more', () => {
+test('group default: bar has new/progress/addMember/orch/more; refs + getloop in more', () => {
   const layout = defaultLayout('group');
   const bar = layout.filter((x) => onBarOf('group', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('group', x)).map((x) => x.id);
   assert.deepEqual(bar, ['new', 'progress', 'addMember', 'orch', 'more']);
-  // #180：两页都去掉了「已删除任务」入口，更多里只剩「查看列表」
-  assert.deepEqual(more, ['refs']);
+  // #180：两页都去掉了「已删除任务」入口；#250：getloop 进更多（与 dir 页对齐，
+  // 组粒度先选成员项目再开配置弹窗）
+  assert.deepEqual(more, ['refs', 'getloop']);
+  // 老布局里没有 getloop → normalizeLayout 自动补上（否则老用户看不到入口）
+  const norm = normalizeLayout('group', layout.filter((x) => x.id !== 'getloop'));
+  assert.deepEqual(norm.filter((x) => inMoreOf('group', x)).map((x) => x.id), ['refs', 'getloop']);
 });
 
 test('task default: bar has new/submit/more; secondary actions in more', () => {

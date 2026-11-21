@@ -1,7 +1,7 @@
 // 可编排工具区（#139）：按 layout 渲染；隐藏项进「更多」；底部「编排工具区…」。
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { ReactNode } from 'react';
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { inMoreOf, metaOf, onBarOf } from './modules.js';
 import { useToolActsLayout } from './use-layout.js';
 import ToolActsLayoutPanel from './layout-panel.jsx';
@@ -12,8 +12,8 @@ import './style.css';
 export interface ToolActsBarProps {
   kind: string;
   renderers?: Record<string, ((ctx: { open: boolean }) => ReactNode) | undefined>;
-  /** 无自定义 render 时的点击（调用方的 handler 常是可选的，缺省即不挂） */
-  actions?: Record<string, (() => void) | undefined>;
+  /** 无自定义 render 时的点击（#250 起带上点击事件——组页「持续 get」要在点击处弹成员子菜单） */
+  actions?: Record<string, ((e?: ReactMouseEvent<HTMLButtonElement>) => void) | undefined>;
   titles?: Record<string, string | undefined>;
   disabled?: Record<string, boolean | undefined>;
   /** 覆盖模块表 label（如「更多 (3)」） */
@@ -24,7 +24,7 @@ export interface ToolActsBarProps {
 /**
  * @param {'dir'|'group'} kind
  * @param {Record<string, (ctx:{open:boolean}) => import('react').ReactNode>} renderers
- * @param {Record<string, () => void>} [actions] 无自定义 render 时的点击
+ * @param {Record<string, (e?) => void>} [actions] 无自定义 render 时的点击（e = 触发点击，可取坐标弹子菜单）
  * @param {Record<string, string>} [titles]
  * @param {Record<string, boolean>} [disabled]
  * @param {Record<string, string>} [labels] 覆盖模块表 label（如「更多 (3)」）
@@ -78,7 +78,7 @@ export default function ToolActsBar({
         className={opts.primary ? 'btn small primary' : 'btn small ghost'}
         title={titles[id] || labelOf(id)}
         disabled={!!disabled[id]}
-        onClick={() => actions[id] && actions[id]()}
+        onClick={(e) => actions[id] && actions[id](e)}
       >
         {m.icon ? <Icon name={m.icon} /> : null}
         {labelOf(id)}
@@ -139,10 +139,10 @@ export default function ToolActsBar({
                 className="ta-more-it"
                 disabled={!!disabled[x.id]}
                 title={titles[x.id] || labelOf(x.id)}
-                onClick={() => {
+                onClick={(e) => {
                   setMoreOpen(false);
                   const act = actions[x.id];
-                  if (act) act();
+                  if (act) act(e);
                 }}
               >
                 {m.icon ? <Icon name={m.icon} /> : null}

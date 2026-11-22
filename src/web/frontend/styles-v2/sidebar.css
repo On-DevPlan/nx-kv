@@ -22,6 +22,8 @@
 /* 搜索行：sbox 显式定高（28px 偏高 → 24px），「+」flex:none 永不被挤掉；
    kwcount 是辅助信息，先于「+」收缩（省略号兜底），行内放不下再按容器宽度藏。 */
 .searchrow {
+}
+
 /* #181：命名空间切换器（参考 UI：精致 pill 按钮 + 筛选面板 + 计数 + 当前✓） */
 .ns-picker { position: relative; display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; }
 .ns-picker-btn { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
@@ -67,6 +69,8 @@
 .sfoot-tools .iconbtn { width: 24px; height: 24px; border: 0; border-radius: 5px; background: transparent;
   color: var(--ink-2, #6B7078); display: inline-flex; align-items: center; justify-content: center; }
 .sfoot-tools .iconbtn:hover { background: var(--soft, #F4F6F4); color: var(--ink, #16181C); }
+
+.searchrow {
 /* #174：侧栏视图下拉（分区 / 运行中）——窄栏下 ellipsis，不挤压搜索框 */
 .sb-ns-row { gap: 6px; }
 .sb-ns-pick { flex: 0 1 auto; min-width: 0; max-width: 120px; }

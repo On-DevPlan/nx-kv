@@ -21,6 +21,8 @@ export const UNGROUPED_KEY = '__UNGROUPED__';
 export const ACTIVE_KEY = '__ACTIVE__';
 /** #179：「全部分区」概览视图（分区头 + 成员平铺，拖动/管理的唯一场所）。默认不是它。 */
 export const ALL_KEY = '__ALL__';
+/** #180+：内置「全部 topic」视图——所有仓库/分组各出现一次（无分区头、无重复）。 */
+export const ALL_TOPICS_KEY = '__ALL_TOPICS__';
 
 /**
  * 侧栏一行（仓库 / 看板 / 全局池）。字段按 type 选择性出现：
@@ -340,6 +342,11 @@ export function buildTree(
   if (effective === ACTIVE_KEY && !q) {
     // dynamic「运行中」：有任务（待领取或等待回填）的仓库/看板——替代全部目录总览的用途
     out.push(...sorted.filter((r) => (r.type === 'repo' || r.type === 'board') && ((r.pending || 0) > 0 || r.waiting)));
+    return { rows: out, matchCount: 0 };
+  }
+  // 「全部 topic」视图：所有仓库/分组各一次（不按 ns 分组、不重复）——无分区头
+  if (effective === ALL_TOPICS_KEY && !q) {
+    out.push(...sorted.filter((r) => r.type === 'repo' || r.type === 'board'));
     return { rows: out, matchCount: 0 };
   }
   // 概览（ALL_KEY）之外的一切 focus 都是「切到一个命名空间」：干净成员列表，无分区头

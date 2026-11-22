@@ -2,7 +2,7 @@
 // 下拉选一个 → 侧栏只显示该命名空间的仓库/分组（无分区头行）；另有「运行中」「未分组」
 // 两个内置视图与「全部分区（概览）」（拖动/管理的场所）。
 import { DropdownButton } from '../button/index.js';
-import { ACTIVE_KEY } from './model.js';
+import { ACTIVE_KEY, ALL_TOPICS_KEY } from './model.js';
 import type { SidebarNs } from '../../types.js';
 
 export interface NsPickerProps {
@@ -24,11 +24,13 @@ export default function NsPicker({ namespaces = [], focusNs = '', onFocus, onNew
   const list = Array.isArray(namespaces) ? namespaces : [];
   // #179：默认聚焦第一个命名空间（model 同口径）——标签跟着解析后的实际视图走
   const effective = list.length ? (focusNs || list[0]!.id) : '';
-  const label = !list.length
-    ? '全部分区'
-    : effective === ACTIVE_KEY
-      ? '运行中'
-      : (list.find((n) => n.id === effective)?.name || '运行中');
+  const label = effective === ALL_TOPICS_KEY
+    ? '全部 topic'
+    : !list.length
+      ? '全部 topic'
+      : effective === ACTIVE_KEY
+        ? '运行中'
+        : (list.find((n) => n.id === effective)?.name || '全部 topic');
   const isNs = list.some((n) => n.id === effective);
   return (
     <span
@@ -45,6 +47,7 @@ export default function NsPicker({ namespaces = [], focusNs = '', onFocus, onNew
         label={label}
         items={[
           ...list.map((n) => ({ key: n.id, label: n.name })),
+          { key: ALL_TOPICS_KEY, label: '全部 topic' },
           { key: ACTIVE_KEY, label: '运行中（有任务）' },
           { key: '__MANAGE__', label: '管理命名空间…' },
           { key: '__NEW__', label: '＋ 新建命名空间…' },

@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildTree, rKey, UNGROUPED_KEY, ACTIVE_KEY, ALL_KEY,
+  buildTree, rKey, UNGROUPED_KEY, ACTIVE_KEY, ALL_KEY, ALL_TOPICS_KEY,
 } from '../../src/web/frontend/components/sidebar/model.js';
 
 const repos = [
@@ -98,4 +98,19 @@ test('#180 多归属：同一条目在两个 ns 的聚焦视图里都能看到',
     const t = buildTree(repos, boards, topics, { ...prefs, focusNs: nsId }, '');
     assert.ok(t.rows.some((r) => r.key === shared), `在 ${nsId} 里可见`);
   }
+});
+
+test('#180+ 「全部 topic」视图：所有仓库/分组各一次、无分区头、无重复', () => {
+  const prefs = {
+    namespaces: [
+      { id: 'ns_a', name: 'A', items: ['github.com/a/one'] },
+      { id: 'ns_b', name: 'B', items: ['github.com/a/one', 'github.com/a/two'] }, // one 多归属
+    ],
+    focusNs: ALL_TOPICS_KEY,
+  };
+  const t = buildTree(repos, boards, topics, prefs, '');
+  assert.ok(!t.rows.some((r) => r.type === 'ns'), '无分区头');
+  const keys = t.rows.filter((r) => r.type === 'repo' || r.type === 'board').map((r) => rKey(r));
+  assert.deepEqual([...new Set(keys)].sort(), keys.sort(), '每个 topic 只一次');
+  assert.equal(keys.length, 4, '3 仓库 + 1 分组全在');
 });

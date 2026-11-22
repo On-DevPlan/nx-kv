@@ -346,7 +346,7 @@ export interface ApiClient {
   show(input: z.input<InstanceType<typeof LocaltaskShowAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskShowAction>['run']>>>;
 /** 恢复一条被删除（软删除）的任务（撤销删除） */
   restore(input: z.input<InstanceType<typeof LocaltaskTaskRestoreAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTaskRestoreAction>['run']>>>;
-/** 看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领/组标注），不含正文 */
+/** 看一个主题的任务清单（按 --key 或 --cwd 定位）：--q 关键字过滤、--limit 只取最新 N 条（时间倒序）；只回列表字段（含各时间戳/轮次/总结），不含正文 */
   tasks(input?: z.input<InstanceType<typeof LocaltaskTasksAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTasksAction>['run']>>>;
 /** 查看任务级时间目标的每轮 check 记录（时间、已用/剩余、是否到点、当轮总结） */
   timegoalLog(input: z.input<InstanceType<typeof LocaltaskTimegoalLogAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTimegoalLogAction>['run']>>>;
@@ -1122,6 +1122,8 @@ export function createApiClient(transport: Transport): ApiClient {
       if (inp["key"] !== undefined) q.set("key", String(inp["key"]));
       if (inp["cwd"] !== undefined) q.set("cwd", String(inp["cwd"]));
       if (inp["status"] !== undefined) q.set("status", String(inp["status"]));
+      if (inp["q"] !== undefined) q.set("q", String(inp["q"]));
+      if (inp["limit"] !== undefined) q.set("limit", String(inp["limit"]));
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskTasksAction>['run']>>;

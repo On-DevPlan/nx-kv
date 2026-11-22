@@ -21,6 +21,8 @@ const input = z.object({
   key: z.string().optional().describe('主题键（board/xxx 或 group/xxx）'),
   cwd: z.string().optional().describe('主题绑定的工作目录（不给 --key 时用它定位；都不给=当前目录）'),
   status: z.string().optional().describe('只看某个状态：pending / claimed / done / cancelled'),
+  q: z.string().optional().describe('关键字过滤：命中标题或正文的任务（大小写不敏感）'),
+  limit: z.int().optional().describe('只返回最新的 N 条（按 createdAt 倒序；冲突/重复看最新一条即可）'),
 });
 
 /**
@@ -74,11 +76,11 @@ export class LocaltaskTasksAction extends ActionBase<typeof input> {
     id: 'localtask.tasks',
     cli: ['localtask', 'tasks'],
     http: ['GET', '/api/localtasks/tasks'],
-    summary: '看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领/组标注），不含正文',
+    summary: '看一个主题的任务清单（按 --key 或 --cwd 定位）：--q 关键字过滤、--limit 只取最新 N 条（时间倒序）；只回列表字段（含各时间戳/轮次/总结），不含正文',
     input,
     output,
     render: (d: any) => {
-      const head = `${d.name}（${d.key}）· ${d.tasks.length}/${d.total} 条`;
+      const head = `${d.name}（${d.key}）· ${d.tasks.length}/${d.total} 条${d.tasks.length && d.tasks[0].createdAt && d.tasks.length < d.total ? '（最新优先）' : ''}`;
       const rows = d.tasks.map(
         // 组任务在 CLI 上也标出来：同一条队列里混着项目任务与组任务，不标就分不清
         (t: any) => `  #${t.id} [${t.status}] 第${t.round}轮${t.board ? `（组 ${t.board}）` : ''} ${t.title}`,
@@ -97,12 +99,25 @@ export class LocaltaskTasksAction extends ActionBase<typeof input> {
     }
     const all = (topic.tasks ?? []).filter((t: any) => !t.deletedAt && !t.archivedAt);
     const filtered = ctx.status ? all.filter((t: any) => t.status === ctx.status) : all;
+    // #173：关键字过滤（标题 + 正文，大小写不敏感）——原始意图检索的入口
+    const q = String(ctx.q ?? '').trim().toLowerCase();
+    const kwMatched = q
+      ? filtered.filter((t: any) =>
+          String(t.text ?? '').toLowerCase().includes(q) || titleOf(t.text).toLowerCase().includes(q))
+      : filtered;
+    // limit = 「最新 N 条」：按 createdAt 倒序截断（冲突/重复场景取最新一条即可）
+    const limited =
+      ctx.limit != null && Number.isFinite(Number(ctx.limit)) && Number(ctx.limit) > 0
+        ? [...kwMatched]
+            .sort((a: any, b: any) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+            .slice(0, Math.floor(Number(ctx.limit)))
+        : kwMatched;
     return {
       key: topic.key,
       name: topic.name,
       cwd: topic.cwd,
       total: all.length,
-      tasks: filtered.map((t: any) => ({
+      tasks: limited.map((t: any) => ({
         id: t.id,
         status: t.status,
         title: titleOf(t.text),

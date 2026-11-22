@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.65.4",
-  "hash": "e34a218bfcbcdedd",
+  "hash": "dc4af5888bf581c7",
   "actions": [
     {
       "id": "localtask.add",
@@ -1272,6 +1272,20 @@
           "positional": false,
           "required": false,
           "hint": "只看某个状态：pending / claimed / done / cancelled"
+        },
+        {
+          "name": "q",
+          "kind": "string",
+          "positional": false,
+          "required": false,
+          "hint": "关键字过滤：命中标题或正文的任务（大小写不敏感）"
+        },
+        {
+          "name": "limit",
+          "kind": "number",
+          "positional": false,
+          "required": false,
+          "hint": "只返回最新的 N 条（按 createdAt 倒序；冲突/重复看最新一条即可）"
         }
       ],
       "output": {
@@ -1417,7 +1431,7 @@
           }
         ]
       },
-      "summary": "看一个主题的任务清单（按 --key 或 --cwd 定位）：只回列表需要的字段（标题/状态/轮次/可领/组标注），不含正文"
+      "summary": "看一个主题的任务清单（按 --key 或 --cwd 定位）：--q 关键字过滤、--limit 只取最新 N 条（时间倒序）；只回列表字段（含各时间戳/轮次/总结），不含正文"
     },
     {
       "id": "localtask.update",

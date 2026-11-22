@@ -2,6 +2,8 @@
 // 抽成组件是为了让 index.tsx 只留一行接线（行数门禁），业务回调全部走 props。
 import NsFormModal, { type NsFormState } from './ns-modal.js';
 import NsAddModal, { type NsCandidate } from './ns-add-modal.js';
+import NsManageModal from './ns-manage-modal.js';
+import type { SidebarNs } from '../../types.js';
 
 export interface NsDialogsProps {
   /** 新建/重命名表单（null = 关闭） */
@@ -15,6 +17,16 @@ export interface NsDialogsProps {
   addNsName: string;
   onAddClose: () => void;
   onAdd: (keys: string[]) => void;
+  /** #179：管理弹窗 */
+  manageOpen: boolean;
+  namespaces: SidebarNs[];
+  focusNs?: string;
+  onManageClose: () => void;
+  onRenameNs: (id: string, name: string) => void;
+  onMoveNs: (id: string, dir: -1 | 1) => void;
+  onRemoveNs: (id: string) => void;
+  onNewNs: () => void;
+  onFocusNs: (id: string) => void;
 }
 
 export default function NsDialogs(p: NsDialogsProps) {
@@ -22,6 +34,18 @@ export default function NsDialogs(p: NsDialogsProps) {
     <>
       {p.addFor ? (
         <NsAddModal nsName={p.addNsName} candidates={p.addCandidates} onClose={p.onAddClose} onAdd={p.onAdd} />
+      ) : null}
+      {p.manageOpen ? (
+        <NsManageModal
+          namespaces={p.namespaces}
+          focusNs={p.focusNs}
+          onClose={p.onManageClose}
+          onRename={p.onRenameNs}
+          onMove={p.onMoveNs}
+          onRemove={p.onRemoveNs}
+          onNew={() => { p.onManageClose(); p.onNewNs(); }}
+          onFocus={p.onFocusNs}
+        />
       ) : null}
       {p.form ? <NsFormModal form={p.form} onClose={p.onFormClose} onSave={p.onSave} /> : null}
     </>

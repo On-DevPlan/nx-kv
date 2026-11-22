@@ -91,6 +91,16 @@
 .ns-add-kind.board { background: #EFEAF8; color: #7A5FA8; }
 .ns-add-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .ns-add-where { flex: none; font-size: 11px; color: var(--faint, #8A8F98); }
+/* #179 命名空间切换器旁的 ＋（向当前空间添加成员）与「管理命名空间」弹窗 */
+.sb-ns-add { flex: none; font-size: 12px; line-height: 1; }
+.ns-manage-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; }
+.ns-manage-row.is-on { background: var(--soft-2, #F1F0EC); }
+.ns-manage-name { flex: 1; min-width: 0; text-align: left; border: 0; background: none; cursor: pointer;
+  font: 600 13px/1.6 system-ui, sans-serif; color: var(--ink, #16181C);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ns-manage-name:hover { color: var(--mdw-accent, #2F6F5E); }
+.ns-manage-count { margin-left: 8px; font-weight: 400; font-size: 11px; color: var(--faint, #8A8F98); }
+.ns-manage-acts { flex: none; display: inline-flex; gap: 4px; }
 .trow .tw { width: 14px; flex: none; display: inline-flex; justify-content: center; color: var(--faint); transition: transform 0.15s; }
 /* chevron 现在是「展开/收起」按钮（点行是去看内容）——给它指针与反馈 */
 .trow .tw[role="button"] { cursor: pointer; }

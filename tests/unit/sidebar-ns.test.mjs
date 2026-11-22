@@ -1,8 +1,11 @@
-// 侧边栏 namespace 分区（#167）的纯函数验证：buildTree 的分组渲染。
-// 纯 UI 组织——归组 / 排序 / 置顶 / 折叠全在 prefs.namespaces，数据模型零改动。
+// 侧栏 namespace（#167/#169/#174/#177/#178/#179）的纯函数验证。
+// #179 语义定稿：namespace = **命名空间切换器**——默认聚焦第一个命名空间，
+// 侧栏只列该空间的成员（无分区头行）；「全部分区」仅作概览（拖动/管理场所）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTree, UNGROUPED_KEY, rKey } from '../../src/web/frontend/components/sidebar/model.js';
+import {
+  buildTree, rKey, UNGROUPED_KEY, ACTIVE_KEY, ALL_KEY,
+} from '../../src/web/frontend/components/sidebar/model.js';
 
 const repos = [
   { id: 'r1', key: 'github.com/a/one', name: 'one', path: 'D:/w/one', type: 'repo' },
@@ -12,124 +15,93 @@ const repos = [
 const boards = [{ id: 'b1', key: 'board/组一', name: '组一', repos: [{ key: 'github.com/a/one' }] }];
 const topics = [];
 
-test('无 namespaces → 现状平铺（无 ns 头行）', () => {
+const NS_DATA = { id: 'ns_data', name: '数据', items: ['github.com/a/one'] };
+const NS_MISC = { id: 'ns_misc', name: '杂项', items: ['github.com/a/two', 'board:b1'] };
+
+const names = (t) => t.rows.map((r) => r.name);
+
+test('无 namespaces → 现状平铺（无分区头）', () => {
   const t = buildTree(repos, boards, topics, {}, '');
-  assert.ok(!t.rows.some((r) => r.type === 'ns'), '不出现分区头');
-  // 全局缺失时首行是看板（组一行）
+  assert.ok(!t.rows.some((r) => r.type === 'ns'));
   assert.equal(t.rows[0]?.type, 'board');
 });
 
-test('分区输出：pinned 分区在前（保持数组序），分区内按 items 序，未分区条目进「未分组」', () => {
-  const prefs = {
-    namespaces: [
-      { id: 'ns_2', name: '日常', items: ['github.com/a/three', 'board:b1'] },
-      { id: 'ns_1', name: '核心', items: ['github.com/a/one'], pinned: true },
-    ],
-  };
-  const t = buildTree(repos, boards, topics, prefs, '');
-  const types = t.rows.map((r) => r.type);
-  assert.ok(types.includes('ns'), '出现分区头');
-  // 置顶分区「核心」在最前（全局缺失），随后「日常」，最后未分组
-  const firstNs = t.rows.findIndex((r) => r.type === 'ns');
-  assert.equal(t.rows[firstNs].name, '核心');
-  assert.equal(t.rows[firstNs + 1]?.type, 'repo');
-  assert.equal(t.rows[firstNs + 1]?.key, 'github.com/a/one');
-  const names = t.rows.filter((r) => r.type === 'ns').map((r) => r.name);
-  assert.deepEqual(names, ['核心', '日常', '未分组']);
-  // 未分组区含 two / three？——three 在日常分区、two 未分组：未分区头后是 two
-  const lastNs = t.rows.map((r) => r.name).lastIndexOf('未分组');
-  assert.equal(t.rows[lastNs + 1]?.key, 'github.com/a/two');
+test('#179 默认聚焦第一个命名空间：只列它的成员、不出现分区头', () => {
+  const t = buildTree(repos, boards, topics, { namespaces: [NS_DATA, NS_MISC] }, '');
+  assert.ok(!t.rows.some((r) => r.type === 'ns'), '切换视图不输出分区头');
+  assert.deepEqual(t.rows.filter((r) => r.type === 'repo').map((r) => r.key), ['github.com/a/one']);
+  assert.ok(!names(t).includes('two'), '别的命名空间的成员不出现');
 });
 
-test('折叠分区：头行仍在、成员行不输出', () => {
+test('#179 切换命名空间：focusNs 指到第二个 → 只显示第二个', () => {
+  const t = buildTree(repos, boards, topics, { namespaces: [NS_DATA, NS_MISC], focusNs: 'ns_misc' }, '');
+  const keys = t.rows.map((r) => rKey(r));
+  assert.ok(keys.includes('board:b1'), '分组在');
+  assert.ok(keys.includes('github.com/a/two'), '仓库在');
+  assert.ok(!keys.includes('github.com/a/one'), '第一个命名空间的不出现');
+  assert.ok(!t.rows.some((r) => r.type === 'ns'));
+});
+
+test('#179 「全部分区」概览：分区头 + 成员（pinned 先），未分组收进可折叠区', () => {
   const prefs = {
-    namespaces: [
-      { id: 'ns_1', name: '日常', items: ['github.com/a/one'], collapsed: true },
-      { id: 'ns_2', name: '其它', items: ['github.com/a/two'] },
-    ],
+    namespaces: [NS_MISC, { ...NS_DATA, pinned: true }],
+    focusNs: ALL_KEY,
   };
   const t = buildTree(repos, boards, topics, prefs, '');
   const heads = t.rows.filter((r) => r.type === 'ns');
-  // three 与 board b1 未归分区 → 末尾还有一个「未分组」头
-  assert.deepEqual(heads.slice(0, 2).map((h) => h.name), ['日常', '其它']);
-  assert.equal(heads[2].name, '未分组');
-  // one 被折叠藏起，two 照常
-  const keys = t.rows.map((r) => rKey(r));
-  assert.ok(!keys.includes('github.com/a/one'), '折叠成员不出现');
-  assert.ok(keys.includes('github.com/a/two'));
+  assert.deepEqual(heads.map((h) => h.name), ['数据', '杂项', '未分组'], 'pinned 在前，末尾未分组');
+  assert.equal(heads[2].collapsed, true, '未分组默认折叠');
+  const dataIdx = t.rows.findIndex((r) => r.type === 'ns' && r.name === '数据');
+  assert.equal(t.rows[dataIdx + 1]?.key, 'github.com/a/one', '成员紧跟头行');
 });
 
-test('搜索时平铺（不出现 ns 头行，命中即见）', () => {
-  const prefs = { namespaces: [{ id: 'ns_1', name: '日常', items: ['github.com/a/one'] }] };
-  const t = buildTree(repos, boards, topics, prefs, 'two');
-  assert.ok(!t.rows.some((r) => r.type === 'ns'), '搜索时不折叠');
-  assert.ok(t.rows.some((r) => r.key === 'github.com/a/two'), '未分组成员照常命中');
+test('#179 未分组视图：只列未分区条目（无头行）', () => {
+  const t = buildTree(repos, boards, topics, { namespaces: [NS_DATA, NS_MISC], focusNs: UNGROUPED_KEY }, '');
+  assert.ok(!t.rows.some((r) => r.type === 'ns'));
+  assert.deepEqual(t.rows.filter((r) => r.type === 'repo').map((r) => r.key), ['github.com/a/three']);
 });
 
-test('未分组头行的 key 是 UNGROUPED_KEY，条目数与 pending 汇总在头行', () => {
-  const prefs = { namespaces: [{ id: 'ns_1', name: '全部收走', items: ['github.com/a/one', 'github.com/a/two'] }] };
-  const t = buildTree(repos, boards, topics, prefs, '');
-  const head = t.rows.find((r) => r.key === UNGROUPED_KEY);
-  assert.ok(head, '有未分组头（three 与 board b1 不在分区）');
-  assert.equal(head.count, 2);
-});
-
-// ── #174：视图聚焦（focusNs）与未分组折叠 ─────────────────────────────────
-test('#174 focusNs=ACTIVE：只显示有任务（待领取/等待中）的仓库与看板', async () => {
-  const { ACTIVE_KEY } = await import('../../src/web/frontend/components/sidebar/model.js');
-  const topics = [
+test('#174 运行中视图：只显示有任务（待领取/等待中）的仓库与看板', () => {
+  const topicsBusy = [
     { key: 'tk1', repo: { id: 'r1' }, pending: 2, waiting: false, tasks: [{ id: 1, status: 'pending' }] },
     { key: 'tk3', repo: { id: 'r3' }, pending: 0, waiting: false, tasks: [] },
   ];
-  const t = buildTree(repos, boards, topics, { focusNs: ACTIVE_KEY }, '');
-  const names = t.rows.filter((r) => r.type === 'repo' || r.type === 'board').map((r) => r.name);
-  assert.ok(names.includes('one'), '有待领取的仓库在');
-  assert.ok(!names.includes('three'), '没任务的仓库不出现');
+  const t = buildTree(repos, boards, topicsBusy, { focusNs: ACTIVE_KEY }, '');
+  const list = names(t);
+  assert.ok(list.includes('one'), '有待领取的仓库在');
+  assert.ok(!list.includes('three'), '没任务的不出现');
 });
 
-test('#174 focusNs=分区 id：只显示该分区（展开态）', () => {
-  const prefs = {
-    namespaces: [
-      { id: 'ns_1', name: '核心', items: ['github.com/a/one'], collapsed: true },
-      { id: 'ns_2', name: '其它', items: ['github.com/a/two'] },
-    ],
-    focusNs: 'ns_1',
-  };
-  const t = buildTree(repos, boards, topics, prefs, '');
-  const heads = t.rows.filter((r) => r.type === 'ns');
-  assert.equal(heads.length, 1, '只有一个分区头');
-  assert.equal(heads[0].name, '核心');
-  assert.equal(heads[0].collapsed, false, '聚焦态强制展开');
-  assert.ok(t.rows.some((r) => r.key === 'github.com/a/one'), '成员显示');
-  assert.ok(!t.rows.some((r) => r.name === '每日' || r.key === 'github.com/a/two'), '其它分区不显示');
-});
-
-test('#174 未分组默认折叠（分区 = 显示范围），nsUngroupedOpen 才展开', () => {
-  const prefs = { namespaces: [{ id: 'ns_1', name: '核心', items: ['github.com/a/one'] }] };
-  const t = buildTree(repos, boards, topics, prefs, '');
-  const head = t.rows.find((r) => r.key === UNGROUPED_KEY);
-  assert.equal(head.collapsed, true, '默认折叠');
-  const t2 = buildTree(repos, boards, topics, { ...prefs, nsUngroupedOpen: true }, '');
-  const head2 = t2.rows.find((r) => r.key === UNGROUPED_KEY);
-  assert.equal(head2.collapsed, false, '手动展开');
-});
-
-// ── #178：脏 items 过滤（分区里不再出现分区）+ 添加成员 ───────────────────
-test('#178 分区 items 里的脏 key（分区 id / 未分组标记 / 不存在的 key）渲染时被忽略', async () => {
-  const { ACTIVE_KEY } = await import('../../src/web/frontend/components/sidebar/model.js');
+test('#178 概览：脏 items（分区 id / 未分组标记 / 不存在的 key）渲染时被忽略', () => {
   const prefs = {
     namespaces: [
       { id: 'ns_1', name: '数据', items: ['ns_2', UNGROUPED_KEY, ACTIVE_KEY, 'github.com/a/nope', 'github.com/a/one'] },
       { id: 'ns_2', name: '其它', items: ['github.com/a/two'] },
     ],
+    focusNs: ALL_KEY,
   };
   const t = buildTree(repos, boards, topics, prefs, '');
   const heads = t.rows.filter((r) => r.type === 'ns');
-  // 只有两个真分区 + 未分组；不存在「分区里还有分区头」的行
   assert.deepEqual(heads.map((h) => h.name), ['数据', '其它', '未分组']);
-  const dataHead = heads.find((h) => h.name === '数据');
-  assert.equal(dataHead.count, 1, '只认真实条目（one）');
-  const repoKeys = t.rows.filter((r) => r.type === 'repo').map((r) => r.key);
-  assert.ok(repoKeys.includes('github.com/a/one'));
-  assert.ok(!repoKeys.some((k) => String(k).startsWith('ns_')), '分区 id 不被当条目渲染');
+  assert.equal(heads[0].count, 1, '只认真实条目（one）');
+  assert.ok(!t.rows.some((r) => r.type !== 'ns' && String(r.key || '').startsWith('ns_')), '分区 id 不被当条目（头行本身除外）');
+});
+
+test('搜索时平铺（不折叠、不出现分区头）', () => {
+  const t = buildTree(repos, boards, topics, { namespaces: [NS_DATA], focusNs: ALL_KEY }, 'two');
+  assert.ok(!t.rows.some((r) => r.type === 'ns'));
+  assert.ok(t.rows.some((r) => r.key === 'github.com/a/two'));
+});
+
+test('#179 概览里折叠的分区：头行在、成员不输出', () => {
+  const prefs = {
+    namespaces: [{ ...NS_DATA, collapsed: true }, NS_MISC],
+    focusNs: ALL_KEY,
+  };
+  const t = buildTree(repos, boards, topics, prefs, '');
+  const heads = t.rows.filter((r) => r.type === 'ns');
+  assert.deepEqual(heads.map((h) => h.name), ['数据', '杂项', '未分组']);
+  const keys = t.rows.map((r) => rKey(r));
+  assert.ok(!keys.includes('github.com/a/one'), '折叠成员不出现');
+  assert.ok(keys.includes('github.com/a/two'));
 });

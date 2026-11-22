@@ -167,5 +167,5 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
     [dialog, moveNs, removeNs, toggleNsCollapse, toggleNsPinned]
   );
 
-  return { nsForm, setNsForm, toggleNsCollapse, moveToNs, addToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs };
+  return { nsForm, setNsForm, toggleNsCollapse, moveToNs, addToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs, moveNs, removeNs };
 }

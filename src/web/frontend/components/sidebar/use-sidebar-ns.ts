@@ -15,6 +15,8 @@ export function useSidebarNs({ repos, boards, namespaces, ...nsArgs }: UseSideba
   const ops = useNamespaces(nsArgs);
   // 成员选择弹窗的目标分区 id（null = 关闭）
   const [addFor, setAddFor] = useState<string | null>(null);
+  // #179：分区管理弹窗（重命名 / 排序 / 删除 / 新建）
+  const [manageOpen, setManageOpen] = useState(false);
 
   /** 某分区的添加候选：所有仓库/看板（未在本分区的排前；已在其它分区的标注出来）。 */
   const candidatesFor = (nsId: string): NsCandidate[] => {
@@ -39,5 +41,5 @@ export function useSidebarNs({ repos, boards, namespaces, ...nsArgs }: UseSideba
     return out;
   };
 
-  return { ...ops, addFor, setAddFor, candidatesFor };
+  return { ...ops, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen };
 }

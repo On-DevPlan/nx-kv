@@ -19,6 +19,8 @@ export const UNGROUPED_KEY = '__UNGROUPED__';
 /** #174：内置 dynamic 视图「运行中」——只显示有任务（待领取 / 等待中）的仓库与看板。
  *  不是落盘分区（不进 namespaces），由下拉框聚焦；替代已下线的「全部目录总览」。 */
 export const ACTIVE_KEY = '__ACTIVE__';
+/** #179：「全部分区」概览视图（分区头 + 成员平铺，拖动/管理的唯一场所）。默认不是它。 */
+export const ALL_KEY = '__ALL__';
 
 /**
  * 侧栏一行（仓库 / 看板 / 全局池）。字段按 type 选择性出现：
@@ -327,33 +329,33 @@ export function buildTree(
   // prefs.namespaces 非空且非搜索 → 按「置顶分区 → 普通分区（数组序）→ 未分组」渲染；
   // 分区内条目序 = ns.items 数组序。搜索时平铺（命中就要一眼看到，别折叠）。
   const nsList = Array.isArray(prefs.namespaces) ? prefs.namespaces : [];
-  // #174：下拉框聚焦（'' = 全部分区；ACTIVE_KEY = 只显示有任务的；ns id = 单分区聚焦）
+  // #179：namespace = **命名空间切换器**，不是「一屏叠所有分区」。
+  //   focus 取值：ns id（默认 = 第一个分区）/ ACTIVE_KEY（运行中）/ UNGROUPED_KEY（未分组）/
+  //   ALL_KEY（全部分区概览——拖动与管理用）。**聚焦视图不输出分区头**：顶部下拉即标题。
   const focus = String(prefs.focusNs || '');
-  if (focus === ACTIVE_KEY && !q) {
+  const effective = focus || (nsList.length ? nsList[0]!.id : '');
+  if (effective === ACTIVE_KEY && !q) {
     // dynamic「运行中」：有任务（待领取或等待回填）的仓库/看板——替代全部目录总览的用途
     out.push(...sorted.filter((r) => (r.type === 'repo' || r.type === 'board') && ((r.pending || 0) > 0 || r.waiting)));
     return { rows: out, matchCount: 0 };
   }
-  if (focus && focus !== ACTIVE_KEY && nsList.some((n) => n.id === focus) && !q) {
-    // 单分区聚焦：只显示该分区（展开态，折叠态不生效——下拉选它就是来看它的）
-    const ns = nsList.find((n) => n.id === focus)!;
+  // 概览（ALL_KEY）之外的一切 focus 都是「切到一个命名空间」：干净成员列表，无分区头
+  if (effective && effective !== ALL_KEY && !q) {
     const rowByKeyFocus = new Map<string, SideRow>(sorted.map((r) => [rKey(r), r]));
-    const members = ns.items
-      .filter((k) => !!k && !nsList.some((n) => n.id === k) && k !== UNGROUPED_KEY && k !== ACTIVE_KEY && rowByKeyFocus.has(k))
-      .map((k) => rowByKeyFocus.get(k))
-      .filter((r): r is SideRow => !!r);
-    out.push({
-      type: 'ns',
-      key: ns.id,
-      id: ns.id,
-      name: ns.name,
-      count: members.length,
-      pending: members.reduce((n, m) => n + (m.pending || 0), 0),
-      waiting: members.some((m) => m.waiting),
-      waitingDeadlineMs: earliestDeadline(members.map((m) => m.waitingDeadlineMs)),
-      collapsed: false,
-      pinned: !!ns.pinned,
-    });
+    const isNsFocus = nsList.some((n) => n.id === effective);
+    const nsIds = new Set(nsList.map((n) => n.id));
+    const clean = (ns: (typeof nsList)[number]): string[] =>
+      ns.items.filter((k) => !!k && !nsIds.has(k) && k !== UNGROUPED_KEY && k !== ACTIVE_KEY && rowByKeyFocus.has(k));
+    let members: SideRow[];
+    if (effective === UNGROUPED_KEY) {
+      // 未分组视图：不在任何分区的条目（保持现有排序）
+      const inAny = new Set(nsList.flatMap((n) => clean(n)));
+      members = sorted.filter((r) => !inAny.has(rKey(r)));
+    } else if (isNsFocus) {
+      members = clean(nsList.find((n) => n.id === effective)!).map((k) => rowByKeyFocus.get(k)!).filter(Boolean);
+    } else {
+      members = sorted; // 未知 focus（历史脏值）→ 退化成平铺
+    }
     out.push(...members);
     return { rows: out, matchCount: 0 };
   }

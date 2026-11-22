@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { Icon } from '../icons.jsx';
 import { PopMenu, Modal } from '../popup/index.jsx';
-import NsPicker from './ns-picker.js';
+import SearchRow from './search-row.js';
 import { useToast } from '../toast/index.jsx';
 import { useDialog } from '../popup/index.jsx';
 import type { PopMenuItem } from '../popup/index.js';
@@ -191,7 +191,7 @@ export default function Sidebar({
 
   // #178：分区装配（操作 + 成员选择弹窗 + 候选）全部收在 use-sidebar-ns（纯显示态）
   const nsOps = useSidebarNs({ patchPrefs, toast, dialog, setMenu, repos, boards, namespaces: prefs.namespaces });
-  const { nsForm, setNsForm, toggleNsCollapse, moveToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs, addFor, setAddFor, candidatesFor } = nsOps;
+  const { nsForm, setNsForm, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, setFocusNs, moveNs, removeNs, renameNs, newNsAndMove, addToNs, openNsMenu, toggleNsCollapse, moveToNs, removeFromNs } = nsOps;
 
 
   // 点击：看板 = 进组视图（**组是叶子，成员在组面板里下拉选择**，树里不再铺子文件）；
@@ -223,7 +223,6 @@ export default function Sidebar({
     },
     [onNavigate, toggleExpanded]
   );
-
 
   // ─── 键盘导航：↑↓ 在可见行间移动（序 = 渲染序），Enter 打开，Esc 退出 ───
   const onTreeKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -382,27 +381,22 @@ export default function Sidebar({
             <Icon name="x" size={14} />
           </button>
         </div>
-        <div className="searchrow sb-ns-row">
-          <NsPicker
-            namespaces={prefs.namespaces}
-            focusNs={String((prefs as any).focusNs || '')}
-            onFocus={setFocusNs}
-            onNewNs={() => setNsForm({ id: '', name: '' })}
-          />
-          <label className="sbox">
-            <Icon name="search" />
-            <input
-              value={kw}
-              placeholder="搜索仓库（命中自动展开）"
-              onChange={(e) => setKw(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Escape') setKw(''); }}
-            />
-          </label>
-          {kw && <span className="kwcount">{matchCount} 个匹配</span>}
-          <button className="iconbtn add" title="添加目录 / 新建分组" aria-label="添加目录或新建分组" onClick={addMenu}>
-            <Icon name="plus" />
-          </button>
-        </div>
+        <SearchRow
+          kw={kw}
+          onKw={setKw}
+          matchCount={matchCount}
+          namespaces={prefs.namespaces}
+          focusNs={String((prefs as any).focusNs || '')}
+          onFocusNs={setFocusNs}
+          onNewNs={() => setNsForm({ id: '', name: '' })}
+          onManage={() => setManageOpen(true)}
+          onAddCurrent={() => {
+            const list = prefs.namespaces || [];
+            const cur = String((prefs as any).focusNs || '') || list[0]?.id || '';
+            if (cur) setAddFor(cur);
+          }}
+          onAddMenu={addMenu}
+        />
       </div>
 
       <div
@@ -586,17 +580,23 @@ export default function Sidebar({
         form={nsForm}
         onFormClose={() => setNsForm(null)}
         onSave={(id, name, moveKey) => {
-          if (id === '@@edit') {
-            if (nsForm && name.trim()) setNsForm({ ...nsForm, name });
-            return;
-          }
+          if (id === '@@edit') { if (nsForm && name.trim()) setNsForm({ ...nsForm, name }); return; }
           if (id) renameNs(id, name); else newNsAndMove(name, moveKey);
         }}
         addFor={addFor}
         addNsName={(prefs.namespaces || []).find((n) => n.id === addFor)?.name || ''}
         addCandidates={addFor ? candidatesFor(addFor) : []}
         onAddClose={() => setAddFor(null)}
-        onAdd={(keys) => { if (addFor) nsOps.addToNs(addFor, keys); toast(`已添加 ${keys.length} 项到分区`); }}
+        onAdd={(keys) => { if (addFor) addToNs(addFor, keys); toast(`已添加 ${keys.length} 项到命名空间`); }}
+        manageOpen={manageOpen}
+        namespaces={prefs.namespaces || []}
+        focusNs={String((prefs as any).focusNs || '')}
+        onManageClose={() => setManageOpen(false)}
+        onRenameNs={(id, name) => renameNs(id, name)}
+        onMoveNs={(id, d) => moveNs(id, d)}
+        onRemoveNs={(id) => removeNs(id)}
+        onNewNs={() => setNsForm({ id: '', name: '' })}
+        onFocusNs={(id) => setFocusNs(id)}
       />
       {dialogNode}
     </aside>

@@ -3,6 +3,7 @@
 import NsFormModal, { type NsFormState } from './ns-modal.js';
 import NsAddModal, { type NsCandidate } from './ns-add-modal.js';
 import NsManageModal from './ns-manage-modal.js';
+import NsObserveModal from './ns-observe-modal.js';
 import type { SidebarNs } from '../../types.js';
 
 export interface NsDialogsProps {
@@ -27,6 +28,10 @@ export interface NsDialogsProps {
   onRemoveNs: (id: string) => void;
   onNewNs: () => void;
   onFocusNs: (id: string) => void;
+  /** #181：详情观察 */
+  observeOpen: boolean;
+  onObserveClose: () => void;
+  labelOf: (key: string) => string;
 }
 
 export default function NsDialogs(p: NsDialogsProps) {
@@ -44,6 +49,15 @@ export default function NsDialogs(p: NsDialogsProps) {
           onMove={p.onMoveNs}
           onRemove={p.onRemoveNs}
           onNew={() => { p.onManageClose(); p.onNewNs(); }}
+          onFocus={p.onFocusNs}
+        />
+      ) : null}
+      {p.observeOpen ? (
+        <NsObserveModal
+          namespaces={p.namespaces}
+          focusNs={p.focusNs}
+          labelOf={p.labelOf}
+          onClose={p.onObserveClose}
           onFocus={p.onFocusNs}
         />
       ) : null}

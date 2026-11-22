@@ -11,6 +11,7 @@ import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, 
 import { Icon } from '../icons.jsx';
 import { PopMenu, Modal } from '../popup/index.jsx';
 import SearchRow from './search-row.js';
+import BrandRow from './brand-row.js';
 import { useToast } from '../toast/index.jsx';
 import { useDialog } from '../popup/index.jsx';
 import type { PopMenuItem } from '../popup/index.js';
@@ -191,7 +192,7 @@ export default function Sidebar({
 
   // #178：分区装配（操作 + 成员选择弹窗 + 候选）全部收在 use-sidebar-ns（纯显示态）
   const nsOps = useSidebarNs({ patchPrefs, toast, dialog, setMenu, repos, boards, namespaces: prefs.namespaces });
-  const { nsForm, setNsForm, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, setFocusNs, moveNs, removeNs, renameNs, newNsAndMove, addToNs, dropToCurrent, openNsMenu, toggleNsCollapse, moveToNs, removeFromNs } = nsOps;
+  const { nsForm, setNsForm, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, observeOpen, setObserveOpen, labelOf, setFocusNs, moveNs, removeNs, renameNs, newNsAndMove, addToNs, dropToCurrent, openNsMenu, toggleNsCollapse, moveToNs, removeFromNs } = nsOps;
 
   // 点击：看板 = 进组视图（**组是叶子，成员在组面板里下拉选择**，树里不再铺子文件）；
   // 仓库 = 进目录（子任务表）；全局 = 进全局池。
@@ -351,39 +352,7 @@ export default function Sidebar({
   return (
     <aside id="side">
       <div className="shead">
-        {/* 品牌区 = 旧顶栏的家当：logo ＋ 标题 ＋ 设置/收起/关闭 */}
-        <div className="brandrow">
-          <span className="nx-logo" aria-hidden>nx</span>
-          <span className="nx-title">nx-kv</span>
-          <span className="grow" />
-          <button
-            className="iconbtn" title="设置（浮动面板）" aria-label="设置"
-            onClick={() => shell?.openSettings()}
-          >
-            <Icon name="gear" size={15} />
-          </button>
-          {/* 收起入口放品牌行右侧——验收反馈「左能收起但没有收起 icon」：原先埋在搜索行，不显眼 */}
-          <button
-            className="iconbtn collapse"
-            title="收起目录（变窄轨；点窄轨可展开）"
-            aria-label="收起目录"
-            onClick={onCollapse}
-          >
-            <Icon name="back" size={15} />
-          </button>
-          <button
-            className="iconbtn collapse"
-            title="关闭目录（完全隐藏，左缘把手可展开）"
-            aria-label="关闭目录"
-            onClick={onClose}
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-        <SearchRow
-          kw={kw}
-          onKw={setKw}
-          matchCount={matchCount}
+        <BrandRow
           namespaces={prefs.namespaces}
           focusNs={String((prefs as any).focusNs || '')}
           onFocusNs={setFocusNs}
@@ -395,7 +364,16 @@ export default function Sidebar({
             if (cur) setAddFor(cur);
           }}
           onDropHere={(key) => { dropToCurrent(key, String((prefs as any).focusNs || '')); toast('已加入当前命名空间'); }}
+          shell={shell}
+          onCollapse={onCollapse}
+          onClose={onClose}
+        />
+        <SearchRow
+          kw={kw}
+          onKw={setKw}
+          matchCount={matchCount}
           onAddMenu={addMenu}
+          onMore={() => setObserveOpen(true)}
         />
       </div>
 
@@ -597,6 +575,9 @@ export default function Sidebar({
         onRemoveNs={(id) => removeNs(id)}
         onNewNs={() => setNsForm({ id: '', name: '' })}
         onFocusNs={(id) => setFocusNs(id)}
+        observeOpen={observeOpen}
+        onObserveClose={() => setObserveOpen(false)}
+        labelOf={labelOf}
       />
       {dialogNode}
     </aside>

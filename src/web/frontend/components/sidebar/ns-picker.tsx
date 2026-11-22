@@ -1,40 +1,57 @@
-// 侧栏**命名空间切换器**（#179）：namespace = 可切换的命名空间，不是「一屏叠所有分区」。
-// 下拉选一个 → 侧栏只显示该命名空间的仓库/分组（无分区头行）；另有「运行中」「未分组」
-// 两个内置视图与「全部分区（概览）」（拖动/管理的场所）。
-import { DropdownButton } from '../button/index.js';
+// 命名空间切换器（#181）：按用户给的参考 UI 重做——
+// 「▦ 当前空间 ▾」按钮 → 弹出面板：顶部「筛选分组…」输入框、每行图标 + 名称 + 计数 +
+// 当前项高亮 ✓、底部「＋ 新建分组 / 管理命名空间…」。拖拽到按钮即加入当前空间。
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Icon } from '../icons.jsx';
 import { ACTIVE_KEY, ALL_TOPICS_KEY } from './model.js';
 import type { SidebarNs } from '../../types.js';
 
 export interface NsPickerProps {
   namespaces?: SidebarNs[];
   focusNs?: string;
-  /** 切换视图（ns id / ACTIVE_KEY / UNGROUPED_KEY / ALL_KEY） */
   onFocus: (focus: string) => void;
-  /** 新建命名空间 */
   onNewNs: () => void;
-  /** 打开管理弹窗 */
   onManage: () => void;
-  /** #180：拖到顶部选择器 = 加入当前命名空间 */
-  onDropHere?: (key: string) => void;
-  /** 向当前命名空间添加成员（非内置视图时显示 ＋） */
   onAddCurrent?: () => void;
+  onDropHere?: (key: string) => void;
 }
+
+interface Item { key: string; label: string; count?: number; icon: string; builtin?: boolean }
 
 export default function NsPicker({ namespaces = [], focusNs = '', onFocus, onNewNs, onManage, onAddCurrent, onDropHere }: NsPickerProps) {
   const list = Array.isArray(namespaces) ? namespaces : [];
-  // #179：默认聚焦第一个命名空间（model 同口径）——标签跟着解析后的实际视图走
-  const effective = list.length ? (focusNs || list[0]!.id) : '';
-  const label = effective === ALL_TOPICS_KEY
-    ? '全部 topic'
-    : !list.length
-      ? '全部 topic'
-      : effective === ACTIVE_KEY
-        ? '运行中'
-        : (list.find((n) => n.id === effective)?.name || '全部 topic');
-  const isNs = list.some((n) => n.id === effective);
+  const effective = focusNs || list[0]?.id || '';
+  const current = list.find((n) => n.id === effective);
+  const label = effective === ACTIVE_KEY ? '运行中' : effective === ALL_TOPICS_KEY ? '全部 topic' : current?.name || '全部 topic';
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+
+  const items = useMemo<Item[]>(() => [
+    ...list.map((n) => ({ key: n.id, label: n.name, count: n.items.length, icon: 'board' })),
+    { key: ALL_TOPICS_KEY, label: '全部 topic', icon: 'list', builtin: true },
+    { key: ACTIVE_KEY, label: '运行中（有任务）', icon: 'progress', builtin: true },
+  ], [list]);
+  const shown = q.trim()
+    ? items.filter((i) => i.label.toLowerCase().includes(q.trim().toLowerCase()))
+    : items;
+
+  const select = (key: string) => { onFocus(key); setOpen(false); setQ(''); };
   return (
     <span
-      className='sb-ns-pick-wrap'
+      className='ns-picker'
+      ref={rootRef}
       onDragOver={(e) => { if (onDropHere) e.preventDefault(); }}
       onDrop={(e) => {
         if (!onDropHere) return;
@@ -43,28 +60,54 @@ export default function NsPicker({ namespaces = [], focusNs = '', onFocus, onNew
         if (key) onDropHere(key);
       }}
     >
-      <DropdownButton
-        label={label}
-        items={[
-          ...list.map((n) => ({ key: n.id, label: n.name })),
-          { key: ALL_TOPICS_KEY, label: '全部 topic' },
-          { key: ACTIVE_KEY, label: '运行中（有任务）' },
-          { key: '__MANAGE__', label: '管理命名空间…' },
-          { key: '__NEW__', label: '＋ 新建命名空间…' },
-        ]}
-        variant='secondary'
-        className='sb-ns-pick'
-        title='切换命名空间（侧栏只显示所选空间里的仓库与分组）'
-        onSelect={(k) => {
-          if (k === '__NEW__') onNewNs();
-          else if (k === '__MANAGE__') onManage();
-          else onFocus(k);
-        }}
-      />
-      {isNs && onAddCurrent ? (
-        <button type="button" className="iconbtn sb-ns-add" title={`向「${label}」添加仓库或分组`} onClick={onAddCurrent}>
-          ＋
-        </button>
+      <button
+        type='button'
+        className={'ns-picker-btn' + (open ? ' is-open' : '')}
+        title={`当前命名空间：${label}（点击切换；拖条目到这里可加入）`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Icon name='board' size={14} />
+        <span className='ns-picker-label'>{label}</span>
+        <Icon name='chevron' size={11} />
+      </button>
+      {open ? (
+        <span className='ns-picker-pop' role='menu'>
+          <label className='ns-picker-search'>
+            <Icon name='search' size={13} />
+            <input
+              value={q}
+              placeholder='筛选分组…'
+              autoFocus
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && shown.length) select(shown[0]!.key);
+              }}
+            />
+          </label>
+          <span className='ns-picker-list'>
+            {shown.length ? shown.map((it) => (
+              <button
+                key={it.key}
+                type='button'
+                role='menuitem'
+                className={'ns-picker-item' + (it.key === effective ? ' is-current' : '')}
+                onClick={() => select(it.key)}
+              >
+                <Icon name={it.icon} size={13} />
+                <span className='ns-picker-item-name'>{it.label}</span>
+                {it.count !== undefined ? <span className='ns-picker-count'>{it.count}</span> : null}
+                {it.key === effective ? <span className='ns-picker-check' aria-hidden>✓</span> : null}
+              </button>
+            )) : <span className='ns-picker-empty'>没有匹配的命名空间</span>}
+          </span>
+          <span className='ns-picker-foot'>
+            <button type='button' onClick={() => { setOpen(false); onNewNs(); }}>＋ 新建分组</button>
+            <button type='button' onClick={() => { setOpen(false); onManage(); }}>管理命名空间…</button>
+          </span>
+        </span>
+      ) : null}
+      {current && onAddCurrent ? (
+        <button type='button' className='ns-picker-add' title={`向「${label}」添加仓库或分组`} onClick={onAddCurrent}>＋</button>
       ) : null}
     </span>
   );

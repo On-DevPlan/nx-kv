@@ -17,6 +17,8 @@ export function useSidebarNs({ repos, boards, namespaces, ...nsArgs }: UseSideba
   const [addFor, setAddFor] = useState<string | null>(null);
   // #179：分区管理弹窗（重命名 / 排序 / 删除 / 新建）
   const [manageOpen, setManageOpen] = useState(false);
+  // #181：筛选行「更多」→ 命名空间详情观察
+  const [observeOpen, setObserveOpen] = useState(false);
 
   /** 某分区的添加候选：所有仓库/看板（未在本分区的排前；已在其它分区的标注出来）。 */
   const candidatesFor = (nsId: string): NsCandidate[] => {
@@ -49,5 +51,14 @@ export function useSidebarNs({ repos, boards, namespaces, ...nsArgs }: UseSideba
     if (cur && normalized) ops.addToNs(cur, [normalized]);
   };
 
-  return { ...ops, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, dropToCurrent };
+  /** #181：条目 key → 显示名（仓库 / 分组） */
+  const labelOf = (k: string): string => {
+    if (k.startsWith('board:')) {
+      const id = k.slice(6);
+      return String((boards || []).find((b: any) => String(b.id) === id)?.name || k);
+    }
+    return String((repos || []).find((r: any) => String(r.key || r.id) === k)?.name || k);
+  };
+
+  return { ...ops, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, observeOpen, setObserveOpen, dropToCurrent, labelOf };
 }

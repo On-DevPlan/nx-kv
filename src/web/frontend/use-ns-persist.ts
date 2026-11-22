@@ -17,17 +17,23 @@ export function useNsPersist(
 
   useEffect(() => {
     let alive = true;
+    // #181：**浏览器记录优先**——localStorage 里的 ns 状态在刷新 / 重开页面时
+    // 先同步恢复（不等待网络），再把同样的状态写回 settings 表作为跨浏览器备份。
+    const legacy = loadPrefs();
+    if ((legacy.namespaces || []).length || legacy.focusNs) {
+      const groups = legacy.namespaces || [];
+      const focus = legacy.focusNs || '';
+      setPrefs((prev) => ({ ...prev, namespaces: groups, focusNs: focus }));
+      void saveSettings({ sidebarNamespaces: { groups, focus } }).catch(() => { /* 备份失败不影响本机恢复 */ });
+      return () => { alive = false; };
+    }
+    // 浏览器无记录（新浏览器 / 清过缓存）→ 从 settings 表恢复
     getSettings().then((s) => {
       if (!alive || !s || !Array.isArray(s.sidebarNamespaces?.groups)) return;
       const cfg = s.sidebarNamespaces;
-      const legacy = loadPrefs();
-      if (!cfg.groups.length && !cfg.focus && (legacy.namespaces || []).length) {
-        // 老数据迁移：localStorage → settings 表（一次性）
-        void saveSettings({ sidebarNamespaces: { groups: legacy.namespaces, focus: legacy.focusNs || '' } });
-        return;
-      }
+      if (!cfg.groups.length && !cfg.focus) return;
       setPrefs((prev) => ({ ...prev, namespaces: cfg.groups, focusNs: cfg.focus || '' }));
-    }).catch(() => { /* 设置读不到 → 沿用 localStorage 缓存，不炸面板 */ });
+    }).catch(() => { /* 设置读不到 → 平铺兜底，不炸面板 */ });
     return () => { alive = false; };
   }, [setPrefs]);
 

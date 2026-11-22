@@ -3,7 +3,7 @@
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { Icon } from '../icons.jsx';
 import type { SideRow } from './model.js';
-import type { DragRow, DropZone } from './drag.js';
+import type { DropZone } from './drag.js';
 
 export interface NsHeadRowProps {
   row: SideRow;

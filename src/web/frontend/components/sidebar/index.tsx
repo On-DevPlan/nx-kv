@@ -17,7 +17,6 @@ import { api } from '../../api/client.js';
 import RepoFormModal from '../../page/repos/repo-form-modal.jsx';
 import { buildTree, fmtWaitLeft, fmtDeadlineClock, UNGROUPED_KEY } from './model.js';
 import type { SideRow, SideTree } from './model.js';
-import type { SidebarNs } from '../../types.js';
 import { canDrop, zoneOf, applyDrop } from './drag.js';
 import type { DragRow, DropZone } from './drag.js';
 import { rowMenuItems, addMenuItems } from './row-menu.jsx';

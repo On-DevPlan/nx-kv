@@ -9,7 +9,7 @@
 import { api } from '../../api/client.js';
 import type { BoardRow, Prefs, SidebarNs } from '../../types.js';
 import type { DialogFn, PopMenuItem } from '../popup/index.js';
-import { UNGROUPED_KEY, type SideRow } from './model.js';
+import type { SideRow } from './model.js';
 import { ensureQueueAndGo } from './queue-nav.js';
 
 /** rowMenuItems 的入参（菜单内容按行类型装配）。 */
@@ -35,7 +35,9 @@ export function rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDat
   // #167：分区归属操作（repo / board 行通用）。当前所在分区由 items 反查。
   const nsList = Array.isArray(namespaces) ? namespaces : [];
   const rowKey = row.type === 'board' ? 'board:' + String(row.id) : String(row.key || '');
-  const currentNs = nsList.find((n) => n.items.includes(rowKey));
+  // #180：概览里成员行带 nsId（同一 topic 可在多个 ns）——「从本空间移出」只移除当前这份
+  const currentNs = (row.nsId && nsList.find((n) => n.id === row.nsId))
+    || nsList.find((n) => n.items.includes(rowKey));
   const nsSection: PopMenuItem[] = nsList.length || currentNs ? [
     'sep',
     // 移入分区（排除当前所在）
@@ -49,8 +51,8 @@ export function rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDat
     ...(onNewNsFor
       ? [{ label: '新建分区并移入…', icon: 'plus', onClick: () => onNewNsFor?.(row) }]
       : []),
-    ...(currentNs && currentNs.id !== UNGROUPED_KEY && onRemoveFromNs
-      ? [{ label: `移出分区「${currentNs.name}」`, icon: 'x', onClick: () => onRemoveFromNs?.(row) }]
+    ...(currentNs && onRemoveFromNs
+      ? [{ label: `从「${currentNs.name}」移出`, icon: 'x', onClick: () => onRemoveFromNs?.(row) }]
       : []),
   ] : [];
 

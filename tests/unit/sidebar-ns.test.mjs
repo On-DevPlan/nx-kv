@@ -49,16 +49,9 @@ test('#179 「全部分区」概览：分区头 + 成员（pinned 先），未�
   };
   const t = buildTree(repos, boards, topics, prefs, '');
   const heads = t.rows.filter((r) => r.type === 'ns');
-  assert.deepEqual(heads.map((h) => h.name), ['数据', '杂项', '未分组'], 'pinned 在前，末尾未分组');
-  assert.equal(heads[2].collapsed, true, '未分组默认折叠');
+  assert.deepEqual(heads.map((h) => h.name), ['数据', '杂项'], '#180 未分组概念已删除');
   const dataIdx = t.rows.findIndex((r) => r.type === 'ns' && r.name === '数据');
   assert.equal(t.rows[dataIdx + 1]?.key, 'github.com/a/one', '成员紧跟头行');
-});
-
-test('#179 未分组视图：只列未分区条目（无头行）', () => {
-  const t = buildTree(repos, boards, topics, { namespaces: [NS_DATA, NS_MISC], focusNs: UNGROUPED_KEY }, '');
-  assert.ok(!t.rows.some((r) => r.type === 'ns'));
-  assert.deepEqual(t.rows.filter((r) => r.type === 'repo').map((r) => r.key), ['github.com/a/three']);
 });
 
 test('#174 运行中视图：只显示有任务（待领取/等待中）的仓库与看板', () => {
@@ -82,7 +75,7 @@ test('#178 概览：脏 items（分区 id / 未分组标记 / 不存在的 key�
   };
   const t = buildTree(repos, boards, topics, prefs, '');
   const heads = t.rows.filter((r) => r.type === 'ns');
-  assert.deepEqual(heads.map((h) => h.name), ['数据', '其它', '未分组']);
+  assert.deepEqual(heads.map((h) => h.name), ['数据', '其它']);
   assert.equal(heads[0].count, 1, '只认真实条目（one）');
   assert.ok(!t.rows.some((r) => r.type !== 'ns' && String(r.key || '').startsWith('ns_')), '分区 id 不被当条目（头行本身除外）');
 });
@@ -100,8 +93,25 @@ test('#179 概览里折叠的分区：头行在、成员不输出', () => {
   };
   const t = buildTree(repos, boards, topics, prefs, '');
   const heads = t.rows.filter((r) => r.type === 'ns');
-  assert.deepEqual(heads.map((h) => h.name), ['数据', '杂项', '未分组']);
+  assert.deepEqual(heads.map((h) => h.name), ['数据', '杂项']);
   const keys = t.rows.map((r) => rKey(r));
   assert.ok(!keys.includes('github.com/a/one'), '折叠成员不出现');
   assert.ok(keys.includes('github.com/a/two'));
+});
+
+test('#180 多归属：同一个 topic 可同时出现在两个命名空间（概览里各带 nsId）', () => {
+  const shared = 'github.com/a/one';
+  const prefs = {
+    namespaces: [
+      { id: 'ns_a', name: '数据', items: [shared] },
+      { id: 'ns_b', name: '杂项', items: [shared, 'github.com/a/two'] },
+    ],
+    focusNs: ALL_KEY,
+  };
+  const t = buildTree(repos, boards, topics, prefs, '');
+  const copies = t.rows.filter((r) => r.type === 'repo' && r.key === shared);
+  assert.equal(copies.length, 2, '两处都显示');
+  assert.deepEqual(copies.map((r) => r.nsId), ['ns_a', 'ns_b'], '每份带所属 nsId');
+  // 没有未分组头
+  assert.ok(!t.rows.some((r) => r.type === 'ns' && String(r.key || '').startsWith('__UN')));
 });

@@ -86,17 +86,19 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
     },
     [withNs]
   );
-  /** #178：批量把条目加入分区（成员选择弹窗用）——从其它分区挪走，避免重复归属 */
+  /** #180：把条目加入命名空间——**允许多归属**（同一 topic 可同时在多个 ns 里），
+   *  只做本 ns 内去重，不从其它 ns 挪走。 */
   const addToNs = useCallback(
     (nsId: string, keys: string[]) => {
       const ks = (keys || []).filter(Boolean);
       if (!ks.length) return;
-      withNs((list) => {
-        const arr = list.map((n) => ({ ...n, items: n.items.filter((k) => !ks.includes(k)) }));
-        const t = arr.find((n) => n.id === nsId);
-        if (t) t.items.push(...ks);
-        return arr;
-      });
+      withNs((list) =>
+        list.map((n) => {
+          if (n.id !== nsId) return n;
+          const add = ks.filter((k) => !n.items.includes(k));
+          return add.length ? { ...n, items: [...n.items, ...add] } : n;
+        })
+      );
     },
     [withNs]
   );
@@ -105,7 +107,12 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
     (row: SideRow) => {
       const k = rowKeyOf(row);
       if (!k) return;
-      withNs((list) => list.map((n) => ({ ...n, items: n.items.filter((x) => x !== k) })));
+      // #180：多归属——只从当前这份（nsId）spaces 移除，其它命名空间不受影响
+      const nsId = (row as SideRow & { nsId?: string }).nsId;
+      withNs((list) => list.map((n) => {
+        if (nsId && n.id !== nsId) return n;
+        return n.items.includes(k) ? { ...n, items: n.items.filter((x) => x !== k) } : n;
+      }));
     },
     [withNs]
   );

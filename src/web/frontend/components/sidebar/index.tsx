@@ -16,7 +16,7 @@ import { useDialog } from '../popup/index.jsx';
 import type { PopMenuItem } from '../popup/index.js';
 import { api } from '../../api/client.js';
 import RepoFormModal from '../../page/repos/repo-form-modal.jsx';
-import { buildTree, fmtWaitLeft, fmtDeadlineClock, UNGROUPED_KEY } from './model.js';
+import { buildTree, fmtWaitLeft, fmtDeadlineClock } from './model.js';
 import type { SideRow, SideTree } from './model.js';
 import { canDrop, zoneOf, applyDrop } from './drag.js';
 import type { DragRow, DropZone } from './drag.js';
@@ -127,7 +127,7 @@ export default function Sidebar({
         continue;
       }
       if (r.type === 'global') continue;
-      if (cur && curCollapsed && cur !== UNGROUPED_KEY) hiddenKeys.add(r.type === 'board' ? 'board:' + String(r.id) : r.key);
+      if (cur && curCollapsed) hiddenKeys.add(r.type === 'board' ? 'board:' + String(r.id) : r.key);
     }
     return hiddenKeys;
   }, [rows]);
@@ -429,7 +429,7 @@ export default function Sidebar({
             />
           ) : row.type === 'board' ? (
             <button
-              key={'b:' + row.id}
+              key={(row as any).nsId ? `${(row as any).nsId}:b:${row.id}` : 'b:' + row.id}
               className={'trow group' + (isActive(row) ? ' active' : '') + (kbIndex === i ? ' kb-focus' : '')}
               onClick={() => openRow(row)}
               onContextMenu={(e) => openRowMenu(e, row)}
@@ -460,7 +460,7 @@ export default function Sidebar({
               </span>
             </button>
           ) : (
-            <div key={row.type + ':' + row.key} className="tblock">
+            <div key={(row as any).nsId ? `${(row as any).nsId}:${row.type}:${row.key}` : row.type + ':' + row.key} className="tblock">
               <button
                 className={
                   'trow' + (row.type === 'repo' && row.groupId ? ' child' : '') +

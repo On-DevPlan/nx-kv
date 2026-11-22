@@ -83,6 +83,9 @@
 .trow.ns-head .more.ns-add-btn { visibility: hidden; }
 .trow.ns-head:hover .more.ns-add-btn { visibility: visible; }
 /* #178 成员选择弹窗 */
+.ns-add-filter { display: flex; margin: 4px 0; }
+.ns-add-filter input { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #D8D6D0); border-radius: 6px; font: inherit; background: var(--paper, #fff); color: var(--ink, #16181C); }
+.ns-add-filter-note { font-size: 11px; color: var(--faint, #8A8F98); margin: 2px 0 8px; }
 .ns-add-list { max-height: 46vh; overflow: auto; display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
 .ns-add-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
 .ns-add-row:hover { background: var(--soft, #F4F6F4); }

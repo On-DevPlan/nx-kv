@@ -55,6 +55,8 @@ export interface SideRow {
   waitingDeadlineMs?: number;
   /** 看板成员数 */
   count?: number;
+  /** #180：概览视图里成员行所属的命名空间 id（多归属时同一条目会多份） */
+  nsId?: string;
   /** #167：ns 头行的折叠态 / 置顶标记（type='ns' 专用） */
   collapsed?: boolean;
   pinned?: boolean;
@@ -347,11 +349,7 @@ export function buildTree(
     const clean = (ns: (typeof nsList)[number]): string[] =>
       ns.items.filter((k) => !!k && !nsIds.has(k) && k !== UNGROUPED_KEY && k !== ACTIVE_KEY && rowByKeyFocus.has(k));
     let members: SideRow[];
-    if (effective === UNGROUPED_KEY) {
-      // 未分组视图：不在任何分区的条目（保持现有排序）
-      const inAny = new Set(nsList.flatMap((n) => clean(n)));
-      members = sorted.filter((r) => !inAny.has(rKey(r)));
-    } else if (isNsFocus) {
+    if (isNsFocus) {
       members = clean(nsList.find((n) => n.id === effective)!).map((k) => rowByKeyFocus.get(k)!).filter(Boolean);
     } else {
       members = sorted; // 未知 focus（历史脏值）→ 退化成平铺
@@ -397,28 +395,18 @@ export function buildTree(
     for (const k of cleanItems(ns)) {
       const r = rowByKey.get(k);
       if (r) {
-        out.push(r);
+        // #180：一个 topic 可同时在多个 ns —— 概览里每份是**带 nsId 的浅拷贝**
+        // （渲染 key / 行菜单「从本空间移出」都靠它；原始行对象不污染）
+        out.push({ ...r, nsId: ns.id });
         emitted.add(k);
       }
     }
   }
 
-  // 未分组区：不在任何分区的条目（保持现有排序），同样给一个头行（可折叠）
-  const loose = sorted.filter((r) => !inNs.has(rKey(r)));
-  if (loose.length) {
-    out.push({
-      type: 'ns',
-      key: UNGROUPED_KEY,
-      id: UNGROUPED_KEY,
-      name: '未分组',
-      count: loose.length,
-      pending: loose.reduce((n, m) => n + (m.pending || 0), 0),
-      waiting: loose.some((m) => m.waiting),
-      waitingDeadlineMs: earliestDeadline(loose.map((m) => m.waitingDeadlineMs)),
-      collapsed: prefs.nsUngroupedOpen !== true, // #174：默认折叠（分区 = 显示范围）
-    });
-    out.push(...loose);
-  }
+  // #180：**没有「未分组」概念**——命名空间是标签（一个 topic 可同属多个 ns）。
+  // 不在任何 ns 里的条目在概览中不出现（下拉里也没有该视图）；用户拖进目标 ns 即可。
+  void inNs;
+  void emitted;
 
   // 搜索计数按**可见行**算：组行（代表全体成员）+ 未归组仓库行——
   // 成员子行已不渲染，把它算进「N 个匹配」会数出看不见的行（全局池行也不算）。

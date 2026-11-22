@@ -39,7 +39,7 @@ export default function NsManageModal({
                     const name = window.prompt('重命名命名空间', n.name);
                     if (name && name.trim()) onRename(n.id, name.trim());
                   }}>重命名</Button>
-                <Button small variant="secondary" danger title="删除（成员回到未分组）" onClick={() => onRemove(n.id)}>删除</Button>
+                <Button small variant="secondary" danger title="删除命名空间（其它命名空间不受影响）" onClick={() => onRemove(n.id)}>删除</Button>
               </span>
             </div>
           ))

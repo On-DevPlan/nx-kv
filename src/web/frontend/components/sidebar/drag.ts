@@ -92,9 +92,10 @@ export function applyDrop(prefs: Partial<Prefs>, drag: DragRow, target: DragRow,
   // 条目 → 分区头：加入该分区末尾（zone 任意段都收）
   if (target.type === 'ns' && (drag.type === 'repo' || drag.type === 'board')) {
     const keyD = keyOf(drag);
-    const arr = nsList.map((n) => ({ ...n, items: n.items.filter((k) => k !== keyD) }));
+    // #180：命名空间是标签——同一个 topic 可以同时在多个 ns 里，不再从旧 ns 挪走
+    const arr = nsList.map((n) => ({ ...n, items: [...n.items] }));
     const t = arr.find((n) => n.id === target.id);
-    if (!t) return {};
+    if (!t || t.items.includes(keyD)) return {};
     t.items.push(keyD);
     return { namespaces: arr };
   }
@@ -103,22 +104,17 @@ export function applyDrop(prefs: Partial<Prefs>, drag: DragRow, target: DragRow,
   const keyD = keyOf(drag);
   const keyT = keyOf(target);
   const targetNs = nsList.find((n) => n.items.includes(keyT));
-  const dragNs = nsList.find((n) => n.items.includes(keyD));
   if (targetNs && (drag.type === 'repo' || drag.type === 'board')) {
-    const arr = nsList.map((n) => ({ ...n, items: n.items.filter((k) => k !== keyD) }));
+    // #180：拖到某 ns 的成员上 = 加入该 ns（多归属），不再从别处挪走
+    const arr = nsList.map((n) => ({ ...n, items: [...n.items] }));
     const t = arr.find((n) => n.id === targetNs.id)!;
+    if (t.items.includes(keyD)) return {};
     const at = t.items.indexOf(keyT);
     t.items.splice(zone === 'before' ? at : at + 1, 0, keyD);
     return { namespaces: arr };
   }
-  if (dragNs && (drag.type === 'repo' || drag.type === 'board')) {
-    const arr = nsList.map((n) => ({ ...n, items: n.items.filter((k) => k !== keyD) }));
-    const order = [...(prefs.order || [])].filter((k) => k !== keyD);
-    const at = order.indexOf(keyT);
-    if (at >= 0) order.splice(zone === 'before' ? at : at + 1, 0, keyD);
-    else order.push(keyD);
-    return { namespaces: arr, order };
-  }
+  // #180：拖到成员上 = 加入目标命名空间（上面 targetNs 分支已处理）；
+  // 从某个命名空间移除走行菜单「从本空间移出」——拖拽只做加法，语义单一。
 
   // ── 旧逻辑（双方都不在分区里）──
   const order = [...(prefs.order || [])];

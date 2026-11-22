@@ -62,6 +62,14 @@
   border: 1px dashed transparent; cursor: pointer; color: var(--ink); background: none;
 }
 .trow:hover { background: var(--soft); }
+/* #167 namespace 分区头：比组行更轻的分区条（可折叠 / 置顶星标 / 计数） */
+.trow.ns-head {
+  color: var(--ink-2, #6B7078);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.trow.ns-head .nm { font-size: 12px; }
+.trow.ns-head .ns-pin { color: var(--mdw-accent, #2F6F5E); margin-right: 3px; }
 .trow .tw { width: 14px; flex: none; display: inline-flex; justify-content: center; color: var(--faint); transition: transform 0.15s; }
 /* chevron 现在是「展开/收起」按钮（点行是去看内容）——给它指针与反馈 */
 .trow .tw[role="button"] { cursor: pointer; }

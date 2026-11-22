@@ -15,11 +15,15 @@ import { useDialog } from '../popup/index.jsx';
 import type { PopMenuItem } from '../popup/index.js';
 import { api } from '../../api/client.js';
 import RepoFormModal from '../../page/repos/repo-form-modal.jsx';
-import { buildTree, fmtWaitLeft, fmtDeadlineClock } from './model.js';
+import { buildTree, fmtWaitLeft, fmtDeadlineClock, UNGROUPED_KEY } from './model.js';
 import type { SideRow, SideTree } from './model.js';
+import type { SidebarNs } from '../../types.js';
 import { canDrop, zoneOf, applyDrop } from './drag.js';
 import type { DragRow, DropZone } from './drag.js';
 import { rowMenuItems, addMenuItems } from './row-menu.jsx';
+import { useNamespaces } from './use-ns.js';
+import NsFormModal from './ns-modal.js';
+import NsHeadRow from './ns-row.js';
 import TaskChildren from './task-children.jsx';
 import { ensureQueueAndGo } from './queue-nav.js';
 import type { AppRoute, BoardRow, LocalTopic, Prefs, RepoRow, ShellApi } from '../../types.js';
@@ -65,7 +69,7 @@ interface SidebarProps {
 }
 
 /** 菜单在场态：坐标 + 项。 */
-interface MenuState {
+export interface MenuState {
   x: number;
   y: number;
   items: PopMenuItem[];
@@ -112,6 +116,23 @@ export default function Sidebar({
       return lastTree.current;
     }
   }, [repos, boards, topics, prefs, kw]);
+  // #167：折叠分区的条目行在渲染层跳过（model 输出是扁平序，折叠由这里收口——
+  // 条目归属分区用「最近的 ns 头」判定，避免引入第二份数据）
+  const hiddenByNs = useMemo(() => {
+    const hiddenKeys = new Set<string>();
+    let cur: string | null = null;
+    let curCollapsed = false;
+    for (const r of rows) {
+      if (r.type === 'ns') {
+        cur = r.key;
+        curCollapsed = !!r.collapsed;
+        continue;
+      }
+      if (r.type === 'global') continue;
+      if (cur && curCollapsed && cur !== UNGROUPED_KEY) hiddenKeys.add(r.type === 'board' ? 'board:' + String(r.id) : r.key);
+    }
+    return hiddenKeys;
+  }, [rows]);
 
   // ─── 等待倒计时（#182）───
   // 等待标记要显示「还剩多久」，所以得有第二个时间源：只要有一行在等就每秒推进一次，
@@ -170,6 +191,10 @@ export default function Sidebar({
     });
   }, []);
 
+  // ─── #167 namespace 分区：操作层抽在 use-ns.ts（纯 prefs，回写即持久化）───
+  const { nsForm, setNsForm, toggleNsCollapse, moveToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu } =
+    useNamespaces({ patchPrefs, toast, dialog, setMenu });
+
   // 点击：看板 = 进组视图（**组是叶子，成员在组面板里下拉选择**，树里不再铺子文件）；
   // 仓库 = 进目录（子任务表）；全局 = 进全局池。
   // 仓库行没有任务队列时（topicKey 为空）点行 = 先建队列再进（与「新建页」同一套）。
@@ -199,6 +224,7 @@ export default function Sidebar({
     },
     [onNavigate, toggleExpanded]
   );
+
 
   // ─── 键盘导航：↑↓ 在可见行间移动（序 = 渲染序），Enter 打开，Esc 退出 ───
   const onTreeKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -278,7 +304,12 @@ export default function Sidebar({
     setMenu({
       x: e.clientX,
       y: e.clientY,
-      items: rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDataChanged: refreshRepos, refreshLocal, toast, dialog }),
+      items: rowMenuItems({
+        row, prefs, patchPrefs, onNavigate, boards,
+        onDataChanged: refreshRepos, refreshLocal, toast, dialog,
+        namespaces: prefs.namespaces, onMoveToNs: moveToNs, onRemoveFromNs: removeFromNs,
+        onNewNsFor: (r) => setNsForm({ id: '', name: '', moveTo: r.type === 'board' ? 'board:' + String(r.id) : String(r.key || '') }),
+      }),
     });
   };
 
@@ -287,7 +318,11 @@ export default function Sidebar({
     setMenu({
       x: e.clientX,
       y: e.clientY,
-      items: addMenuItems({ onAddRepo: () => setRepoFormOpen(true), onNewBoard: () => setBoardForm({ name: '', desc: '' }) }),
+      items: addMenuItems({
+        onAddRepo: () => setRepoFormOpen(true),
+        onNewBoard: () => setBoardForm({ name: '', desc: '' }),
+        onNewNs: () => setNsForm({ id: '', name: '' }),
+      }),
     });
   };
 
@@ -373,8 +408,26 @@ export default function Sidebar({
         onDragOver={(e) => { if (dragRef.current?.type === 'repo') e.preventDefault(); }}
         onDrop={onTreeDropTail}
       >
-        {rows.map((row, i) => (
-          row.type === 'board' ? (
+        {rows.map((row, i) => {
+          // #167：折叠分区内的条目行直接不出（计数在 ns 头上仍可见）
+          const rowKey = row.type === 'board' ? 'board:' + String(row.id) : row.key;
+          if ((row.type === 'repo' || row.type === 'board') && hiddenByNs.has(rowKey)) return null;
+          return (
+          row.type === 'ns' ? (
+            <NsHeadRow
+              row={row}
+              kbFocus={kbIndex === i}
+              dropHint={dropHint}
+              onOpen={() => toggleNsCollapse(row.key)}
+              onToggle={() => toggleNsCollapse(row.key)}
+              onMenu={(e) => openNsMenu(e, row)}
+              onDragStart={(e) => onDragStart(e, row)}
+              onDragEnd={onDragEnd}
+              onDragOver={(e) => onDragOver(e, row)}
+              onDragLeave={onDragLeave}
+              onDrop={(e) => onDrop(e, row)}
+            />
+          ) : row.type === 'board' ? (
             <button
               key={'b:' + row.id}
               className={'trow group' + (isActive(row) ? ' active' : '') + (kbIndex === i ? ' kb-focus' : '')}
@@ -454,7 +507,8 @@ export default function Sidebar({
               )}
             </div>
           )
-        ))}
+          );
+        })}
         {!rows.length && (
           <div className="tree-empty">
             {kw
@@ -528,6 +582,21 @@ export default function Sidebar({
             </div>
           </div>
         </Modal>
+      ) : null}
+      {nsForm ? (
+        <NsFormModal
+          form={nsForm}
+          onClose={() => setNsForm(null)}
+          onSave={(id, name, moveKey) => {
+            // @@edit = 重命名表单的实时编辑值（只改 name，不落分区）
+            if (id === '@@edit') {
+              if (nsForm && name.trim()) setNsForm({ ...nsForm, name });
+              return;
+            }
+            if (id) renameNs(id, name);
+            else newNsAndMove(name, moveKey);
+          }}
+        />
       ) : null}
       {dialogNode}
     </aside>

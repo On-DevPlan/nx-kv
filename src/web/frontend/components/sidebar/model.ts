@@ -14,6 +14,8 @@ import { projectPending, isPendingRow, taskInBoard } from '../../modules/board/b
 import type { BoardRow, LocalTask, LocalTopic, Prefs, RepoRow } from '../../types.js';
 
 export const GLOBAL_KEY = '__GLOBAL__';
+/** 「未分组」区的头行 key（不在 namespaces.items 里的条目落这里；不可重命名/删除） */
+export const UNGROUPED_KEY = '__UNGROUPED__';
 
 /**
  * 侧栏一行（仓库 / 看板 / 全局池）。字段按 type 选择性出现：
@@ -21,7 +23,7 @@ export const GLOBAL_KEY = '__GLOBAL__';
  * 值全部来自 /api 的登记与队列数据，故按「可选 + 宽松」收。
  */
 export interface SideRow {
-  type: 'repo' | 'board' | 'global';
+  type: 'repo' | 'board' | 'global' | 'ns';
   /** 行身份（仓库 key / 看板 id / GLOBAL_KEY） */
   key: string;
   id?: string;
@@ -48,6 +50,9 @@ export interface SideRow {
   waitingDeadlineMs?: number;
   /** 看板成员数 */
   count?: number;
+  /** #167：ns 头行的折叠态 / 置顶标记（type='ns' 专用） */
+  collapsed?: boolean;
+  pinned?: boolean;
   members?: string[];
   /** 归属看板 id（仓库行平铺时为空串） */
   groupId?: string;
@@ -319,7 +324,66 @@ export function buildTree(
       topics: (globalRow.tasks || []).filter((t) => !t.deletedAt) as unknown as LocalTopic[],
     });
   }
-  out.push(...sorted);
+
+  // ── #167 namespace 分区（纯 UI 组织）──
+  // prefs.namespaces 非空且非搜索 → 按「置顶分区 → 普通分区（数组序）→ 未分组」渲染；
+  // 分区内条目序 = ns.items 数组序。搜索时平铺（命中就要一眼看到，别折叠）。
+  const nsList = Array.isArray(prefs.namespaces) ? prefs.namespaces : [];
+  if (!nsList.length || q) {
+    out.push(...sorted);
+    return { rows: out, matchCount: q ? out.filter((r) => r.type === 'board' || (r.type === 'repo' && !r.groupId)).length : 0 };
+  }
+
+  const rowByKey = new Map<string, SideRow>(sorted.map((r) => [rKey(r), r]));
+  const inNs = new Set<string>(nsList.flatMap((n) => n.items));
+  // 置顶分区在前（stable sort 保持数组内相对序）
+  const orderedNs = [...nsList].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+  const emitted = new Set<string>();
+
+  const nsHeader = (ns: (typeof nsList)[number]): SideRow => {
+    const members = ns.items.map((k) => rowByKey.get(k)).filter((r): r is SideRow => !!r);
+    return {
+      type: 'ns',
+      key: ns.id,
+      id: ns.id,
+      name: ns.name,
+      count: members.length,
+      pending: members.reduce((n, m) => n + (m.pending || 0), 0),
+      waiting: members.some((m) => m.waiting),
+      waitingDeadlineMs: earliestDeadline(members.map((m) => m.waitingDeadlineMs)),
+      collapsed: !!ns.collapsed,
+      pinned: !!ns.pinned,
+    };
+  };
+
+  for (const ns of orderedNs) {
+    out.push(nsHeader(ns));
+    if (ns.collapsed) continue;
+    for (const k of ns.items) {
+      const r = rowByKey.get(k);
+      if (r) {
+        out.push(r);
+        emitted.add(k);
+      }
+    }
+  }
+
+  // 未分组区：不在任何分区的条目（保持现有排序），同样给一个头行（可折叠）
+  const loose = sorted.filter((r) => !inNs.has(rKey(r)));
+  if (loose.length) {
+    out.push({
+      type: 'ns',
+      key: UNGROUPED_KEY,
+      id: UNGROUPED_KEY,
+      name: '未分组',
+      count: loose.length,
+      pending: loose.reduce((n, m) => n + (m.pending || 0), 0),
+      waiting: loose.some((m) => m.waiting),
+      waitingDeadlineMs: earliestDeadline(loose.map((m) => m.waitingDeadlineMs)),
+      collapsed: false,
+    });
+    out.push(...loose);
+  }
 
   // 搜索计数按**可见行**算：组行（代表全体成员）+ 未归组仓库行——
   // 成员子行已不渲染，把它算进「N 个匹配」会数出看不见的行（全局池行也不算）。

@@ -112,11 +112,29 @@ export type BootData = Record<string, any>;
 export type BundledData = Record<string, any>;
 
 /** 侧边栏视图偏好（localStorage 里的显示态，不是数据）。 */
+/**
+ * 侧边栏 namespace 分组（#167）：把仓库/看板条目归进若干命名空间分区显示。
+ * **纯 UI 组织方式**——不碰任何数据模型，落点与 order/hidden/folded 同一 prefs。
+ * items 键形与 order 一致：'board:<id>' | '<仓库key>'（数组序 = 分区内显示序）。
+ */
+export interface SidebarNs {
+  id: string;
+  name: string;
+  /** 分区成员（显示序）；未列出的条目留在「未分组」区 */
+  items: string[];
+  /** 分区折叠态 */
+  collapsed?: boolean;
+  /** 置顶：该分区排到所有分区之前（多个置顶保持数组相对序） */
+  pinned?: boolean;
+}
+
 export interface Prefs {
   order: string[];
   hidden: string[];
   folded: boolean;
   defaultFolded: boolean;
+  /** namespace 分区（#167）；空 = 现状平铺 */
+  namespaces?: SidebarNs[];
   [k: string]: any;
 }
 

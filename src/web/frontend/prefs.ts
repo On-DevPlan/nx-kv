@@ -17,6 +17,7 @@ const DEFAULTS: Prefs = {
   hidden: [],       // 隐藏的仓库 key（只是不显示，登记与数据不动）
   folded: false,    // 侧边栏当前收起态
   defaultFolded: false,  // 进入面板时默认收起侧边栏
+  namespaces: [],   // #167 namespace 分区（归属/排序/置顶/折叠——纯显示组织，见 types.SidebarNs）
 };
 
 // 旧结构里的 groups / dirGroups —— 它们是**独立的假数据**，不迁移、直接丢弃。

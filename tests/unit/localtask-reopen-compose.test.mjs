@@ -76,18 +76,26 @@ test('comment 不带 text：反馈段追加到服务端正文，锚定引用在�
   assert.ok(!parent.supersededBy, '原任务没有被取代');
 });
 
-test('comment 二次评论：顺链走尖，两轮评论段都保留在最新正文里', async () => {
+test('comment 二次评论：两条**并行**旁支（都挂原任务下，各自独立且都活着，#177）', async () => {
   const { svc, id } = await seedTask('# 原任务\n\n正文。');
   const first = await svc.reopenTask({ cwd: CWD, id, kind: 'comment', feedback: '第一条评论' });
   const second = await svc.reopenTask({ cwd: CWD, id, kind: 'comment', feedback: '第二条评论' });
-  // 二次评论作用在同一任务上 → 顺链走尖，从 R2 派生 R3；两轮评论段都在正文里
-  assert.notEqual(second.id, first.id, 'R3 派生新编号');
-  assert.ok(second.task.text.includes('第一条评论'));
+  assert.notEqual(second.id, first.id, '两个不同节点');
+  // 并行 = 各自只含本条评论（不串成链）
+  assert.ok(first.task.text.includes('第一条评论'));
+  assert.ok(!first.task.text.includes('第二条评论'), '第一条不含第二条');
   assert.ok(second.task.text.includes('第二条评论'));
-  assert.ok(second.task.text.indexOf('第一条评论') < second.task.text.indexOf('第二条评论'), '评论按时间序');
-  assert.equal(second.task.status, 'pending', 'R3 是当前尖');
+  // 都活着；原任务也活着
   const firstTask = await svc.getTask({ cwd: CWD, id: first.id });
-  assert.equal(firstTask.status, 'cancelled', 'R2 被 R3 取代');
+  assert.equal(firstTask.status, 'pending', '第一条评论任务不被取消（并行旁支）');
+  assert.equal(second.task.status, 'pending');
+  const parent = await svc.getTask({ cwd: CWD, id });
+  assert.equal(parent.status, 'pending', '原任务保持');
+  // 链结构：两个讨论任务的父都是原任务（并行，不是 #2 → #3 的链）
+  const chain = await svc.taskChain({ cwd: CWD, id });
+  const selfNode = chain.tree;
+  const kidIds = (selfNode.children || []).map((c) => Number(c.id));
+  assert.ok(kidIds.includes(Number(first.id)) && kidIds.includes(Number(second.id)), '两评论是同级子节点');
 });
 
 test('reopen 不带 text：#144 起写轮次 callout（反馈逐行加粗；无总结时只有反馈块）', async () => {

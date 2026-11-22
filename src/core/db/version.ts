@@ -40,7 +40,7 @@
 //   关系描述文档的定位不走 tag：desc 就在 ref 上。
 // v13（2026-11-17）：彻底删除「关系表上的业务 note」概念——4 张关系表 drop note 列。
 //   关系表本身就表达多对多；文档描述走 ref.desc + 正文标题，参考仓库描述走绑定 ref 的文档。
-export const CURRENT_SCHEMA_VERSION = 13;
+export const CURRENT_SCHEMA_VERSION = 14;
 
 /**
  * 运行时最低 Node 版本。

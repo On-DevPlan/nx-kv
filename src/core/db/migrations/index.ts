@@ -64,6 +64,7 @@ export const DIRECT_EDGES: MigrationStep[] = [
   { from: 10, to: 11, file: 'v11.sql', title: '孤儿 ref 失绑计时（orphan_since）与到期清理留痕（ref_gc_log）', apply: migrateOrphanRefs },
   { from: 11, to: 12, file: 'v12.sql', title: '去掉分类标签概念（删 ref_bindings.tag）' },
   { from: 12, to: 13, file: 'v13.sql', title: '去掉关系表上的业务 note（4 张表 drop note 列）' },
+  { from: 13, to: 14, file: 'v14.sql', title: 'task_links.type 扩 fork（任务链四类节点：评论/反馈/重开/分支）' },
 ];
 
 // 人读版本说明（docs/decisions 是决策的唯一权威位置，里面对应一份 date 化的 .md）
@@ -81,6 +82,7 @@ export const VERSION_NOTES = {
   11: 'docs/decisions/versions/2026-11-15-v11.md',
   12: 'docs/decisions/versions/2026-11-16-v12.md',
   13: 'docs/decisions/versions/2026-11-17-v13.md',
+  14: 'docs/decisions/versions/2026-11-22-v14.md',
 };
 
 const keyOf = (from: number, to: number): string => `${from}->${to}`;

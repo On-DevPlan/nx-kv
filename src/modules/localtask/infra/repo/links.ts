@@ -17,7 +17,7 @@ import { badInput, notFound } from '../../../../core/errors.js';
 import type { DbApi } from '../../../../core/db/driver.js';
 
 /** 合法的派生类型（与 schema CHECK 同口径，写前校验给可读报错）。 */
-export const LINK_TYPES = Object.freeze(['comment', 'reopen', 'feedback']);
+export const LINK_TYPES = Object.freeze(['comment', 'reopen', 'feedback', 'fork']);
 
 /** 直接子任务节点（childLinks 行形状：srcId 指向子任务 tasks.id）。 */
 export interface ChildLinkNode {

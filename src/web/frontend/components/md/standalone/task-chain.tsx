@@ -3,11 +3,14 @@
 // （根在顶、缩进层级、旁支并排），线性列表只留给 history 快照视图。
 import { Modal } from '../../popup/index.jsx';
 import type { ChainTreeNode } from '../../../page/dir/task-utils.js';
+import ChainGraph from './task-chain-graph.js';
 
 const KIND_LAB: Record<string, string> = {
   origin: '起点',
   reopen: '反馈',
+  feedback: '反馈',
   comment: '评论',
+  fork: '分支',
   current: '当前',
 };
 
@@ -74,58 +77,6 @@ function ChainList({ nodes = [], onOpenNode }: ChainListProps) {
   );
 }
 
-/** #172：树视图的递归节点（缩进层级 + 分支并排；点击旁路打开）。 */
-function ChainTreeList({
-  node, depth = 0, onOpenNode,
-}: {
-  node: ChainTreeNode;
-  depth?: number;
-  onOpenNode?: (n: ChainNode) => void;
-}) {
-  const lab = KIND_LAB[node.forkKind || ''] || node.forkKind || (depth === 0 ? '起点' : '?');
-  const title = node.excerpt || lab;
-  const meta = [node.id != null ? `#${node.id}` : null, node.createdAt || null, node.status ? STATUS_LAB[node.status] || node.status : null]
-    .filter(Boolean)
-    .join(' · ');
-  const kids = node.children || [];
-  return (
-    <li className={`mdw-chain-li${node.current ? ' is-current' : ''}${node.missing ? ' is-missing' : ''}`}>
-      <div className="mdw-chain-rail" aria-hidden>
-        <span className="mdw-chain-dot" />
-        {kids.length ? <span className="mdw-chain-line" /> : null}
-      </div>
-      <button
-        type="button"
-        className={`mdw-chain-card${node.forkKind === 'comment' ? ' is-comment' : ''}`}
-        title={node.current ? '当前任务（本页）' : node.missing ? '来源任务已删除/迁出' : `查看：${title}`}
-        disabled={!!node.current}
-        onClick={() => {
-          if (!node.current && !node.missing) onOpenNode?.({ ...node, taskId: node.id, dirKey: node.key });
-        }}
-      >
-        <span className="mdw-chain-kind">{lab}</span>
-        <span className="mdw-chain-ex">{title || '—'}</span>
-        {meta ? <span className="mdw-chain-meta">{meta}</span> : null}
-        {kids.length > 1 ? <span className="mdw-chain-meta">{kids.length} 条旁支</span> : null}
-      </button>
-      {kids.length ? (
-        <ol className="mdw-chain-tree-kids">
-          {kids.map((k, i) => (
-            <ChainTreeList key={`${node.id}:${k.id}:${i}`} node={k} depth={depth + 1} onOpenNode={onOpenNode} />
-          ))}
-        </ol>
-      ) : null}
-    </li>
-  );
-}
-
-const STATUS_LAB: Record<string, string> = {
-  pending: '待领取',
-  claimed: '已领取',
-  done: '已完成',
-  cancelled: '已取消',
-};
-
 interface TaskChainModalProps {
   open?: boolean;
   nodes?: ChainNode[];
@@ -139,24 +90,21 @@ interface TaskChainModalProps {
 export function TaskChainModal({ open, nodes, tree, onOpenNode, onClose }: TaskChainModalProps) {
   if (!open) return null;
   return (
-    <Modal title="任务链" onClose={onClose} size="md" className="mdw-chain-modal">
+    <Modal title="任务链" onClose={onClose} size="lg" className="mdw-chain-modal">
       <p className="mdw-chain-hint">
         {tree
-          ? '单向树：每条任务至多一个来源（反馈/评论派生），后代随时分叉。点非当前节点可在旁路打开内容。'
+          ? '单向树：每条任务至多一个来源（评论 / 反馈 / 分支），后代分叉并列。点任意节点旁路打开。'
           : '从早到晚排列。点非当前节点可在旁路打开内容。'}
-        {' '}提示词口径：库中正文 = 旧正文 + 程序生成的总结/反馈 callout（用户原文在 WARNING 块内）；
-        agent 实际收到的是交付时重排后的版本（最新轮在前，历史轮压缩）。
+        {' '}agent 实收提示词为交付重排版（最新轮在前）；原始意图读正文的 WARNING 块。
       </p>
       {tree ? (
-        <ol className="mdw-chain-list mdw-chain-tree" aria-label="任务链树">
-          <ChainTreeList
-            node={tree}
-            onOpenNode={(n) => {
-              onOpenNode?.(n);
-              onClose?.();
-            }}
-          />
-        </ol>
+        <ChainGraph
+          root={tree}
+          onOpen={(n) => {
+            onOpenNode?.({ ...n, taskId: n.id, dirKey: n.key, kind: n.forkKind } as ChainNode);
+            onClose?.();
+          }}
+        />
       ) : (
         <ChainList
           nodes={nodes}

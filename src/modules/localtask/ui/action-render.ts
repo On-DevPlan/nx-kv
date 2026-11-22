@@ -91,7 +91,7 @@ export function renderAdd(d: RenderInput): string {
 }
 
 // `localtask chain` 的人读输出（#74）：同任务 history 节点为主；旧 forkOf 祖先/子任务为辅
-const KIND_TAG: Record<string, string> = { origin: '起点', reopen: '反馈', comment: '评论', current: '当前' };
+const KIND_TAG: Record<string, string> = { origin: '起点', reopen: '反馈', comment: '评论', fork: '分支', feedback: '反馈', current: '当前' };
 // T04：链 = task_links（每轮一条任务，seq 做节点 key）。节点没有 origin/comment
 // 事件层了——每轮的"正文 + 反馈"完整活在那一轮的任务行上。
 export function renderChain(d: RenderInput): string {

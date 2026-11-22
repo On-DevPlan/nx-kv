@@ -136,7 +136,7 @@ export async function addTask({
   if (rawForkOf !== undefined && rawForkOf !== null && String(rawForkOf).trim() !== '') {
     const ref = resolveForkRef(rawForkOf, key);
     forkOf = { ref };
-    forkKind = rawForkKind === 'reopen' ? 'reopen' : 'comment';
+    forkKind = rawForkKind === 'reopen' ? 'reopen' : rawForkKind === 'fork' ? 'fork' : 'comment';
     const at = ref.lastIndexOf(':');
     const parent = topicsRepo.getTopic(ref.slice(0, at));
     const prow = parent && (parent.tasks || []).find((x: any) => Number(x.id) === Number(ref.slice(at + 1)));
@@ -468,9 +468,10 @@ export async function cloneTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = 
 /**
  * Fork 任务（#67）：克隆的「原文复制」+ 派生链的「从哪来」。
  *
- * 与 clone 的差别只有一处：把新任务挂到源任务下面（task_links，type=comment）。
+ * 与 clone 的差别只有一处：把新任务挂到源任务下面（task_links，type=**fork**，#177）。
  * 这样源任务已有的评论/反馈链在新任务的任务链弹窗里仍然可见；正文仍是逐字复制，
- * 源任务不动。时间目标与依赖依旧不继承（fork 是开新活，不是新一轮执行）。
+ * 源任务不动、不进取代链。fork 是链上的**四类节点之一**（评论 / 反馈 / 重开 / 分支），
+ * 与 comment 分开记——「复制一份另起分支」不是「一条批注」。
  */
 export async function forkTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = {}): Promise<Record<string, any>> {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
@@ -488,7 +489,7 @@ export async function forkTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = {
     cwd: toGlobal ? undefined : t.cwd || rawCwd,
     // 跨主题也拼成 'key:id'，父任务定位与 reopen 同一条链路
     forkOf: `${key}:${want}`,
-    forkKind: 'comment',
+    forkKind: 'fork',
   });
   return { ...res, forked: true, from: { key, id: want } };
 }

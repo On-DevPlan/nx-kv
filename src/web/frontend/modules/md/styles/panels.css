@@ -231,6 +231,12 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
 .mdw-chain-tree,.mdw-chain-tree .mdw-chain-tree-kids{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
 .mdw-chain-tree .mdw-chain-tree-kids{margin-left:18px;border-left:1px dashed var(--line,#E4E2DC);padding-left:10px}
 .mdw-chain-li.is-missing .mdw-chain-card{opacity:.5;font-style:italic}
+/* #177 任务链树图：纵向树（根在上），整图可滚动；节点卡片由 SVG 绘制 */
+.mdw-chain-graph-wrap{overflow:auto;max-height:min(62vh,560px);border:1px solid var(--line,#E4E2DC);border-radius:10px;background:var(--paper,#fff);padding:10px}
+.mdw-chain-graph{display:block;margin:0 auto}
+.mdw-chain-node:hover rect{filter:brightness(.98)}
+.mdw-chain-node.is-missing{opacity:.45}
+.mdw-chain-node.is-current rect{filter:drop-shadow(0 1px 3px rgba(47,111,94,.18))}
 .mdw-chain-li{display:flex;gap:10px;align-items:stretch;min-height:0}
 .mdw-chain-rail{
   flex:none;width:14px;display:flex;flex-direction:column;align-items:center;

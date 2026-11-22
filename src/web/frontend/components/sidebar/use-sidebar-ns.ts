@@ -1,7 +1,7 @@
 // 侧栏分区的装配 hook（#178）：把「分区操作 + 成员选择弹窗状态 + 候选计算」收成一处，
 // index.tsx 只留一行接线（行数门禁 + 关注点分离）。纯 UI 显示态，落 prefs.namespaces。
 import { useState } from 'react';
-import type { BoardRow, Prefs, RepoRow, SidebarNs } from '../../types.js';
+import type { BoardRow, RepoRow, SidebarNs } from '../../types.js';
 import { useNamespaces, type UseNsArgs } from './use-ns.js';
 import type { NsCandidate } from './ns-add-modal.js';
 

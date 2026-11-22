@@ -109,8 +109,6 @@ export async function reopenTask({
   let curTopic = t;
   let task = t.tasks.find((x: any) => Number(x.id) === want);
   if (!task || task.deletedAt) throw notFound('任务不存在或已删除: #' + want);
-  // #172：用户指定的任务 id（顺链前的原始目标）——评论旁支用它区分「原任务」与「上一条评论任务」
-  const originalWant = want;
   const kind = rawKind === 'comment' ? 'comment' : 'reopen';
   // cancelled 的两种形态：
   //   · 被 superseded（ext_superseded_by 指着链尖）→ **顺着链走到当前尖**，从尖派生

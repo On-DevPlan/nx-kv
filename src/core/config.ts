@@ -19,6 +19,8 @@ export const PREF_KEYS = Object.freeze([
   'gitRepoRoot',
   'gitDevRoot',
   'orphanTtlDays',
+  // #180：侧边栏命名空间配置（JSON 对象：groups + focus）——用户明确要求落 settings 表
+  'sidebarNamespaces',
 ] as const);
 
 /** 孤儿 ref 的默认保留天数（可配置；0 或非法值回落为它）。 */
@@ -29,12 +31,57 @@ const ORPHAN_TTL_MAX_DAYS = 3650;
 /** settings 表里偏好字段的键名。 */
 export const APP_SETTING_KEYS = Object.freeze(PREF_KEYS.map((k) => 'app.' + k));
 
+/** #180：侧栏命名空间配置（落 settings 表的单个 JSON 字段）。 */
+export interface SidebarNsConfig {
+  id: string;
+  name: string;
+  items: string[];
+  collapsed?: boolean;
+  pinned?: boolean;
+}
+export interface SidebarNsState {
+  groups: SidebarNsConfig[];
+  focus: string;
+}
+export const EMPTY_SIDEBAR_NS = (): SidebarNsState => ({ groups: [], focus: '' });
+
+/** namespace JSON 归一：脏数据（非对象 / 超量 / 非法 items）不炸读取，逐层 sanitize。 */
+function normalizeSidebarNs(raw: unknown): SidebarNsState {
+  const base = EMPTY_SIDEBAR_NS();
+  if (!raw || typeof raw !== 'object') return base;
+  const d = raw as Record<string, unknown>;
+  const rawGroups = Array.isArray(d.groups) ? d.groups.slice(0, 200) : [];
+  const groups: SidebarNsConfig[] = [];
+  const ids = new Set<string>();
+  for (const g of rawGroups) {
+    if (!g || typeof g !== 'object') continue;
+    const item = g as Record<string, unknown>;
+    const id = String(item.id || '').trim().slice(0, 120);
+    const name = String(item.name || '').trim().slice(0, 60);
+    if (!id || !name || ids.has(id)) continue;
+    ids.add(id);
+    const items = Array.isArray(item.items)
+      ? [...new Set(
+          item.items
+            .map((k) => String(k || '').trim().slice(0, 300))
+            // #180：早期拖拽把 'repo:<key>' 写进了 items，读取时归一成裸 key（与面板口径一致）
+            .map((k) => (k.startsWith('repo:') ? k.slice(5) : k))
+            .filter(Boolean)
+        )].slice(0, 1000)
+      : [];
+    groups.push({ id, name, items, ...(item.collapsed === true ? { collapsed: true } : {}), ...(item.pinned === true ? { pinned: true } : {}) });
+  }
+  return { groups, focus: String(d.focus || '').trim().slice(0, 120) };
+}
+
 /** 归一后的本机偏好形状。 */
 export interface AppConfig {
   gitRepoRoot: string;
   gitDevRoot: string;
   /** 孤儿 ref 到期天数（默认 3；范围 1–3650）。 */
   orphanTtlDays: number;
+  /** #180：侧栏命名空间配置（settings 表 JSON，一个字段管分组 + 当前聚焦）。 */
+  sidebarNamespaces: SidebarNsState;
 }
 
 const EMPTY = (): AppConfig => ({
@@ -45,6 +92,7 @@ const EMPTY = (): AppConfig => ({
   gitDevRoot: '',
   // 无任何归属的 ref 保留天数；到期由 serve 例行维护 / docs orphans purge 清理。
   orphanTtlDays: DEFAULT_ORPHAN_TTL_DAYS,
+  sidebarNamespaces: EMPTY_SIDEBAR_NS(),
 });
 
 /** TTL 天数归一：非数字 / 越界一律回落默认值。 */
@@ -67,6 +115,7 @@ function normalize(data: unknown): AppConfig {
     gitRepoRoot: String(d.gitRepoRoot || ''),
     gitDevRoot: String(d.gitDevRoot || ''),
     orphanTtlDays: normalizeTtlDays(d.orphanTtlDays),
+    sidebarNamespaces: normalizeSidebarNs(d.sidebarNamespaces),
   };
 }
 

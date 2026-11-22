@@ -42,18 +42,6 @@ test('#179 切换命名空间：focusNs 指到第二个 → 只显示第二个',
   assert.ok(!t.rows.some((r) => r.type === 'ns'));
 });
 
-test('#179 「全部分区」概览：分区头 + 成员（pinned 先），未分组收进可折叠区', () => {
-  const prefs = {
-    namespaces: [NS_MISC, { ...NS_DATA, pinned: true }],
-    focusNs: ALL_KEY,
-  };
-  const t = buildTree(repos, boards, topics, prefs, '');
-  const heads = t.rows.filter((r) => r.type === 'ns');
-  assert.deepEqual(heads.map((h) => h.name), ['数据', '杂项'], '#180 未分组概念已删除');
-  const dataIdx = t.rows.findIndex((r) => r.type === 'ns' && r.name === '数据');
-  assert.equal(t.rows[dataIdx + 1]?.key, 'github.com/a/one', '成员紧跟头行');
-});
-
 test('#174 运行中视图：只显示有任务（待领取/等待中）的仓库与看板', () => {
   const topicsBusy = [
     { key: 'tk1', repo: { id: 'r1' }, pending: 2, waiting: false, tasks: [{ id: 1, status: 'pending' }] },
@@ -71,13 +59,11 @@ test('#178 概览：脏 items（分区 id / 未分组标记 / 不存在的 key�
       { id: 'ns_1', name: '数据', items: ['ns_2', UNGROUPED_KEY, ACTIVE_KEY, 'github.com/a/nope', 'github.com/a/one'] },
       { id: 'ns_2', name: '其它', items: ['github.com/a/two'] },
     ],
-    focusNs: ALL_KEY,
+    focusNs: 'ns_1',
   };
   const t = buildTree(repos, boards, topics, prefs, '');
-  const heads = t.rows.filter((r) => r.type === 'ns');
-  assert.deepEqual(heads.map((h) => h.name), ['数据', '其它']);
-  assert.equal(heads[0].count, 1, '只认真实条目（one）');
-  assert.ok(!t.rows.some((r) => r.type !== 'ns' && String(r.key || '').startsWith('ns_')), '分区 id 不被当条目（头行本身除外）');
+  assert.deepEqual(t.rows.filter((r) => r.type === 'repo').map((r) => r.key), ['github.com/a/one'], '脏 key 全被忽略');
+  assert.ok(!t.rows.some((r) => String(r.key || '').startsWith('ns_')), '分区 id 不被当条目');
 });
 
 test('搜索时平铺（不折叠、不出现分区头）', () => {
@@ -86,32 +72,30 @@ test('搜索时平铺（不折叠、不出现分区头）', () => {
   assert.ok(t.rows.some((r) => r.key === 'github.com/a/two'));
 });
 
-test('#179 概览里折叠的分区：头行在、成员不输出', () => {
-  const prefs = {
-    namespaces: [{ ...NS_DATA, collapsed: true }, NS_MISC],
-    focusNs: ALL_KEY,
-  };
+
+test('#180 旧的 focusNs=__ALL__（已删除的概览）自动回退到第一个命名空间（不再重复显示）', () => {
+  const prefs = { namespaces: [NS_DATA, NS_MISC], focusNs: ALL_KEY };
   const t = buildTree(repos, boards, topics, prefs, '');
-  const heads = t.rows.filter((r) => r.type === 'ns');
-  assert.deepEqual(heads.map((h) => h.name), ['数据', '杂项']);
-  const keys = t.rows.map((r) => rKey(r));
-  assert.ok(!keys.includes('github.com/a/one'), '折叠成员不出现');
-  assert.ok(keys.includes('github.com/a/two'));
+  assert.ok(!t.rows.some((r) => r.type === 'ns'));
+  assert.deepEqual(t.rows.filter((r) => r.type === 'repo').map((r) => r.key), ['github.com/a/one']);
 });
 
-test('#180 多归属：同一个 topic 可同时出现在两个命名空间（概览里各带 nsId）', () => {
+test('#180 折叠态在聚焦视图不生效（下拉选它就是来看它的）', () => {
+  const prefs = { namespaces: [{ ...NS_DATA, collapsed: true }, NS_MISC], focusNs: 'ns_data' };
+  const t = buildTree(repos, boards, topics, prefs, '');
+  assert.deepEqual(t.rows.filter((r) => r.type === 'repo').map((r) => r.key), ['github.com/a/one']);
+});
+
+test('#180 多归属：同一条目在两个 ns 的聚焦视图里都能看到', () => {
   const shared = 'github.com/a/one';
   const prefs = {
     namespaces: [
-      { id: 'ns_a', name: '数据', items: [shared] },
-      { id: 'ns_b', name: '杂项', items: [shared, 'github.com/a/two'] },
+      { id: 'ns_a', name: 'A', items: [shared] },
+      { id: 'ns_b', name: 'B', items: [shared, 'github.com/a/two'] },
     ],
-    focusNs: ALL_KEY,
   };
-  const t = buildTree(repos, boards, topics, prefs, '');
-  const copies = t.rows.filter((r) => r.type === 'repo' && r.key === shared);
-  assert.equal(copies.length, 2, '两处都显示');
-  assert.deepEqual(copies.map((r) => r.nsId), ['ns_a', 'ns_b'], '每份带所属 nsId');
-  // 没有未分组头
-  assert.ok(!t.rows.some((r) => r.type === 'ns' && String(r.key || '').startsWith('__UN')));
+  for (const nsId of ['ns_a', 'ns_b']) {
+    const t = buildTree(repos, boards, topics, { ...prefs, focusNs: nsId }, '');
+    assert.ok(t.rows.some((r) => r.key === shared), `在 ${nsId} 里可见`);
+  }
 });

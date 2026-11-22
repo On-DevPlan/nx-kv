@@ -14,6 +14,8 @@ export interface SearchRowProps {
   onNewNs: () => void;
   onManage: () => void;
   onAddCurrent: () => void;
+  /** #180：拖到切换器即加入当前命名空间 */
+  onDropHere: (key: string) => void;
   onAddMenu: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
@@ -27,6 +29,7 @@ export default function SearchRow(p: SearchRowProps) {
         onNewNs={p.onNewNs}
         onManage={p.onManage}
         onAddCurrent={p.onAddCurrent}
+        onDropHere={p.onDropHere}
       />
       <label className='sbox'>
         <Icon name='search' />

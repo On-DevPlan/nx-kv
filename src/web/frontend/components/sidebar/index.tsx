@@ -191,8 +191,7 @@ export default function Sidebar({
 
   // #178：分区装配（操作 + 成员选择弹窗 + 候选）全部收在 use-sidebar-ns（纯显示态）
   const nsOps = useSidebarNs({ patchPrefs, toast, dialog, setMenu, repos, boards, namespaces: prefs.namespaces });
-  const { nsForm, setNsForm, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, setFocusNs, moveNs, removeNs, renameNs, newNsAndMove, addToNs, openNsMenu, toggleNsCollapse, moveToNs, removeFromNs } = nsOps;
-
+  const { nsForm, setNsForm, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, setFocusNs, moveNs, removeNs, renameNs, newNsAndMove, addToNs, dropToCurrent, openNsMenu, toggleNsCollapse, moveToNs, removeFromNs } = nsOps;
 
   // 点击：看板 = 进组视图（**组是叶子，成员在组面板里下拉选择**，树里不再铺子文件）；
   // 仓库 = 进目录（子任务表）；全局 = 进全局池。
@@ -395,6 +394,7 @@ export default function Sidebar({
             const cur = String((prefs as any).focusNs || '') || list[0]?.id || '';
             if (cur) setAddFor(cur);
           }}
+          onDropHere={(key) => { dropToCurrent(key, String((prefs as any).focusNs || '')); toast('已加入当前命名空间'); }}
           onAddMenu={addMenu}
         />
       </div>

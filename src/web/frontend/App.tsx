@@ -42,7 +42,9 @@ import {
 import { useTemplates } from './modules/md/use-templates.js';
 import { findGroupTask } from './modules/board/board-view.js';
 import { installAttachmentPreview } from './modules/md/lightbox.js';
-import { loadPrefs, updatePrefs } from './prefs.js';
+import { loadPrefs } from './prefs.js';
+// #180：侧栏命名空间配置持久化到 settings 表（hook 内聚，App 只留一行接线）
+import { useNsPersist } from './use-ns-persist.js';
 import { nextRepoData } from './repo-data.js';
 import SidebarRescueFab from './components/sidebar/rescue-fab.jsx';
 import { pushRoute } from './components/layout/route-history.js';
@@ -190,9 +192,8 @@ export default function App() {
     }
   }, [model]);
 
-  const patchPrefs = useCallback((patch: Partial<Prefs> | ((prev: Prefs) => Partial<Prefs>)) => {
-    setPrefs(updatePrefs(patch));
-  }, []);
+  // #180：ns 配置落 settings 表（分组 + 聚焦）；localStorage 旧值启动迁移一次
+  const patchPrefs = useNsPersist(prefs, setPrefs, toast);
 
   // ─── 路由：hashchange 单向同步（navigate 就是写 hash）───
   useEffect(() => {

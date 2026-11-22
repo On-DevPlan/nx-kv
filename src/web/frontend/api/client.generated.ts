@@ -444,7 +444,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async set(input?: z.input<InstanceType<typeof SettingSetAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof SettingSetAction>['_input']>);
       const path = `/api/setting`;
-      const body = { "gitRepoRoot": inp["gitRepoRoot"], "gitDevRoot": inp["gitDevRoot"], "orphanTtlDays": inp["orphanTtlDays"] };
+      const body = { "gitRepoRoot": inp["gitRepoRoot"], "gitDevRoot": inp["gitDevRoot"], "orphanTtlDays": inp["orphanTtlDays"], "sidebarNamespaces": inp["sidebarNamespaces"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof SettingSetAction>['run']>>;
     },
     // action: board.add

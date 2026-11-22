@@ -41,5 +41,13 @@ export function useSidebarNs({ repos, boards, namespaces, ...nsArgs }: UseSideba
     return out;
   };
 
-  return { ...ops, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen };
+  /** #180：拖到顶部切换器 → 加入当前命名空间（focus 空时 = 第一个） */
+  const dropToCurrent = (key: string, focus: string) => {
+    const cur = focus || namespaces?.[0]?.id || '';
+    // dataTransfer 存的是 'repo:<key>' / 'board:<id>'；namespace items 里仓库用裸 key
+    const normalized = key.startsWith('repo:') ? key.slice(5) : key;
+    if (cur && normalized) ops.addToNs(cur, [normalized]);
+  };
+
+  return { ...ops, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, dropToCurrent };
 }

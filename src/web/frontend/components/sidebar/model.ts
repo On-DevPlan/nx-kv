@@ -335,7 +335,8 @@ export function buildTree(
   //   focus 取值：ns id（默认 = 第一个分区）/ ACTIVE_KEY（运行中）/ UNGROUPED_KEY（未分组）/
   //   ALL_KEY（全部分区概览——拖动与管理用）。**聚焦视图不输出分区头**：顶部下拉即标题。
   const focus = String(prefs.focusNs || '');
-  const effective = focus || (nsList.length ? nsList[0]!.id : '');
+  // #180：旧数据里的 '__ALL__'（已删除的概览）按「未设置」回退到第一个 ns——不再重复显示
+  const effective = (focus && focus !== ALL_KEY ? focus : '') || (nsList.length ? nsList[0]!.id : '');
   if (effective === ACTIVE_KEY && !q) {
     // dynamic「运行中」：有任务（待领取或等待回填）的仓库/看板——替代全部目录总览的用途
     out.push(...sorted.filter((r) => (r.type === 'repo' || r.type === 'board') && ((r.pending || 0) > 0 || r.waiting)));

@@ -39,3 +39,4 @@ temp/
 
 # TypeScript 构建产物（tsc -b tsconfig.node.json 的输出）——不入库
 dist/
+.tmp-shots/

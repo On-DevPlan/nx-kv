@@ -8,7 +8,6 @@
     "group": "#/group/B",
     "repos": "#/repos",
     "cloud": "#/cloud",
-    "overview": "#/overview",
     "templates-plain": "#/templates",
     "templates-edit": "#/templates/edit/t1",
     "templates-new-full": "#/templates/new?topic=k%201&scope=topic%3Ak%201%2Crepo%3Ar",
@@ -131,18 +130,6 @@
       "named": {
         "component": "cloud",
         "name": "云端总览",
-        "config": {}
-      }
-    },
-    "overview": {
-      "empty": {
-        "component": "overview",
-        "name": "全部目录总览",
-        "config": {}
-      },
-      "named": {
-        "component": "overview",
-        "name": "全部目录总览",
         "config": {}
       }
     },

@@ -34,8 +34,21 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
     row.type === 'board' ? 'board:' + String(row.id) : String(row.key || '');
 
   const toggleNsCollapse = useCallback(
-    (nsId: string) => withNs((list) => list.map((n) => (n.id === nsId ? { ...n, collapsed: !n.collapsed } : n))),
-    [withNs]
+    (nsId: string) => {
+      // #174：「未分组」不是真分区——折叠态走 prefs.nsUngroupedOpen（默认折叠）
+      if (nsId === UNGROUPED_KEY) {
+        patchPrefs?.((p) => ({ nsUngroupedOpen: !(p.nsUngroupedOpen === true) }));
+        return;
+      }
+      withNs((list) => list.map((n) => (n.id === nsId ? { ...n, collapsed: !n.collapsed } : n)));
+    },
+    [withNs, patchPrefs]
+  );
+
+  /** #174：下拉框聚焦（'' = 全部 / ACTIVE_KEY = 运行中 / ns id = 单分区） */
+  const setFocusNs = useCallback(
+    (focus: string) => patchPrefs?.({ focusNs: String(focus || '') }),
+    [patchPrefs]
   );
   const toggleNsPinned = useCallback(
     (nsId: string) => withNs((list) => list.map((n) => (n.id === nsId ? { ...n, pinned: !n.pinned } : n))),
@@ -139,5 +152,5 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
     [dialog, moveNs, removeNs, toggleNsCollapse, toggleNsPinned]
   );
 
-  return { nsForm, setNsForm, toggleNsCollapse, moveToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu };
+  return { nsForm, setNsForm, toggleNsCollapse, moveToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs };
 }

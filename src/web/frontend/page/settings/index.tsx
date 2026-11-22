@@ -26,7 +26,6 @@ import { useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
 import { Button } from '../../components/button/index.jsx';
 import PromptTemplatesSection from './prompt-templates-section.jsx';
-import SidebarSection from './sidebar-section.jsx';
 import './style.css';
 
 /** 一个设置分区 = 左侧导航的一项 = tab。 */
@@ -43,7 +42,6 @@ const SECTIONS: SettingsSection[] = [
   { id: 'storage', label: '本机存储', icon: 'archive' },
   { id: 'docsCleanup', label: '文档清理', icon: 'archive' },
   { id: 'prompts', label: '提示词模板', icon: 'flow' },
-  { id: 'sidebar', label: '侧栏显示', icon: 'sidebar' },
 ];
 
 /** 孤儿清单的一行（/api/docs/orphans 的响应形状）。 */
@@ -184,12 +182,6 @@ export default function SettingsPanel() {
             {prefs?.defaultFolded ? '开' : '关'}
           </button>
         </div>
-        {(prefs?.hidden || []).length > 0 && (
-          <div className="setp-row">
-            <span>隐藏仓库 {prefs?.hidden?.length} 个</span>
-            <Button variant="secondary" onClick={() => patchPrefs({ hidden: [] })}>恢复显示</Button>
-          </div>
-        )}
       </>
     ),
 
@@ -327,10 +319,7 @@ export default function SettingsPanel() {
       <PromptTemplatesSection />
     ),
 
-    // 侧栏显示编排（任务 #61 反馈③）：菜单式的「显示哪些项目组 / 项目」
-    sidebar: (
-      <SidebarSection />
-    ),
+
   };
 
   return (

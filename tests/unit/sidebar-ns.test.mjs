@@ -73,3 +73,43 @@ test('未分组头行的 key 是 UNGROUPED_KEY，条目数与 pending 汇总在�
   assert.ok(head, '有未分组头（three 与 board b1 不在分区）');
   assert.equal(head.count, 2);
 });
+
+// ── #174：视图聚焦（focusNs）与未分组折叠 ─────────────────────────────────
+test('#174 focusNs=ACTIVE：只显示有任务（待领取/等待中）的仓库与看板', async () => {
+  const { ACTIVE_KEY } = await import('../../src/web/frontend/components/sidebar/model.js');
+  const topics = [
+    { key: 'tk1', repo: { id: 'r1' }, pending: 2, waiting: false, tasks: [{ id: 1, status: 'pending' }] },
+    { key: 'tk3', repo: { id: 'r3' }, pending: 0, waiting: false, tasks: [] },
+  ];
+  const t = buildTree(repos, boards, topics, { focusNs: ACTIVE_KEY }, '');
+  const names = t.rows.filter((r) => r.type === 'repo' || r.type === 'board').map((r) => r.name);
+  assert.ok(names.includes('one'), '有待领取的仓库在');
+  assert.ok(!names.includes('three'), '没任务的仓库不出现');
+});
+
+test('#174 focusNs=分区 id：只显示该分区（展开态）', () => {
+  const prefs = {
+    namespaces: [
+      { id: 'ns_1', name: '核心', items: ['github.com/a/one'], collapsed: true },
+      { id: 'ns_2', name: '其它', items: ['github.com/a/two'] },
+    ],
+    focusNs: 'ns_1',
+  };
+  const t = buildTree(repos, boards, topics, prefs, '');
+  const heads = t.rows.filter((r) => r.type === 'ns');
+  assert.equal(heads.length, 1, '只有一个分区头');
+  assert.equal(heads[0].name, '核心');
+  assert.equal(heads[0].collapsed, false, '聚焦态强制展开');
+  assert.ok(t.rows.some((r) => r.key === 'github.com/a/one'), '成员显示');
+  assert.ok(!t.rows.some((r) => r.name === '每日' || r.key === 'github.com/a/two'), '其它分区不显示');
+});
+
+test('#174 未分组默认折叠（分区 = 显示范围），nsUngroupedOpen 才展开', () => {
+  const prefs = { namespaces: [{ id: 'ns_1', name: '核心', items: ['github.com/a/one'] }] };
+  const t = buildTree(repos, boards, topics, prefs, '');
+  const head = t.rows.find((r) => r.key === UNGROUPED_KEY);
+  assert.equal(head.collapsed, true, '默认折叠');
+  const t2 = buildTree(repos, boards, topics, { ...prefs, nsUngroupedOpen: true }, '');
+  const head2 = t2.rows.find((r) => r.key === UNGROUPED_KEY);
+  assert.equal(head2.collapsed, false, '手动展开');
+});

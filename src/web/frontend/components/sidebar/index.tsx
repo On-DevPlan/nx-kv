@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { Icon } from '../icons.jsx';
 import { PopMenu, Modal } from '../popup/index.jsx';
+import NsPicker from './ns-picker.js';
 import { useToast } from '../toast/index.jsx';
 import { useDialog } from '../popup/index.jsx';
 import type { PopMenuItem } from '../popup/index.js';
@@ -191,8 +192,9 @@ export default function Sidebar({
   }, []);
 
   // ─── #167 namespace 分区：操作层抽在 use-ns.ts（纯 prefs，回写即持久化）───
-  const { nsForm, setNsForm, toggleNsCollapse, moveToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu } =
+  const { nsForm, setNsForm, toggleNsCollapse, moveToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs } =
     useNamespaces({ patchPrefs, toast, dialog, setMenu });
+
 
   // 点击：看板 = 进组视图（**组是叶子，成员在组面板里下拉选择**，树里不再铺子文件）；
   // 仓库 = 进目录（子任务表）；全局 = 进全局池。
@@ -382,7 +384,13 @@ export default function Sidebar({
             <Icon name="x" size={14} />
           </button>
         </div>
-        <div className="searchrow">
+        <div className="searchrow sb-ns-row">
+          <NsPicker
+            namespaces={prefs.namespaces}
+            focusNs={String((prefs as any).focusNs || '')}
+            onFocus={setFocusNs}
+            onNewNs={() => setNsForm({ id: '', name: '' })}
+          />
           <label className="sbox">
             <Icon name="search" />
             <input
@@ -520,8 +528,8 @@ export default function Sidebar({
                   <span className="nm">清单没读到 · 点这里重试</span>
                 </button>
               ) : (
-                // 有数据但一行都出不来 = 全被「从侧边栏隐藏」勾掉了（#61），给出路而不是空白
-                '项目与项目组都被隐藏了：设置 → 侧栏显示 里勾回来'
+                // #174：有数据但一行都出不来 = 当前视图（分区 / 运行中）里没有条目，给出路
+                '当前视图没有条目：顶上切回「全部分区」，或把仓库拖进一个分区'
               )}
           </div>
         )}
@@ -530,14 +538,7 @@ export default function Sidebar({
 
       <div className="sfoot">
         {footEntry('#/templates', 'list', '任务模板')}
-        {footEntry('#/overview', 'overview', '全部目录总览')}
         {footEntry('#/repos', 'repo', '仓库管理')}
-        {waitingCount > 0 && (
-          <button className="trow" onClick={() => onNavigate?.('#/overview')} title="有 agent 正在等待回填">
-            <span className="gico"><Icon name="warn" /></span>
-            <span className="nm">{waitingCount} 个 agent 等待回填</span>
-          </button>
-        )}
       </div>
 
       {menu && <PopMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}

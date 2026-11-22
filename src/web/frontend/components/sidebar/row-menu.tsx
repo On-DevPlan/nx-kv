@@ -83,7 +83,6 @@ export function rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDat
         onClick: () => assign(b, inBoard(b)),
       })),
       'sep',
-      { label: '从侧边栏隐藏（不删登记）', icon: 'x', onClick: () => patchPrefs?.((p) => ({ hidden: [...(p.hidden || []), row.key] })) },
       ...nsSection,
     ];
   }

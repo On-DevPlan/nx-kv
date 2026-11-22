@@ -130,11 +130,14 @@ export interface SidebarNs {
 
 export interface Prefs {
   order: string[];
-  hidden: string[];
   folded: boolean;
   defaultFolded: boolean;
   /** namespace 分区（#167）；空 = 现状平铺 */
   namespaces?: SidebarNs[];
+  /** #174：侧栏聚焦的视图——''（全部）| 分区 id | '__ACTIVE__'（只显示有任务的） */
+  focusNs?: string;
+  /** #174：「未分组」区是否展开（默认 false = 折叠——分区即显示范围） */
+  nsUngroupedOpen?: boolean;
   [k: string]: any;
 }
 

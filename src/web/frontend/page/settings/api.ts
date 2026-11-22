@@ -84,7 +84,3 @@ export function previewDelivery(input: {
   return api('/api/localtasks/preview', { method: 'POST', body: input });
 }
 
-/** 并发拉仓库清单与看板清单（侧栏分组用）。 */
-export function loadReposAndBoards(): Promise<any> {
-  return Promise.all([api('/api/repos'), api('/api/boards')]);
-}

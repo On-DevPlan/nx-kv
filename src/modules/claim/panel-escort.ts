@@ -23,7 +23,7 @@ function panelOrigin(port: unknown): string {
 // 深链到面板目录工作台并定位当前主题（key 必有；key 缺失时落总览兜底）。
 // 端口取实际发现的面板（可能不是默认端口）。经典看板 #/localtask 已下线。
 export function deepLinkUrl(key: unknown, port: unknown): string {
-  const page = key ? `#/dir/${encodeURIComponent(String(key))}` : '#/overview';
+  const page = key ? `#/dir/${encodeURIComponent(String(key))}` : '#/repos';
   return `${panelOrigin(port)}/${page}`;
 }
 

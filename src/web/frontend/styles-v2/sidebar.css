@@ -21,7 +21,11 @@
 .iconbtn:hover { background: var(--soft-2); color: var(--ink); }
 /* 搜索行：sbox 显式定高（28px 偏高 → 24px），「+」flex:none 永不被挤掉；
    kwcount 是辅助信息，先于「+」收缩（省略号兜底），行内放不下再按容器宽度藏。 */
-.searchrow { display: flex; gap: 6px; align-items: center; }
+.searchrow {
+/* #174：侧栏视图下拉（分区 / 运行中）——窄栏下 ellipsis，不挤压搜索框 */
+.sb-ns-row { gap: 6px; }
+.sb-ns-pick { flex: 0 1 auto; min-width: 0; max-width: 120px; }
+.sb-ns-pick .btn, .sb-ns-pick > .btn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } display: flex; gap: 6px; align-items: center; }
 .searchrow .iconbtn { flex: none; }
 .searchrow .sbox {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; background: var(--soft);

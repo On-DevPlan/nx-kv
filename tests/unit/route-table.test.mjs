@@ -28,7 +28,6 @@ const PANEL_CASES = [
   ['dir-global', 'dir', { dirKey: GLOBAL_KEY }],
   ['group', 'group', { boardId: 'B' }],
   ['repos', 'repos', {}],
-  ['overview', 'overview', {}],
   ['templates-plain', 'templates', {}],
   ['templates-edit', 'templates', { mode: 'edit', id: 't1' }],
   ['templates-new-full', 'templates', { mode: 'new', topic: 'k 1', scope: ['topic:k 1', 'repo:r'] }],
@@ -51,7 +50,6 @@ const ROUTE_CASES = [
   ['group-page', { view: 'group', key: 'B', task: '7' }],
   ['group-plain', { view: 'group', key: 'B', task: '' }],
   ['repos', { view: 'repos', key: '', task: '' }],
-  ['overview', { view: 'overview', key: '', task: '' }],
   ['templates-plain', { view: 'templates', key: '', task: '' }],
   ['templates-edit', { view: 'templates', key: '', task: '', mode: 'edit', id: 't1' }],
   ['templates-new', { view: 'templates', key: '', task: '', mode: 'new', topic: 'k 1', scope: 'topic:k 1, repo:r' }],
@@ -87,5 +85,6 @@ test('路由 → 面板：与表化前的输出逐字一致（含两套 ctx）',
 test('夹具覆盖了每个已登记视图', () => {
   // 防止「新增视图忘了补用例」——夹具里有、登记表里没有也算漏（那说明视图被删了）
   const views = new Set(ROUTE_CASES.map(([, r]) => r.view).filter((v) => v !== 'unknown'));
-  assert.ok(views.size >= 7, `夹具视图太少: ${[...views].join(',')}`);
+  // #174：overview（全部目录总览）下线后剩 6 个视图——阈值同步
+  assert.ok(views.size >= 6, `夹具视图太少: ${[...views].join(',')}`);
 });

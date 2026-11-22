@@ -17,4 +17,3 @@ function singleton(view: string, component: string, title: string): RoutePage {
 }
 
 export const reposPage = singleton('repos', 'repos', '仓库管理');
-export const overviewPage = singleton('overview', 'overview', '全部目录总览');

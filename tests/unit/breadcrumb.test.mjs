@@ -29,14 +29,14 @@ test('crumbsOf dir：仅目录（无任务）', () => {
 test('crumbsOf group：组页保留组名（组实体自己的页面）', () => {
   assert.deepEqual(crumbsOf({ view: 'group', key: 'b_1' }, { boardName: 'nx' }), ['nx']);
   assert.deepEqual(crumbsOf({ view: 'group', key: 'b_x' }, {}), ['项目组']);
-  assert.deepEqual(crumbsOf({ view: 'overview' }, {}), ['全部目录总览']);
+  // #174：全部目录总览下线——未知视图没有面包屑
+  assert.deepEqual(crumbsOf({ view: 'overview' }, {}), []);
 });
 
 test('parentRouteOf：目录页兜底回总览，不回组页（#84）', () => {
-  assert.equal(parentRouteOf({ view: 'dir', key: 'abc' }), '#/overview');
+  assert.equal(parentRouteOf({ view: 'dir', key: 'abc' }), '#/repos');
   assert.equal(parentRouteOf({ view: 'dir', key: 'abc', task: '28' }), '#/dir/abc');
-  assert.equal(parentRouteOf({ view: 'group', key: 'b_1' }), '#/overview');
-  assert.equal(parentRouteOf({ view: 'overview' }), '');
+  assert.equal(parentRouteOf({ view: 'group', key: 'b_1' }), '#/repos');
 });
 
 test('crumbCtxOf：仓库路由不再从 repo.boards 挂组名（#84 根因）', () => {
@@ -75,7 +75,7 @@ test('crumbsOf group+task：[ 组名 / #N ]（挂组页之下）', () => {
 
 test('parentRouteOf：组任务页回组页（不是总览）', () => {
   assert.equal(parentRouteOf({ view: 'group', key: 'b_1', task: '86' }), '#/group/b_1');
-  assert.equal(parentRouteOf({ view: 'group', key: 'b_1' }), '#/overview');
+  assert.equal(parentRouteOf({ view: 'group', key: 'b_1' }), '#/repos');
 });
 
 test('crumbCtxOf group+task：成员队列里搜任务（组路由 key 不是队列 key）', () => {
@@ -163,6 +163,6 @@ test('crumbTrailOf：模板新建/编辑有上一级（回任务模板列表）�
       { label: '新建模板', hash: '' },
     ]
   );
-  assert.deepEqual(crumbTrailOf({ view: 'overview' }, {}), [{ label: '全部目录总览', hash: '' }]);
+  assert.deepEqual(crumbTrailOf({ view: 'overview' }, {}), []);
   assert.deepEqual(crumbTrailOf(null, {}), []);
 });

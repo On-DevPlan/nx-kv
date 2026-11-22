@@ -28,7 +28,6 @@ export const VIEWS: ViewDef[] = [
   // 数据仍是 localtask 队列，故 module 归 localtask。
   { id: 'dir', module: 'localtask', component: lazy(() => import('./page/dir/index.jsx')) },
   { id: 'global', module: 'localtask', component: lazy(() => import('./page/dir/index.jsx')) },
-  { id: 'overview', module: 'localtask', component: lazy(() => import('./page/overview/index.jsx')) },
   { id: 'repos', module: 'repos', component: lazy(() => import('./page/repos/index.jsx')) },
   // 项目组详情：组里的子目录以表格呈现（点击侧栏的项目组行进来）
   { id: 'group', module: 'repos', component: lazy(() => import('./page/group/index.jsx')) },

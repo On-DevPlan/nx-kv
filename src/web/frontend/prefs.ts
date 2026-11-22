@@ -3,7 +3,8 @@
 // 以前这里还存着 groups / dirGroups（侧边栏自己的「分组」），那套东西与仓库页的
 // 看板（board）是两套互不相干的存储：换浏览器分组就没了，改看板侧边栏也不知道。
 // 2026-10-29 起分组统一走看板，prefs 只剩 UI 层的几件事：
-//   order / hidden / folded —— 排序、隐藏、收起态。
+//   order / folded / namespaces —— 未分区条目序、收起态、namespace 分区（#174：
+//   「侧栏显示」编排与 prefs.hidden 已下线——显示范围由 namespace 分区控制）。
 //   （groupOpen / defaultGroupFolded 已随「组不再在树里展开」一起退役：组是叶子，
 //   成员在组详情面板里下拉选择，树里没有可折叠的组。）
 //
@@ -13,8 +14,7 @@ import type { Prefs } from './types.js';
 const KEY = 'nx-kv-sidebar-v1';
 
 const DEFAULTS: Prefs = {
-  order: [],        // 顶层条目序：['board:<id>' | '<仓库key>']（未列出的按自然序追加）
-  hidden: [],       // 隐藏的仓库 key（只是不显示，登记与数据不动）
+  order: [],        // 顶层条目序（未分区条目；分区内的序在 namespaces[].items）
   folded: false,    // 侧边栏当前收起态
   defaultFolded: false,  // 进入面板时默认收起侧边栏
   namespaces: [],   // #167 namespace 分区（归属/排序/置顶/折叠——纯显示组织，见 types.SidebarNs）

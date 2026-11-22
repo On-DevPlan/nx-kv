@@ -15,22 +15,11 @@ const REPOS = [
 const BOARDS = [{ id: 'b1', key: 'board/grp', name: 'grp', repos: [{ key: 'github.com/me/ra' }] }];
 
 test('不配隐藏：组行 + 每个仓库行都在（仓库平铺，不缩进在组下）', () => {
-  const { rows } = buildTree(REPOS, BOARDS, [], { hidden: [] });
+  const { rows } = buildTree(REPOS, BOARDS, [], {});
   assert.deepEqual(rows.map((r) => r.name), ['grp', 'ra', 'rb', 'rc']);
   const repoRows = rows.filter((r) => r.type === 'repo');
   assert.equal(repoRows.length, 3, '每个仓库都出行（不因为被组链接就消失）');
   assert.equal(repoRows[0].groupId, '', '仓库行平铺：不进任何组的桶');
-});
-
-test('隐藏仓库：那一行不出', () => {
-  const { rows } = buildTree(REPOS, BOARDS, [], { hidden: ['github.com/me/rb'] });
-  assert.deepEqual(rows.map((r) => r.name), ['grp', 'ra', 'rc']);
-});
-
-test('隐藏项目组：组行也不出（之前只过滤仓库行 → 勾了没反应）', () => {
-  const { rows } = buildTree(REPOS, BOARDS, [], { hidden: ['board/grp'] });
-  assert.deepEqual(rows.map((r) => r.name), ['ra', 'rb', 'rc']);
-  assert.equal(rows.some((r) => r.type === 'board'), false, '组行被隐藏');
 });
 
 // ─── 两种走向（任务 #85）：徽标按走向分流 ─────────────────────────────
@@ -55,13 +44,13 @@ const TOPICS = [
 ];
 
 test('仓库行徽标：项目走向——组任务不计入（#85）', () => {
-  const { rows } = buildTree(REPOS, BOARDS, TOPICS, { hidden: [] });
+  const { rows } = buildTree(REPOS, BOARDS, TOPICS, {});
   const repoRow = rows.find((r) => r.type === 'repo' && r.name === 'ra');
   assert.equal(repoRow.pending, 1, 'b1/bX 两个组任务都不算，只数纯项目任务');
 });
 
 test('组行徽标：只数指向本组的组任务，纯项目任务不算（#85）', () => {
-  const { rows } = buildTree(REPOS, BOARDS, TOPICS, { hidden: [] });
+  const { rows } = buildTree(REPOS, BOARDS, TOPICS, {});
   assert.equal(rows.find((r) => r.type === 'board').pending, 1, '只数 boardMark=b1 的待领取');
 });
 
@@ -69,7 +58,7 @@ test('组行徽标：按组名也能认（手写 frontmatter 用组名）', () =
   const topics = [
     { key: 'tk1', repo: { id: 'r1' }, pending: 9, tasks: [{ id: 5, status: 'pending', boardMark: 'grp' }] },
   ];
-  const { rows } = buildTree(REPOS, BOARDS, topics, { hidden: [] });
+  const { rows } = buildTree(REPOS, BOARDS, topics, {});
   assert.equal(rows.find((r) => r.type === 'board').pending, 1);
 });
 
@@ -86,7 +75,7 @@ test('组行徽标：consumed / 软删除的组任务不算', () => {
       ],
     },
   ];
-  const { rows } = buildTree(REPOS, BOARDS, topics, { hidden: [] });
+  const { rows } = buildTree(REPOS, BOARDS, topics, {});
   assert.equal(rows.find((r) => r.type === 'board').pending, 1);
   assert.equal(rows.find((r) => r.type === 'repo' && r.name === 'ra').pending, 0, '队列里全是组任务 → 项目侧徽标归零');
 });
@@ -99,7 +88,7 @@ const NOW = 1_700_000_000_000;
 
 test('仓库行等待截止：取 waitingUntilMs（毫秒精度）', () => {
   const topics = [{ key: 'tk1', repo: { id: 'r1' }, waiting: true, waitingUntilMs: NOW + 272_000 }];
-  const row = buildTree(REPOS, BOARDS, topics, { hidden: [] }).rows.find((r) => r.name === 'ra');
+  const row = buildTree(REPOS, BOARDS, topics, {}).rows.find((r) => r.name === 'ra');
   assert.equal(row.waiting, true);
   assert.equal(row.waitingDeadlineMs, NOW + 272_000);
   assert.equal(fmtWaitLeft(row.waitingDeadlineMs, NOW), '剩 4:32');
@@ -111,13 +100,13 @@ test('多个队列都在等：取最早结束的那个窗口', () => {
     { key: 'tk2', repo: { id: 'r1' }, waiting: true, waitingUntilMs: NOW + 60_000 },
     { key: 'tk3', repo: { id: 'r1' }, waiting: false, waitingUntilMs: NOW + 1_000 },
   ];
-  const row = buildTree(REPOS, BOARDS, topics, { hidden: [] }).rows.find((r) => r.name === 'ra');
+  const row = buildTree(REPOS, BOARDS, topics, {}).rows.find((r) => r.name === 'ra');
   assert.equal(row.waitingDeadlineMs, NOW + 60_000, '没在等的那条不算');
 });
 
 test('老数据没有 waitingUntilMs：回退解析 waitingUntil 字符串', () => {
   const topics = [{ key: 'tk1', repo: { id: 'r1' }, waiting: true, waitingUntil: '2026-11-12 10:31:02' }];
-  const row = buildTree(REPOS, BOARDS, topics, { hidden: [] }).rows.find((r) => r.name === 'ra');
+  const row = buildTree(REPOS, BOARDS, topics, {}).rows.find((r) => r.name === 'ra');
   const want = new Date(2026, 10, 12, 10, 31, 2).getTime();
   assert.equal(row.waitingDeadlineMs, want);
   assert.equal(fmtDeadlineClock(row.waitingDeadlineMs), '10:31:02');
@@ -128,13 +117,13 @@ test('组行 / 全局行的等待截止：看成员与自身主题', () => {
     { key: 'tk1', repo: { id: 'r1' }, waiting: true, waitingUntilMs: NOW + 120_000 },
     { key: '__GLOBAL__', name: '全局任务', isGlobal: true, waiting: true, waitingUntilMs: NOW + 30_000 },
   ];
-  const { rows } = buildTree(REPOS, BOARDS, topics, { hidden: [] });
+  const { rows } = buildTree(REPOS, BOARDS, topics, {});
   assert.equal(rows.find((r) => r.type === 'board').waitingDeadlineMs, NOW + 120_000, '组行借成员的窗口');
   assert.equal(rows.find((r) => r.type === 'global').waitingDeadlineMs, NOW + 30_000);
 });
 
 test('没有人在等：截止时刻为 0，文本为空（不占位）', () => {
-  const row = buildTree(REPOS, BOARDS, [{ key: 'tk1', repo: { id: 'r1' } }], { hidden: [] }).rows.find((r) => r.name === 'ra');
+  const row = buildTree(REPOS, BOARDS, [{ key: 'tk1', repo: { id: 'r1' } }], {}).rows.find((r) => r.name === 'ra');
   assert.equal(row.waiting, false);
   assert.equal(row.waitingDeadlineMs, 0);
   assert.equal(fmtWaitLeft(0, NOW), '');

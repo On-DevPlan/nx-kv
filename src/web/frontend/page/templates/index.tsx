@@ -202,7 +202,7 @@ export default function TemplatePanel({ config, model, tabId }: TemplatePanelPro
       return;
     }
     if (app.onNavigate) {
-      app.onNavigate('#/overview');
+      app.onNavigate('#/repos');
       return;
     }
     if (model && tabId) {

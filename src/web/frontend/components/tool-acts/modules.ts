@@ -76,7 +76,6 @@ export const TASK_MODULES: ToolModule[] = [
   { id: 'mark', label: '评论', icon: 'comment', section: 'more', menuGroup: 'task' },
   { id: 'delete', label: '删除', icon: 'trash', section: 'more', menuGroup: 'task', danger: true },
   { id: 'preview', label: '预览提示词', icon: 'eye', section: 'more', menuGroup: 'view' },
-  { id: 'overview', label: '总览', icon: 'overview', section: 'more', menuGroup: 'view' },
   { id: 'prog', label: '进程', icon: 'progress', section: 'more', menuGroup: 'view' },
   { id: 'source', label: '原文', icon: 'doc', section: 'more', menuGroup: 'view' },
   { id: 'shortcuts', label: '快捷键', icon: 'keyboard', section: 'more', menuGroup: 'view' },

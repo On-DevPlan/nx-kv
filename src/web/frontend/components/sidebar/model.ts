@@ -16,6 +16,9 @@ import type { BoardRow, LocalTask, LocalTopic, Prefs, RepoRow } from '../../type
 export const GLOBAL_KEY = '__GLOBAL__';
 /** 「未分组」区的头行 key（不在 namespaces.items 里的条目落这里；不可重命名/删除） */
 export const UNGROUPED_KEY = '__UNGROUPED__';
+/** #174：内置 dynamic 视图「运行中」——只显示有任务（待领取 / 等待中）的仓库与看板。
+ *  不是落盘分区（不进 namespaces），由下拉框聚焦；替代已下线的「全部目录总览」。 */
+export const ACTIVE_KEY = '__ACTIVE__';
 
 /**
  * 侧栏一行（仓库 / 看板 / 全局池）。字段按 type 选择性出现：
@@ -159,7 +162,6 @@ export function buildTree(
   kw = ''
 ): SideTree {
   const q = String(kw || '').trim().toLowerCase();
-  const hidden = new Set<string>(prefs.hidden || []);
   // 三份入参都在这里归一（#194）：外部载荷形状不该让侧栏整块消失
   const repoList = asList<RepoRow>(repos);
   const boardList = asList<BoardRow>(boards);
@@ -184,7 +186,6 @@ export function buildTree(
   //   topicKey = 任务队列主题的 key（sha1(目录名)）——工作台深链 #/dir/<topicKey> 用它。
   // 两者不是一回事：仓库 key 跨机稳定，topic key 是本机队列的身份。
   const repoRows: SideRow[] = repoList
-    .filter((r) => !hidden.has(r.key || r.id))
     .map((r) => {
       const ts = topicsOf.get(r.id) || [];
       // 仓库行默认指向第一个队列主题（ts 非空时必存在）
@@ -233,9 +234,6 @@ export function buildTree(
   // 「本组任务」同口径）。以前按成员队列整队求和：把成员项目的纯项目任务也算成
   // 「组内待领取」，同一仓库属于两组时还会被两组重复计数。
   for (const b of boardList) {
-    // **显示编排**：隐藏的项目组也不出行（之前只过滤了仓库行——
-    // 于是「勾掉项目组」在侧栏看着完全没反应，任务 #61 验收反馈实测）。
-    if (hidden.has(b.key || b.id)) continue;
     // 外部数据边界：/api/boards 的成员表（{key,id}），形状由后端 schema 决定
     const memberRepos = (b.repos || []) as Array<{ key?: string; id?: string }>;
     // 看板成员按 key 存；本地未拥有的占位成员没有登记，不成行（只占组里的位置）
@@ -329,6 +327,33 @@ export function buildTree(
   // prefs.namespaces 非空且非搜索 → 按「置顶分区 → 普通分区（数组序）→ 未分组」渲染；
   // 分区内条目序 = ns.items 数组序。搜索时平铺（命中就要一眼看到，别折叠）。
   const nsList = Array.isArray(prefs.namespaces) ? prefs.namespaces : [];
+  // #174：下拉框聚焦（'' = 全部分区；ACTIVE_KEY = 只显示有任务的；ns id = 单分区聚焦）
+  const focus = String(prefs.focusNs || '');
+  if (focus === ACTIVE_KEY && !q) {
+    // dynamic「运行中」：有任务（待领取或等待回填）的仓库/看板——替代全部目录总览的用途
+    out.push(...sorted.filter((r) => (r.type === 'repo' || r.type === 'board') && ((r.pending || 0) > 0 || r.waiting)));
+    return { rows: out, matchCount: 0 };
+  }
+  if (focus && focus !== ACTIVE_KEY && nsList.some((n) => n.id === focus) && !q) {
+    // 单分区聚焦：只显示该分区（展开态，折叠态不生效——下拉选它就是来看它的）
+    const ns = nsList.find((n) => n.id === focus)!;
+    const rowByKeyFocus = new Map<string, SideRow>(sorted.map((r) => [rKey(r), r]));
+    const members = ns.items.map((k) => rowByKeyFocus.get(k)).filter((r): r is SideRow => !!r);
+    out.push({
+      type: 'ns',
+      key: ns.id,
+      id: ns.id,
+      name: ns.name,
+      count: members.length,
+      pending: members.reduce((n, m) => n + (m.pending || 0), 0),
+      waiting: members.some((m) => m.waiting),
+      waitingDeadlineMs: earliestDeadline(members.map((m) => m.waitingDeadlineMs)),
+      collapsed: false,
+      pinned: !!ns.pinned,
+    });
+    out.push(...members);
+    return { rows: out, matchCount: 0 };
+  }
   if (!nsList.length || q) {
     out.push(...sorted);
     return { rows: out, matchCount: q ? out.filter((r) => r.type === 'board' || (r.type === 'repo' && !r.groupId)).length : 0 };
@@ -380,7 +405,7 @@ export function buildTree(
       pending: loose.reduce((n, m) => n + (m.pending || 0), 0),
       waiting: loose.some((m) => m.waiting),
       waitingDeadlineMs: earliestDeadline(loose.map((m) => m.waitingDeadlineMs)),
-      collapsed: false,
+      collapsed: prefs.nsUngroupedOpen !== true, // #174：默认折叠（分区 = 显示范围）
     });
     out.push(...loose);
   }

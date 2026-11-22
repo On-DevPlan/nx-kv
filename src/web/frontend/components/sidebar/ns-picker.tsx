@@ -68,7 +68,18 @@ export default function NsPicker({ namespaces = [], focusNs = '', onFocus, onNew
       >
         <Icon name='board' size={14} />
         <span className='ns-picker-label'>{label}</span>
-        <Icon name='chevron' size={11} />
+        <Icon name='chevron' size={10} className='ns-picker-arrow' />
+        {current && onAddCurrent ? (
+          <span
+            role='button'
+            tabIndex={-1}
+            className='ns-picker-add'
+            title={`向「${label}」添加仓库或分组`}
+            onClick={(e) => { e.stopPropagation(); onAddCurrent(); }}
+          >
+            <Icon name='plus' size={11} />
+          </span>
+        ) : null}
       </button>
       {open ? (
         <span className='ns-picker-pop' role='menu'>
@@ -105,9 +116,6 @@ export default function NsPicker({ namespaces = [], focusNs = '', onFocus, onNew
             <button type='button' onClick={() => { setOpen(false); onManage(); }}>管理命名空间…</button>
           </span>
         </span>
-      ) : null}
-      {current && onAddCurrent ? (
-        <button type='button' className='ns-picker-add' title={`向「${label}」添加仓库或分组`} onClick={onAddCurrent}>＋</button>
       ) : null}
     </span>
   );

@@ -22,14 +22,26 @@
 /* 搜索行：sbox 显式定高（28px 偏高 → 24px），「+」flex:none 永不被挤掉；
    kwcount 是辅助信息，先于「+」收缩（省略号兜底），行内放不下再按容器宽度藏。 */
 .searchrow {
-/* #181：命名空间切换器（参考 UI：按钮 + 筛选面板 + 计数 + 当前✓） */
-.ns-picker { position: relative; display: inline-flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; }
-.ns-picker-btn { display: inline-flex; align-items: center; gap: 5px; max-width: 172px;
-  padding: 4px 8px; border: 1px solid var(--mdw-accent, #2F6F5E); border-radius: 7px;
-  background: transparent; color: var(--mdw-accent, #2F6F5E); font: 600 12px/1.4 system-ui, sans-serif; cursor: pointer; }
-.ns-picker-btn.is-open, .ns-picker-btn:hover { background: var(--soft-2, #F1F0EC); }
-.ns-picker-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ns-picker-add { flex: none; border: 0; background: none; color: var(--ink-2, #6B7078); cursor: pointer; font-size: 14px; padding: 2px 4px; }
+/* #181：命名空间切换器（参考 UI：精致 pill 按钮 + 筛选面板 + 计数 + 当前✓） */
+.ns-picker { position: relative; display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; }
+.ns-picker-btn { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
+  padding: 3px 6px 3px 8px; border: 1px solid var(--line, #DCDAD4); border-radius: 7px;
+  background: var(--paper, #fff); color: var(--ink, #16181C);
+  font: 500 12px/1.3 system-ui, sans-serif; cursor: pointer; }
+.ns-picker-btn:hover { border-color: var(--mdw-accent, #2F6F5E); }
+.ns-picker-btn.is-open { border-color: var(--mdw-accent, #2F6F5E); box-shadow: 0 0 0 2px rgba(47,111,94,.08); }
+.ns-picker-btn > .gico, .ns-picker-btn > svg:first-child { color: var(--mdw-accent, #2F6F5E); }
+.ns-picker-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.ns-picker-arrow { flex: none; color: var(--faint, #8A8F98); }
+.ns-picker-add { flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; margin-left: 2px; border-radius: 4px; color: var(--ink-2, #6B7078); }
+.ns-picker-add:hover { background: var(--soft, #F4F6F4); color: var(--mdw-accent, #2F6F5E); }
+/* 品牌行右侧三个工具按钮：无边框、细圆角 hover —— 不再是浏览器原生方框 */
+.brandrow { gap: 4px; }
+.brandrow .iconbtn { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px;
+  background: transparent; color: var(--ink-2, #6B7078); display: inline-flex; align-items: center; justify-content: center; }
+.brandrow .iconbtn:hover { background: var(--soft, #F4F6F4); color: var(--ink, #16181C); }
+.brandrow .grow { flex: 1 1 auto; min-width: 4px; }
 .ns-picker-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: 284px; min-width: 284px;
   display: flex; flex-direction: column; padding: 8px; border: 1px solid var(--line, #D8D6D0);
   border-radius: 10px; background: var(--paper, #fff); box-shadow: 0 8px 24px rgba(0,0,0,.1); }
@@ -50,17 +62,11 @@
   background: none; cursor: pointer; font-size: 11px; color: var(--ink-2, #454A52); }
 .ns-picker-foot button:hover { color: var(--mdw-accent, #2F6F5E); border-color: var(--mdw-accent, #2F6F5E); }
 .sb-ns-row .iconbtn.more { flex: none; }
-/* #181：命名空间详情观察弹窗 */
-.ns-observe-list { display: flex; flex-direction: column; gap: 8px; max-height: 54vh; overflow: auto; margin-bottom: 10px; }
-.ns-observe-row { border: 1px solid var(--line, #E4E2DC); border-radius: 8px; padding: 8px 10px; }
-.ns-observe-row.is-current { border-color: var(--mdw-accent, #2F6F5E); background: var(--soft-2, #F1F0EC); }
-.ns-observe-head { display: flex; align-items: center; justify-content: space-between; width: 100%;
-  border: 0; background: none; cursor: pointer; font: 600 13px/1.5 system-ui, sans-serif; color: var(--ink, #16181C); padding: 0; }
-.ns-observe-count { font-weight: 400; font-size: 11px; color: var(--faint, #8A8F98); }
-.ns-observe-items { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
-.ns-observe-chip { padding: 2px 7px; border-radius: 6px; background: var(--soft, #F4F6F4);
-  font-size: 11px; color: var(--ink-2, #454A52); }
-.ns-observe-empty { font-size: 11px; color: var(--faint, #8A8F98); }
+/* #181：底部工具按钮行（设置 / 收起 / 关闭）——从拥挤的顶栏挪来 */
+.sfoot-tools { display: flex; gap: 4px; padding: 6px 8px 2px; border-top: 1px solid var(--line, #E4E2DC); }
+.sfoot-tools .iconbtn { width: 24px; height: 24px; border: 0; border-radius: 5px; background: transparent;
+  color: var(--ink-2, #6B7078); display: inline-flex; align-items: center; justify-content: center; }
+.sfoot-tools .iconbtn:hover { background: var(--soft, #F4F6F4); color: var(--ink, #16181C); }
 /* #174：侧栏视图下拉（分区 / 运行中）——窄栏下 ellipsis，不挤压搜索框 */
 .sb-ns-row { gap: 6px; }
 .sb-ns-pick { flex: 0 1 auto; min-width: 0; max-width: 120px; }

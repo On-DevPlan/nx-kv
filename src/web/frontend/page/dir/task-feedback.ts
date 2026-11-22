@@ -139,7 +139,7 @@ export function useFeedback({
     });
   }, [doc, task, taskRow, isDraft, isGlobal, topic, topicKey, groupAnchored, groupId, app, refreshLocal, closeSelMenu, guard, toast, fetchServerTask]);
 
-  /** 划选评论 → 就地回写原任务（#74），可带附件。 */
+  /** 划选评论 → 派生评论任务（#172：原任务保持活着不取消，新任务只记录这条批注）。 */
   const submitCommentInPlace = useCallback(({ text: fbRaw, attachments = [], inserts = '', quote }: FeedbackPayload = {}) => {
     const fb = String(fbRaw || '').trim();
     const quoteText = String(quote || lastSel.current || '').trim();

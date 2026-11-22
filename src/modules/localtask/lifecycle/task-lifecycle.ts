@@ -109,6 +109,9 @@ export async function reopenTask({
   let curTopic = t;
   let task = t.tasks.find((x: any) => Number(x.id) === want);
   if (!task || task.deletedAt) throw notFound('任务不存在或已删除: #' + want);
+  // #172：用户指定的任务 id（顺链前的原始目标）——评论旁支用它区分「原任务」与「上一条评论任务」
+  const originalWant = want;
+  const kind = rawKind === 'comment' ? 'comment' : 'reopen';
   // cancelled 的两种形态：
   //   · 被 superseded（ext_superseded_by 指着链尖）→ **顺着链走到当前尖**，从尖派生
   //     （二次评论/继续重开是正常流程——反馈落在最新一代上，而不是让死记录复活）
@@ -135,10 +138,32 @@ export async function reopenTask({
       throw badInput(`#${task.id} 已取消（明确作废）——不能再重开；要继续做请新建任务`);
     }
     want = cur;
+    // #172：评论（comment）沿 childLinks 走到**链尖**——上一条评论任务（pending 存在、
+    // 未被取代）才是最新正文的持有者。否则第二次评论的 base 会退回原任务正文，
+    // 把上一条评论的内容丢掉。reopen/feedback 不走叶：改需求就从指定任务派生（取代）。
+    if (kind === 'comment') {
+      let guard = 0;
+      for (;;) {
+        const rowW = tasksRepo.getTaskRow(curTopic.id, cur);
+        if (!rowW) break;
+        const kids = linksRepo.childLinks(Number(rowW.row.id));
+        if (!kids.length || guard++ > 32) break;
+        const latest = [...kids].sort((a: any, b: any) => Number(b.at ?? b.atMs ?? 0) - Number(a.at ?? a.atMs ?? 0))[0];
+        const nextW = latest ? tasksRepo.getTaskRowById(Number(latest.srcId)) : null;
+        if (!nextW) break;
+        const nextTopic = topicsRepo.getTopicById(nextW.row.topicId);
+        if (!nextTopic) break;
+        const nextTask = nextTopic.tasks.find((x: any) => Number(x.id) === Number(nextW.task.id));
+        if (!nextTask || nextTask.deletedAt) break;
+        curTopic = nextTopic;
+        cur = Number(nextW.task.id);
+        task = nextTask;
+      }
+      want = cur;
+    }
   }
   const srcKey = curTopic.key;
 
-  const kind = rawKind === 'comment' ? 'comment' : 'reopen';
   const before = {
     status: task.status,
     consumedAt: task.consumedAt || '',
@@ -227,9 +252,14 @@ export async function reopenTask({
       note: fb,
       atMs: Date.now(),
     });
-    // 3. 旧任务定格：done 保持 done；claimed/pending → cancelled + superseded 标记
-    if (task.status === 'done') {
-      // done 是终态、保持不变——上一轮的交付事实不因重开而消失
+    // 3. 旧任务定格（#172 原则收口）：
+    //    - done 保持 done（终态，上一轮的交付事实不因重开而消失）；
+    //    - **评论（comment）落在用户指定的原任务上时——原任务继续活着**（pending/claimed
+    //      不取消）：评论只是旁支批注，划选一条批注不该把干活中的任务取消掉；
+    //    - comment 落在**上一条评论任务**（顺链后的尖）上 → 它被新评论取代（cancelled）；
+    //    - reopen / feedback（改需求返工）→ cancelled + superseded 标记（取代语义）。
+    if (task.status === 'done' || (kind === 'comment' && want === originalWant)) {
+      // done 终态与「评论在原任务上」：原任务保持原状
     } else {
       // supersededBy 必须带上绝对地址：搬到别的队列后，光写目标队列的 seq 会被
       // 顺链逻辑按源主题解析到一条完全无关的任务上。

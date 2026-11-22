@@ -69,11 +69,11 @@ test('comment 不带 text：反馈段追加到服务端正文，锚定引用在�
       '',
     ].join('\n')
   );
-  // T04：链 = task_links（type=comment）；父 cancelled + superseded
+  // T04：链 = task_links（type=comment）；#172 原则——评论是旁支批注，父任务保持活着
   assert.equal(res.parentId, id);
   const parent = await svc.getTask({ cwd: CWD, id });
-  assert.equal(parent.status, 'cancelled');
-  assert.equal(parent.supersededBy, res.id);
+  assert.equal(parent.status, 'pending', '评论不取消原任务（#172）');
+  assert.ok(!parent.supersededBy, '原任务没有被取代');
 });
 
 test('comment 二次评论：顺链走尖，两轮评论段都保留在最新正文里', async () => {

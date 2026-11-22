@@ -61,7 +61,7 @@ import { BoardSection } from './task-board-section.jsx';
 import { NotFoundView } from './task-not-found.jsx';
 import { BesideHeader } from './task-beside-header.jsx';
 import { findGroupTask, renderMarkdownHtml } from './task-utils.js';
-import type { ChainNode, DocState, EditorApi, GroupResolved, HistorySnapshot, PreviewState } from './task-utils.js';
+import type { ChainNode, ChainTreeNode, DocState, EditorApi, GroupResolved, HistorySnapshot, PreviewState } from './task-utils.js';
 
 interface PagePanelProps {
   dirKey?: string;
@@ -82,6 +82,8 @@ interface PagePanelProps {
 const TaskChainModal = TaskChainModalRaw as unknown as (props: {
   open: boolean;
   nodes: ChainNode[];
+  /** #172：单向树（后端 taskChain.tree）——给出即按树渲染 */
+  tree?: ChainTreeNode | null;
   onOpenNode?: (n: ChainNode) => void;
   onClose?: () => void;
 }) => ReactNode;
@@ -141,7 +143,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     isDraft, task, taskRow, topicKey, topic, isGlobal, groupAnchored, groupId,
     app, model: model || null, historyId, toast,
   });
-  const { chainNodes, historyNode, isChainTip, latestChild, openLatestRound, openHistoryBeside } = chainState;
+  const { chainNodes, chainTree, historyNode, isChainTip, latestChild, openLatestRound, openHistoryBeside } = chainState;
 
   const selMenuState = useSelMenu({ id });
   const { selMenu, setSelMenu, lastSel, placeSelMenu, onEditorTextSel, closeSelMenu } = selMenuState;
@@ -401,6 +403,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       <TaskChainModal
         open={chainOpen}
         nodes={chainNodes}
+        tree={chainTree}
         onOpenNode={openHistoryBeside}
         onClose={() => setChainOpen(false)}
       />

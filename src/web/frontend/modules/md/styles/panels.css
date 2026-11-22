@@ -227,6 +227,10 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
 .mdw-chain-hint{margin:0 0 12px;font-size:12px;color:var(--faint,#A9AEB4);line-height:1.45}
 .mdw-chain-empty{padding:18px 8px;text-align:center;font-size:13px}
 .mdw-chain-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
+/* #172 单向树视图：子级缩进 + 分支并排（rail 线保持纵贯） */
+.mdw-chain-tree,.mdw-chain-tree .mdw-chain-tree-kids{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
+.mdw-chain-tree .mdw-chain-tree-kids{margin-left:18px;border-left:1px dashed var(--line,#E4E2DC);padding-left:10px}
+.mdw-chain-li.is-missing .mdw-chain-card{opacity:.5;font-style:italic}
 .mdw-chain-li{display:flex;gap:10px;align-items:stretch;min-height:0}
 .mdw-chain-rail{
   flex:none;width:14px;display:flex;flex-direction:column;align-items:center;

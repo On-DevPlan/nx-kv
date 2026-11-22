@@ -5,7 +5,7 @@ import { getTaskChain } from './api.js';
 import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import { openBesideMain } from '../../workspace.js';
 import type { LocalTask, LocalTopic } from '../../types.js';
-import type { AppSlice, ChainApi, ChainApiItem, ChainNode, HistorySnapshot } from './task-utils.js';
+import type { AppSlice, ChainApi, ChainApiItem, ChainNode, ChainTreeNode, HistorySnapshot } from './task-utils.js';
 
 interface UseChainArgs {
   isDraft: boolean;
@@ -47,6 +47,9 @@ export function useChain({
       cancelled = true;
     };
   }, [isDraft, task, isGlobal, topic?.cwd, taskRow?.history?.length, taskRow?.forkOf, taskRow?.reopenCount]);
+
+  // #172：单向树（后端 taskChain.tree）——面板树视图的结构真相
+  const chainTree = useMemo<ChainTreeNode | null>(() => (isDraft || !chainApi ? null : (chainApi.tree as ChainTreeNode) || null), [isDraft, chainApi]);
 
   const chainNodes = useMemo<ChainNode[]>(() => {
     if (isDraft || !taskRow) return [];
@@ -184,7 +187,7 @@ export function useChain({
   );
 
   return {
-    chainApi, chainNodes, historyNode, chainChildren, isChainTip, latestChild,
+    chainApi, chainNodes, chainTree, historyNode, chainChildren, isChainTip, latestChild,
     openLatestRound, openHistoryBeside,
   };
 }

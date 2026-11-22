@@ -53,7 +53,6 @@ interface SidebarProps {
   onNavigate?: (hash: string) => void;
   /** 本机队列刷新（仓库无队列时「新建页」要先建队列再刷） */
   refreshLocal?: () => Promise<void>;
-  waitingCount?: number;
   /** UI 偏好（order / hidden / folded） */
   prefs?: Partial<Prefs>;
   /** (patch) => void（已持久化） */
@@ -82,7 +81,6 @@ export default function Sidebar({
   route = {},      // {view, key}
   onNavigate,      // (hash) => void
   refreshLocal,    // 本机队列刷新（仓库无队列时「新建页」要先建队列再刷）
-  waitingCount = 0,
   prefs = {},
   patchPrefs,      // (patch) => void（已持久化）
   refreshRepos,    // 仓库/看板刷新（登记、归属变更后）

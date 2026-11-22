@@ -21,9 +21,9 @@ import type { SideRow, SideTree } from './model.js';
 import { canDrop, zoneOf, applyDrop } from './drag.js';
 import type { DragRow, DropZone } from './drag.js';
 import { rowMenuItems, addMenuItems } from './row-menu.jsx';
-import { useNamespaces } from './use-ns.js';
-import NsFormModal from './ns-modal.js';
+import { useSidebarNs } from './use-sidebar-ns.js';
 import NsHeadRow from './ns-row.js';
+import NsDialogs from './ns-dialogs.js';
 import TaskChildren from './task-children.jsx';
 import { ensureQueueAndGo } from './queue-nav.js';
 import type { AppRoute, BoardRow, LocalTopic, Prefs, RepoRow, ShellApi } from '../../types.js';
@@ -189,9 +189,9 @@ export default function Sidebar({
     });
   }, []);
 
-  // ─── #167 namespace 分区：操作层抽在 use-ns.ts（纯 prefs，回写即持久化）───
-  const { nsForm, setNsForm, toggleNsCollapse, moveToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs } =
-    useNamespaces({ patchPrefs, toast, dialog, setMenu });
+  // #178：分区装配（操作 + 成员选择弹窗 + 候选）全部收在 use-sidebar-ns（纯显示态）
+  const nsOps = useSidebarNs({ patchPrefs, toast, dialog, setMenu, repos, boards, namespaces: prefs.namespaces });
+  const { nsForm, setNsForm, toggleNsCollapse, moveToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs, addFor, setAddFor, candidatesFor } = nsOps;
 
 
   // 点击：看板 = 进组视图（**组是叶子，成员在组面板里下拉选择**，树里不再铺子文件）；
@@ -425,6 +425,7 @@ export default function Sidebar({
               dropHint={dropHint}
               onOpen={() => toggleNsCollapse(row.key)}
               onToggle={() => toggleNsCollapse(row.key)}
+              onAdd={() => setAddFor(row.key)}
               onMenu={(e) => openNsMenu(e, row)}
               onDragStart={(e) => onDragStart(e, row)}
               onDragEnd={onDragEnd}
@@ -581,21 +582,22 @@ export default function Sidebar({
           </div>
         </Modal>
       ) : null}
-      {nsForm ? (
-        <NsFormModal
-          form={nsForm}
-          onClose={() => setNsForm(null)}
-          onSave={(id, name, moveKey) => {
-            // @@edit = 重命名表单的实时编辑值（只改 name，不落分区）
-            if (id === '@@edit') {
-              if (nsForm && name.trim()) setNsForm({ ...nsForm, name });
-              return;
-            }
-            if (id) renameNs(id, name);
-            else newNsAndMove(name, moveKey);
-          }}
-        />
-      ) : null}
+      <NsDialogs
+        form={nsForm}
+        onFormClose={() => setNsForm(null)}
+        onSave={(id, name, moveKey) => {
+          if (id === '@@edit') {
+            if (nsForm && name.trim()) setNsForm({ ...nsForm, name });
+            return;
+          }
+          if (id) renameNs(id, name); else newNsAndMove(name, moveKey);
+        }}
+        addFor={addFor}
+        addNsName={(prefs.namespaces || []).find((n) => n.id === addFor)?.name || ''}
+        addCandidates={addFor ? candidatesFor(addFor) : []}
+        onAddClose={() => setAddFor(null)}
+        onAdd={(keys) => { if (addFor) nsOps.addToNs(addFor, keys); toast(`已添加 ${keys.length} 项到分区`); }}
+      />
       {dialogNode}
     </aside>
   );

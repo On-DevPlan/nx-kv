@@ -86,6 +86,21 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
     },
     [withNs]
   );
+  /** #178：批量把条目加入分区（成员选择弹窗用）——从其它分区挪走，避免重复归属 */
+  const addToNs = useCallback(
+    (nsId: string, keys: string[]) => {
+      const ks = (keys || []).filter(Boolean);
+      if (!ks.length) return;
+      withNs((list) => {
+        const arr = list.map((n) => ({ ...n, items: n.items.filter((k) => !ks.includes(k)) }));
+        const t = arr.find((n) => n.id === nsId);
+        if (t) t.items.push(...ks);
+        return arr;
+      });
+    },
+    [withNs]
+  );
+
   const removeFromNs = useCallback(
     (row: SideRow) => {
       const k = rowKeyOf(row);
@@ -152,5 +167,5 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
     [dialog, moveNs, removeNs, toggleNsCollapse, toggleNsPinned]
   );
 
-  return { nsForm, setNsForm, toggleNsCollapse, moveToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs };
+  return { nsForm, setNsForm, toggleNsCollapse, moveToNs, addToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs };
 }

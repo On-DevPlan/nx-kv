@@ -113,3 +113,23 @@ test('#174 未分组默认折叠（分区 = 显示范围），nsUngroupedOpen �
   const head2 = t2.rows.find((r) => r.key === UNGROUPED_KEY);
   assert.equal(head2.collapsed, false, '手动展开');
 });
+
+// ── #178：脏 items 过滤（分区里不再出现分区）+ 添加成员 ───────────────────
+test('#178 分区 items 里的脏 key（分区 id / 未分组标记 / 不存在的 key）渲染时被忽略', async () => {
+  const { ACTIVE_KEY } = await import('../../src/web/frontend/components/sidebar/model.js');
+  const prefs = {
+    namespaces: [
+      { id: 'ns_1', name: '数据', items: ['ns_2', UNGROUPED_KEY, ACTIVE_KEY, 'github.com/a/nope', 'github.com/a/one'] },
+      { id: 'ns_2', name: '其它', items: ['github.com/a/two'] },
+    ],
+  };
+  const t = buildTree(repos, boards, topics, prefs, '');
+  const heads = t.rows.filter((r) => r.type === 'ns');
+  // 只有两个真分区 + 未分组；不存在「分区里还有分区头」的行
+  assert.deepEqual(heads.map((h) => h.name), ['数据', '其它', '未分组']);
+  const dataHead = heads.find((h) => h.name === '数据');
+  assert.equal(dataHead.count, 1, '只认真实条目（one）');
+  const repoKeys = t.rows.filter((r) => r.type === 'repo').map((r) => r.key);
+  assert.ok(repoKeys.includes('github.com/a/one'));
+  assert.ok(!repoKeys.some((k) => String(k).startsWith('ns_')), '分区 id 不被当条目渲染');
+});

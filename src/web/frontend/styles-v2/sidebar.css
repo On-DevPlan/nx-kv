@@ -74,6 +74,23 @@
 }
 .trow.ns-head .nm { font-size: 12px; }
 .trow.ns-head .ns-pin { color: var(--mdw-accent, #2F6F5E); margin-right: 3px; }
+/* #178：分区头的「分区」badge（与同名分组区分）与添加成员按钮（hover 显现） */
+.trow.ns-head .ns-badge {
+  margin-left: 6px; padding: 0 5px; border-radius: 6px;
+  background: var(--soft-2, #F1F0EC); color: var(--faint, #8A8F98);
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0; vertical-align: 1px;
+}
+.trow.ns-head .more.ns-add-btn { visibility: hidden; }
+.trow.ns-head:hover .more.ns-add-btn { visibility: visible; }
+/* #178 成员选择弹窗 */
+.ns-add-list { max-height: 46vh; overflow: auto; display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.ns-add-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.ns-add-row:hover { background: var(--soft, #F4F6F4); }
+.ns-add-kind { flex: none; padding: 0 6px; border-radius: 6px; font-size: 10px; font-weight: 600; }
+.ns-add-kind.repo { background: #EAF1F8; color: #3F6E9E; }
+.ns-add-kind.board { background: #EFEAF8; color: #7A5FA8; }
+.ns-add-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.ns-add-where { flex: none; font-size: 11px; color: var(--faint, #8A8F98); }
 .trow .tw { width: 14px; flex: none; display: inline-flex; justify-content: center; color: var(--faint); transition: transform 0.15s; }
 /* chevron 现在是「展开/收起」按钮（点行是去看内容）——给它指针与反馈 */
 .trow .tw[role="button"] { cursor: pointer; }

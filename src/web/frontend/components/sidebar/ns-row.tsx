@@ -10,6 +10,7 @@ export interface NsHeadRowProps {
   kbFocus: boolean;
   dropHint: { id: string; zone: DropZone } | null;
   onOpen: () => void;                 // 行点击 = 折叠切换
+  onAdd?: () => void;                 // #178：向该分区添加仓库/分组
   onToggle: () => void;               // chevron = 折叠切换
   onMenu: (e: ReactMouseEvent<HTMLElement>) => void;
   onDragStart: (e: ReactDragEvent<HTMLButtonElement>) => void;
@@ -46,8 +47,18 @@ export default function NsHeadRow(p: NsHeadRowProps) {
       <span className="nm">
         {row.pinned ? <span className="ns-pin" aria-hidden>★</span> : null}
         {row.name}
+        <span className="ns-badge" title="这是一个侧栏分区（namespace），不是分组/仓库">分区</span>
       </span>
       {row.pending > 0 && <span className="cnt">{row.pending}</span>}
+      {p.onAdd && row.key !== '__UNGROUPED__' ? (
+        <span
+          className="more ns-add-btn" role="button" tabIndex={-1} aria-label="向该分区添加仓库或分组"
+          title="向该分区添加仓库 / 分组"
+          onClick={(e) => { e.stopPropagation(); p.onAdd?.(); }}
+        >
+          <Icon name="plus" size={12} />
+        </span>
+      ) : null}
       <span
         className="more" role="button" tabIndex={-1} aria-label="分区菜单"
         onClick={p.onMenu}

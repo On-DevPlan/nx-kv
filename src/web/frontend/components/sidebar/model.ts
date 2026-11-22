@@ -338,7 +338,10 @@ export function buildTree(
     // 单分区聚焦：只显示该分区（展开态，折叠态不生效——下拉选它就是来看它的）
     const ns = nsList.find((n) => n.id === focus)!;
     const rowByKeyFocus = new Map<string, SideRow>(sorted.map((r) => [rKey(r), r]));
-    const members = ns.items.map((k) => rowByKeyFocus.get(k)).filter((r): r is SideRow => !!r);
+    const members = ns.items
+      .filter((k) => !!k && !nsList.some((n) => n.id === k) && k !== UNGROUPED_KEY && k !== ACTIVE_KEY && rowByKeyFocus.has(k))
+      .map((k) => rowByKeyFocus.get(k))
+      .filter((r): r is SideRow => !!r);
     out.push({
       type: 'ns',
       key: ns.id,
@@ -360,13 +363,18 @@ export function buildTree(
   }
 
   const rowByKey = new Map<string, SideRow>(sorted.map((r) => [rKey(r), r]));
-  const inNs = new Set<string>(nsList.flatMap((n) => n.items));
+  // #178：分区成员只认「真实条目」——历史脏数据若把分区 id / 内部标记 / 不存在的 key
+  // 写进了 items（早期拖动版本的遗留），渲染时直接忽略：否则会出现「分区里还有分区」。
+  const nsIds = new Set(nsList.map((n) => n.id));
+  const cleanItems = (ns: (typeof nsList)[number]): string[] =>
+    ns.items.filter((k) => !!k && !nsIds.has(k) && k !== UNGROUPED_KEY && k !== ACTIVE_KEY && rowByKey.has(k));
+  const inNs = new Set<string>(nsList.flatMap((n) => cleanItems(n)));
   // 置顶分区在前（stable sort 保持数组内相对序）
   const orderedNs = [...nsList].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   const emitted = new Set<string>();
 
   const nsHeader = (ns: (typeof nsList)[number]): SideRow => {
-    const members = ns.items.map((k) => rowByKey.get(k)).filter((r): r is SideRow => !!r);
+    const members = cleanItems(ns).map((k) => rowByKey.get(k)).filter((r): r is SideRow => !!r);
     return {
       type: 'ns',
       key: ns.id,
@@ -384,7 +392,7 @@ export function buildTree(
   for (const ns of orderedNs) {
     out.push(nsHeader(ns));
     if (ns.collapsed) continue;
-    for (const k of ns.items) {
+    for (const k of cleanItems(ns)) {
       const r = rowByKey.get(k);
       if (r) {
         out.push(r);

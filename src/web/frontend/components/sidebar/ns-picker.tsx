@@ -2,6 +2,7 @@
 // 「▦ 当前空间 ▾」按钮 → 弹出面板：顶部「筛选分组…」输入框、每行图标 + 名称 + 计数 +
 // 当前项高亮 ✓、底部「＋ 新建分组 / 管理命名空间…」。拖拽到按钮即加入当前空间。
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../icons.jsx';
 import { ACTIVE_KEY, ALL_TOPICS_KEY } from './model.js';
 import type { SidebarNs } from '../../types.js';
@@ -25,12 +26,16 @@ export default function NsPicker({ namespaces = [], focusNs = '', onFocus, onNew
   const label = effective === ACTIVE_KEY ? '运行中' : effective === ALL_TOPICS_KEY ? '全部 topic' : current?.name || '全部 topic';
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  const [at, setAt] = useState({ top: 0, left: 0 });
   const rootRef = useRef<HTMLSpanElement | null>(null);
+  const popRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     if (!open) return undefined;
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onDoc);
@@ -64,7 +69,13 @@ export default function NsPicker({ namespaces = [], focusNs = '', onFocus, onNew
         type='button'
         className={'ns-picker-btn' + (open ? ' is-open' : '')}
         title={`当前命名空间：${label}（点击切换；拖条目到这里可加入）`}
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => {
+          if (!open) {
+            const r = e.currentTarget.getBoundingClientRect();
+            setAt({ top: r.bottom + 6, left: r.left });
+          }
+          setOpen((v) => !v);
+        }}
       >
         <Icon name='board' size={14} />
         <span className='ns-picker-label'>{label}</span>
@@ -81,8 +92,8 @@ export default function NsPicker({ namespaces = [], focusNs = '', onFocus, onNew
           </span>
         ) : null}
       </button>
-      {open ? (
-        <span className='ns-picker-pop' role='menu'>
+      {open ? createPortal(
+        <span className='ns-picker-pop' role='menu' ref={popRef} style={{ top: at.top, left: at.left }}>
           <label className='ns-picker-search'>
             <Icon name='search' size={13} />
             <input
@@ -115,7 +126,8 @@ export default function NsPicker({ namespaces = [], focusNs = '', onFocus, onNew
             <button type='button' onClick={() => { setOpen(false); onNewNs(); }}>＋ 新建分组</button>
             <button type='button' onClick={() => { setOpen(false); onManage(); }}>管理命名空间…</button>
           </span>
-        </span>
+        </span>,
+        document.body
       ) : null}
     </span>
   );

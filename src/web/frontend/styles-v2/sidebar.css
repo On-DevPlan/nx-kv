@@ -44,7 +44,7 @@
   background: transparent; color: var(--ink-2, #6B7078); display: inline-flex; align-items: center; justify-content: center; }
 .brandrow .iconbtn:hover { background: var(--soft, #F4F6F4); color: var(--ink, #16181C); }
 .brandrow .grow { flex: 1 1 auto; min-width: 4px; }
-.ns-picker-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: 284px; min-width: 284px;
+.ns-picker-pop { position: fixed; z-index: 2147483000; width: 284px; min-width: 284px;
   display: flex; flex-direction: column; padding: 8px; border: 1px solid var(--line, #D8D6D0);
   border-radius: 10px; background: var(--paper, #fff); box-shadow: 0 8px 24px rgba(0,0,0,.1); }
 .ns-picker-search { display: flex; align-items: center; gap: 6px; padding: 5px 8px; margin-bottom: 6px;

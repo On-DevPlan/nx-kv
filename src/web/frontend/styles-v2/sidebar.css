@@ -25,7 +25,7 @@
 }
 
 /* #181：命名空间切换器（参考 UI：精致 pill 按钮 + 筛选面板 + 计数 + 当前✓） */
-.ns-picker { position: relative; display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; }
+.ns-picker { position: relative; display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; }
 .ns-picker-btn { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
   padding: 3px 6px 3px 8px; border: 1px solid var(--line, #DCDAD4); border-radius: 7px;
   background: var(--paper, #fff); color: var(--ink, #16181C);
@@ -39,8 +39,8 @@
   width: 17px; height: 17px; margin-left: 2px; border-radius: 4px; color: var(--ink-2, #6B7078); }
 .ns-picker-add:hover { background: var(--soft, #F4F6F4); color: var(--mdw-accent, #2F6F5E); }
 /* 品牌行右侧三个工具按钮：无边框、细圆角 hover —— 不再是浏览器原生方框 */
-.brandrow { gap: 4px; }
-.brandrow .iconbtn { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px;
+.brandrow { gap: 2px; }
+.brandrow .iconbtn { flex: none; width: 19px; height: 20px; padding: 0; border: 0; border-radius: 5px;
   background: transparent; color: var(--ink-2, #6B7078); display: inline-flex; align-items: center; justify-content: center; }
 .brandrow .iconbtn:hover { background: var(--soft, #F4F6F4); color: var(--ink, #16181C); }
 .brandrow .grow { flex: 1 1 auto; min-width: 4px; }
@@ -64,11 +64,6 @@
   background: none; cursor: pointer; font-size: 11px; color: var(--ink-2, #454A52); }
 .ns-picker-foot button:hover { color: var(--mdw-accent, #2F6F5E); border-color: var(--mdw-accent, #2F6F5E); }
 .sb-ns-row .iconbtn.more { flex: none; }
-/* #181：底部工具按钮行（设置 / 收起 / 关闭）——从拥挤的顶栏挪来 */
-.sfoot-tools { display: flex; gap: 4px; padding: 6px 8px 2px; border-top: 1px solid var(--line, #E4E2DC); }
-.sfoot-tools .iconbtn { width: 24px; height: 24px; border: 0; border-radius: 5px; background: transparent;
-  color: var(--ink-2, #6B7078); display: inline-flex; align-items: center; justify-content: center; }
-.sfoot-tools .iconbtn:hover { background: var(--soft, #F4F6F4); color: var(--ink, #16181C); }
 
 .searchrow {
 /* #174：侧栏视图下拉（分区 / 运行中）——窄栏下 ellipsis，不挤压搜索框 */

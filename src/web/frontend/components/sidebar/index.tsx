@@ -364,6 +364,9 @@ export default function Sidebar({
             if (cur) setAddFor(cur);
           }}
           onDropHere={(key) => { dropToCurrent(key, String((prefs as any).focusNs || '')); toast('已加入当前命名空间'); }}
+          shell={shell}
+          onCollapse={onCollapse}
+          onClose={onClose}
         />
         <SearchRow
           kw={kw}
@@ -507,18 +510,6 @@ export default function Sidebar({
       <div className="sfoot">
         {footEntry('#/templates', 'list', '任务模板')}
         {footEntry('#/repos', 'repo', '仓库管理')}
-        {/* #181：窄栏下工具入口放底部——顶部两行留给 ns 切换与搜索（参考图口径） */}
-        <div className="sfoot-tools">
-          <button className='iconbtn' title='设置（浮动面板）' aria-label='设置' onClick={() => shell?.openSettings()}>
-            <Icon name='gear' size={14} />
-          </button>
-          <button className='iconbtn collapse' title='收起目录' aria-label='收起目录' onClick={onCollapse}>
-            <Icon name='back' size={14} />
-          </button>
-          <button className='iconbtn collapse' title='关闭目录' aria-label='关闭目录' onClick={onClose}>
-            <Icon name='x' size={13} />
-          </button>
-        </div>
       </div>
 
       {menu && <PopMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}

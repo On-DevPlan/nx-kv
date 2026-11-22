@@ -42,7 +42,7 @@ async function seedThree() {
 }
 
 test('--q 关键字：标题与正文都参与匹配（大小写不敏感）', async () => {
-  const svc = await seedThree();
+  await seedThree();
   const d = await tasksFor({ cwd: CWD, q: '滚动' });
   assert.equal(d.tasks.length, 1);
   assert.match(d.tasks[0].title, /平滑滚动/);
@@ -52,14 +52,14 @@ test('--q 关键字：标题与正文都参与匹配（大小写不敏感）', a
 });
 
 test('--q 无命中 → 空清单（total 仍为全量）', async () => {
-  const svc = await seedThree();
+  await seedThree();
   const d = await tasksFor({ cwd: CWD, q: '不存在的关键词' });
   assert.equal(d.tasks.length, 0);
   assert.equal(d.total, 3);
 });
 
 test('--limit 取最新 N 条（createdAt 倒序；冲突以最新为准）', async () => {
-  const svc = await seedThree();
+  await seedThree();
   const d = await tasksFor({ cwd: CWD, limit: 2 });
   assert.equal(d.tasks.length, 2);
   // 时间倒序：第一条的 createdAt >= 第二条
@@ -75,8 +75,8 @@ test('--limit 取最新 N 条（createdAt 倒序；冲突以最新为准）', as
 });
 
 test('--q + --limit 组合：命中集合里取最新 N 条', async () => {
-  const svc = await import('../../src/modules/localtask/service.js');
   mkdirSync(CWD, { recursive: true });
+  const svc = await import('../../src/modules/localtask/service.js');
   // 三条都带同一关键词
   for (const t of ['# 轮询 A', '# 轮询 B', '# 轮询 C']) {
     await svc.addTask({ cwd: CWD, text: `${t}\n\n用轮询方式处理。` });
@@ -92,7 +92,7 @@ test('--q + --limit 组合：命中集合里取最新 N 条', async () => {
 });
 
 test('每行带时间戳（回顾 SOP 靠它做冲突裁决）', async () => {
-  const svc = await seedThree();
+  await seedThree();
   const d = await tasksFor({ cwd: CWD, limit: 1 });
   assert.ok(d.tasks[0].createdAt, 'createdAt 在');
   assert.equal(typeof d.tasks[0].roundSummary, 'string', 'roundSummary 在');

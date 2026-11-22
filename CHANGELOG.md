@@ -2,6 +2,26 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.66.0] - 2026-11-22 侧栏命名空间体系 + 任务链树图 + 审查检索（#167–#181）
+
+### Added
+
+- **侧栏 namespace（命名空间）体系**（#167→#181 多轮验收收敛）：命名空间是**可切换的显示视图**（标签语义，同一个 topic 可同时属于多个 ns），配置落 settings 表单个 JSON 字段 `app.sidebarNamespaces={groups,focus}`，浏览器 localStorage 优先恢复、后台同步 settings 作跨浏览器备份。第一行 `▦ 当前空间 ▾` pill 切换器：筛选框 + 计数 + 当前✓ + 内置「全部 topic / 运行中（有任务）」+ 新建 / 管理；筛选行「更多」打开命名空间详情观察。支持拖拽加入、行菜单移出、添加弹窗 filter 检索、管理弹窗排序/重命名/删除。**无「未分组」「全部分区」概念**。
+- **任务链树图可视化**（#177）：SVG 纵向树（根在上、子并排），节点卡片 = 类型胶囊 + 编号 + 状态 + 时间，类型配色（评论蓝 / 反馈橙 / 分支紫）；评论改为**并行旁支**（同一任务评论两次 = 两个同级子节点，原任务不被取消）；fork 成为任务链第四类节点（schema v14 扩 `task_links.type` CHECK）。
+- **A07「任务链回顾与检索」skill reference**（#173）：`localtask tasks --q <关键字>`（标题+正文匹配）/ `--limit N`（最新 N 条，冲突以最新为准）+ `chain --id` 树 + 回顾 SOP（收 WARNING 原文 → 重总结 → 评审落盘）。
+- **`localtask tasks --q / --limit`**（#173）：关键字过滤与按时间倒序截取最新 N 条。
+
+### Changed
+
+- schema v14：`task_links.type` 扩 `fork`（12-step 重建 + 决策文档 `docs/decisions/versions/2026-11-22-v14.md`）。
+- 删除「全部目录总览」页面/路由/面板与设置页「侧栏显示」编排、`prefs.hidden` 体系——显示范围完全由 namespace 控制（纯 UI，不动底层数据模型）。
+- 交付提示词口径透明化：链面板 hint 明示库中正文 = 旧正文 + 程序生成 callout（用户原文在 WARNING 块内），agent 实收为交付重排版（最新轮在前）。
+
+### Fixed
+
+- 评论分支不再取消原任务（#172/#177）；多评论不串成链、不丢内容。
+- ns 切换器 CSS 嵌套导致样式完全失效、弹层被内容区遮挡（portal 到 body + fixed 定位）等视觉返工。
+
 ## [0.65.4] - 2026-11-19 反馈轮次 callout 语义治理：类型为主判据，写反可检出
 
 ### Changed

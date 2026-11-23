@@ -9,8 +9,9 @@
 // 显示序：**未完成（待领取）优先**（sortTasksForDisplay——追加序会把新任务
 // 埋在历史底下）；长度：**不分页**——#181 去掉翻页控件后是全量铺开，但队列一长
 // （实测 68 条）侧栏就被任务子行灌满，树形导航彻底失效。
-// #188 用户口径「不要分页，显示……即可」：默认只铺前 8 条，尾部一行「…」收口，
-// 点「…」就地展开全部（再点收起）——既没有分页控件，也不把默认视野撑爆。
+// #188 用户口径：默认铺 8 条，尾部「…还有 N 条」**点一次只多加载 10 条**（继续点继续加载），
+// 不再一次铺开全部——队列很长时一次全展开照样把侧栏灌满。
+// 另有「收起」把窗口还原到 8 条。
 import { useMemo, useState } from 'react';
 import { Icon } from '../icons.jsx';
 import { useToast } from '../toast/index.jsx';
@@ -29,8 +30,10 @@ import type { LocalTask } from '../../types.js';
 // 这里按实际契约声明一次——它毕业成强类型后此桥退化为恒等。
 const sortTasksForDisplayBridge = sortTasksForDisplay as unknown as (tasks: LocalTask[]) => LocalTask[];
 
-/** 侧栏默认铺开的任务子行条数（超出部分折成一行「…」，不分页）。 */
+/** 侧栏默认铺开的任务子行条数。 */
 const SIDE_TASK_LIMIT = 8;
+/** #188：点「…还有 N 条」时每次多加载几条。 */
+const SIDE_TASK_STEP = 10;
 
 /** TaskChildren 入参。 */
 export interface TaskChildrenProps {
@@ -54,9 +57,9 @@ export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChil
   const base = row.type === 'global'
     ? '#/global'
     : `#/dir/${encodeURIComponent(row.topicKey || row.key)}`;
-  // #188：默认只铺前 N 条，其余折成一行「…」；点它就地展开（再点收起），全程没有翻页控件。
-  const [showAll, setShowAll] = useState(false);
-  const shown = showAll ? tasks : tasks.slice(0, SIDE_TASK_LIMIT);
+  // #188：默认铺 8 条；「…还有 N 条」点一次多加载 10 条（分页式增量，不一次全铺）。
+  const [limit, setLimit] = useState(SIDE_TASK_LIMIT);
+  const shown = tasks.slice(0, limit);
   const rest = tasks.length - shown.length;
   return (
     <>
@@ -80,29 +83,29 @@ export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChil
           </span>
         </button>
       ))}
-      {/* 「…」收口（#188）：不打分页，只表示「还有」。点它就地展开，展开后给「收起」还原 */}
+      {/* 「…还有 N 条」：点一次只多加载 10 条（#188），不一次铺开全部 */}
       {rest > 0 && (
         <button
           type="button"
           className="trow child task-more"
-          title={`还有 ${rest} 条任务没铺开（点开看全部，不分页）`}
+          title={`还有 ${rest} 条任务没铺开——点一次多加载 ${Math.min(SIDE_TASK_STEP, rest)} 条`}
           onClick={(e) => {
             e.stopPropagation();
-            setShowAll(true);
+            setLimit((n) => n + SIDE_TASK_STEP);
           }}
         >
           <span className="gico"><Icon name="dots" size={12} /></span>
           <span className="nm">…还有 {rest} 条</span>
         </button>
       )}
-      {showAll && tasks.length > SIDE_TASK_LIMIT && (
+      {limit > SIDE_TASK_LIMIT && (
         <button
           type="button"
           className="trow child task-more"
           title="收起，只留前几条"
           onClick={(e) => {
             e.stopPropagation();
-            setShowAll(false);
+            setLimit(SIDE_TASK_LIMIT);
           }}
         >
           <span className="gico"><Icon name="chevron" size={12} /></span>

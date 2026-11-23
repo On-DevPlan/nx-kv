@@ -26,6 +26,7 @@ import { TimegoalPlugin } from './plugins/timecheck.js';
 import { varScopeOf as varScopeOfFields } from '../../shared/prompt-plugin.js';
 import { allPluginIds, groupPluginIds, pluginMeta } from './registry.js';
 import { activeTemplateTextOf } from './template-store.js';
+import { undeclaredTemplateVars } from '../../shared/prompt-plugin.js';
 
 /** 交付插件构造所需的宿主取数（值或惰性函数；异步留给 HTTP 类取数）。 */
 export interface DeliveryPluginDeps {
@@ -56,8 +57,18 @@ export function buildPlugins(
 ): AnyPromptPlugin[] {
   const d = { ...EMPTY_DEPS, ...deps };
   // 显式 overrides（预览/测试）> 用户启用模板（template-store）> 类内出厂（''）
-  const text = (id: string): string =>
-    overrides[id] != null ? String(overrides[id]) : activeTemplateTextOf(id);
+  const text = (id: string): string => {
+    // 显式 overrides（预览/测试）是开发者手写的，保持严格校验——#153 的
+    // 「跨段引用启动期报错」契约不变。
+    if (overrides[id] != null) return String(overrides[id]);
+    const raw = activeTemplateTextOf(id);
+    if (!raw) return '';
+    // #183 兜底：**用户层数据**（尤其历史模板）若仍引用本段没有的变量，装配前
+    // 回退出厂内置模板——绝不让一条旧模板把整条提示词链抛成「读取失败」。
+    // 设置页仍能看到用户模板原文（template-store 读取时已做惰性迁移）。
+    const scope = varScopeOf(id);
+    return undeclaredTemplateVars(raw, scope.allowedSegments, scope.fieldKeys).length ? '' : raw;
+  };
   switch (group) {
     case 'get':
       return [

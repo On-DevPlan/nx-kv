@@ -69,15 +69,48 @@ function cloneSegment(seg: SegmentTemplates): SegmentTemplates {
   return { ...seg, items: [...seg.items] };
 }
 
-/** 外部数据边界：单段逐项校验（脏条目丢掉，缺 activeId 按 builtin）。 */
-function normalizeSegment(raw: unknown): SegmentTemplates {
+/**
+ * #183 旧模板变量迁移：`40cb35d` 删掉了 context 段的 group.note / group.position /
+ * peers[].note / hasNote 字段与内置模板引用，但**没升级已落库的用户模板**——
+ * `6ac1074` 起每段模板只允许引用自己的 dataSchema，旧模板一被装配就在
+ * `assertPluginList` 抛「context: 模板引用了本段没有的变量 group.note」，
+ * 整条提示词链（预览 / 领取 / 设置页）随之不可用。
+ *
+ * 读时惰性升级：把废弃引用换成合法字段（组一句话描述），成员行里的裸 note
+ * 引用直接去掉；返回 changed 供调用方一次性回写，之后不再重复处理。
+ */
+const LEGACY_VAR_FIXES: readonly [RegExp, string][] = [
+  [/\bgroup\.position\b/g, 'group.introDesc'],  // = note 的旧别名
+  [/\bgroup\.note\b/g, 'group.introDesc'],
+  [/\{\{\s*(?:this\.)?hasNote\s*\}\}/g, ''],
+  [/\{\{\s*(?:this\.)?note\s*\}\}/g, ''],
+];
+
+export function migrateLegacyTemplateVars(text: string): { text: string; changed: boolean } {
+  const src = String(text ?? '');
+  let out = src;
+  for (const [re, to] of LEGACY_VAR_FIXES) out = out.replace(re, to);
+  // 去掉只剩空白 / 分隔符的残行（成员行去掉 note 后常见的「 - 」「 | 」）
+  out = out.replace(/^\s*[-|·,、]\s*$/gm, '');
+  return { text: out, changed: out !== src };
+}
+
+/** 外部数据边界：单段逐项校验 + 旧变量迁移（脏条目丢掉，缺 activeId 按 builtin）。 */
+function normalizeSegment(raw: unknown): { seg: SegmentTemplates; changed: boolean } {
   const seg = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
   const items = Array.isArray(seg.items)
-    ? (seg.items.filter(
-        (t: any) => t && typeof t.text === 'string' && typeof t.id === 'string' && t.id !== 'builtin',
-      ) as UserTemplate[])
+    ? (seg.items
+        .filter((t: any) => t && typeof t.text === 'string' && typeof t.id === 'string' && t.id !== 'builtin')
+        .map((t: any) => {
+          const m = migrateLegacyTemplateVars(t.text);
+          return m.changed ? { ...t, text: m.text } : t;
+        }) as UserTemplate[])
     : [];
-  return { activeId: typeof seg.activeId === 'string' ? seg.activeId : 'builtin', items };
+  const changed = Array.isArray(seg.items) && items.some((t, i) => t.text !== seg.items[i]?.text);
+  return {
+    seg: { activeId: typeof seg.activeId === 'string' ? seg.activeId : 'builtin', items },
+    changed,
+  };
 }
 
 /** 整份 Store（迁移源用）：逐段走同一套校验。 */
@@ -86,7 +119,7 @@ function normalizeStore(raw: unknown): Store {
   const out: Store = {};
   for (const [id, seg] of Object.entries(raw as Record<string, any>)) {
     if (!seg || typeof seg !== 'object') continue;
-    out[id] = normalizeSegment(seg);
+    out[id] = normalizeSegment(seg).seg;
   }
   return out;
 }
@@ -157,7 +190,13 @@ function readSegmentRaw(segment: string): SegmentTemplates | undefined {
   const db = openStore();
   ensureMigrated(db);
   const raw = readSettingRaw(db, segmentKey(segment));
-  return raw === undefined ? undefined : normalizeSegment(raw);
+  if (raw === undefined) return undefined;
+  const { seg, changed } = normalizeSegment(raw);
+  if (changed) {
+    // 惰性迁移：旧数据升级只写一次，之后每次读到的都是合法模板
+    try { writeSegment(segment, seg); } catch { /* 写失败不阻断读取，内存里已是升级后的版本 */ }
+  }
+  return seg;
 }
 
 /**

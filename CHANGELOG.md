@@ -2,6 +2,23 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.66.2] - 2026-11-23 修复旧提示词模板数据不兼容导致模板功能整体不可用
+
+### Fixed
+
+- **根因**：`40cb35d`（11-19「移除项目组上下文的组内描述 note」）删掉了 context 段的
+  `group.note` / `group.position` / `peers[].note` / `hasNote` 字段与内置模板引用，
+  但**没有升级已落库的用户模板**；`6ac1074`（#153）起每段模板只允许引用 seed ∪
+  自己的 dataSchema，旧模板一被装配就在 `assertPluginList` 抛
+  「context: 模板引用了本段没有的变量 group.note」，预览 / 领取 / 设置页读取全线失败。
+- **读时惰性迁移**（`template-store.migrateLegacyTemplateVars`）：读取用户模板时把
+  `group.note` / `group.position` 换成合法的 `group.introDesc`，清掉成员行的
+  `note` / `hasNote` 引用，并**一次性回写 settings**，之后不再重复处理。
+- **装配兜底**（`factory.buildPlugins`）：用户层模板若仍含未声明变量，装配前回退出厂
+  内置模板，绝不让一条旧数据把整条提示词链抛成「读取失败」；开发者显式传入的
+  overrides 仍严格校验（#153 契约不变）。
+- 回归测试：旧模板迁移落盘、整链校验通过、用户数据兜底、显式 overrides 仍报错。
+
 ## [0.66.1] - 2026-11-23 工具按钮回归第一行（#182 验收）
 
 ### Fixed

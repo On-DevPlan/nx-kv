@@ -42,15 +42,15 @@ test('设置视图：ackPromptList 是插件类正文的只读回显（弃用但
   );
 });
 
-test('设置：ack 不再可写——updateSettings 只管超时与追加模式', async () => {
+test('设置：ack 不再可写——updateSettings 只管超时（#186 追加模式已删）', async () => {
   const before = await svc.getSettings();
   // 只传模板字段 = 没有任何可写项 → 直接拒绝（模板字段已被摘掉，不再被静默忽略）
   await assert.rejects(
     () => svc.updateSettings({ ackPrompt: ['按「改了什么 · 怎么验证」两段写'], deliveryTemplate: '{{task.id}}' }),
-    /请至少指定一项/,
+    /请指定 --timeout/,
     '模板字段不再是可写通道',
   );
-  await assert.rejects(() => svc.updateSettings({}), /请至少指定一项/, '空 patch 仍然拒绝');
+  await assert.rejects(() => svc.updateSettings({}), /请指定 --timeout/, '空 patch 仍然拒绝');
 
   const after = await svc.getSettings();
   assert.deepEqual(after.ackPromptList, before.ackPromptList, 'ack 正文不受影响');

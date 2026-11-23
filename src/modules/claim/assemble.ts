@@ -60,8 +60,6 @@ export interface DeliveryHostData {
   getLoopWaitMinutes?: number;
   /** 外部参数（--param k=v 解析产物）：{{params.k}} + 平面扩展 {{k}} */
   params?: Record<string, string>;
-  /** 设置里的追加模式：'plain' 直拼文本，其余（含缺省）包 XML 标签 */
-  appendMode?: unknown;
   /** seed 原样透传的上下文键（保持 unknown：宿主传什么 seed 就是什么） */
   source?: unknown;
   summary?: unknown;
@@ -102,7 +100,6 @@ export async function assembleDelivery(host: DeliveryHostData): Promise<Assemble
     getLoopEnabled = false,
     getLoopWaitMinutes = 0,
     params,
-    appendMode,
     trace,
   } = host;
   const renderWarnings: RenderWarning[] = [];
@@ -119,7 +116,6 @@ export async function assembleDelivery(host: DeliveryHostData): Promise<Assemble
     ...flat,
   };
 
-  const mode: 'xml' | 'plain' = appendMode === 'plain' ? 'plain' : 'xml';
   // #152：模板是插件类的内置正文（不再从 settings 解析）。
   // 宿主取数以 Supply 注入（惰性：不消费就不算）。
   const plugins = [
@@ -137,7 +133,6 @@ export async function assembleDelivery(host: DeliveryHostData): Promise<Assemble
     plugins,
     groups: ['get', 'check', 'done'],
     seed: seedCtx,
-    mode,
     trace,
     segments: DELIVERY_SEGMENTS,
   });

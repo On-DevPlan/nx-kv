@@ -19,7 +19,7 @@
 //     「这段是哪来的」。真实领取不传 trace，行为与改造前逐字节一致。
 import { formatDuration, formatGoalTiming } from '../../core/instruction-template.js';
 import { parseFrontmatter } from '../../shared/frontmatter.js';
-import { getSettings, isGlobalKey, pendingQueueInfo } from '../localtask/service.js';
+import { isGlobalKey, pendingQueueInfo } from '../localtask/service.js';
 import { assembleDelivery, type AssembledDelivery } from './assemble.js';
 import { annotateTaskDelivery, attachTemplateCtx } from '../localtask/ops/attach.js';
 import { readGroupContext } from './groupctx.js';
@@ -163,7 +163,6 @@ export async function buildTaskDelivery(
     // 提交的纯项目任务只带项目介绍，不把所属组的材料挂进来。
     const boardMark = String(parseFrontmatter(String((task && task.text) || '')).board || '').trim();
     const groupCtx = await readGroupContext(cwd as string, { board: boardMark });
-    const settings: any = (await getSettings().catch(() => null)) || {};
 
     // ── 插件化组装（promptplug）：宿主完成领域取数，插件 data() 做同步变换 ──
     // 任务级 goal → 完整 check 指令；目录级 goal → 状态行（二者都进 timecheck 段）。
@@ -207,7 +206,6 @@ export async function buildTaskDelivery(
       getLoopEnabled,
       getLoopWaitMinutes,
       params,
-      appendMode: settings.appendMode,
       source: source || '',
       summary,
       cwd,

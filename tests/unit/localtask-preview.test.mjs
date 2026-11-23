@@ -113,9 +113,9 @@ test('开关状态如实：模板全部内置，开关只回答「这段出没�
 });
 
 test('模板不再可写：给 updateSettings 传模板字段直接拒绝', async () => {
-  await assert.rejects(() => svc.updateSettings({ blockTemplates: {} }), /请至少指定一项/);
-  await assert.rejects(() => svc.updateSettings({ ackPrompt: ['x'] }), /请至少指定一项/);
-  await assert.rejects(() => svc.updateSettings({ attachTemplate: 'x' }), /请至少指定一项/);
+  await assert.rejects(() => svc.updateSettings({ blockTemplates: {} }), /请指定 --timeout/);
+  await assert.rejects(() => svc.updateSettings({ ackPrompt: ['x'] }), /请指定 --timeout/);
+  await assert.rejects(() => svc.updateSettings({ attachTemplate: 'x' }), /请指定 --timeout/);
   const s = await svc.getSettings();
   assert.equal(s.blockTemplates, undefined, '设置视图不再有 blockTemplates 这一层');
   assert.equal(s.deliveryTemplate, undefined);

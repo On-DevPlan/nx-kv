@@ -16,11 +16,6 @@ const PLUGIN_IDS: any = _PLUGIN_IDS;
 /** localtask.config 的入参契约（CLI 与 HTTP 共用同一份）。 */
 const input = z.object({
   timeout: z.number().optional().describe('超时秒数（1-600）'),
-  'append-mode': z
-    .string()
-    .optional()
-    .describe('系统上下文追加模式（全局）：xml（默认，每段包独立标签）/ plain（按空行直接拼正文）。HTTP body 用 appendMode'),
-  appendMode: z.string().optional().describe('同 --append-mode（驼峰写法，HTTP body 用）'),
 });
 
 export class LocaltaskConfigAction extends ActionBase<typeof input> {
@@ -28,18 +23,14 @@ export class LocaltaskConfigAction extends ActionBase<typeof input> {
     id: 'localtask.config',
     cli: ['localtask', 'config'],
     http: ['PATCH', '/api/localtasks/setting'],
-    summary: '配置等待超时（秒）/ 系统上下文追加模式（提示词模板正文固定在插件类里，不再可配）',
+    summary: '配置等待超时（秒）（系统上下文固定 XML 区块；提示词模板正文固定在插件类里，不再可配）',
     input,
     render: (s: any) => {
-      const mode: any = s.appendMode === 'plain' ? '正文直追加' : 'XML 区块';
-      return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· 追加模式：${mode} · 提示词模板：${PLUGIN_IDS.length} 段全部内置（不可在此修改）`;
+      return `已配置等待超时 ${s.timeoutSec} 秒（推荐 ${s.recommendedSec}，最大 ${s.maxSec}）· 提示词模板：${PLUGIN_IDS.length} 段全部内置（不可在此修改）`;
     },
   })
   override async run(ctx: ActionInput<this['_input']>) {
     const patch: any = { timeoutSec: ctx.timeout };
-    // 系统上下文追加模式（全局）——HTTP body 用驼峰别名 appendMode（#104）
-    const appendMode: any = ctx.appendMode ?? ctx['append-mode'];
-    if (appendMode !== undefined) patch.appendMode = appendMode;
     return service.updateSettings(patch);
   }
 }

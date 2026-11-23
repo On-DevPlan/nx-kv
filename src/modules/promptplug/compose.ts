@@ -52,7 +52,6 @@ export interface ComposeOptions {
   groups?: readonly string[];
   /** compose 的种子数据：task / cwd / goal / source / summary / name / params */
   seed?: Record<string, unknown>;
-  mode?: 'xml' | 'plain';
   trace?: RenderTraceEntry[];
   /** trace 的段名映射（traceId / label / 生效模板名）——真实领取不传，预览传 */
   segments?: SegmentMeta[];
@@ -63,7 +62,7 @@ export interface ComposeOptions {
  * 返回 ''（无可输出段落）时调用方省略 instruction。
  */
 export async function compose(opts: ComposeOptions): Promise<string> {
-  const { plugins, group, groups, seed = {}, mode = 'xml', trace, segments } = opts;
+  const { plugins, group, groups, seed = {}, trace, segments } = opts;
   const wanted = groups && groups.length ? groups : group ? [group] : [];
   if (!wanted.length) throw new Error('compose: 必须指定 group 或 groups');
   const chain =
@@ -98,6 +97,5 @@ export async function compose(opts: ComposeOptions): Promise<string> {
       });
     }
   }
-  if (mode === 'plain') return parts.map((p) => p.text).join('\n\n').trim();
   return wrapXmlBlocks(parts);
 }

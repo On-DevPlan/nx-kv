@@ -1313,7 +1313,7 @@
           "action": {
             "id": "localtask.config",
             "module": "localtask",
-            "summary": "配置等待超时（秒）/ 系统上下文追加模式（提示词模板正文固定在插件类里，不再可配）",
+            "summary": "配置等待超时（秒）（系统上下文固定 XML 区块；提示词模板正文固定在插件类里，不再可配）",
             "usage": "localtask config",
             "http": "PATCH /api/localtasks/setting"
           },

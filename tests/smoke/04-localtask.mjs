@@ -70,9 +70,16 @@ export async function run(ctx) {
   const tplGone = await cli(['localtask', 'config', '--delivery-template', 'X']);
   check('config --delivery-template 已下线', tplGone.status === 1 && /未知参数/.test(String(tplGone.stderr || '')), String(tplGone.stderr || '').slice(0, 160));
 
-  const stAck = await cliJson(['localtask', 'config', '--append-mode', 'xml']);
+  // #186：追加模式已删除（固定 XML），--append-mode 必须被当成未知参数拒绝
+  const stNoMode = await cli(['localtask', 'config', '--append-mode', 'xml']);
   check(
-    'config 仍可改追加模式（ack 正文只读回显）',
+    'config --append-mode 已下线（固定 XML 区块）',
+    stNoMode.status === 1 && /未知参数|未知/.test(String(stNoMode.stderr || '')),
+    String(stNoMode.stderr || '').slice(0, 160)
+  );
+  const stAck = await cliJson(['localtask', 'config', '--timeout', '180']);
+  check(
+    'config 仍可改超时（ack 正文只读回显）',
     /localtask done/.test(stAck.ackPromptList.join('\n')),
     JSON.stringify(stAck)
   );

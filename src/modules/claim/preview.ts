@@ -88,7 +88,6 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params }: P
       // 两个旧开关保留：模板已全部内置，custom 恒为 false
       deliveryTemplate: builtinBlock('context'),
       attachTemplate: builtinBlock('attachment'),
-      appendMode: settings.appendMode || 'xml',
       // 每个区块当前生效的模板（全部内置）
       blockTemplates: Object.fromEntries(PLUGIN_IDS.map((id) => [id, builtinBlock(id)])),
       // 时机链（#152）：get / check / done 各自的插件顺序

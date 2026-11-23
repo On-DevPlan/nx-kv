@@ -11,7 +11,7 @@
 //   - #238 补上了**用户层**的落库（用户在设置页加/改/启用的那几条）：那是 promptplug
 //     自己的键（settings 表，一段一个 `prompt.tpl.<段>`），由 template-store.ts 读写，
 //     与本文件的 lt.* 无关。
-//   - 因此本文件只剩两个真正可写的键：`lt.timeoutSec` 与 `lt.appendMode`。
+//   - 因此本文件只剩一个真正可写的键：`lt.timeoutSec`（#186 起 appendMode 已删除，只保留 XML）。
 import { db, txw } from './open.js';
 import { nowMs } from '../../../../core/db/time.js';
 import {
@@ -19,13 +19,11 @@ import {
   MAX_TIMEOUT_SEC,
   clampTimeoutSec,
 } from '../store-io.js';
-import { clampAppendMode } from '../../lifecycle/task-templates.js';
 import type { DbApi } from '../../../../core/db/driver.js';
 import { activeTemplateOf } from '../../../promptplug/index.js';
 
 const KEYS = {
   timeoutSec: 'lt.timeoutSec',
-  appendMode: 'lt.appendMode',
 };
 
 function readSetting(conn: DbApi, key: string): any {
@@ -57,7 +55,6 @@ export function getLtSettings(): Record<string, any> {
   const conn = db();
   return {
     timeoutSec: clampTimeoutSec(readSetting(conn, KEYS.timeoutSec)),
-    appendMode: clampAppendMode(readSetting(conn, KEYS.appendMode)),
     // 旧视图字段：ack 段落正文来自 ack 插件类的内置模板，仍按「多条」形态给出，
     // 让老 CLI 的 localtask config 输出不必断代（#152：只是回显，不可写）。
     ackPrompt: splitEntries(activeTemplateOf('ack')),
@@ -67,7 +64,6 @@ export function getLtSettings(): Record<string, any> {
 /** setLtSettings 的 patch 形状（#152：模板不再可写，只留两个键）。 */
 export interface LtSettingsPatch {
   timeoutSec?: unknown;
-  appendMode?: unknown;
 }
 
 /** 写部分设置（只改传入项；校验沿用 store-io 的 clamp）。 */
@@ -75,9 +71,6 @@ export function setLtSettings(patch: LtSettingsPatch = {}): Record<string, any> 
   return txw((conn) => {
     if (patch.timeoutSec !== undefined) {
       writeSetting(conn, KEYS.timeoutSec, clampTimeoutSec(patch.timeoutSec));
-    }
-    if (patch.appendMode !== undefined) {
-      writeSetting(conn, KEYS.appendMode, clampAppendMode(patch.appendMode));
     }
     return getLtSettings();
   });
@@ -91,7 +84,6 @@ export function settingsView(): Record<string, any> {
     recommendedSec: DEFAULT_TIMEOUT_SEC,
     maxSec: MAX_TIMEOUT_SEC,
     ackPromptList: s.ackPrompt,
-    appendMode: s.appendMode,
   };
 }
 

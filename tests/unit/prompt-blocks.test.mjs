@@ -188,12 +188,6 @@ test('空模板：启动期校验就拦下（空段 = 配置错误，不静默�
   assert.throws(() => assertPluginList([stub]), /模板不能为空/);
 });
 
-test('plain 模式：渲染后按空行直拼、不再包标签', async () => {
-  const text = await makeCompose({ context: '组上下文', ack: 'ack 指令' }, { mode: 'plain' }, {});
-  assert.equal(text, '组上下文\n\nack 指令', '顺序 = 插件 order 顺序');
-  assert.doesNotMatch(text, /<nx-kv/);
-});
-
 test('wrapXmlBlocks：无段落 / 空文本都不产出空根标签', () => {
   assert.equal(wrapXmlBlocks([]), '');
   assert.equal(wrapXmlBlocks([{ tag: 'nx-kv.ack', text: '   ' }]), '');

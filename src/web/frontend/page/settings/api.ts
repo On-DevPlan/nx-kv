@@ -34,10 +34,9 @@ export function getLocaltaskSettings(): Promise<any> {
     #152 起提示词模板不可写（正文在插件类里），只剩超时与追加模式两个键。 */
 export interface LocaltaskSettingPatch {
   timeoutSec?: number;
-  appendMode?: 'xml' | 'plain';
 }
 
-/** 改 localtask 设置（PATCH /api/localtasks/setting；timeoutSec / appendMode）。 */
+/** 改 localtask 设置（PATCH /api/localtasks/setting；只剩 timeoutSec——#186 追加模式固定 XML）。 */
 export function saveLocaltaskSettings(patch: LocaltaskSettingPatch): Promise<any> {
   return api('/api/localtasks/setting', { method: 'PATCH', body: patch });
 }

@@ -13,12 +13,9 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../components/button/index.js';
 import { useToast } from '../../components/toast/index.jsx';
 import {
-  getLocaltaskSettings,
   getPromptRegistry,
   previewDelivery,
-  saveLocaltaskSettings,
 } from './api.js';
-import { APPEND_MODES } from '../../../../shared/prompt-blocks.js';
 import { varGroupsOf } from './prompt-vars.js';
 import PromptTemplateEditor, { type SegmentTemplates } from './prompt-template-editor.js';
 
@@ -64,7 +61,6 @@ export default function PromptTemplatesSection() {
   const toast = useToast();
   const [plugins, setPlugins] = useState<PluginDesc[] | null>(null);
   const [groups, setGroups] = useState<Record<string, string[]>>({});
-  const [appendMode, setAppendMode] = useState<string>('xml');
   const [selectedId, setSelectedId] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -90,8 +86,8 @@ export default function PromptTemplatesSection() {
 
   useEffect(() => {
     let alive = true;
-    Promise.all([getPromptRegistry(), getLocaltaskSettings()])
-      .then(([r, s]) => {
+    getPromptRegistry()
+      .then((r) => {
         if (!alive) return;
         const list: PluginDesc[] = Array.isArray(r?.plugins) ? r.plugins : [];
         setPlugins(list);
@@ -101,8 +97,6 @@ export default function PromptTemplatesSection() {
             ? (r.segmentTemplates as Record<string, SegmentTemplates>)
             : {}) || {},
         );
-        const mode = s?.settings?.appendMode === 'plain' ? 'plain' : 'xml';
-        setAppendMode(mode);
         // 默认选中 get 链首段（agent 最常看到的那一段）
         const first = (r?.groups?.get?.[0] as string) || list[0]?.id || '';
         setSelectedId(first);
@@ -120,22 +114,7 @@ export default function PromptTemplatesSection() {
   const order = Object.keys(groups).length ? Object.keys(groups) : [...new Set(plugins.map((p) => p.group))];
   const byId = new Map(plugins.map((p) => [p.id, p]));
   const varGroups = varGroupsOf(selected.fields, varQuery);
-  const activeMode = APPEND_MODES.find((m) => m.id === appendMode) || APPEND_MODES[0]!;
 
-  const setMode = async (mode: string) => {
-    if (busy || mode === appendMode) return;
-    setBusy(true);
-    try {
-      const d = await saveLocaltaskSettings({ appendMode: mode === 'plain' ? 'plain' : 'xml' });
-      setAppendMode(d?.appendMode === 'plain' ? 'plain' : 'xml');
-      setPreview(null); // 追加方式变了，旧预览已不代表当前输出
-      toast('已保存追加模式（全局生效）');
-    } catch (e) {
-      toast(String((e as Error).message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const runPreview = async () => {
     if (busy) return;
@@ -158,23 +137,8 @@ export default function PromptTemplatesSection() {
   return (
     <div className='setp-tpl-editor'>
       <div className='setp-tpl-head'>
-        <span className='setp-tpl-head-label'>系统提示词追加方式</span>
-        <div className='setp-seg' role='group' aria-label='系统提示词追加方式'>
-          {APPEND_MODES.map((m) => (
-            <button
-              key={m.id}
-              type='button'
-              className={'setp-seg-btn' + (appendMode === m.id ? ' is-on' : '')}
-              aria-pressed={appendMode === m.id}
-              title={m.desc}
-              disabled={busy}
-              onClick={() => void setMode(m.id)}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-        <span className='setp-note'>{activeMode.desc}</span>
+        <span className='setp-tpl-head-label'>提示词模板</span>
+        <span className='setp-note'>系统提示词固定按 XML 区块包裹（每段独立标签，agent 一眼分清任务原文与系统规则）</span>
       </div>
 
       <div className='ppt-split'>

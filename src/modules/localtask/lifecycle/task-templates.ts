@@ -13,8 +13,6 @@ export const DEFAULT_ACK_PROMPT =
   '完成之后必须调用 nx-kv localtask done --id {{task.id}} --summary "<完成总结>" 汇报结果。';
 
 import {
-  DEFAULT_APPEND_MODE,
-  APPEND_MODES,
 } from '../../../shared/prompt-blocks.js';
 
 /** 交付上下文模板（任务 #62）的长度上限——防把整本书塞进设置。 */
@@ -68,14 +66,3 @@ export function joinAckPrompt(v: unknown): string {
   return clampAckPromptList(v).join('\n\n');
 }
 
-// ─── 系统上下文追加模式 + XML 区块配置（settings 两键）───────────────
-//
-// appendMode：'xml'（默认，每段包独立标签）| 'plain'（改造前按空行直拼）。
-// 每个区块的模板正文在插件类里（modules/promptplug/plugins/*.ts），不再有落库模型。
-export const APPEND_MODE_IDS = Object.freeze(APPEND_MODES.map((m) => m.id));
-
-/** 归一化追加模式：缺省/非法 → xml（默认足够清晰）。 */
-export function clampAppendMode(v: unknown): string {
-  const s = String(v ?? '').trim();
-  return APPEND_MODE_IDS.includes(s) ? s : DEFAULT_APPEND_MODE;
-}

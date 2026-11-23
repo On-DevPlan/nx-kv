@@ -139,15 +139,13 @@ export async function pruneTopics({
  */
 export interface UpdateSettingsInput {
   timeoutSec?: unknown;
-  appendMode?: unknown;
 }
 
 // 配置等待超时（页面可调）。超时推荐 180=3 分钟、最大 600=10 分钟。
-export async function updateSettings({ timeoutSec, appendMode }: UpdateSettingsInput = {}): Promise<Record<string, any>> {
+export async function updateSettings({ timeoutSec }: UpdateSettingsInput = {}): Promise<Record<string, any>> {
   const hasTimeout = timeoutSec !== undefined && timeoutSec !== null;
-  const hasAppend = appendMode !== undefined;
-  if (!hasTimeout && !hasAppend) {
-    throw badInput('请至少指定一项：--timeout <秒>，或 --append-mode <xml|plain>');
+  if (!hasTimeout) {
+    throw badInput('请指定 --timeout <秒>（追加模式已固定为 XML，不再可配）');
   }
   if (hasTimeout) {
     const n = Number(timeoutSec);
@@ -158,7 +156,6 @@ export async function updateSettings({ timeoutSec, appendMode }: UpdateSettingsI
   openStore();
   settingsRepo.setLtSettings({
     timeoutSec: hasTimeout ? timeoutSec : undefined,
-    appendMode: hasAppend ? appendMode : undefined,
   });
   return settingsRepo.settingsView();
 }

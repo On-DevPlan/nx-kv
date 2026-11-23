@@ -1,7 +1,6 @@
 {
   "files": {
     "src/modules/repos/ref.ts": 680,
-    "tests/unit/repos-ref.test.mjs": 667,
-    "src/web/frontend/page/group/index.tsx": 640
+    "tests/unit/repos-ref.test.mjs": 667
   }
 }

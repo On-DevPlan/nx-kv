@@ -22,11 +22,13 @@ test('dir default: bar has new/import/progress/orch/plan/more; refs + getloop in
   assert.ok(!norm.some((x) => x.id === 'tpl'));
 });
 
-test('group default: bar has new/progress/addMember/orch/more; refs + getloop in more', () => {
+test('group default: bar has new/import/progress/addMember/orch/plan/more; refs + getloop in more', () => {
   const layout = defaultLayout('group');
   const bar = layout.filter((x) => onBarOf('group', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('group', x)).map((x) => x.id);
-  assert.deepEqual(bar, ['new', 'progress', 'addMember', 'orch', 'more']);
+  // #251：与 dir 页同一套工具区（任务页模板统一接管 new/import/plan），
+  // 组页只多一颗「添加成员」
+  assert.deepEqual(bar, ['new', 'import', 'progress', 'addMember', 'orch', 'plan', 'more']);
   // #180：两页都去掉了「已删除任务」入口；#250：getloop 进更多（与 dir 页对齐，
   // 组粒度先选成员项目再开配置弹窗）
   assert.deepEqual(more, ['refs', 'getloop']);

@@ -1,49 +1,38 @@
-// 目录面板 —— 简介（统一 Introduction）+ 子任务表。
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  addTask,
-  cancelManyTasks,
-  closeManyTasks,
-  findTaskItem,
-  patchTaskItem,
-  removeManyTasks,
-  removeTaskItem,
-  reorderTask,
-  postReopen,
-} from './api.js';
+// 目录面板 —— 简介（统一 Introduction）+ 任务页模板（#251）。
+//
+// 本页只负责「目录这条主题」的数据与接线：主题定位、显示序、模板可见域、草稿落点。
+// 列表的**整页交互**（工具区 / 搜索 / 全选 / 多选批量条 / 行尾菜单 / 翻页 / 拖动排序）
+// 全在 components/task-panel/task-page（与项目组页同一份），行尾与批量动作的流程在
+// components/task-panel/task-ops（同一份）——两页不再各写一遍。
+import { useMemo, useState } from 'react';
+import { addTask, reorderTask } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
-import { useDialog, PopMenu } from '../../components/popup/index.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
 import { GLOBAL_KEY, isGroupTask } from '../../modules/board/board-view.js';
-import { filterTasks } from '../../modules/board/task-search.js';
-import {
-  FEEDBACK_HEADING,
-  PLAIN_FEEDBACK_HEADING,
-  buildReopenText,
-} from '../../modules/board/reopen-text.js';
-import { usePager } from '../../components/pager.jsx';
 import { useApp } from '../../app-context.jsx';
-import Landing from './landing.jsx';
-import DagEditor from './dag-editor.jsx';
+import Introduction from '../../components/Introduction/index.jsx';
+import GetLoopModal from '../../components/repos/get-loop-modal.js';
+import DagEditor from '../../components/task-panel/dag-editor.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
 import { openTemplateEditor } from '../../panels.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { putManageSession } from '../../modules/md/manage-session.js';
 import { useTemplatesFor } from '../../modules/md/use-templates.js';
-import type { LocalTask, PromptTemplate, RepoRow } from '../../types.js';
+import TaskPage from '../../components/task-panel/task-page.jsx';
+import type { TaskPageRow } from '../../components/task-panel/task-page.jsx';
+import {
+  runBatchCancel,
+  runBatchComplete,
+  runBatchDelete,
+  runDeleteTask,
+  runFeedbackTask,
+  runPlanSwitch,
+  runToggleGate,
+  saveDagPatches,
+} from '../../components/task-panel/task-ops.js';
+import type { DagPatchInput, TaskOpsDeps } from '../../components/task-panel/task-ops.js';
 import { sortTasksForDisplay } from './task-utils.js';
-
-// 目录任务表每页条数（队列一长就翻页，不再一次渲染全部）
-const PAGE_SIZE = 20;
-
-/** 拖动落点（与 landing 的约定一致）。 */
-type DropZone = 'before' | 'after';
-
-/** DagEditor 回传的逐条 patch（结构与其内部 DagPatch 一致）。 */
-interface DagPatchInput {
-  id: number;
-  gate?: boolean;
-  blockBy?: number[];
-}
+import type { LocalTask, PromptTemplate, RepoRow } from '../../types.js';
 
 interface DirPanelProps {
   dirKey?: string;
@@ -60,9 +49,9 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
   const repos = (app.repoData && app.repoData.repos) || [];
 
   const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
-  const [tplMenu, setTplMenu] = useState<{ x?: number; y?: number } | null>(null);
   const [dagTask, setDagTask] = useState<LocalTask | null>(null); // 正在编排依赖的任务（DAG 节点编辑器）
-  const fileMdRef = useRef<HTMLInputElement | null>(null);
+  // #165：持续 get（waitgoal）配置——按主题（仓库）粒度控制，收在工具区直读状态
+  const [glOpen, setGlOpen] = useState(false);
 
   const topic = useMemo(() => {
     if (isGlobal) return rows.find((r) => r.isGlobal) || null;
@@ -82,63 +71,12 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
   }, [topic, repos, isGlobal]);
 
   // 显示序：未完成（待领取）优先，追加的新任务不会被历史埋在下面；
-  // 软删除的行不进表。分页：队列一长就翻页，不一次渲染全部。
-  // #85 两种走向：目录页是**项目走向**的视图——组任务（frontmatter.board）
-  // 物理上在这条队列里，但归组页管，列表与下面的计数/编排一并排除。
+  // 软删除的行不进表。#85 两种走向：目录页是**项目走向**的视图——组任务
+  // （frontmatter.board）物理上在这条队列里，但归组页管，列表与计数一并排除。
   const allTasks = useMemo<LocalTask[]>(
     () => sortTasksForDisplay((topic?.tasks || []).filter((t) => !t.deletedAt && !isGroupTask(t))),
     [topic]
   );
-  // #181：面板头搜索框——标题与正文都算命中目标（模糊串规则见 modules/board/task-search）；
-  // 先过滤再分页，翻页条报的是命中数。
-  const [q, setQ] = useState('');
-  const shownTasks = useMemo(() => filterTasks(allTasks, q), [allTasks, q]);
-  const pager = usePager(shownTasks, PAGE_SIZE);
-  // 改查询串就回到第一页（否则会停在「上一结果的第 3 页」上，看起来像没命中）
-  useEffect(() => {
-    pager.setPage(0);
-  }, [q]);
-  // 待领取计数跟着**筛后**的集合走：搜索时头部「待领取 N」要与屏幕上的行对得上
-  const pendingCount = useMemo(
-    () => shownTasks.filter((t) => t.status === 'pending' && !t.migratedTo).length,
-    [shownTasks]
-  );
-  const guard = (fn: () => Promise<unknown>) => fn().catch((e) => toast(String((e as Error).message || e)));
-
-  // ─── 编排（DAG）：拖动排序 / 闸门 / 上下游依赖 ───
-  // 定位 body：全局池用 key，目录用 cwd（与 reopen / delete 同一套）
-  const scopeBody = () => (isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd });
-
-  // 拖动排序：服务端只许 pending ↔ pending 换位（已领取是固定历史），UI 侧已同口径过滤
-  const moveTask = (t: { id: number }, targetId: number | string, zone: DropZone) => {
-    guard(async () => {
-      await reorderTask({ ...scopeBody(), id: t.id, ...(zone === 'before' ? { beforeId: targetId } : { afterId: targetId }) });
-      refreshLocal?.();
-    });
-  };
-
-  const toggleGate = (t: LocalTask) => {
-    guard(async () => {
-      await patchTaskItem({ ...scopeBody(), id: t.id, gate: !t.blocksFollowing });
-      toast(!t.blocksFollowing ? `#${t.id} 已设为闸门——挡住所有后续待领取任务` : `#${t.id} 闸门已取消`);
-      refreshLocal?.();
-    });
-  };
-
-  // 编排编辑器保存：patches 是逐条任务级 PATCH（本任务的 gate/blockBy + 下游各方 blockBy）。
-  // 失败时 toast 并**向上抛**——编辑器据此保持打开。
-  const saveDag = async (patches: DagPatchInput[]) => {
-    try {
-      for (const p of patches) {
-        await patchTaskItem({ ...scopeBody(), ...p });
-      }
-      toast('编排已保存');
-      refreshLocal?.();
-    } catch (e) {
-      toast(String((e as Error).message || e));
-      throw e;
-    }
-  };
 
   // 闸门 → 被它挡住的后续任务（队列序：pending 子序即领取序）。
   // 领取闸判定只看「排在我前面的 alive 闸门」（core/workflow/readiness），同一口径。
@@ -154,6 +92,46 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     () => allTasks.filter((t) => t.status === 'pending' && !t.migratedTo && !t.deletedAt),
     [allTasks]
   );
+
+  // #181 搜索 / 分页 / 多选 / 拖动 / 行尾菜单都由 TaskPage 持有；这里只给行数据。
+  const pageRows = useMemo<TaskPageRow[]>(
+    () =>
+      allTasks.map((t) => ({
+        key: String(t.id),
+        task: t,
+        showTimes: true, // 目录页基线：行内显示 创建 → 领取 时间
+        movable: t.status === 'pending' && !t.migratedTo && !t.deletedAt,
+        downs: downstreamOf[t.id] || [],
+      })),
+    [allTasks, downstreamOf]
+  );
+
+  const guard = (fn: () => Promise<unknown>) => fn().catch((e) => toast(String((e as Error).message || e)));
+
+  // 主题定位二选一：全局池用 key，目录用 cwd（行尾 / 批量 / 编排同一套）
+  const scopeBody = () => (isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd });
+  const topicKeyHere = isGlobal ? GLOBAL_KEY : dirKey || GLOBAL_KEY;
+  // 持续 get 的展示态（配置本身在 GetLoopModal 里改）
+  const glOn = !!(repo && repo.getLoop && repo.getLoop.enabled);
+  const glMinutes = repo && repo.getLoop && repo.getLoop.waitMinutes !== undefined && repo.getLoop.waitMinutes !== null
+    ? Number(repo.getLoop.waitMinutes)
+    : null;
+
+  // 动作层的依赖：弹窗 / 提示 / 刷新 / 文档落点都来自本页
+  const ops: TaskOpsDeps = {
+    dialog,
+    toast,
+    refresh: () => {
+      refreshLocal?.();
+    },
+    docKey: dirKey || GLOBAL_KEY,
+    onDeleted: (t) => {
+      if (!model) return;
+      // workspace.findOpenPanel 的返回类型尚未收口（被推断成 null），按实际契约窄化
+      const page = findOpenPanel(model, 'page', { dirKey, task: String(t.id) }) as { getId: () => string } | null;
+      if (page && app.closePanel) app.closePanel(page.getId());
+    },
+  };
 
   const openTask = (id: number | string) => {
     if (app.openPage) app.openPage({ dirKey, task: String(id), name: `#${id}` });
@@ -189,7 +167,6 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
 
   // #128 模板可见域：「模板 ▾」只列**本主题可用**的模板（服务端按 scope 过滤）。
   // 三档退化都回落全量（scoped 未加载/旧 serve/失败时 templates=null），菜单不变空。
-  const topicKeyHere = isGlobal ? GLOBAL_KEY : dirKey || GLOBAL_KEY;
   const scopedTpl = useTemplatesFor(topicKeyHere);
   const menuTemplates: PromptTemplate[] = scopedTpl.templates || (tpl && tpl.templates) || [];
 
@@ -226,176 +203,6 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     { label: `为本${isGlobal ? '全局池' : '目录'}新建模板…`, icon: 'plus', onClick: newTemplateForHere },
     { label: '管理模板…', icon: 'gear', onClick: openTplList },
   ];
-
-  // #79：反馈的 base 以**服务端当前正文**为准——列表行的 t.text 是 rows 快照，
-  // 可能落后于盘上（别的会话改过 / 上一轮重开追加过），拿旧正文拼回去就是丢数据。
-  const fetchServerTask = async (t: LocalTask | null) => {
-    if (t == null) return null;
-    const q = isGlobal
-      ? `key=${encodeURIComponent(GLOBAL_KEY)}&id=${Number(t.id)}`
-      : `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(t.id)}`;
-    return findTaskItem(q);
-  };
-
-  const reopenTask = (t: LocalTask | null) => {
-    if (!t) return;
-    const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
-    guard(async () => {
-      const acked = !!t.completedAt;
-      const body = await dialog({
-        title: acked ? `反馈 · #${t.id}` : `反馈修改 · #${t.id}`,
-        input: true,
-        placeholder: acked
-          ? '写下反馈（将新开一条任务，原任务不动）'
-          : '写下要改的地方（留空 = 只重开，不改正文）',
-      });
-      if (body === null || body === undefined) return;
-      const fb = String(body).trim();
-      // #79：base 取服务端当前正文（取不到才退回 rows 快照）；两头的都没有就中止。
-      const fresh = await fetchServerTask(t);
-      const baseText = String(fresh?.text ?? '').trim() || String(t.text || '').trim();
-      const ackSummary = acked ? (fresh?.roundSummary || t.roundSummary || '') : '';
-      if (!fb && !acked && !baseText) {
-        // 只重开（不改正文）不需要 base；带反馈但拿不到正文时不能瞎拼
-        toast('拿不到任务当前正文，已取消（防止丢内容）');
-        return;
-      }
-
-      // #75：已完成 → 反馈 = **新开任务**（forkOf 指回本条），原任务留档不动。
-      // 新任务的正文 = 完整之前的任务 + 上轮总结 + 本轮反馈（面板拼装——新任务
-      // 的落点内容只能整篇给）。
-      if (acked) {
-        // 拼装参数先收进变量：reopen-text 的入参形状仍在迁移（字面量直接传会被多余属性检查拦下）
-        const reopenArgs = {
-          base: baseText,
-          feedback: fb,
-          ackSummary,
-          feedbackHeading: FEEDBACK_HEADING,
-          bold: true,
-        };
-        const text = fb ? buildReopenText(reopenArgs) : '';
-        if (!text) {
-          toast('写一下反馈');
-          return;
-        }
-        const res = await addTask(
-          isGlobal
-            ? { global: true, text, forkOf: String(t.id), forkKind: 'reopen' }
-            : { cwd: topic?.cwd, text, forkOf: String(t.id), forkKind: 'reopen' },
-        );
-        const newId = String(res?.task?.id ?? res?.id ?? '');
-        const landedKey = res?.key || dirKey;
-        if (newId) saveDoc(docIdOf(scopeOf(landedKey), newId), { body: text });
-        toast(`已反馈「${title.replace(/^#\s*/, '')}」→ 新任务 #${newId || '?'}`);
-        refreshLocal?.();
-        return;
-      }
-
-      // 未完成：就地回写（#74 reopen）。#79：纯反馈不传 text——服务端把反馈段
-      // 原子追加到盘上当前正文；「只重开不改正文」（无反馈）维持只翻状态。
-      const res = await postReopen({
-        ...scopeBody(),
-        id: t.id,
-        kind: 'reopen',
-        ...(fb
-          ? {
-              feedback: fb,
-              feedbackHeading: PLAIN_FEEDBACK_HEADING,
-              feedbackBold: false,
-            }
-          : {}),
-      });
-      const landedKey = res?.key || dirKey;
-      const sameId = String(res?.task?.id ?? t.id);
-      const finalText = String(res?.task?.text ?? '');
-      if (finalText) saveDoc(docIdOf(scopeOf(landedKey), sameId), { body: finalText });
-      toast(
-        `已回写「${title.replace(/^#\s*/, '')}」#${sameId}` +
-          (res?.moved && res.name ? `；归属迁到「${res.name}」` : ''),
-      );
-      refreshLocal?.();
-    });
-  };
-
-  const delTask = async (t: LocalTask | null) => {
-    if (!t) return;
-    const title = (t.text || '').split('\n').find((l) => l.trim()) || `#${t.id}`;
-    const ok = await dialog({
-      title: `删除任务「${title.replace(/^#\s*/, '')}」`,
-      message: '软删除：CLI localtask task restore 可恢复。',
-      danger: true,
-      okText: '删除',
-    });
-    if (!ok) return;
-    guard(async () => {
-      await removeTaskItem(isGlobal ? { key: GLOBAL_KEY, id: t.id } : { cwd: topic?.cwd, id: t.id });
-      toast(`已删除「${title.replace(/^#\s*/, '')}」`);
-      if (model) {
-        // workspace.findOpenPanel 的返回类型尚未收口（被推断成 null），按实际契约窄化
-        const page = findOpenPanel(model, 'page', { dirKey, task: String(t.id) }) as { getId: () => string } | null;
-        if (page && app.closePanel) app.closePanel(page.getId());
-      }
-      refreshLocal?.();
-    });
-  };
-
-  // ─── 批量操作（多选删除 / 取消）────────────────────────────────────
-  const batchDeleteTasks = async (ids: number[]): Promise<unknown> => {
-    const list = (ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
-    if (!list.length) return false;
-    const ok = await dialog({
-      title: `删除选中的 ${list.length} 条任务`,
-      message: '软删除：CLI localtask task restore 可恢复。',
-      danger: true,
-      okText: '删除',
-    });
-    if (!ok) return false;
-    return guard(async () => {
-      const res = await removeManyTasks({ ...scopeBody(), ids: list });
-      toast(`已删除 ${res?.count ?? list.length} 条任务`);
-      refreshLocal?.();
-      return true;
-    });
-  };
-
-  const batchCancelTasks = async (ids: number[]): Promise<unknown> => {
-    const list = (ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
-    if (!list.length) return false;
-    const ok = await dialog({
-      title: `取消选中的 ${list.length} 条待领取任务`,
-      message: '只处理待领取任务；已领取/已完成/已取消会跳过。取消为终态，原文留档。',
-      okText: '取消任务',
-    });
-    if (!ok) return false;
-    return guard(async () => {
-      const res = await cancelManyTasks({ ...scopeBody(), ids: list });
-      const skipped = res?.skipped?.length || 0;
-      toast(`已取消 ${res?.count ?? 0} 条任务${skipped ? `，跳过 ${skipped} 条` : ''}`);
-      refreshLocal?.();
-      return true;
-    });
-  };
-
-  const batchCompleteTasks = async (ids: number[]): Promise<unknown> => {
-    const list = (ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
-    if (!list.length) return false;
-    const ok = await dialog({
-      title: `把选中的 ${list.length} 条任务标为完成`,
-      message: '待领取与已领取（正在跑）都能收：已领取的直接收口，agent 侧回执会被忽略。已完成/已取消会跳过。完成会补一条完成记录，原文留档。',
-      okText: '标为完成',
-    });
-    if (!ok) return false;
-    return guard(async () => {
-      const res = await closeManyTasks({ ...scopeBody(), ids: list, status: 'done' });
-      const skipped = res?.skipped?.length || 0;
-      const claimed = res?.claimedClosed?.length || 0;
-      toast(
-        `已标为完成 ${res?.count ?? 0} 条任务${claimed ? `（含 ${claimed} 条已领取）` : ''}${skipped ? `，跳过 ${skipped} 条` : ''}`,
-      );
-      refreshLocal?.();
-      return true;
-    });
-  };
 
   // ─── 文档列表（右侧栏）────────────────────────────────────────────
   const openRefs = () => {
@@ -450,68 +257,84 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     // （自带 canvas 米色底 + 一整套 .mdw 作用域的按钮/字号口径）。落地页只是
     // 队列列表页，套上它会让**同款按钮在目录页与项目组页呈现两套观感**
     // （.mdw .btn.ghost 透明浅边 vs .btn.ghost 灰底），页面底色也不同。
-    // 编辑器分支仍用 .mdw（那是编辑器，本就该有工作台外壳）。
     <>
-      <Landing
-          isGlobal={isGlobal}
-          topic={topic}
-          repo={repo}
-          model={model}
-          tasks={pager.items}
-          taskCount={pager.total}
-          q={q}
-          onQuery={setQ}
-          pendingCount={pendingCount}
-          page={pager.page}
-          pageCount={pager.pageCount}
-          onPage={pager.setPage}
-          onNew={() => {
-            const p = tpl ? tpl.defaultPick() : null;
-            newDraft(p ? p.body : '');
-          }}
-          onOpenTask={openTask}
-          onDeleteTask={delTask}
-          onDeleteTasks={batchDeleteTasks}
-          onCancelTasks={batchCancelTasks}
-          onCompleteTasks={batchCompleteTasks}
-          onReopenTask={reopenTask}
-          onTplMenu={(e) => setTplMenu({ x: e.clientX, y: e.clientY })}
-          onImport={() => fileMdRef.current?.click()}
-          onProg={openProgress}
-          onMoveTask={moveTask}
-          onOpenDag={setDagTask}
-          onOpenFlow={() => model && openPanel(model, { component: 'dag', name: '编排', config: { dirKey } })}
-          onToggleGate={toggleGate}
-          downstreamOf={downstreamOf}
-          onRefs={openRefs}
-        />
-
-      {dagTask && (
-        <DagEditor
-          task={dagTask}
-          tasks={dagCandidates}
-          onClose={() => setDagTask(null)}
-          onSave={saveDag}
-        />
-      )}
-
-      {tplMenu && (
-        <PopMenu x={tplMenu.x} y={tplMenu.y} items={tplMenuItems} onClose={() => setTplMenu(null)} />
-      )}
-
-      <input
-        ref={fileMdRef}
-        type="file"
-        accept=".md,text/markdown,text/plain"
-        hidden
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = '';
-          if (f) importMd(f);
+      <TaskPage
+        kind="dir"
+        name={isGlobal ? '全局池' : (topic?.name || '目录')}
+        title={isGlobal ? '全局池任务' : '任务'}
+        intro={!isGlobal && repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
+        rows={pageRows}
+        emptyText={`还没有页面：点「＋ 新建页」写第一篇，或让 agent 往${isGlobal ? '全局池' : '这个目录'}投递任务。`}
+        tplMenuItems={tplMenuItems}
+        onNew={() => {
+          const p = tpl ? tpl.defaultPick() : null;
+          newDraft(p ? p.body : '');
         }}
+        onOpenRow={(r) => openTask(r.task.id)}
+        onImportFile={(f) => void importMd(f)}
+        onMoveRow={(src, dst, zone) => guard(async () => {
+          // 服务端只许 pending ↔ pending 换位（已领取是固定历史），UI 侧已同口径过滤
+          await reorderTask({
+            ...scopeBody(),
+            id: src.task.id,
+            ...(zone === 'before' ? { beforeId: dst.task.id } : { afterId: dst.task.id }),
+          });
+          refreshLocal?.();
+        })}
+        onTogglePlan={(rs, to) =>
+          void runPlanSwitch(ops, [{ scope: { key: topicKeyHere }, ids: rs.map((r) => r.task.id) }], to)
+        }
+        onOpenDag={(r) => setDagTask(r.task)}
+        onToggleGate={(r) => void runToggleGate(ops, scopeBody(), r.task)}
+        onFeedback={(r) => void runFeedbackTask(ops, scopeBody(), r.task)}
+        onDeleteRow={(r) => void runDeleteTask(ops, scopeBody(), r.task)}
+        onDeleteRows={(rs) =>
+          runBatchDelete(ops, [{ scope: scopeBody(), ids: rs.map((r) => Number(r.task.id)) }])
+        }
+        onCancelRows={(rs) =>
+          runBatchCancel(ops, [{ scope: scopeBody(), ids: rs.map((r) => Number(r.task.id)) }])
+        }
+        onCompleteRows={(rs) =>
+          runBatchComplete(ops, [{ scope: scopeBody(), ids: rs.map((r) => Number(r.task.id)) }])
+        }
+        toolActs={{
+          // #165：持续 get 开/关状态直读（配置弹窗点开改）
+          renderers: {
+            getloop: () => (
+              <button
+                type="button"
+                className="btn small ghost"
+                title={glOn
+                  ? `持续 get 已开启：agent 领完任务没活时会阻塞等待（每轮 ${glMinutes ?? 10} 分钟）——点这里去配置/关闭`
+                  : '持续 get 未开启：开启后 agent 领完任务没活会自动唤起阻塞等待——点这里配置'}
+                onClick={() => setGlOpen(true)}
+              >
+                {glOn ? `持续 get：开（${glMinutes ?? 10} 分钟）` : '持续 get：关'}
+              </button>
+            ),
+          },
+          actions: {
+            progress: openProgress,
+            orch: () => model && openPanel(model, { component: 'dag', name: '编排', config: { dirKey } }),
+            refs: openRefs,
+            getloop: () => setGlOpen(true),
+          },
+        }}
+        actionExtra={glOpen && repo ? <GetLoopModal repo={repo} onClose={() => setGlOpen(false)} onSaved={() => app.refreshRepos?.()} /> : null}
+        extra={
+          <>
+            {dagTask && (
+              <DagEditor
+                task={dagTask}
+                tasks={dagCandidates}
+                onClose={() => setDagTask(null)}
+                onSave={(patches: DagPatchInput[]) => saveDagPatches(ops, scopeBody(), patches)}
+              />
+            )}
+            {dialogNode}
+          </>
+        }
       />
-
-      {dialogNode}
     </>
   );
 }

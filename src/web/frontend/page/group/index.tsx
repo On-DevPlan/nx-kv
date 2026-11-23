@@ -1,58 +1,48 @@
 // 项目组详情（#/group/<看板 id>）：组是**操作单元**，不是树里的一层文件夹。
 //
-// 本页就是**本组任务面板**（2026-11-03）：一列列出全部「在本组创建」的任务——
-// 任务正文头部带 frontmatter（board/project，提交时自动写入，携带工作组语义），
-// 每条用项目 tag 标出归属；「新增任务」进 MD 编辑页，工具区选归属项目（限本组成员），
-// 提交按 frontmatter.project 路由进对应项目的队列。成员名册表格已移除（成员管理在仓库页）。
+// 本页就是**本组任务面板**：一列列出全部「在本组创建」的任务——任务正文头部带
+// frontmatter（board/project，提交时自动写入），每条用项目 tag 标出归属；
+// 「新增任务」进 MD 编辑页，工具区选归属项目（限本组成员），提交按 frontmatter.project
+// 路由进对应项目的队列。
 //
-// 编排（#40）：组任务横跨多个成员队列；待领取行可拖动排序（同目录页）——
-// reorder API 按 topic，故只允许拖到**同一成员队列**的落点；跨项目落点会提示。
-// 组介绍与项目介绍共用 Introduction（显示 / 编辑 / 补 ref）。
+// #251：整页交互与目录任务页**同一份模板**（components/task-panel/task-page）——
+// 工具区 / 搜索 / 全选 / 多选批量条 / 行尾菜单 / 翻页 / 拖动排序不再各写一遍；
+// 行尾与批量动作的流程在 components/task-panel/task-ops。本页只做接线：
+// 把每个行 key 解析回「哪个成员队列 + 哪条任务」，动作层只认 scope。
+import { useMemo, useState } from 'react';
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent as ReactDragEvent, ReactElement, ReactNode } from 'react';
-import { PopMenu } from '../../components/popup/index.jsx';
-import { Icon } from '../../components/icons.jsx';
+import { useDialog } from '../../components/popup/index.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
-import TaskPanel from '../../components/task-panel/index.jsx';
-import TaskPanelLayout from '../../components/task-panel/layout.jsx';
-import TaskRow from '../../components/task-panel/task-row.jsx';
-import Pager, { usePager } from '../../components/pager.jsx';
+import DagEditor from '../../components/task-panel/dag-editor.jsx';
+import TaskPage from '../../components/task-panel/task-page.jsx';
+import type { TaskPageRow } from '../../components/task-panel/task-page.jsx';
+import {
+  runBatchCancel,
+  runBatchComplete,
+  runBatchDelete,
+  runDeleteTask,
+  runFeedbackTask,
+  runPlanSwitch,
+  runToggleGate,
+  saveDagPatches,
+} from '../../components/task-panel/task-ops.js';
+import type { DagPatchInput, ScopeIds, TaskOpsDeps } from '../../components/task-panel/task-ops.js';
 import { useApp } from '../../app-context.jsx';
-import { reorderTask } from './api.js';
+import { addTask, reorderTask } from './api.js';
 import { openPanel } from '../../workspace.js';
 import { openTemplateEditor } from '../../panels.jsx';
-import ToolActsBar from '../../components/tool-acts/bar.jsx';
 import GetLoopMembersMenu from '../../components/repos/get-loop-members.js';
 import GetLoopModal from '../../components/repos/get-loop-modal.js';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
 import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
-import { hitTaskQuery, contextOf } from '../../modules/board/task-search.js';
+import { sortTasksForDisplay } from '../../modules/board/board-view.js';
 import { putManageSession } from '../../modules/md/manage-session.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
 import type { LocalTask, LocalTopic, RepoData, RepoRow } from '../../types.js';
 import type { Model } from 'flexlayout-react';
 import type { BoardRecord } from '../repos/repo-table.js';
-
-// TaskPanelLayout 尚未类型化：其 props 里没有 children（实现也不渲染），而调用处把
-// 成员弹窗挂成 children —— 按实际调用面放宽签名（属他人负责文件）。
-const Layout = TaskPanelLayout as unknown as (p: {
-  name?: string;
-  counts?: string[];
-  icon?: string;
-  actions?: ReactNode;
-  intro?: ReactNode;
-  batch?: ReactNode;
-  list?: ReactNode;
-  footer?: ReactNode;
-  extra?: ReactNode;
-  children?: ReactNode;
-}) => ReactElement | null;
-
-// 本组任务列表页大小：与目录任务页同值——两页面板同构（#167 三轮）
-const PAGE_SIZE = 20;
 
 /** 队列里的一条任务：LocalTask 之外还会读软删 / 迁移 / 领取时刻等标记。 */
 interface TopicTask extends LocalTask {
@@ -94,13 +84,6 @@ interface MemberItem {
   noteDocId: string;
 }
 
-/** 本组任务的一行（任务 + 它所在的成员队列 + 归属项目）。 */
-interface GroupTaskRow {
-  member: MemberItem;
-  task: TopicTask;
-  project: string;
-}
-
 /** 模板下拉里的一项（flyTemplates 为接口数据，形状按用到的字段收窄）。 */
 interface TemplateItem {
   id: string;
@@ -108,14 +91,6 @@ interface TemplateItem {
   body?: string;
   values?: Record<string, string>;
   fallback?: boolean;
-}
-
-/** 拖动中的任务（拖到同一成员队列内才允许落点）。 */
-interface DragInfo {
-  id: number;
-  topicKey: string;
-  cwd: string;
-  row: string;
 }
 
 export default function GroupView({ dirKey, rows, repoData, model }: {
@@ -126,21 +101,19 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
 }) {
   const toast = useToast();
   const app = useApp();
+  const { dialog, node: dialogNode } = useDialog();
   const tpl = useTemplates();
   // repoData / rows 来自 /api 负载（外部边界）：到这里按本页真正读的字段收窄一次
   const boards = ((repoData && repoData.boards) || []) as BoardRecord[];
   const repos = (repoData && repoData.repos) || [];
   const topics = (rows || []) as TopicRow[];
-  // 已领取历史折叠态：#167 三轮起被分页取代（列表进 usePager，历史行混排在页内）
   // 「添加成员」就地弹窗（不跳仓库管理页——组面板里就地改归属）
   const [addOpen, setAddOpen] = useState(false);
-  // #151：组页「新增任务」下拉改为与目录页同款 PopMenu（对齐 repo 版口径）
-  const [tplMenu, setTplMenu] = useState<{ x: number; y: number } | null>(null);
-  // #250：组页「持续 get」（与 dir 对齐）——先在点击处弹成员子菜单（组横跨多仓库，
-  // getLoop 是仓库级配置），选中成员再开配置弹窗。两个状态都在**页面层**：
-  // PopMenu 条目点击是「先 onClose 再 onClick」，选中状态放组件内部会随卸载丢掉。
+  // #250：持续 get 的成员子菜单 + 配置弹窗（两个状态都在页面层：PopMenu 先关后选）
   const [glMenu, setGlMenu] = useState<{ x: number; y: number } | null>(null);
   const [glRepo, setGlRepo] = useState<RepoRow | null>(null);
+  // 行尾「编排依赖…」：被编排的任务 + 它所在成员队列
+  const [dag, setDag] = useState<{ rowKey: string } | null>(null);
 
   const board = useMemo(
     () => boards.find((b) => b.id === dirKey) || boards.find((b) => b.key === dirKey) || null,
@@ -178,14 +151,11 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   }, [board, repos, topics]);
 
   // 每个成员队列的编排素材：待领取任务（队列序）+ 闸门的下游映射（同 isReadyToClaim 口径）。
-  // rows = /api/localtasks 的裸 topic（tasks 直挂其上）。
   const dagByTopic = useMemo<Map<string, { tasks: TopicTask[]; downstream: Record<string, number[]> }>>(() => {
     const map = new Map<string, { tasks: TopicTask[]; downstream: Record<string, number[]> }>();
     for (const r of topics) {
       if (!r.key || r.isGlobal) continue;
-      const pend = (r.tasks || []).filter(
-        (t) => t && !t.deletedAt && !t.migratedTo && t.status === 'pending',
-      );
+      const pend = (r.tasks || []).filter((t) => t && !t.deletedAt && !t.migratedTo && t.status === 'pending');
       const downstream: Record<string, number[]> = {};
       pend.forEach((t, i) => {
         if (t.blocksFollowing) downstream[t.id] = pend.slice(i + 1).map((x) => x.id);
@@ -195,146 +165,109 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     return map;
   }, [topics]);
 
-  // 保存与目录页同构：逐条 PATCH（本任务 gate/blockBy + 下游各方 blockBy）；
-  // 失败 toast 并上抛——编辑器据此保持打开。
-
-  // 新建任务的默认归属项目：第一个有待领取的成员（面板一打开就对准活儿），
-  // 都没有就第一个成员。编辑页的工具区里还可以改（限本组成员）。
-  const sel =
-    items.find((it) => it.pending > 0) ||
-    items[0] ||
-    null;
-
   // 本组任务 = 成员队列里**正文 frontmatter.board 指向本组**的任务。
-  // 展示序列与目录页同构（#167 三轮）：待领取在前（各成员队列序），历史在后
-  // （领取时间倒序）——整条序列进 usePager 分页，两页面板完全一致。
-  const groupTasks = useMemo<GroupTaskRow[]>(() => {
+  // 显示序与目录页同源（sortTasksForDisplay：待领取在前，历史按状态沉底）。
+  const groupRows = useMemo(() => {
     const ids = board ? [board.id, board.key, board.name].filter(Boolean) : [];
-    const pend: GroupTaskRow[] = [];
-    const done: GroupTaskRow[] = [];
+    const list: Array<{ member: MemberItem; task: TopicTask }> = [];
     for (const it of items) {
       for (const t of it.tasks || []) {
         if (t.deletedAt) continue; // 软删的不进列表（#180 起 web 不再提供回收站入口，恢复走 CLI）
         const fm = parseFrontmatter(t.text);
         if (!fm.board || !ids.includes(fm.board)) continue;
-        (t.status === 'pending' ? pend : done).push({ member: it, task: t, project: fm.project || '' });
+        list.push({ member: it, task: t });
       }
     }
-    done.sort((a, b) => String(b.task.consumedAt || '').localeCompare(String(a.task.consumedAt || '')));
-    return [...pend, ...done];
+    const order = new Map<TopicTask, number>();
+    sortTasksForDisplay(list.map((x) => x.task)).forEach((t, i) => order.set(t as TopicTask, i));
+    return list.sort((a, b) => (order.get(a.task) ?? 0) - (order.get(b.task) ?? 0));
   }, [board, items]);
 
-  // #188：与目录任务页同款搜索（标题 + 正文模糊匹配，规则收在 modules/board/task-search）。
-  // 组任务行是 {member, task} 的包装，没有扁平的 text/id——按 {id, text} 桥一下再交给同一个纯函数，
-  // 两页的匹配口径才不会各长一套。
-  const [q, setQ] = useState('');
-  const searching = !!String(q).trim();
-  const shownTasks = useMemo(
-    () =>
-      searching
-        ? groupTasks.filter((g) => hitTaskQuery({ id: g.task.id, text: g.task.text }, q))
-        : groupTasks,
-    [groupTasks, q, searching]
-  );
-  // 待领取计数跟着**筛后**集合走：搜索时头部「待领取 N」要与屏幕上的行对得上（同目录页口径）
-  const groupPendingCount = useMemo(
-    () => shownTasks.filter((x) => x.task.status === 'pending').length,
-    [shownTasks]
-  );
-  const pager = usePager(shownTasks, PAGE_SIZE);
-  // 改查询串回第一页：否则会停在「上一结果的第 3 页」上，看起来像没命中
-  useEffect(() => {
-    pager.setPage(0);
-  }, [q]);
-
-  // 待领取拖动排序（同目录页 HTML5 DnD；落点须同 topic）
-  const dragRef = useRef<DragInfo | null>(null); // { id, topicKey, cwd }
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dropAt, setDropAt] = useState<{ key: string; zone: string } | null>(null); // { key: memberKey:taskId, zone }
   const rowKey = (member: MemberItem, task: TopicTask) => member.key + ':' + task.id;
-  const zoneOf = (e: ReactDragEvent<HTMLElement>, el: HTMLElement) => {
-    const r = el.getBoundingClientRect();
-    return e.clientY < r.top + r.height / 2 ? 'before' : 'after';
-  };
-  const onDragStart = (e: ReactDragEvent<HTMLElement>, member: MemberItem, task: TopicTask) => {
-    dragRef.current = {
-      id: Number(task.id),
-      topicKey: member.topicKey,
-      cwd: member.cwd || member.path || '',
-      row: rowKey(member, task),
-    };
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', 'task:' + task.id);
-    setDragId(rowKey(member, task));
-  };
-  const onDragOver = (e: ReactDragEvent<HTMLElement>, member: MemberItem, task: TopicTask) => {
-    const drag = dragRef.current;
-    if (!drag || drag.row === rowKey(member, task)) return;
-    // 异队列也可 hover 提示，松手再拦
-    e.preventDefault();
-    e.dataTransfer.dropEffect = drag.topicKey === member.topicKey ? 'move' : 'none';
-    setDropAt({ key: rowKey(member, task), zone: zoneOf(e, e.currentTarget) });
-  };
-  const onDragLeave = (e: ReactDragEvent<HTMLElement>) => {
-    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-    setDropAt(null);
-  };
-  const onDrop = async (e: ReactDragEvent<HTMLElement>, member: MemberItem, task: TopicTask) => {
-    e.preventDefault();
-    const zone = zoneOf(e, e.currentTarget);
-    const drag = dragRef.current;
-    dragRef.current = null;
-    setDragId(null);
-    setDropAt(null);
-    if (!drag || drag.row === rowKey(member, task)) return;
-    if (drag.topicKey !== member.topicKey) {
-      toast('只能在同一项目队列内排序（跨项目请用编排连线）');
-      return;
-    }
-    const cwd = member.cwd || member.path;
-    if (!member.topicKey || !cwd) {
-      toast('该成员还没有本地队列，无法排序');
-      return;
-    }
-    try {
-      await reorderTask({
-        cwd,
-        id: drag.id,
-        ...(zone === 'before' ? { beforeId: Number(task.id) } : { afterId: Number(task.id) }),
+  // 行 key → 行（动作层只认 scope，本页负责把 key 解析回「成员队列 + 任务」）
+  const metaOf = useMemo(() => {
+    const map = new Map<string, { member: MemberItem; task: TopicTask; row: TaskPageRow }>();
+    for (const { member, task } of groupRows) {
+      const key = rowKey(member, task);
+      map.set(key, {
+        member,
+        task,
+        row: {
+          key,
+          task,
+          projectTag: member.name,
+          projectTitle: `归属项目：${member.name}`,
+          showTimes: true, // 与目录页同一行结构
+          movable: task.status === 'pending' && !!member.topicKey,
+          downs: dagByTopic.get(member.topicKey)?.downstream[task.id] || [],
+        },
       });
-      if (app.refreshLocal) await app.refreshLocal();
-    } catch (err) {
-      toast(String((err as Error).message || err));
     }
+    return map;
+  }, [groupRows, dagByTopic]);
+  const pageRows = useMemo(() => [...metaOf.values()].map((x) => x.row), [metaOf]);
+
+  // 新建任务的默认归属项目：第一个有待领取的成员（面板一打开就对准活儿），
+  // 都没有就第一个成员。编辑页的工具区里还可以改（限本组成员）。
+  const sel = items.find((it) => it.pending > 0) || items[0] || null;
+
+  // 动作层依赖：弹窗 / 提示 / 刷新 / 文档落点（组 scope 的 doc key = 看板 id）
+  const ops: TaskOpsDeps = {
+    dialog,
+    toast,
+    refresh: () => app.refreshLocal?.(),
+    docKey: board?.id || '',
   };
-  const onDragEnd = () => {
-    dragRef.current = null;
-    setDragId(null);
-    setDropAt(null);
+  // 行 → 队列定位（目录页是单主题，组页按成员 cwd）
+  const scopeOfKey = (key: string) => {
+    const m = metaOf.get(key);
+    const cwd = m ? (m.member.cwd || m.member.path) : '';
+    return cwd ? { cwd } : null;
+  };
+  /** 选中行 → 按成员队列分组的编号（批量接口按 topic 提交）。 */
+  const groupsOf = (rs: TaskPageRow[]): ScopeIds[] => {
+    const byCwd = new Map<string, number[]>();
+    for (const r of rs) {
+      const scope = scopeOfKey(r.key);
+      if (!scope) continue;
+      byCwd.set(scope.cwd, [...(byCwd.get(scope.cwd) || []), Number(r.task.id)]);
+    }
+    return [...byCwd.entries()].map(([cwd, ids]) => ({ scope: { cwd }, ids }));
   };
 
   // 组里建任务：草稿预写 frontmatter（board + 默认归属项目），提交时编辑页的工具区
   // 可改归属项目（限本组成员），按它路由进对应项目的队列。
-  // 落种用 PagePanel 同一套复合键（scope::draft-N）——裸 draft 号会种不到正文上。
-  // body 可选（#128）：hover 面板里选了模板就带模板正文；不带 = 默认模板（旧行为）。
-  const createTask = (pick?: { id?: string; body?: unknown; values?: Record<string, unknown> | null } | null) => {
+  const createTask = (pick?: { id?: string; body?: unknown } | null) => {
     if (!board) return;
     if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
     const id = nextDraftId();
-    // 草稿 doc 种在**组 scope**（docIdOf(scopeOf(board.id), id)）：从组路由
-    // #/group/<id>?task=draft-N 打开寻得回同一份（#86）。以前种在成员 scope、
-    // 打开走 dir 路由——组语义在建任务这步就断了。
+    // 草稿 doc 种在**组 scope**：从 #/group/<id>?task=draft-N 打开寻得回同一份（#86）
     const docId = docIdOf(scopeOf(board.id), id);
     // 与目录任务页同一条口径：正文取模板原文，归属字段写进 frontmatter。
     const extra = { board: board.id, project: sel.key };
     saveDoc(docId, {
       title: '',
-      body: withFrontmatter(
-        pick ? String(pick.body || '') : tpl.defaultPick().body,
-        extra,
-      ),
+      body: withFrontmatter(pick ? String(pick.body || '') : tpl.defaultPick().body, extra),
     });
     app.openPage?.({ groupId: board.id, task: id, name: '新任务' });
+  };
+
+  // 导入 .md：与目录页同一个入口，只是落点带本组语义（board + 归属项目）
+  const importMd = async (file: File) => {
+    if (!board) return;
+    if (!sel) return toast('这个组还没有成员——先「添加成员」，再导入');
+    const text = await file.text();
+    const name = file.name.replace(/\.md$/i, '');
+    const bodyText = text.startsWith('#') ? text : `# ${name}\n\n${text}`;
+    try {
+      const res = await addTask({ board: board.id, project: sel.key, text: bodyText });
+      toast(`已导入：${file.name}`);
+      await app.refreshLocal?.();
+      const newId = res?.task?.id ?? res?.id;
+      if (newId != null) app.openPage?.({ groupId: board.id, task: String(newId), name: `#${newId}` });
+    } catch (e) {
+      toast(String((e as Error).message || e));
+    }
   };
 
   // #132：组本身是可见主体——按 group +（可选）成员 repo/topic 三钥过滤。
@@ -348,14 +281,10 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   // 就地新建（#135）：不弹窗，直进全屏编辑；标题即名称；scope 预置本组。
   const newTemplateHere = () => {
     if (!board || !model) return;
-    openTemplateEditor(model, {
-      mode: 'new',
-      scope: [`group:${board.key}`],
-      name: '',
-    });
+    openTemplateEditor(model, { mode: 'new', scope: [`group:${board.key}`], name: '' });
   };
 
-  // #151：与目录页同款下拉（模板项 / 新建 / 管理本主题模板），以 repo 版为准
+  // #151：与目录页同款下拉（模板项 / 新建 / 管理本主题模板）
   const openTplManage = () => {
     if (!board) return;
     const id = putManageSession({
@@ -373,102 +302,15 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
           icon: 'list',
           onClick: () => createTask(t.fallback ? null : t),
         }))
-      : [{
-          label: '按默认模板新建一页',
-          icon: 'list',
-          onClick: () => createTask(),
-        }]),
+      : [{ label: '按默认模板新建一页', icon: 'list', onClick: () => createTask() }]),
     'sep',
-    { label: '为本组新建模板…', icon: 'plus', onClick: () => { setTplMenu(null); newTemplateHere(); } },
-    { label: '管理模板…', icon: 'gear', onClick: () => { setTplMenu(null); openTplManage(); } },
+    { label: '为本组新建模板…', icon: 'plus', onClick: newTemplateHere },
+    { label: '管理模板…', icon: 'gear', onClick: openTplManage },
   ] as any[];
 
-  const introSlot = (
-      <Introduction kind="board" owner={board} model={model} />
-  );
-  // TaskPanel / TaskPanelLayout / TaskRow / MemberPicker 尚未类型化：插槽与列表 props
-  // 因 `= null` / `= []` 默认值退化成 null / never[]，这里在调用边界上放宽。
-  const listPanel = (
-      <TaskPanel
-        title="本组任务"
-        pendingCount={groupPendingCount}
-        headerExtra={
-          <span className="rp-tasks-tools">
-            {/* #188：组页此前没有搜索框（同一份任务列表，目录页能搜、组页不能） */}
-            <input
-              className="rp-task-search"
-              type="search"
-              value={q}
-              placeholder="搜索标题 / 内容"
-              aria-label="搜索本组任务"
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </span>
-        }
-        emptyText={
-          searching
-            ? `没有匹配「${q.trim()}」的任务（标题与正文都搜过了）`
-            : '本组还没有任务——点「＋ 新建页」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。'
-        }
-      >
-        {(pager.items.map(({ member, task }) => {
-          const isPending = task.status === 'pending';
-          const dagInfo = dagByTopic.get(member.topicKey);
-          const downs = (dagInfo && dagInfo.downstream[task.id]) || [];
-          const rk = rowKey(member, task);
-          return (
-            <TaskRow
-              key={rk}
-              t={task}
-              searchCtx={searching ? contextOf(task, q) : null}
-              projectTag={member.name}
-              history={!isPending}
-              draggable={isPending && !!member.topicKey}
-              dragHandlers={
-                isPending && member.topicKey
-                  ? ({
-                      onDragStart: (e: ReactDragEvent<HTMLElement>) => onDragStart(e, member, task),
-                      onDragOver: (e: ReactDragEvent<HTMLElement>) => onDragOver(e, member, task),
-                      onDragLeave: onDragLeave,
-                      onDrop: (e: ReactDragEvent<HTMLElement>) => onDrop(e, member, task),
-                      onDragEnd: onDragEnd,
-                    } as unknown as null)
-                  : null
-              }
-              dragVisual={{
-                dragging: dragId === rk,
-                drop: dropAt && dropAt.key === rk ? dropAt.zone : null,
-              }}
-              downs={downs as unknown as never[]}
-              onTogglePick={undefined}
-              onOpen={() =>
-                // board 非空由下面的早退保证（这里只是 TS 收窄不到闭包里）
-                app.openPage &&
-                board &&
-                app.openPage({ groupId: board.id, task: String(task.id), name: `#${task.id}` })
-              }
-            />
-          );
-        })) as unknown as null}
-      </TaskPanel>
-  );
-  const footerBar = (
-      <div className="mdw-land-pager">
-        <Pager
-          page={pager.page}
-          pageCount={pager.pageCount}
-          total={pager.total}
-          onPage={pager.setPage}
-          unit="个任务"
-        />
-      </div>
-  );
-
   // #185：这个早退**必须排在所有 hook 之后**。它原来在 usePager / useTemplatesFor 之前，
-  // 于是「首帧 boards 还没到（刷新中）」与「boards 到了」两次渲染的 hook 数量不同 →
-  // React 抛 "Rendered more hooks than during the previous render" → flexlayout 的错误
-  // 边界兜成「Error rendering component」，整块面板白屏、只能点 Retry。
-  // 看板被删（board 从有到无）时同样会撞上，只是方向相反。下面这些渲染结果都与 board 无关。
+  // 于是「首帧 boards 还没到」与「boards 到了」两次渲染的 hook 数量不同 →
+  // React 抛 "Rendered more hooks than during the previous render" → 面板白屏。
   if (!board) {
     return (
       <div className="rp-page">
@@ -478,163 +320,180 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     );
   }
 
-  const totalPending = items.reduce((n, it) => n + it.pending, 0);
+  const dagRow = dag ? metaOf.get(dag.rowKey) : null;
+  const dagTasks = dagRow ? (dagByTopic.get(dagRow.member.topicKey)?.tasks || []) : [];
 
   return (
-    <Layout
-      name={board.name}
-      counts={[`${items.length} 个目录`, ...(totalPending > 0 ? [`待领取 ${totalPending}`] : [])]}
-      intro={introSlot}
-      list={listPanel}
-      footer={footerBar}
-      actions={(
-        <>
-          {/* #139：工具区可编排；新增任务保留模板下拉（#132 portal） */}
-          <ToolActsBar
-            kind="group"
-            titles={{
-              progress: '打开本组的任务进程面板',
-              addMember: '挑项目加进这个组',
-              orch: '打开可视化编排面板',
-              refs: '查看文档 / reference 列表',
-              getloop: '按成员项目配置持续 get（选一个项目去开/关）',
-            }}
-            labels={{
-              more: '更多',
-            }}
-            disabled={{ new: !sel }}
-            renderers={{
-              new: () => (
-                <div className="rp-newtask">
-                  {/* #151：与目录页同款两级命中区 + PopMenu 模板下拉 */}
-                  <button
-                    type="button"
-                    className={'btn small primary' + (tplMenu ? ' is-open' : '')}
-                    title="按默认模板新建一页（▾ 选模板；携带本组语义）"
-                    disabled={!sel}
-                    onClick={() => createTask()}
-                  >
-                    ＋ 新建页
-                    <span
-                      role="button"
-                      tabIndex={sel ? 0 : undefined}
-                      aria-label="选择模板新建一页"
-                      aria-haspopup="menu"
-                      aria-expanded={!!tplMenu}
-                      className={'rp-newtask-caret' + (tplMenu ? ' rot' : '')}
-                      title="选择模板新建一页"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const r = e.currentTarget.getBoundingClientRect();
-                        setTplMenu(tplMenu ? null : { x: r.right, y: r.bottom + 4 });
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const r = e.currentTarget.getBoundingClientRect();
-                          setTplMenu(tplMenu ? null : { x: r.right, y: r.bottom + 4 });
-                        }
-                      }}
-                    >
-                      <Icon name="chevron" size={11} title={undefined} />
-                    </span>
-                  </button>
-                  {tplMenu && (
-                    <PopMenu x={tplMenu.x} y={tplMenu.y} items={tplMenuItems} onClose={() => setTplMenu(null)} />
-                  )}
-                </div>
-              ),
-            }}
-            actions={{
-              progress: () => {
-                if (!model) return;
-                openPanel(model, {
-                  component: 'progress',
-                  name: '进程',
-                  config: { groupKey: dirKey },
-                  location: 'right',
-                });
-              },
-              addMember: () => setAddOpen(true),
-              orch: () => {
-                if (!model) return;
-                openPanel(model, {
-                  component: 'dag',
-                  name: '编排',
-                  config: { dirKey: (sel && sel.topicKey) || '', groupId: board && board.id },
-                });
-              },
-              refs: () => {
-                if (!model || !board) return;
-                openPanel(model, {
-                  component: 'refs',
-                  name: '文档列表',
-                  config: { boardKey: dirKey, boardName: board.name },
-                  location: 'right',
-                });
-              },
-              // #250：持续 get 与 dir 页对齐。组没有单一仓库可言——在点击处弹
-              // 成员子菜单（每行带开/关状态），选中成员才开配置弹窗。
-              getloop: (e) => {
-                const hasTarget = items.some((it) => {
-                  const r = repos.find((x) => x.key === it.key);
-                  return !!(r && r.id);
-                });
-                if (!hasTarget) {
-                  toast('这个组还没有已登记本机的成员项目——先「添加成员」，持续 get 按项目配置');
-                  return;
-                }
-                if (!e) return;
-                setGlMenu({ x: e.clientX, y: e.clientY });
-              },
-            }}
-          />
-
-          {/* #250：持续 get 的成员子菜单 + 配置弹窗（与 dir 页同一颗 GetLoopModal） */}
-          {glMenu && !glRepo && (
-            <GetLoopMembersMenu
-              x={glMenu.x}
-              y={glMenu.y}
-              members={items}
-              repos={repos}
-              onPick={(r) => {
-                setGlMenu(null);
-                setGlRepo(r);
-              }}
-              onClose={() => setGlMenu(null)}
-            />
-          )}
-          {glRepo && (
-            <GetLoopModal
-              repo={glRepo as RepoRow & { id?: string }}
-              onClose={() => setGlRepo(null)}
-              onSaved={() => app.refreshRepos && app.refreshRepos()}
-            />
-          )}
-        </>)
-      }
-    >
-      {/* 组介绍（board/<组>.md，文字超链接打开 DocPanel）放在本组任务**上方**——
-          先看这个组是干什么的，再看活儿 */}
-
-      {/* 首屏：本组任务面板——只列 frontmatter.board 指向本组的任务，项目 tag 标归属。
-          #164：面板外壳与任务行抽到 components/task-panel（与目录任务页共用）；
-          #167 三轮：列表进 usePager 分页（待领取在前、历史在后混排当前页），
-          与目录页完全同构，历史行走 history 样式 + StatusTag 真实状态。 */}
-
-      {/* 翻页条：与目录任务页同款（#167 三轮：group 列表加分页） */}
-
-      {/* 添加成员：就地弹窗（项目 + 项目组，可搜索） */}
-      {addOpen && board ? (
-        <MemberPicker
-          board={board}
-          boards={boards as unknown as never[]}
-          repos={repos as unknown as never[]}
-          onClose={() => setAddOpen(false)}
-          onChanged={() => app.refreshRepos && app.refreshRepos()}
-        />
-      ) : null}
-    </Layout>
+    <>
+      <TaskPage
+        kind="group"
+        name={board.name}
+        title="本组任务"
+        intro={<Introduction kind="board" owner={board} model={model} />}
+        rows={pageRows}
+        // 头部计数：任务数 / 待领取由模板出，本页再加成员目录数
+        extraCounts={[`${items.length} 个目录`]}
+        emptyText="本组还没有任务——点「＋ 新建页」创建；只有在本组创建的任务（携带本组语义）才会出现在这里。"
+        tplMenuItems={tplMenuItems}
+        onNew={() => createTask()}
+        newDisabled={!sel}
+        onOpenRow={(r) =>
+          app.openPage?.({ groupId: board.id, task: String(r.task.id), name: `#${r.task.id}` })
+        }
+        onMoveRow={(src, dst, zone) => {
+          const a = metaOf.get(src.key);
+          const b = metaOf.get(dst.key);
+          if (!a || !b) return;
+          // 组任务横跨多个成员队列：reorder 按 topic 生效，只允许同一队列内换位
+          if (a.member.topicKey !== b.member.topicKey) {
+            toast('只能在同一项目队列内排序（跨项目请用编排连线）');
+            return;
+          }
+          const cwd = a.member.cwd || a.member.path;
+          if (!a.member.topicKey || !cwd) {
+            toast('该成员还没有本地队列，无法排序');
+            return;
+          }
+          void reorderTask({
+            cwd,
+            id: Number(a.task.id),
+            ...(zone === 'before' ? { beforeId: Number(b.task.id) } : { afterId: Number(b.task.id) }),
+          })
+            .then(() => app.refreshLocal?.())
+            .catch((err) => toast(String((err as Error).message || err)));
+        }}
+        onImportFile={(f) => void importMd(f)}
+        onTogglePlan={(rs, to) => {
+          const byCwd = new Map<string, Array<number | string>>();
+          for (const r of rs) {
+            const s = scopeOfKey(r.key);
+            if (!s) continue;
+            byCwd.set(s.cwd, [...(byCwd.get(s.cwd) || []), r.task.id]);
+          }
+          void runPlanSwitch(
+            ops,
+            [...byCwd.entries()].map(([cwd, ids]) => ({ scope: { cwd }, ids })),
+            to
+          );
+        }}
+        onOpenDag={(r) => setDag({ rowKey: r.key })}
+        onToggleGate={(r) => {
+          const s = scopeOfKey(r.key);
+          if (s) void runToggleGate(ops, s, r.task);
+        }}
+        onFeedback={(r) => {
+          const s = scopeOfKey(r.key);
+          if (s) void runFeedbackTask(ops, s, r.task);
+        }}
+        onDeleteRow={(r) => {
+          const s = scopeOfKey(r.key);
+          if (s) void runDeleteTask(ops, s, r.task);
+        }}
+        onDeleteRows={(rs) => runBatchDelete(ops, groupsOf(rs))}
+        onCancelRows={(rs) => runBatchCancel(ops, groupsOf(rs))}
+        onCompleteRows={(rs) => runBatchComplete(ops, groupsOf(rs))}
+        toolActs={{
+          titles: {
+            progress: '打开本组的任务进程面板',
+            addMember: '挑项目加进这个组',
+            orch: '打开可视化编排面板',
+            refs: '查看文档 / reference 列表',
+            getloop: '按成员项目配置持续 get（选一个项目去开/关）',
+          },
+          disabled: { new: !sel, import: !sel },
+          actions: {
+            progress: () => {
+              if (!model) return;
+              openPanel(model, {
+                component: 'progress',
+                name: '进程',
+                config: { groupKey: dirKey },
+                location: 'right',
+              });
+            },
+            addMember: () => setAddOpen(true),
+            orch: () => {
+              if (!model) return;
+              openPanel(model, {
+                component: 'dag',
+                name: '编排',
+                config: { dirKey: (sel && sel.topicKey) || '', groupId: board.id },
+              });
+            },
+            refs: () => {
+              if (!model) return;
+              openPanel(model, {
+                component: 'refs',
+                name: '文档列表',
+                config: { boardKey: dirKey, boardName: board.name },
+                location: 'right',
+              });
+            },
+            // #250：组没有单一仓库——点击处弹成员子菜单（每行带开/关状态），选中再开配置弹窗
+            getloop: (e) => {
+              const hasTarget = items.some((it) => {
+                const r = repos.find((x) => x.key === it.key);
+                return !!(r && r.id);
+              });
+              if (!hasTarget) {
+                toast('这个组还没有已登记本机的成员项目——先「添加成员」，持续 get 按项目配置');
+                return;
+              }
+              if (!e) return;
+              setGlMenu({ x: e.clientX, y: e.clientY });
+            },
+          },
+        }}
+        actionExtra={
+          <>
+            {glMenu && !glRepo && (
+              <GetLoopMembersMenu
+                x={glMenu.x}
+                y={glMenu.y}
+                members={items}
+                repos={repos}
+                onPick={(r) => {
+                  setGlMenu(null);
+                  setGlRepo(r);
+                }}
+                onClose={() => setGlMenu(null)}
+              />
+            )}
+            {glRepo && (
+              <GetLoopModal
+                repo={glRepo as RepoRow & { id?: string }}
+                onClose={() => setGlRepo(null)}
+                onSaved={() => app.refreshRepos && app.refreshRepos()}
+              />
+            )}
+          </>
+        }
+        extra={
+          <>
+            {dagRow && (
+              <DagEditor
+                task={dagRow.task}
+                tasks={dagTasks}
+                onClose={() => setDag(null)}
+                onSave={(patches: DagPatchInput[]) => {
+                  const s = scopeOfKey(dagRow.row.key);
+                  return s ? saveDagPatches(ops, s, patches) : Promise.resolve();
+                }}
+              />
+            )}
+            {addOpen ? (
+              <MemberPicker
+                board={board}
+                boards={boards as unknown as never[]}
+                repos={repos as unknown as never[]}
+                onClose={() => setAddOpen(false)}
+                onChanged={() => app.refreshRepos && app.refreshRepos()}
+              />
+            ) : null}
+            {dialogNode}
+          </>
+        }
+      />
+    </>
   );
 }

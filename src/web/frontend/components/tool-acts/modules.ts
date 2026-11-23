@@ -44,9 +44,12 @@ export const DIR_MODULES: ToolModule[] = [
 
 export const GROUP_MODULES: ToolModule[] = [
   { id: 'new', label: '新增任务', icon: 'plus', section: 'primary', noHide: true },
+  // #251：与 dir 页对齐——导入 / 草稿态两条都补上（任务页模板统一接管 new/import/plan）
+  { id: 'import', label: '导入', icon: 'import', section: 'bar' },
   { id: 'progress', label: '进程', icon: 'progress', section: 'bar' },
   { id: 'addMember', label: '添加成员', icon: 'users', section: 'bar' },
   { id: 'orch', label: '编排', icon: 'flow', section: 'bar' },
+  { id: 'plan', label: '草稿态', icon: 'pin', section: 'bar' },
   { id: 'more', label: '更多', icon: 'dots', section: 'bar', noHide: true },
   { id: 'refs', label: '查看列表', icon: 'list', section: 'more' },
   // #250：与 dir 页对齐——持续 get 进组页「更多」。组横跨多个成员仓库，

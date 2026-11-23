@@ -17,7 +17,6 @@ import type { AppRoute, PanelSpec, SpecCtx } from './types.js';
 
 // 视图声明的私有常量与文档 ref 编解码在 routes/ 下（各自只有一处真源），
 // 这里只转出口——既有引用面（App.tsx、panels.tsx、单测）不用改。
-export { GLOBAL_KEY } from './routes/keys.js';
 export { decodeDocRef, encodeDocRef } from './routes/doc-ref.js';
 
 /** 面板 → 路由（选中的面板变了，地址跟着变） */

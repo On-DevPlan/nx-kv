@@ -1283,7 +1283,7 @@
           "action": {
             "id": "localtask.clone",
             "module": "localtask",
-            "summary": "克隆任务：复制正文内容为一条新任务（同主题；全局任务仍进全局池）。不带派生链、不继承时间目标与依赖——开新活用",
+            "summary": "克隆任务：复制正文内容为一条新任务（同主题）。不带派生链、不继承时间目标与依赖——开新活用",
             "usage": "localtask clone",
             "http": "POST /api/localtasks/clone"
           },

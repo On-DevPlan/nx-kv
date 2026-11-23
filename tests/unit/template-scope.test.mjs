@@ -16,7 +16,7 @@ const CTX = topicCtx({ key: 'a1b2c3d4e5f60718', repoKey: 'test/projA', groupKey:
 
 test('isScopeEntry：* 与三种前缀合法；空 key / 未知前缀 / 含空白不合法', () => {
   assert.equal(isScopeEntry('*'), true);
-  assert.equal(isScopeEntry('topic:__GLOBAL__'), true);
+  // #190：全局池已删除——scope 仍接受任意 topic key 形式（含历史 __GLOBAL__ 字样）
   assert.equal(isScopeEntry('repo:test/projA'), true); // repo key 带 / 合法
   assert.equal(isScopeEntry('group:g_x'), true);
   assert.equal(isScopeEntry('topic:'), false); // 空 key

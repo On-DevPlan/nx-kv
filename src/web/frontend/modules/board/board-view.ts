@@ -193,7 +193,7 @@ export function findGroupTask(
   };
   const ids = boardMatchIds(board);
   for (const r of rows || []) {
-    if (!r || r.isGlobal) continue;
+    if (!r) continue;
     if (memberKeys.size && !rowKeyOf(r).some((k) => memberKeys.has(k))) continue;
     const hit = (r.tasks || []).find((t) => t && !t.deletedAt && String(t.id) === String(taskId));
     if (!hit) continue;
@@ -222,7 +222,6 @@ export function mergeDirectoryRows(topics: LocalTopic[] = [], goals: DirectoryGo
       name: topic.name || goal?.name || topic.cwd || goal?.cwd || '（未命名）',
       topic,
       goal,
-      isGlobal: !!topic.isGlobal,
     };
     rows.push(row);
     byKey.set(row.key, row);
@@ -240,14 +239,10 @@ export function mergeDirectoryRows(topics: LocalTopic[] = [], goals: DirectoryGo
       name: goal.name || goal.cwd || '（未命名）',
       topic: null,
       goal,
-      isGlobal: false,
     };
     rows.push(row);
     byKey.set(row.key, row);
   }
 
-  // 注册表的 topics 顺序本来就把全局主题置顶；保留该约定，同时为直接调用的
-  // 使用方兜底（例如单测或以后复用 board selector 的其它视图）。
-  rows.sort((a, b) => Number(b.isGlobal) - Number(a.isGlobal));
   return rows;
 }

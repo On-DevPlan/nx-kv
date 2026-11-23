@@ -2,6 +2,37 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.67.0] - 2026-11-24 删除「全局任务池」（breaking）
+
+用户口径：「全局任务模块和功能安全删了吧，get 的时候也不需要考虑全局任务，项目也不
+需要出现全局任务的任何概念了」。
+
+### Breaking
+
+- **全局任务池整条链路删除**：队列一律绑定目录，不再有跨目录共享池。
+  - `localtask add` / `get` 不带 `--cwd` → 落**当前工作目录**（原来进全局池）；
+  - `localtask add --global` 参数删除（传了报未知参数）；
+  - `wait` / `get` 领取顺序只剩「本目录队列 → 阻塞」，删除跨目录全局兜底与全局 FIFO 唤醒；
+  - `#/global` 深链与未知路径统一落「仓库管理」；侧栏不再有「全局任务」行；
+  - `topicKeyOf('')` 直接报错（不再返回 `__GLOBAL__`）；
+  - 迁移旧数据：空 cwd 的队列行**整行跳过**（导入自检与 `db verify` 对账同步扣除）。
+- 后端删除：`GLOBAL_KEY` / `GLOBAL_NAME` / `GLOBAL_CWD` / `isGlobalKey` /
+  `GLOBAL_TOPIC_KEY` / `TOPIC_EXT.GLOBAL` / `resolveCwd` 兜底之外的全局分支（lifecycle、
+  waiting、events、claim/wait、claim/host、boardtasks、action-render、action-flags）；
+- 前端删除：侧栏全局行与 globe 菜单、`#/global` 路由与 `registry` 视图、
+  `board-view` 的 `GLOBAL_KEY` / `GLOBAL_NAME` / `withGlobalRow` / `globalPlaceholderTopic`、
+  dir/progress/dag/group 的 `isGlobal` 分支、`routes/keys.ts` 的 `GLOBAL_KEY`；
+- 文档：`A02-提交任务` 删 `--global` 投递路径、`A03` docs detach 口径、`B02-CLI速查` 同步。
+
+### Removed
+
+- 库内 `__GLOBAL__` 队列及其 16 条任务（按用户决定一并删除，删除前已备份原文）。
+
+### Verification
+
+- lint 0 errors、typecheck（node + web）、build、smoke 97/97、全量单测 160 文件逐个全过；
+- CDP 实测侧栏无「全局任务」行、`#/global` 落仓库管理。
+
 ## [0.66.3] - 2026-11-23 附件挂参考仓库 + 内部资源强制访问 + 移除只解除关联（#183–#189 / #251）
 
 ### Added

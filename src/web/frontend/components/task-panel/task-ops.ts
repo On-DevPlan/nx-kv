@@ -61,9 +61,9 @@ function scopeQuery(scope: TaskScope, id: number | string): string {
     : `cwd=${encodeURIComponent(scope.cwd || '')}&id=${Number(id)}`;
 }
 
-/** scope → 新建任务的落点（全局池只能走 global 标记）。 */
-function addScope(scope: TaskScope): { cwd?: string; global?: boolean } {
-  return scope.key && !scope.cwd ? { global: true } : { cwd: scope.cwd };
+/** scope → 新建任务的落点（#190：只有目录队列，按 cwd 投递）。 */
+function addScope(scope: TaskScope): { cwd?: string } {
+  return { cwd: scope.cwd };
 }
 
 /** 把一条任务的正文写回 doc-store（打开任务页时读的是这里，不是 rows 快照）。 */

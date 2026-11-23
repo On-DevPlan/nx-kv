@@ -287,4 +287,4 @@ export function factory(node: TabNode) {
 //
 // 纯映射抽在 route-map.js（不引 React，单测可直接 import）——这里只转出口，
 // 既有引用面（App.jsx 等）不用改。
-export { GLOBAL_KEY, routeOfPanel, panelSpecOfRoute } from './route-map.js';
+export { routeOfPanel, panelSpecOfRoute } from './route-map.js';

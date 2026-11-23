@@ -14,7 +14,7 @@ export function renderOverview(d: RenderInput): string {
     return lines.join('\n');
   }
   for (const t of d.topics) {
-    const tag = t.isGlobal ? '[全局池]' : t.waiting ? '[等待中]' : '[已结束]';
+    const tag = t.waiting ? '[等待中]' : '[已结束]';
     const head = t.cwd ? `${t.name}  ${t.cwd}` : t.name;
     lines.push(`  ${tag} ${head}  · 待领取 ${t.pending}/${t.total}`);
     if (t.summary) lines.push(`        现状: ${t.summary}`);
@@ -70,15 +70,12 @@ export function renderDetach(d: RenderInput): string {
 }
 
 export function renderAdd(d: RenderInput): string {
-  const where = d.isGlobal ? '全局任务（共享池）' : `主题「${d.name}」`;
+  const where = `主题「${d.name}」`;
   const head = `#${d.task.id} [${d.task.status}] ${d.task.text}`;
-  const ignored = d.ignoredCwd
-    ? `\n注意：--global 优先，你给的 --cwd「${d.ignoredCwd}」未生效（任务进了全局池）。`
-    : '';
   const body = d.delivered
     ? `已实时投递给等待中的 agent（${where}）: ${head}`
     : `已排入${where}队列（agent 下一次 wait 取走）: ${head}`;
-  return body + ignored;
+  return body;
 }
 
 // `localtask chain` 的人读输出（#74）：同任务 history 节点为主；旧 forkOf 祖先/子任务为辅
@@ -156,7 +153,7 @@ export function renderWait(r: RenderInput): string {
   // 跨进程轮询捡走的那条是 queued:false + delivered:false —— 它其实来自队列，
   // 只是被 500ms 的轮询取到了；按 queued 反推会把它说成「实时回填」，是假的。
   const how = r.delivered ? '实时回填' : '排队任务';
-  const origin = (r.source === 'global' ? '全局任务池' : '本目录队列') + ` · ${how}`;
+  const origin = `本目录队列 · ${how}`;
   const header = `已取得下一条任务（${origin} · 主题「${r.cwd}」现状「${r.summary}」）: #${r.task.id}`;
   return `${header}\n${deliveryBodyText(r)}`;
 }

@@ -52,7 +52,6 @@ export function normalizeCwd(raw?: unknown): NormalizedCwd {
 // （面板显示的路径跟着变，看着像队列跑到别处去了）。新版修正这个语义：
 // 不同路径 = 不同队列。**旧 key 一律失效、不做别名解析**（设计裁决）——
 // 旧 key 只留在 topics.ext.ext_legacy_key 作取证，CLI 提示「旧版 key 请改用 --cwd」。
-// 全局池：topicKeyOf('') === '__GLOBAL__'，与旧 GLOBAL_KEY 同值，地址不变。
 export function topicKeyFor(name: unknown): string {
   // 保留旧名（几个调用点按名字寻址），但**语义已变**：它只该用于「从 cwd 派生」，
   // 不再接受裸目录名 —— 名字仍在是为了调用点少改一处。

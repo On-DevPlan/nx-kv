@@ -114,7 +114,6 @@ export class LocaltaskBoardTasksAction extends ActionBase<typeof input> {
       );
       const rows: any[] = [];
       for (const t of topics) {
-        if (t.isGlobal) continue;
         const repoKey = t.repo && t.repo.key ? String(t.repo.key) : '';
         // 成员关系按仓库 key 对（与 board.repos[].key 同一键空间）；
         // 没登记仓库的目录队列不属于任何组，天然出局。

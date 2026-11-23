@@ -12,7 +12,7 @@
 | 命令 | 关键参数 | 说明 |
 | --- | --- | --- |
 | `localtask get` | `--cwd` `--timeout N` `--no-open` `--param k=v` | **领活**。有活立即领；`--timeout` 显式给定时阻塞到上限（等不到返回 `timeout`） |
-| `localtask add` | `--cwd` `--global` `--summary` `--project` `--board` `--duration 2h` `--goal-prompt` `--block-by 12,13` `--gate` `--fork-of` `--fork-kind` `--file <文件|->` | 提交任务。`--project` 决定归属项目并推导落点目录；`--board` 给组（任务才出现在组面板）；`--global` 进共享池（忽略 `--cwd`）；**`--file` 从文件/标准输入读正文**（多行长文本不必靠引号硬拼，`-` = stdin） |
+| `localtask add` | `--cwd` `--summary` `--project` `--board` `--duration 2h` `--goal-prompt` `--block-by 12,13` `--gate` `--fork-of` `--fork-kind` `--file <文件|->` | 提交任务。`--project` 决定归属项目并推导落点目录；`--board` 给组（任务才出现在组面板）；`--cwd` 缺省 = 当前目录（#190 起无全局池）；**`--file` 从文件/标准输入读正文**（多行长文本不必靠引号硬拼，`-` = stdin） |
 | `localtask show` | `--id N` | 看单条（只读，**不领取**） |
 | `localtask list` | — | 全部主题概览（目录、现状、等待中、待领取数） |
 | `localtask done` | `--id N` `--summary "…"` | 标完成；summary 记为本轮终态 + timegoal 日志 |
@@ -139,7 +139,7 @@ nx-kv health               # 服务与版本（纯本机）
 1. `get` 是领取、`show` 是查看——两个不同子命令，别拿 `show` 当领取。
 2. `wait` 不要再用：`get --timeout N` 等价，且只有一条路可维护。
 3. `update --text` 在任务被领取后无效（先 `reopen`）。
-4. `add --cwd` 是**接收方**目录；`--global` 会忽略它。
+4. `add --cwd` 是**接收方**目录，缺省 = 当前目录（#190 起没有全局共享池）。
 5. 追加附件会改写正文，连续操作一律用 `--id` 定位。
 6. `docs` 的 ref 没有路径；读文件只有附件。
 7. `repo bind` 不收 `--note`，写说明要用 `repo ref note`（落成该参考仓库的一篇文档）。

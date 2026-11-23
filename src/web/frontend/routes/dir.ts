@@ -5,7 +5,6 @@
 // （group 的 order 比这里小），这里只处理「没有 groupId 的 page」。
 import { docIdOf, peekDoc, scopeOf } from '../modules/md/doc-store.js';
 import type { AppRoute, SpecCtx } from '../types.js';
-import { GLOBAL_KEY } from './keys.js';
 import { definePage } from './types.js';
 
 /** 草稿页签名：路由只认 draft-N，用 doc-store 里的草稿标题（读一次，不引响应性） */
@@ -46,9 +45,7 @@ export const dirPage = definePage({
     {
       component: 'dir',
       order: 10,
-      format: (cfg) => (cfg.dirKey === GLOBAL_KEY
-        ? '#/global'
-        : `#/dir/${encodeURIComponent(cfg.dirKey || '')}`),
+      format: (cfg) => `#/dir/${encodeURIComponent(cfg.dirKey || '')}`,
     },
   ],
 });

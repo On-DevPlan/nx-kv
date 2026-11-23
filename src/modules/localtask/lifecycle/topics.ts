@@ -68,7 +68,6 @@ export async function listTasks(): Promise<Record<string, any>> {
     .map((t) => topicView(t, repoCtxOf(repoIndex, t.cwd), readyOpts))
     .sort(
       (a, b) =>
-        Number(!!b.isGlobal) - Number(!!a.isGlobal) ||
         String(b.updatedAt).localeCompare(String(a.updatedAt))
     );
   return {

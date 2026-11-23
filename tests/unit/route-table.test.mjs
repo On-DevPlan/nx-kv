@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GLOBAL_KEY, panelSpecOfRoute, routeOfPanel } from '../../src/web/frontend/route-map.js';
+import { panelSpecOfRoute, routeOfPanel } from '../../src/web/frontend/route-map.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const fixture = JSON.parse(readFileSync(join(root, 'tests/unit/fixtures/route-table.json'), 'utf8'));
@@ -25,7 +25,6 @@ const PANEL_CASES = [
   ['page-group', 'page', { groupId: 'B', task: '7' }],
   ['page-beside', 'page', { dirKey: 'D', task: '5', beside: true }],
   ['dir', 'dir', { dirKey: 'D' }],
-  ['dir-global', 'dir', { dirKey: GLOBAL_KEY }],
   ['group', 'group', { boardId: 'B' }],
   ['repos', 'repos', {}],
   ['templates-plain', 'templates', {}],

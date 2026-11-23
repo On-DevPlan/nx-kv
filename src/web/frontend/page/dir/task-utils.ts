@@ -249,7 +249,6 @@ export interface TaskCtx {
   taskRow: LocalTask | null;
   topicKey: string;
   topic: LocalTopic | null;
-  isGlobal: boolean;
   groupAnchored: boolean;
   groupId?: string;
   dirKey?: string;

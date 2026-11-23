@@ -5,7 +5,7 @@
 // 反向依赖页面目录。页面自己的 api.ts 保留各自专有的调用，并 re-export 这份公共面。
 //
 // 只搬调用不改语义：路径 / 方法 / body 与原 page/dir/api.ts 逐字一致。
-// scope：主题定位二选一——{ cwd } 或 { key }（全局池用 key=__GLOBAL__）。
+// scope：主题定位二选一——{ cwd } 或 { key }（#190 起队列一律绑定目录，无全局池）。
 import { api } from './client.js';
 
 /** 主题定位：cwd（目录主题）或 key（含全局池）。 */

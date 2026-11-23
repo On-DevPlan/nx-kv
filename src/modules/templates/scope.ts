@@ -5,7 +5,7 @@
 //
 // scope 条目词表（写库前经 normalizeScope 归一，非法条目进不来）：
 //   "*"             全局可见
-//   "topic:<key>"   指定队列主题（topics.key，含全局池 __GLOBAL__）
+//   "topic:<key>"   指定队列主题（topics.key）
 //   "repo:<key>"    指定项目（repos.key）
 //   "group:<key>"   指定项目组（组也是 repos.key，type='group'）
 //

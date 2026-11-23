@@ -141,7 +141,7 @@ test('快照内核驱动器（driveReadyStates）与任务行入口对同一 sto
     await svc.addTask({ cwd: dir, text: '# 等独立', blockBy: [String(c.task.id)] });
 
     const list = await svc.listTasks();
-    const topic = list.topics.find((t) => !t.isGlobal);
+    const topic = list.topics[0];
     const rows = topic.tasks.filter((x) => !x.deletedAt && !x.migratedTo);
     assertModelsAgree('service-store', rows);
   } finally {

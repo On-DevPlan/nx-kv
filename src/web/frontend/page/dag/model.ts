@@ -18,7 +18,6 @@ export interface DagNode extends LocalTask {
   timegoal?: { duration?: string } | null;
   topicKey: string;
   topicCwd?: string;
-  topicIsGlobal?: boolean;
   projectName?: string;
   nodeKey: string;
 }

@@ -61,7 +61,6 @@ interface TopicTask extends LocalTask {
 /** 队列主题（/api/localtasks 的 rows[]）：进程态字段按需读。 */
 interface TopicRow extends LocalTopic {
   cwd?: string;
-  isGlobal?: boolean;
   repo?: { key?: string; name?: string };
   pending?: number;
   waiting?: boolean;
@@ -127,7 +126,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     const repoByKey = new Map(repos.map((r) => [r.key, r]));
     const topicByRepoKey = new Map<string, TopicRow>();
     for (const t of topics) {
-      if (t.isGlobal || !t.repo || !t.repo.key) continue;
+      if (!t.repo || !t.repo.key) continue;
       if (!topicByRepoKey.has(t.repo.key)) topicByRepoKey.set(t.repo.key, t);
     }
     return (board.repos || []).map((m) => {
@@ -155,7 +154,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   const dagByTopic = useMemo<Map<string, { tasks: TopicTask[]; downstream: Record<string, number[]> }>>(() => {
     const map = new Map<string, { tasks: TopicTask[]; downstream: Record<string, number[]> }>();
     for (const r of topics) {
-      if (!r.key || r.isGlobal) continue;
+      if (!r.key) continue;
       const pend = (r.tasks || []).filter((t) => t && !t.deletedAt && !t.migratedTo && t.status === 'pending');
       const downstream: Record<string, number[]> = {};
       pend.forEach((t, i) => {

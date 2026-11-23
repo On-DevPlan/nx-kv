@@ -44,7 +44,6 @@ export const TOPIC_EXT = Object.freeze({
   WORKFLOW_STATE: 'ext_workflow_state',
   WORKFLOW_PLUGINS: 'ext_workflow_plugins',
   TASK_ORDER: 'ext_task_order',
-  GLOBAL: 'ext_global',
   LAST_SUMMARY: 'ext_last_summary',
 });
 

@@ -6,7 +6,6 @@ export interface DagQueue {
   key: string;
   name: string;
   cwd?: string;
-  isGlobal: boolean;
   count: number;
   total: number;
 }

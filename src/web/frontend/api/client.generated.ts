@@ -312,7 +312,7 @@ export interface ApiClient {
   cancel(input?: z.input<InstanceType<typeof LocaltaskCancelAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCancelAction>['run']>>>;
 /** 查一条任务的链：history 节点（origin/reopen/comment/current）+ 旧 forkOf 祖先/子任务；面板点节点可旁路查看正文 */
   chain(input: z.input<InstanceType<typeof LocaltaskChainAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskChainAction>['run']>>>;
-/** 克隆任务：复制正文内容为一条新任务（同主题；全局任务仍进全局池）。不带派生链、不继承时间目标与依赖——开新活用 */
+/** 克隆任务：复制正文内容为一条新任务（同主题）。不带派生链、不继承时间目标与依赖——开新活用 */
   localtaskClone(input: z.input<InstanceType<typeof LocaltaskCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCloneAction>['run']>>>;
 /** 批量收口还没结束的任务（按 --ids，定位到 --cwd 主题或 --key）：不要求先领取；--status done 写完成总结，cancelled 只改状态；待领取与已领取都能收（已领取的 agent 侧回执会被忽略），已完成/已取消跳过 */
   closeMany(input: z.input<InstanceType<typeof LocaltaskCloseManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCloseManyAction>['run']>>>;

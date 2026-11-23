@@ -74,7 +74,6 @@ export default function DagPanel({ dirKey, groupId }: DagPanelProps) {
         key: t.key,
         name: m.name || m.key,
         cwd: t.cwd,
-        isGlobal: !!t.isGlobal,
         count: pendingTasks.length,
         total: pendingTasks.length,
       });
@@ -110,7 +109,6 @@ export default function DagPanel({ dirKey, groupId }: DagPanelProps) {
             ...task,
             topicKey: t.key,
             topicCwd: t.cwd,
-            topicIsGlobal: !!t.isGlobal,
             projectName: m.name || m.key,
             nodeKey: nodeKeyOf(t.key, task.id),
           });
@@ -124,7 +122,6 @@ export default function DagPanel({ dirKey, groupId }: DagPanelProps) {
       ...task,
       topicKey: dirTopic.key,
       topicCwd: dirTopic.cwd,
-      topicIsGlobal: !!dirTopic.isGlobal,
       projectName: dirTopic.name || dirTopic.key,
       nodeKey: nodeKeyOf(dirTopic.key, task.id),
     }));
@@ -203,7 +200,7 @@ export default function DagPanel({ dirKey, groupId }: DagPanelProps) {
     try {
       const payload: { blockBy?: DepToken[] | string; gate?: boolean; duration?: string; clearGoal?: boolean } = { ...body };
       if (Array.isArray(payload.blockBy)) payload.blockBy = payload.blockBy.join(',');
-      const scope = node.topicIsGlobal ? { key: node.topicKey } : { cwd: node.topicCwd };
+      const scope = { cwd: node.topicCwd };
       await patchTaskItem({ ...scope, id: Number(node.id), ...payload });
       if (okMsg) toast(okMsg);
       if (refreshLocal) await refreshLocal();

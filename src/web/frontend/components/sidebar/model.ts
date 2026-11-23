@@ -176,7 +176,6 @@ export function buildTree(
   // 没匹配上的（目录没登记）不单独成行——它不属于任何仓库，也不该有自己的入口。
   const topicsOf = new Map<string, LocalTopic[]>();
   for (const t of topicList) {
-    if (t.isGlobal) continue;
     const rid = t.repo && t.repo.id;
     if (!rid) continue;
     const bucket = topicsOf.get(rid);

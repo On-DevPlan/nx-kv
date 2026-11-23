@@ -166,14 +166,16 @@ export default function Sidebar({
     return false;
   };
 
-  // 当前路由所在仓库自动展开子行（深链 / 总览跳转进来也能看到层级）
+  // 当前路由所在仓库 / 组自动展开子行（深链 / 总览跳转进来也能看到层级）
   useEffect(() => {
     const key = route.key;
-    if (route.view !== 'dir' || !key) return;
+    if (!key) return;
+    const id = route.view === 'dir' ? key : route.view === 'group' ? 'board:' + key : '';
+    if (!id) return;
     setExpanded((prev) => {
-      if (prev.has(key)) return prev;
+      if (prev.has(id)) return prev;
       const next = new Set(prev);
-      next.add(key);
+      next.add(id);
       return next;
     });
   }, [route.view, route.key]);
@@ -191,7 +193,8 @@ export default function Sidebar({
   const nsOps = useSidebarNs({ patchPrefs, toast, dialog, setMenu, repos, boards, namespaces: prefs.namespaces });
   const { nsForm, setNsForm, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, observeOpen, setObserveOpen, labelOf, setFocusNs, moveNs, removeNs, renameNs, newNsAndMove, addToNs, dropToCurrent, openNsMenu, toggleNsCollapse, moveToNs, removeFromNs } = nsOps;
 
-  // 点击：看板 = 进组视图（**组是叶子，成员在组面板里下拉选择**，树里不再铺子文件）；
+  // 点击：看板 = 进组视图（成员仍在组面板里下拉选择，树里不铺成员仓库；
+  // 但 chevron 可展开**本组任务**子行，与仓库行的任务子行同构）；
   // 仓库 = 进目录（子任务表）；全局 = 进全局池。
   // 仓库行没有任务队列时（topicKey 为空）点行 = 先建队列再进（与「新建页」同一套）。
   const openRow = useCallback(
@@ -207,10 +210,13 @@ export default function Sidebar({
     [onNavigate, refreshLocal, toast]
   );
 
-  // chevron：展开/收起（仓库 = 子任务；看板是叶子，没有展开态）
+  // chevron：展开/收起（仓库 = 项目任务；组 = 本组任务，均按 topicKey / board id 记）
   const toggleRow = useCallback(
     (row: SideRow) => {
-      toggleExpanded(row.topicKey || row.key);
+      // #251：仓库行 / 组行都可展开（按 topicKey / board id 记）；#190 全局池行已删除
+      toggleExpanded(
+        row.type === 'board' ? 'board:' + String(row.id || row.key) : (row.topicKey || row.key)
+      );
     },
     [onNavigate, toggleExpanded]
   );
@@ -380,6 +386,8 @@ export default function Sidebar({
           // #167：折叠分区内的条目行直接不出（计数在 ns 头上仍可见）
           const rowKey = row.type === 'board' ? 'board:' + String(row.id) : row.key;
           if ((row.type === 'repo' || row.type === 'board') && hiddenByNs.has(rowKey)) return null;
+          // 组行也可展开（与仓库行同构）：expanded 里用 `board:<id>` 前缀，不与 topicKey 混
+          const boardOpen = row.type === 'board' && expanded.has('board:' + String(row.id || row.key));
           return (
           row.type === 'ns' ? (
             <NsHeadRow
@@ -397,37 +405,42 @@ export default function Sidebar({
               onDrop={(e) => onDrop(e, row)}
             />
           ) : row.type === 'board' ? (
-            <button
-              key={(row as any).nsId ? `${(row as any).nsId}:b:${row.id}` : 'b:' + row.id}
-              className={'trow group' + (isActive(row) ? ' active' : '') + (kbIndex === i ? ' kb-focus' : '')}
-              onClick={() => openRow(row)}
-              onContextMenu={(e) => openRowMenu(e, row)}
-              draggable
-              onDragStart={(e) => onDragStart(e, row)}
-              onDragEnd={onDragEnd}
-              onDragOver={(e) => onDragOver(e, row)}
-              onDragLeave={onDragLeave}
-              onDrop={(e) => onDrop(e, row)}
-              data-drop={dropHint?.id === row.id ? dropHint?.zone : undefined}
-              title={`${row.name} · ${row.count} 个目录\n${row.desc || '项目组：点进去操作组下的项目'}`}
-            >
-              {/* 组是叶子：占位只为了与其它行对齐，不给可展开的假提示 */}
-              <span className="tw" aria-hidden />
-              <span className="gico"><Icon name="board" /></span>
-              <span className="nm">
-                {row.name}
-              </span>
-              {waitTag(row, '组内有 agent 等待回填')}
-              <span className="cnt" title={`待领取 ${row.pending} · 成员 ${row.count} 个`}>
-                {row.pending > 0 ? row.pending : row.count}
-              </span>
-              <span
-                className="more" role="button" tabIndex={-1} aria-label="看板菜单"
-                onClick={(e) => openRowMenu(e, row)}
+            <div className="tblock" key={(row as any).nsId ? `${(row as any).nsId}:b:${row.id}` : 'b:' + row.id}>
+              <button
+                className={'trow group' + (isActive(row) ? ' active' : '') + (boardOpen ? ' open' : '') + (kbIndex === i ? ' kb-focus' : '')}
+                onClick={() => openRow(row)}
+                onContextMenu={(e) => openRowMenu(e, row)}
+                draggable
+                onDragStart={(e) => onDragStart(e, row)}
+                onDragEnd={onDragEnd}
+                onDragOver={(e) => onDragOver(e, row)}
+                onDragLeave={onDragLeave}
+                onDrop={(e) => onDrop(e, row)}
+                data-drop={dropHint?.id === row.id ? dropHint?.zone : undefined}
+                title={`${row.name} · ${row.count} 个目录\n${row.desc || '项目组：点进去操作组下的项目'}`}
               >
-                <Icon name="dots" size={13} />
-              </span>
-            </button>
+                <span
+                  className="tw" role="button" tabIndex={-1} aria-label="展开本组任务"
+                  title="展开 / 收起本组任务（只列 frontmatter.board 指向本组的任务）"
+                  onClick={(e) => { e.stopPropagation(); toggleRow(row); }}
+                >
+                  <Icon name="chevron" size={10} />
+                </span>
+                <span className="gico"><Icon name="board" /></span>
+                <span className="nm">{row.name}</span>
+                {waitTag(row, '组内有 agent 等待回填')}
+                <span className="cnt" title={`待领取 ${row.pending} · 成员 ${row.count} 个`}>
+                  {row.pending > 0 ? row.pending : row.count}
+                </span>
+                <span className="more" role="button" tabIndex={-1} aria-label="看板菜单"
+                  onClick={(e) => openRowMenu(e, row)}>
+                  <Icon name="dots" size={13} />
+                </span>
+              </button>
+              {boardOpen && (
+                <TaskChildren row={row} onNavigate={onNavigate} refreshLocal={refreshLocal} />
+              )}
+            </div>
           ) : (
             <div key={(row as any).nsId ? `${(row as any).nsId}:${row.type}:${row.key}` : row.type + ':' + row.key} className="tblock">
               <button

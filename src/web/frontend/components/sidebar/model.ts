@@ -231,12 +231,12 @@ export function buildTree(
 
   const rows: SideRow[] = [];
 
-  // 看板行（分组）：**组是叶子，不再铺成员子行**（2026-11-03 语义化改版）。
-  // 侧栏操作的对象是「工作组」，不是组下的某个文件——成员清单与项目切换
-  // 收进组详情面板（#/group/<id>，面板内下拉选项目）。
-  // 组行徽标 = 成员队列里**指向本组**的组任务的待领取数（#85 两种走向，与组页
-  // 「本组任务」同口径）。以前按成员队列整队求和：把成员项目的纯项目任务也算成
-  // 「组内待领取」，同一仓库属于两组时还会被两组重复计数。
+  // 看板行（分组）：**不铺成员仓库子行**（2026-11-03 语义化改版）——侧栏操作的对象
+  // 是「工作组」，成员清单与项目切换收进组详情面板（#/group/<id>，面板内下拉选项目）。
+  // 但组行**可以展开本组任务**（与仓库行的任务子行同构，#251 补）：任务由成员队列里
+  // frontmatter.board 指向本组的行汇总而来，与组页「本组任务」同口径。
+  // 组行徽标 = 这些任务的待领取数（#85 两种走向；以前按成员队列整队求和，会把
+  // 成员项目的纯项目任务也算成「组内待领取」，同一仓库属于两组时还会被重复计数）。
   for (const b of boardList) {
     // 外部数据边界：/api/boards 的成员表（{key,id}），形状由后端 schema 决定
     const memberRepos = (b.repos || []) as Array<{ key?: string; id?: string }>;
@@ -247,6 +247,11 @@ export function buildTree(
     // 搜索时：命中成员也算命中这个组（组行代表它的全部成员）
     const memberHit = members.some(hit);
     if (q && !hit(b) && !memberHit) continue;
+    // 本组任务 = 成员队列里**正文 frontmatter.board 指向本组**的任务（与组页
+    // 「本组任务」同口径）。侧栏展开子行与行徽标读同一份，避免计数和列表对不上。
+    const boardTasks = members
+      .flatMap((m) => (m.topics || []).flatMap((t) => t.tasks || []))
+      .filter((x) => !x.deletedAt && taskInBoard(x, b));
     rows.push({
       type: 'board',
       id: b.id,
@@ -254,22 +259,19 @@ export function buildTree(
       name: b.name,
       desc: b.desc || '',
       count: memberRepos.length,
-      pending: members.reduce(
-        (n, m) =>
-          n + (m.topics || []).reduce((k, t) => k + (t.tasks || []).filter((x) => taskInBoard(x, b)).filter(isPendingRow).length, 0),
-        0
-      ),
+      pending: boardTasks.filter(isPendingRow).length,
       waiting: members.some((m) => m.waiting),
       // 组行的等待标记看成员的窗口（取最早结束的那个）
       waitingDeadlineMs: earliestDeadline(members.map((m) => m.waitingDeadlineMs)),
       members: memberRepos.map((m) => m.key ?? ''),
+      tasks: boardTasks,
     });
   }
 
   // **仓库是独立的模块，项目组只是指向它的指针**（任务 #61 反馈）：
   //   - 组行 = 指针（聚合入口），**不铺成员**：组下面不列它指向的仓库；
   //   - 仓库行 = 模块：**每个仓库一行**，且**永远不因为被组链接就消失**。
-  // 所以仓库行平铺（不进任何组的桶、不缩进），组行仍是叶子。
+  // 所以仓库行平铺（不进任何组的桶、不缩进），组行只挂自己的任务子行（展开态）。
   //
   // 「显示哪些」由设置面板「侧栏显示」一栏编排（隐藏清单走 prefs.hidden）。
   for (const r of matched) {

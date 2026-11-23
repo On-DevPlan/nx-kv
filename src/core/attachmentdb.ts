@@ -46,6 +46,11 @@ export {
   registerFolder,
 } from './attachmentdb/folder.js';
 export {
+  ensureRepoAttachment,
+  registerRepoAttachment,
+  repoLocalExists,
+} from './attachmentdb/repo.js';
+export {
   linkAttachment,
   syncRefAttachments,
   syncTaskAttachments,

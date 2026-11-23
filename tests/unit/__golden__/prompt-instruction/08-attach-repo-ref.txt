@@ -1,0 +1,24 @@
+<nx-kv>
+<nx-kv.context>
+〔项目上下文〕工作目录 D:/DevProjects/my/github/nx-kv 未登记为本机仓库，本次交付没有项目介绍 / 组上下文。登记（不需要 .git，给 key 即可）：nx-kv repo add "D:/DevProjects/my/github/nx-kv" --key <key>
+</nx-kv.context>
+<nx-kv.attachment>
+〔附件〕本任务包含 1 个附件（正文内嵌 0 · 附件区 1）。其中 1 个是**系统内部资源**（任务 / 文档 / 仓库）——它们必须被实际访问：任务先读正文、文档先读全文、仓库先读源码并确认元数据；**未访问不得直接开始实现或交付**。
+
+附件清单：
+  - [附件区] 仓库 agentdaw：参考仓库 github.com/eqarx/agentdaw · D:/a_other/nxkvrepo/agentdaw〔必须访问〕  # API 口径以它为准
+必须访问（内部资源，逐条执行，不得跳过）：
+
+  - 仓库《agentdaw》：实现必须参考该仓库源码（路径 D:/a_other/nxkvrepo/agentdaw），禁止凭记忆臆测 API / 文件结构：先 nx-kv repo get --id github.com/eqarx/agentdaw 确认仓库元数据，再列 D:/a_other/nxkvrepo/agentdaw 结构、用 Read 读关键文件；已整理文档用 nx-kv repo doc list --id github.com/eqarx/agentdaw 列出后用 nx-kv docs get --ref <refId> 读取
+
+
+取用方式：
+  - 仓库 《agentdaw》：这是参考仓库附件 github.com/eqarx/agentdaw（不是副本，字节就在 D:/a_other/nxkvrepo/agentdaw）：先用 nx-kv repo get --id github.com/eqarx/agentdaw 确认元数据，再读源码
+</nx-kv.attachment>
+<nx-kv.ack>
+完成之后必须调用 nx-kv localtask done --id 188 --summary "<完成总结>" 汇报结果。
+</nx-kv.ack>
+<nx-kv.getloop>
+不要直接结束本轮：完成上面的任务（188）之后，继续调用 nx-kv localtask get 领取下一条任务。队列里有活会立即返回；
+</nx-kv.getloop>
+</nx-kv>

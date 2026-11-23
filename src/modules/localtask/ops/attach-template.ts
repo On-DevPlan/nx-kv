@@ -14,12 +14,18 @@ import { hostOfUrl, kindLabelOf, ORIGIN_LABEL, sizeTextOf, STATUS_LABEL } from '
  */
 export const DEFAULT_ATTACH_TEMPLATE = [
   '{{#if attach}}',
-  '〔附件〕本任务包含 {{attach.count}} 个附件（正文内嵌 {{attach.inlineCount}} · 附件区 {{attach.areaCount}}）。请先识别附件内容（图片先看图、文档先读内容、文件夹先列目录）再开始处理，不要跳过附件。',
+  '〔附件〕本任务包含 {{attach.count}} 个附件（正文内嵌 {{attach.inlineCount}} · 附件区 {{attach.areaCount}}）。{{#if attach.hasMandatory}}其中 {{attach.mandatoryCount}} 个是**系统内部资源**（任务 / 文档 / 仓库）——它们必须被实际访问：任务先读正文、文档先读全文、仓库先读源码并确认元数据；**未访问不得直接开始实现或交付**。{{else}}请先识别附件内容（图片先看图、文档先读内容、文件夹先列目录）再开始处理，不要跳过附件。{{/if}}',
   '',
   '附件清单：',
   '{{#each attach.list}}',
-  '  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if mdfile}}{{mdfile.absPath}}{{#if mdfile.missing}}（源文件已不在）{{/if}}{{/if}}{{#if folder}}{{folder.absPath}}{{#if folder.missing}}（目录已不在）{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if mdfile}}{{mdfile.absPath}}{{#if mdfile.missing}}（源文件已不在）{{/if}}{{/if}}{{#if folder}}{{folder.absPath}}{{#if folder.missing}}（目录已不在）{{/if}}{{/if}}{{#if repo}}{{repo.typeLabel}} {{repo.key}}{{#if repo.localPath}} · {{repo.localPath}}{{/if}}{{#if repo.missing}}（checkout 已不在）{{/if}}{{/if}}{{#if mandatory}}〔必须访问〕{{/if}}{{#if note}}  # {{note}}{{/if}}',
   '{{/each}}',
+  '{{#if attach.hasMandatory}}',
+  '必须访问（内部资源，逐条执行，不得跳过）：',
+  '{{#each attach.list}}{{#if mandatory}}',
+  '  - {{kindLabel}}《{{name}}》：{{access}}',
+  '{{/if}}{{/each}}',
+  '{{/if}}',
   '',
   '取用方式：',
   '{{#each attach.list}}',
@@ -58,7 +64,7 @@ export const DEFAULT_ATTACH_TEMPLATE = [
  * seq / showCmd / refId / target / area / areaLabel。
  */
 function ctxItemOf(a: any): any {
-  const kind = ['url', 'task', 'ref', 'mdfile', 'folder'].includes(a.kind) ? a.kind : 'file';
+  const kind = ['url', 'task', 'ref', 'mdfile', 'folder', 'repo'].includes(a.kind) ? a.kind : 'file';
   const isImage = kind === 'file' && (a.isImage === undefined ? isImageName(a.name, a.mime) : !!a.isImage);
   const role = String(a.role || '');
   const origin =
@@ -85,6 +91,9 @@ function ctxItemOf(a: any): any {
     needsSync: !!a.needsSync,
     // 边上的说明（desc，#162）：清单行用 {{#if note}} 透出，agent 据此决定是否深入
     note: String(a.note || ''),
+    // #184：内部资源（task / ref / repo）强制访问；外部资源（file/url/mdfile/folder）不强制
+    mandatory: false,
+    access: '',
     // 兼容旧字段
     area: origin,
     areaLabel: a.areaLabel || ORIGIN_LABEL[origin],
@@ -157,8 +166,59 @@ function ctxItemOf(a: any): any {
       ...task,
       task,
       usage: String(a.usage || `这是任务引用而不是副本（地址 ${task.address}）：用 ${showCmd} 读取最新正文`),
+      // #184：任务是系统内部资源——必须先读正文再干活
+      mandatory: true,
+      access: `必须先读这条任务的最新正文：${showCmd}（读完再开始实现，不得只凭标题猜内容）`,
       cmd: String(a.cmd !== undefined ? a.cmd : showCmd),
       locator: String(a.locator || `#${seq} ${title}${task.topicName || topicKey ? ` · ${task.topicName || topicKey}` : ''}`),
+      needsSync: false,
+    };
+  }
+
+  if (kind === 'repo') {
+    // #184：参考仓库附件——登记指针（字节在原 checkout），模板里强制「实现必须参考该仓库源码」
+    const repoKey = String(a.repoKey || a.targetKey || '');
+    const repoName = String(a.repoName || a.name || repoKey);
+    const repoDesc = String(a.repoDesc || a.desc || '');
+    const repoType = String(a.repoType || '');
+    const localPath = String(a.localPath || a.absPath || '');
+    const exists = a.exists === undefined ? !!localPath : !!a.exists;
+    const missing = a.missing === undefined ? !exists : !!a.missing;
+    const branch = String(a.branch || '');
+    const docs = Array.isArray(a.docs) ? a.docs.map((x: unknown) => String(x || '')).filter(Boolean) : [];
+    const getCmd = String(a.getCmd || `nx-kv repo get --id ${repoKey}`);
+    const docCmd = String(a.docCmd || `nx-kv repo doc list --id ${repoKey}`);
+    const typeLabel = repoType === 'ref' ? '参考仓库' : repoType === 'dev' ? '开发仓库' : '仓库';
+    const repo = { key: repoKey, name: repoName, desc: repoDesc, repoType, typeLabel, localPath, exists, missing, branch, docs, docCount: docs.length, getCmd, docCmd, cmd: getCmd };
+    const usage = String(a.usage || (missing
+      ? `这是${typeLabel}附件 ${repoKey}，但本地 checkout 不可访问（${localPath || '路径为空'}）：先 ${getCmd} 确认登记信息`
+      : `这是${typeLabel}附件 ${repoKey}（不是副本，字节就在 ${localPath}）：先用 ${getCmd} 确认元数据，再读源码`));
+    return {
+      ...item,
+      name: repoName,
+      repoKey,
+      repoName,
+      repoDesc,
+      repoType,
+      typeLabel,
+      localPath,
+      path: localPath,
+      exists,
+      missing,
+      branch,
+      docs,
+      docCount: docs.length,
+      getCmd,
+      docCmd,
+      repo,
+      usage,
+      // #184：仓库是系统内部资源——实现必须参考源码，禁止臆测
+      mandatory: true,
+      access: missing
+        ? `${typeLabel} ${repoKey} 的本地 checkout 不在（${localPath || '路径为空'}）：先 ${getCmd} 确认登记，再按 gitRepoRoot 重新 checkout 后才能参考源码`
+        : `实现必须参考该仓库源码（路径 ${localPath}），禁止凭记忆臆测 API / 文件结构：先 ${getCmd} 确认仓库元数据，再列 ${localPath} 结构、用 Read 读关键文件；已整理文档用 ${docCmd} 列出后用 nx-kv docs get --ref <refId> 读取`,
+      cmd: String(a.cmd !== undefined ? a.cmd : getCmd),
+      locator: String(a.locator || `${repoName}（${typeLabel}${localPath ? ` · ${localPath}` : ''}）`),
       needsSync: false,
     };
   }
@@ -250,6 +310,13 @@ function ctxItemOf(a: any): any {
     ...ref,
     ref,
     usage,
+    // #184：文档是系统内部资源——必须先读全文（已内联时指向「文档原文」段）
+    mandatory: true,
+    access: content
+      ? `文档全文已内联在本清单末尾的「文档原文」段${truncated ? `（有截断，完整版用 ${readCmd}）` : ''}：先读完再实现`
+      : readCmd
+        ? `必须先读文档全文：${readCmd}（读完再开始实现）`
+        : '必须先定位并读取该文档（refId 缺失）：先用 nx-kv docs list 找到它',
     cmd: String(a.cmd !== undefined ? a.cmd : readCmd),
     locator: String(a.locator || title),
     needsSync: false,
@@ -273,6 +340,9 @@ export function attachTemplateCtx(attachments: unknown): Record<string, any> {
       areaCount: items.filter((a) => a.origin === 'area').length,
       hasInline: items.some((a) => a.origin !== 'area'),
       hasArea: items.some((a) => a.origin === 'area'),
+      // #184：内部资源（任务 / 文档 / 仓库）数量——模板据此决定是否输出「必须访问」段
+      mandatoryCount: items.filter((a) => a.mandatory).length,
+      hasMandatory: items.some((a) => a.mandatory),
       // 结构化数组：模板用循环组织清单，不再由服务端拼多行字符串。
       list: items,
     },

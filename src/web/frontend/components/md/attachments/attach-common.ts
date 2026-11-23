@@ -82,6 +82,8 @@ export interface AttachAllow {
   folder: boolean;
   task: boolean;
   ref: boolean;
+  /** #184 参考仓库（kind=repo）：只登记指针，交付时强制参考源码 */
+  repo: boolean;
 }
 
 /** 可关联的任务（本主题内）：只用到编号与标题/正文首行。 */
@@ -122,6 +124,8 @@ export interface AttachDraftItem {
   folder?: string;
   seq?: number | string;
   docRef?: string;
+  /** #184：仓库 key（kind=repo；服务端按它查已登记元数据） */
+  repoKey?: string;
   note?: string;
   inline?: boolean;
 }
@@ -222,6 +226,8 @@ export function attachBodyOf(item: AttachDraftItem, host: AttachHostKind = 'task
   // 本地文件夹（#133）：只把**路径**交给服务端（kind=folder），目录内容不入库。
   if (item.source === 'folder') return { folder: item.folder, name: item.name };
   if (item.source === 'task') return { task: String(item.seq), name: item.name };
+  // #184：参考仓库——只给 key，服务端校验「已登记」后按 repoAttachmentId 去重登记
+  if (item.source === 'repo') return { repo: item.repoKey, name: item.name };
   if (item.source === 'ref') {
     const body: Record<string, any> = host === 'doc'
       ? { doc: item.docRef, name: item.name }

@@ -85,3 +85,40 @@ test('往返：生成的嵌入能被自己解析回来', () => {
   const refs = attachmentRefs(`任务 A ${md}`);
   assert.deepEqual(refs, [{ id: ID, kind: 'image', alt: '架构图.png' }]);
 });
+
+// ── #184：--repo 挂参考仓库（登记指针 + 按 key 去重 + 未登记报错） ──────────
+test('#184 localtask attach --repo：登记仓库指针，按 key 去重，未登记报错', async () => {
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const root = mkdtempSync(join(tmpdir(), 'nxkv-att-repo-'));
+  process.env.NX_KV_HOME = join(root, 'home');
+  process.env.NX_KV_DB = join(root, 'db.sqlite');
+  const cwd = 'D:/a_js/js_proj/nx-kv';
+  const repos = await import('../../src/modules/repos/service.js');
+  await repos.addRepo({ path: cwd, key: 'demo/self', type: 'dev', name: 'nx-kv-self' });
+  const lt = await import('../../src/modules/localtask/service.js');
+  const ops = await import('../../src/modules/localtask/ops/attach.js');
+  const { task } = await lt.addTask({ cwd, text: '# 挂仓库\n\n正文' });
+
+  const r1 = await ops.attachToTask({ id: task.id, cwd, repo: 'demo/self', noEmbed: true });
+  assert.equal(r1.kind, 'repo');
+  assert.match(String(r1.fileId), /^att_repo_/);
+  // 同一仓库再挂一次：复用同一资源行（按 key 去重）
+  const r2 = await ops.attachToTask({ id: task.id, cwd, repo: 'demo/self', noEmbed: true });
+  assert.equal(r2.fileId, r1.fileId);
+
+  // 未登记仓库：明确报错，不退化成 folder
+  await assert.rejects(
+    () => ops.attachToTask({ id: task.id, cwd, repo: 'no/such-repo', noEmbed: true }),
+    /未登记|不存在/,
+  );
+
+  // 视图模型：kind / localPath / usage 齐备
+  const list = await ops.listTaskAttachments({ cwd, id: task.id });
+  const hit = (list.attachments || list.list || []).find((a) => a.kind === 'repo');
+  assert.ok(hit, '附件清单里有 repo 条目');
+  assert.equal(hit.repoKey, 'demo/self');
+  assert.ok(hit.localPath, '带 checkout 绝对路径');
+  assert.match(String(hit.usage), /repo get --id demo\/self/);
+});

@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { isImageName } from '../../../core/filekind.js';
 import { stripFrontmatter } from '../../../shared/frontmatter.js';
 
-const KIND_LABEL: Record<string, string> = { file: '附件', url: '链接', task: '任务', ref: '文档', mdfile: 'md', folder: '文件夹' };
+const KIND_LABEL: Record<string, string> = { file: '附件', url: '链接', task: '任务', ref: '文档', mdfile: 'md', folder: '文件夹', repo: '仓库' };
 const IMAGE_LABEL = '图片';
 export const ORIGIN_LABEL = { inline: '正文内嵌', area: '附件区' };
 export const STATUS_LABEL: Record<string, string> = { pending: '待领取', claimed: '进行中', done: '已完成', cancelled: '已作废' };
@@ -30,10 +30,10 @@ function metaOf(row: any): Record<string, any> {
   }
 }
 
-/** 资源类型归一：image / 空 / 其它未知值 → file；url/task/ref/mdfile 原样。 */
+/** 资源类型归一：image / 空 / 其它未知值 → file；url/task/ref/mdfile/folder/repo 原样。 */
 function baseKind(row: any): string {
   const k = String((row && row.kind) || '');
-  return k === 'url' || k === 'task' || k === 'ref' || k === 'mdfile' || k === 'folder' ? k : 'file';
+  return k === 'url' || k === 'task' || k === 'ref' || k === 'mdfile' || k === 'folder' || k === 'repo' ? k : 'file';
 }
 
 export function kindLabelOf(kind: unknown, isImage: unknown): string {
@@ -205,7 +205,7 @@ export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
     areaLabel: ORIGIN_LABEL[origin],
     storage: kind === 'file' ? String(row.storage || '')
       : kind === 'url' ? 'url'
-        : kind === 'mdfile' || kind === 'folder' ? 'external' : 'internal',
+        : kind === 'mdfile' || kind === 'folder' || kind === 'repo' ? 'external' : 'internal',
     synced: kind !== 'file',
     localPath: '',
     targetKind: String(row.targetKind || ''),
@@ -278,6 +278,48 @@ export function resourceOf(row: any, lookups: ResourceLookups = {}): any {
       usage: resolved
         ? `这是任务引用而不是副本（地址 ${address}）：用 ${showCmd} 读取最新正文；当前状态 ${statusLabel}${info && info.deleted ? '（已软删）' : ''}${addressDrift ? `；任务已移动到 ${address}，原地址 ${storedAddress}` : ''}。任务正文被修改后，读到的是最新内容。`
         : `这是任务引用（地址 ${address}），但目标任务已被清理：地址仍可核验，正文不可读。`,
+    };
+  }
+
+  if (kind === 'repo') {
+    // #184：参考仓库附件——登记指针，字节留在原 checkout（不 clone / 不复制）。
+    // 元数据（key/type/desc/docs）在登记时写进 meta；localPath 的 exists 按盘上现况判定。
+    const repoKey = String(meta.repoKey || row.targetKey || '');
+    const repoName = String(meta.name || row.name || repoKey);
+    const repoDesc = String(meta.desc || '');
+    const repoType = String(meta.repoType || '');
+    const localPath = String(meta.localPath || row.absPath || row.abs_path || '');
+    const exists = !!localPath && existsSync(localPath);
+    const missing = !exists || (row.missingAt !== null && row.missingAt !== undefined);
+    const branch = String(meta.branch || '');
+    const docs = Array.isArray(meta.docs) ? meta.docs.map((x: unknown) => String(x || '')).filter(Boolean) : [];
+    const getCmd = `nx-kv repo get --id ${repoKey}`;
+    const docCmd = `nx-kv repo doc list --id ${repoKey}`;
+    const typeLabel = repoType === 'ref' ? '参考仓库' : repoType === 'dev' ? '开发仓库' : '仓库';
+    const locator = `${repoName}（${typeLabel}${localPath ? ` · ${localPath}` : ''}）`;
+    return {
+      ...base,
+      name: repoName,
+      repoKey,
+      repoName,
+      repoDesc,
+      repoType,
+      typeLabel,
+      localPath,
+      exists,
+      missing,
+      branch,
+      docs,
+      docCount: docs.length,
+      getCmd,
+      docCmd,
+      target: localPath || repoKey,
+      needsSync: false,
+      cmd: getCmd,
+      locator,
+      usage: missing
+        ? `这是${typeLabel}附件 ${repoKey}，但本地 checkout 不可访问（${localPath || '路径为空'}）：先 ${getCmd} 确认登记信息，再按 gitRepoRoot 重新 checkout`
+        : `这是${typeLabel}附件 ${repoKey}（不是副本，字节就在 ${localPath}）：先用 ${getCmd} 确认元数据，实现前必须读该仓库源码（关键文件用 Read 打开 ${localPath}）；已整理文档用 ${docCmd} 列出后用 nx-kv docs get --ref <refId> 读取`,
     };
   }
 

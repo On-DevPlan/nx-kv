@@ -40,7 +40,10 @@
 //   关系描述文档的定位不走 tag：desc 就在 ref 上。
 // v13（2026-11-17）：彻底删除「关系表上的业务 note」概念——4 张关系表 drop note 列。
 //   关系表本身就表达多对多；文档描述走 ref.desc + 正文标题，参考仓库描述走绑定 ref 的文档。
-export const CURRENT_SCHEMA_VERSION = 14;
+// v14（2026-11-22）：task_links.type 扩 `fork`（任务链四类节点可区分）。
+// v15（2026-11-23）：attachments.kind 新增 `repo`（参考仓库指针：#184 附件挂仓库，
+//   字节留在原 checkout，交付时强制参考源码）；同样 12-step 重建扩 CHECK。
+export const CURRENT_SCHEMA_VERSION = 15;
 
 /**
  * 运行时最低 Node 版本。

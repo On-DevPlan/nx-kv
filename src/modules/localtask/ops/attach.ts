@@ -37,6 +37,7 @@ import {
   readMdfile,
   registerMdfile,
   registerFolder,
+  registerRepoAttachment,
   resolveRefId,
   unlinkAttachment,
   updateAttachmentNote,
@@ -170,6 +171,8 @@ export interface AttachToTaskOptions {
   mdfile?: unknown;
   /** 本地文件夹（kind=folder：只登记路径指针，不复制目录内容） */
   folder?: unknown;
+  /** #184 参考仓库（kind=repo）：已登记仓库的 key / 路径 / 名称；只登记指针 */
+  repo?: unknown;
   note?: unknown;
   noEmbed?: unknown;
   inline?: unknown;
@@ -197,7 +200,7 @@ export interface AttachToTaskOptions {
  *   --folder <目录>    本地文件夹（kind=folder，nxkv://folder/<attId>；只登记路径，不复制目录内容）
  */
 export async function attachToTask({
-  id, cwd, key, path, fileId, name, kind, url, task, ref, mdfile, folder, note, noEmbed, inline,
+  id, cwd, key, path, fileId, name, kind, url, task, ref, mdfile, folder, repo, note, noEmbed, inline,
 }: AttachToTaskOptions = {}): Promise<Record<string, any>> {
   const cur = await service.getTask({ id, cwd, key }); // 存在性与参数校验都在队列本体
   const topicKey = cur.key || key || '';
@@ -336,11 +339,45 @@ export async function attachToTask({
     displayName = displayName || rec.name;
     resolvedKind = 'folder';
     markdown = `[${displayName}](nxkv://folder/${rec.id})`;
+  } else if (repo) {
+    // #184 参考仓库：必须是**已登记**仓库（key / 路径 / 名称都能定位）；未登记直接报错，
+    // 不许静默退化成 folder（repo 带 key / type / 文档语义，folder 只是任意目录）。
+    const { getRepo } = await import('../../repos/service.js');
+    const { listRepoDocs } = await import('../../docs/refs.js');
+    let info: any = null;
+    try {
+      info = await getRepo(repo);
+    } catch {
+      throw badInput(`仓库未登记或不存在: ${String(repo)}——先 nx-kv repo list 确认，或 nx-kv repo add 登记`);
+    }
+    let docs: string[] = [];
+    try {
+      const dv: any = await listRepoDocs(String(info.path || info.key || repo));
+      docs = [dv?.main?.refId, ...((dv?.extras || []).map((x: any) => x?.refId))].filter(Boolean) as string[];
+    } catch {
+      docs = []; // 文档列表读不到不影响挂仓库
+    }
+    const rec = tx(
+      (conn) => registerRepoAttachment(conn, {
+        key: info.key || info.id || String(repo),
+        name: info.name || '',
+        desc: info.desc || '',
+        repoType: info.type || '',
+        localPath: info.path || '',
+        branch: info.branch || '',
+        docs,
+      }),
+      { db, mode: 'IMMEDIATE' }
+    );
+    attachmentId = rec.id;
+    displayName = displayName || rec.name;
+    resolvedKind = 'repo';
+    markdown = `[${displayName}](nxkv://repo/${rec.id})`;
   }
 
   if (!attachmentId) {
     throw badInput(
-      '需要 --path <本机文件>、--fileId <已有附件>、--url <链接>、--task <编号>、--ref <文档>、--mdfile <本地 md> 或 --folder <本地目录> 之一'
+      '需要 --path <本机文件>、--fileId <已有附件>、--url <链接>、--task <编号>、--ref <文档>、--mdfile <本地 md>、--folder <本地目录> 或 --repo <已登记仓库> 之一'
     );
   }
   const wantInline = !!inline;

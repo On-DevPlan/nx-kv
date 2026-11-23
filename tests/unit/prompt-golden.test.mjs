@@ -50,6 +50,15 @@ const urlAttachSrc = {
   id: 'att_url_1', kind: 'url', name: '需求说明.html', origin: 'area',
   href: 'https://example.com/spec', note: '网页存档',
 };
+const repoAttachSrc = {
+  id: 'att_repo_1', kind: 'repo', origin: 'area', name: 'agentdaw',
+  repoKey: 'github.com/eqarx/agentdaw', repoName: 'agentdaw', repoDesc: '参考实现',
+  repoType: 'ref', typeLabel: '参考仓库', localPath: 'D:/a_other/nxkvrepo/agentdaw',
+  exists: true, missing: false, branch: 'main', docs: ['ref_aaa111'], docCount: 1,
+  getCmd: 'nx-kv repo get --id github.com/eqarx/agentdaw',
+  docCmd: 'nx-kv repo doc list --id github.com/eqarx/agentdaw',
+  note: 'API 口径以它为准',
+};
 const refAttachSrc = {
   id: 'att_ref_1', kind: 'ref', role: 'doc', origin: 'area', refId: 'ref_f8051715c0df3f1c',
   name: 'nx-kv · 本机任务队列与文档中枢.md', desc: '一句话描述', docContent: '# nx-kv · 本机任务队列与文档中枢\n\n本机任务队列 + 文档库 + 仓库登记的一体化工具。',
@@ -199,6 +208,18 @@ const scenarios = {
     },
     groupCtx: null,
     attachments: [fileAttachSrc],
+    queueInfo: null,
+    enabled: true, waitMinutes: 0,
+  },
+  '08-attach-repo-ref': {
+    seed: {
+      ...baseSeed,
+      cwd: 'D:/DevProjects/my/github/nx-kv',
+      task: { id: 188, text: '按参考仓库的 API 实现 xx' },
+      goal: null,
+    },
+    groupCtx: null,
+    attachments: [repoAttachSrc],
     queueInfo: null,
     enabled: true, waitMinutes: 0,
   },

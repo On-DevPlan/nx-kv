@@ -1,0 +1,95 @@
+{
+  "source": "local",
+  "summary": "S0 golden 夹具现状",
+  "name": "nx-kv",
+  "params": {},
+  "cwd": "D:/DevProjects/my/github/nx-kv",
+  "task": {
+    "id": 188,
+    "text": "按参考仓库的 API 实现 xx"
+  },
+  "goal": null,
+  "repo": null,
+  "group": null,
+  "refRepos": {
+    "list": [],
+    "count": 0
+  },
+  "groups": [],
+  "attach": {
+    "count": 1,
+    "inlineCount": 0,
+    "areaCount": 1,
+    "hasInline": false,
+    "hasArea": true,
+    "mandatoryCount": 1,
+    "hasMandatory": true,
+    "list": [
+      {
+        "id": "att_repo_1",
+        "kind": "repo",
+        "kindLabel": "仓库",
+        "isImage": false,
+        "name": "agentdaw",
+        "size": 0,
+        "sizeText": "",
+        "mime": "",
+        "storage": "",
+        "role": "",
+        "origin": "area",
+        "originLabel": "附件区",
+        "area": "area",
+        "areaLabel": "附件区",
+        "usage": "这是参考仓库附件 github.com/eqarx/agentdaw（不是副本，字节就在 D:/a_other/nxkvrepo/agentdaw）：先用 nx-kv repo get --id github.com/eqarx/agentdaw 确认元数据，再读源码",
+        "cmd": "nx-kv repo get --id github.com/eqarx/agentdaw",
+        "locator": "agentdaw（参考仓库 · D:/a_other/nxkvrepo/agentdaw）",
+        "needsSync": false,
+        "note": "API 口径以它为准",
+        "mandatory": true,
+        "access": "实现必须参考该仓库源码（路径 D:/a_other/nxkvrepo/agentdaw），禁止凭记忆臆测 API / 文件结构：先 nx-kv repo get --id github.com/eqarx/agentdaw 确认仓库元数据，再列 D:/a_other/nxkvrepo/agentdaw 结构、用 Read 读关键文件；已整理文档用 nx-kv repo doc list --id github.com/eqarx/agentdaw 列出后用 nx-kv docs get --ref <refId> 读取",
+        "target": "",
+        "targetKind": "",
+        "targetKey": "",
+        "targetSeq": null,
+        "repoKey": "github.com/eqarx/agentdaw",
+        "repoName": "agentdaw",
+        "repoDesc": "参考实现",
+        "repoType": "ref",
+        "typeLabel": "参考仓库",
+        "localPath": "D:/a_other/nxkvrepo/agentdaw",
+        "path": "D:/a_other/nxkvrepo/agentdaw",
+        "exists": true,
+        "missing": false,
+        "branch": "main",
+        "docs": [
+          "ref_aaa111"
+        ],
+        "docCount": 1,
+        "getCmd": "nx-kv repo get --id github.com/eqarx/agentdaw",
+        "docCmd": "nx-kv repo doc list --id github.com/eqarx/agentdaw",
+        "repo": {
+          "key": "github.com/eqarx/agentdaw",
+          "name": "agentdaw",
+          "desc": "参考实现",
+          "repoType": "ref",
+          "typeLabel": "参考仓库",
+          "localPath": "D:/a_other/nxkvrepo/agentdaw",
+          "exists": true,
+          "missing": false,
+          "branch": "main",
+          "docs": [
+            "ref_aaa111"
+          ],
+          "docCount": 1,
+          "getCmd": "nx-kv repo get --id github.com/eqarx/agentdaw",
+          "docCmd": "nx-kv repo doc list --id github.com/eqarx/agentdaw",
+          "cmd": "nx-kv repo get --id github.com/eqarx/agentdaw"
+        }
+      }
+    ]
+  },
+  "ext": null,
+  "getloop": {
+    "waitMinutes": 0
+  }
+}

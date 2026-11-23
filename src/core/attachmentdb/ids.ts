@@ -26,6 +26,7 @@ const NXKV_TASK_RE = /^nxkv:\/\/task\/(\d+)$/i;
 const NXKV_REF_RE = /^nxkv:\/\/ref\/([A-Za-z0-9_-]+)$/i;
 const NXKV_MDFILE_RE = /^nxkv:\/\/mdfile\/([A-Za-z0-9_-]+)$/i;
 const NXKV_FOLDER_RE = /^nxkv:\/\/folder\/([A-Za-z0-9_-]+)$/i;
+const NXKV_REPO_RE = /^nxkv:\/\/repo\/([A-Za-z0-9_-]+)$/i;
 
 const sha1 = (s: unknown): string => createHash('sha1').update(String(s), 'utf8').digest('hex');
 
@@ -34,7 +35,7 @@ export type AttachmentRole = 'inline' | 'reference' | 'doc' | 'attach';
 
 /** 正文里解析出的一条引用；position / role 在入清单时补齐。 */
 export interface AttachmentRef {
-  kind: 'file' | 'url' | 'task' | 'ref' | 'mdfile' | 'folder';
+  kind: 'file' | 'url' | 'task' | 'ref' | 'mdfile' | 'folder' | 'repo';
   id?: string;
   name: string;
   isImage?: boolean;
@@ -42,6 +43,7 @@ export interface AttachmentRef {
   targetRefId?: string;
   targetMdfileId?: string;
   targetFolderId?: string;
+  targetRepoId?: string;
   url?: string;
   position?: number;
   role?: AttachmentRole;
@@ -62,6 +64,14 @@ export function urlAttachmentId(url?: unknown): string {
 
 export function taskAttachmentId(topicKey?: unknown, seq?: unknown): string {
   return 'att_task_' + sha1(`${String(topicKey || '')}:${Number(seq) || 0}`).slice(0, 16);
+}
+
+/**
+ * 参考仓库附件的稳定 id：按**仓库 key** 去重（同一仓库重挂不建新行）。
+ * 与 folder 的区别是语义：repo 必带 key / type / docs，不能退化成普通目录。
+ */
+export function repoAttachmentId(key?: unknown): string {
+  return 'att_repo_' + sha1(String(key || '').trim()).slice(0, 16);
 }
 
 export function refAttachmentId(refId?: unknown): string {
@@ -120,10 +130,12 @@ export function parseAttachmentRefs(text?: unknown): AttachmentRef[] {
       const doc = target.match(NXKV_REF_RE);
       const md = target.match(NXKV_MDFILE_RE);
       const dir = target.match(NXKV_FOLDER_RE);
+      const repoRef = target.match(NXKV_REPO_RE);
       if (task) ref = { kind: 'task', targetTaskId: Number(task[1]), name: name || `任务 ${task[1]}` };
       else if (doc) ref = { kind: 'ref', targetRefId: doc[1], name: name || (doc[1] ?? '') };
       else if (md) ref = { kind: 'mdfile', targetMdfileId: md[1], name: name || (md[1] ?? '') };
       else if (dir) ref = { kind: 'folder', targetFolderId: dir[1], name: name || (dir[1] ?? '') };
+      else if (repoRef) ref = { kind: 'repo', targetRepoId: repoRef[1], name: name || (repoRef[1] ?? '') };
       else if (/^https?:\/\//i.test(target)) ref = { kind: 'url', url: target, name: name || target };
     }
     if (!ref) continue;
@@ -132,6 +144,7 @@ export function parseAttachmentRefs(text?: unknown): AttachmentRef[] {
       || (ref.kind === 'ref' ? `ref:${ref.targetRefId}` : '')
       || (ref.kind === 'mdfile' ? `mdfile:${ref.targetMdfileId}` : '')
       || (ref.kind === 'folder' ? `folder:${ref.targetFolderId}` : '')
+      || (ref.kind === 'repo' ? `repo:${ref.targetRepoId}` : '')
       || (ref.kind === 'url' ? `url:${(ref.url ?? '').toLowerCase()}` : '');
     if (seen.has(key)) continue;
     seen.add(key);

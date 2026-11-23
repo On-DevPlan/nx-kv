@@ -180,12 +180,15 @@ const EDGE_BASELINE = {
   'goals→localtask': 5,
   'goals→promptplug': 4,
   'claim→goals': 3,
-  'localtask→repos': 3,
+  // #184：localtask 挂参考仓库附件要读仓库元数据（key/type/path）——
+  // 评审通过：这是「附件挂仓库」的必需依赖，不是顺手 import。
+  'localtask→repos': 4,
   'docs→repos': 2,
   'localtask→promptplug': 2,
   'claim→docs': 1,
   'claim→repos': 1,
-  'localtask→docs': 1,
+  // #184：同上，挂仓库时顺带读该仓库已整理的文档列表（repo doc list）
+  'localtask→docs': 2,
 };
 
 test('模块域间依赖边基线（棘轮）：只许减不许增', () => {

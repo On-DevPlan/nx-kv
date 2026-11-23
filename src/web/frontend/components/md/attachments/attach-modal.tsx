@@ -13,6 +13,8 @@ import { Modal } from '../../popup/index.jsx';
 import { api } from '../../../api/client.js';
 import { clipboardFiles, droppedFiles, readableName, uploadOne } from '../../attach/upload.js';
 import { filterTasks } from '../../../modules/board/task-search.js';
+import { filterByKeyword } from '../../../modules/list-filter.js';
+import AttachRepoPick from './attach-repo-pick.js';
 import StatusTag from '../../status-tag/index.jsx';
 import {
   attachBodyOf,
@@ -40,13 +42,13 @@ const ModalBox = Modal as unknown as ComponentType<{
 }>;
 
 const SOURCE_LABEL: Record<PendingItem['source'], string> = {
-  file: '本机文件', folder: '本地文件夹', url: '外部链接', task: '任务引用', ref: '文档引用',
+  file: '本机文件', folder: '本地文件夹', url: '外部链接', task: '任务引用', ref: '文档引用', repo: '参考仓库',
 };
 
 /** 待确认清单的一条（本地态，不是服务端形状）。 */
 interface PendingItem {
   key: string;
-  source: 'file' | 'folder' | 'url' | 'task' | 'ref';
+  source: 'file' | 'folder' | 'url' | 'task' | 'ref' | 'repo';
   file?: File;
   fileId?: string;
   name: string;
@@ -57,6 +59,8 @@ interface PendingItem {
   folder?: string;
   seq?: number;
   docRef?: string;
+  /** #184 仓库 key（source='repo'） */
+  repoKey?: string;
   note?: string;
   inline?: boolean;
   status: 'pending' | 'uploading' | 'error';
@@ -101,7 +105,7 @@ export default function AttachModal({
   hostKey,
   hostCwd,
   refId,
-  allow = { file: true, url: true, folder: true, task: false, ref: false },
+  allow = { file: true, url: true, folder: true, task: false, ref: false, repo: false },
   taskOptions = [],
   docOptions = null,
   replaceAttachment = null,
@@ -119,6 +123,9 @@ export default function AttachModal({
   const [taskSearch, setTaskSearch] = useState('');
   const [refSearch, setRefSearch] = useState('');
   const [docs, setDocs] = useState<DocOption[]>(docOptions || []);
+  // #184：参考仓库列表（只用于挂指针，交付时强制参考源码）
+  const [repos, setRepos] = useState<Array<{ key: string; name: string; desc?: string; type?: string; path?: string }>>([]);
+  const [repoSearch, setRepoSearch] = useState('');
   const fileRef = useRef<HTMLInputElement | null>(null);
   const dropRef = useRef<HTMLDivElement | null>(null);
 
@@ -138,6 +145,7 @@ export default function AttachModal({
     setFolderErr('');
     setTaskSearch('');
     setRefSearch('');
+    setRepoSearch('');
     // 焦点落在拖拽区：不点任何地方直接 Ctrl/⌘+V 也能接住剪贴板里的截图
     const t = setTimeout(() => dropRef.current?.focus(), 0);
     return () => clearTimeout(t);
@@ -164,6 +172,23 @@ export default function AttachModal({
     }).catch(() => { /* 拉不到就只用手动输入 */ });
     return () => { alive = false; };
   }, [open, docOptions, allow.ref]);
+
+  useEffect(() => {
+    if (!open || !allow.repo) return undefined;
+    let alive = true;
+    api<any>('/api/repos').then((r) => {
+      if (!alive) return;
+      const arr = Array.isArray(r) ? r : (r && Array.isArray(r.repos) ? r.repos : []);
+      setRepos(arr.map((x: any) => ({
+        key: String(x.key || x.id || ''),
+        name: String(x.name || x.key || ''),
+        desc: String(x.desc || ''),
+        type: String(x.type || ''),
+        path: String(x.path || ''),
+      })).filter((x: { key: string }) => !!x.key));
+    }).catch(() => { /* 拉不到就只显示空态 */ });
+    return () => { alive = false; };
+  }, [open, allow.repo]);
 
   const addFiles = (list: FileList | File[] | null | undefined) => {
     if (!allow.file) return;
@@ -316,6 +341,16 @@ export default function AttachModal({
     const pool = taskOptions.filter((t) => String(t.id) !== String(hostId));
     return filterTasks(pool, taskSearch).slice(0, 12);
   }, [taskOptions, taskSearch, hostId]);
+  const repoList = useMemo(() => filterByKeyword(repos, repoSearch, (r) => [r.name, r.key, r.desc]).slice(0, 12),
+    [repos, repoSearch]);
+  const addRepo = (r: { key: string; name: string }) => {
+    setItems((prev) => [
+      ...prev,
+      { key: nextKey(), source: 'repo', repoKey: r.key, name: r.name, size: 0, status: 'pending' },
+    ]);
+    setRepoSearch('');
+  };
+
   const refList = useMemo(() => {
     const q = refSearch.trim().toLowerCase();
     return docs
@@ -489,6 +524,16 @@ export default function AttachModal({
             <div className="att-empty-inline">{docs.length ? '没有匹配的文档' : '文档库为空'}</div>
           )}
         </div>
+      )}
+
+      {allow.repo && (
+        <AttachRepoPick
+          repos={repos}
+          list={repoList}
+          search={repoSearch}
+          onSearch={setRepoSearch}
+          onPick={addRepo}
+        />
       )}
 
       {items.length ? (

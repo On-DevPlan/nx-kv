@@ -173,7 +173,7 @@ export default function AttachArea({
   hostKey,
   hostCwd,
   refId,
-  allow = { file: true, url: true, folder: true, task: false, ref: false },
+  allow = { file: true, url: true, folder: true, task: false, ref: false, repo: false },
   taskOptions = [],
   docOptions,
   disabled = false,

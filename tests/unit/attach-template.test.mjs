@@ -148,3 +148,47 @@ test('enrichGoalTiming：已有字段不覆盖；deadline 解析不了就不动'
   assert.equal(bare.remainingSec, undefined, '没有可算的来源就什么都不加');
   assert.equal(enrichGoalTiming(null), null);
 });
+
+// ── #184：参考仓库附件 + 内部资源强制访问 ────────────────────────────────
+const REPO_ATT = {
+  id: 'att_repo_1', kind: 'repo', name: 'agentdaw', role: 'attach',
+  repoKey: 'github.com/eqarx/agentdaw', repoName: 'agentdaw', repoDesc: '参考实现',
+  repoType: 'ref', typeLabel: '参考仓库', localPath: 'D:/a_other/nxkvrepo/agentdaw',
+  exists: true, missing: false, branch: 'main', docs: ['ref_aaa'], docCount: 1,
+  getCmd: 'nx-kv repo get --id github.com/eqarx/agentdaw',
+  docCmd: 'nx-kv repo doc list --id github.com/eqarx/agentdaw',
+};
+
+test('#184 repo 附件的 ctx：key / 类型 / 本地路径 / 文档与命令齐备', () => {
+  const { attach } = attachTemplateCtx([REPO_ATT]);
+  const it = attach.list[0];
+  assert.equal(it.kind, 'repo');
+  assert.equal(it.kindLabel, '仓库');
+  assert.equal(it.repo.key, 'github.com/eqarx/agentdaw');
+  assert.equal(it.repo.localPath, 'D:/a_other/nxkvrepo/agentdaw');
+  assert.equal(it.repo.cmd, 'nx-kv repo get --id github.com/eqarx/agentdaw');
+  assert.equal(it.repo.docCount, 1);
+  assert.equal(it.mandatory, true, 'repo 是内部资源');
+  assert.match(it.access, /禁止凭记忆臆测/, '强制参考源码');
+});
+
+test('#184 强制访问段：内部资源进「必须访问」清单，外部资源不进', () => {
+  const plainFile = { id: 'att_file_1', kind: 'file', name: '图.png', localPath: 'D:/att/图.png', exists: true };
+  const taskAtt = { id: 'att_task_1', kind: 'task', name: '#9 x', taskId: 9, seq: 9, topicKey: 'nx-kv', title: 'x', resolved: true };
+  const { attach } = attachTemplateCtx([REPO_ATT, taskAtt, plainFile]);
+  assert.equal(attach.mandatoryCount, 2, 'repo + task');
+  assert.equal(attach.hasMandatory, true);
+  assert.equal(attach.list[2].mandatory, false, 'file 不强制');
+  const text = attachmentInstruction([REPO_ATT, taskAtt, plainFile]);
+  assert.match(text, /必须访问/);
+  assert.match(text, /未访问不得直接开始实现或交付/);
+  assert.match(text, /参考仓库 github\.com\/eqarx\/agentdaw/);
+  assert.ok(text.indexOf('必须访问（内部资源') > 0);
+});
+
+test('#184 只有外部附件时：不出现强制段，仍提示先识别附件', () => {
+  const plainFile = { id: 'att_file_1', kind: 'file', name: '图.png', localPath: 'D:/att/图.png', exists: true };
+  const text = attachmentInstruction([plainFile]);
+  assert.doesNotMatch(text, /必须访问（内部资源/);
+  assert.match(text, /请先识别附件内容/);
+});

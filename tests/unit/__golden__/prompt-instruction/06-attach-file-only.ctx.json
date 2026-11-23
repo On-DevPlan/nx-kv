@@ -22,6 +22,8 @@
     "areaCount": 0,
     "hasInline": true,
     "hasArea": false,
+    "mandatoryCount": 0,
+    "hasMandatory": false,
     "list": [
       {
         "id": "att_file_1",
@@ -43,6 +45,8 @@
         "locator": "D:/att/设计稿.png",
         "needsSync": false,
         "note": "",
+        "mandatory": false,
+        "access": "",
         "target": "",
         "targetKind": "",
         "targetKey": "",

@@ -22,13 +22,13 @@ import { z } from 'zod';
 import { PromptPlugin, supplied, type Supply, type TemplateText } from '../base.js';
 
 /** 附件 kind（与 attach-resource.ts 的 baseKind 归一结果一致）。 */
-export const ATTACH_KINDS = ['file', 'url', 'task', 'ref', 'mdfile', 'folder'] as const;
+export const ATTACH_KINDS = ['file', 'url', 'task', 'ref', 'mdfile', 'folder', 'repo'] as const;
 /** 来源：正文内嵌 / 附件区（关系表 role 决定）。 */
 export const ATTACH_ORIGINS = ['inline', 'area'] as const;
 
 const kind = z.enum(ATTACH_KINDS);
 /** 每条附件的类型说明（union 各分支共用同一句，去重后目录里能看到完整枚举）。 */
-const KIND_DESC = '附件类型：file / url / task / ref / mdfile / folder（决定子对象形状与取用命令）';
+const KIND_DESC = '附件类型：file / url / task / ref / mdfile / folder / repo（决定子对象形状与取用命令）';
 const origin = z.enum(ATTACH_ORIGINS);
 
 /**
@@ -58,6 +58,8 @@ const baseItem = {
   locator: z.string().describe('定位串（清单行末尾展示的「在哪」）'),
   needsSync: z.boolean().describe('是否需要额外同步（本机模型恒 false）'),
   note: z.string().describe('边上的说明（attach --note 的落点）'),
+  mandatory: z.boolean().describe('#184：是否内部资源（task / ref / repo）——模板据此输出「必须访问」'),
+  access: z.string().describe('#184：可执行的访问说明（内部资源强制访问用的具体命令）'),
   target: z.string(),
   targetKind: z.string(),
   targetKey: z.string(),
@@ -186,10 +188,50 @@ const folderItem = z.looseObject({
   }).describe('目录视图：{{#if folder}}{{folder.absPath}}{{/if}}'),
 });
 
+/**
+ * kind=repo：参考仓库附件（#184）。登记指针，字节在原 checkout。
+ * **实现必须参考该仓库源码**：先 repo.getCmd 确认元数据，再列 repo.localPath、Read 关键文件；
+ * 已整理文档用 repo.docCmd 列出后 docs get --ref 读取。
+ */
+const repoItem = z.looseObject({
+  ...baseItem,
+  kind: z.literal('repo').describe(KIND_DESC),
+  repoKey: z.string().describe('仓库 key（如 github.com/org/name）'),
+  repoName: z.string().describe('仓库名'),
+  repoDesc: z.string().describe('仓库一句话描述'),
+  repoType: z.string().describe('ref（参考仓库）/ dev（开发仓库）'),
+  typeLabel: z.string().describe('类型中文名：参考仓库 / 开发仓库 / 仓库'),
+  localPath: z.string().describe('checkout 的绝对路径（读源码从这里开始）'),
+  path: z.string().describe('= localPath（旧写法）'),
+  exists: z.boolean().describe('checkout 目录是否还在盘上'),
+  missing: z.boolean().describe('checkout 不可用（目录不在或被标记缺失）'),
+  branch: z.string().describe('当前分支（取不到为空串）'),
+  docs: z.array(z.string()).describe('该仓库已整理的文档 refId 列表'),
+  docCount: z.number().describe('已整理文档数'),
+  getCmd: z.string().describe('确认仓库元数据的命令：nx-kv repo get --id <key>'),
+  docCmd: z.string().describe('列出仓库文档的命令：nx-kv repo doc list --id <key>'),
+  repo: z.looseObject({
+    key: z.string(),
+    name: z.string(),
+    desc: z.string(),
+    repoType: z.string(),
+    typeLabel: z.string(),
+    localPath: z.string(),
+    exists: z.boolean(),
+    missing: z.boolean(),
+    branch: z.string(),
+    docs: z.array(z.string()),
+    docCount: z.number(),
+    getCmd: z.string(),
+    docCmd: z.string(),
+    cmd: z.string().describe('= getCmd（模板里写 {{repo.cmd}} 确认元数据）'),
+  }).describe('仓库视图：{{repo.localPath}} 读源码、{{repo.cmd}} 确认元数据'),
+});
+
 /** 一条附件：kind 决定形状（discriminatedUnion 给的是「kind 与字段必须自洽」这道闸）。 */
 const attachItem = z
-  .discriminatedUnion('kind', [fileItem, urlItem, taskItem, refItem, mdfileItem, folderItem])
-  .describe('附件条目：file / url / task / ref / mdfile / folder，各有自己的子对象与取用命令');
+  .discriminatedUnion('kind', [fileItem, urlItem, taskItem, refItem, mdfileItem, folderItem, repoItem])
+  .describe('附件条目：file / url / task / ref / mdfile / folder / repo，各有自己的子对象与取用命令');
 
 const schema = z.strictObject({
   // strictObject 只钉顶层段键（attach）；attach 由宿主构造，段内形状见上。
@@ -200,6 +242,8 @@ const schema = z.strictObject({
       areaCount: z.number().describe('附件区数量'),
       hasInline: z.boolean(),
       hasArea: z.boolean(),
+      mandatoryCount: z.number().describe('#184：内部资源（任务 / 文档 / 仓库）数量'),
+      hasMandatory: z.boolean().describe('#184：是否存在必须访问的内部资源'),
       list: z.array(attachItem).describe('结构化清单：模板用 {{#each attach.list}} 展开'),
     })
     .nullable(),
@@ -210,12 +254,18 @@ const BUILTIN: TemplateText = {
   id: 'builtin',
   name: '系统内置',
   text: `{{#if attach}}
-〔附件〕本任务包含 {{attach.count}} 个附件（正文内嵌 {{attach.inlineCount}} · 附件区 {{attach.areaCount}}）。请先识别附件内容（图片先看图、文档先读内容、文件夹先列目录）再开始处理，不要跳过附件。
+〔附件〕本任务包含 {{attach.count}} 个附件（正文内嵌 {{attach.inlineCount}} · 附件区 {{attach.areaCount}}）。{{#if attach.hasMandatory}}其中 {{attach.mandatoryCount}} 个是**系统内部资源**（任务 / 文档 / 仓库）——它们必须被实际访问：任务先读正文、文档先读全文、仓库先读源码并确认元数据；**未访问不得直接开始实现或交付**。{{else}}请先识别附件内容（图片先看图、文档先读内容、文件夹先列目录）再开始处理，不要跳过附件。{{/if}}
 
 附件清单：
 {{#each attach.list}}
-  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if mdfile}}{{mdfile.absPath}}{{#if mdfile.missing}}（源文件已不在）{{/if}}{{/if}}{{#if folder}}{{folder.absPath}}{{#if folder.missing}}（目录已不在）{{/if}}{{/if}}{{#if note}}  # {{note}}{{/if}}
+  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if mdfile}}{{mdfile.absPath}}{{#if mdfile.missing}}（源文件已不在）{{/if}}{{/if}}{{#if folder}}{{folder.absPath}}{{#if folder.missing}}（目录已不在）{{/if}}{{/if}}{{#if repo}}{{repo.typeLabel}} {{repo.key}}{{#if repo.localPath}} · {{repo.localPath}}{{/if}}{{#if repo.missing}}（checkout 已不在）{{/if}}{{/if}}{{#if mandatory}}〔必须访问〕{{/if}}{{#if note}}  # {{note}}{{/if}}
 {{/each}}
+{{#if attach.hasMandatory}}
+必须访问（内部资源，逐条执行，不得跳过）：
+{{#each attach.list}}{{#if mandatory}}
+  - {{kindLabel}}《{{name}}》：{{access}}
+{{/if}}{{/each}}
+{{/if}}
 
 取用方式：
 {{#each attach.list}}

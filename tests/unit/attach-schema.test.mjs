@@ -32,20 +32,29 @@ const ROWS = [
   },
   { id: 'm1', kind: 'mdfile', name: 'plan.md', role: 'attach', absPath: 'D:/x/plan.md', anchorDir: 'D:/x', mdContent: '# 计划', mdTruncated: false, mdStale: false },
   { id: 'd1', kind: 'folder', name: 'assets', role: 'attach', absPath: 'D:/x/assets', exists: true, missing: false },
+  {
+    // #184：参考仓库附件（指针，字节在原 checkout）
+    id: 'p1', kind: 'repo', name: 'agentdaw', role: 'attach',
+    repoKey: 'github.com/eqarx/agentdaw', repoName: 'agentdaw', repoDesc: '参考实现',
+    repoType: 'ref', localPath: 'D:/a_other/nxkvrepo/agentdaw', exists: true, missing: false,
+    branch: 'main', docs: ['ref_aaa'], docCount: 1,
+    getCmd: 'nx-kv repo get --id github.com/eqarx/agentdaw',
+    docCmd: 'nx-kv repo doc list --id github.com/eqarx/agentdaw',
+  },
 ];
 
 /** 用 attachment 插件（get 链第二段）跑一次结构态校验。 */
 const pluginOf = (attach) => buildPlugins('get', { attach })[1];
 
-test('六种 kind 的真实 ctx 都能过 schema（shape 与 ctxItemOf 逐字段对齐）', async () => {
+test('七种 kind 的真实 ctx 都能过 schema（shape 与 ctxItemOf 逐字段对齐）', async () => {
   const { attach } = attachTemplateCtx(ROWS);
-  assert.equal(attach.list.length, 6);
+  assert.equal(attach.list.length, 7);
   assert.deepEqual(
     attach.list.map((a) => a.kind),
-    ['file', 'url', 'task', 'ref', 'mdfile', 'folder'],
+    ['file', 'url', 'task', 'ref', 'mdfile', 'folder', 'repo'],
   );
   const data = await pluginOf(attach).get('data');
-  assert.equal(data.attach.list.length, 6);
+  assert.equal(data.attach.list.length, 7);
   // 各 kind 的子对象必须在（模板靠 {{#if x}} 分支）
   assert.ok(data.attach.list[0].file.localPath, 'file 子对象');
   assert.equal(data.attach.list[1].url.host, 'example.com', 'url 子对象');
@@ -53,6 +62,9 @@ test('六种 kind 的真实 ctx 都能过 schema（shape 与 ctxItemOf 逐字段
   assert.equal(data.attach.list[3].ref.refId, 'ref_1', 'ref 子对象');
   assert.equal(data.attach.list[4].mdfile.readCmd, 'nx-kv docs mdfile m1', 'mdfile 子对象（含取用命令）');
   assert.equal(data.attach.list[5].folder.readCmd, 'nx-kv file content d1', 'folder 子对象（含取用命令）');
+  assert.equal(data.attach.list[6].repo.localPath, 'D:/a_other/nxkvrepo/agentdaw', 'repo 子对象：本地路径');
+  assert.equal(data.attach.list[6].repo.cmd, 'nx-kv repo get --id github.com/eqarx/agentdaw', 'repo 子对象：确认元数据命令');
+  assert.equal(data.attach.list[6].mandatory, true, 'repo 是内部资源，必须强制访问');
 });
 
 test('每个 kind 单独也要过（避免「混在一起才碰巧合法」）', async () => {

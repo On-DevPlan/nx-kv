@@ -80,6 +80,29 @@ test('组行徽标：consumed / 软删除的组任务不算', () => {
   assert.equal(rows.find((r) => r.type === 'repo' && r.name === 'ra').pending, 0, '队列里全是组任务 → 项目侧徽标归零');
 });
 
+// #251：组行可展开子任务（与仓库行同构）——展开列表与行徽标必须同源
+test('组行展开子行：tasks 只含本组任务（别的组 / 软删除不进）', () => {
+  const { rows } = buildTree(REPOS, BOARDS, TOPICS, {});
+  const boardRow = rows.find((r) => r.type === 'board');
+  assert.deepEqual(boardRow.tasks.map((t) => t.id), [2], '只留 boardMark=b1 的未删除任务');
+  assert.equal(boardRow.tasks.length, boardRow.pending, '列表与徽标同源（1 条待领取）');
+});
+
+test('组行展开子行：跨成员队列汇总本组任务', () => {
+  const boards = [{
+    id: 'b1', key: 'board/grp', name: 'grp',
+    repos: [{ key: 'github.com/me/ra' }, { key: 'github.com/me/rb' }],
+  }];
+  const topics = [
+    { key: 'tk1', repo: { id: 'r1' }, tasks: [{ id: 11, status: 'pending', boardMark: 'b1' }] },
+    { key: 'tk2', repo: { id: 'r2' }, tasks: [{ id: 12, status: 'pending', boardMark: 'b1' }, { id: 13, status: 'pending' }] },
+  ];
+  const { rows } = buildTree(REPOS, boards, topics, {});
+  const boardRow = rows.find((r) => r.type === 'board');
+  assert.deepEqual(boardRow.tasks.map((t) => t.id).sort((a, b) => a - b), [11, 12]);
+  assert.equal(boardRow.pending, 2, '另一个成员队列的纯项目任务（13）不算进组');
+});
+
 // ─── 等待标记的倒计时（#182）─────────────────────────────────────────
 //
 // 「wait 持续 get 期间侧栏要显示时间」：行的 waitingDeadlineMs 取该行所有队列里

@@ -44,19 +44,26 @@ export interface TaskChildrenProps {
 
 export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChildrenProps) {
   const toast = useToast();
-  // 全局池：topic 直接带 tasks；仓库行：多个 topic 的 tasks 汇总
+  // 全局池：topic 直接带 tasks；仓库行：多个 topic 的 tasks 汇总；
+  // 组行：model 已按「本组任务」口径（frontmatter.board）算好，直接铺
   const tasks = useMemo(() => {
     const list: LocalTask[] =
       row.type === 'global'
         ? (row.tasks || [])
-        // #85 两种走向：仓库行下的子任务是**项目走向**的入口——组任务归组页管
-        : (row.topics || []).flatMap((t) => (t.tasks || []).filter((x) => !x.deletedAt && !isGroupTask(x)));
+        : row.type === 'board'
+          ? (row.tasks || [])
+          // #85 两种走向：仓库行下的子任务是**项目走向**的入口——组任务归组页管
+          : (row.topics || []).flatMap((t) => (t.tasks || []).filter((x) => !x.deletedAt && !isGroupTask(x)));
     return sortTasksForDisplayBridge(list);
   }, [row]);
-  // 导航基址用 **topicKey**（工作台按它找队列），不是仓库 key
-  const base = row.type === 'global'
-    ? '#/global'
-    : `#/dir/${encodeURIComponent(row.topicKey || row.key)}`;
+  // 导航基址：组 = 组页（#/group/<id>，任务详情带 ?task=）；仓库/全局 = 工作台，
+  // 后者用 **topicKey**（工作台按它找队列），不是仓库 key
+  const isBoard = row.type === 'board';
+  const base = isBoard
+    ? `#/group/${encodeURIComponent(String(row.id || row.key))}`
+    : row.type === 'global'
+      ? '#/global'
+      : `#/dir/${encodeURIComponent(row.topicKey || row.key)}`;
   // #188：默认铺 8 条；「…还有 N 条」点一次多加载 10 条（分页式增量，不一次全铺）。
   const [limit, setLimit] = useState(SIDE_TASK_LIMIT);
   const shown = tasks.slice(0, limit);
@@ -112,18 +119,35 @@ export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChil
           <span className="nm">收起</span>
         </button>
       )}
-      <button
-        type="button"
-        className="trow child task-new"
-        title="新建一页 MD（新页签打开；仓库还没有任务队列时先创建队列）"
-        onClick={(e) => {
-          e.stopPropagation();
-          ensureQueueAndGo({ row, onNavigate, refreshLocal, toast, draft: true });
-        }}
-      >
-        <span className="gico"><Icon name="plus" size={12} /></span>
-        <span className="nm">新建页</span>
-      </button>
+      {isBoard ? (
+        // 组任务必须带 board + 归属项目两个 frontmatter，侧栏无从选择——
+        // 入口给到组页（那里「＋ 新建页」会预置本组语义），不在这里造假草稿。
+        <button
+          type="button"
+          className="trow child task-new"
+          title="到组页新建任务（需要选归属项目）"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigate?.(base);
+          }}
+        >
+          <span className="gico"><Icon name="plus" size={12} /></span>
+          <span className="nm">新建任务</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="trow child task-new"
+          title="新建一页 MD（新页签打开；仓库还没有任务队列时先创建队列）"
+          onClick={(e) => {
+            e.stopPropagation();
+            ensureQueueAndGo({ row, onNavigate, refreshLocal, toast, draft: true });
+          }}
+        >
+          <span className="gico"><Icon name="plus" size={12} /></span>
+          <span className="nm">新建页</span>
+        </button>
+      )}
     </>
   );
 }

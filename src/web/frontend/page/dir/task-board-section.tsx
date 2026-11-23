@@ -2,6 +2,7 @@
 import { saveDoc } from '../../modules/md/doc-store.js';
 import { withFrontmatter } from '../../modules/md/md-parse.js';
 import type { BoardCtx, DocFm, DocState } from './task-utils.js';
+import { rememberGroupProject } from '../group/group-project-memo.js';
 
 interface BoardSectionProps {
   boardCtx: BoardCtx | null;
@@ -29,6 +30,8 @@ export function BoardSection({ boardCtx, docFm, goalEditable, doc, id, markDirty
           className="mdw-proj-pick"
           value={docFm.project || ''}
           onChange={(e) => {
+            // #187：记住这次选择——下次在这个组里新建任务直接用它当默认归属
+            rememberGroupProject(boardCtx.board.id, e.target.value);
             saveDoc(id, {
               body: withFrontmatter(doc.body, { ...docFm, board: boardCtx.board.id, project: e.target.value }),
             });

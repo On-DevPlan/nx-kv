@@ -9,6 +9,7 @@
 // reorder API 按 topic，故只允许拖到**同一成员队列**的落点；跨项目落点会提示。
 // 组介绍与项目介绍共用 Introduction（显示 / 编辑 / 补 ref）。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
+import { readGroupProject } from './group-project-memo.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, ReactElement, ReactNode } from 'react';
 import { PopMenu } from '../../components/popup/index.jsx';
@@ -198,12 +199,9 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   // 保存与目录页同构：逐条 PATCH（本任务 gate/blockBy + 下游各方 blockBy）；
   // 失败 toast 并上抛——编辑器据此保持打开。
 
-  // 新建任务的默认归属项目：第一个有待领取的成员（面板一打开就对准活儿），
-  // 都没有就第一个成员。编辑页的工具区里还可以改（限本组成员）。
-  const sel =
-    items.find((it) => it.pending > 0) ||
-    items[0] ||
-    null;
+  // 默认归属项目（#187）：上次在这个组选过的优先 → 第一个有待领取的 → 第一个成员
+  const memoKey = readGroupProject(board ? board.id : '');
+  const sel = items.find((it) => it.key === memoKey) || items.find((it) => it.pending > 0) || items[0] || null;
 
   // 本组任务 = 成员队列里**正文 frontmatter.board 指向本组**的任务。
   // 展示序列与目录页同构（#167 三轮）：待领取在前（各成员队列序），历史在后

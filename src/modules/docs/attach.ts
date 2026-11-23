@@ -5,7 +5,6 @@ import { badInput } from '../../core/errors.js';
 import { getDb } from '../../core/db/index.js';
 import { tx } from '../../core/db/tx.js';
 import {
-  deleteAttachment,
   ensureDocRef,
   ensureRefAttachment,
   ensureTaskAttachment,
@@ -18,10 +17,8 @@ import {
   upsertFileAttachment,
 } from '../../core/attachmentdb.js';
 import type { LinkedAttachmentView } from '../../core/attachmentdb/query.js';
-import type { DeleteAttachmentResult } from '../../core/attachmentdb/query.js';
 import { localUpload } from '../../core/localatt.js';
 import { contentTypeOf, isImageName } from '../../core/filekind.js';
-import { attachmentsRootFromEnv } from '../../core/paths.js';
 import { readFile } from 'node:fs/promises';
 import { basename, resolve as resolvePath } from 'node:path';
 
@@ -232,7 +229,6 @@ export async function attachToDoc(ctx: AttachToDocCtx): Promise<AttachToDocResul
 export interface DetachFromDocInput {
   ref?: unknown;
   attachment?: unknown;
-  purge?: unknown;
 }
 
 /** docs detach 的出参。 */
@@ -241,36 +237,26 @@ export interface DetachFromDocResult {
   ref: string;
   attachment: string;
   unlinked: number;
-  purged: boolean;
-  purgeReason: string;
-  bytesRemoved: boolean;
 }
 
-/** 解除文档与资源的关系；--purge 在无人引用时连资源行与本机字节一起删。 */
-export async function detachFromDoc({ ref, attachment, purge }: DetachFromDocInput = {}): Promise<DetachFromDocResult> {
+/** 解除文档与资源的关系（#189：**只解除关联**，资源行与字节不动，清理走库级 GC）。 */
+export async function detachFromDoc({ ref, attachment }: DetachFromDocInput = {}): Promise<DetachFromDocResult> {
   const { refId } = await docRefOf(ref);
   const attId = String(attachment || '').trim();
   if (!attId) throw badInput('需要 --attachment <资源 id>（见 docs attachments 输出）');
   const db = getDb();
   let unlinked = 0;
-  const purgeHolder: { result: DeleteAttachmentResult | null } = { result: null };
   tx(
     (conn) => {
+      // #189：只解除关联——资源行与字节不动，清理由库级 GC 负责
       unlinked = unlinkAttachment(conn, { host: 'ref', hostId: refId, attachmentId: attId });
-      if (purge && unlinked) {
-        purgeHolder.result = deleteAttachment(conn, attId, { attachmentsRoot: attachmentsRootFromEnv() });
-      }
     },
     { db, mode: 'IMMEDIATE' }
   );
-  const purgeResult = purgeHolder.result;
   return {
     status: 'ok',
     ref: refId,
     attachment: attId,
     unlinked,
-    purged: !!(purgeResult && purgeResult.removed),
-    purgeReason: purgeResult ? purgeResult.reason || '' : '',
-    bytesRemoved: !!(purgeResult && purgeResult.bytesRemoved),
   };
 }

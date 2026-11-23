@@ -13,7 +13,6 @@ const input = z.object({
   cwd: z.string().optional(),
   key: z.string().optional(),
   attachment: z.string().describe("资源 id（见 localtask attachments）"),
-  purge: z.boolean().optional().describe("连资源行与本机字节一起删（仍被其他任务/文档引用时拒绝删）"),
 });
 
 export class LocaltaskDetachAction extends ActionBase<typeof input> {
@@ -21,7 +20,7 @@ export class LocaltaskDetachAction extends ActionBase<typeof input> {
     id: 'localtask.detach',
     cli: ['localtask', 'detach'],
     http: ['DELETE', '/api/localtasks/attach'],
-    summary: '解除任务与附件的关系（默认只解除关系，资源进孤儿池）；--purge 在无人引用时连资源行与本机字节一起删',
+    summary: '解除任务与附件的关系（#189：只解除关联，资源进孤儿池；清理走库级 GC，不在这里删资源）',
     input,
     render: renderDetach,
   })
@@ -33,7 +32,6 @@ export class LocaltaskDetachAction extends ActionBase<typeof input> {
           cwd: ctx.cwd,
           key: ctx.key,
           attachment: ctx.attachment,
-          purge: ctx.purge,
         });
     
   }

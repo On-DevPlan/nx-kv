@@ -111,7 +111,8 @@ export interface DocOption {
 export interface AttachEndpoint {
   list: () => Promise<AttachListData>;
   attach: (body: Record<string, any>) => Promise<any>;
-  detach: (attachment: string | number | undefined, purge: boolean) => Promise<any>;
+  /** #189：移除 = 只解除关联（不传 purge——资源清理走库级 GC） */
+  detach: (attachment: string | number | undefined) => Promise<any>;
 }
 
 /** 待确认条目 → attach 请求体的最小形状（attachBodyOf 的入参）。 */
@@ -196,9 +197,9 @@ export function endpointOf(host: AttachHostKind | undefined, { hostId, hostKey, 
         method: 'POST',
         body: { id: Number(hostId), ...where, ...body, noEmbed: true },
       }),
-      detach: (attachment, purge) => api('/api/localtasks/attach', {
+      detach: (attachment) => api('/api/localtasks/attach', {
         method: 'DELETE',
-        body: { id: Number(hostId), ...where, attachment, purge },
+        body: { id: Number(hostId), ...where, attachment },
       }),
     };
   }
@@ -206,9 +207,9 @@ export function endpointOf(host: AttachHostKind | undefined, { hostId, hostKey, 
   return {
     list: () => api<AttachListData>(`/api/docs/attachments?${q.toString()}`),
     attach: (body) => api('/api/docs/attach', { method: 'POST', body: { ref: refId, ...body, noEmbed: true } }),
-    detach: (attachment, purge) => api('/api/docs/attach', {
+    detach: (attachment) => api('/api/docs/attach', {
       method: 'DELETE',
-      body: { ref: refId, attachment, purge },
+      body: { ref: refId, attachment },
     }),
   };
 }

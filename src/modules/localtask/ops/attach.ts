@@ -26,9 +26,7 @@ import { contentTypeOf, isImageName } from '../../../core/filekind.js';
 import { localIndex as localStoreIndex, localResolve, localUpload } from '../../../core/localatt.js';
 import { getDb } from '../../../core/db/index.js';
 import { tx } from '../../../core/db/tx.js';
-import { attachmentsRootFromEnv } from '../../../core/paths.js';
 import {
-  deleteAttachment,
   ensureRefAttachment,
   ensureTaskAttachment,
   ensureUrlAttachment,
@@ -462,8 +460,8 @@ export interface ListTaskAttachmentsOptions {
  */
 export async function listTaskAttachments({ id, cwd, key }: ListTaskAttachmentsOptions = {}): Promise<Record<string, any>> {
   const cur = await service.getTask({ id, cwd, key });
-  const store = await localStoreIndex();
   const rows = listTaskAttachmentsBySeq(getDb(), { topicKey: (cur.key || key) as string, seq: cur.id });
+  const store = await localStoreIndex();
   const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store);
   await annotateRefTitles(attachments);
 
@@ -534,25 +532,20 @@ export interface DetachTaskAttachmentOptions {
  * 关系表是权威：解除后这条资源不再出现在任务附件清单里，但正文里若仍有内嵌，
  * 下次正文同步会把 inline 边重新写回来（这是正文明示的引用，不算丢）。
  */
-export async function detachTaskAttachment({ id, cwd, key, attachment, purge }: DetachTaskAttachmentOptions = {}): Promise<Record<string, any>> {
+export async function detachTaskAttachment({ id, cwd, key, attachment }: DetachTaskAttachmentOptions = {}): Promise<Record<string, any>> {
   const cur = await service.getTask({ id, cwd, key });
   const topicKey = cur.key || key || '';
   const attId = String(attachment || '').trim();
   if (!attId) throw badInput('需要 --attachment <资源 id>（见 localtask attachments 输出）');
   const db = getDb();
-  const store = await localStoreIndex();
   let deleted = 0;
-  let purgeResult: any = null;
   tx(
     (conn) => {
       const gid = taskGlobalIdOf(conn, { topicKey, seq: cur.id });
       if (!gid) throw badInput(`任务 #${cur.id} 已不存在`);
+      // #189：移除附件 = **只解除关联**。资源行与字节一律不动（各 kind 的删除语义
+      // 不一致，逐个维护会出 bug）；需要清理时走库级 GC（孤儿池 + 到期回收）。
       deleted = unlinkAttachment(conn, { host: 'task', hostId: gid, attachmentId: attId });
-      if (purge && deleted) {
-        purgeResult = deleteAttachment(conn, attId, {
-          attachmentsRoot: attachmentsRootFromEnv() || store.dir,
-        });
-      }
     },
     { db, mode: 'IMMEDIATE' }
   );
@@ -563,8 +556,5 @@ export async function detachTaskAttachment({ id, cwd, key, attachment, purge }: 
     task: { id: cur.id },
     attachment: attId,
     unlinked: deleted,
-    purged: !!(purgeResult && purgeResult.removed),
-    purgeReason: purgeResult ? purgeResult.reason || '' : '',
-    bytesRemoved: !!(purgeResult && purgeResult.bytesRemoved),
   };
 }

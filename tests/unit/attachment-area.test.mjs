@@ -1,6 +1,6 @@
 // 附件区（不依赖正文）的读写语义：
 //   attach --no-embed 只写关系；正文同步不降级显式边；删正文不丢附件区；
-//   detach 默认只解除关系，--purge 才删资源与字节；领取交付区分「正文内嵌/附件区」。
+//   #189：detach 只解除关系（资源行与字节都留在孤儿池，清理走库级 GC）；领取交付区分「正文内嵌/附件区」。
 import { test } from 'node:test';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -99,7 +99,7 @@ test('删正文行：inline 边跟随消失，资源进孤儿池（不删字节�
   assert.ok(existsSync(src), '源文件当然不动');
 });
 
-test('detach 默认只解除关系；--purge 才删资源行与字节；被引用时拒绝 purge', async () => {
+test('#189 detach 只解除关联：资源行与字节都留在孤儿池（清理交给 GC）', async () => {
   const src = join(sb, '回收.pdf');
   writeFileSync(src, '%PDF');
   const a = await service.addTask({ text: '# 回收 A' });
@@ -107,29 +107,23 @@ test('detach 默认只解除关系；--purge 才删资源行与字节；被引�
   const r = await attachToTask({ id: a.task.id, path: src, noEmbed: true });
   await attachToTask({ id: b.task.id, fileId: r.fileId, noEmbed: true });
 
-  // A 解除时 B 仍在用 → 只解除关系，purge 拒绝删
-  const d1 = await detachTaskAttachment({ id: a.task.id, attachment: r.fileId, purge: true });
-  assert.equal(d1.unlinked, 1);
-  assert.equal(d1.purged, false);
-  assert.equal(d1.purgeReason, 'in-use');
-  assert.equal((await listTaskAttachments({ id: a.task.id })).count, 0);
-  assert.ok(getDb().get('SELECT id FROM attachments WHERE id = :id', { id: r.fileId }), '被他人引用时资源必须保留');
+  const bytes = (await listTaskAttachments({ id: a.task.id })).attachments[0].localPath;
+  assert.ok(existsSync(bytes), '挂载前字节在盘');
 
-  // 默认只解除 B 的关系：资源仍在孤儿池
+  const d1 = await detachTaskAttachment({ id: a.task.id, attachment: r.fileId });
+  assert.equal(d1.unlinked, 1);
+  assert.equal((await listTaskAttachments({ id: a.task.id })).count, 0);
+  assert.ok(getDb().get('SELECT id FROM attachments WHERE id = :id', { id: r.fileId }), '资源行保留（孤儿池）');
+  assert.ok(existsSync(bytes), '字节保留——移除不等于删资源');
+
   const d2 = await detachTaskAttachment({ id: b.task.id, attachment: r.fileId });
   assert.equal(d2.unlinked, 1);
-  assert.equal(d2.purged, false);
-  assert.ok(getDb().get('SELECT id FROM attachments WHERE id = :id', { id: r.fileId }), '默认不删资源');
+  assert.ok(getDb().get('SELECT id FROM attachments WHERE id = :id', { id: r.fileId }), '最后一个引用解除后仍保留资源行');
+  assert.ok(existsSync(bytes), '字节仍在——回收要等 GC');
 
-  // 已无引用 → 再挂一条并 purge 可回收（行 + 本机字节）
-  const c = await service.addTask({ text: '# 回收 C' });
-  await attachToTask({ id: c.task.id, fileId: r.fileId, noEmbed: true });
-  const bytes = (await listTaskAttachments({ id: c.task.id })).attachments[0].localPath;
-  assert.ok(existsSync(bytes), 'purge 前字节在盘');
-  const d3 = await detachTaskAttachment({ id: c.task.id, attachment: r.fileId, purge: true });
-  assert.equal(d3.purged, true);
-  assert.ok(!getDb().get('SELECT id FROM attachments WHERE id = :id', { id: r.fileId }), '资源行已删除');
-  assert.ok(!existsSync(bytes), '本机字节已删除');
+  // 重新挂载：同一资源行可直接复用（证明孤儿池可用）
+  await attachToTask({ id: a.task.id, fileId: r.fileId, noEmbed: true });
+  assert.equal((await listTaskAttachments({ id: a.task.id })).count, 1);
 });
 
 test('清理', () => {

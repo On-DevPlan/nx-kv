@@ -13,7 +13,6 @@ const renderDetach: any = _renderDetach;
 const input = z.object({
   ref: z.string(),
   attachment: z.string().describe("资源 id（见 docs attachments）"),
-  purge: z.boolean().optional().describe("连资源与字节一起删（仍被引用时拒绝）"),
 });
 
 export class DocsDetachAction extends ActionBase<typeof input> {
@@ -21,7 +20,7 @@ export class DocsDetachAction extends ActionBase<typeof input> {
     id: 'docs.detach',
     cli: ['docs', 'detach'],
     http: ['DELETE', '/api/docs/attach'],
-    summary: '解除文档与附件的关系（默认只解除关系）；--purge 无人引用时连资源行与本机字节一起删',
+    summary: '解除文档与附件的关系（#189：只解除关联；清理走库级 GC，不在这里删资源）',
     args: ['ref'],
     input,
     render: renderDetach,

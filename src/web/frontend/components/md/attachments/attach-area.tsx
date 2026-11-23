@@ -5,7 +5,7 @@
 //
 // 交互：拖文件进来直接登记（role=attach）；「添加附件」打开共享弹窗；
 // 图片缩略图点开大图；pdf/其它给打开/下载；task 点击跳任务；ref 点击开文档；
-// 移除时二选一：只解除关联 / 连资源与字节一起删。
+// 移除 = **只解除关联**（#189）：资源行与字节不动，后续清理走库级 GC。
 import { useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import type { ComponentType, DragEvent, ReactNode, Ref } from 'react';
 import { Modal, useDialog } from '../../popup/index.jsx';
@@ -298,14 +298,15 @@ export default function AttachArea({
     setModalOpen(true);
   };
 
-  const doRemove = async (purge: boolean) => {
+  const doRemove = async () => {
     const item = removeOf;
     if (!item) return;
     setRemoving(true);
     try {
-      await ep.detach(item.id, !!purge);
+      // #189：只解除关联——不删资源行、不删字节（各 kind 删除语义不一致，统一交给 GC）
+      await ep.detach(item.id);
       setRemoveOf(null);
-      toast(purge ? `已移除并删除资源：${item.name}` : `已解除关联：${item.name}`);
+      toast(`已解除关联：${item.name}`);
       await load();
       onChanged?.();
     } catch (e) {
@@ -432,18 +433,15 @@ export default function AttachArea({
           footer={
             <div className="att-foot">
               <button type="button" className="btn ghost" disabled={removing} onClick={() => setRemoveOf(null)}>取消</button>
-              <button type="button" className="btn" disabled={removing} onClick={() => doRemove(false)}>只解除关联</button>
-              <button type="button" className="btn danger" disabled={removing} onClick={() => doRemove(true)}>
-                {removeOf.kind === 'file' ? '连文件一起删' : '连资源一起删'}
-              </button>
+              <button type="button" className="btn" disabled={removing} onClick={() => void doRemove()}>移除（解除关联）</button>
             </div>
           }
         >
           <div className="att-confirm">
             <div className="att-confirm-name">{removeOf.name}</div>
             <div className="att-confirm-text">
-              只解除关联：从这份{host === 'task' ? '任务' : '文档'}的附件清单里移除，资源仍留在孤儿池，可被重新挂载。
-              连资源一起删：在本机没有其它任务/文档引用它时，删除资源行（本机文件同时删字节）；仍被引用时只解除关联。
+              会从这份{host === 'task' ? '任务' : '文档'}的附件清单里移除，资源本身（行与字节）保留在孤儿池，
+              之后仍可重新挂载；需要清理时由库级 GC 统一回收。
             </div>
           </div>
         </ModalBox>

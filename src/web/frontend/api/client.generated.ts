@@ -256,7 +256,7 @@ export interface ApiClient {
   attachments(input: z.input<InstanceType<typeof DocsAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsAttachmentsAction>['run']>>>;
 /** 查文档归属（--ref <refId> 看这篇被谁引用；--host <repo> 只看仓库自己的文档；--group <组> 看组域文档集：组 → 组内仓库 → 成员仓库自己 → 组内参考仓库自己；hostKind 标宿主是开发仓库/参考仓库/组；position=0 为主篇） */
   bindings(input?: z.input<InstanceType<typeof DocsBindingsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsBindingsAction>['run']>>>;
-/** 解除文档与附件的关系（默认只解除关系）；--purge 无人引用时连资源行与本机字节一起删 */
+/** 解除文档与附件的关系（#189：只解除关联；清理走库级 GC，不在这里删资源） */
   detach(input: z.input<InstanceType<typeof DocsDetachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsDetachAction>['run']>>>;
 /** GC 没有正文的文档（默认只报数；--apply 真删，并清掉宿主里指向它们的主篇/文档集引用） */
   gc(input?: z.input<InstanceType<typeof DocsGcAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsGcAction>['run']>>>;
@@ -318,7 +318,7 @@ export interface ApiClient {
   closeMany(input: z.input<InstanceType<typeof LocaltaskCloseManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCloseManyAction>['run']>>>;
 /** 配置等待超时（秒）（系统上下文固定 XML 区块；提示词模板正文固定在插件类里，不再可配） */
   config(input?: z.input<InstanceType<typeof LocaltaskConfigAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskConfigAction>['run']>>>;
-/** 解除任务与附件的关系（默认只解除关系，资源进孤儿池）；--purge 在无人引用时连资源行与本机字节一起删 */
+/** 解除任务与附件的关系（#189：只解除关联，资源进孤儿池；清理走库级 GC，不在这里删资源） */
   localtaskDetach(input: z.input<InstanceType<typeof LocaltaskDetachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskDetachAction>['run']>>>;
 /** 标记任务完成：--summary 完成总结必填；带时间目标的任务未到点会被拒绝（blocked），到点自动记录最终 check */
   done(input: z.input<InstanceType<typeof LocaltaskDoneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskDoneAction>['run']>>>;
@@ -763,7 +763,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async detach(input: z.input<InstanceType<typeof DocsDetachAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocsDetachAction>['_input']>);
       const path = `/api/docs/attach`;
-      const body = { "ref": inp["ref"], "attachment": inp["attachment"], "purge": inp["purge"] };
+      const body = { "ref": inp["ref"], "attachment": inp["attachment"] };
       return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsDetachAction>['run']>>;
     },
     // action: docs.gc
@@ -1013,7 +1013,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async localtaskDetach(input: z.input<InstanceType<typeof LocaltaskDetachAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskDetachAction>['_input']>);
       const path = `/api/localtasks/attach`;
-      const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "attachment": inp["attachment"], "purge": inp["purge"] };
+      const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "attachment": inp["attachment"] };
       return (await transport.request("DELETE", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskDetachAction>['run']>>;
     },
     // action: localtask.done

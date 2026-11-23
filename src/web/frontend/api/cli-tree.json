@@ -885,7 +885,7 @@
           "action": {
             "id": "docs.detach",
             "module": "docs",
-            "summary": "解除文档与附件的关系（默认只解除关系）；--purge 无人引用时连资源行与本机字节一起删",
+            "summary": "解除文档与附件的关系（#189：只解除关联；清理走库级 GC，不在这里删资源）",
             "usage": "docs detach",
             "http": "DELETE /api/docs/attach"
           },
@@ -1328,7 +1328,7 @@
           "action": {
             "id": "localtask.detach",
             "module": "localtask",
-            "summary": "解除任务与附件的关系（默认只解除关系，资源进孤儿池）；--purge 在无人引用时连资源行与本机字节一起删",
+            "summary": "解除任务与附件的关系（#189：只解除关联，资源进孤儿池；清理走库级 GC，不在这里删资源）",
             "usage": "localtask detach",
             "http": "DELETE /api/localtasks/attach"
           },

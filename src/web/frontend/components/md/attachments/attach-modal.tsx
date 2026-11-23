@@ -304,7 +304,7 @@ export default function AttachModal({
       await ep.attach(attachBodyOf({ ...it, fileId, note: it.note || replaceNote || '' }, host));
       // #168：换指向——新绑定挂好后解除旧的那条（旧资源进孤儿池，不删字节）
       if (replaceAttachment) {
-        try { await ep.detach(replaceAttachment, false); } catch { /* 旧边解不掉也不影响新绑定 */ }
+        try { await ep.detach(replaceAttachment); } catch { /* 旧边解不掉也不影响新绑定 */ }
       }
       setItems((prev) => prev.filter((x) => x.key !== it.key));
       return true;

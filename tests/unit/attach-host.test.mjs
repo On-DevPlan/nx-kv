@@ -42,11 +42,11 @@ test('endpointOf：文档宿主三件套走 /api/docs/*，请求体按 ref 定�
     const ep = endpointOf('doc', { refId: 'ref:ref_0123456789abcdef' });
     await ep.list();
     await ep.attach({ doc: 'ref:ref_fedcba9876543210', name: 'y' });
-    await ep.detach('att_1', false);
+    await ep.detach('att_1');
   } finally {
     globalThis.fetch = orig;
   }
   assert.equal(calls[0][0], '/api/docs/attachments?ref=ref%3Aref_0123456789abcdef');
   assert.deepEqual(JSON.parse(calls[1][1]), { ref: 'ref:ref_0123456789abcdef', doc: 'ref:ref_fedcba9876543210', name: 'y', noEmbed: true });
-  assert.deepEqual(JSON.parse(calls[2][1]), { ref: 'ref:ref_0123456789abcdef', attachment: 'att_1', purge: false });
+  assert.deepEqual(JSON.parse(calls[2][1]), { ref: 'ref:ref_0123456789abcdef', attachment: 'att_1' });
 });

@@ -17,6 +17,12 @@
   border-bottom:1px solid color-mix(in srgb, var(--mdw-accent,#2F6F5E) 40%, transparent);
 }
 .nx-intro-link-main:hover{background:var(--mdw-accent-soft,#E8F2EE)}
+/* 未编写态（组 / 仓库还没有介绍文档）：仍是同一行，主链接改虚线底提示「点这里写第一篇」 */
+.nx-intro-link-main.is-empty{
+  color:var(--ink-2,#4B515A);
+  border-bottom-style:dashed;
+}
+.nx-intro-link-main:disabled,.nx-intro-btn:disabled{opacity:.6;cursor:default}
 .nx-intro-path{font:400 10.5px ui-monospace,Consolas,monospace;letter-spacing:0;color:var(--faint,#A9AEB4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 头部弹性占位：全局 .grow 是 max-width:340px，不是 flex:1 —— 靠右得自己撑 */
 .nx-intro-spacer{flex:1 1 auto;min-width:0}

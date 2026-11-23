@@ -10,7 +10,7 @@
 // UI 与其对齐：开闸门即清空并禁用上游段。
 import { useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import { Modal as ModalRaw } from '../../components/popup/index.jsx';
+import { Modal as ModalRaw } from '../popup/index.jsx';
 import { titleFromMd } from '../../modules/md/md-parse.js';
 import { reaches as reachesVia } from '../../../../shared/graph.js';
 import type { LocalTask } from '../../types.js';

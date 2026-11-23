@@ -82,16 +82,7 @@ export const renderAttachments = (d: any): string => {
 export const renderAttach = (d: any): string =>
   `已附加 ${d.attachmentId}（${d.kind}）到「${d.ref}」· ${d.area === 'area' ? '附件区（未写正文）' : '正文内嵌'}${d.markdown ? `\n嵌入: ${d.markdown}` : ''}`;
 
-export const renderDetach = (d: any): string => {
-  const head = d.unlinked
-    ? `已解除「${d.ref}」与附件 ${d.attachment} 的关系`
-    : `「${d.ref}」本来就没有引用附件 ${d.attachment}`;
-  const tail = d.purged
-    ? '；资源已删除（含本机字节）'
-    : d.purgeReason === 'in-use'
-      ? '；资源仍被其他任务/文档引用，未删字节'
-      : d.purgeReason === 'file-locked'
-        ? '；文件被占用，未删字节'
-        : '';
-  return head + tail;
-};
+export const renderDetach = (d: any): string => (d.unlinked
+  // #189：只解除关联——不删资源行与字节（清理走库级 GC）
+  ? `已解除「${d.ref}」与附件 ${d.attachment} 的关系（资源留在孤儿池）`
+  : `「${d.ref}」本来就没有引用附件 ${d.attachment}`);

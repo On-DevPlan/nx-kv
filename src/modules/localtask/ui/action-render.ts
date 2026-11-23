@@ -63,19 +63,10 @@ export function renderTaskAttachments(d: RenderInput): string {
 }
 
 export function renderDetach(d: RenderInput): string {
-  const head = d.unlinked
-    ? `已解除主题「${d.name}」#${d.task.id} 与附件 ${d.attachment} 的关系`
+  // #189：只解除关联——不删资源行与字节（清理交给库级 GC），没有 purge 尾巴可报。
+  return d.unlinked
+    ? `已解除主题「${d.name}」#${d.task.id} 与附件 ${d.attachment} 的关系（资源留在孤儿池）`
     : `主题「${d.name}」#${d.task.id} 本来就没有引用附件 ${d.attachment}`;
-  const tail = d.purged
-    ? '；资源已删除（含本机字节）'
-    : d.purgeReason === 'in-use'
-      ? '；资源仍被其他任务/文档引用，未删字节'
-      : d.purgeReason === 'file-locked'
-        ? '；文件被占用，未删字节（关系已解除）'
-        : d.purgeReason === 'not-found'
-          ? '；资源行不存在'
-          : '';
-  return head + tail;
 }
 
 export function renderAdd(d: RenderInput): string {

@@ -138,44 +138,6 @@ function within(root: string | null | undefined, p: string | null | undefined): 
   return b === a || b.startsWith(a.replace(/\/+$/, '') + '/');
 }
 
-export interface DeleteAttachmentResult {
-  removed: boolean;
-  reason?: string;
-  bytesRemoved?: boolean;
-  attachment?: AttachmentView | null;
-}
-
-/**
- * 删除资源行（可选连字节一起删）。仍被任何任务/文档引用时拒绝——关系表是权威，
- * 「解除关系」和「删资源」是两步，不能因为一次 detach --purge 误删别人在用的文件。
- * @returns {{removed:boolean, reason?:string, attachment?:object}}
- */
-export function deleteAttachment(conn: any, id: string | number, {
-  attachmentsRoot, purgeBytes = true,
-}: { attachmentsRoot?: string; purgeBytes?: boolean } = {}): DeleteAttachmentResult {
-  const row = getAttachment(conn, id);
-  if (!row) return { removed: false, reason: 'not-found' };
-  const still = conn.get(
-    `SELECT 1 AS x FROM task_attach WHERE attachment_id = :id
-     UNION ALL SELECT 1 FROM ref_attach WHERE attachment_id = :id LIMIT 1`,
-    { id: row.id }
-  );
-  if (still) return { removed: false, reason: 'in-use', attachment: row };
-  let bytesRemoved = false;
-  if (purgeBytes && row.kind === 'file' && row.localPath && within(attachmentsRoot, row.localPath)) {
-    try {
-      if (existsSync(row.localPath)) {
-        unlinkSync(row.localPath);
-        bytesRemoved = true;
-      }
-    } catch {
-      return { removed: false, reason: 'file-locked', attachment: row };
-    }
-  }
-  conn.run('DELETE FROM attachments WHERE id = :id', { id: row.id });
-  return { removed: true, bytesRemoved, attachment: row };
-}
-
 export function pruneOrphans(conn: any, { attachmentsRoot, dryRun = false }: {
   attachmentsRoot?: string; dryRun?: boolean;
 } = {}): { removed: AttachmentView[]; skipped: AttachmentView[] } {

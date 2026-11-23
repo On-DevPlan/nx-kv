@@ -80,7 +80,6 @@ export {
 } from './attachmentdb/docs.js';
 export {
   archiveAttachmentManifests,
-  deleteAttachment,
   getAttachment,
   listOrphans,
   listRefAttachments,

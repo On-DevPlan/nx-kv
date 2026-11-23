@@ -238,16 +238,10 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
   };
 
   if (!topic && !isGlobal) {
+    // 空态与组页同骨架（#170：落地页不套 .mdw 编辑器外壳；#251：两页空态都走 rp-page）
     return (
-      <div className="mdw">
-        <div className="mdw-main">
-          <div className="mdw-top">
-            <div className="mdw-head">
-              <div className="mdw-title">目录不存在</div>
-              <div className="mdw-path">—</div>
-            </div>
-          </div>
-        </div>
+      <div className="rp-page">
+        <div className="rp-empty">目录不存在（主题可能被删了）</div>
       </div>
     );
   }

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Model } from 'flexlayout-react';
 import { api } from '../../api/client.js';
+import { createDoc } from '../../refs/ops.js';
 import { useWikiNav } from '../../page/doc/index.jsx';
 import type { DocOpenExtra } from '../../page/doc/index.jsx';
 
@@ -67,6 +68,8 @@ export interface IntroApi {
   links: IntroLink[];
   openMain: () => void;
   openDoc: (id: string) => void;
+  /** 没有介绍文档时的一步新建（建完即设为主篇并打开） */
+  createMain: () => Promise<void>;
   reload: () => void;
   canEdit: boolean;
 }
@@ -168,6 +171,27 @@ export function useIntro({ kind, owner, model }: UseIntroArgs): IntroApi {
     [openByDocId, openExtra]
   );
 
+  /**
+   * 没有介绍文档时的一步新建：`createRef` 对「owner 尚无主篇」的仓库 / 组会**直接
+   * 绑成主篇**（docs/service 的 createRef 里 board.doc / repo.doc 为空就写入），
+   * 所以这里不需要再调 promoteToMain。建完立即在主内容区打开，用户接着写正文。
+   *
+   * 本地先把主篇钉上（mainDocId / links），这样宿主数据（repoData.boards）还没刷新时
+   * 页面也不会停在「未编写」；接口下一次请求会再校准一遍。
+   */
+  const createMain = useCallback(async () => {
+    if (!ownerKey) return;
+    const refId = await createDoc({
+      owner: kind === 'board' ? 'group' : 'repo',
+      ...(kind === 'board' ? { group: ownerKey } : { repo: ownerKey }),
+      title: ownerName || label,
+    });
+    const docId = 'ref:' + refId;
+    setMainDocId(docId);
+    setLinks([{ docId, label: ownerName || label, main: true }]);
+    openByDocId(docId, null, openExtra);
+  }, [kind, ownerKey, ownerName, label, openByDocId, openExtra]);
+
   return {
     kind,
     label,
@@ -177,6 +201,7 @@ export function useIntro({ kind, owner, model }: UseIntroArgs): IntroApi {
     links,
     openMain,
     openDoc,
+    createMain,
     reload,
     canEdit: !!mainDocId || !!docRef,
   };

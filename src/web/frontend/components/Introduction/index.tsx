@@ -7,7 +7,9 @@
 //
 // #186：以前这份列表是 DocsModal（模态弹窗），与「更多 → 查看列表」的右侧栏重复。
 // 用户要求「查看列表统一只要右侧边栏，不要 modal 弹窗」→ 弹窗下线，这里只负责开门。
+import { useState } from 'react';
 import { useApp } from '../../app-context.jsx';
+import { useToast } from '../toast/index.jsx';
 import type { Model } from 'flexlayout-react';
 import { useIntro } from './use-intro.js';
 import type { IntroKind, IntroOwner } from './use-intro.js';
@@ -23,11 +25,15 @@ export interface IntroductionProps {
 
 export default function Introduction({ kind, owner, model }: IntroductionProps) {
   const app = useApp();
-  const { label, docRef, links, openMain } = useIntro({ kind, owner, model });
+  const toast = useToast();
+  const { label, docRef, mainDocId, links, openMain, createMain } = useIntro({ kind, owner, model });
+  const [creating, setCreating] = useState(false);
 
-  if (!owner || !docRef) return null;
+  if (!owner) return null;
 
-  // 主篇以「介绍文档集」为准
+  // 主篇以「介绍文档集」为准：owner.docId 只是快路径，接口（/api/boards/:id、
+  // /api/repos/docs）拿到的主篇更实时——新建后哪怕 repoData 还没刷新，这里也会自己切到有主篇态。
+  const hasMain = !!(docRef || mainDocId);
   const mainEntry = links.find((l) => l.main);
   const pathLabel = mainEntry?.label || '文档库';
   const extrasCount = links.filter((l) => !l.main).length;
@@ -45,6 +51,47 @@ export default function Introduction({ kind, owner, model }: IntroductionProps) 
       location: 'right',
     });
   };
+
+  // 还没有介绍文档（组 / 仓库同一条口径）：不留空槽，也不白屏——保持与有主篇时
+  // **同一行结构**，主链接与「＋ 新建」都能一步建出主篇并直接进去写。
+  if (!hasMain) {
+    const start = () => {
+      if (creating) return;
+      setCreating(true);
+      createMain()
+        .then(() => app.refreshRepos?.())
+        .catch((e) => toast(String((e as Error).message || e)))
+        .finally(() => setCreating(false));
+    };
+    return (
+      <div className="nx-intro">
+        <div className="nx-intro-head">
+          <button
+            type="button"
+            className="nx-intro-link-main is-empty"
+            title={`还没有${label}——点这里写第一篇`}
+            disabled={creating}
+            onClick={start}
+          >
+            {creating ? '新建中…' : label}
+          </button>
+          <span className="nx-intro-path mono">未编写</span>
+          <span className="nx-intro-spacer" />
+          <button type="button" className="nx-intro-btn" disabled={creating} onClick={start}>
+            ＋ 新建
+          </button>
+          <button
+            type="button"
+            className="nx-intro-btn"
+            title={`在右侧栏列出${label}的全部文章（也可以在那里新建）`}
+            onClick={openList}
+          >
+            查看详情
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="nx-intro">

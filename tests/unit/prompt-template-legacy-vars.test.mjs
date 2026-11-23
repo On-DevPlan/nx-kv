@@ -64,3 +64,33 @@ test('兜底：用户层模板仍含未知变量时装配回退内置（显式 o
   // #153 契约：开发者显式传入的跨段引用必须仍然报错
   assert.throws(() => assertPluginList(buildPlugins('get', {}, { context: '{{group.note}} 旧模板' })));
 });
+
+test('#185 副本未自定义时跟随内置更新（内置随代码发布变，副本不卡旧版）', async () => {
+  const { openStore } = await import('../../src/core/db/index.js');
+  const { writeSettingRaw } = await import('../../src/core/db/settings.js');
+  const { activeTemplateTextOf, builtinTemplateTextOf } = await import('../../src/modules/promptplug/template-store.js');
+  const builtin = builtinTemplateTextOf('context');
+  assert.ok(builtin.length > 0, '内置模板存在');
+  const db = openStore();
+  // 用户「复制为新模板」但没改：文本 == 内置（只是多了空白差异）
+  writeSettingRaw(db, 'prompt.tpl.context', {
+    activeId: 'u_copy',
+    items: [{ id: 'u_copy', name: '副本', text: builtin.replace(/\n/g, '\n'), createdAt: 1 }],
+  });
+  assert.equal(activeTemplateTextOf('context'), '', '未改动的副本直接跟随内置');
+
+  // 真正自定义过的副本仍然优先
+  writeSettingRaw(db, 'prompt.tpl.context', {
+    activeId: 'u_mine',
+    items: [{ id: 'u_mine', name: '我的', text: '自定义：{{repo.name}}', createdAt: 2 }],
+  });
+  assert.equal(activeTemplateTextOf('context'), '自定义：{{repo.name}}');
+});
+
+test('#185 组主篇正文内嵌进 context 内置模板（repo 无主篇也照样加载组主篇）', async () => {
+  const { builtinTemplateTextOf } = await import('../../src/modules/promptplug/template-store.js');
+  const text = builtinTemplateTextOf('context');
+  assert.match(text, /\{\{#if group\.intro\}\}/, '组主篇正文块');
+  assert.match(text, /\{\{group\.intro\}\}/, '内嵌组主篇');
+  assert.match(text, /组介绍文档：/, '无标题/描述时也给出 ref 取用');
+});

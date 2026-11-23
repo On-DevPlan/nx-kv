@@ -27,7 +27,7 @@ import { dbPath, openStore } from '../../core/db/index.js';
 import { deleteSettingRaw, readSettingRaw, writeSettingRaw } from '../../core/db/settings.js';
 import { tx } from '../../core/db/tx.js';
 import type { DbApi } from '../../core/db/driver.js';
-import { allPluginIds } from './registry.js';
+import { allPluginIds, pluginMeta } from './registry.js';
 import type { TemplateText } from './base.js';
 
 /** 按段键的前缀（导出/清理可据此列举；读取只用精确键）。 */
@@ -280,10 +280,32 @@ export function activateTemplate(segment: string, id: string): SegmentTemplates 
   return cloneSegment(seg);
 }
 
-/** 某段当前**启用模板的正文**（装配时传给插件构造；builtin → '' 用类内默认）。 */
+/** 内置（出厂）模板正文：代码即真相，随发布实时更新。 */
+export function builtinTemplateTextOf(id: string): string {
+  const p = pluginMeta(id);
+  const first = p?.templates?.[0];
+  return first ? String(first.text ?? '') : '';
+}
+
+/** 两份模板是否「实质相同」（忽略空白差异）。 */
+function sameTemplate(a: string, b: string): boolean {
+  const norm = (x: string): string => String(x || '').replace(/\s+/g, ' ').trim();
+  return !!norm(a) && norm(a) === norm(b);
+}
+
+/**
+ * 某段当前**启用模板的正文**（装配时传给插件构造；builtin → '' 用类内默认）。
+ *
+ * #185：**内置模板随代码发布更新**——用户若只是把内置「复制为新模板」却没改过，
+ * 副本文本与新版内置实质相同 → 这里返回 '' 直接跟随内置，不会卡在旧版本上。
+ * 只有真正自定义过的副本才用 `hit.text`。
+ */
 export function activeTemplateTextOf(id: string): string {
   const seg = readSegment(id);
   if (seg.activeId === 'builtin') return '';
   const hit = seg.items.find((t) => t.id === seg.activeId);
-  return hit ? String(hit.text ?? '') : '';
+  if (!hit) return '';
+  const text = String(hit.text ?? '');
+  if (sameTemplate(text, builtinTemplateTextOf(id))) return '';
+  return text;
 }

@@ -14,8 +14,13 @@
 
 〔项目组上下文 · nx〕
 组定位：nx 组按仓库名前缀「nx」自动归组。
-组介绍：nx 组介绍
+〔组介绍 · nx〕
+# nx 组
+
+自研 nx 系列工具链仓库。
+组介绍文档：nx 组介绍
   取用：nx-kv docs get --ref ref_nxgroup01
+
 组内成员：
   - nx-as（D:/DevProjects/my/github/nx-as）
   - nx-rp（D:/DevProjects/my/github/nx-rp）

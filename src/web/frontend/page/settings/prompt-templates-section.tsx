@@ -237,10 +237,6 @@ export default function PromptTemplatesSection() {
               </span>
               <span className='ppt-pill'>{groupLabel(selected.group)} · 第 {selected.order} 位</span>
             </div>
-            <span className='ppt-ed-sub'>
-              {GROUP_HINT[selected.group] || ''}
-              {' · 本段的模板只能引用自己的变量与任务上下文，别的段的数据引用不到'}
-            </span>
           </div>
 
           <PromptTemplateEditor
@@ -250,6 +246,14 @@ export default function PromptTemplatesSection() {
             seg={segTemplates[selected.id]}
             onChanged={() => loadRegistry(() => toast('注册表已刷新'))}
           />
+
+          {/* #185：切换模板 / 启用按钮在上，说明描述在下——先操作再看解释 */}
+          <div className='ppt-ed-desc'>
+            <span className='ppt-ed-sub'>
+              {GROUP_HINT[selected.group] || ''}
+              {' · 本段的模板只能引用自己的变量与任务上下文，别的段的数据引用不到'}
+            </span>
+          </div>
 
           {selected.fields.length > 0 && (
             <div className='ppt-vars' aria-label='该段可用变量'>

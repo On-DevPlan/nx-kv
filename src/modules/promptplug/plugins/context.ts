@@ -107,6 +107,9 @@ function groupHasContent(g: any): boolean {
   if (!g) return false;
   if (g.desc) return true;
   if (g.intro && g.intro.body) return true;
+  // #185：组主篇只有 ref（正文未读 / 没写标题描述）也算有料——否则组上下文整段消失，
+  // 提示词里连「组介绍在哪取」都看不到。
+  if (g.intro && (g.intro.refId || g.intro.path)) return true;
   if (g.docLinks && g.docLinks.length) return true;
   return !!(g.refRepos && g.refRepos.length);
 }
@@ -204,10 +207,16 @@ const BUILTIN: TemplateText = {
 {{#if group.desc}}
 组定位：{{group.desc}}
 {{/if}}
-{{#if group.introRefId}}
-组介绍：{{#if group.introDesc}}{{group.introDesc}}{{else}}（无描述）{{/if}}
-  取用：nx-kv docs get --ref {{group.introRefId}}
+{{#if group.intro}}
+〔组介绍 · {{group.name}}〕
+{{group.intro}}
 {{/if}}
+{{#if group.introRefId}}
+组介绍文档：{{#if group.introDesc}}{{group.introDesc}}{{else}}（无标题 / 描述，按 ref 取全文）{{/if}}
+  取用：nx-kv docs get --ref {{group.introRefId}}
+{{else}}{{#if group.intro}}{{else}}
+组介绍：无（组主篇与 repo 主篇独立加载——repo 没主篇不影响这里，组有主篇时请补 ref）
+{{/if}}{{/if}}
 {{#if group.peers}}
 组内成员：
 {{#each group.peers}}

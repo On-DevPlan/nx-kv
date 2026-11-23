@@ -49,7 +49,7 @@ const GROUP_CTX = {
   ],
 };
 
-test('context 默认模板：只内嵌项目主篇；组介绍 / 其余文档只给 desc + 取用指令', async () => {
+test('context 默认模板：项目主篇与组主篇都内嵌正文；其余文档给 title/desc + 取用指令', async () => {
   const ctx = await ctxOf(GROUP_CTX, { task: { id: 3, text: '# 改登录页' }, cwd: 'D:/work/alpha' });
   const out = renderCtx(ctx);
   assert.match(out, /〔项目介绍 · alpha〕/);
@@ -60,15 +60,17 @@ test('context 默认模板：只内嵌项目主篇；组介绍 / 其余文档只
   assert.match(out, /nx-kv docs get --ref ref_qa/);
   assert.match(out, /〔项目组上下文 · nx系列〕/);
   assert.match(out, /组定位：nx 工具链组合/);
-  assert.match(out, /组介绍：组介绍描述/);
+  // #185：组主篇正文也内嵌（与项目主篇独立加载，repo 无主篇不影响组）
+  assert.match(out, /〔组介绍 · nx系列〕/);
+  assert.match(out, /本机 nx- 前缀工具链的组合/, '组主篇正文内嵌');
+  assert.match(out, /组介绍文档：组介绍描述/);
   assert.match(out, /nx-kv docs get --ref ref_group/);
   assert.match(out, /- waitgoal\n/, '组文档按 title 展示');
   assert.match(out, /waitgoal 设计/, '组文档副行是 desc');
   assert.match(out, /nx-kv docs get --ref ref_wait/);
   assert.match(out, /组内成员：/);
   assert.match(out, /- beta（D:\/repos\/beta）/, '成员行只剩名字与路径（组内描述已移除）');
-  // 组介绍正文不再内嵌（只有项目主篇内嵌）；也不再出现任何路径
-  assert.doesNotMatch(out, /本机 nx- 前缀工具链的组合/);
+  // 本地 md 路径不进提示词（正文已内嵌，路径本身不泄漏）
   assert.doesNotMatch(out, /C:\/docs\//);
 });
 

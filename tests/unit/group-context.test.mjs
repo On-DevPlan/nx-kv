@@ -72,8 +72,8 @@ test('组上下文封装：交付文本带组概念/组介绍引导/兄弟成员
   assert.match(ins, /项目组上下文/);
   assert.match(ins, /nx系列/);
   assert.match(ins, /nx 工具链组合/, '组描述');
-  // v8：组介绍按 refId 定位（取用指令），组级补充文档按 desc + refId 取用
-  assert.match(ins, /组介绍：nx系列/, '组介绍引导行');
+  // v8：#185 起组主篇正文内嵌（〔组介绍 · 组名〕块），refId 引导行改为「组介绍文档：」
+  assert.match(ins, /〔组介绍 · nx系列〕|组介绍文档：/, '组介绍引导行');
   assert.match(ins, /nx 工具链组合/, '组定位');
   assert.match(ins, /nx-kv docs get --ref ref_/, '组介绍 / 组文档按 refId 取用');
   // 组内描述 note 已随模板上下文清理移除：位置行与成员描述不再出现

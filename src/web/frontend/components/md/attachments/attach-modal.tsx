@@ -12,6 +12,7 @@ import type { ClipboardEvent, ComponentType, ReactNode } from 'react';
 import { Modal } from '../../popup/index.jsx';
 import { api } from '../../../api/client.js';
 import { clipboardFiles, droppedFiles, readableName, uploadOne } from '../../attach/upload.js';
+import { filterTasks } from '../../../modules/board/task-search.js';
 import StatusTag from '../../status-tag/index.jsx';
 import {
   attachBodyOf,
@@ -310,11 +311,10 @@ export default function AttachModal({
   };
 
   const taskList = useMemo(() => {
-    const q = taskSearch.trim().toLowerCase();
-    return taskOptions
-      .filter((t) => String(t.id) !== String(hostId))
-      .filter((t) => (q ? `${t.id} ${t.text || ''}`.toLowerCase().includes(q) : true))
-      .slice(0, 12);
+    // #183：任务搜索与 topic 页共用 modules/board/task-search.ts 的同一份引擎
+    // （空格分词 AND / 剥 frontmatter / 通配 / 编号前缀），弹窗不再自己写 includes。
+    const pool = taskOptions.filter((t) => String(t.id) !== String(hostId));
+    return filterTasks(pool, taskSearch).slice(0, 12);
   }, [taskOptions, taskSearch, hostId]);
   const refList = useMemo(() => {
     const q = refSearch.trim().toLowerCase();

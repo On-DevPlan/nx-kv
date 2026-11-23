@@ -58,7 +58,7 @@ test('docs attach --no-embed：本机图片落附件区，可查本地路径', a
   assert.ok(existsSync(a.localPath), '应带真实本地路径');
 });
 
-test('docs detach：只解除关系；--purge 无人引用时删行与字节', async () => {
+test('#189 docs detach 只解除关联：资源行与字节都留在孤儿池', async () => {
   const refId = 'ref_aaaaaaaaaaaaaaaa';
   const src = join(sb, '回收.pdf');
   writeFileSync(src, '%PDF');
@@ -68,15 +68,13 @@ test('docs detach：只解除关系；--purge 无人引用时删行与字节', a
 
   const d1 = await action('docs.detach').run({ ref: docId(refId), attachment: r.attachmentId });
   assert.equal(d1.unlinked, 1);
-  assert.equal(d1.purged, false);
-  assert.ok(getDb().get('SELECT id FROM attachments WHERE id = :id', { id: r.attachmentId }));
-  assert.ok(existsSync(bytes), '默认不删字节');
+  assert.ok(getDb().get('SELECT id FROM attachments WHERE id = :id', { id: r.attachmentId }), '资源行保留');
+  assert.ok(existsSync(bytes), '字节保留——移除不等于删资源');
 
+  // 重新挂载可复用同一资源行（孤儿池可用）
   await action('docs.attach').run({ ref: docId(refId), fileId: r.attachmentId, noEmbed: true });
-  const d2 = await action('docs.detach').run({ ref: docId(refId), attachment: r.attachmentId, purge: true });
-  assert.equal(d2.purged, true);
-  assert.ok(!getDb().get('SELECT id FROM attachments WHERE id = :id', { id: r.attachmentId }));
-  assert.ok(!existsSync(bytes), 'purge 删除本机字节');
+  const again = await action('docs.attachments').run({ ref: docId(refId) });
+  assert.equal(again.attachments.filter((x) => x.id === r.attachmentId).length, 1);
 });
 
 test('docs attach（默认嵌入）：追加正文并落 inline 关系', async () => {

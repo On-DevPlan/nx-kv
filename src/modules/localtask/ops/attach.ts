@@ -526,8 +526,8 @@ export interface DetachTaskAttachmentOptions {
 /**
  * 解除任务与一条资源的关系（CLI `localtask detach`）。
  *
- *   --only-unlink（默认）：只删 task_attach 边，资源与字节保留（可能进孤儿池）；
- *   --purge            ：先解除关系，再在「没有任何任务/文档还在用」时删资源行与字节。
+ * #189：**只有一种行为**——只删 task_attach 边，资源行与字节一律保留（进孤儿池，
+ * 可被重新挂载）。资源清理统一交给库级 GC（`file prune`），这里不做任何删除。
  *
  * 关系表是权威：解除后这条资源不再出现在任务附件清单里，但正文里若仍有内嵌，
  * 下次正文同步会把 inline 边重新写回来（这是正文明示的引用，不算丢）。

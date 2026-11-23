@@ -2,6 +2,44 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.66.3] - 2026-11-23 附件挂参考仓库 + 内部资源强制访问 + 移除只解除关联（#183–#189 / #251）
+
+### Added
+
+- **附件支持参考仓库（kind=`repo`）**：`localtask attach --repo <key|路径|名称>`、
+  面板「添加附件」新增「关联参考仓库」区块。附件是**登记指针**（不 clone / 不复制），
+  行内 meta 带 `repoKey / name / desc / repoType / localPath / branch / docs[]`，
+  按 repo key 去重（同一仓库重挂不建新行）；未登记仓库明确报错，不退化成 folder。
+- **内部资源强制访问**（task / ref / repo）：附件段先声明「其中 N 个是系统内部资源——
+  必须被实际访问：任务读正文、文档读全文、仓库读源码；未访问不得直接开始实现或交付」，
+  再逐条给出可执行的 `access`（含 localPath 与命令）；参考仓库额外强制
+  「实现必须参考该仓库源码，禁止凭记忆臆测 API / 文件结构」。
+- 模板变量新增 `{{mandatory}}` / `{{access}}` / `{{attach.mandatoryCount}}` /
+  `{{attach.hasMandatory}}` 与 `{{repo.localPath}}` / `{{repo.cmd}}` 等，设置页可检索。
+- 组页记住归属项目（#187）：按组记录上次选择（localStorage），下次进去直接用。
+
+### Changed
+
+- **schema v15**：`attachments.kind` 新增 `repo`（`target_kind` 同步），12-step 重建 + 关系表快照回填。
+- dst：`dir` / `group` 任务页合并为同一份模板组件（#251），组页补批量与行尾菜单；
+  组 / 项目介绍行在无文档时不再整块消失。
+- 附件弹窗「关联任务（本主题）」搜索收口到 `modules/board/task-search`，
+  与 topic 页同一引擎（分词 AND / 剥 frontmatter / 通配 / 编号前缀）。
+- 删除「系统提示词追加方式」选择：系统提示词**固定 XML 区块**，`plain` 直拼模式与
+  `--append-mode`、`APPEND_MODES` 全部下线。
+- 侧栏「…还有 N 条」改为**点一次加载 10 条**（默认 8 条），不再一次铺开全部。
+- 内置模板更新可传导：启用的用户副本若与当前内置实质相同（只是复制没改过）→ 跟随内置；
+  组主篇正文内嵌（`{{group.intro}}`），repo / group 主篇独立加载。
+
+### Fixed
+
+- 旧提示词模板引用已删除的 `group.note` 导致模板功能整体不可用（读时惰性迁移为
+  `group.introDesc` + 装配兜底）。
+- **附件移除只解除关联**（#189）：删掉 `purge` 能力（ops / action / 契约 / 前端弹窗 /
+  render 文案 / 死代码 `deleteAttachment`）。此前「连资源一起删」实际只对 file 删仓内字节，
+  其余 kind 只删指针行，与文案承诺不一致；清理统一交给库级 GC（`file prune`：
+  只删无引用行，file 只删附件根目录内字节，repo 指针按 key 幂等重建，实体表不碰）。
+
 ## [0.66.2] - 2026-11-23 修复旧提示词模板数据不兼容导致模板功能整体不可用
 
 ### Fixed

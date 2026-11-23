@@ -11,7 +11,6 @@ import { docIdOfLocator } from '../../components/md/attachments/attach-common.js
 import { openPanel } from '../../workspace.js';
 import { getMdfileContent } from './api.js';
 import { renderMarkdownHtml } from '../../modules/md/md-render.js';
-import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import type { LocalTask, LocalTopic } from '../../types.js';
 import { fmtSec } from './task-utils.js';
 import type { AppSlice, ChainApiItem, DocState, GoalLogState } from './task-utils.js';
@@ -41,7 +40,6 @@ interface DockPanelProps {
   task: string;
   topic: LocalTopic | null;
   topicKey: string;
-  isGlobal: boolean;
   doc: DocState;
   id: string;
   model: Model | null;
@@ -137,7 +135,7 @@ export function DockPanel({
   dockOpen, dockTab, dockH, dockRef, dockMax,
   showDockTab, onDockDragStart, toggleDockMax, setDockOpen,
   canShowGoalLog, goalLog, openGoalLog,
-  isDraft, task, topic, topicKey, isGlobal, doc, id, model, app,
+  isDraft, task, topic, topicKey, doc, id, model, app,
   refreshLocal, markDirty, saveDoc, persistAtt,
   attachAreaRef, reviewBarRef, reviewSumRef,
   taskRow, ackOpen, setAckOpen, ackOverflow, ackLong, ackHtml,
@@ -240,8 +238,7 @@ export function DockPanel({
               ref={attachAreaRef}
               host="task"
               hostId={Number(task)}
-              hostKey={isGlobal ? GLOBAL_KEY : undefined}
-              hostCwd={isGlobal ? undefined : topic.cwd}
+              hostCwd={topic.cwd}
               allow={{ file: true, url: true, folder: true, task: true, ref: true, repo: true }}
               taskOptions={(topic.tasks || []).map((t: LocalTask) => ({ id: t.id, text: t.text, status: t.status }))}
               onChanged={refreshLocal}

@@ -18,7 +18,7 @@ import { ChainView } from './chain-view.js';
 import type { ChainViewTarget } from './chain-view.js';
 import { Icon } from '../../components/icons.jsx';
 import { MenuPortal, openMenuAt, useMenu } from '../../components/md/shell/tool-bar.js';
-import { GLOBAL_KEY, isGroupTask } from '../../modules/board/board-view.js';
+import { isGroupTask } from '../../modules/board/board-view.js';
 import { parseFrontmatter, taskToProgress } from '../../modules/md/md-parse.js';
 import { hitQuery } from '../../modules/md/progress-search.js';
 import { closeRightSidebar, findOpenPanel } from '../../workspace.js';
@@ -58,7 +58,6 @@ interface TopicTask extends LocalTask {
 /** 队列主题（/api/localtasks 的 rows[]）。 */
 interface TopicRow extends LocalTopic {
   cwd?: string;
-  isGlobal?: boolean;
   repo?: { key?: string };
   tasks?: TopicTask[];
 }
@@ -110,13 +109,9 @@ export default function ProgressPanel({
 }) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
-  const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
   // rows 来自 /api（外部边界）：按本面板真正读的字段收窄一次
   const allRows = (rows || []) as TopicRow[];
-  const topic = useMemo(() => {
-    if (isGlobal) return allRows.find((r) => r.isGlobal) || null;
-    return allRows.find((r) => r.key === dirKey) || null;
-  }, [allRows, dirKey, isGlobal]);
+  const topic = useMemo(() => allRows.find((r) => r.key === dirKey) || null, [allRows, dirKey]);
 
   // #85 两种走向：目录/全局模式是**项目走向**——组任务归组页管（组模式另一条
   // 分支整组口径收成员队列，不受此影响）。#245：进程列表显示**全部任务**
@@ -157,7 +152,7 @@ export default function ProgressPanel({
     };
     const out: ProgressCard[] = [];
     for (const r of allRows) {
-      if (!r || r.isGlobal || !Array.isArray(r.tasks)) continue;
+      if (!r || !Array.isArray(r.tasks)) continue;
       const mk = r.repo && r.repo.key;
       const member = (mk && memberByKey.get(mk)) || null;
       const inGroupQueue = !!member; // 成员队列 → 整组口径；否则走旧口径兜底
@@ -290,7 +285,7 @@ export default function ProgressPanel({
         }
       } else {
         const ids = pickedCards.map((c) => c.id);
-        const res = await removeTasks({ ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }), ids });
+        const res = await removeTasks({ cwd: topic?.cwd, ids });
         n = res?.count ?? ids.length;
         miss = res?.missing?.length || 0;
       }
@@ -334,7 +329,7 @@ export default function ProgressPanel({
   const openChainView = (c: ProgressCard) => {
     setChainView({
       id: Number(c.taskId ?? c.id),
-      key: (group ? c.topicKey : (isGlobal ? GLOBAL_KEY : topic?.key)) || undefined,
+      key: (group ? c.topicKey : topic?.key) || undefined,
       cwd: (group ? c.topicCwd : topic?.cwd) || undefined,
     });
   };
@@ -354,7 +349,7 @@ export default function ProgressPanel({
     try {
       const res = group
         ? await removeTasks({ key: c.topicKey, cwd: c.topicCwd, ids: [id] })
-        : await removeTasks({ ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }), ids: [id] });
+        : await removeTasks({ cwd: topic?.cwd, ids: [id] });
       const dk = group ? c.topicKey : dirKey;
       const page = model
         ? (findOpenPanel(model, 'page', { dirKey: dk, task: String(id) }) as { getId: () => string } | null)
@@ -408,7 +403,7 @@ export default function ProgressPanel({
       </MenuPortal>
       <div className="mdw-prog-h">
         <span className="t">
-          {group ? `${group.name} · 任务进程` : topic?.name || (isGlobal ? '全局任务池' : '任务进程')}
+          {group ? `${group.name} · 任务进程` : topic?.name || '任务进程'}
         </span>
         {cards.length > 0 && (
           <button

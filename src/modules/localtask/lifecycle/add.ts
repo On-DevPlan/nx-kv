@@ -14,7 +14,6 @@
 //
 // 至此三个任务动词（领 get / 等 wait / 派 add）同构：action 层一律一行委托，
 // 编排住在本域（add.js / update.js），队列本体只有 service.js 一处。
-import { badInput } from '../../../core/errors.js';
 import { addTask, normalizeCwd } from '../service.js';
 import { applyGroupFields, parseFrontmatter } from '../../../shared/frontmatter.js';
 import { resolveGroupTarget } from '../ops/board-target.js';
@@ -47,7 +46,6 @@ export interface SubmitTaskOptions {
  * 派任务统一入口。
  *
  * 落点与归属的口径（**归属决定落点，目录不参与归属推断**）：
- *   1. 显式 `--global`                → 全局共享池（--cwd 被忽略；与 --board/--project 互斥）；
  *   2. 显式 `--board` / `--project`   → 严格口径：resolveGroupTarget 校验（组要配项目、
  *                                      项目须是组成员、--cwd 与 --project 不一致直接报错），
  *                                      frontmatter 统一落字段，落点 = 项目登记路径；
@@ -63,7 +61,6 @@ export async function submitTask({
   text: rawText,
   cwd: rawCwd,
   summary,
-  global: toGlobal = false,
   board,
   project,
   duration,
@@ -80,9 +77,6 @@ export async function submitTask({
   const timegoal = duration || goalPrompt ? { duration, prompt: goalPrompt } : undefined;
 
   if (board || project) {
-    if (toGlobal) {
-      throw badInput('--global 不能与 --board/--project 同时给：全局池没有工作组/项目归属');
-    }
     // --cwd **只在显式给了**时才参与校验（须与 --project 指向同一个项目）。
     // 没给就留空：不能拿「进程当前目录」去跟项目比对——在别的仓库里执行
     // `--project alpha` 是完全正常的用法（给了 --project 就不用再给 --cwd）。
@@ -105,8 +99,8 @@ export async function submitTask({
         text = applyGroupFields(text, target.fields as Record<string, unknown>);
         // 落点跟到解析出的项目队列——**只在调用方没显式给 cwd 时**：显式意图优先，
         // 不静默挪窝（与严格口径「cwd 与 project 冲突直接报错」同一精神，fail-open 只是
-        // 不拦任务，不是替调用方改主意）；--global 时落点本来就不看 cwd，不挪。
-        if (target.cwd && !rawCwd && !toGlobal) cwd = target.cwd;
+        // 不拦任务，不是替调用方改主意）。
+        if (target.cwd && !rawCwd) cwd = target.cwd;
       } catch {
         /* 保留原正文与调用方落点 */
       }
@@ -118,7 +112,6 @@ export async function submitTask({
     text,
     cwd,
     summary,
-    global: toGlobal,
     timegoal,
     blockBy,
     blocksFollowing: !!blocksFollowing,

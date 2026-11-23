@@ -15,11 +15,8 @@
 // 迁移时旧 key 只写进 `topics.ext.ext_legacy_key` 作取证，不参与任何查询。
 import crypto from 'node:crypto';
 
-/** 全局池的固定 key：跨目录共享队列，cwd 恒为空串。 */
-export const GLOBAL_TOPIC_KEY = '__GLOBAL__';
-
-/** 全局池的 cwd（`ux_topics_cwd_group` 里 `cwd COLLATE NOCASE` → 空串只容得下一行）。 */
-export const GLOBAL_TOPIC_CWD = '';
+// #190：**全局池已删除**。队列一律绑定真实目录——没有 cwd 的调用方必须先解析出
+// 当前目录（CLI 层用 process.cwd()），不允许再出现「无目录共享池」这种形态。
 
 /**
  * `(cwd, groupKey)` → 外部寻址串。
@@ -27,13 +24,13 @@ export const GLOBAL_TOPIC_CWD = '';
  * 大小写折叠（`toLowerCase`）与 schema 里 `ux_topics_cwd_group` 的 `COLLATE NOCASE`
  * 同口径：D:/Work/Web 与 D:/work/web 必须算出同一个 key，否则「同一条队列两个名字」。
  *
- * @param cwd 本机目录（全局池传空串）
+ * @param cwd 本机目录（必填——#190 起不再有全局池）
  * @param groupKey 组上下文 key（无组上下文传空串/null）
- * @returns 全局池恒为 `__GLOBAL__`；其余为 16 位 sha1 前缀
+ * @returns 16 位 sha1 前缀
  */
 export function topicKeyOf(cwd: unknown, groupKey: unknown = ''): string {
   const dir = String(cwd ?? '');
-  if (dir === '') return GLOBAL_TOPIC_KEY;
+  if (dir === '') throw new Error('topicKeyOf: 需要 cwd（#190 起全局池已删除，队列必须绑定目录）');
   const group = String(groupKey ?? '');
   return crypto
     .createHash('sha1')

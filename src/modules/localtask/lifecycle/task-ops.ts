@@ -1,14 +1,14 @@
 // （#54 自 service.js 拆出）单条任务的查/增/改：getTask、addTask（waiter 唤醒链 +
-// 全局池 FIFO 投递 + ignoredCwd 如实回带）、updateTask（正文/时间目标/DAG 依赖/改归属搬家）。
+// 投递与唤醒）、updateTask（正文/时间目标/DAG 依赖/改归属搬家）。
 import { badInput, notFound } from '../../../core/errors.js';
 import { parseFrontmatter, preserveFrontmatter } from '../../../shared/frontmatter.js';
 import { sanitizeTaskGoal } from '../../goals/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from '../dag.js';
 import { MAX_TEXT, normalizeSummary, normalizeText } from '../infra/store-io.js';
 import { openLocaltaskStore as openStore, topics as topicsRepo, tasks as tasksRepo, links as linksRepo, txw as tx, db } from '../infra/repo/index.js';
-import { GLOBAL_KEY, GLOBAL_NAME, GLOBAL_CWD, isGlobalKey, normalizeCwd, resolveTaskKey, topicKeyFor } from '../paths.js';
+import { normalizeCwd, resolveTaskKey, topicKeyFor } from '../paths.js';
 import { normalizeTask, foreignResolver, queueRelationsOf, relocateTask, resolveForkRef } from './task-view.js';
-import { takeTopicWaiter, takeGlobalWaiter } from '../waiters.js';
+import { takeTopicWaiter } from '../waiters.js';
 import { presence as presenceRepo } from '../infra/repo/index.js';
 
 /** 任务寻址入参（--cwd/--key + --id）。 */
@@ -77,15 +77,13 @@ export async function getTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = {}
 }
 
 /**
- * 向某主题（工作目录）的队列回填任务；global=true 时投递到全局主题（共享池）。
- * 若本进程正有 wait 在等该主题/全局池 → 直接投递并唤醒；否则入队堆积。
- * 全局投递的唤醒链：显式 wait 全局 key 者（罕见）→ globalWaiters FIFO → 入队。
+ * 向某主题（工作目录）的队列回填任务（#190 起只有目录队列，没有全局共享池）。
+ * 若本进程正有 wait 在等该主题 → 直接投递并唤醒；否则入队堆积。
  */
 export async function addTask({
   cwd: rawCwd,
   summary: rawSummary,
   text,
-  global: toGlobal = false,
   timegoal: rawGoal,
   blockBy: rawBlockBy,
   blocksFollowing = false,
@@ -103,22 +101,9 @@ export async function addTask({
   }
 
   openStore();
-  let key: string;
-  let cwd: string;
-  let t: { id: number; name: string; summary?: string };
-  if (toGlobal) {
-    // 全局主题：cwd 恒空、名字固定；--cwd 显式给出也忽略（--global 优先）。
-    // 但**不静默**：被忽略的 cwd 会在返回值里带出来（ignoredCwd），
-    // 由 CLI/面板如实告诉用户"你给的目录没生效，任务进了全局池"。
-    // （gh/kubectl 遇到矛盾参数会直接报错；这里为了不打断既有脚本，
-    //   选择"照做 + 明说"，而不是改语义。）
-    key = GLOBAL_KEY;
-    cwd = GLOBAL_CWD;
-    t = topicsRepo.ensureTopic(key, { cwd, name: GLOBAL_NAME });
-  } else {
-    ({ key, cwd } = normalizeCwd(rawCwd));
-    t = topicsRepo.ensureTopic(key, { cwd });
-  }
+  // #190：只有目录队列。rawCwd 缺省时由 normalizeCwd 落到当前进程工作目录。
+  const { key, cwd } = normalizeCwd(rawCwd);
+  const t: { id: number; name: string; summary?: string } = topicsRepo.ensureTopic(key, { cwd });
   const tView = topicsRepo.getTopic(key)!;
 
   // 编号只在插入的同一个事务里取（insertTask 用 UPDATE ... RETURNING）。
@@ -165,26 +150,7 @@ export async function addTask({
   const probe = normalizeTask({ ...taskDraft, id: provisionalId }, tView.tasks, readyOpts);
   const canDeliver = isReadyToClaim(probe, tView.tasks, readyOpts);
 
-  if (canDeliver && toGlobal) {
-    const direct = takeTopicWaiter(GLOBAL_KEY); // 显式等全局 key 的（罕见路径）
-    if (direct) {
-      wakeMeta = { summary: tView.summary || '', from: 'global', byKey: GLOBAL_KEY, byName: GLOBAL_NAME, wake: direct.resolve };
-      delivered = true;
-    } else {
-      const gw = takeGlobalWaiter(); // FIFO：最早阻塞的先领
-      if (gw) {
-        wakeMeta = {
-          // roundSummary 记领取方 wait 的现状；claimedBy 记领取方是谁
-          summary: gw.summary,
-          from: 'global',
-          byKey: gw.by?.key,
-          byName: gw.by?.name,
-          wake: gw.onTask,
-        };
-        delivered = true;
-      }
-    }
-  } else if (canDeliver) {
+  if (canDeliver) {
     const waiter = takeTopicWaiter(key);
     if (waiter) {
       wakeMeta = { summary: tView.summary || '', from: 'local', byKey: key, byName: tView.name, wake: waiter.resolve };
@@ -245,7 +211,7 @@ export async function addTask({
   if (wakeMeta && wakeMeta.wake) wakeMeta.wake(normalizeTask(task));
 
   // DAG 单一写路径：闸门/依赖经 Mutator 投影（fail-open，不挡入队）
-  if (!toGlobal && (task.blocksFollowing || (task.blockBy && task.blockBy.length))) {
+  if (task.blocksFollowing || (task.blockBy && task.blockBy.length)) {
     try {
       const { syncNewTaskDag } = await import('../infra/writes.js');
       await syncNewTaskDag(key, task);
@@ -260,10 +226,6 @@ export async function addTask({
     cwd,
     name: t.name,
     summary: t.summary,
-    isGlobal: toGlobal,
-    // --global 与 --cwd 同时给时，cwd 被忽略（--global 优先）。不静默：
-    // 把被忽略的那个带出来，让调用方能如实告诉用户"任务进了全局池，不是你给的目录"。
-    ignoredCwd: toGlobal && rawCwd && String(rawCwd).trim() ? String(rawCwd).trim() : '',
     // key 一并回带：附件标注按 (topic.key, seq) 查 task_attach（与 getTask 同一口径）。
     task: { ...normalizeTask(task), key },
     delivered,
@@ -360,7 +322,7 @@ export async function updateTask({
           );
         }
         // 搬家必须与后面的正文/目标写入同事务：搬到一半再抛错，就是「任务凭空消失」。
-        if (movable && !isGlobalKey(key)) {
+        if (movable) {
           const movedTo = relocateTask(t, want, moveTo);
           if (movedTo) {
             host = movedTo.topic;
@@ -444,7 +406,7 @@ export async function updateTask({
  *   - 不写 forkOf / forkKind——克隆没有「从哪来」的语义，就是拿内容当模板开新活；
  *   - 不继承 timegoal / blockBy / blocksFollowing——约束跟着活走，克隆是新的一件；
  *   - 源任务一个字不动（不归档、不改状态）——clone 之后两条并存。
- * 落点：同主题（全局任务仍进全局池）。正文带 frontmatter 时走 addTask 既有口径
+ * 落点：同主题。正文带 frontmatter 时走 addTask 既有口径
  * （归属 fail-open、落点跟项目队列）。
  */
 export async function cloneTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = {}): Promise<Record<string, any>> {
@@ -456,11 +418,9 @@ export async function cloneTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = 
   if (!t) throw notFound('主题不存在: ' + key);
   const src = (t.tasks || []).find((x: any) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
   if (!src) throw notFound('任务不存在或已删除: #' + want);
-  const toGlobal = isGlobalKey(key);
   const res = await addTask({
     text: src.text,
-    global: toGlobal,
-    cwd: toGlobal ? undefined : t.cwd || rawCwd,
+    cwd: t.cwd || rawCwd,
   });
   return { ...res, cloned: true, from: { key, id: want } };
 }
@@ -482,11 +442,9 @@ export async function forkTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = {
   if (!t) throw notFound('主题不存在: ' + key);
   const src = (t.tasks || []).find((x: any) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
   if (!src) throw notFound('任务不存在或已删除: #' + want);
-  const toGlobal = isGlobalKey(key);
   const res = await addTask({
     text: src.text,
-    global: toGlobal,
-    cwd: toGlobal ? undefined : t.cwd || rawCwd,
+    cwd: t.cwd || rawCwd,
     // 跨主题也拼成 'key:id'，父任务定位与 reopen 同一条链路
     forkOf: `${key}:${want}`,
     forkKind: 'fork',

@@ -141,7 +141,7 @@ test('settings：localtask 5 项 + config 4 项偏好进库，token 等凭据绝
   }
 });
 
-test('真实形状夹具（18 队列 / 75 任务）：done=62 / claimed=5 / pending=8（D1 判据红线）', async () => {
+test('真实形状夹具（17 队列 / 59 任务；#190 全局池那 1 队列 16 任务不迁移）：done=46 / claimed=5 / pending=8（D1 判据红线）', async () => {
   const store = await createTestStore({ open: false });
   try {
     const data = readFixtureJson('legacy-real-shape.json');
@@ -150,9 +150,10 @@ test('真实形状夹具（18 队列 / 75 任务）：done=62 / claimed=5 / pend
     const dist = Object.fromEntries(
       store.db.all('SELECT status, count(*) AS c FROM tasks GROUP BY status').map((r) => [r.status, r.c])
     );
-    assert.deepEqual(dist, { done: 62, claimed: 5, pending: 8 });
-    assert.equal(store.db.get('SELECT count(*) AS c FROM tasks').c, 75);
-    assert.equal(store.db.get('SELECT count(*) AS c FROM topics').c, 18);
+    // #190：夹具里 18 队列中含 1 个全局池队列（16 条任务，全是 done）——整行跳过不迁移
+    assert.deepEqual(dist, { done: 46, claimed: 5, pending: 8 });
+    assert.equal(store.db.get('SELECT count(*) AS c FROM tasks').c, 59);
+    assert.equal(store.db.get('SELECT count(*) AS c FROM topics').c, 17);
 
     // 陷阱的机器可检形式：pending 里有的带 roundSummary 键（值空串）。
     // 判据一旦写成 `'roundSummary' in t` 或「非空 → done 全局优先」，这里立刻变红。

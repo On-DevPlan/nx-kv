@@ -33,7 +33,6 @@ import {
   saveDoc,
   scopeOf,
 } from '../../modules/md/doc-store.js';
-import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import type { AttachAreaHandle } from '../../components/md/attachments/attach-area.jsx';
 import type { LocalTask, LocalTopic, TemplatesApi } from '../../types.js';
 import type {
@@ -65,7 +64,6 @@ interface UseTaskActionsArgs {
   taskRow: LocalTask | null;
   topicKey: string;
   topic: LocalTopic | null;
-  isGlobal: boolean;
   boardCtx: BoardCtx | null;
   docFm: DocFm;
   groupAnchored: boolean;
@@ -91,7 +89,7 @@ interface UseTaskActionsArgs {
 }
 
 export function useTaskActions({
-  doc, id, isDraft, task, taskRow, topicKey, topic, isGlobal, boardCtx, docFm,
+  doc, id, isDraft, task, taskRow, topicKey, topic, boardCtx, docFm,
   groupAnchored, groupId, rows, app, model, tabId, tpl, refreshLocal,
   markDirty, histRef, editorApiRef, attachAreaRef,
   setDirty,
@@ -141,7 +139,7 @@ export function useTaskActions({
     const fm = parseFrontmatter(doc.body);
     const b = composeText(t, doc.body);
     const projTopic = fm.project
-      ? rows.find((r) => !r.isGlobal && r.repo && r.repo.key === fm.project)
+      ? rows.find((r) => r.repo && r.repo.key === fm.project)
       : null;
     const groupSubmit = !!(boardCtx && fm.project &&
       boardCtx.members.some((m) => m.key === fm.project));
@@ -152,8 +150,7 @@ export function useTaskActions({
     }
     if (!isDraft) {
       const res = await patchTaskItem({
-        cwd: isGlobal ? (projTopic ? projTopic.cwd : undefined) : topic?.cwd,
-        key: isGlobal && !projTopic ? GLOBAL_KEY : undefined,
+        cwd: projTopic ? projTopic.cwd : topic?.cwd,
         id: Number(task),
         text: b,
         ...gp,
@@ -195,9 +192,7 @@ export function useTaskActions({
         ? { text: b, board: boardCtx.board.id, project: fm.project }
         : fm.project
           ? { text: b, project: fm.project }
-          : isGlobal
-            ? { global: true, text: b }
-            : { cwd: topic?.cwd, text: b }),
+          : { cwd: topic?.cwd, text: b }),
       ...gp,
       });
     const newId = res?.task?.id ?? res?.id;
@@ -224,18 +219,14 @@ export function useTaskActions({
     }
     toast(`已提交：${slugName(t)}`);
     refreshLocal?.();
-  }), [doc, id, isDraft, task, topicKey, topic, isGlobal, boardCtx, groupAnchored, groupId, rows, app, model, tabId, refreshLocal, histRef, setDirty, composeText, goalPatchOf, guard, toast]);
+  }), [doc, id, isDraft, task, topicKey, topic, boardCtx, groupAnchored, groupId, rows, app, model, tabId, refreshLocal, histRef, setDirty, composeText, goalPatchOf, guard, toast]);
 
   const importMd = useCallback(async (file: File) => {
     const text = await file.text();
     const name = file.name.replace(/\.md$/i, '');
     await guard(async () => {
       const bodyText = text.startsWith('#') ? text : `# ${name}\n\n${text}`;
-      const res = await addTask(
-        isGlobal
-          ? { global: true, text: bodyText }
-          : { cwd: topic?.cwd, text: bodyText },
-      );
+      const res = await addTask({ cwd: topic?.cwd, text: bodyText });
       toast(`已导入：${file.name}`);
       refreshLocal?.();
       const newId = res?.task?.id ?? res?.id;
@@ -244,7 +235,7 @@ export function useTaskActions({
         else app.openPage({ dirKey: topicKey, task: String(newId), name: `#${newId}` });
       }
     });
-  }, [isGlobal, groupAnchored, docFm.project, topic?.cwd, topicKey, groupId, app, refreshLocal, guard, toast]);
+  }, [groupAnchored, docFm.project, topic?.cwd, topicKey, groupId, app, refreshLocal, guard, toast]);
 
   const delTask = useCallback(async () => {
     if (!doc || isDraft) return;
@@ -257,7 +248,7 @@ export function useTaskActions({
     });
     if (!ok) return;
     guard(async () => {
-      await removeTaskItem(isGlobal ? { key: GLOBAL_KEY, id: Number(task) } : { cwd: topic?.cwd, id: Number(task) });
+      await removeTaskItem({ cwd: topic?.cwd, id: Number(task) });
       toast(`已删除「${title}」`);
       // #191：删除后**不拆面板**——maincontent 永远不会被删除。主布局里的任务页
       // 就地导航回父级（组页 / 目录页 / 全局），路由 effect 会用 openPanel 换内容，
@@ -273,14 +264,12 @@ export function useTaskActions({
         if (model && tabId) model.doAction(Actions.deleteTab(tabId));
       } else if (groupAnchored) {
         app.onNavigate('#/group/' + encodeURIComponent(groupId || ''));
-      } else if (isGlobal) {
-        app.onNavigate('#/global');
       } else {
         app.onNavigate('#/dir/' + encodeURIComponent(topicKey || ''));
       }
       refreshLocal?.();
     });
-  }, [doc, isDraft, task, isGlobal, topic, model, tabId, app, groupAnchored, groupId, topicKey, refreshLocal, guard, toast, dialog]);
+  }, [doc, isDraft, task, topic, model, tabId, app, groupAnchored, groupId, topicKey, refreshLocal, guard, toast, dialog]);
 
   // #184：正在跑（claimed）的任务以前在面板上是死路——工具栏连「标为完成」都不渲染，
   // 只能干等 agent 自己回执。现在 claimed 也能收：用户是最终验收方，agent 稍后的 done
@@ -294,7 +283,7 @@ export function useTaskActions({
     if (kind === 'done' ? !canComplete : !canCancel) return;
     guard(async () => {
       const title = doc?.title || `#${task}`;
-      const scope = isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd };
+      const scope = { cwd: topic?.cwd };
       if (kind === 'done') {
         const claimed = taskStatus === 'claimed';
         const who = String(taskRow?.claimedByName || taskRow?.claimedBy || '').trim();
@@ -323,7 +312,7 @@ export function useTaskActions({
       }
       refreshLocal?.();
     });
-  }, [canComplete, canCancel, doc, task, isGlobal, topic, taskStatus, taskRow, refreshLocal, guard, toast, dialog]);
+  }, [canComplete, canCancel, doc, task, topic, taskStatus, taskRow, refreshLocal, guard, toast, dialog]);
 
   // #131：plan（草稿）态开关。任务页「更多」里直接切——
   // 草稿态不进队列（get/wait 领不到），转回待领取才重新排队。
@@ -332,12 +321,12 @@ export function useTaskActions({
     if (!canPlan) return;
     const to = taskStatus === 'plan' ? 'pending' : 'plan';
     guard(async () => {
-      const scope = isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd };
+      const scope = { cwd: topic?.cwd };
       await setPlanStatus({ ...scope, id: Number(task), to });
       toast(to === 'plan' ? `已把 #${task} 转成草稿态（不进队列）` : `已把 #${task} 转回待领取`);
       refreshLocal?.();
     });
-  }, [canPlan, taskStatus, task, isGlobal, topic, guard, toast, refreshLocal]);
+  }, [canPlan, taskStatus, task, topic, guard, toast, refreshLocal]);
 
   const addFiles = useCallback(async (fileList: FileList | File[], opts: { mode?: string } = {}) => {
     if (!doc) return;
@@ -375,8 +364,7 @@ export function useTaskActions({
       saveDoc(id, { body: synced, title: titleFromMd(synced) });
       try {
         await patchTaskItem({
-          cwd: isGlobal ? undefined : topic?.cwd,
-          key: isGlobal ? GLOBAL_KEY : undefined,
+          cwd: topic?.cwd,
           id: Number(task),
           text: synced,
       });
@@ -390,7 +378,7 @@ export function useTaskActions({
       return;
     }
     markDirty();
-  }, [doc, id, isDraft, task, topic, isGlobal, setDirty, refreshLocal, markDirty, composeText, editorApiRef, toast]);
+  }, [doc, id, isDraft, task, topic, setDirty, refreshLocal, markDirty, composeText, editorApiRef, toast]);
 
   /** 「更多 → 新任务」：新草稿**带着当前上下文**（工作组 + 归属项目）。 */
   const newTask = useCallback(() => {
@@ -419,7 +407,7 @@ export function useTaskActions({
       return;
     }
     guard(async () => {
-      const res = await cloneTask(isGlobal ? { id: Number(task) } : { id: Number(task), cwd: topic?.cwd });
+      const res = await cloneTask({ id: Number(task), cwd: topic?.cwd });
       toast(`已克隆为新任务 #${res.task?.id ?? res.id}`);
       refreshLocal?.();
       const newId = res?.task?.id ?? res?.id;
@@ -428,7 +416,7 @@ export function useTaskActions({
         else app.openPage({ dirKey: topicKey, task: String(newId), name: `${(doc?.title || '任务').slice(0, 30)}（克隆）` });
       }
     });
-  }, [isDraft, task, isGlobal, topic, groupAnchored, groupId, topicKey, app, doc, refreshLocal, guard, toast]);
+  }, [isDraft, task, topic, groupAnchored, groupId, topicKey, app, doc, refreshLocal, guard, toast]);
 
   /** 「更多 → Fork 任务」：clone 的原文复制 + 保留源任务链（#67）。 */
   const forkCur = useCallback(() => {
@@ -437,7 +425,7 @@ export function useTaskActions({
       return;
     }
     guard(async () => {
-      const res = await forkTask(isGlobal ? { id: Number(task) } : { id: Number(task), cwd: topic?.cwd });
+      const res = await forkTask({ id: Number(task), cwd: topic?.cwd });
       toast(`已 Fork 为新任务 #${res.task?.id ?? res.id}（保留任务链）`);
       refreshLocal?.();
       const newId = res?.task?.id ?? res?.id;
@@ -446,7 +434,7 @@ export function useTaskActions({
         else app.openPage({ dirKey: topicKey, task: String(newId), name: `${(doc?.title || '任务').slice(0, 30)}（Fork）` });
       }
     });
-  }, [isDraft, task, isGlobal, topic, groupAnchored, groupId, topicKey, app, doc, refreshLocal, guard, toast]);
+  }, [isDraft, task, topic, groupAnchored, groupId, topicKey, app, doc, refreshLocal, guard, toast]);
 
   const openProgress = useCallback(() => {
     const m = model || app.model;
@@ -457,7 +445,7 @@ export function useTaskActions({
       name: '进程',
       config: boardId
         ? { groupKey: boardId, task: task != null ? String(task) : undefined }
-        : { dirKey: topicKey || GLOBAL_KEY, task: task != null ? String(task) : undefined },
+        : { dirKey: topicKey, task: task != null ? String(task) : undefined },
       location: 'right',
     });
   }, [model, app.model, docFm, task, topicKey]);

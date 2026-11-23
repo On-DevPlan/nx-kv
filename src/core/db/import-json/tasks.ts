@@ -1,5 +1,5 @@
 // topics / tasks 阶段：legacy localtasks.json → topics + topic_presence + tasks（含内嵌 timegoal → goals）。
-import { topicKeyOf, GLOBAL_TOPIC_KEY } from '../../topic-key.js';
+import { topicKeyOf } from '../../topic-key.js';
 import { anyTimeMs } from '../time.js';
 import {
   jsonText,
@@ -80,14 +80,16 @@ export function importTopicsAndTasks(
         note: 'schema 一条队列一个 cwd',
       });
     }
-    const hasTasks = Array.isArray(topic.tasks) && topic.tasks.length > 0;
-    if (!cwd && legacyKey !== GLOBAL_TOPIC_KEY && hasTasks) {
-      // 异常行（v1/v2 迁移来的、没 cwd 的旧等待点）：挂哨兵 + cwd='' + 报告
-      report.warnings.push({
-        what: 'topic',
-        why: 'cwd 为空且不是全局池（旧 slot/session 迁移残留），cwd 落空串',
-        legacyKey,
+    // #190：空 cwd 的队列行（历史上的全局池）**整行跳过**（不迁移）——
+    // 队列必须绑定真实目录；跳过并在报告里留痕，条目数与丢弃明细都能核对。
+    if (!cwd) {
+      report.discarded.push({
+        what: 'topic(空 cwd / 全局池)',
+        key: legacyKey,
+        count: Array.isArray(topic.tasks) ? topic.tasks.length : 0,
+        note: '#190 起队列必须绑定目录，空 cwd 行不迁移',
       });
+      continue;
     }
     const key = topicKeyOf(cwd, '');
     let row = byNewKey.get(key);
@@ -99,7 +101,6 @@ export function importTopicsAndTasks(
       const ext: Record<string, any> = { ext_legacy_key: legacyKey };
       if (topic.summary) ext.ext_last_summary = String(topic.summary);
       if (topic.manual) ext.ext_manual = 1;
-      if (legacyKey === GLOBAL_TOPIC_KEY) ext.ext_global = 1;
 
       const createdAt = anyTimeMs(topic.createdAt, atMs);
       const res = db.run(

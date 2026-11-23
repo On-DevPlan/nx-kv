@@ -33,10 +33,9 @@ export interface QueueNavOptions {
  */
 export async function ensureQueueAndGo({ row, onNavigate, refreshLocal, toast, draft = false }: QueueNavOptions): Promise<void> {
   const withTask = (base: string) => (draft ? `${base}?task=draft` : base);
-  // 全局池 / 已有队列的仓库：直接跳
-  if (row.type === 'global' || row.topicKey) {
-    const base = row.type === 'global' ? '#/global' : `#/dir/${encodeURIComponent(String(row.topicKey))}`;
-    onNavigate?.(withTask(base));
+  // 已有队列的仓库：直接跳（#190 全局池行已删除）
+  if (row.topicKey) {
+    onNavigate?.(withTask(`#/dir/${encodeURIComponent(String(row.topicKey))}`));
     return;
   }
   // 没队列的仓库：先登记目录再进。登记仓库没有路径（不该发生）给提示后停。

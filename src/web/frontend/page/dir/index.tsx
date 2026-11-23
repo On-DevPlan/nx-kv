@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { addTask, reorderTask } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
-import { GLOBAL_KEY, isGroupTask } from '../../modules/board/board-view.js';
+import { isGroupTask } from '../../modules/board/board-view.js';
 import { useApp } from '../../app-context.jsx';
 import Introduction from '../../components/Introduction/index.jsx';
 import GetLoopModal from '../../components/repos/get-loop-modal.js';
@@ -48,18 +48,14 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
   const model = app.model;
   const repos = (app.repoData && app.repoData.repos) || [];
 
-  const isGlobal = !dirKey || dirKey === GLOBAL_KEY;
   const [dagTask, setDagTask] = useState<LocalTask | null>(null); // 正在编排依赖的任务（DAG 节点编辑器）
   // #165：持续 get（waitgoal）配置——按主题（仓库）粒度控制，收在工具区直读状态
   const [glOpen, setGlOpen] = useState(false);
 
-  const topic = useMemo(() => {
-    if (isGlobal) return rows.find((r) => r.isGlobal) || null;
-    return rows.find((r) => r.key === dirKey) || null;
-  }, [rows, dirKey, isGlobal]);
+  const topic = useMemo(() => rows.find((r) => r.key === dirKey) || null, [rows, dirKey]);
 
   const repo = useMemo<RepoRow | null>(() => {
-    if (!topic || isGlobal) return null;
+    if (!topic) return null;
     const rk = topic.repo && topic.repo.key;
     if (rk) {
       const byKey = repos.find((r) => r.key === rk);
@@ -68,7 +64,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     const cwd = String(topic.cwd || '').replace(/\\/g, '/').toLowerCase();
     if (!cwd) return null;
     return repos.find((r) => String(r.path || '').replace(/\\/g, '/').toLowerCase() === cwd) || null;
-  }, [topic, repos, isGlobal]);
+  }, [topic, repos]);
 
   // 显示序：未完成（待领取）优先，追加的新任务不会被历史埋在下面；
   // 软删除的行不进表。#85 两种走向：目录页是**项目走向**的视图——组任务
@@ -108,9 +104,9 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
 
   const guard = (fn: () => Promise<unknown>) => fn().catch((e) => toast(String((e as Error).message || e)));
 
-  // 主题定位二选一：全局池用 key，目录用 cwd（行尾 / 批量 / 编排同一套）
-  const scopeBody = () => (isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd });
-  const topicKeyHere = isGlobal ? GLOBAL_KEY : dirKey || GLOBAL_KEY;
+  // 主题定位：按目录 cwd（行尾 / 批量 / 编排同一套；#190 全局池已删除）
+  const scopeBody = () => ({ cwd: topic?.cwd });
+  const topicKeyHere = dirKey || '';
   // 持续 get 的展示态（配置本身在 GetLoopModal 里改）
   const glOn = !!(repo && repo.getLoop && repo.getLoop.enabled);
   const glMinutes = repo && repo.getLoop && repo.getLoop.waitMinutes !== undefined && repo.getLoop.waitMinutes !== null
@@ -124,7 +120,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     refresh: () => {
       refreshLocal?.();
     },
-    docKey: dirKey || GLOBAL_KEY,
+    docKey: dirKey || 'local',
     onDeleted: (t) => {
       if (!model) return;
       // workspace.findOpenPanel 的返回类型尚未收口（被推断成 null），按实际契约窄化
@@ -149,8 +145,8 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
   const openTplList = () => {
     const id = putManageSession({
       topic: topicKeyHere,
-      repo: isGlobal ? '' : (repo?.key || ''),
-      label: isGlobal ? '全局池' : (topic?.name || dirKey || '本目录'),
+      repo: repo?.key || '',
+      label: topic?.name || dirKey || '本目录',
     });
     app.onNavigate?.(`#/templates/manage/${id}`);
   };
@@ -160,7 +156,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     openPanel(model, {
       component: 'progress',
       name: '进程',
-      config: { dirKey: dirKey || GLOBAL_KEY },
+      config: { dirKey: dirKey || '' },
       location: 'right',
     });
   };
@@ -179,7 +175,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     openTemplateEditor(model, {
       mode: 'new',
       topic: topicKeyHere,
-      scope: isGlobal ? [] : [`topic:${topicKeyHere}`],
+      scope: [`topic:${topicKeyHere}`],
       name: '',
     });
   };
@@ -200,14 +196,14 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
           },
         }]),
     'sep',
-    { label: `为本${isGlobal ? '全局池' : '目录'}新建模板…`, icon: 'plus', onClick: newTemplateForHere },
+    { label: '为本目录新建模板…', icon: 'plus', onClick: newTemplateForHere },
     { label: '管理模板…', icon: 'gear', onClick: openTplList },
   ];
 
   // ─── 文档列表（右侧栏）────────────────────────────────────────────
   const openRefs = () => {
-    if (isGlobal || !repo) {
-      toast('全局池没有项目文档列表');
+    if (!repo) {
+      toast('这个目录还没有登记为仓库，没有项目文档列表');
       return;
     }
     if (!model) return;
@@ -229,7 +225,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     const name = file.name.replace(/\.md$/i, '');
     await guard(async () => {
       const bodyText = text.startsWith('#') ? text : `# ${name}\n\n${text}`;
-      const res = await addTask(isGlobal ? { global: true, text: bodyText } : { cwd: topic?.cwd, text: bodyText });
+      const res = await addTask({ cwd: topic?.cwd, text: bodyText });
       toast(`已导入：${file.name}`);
       refreshLocal?.();
       const newId = res?.task?.id ?? res?.id;
@@ -237,7 +233,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     });
   };
 
-  if (!topic && !isGlobal) {
+  if (!topic) {
     // 空态与组页同骨架（#170：落地页不套 .mdw 编辑器外壳；#251：两页空态都走 rp-page）
     return (
       <div className="rp-page">
@@ -254,11 +250,11 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     <>
       <TaskPage
         kind="dir"
-        name={isGlobal ? '全局池' : (topic?.name || '目录')}
-        title={isGlobal ? '全局池任务' : '任务'}
-        intro={!isGlobal && repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
+        name={topic?.name || '目录'}
+        title='任务'
+        intro={repo ? <Introduction kind="repo" owner={repo} model={model} /> : null}
         rows={pageRows}
-        emptyText={`还没有页面：点「＋ 新建页」写第一篇，或让 agent 往${isGlobal ? '全局池' : '这个目录'}投递任务。`}
+        emptyText='还没有页面：点「＋ 新建页」写第一篇，或让 agent 往这个目录投递任务。'
         tplMenuItems={tplMenuItems}
         onNew={() => {
           const p = tpl ? tpl.defaultPick() : null;

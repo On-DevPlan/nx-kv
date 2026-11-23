@@ -3,24 +3,15 @@ import { basename, join, resolve } from 'node:path';
 import { topicKeyOf } from '../../core/topic-key.js';
 import { APP_DIR } from '../../core/paths.js';
 import { badInput } from '../../core/errors.js';
-// ─── 全局主题：跨目录共享队列（工作窃取）───────────────────────────
-//
-// 参考 Go runtime scheduler 的两层队列：每个 P 有 local runq，空了去 global runq
-// 取，还没有才 park。这里的对应物：每个工作目录一个本地主题队列，wait 在本地
-// 取不到 pending 时自动去「全局主题」领；全局也没有才阻塞。
-// 任务侧用 addTask({global:true})（CLI --global）把不限定接收方的任务发布进池子。
-//
-// 全局主题是真实存在的主题对象（复用 topics 存储），但有特殊行为：
-//   - key 固定 '__GLOBAL__'，与目录名哈希出的 16 位 hex key 永不冲突；cwd 恒为空
-//   - 永不进入 waiting 状态（它是任务源，不是等待源）——countWaitingTopics 自然不计
-//   - prune/remove 默认跳过（受保护），--force 才能删；等待语义（setWaiting/cancel）不适用
-export const GLOBAL_KEY = '__GLOBAL__';
-export const GLOBAL_NAME = '全局任务';
-export const GLOBAL_CWD = ''; // 全局主题永不指向真实目录
+// #190：**全局任务池已删除**。队列一律绑定真实目录；CLI 不带 --cwd 时用当前工作目录。
+// 全局池的固定 key / 名称 / 空 cwd 语义全部下线（库里的 __GLOBAL__ 行按用户要求一并删除）。
 
-export function isGlobalKey(key: unknown): boolean {
-  return key === GLOBAL_KEY;
+/** 解析要操作的目录：显式 --cwd 优先，缺省用当前进程工作目录。 */
+export function resolveCwd(cwd: unknown): string {
+  const v = String(cwd ?? '').trim();
+  return v ? resolve(v) : process.cwd();
 }
+
 // ─── 存储位置（历史兼容层已随 T07 下线；存储进 nxkv.db，见 repo/open.js）───
 
 // 改名前的存储文件（sessiontasks.json）。显式覆盖（NX_KV_LOCALTASK_STORE）时

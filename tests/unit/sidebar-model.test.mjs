@@ -112,14 +112,13 @@ test('老数据没有 waitingUntilMs：回退解析 waitingUntil 字符串', () 
   assert.equal(fmtDeadlineClock(row.waitingDeadlineMs), '10:31:02');
 });
 
-test('组行 / 全局行的等待截止：看成员与自身主题', () => {
+test('组行的等待截止：看成员主题的窗口（#190 全局池行已删除）', () => {
   const topics = [
     { key: 'tk1', repo: { id: 'r1' }, waiting: true, waitingUntilMs: NOW + 120_000 },
-    { key: '__GLOBAL__', name: '全局任务', isGlobal: true, waiting: true, waitingUntilMs: NOW + 30_000 },
   ];
   const { rows } = buildTree(REPOS, BOARDS, topics, {});
   assert.equal(rows.find((r) => r.type === 'board').waitingDeadlineMs, NOW + 120_000, '组行借成员的窗口');
-  assert.equal(rows.find((r) => r.type === 'global').waitingDeadlineMs, NOW + 30_000);
+  assert.equal(rows.find((r) => r.type === 'global'), undefined, '不再有全局行');
 });
 
 test('没有人在等：截止时刻为 0，文本为空（不占位）', () => {

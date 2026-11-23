@@ -44,19 +44,14 @@ export interface TaskChildrenProps {
 
 export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChildrenProps) {
   const toast = useToast();
-  // 全局池：topic 直接带 tasks；仓库行：多个 topic 的 tasks 汇总
+  // 仓库行：多个 topic 的 tasks 汇总（#85：组任务归组页管；#190 全局池行已删除）
   const tasks = useMemo(() => {
-    const list: LocalTask[] =
-      row.type === 'global'
-        ? (row.tasks || [])
-        // #85 两种走向：仓库行下的子任务是**项目走向**的入口——组任务归组页管
-        : (row.topics || []).flatMap((t) => (t.tasks || []).filter((x) => !x.deletedAt && !isGroupTask(x)));
+    const list: LocalTask[] = (row.topics || []).flatMap((t) =>
+      (t.tasks || []).filter((x) => !x.deletedAt && !isGroupTask(x)));
     return sortTasksForDisplayBridge(list);
   }, [row]);
   // 导航基址用 **topicKey**（工作台按它找队列），不是仓库 key
-  const base = row.type === 'global'
-    ? '#/global'
-    : `#/dir/${encodeURIComponent(row.topicKey || row.key)}`;
+  const base = `#/dir/${encodeURIComponent(row.topicKey || row.key)}`;
   // #188：默认铺 8 条；「…还有 N 条」点一次多加载 10 条（分页式增量，不一次全铺）。
   const [limit, setLimit] = useState(SIDE_TASK_LIMIT);
   const shown = tasks.slice(0, limit);

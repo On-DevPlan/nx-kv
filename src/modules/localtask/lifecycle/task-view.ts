@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { badInput, notFound } from '../../../core/errors.js';
 import { sanitizeTaskGoal } from '../../goals/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from '../dag.js';
-import { isGlobalKey, topicKeyFor, resolveTaskKey } from '../paths.js';
+import { topicKeyFor, resolveTaskKey } from '../paths.js';
 import { parseStampMs, stampNow } from '../infra/store-io.js';
 import { topics as topicsRepo, tasks as tasksRepo, links as linksRepo, db } from '../infra/repo/index.js';
 import { parseFrontmatter } from '../../../shared/frontmatter.js';
@@ -343,7 +343,6 @@ export function topicView(t: any, repoCtx: any = null, readyOpts: ReadyOpts = {}
     waitingUntilMs: Number(t.waitingUntilMs) || 0,
     waitingSince: t.waitingSince || '',
     cancelRequested: !!t.cancelRequested,
-    isGlobal: isGlobalKey(t.key),
     // 手动登记的目录（面板「添加目录」）：空主题也不被 prune 清掉
     manual: !!t.manual,
     createdAt: t.createdAt,

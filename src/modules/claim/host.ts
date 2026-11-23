@@ -19,7 +19,7 @@
 //     「这段是哪来的」。真实领取不传 trace，行为与改造前逐字节一致。
 import { formatDuration, formatGoalTiming } from '../../core/instruction-template.js';
 import { parseFrontmatter } from '../../shared/frontmatter.js';
-import { isGlobalKey, pendingQueueInfo } from '../localtask/service.js';
+import { pendingQueueInfo } from '../localtask/service.js';
 import { assembleDelivery, type AssembledDelivery } from './assemble.js';
 import { annotateTaskDelivery, attachTemplateCtx } from '../localtask/ops/attach.js';
 import { readGroupContext } from './groupctx.js';
@@ -87,7 +87,7 @@ export function enrichGoalTiming(g: any): any {
 // 绝不写盘：showTimegoal 走 loadRecycledStore({persist:false})——timegoals.json
 // 字节数不变，goal-expiry 单测字节比对钉着。
 async function readGoalCtx(cwd: unknown): Promise<Record<string, any> | null> {
-  if (!cwd || isGlobalKey(cwd)) return null; // cwd 是路径，isGlobalKey 恒 false——纯防御
+  if (!cwd) return null; // 没有目录就没有组上下文（#190 起不再有全局池）
   try {
     const show = await timegoal.showTimegoal({ cwd });
     if (!show || !show.hasGoal) return null;

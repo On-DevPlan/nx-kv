@@ -19,7 +19,7 @@ export class LocaltaskCloneAction extends ActionBase<typeof input> {
     id: 'localtask.clone',
     cli: ['localtask', 'clone'],
     http: ['POST', '/api/localtasks/clone'],
-    summary: '克隆任务：复制正文内容为一条新任务（同主题；全局任务仍进全局池）。不带派生链、不继承时间目标与依赖——开新活用',
+    summary: '克隆任务：复制正文内容为一条新任务（同主题）。不带派生链、不继承时间目标与依赖——开新活用',
     input,
     render: (d: any) =>
       `已克隆 #${d.from.id} → #${d.task.id} @ ${d.name}（内容复制，无派生链；${d.delivered ? '已实时投递' : '待领取'}）`,

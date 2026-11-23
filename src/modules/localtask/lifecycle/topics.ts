@@ -57,7 +57,6 @@ export async function addTopic({ cwd: rawCwd, summary: rawSummary }: { cwd?: str
 // 全局主题永远置顶（共享池是所有 worker 的候补来源，放最显眼处）。
 //
 // 注意：**全局主题不在这里凭空造**。全局池空着的时候库里就是没有它
-// （它只有真的往池子里投过东西才存在）。看板层（board.js）负责补一行"全局任务池"
 // 占位，保证用户永远找得到往全局池加任务的入口——服务层的契约保持原样。
 export async function listTasks(): Promise<Record<string, any>> {
   openStore();

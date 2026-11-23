@@ -60,7 +60,8 @@ test('dry-run：动作全跑完但库里什么都不留，legacy JSON 不改名'
       dryRun: true,
     });
     assert.equal(out.result.action, 'imported', '演练也要真的跑一遍导入');
-    assert.equal(out.result.report.imported.tasks, 9);
+    // #190：夹具里 9 条任务中 1 条属于全局池（cwd 空），跳过不迁移
+    assert.equal(out.result.report.imported.tasks, 8);
     // 连建表也一起回滚了：库里一张表都不该留下（"演练"的含义就是什么都没发生）
     const tables = out.db.get("SELECT count(*) AS c FROM sqlite_master WHERE type = 'table'");
     out.db.close();
@@ -118,8 +119,8 @@ test('两个进程同时 db migrate：只有一个真正导入，最终状态一
     );
 
     s.open();
-    assert.equal(s.db.get('SELECT count(*) AS c FROM tasks').c, 9, '最终只有一份数据');
-    assert.equal(s.db.get('SELECT count(*) AS c FROM topics').c, 3);
+    assert.equal(s.db.get('SELECT count(*) AS c FROM tasks').c, 8, '最终只有一份数据（全局池那 1 条不迁移）');
+    assert.equal(s.db.get('SELECT count(*) AS c FROM topics').c, 2, '全局池那条队列不迁移');
   } finally {
     s.reset();
   }
@@ -181,8 +182,9 @@ test('verify：跑完导入后 db verify 全过（含逐条 body 哈希对账）
     const { verifyStore } = await import('../../src/core/db/verify.js');
     const out = verifyStore(s.db, { appDir: s.appDir });
     assert.equal(out.ok, true, out.checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`).join('\n'));
-    assert.equal(out.counts.tasks, 9);
-    assert.deepEqual(out.distribution, { pending: 3, claimed: 1, done: 4, cancelled: 1 });
+    // #190：全局池那 1 条（done）随队列跳过
+    assert.equal(out.counts.tasks, 8);
+    assert.deepEqual(out.distribution, { pending: 3, claimed: 1, done: 3, cancelled: 1 });
   } finally {
     s.reset();
   }

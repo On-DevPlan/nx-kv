@@ -20,7 +20,6 @@ test('delTask：删除后不再无条件 deleteTab，主面板导航回父级', 
   assert.match(actions, /const auxiliary =/, '先判定浮窗 / 旁路');
   assert.match(actions, /app\.onNavigate\('#\/group\/' \+ encodeURIComponent\(groupId \|\| ''\)\)/, '组锚定 → 组页');
   assert.match(actions, /app\.onNavigate\('#\/dir\/' \+ encodeURIComponent\(topicKey \|\| ''\)\)/, '目录任务 → 目录页');
-  assert.match(actions, /app\.onNavigate\('#\/global'\)/, '全局任务 → 全局');
 });
 
 test('delDoc：同规——主布局文档页删除后就地回归属页', () => {

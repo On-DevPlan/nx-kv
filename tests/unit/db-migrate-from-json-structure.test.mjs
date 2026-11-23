@@ -32,19 +32,20 @@ test('ext 取证：archived / legacy_key / pickupSec / history / supersededBy �
   }
 });
 
-test('topics：key 由 (cwd, group) 派生、全局池 cwd="" key="__GLOBAL__"、队列全挂哨兵仓库', async () => {
+test('topics：key 由 (cwd, group) 派生、全局池行整行跳过、队列全挂哨兵仓库', async () => {
   const s = await importFixture();
   try {
     const { topicKeyOf } = s.core;
     const topics = s.db.all('SELECT id, key, cwd, group_key, repo_key, next_seq FROM topics');
-    assert.equal(topics.length, 3);
+    // #190：夹具里 3 条 legacy 队列（web / api / 全局池）——全局池那条整行跳过
+    assert.equal(topics.length, 2);
     for (const t of topics) {
       assert.equal(t.key, topicKeyOf(t.cwd, t.group_key || ''), 'key 必须是派生值');
       assert.equal(t.repo_key, '__unbound__');
     }
-    const global = topics.find((t) => t.cwd === '');
-    assert.equal(global.key, '__GLOBAL__');
-    assert.equal(JSON.parse(s.db.get(`SELECT ext FROM topics WHERE id = ${global.id}`).ext).ext_global, 1);
+    // #190：全局池（cwd 为空）不再迁移进来
+    assert.equal(topics.find((t) => t.cwd === ''), undefined, '全局池行不迁移');
+    assert.equal(s.db.get("SELECT count(*) AS c FROM topics WHERE key = '__GLOBAL__'").c, 0);
 
     // next_seq = max(seq)+1
     const web = topics.find((t) => t.cwd === 'D:/work/web');

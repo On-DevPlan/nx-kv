@@ -105,12 +105,6 @@ test('clone：内容逐字复制，不带派生链、不继承约束，源任务
   assert.equal(srcAfter.text, '# 模板任务\n\n正文原样');
 });
 
-test('clone：全局任务的克隆仍进全局池', async () => {
-  const g = await svc.addTask({ text: '# 全局模板任务', global: true });
-  const c = await svc.cloneTask({ key: '__GLOBAL__', id: g.task.id });
-  assert.equal(c.isGlobal, true);
-  assert.equal(c.task.text, '# 全局模板任务');
-});
 
 test('fork：正文逐字复制，同时挂到源任务链下（#67）', async () => {
   const src = await svc.addTask({ cwd: dirA, text: '# 模板任务\n\n正文原样' });

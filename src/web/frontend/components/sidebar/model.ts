@@ -13,7 +13,6 @@ import { stripFrontmatter } from '../../modules/md/md-parse.js';
 import { projectPending, isPendingRow, taskInBoard } from '../../modules/board/board-view.js';
 import type { BoardRow, LocalTask, LocalTopic, Prefs, RepoRow } from '../../types.js';
 
-export const GLOBAL_KEY = '__GLOBAL__';
 /** 「未分组」区的头行 key（不在 namespaces.items 里的条目落这里；不可重命名/删除） */
 export const UNGROUPED_KEY = '__UNGROUPED__';
 /** #174：内置 dynamic 视图「运行中」——只显示有任务（待领取 / 等待中）的仓库与看板。
@@ -30,8 +29,8 @@ export const ALL_TOPICS_KEY = '__ALL_TOPICS__';
  * 值全部来自 /api 的登记与队列数据，故按「可选 + 宽松」收。
  */
 export interface SideRow {
-  type: 'repo' | 'board' | 'global' | 'ns';
-  /** 行身份（仓库 key / 看板 id / GLOBAL_KEY） */
+  type: 'repo' | 'board' | 'ns';
+  /** 行身份（仓库 key / 看板 id / 命名空间 key） */
   key: string;
   id?: string;
   repoId?: string;
@@ -311,23 +310,7 @@ export function buildTree(
     })
     .map((x) => x.r);
 
-  // 全局池恒顶（不受排序影响）
-  const globalRow = topicList.find((t) => t.isGlobal);
   const out: SideRow[] = [];
-  if (globalRow) {
-    out.push({
-      type: 'global',
-      key: GLOBAL_KEY,
-      name: globalRow.name || '全局任务',
-      topic: globalRow,
-      pending: globalRow.pending || 0,
-      waiting: !!globalRow.waiting,
-      waitingDeadlineMs: topicDeadlineMs(globalRow),
-      // 历史形态：全局池行把任务数组放在 topics 上（TaskChildren 读的是 tasks）——
-      // 此处只做形状收口，不改数据落点，免得顺手改了侧栏的可见行为。
-      topics: (globalRow.tasks || []).filter((t) => !t.deletedAt) as unknown as LocalTopic[],
-    });
-  }
 
   // ── #167 namespace 分区（纯 UI 组织）──
   // prefs.namespaces 非空且非搜索 → 按「置顶分区 → 普通分区（数组序）→ 未分组」渲染；

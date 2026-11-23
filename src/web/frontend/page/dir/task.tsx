@@ -14,7 +14,6 @@ import type { Model } from 'flexlayout-react';
 import { getTaskAttachments, previewTask } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
-import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import { extractAckNodes } from '../../modules/board/ack-nodes.js';
 import ToolBar from '../../components/md/shell/tool-bar.jsx';
 import { MdPanes } from '../../components/md/panes/md-panes.jsx';
@@ -107,7 +106,6 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   // 本页所属队列的 key：组锚定 = 解析出的成员队列；目录锚定 = dirKey
   const topicKey = (groupResolved && groupResolved.topic && groupResolved.topic.key) || dirKey || '';
 
-  const isGlobal = !groupAnchored && (!topicKey || topicKey === GLOBAL_KEY);
   const isDraft = isDraftTask(task);
   // 文档作用域（#86）：组锚定的**草稿**种在组 scope——组页「新增任务」从组路由
   // 打开能寻回同一份；其余（实任务 / 目录页）都在队列 scope，同一任务两种锚共享一份文档。
@@ -117,9 +115,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   // 本目录的主题（提交/删除要它的 cwd）
   const topic = useMemo<LocalTopic | null>(() => {
     if (groupAnchored) return (groupResolved && groupResolved.topic) || null;
-    if (isGlobal) return rows.find((r) => r.isGlobal) || null;
     return rows.find((r) => r.key === topicKey) || null;
-  }, [rows, topicKey, isGlobal, groupAnchored, groupResolved]);
+  }, [rows, topicKey, groupAnchored, groupResolved]);
 
   const taskRow = useMemo<LocalTask | null>(
     () => (topic?.tasks || []).find((x) => String(x.id) === String(task)) || null,
@@ -140,7 +137,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   const { goalDraft, setGoalDraft, goal, goalEditable, goalPromptEditable, declaredGoal, goalLog, loadGoalLog, canShowGoalLog } = goalState;
 
   const chainState = useChain({
-    isDraft, task, taskRow, topicKey, topic, isGlobal, groupAnchored, groupId,
+    isDraft, task, taskRow, topicKey, topic, groupAnchored, groupId,
     app, model: model || null, historyId, toast,
   });
   const { chainNodes, chainTree, historyNode, isChainTip, latestChild, openLatestRound, openHistoryBeside } = chainState;
@@ -224,7 +221,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
 
   // ─── 动作钩子 ───
   const actions = useTaskActions({
-    doc, id, isDraft, task, taskRow, topicKey, topic, isGlobal, boardCtx, docFm,
+    doc, id, isDraft, task, taskRow, topicKey, topic, boardCtx, docFm,
     groupAnchored, groupId, rows, app, model: model || null, tabId, tpl, refreshLocal,
     markDirty, histRef, editorApiRef, attachAreaRef,
     setDirty,
@@ -233,7 +230,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   const { composeText, submit, importMd, delTask, canComplete, canCancel, closeTask, canPlan, togglePlan, addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel } = actions;
 
   const feedback = useFeedback({
-    doc, isDraft, task, taskRow, topicKey, topic, isGlobal, dirKey,
+    doc, isDraft, task, taskRow, topicKey, topic, dirKey,
     groupAnchored, groupId, app, model: model || null, tabId, refreshLocal,
     closeSelMenu, lastSel, selMenu, dirty, setDirty, guard,
   });
@@ -253,8 +250,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   const openPreview = useCallback(() => {
     setPreview({ busy: true });
     const body = {
-      cwd: isGlobal ? (topic?.cwd || undefined) : topic?.cwd,
-      key: isGlobal ? GLOBAL_KEY : topicKey,
+      cwd: topic?.cwd,
+      key: topicKey,
       ...(isDraft
         ? { text: composeText((doc?.title || '').trim() || '未命名任务', doc?.body || '') }
         : { id: Number(task) }),
@@ -262,7 +259,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     previewTask(body)
       .then((d) => setPreview({ data: d }))
       .catch((e) => setPreview({ error: String((e as Error).message || e) }));
-  }, [isGlobal, topic?.cwd, topicKey, isDraft, doc?.title, doc?.body, task, composeText]);
+  }, [topic?.cwd, topicKey, isDraft, doc?.title, doc?.body, task, composeText]);
 
   // ─── 标题与正文双向同步 ───
   const onTitle = (next: string, kind = 'typing') => {
@@ -393,7 +390,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     if (app.localReady === false || isDraft) {
       return <div className="mdw"><div className="pad muted">载入中…</div></div>;
     }
-    return <NotFoundView task={task} app={app} groupAnchored={groupAnchored} groupId={groupId} isGlobal={isGlobal} dirKey={dirKey} />;
+    return <NotFoundView task={task} app={app} groupAnchored={groupAnchored} groupId={groupId} dirKey={dirKey} />;
   }
 
   return (
@@ -414,8 +411,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           <div className="mdw-head">
             <div className="mdw-title">{isDraft ? (doc.title || '新 MD 任务') : (doc.title || '任务')}</div>
             <div className="mdw-path">
-              {isGlobal ? '全局任务池' : (topic?.cwd || topic?.name || '—')}
-              {!isGlobal && topic?.cwdExists === false && (
+              {topic?.cwd || topic?.name || '—'}
+              {topic?.cwdExists === false && (
                 <span className="mdw-path-warn" title="工作目录已不存在：目录被删除或磁盘未挂载。任务本身还在，只是不再有对应目录。">
                   {' '}· 目录已不存在
                 </span>
@@ -477,8 +474,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           attachHost={isDraft ? null : {
             host: 'task',
             hostId: Number(task),
-            hostKey: isGlobal ? GLOBAL_KEY : undefined,
-            hostCwd: isGlobal ? undefined : topic?.cwd,
+            hostCwd: topic?.cwd,
             allow: { file: true, url: true, folder: true, task: true, ref: true, repo: true },
             taskOptions: (topic?.tasks || []).map((t: LocalTask) => ({ id: t.id, text: t.text, status: t.status })),
           }}
@@ -488,7 +484,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           dockOpen={dockOpen} dockTab={dockTab} dockH={dockH} dockRef={dockRef} dockMax={dockMax}
           showDockTab={showDockTab} onDockDragStart={onDockDragStart} toggleDockMax={toggleDockMax} setDockOpen={setDockOpen}
           canShowGoalLog={canShowGoalLog} goalLog={goalLog} openGoalLog={openGoalLog}
-          isDraft={isDraft} task={task} topic={topic} topicKey={topicKey} isGlobal={isGlobal} doc={doc} id={id} model={model || null} app={app}
+          isDraft={isDraft} task={task} topic={topic} topicKey={topicKey} doc={doc} id={id} model={model || null} app={app}
           refreshLocal={refreshLocal} markDirty={markDirty} saveDoc={saveDoc} persistAtt={persistAtt}
           attachAreaRef={attachAreaRef} reviewBarRef={reviewBarRef} reviewSumRef={reviewSumRef}
           taskRow={taskRow} ackOpen={ackOpen} setAckOpen={setAckOpen} ackOverflow={ackOverflow} ackLong={ackLong} ackHtml={ackHtml}
@@ -521,7 +517,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
             quote,
             taskLabel: task != null ? '#' + task : '',
             taskTitle: String(doc?.title || '').replace(/^#+\s*/, ''),
-            src: { dirKey: topicKey || dirKey || GLOBAL_KEY, task: String(task), name: `原文 #${task}` },
+            src: { dirKey: topicKey || dirKey || '', task: String(task), name: `原文 #${task}` },
             onSubmit: (payload: { text?: string; attachments?: Attachment[]; inserts?: string }) => submitCommentInPlace({ ...payload, quote }),
           });
           closeSelMenu();

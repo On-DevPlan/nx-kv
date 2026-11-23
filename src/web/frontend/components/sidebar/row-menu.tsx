@@ -115,7 +115,7 @@ export function rowMenuItems({ row, prefs, patchPrefs, onNavigate, boards, onDat
     ];
   }
 
-  return [{ label: '打开全局任务池', icon: 'globe', onClick: () => onNavigate?.('#/global') }];
+  return []; // #190 全局任务池已删除
 }
 
 /** addMenuItems 的入参：三个入口都交给调用方弹自己的表单（#193 对齐 repos 页）。 */

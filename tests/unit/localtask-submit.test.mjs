@@ -52,12 +52,6 @@ test('submitTask：正文自带 frontmatter（fail-open）→ 落点跟到项目
   assert.equal(fm.projectDesc, '落点路由项目');
 });
 
-test('submitTask：--global + 正文 frontmatter → 字段补齐，落点仍是全局池', async () => {
-  const r = await submitTask({ text: `---\nproject: ${repo.key}\n---\n# 全局任务\n正文`, global: true });
-  assert.equal(r.isGlobal, true, '落点不被 frontmatter 挪走（--global 优先）');
-  const fm = parseFrontmatter(r.task.text);
-  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, 'fail-open 字段照常补齐（refId）');
-});
 
 test('submitTask：显式给过 cwd 时 fail-open 不挪窝（只补字段）', async () => {
   const elsewhere = join(sb, 'submit-here');
@@ -105,12 +99,6 @@ test('submitTask：严格口径 --cwd 与 --project 冲突 → 报错（不静�
   );
 });
 
-test('submitTask：--global 与 --board 同给 → 报错（互斥不变）', async () => {
-  await assert.rejects(
-    () => submitTask({ text: '# x', global: true, board: 'b_x', project: 'local/x' }),
-    /--global 不能与 --board/
-  );
-});
 
 test('localtask.add action：一行委托 submitTask——CLI/HTTP/面板同走一条链路', async () => {
   // 经 action.run（HTTP body 同形状）走一遍 fail-open 路由，确认委托链路通、

@@ -11,7 +11,7 @@
 import { edgesFromTasks, taskToNode, isGateNode } from './types.js';
 import type { WfEdge, WfNode } from './types.js';
 
-/** topicKey:id —— key 允许字母数字与 _-（含 __GLOBAL__） */
+/** topicKey:id —— key 允许字母数字与 _- */
 const FOREIGN_RE = /^([A-Za-z0-9_-]+):(\d+)$/;
 
 export type DepRef = { kind: 'local'; id: number } | { kind: 'foreign'; key: string; id: number };

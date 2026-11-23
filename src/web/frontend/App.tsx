@@ -13,8 +13,7 @@
 // 所以深链 = 一屏：把地址发给别人，对方看到的布局与你一致。
 //
 // hash 路由：
-//   #/dir/<key>  目录详情    #/global  全局任务池   #/global  全部目录总览
-//   #/group/<id> 项目组      #/repos     仓库管理      #/global  总览
+//   #/dir/<key>  目录详情    #/group/<id> 项目组    #/repos 仓库管理
 //   #/templates  任务模板（面板，不是弹窗）
 //   （经典看板 #/localtask 已下线；wait 深链改落 #/dir/<key>）
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -143,13 +142,9 @@ function routeFromHash(): AppRoute {
     }
     return { view: 'templates', key: '', task: '', mode: '', id: '', topic: '', scope: '' };
   }
-  const KNOWN = ['global', 'repos'];
-  if (KNOWN.includes(path)) {
-    // 全局池的页：#/global?task=1 —— 全局池的子任务表与页都在同一路由下
-    return { view: path, key: path === 'global' ? '__GLOBAL__' : '', task: path === 'global' ? task : '' };
-  }
-  // 旧深链（#/localtask?…）与未知路径统一落全局任务池（#174：全部目录总览已下线）
-  return { view: 'global', key: '__GLOBAL__', task: '' };
+  if (path === 'repos') return { view: 'repos', key: '', task: '' };
+  // 旧深链（#/localtask…、#/global…）与未知路径统一落仓库管理（#190 全局池已删除）
+  return { view: 'repos', key: '', task: '' };
 }
 
 /** FlexLayout 自带的右键菜单是英文。只翻译**用得到的**几条；没翻的原样透出。 */

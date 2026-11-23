@@ -4,7 +4,6 @@
 // 这里只管「文档内容」——标题 / 正文 / 附件 / 视图模式。
 // 面板关掉再打开，内容还在（会话内）；刷新即空（草稿本就只在会话有效）。
 import { useSyncExternalStore } from 'react';
-import { GLOBAL_KEY } from '../board/board-view.js';
 import type { Attachment } from '../../components/md/attachments/attach-common.js';
 
 /**
@@ -40,8 +39,8 @@ const subscribe = (l: () => void) => { listeners.add(l); return () => { listener
 export const docsSnapshot = (): Record<string, DocRecord> => s.docs;
 const snapshot = docsSnapshot;
 
-/** 目录作用域：全局池用 GLOBAL_KEY */
-export const scopeOf = (dirKey?: string | null): string => (dirKey || GLOBAL_KEY);
+/** 目录作用域（#190：全局池已删除，无 key 时用固定 'local' 兜底草稿归属） */
+export const scopeOf = (dirKey?: string | null): string => (dirKey || 'local');
 
 /** 文档身份：作用域 + 任务号（草稿号也算） */
 export const docIdOf = (scope: string, task: string | number): string => `${scope}::${task}`;

@@ -17,12 +17,9 @@ import {
   consumeCancelRequest,
   claimFirstPending,
   getSettings,
-  GLOBAL_KEY,
-  isGlobalKey,
   normalizeCwd,
   normalizeSummary,
   probeEffectivePresence,
-  registerGlobalWaiter,
   registerTopicWaiter,
   repoContextIndex,
   repoCtxOf,
@@ -46,7 +43,7 @@ const POLL_MS = 500;
 
 // 等待期到点探针（只读、不写盘）：返回该目录目标的截止 epoch ms；已到点/无目标 → 0
 async function readGoalDeadlineMs(key: unknown): Promise<number> {
-  if (!key || isGlobalKey(key)) return 0;
+  if (!key) return 0;
   try {
     const g = await timegoal.probeGoalExpiry(key);
     if (!g || g.reached) return 0; // 已经到点的：不参与自动取消
@@ -60,7 +57,7 @@ async function readGoalDeadlineMs(key: unknown): Promise<number> {
 // ─── 阻塞等待：核心入口 ─────────────────────────────────────────────
 
 export interface WaitForTaskOptions {
-  /** 工作目录（主题按目录名识别）；缺省 → 进程当前 cwd。显式传 cwd **不会**关闭全局兜底 */
+  /** 工作目录（主题按目录名识别）；缺省 → 进程当前 cwd */
   cwd?: unknown;
   /** 当前现状（#171 起不再必填：面板上没有对应输入界面） */
   summary?: unknown;
@@ -90,8 +87,8 @@ type WaitOutcome =
 
 /**
  * 针对某主题（工作目录）等待用户回填下一条任务。
- * 领取顺序：本目录队列 → 全局主题（共享池）→ 阻塞（两个来源任一到达即唤醒）。
- * 返回带 source: 'local' | 'global' 标明任务来自哪个队列。
+ * 领取顺序：本目录队列 → 阻塞（#190 起全局共享池已删除，不再跨目录兜底）。
+ * 返回带 source: 'local' 标明任务来自本目录队列。
  */
 export async function waitForTask({
   cwd: rawCwd,
@@ -131,31 +128,11 @@ export async function waitForTask({
     return { status: 'ok', key, cwd, name, summary, ...delivery, queued: true, source: 'local', repo: repoCtx };
   }
 
-  // 1b. 本地空 → 去全局主题（共享池）领。这是所有领取的**无条件默认兜底**：
-  //     与是否显式传 --cwd 无关——本地取不到就一定来全局扫一眼，全局也没有才阻塞。
-  //     （防止调用方习惯性传 cwd 导致共享池永远无人领取。）
-  // instant（localtask get 默认形态）：两处快路径都没货 → 立即返回，不进阻塞窗口。
+  // 1b. 本地空 → 没货了（#190 起不再去全局共享池兜底）。
+  // instant（localtask get 默认形态）：本地没货就立即返回，不进阻塞窗口。
   // 「无任务时唤起阻塞等待」是 waitgoal（项目 getLoop）的语义，见 claim/get.ts。
   if (instant) {
     return { status: 'timeout', key, cwd, name, summary, timeoutMs: 0, instant: true };
-  }
-
-  const fromGlobal = await claimFirstPending(GLOBAL_KEY, summary, by);
-  if (fromGlobal) {
-    // 全局池投递渲染的仍是**等待方目录**的 goal——目标绑定在等待中的 agent 目录上，
-    // 与任务来自哪个队列无关。
-    const delivery = await buildTaskDelivery(fromGlobal, { source: 'global', summary, cwd, name, topicKey: key, params, getLoopEnabled, getLoopWaitMinutes });
-    return {
-      status: 'ok',
-      key,
-      cwd,
-      name,
-      summary,
-      ...delivery,
-      queued: true,
-      source: 'global',
-      repo: repoCtx,
-    };
   }
 
   // 1c. 这个目录的时间目标**还在跑** → 记下它的截止时刻。
@@ -179,7 +156,7 @@ export async function waitForTask({
   const presence = panelInfo.running ? await probeEffectivePresence() : 0;
   const deepLink = deepLinkUrl(key, panelInfo.port || DEFAULT_PORT);
 
-  // 3. 结果承诺：三个生产者（同进程本地 waiter / 同进程全局 FIFO / 跨进程轮询）+ 超时
+  // 3. 结果承诺：两个生产者（同进程本地 waiter / 跨进程轮询）+ 超时（#190 全局 FIFO 已删）
   let resolveOutcome!: (r: WaitOutcome) => void;
   const outcome = new Promise<WaitOutcome>((r) => {
     resolveOutcome = r;
@@ -187,19 +164,10 @@ export async function waitForTask({
   registerTopicWaiter(key, {
     resolve: (task: any) => resolveOutcome({ kind: 'task', task, delivered: true }),
   });
-  // 全局兜底：同进程有人 addTask({global:true}) 时按 FIFO 唤醒本轮等待
-  const unregisterGlobal = registerGlobalWaiter(
-    (task: any) => resolveOutcome({ kind: 'task', task, delivered: true, source: 'global' }),
-    summary,
-    // by 承载 {key,cwd,name} 对象（领取后记进 task.claimedBy，见 task-ops 的 gw.by 消费）；
-    // waiters 层的 by 已按 WaiterBy 标注（曾误标 string），此处直接透传
-    by
-  );
-
   const timer = setTimeout(() => resolveOutcome({ kind: 'timeout' }), tmo);
 
   // 三个 500ms 节拍的轮询合一为一个 ticker（原 poll/cancelPoll/goalPoll 三个 setInterval）：
-  //   ① 跨进程兜底轮询：先查本地，再查全局（本地优先；同轮至多 resolve 一次）
+  //   ① 跨进程兜底轮询：只查本地队列（#190 起不再查全局池）
   //   ② 关闭轮询：用户在面板点了「关闭」→ 立即收尾本轮（走与超时同一条出口，只多带
   //      cancelled 标记，agent 不必认识新状态，照常结束本轮）
   //   ③ 时间目标到点 → 立刻收尾本轮（等的是"下一条任务"，预算用完了就没必要等）。
@@ -215,14 +183,7 @@ export async function waitForTask({
     }
     claimFirstPending(key, undefined, by)
       .then((task: any) => {
-        if (task) {
-          resolveOutcome({ kind: 'task', task, delivered: false, source: 'local' });
-          return null;
-        }
-        return claimFirstPending(GLOBAL_KEY, undefined, by);
-      })
-      .then((task: any) => {
-        if (task) resolveOutcome({ kind: 'task', task, delivered: false, source: 'global' });
+        if (task) resolveOutcome({ kind: 'task', task, delivered: false, source: 'local' });
       })
       .catch(() => {
         /* 瞬时读写错误，下一轮再试 */
@@ -298,7 +259,6 @@ export async function waitForTask({
     escort.stop();
     clearTimeout(timer);
     unregisterTopicWaiter(key);
-    unregisterGlobal();
     await clearWaiting(key);
   }
   return result;

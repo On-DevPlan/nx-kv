@@ -28,7 +28,8 @@ test('5 步嵌套判据：pending / done / claimed / cancelled / 未知 各自�
     assert.equal(bySeq.get(8).status, 'done');
 
     const dist = Object.fromEntries(s.db.all('SELECT status, count(*) AS c FROM tasks GROUP BY status').map((r) => [r.status, r.c]));
-    assert.deepEqual(dist, { pending: 3, claimed: 1, done: 4, cancelled: 1 });
+    // #190：夹具里全局池那条 done 任务随队列一起跳过（不迁移），done 计 3
+    assert.deepEqual(dist, { pending: 3, claimed: 1, done: 3, cancelled: 1 });
   } finally {
     s.reset();
   }
@@ -55,6 +56,12 @@ test('tasks.seq 保持原 id；body 逐条哈希一致；时间按本地时区�
     }
     for (const [legacyKey, lt] of Object.entries(legacy.topics)) {
       const topicId = topicIdByLegacyKey.get(legacyKey);
+      // #190：全局池 / 空 cwd 的队列按设计不迁移，跳过（不算失败）
+      const cwd = String((lt && (lt.cwd || (Array.isArray(lt.cwds) && lt.cwds[0]))) || '').trim();
+      if (!cwd) {
+        assert.equal(topicId, undefined, `全局池队列 ${legacyKey} 不该迁移`);
+        continue;
+      }
       assert.ok(topicId, `队列 ${legacyKey} 未迁移`);
       for (const task of lt.tasks) {
         const row = s.db.get('SELECT seq, body, created_at FROM tasks WHERE topic_id = :t AND seq = :s', {

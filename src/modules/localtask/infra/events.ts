@@ -1,7 +1,7 @@
 // （#54 自 service.js 拆出）等待生命周期事件流：轮询 store，从 waiting/waitingUntil 与
 // 已领取数的变化里派生 waiting/reminder/resolved 事件；SSE（streamEventsSSE）与
 // CLI（NDJSON）共用 watchEvents 生成器。
-import { isGlobalKey, normalizeCwd } from '../paths.js';
+import { normalizeCwd } from '../paths.js';
 import { openLocaltaskStore as openStore, topics as topicsRepo } from './repo/index.js';
 import { deadlineMsOf } from '../lifecycle/task-view.js';
 import { addEventStreamConn } from '../ui/panel-presence.js';
@@ -123,7 +123,7 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
             cwd: t.cwd || '',
             name: t.name || '',
             summary: t.summary || '',
-            isGlobal: isGlobalKey(t.key),
+            // #190 全局池已删除，字段保留给旧事件消费方（恒 false）
             waitingUntil: t.waitingUntil,
             remainMs: Math.max(0, deadline - now),
             replay: first,
@@ -138,7 +138,7 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
             cwd: t.cwd || '',
             name: t.name || '',
             summary: t.summary || '',
-            isGlobal: isGlobalKey(t.key),
+            // #190 全局池已删除，字段保留给旧事件消费方（恒 false）
             waitingUntil: t.waitingUntil,
             remainSec: sec,
             remainMs: Math.max(0, st!.deadline! - now),
@@ -148,7 +148,7 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
       } else if (st && st.phase === 'waiting') {
         const outcome = deliveredCount(t) > st.delivered0! ? 'delivered' : 'timeout';
         state.set(t.key, { phase: 'ended' });
-        yield { type: 'resolved', key: t.key, cwd: t.cwd || '', name: t.name || '', isGlobal: isGlobalKey(t.key), outcome };
+        yield { type: 'resolved', key: t.key, cwd: t.cwd || '', name: t.name || '', outcome };
       } else if (!st) {
         state.set(t.key, { phase: 'idle' });
       }
@@ -163,7 +163,7 @@ export async function* watchEvents({ cwd: rawCwd, key: rawKey, pollMs = EVENT_PO
             key: t.key,
             cwd: t.cwd || '',
             name: t.name || '',
-            isGlobal: isGlobalKey(t.key),
+            // #190 全局池已删除，字段保留给旧事件消费方（恒 false）
             outcome: 'timeout',
             stale: true,
           };

@@ -6,11 +6,10 @@ interface NotFoundViewProps {
   app: AppSlice;
   groupAnchored: boolean;
   groupId?: string;
-  isGlobal: boolean;
   dirKey?: string;
 }
 
-export function NotFoundView({ task, app, groupAnchored, groupId, isGlobal, dirKey }: NotFoundViewProps) {
+export function NotFoundView({ task, app, groupAnchored, groupId, dirKey }: NotFoundViewProps) {
   return (
     <div className="mdw">
       <div className="pad stack">
@@ -22,7 +21,7 @@ export function NotFoundView({ task, app, groupAnchored, groupId, isGlobal, dirK
             onClick={() => app.onNavigate && app.onNavigate(
               groupAnchored
                 ? '#/group/' + encodeURIComponent(groupId || '')
-                : isGlobal ? '#/global' : '#/dir/' + encodeURIComponent(dirKey || '')
+                : '#/dir/' + encodeURIComponent(dirKey || '')
             )}
           >
             回到目录

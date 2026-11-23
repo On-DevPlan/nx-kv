@@ -2,15 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mergeDirectoryRows,
-  withGlobalRow,
-  globalPlaceholderTopic,
   splitQueueTasks,
   sortTasksForDisplay,
   isGroupTask,
   projectTasks,
   projectPending,
   taskInBoard,
-  GLOBAL_KEY,
 } from '../../src/web/frontend/modules/board/board-view.js';
 import { normalizeTask } from '../../src/modules/localtask/lifecycle/task-view.js';
 
@@ -38,61 +35,10 @@ test('mergeDirectoryRows：CLI 先建 timegoal、目录尚无 localtask 时仍�
   assert.equal(rows[0].name, 'gamma');
 });
 
-test('mergeDirectoryRows：全局池在最前，目录行不会重复', () => {
-  const global = { key: '__GLOBAL__', name: '全局任务', cwd: '', isGlobal: true, pending: 2, total: 2 };
-  const topics = [
-    { key: 'b', name: 'beta', cwd: 'D:/beta', pending: 0, total: 0 },
-    global,
-    { key: 'a', name: 'alpha', cwd: 'D:/alpha', pending: 1, total: 1 },
-  ];
-  const goals = [{ key: 'a', name: 'alpha', cwd: 'D:/alpha', deadline: 'x' }];
 
-  const rows = mergeDirectoryRows(topics, goals);
-  assert.equal(rows[0].key, '__GLOBAL__');
-  assert.deepEqual(rows.slice(1).map((r) => r.key), ['b', 'a'], '保留本地主题现有顺序');
-  assert.equal(rows.filter((r) => r.key === 'a').length, 1);
-  assert.equal(rows[2].goal, goals[0]);
-});
 
-test('withGlobalRow：全局池空着也补一行占位，用户永远找得到往池子里加任务的入口', () => {
-  const rows = mergeDirectoryRows([], []);
-  assert.equal(rows.length, 0, 'mergeDirectoryRows 本身不造全局行（纯函数，契约不变）');
 
-  const withGlobal = withGlobalRow(rows);
-  assert.equal(withGlobal.length, 1);
-  assert.equal(withGlobal[0].key, GLOBAL_KEY);
-  assert.equal(withGlobal[0].isGlobal, true);
-  assert.equal(withGlobal[0].placeholder, true);
-  assert.equal(withGlobal[0].topic, null);
-  assert.equal(withGlobal[0].name, '全局任务');
-});
 
-test('withGlobalRow：已有真全局主题时不重复补行', () => {
-  const global = { key: GLOBAL_KEY, name: '全局任务', cwd: '', isGlobal: true, pending: 2, total: 2 };
-  const rows = mergeDirectoryRows([global], []);
-  const withGlobal = withGlobalRow(rows);
-  assert.equal(withGlobal.length, 1);
-  assert.equal(withGlobal[0].topic, global, '用真主题，不用占位');
-  assert.equal(withGlobal[0].placeholder, undefined);
-});
-
-test('withGlobalRow：占位行排在最前（全局池是所有 worker 的候补来源）', () => {
-  const local = { key: 'a', name: 'alpha', cwd: 'D:/alpha', pending: 1, total: 1 };
-  const rows = withGlobalRow(mergeDirectoryRows([local], []));
-  assert.equal(rows[0].key, GLOBAL_KEY);
-  assert.equal(rows[1].key, 'a');
-});
-
-test('globalPlaceholderTopic：空池子也能直接拿来当投递目标', () => {
-  const t = globalPlaceholderTopic();
-  assert.equal(t.key, GLOBAL_KEY);
-  assert.equal(t.isGlobal, true);
-  assert.equal(t.cwd, '');
-  assert.equal(t.total, 0);
-  assert.equal(t.pending, 0);
-  assert.deepEqual(t.tasks, []);
-  assert.equal(t.waiting, false);
-});
 
 // ─── 队列拆分：软删除的任务不许留在待领取里 ─────────────────────────────
 //

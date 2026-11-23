@@ -14,7 +14,7 @@ import {
 } from '../../../shared/feedback-text.js';
 import { findFirstReadyPending } from '../dag.js';
 import { basename } from 'node:path';
-import { isGlobalKey, resolveTaskKey, topicKeyFor } from '../paths.js';
+import { resolveTaskKey, topicKeyFor } from '../paths.js';
 import { normalizeSummary, normalizeText, stampNow } from '../infra/store-io.js';
 import { normalizeTask, foreignResolver, isPending } from './task-view.js';
 import {
@@ -295,7 +295,7 @@ export async function claimFirstPending(key: string, roundSummary?: string, by?:
   const claimed = tx(() =>
     tasksRepo.claimTask(t.id, task.id, {
       summary: roundSummary || t.summary || '',
-      from: isGlobalKey(key) ? 'global' : 'local',
+      from: 'local',
       byKey: by?.key,
       byName: by?.name,
     })

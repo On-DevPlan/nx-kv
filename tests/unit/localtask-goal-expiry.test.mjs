@@ -223,20 +223,6 @@ test('goal 已到点：instruction 显示已到点（信息性），领取不受
   assert.ok(!r.instruction.includes('剩余'), '到点后不再是「剩余」措辞');
 });
 
-test('全局池投递也渲染等待方目录的 goal（goal 属于等待中的 agent 目录）', async () => {
-  await reset();
-  await tgsvc.setTimegoal({ cwd: dir, durationSec: 3600, prompt: PROMPT });
-  await svc.addTask({ text: '池子里的活', global: true });
-
-  const r = await waitForTask({ cwd: dir, summary: 's', timeoutSec: 5, open: false });
-
-  assert.equal(r.status, 'ok');
-  assert.equal(r.source, 'global', '从全局池领到');
-  assert.ok(
-    r.instruction.includes('〔时间目标「projG」剩余'),
-    `全局任务也带等待目录的 goal 段：${JSON.stringify(r.instruction)}`
-  );
-});
 
 test('probeGoalExpiry：只读、不改状态（探针不写库、不归档）', async () => {
   await reset();

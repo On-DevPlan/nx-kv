@@ -15,17 +15,6 @@ export const NAV_ASSETS: SvgAsset[] = [
     els: [p('M3.5 6.5c0-1.1.9-2 2-2h4l2 2.5h7c1.1 0 2 .9 2 2v8.5c0 1.1-.9 2-2 2h-13c-1.1 0-2-.9-2-2z')],
   },
   {
-    name: 'globe',
-    label: '全局任务池',
-    group: 'nav',
-    keys: ['globe', 'global', '全局', '世界'],
-    where: '侧栏「全局任务池」行',
-    els: [
-      c(12, 12, 8.5),
-      p('M3.5 12h17M12 3.5c2.6 2.3 4 5.2 4 8.5s-1.4 6.2-4 8.5c-2.6-2.3-4-5.2-4-8.5s1.4-6.2 4-8.5z'),
-    ],
-  },
-  {
     name: 'gear',
     label: '设置',
     group: 'nav',
@@ -43,6 +32,14 @@ export const NAV_ASSETS: SvgAsset[] = [
     keys: ['sidebar', 'layout', '侧栏', '布局'],
     where: '侧栏收起/展开按钮、救援浮钮',
     els: [r(3.5, 4.5, 17, 15, 2), p('M9.5 4.5v15')],
+  },
+  {
+    name: 'globe',
+    label: '球体',
+    group: 'nav',
+    keys: ['globe', 'world', '球体', '世界'],
+    where: '模板作用域标记（全局范围）；#190 起不再用于「全局任务池」',
+    els: [c(12, 12, 9), p('M3 12h18'), p('M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z')],
   },
   {
     name: 'chevron',

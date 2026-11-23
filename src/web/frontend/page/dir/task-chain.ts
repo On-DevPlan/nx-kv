@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Model } from 'flexlayout-react';
 import { getTaskChain } from './api.js';
-import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import { openBesideMain } from '../../workspace.js';
 import type { LocalTask, LocalTopic } from '../../types.js';
 import type { AppSlice, ChainApi, ChainApiItem, ChainNode, ChainTreeNode, HistorySnapshot } from './task-utils.js';
@@ -13,7 +12,6 @@ interface UseChainArgs {
   taskRow: LocalTask | null;
   topicKey: string;
   topic: LocalTopic | null;
-  isGlobal: boolean;
   groupAnchored: boolean;
   groupId?: string;
   app: AppSlice;
@@ -23,7 +21,7 @@ interface UseChainArgs {
 }
 
 export function useChain({
-  isDraft, task, taskRow, topicKey, topic, isGlobal, groupAnchored, groupId,
+  isDraft, task, taskRow, topicKey, topic, groupAnchored, groupId,
   app, model, historyId, toast,
 }: UseChainArgs) {
   const [chainApi, setChainApi] = useState<ChainApi | null>(null);
@@ -33,9 +31,7 @@ export function useChain({
       return undefined;
     }
     let cancelled = false;
-    const q = isGlobal
-      ? `key=${encodeURIComponent(GLOBAL_KEY)}&id=${Number(task)}`
-      : `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(task)}`;
+    const q = `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(task)}`;
     getTaskChain(q)
       .then((d) => {
         if (!cancelled) setChainApi(d);
@@ -46,7 +42,7 @@ export function useChain({
     return () => {
       cancelled = true;
     };
-  }, [isDraft, task, isGlobal, topic?.cwd, taskRow?.history?.length, taskRow?.forkOf, taskRow?.reopenCount]);
+  }, [isDraft, task, topic?.cwd, taskRow?.history?.length, taskRow?.forkOf, taskRow?.reopenCount]);
 
   // #172：单向树（后端 taskChain.tree）——面板树视图的结构真相
   const chainTree = useMemo<ChainTreeNode | null>(() => (isDraft || !chainApi ? null : (chainApi.tree as ChainTreeNode) || null), [isDraft, chainApi]);
@@ -110,7 +106,7 @@ export function useChain({
       attachmentCount: 0,
       current: true,
       taskId: Number(task),
-      dirKey: topicKey || GLOBAL_KEY,
+      dirKey: topicKey,
     });
     for (const c of children) {
       nodes.push({
@@ -144,7 +140,7 @@ export function useChain({
     // 组锚定页保持组锚（任务还在本组，只是看最新一轮）
     if (groupAnchored) app.openPage({ groupId, task: String(latestChild.id), name: `#${latestChild.id}` });
     else app.openPage({
-      dirKey: String(latestChild.key || topicKey || GLOBAL_KEY),
+      dirKey: String(latestChild.key || topicKey || ''),
       task: String(latestChild.id),
       name: `#${latestChild.id}`,
     });
@@ -165,7 +161,7 @@ export function useChain({
           component: 'page',
           name: `链 #${task} · ${node.kind || node.historyId}`,
           config: {
-            dirKey: topicKey || GLOBAL_KEY,
+            dirKey: topicKey,
             task: String(task),
             historyId: Number(node.historyId),
           },

@@ -2,7 +2,6 @@
 
 import { db, txw } from './open.js';
 import { nowMs, msToStamp } from '../../../../core/db/time.js';
-import { GLOBAL_TOPIC_KEY } from '../../../../core/topic-key.js';
 import { TOPIC_EXT, parseExt, jsonText } from './rows.js';
 import { listTaskRowsByTopic, listAllTaskRows } from './tasks.js';
 import type { DbApi } from '../../../../core/db/driver.js';
@@ -38,7 +37,6 @@ export interface TopicObject {
   waitingUntilMs: number;
   waitingSince: string;
   cancelRequested: boolean;
-  isGlobal: boolean;
   ext: Record<string, any>;
   tasks: TaskObject[];
 }
@@ -63,7 +61,6 @@ export function ensureTopic(key: string, { cwd = '', name = '' }: { cwd?: string
     let row: any = conn.get('SELECT id, cwd, name, ext, deleted_at FROM topics WHERE key = :key', { key });
     if (!row) {
       const ext: Record<string, any> = {};
-      if (key === GLOBAL_TOPIC_KEY) ext[TOPIC_EXT.GLOBAL] = 1;
         conn.run(
           `INSERT INTO topics (key, repo_key, cwd, group_key, name, next_seq, ext, state, version,
                                deleted_at, created_at, updated_at)
@@ -177,7 +174,6 @@ function assembleTopic(conn: DbApi, row: TopicRow, preloaded: { tasks: TaskObjec
     waitingSince: presence && Number(presence.since_ms) > 0 ? msToStamp(Number(presence.since_ms)) : '',
     // cwds（见过的路径）保持 JSON 形状：库里只有主 cwd，历史路径不再有地方放（T03 简化）
     cancelRequested: !!(presence && presence.cancel_requested),
-    isGlobal: String(row.key) === GLOBAL_TOPIC_KEY,
     ext,
     tasks: ordered,
   };

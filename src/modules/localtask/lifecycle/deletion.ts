@@ -1,11 +1,9 @@
 // （#54 自 service.js 拆出）主题删除：四条删除路径共用的同一套判定（deleteGuard：
-// 全局池/等待中/有未领取 → 需 --force）+ 单个/批量删除。
+// 等待中/有未领取 → 需 --force）+ 单个/批量删除。
 //
 // 删除 = 软删 topics 行（deleted_at 打标；任务/依赖/presence 保留，同名目录再出现即恢复）。
-// 全局池例外：同一个 key 永远会再出现，软删会被下一次 ensureTopic 复活成「没删掉」，
-// 所以 force 清空全局池走真删（FK 级联清任务）。
 import { badInput } from '../../../core/errors.js';
-import { isGlobalKey, normalizeCwd, resolveTopicKey } from '../paths.js';
+import { normalizeCwd, resolveTopicKey } from '../paths.js';
 import { openLocaltaskStore as openStore, topics as topicsRepo } from '../infra/repo/index.js';
 import { isLiveWaiting, isPending, topicView } from './task-view.js';
 // ─── 删除判定：四条删除路径共用同一套规则 ──────────────────────────────
@@ -21,7 +19,7 @@ import { isLiveWaiting, isPending, topicView } from './task-view.js';
 //
 // force=true 仍然强删（老用法不变）。
 export const DELETE_REASONS = {
-  protected: '全局共享池',
+  protected: '受保护',
   waiting: '等待中',
   has_pending: '有未领取任务',
   manual: '手动登记',
@@ -44,11 +42,6 @@ export type DeleteGuardResult =
  * @returns {{ok:boolean, reason?:string, pending?:number, message?:string}}
  */
 export function deleteGuard(topic: any, { force = false, key = '', scope = 'topic' }: DeleteGuardOptions = {}): DeleteGuardResult {
-  if (isGlobalKey(key)) {
-    return force
-      ? { ok: true }
-      : { ok: false, reason: 'protected', message: '全局主题是共享任务池，默认不能删除（确认要清空请加 --force）' };
-  }
   if (isLiveWaiting(topic)) {
     return force
       ? { ok: true }
@@ -96,8 +89,7 @@ export interface RemoveTopicResult {
 
 // 删除整个主题（连同其全部任务）。默认拒绝删除「等待中」主题——那会让正阻塞的
 // agent 只能等到超时；force=true 才强删（agent 随后超时收尾）。
-// 全局主题同样默认拒绝（共享池，删掉会让所有 worker 的候补来源消失）；
-// force=true 清空全局任务池。
+
 export async function removeTopic({ cwd: rawCwd, key: rawKey, force = false }: RemoveTopicInput = {}): Promise<RemoveTopicResult> {
   if (!rawKey && !rawCwd) {
     throw badInput('需要 --cwd "<工作目录>" 或 --key "<主题key>"');
@@ -109,11 +101,11 @@ export async function removeTopic({ cwd: rawCwd, key: rawKey, force = false }: R
     const { notFound } = await import('../../../core/errors.js');
     throw notFound(`主题不存在（key ${key}）`);
   }
-  // 删除判定只写一份（deleteGuard）：全局共享池 / 等待中 / 有未领取任务 → 都要 --force。
+  // 删除判定只写一份（deleteGuard）：等待中 / 有未领取任务 → 都要 --force。
   const guard = deleteGuard(t, { force, key });
   if (!guard.ok) throw badInput(guard.message);
   const view = topicView(t);
-  topicsRepo.deleteTopic(key, { purge: isGlobalKey(key) });
+  topicsRepo.deleteTopic(key, { purge: false });
   return { status: 'removed', key, name: t.name, cwd: t.cwd, topic: view };
 }
 
@@ -164,6 +156,6 @@ export async function removeTopics({ keys, cwds, all = false, force = false }: R
     }
     removed.push({ key, name: t.name, cwd: t.cwd });
   }
-  for (const r of removed) topicsRepo.deleteTopic(r.key, { purge: isGlobalKey(r.key) });
+  for (const r of removed) topicsRepo.deleteTopic(r.key, { purge: false });
   return { status: 'ok', all: !!all, count: removed.length, removed, skipped };
 }

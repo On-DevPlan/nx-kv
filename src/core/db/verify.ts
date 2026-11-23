@@ -261,12 +261,16 @@ export function verifyStore(db: DbApi, { appDir }: { appDir?: string } = {}): Ve
       const problems: Array<Record<string, any>> = [];
       let compared = 0;
       let legacyTasks = 0;
+      let skippedGlobal = 0;
       for (const [legacyKey, lt] of Object.entries(legacyTopics)) {
         const topic = topicByLegacyKey.get(legacyKey);
         const tasks = Array.isArray(lt && lt.tasks) ? lt.tasks : [];
         legacyTasks += tasks.length;
         if (!topic) {
-          problems.push({ legacyKey, why: '队列未迁移' });
+          // #190：全局池 / 空 cwd 的队列**按设计不迁移**——不算问题，只从对账基数里扣掉
+          const cwd = String((lt && (lt.cwd || (Array.isArray(lt.cwds) && lt.cwds[0]))) || '').trim();
+          if (!cwd) skippedGlobal += tasks.length;
+          else problems.push({ legacyKey, why: '队列未迁移' });
           continue;
         }
         for (const task of tasks) {
@@ -298,8 +302,8 @@ export function verifyStore(db: DbApi, { appDir }: { appDir?: string } = {}): Ve
       // 不会跟 —— 要求相等会让任何真实使用过的库永远红一条（T07 裁决）。
       add(
         'legacy 任务数 ≤ 迁移后任务数（库是活数据，允许新增）',
-        legacyTasks <= statusTotal,
-        `${legacyTasks} vs ${statusTotal}`
+        legacyTasks - skippedGlobal <= statusTotal,
+        `${legacyTasks}${skippedGlobal ? ` - 跳过全局池 ${skippedGlobal}` : ''} vs ${statusTotal}`
       );
     } else {
       add('每条 task 的 body 哈希 = 原 text', true, hashDetail);

@@ -143,5 +143,5 @@ export { openRaw, bindValue } from './driver.js';
 export { CURRENT_SCHEMA_VERSION, REQUIRED_NODE_VERSION, checkNodeVersion } from './version.js';
 export { StoreMigrationError, StoreTooNewError, NotNxKvStoreError } from './errors.js';
 export { verifyStore, tableCounts, statusDistribution, findLegacyLocalTasks } from './verify.js';
-export { topicKeyOf, GLOBAL_TOPIC_KEY } from '../topic-key.js';
+export { topicKeyOf } from '../topic-key.js';
 export { nowMs, parseStampMs, parseIsoMs, msToStamp, stampFileTag } from './time.js';

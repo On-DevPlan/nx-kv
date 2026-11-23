@@ -36,7 +36,6 @@ import type { AppRoute, BoardRow, LocalTopic, Prefs, RepoRow, ShellApi } from '.
  */
 function rowIcon(row: SideRow): string {
   if (row.type === 'board') return 'board';
-  if (row.type === 'global') return 'globe';
   return row.repoType === 'ref' ? 'repo-ref' : 'repo';
 }
 
@@ -127,7 +126,6 @@ export default function Sidebar({
         curCollapsed = !!r.collapsed;
         continue;
       }
-      if (r.type === 'global') continue;
       if (cur && curCollapsed) hiddenKeys.add(r.type === 'board' ? 'board:' + String(r.id) : r.key);
     }
     return hiddenKeys;
@@ -163,7 +161,6 @@ export default function Sidebar({
   };
 
   const isActive = (row: SideRow) => {
-    if (row.type === 'global') return route.view === 'global';
     if (row.type === 'repo') return route.view === 'dir' && route.key === row.topicKey;
     if (row.type === 'board') return route.view === 'group' && route.key === row.id;
     return false;
@@ -201,8 +198,6 @@ export default function Sidebar({
     (row: SideRow) => {
       if (row.type === 'board') {
         onNavigate?.('#/group/' + encodeURIComponent(String(row.id)));
-      } else if (row.type === 'global') {
-        onNavigate?.('#/global');
       } else if (row.topicKey) {
         onNavigate?.('#/dir/' + encodeURIComponent(row.topicKey));
       } else {
@@ -215,11 +210,7 @@ export default function Sidebar({
   // chevron：展开/收起（仓库 = 子任务；看板是叶子，没有展开态）
   const toggleRow = useCallback(
     (row: SideRow) => {
-      if (row.type === 'global') {
-        onNavigate?.('#/global');
-      } else {
-        toggleExpanded(row.topicKey || row.key);
-      }
+      toggleExpanded(row.topicKey || row.key);
     },
     [onNavigate, toggleExpanded]
   );
@@ -471,7 +462,7 @@ export default function Sidebar({
                   {row.name}
                 </span>
                 {row.pending > 0 && <span className="cnt">{row.pending}</span>}
-                {waitTag(row, row.type === 'global' ? '有等待中的主题' : 'agent 等待回填中')}
+                {waitTag(row, 'agent 等待回填中')}
                 <span
                   className="more" role="button" tabIndex={-1} aria-label="行菜单"
                   onClick={(e) => openRowMenu(e, row)}
@@ -480,7 +471,7 @@ export default function Sidebar({
                 </span>
               </button>
               {/* 展开键与 openRow 同源（topicKey，空则退仓库 key）——否则无队列仓库永远展不开 */}
-              {(row.type === 'global' ? isActive(row) : expanded.has(row.topicKey || row.key)) && (
+              {expanded.has(row.topicKey || row.key) && (
                 <TaskChildren row={row} onNavigate={onNavigate} refreshLocal={refreshLocal} />
               )}
             </div>

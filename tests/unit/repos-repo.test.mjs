@@ -15,7 +15,7 @@ import * as boards from '../../src/modules/repos/boards.js';
 import * as transfer from '../../src/modules/repos/transfer.js';
 import { closeDb } from '../../src/core/db/index.js';
 import repoLayer from '../../src/modules/repos/repo/index.js';
-import { topicKeyOf, GLOBAL_TOPIC_KEY } from '../../src/core/topic-key.js';
+import { topicKeyOf } from '../../src/core/topic-key.js';
 
 let dir = '';
 const repo = repoLayer;
@@ -98,19 +98,10 @@ test('bindTopicsToRepos：预览零副作用；apply 按**最长路径前缀**�
   mk(join(dir, 'proj', 'app'));
   mk(join(dir, 'proj', 'sub', 'deep'));
   mk(join(dir, 'other'));
-  repo.txw((conn) => {
-    const at = Date.now();
-    conn.run(
-      `INSERT INTO topics (key, repo_key, cwd, group_key, name, next_seq, ext, state, version,
-                           deleted_at, created_at, updated_at)
-       VALUES ('${GLOBAL_TOPIC_KEY}', '__unbound__', '', NULL, '全局任务', 1, '{}', '', 0, NULL, :at, :at)`,
-      { at }
-    );
-  });
 
   // 预览：零副作用（库不变），只列计划
   const plan = await repos.bindTopicsToRepos({ apply: false });
-  assert.equal(plan.scanned, 4);
+  assert.equal(plan.scanned, 3, '#190 起没有全局池行，只剩 3 条目录队列');
   assert.equal(plan.bound.length, 2, '预览命中两条');
   assert.equal(plan.bound.some((x) => x.cwd === join(dir, 'other')), false, '无关目录不绑');
   const hitParent = plan.bound.find((x) => x.cwd === join(dir, 'proj', 'app'));
@@ -118,7 +109,6 @@ test('bindTopicsToRepos：预览零副作用；apply 按**最长路径前缀**�
   assert.equal(hitParent.repoKey, parent.key, 'proj/app 归父仓库');
   assert.equal(hitChild.repoKey, child.key, 'proj/sub/deep 归子仓库（最长前缀赢）');
   assert.equal(plan.bound.some((x) => x.cwd === join(dir, 'other')), false, '无关目录不绑');
-  assert.equal(plan.bound.some((x) => x.topicKey === GLOBAL_TOPIC_KEY), false, '全局池永远留哨兵');
 
   // apply 前：预览零副作用（没有绑定）
   const before = repo.txw((conn) => ({
@@ -137,10 +127,10 @@ test('bindTopicsToRepos：预览零副作用；apply 按**最长路径前缀**�
   assert.deepEqual(rows.bound.map((x) => x.cwd), [join(dir, 'proj', 'sub', 'deep')]);
   assert.deepEqual(
     rows.left.map((x) => x.cwd).sort(),
-    ['', join(dir, 'other')].sort(),
-    '留哨兵的只有无关目录与全局池（proj/app 已绑父仓库）'
+    [join(dir, 'other')].sort(),
+    '留哨兵的只有无关目录（#190 起没有全局池；proj/app 已绑父仓库）'
   );
-  assert.equal(rows.left.length, 2);
+  assert.equal(rows.left.length, 1);
 });
 
 // ─── zip 往返四项相等 ─────────────────────────────────────────────────

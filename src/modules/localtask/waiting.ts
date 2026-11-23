@@ -5,15 +5,13 @@
 // T03：等待态进 topic_presence 表（schema P0-4 的落地）—— wait 进程被 SIGKILL 时
 // finally 不会执行，waiting:true 会永久残留；独立成表后残留只污染这张小表，
 // 整表清空即可，不会让队列本身看起来像有人在等。
-import { isGlobalKey, GLOBAL_NAME, resolveTopicKey } from './paths.js';
+import { resolveTopicKey } from './paths.js';
 import { openLocaltaskStore as openStore, presence as presenceRepo, topics as topicsRepo, txw as tx } from './infra/repo/index.js';
 
 // 在库里把某主题置为等待/结束，并刷新现状。
 // waitingSince 是「等待起点」，面板据此显示「已等多久」——waitingUntil（截止时刻）
 // 只能反推剩余，反推不出起点（超时值可被改写），所以两者都存。
-// 全局主题是任务源不是等待源，永不置等待态（no-op）。
 export async function setWaiting(key: string, cwd: string, summary: string, waiting: boolean, deadline: Date | null): Promise<void> {
-  if (isGlobalKey(key)) return;
   openStore();
   tx(() => {
     topicsRepo.ensureTopic(key, { cwd });
@@ -32,7 +30,6 @@ export async function setWaiting(key: string, cwd: string, summary: string, wait
 // wait 结束复位：**仅当主题仍存在**时清等待态，绝不重建——主题可能已被 force 删除，
 // 重建会让「删除主题」失效（曾在超时清理路径上把删掉的主题又建回来）。
 export async function clearWaiting(key: string): Promise<void> {
-  if (isGlobalKey(key)) return;
   openStore();
   presenceRepo.clearPresence(key);
 }
@@ -61,10 +58,6 @@ export async function cancelWait({ cwd: rawCwd, key: rawKey }: { cwd?: string; k
     throw badInput('需要 --cwd "<工作目录>" 或 --key "<主题key>"');
   }
   const key = resolveTopicKey({ key: rawKey, cwd: rawCwd });
-  // 全局主题不是等待源（永不 waiting），无从关闭
-  if (isGlobalKey(key)) {
-    return { cancelled: false, key, name: GLOBAL_NAME, cwd: '', reason: 'global_not_waitable' };
-  }
   openStore();
   const t = topicsRepo.getTopic(key);
   // 「真的在等」的判定在 requestCancel 里（waiting=1 且截止未过）——僵尸标志不算

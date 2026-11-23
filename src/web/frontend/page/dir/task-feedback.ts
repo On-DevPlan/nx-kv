@@ -10,7 +10,6 @@ import { persistAtt } from '../../components/md/attachments/attachments.js';
 import type { Attachment } from '../../components/md/attachments/attach-common.js';
 import { titleFromMd } from '../../modules/md/md-parse.js';
 import { docIdOf, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { GLOBAL_KEY } from '../../modules/board/board-view.js';
 import {
   buildReopenText,
   FEEDBACK_HEADING,
@@ -35,7 +34,6 @@ interface UseFeedbackArgs {
   taskRow: LocalTask | null;
   topicKey: string;
   topic: LocalTopic | null;
-  isGlobal: boolean;
   dirKey?: string;
   groupAnchored: boolean;
   groupId?: string;
@@ -52,7 +50,7 @@ interface UseFeedbackArgs {
 }
 
 export function useFeedback({
-  doc, isDraft, task, taskRow, topicKey, topic, isGlobal, dirKey,
+  doc, isDraft, task, taskRow, topicKey, topic, dirKey,
   groupAnchored, groupId, app, model, tabId, refreshLocal,
   closeSelMenu, lastSel, selMenu, dirty, setDirty, guard,
 }: UseFeedbackArgs) {
@@ -61,11 +59,9 @@ export function useFeedback({
   /** 服务端当前任务（#79）：评论/反馈的 base 以**盘上正文**为准——会话 doc 可能过期。 */
   const fetchServerTask = useCallback(async () => {
     if (isDraft || task == null || /^draft/i.test(String(task))) return null;
-    const q = isGlobal
-      ? `key=${encodeURIComponent(GLOBAL_KEY)}&id=${Number(task)}`
-      : `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(task)}`;
+    const q = `cwd=${encodeURIComponent(topic?.cwd || '')}&id=${Number(task)}`;
     return findTaskItem(q).catch(() => null);
-  }, [isDraft, task, isGlobal, topic?.cwd]);
+  }, [isDraft, task, topic?.cwd]);
 
   /** 反馈：开一块 **md 编辑面板** 写意见；提交后**新建一条任务**（forkOf 指回本条），原任务不动。 */
   const openFeedback = useCallback(() => {
@@ -79,7 +75,7 @@ export function useFeedback({
       prevQuote: String(taskRow?.roundSummary || '').trim()
         || String(doc?.body || '').trim().slice(0, 400),
       // 原文定位（#107）：点引用区在右侧并排打开这条任务的原文
-      src: { dirKey: topicKey || dirKey || GLOBAL_KEY, task: String(task), name: `原文 #${task}` },
+      src: { dirKey: topicKey || dirKey || '', task: String(task), name: `原文 #${task}` },
       onSubmit: (payload: FeedbackPayload) => spawnFeedbackTask(payload),
     });
   }, [model, app.model, task, doc, taskRow, topicKey, dirKey]);
@@ -115,11 +111,7 @@ export function useFeedback({
         !isDraft && task != null && !/^draft/i.test(String(task))
           ? { forkOf: String(task), forkKind: 'reopen' }
           : {};
-      const res = await addTask(
-        isGlobal
-          ? { global: true, text, ...linkFields }
-          : { cwd: topic?.cwd, text, ...linkFields },
-      );
+      const res = await addTask({ cwd: topic?.cwd, text, ...linkFields });
       const newId = String(res?.task?.id ?? res?.id ?? '');
       if (!newId) {
         toast('反馈已提交，但未拿到新任务编号');
@@ -137,7 +129,7 @@ export function useFeedback({
         else app.openPage({ dirKey: landedKey, task: newId, name: `${title.slice(0, 24)}（反馈）` });
       }
     });
-  }, [doc, task, taskRow, isDraft, isGlobal, topic, topicKey, groupAnchored, groupId, app, refreshLocal, closeSelMenu, guard, toast, fetchServerTask]);
+  }, [doc, task, taskRow, isDraft, topic, topicKey, groupAnchored, groupId, app, refreshLocal, closeSelMenu, guard, toast, fetchServerTask]);
 
   /** 划选评论 → 派生评论任务（#172：原任务保持活着不取消，新任务只记录这条批注）。 */
   const submitCommentInPlace = useCallback(({ text: fbRaw, attachments = [], inserts = '', quote }: FeedbackPayload = {}) => {
@@ -184,7 +176,7 @@ export function useFeedback({
         text = buildReopenText(reopenArgs);
       }
       const res = await postReopen({
-        ...(isGlobal ? { key: GLOBAL_KEY } : { cwd: topic?.cwd }),
+        cwd: topic?.cwd,
         id: Number(task),
         ...(text ? { text } : {}),
         kind: 'comment',
@@ -213,7 +205,7 @@ export function useFeedback({
       toast(`已回写评论「${title}」#${sameId}`);
       refreshLocal?.();
     });
-  }, [doc, task, isDraft, isGlobal, topic, topicKey, model, tabId, refreshLocal, closeSelMenu, lastSel, dirty, setDirty, guard, toast, fetchServerTask]);
+  }, [doc, task, isDraft, topic, topicKey, model, tabId, refreshLocal, closeSelMenu, lastSel, dirty, setDirty, guard, toast, fetchServerTask]);
 
   /** 工具栏「评论」：只用当前可见选区；**新开 md 编辑面板**（#104） */
   const openCommentFromToolbar = useCallback(() => {
@@ -231,7 +223,7 @@ export function useFeedback({
       quote,
       taskLabel: task != null ? '#' + task : '',
       taskTitle: String(doc?.title || '').replace(/^#+\s*/, ''),
-      src: { dirKey: topicKey || dirKey || GLOBAL_KEY, task: String(task), name: `原文 #${task}` },
+      src: { dirKey: topicKey || dirKey || '', task: String(task), name: `原文 #${task}` },
       onSubmit: (payload: FeedbackPayload) => submitCommentInPlace({ ...payload, quote }),
     });
     closeSelMenu();

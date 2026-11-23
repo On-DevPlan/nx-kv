@@ -31,7 +31,7 @@
 // ── 迁移口径（与 docs/research/SQLITE-REFACTOR.md §6 对齐，差异见行内注释）──
 //
 // · 哨兵仓库 `__unbound__`：legacy 队列全都对不上真实仓库（key 是目录名 sha1），
-//   全局池 `__GLOBAL__` 也挂它下面；`cwd = ''`。不伪造 repo key、不放松 NOT NULL。
+//   空 cwd 的历史行（#190 前的全局池）不迁移。不伪造 repo key、不放松 NOT NULL。
 // · `boards` → `repos(type='group')`，key = `group/<slug(初始 name)>`（冻结，
 //   name 之后可改），旧 `b_xxx` 存 `ext.ext_legacy_id`。
 // · `consumedAt → claimed_at`（75/75 有值，它就是领取时刻）。
@@ -103,11 +103,16 @@ export interface ImportLegacyOptions {
  * 正文哈希不在这一步：body 就是本条代码从 text 直接写进去的，比了也是自证。
  * 它留给 `db verify`（那时是与磁盘上的 JSON 对账，才是真校验）。
  */
-function validateImport(conn: DbApi, { expectedTasks }: { expectedTasks: number }): void {
+function validateImport(
+  conn: DbApi,
+  { expectedTasks, skippedTasks = 0 }: { expectedTasks: number; skippedTasks?: number },
+): void {
   const problems: string[] = [];
   const taskCount = Number((conn.get('SELECT count(*) AS c FROM tasks') || {}).c || 0);
-  if (taskCount !== expectedTasks) {
-    problems.push(`任务行数 ${taskCount} ≠ legacy ${expectedTasks}`);
+  // #190：空 cwd / 全局池的队列整行跳过，它们名下的任务不计入期望值
+  const want = expectedTasks - skippedTasks;
+  if (taskCount !== want) {
+    problems.push(`任务行数 ${taskCount} ≠ legacy ${want}（legacy ${expectedTasks} - 跳过全局池 ${skippedTasks}）`);
   }
 
   const topics = conn.all('SELECT id, key, cwd, group_key, next_seq FROM topics');
@@ -179,8 +184,13 @@ export function importLegacy(db: DbApi, { appDir, docsDir, atMs = nowMs() }: Imp
 
   // 期望的任务总数：**从 legacy 里数**，不是从写进去的行数里数 —— 后者永远相等。
   let expectedTasks = 0;
+  let skippedTasks = 0;
   for (const t of Object.values(((localtasksData && localtasksData.topics) || {}) as Record<string, any>)) {
-    expectedTasks += Array.isArray(t && t.tasks) ? t.tasks.length : 0;
+    const n = Array.isArray(t && t.tasks) ? t.tasks.length : 0;
+    expectedTasks += n;
+    // #190：全局池 / 空 cwd 的队列不迁移，其任务数从期望值里扣掉
+    const cwd = String((t && (t.cwd || (Array.isArray(t.cwds) && t.cwds[0]))) || '').trim();
+    if (!cwd) skippedTasks += n;
   }
 
   // 顺序即外键依赖：repos（含哨兵）→ members → topics → tasks → links/deps → goals
@@ -199,7 +209,7 @@ export function importLegacy(db: DbApi, { appDir, docsDir, atMs = nowMs() }: Imp
     report
   );
 
-  validateImport(db, { expectedTasks });
+  validateImport(db, { expectedTasks, skippedTasks });
 
   setMeta(db, 'migrated_from_json_at', String(atMs), atMs);
   return report;

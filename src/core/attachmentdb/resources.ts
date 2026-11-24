@@ -11,7 +11,6 @@ import {
 import type { AttachmentRef } from './ids.js';
 import { ensureFolderAttachment } from './folder.js';
 import { taskTopicColumn } from './query.js';
-import { stripFrontmatterBody as stripFrontmatter } from '../task-frontmatter.js';
 
 export interface UpsertFileAttachmentInput {
   id?: string;
@@ -163,9 +162,9 @@ export function ensureUrlAttachment(conn: any, { url, name = '', atMs = Date.now
   });
 }
 
-/** 任务标题 = 正文（去 frontmatter）首个非空行，去 # 前缀，截 80 字。 */
+/** 任务标题 = 正文首个非空行，去 # 前缀，截 80 字。#197 正文无 frontmatter 头。 */
 function taskTitleOf(body: unknown): string {
-  const text = String(stripFrontmatter(String(body || ''))).trim();
+  const text = String(body || '').trim();
   const first = text.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || '';
   return first.replace(/^#+\s*/, '').trim().slice(0, 80);
 }

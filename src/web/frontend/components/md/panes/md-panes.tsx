@@ -56,7 +56,7 @@ import {
   runFormat,
   toggleNthTodo,
 } from '../../../modules/md/md-edit-ops.js';
-import { isFrontmatterBlock, normalizeBlockText } from '../../../modules/md/md-parse.js';
+import { normalizeBlockText } from '../../../modules/md/md-parse.js';
 import type { Attachment } from '../attachments/attach-common.js';
 
 export { MdPanes, ModeSeg } from './md-panes-root.jsx';
@@ -326,13 +326,11 @@ function LivePreview({
     if (e.key === 'Backspace' && handleBareListEscape(ctx)) return;
 
     // Delete 在块尾（无选区、非末块）：把下一块并进来，光标落接缝——
-    // Backspace 并上块的镜像（Notion 行为）。FM 块同理不许被并：
-    // 合并会把下一块的 `---` 撕碎成普通文本。
+    // Backspace 并上块的镜像（Notion 行为）。#197：FM 块已不存在，不再需要排除。
     if (
       e.key === 'Delete'
       && ta.selectionStart === val.length && ta.selectionEnd === val.length
       && i < blocks.length - 1 && !slashRef.current
-      && !isFrontmatterBlock(normalizeBlockText(blocks[i + 1] ?? ''))
     ) {
       e.preventDefault();
       setSlashBoth(null);

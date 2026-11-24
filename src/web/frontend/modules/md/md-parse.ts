@@ -7,8 +7,6 @@
 // 任务 frontmatter（工作组语义）**共用模块内同一份实现**：CLI（node）与面板（浏览器）
 // 各写一套正则，必然出现「面板认得出、CLI 认不出」这种最难查的分叉。
 import type { LocalTask } from '../../types.js';
-import { parseFrontmatter, stripFrontmatter } from '../../../../shared/frontmatter.js';
-export { parseFrontmatter, stripFrontmatter };
 
 export { headingAnchorId, extractMdHeadings, renderMarkdownHtml } from './md-render.js';
 export {
@@ -20,13 +18,12 @@ export {
   splitMdBlocks,
   joinMdBlocks,
   liveBodyBlocks,
-  isFrontmatterBlock,
-  frontmatterEndOffset,
   insertAttachmentSnippet,
 } from './md-blocks.js';
 
 export function titleFromMd(body: string, fallback = '未命名任务'): string {
-  const lines = stripFrontmatter(body).split('\n');
+  // #197：正文无 frontmatter 头，直接取首行
+  const lines = body.split('\n');
   for (const line of lines) {
     const m = line.match(/^#\s+(.+)$/);
     if (m) return (m[1] ?? '').trim();

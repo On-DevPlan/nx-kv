@@ -10,7 +10,6 @@
 // 落点解析与 add.js 共用同一份实现（board-target.resolveGroupTarget + group-store），
 // 不另起炉灶。
 import { badInput } from '../../../core/errors.js';
-import { stripFrontmatter } from '../../../shared/frontmatter.js';
 import { resolveGroupTarget } from '../ops/board-target.js';
 import * as service from '../service.js';
 import { normalizedGroupStore } from '../ops/group-store.js';
@@ -55,8 +54,8 @@ async function resolveAttributionChange({ text, project, board }: UpdateTaskPara
       groupKey: target.boardKey,
       groupName: target.boardName,
     },
-    // 正文只存 markdown——旧正文里若还残留 --- 头，这次编辑顺手剥掉
-    text: text === undefined || text === null ? '' : stripFrontmatter(String(text)),
+    // #197：正文只存 markdown（历史 --- 头在迁移时已剥光，运行时不剥）
+    text: text === undefined || text === null ? '' : String(text),
   };
 }
 

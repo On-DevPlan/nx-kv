@@ -14,7 +14,6 @@
 // 双链 [[目标|显示]] 与 shared/wikilink.js 同一套正则与归一（收在同构层防两端漂移）。
 import { normalizeWikiTarget } from '../../../../shared/wikilink.js';
 import { looksLikeFileId } from '../../../../shared/attach.js';
-import { stripFrontmatter } from '../../../../shared/frontmatter.js';
 import type { Attachment } from '../../components/md/attachments/attach-common.js';
 import {
   BLOCK_RULES,
@@ -265,7 +264,8 @@ export function renderMarkdownHtml(
   // 1) 定义行先抽走（脚注正文、引用式链接目标），剩下的正文才逐行渲染
   const lines = DOC_RULES.reduce(
     (acc, rule) => rule.collect(acc, doc),
-    stripFrontmatter(src).split('\n'),
+    // #197：正文无 frontmatter 头，直接渲染
+    src.split('\n'),
   );
   const env: InlineEnv = { footnotes: doc.footnotes, refLinks: doc.refLinks };
   const usedIds = new Set<string>();

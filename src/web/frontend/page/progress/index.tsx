@@ -19,7 +19,7 @@ import type { ChainViewTarget } from './chain-view.js';
 import { Icon } from '../../components/icons.jsx';
 import { MenuPortal, openMenuAt, useMenu } from '../../components/md/shell/tool-bar.js';
 import { isGroupTask } from '../../modules/board/board-view.js';
-import { parseFrontmatter, taskToProgress } from '../../modules/md/md-parse.js';
+import { taskToProgress } from '../../modules/md/md-parse.js';
 import { hitQuery } from '../../modules/md/progress-search.js';
 import { closeRightSidebar, findOpenPanel } from '../../workspace.js';
 import { useToast } from '../../components/toast/index.jsx';
@@ -158,23 +158,19 @@ export default function ProgressPanel({
       const inGroupQueue = !!member; // 成员队列 → 整组口径；否则走旧口径兜底
       for (const t of r.tasks) {
         if (!t || t.deletedAt) continue;
-        let fm: { board?: string; project?: string } = {};
-        try {
-          fm = parseFrontmatter(t.text || '');
-        } catch {
-          fm = {};
-        }
-        if (!inGroupQueue && (!fm.board || !ids.includes(fm.board))) continue;
+        // #197：归属读库内关联（boardMark = 组、repoKey = 归属仓库），不再解析正文
+        const board = String((t as any).boardMark || (t as any).boardKey || '');
+        if (!inGroupQueue && (!board || !ids.includes(board))) continue;
         out.push({
           ...taskToProgress(t),
           key: `${r.key}:${t.id}`,
           taskId: t.id,
           topicKey: r.key,
           topicCwd: r.cwd || '',
-          project: fm.project || '',
+          project: String((t as any).repoKey || ''),
           projectName: inGroupQueue
-            ? ((member && member.name) || projectNameOf(fm.project, r))
-            : projectNameOf(fm.project, r),
+            ? ((member && member.name) || projectNameOf(String((t as any).repoKey || ''), r))
+            : projectNameOf(String((t as any).repoKey || ''), r),
         });
       }
     }

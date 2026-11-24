@@ -4,53 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import {
-  parseFrontmatter,
-  healFrontmatterKeys,
-} from '../../src/shared/frontmatter.js';
-import {
   resolveGroupTarget,
   findBoard,
   findRepo,
   memberKeysOf,
 } from '../../src/modules/localtask/ops/board-target.js';
 import * as svc from '../../src/modules/localtask/service.js';
-
-// ─── frontmatter ────────────────────────────────────────────────
-
-test('parseFrontmatter：读出 board / project', () => {
-  const fm = parseFrontmatter('---\nboard: b_1\nproject: local/x\n---\n# 标题\n正文');
-  assert.equal(fm.board, 'b_1');
-  assert.equal(fm.project, 'local/x');
-});
-
-test('parseFrontmatter：不是 frontmatter（开头是分割线）时返回空对象', () => {
-  assert.deepEqual(parseFrontmatter('---\n\n正文\n---\n'), {});
-  assert.deepEqual(parseFrontmatter('# 标题\n正文'), {});
-});
-
-test('healFrontmatterKeys / parseFrontmatter：撕碎的 board→oard 升回 board（#23）', () => {
-  // 贴图误插进 FM 曾把 board: 撕成 oard:——组面板按 fm.board 过滤，任务从 todo 组消失
-  const raw = '---\noard: b_mvw8rrncgk5mc\nproject: local/sedoc-fe-8.60\n---\n# 表单';
-  const healed = healFrontmatterKeys({ oard: 'b_mvw8rrncgk5mc', project: 'local/sedoc-fe-8.60' });
-  assert.equal(healed.board, 'b_mvw8rrncgk5mc');
-  assert.equal(healed.oard, undefined);
-  assert.equal(healed.project, 'local/sedoc-fe-8.60');
-
-  const fm = parseFrontmatter(raw);
-  assert.equal(fm.board, 'b_mvw8rrncgk5mc', 'parse 内建 heal');
-  assert.equal(fm.oard, undefined);
-
-  // 用户案例：插到 board 中间后残留 d:
-  const dFm = parseFrontmatter('---\nd: b_1\nproject: local/x\n---\n# t');
-  assert.equal(dFm.board, 'b_1');
-  assert.equal(dFm.d, undefined);
-
-  // 已有规范键时不覆盖、不误伤无关后缀键
-  const keep = healFrontmatterKeys({ board: 'b_keep', oard: 'b_wrong', note: '手工' });
-  assert.equal(keep.board, 'b_keep');
-  assert.equal(keep.oard, 'b_wrong'); // 规范键已在，残留留给人看
-  assert.equal(keep.note, '手工');
-});
 
 // ─── 目标解析 ───────────────────────────────────────────────────
 
@@ -93,10 +52,11 @@ test('findRepo：key / 名称 / 路径都认', () => {
   assert.equal(findRepo(STORE.repos, 'd:/dev/sedoc').key, 'local/sedoc');
 });
 
-test('resolveGroupTarget：组 + 项目 → frontmatter 字段 + 项目落点目录', () => {
+test('resolveGroupTarget：组 + 项目 → 结构化归属 + 项目落点目录（#197 无 frontmatter 字段）', () => {
   const t = resolveGroupTarget({ board: 'nx', project: 'nx-kv' }, STORE);
-  assert.equal(t.fields.board, 'b_nx');
-  assert.equal(t.fields.project, 'local/nx-kv');
+  assert.equal(t.boardId, 'b_nx');
+  assert.equal(t.boardKey, 'board/nx');
+  assert.equal(t.projectKey, 'local/nx-kv');
   assert.equal(t.cwd, 'D:\\Dev\\nx-kv'); // 落进该项目的队列
 });
 
@@ -135,48 +95,38 @@ test('resolveGroupTarget：--project 与 --cwd 指向不同项目 → 报错（�
 
 test('resolveGroupTarget：--project 与 --cwd 指向同一项目 → 正常', () => {
   const t = resolveGroupTarget({ board: 'nx', project: 'nx-kv', cwd: 'D:\\Dev\\nx-kv' }, STORE);
-  assert.equal(t.fields.board, 'b_nx');
-  assert.equal(t.fields.project, 'local/nx-kv');
+  assert.equal(t.boardId, 'b_nx');
+  assert.equal(t.projectKey, 'local/nx-kv');
   assert.equal(t.cwd, 'D:\\Dev\\nx-kv');
 });
 
 test('resolveGroupTarget：只给项目不标组', () => {
   const onlyProject = resolveGroupTarget({ project: 'nx-kv' }, STORE);
-  assert.equal(onlyProject.fields.project, 'local/nx-kv');
-  assert.equal(onlyProject.fields.board, undefined);
+  assert.equal(onlyProject.projectKey, 'local/nx-kv');
+  assert.equal(onlyProject.boardId, '');
   assert.equal(onlyProject.cwd, 'D:\\Dev\\nx-kv');
 });
 
 test('resolveGroupTarget：都不给 → 空目标（原样提交）', () => {
   const t = resolveGroupTarget({}, STORE);
-  assert.deepEqual(t.fields, {});
+  assert.equal(t.boardId, '');
   assert.equal(t.cwd, '');
 });
 
-// ─── 介绍引用（frontmatter 携带「介绍」）────────────────────────────
+// ─── 介绍引用（#197：不再进正文 frontmatter——挂在组/仓库的文档列表）──────
 
-test('resolveGroupTarget：frontmatter 带介绍引用（refId + 一行摘要）', () => {
-  const t = resolveGroupTarget({ board: 'nx', project: 'nx-kv' }, STORE);
-  assert.equal(t.fields.boardIntro, 'ref:ref_aaaaaaaaaaaaaaa1', '组介绍 = ref:<refId>');
-  assert.equal(t.fields.boardDesc, 'nx 工具链组合', '组的一句话摘要');
-  assert.equal(t.fields.projectIntro, 'ref:ref_bbbbbbbbbbbbbbb2', '项目介绍 = ref:<refId>');
-  assert.equal(t.fields.projectDesc, 'KV 清单管理中枢', '项目的一句话摘要');
-});
-
-test('resolveGroupTarget：没有介绍绑定 → 空串（不再有约定路径 / rel）', () => {
+test('resolveGroupTarget：没有介绍绑定也不产出 fm 字段（介绍走 docs ref，不进正文）', () => {
   const bare = { ...STORE, boards: [{ ...STORE.boards[0], doc: undefined }] };
-  assert.equal(resolveGroupTarget({ board: 'nx', project: 'nx-kv' }, bare).fields.boardIntro, '');
-
-  // 旧形状 { path } / { rel } 不再是合法绑定（v8 只认 ref）
-  const legacy = { ...STORE, repos: [{ ...STORE.repos[0], doc: { rel: 'notes/nx-kv.md' } }] };
-  assert.equal(resolveGroupTarget({ board: 'nx', project: 'nx-kv' }, legacy).fields.projectIntro, '');
+  const t = resolveGroupTarget({ board: 'nx', project: 'nx-kv' }, bare);
+  assert.equal(t.boardId, 'b_nx', '组解析照常');
+  assert.equal(t.fields, undefined, 'frontmatter 字段已整体删除');
 });
 
-test('resolveGroupTarget：只给项目 → 也带项目介绍引用（不标组）', () => {
+test('resolveGroupTarget：只给项目 → 结构化归属，无 fm 字段（#197 介绍走文档列表）', () => {
   const t = resolveGroupTarget({ project: 'nx-kv' }, STORE);
-  assert.equal(t.fields.projectIntro, 'ref:ref_bbbbbbbbbbbbbbb2');
-  assert.equal(t.fields.projectDesc, 'KV 清单管理中枢');
-  assert.equal(t.fields.boardIntro, undefined, '没给组就不标组介绍');
+  assert.equal(t.projectKey, 'local/nx-kv');
+  assert.equal(t.projectName, 'nx-kv');
+  assert.equal(t.fields, undefined);
 });
 
 // ─── 面板口径：显式 board/project → 落两条 topic 关联（#197 不再有 frontmatter）───

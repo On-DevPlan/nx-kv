@@ -9,7 +9,6 @@
 // 侧边栏只保留**纯 UI 偏好**：排序、隐藏、折叠——它们是显示态，不是数据。
 //
 // 「可见序 = 渲染序」是键盘导航的前提：↑↓ 走的就是这份扁平序。
-import { stripFrontmatter } from '../../modules/md/md-parse.js';
 import { projectPending, isPendingRow, taskInBoard } from '../../modules/board/board-view.js';
 import type { BoardRow, LocalTask, LocalTopic, Prefs, RepoRow } from '../../types.js';
 
@@ -412,7 +411,8 @@ export function rKey(row: SideRow): string {
 
 /** 任务正文抽一行标题（给侧栏子行用）；带 frontmatter 的任务先剥掉再取 */
 export function taskLabel(t: LocalTask | null | undefined): string {
-  const text = stripFrontmatter(String(t?.text || ''));
+  // #197：正文无 frontmatter 头
+  const text = String(t?.text || '');
   const m = text.match(/^#\s+(.+)$/m);
   if (m && m[1]) return m[1].trim().slice(0, 40);
   const line = text.split('\n').find((l) => l.trim());

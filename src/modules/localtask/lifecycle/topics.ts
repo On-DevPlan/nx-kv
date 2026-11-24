@@ -10,7 +10,6 @@ import { normalizeSummary } from '../infra/store-io.js';
 import { openLocaltaskStore as openStore, topics as topicsRepo, settings as settingsRepo, txw as tx } from '../infra/repo/index.js';
 import { DEFAULT_TIMEOUT_SEC, MAX_TIMEOUT_SEC } from '../infra/repo/settings.js';
 import { foreignResolver, isPending, topicView } from './task-view.js';
-import { stripFrontmatter } from '../../../shared/frontmatter.js';
 import { deleteGuard } from './deletion.js';
 import { repoContextIndex, repoCtxOf } from '../infra/repo-ctx.js';
 import { topicKeyOf } from '../../../core/topic-key.js';
@@ -159,9 +158,9 @@ export async function updateSettings({ timeoutSec }: UpdateSettingsInput = {}): 
   return settingsRepo.settingsView();
 }
 
-/** 任务标题 = 去掉 frontmatter 后的首个非空行（去前导 #，截 80 字）。 */
+/** 任务标题 = 正文首个非空行（去前导 #，截 80 字）。#197 正文无 frontmatter 头。 */
 function taskTitleOf(row: any): string {
-  const body = String(stripFrontmatter(String((row && row.text) || ''))).trim();
+  const body = String((row && row.text) || '').trim();
   const first = body.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || '';
   const title = first.replace(/^#+\s*/, '').trim().slice(0, 80);
   return title || `任务 #${Number(row && row.id) || ''}`;

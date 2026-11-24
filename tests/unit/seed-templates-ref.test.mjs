@@ -49,14 +49,16 @@ test('#137/#195 内置正文 = 零知识起步 SOP：五步 + 关键命令都在
   assert.ok(body.includes('# <标题>'), '必须要求正文首行是标题（# 标题）');
 });
 
-test('#195 内置正文：先判任务来源（board/boardMark）再绑对应宿主，避免绑到主篇', () => {
+test('#195 内置正文：先判任务来源（boardMark/repoKey）再绑对应宿主，避免绑到主篇', () => {
   const row = getDb().get(
     `SELECT body FROM templates WHERE id = 'newtask.ref' AND deleted_at IS NULL`,
   );
   const body = String(row?.body || '');
-  // 判来源：frontmatter 的 board / show --json 的 boardMark，且警告不要用 __unbound__
+  // 判来源：show --json 的 boardMark / repoKey（#197/#200：正文无 frontmatter，
+  // repo_key 经 #197 后恒为真实仓库，不再需要哨兵警告）
   assert.match(body, /boardMark/, '要告诉 agent 用 boardMark 判来源');
-  assert.match(body, /__unbound__/, '要警告 topic.repo_key 是哨兵、不能用来判归属');
+  assert.match(body, /repoKey/, '要告诉 agent 用 repoKey 定仓库');
+  assert.ok(!body.includes('frontmatter 的'), 'SOP 不再教 agent 从正文 frontmatter 读归属');
   // 两种宿主各自的绑定命令
   assert.ok(body.includes('nx-kv docs ref add --owner group --group'), '组任务挂 group');
   assert.ok(body.includes('nx-kv docs ref add --owner repo --repo'), '仓库任务挂 repo（原断言）');

@@ -25,15 +25,15 @@ process.on('exit', () => {
   }
 });
 
-test('pendingQueueInfo：同主题、排除当前任务、标题去 frontmatter 与 #', async () => {
+test('pendingQueueInfo：同主题、排除当前任务、标题取首行去 #（#197 正文无 fm）', async () => {
   const a1 = await svc.addTask({ cwd: dirA, text: '# 甲一\n\n正文' });
-  const a2 = await svc.addTask({ cwd: dirA, text: '---\nboard: b1\n---\n# 甲二\n\n正文' });
+  const a2 = await svc.addTask({ cwd: dirA, text: '## 甲二\n\n正文' });
   const b1 = await svc.addTask({ cwd: dirB, text: '# 乙一' });
 
   const info = await svc.pendingQueueInfo(svc.normalizeCwd(dirA).key, a1.task.id);
   assert.equal(info.count, 1, '同主题剩余 1 条，不把 B 主题算进来');
   assert.deepEqual(info.list.map((x) => x.id), [a2.task.id]);
-  assert.equal(info.list[0].title, '甲二', 'frontmatter 跳过，前导 # 去掉');
+  assert.equal(info.list[0].title, '甲二', '前导 # 去掉');
   assert.equal(info.list[0].topic, svc.normalizeCwd(dirA).name, '带上主题名');
 
   const empty = await svc.pendingQueueInfo(svc.normalizeCwd(dirB).key, b1.task.id);

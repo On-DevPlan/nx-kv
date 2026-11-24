@@ -8,7 +8,7 @@ import type {
   ReactNode,
 } from 'react';
 import { filesFromDataTransfer, runFormat } from '../../../modules/md/md-edit-ops.js';
-import { isEmptyBlock, isFrontmatterBlock, normalizeBlockText } from '../../../modules/md/md-parse.js';
+import { isEmptyBlock, normalizeBlockText } from '../../../modules/md/md-parse.js';
 import { autoSize, blockHtml, blockKind } from './md-panes-helpers.js';
 import type { PendingSel } from './md-panes-helpers.js';
 import type { Attachment } from '../attachments/attach-common.js';
@@ -56,14 +56,8 @@ export default function LiveBlock({
 }: LiveBlockProps) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const display = normalizeBlockText(text);
-  // frontmatter 块**整体不渲染**（#149）：#113 起视图态已渲染为空，但块本身还在——
-  // 点它/聚焦它仍会开出裸 YAML 编辑框（组草稿首块的 `---\nboard:…\n---` 让人莫名，
-  // 用户原话「删除这个frontmatter」）。归属语义有页头「归属项目」下拉编辑，
-  // 源码模式仍可见可改；这里只动渲染层——块数组里 FM 必须保留（commit 按块列表
-  // 整表回写正文，滤掉会把组语义删没），data-i 坐标也不变（ack 定位轨/块选区共用）。
-  // ⚠️ 早退必须放在所有 hooks 之后（Rules of Hooks）。
-  const isFm = isFrontmatterBlock(display);
-  const html = isFm ? '' : blockHtml(display, attachments);
+  // #197：正文不再有 frontmatter 头（归属在库内关联）——FM 块渲染分支已删。
+  const html = blockHtml(display, attachments);
   const kind = blockKind(display);
 
   useLayoutEffect(() => {
@@ -94,8 +88,6 @@ export default function LiveBlock({
       try { el.setSelectionRange(n, n); } catch { /* ignore */ }
     }
   }, [focused, text, index, pendingSelRef, pendingFormatRef, onTaReady, onChange]);
-
-  if (isFm) return null;
 
   // 拖拽落点指示（拖拽排序时由父组件的列表级 dragover 算出）
   const dropCls = dropEdge ? ` is-drop-${dropEdge}` : '';

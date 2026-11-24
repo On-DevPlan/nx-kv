@@ -4,7 +4,6 @@
 // 空块编码是这里的核心不变量：空块在正文里用 ZWSP 独占一行占位（join/split 可往返），
 // 编辑态按空串处理；纯空白块（用户敲的空格是内容）用 ZWSP+空白 落盘，防止被当成
 // 块分隔符（markdown 语义：空行 = 段落分隔）。
-import { parseFrontmatter } from '../../../../shared/frontmatter.js';
 
 /** 空块占位（ZWSP）：join/split 可往返，渲染与编辑按空串处理 */
 export const EMPTY_BLOCK = '\u200b';
@@ -163,34 +162,10 @@ export function liveBodyBlocks(body: unknown): string[] {
   return i < 0 ? blocks : blocks.filter((_, k) => k !== i);
 }
 
-/** 块是否是文档头部 frontmatter（`---`…`---` 且含 key: value）。 */
-export function isFrontmatterBlock(text: unknown): boolean {
-  return Object.keys(parseFrontmatter(String(text ?? ''))).length > 0;
-}
-
-/**
- * 正文头部 frontmatter 结束后的字符偏移；没有有效 frontmatter → 0。
- * 贴图/嵌入禁止落在 FM 内部——插进去会在保存时被 stripFrontmatter 剥掉，
- * 并可能把 `board:` 撕成残留键（用户案例：`d: b_…`）。
- */
-export function frontmatterEndOffset(src: unknown): number {
-  const text = String(src ?? '');
-  if (!Object.keys(parseFrontmatter(text)).length) return 0;
-  const m = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
-  return m ? (m[0] ?? '').length : 0;
-}
-
 function recomposeLiveBody(liveBlocks: string[], titleBlock: string | null): string {
+  // #197：正文不再有 frontmatter 头——直接标题 + 正文块重组。
   if (!titleBlock) return joinMdBlocks(liveBlocks);
-  const out: string[] = [];
-  let start = 0;
-  if (liveBlocks[0] && isFrontmatterBlock(liveBlocks[0])) {
-    out.push(liveBlocks[0]);
-    start = 1;
-  }
-  out.push(titleBlock);
-  out.push(...liveBlocks.slice(start));
-  return joinMdBlocks(out);
+  return joinMdBlocks([titleBlock, ...liveBlocks]);
 }
 
 /**
@@ -237,27 +212,15 @@ export function insertAttachmentSnippet(
     }
 
     fi = Math.min(fi, live.length - 1);
-    if (isFrontmatterBlock(live[fi])) {
-      const content = snip.replace(/^\n+/, '').replace(/\n+$/, '');
-      if (fi + 1 < live.length) {
-        live[fi + 1] = content + (live[fi + 1] ? `\n${live[fi + 1]}` : '');
-      } else {
-        live.push(content);
-      }
-      const next = recomposeLiveBody(live, title);
-      return { body: next, insertAt: frontmatterEndOffset(next) };
-    }
 
     const block = live[fi] || '';
     const caret = opts.caretInBlock;
     const at = caret == null ? block.length : Math.min(Math.max(0, caret), block.length);
     live[fi] = block.slice(0, at) + snip + block.slice(at);
     const next = recomposeLiveBody(live, title);
-    // 近似：FM(+标题)之后再累加此前块；够用在编辑器重设光标
+    // 近似：标题之后再累加此前块；够用在编辑器重设光标
     const prefixBlocks: string[] = [];
-    if (title && live[0] && isFrontmatterBlock(live[0])) {
-      prefixBlocks.push(live[0], title, ...live.slice(1, fi));
-    } else if (title) {
+    if (title) {
       prefixBlocks.push(title, ...live.slice(0, fi));
     } else {
       prefixBlocks.push(...live.slice(0, fi));
@@ -271,7 +234,5 @@ export function insertAttachmentSnippet(
     return { body: src + snip, insertAt: src.length };
   }
   at = Math.min(Math.max(0, at), src.length);
-  const fmEnd = frontmatterEndOffset(src);
-  if (at < fmEnd) at = fmEnd;
   return { body: src.slice(0, at) + snip + src.slice(at), insertAt: at };
 }

@@ -10,7 +10,6 @@ import {
 } from '../../../modules/md/md-edit-ops.js';
 import {
   isEmptyBlock,
-  isFrontmatterBlock,
   normalizeBlockText,
 } from '../../../modules/md/md-parse.js';
 import type { EditOpResult, PendingSel } from './md-panes-helpers.js';
@@ -75,8 +74,8 @@ export function handleBackspaceStart(ctx: LiveKeyCtx) {
   }
   if (
     ta.selectionStart === 0 && ta.selectionEnd === 0
+    // #197：FM 块已不存在，不再需要排除
     && i > 0 && !slashRef.current
-    && !isFrontmatterBlock(normalizeBlockText(blocks[i - 1] ?? ''))
   ) {
     e.preventDefault();
     setSlashBoth(null);

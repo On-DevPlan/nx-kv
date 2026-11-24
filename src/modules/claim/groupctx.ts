@@ -81,7 +81,7 @@ function clipIntro(body: unknown, path: unknown): string {
 /**
  * 读某个工作目录所属的项目组上下文。
  * @param cwd 工作目录
- * @param opts board = 组任务的归属（正文 frontmatter 的 board）；
+ * @param opts board = 组任务的归属（库内关联 boardKey / topics.group_key 带出）；
  *   为空 = 单 repo 主题的纯项目任务 → 不带任何组材料（#64 作用域）。
  * @returns null = 不在项目组里 / 读取失败
  */

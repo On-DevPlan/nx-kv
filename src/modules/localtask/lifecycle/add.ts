@@ -15,7 +15,6 @@
 // 至此三个任务动词（领 get / 等 wait / 派 add）同构：action 层一律一行委托，
 // 编排住在本域（add.js / update.js），队列本体只有 service.js 一处。
 import { addTask, normalizeCwd } from '../service.js';
-import { stripFrontmatter } from '../../../shared/frontmatter.js';
 import { resolveGroupTarget } from '../ops/board-target.js';
 import { normalizedGroupStore } from '../ops/group-store.js';
 
@@ -70,7 +69,7 @@ export async function submitTask({
   forkOf,
   forkKind,
 }: SubmitTaskOptions = {}): Promise<Record<string, any>> {
-  let text = String(rawText ?? '');
+  const text = String(rawText ?? '');
   let cwd: unknown = rawCwd;
   // 任务级 timegoal 声明（--duration/--goal-prompt 落下来的）：校验在 sanitizeTaskGoal
   // （时长写法错误在**发布时报**，不在领取时报）；只带了 goal-prompt 没带 duration → 报错。
@@ -92,12 +91,10 @@ export async function submitTask({
     groupName = target.boardName;
     repoKey = target.projectKey;
     if (target.cwd) cwd = target.cwd;
-  } else {
-    // #197：**不再从正文 frontmatter 提取归属** —— 正文只存 markdown。
-    // 归属只有两个来源：显式参数（board/project）或调用方所在的队列（cwd）。
-    // 历史正文的 --- 头在 v16/v17 迁移时已剥；这里顺手剥一次是纯保险。
-    text = stripFrontmatter(text);
   }
+  // #197：**不再从正文 frontmatter 提取归属** —— 归属只有两个来源：
+  // 显式参数（board/project）或调用方所在的队列（cwd）；正文只存 markdown，
+  // 历史 --- 头在 v16/v17 迁移时已剥光，运行时不再有读/剥逻辑。
 
   // localtask 的 addTask 尚未类型化（解构参数只推断出带默认值的键），按运行时形状整包断言
   return addTask({

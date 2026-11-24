@@ -18,10 +18,10 @@ test('IME 守卫：块编辑器与源码态都在按键分发前拦组合输入'
   assert.ok(hits.length >= 2, `组合守卫至少两处（块编辑器 + 源码态），实际 ${hits.length}`);
 });
 
-test('Delete 块尾合并：镜像 Backspace 并块，FM 块同样不并', () => {
+test('Delete 块尾合并：镜像 Backspace 并块（#197 FM 块已不存在，不再排除）', () => {
   assert.match(src, /e\.key === 'Delete'\s*\n\s*&& ta\.selectionStart === val\.length/, '只在块尾无选区时接管');
   assert.match(src, /&& i < blocks\.length - 1 && !slashRef\.current/, '末块不接管');
-  assert.match(src, /!isFrontmatterBlock\(normalizeBlockText\(blocks\[i \+ 1\] \?\? ''\)\)/, '下一块是 FM 块不并');
+  assert.ok(!src.includes('isFrontmatterBlock'), 'frontmatter 识别已整体删除（正文无 FM 块）');
   assert.match(src, /pendingSelRef\.current = \{ index: i, start: val\.length, end: val\.length \}/, '光标落接缝');
 });
 

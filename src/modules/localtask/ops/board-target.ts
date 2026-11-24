@@ -32,15 +32,6 @@ export type RepoLike = any;
 
 const normPath = (p: unknown): string => String(p || '').replace(/[\\/]+/g, '/').replace(/\/$/, '').toLowerCase();
 
-/**
- * 介绍文档的地址：ref:<refId>（绑定存在时）；没有绑定给空串。
- * agent 拿到后用 `nx-kv docs get --ref <refId>` 读正文。
- */
-function introDocId(ref: unknown): string {
-  const r = ref as { ref?: string } | null | undefined;
-  return r && typeof r === 'object' && r.ref ? 'ref:' + r.ref : '';
-}
-
 /** 看板按 id / key / 名称匹配（组名最像人话，agent 上下文里只有组名） */
 export function findBoard(boards: BoardLike[], want: unknown): BoardLike | null {
   const w = String(want ?? '').trim();
@@ -99,14 +90,13 @@ export interface GroupTargetResult {
   projectKey: string;
   projectName: string;
   cwd: string;
-  fields: Record<string, unknown>;
 }
 
 /**
  * 解析提交目标。
  * @param {{board?: string, project?: string, cwd?: string}} want  --board / --project / --cwd 原始值
  * @param {{boards: Array, repos: Array}} store   仓库登记与看板（由调用方注入，归一化后）
- * @returns {{boardId: string, boardName: string, projectKey: string, projectName: string, cwd: string, fields: object}}
+ * @returns {{boardId: string, boardKey: string, boardName: string, projectKey: string, projectName: string, cwd: string}}
  */
 export function resolveGroupTarget(want: GroupTargetWant, store: GroupTargetStore): GroupTargetResult {
   const boards = (store && store.boards) || [];
@@ -115,7 +105,7 @@ export function resolveGroupTarget(want: GroupTargetWant, store: GroupTargetStor
   const projWant = String(want.project ?? '').trim();
   const cwdWant = String(want.cwd ?? '').trim();
   if (!boardWant && !projWant) {
-    return { boardId: '', boardKey: '', boardName: '', projectKey: '', projectName: '', cwd: '', fields: {} };
+    return { boardId: '', boardKey: '', boardName: '', projectKey: '', projectName: '', cwd: '' };
   }
 
   let board: BoardLike | null = null;
@@ -160,21 +150,9 @@ export function resolveGroupTarget(want: GroupTargetWant, store: GroupTargetStor
     );
   }
 
-  // frontmatter 字段：**归属**（board id / project key）+ **介绍引用**（docId + 一行摘要）。
-  // 介绍用引用式而不是内联正文：agent 拿到 refId 就能用 docs get 读；
-  // 内联既撑爆 frontmatter，又会在介绍更新后留下过期副本。
-  const fields: Record<string, unknown> = {};
-  if (board) {
-    fields.board = board.id;
-    fields.boardIntro = introDocId(board.doc);
-    fields.boardDesc = String(board.desc || '').trim();
-  }
-  if (repo) {
-    fields.project = repo.key;
-    fields.projectIntro = introDocId(repo.doc);
-    fields.projectDesc = String(repo.desc || '').trim();
-  }
-
+  // #197/#200：frontmatter 字段（board/project/介绍引用）已随正文 frontmatter 一起删除——
+  // 归属由调用方落库（topics.group_topic_id / tasks.repo_topic_id），介绍引用挂组/仓库的
+  // 文档列表（docs ref add --owner），不再进任务正文。
   return {
     boardId: board ? board.id : '',
     boardKey: board ? String(board.key || '') : '',
@@ -183,6 +161,5 @@ export function resolveGroupTarget(want: GroupTargetWant, store: GroupTargetStor
     projectName: repo ? repo.name || repo.key : '',
     // 落点：有项目就用项目登记的路径（进它的队列）；否则调用方给的 cwd 说了算
     cwd: repo ? repo.path || '' : '',
-    fields,
   };
 }

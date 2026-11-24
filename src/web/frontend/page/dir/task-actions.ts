@@ -20,7 +20,6 @@ import {
   insertAttachmentSnippet,
   slugName,
   titleFromMd,
-  stripFrontmatter,
   stripPhantomEmptyLines,
 } from '../../modules/md/md-parse.js';
 import {
@@ -101,7 +100,8 @@ export function useTaskActions({
    */
   const composeText = useCallback((title: string, bodyText: string) => {
     const t = (title || '').trim() || '未命名任务';
-    let bare = stripFrontmatter(bodyText);
+    // #197：正文无 frontmatter 头
+    let bare = bodyText;
     // 幻影空块清洗（#92）：块编辑器的 ZWSP 空块不落库——落库即「一段莫名空白」，下次打开还在、再编辑又攒一条。
     bare = stripPhantomEmptyLines(bare);
     if (!/^#\s+/m.test(bare)) bare = `# ${t}\n\n${bare}`;

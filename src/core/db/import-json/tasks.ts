@@ -10,7 +10,32 @@ import {
   MAX_BODY,
 } from './data.js';
 import { matchRepoKey, autoRepoKey } from '../repo-match.js';
-import { parseFrontmatterBody as fmOf, stripFrontmatterBody as stripFm } from '../../task-frontmatter.js';
+// ── 一次性迁移用的最小 frontmatter 读/剥（#197 起任务正文不再有 --- 头）──
+// 这段逻辑**冻结在本文件**：迁移/导入是处理历史数据的唯一入口，跑完即退役；
+// 运行时（服务层/前端）已无任何 frontmatter 读/剥（shared/frontmatter.ts 已删除）。
+// 与历史版本 shared/frontmatter.ts 同口径；不要再抽公共模块——那会让「已删除的
+// frontmatter」在代码里长期存在。
+const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+const FM_KV_RE = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/;
+function parseFrontmatter(src: unknown): Record<string, string> {
+  const m = String(src ?? '').match(FM_RE);
+  if (!m) return {};
+  const out: Record<string, string> = {};
+  for (const line of (m[1] ?? '').split(/\r?\n/)) {
+    const kv = line.match(FM_KV_RE);
+    if (kv) out[kv[1] ?? ''] = (kv[2] ?? '').trim();
+  }
+  return out;
+}
+function stripFrontmatter(src: unknown): string {
+  return String(src ?? '').replace(FM_RE, (block: string, inner: string) => {
+    const kv = String(inner || '').split(/\r?\n/).some((l) => FM_KV_RE.test(l));
+    return kv ? '' : block;
+  });
+}
+
+const fmOf = parseFrontmatter;
+const stripFm = stripFrontmatter;
 import type { ImportReport } from './data.js';
 import type { DbApi } from '../driver.js';
 

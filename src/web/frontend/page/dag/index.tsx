@@ -15,7 +15,6 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useApp } from '../../app-context.jsx';
 import { useToast } from '../../components/toast/index.jsx';
 import { PopMenu, useDialog } from '../../components/popup/index.jsx';
-import { parseFrontmatter } from '../../modules/md/md-parse.js';
 import { isGroupTask } from '../../modules/board/board-view.js';
 import { reaches } from '../../../../shared/graph.js';
 import { depToNodeKey, formatDepForTarget, isPending, nodeKeyOf, parseDep } from './model.js';
@@ -66,8 +65,9 @@ export default function DagPanel({ dirKey, groupId }: DagPanelProps) {
       const boardIds = [board.id, board.key, board.name].filter(Boolean);
       const pendingTasks = (t.tasks || []).filter((task) => {
         if (!isPending(task)) return false;
-        const fm = parseFrontmatter(task.text);
-        return fm.board && boardIds.includes(fm.board);
+        // #197：组归属读库内关联（boardMark），不再解析正文
+        const board = String((task as any).boardMark || (task as any).boardKey || '');
+        return board && boardIds.includes(board);
       });
       if (!pendingTasks.length) continue;
       out.push({
@@ -103,8 +103,9 @@ export default function DagPanel({ dirKey, groupId }: DagPanelProps) {
         if (filterKey && t.key !== filterKey) continue;
         for (const task of t.tasks || []) {
           if (!isPending(task)) continue;
-          const fm = parseFrontmatter(task.text);
-          if (!fm.board || !boardIds.includes(fm.board)) continue;
+          // #197：组归属读库内关联（boardMark），不再解析正文
+          const board = String((task as any).boardMark || (task as any).boardKey || '');
+          if (!board || !boardIds.includes(board)) continue;
           out.push({
             ...task,
             topicKey: t.key,

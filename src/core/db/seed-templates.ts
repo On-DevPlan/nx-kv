@@ -47,25 +47,24 @@ nx-kv localtask show --id <id> --cwd "<项目目录>"   # 任务本体 + 附件�
 ### 2. 先判断任务来源，决定文档挂哪里（关键，别跳过）
 
 归档文档必须挂在**任务来源的宿主**上：仓库提交的任务挂仓库，组提交的任务挂组。
-判断依据只有一处——任务正文开头的 \`---\` frontmatter（或 show --json 的 \`boardMark\`）：
+判断依据只有一处——\`show --json\` 的 \`boardMark\`（组任务归属来自库内关联；
+正文是纯 markdown，**没有也不会有** frontmatter 头）：
 
 \`\`\`bash
-nx-kv localtask show --id <id> --cwd "<项目目录>" --json   # 看 text 里的 frontmatter / boardMark
+nx-kv localtask show --id <id> --cwd "<项目目录>" --json   # 看 boardMark / repoKey
 \`\`\`
 
-- 有 \`board:\`（boardMark 非空）→ **组任务**（组页「新增任务」提交的）。
-  \`board\` 是组 id / key，\`project\` 是组内归属仓库的 key。文档挂**组**：
+- \`boardMark\` 非空 → **组任务**（组页「新增任务」提交的）。文档挂**组**：
   \`\`\`bash
-  nx-kv docs ref add --owner group --group <board> --desc "<一句话短描述>" --json
+  nx-kv docs ref add --owner group --group <boardMark> --desc "<一句话短描述>" --json
   \`\`\`
   **不要用 group_repo**——那是「组对某成员仓库的组内描述」，一个 (组,仓库) 只有一篇，会被覆盖。
-- 没有 \`board:\`（boardMark 为空）→ **仓库任务**（目录页提交的；可能只有 \`project:\`，也可能没有 frontmatter）。
-  文档挂**仓库**：
+- \`boardMark\` 为空 → **仓库任务**（目录页提交的）。文档挂**仓库**：
   \`\`\`bash
   nx-kv docs ref add --owner repo --repo <仓库key> --desc "<一句话短描述>" --json
   \`\`\`
-  \`<仓库key>\` 优先取 frontmatter 的 \`project\`；没有就用第 1 步 \`repo list\` 里 \`path\` 匹配 <项目目录> 的那条 key。
-  **不要看 topic 的 repo_key**（老库常是 \`__unbound__\` 哨兵，不是真实归属）。
+  \`<仓库key>\` 直接用 show --json 的 \`repoKey\`（任务归属仓库的 key）；没有就用第 1 步
+  \`repo list\` 里 \`path\` 匹配 <项目目录> 的那条 key。
 
 ### 3. 初始化：给这轮问答建一篇 ref
 

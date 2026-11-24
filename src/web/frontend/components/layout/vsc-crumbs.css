@@ -1,0 +1,88 @@
+/* VS Code 式面包屑（任务页顶条，#254）：贴 vscode 的紧凑路径条——
+   段间「>」、点段弹同级、悬浮整行在右侧亮出复制钮。 */
+.vsc-crumbs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vsc-crumbs-path {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+.vsc-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+.vsc-sep {
+  color: var(--mid, #838a93);
+  font-size: 11px;
+  padding: 0 4px;
+  user-select: none;
+  flex: none;
+}
+.vsc-crumb-t {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-2, #4b515a);
+  padding: 3px 6px;
+  border-radius: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.vsc-crumb-t:hover:not(:disabled) {
+  background: var(--soft, #f1f0ec);
+  color: var(--ink, #16181c);
+}
+.vsc-crumb-t:disabled {
+  cursor: default;
+  color: var(--ink-2, #4b515a);
+}
+/* 最后一段（当前位置）加重一档，与 vscode 的文件段同措 */
+.vsc-crumb.is-cur .vsc-crumb-t {
+  color: var(--ink, #16181c);
+  font-weight: 600;
+}
+/* 复制钮：平时隐身，悬浮整行（或键盘聚焦）才亮——「各个路径 hover 出现复制 btn」 */
+.vsc-copy {
+  flex: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--mid, #838a93);
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.vsc-crumbs:hover .vsc-copy,
+.vsc-copy:focus-visible {
+  opacity: 1;
+}
+.vsc-copy:hover {
+  background: var(--soft, #f1f0ec);
+  color: var(--ink, #16181c);
+}
+/* 顶条上的遗留信号（原 mdw-path 行下沉到这里）：未保存 / 目录已不存在 */
+.mdw-top-note {
+  flex: none;
+  font-size: 11px;
+  color: #ba7517;
+  white-space: nowrap;
+}

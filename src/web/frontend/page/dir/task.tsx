@@ -6,7 +6,7 @@
 //
 // 文档内容存在会话内存（doc-store.js），页签身份在 FlexLayout 模型里——
 // 两者分工明确：布局归布局，内容归内容。
-import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
+import VscCrumbs from '../../components/layout/vsc-crumbs.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { Actions } from 'flexlayout-react';
@@ -407,20 +407,19 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       {beside && <BesideHeader onClose={closeBesideSelf} />}
       <div className="mdw-main">
         <div className="mdw-top">
-          <RouteBreadcrumb />
-          <div className="mdw-head">
-            <div className="mdw-title">{isDraft ? (doc.title || '新 MD 任务') : (doc.title || '任务')}</div>
-            <div className="mdw-path">
-              {topic?.cwd || topic?.name || '—'}
-              {topic?.cwdExists === false && (
-                <span className="mdw-path-warn" title="工作目录已不存在：目录被删除或磁盘未挂载。任务本身还在，只是不再有对应目录。">
-                  {' '}· 目录已不存在
-                </span>
-              )}
-              {isDraft ? ` / (${task})` : ` / #${task}`}
-              {dirty ? ' · 未保存' : ''}
-            </div>
-          </div>
+          {/* #254：顶条换 VS Code 式面包屑（命名空间 > 组/目录 > 任务；点段弹同级、
+              悬浮出复制钮）。不再显示标题行——原 mdw-path 的两个信号
+              （未保存 / 目录已不存在）下沉到这一行保留。 */}
+          <VscCrumbs />
+          {dirty ? <span className="mdw-top-note">未保存</span> : null}
+          {topic?.cwdExists === false && (
+            <span
+              className="mdw-top-note"
+              title="工作目录已不存在：目录被删除或磁盘未挂载。任务本身还在，只是不再有对应目录。"
+            >
+              · 目录已不存在
+            </span>
+          )}
         </div>
 
         <BoardSection

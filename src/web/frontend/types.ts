@@ -138,6 +138,8 @@ export interface Prefs {
   focusNs?: string;
   /** #174：「未分组」区是否展开（默认 false = 折叠——分区即显示范围） */
   nsUngroupedOpen?: boolean;
+  /** #254：任务页面包屑的路径复制偏好——raw = 原始路径；prompt = 带访问逻辑的 CLI 提示词 */
+  copyPathStyle?: 'raw' | 'prompt';
   [k: string]: any;
 }
 

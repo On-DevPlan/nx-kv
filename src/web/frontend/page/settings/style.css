@@ -469,3 +469,27 @@
   background:var(--soft,#F1F0EC);border-radius:4px;padding:1px 4px;color:var(--ink,#16181C);
 }
 .setp-vars h4{margin:10px 0 2px;font-size:12px;color:var(--ink,#16181C)}
+
+/* 路径复制偏好（任务 #254）：两态分段选择（原始路径 / 访问提示词） */
+.setp-seg {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--soft-2, #E4E2DC);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.setp-seg .seg {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-2, #4B515A);
+  padding: 4px 12px;
+}
+.setp-seg .seg + .seg { border-left: 1px solid var(--soft-2, #E4E2DC); }
+.setp-seg .seg.on {
+  background: var(--ink, #16181C);
+  color: var(--paper, #FFFFFF);
+  font-weight: 600;
+}

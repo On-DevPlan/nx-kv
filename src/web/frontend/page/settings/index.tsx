@@ -182,6 +182,26 @@ export default function SettingsPanel() {
             {prefs?.defaultFolded ? '开' : '关'}
           </button>
         </div>
+        {/* #254：任务页面包屑复制钮的内容偏好——原始路径 or 带访问逻辑的 CLI 提示词 */}
+        <div className="setp-row">
+          <span title="任务页面包屑悬浮出的复制钮复制什么：原始路径 =「目录 #任务号」；访问提示词 = 可直接执行的 CLI 指令加引导">
+            路径复制偏好
+          </span>
+          <span className="setp-seg" role="group" aria-label="路径复制偏好">
+            <button
+              className={'seg' + (prefs?.copyPathStyle !== 'prompt' ? ' on' : '')}
+              onClick={() => patchPrefs({ copyPathStyle: 'raw' })}
+            >
+              原始路径
+            </button>
+            <button
+              className={'seg' + (prefs?.copyPathStyle === 'prompt' ? ' on' : '')}
+              onClick={() => patchPrefs({ copyPathStyle: 'prompt' })}
+            >
+              访问提示词
+            </button>
+          </span>
+        </div>
       </>
     ),
 

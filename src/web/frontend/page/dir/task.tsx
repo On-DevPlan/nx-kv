@@ -9,7 +9,6 @@
 import VscCrumbs from '../../components/layout/vsc-crumbs.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import { Actions } from 'flexlayout-react';
 import type { Model } from 'flexlayout-react';
 import { getTaskAttachments, previewTask } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
@@ -23,7 +22,6 @@ import { openComposer } from '../../components/md/composer/composer-launch.js';
 import ShortcutSheet from '../../components/md/shell/shortcut-sheet.jsx';
 import { TaskChainModal as TaskChainModalRaw } from '../../components/md/standalone/task-chain.jsx';
 import { useApp } from '../../app-context.jsx';
-import { openBesideMain } from '../../workspace.js';
 import { persistAtt } from '../../components/md/attachments/attachments.js';
 import type { Attachment } from '../../components/md/attachments/attach-common.js';
 import type { AttachAreaHandle } from '../../components/md/attachments/attach-area.jsx';
@@ -52,6 +50,7 @@ import { useAck } from './task-ack.js';
 import { useTaskActions } from './task-actions.js';
 import { useFeedback } from './task-feedback.js';
 import { useDerivedCtx } from './task-derived-ctx.js';
+import { useBesideOps } from './task-beside.js';
 import { PreviewModal } from './task-preview-modal.jsx';
 import { DockPanel } from './task-dock-panel.jsx';
 import { StatusBar } from './task-status-bar.jsx';
@@ -346,25 +345,10 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     placeSelMenu('task', text, last.right - 60, last.bottom + 8, blockRange ? { blockRange } : {});
   };
 
-  const openParentBeside = useCallback(() => {
-    if (!parentRef) {
-      toast('这条任务没有可定位的原文');
-      return;
-    }
-    const m = model || app.model;
-    if (!m) return;
-    openBesideMain(m, {
-      component: 'page',
-      name: parentRef.name || `原文 ${parentRef.task}`,
-      config: { dirKey: parentRef.dirKey, task: String(parentRef.task) },
-    });
-  }, [parentRef, model, app.model, toast]);
-
-  const closeBesideSelf = useCallback(() => {
-    const m = model || app.model;
-    if (!m || !tabId) return;
-    m.doAction(Actions.deleteTab(tabId));
-  }, [model, app.model, tabId]);
+  // 旁路三件套（打开来源原文 / 关闭自己 / 面包屑预览原文）抽到 task-beside.ts（行数门禁）
+  const { openParentBeside, closeBesideSelf, previewOriginal } = useBesideOps({
+    parentRef, model: model ?? null, appModel: app.model ?? null, toast, isDraft, task, topicKey, tabId,
+  });
 
   const pickAtt = (accept: string) => {
     if (fileAttRef.current) fileAttRef.current.accept = accept;
@@ -414,7 +398,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           {/* #254：顶条换 VS Code 式面包屑（命名空间 > 组/目录 > 任务；点段弹同级、
               悬浮出复制钮）。不再显示标题行——原 mdw-path 的两个信号
               （未保存 / 目录已不存在）下沉到这一行保留。 */}
-          <VscCrumbs />
+          <VscCrumbs onPreview={previewOriginal} />
           {dirty ? <span className="mdw-top-note">未保存</span> : null}
           {topic?.cwdExists === false && (
             <span

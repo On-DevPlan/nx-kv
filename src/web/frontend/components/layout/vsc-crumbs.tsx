@@ -1,5 +1,6 @@
-// VS Code 式面包屑（任务页顶条，#254）：段间「>」分隔、点段弹同级下拉、
-// 悬浮整行出复制钮（内容跟设置 → 偏好 → 路径复制偏好走）。
+// VS Code 式面包屑（任务页顶条，#254/#259）：段间「>」分隔、点段弹同级下拉（定宽 150、
+// 超高容器内滚）；悬浮任务段亮出**两个** icon btn——复制（路径复制偏好两态）与预览
+// （打开旁路原文子侧边栏，onPreview 由宿主任务页给）。
 // 旧 RouteBreadcrumb（[ 目录 / #N ] 方括号式）继续服务其余页面；任务页只换这条。
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app-context.jsx';
@@ -14,10 +15,11 @@ import './vsc-crumbs.css';
 interface MenuState {
   x: number;
   y: number;
+  width?: number;
   items: Array<PopMenuItem | string>;
 }
 
-export default function VscCrumbs() {
+export default function VscCrumbs({ onPreview }: { onPreview?: (() => void) | null } = {}) {
   const app = useApp();
   const toast = useToast();
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -34,6 +36,7 @@ export default function VscCrumbs() {
     setMenu({
       x: e.clientX,
       y: e.clientY + 6,
+      width: 150, // #259 验收：下拉定宽 150px
       items: seg.siblings.map((s: VscSibling) => ({
         label: s.label,
         icon: s.nsId ? 'flow' : undefined,
@@ -71,29 +74,48 @@ export default function VscCrumbs() {
   return (
     <div className="vsc-crumbs">
       <nav className="vsc-crumbs-path" aria-label="当前位置">
-        {trail.segments.map((seg, i) => (
-          <span key={seg.kind} className={'vsc-crumb' + (i === trail.segments.length - 1 ? ' is-cur' : '')}>
-            {i > 0 && (
-              <span className="vsc-sep" aria-hidden>
-                &gt;
-              </span>
-            )}
-            <button
-              type="button"
-              className="vsc-crumb-t"
-              disabled={!seg.siblings.length}
-              title={seg.siblings.length ? `显示「${seg.label}」的同级` : seg.label}
-              onClick={(e) => openSiblings(seg, e)}
-            >
-              {seg.label}
-            </button>
-          </span>
-        ))}
+        {trail.segments.map((seg, i) => {
+          const isCur = i === trail.segments.length - 1;
+          return (
+            <span key={seg.kind} className={'vsc-crumb' + (isCur ? ' is-cur' : '')}>
+              {i > 0 && (
+                <span className="vsc-sep" aria-hidden>
+                  &gt;
+                </span>
+              )}
+              <button
+                type="button"
+                className="vsc-crumb-t"
+                disabled={!seg.siblings.length}
+                title={seg.siblings.length ? `显示「${seg.label}」的同级` : seg.label}
+                onClick={(e) => openSiblings(seg, e)}
+              >
+                {seg.label}
+              </button>
+              {/* #259 验收：任务段 hover 出两个 icon btn——复制路径 + 预览原文（旁路子侧边栏） */}
+              {isCur && (
+                <span className="vsc-acts">
+                  <button type="button" className="vsc-copy" title={copyTitle} aria-label={copyTitle} onClick={copy}>
+                    <Icon name="copy" size={13} />
+                  </button>
+                  {onPreview && (
+                    <button
+                      type="button"
+                      className="vsc-copy"
+                      title="预览原文（旁路打开）"
+                      aria-label="预览原文"
+                      onClick={onPreview}
+                    >
+                      <Icon name="eye" size={13} />
+                    </button>
+                  )}
+                </span>
+              )}
+            </span>
+          );
+        })}
       </nav>
-      <button type="button" className="vsc-copy" title={copyTitle} aria-label={copyTitle} onClick={copy}>
-        <Icon name="copy" size={13} />
-      </button>
-      {menu && <PopMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {menu && <PopMenu x={menu.x} y={menu.y} width={menu.width} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   );
 }

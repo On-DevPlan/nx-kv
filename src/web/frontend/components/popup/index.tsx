@@ -212,6 +212,8 @@ export interface PopMenuProps {
   /** [{label, icon?, danger?, onClick}] 或 'sep'；未标注类型的数组里 'sep' 会退化成 string，一并收 */
   items: Array<PopMenuItem | string>;
   onClose: () => void;
+  /** #259：固定宽度（px；缺省 168 起随内容伸）。要盖过 CSS 的 min-width，须连 minWidth 一起内联 */
+  width?: number;
 }
 
 /**
@@ -219,7 +221,7 @@ export interface PopMenuProps {
  * @param {Array} items   [{label, icon?, danger?, onClick}] 或 'sep'
  * @param {Function} onClose
  */
-export function PopMenu({ x, y, items, onClose }: PopMenuProps) {
+export function PopMenu({ x, y, items, onClose, width }: PopMenuProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   // DOM 边界：activeElement 声明为 Element|null，focus() 只在 HTMLElement 上有
   const returnFocus = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
@@ -268,6 +270,7 @@ export function PopMenu({ x, y, items, onClose }: PopMenuProps) {
   const style: CSSProperties = {
     left: Math.min(x ?? 0, window.innerWidth - 190),
     top: Math.min(y ?? 0, window.innerHeight - 40 - items.length * 30),
+    ...(width ? { width, minWidth: width } : {}),
   };
 
   return (

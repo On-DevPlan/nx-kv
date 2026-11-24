@@ -45,7 +45,9 @@
 //   字节留在原 checkout，交付时强制参考源码）；同样 12-step 重建扩 CHECK。
 // v16（2026-11-24）：任务归属从正文 frontmatter 搬进库内列——tasks 加 repo_key，
 //   topics.group_key 启用（组任务拆 (cwd, group_key) 独立队列），删哨兵仓库 #197。
-export const CURRENT_SCHEMA_VERSION = 16;
+// v17（2026-11-24）：归属规范成两条 topic 关联——tasks.repo_topic_id（必填，编号/领取按它）
+//   + tasks.group_topic_id（可空，组归属）；丢弃 repo_key，组队列换成 group:<组key> 形态 #197。
+export const CURRENT_SCHEMA_VERSION = 17;
 
 /**
  * 运行时最低 Node 版本。

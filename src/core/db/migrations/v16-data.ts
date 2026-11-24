@@ -1,20 +1,18 @@
-// schema v15 → v16 的数据迁移（与 v16.sql 同一事务执行）：#197
+// schema v15 → v16 的数据迁移（与 v16.sql 同一事务执行）：#197 第一步
 //
-// 三件事，全部围绕「归属从正文 frontmatter 搬进库内关联」：
+// 把正文 frontmatter 的归属搬进库内列：
 //   1. 哨兵队列重绑：repo_key='__unbound__' 的 topic 按 cwd 匹配已登记仓库；
-//      匹配不到且目录还在 → 自动登记为仓库（key=local/<目录名>）；目录已消失 → 连任务删除。
-//   2. 组归属落库：带 board 的任务给建/找一条 group topic（key='group:<组key>'），
-//      写 tasks.group_topic_id；组的 id（b_xxx）经 repos.ext.ext_legacy_id 反查。
-//   3. 剥正文头：正文只留 markdown（标题 + 内容），归属全部在关联里。
-//   4. 删除哨兵仓库行（此时已无 topic 引用它，FK 不会级联删数据）。
+//      匹配不到就自动登记 local/<目录名>——绝不因为「找不到归属」丢任务。
+//   2. frontmatter → 列：project → tasks.repo_key；board → 拆 (cwd, group_key) 组队列；
+//      然后剥掉正文 --- 头。
+//   3. 补齐 repo_key、删除哨兵仓库行。
 //
-// 注意：编号序列不迁移——seq 仍挂在 repo_topic_id 上，与改造前完全一致。
-//
-// 约束：core 层不得 import modules —— 仓库匹配用 core 的纯函数。
+// 本步骤已在 2026-11-24 应用到本机库（user_version=16），**逻辑不可再改**；
+// 更彻底的归属规范（repo_topic_id / group_topic_id 两条关联）在 v17 做。
 import { matchRepoKey, autoRepoKey } from '../repo-match.js';
+import { topicKeyOf } from '../../topic-key.js';
 
-// core 是最底层，不能反向 import shared —— 这里保留一份最小的 frontmatter 读/剥实现
-// （与 shared/frontmatter.js 同口径；attachmentdb/resources.ts 也有同款最小实现）。
+// core 是最底层，不能反向 import shared —— 这里保留一份最小的 frontmatter 读/剥实现。
 const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const FM_KV_RE = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/;
 function parseFrontmatter(src: unknown): Record<string, string> {
@@ -43,8 +41,7 @@ export interface V16Result {
   autoRepo: number;
   droppedTopic: number;
   stripped: number;
-  grouped: number;
-  groupTopics: number;
+  moved: number;
   sentinelRemoved: number;
 }
 
@@ -52,11 +49,9 @@ export function normalizeAssignments(
   conn: any,
   { atMs = Date.now() }: V16Context = {},
 ): V16Result {
-  const result: V16Result = {
-    rebound: 0, autoRepo: 0, droppedTopic: 0, stripped: 0, grouped: 0, groupTopics: 0, sentinelRemoved: 0,
-  };
+  const result: V16Result = { rebound: 0, autoRepo: 0, droppedTopic: 0, stripped: 0, moved: 0, sentinelRemoved: 0 };
 
-  // ── 1. 哨兵队列重绑（必须早于删除哨兵行：DELETE repos 会 CASCADE 删 topic）──
+  // ── 1. 哨兵队列重绑 ──
   const realRepos: Array<{ key: string; path: string }> = conn
     .all("SELECT key, path FROM repos WHERE type = 'repo' AND path <> '' AND key <> '__unbound__'")
     .map((r: any) => ({ key: String(r.key), path: String(r.path) }));
@@ -71,8 +66,6 @@ export function normalizeAssignments(
       result.rebound += 1;
       continue;
     }
-    // 匹配不到就自动登记为仓库（哪怕目录已不在）——**绝不因为「找不到归属」丢任务**。
-    // 目录为空的行没有归属语义，才丢弃（#190 前的全局池残迹）。
     if (!cwd) {
       conn.run('DELETE FROM topics WHERE id = :id', { id: tid });
       result.droppedTopic += 1;
@@ -91,36 +84,20 @@ export function normalizeAssignments(
     result.autoRepo += 1;
   }
 
-  // ── 2. board id（b_xxx）→ 组 repos.key（group/xxx）+ 组名 ──
-  const groupByBoard = new Map<string, { key: string; name: string }>();
-  for (const g of conn.all("SELECT key, name, ext FROM repos WHERE type = 'group'")) {
+  // ── 2. board id（b_xxx）→ 组 repos.key ──
+  const groupByBoard = new Map<string, string>();
+  for (const g of conn.all("SELECT key, ext FROM repos WHERE type = 'group'")) {
     let legacy = '';
     try {
       legacy = String(JSON.parse(String(g.ext || '{}')).ext_legacy_id || '');
     } catch {
       legacy = '';
     }
-    if (legacy) groupByBoard.set(legacy, { key: String(g.key), name: String(g.name || '') });
+    if (legacy) groupByBoard.set(legacy, String(g.key));
   }
 
-  /** 找/建组队列 topic（key = 'group:<组key>'，cwd 空，repo_key 指向组行）。 */
-  const groupTopicOf = (groupKey: string, groupName: string): number | null => {
-    const key = `group:${groupKey}`;
-    const hit = conn.get('SELECT id FROM topics WHERE key = :k', { k: key });
-    if (hit) return Number(hit.id);
-    conn.run(
-      `INSERT INTO topics (key, repo_key, cwd, group_key, name, next_seq, ext, state, version,
-                           deleted_at, created_at, updated_at)
-       VALUES (:key, :repo, '', :group, :name, 1, '{}', '', 0, NULL, :at, :at)`,
-      { key, repo: groupKey, group: groupKey, name: groupName || groupKey, at: atMs },
-    );
-    result.groupTopics += 1;
-    const created = conn.get('SELECT id FROM topics WHERE key = :k', { k: key });
-    return created ? Number(created.id) : null;
-  };
-
-  // ── 3. 逐 task：提取 board → group_topic_id，剥正文头 ──
-  const tasks = conn.all('SELECT id, repo_topic_id, body FROM tasks');
+  // ── 3. 逐 task：frontmatter → repo_key / 组队列，剥正文头 ──
+  const tasks = conn.all('SELECT id, topic_id, body FROM tasks');
   for (const task of tasks) {
     const body = String(task.body || '');
     const fm = parseFrontmatter(body);
@@ -130,21 +107,50 @@ export function normalizeAssignments(
     conn.run('UPDATE tasks SET body = :b WHERE id = :id', { b: clean, id: Number(task.id) });
     result.stripped += 1;
 
+    const topic = conn.get('SELECT id, key, cwd, name, repo_key FROM topics WHERE id = :id', { id: Number(task.topic_id) });
+    if (!topic) continue;
+
+    const projectKey = String(fm.project || '').trim();
+    const repoKey = projectKey && conn.get('SELECT 1 AS ok FROM repos WHERE key = :k', { k: projectKey })
+      ? projectKey
+      : String(topic.repo_key || '');
+
     const boardId = String(fm.board || '').trim();
-    const group = boardId ? groupByBoard.get(boardId) : undefined;
-    if (group) {
-      const gtid = groupTopicOf(group.key, group.name);
-      if (gtid) {
-        conn.run('UPDATE tasks SET group_topic_id = :g WHERE id = :id', { g: gtid, id: Number(task.id) });
-        result.grouped += 1;
+    const groupKey = boardId ? groupByBoard.get(boardId) || '' : '';
+
+    if (groupKey) {
+      // 组任务拆到 (cwd, group_key) 独立队列
+      const cwd = String(topic.cwd || '');
+      const newKey = topicKeyOf(cwd, groupKey);
+      let host = conn.get('SELECT id FROM topics WHERE key = :k', { k: newKey });
+      if (!host) {
+        conn.run(
+          `INSERT INTO topics (key, repo_key, cwd, group_key, name, next_seq, ext, state, version,
+                               deleted_at, created_at, updated_at)
+           VALUES (:key, :repo, :cwd, :group, :name, 1, '{}', '', 0, NULL, :at, :at)`,
+          { key: newKey, repo: repoKey, cwd, group: groupKey, name: String(topic.name || ''), at: atMs },
+        );
+        host = conn.get('SELECT id FROM topics WHERE key = :k', { k: newKey });
       }
+      conn.run('UPDATE tasks SET topic_id = :tid, repo_key = :rk WHERE id = :id', {
+        tid: Number(host.id), rk: repoKey, id: Number(task.id),
+      });
+      result.moved += 1;
+    } else {
+      conn.run('UPDATE tasks SET repo_key = :rk WHERE id = :id', { rk: repoKey, id: Number(task.id) });
     }
   }
+
+  // ── 4. 非组任务补齐 repo_key ──
+  conn.run(
+    `UPDATE tasks SET repo_key = (SELECT repo_key FROM topics t WHERE t.id = tasks.topic_id)
+      WHERE repo_key = '' AND EXISTS (SELECT 1 FROM topics t WHERE t.id = tasks.topic_id)`,
+  );
 
   return result;
 }
 
-/** v15 → v16：先归一归属，再删哨兵仓库行（此时已无 topic 引用，CASCADE 不会误删）。 */
+/** v15 → v16：先归一归属，再删哨兵仓库行。 */
 export function migrateAssignmentsToColumns(
   conn: any,
   ctx: V16Context = {},

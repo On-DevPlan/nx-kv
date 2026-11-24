@@ -50,7 +50,6 @@ import {
 } from './migrator.js';
 import { importLegacy, scanLegacy, LEGACY_FILES } from './import-json.js';
 import { seedBuiltinTemplates } from './seed-templates.js';
-import { normalizeAssignments } from './migrations/v16-data.js';
 import {
   NotNxKvStoreError,
   StoreMigrationError,
@@ -228,8 +227,7 @@ export function bootstrap(
         let report: any = null;
         if (importLegacyData && legacy.any) {
           report = importLegacy(conn, { appDir, atMs });
-          // #197：把 legacy 正文里的 frontmatter 归属搬进列（组任务拆 (cwd, group) 队列、剥正文头）
-          normalizeAssignments(conn, { atMs });
+          // #197：导入已直接产出 v17 结构（组 topic 关联 + 剥正文头），无需再跑归一
         }
         // 导入之后立刻把正文引用/文档资源落关系表（002 的 apply 在导入之前跑，
         // 这里补一次，保证「导入的历史任务」也不是只有正文里的 fileId 字符串）。
@@ -300,8 +298,7 @@ export function bootstrap(
           return null;
         }
         const out = importLegacy(conn, { appDir, atMs });
-        // #197：归属归一（frontmatter → 列、组任务拆队列、剥正文头）
-        normalizeAssignments(conn, { atMs });
+        // #197：导入已直接产出 v17 结构（组 topic 关联 + 剥正文头）
         // 导入的数据在本事务里落资源关系；失败则整段回滚，不会留下半套关系。
         syncTaskAttachmentIndex(conn, { atMs });
         syncDocAttachmentIndex(conn, { docsDir: migrationContext.docsDir, atMs });

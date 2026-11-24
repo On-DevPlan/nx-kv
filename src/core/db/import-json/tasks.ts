@@ -192,6 +192,54 @@ export function importTopicsAndTasks(
   return { byLegacyKey, byNewKey };
 }
 
+// ─── #197：正文 frontmatter 的最小读/剥 + 组 topic 按需建（导入即产出 v17 结构）───
+const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+const FM_KV_RE = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/;
+function fmOf(src: unknown): Record<string, string> {
+  const m = String(src ?? '').match(FM_RE);
+  if (!m) return {};
+  const out: Record<string, string> = {};
+  for (const line of (m[1] ?? '').split(/\r?\n/)) {
+    const kv = line.match(FM_KV_RE);
+    if (kv) out[kv[1] ?? ''] = (kv[2] ?? '').trim();
+  }
+  return out;
+}
+function stripFm(src: unknown): string {
+  return String(src ?? '').replace(FM_RE, (block: string, inner: string) => {
+    const kv = String(inner || '').split(/\r?\n/).some((l) => FM_KV_RE.test(l));
+    return kv ? '' : block;
+  });
+}
+
+/** legacy board id（b_xxx）→ 组的 repos.key（走 ext_legacy_id）。 */
+function boardKeyOfLegacyId(db: DbApi, boardId: string): string {
+  for (const g of db.all("SELECT key, ext FROM repos WHERE type = 'group'")) {
+    try {
+      if (String(JSON.parse(String(g.ext || '{}')).ext_legacy_id || '') === boardId) return String(g.key);
+    } catch {
+      /* 坏 ext 跳过 */
+    }
+  }
+  return '';
+}
+
+/** 找/建组 topic（key = group:<组key>，cwd 空，repo_key 指向组行）。 */
+function ensureGroupTopicRow(db: DbApi, groupKey: string, atMs: number): number | null {
+  const key = `group:${groupKey}`;
+  const hit = db.get('SELECT id FROM topics WHERE key = :k', { k: key });
+  if (hit) return Number(hit.id);
+  const g = db.get('SELECT name FROM repos WHERE key = :k', { k: groupKey });
+  db.run(
+    `INSERT INTO topics (key, repo_key, cwd, group_key, name, next_seq, ext, state, version,
+                         deleted_at, created_at, updated_at)
+     VALUES (:key, :repo, '', :group, :name, 1, '{}', '', 0, NULL, :at, :at)`,
+    { key, repo: groupKey, group: groupKey, name: String((g && g.name) || groupKey), at: atMs },
+  );
+  const created = db.get('SELECT id FROM topics WHERE key = :k', { k: key });
+  return created ? Number(created.id) : null;
+}
+
 function insertTask(db: DbApi, { row, legacyKey, task, atMs, report }: InsertTaskParams): void {
   const mapped = mapLegacyStatus(task);
   report.distribution[mapped.status] = (report.distribution[mapped.status] || 0) + 1;
@@ -285,17 +333,29 @@ function insertTask(db: DbApi, { row, legacyKey, task, atMs, report }: InsertTas
     report.warnings.push({ what: 'task.roundSummary', why: `状态 ${mapped.status} 但有非空 roundSummary，已存 ext`, key: legacyKey, id: seq });
   }
 
+  // #197：正文里的 board/project 在本步转成库内关联（组 topic + 剥正文头），
+  // 导入直接产出 v17 结构，不再依赖导入后再跑一次归一。
+  const fmFm = fmOf(body);
+  let groupTopicId: number | null = null;
+  const boardId = String(fmFm.board || '').trim();
+  if (boardId) {
+    const gk = boardKeyOfLegacyId(db, boardId);
+    if (gk) groupTopicId = ensureGroupTopicRow(db, gk, atMs);
+  }
+  if (Object.keys(fmFm).length) body = stripFm(body);
+
   const round = (Number(task.reopenCount) || 0) + 1;
   if (task.reopenCount) report.discarded.push({ what: 'task.reopenCount', key: legacyKey, id: seq, count: 1, note: '→ round = reopenCount+1' });
 
   db.run(
-    `INSERT INTO tasks (repo_topic_id, seq, type, status, version, body, ext, feedback, feedback_at,
-                        from_src, blocks_following, claimed_at, done_at, round, deleted_at,
-                        created_at, updated_at)
-     VALUES (:topic, :seq, '', :status, 0, :body, :ext, :feedback, :feedbackAt,
+    `INSERT INTO tasks (repo_topic_id, group_topic_id, seq, type, status, version, body, ext,
+                        feedback, feedback_at, from_src, blocks_following, claimed_at, done_at,
+                        round, deleted_at, created_at, updated_at)
+     VALUES (:topic, :gtid, :seq, '', :status, 0, :body, :ext, :feedback, :feedbackAt,
              :from, :blocks, :claimedAt, :doneAt, :round, :deletedAt, :createdAt, :updatedAt)`,
     {
       topic: row.id,
+      gtid: groupTopicId,
       seq,
       status: mapped.status,
       body,

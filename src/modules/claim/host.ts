@@ -4,7 +4,7 @@
 // 面板随行），本文件专管「交付一条任务时要把哪些领域数据取齐」：
 //   ① 附件标注（annotateTaskDelivery → attachTemplateCtx）
 //   ② 任务级 timegoal 起表（领取即计时；preview 走只读版）
-//   ③ 组上下文（readGroupContext，按正文 frontmatter 的 board 决定组材料）
+//   ③ 组上下文（readGroupContext，按任务的 group topic 关联决定组材料）
 //   ④ 目录级 goal 上下文（readGoalCtx）+ 时间运算字段补齐（enrichGoalTiming）
 //   ⑤ 队列余量（pendingQueueInfo）
 // 之后把数据装进 DeliveryHostData，调 promptplug/delivery.ts 的 assembleDelivery
@@ -18,7 +18,6 @@
 //   trace=[]     → 按顺序记下每一段的来源（谁贡献的、开关是否开着），供面板展示
 //     「这段是哪来的」。真实领取不传 trace，行为与改造前逐字节一致。
 import { formatDuration, formatGoalTiming } from '../../core/instruction-template.js';
-import { parseFrontmatter } from '../../shared/frontmatter.js';
 import { pendingQueueInfo } from '../localtask/service.js';
 import { assembleDelivery, type AssembledDelivery } from './assemble.js';
 import { annotateTaskDelivery, attachTemplateCtx } from '../localtask/ops/attach.js';
@@ -159,9 +158,10 @@ export async function buildTaskDelivery(
     const goal = enrichGoalTiming(taskGoalCtx || (await readGoalCtx(cwd)));
 
     // 项目组上下文（组概念 + 本项目位置 + 兄弟成员 + 参考文件地址）：只进 instruction。
-    // #64 作用域：组材料只挂**组任务**（正文 frontmatter 带 board）；单 repo 主题里
-    // 提交的纯项目任务只带项目介绍，不把所属组的材料挂进来。
-    const boardMark = String(parseFrontmatter(String((task && task.text) || '')).board || '').trim();
+    // #64 作用域：组材料只挂**组任务**；单 repo 主题里提交的纯项目任务只带项目介绍，
+    // 不把所属组的材料挂进来。#197 起归属来自库内关联（group topic 的 key），
+    // 不再解析正文 frontmatter——boardKey 由 normalizeTask 从 tasks.group_topic_id 带出。
+    const boardMark = String((task && (task.boardKey || task.boardMark)) || '').trim();
     const groupCtx = await readGroupContext(cwd as string, { board: boardMark });
 
     // ── 插件化组装（promptplug）：宿主完成领域取数，插件 data() 做同步变换 ──

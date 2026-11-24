@@ -2,6 +2,36 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.68.2] - 2026-11-24 面包屑二轮验收：下拉定宽滚动 + 任务段双按钮
+
+#254 的验收反馈（#259）：「点击出现的面板固定最大高度，超过在容器内滚动；宽度调到
+150px；任务的面板 hover 显示两个 icon btn——复制 + 预览，点击出现子侧边栏显示对应
+任务原文」。
+
+### Added
+
+- 任务段 hover 出**两个** icon btn：复制（沿「路径复制偏好」两态不变）+ 预览
+  （眼睛，`onPreview` 由任务页提供：评论任务跳来源原文，普通任务把自己的原文
+  旁路打开——`openBesideMain` 先收旧旁路，同一时刻只有一块；草稿 toast 提示）。
+  旁路原文「子侧边栏」即 PagePanel 的 beside 形态（BesideHeader 关闭条），非新组件。
+
+### Changed
+
+- `.pp-menu` 加全局固定最大高度 `min(60vh, 440px)` + 容器内滚动——所有 PopMenu
+  的同级清单超长不再顶出视口。
+- `PopMenu` 新增可选 `width`（内联同时压 `width + minWidth`，否则盖不过 CSS 的
+  `min-width:168px`）；面包屑三段下拉统一定宽 **150px**，缺省行为不变。
+- 任务页 beside 三函数（打开来源原文 / 关闭自己 / 预览原文）抽成 `task-beside.ts`
+  的 `useBesideOps`——task.tsx 回到 600 行门禁内。
+
+### Verification
+
+- 全量门禁通过：lint / typecheck / build / smoke / unit 1179/1179。
+- Playwright 探针实测（独立 store + 压矮视口触发滚动，8 项断言全绿）：任务段 hover
+  双按钮可见、下拉定宽 150、scrollHeight > clientHeight（容器内滚）、剪贴板载荷、
+  预览打开「原文 #2」旁路页签（`.mdw.is-beside` 在场）。
+- 本轮知识沉淀：ref `ref_b000ae6b52e1a8d5`「面包屑二轮验收」。
+
 ## [0.68.1] - 2026-11-24 管理命名空间：搜索分区 + 成员增删
 
 用户口径：「顶部增加搜索框，支持搜索ns。对于btn增加管理：支持管理该命名空间具体项目

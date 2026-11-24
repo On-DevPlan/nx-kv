@@ -2,6 +2,27 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.67.1] - 2026-11-24 修复 group 任务未领取时改不了归属 repo（#190 cwd 回归）
+
+0.67.0 删除全局任务池时误把「改任务」提交的 `cwd` 从当前队列改成目标项目路径——
+改归属时任务还在旧队列，后端需按当前队列定位再搬家，传错 cwd 导致找不到原任务，
+表现为 group 任务提交后、未领取状态下归属 repo 完全固定、改不动。
+
+### Fixed
+
+- 提交编辑（PATCH /api/localtasks/item）的寻址 cwd 改回**当前队列**，不再按正文
+  `project` 反查目标仓库；移除随之无用的 `rows` / `projTopic` 入参。
+- 后端归属变更守卫放开 `plan` 草稿态（原仅 `pending`）——两者都还没有领取落点，
+  已领取 / 已完成仍须 reopen。
+- 归属项目下拉的可编辑性与时间目标 `goalEditable` 解耦为独立 `projectEditable`：
+  草稿 / 待领取 / plan 可改，已领取 / 完成只读。
+- 新增回归测试锁定 cwd 口径与可编辑性；端到端复现 group 提交 → pending 改归属 →
+  成功搬到目标队列。
+
+### Verification
+
+- lint 0 errors、typecheck（node + web）、全量单测 1168/1168、build 均通过。
+
 ## [0.67.0] - 2026-11-24 删除「全局任务池」（breaking）
 
 用户口径：「全局任务模块和功能安全删了吧，get 的时候也不需要考虑全局任务，项目也不

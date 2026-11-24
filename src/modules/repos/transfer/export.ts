@@ -88,7 +88,10 @@ const deriveKeyOf = (r: RepoEntry): string => service.deriveKey(r);
 export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true }: RepoExportOptions = {}): Promise<ExportLayout> {
   const s: Store = await service.loadStore();
   const warnings: string[] = [];
-  const keyOf = new Map<string, string>(s.repos.map((r): [string, string] => [r.id, service.deriveKey(r)]));
+  // 每行的 key 按行现算（deriveKey 只读行自身）。**不能用行 id 建 Map 索引**：
+  // id 来自 ext.legacy_id，自动登记/新登记的行没有它 → 多行 id 同时是 ''，
+  // Map 互相覆盖会让所有无 id 行拿到同一条 key（#200 发版被 smoke 抓到的真 bug）。
+  const keyOfRow = deriveKeyOf;
   // 看板用**冻结 key**（库里落库的那个；改名过的组不随名字漂）
   const boardKeyOf = new Map<string, string>(s.boards.map((b): [string, string] => [b.id, service.storedBoardKey(b)]));
 
@@ -99,29 +102,32 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
   const memberKeysOf = (b: BoardEntry) => service.boardRepoKeys(b, s);
   const inAnyBoard = new Set(s.boards.flatMap(memberKeysOf));
   const selectedBoards = s.boards.filter((b) => wantBoard(boardKeyOf.get(b.id)!));
-  // 选中的仓库 = 直接指定的 + 选中看板的成员 + （可选）未分组仓库
-  const selectedIds = new Set<string>();
-  for (const r of s.repos) {
-    if (!wantRepo(keyOf.get(r.id)!)) continue;
-    if (repoKeys?.length) selectedIds.add(r.id);
-  }
+  // 选中的仓库 = 直接指定的 + 选中看板的成员 + （可选）未分组仓库。
+  // 用**数组下标**做选中标记：行 id 可能缺省（见上），不能当唯一键。
+  const selected = new Set<number>();
+  s.repos.forEach((r, idx) => {
+    if (wantRepo(keyOfRow(r))) selected.add(idx);
+  });
   for (const b of selectedBoards) {
     for (const k of memberKeysOf(b)) {
-      const hit = s.repos.find((r) => deriveKeyOf(r) === k);
-      if (hit) selectedIds.add(hit.id);
+      s.repos.forEach((r, idx) => {
+        if (deriveKeyOf(r) === k) selected.add(idx);
+      });
     }
   }
   if (includeUnassigned && !repoKeys?.length && !boardKeys?.length) {
-    for (const r of s.repos) if (!inAnyBoard.has(deriveKeyOf(r))) selectedIds.add(r.id);
+    s.repos.forEach((r, idx) => {
+      if (!inAnyBoard.has(deriveKeyOf(r))) selected.add(idx);
+    });
   }
 
   const repos: ExportRepoEntry[] = [];
-  for (const r of s.repos) {
-    if (!selectedIds.has(r.id)) continue;
-    const k = keyOf.get(r.id);
+  s.repos.forEach((r, idx) => {
+    if (!selected.has(idx)) return;
+    const k = keyOfRow(r);
     if (!k) {
       warnings.push(`仓库「${r.name}」没有可用的 key —— 已跳过（先 repo key refresh 或 repo key set）`);
-      continue;
+      return;
     }
     const entry: ExportRepoEntry = {
       key: k,
@@ -148,7 +154,7 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
       warnings.push(`开发仓库「${r.name}」没有远程地址 —— 导入端只能按 key 登记，无法 clone`);
     }
     repos.push(entry);
-  }
+  });
 
   const boardsOut: ExportBoardEntry[] = selectedBoards.map((b) => {
     const entry: ExportBoardEntry = {
@@ -188,9 +194,9 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
     const bkey = boardKeyOf.get(b.id);
     if (!bkey || !wantBoard(bkey)) continue;
     for (const l of Array.isArray(b.refs) ? b.refs : []) {
-      const r = s.repos.find((x) => keyOf.get(x.id) === l.id);
+      const r = s.repos.find((x) => keyOfRow(x) === l.id);
       if (!r) continue;
-      const rk = keyOf.get(r.id);
+      const rk = keyOfRow(r);
       if (!rk || !selectedKeySet.has(rk)) continue;
       let hit = links.find((x) => x.ref === rk);
       if (!hit) {
@@ -203,7 +209,7 @@ export async function repoExport({ repoKeys, boardKeys, includeUnassigned = true
   // 仓库级直接绑定：dev 的 linked（{kind:'ref'}）→ to 里追加 {repo}
   for (const d of s.repos) {
     if ((d.type || 'dev') === 'ref') continue;
-    const dk = keyOf.get(d.id);
+    const dk = keyOfRow(d);
     if (!dk || !selectedKeySet.has(dk)) continue;
     for (const l of Array.isArray(d.linked) ? d.linked : []) {
       if (!l || l.kind !== 'ref') continue;

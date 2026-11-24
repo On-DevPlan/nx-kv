@@ -258,13 +258,11 @@ test('localtask.add：正文自带 frontmatter（面板草稿口径）→ 补上
     cwd,
     summary: '面板路径',
   });
-  const fm = parseFrontmatter(r.task.text);
-  assert.equal(fm.board, b.id, '原 frontmatter 保留');
-  assert.equal(fm.project, repo.key);
-  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, '服务端补上项目介绍引用（refId）');
-  assert.equal(fm.projectDesc, '面板口径项目');
-  assert.match(fm.boardIntro, /^ref:ref_[0-9a-f]{16}$/, '服务端补上组介绍引用（refId）');
-  assert.equal(fm.boardDesc, '面板组');
+  // #197：归属落关联（组队列 + 仓库队列），正文不再有 frontmatter
+  assert.equal(r.task.boardKey, b.key, '组归属来自 group topic 关联');
+  assert.equal(r.task.repoKey, repo.key, '归属仓库来自 repo topic 关联');
+  assert.ok(r.task.groupTopicId, '组队列关联已建立');
+  assert.ok(!r.task.text.includes('---'), '正文已剥掉 frontmatter 头');
 
   // T03：先关库连接再删临时目录（Windows 连接开着必 EBUSY）
   try { svc.closeDb(); } catch { /* ignore */ }

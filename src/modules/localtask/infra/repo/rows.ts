@@ -85,6 +85,12 @@ export function rowToTask(row: any): TaskObject {
     roundSummary: String(row.feedback ?? ''),
     deletedAt: stampOf(row.deletedAtMs),
     from: String(row.fromSrc ?? ''),
+    // #197：两条 topic 关联（库内关系）——repo 队列必填、组队列可空
+    repoTopicId: Number(row.repoTopicId ?? 0),
+    groupTopicId: row.groupTopicId != null ? Number(row.groupTopicId) : null,
+    // 便利字段：归属仓库 key 与组 key（JOIN 出来，前端/CLI 直接读，不再解析正文）
+    repoKey: String(row.repoKey ?? ''),
+    boardKey: String(row.groupKey ?? ''),
     blocksFollowing: !!row.blocksFollowing,
     blockBy: [...localDeps, ...foreignDeps],
     timegoal: ext[EXT.TIMEGOAL] || null,
@@ -115,6 +121,14 @@ export interface TaskObject {
   id: number;
   text: string;
   status: string;
+  /** #197：仓库队列 topic（必填；编号与领取按它） */
+  repoTopicId?: number;
+  /** #197：组队列 topic（可空；组归属的唯一来源） */
+  groupTopicId?: number | null;
+  /** #197：归属仓库 key（JOIN repo topic 带出） */
+  repoKey?: string;
+  /** #197：组 key（JOIN group topic 带出；空 = 纯仓库任务） */
+  boardKey?: string;
   createdAt: string;
   consumedAt: string;
   completedAt: string;
@@ -188,6 +202,8 @@ export function splitTaskFields(t: any): SplitTaskFields {
       doneAtMs: t.completedAt !== undefined ? msOf(t.completedAt) : undefined,
       deletedAtMs: t.deletedAt !== undefined ? msOf(t.deletedAt) : undefined,
       fromSrc: t.from !== undefined ? String(t.from ?? '') : undefined,
+      // #197：组队列 topic（可空）——组归属的唯一来源
+      groupTopicId: t.groupTopicId !== undefined ? (t.groupTopicId == null ? null : Number(t.groupTopicId)) : undefined,
       blocksFollowing: t.blocksFollowing !== undefined ? (t.blocksFollowing ? 1 : 0) : undefined,
       // round 显式优先（派生 reopen：新.round = 父.round + 1，不走 reopenCount 换算）
       round: t.round !== undefined ? Number(t.round) : t.reopenCount !== undefined ? Number(t.reopenCount) + 1 : undefined,

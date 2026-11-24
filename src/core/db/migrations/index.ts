@@ -19,6 +19,7 @@ import { migrateGroupRefs } from './v4-data.js';
 import { migrateRefsBodies } from './v6-data.js';
 import { migrateRefsRel } from './v8-data.js';
 import { migrateOrphanRefs } from './v11-data.js';
+import { migrateAssignmentsToColumns } from './v16-data.js';
 import { CURRENT_SCHEMA_VERSION } from '../version.js';
 import type { DbApi } from '../driver.js';
 
@@ -66,6 +67,7 @@ export const DIRECT_EDGES: MigrationStep[] = [
   { from: 12, to: 13, file: 'v13.sql', title: '去掉关系表上的业务 note（4 张表 drop note 列）' },
   { from: 13, to: 14, file: 'v14.sql', title: 'task_links.type 扩 fork（任务链四类节点：评论/反馈/重开/分支）' },
   { from: 14, to: 15, file: 'v15.sql', title: "附件新增 repo 类型（参考仓库指针，不复制字节；重建 attachments 扩 CHECK）" },
+  { from: 15, to: 16, file: 'v16.sql', title: '任务归属落库（tasks.repo_key + topics.group_key，删 frontmatter #197）', apply: migrateAssignmentsToColumns },
 ];
 
 // 人读版本说明（docs/decisions 是决策的唯一权威位置，里面对应一份 date 化的 .md）
@@ -85,6 +87,7 @@ export const VERSION_NOTES = {
   13: 'docs/decisions/versions/2026-11-17-v13.md',
   14: 'docs/decisions/versions/2026-11-22-v14.md',
   15: 'docs/decisions/versions/2026-11-23-v15.md',
+  16: 'docs/decisions/versions/2026-11-24-v16.md',
 };
 
 const keyOf = (from: number, to: number): string => `${from}->${to}`;

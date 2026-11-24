@@ -38,7 +38,7 @@ const row = z.object({
   status: z.string().describe('pending / claimed / done / cancelled'),
   title: z.string().describe('正文首个标题行（没有标题就取首行，已截断）'),
   round: z.int().describe('第几轮'),
-  board: z.string().describe('组任务标注：正文 frontmatter 的 board 值（组 id/key/名）；纯项目任务为空串'),
+  board: z.string().describe('组任务标注：所属组队列的 key（#197 起来自 DB 关联）；纯项目任务为空串'),
   ready: z.boolean().describe('当前是否可领取'),
   reopenCount: z.int(),
   createdAt: z.string(),
@@ -124,7 +124,8 @@ export class LocaltaskTasksAction extends ActionBase<typeof input> {
         round: t.round ?? 1,
         // 组任务标注：normalizeTask 已经把 frontmatter.board 解析成 boardMark，
         // 这里只做「缺省为空串」的形状收口 —— 别在这层再解析一遍正文。
-        board: t.boardMark ?? '',
+        // #197：组归属来自 DB 关联（boardKey/boardMark 同源）
+        board: t.boardMark || t.boardKey || '',
         ready: !!t.ready,
         reopenCount: t.reopenCount ?? 0,
         createdAt: t.createdAt ?? '',

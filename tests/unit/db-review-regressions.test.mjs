@@ -6,7 +6,7 @@
 //   3. 主题软删 + ensureTopic 恢复（保留任务）
 //   4. 看板保存不能把组行删掉重建（ref_bindings 的级联删除）
 //   5. 旧 timegoal.duration 字符串 → 秒
-//   6. 双进程并发 add 不撞 UNIQUE(topic_id, seq)
+//   6. 双进程并发 add 不撞 UNIQUE(repo_topic_id, seq)
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
@@ -60,8 +60,8 @@ test('多队列：task_deps 落全局 tasks.id，视图仍按主题内 seq 解�
 
   const conn = repo.db();
   const topicB = conn.get('SELECT id FROM topics WHERE cwd = :c', { c: B });
-  const b1 = conn.get('SELECT id, seq FROM tasks WHERE topic_id = :t AND seq = 1', { t: topicB.id });
-  const b2 = conn.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = 2', { t: topicB.id });
+  const b1 = conn.get('SELECT id, seq FROM tasks WHERE repo_topic_id = :t AND seq = 1', { t: topicB.id });
+  const b2 = conn.get('SELECT id FROM tasks WHERE repo_topic_id = :t AND seq = 2', { t: topicB.id });
   assert.ok(b1.id !== b1.seq, '这个场景必须让全局 id ≠ 局部 seq，否则测不到原 bug');
 
   const dep = conn.get('SELECT dep_id FROM task_deps WHERE task_id = :t', { t: b2.id });
@@ -126,7 +126,7 @@ test('旧 timegoal.duration 字符串解析成秒', () => {
   assert.equal(legacyDurationSec({}), 0);
 });
 
-test('双进程并发 add：编号不撞 UNIQUE(topic_id, seq)', async () => {
+test('双进程并发 add：编号不撞 UNIQUE(repo_topic_id, seq)', async () => {
   const env = { ...process.env };
   const run = (text) =>
     execFileAsync(process.execPath, [BIN, 'localtask', 'add', text, '--cwd', A, '--json'], {

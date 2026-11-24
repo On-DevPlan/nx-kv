@@ -1085,7 +1085,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async reopen(input: z.input<InstanceType<typeof LocaltaskReopenAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskReopenAction>['_input']>);
       const path = `/api/localtasks/reopen`;
-      const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "text": inp["text"], "kind": inp["kind"], "quote": inp["quote"], "feedback": inp["feedback"], "feedbackHeading": inp["feedbackHeading"], "feedbackBold": inp["feedbackBold"] };
+      const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "text": inp["text"], "kind": inp["kind"], "quote": inp["quote"], "feedback": inp["feedback"], "feedbackHeading": inp["feedbackHeading"], "feedbackBold": inp["feedbackBold"], "project": inp["project"], "board": inp["board"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskReopenAction>['run']>>;
     },
     // action: localtask.reorder
@@ -1165,7 +1165,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async localtaskUpdate(input: z.input<InstanceType<typeof LocaltaskUpdateAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskUpdateAction>['_input']>);
       const path = `/api/localtasks/item`;
-      const body = { "id": inp["id"], "text": inp["text"], "cwd": inp["cwd"], "key": inp["key"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "clear-goal": inp["clear-goal"], "clearGoal": inp["clearGoal"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "clear-block-by": inp["clear-block-by"], "clearBlockBy": inp["clearBlockBy"], "gate": inp["gate"] };
+      const body = { "id": inp["id"], "text": inp["text"], "cwd": inp["cwd"], "key": inp["key"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "clear-goal": inp["clear-goal"], "clearGoal": inp["clearGoal"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "clear-block-by": inp["clear-block-by"], "clearBlockBy": inp["clearBlockBy"], "gate": inp["gate"], "project": inp["project"], "board": inp["board"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskUpdateAction>['run']>>;
     },
     // action: localtask.get

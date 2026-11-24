@@ -2,10 +2,11 @@
 //
 // 为什么需要这条（而不是让端侧自己拼）：
 //
-//   组任务**物理上落在成员项目的队列里**（agent 按目录领活，队列归属不变），
-//   归属只由正文 frontmatter 的 `board` 说明 —— 就是面板里的「两种走向」
-//   （board-view.ts 的 taskInBoard / projectPending）。面板自己有全量主题快照，
-//   拼一下就有了；端侧（fr 手机界面）没有：
+//   #197 起组归属是**库内关联**：tasks.group_topic_id → 组队列 topic。
+//   本命令直接 SQL 查 `WHERE gtp.group_key = ?` 一次取完（走 ix_tasks_group 索引），
+//   不再全量拉任务 + 逐条解析正文 frontmatter。
+//
+//   端侧（fr 手机界面）不持有全量主题快照：
 //
 //     · 逐个成员队列去问 → 28 个队列 28 次请求，每次服务端还要把整份 store 读一遍；
 //     · 去拉 /api/localtasks → 每个任务都带正文，一次几 MB（端侧只画 30 字标题）。
@@ -19,10 +20,9 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
-import * as serviceNs from '../service.js';
 import * as boardsNs from '../../repos/boards.js';
+import { db } from '../infra/repo/index.js';
 
-const service: any = serviceNs;
 const boardsSvc: any = boardsNs;
 
 /** localtask.boardtasks 的入参契约：不给 board = 全部组。 */
@@ -58,6 +58,12 @@ const output = z.object({
     })
   ),
 });
+
+/** epoch ms → 时间戳串（与任务视图同格式：YYYY-MM-DD HH:MM:SS）。 */
+function stampOf(ms: unknown): string {
+  const n = Number(ms);
+  return Number.isFinite(n) && n > 0 ? new Date(n).toISOString().replace('T', ' ').slice(0, 19) : '';
+}
 
 /** 取正文里的标题：跳过 frontmatter，首个 `#` 标题优先，否则首行；按 80 字截断。 */
 function titleOf(text: unknown): string {
@@ -104,40 +110,34 @@ export class LocaltaskBoardTasksAction extends ActionBase<typeof input> {
       throw badInput(`项目组不存在: ${want}`);
     }
 
-    const list: any = await service.listTasks();
-    const topics: any[] = (list.topics ?? []) as any[];
-
+    const conn = db();
     const boards = picked.map((b) => {
-      const ids = [b.id, b.key, b.name].filter(Boolean).map(String);
-      const memberKeys = new Set<string>(
-        ((b.repos ?? []) as any[]).map((m) => (m && m.key ? String(m.key) : '')).filter(Boolean)
-      );
-      const rows: any[] = [];
-      for (const t of topics) {
-        const repoKey = t.repo && t.repo.key ? String(t.repo.key) : '';
-        // 成员关系按仓库 key 对（与 board.repos[].key 同一键空间）；
-        // 没登记仓库的目录队列不属于任何组，天然出局。
-        if (!repoKey || !memberKeys.has(repoKey)) continue;
-        const project = (t.repo && t.repo.name) || t.name || t.key;
-        for (const x of t.tasks ?? []) {
-          if (x.deletedAt || x.migratedTo) continue;
-          if (!ids.includes(String(x.boardMark ?? ''))) continue;
-          rows.push({
-            id: x.id,
-            status: x.status,
-            title: titleOf(x.text),
-            round: x.round ?? 1,
-            ready: !!x.ready,
-            project,
-            topicKey: t.key,
-            createdAt: x.createdAt ?? '',
-            consumedAt: x.consumedAt ?? '',
-            completedAt: x.completedAt ?? '',
-            claimedByName: x.claimedByName ?? '',
-            roundSummary: x.roundSummary ?? '',
-          });
-        }
-      }
+      // #197：组任务 = group_topic_id 指向「本组队列」的任务（一条 SQL，走索引）
+      const rows: any[] = conn
+        .all(
+          `SELECT t.seq, t.status, t.round, t.body, t.created_at AS createdAtMs,
+                  t.claimed_at AS claimedAtMs, t.done_at AS doneAtMs, t.feedback,
+                  rtp.key AS topicKey, rtp.name AS topicName
+             FROM tasks t
+             JOIN topics gtp ON gtp.id = t.group_topic_id
+             JOIN topics rtp ON rtp.id = t.repo_topic_id
+            WHERE gtp.group_key = :gk AND t.deleted_at IS NULL AND rtp.deleted_at IS NULL`,
+          { gk: String(b.key) },
+        )
+        .map((r: any) => ({
+          id: Number(r.seq),
+          status: String(r.status),
+          title: titleOf(r.body),
+          round: Number(r.round) || 1,
+          ready: String(r.status) === 'pending',
+          project: String(r.topicName || r.topicKey),
+          topicKey: String(r.topicKey),
+          createdAt: stampOf(r.createdAtMs),
+          consumedAt: stampOf(r.claimedAtMs),
+          completedAt: stampOf(r.doneAtMs),
+          claimedByName: '',
+          roundSummary: String(r.feedback || ''),
+        }));
       // 待领在前、其余按编号倒序：组页最想看的是「还有什么没干」
       rows.sort((a, b) => Number(b.status === 'pending') - Number(a.status === 'pending') || a.id - b.id);
       return {

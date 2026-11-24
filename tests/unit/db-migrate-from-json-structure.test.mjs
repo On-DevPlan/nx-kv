@@ -13,10 +13,10 @@ test('ext 取证：archived / legacy_key / pickupSec / history / supersededBy �
     assert.equal(tExt.ext_last_summary, '队列现状摘要');
     assert.equal(tExt.ext_manual, 1);
 
-    const archived = s.db.get(`SELECT ext FROM tasks WHERE seq = 4 AND topic_id = ${topic.id}`);
+    const archived = s.db.get(`SELECT ext FROM tasks WHERE seq = 4 AND repo_topic_id = ${topic.id}`);
     assert.equal(JSON.parse(archived.ext).ext_archived, 1, 'archived 要留 ext_archived 标记');
 
-    const rich = s.db.get(`SELECT ext, round, from_src, blocks_following FROM tasks WHERE seq = 8 AND topic_id = ${topic.id}`);
+    const rich = s.db.get(`SELECT ext, round, from_src, blocks_following FROM tasks WHERE seq = 8 AND repo_topic_id = ${topic.id}`);
     const rExt = JSON.parse(rich.ext);
     assert.equal(rExt.ext_pickup_sec, 42);
     assert.equal(rExt.ext_trash_index, undefined);
@@ -32,7 +32,7 @@ test('ext 取证：archived / legacy_key / pickupSec / history / supersededBy �
   }
 });
 
-test('topics：key 由 (cwd, group) 派生、全局池行整行跳过、队列全挂哨兵仓库', async () => {
+test('topics：key 由 (cwd, group) 派生、全局池行整行跳过、队列绑真实仓库（#197 无哨兵）', async () => {
   const s = await importFixture();
   try {
     const { topicKeyOf } = s.core;
@@ -41,8 +41,11 @@ test('topics：key 由 (cwd, group) 派生、全局池行整行跳过、队列�
     assert.equal(topics.length, 2);
     for (const t of topics) {
       assert.equal(t.key, topicKeyOf(t.cwd, t.group_key || ''), 'key 必须是派生值');
-      assert.equal(t.repo_key, '__unbound__');
+      // #197：队列必须绑真实仓库（按 cwd 匹配登记的仓库），不再有 __unbound__
+      assert.notEqual(t.repo_key, '__unbound__', '不允许哨兵仓库');
     }
+    assert.equal(topics.find((t) => t.cwd === 'D:/work/web').repo_key, 'github.com/acme/web', 'cwd 匹配到 web 仓库');
+    assert.equal(topics.find((t) => t.cwd === 'D:/work/api').repo_key, 'github.com/acme/api', 'cwd 匹配到 api 仓库');
     // #190：全局池（cwd 为空）不再迁移进来
     assert.equal(topics.find((t) => t.cwd === ''), undefined, '全局池行不迁移');
     assert.equal(s.db.get("SELECT count(*) AS c FROM topics WHERE key = '__GLOBAL__'").c, 0);
@@ -57,13 +60,13 @@ test('topics：key 由 (cwd, group) 派生、全局池行整行跳过、队列�
   }
 });
 
-test('repos：2 repo + 1 组 + 哨兵；组 key 冻结为 group/<slug>；旧 id 进 ext', async () => {
+test('repos：2 repo + 1 组（#197 无哨兵）；组 key 冻结为 group/<slug>；旧 id 进 ext', async () => {
   const s = await importFixture();
   try {
     const repos = s.db.all('SELECT key, type, name, ext, created_at FROM repos ORDER BY key');
     assert.deepEqual(
       repos.map((r) => r.key),
-      ['__unbound__', 'github.com/acme/api', 'github.com/acme/web', 'group/前端组']
+      ['github.com/acme/api', 'github.com/acme/web', 'group/前端组']
     );
     const group = repos.find((r) => r.type === 'group');
     assert.equal(group.name, '前端组');

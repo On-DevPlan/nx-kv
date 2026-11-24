@@ -37,7 +37,6 @@ import { openTemplateEditor } from '../../panels.jsx';
 import GetLoopMembersMenu from '../../components/repos/get-loop-members.js';
 import GetLoopModal from '../../components/repos/get-loop-modal.js';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { parseFrontmatter } from '../../modules/md/md-parse.js';
 import { templateDraftBody } from '../../modules/prompts/template-preview.js';
 import { startFillIfSlotted } from '../../modules/md/new-task-from-template.js';
 import { sortTasksForDisplay } from '../../modules/board/board-view.js';
@@ -167,16 +166,16 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     return map;
   }, [topics]);
 
-  // 本组任务 = 成员队列里**正文 frontmatter.board 指向本组**的任务。
-  // 显示序与目录页同源（sortTasksForDisplay：待领取在前，历史按状态沉底）。
+  // 本组任务 = 成员队列里**归属本组**的任务（#197：读 DB 关联的 boardKey =
+  // topics.group_key，不再解析正文 frontmatter）。显示序与目录页同源。
   const groupRows = useMemo(() => {
     const ids = board ? [board.id, board.key, board.name].filter(Boolean) : [];
     const list: Array<{ member: MemberItem; task: TopicTask }> = [];
     for (const it of items) {
       for (const t of it.tasks || []) {
         if (t.deletedAt) continue; // 软删的不进列表（#180 起 web 不再提供回收站入口，恢复走 CLI）
-        const fm = parseFrontmatter(t.text);
-        if (!fm.board || !ids.includes(fm.board)) continue;
+        const bk = String((t as any).boardKey || '');
+        if (!bk || !ids.includes(bk)) continue;
         list.push({ member: it, task: t });
       }
     }

@@ -93,6 +93,8 @@ export interface GroupTargetStore {
 /** resolveGroupTarget 的出站形状。 */
 export interface GroupTargetResult {
   boardId: string;
+  /** #197：组的 repos.key（存 topics.group_key 用；前端/CLI 侧仍用 boardId 寻址） */
+  boardKey: string;
   boardName: string;
   projectKey: string;
   projectName: string;
@@ -113,7 +115,7 @@ export function resolveGroupTarget(want: GroupTargetWant, store: GroupTargetStor
   const projWant = String(want.project ?? '').trim();
   const cwdWant = String(want.cwd ?? '').trim();
   if (!boardWant && !projWant) {
-    return { boardId: '', boardName: '', projectKey: '', projectName: '', cwd: '', fields: {} };
+    return { boardId: '', boardKey: '', boardName: '', projectKey: '', projectName: '', cwd: '', fields: {} };
   }
 
   let board: BoardLike | null = null;
@@ -175,6 +177,7 @@ export function resolveGroupTarget(want: GroupTargetWant, store: GroupTargetStor
 
   return {
     boardId: board ? board.id : '',
+    boardKey: board ? String(board.key || '') : '',
     boardName: board ? board.name || '' : '',
     projectKey: repo ? repo.key : '',
     projectName: repo ? repo.name || repo.key : '',

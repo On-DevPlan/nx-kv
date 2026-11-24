@@ -48,8 +48,9 @@ import {
   storeKindOf,
   userVersion,
 } from './migrator.js';
-import { importLegacy, scanLegacy, ensureSentinelRepo, LEGACY_FILES } from './import-json.js';
+import { importLegacy, scanLegacy, LEGACY_FILES } from './import-json.js';
 import { seedBuiltinTemplates } from './seed-templates.js';
+import { normalizeAssignments } from './migrations/v16-data.js';
 import {
   NotNxKvStoreError,
   StoreMigrationError,
@@ -220,13 +221,15 @@ export function bootstrap(
         // 双检：并发进程可能刚把表建好（锁是在 BEGIN IMMEDIATE 上等的）
         if (countTables(conn) > 0) return { raced: true };
         migrate(conn, { from: 0, context: migrationContext });
-        ensureSentinelRepo(conn, atMs); // topics.repo_key 的 FK 目标，无它一条队列都建不出
+        // #197：不再建哨兵仓库——队列必须绑真实仓库（导入时按 cwd 匹配或自动登记）
         setMeta(conn, 'store_kind', STORE_KIND, atMs);
         setMeta(conn, 'schema_version', String(CURRENT_SCHEMA_VERSION), atMs);
         setMeta(conn, 'created_by', 'nx-kv/' + appVersion(), atMs);
         let report: any = null;
         if (importLegacyData && legacy.any) {
           report = importLegacy(conn, { appDir, atMs });
+          // #197：把 legacy 正文里的 frontmatter 归属搬进列（组任务拆 (cwd, group) 队列、剥正文头）
+          normalizeAssignments(conn, { atMs });
         }
         // 导入之后立刻把正文引用/文档资源落关系表（002 的 apply 在导入之前跑，
         // 这里补一次，保证「导入的历史任务」也不是只有正文里的 fileId 字符串）。
@@ -290,7 +293,6 @@ export function bootstrap(
     const report = tx(
       (conn) => {
         if (!!getMeta(conn, 'migrated_from_json_at')) return null; // 双检
-        ensureSentinelRepo(conn, atMs); // `db status` 只建表不导入的库，也要有哨兵
         // 同一个事务里再确认一次：空库导入时不覆盖已有数据
         const taskCount = Number((conn.get('SELECT count(*) AS c FROM tasks') || {}).c || 0);
         if (taskCount > 0) {
@@ -298,6 +300,8 @@ export function bootstrap(
           return null;
         }
         const out = importLegacy(conn, { appDir, atMs });
+        // #197：归属归一（frontmatter → 列、组任务拆队列、剥正文头）
+        normalizeAssignments(conn, { atMs });
         // 导入的数据在本事务里落资源关系；失败则整段回滚，不会留下半套关系。
         syncTaskAttachmentIndex(conn, { atMs });
         syncDocAttachmentIndex(conn, { docsDir: migrationContext.docsDir, atMs });

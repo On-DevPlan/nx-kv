@@ -73,7 +73,7 @@ export function getGoalRowByTaskKey(topicKey: string, seq: number, conn: DbApi =
       `SELECT g.*, t.seq AS task_seq, tp.key AS topic_key, tp.cwd AS topic_cwd, tp.name AS topic_name
        FROM goals g
        JOIN tasks t ON t.id = g.task_id
-       JOIN topics tp ON tp.id = t.topic_id
+       JOIN topics tp ON tp.id = t.repo_topic_id
        WHERE tp.key = :k AND t.seq = :s AND t.deleted_at IS NULL AND g.deleted_at IS NULL
          AND tp.deleted_at IS NULL`,
       { k: String(topicKey || ''), s: Number(seq) }
@@ -176,7 +176,7 @@ export function listGoalRows(conn: DbApi = db()): GoalRow[] {
     `SELECT g.*, t.seq AS task_seq, tp.key AS topic_key, tp.cwd AS topic_cwd, tp.name AS topic_name
      FROM goals g
      JOIN tasks t ON t.id = g.task_id
-     JOIN topics tp ON tp.id = t.topic_id
+     JOIN topics tp ON tp.id = t.repo_topic_id
      WHERE g.deleted_at IS NULL AND t.deleted_at IS NULL AND tp.deleted_at IS NULL
      ORDER BY g.deadline`
   );

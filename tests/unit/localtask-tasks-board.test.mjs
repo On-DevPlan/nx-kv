@@ -8,7 +8,7 @@
 // 轻量读接口。这条接口若不回 board，端侧就只能把「组」做成成员的导航 —— 那恰好是
 // 2026-11-03 明确改掉的形态。所以这里钉住两件事：
 //   1. 纯项目任务 → board 为空串（端侧据此把它留在项目队列里）；
-//   2. 组任务 → board 为 frontmatter 里的原值（端侧据此把它归到该组）。
+//   2. 组任务 → board 为组 key（#197 起来自 group_topic 关联，不再读正文）。
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -33,16 +33,23 @@ after(async () => {
 
 test('localtask.tasks：组任务带 board，纯项目任务为空串', async () => {
   const cwd = join(dir, 'proj');
+  const repoAdd = ACTIONS.find((a) => a.id === 'repo.add');
+  const boardAdd = ACTIONS.find((a) => a.id === 'board.add');
+  const boardAssign = ACTIONS.find((a) => a.id === 'board.assign');
+  const repo = await repoAdd.run({ path: cwd, name: 'proj', key: 'local/proj' }, { transport: 'cli' });
+  const board = await boardAdd.run({ name: 'mobile' }, { transport: 'cli' });
+  await boardAssign.run({ id: repo.key, board: board.id }, { transport: 'cli' });
+
   const plain = await addAction.run({ cwd, text: '# 纯项目任务\n\n正文' }, { transport: 'cli' });
   const grouped = await addAction.run(
-    { cwd, text: '---\nboard: b_mobile\nproject: local/proj\n---\n# 组任务\n\n正文' },
+    { cwd, text: '# 组任务\n\n正文', board: board.id, project: repo.key },
     { transport: 'cli' },
   );
 
   const out = await tasksAction.run({ cwd }, { transport: 'cli' });
   const byId = new Map(out.tasks.map((t) => [t.id, t]));
   assert.equal(byId.get(plain.id).board, '', '纯项目任务不该被算进任何组');
-  assert.equal(byId.get(grouped.id).board, 'b_mobile', '组任务的 board 必须原样透出');
+  assert.equal(byId.get(grouped.id).board, board.key, '组任务的 board 来自 group topic 关联');
 });
 
 test('localtask.tasks：输出契约里 board 是必填字段（端侧按它分流，不能缺）', async () => {

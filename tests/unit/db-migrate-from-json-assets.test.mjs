@@ -87,7 +87,7 @@ test('timegoals.json 导入：task: 作用域换算 task_id；队列级丢弃 + 
   try {
     const goal = s.db.get(
       `SELECT g.* FROM goals g JOIN tasks t ON t.id = g.task_id
-       JOIN topics tp ON tp.id = t.topic_id WHERE tp.ext LIKE '%legacyhash0000001%' AND t.seq = 3`
+       JOIN topics tp ON tp.id = t.repo_topic_id WHERE tp.ext LIKE '%legacyhash0000001%' AND t.seq = 3`
     );
     assert.ok(goal, 'task: 作用域换算到 tasks.id');
     assert.equal(goal.duration_sec, 3600);

@@ -152,28 +152,21 @@ test('sortTasksForDisplay：空输入与脏输入都不炸', () => {
 // 但**走向**属于组：项目侧的列表与计数剔除，组页按 board 归属认领。
 // 服务端 normalizeTask 负责标注 boardMark；前端读标注分流，不重复解析正文。
 
-test('normalizeTask：frontmatter.board 标到 boardMark；没有/坏块都是空串', () => {
-  const marked = normalizeTask({
-    id: 1,
-    status: 'pending',
-    text: '---\nboard: b_mvwc2mzrwnlby\nproject: local/nx-kv\n---\n\n# 组任务\n',
-  });
-  assert.equal(marked.boardMark, 'b_mvwc2mzrwnlby');
+test('normalizeTask：boardKey（组队列关联）标到 boardMark；没有就是空串', () => {
+  // #197：组归属来自 tasks.group_topic_id 的关联（boardKey），不再解析正文 frontmatter
+  const marked = normalizeTask({ id: 1, status: 'pending', text: '# 组任务', boardKey: 'group/nx-kv' });
+  assert.equal(marked.boardMark, 'group/nx-kv');
 
   const plain = normalizeTask({ id: 2, status: 'pending', text: '# 普通项目任务\n\n正文' });
   assert.equal(plain.boardMark, '');
-
-  // 文档以 --- 开头的分割线不算 frontmatter（无 key: value 行 → 空对象）
-  const noFm = normalizeTask({ id: 3, status: 'pending', text: '---\n只是分割线\n---\n正文' });
-  assert.equal(noFm.boardMark, '');
 
   const empty = normalizeTask({ id: 4 });
   assert.equal(empty.boardMark, '');
 });
 
-test('normalizeTask：board 值两边空白裁掉（手写 frontmatter 容错）', () => {
-  const t = normalizeTask({ id: 5, status: 'pending', text: '---\nboard:   b_x  \n---\n# 手写' });
-  assert.equal(t.boardMark, 'b_x');
+test('normalizeTask：boardKey 两边空白裁掉（脏数据容错）', () => {
+  const t = normalizeTask({ id: 5, status: 'pending', text: '# 手写', boardKey: '  group/x  ' });
+  assert.equal(t.boardMark, 'group/x');
 });
 
 test('isGroupTask：只认 boardMark 标注', () => {

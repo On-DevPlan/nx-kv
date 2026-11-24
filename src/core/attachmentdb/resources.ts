@@ -161,6 +161,12 @@ export function ensureUrlAttachment(conn: any, { url, name = '', atMs = Date.now
   });
 }
 
+/** tasks 表指向队列的列名（#197 起 repo_topic_id；迁移期可能还是 topic_id）。 */
+function taskTopicColumn(conn: any): string {
+  const cols = conn.all('PRAGMA table_info(tasks)').map((c: any) => String(c.name));
+  return cols.includes('repo_topic_id') ? 'repo_topic_id' : 'topic_id';
+}
+
 /**
  * 去掉正文头部的 frontmatter（与 shared/frontmatter.js 的 stripFrontmatter 同口径）。
  * core 是最底层，不能反向 import shared，所以这里保留一份最小实现。
@@ -201,7 +207,7 @@ export function ensureTaskAttachment(conn: any, { taskId, atMs = Date.now(), nam
 } = {}): string | null {
   const row = conn.get(
     `SELECT t.id AS taskId, t.seq, t.body, k.key AS topicKey
-       FROM tasks t JOIN topics k ON k.id = t.topic_id
+       FROM tasks t JOIN topics k ON k.id = t.${taskTopicColumn(conn)}
       WHERE t.id = :id`,
     { id: Number(taskId) }
   );

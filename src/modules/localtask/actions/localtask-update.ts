@@ -22,6 +22,9 @@ const input = z.object({
   'clear-block-by': z.boolean().optional().describe("清掉 blockBy 依赖"),
   clearBlockBy: z.boolean().optional().describe("同 --clear-block-by"),
   gate: z.boolean().optional().describe("设/清闸门（true=挡住后续；false=取消闸门）"),
+  // #197：归属改由显式参数给出（不再改正文 frontmatter 里的 project/board）
+  project: z.string().optional().describe("改归属项目（仓库 key / 名称 / 路径）——任务迁到该仓库队列"),
+  board: z.string().optional().describe("改归属组（组 id / key / 名称）——同时更新 group topic 关联"),
 });
 
 export class LocaltaskUpdateAction extends ActionBase<typeof input> {
@@ -74,6 +77,9 @@ export class LocaltaskUpdateAction extends ActionBase<typeof input> {
           blockBy,
           clearBlockBy,
           blocksFollowing: ctx.gate,
+          // #197：改归属走显式参数（null 表示不改）
+          project: ctx.project,
+          board: ctx.board,
         });
         // 出参契约（updateView）只回编号：把 task.id 提到顶层（纯附加，原有键不变）
         if (r && r.task && r.task.id != null) r.id = r.task.id;

@@ -88,12 +88,21 @@ export function listTaskAttachments(conn: any, taskId?: string | number): Linked
     .map((r: any) => ({ ...rowView(r), role: r.role, position: Number(r.position) || 0, note: r.note }));
 }
 
+/**
+ * tasks 表指向队列的列名（#197 起是 repo_topic_id，之前是 topic_id）。
+ * 迁移期（v2 等历史步骤）调到这里时表还是旧结构——按实际列探测，两个时代都能跑。
+ */
+export function taskTopicColumn(conn: any): string {
+  const cols = conn.all('PRAGMA table_info(tasks)').map((c: any) => String(c.name));
+  return cols.includes('repo_topic_id') ? 'repo_topic_id' : 'topic_id';
+}
+
 /** CLI 只有 topicKey + seq 时的查询入口。 */
 export function listTaskAttachmentsBySeq(conn: any, { topicKey, seq }: {
   topicKey?: string; seq?: number | string;
 }): LinkedAttachmentView[] {
   const row = conn.get(
-    `SELECT t.id FROM tasks t JOIN topics k ON k.id = t.topic_id
+    `SELECT t.id FROM tasks t JOIN topics k ON k.id = t.${taskTopicColumn(conn)}
       WHERE k.key = :key AND t.seq = :seq`,
     { key: String(topicKey || ''), seq: Number(seq) }
   );

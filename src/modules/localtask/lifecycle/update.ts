@@ -10,7 +10,7 @@
 // 落点解析与 add.js 共用同一份实现（board-target.resolveGroupTarget + group-store），
 // 不另起炉灶。
 import { badInput } from '../../../core/errors.js';
-import { applyGroupFields, parseFrontmatter, preserveFrontmatter } from '../../../shared/frontmatter.js';
+import { stripFrontmatter } from '../../../shared/frontmatter.js';
 import { resolveGroupTarget } from '../ops/board-target.js';
 import * as service from '../service.js';
 import { normalizedGroupStore } from '../ops/group-store.js';
@@ -25,42 +25,38 @@ export interface UpdateTaskParams {
 }
 
 /**
- * 解析这次编辑的**归属落点**。
+ * 解析这次编辑的**归属落点**（#197：归属改由显式参数给出，不再读正文 frontmatter）。
  *
- * effective frontmatter = 旧 ∪ 新（新键优先，与服务端 preserveFrontmatter 同一口径）。
- * 判据不是「project 字段变没变」而是**不变式本身**：归属项目的登记队列 ≠ 任务所在队列
- * 就要搬。只比字段会漏掉历史脏数据——#43 的现场正是上一轮把 project 改成了 nx-kv
- * 但队列还在 nx-as，字段没变、搬家用不上，用户怎么改都「没有变化」。
- * 同队列 → null（纯文案编辑，与搬家无关）。
- *
- * @returns null | { moveTo: {cwd: string, name: string}, text: string }
+ * @param project 目标归属仓库（key / 名称 / 路径）；不传 = 不改归属
+ * @param board   目标组（id / key / 名称）；不传 = 不改组
+ * @returns null（纯文案编辑）或 { moveTo, text, groupKey, groupName }
  */
-async function resolveAttributionChange({ cwd, key, id, text }: UpdateTaskParams): Promise<null | { moveTo: { cwd: string; name: string }; text: string }> {
-  if (text === undefined || text === null || !String(text).trim()) return null;
-  const current = await service.getTask({ cwd, key, id });
-  const oldFm = parseFrontmatter(current.text);
-  const merged = preserveFrontmatter(current.text, String(text));
-  const newFm = parseFrontmatter(merged);
-  const oldProject = String(oldFm.project || '').trim();
-  const newProject = String(newFm.project || '').trim();
-  if (!newProject) return null;
-  const projectChanged = newProject !== oldProject;
+async function resolveAttributionChange({ text, project, board }: UpdateTaskParams): Promise<
+  null | { moveTo: { cwd: string; name: string; groupKey: string; groupName: string }; text: string }
+> {
+  if (!project && !board) return null;
   let target: any;
   try {
     target = resolveGroupTarget(
-      { board: String(newFm.board || '').trim(), project: newProject, cwd: '' },
+      { board: String(board || '').trim(), project: String(project || '').trim(), cwd: '' },
       await normalizedGroupStore(),
     );
   } catch (err) {
-    // 归属字段是这次明确要改的：解析不到（未登记 / 不是本组成员）就明说，不静默吞掉；
-    // 归属没变的普通文案编辑不因归属元数据解析失败被拦（fail-open，同派任务口径）
-    if (projectChanged) throw badInput(`改归属失败：${(err as Error).message}`);
-    return null;
+    // 归属是这次明确要改的：解析不到（未登记 / 不是本组成员）就明说，不静默吞
+    throw badInput(`改归属失败：${(err as Error).message}`);
+  }
+  if (!target.cwd) {
+    throw badInput('改归属失败：没有解析出目标项目路径（--project 必须指向已登记仓库）');
   }
   return {
-    moveTo: { cwd: target.cwd, name: target.projectName || target.projectKey },
-    // 介绍引用跟着换——正文说 B、projectIntro 还指着 A 的文档就是在撒谎
-    text: applyGroupFields(merged, target.fields),
+    moveTo: {
+      cwd: target.cwd,
+      name: target.projectName || target.projectKey,
+      groupKey: target.boardKey,
+      groupName: target.boardName,
+    },
+    // 正文只存 markdown——旧正文里若还残留 --- 头，这次编辑顺手剥掉
+    text: text === undefined || text === null ? '' : stripFrontmatter(String(text)),
   };
 }
 
@@ -68,12 +64,16 @@ async function resolveAttributionChange({ cwd, key, id, text }: UpdateTaskParams
 export async function updateTask(params: UpdateTaskParams): Promise<Record<string, any>> {
   const plan = await resolveAttributionChange(params);
   if (!plan) return service.updateTask(params as Record<string, any>); // service 层参数尚未类型化
-  return service.updateTask({ ...params, text: plan.text, moveTo: plan.moveTo } as Record<string, any>);
+  const patch: Record<string, any> = { ...params, moveTo: plan.moveTo };
+  if (plan.text) patch.text = plan.text; // 只改归属、不动正文时别把正文清空
+  return service.updateTask(patch);
 }
 
 /** 重开任务（用户的修改反馈；--text 可能带着改过的归属，同样搬家）。 */
 export async function reopenTask(params: UpdateTaskParams): Promise<Record<string, any>> {
   const plan = await resolveAttributionChange(params);
   if (!plan) return service.reopenTask(params);
-  return service.reopenTask({ ...params, text: plan.text, moveTo: plan.moveTo });
+  const patch: Record<string, any> = { ...params, moveTo: plan.moveTo };
+  if (plan.text) patch.text = plan.text;
+  return service.reopenTask(patch);
 }

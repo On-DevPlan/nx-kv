@@ -81,7 +81,7 @@ export function targetLookupsOf(db: any, rows: any): ResourceLookups {
   if (!db) return { tasks, refs };
   const taskSql = `SELECT t.id, t.seq, t.status, t.body, t.deleted_at,
                      k.key AS topicKey, k.name AS topicName
-                 FROM tasks t JOIN topics k ON k.id = t.topic_id`;
+                 FROM tasks t JOIN topics k ON k.id = t.repo_topic_id`;
   for (const row of rows) {
     const meta = metaOf(row);
     if (baseKind(row) === 'task') {

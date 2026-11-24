@@ -8,7 +8,6 @@ import { normalizeBlockBy, isReadyToClaim } from '../dag.js';
 import { topicKeyFor, resolveTaskKey } from '../paths.js';
 import { parseStampMs, stampNow } from '../infra/store-io.js';
 import { topics as topicsRepo, tasks as tasksRepo, links as linksRepo, db } from '../infra/repo/index.js';
-import { parseFrontmatter } from '../../../shared/frontmatter.js';
 import { isPending } from '../../../shared/task-status.js';
 import type { ReadyOpts } from '../../../core/workflow/readiness.js';
 import type { TaskObject } from '../infra/repo/rows.js';
@@ -108,6 +107,10 @@ export function relocateTask(fromTopic: any, seq: number | string, moveTo: any):
     moveFrom: { key: fromTopic.key, seq: oldSeq, at: stampNow() },
     blocksFollowing: !!src.task.blocksFollowing,
     blockBy: (src.task.blockBy || []).filter((d: unknown) => String(d).includes(':')).map(String),
+    // #197：moveTo 带组就用新组（改组），否则组归属跟着任务走（只换仓库队列）
+    groupTopicId: moveTo?.groupKey
+      ? topicsRepo.ensureGroupTopic(String(moveTo.groupKey), String(moveTo.groupName || '')).id
+      : ((src.task as any).groupTopicId ?? null),
   });
   const newId = inserted.id;
 
@@ -122,7 +125,7 @@ export function relocateTask(fromTopic: any, seq: number | string, moveTo: any):
   // 3. 链：新 → 旧，type='reopen'（搬队列是派生的特例）
   linksRepo.addLink({
     srcId: Number(
-      (db().get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', {
+      (db().get('SELECT id FROM tasks WHERE repo_topic_id = :t AND seq = :s', {
         t: target.id,
         s: newId,
       }) || {}).id
@@ -134,15 +137,15 @@ export function relocateTask(fromTopic: any, seq: number | string, moveTo: any):
   });
 
   // 4. 跨队列引用改写：指向旧地址的 "fromKey:oldSeq" → 新地址
-  for (const row of db().all('SELECT topic_id FROM tasks WHERE ext LIKE :pat', {
+  for (const row of db().all('SELECT repo_topic_id FROM tasks WHERE ext LIKE :pat', {
     pat: '%' + fromTopic.key + ':' + oldSeq + '%',
   })) {
-    for (const other of tasksRepo.listTaskRowsByTopic(Number(row.topic_id))) {
+    for (const other of tasksRepo.listTaskRowsByTopic(Number(row.repo_topic_id))) {
       if (!Array.isArray(other.task.blockBy) || !other.task.blockBy.some((d: unknown) => String(d).includes(':'))) continue;
       const from = fromTopic.key + ':' + oldSeq;
       const to = toKey + ':' + newId;
       if (!other.task.blockBy.some((d: unknown) => String(d) === from)) continue;
-      tasksRepo.updateTask(Number(row.topic_id), other.task.id, {
+      tasksRepo.updateTask(Number(row.repo_topic_id), other.task.id, {
         blockBy: other.task.blockBy.map((d: unknown) => (String(d) === from ? to : d)),
       });
     }
@@ -180,13 +183,11 @@ export function foreignResolver(): (topicKey: string, taskId: number | string) =
   };
 }
 
-// 组任务标注（#85 两种走向）：正文 frontmatter 的 board 值——项目组「＋ 新增任务」
-// 预写、CLI add --board 落下来的都算。**物理队列不变**（agent 按项目目录领取照旧）；
-// 面板据此把组任务从**项目走向**的列表与计数里分流出去，组页仍按 board 归属认领。
-// parseFrontmatter 不抛错（无块/坏块都回空对象），没有 board → ''（= 纯项目任务）。
+// 组任务标注（#85）：#197 起不再解析正文 frontmatter —— 归属来自库内关联，
+// 由 TASK_SELECT 的 JOIN 带出（task.boardKey = topics.group_key，组 job 的 repos.key）。
+// 没有 group_key → ''（= 纯仓库任务）。正文里的 `---` 头在迁移/提交时已剥掉。
 function boardMarkOf(t: TaskInput): string {
-  const fm = parseFrontmatter(String(t.text ?? ''));
-  return fm.board ? String(fm.board).trim() : '';
+  return String((t as any).boardKey ?? '').trim();
 }
 
 export function normalizeTask(t: TaskInput, siblings?: any[] | null, readyOpts: ReadyOpts = {}): Record<string, any> {
@@ -217,6 +218,11 @@ export function normalizeTask(t: TaskInput, siblings?: any[] | null, readyOpts: 
     // 组任务标注（#85）：frontmatter.board 原样（面板创建写 board id，也可能有
     // 手写 key/name）；'' = 纯项目任务。分流判据只在标注，不重复解析正文。
     boardMark: boardMarkOf(t),
+    // #197：归属关联透传（repo topic 必填 / group topic 可空），前端与交付上下文直接读
+    repoTopicId: Number((t as any).repoTopicId ?? 0),
+    groupTopicId: (t as any).groupTopicId != null ? Number((t as any).groupTopicId) : null,
+    repoKey: String((t as any).repoKey ?? ''),
+    boardKey: String((t as any).boardKey ?? ''),
     // 迁出标记：本机 → 云端迁移后原条目保留在此，作为 tombstone（可撤销/移除）。
     // 带 migratedTo 的任务**不再算待领取**（不会被派发给 agent，也不再进看板的
     // 待领取列）——它只是一条「去哪了」的记录。结构 {side:'cloud', topic, targetId, at}。

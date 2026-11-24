@@ -4,7 +4,7 @@
 // legacy 的 type（ref / dev）不是新 schema 的二分（repo/group），存 ext 取证。
 import { groupKeyOf } from '../../keys.js';
 import { anyTimeMs } from '../time.js';
-import { emptyReport, jsonText, stringOrNull, SENTINEL_REPO_KEY, SENTINEL_REPO_NAME } from './data.js';
+import { jsonText, stringOrNull } from './data.js';
 import type { ImportReport } from './data.js';
 import type { DbApi } from '../driver.js';
 
@@ -16,33 +16,12 @@ export interface ImportReposResult {
   boardNames: string[];
 }
 
-/** 哨兵仓库必须**永远在场**：topics.repo_key 是 NOT NULL 外键，没有它连一条队列都建不出来。
- *  幂等（已存在跳过）。bootstrap 在建表后无条件调用 —— 与「有没有 legacy JSON」无关。 */
-export function ensureSentinelRepo(db: DbApi, atMs: number, report: ImportReport = emptyReport()): void {
-  const exists = db.get('SELECT key FROM repos WHERE key = :k', { k: SENTINEL_REPO_KEY });
-  if (exists) return;
-  db.run(
-    `INSERT INTO repos (key, type, name, description, path, remote, sort_order, ext, state, version,
-                        deleted_at, created_at, updated_at)
-     VALUES (:key, 'repo', :name, :desc, '', '', -1, :ext, '', 0, NULL, :at, :at)`,
-    {
-      key: SENTINEL_REPO_KEY,
-      name: SENTINEL_REPO_NAME,
-      desc: '迁移时承载"对不上真实仓库"的队列与全局池；不是用户登记的仓库（面板默认隐藏）',
-      ext: jsonText({ ext_sentinel: 1 }),
-      at: atMs,
-    }
-  );
-  report.imported.repos += 1;
-}
-
 export function importRepos(db: DbApi, reposData: any, atMs: number, report: ImportReport): ImportReposResult {
   const repos = Array.isArray(reposData && reposData.repos) ? reposData.repos : [];
   const boards = Array.isArray(reposData && reposData.boards) ? reposData.boards : [];
 
-  ensureSentinelRepo(db, atMs, report);
-
-  const seen = new Set([SENTINEL_REPO_KEY]);
+  // #197：不再创建哨兵仓库——队列必须绑真实仓库（cwd 匹配或自动登记）
+  const seen = new Set<string>();
   const legacyIdToKey = new Map<string, string>(); // 旧 r_xxx → 新 key
   const boardLegacyIdToKey = new Map<string, string>(); // 旧 b_xxx → 组 key
 

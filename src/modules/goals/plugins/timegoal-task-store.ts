@@ -105,7 +105,7 @@ export async function startTaskGoal({ topicKey, taskId: seq, cwd, name, duration
   return tx(
     (conn) => {
       const taskRow = conn.get(
-        'SELECT t.id, tp.cwd AS topic_cwd, tp.name AS topic_name FROM tasks t JOIN topics tp ON tp.id = t.topic_id WHERE tp.key = :k AND t.seq = :s AND t.deleted_at IS NULL',
+        'SELECT t.id, tp.cwd AS topic_cwd, tp.name AS topic_name FROM tasks t JOIN topics tp ON tp.id = t.repo_topic_id WHERE tp.key = :k AND t.seq = :s AND t.deleted_at IS NULL',
         { k: String(topicKey), s: Number(seq) }
       );
       if (!taskRow) throw badInput(`找不到任务 task:${topicKey}:${seq}（goal 无处挂载）`);

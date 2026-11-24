@@ -42,7 +42,7 @@ export type LinkNode = ChildLinkNode | ChainLinkNode;
 
 function taskRowById(conn: DbApi, id: number): Record<string, any> | null {
   return conn.get(
-    `SELECT id, topic_id AS topicId, seq, type, status, version, body, ext, feedback,
+    `SELECT id, repo_topic_id AS topicId, seq, type, status, version, body, ext, feedback,
             feedback_at AS feedbackAt, from_src AS fromSrc, blocks_following AS blocksFollowing,
             claimed_at AS claimedAtMs, done_at AS doneAtMs, round, deleted_at AS deletedAtMs,
             created_at AS createdAtMs, updated_at AS updatedAtMs

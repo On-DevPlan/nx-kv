@@ -200,16 +200,16 @@ test('搬队列：带链任务（R1→R2）搬后链完整，全局 id 不变', 
     "SELECT src_id, dst_id FROM task_links WHERE note LIKE 'moved to%' ORDER BY created_at DESC LIMIT 1"
   );
   assert.ok(moveLink, '搬队列链存在');
-  const srcInB = dbFn().get('SELECT topic_id FROM tasks WHERE id = :id', { id: moveLink.src_id });
-  assert.equal(srcInB.topic_id, bid, 'src 已搬到 B');
+  const srcInB = dbFn().get('SELECT repo_topic_id FROM tasks WHERE id = :id', { id: moveLink.src_id });
+  assert.equal(srcInB.repo_topic_id, bid, 'src 已搬到 B');
 
   // 原始 reopen 链（R1→R2）也没被 CASCADE 删掉：全局 id 保留了
   const reopenLink = dbFn().get(
     "SELECT src_id, dst_id FROM task_links WHERE note = '' ORDER BY created_at LIMIT 1"
   );
   assert.ok(reopenLink, 'R1→R2 链仍存在');
-  const dstOfReopen = dbFn().get('SELECT topic_id FROM tasks WHERE id = :id', { id: reopenLink.dst_id });
-  assert.notEqual(dstOfReopen.topic_id, bid, 'dst 仍在 A');
+  const dstOfReopen = dbFn().get('SELECT repo_topic_id FROM tasks WHERE id = :id', { id: reopenLink.dst_id });
+  assert.notEqual(dstOfReopen.repo_topic_id, bid, 'dst 仍在 A');
 
   // taskChain 从搬入任务查：整条链可达（R1 在祖先里）
   const chain = await localtask.taskChain({ cwd: cwdB, id: upd.task.id });

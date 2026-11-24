@@ -73,7 +73,6 @@ export {
   refIdOf,
 } from './import-json/data.js';
 export { scanLegacy } from './import-json/scan.js';
-export { ensureSentinelRepo } from './import-json/repos.js';
 export { listDocFiles } from './import-json/refs.js';
 
 /** importLegacy 的选项。 */
@@ -119,7 +118,7 @@ function validateImport(
   for (const t of topics) {
     const expect = topicKeyOf(t.cwd, t.group_key || '');
     if (expect !== t.key) problems.push(`队列 ${t.id} 的 key 不是 (cwd,group) 的派生值`);
-    const row = conn.get('SELECT max(seq) AS m, count(*) AS c FROM tasks WHERE topic_id = :id', { id: t.id });
+    const row = conn.get('SELECT max(seq) AS m, count(*) AS c FROM tasks WHERE repo_topic_id = :id', { id: t.id });
     const maxSeq = Number((row && row.m) || 0);
     const cnt = Number((row && row.c) || 0);
     if (cnt > 0 && Number(t.next_seq) <= maxSeq) {

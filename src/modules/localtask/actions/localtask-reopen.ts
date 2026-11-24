@@ -17,6 +17,9 @@ const input = z.object({
   feedback: z.string().optional().describe("用户反馈原文；派生出的新任务正文会追加 [!WARNING] 验收反馈 callout（base = 服务端最新正文，防连续评论丢内容）"),
   feedbackHeading: z.string().optional().describe("反馈段形态：comment=旧段名 ## 反馈修改（不进轮次）；reopen=轮次 callout（[!NOTE] 完成总结 + [!WARNING] 验收反馈，标题含轮次号）"),
   feedbackBold: z.boolean().optional().describe("追加的反馈是否逐行加粗（缺省 comment=false / reopen=true）"),
+  // #197：归属改由显式参数给出（不再改正文 frontmatter）
+  project: z.string().optional().describe("改归属项目（仓库 key / 名称 / 路径）——派生出的新任务落该仓库队列"),
+  board: z.string().optional().describe("改归属组（组 id / key / 名称）"),
 });
 
 export class LocaltaskReopenAction extends ActionBase<typeof input> {
@@ -41,6 +44,8 @@ export class LocaltaskReopenAction extends ActionBase<typeof input> {
           key: ctx.key,
           text: ctx.text,
           kind: ctx.kind,
+          project: ctx.project,
+          board: ctx.board,
           quote: ctx.quote,
           feedback: ctx.feedback,
           feedbackHeading: ctx.feedbackHeading,

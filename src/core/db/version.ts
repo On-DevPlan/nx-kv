@@ -43,7 +43,9 @@
 // v14（2026-11-22）：task_links.type 扩 `fork`（任务链四类节点可区分）。
 // v15（2026-11-23）：attachments.kind 新增 `repo`（参考仓库指针：#184 附件挂仓库，
 //   字节留在原 checkout，交付时强制参考源码）；同样 12-step 重建扩 CHECK。
-export const CURRENT_SCHEMA_VERSION = 15;
+// v16（2026-11-24）：任务归属从正文 frontmatter 搬进库内列——tasks 加 repo_key，
+//   topics.group_key 启用（组任务拆 (cwd, group_key) 独立队列），删哨兵仓库 #197。
+export const CURRENT_SCHEMA_VERSION = 16;
 
 /**
  * 运行时最低 Node 版本。

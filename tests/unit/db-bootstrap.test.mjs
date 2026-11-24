@@ -44,12 +44,12 @@ test(`全新目录：建 20 张表 / user_version=${CURRENT_SCHEMA_VERSION} / me
     assert.match(meta.created_by, /^nx-kv\//);
     assert.equal(meta.migrated_from_json_at, undefined, '全新库不该有"从 JSON 迁来"的标志');
 
-    // 索引与触发器数量（27 索引 / 1 触发器；v5 新增 ux_attachments_mdfile_path，v10 新增 ux_attachments_folder_path，
-    // v6 新增 ux_refs_rel）
+    // 索引与触发器数量（30 索引 / 1 触发器；v5 新增 ux_attachments_mdfile_path，v10 新增
+    // ux_attachments_folder_path，v6 新增 ux_refs_rel，v16 新增 ix_tasks_group #197）
     const idx = s.db.get(
       "SELECT count(*) AS c FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'"
     );
-    assert.equal(idx.c, 29);
+    assert.equal(idx.c, 30);
     const trg = s.db.get("SELECT count(*) AS c FROM sqlite_master WHERE type = 'trigger'");
     assert.equal(trg.c, 1);
   } finally {
@@ -198,7 +198,7 @@ test('schema 约束：topics.key UNIQUE / repos.ext 必须 JSON 对象 / 外键�
 
     // 触发器：身份（seq / created_at）不可改
     s.db.run(
-      `INSERT INTO tasks (topic_id, seq, type, status, version, body, ext, feedback, feedback_at,
+      `INSERT INTO tasks (repo_topic_id, seq, type, status, version, body, ext, feedback, feedback_at,
                           from_src, blocks_following, claimed_at, done_at, round, deleted_at,
                           created_at, updated_at)
        VALUES ((SELECT id FROM topics WHERE key = 't1'), 1, '', 'pending', 0, 'x', '{}', '', NULL,

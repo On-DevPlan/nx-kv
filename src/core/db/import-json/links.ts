@@ -20,7 +20,7 @@ export function importLinksAndDeps(
     if (!parsed) return null;
     const topic = byLegacyKey.get(parsed.legacyKey);
     if (!topic) return null;
-    const row = db.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', { t: topic.id, s: parsed.seq });
+    const row = db.get('SELECT id FROM tasks WHERE repo_topic_id = :t AND seq = :s', { t: topic.id, s: parsed.seq });
     return row ? row.id : null;
   };
 
@@ -93,7 +93,7 @@ export function importStandaloneGoals(
       report.warnings.push({ what: 'goal', why: '作用域里的队列对不上，已丢弃', scope });
       continue;
     }
-    const taskRow = db.get('SELECT id, claimed_at, created_at FROM tasks WHERE topic_id = :t AND seq = :s', {
+    const taskRow = db.get('SELECT id, claimed_at, created_at FROM tasks WHERE repo_topic_id = :t AND seq = :s', {
       t: topic.id,
       s: parsed.seq,
     });

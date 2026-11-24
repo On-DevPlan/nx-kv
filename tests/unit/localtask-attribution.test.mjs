@@ -8,7 +8,6 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
-import { parseFrontmatter } from '../../src/shared/frontmatter.js';
 
 const sb = mkdtempSync(join(tmpdir(), 'nx-kv-attrib-'));
 process.env.NX_KV_REPOS_STORE = join(sb, 'repos.json');
@@ -46,15 +45,15 @@ const bKey = svc.normalizeCwd(dirB).key;
 const samePath = (a, b) =>
   resolve(a).replace(/[\\/]+/g, '/').toLowerCase() === resolve(b).replace(/[\\/]+/g, '/').toLowerCase();
 
-/** 把正文 frontmatter 的 project 从 A 改成 B（其余不动） */
-const swapProject = (text) => text.replace(`project: ${repoA.key}`, `project: ${repoB.key}`);
+// #197：归属不再写正文——改归属用显式 project 参数（正文里已没有 --- 头）
+const toB = { project: repoB.key };
 
 test('归属改了 → 任务迁到新项目队列，旧队列不再有它，介绍引用刷新', async () => {
   const r = await submitTask({ text: '# A 任务\n正文', board: board.id, project: repoA.key });
   assert.ok(samePath(r.cwd, dirA), '提交时落在 A 的队列');
 
   const upd = await updateAction.run({
-    id: r.task.id, cwd: dirA, text: swapProject(r.task.text),
+    id: r.task.id, cwd: dirA, ...toB,
   });
   assert.equal(upd.moved, true, '归属变了必须搬家');
   assert.ok(samePath(upd.cwd, dirB), `落点应为 B 的登记路径（实际 ${upd.cwd}）`);
@@ -67,12 +66,12 @@ test('归属改了 → 任务迁到新项目队列，旧队列不再有它，介
   const tombstone = await svc.getTask({ cwd: dirA, id: r.task.id });
   assert.equal(tombstone.status, 'cancelled', '旧任务 cancelled');
   assert.ok(tombstone.deletedAt, '旧任务软删');
-  // B 队列里有它，frontmatter 归属与介绍引用都是 B 的
+  // B 队列里有它，归属是 DB 关联：repoKey = B、group topic 仍是本组
   const inB = await svc.getTask({ cwd: dirB, id: upd.task.id });
-  const fm = parseFrontmatter(inB.text);
-  assert.equal(fm.project, repoB.key);
-  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, 'projectIntro 必须跟着换（refId）');
-  assert.equal(fm.board, board.id, '组归属不变');
+  assert.equal(inB.repoKey, repoB.key, '归属仓库由 repo topic 关联给出');
+  assert.ok(inB.groupTopicId, '组归属（group_topic_id）跟着任务走');
+  assert.equal(inB.boardKey, board.key, '组 key 不变');
+  assert.ok(!inB.text.includes('---'), '正文不再有 frontmatter 头');
 });
 
 test('归属没改 → 原地不动（moved:false）', async () => {
@@ -92,7 +91,7 @@ test('目标队列已有同号任务 → 重新编号，不撞号', async () => 
   svc.repo.tasks.insertTask(svc.repo.topics.getTopic(bKey).id, {
     id: t1.task.id, text: '同号占位', status: 'pending',
   });
-  const upd = await updateAction.run({ id: t1.task.id, cwd: dirA, text: swapProject(t1.task.text) });
+  const upd = await updateAction.run({ id: t1.task.id, cwd: dirA, ...toB });
   assert.equal(upd.moved, true);
   assert.notEqual(upd.task.id, t1.task.id, '目标队列已有同号 → 换号');
   const inB = await svc.getTask({ cwd: dirB, id: upd.task.id });
@@ -109,7 +108,7 @@ test('跨队列依赖改写：指向它的 "A:id" 引用搬后跟着改到新地
   const y = await submitTask({ text: '# B 的 Y\nx', board: board.id, project: repoB.key });
   // Y（在 B 队列）依赖 X（在 A 队列）——跨队列引用
   await svc.updateTask({ cwd: dirB, id: y.task.id, blockBy: [`${aKey}:${x.task.id}`] });
-  const upd = await updateAction.run({ id: x.task.id, cwd: dirA, text: swapProject(x.task.text) });
+  const upd = await updateAction.run({ id: x.task.id, cwd: dirA, ...toB });
   assert.equal(upd.moved, true);
   const yNow = await svc.getTask({ cwd: dirB, id: y.task.id });
   assert.deepEqual(
@@ -124,7 +123,7 @@ test('有上游依赖（本地 id）→ 拒绝搬家，错误说清楚', async (
   const t = await submitTask({ text: '# 带依赖\nx', board: board.id, project: repoA.key });
   await svc.updateTask({ cwd: dirA, id: t.task.id, blockBy: [dep.task.id] });
   await assert.rejects(
-    () => updateAction.run({ id: t.task.id, cwd: dirA, text: swapProject(t.task.text) }),
+    () => updateAction.run({ id: t.task.id, cwd: dirA, ...toB }),
     /上游依赖 #\d+.*队列内语义/,
     '本地依赖是队列内语义，搬走会断链',
   );
@@ -139,7 +138,7 @@ test('被本队列其他任务依赖 → 拒绝搬家', async () => {
   const dependent = list.find((x) => x.text.includes('依赖方'));
   svc.repo.tasks.updateTaskByKey(aKey, dependent.id, { blockBy: [t.task.id] });
   await assert.rejects(
-    () => updateAction.run({ id: t.task.id, cwd: dirA, text: swapProject(t.task.text) }),
+    () => updateAction.run({ id: t.task.id, cwd: dirA, ...toB }),
     /被 #\d+ 依赖/,
   );
 });
@@ -148,7 +147,7 @@ test('闸门 → 拒绝搬家', async () => {
   const t = await submitTask({ text: '# 闸门任务\nx', board: board.id, project: repoA.key });
   await svc.updateTask({ cwd: dirA, id: t.task.id, blocksFollowing: true });
   await assert.rejects(
-    () => updateAction.run({ id: t.task.id, cwd: dirA, text: swapProject(t.task.text) }),
+    () => updateAction.run({ id: t.task.id, cwd: dirA, ...toB }),
     /闸门/,
   );
   // 收尾清掉闸门：别挡住后面测试在同一队列里的领取
@@ -170,7 +169,7 @@ test('已领取的任务 → 拒绝改归属', async () => {
   const key = svc.normalizeCwd(dirA).key;
   await claimUntil(key, r.task.id);
   await assert.rejects(
-    () => updateAction.run({ id: r.task.id, cwd: dirA, text: swapProject(r.task.text) }),
+    () => updateAction.run({ id: r.task.id, cwd: dirA, ...toB }),
     /已领取.*不能改归属/,
   );
 });
@@ -179,11 +178,7 @@ test('归属改成未登记的项目 → 明确报错（不静默吞掉）', asy
   const r = await submitTask({ text: '# 正常任务\nx', board: board.id, project: repoA.key });
   await assert.rejects(
     () =>
-      updateAction.run({
-        id: r.task.id,
-        cwd: dirA,
-        text: r.task.text.replace(`project: ${repoA.key}`, 'project: ghost/none'),
-      }),
+      updateAction.run({ id: r.task.id, cwd: dirA, project: 'ghost/none' }),
     /改归属失败.*找不到项目/,
   );
 });
@@ -191,7 +186,7 @@ test('归属改成未登记的项目 → 明确报错（不静默吞掉）', asy
 test('跨队列引用（"key:id"）指向别的队列 → 搬家不受影响', async () => {
   const here = await submitTask({ text: '# 本地任务\nx', board: board.id, project: repoA.key });
   await svc.updateTask({ cwd: dirA, id: here.task.id, blockBy: [`${bKey}:99`] });
-  const upd = await updateAction.run({ id: here.task.id, cwd: dirA, text: swapProject(here.task.text) });
+  const upd = await updateAction.run({ id: here.task.id, cwd: dirA, ...toB });
   assert.equal(upd.moved, true, '外来引用是绝对地址，搬家不断链');
   assert.deepEqual(upd.task.blockBy, [`${bKey}:99`], '跨队列引用原样保留');
 });
@@ -200,29 +195,12 @@ test('reopen 带着改过的归属 → 同样搬家', async () => {
   const r = await submitTask({ text: '# 待重开\nx', board: board.id, project: repoA.key });
   const key = svc.normalizeCwd(dirA).key;
   await claimUntil(key, r.task.id);
-  const re = await reopenAction.run({ id: r.task.id, cwd: dirA, text: swapProject(r.task.text) });
+  const re = await reopenAction.run({ id: r.task.id, cwd: dirA, ...toB });
   assert.equal(re.moved, true);
   assert.equal(re.key, bKey, '落到 B 的队列');
   assert.equal(re.task.status, 'pending', '重开语义不变：回到待领取');
   const inB = await svc.getTask({ cwd: dirB, id: re.id });
-  assert.equal(parseFrontmatter(inB.text).project, repoB.key);
-});
-
-test('历史脏数据自愈：归属字段与所在队列对不上 → 保存时搬过去', async () => {
-  // #43 现场形态：上一轮把 project 改成了 B 但队列还在 A——字段没变，怎么改都「没有变化」。
-  // 判据是不变式（队列 == 归属项目的队列），不是字段 diff。
-  const r = await svc.addTask({
-    cwd: dirA,
-    text: `---\nboard: ${board.id}\nproject: ${repoB.key}\n---\n# 脏数据任务\nx`,
-  });
-  assert.ok(samePath(r.cwd, dirA), '脏数据：任务在 A 队列，fm.project 却指着 B');
-  const upd = await updateAction.run({ id: r.task.id, cwd: dirA, text: `${r.task.text}\n补充` });
-  assert.equal(upd.moved, true, '队列与归属对不上 → 保存时自愈搬家');
-  assert.ok(samePath(upd.cwd, dirB));
-  const inB = await svc.getTask({ cwd: dirB, id: upd.task.id });
-  const fm = parseFrontmatter(inB.text);
-  assert.equal(fm.project, repoB.key);
-  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, '补齐介绍引用（refId）');
+  assert.equal(inB.repoKey, repoB.key, '归属仓库由关联给出');
 });
 
 test('历史脏数据但已领取 → 不搬也不拦普通编辑', async () => {

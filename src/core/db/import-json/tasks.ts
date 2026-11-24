@@ -8,8 +8,8 @@ import {
   numberOrNull,
   stringOrNull,
   MAX_BODY,
-  SENTINEL_REPO_KEY,
 } from './data.js';
+import { matchRepoKey, autoRepoKey } from '../repo-match.js';
 import type { ImportReport } from './data.js';
 import type { DbApi } from '../driver.js';
 
@@ -62,6 +62,12 @@ export function importTopicsAndTasks(
     ? localtasksData.topics
     : {};
 
+  /** #197：队列必须绑真实仓库——导入时按 cwd 匹配已登记的；匹配不到且目录还在就自动登记。 */
+  const realRepos: Array<{ key: string; path: string }> = db
+    .all("SELECT key, path FROM repos WHERE type = 'repo' AND path <> ''")
+    .map((r: any) => ({ key: String(r.key), path: String(r.path) }));
+  const takenRepos = new Set<string>(db.all('SELECT key FROM repos').map((r: any) => String(r.key)));
+
   /** legacy topic key → { id, legacyKey } */
   const byLegacyKey = new Map<string, LegacyTopicRef>();
   /** 新 key → topic 行（碰撞时合并到同一行） */
@@ -103,13 +109,26 @@ export function importTopicsAndTasks(
       if (topic.manual) ext.ext_manual = 1;
 
       const createdAt = anyTimeMs(topic.createdAt, atMs);
+      // 归属仓库：cwd 匹配已登记仓库；匹配不到且目录还在 → 自动登记（local/<目录名>）
+      let repoKey = matchRepoKey(cwd, realRepos);
+      if (!repoKey) {
+        repoKey = autoRepoKey(cwd, takenRepos);
+        takenRepos.add(repoKey);
+        db.run(
+          `INSERT INTO repos (key, type, name, description, path, remote, sort_order, ext, state, version,
+                              deleted_at, created_at, updated_at)
+           VALUES (:key, 'repo', :name, '', :path, '', 0, '{}', '', 0, NULL, :at, :at)`,
+          { key: repoKey, name: repoKey.slice('local/'.length), path: cwd, at: createdAt },
+        );
+        realRepos.push({ key: repoKey, path: cwd });
+      }
       const res = db.run(
         `INSERT INTO topics (key, repo_key, cwd, group_key, name, next_seq, ext, state, version,
                              deleted_at, created_at, updated_at)
          VALUES (:key, :repo, :cwd, NULL, :name, 1, :ext, :state, :version, NULL, :created, :updated)`,
         {
           key,
-          repo: SENTINEL_REPO_KEY,
+          repo: repoKey,
           cwd,
           name: String(topic.name || ''),
           ext: jsonText(ext),
@@ -270,7 +289,7 @@ function insertTask(db: DbApi, { row, legacyKey, task, atMs, report }: InsertTas
   if (task.reopenCount) report.discarded.push({ what: 'task.reopenCount', key: legacyKey, id: seq, count: 1, note: '→ round = reopenCount+1' });
 
   db.run(
-    `INSERT INTO tasks (topic_id, seq, type, status, version, body, ext, feedback, feedback_at,
+    `INSERT INTO tasks (repo_topic_id, seq, type, status, version, body, ext, feedback, feedback_at,
                         from_src, blocks_following, claimed_at, done_at, round, deleted_at,
                         created_at, updated_at)
      VALUES (:topic, :seq, '', :status, 0, :body, :ext, :feedback, :feedbackAt,
@@ -309,7 +328,7 @@ function insertGoal(
   db: DbApi,
   { topicId, seq, legacyKey, timegoal, claimedAt, createdAt, report }: InsertGoalParams
 ): void {
-  const taskRow = db.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', { t: topicId, s: seq });
+  const taskRow = db.get('SELECT id FROM tasks WHERE repo_topic_id = :t AND seq = :s', { t: topicId, s: seq });
   if (!taskRow) return;
   let durationSec = legacyDurationSec(timegoal);
   const startedAt = anyTimeMs(timegoal.startedAt, NaN);

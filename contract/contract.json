@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.68.3",
-  "hash": "ff55456b4cb02dcf",
+  "hash": "98c0d3b1626a31b3",
   "actions": [
     {
       "id": "localtask.add",
@@ -830,6 +830,20 @@
           "positional": false,
           "required": false,
           "hint": "追加的反馈是否逐行加粗（缺省 comment=false / reopen=true）"
+        },
+        {
+          "name": "project",
+          "kind": "string",
+          "positional": false,
+          "required": false,
+          "hint": "改归属项目（仓库 key / 名称 / 路径）——派生出的新任务落该仓库队列"
+        },
+        {
+          "name": "board",
+          "kind": "string",
+          "positional": false,
+          "required": false,
+          "hint": "改归属组（组 id / key / 名称）"
         }
       ],
       "output": {
@@ -1364,7 +1378,7 @@
                     "type": {
                       "k": "string"
                     },
-                    "hint": "组任务标注：正文 frontmatter 的 board 值（组 id/key/名）；纯项目任务为空串"
+                    "hint": "组任务标注：所属组队列的 key（#197 起来自 DB 关联）；纯项目任务为空串"
                   },
                   {
                     "name": "ready",
@@ -1531,6 +1545,20 @@
           "positional": false,
           "required": false,
           "hint": "设/清闸门（true=挡住后续；false=取消闸门）"
+        },
+        {
+          "name": "project",
+          "kind": "string",
+          "positional": false,
+          "required": false,
+          "hint": "改归属项目（仓库 key / 名称 / 路径）——任务迁到该仓库队列"
+        },
+        {
+          "name": "board",
+          "kind": "string",
+          "positional": false,
+          "required": false,
+          "hint": "改归属组（组 id / key / 名称）——同时更新 group topic 关联"
         }
       ],
       "output": {

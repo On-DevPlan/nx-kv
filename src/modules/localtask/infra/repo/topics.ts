@@ -7,7 +7,8 @@ import { listTaskRowsByTopic, listAllTaskRows } from './tasks.js';
 import type { DbApi } from '../../../../core/db/driver.js';
 import type { TaskObject } from './rows.js';
 
-const SENTINEL_REPO = '__unbound__';
+// #197：不再有哨兵仓库——队列必须绑真实仓库。cwd 匹配不到且目录存在时自动登记
+// （local/<目录名>）；目录也不存在则用 local/<key> 兜底，保证 repo_key 永不为空。
 
 // 统一列清单：assembleTopic 读的是 camelCase 别名（createdAtMs/updatedAtMs），
 // SELECT * 只有蛇形列名 —— 时间戳恒为空、面板排序失效都是从这里来的。
@@ -51,23 +52,50 @@ export function listTopicRows(): TopicRow[] {
   return db().all(`${TOPIC_SELECT} WHERE deleted_at IS NULL ORDER BY id`);
 }
 
+/** #197：队列归属仓库的解析（显式优先 → cwd 匹配 → 自动登记 → local/<key> 兜底）。 */
+function resolveRepoKey(conn: DbApi, cwd: string, explicit: string, key: string, at: number): string {
+  if (explicit) return explicit;
+  const repos = conn
+    .all("SELECT key, path FROM repos WHERE type = 'repo' AND path <> '' AND key <> '__unbound__'")
+    .map((r: any) => ({ key: String(r.key), path: String(r.path) }));
+  const matched = repos.find((r) => r.path && String(cwd).toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '') === String(r.path).toLowerCase().replace(/\\/g, '/').replace(/\/+$/, ''));
+  if (matched) return matched.key;
+  const taken = new Set<string>(conn.all('SELECT key FROM repos').map((r: any) => String(r.key)));
+  const base = String(cwd || '').split(/[\\/]/).filter(Boolean).pop() || key;
+  let rk = `local/${base}`;
+  let n = 2;
+  while (taken.has(rk)) rk = `local/${base}-${n++}`;
+  conn.run(
+    `INSERT INTO repos (key, type, name, description, path, remote, sort_order, ext, state, version,
+                        deleted_at, created_at, updated_at)
+     VALUES (:key, 'repo', :name, '', :path, '', 0, '{}', '', 0, NULL, :at, :at)`,
+    { key: rk, name: base, path: String(cwd || ''), at },
+  );
+  return rk;
+}
+
 /**
  * 取（必要时新建）主题，返回内部行。
  * cwd 语义与 JSON 时代一致：**第一个路径为准**（稳定），后到的调用不覆盖已有 cwd。
  */
-export function ensureTopic(key: string, { cwd = '', name = '' }: { cwd?: string; name?: string } = {}): { id: number; cwd: string; name: string; ext: Record<string, any> } {
+export function ensureTopic(
+  key: string,
+  { cwd = '', name = '', repoKey = '' }: { cwd?: string; name?: string; repoKey?: string } = {},
+): { id: number; cwd: string; name: string; ext: Record<string, any> } {
   return txw((conn) => {
     const at = nowMs();
     let row: any = conn.get('SELECT id, cwd, name, ext, deleted_at FROM topics WHERE key = :key', { key });
     if (!row) {
       const ext: Record<string, any> = {};
+      // #197：归属仓库落库（显式 > cwd 匹配 > 自动登记 > local/<key> 兜底）
+      const resolvedRepo = resolveRepoKey(conn, cwd, repoKey, key, at);
         conn.run(
           `INSERT INTO topics (key, repo_key, cwd, group_key, name, next_seq, ext, state, version,
                                deleted_at, created_at, updated_at)
            VALUES (:key, :repo, :cwd, NULL, :name, 1, :ext, '', 0, NULL, :at, :at)`,
           {
             key,
-            repo: SENTINEL_REPO,
+            repo: resolvedRepo,
             cwd: String(cwd || ''),
             name: String(name || (cwd ? String(cwd).split(/[\\/]/).pop() : key) || key),
             ext: jsonText(ext),
@@ -89,6 +117,33 @@ export function ensureTopic(key: string, { cwd = '', name = '' }: { cwd?: string
       row = conn.get('SELECT id, cwd, name, ext FROM topics WHERE key = :key', { key });
     }
     return { id: Number(row.id), cwd: row.cwd || '', name: row.name || '', ext: parseExt(row.ext) };
+  });
+}
+
+/**
+ * 找/建**组队列** topic（#197）：组本身也是一个 topic。
+ * key = 'group:<组 key>'，repo_key 指向组的 repos 行，cwd 空（组没有物理目录）。
+ * 组的文档/提示词上下文直接挂这条 topic，组页查询用 tasks.group_topic_id 一次取完。
+ */
+export function ensureGroupTopic(groupKey: string, groupName = ''): { id: number; key: string } {
+  const gk = String(groupKey || '').trim();
+  if (!gk) throw new Error('ensureGroupTopic: 需要组 key');
+  const key = `group:${gk}`;
+  return txw((conn) => {
+    const at = nowMs();
+    const hit = conn.get('SELECT id FROM topics WHERE key = :k', { k: key });
+    if (hit) {
+      conn.run('UPDATE topics SET deleted_at = NULL WHERE id = :id AND deleted_at IS NOT NULL', { id: Number(hit.id) });
+      return { id: Number(hit.id), key };
+    }
+    conn.run(
+      `INSERT INTO topics (key, repo_key, cwd, group_key, name, next_seq, ext, state, version,
+                           deleted_at, created_at, updated_at)
+       VALUES (:key, :repo, '', :group, :name, 1, '{}', '', 0, NULL, :at, :at)`,
+      { key, repo: gk, group: gk, name: String(groupName || gk), at },
+    );
+    const row = conn.get('SELECT id FROM topics WHERE key = :k', { k: key });
+    return { id: Number(row.id), key };
   });
 }
 

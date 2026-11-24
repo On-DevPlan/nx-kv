@@ -3,7 +3,6 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
-import { parseFrontmatter } from '../../src/shared/frontmatter.js';
 import * as svc from '../../src/modules/localtask/service.js';
 
 // env 先行（模块导入前钉住独立 store）——派任务编排 submitTask 会真的登记仓库/看板、
@@ -46,10 +45,9 @@ test('submitTask：正文自带 frontmatter（fail-open）→ 落点跟到项目
   // 提交方没给 cwd → 归属决定落点：任务进项目登记路径的队列
   const r = await submitTask({ text: `---\nproject: ${repo.key}\n---\n# 路由任务\n正文` });
   assert.ok(samePath(r.cwd, repoPath), `落点应为项目登记路径（实际 ${r.cwd}）`);
-  const fm = parseFrontmatter(r.task.text);
-  assert.equal(fm.project, repo.key, 'frontmatter.project 归一为登记 key');
-  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, '补上项目介绍引用（refId）');
-  assert.equal(fm.projectDesc, '落点路由项目');
+  // #197：归属落库（repo topic 关联），正文不再有 frontmatter
+  assert.equal(r.task.repoKey, repo.key, '归属仓库由关联给出');
+  assert.ok(!r.task.text.includes('---'), '正文已剥掉 frontmatter 头');
 });
 
 
@@ -61,9 +59,8 @@ test('submitTask：显式给过 cwd 时 fail-open 不挪窝（只补字段）', 
     cwd: elsewhere,
   });
   assert.ok(samePath(r.cwd, elsewhere), `显式 cwd 优先，落点不被 frontmatter 挪走（实际 ${r.cwd}）`);
-  const fm = parseFrontmatter(r.task.text);
-  assert.equal(fm.project, repo.key);
-  assert.match(fm.projectIntro, /^ref:ref_[0-9a-f]{16}$/, '字段仍补齐（refId）');
+  assert.equal(r.task.repoKey, repo.key, '归属仍解析出来（落库）');
+  assert.ok(!r.task.text.includes('---'), '正文已剥掉 frontmatter 头');
 });
 
 test('submitTask：认不出归属（项目未登记）→ 原样落调用方目录，不拦任务', async () => {
@@ -71,25 +68,24 @@ test('submitTask：认不出归属（项目未登记）→ 原样落调用方目
   mkdirSync(here, { recursive: true });
   const r = await submitTask({ text: '---\nproject: ghost/none\n---\n# 任务\n正文', cwd: here });
   assert.ok(samePath(r.cwd, here));
-  assert.equal(parseFrontmatter(r.task.text).project, 'ghost/none', '正文原样保留（fail-open）');
+  assert.ok(!r.task.text.includes('ghost/none'), '解析不出的归属不留在正文里（已剥离）');
 });
 
 test('submitTask：只给 project（面板项目口径）→ 严格校验 + 落点=项目路径', async () => {
   // 这正是面板「认不出组但认得出 project」分支发的 body：{text, project}
   const r = await submitTask({ text: `---\nboard: b_keep\n---\n# 项目口径\n正文`, project: strictRepo.key });
   assert.ok(samePath(r.cwd, strictPath), `落点应为项目登记路径（实际 ${r.cwd}）`);
-  const fm = parseFrontmatter(r.task.text);
-  assert.equal(fm.project, strictRepo.key);
-  assert.equal(fm.board, 'b_keep', '正文原有的 board 字段保留（项目口径不标组）');
+  assert.equal(r.task.repoKey, strictRepo.key, '归属仓库由关联给出');
+  // 正文里那个不存在的 board 值解析不出来 → 不产生组关联（不静默造假）
+  assert.equal(r.task.groupTopicId ?? null, null, '解析不到的组不落关联');
 });
 
 test('submitTask：显式 --board/--project（严格口径）→ 落点=项目路径 + frontmatter 落字段', async () => {
   const r = await submitTask({ text: '# 严格提交', board: board.id, project: strictRepo.key });
   assert.ok(samePath(r.cwd, strictPath), `落点应为项目登记路径（实际 ${r.cwd}）`);
-  const fm = parseFrontmatter(r.task.text);
-  assert.equal(fm.board, board.id);
-  assert.equal(fm.project, strictRepo.key);
-  assert.match(fm.boardIntro, /^ref:ref_[0-9a-f]{16}$/);
+  assert.equal(r.task.boardKey, board.key, '组 key 落库');
+  assert.equal(r.task.repoKey, strictRepo.key, '归属仓库落库');
+  assert.ok(r.task.groupTopicId, '组 topic 关联已建立');
 });
 
 test('submitTask：严格口径 --cwd 与 --project 冲突 → 报错（不静默取一个）', async () => {
@@ -105,7 +101,7 @@ test('localtask.add action：一行委托 submitTask——CLI/HTTP/面板同走�
   // frontmatter 补齐与落点跟到项目队列与直调 submitTask 一致。
   const r = await addAction.run({ text: `---\nproject: ${repo.key}\n---\n# 经 action 提交\n正文` });
   assert.ok(samePath(r.cwd, repoPath), `落点应跟到 fm-route 项目队列（实际 ${r.cwd}）`);
-  assert.match(parseFrontmatter(r.task.text).projectIntro, /^ref:ref_[0-9a-f]{16}$/);
+  assert.equal(r.task.repoKey, repo.key, '归属仓库落库');
 });
 
 test('localtask.add action：goalPrompt 驼峰写法（HTTP body）照常归一进 timegoal', async () => {

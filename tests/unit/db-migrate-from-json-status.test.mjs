@@ -12,7 +12,7 @@ test('5 步嵌套判据：pending / done / claimed / cancelled / 未知 各自�
   const s = await importFixture();
   try {
     const bySeq = new Map(
-      s.db.all('SELECT seq, status, done_at, feedback, claimed_at FROM tasks WHERE topic_id = (SELECT id FROM topics WHERE cwd = \'D:/work/web\')').map((r) => [r.seq, r])
+      s.db.all('SELECT seq, status, done_at, feedback, claimed_at FROM tasks WHERE repo_topic_id = (SELECT id FROM topics WHERE cwd = \'D:/work/web\')').map((r) => [r.seq, r])
     );
     assert.equal(bySeq.get(1).status, 'pending', 'pending + roundSummary:"" 必须仍是 pending');
     assert.equal(bySeq.get(2).status, 'done', 'consumed + 非空 roundSummary → done');
@@ -38,7 +38,7 @@ test('5 步嵌套判据：pending / done / claimed / cancelled / 未知 各自�
 test('软删与状态正交：deletedAt 写进 deleted_at，状态照判据走', async () => {
   const s = await importFixture();
   try {
-    const row = s.db.get("SELECT status, deleted_at FROM tasks WHERE seq = 7 AND topic_id = (SELECT id FROM topics WHERE cwd = 'D:/work/web')");
+    const row = s.db.get("SELECT status, deleted_at FROM tasks WHERE seq = 7 AND repo_topic_id = (SELECT id FROM topics WHERE cwd = 'D:/work/web')");
     assert.equal(row.status, 'pending');
     assert.ok(row.deleted_at, 'deletedAt 必须落到 deleted_at');
   } finally {
@@ -64,7 +64,7 @@ test('tasks.seq 保持原 id；body 逐条哈希一致；时间按本地时区�
       }
       assert.ok(topicId, `队列 ${legacyKey} 未迁移`);
       for (const task of lt.tasks) {
-        const row = s.db.get('SELECT seq, body, created_at FROM tasks WHERE topic_id = :t AND seq = :s', {
+        const row = s.db.get('SELECT seq, body, created_at FROM tasks WHERE repo_topic_id = :t AND seq = :s', {
           t: topicId,
           s: task.id,
         });
@@ -90,7 +90,7 @@ test('正文超长按 MAX_BODY 截断 + ext_body_truncated 标记（不整体失
     ];
     s.seedLegacy({ localtasks: data });
     s.open();
-    const row = s.db.get("SELECT body, ext FROM tasks WHERE seq = 1 AND topic_id = (SELECT id FROM topics WHERE cwd = 'D:/work/api')");
+    const row = s.db.get("SELECT body, ext FROM tasks WHERE seq = 1 AND repo_topic_id = (SELECT id FROM topics WHERE cwd = 'D:/work/api')");
     assert.equal(row.body.length, 20_000);
     assert.equal(JSON.parse(row.ext).ext_body_truncated, 1);
   } finally {

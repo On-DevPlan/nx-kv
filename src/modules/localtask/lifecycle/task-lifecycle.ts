@@ -217,7 +217,7 @@ export async function reopenTask({
     // 2. 链：src=新, dst=旧（task_links 是链的唯一来源）
     linksRepo.addLink({
       srcId: Number(
-        (conn.get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', {
+        (conn.get('SELECT id FROM tasks WHERE repo_topic_id = :t AND seq = :s', {
           t: hostTopic.id,
           s: inserted.id,
         }) || {}).id

@@ -237,7 +237,7 @@ export function verifyStore(db: DbApi, { appDir }: { appDir?: string } = {}): Ve
   // ── 编号只增不减 ──
   const seqBad: Array<Record<string, any>> = [];
   for (const t of topics) {
-    const row = db.get('SELECT max(seq) AS m, count(*) AS c FROM tasks WHERE topic_id = :id', { id: t.id });
+    const row = db.get('SELECT max(seq) AS m, count(*) AS c FROM tasks WHERE repo_topic_id = :id', { id: t.id });
     const maxSeq = Number((row && row.m) || 0);
     const cnt = Number((row && row.c) || 0);
     if (cnt > 0 && Number(t.next_seq) <= maxSeq) seqBad.push({ id: t.id, next_seq: t.next_seq, maxSeq });
@@ -275,7 +275,7 @@ export function verifyStore(db: DbApi, { appDir }: { appDir?: string } = {}): Ve
         }
         for (const task of tasks) {
           compared += 1;
-          const row = db.get('SELECT body, seq FROM tasks WHERE topic_id = :t AND seq = :s', {
+          const row = db.get('SELECT body, seq FROM tasks WHERE repo_topic_id = :t AND seq = :s', {
             t: topic.id,
             s: Math.trunc(Number(task.id) || 0),
           });

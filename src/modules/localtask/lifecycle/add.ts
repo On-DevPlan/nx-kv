@@ -15,7 +15,7 @@
 // 至此三个任务动词（领 get / 等 wait / 派 add）同构：action 层一律一行委托，
 // 编排住在本域（add.js / update.js），队列本体只有 service.js 一处。
 import { addTask, normalizeCwd } from '../service.js';
-import { applyGroupFields, parseFrontmatter } from '../../../shared/frontmatter.js';
+import { parseFrontmatter, stripFrontmatter } from '../../../shared/frontmatter.js';
 import { resolveGroupTarget } from '../ops/board-target.js';
 import { normalizedGroupStore } from '../ops/group-store.js';
 
@@ -76,19 +76,25 @@ export async function submitTask({
   // （时长写法错误在**发布时报**，不在领取时报）；只带了 goal-prompt 没带 duration → 报错。
   const timegoal = duration || goalPrompt ? { duration, prompt: goalPrompt } : undefined;
 
+  // #197：归属不再写进正文 frontmatter——组上下文与所属仓库作为结构化参数交给 addTask，
+  // 由它落 topics.group_key / tasks.repo_key。正文只留 markdown 本身。
+  let groupKey = '';
+  let groupName = '';
+  let repoKey = '';
   if (board || project) {
     // --cwd **只在显式给了**时才参与校验（须与 --project 指向同一个项目）。
-    // 没给就留空：不能拿「进程当前目录」去跟项目比对——在别的仓库里执行
-    // `--project alpha` 是完全正常的用法（给了 --project 就不用再给 --cwd）。
     const explicitCwd = rawCwd ? normalizeCwd(rawCwd as string).cwd : '';
     const target = resolveGroupTarget(
       { board: board as string | undefined, project: project as string | undefined, cwd: explicitCwd },
       await normalizedGroupStore(),
     );
-    text = applyGroupFields(text, target.fields as Record<string, unknown>);
+    groupKey = target.boardKey;
+    groupName = target.boardName;
+    repoKey = target.projectKey;
     if (target.cwd) cwd = target.cwd;
   } else {
-    // 正文自带 frontmatter（面板草稿 / CLI 直接写 / 导入的 md）→ fail-open 补齐归属语义。
+    // 兼容旧草稿：正文里可能还带 frontmatter（面板草稿 / 导入的 md）→ 提取成结构化
+    // 参数后**剥掉**，保证库里不再存 `---` 头。
     const fm = parseFrontmatter(text);
     if (fm.board || fm.project) {
       try {
@@ -96,14 +102,14 @@ export async function submitTask({
           { board: fm.board, project: fm.project, cwd: '' } as { board?: string; project?: string; cwd?: string },
           await normalizedGroupStore(),
         );
-        text = applyGroupFields(text, target.fields as Record<string, unknown>);
-        // 落点跟到解析出的项目队列——**只在调用方没显式给 cwd 时**：显式意图优先，
-        // 不静默挪窝（与严格口径「cwd 与 project 冲突直接报错」同一精神，fail-open 只是
-        // 不拦任务，不是替调用方改主意）。
+        groupKey = target.boardKey;
+        groupName = target.boardName;
+        repoKey = target.projectKey;
         if (target.cwd && !rawCwd) cwd = target.cwd;
       } catch {
-        /* 保留原正文与调用方落点 */
+        /* 解析不出就只剥头，不拦任务 */
       }
+      text = stripFrontmatter(text);
     }
   }
 
@@ -118,5 +124,8 @@ export async function submitTask({
     // 任务链（#69）：这条任务从哪条派生（裸数字=同主题父任务，'key:id'=跨主题）
     forkOf,
     forkKind,
+    groupKey,
+    groupName,
+    repoKey,
   } as Record<string, any>);
 }

@@ -298,20 +298,18 @@ test('get：未开启持续 get → 交付**不带**「继续 get」指令（默
   assert.doesNotMatch(String(r.instruction || ''), /继续调用 nx-kv localtask get/, '默认形态不带循环指令');
 });
 
-test('修改反馈 / 编辑任务：换正文不丢 frontmatter（归组信息保住）', async () => {
+test('修改反馈 / 编辑任务：换正文只换 markdown（#197 归属在关联里，无需保住 frontmatter）', async () => {
   const localtask = await import('../../src/modules/localtask/service.js');
   const cwd = join(dir, 'fm-proj');
   const text = '---\nboard: b_1\nproject: local/x\n---\n# 旧标题\n旧正文';
   await localtask.addTask({ text, cwd });
 
   const up = await localtask.updateTask({ cwd, id: 1, text: '# 新标题\n新正文' });
-  assert.match(up.task.text, /board: b_1/, 'update 保住 frontmatter');
-  assert.match(up.task.text, /project: local\/x/);
+  assert.ok(!up.task.text.includes('---'), '正文不再有 frontmatter 头');
   assert.match(up.task.text, /新正文/);
 
   const re = await localtask.reopenTask({ cwd, id: 1, text: '# 再改\n再改的正文' });
-  assert.match(re.task.text, /board: b_1/, 'reopen 保住 frontmatter');
-  assert.match(re.task.text, /project: local\/x/);
+  assert.ok(!re.task.text.includes('---'), 'reopen 的正文同样没有 frontmatter');
   assert.match(re.task.text, /再改的正文/);
 });
 

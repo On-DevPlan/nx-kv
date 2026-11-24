@@ -297,7 +297,7 @@ export async function attachToTask({
     const seq = Number(String(task).replace(/^#/, ''));
     if (!Number.isFinite(seq)) throw badInput(`--task 需要任务编号（同主题 seq）: ${task}`);
     const row = db.get(
-      `SELECT t.id, t.seq FROM tasks t JOIN topics k ON k.id = t.topic_id
+      `SELECT t.id, t.seq FROM tasks t JOIN topics k ON k.id = t.repo_topic_id
         WHERE k.key = :key AND t.seq = :seq AND t.deleted_at IS NULL`,
       { key: topicKey, seq }
     );
@@ -440,7 +440,7 @@ function topicNameOf(t: any): string {
 /** 关系表挂的是全局 tasks.id，而 CLI 只有 (topicKey, seq)——统一在这里换算。 */
 function taskGlobalIdOf(conn: any, { topicKey, seq }: { topicKey: unknown; seq: unknown }): number {
   const row = conn.get(
-    `SELECT t.id FROM tasks t JOIN topics k ON k.id = t.topic_id
+    `SELECT t.id FROM tasks t JOIN topics k ON k.id = t.repo_topic_id
       WHERE k.key = :key AND t.seq = :seq AND t.deleted_at IS NULL`,
     { key: String(topicKey || ''), seq: Number(seq) }
   );

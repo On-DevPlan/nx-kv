@@ -41,18 +41,11 @@ async function seedRepos() {
 
 // ─── 哨兵仓库规则（D3）────────────────────────────────────────────────
 
-test('哨兵仓库：永远在库但不在用户视野；不能入组', async () => {
-  const { a } = await seedRepos();
-  // 库里在（db inspect 可见）
+test('#197 无哨兵仓库：库里不存在 __unbound__', async () => {
+  await seedRepos();
   const rows = repo.txw((conn) => repo.repos.listRepoRows(conn, { includeSentinel: true }));
-  assert.ok(rows.some((x) => x.key === '__unbound__'), '哨兵行在库');
-  // 用户视野里不在
-  assert.equal((await repos.listRepos()).some((x) => x.key === '__unbound__'), false, 'listRepos 默认隐藏');
-  assert.equal((await repos.loadStore()).repos.some((x) => x.key === '__unbound__'), false, 'store 组装也隐藏');
-  assert.ok(a);
-  // 不能入组
-  const board = await boards.createBoard({ name: '哨兵组' });
-  await assert.rejects(() => boards.assignRepo({ key: '__unbound__', board: board.id }), /哨兵/);
+  assert.equal(rows.some((x) => x.key === '__unbound__'), false, '哨兵已删除');
+  assert.equal((await repos.listRepos()).some((x) => x.key === '__unbound__'), false, '用户视野也没有');
 });
 
 // ─── 组冻结 key（T05 裁决）────────────────────────────────────────────
@@ -85,6 +78,12 @@ test('bindTopicsToRepos：预览零副作用；apply 按**最长路径前缀**�
   const parent = await repos.addRepo({ path: join(dir, 'proj'), name: 'proj', remote: 'git@github.com:o/proj.git' });
   const child = await repos.addRepo({ path: join(dir, 'proj', 'sub'), name: 'sub', remote: 'git@github.com:o/sub.git' });
 
+  // #197 后生产代码不再建哨兵行；这里手动造一行，专测「历史库还有未绑定队列」的修复能力
+  repo.txw((conn) => conn.run(
+    `INSERT OR IGNORE INTO repos (key, type, name, description, path, remote, sort_order, ext, state, version,
+                                  deleted_at, created_at, updated_at)
+     VALUES ('__unbound__', 'repo', '未绑定', '', '', '', -1, '{}', '', 0, NULL, 1, 1)`
+  ));
   // 队列：proj 下一条、proj/sub 下一条、无关目录一条、全局池一条
   const mk = (cwd) => repo.txw((conn) => {
     const at = Date.now();
@@ -154,8 +153,13 @@ test('zip 往返：仓库清单 / 组成员 / 文档绑定 / 队列绑定 四项
 
   // ref 绑定：组级 + 仓库级两类并存
   await (await import('../../src/modules/repos/ref.js')).bindTarget({ id: r.id, repo: a.id, board: board.id });
-  // 队列绑定
+  // 队列绑定（#197：先手动造一行哨兵，模拟历史库里的未绑定队列）
   const cwd = join(dir, 'alpha', 'app');
+  repo.txw((conn) => conn.run(
+    `INSERT OR IGNORE INTO repos (key, type, name, description, path, remote, sort_order, ext, state, version,
+                                  deleted_at, created_at, updated_at)
+     VALUES ('__unbound__', 'repo', '未绑定', '', '', '', -1, '{}', '', 0, NULL, 1, 1)`
+  ));
   repo.txw((conn) => {
     const at = Date.now();
     conn.run(
@@ -281,7 +285,12 @@ test('repo.repos 窄方法：行读取 / 成员反查 / 删除前置检查', asy
     });
     await repos.removeRepo(b.id);
   }, /队列绑定/);
-  // 解绑后可删
+  // 解绑后可删（#197：手动造哨兵行承接「未绑定」）
+  repo.txw((conn) => conn.run(
+    `INSERT OR IGNORE INTO repos (key, type, name, description, path, remote, sort_order, ext, state, version,
+                                  deleted_at, created_at, updated_at)
+     VALUES ('__unbound__', 'repo', '未绑定', '', '', '', -1, '{}', '', 0, NULL, 1, 1)`
+  ));
   repo.txw((conn) => conn.run("UPDATE topics SET repo_key = '__unbound__'"));
   const removed = await repos.removeRepo(b.id);
   assert.equal(removed.key, b.key);

@@ -1,12 +1,12 @@
 // （#54 自 service.js 拆出）单条任务的查/增/改：getTask、addTask（waiter 唤醒链 +
 // 投递与唤醒）、updateTask（正文/时间目标/DAG 依赖/改归属搬家）。
 import { badInput, notFound } from '../../../core/errors.js';
-import { parseFrontmatter, preserveFrontmatter } from '../../../shared/frontmatter.js';
 import { sanitizeTaskGoal } from '../../goals/taskgoal.js';
 import { normalizeBlockBy, isReadyToClaim } from '../dag.js';
 import { MAX_TEXT, normalizeSummary, normalizeText } from '../infra/store-io.js';
 import { openLocaltaskStore as openStore, topics as topicsRepo, tasks as tasksRepo, links as linksRepo, txw as tx, db } from '../infra/repo/index.js';
 import { normalizeCwd, resolveTaskKey, topicKeyFor } from '../paths.js';
+import { topicKeyOf } from '../../../core/topic-key.js';
 import { normalizeTask, foreignResolver, queueRelationsOf, relocateTask, resolveForkRef } from './task-view.js';
 import { takeTopicWaiter } from '../waiters.js';
 import { presence as presenceRepo } from '../infra/repo/index.js';
@@ -89,7 +89,14 @@ export async function addTask({
   blocksFollowing = false,
   forkOf: rawForkOf,
   forkKind: rawForkKind,
+  groupKey: rawGroupKey,
+  repoKey: rawRepoKey,
+  groupName: rawGroupName,
 } = {} as any): Promise<Record<string, any>> {
+  // #197：归属落两条 topic 关联——repo topic（编号/领取按它）+ group topic（组归属）。
+  const groupKey = String(rawGroupKey ?? '');
+  const repoKey = String(rawRepoKey ?? '');
+  const groupName = String(rawGroupName ?? '');
   const body = normalizeText(text);
   const summary = normalizeSummary(rawSummary, { optional: true });
   // 任务级 timegoal 声明（--duration/--goal-prompt 落下来的）：校验在 sanitizeTaskGoal
@@ -102,8 +109,12 @@ export async function addTask({
 
   openStore();
   // #190：只有目录队列。rawCwd 缺省时由 normalizeCwd 落到当前进程工作目录。
-  const { key, cwd } = normalizeCwd(rawCwd);
-  const t: { id: number; name: string; summary?: string } = topicsRepo.ensureTopic(key, { cwd });
+  const { cwd, name } = normalizeCwd(rawCwd);
+  // #197：编号与领取仍按仓库队列（key 由 cwd 派生，与改造前一致）；
+  // 组归属单独挂 group topic（组本身也是一个 topic），两条关联同时写。
+  const key = topicKeyOf(cwd, '');
+  const t: { id: number; name: string; summary?: string } = topicsRepo.ensureTopic(key, { cwd, name, repoKey });
+  const groupTopicId = groupKey ? topicsRepo.ensureGroupTopic(groupKey, groupName).id : null;
   const tView = topicsRepo.getTopic(key)!;
 
   // 编号只在插入的同一个事务里取（insertTask 用 UPDATE ... RETURNING）。
@@ -130,6 +141,8 @@ export async function addTask({
   const taskDraft = {
     // 不写 id：真实编号由 insertTask 在事务内分配，避免事务外读号撞车
     text: body,
+    // #197：组队列（可空）——组归属的唯一来源
+    groupTopicId,
     status: 'pending',
     timegoal,
     round: forkRound,
@@ -171,7 +184,7 @@ export async function addTask({
       const parentRow = tasksRepo.getTaskRow(parentTopic.id, parentSeq)!;
       linksRepo.addLink({
         srcId: Number(
-          (db().get('SELECT id FROM tasks WHERE topic_id = :t AND seq = :s', {
+          (db().get('SELECT id FROM tasks WHERE repo_topic_id = :t AND seq = :s', {
             t: t.id,
             s: inserted.id,
           }) || {}).id
@@ -303,10 +316,9 @@ export async function updateTask({
     if (moveTo) {
       const toKey = topicKeyFor(String(moveTo.cwd || ''));
       if (toKey && toKey !== key) {
-        const oldProject = String(parseFrontmatter(task.text).project || '').trim();
-        const afterText = body ? preserveFrontmatter(task.text, body) : task.text;
-        const newProject = String(parseFrontmatter(afterText).project || '').trim();
-        const explicitChange = !!newProject && newProject !== oldProject;
+        // #197：归属不再从正文读——moveTo 给了就是显式改归属（用户意图），
+        // 搬不动（已领取 / 队列内依赖）必须报错，绝不静默吞。
+        const explicitChange = true;
         const rel = queueRelationsOf(t, task);
         // 正判定：#190 起草稿态 plan 与待领取 pending 都能改归属（两者都还没「领取落点」）；
         // 已领取 / 已完成的落点在领取时定下，要改先 reopen。
@@ -335,9 +347,8 @@ export async function updateTask({
       }
     }
     if (body) {
-      tasksRepo.updateTask(host.id, hostTask.id, {
-        text: preserveFrontmatter(hostTask.text, body),
-      });
+      // #197：正文只存 markdown——归属在关联里，不需要 preserveFrontmatter
+      tasksRepo.updateTask(host.id, hostTask.id, { text: body });
     }
     if (hasGoalInput) {
       const live = topicsRepo.getTopic(host.key)!.tasks.find((x: any) => Number(x.id) === Number(hostTask.id))!;

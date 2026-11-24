@@ -119,3 +119,18 @@ test('contextOf：多词 AND 取最早命中行；通配词行内判定', () => 
   assert.ok(wild);
   assert.equal(wild.hitLineNo, 3);
 });
+
+// ── #192：展开全文——超大 radius 返回正文全部行（保持命中高亮位置）──
+test('contextOf：超大 radius 展开全文，正文每行都在、命中行号不变', () => {
+  const full = contextOf(WIDE, '目标词', Number.MAX_SAFE_INTEGER);
+  assert.ok(full);
+  // 正文剥掉 frontmatter 后共 62 行（1 标题 + 30 填充 + 1 命中 + 30 尾部）
+  assert.equal(full.lines.length, 62);
+  assert.equal(full.hitLineNo, 32, '命中行号不受展开影响');
+  assert.equal(full.hitIndex, 31);
+  assert.match(full.lines[0], /搜索结果带上下文/);
+  assert.match(full.lines[61], /尾部第 30 行/);
+  assert.match(full.lines[full.hitIndex], /目标词/);
+  // 收起态窗口仍是 21 行（展开不改默认口径）
+  assert.equal(contextOf(WIDE, '目标词').lines.length, 21);
+});

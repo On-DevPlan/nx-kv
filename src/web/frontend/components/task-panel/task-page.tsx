@@ -370,6 +370,7 @@ export default function TaskPage({
             projectTag={r.projectTag}
             projectTitle={r.projectTitle}
             searchCtx={searching ? contextOf(r.task, q) : null}
+            searchQuery={searching ? String(q || '') : ''}
             selectable
             picked={picked.has(r.key)}
             onTogglePick={() => togglePick(r.key)}

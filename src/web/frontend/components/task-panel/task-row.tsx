@@ -9,11 +9,11 @@
 // 整行可点开任务（div role=button，键盘可达）；行内多选框 / 操作按钮
 // stopPropagation，点它们不触发开任务。拖拽视觉类复用 rp-proj-row
 // 的 dragging / drop-before / drop-after（styles-v2/dag.css）。
-import type { DragEvent as ReactDragEvent, ReactNode } from 'react';
+import { useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
 import { Icon } from '../icons.jsx';
 import StatusTag from '../status-tag/index.jsx';
 import { taskLabel } from '../sidebar/model.js';
-import type { SearchContext } from '../../modules/board/task-search.js';
+import { contextOf, type SearchContext } from '../../modules/board/task-search.js';
 import type { LocalTask } from '../../types.js';
 
 /**
@@ -68,6 +68,8 @@ export interface TaskRowProps {
   ops?: ReactNode;
   /** 搜索命中上下文（#248：命中行前后各 10 行；搜索未激活或无正文命中时为 null） */
   searchCtx?: SearchContext | null;
+  /** 当前搜索串（#192：展开全文时重算命中高亮用；不传则展开纯原文不高亮） */
+  searchQuery?: string;
 }
 
 /** 短时间戳：MM-DD HH:MM（放不下原样截 16 字）。 */
@@ -115,7 +117,10 @@ export default function TaskRow({
   history = false,
   ops = null,
   searchCtx = null,
+  searchQuery = '',
 }: TaskRowProps) {
+  // #192：搜索上下文的「展开全文 / 收起」——纯 UI 态，每行自己持有
+  const [ctxExpanded, setCtxExpanded] = useState(false);
   const rowCls =
     'rp-proj-row'
     + (dragVisual?.dragging ? ' dragging' : '')
@@ -227,25 +232,49 @@ export default function TaskRow({
         ) : null}
       </div>
       {searchCtx ? (
-        <div
-          className="rp-proj-task-ctx"
-          role="button"
-          tabIndex={0}
-          title="打开这条任务"
-          onClick={() => onOpen?.(t)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onOpen?.(t);
-            }
-          }}
-        >
-          {searchCtx.lines.map((l, i) => (
-            <div key={i} className={'ctx-line' + (i === searchCtx.hitIndex ? ' hit' : '')}>
-              <span className="ctx-no">{searchCtx.hitLineNo - searchCtx.hitIndex + i}</span>
-              <span className="ctx-tx">{l || '\u00a0'}</span>
-            </div>
-          ))}
+        <div className="rp-proj-task-ctx">
+          {/* #192：上下文头部——左侧说明，右侧「展开全文 / 收起」按钮（点击不开任务） */}
+          <div className="ctx-head">
+            <span className="ctx-head-label">匹配上下文</span>
+            <button
+              type="button"
+              className={'ctx-expand' + (ctxExpanded ? ' is-open' : '')}
+              title={ctxExpanded ? '收起，只看命中附近' : '展开这条任务的完整原文'}
+              onClick={(e) => {
+                e.stopPropagation();
+                setCtxExpanded((v) => !v);
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <Icon name="chevron" size={11} />
+              <span>{ctxExpanded ? '收起' : '展开全文'}</span>
+            </button>
+          </div>
+          <div
+            className="ctx-lines"
+            role="button"
+            tabIndex={0}
+            title="打开这条任务"
+            onClick={() => onOpen?.(t)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onOpen?.(t);
+              }
+            }}
+          >
+            {(() => {
+              const shown = ctxExpanded
+                ? (contextOf(t, searchQuery, Number.MAX_SAFE_INTEGER) || searchCtx)
+                : searchCtx;
+              return shown.lines.map((l, i) => (
+                <div key={i} className={'ctx-line' + (i === shown.hitIndex ? ' hit' : '')}>
+                  <span className="ctx-no">{shown.hitLineNo - shown.hitIndex + i}</span>
+                  <span className="ctx-tx">{l || '\u00a0'}</span>
+                </div>
+              ));
+            })()}
+          </div>
         </div>
       ) : null}
     </div>

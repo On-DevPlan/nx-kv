@@ -2,6 +2,28 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.67.2] - 2026-11-24 主色背景改纯白
+
+用户口径：「当前希望将主色背景改为白色 #fff白色」。面板此前的页面底是微暖灰
+`#f7f6f3`（当初刻意避开「纯白底+浅灰」的模板感），用户拍板改为纯白。
+
+### Changed
+
+- 页面主背景 token `--canvas` 由 `#f7f6f3` 改为 `#ffffff`：body、FlexLayout 工作区壳
+  （`.nx-shell`）、侧栏宿主、页签条、md 预览底、模板面板容器等全部 `var(--canvas)`
+  引用随这一处 token 生效，无其他改动。
+- 白底上的层级不靠底色差承载：卡片仍是 1px 发丝环、分区仍是 `--line`/`--soft-2`
+  细线；暖灰次级面（`--soft` 族）、近黑主按钮、语义色、移动端地址栏染色
+  （theme-color）刻意未动。
+
+### Verification
+
+- 全量门禁通过：lint / typecheck / build / smoke / unit 1168/1168。
+- Playwright 探针实测（独立 store + 临时端口 + Chrome）：`:root` 的 `--canvas` 解析为
+  `#fff`（构建压缩后写法），body / `.nx-shell` / `.nx-side-host` / `.flexlayout__tabset`
+  计算背景均为 `rgb(255, 255, 255)`，截图目视整页纯白、层级清晰。
+- 本轮知识沉淀：ref `ref_b4486b768e0cefdc`「主色背景改纯白：--canvas #f7f6f3 → #ffffff」。
+
 ## [0.67.1] - 2026-11-24 修复 group 任务未领取时改不了归属 repo（#190 cwd 回归）
 
 0.67.0 删除全局任务池时误把「改任务」提交的 `cwd` 从当前队列改成目标项目路径——

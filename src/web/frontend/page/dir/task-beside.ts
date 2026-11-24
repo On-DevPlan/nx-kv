@@ -9,16 +9,14 @@ import type { ParentRef } from './task-utils.js';
 export interface BesideOpsArgs {
   parentRef: ParentRef | null;
   model: Model | null;
-  appModel: Model | null;
+  appModel?: Model | null;
   toast: (msg: string) => void;
-  isDraft: boolean;
-  task: string;
   topicKey: string;
   tabId?: string;
 }
 
 export function useBesideOps(args: BesideOpsArgs) {
-  const { parentRef, model, appModel, toast, isDraft, task, topicKey, tabId } = args;
+  const { parentRef, model, appModel, toast, topicKey, tabId } = args;
 
   const openParentBeside = useCallback(() => {
     if (!parentRef) {
@@ -40,25 +38,17 @@ export function useBesideOps(args: BesideOpsArgs) {
     m.doAction(Actions.deleteTab(tabId));
   }, [model, appModel, tabId]);
 
-  // 面包屑任务段的「预览原文」：评论任务跳它的来源原文；普通任务把自己的原文
-  // 旁路打开（openBesideMain 会先收掉旧旁路，同一时刻只有一块）。草稿没有原文。
-  const previewOriginal = useCallback(() => {
-    if (isDraft) {
-      toast('草稿还没有原文');
-      return;
-    }
-    if (parentRef) {
-      openParentBeside();
-      return;
-    }
+  // #261：下拉任务条目的「预览原文」——把**任意**同队列任务的原文旁路打开
+  // （openBesideMain 会先收掉旧旁路，同一时刻只有一块）。
+  const openTaskBeside = useCallback((taskId: string | number) => {
     const m = model || appModel;
-    if (!m) return;
+    if (!m || !topicKey) return;
     openBesideMain(m, {
       component: 'page',
-      name: `原文 #${task}`,
-      config: { dirKey: topicKey, task: String(task) },
+      name: `原文 #${taskId}`,
+      config: { dirKey: topicKey, task: String(taskId) },
     });
-  }, [isDraft, parentRef, openParentBeside, model, appModel, toast, task, topicKey]);
+  }, [model, appModel, topicKey]);
 
-  return { openParentBeside, closeBesideSelf, previewOriginal };
+  return { openParentBeside, closeBesideSelf, openTaskBeside };
 }

@@ -21,11 +21,13 @@ const findGroupTaskBridge = findGroupTask as unknown as (
   taskId: string | number,
 ) => { board?: BoardRow | null; topic?: LocalTopic | null; taskRow?: LocalTask | null };
 
-/** 同级下拉的一项：hash 直跳；nsId 特殊（先切侧栏命名空间再落它的首个成员页）。 */
+/** 同级下拉的一项：hash 直跳；nsId 特殊（先切侧栏命名空间再落它的首个成员页）。
+    taskId = 任务段下拉的任务条目（#261：hover 双按钮用——复制该任务路径 / 旁路预览）。 */
 export interface VscSibling {
   label: string;
   hash: string;
   nsId?: string;
+  taskId?: string;
   note?: string;
 }
 
@@ -195,6 +197,7 @@ export function vscTrailOf(
       taskSiblings.push({
         label: '#' + String(t.id) + statusNote(t),
         hash: anchor + '?task=' + encodeURIComponent(String(t.id)),
+        taskId: String(t.id),
       });
     }
   }
@@ -219,14 +222,19 @@ export function vscTrailOf(
   };
 }
 
-/** 复制内容（#254 偏好两态）。draft 无任务号：两种偏好都退回原始路径。 */
-export function copyPayloadOf(trail: VscTrail, style: 'raw' | 'prompt' | undefined): string {
-  const base = trail.cwd || trail.dirName;
-  const raw = base + (trail.taskId ? ' #' + trail.taskId : ' (draft)');
-  if (style !== 'prompt' || !trail.taskId) return raw;
+/** 单个任务的复制载荷（#261：下拉任务条目 hover 复制用；draft 无任务号退回原始路径）。 */
+export function taskCopyPayload(cwd: string, dirName: string, taskId: string, style: 'raw' | 'prompt' | undefined): string {
+  const base = cwd || dirName;
+  if (!taskId) return base + ' (draft)';
+  if (style !== 'prompt') return base + ' #' + taskId;
   return [
-    `任务 #${trail.taskId} 在队列「${trail.dirName}」（cwd：${base}）`,
-    `查看：nx-kv localtask show --id ${trail.taskId} --cwd "${base}" --json`,
+    `任务 #${taskId} 在队列「${dirName}」（cwd：${base}）`,
+    `查看：nx-kv localtask show --id ${taskId} --cwd "${base}" --json`,
     `领取处理：nx-kv localtask get --cwd "${base}" --json`,
   ].join('\n');
+}
+
+/** 复制内容（#254 偏好两态）——当前任务即 trail 上的 taskCopyPayload。 */
+export function copyPayloadOf(trail: VscTrail, style: 'raw' | 'prompt' | undefined): string {
+  return taskCopyPayload(trail.cwd, trail.dirName, trail.taskId, style);
 }

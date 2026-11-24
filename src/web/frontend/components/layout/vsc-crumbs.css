@@ -54,33 +54,26 @@
   color: var(--ink, #16181c);
   font-weight: 600;
 }
-/* 任务段 hover 的两个 icon btn（#259：复制路径 + 预览原文）——平时隐身，
-   悬浮任务段（或键盘聚焦其按钮）才亮 */
-.vsc-acts {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 1px;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-.vsc-crumb.is-cur:hover .vsc-acts,
-.vsc-acts:focus-within {
-  opacity: 1;
-}
+/* 复制钮：悬浮整行（或键盘聚焦）才亮——复制当前任务的路径 + 任务号（偏好两态） */
 .vsc-copy {
   flex: none;
   border: 0;
   background: none;
   cursor: pointer;
   color: var(--mid, #838a93);
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.vsc-crumbs:hover .vsc-copy,
+.vsc-copy:focus-visible {
+  opacity: 1;
 }
 .vsc-copy:hover {
   background: var(--soft, #f1f0ec);

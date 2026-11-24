@@ -60,9 +60,18 @@
 .pp-menu-item {
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 9px; border-radius: 5px;
   font-family: inherit; font-size: 12.5px; text-align: left; border: 0; background: none; cursor: pointer; color: var(--ink);
+  /* #261：定宽下拉（150px）里长标签截断不换行，行尾 hover 操作靠右 */
+  white-space: nowrap; overflow: hidden;
 }
 .pp-menu-item:hover { background: var(--soft); }
 .pp-menu-item.danger { color: var(--danger); }
+/* #261：行尾 hover 操作（如图标按钮）——hover 该项才亮，点击不冒泡到整行 */
+.pp-menu-acts { display: none; flex: none; margin-left: auto; gap: 2px; align-items: center; }
+.pp-menu-item:hover .pp-menu-acts { display: inline-flex; }
+.pp-menu-acts > * { display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border: 0; border-radius: 5px; background: none; cursor: pointer;
+  color: var(--mid, #838A93); padding: 0; }
+.pp-menu-acts > *:hover { background: rgba(20, 22, 26, 0.08); color: var(--ink, #16181C); }
 /* 菜单项图标（#144 起 RowMenuItem 支持 icon）：图标说类别、文字说动作 */
 .pp-menu-item-ico { display: inline-flex; flex: none; color: var(--mid); }
 .pp-menu-item:hover .pp-menu-item-ico,

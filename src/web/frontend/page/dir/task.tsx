@@ -345,9 +345,9 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     placeSelMenu('task', text, last.right - 60, last.bottom + 8, blockRange ? { blockRange } : {});
   };
 
-  // 旁路三件套（打开来源原文 / 关闭自己 / 面包屑预览原文）抽到 task-beside.ts（行数门禁）
-  const { openParentBeside, closeBesideSelf, previewOriginal } = useBesideOps({
-    parentRef, model: model ?? null, appModel: app.model ?? null, toast, isDraft, task, topicKey, tabId,
+  // 旁路三件套（打开来源原文 / 关闭自己 / 下拉任务预览原文）抽到 task-beside.ts（行数门禁）
+  const { openParentBeside, closeBesideSelf, openTaskBeside } = useBesideOps({
+    parentRef, model: model ?? null, appModel: app.model ?? null, toast, topicKey, tabId,
   });
 
   const pickAtt = (accept: string) => {
@@ -398,7 +398,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           {/* #254：顶条换 VS Code 式面包屑（命名空间 > 组/目录 > 任务；点段弹同级、
               悬浮出复制钮）。不再显示标题行——原 mdw-path 的两个信号
               （未保存 / 目录已不存在）下沉到这一行保留。 */}
-          <VscCrumbs onPreview={previewOriginal} />
+          <VscCrumbs onPreviewTask={openTaskBeside} />
           {dirty ? <span className="mdw-top-note">未保存</span> : null}
           {topic?.cwdExists === false && (
             <span

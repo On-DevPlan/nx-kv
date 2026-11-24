@@ -2,7 +2,7 @@
 // 纯函数直测（不碰 DOM / 网络），夹具即最小 rows/boards/ns。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyPayloadOf, nsDirsOf, nsFirstTargetOf, vscTrailOf } from '../../src/web/frontend/components/layout/vsc-crumbs-model.js';
+import { copyPayloadOf, nsDirsOf, nsFirstTargetOf, taskCopyPayload, vscTrailOf } from '../../src/web/frontend/components/layout/vsc-crumbs-model.js';
 
 // ── 夹具：ns「nx」含看板 nx（成员 nx-kv / nx-sk）+ 直挂仓库 solo；队列 nx-kv 有任务 ──
 const TOPIC_NXKV = {
@@ -147,4 +147,13 @@ test('copyPayloadOf：raw =「cwd #id」；prompt = CLI 指令加引导；draft 
   assert.match(prompt, /localtask get --cwd "D:\\dev\\nx-kv" --json/);
   const d = vscTrailOf({ view: 'dir', key: 't_kv', task: 'draft-1' }, ROWS, REPO_DATA, PREFS);
   assert.equal(copyPayloadOf(d, 'prompt'), 'D:\\dev\\nx-kv (draft)');
+});
+
+test('#261 任务段下拉条目带 taskId；taskCopyPayload 按任意任务生成载荷', () => {
+  const t = vscTrailOf({ view: 'dir', key: 't_kv', task: '30' }, ROWS, REPO_DATA, PREFS);
+  const sib = t.segments[2].siblings.find((s) => s.taskId === '31');
+  assert.ok(sib, 'claimed 任务条目应带 taskId');
+  assert.equal(taskCopyPayload('D:\\dev\\nx-kv', 'nx-kv', '31', 'raw'), 'D:\\dev\\nx-kv #31');
+  assert.match(taskCopyPayload('D:\\dev\\nx-kv', 'nx-kv', '31', 'prompt'), /show --id 31/);
+  assert.equal(taskCopyPayload('D:\\dev\\nx-kv', 'nx-kv', '', 'prompt'), 'D:\\dev\\nx-kv (draft)');
 });

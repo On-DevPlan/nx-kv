@@ -37,7 +37,9 @@ import { openTemplateEditor } from '../../panels.jsx';
 import GetLoopMembersMenu from '../../components/repos/get-loop-members.js';
 import GetLoopModal from '../../components/repos/get-loop-modal.js';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { parseFrontmatter, withFrontmatter } from '../../modules/md/md-parse.js';
+import { parseFrontmatter } from '../../modules/md/md-parse.js';
+import { templateDraftBody } from '../../modules/prompts/template-preview.js';
+import { startFillIfSlotted } from '../../modules/md/new-task-from-template.js';
 import { sortTasksForDisplay } from '../../modules/board/board-view.js';
 import { putManageSession } from '../../modules/md/manage-session.js';
 import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
@@ -238,9 +240,23 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
 
   // 组里建任务：草稿预写 frontmatter（board + 默认归属项目），提交时编辑页的工具区
   // 可改归属项目（限本组成员），按它路由进对应项目的队列。
-  const createTask = (pick?: { id?: string; body?: unknown } | null) => {
+  const createTask = (pick?: { id?: string; body?: unknown; values?: Record<string, unknown> | null } | null) => {
     if (!board) return;
     if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
+    // #191：带 {{槽位}} 的模板先去参数页（携带组 + 项目上下文）；无槽位走原草稿路径。
+    const chosen = pick || (tpl?.templates || []).find((t) => t.id === tpl.defaultId) || null;
+    if (chosen && startFillIfSlotted(
+      chosen as any,
+      {
+        topic: sel.topicKey || '',
+        group: board.key || '',
+        repo: sel.key || '',
+        groupId: board.id,
+        board: board.id,
+        project: sel.key,
+      },
+      app,
+    )) return;
     const id = nextDraftId();
     // 草稿 doc 种在**组 scope**：从 #/group/<id>?task=draft-N 打开寻得回同一份（#86）
     const docId = docIdOf(scopeOf(board.id), id);
@@ -248,7 +264,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     const extra = { board: board.id, project: sel.key };
     saveDoc(docId, {
       title: '',
-      body: withFrontmatter(pick ? String(pick.body || '') : tpl.defaultPick().body, extra),
+      body: pick ? templateDraftBody(pick, extra) : templateDraftBody(tpl.defaultPick(), extra),
     });
     app.openPage?.({ groupId: board.id, task: id, name: '新任务' });
   };

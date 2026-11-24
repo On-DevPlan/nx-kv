@@ -14,6 +14,7 @@ import { clearHistory, pushHistory, redoHistory, undoHistory } from '../../modul
 import { popRoute } from '../../components/layout/route-history.js';
 import TemplateListPanel from './template-list.jsx';
 import TemplateManagePanel from './manage.jsx';
+import TemplateFillPanel from './fill.jsx';
 import '../../modules/md/style.css';
 import './style.css';
 
@@ -192,6 +193,11 @@ export default function TemplatePanel({ config, model, tabId }: TemplatePanelPro
   // #151：主题级模板管理页（从「新建任务」下拉的「管理模板…」进入）
   if (mode === 'manage') {
     return <TemplateManagePanel config={cfg} />;
+  }
+
+  // #151/#191：参数填写中间页（带 {{槽位}} 的模板先填值，再生成纯文本草稿）
+  if (mode === 'fill') {
+    return <TemplateFillPanel config={cfg} />;
   }
 
   // #142：关闭/创建后回到来处面板，不要 deleteTab 把 maincontent 拆空。

@@ -21,12 +21,24 @@
 .tpl-badge.soft{background:var(--soft,#F1F0EC);color:var(--mid,#8A8578);border-color:var(--line,#E4E2DC)}
 /* 全局 .grow 有 max-width:340px（推右会停在半路）——卡片里要真推到右缘 */
 .tpl-card-grow{flex:1 1 auto;min-width:0;max-width:none}
-.tpl-card-acts{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tpl-card-acts{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+/* #191：右侧操作按钮改成「上图标 + 下小文字」——比纯图标更易扫读 */
+.tpl-act{
+  display:inline-flex;flex-direction:column;align-items:center;gap:3px;
+  min-width:46px;padding:5px 6px;border:1px solid transparent;border-radius:8px;
+  background:transparent;color:var(--mid,#8A8578);cursor:pointer;line-height:1;
+  transition:background .14s ease,color .14s ease,border-color .14s ease;
+}
+.tpl-act span{font-size:10.5px;white-space:nowrap}
+.tpl-act:hover:not(:disabled){
+  background:var(--soft,#F1F0EC);color:var(--ink,#222);border-color:var(--line,#E4E2DC);
+}
+.tpl-act.is-on{background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E)}
+.tpl-act:disabled{opacity:.45;cursor:not-allowed}
 .tpl-card-sum{
   font-size:11.5px;color:var(--ink-2,#4B515A);line-height:1.6;
   overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
 }
-.tpl-card-scope{padding-top:6px;border-top:1px dashed var(--line,#E4E2DC)}
 .tpl-preview{
   display:flex;flex-direction:column;gap:6px;margin-top:2px;
   padding:9px 11px;border:1px dashed var(--line,#E4E2DC);border-radius:8px;
@@ -39,6 +51,24 @@
   font:400 10.5px ui-monospace,Consolas,monospace;padding:0 3px;border-radius:3px;
   background:var(--soft,#F1F0EC);border:1px solid var(--line,#E4E2DC);
 }
+
+/* ── #191 参数填写中间页（ef449ea 曾连样式一起删，本轮恢复） ───────── */
+.tpl-fill-page{gap:12px}
+.tpl-fill-page .page-head h2{display:flex;align-items:center;gap:7px}
+.tpl-fill-body{
+  display:flex;flex-direction:column;gap:14px;min-width:0;max-width:720px;
+  padding:14px;border:1px solid var(--line,#E4E2DC);border-radius:10px;background:var(--paper,#fff);
+}
+.tpl-fill-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tpl-fill-label{font-size:12px;font-weight:600;color:var(--ink-2,#4B515A)}
+.tpl-fill-input{
+  width:100%;resize:vertical;min-height:84px;padding:8px 10px;box-sizing:border-box;
+  font:400 12.5px/1.6 inherit;color:var(--ink,#222);background:var(--paper,#fff);
+  border:1px solid var(--line,#E4E2DC);border-radius:8px;
+}
+.tpl-fill-input:focus{outline:none;border-color:var(--mdw-accent-line,#B7D4C8)}
+.tpl-fill-empty{padding:8px 0}
+.tpl-fill-foot{display:flex;gap:8px;justify-content:flex-end;max-width:720px}
 
 /* ── #151 主题级模板管理页 ─────────────────────────────────────────── */
 .tpl-mng-page{gap:12px}
@@ -56,10 +86,7 @@
 .tpl-mng-main{min-width:0}
 .tpl-mng-line{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
 .tpl-mng-name{font-size:12.5px;font-weight:600;color:var(--ink,#222)}
-.tpl-mng-scope-sum{font-size:10.5px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tpl-mng-acts{display:flex;align-items:center;gap:2px}
-.tpl-mng-scope{grid-column:1/-1;padding-top:8px;border-top:1px dashed var(--line,#E4E2DC)}
-
 /* #151 图标化：图标按钮的轻状态 */
 .tpl-card .iconbtn.is-on{background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E)}
 .tpl-page .page-head h2,

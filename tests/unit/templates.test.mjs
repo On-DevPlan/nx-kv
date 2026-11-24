@@ -169,14 +169,16 @@ test('builtin 的用户编辑在重启后保留（seed 不覆盖用户编辑 —
   assert.ok(!back.body.includes('## 本轮问题'));
 });
 
-test('builtin 永远在场：四个类目的内置都在（seed 于 bootstrap）', async () => {
+test('builtin 永远在场：内置任务模板只有一个类目（seed 于 bootstrap，#191）', async () => {
   await listTemplates(); // 触发开库 + bootstrap（seed）
   const { openRaw } = await import('../../src/core/db/driver.js');
   const db = openRaw(dbFile, { readOnly: true });
   const rows = db.all('SELECT id, category FROM templates WHERE builtin = 1 ORDER BY category');
   db.close();
   const categories = [...new Set(rows.map((r) => r.category))].sort();
-  assert.deepEqual(categories, ['context', 'delivery', 'enhance', 'newtask'], '四个 tab 的内置模板都在');
+  // #191：任务模板只服务「初始化 task 草稿」——delivery/enhance/context 是提示词段，
+  // 走 promptplug 插件的 BUILTIN（独立引擎），不再塞进模板表。
+  assert.deepEqual(categories, ['newtask'], '模板表只剩 newtask 内置');
   assert.ok(rows.some((r) => r.id === BUILTIN_ID));
   assert.equal(
     rows.filter((r) => r.category === 'newtask').length,

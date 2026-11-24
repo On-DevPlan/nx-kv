@@ -9,11 +9,10 @@
 // 重启绝不能被代码里的出厂文本覆盖（T06 裁决：builtin 标记不覆盖用户编辑）。
 // 所以升级内置模板正文 = 改这里的出厂文本 + 用户手动重置（没有自动覆盖）。
 //
-// 四个 category = 面板「提示词 / 模板」的四个 tab：
-//   newtask   新建任务的骨架正文（MD 工作台；出厂即文字，用户直接改这段文字）
-//   delivery  领取/交付时包在正文外面的段
-//   enhance   条件增强段（{{#if goal}}…{{/if}}：这次数据适用才出现）
-//   context   组/仓库上下文（参考文档地址、关键要求）
+// #191 起模板表只服务一件事：**按模板初始化 task 草稿**（newtask category）。
+// 出厂只有一条「ref 生成」内置模板；delivery / enhance / context 三条提示词段
+// 已下线（见 RETIRED_BUILTIN_TEMPLATE_IDS）——提示词模板走独立引擎
+// （modules/promptplug/plugins/* 的 BUILTIN），与本表无关系。
 import type { DbApi } from './driver.js';
 
 /**
@@ -93,6 +92,12 @@ export const RETIRED_BUILTIN_TEMPLATE_IDS = Object.freeze([
   'newtask.feature',
   'newtask.research',
   'newtask.doc',
+  // #191：任务模板只负责「按模板初始化 task 草稿」，与提示词模板无关——提示词
+  // 有自己的引擎（promptplug 插件 BUILTIN，见 modules/promptplug/plugins/*）。
+  // 这三条是提示词段，历史上混在模板表里出现在任务模板列表，现下线（软删 builtin 行）。
+  'delivery.main',
+  'enhance.timegoal',
+  'context.main',
 ]);
 
 /** 内置模板清单（顺序即 sort_order）。id 稳定：升级不改 id，用户配置跟着 id 走。 */
@@ -103,51 +108,6 @@ export const BUILTIN_TEMPLATES = Object.freeze([
     name: 'ref 生成',
     slot: 'suffix',
     body: NEWTASK_REF_BODY,
-    varsSchema: [],
-    vars: {},
-    isDefault: 1,
-  },
-  {
-    id: 'delivery.main',
-    category: 'delivery',
-    name: '交付文本骨架',
-    slot: 'suffix',
-    body: [
-      '{{task.text}}',
-      '',
-      '{{#if repo}}📁 项目：{{repo.name}}{{#if repo.desc}} —— {{repo.desc}}{{/if}}{{/if}}',
-      '{{#each repo.docs}}',
-      '  📄 {{this.desc}}{{#if this.refId}}（nx-kv docs get --ref {{this.refId}}）{{/if}}',
-      '{{/each}}',
-    ].join('\n'),
-    varsSchema: [],
-    vars: {},
-    isDefault: 1,
-  },
-  {
-    id: 'enhance.timegoal',
-    category: 'enhance',
-    name: '时间目标提醒',
-    slot: 'suffix',
-    body: [
-      '{{#if goal}}',
-      '⏱ 本次任务有 {{goal.durationHuman}} 的时间目标，{{goal.remainingHuman}}内应交付；',
-      '到点前先执行 timegoal check 汇报现状，未到点不得标记完成。',
-      '{{/if}}',
-    ].join('\n'),
-    varsSchema: [],
-    vars: {},
-    isDefault: 1,
-  },
-  {
-    id: 'context.main',
-    category: 'context',
-    name: '仓库/组上下文',
-    slot: 'suffix',
-    body: [
-      '{{#if group}}🗂 项目组「{{group.name}}」{{#if group.desc}}：{{group.desc}}{{/if}}{{/if}}',
-      '{{#each group.docs}}\n  - {{this.path}}{{/each}}',
-    ].join('\n'),
     varsSchema: [],
     vars: {},
     isDefault: 1,

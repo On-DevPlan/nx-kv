@@ -47,11 +47,12 @@ test('templates.json 导入：values→vars、id 原样、defaultId→is_default
     s.reset();
   }
 
-  // 文件不存在：全新库 → 只有 bootstrap seed 的四个内置模板
+  // 文件不存在：全新库 → 只有 bootstrap seed 的内置任务模板（#191 起只 newtask 一类；
+  // delivery/enhance/context 是提示词段，走 promptplug 独立引擎，不再占模板表）
   const empty = await createTestStore();
   try {
     const cats = empty.db.all('SELECT DISTINCT category FROM templates ORDER BY category').map((r) => r.category);
-    assert.deepEqual(cats, ['context', 'delivery', 'enhance', 'newtask'], '内置永远在场');
+    assert.deepEqual(cats, ['newtask'], '内置任务模板永远在场（#191 只 newtask）');
     assert.equal(empty.db.get("SELECT count(*) AS c FROM templates WHERE id LIKE 't_%'").c, 0);
   } finally {
     empty.reset();

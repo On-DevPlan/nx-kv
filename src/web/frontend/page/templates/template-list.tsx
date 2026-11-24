@@ -1,8 +1,10 @@
 // 任务模板列表（#217：从「设置 → 任务模板」搬到侧边栏入口，在主内容区显示）。
 //
-// #151 重做：图标优先、文字收敛。操作从五个纯文字按钮改成图标按钮，卡片只留
-// 「名称 / 一行摘要 / 徽标 / 图标操作」，预览与可见域按需展开。数据面不变：
-// /api/templates（App 层 useTemplates 已持有一份）+ scope。
+// #191 重构：任务模板只负责「按模板初始化 task 草稿」，与提示词模板无关。
+//  - 可见范围配置整体下线（无 scope 按钮 / ScopeChips）——全部模板直接显示；
+//  - filter 头部固定在顶部（不再随模板数条件出现）；
+//  - 右侧操作按钮改成「上图标 + 下小文字」，一眼看懂每个按钮做什么。
+// 数据面不变：/api/templates（App 层 useTemplates 已持有一份）。
 import { useState } from 'react';
 import { useApp } from '../../app-context.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -13,7 +15,6 @@ import { renderMarkdownHtml } from '../../modules/md/md-parse.js';
 import { ListSearch } from '../../components/list-search.jsx';
 import { filterByKeyword } from '../../modules/list-filter.js';
 import type { PromptTemplate, TemplatesApi } from '../../types.js';
-import ScopeChips from './scope-chips.jsx';
 import './style.css';
 
 /** 正文摘要：前两行可读内容（剥掉 markdown 标记）。 */
@@ -37,7 +38,6 @@ export default function TemplateListPanel() {
   const tpl = app.tpl as TemplatesApi | undefined;
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
-  const [scopeOpenId, setScopeOpenId] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
@@ -56,7 +56,7 @@ export default function TemplateListPanel() {
   }
 
   const templates = tpl.templates || [];
-  const shownTemplates = filterByKeyword(templates, q, (t) => [t.name, summaryOf(t.body), (t.scope || []).join(' ')]);
+  const shownTemplates = filterByKeyword(templates, q, (t) => [t.name, summaryOf(t.body)]);
 
   const act = async (fn: () => Promise<unknown>, ok?: string) => {
     if (busy) return;
@@ -77,6 +77,25 @@ export default function TemplateListPanel() {
     await act(() => tpl.remove(t.id), `已删除「${t.name}」`);
   };
 
+  /** 上图标 + 下小文字的单个操作按钮。 */
+  const actBtn = (
+    icon: string,
+    label: string,
+    onClick: () => void,
+    opts: { disabled?: boolean; on?: boolean } = {},
+  ) => (
+    <button
+      type="button"
+      className={'tpl-act' + (opts.on ? ' is-on' : '')}
+      title={label}
+      disabled={busy || opts.disabled}
+      onClick={onClick}
+    >
+      <Icon name={icon} size={16} />
+      <span>{label}</span>
+    </button>
+  );
+
   return (
     <div className="rp-page tpl-page">
       {dialogNode}
@@ -92,24 +111,23 @@ export default function TemplateListPanel() {
         </div>
       </div>
 
+      {/* #191：filter 头部固定在顶部（不再条件出现） */}
+      <div className="tpl-search">
+        <ListSearch
+          value={q}
+          onChange={setQ}
+          placeholder="搜索名称 / 正文…"
+          title="过滤任务模板"
+          count={shownTemplates.length}
+          className="wide"
+        />
+      </div>
+
       {!templates.length && <div className="muted" style={{ padding: '8px 2px' }}>还没有模板（内置默认模板加载中…）。</div>}
-      {templates.length > 1 ? (
-        <div className="tpl-search">
-          <ListSearch
-            value={q}
-            onChange={setQ}
-            placeholder="搜索名称 / 正文 / 可见范围…"
-            title="过滤任务模板"
-            count={shownTemplates.length}
-            className="wide"
-          />
-        </div>
-      ) : null}
 
       <div className="tpl-list">
         {shownTemplates.map((t) => {
           const isDefault = t.id === tpl.defaultId;
-          const scopeOpen = scopeOpenId === t.id;
           const previewOpen = previewId === t.id;
           return (
             <div key={t.id} className={'tpl-card' + (isDefault ? ' is-default' : '')}>
@@ -119,61 +137,23 @@ export default function TemplateListPanel() {
                 {t.builtin && <span className="tpl-badge soft">内置</span>}
                 <span className="grow tpl-card-grow" />
                 <div className="tpl-card-acts">
-                  <button
-                    type="button"
-                    className="iconbtn"
-                    title={previewOpen ? '收起预览' : '预览'}
-                    onClick={() => setPreviewId(previewOpen ? null : t.id)}
-                  >
-                    <Icon name="monitor" size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    className={'iconbtn' + (scopeOpen ? ' is-on' : '')}
-                    title="可见范围"
-                    disabled={busy}
-                    onClick={() => setScopeOpenId(scopeOpen ? null : t.id)}
-                  >
-                    <Icon name="globe" size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    className="iconbtn"
-                    title="编辑"
-                    disabled={busy}
-                    onClick={() => go(`#/templates/edit/${encodeURIComponent(t.id)}`)}
-                  >
-                    <Icon name="edit" size={14} />
-                  </button>
-                  {!isDefault && (
-                    <button
-                      type="button"
-                      className="iconbtn"
-                      title="设为默认"
-                      disabled={busy}
-                      onClick={() => act(() => tpl.setDefault(t.id), `默认模板已设为「${t.name}」`)}
-                    >
-                      <Icon name="star" size={14} />
-                    </button>
+                  {actBtn(
+                    'monitor',
+                    previewOpen ? '收起' : '预览',
+                    () => setPreviewId(previewOpen ? null : t.id),
+                    { on: previewOpen },
                   )}
-                  {!t.builtin && (
-                    <button type="button" className="iconbtn" title="删除" disabled={busy} onClick={() => removeTpl(t)}>
-                      <Icon name="trash" size={14} />
-                    </button>
+                  {actBtn('edit', '编辑', () => go(`#/templates/edit/${encodeURIComponent(t.id)}`))}
+                  {!isDefault && actBtn(
+                    'star',
+                    '设为默认',
+                    () => act(() => tpl.setDefault(t.id), `默认模板已设为「${t.name}」`),
                   )}
+                  {!t.builtin && actBtn('trash', '删除', () => removeTpl(t))}
                 </div>
               </div>
               <div className="tpl-card-sum">{summaryOf(t.body) || '（空模板）'}</div>
 
-              {scopeOpen && (
-                <div className="tpl-card-scope">
-                  <ScopeChips
-                    scope={t.scope}
-                    originTopic={(t as unknown as { originTopic?: string }).originTopic}
-                    onChange={(next: string[]) => tpl.update(t.id, { scope: next })}
-                  />
-                </div>
-              )}
               {previewOpen && (
                 <div className="tpl-preview">
                   <div

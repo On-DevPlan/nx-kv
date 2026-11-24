@@ -16,6 +16,8 @@ import DagEditor from '../../components/task-panel/dag-editor.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
 import { openTemplateEditor } from '../../panels.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
+import { templateDraftBody } from '../../modules/prompts/template-preview.js';
+import { startFillIfSlotted } from '../../modules/md/new-task-from-template.js';
 import { putManageSession } from '../../modules/md/manage-session.js';
 import { useTemplatesFor } from '../../modules/md/use-templates.js';
 import TaskPage from '../../components/task-panel/task-page.jsx';
@@ -185,14 +187,20 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
       ? menuTemplates.map((t: PromptTemplate) => ({
           label: (t.id === tpl?.defaultId ? '✓ ' : '') + t.name,
           icon: 'list',
-          onClick: () => newDraft(String(t.body || '')),
+          // #191：带 {{槽位}} → 先去参数填写页；无槽位 → 纯文本草稿直进编辑器
+          onClick: () => {
+            if (startFillIfSlotted(t, { topic: topicKeyHere, dirKey: dirKey || '' }, app)) return;
+            newDraft(templateDraftBody(t));
+          },
         }))
       : [{
           label: '按默认模板新建一页',
           icon: 'list',
           onClick: () => {
             const p = tpl ? tpl.defaultPick() : null;
-            newDraft(p ? p.body : '');
+            const full = (tpl?.templates || []).find((t) => t.id === (p?.id || tpl?.defaultId));
+            if (full && startFillIfSlotted(full as any, { topic: topicKeyHere, dirKey: dirKey || '' }, app)) return;
+            newDraft(p && p.id ? templateDraftBody(p) : (p ? p.body : ''));
           },
         }]),
     'sep',
@@ -258,7 +266,9 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
         tplMenuItems={tplMenuItems}
         onNew={() => {
           const p = tpl ? tpl.defaultPick() : null;
-          newDraft(p ? p.body : '');
+          const full = (tpl?.templates || []).find((t) => t.id === (p?.id || tpl?.defaultId));
+          if (full && startFillIfSlotted(full, { topic: topicKeyHere, dirKey: dirKey || '' }, app)) return;
+          newDraft(p && p.id ? templateDraftBody(p) : (p ? p.body : ''));
         }}
         onOpenRow={(r) => openTask(r.task.id)}
         onImportFile={(f) => void importMd(f)}

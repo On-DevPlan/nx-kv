@@ -32,8 +32,9 @@ import {
   liveBodyBlocks,
   titleFromMd,
   stripTitleHeading,
-  withFrontmatter,
 } from '../../modules/md/md-parse.js';
+import { templateDraftBody } from '../../modules/prompts/template-preview.js';
+import { useAutoSubmit } from './use-auto-submit.js';
 import {
   docIdOf,
   getDoc,
@@ -213,7 +214,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
       getDoc(id, {
         title: '',
         body: tpl
-          ? withFrontmatter(tpl.defaultPick().body, groupAnchored ? { board: groupId } : {})
+          ? templateDraftBody(tpl.defaultPick(), groupAnchored ? { board: groupId } : {})
           : '',
       });
     } else if (taskRow) getDoc(id, { title: titleFromMd(taskRow.text), body: taskRow.text });
@@ -228,6 +229,9 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
   });
   const { composeText, submit, importMd, delTask, canComplete, canCancel, closeTask, canPlan, togglePlan, addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel } = actions;
+
+  // #191「直接提交」：参数页留下的一次性意图 → doc 就绪后自动 submit（详见 hook）
+  useAutoSubmit(id, doc, isDraft, submit);
 
   const feedback = useFeedback({
     doc, isDraft, task, taskRow, topicKey, topic, dirKey,

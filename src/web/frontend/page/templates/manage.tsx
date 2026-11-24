@@ -1,7 +1,7 @@
-// 主题级任务模板管理（#151）：从「新建任务」下拉的「管理模板…」进来，只管这个
-// topic 下可见的模板。filter 绑定可见行（不匹配即隐藏）、ScopeChips 改可见范围、
-// 拖拽改顺序（落库走 template.reorder）。参考自定义工具栏的编排面板，但更贴
-// 数据列表：一行一条，信息密度优先。
+// 主题级任务模板管理（#151 / #191）：从「新建任务」下拉的「管理模板…」进来，
+// 只管这个 topic 下可见的模板。#191 起可见范围不再手动配置——按 topic 维度列出
+// 本主题模板，支持 filter / 拖拽改顺序（template.reorder）/ 编辑 / 设默认 / 删除。
+// 参考自定义工具栏的编排面板，但更贴数据列表：一行一条，信息密度优先。
 import { useMemo, useState } from 'react';
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { Button } from '../../components/button/index.jsx';
@@ -13,7 +13,6 @@ import { filterByKeyword } from '../../modules/list-filter.js';
 import { useTemplatesFor } from '../../modules/md/use-templates.js';
 import { getManageSession } from '../../modules/md/manage-session.js';
 import type { PromptTemplate, TemplatesApi } from '../../types.js';
-import ScopeChips from './scope-chips.jsx';
 import './style.css';
 
 interface ManagePanelProps {
@@ -33,15 +32,10 @@ export default function TemplateManagePanel({ config }: ManagePanelProps) {
   const [q, setQ] = useState('');
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
-  const [scopeOpenId, setScopeOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const rows = scoped.templates || [];
-  const shown = filterByKeyword(rows, q, (t) => [
-    t.name,
-    t.body,
-    (t.scope || []).join(' '),
-  ]);
+  const shown = filterByKeyword(rows, q, (t) => [t.name, t.body]);
 
   const act = async (fn: () => Promise<unknown>, ok?: string) => {
     if (busy) return;
@@ -91,7 +85,7 @@ export default function TemplateManagePanel({ config }: ManagePanelProps) {
         <div className="title-block">
           <h2><Icon name="gear" size={16} /> 管理模板 · {label}</h2>
           <p className="muted tpl-head-note">
-            只显示本主题可见的模板。拖动左侧把手调整顺序，点图标改可见范围；搜索框会同步隐藏不匹配的行。
+            这里管理本主题的模板：拖动左侧把手调整顺序，编辑正文 / 设默认 / 删除。搜索框会同步隐藏不匹配的行。
           </p>
         </div>
         <div className="acts">
@@ -105,7 +99,7 @@ export default function TemplateManagePanel({ config }: ManagePanelProps) {
         <ListSearch
           value={q}
           onChange={setQ}
-          placeholder="搜索名称 / 正文 / 可见范围…"
+          placeholder="搜索名称 / 正文…"
           title="过滤本主题模板"
           count={shown.length}
           className="wide"
@@ -151,19 +145,8 @@ export default function TemplateManagePanel({ config }: ManagePanelProps) {
                     {isDefault && <span className="tpl-badge">默认</span>}
                     {t.builtin && <span className="tpl-badge soft">内置</span>}
                   </div>
-                  {(t.scope || []).length > 0 && !scopeOpenId && (
-                    <div className="tpl-mng-scope-sum muted">可见：{(t.scope || []).join(' / ')}</div>
-                  )}
                 </div>
                 <div className="tpl-mng-acts">
-                  <button
-                    type="button"
-                    className="iconbtn"
-                    title="可见范围"
-                    onClick={() => setScopeOpenId(scopeOpenId === t.id ? null : t.id)}
-                  >
-                    <Icon name="globe" size={14} />
-                  </button>
                   <button
                     type="button"
                     className="iconbtn"
@@ -195,15 +178,6 @@ export default function TemplateManagePanel({ config }: ManagePanelProps) {
                     </button>
                   )}
                 </div>
-                {scopeOpenId === t.id && (
-                  <div className="tpl-mng-scope">
-                    <ScopeChips
-                      scope={t.scope}
-                      originTopic={(t as unknown as { originTopic?: string }).originTopic}
-                      onChange={(next: string[]) => tpl!.update(t.id, { scope: next })}
-                    />
-                  </div>
-                )}
               </div>
             );
           })}

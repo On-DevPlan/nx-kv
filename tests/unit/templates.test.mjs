@@ -91,9 +91,9 @@ test('删除不存在的模板 → NOT_FOUND', async () => {
   await assert.rejects(() => updateTemplate({ id: 't_nope', name: 'x' }), /没有 id/);
 });
 
-// T06 起 builtin 的骨架也可编辑（seed 是 INSERT OR IGNORE，用户编辑不被覆盖）——
-// 「内置不可改骨架」的旧护栏随 JSON store 一起退役，新的护栏是「不可删」。
-test('编辑模板：只改传入字段；builtin 骨架也可改（T06 裁决）', async () => {
+// #195：内置模板不可改（出厂正文由 seed 统一覆盖升级）——T06 的「builtin 可改且
+// 编辑不被覆盖」旧裁决作废。用户模板仍可自由编辑。
+test('编辑模板：只改传入字段；builtin 拒绝修改（#195）', async () => {
   const a = await addTemplate({ name: '旧名', body: '# 旧正文' });
   const u = await updateTemplate({ id: a.template.id, name: '新名' });
   assert.equal(u.template.name, '新名');
@@ -103,10 +103,11 @@ test('编辑模板：只改传入字段；builtin 骨架也可改（T06 裁决�
   assert.equal(u2.template.name, '新名', '未提供的 name 应保持不变');
   assert.ok(u2.template.body.includes('## 步骤'));
 
-  // builtin：改名与改骨架现在都放行（下面单独验「重启仍保留」）
-  const u3 = await updateTemplate({ id: BUILTIN_ID, name: '我的骨架', body: '# 我的骨架' });
-  assert.equal(u3.template.name, '我的骨架');
-  assert.equal(u3.template.body, '# 我的骨架');
+  // builtin：改名 / 改正文都拒绝（前端也隐藏编辑入口）
+  await assert.rejects(
+    () => updateTemplate({ id: BUILTIN_ID, name: '我的骨架', body: '# 我的骨架' }),
+    /内置模板不可修改/,
+  );
 
   await assert.rejects(() => updateTemplate({ id: a.template.id, name: '   ' }), /模板名/);
 });
@@ -156,17 +157,19 @@ test('设默认 + 落库持久（关连接重开仍在 —— 模拟新进程）
   assert.ok(d.templates.some((t) => t.name === '持久'));
 });
 
-test('builtin 的用户编辑在重启后保留（seed 不覆盖用户编辑 —— T06 裁决）', async () => {
-  const u = await updateTemplate({ id: BUILTIN_ID, body: '# 用户改过的骨架\n\n自己写的正文' });
-  assert.ok(u.template.body.includes('用户改过的骨架'));
+test('builtin 出厂正文在重启后覆盖旧库（seed UPSERT —— #195 新口径）', async () => {
+  await listTemplates(); // 先触发开库 + bootstrap（seed）
+  // 直接改库模拟「老版本出厂文本」（builtin 不可经 updateTemplate 改，只能直写行）
+  const { getDb } = await import('../../src/core/db/index.js');
+  getDb().run(`UPDATE templates SET body = ? WHERE id = ?`, ['# 老版本出厂正文', BUILTIN_ID]);
 
-  closeDb(); // 模拟重启
+  closeDb(); // 模拟重启（bootstrap 重新 seed）
   const d = await listTemplates();
   const back = d.templates.find((t) => t.id === BUILTIN_ID);
-  assert.ok(back.body.includes('用户改过的骨架'), 'builtin 编辑原样保留');
+  assert.ok(!back.body.includes('老版本出厂正文'), '旧正文被覆盖');
   assert.equal(back.builtin, true, 'builtin 标记不变（不可删）');
-  // 出厂文本没有被 seed 回写
-  assert.ok(!back.body.includes('## 本轮问题'));
+  assert.ok(back.body.includes('## 本轮问题'), '出厂文本被 seed 回写');
+  assert.ok(back.body.includes('先判断任务来源'), '新版步骤进入老库');
 });
 
 test('builtin 永远在场：内置任务模板只有一个类目（seed 于 bootstrap，#191）', async () => {

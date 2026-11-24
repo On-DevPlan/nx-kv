@@ -372,7 +372,7 @@ export interface ApiClient {
   templateRemove(input: z.input<InstanceType<typeof TemplateRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateRemoveAction>['run']>>>;
 /** 调整任务模板顺序（--ids a,b,c 按新序落库 sort_order；未列出的模板保持原位） */
   templateReorder(input: z.input<InstanceType<typeof TemplateReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateReorderAction>['run']>>>;
-/** 编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改） */
+/** 编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板不可改，出厂正文随版本升级自动覆盖） */
   templateUpdate(input: z.input<InstanceType<typeof TemplateUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateUpdateAction>['run']>>>;
 /** 时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary */
   timegoalCheck(input: z.input<InstanceType<typeof TimegoalCheckAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalCheckAction>['run']>>>;

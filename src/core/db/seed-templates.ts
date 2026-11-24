@@ -5,9 +5,11 @@
 // 引导的一部分，与 ensureSentinelRepo（哨兵仓库）同类，必须在 core 层做
 // （core 不得 import modules）。
 //
-// **INSERT OR IGNORE 是唯一的写入方式**：用户改过 builtin 的 body / vars 后，
-// 重启绝不能被代码里的出厂文本覆盖（T06 裁决：builtin 标记不覆盖用户编辑）。
-// 所以升级内置模板正文 = 改这里的出厂文本 + 用户手动重置（没有自动覆盖）。
+// **内置模板不可改，出厂正文随版本升级自动覆盖**（#195 新口径，取代旧 T06「不覆盖
+// 用户编辑」裁决）：builtin 行由这里 UPSERT——body / name / schema / vars / 顺序覆盖，
+// 但 is_default / enabled / deleted_at 不碰（不抢默认位、不复活已下线的）。
+// 配套：templates/service.updateTemplate 拒绝改 builtin，前端隐藏内置模板的编辑按钮。
+// 用户要定制 → 新建一条自己的模板（builtin=0，seed 永不覆盖）。
 //
 // #191 起模板表只服务一件事：**按模板初始化 task 草稿**（newtask category）。
 // 出厂只有一条「ref 生成」内置模板；delivery / enhance / context 三条提示词段
@@ -31,7 +33,7 @@ export const NEWTASK_REF_BODY = `## 本轮问题
 
 ## 怎么干（零知识起步的 SOP）
 
-你没有这个仓库的既有知识，**不要凭空回答**。按四步走：
+你没有这个仓库 / 项目组的既有知识，**不要凭空回答**。按五步走：
 
 ### 1. 先摸清仓库（只读）
 
@@ -42,24 +44,51 @@ nx-kv docs get --ref <refId>                        # 读某篇文档的正文
 nx-kv localtask show --id <id> --cwd "<项目目录>"   # 任务本体 + 附件清单
 \`\`\`
 
-### 2. 初始化：给这轮问答建一篇 ref
+### 2. 先判断任务来源，决定文档挂哪里（关键，别跳过）
+
+归档文档必须挂在**任务来源的宿主**上：仓库提交的任务挂仓库，组提交的任务挂组。
+判断依据只有一处——任务正文开头的 \`---\` frontmatter（或 show --json 的 \`boardMark\`）：
+
+\`\`\`bash
+nx-kv localtask show --id <id> --cwd "<项目目录>" --json   # 看 text 里的 frontmatter / boardMark
+\`\`\`
+
+- 有 \`board:\`（boardMark 非空）→ **组任务**（组页「新增任务」提交的）。
+  \`board\` 是组 id / key，\`project\` 是组内归属仓库的 key。文档挂**组**：
+  \`\`\`bash
+  nx-kv docs ref add --owner group --group <board> --desc "<一句话短描述>" --json
+  \`\`\`
+  **不要用 group_repo**——那是「组对某成员仓库的组内描述」，一个 (组,仓库) 只有一篇，会被覆盖。
+- 没有 \`board:\`（boardMark 为空）→ **仓库任务**（目录页提交的；可能只有 \`project:\`，也可能没有 frontmatter）。
+  文档挂**仓库**：
+  \`\`\`bash
+  nx-kv docs ref add --owner repo --repo <仓库key> --desc "<一句话短描述>" --json
+  \`\`\`
+  \`<仓库key>\` 优先取 frontmatter 的 \`project\`；没有就用第 1 步 \`repo list\` 里 \`path\` 匹配 <项目目录> 的那条 key。
+  **不要看 topic 的 repo_key**（老库常是 \`__unbound__\` 哨兵，不是真实归属）。
+
+### 3. 初始化：给这轮问答建一篇 ref
 
 ref 是**文档库里的一篇文档**（正文进 ref_bodies，身份是 \`ref:<16位hex>\`），
-不是附件；它能挂到仓库 / 组 / 组内仓库，挂上就出现在那个宿主的「文档列表」里。
+不是附件；按第 2 步判断的宿主绑定，挂上就出现在那个宿主的「文档列表」里。
 
 **标题与 desc 都要给**（缺一个，列表里就只是一行没头没尾的条目）：
 
 - **desc** = 一句话短描述（列表 / 提示词模板里的定位标签，如「面板扩展附件类型的九个改动点」）；
 - **标题（title）** = 正文第一行的 \`# <标题>\`（文档标题，取用与列表里显示的就是它）。
 
+按第 2 步的宿主二选一执行（仓库任务）：
+
 \`\`\`bash
 nx-kv docs ref add --owner repo --repo <仓库key> --desc "<一句话短描述>" --json
 \`\`\`
 
-这一步就**把 ref 挂进仓库了**：仓库有主篇 → 它是附加篇；没有主篇 → 它就是主篇。
-**不要再挂一次**（同一篇挂两次，列表里会出现两条）。
+这一步就按第 2 步判断的宿主**完成绑定**：仓库任务 → repo，组任务 → group。
+**主篇 / 附加篇只是这个宿主文档列表里的位置**（position=0 是主篇），**不是另一处绑定**：
+不要调用 \`docs main\` / \`docs bind\` 去「争主篇」——那是换主篇操作，不是归档。
+同一篇只 \`ref add\` 一次（重复挂会在列表里出现两条）。
 
-### 3. 回答问题，再把这轮问答写进那篇 ref
+### 4. 回答问题，再把这轮问答写进那篇 ref
 
 正文**第一行必须是 \`# <标题>\`**（就是上面说的标题），长文本**写进文件**再传
 （不受命令行长度限制）：
@@ -68,7 +97,7 @@ nx-kv docs ref add --owner repo --repo <仓库key> --desc "<一句话短描述>"
 nx-kv docs set --ref <refId> --body-file <本轮问答.md> --json
 \`\`\`
 
-### 4. 收尾
+### 5. 收尾
 
 \`\`\`bash
 nx-kv localtask done --id <id> --cwd "<项目目录>" --summary "<回答了什么 + 这篇文档的标题>"
@@ -148,7 +177,14 @@ export function seedBuiltinTemplates(conn: DbApi, atMs: number): number {
                   WHERE category = :category AND is_default = 1 AND deleted_at IS NULL
                ) THEN 0 ELSE :isDefault END,
                1, :sort, 1, '', 0, NULL, :at, :at)
-       ON CONFLICT(id) DO NOTHING`,
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         body = excluded.body,
+         vars_schema = excluded.vars_schema,
+         vars = excluded.vars,
+         sort_order = excluded.sort_order,
+         updated_at = excluded.updated_at
+       WHERE templates.builtin = 1`,
       {
         id: t.id,
         category: t.category,

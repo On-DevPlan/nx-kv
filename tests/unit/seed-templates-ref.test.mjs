@@ -28,7 +28,7 @@ test('#137 新库：newtask 只有一条内置「ref 生成」，且它是默认
   assert.equal(rows[0].is_default, 1, '它是默认模板');
 });
 
-test('#137 内置正文 = 零知识起步 SOP：四步 + 关键命令都在', () => {
+test('#137/#195 内置正文 = 零知识起步 SOP：五步 + 关键命令都在', () => {
   const row = getDb().get(
     `SELECT body FROM templates WHERE id = 'newtask.ref' AND deleted_at IS NULL`,
   );
@@ -47,6 +47,27 @@ test('#137 内置正文 = 零知识起步 SOP：四步 + 关键命令都在', ()
   assert.ok(body.includes('body-file'), '长文本走文件（不受命令行长度限制）');
   assert.ok(body.includes('--desc "<一句话短描述>"'), '必须要求给 desc（列表里的定位标签）');
   assert.ok(body.includes('# <标题>'), '必须要求正文首行是标题（# 标题）');
+});
+
+test('#195 内置正文：先判任务来源（board/boardMark）再绑对应宿主，避免绑到主篇', () => {
+  const row = getDb().get(
+    `SELECT body FROM templates WHERE id = 'newtask.ref' AND deleted_at IS NULL`,
+  );
+  const body = String(row?.body || '');
+  // 判来源：frontmatter 的 board / show --json 的 boardMark，且警告不要用 __unbound__
+  assert.match(body, /boardMark/, '要告诉 agent 用 boardMark 判来源');
+  assert.match(body, /__unbound__/, '要警告 topic.repo_key 是哨兵、不能用来判归属');
+  // 两种宿主各自的绑定命令
+  assert.ok(body.includes('nx-kv docs ref add --owner group --group'), '组任务挂 group');
+  assert.ok(body.includes('nx-kv docs ref add --owner repo --repo'), '仓库任务挂 repo（原断言）');
+  assert.match(body, /不要用 group_repo/, '要说明 group_repo 会被覆盖，不能用于归档');
+  // 「主篇 ≠ 绑定」口径：显式禁止 docs main / docs bind
+  assert.match(body, /不是另一处绑定/, '要说清主篇只是位置不是绑定');
+  assert.match(body, /docs main/, '要点名禁止 docs main');
+  assert.match(body, /docs bind/, '要点名禁止 docs bind');
+  // 步骤编号连贯（1 判来源插在第 2 步，后续顺延到 5）
+  assert.match(body, /### 2\. 先判断任务来源/, '新步骤在第 2 步');
+  assert.match(body, /### 5\. 收尾/, '收尾顺延到第 5 步');
 });
 
 test('#137 老库：旧内置被软删（用户自己的条目不受影响）', () => {

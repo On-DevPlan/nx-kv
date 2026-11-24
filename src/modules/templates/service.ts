@@ -331,6 +331,9 @@ export async function updateTemplate({ id, name: rawName, body: rawBody, bodyFil
   return repo.txw((conn) => {
     const row = repo.templates.getRow(want, conn);
     if (!row) throw notFound(`没有 id 为 ${want} 的模板（template list 可查）`);
+    // #195：内置模板不允许修改——出厂正文由 seed 统一覆盖升级（INSERT ... DO UPDATE）。
+    // 放开通改会出现「用户改过的 builtin 下次开库又被覆盖」的错觉，索性从入口挡住。
+    if (row.builtin) throw badInput('内置模板不可修改（出厂正文随版本升级自动覆盖）；要定制请新建一条自己的模板');
     const patch: any = {};
     if (rawName !== undefined) patch.name = normalizeName(rawName);
     if (bodyIn !== undefined) patch.body = normalizeBody(bodyIn);

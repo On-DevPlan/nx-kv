@@ -143,7 +143,8 @@ export default function TemplateListPanel() {
                     () => setPreviewId(previewOpen ? null : t.id),
                     { on: previewOpen },
                   )}
-                  {actBtn('edit', '编辑', () => go(`#/templates/edit/${encodeURIComponent(t.id)}`))}
+                  {/* #195：内置模板不可改（出厂正文随版本升级自动覆盖）——只给用户模板编辑入口 */}
+                  {!t.builtin && actBtn('edit', '编辑', () => go(`#/templates/edit/${encodeURIComponent(t.id)}`))}
                   {!isDefault && actBtn(
                     'star',
                     '设为默认',

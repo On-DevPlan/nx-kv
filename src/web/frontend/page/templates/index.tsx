@@ -247,6 +247,15 @@ export default function TemplatePanel({ config, model, tabId }: TemplatePanelPro
       </div>
     );
   }
+  // #195：内置模板不可改（出厂正文随版本升级自动覆盖）——即使手输路由也挡住编辑器
+  if (!isNew && existing?.builtin) {
+    return (
+      <div className="mdw-tpl-panel">
+        <RouteBreadcrumb />
+        <div className="pad muted">内置模板不可修改——出厂正文随版本升级自动覆盖。要定制请新建一条自己的模板。</div>
+      </div>
+    );
+  }
 
   const saveEditing = async ({ name, body }: TemplateDraft) => {
     setBusy(true);

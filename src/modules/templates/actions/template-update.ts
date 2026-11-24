@@ -24,7 +24,7 @@ export class TemplateUpdateAction extends ActionBase<typeof input> {
     id: 'template.update',
     cli: ['template', 'update'],
     http: ['PATCH', '/api/templates/:id'],
-    summary: '编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板的正文也可改）',
+    summary: '编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板不可改，出厂正文随版本升级自动覆盖）',
     args: ['id'],
     input,
     render: (d: any) => `已更新模板「${d.template.name}」（${d.template.id}）`,

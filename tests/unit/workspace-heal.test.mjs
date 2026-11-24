@@ -1,15 +1,16 @@
-// 主区 tabset 丢失的读盘愈合（maincontent 白板的直接病因）。
-//
-// 背景：主区最后一个页签被关/清的瞬间，FlexLayout 会把空 tabset 从活模型里
-// 自动删除；saveModel 存盘时它已经不在了。这样的布局读回来，主区永远白板——
-// openPanel 的主区分支找不到落点，点什么都开不出来（#86 修复窗口期存坏过
-// 一批这样的布局）。healMainTabset = 读盘时补回带「开始」页的 ts_main。
-import { test } from 'node:test';
+import {
+  test,
+} from 'node:test';
 import assert from 'node:assert/strict';
-import { Model } from 'flexlayout-react';
-import { healMainTabset, initialLayoutJson } from '../../src/web/frontend/workspace.js';
-
-// 存坏布局的典型形态：只剩右栏（空），主区 tabset 已被库删掉
+import {
+  Model,
+} from 'flexlayout-react';
+import {
+  healMainTabset,
+  initialLayoutJson,
+  healRightPanelsInMain,
+  rightTabsetId,
+} from '../../src/web/frontend/workspace.js';
 const deadLayout = () => ({
   global: {},
   borders: [],
@@ -113,3 +114,91 @@ test('healMainTabset：初始布局本身不需要愈合（no-op 护栏）', () 
   const json = initialLayoutJson();
   assert.equal(healMainTabset(json), false);
 });
+
+// ════ workspace-heal-main.test.mjs（#200 合并入本文件）════
+const badLayout = () => ({
+  global: {},
+  borders: [],
+  layout: {
+    type: 'row',
+    children: [
+      { type: 'tabset', id: 'ts_sidebar', weight: 16, enableTabStrip: false, children: [{ type: 'tab', id: 't_sidebar', name: '目录', component: 'sidebar' }] },
+      {
+        type: 'tabset',
+        id: 'ts_main',
+        weight: 16, // 被 setRightSidebarVisible 误压过
+        enableTabStrip: false,
+        children: [
+          { type: 'tab', id: 't_group', name: '项目组', component: 'group' },
+          { type: 'tab', id: 't_refs', name: '文档列表', component: 'refs' },
+        ],
+      },
+    ],
+  },
+});
+
+test('#115 healRightPanelsInMain：refs 从主区搬出，补 ts_right，主区宽度修回 68', () => {
+  const json = badLayout();
+  assert.equal(healRightPanelsInMain(json), true);
+
+  const ids = json.layout.children.map((c) => c.id);
+  assert.deepEqual(ids, ['ts_sidebar', 'ts_main', 'ts_right'], '右栏被补回来');
+
+  const main = json.layout.children.find((c) => c.id === 'ts_main');
+  assert.deepEqual(main.children.map((c) => c.component), ['group'], '主区只剩正文面板');
+  assert.equal(main.weight, 68, '被压扁的主区宽度修回默认');
+
+  const right = json.layout.children.find((c) => c.id === 'ts_right');
+  assert.deepEqual(right.children.map((c) => c.component), ['refs']);
+  assert.equal(right.weight, 16);
+  assert.equal(right.enableTabStrip, false, '右栏不显示页签条');
+});
+
+test('#115 主区只剩 refs 时：补回「开始」页，主区不留空', () => {
+  const json = {
+    global: {},
+    layout: {
+      type: 'row',
+      children: [
+        {
+          type: 'tabset',
+          id: 'ts_main',
+          weight: 68,
+          enableTabStrip: false,
+          children: [{ type: 'tab', id: 't_refs', name: '文档列表', component: 'refs' }],
+        },
+      ],
+    },
+  };
+  healRightPanelsInMain(json);
+  const main = json.layout.children.find((c) => c.id === 'ts_main');
+  const right = json.layout.children.find((c) => c.id === 'ts_right');
+  assert.deepEqual(main.children.map((c) => c.component), ['welcome']);
+  assert.deepEqual(right.children.map((c) => c.component), ['refs']);
+});
+
+test('#115 rightTabsetId：含主区面板的 tabset 不算右栏', () => {
+  const json = badLayout(); // 愈合前：ts_main 里混着 refs
+  const model = Model.fromJson(json);
+  assert.notEqual(rightTabsetId(model), 'ts_main', '主区 tabset 不能被当成右侧栏');
+
+  healRightPanelsInMain(json);
+  const healed = Model.fromJson(json);
+  assert.equal(rightTabsetId(healed), 'ts_right', '愈合后右栏就是新补的那块');
+});
+
+test('#115 干净布局：healRightPanelsInMain 不动手', () => {
+  const json = {
+    global: {},
+    layout: {
+      type: 'row',
+      children: [
+        { type: 'tabset', id: 'ts_main', weight: 68, children: [{ type: 'tab', id: 't1', component: 'group' }] },
+        { type: 'tabset', id: 'ts_right', weight: 16, children: [{ type: 'tab', id: 't2', component: 'refs' }] },
+      ],
+    },
+  };
+  assert.equal(healRightPanelsInMain(json), false);
+  assert.equal(json.layout.children.find((c) => c.id === 'ts_main').children.length, 1);
+});
+

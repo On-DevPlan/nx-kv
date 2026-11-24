@@ -10,6 +10,7 @@ import {
   MAX_BODY,
 } from './data.js';
 import { matchRepoKey, autoRepoKey } from '../repo-match.js';
+import { parseFrontmatterBody as fmOf, stripFrontmatterBody as stripFm } from '../../task-frontmatter.js';
 import type { ImportReport } from './data.js';
 import type { DbApi } from '../driver.js';
 
@@ -190,26 +191,6 @@ export function importTopicsAndTasks(
   }
 
   return { byLegacyKey, byNewKey };
-}
-
-// ─── #197：正文 frontmatter 的最小读/剥 + 组 topic 按需建（导入即产出 v17 结构）───
-const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
-const FM_KV_RE = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/;
-function fmOf(src: unknown): Record<string, string> {
-  const m = String(src ?? '').match(FM_RE);
-  if (!m) return {};
-  const out: Record<string, string> = {};
-  for (const line of (m[1] ?? '').split(/\r?\n/)) {
-    const kv = line.match(FM_KV_RE);
-    if (kv) out[kv[1] ?? ''] = (kv[2] ?? '').trim();
-  }
-  return out;
-}
-function stripFm(src: unknown): string {
-  return String(src ?? '').replace(FM_RE, (block: string, inner: string) => {
-    const kv = String(inner || '').split(/\r?\n/).some((l) => FM_KV_RE.test(l));
-    return kv ? '' : block;
-  });
 }
 
 /** legacy board id（b_xxx）→ 组的 repos.key（走 ext_legacy_id）。 */

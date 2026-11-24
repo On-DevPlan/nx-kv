@@ -1,9 +1,6 @@
-// 进程面板搜索匹配（#127 → #129）：纯函数，无 DOM、无 IO。
-//
-// #129 的验收反馈原文：「仍然有问题 比如输入12 应该显示12、120-129、1*2这些」
-// ——纯数字查询不只该命中编号等值，还要命中同前缀的编号段（120-129）与
-// 标题里「1…2」这种隔着字符的写法（1*2）。
-import { test } from 'node:test';
+import {
+  test,
+} from 'node:test';
 import assert from 'node:assert/strict';
 import {
   hitQuery,
@@ -11,7 +8,12 @@ import {
   matchCharsInOrder,
   cardIdOf,
 } from '../../src/web/frontend/modules/md/progress-search.js';
-
+import {
+  normalizeTask,
+} from '../../src/modules/localtask/lifecycle/task-view.js';
+import {
+  taskToProgress,
+} from '../../src/web/frontend/modules/md/md-parse.js';
 const card = (id, title) => ({ id, title });
 
 test('cardIdOf：组模式取 taskId，目录模式退回 id', () => {
@@ -75,3 +77,24 @@ test('底层：matchSegments 按顺序找段；matchCharsInOrder 逐位找', () 
   assert.equal(matchCharsInOrder('2x1', '12'), false);
   assert.equal(matchCharsInOrder('', '12'), false);
 });
+
+// ════ progress-search.test.mjs（#200 合并入本文件）════
+test('normalizeTask：round = reopenCount + 1（数据口径不变，#127 只改 UI 语义）', () => {
+  assert.equal(normalizeTask({ id: 1, status: 'pending', text: '# 根' }).round, 1);
+  assert.equal(normalizeTask({ id: 2, status: 'done', text: '# 第三轮', reopenCount: 2 }).round, 3);
+  assert.equal(normalizeTask({ id: 3, status: 'pending', text: '# 旧数据', reopenCount: 0 }).round, 1);
+  // 脏数据（负数）不下探：round 最少 1
+  assert.equal(normalizeTask({ id: 4, status: 'pending', text: '# 脏', reopenCount: -5 }).round, 1);
+});
+
+test('taskToProgress：id 透传（五种分支都带）；不再带 round（#127 起 UI 用 #id）', () => {
+  const base = { id: 9, text: '# 标题' };
+  assert.equal(taskToProgress({ ...base, status: 'pending' }).id, 9);
+  assert.equal(taskToProgress({ ...base, status: 'claimed', consumedAt: '2026-11-09 10:00:00' }).id, 9);
+  assert.equal(taskToProgress({ ...base, status: 'done', completedAt: '2026-11-09 11:00:00' }).id, 9);
+  assert.equal(taskToProgress({ ...base, status: 'pending', deletedAt: '2026-11-09 11:00:00' }).id, 9);
+  assert.equal(taskToProgress({ ...base, status: 'pending', migratedTo: { side: 'cloud' } }).id, 9);
+  // 卡片数据里不再有 round——面板显示与搜索都走编号（结构上防止回退到 #122 语义）
+  assert.equal(taskToProgress({ ...base, status: 'pending', round: 4 }).round, undefined);
+});
+

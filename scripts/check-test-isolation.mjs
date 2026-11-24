@@ -52,7 +52,8 @@ const ALLOW = new Map([
   ['tests/unit/attach-template.test.mjs', '只测 attachTemplateCtx / attachInstructionOf（纯渲染，无库访问）'],
   ['tests/unit/getloop-instruction.test.mjs', '只测 getLoopInstruction（纯字符串）'],
   ['tests/unit/localtask-board.test.mjs', '只测看板视图纯函数（不落库）'],
-  ['tests/unit/progress-tasknum.test.mjs', '只测任务号格式化（纯函数）'],
+  // #200：progress-search（纯函数）与 progress-tasknum（纯函数）合并入 progress.test.mjs
+  ['tests/unit/progress.test.mjs', '只测任务号格式化与搜索匹配（纯函数，合并自 progress-tasknum / progress-search）'],
 ]);
 
 const errors = [];

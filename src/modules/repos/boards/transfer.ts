@@ -1,4 +1,5 @@
 // 看板的导入导出（board import/export）与按前缀归组（board prefix，一次性命令）。
+import { normRepoPath } from '../../../core/db/repo-match.js';
 import {
   loadStore,
   mutateStore,
@@ -43,7 +44,7 @@ export async function importBoards({ json }: { json?: unknown } = {}): Promise<I
   return mutateStore((s) => {
     const byName = new Map(s.repos.map((r): [string, string] => [String(r.name).trim(), deriveKey(r)]));
     // path 匹配（大小写不敏感、分隔符归一）——老格式的导入文件按 path 引用
-    const byPath = new Map(s.repos.map((r): [string, string] => [String(r.path).toLowerCase().replace(/\\/g, '/'), deriveKey(r)]));
+    const byPath = new Map(s.repos.map((r): [string, string] => [normRepoPath(r.path), deriveKey(r)]));
     let created = 0;
     let merged = 0;
     let matched = 0;
@@ -65,7 +66,7 @@ export async function importBoards({ json }: { json?: unknown } = {}): Promise<I
         const k = e.key
           ? normalizeKey(e.key)
           : (e.path
-            ? byPath.get(String(e.path).toLowerCase().replace(/\\/g, '/'))
+            ? byPath.get(normRepoPath(e.path))
             : (e.name ? byName.get(String(e.name).trim()) : null));
         if (!k) {
           unmatched.push({ board: nm, entry: e.key || e.path || e.name || '(空)' });

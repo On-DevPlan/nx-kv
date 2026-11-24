@@ -1,19 +1,49 @@
-// 路由表基线：routes/<名>.ts 表化重构（#175 收尾）前后的**逐字行为对比**。
-//
-// 夹具 tests/unit/fixtures/route-table.json 是表化**之前**由原 route-map 两段
-// switch 生成的输出快照（22 条面板 → 路由、15 条路由 → 面板 × 2 套 ctx）。
-// 断言「现在仍然逐字一样」，用来证明这次重构只是把同一套规则搬了家：
-// 地址一个字符都不许变（地址变了 = 用户收藏的深链失效、openPanel 去重裂面板）。
-//
-// 夹具不要为了让测试通过而重新生成——**改了映射就该在 diff 里看见地址变化**，
-// 那正是要评审的东西。
-import { test } from 'node:test';
+import {
+  test,
+} from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { panelSpecOfRoute, routeOfPanel } from '../../src/web/frontend/route-map.js';
+import {
+  sameRoute,
+} from '../../src/web/frontend/routes/route-eq.js';
+import {
+  readFileSync,
+} from 'node:fs';
+import {
+  join,
+  dirname,
+} from 'node:path';
+import {
+  fileURLToPath,
+} from 'node:url';
+import {
+  panelSpecOfRoute,
+  routeOfPanel,
+} from '../../src/web/frontend/route-map.js';
+const base = { view: 'templates', key: '', task: '', mode: '', id: '' };
 
+test('同一位置（含缺省字段）判为相等', () => {
+  assert.equal(sameRoute({ view: 'dir', key: 'k1', task: '' }, { view: 'dir', key: 'k1', task: '' }), true);
+  assert.equal(sameRoute({ ...base }, { ...base, mode: undefined, id: undefined }), true, 'undefined ≡ 空串');
+  assert.equal(sameRoute({ view: 'dir', key: 'k', task: 't', mode: 'x' }, { view: 'dir', key: 'k', task: 't' }), false, 'mode 有值 vs 空串不算同位置');
+});
+
+test('模板视图内的跳转必须判为不同（否则目标页不出现）', () => {
+  const list = { view: 'templates', key: '', task: '', mode: '', id: '' };
+  const edit = { view: 'templates', key: '', task: '', mode: 'edit', id: 's_1' };
+  const manage = { view: 'templates', key: '', task: '', mode: 'manage', id: 's_1' };
+  assert.equal(sameRoute(list, edit), false, '列表 → 编辑页');
+  assert.equal(sameRoute(edit, manage), false, '编辑页 → 管理页');
+  assert.equal(sameRoute(edit, { ...edit, id: 's_2' }), false, '换一个模板 id 也是新位置');
+});
+
+test('key / task / repoKey / boardKey 任一变化都算新位置', () => {
+  const a = { view: 'dir', key: 'k1', task: 't1', repoKey: 'r1', boardKey: 'b1' };
+  for (const patch of [{ key: 'k2' }, { task: 't2' }, { repoKey: 'r2' }, { boardKey: 'b2' }, { view: 'group' }]) {
+    assert.equal(sameRoute(a, { ...a, ...patch }), false, JSON.stringify(patch));
+  }
+});
+
+// ════ route-eq.test.mjs（#200 合并入本文件）════
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const fixture = JSON.parse(readFileSync(join(root, 'tests/unit/fixtures/route-table.json'), 'utf8'));
 
@@ -87,3 +117,4 @@ test('夹具覆盖了每个已登记视图', () => {
   // #174：overview（全部目录总览）下线后剩 6 个视图——阈值同步
   assert.ok(views.size >= 6, `夹具视图太少: ${[...views].join(',')}`);
 });
+

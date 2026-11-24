@@ -1,12 +1,17 @@
-// 工作区空壳剪枝：空 tabset / 空 border / 空浮窗(subLayout) 都不该占位。
-//
-// 背景：FlexLayout 0.11 的「浮窗」路径会把 tabset 连锅端进子布局，原位置留下
-// 一个没有标题栏、没有关闭按钮的空 tabset——渲染成一块删不掉的空白面板；
-// 空 border 恢复后同样渲染成无关闭按钮的空白竖条。这类壳必须剪：
-// 存盘前剪（不再产生）、读盘时剪（老布局自愈）、运行时剪（当场消失）。
-import { test } from 'node:test';
+import {
+  test,
+} from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  Model,
+  Actions,
+  DockLocation,
+} from 'flexlayout-react';
+import {
+  initialLayoutJson,
+  openPanel,
+  rightTabsetId,
+  applyGlobalAttrs,
   pruneEmptyTabsets,
   pruneBlankChrome,
   pruneBlankTabsets,
@@ -15,10 +20,68 @@ import {
   closeBesidePanels,
   clearMainPanels,
   findOpenPanel,
-  initialLayoutJson,
 } from '../../src/web/frontend/workspace.js';
-import { Model, Actions, DockLocation } from 'flexlayout-react';
+function loadedModelWithoutRight() {
+  const json = initialLayoutJson();
+  json.layout.children = json.layout.children.filter((c) => c.id !== 'ts_right');
+  return Model.fromJson(json);
+}
 
+function rightTabsetOf(model) {
+  const id = rightTabsetId(model);
+  return id ? model.getNodeById(id) : null;
+}
+
+test('ts_right 缺失时首开右栏面板：现建 tabset 并归一（无页签条、宽 16）', () => {
+  const model = loadedModelWithoutRight();
+  assert.equal(model.getNodeById('ts_right'), undefined, '前置：ts_right 不存在');
+
+  const r = openPanel(model, {
+    component: 'progress',
+    name: '进程',
+    config: { dirKey: 'k1' },
+    location: 'right',
+  });
+  assert.ok(r.tabId, '面板页签已创建');
+  assert.equal(r.reused, false);
+
+  const ts = rightTabsetOf(model);
+  assert.ok(ts, '右栏 tabset 按内容认回');
+  assert.equal(ts.getAttr('enableTabStrip'), false, '页签条必须压掉');
+  assert.equal(ts.getAttr('weight'), 16, '宽度归一');
+});
+
+test('首开右栏面板落点不在主区（ts_main）里', () => {
+  const model = loadedModelWithoutRight();
+  openPanel(model, { component: 'progress', name: '进程', config: {}, location: 'right' });
+  const main = model.getNodeById('ts_main');
+  const kids = main.getTabNodes ? main.getTabNodes() : [];
+  assert.equal(
+    kids.some((t) => t.getComponent() === 'progress'),
+    false,
+    '进程面板不许 dock 进主区'
+  );
+});
+
+test('再开另一块右栏面板：单面板位清理，页签条状态不回归', () => {
+  const model = loadedModelWithoutRight();
+  openPanel(model, { component: 'progress', name: '进程', config: { dirKey: 'k1' }, location: 'right' });
+  openPanel(model, { component: 'refs', name: '文档列表', config: {}, location: 'right' });
+
+  const ts = rightTabsetOf(model);
+  assert.equal(ts.getAttr('enableTabStrip'), false);
+  const comps = ts.getTabNodes().map((t) => t.getComponent());
+  assert.deepEqual(comps, ['refs'], '旧的进程面板被清掉，只留新面板');
+});
+
+test('applyGlobalAttrs 关闭 popout（浮窗头部原生「弹出到浏览器窗口」按钮的开关）', () => {
+  const model = loadedModelWithoutRight();
+  applyGlobalAttrs(model);
+  // 运行时属性是真相：false == 库默认值，toJson 不写 global（继承解析靠它）
+  assert.equal(model.attributes.tabEnablePopout, false, 'tabEnablePopout 必须为 false');
+});
+
+// ════ workspace-open-right.test.mjs（#200 合并入本文件）════
 const layoutWithEmptySet = {
   type: 'row',
   children: [
@@ -206,3 +269,4 @@ test('healSidebarLayout：目录与内容混在同一 tabset 时拆回左目录'
   assert.deepEqual(main.children.map((c) => c.id), ['t_page', 't_ov', 't_page2']);
   assert.equal(main.selected, 2); // 原 selected=3，拆掉 index0 后变 2
 });
+

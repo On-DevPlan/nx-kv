@@ -10,6 +10,8 @@ import {
 } from './ids.js';
 import type { AttachmentRef } from './ids.js';
 import { ensureFolderAttachment } from './folder.js';
+import { taskTopicColumn } from './query.js';
+import { stripFrontmatterBody as stripFrontmatter } from '../task-frontmatter.js';
 
 export interface UpsertFileAttachmentInput {
   id?: string;
@@ -158,25 +160,6 @@ export function ensureUrlAttachment(conn: any, { url, name = '', atMs = Date.now
     dedupeKey: 'url:' + u.toLowerCase(),
     url: u,
     atMs,
-  });
-}
-
-/** tasks 表指向队列的列名（#197 起 repo_topic_id；迁移期可能还是 topic_id）。 */
-function taskTopicColumn(conn: any): string {
-  const cols = conn.all('PRAGMA table_info(tasks)').map((c: any) => String(c.name));
-  return cols.includes('repo_topic_id') ? 'repo_topic_id' : 'topic_id';
-}
-
-/**
- * 去掉正文头部的 frontmatter（与 shared/frontmatter.js 的 stripFrontmatter 同口径）。
- * core 是最底层，不能反向 import shared，所以这里保留一份最小实现。
- */
-const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
-const FM_KV_RE = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/;
-function stripFrontmatter(src: unknown): string {
-  return String(src ?? '').replace(FM_RE, (block: string, inner: string) => {
-    const kv = String(inner || '').split(/\r?\n/).some((l) => FM_KV_RE.test(l));
-    return kv ? '' : block;
   });
 }
 

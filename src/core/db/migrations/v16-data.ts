@@ -10,27 +10,9 @@
 // 本步骤已在 2026-11-24 应用到本机库（user_version=16），**逻辑不可再改**；
 // 更彻底的归属规范（repo_topic_id / group_topic_id 两条关联）在 v17 做。
 import { matchRepoKey, autoRepoKey } from '../repo-match.js';
+// frontmatter 读/剥收拢到 core/task-frontmatter（#200）；core 不能依赖 shared，同名别名承接
+import { parseFrontmatterBody as parseFrontmatter, stripFrontmatterBody as stripFrontmatter } from '../../task-frontmatter.js';
 import { topicKeyOf } from '../../topic-key.js';
-
-// core 是最底层，不能反向 import shared —— 这里保留一份最小的 frontmatter 读/剥实现。
-const FM_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
-const FM_KV_RE = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/;
-function parseFrontmatter(src: unknown): Record<string, string> {
-  const m = String(src ?? '').match(FM_RE);
-  if (!m) return {};
-  const out: Record<string, string> = {};
-  for (const line of (m[1] ?? '').split(/\r?\n/)) {
-    const kv = line.match(FM_KV_RE);
-    if (kv) out[kv[1] ?? ''] = (kv[2] ?? '').trim();
-  }
-  return out;
-}
-function stripFrontmatter(src: unknown): string {
-  return String(src ?? '').replace(FM_RE, (block: string, inner: string) => {
-    const kv = String(inner || '').split(/\r?\n/).some((l) => FM_KV_RE.test(l));
-    return kv ? '' : block;
-  });
-}
 
 export interface V16Context {
   atMs?: number;

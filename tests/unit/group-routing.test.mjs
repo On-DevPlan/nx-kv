@@ -1,13 +1,55 @@
-import { test } from 'node:test';
+import {
+  test,
+  beforeEach,
+} from 'node:test';
 import assert from 'node:assert/strict';
-import { routeOfPanel, panelSpecOfRoute } from '../../src/web/frontend/route-map.js';
-import { findGroupTask } from '../../src/web/frontend/modules/board/board-view.js';
+import {
+  routeOfPanel,
+  panelSpecOfRoute,
+} from '../../src/web/frontend/route-map.js';
+import {
+  findGroupTask,
+} from '../../src/web/frontend/modules/board/board-view.js';
+class MemStorage {
+  constructor() { this.map = new Map(); }
+  getItem(k) { return this.map.has(k) ? this.map.get(k) : null; }
+  setItem(k, v) { this.map.set(k, String(v)); }
+  removeItem(k) { this.map.delete(k); }
+}
+globalThis.localStorage = new MemStorage();
 
-// #86：组任务详情有自己的路由 #/group/<boardId>?task=N。
-// 钉死「路由 ↔ 面板」恒等式：panelSpecOfRoute 生成的 config 必须与
-// routeOfPanel 写回的路由逐字互逆（openPanel 按 component+config 去重，
-// 任何一边多一个字段都会裂出重复页签）。
+const { readGroupProject, rememberGroupProject } = await import(
+  '../../src/web/frontend/page/group/group-project-memo.js'
+);
 
+beforeEach(() => { globalThis.localStorage = new MemStorage(); });
+
+test('没记过 → 空串；记过 → 按 board id 取回', () => {
+  assert.equal(readGroupProject('b_1'), '');
+  rememberGroupProject('b_1', 'github.com/a/one');
+  assert.equal(readGroupProject('b_1'), 'github.com/a/one');
+  // 不同组互不影响
+  assert.equal(readGroupProject('b_2'), '');
+});
+
+test('重复写同一个值不重复落盘（幂等）；脏参数直接忽略', () => {
+  rememberGroupProject('b_1', 'k1');
+  rememberGroupProject('b_1', 'k1');
+  assert.equal(readGroupProject('b_1'), 'k1');
+  rememberGroupProject('', 'k2');
+  rememberGroupProject('b_1', '');
+  assert.equal(readGroupProject(''), '');
+  assert.equal(readGroupProject('b_1'), 'k1');
+});
+
+test('脏数据（非 JSON / 非对象）不炸读取', () => {
+  localStorage.setItem('nx-kv-group-project-v1', '{bad json');
+  assert.equal(readGroupProject('b_1'), '');
+  localStorage.setItem('nx-kv-group-project-v1', '"str"');
+  assert.equal(readGroupProject('b_1'), '');
+});
+
+// ════ group-project-memo.test.mjs（#200 合并入本文件）════
 const nodeOf = (component, config) => ({
   getComponent: () => component,
   getConfig: () => config,
@@ -136,3 +178,4 @@ test('findGroupTask：生产形态——成员 key（仓库 key）≠ 队列 key
   assert.equal(g.topic.key, 'f180aa0b12e1e0ae');
   assert.equal(g.taskRow.boardMark, 'b_probe86');
 });
+

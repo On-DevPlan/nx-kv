@@ -1,6 +1,7 @@
 // 主题仓储（topics + topic_presence 的窄方法）。
 
 import { db, txw } from './open.js';
+import { normRepoPath, autoRepoKey } from '../../../../core/db/repo-match.js';
 import { nowMs, msToStamp } from '../../../../core/db/time.js';
 import { TOPIC_EXT, parseExt, jsonText } from './rows.js';
 import { listTaskRowsByTopic, listAllTaskRows } from './tasks.js';
@@ -61,18 +62,16 @@ function resolveRepoKey(conn: DbApi, cwd: string, explicit: string, key: string,
   const repos = conn
     .all("SELECT key, path FROM repos WHERE type = 'repo' AND path <> '' AND key <> '__unbound__'")
     .map((r: any) => ({ key: String(r.key), path: String(r.path) }));
-  const matched = repos.find((r) => r.path && String(cwd).toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '') === String(r.path).toLowerCase().replace(/\\/g, '/').replace(/\/+$/, ''));
+  const nc = normRepoPath(cwd);
+  const matched = repos.find((r) => r.path && normRepoPath(r.path) === nc);
   if (matched) return matched.key;
   const taken = new Set<string>(conn.all('SELECT key FROM repos').map((r: any) => String(r.key)));
-  const base = String(cwd || '').split(/[\\/]/).filter(Boolean).pop() || key;
-  let rk = `local/${base}`;
-  let n = 2;
-  while (taken.has(rk)) rk = `local/${base}-${n++}`;
+  const rk = autoRepoKey(cwd || key, taken);
   conn.run(
     `INSERT INTO repos (key, type, name, description, path, remote, sort_order, ext, state, version,
                         deleted_at, created_at, updated_at)
      VALUES (:key, 'repo', :name, '', :path, '', 0, '{}', '', 0, NULL, :at, :at)`,
-    { key: rk, name: base, path: String(cwd || ''), at },
+    { key: rk, name: rk.slice('local/'.length), path: String(cwd || ''), at },
   );
   return rk;
 }

@@ -2,6 +2,64 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.68.3] - 2026-11-24 设置浮窗弹性缩放开场 + 材质升级
+
+#253 的验收反馈（#260）：「提升设置页面的视觉层级与材质表现，增强界面质感；弹窗过渡
+动画改弹性缩放（Elastic Scale）：初始 Scale 从较小值开始，快速放大并超过目标尺寸
+（Overshoot），回弹至 100%，建议 Spring 或带超调的 cubic-bezier」。
+
+### Changed
+
+- **浮窗弹性开场**（`styles-v2/shell.css`）：`.flexlayout__float_window` 挂
+  `flx-float-pop 0.34s cubic-bezier(0.34, 1.56, 0.64, 1)`——标准 back-out 曲线
+  （y2=1.56>1）自动产生「scale 0.6 放大 → 超过 100% → 回弹落定」，等效弹簧动画。
+  浮窗元素按 layoutId 复用，只在创建时播一次，拖动/改矩形不重放。
+- **浮窗材质三层影**：发丝环勾边（`0 0 0 1px` 8% 黑）+ 近距环境影（`0 2px 6px`）+
+  远距主投影（`0 24px 64px -20px` 30%）替代原单层硬影；圆角 10px → 12px。
+- **设置页层级分隔**（`page/settings/style.css`）：分区标题（`.setp-h`）压细线与内容
+  拉开；相邻设置行画 `--line` 发丝分隔（中间隔了别的元素就不画）；激活导航白底胶囊加
+  发丝环。
+
+### Verification
+
+- 全量门禁通过：lint / typecheck / build / smoke / unit 1187/1187。
+- Playwright 探针实测（8 项断言全绿）：开窗瞬间 `document.getAnimations()` 捕到
+  `flx-float-pop` 在播；计算样式 = 0.34s + cubic-bezier(0.34, **1.56**, 0.64, 1) 超调
+  缓动 + 圆角 12px + 三层影；落定后 transform 回 `matrix(1,…)`、opacity 1；设置页
+  标题细线与行分隔均为 1px solid。截图目视材质成立。
+- 本轮知识沉淀：ref `ref_c7157855dc71e9ca`「设置浮窗二轮验收：弹性缩放开场 + 三层影
+  材质 + 设置页层级分隔」。
+
+## [0.68.2] - 2026-11-24 面包屑二轮验收：下拉定宽滚动 + 任务段双按钮
+
+#254 的验收反馈（#259）：「点击出现的面板固定最大高度，超过在容器内滚动；宽度调到
+150px；任务的面板 hover 显示两个 icon btn——复制 + 预览，点击出现子侧边栏显示对应
+任务原文」。
+
+### Added
+
+- 任务段 hover 出**两个** icon btn：复制（沿「路径复制偏好」两态不变）+ 预览
+  （眼睛，`onPreview` 由任务页提供：评论任务跳来源原文，普通任务把自己的原文
+  旁路打开——`openBesideMain` 先收旧旁路，同一时刻只有一块；草稿 toast 提示）。
+  旁路原文「子侧边栏」即 PagePanel 的 beside 形态（BesideHeader 关闭条），非新组件。
+
+### Changed
+
+- `.pp-menu` 加全局固定最大高度 `min(60vh, 440px)` + 容器内滚动——所有 PopMenu
+  的同级清单超长不再顶出视口。
+- `PopMenu` 新增可选 `width`（内联同时压 `width + minWidth`，否则盖不过 CSS 的
+  `min-width:168px`）；面包屑三段下拉统一定宽 **150px**，缺省行为不变。
+- 任务页 beside 三函数（打开来源原文 / 关闭自己 / 预览原文）抽成 `task-beside.ts`
+  的 `useBesideOps`——task.tsx 回到 600 行门禁内。
+
+### Verification
+
+- 全量门禁通过：lint / typecheck / build / smoke / unit 1179/1179。
+- Playwright 探针实测（独立 store + 压矮视口触发滚动，8 项断言全绿）：任务段 hover
+  双按钮可见、下拉定宽 150、scrollHeight > clientHeight（容器内滚）、剪贴板载荷、
+  预览打开「原文 #2」旁路页签（`.mdw.is-beside` 在场）。
+- 本轮知识沉淀：ref `ref_b000ae6b52e1a8d5`「面包屑二轮验收」。
+
 ## [0.68.1] - 2026-11-24 管理命名空间：搜索分区 + 成员增删
 
 用户口径：「顶部增加搜索框，支持搜索ns。对于btn增加管理：支持管理该命名空间具体项目

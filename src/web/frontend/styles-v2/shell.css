@@ -218,7 +218,22 @@ body.nx-side-is-closed .flexlayout__tabset:has(.nx-side-closed-host) .flexlayout
 .flexlayout__tab_move, .flexlayout__tab_flex_button { color: var(--faint); }
 .flexlayout__tab_move:hover, .flexlayout__tab_flex_button:hover { color: var(--ink); }
 .flexlayout__tab_button:hover { background: var(--soft); }
-.flexlayout__float_window { border-radius: 10px; overflow: hidden; box-shadow: 0 18px 48px rgba(20, 22, 26, .2); }
+.flexlayout__float_window {
+  border-radius: 12px;
+  overflow: hidden;
+  /* #260 验收（材质）：1px 发丝环勾边 + 近距环境影 + 远距主投影，三层代替单层硬影 */
+  box-shadow:
+    0 0 0 1px rgba(20, 22, 26, 0.08),
+    0 2px 6px rgba(20, 22, 26, 0.08),
+    0 24px 64px -20px rgba(20, 22, 26, 0.3);
+  /* #260 验收（弹性缩放）：scale 0.6 起步，cubic-bezier y2>1 提供过冲（超过 1 再回弹落定）。
+     元素按 layoutId 复用、只在创建时播一次；拖动/改矩形不重放。 */
+  animation: flx-float-pop 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes flx-float-pop {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
+}
 /* 浮窗头部：只保留自注入的「关闭浮窗」×（icons.dragToDock 注入，见 App.jsx）。
    「迁回主布局」按钮与原生「弹出到浏览器窗口」均已移除（2026-11-07 #91：
    落点由策略表决定；迁回走拖拽；弹出由 tabEnablePopout=false 关闭）。 */

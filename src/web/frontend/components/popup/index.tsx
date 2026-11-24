@@ -202,7 +202,14 @@ export function useDialog(): DialogApi {
 /** 坐标菜单的一项（`'sep'` 是分隔线）。 */
 export type PopMenuItem =
   | 'sep'
-  | { label: ReactNode; icon?: string; danger?: boolean; onClick?: () => void };
+  | {
+      label: ReactNode;
+      icon?: string;
+      danger?: boolean;
+      onClick?: () => void;
+      /** #261：hover 该项时亮出的行尾操作（如图标按钮）；点击不会触发整行 onClick */
+      hoverActions?: ReactNode;
+    };
 
 /** PopMenu 入参。 */
 export interface PopMenuProps {
@@ -212,6 +219,8 @@ export interface PopMenuProps {
   /** [{label, icon?, danger?, onClick}] 或 'sep'；未标注类型的数组里 'sep' 会退化成 string，一并收 */
   items: Array<PopMenuItem | string>;
   onClose: () => void;
+  /** #259：固定宽度（px；缺省 168 起随内容伸）。要盖过 CSS 的 min-width，须连 minWidth 一起内联 */
+  width?: number;
 }
 
 /**
@@ -219,7 +228,7 @@ export interface PopMenuProps {
  * @param {Array} items   [{label, icon?, danger?, onClick}] 或 'sep'
  * @param {Function} onClose
  */
-export function PopMenu({ x, y, items, onClose }: PopMenuProps) {
+export function PopMenu({ x, y, items, onClose, width }: PopMenuProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   // DOM 边界：activeElement 声明为 Element|null，focus() 只在 HTMLElement 上有
   const returnFocus = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
@@ -264,10 +273,13 @@ export function PopMenu({ x, y, items, onClose }: PopMenuProps) {
     }
   }, []);
 
-  // 视口内夹取：靠右/靠下时不溢出（坐标缺省按 0，避免 Math.min(undefined) 得 NaN）
+  // 视口内夹取：top 不低于视口顶 8px、且至少给菜单留 ~160px 可视（#261：
+  // 旧公式 innerHeight − 40 − items×30 在长清单下算出负数，整块菜单被顶出视口上方。
+  // 超高内容现在由 .pp-menu 的 max-height + 内部滚动兜底，定位只需保证可见。）
   const style: CSSProperties = {
     left: Math.min(x ?? 0, window.innerWidth - 190),
-    top: Math.min(y ?? 0, window.innerHeight - 40 - items.length * 30),
+    top: Math.min(Math.max(y ?? 0, 8), Math.max(8, window.innerHeight - 160)),
+    ...(width ? { width, minWidth: width } : {}),
   };
 
   return (
@@ -285,6 +297,11 @@ export function PopMenu({ x, y, items, onClose }: PopMenuProps) {
           >
             {it.icon ? <Icon name={it.icon} /> : null}
             {it.label}
+            {it.hoverActions ? (
+              <span className="pp-menu-acts" onClick={(e) => e.stopPropagation()}>
+                {it.hoverActions}
+              </span>
+            ) : null}
           </button>
         )
       )}

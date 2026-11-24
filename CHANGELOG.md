@@ -2,6 +2,46 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.69.0] - 2026-11-25 任务归属落库（schema v16/v17）+ frontmatter 彻底删除 + 队列自动持有
+
+本轮主线：**任务归属从正文 frontmatter 搬进库内关联**（用户验收 #197 的彻底化），
+配套 schema v16/v17 自动迁移（老库升级无感，数据不丢）。
+
+### Changed（Breaking：库结构升级，自动迁移）
+
+- **任务归属落库**（#197，v16+v17）：`tasks` 重建为两条 topic 外键——`repo_topic_id`
+  （必填，编号序列与 `get --cwd` 领取按它，行为不变）+ `group_topic_id`（可空，组归属
+  唯一来源）；新增 `ix_tasks_group` 索引。**正文只存 markdown，frontmatter 体系整体删除**
+  （shared/frontmatter.ts、前端 FM 块识别、写函数全部移除；迁移时剥掉历史正文头）。
+- **哨兵仓库 `__unbound__` 删除**：队列必须绑真实仓库（cwd 匹配，匹配不到自动登记
+  `local/<目录名>`，绝不因找不到归属丢任务）；组本身也是一条 topic（`group:<组key>`）。
+- **组页/提示词查询 SQL 化**：组任务列表 `WHERE group_topic_id` 走索引，不再全量拉任务
+  逐条解析正文；提示词模板的组上下文（组介绍/组文档）改读库内关联。
+
+### Added
+
+- **仓库/组登记即持有队列 topic**（#199）：登记/改路径/建组/成员变更/删组后自动补齐；
+  仓库管理页新增「刷新队列」按钮兜历史缺口；新 CLI `localtask sync-queues`（幂等）。
+- **ref 生成模板升级**（#195）：新增第 2 步「判断任务来源」——按 `show --json` 的
+  `boardMark`/`repoKey` 判组/仓库任务再绑定文档宿主；内置模板改为出厂正文随版本覆盖升级。
+
+### Fixed
+
+- 组任务的 `get` 指令缺「项目组上下文/组介绍」整段（claim 还在解析正文）；
+- 组 topic（cwd 空）混进目录队列列表/侧栏的幽灵行；
+- dag/progress 页判组任务、改归属从正文解析（#197 漏网点）改读关联。
+
+### Chores
+
+- 项目瘦身：重复实现收拢单点（frontmatter 读/剥、taskTopicColumn、路径归一）；
+  测试碎片合并 164 → 153 个文件，用例 1182 个全保留。
+
+### Verification
+
+- 全量门禁通过：lint / typecheck / build / 全量单测 1169/1169。
+- 生产库真迁移 v15→v16→v17 成功（326 任务 / 3 组 topic，数据无丢失）；
+  浏览器端到端验收组页分流、无 frontmatter 残留（截图 temp/nxkv-197-*.png 等）。
+
 ## [0.68.3] - 2026-11-24 设置浮窗弹性缩放开场 + 材质升级
 
 #253 的验收反馈（#260）：「提升设置页面的视觉层级与材质表现，增强界面质感；弹窗过渡

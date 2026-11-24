@@ -249,7 +249,7 @@
 .docp-file:hover{background:var(--soft,#F1F0EC)}
 
 /* 组详情页的介绍块与绑定 chips（rp-page 系列） */
-.rp-intro{border:1px solid var(--line,#E4E2DC);border-radius:8px;background:#FBFAF8;margin:0 0 12px;overflow:hidden}
+.rp-intro{border:1px solid var(--line,#E4E2DC);border-radius:8px;background:#f9f8f7;margin:0 0 12px;overflow:hidden}
 .rp-intro-head{
   display:flex;align-items:center;gap:8px;padding:6px 12px;
   border-bottom:1px solid var(--line,#E4E2DC);

@@ -270,8 +270,10 @@ export function openFloatingPanel(model: Model | null | undefined, spec: OpenPan
   // 且挪位置不该单独占一步撤销（用户撤销的是「开浮窗」这件事）。
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
-  const width = Math.min(760, Math.max(560, vw - 160)); // 设置面板：左侧分区导航 + 右侧内容
-  const height = Math.min(700, Math.max(460, vh - 160));
+  // 设置面板：左侧分区导航 + 右侧内容。默认目标 1295×857（#253 用户定版「这个默认
+  // 大小比较合适」，旧上限 760×700 偏小）；视口不够时按 vh/vw 收缩，小屏保底 560×460。
+  const width = Math.min(1295, Math.max(560, vw - 160));
+  const height = Math.min(857, Math.max(460, vh - 160));
   for (const [, layout] of rt.getLayouts()) {
     if (layout.getType() !== 'float') continue;
     // 用库自己的 moveFloat 动作改矩形：直接 setRect 不会被浮窗组件读到

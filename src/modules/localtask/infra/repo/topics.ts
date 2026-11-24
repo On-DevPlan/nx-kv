@@ -49,7 +49,10 @@ export function getTopicRow(key: string): TopicRow | null {
 
 /** 全部主题行（稳定序；不含软删）。 */
 export function listTopicRows(): TopicRow[] {
-  return db().all(`${TOPIC_SELECT} WHERE deleted_at IS NULL ORDER BY id`);
+  // #198：**只列目录队列**（repo topic）。组也是一条 topic（key=group:<组key>）但
+  // 它没有物理目录（cwd 空），不属于「按目录领取」的世界——组页走 boardtasks 的
+  // SQL 关联，不该把它当普通队列列进侧栏/CLI 列表。
+  return db().all(`${TOPIC_SELECT} WHERE deleted_at IS NULL AND cwd <> '' ORDER BY id`);
 }
 
 /** #197：队列归属仓库的解析（显式优先 → cwd 匹配 → 自动登记 → local/<key> 兜底）。 */

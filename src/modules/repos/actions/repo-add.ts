@@ -5,6 +5,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
+import { orchestrateQuiet } from '../orchestrate.js';
 const service: any = serviceNs;
 
 /** repo.add 的入参契约（CLI 与 HTTP 共用同一份）。 */
@@ -32,11 +33,14 @@ export class RepoAddAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-      return service.addRepo({
+      const r: any = await service.addRepo({
         ...ctx,
         // 给了 --key 就视为自定义；否则用显式的 --key-custom（缺省 false = 跟随 remote）
         keyCustom: ctx.key ? true : ctx['key-custom'] === true,
       });
+      // #199：登记即编排——补齐队列 topic（幂等，只补不删）；失败不拦登记。
+      await orchestrateQuiet();
+      return r;
   
   }
 }

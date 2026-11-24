@@ -99,6 +99,7 @@ export const DOC_MODULES: ToolModule[] = [
 // 次级动作默认收进更多，可在编排里拖上工具栏/调顺序）。
 export const REPOS_MODULES: ToolModule[] = [
   { id: 'add', label: '登记仓库', icon: 'plus', section: 'primary', noHide: true },
+  { id: 'queues', label: '刷新队列', icon: 'refresh', section: 'bar' },
   { id: 'more', label: '更多', icon: 'dots', section: 'bar', noHide: true },
   { id: 'boards', label: '分组管理', icon: 'board', section: 'more', menuGroup: 'manage' },
   { id: 'refs', label: '参考仓库管理', icon: 'repo-ref', section: 'more', menuGroup: 'manage' },

@@ -13,6 +13,7 @@ import { foreignResolver, isPending, topicView } from './task-view.js';
 import { stripFrontmatter } from '../../../shared/frontmatter.js';
 import { deleteGuard } from './deletion.js';
 import { repoContextIndex, repoCtxOf } from '../infra/repo-ctx.js';
+import { topicKeyOf } from '../../../core/topic-key.js';
 
 /** addTopic / pruneTopics 等主题操作的入参（HTTP/CLI body → any）。 */
 export type TopicOpInput = any;
@@ -191,4 +192,80 @@ export async function pendingQueueInfo(key: string, excludeId?: number | string)
     .filter((x: any) => isPending(x) && Number(x.id) !== exclude)
     .map((x: any) => ({ id: Number(x.id) || 0, title: taskTitleOf(x), topic }));
   return { topic, count: list.length, list };
+}
+
+// ─── #199：仓库/组登记时自动持有自己的 topic（幂等）─────────────────────────
+//
+// 口径：**一个仓库 = 一条目录队列 topic**（cwd=仓库登记路径），**一个组 = 一条组 topic**
+// （key=group:<组key>）。登记时就建好，侧栏/命令行就不用再「按目录猜队列」；
+// 删除仓库/组时不用手工收尾——topics.repo_key 是 ON DELETE CASCADE，跟着一起走。
+//
+// SQLite **不支持条件外键**（外键不能带 WHERE），所以「每个仓库必须有且只有一条队列」
+// 这种父→子的存在性约束只能靠这里保证：登记时 ensure（本函数）+ 编排后自动刷新
+// （syncQueuesQuiet）+ 「仓库管理」页的「刷新队列」按钮（同一个 syncQueues）。
+
+/** 仓库登记后建/取其目录队列 topic。 */
+export function ensureRepoQueue({ repoKey, cwd, name }: { repoKey: string; cwd: string; name?: string }): { topicId: number; key: string } {
+  const rk = String(repoKey || '').trim();
+  const dir = String(cwd || '').trim();
+  if (!rk) throw badInput('ensureRepoQueue: 需要仓库 key');
+  if (!dir) throw badInput('ensureRepoQueue: 需要仓库登记路径');
+  openStore();
+  const key = topicKeyOf(dir, '');
+  const t = topicsRepo.ensureTopic(key, { cwd: dir, name: name || '', repoKey: rk });
+  return { topicId: Number(t.id), key };
+}
+
+/** 组登记后建/取其组 topic（key=group:<组key>）。 */
+export function ensureGroupQueue({ groupKey, name }: { groupKey: string; name?: string }): { topicId: number; key: string } {
+  const gk = String(groupKey || '').trim();
+  if (!gk) throw badInput('ensureGroupQueue: 需要组 key');
+  openStore();
+  const t = topicsRepo.ensureGroupTopic(gk, name || '');
+  return { topicId: Number(t.id), key: t.key };
+}
+
+/**
+ * 补齐老库缺的队列 topic（幂等）：遍历已登记仓库/组，缺的补建。
+ * 返回值便于 CLI/日志核对；重复调用无副作用。
+ *
+ * 直接查 repos 表（同库，不经 repos service）——避免 localtask→repos 的运行时耦合：
+ * 这里只需要 key / path / name 三个字段，拿「旧 JSON store 快照」是杀鸡用牛刀。
+ */
+export async function syncQueues(): Promise<{ repos: number; groups: number }> {
+  openStore();
+  return tx((conn) => {
+    let r = 0;
+    let g = 0;
+    for (const repo of conn.all("SELECT key, path, name FROM repos WHERE type = 'repo' AND path <> '' AND deleted_at IS NULL")) {
+      const rk = String(repo.key || '');
+      const cwd = String(repo.path || '');
+      if (!rk || !cwd) continue;
+      const before = conn.get('SELECT id FROM topics WHERE key = :k', { k: topicKeyOf(cwd, '') });
+      ensureRepoQueue({ repoKey: rk, cwd, name: String(repo.name || '') });
+      if (!before) r += 1;
+    }
+    for (const b of conn.all("SELECT key, name FROM repos WHERE type = 'group' AND deleted_at IS NULL")) {
+      const gk = String(b.key || '');
+      if (!gk) continue;
+      const before = conn.get('SELECT id FROM topics WHERE key = :k', { k: `group:${gk}` });
+      ensureGroupQueue({ groupKey: gk, name: String(b.name || '') });
+      if (!before) g += 1;
+    }
+    return { repos: r, groups: g };
+  });
+}
+
+/**
+ * 编排（登记 / 加组成员 / 移除 / 删除）后的自动刷新：补齐队列，失败**不拦主操作**。
+ *
+ * 编排是用户正在做的事，队列只是配套资源——补建失败不该让「加成员」报错；
+ * 失败的缺口由「仓库管理」页的「刷新队列」按钮兜（同一份 syncQueues）。
+ */
+export async function syncQueuesQuiet(): Promise<{ repos: number; groups: number }> {
+  try {
+    return await syncQueues();
+  } catch {
+    return { repos: 0, groups: 0 };
+  }
 }

@@ -83,6 +83,7 @@ import type {
   LocaltaskReopenAction,
   LocaltaskReorderAction,
   LocaltaskShowAction,
+  LocaltaskSyncQueuesAction,
   LocaltaskTaskRestoreAction,
   LocaltaskTasksAction,
   LocaltaskTimegoalLogAction,
@@ -344,6 +345,8 @@ export interface ApiClient {
   reorder(input: z.input<InstanceType<typeof LocaltaskReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskReorderAction>['run']>>>;
 /** 查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置） */
   show(input: z.input<InstanceType<typeof LocaltaskShowAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskShowAction>['run']>>>;
+/** 补齐仓库 / 组缺的队列 topic（幂等，只补不删）——仓库管理页的「刷新队列」与编排后自动刷新走它 */
+  syncQueues(): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskSyncQueuesAction>['run']>>>;
 /** 恢复一条被删除（软删除）的任务（撤销删除） */
   restore(input: z.input<InstanceType<typeof LocaltaskTaskRestoreAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskTaskRestoreAction>['run']>>>;
 /** 看一个主题的任务清单（按 --key 或 --cwd 定位）：--q 关键字过滤、--limit 只取最新 N 条（时间倒序）；只回列表字段（含各时间戳/轮次/总结），不含正文 */
@@ -1106,6 +1109,11 @@ export function createApiClient(transport: Transport): ApiClient {
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskShowAction>['run']>>;
+    },
+    // action: localtask.sync-queues
+    async syncQueues() {
+      const path = `/api/localtask/queues/sync`;
+      return (await transport.request("POST", path, undefined)) as Awaited<ReturnType<InstanceType<typeof LocaltaskSyncQueuesAction>['run']>>;
     },
     // action: localtask.task.restore
     async restore(input: z.input<InstanceType<typeof LocaltaskTaskRestoreAction>['_input']>) {

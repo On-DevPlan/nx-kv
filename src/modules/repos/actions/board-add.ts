@@ -5,6 +5,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as boardsNs from '../boards.js';
+import { orchestrateQuiet } from '../orchestrate.js';
 const boards: any = boardsNs;
 
 /** board.add 的入参契约（CLI 与 HTTP 共用同一份）。 */
@@ -25,7 +26,10 @@ export class BoardAddAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
-      return boards.createBoard(ctx);
+      const b: any = await boards.createBoard(ctx);
+      // #199：登记即编排——补齐队列 topic（幂等，只补不删）；失败不拦登记。
+      await orchestrateQuiet();
+      return b;
   
   }
 }

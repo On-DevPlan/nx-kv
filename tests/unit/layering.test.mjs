@@ -183,6 +183,11 @@ const EDGE_BASELINE = {
   // #184：localtask 挂参考仓库附件要读仓库元数据（key/type/path）——
   // 评审通过：这是「附件挂仓库」的必需依赖，不是顺手 import。
   'localtask→repos': 4,
+  // #199：仓库/组编排（登记 / 改路径 / 建组 / 成员变更 / 删组）后要自动补齐队列 topic——
+  // 评审通过：这是「编排后自动刷新队列」的跨域通知。收敛在 repos/orchestrate.ts
+  // 单文件出口（syncQueuesQuiet 幂等只补不删、失败不拦主操作），新增编排动作必须复用它，
+  // 不许各自 import localtask。
+  'repos→localtask': 1,
   'docs→repos': 2,
   'localtask→promptplug': 2,
   'claim→docs': 1,

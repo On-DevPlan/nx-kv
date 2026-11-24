@@ -108,11 +108,11 @@ test('nudgeModule moves within bar segment', () => {
   assert.equal(bar[i - 1], 'addMember');
 });
 
-test('repos default (#147): bar has add/more only; boards/refs/transfer in more', () => {
+test('repos default (#147 + #199): bar has add/queues/more; boards/refs/transfer in more', () => {
   const layout = defaultLayout('repos');
   const bar = layout.filter((x) => onBarOf('repos', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('repos', x)).map((x) => x.id);
-  assert.deepEqual(bar, ['add', 'more']);
+  assert.deepEqual(bar, ['add', 'queues', 'more']);
   assert.deepEqual(more, ['boards', 'refs', 'transfer']);
   // 主按钮不可收起（noHide），显式藏也藏不掉
   const forced = setVisible(layout, 'add', false, 'repos');

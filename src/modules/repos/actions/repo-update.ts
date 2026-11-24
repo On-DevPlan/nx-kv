@@ -5,6 +5,7 @@ import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as serviceNs from '../service.js';
+import { orchestrateQuiet } from '../orchestrate.js';
 const service: any = serviceNs;
 
 /** repo.update 的入参契约（CLI 与 HTTP 共用同一份）。 */
@@ -42,7 +43,10 @@ export class RepoUpdateAction extends ActionBase<typeof input> {
             ...(ctx['get-loop-minutes'] !== undefined ? { waitMinutes: ctx['get-loop-minutes'] } : {}),
           };
         }
-        return service.updateRepo(ctx.id, patch);
+        const r: any = await service.updateRepo(ctx.id, patch);
+        // #199：改登记路径也算编排——自动刷新队列（幂等只补不删；失败不拦编辑）。
+        await orchestrateQuiet();
+        return r;
     
   }
 }

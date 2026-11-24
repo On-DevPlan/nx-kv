@@ -49,6 +49,11 @@ export function listBoards(): Promise<BoardsPayload> {
   return api('/api/boards');
 }
 
+/** 补齐仓库/组缺的队列 topic（POST /api/localtask/queues/sync；幂等只补不删）。 */
+export function syncQueues(): Promise<{ repos: number; groups: number }> {
+  return api('/api/localtask/queues/sync', { method: 'POST', body: {} });
+}
+
 /** 参考仓库体检（GET /api/repos/ref/check）。 */
 export function fetchRefCheck(): Promise<RefCheckPayload> {
   return api('/api/repos/ref/check');

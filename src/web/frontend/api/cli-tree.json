@@ -1515,6 +1515,21 @@
           "children": []
         },
         {
+          "name": "sync-queues",
+          "path": [
+            "localtask",
+            "sync-queues"
+          ],
+          "action": {
+            "id": "localtask.sync-queues",
+            "module": "localtask",
+            "summary": "补齐仓库 / 组缺的队列 topic（幂等，只补不删）——仓库管理页的「刷新队列」与编排后自动刷新走它",
+            "usage": "localtask sync-queues",
+            "http": "POST /api/localtask/queues/sync"
+          },
+          "children": []
+        },
+        {
           "name": "task",
           "path": [
             "localtask",

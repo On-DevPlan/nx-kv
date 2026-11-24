@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.68.3",
-  "hash": "98c0d3b1626a31b3",
+  "hash": "9458ab020dc1b463",
   "actions": [
     {
       "id": "localtask.add",
@@ -1248,6 +1248,40 @@
         ]
       },
       "summary": "查看单条任务（按 --id，定位到 --cwd 主题或 --key）；正文引用附件时带附件清单与本地路径（自动下载跟随本机设置）"
+    },
+    {
+      "id": "localtask.sync-queues",
+      "cli": [
+        [
+          "localtask",
+          "sync-queues"
+        ]
+      ],
+      "http": "POST /api/localtask/queues/sync",
+      "input": [],
+      "output": {
+        "k": "model",
+        "name": "LocaltaskSyncQueuesOutput",
+        "fields": [
+          {
+            "name": "repos",
+            "required": true,
+            "type": {
+              "k": "int"
+            },
+            "hint": "本次新补建的仓库队列数"
+          },
+          {
+            "name": "groups",
+            "required": true,
+            "type": {
+              "k": "int"
+            },
+            "hint": "本次新补建的组队列数"
+          }
+        ]
+      },
+      "summary": "补齐仓库 / 组缺的队列 topic（幂等，只补不删）——仓库管理页的「刷新队列」与编排后自动刷新走它"
     },
     {
       "id": "localtask.tasks",

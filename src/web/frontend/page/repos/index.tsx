@@ -20,7 +20,7 @@
 //   bind-modals（绑定）/ remote-modal（对齐 remote）。
 import RouteBreadcrumb from '../../components/layout/route-crumb.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { bindRef, createBoard, fetchRefCheck, listBoards, listDocs, listRepos, openRepo, refSync, removeRepo, type RefCheckPayload } from './api.js';
+import { bindRef, createBoard, fetchRefCheck, listBoards, listDocs, listRepos, openRepo, refSync, removeRepo, syncQueues, type RefCheckPayload } from './api.js';
 import { useGuard, useToast } from '../../components/toast/index.jsx';
 import { RowMenu, useDialog } from '../../components/popup/index.jsx';
 import MemberPicker from '../../components/board/member-picker.jsx';
@@ -180,6 +180,15 @@ export default function ReposView() {
   }, [refOpen, refRepoFocus]);
 
   // ---- 跨区块共享动作 ----
+
+  // #199：刷新队列——补齐仓库/组缺的队列 topic（幂等只补不删）。
+  // 登记仓库 / 建组 / 成员编排后后端已自动刷新；这个按钮兜历史数据与失败缺口。
+  const syncQueuesNow = () => guard(async () => {
+    const d = await syncQueues();
+    const n = (Number(d.repos) || 0) + (Number(d.groups) || 0);
+    toast(n > 0 ? `队列已同步：新补仓库队列 ${d.repos} 条、组队列 ${d.groups} 条` : '队列已同步：没有缺的');
+    await reload.all();
+  });
 
   const syncOne = (r: RepoRecord) => guard(async () => {
     const d = await refSync({ id: r.id });
@@ -372,12 +381,14 @@ export default function ReposView() {
             kind="repos"
             titles={{
               add: '登记本机开发仓库',
+              queues: '补齐仓库/组缺的队列 topic（登记与编排后会自动刷新，这里兜历史缺口）',
               boards: '分组管理：建组 / 成员 / 组介绍文档',
               refs: '参考仓库面板：克隆 / 绑定 / 同步 / 检查 / 存储根',
               transfer: '布局与仓库的导入导出（逐条选择 / 冲突方案 / 差异检查）',
             }}
             actions={{
               add: () => setFormFor(null),
+              queues: () => syncQueuesNow(),
               boards: () => setBoardAdminOpen(true),
               refs: () => setRefOpen(true),
               transfer: () => setTransferOpen(true),

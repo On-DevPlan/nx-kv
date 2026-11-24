@@ -5,7 +5,7 @@
 //
 // 两套语义分开，是因为它们的消费者不同：前者进交付正文，后者进设置页的预览框。
 // 预览**不写任何存储**、不改变真相——模板正文（templates.json / sqlite）仍是唯一真源。
-import { withFrontmatter } from '../../../../shared/frontmatter.js';
+
 import { renderTemplateBody } from './render-template-body.js';
 
 const SLOT_RE = /\{\{\s*([^}{\s][^{}]*?)\s*\}\}/g;
@@ -50,13 +50,12 @@ export function templateDraftBody(
     body?: unknown;
     values?: Record<string, unknown> | null;
   },
-  /** 同时要写的其它归属字段（board / project…） */
-  extra: Record<string, unknown> = {},
+  /** @deprecated #197：归属已改成草稿的结构化字段，不再写进正文头；保留参数只为调用点不漂 */
+  _extra: Record<string, unknown> = {},
   /** 参数页填写后的槽位值（覆盖 tpl.values）；不传用模板默认值 */
   valuesOverride?: Record<string, unknown> | null,
 ): string {
   const values = valuesOverride !== undefined ? valuesOverride : tpl.values;
-  const body = renderTemplateBody(tpl.body, values);
-  const fields: Record<string, unknown> = { ...extra };
-  return Object.keys(fields).length ? withFrontmatter(body, fields) : body;
+  // #197：只渲染正文——归属由 DocRecord 的 boardKey / projectKey 承载
+  return renderTemplateBody(tpl.body, values);
 }

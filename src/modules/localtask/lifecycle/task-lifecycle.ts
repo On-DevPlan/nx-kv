@@ -5,7 +5,6 @@ import { badInput, notFound } from '../../../core/errors.js';
 import { formatDuration, renderInstruction } from '../../../core/instruction-template.js';
 import { activeTemplateOf } from '../../promptplug/index.js';
 import { taskGoalTemplateCtx } from '../../promptplug/plugins/goal-prompt.js';
-import { preserveFrontmatter } from '../../../shared/frontmatter.js';
 import {
   FEEDBACK_HEADING,
   PLAIN_FEEDBACK_HEADING,
@@ -156,27 +155,28 @@ export async function reopenTask({
   // 评论 / 「反馈修改」无轮次语义，维持旧段名。
   let newText = task.text;
   if (body) {
-    newText = preserveFrontmatter(task.text, normalizeText(body));
+    // #197：正文无 frontmatter——直接换 markdown，归属在关联里
+    newText = normalizeText(body);
   } else if (fb) {
     const heading = String(feedbackHeading ?? '').trim()
       || (kind === 'comment' ? PLAIN_FEEDBACK_HEADING : FEEDBACK_HEADING);
     const useBold = typeof feedbackBold === 'boolean' ? feedbackBold : kind !== 'comment';
     if (heading === FEEDBACK_HEADING) {
-      newText = preserveFrontmatter(task.text, appendAckFeedback({
+      newText = appendAckFeedback({
         base: task.text,
         ack: task.roundSummary || '',
         quote,
         feedback: fb,
         bold: useBold,
-      }));
+      });
     } else {
-      newText = preserveFrontmatter(task.text, appendFeedback({
+      newText = appendFeedback({
         base: task.text,
         heading,
         quote,
         feedback: fb,
         bold: useBold,
-      }));
+      });
     }
   }
 

@@ -20,10 +20,8 @@ import {
   insertAttachmentSnippet,
   slugName,
   titleFromMd,
-  parseFrontmatter,
   stripFrontmatter,
   stripPhantomEmptyLines,
-  withFrontmatter,
 } from '../../modules/md/md-parse.js';
 import {
   docIdOf,
@@ -96,17 +94,19 @@ export function useTaskActions({
 }: UseTaskActionsArgs) {
   const toast = useToast();
 
-  /** 标题 + frontmatter 拼装（提交/贴图同步共用）——标题行永远在 FM 之后。 */
+  /**
+   * 标题 + 正文拼装（提交/贴图同步共用）。
+   * #197：正文只存 markdown——归属在草稿的结构化字段里，这里不碰任何头部块；
+   * 历史正文若还残留 --- 头，顺手剥掉（迁移已清，纯保险）。
+   */
   const composeText = useCallback((title: string, bodyText: string) => {
     const t = (title || '').trim() || '未命名任务';
-    const fm = parseFrontmatter(bodyText);
-    const hasFm = Object.keys(fm).length > 0;
     let bare = stripFrontmatter(bodyText);
     // 幻影空块清洗（#92）：块编辑器的 ZWSP 空块不落库——落库即「一段莫名空白」，下次打开还在、再编辑又攒一条。
     bare = stripPhantomEmptyLines(bare);
     if (!/^#\s+/m.test(bare)) bare = `# ${t}\n\n${bare}`;
     else bare = bare.replace(/^#\s+.+$/m, `# ${t}`);
-    return hasFm ? withFrontmatter(bare, fm) : bare;
+    return bare;
   }, []);
 
   // 时间目标的落库口径：草稿 → POST 带 duration/goalPrompt；已有任务 → 与服务端声明比对，有变化才发。
@@ -135,7 +135,7 @@ export function useTaskActions({
   const submit = useCallback(() => guard(async () => {
     if (!doc) return;
     const t = (doc.title || '').trim() || '未命名任务';
-    const fm = parseFrontmatter(doc.body);
+    const fm = docFm; // #197：归属来自草稿的结构化字段（不再解析正文）
     const b = composeText(t, doc.body);
     const groupSubmit = !!(boardCtx && fm.project &&
       boardCtx.members.some((m) => m.key === fm.project));
@@ -152,6 +152,9 @@ export function useTaskActions({
         cwd: topic?.cwd,
         id: Number(task),
         text: b,
+        // #197：改动归属用显式参数（后端按它搬家），不再改正文
+        ...(fm.project ? { project: fm.project } : {}),
+        ...(fm.board ? { board: fm.board } : {}),
         ...gp,
       });
       if (res?.moved) {
@@ -383,12 +386,12 @@ export function useTaskActions({
   const newTask = useCallback(() => {
     const draftId = nextDraftId();
     const docId = docIdOf(groupAnchored ? scopeOf(groupId) : scopeOf(topicKey), draftId);
-    const fm: DocFm = {};
-    if (boardCtx && boardCtx.board && boardCtx.board.id) fm.board = boardCtx.board.id;
-    if (docFm.project) fm.project = docFm.project;
+    // #197：归属写成草稿的结构化字段（正文不再带 --- 头）
     saveDoc(docId, {
       title: '',
-      body: withFrontmatter(tpl ? tpl.defaultPick().body : '', fm),
+      body: tpl ? tpl.defaultPick().body : '',
+      boardKey: boardCtx && boardCtx.board ? String(boardCtx.board.id) : undefined,
+      projectKey: docFm.project || undefined,
     });
     if (app.openPage) {
       app.openPage(

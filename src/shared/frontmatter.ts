@@ -1,4 +1,8 @@
-// 任务正文头部的 frontmatter —— **工作组语义**（board / project）。
+// 任务正文头部的 frontmatter —— **只读兼容**（#197 起不再写入）。
+//
+// #197：任务归属改成库内关联（tasks.repo_topic_id / group_topic_id），正文只存 markdown。
+// 这里只剩「读/剥」两个纯函数：渲染旧数据、迁移历史正文时用来剥掉残留的 --- 头。
+// 写函数（withFrontmatter / applyGroupFields / preserveFrontmatter）已删除。
 //
 // 形如文件头的：
 //   ---
@@ -66,42 +70,4 @@ export function stripFrontmatter(src: unknown): string {
     const kv = String(inner || '').split(/\r?\n/).some((l) => KV_RE.test(l));
     return kv ? '' : block;
   });
-}
-
-/**
- * 重写/补写 frontmatter：fields 整体替换旧块（调用方自己 merge 旧值），正文不动。
- * fields 为空 → 只剥不加。
- */
-export function withFrontmatter(src: unknown, fields: Record<string, unknown> = {}): string {
-  const body = stripFrontmatter(src);
-  const lines = Object.entries(fields)
-    .filter(([, v]) => v != null && `${v}`.trim() !== '')
-    .map(([k, v]) => `${k}: ${`${v}`.trim()}`);
-  return lines.length ? `---\n${lines.join('\n')}\n---\n${body}` : body;
-}
-
-/**
- * 把工作组字段并进正文：**flag 优先**（CLI 显式意图是当下最新的决定），正文里
- * 没有的键才由 flag 补齐；正文自带的其它字段原样保留。
- */
-export function applyGroupFields(src: unknown, fields: Record<string, unknown> = {}): string {
-  const existing = parseFrontmatter(src);
-  const merged: Record<string, string> = { ...existing };
-  for (const [k, v] of Object.entries(fields)) {
-    if (v != null && `${v}`.trim() !== '') merged[k] = `${v}`.trim();
-  }
-  return withFrontmatter(src, merged);
-}
-
-/**
- * 换正文时**保住原有 frontmatter**：新正文自带的键优先，缺的用旧值补齐。
- *
- * 为什么需要它：改文案（修改反馈 / 编辑任务）不该把归组信息一起改没了——
- * frontmatter 丢了，任务就从组 / 项目面板里掉出去，闭环断在半路。
- */
-export function preserveFrontmatter(oldSrc: unknown, newSrc: unknown): string {
-  const oldFm = parseFrontmatter(oldSrc);
-  if (!Object.keys(oldFm).length) return String(newSrc ?? '');
-  const merged = { ...oldFm, ...parseFrontmatter(newSrc) };
-  return withFrontmatter(newSrc, merged);
 }

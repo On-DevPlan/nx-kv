@@ -65,9 +65,17 @@ export interface DocState {
   body: string;
   attachments: Attachment[];
   mode?: string;
+  /** #197：草稿归属与锚点（结构化字段，正文不再有 frontmatter） */
+  boardKey?: string;
+  projectKey?: string;
+  parentTask?: string;
+  parentDir?: string;
 }
 
-/** frontmatter：正文头部解析出来的键值（外部数据边界，按需读）。 */
+/**
+ * 归属语义的原子字段（#197 起由草稿的结构化字段提供，不再从正文解析）。
+ * 保留 DocFm 这个名字是为了少改调用点；它已经不是「frontmatter」了。
+ */
 export type DocFm = Record<string, any>;
 
 /** 时间目标（可编辑态）：时长 + 附加要求。 */

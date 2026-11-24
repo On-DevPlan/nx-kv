@@ -1,6 +1,6 @@
 // 派生上下文：frontmatter / 父任务锚点 / 工作组语义。
 import { useMemo } from 'react';
-import { parseFrontmatter, titleFromMd } from '../../modules/md/md-parse.js';
+import { titleFromMd } from '../../modules/md/md-parse.js';
 import type { LocalTask, LocalTopic, RepoRow } from '../../types.js';
 import type { AppSlice, BoardCtx, DocFm, DocState, ParentRef } from './task-utils.js';
 
@@ -14,11 +14,16 @@ interface UseDerivedCtxArgs {
 }
 
 export function useDerivedCtx({ doc, beside, topicKey, topic, task, app }: UseDerivedCtxArgs) {
-  // 工作组语义（frontmatter）：组面板「新增任务」创建的草稿带 board/project——
-  // 工具区给「归属项目」下拉（限本组成员），提交按 project 路由进对应项目的队列。
-  const docFm = useMemo<DocFm>(() => (doc ? parseFrontmatter(doc.body) : {}), [doc && doc.body]);
+  // 工作组语义：**草稿的结构化字段**（#197 起不再读写正文 frontmatter）——
+  // 组面板「新增任务」创建的草稿带 boardKey/projectKey，提交按 projectKey 路由。
+  const docFm = useMemo<DocFm>(
+    () => (doc
+      ? { board: doc.boardKey || '', project: doc.projectKey || '', parent: doc.parentTask || '', parentDir: doc.parentDir || '' }
+      : {}),
+    [doc && doc.boardKey, doc && doc.projectKey, doc && doc.parentTask, doc && doc.parentDir],
+  );
 
-  // 评论任务的原文锚点：frontmatter.parent（新建评论写入）；旧数据从「锚定自「标题」」回推
+  // 评论任务的原文锚点：草稿的 parentTask（新建评论写入）；旧数据从「锚定自「标题」」回推
   const parentRef = useMemo<ParentRef | null>(() => {
     if (beside) return null; // 旁路原文自己不再开旁路
     const pid = String(docFm.parent || '').trim();

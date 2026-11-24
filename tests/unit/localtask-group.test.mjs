@@ -5,10 +5,6 @@ import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import {
   parseFrontmatter,
-  stripFrontmatter,
-  withFrontmatter,
-  applyGroupFields,
-  preserveFrontmatter,
   healFrontmatterKeys,
 } from '../../src/shared/frontmatter.js';
 import {
@@ -54,31 +50,6 @@ test('healFrontmatterKeys / parseFrontmatter：撕碎的 board→oard 升回 boa
   assert.equal(keep.board, 'b_keep');
   assert.equal(keep.oard, 'b_wrong'); // 规范键已在，残留留给人看
   assert.equal(keep.note, '手工');
-});
-
-test('withFrontmatter 经 parse 愈合后可把 oard 写回 board（保存自愈）', () => {
-  const raw = '---\noard: b_1\nproject: local/x\n---\n# 标题\n正文';
-  const fm = parseFrontmatter(raw);
-  const fixed = withFrontmatter(stripFrontmatter(raw), fm);
-  assert.equal(parseFrontmatter(fixed).board, 'b_1');
-  assert.match(fixed, /\nboard: b_1\n/);
-  assert.ok(!/(^|\n)oard:/.test(fixed), '残留键 oard: 应被写回 board:');
-});
-
-test('stripFrontmatter / withFrontmatter：剥与写', () => {
-  const src = '---\nboard: b_1\n---\n# 标题\n正文';
-  assert.equal(stripFrontmatter(src), '# 标题\n正文');
-  assert.equal(withFrontmatter('# 标题', { board: 'b_1' }), '---\nboard: b_1\n---\n# 标题');
-});
-
-test('applyGroupFields：flag 覆盖正文同名字段，正文的其它字段保留', () => {
-  const src = '---\nboard: b_keep\nnote: 手工写的\n---\n正文';
-  const out = applyGroupFields(src, { board: 'b_flag', project: 'local/p' });
-  const fm = parseFrontmatter(out);
-  assert.equal(fm.board, 'b_flag'); // flag 是显式意图，覆盖正文
-  assert.equal(fm.project, 'local/p'); // flag 补缺项
-  assert.equal(fm.note, '手工写的'); // 正文其它字段保留
-  assert.ok(out.endsWith('正文'));
 });
 
 // ─── 目标解析 ───────────────────────────────────────────────────
@@ -208,32 +179,9 @@ test('resolveGroupTarget：只给项目 → 也带项目介绍引用（不标组
   assert.equal(t.fields.boardIntro, undefined, '没给组就不标组介绍');
 });
 
-// ─── 换正文保住 frontmatter ────────────────────────────────────────
+// ─── 面板口径：显式 board/project → 落两条 topic 关联（#197 不再有 frontmatter）───
 
-test('preserveFrontmatter：换正文保住旧的归组字段', () => {
-  const oldText = '---\nboard: b_1\nproject: local/x\n---\n# 旧标题';
-  const out = preserveFrontmatter(oldText, '# 新标题');
-  const fm = parseFrontmatter(out);
-  assert.equal(fm.board, 'b_1');
-  assert.equal(fm.project, 'local/x');
-  assert.match(out, /# 新标题/);
-  assert.match(out, /^---\n/, 'frontmatter 还在头部');
-});
-
-test('preserveFrontmatter：新正文自带的 frontmatter 优先，旧值只补缺', () => {
-  const oldText = '---\nboard: b_1\nproject: local/x\n---\n# 旧标题';
-  const fm = parseFrontmatter(preserveFrontmatter(oldText, '---\nboard: b_2\n---\n# 新标题'));
-  assert.equal(fm.board, 'b_2', '新正文说了算');
-  assert.equal(fm.project, 'local/x', '旧值补缺');
-});
-
-test('preserveFrontmatter：旧正文没有 frontmatter → 原样返回', () => {
-  assert.equal(preserveFrontmatter('# 旧', '# 新'), '# 新');
-});
-
-// ─── 面板口径：正文自带 frontmatter → 服务端补介绍引用 ──────────────
-
-test('localtask.add：正文自带 frontmatter（面板草稿口径）→ 补上介绍引用', async () => {
+test('localtask.add：面板传显式 board/project → 归属落两条关联、正文无 frontmatter', async () => {
   // 独立 store：这条会真的登记仓库与看板，不能落到用户的真实 store 上
   const sb = mkdtempSync(join(tmpdir(), 'nx-kv-fmpan-'));
   process.env.NX_KV_REPOS_STORE = join(sb, 'repos.json');
@@ -254,7 +202,9 @@ test('localtask.add：正文自带 frontmatter（面板草稿口径）→ 补上
   await repos.writeRepoDocContent({ key: repo.key, name: repo.name }, '面板口径项目');
 
   const r = await action.run({
-    text: `---\nboard: ${b.id}\nproject: ${repo.key}\n---\n# 面板草稿\n正文`,
+    text: '# 面板草稿\n正文',
+    board: b.id,
+    project: repo.key,
     cwd,
     summary: '面板路径',
   });
@@ -262,7 +212,7 @@ test('localtask.add：正文自带 frontmatter（面板草稿口径）→ 补上
   assert.equal(r.task.boardKey, b.key, '组归属来自 group topic 关联');
   assert.equal(r.task.repoKey, repo.key, '归属仓库来自 repo topic 关联');
   assert.ok(r.task.groupTopicId, '组队列关联已建立');
-  assert.ok(!r.task.text.includes('---'), '正文已剥掉 frontmatter 头');
+  assert.ok(!r.task.text.includes('---'), '正文不含 frontmatter');
 
   // T03：先关库连接再删临时目录（Windows 连接开着必 EBUSY）
   try { svc.closeDb(); } catch { /* ignore */ }

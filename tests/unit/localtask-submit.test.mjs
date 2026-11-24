@@ -41,9 +41,9 @@ await boards.assignRepo({ key: strictRepo.key, board: board.id });
 // Windows 稳健的全路径比较（samePlace 只比 basename 派生 key，同名目录会误判——这里更强）
 const samePath = (a, b) => resolve(a).replace(/[\\/]+/g, '/').toLowerCase() === resolve(b).replace(/[\\/]+/g, '/').toLowerCase();
 
-test('submitTask：正文自带 frontmatter（fail-open）→ 落点跟到项目登记路径', async () => {
+test('submitTask：显式 project → 落点跟到项目登记路径（#197 不再有正文 frontmatter）', async () => {
   // 提交方没给 cwd → 归属决定落点：任务进项目登记路径的队列
-  const r = await submitTask({ text: `---\nproject: ${repo.key}\n---\n# 路由任务\n正文` });
+  const r = await submitTask({ text: '# 路由任务\n正文', project: repo.key });
   assert.ok(samePath(r.cwd, repoPath), `落点应为项目登记路径（实际 ${r.cwd}）`);
   // #197：归属落库（repo topic 关联），正文不再有 frontmatter
   assert.equal(r.task.repoKey, repo.key, '归属仓库由关联给出');
@@ -51,24 +51,22 @@ test('submitTask：正文自带 frontmatter（fail-open）→ 落点跟到项目
 });
 
 
-test('submitTask：显式给过 cwd 时 fail-open 不挪窝（只补字段）', async () => {
+test('submitTask：只给 cwd → 落在该目录的队列，归属由目录匹配的仓库给出', async () => {
   const elsewhere = join(sb, 'submit-here');
   mkdirSync(elsewhere, { recursive: true });
-  const r = await submitTask({
-    text: `---\nproject: ${repo.key}\n---\n# 停在原地\n正文`,
-    cwd: elsewhere,
-  });
-  assert.ok(samePath(r.cwd, elsewhere), `显式 cwd 优先，落点不被 frontmatter 挪走（实际 ${r.cwd}）`);
-  assert.equal(r.task.repoKey, repo.key, '归属仍解析出来（落库）');
-  assert.ok(!r.task.text.includes('---'), '正文已剥掉 frontmatter 头');
+  const r = await submitTask({ text: '# 停在原地\n正文', cwd: elsewhere });
+  assert.ok(samePath(r.cwd, elsewhere), `落点就是调用方给的 cwd（实际 ${r.cwd}）`);
+  assert.ok(r.task.repoKey, '归属仓库仍落库（按 cwd 自动登记/匹配）');
+  assert.ok(!r.task.text.includes('---'), '正文不含 frontmatter');
 });
 
-test('submitTask：认不出归属（项目未登记）→ 原样落调用方目录，不拦任务', async () => {
+test('submitTask：只给 cwd、目录未登记 → 自动登记仓库，任务照常落库（不拦）', async () => {
   const here = join(sb, 'unresolvable');
   mkdirSync(here, { recursive: true });
-  const r = await submitTask({ text: '---\nproject: ghost/none\n---\n# 任务\n正文', cwd: here });
+  const r = await submitTask({ text: '# 任务\n正文', cwd: here });
   assert.ok(samePath(r.cwd, here));
-  assert.ok(!r.task.text.includes('ghost/none'), '解析不出的归属不留在正文里（已剥离）');
+  assert.ok(r.task.repoKey, '自动登记了归属仓库（topic 必须绑真实仓库）');
+  assert.ok(!r.task.text.includes('---'), '正文不含 frontmatter');
 });
 
 test('submitTask：只给 project（面板项目口径）→ 严格校验 + 落点=项目路径', async () => {
@@ -99,7 +97,7 @@ test('submitTask：严格口径 --cwd 与 --project 冲突 → 报错（不静�
 test('localtask.add action：一行委托 submitTask——CLI/HTTP/面板同走一条链路', async () => {
   // 经 action.run（HTTP body 同形状）走一遍 fail-open 路由，确认委托链路通、
   // frontmatter 补齐与落点跟到项目队列与直调 submitTask 一致。
-  const r = await addAction.run({ text: `---\nproject: ${repo.key}\n---\n# 经 action 提交\n正文` });
+  const r = await addAction.run({ text: '# 经 action 提交\n正文', project: repo.key });
   assert.ok(samePath(r.cwd, repoPath), `落点应跟到 fm-route 项目队列（实际 ${r.cwd}）`);
   assert.equal(r.task.repoKey, repo.key, '归属仓库落库');
 });

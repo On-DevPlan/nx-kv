@@ -1,6 +1,5 @@
 // 归属项目（组任务）：组面板「新增任务」带 frontmatter 的草稿/任务才显示。
 import { saveDoc } from '../../modules/md/doc-store.js';
-import { withFrontmatter } from '../../modules/md/md-parse.js';
 import type { BoardCtx, DocFm, DocState } from './task-utils.js';
 import { rememberGroupProject } from '../group/group-project-memo.js';
 
@@ -14,7 +13,7 @@ interface BoardSectionProps {
   markDirty: () => void;
 }
 
-export function BoardSection({ boardCtx, docFm, projectEditable, doc, id, markDirty }: BoardSectionProps) {
+export function BoardSection({ boardCtx, docFm, projectEditable, id, markDirty }: BoardSectionProps) {
   if (!boardCtx) return null;
   const picked = boardCtx.members.find((m) => m.key === docFm.project);
 
@@ -33,9 +32,8 @@ export function BoardSection({ boardCtx, docFm, projectEditable, doc, id, markDi
           onChange={(e) => {
             // #187：记住这次选择——下次在这个组里新建任务直接用它当默认归属
             rememberGroupProject(boardCtx.board.id, e.target.value);
-            saveDoc(id, {
-              body: withFrontmatter(doc.body, { ...docFm, board: boardCtx.board.id, project: e.target.value }),
-            });
+            // #197：归属存成草稿的结构化字段，正文不再带 frontmatter
+            saveDoc(id, { projectKey: e.target.value, boardKey: String(boardCtx.board.id) });
             markDirty();
           }}
         >

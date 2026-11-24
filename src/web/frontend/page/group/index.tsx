@@ -259,11 +259,12 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     const id = nextDraftId();
     // 草稿 doc 种在**组 scope**：从 #/group/<id>?task=draft-N 打开寻得回同一份（#86）
     const docId = docIdOf(scopeOf(board.id), id);
-    // 与目录任务页同一条口径：正文取模板原文，归属字段写进 frontmatter。
-    const extra = { board: board.id, project: sel.key };
+    // 与目录任务页同一条口径：正文取模板原文，归属写草稿的结构化字段（#197 无 frontmatter）。
     saveDoc(docId, {
       title: '',
-      body: pick ? templateDraftBody(pick, extra) : templateDraftBody(tpl.defaultPick(), extra),
+      body: pick ? templateDraftBody(pick) : templateDraftBody(tpl.defaultPick()),
+      boardKey: board.id,
+      projectKey: sel.key,
     });
     app.openPage?.({ groupId: board.id, task: id, name: '新任务' });
   };

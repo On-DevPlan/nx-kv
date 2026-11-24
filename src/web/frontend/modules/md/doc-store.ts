@@ -17,6 +17,12 @@ export interface DocRecord {
   body: string;
   attachments: Attachment[];
   mode?: string;
+  /** #197：草稿归属（结构化，不再写正文 frontmatter）。提交时直接传给后端。 */
+  boardKey?: string;
+  projectKey?: string;
+  /** #197：评论草稿的原文锚点（替代 frontmatter.parent / parentDir） */
+  parentTask?: string;
+  parentDir?: string;
 }
 
 /** 内部状态：docId → 文档（对外只透出 docs，不透出包装）。 */

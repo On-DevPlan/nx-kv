@@ -15,7 +15,7 @@
 // 至此三个任务动词（领 get / 等 wait / 派 add）同构：action 层一律一行委托，
 // 编排住在本域（add.js / update.js），队列本体只有 service.js 一处。
 import { addTask, normalizeCwd } from '../service.js';
-import { parseFrontmatter, stripFrontmatter } from '../../../shared/frontmatter.js';
+import { stripFrontmatter } from '../../../shared/frontmatter.js';
 import { resolveGroupTarget } from '../ops/board-target.js';
 import { normalizedGroupStore } from '../ops/group-store.js';
 
@@ -93,24 +93,10 @@ export async function submitTask({
     repoKey = target.projectKey;
     if (target.cwd) cwd = target.cwd;
   } else {
-    // 兼容旧草稿：正文里可能还带 frontmatter（面板草稿 / 导入的 md）→ 提取成结构化
-    // 参数后**剥掉**，保证库里不再存 `---` 头。
-    const fm = parseFrontmatter(text);
-    if (fm.board || fm.project) {
-      try {
-        const target = resolveGroupTarget(
-          { board: fm.board, project: fm.project, cwd: '' } as { board?: string; project?: string; cwd?: string },
-          await normalizedGroupStore(),
-        );
-        groupKey = target.boardKey;
-        groupName = target.boardName;
-        repoKey = target.projectKey;
-        if (target.cwd && !rawCwd) cwd = target.cwd;
-      } catch {
-        /* 解析不出就只剥头，不拦任务 */
-      }
-      text = stripFrontmatter(text);
-    }
+    // #197：**不再从正文 frontmatter 提取归属** —— 正文只存 markdown。
+    // 归属只有两个来源：显式参数（board/project）或调用方所在的队列（cwd）。
+    // 历史正文的 --- 头在 v16/v17 迁移时已剥；这里顺手剥一次是纯保险。
+    text = stripFrontmatter(text);
   }
 
   // localtask 的 addTask 尚未类型化（解构参数只推断出带默认值的键），按运行时形状整包断言

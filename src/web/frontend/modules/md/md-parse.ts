@@ -7,8 +7,8 @@
 // 任务 frontmatter（工作组语义）**共用模块内同一份实现**：CLI（node）与面板（浏览器）
 // 各写一套正则，必然出现「面板认得出、CLI 认不出」这种最难查的分叉。
 import type { LocalTask } from '../../types.js';
-import { parseFrontmatter, stripFrontmatter, withFrontmatter } from '../../../../shared/frontmatter.js';
-export { parseFrontmatter, stripFrontmatter, withFrontmatter };
+import { parseFrontmatter, stripFrontmatter } from '../../../../shared/frontmatter.js';
+export { parseFrontmatter, stripFrontmatter };
 
 export { headingAnchorId, extractMdHeadings, renderMarkdownHtml } from './md-render.js';
 export {

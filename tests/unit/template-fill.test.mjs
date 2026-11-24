@@ -30,7 +30,7 @@ test('renderTemplatePreview：没值的槽位显示 〔槽位名〕 占位（与
   assert.equal(renderTemplatePreview(body, { a: '填了' }), 'A=填了 B=**〔b〕**');
 });
 
-test('templateDraftBody：生成纯文本草稿，槽位由 valuesOverride 覆盖，归属写 frontmatter', () => {
+test('templateDraftBody：生成纯文本草稿，槽位由 valuesOverride 覆盖（#197 不写 frontmatter）', () => {
   const tpl = { id: 't1', body: '# {{标题}}\n\n{{正文}}', values: { 标题: '默认标题', 正文: '默认正文' } };
   // 不传 override → 用模板自带默认值
   assert.equal(templateDraftBody(tpl), '# 默认标题\n\n默认正文');
@@ -39,11 +39,9 @@ test('templateDraftBody：生成纯文本草稿，槽位由 valuesOverride 覆�
     templateDraftBody(tpl, {}, { 标题: '我填的', 正文: '我写的' }),
     '# 我填的\n\n我写的',
   );
-  const withFm = templateDraftBody(tpl, { board: 'b1', project: 'repo/x' }, { 标题: 'T', 正文: 'B' });
-  assert.ok(withFm.startsWith('---\n'), '归属字段写进 frontmatter');
-  assert.match(withFm, /board: b1/);
-  assert.match(withFm, /project: repo\/x/);
-  assert.ok(withFm.includes('# T'), '正文已渲染');
-  assert.ok(!withFm.includes('{{'), '编辑器里没有槽位概念');
-  assert.ok(!/template:\s*/.test(withFm), '不写 template 身份字段');
+  // #197：归属走草稿的结构化字段，正文只有 markdown
+  const outBody = templateDraftBody(tpl, { board: 'b1', project: 'repo/x' }, { 标题: 'T', 正文: 'B' });
+  assert.ok(!outBody.startsWith('---'), '正文里不再有 frontmatter 头');
+  assert.ok(outBody.includes('# T'), '正文已渲染');
+  assert.ok(!outBody.includes('{{'), '编辑器里没有槽位概念');
 });

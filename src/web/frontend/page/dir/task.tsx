@@ -222,7 +222,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   // ─── 动作钩子 ───
   const actions = useTaskActions({
     doc, id, isDraft, task, taskRow, topicKey, topic, boardCtx, docFm,
-    groupAnchored, groupId, rows, app, model: model || null, tabId, tpl, refreshLocal,
+    groupAnchored, groupId, app, model: model || null, tabId, tpl, refreshLocal,
     markDirty, histRef, editorApiRef, attachAreaRef,
     setDirty,
     goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
@@ -423,7 +423,14 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           </div>
         </div>
 
-        <BoardSection boardCtx={boardCtx} docFm={docFm} goalEditable={goalEditable} doc={doc} id={id} markDirty={markDirty} />
+        <BoardSection
+          boardCtx={boardCtx}
+          docFm={docFm}
+          projectEditable={isDraft || !taskRow || taskRow.status === 'pending' || taskRow.status === 'plan'}
+          doc={doc}
+          id={id}
+          markDirty={markDirty}
+        />
 
         <ToolBar
           mode={editorMode}

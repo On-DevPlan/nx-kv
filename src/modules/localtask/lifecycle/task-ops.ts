@@ -308,10 +308,11 @@ export async function updateTask({
         const newProject = String(parseFrontmatter(afterText).project || '').trim();
         const explicitChange = !!newProject && newProject !== oldProject;
         const rel = queueRelationsOf(t, task);
-        // 正判定：只有「待领取」能改归属项目（已领取/已完成的落点在领取时定下，要改先 reopen）
-        const movable = task.status === 'pending' && !rel.length;
+        // 正判定：#190 起草稿态 plan 与待领取 pending 都能改归属（两者都还没「领取落点」）；
+        // 已领取 / 已完成的落点在领取时定下，要改先 reopen。
+        const movable = (task.status === 'pending' || task.status === 'plan') && !rel.length;
         if (explicitChange && !movable) {
-          if (task.status !== 'pending') {
+          if (task.status !== 'pending' && task.status !== 'plan') {
             throw badInput(
               `#${want} 已领取或已完成——这种任务不能改归属项目（落点是提交/领取时定下的，要改先 reopen）`,
             );

@@ -7,13 +7,14 @@ import { rememberGroupProject } from '../group/group-project-memo.js';
 interface BoardSectionProps {
   boardCtx: BoardCtx | null;
   docFm: DocFm;
-  goalEditable: boolean;
+  /** 归属项目是否可改：草稿 / 待领取 / 草稿态 plan 都能改（已领取 / 已完成先 reopen） */
+  projectEditable: boolean;
   doc: DocState;
   id: string;
   markDirty: () => void;
 }
 
-export function BoardSection({ boardCtx, docFm, goalEditable, doc, id, markDirty }: BoardSectionProps) {
+export function BoardSection({ boardCtx, docFm, projectEditable, doc, id, markDirty }: BoardSectionProps) {
   if (!boardCtx) return null;
   const picked = boardCtx.members.find((m) => m.key === docFm.project);
 
@@ -25,7 +26,7 @@ export function BoardSection({ boardCtx, docFm, goalEditable, doc, id, markDirty
       >
         归属项目
       </span>
-      {goalEditable ? (
+      {projectEditable ? (
         <select
           className="mdw-proj-pick"
           value={docFm.project || ''}

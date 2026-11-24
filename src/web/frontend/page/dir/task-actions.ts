@@ -68,7 +68,6 @@ interface UseTaskActionsArgs {
   docFm: DocFm;
   groupAnchored: boolean;
   groupId?: string;
-  rows: LocalTopic[];
   app: AppSlice;
   model: Model | null;
   tabId?: string;
@@ -90,7 +89,7 @@ interface UseTaskActionsArgs {
 
 export function useTaskActions({
   doc, id, isDraft, task, taskRow, topicKey, topic, boardCtx, docFm,
-  groupAnchored, groupId, rows, app, model, tabId, tpl, refreshLocal,
+  groupAnchored, groupId, app, model, tabId, tpl, refreshLocal,
   markDirty, histRef, editorApiRef, attachAreaRef,
   setDirty,
   goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
@@ -138,9 +137,6 @@ export function useTaskActions({
     const t = (doc.title || '').trim() || '未命名任务';
     const fm = parseFrontmatter(doc.body);
     const b = composeText(t, doc.body);
-    const projTopic = fm.project
-      ? rows.find((r) => r.repo && r.repo.key === fm.project)
-      : null;
     const groupSubmit = !!(boardCtx && fm.project &&
       boardCtx.members.some((m) => m.key === fm.project));
     const gp = goalPatchOf();
@@ -149,8 +145,11 @@ export function useTaskActions({
       return;
     }
     if (!isDraft) {
+      // 改归属时的寻址**必须落在当前队列**：任务还在旧队列里，后端要先按 cwd 找到它，
+      // 再按正文 project 解析新落点搬家（#190 删除全局池时曾误传目标项目 cwd →
+      // getTask 在目标队列里找不到原任务，表现为 pending 任务改 repo 不生效/报错）。
       const res = await patchTaskItem({
-        cwd: projTopic ? projTopic.cwd : topic?.cwd,
+        cwd: topic?.cwd,
         id: Number(task),
         text: b,
         ...gp,
@@ -219,7 +218,7 @@ export function useTaskActions({
     }
     toast(`已提交：${slugName(t)}`);
     refreshLocal?.();
-  }), [doc, id, isDraft, task, topicKey, topic, boardCtx, groupAnchored, groupId, rows, app, model, tabId, refreshLocal, histRef, setDirty, composeText, goalPatchOf, guard, toast]);
+  }), [doc, id, isDraft, task, topicKey, topic, boardCtx, groupAnchored, groupId, app, model, tabId, refreshLocal, histRef, setDirty, composeText, goalPatchOf, guard, toast]);
 
   const importMd = useCallback(async (file: File) => {
     const text = await file.text();

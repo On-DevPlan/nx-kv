@@ -116,6 +116,16 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
     },
     [withNs]
   );
+  /** #256：管理弹窗里按**条目键**移除（无需 SideRow——键形与 items 一致：'board:<id>' | '<仓库key>'）。
+      只从指定分区移除，登记与其它分区不受影响。 */
+  const removeItemFromNs = useCallback(
+    (nsId: string, itemKey: string) => {
+      const k = String(itemKey || '');
+      if (!k) return;
+      withNs((list) => list.map((n) => (n.id !== nsId ? n : { ...n, items: n.items.filter((x) => x !== k) })));
+    },
+    [withNs]
+  );
   const newNsAndMove = useCallback(
     (name: string, moveKey: string | null) => {
       const k = String(moveKey || '');
@@ -174,5 +184,5 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
     [dialog, moveNs, removeNs, toggleNsCollapse, toggleNsPinned]
   );
 
-  return { nsForm, setNsForm, toggleNsCollapse, moveToNs, addToNs, removeFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs, moveNs, removeNs };
+  return { nsForm, setNsForm, toggleNsCollapse, moveToNs, addToNs, removeFromNs, removeItemFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs, moveNs, removeNs };
 }

@@ -23,11 +23,15 @@ export interface NsDialogsProps {
   namespaces: SidebarNs[];
   focusNs?: string;
   onManageClose: () => void;
-  onRenameNs: (id: string, name: string) => void;
+  /** #256：重命名改走标准表单弹窗（宿主负责关管理弹窗再开表单），不再用原生 prompt */
+  onEditNsName: (id: string, name: string) => void;
   onMoveNs: (id: string, dir: -1 | 1) => void;
   onRemoveNs: (id: string) => void;
   onNewNs: () => void;
   onFocusNs: (id: string) => void;
+  /** #256：管理弹窗内的成员增删（添加 = 关管理弹窗呼出成员选择；移除 = 只摘出该分区） */
+  onAddToNs: (id: string) => void;
+  onRemoveNsItem: (nsId: string, itemKey: string) => void;
   /** #181：详情观察 */
   observeOpen: boolean;
   onObserveClose: () => void;
@@ -45,11 +49,14 @@ export default function NsDialogs(p: NsDialogsProps) {
           namespaces={p.namespaces}
           focusNs={p.focusNs}
           onClose={p.onManageClose}
-          onRename={p.onRenameNs}
+          onEditName={p.onEditNsName}
           onMove={p.onMoveNs}
           onRemove={p.onRemoveNs}
           onNew={() => { p.onManageClose(); p.onNewNs(); }}
           onFocus={p.onFocusNs}
+          onAddItems={p.onAddToNs}
+          onRemoveItem={p.onRemoveNsItem}
+          labelOf={p.labelOf}
         />
       ) : null}
       {p.observeOpen ? (

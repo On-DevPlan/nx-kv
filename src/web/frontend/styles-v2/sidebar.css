@@ -148,6 +148,21 @@
 .ns-manage-name:hover { color: var(--mdw-accent, #2F6F5E); }
 .ns-manage-count { margin-left: 8px; font-weight: 400; font-size: 11px; color: var(--faint, #8A8F98); }
 .ns-manage-acts { flex: none; display: inline-flex; gap: 4px; }
+/* #256 管理弹窗增补：顶部搜索分区 + 行内展开成员清单（增删具体项目） */
+.ns-manage-search { display: block; margin: 2px 0 8px; }
+.ns-manage-search input { width: 100%; height: 28px; padding: 0 10px; font: inherit; font-size: 12.5px;
+  border: 1px solid var(--soft-2, #E5E3DE); border-radius: 7px; background: var(--paper, #fff); color: inherit; }
+.ns-manage-search input:focus-visible { outline: none; border-color: var(--mdw-accent, #2F6F5E); }
+.ns-manage-cell { display: flex; flex-direction: column; gap: 2px; padding: 2px 0; }
+.ns-manage-items { display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 6px 8px 8px 14px; border-top: 1px dashed var(--line, #E7E5E0); }
+.ns-manage-item { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
+.ns-manage-item-name { flex: 1; min-width: 0; font-size: 12px; color: var(--ink-2, #4B515A);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ns-manage-item-del { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px;
+  background: none; cursor: pointer; color: var(--mid, #838A93);
+  display: inline-flex; align-items: center; justify-content: center; }
+.ns-manage-item-del:hover { background: rgba(179, 38, 30, 0.08); color: var(--danger, #B3261E); }
 .trow .tw { width: 14px; flex: none; display: inline-flex; justify-content: center; color: var(--faint); transition: transform 0.15s; }
 /* chevron 现在是「展开/收起」按钮（点行是去看内容）——给它指针与反馈 */
 .trow .tw[role="button"] { cursor: pointer; }

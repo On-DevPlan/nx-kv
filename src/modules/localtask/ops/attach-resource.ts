@@ -9,6 +9,7 @@
 // 调用方（attach.js 的编排层）负责把本机附件仓的命中结果喂进来。
 import { existsSync } from 'node:fs';
 import { isImageName } from '../../../core/filekind.js';
+import { taskTitleOf } from '../../../shared/task-title.js';
 
 const KIND_LABEL: Record<string, string> = { file: '附件', url: '链接', task: '任务', ref: '文档', mdfile: 'md', folder: '文件夹', repo: '仓库' };
 const IMAGE_LABEL = '图片';
@@ -55,13 +56,6 @@ export function hostOfUrl(href: unknown): string {
   } catch {
     return '';
   }
-}
-
-/** 任务标题 = 正文首个非空行，去 # 前缀，截 80 字。#197 正文无 frontmatter 头。 */
-function taskTitleOf(body: unknown): string {
-  const text = String(body || '').trim();
-  const first = text.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || '';
-  return first.replace(/^#+\s*/, '').trim().slice(0, 80);
 }
 
 /**

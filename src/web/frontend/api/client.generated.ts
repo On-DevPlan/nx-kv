@@ -305,7 +305,7 @@ export interface ApiClient {
   localtaskAttach(input: z.input<InstanceType<typeof LocaltaskAttachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachAction>['run']>>>;
 /** 列出某条任务引用的附件（正文里的 ![名](fileId) 嵌入），以及本地是否已有（给 agent 直接读本地文件） */
   localtaskAttachments(input: z.input<InstanceType<typeof LocaltaskAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachmentsAction>['run']>>>;
-/** 全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按 frontmatter 的 board 归属聚合，带归属项目 */
+/** 全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按库内组队列关联（tasks.group_topic_id）聚合，带归属项目 */
   boardtasks(input?: z.input<InstanceType<typeof LocaltaskBoardTasksAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskBoardTasksAction>['run']>>>;
 /** 批量取消待领取任务（按 --ids，定位到 --cwd 主题或 --key）：只处理 pending，已领取/已完成/已取消跳过；取消为终态，原文留档 */
   cancelMany(input: z.input<InstanceType<typeof LocaltaskCancelManyAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskCancelManyAction>['run']>>>;

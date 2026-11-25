@@ -60,7 +60,7 @@ export function listTopicRows(): TopicRow[] {
 function resolveRepoKey(conn: DbApi, cwd: string, explicit: string, key: string, at: number): string {
   if (explicit) return explicit;
   const repos = conn
-    .all("SELECT key, path FROM repos WHERE type = 'repo' AND path <> '' AND key <> '__unbound__'")
+    .all("SELECT key, path FROM repos WHERE type = 'repo' AND path <> ''")
     .map((r: any) => ({ key: String(r.key), path: String(r.path) }));
   const nc = normRepoPath(cwd);
   const matched = repos.find((r) => r.path && normRepoPath(r.path) === nc);
@@ -133,9 +133,15 @@ export function ensureGroupTopic(groupKey: string, groupName = ''): { id: number
   const key = `group:${gk}`;
   return txw((conn) => {
     const at = nowMs();
-    const hit = conn.get('SELECT id FROM topics WHERE key = :k', { k: key });
+    const hit = conn.get('SELECT id, name FROM topics WHERE key = :k', { k: key });
     if (hit) {
+      const at2 = nowMs();
       conn.run('UPDATE topics SET deleted_at = NULL WHERE id = :id AND deleted_at IS NOT NULL', { id: Number(hit.id) });
+      // #200：组改名后命中路径要跟进 name——否则 CLI list/侧栏展示的组队列名永远停在旧名
+      const freshName = String(groupName || gk);
+      if (groupName && String(hit.name || '') !== freshName) {
+        conn.run('UPDATE topics SET name = :n, updated_at = :at WHERE id = :id', { n: freshName, at: at2, id: Number(hit.id) });
+      }
       return { id: Number(hit.id), key };
     }
     conn.run(
@@ -301,15 +307,6 @@ export function updateTopic(key: string, patch: TopicPatch = {}): { id: number; 
 }
 
 /**
- * 队列顺序单子：把 seq 数组写回 ext_task_order。
- * 与 JSON 时代的「数组位置即领取优先级」等价 —— **绝不改 seq**
- * （seq 是对外编号，trg_tasks_identity 锁死；交换编号会让历史引用指向别的任务）。
- */
-export function setTaskOrder(key: string, seqs: Array<number | string>): { id: number; version: number } | null {
-  return updateTopic(key, { taskOrder: seqs });
-}
-
-/**
  * 在事务里改队列顺序：`fn(order)` 收到当前 seq 数组，返回新数组（或原地改后返回）。
  * 典型用法：addTask 追加（push）、插队首（unshift）、拖动排序（splice）。
  * 必须与任务行的写入包在**同一个外层事务**里（调用方用 repo.tx 包裹），
@@ -353,37 +350,3 @@ export function deleteTopic(key: string, { purge = false }: { purge?: boolean } 
   });
 }
 
-/**
- * 主题的待领取优先序（seq 数组）：ext_task_order 里仍处于 pending 的那些，
- * 单子里没有的 pending 按 seq 补尾 —— 与 JSON 数组序完全同构。
- */
-export function pendingOrderOf(topic: any): number[] {
-  const pendingSeqs: number[] = topic.tasks
-    .filter((t: any) => t.status === 'pending' && !t.deletedAt)
-    .map((t: any) => t.id);
-  const candidates = new Set(pendingSeqs);
-  const ordered: number[] = [];
-  const seen = new Set<number>();
-  for (const seq of topic.ext[TOPIC_EXT.TASK_ORDER] || []) {
-    const n = Number(seq);
-    if (candidates.has(n) && !seen.has(n)) {
-      ordered.push(n);
-      seen.add(n);
-    }
-  }
-  for (const seq of pendingSeqs) {
-    if (!seen.has(seq)) ordered.push(seq);
-  }
-  return ordered;
-}
-
-/**
- * prune 的数据形状判定：空主题 / 无 cwd 的旧模型主题 / allFinished 且无 pending。
- * 带保护规则的 deleteGuard 仍在 deletion.js（规则单一口径）。
- */
-export function isPrunable(topic: any, { allFinished = false, hasPending = false }: { allFinished?: boolean; hasPending?: boolean } = {}): boolean {
-  const isLegacy = !topic.cwd;
-  const isEmpty = topic.tasks.length === 0;
-  const isFinished = allFinished && topic.tasks.length > 0 && !hasPending;
-  return isLegacy || isEmpty || isFinished;
-}

@@ -3,7 +3,6 @@
 // 口径与 repos 服务一致：路径归一（小写 + 反斜杠转正斜杠 + 去尾斜杠）后，
 // 精确优先，否则最长前缀（嵌套登记时更具体的仓库赢）。
 // #197 起队列必须绑真实仓库，不再有 __unbound__ 哨兵。
-import { existsSync } from 'node:fs';
 
 /** 路径归一。 */
 export function normRepoPath(p: unknown): string {
@@ -44,9 +43,4 @@ export function autoRepoKey(cwd: unknown, taken: Set<string>): string {
   let n = 2;
   while (taken.has(key)) key = `local/${base}-${n++}`;
   return key;
-}
-
-/** 目录当前是否还在（迁移决定「保留并登记」还是「连任务清理」）。 */
-export function cwdExists(cwd: unknown): boolean {
-  return !!cwd && existsSync(String(cwd));
 }

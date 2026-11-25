@@ -12,6 +12,7 @@
 import { action } from '../../../runtime/action-decorator.js';
 import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
+import { taskHeadingOf as titleOf } from '../../../shared/task-title.js';
 import * as serviceNs from '../service.js';
 
 const service: any = serviceNs;
@@ -56,21 +57,6 @@ const output = z.object({
   tasks: z.array(row),
 });
 
-/** 取正文里的标题：跳过 frontmatter，首个 `#` 标题优先，否则首行；按 80 字截断。 */
-function titleOf(text: unknown): string {
-  const raw = String(text ?? '');
-  // frontmatter：文件以 --- 开头时，跳到第二个 --- 之后
-  let body = raw;
-  if (raw.startsWith('---')) {
-    const end = raw.indexOf('\n---', 3);
-    if (end > 0) body = raw.slice(end + 4);
-  }
-  const lines = body.split('\n').map((l) => l.trim()).filter(Boolean);
-  const heading = lines.find((l) => /^#{1,6}\s+/.test(l));
-  const line = (heading ?? lines[0] ?? '').replace(/^#{1,6}\s+/, '');
-  return line.length > 80 ? line.slice(0, 80) + '…' : line;
-}
-
 export class LocaltaskTasksAction extends ActionBase<typeof input> {
   @action({
     id: 'localtask.tasks',
@@ -91,8 +77,9 @@ export class LocaltaskTasksAction extends ActionBase<typeof input> {
   override async run(ctx: ActionInput<this['_input']>) {
     const { resolveTopicKey } = await (import('../paths.js') as any);
     const key = resolveTopicKey({ key: ctx.key, cwd: ctx.cwd });
-    const list: any = await service.listTasks();
-    const topic = (list.topics as any[]).find((t) => t.key === key);
+    // #200 对抗审查：单主题查询直接 getTopic（一条索引 SQL），不再 listTasks
+    // 全量拉所有主题 + 全部任务正文只为 find 一个 key。
+    const topic = await service.getTopicView(key);
     if (!topic) {
       const { badInput } = await (import('../../../core/errors.js') as any);
       throw badInput(`主题不存在: ${key}`);
@@ -122,7 +109,7 @@ export class LocaltaskTasksAction extends ActionBase<typeof input> {
         status: t.status,
         title: titleOf(t.text),
         round: t.round ?? 1,
-        // 组任务标注：normalizeTask 已经把 frontmatter.board 解析成 boardMark，
+        // 组任务标注：normalizeTask 从 tasks.group_topic_id 带出 boardMark（#197），
         // 这里只做「缺省为空串」的形状收口 —— 别在这层再解析一遍正文。
         // #197：组归属来自 DB 关联（boardKey/boardMark 同源）
         board: t.boardMark || t.boardKey || '',

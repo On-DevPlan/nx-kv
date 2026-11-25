@@ -13,6 +13,7 @@ import { foreignResolver, isPending, topicView } from './task-view.js';
 import { deleteGuard } from './deletion.js';
 import { repoContextIndex, repoCtxOf } from '../infra/repo-ctx.js';
 import { topicKeyOf } from '../../../core/topic-key.js';
+import { taskTitleOf as taskTitleOfText } from '../../../shared/task-title.js';
 
 /** addTopic / pruneTopics 等主题操作的入参（HTTP/CLI body → any）。 */
 export type TopicOpInput = any;
@@ -58,6 +59,16 @@ export async function addTopic({ cwd: rawCwd, summary: rawSummary }: { cwd?: str
 //
 // 注意：**全局主题不在这里凭空造**。全局池空着的时候库里就是没有它
 // 占位，保证用户永远找得到往全局池加任务的入口——服务层的契约保持原样。
+/** 单主题视图（与 listTasks 的组装同构；#200 对抗审查：单主题查询别全量拉）。 */
+export async function getTopicView(key: string): Promise<Record<string, any> | null> {
+  openStore();
+  const repoIndex = await repoContextIndex();
+  const readyOpts = { resolveForeign: foreignResolver() };
+  const t = topicsRepo.getTopic(String(key || ''));
+  if (!t) return null;
+  return topicView(t, repoCtxOf(repoIndex, t.cwd), readyOpts);
+}
+
 export async function listTasks(): Promise<Record<string, any>> {
   openStore();
   // 仓库上下文一次读一张表（逐主题读文件太浪费）
@@ -160,11 +171,9 @@ export async function updateSettings({ timeoutSec }: UpdateSettingsInput = {}): 
   return settingsRepo.settingsView();
 }
 
-/** 任务标题 = 正文首个非空行（去前导 #，截 80 字）。#197 正文无 frontmatter 头。 */
+/** 任务标题 = 正文首个非空行（去前导 #，截 80 字）——shared 单点（#200）。 */
 function taskTitleOf(row: any): string {
-  const body = String((row && row.text) || '').trim();
-  const first = body.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || '';
-  const title = first.replace(/^#+\s*/, '').trim().slice(0, 80);
+  const title = taskTitleOfText((row && row.text) || '');
   return title || `任务 #${Number(row && row.id) || ''}`;
 }
 

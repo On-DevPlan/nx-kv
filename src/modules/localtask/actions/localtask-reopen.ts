@@ -11,7 +11,7 @@ const input = z.object({
   id: z.number().describe("任务编号"),
   cwd: z.string().optional(),
   key: z.string().optional(),
-  text: z.string().optional().describe("下一轮任务正文（Markdown；保住 frontmatter）；不给则继承旧正文，只带 --feedback 时追加轮次 callout（[!NOTE] 完成总结 + [!WARNING] 验收反馈）"),
+  text: z.string().optional().describe("下一轮任务正文（纯 Markdown；归属在库内关联，正文不带任何头部）；不给则继承旧正文，只带 --feedback 时追加轮次 callout（[!NOTE] 完成总结 + [!WARNING] 验收反馈）"),
   kind: z.string().optional().describe("reopen（验收反馈，默认）或 comment（划选评论）"),
   quote: z.string().optional().describe("划选原文（comment 时）"),
   feedback: z.string().optional().describe("用户反馈原文；派生出的新任务正文会追加 [!WARNING] 验收反馈 callout（base = 服务端最新正文，防连续评论丢内容）"),

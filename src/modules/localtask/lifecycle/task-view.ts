@@ -113,6 +113,7 @@ export function relocateTask(fromTopic: any, seq: number | string, moveTo: any):
       : ((src.task as any).groupTopicId ?? null),
   });
   const newId = inserted.id;
+  const newRowId = inserted.rowId;
 
   // 2. 源任务定格：status 走 tombstone 语义函数（原子守卫，done 保持 done）；
   //    软删与"搬去哪了"审计字段照旧走通用 patch——它们不是状态。
@@ -124,12 +125,7 @@ export function relocateTask(fromTopic: any, seq: number | string, moveTo: any):
 
   // 3. 链：新 → 旧，type='reopen'（搬队列是派生的特例）
   linksRepo.addLink({
-    srcId: Number(
-      (db().get('SELECT id FROM tasks WHERE repo_topic_id = :t AND seq = :s', {
-        t: target.id,
-        s: newId,
-      }) || {}).id
-    ),
+    srcId: newRowId, // 行主键由 insertTask 直接带出（#200 对抗审查：不再重查）
     dstId: src.row.id,
     type: 'reopen',
     note: 'moved to ' + toKey,
@@ -137,6 +133,7 @@ export function relocateTask(fromTopic: any, seq: number | string, moveTo: any):
   });
 
   // 4. 跨队列引用改写：指向旧地址的 "fromKey:oldSeq" → 新地址
+  // #200 对抗审查：只取两列（不再把全部正文拖进内存）；子串命中后再按 blockBy 精确过滤
   for (const row of db().all('SELECT repo_topic_id FROM tasks WHERE ext LIKE :pat', {
     pat: '%' + fromTopic.key + ':' + oldSeq + '%',
   })) {

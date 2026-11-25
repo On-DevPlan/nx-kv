@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.69.1",
-  "hash": "1e647101e8e3dd6f",
+  "hash": "ca157a25c838923d",
   "actions": [
     {
       "id": "localtask.add",
@@ -363,7 +363,7 @@
           }
         ]
       },
-      "summary": "全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按 frontmatter 的 board 归属聚合，带归属项目"
+      "summary": "全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按库内组队列关联（tasks.group_topic_id）聚合，带归属项目"
     },
     {
       "id": "localtask.done",
@@ -794,7 +794,7 @@
           "kind": "string",
           "positional": false,
           "required": false,
-          "hint": "下一轮任务正文（Markdown；保住 frontmatter）；不给则继承旧正文，只带 --feedback 时追加轮次 callout（[!NOTE] 完成总结 + [!WARNING] 验收反馈）"
+          "hint": "下一轮任务正文（纯 Markdown；归属在库内关联，正文不带任何头部）；不给则继承旧正文，只带 --feedback 时追加轮次 callout（[!NOTE] 完成总结 + [!WARNING] 验收反馈）"
         },
         {
           "name": "kind",

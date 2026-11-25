@@ -22,6 +22,7 @@ import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import * as boardsNs from '../../repos/boards.js';
 import { db } from '../infra/repo/index.js';
+import { taskHeadingOf as titleOf } from '../../../shared/task-title.js';
 
 const boardsSvc: any = boardsNs;
 
@@ -65,26 +66,12 @@ function stampOf(ms: unknown): string {
   return Number.isFinite(n) && n > 0 ? new Date(n).toISOString().replace('T', ' ').slice(0, 19) : '';
 }
 
-/** 取正文里的标题：跳过 frontmatter，首个 `#` 标题优先，否则首行；按 80 字截断。 */
-function titleOf(text: unknown): string {
-  const raw = String(text ?? '');
-  let body = raw;
-  if (raw.startsWith('---')) {
-    const end = raw.indexOf('\n---', 3);
-    if (end > 0) body = raw.slice(end + 4);
-  }
-  const lines = body.split('\n').map((l) => l.trim()).filter(Boolean);
-  const heading = lines.find((l) => /^#{1,6}\s+/.test(l));
-  const line = (heading ?? lines[0] ?? '').replace(/^#{1,6}\s+/, '');
-  return line.length > 80 ? line.slice(0, 80) + '…' : line;
-}
-
 export class LocaltaskBoardTasksAction extends ActionBase<typeof input> {
   @action({
     id: 'localtask.boardtasks',
     cli: ['localtask', 'boardtasks'],
     http: ['GET', '/api/localtasks/boardtasks'],
-    summary: '全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按 frontmatter 的 board 归属聚合，带归属项目',
+    summary: '全部项目组的本组任务（端侧组页 / 侧栏徽标一次拿全）：按库内组队列关联（tasks.group_topic_id）聚合，带归属项目',
     input,
     output,
     render: (d: any) => {
@@ -101,7 +88,7 @@ export class LocaltaskBoardTasksAction extends ActionBase<typeof input> {
   override async run(ctx: ActionInput<this['_input']>) {
     const want = String(ctx.board ?? '').trim();
     const boardList: any[] = ((await boardsSvc.listBoards())?.boards ?? []) as any[];
-    // 定位 & 归一：id / key / 名称都认（面板写 id，手写 frontmatter 可能是 key/名）
+    // 定位 & 归一：id / key / 名称都认（面板写 id，CLI 手写可能是 key/名）
     const picked = want
       ? boardList.filter((b) => [b.id, b.key, b.name].filter(Boolean).map(String).includes(want))
       : boardList;

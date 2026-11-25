@@ -1,10 +1,10 @@
 // localtask.boardtasks —— 端侧组页的「本组任务」聚合读。
 //
-// 钉住的口径（与面板 board-view.ts 的 taskInBoard / projectPending 同款）：
-//   1. 组任务物理上落在成员项目的队列里，归属只看正文 frontmatter 的 board；
-//   2. 组页要的项目 tag = 任务所在队列的仓库名（未登记的目录队列不属于任何组）；
-//   3. 非成员仓库的队列里就算写着本组 board，也不算本组任务（成员关系按仓库 key）；
-//   4. 软删除的不算（面板所有列表都不显示，端侧跟着一致）。
+// 钉住的口径（#197 起归属是库内关联 tasks.group_topic_id，SQL 一条查完）：
+//   1. 组任务 = group_topic_id 指向组队列的任务（正文不再有 board 标注）；
+//   2. 组页要的项目 tag = 任务所在队列的仓库名；
+//   3. 非成员仓库的队列**不产生组关联**——提交时 --board 要求 --project 是组成员，
+//      所以非成员队列天然不会有 group_topic_id（此处验证 SQL 只认关联）；
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -35,8 +35,9 @@ const add = find('localtask.add');
 // 本组成员 a 的队列里：一条组任务、一条纯项目任务
 const grouped = await add.run({ cwd: projA, text: '# 组任务一', board: 'grp', project: 'a' }, { transport: 'cli' });
 const plain = await add.run({ cwd: projA, text: '# 项目任务' }, { transport: 'cli' });
-// 非成员 b 的队列里：手写 frontmatter 声称属于 grp（模拟手工改归属）
-await add.run({ cwd: projB, text: `---\nboard: ${board.key}\n---\n# B 的野任务` }, { transport: 'cli' });
+// 非成员 b 的队列里：一条纯项目任务（#197 起非成员提交带 --board 会被拒，
+// 这里验证 SQL 关联只认 group_topic_id——b 队列任务没有组关联，不进组）
+await add.run({ cwd: projB, text: '# B 的野任务' }, { transport: 'cli' });
 
 after(async () => {
   try { closeDb(); } catch { /* 已关 */ }

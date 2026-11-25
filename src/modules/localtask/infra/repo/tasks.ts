@@ -139,9 +139,9 @@ function rowToTaskWithDeps(conn: DbApi, row: Record<string, any>): TaskRowWithDe
 /**
  * 插入一条任务。`task` 是 JSON 形态（text/status/createdAt/consumedAt/...），
  * 缺省与旧 store 的「normalizeTask + push」一致：status='pending'、createdAt=now。
- * @returns {{id: number, task: object}}
+ * @returns {{id: number, rowId: number, task: object}} id=队列内编号（seq）；rowId=行主键（链/资源引用用）
  */
-export function insertTask(topicId: number, task: TaskPatch = {}): { id: number; task: TaskObject } {
+export function insertTask(topicId: number, task: TaskPatch = {}): { id: number; rowId: number; task: TaskObject } {
   return txw((conn) => {
     const at = nowMs();
     // 编号必须在同一个事务里取：事务外的 next_seq 会被别的进程同时读到，
@@ -192,7 +192,7 @@ export function insertTask(topicId: number, task: TaskPatch = {}): { id: number;
     writeLocalDeps(conn, topicId, Number(row.id), fields.depsLocal);
     // 正文里已经写了 fileId / nxkv 链接：入库即建资源关系，不等到领取才解析。
     syncTaskAttachments(conn, { taskId: Number(row.id), text: c.body ?? '', atMs: at });
-    return { id: seq, task: getTaskRow(topicId, seq, conn)!.task };
+    return { id: seq, rowId: Number(row.id), task: getTaskRow(topicId, seq, conn)!.task };
   });
 }
 

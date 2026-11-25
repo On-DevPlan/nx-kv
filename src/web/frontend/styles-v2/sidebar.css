@@ -140,14 +140,33 @@
 .ns-add-where { flex: none; font-size: 11px; color: var(--faint, #8A8F98); }
 /* #179 命名空间切换器旁的 ＋（向当前空间添加成员）与「管理命名空间」弹窗 */
 .sb-ns-add { flex: none; font-size: 12px; line-height: 1; }
-.ns-manage-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; }
+.ns-manage-row { display: flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 8px;
+  position: relative; }
 .ns-manage-row.is-on { background: var(--soft-2, #F1F0EC); }
+/* #264 拖拽排序：把手常隐、悬浮行显；拖拽中半透明，落点画青绿插入线 */
+.ns-manage-grip { flex: none; display: inline-flex; color: var(--faint, #76736C); opacity: 0;
+  cursor: grab; transition: opacity 0.12s; }
+.ns-manage-row:hover .ns-manage-grip, .ns-manage-row.is-dragging .ns-manage-grip { opacity: 1; }
+.ns-manage-row[draggable="true"] { cursor: grab; }
+.ns-manage-row.is-dragging { opacity: 0.45; }
+.ns-manage-row.drop-before::before, .ns-manage-row.drop-after::after {
+  content: ''; position: absolute; left: 6px; right: 6px; height: 2px; border-radius: 1px;
+  background: var(--mdw-accent, #2F6F5E);
+}
+.ns-manage-row.drop-before::before { top: -1px; }
+.ns-manage-row.drop-after::after { bottom: -1px; }
 .ns-manage-name { flex: 1; min-width: 0; text-align: left; border: 0; background: none; cursor: pointer;
   font: 600 13px/1.6 system-ui, sans-serif; color: var(--ink, #16181C);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ns-manage-name:hover { color: var(--mdw-accent, #2F6F5E); }
 .ns-manage-count { margin-left: 8px; font-weight: 400; font-size: 11px; color: var(--faint, #8A8F98); }
-.ns-manage-acts { flex: none; display: inline-flex; gap: 4px; }
+.ns-manage-acts { flex: none; display: inline-flex; gap: 2px; }
+/* #264：行动作改纯 icon（title 气泡说明），对齐「所有按钮只显示 svg icon」方向 */
+.ns-manage-act { flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px;
+  background: none; cursor: pointer; color: var(--mid, #838A93);
+  display: inline-flex; align-items: center; justify-content: center; }
+.ns-manage-act:hover { background: var(--soft-2, #F1F0EC); color: var(--ink, #16181C); }
+.ns-manage-act.is-danger:hover { background: rgba(179, 38, 30, 0.08); color: var(--danger, #B3261E); }
 /* #256 管理弹窗增补：顶部搜索分区 + 行内展开成员清单（增删具体项目） */
 .ns-manage-search { display: block; margin: 2px 0 8px; }
 .ns-manage-search input { width: 100%; height: 28px; padding: 0 10px; font: inherit; font-size: 12.5px;

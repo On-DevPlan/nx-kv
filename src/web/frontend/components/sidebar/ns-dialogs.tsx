@@ -25,7 +25,7 @@ export interface NsDialogsProps {
   onManageClose: () => void;
   /** #256：重命名改走标准表单弹窗（宿主负责关管理弹窗再开表单），不再用原生 prompt */
   onEditNsName: (id: string, name: string) => void;
-  onMoveNs: (id: string, dir: -1 | 1) => void;
+  onReorderNs: (from: number, to: number) => void;
   onRemoveNs: (id: string) => void;
   onNewNs: () => void;
   onFocusNs: (id: string) => void;
@@ -50,7 +50,7 @@ export default function NsDialogs(p: NsDialogsProps) {
           focusNs={p.focusNs}
           onClose={p.onManageClose}
           onEditName={p.onEditNsName}
-          onMove={p.onMoveNs}
+          onReorder={p.onReorderNs}
           onRemove={p.onRemoveNs}
           onNew={() => { p.onManageClose(); p.onNewNs(); }}
           onFocus={p.onFocusNs}

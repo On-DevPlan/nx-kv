@@ -1,7 +1,4 @@
 // 分隔线语法：独占一行的 3 个以上 `-` / `*` / `_`（可夹空格）→ `<hr>`。
-//
-// 不匹配 `- ` 列表（需要三个以上且整行只有分隔符）。frontmatter 在渲染前已被
-// stripFrontmatter 剥掉，正文里的 `---` 一律按 thematic break 处理。
 import type { BlockMatch, BlockRule } from '../types.js';
 
 export const dividerSyntax: BlockRule = {

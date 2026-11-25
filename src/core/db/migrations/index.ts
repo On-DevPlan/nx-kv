@@ -70,6 +70,7 @@ export const DIRECT_EDGES: MigrationStep[] = [
   { from: 14, to: 15, file: 'v15.sql', title: "附件新增 repo 类型（参考仓库指针，不复制字节；重建 attachments 扩 CHECK）" },
   { from: 15, to: 16, file: 'v16.sql', title: '任务归属落库第一步（tasks.repo_key + topics.group_key，删 frontmatter #197）', apply: migrateAssignmentsToColumns },
   { from: 16, to: 17, file: 'v17.sql', title: '任务归属规范成两条 topic 关联（repo_topic_id + group_topic_id #197）', apply: migrateTopicLinks },
+  { from: 17, to: 18, file: 'v18.sql', title: '恢复带待领任务的软删队列（幽灵队列修复 #200）' },
 ];
 
 // 人读版本说明（docs/decisions 是决策的唯一权威位置，里面对应一份 date 化的 .md）
@@ -91,6 +92,7 @@ export const VERSION_NOTES = {
   15: 'docs/decisions/versions/2026-11-23-v15.md',
   16: 'docs/decisions/versions/2026-11-24-v16.md',
   17: 'docs/decisions/versions/2026-11-24-v17.md',
+  18: 'docs/decisions/versions/2026-11-25-v18.md',
 };
 
 const keyOf = (from: number, to: number): string => `${from}->${to}`;

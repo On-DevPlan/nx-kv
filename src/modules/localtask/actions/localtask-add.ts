@@ -42,8 +42,8 @@ const input = z.object({
   file: z.string().optional().describe("从本机文件读任务正文（- 表示标准输入）——长文本/多行不必靠引号硬拼"),
   cwd: z.string().optional().describe("工作目录（作为主题；默认当前目录）。归属由 --project 决定：给了 --project 就用它推导落点，这里再给且不一致会报错"),
   summary: z.string().optional().describe("顺带刷新该主题的当前现状（可选）"),
-  board: z.string().optional().describe("工作组（看板）id / key / 名称：任务正文自动带上 frontmatter（board + 组介绍引用），该任务才会出现在组面板里；必须同时给 --project 指明归属项目"),
-  project: z.string().optional().describe("归属项目（仓库 key / 名称 / 路径）：任务挂在哪个项目上，落点目录由它推导，frontmatter 带上 project + 项目介绍引用；配 --board 时必须是该组成员"),
+  board: z.string().optional().describe("工作组（看板）id / key / 名称：给任务建立组队列关联（#197 起是库内 topics.group_topic_id，不再写正文），该任务才会出现在组面板里；必须同时给 --project 指明归属项目"),
+  project: z.string().optional().describe("归属项目（仓库 key / 名称 / 路径）：任务挂在哪个项目上，落点目录由它推导，归属仓库落库（tasks.repo_topic_id 关联）；配 --board 时必须是该组成员"),
   duration: z.string().optional().describe("时间目标时长（2h / 90m / 5小时）：领取即计时，未到点不许标完成"),
   'goal-prompt': z.string().optional().describe("时间目标的附加要求（随 check 指令一起固化，可省）"),
   goalPrompt: z.string().optional().describe("同 --goal-prompt（驼峰写法）"),
@@ -61,7 +61,7 @@ export class LocaltaskAddAction extends ActionBase<typeof input> {
     id: 'localtask.add',
     cli: ['localtask', 'add'],
     http: ['POST', '/api/localtasks'],
-    summary: '向某主题（工作目录）的队列回填一条任务（正文可多行；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝）',
+    summary: '向某主题（工作目录）的队列回填一条任务（正文可多行 markdown；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务落库归属（组队列 + 仓库队列两条 topic 关联，正文不写任何头），并落进该项目的队列',
     args: ['text'],
     input,
     output: addView,
@@ -76,7 +76,7 @@ export class LocaltaskAddAction extends ActionBase<typeof input> {
         if (!body.trim()) throw badInput('任务正文为空：给 "<正文>" 或 --file <文件>');
 
         // 派任务编排已迁 localtask/add.ts（派任务编排归 localtask 域；命令名不变）。
-        // 落点判定（--board/--project 严格口径 / 正文 frontmatter fail-open）只此一份实现，
+        // 落点判定（--board/--project 严格口径）只此一份实现，
         // CLI、HTTP、面板提交同走这一条链路。
         const { submitTask } = await (import('../lifecycle/add.js') as any);
         const rawBlock: any = ctx.blockBy ?? ctx['block-by'];

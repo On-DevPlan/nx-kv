@@ -225,7 +225,7 @@ export function useLivePreview({
   const ingestFiles = (files: File[] | null | undefined, ta: HTMLTextAreaElement | null) => {
     if (!files?.length || !onFiles) return;
     // 实时预览的光标是**块内**偏移，绝不能当全文 insertAt——否则会插进
-    // frontmatter（保存时被剥掉，附件仓留下孤儿文件；任务 #15 验收根因）。
+    // 附件片段插进正文头部区会落在段落缝隙里（任务 #15 验收根因）。
     onFiles(files, {
       mode: 'live',
       focusIndex: focus,

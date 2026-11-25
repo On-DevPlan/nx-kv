@@ -2,6 +2,28 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.69.1] - 2026-11-25 frontmatter 残留清零 + v18 幽灵队列修复
+
+### Changed
+
+- **frontmatter 残留彻底清零**：契约文案（localtask add 的 summary/describe 还在教
+  「正文 frontmatter」）、编辑器 blockKind 的 fm 分支与 .mdw-fm/.kind-fm 死样式、
+  board-target 的 fields 死代码全部移除——frontmatter 一词只剩迁移内联、SKILL 解析
+  与「已删除」说明注释。
+
+### Fixed
+
+- **v18 迁移：恢复「带待领任务的软删队列」**（幽灵队列）——存量数据里 pending 任务
+  挂在软删队列上，任何 cwd 都领不到（生产库 4 条）。v18 恢复这类队列（不删任务）；
+  只挂 done 的软删队列与组队列不恢复。
+- prune 的旧模型分支（无 cwd 主题）补 pending 守卫——此前带活任务也会被清成幽灵。
+
+### Verification
+
+- 全量单测 1171/1171（新增 v18 迁移测试：pending 恢复 / done 不动 / 组队列不恢复）；
+  lint / typecheck / build 全绿；生产库 v17→v18 真升级成功（幽灵队列 4→0，
+  pending 27→31——4 条幽灵任务重新可见可领）。
+
 ## [0.69.0] - 2026-11-25 任务归属落库（schema v16/v17）+ frontmatter 彻底删除 + 队列自动持有
 
 本轮主线：**任务归属从正文 frontmatter 搬进库内关联**（用户验收 #197 的彻底化），

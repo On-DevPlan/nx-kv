@@ -337,7 +337,7 @@ export default function AttachModal({
 
   const taskList = useMemo(() => {
     // #183：任务搜索与 topic 页共用 modules/board/task-search.ts 的同一份引擎
-    // （空格分词 AND / 剥 frontmatter / 通配 / 编号前缀），弹窗不再自己写 includes。
+    // （空格分词 AND / 通配 / 编号前缀），弹窗不再自己写 includes。
     const pool = taskOptions.filter((t) => String(t.id) !== String(hostId));
     return filterTasks(pool, taskSearch).slice(0, 12);
   }, [taskOptions, taskSearch, hostId]);

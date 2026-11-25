@@ -10,7 +10,6 @@
 // 本步骤已在 2026-11-24 应用到本机库（user_version=16），**逻辑不可再改**；
 // 更彻底的归属规范（repo_topic_id / group_topic_id 两条关联）在 v17 做。
 import { matchRepoKey, autoRepoKey } from '../repo-match.js';
-// frontmatter 读/剥收拢到 core/task-frontmatter（#200）；core 不能依赖 shared，同名别名承接
 // ── 一次性迁移用的最小 frontmatter 读/剥（#197 起任务正文不再有 --- 头）──
 // 这段逻辑**冻结在本文件**：迁移/导入是处理历史数据的唯一入口，跑完即退役；
 // 运行时（服务层/前端）已无任何 frontmatter 读/剥（shared/frontmatter.ts 已删除）。

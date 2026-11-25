@@ -47,7 +47,9 @@
 //   topics.group_key 启用（组任务拆 (cwd, group_key) 独立队列），删哨兵仓库 #197。
 // v17（2026-11-24）：归属规范成两条 topic 关联——tasks.repo_topic_id（必填，编号/领取按它）
 //   + tasks.group_topic_id（可空，组归属）；丢弃 repo_key，组队列换成 group:<组key> 形态 #197。
-export const CURRENT_SCHEMA_VERSION = 17;
+// v18（2026-11-25）：恢复带待领任务的软删队列（幽灵队列——活任务挂软删队列任何 cwd
+//   都领不到）；prune 的旧模型分支同步补 pending 守卫 #200。
+export const CURRENT_SCHEMA_VERSION = 18;
 
 /**
  * 运行时最低 Node 版本。

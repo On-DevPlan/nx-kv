@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.69.0",
-  "hash": "9458ab020dc1b463",
+  "hash": "1e647101e8e3dd6f",
   "actions": [
     {
       "id": "localtask.add",
@@ -46,14 +46,14 @@
           "kind": "string",
           "positional": false,
           "required": false,
-          "hint": "工作组（看板）id / key / 名称：任务正文自动带上 frontmatter（board + 组介绍引用），该任务才会出现在组面板里；必须同时给 --project 指明归属项目"
+          "hint": "工作组（看板）id / key / 名称：给任务建立组队列关联（#197 起是库内 topics.group_topic_id，不再写正文），该任务才会出现在组面板里；必须同时给 --project 指明归属项目"
         },
         {
           "name": "project",
           "kind": "string",
           "positional": false,
           "required": false,
-          "hint": "归属项目（仓库 key / 名称 / 路径）：任务挂在哪个项目上，落点目录由它推导，frontmatter 带上 project + 项目介绍引用；配 --board 时必须是该组成员"
+          "hint": "归属项目（仓库 key / 名称 / 路径）：任务挂在哪个项目上，落点目录由它推导，归属仓库落库（tasks.repo_topic_id 关联）；配 --board 时必须是该组成员"
         },
         {
           "name": "duration",
@@ -178,7 +178,7 @@
           }
         ]
       },
-      "summary": "向某主题（工作目录）的队列回填一条任务（正文可多行；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝）"
+      "summary": "向某主题（工作目录）的队列回填一条任务（正文可多行 markdown；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务落库归属（组队列 + 仓库队列两条 topic 关联，正文不写任何头），并落进该项目的队列"
     },
     {
       "id": "localtask.boardtasks",
@@ -217,7 +217,7 @@
                     "type": {
                       "k": "string"
                     },
-                    "hint": "看板 id（面板创建任务时写进 frontmatter 的就是它）"
+                    "hint": "看板 id（组队列 topic 的 group_key，组页建任务时落库关联的就是它）"
                   },
                   {
                     "name": "key",

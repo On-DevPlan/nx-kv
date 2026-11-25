@@ -99,11 +99,9 @@ export function blockHtml(text: string, attachments?: Attachment[] | null) {
   );
 }
 
-/** 块类型 → 编辑态字号贴近渲染（避免「输入框感」） */
+/** 块类型 → 编辑态字号贴近渲染（避免「输入框感」）。#197 FM 块已不存在，fm 分支删除。 */
 export function blockKind(text: string) {
   const t = String(text || '');
-  // frontmatter 块：预览态渲染成属性卡（renderMarkdownHtml），编辑态等宽小字
-  if (/^---\s*$/.test(t.split('\n', 1)[0] || '') && t.includes('\n')) return 'fm';
   // 数学公式块（$$ 起头）：编辑态用衬线/等宽近似公式观感
   if (/^\s*\$\$/.test(t)) return 'math';
   // 表格块：首行含管道且第二行是分隔行

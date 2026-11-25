@@ -49,7 +49,7 @@ const taskRow = z.object({
 const output = z.object({
   boards: z.array(
     z.object({
-      id: z.string().describe('看板 id（面板创建任务时写进 frontmatter 的就是它）'),
+      id: z.string().describe('看板 id（组队列 topic 的 group_key，组页建任务时落库关联的就是它）'),
       key: z.string().describe('看板键（board/xxx）'),
       name: z.string().describe('看板名称'),
       pending: z.int().describe('本组待领取数（= side bar 徽标口径）'),

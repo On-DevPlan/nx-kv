@@ -297,7 +297,7 @@ export interface ApiClient {
   docRemove(input: z.input<InstanceType<typeof RepoDocRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDocRemoveAction>['run']>>>;
 /** 取仓库完整知识：项目介绍 + 所属组（介绍/组内描述/绑定文档）+ 参考仓库（--md 拼成单篇 markdown；缺省当前目录） */
   knowledge(input?: z.input<InstanceType<typeof RepoKnowledgeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoKnowledgeAction>['run']>>>;
-/** 向某主题（工作目录）的队列回填一条任务（正文可多行；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务带工作组语义（正文 frontmatter：board + project + 双方介绍引用），并落进该项目的队列；正文自带 frontmatter 时同样认归属——补介绍引用，落点跟到项目队列（显式给过 --cwd 时不挪窝） */
+/** 向某主题（工作目录）的队列回填一条任务（正文可多行 markdown；--file <文件|-> 从文件/标准输入读，长文本不必靠引号硬拼；有 wait 在等则即时投递，否则排队）；--duration 给任务带时间目标（领取即计时，完成前必须 check）；--board/--project 让任务落库归属（组队列 + 仓库队列两条 topic 关联，正文不写任何头），并落进该项目的队列 */
   localtaskAdd(input?: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>>;
 /** 改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变） */
   attachNote(input: z.input<InstanceType<typeof LocaltaskAttachNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachNoteAction>['run']>>>;

@@ -106,7 +106,9 @@ export async function pruneTopics({
     if (!deleteGuard(t, { force: false, key: t.key, scope: 'prune' }).ok) continue;
     const tasks = t.tasks;
     const hasPending = tasks.some(isPending);
-    const isLegacy = !t.cwd;
+    // #200：旧模型无目录分支同样不许带活任务——带 pending 的队列清了就是幽灵
+    //（活任务挂软删队列，任何 cwd 都领不到）。存量由 v18 迁移恢复。
+    const isLegacy = !t.cwd && !hasPending;
     const isEmpty = tasks.length === 0;
     const isFinished = allFinished && tasks.length > 0 && !hasPending;
     const cwdGone = missingDir && !!t.cwd && !hasPending && !existsSync(String(t.cwd));

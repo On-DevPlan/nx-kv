@@ -187,32 +187,6 @@
   border-left:2px solid var(--line,#E4E2DC)!important;
   color:var(--ink-2,#4B515A);
 }
-/* frontmatter 块的编辑态：等宽小字，盒型对齐属性卡（视图↔编辑只有内容差，
-   卡片是 3 行键值、源码是 4 行 yaml——这一类天生差一行，其余各类严格等高） */
-.mdw-lp-block.kind-fm textarea.mdw-lp-src{
-  font-family:ui-monospace,Consolas,monospace;font-size:11.5px;line-height:1.6;
-  padding:9px 12px!important;
-  border:1px solid var(--line,#E4E2DC)!important;border-radius:8px;
-  background:var(--canvas,#F5F4F1)!important;
-}
-
-/* frontmatter 属性卡：任务头部的结构化字段（board/project/介绍引用）单独成卡，
-   不与首行内容混排。live 预览块与阅读视图同一份渲染（md-parse frontmatterHtml）。 */
-.mdw-fm{
-  display:flex;flex-direction:column;gap:3px;
-  margin:0 0 10px;padding:9px 12px;
-  background:var(--canvas,#F5F4F1);
-  border:1px solid var(--line,#E4E2DC);
-  border-radius:8px;
-  font-family:ui-monospace,Consolas,monospace;
-  font-size:11.5px;line-height:1.6;
-}
-.mdw-fm-row{display:flex;gap:8px;align-items:baseline;min-width:0}
-.mdw-fm-k{flex:none;color:var(--mid,#838A93)}
-.mdw-fm-k::after{content:':'}
-.mdw-fm-v{min-width:0;overflow-wrap:anywhere;color:var(--ink-2,#4B515A)}
-/* 阅读视图与模板预览同款（.mdw-preview 是阅读态容器） */
-.mdw-preview .mdw-fm{margin-top:2px}
 .mdw-lp-view{user-select:text;overflow-wrap:anywhere;word-break:break-word}
 /* live 预览：块内元素的 margin 归零——间距统一由块容器承担（与编辑态 textarea
    的零垂直 padding 对称），否则视图态（元素 margin）与编辑态（textarea padding）

@@ -38,12 +38,6 @@ export interface VscSegment {
   siblings: VscSibling[];
 }
 
-/** 本地路径的一段（VS Code 面包屑的文件系统路径段）：盘符 + 各级目录名。 */
-export interface VscPathSeg {
-  label: string;
-  /** 该段对应的绝对路径（点它 = 定位到这一层）。 */
-  path: string;
-}
 
 /** vscTrailOf 的返回面（组件渲染 + 复制寻址都要用）。 */
 export interface VscTrail {
@@ -56,32 +50,6 @@ export interface VscTrail {
   /** 组锚定路由的看板 id（#/group/<id>?task= 深链保持锚定） */
   boardId: string;
   isGroup: boolean;
-  /** 完整本地路径分段（#276：面包屑要显示完整本地路径，可逐级选子目录）。 */
-  pathSegments: VscPathSeg[];
-}
-
-/**
- * 本地路径 → 路径分段（盘符段 + 各级目录名，各段带自己的绝对路径）。
- * Windows 反斜杠与 POSIX 斜杠都认；UNC 前缀按普通段处理（罕见，容忍）。
- */
-export function pathSegmentsOf(cwd: string): VscPathSeg[] {
-  const raw = String(cwd || '').trim();
-  if (!raw) return [];
-  const isWin = /^[a-zA-Z]:/.test(raw);
-  const sep = isWin ? '\\' : '/';
-  const parts = raw.split(/[\\/]+/).filter(Boolean);
-  const segs: VscPathSeg[] = [];
-  let acc = '';
-  if (parts.length && /^[a-zA-Z]:$/.test(parts[0] as string)) {
-    acc = (parts[0] as string) + sep;
-    segs.push({ label: acc, path: acc });
-    parts.shift();
-  }
-  for (const p of parts) {
-    acc = acc ? (acc.endsWith(sep) ? acc + p : acc + sep + p) : p;
-    segs.push({ label: p, path: acc });
-  }
-  return segs;
 }
 
 const DRAFT_RE = /^draft/i;
@@ -252,7 +220,6 @@ export function vscTrailOf(
     taskId,
     boardId: board ? String(board.id) : '',
     isGroup,
-    pathSegments: pathSegmentsOf(String(topic.cwd || '')),
   };
 }
 

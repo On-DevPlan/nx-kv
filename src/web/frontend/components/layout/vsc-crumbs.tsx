@@ -11,7 +11,6 @@ import { Icon } from '../icons.jsx';
 import { useToast } from '../toast/index.jsx';
 import { copyPayloadOf, nsFirstTargetOf, taskCopyPayload, vscTrailOf } from './vsc-crumbs-model.js';
 import type { VscSegment, VscSibling, VscTrail } from './vsc-crumbs-model.js';
-import VscCrumbsDirs from './vsc-crumbs-dirs.jsx';
 import './vsc-crumbs.css';
 
 interface MenuState {
@@ -95,18 +94,10 @@ export default function VscCrumbs({ onPreviewTask }: { onPreviewTask?: ((taskId:
       ? '复制访问提示词（CLI 指令 + 引导）——设置 → 偏好可切换为原始路径'
       : '复制路径 + 任务号——设置 → 偏好可切换为访问提示词';
 
-  // 「组/目录」段与路径末段同名（目录页最常见）时不重复画：它的「同级」下拉
-  // 改挂在路径末段右侧的小按钮上（见 VscCrumbsDirs 的 siblingSeg）。
-  const owner = trail.segments[1] || null;
-  const pathLast = trail.pathSegments[trail.pathSegments.length - 1];
-  const dupOwner = !!(owner && pathLast && owner.label === pathLast.label);
-  const head = trail.segments.slice(0, dupOwner ? 1 : 2);
-  const tail = trail.segments.slice(2);
-
   return (
     <div className="vsc-crumbs">
       <nav className="vsc-crumbs-path" aria-label="当前位置">
-        {head.map((seg, i) => (
+        {trail.segments.map((seg, i) => (
           <span key={seg.kind} className={'vsc-crumb' + (i === trail.segments.length - 1 ? ' is-cur' : '')}>
             {i > 0 && (
               <span className="vsc-sep" aria-hidden>
@@ -124,34 +115,18 @@ export default function VscCrumbs({ onPreviewTask }: { onPreviewTask?: ((taskId:
             </button>
           </span>
         ))}
-        {/* #276：完整本地路径（逐段）+ 点段列子目录、可逐级进入 */}
-        {trail.pathSegments.length > 0 && (
-          <VscCrumbsDirs
-            segments={trail.pathSegments}
-            siblingSeg={dupOwner ? owner : null}
-            onSiblingMenu={openSiblings}
-          />
-        )}
-        {tail.map((seg, j) => {
-          const i = j + 2;
-          return (
-            <span key={seg.kind} className={'vsc-crumb' + (i === trail.segments.length - 1 ? ' is-cur' : '')}>
-              <span className="vsc-sep" aria-hidden>
-                &gt;
-              </span>
-              <button
-                type="button"
-                className="vsc-crumb-t"
-                disabled={!seg.siblings.length}
-                title={seg.siblings.length ? `显示「${seg.label}」的同级` : seg.label}
-                onClick={(e) => openSiblings(seg, e)}
-              >
-                {seg.label}
-              </button>
-            </span>
-          );
-        })}
       </nav>
+      {/* #279 验收修正：本地路径**单独显示**，不融进面包屑——点一下复制完整路径 */}
+      {trail.cwd && (
+        <button
+          type="button"
+          className="vsc-local"
+          title={`${trail.cwd}（点击复制本地路径）`}
+          onClick={() => copyText(trail.cwd, '已复制本地路径')}
+        >
+          {trail.cwd}
+        </button>
+      )}
       {/* #254：悬浮整行亮出复制钮（当前任务的路径 + 任务号，按偏好两态） */}
       <button type="button" className="vsc-copy" title={copyTitle} aria-label={copyTitle}
         onClick={() => copyText(copyPayloadOf(trail, style), style === 'prompt' ? '已复制访问提示词' : '已复制路径')}>

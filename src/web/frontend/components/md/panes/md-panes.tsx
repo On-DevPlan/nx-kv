@@ -60,6 +60,8 @@ import { normalizeBlockText } from '../../../modules/md/md-parse.js';
 import type { Attachment } from '../attachments/attach-common.js';
 
 export { MdPanes, ModeSeg } from './md-panes-root.jsx';
+// PM 内核试点（?kernel=pm）复用同一颗标题输入（结构钉实现本体仍在本文件，不搬动）
+export { TitleArea };
 
 /** 选区回调（编辑器里划选文字 → 上层浮层）。 */
 export interface TextSel {

@@ -1,0 +1,47 @@
+/* PM 内核 M1 视图样式：单一实时文档编辑器（?kernel=pm 试点）。
+   排版镜像 .mdw-lp-view / .mdw-preview 的既有口径（editor.css），
+   全部落在 .mdw-pm-view 命名空间——不改任何现有 .mdw-* 规则（#274 UI 门禁）。 */
+
+/* PM 宿主：编辑器落在与 LivePreview 同款 sheet（52px 左留白契约原样延续） */
+.mdw-pm-view{min-height:120px}
+.mdw-pm-view .ProseMirror{
+  outline:none;
+  overflow-wrap:anywhere;word-break:break-word;
+  min-height:120px;
+  font-family:inherit;
+}
+.mdw-pm-view.is-readonly .ProseMirror{user-select:text}
+
+/* 排版：与 .mdw-lp-view 同值（编辑即渲染，无双态字号跳变） */
+.mdw-pm-view h1{font-weight:650;font-size:22px;line-height:1.3;font-family:inherit;margin:8px 0;letter-spacing:-0.02em;color:var(--ink,#16181C)}
+.mdw-pm-view h2{font-weight:650;font-size:16px;line-height:1.35;font-family:inherit;margin:14px 0 4px;letter-spacing:-0.01em;color:var(--ink,#16181C)}
+.mdw-pm-view h3{font-weight:650;font-size:14px;line-height:1.4;font-family:inherit;margin:10px 0 4px;color:var(--ink-2,#4B515A)}
+.mdw-pm-view h4{font-weight:650;font-size:13.5px;line-height:1.5;margin:8px 0 4px;color:var(--ink-2,#4B515A)}
+.mdw-pm-view h5{font-weight:650;font-size:13px;line-height:1.55;margin:8px 0 4px;color:var(--ink-2,#4B515A)}
+.mdw-pm-view h6{font-weight:600;font-size:12.5px;line-height:1.55;margin:8px 0 4px;color:var(--mid,#838A93)}
+.mdw-pm-view > h1:first-child,.mdw-pm-view > h2:first-child,.mdw-pm-view > h3:first-child{margin-top:0}
+.mdw-pm-view p{
+  font-size:var(--mdw-lp-body-size,13.5px);
+  line-height:var(--mdw-lp-body-lh,1.75);
+  font-weight:400;
+  margin:0 0 6px;
+  color:var(--mdw-lp-body-color,var(--ink-2,#4B515A));
+}
+.mdw-pm-view > p:last-child{margin-bottom:0}
+
+/* 行内标记：与阅读态渲染标签同构（b / em / del / code / mark / a） */
+.mdw-pm-view code{
+  font:12px/1.4 ui-monospace,Consolas,monospace;background:rgba(0,0,0,.04);
+  padding:1px 4px;border-radius:3px;color:var(--ink,#16181C);
+}
+.mdw-pm-view mark{background:rgba(230,190,80,.35);color:inherit;padding:0 2px;border-radius:2px}
+.mdw-pm-view a{color:var(--mdw-accent,#2F6F5E);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.mdw-pm-view a[data-kind="attach"]{color:var(--ink-2,#4B515A)}
+.mdw-pm-view a[data-kind="nxkv"]{color:var(--mdw-accent,#2F6F5E)}
+
+/* 兜底块（rawBlock）：M2 起逐语法替换成真节点，这里按代码观感过渡 */
+.mdw-pm-view pre.mdw-raw{
+  margin:8px 0;padding:10px 12px;border-radius:6px;background:rgba(0,0,0,.03);
+  border:0;overflow:auto;font:12px/1.55 ui-monospace,Consolas,monospace;
+  color:var(--ink-2,#4B515A);white-space:pre-wrap;
+}

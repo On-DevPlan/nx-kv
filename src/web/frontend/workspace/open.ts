@@ -291,3 +291,24 @@ export function openFloatingPanel(model: Model | null | undefined, spec: OpenPan
   }
   return { tabId, reused: false };
 }
+
+/**
+ * 回流浮窗内部布局：把每个浮窗**按当前矩形**重发一次 moveFloat，让引擎按已量好的
+ * 尺寸重排内部页签的定位。
+ *
+ * 为什么需要（#275「设置面板高度塌陷，没有占满整个弹窗区域」）：浮窗刚 popout 出来时
+ * 还没挂载，flexlayout 量不到浮窗头高，引擎算出的内部页签定位是按旧 bounds 来的 →
+ * 内容区只占上半截（实测内容区 697 高、页签只占 459）。**在面板内容挂载之后**补发
+ * 一次同矩形，引擎即按已量好的尺寸重排 → 填满（实测 670/697）。
+ *
+ * 用当前矩形而不是目标矩形：用户已经拖过窗口时，回流不会把窗口拽回原位。
+ * 副作用：多出的 moveFloat 不进用户可见的撤销栈（布局撤销/重做已下线，#96）。
+ */
+export function reflowFloatLayouts(model: Model | null | undefined): void {
+  if (!model) return;
+  const rt = model as ModelRuntime;
+  for (const [, layout] of rt.getLayouts()) {
+    if (layout.getType() !== 'float') continue;
+    model.doAction(Actions.moveFloat(layout.getLayoutId(), layout.getRect().clone()));
+  }
+}

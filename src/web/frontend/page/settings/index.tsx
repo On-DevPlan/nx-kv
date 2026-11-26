@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { getSettings, saveSettings, getOrphans, purgeOrphans } from './api.js';
 import { useApp } from '../../app-context.jsx';
+import { reflowFloatLayouts } from '../../workspace.js';
 import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
@@ -96,6 +97,14 @@ export default function SettingsPanel() {
   const patchPrefs = app.patchPrefs || (() => {});
 
   const [tab, setTab] = useState('pref');
+  // 浮窗内部布局回流（#275「设置面板高度塌陷，没有占满整个弹窗区域」）：浮窗刚创建
+  // 出来时 flexlayout 还量不到浮窗头高，内部页签按旧 bounds 定位 → 内容区只占
+  // 上半截。面板内容挂载后补发一次同矩形，引擎即按已量好的尺寸重排（实测
+  // 设置面板高度 459 → 670，内容区 697）。详见 workspace/open.ts 的 reflowFloatLayouts。
+  useEffect(() => {
+    const id = requestAnimationFrame(() => reflowFloatLayouts(app.model));
+    return () => cancelAnimationFrame(id);
+  }, [app.model]);
   // /api/setting 的响应（外部数据边界）：字段按后端 schema 读
   const [cfg, setCfg] = useState<Record<string, any> | null>(null);
   const [busy, setBusy] = useState(false);

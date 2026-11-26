@@ -370,6 +370,21 @@
           "children": []
         },
         {
+          "name": "dirs",
+          "path": [
+            "repo",
+            "dirs"
+          ],
+          "action": {
+            "id": "repo.dirs",
+            "module": "repos",
+            "summary": "列已登记仓库下某目录的子目录（只读；面包屑选子目录用）",
+            "usage": "repo dirs",
+            "http": "GET /api/repos/dirs"
+          },
+          "children": []
+        },
+        {
           "name": "export",
           "path": [
             "repo",

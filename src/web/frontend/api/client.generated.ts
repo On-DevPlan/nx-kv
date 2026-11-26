@@ -119,6 +119,7 @@ import type {
   RepoBindTopicsAction,
   RepoCloneAction,
   RepoDetectAction,
+  RepoDirsAction,
   RepoExportAction,
   RepoGetAction,
   RepoImportAction,
@@ -210,6 +211,8 @@ export interface ApiClient {
   clone(input: z.input<InstanceType<typeof RepoCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoCloneAction>['run']>>>;
 /** 探测目录的 git remote（添加仓库前自动填充远程地址；只读） */
   detect(input: z.input<InstanceType<typeof RepoDetectAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDetectAction>['run']>>>;
+/** 列已登记仓库下某目录的子目录（只读；面包屑选子目录用） */
+  dirs(input: z.input<InstanceType<typeof RepoDirsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDirsAction>['run']>>>;
 /** 导出仓库布局 JSON（全局 key + 分组 + 参考关系；不含本地路径）；--zip 打包成 zip */
   repoExport(input?: z.input<InstanceType<typeof RepoExportAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoExportAction>['run']>>>;
 /** 查看单个仓库的登记信息 */
@@ -567,6 +570,16 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/repos/detect`;
       const body = { "path": inp["path"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDetectAction>['run']>>;
+    },
+    // action: repo.dirs
+    async dirs(input: z.input<InstanceType<typeof RepoDirsAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof RepoDirsAction>['_input']>);
+      let path = `/api/repos/dirs`;
+      const q = new URLSearchParams();
+      if (inp["path"] !== undefined) q.set("path", String(inp["path"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof RepoDirsAction>['run']>>;
     },
     // action: repo.export
     async repoExport(input?: z.input<InstanceType<typeof RepoExportAction>['_input']>) {

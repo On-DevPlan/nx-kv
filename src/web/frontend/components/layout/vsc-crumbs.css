@@ -49,6 +49,16 @@
   cursor: default;
   color: var(--ink-2, #4b515a);
 }
+/* 路径段（#276 完整本地路径）：与队列名段区分一档——淡一点，路径更像「位置」不像「对象」 */
+.vsc-crumb.is-path .vsc-crumb-t { color: var(--faint, #8a8578); }
+/* 末段右侧的「同级」小钮（目录名与队列名同名时，同级下拉改挂这里） */
+.vsc-crumb-sib {
+  padding: 3px 3px;
+  font-size: 11px;
+  color: var(--faint, #8a8578);
+  opacity: 0.55;
+}
+.vsc-crumb-sib:hover { opacity: 1; }
 /* 最后一段（当前位置）加重一档，与 vscode 的文件段同措 */
 .vsc-crumb.is-cur .vsc-crumb-t {
   color: var(--ink, #16181c);

@@ -17,6 +17,9 @@ import type {
   LocaltaskPreviewAction,
 } from '../../../modules/claim/actions/_manifest.generated.js';
 import type {
+  DbDataAction,
+} from '../../../modules/db/actions/_manifest.generated.js';
+import type {
   DocsAttachAction,
   DocsAttachmentsAction,
   DocsBindingsAction,
@@ -419,6 +422,8 @@ export interface ApiClient {
   delete(input: z.input<InstanceType<typeof PromptTemplateDeleteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptTemplateDeleteAction>['run']>>>;
 /** 保存提示词段模板（新建/编辑用户条目；保存前按该段变量白名单校验） */
   save(input: z.input<InstanceType<typeof PromptTemplateSaveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptTemplateSaveAction>['run']>>>;
+/** 库数据只读导出：全表概览或单表行窗口（不触发导入、不升级） */
+  data(input?: z.input<InstanceType<typeof DbDataAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DbDataAction>['run']>>>;
 }
 
 export function createApiClient(transport: Transport): ApiClient {
@@ -1390,6 +1395,18 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/prompt/template/save`;
       const body = { "segment": inp["segment"], "id": inp["id"], "name": inp["name"], "text": inp["text"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof PromptTemplateSaveAction>['run']>>;
+    },
+    // action: db.data
+    async data(input?: z.input<InstanceType<typeof DbDataAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DbDataAction>['_input']>);
+      let path = `/api/db/data`;
+      const q = new URLSearchParams();
+      if (inp["table"] !== undefined) q.set("table", String(inp["table"]));
+      if (inp["limit"] !== undefined) q.set("limit", String(inp["limit"]));
+      if (inp["offset"] !== undefined) q.set("offset", String(inp["offset"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DbDataAction>['run']>>;
     },
   };
 }

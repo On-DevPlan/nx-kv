@@ -17,3 +17,6 @@ function singleton(view: string, component: string, title: string): RoutePage {
 }
 
 export const reposPage = singleton('repos', 'repos', '仓库管理');
+
+// 数据库视图：当前项目库的全部内容可视化（表概览 + 单表浏览），无参数单例页
+export const dataPage = singleton('data', 'data', '数据库');

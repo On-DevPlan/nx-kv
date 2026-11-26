@@ -2232,6 +2232,21 @@
           "children": []
         },
         {
+          "name": "data",
+          "path": [
+            "db",
+            "data"
+          ],
+          "action": {
+            "id": "db.data",
+            "module": "db",
+            "summary": "库数据只读导出：全表概览或单表行窗口（不触发导入、不升级）",
+            "usage": "db data",
+            "http": "GET /api/db/data"
+          },
+          "children": []
+        },
+        {
           "name": "migrate",
           "path": [
             "db",

@@ -155,6 +155,8 @@ function routeFromHash(): AppRoute {
     return { view: 'templates', key: '', task: '', mode: '', id: '', topic: '', scope: '' };
   }
   if (path === 'repos') return { view: 'repos', key: '', task: '' };
+  // 数据库视图（#/data）：当前项目库全部内容的只读可视化（表概览 + 单表浏览）
+  if (path === 'data') return { view: 'data', key: '', task: '' };
   // 旧深链（#/localtask…、#/global…）与未知路径统一落仓库管理（#190 全局池已删除）
   return { view: 'repos', key: '', task: '' };
 }

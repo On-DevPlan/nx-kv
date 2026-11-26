@@ -54,6 +54,9 @@ export function crumbsOf(route: Partial<AppRoute> | null | undefined, ctx: SpecC
       return ctx.boardName ? [ctx.boardName] : ['项目组'];
     case 'repos':
       return ['仓库管理'];
+    // 数据库视图：顶层单例页，只有自身一层
+    case 'data':
+      return ['数据库'];
     case 'templates': {
       if (route.mode === 'new') return ['新建模板'];
       if (route.mode === 'edit') return ['编辑模板'];
@@ -111,6 +114,9 @@ export function crumbTrailOf(route: Partial<AppRoute> | null | undefined, ctx: S
     }
     case 'repos':
       return [{ label: '仓库管理', hash: '' }];
+    // 数据库视图：顶层单例页，只有自身一层
+    case 'data':
+      return [{ label: '数据库', hash: '' }];
     case 'templates': {
       if (route.mode === 'new') return [{ label: '任务模板', hash: '#/templates' }, { label: '新建模板', hash: '' }];
       if (route.mode === 'edit') return [{ label: '任务模板', hash: '#/templates' }, { label: '编辑模板', hash: '' }];
@@ -144,6 +150,9 @@ export function parentRouteOf(route: Partial<AppRoute> | null | undefined, _ctx?
     case 'group':
       if (route.task) return `#/group/${encodeURIComponent(route.key || '')}`;
       return '#/repos';
+    // 数据库视图：顶层单例页，上面没有父级（不画返回键）
+    case 'data':
+      return '';
     // 文档页（#88）：退回归属页（仓库 → #/repos；项目组 → #/group/<id>）
     case 'doc':
       if (route.repoKey) return '#/repos';

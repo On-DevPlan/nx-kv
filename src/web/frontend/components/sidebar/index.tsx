@@ -514,6 +514,7 @@ export default function Sidebar({
       <div className="sfoot">
         {footEntry('#/templates', 'list', '任务模板')}
         {footEntry('#/repos', 'repo', '仓库管理')}
+        {footEntry('#/data', 'grid', '数据库')}
       </div>
 
       {menu && <PopMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}

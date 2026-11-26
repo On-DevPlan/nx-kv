@@ -287,7 +287,17 @@ export function openFloatingPanel(model: Model | null | undefined, spec: OpenPan
       width,
       height
     );
-    model.doAction(Actions.moveFloat(layout.getLayoutId(), rect));
+    // 首帧渲染前直接 setRect（不走 action）：flexlayout 给新建浮窗的缺省矩形是
+    // 「主区的一半」（applyClosePopout 的缺省），先渲染再 moveFloat 会有
+    // 「先显示小的、然后才适应面板大小」的可见跳变（#280 第 2 轮反馈）。
+    // 浮窗此刻还没渲染，模型内存态改矩形即可，首帧就是目标尺寸；
+    // applyMoveFloat 内部本来也是 layout.setRect(action.data.rect)。
+    const mutable = layout as unknown as { setRect?: (r: Rect) => void };
+    if (typeof mutable.setRect === 'function') {
+      mutable.setRect(rect);
+    } else {
+      model.doAction(Actions.moveFloat(layout.getLayoutId(), rect));
+    }
   }
   return { tabId, reused: false };
 }

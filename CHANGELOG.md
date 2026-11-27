@@ -2,6 +2,62 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.71.0] - 2026-11-27 gettask 插件生命周期 + 第三个内置插件 skill-ref
+
+本轮把插件从「新建任务入口」扩展到**任务全生命周期**：同一个插件对象可以在 pretask 之外实现
+`gettask`（任务编辑页 dock tab + 领取交付插件区块）、`candidates`（可搜索/可引用候选）与
+`onTaskCreated`（草稿提交迁移）。新增第三个内置插件 **skill-ref**，第一个 gettask 案例。
+
+### Added
+
+- **gettask 第二生命周期**（`packages/plugin-sdk`、`src/modules/plugin/gettask.ts`）：
+  - `gettask(ctx)` 声明任务区块（id/label/tag/template/fields/ui/data），宿主聚合为
+    `plugin gettask` / `GET /api/plugins/gettask`；
+  - 领取交付时 `data(taskCtx)` 按任务取数，套模板后包成 `<nxkv.plugin.<pluginId>.<tag>>`，
+    排在 get 链末尾；单插件失败只记 warning，不阻断领取；
+  - 任务编辑页底部 dock 自动挂载 `ui.panel` 插件 tab；设置 → 提示词模板自动出现
+    「插件区块（gettask）」，支持复制/编辑/启用/删除。
+- **第三个内置插件：技能引用 `skill-ref`**（`packages/plugin-skill-ref`）：
+  - 扫描仓库根 `.claude/skills`（组任务按任务落库的 `repoKey` 解析执行仓库），也支持左下角
+    「技能引用设置」追加目录；
+  - 任务页 dock 可搜索/多选技能，按 `task.id` 绑定；领取时内置模板要求 agent **强制加载**
+    选中的 `SKILL.md` 并给出绝对路径；
+  - 草稿页同样可用：`draft-N` 暂存，提交后 `onTaskCreated` 迁移到真实任务号；
+  - 候选条目走标准接口，供面板和后续正文内搜索/引用。
+- **candidates 候选条目标准接口**（SDK `PluginCandidate`、`src/modules/plugin/candidates.ts`）：
+  `plugin candidates` / `GET /api/plugins/candidates`，支持 `pluginId` / `q` / `limit`，统一
+  `id/label/description/kind/path/text/meta`；候选不绑定任务。
+- **onTaskCreated 任务创建钩子**（`src/modules/plugin/task-created.ts`）：
+  `plugin task-created` / `POST /api/plugins/task-created`；草稿提交后广播 `draftKey + task`，
+  插件自行迁移；迁移失败只记 warning，不回滚已创建的任务。
+- 插件上下文补任务仓库定位：claim 与 dock 透传 `repoKey`，组任务按任务执行仓库解析目录。
+- 文档：`docs/pretask-plugins.md` 新增 §15 gettask / §16 标准插件开发流程（十步、gettask 检查清单、
+  登记点、SOP、验收、失败分支）；A13/B09 同步 gettask / candidates / onTaskCreated 与登记点。
+
+### Changed
+
+- **任务编辑页「新任务」与目录页「＋ 新建页」同口径**：先执行本主题默认 pretask 入口
+  （面板入口直接进插件页，草稿入口进参数页/按插件正文落库），不再一律建空白草稿。
+- gettask 首个案例只保留 `skill-ref`；目录批注仍是 pretask + panel + 设置页，不注册 gettask。
+- 明确生命周期口径：pretask / gettask 是**同一个插件对象上的可选方法**，不是插件类型；
+  左下角设置页是插件自己的 client sidebar，与生命周期无关。
+- 外部段模板的启用/删除也接受插件段；用户模板与内置实质相同时继续跟随内置更新。
+
+### Fixed
+
+- **草稿页 dock 没有插件 tab**：`plugin.gettask` 的 `taskId` 改为接受任务号或 `draft-N`，
+  dock 不再排除草稿。
+- **草稿页选中项提交后丢失**：`onTaskCreated` 迁移草稿键数据；先写新任务、成功后再删草稿行。
+- 插件页 `createDraft` 重构到共享 `client-api` 后，创建草稿成功仍会释放插件页 session。
+
+### Verification
+
+- `lint`（含插件闭合门禁）、`typecheck`、`build`、`test:unit`（1171/1171）、`test:smoke`（97/97）全绿。
+- 真机：真实任务出现「技能引用」tab → 选中保存；草稿页出现 tab → 提交后新任务仍保留；
+  设置 → 提示词模板出现「插件区块（gettask）」并可改模板；左下角「技能引用设置」可进入。
+- `localtask preview` 实际输出 `<nxkv.plugin.skill-ref.skills>` 与 `SKILL.md` 绝对路径。
+- 新增 `tests/unit/plugin-gettask.test.mjs` 覆盖声明、候选、任务取块、交付区块、草稿迁移、模板覆盖。
+
 ## [0.70.0] - 2026-11-27 内部插件体系（任务模板迁出 + 目录批注）+ schema v19~v21
 
 本轮主线：把 pretask 能力改造成**自封闭的内部插件**——插件自带 server 契约、client UI、自有存储与

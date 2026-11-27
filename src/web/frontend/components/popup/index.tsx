@@ -203,12 +203,19 @@ export function useDialog(): DialogApi {
 export type PopMenuItem =
   | 'sep'
   | {
+      /** 普通项不带 kind（显式 undefined 让 heading 联合可被 `kind` 收窄） */
+      kind?: undefined;
       label: ReactNode;
       icon?: string;
       danger?: boolean;
       onClick?: () => void;
       /** #261：hover 该项时亮出的行尾操作（如图标按钮）；点击不会触发整行 onClick */
       hoverActions?: ReactNode;
+    }
+  | {
+      /** 分组标题（不可点、不参与键盘项导航） */
+      kind: 'heading';
+      label: ReactNode;
     };
 
 /** PopMenu 入参。 */
@@ -288,6 +295,8 @@ export function PopMenu({ x, y, items, onClose, width }: PopMenuProps) {
         // 非对象即分隔线：调用方把 'sep' 写进未标注类型的数组时会退化成 string
         typeof it === 'string' ? (
           <div className="pp-sep" key={i} />
+        ) : it.kind === 'heading' ? (
+          <div className="pp-menu-heading" key={i}>{it.label}</div>
         ) : (
           <button
             key={i}

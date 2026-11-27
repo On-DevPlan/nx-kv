@@ -55,7 +55,10 @@ export const COUNTED_TABLES = [
   'attachments',
   'task_attach',
   'ref_attach',
-  'templates',
+  'plugin_state',
+  'plugin_entry_visibility',
+  'plugin_legacy_data',
+  'plugin_storage_migrations',
   'settings',
 ];
 

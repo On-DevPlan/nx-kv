@@ -36,6 +36,14 @@ test('模板视图内的跳转必须判为不同（否则目标页不出现）',
   assert.equal(sameRoute(edit, { ...edit, id: 's_2' }), false, '换一个模板 id 也是新位置');
 });
 
+test('插件页之间切换必须判为不同（pluginId / pageId / sessionId）', () => {
+  const manage = { view: 'plugin', key: '', task: '', pluginId: 'task-template', pageId: 'manage' };
+  const settings = { view: 'plugin', key: '', task: '', pluginId: 'dir-annotate', pageId: 'settings' };
+  assert.equal(sameRoute(manage, settings), false, '换插件/页面');
+  assert.equal(sameRoute(manage, { ...manage, pageId: 'entry-form', sessionId: 'ps_1' }), false, '同插件换页面/会话');
+  assert.equal(sameRoute(manage, { ...manage }), true);
+});
+
 test('key / task / repoKey / boardKey 任一变化都算新位置', () => {
   const a = { view: 'dir', key: 'k1', task: 't1', repoKey: 'r1', boardKey: 'b1' };
   for (const patch of [{ key: 'k2' }, { task: 't2' }, { repoKey: 'r2' }, { boardKey: 'b2' }, { view: 'group' }]) {
@@ -57,10 +65,8 @@ const PANEL_CASES = [
   ['dir', 'dir', { dirKey: 'D' }],
   ['group', 'group', { boardId: 'B' }],
   ['repos', 'repos', {}],
-  ['templates-plain', 'templates', {}],
-  ['templates-edit', 'templates', { mode: 'edit', id: 't1' }],
-  ['templates-new-full', 'templates', { mode: 'new', topic: 'k 1', scope: ['topic:k 1', 'repo:r'] }],
-  ['templates-new-bare', 'templates', { mode: 'new' }],
+  ['plugin-page', 'plugin-page', { pluginId: 'task-template', pageId: 'manage' }],
+  ['plugin-entry', 'plugin-page', { pluginId: 'task-template', pageId: 'entry-form', sessionId: 'ps_1' }],
   ['doc-repo', 'doc', { docId: 'ref:ref_0123456789abcdef', repoKey: 'r1' }],
   ['doc-board', 'doc', { docId: 'path:x/y.md', boardKey: 'b1', boardName: '组 一' }],
   ['doc-bare', 'doc', {}],
@@ -79,9 +85,8 @@ const ROUTE_CASES = [
   ['group-page', { view: 'group', key: 'B', task: '7' }],
   ['group-plain', { view: 'group', key: 'B', task: '' }],
   ['repos', { view: 'repos', key: '', task: '' }],
-  ['templates-plain', { view: 'templates', key: '', task: '' }],
-  ['templates-edit', { view: 'templates', key: '', task: '', mode: 'edit', id: 't1' }],
-  ['templates-new', { view: 'templates', key: '', task: '', mode: 'new', topic: 'k 1', scope: 'topic:k 1, repo:r' }],
+  ['plugin-page', { view: 'plugin', key: '', task: '', pluginId: 'task-template', pageId: 'manage' }],
+  ['plugin-entry', { view: 'plugin', key: '', task: '', pluginId: 'task-template', pageId: 'entry-form', sessionId: 'ps_1' }],
   ['doc-repo', { view: 'doc', key: 'ref:ref_0123456789abcdef', task: '', repoKey: 'r1' }],
   ['doc-board', { view: 'doc', key: 'path:x/y.md', task: '', boardKey: 'b1', boardName: '组 一' }],
   ['doc-bare', { view: 'doc', key: '', task: '' }],
@@ -114,7 +119,7 @@ test('路由 → 面板：与表化前的输出逐字一致（含两套 ctx）',
 test('夹具覆盖了每个已登记视图', () => {
   // 防止「新增视图忘了补用例」——夹具里有、登记表里没有也算漏（那说明视图被删了）
   const views = new Set(ROUTE_CASES.map(([, r]) => r.view).filter((v) => v !== 'unknown'));
-  // #174：overview（全部目录总览）下线后剩 6 个视图——阈值同步
+  // #174：overview 下线；现在 dir / group / repos / plugin / doc / unknown 仍有 6 个视图
   assert.ok(views.size >= 6, `夹具视图太少: ${[...views].join(',')}`);
 });
 

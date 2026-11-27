@@ -1,0 +1,41 @@
+/* 内部插件宿主 UI：设置页插件分区 / 本主题入口可见性 / 通用插件页面外壳。 */
+.plugin-set-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.plugin-set-row{
+  display:flex;justify-content:space-between;gap:12px;padding:10px 12px;
+  border:1px solid var(--line,#E4E2DC);border-radius:10px;background:var(--paper,#fff);
+}
+.plugin-set-main{min-width:0}
+.plugin-set-name{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--ink,#222)}
+.plugin-set-id,.plugin-set-ver{font-size:10.5px;color:var(--mid,#8A8578);font-weight:400}
+.plugin-set-desc{font-size:11.5px;color:var(--ink-2,#4B515A);margin-top:4px;line-height:1.6}
+.plugin-set-meta{color:var(--mid,#8A8578)}
+.plugin-set-err{color:var(--danger,#B42318)}
+.plugin-set-acts{display:flex;align-items:center;gap:8px;flex:none}
+
+.plugin-vis-section{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+.plugin-vis-sec-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.plugin-vis-advanced>summary{cursor:pointer;list-style-position:inside}
+.plugin-vis-advanced>summary b{font-weight:600}
+.plugin-vis-sec-head b{font-size:13px;color:var(--ink,#222)}
+.plugin-vis-sec-head .muted{font-size:11.5px;line-height:1.6}
+.plugin-vis-list{display:flex;flex-direction:column;gap:6px}
+.plugin-vis-row{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;
+  border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--paper,#fff);
+}
+.plugin-vis-check{display:flex;align-items:center;gap:8px;min-width:0;cursor:pointer}
+.plugin-vis-check input[type="radio"]{margin-left:4px}
+.plugin-vis-name{font-size:12.5px;font-weight:600;color:var(--ink,#222)}
+.plugin-vis-kind{
+  flex:none;font-size:9.5px;line-height:1.5;padding:0 5px;border-radius:4px;
+  color:var(--mid,#8A8578);background:var(--soft,#F1F0EC);
+}
+.plugin-vis-plugin{font-size:10.5px;color:var(--mid,#8A8578)}
+.plugin-vis-id{
+  font-size:10.5px;color:var(--mid,#8A8578);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;max-width:360px;
+}
+.plugin-vis-move{display:flex;gap:2px}
+.plugin-vis-off{font-size:10.5px;color:var(--danger,#B42318)}
+
+.plugin-page-host{min-width:0}

@@ -33,7 +33,7 @@ import goals from '../modules/goals/index.js';
 import repos from '../modules/repos/index.js';
 import docs from '../modules/docs/index.js';
 import file from '../modules/file/index.js';
-import templates from '../modules/templates/index.js';
+import plugin from '../modules/plugin/index.js';
 import bundled from '../modules/bundled/index.js';
 import db from '../modules/db/index.js';
 import { PromptplugModule } from '../modules/promptplug/index.js';
@@ -47,7 +47,7 @@ const MODULE_LIST: readonly AnyModule[] = [
   repos,
   docs,
   file,
-  templates,
+  plugin,
   bundled,
   db,
   new PromptplugModule(),

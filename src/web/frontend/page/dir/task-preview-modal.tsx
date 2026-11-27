@@ -69,7 +69,7 @@ export function PreviewModal({ state, onClose }: PreviewModalProps) {
           预览失败：{state.error}
           {/* 「接口不存在」= 正在跑的 serve 进程比页面资产旧（路由启动时加载、
               资产现读磁盘，#65 验收反馈实锤过这个 404）——引导重启，别让它
-              看起来像瞬时故障。与 overview 批量删除 / use-templates 同一处理。 */}
+              看起来像瞬时故障。与 overview 批量删除同一处理。 */}
           {/接口不存在/.test(String(state.error)) && (
             <div className='mdw-prev-hint'>
               本机面板服务较旧：重启面板（结束当前 serve 进程后重新启动）即可生效，刷新页面不够。

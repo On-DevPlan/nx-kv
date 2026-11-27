@@ -1,0 +1,67 @@
+/* task-template 插件 UI：复用宿主的 .rp-page / .page-head / .btn / .iconbtn 口径，
+   只补插件自己的卡片、行与编辑器。类名与旧任务模板页一致，视觉不漂移。 */
+.tpl-page{display:flex;flex-direction:column;gap:12px}
+.tpl-head-note{margin:2px 0 0;font-size:12px}
+.tpl-row{display:inline-flex;align-items:baseline;gap:6px;min-width:0;flex-wrap:wrap}
+.tpl-row-name{font-weight:600;font-size:12.5px;color:var(--ink,#222)}
+.tpl-row-desc{font-size:11px;color:var(--mid,#8A8578);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.tpl-badge{
+  font-size:10.5px;padding:0 6px;border-radius:999px;line-height:1.7;
+  background:var(--mdw-accent-soft,#E8F2EE);color:var(--mdw-accent,#2F6F5E);
+  border:1px solid var(--mdw-accent-line,#B7D4C8);
+}
+.tpl-badge.soft{background:var(--soft,#F1F0EC);color:var(--mid,#8A8578);border-color:var(--line,#E4E2DC)}
+.tpl-list{display:flex;flex-direction:column;gap:8px;min-width:0}
+.tpl-card{
+  display:flex;flex-direction:column;gap:6px;min-width:0;
+  padding:10px 12px;border:1px solid var(--line,#E4E2DC);border-radius:10px;background:var(--paper,#fff);
+}
+.tpl-card-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.tpl-card-name{font-weight:600;font-size:13px}
+.tpl-card-sum{
+  font-size:11.5px;color:var(--ink-2,#4B515A);line-height:1.6;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+}
+
+/* 槽位中间页 */
+.tpl-fill-page{gap:12px}
+.tpl-fill-page .page-head h2{display:flex;align-items:center;gap:7px}
+.tpl-fill-body{
+  display:flex;flex-direction:column;gap:14px;min-width:0;max-width:720px;
+  padding:14px;border:1px solid var(--line,#E4E2DC);border-radius:10px;background:var(--paper,#fff);
+}
+.tpl-fill-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tpl-fill-label{font-size:12px;font-weight:600;color:var(--ink-2,#4B515A)}
+.tpl-fill-input{
+  width:100%;resize:vertical;min-height:84px;padding:8px 10px;box-sizing:border-box;
+  font:400 12.5px/1.6 inherit;color:var(--ink,#222);background:var(--paper,#fff);
+  border:1px solid var(--line,#E4E2DC);border-radius:8px;
+}
+.tpl-fill-input:focus{outline:none;border-color:var(--mdw-accent-line,#B7D4C8)}
+.tpl-fill-empty{padding:8px 0}
+.tpl-fill-foot{display:flex;gap:8px;justify-content:flex-end;max-width:720px}
+
+/* 自管理页 */
+.tpl-mng-list{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tpl-mng-row{
+  display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:8px;
+  padding:8px 10px;border:1px solid var(--line,#E4E2DC);border-radius:9px;background:var(--paper,#fff);
+}
+.tpl-mng-grip{cursor:default;color:var(--mid,#8A8578);display:flex;align-items:center;justify-content:center}
+.tpl-mng-main{min-width:0}
+.tpl-mng-line{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.tpl-mng-name{font-size:12.5px;font-weight:600;color:var(--ink,#222)}
+.tpl-mng-acts{display:flex;align-items:center;gap:2px;flex-wrap:nowrap;justify-content:flex-end}
+.tpl-mng-acts .iconbtn{font-size:11px;padding:4px 6px;color:var(--mid,#8A8578);white-space:nowrap}
+.tpl-mng-acts .iconbtn:hover:not(:disabled){color:var(--ink,#222);background:var(--soft,#F1F0EC)}
+.tpl-editor{
+  display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--mdw-accent-line,#B7D4C8);
+  border-radius:10px;background:var(--paper,#fff);
+}
+.tpl-name-input{
+  width:100%;box-sizing:border-box;padding:8px 10px;font:600 13px/1.5 inherit;
+  color:var(--ink,#222);background:var(--paper,#fff);
+  border:1px solid var(--line,#E4E2DC);border-radius:8px;
+}
+.tpl-body-input{min-height:260px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.tpl-editor-foot{display:flex;gap:8px;justify-content:flex-end}

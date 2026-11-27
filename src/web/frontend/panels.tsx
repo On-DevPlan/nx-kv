@@ -11,8 +11,8 @@ import type { Model, TabNode } from 'flexlayout-react';
 import { useApp } from './app-context.jsx';
 import { ErrorBoundary } from './components/ui.jsx';
 import SidebarPanel from './components/sidebar/panel.jsx';
-import { configSig, openFloatingPanel, openPanel } from './workspace.js';
-import type { PanelConfig, PanelCtx, TemplateEditorOpts } from './types.js';
+import { configSig, openFloatingPanel } from './workspace.js';
+import type { PanelConfig, PanelCtx } from './types.js';
 
 const DirPanel = lazy(() => import('./page/dir/index.jsx'));
 const PagePanel = lazy(() => import('./page/dir/task.jsx'));
@@ -20,7 +20,8 @@ const ProgressPanel = lazy(() => import('./page/progress/index.jsx'));
 const RefsPanel = lazy(() => import('./page/refs/index.jsx'));
 const GroupView = lazy(() => import('./page/group/index.jsx'));
 const ReposView = lazy(() => import('./page/repos/index.jsx'));
-const TemplatePanel = lazy(() => import('./page/templates/index.jsx'));
+const PluginPageHost = lazy(() => import('./plugin-host/plugin-page.jsx'));
+const PluginVisibilityPanel = lazy(() => import('./plugin-host/visibility-panel.jsx'));
 const DocPanel = lazy(() => import('./page/doc/index.jsx'));
 const SettingsPanel = lazy(() => import('./page/settings/index.jsx'));
 const DagPanel = lazy(() => import('./page/dag/index.jsx'));
@@ -153,12 +154,14 @@ export const PANELS: Record<string, PanelEntry> = {
   ) },
   group: { title: '项目组', render: (cfg, ctx) => <GroupPanel boardId={cfg && cfg.boardId} model={ctx && ctx.model} /> },
   repos: { title: '仓库管理', render: () => wrap(<ReposView />) },
-  // 任务模板（#217）：#/templates 是列表页，config 带 mode/id/scope 时是编辑宿主
-  templates: {
-    title: '任务模板',
-    render: (cfg, ctx) => wrap(
-      <TemplatePanel config={cfg} model={ctx && ctx.model} tabId={ctx && ctx.tabId} />
-    ),
+  // 通用插件页面 / 本主题入口可见性（宿主 UI，不依赖具体插件）
+  'plugin-page': {
+    title: '插件页面',
+    render: (cfg) => wrap(<PluginPageHost config={cfg} />),
+  },
+  'plugin-visibility': {
+    title: '本主题入口',
+    render: (cfg) => wrap(<PluginVisibilityPanel config={cfg} />),
   },
   // 文档：config.docId 寻址（可 JSON 序列化 → openPanel 按 config 去重复用页签）
   doc: {
@@ -202,23 +205,6 @@ export const PANELS: Record<string, PanelEntry> = {
 export function openSettingsPanel(model: Model | null | undefined) {
   if (!model) return null;
   return openFloatingPanel(model, { component: 'settings', name: '设置', config: {} });
-}
-
-/**
- * 打开模板全屏编辑（#135）。列表在 #/templates 主内容区（#217）；这里只承载 MdPanes。
- */
-export function openTemplateEditor(model: Model | null | undefined, opts: TemplateEditorOpts = {}) {
-  if (!model) return null;
-  const mode = opts.mode || (opts.id ? 'edit' : 'new');
-  const config: PanelConfig = {
-    mode,
-    id: opts.id || '',
-    name: opts.name || '',
-    topic: opts.topic || '',
-    scope: Array.isArray(opts.scope) ? opts.scope : [],
-  };
-  const tabName = mode === 'new' ? '新建模板' : (opts.name || '编辑模板');
-  return openPanel(model, { component: 'templates', name: tabName, config, location: 'center' });
 }
 
 /** 面板类型清单（总览页/文档里的固定顺序；旧「＋面板抽屉」已删，面板打开走侧栏树与路由） */

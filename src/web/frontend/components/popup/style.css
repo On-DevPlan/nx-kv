@@ -77,3 +77,7 @@
 .pp-menu-item:hover .pp-menu-item-ico,
 .pp-menu-item.danger:hover .pp-menu-item-ico { color: currentColor; }
 .pp-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+.pp-menu-heading {
+  padding: 6px 10px 3px; font-size: 10.5px; line-height: 1.4;
+  color: var(--mid); letter-spacing: .02em; cursor: default;
+}

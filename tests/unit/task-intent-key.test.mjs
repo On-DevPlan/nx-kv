@@ -12,7 +12,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const fillSrc = readFileSync(join(root, 'src/web/frontend/page/templates/fill.tsx'), 'utf8');
+const fillSrc = readFileSync(join(root, 'src/web/frontend/plugin-host/plugin-page.tsx'), 'utf8');
 const taskSrc = readFileSync(join(root, 'src/web/frontend/page/dir/task.tsx'), 'utf8');
 // #191：自动提交逻辑从 task.tsx 抽到 use-auto-submit.ts（task.tsx 行数门禁），取 intent 的断言落在这里
 const hookSrc = readFileSync(join(root, 'src/web/frontend/page/dir/use-auto-submit.ts'), 'utf8');

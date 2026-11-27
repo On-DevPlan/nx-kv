@@ -9,7 +9,7 @@ import type { AttachAreaHandle } from '../../components/md/attachments/attach-ar
 import type { EditorApi } from '../../components/md/panes/md-panes-helpers.js';
 import type { Model } from 'flexlayout-react';
 import type { AppValue } from '../../app-context.jsx';
-import type { BoardRow, LocalTask, LocalTopic, TemplatesApi } from '../../types.js';
+import type { BoardRow, LocalTask, LocalTopic } from '../../types.js';
 import { findGroupTask as findGroupTaskRaw, sortTasksForDisplay as sortTasksForDisplayRaw } from '../../modules/board/board-view.js';
 import { renderMarkdownHtml as renderMarkdownHtmlRaw } from '../../modules/md/md-parse.js';
 
@@ -267,7 +267,8 @@ export interface TaskCtx {
   app: AppSlice;
   model: Model | null;
   tabId?: string;
-  tpl?: TemplatesApi;
+  /** 默认 pretask 入口正文（插件入口在 task.tsx 里取好） */
+  defaultDraftBody?: string;
   refreshLocal?: () => Promise<void>;
   markDirty: () => void;
   setDirty: Dispatch<SetStateAction<boolean>>;

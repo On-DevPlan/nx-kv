@@ -14,7 +14,7 @@
 //
 // hash 路由：
 //   #/dir/<key>  目录详情    #/group/<id> 项目组    #/repos 仓库管理
-//   #/templates  任务模板（面板，不是弹窗）
+//   #/plugin/<id>/<page>  插件自管理页面（左下角条目进入）
 //   （经典看板 #/localtask 已下线；wait 深链改落 #/dir/<key>）
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
@@ -38,7 +38,7 @@ import {
   pruneBlankTabsets,
   saveModel,
 } from './workspace.js';
-import { useTemplates } from './modules/md/use-templates.js';
+import { usePluginUiLoader } from './plugin-host/loader.js';
 import { findGroupTask } from './modules/board/board-view.js';
 import { installAttachmentPreview } from './modules/md/lightbox.js';
 import { loadPrefs } from './prefs.js';
@@ -102,57 +102,26 @@ function routeFromHash(): AppRoute {
       boardName: name,
     };
   }
-  // 任务模板编辑（#137）：#/templates/new[?scope=&topic=] / #/templates/edit/<id>
-  // 必须带 mode，否则会与空 config 的「目录页」互相冲掉全屏编辑器。
-  if (path === 'templates' || path.startsWith('templates/')) {
-    const rest = path === 'templates' ? '' : path.slice('templates/'.length);
-    if (rest.startsWith('edit/')) {
+  // 通用插件页面：#/plugin/<pluginId>/<pageId>[/<sessionId>]
+  if (path === 'plugin' || path.startsWith('plugin/')) {
+    const rest = path === 'plugin' ? '' : path.slice('plugin/'.length);
+    const parts = rest.split('/').filter(Boolean).map((x) => {
+      try {
+        return decodeURIComponent(x);
+      } catch {
+        return x;
+      }
+    });
+    if (parts[0] && parts[1]) {
       return {
-        view: 'templates',
+        view: 'plugin',
         key: '',
         task: '',
-        mode: 'edit',
-        id: decodeURIComponent(rest.slice(5)),
-        topic: '',
-        scope: '',
+        pluginId: parts[0],
+        pageId: parts[1],
+        sessionId: parts[2] || '',
       };
     }
-    // #151：主题级模板管理页（#/templates/manage/<sessionId>）
-    if (rest.startsWith('manage/')) {
-      return {
-        view: 'templates',
-        key: '',
-        task: '',
-        mode: 'manage',
-        id: decodeURIComponent(rest.slice(7)),
-        topic: '',
-        scope: '',
-      };
-    }
-    // #151/#191：参数填写中间页（#/templates/fill/<sessionId>，会话在内存里）
-    if (rest.startsWith('fill/')) {
-      return {
-        view: 'templates',
-        key: '',
-        task: '',
-        mode: 'fill',
-        id: decodeURIComponent(rest.slice(5)),
-        topic: '',
-        scope: '',
-      };
-    }
-    if (rest === 'new') {
-      return {
-        view: 'templates',
-        key: '',
-        task: '',
-        mode: 'new',
-        id: '',
-        topic: qs.get('topic') || '',
-        scope: qs.get('scope') || '',
-      };
-    }
-    return { view: 'templates', key: '', task: '', mode: '', id: '', topic: '', scope: '' };
   }
   if (path === 'repos') return { view: 'repos', key: '', task: '' };
   // 旧深链（#/localtask…、#/global…）与未知路径统一落仓库管理（#190 全局池已删除）
@@ -183,9 +152,8 @@ export default function App() {
   // 等待回填数：只为捕捉 0→n 跳变弹 toast（值本身不上屏）
   const [, setWaitingCount] = useState<number>(0);
   const [localData, setLocalData] = useState<LocaltasksData | null>(null); // /api/localtasks 结果
-  // 任务模板：App 层持有一份（「任务模板」面板与 MD 工作台的「模板 ▾」共用，
-  // 面板里增删/设默认后工作台的列表与默认正文即时跟随，不会各持一份旧数据）
-  const tpl = useTemplates();
+  // 内部插件：加载已启用插件的 client bundle（插件自注册页面/侧栏条目/组件）
+  usePluginUiLoader();
   const layoutRef = useRef<ILayoutApi | null>(null);
 
   // 工作区模型（布局的唯一真源）。布局撤销/重做已整体下线（#96）：
@@ -415,7 +383,7 @@ export default function App() {
   // 路由变化记进历史栈——面板内面包屑「点路径返回」按来处回（见 route-history）
   useEffect(() => {
     pushRoute(location.hash);
-  }, [route.view, route.key, route.task, route.repoKey, route.boardKey]);
+  }, [route.view, route.key, route.task, route.repoKey, route.boardKey, route.pluginId, route.pageId, route.sessionId]);
 
   const modelRef = useRef<Model | null>(model);
   useEffect(() => { modelRef.current = model; }, [model]);
@@ -434,7 +402,9 @@ export default function App() {
     if (!m) return;
     const spec = panelSpecOfRoute(route, specCtxRef.current);
     if (!spec) return;
-    const routeSig = `${route.view}|${route.key}|${route.task}|${route.repoKey || ''}|${route.boardKey || ''}|${route.mode || ''}|${route.id || ''}|${route.topic || ''}|${route.scope || ''}`;
+    // 插件页的 view/key/task 恒为空，必须带上 pluginId/pageId/sessionId，
+    // 否则「任务模板 → 目录批注设置」会被当成同一条路由，永远只显示第一块面板。
+    const routeSig = `${route.view}|${route.key}|${route.task}|${route.repoKey || ''}|${route.boardKey || ''}|${route.mode || ''}|${route.id || ''}|${route.topic || ''}|${route.scope || ''}|${route.pluginId || ''}|${route.pageId || ''}|${route.sessionId || ''}`;
     const prev = openedRef.current;
     if (prev.route === routeSig && prev.key === specCtxKey) return;
     openedRef.current = { route: routeSig, key: specCtxKey };
@@ -488,17 +458,9 @@ export default function App() {
     // replaceState 不触发 hashchange —— 路由状态要**自己**跟上，否则它停在旧值，
     // 下一轮路由 effect 会按旧路由把面板抢回去。
     const next = routeFromHash();
+    // 位置判定统一走 sameRoute（新增字段不会再漏比）；boardName 只影响展示，单独带上。
     setRoute((prev) => (
-      prev.view === next.view
-      && prev.key === next.key
-      && prev.task === next.task
-      && prev.repoKey === next.repoKey
-      && prev.boardKey === next.boardKey
-      && prev.boardName === next.boardName
-      && prev.mode === next.mode
-      && prev.id === next.id
-      && prev.topic === next.topic
-      && prev.scope === next.scope
+      sameRoute(prev, next) && (prev.boardName || '') === (next.boardName || '')
         ? prev
         : next
     ));
@@ -530,13 +492,13 @@ export default function App() {
 
   const appValue = useMemo<AppValue>(
     () => ({
-      boot, rows, repoData, prefs, patchPrefs, onNavigate, refreshLocal, refreshRepos, tpl, model, route,
+      boot, rows, repoData, prefs, patchPrefs, onNavigate, refreshLocal, refreshRepos, model, route,
       // 队列首轮是否已加载完：面板据此区分「还在读」与「确实没有这条任务」
       localReady: localData !== null,
       openPage, closePanel: closePanelById,
       shell,
     }),
-    [boot, rows, repoData, prefs, patchPrefs, onNavigate, refreshLocal, refreshRepos, tpl, model, route, openPage, closePanelById, shell]
+    [boot, rows, repoData, prefs, patchPrefs, onNavigate, refreshLocal, refreshRepos, model, route, openPage, closePanelById, shell]
   );
 
   return (

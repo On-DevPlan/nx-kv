@@ -17,7 +17,8 @@ import { Icon } from '../icons.jsx';
 import { useToast } from '../toast/index.jsx';
 import { taskLabel } from './model.js';
 import type { SideRow } from './model.js';
-import { ensureQueueAndGo } from './queue-nav.js';
+import { ensureQueueKey } from './queue-nav.js';
+import { startDefaultEntry } from '../../modules/pretask/open-entry.js';
 import { statusTone, statusShort } from '../status-tag/model.js';
 import { sortTasksForDisplay, isGroupTask } from '../../modules/board/board-view.js';
 import type { LocalTask } from '../../types.js';
@@ -62,6 +63,25 @@ export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChil
   const [limit, setLimit] = useState(SIDE_TASK_LIMIT);
   const shown = tasks.slice(0, limit);
   const rest = tasks.length - shown.length;
+  // 侧栏「新建页」与目录页主按钮同口径：走本 topic 配置的默认入口（面板入口也会直接打开）；
+  // 没有可用入口时退回旧的空白草稿。
+  const openNewPage = async () => {
+    try {
+      const topicKey = await ensureQueueKey({ row, refreshLocal, toast });
+      if (!topicKey) return;
+      const handled = await startDefaultEntry({
+        topicKey,
+        repoKey: row.key,
+        cwd: row.cwd,
+        name: row.name,
+        navigate: onNavigate || (() => {}),
+      });
+      if (!handled) onNavigate?.(`#/dir/${encodeURIComponent(topicKey)}?task=draft`);
+    } catch {
+      const topicKey = row.topicKey;
+      if (topicKey) onNavigate?.(`#/dir/${encodeURIComponent(topicKey)}?task=draft`);
+    }
+  };
   return (
     <>
       {shown.map((t) => (
@@ -132,10 +152,10 @@ export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChil
         <button
           type="button"
           className="trow child task-new"
-          title="新建一页 MD（新页签打开；仓库还没有任务队列时先创建队列）"
+          title="按本目录的默认入口新建（草稿或插件面板；还没有任务队列时先创建队列）"
           onClick={(e) => {
             e.stopPropagation();
-            ensureQueueAndGo({ row, onNavigate, refreshLocal, toast, draft: true });
+            void openNewPage();
           }}
         >
           <span className="gico"><Icon name="plus" size={12} /></span>

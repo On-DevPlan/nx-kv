@@ -9,6 +9,7 @@ import { ApiRouter, sendJson } from './api.js';
 import { corsHeaders, isPreflight, parseAllowOrigin, preflightHeaders, type AllowOrigin, type CorsRequest } from './cors.js';
 import { DEFAULT_PORT } from '../core/paths.js';
 import { registry } from './registry.js';
+import { resolvePluginAsset } from '../modules/plugin/assets.js';
 
 // 静态目录：src/web/public（vite 构建产物，gitignore）。
 // 相对路径对源码态（src/runtime/server.ts）与构建态（dist/runtime/server.js）都成立。
@@ -28,6 +29,37 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.map': 'application/json; charset=utf-8',
 };
+
+/** 插件包产物：/plugins/<pluginId>/client.js | style.css | assets/... */
+async function servePluginAsset(pathname: string, res: ServerResponse): Promise<void> {
+  const rest = pathname.slice('/plugins/'.length);
+  const slash = rest.indexOf('/');
+  if (slash <= 0) {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('Not Found');
+    return;
+  }
+  let pluginId = '';
+  try {
+    pluginId = decodeURIComponent(rest.slice(0, slash));
+  } catch {
+    pluginId = '';
+  }
+  const hit = pluginId ? await resolvePluginAsset(pluginId, rest.slice(slash + 1)) : null;
+  if (!hit) {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('Not Found');
+    return;
+  }
+  try {
+    const buf = await fsp.readFile(hit.file);
+    res.writeHead(200, { 'content-type': hit.contentType, 'cache-control': 'no-store' });
+    res.end(buf);
+  } catch {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('Not Found');
+  }
+}
 
 async function serveStatic(pathname: string, res: ServerResponse): Promise<void> {
   const rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname).replace(/^\/+/, '');
@@ -124,6 +156,10 @@ export class PanelServer {
       }
       if (url.pathname.startsWith('/api/')) {
         await this.api.handle(req, res, url);
+        return;
+      }
+      if (url.pathname.startsWith('/plugins/')) {
+        await servePluginAsset(url.pathname, res);
         return;
       }
       await serveStatic(url.pathname, res);

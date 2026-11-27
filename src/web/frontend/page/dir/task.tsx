@@ -31,7 +31,8 @@ import {
   titleFromMd,
   stripTitleHeading,
 } from '../../modules/md/md-parse.js';
-import { templateDraftBody } from '../../modules/prompts/template-preview.js';
+import { renderTemplateBody } from '@nx-kv/plugin-sdk/template';
+import { usePretaskEntries } from '../../modules/pretask/use-pretask.js';
 import { useAutoSubmit } from './use-auto-submit.js';
 import {
   docIdOf,
@@ -93,7 +94,6 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   const { dialog, node: dialogNode } = useDialog();
   const rows = app.rows || [];
   const refreshLocal = app.refreshLocal;
-  const tpl = app.tpl;
 
   // 组锚定页（#86）：dirKey 缺席、groupId 在场——路由是 #/group/<boardId>?task=N，
   // 这条任务物理上落在哪个成员队列，在这里搜出来（优先 boardMark 指向本组的候选，
@@ -117,6 +117,15 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     if (groupAnchored) return (groupResolved && groupResolved.topic) || null;
     return rows.find((r) => r.key === topicKey) || null;
   }, [rows, topicKey, groupAnchored, groupResolved]);
+
+  // 默认 pretask 入口的正文：深链直接打开草稿页时用它补种（正常路径由目录/组页先写正文）。
+  const entryState = usePretaskEntries({ topic: topicKey });
+  const defaultEntry =
+    entryState.entries.find((e) => e.id === entryState.defaultEntryId) ||
+    entryState.entries.find((e) => e.kind === 'draft');
+  const defaultDraftBody = defaultEntry
+    ? renderTemplateBody(defaultEntry.previewBody || '', defaultEntry.values || {})
+    : '';
 
   const taskRow = useMemo<LocalTask | null>(
     () => (topic?.tasks || []).find((x) => String(x.id) === String(task)) || null,
@@ -210,19 +219,15 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   useEffect(() => {
     if (docs[id]) return;
     if (isDraft) {
-      getDoc(id, {
-        title: '',
-        body: tpl
-          ? templateDraftBody(tpl.defaultPick(), groupAnchored ? { board: groupId } : {})
-          : '',
-      });
+      if (entryState.loading) return;
+      getDoc(id, { title: '', body: defaultDraftBody });
     } else if (taskRow) getDoc(id, { title: titleFromMd(taskRow.text), body: taskRow.text });
-  }, [id, isDraft, taskRow, groupAnchored, groupId]);
+  }, [id, isDraft, taskRow, groupAnchored, groupId, entryState.loading, defaultDraftBody]);
 
   // ─── 动作钩子 ───
   const actions = useTaskActions({
     doc, id, isDraft, task, taskRow, topicKey, topic, boardCtx, docFm,
-    groupAnchored, groupId, app, model: model || null, tabId, tpl, refreshLocal,
+    groupAnchored, groupId, app, model: model || null, tabId, defaultDraftBody, refreshLocal,
     markDirty, histRef, editorApiRef, attachAreaRef,
     setDirty,
     goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,

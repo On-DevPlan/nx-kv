@@ -1,0 +1,31 @@
+{
+  "name": "@nx-kv/plugin-task-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server/index.js",
+  "exports": {
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "nxkv": {
+    "api": "^1",
+    "server": "dist/server/index.js",
+    "client": "dist/client/client.js",
+    "style": "dist/client/style.css"
+  },
+  "dependencies": {
+    "@nx-kv/plugin-sdk": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "name": "nx-kv",
-  "version": "0.69.1",
+  "version": "0.70.0",
   "description": "nx-kv — 本机任务队列（localtask）+ 文档库 + 仓库登记：serve 驱动 CLI 与 Web 面板，同源同构，附带可安装 skill 供 agent 提交 / 领取 / 阻塞接收任务",
   "type": "module",
   "bin": {
@@ -14,16 +14,20 @@
     "gen:actions": "node --import tsx scripts/gen-actions.mjs",
     "gen:api": "node --import tsx scripts/gen-api-client.mjs",
     "gen:dart": "node --import tsx scripts/gen-dart-client.mjs",
-    "gen": "pnpm run gen:actions && pnpm run gen:api",
-    "typecheck": "pnpm run gen && tsc -b tsconfig.node.json tsconfig.web.json",
-    "build": "pnpm run gen && tsc -b tsconfig.node.json && vite build && node scripts/link-local.mjs --auto",
-    "dev": "node --import tsx scripts/dev.mjs",
+    "gen:plugins": "node scripts/gen-plugins.mjs",
+    "gen": "pnpm run gen:actions && pnpm run gen:api && pnpm run gen:plugins",
+    "build:sdk": "tsc -p packages/plugin-sdk/tsconfig.json",
+    "build:plugins": "node scripts/build-plugins.mjs",
+    "build:packages": "pnpm run build:sdk && pnpm run build:plugins",
+    "typecheck": "pnpm run gen && pnpm run build:packages && tsc -b tsconfig.node.json tsconfig.web.json",
+    "build": "pnpm run gen && pnpm run build:packages && tsc -b tsconfig.node.json && vite build && node scripts/link-local.mjs --auto",
+    "dev": "pnpm run build:packages && node --import tsx scripts/dev.mjs",
     "vite": "vite",
-    "dev:serve": "node --import tsx src/runtime/cli.ts serve --no-open",
+    "dev:serve": "pnpm run build:packages && node --import tsx src/runtime/cli.ts serve --no-open",
     "start": "pnpm run build && node --import tsx src/runtime/cli.ts serve",
     "link:local": "node scripts/link-local.mjs",
     "unlink:local": "node scripts/link-local.mjs --unlink",
-    "lint": "eslint . && node scripts/check-tdz.mjs --all && node scripts/check-schema-decisions.mjs && node scripts/check-lines.mjs && node scripts/check-skill-sop.mjs && node scripts/check-test-isolation.mjs && node scripts/check-service-calls.mjs",
+    "lint": "eslint . && node scripts/check-tdz.mjs --all && node scripts/check-schema-decisions.mjs && node scripts/check-lines.mjs && node scripts/check-skill-sop.mjs && node scripts/check-test-isolation.mjs && node scripts/check-service-calls.mjs && node scripts/check-plugin-isolation.mjs",
     "check:schema": "node scripts/check-schema-decisions.mjs",
     "check:skill": "node scripts/check-skill-sop.mjs",
     "test": "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:smoke && pnpm run test:unit",
@@ -39,6 +43,7 @@
     "bin/",
     "src/",
     "assets/",
+    "packages/",
     "README.md",
     "CHANGELOG.md"
   ],
@@ -55,12 +60,12 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@nx-kv/plugin-sdk": "workspace:*",
     "@types/node": "^26.6.6",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.1.1",
     "eslint": "^10.10.0",
-    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.2",
     "vite": "^8.3.0"
@@ -70,6 +75,7 @@
     "handlebars": "^4.7.10",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
     "zod": "^4.6.7"
   }
 }

@@ -13,7 +13,6 @@ import type {
   Prefs,
   RepoData,
   ShellApi,
-  TemplatesApi,
 } from './types.js';
 
 /** 面板能看到的全局面（App 组装一次，全树共享）。 */
@@ -31,8 +30,6 @@ export interface AppValue {
   onNavigate: (hash: string) => void;
   refreshLocal: () => Promise<void>;
   refreshRepos: () => Promise<void>;
-  /** 任务模板（App 持有，模板面板与 MD 工作台共用同一份）。 */
-  tpl: TemplatesApi;
   model: Model | null;
   route: AppRoute;
   /** 队列首轮是否已加载完：面板据此区分「还在读」与「确实没有这条任务」 */

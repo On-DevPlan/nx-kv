@@ -93,6 +93,19 @@ import type {
   LocaltaskUpdateAction,
 } from '../../../modules/localtask/actions/_manifest.generated.js';
 import type {
+  PluginContextAction,
+  PluginEntriesAction,
+  PluginFileAction,
+  PluginListAction,
+  PluginRpcAction,
+  PluginSetDefaultAction,
+  PluginSetStateAction,
+  PluginSetVisibilityAction,
+  PluginTreeAction,
+  PluginVisibilityAction,
+  PretaskDraftAction,
+} from '../../../modules/plugin/actions/_manifest.generated.js';
+import type {
   PromptRegistryAction,
   PromptTemplateActivateAction,
   PromptTemplateDeleteAction,
@@ -148,14 +161,6 @@ import type {
   ContractAction,
   HealthAction,
 } from '../../../modules/system/actions/_manifest.generated.js';
-import type {
-  TemplateAddAction,
-  TemplateDefaultAction,
-  TemplateListAction,
-  TemplateRemoveAction,
-  TemplateReorderAction,
-  TemplateUpdateAction,
-} from '../../../modules/templates/actions/_manifest.generated.js';
 
 /** 传输层契约（手写的那一半）：返回 data（错误信封由 api() 拆好，失败即 throw）。 */
 export interface Transport {
@@ -365,18 +370,28 @@ export interface ApiClient {
   localtaskGet(input?: z.input<InstanceType<typeof LocaltaskGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskGetAction>['run']>>>;
 /** 预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览 */
   preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>>;
-/** 新增任务模板（--body 给 Markdown 正文；多行正文用 --body-file <文件> 或 --body - 读管道；--setDefault 同时设为默认；--scope 设可见域、--topic 记创建主题并默认仅该主题可见） */
-  templateAdd(input: z.input<InstanceType<typeof TemplateAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateAddAction>['run']>>>;
-/** 设置默认模板（新建页的起始正文换成它）；带 --body/--name/--scope 则改默认模板本身 */
-  default(input: z.input<InstanceType<typeof TemplateDefaultAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateDefaultAction>['run']>>>;
-/** 列出任务模板（含默认模板 id；新建页的起始正文按默认模板取） */
-  templateList(input?: z.input<InstanceType<typeof TemplateListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateListAction>['run']>>>;
-/** 删除任务模板（内置默认模板不可删；删的是默认模板则默认回落到内置） */
-  templateRemove(input: z.input<InstanceType<typeof TemplateRemoveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateRemoveAction>['run']>>>;
-/** 调整任务模板顺序（--ids a,b,c 按新序落库 sort_order；未列出的模板保持原位） */
-  templateReorder(input: z.input<InstanceType<typeof TemplateReorderAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateReorderAction>['run']>>>;
-/** 编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板不可改，出厂正文随版本升级自动覆盖） */
-  templateUpdate(input: z.input<InstanceType<typeof TemplateUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TemplateUpdateAction>['run']>>>;
+/** 取当前 topic 的完整上下文（插件缺东西时自行请求） */
+  context(input?: z.input<InstanceType<typeof PluginContextAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginContextAction>['run']>>>;
+/** 列出当前主题可见的 pretask 入口（按插件分组；all=true 含隐藏项） */
+  entries(input?: z.input<InstanceType<typeof PluginEntriesAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginEntriesAction>['run']>>>;
+/** 读取已登记仓库内的文件（插件页用；二进制/超大文件会标记） */
+  file(input: z.input<InstanceType<typeof PluginFileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginFileAction>['run']>>>;
+/** 列出内部插件（全局开关、入口数、client/style URL、加载错误） */
+  pluginList(): Promise<Awaited<ReturnType<InstanceType<typeof PluginListAction>['run']>>>;
+/** 调用插件自有 RPC（插件管理页用；例如 task-template 的模板 CRUD） */
+  rpc(input: z.input<InstanceType<typeof PluginRpcAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginRpcAction>['run']>>>;
+/** 设某个 scope 的「新建页」默认入口（空 entryId = 跟随插件默认） */
+  setDefault(input: z.input<InstanceType<typeof PluginSetDefaultAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginSetDefaultAction>['run']>>>;
+/** 启用 / 关闭某个内部插件（全局开关；各 topic 的入口可见性另配） */
+  setState(input: z.input<InstanceType<typeof PluginSetStateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginSetStateAction>['run']>>>;
+/** 写某个 scope 的入口可见性与顺序 */
+  setVisibility(input: z.input<InstanceType<typeof PluginSetVisibilityAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginSetVisibilityAction>['run']>>>;
+/** 列出已登记仓库的目录（插件页用） */
+  tree(input: z.input<InstanceType<typeof PluginTreeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginTreeAction>['run']>>>;
+/** 读某个 scope 的入口可见性 / 顺序 / 默认入口（管理页用） */
+  visibility(input: z.input<InstanceType<typeof PluginVisibilityAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginVisibilityAction>['run']>>>;
+/** 按 pretask 入口生成 task 编辑页草稿（只生成正文，不落队列） */
+  draft(input: z.input<InstanceType<typeof PretaskDraftAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PretaskDraftAction>['run']>>>;
 /** 时间运算 + 原文回显 prompt + 写入一次状态日志；每次必须提供当前现状 --summary */
   timegoalCheck(input: z.input<InstanceType<typeof TimegoalCheckAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof TimegoalCheckAction>['run']>>>;
 /** 清空本目录 timegoal（无则 no_goal，不抛错） */
@@ -1190,51 +1205,105 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "text": inp["text"], "param": inp["param"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>;
     },
-    // action: template.add
-    async templateAdd(input: z.input<InstanceType<typeof TemplateAddAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateAddAction>['_input']>);
-      const path = `/api/templates`;
-      const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "setDefault": inp["setDefault"], "set-default": inp["set-default"], "scope": inp["scope"], "topic": inp["topic"], "cwd": inp["cwd"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplateAddAction>['run']>>;
+    // action: plugin.context
+    async context(input?: z.input<InstanceType<typeof PluginContextAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginContextAction>['_input']>);
+      let path = `/api/plugins/context`;
+      const q = new URLSearchParams();
+      if (inp["topicKey"] !== undefined) q.set("topicKey", String(inp["topicKey"]));
+      if (inp["groupKey"] !== undefined) q.set("groupKey", String(inp["groupKey"]));
+      if (inp["repoKey"] !== undefined) q.set("repoKey", String(inp["repoKey"]));
+      if (inp["cwd"] !== undefined) q.set("cwd", String(inp["cwd"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PluginContextAction>['run']>>;
     },
-    // action: template.default
-    async default(input: z.input<InstanceType<typeof TemplateDefaultAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateDefaultAction>['_input']>);
-      const path = `/api/templates/default`;
-      const body = { "id": inp["id"], "name": inp["name"], "body": inp["body"], "scope": inp["scope"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplateDefaultAction>['run']>>;
-    },
-    // action: template.list
-    async templateList(input?: z.input<InstanceType<typeof TemplateListAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateListAction>['_input']>);
-      let path = `/api/templates`;
+    // action: plugin.entries
+    async entries(input?: z.input<InstanceType<typeof PluginEntriesAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginEntriesAction>['_input']>);
+      let path = `/api/pretask/entries`;
       const q = new URLSearchParams();
       if (inp["topic"] !== undefined) q.set("topic", String(inp["topic"]));
       if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
       if (inp["repo"] !== undefined) q.set("repo", String(inp["repo"]));
+      if (inp["all"] !== undefined) q.set("all", String(inp["all"]));
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof TemplateListAction>['run']>>;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PluginEntriesAction>['run']>>;
     },
-    // action: template.remove
-    async templateRemove(input: z.input<InstanceType<typeof TemplateRemoveAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateRemoveAction>['_input']>);
-      const path = `/api/templates/${encodeURIComponent(String(inp["id"]))}`;
-      return (await transport.request("DELETE", path, undefined)) as Awaited<ReturnType<InstanceType<typeof TemplateRemoveAction>['run']>>;
+    // action: plugin.file
+    async file(input: z.input<InstanceType<typeof PluginFileAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginFileAction>['_input']>);
+      let path = `/api/plugins/file`;
+      const q = new URLSearchParams();
+      if (inp["repoKey"] !== undefined) q.set("repoKey", String(inp["repoKey"]));
+      if (inp["path"] !== undefined) q.set("path", String(inp["path"]));
+      if (inp["maxBytes"] !== undefined) q.set("maxBytes", String(inp["maxBytes"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PluginFileAction>['run']>>;
     },
-    // action: template.reorder
-    async templateReorder(input: z.input<InstanceType<typeof TemplateReorderAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateReorderAction>['_input']>);
-      const path = `/api/templates/reorder`;
-      const body = { "ids": inp["ids"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplateReorderAction>['run']>>;
+    // action: plugin.list
+    async pluginList() {
+      const path = `/api/plugins`;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PluginListAction>['run']>>;
     },
-    // action: template.update
-    async templateUpdate(input: z.input<InstanceType<typeof TemplateUpdateAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof TemplateUpdateAction>['_input']>);
-      const path = `/api/templates/${encodeURIComponent(String(inp["id"]))}`;
-      const body = { "name": inp["name"], "body": inp["body"], "bodyFile": inp["bodyFile"], "body-file": inp["body-file"], "scope": inp["scope"] };
-      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof TemplateUpdateAction>['run']>>;
+    // action: plugin.rpc
+    async rpc(input: z.input<InstanceType<typeof PluginRpcAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginRpcAction>['_input']>);
+      const path = `/api/plugins/rpc`;
+      const body = { "pluginId": inp["pluginId"], "method": inp["method"], "params": inp["params"], "ctx": inp["ctx"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof PluginRpcAction>['run']>>;
+    },
+    // action: plugin.set-default
+    async setDefault(input: z.input<InstanceType<typeof PluginSetDefaultAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginSetDefaultAction>['_input']>);
+      const path = `/api/plugins/default`;
+      const body = { "scopeKey": inp["scopeKey"], "entryId": inp["entryId"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof PluginSetDefaultAction>['run']>>;
+    },
+    // action: plugin.set-state
+    async setState(input: z.input<InstanceType<typeof PluginSetStateAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginSetStateAction>['_input']>);
+      const path = `/api/plugins/state`;
+      const body = { "id": inp["id"], "enabled": inp["enabled"] };
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof PluginSetStateAction>['run']>>;
+    },
+    // action: plugin.set-visibility
+    async setVisibility(input: z.input<InstanceType<typeof PluginSetVisibilityAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginSetVisibilityAction>['_input']>);
+      const path = `/api/plugins/visibility`;
+      const body = { "scopeKey": inp["scopeKey"], "entries": inp["entries"] };
+      return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof PluginSetVisibilityAction>['run']>>;
+    },
+    // action: plugin.tree
+    async tree(input: z.input<InstanceType<typeof PluginTreeAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginTreeAction>['_input']>);
+      let path = `/api/plugins/tree`;
+      const q = new URLSearchParams();
+      if (inp["repoKey"] !== undefined) q.set("repoKey", String(inp["repoKey"]));
+      if (inp["path"] !== undefined) q.set("path", String(inp["path"]));
+      if (inp["showHidden"] !== undefined) q.set("showHidden", String(inp["showHidden"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PluginTreeAction>['run']>>;
+    },
+    // action: plugin.visibility
+    async visibility(input: z.input<InstanceType<typeof PluginVisibilityAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginVisibilityAction>['_input']>);
+      let path = `/api/plugins/visibility`;
+      const q = new URLSearchParams();
+      if (inp["scopeKey"] !== undefined) q.set("scopeKey", String(inp["scopeKey"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PluginVisibilityAction>['run']>>;
+    },
+    // action: pretask.draft
+    async draft(input: z.input<InstanceType<typeof PretaskDraftAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PretaskDraftAction>['_input']>);
+      const path = `/api/pretask/draft`;
+      const body = { "entryId": inp["entryId"], "topic": inp["topic"], "group": inp["group"], "repo": inp["repo"], "values": inp["values"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof PretaskDraftAction>['run']>>;
     },
     // action: timegoal.check
     async timegoalCheck(input: z.input<InstanceType<typeof TimegoalCheckAction>['_input']>) {

@@ -37,6 +37,10 @@ export default defineConfig({
         target: `http://127.0.0.1:${BACKEND_PORT}`,
         bypass: (req) => shouldServeLocally(req.url),
       },
+      // 插件包产物（client.js / style.css / assets）由后端从插件 dist 目录发。
+      '/plugins': {
+        target: `http://127.0.0.1:${BACKEND_PORT}`,
+      },
     },
   },
 });

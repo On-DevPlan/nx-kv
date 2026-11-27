@@ -8,10 +8,8 @@
     "group": "#/group/B",
     "repos": "#/repos",
     "cloud": "#/cloud",
-    "templates-plain": "#/templates",
-    "templates-edit": "#/templates/edit/t1",
-    "templates-new-full": "#/templates/new?topic=k%201&scope=topic%3Ak%201%2Crepo%3Ar",
-    "templates-new-bare": "#/templates/new",
+    "plugin-page": "#/plugin/task-template/manage",
+    "plugin-entry": "#/plugin/task-template/entry-form/ps_1",
     "doc-repo": "#/doc?ref=ref:ref_0123456789abcdef&repo=r1",
     "doc-board": "#/doc?ref=path:x%2Fy.md&board=b1&name=%E7%BB%84%20%E4%B8%80",
     "doc-bare": null,
@@ -133,69 +131,43 @@
         "config": {}
       }
     },
-    "templates-plain": {
+    "plugin-page": {
       "empty": {
-        "component": "templates",
-        "name": "任务模板",
-        "config": {}
-      },
-      "named": {
-        "component": "templates",
-        "name": "任务模板",
-        "config": {}
-      }
-    },
-    "templates-edit": {
-      "empty": {
-        "component": "templates",
-        "name": "编辑模板",
+        "component": "plugin-page",
+        "name": "插件页面",
         "config": {
-          "mode": "edit",
-          "id": "t1",
-          "name": "",
-          "topic": "",
-          "scope": []
+          "pluginId": "task-template",
+          "pageId": "manage",
+          "sessionId": ""
         }
       },
       "named": {
-        "component": "templates",
-        "name": "编辑模板",
+        "component": "plugin-page",
+        "name": "插件页面",
         "config": {
-          "mode": "edit",
-          "id": "t1",
-          "name": "",
-          "topic": "",
-          "scope": []
+          "pluginId": "task-template",
+          "pageId": "manage",
+          "sessionId": ""
         }
       }
     },
-    "templates-new": {
+    "plugin-entry": {
       "empty": {
-        "component": "templates",
-        "name": "新建模板",
+        "component": "plugin-page",
+        "name": "插件页面",
         "config": {
-          "mode": "new",
-          "id": "",
-          "name": "",
-          "topic": "k 1",
-          "scope": [
-            "topic:k 1",
-            "repo:r"
-          ]
+          "pluginId": "task-template",
+          "pageId": "entry-form",
+          "sessionId": "ps_1"
         }
       },
       "named": {
-        "component": "templates",
-        "name": "新建模板",
+        "component": "plugin-page",
+        "name": "插件页面",
         "config": {
-          "mode": "new",
-          "id": "",
-          "name": "",
-          "topic": "k 1",
-          "scope": [
-            "topic:k 1",
-            "repo:r"
-          ]
+          "pluginId": "task-template",
+          "pageId": "entry-form",
+          "sessionId": "ps_1"
         }
       }
     },

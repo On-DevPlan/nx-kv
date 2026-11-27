@@ -54,11 +54,8 @@ export function crumbsOf(route: Partial<AppRoute> | null | undefined, ctx: SpecC
       return ctx.boardName ? [ctx.boardName] : ['项目组'];
     case 'repos':
       return ['仓库管理'];
-    case 'templates': {
-      if (route.mode === 'new') return ['新建模板'];
-      if (route.mode === 'edit') return ['编辑模板'];
-      return ['任务模板'];
-    }
+    case 'plugin':
+      return ['插件'];
     // 文档页（#88）：只画**归属**（仓库 / 项目组）——文档名已经在 DocHead 的
     // 标题行里，面包屑再画一遍就是同一行重复两遍。
     case 'doc': {
@@ -111,11 +108,8 @@ export function crumbTrailOf(route: Partial<AppRoute> | null | undefined, ctx: S
     }
     case 'repos':
       return [{ label: '仓库管理', hash: '' }];
-    case 'templates': {
-      if (route.mode === 'new') return [{ label: '任务模板', hash: '#/templates' }, { label: '新建模板', hash: '' }];
-      if (route.mode === 'edit') return [{ label: '任务模板', hash: '#/templates' }, { label: '编辑模板', hash: '' }];
-      return [{ label: '任务模板', hash: '' }];
-    }
+    case 'plugin':
+      return [{ label: '插件', hash: '' }];
     // 文档页：归属段可点（仓库 → 仓库管理；项目组 → 组页），文档自身是当前层
     case 'doc': {
       const owner = ctx.repoName || ctx.boardName || '';

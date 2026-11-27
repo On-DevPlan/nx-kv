@@ -19,15 +19,14 @@ import {
 import {
   join,
 } from 'node:path';
-test('templates.json 导入：values→vars、id 原样、defaultId→is_default；文件缺失 → 只有内置', async () => {
+test('templates.json 导入：用户行进 plugin_legacy_data，builtin 不迁；插件激活后导入自有表', async () => {
   const s = await createTestStore({ open: false });
   s.seedLegacy({
     templates: {
       version: 1,
       defaultId: 't_custom',
       templates: [
-        // 内置行也走导入（legacy store 里的 builtin 会被 JSON 归一化补回）——
-        // 用户的槽位值原样带走，seed 的 INSERT OR IGNORE 不会覆盖它
+        // 内置行由插件包代码声明，不再从 JSON 导入
         { id: 'default', name: '默认模板', body: '# 内置骨架\n\n{{背景}}', values: { 背景: '用户改过的背景' }, builtin: true },
         { id: 't_custom', name: '自定义', body: '# 自定义', values: { 目标: '做点事' } },
       ],
@@ -35,33 +34,42 @@ test('templates.json 导入：values→vars、id 原样、defaultId→is_default
   });
   s.open();
   try {
-    const rows = s.db.all('SELECT id, category, is_default, builtin, vars, body FROM templates ORDER BY id');
-    const byId = new Map(rows.map((r) => [r.id, r]));
-    // 全新库路径：bootstrap 先跑 importLegacy 再 seed 内置 —— legacy 的 builtin 行
-    // 先落库，seed（OR IGNORE）不会用出厂文本覆盖用户的槽位值。
-    assert.ok(byId.has('default') && byId.has('t_custom'), 'legacy id 原样保留（就是稳定 key）');
-    const def = byId.get('default');
-    assert.equal(def.category, 'newtask', 'legacy 只有新建骨架一种用途 → newtask');
-    assert.equal(def.builtin, 1);
-    assert.equal(def.body, '# 内置骨架\n\n{{背景}}', 'legacy 的 builtin 正文原样进来');
-    assert.equal(JSON.parse(def.vars).背景, '用户改过的背景', 'values → vars 原样');
-    const custom = byId.get('t_custom');
-    assert.equal(custom.is_default, 1, 'defaultId → is_default 列');
-    assert.equal(def.is_default, 0, '默认只有一个（ux_templates_default 的约束语义）');
-    // 报告对账
-    const report = s.core.getBootstrapResult().report;
-    assert.equal(report.imported.templates, 2);
+    const staged = s.db.get(
+      "SELECT payload_json FROM plugin_legacy_data WHERE plugin_id = 'task-template' AND kind = 'templates'",
+    );
+    assert.ok(staged, 'v19 必须暂存 legacy 模板');
+    const payload = JSON.parse(staged.payload_json);
+    assert.deepEqual(payload.rows.map((r) => r.id), ['t_custom'], '只迁用户行');
+    assert.equal(payload.defaultId, 't_custom');
+    assert.equal(
+      s.db.get("SELECT count(*) AS c FROM sqlite_master WHERE type = 'table' AND name = 'templates'").c,
+      0,
+      'v20 已删除 templates 表',
+    );
+    assert.equal(s.core.getBootstrapResult().report.imported.templates, 1, '报告只计用户行');
+
+    const host = await import('../../src/modules/plugin/host.ts');
+    const data = await host.callRpc('task-template', 'listTemplates');
+    const ids = data.templates.map((t) => t.id);
+    assert.ok(ids.includes('task-template:ref'), '内置 ref 生成由插件代码声明');
+    assert.ok(ids.includes('task-template:t_custom'), 'legacy 用户模板已进插件表');
+    const custom = data.templates.find((t) => t.id === 'task-template:t_custom');
+    assert.equal(custom.default, true, 'defaultId → 插件默认入口');
+    assert.equal(custom.vars.目标, '做点事', 'values → vars 原样');
   } finally {
     s.reset();
   }
 
-  // 文件不存在：全新库 → 只有 bootstrap seed 的内置任务模板（#191 起只 newtask 一类；
-  // delivery/enhance/context 是提示词段，走 promptplug 独立引擎，不再占模板表）
   const empty = await createTestStore();
   try {
-    const cats = empty.db.all('SELECT DISTINCT category FROM templates ORDER BY category').map((r) => r.category);
-    assert.deepEqual(cats, ['newtask'], '内置任务模板永远在场（#191 只 newtask）');
-    assert.equal(empty.db.get("SELECT count(*) AS c FROM templates WHERE id LIKE 't_%'").c, 0);
+    assert.equal(
+      empty.db.get("SELECT count(*) AS c FROM sqlite_master WHERE type = 'table' AND name = 'templates'").c,
+      0,
+      '没有 templates 表',
+    );
+    const host = await import('../../src/modules/plugin/host.ts');
+    const data = await host.callRpc('task-template', 'listTemplates');
+    assert.deepEqual(data.templates.map((t) => t.id), ['task-template:ref'], '没有用户模板时只有内置声明');
   } finally {
     empty.reset();
   }

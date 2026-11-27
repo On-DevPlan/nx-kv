@@ -20,21 +20,21 @@ const tablesOf = (db) =>
     .all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
     .map((r) => r.name);
 
-test(`全新目录：建 20 张表 / user_version=${CURRENT_SCHEMA_VERSION} / meta 三件套齐全`, async () => {
+test(`全新目录：建 23 张表 / user_version=${CURRENT_SCHEMA_VERSION} / meta 三件套齐全`, async () => {
   const s = await createTestStore();
   try {
     const tables = tablesOf(s.db);
-    // 001 的 16 张 + v2 新增 attachments / task_attach / ref_attach − 删除 task_refs / ref_relations
-    // （v3 只给 templates 加列；v4 新增 group_refs；v6 新增 ref_bodies；v11 新增 ref_gc_log）
-    assert.equal(tables.length, 20, `实际: ${tables.join(',')}`);
+    // v18 的 20 张 + v19 新增 4 张插件宿主表 − v20 删 templates = 23
+    assert.equal(tables.length, 23, `实际: ${tables.join(',')}`);
     for (const t of [
-      'meta', 'settings', 'topics', 'tasks', 'repos', 'refs', 'templates', 'goals',
+      'meta', 'settings', 'topics', 'tasks', 'repos', 'refs', 'goals',
       'attachments', 'task_attach', 'ref_attach', 'group_refs', 'ref_bodies', 'ref_gc_log',
+      'plugin_state', 'plugin_entry_visibility', 'plugin_legacy_data', 'plugin_storage_migrations',
     ]) {
       assert.ok(tables.includes(t), `缺表 ${t}`);
     }
-    for (const t of ['task_refs', 'ref_relations']) {
-      assert.ok(!tables.includes(t), `v2 必须删掉旧表 ${t}`);
+    for (const t of ['task_refs', 'ref_relations', 'templates']) {
+      assert.ok(!tables.includes(t), `迁移后必须删掉旧表 ${t}`);
     }
     assert.equal(s.db.get('PRAGMA user_version').user_version, CURRENT_SCHEMA_VERSION);
 
@@ -44,12 +44,11 @@ test(`全新目录：建 20 张表 / user_version=${CURRENT_SCHEMA_VERSION} / me
     assert.match(meta.created_by, /^nx-kv\//);
     assert.equal(meta.migrated_from_json_at, undefined, '全新库不该有"从 JSON 迁来"的标志');
 
-    // 索引与触发器数量（30 索引 / 1 触发器；v5 新增 ux_attachments_mdfile_path，v10 新增
-    // ux_attachments_folder_path，v6 新增 ux_refs_rel，v16 新增 ix_tasks_group #197）
+    // 索引与触发器数量（v20 删 templates 连带删掉它的 2 个索引 → 28 索引 / 1 触发器）
     const idx = s.db.get(
       "SELECT count(*) AS c FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'"
     );
-    assert.equal(idx.c, 30);
+    assert.equal(idx.c, 28);
     const trg = s.db.get("SELECT count(*) AS c FROM sqlite_master WHERE type = 'trigger'");
     assert.equal(trg.c, 1);
   } finally {
@@ -63,7 +62,7 @@ test('空文件（0 字节）当全新建库，不当"别人的库"', async () =
     writeFileSync(s.dbPath, '');
     s.open();
     assert.equal(s.core.inspectStore(s.db).storeKind, 'sqlite');
-    assert.equal(tablesOf(s.db).length, 20);
+    assert.equal(tablesOf(s.db).length, 23);
   } finally {
     s.reset();
   }

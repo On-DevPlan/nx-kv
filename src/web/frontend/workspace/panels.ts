@@ -137,7 +137,7 @@ export const RIGHT_AREA_COMPONENTS = ['progress', 'refs'];
  * 老布局里 refs 可能被存进 ts_main，那时它所在 tabset 同时含 dir/group 这类主区面板——
  * 这绝不该被当成右侧栏（否则 setRightSidebarVisible 会把主区压成 16% 宽）。
  */
-export const MAIN_AREA_COMPONENTS = ['dir', 'page', 'group', 'repos',  'doc', 'dag', 'compose', 'templates'];
+export const MAIN_AREA_COMPONENTS = ['dir', 'page', 'group', 'repos', 'doc', 'dag', 'compose', 'plugin-page', 'plugin-visibility'];
 
 /**
  * 右侧栏（并发进程面板）的 tabset。

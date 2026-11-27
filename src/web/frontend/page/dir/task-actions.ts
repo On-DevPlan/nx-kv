@@ -31,7 +31,7 @@ import {
   scopeOf,
 } from '../../modules/md/doc-store.js';
 import type { AttachAreaHandle } from '../../components/md/attachments/attach-area.jsx';
-import type { LocalTask, LocalTopic, TemplatesApi } from '../../types.js';
+import type { LocalTask, LocalTopic } from '../../types.js';
 import type {
   AppSlice,
   BoardCtx,
@@ -68,7 +68,8 @@ interface UseTaskActionsArgs {
   app: AppSlice;
   model: Model | null;
   tabId?: string;
-  tpl?: TemplatesApi;
+  /** 默认 pretask 入口的正文（插件入口在 task.tsx 里取好） */
+  defaultDraftBody?: string;
   refreshLocal?: () => Promise<void>;
   markDirty: () => void;
   histRef: RefObject<Map<string, HistorySnapshot>>;
@@ -86,7 +87,7 @@ interface UseTaskActionsArgs {
 
 export function useTaskActions({
   doc, id, isDraft, task, taskRow, topicKey, topic, boardCtx, docFm,
-  groupAnchored, groupId, app, model, tabId, tpl, refreshLocal,
+  groupAnchored, groupId, app, model, tabId, defaultDraftBody, refreshLocal,
   markDirty, histRef, editorApiRef, attachAreaRef,
   setDirty,
   goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
@@ -389,7 +390,7 @@ export function useTaskActions({
     // #197：归属写成草稿的结构化字段（正文不再带 --- 头）
     saveDoc(docId, {
       title: '',
-      body: tpl ? tpl.defaultPick().body : '',
+      body: defaultDraftBody || '',
       boardKey: boardCtx && boardCtx.board ? String(boardCtx.board.id) : undefined,
       projectKey: docFm.project || undefined,
     });
@@ -400,7 +401,7 @@ export function useTaskActions({
           : { dirKey: topicKey, task: draftId, name: '新任务' }
       );
     }
-  }, [boardCtx, docFm.project, groupAnchored, groupId, topicKey, app, tpl]);
+  }, [boardCtx, docFm.project, groupAnchored, groupId, topicKey, app, defaultDraftBody]);
 
   /** 「更多 → 克隆任务」：以当前任务为模板快速复制一条新任务（#70）。 */
   const cloneCur = useCallback(() => {

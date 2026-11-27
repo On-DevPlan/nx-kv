@@ -26,14 +26,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint（含分层约束）
+      - name: Lint（含分层约束 / 插件边界）
         run: pnpm run lint
+
+      # 单测会通过宿主加载内置插件的 dist 产物（packages/*/dist），必须先构建。
+      - name: 构建（宿主 + 内置插件）
+        run: pnpm run build
 
       - name: 单元测试与一致性断言
         run: pnpm run test:unit
-
-      - name: 构建前端
-        run: pnpm run build
 
       - name: 端到端冒烟
         run: pnpm run test:smoke

@@ -26,6 +26,7 @@ import { useDialog } from '../../components/popup/index.jsx';
 import { Icon } from '../../components/icons.jsx';
 import { Button } from '../../components/button/index.jsx';
 import PromptTemplatesSection from './prompt-templates-section.jsx';
+import PluginsSection from './plugins-section.jsx';
 import './style.css';
 
 /** 一个设置分区 = 左侧导航的一项 = tab。 */
@@ -42,6 +43,7 @@ const SECTIONS: SettingsSection[] = [
   { id: 'storage', label: '本机存储', icon: 'archive' },
   { id: 'docsCleanup', label: '文档清理', icon: 'archive' },
   { id: 'prompts', label: '提示词模板', icon: 'flow' },
+  { id: 'plugins', label: '插件', icon: 'flow' },
 ];
 
 /** 孤儿清单的一行（/api/docs/orphans 的响应形状）。 */
@@ -339,7 +341,9 @@ export default function SettingsPanel() {
       <PromptTemplatesSection />
     ),
 
-
+    plugins: (
+      <PluginsSection />
+    ),
   };
 
   return (

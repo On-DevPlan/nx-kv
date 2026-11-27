@@ -16,6 +16,10 @@ export function sameRoute(a: AppRoute, b: AppRoute): boolean {
     (a.topic || '') === (b.topic || '') &&
     (a.scope || '') === (b.scope || '') &&
     (a.repoKey || '') === (b.repoKey || '') &&
-    (a.boardKey || '') === (b.boardKey || '')
+    (a.boardKey || '') === (b.boardKey || '') &&
+    // 插件页：view/key/task 全一样，只有这三项能区分「任务模板 → 目录批注设置」
+    (a.pluginId || '') === (b.pluginId || '') &&
+    (a.pageId || '') === (b.pageId || '') &&
+    (a.sessionId || '') === (b.sessionId || '')
   );
 }

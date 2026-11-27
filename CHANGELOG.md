@@ -2,6 +2,53 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.70.0] - 2026-11-27 内部插件体系（任务模板迁出 + 目录批注）+ schema v19~v21
+
+本轮主线：把 pretask 能力改造成**自封闭的内部插件**——插件自带 server 契约、client UI、自有存储与
+自注册入口/页面/侧栏，`nx-kv` 只负责生命周期控制与调用。两个内置插件随 npm 包分发，`npx nx-kv`
+安装后直接可用（无需另装插件）。
+
+### Added
+
+- **插件 SDK + 宿主**（`packages/plugin-sdk`、`src/modules/plugin/`）：`definePlugin`（entries /
+  buildDraft / rpc / migrateStorage / migrateLegacy）与 client `registerPlugin`（components / pages /
+  sidebar）；宿主按 `nxkv` 清单发现包、聚合入口、按 scope 控制可见性与「新建页」默认项。
+- **第二个插件：目录批注**（`packages/plugin-dir-annotate`）：新建页下拉只注册一个面板入口；
+  repo 主题直接进项目目录，group 主题先列组内仓库（选择在插件内部），给文件加批注后通过
+  `createDraft` 生成任务草稿；左下角自注册「目录批注设置」（隐藏文件 / 当前目录 / 标题前缀）。
+- **插件上下文与宿主 HTTP 能力**：`PretaskContext` 携带完整 `topic` / `location`；
+  新增 `/api/plugins/context|tree|file`（realpath 约束、拒软链与重目录、限目录项数与文件大小）。
+- **插件边界门禁**：`scripts/check-plugin-isolation.mjs`（清单一致、双向 import 闭合、发布面规则）
+  与通用构建 `scripts/build-plugins.mjs`（不再在根 package.json 逐个列插件）。
+- **schema v21**：`plugin_entry_visibility.is_default`——每个 scope 可指定「＋ 新建页」默认触发项
+  （草稿或面板）；默认优先级：scope 配置 > 插件声明 > 首个可见草稿 > 第一个可见入口。
+- 开发手册：`dev-nxkv` 新增 `A13-开发或扩展插件.md` + `B09-插件架构与契约.md`。
+
+### Changed
+
+- **任务模板整体迁为插件**（`packages/plugin-task-template`）：旧 `src/modules/templates/**`、前端模板页与
+  `seed-templates.ts` 全部删除；v19 把旧 `templates` 行暂存到 `plugin_legacy_data`，插件首次激活按 id
+  幂等导入自有表，v20 删除 `templates`。
+- 「管理任务模板…」不再出现在每个主题的新建页下拉——插件自管理页只在左下角侧栏出现。
+- 「新建页行为」配置页：主区单选默认项，可见性多选收进默认折叠的「高级」区；下拉行移除「默认」徽标
+  （插件级默认改称「插件默认」，只在插件管理页展示）。
+- **发布形态内置**：插件包 `private`，server 由 Vite 打成单文件（SDK 内联）；根 `files` 带 `packages/`，
+  `dependencies` 不含任何 `@nx-kv/*`，`tsx` 移入 `dependencies` 供 `bin/kv.mjs` 运行时使用。
+
+### Fixed
+
+- 左下角两个插件页无法互切：插件页 `view/key/task` 恒空，`sameRoute` 与路由 effect 的 `routeSig` 补齐
+  `pluginId/pageId/sessionId`。
+- 组主题下插件自选仓库时，草稿归属仍按默认成员落库：`createDraft` 支持 `{ project, board }` 覆盖。
+- 目录批注生成的标题/正文误用默认成员名：组场景改按「组 / 所选仓库」生成。
+
+### Verification
+
+- `lint`（含插件闭合门禁）、`typecheck`、`build`、`test:unit`、`test:smoke` 全绿。
+- 浏览器走查：repo 主题直接进目录、group 主题选仓库、文件批注生成草稿、左下角插件页互切、
+  新建页默认直接进插件页、插件设置页生效。
+- 旧库自动升级到 v21；打包内容自检（tarball 含 `packages/*/dist`，依赖无 `@nx-kv/*`）。
+
 ## [0.69.1] - 2026-11-25 frontmatter 残留清零 + v18 幽灵队列修复
 
 ### Changed

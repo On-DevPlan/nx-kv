@@ -1,0 +1,6 @@
+-- v20：删除旧任务模板表（内置实现已由 packages/plugin-task-template 接管）。
+--
+-- DDL 里不做任何数据动作：migrator 先执行本文件、再调 step.apply，
+-- 若在这里 DROP 会在 v20-data 补拷最后一刻用户行之前就把表删掉。
+-- 真正的「补拷 → DROP TABLE templates」在 v20-data.ts 末尾执行。
+-- @decision docs/decisions/versions/2026-11-27-v20.md

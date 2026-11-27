@@ -168,13 +168,10 @@ test('crumbTrailOf：doc 归属段可点（仓库→仓库管理 / 组→组页�
   assert.deepEqual(crumbTrailOf({ view: 'doc' }, {}), [{ label: '文档', hash: '' }]);
 });
 
-test('crumbTrailOf：模板新建/编辑有上一级（回任务模板列表）；顶层页无可点段', () => {
+test('crumbTrailOf：插件页面是顶层当前段；未知视图无可点段', () => {
   assert.deepEqual(
-    crumbTrailOf({ view: 'templates', mode: 'new' }, {}),
-    [
-      { label: '任务模板', hash: '#/templates' },
-      { label: '新建模板', hash: '' },
-    ]
+    crumbTrailOf({ view: 'plugin', pluginId: 'task-template', pageId: 'manage' }, {}),
+    [{ label: '插件', hash: '' }],
   );
   assert.deepEqual(crumbTrailOf({ view: 'overview' }, {}), []);
   assert.deepEqual(crumbTrailOf(null, {}), []);

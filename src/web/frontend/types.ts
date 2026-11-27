@@ -22,6 +22,10 @@ export interface AppRoute {
   id?: string;
   topic?: string;
   scope?: string;
+  /** 通用插件页面：/plugin/<pluginId>/<pageId>[/<sessionId>] */
+  pluginId?: string;
+  pageId?: string;
+  sessionId?: string;
 }
 
 /**
@@ -143,35 +147,6 @@ export interface Prefs {
   [k: string]: any;
 }
 
-/** 任务模板（/api/templates 的 templates[]）。 */
-export interface PromptTemplate {
-  id: string;
-  name: string;
-  body: string;
-  /** DB vars 列的兼容视图（插槽机制已移除，恒为空对象）。 */
-  values?: Record<string, string>;
-  scope?: string[];
-  builtin?: boolean;
-  [k: string]: any;
-}
-
-/** useTemplates 的返回面（App 层持有一份，工作台与模板面板共用）。 */
-export interface TemplatesApi {
-  defaultId: string;
-  templates: PromptTemplate[] | null;
-  unsupported: boolean;
-  defaultBody: () => string;
-  /** 默认模板的正文（原样）+ 模板 id。 */
-  defaultPick: () => { body: string; id: string };
-  refetch: () => Promise<void>;
-  add: (name: string, body: string, setDefault?: boolean, opts?: { topic?: string; scope?: string[] }) => Promise<any>;
-  remove: (id: string) => Promise<any>;
-  update: (id: string, patch: Record<string, any>) => Promise<any>;
-  setDefault: (id: string) => Promise<any>;
-  /** #151：拖拽排序后按新序落库（ids = newtask 类目模板 id 的完整有序数组）。 */
-  reorder: (ids: string[]) => Promise<any>;
-}
-
 /** 开一个 MD 页签的规格（App.openPage；groupId 与 dirKey 二选一，组锚定页用前者）。 */
 export interface OpenPageSpec {
   name?: string;
@@ -187,14 +162,4 @@ export interface ShellApi {
   openSettings: () => unknown;
 }
 
-/**
- * 打开全屏模板编辑器的入参（`panels.openTemplateEditor` 的签名）。
- * 放在共享契约里：设置页的模板卡片与面板注册表都要用它，两份副本必然漂移。
- */
-export interface TemplateEditorOpts {
-  mode?: 'edit' | 'new';
-  id?: string;
-  name?: string;
-  scope?: string[];
-  topic?: string;
-}
+

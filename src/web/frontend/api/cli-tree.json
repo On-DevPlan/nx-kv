@@ -1691,99 +1691,183 @@
       ]
     },
     {
-      "name": "template",
+      "name": "plugin",
       "path": [
-        "template"
+        "plugin"
       ],
       "action": null,
       "children": [
         {
-          "name": "add",
+          "name": "context",
           "path": [
-            "template",
-            "add"
+            "plugin",
+            "context"
           ],
           "action": {
-            "id": "template.add",
-            "module": "templates",
-            "summary": "新增任务模板（--body 给 Markdown 正文；多行正文用 --body-file <文件> 或 --body - 读管道；--setDefault 同时设为默认；--scope 设可见域、--topic 记创建主题并默认仅该主题可见）",
-            "usage": "template add",
-            "http": "POST /api/templates"
+            "id": "plugin.context",
+            "module": "plugin",
+            "summary": "取当前 topic 的完整上下文（插件缺东西时自行请求）",
+            "usage": "plugin context",
+            "http": "GET /api/plugins/context"
           },
           "children": []
         },
         {
-          "name": "default",
+          "name": "entries",
           "path": [
-            "template",
-            "default"
+            "plugin",
+            "entries"
           ],
           "action": {
-            "id": "template.default",
-            "module": "templates",
-            "summary": "设置默认模板（新建页的起始正文换成它）；带 --body/--name/--scope 则改默认模板本身",
-            "usage": "template default",
-            "http": "PATCH /api/templates/default"
+            "id": "plugin.entries",
+            "module": "plugin",
+            "summary": "列出当前主题可见的 pretask 入口（按插件分组；all=true 含隐藏项）",
+            "usage": "plugin entries",
+            "http": "GET /api/pretask/entries"
+          },
+          "children": []
+        },
+        {
+          "name": "file",
+          "path": [
+            "plugin",
+            "file"
+          ],
+          "action": {
+            "id": "plugin.file",
+            "module": "plugin",
+            "summary": "读取已登记仓库内的文件（插件页用；二进制/超大文件会标记）",
+            "usage": "plugin file",
+            "http": "GET /api/plugins/file"
           },
           "children": []
         },
         {
           "name": "list",
           "path": [
-            "template",
+            "plugin",
             "list"
           ],
           "action": {
-            "id": "template.list",
-            "module": "templates",
-            "summary": "列出任务模板（含默认模板 id；新建页的起始正文按默认模板取）",
-            "usage": "template list",
-            "http": "GET /api/templates"
+            "id": "plugin.list",
+            "module": "plugin",
+            "summary": "列出内部插件（全局开关、入口数、client/style URL、加载错误）",
+            "usage": "plugin list",
+            "http": "GET /api/plugins"
           },
           "children": []
         },
         {
-          "name": "remove",
+          "name": "rpc",
           "path": [
-            "template",
-            "remove"
+            "plugin",
+            "rpc"
           ],
           "action": {
-            "id": "template.remove",
-            "module": "templates",
-            "summary": "删除任务模板（内置默认模板不可删；删的是默认模板则默认回落到内置）",
-            "usage": "template remove",
-            "http": "DELETE /api/templates/:id"
+            "id": "plugin.rpc",
+            "module": "plugin",
+            "summary": "调用插件自有 RPC（插件管理页用；例如 task-template 的模板 CRUD）",
+            "usage": "plugin rpc",
+            "http": "POST /api/plugins/rpc"
           },
           "children": []
         },
         {
-          "name": "reorder",
+          "name": "set-default",
           "path": [
-            "template",
-            "reorder"
+            "plugin",
+            "set-default"
           ],
           "action": {
-            "id": "template.reorder",
-            "module": "templates",
-            "summary": "调整任务模板顺序（--ids a,b,c 按新序落库 sort_order；未列出的模板保持原位）",
-            "usage": "template reorder",
-            "http": "PATCH /api/templates/reorder"
+            "id": "plugin.set-default",
+            "module": "plugin",
+            "summary": "设某个 scope 的「新建页」默认入口（空 entryId = 跟随插件默认）",
+            "usage": "plugin set-default",
+            "http": "POST /api/plugins/default"
           },
           "children": []
         },
         {
-          "name": "update",
+          "name": "set",
           "path": [
-            "template",
-            "update"
+            "plugin",
+            "set"
           ],
           "action": {
-            "id": "template.update",
-            "module": "templates",
-            "summary": "编辑任务模板（--name 改名 / --body 改正文 / --scope 改可见域，只改传入项；多行正文用 --body-file；内置模板不可改，出厂正文随版本升级自动覆盖）",
-            "usage": "template update",
-            "http": "PATCH /api/templates/:id"
+            "id": "plugin.set-state",
+            "module": "plugin",
+            "summary": "启用 / 关闭某个内部插件（全局开关；各 topic 的入口可见性另配）",
+            "usage": "plugin set",
+            "http": "PATCH /api/plugins/state"
+          },
+          "children": []
+        },
+        {
+          "name": "set-visibility",
+          "path": [
+            "plugin",
+            "set-visibility"
+          ],
+          "action": {
+            "id": "plugin.set-visibility",
+            "module": "plugin",
+            "summary": "写某个 scope 的入口可见性与顺序",
+            "usage": "plugin set-visibility",
+            "http": "PATCH /api/plugins/visibility"
+          },
+          "children": []
+        },
+        {
+          "name": "tree",
+          "path": [
+            "plugin",
+            "tree"
+          ],
+          "action": {
+            "id": "plugin.tree",
+            "module": "plugin",
+            "summary": "列出已登记仓库的目录（插件页用）",
+            "usage": "plugin tree",
+            "http": "GET /api/plugins/tree"
+          },
+          "children": []
+        },
+        {
+          "name": "visibility",
+          "path": [
+            "plugin",
+            "visibility"
+          ],
+          "action": {
+            "id": "plugin.visibility",
+            "module": "plugin",
+            "summary": "读某个 scope 的入口可见性 / 顺序 / 默认入口（管理页用）",
+            "usage": "plugin visibility",
+            "http": "GET /api/plugins/visibility"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "pretask",
+      "path": [
+        "pretask"
+      ],
+      "action": null,
+      "children": [
+        {
+          "name": "draft",
+          "path": [
+            "pretask",
+            "draft"
+          ],
+          "action": {
+            "id": "pretask.draft",
+            "module": "plugin",
+            "summary": "按 pretask 入口生成 task 编辑页草稿（只生成正文，不落队列）",
+            "usage": "pretask draft",
+            "http": "POST /api/pretask/draft"
           },
           "children": []
         }

@@ -8,7 +8,7 @@ import { reposPage } from './static.js';
 import { dirPage } from './dir.js';
 import { docPage } from './doc.js';
 import { groupPage } from './group.js';
-import { templatesPage } from './templates.js';
+import { pluginPage } from './plugin.js';
 import type { RoutePage, RouteReverse } from './types.js';
 
 /** 全部视图（顺序只影响可读性与同 order 的比较顺序，查表按 view 精确匹配）。 */
@@ -16,7 +16,7 @@ export const PAGES: readonly RoutePage[] = [
   dirPage,
   groupPage,
   docPage,
-  templatesPage,
+  pluginPage,
   reposPage,
 ];
 

@@ -33,15 +33,14 @@ import type { DagPatchInput, ScopeIds, TaskOpsDeps } from '../../components/task
 import { useApp } from '../../app-context.jsx';
 import { addTask, reorderTask } from './api.js';
 import { openPanel } from '../../workspace.js';
-import { openTemplateEditor } from '../../panels.jsx';
 import GetLoopMembersMenu from '../../components/repos/get-loop-members.js';
 import GetLoopModal from '../../components/repos/get-loop-modal.js';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { templateDraftBody } from '../../modules/prompts/template-preview.js';
-import { startFillIfSlotted } from '../../modules/md/new-task-from-template.js';
 import { sortTasksForDisplay } from '../../modules/board/board-view.js';
-import { putManageSession } from '../../modules/md/manage-session.js';
-import { useTemplates, useTemplatesFor } from '../../modules/md/use-templates.js';
+import { usePretaskEntries } from '../../modules/pretask/use-pretask.js';
+import { entryMenuItems } from '../../modules/pretask/menu.js';
+import { draftBodyOf, openDraftEntry, openPanelEntry, openVisibilityPanel } from '../../modules/pretask/open-entry.js';
+import type { PretaskEntry } from '../../modules/pretask/types.js';
 import type { LocalTask, LocalTopic, RepoData, RepoRow } from '../../types.js';
 import type { Model } from 'flexlayout-react';
 import type { BoardRecord } from '../repos/repo-table.js';
@@ -85,15 +84,6 @@ interface MemberItem {
   noteDocId: string;
 }
 
-/** 模板下拉里的一项（flyTemplates 为接口数据，形状按用到的字段收窄）。 */
-interface TemplateItem {
-  id: string;
-  name: string;
-  body?: string;
-  values?: Record<string, string>;
-  fallback?: boolean;
-}
-
 export default function GroupView({ dirKey, rows, repoData, model }: {
   dirKey?: string;
   rows?: LocalTopic[];
@@ -103,7 +93,6 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   const toast = useToast();
   const app = useApp();
   const { dialog, node: dialogNode } = useDialog();
-  const tpl = useTemplates();
   // repoData / rows 来自 /api 负载（外部边界）：到这里按本页真正读的字段收窄一次
   const boards = ((repoData && repoData.boards) || []) as BoardRecord[];
   const repos = (repoData && repoData.repos) || [];
@@ -213,6 +202,44 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
   const memoKey = readGroupProject(board ? board.id : '');
   const sel = items.find((it) => it.key === memoKey) || items.find((it) => it.pending > 0) || items[0] || null;
 
+  // 插件 pretask 入口：组本身是可见主体；选中成员时优先成员 topic 的可见性。
+  const entryState = usePretaskEntries({
+    topic: sel ? sel.topicKey : '',
+    group: board ? board.key : '',
+    repo: sel ? sel.key : '',
+  });
+  const entryCtx = {
+    topicKey: sel?.topicKey || '',
+    groupKey: board?.key || '',
+    repoKey: sel?.key || '',
+    groupId: board?.id || '',
+    board: board?.id || '',
+    project: sel?.key || '',
+    dirKey: sel?.topicKey || '',
+    cwd: sel?.cwd || '',
+    topic: {
+      key: sel?.topicKey || '',
+      name: sel?.name || sel?.key || '',
+      kind: 'group' as const,
+      cwd: sel?.cwd || '',
+      repoKey: sel?.key || '',
+      groupKey: board?.key || '',
+      repoName: sel?.name || '',
+      groupName: board?.name || '',
+      repoRoot: sel?.path || '',
+    },
+    location: {
+      dirKey: sel?.topicKey || '',
+      groupId: board?.id || '',
+      board: board?.id || '',
+      project: sel?.key || '',
+    },
+  };
+  // 默认入口由本主题配置决定；没配时回落插件声明（宿主已算），再兜底第一个可见入口。
+  const defaultEntry =
+    entryState.entries.find((e) => e.id === entryState.defaultEntryId) ||
+    entryState.entries[0];
+
   // 动作层依赖：弹窗 / 提示 / 刷新 / 文档落点（组 scope 的 doc key = 看板 id）
   const ops: TaskOpsDeps = {
     dialog,
@@ -237,36 +264,42 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     return [...byCwd.entries()].map(([cwd, ids]) => ({ scope: { cwd }, ids }));
   };
 
-  // 组里建任务：草稿预写 frontmatter（board + 默认归属项目），提交时编辑页的工具区
-  // 可改归属项目（限本组成员），按它路由进对应项目的队列。
-  const createTask = (pick?: { id?: string; body?: unknown; values?: Record<string, unknown> | null } | null) => {
-    if (!board) return;
-    if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
-    // #191：带 {{槽位}} 的模板先去参数页（携带组 + 项目上下文）；无槽位走原草稿路径。
-    const chosen = pick || (tpl?.templates || []).find((t) => t.id === tpl.defaultId) || null;
-    if (chosen && startFillIfSlotted(
-      chosen as any,
-      {
-        topic: sel.topicKey || '',
-        group: board.key || '',
-        repo: sel.key || '',
-        groupId: board.id,
-        board: board.id,
-        project: sel.key,
-      },
-      app,
-    )) return;
+  const createDraft = (body: string) => {
+    if (!board || !sel) return;
     const id = nextDraftId();
     // 草稿 doc 种在**组 scope**：从 #/group/<id>?task=draft-N 打开寻得回同一份（#86）
     const docId = docIdOf(scopeOf(board.id), id);
-    // 与目录任务页同一条口径：正文取模板原文，归属写草稿的结构化字段（#197 无 frontmatter）。
     saveDoc(docId, {
       title: '',
-      body: pick ? templateDraftBody(pick) : templateDraftBody(tpl.defaultPick()),
+      body,
       boardKey: board.id,
       projectKey: sel.key,
     });
     app.openPage?.({ groupId: board.id, task: id, name: '新任务' });
+  };
+
+  // 组里建任务：优先走默认插件入口；有 form 进插件页面，panel 进插件页面，否则生成草稿。
+  const createTask = (entry?: PretaskEntry) => {
+    if (!board) return;
+    if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
+    const chosen = entry || defaultEntry;
+    if (!chosen) {
+      createDraft('');
+      return;
+    }
+    const go = (hash: string) => app.onNavigate?.(hash);
+    if (chosen.kind === 'panel') {
+      openPanelEntry(chosen, entryCtx, go);
+      return;
+    }
+    if (openDraftEntry(chosen, entryCtx, go)) return;
+    void (async () => {
+      try {
+        createDraft(await draftBodyOf(chosen, entryCtx));
+      } catch (e) {
+        toast(String((e as Error).message || e));
+      }
+    })();
   };
 
   // 导入 .md：与目录页同一个入口，只是落点带本组语义（board + 归属项目）
@@ -287,43 +320,28 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     }
   };
 
-  // #132：组本身是可见主体——按 group +（可选）成员 repo/topic 三钥过滤。
-  const scopedTpl = useTemplatesFor({
-    topic: sel ? sel.topicKey : '',
-    group: board ? board.key : '',
-    repo: sel ? sel.key : '',
-  });
-  const flyTemplates: TemplateItem[] = scopedTpl.templates || tpl.templates || [];
-
-  // 就地新建（#135）：不弹窗，直进全屏编辑；标题即名称；scope 预置本组。
-  const newTemplateHere = () => {
-    if (!board || !model) return;
-    openTemplateEditor(model, { mode: 'new', scope: [`group:${board.key}`], name: '' });
-  };
-
-  // #151：与目录页同款下拉（模板项 / 新建 / 管理本主题模板）
-  const openTplManage = () => {
-    if (!board) return;
-    const id = putManageSession({
-      topic: sel ? sel.topicKey : '',
-      group: board.key || '',
-      repo: sel ? sel.key : '',
-      label: board.name || board.key,
-    });
-    app.onNavigate?.(`#/templates/manage/${id}`);
-  };
   const tplMenuItems = [
-    ...(flyTemplates.length
-      ? flyTemplates.map((t: TemplateItem) => ({
-          label: (t.id === tpl.defaultId ? '✓ ' : '') + t.name,
-          icon: 'list',
-          onClick: () => createTask(t.fallback ? null : t),
-        }))
-      : [{ label: '按默认模板新建一页', icon: 'list', onClick: () => createTask() }]),
-    'sep',
-    { label: '为本组新建模板…', icon: 'plus', onClick: newTemplateHere },
-    { label: '管理模板…', icon: 'gear', onClick: openTplManage },
-  ] as any[];
+    ...entryMenuItems(entryState.entries, (entry) => createTask(entry)),
+    ...(entryState.entries.length ? ['sep' as const] : []),
+    {
+      label: '配置新建页行为…',
+      icon: 'gear',
+      onClick: () =>
+        openVisibilityPanel(model, {
+          scopeKey: sel?.topicKey
+            ? `topic:${sel.topicKey}`
+            : sel?.key
+              ? `repo:${sel.key}`
+              : board
+                ? `group:${board.key}`
+                : '',
+          label: board?.name || board?.key || '本组',
+          topic: sel?.topicKey || '',
+          group: board?.key || '',
+          repo: sel?.key || '',
+        }),
+    },
+  ];
 
   // #185：这个早退**必须排在所有 hook 之后**。它原来在 usePager / useTemplatesFor 之前，
   // 于是「首帧 boards 还没到」与「boards 到了」两次渲染的 hook 数量不同 →

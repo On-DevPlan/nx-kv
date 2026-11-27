@@ -7,7 +7,7 @@
 //
 // 判定（静态、不跑代码）：
 //   1. 文件里 import 了 src/ 下会打开库的模块（core/db、localtask、docs、repos、
-//      templates、tasktool 等）；
+//      plugin、tasktool 等）；
 //   2. 且没有出现任何 `NX_KV_*` 环境变量设置，也没用共享夹具 `createTestStore`。
 // 两者同时成立 → 报错。
 //
@@ -36,8 +36,11 @@ const DB_MODULES = [
   'src/modules/repos/service',
   'src/modules/repos/boards',
   'src/modules/repos/transfer',
-  'src/modules/templates/service',
-  'src/modules/templates/actions/',
+  'src/modules/plugin/host',
+  'src/modules/plugin/service',
+  'src/modules/plugin/repo/',
+  'packages/plugin-task-template/src/server/index',
+  'packages/plugin-task-template/src/server/templates',
   'src/modules/tasktool/get',
   'src/modules/tasktool/wait',
   'src/modules/tasktool/timegoal',
@@ -51,6 +54,7 @@ const ISOLATION_MARK = /NX_KV_[A-Z_]+|createTestStore/;
 const ALLOW = new Map([
   ['tests/unit/attach-template.test.mjs', '只测 attachTemplateCtx / attachInstructionOf（纯渲染，无库访问）'],
   ['tests/unit/getloop-instruction.test.mjs', '只测 getLoopInstruction（纯字符串）'],
+  ['tests/unit/pretask-template-shared.test.mjs', '只测插件 server 的纯函数（scope 过滤 / SDK 模板渲染），不碰库'],
   ['tests/unit/localtask-board.test.mjs', '只测看板视图纯函数（不落库）'],
   // #200：progress-search（纯函数）与 progress-tasknum（纯函数）合并入 progress.test.mjs
   ['tests/unit/progress.test.mjs', '只测任务号格式化与搜索匹配（纯函数，合并自 progress-tasknum / progress-search）'],
@@ -77,7 +81,9 @@ function walk(dir) {
 function check(full, rel) {
   if (ALLOW.has(rel)) return;
   const text = readFileSync(full, 'utf8');
-  const importsDb = DB_MODULES.some((m) => text.includes(m));
+  // 插件 server 半侧一律会拿宿主 DB 句柄（ctx.storage）——按目录发现，不硬编码插件包名。
+  const importsPluginServer = /packages\/[^/]+\/src\/server\//.test(text);
+  const importsDb = importsPluginServer || DB_MODULES.some((m) => text.includes(m));
   if (!importsDb) return;
   if (ISOLATION_MARK.test(text)) return;
   // 显式给库路径也是隔离（openStore({ path }) / new DatabaseSync(path)）

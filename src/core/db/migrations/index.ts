@@ -21,6 +21,8 @@ import { migrateRefsRel } from './v8-data.js';
 import { migrateOrphanRefs } from './v11-data.js';
 import { migrateAssignmentsToColumns } from './v16-data.js';
 import { migrateTopicLinks } from './v17-data.js';
+import { stageLegacyTemplates } from './v19-data.js';
+import { finalizeLegacyTemplates } from './v20-data.js';
 import { CURRENT_SCHEMA_VERSION } from '../version.js';
 import type { DbApi } from '../driver.js';
 
@@ -71,6 +73,9 @@ export const DIRECT_EDGES: MigrationStep[] = [
   { from: 15, to: 16, file: 'v16.sql', title: '任务归属落库第一步（tasks.repo_key + topics.group_key，删 frontmatter #197）', apply: migrateAssignmentsToColumns },
   { from: 16, to: 17, file: 'v17.sql', title: '任务归属规范成两条 topic 关联（repo_topic_id + group_topic_id #197）', apply: migrateTopicLinks },
   { from: 17, to: 18, file: 'v18.sql', title: '恢复带待领任务的软删队列（幽灵队列修复 #200）' },
+  { from: 18, to: 19, file: 'v19.sql', title: '内部插件宿主表 + 旧模板暂存（plugin_state/visibility/legacy）', apply: stageLegacyTemplates },
+  { from: 19, to: 20, file: 'v20.sql', title: '删除旧任务模板表（内置实现迁到 plugin-task-template 包）', apply: finalizeLegacyTemplates },
+  { from: 20, to: 21, file: 'v21.sql', title: '每个 scope 可指定「新建页」默认入口（entry_visibility.is_default）' },
 ];
 
 // 人读版本说明（docs/decisions 是决策的唯一权威位置，里面对应一份 date 化的 .md）
@@ -93,6 +98,9 @@ export const VERSION_NOTES = {
   16: 'docs/decisions/versions/2026-11-24-v16.md',
   17: 'docs/decisions/versions/2026-11-24-v17.md',
   18: 'docs/decisions/versions/2026-11-25-v18.md',
+  19: 'docs/decisions/versions/2026-11-27-v19.md',
+  20: 'docs/decisions/versions/2026-11-27-v20.md',
+  21: 'docs/decisions/versions/2026-11-27-v21.md',
 };
 
 const keyOf = (from: number, to: number): string => `${from}->${to}`;

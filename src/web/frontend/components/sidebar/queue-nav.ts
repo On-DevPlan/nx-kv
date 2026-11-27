@@ -31,25 +31,30 @@ export interface QueueNavOptions {
  * @param {Function} [p.toast]        提示
  * @param {boolean}  [p.draft]        true = 进去直接开新草稿页签（?task=draft）
  */
-export async function ensureQueueAndGo({ row, onNavigate, refreshLocal, toast, draft = false }: QueueNavOptions): Promise<void> {
-  const withTask = (base: string) => (draft ? `${base}?task=draft` : base);
-  // 已有队列的仓库：直接跳（#190 全局池行已删除）
-  if (row.topicKey) {
-    onNavigate?.(withTask(`#/dir/${encodeURIComponent(String(row.topicKey))}`));
-    return;
-  }
-  // 没队列的仓库：先登记目录再进。登记仓库没有路径（不该发生）给提示后停。
+export async function ensureQueueKey({ row, refreshLocal, toast }: QueueNavOptions): Promise<string | null> {
+  // 已有队列的仓库：直接用（#190 全局池行已删除）
+  if (row.topicKey) return String(row.topicKey);
+  // 没队列的仓库：先登记目录。登记仓库没有路径（不该发生）给提示后停。
   if (!row.cwd) {
     toast?.(`「${row.name}」没有目录路径，无法创建任务队列`);
-    return;
+    return null;
   }
   try {
     const res = await api('/api/localtasks/topic', { method: 'POST', body: { cwd: row.cwd } });
     await refreshLocal?.();
     if (res && res.existed === false) toast?.(`已为「${row.name}」创建任务队列`);
-    onNavigate?.(withTask(`#/dir/${encodeURIComponent(res.key)}`));
+    return res && res.key ? String(res.key) : null;
   } catch (e) {
     // catch 变量是 unknown：只取 message（其余 String() 兜底）
     toast?.('创建任务队列失败: ' + ((e as Error).message || e));
+    return null;
   }
+}
+
+/** 确保仓库有任务队列，然后跳转工作台（draft=true 直接开空白草稿页签）。 */
+export async function ensureQueueAndGo(opts: QueueNavOptions): Promise<void> {
+  const key = await ensureQueueKey(opts);
+  if (!key) return;
+  const suffix = opts.draft ? '?task=draft' : '';
+  opts.onNavigate?.(`#/dir/${encodeURIComponent(key)}${suffix}`);
 }

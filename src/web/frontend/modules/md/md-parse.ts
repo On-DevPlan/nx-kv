@@ -39,7 +39,7 @@ export function slugName(title?: string | null): string {
 
 // #137：这里曾经有一份「新建任务骨架」的出厂文本（NEW_TEMPLATE / NEW_TEMPLATE_VALUES），
 // 与后端 seed 的出厂骨架同构。现在**只有一份内置**：新建任务模板「ref 生成」
-// （后端 core/db/seed-templates.js 的 NEWTASK_REF_BODY）——前端不再自带第二份副本，
+// （后端 packages/plugin-task-template 的 NEWTASK_REF_BODY）——前端不再自带第二份副本，
 // 否则两处出厂文本迟早漂移。面板没有可用模板时从空稿开始（用户自己写问题）。
 
 /**

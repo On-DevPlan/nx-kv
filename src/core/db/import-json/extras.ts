@@ -1,45 +1,65 @@
-// templates / settings 阶段：templates.json → templates；本机设置与偏好白名单 → settings。
+// templates / settings 阶段：legacy templates.json → plugin_legacy_data 暂存；本机设置 → settings。
+//
+// v20 起 templates 表已删除；旧 JSON 里的内置行不再导入（内置正文由
+// packages/plugin-task-template 代码声明），用户行暂存给插件首次激活时消费。
 import { CONFIG_PREF_KEYS, jsonText, LOCALTASK_SETTING_KEYS } from './data.js';
 import type { ImportReport } from './data.js';
 import type { DbApi } from '../driver.js';
 
+const PLUGIN_ID = 'task-template';
+const LEGACY_KIND = 'templates';
+
+function readStaged(db: DbApi): { rows: any[]; defaultId: string } {
+  const row = db.get(
+    'SELECT payload_json FROM plugin_legacy_data WHERE plugin_id = :p AND kind = :k',
+    { p: PLUGIN_ID, k: LEGACY_KIND },
+  );
+  if (!row) return { rows: [], defaultId: 'newtask.ref' };
+  try {
+    const parsed = JSON.parse(String(row.payload_json));
+    return {
+      rows: Array.isArray(parsed?.rows) ? parsed.rows : [],
+      defaultId: typeof parsed?.defaultId === 'string' ? parsed.defaultId : 'newtask.ref',
+    };
+  } catch {
+    return { rows: [], defaultId: 'newtask.ref' };
+  }
+}
+
 export function importTemplates(db: DbApi, templatesData: any, atMs: number, report: ImportReport): void {
   const list = Array.isArray(templatesData && templatesData.templates) ? templatesData.templates : [];
-  const defaultId = String((templatesData && templatesData.defaultId) || '');
+  const staged = readStaged(db);
+  const byId = new Map<string, any>();
+  for (const row of staged.rows) if (row && row.id) byId.set(String(row.id), row);
   list.forEach((t: any, index: number) => {
-    const id = String((t && t.id) || '').trim();
+    if (!t || t.builtin) return; // 内置由插件包接管，不迁
+    const id = String(t.id || '').trim();
     if (!id) return;
-    // legacy 只有"新建任务的骨架正文"这一种用途 → category='newtask'
-    // is_default 一律先落 0：类目的「唯一位」可能已被内置 seed 占住
-    //（ux_templates_default 每类目最多一个），下面循环外统一两步落默认。
-    db.run(
-      `INSERT INTO templates (id, category, name, slot, body, vars_schema, vars, is_default,
-                              enabled, sort_order, builtin, state, version, deleted_at,
-                              created_at, updated_at)
-       VALUES (:id, 'newtask', :name, 'suffix', :body, '[]', :vars, 0,
-               1, :sort, :builtin, '', 0, NULL, :at, :at)
-       ON CONFLICT(id) DO NOTHING`,
-      {
-        id,
-        name: String(t.name || id),
-        body: String(t.body || ''),
-        vars: jsonText(t.values && typeof t.values === 'object' ? t.values : {}),
-        sort: index,
-        builtin: t.builtin ? 1 : 0,
-        at: atMs,
-      }
-    );
+    byId.set(id, {
+      id,
+      name: String(t.name || id),
+      body: String(t.body || ''),
+      vars_schema: jsonText(t.varsSchema ?? []),
+      vars: jsonText(t.values && typeof t.values === 'object' ? t.values : {}),
+      is_default: 0,
+      sort_order: index,
+      scope: jsonText(t.scope ?? ['*']),
+      origin_topic: String(t.originTopic || ''),
+      created_at: Number(t.createdAt) || atMs,
+      updated_at: atMs,
+      builtin: 0,
+      category: 'newtask',
+    });
     report.imported.templates += 1;
   });
-  // defaultId → is_default 列。两步落：先摘掉类目里已有的默认，再点亮 defaultId
-  // 指的那行（defaultId 对不上任何行时保持原默认 —— 与旧 normalize 同兜底）。
-  if (defaultId) {
-    db.run("UPDATE templates SET is_default = 0 WHERE category = 'newtask' AND is_default = 1");
-    db.run(
-      "UPDATE templates SET is_default = 1, updated_at = :at WHERE id = :id AND category = 'newtask'",
-      { id: defaultId, at: atMs }
-    );
-  }
+  const defaultId = String((templatesData && templatesData.defaultId) || '') || staged.defaultId || 'newtask.ref';
+  const payload = { rows: [...byId.values()], defaultId };
+  db.run(
+    `INSERT INTO plugin_legacy_data (plugin_id, kind, payload_json, created_at)
+     VALUES (:p, :k, :body, :at)
+     ON CONFLICT(plugin_id, kind) DO UPDATE SET payload_json = excluded.payload_json`,
+    { p: PLUGIN_ID, k: LEGACY_KIND, body: JSON.stringify(payload), at: atMs },
+  );
 }
 
 function setSetting(db: DbApi, key: string, value: unknown, atMs: number): void {

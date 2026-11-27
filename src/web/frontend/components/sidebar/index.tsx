@@ -27,6 +27,7 @@ import NsHeadRow from './ns-row.js';
 import NsDialogs from './ns-dialogs.js';
 import TaskChildren from './task-children.jsx';
 import { ensureQueueAndGo } from './queue-nav.js';
+import PluginFootEntries from './plugin-foot.jsx';
 import type { AppRoute, BoardRow, LocalTopic, Prefs, RepoRow, ShellApi } from '../../types.js';
 
 /**
@@ -512,7 +513,7 @@ export default function Sidebar({
       </div>
 
       <div className="sfoot">
-        {footEntry('#/templates', 'list', '任务模板')}
+        <PluginFootEntries route={route} onNavigate={onNavigate} />
         {footEntry('#/repos', 'repo', '仓库管理')}
       </div>
 

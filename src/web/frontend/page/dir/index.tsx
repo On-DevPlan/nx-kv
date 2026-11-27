@@ -14,12 +14,11 @@ import Introduction from '../../components/Introduction/index.jsx';
 import GetLoopModal from '../../components/repos/get-loop-modal.js';
 import DagEditor from '../../components/task-panel/dag-editor.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
-import { openTemplateEditor } from '../../panels.jsx';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
-import { templateDraftBody } from '../../modules/prompts/template-preview.js';
-import { startFillIfSlotted } from '../../modules/md/new-task-from-template.js';
-import { putManageSession } from '../../modules/md/manage-session.js';
-import { useTemplatesFor } from '../../modules/md/use-templates.js';
+import { usePretaskEntries } from '../../modules/pretask/use-pretask.js';
+import { entryMenuItems } from '../../modules/pretask/menu.js';
+import { draftBodyOf, openDraftEntry, openPanelEntry, openVisibilityPanel } from '../../modules/pretask/open-entry.js';
+import type { PretaskEntry } from '../../modules/pretask/types.js';
 import TaskPage from '../../components/task-panel/task-page.jsx';
 import type { TaskPageRow } from '../../components/task-panel/task-page.jsx';
 import {
@@ -34,7 +33,7 @@ import {
 } from '../../components/task-panel/task-ops.js';
 import type { DagPatchInput, TaskOpsDeps } from '../../components/task-panel/task-ops.js';
 import { sortTasksForDisplay } from './task-utils.js';
-import type { LocalTask, PromptTemplate, RepoRow } from '../../types.js';
+import type { LocalTask, RepoRow } from '../../types.js';
 
 interface DirPanelProps {
   dirKey?: string;
@@ -46,7 +45,6 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
   const toast = useToast();
   const rows = app.rows || [];
   const refreshLocal = app.refreshLocal;
-  const tpl = app.tpl;
   const model = app.model;
   const repos = (app.repoData && app.repoData.repos) || [];
 
@@ -143,16 +141,6 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     if (app.openPage) app.openPage({ dirKey, task, name: '新任务' });
   };
 
-  // #151：「管理模板…」进**本主题**级管理页（不是全局 #/templates）
-  const openTplList = () => {
-    const id = putManageSession({
-      topic: topicKeyHere,
-      repo: repo?.key || '',
-      label: topic?.name || dirKey || '本目录',
-    });
-    app.onNavigate?.(`#/templates/manage/${id}`);
-  };
-
   const openProgress = () => {
     if (!model) return;
     openPanel(model, {
@@ -163,49 +151,58 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     });
   };
 
-  // #128 模板可见域：「模板 ▾」只列**本主题可用**的模板（服务端按 scope 过滤）。
-  // 三档退化都回落全量（scoped 未加载/旧 serve/失败时 templates=null），菜单不变空。
-  const scopedTpl = useTemplatesFor(topicKeyHere);
-  const menuTemplates: PromptTemplate[] = scopedTpl.templates || (tpl && tpl.templates) || [];
+  // 插件 pretask 入口：按当前主题取可见入口；默认入口用于「＋ 新建页」。
+  const entryState = usePretaskEntries({ topic: topicKeyHere, repo: repo?.key || '' });
+  const entryCtx = {
+    topicKey: topicKeyHere,
+    repoKey: repo?.key || String(topic?.repo_key || ''),
+    groupKey: '',
+    cwd: topic?.cwd || '',
+    dirKey,
+    topic: {
+      key: topicKeyHere,
+      name: topic?.name || dirKey || '',
+      kind: 'repo' as const,
+      cwd: topic?.cwd || '',
+      repoKey: repo?.key || String(topic?.repo_key || ''),
+      groupKey: '',
+      repoName: repo?.name || '',
+      groupName: '',
+      repoRoot: repo?.path || topic?.cwd || '',
+    },
+    location: { dirKey },
+  };
+  // 默认入口由本主题配置决定；没配时回落插件声明（宿主已算），再兜底第一个可见入口。
+  const defaultEntry =
+    entryState.entries.find((e) => e.id === entryState.defaultEntryId) ||
+    entryState.entries[0];
 
-  // 「为本目录新建模板」（#135）：不弹窗，直进全屏编辑；标题即名称。
-  const newTemplateForHere = () => {
-    if (!model) {
-      toast('工作区未就绪');
+  const pickEntry = (entry: PretaskEntry) => {
+    const go = (hash: string) => app.onNavigate?.(hash);
+    if (entry.kind === 'panel') {
+      openPanelEntry(entry, entryCtx, go);
       return;
     }
-    openTemplateEditor(model, {
-      mode: 'new',
-      topic: topicKeyHere,
-      scope: [`topic:${topicKeyHere}`],
-      name: '',
+    if (openDraftEntry(entry, entryCtx, go)) return;
+    void guard(async () => {
+      newDraft(await draftBodyOf(entry, entryCtx));
     });
   };
 
   const tplMenuItems = [
-    ...((menuTemplates.length)
-      ? menuTemplates.map((t: PromptTemplate) => ({
-          label: (t.id === tpl?.defaultId ? '✓ ' : '') + t.name,
-          icon: 'list',
-          // #191：带 {{槽位}} → 先去参数填写页；无槽位 → 纯文本草稿直进编辑器
-          onClick: () => {
-            if (startFillIfSlotted(t, { topic: topicKeyHere, dirKey: dirKey || '' }, app)) return;
-            newDraft(templateDraftBody(t));
-          },
-        }))
-      : [{
-          label: '按默认模板新建一页',
-          icon: 'list',
-          onClick: () => {
-            const p = tpl ? tpl.defaultPick() : null;
-            const full = (tpl?.templates || []).find((t) => t.id === (p?.id || tpl?.defaultId));
-            if (full && startFillIfSlotted(full as any, { topic: topicKeyHere, dirKey: dirKey || '' }, app)) return;
-            newDraft(p && p.id ? templateDraftBody(p) : (p ? p.body : ''));
-          },
-        }]),
-    'sep',
-    { label: '为本目录新建模板…', icon: 'plus', onClick: newTemplateForHere },
-    { label: '管理模板…', icon: 'gear', onClick: openTplList },
+    ...entryMenuItems(entryState.entries, pickEntry),
+    ...(entryState.entries.length ? ['sep' as const] : []),
+    {
+      label: '配置新建页行为…',
+      icon: 'gear',
+      onClick: () =>
+        openVisibilityPanel(model, {
+          scopeKey: `topic:${topicKeyHere}`,
+          label: topic?.name || dirKey || '本目录',
+          topic: topicKeyHere,
+          repo: repo?.key || '',
+        }),
+    },
   ];
 
   // ─── 文档列表（右侧栏）────────────────────────────────────────────
@@ -265,10 +262,8 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
         emptyText='还没有页面：点「＋ 新建页」写第一篇，或让 agent 往这个目录投递任务。'
         tplMenuItems={tplMenuItems}
         onNew={() => {
-          const p = tpl ? tpl.defaultPick() : null;
-          const full = (tpl?.templates || []).find((t) => t.id === (p?.id || tpl?.defaultId));
-          if (full && startFillIfSlotted(full, { topic: topicKeyHere, dirKey: dirKey || '' }, app)) return;
-          newDraft(p && p.id ? templateDraftBody(p) : (p ? p.body : ''));
+          if (defaultEntry) pickEntry(defaultEntry);
+          else newDraft('');
         }}
         onOpenRow={(r) => openTask(r.task.id)}
         onImportFile={(f) => void importMd(f)}

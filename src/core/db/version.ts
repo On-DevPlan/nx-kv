@@ -49,7 +49,13 @@
 //   + tasks.group_topic_id（可空，组归属）；丢弃 repo_key，组队列换成 group:<组key> 形态 #197。
 // v18（2026-11-25）：恢复带待领任务的软删队列（幽灵队列——活任务挂软删队列任何 cwd
 //   都领不到）；prune 的旧模型分支同步补 pending 守卫 #200。
-export const CURRENT_SCHEMA_VERSION = 18;
+// v19（2026-11-27）：内部插件宿主表（plugin_state / entry_visibility / legacy_data /
+//   storage_migrations）；旧 templates 用户行暂存为 plugin_legacy_data。
+// v20（2026-11-27）：删除 templates（内置任务模板由 packages/plugin-task-template 接管）；
+//   v20-data 先补拷最后一刻用户行再 DROP。
+// v21（2026-11-27）：plugin_entry_visibility 增加 is_default——每个 scope 可指定
+//   「＋ 新建页」默认触发哪个插件列表项（缺省仍跟随插件声明）。
+export const CURRENT_SCHEMA_VERSION = 21;
 
 /**
  * 运行时最低 Node 版本。

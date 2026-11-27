@@ -49,7 +49,6 @@ import {
   userVersion,
 } from './migrator.js';
 import { importLegacy, scanLegacy, LEGACY_FILES } from './import-json.js';
-import { seedBuiltinTemplates } from './seed-templates.js';
 import {
   NotNxKvStoreError,
   StoreMigrationError,
@@ -233,9 +232,7 @@ export function bootstrap(
         // 这里补一次，保证「导入的历史任务」也不是只有正文里的 fileId 字符串）。
         syncTaskAttachmentIndex(conn, { atMs });
         syncDocAttachmentIndex(conn, { docsDir: migrationContext.docsDir, atMs });
-        // 内置模板 seed 放在导入**之后**：legacy templates.json 里用户改过的
-        // builtin 行先落库，seed 的 INSERT OR IGNORE 就不会用出厂文本盖掉它。
-        seedBuiltinTemplates(conn, atMs);
+        // 内置任务模板已由 packages/plugin-task-template 代码声明；这里不再 seed。
         return { created: true, report };
       },
       { db, mode: 'IMMEDIATE', rollback: dryRun }
@@ -310,12 +307,6 @@ export function bootstrap(
       result.action = 'imported';
       result.report = report;
     }
-  }
-
-  // ── 内置模板 seed（幂等；存量库也可能缺新加的 builtin 行）──
-  //  只读 / 演练 / 未建表的库跳过（情况 A 已在事务内 seed 过）。
-  if (!db.readOnly && !dryRun && before.tables > 0) {
-    tx((conn) => seedBuiltinTemplates(conn, atMs), { db, mode: 'IMMEDIATE' });
   }
 
   // 旧 manifest 台账在迁移阶段已进库；成功后归档（改名不删，留取证）。

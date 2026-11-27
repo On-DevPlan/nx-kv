@@ -14,7 +14,6 @@
 //   url    → url{href,host}                               外部链接，直接抓取
 //   task   → task{topicKey,seq,title,status,…,showCmd}    任务引用（不是副本，读最新正文）
 //   ref    → ref{refId,title,desc,readCmd,content}        文档库实体（docs get --ref）
-//   mdfile → mdfile{absPath,anchorDir,content,…,readCmd}  外部 .md 指针（docs mdfile）
 //   folder → folder{absPath,exists,missing,readCmd}       本地目录指针（先列目录）
 // 各 kind 的顶层同时平铺了子对象的字段（历史兼容：老模板写 {{localPath}} / {{href}}），
 // 所以顶层用 discriminatedUnion + looseObject：kind 决定形状，未声明的扩展字段原样保留。
@@ -22,13 +21,13 @@ import { z } from 'zod';
 import { PromptPlugin, supplied, type Supply, type TemplateText } from '../base.js';
 
 /** 附件 kind（与 attach-resource.ts 的 baseKind 归一结果一致）。 */
-export const ATTACH_KINDS = ['file', 'url', 'task', 'ref', 'mdfile', 'folder', 'repo'] as const;
+export const ATTACH_KINDS = ['file', 'url', 'task', 'ref', 'folder', 'repo'] as const;
 /** 来源：正文内嵌 / 附件区（关系表 role 决定）。 */
 export const ATTACH_ORIGINS = ['inline', 'area'] as const;
 
 const kind = z.enum(ATTACH_KINDS);
 /** 每条附件的类型说明（union 各分支共用同一句，去重后目录里能看到完整枚举）。 */
-const KIND_DESC = '附件类型：file / url / task / ref / mdfile / folder / repo（决定子对象形状与取用命令）';
+const KIND_DESC = '附件类型：file / url / task / ref / folder / repo（决定子对象形状与取用命令）';
 const origin = z.enum(ATTACH_ORIGINS);
 
 /**
@@ -38,9 +37,9 @@ const origin = z.enum(ATTACH_ORIGINS);
  * `sizeText` 是渲染用的人类可读串——模板里直接写 {{kindLabel}} 就行，不必自己拼。
  */
 const baseItem = {
-  id: z.string().describe('附件 id（kind=folder/mdfile 时也是 file content / docs mdfile 的入参）'),
+  id: z.string().describe('附件 id（kind=folder 时也是 file content 的入参）'),
   kind: kind.describe(KIND_DESC),
-  kindLabel: z.string().describe('类型中文名：附件 / 图片 / 链接 / 任务 / 文档 / md / 文件夹'),
+  kindLabel: z.string().describe('类型中文名：附件 / 图片 / 链接 / 任务 / 文档 / 文件夹'),
   isImage: z.boolean().describe('是否图片（仅 kind=file 且扩展名或 MIME 命中）'),
   name: z.string().describe('展示名（任务类为「#seq 标题」）'),
   size: z.number().describe('字节数（url/task/ref 为 0）'),
@@ -149,29 +148,6 @@ const refItem = z.looseObject({
   }).describe('文档视图：{{#if ref}}{{ref.content}}{{/if}}'),
 });
 
-/** kind=mdfile：外部 .md 文件指针。**用 mdfile.readCmd 读磁盘当前内容**。 */
-const mdfileItem = z.looseObject({
-  ...baseItem,
-  kind: z.literal('mdfile').describe(KIND_DESC),
-  absPath: z.string().describe('磁盘绝对路径'),
-  anchorDir: z.string().describe('登记时的锚定目录（相对路径按它解析）'),
-  path: z.string().describe('= absPath（旧写法）'),
-  mdPath: z.string().describe('= absPath（旧写法）'),
-  content: z.string().describe('已内联的磁盘正文（可能为空）'),
-  truncated: z.boolean(),
-  stale: z.boolean().describe('磁盘内容与登记指纹不一致'),
-  missing: z.boolean().describe('文件当前不可读'),
-  mdfile: z.looseObject({
-    absPath: z.string(),
-    anchorDir: z.string(),
-    content: z.string(),
-    truncated: z.boolean(),
-    stale: z.boolean(),
-    missing: z.boolean(),
-    readCmd: z.string().describe('读磁盘内容的命令：nx-kv docs mdfile <id>'),
-  }).describe('外部 md 视图：读正文用 {{mdfile.readCmd}}，内联正文在 {{mdfile.content}}'),
-});
-
 /** kind=folder：本地目录指针。**先列 absPath 目录，再读需要的文件**。 */
 const folderItem = z.looseObject({
   ...baseItem,
@@ -230,8 +206,8 @@ const repoItem = z.looseObject({
 
 /** 一条附件：kind 决定形状（discriminatedUnion 给的是「kind 与字段必须自洽」这道闸）。 */
 const attachItem = z
-  .discriminatedUnion('kind', [fileItem, urlItem, taskItem, refItem, mdfileItem, folderItem, repoItem])
-  .describe('附件条目：file / url / task / ref / mdfile / folder / repo，各有自己的子对象与取用命令');
+  .discriminatedUnion('kind', [fileItem, urlItem, taskItem, refItem, folderItem, repoItem])
+  .describe('附件条目：file / url / task / ref / folder / repo，各有自己的子对象与取用命令');
 
 const schema = z.strictObject({
   // strictObject 只钉顶层段键（attach）；attach 由宿主构造，段内形状见上。
@@ -258,7 +234,7 @@ const BUILTIN: TemplateText = {
 
 附件清单：
 {{#each attach.list}}
-  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if mdfile}}{{mdfile.absPath}}{{#if mdfile.missing}}（源文件已不在）{{/if}}{{/if}}{{#if folder}}{{folder.absPath}}{{#if folder.missing}}（目录已不在）{{/if}}{{/if}}{{#if repo}}{{repo.typeLabel}} {{repo.key}}{{#if repo.localPath}} · {{repo.localPath}}{{/if}}{{#if repo.missing}}（checkout 已不在）{{/if}}{{/if}}{{#if mandatory}}〔必须访问〕{{/if}}{{#if note}}  # {{note}}{{/if}}
+  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if folder}}{{folder.absPath}}{{#if folder.missing}}（目录已不在）{{/if}}{{/if}}{{#if repo}}{{repo.typeLabel}} {{repo.key}}{{#if repo.localPath}} · {{repo.localPath}}{{/if}}{{#if repo.missing}}（checkout 已不在）{{/if}}{{/if}}{{#if mandatory}}〔必须访问〕{{/if}}{{#if note}}  # {{note}}{{/if}}
 {{/each}}
 {{#if attach.hasMandatory}}
 必须访问（内部资源，逐条执行，不得跳过）：
@@ -271,11 +247,7 @@ const BUILTIN: TemplateText = {
 {{#each attach.list}}
   - {{kindLabel}} 《{{name}}》：{{usage}}
 {{/each}}
-{{#each attach.list}}{{#if mdfile}}{{#if mdfile.content}}〔外部 md · {{name}}〕（{{mdfile.absPath}}{{#if mdfile.truncated}}，已截断{{/if}}{{#if mdfile.stale}}，内容有变化{{/if}}）：
 
-{{mdfile.content}}
-
-{{/if}}{{/if}}{{/each}}
 {{#each attach.list}}{{#if ref}}{{#if ref.content}}〔文档原文 · {{ref.title}}〕：
 
 {{ref.content}}

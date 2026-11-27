@@ -840,7 +840,7 @@
           "action": {
             "id": "docs.attach",
             "module": "docs",
-            "summary": "给文档挂资源：--path / --fileId / --url / --task / --doc / --mdfile / --folder 之一；默认追加进正文，--no-embed 只挂附件区（不写正文）",
+            "summary": "给文档挂资源：--path / --fileId / --url / --task / --doc / --folder 之一；默认追加进正文，--no-embed 只挂附件区（不写正文）",
             "usage": "docs attach",
             "http": "POST /api/docs/attach"
           },
@@ -952,21 +952,6 @@
           "children": []
         },
         {
-          "name": "link-file",
-          "path": [
-            "docs",
-            "link-file"
-          ],
-          "action": {
-            "id": "docs.link-file",
-            "module": "docs",
-            "summary": "把本地 md 文件登记为 mdfile 附件并挂到文档附件区：只存路径指针，不复制正文，不改文档正文",
-            "usage": "docs link-file",
-            "http": "POST /api/docs/link-file"
-          },
-          "children": []
-        },
-        {
           "name": "link",
           "path": [
             "docs",
@@ -1008,36 +993,6 @@
             "summary": "把某一篇设为主篇：原主篇退回附加篇（不丢归属），目标从附加篇摘出（不会出现两份）",
             "usage": "docs main",
             "http": "POST /api/docs/main"
-          },
-          "children": []
-        },
-        {
-          "name": "mdfile",
-          "path": [
-            "docs",
-            "mdfile"
-          ],
-          "action": {
-            "id": "docs.mdfile",
-            "module": "docs",
-            "summary": "读本地 md 文件的正文（只读原文件，核对指纹；文件缺失时返回空正文并标 missing）",
-            "usage": "docs mdfile",
-            "http": "GET /api/docs/mdfile"
-          },
-          "children": []
-        },
-        {
-          "name": "mdfiles",
-          "path": [
-            "docs",
-            "mdfiles"
-          ],
-          "action": {
-            "id": "docs.mdfiles",
-            "module": "docs",
-            "summary": "列出已登记的本地 md 文件（mdfile 附件；--missing 只看失效行）",
-            "usage": "docs mdfiles",
-            "http": "GET /api/docs/mdfiles"
           },
           "children": []
         },
@@ -1208,7 +1163,7 @@
           "action": {
             "id": "localtask.attach",
             "module": "localtask",
-            "summary": "给任务挂附件：--path 存本机附件仓 / --fileId 引用已有附件 / --url / --task（同主题任务）/ --ref（文档）/ --mdfile（本地 md 指针）/ --folder（本地文件夹路径）/ --repo（已登记仓库）；默认嵌进正文，--no-embed 只挂到附件区（不写正文），--ref 加 --inline 文档进原文（交付带全文）",
+            "summary": "给任务挂附件：--path 存本机附件仓 / --fileId 引用已有附件 / --url / --task（同主题任务）/ --ref（文档）/ --folder（本地文件夹路径）/ --repo（已登记仓库）；默认嵌进正文，--no-embed 只挂到附件区（不写正文），--ref 加 --inline 文档进原文（交付带全文）",
             "usage": "localtask attach",
             "http": "POST /api/localtasks/attach"
           },

@@ -26,7 +26,7 @@ export interface AttachmentView {
   /** 行值可能为 NULL（SQLite），消费方各自 Number() 归一，故这里不做窄化。 */
   targetSeq: any;
   meta: Record<string, unknown>;
-  /** mdfile 专用：规范化绝对路径 / 相对链接锚点（其它 kind 为空） */
+  /** 外部路径类资源（folder / 历史 mdfile）的规范化绝对路径与相对链接锚点 */
   absPath: string;
   anchorDir: string;
   missingAt: number | null;
@@ -81,7 +81,7 @@ export function listTaskAttachments(conn: any, taskId?: string | number): Linked
               a.abs_path, a.anchor_dir, a.missing_at, a.last_seen_at,
               a.deleted_at, a.created_at, a.updated_at, ta.role, ta.position, ta.note
          FROM task_attach ta JOIN attachments a ON a.id = ta.attachment_id
-        WHERE ta.task_id = :id AND a.deleted_at IS NULL
+        WHERE ta.task_id = :id AND a.deleted_at IS NULL AND a.kind <> 'mdfile'
         ORDER BY ta.position, a.id`,
       { id: Number(taskId) }
     )
@@ -117,7 +117,7 @@ export function listRefAttachments(conn: any, refId?: string | number): LinkedAt
               a.abs_path, a.anchor_dir, a.missing_at, a.last_seen_at,
               a.deleted_at, a.created_at, a.updated_at, ra.role, ra.position
          FROM ref_attach ra JOIN attachments a ON a.id = ra.attachment_id
-        WHERE ra.ref_id = :id AND a.deleted_at IS NULL
+        WHERE ra.ref_id = :id AND a.deleted_at IS NULL AND a.kind <> 'mdfile'
         ORDER BY ra.position, a.id`,
       { id: String(refId || '') }
     )

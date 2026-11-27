@@ -14,12 +14,9 @@ import { DocsDetachAction } from './docs-detach.js';
 import { DocsGcAction } from './docs-gc.js';
 import { DocsGetAction } from './docs-get.js';
 import { DocsIndexAction } from './docs-index.js';
-import { DocsLinkFileAction } from './docs-link-file.js';
 import { DocsLinkAction } from './docs-link.js';
 import { DocsListAction } from './docs-list.js';
 import { DocsMainAction } from './docs-main.js';
-import { DocsMdfileAction } from './docs-mdfile.js';
-import { DocsMdfilesAction } from './docs-mdfiles.js';
 import { DocsNotebindAction } from './docs-note-bind.js';
 import { DocsOrphansPurgeAction } from './docs-orphans-purge.js';
 import { DocsOrphansAction } from './docs-orphans.js';
@@ -42,12 +39,9 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   DocsGcAction,
   DocsGetAction,
   DocsIndexAction,
-  DocsLinkFileAction,
   DocsLinkAction,
   DocsListAction,
   DocsMainAction,
-  DocsMdfileAction,
-  DocsMdfilesAction,
   DocsNotebindAction,
   DocsOrphansPurgeAction,
   DocsOrphansAction,
@@ -70,12 +64,9 @@ export { DocsDetachAction };
 export { DocsGcAction };
 export { DocsGetAction };
 export { DocsIndexAction };
-export { DocsLinkFileAction };
 export { DocsLinkAction };
 export { DocsListAction };
 export { DocsMainAction };
-export { DocsMdfileAction };
-export { DocsMdfilesAction };
 export { DocsNotebindAction };
 export { DocsOrphansPurgeAction };
 export { DocsOrphansAction };

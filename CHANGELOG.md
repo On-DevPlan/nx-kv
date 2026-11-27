@@ -2,6 +2,19 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### Removed
+
+- **附件类型 `mdfile`（外部 `.md` 路径指针）整体移除**：附件 kind 收敛为
+  file / url / task / ref / folder / repo 六种。
+  - CLI：`localtask attach --mdfile`、`docs attach --mdfile`、`docs mdfile`、
+    `docs mdfiles`、`docs link-file` 全部删除，生成的 action 契约同步收缩；
+  - 提示词：attachment 插件去掉 `mdfile` schema 与「外部 md」正文段，交付模板不再出现该类型；
+  - 面板：任务编辑页 dock 的「md」tab、状态栏 md 入口、附件区的 md 预览与 `@` 引用语法一并删除；
+  - 历史数据：库内既有 `attachments.kind='mdfile'` 行保留不迁移，但不再列出/交付；
+    旧外部文档（`origin=external`）仍能按路径读回历史行，不阻断已有绑定。
+
 ## [0.71.0] - 2026-11-27 gettask 插件生命周期 + 第三个内置插件 skill-ref
 
 本轮把插件从「新建任务入口」扩展到**任务全生命周期**：同一个插件对象可以在 pretask 之外实现

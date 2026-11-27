@@ -18,7 +18,7 @@ export const DEFAULT_ATTACH_TEMPLATE = [
   '',
   '附件清单：',
   '{{#each attach.list}}',
-  '  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if mdfile}}{{mdfile.absPath}}{{#if mdfile.missing}}（源文件已不在）{{/if}}{{/if}}{{#if folder}}{{folder.absPath}}{{#if folder.missing}}（目录已不在）{{/if}}{{/if}}{{#if repo}}{{repo.typeLabel}} {{repo.key}}{{#if repo.localPath}} · {{repo.localPath}}{{/if}}{{#if repo.missing}}（checkout 已不在）{{/if}}{{/if}}{{#if mandatory}}〔必须访问〕{{/if}}{{#if note}}  # {{note}}{{/if}}',
+  '  - [{{originLabel}}] {{kindLabel}} {{name}}{{#if sizeText}}（{{sizeText}}）{{/if}}：{{#if file}}{{#if file.exists}}{{file.localPath}}{{else}}未同步到本地（fileId {{file.fileId}}）{{/if}}{{/if}}{{#if url}}{{url.href}}{{/if}}{{#if task}}{{#if task.resolved}}#{{task.seq}} {{task.title}} · 地址 {{task.address}}（{{task.statusLabel}}）{{else}}地址 {{task.address}}（{{task.statusLabel}}）{{/if}}{{/if}}{{#if ref}}{{ref.title}}{{/if}}{{#if folder}}{{folder.absPath}}{{#if folder.missing}}（目录已不在）{{/if}}{{/if}}{{#if repo}}{{repo.typeLabel}} {{repo.key}}{{#if repo.localPath}} · {{repo.localPath}}{{/if}}{{#if repo.missing}}（checkout 已不在）{{/if}}{{/if}}{{#if mandatory}}〔必须访问〕{{/if}}{{#if note}}  # {{note}}{{/if}}',
   '{{/each}}',
   '{{#if attach.hasMandatory}}',
   '必须访问（内部资源，逐条执行，不得跳过）：',
@@ -31,11 +31,6 @@ export const DEFAULT_ATTACH_TEMPLATE = [
   '{{#each attach.list}}',
   '  - {{kindLabel}} 《{{name}}》：{{usage}}',
   '{{/each}}',
-  '{{#each attach.list}}{{#if mdfile}}{{#if mdfile.content}}〔外部 md · {{name}}〕（{{mdfile.absPath}}{{#if mdfile.truncated}}，已截断{{/if}}{{#if mdfile.stale}}，内容有变化{{/if}}）：',
-  '',
-  '{{mdfile.content}}',
-  '',
-  '{{/if}}{{/if}}{{/each}}',
   '{{#each attach.list}}{{#if ref}}{{#if ref.content}}〔文档原文 · {{ref.title}}〕：',
   '',
   '{{ref.content}}',
@@ -56,7 +51,6 @@ export const DEFAULT_ATTACH_TEMPLATE = [
  *            address, storedAddress, addressDrift, resolved, purged, deleted, showCmd }
  *   ref  → { refId, title, desc, readCmd, content, truncated }
  *     content 只在「文档资料」绑定（role='doc'，交付读全文）且真的读到时非空。
- *   mdfile → { absPath, anchorDir, content, truncated, stale, missing, readCmd }
  *   folder → { absPath, exists, missing, readCmd }（#127：目录内容不入库，只给路径）
  *     content 是读时从磁盘现取的正文（截断 2 万字）；missing 时为空、stale 表示指纹漂移。
  * 通用 note = 边上的说明（desc，#162）：attach --note 的落点，清单行透出。
@@ -64,7 +58,7 @@ export const DEFAULT_ATTACH_TEMPLATE = [
  * seq / showCmd / refId / target / area / areaLabel。
  */
 function ctxItemOf(a: any): any {
-  const kind = ['url', 'task', 'ref', 'mdfile', 'folder', 'repo'].includes(a.kind) ? a.kind : 'file';
+  const kind = ['url', 'task', 'ref', 'folder', 'repo'].includes(a.kind) ? a.kind : 'file';
   const isImage = kind === 'file' && (a.isImage === undefined ? isImageName(a.name, a.mime) : !!a.isImage);
   const role = String(a.role || '');
   const origin =
@@ -91,7 +85,7 @@ function ctxItemOf(a: any): any {
     needsSync: !!a.needsSync,
     // 边上的说明（desc，#162）：清单行用 {{#if note}} 透出，agent 据此决定是否深入
     note: String(a.note || ''),
-    // #184：内部资源（task / ref / repo）强制访问；外部资源（file/url/mdfile/folder）不强制
+    // #184：内部资源（task / ref / repo）强制访问；外部资源（file/url/folder）不强制
     mandatory: false,
     access: '',
     // 兼容旧字段
@@ -246,36 +240,6 @@ function ctxItemOf(a: any): any {
     };
   }
 
-  if (kind === 'mdfile') {
-    const absPath = String(a.absPath || a.localPath || '');
-    const anchorDir = String(a.anchorDir || '');
-    const content = String(a.mdContent || '');
-    const truncated = !!a.mdTruncated;
-    const stale = !!a.mdStale;
-    const missing = a.mdMissing === undefined ? !absPath : !!a.mdMissing;
-    const readCmd = String(a.readCmd || `nx-kv docs mdfile ${item.id}`);
-    const mdfile = { absPath, anchorDir, content, truncated, stale, missing, readCmd };
-    const usage = String(a.usage || (missing
-      ? `外部 md 文件当前不可读（${absPath || '路径为空'}）：用 ${readCmd} 查看状态`
-      : `这是外部 md 文件（源文件不在库里）：用 ${readCmd} 读取磁盘当前内容${stale ? '；内容已变化，与登记指纹不一致' : ''}`));
-    return {
-      ...item,
-      absPath,
-      anchorDir,
-      path: absPath,
-      mdPath: absPath,
-      content,
-      truncated,
-      stale,
-      missing,
-      mdfile,
-      usage,
-      cmd: String(a.cmd !== undefined ? a.cmd : readCmd),
-      locator: String(a.locator || absPath || item.name),
-      needsSync: false,
-    };
-  }
-
   const refId = String(a.refId || a.targetKey || '');
   // docTitle：文档资料绑定读到全文时提取的首行 # 标题（比 desc / 文件名更说明内容，#162）
   const title = String(a.docTitle || a.title || a.name || '').replace(/\.md$/i, '') || '未命名文档';
@@ -376,9 +340,6 @@ export function attachmentInstruction(attachments: unknown): string {
     for (const a of ctx.list) {
       if (a.kind === 'ref' && a.ref && a.ref.content) {
         lines.push(`〔文档原文 · ${a.ref.title}〕：`, '', a.ref.content, '');
-      }
-      if (a.kind === 'mdfile' && a.mdfile && a.mdfile.content) {
-        lines.push(`〔外部 md · ${a.name}〕（${a.mdfile.absPath}${a.mdfile.truncated ? '，已截断' : ''}${a.mdfile.stale ? '，内容有变化' : ''}）：`, '', a.mdfile.content, '');
       }
     }
     return lines.join('\n');

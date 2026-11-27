@@ -25,7 +25,6 @@ export {
 } from './attachmentdb/ids.js';
 export {
   ensureAttachment,
-  ensureMdfileAttachment,
   ensureRefAttachment,
   ensureTaskAttachment,
   ensureUrlAttachment,

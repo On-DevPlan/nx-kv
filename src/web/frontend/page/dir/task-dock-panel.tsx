@@ -1,5 +1,4 @@
-// 底部抽屉面板（#79）：附件 / md / check / 反馈收在这里，编辑区不再被内容块挤占。
-import { useState } from 'react';
+// 底部抽屉面板（#79）：附件 / check / 反馈收在这里，编辑区不再被内容块挤占。
 import type { ComponentProps, Dispatch, MouseEvent as ReactMouseEvent, ReactNode, Ref, RefObject, SetStateAction } from 'react';
 import type { Model } from 'flexlayout-react';
 import { Icon } from '../../components/icons.jsx';
@@ -9,8 +8,6 @@ import type { AttachAreaHandle } from '../../components/md/attachments/attach-ar
 import type { Attachment } from '../../components/md/attachments/attach-common.js';
 import { docIdOfLocator } from '../../components/md/attachments/attach-common.js';
 import { openPanel } from '../../workspace.js';
-import { getMdfileContent } from './api.js';
-import { renderMarkdownHtml } from '../../modules/md/md-render.js';
 import type { LocalTask, LocalTopic } from '../../types.js';
 import { fmtSec } from './task-utils.js';
 import { TaskPluginDockView, useGetTaskPlugins } from './task-plugin-dock.jsx';
@@ -62,74 +59,6 @@ interface DockPanelProps {
   latestChild: ChainApiItem | null;
   openFeedback: () => void;
   openLatestRound: () => void;
-  /** 任务当前挂载的附件（md 栏按 kind='mdfile' 过滤，不另建模型） */
-  attachments: Attachment[];
-}
-
-/** md 栏：附件里 kind='mdfile' 的那部分，按 md 渲染（底层仍是 attachments）。 */
-function MdDockTab({ attachments }: { attachments: Attachment[] }) {
-  const list = attachments.filter((a) => a.kind === 'mdfile');
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [docs, setDocs] = useState<Record<string, { html: string; path: string; stale: boolean; missing: boolean; loading?: boolean; error?: string }>>({});
-
-  const open = async (id: string) => {
-    setOpenId(id);
-    if (docs[id] && !docs[id].error) return;
-    setDocs((m) => ({ ...m, [id]: { html: '', path: '', stale: false, missing: false, loading: true } }));
-    try {
-      const r = await getMdfileContent(id);
-      setDocs((m) => ({
-        ...m,
-        [id]: {
-          html: renderMarkdownHtml(String(r.body || '')),
-          path: String(r.absPath || ''),
-          stale: !!r.stale,
-          missing: !!r.missing,
-        },
-      }));
-    } catch (e) {
-      setDocs((m) => ({ ...m, [id]: { html: '', path: '', stale: false, missing: false, error: (e as Error).message || String(e) } }));
-    }
-  };
-
-  if (!list.length) {
-    return <div className="mdw-dock-empty">没有 md 附件——用 `nx-kv localtask attach --mdfile &lt;本地 md 路径&gt;` 挂一个外部 md 文件。</div>;
-  }
-  const cur = openId ? docs[openId] : null;
-  return (
-    <div className="mdw-md-tab">
-      <div className="mdw-md-list" role="list">
-        {list.map((a) => (
-          <button
-            type="button"
-            role="listitem"
-            key={String(a.id)}
-            className={`mdw-md-item${openId === String(a.id) ? ' is-on' : ''}`}
-            onClick={() => open(String(a.id))}
-            title={a.absPath || ''}
-          >
-            <span className="mdw-md-item-name">{a.name || 'md'}</span>
-            <span className="mdw-md-item-path mono">{a.absPath || '（路径为空）'}{a.missing ? ' · 文件已不在' : ''}</span>
-          </button>
-        ))}
-      </div>
-      <div className="mdw-md-view">
-        {!openId ? <div className="mdw-dock-empty">选一条 md 看预览。</div> : null}
-        {cur?.loading ? <div className="mdw-dock-empty">读取中…</div> : null}
-        {cur?.error ? <div className="mdw-dock-empty">读取失败：{cur.error}</div> : null}
-        {cur && !cur.loading && !cur.error ? (
-          cur.missing ? (
-            <div className="mdw-dock-empty">源文件已不在：{cur.path || '（路径为空）'}</div>
-          ) : (
-            <div className="mdw-md-render">
-              {cur.stale ? <div className="att-md-warn">内容已变化（与登记指纹不一致），以下为磁盘当前内容。</div> : null}
-              <article dangerouslySetInnerHTML={{ __html: cur.html }} />
-            </div>
-          )
-        ) : null}
-      </div>
-    </div>
-  );
 }
 
 export function DockPanel({
@@ -140,7 +69,7 @@ export function DockPanel({
   refreshLocal, markDirty, saveDoc, persistAtt,
   attachAreaRef, reviewBarRef, reviewSumRef,
   taskRow, ackOpen, setAckOpen, ackOverflow, ackLong, ackHtml,
-  isChainTip, latestChild, openFeedback, openLatestRound, attachments,
+  isChainTip, latestChild, openFeedback, openLatestRound,
 }: DockPanelProps) {
   // gettask 插件区块（第二生命周期点）：声明 → tab；内容由插件组件自己渲染。
   // 草稿任务也挂：插件先按 draft-N 暂存，提交成功后宿主广播 onTaskCreated 让插件迁移。
@@ -153,7 +82,6 @@ export function DockPanel({
     ? pluginTabs.entries.find((e) => e.segment === dockTab)
     : undefined;
   if (!dockOpen) return null;
-  const mdCount = attachments.filter((a) => a.kind === 'mdfile').length;
 
   return (
     <div className="mdw-dock" ref={dockRef} style={{ height: `${dockH}px` }}>
@@ -176,17 +104,6 @@ export function DockPanel({
             onClick={() => showDockTab('attach')}
           >
             附件
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={dockTab === 'md'}
-            className={`mdw-dock-tab${dockTab === 'md' ? ' is-on' : ''}`}
-            onClick={() => showDockTab('md')}
-            title="只聚合 kind='mdfile' 的附件（md 预览）"
-          >
-            md
-            {mdCount ? <span className="mdw-dock-tab-num">{mdCount}</span> : null}
           </button>
           {canShowGoalLog ? (
             <button
@@ -289,8 +206,6 @@ export function DockPanel({
             <div className="mdw-dock-empty">没有可挂载附件的上下文。</div>
           )
         ) : null}
-
-        {dockTab === 'md' ? <MdDockTab attachments={attachments} /> : null}
 
         {dockTab === 'check' ? (
           <div className="mdw-dock-check">

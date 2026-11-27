@@ -1,7 +1,7 @@
 // 本地文件夹附件（#127）：只登记一个绝对路径指针，目录内容不入库。
 //
-// 与 mdfile 同为 `storage='external'`，区别在于：
-//   · mdfile 是单个 .md 文件，登记时读指纹、交付时附正文；
+// 与 file 的区别在于：
+//   · file 的字节在本机附件仓，交付给绝对路径；
 //   · folder 是目录，没有字节（size=0 / hash='' / mime=''），交付只给路径，
 //     由 agent 按需列目录 / 读里面的文件。
 import { existsSync, statSync } from 'node:fs';

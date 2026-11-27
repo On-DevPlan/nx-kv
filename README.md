@@ -21,8 +21,7 @@
 - **仓库（repo）**：`repos.type='repo'`，UI 里也叫「项目」。
 - **参考仓库（ref repo）**：`repos` 里参考身份的行（store `type=ref`），可绑项目组或仓库；不是文档库。
 - **文档（ref）**：`refs` 行 + 正文（`ref_bodies`）+ 归属（`ref_bindings`）；id 是稳定地址，desc 是快速定位。
-- **附件（attachment）**：`attachments` 行，kind 为 file / url / task / ref / mdfile。
-- **md 文件（mdfile）**：磁盘上的外部 `.md` 路径指针，属于附件逻辑；与文档（ref）是两回事。
+- **附件（attachment）**：`attachments` 行，kind 为 file / url / task / ref / folder / repo。
 - **看板（board）**：项目组的历史别名；CLI / frontmatter 保留，实体名用项目组。
 - **提示词区块（block）**：context / attachment / timecheck / goalhint / ext / ack / getloop，共用一份 ctx。
 
@@ -137,7 +136,6 @@ nx-kv localtask attach --id 3 --fileId <fileId>          # 引用已有附件
 nx-kv localtask attach --id 3 --url https://example.com  # 外链
 nx-kv localtask attach --id 3 --task 7                   # 同主题任务引用
 nx-kv localtask attach --id 3 --ref <refId> [--inline]   # 文档绑定（--inline 交付带全文）
-nx-kv localtask attach --id 3 --mdfile "D:\doc\方案.md"   # 本地 md 路径指针
 nx-kv localtask attach --id 3 --path "D:\doc\需求.docx" --no-embed  # 只挂附件区
 nx-kv localtask attachments --id 3 --json                # 清单（含本地绝对路径）
 nx-kv localtask detach --id 3 --attachment <id>          # 解除关系

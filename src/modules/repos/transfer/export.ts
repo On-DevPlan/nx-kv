@@ -322,7 +322,7 @@ export async function repoExportZip(options: RepoExportOptions = {}): Promise<Bu
     '  - 看板以 board/<名称> 为 key；关系与组内描述都在 layout.json 里',
     '  - docs/ 是文档正文（文件名 = refId），layout.json 的 refs 记录每篇的 desc / locator',
     '  - 外部文档（origin=external）只记 locator，字节不在包里——路径缺失会标「待初始化」',
-    '  - 外部 md 文件（attachments.kind=mdfile）默认不打包：它们只是路径指针，字节不在库内',
+    '  - 文件夹附件（attachments.kind=folder）默认不打包：它们只是路径指针，字节不在库内',
     '',
     `仓库 ${layout.repos.length} 个 / 看板 ${layout.boards.length} 个 / 关系 ${layout.links.length} 条 / 文档 ${docEntries.length} 份`,
   ].join('\n');

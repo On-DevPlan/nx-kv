@@ -2,7 +2,7 @@
 //
 // **自有文档**（v6 + DOCS_DIR 收口）：正文唯一真相在 `ref_bodies`，身份是 `refs.id`。
 // v8 起没有 rel / 路径：读写入口一律按 refId。
-// `~/.nx-kv/docs/` 不再是文档镜像，只是 mdfile 默认附件目录。
+// `~/.nx-kv/docs/` 不再是文档镜像，也不再承担外部 md 附件目录。
 // **外部绑定**：refs.locator 是绝对路径 / URL（origin='external'），只读引用——
 // 「绑定闭包」= 全部外部 locator 的集合，外部读取只允许落在闭包内：
 // 少了这道闸，`docs get path:D:\任意文件` 就成了任意文件读入口。

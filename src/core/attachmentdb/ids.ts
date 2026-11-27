@@ -24,7 +24,6 @@ const FILE_ID_RE = /^[0-9a-fA-F]{16,}(\.[A-Za-z0-9]{1,8})?$/;
 const MD_LINK_RE = /!?\[([^\]]*)\]\(\s*([^)\s]+)\s*\)/g;
 const NXKV_TASK_RE = /^nxkv:\/\/task\/(\d+)$/i;
 const NXKV_REF_RE = /^nxkv:\/\/ref\/([A-Za-z0-9_-]+)$/i;
-const NXKV_MDFILE_RE = /^nxkv:\/\/mdfile\/([A-Za-z0-9_-]+)$/i;
 const NXKV_FOLDER_RE = /^nxkv:\/\/folder\/([A-Za-z0-9_-]+)$/i;
 const NXKV_REPO_RE = /^nxkv:\/\/repo\/([A-Za-z0-9_-]+)$/i;
 
@@ -35,13 +34,12 @@ export type AttachmentRole = 'inline' | 'reference' | 'doc' | 'attach';
 
 /** 正文里解析出的一条引用；position / role 在入清单时补齐。 */
 export interface AttachmentRef {
-  kind: 'file' | 'url' | 'task' | 'ref' | 'mdfile' | 'folder' | 'repo';
+  kind: 'file' | 'url' | 'task' | 'ref' | 'folder' | 'repo';
   id?: string;
   name: string;
   isImage?: boolean;
   targetTaskId?: number;
   targetRefId?: string;
-  targetMdfileId?: string;
   targetFolderId?: string;
   targetRepoId?: string;
   url?: string;
@@ -128,12 +126,10 @@ export function parseAttachmentRefs(text?: unknown): AttachmentRef[] {
     } else {
       const task = target.match(NXKV_TASK_RE);
       const doc = target.match(NXKV_REF_RE);
-      const md = target.match(NXKV_MDFILE_RE);
       const dir = target.match(NXKV_FOLDER_RE);
       const repoRef = target.match(NXKV_REPO_RE);
       if (task) ref = { kind: 'task', targetTaskId: Number(task[1]), name: name || `任务 ${task[1]}` };
       else if (doc) ref = { kind: 'ref', targetRefId: doc[1], name: name || (doc[1] ?? '') };
-      else if (md) ref = { kind: 'mdfile', targetMdfileId: md[1], name: name || (md[1] ?? '') };
       else if (dir) ref = { kind: 'folder', targetFolderId: dir[1], name: name || (dir[1] ?? '') };
       else if (repoRef) ref = { kind: 'repo', targetRepoId: repoRef[1], name: name || (repoRef[1] ?? '') };
       else if (/^https?:\/\//i.test(target)) ref = { kind: 'url', url: target, name: name || target };
@@ -142,7 +138,6 @@ export function parseAttachmentRefs(text?: unknown): AttachmentRef[] {
     // 同一资源出现多次只保留第一条（关系表一资源一 role 一行，position 取首次出现）
     const key = ref.id || (ref.kind === 'task' ? `task:${ref.targetTaskId}` : '')
       || (ref.kind === 'ref' ? `ref:${ref.targetRefId}` : '')
-      || (ref.kind === 'mdfile' ? `mdfile:${ref.targetMdfileId}` : '')
       || (ref.kind === 'folder' ? `folder:${ref.targetFolderId}` : '')
       || (ref.kind === 'repo' ? `repo:${ref.targetRepoId}` : '')
       || (ref.kind === 'url' ? `url:${(ref.url ?? '').toLowerCase()}` : '');

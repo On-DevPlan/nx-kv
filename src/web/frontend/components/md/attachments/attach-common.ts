@@ -170,9 +170,9 @@ export function normAttachment(a: Attachment): NormalizedAttachment {
     areaLabel: AREA_LABEL[AREA_OF(role)],
     kind: a.kind === 'file' && isImage ? 'image' : a.kind,
     sizeText: fmtSize(a.size),
-    // 文件走内容接口；mdfile / folder 是**路径指针**（目录/文件都在用户磁盘原地），
-    // 没有可打开的 URL —— 别给它们编一条会 404 的链接。
-    href: a.kind === 'file' ? contentUrl(a.id) : (a.kind === 'mdfile' || a.kind === 'folder') ? '' : a.href || urlText,
+    // 文件走内容接口；folder 是**路径指针**（目录在用户磁盘原地），
+    // 没有可打开的 URL —— 别给它编一条会 404 的链接。
+    href: a.kind === 'file' ? contentUrl(a.id) : a.kind === 'folder' ? '' : a.href || urlText,
     targetSeq: a.targetSeq ?? (a.meta && a.meta.seq) ?? null,
     targetKey: a.targetKey || (a.meta && a.meta.topicKey) || '',
     targetRef: a.targetKey || (a.meta && a.meta.refId) || '',
@@ -180,7 +180,7 @@ export function normAttachment(a: Attachment): NormalizedAttachment {
   };
 }
 
-const KIND_BADGE: Record<string, string> = { image: '图片', file: '文件', url: '链接', task: '任务', ref: '文档', mdfile: 'md', folder: '文件夹' };
+const KIND_BADGE: Record<string, string> = { image: '图片', file: '文件', url: '链接', task: '任务', ref: '文档', folder: '文件夹' };
 export const badgeOf = (kind: string | undefined) => KIND_BADGE[kind || ''] || '附件';
 
 /** 任务侧/文档侧的列表与关系接口（同一套字段，只换 URL）。 */

@@ -26,7 +26,7 @@
 | `localtask remove` | `--id N` `--purge` | 软删除；`--purge` 连附件一起删 |
 | `localtask remove-many` | `--ids 1,2,3` `--purge` | 批量删 |
 | `localtask task restore` | `--id N` | 恢复软删的任务 |
-| `localtask attach` | `--id N` + `--path F` \| `--fileId X` \| `--url U` \| `--task N` \| `--ref R` \| `--mdfile F` \| `--folder D`；`--note` `--inline` `--noEmbed` | 加附件/引用。`--folder` 登记目录路径指针（kind=folder，不复制内容）；`--noEmbed` 只登记不改正文。**面板同款**：「添加附件」弹窗里有「添加文件夹（本机绝对路径）」输入框（#133） |
+| `localtask attach` | `--id N` + `--path F` \| `--fileId X` \| `--url U` \| `--task N` \| `--ref R` \| `--folder D`；`--note` `--inline` `--noEmbed` | 加附件/引用。`--folder` 登记目录路径指针（kind=folder，不复制内容）；`--noEmbed` 只登记不改正文。**面板同款**：「添加附件」弹窗里有「添加文件夹（本机绝对路径）」输入框（#133） |
 | `localtask detach` | `--id N` `--attachment <id>` `--purge` | 摘掉一条附件（`--purge` 连文件） |
 | `localtask attachments` | `--id N` | 附件清单（含本地绝对路径） |
 | `localtask events` | `--timeout` `--limit` | 事件流（长轮询，面板用） |
@@ -70,7 +70,6 @@
 | `docs bind` / `docs link` / `docs note-bind` | `--repo`/`--board` `--ref` `--path` `--note` `--remove` `--before` `--reset` | 宿主文档集的增删改（`bind` 主篇指针，`link` 目录补充，`note-bind` 组内描述） |
 | `docs main` | `--repo`/`--board`（二选一）`--ref` \| `--path` | **把某一篇设为主篇**（换位）：目标从附加篇摘出、原主篇退回附加篇，两边都不丢归属。面板「文档列表 → 行尾 ⋯ → 设为主篇」走这条；`docs bind` 只换指针、会把原主篇甩成孤儿 |
 | `docs attach` / `detach` / `attachments` / `attach-note` | `--ref` + 附件参数 | 文档附件（用法同 `localtask attach`） |
-| `docs mdfile` / `mdfiles` / `link-file` | `--attachment` / `--missing` / `--path` | md 文件指针相关 |
 | `docs gc` | `--apply` | 清没有正文的 ref（默认只报数） |
 
 ## 仓库

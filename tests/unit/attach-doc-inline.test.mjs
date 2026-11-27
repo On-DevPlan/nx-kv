@@ -149,7 +149,7 @@ test('超 2 万字截断：docTruncated 标记 + usage 给完整版读取命令'
   assert.match(seg, /docs get --ref ref_/);
 });
 
-test('外部文档：登记为 mdfile → 读全文；未登记 → fail-open + 显式登记命令', async () => {
+test('外部文档：历史 mdfile 行 → 读全文；没有对应行 → fail-open', async () => {
   const extDir = mkdirSync(join(sb, 'ext'), { recursive: true });
   const extFile = join(extDir, 'outer.md');
   writeFileSync(extFile, '# 外部文档\n\n登记后的正文。');
@@ -161,7 +161,7 @@ test('外部文档：登记为 mdfile → 读全文；未登记 → fail-open + 
   const att = await annotateTaskDelivery(await service.getTask({ id: t.id }), { inlineDocs: true });
   assert.match(att.task.attachments[0].docContent, /登记后的正文/);
 
-  // 未登记为 mdfile：不直读盘 → 显式说明「无法内联」并给可直接执行的登记命令
+  // 没有历史 mdfile 行：不直读盘 → 显式说明「无法内联」
   const outside = join(sb, 'outside.md');
   writeFileSync(outside, '# 不给读');
   const outsideRefId = ensureDocRef(getDb(), { locator: outside.replace(/\\/g, '/') });
@@ -172,8 +172,8 @@ test('外部文档：登记为 mdfile → 读全文；未登记 → fail-open + 
   assert.equal(a2.docContent, undefined);
   assert.equal(a2.docMissing, true);
   const seg = attachmentInstruction(att2.task.attachments, null);
-  assert.match(seg, /未登记为附件，无法内联/);
-  assert.match(seg, /localtask attach .*--mdfile/u);
+  assert.match(seg, /外部文档没有可读正文，无法内联/);
+  assert.doesNotMatch(seg, /--mdfile/u);
 });
 
 test('清单 note 渲染：默认模板透出 desc；模板坏了纯文本兜底仍带原文段', () => {

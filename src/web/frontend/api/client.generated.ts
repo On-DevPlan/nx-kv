@@ -28,11 +28,8 @@ import type {
   DocsGetAction,
   DocsIndexAction,
   DocsLinkAction,
-  DocsLinkFileAction,
   DocsListAction,
   DocsMainAction,
-  DocsMdfileAction,
-  DocsMdfilesAction,
   DocsOrphansAction,
   DocsOrphansPurgeAction,
   DocsRefAddAction,
@@ -265,7 +262,7 @@ export interface ApiClient {
   scan(input?: z.input<InstanceType<typeof RepoScanAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoScanAction>['run']>>>;
 /** 修改仓库路径 / 名称 / 备注 / 类型 / 远程地址 / key；--get-loop* 配置项目级「持续 get」（waitgoal：该项目 get 无任务时阻塞等人回填；指令文案在 设置 → 提示词模板 → 持续 get，仓库侧只有开关 + 分钟）。描述已改为文档，不再经这里改 */
   repoUpdate(input: z.input<InstanceType<typeof RepoUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoUpdateAction>['run']>>>;
-/** 给文档挂资源：--path / --fileId / --url / --task / --doc / --mdfile / --folder 之一；默认追加进正文，--no-embed 只挂附件区（不写正文） */
+/** 给文档挂资源：--path / --fileId / --url / --task / --doc / --folder 之一；默认追加进正文，--no-embed 只挂附件区（不写正文） */
   attach(input: z.input<InstanceType<typeof DocsAttachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsAttachAction>['run']>>>;
 /** 这篇文档用了哪些资源（ref_attach：图片/文件/URL/内部 task、ref 引用） */
   attachments(input: z.input<InstanceType<typeof DocsAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsAttachmentsAction>['run']>>>;
@@ -279,18 +276,12 @@ export interface ApiClient {
   docsGet(input: z.input<InstanceType<typeof DocsGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsGetAction>['run']>>>;
 /** 双链索引（docId + 文件名；前端点击 [[..]] 前拉一次；解析规则见 core/wikilink.js） */
   index(): Promise<Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>>;
-/** 把本地 md 文件登记为 mdfile 附件并挂到文档附件区：只存路径指针，不复制正文，不改文档正文 */
-  linkFile(input: z.input<InstanceType<typeof DocsLinkFileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkFileAction>['run']>>>;
 /** 维护组的附加文档列表（--ref <refId> | --path <外部路径>；--remove <序号> 移除；--before <序号> 插位；同 ref 重复添加 = 移位） */
   link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsLinkAction>['run']>>>;
 /** 文档树索引（自有 + 可选外部；零副作用，双链解析的数据源） */
   docsList(input?: z.input<InstanceType<typeof DocsListAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsListAction>['run']>>>;
 /** 把某一篇设为主篇：原主篇退回附加篇（不丢归属），目标从附加篇摘出（不会出现两份） */
   main(input?: z.input<InstanceType<typeof DocsMainAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsMainAction>['run']>>>;
-/** 读本地 md 文件的正文（只读原文件，核对指纹；文件缺失时返回空正文并标 missing） */
-  mdfile(input: z.input<InstanceType<typeof DocsMdfileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsMdfileAction>['run']>>>;
-/** 列出已登记的本地 md 文件（mdfile 附件；--missing 只看失效行） */
-  mdfiles(input?: z.input<InstanceType<typeof DocsMdfilesAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsMdfilesAction>['run']>>>;
 /** 孤儿到期清理（默认只预演；--apply 软删空正文到期孤儿，有正文的只列清单） */
   purge(input?: z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DocsOrphansPurgeAction>['run']>>>;
 /** 列出无归属的孤儿文档（失绑时间 / 剩余天数 / 是否有正文；只读） */
@@ -315,7 +306,7 @@ export interface ApiClient {
   localtaskAdd(input?: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>>;
 /** 改一条附件绑定的说明（desc）：--attachment <资源 id> --note <说明>（只动说明，角色/位置不变） */
   attachNote(input: z.input<InstanceType<typeof LocaltaskAttachNoteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachNoteAction>['run']>>>;
-/** 给任务挂附件：--path 存本机附件仓 / --fileId 引用已有附件 / --url / --task（同主题任务）/ --ref（文档）/ --mdfile（本地 md 指针）/ --folder（本地文件夹路径）/ --repo（已登记仓库）；默认嵌进正文，--no-embed 只挂到附件区（不写正文），--ref 加 --inline 文档进原文（交付带全文） */
+/** 给任务挂附件：--path 存本机附件仓 / --fileId 引用已有附件 / --url / --task（同主题任务）/ --ref（文档）/ --folder（本地文件夹路径）/ --repo（已登记仓库）；默认嵌进正文，--no-embed 只挂到附件区（不写正文），--ref 加 --inline 文档进原文（交付带全文） */
   localtaskAttach(input: z.input<InstanceType<typeof LocaltaskAttachAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachAction>['run']>>>;
 /** 列出某条任务引用的附件（正文里的 ![名](fileId) 嵌入），以及本地是否已有（给 agent 直接读本地文件） */
   localtaskAttachments(input: z.input<InstanceType<typeof LocaltaskAttachmentsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskAttachmentsAction>['run']>>>;
@@ -779,7 +770,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async attach(input: z.input<InstanceType<typeof DocsAttachAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocsAttachAction>['_input']>);
       const path = `/api/docs/attach`;
-      const body = { "ref": inp["ref"], "path": inp["path"], "fileId": inp["fileId"], "url": inp["url"], "task": inp["task"], "doc": inp["doc"], "mdfile": inp["mdfile"], "folder": inp["folder"], "name": inp["name"], "noEmbed": inp["noEmbed"], "no-embed": inp["no-embed"] };
+      const body = { "ref": inp["ref"], "path": inp["path"], "fileId": inp["fileId"], "url": inp["url"], "task": inp["task"], "doc": inp["doc"], "folder": inp["folder"], "name": inp["name"], "noEmbed": inp["noEmbed"], "no-embed": inp["no-embed"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsAttachAction>['run']>>;
     },
     // action: docs.attachments
@@ -833,13 +824,6 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/docs/index`;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsIndexAction>['run']>>;
     },
-    // action: docs.link-file
-    async linkFile(input: z.input<InstanceType<typeof DocsLinkFileAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocsLinkFileAction>['_input']>);
-      const path = `/api/docs/link-file`;
-      const body = { "ref": inp["ref"], "path": inp["path"], "name": inp["name"], "note": inp["note"] };
-      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsLinkFileAction>['run']>>;
-    },
     // action: docs.link
     async link(input: z.input<InstanceType<typeof DocsLinkAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof DocsLinkAction>['_input']>);
@@ -863,26 +847,6 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/docs/main`;
       const body = { "repo": inp["repo"], "board": inp["board"], "ref": inp["ref"], "path": inp["path"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DocsMainAction>['run']>>;
-    },
-    // action: docs.mdfile
-    async mdfile(input: z.input<InstanceType<typeof DocsMdfileAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocsMdfileAction>['_input']>);
-      let path = `/api/docs/mdfile`;
-      const q = new URLSearchParams();
-      if (inp["attachment"] !== undefined) q.set("attachment", String(inp["attachment"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsMdfileAction>['run']>>;
-    },
-    // action: docs.mdfiles
-    async mdfiles(input?: z.input<InstanceType<typeof DocsMdfilesAction>['_input']>) {
-      const inp = input ?? ({} as z.input<InstanceType<typeof DocsMdfilesAction>['_input']>);
-      let path = `/api/docs/mdfiles`;
-      const q = new URLSearchParams();
-      if (inp["missing"] !== undefined) q.set("missing", String(inp["missing"]));
-      const query = q.toString();
-      if (query) path += path.includes('?') ? '&' + query : '?' + query;
-      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DocsMdfilesAction>['run']>>;
     },
     // action: docs.orphans.purge
     async purge(input?: z.input<InstanceType<typeof DocsOrphansPurgeAction>['_input']>) {
@@ -982,7 +946,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async localtaskAttach(input: z.input<InstanceType<typeof LocaltaskAttachAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskAttachAction>['_input']>);
       const path = `/api/localtasks/attach`;
-      const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "path": inp["path"], "fileId": inp["fileId"], "url": inp["url"], "task": inp["task"], "ref": inp["ref"], "mdfile": inp["mdfile"], "folder": inp["folder"], "repo": inp["repo"], "inline": inp["inline"], "name": inp["name"], "kind": inp["kind"], "note": inp["note"], "noEmbed": inp["noEmbed"], "no-embed": inp["no-embed"] };
+      const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "path": inp["path"], "fileId": inp["fileId"], "url": inp["url"], "task": inp["task"], "ref": inp["ref"], "folder": inp["folder"], "repo": inp["repo"], "inline": inp["inline"], "name": inp["name"], "kind": inp["kind"], "note": inp["note"], "noEmbed": inp["noEmbed"], "no-embed": inp["no-embed"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskAttachAction>['run']>>;
     },
     // action: localtask.attachments

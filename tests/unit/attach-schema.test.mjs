@@ -4,7 +4,7 @@
 //   - 这段 schema 是变量目录（`GET /api/prompt/registry` 的 fields）的唯一来源。
 //     曾经写成 `z.array(z.looseObject({}))` —— 校验形同虚设、目录里一个附件字段都没有，
 //     模板作者只能靠翻源码猜 `{{file.localPath}}` 存不存在。
-//   - 附件有 6 种 kind，形状各不相同（file / url / task / ref / mdfile / folder）。
+//   - 附件有 6 种 kind，形状各不相同（file / url / task / ref / folder / repo）。
 //     这里逐个 kind 拿**真实变换产物**（attachTemplateCtx）去校验，顺带钉住「kind 决定形状」：
 //     未知 kind、kind 与字段不自洽都必须报错，而不是被宽松对象吞掉。
 import { test } from 'node:test';
@@ -16,7 +16,7 @@ const { buildPlugins, fieldCatalogOf, varScopeOf } = await import(
 );
 const { undeclaredTemplateVars } = await import('../../src/shared/prompt-plugin.js');
 
-/** 六种 kind 各一条（形状取自真实调用方：attach --file / --url / 任务引用 / 文档绑定 / mdfile / folder）。 */
+/** 六种 kind 各一条（形状取自真实调用方：attach --file / --url / 任务引用 / 文档绑定 / folder / repo）。 */
 const ROWS = [
   { id: 'f1', kind: 'file', name: '报告.pdf', localPath: 'D:/att/报告.pdf', exists: true, size: 1024, mime: 'application/pdf', role: 'attach' },
   { id: 'u1', kind: 'url', name: '设计稿', url: 'https://example.com/a', role: 'attach' },
@@ -30,7 +30,6 @@ const ROWS = [
     refId: 'ref_1', title: '附件规范', desc: '附件与文档的约定',
     readCmd: 'nx-kv docs get --ref ref_1', docContent: '正文', docTruncated: false,
   },
-  { id: 'm1', kind: 'mdfile', name: 'plan.md', role: 'attach', absPath: 'D:/x/plan.md', anchorDir: 'D:/x', mdContent: '# 计划', mdTruncated: false, mdStale: false },
   { id: 'd1', kind: 'folder', name: 'assets', role: 'attach', absPath: 'D:/x/assets', exists: true, missing: false },
   {
     // #184：参考仓库附件（指针，字节在原 checkout）
@@ -46,25 +45,24 @@ const ROWS = [
 /** 用 attachment 插件（get 链第二段）跑一次结构态校验。 */
 const pluginOf = (attach) => buildPlugins('get', { attach })[1];
 
-test('七种 kind 的真实 ctx 都能过 schema（shape 与 ctxItemOf 逐字段对齐）', async () => {
+test('六种 kind 的真实 ctx 都能过 schema（shape 与 ctxItemOf 逐字段对齐）', async () => {
   const { attach } = attachTemplateCtx(ROWS);
-  assert.equal(attach.list.length, 7);
+  assert.equal(attach.list.length, 6);
   assert.deepEqual(
     attach.list.map((a) => a.kind),
-    ['file', 'url', 'task', 'ref', 'mdfile', 'folder', 'repo'],
+    ['file', 'url', 'task', 'ref', 'folder', 'repo'],
   );
   const data = await pluginOf(attach).get('data');
-  assert.equal(data.attach.list.length, 7);
+  assert.equal(data.attach.list.length, 6);
   // 各 kind 的子对象必须在（模板靠 {{#if x}} 分支）
   assert.ok(data.attach.list[0].file.localPath, 'file 子对象');
   assert.equal(data.attach.list[1].url.host, 'example.com', 'url 子对象');
   assert.equal(data.attach.list[2].task.showCmd, 'nx-kv localtask show --id 82 --key nx-kv', 'task 子对象');
   assert.equal(data.attach.list[3].ref.refId, 'ref_1', 'ref 子对象');
-  assert.equal(data.attach.list[4].mdfile.readCmd, 'nx-kv docs mdfile m1', 'mdfile 子对象（含取用命令）');
-  assert.equal(data.attach.list[5].folder.readCmd, 'nx-kv file content d1', 'folder 子对象（含取用命令）');
-  assert.equal(data.attach.list[6].repo.localPath, 'D:/a_other/nxkvrepo/agentdaw', 'repo 子对象：本地路径');
-  assert.equal(data.attach.list[6].repo.cmd, 'nx-kv repo get --id github.com/eqarx/agentdaw', 'repo 子对象：确认元数据命令');
-  assert.equal(data.attach.list[6].mandatory, true, 'repo 是内部资源，必须强制访问');
+  assert.equal(data.attach.list[4].folder.readCmd, 'nx-kv file content d1', 'folder 子对象（含取用命令）');
+  assert.equal(data.attach.list[5].repo.localPath, 'D:/a_other/nxkvrepo/agentdaw', 'repo 子对象：本地路径');
+  assert.equal(data.attach.list[5].repo.cmd, 'nx-kv repo get --id github.com/eqarx/agentdaw', 'repo 子对象：确认元数据命令');
+  assert.equal(data.attach.list[5].mandatory, true, 'repo 是内部资源，必须强制访问');
 });
 
 test('每个 kind 单独也要过（避免「混在一起才碰巧合法」）', async () => {
@@ -98,7 +96,7 @@ test('kind 与形状不自洽必须报错（宽松对象吞掉脏数据的时代
   }
 });
 
-test('变量目录：6 种 kind 的关键字段都在（这是设置页「可使用变量」的全部来源）', () => {
+test('变量目录：六种 kind 的关键字段都在（这是设置页「可使用变量」的全部来源）', () => {
   // fieldCatalogOf 给的是键名数组（FieldDecl 在注册表的 schema.fields 里）
   const { fields } = fieldCatalogOf('attachment');
   const keys = new Set(fields);
@@ -112,12 +110,11 @@ test('变量目录：6 种 kind 的关键字段都在（这是设置页「可使
     'attach.list[].url.href', 'attach.list[].url.host',
     'attach.list[].task.showCmd', 'attach.list[].task.statusLabel', 'attach.list[].task.address',
     'attach.list[].ref.readCmd', 'attach.list[].ref.content', 'attach.list[].refId',
-    'attach.list[].mdfile.readCmd', 'attach.list[].mdfile.absPath', 'attach.list[].mdfile.content',
     'attach.list[].folder.readCmd', 'attach.list[].folder.absPath', 'attach.list[].folder.missing',
   ];
   const missing = need.filter((k) => !keys.has(k));
   assert.deepEqual(missing, [], '目录里缺这些附件变量（模板作者会以为不能写）');
-  assert.ok(fields.length >= 90, `附件字段数量级不对：${fields.length}`);
+  assert.ok(fields.length >= 80, `附件字段数量级不对：${fields.length}`);
 });
 
 test('目录的 [] 记法 ↔ 模板实写：each 内部用相对路径不被误判为未声明', () => {
@@ -129,7 +126,6 @@ test('目录的 [] 记法 ↔ 模板实写：each 内部用相对路径不被误
     '{{#if url}}{{url.href}}{{/if}}',
     '{{#if task}}{{task.showCmd}}{{/if}}',
     '{{#if ref}}{{ref.readCmd}}{{/if}}',
-    '{{#if mdfile}}{{mdfile.readCmd}}{{/if}}',
     '{{#if folder}}{{folder.readCmd}}{{/if}}',
     '{{/each}}',
   ].join('\n');

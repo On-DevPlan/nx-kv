@@ -32,8 +32,6 @@ import {
   ensureUrlAttachment,
   linkAttachment,
   listTaskAttachmentsBySeq,
-  readMdfile,
-  registerMdfile,
   registerFolder,
   registerRepoAttachment,
   resolveRefId,
@@ -95,34 +93,6 @@ async function annotateRefTitles(attachments: any[]): Promise<any[]> {
   return attachments;
 }
 
-/**
- * mdfile 行的交付注入：读磁盘原文件（读时校验指纹），把正文挂到
- * `mdContent/mdTruncated/mdStale/mdMissing`，模板侧按 mdfile 分支渲染。
- * 读失败（文件没了）只标 missing，不拖垮交付（fail-open）。
- */
-const MDFILE_INLINE_MAX = 20000;
-
-async function annotateMdfileContent(attachments: any[]): Promise<any[]> {
-  const rows = attachments.filter((a) => a.kind === 'mdfile');
-  if (!rows.length) return attachments;
-  const db = getDb();
-  for (const a of rows) {
-    try {
-      const r = readMdfile(db, a.id);
-      if (!r) continue;
-      a.absPath = r.absPath || a.absPath || '';
-      a.mdMissing = r.missing;
-      a.mdStale = r.stale;
-      a.mdContent = r.body.length > MDFILE_INLINE_MAX ? r.body.slice(0, MDFILE_INLINE_MAX) : r.body;
-      a.mdTruncated = r.body.length > MDFILE_INLINE_MAX;
-    } catch {
-      a.mdMissing = true;
-      a.mdContent = '';
-    }
-  }
-  return attachments;
-}
-
 export interface AnnotateTaskDeliveryOptions {
   topicKey?: unknown;
   /** 是否为「文档资料」绑定（role='doc' 的 kind=ref 附件）读全文并附进视图模型（#162） */
@@ -147,7 +117,6 @@ export async function annotateTaskDelivery(
   // 本机附件仓：本地任务贴图的资源行（零云端依赖，命中即绝对路径）
   const store = await localStoreIndex();
   const attachments = annotateFileRows(rows, targetLookupsOf(getDb(), rows), store);
-  await annotateMdfileContent(attachments);
   await annotateRefTitles(attachments);
   if (inlineDocs) await inlineDocContent(attachments, { id: (task as any).id, key: (task as any).key || (task as any).topicKey });
   return { task: { ...task, attachments } };
@@ -165,8 +134,6 @@ export interface AttachToTaskOptions {
   url?: unknown;
   task?: unknown;
   ref?: unknown;
-  /** 本地 md 文件（kind=mdfile：只登记路径指针，不复制正文） */
-  mdfile?: unknown;
   /** 本地文件夹（kind=folder：只登记路径指针，不复制目录内容） */
   folder?: unknown;
   /** #184 参考仓库（kind=repo）：已登记仓库的 key / 路径 / 名称；只登记指针 */
@@ -194,11 +161,10 @@ export interface AttachToTaskOptions {
  *   --url <链接>       外部 URL（kind=url）
  *   --task <seq>       同主题下的另一条任务（kind=task，nxkv://task/<id>）
  *   --ref <路径|id>    文档库里的 ref（kind=ref，nxkv://ref/<refId>）
- *   --mdfile <路径>    本地 md 文件（kind=mdfile，nxkv://mdfile/<attId>；字节不入库）
  *   --folder <目录>    本地文件夹（kind=folder，nxkv://folder/<attId>；只登记路径，不复制目录内容）
  */
 export async function attachToTask({
-  id, cwd, key, path, fileId, name, kind, url, task, ref, mdfile, folder, repo, note, noEmbed, inline,
+  id, cwd, key, path, fileId, name, kind, url, task, ref, folder, repo, note, noEmbed, inline,
 }: AttachToTaskOptions = {}): Promise<Record<string, any>> {
   const cur = await service.getTask({ id, cwd, key }); // 存在性与参数校验都在队列本体
   const topicKey = cur.key || key || '';
@@ -317,16 +283,6 @@ export async function attachToTask({
     ) as string; // 同上：登记失败落空串，由下方 !attachmentId 统一报错
     resolvedKind = 'ref';
     markdown = `[${displayName || refId}](nxkv://ref/${refId})`;
-  } else if (mdfile) {
-    // 外部 md 文件：登记指针（kind=mdfile / storage=external），正文留在磁盘原地
-    const rec = tx(
-      (conn) => registerMdfile(conn, { path: mdfile, name: displayName }),
-      { db, mode: 'IMMEDIATE' }
-    );
-    attachmentId = rec.id;
-    displayName = displayName || rec.name;
-    resolvedKind = 'mdfile';
-    markdown = `[${displayName}](nxkv://mdfile/${rec.id})`;
   } else if (folder) {
     // 本地文件夹：只登记路径指针（kind=folder / storage=external），目录内容不入库
     const rec = tx(
@@ -375,7 +331,7 @@ export async function attachToTask({
 
   if (!attachmentId) {
     throw badInput(
-      '需要 --path <本机文件>、--fileId <已有附件>、--url <链接>、--task <编号>、--ref <文档>、--mdfile <本地 md>、--folder <本地目录> 或 --repo <已登记仓库> 之一'
+      '需要 --path <本机文件>、--fileId <已有附件>、--url <链接>、--task <编号>、--ref <文档>、--folder <本地目录> 或 --repo <已登记仓库> 之一'
     );
   }
   const wantInline = !!inline;

@@ -54,17 +54,16 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
     (nsId: string) => withNs((list) => list.map((n) => (n.id === nsId ? { ...n, pinned: !n.pinned } : n))),
     [withNs]
   );
-  const moveNs = useCallback(
-    (nsId: string, dir: -1 | 1) => withNs((list) => {
-      const i = list.findIndex((n) => n.id === nsId);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= list.length) return list;
+  /** #264 验收：分区拖拽排序——下标语义同 moveBlockInList（源先抽走再插入，to 为最终位）。
+      「凡事排序皆拖拽」：管理弹窗与 ns 头行菜单的 ↑/↓ 已删除，排序唯一入口是拖拽。 */
+  const reorderNs = useCallback(
+    (from: number, to: number) => withNs((list) => {
+      if (from < 0 || to < 0 || from >= list.length || to >= list.length || from === to) return list;
       const arr = [...list];
-      const a = arr[i];
-      const b = arr[j];
-      if (!a || !b) return list;
-      arr[i] = b;
-      arr[j] = a;
+      const moved = arr[from];
+      if (!moved) return list;
+      arr.splice(from, 1);
+      arr.splice(to, 0, moved);
       return arr;
     }),
     [withNs]
@@ -160,8 +159,7 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
             ? []
             : [
                 { label: row.pinned ? '取消置顶' : '置顶分区', icon: 'pin', onClick: () => toggleNsPinned(row.key) },
-                { label: '上移', icon: 'back', onClick: () => moveNs(row.key, -1) },
-                { label: '下移', icon: 'chevron', onClick: () => moveNs(row.key, 1) },
+                // #264：排序统一拖拽（管理弹窗里拖行）——菜单不再提供 ↑/↓
                 'sep' as const,
                 {
                   label: '删除分区（条目回未分组）',
@@ -181,8 +179,8 @@ export function useNamespaces({ patchPrefs, toast, dialog, setMenu }: UseNsArgs)
         ],
       });
     },
-    [dialog, moveNs, removeNs, toggleNsCollapse, toggleNsPinned]
+    [dialog, removeNs, toggleNsCollapse, toggleNsPinned]
   );
 
-  return { nsForm, setNsForm, toggleNsCollapse, moveToNs, addToNs, removeFromNs, removeItemFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs, moveNs, removeNs };
+  return { nsForm, setNsForm, toggleNsCollapse, moveToNs, addToNs, removeFromNs, removeItemFromNs, newNsAndMove, renameNs, openNsMenu, setFocusNs, reorderNs, removeNs };
 }

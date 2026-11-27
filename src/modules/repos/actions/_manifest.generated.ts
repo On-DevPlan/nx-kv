@@ -23,6 +23,7 @@ import { RepoBindTopicsAction } from './repo-bind-topics.js';
 import { RepoBindAction } from './repo-bind.js';
 import { RepoCloneAction } from './repo-clone.js';
 import { RepoDetectAction } from './repo-detect.js';
+import { RepoDirsAction } from './repo-dirs.js';
 import { RepoExportAction } from './repo-export.js';
 import { RepoGetAction } from './repo-get.js';
 import { RepoImportDiffAction } from './repo-import-diff.js';
@@ -65,6 +66,7 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   RepoBindAction,
   RepoCloneAction,
   RepoDetectAction,
+  RepoDirsAction,
   RepoExportAction,
   RepoGetAction,
   RepoImportDiffAction,
@@ -107,6 +109,7 @@ export { RepoBindTopicsAction };
 export { RepoBindAction };
 export { RepoCloneAction };
 export { RepoDetectAction };
+export { RepoDirsAction };
 export { RepoExportAction };
 export { RepoGetAction };
 export { RepoImportDiffAction };

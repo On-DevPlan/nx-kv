@@ -421,6 +421,16 @@ export async function updateTask({
  * 落点：同主题。正文带 frontmatter 时走 addTask 既有口径
  * （归属 fail-open、落点跟项目队列）。
  */
+/** 源任务的组归属 → addTask 的 groupKey/groupName（#281：fork/clone 保留组归属）。
+ *  没有组归属（groupTopicId 空 / 组 topic 不存在）返回 null——纯仓库任务照旧。 */
+function groupCarryOf(src: any): { groupKey: string; groupName: string } | null {
+  const gid = Number(src?.groupTopicId ?? 0);
+  if (!gid) return null;
+  const g = topicsRepo.getTopicById(gid);
+  if (!g || !g.key || !String(g.key).startsWith('group:')) return null;
+  return { groupKey: String(g.key).slice('group:'.length), groupName: String(g.name || '') };
+}
+
 export async function cloneTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = {}): Promise<Record<string, any>> {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const want = Number(id);
@@ -430,9 +440,11 @@ export async function cloneTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = 
   if (!t) throw notFound('主题不存在: ' + key);
   const src = (t.tasks || []).find((x: any) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
   if (!src) throw notFound('任务不存在或已删除: #' + want);
+  const carry = groupCarryOf(src);
   const res = await addTask({
     text: src.text,
     cwd: t.cwd || rawCwd,
+    ...(carry ? { groupKey: carry.groupKey, groupName: carry.groupName } : {}),
   });
   return { ...res, cloned: true, from: { key, id: want } };
 }
@@ -454,9 +466,11 @@ export async function forkTask({ cwd: rawCwd, key: rawKey, id }: TaskAddress = {
   if (!t) throw notFound('主题不存在: ' + key);
   const src = (t.tasks || []).find((x: any) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
   if (!src) throw notFound('任务不存在或已删除: #' + want);
+  const carry = groupCarryOf(src);
   const res = await addTask({
     text: src.text,
     cwd: t.cwd || rawCwd,
+    ...(carry ? { groupKey: carry.groupKey, groupName: carry.groupName } : {}),
     // 跨主题也拼成 'key:id'，父任务定位与 reopen 同一条链路
     forkOf: `${key}:${want}`,
     forkKind: 'fork',

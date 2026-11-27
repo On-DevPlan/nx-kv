@@ -192,7 +192,7 @@ export default function Sidebar({
 
   // #178：分区装配（操作 + 成员选择弹窗 + 候选）全部收在 use-sidebar-ns（纯显示态）
   const nsOps = useSidebarNs({ patchPrefs, toast, dialog, setMenu, repos, boards, namespaces: prefs.namespaces });
-  const { nsForm, setNsForm, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, observeOpen, setObserveOpen, labelOf, setFocusNs, moveNs, removeNs, renameNs, newNsAndMove, addToNs, removeItemFromNs, dropToCurrent, openNsMenu, toggleNsCollapse, moveToNs, removeFromNs } = nsOps;
+  const { nsForm, setNsForm, addFor, setAddFor, candidatesFor, manageOpen, setManageOpen, observeOpen, setObserveOpen, labelOf, setFocusNs, reorderNs, removeNs, renameNs, newNsAndMove, addToNs, removeItemFromNs, dropToCurrent, openNsMenu, toggleNsCollapse, moveToNs, removeFromNs } = nsOps;
 
   // 点击：看板 = 进组视图（成员仍在组面板里下拉选择，树里不铺成员仓库；
   // 但 chevron 可展开**本组任务**子行，与仓库行的任务子行同构）；
@@ -515,6 +515,7 @@ export default function Sidebar({
       <div className="sfoot">
         <PluginFootEntries route={route} onNavigate={onNavigate} />
         {footEntry('#/repos', 'repo', '仓库管理')}
+        {footEntry('#/data', 'grid', '数据库')}
       </div>
 
       {menu && <PopMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
@@ -576,7 +577,7 @@ export default function Sidebar({
         focusNs={String((prefs as any).focusNs || '')}
         onManageClose={() => setManageOpen(false)}
         onEditNsName={(id, name) => { setManageOpen(false); setNsForm({ id, name }); }}
-        onMoveNs={(id, d) => moveNs(id, d)}
+        onReorderNs={(from, to) => reorderNs(from, to)}
         onRemoveNs={(id) => removeNs(id)}
         onNewNs={() => setNsForm({ id: '', name: '' })}
         onFocusNs={(id) => setFocusNs(id)}

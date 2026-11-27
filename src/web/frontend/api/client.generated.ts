@@ -17,6 +17,9 @@ import type {
   LocaltaskPreviewAction,
 } from '../../../modules/claim/actions/_manifest.generated.js';
 import type {
+  DbDataAction,
+} from '../../../modules/db/actions/_manifest.generated.js';
+import type {
   DocsAttachAction,
   DocsAttachmentsAction,
   DocsBindingsAction,
@@ -129,6 +132,7 @@ import type {
   RepoBindTopicsAction,
   RepoCloneAction,
   RepoDetectAction,
+  RepoDirsAction,
   RepoExportAction,
   RepoGetAction,
   RepoImportAction,
@@ -212,6 +216,8 @@ export interface ApiClient {
   clone(input: z.input<InstanceType<typeof RepoCloneAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoCloneAction>['run']>>>;
 /** 探测目录的 git remote（添加仓库前自动填充远程地址；只读） */
   detect(input: z.input<InstanceType<typeof RepoDetectAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDetectAction>['run']>>>;
+/** 列已登记仓库下某目录的子目录（只读；面包屑选子目录用） */
+  dirs(input: z.input<InstanceType<typeof RepoDirsAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoDirsAction>['run']>>>;
 /** 导出仓库布局 JSON（全局 key + 分组 + 参考关系；不含本地路径）；--zip 打包成 zip */
   repoExport(input?: z.input<InstanceType<typeof RepoExportAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof RepoExportAction>['run']>>>;
 /** 查看单个仓库的登记信息 */
@@ -434,6 +440,8 @@ export interface ApiClient {
   delete(input: z.input<InstanceType<typeof PromptTemplateDeleteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptTemplateDeleteAction>['run']>>>;
 /** 保存提示词段模板（新建/编辑用户条目；保存前按该段变量白名单校验） */
   save(input: z.input<InstanceType<typeof PromptTemplateSaveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptTemplateSaveAction>['run']>>>;
+/** 库数据只读导出：全表概览或单表行窗口（不触发导入、不升级） */
+  data(input?: z.input<InstanceType<typeof DbDataAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DbDataAction>['run']>>>;
 }
 
 export function createApiClient(transport: Transport): ApiClient {
@@ -577,6 +585,16 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/repos/detect`;
       const body = { "path": inp["path"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof RepoDetectAction>['run']>>;
+    },
+    // action: repo.dirs
+    async dirs(input: z.input<InstanceType<typeof RepoDirsAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof RepoDirsAction>['_input']>);
+      let path = `/api/repos/dirs`;
+      const q = new URLSearchParams();
+      if (inp["path"] !== undefined) q.set("path", String(inp["path"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof RepoDirsAction>['run']>>;
     },
     // action: repo.export
     async repoExport(input?: z.input<InstanceType<typeof RepoExportAction>['_input']>) {
@@ -1459,6 +1477,18 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/prompt/template/save`;
       const body = { "segment": inp["segment"], "id": inp["id"], "name": inp["name"], "text": inp["text"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof PromptTemplateSaveAction>['run']>>;
+    },
+    // action: db.data
+    async data(input?: z.input<InstanceType<typeof DbDataAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DbDataAction>['_input']>);
+      let path = `/api/db/data`;
+      const q = new URLSearchParams();
+      if (inp["table"] !== undefined) q.set("table", String(inp["table"]));
+      if (inp["limit"] !== undefined) q.set("limit", String(inp["limit"]));
+      if (inp["offset"] !== undefined) q.set("offset", String(inp["offset"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DbDataAction>['run']>>;
     },
   };
 }

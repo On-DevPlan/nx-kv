@@ -38,6 +38,7 @@ export interface VscSegment {
   siblings: VscSibling[];
 }
 
+
 /** vscTrailOf 的返回面（组件渲染 + 复制寻址都要用）。 */
 export interface VscTrail {
   segments: VscSegment[];

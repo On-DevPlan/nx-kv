@@ -116,6 +116,17 @@ export default function VscCrumbs({ onPreviewTask }: { onPreviewTask?: ((taskId:
           </span>
         ))}
       </nav>
+      {/* #279 验收修正：本地路径**单独显示**，不融进面包屑——点一下复制完整路径 */}
+      {trail.cwd && (
+        <button
+          type="button"
+          className="vsc-local"
+          title={`${trail.cwd}（点击复制本地路径）`}
+          onClick={() => copyText(trail.cwd, '已复制本地路径')}
+        >
+          {trail.cwd}
+        </button>
+      )}
       {/* #254：悬浮整行亮出复制钮（当前任务的路径 + 任务号，按偏好两态） */}
       <button type="button" className="vsc-copy" title={copyTitle} aria-label={copyTitle}
         onClick={() => copyText(copyPayloadOf(trail, style), style === 'prompt' ? '已复制访问提示词' : '已复制路径')}>

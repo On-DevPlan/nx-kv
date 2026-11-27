@@ -25,6 +25,7 @@ const PluginVisibilityPanel = lazy(() => import('./plugin-host/visibility-panel.
 const DocPanel = lazy(() => import('./page/doc/index.jsx'));
 const SettingsPanel = lazy(() => import('./page/settings/index.jsx'));
 const DagPanel = lazy(() => import('./page/dag/index.jsx'));
+const DataView = lazy(() => import('./page/data/index.jsx'));
 const ComposePanel = lazy(() => import('./components/md/composer/composer-panel.jsx'));
 
 /** 给懒加载的视图套上 Suspense（传的是**元素**，不是组件） */
@@ -196,6 +197,8 @@ export const PANELS: Record<string, PanelEntry> = {
     title: '编排',
     render: (cfg) => wrap(<DagPanel dirKey={cfg && cfg.dirKey} groupId={cfg && cfg.groupId} />),
   },
+  // 数据库（#/data）：当前项目库全部内容的只读可视化（表概览 + 单表浏览）
+  data: { title: '数据库', render: () => wrap(<DataView />) },
 };
 
 /**

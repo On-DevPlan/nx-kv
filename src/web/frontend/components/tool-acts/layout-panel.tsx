@@ -1,5 +1,6 @@
 // 工具区编排面板（#141）：完全对齐 nx-ft UX——预览条可拖、行上/下半落点、
-// 「更多」卡片收纳；点击只留给显隐；↑↓ / Alt+↑↓ 作兜底。
+// 「更多」卡片收纳；点击只留给显隐。#264 验收「凡事排序皆拖拽」：可见 ↑/↓ 按钮删除，
+// 仅保留不可见的 Alt+↑↓ 键盘兜底（读屏/无鼠标场景）。
 import { useRef, useState } from 'react';
 import type {
   Dispatch,
@@ -230,7 +231,6 @@ export default function ToolActsLayoutPanel({ kind, layout, setLayout, onClose }
             ) : null}
             {barRows.map((item) => {
               const m = metaOf(kind, item.id);
-              const i = movableBar.findIndex((x) => x.id === item.id);
               return (
                 <div
                   key={item.id}
@@ -259,12 +259,6 @@ export default function ToolActsLayoutPanel({ kind, layout, setLayout, onClose }
                     {m.label || item.id}
                     {m.noHide ? <span className="tlp-sub">固定显示</span> : null}
                   </span>
-                  {!isLocked(kind, item.id) ? (
-                    <span className="tlp-acts">
-                      <button type="button" className="btn ghost sm" disabled={i <= 0} title="上移" onClick={() => nudge(item, -1)}>↑</button>
-                      <button type="button" className="btn ghost sm" disabled={i < 0 || i >= movableBar.length - 1} title="下移" onClick={() => nudge(item, 1)}>↓</button>
-                    </span>
-                  ) : null}
                 </div>
               );
             })}

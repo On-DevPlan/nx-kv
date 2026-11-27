@@ -49,6 +49,21 @@
   cursor: default;
   color: var(--ink-2, #4b515a);
 }
+/* 本地路径（#279 修正）：单独显示在面包屑旁，不融进面包屑段 */
+.vsc-local {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: 400 11px ui-monospace, Consolas, monospace;
+  color: var(--faint, #8a8578);
+  padding: 3px 6px;
+  border-radius: 5px;
+  white-space: nowrap;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vsc-local:hover { background: var(--soft, #f1f0ec); color: var(--ink, #16181c); }
 /* 最后一段（当前位置）加重一档，与 vscode 的文件段同措 */
 .vsc-crumb.is-cur .vsc-crumb-t {
   color: var(--ink, #16181c);

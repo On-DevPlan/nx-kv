@@ -17,6 +17,7 @@ import {
 } from '../../core/db/bootstrap.js';
 import { backupDatabase, fileHasContent, getMeta } from '../../core/db/migrator.js';
 import { tableCounts, statusDistribution, verifyStore } from '../../core/db/verify.js';
+import { notFound } from '../../core/errors.js';
 import { CURRENT_SCHEMA_VERSION, REQUIRED_NODE_VERSION } from '../../core/db/version.js';
 import { nowMs, stampFileTag } from '../../core/db/time.js';
 
@@ -209,6 +210,128 @@ export async function backup({ dir, keep = 5 }: { dir?: string; keep?: number } 
   return { path: out.path, removed: out.removed, dir: target, keep: keepCount, version: inspectStore(db).userVersion };
 }
 
+/** 一列的形状（PRAGMA table_info 收窄后的两列）。 */
+export interface DataColumn {
+  name: string;
+  type: string;
+}
+
+/** 一张表的概要：名字、行数、列清单。 */
+export interface DbTableInfo {
+  name: string;
+  count: number;
+  columns: DataColumn[];
+}
+
+/** `db data`（不带 --table）的结果形状：全表概览。 */
+export interface DbDataShape {
+  path: string;
+  exists: boolean;
+  userVersion: number;
+  currentSchemaVersion: number;
+  tables: DbTableInfo[];
+}
+
+/** `db data --table <t>` 的结果形状：一张表的行（窗口内）。 */
+export interface DbTableRowsShape {
+  path: string;
+  table: string;
+  count: number;
+  columns: DataColumn[];
+  rows: Record<string, unknown>[];
+  limit: number;
+  offset: number;
+}
+
+/** 行数窗口上限：本机单用户库不大，但也不能让一个请求拖回整库。 */
+const DATA_MAX_LIMIT = 1000;
+const DATA_DEFAULT_LIMIT = 200;
+
+/** sqlite_master 里的用户表清单（排除 sqlite_% 内部表），按名字排序保证输出稳定。 */
+function userTables(db: any): string[] {
+  return db
+    .all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .map((r: any) => String(r.name));
+}
+
+/** PRAGMA table_info → [{name, type}]（SQLite 标识符双引号转义后拼接）。 */
+function columnsOf(db: any, table: string): DataColumn[] {
+  const quoted = `"${table.replace(/"/g, '""')}"`;
+  return db.all(`PRAGMA table_info(${quoted})`).map((c: any) => ({
+    name: String(c.name),
+    type: String(c.type || ''),
+  }));
+}
+
+/**
+ * 面板要展示的值：node:sqlite 的 BLOB 回 Uint8Array，JSON.stringify 会变成
+ * `{"0":137,...}` 字节噪声——换成一行可读摘要；其余类型原样放行。
+ */
+function cellValue(v: unknown): unknown {
+  if (v instanceof Uint8Array) return `<blob ${v.byteLength} bytes>`;
+  if (typeof v === 'bigint') return v.toString();
+  return v;
+}
+
+function sanitizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) out[k] = cellValue(v);
+  return out;
+}
+
+/**
+ * 库数据只读导出（面板「数据库」页的数据源）。
+ *
+ * 不带 table → 全表概览（每表行数 + 列清单）；带 table → 该表的行窗口。
+ * **只读**：有库文件时按只读连接打开（与 status() 同一纪律）；表名不是拼接进
+ * SQL 的自由文本——先对 sqlite_master 清单做白名单校验，再双引号转义。
+ */
+export async function data(
+  { table, limit, offset }: { table?: string; limit?: number; offset?: number } = {},
+): Promise<DbDataShape | DbTableRowsShape> {
+  const path = dbPath();
+  const existed = fileHasContent(path);
+  const db: any = existed
+    ? openStore({ readOnly: true, importLegacyData: false })
+    : openStore({ importLegacyData: false });
+
+  const cap = Math.min(DATA_MAX_LIMIT, Math.max(1, Math.floor(Number(limit) || DATA_DEFAULT_LIMIT)));
+  const skip = Math.max(0, Math.floor(Number(offset) || 0));
+  const names = userTables(db);
+  const overview: DbTableInfo[] = names.map((name) => {
+    const row = db.get(`SELECT count(*) AS c FROM "${name.replace(/"/g, '""')}"`);
+    return { name, count: Number((row && row.c) || 0), columns: columnsOf(db, name) };
+  });
+
+  if (!table) {
+    const state: any = inspectStore(db);
+    return {
+      path,
+      exists: existed,
+      userVersion: state.userVersion,
+      currentSchemaVersion: CURRENT_SCHEMA_VERSION,
+      tables: overview,
+    };
+  }
+
+  const hit = overview.find((t) => t.name === table);
+  if (!hit) {
+    throw notFound(`表不存在: ${table}（可用: ${names.join(', ')}）`);
+  }
+  const rows = db
+    .all(`SELECT * FROM "${hit.name.replace(/"/g, '""')}" LIMIT ? OFFSET ?`, [cap, skip])
+    .map(sanitizeRow);
+  return {
+    path,
+    table: hit.name,
+    count: hit.count,
+    columns: hit.columns,
+    rows,
+    limit: cap,
+    offset: skip,
+  };
+}
+
 // ─── 渲染（纯文本，给人和 agent 看）────────────────────────────────────
 
 const fmtMs = (ms: any): string => (ms ? new Date(Number(ms)).toISOString() : '（无）');
@@ -336,5 +459,21 @@ export function renderBackup(d: BackupShape): string {
     `源库 user_version=${d.version}`,
   ];
   if (d.removed && d.removed.length) lines.push(`清理旧备份: ${d.removed.join(', ')}`);
+  return lines.join('\n');
+}
+
+/** db data 的文本渲染：概览 = 表行数清单；带表 = 行的紧凑 JSON。 */
+export function renderData(d: DbDataShape | DbTableRowsShape): string {
+  if ('rows' in d) {
+    const head = `${d.table}（第 ${d.offset + 1}–${d.offset + d.rows.length} 行，共 ${d.count} 行）`;
+    if (!d.rows.length) return `${head}\n（窗口内 0 行）`;
+    return `${head}\n${d.rows.map((r) => JSON.stringify(r)).join('\n')}`;
+  }
+  const lines = [`库数据: ${d.path}（user_version=${d.userVersion}，代码支持 v${d.currentSchemaVersion}）`];
+  lines.push(`表 ${d.tables.length} 张:`);
+  const width = Math.max(...d.tables.map((t) => t.name.length), 8);
+  for (const t of d.tables) {
+    lines.push(`  ${t.name.padEnd(width + 2)}${String(t.count).padStart(6)}  (${t.columns.length} 列)`);
+  }
   return lines.join('\n');
 }

@@ -370,6 +370,21 @@
           "children": []
         },
         {
+          "name": "dirs",
+          "path": [
+            "repo",
+            "dirs"
+          ],
+          "action": {
+            "id": "repo.dirs",
+            "module": "repos",
+            "summary": "列已登记仓库下某目录的子目录（只读；面包屑选子目录用）",
+            "usage": "repo dirs",
+            "http": "GET /api/repos/dirs"
+          },
+          "children": []
+        },
+        {
           "name": "export",
           "path": [
             "repo",
@@ -2312,6 +2327,21 @@
             "summary": "VACUUM INTO 备份（WAL 下不能直接 copy .db；保留最近 5 份）",
             "usage": "db backup",
             "http": null
+          },
+          "children": []
+        },
+        {
+          "name": "data",
+          "path": [
+            "db",
+            "data"
+          ],
+          "action": {
+            "id": "db.data",
+            "module": "db",
+            "summary": "库数据只读导出：全表概览或单表行窗口（不触发导入、不升级）",
+            "usage": "db data",
+            "http": "GET /api/db/data"
           },
           "children": []
         },

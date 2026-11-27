@@ -5,11 +5,9 @@
 // 底部：提交（评论 = 回写本任务；反馈 = 新开一条任务）。
 //
 // 提交逻辑在任务页那边（带会话状态），这里按 token 取回回调——见 composer-launch.js。
-import { useEffect, useRef, useState } from 'react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import { useRef, useState } from 'react';
 import { MdPanes } from '../panes/md-panes.jsx';
 import AttachBar from '../attachments/attach-bar.jsx';
-import { Icon } from '../../icons.jsx';
 import { filesToAttachments } from '../attachments/attachments.js';
 import { insertAttachmentSnippet } from '../../../modules/md/md-parse.js';
 import { composerOf, restoreComposerSource } from './composer-launch.js';
@@ -22,9 +20,8 @@ import type { Attachment } from '../attachments/attach-common.js';
 import type { EditorApi } from '../panes/md-panes-helpers.js';
 import '../../../modules/md/style.css';
 
-// 底部附件 dock（#155）：与任务页 mdw-dock 同一套视觉；高度/开关单独存
+// 附件区（#278）：直接放在面板内——不再有展开/收起的 dock 与绿色激活底
 // （nxkv.cmpDock*，不与任务页的 nxkv.taskDock* 串台）。
-const DOCK_MIN = 96;
 
 interface ComposePanelProps {
   token: string;
@@ -49,6 +46,8 @@ export default function ComposePanel({
   const toast = useToast();
   const [body, setBody] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // 隐藏文件 input：右上「＋」添加文件走它（附件直接进附件区，不再经过 dock）
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const editorApiRef = useRef<EditorApi | null>(null);
   const isFeedback = mode === 'feedback';
@@ -110,55 +109,6 @@ export default function ComposePanel({
     const snippet = [...imageInserts, ...fileInserts].join('');
     if (snippet) setBody((b) => insertAttachmentSnippet(b, snippet, {}).body);
     if (items.length) setAttachments((a) => [...a, ...items]);
-  };
-
-  // ─── 底部附件 dock（#155）：任务页同款信息面板，附件收进去不再占编辑区 ───
-  const fileRef = useRef<HTMLInputElement | null>(null);
-  const [dockOpen, setDockOpen] = useState(() => localStorage.getItem('nxkv.cmpDockOpen') !== '0');
-  const [dockH, setDockH] = useState(() => {
-    const v = Number(localStorage.getItem('nxkv.cmpDockH'));
-    return Number.isFinite(v) && v >= DOCK_MIN ? v : 176;
-  });
-  const dockHRef = useRef(dockH);
-  dockHRef.current = dockH;
-  const [dockMax, setDockMax] = useState(false);
-  const dockPrevHRef = useRef(176);
-  useEffect(() => {
-    localStorage.setItem('nxkv.cmpDockOpen', dockOpen ? '1' : '0');
-  }, [dockOpen]);
-  const toggleDockMax = () => {
-    if (dockMax) {
-      setDockH(dockPrevHRef.current);
-      setDockMax(false);
-      return;
-    }
-    dockPrevHRef.current = dockH;
-    const hostH = document.querySelector<HTMLElement>('.cmp')?.clientHeight || window.innerHeight;
-    setDockH(Math.max(DOCK_MIN, Math.round(hostH * 0.62)));
-    setDockMax(true);
-  };
-  const onDockDragStart = (e: ReactMouseEvent<HTMLDivElement>) => {
-    if (!dockOpen) return;
-    e.preventDefault();
-    setDockMax(false);
-    const startY = e.clientY;
-    const startH = dockHRef.current;
-    const clamp = (h: number) => Math.max(DOCK_MIN, Math.min(Math.round(h), Math.round((document.querySelector<HTMLElement>('.cmp')?.clientHeight || window.innerHeight) * 0.62)));
-    const move = (ev: MouseEvent) => {
-      dockHRef.current = clamp(startH - (ev.clientY - startY));
-      setDockH(dockHRef.current);
-    };
-    const up = () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
-      localStorage.setItem('nxkv.cmpDockH', String(dockHRef.current));
-    };
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'row-resize';
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
   };
 
   // 点引用区 → 主区右侧并排打开**原文**（旁路原文面板），方便对照（#107）
@@ -257,98 +207,18 @@ export default function ComposePanel({
         />
       </div>
 
-      {/* ─── 底部附件 dock（#155）：反馈/评论页与任务页同款信息面板 ─── */}
-      {dockOpen && (
-        <div className="mdw-dock" style={{ height: `${dockH}px` }}>
-          <div
-            className="mdw-dock-drag"
-            role="separator"
-            aria-orientation="horizontal"
-            title="上下拖动调整信息面板高度（双击最大化 / 还原）"
-            onMouseDown={onDockDragStart}
-            onDoubleClick={toggleDockMax}
+      {/* ─── 附件区（#278）：直接放在面板里——去掉展开/收起开关与绿色激活底 ─── */}
+      <div className="cmp-attach">
+        {attachments.length ? (
+          <AttachBar
+            attachments={attachments}
+            onRemove={(aid) => setAttachments((a) => a.filter((x) => x.id !== aid))}
           />
-          <div className="mdw-dock-head">
-            <div className="mdw-dock-tabs" role="tablist" aria-label="信息面板">
-              <button
-                type="button"
-                role="tab"
-                aria-selected="true"
-                className="mdw-dock-tab is-on"
-                onClick={() => setDockOpen(true)}
-              >
-                附件
-                {attachments.length ? <span className="mdw-dock-tab-num">{attachments.length}</span> : null}
-              </button>
-            </div>
-            <div className="mdw-dock-acts">
-              <button
-                type="button"
-                className="mdw-dock-act"
-                title="添加附件"
-                aria-label="添加附件"
-                onClick={() => fileRef.current?.click()}
-              >
-                <Icon name="plus" title={undefined} />
-              </button>
-              <button
-                type="button"
-                className="mdw-dock-act"
-                onClick={toggleDockMax}
-                title={dockMax ? '还原面板高度' : '最大化面板高度'}
-                aria-label={dockMax ? '还原面板高度' : '最大化面板高度'}
-              >
-                <Icon name={dockMax ? 'collapse' : 'expand'} title={undefined} />
-              </button>
-              <button
-                type="button"
-                className="mdw-dock-act"
-                onClick={() => setDockOpen(false)}
-                title="关闭面板（底部状态栏仍保留入口）"
-                aria-label="关闭面板"
-              >
-                <Icon name="x" title={undefined} />
-              </button>
-            </div>
+        ) : (
+          <div className="cmp-attach-empty">
+            还没有附件——粘贴 / 拖图片进正文即附件，或点右上「＋」添加文件。
           </div>
-          <div className="mdw-dock-body">
-            {attachments.length ? (
-              <AttachBar
-                attachments={attachments}
-                onRemove={(aid) => setAttachments((a) => a.filter((x) => x.id !== aid))}
-              />
-            ) : (
-              <div className="mdw-dock-empty">
-                还没有附件——粘贴 / 拖图片进正文即附件，或点右上「＋」添加文件。
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ─── 底部状态栏：附件入口 + 面板开关（dock 关了仍能从这打开） ─── */}
-      <div className="mdw-sbar">
-        <button
-          type="button"
-          className={`mdw-sbar-item${dockOpen ? ' is-on' : ''}`}
-          onClick={() => setDockOpen((v) => !v)}
-          title="附件（点击展开/收起信息面板）"
-        >
-          <Icon name="list" title={undefined} />
-          <span className="mdw-sbar-lab">附件</span>
-          {attachments.length ? <span className="mdw-sbar-num">{attachments.length}</span> : null}
-        </button>
-        <span className="mdw-sbar-grow" />
-        <button
-          type="button"
-          className={`mdw-sbar-chev${dockOpen ? ' is-open' : ''}`}
-          onClick={() => setDockOpen((v) => !v)}
-          title={dockOpen ? '收起信息面板' : '展开信息面板'}
-          aria-expanded={dockOpen}
-          aria-label={dockOpen ? '收起信息面板' : '展开信息面板'}
-        >
-          <Icon name="chevron" title={undefined} />
-        </button>
+        )}
       </div>
 
       <input

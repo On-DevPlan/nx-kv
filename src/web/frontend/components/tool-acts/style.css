@@ -102,8 +102,6 @@
 .tlp-nm-ico { display: inline-flex; align-items: center; }
 .tlp-nm-ico .ic { color: var(--mid, #838A93); }
 .tlp-sub { display: block; font-size: 11px; color: var(--mid, #838A93); margin-top: 1px; }
-.tlp-acts { display: inline-flex; gap: 2px; opacity: 0; transition: opacity .12s; }
-.tlp-row:hover .tlp-acts, .tlp-row:focus-within .tlp-acts { opacity: 1; }
 
 .tlp-foot {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;

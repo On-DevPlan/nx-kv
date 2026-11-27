@@ -56,6 +56,9 @@ export function crumbsOf(route: Partial<AppRoute> | null | undefined, ctx: SpecC
       return ['仓库管理'];
     case 'plugin':
       return ['插件'];
+    // 数据库视图：顶层单例页，只有自身一层
+    case 'data':
+      return ['数据库'];
     // 文档页（#88）：只画**归属**（仓库 / 项目组）——文档名已经在 DocHead 的
     // 标题行里，面包屑再画一遍就是同一行重复两遍。
     case 'doc': {
@@ -110,6 +113,9 @@ export function crumbTrailOf(route: Partial<AppRoute> | null | undefined, ctx: S
       return [{ label: '仓库管理', hash: '' }];
     case 'plugin':
       return [{ label: '插件', hash: '' }];
+    // 数据库视图：顶层单例页，只有自身一层
+    case 'data':
+      return [{ label: '数据库', hash: '' }];
     // 文档页：归属段可点（仓库 → 仓库管理；项目组 → 组页），文档自身是当前层
     case 'doc': {
       const owner = ctx.repoName || ctx.boardName || '';
@@ -138,6 +144,9 @@ export function parentRouteOf(route: Partial<AppRoute> | null | undefined, _ctx?
     case 'group':
       if (route.task) return `#/group/${encodeURIComponent(route.key || '')}`;
       return '#/repos';
+    // 数据库视图：顶层单例页，上面没有父级（不画返回键）
+    case 'data':
+      return '';
     // 文档页（#88）：退回归属页（仓库 → #/repos；项目组 → #/group/<id>）
     case 'doc':
       if (route.repoKey) return '#/repos';

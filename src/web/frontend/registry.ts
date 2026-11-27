@@ -30,4 +30,6 @@ export const VIEWS: ViewDef[] = [
   { id: 'repos', module: 'repos', component: lazy(() => import('./page/repos/index.jsx')) },
   // 项目组详情：组里的子目录以表格呈现（点击侧栏的项目组行进来）
   { id: 'group', module: 'repos', component: lazy(() => import('./page/group/index.jsx')) },
+  // 数据库：当前项目库全部内容的只读可视化（#/data）
+  { id: 'data', module: 'db', component: lazy(() => import('./page/data/index.jsx')) },
 ];

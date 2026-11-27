@@ -19,7 +19,7 @@ import { useToast } from '../../components/toast/index.jsx';
 import { useDialog } from '../../components/popup/index.jsx';
 import { useApp } from '../../app-context.jsx';
 import { openPanel } from '../../workspace.js';
-import { MdPanes } from '../../components/md/panes/md-panes.jsx';
+import PmEditorHost from '../../components/md/pm/pm-editor-host.jsx';
 import { DocAttachBody, DocDockPanel, DocStatusBar } from './doc-dock.js';
 import { useDocBindings } from './bindings.js';
 import { useDock } from '../dir/task-dock.js';
@@ -543,7 +543,8 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
             <span className="v">{doc.desc || '未填写——写一句这篇讲什么，列表与提示词里用它快速定位'}</span>
           )}
         </div>
-        <MdPanes
+        {/* 正文编辑器宿主：默认 MdPanes；?kernel=pm 且可写时切 PM 单一实时文档（#274 M1 试点） */}
+        <PmEditorHost
           mode={effMode}
           title={doc.title}
           body={doc.body}
@@ -557,6 +558,7 @@ export default function DocPanel({ docId, repoKey, boardKey, boardName, model, t
           onSave={writable ? save : null}
           onUndo={writable ? undo : null}
           onRedo={writable ? redo : null}
+          writable={writable}
         />
         {/* 信息面板（#183）：附件 / 归属两个 tab，外壳与任务页同构（可拖高 / 最大化 / 关闭） */}
         <DocDockPanel

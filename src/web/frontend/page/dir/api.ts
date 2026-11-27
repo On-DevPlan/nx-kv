@@ -44,3 +44,31 @@ export function getMdfileContent(id: string): Promise<{ body?: string; absPath?:
 export function previewTask(body: Record<string, unknown>): Promise<any> {
   return api('/api/localtasks/preview', { method: 'POST', body });
 }
+
+/** 草稿提交后通知插件迁移草稿键数据（POST /api/plugins/task-created；失败不影响任务）。 */
+export function notifyPluginTaskCreated(body: {
+  draftKey: string;
+  taskId: number;
+  taskText?: string;
+  topic?: string;
+  group?: string;
+  repo?: string;
+  cwd?: string;
+  boardKey?: string;
+  projectKey?: string;
+  status?: string;
+}): Promise<{ notified?: string[]; warnings?: string[] }> {
+  return api('/api/plugins/task-created', { method: 'POST', body });
+}
+
+/** gettask 插件区块声明（GET /api/plugins/gettask；任务编辑页 dock tab）。 */
+export function getTaskPlugins(query: { topic?: string; taskId?: string }): Promise<{
+  entries?: any[];
+  warnings?: string[];
+}> {
+  const q = new URLSearchParams();
+  if (query.topic) q.set('topic', query.topic);
+  if (query.taskId) q.set('taskId', query.taskId);
+  const s = q.toString();
+  return api(`/api/plugins/gettask${s ? `?${s}` : ''}`);
+}

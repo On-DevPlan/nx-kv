@@ -30,6 +30,8 @@
 .mdw-dock-body{flex:1;min-height:0;overflow:auto;padding:8px 14px 10px;box-sizing:border-box}
 .mdw-dock-body .att-area{border-top:0;padding-top:0}
 .mdw-dock-empty{padding:14px 0;font-size:12px;color:var(--mid,#838A93)}
+/* gettask 插件区块：tab 内容由插件组件自渲染，宿主只给容器 */
+.mdw-plugin-dock{height:100%;min-height:0;display:flex;flex-direction:column}
 /* md 栏（#79）：左侧只列 kind='mdfile' 的附件，右侧按 md 渲染 */
 .mdw-md-tab{display:flex;gap:14px;height:100%;min-height:0}
 .mdw-md-list{

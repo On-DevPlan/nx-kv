@@ -38,12 +38,14 @@ const GROUP_LABEL: Record<string, string> = {
   get: '领取交付（get）',
   check: '每轮检查（check）',
   done: '尝试完成（done）',
+  gettask: '插件区块（gettask）',
 };
 
 const GROUP_HINT: Record<string, string> = {
   get: 'agent 执行 get 领走任务时拼在任务正文之后的一大段',
   check: '每轮等待检查时告诉 agent「离目标还差多少」',
   done: 'agent 调 done 时给出的完成门禁',
+  gettask: '插件注册的任务区块：编辑页底部有自己的 tab，领取时按任务数据展开成 nxkv.plugin.* 区块',
 };
 
 /** 预览结果（POST /api/localtasks/preview 的 segments = compose 的 trace）。 */

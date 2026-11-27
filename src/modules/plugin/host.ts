@@ -145,6 +145,37 @@ export function resetActivation(): void {
   activationErrors.clear();
 }
 
+/** 一个已启用且激活成功的插件 + 它看到的上下文（gettask 等生命周期点共用）。 */
+export interface EnabledPluginHandle {
+  plugin: NxkvPlugin;
+  ctx: PluginContext;
+}
+
+/**
+ * 列出「已启用 + 激活成功」的插件并逐个构造上下文。
+ * 激活失败 / 未启用的插件只记 warning，不阻断调用方（gettask 取块必须 fail-open）。
+ */
+export async function enabledPlugins(
+  ctx: PretaskContext = {},
+): Promise<{ handles: EnabledPluginHandle[]; warnings: string[] }> {
+  ensureDbScope();
+  const loaded = await loadPlugins();
+  const states = stateMap();
+  const warnings: string[] = [];
+  const handles: EnabledPluginHandle[] = [];
+  for (const l of loaded) {
+    const plugin = l.plugin;
+    if (!plugin || !isEnabled(plugin, states)) continue;
+    const error = await ensureActivated(l);
+    if (error) {
+      warnings.push(`${plugin.id}: ${error}`);
+      continue;
+    }
+    handles.push({ plugin, ctx: contextOf(plugin, ctx) });
+  }
+  return { handles, warnings };
+}
+
 /** 全局插件清单（设置页用）：包含加载失败与未启用的插件。 */
 export async function listPlugins(): Promise<PluginSummary[]> {
   ensureDbScope();

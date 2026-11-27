@@ -1,0 +1,70 @@
+/* skill-ref 插件 UI：dock 技能选择 + 设置页（沿用宿主变量与 .btn/.rp-page 外观约定）。 */
+
+/* ── 任务 dock 面板 ───────────────────────────────────────────── */
+.skr-panel{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0}
+.skr-head{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink,#222);flex-wrap:wrap}
+.skr-head .muted{font-size:11px}
+.skr-spacer{flex:1}
+.skr-search{
+  width:200px;padding:5px 8px;font:400 12px/1.4 inherit;color:var(--ink,#222);
+  background:var(--paper,#fff);border:1px solid var(--line,#E4E2DC);border-radius:6px;
+}
+.skr-search:focus{outline:none;border-color:var(--mdw-accent-line,#B7D4C8)}
+.skr-list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.skr-row{
+  display:flex;align-items:flex-start;gap:9px;padding:7px 9px;
+  border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--paper,#fff);cursor:pointer;
+}
+.skr-row:hover{background:var(--soft,#F1F0EC)}
+.skr-row input[type="checkbox"]{margin-top:3px;flex:none}
+.skr-main{display:flex;flex-direction:column;gap:2px;min-width:0}
+.skr-title{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;color:var(--ink,#222)}
+.skr-badge{
+  font-size:9.5px;line-height:1.5;padding:0 5px;border-radius:4px;
+  color:var(--mid,#8A8578);background:var(--soft,#F1F0EC);
+}
+.skr-badge.repo{color:#2F6F5E;background:#E8F2EE}
+.skr-badge.config{color:#6B5A2E;background:#F7F1DF}
+.skr-dirname{font-size:10.5px;color:var(--faint,#B6B1A6)}
+.skr-desc{
+  font-size:11.5px;line-height:1.55;color:var(--ink-2,#4B515A);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.skr-path{font-size:10.5px;color:var(--mid,#8A8578);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.skr-warn{
+  padding:6px 9px;border:1px solid #E7C4C0;border-radius:8px;background:#FCF3F2;
+  color:#9A3B32;font-size:11.5px;line-height:1.5;
+}
+.skr-draft-hint{
+  padding:6px 9px;border:1px solid #D8E3EE;border-radius:8px;background:#F4F8FC;
+  color:#3D5A73;font-size:11.5px;line-height:1.5;
+}
+.skr-empty{padding:10px 0;font-size:12px;color:var(--mid,#8A8578);display:flex;align-items:center;gap:8px}
+
+/* ── 设置页 ─────────────────────────────────────────────────── */
+.skr-page{display:flex;flex-direction:column;gap:12px;min-height:0}
+.skr-sub{margin:2px 0 0;font-size:12px;line-height:1.6}
+.skr-settings{max-width:780px}
+.skr-error{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #E7C4C0;
+  border-radius:8px;background:#FCF3F2;color:#9A3B32;font-size:12px;
+}
+.skr-section{display:flex;flex-direction:column;gap:8px}
+.skr-section-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.skr-section-head b{font-size:12.5px;color:var(--ink,#222)}
+.skr-section-head .muted{font-size:11.5px}
+.skr-dir-list{display:flex;flex-direction:column;gap:6px}
+.skr-dir-row{
+  display:flex;align-items:center;gap:10px;padding:8px 10px;
+  border:1px solid var(--line,#E4E2DC);border-radius:8px;background:var(--paper,#fff);
+}
+.skr-dir-path{flex:1;min-width:0;font-size:11.5px;color:var(--ink-2,#4B515A);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skr-dir-add{display:flex;gap:8px;align-items:center}
+.skr-dir-input{
+  flex:1;min-width:0;padding:7px 9px;font:400 12.5px/1.5 inherit;color:var(--ink,#222);
+  background:var(--paper,#fff);border:1px solid var(--line,#E4E2DC);border-radius:8px;
+}
+.skr-dir-input:focus{outline:none;border-color:var(--mdw-accent-line,#B7D4C8)}
+.skr-rules{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.skr-rules li{font-size:12px;line-height:1.65;color:var(--ink-2,#4B515A)}
+.skr-rules code{font-size:11px;padding:0 4px;border-radius:4px;background:var(--soft,#F1F0EC)}

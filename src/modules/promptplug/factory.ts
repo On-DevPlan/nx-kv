@@ -141,6 +141,9 @@ export function varScopeOf(id: string): { allowedSegments: string[]; fieldKeys: 
 /** shared 的实现（assertPluginList 直接吃 fields，省一次查表）。 */
 export { varScopeOf as varScopeOfFields };
 
+/** 用户启用的模板正文（外部段 / 交付适配器用；'' = 跟随内置）。 */
+export { activeTemplateTextOf };
+
 /** 某插件当前生效的模板正文（#152：就是类里 templates[0]）。 */
 export function activeTemplateOf(id: string): string {
   const p = pluginMeta(id);

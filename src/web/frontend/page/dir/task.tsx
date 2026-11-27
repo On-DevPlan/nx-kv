@@ -50,7 +50,7 @@ import { useSelMenu } from './task-sel-menu.js';
 import { useAck } from './task-ack.js';
 import { useTaskActions } from './task-actions.js';
 import { useFeedback } from './task-feedback.js';
-import { useDerivedCtx } from './task-derived-ctx.js';
+import { pretaskScopeOf, useDerivedCtx } from './task-derived-ctx.js';
 import { useBesideOps } from './task-beside.js';
 import { PreviewModal } from './task-preview-modal.jsx';
 import { DockPanel } from './task-dock-panel.jsx';
@@ -118,11 +118,29 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     return rows.find((r) => r.key === topicKey) || null;
   }, [rows, topicKey, groupAnchored, groupResolved]);
 
+  // 本页的 pretask 上下文与默认入口：目录/组两种语义，「新任务」与「＋ 新建页」同口径。
+  const pretaskScope = useMemo(
+    () => pretaskScopeOf({
+      topicKey,
+      dirKey: String(dirKey || ''),
+      groupAnchored,
+      groupId: String(groupId || ''),
+      topic,
+      boards: (app.repoData && app.repoData.boards) || [],
+    }),
+    [topicKey, dirKey, groupAnchored, groupId, topic, app.repoData],
+  );
+  const entryCtx = pretaskScope.ctx;
   // 默认 pretask 入口的正文：深链直接打开草稿页时用它补种（正常路径由目录/组页先写正文）。
-  const entryState = usePretaskEntries({ topic: topicKey });
+  const entryState = usePretaskEntries({
+    topic: topicKey,
+    repo: pretaskScope.repoKey,
+    group: pretaskScope.groupKey,
+  });
   const defaultEntry =
     entryState.entries.find((e) => e.id === entryState.defaultEntryId) ||
-    entryState.entries.find((e) => e.kind === 'draft');
+    entryState.entries.find((e) => e.kind === 'draft') ||
+    entryState.entries[0];
   const defaultDraftBody = defaultEntry
     ? renderTemplateBody(defaultEntry.previewBody || '', defaultEntry.values || {})
     : '';
@@ -227,7 +245,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   // ─── 动作钩子 ───
   const actions = useTaskActions({
     doc, id, isDraft, task, taskRow, topicKey, topic, boardCtx, docFm,
-    groupAnchored, groupId, app, model: model || null, tabId, defaultDraftBody, refreshLocal,
+    groupAnchored, groupId, app, model: model || null, tabId, defaultDraftBody, defaultEntry, entryCtx, refreshLocal,
     markDirty, histRef, editorApiRef, attachAreaRef,
     setDirty,
     goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,

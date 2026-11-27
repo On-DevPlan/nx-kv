@@ -19,6 +19,7 @@
 //     「这段是哪来的」。真实领取不传 trace，行为与改造前逐字节一致。
 import { formatDuration, formatGoalTiming } from '../../core/instruction-template.js';
 import { pendingQueueInfo } from '../localtask/service.js';
+import { collectGetTaskBlocks, taskInfoOf, type GetTaskBlock } from '../plugin/gettask.js';
 import { assembleDelivery, type AssembledDelivery } from './assemble.js';
 import { annotateTaskDelivery, attachTemplateCtx } from '../localtask/ops/attach.js';
 import { readGroupContext } from './groupctx.js';
@@ -197,6 +198,30 @@ export async function buildTaskDelivery(
       });
     }
 
+    // gettask 插件区块：插件按任务取数（插件自有表），宿主这里只负责调用与降级。
+    // 单插件失败 / data() 抛错 → warning + 跳过该区块，领取照常。
+    let gettaskBlocks: GetTaskBlock[] = [];
+    try {
+      const info = taskInfoOf(task, { topicKey: topicKey as string, cwd: cwd as string });
+      if (info) {
+        const got = await collectGetTaskBlocks(info, { topicKey: topicKey as string, cwd: cwd as string });
+        gettaskBlocks = got.blocks;
+        for (const w of got.warnings) {
+          hostWarnings.push({
+            block: 'gettask',
+            label: '插件区块（gettask）',
+            message: String(w).replace(/\s+/g, ' ').trim(),
+          });
+        }
+      }
+    } catch (e) {
+      hostWarnings.push({
+        block: 'gettask',
+        label: '插件区块（gettask）',
+        message: String((e as Error).message || e).replace(/\s+/g, ' ').trim(),
+      });
+    }
+
     const delivery: AssembledDelivery = await assembleDelivery({
       task,
       attachCtx: attach,
@@ -212,6 +237,7 @@ export async function buildTaskDelivery(
       name,
       hostWarnings,
       trace,
+      gettaskBlocks,
     });
     const warnField = delivery.renderWarnings.length ? { renderWarnings: delivery.renderWarnings } : {};
     if (!delivery.instruction) {

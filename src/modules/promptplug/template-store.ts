@@ -217,11 +217,14 @@ export function segmentTemplatesOf(id: string): SegmentTemplates {
   return readSegment(id);
 }
 
-/** 全部段的用户层模板数据（设置页一次拉全；只列注册表里的段，不扫前缀）。 */
-export function allSegmentTemplates(): Record<string, SegmentTemplates> {
+/**
+ * 全部段的用户层模板数据（设置页一次拉全；只列注册表里的段，不扫前缀）。
+ * extraIds：外部段（gettask 插件区块）——宿主把声明注册给 promptplug，这里只按 id 读。
+ */
+export function allSegmentTemplates(extraIds: readonly string[] = []): Record<string, SegmentTemplates> {
   const out: Record<string, SegmentTemplates> = {};
   try {
-    for (const id of allPluginIds()) {
+    for (const id of [...new Set([...allPluginIds(), ...extraIds])]) {
       const seg = readSegmentRaw(id);
       if (seg) out[id] = seg;
     }
@@ -300,12 +303,13 @@ function sameTemplate(a: string, b: string): boolean {
  * 副本文本与新版内置实质相同 → 这里返回 '' 直接跟随内置，不会卡在旧版本上。
  * 只有真正自定义过的副本才用 `hit.text`。
  */
-export function activeTemplateTextOf(id: string): string {
+export function activeTemplateTextOf(id: string, builtinFallback = ''): string {
   const seg = readSegment(id);
   if (seg.activeId === 'builtin') return '';
   const hit = seg.items.find((t) => t.id === seg.activeId);
   if (!hit) return '';
   const text = String(hit.text ?? '');
-  if (sameTemplate(text, builtinTemplateTextOf(id))) return '';
+  // 外部段（gettask）的内置正文在插件声明里，不在注册表里——由调用方传入比对基准。
+  if (sameTemplate(text, builtinFallback || builtinTemplateTextOf(id))) return '';
   return text;
 }

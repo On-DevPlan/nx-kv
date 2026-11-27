@@ -1713,6 +1713,21 @@
       "action": null,
       "children": [
         {
+          "name": "candidates",
+          "path": [
+            "plugin",
+            "candidates"
+          ],
+          "action": {
+            "id": "plugin.candidates",
+            "module": "plugin",
+            "summary": "插件候选条目标准接口（面板列表 / 正文搜索与引用；按插件启用状态聚合）",
+            "usage": "plugin candidates",
+            "http": "GET /api/plugins/candidates"
+          },
+          "children": []
+        },
+        {
           "name": "context",
           "path": [
             "plugin",
@@ -1754,6 +1769,21 @@
             "summary": "读取已登记仓库内的文件（插件页用；二进制/超大文件会标记）",
             "usage": "plugin file",
             "http": "GET /api/plugins/file"
+          },
+          "children": []
+        },
+        {
+          "name": "gettask",
+          "path": [
+            "plugin",
+            "gettask"
+          ],
+          "action": {
+            "id": "plugin.gettask",
+            "module": "plugin",
+            "summary": "列出插件注册的 gettask 区块（任务编辑页 dock tab + 领取交付时的插件区块）",
+            "usage": "plugin gettask",
+            "http": "GET /api/plugins/gettask"
           },
           "children": []
         },
@@ -1829,6 +1859,21 @@
             "summary": "写某个 scope 的入口可见性与顺序",
             "usage": "plugin set-visibility",
             "http": "PATCH /api/plugins/visibility"
+          },
+          "children": []
+        },
+        {
+          "name": "task-created",
+          "path": [
+            "plugin",
+            "task-created"
+          ],
+          "action": {
+            "id": "plugin.task-created",
+            "module": "plugin",
+            "summary": "草稿提交创建任务后通知插件（迁移按 draftKey 暂存的插件数据）",
+            "usage": "plugin task-created",
+            "http": "POST /api/plugins/task-created"
           },
           "children": []
         },

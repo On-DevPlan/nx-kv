@@ -14,8 +14,10 @@
 // delivery-template 两个测试都有「与 wait.ts 同构」的最小组装）——现在它们可以
 // 直接调 assembleDelivery。
 import { reorderRoundsForDelivery } from '../../shared/feedback-text.js';
+import { undeclaredTemplateVars, varScopeOf, type AnyPromptPlugin } from '../../shared/prompt-plugin.js';
 import { compose, type RenderTraceEntry, type RenderWarning, type SegmentMeta } from '../promptplug/compose.js';
-import { buildPlugins } from '../promptplug/factory.js';
+import { activeTemplateTextOf, buildPlugins } from '../promptplug/factory.js';
+import type { GetTaskBlock } from '../plugin/gettask.js';
 
 /** compose 的分段元信息（面板「这段是哪来的」的展示标签），交付组装的固定清单。 */
 export const DELIVERY_SEGMENTS: SegmentMeta[] = [
@@ -69,6 +71,50 @@ export interface DeliveryHostData {
   hostWarnings?: RenderWarning[];
   /** 逐段来源追踪（面板预览用；真实领取不传） */
   trace?: RenderTraceEntry[];
+  /**
+   * gettask 插件区块（插件宿主按任务取好数据；本文件只负责套模板与拼链）。
+   * 空/缺省 = 没有插件区块。单项失败降级为 warning，不阻断整次交付。
+   */
+  gettaskBlocks?: readonly GetTaskBlock[];
+}
+
+/**
+ * 把一个 gettask 区块适配成 compose 认的插件段：group 固定 get，排在全部内置 get 段之后。
+ * 用户模板（设置页覆盖）优先；引用了未声明变量时回退出厂模板（与 factory 同口径）。
+ */
+function gettaskPluginOf(
+  block: GetTaskBlock,
+  index: number,
+  warnings: RenderWarning[],
+): AnyPromptPlugin | null {
+  const builtin = String(block.template || '');
+  let template = activeTemplateTextOf(block.segment, builtin);
+  const scope = varScopeOf(block.segment, block.fields);
+  if (template && undeclaredTemplateVars(template, scope.allowedSegments, scope.fieldKeys).length) {
+    warnings.push({
+      block: block.segment,
+      label: block.label,
+      message: '用户模板引用了本段没有的变量，已回退插件内置模板',
+    });
+    template = '';
+  }
+  const text = template || builtin;
+  if (!text.trim()) {
+    warnings.push({ block: block.segment, label: block.label, message: '插件模板为空，已跳过该区块' });
+    return null;
+  }
+  return {
+    id: block.segment,
+    order: 200 + index,
+    group: 'get',
+    tag: block.tag,
+    label: block.label,
+    templates: [{ id: 'builtin', name: '插件内置', text: builtin }],
+    schema: { fields: block.fields, blank: null },
+    get(as?: 'data'): any {
+      return as === 'data' ? Promise.resolve(block.data) : text;
+    },
+  };
 }
 
 export interface AssembledDelivery {
@@ -118,6 +164,10 @@ export async function assembleDelivery(host: DeliveryHostData): Promise<Assemble
 
   // #152：模板是插件类的内置正文（不再从 settings 解析）。
   // 宿主取数以 Supply 注入（惰性：不消费就不算）。
+  // gettask 插件区块排在 get 链末尾（order 200+）：内置段先讲规则，插件补充业务数据。
+  const gettaskPlugins = (host.gettaskBlocks || [])
+    .map((b, i) => gettaskPluginOf(b, i, renderWarnings))
+    .filter((p): p is AnyPromptPlugin => !!p);
   const plugins = [
     ...buildPlugins('get', {
       groupCtx: () => groupCtx,
@@ -128,6 +178,7 @@ export async function assembleDelivery(host: DeliveryHostData): Promise<Assemble
     }),
     ...buildPlugins('check'),
     ...buildPlugins('done'),
+    ...gettaskPlugins,
   ];
   const full = await compose({
     plugins,

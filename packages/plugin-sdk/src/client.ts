@@ -3,12 +3,15 @@ import type { ComponentType } from 'react';
 import type { EntryView, PretaskContext, PretaskDraft } from './index.js';
 
 export type {
+  EntryView,
   PluginContextView,
   PluginFileView,
   PluginRepoView,
   PluginTreeEntry,
   PluginTreeView,
   PluginTopicInfo,
+  PretaskContext,
+  PretaskDraft,
 } from './index.js';
 
 export interface PluginClientApi {

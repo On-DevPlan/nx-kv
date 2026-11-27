@@ -177,6 +177,12 @@ const EDGE_BASELINE = {
   'claim→localtask': 9,
   'localtask→goals': 8,
   'claim→promptplug': 5,
+  // gettask（第二生命周期点）：交付组装要按一条确定任务向插件取区块。
+  // claim 只调用 plugin/gettask 的门面（取数 + 降级都在那边），模板/拼链仍在 promptplug。
+  'claim→plugin': 1,
+  // 插件宿主把 gettask 声明注册给 promptplug 的外部段来源（设置页注册表 / 模板校验）。
+  // 方向固定为 plugin→promptplug：promptplug 不反向依赖插件实现。
+  'plugin→promptplug': 1,
   'goals→localtask': 5,
   'goals→promptplug': 4,
   'claim→goals': 3,

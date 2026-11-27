@@ -59,20 +59,27 @@ pnpm test
 
 ## 内置插件（pretask）
 
-`nx-kv` 自带两个**内置插件**，随 npm 包一起分发，`npx nx-kv serve` 安装后即可用（无需另装插件）：
+`nx-kv` 自带三个**内置插件**，随 npm 包一起分发，`npx nx-kv serve` 安装后即可用（无需另装插件）：
 
 | 插件 | 能力 | 入口 |
 |---|---|---|
 | 任务模板 `task-template` | 新建任务的正文模板 / 槽位填写 / 模板管理 | 新建页下拉 + 左下角「任务模板」 |
 | 目录批注 `dir-annotate` | repo 主题直接进项目目录、group 主题先选仓库；给文件加批注并生成任务草稿 | 新建页下拉 + 左下角「目录批注设置」 |
+| 技能引用 `skill-ref` | 扫描仓库 `.claude/skills` 与自配置目录；把技能绑定到任务，领取时要求 agent 强制加载 | 任务编辑页底部 dock + 左下角「技能引用设置」 |
 
 插件**自注册**入口、页面、侧栏与自有存储；`nx-kv` 只负责生命周期（发现 / 启用停用 / 迁移版本 /
-入口聚合 / 可见性与默认项）和调用（`buildDraft` / RPC / 页面挂载）。每个主题可在「配置新建页行为…」里
-选择下拉显示哪些入口、以及点「＋ 新建页」默认触发哪一项。插件清单与状态：
+入口聚合 / 可见性与默认项 / gettask 任务区块）和调用（`buildDraft` / RPC / 页面挂载 / 交付区块）。
+每个主题可在「配置新建页行为…」里选择下拉显示哪些入口、以及点「＋ 新建页」默认触发哪一项；
+插件还可以通过 `gettask()` 在任务编辑页底部注册自己的 tab，并把任务绑定数据作为
+`nxkv.plugin.<插件>.<区块>` 追加到领取提示词（模板可在设置 → 提示词模板里改）。
+
+完整生命周期与扩展指南见 [docs/pretask-plugins.md](docs/pretask-plugins.md)。插件清单与状态：
 
 ```bash
 nx-kv plugin list --json
 nx-kv plugin entries --topic <topicKey> --json
+nx-kv plugin gettask --json
+nx-kv plugin candidates --pluginId skill-ref --cwd <repoRoot> --json
 ```
 
 ## 常用命令

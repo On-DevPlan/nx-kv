@@ -1,7 +1,8 @@
 // 派生上下文：frontmatter / 父任务锚点 / 工作组语义。
 import { useMemo } from 'react';
 import { titleFromMd } from '../../modules/md/md-parse.js';
-import type { LocalTask, LocalTopic, RepoRow } from '../../types.js';
+import type { BoardRow, LocalTask, LocalTopic, RepoRow } from '../../types.js';
+import type { PretaskContext } from '@nx-kv/plugin-sdk';
 import type { AppSlice, BoardCtx, DocFm, DocState, ParentRef } from './task-utils.js';
 
 interface UseDerivedCtxArgs {
@@ -11,6 +12,56 @@ interface UseDerivedCtxArgs {
   topic: LocalTopic | null;
   task: string;
   app: AppSlice;
+}
+
+/** 任务页的 pretask 作用域：目录页只到仓库，组页带组/看板/归属项目。 */
+export interface PretaskScope {
+  ctx: PretaskContext;
+  repoKey: string;
+  groupKey: string;
+}
+
+export function pretaskScopeOf(input: {
+  topicKey: string;
+  dirKey: string;
+  groupAnchored: boolean;
+  groupId: string;
+  topic: LocalTopic | null;
+  boards: BoardRow[];
+}): PretaskScope {
+  const topic = input.topic as LocalTopic & { repo?: { key?: string; name?: string } };
+  const board = input.groupAnchored
+    ? input.boards.find((b) => b.id === input.groupId || b.key === input.groupId) || null
+    : null;
+  const repoKey = String(topic?.repo?.key || '');
+  const groupKey = input.groupAnchored ? String(board?.key || '') : '';
+  const groupId = input.groupAnchored ? input.groupId : '';
+  const boardId = input.groupAnchored ? String(board?.id || input.groupId) : '';
+  const project = input.groupAnchored ? repoKey : '';
+  const location = input.groupAnchored
+    ? { dirKey: input.topicKey, groupId, board: boardId, project }
+    : { dirKey: input.dirKey };
+  const ctx: PretaskContext = {
+    topicKey: input.topicKey,
+    repoKey,
+    groupKey,
+    cwd: String(topic?.cwd || ''),
+    dirKey: input.groupAnchored ? input.topicKey : input.dirKey,
+    ...(input.groupAnchored ? { groupId, board: boardId, project } : {}),
+    topic: {
+      key: input.topicKey,
+      name: String(topic?.name || ''),
+      kind: input.groupAnchored ? 'group' : 'repo',
+      cwd: String(topic?.cwd || ''),
+      repoKey,
+      groupKey,
+      repoName: String(topic?.repo?.name || ''),
+      groupName: String(board?.name || ''),
+      repoRoot: String(topic?.cwd || ''),
+    },
+    location,
+  };
+  return { ctx, repoKey, groupKey };
 }
 
 export function useDerivedCtx({ doc, beside, topicKey, topic, task, app }: UseDerivedCtxArgs) {

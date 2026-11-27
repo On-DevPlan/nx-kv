@@ -6,42 +6,51 @@
 
 import type { ActionBase } from '../../../runtime/action-base.js';
 import type { Container } from '../../../runtime/container.js';
+import { PluginCandidatesAction } from './plugin-candidates.js';
 import { PluginContextAction } from './plugin-context.js';
 import { PluginEntriesAction } from './plugin-entries.js';
 import { PluginFileAction } from './plugin-file.js';
+import { PluginGetTaskAction } from './plugin-gettask.js';
 import { PluginListAction } from './plugin-list.js';
 import { PluginRpcAction } from './plugin-rpc.js';
 import { PluginSetDefaultAction } from './plugin-set-default.js';
 import { PluginSetStateAction } from './plugin-set-state.js';
 import { PluginSetVisibilityAction } from './plugin-set-visibility.js';
+import { PluginTaskCreatedAction } from './plugin-task-created.js';
 import { PluginTreeAction } from './plugin-tree.js';
 import { PluginVisibilityAction } from './plugin-visibility.js';
 import { PretaskDraftAction } from './pretask-draft.js';
 
 /** 本模块的全部 action 类（容器按这个顺序建实例）。 */
 export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
+  PluginCandidatesAction,
   PluginContextAction,
   PluginEntriesAction,
   PluginFileAction,
+  PluginGetTaskAction,
   PluginListAction,
   PluginRpcAction,
   PluginSetDefaultAction,
   PluginSetStateAction,
   PluginSetVisibilityAction,
+  PluginTaskCreatedAction,
   PluginTreeAction,
   PluginVisibilityAction,
   PretaskDraftAction,
 ];
 
 // 再导出类本身：前端 apiclient 的返回类型从这里 type-only 引用（实现即契约）。
+export { PluginCandidatesAction };
 export { PluginContextAction };
 export { PluginEntriesAction };
 export { PluginFileAction };
+export { PluginGetTaskAction };
 export { PluginListAction };
 export { PluginRpcAction };
 export { PluginSetDefaultAction };
 export { PluginSetStateAction };
 export { PluginSetVisibilityAction };
+export { PluginTaskCreatedAction };
 export { PluginTreeAction };
 export { PluginVisibilityAction };
 export { PretaskDraftAction };

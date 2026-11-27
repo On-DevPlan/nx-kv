@@ -96,14 +96,17 @@ import type {
   LocaltaskUpdateAction,
 } from '../../../modules/localtask/actions/_manifest.generated.js';
 import type {
+  PluginCandidatesAction,
   PluginContextAction,
   PluginEntriesAction,
   PluginFileAction,
+  PluginGetTaskAction,
   PluginListAction,
   PluginRpcAction,
   PluginSetDefaultAction,
   PluginSetStateAction,
   PluginSetVisibilityAction,
+  PluginTaskCreatedAction,
   PluginTreeAction,
   PluginVisibilityAction,
   PretaskDraftAction,
@@ -376,12 +379,16 @@ export interface ApiClient {
   localtaskGet(input?: z.input<InstanceType<typeof LocaltaskGetAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskGetAction>['run']>>>;
 /** 预览一条任务在 get/wait 时的交付提示词（只读：不领取、不写盘、不启动计时、不为附件发网）；草稿用 --text 直接预览 */
   preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>>;
+/** 插件候选条目标准接口（面板列表 / 正文搜索与引用；按插件启用状态聚合） */
+  candidates(input?: z.input<InstanceType<typeof PluginCandidatesAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginCandidatesAction>['run']>>>;
 /** 取当前 topic 的完整上下文（插件缺东西时自行请求） */
   context(input?: z.input<InstanceType<typeof PluginContextAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginContextAction>['run']>>>;
 /** 列出当前主题可见的 pretask 入口（按插件分组；all=true 含隐藏项） */
   entries(input?: z.input<InstanceType<typeof PluginEntriesAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginEntriesAction>['run']>>>;
 /** 读取已登记仓库内的文件（插件页用；二进制/超大文件会标记） */
   file(input: z.input<InstanceType<typeof PluginFileAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginFileAction>['run']>>>;
+/** 列出插件注册的 gettask 区块（任务编辑页 dock tab + 领取交付时的插件区块） */
+  gettask(input?: z.input<InstanceType<typeof PluginGetTaskAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginGetTaskAction>['run']>>>;
 /** 列出内部插件（全局开关、入口数、client/style URL、加载错误） */
   pluginList(): Promise<Awaited<ReturnType<InstanceType<typeof PluginListAction>['run']>>>;
 /** 调用插件自有 RPC（插件管理页用；例如 task-template 的模板 CRUD） */
@@ -392,6 +399,8 @@ export interface ApiClient {
   setState(input: z.input<InstanceType<typeof PluginSetStateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginSetStateAction>['run']>>>;
 /** 写某个 scope 的入口可见性与顺序 */
   setVisibility(input: z.input<InstanceType<typeof PluginSetVisibilityAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginSetVisibilityAction>['run']>>>;
+/** 草稿提交创建任务后通知插件（迁移按 draftKey 暂存的插件数据） */
+  taskCreated(input: z.input<InstanceType<typeof PluginTaskCreatedAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginTaskCreatedAction>['run']>>>;
 /** 列出已登记仓库的目录（插件页用） */
   tree(input: z.input<InstanceType<typeof PluginTreeAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PluginTreeAction>['run']>>>;
 /** 读某个 scope 的入口可见性 / 顺序 / 默认入口（管理页用） */
@@ -1223,6 +1232,22 @@ export function createApiClient(transport: Transport): ApiClient {
       const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "text": inp["text"], "param": inp["param"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>;
     },
+    // action: plugin.candidates
+    async candidates(input?: z.input<InstanceType<typeof PluginCandidatesAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginCandidatesAction>['_input']>);
+      let path = `/api/plugins/candidates`;
+      const q = new URLSearchParams();
+      if (inp["pluginId"] !== undefined) q.set("pluginId", String(inp["pluginId"]));
+      if (inp["q"] !== undefined) q.set("q", String(inp["q"]));
+      if (inp["limit"] !== undefined) q.set("limit", String(inp["limit"]));
+      if (inp["topic"] !== undefined) q.set("topic", String(inp["topic"]));
+      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
+      if (inp["repo"] !== undefined) q.set("repo", String(inp["repo"]));
+      if (inp["cwd"] !== undefined) q.set("cwd", String(inp["cwd"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PluginCandidatesAction>['run']>>;
+    },
     // action: plugin.context
     async context(input?: z.input<InstanceType<typeof PluginContextAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof PluginContextAction>['_input']>);
@@ -1261,6 +1286,19 @@ export function createApiClient(transport: Transport): ApiClient {
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PluginFileAction>['run']>>;
     },
+    // action: plugin.gettask
+    async gettask(input?: z.input<InstanceType<typeof PluginGetTaskAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginGetTaskAction>['_input']>);
+      let path = `/api/plugins/gettask`;
+      const q = new URLSearchParams();
+      if (inp["topic"] !== undefined) q.set("topic", String(inp["topic"]));
+      if (inp["group"] !== undefined) q.set("group", String(inp["group"]));
+      if (inp["repo"] !== undefined) q.set("repo", String(inp["repo"]));
+      if (inp["taskId"] !== undefined) q.set("taskId", String(inp["taskId"]));
+      const query = q.toString();
+      if (query) path += path.includes('?') ? '&' + query : '?' + query;
+      return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof PluginGetTaskAction>['run']>>;
+    },
     // action: plugin.list
     async pluginList() {
       const path = `/api/plugins`;
@@ -1293,6 +1331,13 @@ export function createApiClient(transport: Transport): ApiClient {
       const path = `/api/plugins/visibility`;
       const body = { "scopeKey": inp["scopeKey"], "entries": inp["entries"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof PluginSetVisibilityAction>['run']>>;
+    },
+    // action: plugin.task-created
+    async taskCreated(input: z.input<InstanceType<typeof PluginTaskCreatedAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof PluginTaskCreatedAction>['_input']>);
+      const path = `/api/plugins/task-created`;
+      const body = { "draftKey": inp["draftKey"], "taskId": inp["taskId"], "taskText": inp["taskText"], "topic": inp["topic"], "group": inp["group"], "repo": inp["repo"], "cwd": inp["cwd"], "boardKey": inp["boardKey"], "projectKey": inp["projectKey"], "status": inp["status"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof PluginTaskCreatedAction>['run']>>;
     },
     // action: plugin.tree
     async tree(input: z.input<InstanceType<typeof PluginTreeAction>['_input']>) {

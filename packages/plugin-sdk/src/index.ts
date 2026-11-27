@@ -115,6 +115,29 @@ export interface PretaskDraft {
   title?: string;
 }
 
+/**
+ * 插件候选条目（标准数据接口）：给面板列表 / 未来正文内搜索与引用用。
+ *
+ * 约定：id 由插件保证稳定（推荐带业务前缀，如 `skill:<绝对路径>`）；
+ * `text` 是搜索文本（名称 + 描述 + 路径），`path` 是可加载/引用的物理位置。
+ * 宿主只做聚合、去重、关键字过滤与上限保护，不认识具体业务。
+ */
+export interface PluginCandidate {
+  /** 插件内稳定 id（跨会话不变；面板选择与正文引用都用它） */
+  id: string;
+  /** 展示名（列表行 / 引用 chip） */
+  label: string;
+  description?: string;
+  /** 业务类别（如 'skill' / 'template'） */
+  kind?: string;
+  /** 可加载/引用的物理位置（如 SKILL.md 绝对路径） */
+  path?: string;
+  /** 搜索文本（名称 + 描述 + 路径 + 关键词） */
+  text?: string;
+  /** 结构化附加数据（插件自定义；宿主原样透出） */
+  meta?: Record<string, unknown>;
+}
+
 export interface EntryView {
   /** `${pluginId}:${localId}`，全局唯一、稳定。 */
   id: string;
@@ -146,6 +169,73 @@ export interface PluginContext extends PretaskContext {
   };
 }
 
+/** 一条具体任务的最小定位（gettask 的 data() 与 dock 页面共用）。 */
+export interface PluginTaskInfo {
+  id: number;
+  text: string;
+  topicKey?: string;
+  cwd?: string;
+  boardKey?: string;
+  projectKey?: string;
+  status?: string;
+}
+
+/** 插件可写进模板的变量声明（最终与 seed 的 task/cwd/... 合并成可见变量域）。 */
+export interface PluginGetTaskField {
+  /** 完整路径（'notes' / 'notes[].text' / 'meta.level'）；模板按此引用 */
+  key: string;
+  /** UI 控件种类；缺省 string */
+  kind?: 'string' | 'text' | 'number' | 'boolean' | 'enum' | 'list';
+  label: string;
+  desc?: string;
+  enumValues?: readonly string[];
+}
+
+/** gettask 区块在任务编辑页底部抽屉的挂载点（client bundle 注册的组件 key）。 */
+export interface PluginGetTaskUi {
+  panel: string;
+  title?: string;
+}
+
+/** gettask 上下文：在插件常规上下文上带一条确定的任务。 */
+export interface PluginGetTaskContext extends PluginContext {
+  task: PluginTaskInfo;
+}
+
+/**
+ * 任务创建事件（草稿提交成功后触发）。
+ * 插件可以在这里把「按草稿键（draft-N）暂存的数据」迁到真实 task.id 上。
+ */
+export interface PluginTaskCreatedEvent {
+  /** 草稿键（dock 里 ctx.location.taskId 的草稿值）；CLI 直接建任务时没有 */
+  draftKey?: string;
+  /** 刚创建的任务 */
+  task: PluginTaskInfo;
+}
+
+/**
+ * gettask 区块声明（第二生命周期点）。
+ *
+ * 一个条目 = 交付提示词里的一段 `nxkv.plugin.<pluginId>.<tag>` + 任务编辑页 dock 的一个 tab。
+ * 模板（`template`）是出厂内置正文；用户在设置页可覆盖（存 prompt.tpl.<segment>）。
+ * `data(taskCtx)` 返回该任务要渲染的数据；返回 null / undefined 表示本条任务不出这段。
+ */
+export interface PluginGetTaskEntry {
+  /** 局部 id（宿主拼成 `<pluginId>:<localId>` 与段 id `plugin:<pluginId>:<localId>`）。 */
+  id: string;
+  label: string;
+  description?: string;
+  /** 区块标签后缀；缺省 = localId。最终 tag = nxkv.plugin.<pluginId>.<tag|localId>。 */
+  tag?: string;
+  order?: number;
+  /** 出厂模板正文（Handlebars 子集，只能用 task 与 fields 声明的变量）。 */
+  template: string;
+  fields?: readonly PluginGetTaskField[];
+  ui?: PluginGetTaskUi;
+  /** 取这条任务要渲染的数据；宿主合并 seed 后交给模板。 */
+  data(taskCtx: PluginGetTaskContext): Record<string, unknown> | null | Promise<Record<string, unknown> | null>;
+}
+
 export interface NxkvPlugin {
   id: string;
   version: string;
@@ -156,6 +246,21 @@ export interface NxkvPlugin {
   defaultEnabled: boolean;
   entries(ctx: PluginContext): Promise<EntryView[]> | EntryView[];
   buildDraft(ctx: PluginContext, entryId: string, values: Record<string, string>): Promise<PretaskDraft>;
+  /**
+   * 第二生命周期点 gettask：声明「任务编辑页 dock tab + 交付提示词区块」。
+   * 声明与具体任务无关（ctx 可能为空）；按任务取数走条目的 `data(taskCtx)`。
+   */
+  gettask?(ctx: PluginContext): Promise<PluginGetTaskEntry[]> | PluginGetTaskEntry[];
+  /**
+   * 候选条目标准接口：面板列表 / 正文搜索与引用共用。
+   * 宿主按插件启用状态聚合，`GET /api/plugins/candidates` 与 `plugin candidates` 对外。
+   */
+  candidates?(ctx: PluginContext): Promise<PluginCandidate[]> | PluginCandidate[];
+  /**
+   * 草稿提交创建任务后触发：把按草稿键暂存的数据迁到 task.id。
+   * 宿主在任务真正落库后调用；单插件失败只记 warning，不影响任务创建。
+   */
+  onTaskCreated?(ctx: PluginContext, event: PluginTaskCreatedEvent): void | Promise<void>;
   rpc?: Record<string, (ctx: PluginContext, params: any) => Promise<any>>;
   /** 插件自己的表结构目标版本；宿主据此记录 plugin_storage_migrations。 */
   storageVersion?: number;

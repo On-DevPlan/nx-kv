@@ -8,8 +8,8 @@ import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { badInput } from '../../../core/errors.js';
 import { pluginMeta } from '../registry.js';
-import { varScopeOf } from '../factory.js';
-import { undeclaredTemplateVars } from '../../../shared/prompt-plugin.js';
+import { varScopeOf as varScopeOfFields, undeclaredTemplateVars } from '../../../shared/prompt-plugin.js';
+import { externalSegmentOf } from '../external.js';
 import { upsertTemplate } from '../template-store.js';
 
 const input = z.object({
@@ -32,9 +32,16 @@ export class PromptTemplateSaveAction extends ActionBase<typeof input> {
   })
   override async run(ctx: ActionInput<this['_input']>) {
     const p = pluginMeta(ctx.segment);
-    if (!p) throw badInput(`未知提示词段：${ctx.segment}`);
-    // 白名单校验：本段可见变量域（seed ∪ 本段 dataSchema）——坏模板不许落盘
-    const scope = varScopeOf(ctx.segment);
+    // 内置段走类声明；外部段（gettask 插件区块）走宿主注册进来的声明面。
+    // 两边共用同一套「seed ∪ 本段字段」白名单——坏模板不许落盘。
+    let scope: { allowedSegments: string[]; fieldKeys: string[] };
+    if (p) {
+      scope = varScopeOfFields(ctx.segment, p.schema.fields);
+    } else {
+      const ext = await externalSegmentOf(ctx.segment);
+      if (!ext) throw badInput(`未知提示词段：${ctx.segment}`);
+      scope = varScopeOfFields(ctx.segment, ext.fields);
+    }
     const stray = undeclaredTemplateVars(String(ctx.text), scope.allowedSegments, scope.fieldKeys);
     if (stray.length) {
       throw badInput(

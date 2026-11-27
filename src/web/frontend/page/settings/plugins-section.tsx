@@ -26,7 +26,7 @@ export default function PluginsSection() {
   return (
     <>
       <div className="setp-note">
-        插件开关是全局的；每个主题具体显示哪些入口，在新建任务下拉的「配置本主题入口…」里编辑。
+        插件开关是全局的；每个主题具体显示哪些入口、点「＋ 新建页」默认触发哪一项，在新建任务下拉的「配置新建页行为…」里编辑。
       </div>
       {loading ? <div className="muted" style={{ padding: 8 }}>读取插件清单…</div> : null}
       {error ? <div className="muted" style={{ padding: 8 }}>读取失败：{error}</div> : null}

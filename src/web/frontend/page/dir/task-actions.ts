@@ -8,6 +8,7 @@ import {
   cloneTask,
   closeManyTasks,
   forkTask,
+  notifyPluginTaskCreated,
   patchTaskItem,
   removeTaskItem,
   setPlanStatus,
@@ -32,6 +33,10 @@ import {
 } from '../../modules/md/doc-store.js';
 import type { AttachAreaHandle } from '../../components/md/attachments/attach-area.jsx';
 import type { LocalTask, LocalTopic } from '../../types.js';
+import type { PretaskContext } from '@nx-kv/plugin-sdk';
+import { openDraftEntry, openPanelEntry } from '../../modules/pretask/open-entry.js';
+import { pretaskDraft } from '../../modules/pretask/use-pretask.js';
+import type { PretaskEntry } from '../../modules/pretask/types.js';
 import type {
   AppSlice,
   BoardCtx,
@@ -70,6 +75,10 @@ interface UseTaskActionsArgs {
   tabId?: string;
   /** 默认 pretask 入口的正文（插件入口在 task.tsx 里取好） */
   defaultDraftBody?: string;
+  /** 本主题的默认 pretask 入口：任务页「新任务」也要按它触发（面板入口直接进插件页）。 */
+  defaultEntry?: PretaskEntry | null;
+  /** 当前页面上下文（topic/组/仓库），传给插件的面板/表单/草稿。 */
+  entryCtx?: PretaskContext;
   refreshLocal?: () => Promise<void>;
   markDirty: () => void;
   histRef: RefObject<Map<string, HistorySnapshot>>;
@@ -87,7 +96,7 @@ interface UseTaskActionsArgs {
 
 export function useTaskActions({
   doc, id, isDraft, task, taskRow, topicKey, topic, boardCtx, docFm,
-  groupAnchored, groupId, app, model, tabId, defaultDraftBody, refreshLocal,
+  groupAnchored, groupId, app, model, tabId, defaultDraftBody, defaultEntry, entryCtx, refreshLocal,
   markDirty, histRef, editorApiRef, attachAreaRef,
   setDirty,
   goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
@@ -200,6 +209,25 @@ export function useTaskActions({
       });
     const newId = res?.task?.id ?? res?.id;
     if (newId != null) {
+      // 草稿页没有真实 task.id：插件面板用 draftKey 暂存数据。任务落库后先广播
+      // 迁移，再跳转/切换页签——新任务页挂载时插件数据已经就位。
+      if (isDraft) {
+        try {
+          await notifyPluginTaskCreated({
+            draftKey: String(task),
+            taskId: Number(newId),
+            taskText: b,
+            ...(topicKey ? { topic: topicKey } : {}),
+            ...(groupAnchored && groupId ? { group: groupId } : {}),
+            ...(topic?.cwd ? { cwd: topic.cwd } : {}),
+            ...(boardCtx?.board?.id ? { boardKey: String(boardCtx.board.id) } : {}),
+            ...(fm.project ? { projectKey: String(fm.project) } : {}),
+            status: 'pending',
+          });
+        } catch {
+          /* 插件迁移失败不影响任务创建 */
+        }
+      }
       const landedKey = res?.key || topicKey;
       const landedScope = scopeOf(landedKey);
       persistAtt(newId, doc.attachments);
@@ -383,25 +411,49 @@ export function useTaskActions({
     markDirty();
   }, [doc, id, isDraft, task, topic, setDirty, refreshLocal, markDirty, composeText, editorApiRef, toast]);
 
-  /** 「更多 → 新任务」：新草稿**带着当前上下文**（工作组 + 归属项目）。 */
+  /**
+   * 「新任务」：与目录页「＋ 新建页」同一口径——先执行本主题的默认 pretask 入口。
+   * 面板入口直接进插件页；带 form 的草稿入口进参数页；普通草稿按插件正文落库。
+   */
   const newTask = useCallback(() => {
-    const draftId = nextDraftId();
-    const docId = docIdOf(groupAnchored ? scopeOf(groupId) : scopeOf(topicKey), draftId);
-    // #197：归属写成草稿的结构化字段（正文不再带 --- 头）
-    saveDoc(docId, {
-      title: '',
-      body: defaultDraftBody || '',
-      boardKey: boardCtx && boardCtx.board ? String(boardCtx.board.id) : undefined,
-      projectKey: docFm.project || undefined,
-    });
-    if (app.openPage) {
-      app.openPage(
-        groupAnchored
-          ? { groupId, task: draftId, name: '新任务' }
-          : { dirKey: topicKey, task: draftId, name: '新任务' }
-      );
+    const navigate = (hash: string) => app.onNavigate?.(hash);
+    const ctx: PretaskContext = entryCtx || { topicKey };
+    const createDraft = (body: string, title = '') => {
+      const draftId = nextDraftId();
+      const docId = docIdOf(groupAnchored ? scopeOf(groupId) : scopeOf(topicKey), draftId);
+      // #197：归属写成草稿的结构化字段（正文不再带 --- 头）
+      saveDoc(docId, {
+        title,
+        body,
+        boardKey: String(ctx.groupId || (boardCtx && boardCtx.board ? boardCtx.board.id : '') || '') || undefined,
+        projectKey: String(ctx.project || docFm.project || '') || undefined,
+      });
+      if (app.openPage) {
+        app.openPage(
+          groupAnchored
+            ? { groupId, task: draftId, name: '新任务' }
+            : { dirKey: topicKey, task: draftId, name: '新任务' }
+        );
+      }
+    };
+    if (!defaultEntry) {
+      createDraft(defaultDraftBody || '');
+      return;
     }
-  }, [boardCtx, docFm.project, groupAnchored, groupId, topicKey, app, defaultDraftBody]);
+    if (defaultEntry.kind === 'panel') {
+      openPanelEntry(defaultEntry, ctx, navigate);
+      return;
+    }
+    if (openDraftEntry(defaultEntry, ctx, navigate)) return;
+    guard(async () => {
+      const draft = await pretaskDraft(defaultEntry.id, defaultEntry.values || {}, {
+        topic: topicKey,
+        group: String(ctx.groupKey || ''),
+        repo: String(ctx.repoKey || ''),
+      });
+      createDraft(String(draft?.body || ''), String(draft?.title || ''));
+    });
+  }, [boardCtx, defaultDraftBody, defaultEntry, docFm.project, entryCtx, groupAnchored, groupId, topicKey, app, guard]);
 
   /** 「更多 → 克隆任务」：以当前任务为模板快速复制一条新任务（#70）。 */
   const cloneCur = useCallback(() => {

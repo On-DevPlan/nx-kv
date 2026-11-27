@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ActionBase, type ActionInput } from '../../../runtime/action-base.js';
 import { badInput } from '../../../core/errors.js';
 import { pluginMeta } from '../registry.js';
+import { externalSegmentOf } from '../external.js';
 import { deleteTemplate } from '../template-store.js';
 
 const input = z.object({
@@ -23,7 +24,9 @@ export class PromptTemplateDeleteAction extends ActionBase<typeof input> {
     render: (d: any) => `[${d.segment}] 模板已删除（当前启用：${d.activeId}）`,
   })
   override async run(ctx: ActionInput<this['_input']>) {
-    if (!pluginMeta(ctx.segment)) throw badInput(`未知提示词段：${ctx.segment}`);
+    if (!pluginMeta(ctx.segment) && !(await externalSegmentOf(ctx.segment))) {
+      throw badInput(`未知提示词段：${ctx.segment}`);
+    }
     const seg = deleteTemplate(ctx.segment, String(ctx.id));
     return { segment: ctx.segment, ...seg };
   }

@@ -10,5 +10,6 @@ export interface PluginPackageRef {
 
 export const PLUGIN_PACKAGES: readonly PluginPackageRef[] = [
   { name: "@nx-kv/plugin-dir-annotate", dir: "packages/plugin-dir-annotate" },
+  { name: "@nx-kv/plugin-skill-ref", dir: "packages/plugin-skill-ref" },
   { name: "@nx-kv/plugin-task-template", dir: "packages/plugin-task-template" },
 ];

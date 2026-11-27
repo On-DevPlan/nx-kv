@@ -13,6 +13,7 @@ import { getMdfileContent } from './api.js';
 import { renderMarkdownHtml } from '../../modules/md/md-render.js';
 import type { LocalTask, LocalTopic } from '../../types.js';
 import { fmtSec } from './task-utils.js';
+import { TaskPluginDockView, useGetTaskPlugins } from './task-plugin-dock.jsx';
 import type { AppSlice, ChainApiItem, DocState, GoalLogState } from './task-utils.js';
 
 /**
@@ -141,6 +142,16 @@ export function DockPanel({
   taskRow, ackOpen, setAckOpen, ackOverflow, ackLong, ackHtml,
   isChainTip, latestChild, openFeedback, openLatestRound, attachments,
 }: DockPanelProps) {
+  // gettask 插件区块（第二生命周期点）：声明 → tab；内容由插件组件自己渲染。
+  // 草稿任务也挂：插件先按 draft-N 暂存，提交成功后宿主广播 onTaskCreated 让插件迁移。
+  const pluginTabs = useGetTaskPlugins({
+    enabled: dockOpen && !!String(task || ''),
+    taskId: String(task || ''),
+    topicKey,
+  });
+  const pluginTab = dockTab.startsWith('plugin:')
+    ? pluginTabs.entries.find((e) => e.segment === dockTab)
+    : undefined;
   if (!dockOpen) return null;
   const mdCount = attachments.filter((a) => a.kind === 'mdfile').length;
 
@@ -198,6 +209,19 @@ export function DockPanel({
           >
             反馈
           </button>
+          {pluginTabs.entries.map((e) => (
+            <button
+              type="button"
+              role="tab"
+              key={e.segment}
+              aria-selected={dockTab === e.segment}
+              className={`mdw-dock-tab${dockTab === e.segment ? ' is-on' : ''}`}
+              title={e.description || `${e.pluginName} · ${e.tag}`}
+              onClick={() => showDockTab(e.segment)}
+            >
+              {e.ui?.title || e.label}
+            </button>
+          ))}
         </div>
         <div className="mdw-dock-acts">
           <button
@@ -300,6 +324,27 @@ export function DockPanel({
               </>
             ) : null}
           </div>
+        ) : null}
+
+        {dockTab.startsWith('plugin:') ? (
+          pluginTab ? (
+            <TaskPluginDockView
+              entry={pluginTab}
+              taskId={String(task || '')}
+              topicKey={topicKey}
+              topic={topic}
+              taskRow={taskRow}
+              app={app}
+            />
+          ) : (
+            <div className="mdw-dock-empty">
+              {pluginTabs.loading
+                ? '读取插件区块…'
+                : pluginTabs.error
+                  ? `插件区块读取失败：${pluginTabs.error}`
+                  : '这个插件区块当前不可用（插件未启用或已卸载）。'}
+            </div>
+          )
         ) : null}
 
         {dockTab === 'feedback' ? (

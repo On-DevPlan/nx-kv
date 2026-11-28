@@ -56,6 +56,8 @@ export interface PluginSidebarView {
   pluginId: string;
   entry: PluginSidebarEntry;
   title: string;
+  /** 条目自己的 icon → 插件级 icon → 空（调用方回退默认）。 */
+  icon: string;
 }
 
 export function usePluginSidebar(): PluginSidebarView[] {
@@ -68,6 +70,7 @@ export function usePluginSidebar(): PluginSidebarView[] {
         pluginId,
         entry,
         title: def.pages?.[entry.page]?.title || entry.label,
+        icon: entry.icon || def.icon || '',
       });
     }
   }

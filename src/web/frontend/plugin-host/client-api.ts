@@ -2,7 +2,9 @@
 //
 // 宿主只注入能力，不注入内部对象——插件拿到的是 ctx / rpc / host.get /
 // createDraft / navigate / toast 这组稳定接口。
+import { createElement } from 'react';
 import type { EntryView, PluginClientApi, PretaskContext, PretaskDraft } from '@nx-kv/plugin-sdk/client';
+import { Icon } from '../components/icons.jsx';
 import { api } from '../api/client.js';
 import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../modules/md/doc-store.js';
 import { titleFromMd } from '../modules/md/md-parse.js';
@@ -89,5 +91,7 @@ export function buildPluginClientApi({
     navigate: (hash) => app.onNavigate?.(hash),
     closePage,
     toast,
+    // 插件页面标题等处复用宿主图标集：与侧栏 / dock / 状态栏同一套图形。
+    renderIcon: (name, size = 14) => createElement(Icon, { name, size, title: undefined }),
   };
 }

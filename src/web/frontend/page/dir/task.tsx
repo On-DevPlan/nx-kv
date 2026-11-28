@@ -271,11 +271,12 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   // ─── 预览提示词（任务 #65）───
   const openPreview = useCallback(() => {
     setPreview({ busy: true });
+    const draftRepo = String(doc?.projectKey || topic?.repo_key || '');
     const body = {
       cwd: topic?.cwd,
       key: topicKey,
       ...(isDraft
-        ? { text: composeText((doc?.title || '').trim() || '未命名任务', doc?.body || '') }
+        ? { text: composeText((doc?.title || '').trim() || '未命名任务', doc?.body || ''), taskKey: String(task), ...(draftRepo ? { repo: draftRepo } : {}) }
         : { id: Number(task) }),
     };
     previewTask(body)
@@ -507,7 +508,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
         <StatusBar
           dockOpen={dockOpen} dockTab={dockTab} showDockTab={showDockTab} setDockOpen={setDockOpen}
           canShowGoalLog={canShowGoalLog} goalLog={goalLog} openGoalLog={openGoalLog}
-          isDraft={isDraft} taskRow={taskRow}
+          isDraft={isDraft} taskRow={taskRow} task={String(task || '')} topicKey={topicKey}
         />
       </div>
 

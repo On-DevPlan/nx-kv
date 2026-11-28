@@ -6,13 +6,14 @@ import './style.css';
 
 const definition: PluginUiDefinition = {
   api: '^1',
+  icon: 'star',
   components: { 'skill-picker': SkillPickerPanel, settings: SkillRefSettingsPage },
   pages: {
     'skill-picker': { title: '技能引用' },
     settings: { title: '技能引用设置' },
   },
   sidebar: [
-    { id: 'settings', label: '技能引用设置', icon: 'gear', order: 30, page: 'settings' },
+    { id: 'settings', label: '技能引用设置', order: 30, page: 'settings' },
   ],
 };
 

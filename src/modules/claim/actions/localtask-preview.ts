@@ -17,6 +17,8 @@ const input = z.object({
   cwd: z.string().optional(),
   key: z.string().optional(),
   text: z.string().optional().describe("直接预览这段正文（草稿未落库时用；给了就不读库存）"),
+  taskKey: z.string().optional().describe("任务键（草稿预览传 draft-N，用于插件 gettask 区块）"),
+  repo: z.string().optional().describe("仓库 key（草稿预览时插件按它取候选 / 数据）"),
   param: z.array(z.string()).optional().describe("外部参数（平面扩展）：k=v，与 get 的 --param 同语义"),
 });
 
@@ -38,7 +40,13 @@ export class LocaltaskPreviewAction extends ActionBase<typeof input> {
           throw badInput('需要 --id <任务编号>（预览库存任务）或 --text <正文>（预览草稿）');
         }
         const task: any = draftText.trim()
-          ? { id: 0, text: draftText, status: 'draft' }
+          ? {
+              id: 0,
+              key: ctx.taskKey,
+              text: draftText,
+              status: 'draft',
+              ...(ctx.repo ? { repoKey: String(ctx.repo) } : {}),
+            }
           : await service.getTask({ id: ctx.id, cwd: ctx.cwd, key: ctx.key });
         // 任务级 timegoal 按主题 key 寻址：没显式给 key 就从 cwd 归一化出来
         const topicKey: any = ctx.key || service.normalizeCwd(ctx.cwd).key;
@@ -46,6 +54,8 @@ export class LocaltaskPreviewAction extends ActionBase<typeof input> {
           task,
           cwd: ctx.cwd,
           key: topicKey,
+          taskKey: ctx.taskKey,
+          repoKey: ctx.repo,
           summary: '',
           params: parseParams(ctx.param),
         });

@@ -158,7 +158,7 @@ export default function AnnotatePage({ api }: { api: PluginClientApi }) {
     <div className="rp-page da-page">
       <div className="page-head">
         <div className="title-block">
-          <h2>目录批注</h2>
+          <h2><span className="plug-h2-ico">{api.renderIcon?.('folder', 18)}</span>目录批注</h2>
           <p className="muted da-sub">
             {context?.topic?.name || '未定位主题'}
             {context?.topic?.kind === 'group' ? ' · 组' : context?.topic?.kind === 'repo' ? ' · 仓库' : ''}

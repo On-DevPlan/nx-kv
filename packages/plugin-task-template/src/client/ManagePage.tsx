@@ -135,7 +135,7 @@ export default function ManagePage({ api }: { api: PluginClientApi }) {
     <div className="rp-page tpl-page">
       <div className="page-head">
         <div className="title-block">
-          <h2>任务模板</h2>
+          <h2><span className="plug-h2-ico">{api.renderIcon?.('template', 18)}</span>任务模板</h2>
           <p className="muted tpl-head-note">
             新建任务时的正文骨架。主题没有单独配置「新建页行为」时，插件默认模板是回落项；带 {'{{槽位}}'} 的模板会先进入参数填写页。
           </p>

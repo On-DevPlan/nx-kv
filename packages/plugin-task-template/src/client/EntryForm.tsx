@@ -37,7 +37,7 @@ export default function EntryForm({ api }: { api: PluginClientApi }) {
     <div className="rp-page tpl-fill-page">
       <div className="page-head">
         <div className="title-block">
-          <h2>填写模板参数</h2>
+          <h2><span className="plug-h2-ico">{api.renderIcon?.('template', 18)}</span>填写模板参数</h2>
           <p className="muted tpl-head-note">
             「{entry.label}」· 全部可选，留空即为空白。生成的是纯文本任务，编辑页不会再出现槽位框。
           </p>

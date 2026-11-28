@@ -32,6 +32,10 @@ export interface DeliveryOptions {
   cwd?: unknown;
   name?: unknown;
   topicKey?: unknown;
+  /** 草稿预览用：draft-N（库存任务可省，按 id 归一）。 */
+  taskKey?: unknown;
+  /** 显式仓库 key（草稿预览时 topic 可能还没落库）。 */
+  repoKey?: unknown;
   params?: Record<string, string>;
   preview?: boolean;
   trace?: import('../promptplug/compose.js').RenderTraceEntry[];
@@ -116,7 +120,7 @@ async function readGoalCtx(cwd: unknown): Promise<Record<string, any> | null> {
 //   旧 rule 区块已删除：done 指令与收尾要求统一由 ack 区块承载。
 export async function buildTaskDelivery(
   task: any,
-  { source, summary, cwd, name, topicKey, params, preview = false, trace, getLoopEnabled = false, getLoopWaitMinutes = 0 }: DeliveryOptions = {},
+  { source, summary, cwd, name, topicKey, taskKey, repoKey, params, preview = false, trace, getLoopEnabled = false, getLoopWaitMinutes = 0 }: DeliveryOptions = {},
 ): Promise<Record<string, any>> {
   // 附件标注（任务 #15：正文里的 ![名](fileId) 嵌入 → 附件清单 + 本地路径）。
   // fail-open：标注失败绝不拖垮交付；正文没有引用时 annotateTaskDelivery 返回
@@ -202,9 +206,17 @@ export async function buildTaskDelivery(
     // 单插件失败 / data() 抛错 → warning + 跳过该区块，领取照常。
     let gettaskBlocks: GetTaskBlock[] = [];
     try {
-      const info = taskInfoOf(task, { topicKey: topicKey as string, cwd: cwd as string });
+      const info = taskInfoOf(task, {
+        topicKey: topicKey as string,
+        cwd: cwd as string,
+        ...(taskKey ? { taskKey: String(taskKey) } : {}),
+      });
       if (info) {
-        const got = await collectGetTaskBlocks(info, { topicKey: topicKey as string, cwd: cwd as string });
+        const got = await collectGetTaskBlocks(info, {
+          topicKey: topicKey as string,
+          cwd: cwd as string,
+          ...(repoKey ? { repoKey: String(repoKey) } : {}),
+        });
         gettaskBlocks = got.blocks;
         for (const w of got.warnings) {
           hostWarnings.push({

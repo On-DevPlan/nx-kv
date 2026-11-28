@@ -13,7 +13,7 @@ export default function PluginFootEntries({
   const entries = usePluginSidebar();
   return (
     <>
-      {entries.map(({ pluginId, entry }) => (
+      {entries.map(({ pluginId, entry, icon }) => (
         <button
           key={`${pluginId}:${entry.id}`}
           className={'trow' + (route?.pluginId === pluginId && route?.pageId === entry.page ? ' active' : '')}
@@ -21,7 +21,7 @@ export default function PluginFootEntries({
             onNavigate?.(`#/plugin/${encodeURIComponent(pluginId)}/${encodeURIComponent(entry.page)}`)
           }
         >
-          <span className="gico"><Icon name={entry.icon || 'list'} /></span>
+          <span className="gico"><Icon name={icon || 'list'} /></span>
           <span className="nm">{entry.label}</span>
         </button>
       ))}

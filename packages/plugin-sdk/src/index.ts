@@ -171,7 +171,10 @@ export interface PluginContext extends PretaskContext {
 
 /** 一条具体任务的最小定位（gettask 的 data() 与 dock 页面共用）。 */
 export interface PluginTaskInfo {
+  /** 真实任务号；草稿预览时可能为 0（用 key 定位）。 */
   id: number;
+  /** 任务键：真实任务号（"9"）或草稿键（"draft-1"）。 */
+  key?: string;
   text: string;
   topicKey?: string;
   cwd?: string;
@@ -195,6 +198,8 @@ export interface PluginGetTaskField {
 export interface PluginGetTaskUi {
   panel: string;
   title?: string;
+  /** 覆盖插件级 icon（宿主图标集名字）；缺省用插件声明的 icon。 */
+  icon?: string;
 }
 
 /** gettask 上下文：在插件常规上下文上带一条确定的任务。 */
@@ -242,6 +247,8 @@ export interface NxkvPlugin {
   api: typeof PLUGIN_API | string;
   name: string;
   description?: string;
+  /** 插件图标的资产名（宿主 svghub，如 folder / star / template）；侧栏、dock、状态栏共用。 */
+  icon?: string;
   order: number;
   defaultEnabled: boolean;
   entries(ctx: PluginContext): Promise<EntryView[]> | EntryView[];

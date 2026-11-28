@@ -4,6 +4,7 @@ import { Icon } from '../../components/icons.jsx';
 import StatusTag from '../../components/status-tag/index.jsx';
 import type { LocalTask } from '../../types.js';
 import type { GoalLogState } from './task-utils.js';
+import { useGetTaskPlugins } from './task-plugin-dock.jsx';
 
 interface StatusBarProps {
   dockOpen: boolean;
@@ -15,13 +16,18 @@ interface StatusBarProps {
   openGoalLog: () => void;
   isDraft: boolean;
   taskRow: LocalTask | null;
+  /** 任务键（库存任务号或草稿键），用于取插件 gettask 区块 tab。 */
+  task: string;
+  topicKey: string;
 }
 
 export function StatusBar({
   dockOpen, dockTab, showDockTab, setDockOpen,
   canShowGoalLog, goalLog, openGoalLog,
-  isDraft, taskRow,
+  isDraft, taskRow, task, topicKey,
 }: StatusBarProps) {
+  // 与 DockPanel 同源：插件注册的 gettask 区块也进底部常驻状态栏。
+  const pluginTabs = useGetTaskPlugins({ enabled: !!String(task || ''), taskId: String(task || ''), topicKey });
   return (
     <div className="mdw-sbar">
       <button
@@ -55,6 +61,18 @@ export function StatusBar({
         <Icon name="edit" title={undefined} />
         <span className="mdw-sbar-lab">反馈</span>
       </button>
+      {pluginTabs.entries.map((entry) => (
+        <button
+          type="button"
+          key={entry.segment}
+          className={`mdw-sbar-item${dockOpen && dockTab === entry.segment ? ' is-on' : ''}`}
+          onClick={() => showDockTab(entry.segment)}
+          title={entry.description || `${entry.pluginName} · ${entry.tag}`}
+        >
+          <Icon name={entry.icon || 'gear'} title={undefined} />
+          <span className="mdw-sbar-lab">{entry.ui?.title || entry.label}</span>
+        </button>
+      ))}
       <span className="mdw-sbar-grow" />
       {!isDraft && taskRow ? (
         <span className="mdw-sbar-stat" title="任务状态">

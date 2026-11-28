@@ -39,6 +39,8 @@ export interface HostGetTaskEntry {
   label: string;
   description: string;
   tag: string;
+  /** 插件图标资产名（entry.ui.icon → plugin.icon → 空）。 */
+  icon: string;
   /** 设置页展示顺序（全局唯一） */
   order: number;
   /** 出厂模板正文 */
@@ -90,13 +92,16 @@ export function fieldDeclsOf(fields: readonly PluginGetTaskField[] | undefined):
 /** 从宿主任务行构造 gettask 的任务定位（缺字段按空处理）。 */
 export function taskInfoOf(
   task: any,
-  opts: { topicKey?: string; cwd?: string } = {},
+  opts: { topicKey?: string; cwd?: string; taskKey?: string } = {},
 ): PluginTaskInfo | null {
   if (!task) return null;
   const id = Number(task.id);
-  if (!Number.isFinite(id) || id <= 0) return null;
+  const key = String(opts.taskKey || task.key || (Number.isFinite(id) && id > 0 ? id : ''));
+  // 草稿预览：id 为 0，用 key（draft-N）定位；库存任务两者都有。
+  if (!Number.isFinite(id) || (id <= 0 && !key)) return null;
   return {
-    id,
+    id: id > 0 ? id : 0,
+    ...(key ? { key } : {}),
     text: String(task.text || ''),
     ...(opts.topicKey ? { topicKey: String(opts.topicKey) } : {}),
     ...(opts.cwd ? { cwd: String(opts.cwd) } : {}),
@@ -110,6 +115,7 @@ interface NormalizedEntry {
   entry: PluginGetTaskEntry;
   localId: string;
   tag: string;
+  icon: string;
   fields: FieldDecl[];
   ui: { panel: string; title: string } | null;
   order: number;
@@ -138,6 +144,7 @@ function normalizeEntry(
       entry: raw,
       localId,
       tag,
+      icon: String(raw.ui?.icon || plugin.icon || ''),
       fields: fieldDeclsOf(raw.fields),
       ui: panel ? { panel, title: String(raw.ui?.title || raw.label || localId) } : null,
       order: Number(raw.order) || 0,
@@ -187,6 +194,7 @@ export async function listGetTaskEntries(
         label: String(hit.entry.label || hit.localId),
         description: String(hit.entry.description || ''),
         tag: hit.tag,
+        icon: hit.icon,
         order: 0,
         template: String(hit.entry.template || ''),
         fields: hit.fields,
@@ -219,7 +227,7 @@ export async function collectGetTaskBlocks(
 ): Promise<{ blocks: GetTaskBlock[]; warnings: string[] }> {
   const blocks: GetTaskBlock[] = [];
   const warnings: string[] = [];
-  if (!task || !Number(task.id)) return { blocks, warnings };
+  if (!task || (!Number(task.id) && !task.key)) return { blocks, warnings };
   const { handles, warnings: activationWarnings } = await enabledPlugins({
     ...ctx,
     ...(task.topicKey ? { topicKey: task.topicKey } : {}),

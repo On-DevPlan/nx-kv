@@ -131,6 +131,7 @@ export function DockPanel({
               title={e.description || `${e.pluginName} · ${e.tag}`}
               onClick={() => showDockTab(e.segment)}
             >
+              <Icon name={e.icon || 'gear'} title={undefined} />
               {e.ui?.title || e.label}
             </button>
           ))}

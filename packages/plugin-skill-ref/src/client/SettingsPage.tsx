@@ -72,7 +72,7 @@ export default function SkillRefSettingsPage({ api }: { api: PluginClientApi }) 
     <div className="rp-page skr-page skr-settings">
       <div className="page-head">
         <div className="title-block">
-          <h2>技能引用设置</h2>
+          <h2><span className="plug-h2-ico">{api.renderIcon?.('star', 18)}</span>技能引用设置</h2>
           <p className="muted skr-sub">
             仓库根的 <code>.claude/skills</code> 始终会被扫描；这里可以追加其他目录，让它们也进入技能候选。
           </p>

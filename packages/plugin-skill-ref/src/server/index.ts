@@ -69,6 +69,7 @@ export default definePlugin({
   api: '^1',
   name: '技能引用',
   description: '扫描 .claude/skills，把技能绑定到任务；领取时要求 agent 强制加载。',
+  icon: 'star',
   order: 30,
   defaultEnabled: true,
   storageVersion: STORAGE_VERSION,
@@ -98,7 +99,9 @@ export default definePlugin({
         ],
         ui: { panel: 'skill-picker', title: '技能引用' },
         data(ctx) {
-          const ids = readTaskSkills(ctx.storage, ctx.task.id);
+          // 库存任务用任务号；草稿预览用 draft-N（key）。
+          const taskKey = String(ctx.task.key || ctx.task.id || '');
+          const ids = readTaskSkills(ctx.storage, taskKey);
           if (!ids.length) return null;
           const byId = new Map(scanOf(ctx).skills.map((skill) => [skill.id, skill]));
           const skills = ids

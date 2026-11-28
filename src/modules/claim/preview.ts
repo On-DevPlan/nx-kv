@@ -20,12 +20,16 @@ import { getLoopForCwd, type GetLoopState } from './waitgoal-config.js';
 import { buildTaskDelivery } from './host.js';
 
 export interface PreviewTaskDeliveryOptions {
-  /** 任务行（库存形状；草稿由调用方合成 { id:0, text }） */
+  /** 任务行（库存形状；草稿由调用方合成 { id:0, key:'draft-N', text }） */
   task?: any;
   /** 等待方目录（决定组上下文与项目级「持续 get」） */
   cwd?: string;
   /** 主题 key（任务级 timegoal 寻址用） */
   key?: string;
+  /** 草稿键（draft-N）；库存任务可省，插件按 key / id 归一。 */
+  taskKey?: string;
+  /** 仓库 key（草稿预览时 topic 可能还没落库）。 */
+  repoKey?: string;
   /** 现状（模板占位符 {{summary}}） */
   summary?: string;
   /** 外部参数（与 --param 同语义） */
@@ -37,7 +41,7 @@ export interface PreviewTaskDeliveryOptions {
  *
  * @returns { task, instruction, coversBody, segments, getLoop, switches }
  */
-export async function previewTaskDelivery({ task, cwd, key, summary, params }: PreviewTaskDeliveryOptions = {}): Promise<Record<string, any>> {
+export async function previewTaskDelivery({ task, cwd, key, taskKey, repoKey, summary, params }: PreviewTaskDeliveryOptions = {}): Promise<Record<string, any>> {
   const settings: any = (await getSettings().catch(() => null)) || {};
   const segments: any[] = [];
   // 项目级「持续 get」：与 claim/get.ts 同口径（只在开启时传入内文；#182 起
@@ -50,6 +54,8 @@ export async function previewTaskDelivery({ task, cwd, key, summary, params }: P
     cwd,
     name: '',
     topicKey: key,
+    taskKey,
+    repoKey,
     params: params || {},
     preview: true,
     trace: segments,

@@ -42,7 +42,7 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  const [busyId, setBusyId] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -59,7 +59,6 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
       ]);
       setCandidates(Array.isArray(list?.candidates) ? list.candidates : []);
       setSelected(new Set(Array.isArray(picked?.ids) ? picked.ids : []));
-      setDirty(false);
     } catch (e) {
       setError(msgOf(e));
     } finally {
@@ -94,28 +93,26 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
     [selected, candidateIds],
   );
 
-  const toggle = (id: string) => {
-    setSelected((cur) => {
-      const next = new Set(cur);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    setDirty(true);
-  };
-
-  const save = async () => {
+  // 单个技能引用切换：点击即按任务（草稿用 draft-N）保存，不做多选 + 批量保存。
+  const toggleSkill = async (id: string) => {
+    if (!taskKey) {
+      api.toast('任务号未确定，无法保存');
+      return;
+    }
     if (busy) return;
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     setBusy(true);
+    setBusyId(id);
     try {
-      const r = await api.rpc('taskSkillsSave', { taskKey, ids: [...selected] });
-      setSelected(new Set(Array.isArray(r?.ids) ? r.ids : [...selected]));
-      setDirty(false);
-      api.toast('技能引用已保存（领取时会要求 agent 强制加载）');
+      const r = await api.rpc('taskSkillsSave', { taskKey, ids: [...next] });
+      setSelected(new Set(Array.isArray(r?.ids) ? r.ids : [...next]));
     } catch (e) {
       api.toast(msgOf(e));
     } finally {
       setBusy(false);
+      setBusyId('');
     }
   };
 
@@ -138,10 +135,7 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
     <div className="skr-panel">
       <div className="skr-head">
         <b>{isDraft ? `技能引用 · 草稿 ${taskKey}` : `技能引用 #${taskKey}`}</b>
-        <span className="muted">
-          已选 {selected.size}
-          {dirty ? ' · 未保存' : ' · 已保存'}
-        </span>
+        <span className="muted">已引用 {selected.size}</span>
         <span className="skr-spacer" />
         <input
           className="skr-search"
@@ -152,23 +146,15 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
         <button type="button" className="btn ghost sm" onClick={() => void load()} disabled={busy}>
           刷新
         </button>
-        <button
-          type="button"
-          className="btn primary sm"
-          disabled={busy || !dirty}
-          onClick={() => void save()}
-        >
-          保存
-        </button>
       </div>
 
       {isDraft ? (
-        <div className="skr-draft-hint">草稿任务：选中项会在提交后自动带到新任务。</div>
+        <div className="skr-draft-hint">点每行右侧「引用 / 移除」即时保存；草稿提交后自动带到新任务。</div>
       ) : null}
 
       {missing.length > 0 ? (
         <div className="skr-warn">
-          有 {missing.length} 个已选技能在当前目录下找不到（目录被移除或改名）；保存会保留它们。
+          有 {missing.length} 个已引用技能在当前目录下找不到（目录被移除或改名）；仍会保留，可点「移除」清掉。
         </div>
       ) : null}
 
@@ -180,26 +166,39 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
               : `没有匹配「${query}」的技能。`}
           </div>
         ) : (
-          filtered.map((c) => (
-            <label className="skr-row" key={c.id}>
-              <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
-              <span className="skr-main">
-                <span className="skr-title">
-                  <b>{c.label}</b>
-                  <span className={`skr-badge ${c.meta?.source || ''}`}>
-                    {SOURCE_LABEL[c.meta?.source || ''] || c.meta?.source || '技能'}
+          filtered.map((c) => {
+            const picked = selected.has(c.id);
+            return (
+              <div className="skr-row" key={c.id}>
+                <span className="skr-main">
+                  <span className="skr-title">
+                    <b>{c.label}</b>
+                    <span className={`skr-badge ${c.meta?.source || ''}`}>
+                      {SOURCE_LABEL[c.meta?.source || ''] || c.meta?.source || '技能'}
+                    </span>
+                    {c.meta?.dirName && c.meta.dirName !== c.label ? (
+                      <span className="skr-dirname">{c.meta.dirName}</span>
+                    ) : null}
                   </span>
-                  {c.meta?.dirName && c.meta.dirName !== c.label ? (
-                    <span className="skr-dirname">{c.meta.dirName}</span>
-                  ) : null}
+                  {c.description ? <span className="skr-desc">{c.description}</span> : null}
+                  <span className="skr-path mono" title={c.path || ''}>
+                    {c.path || c.meta?.dir || c.id}
+                  </span>
                 </span>
-                {c.description ? <span className="skr-desc">{c.description}</span> : null}
-                <span className="skr-path mono" title={c.path || ''}>
-                  {c.path || c.meta?.dir || c.id}
+                <span className="skr-side">
+                  <span className={`skr-state${picked ? ' on' : ''}`}>{picked ? '已引用' : '未引用'}</span>
+                  <button
+                    type="button"
+                    className={`btn ${picked ? 'ghost' : 'primary'} xs`}
+                    disabled={busy}
+                    onClick={() => void toggleSkill(c.id)}
+                  >
+                    {busyId === c.id ? '保存中…' : picked ? '移除' : '引用'}
+                  </button>
                 </span>
-              </span>
-            </label>
-          ))
+              </div>
+            );
+          })
         )}
       </div>
     </div>

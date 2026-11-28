@@ -39,3 +39,5 @@
 .plugin-vis-off{font-size:10.5px;color:var(--danger,#B42318)}
 
 .plugin-page-host{min-width:0}
+/* 插件页面标题里的插件图标（插件用 api.renderIcon 渲染，保持与侧栏 / dock 同一套图形） */
+.plugin-page-host .plug-h2-ico{display:inline-flex;vertical-align:-3px;margin-right:6px;color:var(--mdw-accent,#2F6F5E)}

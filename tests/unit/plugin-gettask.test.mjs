@@ -43,6 +43,7 @@ test('gettask：skill-ref 声明 / 候选接口 / 任务取数 / 交付区块 / 
     assert.ok(hit, 'skill-ref 声明了技能引用区块');
     assert.equal(hit.tag, 'nxkv.plugin.skill-ref.skills');
     assert.equal(hit.ui.panel, 'skill-picker');
+    assert.equal(hit.icon, 'star', 'gettask 条目继承插件声明的 icon');
     assert.ok(hit.fields.some((f) => f.key === 'skills'), '技能列表进入变量目录');
     assert.ok(hit.fields.some((f) => f.key === 'skillCount'), '技能数量进入变量目录');
     assert.ok(hit.fields.some((f) => f.key === 'task.id'), '任务身份字段自动补齐');
@@ -71,6 +72,17 @@ test('gettask：skill-ref 声明 / 候选接口 / 任务取数 / 交付区块 / 
     await host.callRpc('skill-ref', 'taskSkillsSave', { taskKey: 'draft-1', ids: [demo.id] });
     const draftGot = await host.callRpc('skill-ref', 'taskSkillsGet', { taskKey: 'draft-1' });
     assert.deepEqual(draftGot.ids, [demo.id], '草稿键可读写');
+
+    // 草稿预览：task.id=0，靠 taskKey 仍能取到技能区块（bug 回归）。
+    const { previewTaskDelivery } = await import('../../src/modules/claim/preview.ts');
+    const draftPreview = await previewTaskDelivery({
+      task: { id: 0, key: 'draft-1', text: '草稿技能预览', status: 'draft' },
+      cwd: repoDir,
+      taskKey: 'draft-1',
+    });
+    assert.match(draftPreview.instruction, /<nxkv\.plugin\.skill-ref\.skills>/, '草稿预览包含技能区块');
+    assert.match(draftPreview.instruction, /demo-skill/);
+
     const { notifyTaskCreated } = await import('../../src/modules/plugin/task-created.ts');
     const moved = await notifyTaskCreated({
       draftKey: 'draft-1',

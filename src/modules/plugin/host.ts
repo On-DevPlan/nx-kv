@@ -31,6 +31,8 @@ export interface PluginSummary {
   description: string;
   version: string;
   api: string;
+  /** 插件图标资产名（宿主 svghub）。 */
+  icon: string;
   order: number;
   enabled: boolean;
   entryCount: number;
@@ -191,6 +193,7 @@ export async function listPlugins(): Promise<PluginSummary[]> {
         description: '',
         version: '',
         api: l.info.api,
+        icon: '',
         order: 1000,
         enabled: false,
         entryCount: 0,
@@ -220,6 +223,7 @@ export async function listPlugins(): Promise<PluginSummary[]> {
       description: plugin.description || '',
       version: plugin.version,
       api: plugin.api,
+      icon: String(plugin.icon || ''),
       order: Number(plugin.order) || 100,
       enabled,
       entryCount,

@@ -7,6 +7,7 @@ import './style.css';
 
 const definition: PluginUiDefinition = {
   api: '^1',
+  icon: 'template',
   components: {
     'entry-row': EntryRow,
     'entry-form': EntryForm,
@@ -17,7 +18,7 @@ const definition: PluginUiDefinition = {
     manage: { title: '任务模板' },
   },
   sidebar: [
-    { id: 'manage', label: '任务模板', icon: 'list', order: 10, page: 'manage' },
+    { id: 'manage', label: '任务模板', order: 10, page: 'manage' },
   ],
 };
 

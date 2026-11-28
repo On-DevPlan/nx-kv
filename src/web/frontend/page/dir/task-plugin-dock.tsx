@@ -24,6 +24,8 @@ export interface GetTaskPluginEntry {
   label: string;
   description?: string;
   tag: string;
+  /** 插件图标资产名（宿主 svghub）。 */
+  icon?: string;
   order: number;
   ui?: { panel: string; title?: string } | null;
 }

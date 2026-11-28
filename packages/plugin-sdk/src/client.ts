@@ -1,5 +1,5 @@
 // nx-kv 插件 SDK：client 半侧契约（只给插件 UI 包用，宿主只提供实现）。
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { EntryView, PretaskContext, PretaskDraft } from './index.js';
 
 export type {
@@ -19,7 +19,7 @@ export interface PluginClientApi {
   ctx: PretaskContext;
   /** entry-form 页面才有。 */
   entry?: EntryView;
-  rpc(method: string, params?: unknown): Promise<any>;
+  rpc<T = any>(method: string, params?: unknown): Promise<T>;
   /** 请求宿主 HTTP（只允许 /api/ 路径）；缺上下文时用它自行构造内容。 */
   host: {
     get<T = any>(path: string, params?: Record<string, string | number | boolean | null | undefined>): Promise<T>;
@@ -33,11 +33,14 @@ export interface PluginClientApi {
   navigate(hash: string): void;
   closePage(): void;
   toast(msg: string): void;
+  /** 用宿主图标集渲染图标（插件页面标题等处复用，保持与侧栏 / dock 同一套图形）。 */
+  renderIcon?: (name: string, size?: number) => ReactNode;
 }
 
 export interface PluginSidebarEntry {
   id: string;
   label: string;
+  /** 覆盖插件级 icon；缺省用 PluginUiDefinition.icon。 */
   icon?: string;
   order?: number;
   /** 指向 pages 的 key。 */
@@ -46,6 +49,8 @@ export interface PluginSidebarEntry {
 
 export interface PluginUiDefinition {
   api: '^1' | string;
+  /** 插件图标资产名（宿主 svghub）；侧栏条目缺省继承它。 */
+  icon?: string;
   components: Record<string, ComponentType<any>>;
   pages?: Record<string, { title: string }>;
   sidebar?: PluginSidebarEntry[];

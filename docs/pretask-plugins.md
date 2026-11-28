@@ -96,6 +96,7 @@ packages/plugin-<id>/
 | `nxkv.server` 必填；声明 client 必须有 `vite.config.ts` | 构建脚本按约定产物 |
 | 插件源码只能 import 相对路径 / `node:` / SDK / react | 内部闭合 |
 | 表名以 `plugin_<id>_` 开头 | 与宿主表隔离 |
+| `icon` 用宿主 svghub 资产名（如 `folder` / `star` / `template`） | 侧栏、dock、状态栏、插件页标题共用同一套图形 |
 
 ---
 
@@ -108,7 +109,8 @@ export default definePlugin({
   api: '^1',
   name: '示例插件',
   description: '一句话说明',
-  order: 30,                  // 设置页 / 下拉分组排序
+  icon: 'folder',           // 宿主 svghub 资产名：侧栏 / dock / 状态栏 / 插件页标题共用
+  order: 30,                // 设置页 / 下拉分组排序
   defaultEnabled: true,
   storageVersion: 1,
   migrateStorage(db, fromVersion) { /* 建/升插件表；返回目标版本 */ },
@@ -596,6 +598,7 @@ interface PluginCandidate {
 | 新建任务入口 | `entries()` + `buildDraft()` | 下拉、新建页、可见性、默认项 | `plugin-task-template` |
 | 任务编辑页 dock tab | `gettask()` + `ui.panel` | 声明聚合、dock tab、`PluginClientApi` 注入 | `plugin-skill-ref` |
 | 领取追加提示词区块 | `gettask()` 的 `template` + `data(taskCtx)` | 取块、套模板、包 `nxkv.plugin.*` | 同上 |
+| 插件内部拼提示词、全局只取变量 | `template` 只放 `{{prompt}}`，`data()` 返回完整字符串 | 取块、套模板、包 `nxkv.plugin.*` | `plugin-dir-annotate` 的目录要求（按主题启用） |
 | 设置页改插件模板 | 不需要写宿主 | 外部段注册、变量白名单、保存/启用/删除 | 设置 → 提示词模板 |
 | 候选条目（面板 / 正文搜索） | `candidates(ctx)` | `/api/plugins/candidates` 聚合/过滤/截断 | `skill-ref` 技能扫描 |
 | 草稿态也能配置 | `taskKey` RPC + 草稿表 | dock 用 `draft-N`、提交后广播 `onTaskCreated` | `skill-ref` 的 `task_drafts` |
@@ -609,7 +612,7 @@ interface PluginCandidate {
 | 内置插件 | 注册的生命周期 / 注册点 |
 |---|---|
 | `task-template` | pretask（entries/buildDraft）+ 模板管理页 / 侧栏 |
-| `dir-annotate` | pretask（entries/buildDraft）+ panel 入口 + 目录批注设置页 |
+| `dir-annotate` | pretask（entries/buildDraft）+ panel 入口 + gettask（目录要求）+ candidates + 目录批注设置页 |
 | `skill-ref` | gettask + candidates + onTaskCreated + 技能引用设置页（没有 pretask 入口） |
 
 ### 16.2 0→1 十步

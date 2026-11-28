@@ -63,6 +63,7 @@ export default definePlugin({
   version: '0.1.0',
   api: '^1',
   name: '任务模板',
+  icon: 'template',
   description: '新建任务时的正文模板与槽位填写；内置 ref 生成 + 用户模板。',
   order: 10,
   defaultEnabled: true,

@@ -1193,7 +1193,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async preview(input?: z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskPreviewAction>['_input']>);
       const path = `/api/localtasks/preview`;
-      const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "text": inp["text"], "param": inp["param"] };
+      const body = { "id": inp["id"], "cwd": inp["cwd"], "key": inp["key"], "text": inp["text"], "taskKey": inp["taskKey"], "repo": inp["repo"], "param": inp["param"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPreviewAction>['run']>>;
     },
     // action: plugin.candidates

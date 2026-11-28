@@ -6,9 +6,22 @@ interface Settings {
   showHidden: boolean;
   includeDir: boolean;
   titlePrefix: string;
+  promptHead: string;
+  promptTail: string;
 }
 
-const DEFAULTS: Settings = { showHidden: false, includeDir: true, titlePrefix: '' };
+/** 与服务端 requirements.ts 的 DEFAULT_PROMPT_HEAD / TAIL 保持同文本。 */
+const DEFAULT_PROMPT_HEAD = `〔目录要求 · {{repoName}}〕
+本主题启用了 {{entryCount}} 条目录维护要求。完成本任务后，必须逐条检查并更新对应目录 / 文件中的内容与文档，确保交付时保持最新：`;
+const DEFAULT_PROMPT_TAIL = `若某条要求本次确实不适用或无法完成，必须在完成总结里逐条说明原因，不得静默跳过。`;
+
+const DEFAULTS: Settings = {
+  showHidden: false,
+  includeDir: true,
+  titlePrefix: '',
+  promptHead: DEFAULT_PROMPT_HEAD,
+  promptTail: DEFAULT_PROMPT_TAIL,
+};
 
 export default function SettingsPage({ api }: { api: PluginClientApi }) {
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
@@ -50,7 +63,7 @@ export default function SettingsPage({ api }: { api: PluginClientApi }) {
     <div className="rp-page da-page da-settings">
       <div className="page-head">
         <div className="title-block">
-          <h2>目录批注设置</h2>
+          <h2><span className="plug-h2-ico">{api.renderIcon?.('folder', 18)}</span>目录批注设置</h2>
           <p className="muted da-sub">这些是插件自己的默认行为，保存在插件表里，按本机生效。</p>
         </div>
         <div className="acts">
@@ -108,6 +121,46 @@ export default function SettingsPage({ api }: { api: PluginClientApi }) {
               onChange={(e) => setSettings((cur) => ({ ...cur, titlePrefix: e.target.value }))}
             />
             <span className="muted">生成的任务标题形如「前缀 + 目录批注 · 仓库名」。</span>
+          </div>
+
+          <div className="da-setting-row da-setting-col">
+            <b>目录要求 · 提示词开头</b>
+            <textarea
+              className="da-setting-area"
+              rows={4}
+              maxLength={4000}
+              value={settings.promptHead}
+              onChange={(e) => setSettings((cur) => ({ ...cur, promptHead: e.target.value }))}
+            />
+            <span className="muted">
+              {'支持 {{repoName}} / {{entryCount}}；留空保存时回退出厂默认。'}
+            </span>
+            <button
+              type="button"
+              className="btn ghost xs"
+              onClick={() => setSettings((cur) => ({ ...cur, promptHead: DEFAULT_PROMPT_HEAD }))}
+            >
+              恢复默认
+            </button>
+          </div>
+
+          <div className="da-setting-row da-setting-col">
+            <b>目录要求 · 提示词结尾</b>
+            <textarea
+              className="da-setting-area"
+              rows={3}
+              maxLength={4000}
+              value={settings.promptTail}
+              onChange={(e) => setSettings((cur) => ({ ...cur, promptTail: e.target.value }))}
+            />
+            <span className="muted">追加在条目列表之后；留空保存时回退出厂默认。</span>
+            <button
+              type="button"
+              className="btn ghost xs"
+              onClick={() => setSettings((cur) => ({ ...cur, promptTail: DEFAULT_PROMPT_TAIL }))}
+            >
+              恢复默认
+            </button>
           </div>
         </div>
       ) : null}

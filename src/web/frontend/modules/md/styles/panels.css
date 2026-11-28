@@ -279,7 +279,6 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
   flex:none;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
   margin:0;padding:10px 14px;
   border-top:1px solid var(--mdw-accent-line,#B7D4C8);
-  background:var(--mdw-accent-soft,#E8F2EE);
 }
 .mdw-review-main{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
 .mdw-review-badge{
@@ -289,15 +288,11 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
 .mdw-review-at{font-size:10.5px;color:var(--faint,#A9AEB4)}
 /* 已进入后续轮次的提示（#144）：非链尖任务收起反馈入口，指到最新一轮 */
 .mdw-review-later{font-size:11.5px;color:var(--ink-2,#4B515A);white-space:nowrap}
-/* 默认夹 4 行；过长出「展开全文」。ack 是 Markdown（加粗/列表/标题），按 HTML 渲染 */
+/* #283 验收：全文常驻（无展开/收起按钮）；超高时块内滚动兜底 */
 .mdw-review-sum{
   font-size:12px;line-height:1.55;color:var(--ink-2,#4B515A);
-  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;
+  display:block;max-height:min(40vh,360px);overflow:auto;
   overflow-wrap:anywhere;
-}
-.mdw-review-sum.is-open{
-  display:block;-webkit-line-clamp:unset;-webkit-box-orient:unset;
-  max-height:min(40vh, 360px);overflow:auto;
 }
 .mdw-review-sum > :first-child{margin-top:0}
 .mdw-review-sum > :last-child{margin-bottom:0}
@@ -317,11 +312,6 @@ button.cmp-quote:focus-visible{outline:2px solid var(--mdw-accent-line,#B7D4C8);
   margin:0.5em 0 0.25em;font-size:12.5px;font-weight:700;color:var(--ink,#16181C);
 }
 .mdw-review-sum a{color:var(--mdw-accent,#2F6F5E)}
-.mdw-review-more{
-  align-self:flex-start;border:0;background:transparent;padding:0;
-  font:650 11.5px inherit;color:var(--mdw-accent,#2F6F5E);cursor:pointer;
-}
-.mdw-review-more:hover{text-decoration:underline}
 .mdw-review-acts{display:flex;align-items:center;gap:6px;flex:none;padding-top:2px}
 .mdw-review-acts button{
   border:0;border-radius:6px;padding:5px 10px;font:650 12px inherit;cursor:pointer;white-space:nowrap;

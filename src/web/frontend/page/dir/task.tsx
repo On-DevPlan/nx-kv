@@ -47,7 +47,6 @@ import { useDock } from './task-dock.js';
 import { useGoal } from './task-goal.js';
 import { useChain } from './task-chain.js';
 import { useSelMenu } from './task-sel-menu.js';
-import { useAck } from './task-ack.js';
 import { useTaskActions } from './task-actions.js';
 import { useFeedback } from './task-feedback.js';
 import { pretaskScopeOf, useDerivedCtx } from './task-derived-ctx.js';
@@ -171,9 +170,6 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
 
   const selMenuState = useSelMenu({ id });
   const { selMenu, setSelMenu, lastSel, placeSelMenu, onEditorTextSel, closeSelMenu } = selMenuState;
-
-  const ackState = useAck({ id, taskRow, dockTab, dockOpen });
-  const { ackOpen, setAckOpen, ackOverflow, reviewSumRef, ackLong } = ackState;
 
   // ─── 本地状态 ───
   const [preview, setPreview] = useState<PreviewState | null>(null);
@@ -503,8 +499,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           canShowGoalLog={canShowGoalLog} goalLog={goalLog} openGoalLog={openGoalLog}
           isDraft={isDraft} task={task} topic={topic} topicKey={topicKey} doc={doc} id={id} model={model || null} app={app}
           refreshLocal={refreshLocal} markDirty={markDirty} saveDoc={saveDoc} persistAtt={persistAtt}
-          attachAreaRef={attachAreaRef} reviewBarRef={reviewBarRef} reviewSumRef={reviewSumRef}
-          taskRow={taskRow} ackOpen={ackOpen} setAckOpen={setAckOpen} ackOverflow={ackOverflow} ackLong={ackLong} ackHtml={ackHtml}
+          attachAreaRef={attachAreaRef} reviewBarRef={reviewBarRef}
+          taskRow={taskRow} ackHtml={ackHtml}
           isChainTip={isChainTip} latestChild={latestChild} openFeedback={openFeedback} openLatestRound={openLatestRound}
         />
 

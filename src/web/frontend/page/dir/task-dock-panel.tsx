@@ -48,12 +48,7 @@ interface DockPanelProps {
   persistAtt: (id: string | number, attachments: Attachment[]) => void;
   attachAreaRef: RefObject<AttachAreaHandle | null>;
   reviewBarRef: RefObject<HTMLDivElement | null>;
-  reviewSumRef: RefObject<HTMLDivElement | null>;
   taskRow: LocalTask | null;
-  ackOpen: boolean;
-  setAckOpen: Dispatch<SetStateAction<boolean>>;
-  ackOverflow: boolean;
-  ackLong: boolean;
   ackHtml: string;
   isChainTip: boolean;
   latestChild: ChainApiItem | null;
@@ -67,8 +62,8 @@ export function DockPanel({
   canShowGoalLog, goalLog, openGoalLog,
   isDraft, task, topic, topicKey, doc, id, model, app,
   refreshLocal, markDirty, saveDoc, persistAtt,
-  attachAreaRef, reviewBarRef, reviewSumRef,
-  taskRow, ackOpen, setAckOpen, ackOverflow, ackLong, ackHtml,
+  attachAreaRef, reviewBarRef,
+  taskRow, ackHtml,
   isChainTip, latestChild, openFeedback, openLatestRound,
 }: DockPanelProps) {
   // gettask 插件区块（第二生命周期点）：声明 → tab；内容由插件组件自己渲染。
@@ -270,21 +265,12 @@ export function DockPanel({
                 <span className="mdw-review-at mono">{taskRow.completedAt}</span>
                 {taskRow.roundSummary ? (
                   <>
+                    {/* #283 验收：去掉展开/收起——全文常驻显示（超高时块内滚动，无按钮） */}
                     <div
-                      ref={reviewSumRef}
-                      className={`mdw-review-sum${ackOpen ? ' is-open' : ''}`}
-                      title={ackOpen || !(ackOverflow || ackLong) ? 'agent 的完成总结（ack）' : '点击下方展开全文'}
+                      className="mdw-review-sum"
+                      title="agent 的完成总结（ack）"
                       dangerouslySetInnerHTML={{ __html: ackHtml }}
                     />
-                    {(ackOverflow || ackLong || ackOpen) && (
-                      <button
-                        type="button"
-                        className="mdw-review-more"
-                        onClick={() => setAckOpen((o) => !o)}
-                      >
-                        {ackOpen ? '收起' : '展开全文'}
-                      </button>
-                    )}
                   </>
                 ) : null}
               </div>

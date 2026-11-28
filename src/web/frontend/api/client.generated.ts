@@ -18,6 +18,9 @@ import type {
 } from '../../../modules/claim/actions/_manifest.generated.js';
 import type {
   DbDataAction,
+  DbRowDeleteAction,
+  DbRowInsertAction,
+  DbRowUpdateAction,
 } from '../../../modules/db/actions/_manifest.generated.js';
 import type {
   DocsAttachAction,
@@ -442,6 +445,12 @@ export interface ApiClient {
   save(input: z.input<InstanceType<typeof PromptTemplateSaveAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof PromptTemplateSaveAction>['run']>>>;
 /** 库数据只读导出：全表概览或单表行窗口（不触发导入、不升级） */
   data(input?: z.input<InstanceType<typeof DbDataAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DbDataAction>['run']>>>;
+/** 删除一行（仅调试模式：nx-kv serve --debug） */
+  rowDelete(input: z.input<InstanceType<typeof DbRowDeleteAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DbRowDeleteAction>['run']>>>;
+/** 插入一行（仅调试模式：nx-kv serve --debug） */
+  rowInsert(input: z.input<InstanceType<typeof DbRowInsertAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DbRowInsertAction>['run']>>>;
+/** 更新一行（仅调试模式：nx-kv serve --debug） */
+  rowUpdate(input: z.input<InstanceType<typeof DbRowUpdateAction>['_input']>): Promise<Awaited<ReturnType<InstanceType<typeof DbRowUpdateAction>['run']>>>;
 }
 
 export function createApiClient(transport: Transport): ApiClient {
@@ -1498,6 +1507,27 @@ export function createApiClient(transport: Transport): ApiClient {
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof DbDataAction>['run']>>;
+    },
+    // action: db.rowDelete
+    async rowDelete(input: z.input<InstanceType<typeof DbRowDeleteAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DbRowDeleteAction>['_input']>);
+      const path = `/api/db/row-delete`;
+      const body = { "table": inp["table"], "rowid": inp["rowid"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DbRowDeleteAction>['run']>>;
+    },
+    // action: db.rowInsert
+    async rowInsert(input: z.input<InstanceType<typeof DbRowInsertAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DbRowInsertAction>['_input']>);
+      const path = `/api/db/row-insert`;
+      const body = { "table": inp["table"], "values": inp["values"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DbRowInsertAction>['run']>>;
+    },
+    // action: db.rowUpdate
+    async rowUpdate(input: z.input<InstanceType<typeof DbRowUpdateAction>['_input']>) {
+      const inp = input ?? ({} as z.input<InstanceType<typeof DbRowUpdateAction>['_input']>);
+      const path = `/api/db/row-update`;
+      const body = { "table": inp["table"], "rowid": inp["rowid"], "changes": inp["changes"] };
+      return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof DbRowUpdateAction>['run']>>;
     },
   };
 }

@@ -64,14 +64,11 @@ export function openStore(opts: OpenStoreOptions = {}): DbApi {
     ? { path: opts.path, appDir: opts.appDir }
     : { path: dbPathFromEnv(), appDir: defaultStoreTarget().appDir };
   if (singleton && !singleton.db.closed) {
-    // env 指向了另一个库（测试中途换目录 / legacy env 切换）→ 关旧开新。
-    // 这是「读路径静默换库」的统一防线：任何裸调 openStore() 的调用方
-    //（config / templates / core 内部）都自动获得同一语义。
-    if (
-      !opts.path &&
-      openedForTarget &&
-      (openedForTarget.path !== target.path || (openedForTarget.appDir || '') !== (target.appDir || ''))
-    ) {
+    // env 指向了另一个**库文件**（测试中途换目录 / legacy env 切换）→ 关旧开新。
+    // 这是「读路径静默换库」的统一防线。#287 修正：只比 **path**——appDir 只是
+    // legacy JSON 导入的扫描根，同文件不同 appDir 不换库（否则只读调用会把
+    // 可写单例换成 readOnly 重开，之后全库写操作静默变 readonly）。
+    if (!opts.path && openedForTarget && openedForTarget.path !== target.path) {
       closeDb();
     } else {
       return singleton.db;

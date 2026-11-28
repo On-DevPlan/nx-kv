@@ -2361,6 +2361,51 @@
           "children": []
         },
         {
+          "name": "row-delete",
+          "path": [
+            "db",
+            "row-delete"
+          ],
+          "action": {
+            "id": "db.rowDelete",
+            "module": "db",
+            "summary": "删除一行（仅调试模式：nx-kv serve --debug）",
+            "usage": "db row-delete",
+            "http": "POST /api/db/row-delete"
+          },
+          "children": []
+        },
+        {
+          "name": "row-insert",
+          "path": [
+            "db",
+            "row-insert"
+          ],
+          "action": {
+            "id": "db.rowInsert",
+            "module": "db",
+            "summary": "插入一行（仅调试模式：nx-kv serve --debug）",
+            "usage": "db row-insert",
+            "http": "POST /api/db/row-insert"
+          },
+          "children": []
+        },
+        {
+          "name": "row-update",
+          "path": [
+            "db",
+            "row-update"
+          ],
+          "action": {
+            "id": "db.rowUpdate",
+            "module": "db",
+            "summary": "更新一行（仅调试模式：nx-kv serve --debug）",
+            "usage": "db row-update",
+            "http": "POST /api/db/row-update"
+          },
+          "children": []
+        },
+        {
           "name": "status",
           "path": [
             "db",

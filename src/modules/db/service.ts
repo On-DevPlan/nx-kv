@@ -248,14 +248,14 @@ const DATA_MAX_LIMIT = 1000;
 const DATA_DEFAULT_LIMIT = 200;
 
 /** sqlite_master 里的用户表清单（排除 sqlite_% 内部表），按名字排序保证输出稳定。 */
-function userTables(db: any): string[] {
+export function userTables(db: any): string[] {
   return db
     .all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
     .map((r: any) => String(r.name));
 }
 
 /** PRAGMA table_info → [{name, type}]（SQLite 标识符双引号转义后拼接）。 */
-function columnsOf(db: any, table: string): DataColumn[] {
+export function columnsOf(db: any, table: string): DataColumn[] {
   const quoted = `"${table.replace(/"/g, '""')}"`;
   return db.all(`PRAGMA table_info(${quoted})`).map((c: any) => ({
     name: String(c.name),
@@ -318,9 +318,17 @@ export async function data(
   if (!hit) {
     throw notFound(`表不存在: ${table}（可用: ${names.join(', ')}）`);
   }
-  const rows = db
-    .all(`SELECT * FROM "${hit.name.replace(/"/g, '""')}" LIMIT ? OFFSET ?`, [cap, skip])
-    .map(sanitizeRow);
+  // 行地址（#287）：带 rowid 出来，调试面板的改/删按它寻址；WITHOUT ROWID 表回退普通 SELECT。
+  let rows: Record<string, unknown>[];
+  try {
+    rows = db
+      .all(`SELECT rowid AS "__rowid__", * FROM "${hit.name.replace(/"/g, '""')}" LIMIT ? OFFSET ?`, [cap, skip])
+      .map(sanitizeRow);
+  } catch {
+    rows = db
+      .all(`SELECT * FROM "${hit.name.replace(/"/g, '""')}" LIMIT ? OFFSET ?`, [cap, skip])
+      .map(sanitizeRow);
+  }
   return {
     path,
     table: hit.name,

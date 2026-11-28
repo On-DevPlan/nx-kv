@@ -9,6 +9,9 @@ import type { Container } from '../../../runtime/container.js';
 import { DbBackupAction } from './db-backup.js';
 import { DbDataAction } from './db-data.js';
 import { DbMigrateAction } from './db-migrate.js';
+import { DbRowDeleteAction } from './db-row-delete.js';
+import { DbRowInsertAction } from './db-row-insert.js';
+import { DbRowUpdateAction } from './db-row-update.js';
 import { DbStatusAction } from './db-status.js';
 import { DbVerifyAction } from './db-verify.js';
 
@@ -17,6 +20,9 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
   DbBackupAction,
   DbDataAction,
   DbMigrateAction,
+  DbRowDeleteAction,
+  DbRowInsertAction,
+  DbRowUpdateAction,
   DbStatusAction,
   DbVerifyAction,
 ];
@@ -25,5 +31,8 @@ export const ACTIONS: readonly (new (deps: Container) => ActionBase)[] = [
 export { DbBackupAction };
 export { DbDataAction };
 export { DbMigrateAction };
+export { DbRowDeleteAction };
+export { DbRowInsertAction };
+export { DbRowUpdateAction };
 export { DbStatusAction };
 export { DbVerifyAction };

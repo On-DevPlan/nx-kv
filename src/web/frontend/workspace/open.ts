@@ -299,7 +299,50 @@ export function openFloatingPanel(model: Model | null | undefined, spec: OpenPan
       model.doAction(Actions.moveFloat(layout.getLayoutId(), rect));
     }
   }
+  // #282 第 3 轮：入场弹性动画（flx-float-pop：transform:scale 0.6→1 过冲，0.34s）期间
+  // flexlayout 给浮窗量内部布局用的是被 transform 扭曲的矩形——首测烘在 scale<1 就是
+  // 「内容只占弹窗六七成、右下大片空白」的塌陷（用户实测截图），烘在过冲帧则内部比
+  // 窗口还大。动画落定（scale=1）后补发一次**同矩形** moveFloat，引擎按真实矩形权威
+  // 重排（探针实测：910×558 塌陷 → 修回 1285×788 满幅）。动画中段的 rAF 重测反而会
+  // 二次烘焙（#275 第 1/2 轮的 rAF 回流就是败在这），所以时机必须「动画结束后」：
+  // animationend / animationcancel 任一 + 600ms 兜底（动画被 CSS 关掉时没有事件）。
+  // 多触发无害：同矩形 moveFloat 幂等，最多多一次重排。
+  scheduleFloatReflow(model);
   return { tabId, reused: false };
+}
+
+/**
+ * 浮窗入场动画落定后的权威回流：动画结束/被打断时补发一次同矩形 moveFloat。
+ *
+ * 只认 `.flexlayout__float_window` 上的动画事件（面板里别的动画不掺和）；
+ * 600ms 兜底兜「动画被全局 CSS 关掉/没跑」的情形。见 openFloatingPanel 内注释。
+ */
+export function scheduleFloatReflow(model: Model | null | undefined): void {
+  if (!model || typeof document === 'undefined') return;
+  const onAnim = (e: Event) => {
+    const t = e.target as Element | null;
+    if (t && typeof t.closest === 'function' && t.closest('.flexlayout__float_window')) {
+      cleanup();
+      reflowFloatLayouts(model);
+    }
+  };
+  const cleanup = () => {
+    document.removeEventListener('animationend', onAnim, true);
+    document.removeEventListener('animationcancel', onAnim, true);
+    window.clearTimeout(timer);
+  };
+  const timer = window.setTimeout(() => {
+    // 动画还在跑（被 CSS 放慢/卡顿）→ 此刻量矩形仍被扭曲，不能重测：
+    // 留着 animationend/cancel 监听等真正落定，本次兜底放弃。
+    const win = document.querySelector('.flexlayout__float_window');
+    const running = !!win && typeof win.getAnimations === 'function'
+      && win.getAnimations().some((a) => a.playState === 'running');
+    if (running) return;
+    cleanup();
+    reflowFloatLayouts(model);
+  }, 600);
+  document.addEventListener('animationend', onAnim, true);
+  document.addEventListener('animationcancel', onAnim, true);
 }
 
 /**

@@ -103,7 +103,6 @@ export default function LiveBlock({
           rows={1}
           spellCheck={false}
           aria-label="正文"
-          placeholder="输入… Enter 新块 · 行首 / 命令"
           onChange={(e) => {
             onChange(e.target.value);
             autoSize(e.target);

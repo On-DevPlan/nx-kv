@@ -19,6 +19,15 @@ export function removeTasks(input: {
   return api('/api/localtasks/items', { method: 'DELETE', body: input });
 }
 
+/** 恢复一条软删任务（POST /api/localtasks/tasks/restore；#208 撤回弹窗用）。 */
+export function restoreTask(input: {
+  key?: string;
+  cwd?: string;
+  id: number;
+}): Promise<any> {
+  return api('/api/localtasks/tasks/restore', { method: 'POST', body: input });
+}
+
 /** 任务链（GET /api/localtasks/chain?<q>；#245 进程面板「只展示当前任务的任务链」）。 */
 export function getTaskChain(query: string): Promise<any> {
   return api(`/api/localtasks/chain?${query}`);

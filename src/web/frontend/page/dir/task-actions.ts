@@ -10,6 +10,7 @@ import {
   forkTask,
   patchTaskItem,
   removeTaskItem,
+  restoreTrashTask,
   setPlanStatus,
 } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
@@ -87,6 +88,8 @@ interface UseTaskActionsArgs {
   goalPromptEditable: boolean;
   declaredGoal: DeclaredGoal | null;
   guard: Guard;
+  /** #208：软删成功后弹 5 秒撤销窗（全局 Provider 注入；与 task-ops 同口径）。 */
+  undoDelete?: (item: { title: string; restore: () => Promise<void> }) => void;
   dialog: DialogFn;
   showDockTab: (tab: string) => void;
 }
@@ -96,7 +99,7 @@ export function useTaskActions({
   groupAnchored, groupId, app, model, tabId, defaultEntry, entryCtx, refreshLocal,
   markDirty, histRef, editorApiRef, attachAreaRef,
   setDirty, fixedDraft, setFixedDraft,
-  goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
+  goal, goalEditable, goalPromptEditable, declaredGoal, guard, undoDelete, dialog, showDockTab,
 }: UseTaskActionsArgs) {
   const toast = useToast();
 
@@ -216,18 +219,21 @@ export function useTaskActions({
     });
   }, [groupAnchored, docFm.project, topic?.cwd, topicKey, groupId, app, refreshLocal, guard, toast]);
 
+  // #208：单条删除去二次确认——直接软删 + 屏幕中央 5 秒撤销窗（回收站也可找回），
+  // 与列表侧 task-ops.runDeleteTask 同口径。
   const delTask = useCallback(async () => {
     if (!doc) return;
     const title = doc.title || `#${task}`;
-    const ok = await dialog({
-      title: `删除任务「${title}」`,
-      message: '软删除：可在回收站找回（更多 → 回收站）。',
-      danger: true,
-      okText: '删除',
-    });
-    if (!ok) return;
     guard(async () => {
       await removeTaskItem({ cwd: topic?.cwd, id: Number(task) });
+      undoDelete?.({
+        title,
+        restore: async () => {
+          await restoreTrashTask({ cwd: topic?.cwd, id: Number(task) });
+          toast(`已撤回「${title}」`);
+          refreshLocal?.();
+        },
+      });
       toast(`已删除「${title}」`);
       // #191：删除后**不拆面板**——maincontent 永远不会被删除。主布局里的任务页
       // 就地导航回父级（组页 / 目录页 / 全局），路由 effect 会用 openPanel 换内容，
@@ -248,7 +254,7 @@ export function useTaskActions({
       }
       refreshLocal?.();
     });
-  }, [doc, task, topic, model, tabId, app, groupAnchored, groupId, topicKey, refreshLocal, guard, toast, dialog]);
+  }, [doc, task, topic, model, tabId, app, groupAnchored, groupId, topicKey, refreshLocal, guard, toast, undoDelete]);
 
   // #184：正在跑（claimed）的任务以前在面板上是死路——工具栏连「标为完成」都不渲染，
   // 只能干等 agent 自己回执。现在 claimed 也能收：用户是最终验收方，agent 稍后的 done

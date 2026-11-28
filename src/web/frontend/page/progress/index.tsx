@@ -13,7 +13,7 @@
 //   · 链视图按 taskChain.tree 渲染**树状节点**（祖先路径 + 分叉子树），点节点开任务页
 import { useEffect, useMemo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { removeTasks } from './api.js';
+import { removeTasks, restoreTask } from './api.js';
 import { ChainView } from './chain-view.js';
 import type { ChainViewTarget } from './chain-view.js';
 import { Icon } from '../../components/icons.jsx';
@@ -23,7 +23,7 @@ import { taskToProgress } from '../../modules/md/md-parse.js';
 import { hitQuery } from '../../modules/md/progress-search.js';
 import { closeRightSidebar, findOpenPanel } from '../../workspace.js';
 import { useToast } from '../../components/toast/index.jsx';
-import { useDialog } from '../../components/popup/index.jsx';
+import { useUndoDelete } from '../../components/task-panel/undo-delete.js';
 import type { Model } from 'flexlayout-react';
 import type { BoardRow, LocalTask, LocalTopic } from '../../types.js';
 
@@ -108,7 +108,8 @@ export default function ProgressPanel({
   group?: BoardRow | null;
 }) {
   const toast = useToast();
-  const { dialog, node: dialogNode } = useDialog();
+  // #208：软删可恢复 → 删除不确认，直接删 + 5 秒撤回弹窗
+  const undo = useUndoDelete();
   // rows 来自 /api（外部边界）：按本面板真正读的字段收窄一次
   const allRows = (rows || []) as TopicRow[];
   const topic = useMemo(() => allRows.find((r) => r.key === dirKey) || null, [allRows, dirKey]);
@@ -249,23 +250,15 @@ export default function ProgressPanel({
     setPicked(allPicked ? new Set() : new Set(cards.map(cidOf)));
   };
 
-  // 批量删除（软删除）：目录模式一次请求；组模式按任务**所在队列**分桶逐桶删
-  //（删除 API 按目录寻址，跨队列的选中项必须拆开）
+  // 批量删除（软删除）：目录模式一次请求；组模式按任务**所在队列**分桶逐桶删（删除 API 按目录寻址，跨队列拆桶）。#208：不确认，删完弹整批撤回窗
   const delPicked = async () => {
     if (busy || !pickedCards.length) return;
-    const names = pickedCards.map((c) => `#${c.taskId ?? c.id} ${c.title}`);
-    const shown = names.length <= 6 ? names.join('\n') : `${names.slice(0, 6).join('\n')}… 共 ${names.length} 条`;
-    const ok = await dialog({
-      title: `删除选中的 ${pickedCards.length} 条任务`,
-      message: `${shown}\n\n软删除：可在回收站找回（任务页更多 → 回收站）。`,
-      danger: true,
-      okText: '删除',
-    });
-    if (!ok) return;
     setBusy(true);
     try {
       let n = 0;
       let miss = 0;
+      // 撤回用的寻址对：与删除同一 scope（组模式按各卡所在队列）
+      const restores: Array<{ scope: { key?: string; cwd?: string }; id: number }> = [];
       if (group) {
         const byTopic = new Map<string, { cwd?: string; ids: (number | undefined)[] }>();
         for (const c of pickedCards) {
@@ -273,6 +266,7 @@ export default function ProgressPanel({
           if (!byTopic.has(tk)) byTopic.set(tk, { cwd: c.topicCwd, ids: [] });
           const bucket = byTopic.get(tk);
           if (bucket) bucket.ids.push(c.taskId);
+          if (c.taskId != null) restores.push({ scope: { key: c.topicKey, cwd: c.topicCwd }, id: c.taskId });
         }
         for (const { cwd, ids } of byTopic.values()) {
           const res = await removeTasks({ cwd, ids });
@@ -284,6 +278,7 @@ export default function ProgressPanel({
         const res = await removeTasks({ cwd: topic?.cwd, ids });
         n = res?.count ?? ids.length;
         miss = res?.missing?.length || 0;
+        for (const id of ids) if (id != null) restores.push({ scope: { cwd: topic?.cwd }, id });
       }
       const missTxt = miss ? `（${miss} 条已不存在）` : '';
       // 关掉这些任务的页签（开着的话）——组模式按各卡所在目录找页签
@@ -300,6 +295,18 @@ export default function ProgressPanel({
       setPicked(new Set());
       refreshLocal?.();
       toast(`已删除 ${n} 条任务${missTxt}`);
+      if (n) {
+        undo?.({
+          title: `${n} 条任务`,
+          restore: async () => {
+            for (const r of restores) {
+              try { await restoreTask({ ...r.scope, id: r.id }); } catch { /* 单条失败不阻断其余 */ }
+            }
+            toast(`已撤回 ${n} 条任务`);
+            refreshLocal?.();
+          },
+        });
+      }
     } catch (e) {
       // 失败保留勾选，便于改了再试
       toast('删除失败: ' + ((e as Error).message || e));
@@ -330,22 +337,15 @@ export default function ProgressPanel({
     });
   };
 
-  // 单条删除（下拉「删除」项）：软删除 + 关掉开着的那页签 + 链视图正在看它就退回列表
+  // 单条删除（下拉「删除」项）：#208 不确认——直接软删 + 撤回弹窗；
+  // 关掉开着的那页签 + 链视图正在看它就退回列表
   const delOne = async (c: ProgressCard) => {
     if (busy) return;
     const id = c.taskId ?? c.id;
-    const ok = await dialog({
-      title: `删除任务 #${id}`,
-      message: `${c.title}\n\n软删除：CLI localtask task restore 可恢复。`,
-      danger: true,
-      okText: '删除',
-    });
-    if (!ok) return;
+    const scope = group ? { key: c.topicKey, cwd: c.topicCwd } : { cwd: topic?.cwd };
     setBusy(true);
     try {
-      const res = group
-        ? await removeTasks({ key: c.topicKey, cwd: c.topicCwd, ids: [id] })
-        : await removeTasks({ cwd: topic?.cwd, ids: [id] });
+      const res = await removeTasks({ ...scope, ids: [id] });
       const dk = group ? c.topicKey : dirKey;
       const page = model
         ? (findOpenPanel(model, 'page', { dirKey: dk, task: String(id) }) as { getId: () => string } | null)
@@ -354,6 +354,16 @@ export default function ProgressPanel({
       if (chainView && Number(chainView.id) === Number(id)) setChainView(null);
       refreshLocal?.();
       toast(`已删除任务 #${id}${res?.missing?.length ? '（任务已不存在）' : ''}`);
+      if (!res?.missing?.length && id != null) {
+        undo?.({
+          title: c.title || `#${id}`,
+          restore: async () => {
+            try { await restoreTask({ ...scope, id }); } catch { /* 已被彻底清除等情况忽略 */ }
+            toast(`已撤回「${c.title || `#${id}`}」`);
+            refreshLocal?.();
+          },
+        });
+      }
     } catch (e) {
       toast('删除失败: ' + ((e as Error).message || e));
     } finally {
@@ -365,7 +375,6 @@ export default function ProgressPanel({
 
   return (
     <div className="mdw-prog-host">
-      {dialogNode}
       {/* #245：卡片「更多」下拉（portal 到 body，防被卡片 overflow 裁掉） */}
       <MenuPortal menu={menu} className="mdw-prog-menu">
         {menuCard && (

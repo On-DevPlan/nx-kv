@@ -177,24 +177,35 @@ export async function runDeleteTask(deps: TaskOpsDeps, scope: TaskScope, t: Loca
 /** 批量动作的总条数。 */
 const totalOf = (groups: ScopeIds[]): number => groups.reduce((n, g) => n + g.ids.length, 0);
 
-/** 批量软删除（组页按成员队列分组多次调用，提示只报一次总数）。 */
+/**
+ * 批量软删除（组页按成员队列分组多次调用）。
+ * #208：软删可恢复，去二次确认——删完弹一个整批撤销窗（撤回逐条调恢复 API）。
+ */
 export async function runBatchDelete(deps: TaskOpsDeps, groups: ScopeIds[]): Promise<boolean> {
   const total = totalOf(groups);
   if (!total) return false;
-  const ok = await deps.dialog({
-    title: `删除选中的 ${total} 条任务`,
-    message: '软删除：可在回收站找回（更多 → 回收站）。',
-    danger: true,
-    okText: '删除',
-  });
-  if (!ok) return false;
   let count = 0;
+  const done: ScopeIds[] = [];
   for (const g of groups) {
     const res = await guard(deps, () => removeManyTasks({ ...g.scope, ids: g.ids }));
-    if (res === false) return false;
+    if (res === false) break;
     count += (res as { count?: number }).count ?? g.ids.length;
+    done.push(g);
   }
+  if (!count) return false;
   deps.toast(`已删除 ${count} 条任务`);
+  deps.undoDelete?.({
+    title: `${count} 条任务`,
+    restore: async () => {
+      for (const g of done) {
+        for (const id of g.ids) {
+          try { await restoreTaskItem({ ...g.scope, id }); } catch { /* 单条失败不阻断其余 */ }
+        }
+      }
+      deps.toast(`已撤回 ${count} 条任务`);
+      deps.refresh?.();
+    },
+  });
   deps.refresh?.();
   return true;
 }

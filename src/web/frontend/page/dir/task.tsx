@@ -44,6 +44,7 @@ import { useGoal } from './task-goal.js';
 import { useChain } from './task-chain.js';
 import { useSelMenu } from './task-sel-menu.js';
 import { useTaskActions } from './task-actions.js';
+import { useUndoDelete } from '../../components/task-panel/undo-delete.js';
 import { useFeedback } from './task-feedback.js';
 import { pretaskScopeOf, useDerivedCtx } from './task-derived-ctx.js';
 import { useBesideOps } from './task-beside.js';
@@ -240,12 +241,15 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   }, [id, taskRow]);
 
   // ─── 动作钩子 ───
+  // #208：任务页删除去二次确认，软删成功弹 5 秒撤销窗（全局 Provider）
+  const undoDel = useUndoDelete();
   const actions = useTaskActions({
     doc, id, task, taskRow, topicKey, topic, boardCtx, docFm,
     groupAnchored, groupId, app, model: model || null, tabId, defaultEntry, entryCtx, refreshLocal,
     markDirty, histRef, editorApiRef, attachAreaRef,
     setDirty, fixedDraft, setFixedDraft,
     goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
+    undoDelete: (item) => undoDel?.(item),
   });
   const { submit, importMd, delTask, canComplete, canCancel, closeTask, canFixedDraft, toggleFixedDraft, addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel } = actions;
 

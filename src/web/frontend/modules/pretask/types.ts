@@ -33,6 +33,8 @@ export interface PretaskEntry {
 export interface PretaskEntriesResult {
   entries: PretaskEntry[];
   defaultEntryId: string;
+  /** #286：默认入口是否来自显式配置（false = 未配置 → 主按钮落空白任务页） */
+  defaultExplicit: boolean;
   warnings: string[];
 }
 

@@ -235,10 +235,10 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
       project: sel?.key || '',
     },
   };
-  // 默认入口由本主题配置决定；没配时回落插件声明（宿主已算），再兜底第一个可见入口。
-  const defaultEntry =
-    entryState.entries.find((e) => e.id === entryState.defaultEntryId) ||
-    entryState.entries[0];
+  // 默认入口（#286 改口径）：只有显式配置才生效；未配置 = 「＋ 新建页」落空白任务页。
+  const defaultEntry = entryState.defaultExplicit
+    ? entryState.entries.find((e) => e.id === entryState.defaultEntryId)
+    : undefined;
 
   // 动作层依赖：弹窗 / 提示 / 刷新 / 文档落点（组 scope 的 doc key = 看板 id）
   const ops: TaskOpsDeps = {

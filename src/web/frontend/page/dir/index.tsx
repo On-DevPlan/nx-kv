@@ -178,10 +178,11 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     },
     location: { dirKey },
   };
-  // 默认入口由本主题配置决定；没配时回落插件声明（宿主已算），再兜底第一个可见入口。
-  const defaultEntry =
-    entryState.entries.find((e) => e.id === entryState.defaultEntryId) ||
-    entryState.entries[0];
+  // 默认入口（#286 改口径）：只有本主题显式配置才生效；未配置 = 「＋ 新建页」直接
+  // 创建空白任务页进编辑（不再回落插件声明/首个可见入口）。
+  const defaultEntry = entryState.defaultExplicit
+    ? entryState.entries.find((e) => e.id === entryState.defaultEntryId)
+    : undefined;
 
   const pickEntry = (entry: PretaskEntry) => {
     const go = (hash: string) => app.onNavigate?.(hash);

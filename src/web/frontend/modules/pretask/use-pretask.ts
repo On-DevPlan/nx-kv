@@ -21,6 +21,7 @@ export function usePretaskEntries(
 ): {
   entries: PretaskEntry[];
   defaultEntryId: string;
+  defaultExplicit: boolean;
   warnings: string[];
   loading: boolean;
   error: string;
@@ -36,11 +37,12 @@ export function usePretaskEntries(
   const [state, setState] = useState<{
     entries: PretaskEntry[];
     defaultEntryId: string;
+    defaultExplicit: boolean;
     warnings: string[];
     loading: boolean;
     error: string;
     unsupported: boolean;
-  }>({ entries: [], defaultEntryId: '', warnings: [], loading: true, error: '', unsupported: false });
+  }>({ entries: [], defaultEntryId: '', defaultExplicit: false, warnings: [], loading: true, error: '', unsupported: false });
 
   const refetch = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: '' }));
@@ -49,6 +51,7 @@ export function usePretaskEntries(
       setState({
         entries: Array.isArray(d?.entries) ? d.entries : [],
         defaultEntryId: String(d?.defaultEntryId || ''),
+        defaultExplicit: d?.defaultExplicit === true,
         warnings: Array.isArray(d?.warnings) ? d.warnings : [],
         loading: false,
         error: '',
@@ -59,6 +62,7 @@ export function usePretaskEntries(
       setState({
         entries: [],
         defaultEntryId: '',
+        defaultExplicit: false,
         warnings: [],
         loading: false,
         error: message,

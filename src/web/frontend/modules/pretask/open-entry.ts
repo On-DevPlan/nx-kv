@@ -53,8 +53,8 @@ export function openDraftEntry(
 
 /**
  * 无页面上下文的「＋ 新建页」（如侧栏仓库行）：按该 topic 的默认入口启动。
- * 面板入口直接进插件页；草稿入口生成正文并落草稿页。没有可用入口时返回 false，
- * 调用方维持旧的「空白草稿」行为。
+ * 面板入口直接进插件页；草稿入口生成正文并落草稿页。
+ * #286 改口径：未显式配置默认入口时返回 false，调用方落空白任务页直接进编辑。
  */
 export async function startDefaultEntry(input: {
   topicKey: string;
@@ -68,11 +68,12 @@ export async function startDefaultEntry(input: {
   if (input.repoKey) q.set('repo', input.repoKey);
   const data = await api<PretaskEntriesResult>(`/api/pretask/entries?${q.toString()}`);
   const entries = Array.isArray(data?.entries) ? data.entries : [];
-  if (!entries.length) return false;
-  const entry: PretaskEntry =
-    entries.find((e) => e.id === data.defaultEntryId) ||
-    entries.find((e) => e.kind === 'draft') ||
-    entries[0]!;
+  // #286 改口径：只有显式配置的默认入口才启动（面板入口进插件页 / 草稿入口生成正文）；
+  // 未配置返回 false → 调用方落空白任务页直接进编辑，不再回落模板。
+  const entry = data.defaultExplicit
+    ? entries.find((e) => e.id === data.defaultEntryId)
+    : undefined;
+  if (!entry) return false;
   const ctx: PretaskContext = {
     topicKey: input.topicKey,
     repoKey: input.repoKey || '',

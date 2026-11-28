@@ -169,8 +169,8 @@ export default function PluginVisibilityPanel({ config }: { config?: VisibilityC
                     checked={!defaultEntryId}
                     onChange={() => setDefaultEntryId('')}
                   />
-                  <span className="plugin-vis-name">不指定（按插件默认）</span>
-                  <span className="plugin-vis-plugin">插件自己声明默认入口；没有就回落到第一个草稿入口</span>
+                  <span className="plugin-vis-name">不指定（空白任务页）</span>
+                  <span className="plugin-vis-plugin">点「＋ 新建页」直接创建空白任务页并进入编辑</span>
                 </span>
               </label>
               {rows.map((row) => (

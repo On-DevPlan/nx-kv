@@ -22,7 +22,9 @@ test('插件宿主与 task-template：入口/草稿/CRUD/可见性/开关', asyn
       ['task-template:ref'],
       '初始只有内置声明入口',
     );
-    assert.equal(entries.defaultEntryId, 'task-template:ref');
+    // #286：未显式配置 = 不指定（空白任务页），插件声明不再驱动主按钮
+    assert.equal(entries.defaultEntryId, '');
+    assert.equal(entries.defaultExplicit, false);
 
     const builtin = await host.buildDraft({ entryId: 'task-template:ref', values: {} });
     assert.ok(builtin.body.includes('## 本轮问题'), '内置 ref 生成正文');
@@ -55,19 +57,22 @@ test('插件宿主与 task-template：入口/草稿/CRUD/可见性/开关', asyn
     const defaulted = await host.setDefaultEntry('topic:abc', entryId);
     assert.equal(defaulted.defaultEntryId, entryId);
     const scoped = await host.listEntries({ topicKey: 'abc' });
-    assert.equal(scoped.defaultEntryId, 'task-template:ref', '隐藏的默认项不生效，回落可见入口');
+    assert.equal(scoped.defaultEntryId, '', '配置的默认项被隐藏时视同未配置（#286）');
+    assert.equal(scoped.defaultExplicit, false);
     await host.setVisibility('topic:abc', [{ entryId, visible: true, sortOrder: 0 }]);
     const shown = await host.listEntries({ topicKey: 'abc' });
     assert.equal(shown.defaultEntryId, entryId, '恢复可见后主题默认生效');
     assert.equal((await host.getVisibility('topic:abc')).defaultEntryId, entryId, '可见性接口回读默认项');
     const cleared = await host.setDefaultEntry('topic:abc', '');
-    assert.equal(cleared.defaultEntryId, '', '空 entryId = 跟随插件默认');
+    assert.equal(cleared.defaultEntryId, '', '空 entryId = 不指定（空白任务页，#286）');
 
     // 默认入口 + 删除回落
     const def = await host.callRpc('task-template', 'setDefault', { id: entryId });
     assert.equal(def.defaultId, entryId);
     entries = await host.listEntries({});
-    assert.equal(entries.defaultEntryId, entryId);
+    // #286：插件级声明不再驱动主按钮（未显式配置 = 空白任务页）
+    assert.equal(entries.defaultEntryId, '');
+    assert.equal(entries.defaultExplicit, false);
     const removed = await host.callRpc('task-template', 'removeTemplate', { id: entryId });
     assert.equal(removed.defaultId, 'task-template:ref', '删默认回落内置');
 

@@ -54,6 +54,8 @@ export interface EntriesQuery extends PretaskContext {
 export interface EntriesResult {
   entries: HostEntry[];
   defaultEntryId: string;
+  /** #286：defaultEntryId 是否来自本 scope 显式配置（false = 未配置 → 主按钮落空白任务页） */
+  defaultExplicit: boolean;
   warnings: string[];
 }
 
@@ -318,15 +320,18 @@ export async function listEntries(query: EntriesQuery = {}): Promise<EntriesResu
       a.id.localeCompare(b.id),
   );
   const visibleList = collected.filter((e) => e.visible);
-  // 默认入口：本 scope 显式配置 > 插件声明的 default > 首个草稿入口 > 第一个可见入口。
-  // 配置项可能被隐藏：只在可见集合里生效（配了但不撤销，重新勾选可见即恢复）。
+  // 默认入口（#286 改口径）：只有本 scope **显式配置**才算默认；未配置 = 「＋ 新建页」
+  // 直接创建空白任务页进编辑——不再回落插件声明 / 首个草稿 / 第一个可见入口
+  // （旧行为会把模板强塞给选了「不指定」的用户）。配置项可能被隐藏：隐藏时视同未配置，
+  // 重新勾选可见即恢复。
   const scopeDefault = defaultOfScope(scopeKey);
-  const preferred =
-    visibleList.find((e) => e.id === scopeDefault) ||
-    visibleList.find((e) => e.kind === 'draft' && e.default) ||
-    visibleList.find((e) => e.kind === 'draft') ||
-    visibleList[0];
-  return { entries: collected, defaultEntryId: preferred?.id || '', warnings };
+  const explicit = scopeDefault ? visibleList.find((e) => e.id === scopeDefault) : undefined;
+  return {
+    entries: collected,
+    defaultEntryId: explicit ? explicit.id : '',
+    defaultExplicit: !!explicit,
+    warnings,
+  };
 }
 
 function visibilityView(scopeKey: string): VisibilityView {

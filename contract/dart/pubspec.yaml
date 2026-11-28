@@ -1,5 +1,5 @@
 name: nx_kv_client
-description: nx-kv contract client (ca157a25c838923d) - generated, zero deps.
+description: nx-kv contract client (ad0fcdf27c92840a) - generated, zero deps.
 version: 0.71.0
 publish_to: none
 environment:

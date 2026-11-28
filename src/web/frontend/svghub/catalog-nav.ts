@@ -42,6 +42,18 @@ export const NAV_ASSETS: SvgAsset[] = [
     els: [c(12, 12, 9), p('M3 12h18'), p('M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z')],
   },
   {
+    name: 'database',
+    label: '数据库',
+    group: 'nav',
+    keys: ['database', 'db', '数据库', '存储'],
+    where: '侧栏左下「数据库」管理入口（仅调试模式可见，#285）',
+    els: [
+      p('M3 5c0-1.66 4.03-3 9-3s9 1.34 9 3-4.03 3-9 3-9-1.34-9-3z'),
+      p('M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5'),
+      p('M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3'),
+    ],
+  },
+  {
     name: 'chevron',
     label: '展开箭头',
     group: 'nav',

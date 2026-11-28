@@ -66,6 +66,8 @@ interface SidebarProps {
   onClose?: () => void;
   /** 全局动作：{resetLayout, openSettings} */
   shell?: ShellApi;
+  /** #285：调试模式（serve --debug）——左下角显示「数据库」管理入口；正常模式不出现 */
+  debugMode?: boolean;
 }
 
 /** 菜单在场态：坐标 + 项。 */
@@ -88,6 +90,7 @@ export default function Sidebar({
   onCollapse,      // 收起成窄轨（工作区面板：改 tabset weight）
   onClose,         // 完全关闭（左缘只剩半圆弧把手，点把手展开）
   shell,           // 全局动作：{resetLayout, openSettings}
+  debugMode,       // #285：调试模式（serve --debug）→ 左下角显示「数据库」入口
 }: SidebarProps) {
   const toast = useToast();
   const { dialog, node: dialogNode } = useDialog();
@@ -515,7 +518,8 @@ export default function Sidebar({
       <div className="sfoot">
         <PluginFootEntries route={route} onNavigate={onNavigate} />
         {footEntry('#/repos', 'repo', '仓库管理')}
-        {footEntry('#/data', 'grid', '数据库')}
+        {/* #285：数据库管理入口只在调试模式（serve --debug）出现 */}
+        {debugMode ? footEntry('#/data', 'database', '数据库') : null}
       </div>
 
       {menu && <PopMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}

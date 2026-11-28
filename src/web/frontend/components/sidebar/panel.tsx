@@ -189,6 +189,7 @@ export default function SidebarPanel() {
         onCollapse={collapse}
         onClose={close}
         shell={app.shell}
+        debugMode={app.boot?.debug === true}
       />
     </div>
   );

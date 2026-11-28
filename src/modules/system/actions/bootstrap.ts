@@ -28,6 +28,7 @@ const output = z.object({
   version: z.string(),
   defaultPort: z.int().describe('面板默认端口'),
   projectRoot: z.string().describe('面板进程的工作目录'),
+  debug: z.boolean().describe('调试模式（serve --debug）：面板据此显示「数据库」管理入口'),
   commands: z.array(
     z.object({
       id: z.string(),
@@ -54,6 +55,7 @@ export class BootstrapAction extends ActionBase<typeof input> {
     version: string;
     defaultPort: number;
     projectRoot: string;
+    debug: boolean;
     commands: CommandEntry[];
   }> {
     return {
@@ -64,6 +66,8 @@ export class BootstrapAction extends ActionBase<typeof input> {
       defaultPort: DEFAULT_PORT,
       // serve 进程的工作目录：仓库页「扫描」的缺省根目录用它（面板进程 cwd 即宿主项目）
       projectRoot: process.cwd(),
+      // 调试模式（serve --debug → NX_KV_DEBUG=1）：面板据此显示「数据库」管理入口（#285）
+      debug: process.env.NX_KV_DEBUG === '1',
       // 命令表由 runtime 写进 core 的快照格子（见 core/command-table.ts）。
       // 没有快照时给空数组：面板照常打开，只是没有「CLI 等价」提示。
       commands: commandTable(),

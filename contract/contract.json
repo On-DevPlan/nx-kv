@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
   "version": "0.71.0",
-  "hash": "ca157a25c838923d",
+  "hash": "ad0fcdf27c92840a",
   "actions": [
     {
       "id": "localtask.add",
@@ -1701,6 +1701,14 @@
               "k": "string"
             },
             "hint": "面板进程的工作目录"
+          },
+          {
+            "name": "debug",
+            "required": true,
+            "type": {
+              "k": "bool"
+            },
+            "hint": "调试模式（serve --debug）：面板据此显示「数据库」管理入口"
           },
           {
             "name": "commands",

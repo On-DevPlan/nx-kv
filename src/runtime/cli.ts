@@ -56,6 +56,8 @@ const BUILTINS: AnyAction[] = [
       // --allow-origin：跨域来源白名单（逗号分隔）。缺省 = 放行全部——面板要能被
       // 内网穿透 / 移动端访问（任务 #57）。收紧时只放行指定来源。
       'allow-origin': { type: 'string', hint: '跨域来源白名单（逗号分隔）；缺省放行全部' },
+      // --debug：调试模式——侧栏左下显示「数据库」管理入口（#285）；正常模式不出现。
+      debug: { type: 'boolean', hint: '调试模式：侧栏显示「数据库」管理入口' },
     },
     run: (ctx) => cmdServe(ctx as ServeCtx),
   },
@@ -88,6 +90,7 @@ interface ServeCtx extends Record<string, unknown> {
   'auto-exit'?: boolean;
   idle?: number;
   'allow-origin'?: string;
+  debug?: boolean;
 }
 
 /** @action 装饰的 zod 通道 action（channel 标记由 zodActionsOf 写入）。 */
@@ -354,6 +357,9 @@ async function cmdServe(ctx: ServeCtx): Promise<void> {
   const { openBrowser } = await import('../core/open.js');
   const { autoOpenEnabled, resolvePortConflict, describeOccupant } = await import('../core/serve-port.js');
   const host = '127.0.0.1';
+  // --debug：调试模式标志 → 进程级 env，system.bootstrap 出参透传给前端（#285）。
+  // 面板据此决定侧栏左下是否显示「数据库」管理入口；正常模式不出现。
+  if (ctx.debug) process.env.NX_KV_DEBUG = '1';
   // 跨域放行策略：缺省放行全部；--allow-origin 传具体来源则只放行它们。
   const allowOrigin = ctx['allow-origin'];
   const port = ctx.port || DEFAULT_PORT;

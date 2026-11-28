@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import { StoreProvider } from './store.jsx';
 import { ToastProvider } from './components/toast/index.jsx';
+import { UndoDeleteProvider } from './components/task-panel/undo-delete.js';
 import './style.css';
 import './modules/md/style.css'; // MD 工作台面板（page-panel / landing / progress / 模板面板共用）
 import './style-v2.css'; // 面板 v2（侧边栏 + 目录工作台）追加样式
@@ -12,9 +13,11 @@ import './style-v2.css'; // 面板 v2（侧边栏 + 目录工作台）追加样�
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <StoreProvider>
-      <ToastProvider>
+    <ToastProvider>
+      <UndoDeleteProvider>
         <App />
-      </ToastProvider>
+      </UndoDeleteProvider>
+    </ToastProvider>
     </StoreProvider>
   </StrictMode>
 );

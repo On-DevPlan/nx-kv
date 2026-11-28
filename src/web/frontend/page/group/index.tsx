@@ -30,6 +30,8 @@ import {
   saveDagPatches,
 } from '../../components/task-panel/task-ops.js';
 import type { DagPatchInput, ScopeIds, TaskOpsDeps } from '../../components/task-panel/task-ops.js';
+import { useUndoDelete } from '../../components/task-panel/undo-delete.js';
+import TrashModal from '../dir/trash-modal.js';
 import { useApp } from '../../app-context.jsx';
 import { addTask, reorderTask } from './api.js';
 import { openPanel } from '../../workspace.js';
@@ -240,12 +242,18 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     ? entryState.entries.find((e) => e.id === entryState.defaultEntryId)
     : undefined;
 
+  // #208：撤销删除弹窗 + 回收站
+  const undo = useUndoDelete();
+  const [trashOpen, setTrashOpen] = useState(false);
+
   // 动作层依赖：弹窗 / 提示 / 刷新 / 文档落点（组 scope 的 doc key = 看板 id）
   const ops: TaskOpsDeps = {
     dialog,
     toast,
     refresh: () => app.refreshLocal?.(),
     docKey: board?.id || '',
+    // #208：软删成功弹 5 秒撤销窗
+    undoDelete: (item) => undo?.(item),
   };
   // 行 → 队列定位（目录页是单主题，组页按成员 cwd）
   const scopeOfKey = (key: string) => {
@@ -466,6 +474,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
                 location: 'right',
               });
             },
+            trash: () => setTrashOpen(true),
             // #250：组没有单一仓库——点击处弹成员子菜单（每行带开/关状态），选中再开配置弹窗
             getloop: (e) => {
               const hasTarget = items.some((it) => {
@@ -507,6 +516,13 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
         }
         extra={
           <>
+            {trashOpen && (
+              <TrashModal
+                scopes={items.map((it) => ({ cwd: it.cwd || it.path })).filter((s) => !!s.cwd)}
+                onClose={() => setTrashOpen(false)}
+                onChanged={() => app.refreshLocal?.()}
+              />
+            )}
             {dagRow && (
               <DagEditor
                 task={dagRow.task}

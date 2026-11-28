@@ -221,7 +221,7 @@ export function useTaskActions({
     const title = doc.title || `#${task}`;
     const ok = await dialog({
       title: `删除任务「${title}」`,
-      message: '软删除：CLI localtask task restore 可恢复。',
+      message: '软删除：可在回收站找回（更多 → 回收站）。',
       danger: true,
       okText: '删除',
     });

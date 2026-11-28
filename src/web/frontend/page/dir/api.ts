@@ -68,3 +68,29 @@ export function getTaskPlugins(query: { topic?: string; taskId?: string }): Prom
   const s = q.toString();
   return api(`/api/plugins/gettask${s ? `?${s}` : ''}`);
 }
+
+// ── 回收站（#208）：软删任务的列表 / 恢复 / 彻底清除 ──────────────────────────
+
+/** 软删任务行（回收站列表）。 */
+export interface TrashTask {
+  id: number;
+  status: string;
+  title: string;
+  createdAt: string;
+  deletedAt: string;
+}
+
+/** 本主题的软删任务清单（GET /api/localtasks/tasks?deleted=true）。 */
+export function fetchTrashTasks(qs: string): Promise<{ tasks: TrashTask[] }> {
+  return api('/api/localtasks/tasks?' + qs);
+}
+
+/** 恢复一条软删任务（POST /api/localtasks/tasks/restore）。 */
+export function restoreTrashTask(body: Record<string, unknown>): Promise<unknown> {
+  return api('/api/localtasks/tasks/restore', { method: 'POST', body });
+}
+
+/** 彻底清除（DELETE /api/localtasks/item；purge=true，不可逆）。 */
+export function purgeTrashTask(body: Record<string, unknown>): Promise<unknown> {
+  return api('/api/localtasks/item', { method: 'DELETE', body });
+}

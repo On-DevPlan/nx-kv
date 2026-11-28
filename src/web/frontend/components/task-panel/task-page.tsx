@@ -275,7 +275,7 @@ export default function TaskPage({
             onPick: () => onFeedback(r),
           }
         : null,
-      onDeleteRow ? { label: '删除此任务（软删除，CLI 可恢复）', danger: true, onPick: () => onDeleteRow(r) } : null,
+      onDeleteRow ? { label: '删除此任务（可撤回 / 回收站可找回）', danger: true, onPick: () => onDeleteRow(r) } : null,
     ];
   };
 

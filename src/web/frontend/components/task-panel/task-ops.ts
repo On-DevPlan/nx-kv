@@ -15,6 +15,7 @@ import {
   postReopen,
   removeManyTasks,
   removeTaskItem,
+  restoreTaskItem,
   setPlanStatus,
 } from '../../api/tasks.js';
 import type { TaskScope } from '../../api/tasks.js';
@@ -33,6 +34,8 @@ export interface TaskOpsDeps {
   docKey?: string;
   /** 单条删除成功后回调（目录页借此关掉已打开的任务页） */
   onDeleted?: (t: LocalTask) => void;
+  /** #208：软删成功后弹 5 秒撤销窗（restore 闭包由页面提供）。缺省 = 只删不弹。 */
+  undoDelete?: (item: { title: string; restore: () => Promise<void> }) => void;
 }
 
 /** 一条 DAG 落盘 patch（与 DagEditor 内部 DagPatch 同形）。 */
@@ -152,19 +155,19 @@ export async function runFeedbackTask(deps: TaskOpsDeps, scope: TaskScope, t: Lo
   });
 }
 
-/** 单条删除（软删除，CLI 可恢复）。 */
+/** 单条删除（软删除）：#208 去二次确认，直接删 + 弹 5 秒撤销窗（回收站也可找回）。 */
 export async function runDeleteTask(deps: TaskOpsDeps, scope: TaskScope, t: LocalTask): Promise<void> {
-  const { dialog, toast } = deps;
-  const ok = await dialog({
-    title: `删除任务「${taskTitle(t)}」`,
-    message: '软删除：CLI localtask task restore 可恢复。',
-    danger: true,
-    okText: '删除',
-  });
-  if (!ok) return;
+  const { toast } = deps;
   await guard(deps, async () => {
     await removeTaskItem({ ...scope, id: t.id });
-    toast(`已删除「${taskTitle(t)}」`);
+    deps.undoDelete?.({
+      title: `${taskTitle(t)}`,
+      restore: async () => {
+        await restoreTaskItem({ ...scope, id: t.id });
+        toast(`已撤回「${taskTitle(t)}」`);
+        deps.refresh?.();
+      },
+    });
     deps.onDeleted?.(t);
     deps.refresh?.();
     return true;
@@ -180,7 +183,7 @@ export async function runBatchDelete(deps: TaskOpsDeps, groups: ScopeIds[]): Pro
   if (!total) return false;
   const ok = await deps.dialog({
     title: `删除选中的 ${total} 条任务`,
-    message: '软删除：CLI localtask task restore 可恢复。',
+    message: '软删除：可在回收站找回（更多 → 回收站）。',
     danger: true,
     okText: '删除',
   });

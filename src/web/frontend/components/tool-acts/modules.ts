@@ -40,6 +40,8 @@ export const DIR_MODULES: ToolModule[] = [
   { id: 'refs', label: '查看列表', icon: 'list', section: 'more' },
   // #165：持续 get（waitgoal）配置收进 topic 主页「更多」——按主题粒度控制，不再放仓库管理页
   { id: 'getloop', label: '持续 get', icon: 'refresh', section: 'more' },
+  // #208：回收站——软删任务可恢复/彻底清除（编辑页删除已去二次确认，撤回走 5 秒弹窗）
+  { id: 'trash', label: '回收站', icon: 'trash', section: 'more' },
 ];
 
 export const GROUP_MODULES: ToolModule[] = [
@@ -55,6 +57,8 @@ export const GROUP_MODULES: ToolModule[] = [
   // #250：与 dir 页对齐——持续 get 进组页「更多」。组横跨多个成员仓库，
   // 落地形态是「先选成员项目、再开同一颗 GetLoopModal」（getLoop 是仓库级配置）。
   { id: 'getloop', label: '持续 get', icon: 'refresh', section: 'more' },
+  // #208：回收站（与 dir 页对齐——组页删除的软删任务同样要能找回）
+  { id: 'trash', label: '回收站', icon: 'trash', section: 'more' },
 ];
 
 // MD 任务编辑器工具区（#143）：默认头栏只留 新任务 / 提交 / 更多；
@@ -75,6 +79,8 @@ export const TASK_MODULES: ToolModule[] = [
   // 用户在任务详情页就能把这条任务转成草稿态 / 转回待领取，不用回目录页。
   { id: 'plan', label: '转为草稿', icon: 'pin', section: 'more', menuGroup: 'task' },
   { id: 'complete', label: '标为完成', icon: 'check', section: 'more', menuGroup: 'task' },
+  // #208：回收站——软删任务可恢复/彻底清除（编辑页删除已去二次确认，撤回走 5 秒弹窗）
+  { id: 'trash', label: '回收站', icon: 'trash', section: 'more', menuGroup: 'task' },
   { id: 'cancel-task', label: '取消任务', icon: 'ban', section: 'more', menuGroup: 'task', danger: true },
   { id: 'mark', label: '评论', icon: 'comment', section: 'more', menuGroup: 'task' },
   { id: 'delete', label: '删除', icon: 'trash', section: 'more', menuGroup: 'task', danger: true },

@@ -257,7 +257,7 @@ export default function ProgressPanel({
     const shown = names.length <= 6 ? names.join('\n') : `${names.slice(0, 6).join('\n')}… 共 ${names.length} 条`;
     const ok = await dialog({
       title: `删除选中的 ${pickedCards.length} 条任务`,
-      message: `${shown}\n\n软删除：CLI localtask task restore 可恢复。`,
+      message: `${shown}\n\n软删除：可在回收站找回（任务页更多 → 回收站）。`,
       danger: true,
       okText: '删除',
     });

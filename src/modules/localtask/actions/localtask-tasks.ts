@@ -24,6 +24,7 @@ const input = z.object({
   status: z.string().optional().describe('只看某个状态：pending / claimed / done / cancelled'),
   q: z.string().optional().describe('关键字过滤：命中标题或正文的任务（大小写不敏感）'),
   limit: z.int().optional().describe('只返回最新的 N 条（按 createdAt 倒序；冲突/重复看最新一条即可）'),
+  deleted: z.boolean().optional().describe('true = 回收站视角：只看软删除的任务（deletedAt 非空）；缺省只看活的'),
 });
 
 /**
@@ -84,7 +85,10 @@ export class LocaltaskTasksAction extends ActionBase<typeof input> {
       const { badInput } = await (import('../../../core/errors.js') as any);
       throw badInput(`主题不存在: ${key}`);
     }
-    const all = (topic.tasks ?? []).filter((t: any) => !t.deletedAt && !t.archivedAt);
+    // #208：回收站视角（deleted=true）只看软删任务；缺省只看活的
+    const all = ctx.deleted
+      ? (topic.tasks ?? []).filter((t: any) => !!t.deletedAt)
+      : (topic.tasks ?? []).filter((t: any) => !t.deletedAt && !t.archivedAt);
     const filtered = ctx.status ? all.filter((t: any) => t.status === ctx.status) : all;
     // #173：关键字过滤（标题 + 正文，大小写不敏感）——原始意图检索的入口
     const q = String(ctx.q ?? '').trim().toLowerCase();

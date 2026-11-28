@@ -1147,6 +1147,7 @@ export function createApiClient(transport: Transport): ApiClient {
       if (inp["status"] !== undefined) q.set("status", String(inp["status"]));
       if (inp["q"] !== undefined) q.set("q", String(inp["q"]));
       if (inp["limit"] !== undefined) q.set("limit", String(inp["limit"]));
+      if (inp["deleted"] !== undefined) q.set("deleted", String(inp["deleted"]));
       const query = q.toString();
       if (query) path += path.includes('?') ? '&' + query : '?' + query;
       return (await transport.request("GET", path)) as Awaited<ReturnType<InstanceType<typeof LocaltaskTasksAction>['run']>>;

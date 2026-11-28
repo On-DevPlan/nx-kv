@@ -11,12 +11,12 @@ import {
 } from '../../src/web/frontend/components/tool-acts/modules.js';
 import { moveModule, nudgeModule, setFlag } from '../../src/web/frontend/components/tool-acts/dnd.js';
 
-test('dir default: bar has new/import/progress/orch/plan/more; refs + getloop in more (#126 草稿 + #161 tpl 并入新建钮箭头 + #165 getloop 收进更多)', () => {
+test('dir default: bar has new/import/progress/orch/plan/more; refs/getloop/trash in more (#126 草稿 + #161 tpl 并入新建钮箭头 + #165 getloop 收进更多 + #208 回收站)', () => {
   const layout = defaultLayout('dir');
   const bar = layout.filter((x) => onBarOf('dir', x)).map((x) => x.id);
   const more = layout.filter((x) => inMoreOf('dir', x)).map((x) => x.id);
   assert.deepEqual(bar, ['new', 'import', 'progress', 'orch', 'plan', 'more']);
-  assert.deepEqual(more, ['refs', 'getloop']);
+  assert.deepEqual(more, ['refs', 'getloop', 'trash']);
   // 旧布局里存过的 tpl id 会被 normalizeLayout 丢掉（未知模块）
   const norm = normalizeLayout('dir', [...layout, { id: 'tpl', visible: true }]);
   assert.ok(!norm.some((x) => x.id === 'tpl'));
@@ -31,10 +31,11 @@ test('group default: bar has new/import/progress/addMember/orch/plan/more; refs 
   assert.deepEqual(bar, ['new', 'import', 'progress', 'addMember', 'orch', 'plan', 'more']);
   // #180：两页都去掉了「已删除任务」入口；#250：getloop 进更多（与 dir 页对齐，
   // 组粒度先选成员项目再开配置弹窗）
-  assert.deepEqual(more, ['refs', 'getloop']);
-  // 老布局里没有 getloop → normalizeLayout 自动补上（否则老用户看不到入口）
+  assert.deepEqual(more, ['refs', 'getloop', 'trash']);
+  // 老布局里没有 getloop → normalizeLayout 自动补上（否则老用户看不到入口）。
+  // #208：补回项排在**尾部**（输入里已有的 trash 不会被重排）→ 序是 refs,trash,getloop。
   const norm = normalizeLayout('group', layout.filter((x) => x.id !== 'getloop'));
-  assert.deepEqual(norm.filter((x) => inMoreOf('group', x)).map((x) => x.id), ['refs', 'getloop']);
+  assert.deepEqual(norm.filter((x) => inMoreOf('group', x)).map((x) => x.id), ['refs', 'trash', 'getloop']);
 });
 
 test('task default: bar has new/submit/more; secondary actions in more', () => {

@@ -32,6 +32,8 @@ import {
   saveDagPatches,
 } from '../../components/task-panel/task-ops.js';
 import type { DagPatchInput, TaskOpsDeps } from '../../components/task-panel/task-ops.js';
+import { useUndoDelete } from '../../components/task-panel/undo-delete.js';
+import TrashModal from './trash-modal.js';
 import { sortTasksForDisplay } from './task-utils.js';
 import type { LocalTask, RepoRow } from '../../types.js';
 
@@ -113,6 +115,10 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     ? Number(repo.getLoop.waitMinutes)
     : null;
 
+  // #208：撤销删除弹窗（restore 闭包在 task-ops 内自带删除时的 scope）
+  const undo = useUndoDelete();
+  const [trashOpen, setTrashOpen] = useState(false);
+
   // 动作层的依赖：弹窗 / 提示 / 刷新 / 文档落点都来自本页
   const ops: TaskOpsDeps = {
     dialog,
@@ -127,6 +133,8 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
       const page = findOpenPanel(model, 'page', { dirKey, task: String(t.id) }) as { getId: () => string } | null;
       if (page && app.closePanel) app.closePanel(page.getId());
     },
+    // #208：软删成功弹 5 秒撤销窗（撤回调恢复 API）
+    undoDelete: (item) => undo?.(item),
   };
 
   const openTask = (id: number | string) => {
@@ -320,11 +328,16 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
             orch: () => model && openPanel(model, { component: 'dag', name: '编排', config: { dirKey } }),
             refs: openRefs,
             getloop: () => setGlOpen(true),
+            trash: () => setTrashOpen(true),
           },
         }}
         actionExtra={glOpen && repo ? <GetLoopModal repo={repo} onClose={() => setGlOpen(false)} onSaved={() => app.refreshRepos?.()} /> : null}
+
         extra={
           <>
+            {trashOpen && (
+              <TrashModal scopes={[scopeBody()]} onClose={() => setTrashOpen(false)} onChanged={() => refreshLocal?.()} />
+            )}
             {dagTask && (
               <DagEditor
                 task={dagTask}

@@ -106,6 +106,7 @@ export function relocateTask(fromTopic: any, seq: number | string, moveTo: any):
     roundSummary: src.task.roundSummary || '',
     moveFrom: { key: fromTopic.key, seq: oldSeq, at: stampNow() },
     blocksFollowing: !!src.task.blocksFollowing,
+    fixedDraft: !!src.task.fixedDraft,
     blockBy: (src.task.blockBy || []).filter((d: unknown) => String(d).includes(':')).map(String),
     // #197：moveTo 带组就用新组（改组），否则组归属跟着任务走（只换仓库队列）
     groupTopicId: moveTo?.groupKey
@@ -250,6 +251,8 @@ export function normalizeTask(t: TaskInput, siblings?: any[] | null, readyOpts: 
           : null,
     archivedAt: String(t.archivedAt ?? ''),
     archivedReason: String(t.archivedReason ?? ''),
+    // 固定草稿态：plan 任务保存后保持草稿（不自动转 pending）
+    fixedDraft: !!t.fixedDraft,
     reopenCount: Number(t.reopenCount) || 0,
     // 派生子任务数（#144）：>0 = 已有后续轮次/评论派生——反馈入口只在链尖显示
     childCount: Number(t.childCount) || 0,

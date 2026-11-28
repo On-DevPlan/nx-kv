@@ -79,7 +79,7 @@ export function useDerivedCtx({ doc, beside, topicKey, topic, task, app }: UseDe
     if (beside) return null; // 旁路原文自己不再开旁路
     const pid = String(docFm.parent || '').trim();
     const pdir = String(docFm.parentDir || topicKey || '').trim();
-    if (pid && !/^draft/i.test(pid)) {
+    if (pid) {
       return { dirKey: pdir || topicKey, task: pid, name: `#${pid}` };
     }
     const body = String(doc?.body || '');

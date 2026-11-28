@@ -26,10 +26,14 @@ export interface PluginClientApi {
   };
   draft(entryId: string, values: Record<string, string>): Promise<PretaskDraft>;
   /**
-   * 宿主写草稿并打开 task 编辑页。
+   * 创建真实任务并打开编辑页（不再有内存草稿）。
+   * status 默认 'pending'（中间页/面板完成即进队列）；传 'plan' 保留草稿态。
    * opts.project / opts.board：组场景下插件自选仓库时覆盖落点归属（缺省用 ctx）。
    */
-  createDraft(draft: PretaskDraft, opts?: { submit?: boolean; project?: string; board?: string }): void;
+  createDraft(
+    draft: PretaskDraft,
+    opts?: { submit?: boolean; project?: string; board?: string; status?: 'pending' | 'plan' },
+  ): Promise<{ id: number; key?: string } | null>;
   navigate(hash: string): void;
   closePage(): void;
   toast(msg: string): void;

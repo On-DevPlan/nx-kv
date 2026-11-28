@@ -48,13 +48,13 @@ test('saveDoc 产生新快照引用（useSyncExternalStore 靠它触发重渲染
 });
 
 test('promoteDoc 换身份：旧 id 消失、新 id 拿到内容', () => {
-  const from = docIdOf('k4', 'draft-1');
+  const from = docIdOf('k4', '7');
   const to = docIdOf('k4', '42');
-  getDoc(from, { title: '草稿', body: '内容' });
-  promoteDoc(from, to, { title: '转正' });
+  getDoc(from, { title: '换号前', body: '内容' });
+  promoteDoc(from, to, { title: '换号后' });
   const m = docsSnapshot();
   assert.equal(m[from], undefined);
-  assert.equal(m[to].title, '转正');
+  assert.equal(m[to].title, '换号后');
   assert.equal(m[to].body, '内容');
 });
 

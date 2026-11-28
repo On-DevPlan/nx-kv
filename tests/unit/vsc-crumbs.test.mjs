@@ -58,10 +58,10 @@ test('vscTrailOf dir：三段 = ns / 组 / #任务，最后一段加重由组件
   assert.equal(t.isGroup, false);
 });
 
-test('vscTrailOf：draft 显示 draft 且没有任务号', () => {
-  const t = vscTrailOf({ view: 'dir', key: 't_kv', task: 'draft-1' }, ROWS, REPO_DATA, PREFS);
+test('vscTrailOf：目录页（无 ?task）只有两段、没有任务号', () => {
+  const t = vscTrailOf({ view: 'dir', key: 't_kv' }, ROWS, REPO_DATA, PREFS);
   assert.ok(t);
-  assert.equal(t.segments[2].label, 'draft');
+  assert.equal(t.segments.length, 2);
   assert.equal(t.taskId, '');
 });
 
@@ -139,14 +139,12 @@ test('没有队列可锚定（key 不存在）→ null，页面退回旧提示',
   assert.equal(vscTrailOf({ view: 'repos' }, ROWS, REPO_DATA, PREFS), null);
 });
 
-test('copyPayloadOf：raw =「cwd #id」；prompt = CLI 指令加引导；draft 两种都退回原始路径', () => {
+test('copyPayloadOf：raw =「cwd #id」；prompt = CLI 指令加引导', () => {
   const t = vscTrailOf({ view: 'dir', key: 't_kv', task: '30' }, ROWS, REPO_DATA, PREFS);
   assert.equal(copyPayloadOf(t, 'raw'), 'D:\\dev\\nx-kv #30');
   const prompt = copyPayloadOf(t, 'prompt');
   assert.match(prompt, /localtask show --id 30 --cwd "D:\\dev\\nx-kv" --json/);
   assert.match(prompt, /localtask get --cwd "D:\\dev\\nx-kv" --json/);
-  const d = vscTrailOf({ view: 'dir', key: 't_kv', task: 'draft-1' }, ROWS, REPO_DATA, PREFS);
-  assert.equal(copyPayloadOf(d, 'prompt'), 'D:\\dev\\nx-kv (draft)');
 });
 
 test('#261 任务段下拉条目带 taskId；taskCopyPayload 按任意任务生成载荷', () => {
@@ -155,5 +153,5 @@ test('#261 任务段下拉条目带 taskId；taskCopyPayload 按任意任务生�
   assert.ok(sib, 'claimed 任务条目应带 taskId');
   assert.equal(taskCopyPayload('D:\\dev\\nx-kv', 'nx-kv', '31', 'raw'), 'D:\\dev\\nx-kv #31');
   assert.match(taskCopyPayload('D:\\dev\\nx-kv', 'nx-kv', '31', 'prompt'), /show --id 31/);
-  assert.equal(taskCopyPayload('D:\\dev\\nx-kv', 'nx-kv', '', 'prompt'), 'D:\\dev\\nx-kv (draft)');
+  assert.equal(taskCopyPayload('D:\\dev\\nx-kv', 'nx-kv', '', 'prompt'), 'D:\\dev\\nx-kv');
 });

@@ -11,6 +11,7 @@ const service: any = serviceNs;
 const input = z.object({
   id: z.number().describe('任务编号'),
   to: z.enum(['plan', 'pending']).optional().describe('plan=转成草稿（不进队列）；pending=转回正常待领取；缺省 plan'),
+  fixed: z.boolean().optional().describe('固定草稿态：true=转 plan 且保存后保持草稿；false=只取消固定（状态不变）'),
   cwd: z.string().optional(),
   key: z.string().optional(),
 });
@@ -24,13 +25,17 @@ export class LocaltaskPlanAction extends ActionBase<typeof input> {
     input,
     render: (d: any) =>
       d.changed
-        ? `已把 #${d.id} @ ${d.name} 从 ${d.from} 切成 ${d.to}${d.to === 'plan' ? '（草稿，不进队列）' : '（回到待领取）'}`
-        : `#${d.id} 已经是 ${d.to}，无需改动`,
+        ? `已把 #${d.id} @ ${d.name} 从 ${d.from} 切成 ${d.to}${d.to === 'plan' ? '（草稿，不进队列）' : '（回到待领取）'}` +
+          (d.fixedDraft ? ' · 固定草稿态开' : '')
+        : d.fixedChanged
+          ? `#${d.id} 固定草稿态已${d.fixedDraft ? '开启' : '关闭'}（当前 ${d.to}）`
+          : `#${d.id} 已经是 ${d.to}，无需改动`,
   })
   override async run(ctx: ActionInput<this['_input']>) {
     return service.setPlanStatus({
       id: ctx.id,
-      to: ctx.to || 'plan',
+      to: ctx.to,
+      fixed: ctx.fixed,
       cwd: ctx.cwd,
       key: ctx.key,
     });

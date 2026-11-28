@@ -2,8 +2,7 @@
 import type { PretaskContext } from '@nx-kv/plugin-sdk';
 import type { Model } from 'flexlayout-react';
 import { api } from '../../api/client.js';
-import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../md/doc-store.js';
-import { titleFromMd } from '../md/md-parse.js';
+import { createTaskAndOpen } from '../task/create.js';
 import { openPanel } from '../../workspace.js';
 import { putPluginPageSession } from '../../plugin-host/session.js';
 import { pretaskDraft } from './use-pretask.js';
@@ -63,6 +62,7 @@ export async function startDefaultEntry(input: {
   cwd?: string;
   name?: string;
   navigate: (hash: string) => void;
+  refreshLocal?: () => Promise<void>;
 }): Promise<boolean> {
   const q = new URLSearchParams({ topic: input.topicKey });
   if (input.repoKey) q.set('repo', input.repoKey);
@@ -99,12 +99,16 @@ export async function startDefaultEntry(input: {
     repo: input.repoKey || '',
   });
   const body = String(draft?.body || '');
-  const id = nextDraftId();
-  saveDoc(docIdOf(scopeOf(input.topicKey), id), {
-    title: String(draft?.title || '') || titleFromMd(body, ''),
-    body,
-  });
-  input.navigate(`#/dir/${encodeURIComponent(input.topicKey)}?task=${encodeURIComponent(id)}`);
+  await createTaskAndOpen(
+    { onNavigate: input.navigate, refreshLocal: input.refreshLocal },
+    {
+      text: body,
+      title: String(draft?.title || ''),
+      status: 'plan',
+      dirKey: input.topicKey,
+      cwd: input.cwd || '',
+    },
+  );
   return true;
 }
 

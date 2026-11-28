@@ -54,6 +54,8 @@ const input = z.object({
   forkOf: z.string().optional().describe("同 --fork-of（驼峰 / HTTP body）"),
   'fork-kind': z.string().optional().describe("派生种类：comment（评论/随手派生，默认）或 reopen（验收反馈重开）"),
   forkKind: z.string().optional().describe("同 --fork-kind（驼峰写法）"),
+  status: z.enum(['pending', 'plan']).optional().describe("创建状态：pending=正常入队（默认）；plan=草稿态，不进队列"),
+  draft: z.boolean().optional().describe("等价于 --status plan（草稿态；允许空正文）"),
 });
 
 export class LocaltaskAddAction extends ActionBase<typeof input> {
@@ -73,7 +75,8 @@ export class LocaltaskAddAction extends ActionBase<typeof input> {
         // 在 Windows 的 PowerShell / cmd 下极易踩转义坑，而「把上下文 + 工程知识 +
         // 关键路径写成一条自包含任务」正是本命令的主用途。
         const body = await readTaskBody(ctx, meta);
-        if (!body.trim()) throw badInput('任务正文为空：给 "<正文>" 或 --file <文件>');
+        const status = ctx.status || (ctx.draft ? 'plan' : 'pending');
+        if (status !== 'plan' && !body.trim()) throw badInput('任务正文为空：给 "<正文>" 或 --file <文件>');
 
         // 派任务编排已迁 localtask/add.ts（派任务编排归 localtask 域；命令名不变）。
         // 落点判定（--board/--project 严格口径）只此一份实现，
@@ -97,6 +100,7 @@ export class LocaltaskAddAction extends ActionBase<typeof input> {
           blocksFollowing: !!ctx.gate,
           forkOf: ctx.forkOf ?? ctx['fork-of'],
           forkKind: ctx.forkKind ?? ctx['fork-kind'],
+          status,
         });
         // 出参契约（addView）只回编号：把 task.id 提到顶层（纯附加，原有键不变）
         if (r && r.task && r.task.id != null) r.id = r.task.id;

@@ -35,7 +35,7 @@ import { addTask, reorderTask } from './api.js';
 import { openPanel } from '../../workspace.js';
 import GetLoopMembersMenu from '../../components/repos/get-loop-members.js';
 import GetLoopModal from '../../components/repos/get-loop-modal.js';
-import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
+import { createTaskAndOpen } from '../../modules/task/create.js';
 import { sortTasksForDisplay } from '../../modules/board/board-view.js';
 import { usePretaskEntries } from '../../modules/pretask/use-pretask.js';
 import { entryMenuItems } from '../../modules/pretask/menu.js';
@@ -264,18 +264,20 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     return [...byCwd.entries()].map(([cwd, ids]) => ({ scope: { cwd }, ids }));
   };
 
-  const createDraft = (body: string) => {
-    if (!board || !sel) return;
-    const id = nextDraftId();
-    // 草稿 doc 种在**组 scope**：从 #/group/<id>?task=draft-N 打开寻得回同一份（#86）
-    const docId = docIdOf(scopeOf(board.id), id);
-    saveDoc(docId, {
-      title: '',
-      body,
-      boardKey: board.id,
-      projectKey: sel.key,
-    });
-    app.openPage?.({ groupId: board.id, task: id, name: '新任务' });
+  const createPlanTask = (body: string, title = '') => {
+    if (!board || !sel) return Promise.resolve(null);
+    return createTaskAndOpen(
+      { openPage: app.openPage, onNavigate: app.onNavigate, refreshLocal: app.refreshLocal },
+      {
+        text: body,
+        title,
+        status: 'plan',
+        groupId: board.id,
+        board: board.id,
+        project: sel.key,
+        cwd: sel.cwd,
+      },
+    );
   };
 
   // 组里建任务：优先走默认插件入口；有 form 进插件页面，panel 进插件页面，否则生成草稿。
@@ -284,7 +286,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     if (!sel) return toast('这个组还没有成员——先「添加成员」，再建任务');
     const chosen = entry || defaultEntry;
     if (!chosen) {
-      createDraft('');
+      void createPlanTask('').catch((e) => toast(String((e as Error).message || e)));
       return;
     }
     const go = (hash: string) => app.onNavigate?.(hash);
@@ -295,7 +297,7 @@ export default function GroupView({ dirKey, rows, repoData, model }: {
     if (openDraftEntry(chosen, entryCtx, go)) return;
     void (async () => {
       try {
-        createDraft(await draftBodyOf(chosen, entryCtx));
+        await createPlanTask(await draftBodyOf(chosen, entryCtx));
       } catch (e) {
         toast(String((e as Error).message || e));
       }

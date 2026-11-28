@@ -20,6 +20,8 @@ export interface UpdateTaskParams {
   key?: string;
   id?: string | number;
   text?: unknown;
+  promotePlan?: boolean;
+  fixedDraft?: boolean;
   [k: string]: any;
 }
 
@@ -61,11 +63,23 @@ async function resolveAttributionChange({ text, project, board }: UpdateTaskPara
 
 /** 改任务（CLI `localtask update` / HTTP PATCH /api/localtasks/item 同走这里）。 */
 export async function updateTask(params: UpdateTaskParams): Promise<Record<string, any>> {
+  if (params.promotePlan && params.fixedDraft === true) {
+    throw badInput('固定草稿态（fixedDraft=true）与 promotePlan 不能同时给');
+  }
   const plan = await resolveAttributionChange(params);
-  if (!plan) return service.updateTask(params as Record<string, any>); // service 层参数尚未类型化
-  const patch: Record<string, any> = { ...params, moveTo: plan.moveTo };
-  if (plan.text) patch.text = plan.text; // 只改归属、不动正文时别把正文清空
-  return service.updateTask(patch);
+  const patch: Record<string, any> = plan ? { ...params, moveTo: plan.moveTo } : { ...params };
+  if (plan && plan.text) patch.text = plan.text; // 只改归属、不动正文时别把正文清空
+  const result = await service.updateTask(patch);
+  // 搬家后 promote 必须作用在**新任务**上（result.key / result.task.id 已是新队列的下标）。
+  if (params.promotePlan && result?.task && result.task.status === 'plan') {
+    const promoted = await service.setPlanStatus({
+      key: result.key,
+      id: result.task.id,
+      to: 'pending',
+    });
+    return { ...result, promoted: true, task: promoted.task || result.task };
+  }
+  return { ...result, promoted: false };
 }
 
 /** 重开任务（用户的修改反馈；--text 可能带着改过的归属，同样搬家）。 */

@@ -14,9 +14,8 @@ interface StatusBarProps {
   canShowGoalLog: boolean;
   goalLog: GoalLogState;
   openGoalLog: () => void;
-  isDraft: boolean;
   taskRow: LocalTask | null;
-  /** 任务键（库存任务号或草稿键），用于取插件 gettask 区块 tab。 */
+  /** 任务号（真实实体），用于取插件 gettask 区块 tab。 */
   task: string;
   topicKey: string;
 }
@@ -24,7 +23,7 @@ interface StatusBarProps {
 export function StatusBar({
   dockOpen, dockTab, showDockTab, setDockOpen,
   canShowGoalLog, goalLog, openGoalLog,
-  isDraft, taskRow, task, topicKey,
+  taskRow, task, topicKey,
 }: StatusBarProps) {
   // 与 DockPanel 同源：插件注册的 gettask 区块也进底部常驻状态栏。
   const pluginTabs = useGetTaskPlugins({ enabled: !!String(task || ''), taskId: String(task || ''), topicKey });
@@ -74,7 +73,7 @@ export function StatusBar({
         </button>
       ))}
       <span className="mdw-sbar-grow" />
-      {!isDraft && taskRow ? (
+      {taskRow ? (
         <span className="mdw-sbar-stat" title="任务状态">
           {/* #121 统一组件：蓝=进行中、绿=已完成、浅灰=待领取、灰虚线=收口 */}
           <StatusTag t={taskRow} title={undefined} />

@@ -39,6 +39,8 @@ export interface SubmitTaskOptions {
   blocksFollowing?: boolean;
   forkOf?: unknown;
   forkKind?: unknown;
+  /** 创建状态：pending（默认，正常入队）或 plan（草稿，不进队列）。 */
+  status?: unknown;
 }
 
 /**
@@ -68,6 +70,7 @@ export async function submitTask({
   blocksFollowing = false,
   forkOf,
   forkKind,
+  status,
 }: SubmitTaskOptions = {}): Promise<Record<string, any>> {
   const text = String(rawText ?? '');
   let cwd: unknown = rawCwd;
@@ -110,5 +113,6 @@ export async function submitTask({
     groupKey,
     groupName,
     repoKey,
+    status,
   } as Record<string, any>);
 }

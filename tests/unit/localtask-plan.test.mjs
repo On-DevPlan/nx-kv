@@ -131,3 +131,80 @@ test('#126 plan 不进队列：get 领不到，pending 转回后又能领', asyn
     s.reset();
   }
 });
+
+test('#126+ 新建即实体：status=plan 允许空正文、fixedDraft 默认关、领不到', async () => {
+  const s = await createTestStore();
+  const oldDb = process.env.NX_KV_DB;
+  const oldHome = process.env.NX_KV_HOME;
+  process.env.NX_KV_DB = s.dbPath;
+  process.env.NX_KV_HOME = s.appDir;
+  try {
+    const svc = await import('../../src/modules/localtask/service.js');
+    const { getTask } = await import('../../src/modules/claim/get.js');
+    const cwd = s.dir;
+
+    const added = await svc.addTask({ cwd, text: '', status: 'plan' });
+    assert.equal(added.task.status, 'plan', '原生创建 plan，不经过 pending');
+    assert.equal(added.task.fixedDraft, false, 'fixedDraft 默认关');
+    assert.equal(added.task.text, '', 'plan 允许空正文');
+
+    const view = await svc.getTask({ cwd, id: added.task.id });
+    assert.equal(view.status, 'plan');
+    assert.equal(view.fixedDraft, false, '列表 / 编辑页能读到 fixedDraft');
+    assert.equal((await getTask({ cwd, open: false, instant: true })).status, 'timeout', 'plan 不进领取队列');
+
+    await assert.rejects(() => svc.addTask({ cwd, text: 'x', status: 'done' }), /pending 或 plan/);
+    await assert.rejects(
+      () => svc.addTask({ cwd, text: 'x', status: 'plan', blockBy: '1' }),
+      /草稿态/,
+      'plan 不能带 blockBy / 闸门',
+    );
+  } finally {
+    if (oldDb === undefined) delete process.env.NX_KV_DB; else process.env.NX_KV_DB = oldDb;
+    if (oldHome === undefined) delete process.env.NX_KV_HOME; else process.env.NX_KV_HOME = oldHome;
+    s.reset();
+  }
+});
+
+test('#126+ 固定草稿开关：fixed:true 转 plan；fixed:false 只清固定；promotePlan 保存转待领取', async () => {
+  const s = await createTestStore();
+  const oldDb = process.env.NX_KV_DB;
+  const oldHome = process.env.NX_KV_HOME;
+  process.env.NX_KV_DB = s.dbPath;
+  process.env.NX_KV_HOME = s.appDir;
+  try {
+    const svc = await import('../../src/modules/localtask/service.js');
+    const { updateTask: editTask } = await import('../../src/modules/localtask/lifecycle/update.js');
+    const cwd = s.dir;
+
+    const a = await svc.addTask({ cwd, text: '# 保存测试' });
+    assert.equal(a.task.status, 'pending');
+    assert.equal(a.task.fixedDraft, false);
+
+    const fixed = await svc.setPlanStatus({ cwd, id: a.task.id, fixed: true });
+    assert.equal(fixed.to, 'plan', '固定开隐含转 plan');
+    assert.equal(fixed.fixedDraft, true);
+    assert.equal(fixed.changed, true);
+
+    const unfix = await svc.setPlanStatus({ cwd, id: a.task.id, fixed: false });
+    assert.equal(unfix.to, 'plan', '只关固定，状态不变');
+    assert.equal(unfix.fixedDraft, false);
+    assert.equal(unfix.fixedChanged, true);
+    assert.equal((await svc.getTask({ cwd, id: a.task.id })).status, 'plan');
+
+    const saved = await editTask({ cwd, id: a.task.id, text: '# 保存后', promotePlan: true });
+    assert.equal(saved.promoted, true);
+    assert.equal(saved.task.status, 'pending', '保存默认转待领取');
+    assert.equal(saved.task.fixedDraft, false);
+
+    await assert.rejects(
+      () => editTask({ cwd, id: a.task.id, promotePlan: true, fixedDraft: true }),
+      /不能同时给/,
+      '固定草稿与 promotePlan 互斥',
+    );
+  } finally {
+    if (oldDb === undefined) delete process.env.NX_KV_DB; else process.env.NX_KV_DB = oldDb;
+    if (oldHome === undefined) delete process.env.NX_KV_HOME; else process.env.NX_KV_HOME = oldHome;
+    s.reset();
+  }
+});

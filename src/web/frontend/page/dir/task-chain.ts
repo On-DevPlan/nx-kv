@@ -7,7 +7,6 @@ import type { LocalTask, LocalTopic } from '../../types.js';
 import type { AppSlice, ChainApi, ChainApiItem, ChainNode, ChainTreeNode, HistorySnapshot } from './task-utils.js';
 
 interface UseChainArgs {
-  isDraft: boolean;
   task: string;
   taskRow: LocalTask | null;
   topicKey: string;
@@ -21,12 +20,12 @@ interface UseChainArgs {
 }
 
 export function useChain({
-  isDraft, task, taskRow, topicKey, topic, groupAnchored, groupId,
+  task, taskRow, topicKey, topic, groupAnchored, groupId,
   app, model, historyId, toast,
 }: UseChainArgs) {
   const [chainApi, setChainApi] = useState<ChainApi | null>(null);
   useEffect(() => {
-    if (isDraft || task == null || /^draft/i.test(String(task))) {
+    if (task == null) {
       setChainApi(null);
       return undefined;
     }
@@ -42,13 +41,13 @@ export function useChain({
     return () => {
       cancelled = true;
     };
-  }, [isDraft, task, topic?.cwd, taskRow?.history?.length, taskRow?.forkOf, taskRow?.reopenCount]);
+  }, [task, topic?.cwd, taskRow?.history?.length, taskRow?.forkOf, taskRow?.reopenCount]);
 
   // #172：单向树（后端 taskChain.tree）——面板树视图的结构真相
-  const chainTree = useMemo<ChainTreeNode | null>(() => (isDraft || !chainApi ? null : (chainApi.tree as ChainTreeNode) || null), [isDraft, chainApi]);
+  const chainTree = useMemo<ChainTreeNode | null>(() => (!chainApi ? null : (chainApi.tree as ChainTreeNode) || null), [chainApi]);
 
   const chainNodes = useMemo<ChainNode[]>(() => {
-    if (isDraft || !taskRow) return [];
+    if (!taskRow) return [];
     const tip =
       String(taskRow.text || '')
         .split('\n')
@@ -121,7 +120,7 @@ export function useChain({
       });
     }
     return nodes;
-  }, [isDraft, taskRow, chainApi, task, topicKey]);
+  }, [taskRow, chainApi, task, topicKey]);
 
   const historyNode = useMemo<HistorySnapshot | null>(() => {
     if (historyId == null || !taskRow) return null;
@@ -150,7 +149,7 @@ export function useChain({
   const openHistoryBeside = useCallback(
     (node: ChainNode) => {
       const m = model || app.model;
-      if (!m || isDraft) return;
+      if (!m) return;
       if (node?.current) {
         toast('当前节点就是本页');
         return;
@@ -179,7 +178,7 @@ export function useChain({
       }
       toast('这个节点没有可打开的内容');
     },
-    [model, app.model, isDraft, topicKey, task, toast],
+    [model, app.model, topicKey, task, toast],
   );
 
   return {

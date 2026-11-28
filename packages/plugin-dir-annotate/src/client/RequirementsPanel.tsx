@@ -7,7 +7,7 @@
 //
 // 目录 / 文件不靠手输：表单里直接复用插件的 `/api/plugins/tree` 浏览仓库，
 // 列表与树都带筛选，方便快速定位。
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   PluginClientApi,
   PluginContextView,
@@ -54,6 +54,10 @@ function repoNameOf(context: PluginContextView | null, repoKey: string): string 
 export default function RequirementsPanel({ api }: { api: PluginClientApi }) {
   const topicKey = String(api.ctx.topicKey || api.ctx.topic?.key || api.ctx.location?.dirKey || '');
   const initialRepo = String(api.ctx.repoKey || api.ctx.topic?.repoKey || '');
+  // 宿主的任务行每次刷新都是新对象 → api 也会重建；这里始终取最新的 api，
+  // 但初始化只在「主题 / 归属仓库」真正变化时触发——否则轮询刷新会把正在填的表单冲掉。
+  const apiRef = useRef(api);
+  apiRef.current = api;
 
   const [context, setContext] = useState<PluginContextView | null>(null);
   const [repoKey, setRepoKey] = useState(initialRepo);
@@ -83,8 +87,8 @@ export default function RequirementsPanel({ api }: { api: PluginClientApi }) {
 
   const loadRepo = async (repo: string, name: string) => {
     const [list, picked] = await Promise.all([
-      api.rpc('requirementsList', { repoKey: repo }) as Promise<RequirementList>,
-      api.rpc('topicRequirementsGet', { topicKey }) as Promise<{ ids?: string[] }>,
+      apiRef.current.rpc('requirementsList', { repoKey: repo }) as Promise<RequirementList>,
+      apiRef.current.rpc('topicRequirementsGet', { topicKey }) as Promise<{ ids?: string[] }>,
     ]);
     const rows = Array.isArray(list?.entries) ? list.entries : [];
     const ids = new Set(
@@ -106,13 +110,13 @@ export default function RequirementsPanel({ api }: { api: PluginClientApi }) {
     setError('');
     try {
       const [c, settings] = await Promise.all([
-        api.host.get<PluginContextView>('/api/plugins/context', {
+        apiRef.current.host.get<PluginContextView>('/api/plugins/context', {
           topicKey,
-          groupKey: api.ctx.groupKey || '',
+          groupKey: apiRef.current.ctx.groupKey || '',
           repoKey: initialRepo,
-          cwd: api.ctx.cwd || '',
+          cwd: apiRef.current.ctx.cwd || '',
         }),
-        api.rpc('getSettings').catch(() => null) as Promise<{ showHidden?: boolean } | null>,
+        apiRef.current.rpc('getSettings').catch(() => null) as Promise<{ showHidden?: boolean } | null>,
       ]);
       setContext(c);
       setShowHidden(!!settings?.showHidden);
@@ -134,9 +138,10 @@ export default function RequirementsPanel({ api }: { api: PluginClientApi }) {
   };
 
   useEffect(() => {
-    // 只在挂载时按当前任务上下文取一次；刷新走面板按钮。
     void init();
-  }, []);
+    // 只在主题 / 归属仓库变化时重新初始化（组任务切换真实 repo 会同时变）。
+    // api 的 identity 会随任务行刷新变化，不能进依赖——否则每次轮询都会重置表单。
+  }, [topicKey, initialRepo]);
 
   const switchRepo = async (repo: string) => {
     if (!repo) return;

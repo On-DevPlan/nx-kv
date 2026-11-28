@@ -6,13 +6,12 @@ import type { DeclaredGoal, GoalLogState, TimeGoal } from './task-utils.js';
 
 interface UseGoalArgs {
   id: string;
-  isDraft: boolean;
   topicKey: string;
   task: string;
   taskRow: LocalTask | null;
 }
 
-export function useGoal({ id, isDraft, topicKey, task, taskRow }: UseGoalArgs) {
+export function useGoal({ id, topicKey, task, taskRow }: UseGoalArgs) {
   // goalDraft 为 null 表示「还没动过」——此时跟随服务端值（taskRow 可能晚于首轮渲染到）。
   const [goalDraft, setGoalDraft] = useState<TimeGoal | null>(null);
   useEffect(() => {
@@ -21,25 +20,24 @@ export function useGoal({ id, isDraft, topicKey, task, taskRow }: UseGoalArgs) {
 
   const declaredGoal: DeclaredGoal | null = taskRow?.timegoal || null;
   const goal: TimeGoal = goalDraft || { duration: declaredGoal?.duration || '', prompt: declaredGoal?.prompt || '' };
-  // 只有「待领取」能改时间目标声明（已领取在计时、已完成是终态；要改先 reopen）
-  const goalEditable = isDraft || (!!taskRow && taskRow.status === 'pending');
+  // 只有「待领取 / 草稿」能改时间目标声明（已领取在计时、已完成是终态；要改先 reopen）
+  const goalEditable = !!taskRow && (taskRow.status === 'pending' || taskRow.status === 'plan');
   // 任务 #87：**附加要求**支持动态编辑——领取后仍可改（下一轮 check 即生效），
   // 只有已完成 / 已取消这种终态才锁死；时长仍由 goalEditable 把关。
-  const goalPromptEditable = isDraft
-    || (!!taskRow && taskRow.status !== 'done' && taskRow.status !== 'cancelled'
-      && (taskRow.status === 'pending' || !!declaredGoal));
+  const goalPromptEditable = !!taskRow && taskRow.status !== 'done' && taskRow.status !== 'cancelled'
+    && (taskRow.status === 'pending' || taskRow.status === 'plan' || !!declaredGoal);
 
   // 时间目标 check 流水（#74）：已声明目标的任务才可查，逐轮读 goal_checks。
-  const canShowGoalLog = !isDraft && !!declaredGoal && task != null;
+  const canShowGoalLog = !!declaredGoal && task != null;
   const [goalLog, setGoalLog] = useState<GoalLogState>({ busy: false, error: '', data: null });
   const loadGoalLog = useCallback(() => {
-    if (isDraft || !topicKey || task == null) return;
+    if (!topicKey || task == null) return;
     setGoalLog((s) => ({ ...s, busy: true, error: '' }));
     const q = new URLSearchParams({ id: String(task), key: String(topicKey) });
     getGoalLog(q.toString())
       .then((d) => setGoalLog((s) => ({ ...s, data: d, busy: false })))
       .catch((e) => setGoalLog((s) => ({ ...s, busy: false, error: String((e as Error).message || e) })));
-  }, [isDraft, topicKey, task]);
+  }, [topicKey, task]);
   useEffect(() => {
     if (canShowGoalLog) loadGoalLog();
   }, [canShowGoalLog, loadGoalLog]);

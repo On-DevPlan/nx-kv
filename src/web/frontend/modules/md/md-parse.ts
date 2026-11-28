@@ -7,6 +7,7 @@
 // 任务 frontmatter（工作组语义）**共用模块内同一份实现**：CLI（node）与面板（浏览器）
 // 各写一套正则，必然出现「面板认得出、CLI 认不出」这种最难查的分叉。
 import type { LocalTask } from '../../types.js';
+import { stripPhantomEmptyLines } from './md-blocks.js';
 
 export { headingAnchorId, extractMdHeadings, renderMarkdownHtml } from './md-render.js';
 export {
@@ -30,6 +31,15 @@ export function titleFromMd(body: string, fallback = '未命名任务'): string 
     if (line.trim()) return line.trim().slice(0, 48);
   }
   return fallback;
+}
+
+/** 任务正文组装：标题作首行一级标题，保留/替换已有首个 `# ` 行。 */
+export function composeTaskText(title: string, bodyText: string): string {
+  const t = (title || '').trim() || '未命名任务';
+  let bare = stripPhantomEmptyLines(bodyText);
+  if (!/^#\s+/m.test(bare)) bare = `# ${t}\n\n${bare}`;
+  else bare = bare.replace(/^#\s+.+$/m, `# ${t}`);
+  return bare;
 }
 
 export function slugName(title?: string | null): string {

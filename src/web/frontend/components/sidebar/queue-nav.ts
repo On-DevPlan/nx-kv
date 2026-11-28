@@ -18,8 +18,6 @@ export interface QueueNavOptions {
   refreshLocal?: () => Promise<void>;
   /** 提示 */
   toast?: (msg: string) => void;
-  /** true = 进去直接开新草稿页签（?task=draft） */
-  draft?: boolean;
 }
 
 /**
@@ -29,7 +27,6 @@ export interface QueueNavOptions {
  * @param {Function} p.onNavigate     hash 导航
  * @param {Function} [p.refreshLocal] 本机队列数据刷新（建队列后必须刷，工作台才寻址得到）
  * @param {Function} [p.toast]        提示
- * @param {boolean}  [p.draft]        true = 进去直接开新草稿页签（?task=draft）
  */
 export async function ensureQueueKey({ row, refreshLocal, toast }: QueueNavOptions): Promise<string | null> {
   // 已有队列的仓库：直接用（#190 全局池行已删除）
@@ -51,10 +48,9 @@ export async function ensureQueueKey({ row, refreshLocal, toast }: QueueNavOptio
   }
 }
 
-/** 确保仓库有任务队列，然后跳转工作台（draft=true 直接开空白草稿页签）。 */
+/** 确保仓库有任务队列，然后跳转工作台。 */
 export async function ensureQueueAndGo(opts: QueueNavOptions): Promise<void> {
   const key = await ensureQueueKey(opts);
   if (!key) return;
-  const suffix = opts.draft ? '?task=draft' : '';
-  opts.onNavigate?.(`#/dir/${encodeURIComponent(key)}${suffix}`);
+  opts.onNavigate?.(`#/dir/${encodeURIComponent(key)}`);
 }

@@ -252,7 +252,6 @@ export type AppSlice = Partial<AppValue>;
 /** 任务面板链路共享的会话参数（task.tsx 解析出来的那批）。 */
 export interface TaskCtx {
   id: string;
-  isDraft: boolean;
   task: string;
   taskRow: LocalTask | null;
   topicKey: string;
@@ -267,8 +266,6 @@ export interface TaskCtx {
   app: AppSlice;
   model: Model | null;
   tabId?: string;
-  /** 默认 pretask 入口正文（插件入口在 task.tsx 里取好） */
-  defaultDraftBody?: string;
   refreshLocal?: () => Promise<void>;
   markDirty: () => void;
   setDirty: Dispatch<SetStateAction<boolean>>;

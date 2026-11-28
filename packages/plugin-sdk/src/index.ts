@@ -171,9 +171,9 @@ export interface PluginContext extends PretaskContext {
 
 /** 一条具体任务的最小定位（gettask 的 data() 与 dock 页面共用）。 */
 export interface PluginTaskInfo {
-  /** 真实任务号；草稿预览时可能为 0（用 key 定位）。 */
+  /** 真实任务号（plan 草稿也有实体行）。 */
   id: number;
-  /** 任务键：真实任务号（"9"）或草稿键（"draft-1"）。 */
+  /** 任务键：兼容字段；Web 恒为真实任务号（"9"）。 */
   key?: string;
   text: string;
   topicKey?: string;
@@ -209,7 +209,8 @@ export interface PluginGetTaskContext extends PluginContext {
 
 /**
  * 任务创建事件（草稿提交成功后触发）。
- * 插件可以在这里把「按草稿键（draft-N）暂存的数据」迁到真实 task.id 上。
+ * @deprecated Web 已取消内存草稿：新建任务即真实实体，插件从第一刻就拿到 task.id，
+ * 不需要再按草稿键暂存/迁移。宿主保留该钩子仅为兼容旧插件，新插件不要实现。
  */
 export interface PluginTaskCreatedEvent {
   /** 草稿键（dock 里 ctx.location.taskId 的草稿值）；CLI 直接建任务时没有 */
@@ -264,8 +265,7 @@ export interface NxkvPlugin {
    */
   candidates?(ctx: PluginContext): Promise<PluginCandidate[]> | PluginCandidate[];
   /**
-   * 草稿提交创建任务后触发：把按草稿键暂存的数据迁到 task.id。
-   * 宿主在任务真正落库后调用；单插件失败只记 warning，不影响任务创建。
+   * @deprecated 新建任务即真实实体，不再有草稿键迁移。宿主保留调用点仅为兼容旧插件。
    */
   onTaskCreated?(ctx: PluginContext, event: PluginTaskCreatedEvent): void | Promise<void>;
   rpc?: Record<string, (ctx: PluginContext, params: any) => Promise<any>>;

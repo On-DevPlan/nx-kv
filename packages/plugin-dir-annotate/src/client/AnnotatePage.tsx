@@ -120,7 +120,7 @@ export default function AnnotatePage({ api }: { api: PluginClientApi }) {
     setNote('');
   };
 
-  const generate = () => {
+  const generate = async () => {
     if (!context || !repo) return;
     if (!annotations.length) {
       api.toast('还没有批注');
@@ -144,8 +144,9 @@ export default function AnnotatePage({ api }: { api: PluginClientApi }) {
       ? `目录批注 · ${groupName || repo.name} / ${repo.name}`
       : `目录批注 · ${context.topic.name || repo.name}`;
     const title = `${settings.titlePrefix || ''}${base}`;
-    // 组主题下插件自选了仓库：草稿归属跟着所选仓库走（宿主缺省用组页当前成员）
-    api.createDraft({ title, body: lines.join('\n') }, isGroup ? { project: repo.key } : undefined);
+    // 组主题下插件自选了仓库：任务归属跟着所选仓库走（宿主缺省用组页当前成员）。
+    // 面板完成 = 直接进等待态，任务从创建起就有稳定的 task.id / repoKey。
+    await api.createDraft({ title, body: lines.join('\n') }, isGroup ? { project: repo.key } : undefined);
   };
 
   useEffect(() => {
@@ -169,7 +170,7 @@ export default function AnnotatePage({ api }: { api: PluginClientApi }) {
           <button type="button" className="btn ghost sm" onClick={() => void loadContext()}>
             刷新
           </button>
-          <button type="button" className="btn primary sm" disabled={!annotations.length} onClick={generate}>
+          <button type="button" className="btn primary sm" disabled={!annotations.length} onClick={() => void generate()}>
             生成任务（{annotations.length}）
           </button>
         </div>

@@ -8,24 +8,22 @@ import {
   cloneTask,
   closeManyTasks,
   forkTask,
-  notifyPluginTaskCreated,
   patchTaskItem,
   removeTaskItem,
   setPlanStatus,
 } from './api.js';
 import { useToast } from '../../components/toast/index.jsx';
+import { createTaskAndOpen } from '../../modules/task/create.js';
 import { openPanel } from '../../workspace.js';
 import { filesToAttachments, persistAtt } from '../../components/md/attachments/attachments.js';
 import { clearHistory } from '../../modules/md/md-history.js';
 import {
   insertAttachmentSnippet,
-  slugName,
   titleFromMd,
   stripPhantomEmptyLines,
 } from '../../modules/md/md-parse.js';
 import {
   docIdOf,
-  nextDraftId,
   peekDoc,
   promoteDoc,
   saveDoc,
@@ -61,7 +59,6 @@ interface GoalPatch {
 interface UseTaskActionsArgs {
   doc: DocState | null;
   id: string;
-  isDraft: boolean;
   task: string;
   taskRow: LocalTask | null;
   topicKey: string;
@@ -73,8 +70,6 @@ interface UseTaskActionsArgs {
   app: AppSlice;
   model: Model | null;
   tabId?: string;
-  /** 默认 pretask 入口的正文（插件入口在 task.tsx 里取好） */
-  defaultDraftBody?: string;
   /** 本主题的默认 pretask 入口：任务页「新任务」也要按它触发（面板入口直接进插件页）。 */
   defaultEntry?: PretaskEntry | null;
   /** 当前页面上下文（topic/组/仓库），传给插件的面板/表单/草稿。 */
@@ -85,6 +80,8 @@ interface UseTaskActionsArgs {
   editorApiRef: RefObject<EditorApi | null>;
   attachAreaRef: RefObject<AttachAreaHandle | null>;
   setDirty: Dispatch<SetStateAction<boolean>>;
+  fixedDraft: boolean;
+  setFixedDraft: (next: boolean) => void;
   goal: TimeGoal;
   goalEditable: boolean;
   goalPromptEditable: boolean;
@@ -95,10 +92,10 @@ interface UseTaskActionsArgs {
 }
 
 export function useTaskActions({
-  doc, id, isDraft, task, taskRow, topicKey, topic, boardCtx, docFm,
-  groupAnchored, groupId, app, model, tabId, defaultDraftBody, defaultEntry, entryCtx, refreshLocal,
+  doc, id, task, taskRow, topicKey, topic, boardCtx, docFm,
+  groupAnchored, groupId, app, model, tabId, defaultEntry, entryCtx, refreshLocal,
   markDirty, histRef, editorApiRef, attachAreaRef,
-  setDirty,
+  setDirty, fixedDraft, setFixedDraft,
   goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
 }: UseTaskActionsArgs) {
   const toast = useToast();
@@ -119,138 +116,89 @@ export function useTaskActions({
     return bare;
   }, []);
 
-  // 时间目标的落库口径：草稿 → POST 带 duration/goalPrompt；已有任务 → 与服务端声明比对，有变化才发。
+  // 时间目标的落库口径：与服务端声明比对，有变化才发（领取后仍可改附加要求）。
   const goalPatchOf = useCallback((): GoalPatch => {
     const duration = (goal.duration || '').trim();
     const prompt = (goal.prompt || '').trim();
     if (prompt && !duration) return { error: '时间目标要填时长（如 2h / 90m）；只写附加要求无效' };
-    if (!isDraft) {
-      const prevDur = declaredGoal?.duration || '';
-      const prevPrompt = declaredGoal?.prompt || '';
-      const durChanged = duration !== prevDur;
-      const promptChanged = prompt !== prevPrompt;
-      if (!durChanged && !promptChanged) return {};
-      if (durChanged) {
-        // 时长：领取即计时，只有待领取能改
-        if (!goalEditable) return { error: '已领取计时，时长不可改（附加要求仍可直接改）' };
-        return duration ? { duration, goalPrompt: prompt } : { clearGoal: true };
-      }
-      // 任务 #87：只改附加要求 → 领取后也放行（下一轮 check 用新值渲染）
-      if (!goalPromptEditable) return {};
-      return { goalPrompt: prompt };
+    const prevDur = declaredGoal?.duration || '';
+    const prevPrompt = declaredGoal?.prompt || '';
+    const durChanged = duration !== prevDur;
+    const promptChanged = prompt !== prevPrompt;
+    if (!durChanged && !promptChanged) return {};
+    if (durChanged) {
+      // 时长：领取即计时，只有待领取 / 草稿能改
+      if (!goalEditable) return { error: '已领取计时，时长不可改（附加要求仍可直接改）' };
+      return duration ? { duration, goalPrompt: prompt } : { clearGoal: true };
     }
-    return duration ? { duration, goalPrompt: prompt } : {};
-  }, [goal, goalEditable, goalPromptEditable, isDraft, declaredGoal]);
+    // 任务 #87：只改附加要求 → 领取后也放行（下一轮 check 用新值渲染）
+    if (!goalPromptEditable) return {};
+    return { goalPrompt: prompt };
+  }, [goal, goalEditable, goalPromptEditable, declaredGoal]);
 
   const submit = useCallback(() => guard(async () => {
     if (!doc) return;
     const t = (doc.title || '').trim() || '未命名任务';
     const fm = docFm; // #197：归属来自草稿的结构化字段（不再解析正文）
     const b = composeText(t, doc.body);
-    const groupSubmit = !!(boardCtx && fm.project &&
-      boardCtx.members.some((m) => m.key === fm.project));
     const gp = goalPatchOf();
     if (gp.error) {
       toast(gp.error);
       return;
     }
-    if (!isDraft) {
-      // 改归属时的寻址**必须落在当前队列**：任务还在旧队列里，后端要先按 cwd 找到它，
-      // 再按正文 project 解析新落点搬家（#190 删除全局池时曾误传目标项目 cwd →
-      // getTask 在目标队列里找不到原任务，表现为 pending 任务改 repo 不生效/报错）。
-      const res = await patchTaskItem({
-        cwd: topic?.cwd,
-        id: Number(task),
-        text: b,
-        // #197：改动归属用显式参数（后端按它搬家），不再改正文
-        ...(fm.project ? { project: fm.project } : {}),
-        ...(fm.board ? { board: fm.board } : {}),
-        ...gp,
-      });
-      if (res?.moved) {
-        const landedKey = res.key || topicKey;
-        const newId = String(res.task?.id ?? task);
-        const newDocId = docIdOf(scopeOf(landedKey), newId);
-        persistAtt(newId, doc.attachments);
-        promoteDoc(id, newDocId, { title: t, body: res.task?.text || b });
-        if (model && tabId) {
-          model.doAction(Actions.updateNodeAttributes(tabId, {
-            config: groupAnchored ? { groupId, task: newId } : { dirKey: landedKey, task: newId },
-          }));
-        }
-        if (app.onNavigate) {
-          app.onNavigate(
-            groupAnchored
-              ? `#/group/${encodeURIComponent(groupId || '')}?task=${encodeURIComponent(newId)}`
-              : `#/dir/${encodeURIComponent(landedKey || '')}?task=${encodeURIComponent(newId)}`
-          );
-        }
-        setDirty(false);
-        clearHistory(histRef.current, newDocId);
-        toast(`已改归属项目：任务迁到「${res.name}」#${newId}`);
-        refreshLocal?.();
-        return;
-      }
-      persistAtt(task, doc.attachments);
-      saveDoc(id, { title: t, body: b });
-      setDirty(false);
-      clearHistory(histRef.current, id);
-      toast(gp.clearGoal ? '已同步 MD · 时间目标已清除' : gp.duration ? '已同步 MD · 时间目标已更新' : '已同步 MD');
-      refreshLocal?.();
-      return;
-    }
-    const res = await addTask({
-      ...(groupSubmit
-        ? { text: b, board: boardCtx.board.id, project: fm.project }
-        : fm.project
-          ? { text: b, project: fm.project }
-          : { cwd: topic?.cwd, text: b }),
+    const promotePlan = taskRow?.status === 'plan' && !fixedDraft;
+    // 改归属时的寻址**必须落在当前队列**：任务还在旧队列里，后端要先按 cwd 找到它，
+    // 再按正文 project 解析新落点搬家（#190 删除全局池时曾误传目标项目 cwd →
+    // getTask 在目标队列里找不到原任务，表现为 pending 任务改 repo 不生效/报错）。
+    const res = await patchTaskItem({
+      cwd: topic?.cwd,
+      id: Number(task),
+      text: b,
+      // #197：改动归属用显式参数（后端按它搬家），不再改正文
+      ...(fm.project ? { project: fm.project } : {}),
+      ...(fm.board ? { board: fm.board } : {}),
       ...gp,
-      });
-    const newId = res?.task?.id ?? res?.id;
-    if (newId != null) {
-      // 草稿页没有真实 task.id：插件面板用 draftKey 暂存数据。任务落库后先广播
-      // 迁移，再跳转/切换页签——新任务页挂载时插件数据已经就位。
-      if (isDraft) {
-        try {
-          await notifyPluginTaskCreated({
-            draftKey: String(task),
-            taskId: Number(newId),
-            taskText: b,
-            ...(topicKey ? { topic: topicKey } : {}),
-            ...(groupAnchored && groupId ? { group: groupId } : {}),
-            ...(topic?.cwd ? { cwd: topic.cwd } : {}),
-            ...(boardCtx?.board?.id ? { boardKey: String(boardCtx.board.id) } : {}),
-            ...(fm.project ? { projectKey: String(fm.project) } : {}),
-            status: 'pending',
-          });
-        } catch {
-          /* 插件迁移失败不影响任务创建 */
-        }
-      }
-      const landedKey = res?.key || topicKey;
-      const landedScope = scopeOf(landedKey);
+      ...(promotePlan ? { promotePlan: true } : {}),
+    });
+    if (res?.moved) {
+      const landedKey = res.key || topicKey;
+      const newId = String(res.task?.id ?? task);
+      const newDocId = docIdOf(scopeOf(landedKey), newId);
       persistAtt(newId, doc.attachments);
-      const newDocId = docIdOf(landedScope, String(newId));
-      promoteDoc(id, newDocId, { title: t, body: b });
+      promoteDoc(id, newDocId, { title: t, body: res.task?.text || b });
       if (model && tabId) {
         model.doAction(Actions.updateNodeAttributes(tabId, {
-          config: groupAnchored ? { groupId, task: String(newId) } : { dirKey: landedKey, task: String(newId) },
+          config: groupAnchored ? { groupId, task: newId } : { dirKey: landedKey, task: newId },
         }));
       }
       if (app.onNavigate) {
         app.onNavigate(
           groupAnchored
-            ? `#/group/${encodeURIComponent(groupId || '')}?task=${encodeURIComponent(String(newId))}`
-            : `#/dir/${encodeURIComponent(landedKey || '')}?task=${encodeURIComponent(String(newId))}`
+            ? `#/group/${encodeURIComponent(groupId || '')}?task=${encodeURIComponent(newId)}`
+            : `#/dir/${encodeURIComponent(landedKey || '')}?task=${encodeURIComponent(newId)}`
         );
       }
       setDirty(false);
       clearHistory(histRef.current, newDocId);
+      toast(`已改归属项目：任务迁到「${res.name}」#${newId}${res.promoted ? ' · 已转待领取' : ''}`);
+      refreshLocal?.();
+      return;
     }
-    toast(`已提交：${slugName(t)}`);
+    persistAtt(task, doc.attachments);
+    saveDoc(id, { title: t, body: b });
+    setDirty(false);
+    clearHistory(histRef.current, id);
+    toast(
+      res.promoted
+        ? '已保存并转为待领取'
+        : gp.clearGoal
+          ? '已同步 MD · 时间目标已清除'
+          : gp.duration
+            ? '已同步 MD · 时间目标已更新'
+            : '已同步 MD',
+    );
     refreshLocal?.();
-  }), [doc, id, isDraft, task, topicKey, topic, boardCtx, groupAnchored, groupId, app, model, tabId, refreshLocal, histRef, setDirty, composeText, goalPatchOf, guard, toast]);
+  }), [doc, id, task, topicKey, topic, groupAnchored, groupId, app, model, tabId, refreshLocal, histRef, setDirty, composeText, goalPatchOf, guard, toast, taskRow, fixedDraft]);
 
   const importMd = useCallback(async (file: File) => {
     const text = await file.text();
@@ -269,7 +217,7 @@ export function useTaskActions({
   }, [groupAnchored, docFm.project, topic?.cwd, topicKey, groupId, app, refreshLocal, guard, toast]);
 
   const delTask = useCallback(async () => {
-    if (!doc || isDraft) return;
+    if (!doc) return;
     const title = doc.title || `#${task}`;
     const ok = await dialog({
       title: `删除任务「${title}」`,
@@ -300,15 +248,15 @@ export function useTaskActions({
       }
       refreshLocal?.();
     });
-  }, [doc, isDraft, task, topic, model, tabId, app, groupAnchored, groupId, topicKey, refreshLocal, guard, toast, dialog]);
+  }, [doc, task, topic, model, tabId, app, groupAnchored, groupId, topicKey, refreshLocal, guard, toast, dialog]);
 
   // #184：正在跑（claimed）的任务以前在面板上是死路——工具栏连「标为完成」都不渲染，
   // 只能干等 agent 自己回执。现在 claimed 也能收：用户是最终验收方，agent 稍后的 done
   // 会命中服务端的幂等分支，不会报错。
   // 「取消」仍只给待领取：取消是丢弃，误伤正在跑的会话代价更高，留给 agent 侧回执。
   const taskStatus = String(taskRow?.status ?? '');
-  const canComplete = !isDraft && !!taskRow && (taskStatus === 'pending' || taskStatus === 'claimed');
-  const canCancel = !isDraft && !!taskRow && taskStatus === 'pending';
+  const canComplete = !!taskRow && (taskStatus === 'pending' || taskStatus === 'claimed');
+  const canCancel = !!taskRow && taskStatus === 'pending';
   const canCloseTask = canComplete || canCancel;
   const closeTask = useCallback((kind: string) => {
     if (kind === 'done' ? !canComplete : !canCancel) return;
@@ -345,19 +293,22 @@ export function useTaskActions({
     });
   }, [canComplete, canCancel, doc, task, topic, taskStatus, taskRow, refreshLocal, guard, toast, dialog]);
 
-  // #131：plan（草稿）态开关。任务页「更多」里直接切——
-  // 草稿态不进队列（get/wait 领不到），转回待领取才重新排队。
-  const canPlan = !isDraft && !!taskRow && (taskStatus === 'pending' || taskStatus === 'plan');
-  const togglePlan = useCallback(() => {
-    if (!canPlan) return;
-    const to = taskStatus === 'plan' ? 'pending' : 'plan';
+  // 固定草稿态：plan 和 pending 都显示；打开 = 转 plan + 固定，关闭 = 只取消固定。
+  const canFixedDraft = !!taskRow && (taskStatus === 'pending' || taskStatus === 'plan');
+  const toggleFixedDraft = useCallback(() => {
+    if (!canFixedDraft) return;
+    const next = !fixedDraft;
     guard(async () => {
-      const scope = { cwd: topic?.cwd };
-      await setPlanStatus({ ...scope, id: Number(task), to });
-      toast(to === 'plan' ? `已把 #${task} 转成草稿态（不进队列）` : `已把 #${task} 转回待领取`);
+      await setPlanStatus({
+        cwd: topic?.cwd,
+        id: Number(task),
+        ...(next ? { to: 'plan' as const, fixed: true } : { fixed: false }),
+      });
+      setFixedDraft(next);
       refreshLocal?.();
+      toast(next ? '已固定为草稿：保存后仍留在草稿态' : '已取消固定：下次保存转为待领取');
     });
-  }, [canPlan, taskStatus, task, topic, guard, toast, refreshLocal]);
+  }, [canFixedDraft, fixedDraft, setFixedDraft, task, topic, guard, refreshLocal, toast]);
 
   const addFiles = useCallback(async (fileList: FileList | File[], opts: { mode?: string } = {}) => {
     if (!doc) return;
@@ -389,27 +340,23 @@ export function useTaskActions({
         }
       });
     }
-    if (!isDraft) {
-      if (patch.attachments) persistAtt(task, patch.attachments);
-      const synced = composeText(cur.title, patch.body || body);
-      saveDoc(id, { body: synced, title: titleFromMd(synced) });
-      try {
-        await patchTaskItem({
-          cwd: topic?.cwd,
-          id: Number(task),
-          text: synced,
-      });
-        setDirty(false);
-        refreshLocal?.();
-        toast(items.length ? `已添加附件并同步（${items.length}）` : '已同步附件');
-      } catch (e) {
-        markDirty();
-        toast(`附件已插入，同步失败：${(e as Error).message || e}`);
-      }
-      return;
+    if (patch.attachments) persistAtt(task, patch.attachments);
+    const synced = composeText(cur.title, patch.body || body);
+    saveDoc(id, { body: synced, title: titleFromMd(synced) });
+    try {
+      await patchTaskItem({
+        cwd: topic?.cwd,
+        id: Number(task),
+        text: synced,
+    });
+      setDirty(false);
+      refreshLocal?.();
+      toast(items.length ? `已添加附件并同步（${items.length}）` : '已同步附件');
+    } catch (e) {
+      markDirty();
+      toast(`附件已插入，同步失败：${(e as Error).message || e}`);
     }
-    markDirty();
-  }, [doc, id, isDraft, task, topic, setDirty, refreshLocal, markDirty, composeText, editorApiRef, toast]);
+  }, [doc, id, task, topic, setDirty, refreshLocal, markDirty, composeText, editorApiRef, toast]);
 
   /**
    * 「新任务」：与目录页「＋ 新建页」同一口径——先执行本主题的默认 pretask 入口。
@@ -418,47 +365,41 @@ export function useTaskActions({
   const newTask = useCallback(() => {
     const navigate = (hash: string) => app.onNavigate?.(hash);
     const ctx: PretaskContext = entryCtx || { topicKey };
-    const createDraft = (body: string, title = '') => {
-      const draftId = nextDraftId();
-      const docId = docIdOf(groupAnchored ? scopeOf(groupId) : scopeOf(topicKey), draftId);
-      // #197：归属写成草稿的结构化字段（正文不再带 --- 头）
-      saveDoc(docId, {
-        title,
-        body,
-        boardKey: String(ctx.groupId || (boardCtx && boardCtx.board ? boardCtx.board.id : '') || '') || undefined,
-        projectKey: String(ctx.project || docFm.project || '') || undefined,
-      });
-      if (app.openPage) {
-        app.openPage(
-          groupAnchored
-            ? { groupId, task: draftId, name: '新任务' }
-            : { dirKey: topicKey, task: draftId, name: '新任务' }
-        );
-      }
-    };
-    if (!defaultEntry) {
-      createDraft(defaultDraftBody || '');
-      return;
-    }
-    if (defaultEntry.kind === 'panel') {
+    if (defaultEntry?.kind === 'panel') {
       openPanelEntry(defaultEntry, ctx, navigate);
       return;
     }
-    if (openDraftEntry(defaultEntry, ctx, navigate)) return;
+    if (defaultEntry && openDraftEntry(defaultEntry, ctx, navigate)) return;
     guard(async () => {
-      const draft = await pretaskDraft(defaultEntry.id, defaultEntry.values || {}, {
-        topic: topicKey,
-        group: String(ctx.groupKey || ''),
-        repo: String(ctx.repoKey || ''),
-      });
-      createDraft(String(draft?.body || ''), String(draft?.title || ''));
+      const draft = defaultEntry
+        ? await pretaskDraft(defaultEntry.id, defaultEntry.values || {}, {
+            topic: topicKey,
+            group: String(ctx.groupKey || ''),
+            repo: String(ctx.repoKey || ''),
+          })
+        : null;
+      await createTaskAndOpen(
+        { openPage: app.openPage, refreshLocal },
+        {
+          text: String(draft?.body || ''),
+          title: String(draft?.title || ''),
+          status: 'plan',
+          ...(groupAnchored
+            ? {
+                groupId,
+                board: String(ctx.board || (boardCtx && boardCtx.board ? boardCtx.board.id : '') || ''),
+                project: String(ctx.project || docFm.project || ''),
+              }
+            : { dirKey: topicKey, cwd: topic?.cwd || '' }),
+        },
+      );
     });
-  }, [boardCtx, defaultDraftBody, defaultEntry, docFm.project, entryCtx, groupAnchored, groupId, topicKey, app, guard]);
+  }, [boardCtx, defaultEntry, docFm.project, entryCtx, groupAnchored, groupId, topicKey, topic?.cwd, app, refreshLocal, guard]);
 
   /** 「更多 → 克隆任务」：以当前任务为模板快速复制一条新任务（#70）。 */
   const cloneCur = useCallback(() => {
-    if (isDraft || task == null || /^draft/i.test(String(task))) {
-      toast('草稿没有可克隆的队列任务');
+    if (task == null) {
+      toast('没有可克隆的任务');
       return;
     }
     guard(async () => {
@@ -471,12 +412,12 @@ export function useTaskActions({
         else app.openPage({ dirKey: topicKey, task: String(newId), name: `${(doc?.title || '任务').slice(0, 30)}（克隆）` });
       }
     });
-  }, [isDraft, task, topic, groupAnchored, groupId, topicKey, app, doc, refreshLocal, guard, toast]);
+  }, [task, topic, groupAnchored, groupId, topicKey, app, doc, refreshLocal, guard, toast]);
 
   /** 「更多 → Fork 任务」：clone 的原文复制 + 保留源任务链（#67）。 */
   const forkCur = useCallback(() => {
-    if (isDraft || task == null || /^draft/i.test(String(task))) {
-      toast('草稿没有可 Fork 的队列任务');
+    if (task == null) {
+      toast('没有可 Fork 的任务');
       return;
     }
     guard(async () => {
@@ -489,7 +430,7 @@ export function useTaskActions({
         else app.openPage({ dirKey: topicKey, task: String(newId), name: `${(doc?.title || '任务').slice(0, 30)}（Fork）` });
       }
     });
-  }, [isDraft, task, topic, groupAnchored, groupId, topicKey, app, doc, refreshLocal, guard, toast]);
+  }, [task, topic, groupAnchored, groupId, topicKey, app, doc, refreshLocal, guard, toast]);
 
   const openProgress = useCallback(() => {
     const m = model || app.model;
@@ -512,7 +453,8 @@ export function useTaskActions({
 
   return {
     composeText, goalPatchOf, submit, importMd, delTask,
-    canComplete, canCancel, canCloseTask, closeTask, canPlan, togglePlan,
+    canComplete, canCancel, canCloseTask, closeTask,
+    canFixedDraft, fixedDraft, toggleFixedDraft,
     addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel,
   };
 }

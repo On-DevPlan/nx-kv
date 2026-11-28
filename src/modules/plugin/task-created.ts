@@ -1,8 +1,8 @@
-// 任务创建通知（第三生命周期点，内部钩子）：草稿提交成功后，把草稿键交给插件迁移。
+// 任务创建通知（第三生命周期点，内部钩子）。
 //
-// 背景：任务编辑页在草稿态没有真实 task.id，插件面板只能用临时键（draft-N）暂存数据。
-// 任务真正落库后，宿主调用插件的 `onTaskCreated(ctx, { draftKey, task })`，
-// 插件自行把草稿键下的数据迁到 task.id（技能选中、批注等业务各自决定）。
+// @deprecated Web 已取消内存草稿：新建任务就是数据库实体，插件从第一刻就按 task.id
+// 存取，不需要草稿键迁移。本钩子只为兼容老插件保留；Web 端不再调用（CLI/插件
+// 如仍显式调用 notifyTaskCreated，行为不变）。
 //
 // 失败语义：任务已经创建成功，任何插件迁移失败都只记 warning，绝不回滚任务。
 import type { PluginTaskInfo, PretaskContext } from '@nx-kv/plugin-sdk';

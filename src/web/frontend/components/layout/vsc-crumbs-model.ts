@@ -45,14 +45,12 @@ export interface VscTrail {
   topicKey: string;
   dirName: string;
   cwd: string;
-  /** '' = 草稿（还没有任务号） */
+  /** '' = 目录页本身（没有任务段） */
   taskId: string;
   /** 组锚定路由的看板 id（#/group/<id>?task= 深链保持锚定） */
   boardId: string;
   isGroup: boolean;
 }
-
-const DRAFT_RE = /^draft/i;
 
 /** 任务下拉里的状态后缀（pending 是默认态，不加后缀）。 */
 function statusNote(t: LocalTask): string {
@@ -155,7 +153,7 @@ export function vscTrailOf(
     taskRow = g.taskRow || null;
   } else {
     topic = (rows || []).find((r) => r && r.key === route.key) || null;
-    if (topic && route.task && !DRAFT_RE.test(String(route.task))) {
+    if (topic && route.task) {
       taskRow = (topic.tasks || []).find((t) => t && String(t.id) === String(route.task)) || null;
     }
     const rb = (topic && topic.repo && Array.isArray(topic.repo.boards) ? topic.repo.boards : []) as Array<{ id?: string }>;
@@ -166,8 +164,7 @@ export function vscTrailOf(
   if (!topic || !topic.key) return null; // 没有队列就没有路径可画（NotFound 页自己有提示）
 
   const repoKey = topic.repo && topic.repo.key ? String(topic.repo.key) : '';
-  const isDraft = !route.task || DRAFT_RE.test(String(route.task));
-  const taskId = isDraft ? '' : String(route.task);
+  const taskId = route.task ? String(route.task) : '';
 
   // 命名空间：items 命中 repoKey 或 'board:<boardId>'
   const inNs = (ns: { items?: string[] }): boolean => {
@@ -208,7 +205,7 @@ export function vscTrailOf(
     { kind: 'owner', label: board ? String(board.name) : String(topic.name || topic.key), siblings: ownerSiblings },
   ];
   if (route.task) {
-    const label = isDraft ? 'draft' : '#' + (taskRow ? String(taskRow.id) : taskId);
+    const label = '#' + (taskRow ? String(taskRow.id) : taskId);
     segments.push({ kind: 'task', label, siblings: taskSiblings });
   }
 
@@ -223,10 +220,10 @@ export function vscTrailOf(
   };
 }
 
-/** 单个任务的复制载荷（#261：下拉任务条目 hover 复制用；draft 无任务号退回原始路径）。 */
+/** 单个任务的复制载荷（#261：下拉任务条目 hover 复制用；无任务号时退回基础寻址）。 */
 export function taskCopyPayload(cwd: string, dirName: string, taskId: string, style: 'raw' | 'prompt' | undefined): string {
   const base = cwd || dirName;
-  if (!taskId) return base + ' (draft)';
+  if (!taskId) return base;
   if (style !== 'prompt') return base + ' #' + taskId;
   return [
     `任务 #${taskId} 在队列「${dirName}」（cwd：${base}）`,

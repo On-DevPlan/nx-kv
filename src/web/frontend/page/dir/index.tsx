@@ -14,7 +14,7 @@ import Introduction from '../../components/Introduction/index.jsx';
 import GetLoopModal from '../../components/repos/get-loop-modal.js';
 import DagEditor from '../../components/task-panel/dag-editor.jsx';
 import { findOpenPanel, openPanel } from '../../workspace.js';
-import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../../modules/md/doc-store.js';
+import { createTaskAndOpen } from '../../modules/task/create.js';
 import { usePretaskEntries } from '../../modules/pretask/use-pretask.js';
 import { entryMenuItems } from '../../modules/pretask/menu.js';
 import { draftBodyOf, openDraftEntry, openPanelEntry, openVisibilityPanel } from '../../modules/pretask/open-entry.js';
@@ -133,13 +133,19 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
     if (app.openPage) app.openPage({ dirKey, task: String(id), name: `#${id}` });
   };
 
-  const newDraft = (body: string) => {
-    const task = nextDraftId();
-    // 正文先写进 doc-store：openPage 只透传 dirKey / task / name，body 会被丢掉
-    // （按模板新建时丢的就是模板正文）。
-    saveDoc(docIdOf(scopeOf(dirKey), task), { title: '', body });
-    if (app.openPage) app.openPage({ dirKey, task, name: '新任务' });
-  };
+  const createPlanTask = (body: string, title = '') =>
+    guard(() =>
+      createTaskAndOpen(
+        { openPage: app.openPage, refreshLocal: app.refreshLocal },
+        {
+          text: body,
+          title,
+          status: 'plan',
+          dirKey,
+          cwd: topic?.cwd || '',
+        },
+      ),
+    );
 
   const openProgress = () => {
     if (!model) return;
@@ -184,9 +190,9 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
       return;
     }
     if (openDraftEntry(entry, entryCtx, go)) return;
-    void guard(async () => {
-      newDraft(await draftBodyOf(entry, entryCtx));
-    });
+    void (async () => {
+      await createPlanTask(await draftBodyOf(entry, entryCtx));
+    })();
   };
 
   const tplMenuItems = [
@@ -263,7 +269,7 @@ export default function DirPanel({ dirKey }: DirPanelProps) {
         tplMenuItems={tplMenuItems}
         onNew={() => {
           if (defaultEntry) pickEntry(defaultEntry);
-          else newDraft('');
+          else createPlanTask('');
         }}
         onOpenRow={(r) => openTask(r.task.id)}
         onImportFile={(f) => void importMd(f)}

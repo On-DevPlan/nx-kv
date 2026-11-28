@@ -48,8 +48,8 @@ entries(ctx) → 入口聚合（可见性 / 排序 / 默认项）
 | ⑥ 调用 | 调 `buildDraft` / RPC、注入 `PluginClientApi` | 返回草稿、处理 RPC、渲染 UI |
 | ⑥' gettask | 聚合 `gettask()` 声明、挂 dock tab、领取时取块 | 声明区块 + `data(taskCtx)` 按任务取数（见 §15） |
 | ⑥'' candidates | 聚合 `candidates()`、面板列表 / 正文搜索引用 | 返回稳定 id / path / text 的候选条目（见 §15.6） |
-| ⑥''' 任务创建 | 草稿提交后广播 `onTaskCreated` | 把 `draftKey` 数据迁到 `task.id`（见 §15.5） |
-| ⑦ 落库 | 草稿写 doc-store、任务提交进队列 | 只写自己的 `plugin_<id>_*` 表 |
+| ⑥''' 任务创建 | Web 新建任务即落库（plan / pending），插件从第一刻拿到真实 `task.id` | 直接按 `task.id` 存取；`onTaskCreated` 已 deprecated（见 §15.5） |
+| ⑦ 落库 | 真实任务行（plan 草稿也有实体） | 只写自己的 `plugin_<id>_*` 表 |
 
 ---
 
@@ -182,7 +182,7 @@ window.NxkvPluginHost.registerPlugin('<id>', definition);
 | `rpc(method, params)` | 调插件自己的 server RPC（自动带 ctx） |
 | `host.get(path, params)` | 只允许 `/api/`：context / tree / file / repos… |
 | `draft(entryId, values)` | 取插件草稿正文 |
-| `createDraft({ body,title }, { submit?, project?, board? })` | 落草稿并打开任务页；组场景可覆盖归属 |
+| `createDraft({ body,title }, { status?, project?, board? })` | 建**真实任务**并打开任务页：默认 `pending`，传 `status:'plan'` 保留草稿；组场景可覆盖归属 |
 | `navigate` / `closePage` / `toast` | 宿主导航、关页、提示 |
 
 页面路由：`#/plugin/<pluginId>/<pageId>[/<sessionId>]`。
@@ -339,11 +339,11 @@ pnpm run build:packages   # SDK + 所有插件（自动发现）
 | 插件自有表 | `migrateStorage` + 提 `storageVersion` | `packages/plugin-task-template/src/server/storage.ts` |
 | 用宿主目录 / 文件 | client `api.host.get('/api/plugins/tree'|'/file')` | `packages/plugin-dir-annotate/src/client/AnnotatePage.tsx` |
 | 组主题先选仓库 | `/api/plugins/context` 返回 `repos`；插件内部选择 | 同上 |
-| 生成任务草稿并覆盖归属 | `api.createDraft(draft, { project, board })` | 同上 `generate()` |
+| 生成任务并覆盖归属 | `api.createDraft(draft, { project, board })`（默认 pending，`status:'plan'` 可保留草稿） | 同上 `generate()` |
 | 任务页底部插件 tab | server `gettask()` 返回条目 + `ui.panel`；client 注册同名组件 | skill-ref「技能引用」（§15） |
 | 领取交付追加插件区块 | 同一条 `gettask()` 的 `template` + `data(taskCtx)` | 同上 |
 | 候选条目（面板 / 正文搜索） | server `candidates()` 返回 `PluginCandidate[]`；宿主聚合 | skill-ref 的技能扫描（§15.6） |
-| 草稿态绑定 + 提交迁移 | dock 用 `draft-N` 暂存；`onTaskCreated` 迁到真实任务号 | skill-ref 的 `task_drafts` 表（§15.5） |
+| 任务级绑定（gettask） | dock 直接用真实 `task.id`；改归属换号后宿主按新任务更新 ctx | skill-ref 的 `task_skills` 表（§15.5） |
 | 旧内置数据迁移 | server `migrateLegacy` | task-template v19/v20 流程 |
 
 ### 9.1 给现有插件加一个入口（最短路径）
@@ -361,14 +361,14 @@ pnpm run build:packages   # SDK + 所有插件（自动发现）
 - [ ] `packages/plugin-<id>/src/server/index.ts`：`definePlugin` + 生命周期（先最小可用）
 - [ ] `packages/plugin-<id>/src/client/index.tsx`：`registerPlugin`（先一个页面组件）
 - [ ] 需要存储：`storage.ts` + `storageVersion` + `migrateStorage`
-- [ ] 需要 gettask / candidates / 草稿迁移：按 §16.3 / §16.4 补 `gettask()` / `candidates()` / `onTaskCreated()`
+- [ ] 需要 gettask / candidates：按 §16.3 / §16.4 补 `gettask()` / `candidates()`（任务从创建起就有实体，不需要草稿迁移）
 - [ ] `pnpm gen:plugins && pnpm run build:packages`
 - [ ] `node bin/kv.mjs plugin list --json`（error 为空）
 - [ ] `node bin/kv.mjs plugin entries --topic <key> --json`（有 pretask 入口时）
 - [ ] `node bin/kv.mjs plugin gettask --json`（有 gettask 时）
 - [ ] `node bin/kv.mjs plugin candidates --pluginId <id> --cwd <repoRoot> --json`（有候选时）
 - [ ] 面板：默认项设为新入口 → 「＋ 新建页」/「新任务」/侧栏「新建页」三条路验证
-- [ ] gettask 真机：真实任务 tab / 草稿页 tab / 提交迁移 / 设置页模板 / preview 五条路验证
+- [ ] gettask 真机：真实任务 tab / plan 草稿 tab / 设置页模板 / preview 四条路验证
 - [ ] `pnpm lint && pnpm typecheck && pnpm build && pnpm run test:unit && pnpm run test:smoke`
 - [ ] 补 `tests/unit/plugin-<id>.test.mjs`（照抄 `tests/unit/plugin-task-template.test.mjs` 或 `plugin-gettask.test.mjs`）
 
@@ -451,6 +451,7 @@ node bin/kv.mjs plugin list --json
 node bin/kv.mjs plugin entries --topic <topicKey> --json
 node bin/kv.mjs plugin entries --topic <topicKey> --all --json
 node bin/kv.mjs plugin gettask --topic <topicKey> --json
+# 旧版兼容（deprecated）：草稿键迁移通知；Web 新建任务已不产生草稿键
 node bin/kv.mjs plugin task-created --draftKey draft-1 --taskId <任务号>
 node bin/kv.mjs plugin candidates --pluginId skill-ref --cwd <repoRoot> --json
 node bin/kv.mjs plugin context --topicKey <topicKey> --json
@@ -508,11 +509,11 @@ interface PluginGetTaskEntry {
 |---|---|---|
 | 声明聚合 | `src/modules/plugin/gettask.ts` `listGetTaskEntries` | 只列已启用且激活成功的插件；校验 id/tag/模板；全局排序 |
 | 按任务取块 | 同上 `collectGetTaskBlocks` | 逐条调 `data({...ctx, task})`；null 跳过；异常降级 warning |
-| 任务页 dock | `task-dock-panel.tsx` + `task-plugin-dock.tsx` | 「反馈」之后追加 tab；内容用 `PluginComponent` 挂载 `ui.panel`，注入 `PluginClientApi`（`ctx.location.taskId`） |
+| 任务页 dock | `task-dock-panel.tsx` + `task-plugin-dock.tsx` | 「反馈」之后追加 tab；内容用 `PluginComponent` 挂载 `ui.panel`，注入 `PluginClientApi`（`ctx.location.taskId` 恒为真实任务号） |
 | 领取交付 | `claim/host.ts` → `claim/assemble.ts` | 区块套模板（用户模板优先，坏模板回退出厂）→ 包进 `<nxkv.plugin...>`，排在 get 链末尾 |
 | 设置页 | `prompt-registry` + `external.ts` | 外部段归入「插件区块（gettask）」；可复制/编辑/启用；保存走同一套变量白名单 |
-| 草稿提交迁移 | `claim` 组装前的 `onTaskCreated` 广播 | 任务落库后把 `draftKey` 交给插件，插件把暂存数据迁到 `task.id` |
-| CLI / HTTP | `plugin gettask` / `GET /api/plugins/gettask` | 巡检声明（不含任务数据）；`taskId` 参数接受任务号或草稿键 |
+| 改归属换号 | 宿主的 `relocateTask` | 组任务切换 repo 会生成新任务号；dock 的 `ctx` 随之更新，插件按新 `task.id` / `repoKey` 重新取数 |
+| CLI / HTTP | `plugin gettask` / `GET /api/plugins/gettask` | 巡检声明（不含任务数据）；`taskId` 用真实任务号 |
 
 ### 15.3 插件实现要点
 
@@ -521,7 +522,7 @@ interface PluginGetTaskEntry {
 3. `ui.panel` 与 client `components` 的 key 必须一致；dock 通过 `api.rpc` 读写数据；
 4. 出厂模板的变量必须在 `fields` 里声明（`task.id` / `task.text` 自动补）；
 5. 需要「没有数据就不出段」时，`data()` 返回 `null`，不要返回空对象；
-6. 要支持草稿页时，RPC 的键用 `taskKey`（任务号或 `draft-N`），并实现 `onTaskCreated` 迁移（见 §15.5）。
+6. 任务页落到 dock 时已有真实实体，**直接用 `ctx.task.id`**，不需要草稿键 / 迁移逻辑（§15.5）。
 
 最小示例（`packages/plugin-skill-ref`）：
 
@@ -542,21 +543,22 @@ pnpm run test:unit                               # tests/unit/plugin-gettask.tes
 
 真机：编辑页底部出现插件 tab → 选中技能并保存 → 预览/领取的 instruction 里出现对应 `nxkv.plugin.*` 区块。
 
-### 15.5 草稿态与任务创建迁移（`onTaskCreated`）
+### 15.5 任务实体与上下文（不再有草稿键迁移）
 
-草稿页没有真实 task.id（路由是 `task=draft-N`）。dock 插件 tab 照常挂载，插件用
-`ctx.location.taskId` 作为**任务键**（`draft-N` 或真实任务号）：
+Web 已取消内存草稿：点「新建任务」立即在数据库创建 `status='plan'` 的真实任务，
+编辑页保存（默认）转 `pending`。因此**任务页 dock 从挂载那一刻起就有真实 `task.id`**，
+插件不需要草稿键、也不需要数据迁移。
 
-1. 读写在插件内部按任务键分表：真实任务号走任务表，草稿键走临时表；
-2. 草稿提交成功后，宿主调用 `POST /api/plugins/task-created`：
-   ```ts
-   onTaskCreated?(ctx: PluginContext, event: { draftKey?: string; task: PluginTaskInfo }): void | Promise<void>
-   ```
-3. 插件把 `draftKey` 下的数据迁到 `event.task.id`，并清掉草稿行；
-4. 单体插件迁移失败只记 warning，**不影响任务创建**；前端在跳转新任务页前等待广播完成。
+1. 插件表一律按真实 `task.id` 绑定（如 `plugin_<id>_task_items(task_id INTEGER PRIMARY KEY, ...)`）；
+2. `onTaskCreated` / `plugin task-created` **已 deprecated**：仅为兼容旧插件保留，Web 不再调用；
+3. 旧版本留下的草稿键表可以**只读保留**（历史数据能回显），但新写入必须用真实任务号；
+4. 组任务在编辑页改归属 → 后端 `relocateTask` 生成新任务号（旧行 tombstone）：
+   - dock 的 `ctx`（`taskId` / `repoKey` / `topicKey`）由宿主随 `taskRow` 更新，
+     插件 `useEffect` 依赖 `api` / `taskKey` 就会自动按新仓库重新取数；
+   - 如需自己缓存，按 `task.id` 重新读，不要假设任务号不变。
 
-skill-ref 的做法：`plugin_skill_ref_task_drafts(task_key TEXT, ...)` 存草稿选中项，
-`onTaskCreated` 调 `moveDraftSkills(draftKey, taskId)` 迁到 `plugin_skill_ref_task_skills`。
+skill-ref 的做法：`plugin_skill_ref_task_skills(task_id INTEGER PRIMARY KEY, ...)` 直接按任务号存；
+`task_drafts` 表只作为历史数据读回退。
 
 ### 15.6 候选条目标准接口（`candidates`）
 
@@ -588,8 +590,9 @@ interface PluginCandidate {
 
 ## 16. 标准插件开发流程（SOP）
 
-这一节把 pretask / gettask / candidates / onTaskCreated 串成一条标准流程。
+这一节把 pretask / gettask / candidates 串成一条标准流程。
 纯 pretask 插件可跳过 gettask 相关步骤；只做 gettask 的插件可把 `entries()` 返回空数组。
+任务从创建起就是真实实体（`plan` 草稿也有行），不需要草稿键迁移。
 
 ### 16.1 先选能力组合
 
@@ -601,7 +604,7 @@ interface PluginCandidate {
 | 插件内部拼提示词、全局只取变量 | `template` 只放 `{{prompt}}`，`data()` 返回完整字符串 | 取块、套模板、包 `nxkv.plugin.*` | `plugin-dir-annotate` 的目录要求（按主题启用） |
 | 设置页改插件模板 | 不需要写宿主 | 外部段注册、变量白名单、保存/启用/删除 | 设置 → 提示词模板 |
 | 候选条目（面板 / 正文搜索） | `candidates(ctx)` | `/api/plugins/candidates` 聚合/过滤/截断 | `skill-ref` 技能扫描 |
-| 草稿态也能配置 | `taskKey` RPC + 草稿表 | dock 用 `draft-N`、提交后广播 `onTaskCreated` | `skill-ref` 的 `task_drafts` |
+| 任务级配置（plan 草稿也有实体） | 直接按 `ctx.task.id` 读写 | dock 注入真实任务号；改归属换号后 ctx 跟着变 | `skill-ref` 的 `task_skills` |
 | 插件面板 / 设置页 | client `components`/`pages`/`sidebar` + `rpc` | 插件页路由、左下角侧栏 | `plugin-dir-annotate` |
 | 自有数据 | `storageVersion` + `migrateStorage` + 自有表 | 版本账本、激活 | 所有插件 |
 
@@ -613,7 +616,7 @@ interface PluginCandidate {
 |---|---|
 | `task-template` | pretask（entries/buildDraft）+ 模板管理页 / 侧栏 |
 | `dir-annotate` | pretask（entries/buildDraft）+ panel 入口 + gettask（目录要求）+ candidates + 目录批注设置页 |
-| `skill-ref` | gettask + candidates + onTaskCreated + 技能引用设置页（没有 pretask 入口） |
+| `skill-ref` | gettask + candidates + 技能引用设置页（没有 pretask 入口） |
 
 ### 16.2 0→1 十步
 
@@ -643,7 +646,7 @@ export default definePlugin({
 ```
 
 **3. 存储**：表名 `plugin_<id>_*`；只在 `migrateStorage` 建；只写自己的表；版本由宿主记进 `plugin_storage_migrations`。
-需要草稿迁移就再加一张草稿键表（如 `plugin_skill_ref_task_drafts(task_key TEXT PRIMARY KEY, ...)`）。
+任务级数据一律按真实 `task.id` 绑定（plan 草稿也有实体），不需要草稿键表。
 
 **4. 按需实现生命周期**
 
@@ -652,7 +655,7 @@ export default definePlugin({
 | `entries` / `buildDraft` | pretask 入口 | 入口 id `<id>:<localId>`；panel 入口 `buildDraft` 抛错 |
 | `gettask` | dock tab + 领取区块 | 声明与任务无关；`data(taskCtx)` 才按任务取数 |
 | `candidates` | 可搜索/可引用候选 | 稳定 id；不绑定任务 |
-| `onTaskCreated` | 草稿提交迁移 | `draftKey` → `task.id`；幂等；失败不回滚 |
+| `onTaskCreated` | **deprecated**：草稿键迁移 | 仅为兼容旧插件保留；新插件不要实现 |
 | `rpc` | 面板/设置页读写 | 方法名 camelCase；参数自己校验 |
 
 **5. client 注册** `src/client/index.tsx`
@@ -667,7 +670,8 @@ window.NxkvPluginHost.registerPlugin('<id>', {
 ```
 
 **6. dock 面板**：`gettask().ui.panel` 的 key 必须与 `components` 同名；
-插件组件通过 `api.rpc` 读写数据，`api.ctx.location.taskId` 是真实任务号或 `draft-N`。
+插件组件通过 `api.rpc` 读写数据，`api.ctx.location.taskId` 恒为真实任务号
+（组任务改归属换号后宿主会更新 ctx，组件按 `api` / `taskId` 依赖重新取数）。
 
 **7. 设置页**：client `sidebar` 自注册；server `rpc` 提供 `getSettings` / `setSettings`；
 设置落插件自有表，不碰宿主 `settings`。
@@ -700,8 +704,8 @@ pnpm run test:unit
 - [ ] `fields` 覆盖模板里出现的所有路径；`task.id` / `task.text` 宿主自动补。
 - [ ] 模板正文非空；`tag` 最终是 `nxkv.plugin.<pluginId>.<tag>`。
 - [ ] `ui.panel` 与 client `components` 的 key 一致；dock 打开时不白屏。
-- [ ] RPC 用 `taskKey`（字符串）：真实任务号与 `draft-N` 都能读写。
-- [ ] 草稿提交后实现 `onTaskCreated`，先写新任务、成功后再删草稿行。
+- [ ] RPC 用字符串任务号即可；任务从创建起就有实体，不存在「没有任务号的草稿」。
+- [ ] 组任务改归属 / 换 repo 后，dock 组件依赖 `api`（或 `taskId`）重新取数，不缓存旧仓库条目。
 - [ ] 组任务：用 `ctx.repoKey` / `ctx.task.projectKey` 定位仓库；宿主已在 claim 与 dock 透传。
 - [ ] 单插件失败只记 warning；`plugin gettask` / `localtask preview` 仍能工作。
 - [ ] 候选条目走 `candidates()`，不要把候选和任务选中混在一张表里。
@@ -709,14 +713,13 @@ pnpm run test:unit
 
 **已有 pretask 插件升级为 gettask 插件（最短路径）**
 
-1. `storageVersion + 1`：新增任务表与草稿键表（如 `plugin_<id>_task_items` / `plugin_<id>_task_drafts`）；
+1. `storageVersion + 1`：新增任务表（如 `plugin_<id>_task_items`，按真实 `task.id` 绑定）；
 2. server 增加 `gettask()` 声明（id/label/tag/template/fields/ui/data）；
 3. server 增加 `data(taskCtx)`：按 `ctx.task.id` 读自己的表，无数据返回 `null`；
-4. server 增加 `rpc`：`taskItemsGet` / `taskItemsSave`，参数统一用 `taskKey`（任务号或 `draft-N`）；
-5. server 增加 `onTaskCreated`：把 `draftKey` 行迁到 `task.id`（先写后删）；
-6. client 注册 `components[ui.panel]` + `pages`；需要设置页再补 `sidebar` + `getSettings/setSettings`；
-7. 需要候选搜索/引用再加 `candidates(ctx)`；
-8. `pnpm gen && pnpm run build:packages`，按 §16.5 / §16.6 验证。
+4. server 增加 `rpc`：`taskItemsGet` / `taskItemsSave`，参数用任务号字符串；
+5. client 注册 `components[ui.panel]` + `pages`；需要设置页再补 `sidebar` + `getSettings/setSettings`；
+6. 需要候选搜索/引用再加 `candidates(ctx)`；
+7. `pnpm gen && pnpm run build:packages`，按 §16.5 / §16.6 验证。
 
 ### 16.4 登记点清单（新增插件到底要动哪些地方）
 
@@ -731,13 +734,13 @@ pnpm run test:unit
 | 自有表 / 迁移 | 插件 | `src/server/storage.ts` + `migrateStorage` | 有持久化就要 |
 | gettask 声明 / 取数 | 插件 | `gettask()` + `data(taskCtx)` | 按需 |
 | 候选条目 | 插件 | `candidates(ctx)` | 按需 |
-| 草稿迁移 | 插件 | `onTaskCreated(ctx, event)` | 草稿页要保存时 |
+| 任务级绑定 | 插件 | `data(taskCtx)` / `rpc`（按真实 `task.id`） | 按需 |
 | 外部段注册 | 宿主通用 | `promptplug/external.ts` + `plugin/gettask.ts` | 否（自动） |
 | 设置页模板 | 宿主通用 | `prompt-registry` / `template-save|activate|delete` | 否（自动） |
 | dock 挂载 | 宿主通用 | `task-dock-panel.tsx` + `task-plugin-dock.tsx` | 否（自动） |
 | 领取取块 | 宿主通用 | `claim/host.ts` + `plugin/gettask.ts` + `claim/assemble.ts` | 否（自动） |
 | 候选聚合 | 宿主通用 | `plugin/candidates.ts` + action | 否（自动） |
-| 草稿提交通知 | 宿主通用 | `plugin/task-created.ts` + `task-actions.ts` | 否（自动） |
+| 任务创建通知（deprecated） | 宿主通用 | `plugin/task-created.ts` | 否（Web 不再调用） |
 | 测试 | 插件 + 宿主 | `tests/unit/plugin-<id>.test.mjs` | 是 |
 | 文档 | 文档 | `README.md` / 本文件 / A13 / B09 | 是 |
 
@@ -787,9 +790,9 @@ pnpm run test:smoke
 | 症状 | 原因 | 处置 |
 |---|---|---|
 | dock 没有插件 tab | `gettask()` 返回空 / 没给 `ui.panel` / client 未注册组件 | `plugin gettask --json`；重跑 `build:packages`；核对组件 key |
-| 草稿页报「taskId 必须是数字」 | 声明接口把 `taskId` 写成 `z.number()` | 改成字符串（任务号或 `draft-N`） |
 | 交付没有插件区块 | `data(taskCtx)` 返回 null / 插件表没数据 / 插件被禁用 | `plugin rpc` 读表；`localtask preview` 看 instruction/warnings |
-| 草稿提交后选中项丢失 | 没实现 `onTaskCreated` / RPC 仍用数字 taskId / 先删草稿再写新任务 | 按 `taskKey` 分表；先写新任务再删草稿行 |
+| 切换仓库后仍显示旧条目 | dock 组件只用 `useEffect([])` 初始化 | 依赖 `api` / `taskId` 重新取数（组任务换 repo 会换任务号） |
+| 历史草稿数据读不到 | 旧 draft 表已停写 | 保留只读回退即可；新数据按真实 `task.id` 落库 |
 | 设置页看不见插件段 | 插件未启用 / `gettask()` 抛错 / 外部段注册未加载 | `plugin gettask --json`；`plugin list` 看 error；重跑 gen/build |
 | `plugin candidates` 为空 | `candidates()` 返回空 / ctx 没定位仓库 / 配置目录不存在 | 带 `--cwd <repoRoot>` 先验；检查扫描根与配置 |
 | lint 报宿主硬编码插件名 | 宿主写死插件包名/入口 id | 改用生成清单；插件逻辑回插件包 |

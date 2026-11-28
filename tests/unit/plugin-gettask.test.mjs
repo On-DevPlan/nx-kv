@@ -68,32 +68,33 @@ test('gettask：skill-ref 声明 / 候选接口 / 任务取数 / 交付区块 / 
     const got = await host.callRpc('skill-ref', 'taskSkillsGet', { taskKey: '9' });
     assert.deepEqual(got.ids, [demo.id]);
 
-    // 草稿态：按 draft-N 暂存；提交后 onTaskCreated 迁到真实任务号。
-    await host.callRpc('skill-ref', 'taskSkillsSave', { taskKey: 'draft-1', ids: [demo.id] });
-    const draftGot = await host.callRpc('skill-ref', 'taskSkillsGet', { taskKey: 'draft-1' });
-    assert.deepEqual(draftGot.ids, [demo.id], '草稿键可读写');
+    // 新建任务即真实实体：只按数字任务号存取。
+    await host.callRpc('skill-ref', 'taskSkillsSave', { taskKey: '12', ids: [demo.id] });
+    const taskGot = await host.callRpc('skill-ref', 'taskSkillsGet', { taskKey: '12' });
+    assert.deepEqual(taskGot.ids, [demo.id], '真实任务号可读写');
 
-    // 草稿预览：task.id=0，靠 taskKey 仍能取到技能区块（bug 回归）。
+    // 历史草稿表只读兼容：模拟升级前留下的 draft 行。
+    const { db } = await import('../../src/modules/plugin/repo/db.ts');
+    db().run(
+      "INSERT INTO plugin_skill_ref_task_drafts (task_key, skills, updated_at) VALUES ('draft-1', ?, ?)",
+      [JSON.stringify([demo.id]), Date.now()],
+    );
+    const legacy = await host.callRpc('skill-ref', 'taskSkillsGet', { taskKey: 'draft-1' });
+    assert.deepEqual(legacy.ids, [demo.id], '历史草稿行可回显');
+    await assert.rejects(
+      () => host.callRpc('skill-ref', 'taskSkillsSave', { taskKey: 'draft-1', ids: [] }),
+      /真实任务号/,
+      '草稿键不再可写',
+    );
+
+    // 预览交付：真实任务号（Web 所有任务从创建起就有实体）。
     const { previewTaskDelivery } = await import('../../src/modules/claim/preview.ts');
-    const draftPreview = await previewTaskDelivery({
-      task: { id: 0, key: 'draft-1', text: '草稿技能预览', status: 'draft' },
-      cwd: repoDir,
-      taskKey: 'draft-1',
-    });
-    assert.match(draftPreview.instruction, /<nxkv\.plugin\.skill-ref\.skills>/, '草稿预览包含技能区块');
-    assert.match(draftPreview.instruction, /demo-skill/);
-
-    const { notifyTaskCreated } = await import('../../src/modules/plugin/task-created.ts');
-    const moved = await notifyTaskCreated({
-      draftKey: 'draft-1',
-      task: { id: 12, text: '草稿提交后的任务', cwd: repoDir },
+    const preview = await previewTaskDelivery({
+      task: { id: 9, text: '技能预览', status: 'plan' },
       cwd: repoDir,
     });
-    assert.ok(moved.notified.includes('skill-ref'), '宿主广播 onTaskCreated');
-    const movedGot = await host.callRpc('skill-ref', 'taskSkillsGet', { taskKey: '12' });
-    assert.deepEqual(movedGot.ids, [demo.id], '选中项迁到新任务号');
-    const clearedDraft = await host.callRpc('skill-ref', 'taskSkillsGet', { taskKey: 'draft-1' });
-    assert.deepEqual(clearedDraft.ids, [], '草稿键已清理');
+    assert.match(preview.instruction, /<nxkv\.plugin\.skill-ref\.skills>/, '预览包含技能区块');
+    assert.match(preview.instruction, /demo-skill/);
 
     const blocks = await collectGetTaskBlocks(
       { id: 9, text: '实现技能引用', cwd: repoDir },

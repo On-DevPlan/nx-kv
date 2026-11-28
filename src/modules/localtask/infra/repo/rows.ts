@@ -35,6 +35,7 @@ export const EXT = Object.freeze({
   MIGRATED_TO: 'ext_migrated_to',
   MOVE_FROM: 'ext_move_from',
   HISTORY: 'ext_history',
+  FIXED_DRAFT: 'ext_fixed_draft',
 });
 
 /** topics.ext 的键名。 */
@@ -99,6 +100,8 @@ export function rowToTask(row: any): TaskObject {
     supersededBy: ext[EXT.SUPERSEDED_BY] ?? null,
     archivedAt: String(ext[EXT.ARCHIVED_AT] ?? ''),
     archivedReason: String(ext[EXT.ARCHIVED_REASON] ?? ''),
+    // 固定草稿态：plan 任务保存后是否保持草稿（不自动转 pending）
+    fixedDraft: !!ext[EXT.FIXED_DRAFT],
     claimedFrom: String(ext[EXT.CLAIMED_FROM] ?? ''),
     claimedBy: String(ext[EXT.CLAIMED_BY] ?? ''),
     claimedByName: String(ext[EXT.CLAIMED_BY_NAME] ?? ''),
@@ -143,6 +146,8 @@ export interface TaskObject {
   supersededBy: any;
   archivedAt: string;
   archivedReason: string;
+  /** 固定草稿态：plan 任务保存后保持草稿，不自动转 pending */
+  fixedDraft: boolean;
   claimedFrom: string;
   claimedBy: string;
   claimedByName: string;
@@ -187,6 +192,7 @@ export function splitTaskFields(t: any): SplitTaskFields {
   put(EXT.CLAIMED_BY_NAME, t.claimedByName);
   if (t.migratedTo !== undefined) put(EXT.MIGRATED_TO, t.migratedTo || null);
   if (t.moveFrom !== undefined) put(EXT.MOVE_FROM, t.moveFrom || null);
+  if (t.fixedDraft !== undefined) put(EXT.FIXED_DRAFT, !!t.fixedDraft);
 
   const all: unknown[] = Array.isArray(t.blockBy) ? t.blockBy : [];
   const depsLocal = all.filter((d) => !String(d).includes(':')).map(Number).filter((n) => Number.isFinite(n) && n > 0);

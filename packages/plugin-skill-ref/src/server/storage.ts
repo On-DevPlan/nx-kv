@@ -5,7 +5,7 @@ import type { PluginDb } from '@nx-kv/plugin-sdk';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 
-/** v2：草稿键暂存表（草稿提交后由 onTaskCreated 迁到真实 task.id）。 */
+/** v2：草稿键表（历史数据只读保留；新任务一律按真实任务号落库）。 */
 export const STORAGE_VERSION = 2;
 export const MAX_EXTRA_DIRS = 20;
 export const MAX_TASK_SKILLS = 100;
@@ -108,7 +108,7 @@ export function writeSettings(db: PluginDb, patch: Record<string, unknown>): Ski
 }
 
 /**
- * 任务键：真实任务号（纯数字）走 task 表；草稿键（draft-N 等）走 draft 表。
+ * 任务键：真实任务号（纯数字）走 task 表；草稿键（历史 draft-N）只读兼容旧数据。
  * 非法键返回 null（读按空、写直接报错）。
  */
 function taskKeyOf(raw: unknown): { key: string; taskId: number | null } | null {
@@ -118,7 +118,7 @@ function taskKeyOf(raw: unknown): { key: string; taskId: number | null } | null 
   return { key, taskId: Number.isInteger(n) && n > 0 ? n : null };
 }
 
-/** 读一个任务键选中的技能 id（草稿键也支持；没有行 → 空数组）。 */
+/** 读一个任务键选中的技能 id（历史草稿键仍可读；没有行 → 空数组）。 */
 export function readTaskSkills(db: PluginDb, rawKey: string | number): string[] {
   const info = taskKeyOf(rawKey);
   if (!info) return [];
@@ -134,10 +134,11 @@ export function readTaskSkills(db: PluginDb, rawKey: string | number): string[] 
   }
 }
 
-/** 整组覆盖写入；空数组 = 删除该键的行。 */
+/** 整组覆盖写入；空数组 = 删除该键的行。新任务一律用真实任务号（草稿键不再写）。 */
 export function writeTaskSkills(db: PluginDb, rawKey: string | number, raw: unknown): string[] {
   const info = taskKeyOf(rawKey);
-  if (!info) throw new Error('需要 taskKey（任务号或草稿键）');
+  if (!info) throw new Error('需要 taskKey（真实任务号）');
+  if (!info.taskId) throw new Error('技能引用只能绑定真实任务号（新任务从创建起就有实体）');
   const out: string[] = [];
   const seen = new Set<string>();
   if (Array.isArray(raw)) {
@@ -150,41 +151,15 @@ export function writeTaskSkills(db: PluginDb, rawKey: string | number, raw: unkn
       if (out.length >= MAX_TASK_SKILLS) break;
     }
   }
-  const table = info.taskId ? 'plugin_skill_ref_task_skills' : 'plugin_skill_ref_task_drafts';
-  const where = info.taskId ? 'task_id = ?' : 'task_key = ?';
-  const whereParam = info.taskId ? info.taskId : info.key;
   if (!out.length) {
-    db.run(`DELETE FROM ${table} WHERE ${where}`, [whereParam]);
+    db.run('DELETE FROM plugin_skill_ref_task_skills WHERE task_id = ?', [info.taskId]);
     return out;
   }
-  if (info.taskId) {
-    db.run(
-      `INSERT INTO ${table} (task_id, skills, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(task_id) DO UPDATE SET skills = excluded.skills, updated_at = excluded.updated_at`,
-      [info.taskId, JSON.stringify(out), Date.now()],
-    );
-  } else {
-    db.run(
-      `INSERT INTO ${table} (task_key, skills, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(task_key) DO UPDATE SET skills = excluded.skills, updated_at = excluded.updated_at`,
-      [info.key, JSON.stringify(out), Date.now()],
-    );
-  }
+  db.run(
+    `INSERT INTO plugin_skill_ref_task_skills (task_id, skills, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(task_id) DO UPDATE SET skills = excluded.skills, updated_at = excluded.updated_at`,
+    [info.taskId, JSON.stringify(out), Date.now()],
+  );
   return out;
-}
-
-/** 草稿提交后把草稿键下的选中项迁到真实任务号（幂等；空草稿直接清理）。 */
-export function moveDraftSkills(db: PluginDb, draftKey: string, taskId: number): string[] {
-  if (!draftKey || !Number.isInteger(taskId) || taskId <= 0) return [];
-  const ids = readTaskSkills(db, draftKey);
-  if (!ids.length) {
-    db.run('DELETE FROM plugin_skill_ref_task_drafts WHERE task_key = ?', [draftKey]);
-    return [];
-  }
-  // 先写新任务、成功后再删草稿行：写失败时草稿数据仍在，可重试。
-  const saved = writeTaskSkills(db, String(taskId), ids);
-  db.run('DELETE FROM plugin_skill_ref_task_drafts WHERE task_key = ?', [draftKey]);
-  return saved;
 }

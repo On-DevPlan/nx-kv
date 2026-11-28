@@ -92,12 +92,20 @@ export async function addTask({
   groupKey: rawGroupKey,
   repoKey: rawRepoKey,
   groupName: rawGroupName,
+  status: rawStatus,
 } = {} as any): Promise<Record<string, any>> {
   // #197：归属落两条 topic 关联——repo topic（编号/领取按它）+ group topic（组归属）。
   const groupKey = String(rawGroupKey ?? '');
   const repoKey = String(rawRepoKey ?? '');
   const groupName = String(rawGroupName ?? '');
-  const body = normalizeText(text);
+  const status = rawStatus === undefined || rawStatus === null || rawStatus === '' ? 'pending' : String(rawStatus);
+  if (status !== 'pending' && status !== 'plan') {
+    throw badInput(`任务状态只能是 pending 或 plan（收到 ${status}）`);
+  }
+  if (status === 'plan' && (rawBlockBy !== undefined && rawBlockBy !== null && String(rawBlockBy).trim() !== '' || blocksFollowing)) {
+    throw badInput('草稿态（plan）任务不支持 blockBy / 闸门——先转待领取再设依赖');
+  }
+  const body = status === 'plan' && !String(text ?? '').trim() ? '' : normalizeText(text);
   const summary = normalizeSummary(rawSummary, { optional: true });
   // 任务级 timegoal 声明（--duration/--goal-prompt 落下来的）：校验在 sanitizeTaskGoal
   // （时长写法错误在**发布时报**，不在领取时报）；只带了 --goal-prompt 没带 --duration → 报错。
@@ -143,7 +151,7 @@ export async function addTask({
     text: body,
     // #197：组队列（可空）——组归属的唯一来源
     groupTopicId,
-    status: 'pending',
+    status,
     timegoal,
     round: forkRound,
     blockBy: normalizeBlockBy(rawBlockBy, provisionalId),
@@ -161,7 +169,8 @@ export async function addTask({
   let wakeMeta: WakeMeta | null = null;
   const readyOpts = { resolveForeign: foreignResolver() };
   const probe = normalizeTask({ ...taskDraft, id: provisionalId }, tView.tasks, readyOpts);
-  const canDeliver = isReadyToClaim(probe, tView.tasks, readyOpts);
+  // plan 是草稿：不进队列、不唤醒 waiter（即使 isReadyToClaim 未来放宽也必须显式挡住）。
+  const canDeliver = status === 'pending' && isReadyToClaim(probe, tView.tasks, readyOpts);
 
   if (canDeliver) {
     const waiter = takeTopicWaiter(key);
@@ -223,8 +232,8 @@ export async function addTask({
   });
   if (wakeMeta && wakeMeta.wake) wakeMeta.wake(normalizeTask(task));
 
-  // DAG 单一写路径：闸门/依赖经 Mutator 投影（fail-open，不挡入队）
-  if (task.blocksFollowing || (task.blockBy && task.blockBy.length)) {
+  // DAG 单一写路径：闸门/依赖经 Mutator 投影（fail-open，不挡入队）；plan 草稿不参与 DAG。
+  if (status === 'pending' && (task.blocksFollowing || (task.blockBy && task.blockBy.length))) {
     try {
       const { syncNewTaskDag } = await import('../infra/writes.js');
       await syncNewTaskDag(key, task);
@@ -263,6 +272,8 @@ export async function updateTask({
   clearBlockBy = false,
   blocksFollowing,
   moveTo,
+  fixedDraft,
+  promotePlan,
 } = {} as any): Promise<Record<string, any>> {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const { cwd } = normalizeCwd(rawCwd);
@@ -271,8 +282,9 @@ export async function updateTask({
   const body = String(text ?? '').trim();
   const hasGoalInput = goal && (goal.clear || goal.duration != null || goal.prompt != null);
   const hasDagInput = clearBlockBy || blockBy !== undefined || blocksFollowing !== undefined;
-  if (!body && !hasGoalInput && !hasDagInput && !moveTo) {
-    throw badInput('--text 不能为空（改时间目标 / blockBy / 闸门 / 搬队列时才可省）');
+  const hasFixedDraft = fixedDraft !== undefined;
+  if (!body && !hasGoalInput && !hasDagInput && !moveTo && !hasFixedDraft && !promotePlan) {
+    throw badInput('--text 不能为空（改时间目标 / blockBy / 闸门 / 搬队列 / 固定草稿 / 转待领取时才可省）');
   }
   if (body && body.length > MAX_TEXT) throw badInput(`任务内容过长（≤${MAX_TEXT} 字）`);
   if (hasGoalInput && goal.clear && goal.duration != null) {
@@ -356,7 +368,7 @@ export async function updateTask({
       if (live.migratedTo) throw badInput(`#${want} 已迁出，时间目标声明不可改`);
       // 任务 #87：**附加要求支持动态编辑**——领取后仍可改 prompt（下一轮 check / 交付即生效）；
       // 时长与清除仍锁定（领取即计时，起表后声明是既成事实，要调先 reopen）。
-      const locked = live.status !== 'pending';
+      const locked = live.status !== 'pending' && live.status !== 'plan';
       if (goal.clear) {
         if (locked) throw badInput(`#${want} 已领取或已完成，时间目标不可清除——要调整先 reopen（附加要求可直接改）`);
         tasksRepo.updateTask(host.id, live.id, { timegoal: null });
@@ -382,6 +394,9 @@ export async function updateTask({
         });
         goalChanged = 'set';
       }
+    }
+    if (hasFixedDraft) {
+      tasksRepo.updateTask(host.id, hostTask.id, { fixedDraft: !!fixedDraft });
     }
     // 搬家动了两个队列，源/目标都要顶 revision（引擎在途快照对两个都可能过期）
     topicsRepo.updateTopic(host.key, { bumpRevision: true });
@@ -490,39 +505,54 @@ export async function setPlanStatus({
   cwd: rawCwd,
   key: rawKey,
   id,
-  to = 'plan',
+  to,
+  fixed,
 } = {} as any): Promise<Record<string, any>> {
   const key = resolveTaskKey({ key: rawKey, cwd: rawCwd });
   const want = Number(id);
   if (!Number.isFinite(want) || want <= 0) throw badInput('缺少参数 --id <任务编号>');
-  const target = String(to || '').trim();
-  if (target !== 'plan' && target !== 'pending') throw badInput('--to 只能是 plan 或 pending');
+  if (to !== undefined && to !== null && to !== '' && to !== 'plan' && to !== 'pending') {
+    throw badInput('--to 只能是 plan 或 pending');
+  }
+  if (fixed === true && to === 'pending') {
+    throw badInput('固定草稿态（fixed=true）不能同时转为待领取');
+  }
 
   openStore();
   const t = topicsRepo.getTopic(key);
   const task = t && (t.tasks || []).find((x: any) => Number(x.id) === want && !x.deletedAt && !x.migratedTo);
   if (!task) throw notFound(`主题「${t ? t.name : key}」里没有 #${want} 任务`);
   const from = String(task.status || 'pending');
-  if (from === target) {
-    return { status: 'ok', changed: false, id: want, key, name: t!.name, from, to: target };
+  const fromFixed = !!task.fixedDraft;
+  // 只给 fixed:false = 只取消固定，状态不动；固定开 = 隐含转 plan。
+  const target = fixed === true ? 'plan' : to ? String(to) : (fixed === false ? from : 'plan');
+  if (target !== 'plan' && target !== 'pending') {
+    throw badInput(`#${want} 现在是 ${from}，不能设置固定草稿态`);
   }
-  if (target === 'plan' && from !== 'pending') {
-    throw badInput(`只有待领取任务能转成草稿（#${want} 现在是 ${from}）`);
+  if (target === 'plan' && from !== 'pending' && from !== 'plan') {
+    throw badInput(`只有待领取 / 草稿任务能设置固定草稿态（#${want} 现在是 ${from}）`);
   }
-  if (target === 'pending' && from !== 'plan') {
+  if (target === 'pending' && from !== 'plan' && from !== 'pending') {
     throw badInput(`只有草稿能转回待领取（#${want} 现在是 ${from}）`);
   }
-  const updated = tasksRepo.switchPlanStatus(t!.id, want, target as 'plan' | 'pending');
+  const fixedPatch = fixed === undefined ? (target === 'pending' ? false : undefined) : !!fixed;
+  const updated = tasksRepo.switchPlanStatus(t!.id, want, target as 'plan' | 'pending', {
+    ...(fixedPatch !== undefined ? { fixedDraft: fixedPatch } : {}),
+  });
   if (!updated) throw notFound(`任务不存在: #${want}`);
-  topicsRepo.updateTopic(key, { bumpRevision: true });
+  const changed = target !== from;
+  const fixedChanged = fixedPatch !== undefined && fromFixed !== !!fixedPatch;
+  if (changed || fixedChanged) topicsRepo.updateTopic(key, { bumpRevision: true });
   return {
     status: 'ok',
-    changed: true,
+    changed,
+    fixedChanged,
     id: want,
     key,
     name: t!.name,
     from,
     to: target,
+    fixedDraft: !!updated.fixedDraft,
     task: updated,
   };
 }

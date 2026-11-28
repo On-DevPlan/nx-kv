@@ -101,3 +101,22 @@
   color: #ba7517;
   white-space: nowrap;
 }
+/* 任务页状态提示：浅色底 + 同色系文字，与面包屑同一行不抢眼 */
+.mdw-top-state {
+  flex: none;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.mdw-top-state.is-draft {
+  color: var(--warn, #99690f);
+  background: rgba(153, 105, 15, 0.08);
+  border: 1px dashed rgba(153, 105, 15, 0.3);
+}
+.mdw-top-state.is-dirty {
+  color: var(--danger, #b3261e);
+  background: rgba(179, 38, 30, 0.07);
+  border: 1px solid rgba(179, 38, 30, 0.16);
+}

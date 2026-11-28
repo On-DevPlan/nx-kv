@@ -34,7 +34,7 @@ test('提交编辑用当前队列 cwd 寻址，不能用目标项目 cwd', () =>
   );
 });
 
-test('归属项目可编辑性与时间目标解耦（pending / plan / 草稿可改）', () => {
+test('归属项目可编辑性与时间目标解耦（pending / plan 可改；草稿也是真实实体）', () => {
   const task = readFileSync(
     join(root, 'src', 'web', 'frontend', 'page', 'dir', 'task.tsx'),
     'utf8',
@@ -42,7 +42,7 @@ test('归属项目可编辑性与时间目标解耦（pending / plan / 草稿可
   const section = /projectEditable=\{([^}]+)\}/.exec(task);
   assert.ok(section, 'BoardSection 用独立的 projectEditable 开关');
   const expr = (section[1] || '').replace(/\s+/g, ' ').trim();
-  assert.match(expr, /isDraft/, '草稿可改');
+  assert.doesNotMatch(expr, /isDraft/, 'Web 不再有内存草稿分支');
   assert.match(expr, /status === 'pending'/, '待领取可改');
   assert.match(expr, /status === 'plan'/, '草稿态可改');
 });

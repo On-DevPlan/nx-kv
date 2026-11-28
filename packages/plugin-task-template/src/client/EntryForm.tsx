@@ -1,4 +1,4 @@
-// 槽位填写中间页（插件自带 UI）：填完调 pretask.draft，再交给宿主建草稿。
+// 槽位填写中间页（插件自带 UI）：填完调 pretask.draft，再交给宿主创建真实任务。
 import { useState } from 'react';
 import type { PluginClientApi } from '@nx-kv/plugin-sdk/client';
 
@@ -25,7 +25,8 @@ export default function EntryForm({ api }: { api: PluginClientApi }) {
     setBusy(true);
     try {
       const draft = await api.draft(entry.id, values);
-      api.createDraft(draft, { submit: direct });
+      // 中间页完成默认进入等待态；「进入编辑页」显式保留草稿态，保存时再转待领取。
+      await api.createDraft(draft, { submit: direct, status: direct ? 'pending' : 'plan' });
     } catch (e) {
       api.toast(String((e as Error).message || e));
     } finally {

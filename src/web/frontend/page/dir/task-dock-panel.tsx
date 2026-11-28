@@ -2,16 +2,14 @@
 import type { ComponentProps, Dispatch, MouseEvent as ReactMouseEvent, ReactNode, Ref, RefObject, SetStateAction } from 'react';
 import type { Model } from 'flexlayout-react';
 import { Icon } from '../../components/icons.jsx';
-import AttachBar from '../../components/md/attachments/attach-bar.jsx';
 import AttachAreaRaw from '../../components/md/attachments/attach-area.jsx';
 import type { AttachAreaHandle } from '../../components/md/attachments/attach-area.jsx';
-import type { Attachment } from '../../components/md/attachments/attach-common.js';
 import { docIdOfLocator } from '../../components/md/attachments/attach-common.js';
 import { openPanel } from '../../workspace.js';
 import type { LocalTask, LocalTopic } from '../../types.js';
 import { fmtSec } from './task-utils.js';
 import { TaskPluginDockView, useGetTaskPlugins } from './task-plugin-dock.jsx';
-import type { AppSlice, ChainApiItem, DocState, GoalLogState } from './task-utils.js';
+import type { AppSlice, ChainApiItem, GoalLogState } from './task-utils.js';
 
 /**
  * AttachArea 的 props 里还没声明 `ref`（组件自己的句柄走 openRef，兄弟文件尚未
@@ -34,18 +32,12 @@ interface DockPanelProps {
   canShowGoalLog: boolean;
   goalLog: GoalLogState;
   openGoalLog: () => void;
-  isDraft: boolean;
   task: string;
   topic: LocalTopic | null;
   topicKey: string;
-  doc: DocState;
-  id: string;
   model: Model | null;
   app: AppSlice;
   refreshLocal?: () => Promise<void>;
-  markDirty: () => void;
-  saveDoc: (id: string, patch: Partial<DocState>) => void;
-  persistAtt: (id: string | number, attachments: Attachment[]) => void;
   attachAreaRef: RefObject<AttachAreaHandle | null>;
   reviewBarRef: RefObject<HTMLDivElement | null>;
   taskRow: LocalTask | null;
@@ -60,14 +52,14 @@ export function DockPanel({
   dockOpen, dockTab, dockH, dockRef, dockMax,
   showDockTab, onDockDragStart, toggleDockMax, setDockOpen,
   canShowGoalLog, goalLog, openGoalLog,
-  isDraft, task, topic, topicKey, doc, id, model, app,
-  refreshLocal, markDirty, saveDoc, persistAtt,
+  task, topic, topicKey, model, app,
+  refreshLocal,
   attachAreaRef, reviewBarRef,
   taskRow, ackHtml,
   isChainTip, latestChild, openFeedback, openLatestRound,
 }: DockPanelProps) {
   // gettask 插件区块（第二生命周期点）：声明 → tab；内容由插件组件自己渲染。
-  // 草稿任务也挂：插件先按 draft-N 暂存，提交成功后宿主广播 onTaskCreated 让插件迁移。
+  // 任务页落到这里时已有真实实体，插件拿到的一直是稳定的任务号。此处不再有草稿分支。
   const pluginTabs = useGetTaskPlugins({
     enabled: dockOpen && !!String(task || ''),
     taskId: String(task || ''),
@@ -160,17 +152,7 @@ export function DockPanel({
       </div>
       <div className="mdw-dock-body">
         {dockTab === 'attach' ? (
-          isDraft ? (
-            <AttachBar
-              attachments={doc.attachments}
-              onRemove={(aid) => {
-                const next = (doc.attachments || []).filter((x) => x.id !== aid);
-                markDirty();
-                saveDoc(id, { attachments: next });
-                if (!isDraft) persistAtt(task, next);
-              }}
-            />
-          ) : topic ? (
+          topic ? (
             <AttachArea
               ref={attachAreaRef}
               host="task"
@@ -259,7 +241,7 @@ export function DockPanel({
         ) : null}
 
         {dockTab === 'feedback' ? (
-          !isDraft && taskRow?.completedAt ? (
+          taskRow?.completedAt ? (
             <div className="mdw-review" ref={reviewBarRef}>
               <div className="mdw-review-main">
                 <span className="mdw-review-badge">已完成 · 等待验收</span>

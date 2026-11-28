@@ -22,7 +22,6 @@ import { openComposer } from '../../components/md/composer/composer-launch.js';
 import ShortcutSheet from '../../components/md/shell/shortcut-sheet.jsx';
 import { TaskChainModal as TaskChainModalRaw } from '../../components/md/standalone/task-chain.jsx';
 import { useApp } from '../../app-context.jsx';
-import { persistAtt } from '../../components/md/attachments/attachments.js';
 import type { Attachment } from '../../components/md/attachments/attach-common.js';
 import type { AttachAreaHandle } from '../../components/md/attachments/attach-area.jsx';
 import { pushHistory, redoHistory, undoHistory } from '../../modules/md/md-history.js';
@@ -31,13 +30,10 @@ import {
   titleFromMd,
   stripTitleHeading,
 } from '../../modules/md/md-parse.js';
-import { renderTemplateBody } from '@nx-kv/plugin-sdk/template';
 import { usePretaskEntries } from '../../modules/pretask/use-pretask.js';
-import { useAutoSubmit } from './use-auto-submit.js';
 import {
   docIdOf,
   getDoc,
-  isDraftTask,
   saveDoc,
   scopeOf,
   useDocs,
@@ -105,10 +101,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   // 本页所属队列的 key：组锚定 = 解析出的成员队列；目录锚定 = dirKey
   const topicKey = (groupResolved && groupResolved.topic && groupResolved.topic.key) || dirKey || '';
 
-  const isDraft = isDraftTask(task);
-  // 文档作用域（#86）：组锚定的**草稿**种在组 scope——组页「新增任务」从组路由
-  // 打开能寻回同一份；其余（实任务 / 目录页）都在队列 scope，同一任务两种锚共享一份文档。
-  const scope: string = groupAnchored && isDraft ? scopeOf(groupId) : scopeOf(topicKey);
+  // 文档作用域：任务正文的会话缓存按队列 scope 存，任务换号由 promoteDoc 迁移。
+  const scope: string = scopeOf(topicKey);
   const id = docIdOf(scope, task);
 
   // 本目录的主题（提交/删除要它的 cwd）
@@ -140,9 +134,6 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
     entryState.entries.find((e) => e.id === entryState.defaultEntryId) ||
     entryState.entries.find((e) => e.kind === 'draft') ||
     entryState.entries[0];
-  const defaultDraftBody = defaultEntry
-    ? renderTemplateBody(defaultEntry.previewBody || '', defaultEntry.values || {})
-    : '';
 
   const taskRow = useMemo<LocalTask | null>(
     () => (topic?.tasks || []).find((x) => String(x.id) === String(task)) || null,
@@ -159,11 +150,11 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   const dock = useDock();
   const { dockOpen, setDockOpen, dockTab, dockH, dockRef, dockMax, showDockTab, onDockDragStart, toggleDockMax } = dock;
 
-  const goalState = useGoal({ id, isDraft, topicKey, task, taskRow });
+  const goalState = useGoal({ id, topicKey, task, taskRow });
   const { goalDraft, setGoalDraft, goal, goalEditable, goalPromptEditable, declaredGoal, goalLog, loadGoalLog, canShowGoalLog } = goalState;
 
   const chainState = useChain({
-    isDraft, task, taskRow, topicKey, topic, groupAnchored, groupId,
+    task, taskRow, topicKey, topic, groupAnchored, groupId,
     app, model: model || null, historyId, toast,
   });
   const { chainNodes, chainTree, historyNode, isChainTip, latestChild, openLatestRound, openHistoryBeside } = chainState;
@@ -176,6 +167,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [chainOpen, setChainOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [fixedDraft, setFixedDraft] = useState(false);
   const fileMdRef = useRef<HTMLInputElement | null>(null);
   const fileAttRef = useRef<HTMLInputElement | null>(null);
   const attachAreaRef = useRef<AttachAreaHandle | null>(null);
@@ -227,32 +219,38 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   const guard = useCallback((fn: () => Promise<unknown>) => fn().catch((e) => toast(String((e as Error).message || e))), [toast]);
   const markDirty = useCallback(() => setDirty(true), []);
 
+  // 固定草稿态以服务端任务行为准；保存时用本地状态（rows 刷新前的点击也立即生效）。
+  useEffect(() => {
+    setFixedDraft(!!taskRow?.fixedDraft);
+  }, [id, taskRow?.fixedDraft]);
+
   const { docFm, parentRef, boardCtx } = useDerivedCtx({ doc, beside, topicKey, topic, task, app });
 
-  // 首开这一页时把内容「种」进去：真实任务用服务端正文，草稿用默认模板
+  // 首开这一页时把内容「种」进去：真实任务用服务端正文与归属。
   useEffect(() => {
     if (docs[id]) return;
-    if (isDraft) {
-      if (entryState.loading) return;
-      getDoc(id, { title: '', body: defaultDraftBody });
-    } else if (taskRow) getDoc(id, { title: titleFromMd(taskRow.text), body: taskRow.text });
-  }, [id, isDraft, taskRow, groupAnchored, groupId, entryState.loading, defaultDraftBody]);
+    if (taskRow) {
+      getDoc(id, {
+        title: titleFromMd(taskRow.text),
+        body: taskRow.text,
+        ...(taskRow.boardKey ? { boardKey: String(taskRow.boardKey) } : {}),
+        ...(taskRow.repoKey ? { projectKey: String(taskRow.repoKey) } : {}),
+      });
+    }
+  }, [id, taskRow]);
 
   // ─── 动作钩子 ───
   const actions = useTaskActions({
-    doc, id, isDraft, task, taskRow, topicKey, topic, boardCtx, docFm,
-    groupAnchored, groupId, app, model: model || null, tabId, defaultDraftBody, defaultEntry, entryCtx, refreshLocal,
+    doc, id, task, taskRow, topicKey, topic, boardCtx, docFm,
+    groupAnchored, groupId, app, model: model || null, tabId, defaultEntry, entryCtx, refreshLocal,
     markDirty, histRef, editorApiRef, attachAreaRef,
-    setDirty,
+    setDirty, fixedDraft, setFixedDraft,
     goal, goalEditable, goalPromptEditable, declaredGoal, guard, dialog, showDockTab,
   });
-  const { composeText, submit, importMd, delTask, canComplete, canCancel, closeTask, canPlan, togglePlan, addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel } = actions;
-
-  // #191「直接提交」：参数页留下的一次性意图 → doc 就绪后自动 submit（详见 hook）
-  useAutoSubmit(id, doc, isDraft, submit);
+  const { submit, importMd, delTask, canComplete, canCancel, closeTask, canFixedDraft, toggleFixedDraft, addFiles, newTask, cloneCur, forkCur, openProgress, openAttachPanel } = actions;
 
   const feedback = useFeedback({
-    doc, isDraft, task, taskRow, topicKey, topic, dirKey,
+    doc, task, taskRow, topicKey, topic, dirKey,
     groupAnchored, groupId, app, model: model || null, tabId, refreshLocal,
     closeSelMenu, lastSel, selMenu, dirty, setDirty, guard,
   });
@@ -271,18 +269,11 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
   // ─── 预览提示词（任务 #65）───
   const openPreview = useCallback(() => {
     setPreview({ busy: true });
-    const draftRepo = String(doc?.projectKey || topic?.repo_key || '');
-    const body = {
-      cwd: topic?.cwd,
-      key: topicKey,
-      ...(isDraft
-        ? { text: composeText((doc?.title || '').trim() || '未命名任务', doc?.body || ''), taskKey: String(task), ...(draftRepo ? { repo: draftRepo } : {}) }
-        : { id: Number(task) }),
-    };
+    const body = { cwd: topic?.cwd, key: topicKey, id: Number(task) };
     previewTask(body)
       .then((d) => setPreview({ data: d }))
       .catch((e) => setPreview({ error: String((e as Error).message || e) }));
-  }, [topic?.cwd, topicKey, isDraft, doc?.title, doc?.body, task, composeText]);
+  }, [topic?.cwd, topicKey, task]);
 
   // ─── 标题与正文双向同步 ───
   const onTitle = (next: string, kind = 'typing') => {
@@ -395,7 +386,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
 
   // 读不到文档分两种：**还在读**（队列首轮没回来）与**确实没有这一条**（被删 / 深链写错）。
   if (!doc) {
-    if (app.localReady === false || isDraft) {
+    if (app.localReady === false) {
       return <div className="mdw"><div className="pad muted">载入中…</div></div>;
     }
     return <NotFoundView task={task} app={app} groupAnchored={groupAnchored} groupId={groupId} dirKey={dirKey} />;
@@ -419,7 +410,10 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
               悬浮出复制钮）。不再显示标题行——原 mdw-path 的两个信号
               （未保存 / 目录已不存在）下沉到这一行保留。 */}
           <VscCrumbs onPreviewTask={openTaskBeside} />
-          {dirty ? <span className="mdw-top-note">未保存</span> : null}
+          {String(taskRow?.status || '') === 'plan' ? (
+            <span className="mdw-top-state is-draft">当前为草稿</span>
+          ) : null}
+          {dirty ? <span className="mdw-top-state is-dirty">当前未保存</span> : null}
           {topic?.cwdExists === false && (
             <span
               className="mdw-top-note"
@@ -433,7 +427,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
         <BoardSection
           boardCtx={boardCtx}
           docFm={docFm}
-          projectEditable={isDraft || !taskRow || taskRow.status === 'pending' || taskRow.status === 'plan'}
+          projectEditable={!taskRow || taskRow.status === 'pending' || taskRow.status === 'plan'}
           doc={doc}
           id={id}
           markDirty={markDirty}
@@ -443,23 +437,29 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           mode={editorMode}
           onMode={(m: string) => saveDoc(id, { mode: m })}
           showMark={editorMode !== 'edit'}
-          submitLabel={isDraft ? '提交为任务' : '保存并同步'}
+          submitLabel={
+            String(taskRow?.status || '') === 'plan'
+              ? fixedDraft
+                ? '保存（草稿）'
+                : '保存并发布'
+              : '保存并同步'
+          }
           onNew={newTask}
           onSubmit={submit}
-          onChain={isDraft ? null : () => setChainOpen(true)}
+          onChain={() => setChainOpen(true)}
           onPreview={openPreview}
           onImg={() => pickAtt('image/*')}
-          onAtt={() => (isDraft ? pickAtt('image/*,.pdf,.zip,.txt,.json,.csv') : openAttachPanel())}
+          onAtt={openAttachPanel}
           onImport={() => fileMdRef.current?.click()}
-          onClone={isDraft ? null : cloneCur}
-          onFork={isDraft ? null : forkCur}
+          onClone={cloneCur}
+          onFork={forkCur}
           onComplete={canComplete ? () => closeTask('done') : null}
-          onPlan={canPlan ? togglePlan : null}
-          planLabel={String(taskRow?.status || '') === 'plan' ? '转回待领取' : '转为草稿（plan）'}
+          onPlan={canFixedDraft ? toggleFixedDraft : null}
+          planLabel={fixedDraft ? '固定草稿态：开（保存后留草稿）' : '固定草稿态：关（保存后转待领取）'}
           onCancelTask={canCancel ? () => closeTask('cancel') : null}
           onMark={openCommentFromToolbar}
-          onDraft={() => toast('草稿随页签保留（刷新后需从侧栏或页签重新打开）')}
-          onDelete={isDraft ? null : delTask}
+          onDraft={null}
+          onDelete={delTask}
           onOverview={() => app.onNavigate && app.onNavigate('#/overview')}
           onProg={openProgress}
           onSource={parentRef ? openParentBeside : null}
@@ -485,7 +485,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           onUndo={undo}
           onRedo={redo}
           onCloseSelMenu={closeSelMenu}
-          attachHost={isDraft ? null : {
+          attachHost={{
             host: 'task',
             hostId: Number(task),
             hostCwd: topic?.cwd,
@@ -498,8 +498,8 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
           dockOpen={dockOpen} dockTab={dockTab} dockH={dockH} dockRef={dockRef} dockMax={dockMax}
           showDockTab={showDockTab} onDockDragStart={onDockDragStart} toggleDockMax={toggleDockMax} setDockOpen={setDockOpen}
           canShowGoalLog={canShowGoalLog} goalLog={goalLog} openGoalLog={openGoalLog}
-          isDraft={isDraft} task={task} topic={topic} topicKey={topicKey} doc={doc} id={id} model={model || null} app={app}
-          refreshLocal={refreshLocal} markDirty={markDirty} saveDoc={saveDoc} persistAtt={persistAtt}
+          task={task} topic={topic} topicKey={topicKey} model={model || null} app={app}
+          refreshLocal={refreshLocal}
           attachAreaRef={attachAreaRef} reviewBarRef={reviewBarRef}
           taskRow={taskRow} ackHtml={ackHtml}
           isChainTip={isChainTip} latestChild={latestChild} openFeedback={openFeedback} openLatestRound={openLatestRound}
@@ -508,7 +508,7 @@ export default function PagePanel({ dirKey, groupId, task, beside = false, tabId
         <StatusBar
           dockOpen={dockOpen} dockTab={dockTab} showDockTab={showDockTab} setDockOpen={setDockOpen}
           canShowGoalLog={canShowGoalLog} goalLog={goalLog} openGoalLog={openGoalLog}
-          isDraft={isDraft} taskRow={taskRow} task={String(task || '')} topicKey={topicKey}
+          taskRow={taskRow} task={String(task || '')} topicKey={topicKey}
         />
       </div>
 

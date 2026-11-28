@@ -86,7 +86,7 @@ test('panelSpecOfRoute：group 路由不带任务 → 组页（原样）', () =>
 });
 
 test('路由 ↔ 面板往返恒等：routeOfPanel(panelSpecOfRoute(g)) 复现同一条路由', () => {
-  for (const task of ['2', '86', 'draft-N12']) {
+  for (const task of ['2', '86']) {
     const spec = panelSpecOfRoute({ view: 'group', key: 'b_1', task }, {});
     const hash = routeOfPanel(nodeOf(spec.component, spec.config));
     // 手工按 routeFromHash 同一套规则拆回来（URLSearchParams + decodeURIComponent）

@@ -102,6 +102,7 @@ export const updateView = z.object({
   name: z.string().optional().describe('当前所在主题'),
   cwd: z.string().optional(),
   moved: z.boolean().optional().describe('是否因归属变了而换了队列'),
+  promoted: z.boolean().optional().describe('是否由草稿（plan）自动转为待领取（pending）'),
 });
 
 /** 「标完成」的结果视图。 */

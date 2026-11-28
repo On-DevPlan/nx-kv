@@ -6,15 +6,14 @@ import { createElement } from 'react';
 import type { EntryView, PluginClientApi, PretaskContext, PretaskDraft } from '@nx-kv/plugin-sdk/client';
 import { Icon } from '../components/icons.jsx';
 import { api } from '../api/client.js';
-import { docIdOf, nextDraftId, saveDoc, scopeOf } from '../modules/md/doc-store.js';
-import { titleFromMd } from '../modules/md/md-parse.js';
-import { setTaskIntent } from '../modules/md/task-intent.js';
+import { createTaskAndOpen } from '../modules/task/create.js';
 import { pluginRpc, pretaskDraft } from '../modules/pretask/use-pretask.js';
 
 /** 插件页面 / dock 需要的宿主导航能力（AppValue 的结构子集）。 */
 export interface PluginAppLike {
   openPage?: (spec: any) => void;
   onNavigate?: (hash: string) => void;
+  refreshLocal?: () => Promise<void>;
 }
 
 export interface PluginApiOptions {
@@ -40,34 +39,32 @@ export function buildPluginClientApi({
   closePage,
   onDraftCreated,
 }: PluginApiOptions): PluginClientApi {
-  const createDraft = (
+  const createDraft = async (
     draft: PretaskDraft,
-    opts?: { submit?: boolean; project?: string; board?: string },
-  ) => {
+    opts?: { submit?: boolean; project?: string; board?: string; status?: 'pending' | 'plan' },
+  ): Promise<{ id: number; key?: string } | null> => {
     const body = String(draft?.body || '');
     if (!body.trim()) {
       toast('草稿为空');
-      return;
+      return null;
     }
     const groupId = String(ctx.groupId || '');
     const dirKey = String(ctx.dirKey || ctx.topicKey || '');
-    const id = nextDraftId();
-    const docId = docIdOf(scopeOf(groupId || dirKey), id);
-    saveDoc(docId, {
-      // 标题优先用插件返回值；没给就从正文首行反推（与旧模板参数页同口径）
-      title: String(draft?.title || '') || titleFromMd(body, ''),
-      body,
-      ...(groupId
-        ? {
-            boardKey: String(opts?.board || ctx.board || groupId),
-            projectKey: String(opts?.project || ctx.project || ''),
-          }
-        : {}),
-    });
-    if (opts?.submit) setTaskIntent(docId, { submit: true });
+    const board = String(opts?.board || ctx.board || groupId);
+    const project = String(opts?.project || ctx.project || '');
+    // 插件中间页 / 面板完成默认直接进入待领取；显式 status:'plan' 才创建草稿。
+    const status = opts?.status || 'pending';
+    const created = await createTaskAndOpen(
+      { openPage: app.openPage, onNavigate: app.onNavigate, refreshLocal: app.refreshLocal },
+      {
+        text: body,
+        title: String(draft?.title || ''),
+        status,
+        ...(groupId ? { groupId, board, project } : { dirKey, cwd: String(ctx.cwd || '') }),
+      },
+    );
     onDraftCreated?.();
-    if (groupId) app.openPage?.({ groupId, task: id, name: '新任务' });
-    else app.openPage?.({ dirKey, task: id, name: '新任务' });
+    return created;
   };
 
   return {

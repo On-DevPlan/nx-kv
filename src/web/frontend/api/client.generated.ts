@@ -932,7 +932,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async localtaskAdd(input?: z.input<InstanceType<typeof LocaltaskAddAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskAddAction>['_input']>);
       const path = `/api/localtasks`;
-      const body = { "text": inp["text"], "file": inp["file"], "cwd": inp["cwd"], "summary": inp["summary"], "board": inp["board"], "project": inp["project"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "gate": inp["gate"], "fork-of": inp["fork-of"], "forkOf": inp["forkOf"], "fork-kind": inp["fork-kind"], "forkKind": inp["forkKind"] };
+      const body = { "text": inp["text"], "file": inp["file"], "cwd": inp["cwd"], "summary": inp["summary"], "board": inp["board"], "project": inp["project"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "gate": inp["gate"], "fork-of": inp["fork-of"], "forkOf": inp["forkOf"], "fork-kind": inp["fork-kind"], "forkKind": inp["forkKind"], "status": inp["status"], "draft": inp["draft"] };
       return (await transport.request("POST", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskAddAction>['run']>>;
     },
     // action: localtask.attach-note
@@ -1061,7 +1061,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async plan(input: z.input<InstanceType<typeof LocaltaskPlanAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskPlanAction>['_input']>);
       const path = `/api/localtasks/plan`;
-      const body = { "id": inp["id"], "to": inp["to"], "cwd": inp["cwd"], "key": inp["key"] };
+      const body = { "id": inp["id"], "to": inp["to"], "fixed": inp["fixed"], "cwd": inp["cwd"], "key": inp["key"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskPlanAction>['run']>>;
     },
     // action: localtask.presence
@@ -1179,7 +1179,7 @@ export function createApiClient(transport: Transport): ApiClient {
     async localtaskUpdate(input: z.input<InstanceType<typeof LocaltaskUpdateAction>['_input']>) {
       const inp = input ?? ({} as z.input<InstanceType<typeof LocaltaskUpdateAction>['_input']>);
       const path = `/api/localtasks/item`;
-      const body = { "id": inp["id"], "text": inp["text"], "cwd": inp["cwd"], "key": inp["key"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "clear-goal": inp["clear-goal"], "clearGoal": inp["clearGoal"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "clear-block-by": inp["clear-block-by"], "clearBlockBy": inp["clearBlockBy"], "gate": inp["gate"], "project": inp["project"], "board": inp["board"] };
+      const body = { "id": inp["id"], "text": inp["text"], "cwd": inp["cwd"], "key": inp["key"], "duration": inp["duration"], "goal-prompt": inp["goal-prompt"], "goalPrompt": inp["goalPrompt"], "clear-goal": inp["clear-goal"], "clearGoal": inp["clearGoal"], "block-by": inp["block-by"], "blockBy": inp["blockBy"], "clear-block-by": inp["clear-block-by"], "clearBlockBy": inp["clearBlockBy"], "gate": inp["gate"], "project": inp["project"], "board": inp["board"], "promotePlan": inp["promotePlan"], "promote-plan": inp["promote-plan"], "fixedDraft": inp["fixedDraft"], "fixed-draft": inp["fixed-draft"] };
       return (await transport.request("PATCH", path, body)) as Awaited<ReturnType<InstanceType<typeof LocaltaskUpdateAction>['run']>>;
     },
     // action: localtask.get

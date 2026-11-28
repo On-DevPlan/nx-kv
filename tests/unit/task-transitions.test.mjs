@@ -117,6 +117,27 @@ test('switchPlanStatus：pending↔plan 双向；其余状态被守卫拒绝', a
   assert.equal(tasksRepo.getTaskRow(t.id, a.task.id).task.status, 'claimed');
 });
 
+test('switchPlanStatus：fixedDraft 与状态同事务写；同状态只改固定也生效', async () => {
+  await svc.resetLocaltaskStore();
+  const a = await svc.addTask({ cwd: dir, text: '固定草稿' });
+  const t = topicsRepo.getTopic(key);
+
+  // pending → plan + fixed
+  const r1 = tasksRepo.switchPlanStatus(t.id, a.task.id, 'plan', { fixedDraft: true });
+  assert.equal(r1.status, 'plan');
+  assert.equal(r1.fixedDraft, true);
+
+  // 已是 plan：只写 fixed（关掉），状态不变
+  const r2 = tasksRepo.switchPlanStatus(t.id, a.task.id, 'plan', { fixedDraft: false });
+  assert.equal(r2.status, 'plan');
+  assert.equal(r2.fixedDraft, false);
+
+  // 不带 opts 切回 pending：fixed 保持当前值（转 pending 的清理由上层语义函数负责）
+  const r3 = tasksRepo.switchPlanStatus(t.id, a.task.id, 'pending');
+  assert.equal(r3.status, 'pending');
+  assert.equal(r3.fixedDraft, false);
+});
+
 test('alignClaimedFromSnapshot：非终态对齐为 claimed；幂等；done/cancelled 不动', async () => {
   await svc.resetLocaltaskStore();
   const a = await svc.addTask({ cwd: dir, text: '外部 DAG 说在跑' });

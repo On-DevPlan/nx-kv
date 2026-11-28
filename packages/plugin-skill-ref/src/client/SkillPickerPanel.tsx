@@ -2,7 +2,7 @@
 //
 // 候选条目走宿主的 candidates 标准接口（/api/plugins/candidates），
 // 选中结果走插件自己的 RPC（taskSkillsGet / taskSkillsSave，按 task.id 绑定）。
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PluginClientApi } from '@nx-kv/plugin-sdk/client';
 
 interface Candidate {
@@ -33,9 +33,14 @@ function msgOf(e: unknown): string {
 }
 
 export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
-  // 真实任务 = 数字任务号；草稿 = draft-N（提交后由 onTaskCreated 迁移）。
+  // 任务从创建起就是真实实体：直接按任务号存取。
   const taskKey = String(api.ctx.location?.taskId || '');
-  const isDraft = /^draft/i.test(taskKey);
+  // 面板初始化只跟着「任务号 / 仓库 / 工作目录」这几个标量走：api 会随任务行刷新重建，
+  // 若把 api 的 identity 放进依赖，每次轮询都会重新拉取、整块闪一下。
+  const repoKey = String(api.ctx.repoKey || '');
+  const cwd = String(api.ctx.cwd || '');
+  const apiRef = useRef(api);
+  apiRef.current = api;
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
@@ -49,13 +54,13 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
     setError('');
     try {
       const [list, picked] = await Promise.all([
-        api.host.get<{ candidates?: Candidate[] }>('/api/plugins/candidates', {
+        apiRef.current.host.get<{ candidates?: Candidate[] }>('/api/plugins/candidates', {
           pluginId: 'skill-ref',
-          topic: api.ctx.topicKey,
-          repo: api.ctx.repoKey,
-          group: api.ctx.groupKey,
+          topic: apiRef.current.ctx.topicKey,
+          repo: apiRef.current.ctx.repoKey,
+          group: apiRef.current.ctx.groupKey,
         }),
-        api.rpc('taskSkillsGet', { taskKey }),
+        apiRef.current.rpc('taskSkillsGet', { taskKey }),
       ]);
       setCandidates(Array.isArray(list?.candidates) ? list.candidates : []);
       setSelected(new Set(Array.isArray(picked?.ids) ? picked.ids : []));
@@ -72,8 +77,8 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
       return;
     }
     void load();
-    // load 依赖 api / taskKey；api 由宿主按 ctx memo
-  }, [api, taskKey]);
+    // 只按任务号 / 仓库 / cwd 变化重新拉取；api 的 identity 变化不算（见上）。
+  }, [taskKey, repoKey, cwd]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -93,7 +98,7 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
     [selected, candidateIds],
   );
 
-  // 单个技能引用切换：点击即按任务（草稿用 draft-N）保存，不做多选 + 批量保存。
+  // 单个技能引用切换：点击即按任务保存，不做多选 + 批量保存。
   const toggleSkill = async (id: string) => {
     if (!taskKey) {
       api.toast('任务号未确定，无法保存');
@@ -134,7 +139,7 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
   return (
     <div className="skr-panel">
       <div className="skr-head">
-        <b>{isDraft ? `技能引用 · 草稿 ${taskKey}` : `技能引用 #${taskKey}`}</b>
+        <b>{`技能引用 #${taskKey}`}</b>
         <span className="muted">已引用 {selected.size}</span>
         <span className="skr-spacer" />
         <input
@@ -147,10 +152,6 @@ export default function SkillPickerPanel({ api }: { api: PluginClientApi }) {
           刷新
         </button>
       </div>
-
-      {isDraft ? (
-        <div className="skr-draft-hint">点每行右侧「引用 / 移除」即时保存；草稿提交后自动带到新任务。</div>
-      ) : null}
 
       {missing.length > 0 ? (
         <div className="skr-warn">

@@ -83,6 +83,36 @@ test('归属没改 → 原地不动（moved:false）', async () => {
   assert.ok(back.text.includes('补充说明'), '纯文案编辑照常生效');
 });
 
+// 新建即实体（plan 落库）之后：组任务切换真实 repo 时，固定草稿与转正都要跟着新任务走。
+test('plan 任务改归属：fixedDraft 随迁；promotePlan 作用在搬家后的新任务上', async () => {
+  // ① 固定草稿：只改归属，保存后仍是 plan，fixedDraft 随任务搬到 B
+  const r = await submitTask({ text: '', board: board.id, project: repoA.key, status: 'plan' });
+  assert.equal(r.task.status, 'plan', '原生创建草稿实体');
+  assert.equal(r.task.fixedDraft, false);
+  const fixed = await svc.setPlanStatus({ cwd: dirA, id: r.task.id, fixed: true });
+  assert.equal(fixed.fixedDraft, true);
+
+  const upd = await updateAction.run({ id: r.task.id, cwd: dirA, project: repoB.key });
+  assert.equal(upd.moved, true, '归属变了必须搬家');
+  const inB = await svc.getTask({ cwd: dirB, id: upd.task.id });
+  assert.equal(inB.status, 'plan', '搬家不改变草稿态');
+  assert.equal(inB.fixedDraft, true, 'fixedDraft 跟到新任务行');
+  assert.equal(inB.repoKey, repoB.key, '插件上下文按 B 仓解析');
+
+  // ② 非固定草稿：改归属 + promotePlan → 新任务 pending（不能在旧任务上转）
+  const r2 = await submitTask({ text: '# 草稿转正\n正文', board: board.id, project: repoA.key, status: 'plan' });
+  const upd2 = await updateAction.run({ id: r2.task.id, cwd: dirA, project: repoB.key, promotePlan: true });
+  assert.equal(upd2.moved, true);
+  assert.equal(upd2.promoted, true, 'promote 作用在搬家后的新任务上');
+  const inB2 = await svc.getTask({ cwd: dirB, id: upd2.task.id });
+  assert.equal(inB2.status, 'pending', '保存后默认转待领取');
+  assert.equal(inB2.fixedDraft, false);
+  assert.equal(inB2.repoKey, repoB.key);
+  // 旧任务在 A 队列是 tombstone，不再可领
+  const old = await svc.getTask({ cwd: dirA, id: r2.task.id });
+  assert.equal(old.status, 'cancelled');
+});
+
 test('目标队列已有同号任务 → 重新编号，不撞号', async () => {
   // A 里提交两条，B 里先放一条，再往 B 直插一条与 A#1 同号的任务（制造确定性撞号）
   const t1 = await submitTask({ text: '# 一号\nx', board: board.id, project: repoA.key });

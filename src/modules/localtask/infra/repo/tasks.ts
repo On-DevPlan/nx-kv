@@ -355,9 +355,20 @@ export function tombstoneAsCancelled(
  * 调用方（task-ops.setPlanStatus）负责产出友好的错误文案；这里的 WHERE 守卫
  * 是并发层的最后防线——两个进程同时切同一条，只有一个 UPDATE 生效。
  */
-export function switchPlanStatus(topicId: number, seq: number, to: 'plan' | 'pending'): TaskObject | null {
+export function switchPlanStatus(
+  topicId: number,
+  seq: number,
+  to: 'plan' | 'pending',
+  opts: { fixedDraft?: boolean } = {},
+): TaskObject | null {
   const from = to === 'plan' ? 'pending' : 'plan';
   return txw((conn) => {
+    const cur = getTaskRow(topicId, seq, conn);
+    if (!cur) return null;
+    if (opts.fixedDraft !== undefined) {
+      mergeExt(conn, topicId, seq, { [EXT.FIXED_DRAFT]: !!opts.fixedDraft });
+    }
+    if (cur.task.status === to) return getTaskRow(topicId, seq, conn)!.task;
     const r = conn.run(
       `UPDATE tasks SET status = :to, version = version + 1, updated_at = :at
         WHERE repo_topic_id = :t AND seq = :s AND status = :from AND deleted_at IS NULL`,

@@ -2,6 +2,33 @@
 
 本文件对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.73.0] - 2026-11-28 任务实体化：新建即落库 + 插件上下文随 repo 迁移
+
+### Changed
+
+- **Web 取消内存草稿（draft-N），新建即落库**：点「新建任务」立即创建 `status='plan'` 的真实任务，
+  编辑页保存默认转 `pending`；工具栏「固定草稿态」开关（plan / pending 都显示）打开后保存仍留草稿，
+  关闭后下次保存转待领取。任务页 URL 恒为 `?task=<数字>`，不再有草稿分支。
+- **pretask 插件全部落真实任务**：`api.createDraft` 默认创建 `pending`（中间页完成即进队列），
+  可传 `status:'plan'` 保留草稿（task-template 的「进入编辑页」显式用 plan）。
+- **组任务改归属换 repo 时插件上下文随迁**：`relocateTask` 复制 `fixedDraft`，`promotePlan` 在搬家后的
+  新任务上执行；任务页同步更新页签 / docId / URL，gettask dock（目录要求 / 技能引用）按新
+  `task.id` / `repoKey` 重新取数，不残留旧仓库条目。
+- **CLI**：`localtask add` 新增 `--draft` / `--status plan`（默认仍 pending）；`localtask plan --fixed`；
+  `localtask update --promote-plan` / `--fixed-draft`。
+- **插件兼容**：`onTaskCreated` / `plugin task-created` 标记 deprecated，Web 不再调用；
+  skill-ref 停止写草稿键（历史 draft 表只读保留），`writeTaskSkills` 只接受真实任务号。
+- 路由 / 面包屑 / 侧栏删除 `?task=draft` 与「draft」文案；doc-store 只作为任务正文会话缓存。
+- **任务页状态提示**：顶条新增浅色状态字「当前为草稿」「当前未保存」；plan 任务的主按钮
+  由「保存并转为待领取」缩短为「保存并发布」。
+
+### Fixed
+
+- **dock 插件面板偶发整块刷新、填写进度丢失**：宿主任务行每次轮询都会重建 `api`，
+  两个 gettask dock（目录要求 / 技能引用）的初始化 effect 误把 `api` 放进依赖，导致每次
+  刷新都重新拉取并重置表单；改为只依赖 `topicKey / repoKey / cwd / taskId` 等稳定标量，
+  `api` 用 ref 取最新值（组任务切换 repo 时仍会正确刷新）。
+
 ## [0.72.0] - 2026-11-28 目录批注 gettask（目录要求）+ 插件图标
 
 ### Added

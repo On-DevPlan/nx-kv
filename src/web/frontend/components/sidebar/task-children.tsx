@@ -19,6 +19,7 @@ import { taskLabel } from './model.js';
 import type { SideRow } from './model.js';
 import { ensureQueueKey } from './queue-nav.js';
 import { startDefaultEntry } from '../../modules/pretask/open-entry.js';
+import { createTaskAndOpen } from '../../modules/task/create.js';
 import { statusTone, statusShort } from '../status-tag/model.js';
 import { sortTasksForDisplay, isGroupTask } from '../../modules/board/board-view.js';
 import type { LocalTask } from '../../types.js';
@@ -64,7 +65,7 @@ export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChil
   const shown = tasks.slice(0, limit);
   const rest = tasks.length - shown.length;
   // 侧栏「新建页」与目录页主按钮同口径：走本 topic 配置的默认入口（面板入口也会直接打开）；
-  // 没有可用入口时退回旧的空白草稿。
+  // 没有可用入口时就地落一条 plan 草稿（真实实体），再打开编辑页。
   const openNewPage = async () => {
     try {
       const topicKey = await ensureQueueKey({ row, refreshLocal, toast });
@@ -75,11 +76,30 @@ export default function TaskChildren({ row, onNavigate, refreshLocal }: TaskChil
         cwd: row.cwd,
         name: row.name,
         navigate: onNavigate || (() => {}),
+        refreshLocal,
       });
-      if (!handled) onNavigate?.(`#/dir/${encodeURIComponent(topicKey)}?task=draft`);
+      if (!handled) {
+        // 组行没有可用入口：回组页由它按成员仓库创建（组任务必须有归属项目）。
+        if (isBoard) {
+          onNavigate?.(base);
+          return;
+        }
+        await createTaskAndOpen(
+          { onNavigate, refreshLocal },
+          { text: '', title: '', status: 'plan', dirKey: topicKey, cwd: row.cwd || '' },
+        );
+      }
     } catch {
       const topicKey = row.topicKey;
-      if (topicKey) onNavigate?.(`#/dir/${encodeURIComponent(topicKey)}?task=draft`);
+      if (isBoard) {
+        onNavigate?.(base);
+        return;
+      }
+      if (!topicKey) return;
+      await createTaskAndOpen(
+        { onNavigate, refreshLocal },
+        { text: '', title: '', status: 'plan', dirKey: topicKey, cwd: row.cwd || '' },
+      ).catch(() => {});
     }
   };
   return (

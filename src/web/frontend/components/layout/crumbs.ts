@@ -37,9 +37,7 @@ export function crumbsOf(route: Partial<AppRoute> | null | undefined, ctx: SpecC
       const out: string[] = [];
       if (ctx.dirName) out.push(ctx.dirName);
       if (route.task) {
-        // 草稿统一显示 draft，不暴露 draft-N
-        if (/^draft/i.test(String(route.task))) out.push('draft');
-        else out.push(ctx.pageTitle || `#${route.task}`);
+        out.push(ctx.pageTitle || `#${route.task}`);
       }
       return out;
     }
@@ -47,8 +45,7 @@ export function crumbsOf(route: Partial<AppRoute> | null | undefined, ctx: SpecC
       // 组任务页（#86）：[ 组名 / #N ]——组任务详情有自己的路由，层级挂在组下
       if (route.task) {
         const out = [ctx.boardName || '项目组'];
-        if (/^draft/i.test(String(route.task))) out.push('draft');
-        else out.push(ctx.pageTitle || `#${route.task}`);
+        out.push(ctx.pageTitle || `#${route.task}`);
         return out;
       }
       return ctx.boardName ? [ctx.boardName] : ['项目组'];
@@ -91,17 +88,17 @@ export function crumbTrailOf(route: Partial<AppRoute> | null | undefined, ctx: S
     case 'dir': {
       if (!ctx.dirName) return [];
       const out: CrumbStep[] = [];
-      // 任务页才有上一级（目录页自己就是这层的家）；草稿也归属目录页
+      // 任务页才有上一级（目录页自己就是这层的家）
       out.push({ label: ctx.dirName, hash: route.task ? `#/dir/${encodeURIComponent(route.key || '')}` : '' });
       if (route.task) {
-        const label = /^draft/i.test(String(route.task)) ? 'draft' : (ctx.pageTitle || `#${route.task}`);
+        const label = ctx.pageTitle || `#${route.task}`;
         out.push({ label, hash: '' });
       }
       return out;
     }
     case 'group': {
       if (route.task) {
-        const label = /^draft/i.test(String(route.task)) ? 'draft' : (ctx.pageTitle || `#${route.task}`);
+        const label = ctx.pageTitle || `#${route.task}`;
         return [
           { label: ctx.boardName || '项目组', hash: `#/group/${encodeURIComponent(route.key || '')}` },
           { label, hash: '' },

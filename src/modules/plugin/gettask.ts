@@ -97,7 +97,7 @@ export function taskInfoOf(
   if (!task) return null;
   const id = Number(task.id);
   const key = String(opts.taskKey || task.key || (Number.isFinite(id) && id > 0 ? id : ''));
-  // 草稿预览：id 为 0，用 key（draft-N）定位；库存任务两者都有。
+  // 任务页现在恒为真实实体（id > 0）；id=0 的兜底只为历史草稿数据。
   if (!Number.isFinite(id) || (id <= 0 && !key)) return null;
   return {
     id: id > 0 ? id : 0,

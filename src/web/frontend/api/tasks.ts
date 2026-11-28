@@ -13,10 +13,12 @@ export type TaskScope = { cwd?: string; key?: string };
 
 /** 变更类返回的公共形状：task=落地后的任务；key/moved/name=落点与归属迁移提示。 */
 export interface TaskMutationResult {
-  task?: { id?: number | string; text?: string };
+  task?: { id?: number | string; text?: string; status?: string; fixedDraft?: boolean };
   id?: number | string;
   key?: string;
   moved?: boolean;
+  /** 保存时是否把 plan 草稿自动转成了 pending */
+  promoted?: boolean;
   name?: string;
 }
 
@@ -45,6 +47,10 @@ export interface PatchTaskItemBody extends TaskScope {
   clearGoal?: boolean;
   goalPrompt?: string;
   summary?: string;
+  /** plan 草稿保存后转 pending（固定草稿态下不要传） */
+  promotePlan?: boolean;
+  /** 固定草稿态：plan 任务保存后保持草稿 */
+  fixedDraft?: boolean;
   [k: string]: unknown;
 }
 
@@ -68,6 +74,10 @@ export interface AddTaskBody extends TaskScope {
   forkKind?: string;
   board?: string;
   project?: string;
+  /** 创建状态：pending（默认）或 plan（草稿，不进队列） */
+  status?: 'pending' | 'plan';
+  /** 等价于 status:'plan' */
+  draft?: boolean;
   [k: string]: unknown;
 }
 
@@ -80,7 +90,7 @@ export function addTask(body: AddTaskBody): Promise<any> {
  * #126：在 pending ↔ plan 之间切换一条任务（PATCH /api/localtasks/plan）。
  * plan 是不进队列的临时草稿，get/wait 都领不到；转回 pending 才重新排队。
  */
-export function setPlanStatus(body: TaskScope & { id: number; to: 'plan' | 'pending' }): Promise<any> {
+export function setPlanStatus(body: TaskScope & { id: number; to?: 'plan' | 'pending'; fixed?: boolean }): Promise<any> {
   return api('/api/localtasks/plan', { method: 'PATCH', body });
 }
 

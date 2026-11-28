@@ -1,7 +1,7 @@
 {
   "app": "nx-kv",
-  "version": "0.72.0",
-  "hash": "ad0fcdf27c92840a",
+  "version": "0.73.0",
+  "hash": "13dc5f659bfa0739",
   "actions": [
     {
       "id": "localtask.add",
@@ -124,6 +124,24 @@
           "positional": false,
           "required": false,
           "hint": "同 --fork-kind（驼峰写法）"
+        },
+        {
+          "name": "status",
+          "kind": "enum",
+          "positional": false,
+          "required": false,
+          "enumValues": [
+            "pending",
+            "plan"
+          ],
+          "hint": "创建状态：pending=正常入队（默认）；plan=草稿态，不进队列"
+        },
+        {
+          "name": "draft",
+          "kind": "boolean",
+          "positional": false,
+          "required": false,
+          "hint": "等价于 --status plan（草稿态；允许空正文）"
         }
       ],
       "output": {
@@ -1593,6 +1611,34 @@
           "positional": false,
           "required": false,
           "hint": "改归属组（组 id / key / 名称）——同时更新 group topic 关联"
+        },
+        {
+          "name": "promotePlan",
+          "kind": "boolean",
+          "positional": false,
+          "required": false,
+          "hint": "保存后把 plan 草稿转为 pending（固定草稿态下不要传）"
+        },
+        {
+          "name": "promote-plan",
+          "kind": "boolean",
+          "positional": false,
+          "required": false,
+          "hint": "同 --promote-plan（kebab 写法）"
+        },
+        {
+          "name": "fixedDraft",
+          "kind": "boolean",
+          "positional": false,
+          "required": false,
+          "hint": "固定草稿态：plan 任务保存后保持草稿"
+        },
+        {
+          "name": "fixed-draft",
+          "kind": "boolean",
+          "positional": false,
+          "required": false,
+          "hint": "同 --fixed-draft（kebab 写法）"
         }
       ],
       "output": {
@@ -1636,6 +1682,14 @@
               "k": "bool"
             },
             "hint": "是否因归属变了而换了队列"
+          },
+          {
+            "name": "promoted",
+            "required": false,
+            "type": {
+              "k": "bool"
+            },
+            "hint": "是否由草稿（plan）自动转为待领取（pending）"
           }
         ]
       },

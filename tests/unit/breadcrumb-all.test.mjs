@@ -18,10 +18,10 @@ import {
 import {
   fileURLToPath,
 } from 'node:url';
-test('crumbsOf dir：仓库/draft——ctx 里给了组名也不出现（#84）', () => {
+test('crumbsOf dir：ctx 里给了组名也不出现（#84）', () => {
   assert.deepEqual(
-    crumbsOf({ view: 'dir', key: 'abc', task: 'draft-3' }, { boardName: 'nx', dirName: 'nx-kv' }),
-    ['nx-kv', 'draft']
+    crumbsOf({ view: 'dir', key: 'abc', task: '28' }, { boardName: 'nx', dirName: 'nx-kv', pageTitle: '#28' }),
+    ['nx-kv', '#28']
   );
 });
 
@@ -82,8 +82,6 @@ test('crumbsOf group+task：[ 组名 / #N ]（挂组页之下）', () => {
   );
   // ctx 未就绪时页名兜底 #<task>
   assert.deepEqual(crumbsOf({ view: 'group', key: 'b_1', task: '86' }, { boardName: 'nx' }), ['nx', '#86']);
-  // 草稿统一显示 draft
-  assert.deepEqual(crumbsOf({ view: 'group', key: 'b_1', task: 'draft-3' }, { boardName: 'nx' }), ['nx', 'draft']);
 });
 
 test('parentRouteOf：组任务页回组页（不是总览）', () => {
@@ -116,14 +114,6 @@ test('crumbTrailOf：任务页 [ 目录(可点→目录页) / #N(当前) ]', () 
     [
       { label: 'nx-kv', hash: '#/dir/abc' },
       { label: '#28', hash: '' },
-    ]
-  );
-  // 草稿也归属目录页
-  assert.deepEqual(
-    crumbTrailOf({ view: 'dir', key: 'abc', task: 'draft-3' }, { dirName: 'nx-kv' }),
-    [
-      { label: 'nx-kv', hash: '#/dir/abc' },
-      { label: 'draft', hash: '' },
     ]
   );
 });

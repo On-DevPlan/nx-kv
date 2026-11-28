@@ -9,7 +9,6 @@
 import { definePlugin, paramsOf, type PluginCandidate, type PluginContext } from '@nx-kv/plugin-sdk';
 import {
   migrateStorage,
-  moveDraftSkills,
   readSettings,
   readTaskSkills,
   STORAGE_VERSION,
@@ -99,8 +98,8 @@ export default definePlugin({
         ],
         ui: { panel: 'skill-picker', title: '技能引用' },
         data(ctx) {
-          // 库存任务用任务号；草稿预览用 draft-N（key）。
-          const taskKey = String(ctx.task.key || ctx.task.id || '');
+          // 任务从创建起就是真实实体，直接用任务号。
+          const taskKey = String(ctx.task.id || '');
           const ids = readTaskSkills(ctx.storage, taskKey);
           if (!ids.length) return null;
           const byId = new Map(scanOf(ctx).skills.map((skill) => [skill.id, skill]));
@@ -121,11 +120,6 @@ export default definePlugin({
   },
   candidates(ctx) {
     return scanOf(ctx).skills.map(toCandidate);
-  },
-  // 草稿提交后：把 draft-N 下暂存的选中项迁到真实 task.id。
-  onTaskCreated(ctx, event) {
-    if (!event.draftKey) return;
-    moveDraftSkills(ctx.storage, event.draftKey, event.task.id);
   },
   rpc: {
     async getSettings(ctx) {

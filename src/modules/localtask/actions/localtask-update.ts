@@ -25,6 +25,10 @@ const input = z.object({
   // #197：归属改由显式参数给出（不再改正文 frontmatter 里的 project/board）
   project: z.string().optional().describe("改归属项目（仓库 key / 名称 / 路径）——任务迁到该仓库队列"),
   board: z.string().optional().describe("改归属组（组 id / key / 名称）——同时更新 group topic 关联"),
+  promotePlan: z.boolean().optional().describe("保存后把 plan 草稿转为 pending（固定草稿态下不要传）"),
+  'promote-plan': z.boolean().optional().describe("同 --promote-plan（kebab 写法）"),
+  fixedDraft: z.boolean().optional().describe("固定草稿态：plan 任务保存后保持草稿"),
+  'fixed-draft': z.boolean().optional().describe("同 --fixed-draft（kebab 写法）"),
 });
 
 export class LocaltaskUpdateAction extends ActionBase<typeof input> {
@@ -47,7 +51,8 @@ export class LocaltaskUpdateAction extends ActionBase<typeof input> {
           ? '（时间目标已清除）'
           : '') +
       (d.task.blocksFollowing ? '（闸门）' : '') +
-      (d.task.blockBy && d.task.blockBy.length ? `（依赖 #${d.task.blockBy.join(',#')}）` : ''),
+      (d.task.blockBy && d.task.blockBy.length ? `（依赖 #${d.task.blockBy.join(',#')}）` : '') +
+      (d.promoted ? '（已转为待领取）' : ''),
   })
   override async run(ctx: ActionInput<this['_input']>) {
 
@@ -80,6 +85,8 @@ export class LocaltaskUpdateAction extends ActionBase<typeof input> {
           // #197：改归属走显式参数（null 表示不改）
           project: ctx.project,
           board: ctx.board,
+          promotePlan: ctx.promotePlan ?? ctx['promote-plan'],
+          fixedDraft: ctx.fixedDraft ?? ctx['fixed-draft'],
         });
         // 出参契约（updateView）只回编号：把 task.id 提到顶层（纯附加，原有键不变）
         if (r && r.task && r.task.id != null) r.id = r.task.id;
